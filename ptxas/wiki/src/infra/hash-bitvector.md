@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas contains two independent hash map implementations and a dedicated bitvector library. These three container abstractions underpin nearly every subsystem in the compiler -- from the PTX parser's symbol tables to the optimizer's liveness analysis to the code generator's instruction deduplication cache. This page documents their binary-level layouts, hash algorithms, SIMD acceleration, and usage patterns.
+ptxas contains two independent hash map implementations and a dedicated bitvector library. These three container abstractions underpin nearly every subsystem in the compiler — from the PTX parser's symbol tables to the optimizer's liveness analysis to the code generator's instruction deduplication cache. This page documents their binary-level layouts, hash algorithms, SIMD acceleration, and usage patterns.
 
 ## Overview
 
@@ -74,13 +74,13 @@ Entry (16 bytes, at entries + 16 * index)
   +8    ptr/u64   value          // Associated value
 ```
 
-Bucket chains are stored as arrays of `uint32_t` indices terminated by sentinel value `0xFFFFFFFF` (`-1`). Each bucket pointer at `bucket_array[hash & bucket_mask]` points to a null-terminated index list. Collision resolution is open addressing with index chaining -- not linked-list chaining.
+Bucket chains are stored as arrays of `uint32_t` indices terminated by sentinel value `0xFFFFFFFF` (`-1`). Each bucket pointer at `bucket_array[hash & bucket_mask]` points to a null-terminated index list. Collision resolution is open addressing with index chaining — not linked-list chaining.
 
 ### Hash Functions
 
-**Mode 0 (Custom / String) -- MurmurHash3:**
+**Mode 0 (Custom / String) — MurmurHash3:**
 
-String-keyed maps use `sub_427630` (273 bytes, 73 callers), which implements MurmurHash3_x86_32 with the standard mixing constants (HIGH -- constants `0xCC9E2D51`/`0x1B873593` and rotate-by-15/13 schedule directly readable in disassembly; algorithm matches public MurmurHash3 reference byte-for-byte):
+String-keyed maps use `sub_427630` (273 bytes, 73 callers), which implements MurmurHash3_x86_32 with the standard mixing constants (HIGH — constants `0xCC9E2D51`/`0x1B873593` and rotate-by-15/13 schedule directly readable in disassembly; algorithm matches public MurmurHash3 reference byte-for-byte):
 
 ```c
 uint32_t MurmurHash3_x86_32(const char* key, int len) {
@@ -174,7 +174,7 @@ The resize doubles capacity when `entry_count` exceeds `load_threshold`. The thr
 
 ### Iteration
 
-Hash map iteration (used by `sub_425DB0`, 9 callers) walks the entries array linearly, testing the used-bits bitmap to identify occupied slots. There is no guaranteed iteration order -- the order depends on insertion history and resize operations.
+Hash map iteration (used by `sub_425DB0`, 9 callers) walks the entries array linearly, testing the used-bits bitmap to identify occupied slots. There is no guaranteed iteration order — the order depends on insertion history and resize operations.
 
 ### Usage Examples
 
@@ -193,7 +193,7 @@ Hash map iteration (used by `sub_425DB0`, 9 callers) walks the entries array lin
 
 ## CFG Hash Map (Graph Edges)
 
-The CFG edge hash map is a completely separate implementation from the general hash map, located in the address range `0xBDED20`--`0xBDFB10`. It is designed specifically for graph edge storage -- mapping block indices to successor/predecessor sets -- and has a different object layout, hash function, and collision resolution strategy.
+The CFG edge hash map is a completely separate implementation from the general hash map, located in the address range `0xBDED20`--`0xBDFB10`. It is designed specifically for graph edge storage — mapping block indices to successor/predecessor sets — and has a different object layout, hash function, and collision resolution strategy.
 
 ### Object Layout
 
@@ -209,7 +209,7 @@ CFGHashMap (40 bytes header)
 
 Two distinct hash map configurations exist for different node sizes:
 
-### Full Node (64 bytes) -- Successor Edge Map
+### Full Node (64 bytes) — Successor Edge Map
 
 Used by `sub_BDED20` (12KB) for the successor edge hash map at Code Object +648. Each node represents a block's successor edge set with an optional sub-hash table for multi-successor blocks:
 
@@ -228,7 +228,7 @@ FullNode (64 bytes)
   +60   u32     (padding)
 ```
 
-### Simple Node (16 bytes) -- Backedge Set
+### Simple Node (16 bytes) — Backedge Set
 
 Used by `sub_BDF480` (10KB) for the backedge hash map at Code Object +680. Each node is a minimal key-hash pair for set membership testing:
 
@@ -538,29 +538,29 @@ The CFG builder (`sub_BE0690`, 54KB) populates successor and backedge hash maps 
 
 | Address | Size | Identity | Callers | Confidence |
 |---------|------|----------|---------|------------|
-| `sub_425B20` | 0.5KB | `HashMap::allocate` -- allocates 112-byte map + arrays | 127 (via `sub_425CA0`) | HIGH |
-| `sub_425CA0` | 114B | `HashMap::create` -- constructor with hash/compare fn ptrs | 127 | HIGH |
-| `sub_425D20` | 121B | `HashMap::destroy` -- frees all internal arrays + map | 63 | MEDIUM |
+| `sub_425B20` | 0.5KB | `HashMap::allocate` — allocates 112-byte map + arrays | 127 (via `sub_425CA0`) | HIGH |
+| `sub_425CA0` | 114B | `HashMap::create` — constructor with hash/compare fn ptrs | 127 | HIGH |
+| `sub_425D20` | 121B | `HashMap::destroy` — frees all internal arrays + map | 63 | MEDIUM |
 | `sub_425DB0` | 292B | `HashMap::clear` / iterator init | 9 | MEDIUM |
-| `sub_426150` | 2.5KB | `HashMap::put` -- insert or update key/value pair | 2800 | HIGH |
-| `sub_426D60` | 345B | `HashMap::get` -- lookup key, return value or 0 | 422 | HIGH |
-| `sub_426EC0` | 349B | `HashMap::contains` -- test key existence | 29 | HIGH |
-| `sub_427630` | 273B | `MurmurHash3_x86_32` -- string hash | 73 | HIGH |
-| `sub_427750` | -- | Integer hash function (identity) | -- | HIGH |
-| `sub_4277F0` | -- | Pointer hash function (shift-XOR) | -- | HIGH |
-| `sub_42D850` | 2.5KB | `HashMap::insertSet` -- set-mode insert with auto-resize | 282 | HIGH |
+| `sub_426150` | 2.5KB | `HashMap::put` — insert or update key/value pair | 2800 | HIGH |
+| `sub_426D60` | 345B | `HashMap::get` — lookup key, return value or 0 | 422 | HIGH |
+| `sub_426EC0` | 349B | `HashMap::contains` — test key existence | 29 | HIGH |
+| `sub_427630` | 273B | `MurmurHash3_x86_32` — string hash | 73 | HIGH |
+| `sub_427750` | — | Integer hash function (identity) | — | HIGH |
+| `sub_4277F0` | — | Pointer hash function (shift-XOR) | — | HIGH |
+| `sub_42D850` | 2.5KB | `HashMap::insertSet` — set-mode insert with auto-resize | 282 | HIGH |
 
 ### CFG Hash Map
 
 | Address | Size | Identity | Confidence |
 |---------|------|----------|------------|
-| `sub_BDED20` | 12KB | `CFGHashMap::insertOrFind` -- full 64-byte node | HIGH |
-| `sub_BDF480` | 10KB | `CFGHashMap::insertOrFind_simple` -- 16-byte node | HIGH |
-| `sub_BDE6C0` | 3KB | `CFGHashMap::erase` -- recursive edge removal | MEDIUM |
-| `sub_BDE8B0` | 2KB | `CFGHashMap::printEdges` -- `"bix%d -> bix%d"` | HIGH |
-| `sub_BDEA50` | 4KB | `CFGHashMap::dumpRPOAndBackedges` -- debug dump | HIGH |
-| `sub_BDFB10` | 24KB | `CFGHashMap::buildBlockMap` -- block array init, RPO resize | MEDIUM |
-| `sub_BDDDF0` | ~2KB | `CFGHashMap::destroyAll` -- walk and free all nodes | MEDIUM |
+| `sub_BDED20` | 12KB | `CFGHashMap::insertOrFind` — full 64-byte node | HIGH |
+| `sub_BDF480` | 10KB | `CFGHashMap::insertOrFind_simple` — 16-byte node | HIGH |
+| `sub_BDE6C0` | 3KB | `CFGHashMap::erase` — recursive edge removal | MEDIUM |
+| `sub_BDE8B0` | 2KB | `CFGHashMap::printEdges` — `"bix%d -> bix%d"` | HIGH |
+| `sub_BDEA50` | 4KB | `CFGHashMap::dumpRPOAndBackedges` — debug dump | HIGH |
+| `sub_BDFB10` | 24KB | `CFGHashMap::buildBlockMap` — block array init, RPO resize | MEDIUM |
+| `sub_BDDDF0` | ~2KB | `CFGHashMap::destroyAll` — walk and free all nodes | MEDIUM |
 
 ### Bitvector Library
 
@@ -600,8 +600,8 @@ The CFG builder (`sub_BE0690`, 54KB) populates successor and backedge hash maps 
 
 ## Cross-References
 
-- [Data Structure Layouts](../ir/data-structures.md) -- Compilation context, Code Object field map, pool allocator
-- [Basic Blocks & CFG](../ir/cfg.md) -- CFG edge hash maps, RPO computation, backedge detection
-- [Liveness Analysis](../passes/liveness.md) -- Bitvector usage in iterative dataflow, SSE2 loop details
-- [Copy Propagation & CSE](../passes/copy-prop-cse.md) -- GVN value table hash map, FNV-1a in expression hashing
-- [Memory Pool Allocator](./memory-pools.md) -- Pool allocator used by both hash maps and bitvectors
+- [Data Structure Layouts](../ir/data-structures.md) — Compilation context, Code Object field map, pool allocator
+- [Basic Blocks & CFG](../ir/cfg.md) — CFG edge hash maps, RPO computation, backedge detection
+- [Liveness Analysis](../passes/liveness.md) — Bitvector usage in iterative dataflow, SSE2 loop details
+- [Copy Propagation & CSE](../passes/copy-prop-cse.md) — GVN value table hash map, FNV-1a in expression hashing
+- [Memory Pool Allocator](./memory-pools.md) — Pool allocator used by both hash maps and bitvectors

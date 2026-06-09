@@ -12,18 +12,18 @@ This page documents the override checking logic at reimplementation-grade depth:
 | Source file | `class_decl.c` |
 | Parameters | `a1`=derivation\_info, `a2`=overriding\_sym, `a3`=overridden\_sym, `a4`=base\_class\_info, `a5`=covariant\_return\_adjustment |
 | Entity field read | `byte +182` (execution space bitfield) on both overridden and overriding entities |
-| Classification mask | `byte & 0x30` -- two-bit extraction: `0x00`=implicit host, `0x10`=explicit host, `0x20`=device, `0x30`=HD |
+| Classification mask | `byte & 0x30` — two-bit extraction: `0x00`=implicit host, `0x10`=explicit host, `0x20`=device, `0x30`=HD |
 | Propagation bits | `0x10` (host\_explicit), `0x20` (device\_annotation) |
 | Attribute lookup | `sub_5CEE70` with kind 87 (`__device__`) and 86 (`__host__`) |
 | Error emission | `sub_4F4F10` with severity 8 (hard error) |
 | Relaxed mode flag | `dword_106BFF0` (`relaxed_attribute_mode`) |
-| Implicitly-HD test | `byte +177 & 0x10` on entity -- constexpr / `__forceinline__` bypass |
+| Implicitly-HD test | `byte +177 & 0x10` on entity — constexpr / `__forceinline__` bypass |
 | Override-involved mark | `byte +176 \|= 0x02` on overriding entity |
 | Assertion guard | `nv_is_device_only_routine` from `nv_transforms.h:367` |
 
 ## Why Virtual Functions Need Execution Space Checks
 
-Standard C++ imposes no concept of execution space on virtual functions. CUDA introduces three execution spaces (`__host__`, `__device__`, `__host__ __device__`) and one launch-only space (`__global__`). When a virtual function in a base class is declared with one execution space, every override in every derived class must be callable in the same space. If the base declares a `__device__` virtual, calling it through a base pointer on the GPU must dispatch to the derived override -- which is only possible if the override is also `__device__` (or `__host__ __device__`).
+Standard C++ imposes no concept of execution space on virtual functions. CUDA introduces three execution spaces (`__host__`, `__device__`, `__host__ __device__`) and one launch-only space (`__global__`). When a virtual function in a base class is declared with one execution space, every override in every derived class must be callable in the same space. If the base declares a `__device__` virtual, calling it through a base pointer on the GPU must dispatch to the derived override — which is only possible if the override is also `__device__` (or `__host__ __device__`).
 
 `__global__` functions cannot be virtual at all (error 3505/3506 prevents this at the attribute application stage), so the override matrix only covers three spaces: `__host__`, `__device__`, and `__host__ __device__`. An unannotated function counts as implicit `__host__`.
 
@@ -54,7 +54,7 @@ The `+176 |= 0x02` flag marks the derived function as "override-involved." This 
 
 ## Phase 1: Implicitly-HD Fast Path and Execution Space Propagation
 
-The first branch tests `byte +177 & 0x10` on the **overriding** entity. This bit indicates the function is implicitly `__host__ __device__` -- set for constexpr functions (implicitly HD since CUDA 7.5) and `__forceinline__` functions. When this bit is set, the override is exempt from mismatch checking, but execution space **propagation** still occurs.
+The first branch tests `byte +177 & 0x10` on the **overriding** entity. This bit indicates the function is implicitly `__host__ __device__` — set for constexpr functions (implicitly HD since CUDA 7.5) and `__forceinline__` functions. When this bit is set, the override is exempt from mismatch checking, but execution space **propagation** still occurs.
 
 ```c
 // Phase 1: implicitly-HD check and propagation (lines 70-94)
@@ -317,7 +317,7 @@ nvcc --diag_suppress=20085 file.cu
 
 This table shows every combination of base (overridden) and derived (overriding) execution space. "Implicit H" means the function has no execution space annotation (`byte_182 & 0x30 == 0x00`). Since implicit host and explicit `__host__` are treated identically for override purposes (both lack the device\_annotation bit and have `mask_30 != 0x20`), they share the same row/column behavior.
 
-`__global__` is excluded because `__global__` functions cannot be virtual -- the attribute handler rejects `__global__` on virtual functions before override checking ever runs.
+`__global__` is excluded because `__global__` functions cannot be virtual — the attribute handler rejects `__global__` on virtual functions before override checking ever runs.
 
 The matrix is the same in both strict mode (`dword_106BFF0 == 0`) and relaxed mode (`dword_106BFF0 == 1`). The relaxed flag changes the *code path* used to reach the error decision but produces the same result for all input combinations.
 
@@ -329,7 +329,7 @@ The matrix is the same in both strict mode (`dword_106BFF0 == 0`) and relaxed mo
 
 Reading the matrix: each row is the base class virtual function's space; each column is the derived class override's space. "Legal" means no error is emitted and the override is recorded normally. "Legal + propagate" means the override is accepted AND the base's execution space bits are OR'd into the derived entity's `byte_182`.
 
-The diagonal (same space in base and derived) is always legal. The last column (implicitly HD) is always legal because an implicitly HD function is compatible with every execution space -- the mismatch check is skipped entirely and only propagation runs.
+The diagonal (same space in base and derived) is always legal. The last column (implicitly HD) is always legal because an implicitly HD function is compatible with every execution space — the mismatch check is skipped entirely and only propagation runs.
 
 ### Why Both Modes Produce the Same Matrix
 
@@ -352,7 +352,7 @@ The relaxed flag introduces a second entry point (Entry B) for overriding functi
 
 ### Relaxed Mode: The Unannotated Override Path
 
-When `dword_106BFF0 == 1` and the overriding function has no `__device__` attribute, the checker takes an additional step before falling through to the H/implicit-H path. It queries the overriding symbol for explicit `__host__` (kind 86). If `__host__` IS found, the function is confirmed as explicit host and errors 3545/3546 apply normally. If `__host__` is NOT found (truly unannotated), the function is reclassified through the device-only check path (LABEL\_83). This reclassification does not change the error outcome -- an unannotated function overriding a host base still sees no error (both are host-space), and an unannotated function overriding a device or HD base still produces the appropriate error.
+When `dword_106BFF0 == 1` and the overriding function has no `__device__` attribute, the checker takes an additional step before falling through to the H/implicit-H path. It queries the overriding symbol for explicit `__host__` (kind 86). If `__host__` IS found, the function is confirmed as explicit host and errors 3545/3546 apply normally. If `__host__` is NOT found (truly unannotated), the function is reclassified through the device-only check path (LABEL\_83). This reclassification does not change the error outcome — an unannotated function overriding a host base still sees no error (both are host-space), and an unannotated function overriding a device or HD base still produces the appropriate error.
 
 ## Propagation Details
 
@@ -496,9 +496,9 @@ When debug tracing is enabled (`dword_126EFCC > 3`), the function prints `"newly
 
 ## Cross-References
 
-- [Execution Spaces](../cuda/execution-spaces.md) -- bitfield layout at entity `+182`, attribute application handlers, conflict matrix
-- [Cross-Space Call Validation](../cuda/cross-space-validation.md) -- call-graph enforcement, the implicitly-HD bypass
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- error numbering scheme, diagnostic tag suppression system
-- [Global Variables](../reference/global-variables.md) -- `dword_106BFF0` and other flags
-- [Entity Node Layout](../structs/entity-node.md) -- full byte map of the entity structure including `+176`, `+177`, `+182`
-- [\_\_global\_\_ Function Constraints](../attributes/global-function.md) -- why `__global__` functions cannot be virtual
+- [Execution Spaces](../cuda/execution-spaces.md) — bitfield layout at entity `+182`, attribute application handlers, conflict matrix
+- [Cross-Space Call Validation](../cuda/cross-space-validation.md) — call-graph enforcement, the implicitly-HD bypass
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — error numbering scheme, diagnostic tag suppression system
+- [Global Variables](../reference/global-variables.md) — `dword_106BFF0` and other flags
+- [Entity Node Layout](../structs/entity-node.md) — full byte map of the entity structure including `+176`, `+177`, `+182`
+- [\_\_global\_\_ Function Constraints](../attributes/global-function.md) — why `__global__` functions cannot be virtual

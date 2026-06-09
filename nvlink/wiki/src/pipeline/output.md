@@ -1,6 +1,6 @@
 # Output Writing
 
-The output phase is the final stage of nvlink's linking pipeline. After finalization has produced a self-consistent ELF wrapper with all sections ordered, symbols reindexed, and header fields written, the output phase serializes the in-memory ELF representation into bytes and delivers them to a destination -- a file on disk, a memory buffer, or (for Mercury/capmerc targets) an intermediate buffer that passes through the FNLZR post-link transform before reaching disk. Two secondary output modes also live in this phase: `--register-link-binaries` emits C macro definitions for CUDA runtime registration, and `--dot-file` writes a Graphviz callgraph.
+The output phase is the final stage of nvlink's linking pipeline. After finalization has produced a self-consistent ELF wrapper with all sections ordered, symbols reindexed, and header fields written, the output phase serializes the in-memory ELF representation into bytes and delivers them to a destination — a file on disk, a memory buffer, or (for Mercury/capmerc targets) an intermediate buffer that passes through the FNLZR post-link transform before reaching disk. Two secondary output modes also live in this phase: `--register-link-binaries` emits C macro definitions for CUDA runtime registration, and `--dot-file` writes a Graphviz callgraph.
 
 The timing infrastructure brackets this work with `sub_4279C0("write")`. The phase runs unconditionally for every successful link invocation that produces an output ELF.
 
@@ -76,7 +76,7 @@ if (byte_2A5F222) {                // Mercury mode
 fclose(file);
 ```
 
-The Mercury path must serialize to memory first because FNLZR (`sub_4275C0`) is an in-place binary rewriter -- it needs the complete ELF image in a contiguous buffer to rewrite instruction encodings, patch control-flow metadata, and produce the final SASS binary. The non-Mercury path writes directly to the file descriptor, avoiding the allocation of an intermediate buffer.
+The Mercury path must serialize to memory first because FNLZR (`sub_4275C0`) is an in-place binary rewriter — it needs the complete ELF image in a contiguous buffer to rewrite instruction encodings, patch control-flow metadata, and produce the final SASS binary. The non-Mercury path writes directly to the file descriptor, avoiding the allocation of an intermediate buffer.
 
 ## The Polymorphic Writer: sub\_45B6D0
 
@@ -136,7 +136,7 @@ Mode 3 is constructed by `sub_45B950` (for `sub_45C920`). It opens the output FI
 
 Mode 2 uses a growable vector backed by arena-allocated chunks. The `sub_44FC10` (vector\_append) function manages this: each chunk is a 24-byte header (`capacity`, `remaining`, `data_ptr`) linked into a list. When the current chunk cannot hold the incoming write, a new chunk is allocated (sized to at least the vector's default chunk size or the write size, whichever is larger), the data is copied, and the chunk is appended to the list. The linker context's total byte count at offset `+8` of the vector is incremented after each write.
 
-Mode 1 (no-op) is never explicitly constructed in the observed output paths but exists as a valid mode in the switch. It returns `len` without writing anything, so callers can replay the full serialization sequence against a mode-1 writer to obtain a byte count -- a dry-run sizer. In practice nothing exercises it: `sub_45C980` derives the size directly from precomputed ELF header fields rather than driving the serializer, so this mode survives only as latent infrastructure.
+Mode 1 (no-op) is never explicitly constructed in the observed output paths but exists as a valid mode in the switch. It returns `len` without writing anything, so callers can replay the full serialization sequence against a mode-1 writer to obtain a byte count — a dry-run sizer. In practice nothing exercises it: `sub_45C980` derives the size directly from precomputed ELF header fields rather than driving the serializer, so this mode survives only as latent infrastructure.
 
 ### Writer Cleanup: sub\_45B6A0
 
@@ -209,7 +209,7 @@ The main serialization loop iterates sections 4 through `e_shnum - 1` (skipping 
 
 1. **Alignment padding**: Compute gap between the current running offset and the section's `sh_offset`. If positive, emit `0x00` bytes one at a time through `sub_45B6D0`. If negative, fatal error `"Negative size encountered"`. The serializer never emits SASS NOP-sled fill or any non-zero pattern: code-section gaps are zero-filled identically to data-section gaps, and any in-stream NOPs that end up inside `.text*` must already be present in the fragment data produced by the merge / layout phases.
 
-2. **NOBITS / empty check**: Sections of type `SHT_NOBITS` (8) or NVIDIA no-data types selected by the `is_nobits` bitmask (base `0x70000007`, mask `0x400D` -- `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`; see [`is_nobits`](../elf/program-headers.md#first-pass-compute-segment-extents)) are skipped entirely -- no data bytes emitted, so they contribute to `sh_size` and (when in the code segment) to `p_memsz` but not to `p_filesz` or to the running file cursor. The same bitmask drives the segment-extent first pass in `sub_45BAA0`.
+2. **NOBITS / empty check**: Sections of type `SHT_NOBITS` (8) or NVIDIA no-data types selected by the `is_nobits` bitmask (base `0x70000007`, mask `0x400D` — `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`; see [`is_nobits`](../elf/program-headers.md#first-pass-compute-segment-extents)) are skipped entirely — no data bytes emitted, so they contribute to `sh_size` and (when in the code segment) to `p_memsz` but not to `p_filesz` or to the running file cursor. The same bitmask drives the segment-extent first pass in `sub_45BAA0`.
 
 3. **Data fragment traversal**: For sections with data, the content is stored as a singly-linked list of 16-byte chunk cells rooted at `sec+72`. Each cell has:
    - `cell+0`: pointer to the next cell (NULL terminates the list)
@@ -309,7 +309,7 @@ For Mercury targets (sm >= 100, `byte_2A5F222` set), the output path takes a det
    - Logs `"FNLZR: Post-Link Mode"` and `"FNLZR: Starting <filename>"` to stderr when verbose.
    - Validates that the Mercury executable flag is set in `e_flags`.
    - Constructs a 160-byte configuration structure on the stack with flags derived from `byte_2A5F222` (Mercury), `byte_2A5F225` (capmerc), `byte_2A5F310` (shared flag), `byte_2A5F210`, `byte_2A5F224`, `byte_2A5F223`.
-   - Calls `sub_4748F0` -- the actual FNLZR engine entry point -- passing the configuration, the buffer, and the ELF wrapper.
+   - Calls `sub_4748F0` — the actual FNLZR engine entry point — passing the configuration, the buffer, and the ELF wrapper.
    - On failure, emits a fatal error referencing the filename.
    - Logs `"FNLZR: Ending <filename>"` on success.
    - Returns the finalized buffer via the `out_size` output parameter.
@@ -364,7 +364,7 @@ digraph callgraph {
 }
 ```
 
-The function names come from the symbol record's name field at `sym+32`. The output is purely structural -- no attributes, weights, or subgraph clustering. The resulting file can be visualized with `dot -Tpng callgraph.dot -o callgraph.png`.
+The function names come from the symbol record's name field at `sym+32`. The output is purely structural — no attributes, weights, or subgraph clustering. The resulting file can be visualized with `dot -Tpng callgraph.dot -o callgraph.png`.
 
 ## Host Linker Script Output
 
@@ -385,7 +385,7 @@ Three modes exist, selected by `dword_2A77DC0`:
 - **Mode 2**: Extract the host linker's default script via `ld --verbose`, strip the decorative lines with `sed '1,2d;$d'`, append the CUDA sections, then validate the combined script with `ld -T <script>`. This mode uses `sub_42FA70` (popen/system) to invoke the host toolchain.
 - **Fallback**: If no output file is specified, write the script to stdout.
 
-This output path is orthogonal to the device ELF output -- it is used when nvlink operates as a wrapper that generates input for the host linker rather than producing a device binary directly.
+This output path is orthogonal to the device ELF output — it is used when nvlink operates as a wrapper that generates input for the host linker rather than producing a device binary directly.
 
 ## Error Handling
 
@@ -422,17 +422,17 @@ Two additional error conditions exist in `sub_45BF00`:
 
 ## See Also
 
-- [Pipeline Overview](overview.md) -- Phase 13 in the full pipeline sequence
-- [Finalization Phase](finalize.md) -- the preceding phase that produces a serialization-ready ELF
-- [Entry Point & Main](entry.md) -- `main()` orchestrating the Mercury vs non-Mercury output path
-- [Mercury / FNLZR](../mercury/fnlzr.md) -- the FNLZR post-link binary rewriter for sm >= 100
-- [Capsule Mercury Format](../mercury/capmerc-format.md) -- the output format produced by FNLZR
-- [ELF Serialization](../elf/serialization.md) -- the ELF byte-level format written by `serialize_elf`
-- [Device ELF Format](../elf/device-elf-format.md) -- `e_ident`, `e_type`, `e_machine` fields in the output header
-- [Program Headers](../elf/program-headers.md) -- PHDR table written by `sub_45BAA0`
-- [ELF Writer Structure](../structs/elf-writer.md) -- the `elfw` object consumed by serialization
-- [Mode Dispatch](mode-dispatch.md) -- how mode 1/2 produces linker scripts instead of ELF
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- callgraph used by `--dot-file` output
+- [Pipeline Overview](overview.md) — Phase 13 in the full pipeline sequence
+- [Finalization Phase](finalize.md) — the preceding phase that produces a serialization-ready ELF
+- [Entry Point & Main](entry.md) — `main()` orchestrating the Mercury vs non-Mercury output path
+- [Mercury / FNLZR](../mercury/fnlzr.md) — the FNLZR post-link binary rewriter for sm >= 100
+- [Capsule Mercury Format](../mercury/capmerc-format.md) — the output format produced by FNLZR
+- [ELF Serialization](../elf/serialization.md) — the ELF byte-level format written by `serialize_elf`
+- [Device ELF Format](../elf/device-elf-format.md) — `e_ident`, `e_type`, `e_machine` fields in the output header
+- [Program Headers](../elf/program-headers.md) — PHDR table written by `sub_45BAA0`
+- [ELF Writer Structure](../structs/elf-writer.md) — the `elfw` object consumed by serialization
+- [Mode Dispatch](mode-dispatch.md) — how mode 1/2 produces linker scripts instead of ELF
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — callgraph used by `--dot-file` output
 
 ## Confidence Assessment
 

@@ -8,7 +8,7 @@ This page catalogs all 153 tags grouped by which front-end sub-system raises the
 
 The `invalid_*` tags are the most frequently suppressed diagnostic class in real CUDA codebases. Three reasons:
 
-1. **Microsoft-attribute interop.** A surprising fraction of the tag set (16 tags) covers `__declspec` / C++/CLI / WinRT attribute placement -- code targeting Windows hosts routinely hits these and pragma-suppresses them through `--diag_suppress`.
+1. **Microsoft-attribute interop.** A surprising fraction of the tag set (16 tags) covers `__declspec` / C++/CLI / WinRT attribute placement — code targeting Windows hosts routinely hits these and pragma-suppresses them through `--diag_suppress`.
 2. **CUDA-specific atomic intrinsics.** The `nv_atomic_*` family (8 tags) exists only in NVIDIA's fork of EDG and is silently emitted when device-side atomics receive a mismatched size, scope, or memory-order argument. Most user code never trips these, but template-heavy device libraries (`cuda::std::atomic_ref`) hit them during instantiation and rely on suppression to keep the build clean.
 3. **Reflection and modules (C++23/26).** Tags for `^^` reflection (P2996) and the IFC binary module format (`ifc_*`) appear as `invalid_*` rather than as their own family. They fire on toolchain mismatches more often than on user mistakes, so build systems whitelist them.
 
@@ -59,9 +59,9 @@ The numeric `#29` is a presentation artifact; the tag carries the actual semanti
 
 The 153 tags partition naturally by which front-end pass raises them, with one cross-cutting bucket for Microsoft extensions because those tags fire from several different passes but share a behavioral contract (relax in Microsoft mode, strict otherwise). The groups below mirror the structure of the EDG dispatcher: lexer first, parser next, semantic checks, then specialized engines.
 
-Confidence level for the entire catalog: **HIGH**. Tag identifiers are present verbatim in the binary; sub-area assignment follows keyword stems and the few cross-references to the front-end functions whose code paths reference them. Exact numeric error codes are **MEDIUM** confidence -- the binary contains both the strings and the code-to-message routing, but we have not exhaustively traced every tag-to-number edge.
+Confidence level for the entire catalog: **HIGH**. Tag identifiers are present verbatim in the binary; sub-area assignment follows keyword stems and the few cross-references to the front-end functions whose code paths reference them. Exact numeric error codes are **MEDIUM** confidence — the binary contains both the strings and the code-to-message routing, but we have not exhaustively traced every tag-to-number edge.
 
-## Group 1 -- Lexer and Character-Class Tags (5 tags)
+## Group 1 — Lexer and Character-Class Tags (5 tags)
 
 The lowest-level tags: fired during tokenization, before any parsing decisions are made. Each names a class of malformed input character or universal-character-name.
 
@@ -75,7 +75,7 @@ The lowest-level tags: fired during tokenization, before any parsing decisions a
 
 These five exist as a closed set because the lexer is the only sub-system whose input is bytes rather than tokens; once tokenization succeeds, character-class violations cannot recur. See [Lexer & Tokenizer](lexer.md) for the relevant state machine.
 
-## Group 2 -- Parser Structural Tags (11 tags)
+## Group 2 — Parser Structural Tags (11 tags)
 
 Tags raised by the recursive-descent parser when a token appears where the grammar does not allow it. These are typically thrown from the declaration parser (`sub_5C2D40` family) or the statement parser entry point.
 
@@ -93,10 +93,10 @@ Tags raised by the recursive-descent parser when a token appears where the gramm
 | `invalid_token_after_template` | Token following `template` keyword cannot begin a template-id (the dependent-name `T::template foo` case) |
 | `invalid_name_after_template` | Same family: the name following `template` was not a template name |
 
-> ⚡ **QUIRK -- the `invalid_declaration` umbrella**
+> ⚡ **QUIRK — the `invalid_declaration` umbrella**
 > EDG falls back to `invalid_declaration` whenever the parser hits a more-specific failure path it has not been wired to name. This tag corresponds to error code `#29` and is one of the most-suppressed in the entire compiler because it can mean almost anything. Build systems that whitelist it lose precision: a subsequent EDG release that adds a new specific tag will continue routing through `invalid_declaration` until the new tag becomes available, then silently flip. CUDA code targeting host compilers that use a different grammar for `__declspec` placement is the canonical case where `invalid_declaration` fires legitimately as the catch-all.
 
-## Group 3 -- Attribute and Microsoft-Attribute Tags (17 tags)
+## Group 3 — Attribute and Microsoft-Attribute Tags (17 tags)
 
 The largest sub-area: 12 of these tags exist solely to police `__declspec`, `[uuid(...)]`, and the C++11 `[[attribute]]` syntax. Six more cover generic attribute application rules. The `ms_attr_*` and `*_ms_attr` tags fire from `sub_5DA210` (the Microsoft attribute parser) and its siblings; the rest fire from the standard-attribute pass in `sub_5DBE00`.
 
@@ -120,10 +120,10 @@ The largest sub-area: 12 of these tags exist solely to police `__declspec`, `[uu
 | `invalid_use_of_standalone_custom_ms_attr` | Standalone `[X]` form of a user-defined Microsoft attribute |
 | `invalid_use_of_standalone_ms_attr` | Standalone `[X]` form of a built-in Microsoft attribute |
 
-> ⚡ **QUIRK -- the `ms_attr` / `attribute_ms` cross-naming**
-> EDG's naming of this sub-family is inconsistent: tags begin either with `ms_attr_` (e.g. `invalid_ms_attr_name`) or end with `_ms_attr` (e.g. `invalid_use_of_ms_attr`). The two halves resolve to different message templates with subtly different rendering: the `ms_attr_*` form takes the attribute name as its primary operand, the `*_ms_attr` form takes the *target* (the entity the attribute is being applied to) as its primary operand. The differing word order in the rendered error text breaks any naive grep over the error log -- a user-visible "Microsoft attribute" string can come from either form. This is the most common reason `--diag_suppress=N` works for one occurrence and not the next: the user picked a number from a `*_ms_attr`-flavored error and tried to apply it to a `ms_attr_*`-flavored emit site, which uses a different code.
+> ⚡ **QUIRK — the `ms_attr` / `attribute_ms` cross-naming**
+> EDG's naming of this sub-family is inconsistent: tags begin either with `ms_attr_` (e.g. `invalid_ms_attr_name`) or end with `_ms_attr` (e.g. `invalid_use_of_ms_attr`). The two halves resolve to different message templates with subtly different rendering: the `ms_attr_*` form takes the attribute name as its primary operand, the `*_ms_attr` form takes the *target* (the entity the attribute is being applied to) as its primary operand. The differing word order in the rendered error text breaks any naive grep over the error log — a user-visible "Microsoft attribute" string can come from either form. This is the most common reason `--diag_suppress=N` works for one occurrence and not the next: the user picked a number from a `*_ms_attr`-flavored error and tried to apply it to a `ms_attr_*`-flavored emit site, which uses a different code.
 
-## Group 4 -- Type System Validity Tags (27 tags)
+## Group 4 — Type System Validity Tags (27 tags)
 
 Tags fired by the type checker when a type expression resolves to something the language rules forbid. The largest sub-group inside `invalid_*` after attributes. Many of these fire during template instantiation and are therefore the dominant cause of "the same template works on GCC but not on EDG-host with CUDA".
 
@@ -157,7 +157,7 @@ Tags fired by the type checker when a type expression resolves to something the 
 | `invalid_value_class_base` | C++/CLI `value class` base list contains a non-value-class |
 | `invalid_vector_element_type` | Generic vector-type element-type rejection (covers GCC and Clang vector extensions when ARM NEON/SVE-specific paths don't apply) |
 
-## Group 5 -- Template and Concept Tags (15 tags)
+## Group 5 — Template and Concept Tags (15 tags)
 
 Tags raised by the template engine during deduction, constraint checking, or specialization matching. These fire from `sub_5F8AE0` (template-id resolution), `sub_60D940` (concept satisfaction), and the deduction engine.
 
@@ -179,7 +179,7 @@ Tags raised by the template engine during deduction, constraint checking, or spe
 | `invalid_std_initializer_list_parameter_list` | A function template expects `std::initializer_list<T>` and got a different list-like type |
 | `invalid_template_parameter_for_literal_operator_template` | UDL operator template parameter list isn't `<char...>` or `<typename CharT, CharT...>` |
 
-## Group 6 -- Function and Declaration Semantic Tags (16 tags)
+## Group 6 — Function and Declaration Semantic Tags (16 tags)
 
 Tags raised by the semantic analyzer when a declaration is syntactically well-formed but violates a language rule that depends on context.
 
@@ -202,7 +202,7 @@ Tags raised by the semantic analyzer when a declaration is syntactically well-fo
 | `invalid_specifier_for_deduction_guide` | C++17 deduction guide declared with a decl-specifier (storage class, return type) that isn't allowed |
 | `invalid_variable_main` | A variable declared with the reserved name `main` at namespace scope |
 
-## Group 7 -- Literal Operator (UDL) and Operator Tags (9 tags)
+## Group 7 — Literal Operator (UDL) and Operator Tags (9 tags)
 
 User-defined literal operators have a tight parameter-list contract. These tags fire during literal-operator declaration parsing.
 
@@ -218,7 +218,7 @@ User-defined literal operators have a tight parameter-list contract. These tags 
 | `invalid_string_literal_operator_template` | Template string-literal operator has wrong parameter list (must be `<typename CharT, CharT...>`) |
 | `invalid_udl_value` | UDL evaluation produced a value the literal operator's call expression cannot accept |
 
-## Group 8 -- Constexpr / Consteval / Constinit Declaration Tags (7 tags)
+## Group 8 — Constexpr / Consteval / Constinit Declaration Tags (7 tags)
 
 Companion to the [Constexpr Diagnostic Tags](constexpr-diagnostics.md) page: these tags fire during declaration parsing rather than during evaluation. The constexpr page covers the evaluation-time failures; this group covers the malformed-declaration failures.
 
@@ -232,10 +232,10 @@ Companion to the [Constexpr Diagnostic Tags](constexpr-diagnostics.md) page: the
 | `invalid_statement_in_constexpr_constructor` | Statement form forbidden in a constexpr constructor (pre-C++20 only) |
 | `invalid_statement_in_constexpr_function` | Statement form forbidden in a constexpr function (varies by language mode) |
 
-> ⚡ **QUIRK -- declaration-time vs. evaluation-time constexpr tags**
-> The `constexpr_*` family (112 tags, see [Constexpr Diagnostic Tags](constexpr-diagnostics.md)) and this 7-tag `invalid_constexpr*` subset look like duplicates but actually split the work: tags here fire from the declaration parser before evaluation begins, the `constexpr_*` family fires from the interpreter during evaluation. The cleanest way to tell them apart is the rule about which one fires when the declaration is well-formed but the body fails on every input: that's a `constexpr_*` evaluator tag, not an `invalid_constexpr` declaration tag. CUDA's `--expt-relaxed-constexpr` relaxes the *evaluator* tags but not these declaration tags -- there is no flag that lets you put a `goto` into a constexpr function pre-C++23, regardless of the CUDA mode.
+> ⚡ **QUIRK — declaration-time vs. evaluation-time constexpr tags**
+> The `constexpr_*` family (112 tags, see [Constexpr Diagnostic Tags](constexpr-diagnostics.md)) and this 7-tag `invalid_constexpr*` subset look like duplicates but actually split the work: tags here fire from the declaration parser before evaluation begins, the `constexpr_*` family fires from the interpreter during evaluation. The cleanest way to tell them apart is the rule about which one fires when the declaration is well-formed but the body fails on every input: that's a `constexpr_*` evaluator tag, not an `invalid_constexpr` declaration tag. CUDA's `--expt-relaxed-constexpr` relaxes the *evaluator* tags but not these declaration tags — there is no flag that lets you put a `goto` into a constexpr function pre-C++23, regardless of the CUDA mode.
 
-## Group 9 -- CUDA NVIDIA Atomic Intrinsic Tags (9 tags)
+## Group 9 — CUDA NVIDIA Atomic Intrinsic Tags (9 tags)
 
 Tags found only in NVIDIA's fork of EDG. These fire when the front end is processing a `__nv_atomic_*` builtin (the lowering target for `cuda::std::atomic_ref` and friends) and the argument types or values don't match the intrinsic's contract.
 
@@ -251,10 +251,10 @@ Tags found only in NVIDIA's fork of EDG. These fire when the front end is proces
 | `invalid_nv_atomic_thread_scope_value` | `cuda::thread_scope` argument isn't one of the recognized scopes (`thread_scope_system`, `_device`, `_block`, `_thread`) |
 | `invalid_nvvm_builtin_intrinsic` | `__nvvm_*` builtin reference doesn't resolve to a known intrinsic (typically a forward-declaration mismatch) |
 
-> ⚡ **QUIRK -- `nv_atomic_*` tags do not honor `--diag_suppress` cleanly**
-> The NVIDIA-specific atomic tags are emitted from a code path that bypasses some of the host EDG diagnostic-suppression machinery. In particular, suppressing the numeric code that one of these tags resolves to can also suppress unrelated host-compiler diagnostics that share the same numeric code through the general "invalid intrinsic argument" message bucket. The workaround in `libcudacxx` is to suppress at the tag level using `#pragma nv_diag_suppress` rather than the numeric code -- which works because the tag-keyed pragma form looks up the tag directly. Many `cuda::atomic` template specializations carry such a pragma at the top of the file for exactly this reason.
+> ⚡ **QUIRK — `nv_atomic_*` tags do not honor `--diag_suppress` cleanly**
+> The NVIDIA-specific atomic tags are emitted from a code path that bypasses some of the host EDG diagnostic-suppression machinery. In particular, suppressing the numeric code that one of these tags resolves to can also suppress unrelated host-compiler diagnostics that share the same numeric code through the general "invalid intrinsic argument" message bucket. The workaround in `libcudacxx` is to suppress at the tag level using `#pragma nv_diag_suppress` rather than the numeric code — which works because the tag-keyed pragma form looks up the tag directly. Many `cuda::atomic` template specializations carry such a pragma at the top of the file for exactly this reason.
 
-## Group 10 -- Reflection (P2996) and Module/IFC Tags (12 tags)
+## Group 10 — Reflection (P2996) and Module/IFC Tags (12 tags)
 
 Tags fired by the C++26 reflection engine (`^^` operator and friends) and the IFC binary-module-format loader. Both are recent additions; the `ifc_*` family was added in EDG 6.6's modules support.
 
@@ -273,10 +273,10 @@ Tags fired by the C++26 reflection engine (`^^` operator and friends) and the IF
 | `invalid_std_string_view_for_reflection` | Reflection meta-function received a `string_view` whose backing storage isn't usable at compile time |
 | `invalid_unrepresentable_ifc_position` | IFC position value can't be expressed in the field's bit width (corrupt or future-version file) |
 
-> ⚡ **QUIRK -- `ifc_*` tags fire on toolchain mismatch, not on user code**
-> The IFC validation tags (`invalid_ifc_partition` is the exception -- it's a user-syntax tag) fire when the binary-module file itself is malformed, typically because it was produced by a different EDG version than the one reading it. End users never see these in normal builds. They appear when a project uses a precompiled module cache produced by one nvcc release and a different release tries to consume it. `--Werror` would normally promote these but build systems frequently filter them out specifically because they're not user-actionable. The right fix is rebuilding the module from source, not suppressing the diagnostic.
+> ⚡ **QUIRK — `ifc_*` tags fire on toolchain mismatch, not on user code**
+> The IFC validation tags (`invalid_ifc_partition` is the exception — it's a user-syntax tag) fire when the binary-module file itself is malformed, typically because it was produced by a different EDG version than the one reading it. End users never see these in normal builds. They appear when a project uses a precompiled module cache produced by one nvcc release and a different release tries to consume it. `--Werror` would normally promote these but build systems frequently filter them out specifically because they're not user-actionable. The right fix is rebuilding the module from source, not suppressing the diagnostic.
 
-## Group 11 -- Microsoft / C++/CLI / Win32 Compatibility Tags (20 tags)
+## Group 11 — Microsoft / C++/CLI / Win32 Compatibility Tags (20 tags)
 
 Tags that exist only because EDG supports Microsoft-flavored C++ (managed `^` handles, `__event`, `__property`, MSVC compatibility pragmas). These fire from the C++/CLI front end when input has Microsoft mode enabled but otherwise lie dormant.
 
@@ -303,7 +303,7 @@ Tags that exist only because EDG supports Microsoft-flavored C++ (managed `^` ha
 | `invalid_scoped_enum_elaboration` | `enum class Tag E;` elaboration with a tag that doesn't match a scoped enum |
 | `invalid_symbolic_asm_operand_name` | GCC inline-asm `%[name]` operand name doesn't refer to a labeled constraint |
 
-## Group 12 -- Other / Numerics / Layout (7 tags)
+## Group 12 — Other / Numerics / Layout (7 tags)
 
 The remainder: tags that don't fit cleanly into a sub-system bucket. Numeric / enumeration / case-value edge cases, miscellaneous IO and address tags, and a few standalone semantic checks.
 
@@ -340,7 +340,7 @@ Sub-family stems that look like overlaps between groups (e.g. `invalid_attribute
 
 ## Tag-to-Error-Code Crosswalk (selected)
 
-Confirmed pairings (HIGH confidence -- recovered from cross-references near the emit sites):
+Confirmed pairings (HIGH confidence — recovered from cross-references near the emit sites):
 
 | Tag | Numeric code |
 |---|---|
@@ -358,7 +358,7 @@ Confirmed pairings (HIGH confidence -- recovered from cross-references near the 
 | `invalid_nv_atomic_thread_scope_value` | 3222 |
 | `invalid_data_size_for_nv_atomic_generic_function` | 3290 |
 
-Several tags route to the same numeric code (notably the `invalid_*_for_literal_operator` family all map to a single literal-operator bucket). The tag carries the precise diagnostic context, the code is the user-facing bucket. This is also how `--diag_suppress=N` can silence multiple distinct tags at once -- which is occasionally what users want and occasionally a foot-gun.
+Several tags route to the same numeric code (notably the `invalid_*_for_literal_operator` family all map to a single literal-operator bucket). The tag carries the precise diagnostic context, the code is the user-facing bucket. This is also how `--diag_suppress=N` can silence multiple distinct tags at once — which is occasionally what users want and occasionally a foot-gun.
 
 ## Behavior Under `--diag_suppress` and `--Werror`
 
@@ -368,19 +368,19 @@ The `invalid_*` family's behavior under EDG's two main diagnostic-policy flags i
 - **`--Werror`** promotes warnings to errors but does not change which tags fire. A tag that is emitted as a warning by default (e.g. `invalid_use_of_standalone_ms_attr` in Microsoft mode) becomes an error. A tag that does not fire by default (suppressed by language-mode gates) stays silent.
 - **`#pragma nv_diag_suppress <tag>`** is the NVIDIA fork's tag-keyed suppression form. This works on tag identity and is the only reliable way to suppress one tag without silencing its siblings. Used heavily in `libcudacxx` for the `nv_atomic_*` tags.
 
-> ⚡ **QUIRK -- tags fired but not caught by `--Werror`**
-> A small set of `invalid_*` tags emit as "remark" rather than "warning" -- the diagnostic engine's lowest severity. `--Werror` only promotes warning to error, not remark. The notable ones are `invalid_ifc_position_backtrace_field`, `invalid_ifc_position_backtrace_pos`, and the rest of the `_ifc_position_*` set: these are emitted as remarks because they indicate a malformed binary module file the compiler is going to fail later anyway. `--Werror` won't catch them; you have to either inspect the build log manually or use `--diag_remark` to promote remarks. This is why CI systems that rely solely on `--Werror` sometimes miss IFC corruption issues until a downstream link or load failure.
+> ⚡ **QUIRK — tags fired but not caught by `--Werror`**
+> A small set of `invalid_*` tags emit as "remark" rather than "warning" — the diagnostic engine's lowest severity. `--Werror` only promotes warning to error, not remark. The notable ones are `invalid_ifc_position_backtrace_field`, `invalid_ifc_position_backtrace_pos`, and the rest of the `_ifc_position_*` set: these are emitted as remarks because they indicate a malformed binary module file the compiler is going to fail later anyway. `--Werror` won't catch them; you have to either inspect the build log manually or use `--diag_remark` to promote remarks. This is why CI systems that rely solely on `--Werror` sometimes miss IFC corruption issues until a downstream link or load failure.
 
 ## Cross-References
 
-- [Constexpr Diagnostic Tags](constexpr-diagnostics.md) -- Sibling diagnostic family, evaluation-time analog of Group 8
-- [Lexer & Tokenizer](lexer.md) -- Where Group 1 character-class tags originate
-- [Declaration Parser](declaration-parser.md) -- Where Groups 2, 6, 7, 8 fire
-- [Expression Parser](expression-parser.md) -- Where Group 12's miscellaneous expression-level tags fire
-- [Template Engine](template-engine.md) -- Group 5's home
-- [Type System](type-system.md) -- The 22 type kinds whose rules Group 4 enforces
-- [Diagnostics Overview](../diagnostics/overview.md) -- Tag-to-message resolution, format specifier handling, SARIF emission
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- CUDA-specific overlays for Group 9 and the CUDA-mode behavior of Group 8
+- [Constexpr Diagnostic Tags](constexpr-diagnostics.md) — Sibling diagnostic family, evaluation-time analog of Group 8
+- [Lexer & Tokenizer](lexer.md) — Where Group 1 character-class tags originate
+- [Declaration Parser](declaration-parser.md) — Where Groups 2, 6, 7, 8 fire
+- [Expression Parser](expression-parser.md) — Where Group 12's miscellaneous expression-level tags fire
+- [Template Engine](template-engine.md) — Group 5's home
+- [Type System](type-system.md) — The 22 type kinds whose rules Group 4 enforces
+- [Diagnostics Overview](../diagnostics/overview.md) — Tag-to-message resolution, format specifier handling, SARIF emission
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — CUDA-specific overlays for Group 9 and the CUDA-mode behavior of Group 8
 
 ## Open Followups
 

@@ -1,4 +1,4 @@
-# ipmsp -- Inter-Procedural Memory Space Propagation
+# ipmsp — Inter-Procedural Memory Space Propagation
 
 The IPMSP pass resolves generic (address space 0) pointer arguments to concrete NVIDIA address spaces by analyzing call sites across the entire module. When all callers of a function agree that a pointer argument points to a specific memory space (global, shared, local, constant), the pass either specializes the function in place or clones it with narrowed pointer types. This enables downstream passes to emit space-specific load/store instructions (e.g., `ld.shared` instead of generic `ld`) and eliminates `addrspacecast` overhead.
 
@@ -10,7 +10,7 @@ Disabling this pass (`-disable-MemorySpaceOptPass`) causes 2--20x performance re
 | **Class** | `llvm::IPMSPPass` |
 | **Scope** | Module pass |
 | **Registration** | New PM slot 125, line 1111 in `sub_2342890` |
-| **Main function** | `sub_2CBBE90` (11 KB native) -- memory-space cloning worklist driver |
+| **Main function** | `sub_2CBBE90` (11 KB native) — memory-space cloning worklist driver |
 | **LIBNVVM variant** | `sub_1C6A6C0` (11 KB native) |
 | **Inference engine** | `sub_2CE96D0` -> `sub_2CE8530` |
 | **Cloning engine** | `sub_F4BFF0` (CloneFunction) |
@@ -106,7 +106,7 @@ For each function popped from the worklist:
 2. **Walk call sites**: for each call instruction, examine each actual argument:
    - If the actual's address space is non-zero (already specific), record it.
    - If the actual is generic (AS 0), first check the callee-space map for a cached result. If not found, invoke the dataflow inference engine `sub_2CE96D0` to trace the pointer's provenance.
-   - If this is the first call site for this arg, record the space. If a subsequent call site disagrees, mark 2000 ("conflicting -- give up").
+   - If this is the first call site for this arg, record the space. If a subsequent call site disagrees, mark 2000 ("conflicting — give up").
 
 3. **Count resolved arguments**: any arg where all call sites agree on a single address space is a candidate for specialization.
 
@@ -322,7 +322,7 @@ function perCalleePropagate(this, F):
 
 ### Callee Matching Engine: `sub_2CE7410`
 
-When multiple call instructions target the same callee, this function determines the best pair to use for space inference. This is critical for correctness -- the pass must ensure that the inferred space is valid for all uses.
+When multiple call instructions target the same callee, this function determines the best pair to use for space inference. This is critical for correctness — the pass must ensure that the inferred space is valid for all uses.
 
 **Algorithm:**
 
@@ -452,7 +452,7 @@ Both passes share the same set of knobs (with `ias-` prefixed mirrors for the IA
 | `track-indir-load` | true | `byte_4FBDE40` | Track indirect loads during inference |
 | `track-int2ptr` | true | `byte_4FBDC80` | Track `inttoptr` in inference |
 | `mem-space-alg` | 2 | `dword_4FBDD60` | Algorithm selection for address space optimization |
-| `process-builtin-assume` | -- | (ctor_531_0) | Process `__builtin_assume(__is*(p))` for space deduction |
+| `process-builtin-assume` | — | (ctor_531_0) | Process `__builtin_assume(__is*(p))` for space deduction |
 
 ### IAS Variant Knobs (IPMSPPass path, ctor_610)
 
@@ -476,9 +476,9 @@ The unprefixed versions control the LIBNVVM variant (`sub_1C6A6C0`). The `ias-` 
 | `dword_4FBD2C0` | 2 | Phase B resolution level |
 | `dword_4FBCD80` | 2 | Phase C WMMA sub-pass level |
 | `dword_4FBC300` | 500 | Max analysis depth threshold |
-| `dword_4FBCAE0` | -- | Special minimum-selection mode |
-| `byte_4FBC840` | -- | Pre/post analysis toggle |
-| `dword_4FBD020` | -- | Debug: maxLoopInd dump |
+| `dword_4FBCAE0` | — | Special minimum-selection mode |
+| `byte_4FBC840` | — | Pre/post analysis toggle |
+| `dword_4FBD020` | — | Debug: maxLoopInd dump |
 
 ### Debug Dump Knobs
 
@@ -566,48 +566,48 @@ Role labels below are descriptive (not symbol strings); only `sub_<HEX>` address
 |---|---|---|
 | `sub_2CBBE90` | 71 KB | Memory-space cloning worklist driver (New PM variant) |
 | `sub_1C6A6C0` | 54 KB | IPMSPPass (LIBNVVM variant) |
-| `sub_2CE96D0` | -- | Address-space inference entry point |
-| `sub_2CE8530` | -- | Core dataflow walker (backward analysis) |
-| `sub_2CE8CB0` | -- | Per-callee space propagation |
-| `sub_2CE88B0` | -- | Post-inference merge (qsort) |
-| `sub_2CE85D0` | -- | Instruction rewriting for matched callee pairs |
-| `sub_2CE7410` | -- | Callee matching engine: dominance + coverage scoring |
-| `sub_2CE80A0` | -- | Append inference result to vector |
-| `sub_2CE7E60` | -- | Grow inference result vector |
-| `sub_2CE4830` | -- | Call graph edge weight computation |
-| `sub_2CE3B60` | -- | Commit resolved space to callee |
-| `sub_2CE3A70` | -- | Fallback propagation for unmatched entries |
-| `sub_2CE3780` | -- | Propagate to alternate callee users |
-| `sub_2CE2F10` | -- | Single-callee commit via vtable |
-| `sub_2CE2DE0` | -- | Single-predecessor property check |
-| `sub_2CE2BD0` | -- | qsort comparator: callee entry comparison |
-| `sub_2CE2A70` | -- | Merge small-vector pairs |
-| `sub_2CE27A0` | -- | Extract address space from Value's type |
-| `sub_2CE8120` | -- | Clone instruction + DenseMap update |
-| `sub_2CE97F0` | -- | Build per-arg user list |
-| `sub_2CF5840` | -- | Post-specialization space propagation |
-| `sub_2CF51E0` | -- | Body walker for propagation |
-| `sub_2CBA650` | -- | Worklist eligibility predicate |
-| `sub_2CBA520` | -- | Check for unresolved generic pointer args |
-| `sub_F4BFF0` | -- | Full function clone with arg rewriting |
-| `sub_F4BB00` | -- | ValueMap-based body cloner |
-| `sub_BD84D0` | -- | Redirect call sites to clone (RAUW) |
-| `sub_2CBB230` | -- | Red-black tree insert |
-| `sub_2CBB490` | -- | Red-black tree search |
-| `sub_2CBB610` | -- | Worklist deque push_back / grow |
-| `sub_245A9B0` | -- | Attribute flag membership test |
-| `sub_245AA10` | -- | Test instruction equivalence |
-| `sub_2403DE0` | -- | BasicBlock dominance test |
-| `sub_24B89F0` | -- | Check if two instructions share a loop |
-| `sub_244CA00` | -- | Create instruction with modified types |
-| `sub_24056C0` | -- | Insert instruction into BasicBlock |
-| `sub_2D2DBE0` | -- | Debug info update for cloned instruction |
+| `sub_2CE96D0` | — | Address-space inference entry point |
+| `sub_2CE8530` | — | Core dataflow walker (backward analysis) |
+| `sub_2CE8CB0` | — | Per-callee space propagation |
+| `sub_2CE88B0` | — | Post-inference merge (qsort) |
+| `sub_2CE85D0` | — | Instruction rewriting for matched callee pairs |
+| `sub_2CE7410` | — | Callee matching engine: dominance + coverage scoring |
+| `sub_2CE80A0` | — | Append inference result to vector |
+| `sub_2CE7E60` | — | Grow inference result vector |
+| `sub_2CE4830` | — | Call graph edge weight computation |
+| `sub_2CE3B60` | — | Commit resolved space to callee |
+| `sub_2CE3A70` | — | Fallback propagation for unmatched entries |
+| `sub_2CE3780` | — | Propagate to alternate callee users |
+| `sub_2CE2F10` | — | Single-callee commit via vtable |
+| `sub_2CE2DE0` | — | Single-predecessor property check |
+| `sub_2CE2BD0` | — | qsort comparator: callee entry comparison |
+| `sub_2CE2A70` | — | Merge small-vector pairs |
+| `sub_2CE27A0` | — | Extract address space from Value's type |
+| `sub_2CE8120` | — | Clone instruction + DenseMap update |
+| `sub_2CE97F0` | — | Build per-arg user list |
+| `sub_2CF5840` | — | Post-specialization space propagation |
+| `sub_2CF51E0` | — | Body walker for propagation |
+| `sub_2CBA650` | — | Worklist eligibility predicate |
+| `sub_2CBA520` | — | Check for unresolved generic pointer args |
+| `sub_F4BFF0` | — | Full function clone with arg rewriting |
+| `sub_F4BB00` | — | ValueMap-based body cloner |
+| `sub_BD84D0` | — | Redirect call sites to clone (RAUW) |
+| `sub_2CBB230` | — | Red-black tree insert |
+| `sub_2CBB490` | — | Red-black tree search |
+| `sub_2CBB610` | — | Worklist deque push_back / grow |
+| `sub_245A9B0` | — | Attribute flag membership test |
+| `sub_245AA10` | — | Test instruction equivalence |
+| `sub_2403DE0` | — | BasicBlock dominance test |
+| `sub_24B89F0` | — | Check if two instructions share a loop |
+| `sub_244CA00` | — | Create instruction with modified types |
+| `sub_24056C0` | — | Insert instruction into BasicBlock |
+| `sub_2D2DBE0` | — | Debug info update for cloned instruction |
 
 ## Cross-References
 
-- [memory-space-opt](./memory-space-opt.md) -- intra-procedural complement
-- [reference/address-spaces](../reference/address-spaces.md) -- consolidated AS reference
-- [config/knobs](../config/knobs.md) -- complete knob inventory
-- [pipeline/optimizer](../pipeline/optimizer.md) -- pipeline position and `do-ip-msp` option
-- [pipeline/optix-ir](../pipeline/optix-ir.md) -- OptiX disables IPMSP
-- [infra/alias-analysis](../infra/alias-analysis.md) -- cross-space NoAlias rules
+- [memory-space-opt](./memory-space-opt.md) — intra-procedural complement
+- [reference/address-spaces](../reference/address-spaces.md) — consolidated AS reference
+- [config/knobs](../config/knobs.md) — complete knob inventory
+- [pipeline/optimizer](../pipeline/optimizer.md) — pipeline position and `do-ip-msp` option
+- [pipeline/optix-ir](../pipeline/optix-ir.md) — OptiX disables IPMSP
+- [infra/alias-analysis](../infra/alias-analysis.md) — cross-space NoAlias rules

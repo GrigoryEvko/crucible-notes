@@ -5,7 +5,7 @@ cicc includes a custom debug info verification pass (`sub_29C8000`) that validat
 | | |
 |---|---|
 | **Primary function** | `sub_29C8000` (12,480 bytes, 434 basic blocks) |
-| **Address range** | `0x29C8000` -- `0x29CB0C0` |
+| **Address range** | `0x29C8000` — `0x29CB0C0` |
 | **Per-instruction verifier** | `sub_29C3AB0` (5,592 bytes) |
 | **Debugify injector** | `sub_29C1CB0` |
 | **NewPM wrappers** | `sub_22702B0` (`NewPMCheckDebugifyPass`), `sub_2270390` (`NewPMDebugifyPass`) |
@@ -13,7 +13,7 @@ cicc includes a custom debug info verification pass (`sub_29C8000`) that validat
 | **Verbose output flag** | `qword_5008FC8` (bool) |
 | **Depth threshold** | `qword_5008C88` (int32) |
 | **Stack frame** | `0x4B8` bytes (eight tracking structures) |
-| **Upstream origin** | `llvm/lib/Transforms/Utils/Debugify.cpp` -- `CheckDebugInfoPass` |
+| **Upstream origin** | `llvm/lib/Transforms/Utils/Debugify.cpp` — `CheckDebugInfoPass` |
 
 ## Three Verification Modes
 
@@ -67,7 +67,7 @@ A lighter-weight mode that checks only whether existing debug info survives opti
 | `verify-each` | All passes | No | Yes (if `-g`) | If jsonOutput != NULL |
 | `debugify-each` | All passes | Yes | Configurable via `debugify-level` | Via `debugify-export` |
 | `verify-debuginfo-preserve` | All passes | No | Yes | Via `verify-di-preserve-export` |
-| (none, `-g` active) | -- | No | No per-pass check | No |
+| (none, `-g` active) | — | No | No per-pass check | No |
 
 ## Pipeline Integration
 
@@ -86,7 +86,7 @@ The pipeline text parser (`sub_2272BE0`, 14KB) recognizes these as named module 
 | #26 | `"check-debugify"` | `NewPMCheckDebugifyPass` | Module |
 | #35 | `"debugify"` | `NewPMDebugifyPass` | Module |
 
-When `debugify-each` is active, the pipeline builder (`sub_2277440`, 60KB -- `buildDefaultPipeline()` equivalent) wraps every optimization pass in a debugify/check-debugify pair. When `verify-each` is active, only the check-debugify wrapper is inserted.
+When `debugify-each` is active, the pipeline builder (`sub_2277440`, 60KB — `buildDefaultPipeline()` equivalent) wraps every optimization pass in a debugify/check-debugify pair. When `verify-each` is active, only the check-debugify wrapper is inserted.
 
 ## Verification Function Signature
 
@@ -112,11 +112,11 @@ bool sub_29C8000(
 
 The pass proceeds through nine sequential phases within a single function call. The 0x4B8-byte stack frame holds eight separate tracking data structures.
 
-### Phase 1: Module-Level Guard (`0x29C8000` -- `0x29C807A`)
+### Phase 1: Module-Level Guard (`0x29C8000` — `0x29C807A`)
 
 Looks up the `"llvm.dbg.cu"` named metadata node via `sub_BA8DC0` (`Module::getNamedMetadata`). If absent or empty, prints `": Skipping module without debug info\n"` and returns 0. This is the fast path for modules compiled without `-g`.
 
-### Phase 2: Pre-Pass Metadata Snapshot (`0x29C8080` -- `0x29C8AE5`)
+### Phase 2: Pre-Pass Metadata Snapshot (`0x29C8080` — `0x29C8AE5`)
 
 Initializes eight `SmallVector`/`DenseMap` structures on the stack and walks the compile unit metadata tree:
 
@@ -125,9 +125,9 @@ Initializes eight `SmallVector`/`DenseMap` structures on the stack and walks the
 | `var_1F0` | DISubprogram tracking set | `sub_29C6AD0` |
 | `var_1D0` | Scope chain working set | `sub_29C1190` |
 | `var_1A0` | DIVariable tracking | `sub_29C1060` |
-| `var_170` | Scope-to-function mapping | -- |
-| `var_140` | DICompileUnit refs | -- |
-| `var_130` | Primary metadata node buffer | -- |
+| `var_170` | Scope-to-function mapping | — |
+| `var_140` | DICompileUnit refs | — |
+| `var_130` | Primary metadata node buffer | — |
 
 For each `DICompileUnit` operand, the pass walks the subprogram list and retained types, recording every metadata node in hash tables for O(1) identity comparison. The hash function is:
 
@@ -137,7 +137,7 @@ uint64_t hash = ((ptr >> 4) ^ (ptr >> 9)) & (bucket_count - 1);
 
 This is the standard DenseMap pointer hash with LLVM-layer sentinels. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the complete specification.
 
-### Phase 3: DISubprogram Iteration (`0x29C82BE` -- `0x29C84C8`)
+### Phase 3: DISubprogram Iteration (`0x29C82BE` — `0x29C84C8`)
 
 Walks the subprogram list attached to each compile unit via linked-list traversal (`[node+8]` = next pointer). For each subprogram, reads the metadata tag byte at `[node-18h]`:
 
@@ -152,7 +152,7 @@ Walks the subprogram list attached to each compile unit via linked-list traversa
 
 The flag byte at `[rdx+21h] & 0x20` tests the "definition" bit (only defined, non-declaration subprograms are tracked). Values outside `0x44`--`0x47` are flagged as invalid scope types.
 
-### Phase 4: Hash Table Construction (`0x29C8508` -- `0x29C8AC2`)
+### Phase 4: Hash Table Construction (`0x29C8508` — `0x29C8AC2`)
 
 Allocates and populates eight sorted hash tables via `sub_C7D670` (aligned_alloc, alignment=8), each holding 16-byte entries `[pointer, secondary_key]`:
 
@@ -180,7 +180,7 @@ if (flags & 0x02) {          // distinct metadata
 }
 ```
 
-### Phase 5: Per-Function Debug Variable Checking (`0x29C8B3B` -- `0x29C9060`)
+### Phase 5: Per-Function Debug Variable Checking (`0x29C8B3B` — `0x29C9060`)
 
 Iterates every function in the module. For each, looks up its `DISubprogram` in the hash table and cross-references `dbg.value()` / `dbg.declare()` intrinsics against the pre-snapshot. Two diagnostic levels:
 
@@ -203,7 +203,7 @@ The variable name is resolved by:
 3. Getting the file via operand `[10h]` of the scope's file ref
 4. Calling `sub_B91420` (`MDString::getString()`) to convert MDString to StringRef
 
-### Phase 6: Per-Instruction Location Verification (`0x29C8D42` -- `0x29C8D85`)
+### Phase 6: Per-Instruction Location Verification (`0x29C8D42` — `0x29C8D85`)
 
 Delegated to `sub_29C3AB0` (5,592 bytes), which performs detailed checks:
 
@@ -215,7 +215,7 @@ Delegated to `sub_29C3AB0` (5,592 bytes), which performs detailed checks:
 
 The JSON output from this sub-pass uses structured field names: `"DILocation"`, `"bb-name"`, `"fn-name"`, `"action"` (with values `"drop"` or `"not-generate"`).
 
-### Phase 7: JSON Structured Output (`0x29C90BC` -- `0x29C94E2`)
+### Phase 7: JSON Structured Output (`0x29C90BC` — `0x29C94E2`)
 
 When a non-null JSON output stream is provided (the `jsonOutput` parameter), the pass serializes a structured report via `sub_2241E40` (YAML/JSON serializer):
 
@@ -230,9 +230,9 @@ This JSON reporting mechanism is an NVIDIA extension with no upstream LLVM equiv
 
 The serialization calls `sub_CB7060` (YAML::IO constructor) and proceeds through `sub_C6D380` (object emission), `sub_C6C710` (array emission), and `sub_C6B0E0` (key writer). After serialization, the stream is flushed via `sub_CB7080` and freed via `sub_CB5B00`. If the file descriptor is valid (`fd != -1`), it is closed via `sub_C837B0` (`close(fd)`).
 
-### Phase 8: Result Reporting and Metadata Reconstruction (`0x29C94E2` -- `0x29C9A27`)
+### Phase 8: Result Reporting and Metadata Reconstruction (`0x29C94E2` — `0x29C9A27`)
 
-Prints the summary line (`"<pass>: PASS\n"` or `"<pass>: FAIL\n"`), then reconstructs the module's metadata tables from the verified versions -- reallocating subprogram, type, variable, label, and global variable arrays and copying verified metadata back into the compile unit structures.
+Prints the summary line (`"<pass>: PASS\n"` or `"<pass>: FAIL\n"`), then reconstructs the module's metadata tables from the verified versions — reallocating subprogram, type, variable, label, and global variable arrays and copying verified metadata back into the compile unit structures.
 
 The result is a 3-way outcome in bit flags (combined at `0x29C9073`--`0x29C9080` via AND):
 - Bit 0: any verification failure (determines PASS/FAIL)
@@ -240,9 +240,9 @@ The result is a 3-way outcome in bit flags (combined at `0x29C9073`--`0x29C9080`
 
 The final result is PASS only if all sub-checks passed AND the JSON report (if requested) was successfully written.
 
-Cleanup frees all eight temporary hash tables (each via `sub_C7D6A0` -- sized dealloc with alignment 8), linked list nodes via `j_j___libc_free_0`, and SmallVector inline buffers are detected by pointer comparison (if `ptr == stack_addr`, skip free).
+Cleanup frees all eight temporary hash tables (each via `sub_C7D6A0` — sized dealloc with alignment 8), linked list nodes via `j_j___libc_free_0`, and SmallVector inline buffers are detected by pointer comparison (if `ptr == stack_addr`, skip free).
 
-### Phase 9: Return (`0x29C9A12` -- `0x29C9A27`)
+### Phase 9: Return (`0x29C9A12` — `0x29C9A27`)
 
 Returns `var_420` (bool) in the `al` register. Standard epilog restores `rbx`, `r12`--`r15`, `rbp`.
 
@@ -309,26 +309,26 @@ The verification pass reads and reconstructs a per-CU descriptor object (referen
 
 | Offset | Type | Contents | Copy helper |
 |---|---|---|---|
-| `+08h` | `void**` | Subprogram array data pointer | -- |
-| `+10h` | `void**` | Subprogram array end pointer | -- |
-| `+18h` | `size_t` | Subprogram count | -- |
-| `+20h` | `void*` | Scope chain data | -- |
-| `+28h` | `size_t` | Scope chain count | -- |
-| `+38h` | `void**` | Global variable array data | -- |
-| `+40h` | `void**` | Global variable array end | -- |
-| `+48h` | `size_t` | Global variable count | -- |
-| `+50h` | `void*` | Local variable list head | -- |
-| `+58h` | `size_t` | Local variable count | -- |
-| `+68h` | `void**` | Type array data | -- |
-| `+70h` | `void**` | Type array end | -- |
-| `+78h` | `size_t` | Type count | -- |
+| `+08h` | `void**` | Subprogram array data pointer | — |
+| `+10h` | `void**` | Subprogram array end pointer | — |
+| `+18h` | `size_t` | Subprogram count | — |
+| `+20h` | `void*` | Scope chain data | — |
+| `+28h` | `size_t` | Scope chain count | — |
+| `+38h` | `void**` | Global variable array data | — |
+| `+40h` | `void**` | Global variable array end | — |
+| `+48h` | `size_t` | Global variable count | — |
+| `+50h` | `void*` | Local variable list head | — |
+| `+58h` | `size_t` | Local variable count | — |
+| `+68h` | `void**` | Type array data | — |
+| `+70h` | `void**` | Type array end | — |
+| `+78h` | `size_t` | Type count | — |
 | `+80h` | `void*` | Imported entities list | `sub_29C2230` (32-byte node deep copy) |
-| `+88h` | `size_t` | Imported entities count | -- |
-| `+98h` | `void**` | Label array data | -- |
-| `+A0h` | `void**` | Label array end | -- |
-| `+A8h` | `size_t` | Label count | -- |
+| `+88h` | `size_t` | Imported entities count | — |
+| `+98h` | `void**` | Label array data | — |
+| `+A0h` | `void**` | Label array end | — |
+| `+A8h` | `size_t` | Label count | — |
 | `+B0h` | `void*` | Retained nodes list | `sub_29C0F30` |
-| `+B8h` | `size_t` | Retained nodes count | -- |
+| `+B8h` | `size_t` | Retained nodes count | — |
 
 ## DISubprogram Node Layout
 
@@ -349,15 +349,15 @@ Accessed during Phase 3 scope chain validation:
 
 ## Debugify Injector (`sub_29C1CB0`)
 
-The Debugify injector creates synthetic debug metadata to test whether optimization passes preserve debug info correctly. It is the counterpart to the verifier -- the injector sets up the watermarks, and the verifier checks them.
+The Debugify injector creates synthetic debug metadata to test whether optimization passes preserve debug info correctly. It is the counterpart to the verifier — the injector sets up the watermarks, and the verifier checks them.
 
 **Named metadata markers:**
-- `"llvm.debugify"` -- marks the module as containing synthetic debug info (standard Debugify)
-- `"llvm.mir.debugify"` -- marks MIR-level synthetic debug info
+- `"llvm.debugify"` — marks the module as containing synthetic debug info (standard Debugify)
+- `"llvm.mir.debugify"` — marks MIR-level synthetic debug info
 
 **Behavior controlled by `debugify-level`:**
-- `locations` -- inject only `DILocation` on every instruction (cheaper, tests location preservation)
-- `location+variables` -- inject `DILocation` plus synthetic `dbg.value()`/`dbg.declare()` for every SSA value (full coverage, higher overhead)
+- `locations` — inject only `DILocation` on every instruction (cheaper, tests location preservation)
+- `location+variables` — inject `DILocation` plus synthetic `dbg.value()`/`dbg.declare()` for every SSA value (full coverage, higher overhead)
 
 The injector assigns monotonically increasing line numbers to every instruction and creates one `DILocalVariable` per SSA value that produces a result. The variable names follow the pattern `"dbg_var_N"` where N is the SSA value index. After injection, the module has guaranteed 100% debug coverage, making any coverage loss attributable to the subsequent optimization pass.
 
@@ -365,15 +365,15 @@ The injector assigns monotonically increasing line numbers to every instruction 
 
 Two global flags provide fine-grained control over verification output:
 
-### `qword_5008FC8` -- Verbose Diagnostic Output Enable
+### `qword_5008FC8` — Verbose Diagnostic Output Enable
 
 Boolean flag (byte). Controls the output stream selection:
-- When `0`: uses `sub_CB72A0` (null/discard stream constructor) -- diagnostics silently discarded
-- When non-zero: uses `sub_CB7330` (stderr stream accessor) -- diagnostics printed to stderr
+- When `0`: uses `sub_CB72A0` (null/discard stream constructor) — diagnostics silently discarded
+- When non-zero: uses `sub_CB7330` (stderr stream accessor) — diagnostics printed to stderr
 
 This flag gates the ERROR and WARNING messages. The JSON structured output is controlled separately by the `jsonOutput` parameter. Setting `qword_5008FC8 = 0` suppresses text diagnostics while still producing JSON output.
 
-### `qword_5008C88` -- Metadata Depth Threshold
+### `qword_5008C88` — Metadata Depth Threshold
 
 Signed 32-bit integer, read at `0x29C8371`. Controls how deep the scope chain walk goes:
 - When `<= 0`: the deep scope chain walk is skipped for non-subprogram metadata. Only top-level DISubprogram validation runs.
@@ -388,14 +388,14 @@ This allows production builds to run lightweight verification (subprogram-only) 
 | `debugify-quiet` | bool | off | `ctor_493` at `0x556960` | Suppress all debugify text output |
 | `debugify-func-limit` | int | unlimited | `ctor_493` at `0x556960` | Max functions to inject synthetic debug info into |
 | `debugify-level` | enum | `location+variables` | `ctor_493` at `0x556960` | `locations` or `location+variables` |
-| `debugify-function` | string | -- | `ctor_493` at `0x556960` | Restrict debugify to a single named function |
-| `check-debugify-function` | string | -- | `ctor_493` at `0x556960` | Restrict check-debugify to a single named function |
+| `debugify-function` | string | — | `ctor_493` at `0x556960` | Restrict debugify to a single named function |
+| `check-debugify-function` | string | — | `ctor_493` at `0x556960` | Restrict check-debugify to a single named function |
 | `debugify-each` | bool | off | `ctor_377` at `0x516190` | Wrap every pass in debugify/check-debugify |
-| `debugify-export` | string | -- | `ctor_377` at `0x516190` | Export debugify results to file |
+| `debugify-export` | string | — | `ctor_377` at `0x516190` | Export debugify results to file |
 
 ## GPU Debug Info: What PTX Needs
 
-DWARF for PTX differs fundamentally from DWARF for x86. PTX is a virtual ISA -- there are no physical registers, no real stack, and no fixed instruction encoding. The debug metadata cicc emits serves two consumers: cuda-gdb (which maps PTX locations back to source) and ptxas (which carries debug info forward into SASS/ELF for the hardware debugger).
+DWARF for PTX differs fundamentally from DWARF for x86. PTX is a virtual ISA — there are no physical registers, no real stack, and no fixed instruction encoding. The debug metadata cicc emits serves two consumers: cuda-gdb (which maps PTX locations back to source) and ptxas (which carries debug info forward into SASS/ELF for the hardware debugger).
 
 ### The .loc Directive
 
@@ -429,7 +429,7 @@ ld.global.f32 %f1, [%rd2];
 mul.f32 %f2, %f1, %f1;
 ```
 
-This is purely a readability feature for developers inspecting PTX output. It has no effect on cuda-gdb or debug quality -- the source text is embedded as comments that ptxas ignores.
+This is purely a readability feature for developers inspecting PTX output. It has no effect on cuda-gdb or debug quality — the source text is embedded as comments that ptxas ignores.
 
 ### NvvmDebugVersion
 
@@ -460,7 +460,7 @@ cicc includes five stripping passes registered in the pipeline parser (at `sub_1
 | `"strip-nondebug"` | #113 | `StripNonDebugSymbolsPass` | Remove non-debug symbols (keep debug) |
 | `"strip-nonlinetable-debuginfo"` | #114 | `StripNonLineTableDebugInfoPass` | Strip everything except line tables |
 
-The `strip-nonlinetable-debuginfo` pass is the key one for the `-generate-line-info` mode: it strips all debug metadata except `.loc` / `.file` directives, producing line-number-only debug info without variable locations, type descriptions, or scope trees. This is what nvcc's `--generate-line-info` flag triggers -- enough for profiler source correlation but not enough for stepping through code in cuda-gdb.
+The `strip-nonlinetable-debuginfo` pass is the key one for the `-generate-line-info` mode: it strips all debug metadata except `.loc` / `.file` directives, producing line-number-only debug info without variable locations, type descriptions, or scope trees. This is what nvcc's `--generate-line-info` flag triggers — enough for profiler source correlation but not enough for stepping through code in cuda-gdb.
 
 The core debug info stripping implementation lives at `0xAE0000` (Zone 3 of the type system module), which calls `stripDebugInfo()` to remove all `llvm.dbg.*` intrinsics from the module.
 
@@ -472,7 +472,7 @@ cicc supports three debug info levels, controlled by CLI flags that route throug
 |---|---|---|---|
 | `-g` | `+296` | `-debug-compile` to both linker and optimizer | Full debug info (FullDebug emission kind) |
 | `-generate-line-info` | `+328` | `-generate-line-info` to optimizer only | Line tables only (LineTablesOnly emission kind) |
-| (neither) | -- | -- | No debug info (NoDebug) |
+| (neither) | — | — | No debug info (NoDebug) |
 
 When `-g` is active, cicc emits `DICompileUnit` with full emission kind, preserves all `DISubprogram`, `DILocalVariable`, `DIType`, and scope metadata through the pipeline, and the backend emits complete DWARF sections. The verifier runs at full depth.
 
@@ -481,8 +481,8 @@ When `-generate-line-info` is active, the `StripNonLineTableDebugInfoPass` runs 
 **Key routing difference:** `-g` routes to BOTH the linker (`-debug-compile`) and optimizer (`-debug-compile`), because libdevice linking needs the debug flag to preserve user debug info during merging. `-generate-line-info` routes to the optimizer only.
 
 The frontend uses two independent guard mechanisms for debug emission:
-- `dword_4D046B4` -- global flag checked at statement/parameter level by `sub_9433F0` (per-param debug), `sub_943430` (per-global debug)
-- `[ctx+0x170]` -- compile unit pointer checked at module finalization level by `sub_915400`
+- `dword_4D046B4` — global flag checked at statement/parameter level by `sub_9433F0` (per-param debug), `sub_943430` (per-global debug)
+- `[ctx+0x170]` — compile unit pointer checked at module finalization level by `sub_915400`
 
 The NVVM container carries a dedicated `DebugInfo` enum (3 values: `NONE`, `LINE_INFO`, `DWARF`) at deserialized struct offset `+12`, separate from the module metadata.
 
@@ -500,20 +500,20 @@ The NVVM container carries a dedicated `DebugInfo` enum (3 values: `NONE`, `LINE
 | `debugify-level` | enum | location+variables | `ctor_493` at `0x556960` | `locations` or `location+variables` |
 | `debugify-quiet` | bool | off | `ctor_493` at `0x556960` | Suppress debugify diagnostics |
 | `debugify-func-limit` | int | unlimited | `ctor_493` at `0x556960` | Max functions to debugify |
-| `debugify-function` | string | -- | `ctor_493` at `0x556960` | Restrict debugify to named function |
-| `check-debugify-function` | string | -- | `ctor_493` at `0x556960` | Restrict check-debugify to named function |
-| `debugify-export` | string | -- | `ctor_377` at `0x516190` | Export debugify results to file |
+| `debugify-function` | string | — | `ctor_493` at `0x556960` | Restrict debugify to named function |
+| `check-debugify-function` | string | — | `ctor_493` at `0x556960` | Restrict check-debugify to named function |
+| `debugify-export` | string | — | `ctor_377` at `0x516190` | Export debugify results to file |
 | `verify-each` | bool | off | `ctor_043` at `0x48D7F0` | Run IR verifier after every pass |
-| `verify-after-all` | alias | -- | `ctor_043` at `0x48D7F0` | Alias for `verify-each` |
+| `verify-after-all` | alias | — | `ctor_043` at `0x48D7F0` | Alias for `verify-each` |
 | `verify-debuginfo-preserve` | bool | off | `ctor_376` at `0x512DF0` | Enable debug info preservation checking |
 | `verify-each-debuginfo-preserve` | bool | off | `ctor_377` at `0x516190` | Per-pass debug info preservation |
-| `verify-di-preserve-export` | string | -- | `ctor_377` at `0x516190` | Export preservation results to file |
+| `verify-di-preserve-export` | string | — | `ctor_377` at `0x516190` | Export preservation results to file |
 | `no-inline-line-tables` | bool | off | `sub_29E2B40` | Prevent inlining from merging line tables |
 | `write-experimental-debuginfo` | bool | true | `ctor_025` | Use DbgRecord format |
 | `preserve-input-debuginfo-format` | bool/default | false | `ctor_018` | Preserve input debug format |
-| `qword_5008FC8` | bool | off | -- | Verbose diagnostic output enable |
-| `qword_5008C88` | int32 | >0 | -- | Metadata depth threshold (<=0 skips deep scope walk) |
-| `CAN_FINALIZE_DEBUG` | env var | -- | `sub_60F290` et al. | Debug finalization control |
+| `qword_5008FC8` | bool | off | — | Verbose diagnostic output enable |
+| `qword_5008C88` | int32 | >0 | — | Metadata depth threshold (<=0 skips deep scope walk) |
+| `CAN_FINALIZE_DEBUG` | env var | — | `sub_60F290` et al. | Debug finalization control |
 | `NVVM_IR_VER_CHK` | env var | enabled | `sub_12BFF60` | Override debug version checking (set "0" to disable) |
 
 ## DWARF Emission Backend
@@ -522,7 +522,7 @@ The actual DWARF section emission lives in a separate module at `0x3990000`--`0x
 
 | Address | Size | Function |
 |---|---|---|
-| `sub_399B1E0` | 29KB | `DwarfDebug::beginModule()` -- initializes from `llvm.dbg.cu` |
+| `sub_399B1E0` | 29KB | `DwarfDebug::beginModule()` — initializes from `llvm.dbg.cu` |
 | `sub_3997B50` | 33KB | `.debug_aranges` emission |
 | `sub_399D1D0` | 12KB | Range list emission (`DW_RLE_*`) |
 | `sub_399EB70` | 12KB | Register location expressions |
@@ -536,41 +536,41 @@ The module-level entry `sub_215ACD0` checks `*(a1+240)->field_344` to determine 
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `"llvm.global_ctors"` utility | `sub_29C00F0` | -- | -- |
-| `errs()` diagnostic output stream accessor | `sub_29C0AE0` | -- | -- |
-| PassManager / PassAdaptor infrastructure (`"PassManager"`, `"PassAdaptor"`) | `sub_29C0DC0` | -- | -- |
-| Copy retained-nodes list (SmallVector deep copy) | `sub_29C0F30` | -- | -- |
-| Copy local-variable list | `sub_29C1060` | -- | -- |
-| Copy scope-chain list | `sub_29C1190` | -- | -- |
-| Validate scope chain connectivity | `sub_29C12C0` | -- | -- |
-| Debugify synthetic debug info injector (`"llvm.debugify"`, `"llvm.mir.debugify"`) | `sub_29C1CB0` | -- | -- |
-| Merge/update tracking sets after verification | `sub_29C1F00` | -- | -- |
-| Serialize verification result to stream | `sub_29C20D0` | -- | -- |
-| Copy imported-entities list (32-byte node deep copy) | `sub_29C2230` | -- | -- |
-| Per-instruction `DILocation` verifier | `sub_29C3AB0` | 5,592B | -- |
-| `DenseMap::FindAndConstruct` for tracking map | `sub_29C5270` | -- | -- |
-| Set insert with metadata key normalization | `sub_29C6AD0` | -- | -- |
-| Set insert variant (different key extraction) | `sub_29C6DE0` | -- | -- |
-| Debug info verification pass (main entry) | `sub_29C8000` | 12,480B | -- |
-| `no-inline-line-tables` flag handler | `sub_29E2B40` | -- | -- |
-| `NewPMCheckDebugifyPass` wrapper | `sub_22702B0` | -- | -- |
-| `NewPMDebugifyPass` wrapper | `sub_2270390` | -- | -- |
-| `VerifierPass` wrapper (standard IR verifier) | `sub_2270470` | -- | -- |
-| Pass pipeline text parser | `sub_2272BE0` | 14KB | -- |
-| `buildDefaultPipeline()` equivalent | `sub_2277440` | 60KB | -- |
-| Flag filter (checks `-debug-compile`, `-g`, `-generate-line-info`) | `sub_12C6910` | -- | -- |
-| Emit per-instruction `.loc` DWARF directive | `sub_31D55F0` | -- | -- |
-| Emit `.file`/`.loc` directives (function scope) | `sub_31E4280` | -- | -- |
-| `insertDebugLocEntry` (file/line to symbol mapping) | `sub_31E6100` | -- | -- |
-| `DwarfDebug::beginModule()` | `sub_399B1E0` | 29KB | -- |
-| `.debug_aranges` emission | `sub_3997B50` | 33KB | -- |
-| Module-level emission entry / NVPTX Debug Info Emission | `sub_215ACD0` | 8.1KB | -- |
-| NVVM IR version + debug version validator | `sub_12BFF60` | ~9KB | -- |
-| NVVM container debug version check | `sub_CD41B0` | -- | -- |
-| Emit `DILocalVariable` for parameter (frontend) | `sub_9433F0` | -- | -- |
-| Emit debug info for GlobalVariable (frontend) | `sub_943430` | -- | -- |
-| Set `DebugLoc` from EDG source position (frontend) | `sub_941230` | -- | -- |
-| Finalize: `"Debug Info Version"` = 3 (frontend) | `sub_915400` | -- | -- |
+| `"llvm.global_ctors"` utility | `sub_29C00F0` | — | — |
+| `errs()` diagnostic output stream accessor | `sub_29C0AE0` | — | — |
+| PassManager / PassAdaptor infrastructure (`"PassManager"`, `"PassAdaptor"`) | `sub_29C0DC0` | — | — |
+| Copy retained-nodes list (SmallVector deep copy) | `sub_29C0F30` | — | — |
+| Copy local-variable list | `sub_29C1060` | — | — |
+| Copy scope-chain list | `sub_29C1190` | — | — |
+| Validate scope chain connectivity | `sub_29C12C0` | — | — |
+| Debugify synthetic debug info injector (`"llvm.debugify"`, `"llvm.mir.debugify"`) | `sub_29C1CB0` | — | — |
+| Merge/update tracking sets after verification | `sub_29C1F00` | — | — |
+| Serialize verification result to stream | `sub_29C20D0` | — | — |
+| Copy imported-entities list (32-byte node deep copy) | `sub_29C2230` | — | — |
+| Per-instruction `DILocation` verifier | `sub_29C3AB0` | 5,592B | — |
+| `DenseMap::FindAndConstruct` for tracking map | `sub_29C5270` | — | — |
+| Set insert with metadata key normalization | `sub_29C6AD0` | — | — |
+| Set insert variant (different key extraction) | `sub_29C6DE0` | — | — |
+| Debug info verification pass (main entry) | `sub_29C8000` | 12,480B | — |
+| `no-inline-line-tables` flag handler | `sub_29E2B40` | — | — |
+| `NewPMCheckDebugifyPass` wrapper | `sub_22702B0` | — | — |
+| `NewPMDebugifyPass` wrapper | `sub_2270390` | — | — |
+| `VerifierPass` wrapper (standard IR verifier) | `sub_2270470` | — | — |
+| Pass pipeline text parser | `sub_2272BE0` | 14KB | — |
+| `buildDefaultPipeline()` equivalent | `sub_2277440` | 60KB | — |
+| Flag filter (checks `-debug-compile`, `-g`, `-generate-line-info`) | `sub_12C6910` | — | — |
+| Emit per-instruction `.loc` DWARF directive | `sub_31D55F0` | — | — |
+| Emit `.file`/`.loc` directives (function scope) | `sub_31E4280` | — | — |
+| `insertDebugLocEntry` (file/line to symbol mapping) | `sub_31E6100` | — | — |
+| `DwarfDebug::beginModule()` | `sub_399B1E0` | 29KB | — |
+| `.debug_aranges` emission | `sub_3997B50` | 33KB | — |
+| Module-level emission entry / NVPTX Debug Info Emission | `sub_215ACD0` | 8.1KB | — |
+| NVVM IR version + debug version validator | `sub_12BFF60` | ~9KB | — |
+| NVVM container debug version check | `sub_CD41B0` | — | — |
+| Emit `DILocalVariable` for parameter (frontend) | `sub_9433F0` | — | — |
+| Emit debug info for GlobalVariable (frontend) | `sub_943430` | — | — |
+| Set `DebugLoc` from EDG source position (frontend) | `sub_941230` | — | — |
+| Finalize: `"Debug Info Version"` = 3 (frontend) | `sub_915400` | — | — |
 
 ### LLVM Infrastructure Functions Used
 
@@ -583,15 +583,15 @@ The module-level entry `sub_215ACD0` checks `*(a1+240)->field_344` to determine 
 | `sub_B91420` | `MDString::getString()` | Phase 5 |
 | `sub_B91A10` | `MDNode::getOperand(unsigned)` | Phase 4 |
 | `sub_B14240` | MDNode operand range iterator | Phase 4 |
-| `sub_AF34D0` | `DIScope::getScope()` -- walk scope chain upward | Phase 5 |
+| `sub_AF34D0` | `DIScope::getScope()` — walk scope chain upward | Phase 5 |
 | `sub_AF4500` | `DISubprogram::describes(Function)` | Phase 5 |
 | `sub_B58DC0` | `DenseSet::insert` | Phase 2 |
 | `sub_B96E90` | `DenseMap::insert_or_assign` | Phase 4 |
 | `sub_B91220` | `DenseMap::erase` | Phase 8 |
 | `sub_C7D670` | `aligned_alloc(size, alignment=8)` | Phase 4 |
 | `sub_C7D6A0` | `aligned_free_sized(ptr, size, alignment=8)` | Phase 8 |
-| `sub_CB7330` | `errs()` -- get stderr `raw_ostream` | Phase 5 |
-| `sub_CB72A0` | `nulls()` -- get null/discard `raw_ostream` | Phase 5 (quiet mode) |
+| `sub_CB7330` | `errs()` — get stderr `raw_ostream` | Phase 5 |
+| `sub_CB72A0` | `nulls()` — get null/discard `raw_ostream` | Phase 5 (quiet mode) |
 | `sub_CB6200` | `raw_ostream::write(const char*, size_t)` | Phase 5, 7 |
 | `sub_CB5D20` | `raw_ostream::write(char)` | Phase 5 |
 | `sub_CB5B00` | `raw_ostream` destructor / free | Phase 7 |
@@ -602,26 +602,26 @@ The module-level entry `sub_215ACD0` checks `*(a1+240)->field_344` to determine 
 
 The key differences from upstream LLVM's `CheckDebugInfoPass`:
 
-1. **JSON structured output** -- Upstream only prints text diagnostics. NVIDIA added a YAML/JSON serializer (`sub_2241E40`, `sub_CB7060`) that produces machine-parseable bug reports with `"file"`, `"pass"`, `"bugs"` fields and per-bug `"action"` classification (`"drop"` vs `"not-generate"`).
+1. **JSON structured output** — Upstream only prints text diagnostics. NVIDIA added a YAML/JSON serializer (`sub_2241E40`, `sub_CB7060`) that produces machine-parseable bug reports with `"file"`, `"pass"`, `"bugs"` fields and per-bug `"action"` classification (`"drop"` vs `"not-generate"`).
 
-2. **Verbosity control** -- Two global flags (`qword_5008FC8` for output enable, `qword_5008C88` for depth threshold) allow fine-grained control over verification overhead. Upstream has only the `debugify-quiet` knob.
+2. **Verbosity control** — Two global flags (`qword_5008FC8` for output enable, `qword_5008C88` for depth threshold) allow fine-grained control over verification overhead. Upstream has only the `debugify-quiet` knob.
 
-3. **Eight-table metadata tracking** -- Upstream `CheckDebugInfoPass` tracks DISubprograms and debug variable intrinsics. NVIDIA's version maintains eight separate hash tables covering subprograms, scopes, global variables, local variables, types, imported entities, labels, and retained nodes -- a much more comprehensive snapshot.
+3. **Eight-table metadata tracking** — Upstream `CheckDebugInfoPass` tracks DISubprograms and debug variable intrinsics. NVIDIA's version maintains eight separate hash tables covering subprograms, scopes, global variables, local variables, types, imported entities, labels, and retained nodes — a much more comprehensive snapshot.
 
-4. **Metadata reconstruction** -- After verification, NVIDIA's pass reconstructs the module's metadata tables from the verified versions (Phase 8), which upstream does not do. This means the verifier can also serve as a "repair" pass that normalizes metadata after an optimization pass corrupts it.
+4. **Metadata reconstruction** — After verification, NVIDIA's pass reconstructs the module's metadata tables from the verified versions (Phase 8), which upstream does not do. This means the verifier can also serve as a "repair" pass that normalizes metadata after an optimization pass corrupts it.
 
-5. **No kernel-specific handling** -- The verifier treats `__global__` and `__device__` functions identically. CUDA-specific debug info (address space annotations, shared memory debug, warp-level location info) is validated elsewhere, likely during NVPTX backend emission.
+5. **No kernel-specific handling** — The verifier treats `__global__` and `__device__` functions identically. CUDA-specific debug info (address space annotations, shared memory debug, warp-level location info) is validated elsewhere, likely during NVPTX backend emission.
 
-6. **DbgRecord format support** -- cicc v13.0 defaults to the LLVM 20 DbgRecord format (`write-experimental-debuginfo = true`), so the verifier handles both intrinsic-based and record-based debug info transparently.
+6. **DbgRecord format support** — cicc v13.0 defaults to the LLVM 20 DbgRecord format (`write-experimental-debuginfo = true`), so the verifier handles both intrinsic-based and record-based debug info transparently.
 
 ## Cross-References
 
-- [AsmPrinter & PTX Body Emission](./asmprinter.md) -- `.loc`/`.file` directive emission, per-instruction debug annotation
-- [PTX Emission](../pipeline/emission.md) -- module-level emission entry, DWARF debug writer lookup
-- [Debug Info Pipeline](../pipeline/debug-info-pipeline.md) -- end-to-end debug info flow from frontend to backend
-- [CLI Flags](../config/cli-flags.md) -- `-g`, `-generate-line-info`, `-show-src` flag routing
-- [LLVM Knobs](../config/knobs.md) -- `debugify-*`, `verify-each`, `dwarf-*` knobs
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where debug verification fits in the pass pipeline
-- [Hash Infrastructure](./hash-infrastructure.md) -- DenseMap/DenseSet implementation used by tracking tables
-- [Diagnostics](./diagnostics.md) -- broader diagnostic and remark system
-- [NVVM Container](../structs/nvvm-container.md) -- NvvmDebugVersion field
+- [AsmPrinter & PTX Body Emission](./asmprinter.md) — `.loc`/`.file` directive emission, per-instruction debug annotation
+- [PTX Emission](../pipeline/emission.md) — module-level emission entry, DWARF debug writer lookup
+- [Debug Info Pipeline](../pipeline/debug-info-pipeline.md) — end-to-end debug info flow from frontend to backend
+- [CLI Flags](../config/cli-flags.md) — `-g`, `-generate-line-info`, `-show-src` flag routing
+- [LLVM Knobs](../config/knobs.md) — `debugify-*`, `verify-each`, `dwarf-*` knobs
+- [Pipeline & Ordering](../llvm/pipeline.md) — where debug verification fits in the pass pipeline
+- [Hash Infrastructure](./hash-infrastructure.md) — DenseMap/DenseSet implementation used by tracking tables
+- [Diagnostics](./diagnostics.md) — broader diagnostic and remark system
+- [NVVM Container](../structs/nvvm-container.md) — NvvmDebugVersion field

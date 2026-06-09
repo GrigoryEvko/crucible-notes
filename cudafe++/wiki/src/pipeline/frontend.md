@@ -1,6 +1,6 @@
 # Frontend Invocation
 
-`process_translation_unit` (`sub_7A40A0`, 1267 bytes at `0x7A40A0`, from EDG source file `trans_unit.c`) is the main frontend workhorse -- stage 5 of the [pipeline](./overview.md). Called once from `main()`, it orchestrates the entire transformation from `.cu` source text to a fully-built EDG IL tree. The function allocates a 424-byte translation unit descriptor, opens the source file via the lexer, drives the C++ parser to completion, runs semantic analysis on the parsed declarations, and finally performs per-TU wrapup (stop-token verification, class linkage checking, module finalization). By the time it returns, every declaration, type, expression, and statement from the source has been parsed into IL nodes, CUDA execution-space attributes have been resolved, and the TU is linked into the global TU chain ready for the 5-pass [fe_wrapup](./fe-wrapup.md) stage.
+`process_translation_unit` (`sub_7A40A0`, 1267 bytes at `0x7A40A0`, from EDG source file `trans_unit.c`) is the main frontend workhorse — stage 5 of the [pipeline](./overview.md). Called once from `main()`, it orchestrates the entire transformation from `.cu` source text to a fully-built EDG IL tree. The function allocates a 424-byte translation unit descriptor, opens the source file via the lexer, drives the C++ parser to completion, runs semantic analysis on the parsed declarations, and finally performs per-TU wrapup (stop-token verification, class linkage checking, module finalization). By the time it returns, every declaration, type, expression, and statement from the source has been parsed into IL nodes, CUDA execution-space attributes have been resolved, and the TU is linked into the global TU chain ready for the 5-pass [fe_wrapup](./fe-wrapup.md) stage.
 
 ## Key Facts
 
@@ -230,7 +230,7 @@ process_translation_unit (sub_7A40A0)
   |-- [14] Debug trace: "Done processing translation unit %s"
 ```
 
-## Phase 1: Error State Reset -- `sub_5EAEC0`
+## Phase 1: Error State Reset — `sub_5EAEC0`
 
 Before any parsing begins, `sub_5EAEC0` resets the parser's error recovery state. This is a tiny function (22 bytes) that configures the error-recovery token scan depth based on whether this is a recompilation pass:
 
@@ -262,7 +262,7 @@ The 424-byte TU descriptor is the central data structure tracking a single trans
 | 8 | 8 | `tu_name` | Initially NULL. Set later by the parser to the TU's internal identifier. |
 | 16 | 8 | `storage_buffer` | Pointer to a dynamically-sized buffer holding per-TU copies of all registered global variables. Size = `qword_12C7A98` (accumulated during `f_register_trans_unit_variable` calls). |
 | 24-192 | 168 | `scope_state` | Initialized by `sub_7046E0`. Contains the TU's scope stack snapshot: file scope descriptor, scope nesting state, using-directive lists. Saved/restored during TU switching by `sub_7A3A50`/`sub_7A3D60`. |
-| 184 | 8 | `source_file_entry` | Set to `*(qword_126DDF0 + 64)` after the source file is opened -- the file descriptor from the source file manager. |
+| 184 | 8 | `source_file_entry` | Set to `*(qword_126DDF0 + 64)` after the source file is opened — the file descriptor from the source file manager. |
 | 192 | 8 | (cleared) | Zero-initialized. |
 | 200-352 | ~160 | `scope_decl_area` | Bulk-zeroed via `memset`. Holds scope-level declaration state that accumulates during parsing. The zero-init ensures clean state for a new TU. |
 | 352 | 8 | (cleared) | Zero-initialized. |
@@ -280,11 +280,11 @@ EDG's multi-TU infrastructure requires certain global variables to be saved and 
 
 | Offset | Size | Field |
 |--------|------|-------|
-| 0 | 8 | `next` -- linked list pointer |
-| 8 | 8 | `variable_address` -- pointer to the global variable |
-| 16 | 8 | `variable_name` -- debug name string (e.g., `"is_recompilation"`) |
-| 24 | 8 | `prior_accumulated_size` -- offset into per-TU storage buffer |
-| 32 | 8 | `field_offset_in_tu` -- if nonzero, the offset within the TU descriptor where the default value lives |
+| 0 | 8 | `next` — linked list pointer |
+| 8 | 8 | `variable_address` — pointer to the global variable |
+| 16 | 8 | `variable_name` — debug name string (e.g., `"is_recompilation"`) |
+| 24 | 8 | `prior_accumulated_size` — offset into per-TU storage buffer |
+| 32 | 8 | `field_offset_in_tu` — if nonzero, the offset within the TU descriptor where the default value lives |
 
 2. **Accumulated size tracking**: Each registration pads the variable's size to 8-byte alignment and adds it to `qword_12C7A98` (per-TU storage size). The linked list head is `qword_12C7AA8`, tail is `qword_12C7AA0`.
 
@@ -326,8 +326,8 @@ The TU stack tracks the active compilation context. Each stack entry is a 16-byt
 
 | Offset | Size | Field |
 |--------|------|-------|
-| 0 | 8 | `next` -- points to the entry below on the stack |
-| 8 | 8 | `tu_ptr` -- pointer to the TU descriptor |
+| 0 | 8 | `next` — points to the entry below on the stack |
+| 8 | 8 | `tu_ptr` — pointer to the TU descriptor |
 
 Stack entries are allocated from a free list (`qword_12C7AB8`); when the free list is empty, a new 16-byte block is allocated via `sub_6B7340` (permanent allocator).
 
@@ -379,12 +379,12 @@ qword_126EE90 = module_info[5];  // additional path list
 ```
 
 The module path then calls:
-- `sub_5ADC60(filename, 1)` -- intern the source directory path (cached allocation)
-- `sub_5AD120(source_dir, &include_list, &sys_list)` -- configure include search paths from the module descriptor
-- `sub_5863A0(source_dir, &include_list)` -- `fe_translation_unit_init` with module-specific paths
-- `sub_5AF7F0(module_info[3])` -- set the module identifier for this TU (asserts not already set)
+- `sub_5ADC60(filename, 1)` — intern the source directory path (cached allocation)
+- `sub_5AD120(source_dir, &include_list, &sys_list)` — configure include search paths from the module descriptor
+- `sub_5863A0(source_dir, &include_list)` — `fe_translation_unit_init` with module-specific paths
+- `sub_5AF7F0(module_info[3])` — set the module identifier for this TU (asserts not already set)
 
-## Phase 5: Compilation Driver -- `sub_586240`
+## Phase 5: Compilation Driver — `sub_586240`
 
 `sub_586240` (`fe_init.c`, 63 lines) is the compilation driver that opens the source file and launches the parser. It is called for both standard and module compilation paths.
 
@@ -453,7 +453,7 @@ The function delegates to `sub_66CBD0` which resolves the file path, opens the f
 
 At debug verbosity > 3, it prints: `"open_file_and_push_input_stack: skipping guarded include file %s\n"` when an include guard causes the file to be skipped.
 
-## Phase 6: Semantic Analysis -- `sub_4E8A60`
+## Phase 6: Semantic Analysis — `sub_4E8A60`
 
 After parsing completes, `sub_4E8A60` (`translation_unit`, `decls.c`, 77 lines) performs semantic analysis on the parsed declarations. This function is called only on the standard (non-module) compilation path.
 
@@ -501,7 +501,7 @@ void translation_unit(void) {
 
 The C++ standard version checks (`dword_126EF68 > 201102`) gate C++14+ features like deferred template instantiation. The value `201102` corresponds to C++11 (`__cplusplus` value). For C++14 and later, `sub_6FBCD0` handles deferred template processing between declaration groups.
 
-## Phase 7: Translation Unit Wrapup -- `sub_588E90`
+## Phase 7: Translation Unit Wrapup — `sub_588E90`
 
 `sub_588E90` (`translation_unit_wrapup`, `fe_wrapup.c`, 36 lines) performs per-TU finalization after parsing and semantic analysis are complete. It is the last step before the TU stack is popped.
 
@@ -693,7 +693,7 @@ The function contains three assertion checks, each producing a fatal diagnostic 
 |------|-----------|---------|---------|
 | `trans_unit.c:696` | Primary TU (no module_info) but `has_seen_module_tu` is set | *(none)* | Cannot process a non-module TU after a module TU has been seen |
 | `trans_unit.c:725` | `primary_translation_unit` is set but `is_recompilation` is false | *(none)* | First TU must be on the initial compilation pass, not a retry |
-| `trans_unit.c:556` | Stack top's TU pointer does not match `current_translation_unit` | *(none)* | TU stack push/pop mismatch -- corrupted compilation state |
+| `trans_unit.c:556` | Stack top's TU pointer does not match `current_translation_unit` | *(none)* | TU stack push/pop mismatch — corrupted compilation state |
 
 ## Callee Reference Table
 
@@ -731,12 +731,12 @@ The function contains three assertion checks, each producing a fatal diagnostic 
 
 ## Cross-References
 
-- [Pipeline Overview](./overview.md) -- complete 8-stage pipeline diagram showing where `process_translation_unit` fits
-- [Entry Point & Initialization](./entry.md) -- stages 1-3 that execute before this function
-- [Frontend Wrapup](./fe-wrapup.md) -- the 5-pass `fe_wrapup` (stage 6) that runs after this function
-- [Backend Code Generation](./backend.md) -- stage 7 that consumes the IL tree built here
-- [CLI Processing](./cli.md) -- all 276 flags that configure the compilation mode
-- [Timing & Exit](./timing-exit.md) -- exit code mapping and timing infrastructure
-- [EDG Overview](../edg/overview.md) -- EDG 6.6 source tree and NVIDIA modifications
-- [Execution Spaces](../cuda/execution-spaces.md) -- how `__device__`/`__host__`/`__global__` attributes are recorded during parsing
-- [Device/Host Separation](../cuda/device-host-separation.md) -- how the backend filters device vs host code from the IL tree
+- [Pipeline Overview](./overview.md) — complete 8-stage pipeline diagram showing where `process_translation_unit` fits
+- [Entry Point & Initialization](./entry.md) — stages 1-3 that execute before this function
+- [Frontend Wrapup](./fe-wrapup.md) — the 5-pass `fe_wrapup` (stage 6) that runs after this function
+- [Backend Code Generation](./backend.md) — stage 7 that consumes the IL tree built here
+- [CLI Processing](./cli.md) — all 276 flags that configure the compilation mode
+- [Timing & Exit](./timing-exit.md) — exit code mapping and timing infrastructure
+- [EDG Overview](../edg/overview.md) — EDG 6.6 source tree and NVIDIA modifications
+- [Execution Spaces](../cuda/execution-spaces.md) — how `__device__`/`__host__`/`__global__` attributes are recorded during parsing
+- [Device/Host Separation](../cuda/device-host-separation.md) — how the backend filters device vs host code from the IL tree

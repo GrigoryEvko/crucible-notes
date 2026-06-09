@@ -20,7 +20,7 @@ This page documents all three peephole layers in cicc, their pipeline positions,
 
 ## Purpose
 
-CUDA programs produce IR patterns that standard LLVM optimizations do not recognize or cannot legally transform. The NVVM peephole pass fills this gap by matching NVVM-specific idioms -- address space casts, intrinsic call sequences, convergent operation patterns, and GPU-specific type conversions -- and rewriting them into simpler, cheaper forms. It operates at the LLVM IR level before code generation, complementing the machine-level `nvptx-peephole` pass that runs later in the pipeline.
+CUDA programs produce IR patterns that standard LLVM optimizations do not recognize or cannot legally transform. The NVVM peephole pass fills this gap by matching NVVM-specific idioms — address space casts, intrinsic call sequences, convergent operation patterns, and GPU-specific type conversions — and rewriting them into simpler, cheaper forms. It operates at the LLVM IR level before code generation, complementing the machine-level `nvptx-peephole` pass that runs later in the pipeline.
 
 The pass is always paired with `sub_215D9D0` (NVVMAnnotationsProcessor), which runs immediately after the peephole in every pipeline path. This companion pass processes NVVM annotations (e.g., `tcgen05` tensor annotation metadata) on the IR that the peephole has just simplified.
 
@@ -34,7 +34,7 @@ CICC contains three distinct peephole optimization layers, each operating at a d
 | NVVM Peephole | `nvvm-peephole-optimizer` | IR | slot 382, factory `sub_1CEF8F0` | NVVM-specific: address space casts, intrinsic sequences, GPU type conversions |
 | NVPTX Peephole | `nvptx-peephole` | MachineInstr | `sub_21DB090` | PTX-specific: redundant `cvta` folding, predicate optimization, move elimination |
 
-The NVVM peephole pass handles transformations that require knowledge of NVVM's address space model, intrinsic semantics, or GPU-specific type system -- patterns that InstCombine cannot match because they depend on NVPTX target information not available to target-independent passes. The machine-level NVPTX peephole then handles patterns that only emerge after instruction selection has lowered IR to MachineInstrs.
+The NVVM peephole pass handles transformations that require knowledge of NVVM's address space model, intrinsic semantics, or GPU-specific type system — patterns that InstCombine cannot match because they depend on NVPTX target information not available to target-independent passes. The machine-level NVPTX peephole then handles patterns that only emerge after instruction selection has lowered IR to MachineInstrs.
 
 ## Pipeline Positions
 
@@ -42,7 +42,7 @@ The NVVM peephole pass handles transformations that require knowledge of NVVM's 
 
 The IR-level peephole (`sub_1CEF8F0`) is invoked from the legacy pipeline assembler (`sub_12E54A0`) in all three language-specific code paths. Its companion `sub_215D9D0` always follows immediately.
 
-**Path A -- "ptx" language** (lines 580--638 in `sub_12E54A0`):
+**Path A — "ptx" language** (lines 580--638 in `sub_12E54A0`):
 
 ```text
 sub_1CEF8F0()    NVVMPeephole
@@ -54,7 +54,7 @@ sub_18DEFF0()    DCE
 ...
 ```
 
-**Path B -- "mid" language** (Ofcmid, lines 814--1075):
+**Path B — "mid" language** (Ofcmid, lines 814--1075):
 
 ```text
 sub_184CD60()    ConstantMerge / GlobalDCE
@@ -69,7 +69,7 @@ sub_1C6E800()    GVN / LICM
 ...
 ```
 
-**Path C -- default/general** (O2/O3, lines 1077--1371):
+**Path C — default/general** (O2/O3, lines 1077--1371):
 
 ```text
 sub_1A62BF0(4)   LLVM standard pipeline #4
@@ -432,20 +432,20 @@ ProxyRegErasure (sub_21DA810)       Late cvta.to.local removal
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_1CEF8F0` | small | NVVMPeephole factory (legacy PM) |
-| -- | `sub_215D9D0` | -- | NVVMAnnotationsProcessor (companion, always paired) |
-| -- | `sub_2314DA0` | small | NVVMPeepholeOptimizerPass serializer (New PM) |
-| -- | `sub_2342890` | -- | New PM registration function (slot 382) |
-| -- | `sub_233C410` | -- | Pipeline text parser (line 3534) |
-| -- | `sub_21DB090` | small | NVPTXPeephole machine pass registration |
-| -- | `sub_2166ED0` | 1.6KB | `addPreRegAlloc()` -- hosts NVPTXPeephole |
-| -- | `sub_21DA810` | -- | ProxyRegErasure (`cvta.to.local` removal) |
-| -- | `sub_2203290` | small | `param-opt` (`ld.param` optimization) |
-| -- | `sub_2204E60` | small | Remove Redundant Moves |
-| -- | `sub_22058E0` | small | `nvptx-trunc-opts` (ANDb16ri elimination) |
-| -- | `sub_21BEE70` | 4.1KB | `"Bad address space in addrspacecast"` validation |
-| -- | `sub_20DA7F0` | 30KB | DAG combine / peephole on MachineInstrs |
-| -- | `sub_37E1AE0` | 18KB | Late-stage machine optimization (peephole or copy prop) |
+| — | `sub_1CEF8F0` | small | NVVMPeephole factory (legacy PM) |
+| — | `sub_215D9D0` | — | NVVMAnnotationsProcessor (companion, always paired) |
+| — | `sub_2314DA0` | small | NVVMPeepholeOptimizerPass serializer (New PM) |
+| — | `sub_2342890` | — | New PM registration function (slot 382) |
+| — | `sub_233C410` | — | Pipeline text parser (line 3534) |
+| — | `sub_21DB090` | small | NVPTXPeephole machine pass registration |
+| — | `sub_2166ED0` | 1.6KB | `addPreRegAlloc()` — hosts NVPTXPeephole |
+| — | `sub_21DA810` | — | ProxyRegErasure (`cvta.to.local` removal) |
+| — | `sub_2203290` | small | `param-opt` (`ld.param` optimization) |
+| — | `sub_2204E60` | small | Remove Redundant Moves |
+| — | `sub_22058E0` | small | `nvptx-trunc-opts` (ANDb16ri elimination) |
+| — | `sub_21BEE70` | 4.1KB | `"Bad address space in addrspacecast"` validation |
+| — | `sub_20DA7F0` | 30KB | DAG combine / peephole on MachineInstrs |
+| — | `sub_37E1AE0` | 18KB | Late-stage machine optimization (peephole or copy prop) |
 
 ## Differences from Upstream LLVM
 
@@ -478,16 +478,16 @@ The pass's existence and classification are confirmed through multiple independe
 | Machine pass | `sub_21DB090` | `"NVPTX Peephole"` / `"nvptx-peephole"` registration string |
 | Machine pipeline | `sub_2166ED0` | `"After codegen peephole optimization pass"` checkpoint string |
 
-**Confidence note.** The pass registration, knobs, pipeline position, and factory function are confirmed at HIGH confidence from binary evidence. The specific transformation patterns described above are at MEDIUM confidence -- inferred from pipeline position (runs after NVVMReflect + NVVMIntrinsicLowering), NVVM IR semantics, and address space validation code, but the actual `NVVMPeepholeOptimizerPass::run()` body has not been individually decompiled. The factory `sub_1CEF8F0` creates the pass object; the run method is dispatched through the object's vtable.
+**Confidence note.** The pass registration, knobs, pipeline position, and factory function are confirmed at HIGH confidence from binary evidence. The specific transformation patterns described above are at MEDIUM confidence — inferred from pipeline position (runs after NVVMReflect + NVVMIntrinsicLowering), NVVM IR semantics, and address space validation code, but the actual `NVVMPeepholeOptimizerPass::run()` body has not been individually decompiled. The factory `sub_1CEF8F0` creates the pass object; the run method is dispatched through the object's vtable.
 
 ## Cross-References
 
-- [Scalar Passes (InstCombine)](../llvm/scalar-passes.md) -- stock LLVM InstCombine that handles general-purpose peephole
-- [NVVM Intrinsic Lowering](./nvvm-intrinsic-lowering.md) -- runs before the peephole, expands intrinsics
-- [NVVMReflect](./nvvm-reflect.md) -- resolves `__nvvm_reflect()` before the peephole cleans up
-- [Machine-Level Passes](../llvm/machine-passes.md) -- documents the full pre-RA / post-RA machine pass pipeline
-- [Minor NVIDIA Passes](./other.md) -- brief entries for `nvptx-peephole`, `proxy-reg-erasure`, and other small passes
-- [Address Spaces](../reference/address-spaces.md) -- NVPTX address space numbering and cast rules
-- [NVVMPassOptions](../config/nvvm-pass-options.md) -- the 4512-byte options struct that gates this pass
-- [Optimization Levels](../config/optimization-levels.md) -- which paths invoke the peephole at each -O level
-- [Pipeline Assembler](../pipeline/optimizer.md) -- the master `sub_12E54A0` function that builds the pass pipeline
+- [Scalar Passes (InstCombine)](../llvm/scalar-passes.md) — stock LLVM InstCombine that handles general-purpose peephole
+- [NVVM Intrinsic Lowering](./nvvm-intrinsic-lowering.md) — runs before the peephole, expands intrinsics
+- [NVVMReflect](./nvvm-reflect.md) — resolves `__nvvm_reflect()` before the peephole cleans up
+- [Machine-Level Passes](../llvm/machine-passes.md) — documents the full pre-RA / post-RA machine pass pipeline
+- [Minor NVIDIA Passes](./other.md) — brief entries for `nvptx-peephole`, `proxy-reg-erasure`, and other small passes
+- [Address Spaces](../reference/address-spaces.md) — NVPTX address space numbering and cast rules
+- [NVVMPassOptions](../config/nvvm-pass-options.md) — the 4512-byte options struct that gates this pass
+- [Optimization Levels](../config/optimization-levels.md) — which paths invoke the peephole at each -O level
+- [Pipeline Assembler](../pipeline/optimizer.md) — the master `sub_12E54A0` function that builds the pass pipeline

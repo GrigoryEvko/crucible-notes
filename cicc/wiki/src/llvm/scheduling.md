@@ -38,7 +38,7 @@ The MRPA pressure cluster spans the address range `0x1DF0000`--`0x1E0FFFF`:
 | `sub_1DF9E90` | Schedule optimization pass |
 | `sub_1DFB810` | DenseMap (64-bit value variant) |
 | `sub_1DFB9D0` | DenseMap (32-bit value variant, called 6x) |
-| `sub_1E00370` | MRPA entry -- backend variant |
+| `sub_1E00370` | MRPA entry — backend variant |
 
 ### Incremental Update Flow
 
@@ -138,10 +138,10 @@ if ( *(_BYTE *)(v7 + 40)               // [1] context enable flag -- always ON d
 
 All four conditions must hold simultaneously:
 
-1. Context enable flag (`v7 + 40`) is set -- always true during MCSE.
-2. `verify-update-mcse` is ON -- user must explicitly enable this debug knob.
-3. `incremental-update-mcse` is ON -- default is ON.
-4. `sub_2E59B70` returns false -- full recomputation disagrees with the incremental state.
+1. Context enable flag (`v7 + 40`) is set — always true during MCSE.
+2. `verify-update-mcse` is ON — user must explicitly enable this debug knob.
+3. `incremental-update-mcse` is ON — default is ON.
+4. `sub_2E59B70` returns false — full recomputation disagrees with the incremental state.
 
 When all conditions hold, the error `"Incorrect RP info from incremental MRPA update"` fires via `sub_C64ED0` (LLVM's `report_fatal_error`). The `print-verify` knob controls whether detailed per-register-class mismatch data is printed.
 
@@ -157,7 +157,7 @@ To trigger verification: `cicc -Xcuda -verify-update-mcse input.cu`. NVIDIA keep
 
 ## MachinePipeliner: Swing Modulo Scheduling
 
-**Complexity.** Let N = number of instructions in the loop body and E = number of dependency edges in the DDG. DDG construction is O(N + E). RecMII computation (`computeRecMII`) finds the maximum cycle ratio via enumeration of elementary circuits in the DDG -- worst-case exponential, but bounded in practice by small loop sizes (N < 100) and sparse dependency graphs. ResMII computation is O(N) (sum of resource vectors). ASAP/ALAP computation is O(N + E) each (topological traversals). The II search probes at most `pipeliner-ii-search-range` (default 10) candidate IIs. For each II, node placement is O(N * II) -- each of N nodes probes up to II cycle slots. The total scheduling cost is O((N + E) + R * N * II_max) where R = search range. The `pipeliner-max-stages` (default 3) and `pipeliner-max-mii` (default 27) provide additional constant-factor bounds. For MRPA, the incremental pressure update is O(1) per instruction move (delta update), compared to O(N) for a full recomputation -- this is the key efficiency gain over a naive approach.
+**Complexity.** Let N = number of instructions in the loop body and E = number of dependency edges in the DDG. DDG construction is O(N + E). RecMII computation (`computeRecMII`) finds the maximum cycle ratio via enumeration of elementary circuits in the DDG — worst-case exponential, but bounded in practice by small loop sizes (N < 100) and sparse dependency graphs. ResMII computation is O(N) (sum of resource vectors). ASAP/ALAP computation is O(N + E) each (topological traversals). The II search probes at most `pipeliner-ii-search-range` (default 10) candidate IIs. For each II, node placement is O(N * II) — each of N nodes probes up to II cycle slots. The total scheduling cost is O((N + E) + R * N * II_max) where R = search range. The `pipeliner-max-stages` (default 3) and `pipeliner-max-mii` (default 27) provide additional constant-factor bounds. For MRPA, the incremental pressure update is O(1) per instruction move (delta update), compared to O(N) for a full recomputation — this is the key efficiency gain over a naive approach.
 
 The MachinePipeliner (`sub_3563190`, ~2030 decompiled lines, ~58KB) implements Swing Modulo Scheduling (SMS) for software pipelining of loop bodies. It overlaps iterations of a loop body to improve throughput on pipelined hardware by interleaving instructions from different iterations. The upstream LLVM equivalent is `SwingSchedulerDAG::schedule()`.
 
@@ -169,12 +169,12 @@ The setup chain builds the data dependence graph and computes MII lower bounds:
 
 | Step | Function | Description |
 |---|---|---|
-| 1 | `sub_2F97F60` | `initializeDAG` -- build data dependence graph (DDG) over the single-BB loop body |
-| 2 | `sub_3559990` | `computeNodeLatencies` -- fill latency fields per SUnit from the target scheduling model |
-| 3 | `sub_3542B20` | `addDependencies` -- add register/memory/order dependency edges to the DDG |
-| 4 | `sub_2F90200` | `updateRegPressure` -- compute initial register pressure state for the loop body |
-| 5 | `sub_354CBB0` | `computeRecMII` -- find the maximum cycle length of any recurrence in the DDG |
-| 6 | `sub_35449F0` | `computeResMII` -- compute `ceil(total_resource_usage / functional_unit_count)` |
+| 1 | `sub_2F97F60` | `initializeDAG` — build data dependence graph (DDG) over the single-BB loop body |
+| 2 | `sub_3559990` | `computeNodeLatencies` — fill latency fields per SUnit from the target scheduling model |
+| 3 | `sub_3542B20` | `addDependencies` — add register/memory/order dependency edges to the DDG |
+| 4 | `sub_2F90200` | `updateRegPressure` — compute initial register pressure state for the loop body |
+| 5 | `sub_354CBB0` | `computeRecMII` — find the maximum cycle length of any recurrence in the DDG |
+| 6 | `sub_35449F0` | `computeResMII` — compute `ceil(total_resource_usage / functional_unit_count)` |
 
 The context object `SwingSchedulerDAG` occupies approximately 4100 bytes:
 
@@ -411,20 +411,20 @@ The scheduling flow:
 
 The instruction selection heuristic (`sub_3557A10`, 47KB) determines which instruction to schedule next from the ready set. It implements a multi-level priority scheme operating on 88-byte SUnit entries:
 
-**Level 1 -- Latency/Depth priority** (SUnit offset `+240`): instructions deeper in the dependency graph are scheduled first. Depth is measured as the longest path from the instruction to a sink node in the DDG. This ensures that critical-path instructions are placed early, preventing them from becoming bottlenecks. Latency recomputation occurs via `sub_2F8F5D0` during priority comparison to account for any scheduling decisions already made.
+**Level 1 — Latency/Depth priority** (SUnit offset `+240`): instructions deeper in the dependency graph are scheduled first. Depth is measured as the longest path from the instruction to a sink node in the DDG. This ensures that critical-path instructions are placed early, preventing them from becoming bottlenecks. Latency recomputation occurs via `sub_2F8F5D0` during priority comparison to account for any scheduling decisions already made.
 
-**Level 2 -- Target priority table** (context `a1+3944`): a table of 16-byte entries, each containing:
+**Level 2 — Target priority table** (context `a1+3944`): a table of 16-byte entries, each containing:
 
 | Offset | Size | Field |
 |---|---|---|
-| +0 | 4 | `start` -- first cycle of priority window |
-| +4 | 4 | `end` -- last cycle of priority window |
-| +8 | 4 | `priority` -- target-assigned priority value |
-| +12 | 4 | `window_width` -- scheduling window size |
+| +0 | 4 | `start` — first cycle of priority window |
+| +4 | 4 | `end` — last cycle of priority window |
+| +8 | 4 | `priority` — target-assigned priority value |
+| +12 | 4 | `window_width` — scheduling window size |
 
-The target (NVPTX backend) populates this table to express hardware-specific ordering preferences -- for example, prioritizing memory operations that can be overlapped with computation, or ensuring that warp-synchronous instructions are scheduled in specific relative positions. Instructions that fall within a priority window with a higher priority value are selected first.
+The target (NVPTX backend) populates this table to express hardware-specific ordering preferences — for example, prioritizing memory operations that can be overlapped with computation, or ensuring that warp-synchronous instructions are scheduled in specific relative positions. Instructions that fall within a priority window with a higher priority value are selected first.
 
-**Level 3 -- Schedule window width**: when levels 1 and 2 are tied, the instruction with the narrower scheduling window (`ALAP - ASAP`) is preferred. Narrower windows mean fewer legal placement options, so these instructions should be placed before more flexible ones to avoid creating conflicts.
+**Level 3 — Schedule window width**: when levels 1 and 2 are tied, the instruction with the narrower scheduling window (`ALAP - ASAP`) is preferred. Narrower windows mean fewer legal placement options, so these instructions should be placed before more flexible ones to avoid creating conflicts.
 
 The ready queue is managed by `sub_3553D90`. Pattern matching on ready instructions proceeds through `sub_35540D0` (applicability check) and `sub_35543E0` (pattern application), with validation via `sub_3546B80`. A hash table at `a1+3976` maps instructions to schedule nodes for O(1) lookup during priority comparison.
 
@@ -503,10 +503,10 @@ Group members are 32 bytes each:
 
 | Offset | Size | Content |
 |---|---|---|
-| +0 | 8 | `MachineInstr*` -- the texture load instruction |
-| +8 | 8 | Symbol -- the texture symbol reference |
-| +16 | 8 | Debug info -- source location |
-| +24 | 8 | Scope info -- DWARF scope |
+| +0 | 8 | `MachineInstr*` — the texture load instruction |
+| +8 | 8 | Symbol — the texture symbol reference |
+| +16 | 8 | Debug info — source location |
+| +24 | 8 | Scope info — DWARF scope |
 
 Generated group names carry a `.Tgm` (Texture Group Merge) suffix via `sub_2241490`. This suffix appears in debug output and internal symbol tables.
 
@@ -545,9 +545,9 @@ The `usedessa` knob (`dword_4FD26A0`, default 2) controls the scheduling pass pi
 
 **Mode 2 (full, default)**: Pre-RA scheduling runs `unk_4FC8A0C`. Post-RA scheduling runs three passes sequentially:
 
-1. `unk_4FC8A0C` -- pre-RA pass (disabled/noop in post-RA context).
-2. `unk_4FCE24C` -- post-RA scheduler.
-3. `unk_4FC9D8C` -- extra scheduling pass.
+1. `unk_4FC8A0C` — pre-RA pass (disabled/noop in post-RA context).
+2. `unk_4FCE24C` — post-RA scheduler.
+3. `unk_4FC9D8C` — extra scheduling pass.
 
 After scheduling completes, the framework prints `"After Machine Scheduling"`, optionally runs `sub_21F9D90`, then runs `unk_4FCAC8C` and prints `"After StackSlotColoring"`.
 
@@ -573,10 +573,10 @@ Contrast with **ptxas scheduling**: ptxas has its own instruction scheduling sub
 
 Upstream LLVM's instruction scheduling framework was designed for CPU cores with out-of-order execution, branch prediction, and deep reorder buffers. On a GPU SM, these hardware features do not exist:
 
-- **Upstream assumes out-of-order hardware will hide scheduling mistakes.** Modern CPUs have 200+ entry reorder buffers that dynamically reorder instructions, making compiler scheduling a second-order optimization. GPU SMs execute instructions in-order within each warp -- every scheduling decision is final. A poorly ordered instruction stream on GPU means stalls that no hardware can recover from.
+- **Upstream assumes out-of-order hardware will hide scheduling mistakes.** Modern CPUs have 200+ entry reorder buffers that dynamically reorder instructions, making compiler scheduling a second-order optimization. GPU SMs execute instructions in-order within each warp — every scheduling decision is final. A poorly ordered instruction stream on GPU means stalls that no hardware can recover from.
 - **Upstream optimizes for pipeline hazards and port pressure.** CPU schedulers model execution port contention (e.g., port 0 vs. port 1 on Intel), dispatch group rules, and pipeline bubble avoidance. GPU scheduling targets register pressure minimization (`nvptx-sched4reg`) because the SM's warp scheduler handles instruction-level parallelism through warp interleaving, not through instruction reordering within a single thread.
-- **Upstream assumes a single scheduling pass produces the final order.** On CPU, LLVM's `ScheduleDAGMILive` emits the final instruction sequence. On NVPTX, cicc's scheduling is the first of two layers -- ptxas re-schedules the entire program at the SASS level with its own 195-knob subsystem (including scoreboard-aware scheduling via the `AdvancedSB*` family). CICC's scheduler optimizes for ptxas consumption, not for direct hardware execution.
-- **Upstream has no concept of texture instruction grouping.** CPU scheduling never considers grouping memory operations for hardware coalescing units. NVIDIA adds a dedicated Texture Group Merge pass (`sub_2DDE8C0`, 74KB) that groups texture load instructions by base address for the hardware texture unit -- an entirely GPU-specific optimization absent from upstream.
+- **Upstream assumes a single scheduling pass produces the final order.** On CPU, LLVM's `ScheduleDAGMILive` emits the final instruction sequence. On NVPTX, cicc's scheduling is the first of two layers — ptxas re-schedules the entire program at the SASS level with its own 195-knob subsystem (including scoreboard-aware scheduling via the `AdvancedSB*` family). CICC's scheduler optimizes for ptxas consumption, not for direct hardware execution.
+- **Upstream has no concept of texture instruction grouping.** CPU scheduling never considers grouping memory operations for hardware coalescing units. NVIDIA adds a dedicated Texture Group Merge pass (`sub_2DDE8C0`, 74KB) that groups texture load instructions by base address for the hardware texture unit — an entirely GPU-specific optimization absent from upstream.
 - **Upstream does not track register pressure incrementally during CSE.** Upstream LLVM recomputes register pressure from scratch after each Machine CSE transform. NVIDIA's MRPA subsystem (`sub_2E5A4E0`, 48KB) maintains running pressure state through delta updates, because on GPU the pressure-to-occupancy relationship makes every CSE decision a potential occupancy cliff crossing that must be evaluated cheaply.
 
 ## Differences from Upstream LLVM
@@ -593,4 +593,4 @@ Upstream LLVM's instruction scheduling framework was designed for CPU cores with
 
 ## ptxas Interaction
 
-cicc's instruction scheduling operates at the MachineInstr level and produces a PTX instruction order that is not final. `ptxas` re-schedules the entire program at the SASS level using its own 195-knob scheduling subsystem, including scoreboard-aware scheduling (`AdvancedSB*` family), the `GemmPipeliner*` family for matrix multiply detection and software pipelining, and `SchedForceReverseOrder` for debugging. cicc's scheduler therefore optimizes for ptxas consumption rather than direct hardware execution: its primary goal is minimizing register pressure (`nvptx-sched4reg`) so that ptxas starts from a low-pressure baseline. The two scheduling layers are independent but complementary -- cicc controls the virtual register count visible to ptxas, and ptxas maps the resulting instruction stream onto the SM's hardware pipeline with full knowledge of scoreboard latencies and functional unit availability.
+cicc's instruction scheduling operates at the MachineInstr level and produces a PTX instruction order that is not final. `ptxas` re-schedules the entire program at the SASS level using its own 195-knob scheduling subsystem, including scoreboard-aware scheduling (`AdvancedSB*` family), the `GemmPipeliner*` family for matrix multiply detection and software pipelining, and `SchedForceReverseOrder` for debugging. cicc's scheduler therefore optimizes for ptxas consumption rather than direct hardware execution: its primary goal is minimizing register pressure (`nvptx-sched4reg`) so that ptxas starts from a low-pressure baseline. The two scheduling layers are independent but complementary — cicc controls the virtual register count visible to ptxas, and ptxas maps the resulting instruction stream onto the SM's hardware pipeline with full knowledge of scoreboard latencies and functional unit availability.

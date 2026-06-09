@@ -22,7 +22,7 @@ The framework follows a strict separation of traversal and action. The walker kn
 
 ## Callback Slot Architecture
 
-The five callback slots are stored as global function pointers. Before any walk, the caller saves all five values, installs its own set, and restores the originals on exit. This save/restore discipline makes walks re-entrant -- a callback can itself trigger a nested walk with different callbacks.
+The five callback slots are stored as global function pointers. Before any walk, the caller saves all five values, installs its own set, and restores the originals on exit. This save/restore discipline makes walks re-entrant — a callback can itself trigger a nested walk with different callbacks.
 
 | Address | Slot Name | Signature | Purpose |
 |---|---|---|---|
@@ -176,7 +176,7 @@ for (entry = qword_126EBA0; entry; entry = entry->next) {
 }
 ```
 
-Kind 55 entries are orphaned entities -- declarations that lost their parent scope (e.g., after template instantiation cleanup). They are stored in a separate linked list headed at `qword_126EBA0`.
+Kind 55 entries are orphaned entities — declarations that lost their parent scope (e.g., after template instantiation cleanup). They are stored in a separate linked list headed at `qword_126EBA0`.
 
 **Phase 5: Global entry-kind lists (kinds 1--72)**
 
@@ -230,7 +230,7 @@ The bulk of the walk iterates 45 global linked lists, one per entry kind. Each l
 | 44 | `qword_126E9F0` | 63 | `name_qualifier` |
 | 45 | `qword_126EA80` | 72 | `attribute` (C++11) |
 
-Note the gaps in the walk order: kinds 24-26 (base_class, string_text, other_text), 31-32 (local_static_variable_init, vla_dimension), 43-45 (asm_operand, asm_clobber, reserved), and 49-58 (element_position through hidden_name) are skipped. These entry kinds are either embedded inline within parent entries, accessed only through the recursive descent of `walk_entry_and_subtree`, or have no file-scope lists. Also note that kinds 59 and 61 appear out-of-order (61 before 59) -- this is verified in the binary.
+Note the gaps in the walk order: kinds 24-26 (base_class, string_text, other_text), 31-32 (local_static_variable_init, vla_dimension), 43-45 (asm_operand, asm_clobber, reserved), and 49-58 (element_position through hidden_name) are skipped. These entry kinds are either embedded inline within parent entries, accessed only through the recursive descent of `walk_entry_and_subtree`, or have no file-scope lists. Also note that kinds 59 and 61 appear out-of-order (61 before 59) — this is verified in the binary.
 
 For each non-empty list, the walk applies the `entry_replace` callback (if present) to each entry before descending, and follows the `next` pointer (at offset -16 in the raw allocation, which is the `next_in_list` link in the entry prefix).
 
@@ -275,7 +275,7 @@ If tracing is active (`dword_126EFC8`), the function emits trace-leave via `sub_
 
 ## walk_entry_and_subtree (sub_604170)
 
-This is the recursive engine -- the second-largest function in the entire cudafe++ binary at 7763 lines / 42KB of decompiled code. It takes an entry pointer and its kind, then recursively walks every child entry according to the IL schema.
+This is the recursive engine — the second-largest function in the entire cudafe++ binary at 7763 lines / 42KB of decompiled code. It takes an entry pointer and its kind, then recursively walks every child entry according to the IL schema.
 
 ### Entry Protocol
 
@@ -317,7 +317,7 @@ The `while(true)` loop structure exists because certain cases (particularly link
 
 The default-path flags check serves two purposes:
 1. **Scope isolation**: File-scope entries encountered during a routine-scope walk are skipped (they belong to the outer walk).
-2. **Region tracking**: The `current_il_region` toggle prevents visiting the same entry twice within a single walk -- once stamped, an entry's bit 2 matches `current_il_region`, and the equality check causes the walker to skip it.
+2. **Region tracking**: The `current_il_region` toggle prevents visiting the same entry twice within a single walk — once stamped, an entry's bit 2 matches `current_il_region`, and the equality check causes the walker to skip it.
 
 ### Entry Kind Dispatch
 
@@ -517,7 +517,7 @@ walk_file_scope_il(
 );
 ```
 
-With all callbacks NULL except `entry_callback`, the walker visits every entry in walk order and calls `display_il_entry` on each, which dispatches on entry kind to print formatted field dumps. The `pre_walk_check` is NULL, so the default flags-based skip logic applies -- the `current_il_region` toggle prevents double-visiting.
+With all callbacks NULL except `entry_callback`, the walker visits every entry in walk order and calls `display_il_entry` on each, which dispatches on entry kind to print formatted field dumps. The `pre_walk_check` is NULL, so the default flags-based skip logic applies — the `current_il_region` toggle prevents double-visiting.
 
 ### Keep-in-IL Marking
 
@@ -583,11 +583,11 @@ The keep-in-il pass uses parallel implementations of the walk framework that byp
 
 | Address | Identity | Lines | Purpose |
 |---|---|---|---|
-| `sub_6115E0` | `walk_tree_and_set_keep_in_il` | 4649 | File-scope variant -- sets bit 7 directly on every reachable entry |
+| `sub_6115E0` | `walk_tree_and_set_keep_in_il` | 4649 | File-scope variant — sets bit 7 directly on every reachable entry |
 | `sub_618660` | `walk_entry_and_set_keep_in_il_routine_scope` | 3728 | Routine-scope variant |
 | `sub_61CE20`--`sub_620190` | (keep-in-il helpers) | various | Per-kind helpers for template args, exception specs, array bounds, expressions, statements |
 
-These specialized walkers are structurally identical to `walk_entry_and_subtree` but replace callback invocations with direct `*(entry - 8) |= 0x80` operations. They exist as separate functions rather than callback-based walks because the keep-in-il marking is performance-critical -- it runs on every CUDA compilation, and eliminating the function-pointer indirection across ~330 recursive calls provides measurable speedup.
+These specialized walkers are structurally identical to `walk_entry_and_subtree` but replace callback invocations with direct `*(entry - 8) |= 0x80` operations. They exist as separate functions rather than callback-based walks because the keep-in-il marking is performance-critical — it runs on every CUDA compilation, and eliminating the function-pointer indirection across ~330 recursive calls provides measurable speedup.
 
 ## Global Entry-Kind List Layout
 
@@ -682,9 +682,9 @@ walk_file_scope_il(callbacks...)
 
 ## Cross-References
 
-- [IL Overview](./overview.md) -- entry kind table, IL header structure
-- [IL Allocation](./allocation.md) -- entry prefix layout, flags byte definition
-- [Keep-in-IL](./keep-in-il.md) -- device code marking pass using this framework
-- [IL Display](./display.md) -- `display_il_entry` callback
-- [Pipeline Overview](../pipeline/overview.md) -- when walks are triggered
-- [Device/Host Separation](../cuda/device-host-separation.md) -- higher-level context
+- [IL Overview](./overview.md) — entry kind table, IL header structure
+- [IL Allocation](./allocation.md) — entry prefix layout, flags byte definition
+- [Keep-in-IL](./keep-in-il.md) — device code marking pass using this framework
+- [IL Display](./display.md) — `display_il_entry` callback
+- [Pipeline Overview](../pipeline/overview.md) — when walks are triggered
+- [Device/Host Separation](../cuda/device-host-separation.md) — higher-level context

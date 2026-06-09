@@ -1,6 +1,6 @@
 # Pipeline Overview
 
-nvlink executes as a single-pass linear pipeline with 14 phases, two optional compiler detours (LTO and PTX JIT), and three distinct output code paths. All phases run inside `main()` at `0x409800` -- a 57,970-byte monolithic function that drives the entire tool from initialization through cleanup. This page documents the full pipeline sequence, the timing infrastructure woven through it, the three output code paths, the data flow between phases, and the Mercury post-link transform that sits between finalization and output.
+nvlink executes as a single-pass linear pipeline with 14 phases, two optional compiler detours (LTO and PTX JIT), and three distinct output code paths. All phases run inside `main()` at `0x409800` — a 57,970-byte monolithic function that drives the entire tool from initialization through cleanup. This page documents the full pipeline sequence, the timing infrastructure woven through it, the three output code paths, the data flow between phases, and the Mercury post-link transform that sits between finalization and output.
 
 ## Complete Pipeline Diagram
 
@@ -309,8 +309,8 @@ Every phase maps to a specific address range in `main()`. The "Entry function" c
 | # | Phase | Entry function | Address | Decompiled line | Size | Timing tag | What it does | Key sub-functions | Skip conditions |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Init | `arena_create_named` | `0x432020` | 377--381 | 2,161 B | `"init"` (shared) | Creates two named memory arenas ("nvlink option parser" and "nvlink memory space") and initializes the timing system | `sub_43D8C0` (timer init), `sub_45CAE0` (arena snapshot) | Never skipped |
-| 2 | CLI parse | `nvlink_parse_options` | `0x427AE0` | 384 | 30,272 B | `"init"` (shared) | Parses 68 command-line options into ~80 global variables controlling all subsequent phases | -- | Never skipped |
-| 3 | Mode dispatch | inline in `main()` | `0x409800` | 385 | -- | `"init"` (shared) | Checks `dword_2A77DC0`: values 1/2 branch to host linker script paths; value 0 (or >= 3) falls through to device link | -- | Never skipped (but gates all subsequent phases) |
+| 2 | CLI parse | `nvlink_parse_options` | `0x427AE0` | 384 | 30,272 B | `"init"` (shared) | Parses 68 command-line options into ~80 global variables controlling all subsequent phases | — | Never skipped |
+| 3 | Mode dispatch | inline in `main()` | `0x409800` | 385 | — | `"init"` (shared) | Checks `dword_2A77DC0`: values 1/2 branch to host linker script paths; value 0 (or >= 3) falls through to device link | — | Never skipped (but gates all subsequent phases) |
 | 4 | Library resolve | `path_search_library` | `0x462870` | 387--424 | 4,905 B | `"init"` (shared) | Searches `-L` paths and `$LIBRARY_PATH` to resolve `-l` library flags into file paths, appends to input file list | `sub_4622D0` (create search ctx), `sub_462500` (add path), `sub_44EC40` (parse colon-separated) | Skipped in modes 1 and 2 |
 | 5 | Context create | `elfw_create` | `0x4438F0` | 485--496 | 14,821 B | `"init"` (shared) | Creates the output ELF wrapper (`elfw`) with initial sections (.shstrtab, .strtab, .symtab, .note.nv.cuinfo, .note.nv.tkinfo) and "elfw memory space" arena | `sub_468560` (CUDA API version), `sub_451920` / `sub_444710` (ELF class setup) | Skipped in modes 1 and 2 |
 | 6 | Config | inline in `main()` + callees | `0x409800` | 497--593 | varies | `"init"` | Configures Mercury mode, loads libdevice (LTO), sets stack canary, loads used-symbol lists, UIDX file, host info ELF, writes version string; emits `"init"` timing trace | `sub_4BC470` (libdevice), `sub_4389F0` (stack canary), `sub_43F360` / `sub_43F950` (used symbols), `sub_443730` (version) | Skipped in modes 1 and 2 |
@@ -319,10 +319,10 @@ Every phase maps to a specific address range in `main()`. The "Entry function" c
 | 9 | Merge | `merge_elf` | `0x45E7D0` | 1402--1607 | 89,156 B | `"merge"` | Reverses module list; optionally runs DCE; iterates modules and calls `merge_elf` for each (copies sections, resolves symbols, merges metadata); handles cudadevrt skip | `sub_45D180` (weak resolution, 26,816 B), `sub_44AD40` (DCE, 22,503 B), `sub_426AE0` (DCE wrapper, 2,178 B), `sub_4448C0` (device refs check) | Skipped in modes 1 and 2 |
 | 10 | Layout | `shared_memory_layout` | `0x439830` | 1429 | 65,776 B | `"layout"` | Computes shared memory offsets per entry, propagates register/barrier counts through callgraph, deduplicates constants, sorts and lays out sections, processes bindless textures | `sub_451D80` (entry properties, 97,969 B), `sub_450ED0` (reg/bar propagate, 15,956 B), `sub_432B10` (data overlap, 11,683 B), `sub_4339A0` (const dedup, 13,199 B), `sub_465720` (section layout, 15,579 B), `sub_438DD0` (bindless, 12,779 B) | Skipped in modes 1 and 2 |
 | 11 | Relocate | `apply_relocations` | `0x469D60` | 1432 | 26,578 B | `"relocate"` | Patches all R_CUDA and R_MERCURY relocations in section data bytes, sets up and reorders UFT/UDT unified function/data tables, emits resolved relocation entries | `sub_463F70` (UFT/UDT setup, 3,978 B), `sub_4637B0` (UFT reorder, 10,141 B), `sub_46ADC0` (resolved rela emission, 11,515 B) | Skipped in modes 1 and 2 |
-| 12 | Finalize | `finalize_elf` | `0x445000` | 1436 | 55,681 B | `"finalize"` | Reindexes symbols and sections, computes final sizes and offsets, sorts sections into canonical ELF order, writes ELF header geometry/flag fields (not `e_type` -- that was set by `elfw_create`), builds callgraph section | `sub_44D200` (callgraph build, 8,545 B), `sub_439640` (shared mem fixup, executable `ET_EXEC` branch only), `sub_44DB00` (metadata creation), `sub_438BD0` (virtual section remap, Mercury `0xFF00` branch only) | Skipped in modes 1 and 2 |
+| 12 | Finalize | `finalize_elf` | `0x445000` | 1436 | 55,681 B | `"finalize"` | Reindexes symbols and sections, computes final sizes and offsets, sorts sections into canonical ELF order, writes ELF header geometry/flag fields (not `e_type` — that was set by `elfw_create`), builds callgraph section | `sub_44D200` (callgraph build, 8,545 B), `sub_439640` (shared mem fixup, executable `ET_EXEC` branch only), `sub_44DB00` (metadata creation), `sub_438BD0` (virtual section remap, Mercury `0xFF00` branch only) | Skipped in modes 1 and 2 |
 | 12.5 | Mercury FNLZR | `post_link_transform` | `0x4275C0` | 1454--1482 | 3,989 B | (within `"finalize"`) | Serializes the finalized ELF to a buffer, then runs the FNLZR finalizer with `post_link=1` to convert SASS cubin into capsule mercury format | `sub_45C980` (calc size), `sub_4307C0` (alloc), `sub_45C950` (write to buffer) | Only if `byte_2A5F222` (Mercury, sm >= 100) |
 | 13 | Write | `elfw_write_to_file` / `fwrite` | `0x45C920` / `0x45BF00` | 1448--1671 | 13,258 B | `"write"` | Writes the output ELF (or Mercury capsule) to disk; optionally writes register-link-binaries C header and callgraph .dot file | `sub_45BF00` (serialize ELF, 13,258 B), `sub_44CCF0` (dot output, 1,196 B) | Output type varies by mode (ELF/script/C source) |
-| 14 | Cleanup | `arena_destroy` / `elfw_destroy` | `0x431C70` / `0x4475B0` | 1672--1688 | 3,564 B / 3,023 B | -- | Frees module list, destroys timer, cleans temp files, destroys option parser and memory space arenas, destroys elfw; exits with 0 or -1 | `sub_464520` (free list), `sub_43D8E0` (timer), `sub_468470` (temp files), `sub_431770` (arena stats dump) | Never skipped |
+| 14 | Cleanup | `arena_destroy` / `elfw_destroy` | `0x431C70` / `0x4475B0` | 1672--1688 | 3,564 B / 3,023 B | — | Frees module list, destroys timer, cleans temp files, destroys option parser and memory space arenas, destroys elfw; exits with 0 or -1 | `sub_464520` (free list), `sub_43D8E0` (timer), `sub_468470` (temp files), `sub_431770` (arena stats dump) | Never skipped |
 
 ### Five Largest Functions in the Pipeline
 
@@ -341,8 +341,8 @@ These are the five largest functions by decompiled source size, all in the linke
 nvlink has a built-in timing system activated by an internal timing file path (global `qword_2A5F290`). The timing calls bracket each pipeline phase with string tags.
 
 **Timing functions**:
-- `sub_45CCD0` -- start timer for a named phase
-- `sub_45CCE0` -- stop timer, record elapsed time
+- `sub_45CCD0` — start timer for a named phase
+- `sub_45CCE0` — stop timer, record elapsed time
 
 **Phase tag strings** (embedded in `main()` and referenced by `sub_4279C0`):
 
@@ -360,7 +360,7 @@ nvlink has a built-in timing system activated by an internal timing file path (g
 
 The debug trace function `sub_4279C0` emits these tag strings to stderr when verbose debugging is enabled (`dword_2A5F308 & 0x20`), producing output of the form: `nvlink: phase <tag>`.
 
-The timing tag structure reveals an important subtlety: the trace points are emitted at phase *boundaries*, not phase *starts*. Specifically, `"merge"` is emitted *after* the merge loop completes, and `"layout"` is emitted *after* `sub_439830` returns. This means each tag marks the transition *out of* its named phase. The `"init"` tag is the exception -- it is emitted at the *end* of Phase 6, marking the transition from initialization to the input file loop.
+The timing tag structure reveals an important subtlety: the trace points are emitted at phase *boundaries*, not phase *starts*. Specifically, `"merge"` is emitted *after* the merge loop completes, and `"layout"` is emitted *after* `sub_439830` returns. This means each tag marks the transition *out of* its named phase. The `"init"` tag is the exception — it is emitted at the *end* of Phase 6, marking the transition from initialization to the input file loop.
 
 ## Three Code Paths
 
@@ -383,7 +383,7 @@ Key characteristics:
 - Mercury FNLZR post-link transform applies for sm >= 100
 - Output is a CUDA device ELF (cubin) or capsule mercury binary
 
-### Path 2: Host Linker Script -- Absolute (mode 1)
+### Path 2: Host Linker Script — Absolute (mode 1)
 
 When `--gen-host-linker-script=lcs-abs` is specified, nvlink skips the core linking pipeline entirely and generates a host linker script containing `.nvFatBinSegment` section definitions. This script is consumed by the host `ld` to embed fat binaries into the host executable.
 
@@ -408,7 +408,7 @@ Key characteristics:
 - Writes to output file (or stdout if no `-o`)
 - Used by `nvcc`'s host compilation stage
 
-### Path 3: Host Linker Script -- Augmented (mode 2)
+### Path 3: Host Linker Script — Augmented (mode 2)
 
 When `--gen-host-linker-script=lcs-aug` is active, nvlink generates a host linker script by running `ld --verbose` to extract the system linker's default script, then appending NVIDIA-specific sections. A validation step ensures the generated script is syntactically correct.
 
@@ -626,7 +626,7 @@ The distinction between pre-link (Points 1-2) and post-link (Point 3) is signifi
 
 - **Post-link** (`post_link=1`): Transforms the fully linked ELF into capsule mercury format. The FNLZR replaces SASS code sections with Mercury binary sections, adds Mercury-specific section headers (sh_type values in the `0x70000000+` range), and produces the final binary format consumed by the CUDA runtime and driver.
 
-The pre-link/post-link architecture means that for Mercury targets, the merge and layout phases operate on cubin sections that have already been partially transformed (Point 1), while the final Mercury formatting happens only after all linking is complete (Point 3). This two-phase approach avoids the need for Mercury-aware merge logic -- the merge phase sees cubin-like sections with standard relocation types.
+The pre-link/post-link architecture means that for Mercury targets, the merge and layout phases operate on cubin sections that have already been partially transformed (Point 1), while the final Mercury formatting happens only after all linking is complete (Point 3). This two-phase approach avoids the need for Mercury-aware merge logic — the merge phase sees cubin-like sections with standard relocation types.
 
 ### Verbose-keep FNLZR output
 
@@ -741,14 +741,14 @@ The pipeline's control flow and data flow depend on approximately 80 global vari
 |---|---|---|---|
 | `dword_2A77DC0` | int | `-ghls` option | Linker mode: 0=device-link, 1=script-abs, 2=script-aug |
 | `dword_2A5F314` | int | `--arch` | SM version number (e.g., 90, 100) |
-| `byte_2A5F222` | bool | derived (sm>99) | Mercury mode -- triggers FNLZR and capsule mercury output |
-| `byte_2A5F225` | bool | derived (sm>89) | SASS mode -- forces SASS output format |
-| `byte_2A5F224` | bool | derived (sm>72) | New-style ELF flag -- changes ELF class from 7 to 8 |
-| `byte_2A5F288` | bool | `-lto` | LTO active -- enables IR input acceptance and Phase 8 |
-| `byte_2A5F286` | bool | derived | Partial LTO -- set when LTO produces relocatable output |
+| `byte_2A5F222` | bool | derived (sm>99) | Mercury mode — triggers FNLZR and capsule mercury output |
+| `byte_2A5F225` | bool | derived (sm>89) | SASS mode — forces SASS output format |
+| `byte_2A5F224` | bool | derived (sm>72) | New-style ELF flag — changes ELF class from 7 to 8 |
+| `byte_2A5F288` | bool | `-lto` | LTO active — enables IR input acceptance and Phase 8 |
+| `byte_2A5F286` | bool | derived | Partial LTO — set when LTO produces relocatable output |
 | `byte_2A5F284` | bool | `--force-whole-lto` | Forces whole-program LTO compilation |
 | `byte_2A5F285` | bool | `--force-partial-lto` | Forces partial (relocatable) LTO compilation |
-| `byte_2A5F1E8` | bool | `-r` | Relocatable link -- produces ET_REL instead of executable |
+| `byte_2A5F1E8` | bool | `-r` | Relocatable link — produces ET_REL instead of executable |
 | `byte_2A5F2C1` | bool | derived | Output-is-archive flag |
 | `byte_2A5F2C2` | bool | `-r` (variant) | Relocatable link flag (second copy) |
 | `qword_2A5F330` | ptr | option parsing | Input file linked list head |
@@ -793,7 +793,7 @@ Phase      Device link   Host script    Augmented     Cond. in
 14 Clean   YES           YES            YES            always
 ```
 
-In device-link mode (mode 0), all 14 phases execute with Phase 8 and 12.5 conditional. In host-linker-script mode (mode 1), only Phases 1--3, 13 (script generation), and 14 execute. In augmented mode (mode 2), Phases 1--3, 7 (partial -- for module ID extraction), 13 (C source generation and script), and 14 execute.
+In device-link mode (mode 0), all 14 phases execute with Phase 8 and 12.5 conditional. In host-linker-script mode (mode 1), only Phases 1--3, 13 (script generation), and 14 execute. In augmented mode (mode 2), Phases 1--3, 7 (partial — for module ID extraction), 13 (C source generation and script), and 14 execute.
 
 ### Conditional Phase Details
 
@@ -830,36 +830,36 @@ For typical workloads (small-to-medium cubin count, no LTO), the `"merge"` timin
 ## Cross-References
 
 ### Pipeline Phase Pages
-- [Entry Point & Main](entry.md) -- `main()` at `0x409800`: the 57,970-byte orchestrator function, with per-phase line-by-line walkthrough
-- [CLI Option Parsing](cli-options.md) -- Phase 2: parser infrastructure, option entry layout, global variable map (68 registered options)
-- [Mode Dispatch](mode-dispatch.md) -- Phase 3: device link vs. host linker script vs. augmented; `dword_2A77DC0` encoding, compilation mode enum
-- [Library Resolution](library-resolution.md) -- Phase 4: `LIBRARY_PATH` env search, `-L`/`-l` flag resolution, `sub_462870` search algorithm
-- [Input File Loop](input-loop.md) -- Phase 7: file type detection (56-byte header), per-format dispatch, module registration, PTX JIT path
-- [Merge Phase](merge.md) -- Phase 9: `merge_elf` (89KB), weak symbol resolution (`sub_45D180`), section/symbol merging, cudadevrt handling
-- [Layout Phase](layout.md) -- Phase 10: shared memory overlap analysis (`sub_439830`), entry property computation (`sub_451D80`), constant dedup, section layout
-- [Relocation Phase](relocate.md) -- Phase 11: `apply_relocations` (27KB), R_CUDA/R_MERCURY dispatch, UFT/UDT processing, resolved rela emission
-- [Finalization Phase](finalize.md) -- Phase 12: `finalize_elf` (56KB), symbol/section reindexing, callgraph build (`sub_44D200`), ELF header finalization
-- [Output Phase](output.md) -- Phase 13: ELF serialization (`sub_45BF00`), Mercury capsule write path, dot-file output, register-link-binaries header
+- [Entry Point & Main](entry.md) — `main()` at `0x409800`: the 57,970-byte orchestrator function, with per-phase line-by-line walkthrough
+- [CLI Option Parsing](cli-options.md) — Phase 2: parser infrastructure, option entry layout, global variable map (68 registered options)
+- [Mode Dispatch](mode-dispatch.md) — Phase 3: device link vs. host linker script vs. augmented; `dword_2A77DC0` encoding, compilation mode enum
+- [Library Resolution](library-resolution.md) — Phase 4: `LIBRARY_PATH` env search, `-L`/`-l` flag resolution, `sub_462870` search algorithm
+- [Input File Loop](input-loop.md) — Phase 7: file type detection (56-byte header), per-format dispatch, module registration, PTX JIT path
+- [Merge Phase](merge.md) — Phase 9: `merge_elf` (89KB), weak symbol resolution (`sub_45D180`), section/symbol merging, cudadevrt handling
+- [Layout Phase](layout.md) — Phase 10: shared memory overlap analysis (`sub_439830`), entry property computation (`sub_451D80`), constant dedup, section layout
+- [Relocation Phase](relocate.md) — Phase 11: `apply_relocations` (27KB), R_CUDA/R_MERCURY dispatch, UFT/UDT processing, resolved rela emission
+- [Finalization Phase](finalize.md) — Phase 12: `finalize_elf` (56KB), symbol/section reindexing, callgraph build (`sub_44D200`), ELF header finalization
+- [Output Phase](output.md) — Phase 13: ELF serialization (`sub_45BF00`), Mercury capsule write path, dot-file output, register-link-binaries header
 
 ### Input Processing Pages
-- [File Type Detection](../input/file-type-detection.md) -- 56-byte header probe and magic number classification
-- [Cubin Loading](../input/cubin-loading.md) -- cubin validation, arch checking (`sub_426570`), FNLZR pre-link dispatch
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- fatbin container format (`0xBA55ED50` magic), architecture matching, member extraction
-- [PTX Input & JIT](../input/ptx-input.md) -- embedded ptxas compilation path (`sub_4BD760`) for PTX inputs
-- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) -- IR module registration (`sub_427A10`) and LTO prerequisites
-- [Archive Processing](../input/archives.md) -- `.a` archive iteration (`sub_4BDAC0`/`sub_4BDAF0`) and libcudadevrt handling
+- [File Type Detection](../input/file-type-detection.md) — 56-byte header probe and magic number classification
+- [Cubin Loading](../input/cubin-loading.md) — cubin validation, arch checking (`sub_426570`), FNLZR pre-link dispatch
+- [Fatbin Extraction](../input/fatbin-extraction.md) — fatbin container format (`0xBA55ED50` magic), architecture matching, member extraction
+- [PTX Input & JIT](../input/ptx-input.md) — embedded ptxas compilation path (`sub_4BD760`) for PTX inputs
+- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) — IR module registration (`sub_427A10`) and LTO prerequisites
+- [Archive Processing](../input/archives.md) — `.a` archive iteration (`sub_4BDAC0`/`sub_4BDAF0`) and libcudadevrt handling
 
 ### Supporting Subsystems
-- [CLI Flags Reference](../config/cli-flags.md) -- all 68 flags with types, defaults, visibility
-- [Timing Infrastructure](../infra/timing.md) -- CSV timing output format, `sub_45CCD0`/`sub_45CCE0` start/stop, phase tag strings
-- [Error Reporting](../infra/error-reporting.md) -- the five-level diagnostic system (`sub_467460`), descriptor table at `unk_2A5Bxxx`
-- [Memory Arenas](../infra/memory-arenas.md) -- arena-based allocation (`sub_4307C0`) backing the pipeline, thread-safe with per-arena mutexes
-- [LTO Overview](../lto/overview.md) -- Phase 8 LTO sub-pipeline detail: libnvvm integration, split compilation, whole-program vs. partial
-- [Mercury Overview](../mercury/overview.md) -- Mercury/CapMerc processing for sm >= 100, capsule mercury binary format
+- [CLI Flags Reference](../config/cli-flags.md) — all 68 flags with types, defaults, visibility
+- [Timing Infrastructure](../infra/timing.md) — CSV timing output format, `sub_45CCD0`/`sub_45CCE0` start/stop, phase tag strings
+- [Error Reporting](../infra/error-reporting.md) — the five-level diagnostic system (`sub_467460`), descriptor table at `unk_2A5Bxxx`
+- [Memory Arenas](../infra/memory-arenas.md) — arena-based allocation (`sub_4307C0`) backing the pipeline, thread-safe with per-arena mutexes
+- [LTO Overview](../lto/overview.md) — Phase 8 LTO sub-pipeline detail: libnvvm integration, split compilation, whole-program vs. partial
+- [Mercury Overview](../mercury/overview.md) — Mercury/CapMerc processing for sm >= 100, capsule mercury binary format
 
 ### Sibling Wikis
-- **ptxas wiki**: [Pipeline Overview](../../ptxas/pipeline/overview.html) -- standalone ptxas 159-phase compilation pipeline; the same compiler is embedded in nvlink for PTX JIT and LTO assembly
-- **cicc wiki**: [Pipeline Overview](../../cicc/pipeline/overview.html) -- cicc CUDA compiler pipeline; its `libnvvm.so` is loaded via `dlopen` during LTO Phase 8
+- **ptxas wiki**: [Pipeline Overview](../../ptxas/pipeline/overview.html) — standalone ptxas 159-phase compilation pipeline; the same compiler is embedded in nvlink for PTX JIT and LTO assembly
+- **cicc wiki**: [Pipeline Overview](../../cicc/pipeline/overview.html) — cicc CUDA compiler pipeline; its `libnvvm.so` is loaded via `dlopen` during LTO Phase 8
 
 ## Confidence Assessment
 
@@ -869,7 +869,7 @@ For typical workloads (small-to-medium cubin count, no LTO), the `"merge"` timin
 | `main()` at `0x409800`, 57,970 bytes | **HIGH** | `decompiled/main_0x409800.c` exists, 1,936 lines |
 | Phase table function addresses and sizes | **HIGH** | All addresses verified against decompiled files: `sub_432020` (2,161 B), `sub_427AE0` (30,272 B), `sub_4438F0` (14,821 B), `sub_462870` (4,905 B), `sub_42AF40` (11,143 B), `sub_45E7D0` (89,156 B), `sub_439830` (65,776 B), `sub_469D60` (26,578 B), `sub_445000` (55,681 B), `sub_45BF00` (13,258 B) |
 | Decompiled line numbers for each phase | **HIGH** | Cross-verified against `main_0x409800.c`: line 377 (init), 384 (parse), 385 (dispatch), 387-424 (lib resolve), 485 (elfw_create), 595 (input loop), 910 (LTO), 1402 (merge), 1429 (layout), 1432 (relocate), 1436 (finalize), 1454-1482 (Mercury FNLZR), 1448 (write), 1672 (cleanup) |
-| Five largest functions ranking | **HIGH** | `compute_entry_properties` = 97,969 B, `merge_elf` = 89,156 B, `shared_memory_layout` = 65,776 B, `main` = 57,970 B, `finalize_elf` = 55,681 B -- all verified |
+| Five largest functions ranking | **HIGH** | `compute_entry_properties` = 97,969 B, `merge_elf` = 89,156 B, `shared_memory_layout` = 65,776 B, `main` = 57,970 B, `finalize_elf` = 55,681 B — all verified |
 | Mode dispatch: `dword_2A77DC0` values 0/1/2 | **HIGH** | Verified in `main_0x409800.c` line 385: `(dword_2A77DC0 - 1) > 1` dispatches 0 to device-link, 1 and 2 to host-script paths; mode-dispatch.md confirms 0=device, 1=abs, 2=aug |
 | Timing tag strings and emission lines | **HIGH** | All 9 timing tags verified in decompiled source: `"init"` (line 593), `"read"` (1403), `"cicc-lto"` (1100), `"ptxas-lto"` (1286), `"merge"` (1426), `"layout"` (1431), `"relocate"` (1434), `"finalize"` (1440), `"write"` (1671) |
 | Timing functions `sub_45CCD0` / `sub_45CCE0` | **HIGH** | Both files exist in `decompiled/` |

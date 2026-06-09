@@ -587,7 +587,7 @@ Stored at `qword_4F857C0` with flag bits `0x87 | 0x38` = hidden + really-hidden.
 
 | Variable | Purpose | Location |
 |---|---|---|
-| `NVVMCCWIZ` | Wizard mode (value 553282) -- unlocks `-v`, `-keep`, `-dryrun`, `-lgenfe`, `-opt`, `-llc`, `-lnk`, `-libnvvm` | `sub_8F9C90` |
+| `NVVMCCWIZ` | Wizard mode (value 553282) — unlocks `-v`, `-keep`, `-dryrun`, `-lgenfe`, `-opt`, `-llc`, `-lnk`, `-libnvvm` | `sub_8F9C90` |
 | `bar` | Extended debug pass registration | `ctor_107_0` at `0x4A64D0` |
 | `NVVM_IR_VER_CHK` | Override IR version check (set to "0" to disable) | `sub_12BFF60` |
 | `LLVM_OVERRIDE_PRODUCER` | Override bitcode producer string (default `"7.0.1"`) | `ctor_154` at `0x4CE640` |
@@ -633,18 +633,18 @@ These are effective defaults applied by the flag catalog parser (`sub_9624D0`), 
 
 ## Cross-References
 
-- [NVVMPassOptions](nvvm-pass-options.md) -- 221-slot pass option system
-- [CLI Flags](cli-flags.md) -- complete flag-to-pipeline routing
-- [Environment Variables](env-vars.md) -- all verified env vars
-- [Optimization Levels](optimization-levels.md) -- O0/O1/O2/O3 and fast-compile pipelines
-- [Rematerialization](../passes/rematerialization.md) -- multi-pass remat engine
-- [Memory Space Optimization](../passes/memory-space-opt.md) -- address space resolution
-- [Sinking2](../passes/sinking2.md) -- texture-aware sinking
-- [Register Allocation](../llvm/register-allocation.md) -- greedy RA with NVIDIA extensions
-- [Scheduling](../llvm/scheduling.md) -- SMS and MRPA
-- [IPMSP](../passes/ipmsp.md) -- memory space optimization engine
-- [Alias Analysis](../infra/alias-analysis.md) -- restrict propagation
-- [CodeGenPrepare](../llvm/codegen-prepare.md) -- SCEV-CGP pass
-- [Inliner Cost Model](../lto/inliner-cost.md) -- four parallel inliner models
-- [GVN](../llvm/gvn.md) -- GPU-specific value numbering
-- [LSR](../llvm/lsr.md) -- GPU-aware loop strength reduction
+- [NVVMPassOptions](nvvm-pass-options.md) — 221-slot pass option system
+- [CLI Flags](cli-flags.md) — complete flag-to-pipeline routing
+- [Environment Variables](env-vars.md) — all verified env vars
+- [Optimization Levels](optimization-levels.md) — O0/O1/O2/O3 and fast-compile pipelines
+- [Rematerialization](../passes/rematerialization.md) — multi-pass remat engine
+- [Memory Space Optimization](../passes/memory-space-opt.md) — address space resolution
+- [Sinking2](../passes/sinking2.md) — texture-aware sinking
+- [Register Allocation](../llvm/register-allocation.md) — greedy RA with NVIDIA extensions
+- [Scheduling](../llvm/scheduling.md) — SMS and MRPA
+- [IPMSP](../passes/ipmsp.md) — memory space optimization engine
+- [Alias Analysis](../infra/alias-analysis.md) — restrict propagation
+- [CodeGenPrepare](../llvm/codegen-prepare.md) — SCEV-CGP pass
+- [Inliner Cost Model](../lto/inliner-cost.md) — four parallel inliner models
+- [GVN](../llvm/gvn.md) — GPU-specific value numbering
+- [LSR](../llvm/lsr.md) — GPU-aware loop strength reduction

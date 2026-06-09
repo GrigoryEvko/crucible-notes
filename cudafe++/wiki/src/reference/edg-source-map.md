@@ -44,7 +44,7 @@ The 34% mapping rate reflects the fact that only functions containing EDG `inter
 | **Main Body End** | Highest xref address outside the stub region |
 | **Code Size** | `Main Body End - Main Body Start` in bytes; approximate (includes interleaved `.h` inlines and alignment padding) |
 
-## Source File Table -- 52 `.c` Files
+## Source File Table — 52 `.c` Files
 
 Sorted by main body start address. This ordering reflects the binary layout, which is near-alphabetical with two exceptions noted below.
 
@@ -106,7 +106,7 @@ Sorted by main body start address. This ordering reflects the binary layout, whi
 
 [^1]: `nv_transforms.c` has only 1 function with an EDG-style `__FILE__` reference, but sweep analysis confirms ~40 functions in the `0x6BAE70`--`0x6BE4A0` region (~22 KB). Most use NVIDIA's own assertion macros instead of EDG's `internal_error` path.
 
-## Source File Table -- 13 `.h` Header Files
+## Source File Table — 13 `.h` Header Files
 
 Header files appear in assertion strings when an inline function or macro defined in the header triggers an `internal_error` call. The function itself is compiled within the `.c` file's translation unit, but `__FILE__` resolves to the header path. These functions are scattered across the binary, interleaved with the `.c` file that `#include`-d them.
 
@@ -127,25 +127,25 @@ Header files appear in assertion strings when an inline function or macro define
 | 13 | `walk_entry.h` | 51 | 0 | 51 | `0x604170` | `0x618660` | `il_walk.c` |
 | | **TOTALS** | **281** | **17** | **264** | | | |
 
-The stub column sums to 217 across the two tables (200 from `.c` files + 17 from `.h` files). The 198 figure quoted in the narrative counts *distinct* stub functions referencing any source path -- each stub references exactly one file, but 19 stub functions are the target of multiple cross-references (the same stub is reused at multiple assertion call sites that all encode the same source location), inflating column sums above the unique-stub count.
+The stub column sums to 217 across the two tables (200 from `.c` files + 17 from `.h` files). The 198 figure quoted in the narrative counts *distinct* stub functions referencing any source path — each stub references exactly one file, but 19 stub functions are the target of multiple cross-references (the same stub is reused at multiple assertion call sites that all encode the same source location), inflating column sums above the unique-stub count.
 
 ### Header Distribution Patterns
 
 The 13 headers fall into three distinct patterns:
 
-**Localized headers** -- functions cluster in a single `.c` file's address range:
+**Localized headers** — functions cluster in a single `.c` file's address range:
 - `float_type.h` (63 funcs in 52 KB at `0x7D1C90`--`0x7DEB90`, all within `floating.c`)
 - `walk_entry.h` (51 funcs in 90 KB at `0x604170`--`0x618660`, all within `il_walk.c`)
 - `modules.h` (5 funcs in 5 KB at `0x7C1100`--`0x7C2560`, all within `modules.c`)
 - `decls.h`, `lexical.h`, `overload.h`, `symbol_tbl.h` (1--2 funcs each, single site)
 - `mem_manage.h` (4 funcs, single site in `error.c`)
 
-**Moderately scattered headers** -- functions appear in 2--3 `.c` files:
+**Moderately scattered headers** — functions appear in 2--3 `.c` files:
 - `il.h` (5 funcs across `expr.c`, `il.c`, `il_to_str.c`)
 - `scope_stk.h` (4 funcs across `expr.c`, `exprutil.c`)
 - `nv_transforms.h` (3 funcs across `class_decl.c`, `cp_gen_be.c`, `src_seq.c`)
 
-**Pervasive headers** -- functions inlined into most `.c` files:
+**Pervasive headers** — functions inlined into most `.c` files:
 - `util.h` (124 xrefs spanning `0x430E10`--`0x7C2B10`, nearly the entire EDG region)
 - `types.h` (17 funcs spanning `0x469260`--`0x7B05E0`, scattered type queries)
 
@@ -153,7 +153,7 @@ The 13 headers fall into three distinct patterns:
 
 The region `0x403300`--`0x408B40` contains 235 small `__noreturn` functions. Each encodes a single assertion site: the source file path, line number, and enclosing function name. When the assertion condition fails, the stub calls `sub_4F2930` (EDG's `internal_error` handler) and does not return. Every stub is 29 bytes.
 
-Of the 235 stubs, 198 carry a resolvable source-path reference (181 to `.c` files, 17 to `.h` files); the remaining 37 are unattributed -- their `__FILE__` argument is either folded into a shared string or supplied by the caller, and they do not appear as targets in the per-file cross-reference table below.
+Of the 235 stubs, 198 carry a resolvable source-path reference (181 to `.c` files, 17 to `.h` files); the remaining 37 are unattributed — their `__FILE__` argument is either folded into a shared string or supplied by the caller, and they do not appear as targets in the per-file cross-reference table below.
 
 ### Stub Distribution by Source File
 
@@ -192,7 +192,7 @@ Of the 235 stubs, 198 carry a resolvable source-path reference (181 to `.c` file
 
 After the stubs, addresses `0x408B40`--`0x409350` contain 15 C++ static constructor functions (`ctor_001` through `ctor_015`) that initialize global tables at program startup. These have no source file attribution.
 
-## Gap Analysis -- Unmapped Regions
+## Gap Analysis — Unmapped Regions
 
 The following address ranges within the EDG `.text` region contain functions that could not be mapped to any source file via `__FILE__` strings. Each gap represents functions that either lack assertions entirely, use non-EDG assertion macros, or are compiler-generated (vtable thunks, exception handlers, template instantiation artifacts).
 
@@ -220,7 +220,7 @@ The following address ranges within the EDG `.text` region contain functions tha
 | 20 | `0x7DFFF0`--`0x82A000` | 304 KB | post-EDG | C++ runtime, demangler, soft-float, EH |
 | | **Total unmapped** | **~582 KB** | | |
 
-The largest unmapped gap within EDG code proper is the IL display region at `0x5E8300`--`0x5F7FD0` (87 KB). These functions were compiled from `il_to_str.c` but contain no assertions because the display/dump subsystem was built without assertion macros -- it is purely diagnostic code that formats IL trees to stdout.
+The largest unmapped gap within EDG code proper is the IL display region at `0x5E8300`--`0x5F7FD0` (87 KB). These functions were compiled from `il_to_str.c` but contain no assertions because the display/dump subsystem was built without assertion macros — it is purely diagnostic code that formats IL trees to stdout.
 
 ## Alphabetical Layout Observation
 
@@ -233,7 +233,7 @@ Two files break this pattern:
 | `modules.c` | Between `mem_manage.c` and `nv_transforms.c` (#33--#34) | After `types.c` (#51, at `0x7C0C60`) | +47 rows late |
 | `floating.c` | Between `float_pt.c` and `folding.c` (#18--#19) | After `modules.c` (#52, at `0x7D0EB0`) | +34 rows late |
 
-Both files appear after the main alphabetical sequence, placed at the very end of the EDG region. The most likely explanation is that `modules.c` and `floating.c` are compiled as separate translation units outside the main EDG build directory -- perhaps in a subdirectory or a secondary build target -- and are appended to the link line after the alphabetically-sorted main objects. The `modules.c` file implements C++20 module support (mostly stubs in the CUDA build), and `floating.c` implements arbitrary-precision IEEE 754 arithmetic -- both are semi-independent subsystems that could plausibly be compiled separately.
+Both files appear after the main alphabetical sequence, placed at the very end of the EDG region. The most likely explanation is that `modules.c` and `floating.c` are compiled as separate translation units outside the main EDG build directory — perhaps in a subdirectory or a secondary build target — and are appended to the link line after the alphabetically-sorted main objects. The `modules.c` file implements C++20 module support (mostly stubs in the CUDA build), and `floating.c` implements arbitrary-precision IEEE 754 arithmetic — both are semi-independent subsystems that could plausibly be compiled separately.
 
 Note that `floating.c` is followed immediately by its private header `float_type.h` (63 template instantiations at `0x7D1C90`--`0x7DEB90`), confirming they share a compilation unit.
 

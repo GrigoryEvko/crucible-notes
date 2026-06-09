@@ -1,14 +1,14 @@
 # Embedded ptxas: Architecture Overview
 
-> **Note**: This page is the entry point to the nvlink-internal documentation of the ptxas backend statically linked into nvlink v13.0.88. The address map, mega-hub layout, ROT13 details, and `sub_1112F30` per-module compilation driver below are recovered from nvlink's binary -- not from the standalone ptxas binary. For the standalone ptxas reverse-engineering reference (159-phase pipeline, full Ori IR architecture, target catalog), see the [ptxas wiki](../../ptxas/index.html) -- in particular [Pipeline Overview](../../ptxas/pipeline/overview.html), [Codegen Overview](../../ptxas/codegen/overview.html), and [Targets](../../ptxas/targets/index.html).
+> **Note**: This page is the entry point to the nvlink-internal documentation of the ptxas backend statically linked into nvlink v13.0.88. The address map, mega-hub layout, ROT13 details, and `sub_1112F30` per-module compilation driver below are recovered from nvlink's binary — not from the standalone ptxas binary. For the standalone ptxas reverse-engineering reference (159-phase pipeline, full Ori IR architecture, target catalog), see the [ptxas wiki](../../ptxas/index.html) — in particular [Pipeline Overview](../../ptxas/pipeline/overview.html), [Codegen Overview](../../ptxas/codegen/overview.html), and [Targets](../../ptxas/targets/index.html).
 
-The single most important structural fact about nvlink v13.0.88 is that approximately 95% of its 25.2 MB `.text` section is not linker code -- it is a complete, statically embedded copy of the ptxas assembler/compiler backend. The actual device linker (ELF merge, symbol resolution, relocation, layout, output) occupies roughly 1.2 MB in the address range `0x400000`--`0x530000`. Everything from `0x530000` through the end of `.text` at `0x1D32172` (~24 MB, ~38,000 functions) is the ptxas compiler backend: IR primitives, instruction selection, register allocation, instruction scheduling, SASS binary encoding, PTX parsing, and ELF/cubin output generation.
+The single most important structural fact about nvlink v13.0.88 is that approximately 95% of its 25.2 MB `.text` section is not linker code — it is a complete, statically embedded copy of the ptxas assembler/compiler backend. The actual device linker (ELF merge, symbol resolution, relocation, layout, output) occupies roughly 1.2 MB in the address range `0x400000`--`0x530000`. Everything from `0x530000` through the end of `.text` at `0x1D32172` (~24 MB, ~38,000 functions) is the ptxas compiler backend: IR primitives, instruction selection, register allocation, instruction scheduling, SASS binary encoding, PTX parsing, and ELF/cubin output generation.
 
 This page documents the evidence for this claim, the complete address map of the embedded ptxas subsystems, the five mega-hub instruction selector dispatch functions, and the ROT13 obfuscation applied to SASS mnemonics.
 
 ## Evidence for Embedded ptxas
 
-The embedded compiler is not a stripped-down stub -- it is a full-featured PTX-to-SASS compilation pipeline identical in capability to the standalone `ptxas` binary shipped in the CUDA toolkit. Key evidence:
+The embedded compiler is not a stripped-down stub — it is a full-featured PTX-to-SASS compilation pipeline identical in capability to the standalone `ptxas` binary shipped in the CUDA toolkit. Key evidence:
 
 1. **Named memory pools.** The linker creates `"nvlink option parser"` and `"nvlink memory space"` arenas at startup. The embedded compiler creates its own arenas with ptxas-specific names. Memory pool diagnostics at `0x1AEE070` report pool usage statistics (total, freeable, leaked) for the compiler's internal allocations.
 
@@ -35,11 +35,11 @@ The embedded copy supports thread-pool parallelism for split compilation (`sub_4
 
 The following table maps the full address range of the embedded ptxas backend. All addresses are within the `.text` section of nvlink v13.0.88.
 
-### IR Primitives (0x530000 -- 0x620000, ~960 KB)
+### IR Primitives (0x530000 — 0x620000, ~960 KB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
-| `0x530E80`--`0x530FD0` | <1 KB | **IR node accessors** | 22 | `sub_530FB0` has 31,399 callers -- universal `getOperand(idx)` |
+| `0x530E80`--`0x530FD0` | <1 KB | **IR node accessors** | 22 | `sub_530FB0` has 31,399 callers — universal `getOperand(idx)` |
 | `0x530FE0`--`0x5B1AB0` | 523 KB | ISel pattern matchers (SM50-7x) | 1,293 | 152 target opcodes, 36 priority levels |
 | `0x5B1D80`--`0x5E4470` | 204 KB | **MercExpand mega-hub** | 1 | MercExpand dispatch + CFG analysis (too large for Hex-Rays) |
 | `0x5E4470`--`0x600260` | 114 KB | MercExpand engine | ~50 | Bitvector ops, FNV-1a hash maps, register constraint propagation |
@@ -62,9 +62,9 @@ Offset  Size   Field
 
 Number of source operands = `*(off+40) + 1 - *(off+92)`. Number of destination operands = `*(off+92)`.
 
-### ISA Encoding Tables (0x620000 -- 0xA70000, ~4.3 MB)
+### ISA Encoding Tables (0x620000 — 0xA70000, ~4.3 MB)
 
-This is the largest contiguous subsystem -- 4.3 MB of template-instantiated functions defining the complete NVIDIA GPU instruction set encoding and metadata.
+This is the largest contiguous subsystem — 4.3 MB of template-instantiated functions defining the complete NVIDIA GPU instruction set encoding and metadata.
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ The 1,537 SM100+ encoders each translate one instruction variant into a 128-bit 
 
 The 1,613 InstrDesc initializers populate per-instruction metadata: operand count, operand types/constraints, scheduling hints, latency estimates, and execution unit assignments. Combined, the encoder + descriptor tables define the complete NVIDIA GPU ISA from SM50 through SM121.
 
-### Instruction Codecs (0xA70000 -- 0xCA0000, ~2.2 MB)
+### Instruction Codecs (0xA70000 — 0xCA0000, ~2.2 MB)
 
 Multi-architecture instruction encoding and decoding, organized per-SM.
 
@@ -104,7 +104,7 @@ Each encoder packs IR operands into a 128-bit SASS instruction word at `*(a1+40)
 
 Instruction selection is implemented as a linear-scan architecture: for each IR instruction, every pattern matcher is called in sequence, and the match with the highest priority wins. Each backend has its own set of pattern matchers, a mega-hub dispatch function (too large for Hex-Rays), and instruction emitters.
 
-#### SM80 (Ampere) ISel Backend (0xCA0000 -- 0xDA0000, ~1 MB)
+#### SM80 (Ampere) ISel Backend (0xCA0000 — 0xDA0000, ~1 MB)
 
 | Range | Size | Subsystem | Functions |
 |---|---|---|---|
@@ -116,7 +116,7 @@ Instruction selection is implemented as a linear-scan architecture: for each IR 
 
 Three-phase pipeline: (1) pattern match on IR attributes/operand types, (2) operand emission into instruction descriptor, (3) binary encoding into 128-bit SASS word.
 
-#### SM100+ (Blackwell) SASS Codec -- Second Table (0xDA0000 -- 0xF16000, ~1.5 MB)
+#### SM100+ (Blackwell) SASS Codec — Second Table (0xDA0000 — 0xF16000, ~1.5 MB)
 
 | Range | Size | Subsystem | Functions |
 |---|---|---|---|
@@ -127,7 +127,7 @@ Three-phase pipeline: (1) pattern match on IR attributes/operand types, (2) oper
 
 Format 1 instructions: 147. Format 2 (extended with modifiers): 290. Format 3 (special wide): 1. Every encoder has a mirror decoder; the decoder count exceeds encoders because decoders also handle architecture-variant forms.
 
-#### SM75 (Turing) ISel Backend (0xF16000 -- 0x100C000, ~984 KB)
+#### SM75 (Turing) ISel Backend (0xF16000 — 0x100C000, ~984 KB)
 
 | Range | Size | Subsystem | Functions |
 |---|---|---|---|
@@ -139,7 +139,7 @@ Format 1 instructions: 147. Format 2 (extended with modifiers): 290. Format 3 (s
 
 This is the largest single-architecture ISel backend. `sub_FBB810` at 280 KB is the largest function in the binary.
 
-#### SM89/90 (Ada/Hopper) Backend (0x100C000 -- 0x11EA000, ~1.9 MB)
+#### SM89/90 (Ada/Hopper) Backend (0x100C000 — 0x11EA000, ~1.9 MB)
 
 | Range | Size | Subsystem | Functions |
 |---|---|---|---|
@@ -152,7 +152,7 @@ This is the largest single-architecture ISel backend. `sub_FBB810` at 280 KB is 
 | **`0x119BF40`** | **231 KB** | **SM89/90 ISel mega-hub** | **1** |
 | `0x11D4680`--`0x11EA000` | 90 KB | Scheduler + emission | ~16 |
 
-### PTX Frontend (0x11EA000 -- 0x15C0000, ~3.5 MB)
+### PTX Frontend (0x11EA000 — 0x15C0000, ~3.5 MB)
 
 The PTX frontend parses PTX assembly text, validates instructions against SM version constraints, and lowers them to the internal IR consumed by the per-architecture ISel backends.
 
@@ -176,7 +176,7 @@ The PTX frontend parses PTX assembly text, validates instructions against SM ver
 
 The `cuda_builtin_prototype_generator` is the second-largest function in the binary at 345 KB. It maps builtin index numbers to PTX prototype strings of the form `.weak .func (...) __cuda_smXX_foo (...)`. Function families include div, rem, rcp, sqrt, dsqrt, barrier, wmma, shfl, vote, matchsync, warpsync, reduxsync, sanitizer_memcheck, tcgen05, bulk_copy, and cp_async_bulk_tensor.
 
-### Compilation Pipeline (0x15C0000 -- 0x1A00000, ~4.2 MB)
+### Compilation Pipeline (0x15C0000 — 0x1A00000, ~4.2 MB)
 
 This region contains the per-function compilation pipeline from SM dispatch through code generation to backend verification.
 
@@ -201,7 +201,7 @@ This region contains the per-function compilation pipeline from SM dispatch thro
 | `0x1960000`--`0x19E0000` | 512 KB | **Codegen verification** | ~40 | Uninitialized register detection, remat verify |
 | `0x19A0000`--`0x1A00000` | 384 KB | Metrics + scheduling guidance | ~35 | Occupancy estimation, loop analysis, regalloc guidance |
 
-### SASS Emission (0x1A00000 -- 0x1D32172, ~3.2 MB)
+### SASS Emission (0x1A00000 — 0x1D32172, ~3.2 MB)
 
 The final segment of `.text` handles SASS instruction lowering, ABI enforcement, ELF/cubin output, name demangling, and DWARF debug info.
 
@@ -307,7 +307,7 @@ This driver corresponds structurally to the entry/dispatch path in standalone pt
 | 3 | Timing gate | `sub_45CCD0` wall-clock, `sub_44EF30` high-res; flags at `a1+104..107`, `a1+402` | Starts timers if profiling enabled |
 | 4 | Callback registration | `sub_1108860` instr CB, `sub_1101EB0` func CB, `sub_12B30E0`/`sub_12B31D0` PTX version tables | Installs per-IR-node callbacks |
 | 5 | SM version validation | `sscanf` on `.target`; `sub_12A8360` PTX/SM compat | Fatal if module SM > max supported |
-| 6 | Mode flag dispatch | selects `(init_fn, begin_fn)` -- see [Compilation Mode Matrix](#compilation-mode-matrix) | Picks one of four codegen pathways |
+| 6 | Mode flag dispatch | selects `(init_fn, begin_fn)` — see [Compilation Mode Matrix](#compilation-mode-matrix) | Picks one of four codegen pathways |
 | 7 | PTX header emission | `sub_12AF550` inline / `fopen` + `fprintf(.version/.target/.entry __cuda_dummy_entry__ { ret; })` + `sub_12AF200` | Emits dummy entry when none exist |
 | 8 | Tools-patch warnings | conditional on `--compile-as-tools-patch`, `--assyscall` | Warns about allocating textures/surfaces/samplers/constants |
 | 9 | Compilation flags setup | PIC processing; `--fast-compile`/`--extensible-whole-program` disables for ABI-less; `--legacy-bar-warp-wide-behavior` (SM70 only); `--g-tensor-memory-access-check` (SM100+ only) | Resolves flag conflicts |
@@ -337,9 +337,9 @@ For each function in the compile list, Phase 23 (either sequential or thread-poo
 | Sub-stage | Address | Role |
 |---|---|---|
 | `codegen_init` | `sub_110AA30` | Allocate 360-B per-function state; create OCG context; set producer="NVIDIA", tool="ptxocg.0.0"; configure ~30 SM-specific fields; invoke vtable->init to map symbol names |
-| `codegen_per_func` | `sub_1655A60` | Drive the 48-pass codegen pipeline -- see [The 48-Pass Codegen Pipeline](#the-48-pass-codegen-pipeline) |
+| `codegen_per_func` | `sub_1655A60` | Drive the 48-pass codegen pipeline — see [The 48-Pass Codegen Pipeline](#the-48-pass-codegen-pipeline) |
 | `codegen_compile` | `sub_1102B30` | `setjmp`-wrapped vtable->compile call; longjmp + record failure on error |
-| Timing record | -- | `timing_record` writes per-function start/end time |
+| Timing record | — | `timing_record` writes per-function start/end time |
 | `codegen_finalize` | `sub_110D2A0` | Emit ELF section content (.text, .nv.info, .nv.constant); write EIATTR register usage records; write SASS binary; cleanup per-function OCG state |
 
 In parallel mode each worker additionally allocates three local sorted maps (cap 8), copies a 15×16-byte snapshot of driver state into the per-function state, and allocates a 216-B per-function DWARF state via `dwarf_register`. After the barrier, the main thread merges per-thread maps, restores DWARF and pipeline snapshots, and runs `codegen_finalize` sequentially for each function so that register-budget propagation observes a deterministic order.
@@ -417,19 +417,19 @@ Selected by `ctx->thread_count` at `a1+668`. Sequential (count = 0) runs `codege
 ## Cross-References
 
 ### nvlink Internal
-- [IR Nodes](ir-nodes.md) -- IR node structure and universal accessor functions
-- [ISel Hubs](isel-hubs.md) -- the five mega-hub instruction selector dispatch functions
-- [Peephole](peephole.md) -- peephole optimization passes (ORI, scheduling-phase, linker-level)
-- [PTX Parsing](ptx-parsing.md) -- the embedded PTX assembler frontend
-- [Register Allocation](register-allocation.md) -- graph-coloring register allocator with spilling
-- [Scheduling](scheduling.md) -- pre-RA and tepid (post-RA) instruction schedulers
-- [Architecture Dispatch](arch-dispatch.md) -- per-SM vtable dispatch system
-- [Mercury Overview](../mercury/overview.md) -- Mercury ISA encoding pipeline
-- [FNLZR](../mercury/fnlzr.md) -- post-link binary rewriter for Mercury targets
-- [LTO Overview](../lto/overview.md) -- how the LTO pipeline invokes the embedded compiler
+- [IR Nodes](ir-nodes.md) — IR node structure and universal accessor functions
+- [ISel Hubs](isel-hubs.md) — the five mega-hub instruction selector dispatch functions
+- [Peephole](peephole.md) — peephole optimization passes (ORI, scheduling-phase, linker-level)
+- [PTX Parsing](ptx-parsing.md) — the embedded PTX assembler frontend
+- [Register Allocation](register-allocation.md) — graph-coloring register allocator with spilling
+- [Scheduling](scheduling.md) — pre-RA and tepid (post-RA) instruction schedulers
+- [Architecture Dispatch](arch-dispatch.md) — per-SM vtable dispatch system
+- [Mercury Overview](../mercury/overview.md) — Mercury ISA encoding pipeline
+- [FNLZR](../mercury/fnlzr.md) — post-link binary rewriter for Mercury targets
+- [LTO Overview](../lto/overview.md) — how the LTO pipeline invokes the embedded compiler
 
 ### Sibling Wikis
-- [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) -- standalone ptxas 159-phase compilation pipeline
-- [ptxas: Entry Point](../../ptxas/pipeline/entry.html) -- standalone ptxas main() and option parsing
-- [ptxas: Optimizer](../../ptxas/pipeline/optimizer.html) -- standalone ptxas optimization passes
-- [ptxas: Codegen Overview](../../ptxas/codegen/overview.html) -- standalone ptxas code generation
+- [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) — standalone ptxas 159-phase compilation pipeline
+- [ptxas: Entry Point](../../ptxas/pipeline/entry.html) — standalone ptxas main() and option parsing
+- [ptxas: Optimizer](../../ptxas/pipeline/optimizer.html) — standalone ptxas optimization passes
+- [ptxas: Codegen Overview](../../ptxas/codegen/overview.html) — standalone ptxas code generation

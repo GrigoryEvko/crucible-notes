@@ -44,7 +44,7 @@ if (is_mercury) {
 }
 ```
 
-Mercury relocation type codes are stored with a `0x10000` offset in the internal relocation entry's type field. This lets a single code path handle both systems -- the table selection just subtracts the offset for Mercury types.
+Mercury relocation type codes are stored with a `0x10000` offset in the internal relocation entry's type field. This lets a single code path handle both systems — the table selection just subtracts the offset for Mercury types.
 
 ### Relocation Descriptor Table Format
 
@@ -83,7 +83,7 @@ When `flags_hi` (at descriptor offset +28) is in the range 12--15, the relocatio
 
 | Ordinal | Name | Bit Field | Purpose |
 |---|---|---|---|
-| 0 | `R_CUDA_NONE` | -- | Sentinel / no relocation |
+| 0 | `R_CUDA_NONE` | — | Sentinel / no relocation |
 | 1 | `R_CUDA_32` | 32-bit | Absolute 32-bit address |
 | 2 | `R_CUDA_64` | 64-bit | Absolute 64-bit address |
 | 5 | `R_CUDA_ABS32_26` | 32-bit at bit 26 | Absolute address, 26-bit encoding |
@@ -184,7 +184,7 @@ Constant field relocations patch `.nv.constant0.<func>` bank offsets into load c
 | 61 | `R_CUDA_FUNC_DESC32_32` | 32-bit function descriptor at bit 32 |
 | 62 | `R_CUDA_FUNC_DESC32_LO_32` | Low 32 of descriptor at bit 32 |
 | 63 | `R_CUDA_FUNC_DESC32_HI_32` | High 32 of descriptor at bit 32 |
-| 92--99 | `R_CUDA_FUNC_DESC_8_0` -- `R_CUDA_FUNC_DESC_8_56` | Sub-byte function descriptor patches |
+| 92--99 | `R_CUDA_FUNC_DESC_8_0` — `R_CUDA_FUNC_DESC_8_56` | Sub-byte function descriptor patches |
 
 Function descriptors are used for indirect calls through function pointers. The descriptor contains the target function's entry point address and is loaded by the GPU's indirect call mechanism. The sub-byte `FUNC_DESC_8_*` variants patch individual bytes of the descriptor into instruction encoding slots, used in wide instruction formats where the descriptor address is spread across multiple fields. When the relocation creator detects a `flags_hi` value of 12--15 in the descriptor table entry, it calls `sub_1CBD0D0` to register the call edge in the call graph.
 
@@ -228,7 +228,7 @@ Bindless texture/surface relocations are handled by `sub_1CAB300`, which creates
 
 | Ordinal | Name | Purpose |
 |---|---|---|
-| 76--83 | `R_CUDA_8_0` -- `R_CUDA_8_56` | Patch byte 0--7 of 64-bit instruction |
+| 76--83 | `R_CUDA_8_0` — `R_CUDA_8_56` | Patch byte 0--7 of 64-bit instruction |
 
 These relocations patch a single byte at a specific 8-bit-aligned position within a 64-bit instruction word. They are used when the resolved value must be inserted into a non-standard bit position that does not align with the instruction encoding's immediate field boundaries.
 
@@ -263,7 +263,7 @@ The `R_CUDA_UNUSED_CLEAR*` types zero out instruction fields that are unused in 
 |---|---|---|
 | 102 | `R_CUDA_UNIFIED` | Unified address (generic pointer) |
 | 103 | `R_CUDA_UNIFIED_32` | 32-bit unified address |
-| 104--111 | `R_CUDA_UNIFIED_8_0` -- `R_CUDA_UNIFIED_8_56` | Unified address sub-byte patches |
+| 104--111 | `R_CUDA_UNIFIED_8_0` — `R_CUDA_UNIFIED_8_56` | Unified address sub-byte patches |
 | 112 | `R_CUDA_UNIFIED32_LO_32` | Low 32 of unified at bit 32 |
 | 113 | `R_CUDA_UNIFIED32_HI_32` | High 32 of unified at bit 32 |
 
@@ -288,12 +288,12 @@ if (reloc_type == 103)  // R_CUDA_UNIFIED_32
 | Program-relative | `R_MERCURY_PROG_REL64`, `R_MERCURY_PROG_REL32`, `R_MERCURY_PROG_REL32_LO`, `R_MERCURY_PROG_REL32_HI` | Offsets from program base |
 | Tex/samp/surf | `R_MERCURY_TEX_HEADER_INDEX`, `R_MERCURY_SAMP_HEADER_INDEX`, `R_MERCURY_SURF_HEADER_INDEX` | Resource descriptors |
 | Function | `R_MERCURY_FUNC_DESC_64` | Function descriptor |
-| Sub-byte | `R_MERCURY_8_0` -- `R_MERCURY_8_56` (8 types) | Byte-level patches |
-| Global sub-byte | `R_MERCURY_G8_0` -- `R_MERCURY_G8_56` (8 types) | Global-space byte patches |
-| Func desc sub-byte | `R_MERCURY_FUNC_DESC_8_0` -- `R_MERCURY_FUNC_DESC_8_56` (8 types) | Function descriptor byte patches |
+| Sub-byte | `R_MERCURY_8_0` — `R_MERCURY_8_56` (8 types) | Byte-level patches |
+| Global sub-byte | `R_MERCURY_G8_0` — `R_MERCURY_G8_56` (8 types) | Global-space byte patches |
+| Func desc sub-byte | `R_MERCURY_FUNC_DESC_8_0` — `R_MERCURY_FUNC_DESC_8_56` (8 types) | Function descriptor byte patches |
 | Abs-program-relative | `R_MERCURY_ABS_PROG_REL32_LO`, `R_MERCURY_ABS_PROG_REL32_HI`, `R_MERCURY_ABS_PROG_REL32`, `R_MERCURY_ABS_PROG_REL64` | Absolute program-relative |
-| Program-relative sub-byte | `R_MERCURY_PROG_REL8_0` -- `R_MERCURY_PROG_REL8_56` (8 types) | Program-relative byte patches |
-| Unified | `R_MERCURY_UNIFIED`, `R_MERCURY_UNIFIED_32`, `R_MERCURY_UNIFIED_8_0` -- `R_MERCURY_UNIFIED_8_56`, `R_MERCURY_UNIFIED32_LO`, `R_MERCURY_UNIFIED32_HI` | Unified address space |
+| Program-relative sub-byte | `R_MERCURY_PROG_REL8_0` — `R_MERCURY_PROG_REL8_56` (8 types) | Program-relative byte patches |
+| Unified | `R_MERCURY_UNIFIED`, `R_MERCURY_UNIFIED_32`, `R_MERCURY_UNIFIED_8_0` — `R_MERCURY_UNIFIED_8_56`, `R_MERCURY_UNIFIED32_LO`, `R_MERCURY_UNIFIED32_HI` | Unified address space |
 | Cleanup | `R_MERCURY_UNUSED_CLEAR64` | Zero out unused fields |
 | Sentinels | `R_MERCURY_NONE`, `R_MERCURY_NONE_LAST` | Table boundaries |
 
@@ -426,18 +426,18 @@ The binding byte at `st_other & 3` (low 2 bits of the high nibble) maps to:
 | 2 | `STB_GLOBAL` | Normal resolution |
 | 3 | `STB_WEAK` | Resolve if available, otherwise use default |
 
-### Symbol Table Builder -- `sub_1CB68D0`
+### Symbol Table Builder — `sub_1CB68D0`
 
 The symbol table builder (9,578 bytes, approximately 1,700 decompiled lines) processes the ELFW internal symbol list in these steps:
 
-1. **Iterate symbols** -- walks the symbol list from the ELFW object
-2. **Filter deleted symbols** -- 12 separate checks for `"reference to deleted symbol"` guard against stale entries from dead code elimination
-3. **Handle `__cuda_syscall`** -- special-cases the device-side syscall dispatcher symbol
-4. **Resolve aliases** -- follows alias chains to find the canonical symbol
-5. **Compute values** -- resolves `st_value` from section base + offset
-6. **Create section symbols** -- ensures every section has an `STT_SECTION` symbol; emits `"found multiple section symbols for %s"` if duplicates exist
-7. **Handle SHN_XINDEX overflow** -- when section index >= `SHN_LORESERVE` (0xFF00 = 65,280), sets `st_shndx = SHN_XINDEX` (0xFFFF) and stores the real index in `.symtab_shndx`
-8. **Build .symtab_shndx** -- populates the extended index table for overflow sections
+1. **Iterate symbols** — walks the symbol list from the ELFW object
+2. **Filter deleted symbols** — 12 separate checks for `"reference to deleted symbol"` guard against stale entries from dead code elimination
+3. **Handle `__cuda_syscall`** — special-cases the device-side syscall dispatcher symbol
+4. **Resolve aliases** — follows alias chains to find the canonical symbol
+5. **Compute values** — resolves `st_value` from section base + offset
+6. **Create section symbols** — ensures every section has an `STT_SECTION` symbol; emits `"found multiple section symbols for %s"` if duplicates exist
+7. **Handle SHN_XINDEX overflow** — when section index >= `SHN_LORESERVE` (0xFF00 = 65,280), sets `st_shndx = SHN_XINDEX` (0xFFFF) and stores the real index in `.symtab_shndx`
+8. **Build .symtab_shndx** — populates the extended index table for overflow sections
 
 Error strings observed in the builder:
 
@@ -453,7 +453,7 @@ Error strings observed in the builder:
 | `"unallocated symbol"` | Symbol value is -1 (never assigned an address) |
 | `"missing sec strtab"` | String table not initialized |
 
-### Symbol Fixup -- `sub_1CB2CA0`
+### Symbol Fixup — `sub_1CB2CA0`
 
 After dead code elimination removes sections, symbol indices become stale. The fixup pass (2,038 bytes, called from 4 sites) renumbers all symbol `st_shndx` values:
 
@@ -464,7 +464,7 @@ After dead code elimination removes sections, symbol indices become stale. The f
 
 The fixup runs at multiple pipeline points: after dead function elimination, after Mercury section cloning, and after any section deletion.
 
-### Section Index Remap -- `sub_1C99BB0`
+### Section Index Remap — `sub_1C99BB0`
 
 The companion to `sub_1CB2CA0` for the extended index mechanism. When section indices change, this function updates both `.symtab_shndx` and `.nv.merc.symtab_shndx` to keep the extended index tables consistent.
 
@@ -641,18 +641,18 @@ struct uft_entry {
 };  // 24 bytes per entry
 ```
 
-### UFT Manager -- `sub_1CD22E0`
+### UFT Manager — `sub_1CD22E0`
 
 The UFT manager (1,979 bytes, 10 KB decompiled) processes UFT/UDT entries across all compilation units:
 
-1. **Build UID-to-key map** -- hashes `uuid_lo ^ uuid_hi` as the lookup key
-2. **Detect conflicts** -- reports `"uft map conflict: 0x%llx"` when two entries hash to the same key
-3. **Detect duplicates** -- reports `"duplicate ids in uft.entry"` when identical UUIDs appear
-4. **Reorder entries** -- `"Re-ordering UFT entries"` / `"Re-ordering UDT entries"` sorts entries for deterministic output
-5. **Match UUIDs** -- cross-references UUIDs against the existing UFT for linking: `"matching uuid not found"` if a referenced UUID does not exist
-6. **Align UDT** -- `"udt size %lld needs aligning"` pads UDT entries to required alignment
+1. **Build UID-to-key map** — hashes `uuid_lo ^ uuid_hi` as the lookup key
+2. **Detect conflicts** — reports `"uft map conflict: 0x%llx"` when two entries hash to the same key
+3. **Detect duplicates** — reports `"duplicate ids in uft.entry"` when identical UUIDs appear
+4. **Reorder entries** — `"Re-ordering UFT entries"` / `"Re-ordering UDT entries"` sorts entries for deterministic output
+5. **Match UUIDs** — cross-references UUIDs against the existing UFT for linking: `"matching uuid not found"` if a referenced UUID does not exist
+6. **Align UDT** — `"udt size %lld needs aligning"` pads UDT entries to required alignment
 
-### UFT Slot Validator -- `sub_1CD2AA0`
+### UFT Slot Validator — `sub_1CD2AA0`
 
 Validates consistency between `.nv.uft` (jump slots) and `.nv.uft.entry` (metadata):
 
@@ -726,7 +726,7 @@ In the default mode, ptxas resolves all internal relocations and writes `.nv.res
 
 Position-independent code mode (`IsPIC` flag) changes the relocation encoding. The ELF flags word at ELFW offset +48 encodes this mode. PIC cubins use additional program-relative relocations and avoid absolute addresses where possible.
 
-## CDP Runtime Symbol Table -- `off_2403A60`
+## CDP Runtime Symbol Table — `off_2403A60`
 
 The reference to "CUDA Dynamic Parallelism" (CDP, also spelled "cnp" internally for *CUDA Nested Parallelism*) is preserved as a static 34-entry pointer array at virtual address `0x2403A60` in the `.rodata` segment. Each entry is an 8-byte little-endian pointer to a NUL-terminated symbol name elsewhere in `.rodata`. The array is bracketed by an 8-byte NUL gap at `0x2403A58` and terminated at `0x2403B70` by zero padding followed by the unrelated string `" ERROR "`. When ptxas emits a cubin that calls into the device runtime, these are the symbol names it writes into the `.symtab` as `STB_GLOBAL`/`STT_NOTYPE` undefined references for the CUDA driver's runtime linker to resolve against `libcudadevrt`.
 
@@ -745,42 +745,42 @@ Entries 0--4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever 
 | 8  | `0x2403AA0` | `0x21F4FBC` | `cnpCtxSynchronize` | wait on all children |
 | 9  | `0x2403AA8` | `0x21F4FCE` | `cnpFuncGetAttribute` | query kernel attrs |
 | 10 | `0x2403AB0` | `0x21F4FE2` | `cnpStreamCreate` | device-side stream |
-| 11 | `0x2403AB8` | `0x21F4FF2` | `cnpStreamDestroy` | -- |
-| 12 | `0x2403AC0` | `0x21F5003` | `cnpStreamWaitEvent` | -- |
+| 11 | `0x2403AB8` | `0x21F4FF2` | `cnpStreamDestroy` | — |
+| 12 | `0x2403AC0` | `0x21F5003` | `cnpStreamWaitEvent` | — |
 | 13 | `0x2403AC8` | `0x21F5016` | `cnpEventCreate` | device-side event |
-| 14 | `0x2403AD0` | `0x21F5025` | `cnpEventRecord` | -- |
-| 15 | `0x2403AD8` | `0x21F5034` | `cnpEventDestroy` | -- |
+| 14 | `0x2403AD0` | `0x21F5025` | `cnpEventRecord` | — |
+| 15 | `0x2403AD8` | `0x21F5034` | `cnpEventDestroy` | — |
 | 16 | `0x2403AE0` | `0x21F5044` | `cnpDeviceGetName` | device introspection |
-| 17 | `0x2403AE8` | `0x21F5055` | `cnpDeviceGetAttribute` | -- |
-| 18 | `0x2403AF0` | `0x21F506B` | `cnpGetDeviceCount` | -- |
-| 19 | `0x2403AF8` | `0x21F507D` | `cnpGetDevice` | -- |
+| 17 | `0x2403AE8` | `0x21F5055` | `cnpDeviceGetAttribute` | — |
+| 18 | `0x2403AF0` | `0x21F506B` | `cnpGetDeviceCount` | — |
+| 19 | `0x2403AF8` | `0x21F507D` | `cnpGetDevice` | — |
 | 20 | `0x2403B00` | `0x21F508A` | `cnpGetLastError` | error channel |
-| 21 | `0x2403B08` | `0x21F509A` | `cnpSetLastError` | -- |
-| 22 | `0x2403B10` | `0x21F50AA` | `cnpGetCacheConfig` | -- |
-| 23 | `0x2403B18` | `0x21F50BC` | `cnpGetSharedMemConfig` | -- |
-| 24 | `0x2403B20` | `0x21F50D2` | `cnpGetLimit` | -- |
-| 25 | `0x2403B28` | `0x21F50DE` | `cnpDeviceGetTotalMem` | -- |
+| 21 | `0x2403B08` | `0x21F509A` | `cnpSetLastError` | — |
+| 22 | `0x2403B10` | `0x21F50AA` | `cnpGetCacheConfig` | — |
+| 23 | `0x2403B18` | `0x21F50BC` | `cnpGetSharedMemConfig` | — |
+| 24 | `0x2403B20` | `0x21F50D2` | `cnpGetLimit` | — |
+| 25 | `0x2403B28` | `0x21F50DE` | `cnpDeviceGetTotalMem` | — |
 | 26 | `0x2403B30` | `0x21F50F3` | `cnpGetParameterBufferV2` | CDP v2 ABI |
 | 27 | `0x2403B38` | `0x21F510B` | `cnpLaunchDeviceV2` | child kernel launch (v2) |
 | 28 | `0x2403B40` | `0x21F511D` | `cudaGraphLaunch` | device-side graph launch |
 | 29 | `0x2403B48` | `0x24038C6` | `cudaGraphSetConditional` | graph conditional node |
-| 30 | `0x2403B50` | `0x24038DE` | `cudaGraphKernelNodeSetParam` | -- |
-| 31 | `0x2403B58` | `0x24038FA` | `cudaGraphKernelNodeSetGridDim` | -- |
-| 32 | `0x2403B60` | `0x2403918` | `cudaGraphKernelNodeSetEnabled` | -- |
-| 33 | `0x2403B68` | `0x2403960` | `cudaGraphKernelNodeUpdatesApply` | -- |
-| -- | `0x2403B70` | `0x00000000` | *terminator* | dword zero |
+| 30 | `0x2403B50` | `0x24038DE` | `cudaGraphKernelNodeSetParam` | — |
+| 31 | `0x2403B58` | `0x24038FA` | `cudaGraphKernelNodeSetGridDim` | — |
+| 32 | `0x2403B60` | `0x2403918` | `cudaGraphKernelNodeSetEnabled` | — |
+| 33 | `0x2403B68` | `0x2403960` | `cudaGraphKernelNodeUpdatesApply` | — |
+| — | `0x2403B70` | `0x00000000` | *terminator* | dword zero |
 
-QUIRK: the symbol names use the legacy `cnp` prefix (CUDA Nested Parallelism, the project's original 2011-era codename) rather than the public-facing `cudaDevice*` names exposed in `cuda_device_runtime_api.h`. The driver-side `libcudadevrt` exports both spellings as aliases. Mixing a relocatable object emitted by an older ptxas (which only references `cnp*`) with a newer one (which adds the `cudaGraph*` entries 29--33) therefore still links cleanly, since the alias map covers backwards compatibility -- but the reverse, feeding a `cudaGraph*` reference into a pre-Graphs driver, fails at runtime symbol resolution with `CUDA_ERROR_INVALID_PTX`.
+QUIRK: the symbol names use the legacy `cnp` prefix (CUDA Nested Parallelism, the project's original 2011-era codename) rather than the public-facing `cudaDevice*` names exposed in `cuda_device_runtime_api.h`. The driver-side `libcudadevrt` exports both spellings as aliases. Mixing a relocatable object emitted by an older ptxas (which only references `cnp*`) with a newer one (which adds the `cudaGraph*` entries 29--33) therefore still links cleanly, since the alias map covers backwards compatibility — but the reverse, feeding a `cudaGraph*` reference into a pre-Graphs driver, fails at runtime symbol resolution with `CUDA_ERROR_INVALID_PTX`.
 
-QUIRK: entries 29--33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0--28 (`0x21F4F62` and up). The two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent. The terminator dword is plain `0x00000000`, not a sentinel pointer -- the resolver's loop reads a qword and stops when the low 8 bytes are zero, which means a hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32--63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would. ASLR loads ptxas above 4 GB, so the constraint holds in practice.
+QUIRK: entries 29--33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0--28 (`0x21F4F62` and up). The two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent. The terminator dword is plain `0x00000000`, not a sentinel pointer — the resolver's loop reads a qword and stops when the low 8 bytes are zero, which means a hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32--63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would. ASLR loads ptxas above 4 GB, so the constraint holds in practice.
 
 ## Cross-References
 
-- [Custom ELF Emitter](elf-emitter.md) -- ELFW object, header construction, file serialization
-- [Section Catalog & EIATTR](sections.md) -- complete section type inventory, EIATTR encoding
-- [Debug Information](debug-info.md) -- DWARF section generation
-- [Pipeline Overview](../pipeline/output.md) -- where relocation resolution fits in the 11-phase pipeline
-- [Capsule Mercury](../codegen/capmerc.md) -- Mercury-specific relocation handling
+- [Custom ELF Emitter](elf-emitter.md) — ELFW object, header construction, file serialization
+- [Section Catalog & EIATTR](sections.md) — complete section type inventory, EIATTR encoding
+- [Debug Information](debug-info.md) — DWARF section generation
+- [Pipeline Overview](../pipeline/output.md) — where relocation resolution fits in the 11-phase pipeline
+- [Capsule Mercury](../codegen/capmerc.md) — Mercury-specific relocation handling
 
 ## Function Map
 
@@ -788,18 +788,18 @@ QUIRK: entries 29--33 (`cudaGraph*`) point into a *different* string pool (`0x24
 |---|---|---|---|---|---|
 | `sub_1CD48C0` | 4,184 B | 20 KB | 1 | 17 | Master relocation resolver (7-step algorithm) |
 | `sub_1CD5920` | 1,985 B | 11 KB | 1 | 9 | Relocation writer (.nv.resolvedrela) |
-| `sub_1CD4510` | ~860 B | 4 KB | -- | -- | Relocation creator (SASS) |
-| `sub_1CD46B0` | ~540 B | 4 KB | -- | -- | Relocation creator (Mercury) |
-| `sub_1CD43A0` | ~560 B | 3 KB | -- | -- | Relocation pre-scan (weak/extern) |
+| `sub_1CD4510` | ~860 B | 4 KB | — | — | Relocation creator (SASS) |
+| `sub_1CD46B0` | ~540 B | 4 KB | — | — | Relocation creator (Mercury) |
+| `sub_1CD43A0` | ~560 B | 3 KB | — | — | Relocation pre-scan (weak/extern) |
 | `sub_1CD34E0` | 3,700 B | 17 KB | 1 | 2 | Bit-field patcher (sub_1CD33F0 extract, sub_1CD3330 insert) |
 | `sub_1CD33F0` | ~300 B | 2 KB | 7 | 1 | Extract bits from instruction word |
 | `sub_1CD3330` | ~200 B | 1 KB | 5 | 0 | Insert bits into instruction word |
 | `sub_1CD22E0` | 1,979 B | 10 KB | 2 | 20 | UFT manager (UUID-to-slot mapping) |
-| `sub_1CD2AA0` | ~800 B | 3 KB | -- | -- | UFT slot validator |
+| `sub_1CD2AA0` | ~800 B | 3 KB | — | — | UFT slot validator |
 | `sub_1CB68D0` | 9,578 B | 49 KB | 1 | 36 | Symbol table builder (.symtab) |
 | `sub_1CB2CA0` | 2,038 B | 8 KB | 4 | 11 | Symbol fixup (post-deletion renumbering) |
 | `sub_1C99BB0` | 4,900 B | 25 KB | 1 | 18 | Section index remap (.symtab_shndx) |
-| `sub_1CB64A0` | ~500 B | 2 KB | -- | -- | Symbol resolver (checks .nv.* special names) |
+| `sub_1CB64A0` | ~500 B | 2 KB | — | — | Symbol resolver (checks .nv.* special names) |
 | `sub_1CAB300` | 2,157 B | 12 KB | 1 | 19 | Bindless texture/surface handler |
 | `sub_1CA6890` | 2,286 B | 15 KB | 2 | 11 | Constant bank deduplication |
-| `sub_1CBD0D0` | -- | -- | -- | -- | Call graph edge registration |
+| `sub_1CBD0D0` | — | — | — | — | Call graph edge registration |

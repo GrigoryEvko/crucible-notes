@@ -1,8 +1,8 @@
 # Whole-Program Devirtualization
 
-CICC v13.0 includes LLVM's `WholeProgramDevirtPass` at `sub_2703170` (13,077 bytes), which replaces indirect virtual calls with direct calls using whole-program type information. On GPU this optimization is far more consequential than on CPU: an indirect call in PTX compiles to a `call.uni` through a register, which prevents the backend from inlining the callee, forces all live registers across the call boundary into local memory spills, destroys instruction scheduling freedom, and creates a warp-divergence hazard if threads in the same warp resolve the function pointer to different targets. A single devirtualized call site in a hot kernel loop can therefore improve performance by an order of magnitude -- the direct call enables inlining by the [inliner cost model](./inliner-cost.md), which in turn eliminates `.param`-space marshaling, enables cross-boundary register allocation, and restores the instruction scheduler's ability to interleave memory and arithmetic operations.
+CICC v13.0 includes LLVM's `WholeProgramDevirtPass` at `sub_2703170` (13,077 bytes), which replaces indirect virtual calls with direct calls using whole-program type information. On GPU this optimization is far more consequential than on CPU: an indirect call in PTX compiles to a `call.uni` through a register, which prevents the backend from inlining the callee, forces all live registers across the call boundary into local memory spills, destroys instruction scheduling freedom, and creates a warp-divergence hazard if threads in the same warp resolve the function pointer to different targets. A single devirtualized call site in a hot kernel loop can therefore improve performance by an order of magnitude — the direct call enables inlining by the [inliner cost model](./inliner-cost.md), which in turn eliminates `.param`-space marshaling, enables cross-boundary register allocation, and restores the instruction scheduler's ability to interleave memory and arithmetic operations.
 
-CICC's devirtualization operates in a privileged position: GPU compilation is inherently a closed-world model. Every function that can be called on the device must be visible at link time -- there is no dynamic loading, no shared libraries, and no `dlopen` on GPU. This means the set of possible implementations for any virtual function is fully known, making single-implementation devirtualization almost always profitable and branch funnels rare. The pass runs as a module-level pass (pipeline parser slot 121, registered as `"wholeprogramdevirt"`) during the LTO phase, after the [NVModuleSummary builder](./module-summary.md) has computed type test metadata and before GlobalDCE eliminates dead virtual methods.
+CICC's devirtualization operates in a privileged position: GPU compilation is inherently a closed-world model. Every function that can be called on the device must be visible at link time — there is no dynamic loading, no shared libraries, and no `dlopen` on GPU. This means the set of possible implementations for any virtual function is fully known, making single-implementation devirtualization almost always profitable and branch funnels rare. The pass runs as a module-level pass (pipeline parser slot 121, registered as `"wholeprogramdevirt"`) during the LTO phase, after the [NVModuleSummary builder](./module-summary.md) has computed type test metadata and before GlobalDCE eliminates dead virtual methods.
 
 | | |
 |---|---|
@@ -18,7 +18,7 @@ CICC's devirtualization operates in a privileged position: GPU compilation is in
 
 ## The Closed-World GPU Advantage
 
-Upstream LLVM's WholeProgramDevirt is designed primarily for LTO pipelines where some modules may not be visible (ThinLTO import/export split, shared libraries with hidden visibility). The pass must therefore be conservative: it can only devirtualize when `!type` metadata proves that the vtable set is complete. On GPU, this conservatism is unnecessary. All device code is statically linked into a single fatbinary -- there are no device-side shared libraries, no runtime code loading (the driver JIT compiles PTX, but does not add new device functions), and `__device__` virtual functions cannot escape to host code. The entire class hierarchy is visible.
+Upstream LLVM's WholeProgramDevirt is designed primarily for LTO pipelines where some modules may not be visible (ThinLTO import/export split, shared libraries with hidden visibility). The pass must therefore be conservative: it can only devirtualize when `!type` metadata proves that the vtable set is complete. On GPU, this conservatism is unnecessary. All device code is statically linked into a single fatbinary — there are no device-side shared libraries, no runtime code loading (the driver JIT compiles PTX, but does not add new device functions), and `__device__` virtual functions cannot escape to host code. The entire class hierarchy is visible.
 
 CICC exploits this by running WPD in regular LTO mode (not ThinLTO export/import split), where the pass directly resolves virtual calls against the merged module. The `NVModuleSummary` builder records `type_test` metadata for all device vtables, and the pass consumes this metadata to build a complete picture of every virtual call site and every possible target. In practice, GPU programs rarely have deep polymorphic hierarchies in device code (the hardware penalties discourage it), so most virtual call sites resolve to a single implementation.
 
@@ -34,7 +34,7 @@ The closed-world guarantee on GPU rests on five architectural invariants, each o
 | 4 | **No exceptions on device** | Virtual destructors in exception-handling code create additional vtable entries and `__cxa_throw` unwinding paths that must be considered. | CUDA does not support exceptions in device code. Virtual destructors are simple (no EH cleanup), and the compiler can see every destructor call site. |
 | 5 | **Complete link-time visibility** | ThinLTO's import/export split means some modules may not be available during WPD. The pass must use summary-based resolution with `wholeprogramdevirt-summary-action=import/export`. | CICC uses `wholeprogramdevirt-summary-action=none` (direct resolution on the merged module). All device functions, including those from separate compilation units, are linked by nvlink into a single merged module before the LTO pipeline runs. |
 
-The practical consequence: CICC sets `whole-program-visibility` effectively to true for all device code. The `!vcall_visibility` metadata that upstream uses to distinguish "linkage-unit" from "translation-unit" scope becomes irrelevant -- every device vtable is within a single, complete, closed translation unit.
+The practical consequence: CICC sets `whole-program-visibility` effectively to true for all device code. The `!vcall_visibility` metadata that upstream uses to distinguish "linkage-unit" from "translation-unit" scope becomes irrelevant — every device vtable is within a single, complete, closed translation unit.
 
 ### How NVModuleSummary Feeds WPD
 
@@ -314,7 +314,7 @@ if (existing != 0) goto already_resolved;     // skip if previously resolved
 
 ### Phase 6: Strategy Application (`0x2703BA3`--`0x27046F0`)
 
-#### Strategy 1 -- Direct Call Replacement (`0x27044DA`)
+#### Strategy 1 — Direct Call Replacement (`0x27044DA`)
 
 When only one class implements the virtual function (the common case on GPU), the indirect call is replaced with a direct call to the resolved function. This is handled by `sub_26F9AB0` (rewriteCallToDirectCall):
 
@@ -343,7 +343,7 @@ call.uni       _ZN7DerivedN4workEv, (%args);  // direct call -- inlinable
 
 The direct call then becomes an inlining candidate with CICC's 20,000-unit budget (89x the upstream LLVM default of 225), and the inliner typically eliminates it entirely, producing fully-inlined code with no call overhead.
 
-#### Strategy 2 -- Unique Member Dispatch (`0x27045C9`)
+#### Strategy 2 — Unique Member Dispatch (`0x27045C9`)
 
 When multiple classes exist but the call can be dispatched through a unique member offset, the pass rewrites via `sub_26F9080` (rewriteToUniqueMember), passing the diagnostic string `"unique_member"` (13 chars). The member offset is read from `hash_entry[+0x60]` and the base type from `hash_entry[+0x00]`.
 
@@ -361,15 +361,15 @@ call sub_26F9080             ; rewriteToUniqueMember
 
 After the initial rewrite, `sub_26FAF90` performs call-site-specific fixup, checking `[rbx+0x40]` to determine if additional adjustment is needed (e.g., adjusting `this` pointer offset for multiple inheritance).
 
-Upstream LLVM's equivalent covers two sub-strategies: **uniform return value optimization** (all implementations return the same constant -- replace the call with that constant) and **unique return value optimization** (for `i1` returns, compare the vptr against the one vtable that returns a different value). Both are folded under the `"unique_member"` label in CICC's implementation.
+Upstream LLVM's equivalent covers two sub-strategies: **uniform return value optimization** (all implementations return the same constant — replace the call with that constant) and **unique return value optimization** (for `i1` returns, compare the vptr against the one vtable that returns a different value). Both are folded under the `"unique_member"` label in CICC's implementation.
 
-#### Strategy 3 -- Branch Funnel (`0x27043B5`)
+#### Strategy 3 — Branch Funnel (`0x27043B5`)
 
-When multiple possible targets exist and cannot be reduced to a single dispatch, the pass creates a branch funnel -- a compact conditional dispatch sequence that checks the vtable pointer and branches to the correct target. This is handled by three functions:
+When multiple possible targets exist and cannot be reduced to a single dispatch, the pass creates a branch funnel — a compact conditional dispatch sequence that checks the vtable pointer and branches to the correct target. This is handled by three functions:
 
-1. `sub_26F78E0` -- create branch funnel metadata (with diagnostic string `"branch_funnel"`, 13 chars)
-2. `sub_BCF480` -- build the conditional dispatch structure
-3. `sub_BA8C10` -- emit the indirect branch sequence
+1. `sub_26F78E0` — create branch funnel metadata (with diagnostic string `"branch_funnel"`, 13 chars)
+2. `sub_BCF480` — build the conditional dispatch structure
+3. `sub_BA8C10` — emit the indirect branch sequence
 
 ```asm
 ; At 0x27043B5:
@@ -460,7 +460,7 @@ If devirtualization fails, the PTX backend must emit a `call.uni` or `call` thro
 1. **No inlining.** The callee is unknown, so the [inliner](./inliner-cost.md) cannot evaluate it.
 2. **Full `.param` marshaling.** Every argument must be written to `.param` space; no copy elision is possible. The call ABI (opcodes 510-513: `CallDirect`, `CallDirectNoProto`, `CallIndirect`, `CallIndirectNoProto`) forces `.param`-space round-tripping.
 3. **Register pressure spike.** All live registers across the call must be spilled to [local memory](../gpu-execution-model.md#memory-hierarchy) (device DRAM, ~400 cycle latency on SM 70-90).
-4. **Scheduling barrier.** The call is a full fence for instruction scheduling -- no operations can be reordered across it.
+4. **Scheduling barrier.** The call is a full fence for instruction scheduling — no operations can be reordered across it.
 5. **Divergence hazard.** If different threads in a warp resolve the pointer to different functions, execution [serializes both paths](../gpu-execution-model.md#divergence). In the worst case (32 different targets), this is a 32x slowdown.
 6. **Occupancy reduction.** The register spills increase per-thread local memory usage, reducing [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) and thus hiding less memory latency.
 
@@ -476,7 +476,7 @@ The `LowerTypeTests` pass (`sub_188C730`, 96,984 bytes at `0x188C730`; also `sub
 | WholeProgramDevirt (`sub_2703170`) | Consumes type metadata, resolves virtual calls | LTO phase, after summary, before GlobalDCE |
 | LowerTypeTests (`sub_188C730`) | Lowers remaining `@llvm.type.test` intrinsics to runtime bit tests | After WPD, if CFI is active |
 
-On GPU, LowerTypeTests is largely dead code -- CUDA does not use Control-Flow Integrity (CFI), and WPD resolves most type tests statically. The sweep at `0x1880000` confirms: "WPD/CFI/LowerTypeTests cluster is also upstream-only; CUDA does not use CFI or type-based devirtualization" in the sense of runtime CFI checks. The type metadata is consumed entirely by WPD's compile-time resolution.
+On GPU, LowerTypeTests is largely dead code — CUDA does not use Control-Flow Integrity (CFI), and WPD resolves most type tests statically. The sweep at `0x1880000` confirms: "WPD/CFI/LowerTypeTests cluster is also upstream-only; CUDA does not use CFI or type-based devirtualization" in the sense of runtime CFI checks. The type metadata is consumed entirely by WPD's compile-time resolution.
 
 LowerTypeTests validates its input with: `"Second argument of llvm.type.test must be metadata"` and `"Second argument of llvm.type.test must be a metadata string"`. These error paths are unreachable in normal CUDA compilation but exist because CICC links the full upstream LLVM IPO library.
 
@@ -505,7 +505,7 @@ sub_1049740(diag_handler, &remark);               // publish to handler
 
 The remark is visible via `-Rpass=wholeprogramdevirt` and includes the name of the resolved target function (obtained from the function's name metadata or via `sub_26F69E0` for unnamed functions).
 
-After remark emission, extensive cleanup of small-string-optimized (SSO) `std::string` objects is performed -- each remark component checks if the string buffer was heap-allocated (compare pointer vs stack buffer address) and frees if necessary.
+After remark emission, extensive cleanup of small-string-optimized (SSO) `std::string` objects is performed — each remark component checks if the string buffer was heap-allocated (compare pointer vs stack buffer address) and frees if necessary.
 
 ## Knobs
 
@@ -567,11 +567,11 @@ After remark emission, extensive cleanup of small-string-optimized (SSO) `std::s
 
 ## Cross-References
 
-- **[NVModuleSummary Builder](./module-summary.md)** -- produces the `type_test` metadata consumed by this pass; records devirtualization-relevant type GUIDs in per-function summaries via `sub_D7D4E0`.
-- **[Inliner Cost Model](./inliner-cost.md)** -- devirtualized direct calls become inlining candidates with a 20,000-unit budget; the entire value of devirtualization on GPU depends on the inliner subsequently eliminating the call.
-- **[ThinLTO Function Import](./thinlto-import.md)** -- in ThinLTO mode the pass would operate in export/import phases, but CICC primarily uses regular LTO for device code.
-- **[Pipeline & Ordering](../llvm/pipeline.md)** -- WPD is registered at pipeline parser slot 121 as a module pass; it runs during the LTO phase after summary construction and before GlobalDCE.
-- **[NVPTX Call ABI](../pipeline/irgen-functions.md)** -- describes the `.param`-space calling convention that makes indirect calls so expensive (opcodes 510-513: CallDirect, CallDirectNoProto, CallIndirect, CallIndirectNoProto).
-- **[LazyCallGraph & CGSCC](../infra/lazycallgraph.md)** -- devirtualization converts ref edges to call edges in the call graph, triggering SCC re-computation via `switchInternalEdgeToCall`. The `DevirtSCCRepeatedPass` at `sub_2284BC0` wraps the CGSCC pipeline in a fixed-point loop.
-- **[GPU Execution Model](../gpu-execution-model.md)** -- explains why indirect calls are so expensive on GPU (warp divergence, scheduling barriers, register spilling to local memory).
-- **[Hash Infrastructure](../infra/hash-infrastructure.md)** -- the type test hash table uses the same sentinel-based open-addressing pattern as CICC's universal DenseMap infrastructure.
+- **[NVModuleSummary Builder](./module-summary.md)** — produces the `type_test` metadata consumed by this pass; records devirtualization-relevant type GUIDs in per-function summaries via `sub_D7D4E0`.
+- **[Inliner Cost Model](./inliner-cost.md)** — devirtualized direct calls become inlining candidates with a 20,000-unit budget; the entire value of devirtualization on GPU depends on the inliner subsequently eliminating the call.
+- **[ThinLTO Function Import](./thinlto-import.md)** — in ThinLTO mode the pass would operate in export/import phases, but CICC primarily uses regular LTO for device code.
+- **[Pipeline & Ordering](../llvm/pipeline.md)** — WPD is registered at pipeline parser slot 121 as a module pass; it runs during the LTO phase after summary construction and before GlobalDCE.
+- **[NVPTX Call ABI](../pipeline/irgen-functions.md)** — describes the `.param`-space calling convention that makes indirect calls so expensive (opcodes 510-513: CallDirect, CallDirectNoProto, CallIndirect, CallIndirectNoProto).
+- **[LazyCallGraph & CGSCC](../infra/lazycallgraph.md)** — devirtualization converts ref edges to call edges in the call graph, triggering SCC re-computation via `switchInternalEdgeToCall`. The `DevirtSCCRepeatedPass` at `sub_2284BC0` wraps the CGSCC pipeline in a fixed-point loop.
+- **[GPU Execution Model](../gpu-execution-model.md)** — explains why indirect calls are so expensive on GPU (warp divergence, scheduling barriers, register spilling to local memory).
+- **[Hash Infrastructure](../infra/hash-infrastructure.md)** — the type test hash table uses the same sentinel-based open-addressing pattern as CICC's universal DenseMap infrastructure.

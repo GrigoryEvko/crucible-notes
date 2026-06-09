@@ -1,6 +1,6 @@
 # ELF Writer (elfw)
 
-The ELF writer -- internally called `elfw` -- is nvlink's central data structure for building device ELF binaries. Every cubin the linker produces is constructed inside a 672-byte `elfw` object that contains the raw ELF header bytes, section and symbol management tables, string tables, program header lists, architecture state, and a battery of boolean flags derived from the merge-flags bitmask. The constructor `sub_4438F0` (14,821 bytes at `0x4438F0`) allocates this object, initializes the ELF header in place, creates the mandatory sections (`.shstrtab`, `.strtab`, `.symtab`, `.symtab_shndx`), and wires up the internal data structures. When it is time to emit the final binary, a separate 40-byte polymorphic writer context routes all bytes through one of five backends -- callback, no-op, growable vector, `fwrite` to `FILE*`, or `memcpy` to a pre-allocated buffer.
+The ELF writer — internally called `elfw` — is nvlink's central data structure for building device ELF binaries. Every cubin the linker produces is constructed inside a 672-byte `elfw` object that contains the raw ELF header bytes, section and symbol management tables, string tables, program header lists, architecture state, and a battery of boolean flags derived from the merge-flags bitmask. The constructor `sub_4438F0` (14,821 bytes at `0x4438F0`) allocates this object, initializes the ELF header in place, creates the mandatory sections (`.shstrtab`, `.strtab`, `.symtab`, `.symtab_shndx`), and wires up the internal data structures. When it is time to emit the final binary, a separate 40-byte polymorphic writer context routes all bytes through one of five backends — callback, no-op, growable vector, `fwrite` to `FILE*`, or `memcpy` to a pre-allocated buffer.
 
 This page documents the 672-byte elfw struct layout and the 40-byte writer context at reimplementation depth. For the serialization logic that walks the elfw and emits bytes through the writer, see [ELF Serialization](../elf/serialization.md). For the ELF format semantics (header fields, section types, program headers), see [Device ELF Format](../elf/device-elf-format.md).
 
@@ -10,19 +10,19 @@ This page documents the 672-byte elfw struct layout and the 40-byte writer conte
 |---|---|
 | Struct size | 672 bytes (84 qwords) |
 | Allocation | `sub_4307C0` (arena allocator) from the elfw's own memory arena |
-| Constructor | `sub_4438F0` (`elfw_create`) at `0x4438F0` -- 14,821 bytes, 600 lines |
-| Destructor | `sub_4475B0` (`elfw_destroy`) at `0x4475B0` -- 3,023 bytes, 133 lines |
-| Debug dump | `sub_4478F0` (`elfw_dump_structure`) at `0x4478F0` -- 15,098 bytes, 569 lines |
-| Section copy | `sub_4411F0` (`elfw_copy_section`) at `0x4411F0` -- 12,184 bytes, 482 lines |
-| Add section | `sub_440740` at `0x440740` -- 5,410 bytes |
-| Add section+data | `sub_440BE0` at `0x440BE0` -- 7,034 bytes |
-| Add reloc section | `sub_441AC0` at `0x441AC0` -- 9,523 bytes |
-| Add symbol | `sub_442CA0` at `0x442CA0` -- 7,159 bytes |
-| Merge symbols | `sub_442820` at `0x442820` -- 5,371 bytes |
+| Constructor | `sub_4438F0` (`elfw_create`) at `0x4438F0` — 14,821 bytes, 600 lines |
+| Destructor | `sub_4475B0` (`elfw_destroy`) at `0x4475B0` — 3,023 bytes, 133 lines |
+| Debug dump | `sub_4478F0` (`elfw_dump_structure`) at `0x4478F0` — 15,098 bytes, 569 lines |
+| Section copy | `sub_4411F0` (`elfw_copy_section`) at `0x4411F0` — 12,184 bytes, 482 lines |
+| Add section | `sub_440740` at `0x440740` — 5,410 bytes |
+| Add section+data | `sub_440BE0` at `0x440BE0` — 7,034 bytes |
+| Add reloc section | `sub_441AC0` at `0x441AC0` — 9,523 bytes |
+| Add symbol | `sub_442CA0` at `0x442CA0` — 7,159 bytes |
+| Merge symbols | `sub_442820` at `0x442820` — 5,371 bytes |
 | Writer context size | 40 bytes |
-| Polymorphic writer | `sub_45B6D0` at `0x45B6D0` -- 5 modes |
-| File-mode factory | `sub_45B950` at `0x45B950` -- creates mode 3 writer |
-| Memory-mode factory | `sub_45BA30` at `0x45BA30` -- creates mode 4 writer |
+| Polymorphic writer | `sub_45B6D0` at `0x45B6D0` — 5 modes |
+| File-mode factory | `sub_45B950` at `0x45B950` — creates mode 3 writer |
+| Memory-mode factory | `sub_45BA30` at `0x45BA30` — creates mode 4 writer |
 | Writer destructor | `sub_45B6A0` at `0x45B6A0` |
 
 ## The 672-Byte elfw Struct
@@ -67,7 +67,7 @@ The first bytes overlay the standard ELF header. The constructor writes the magi
 
 The remaining header fields (`e_type`, `e_machine`, `e_version`, `e_entry`, `e_phoff`, `e_shoff`, `e_flags`, `e_ehsize`, `e_phentsize`, `e_phnum`, `e_shentsize`, `e_shnum`, `e_shstrndx`) follow the standard ELF32/ELF64 layout. The constructor sets `e_machine = 190` (`EM_CUDA`), `e_type` from the `elf_type` parameter, and packs `sm_major`/`sm_minor` into `e_flags` using encoding that depends on the OSABI.
 
-For the full header encoding, see [Device ELF Format -- ELF Identification](../elf/device-elf-format.md).
+For the full header encoding, see [Device ELF Format — ELF Identification](../elf/device-elf-format.md).
 
 #### Metadata and Flags (offsets 64--103)
 
@@ -79,7 +79,7 @@ For the full header encoding, see [Device ELF Format -- ELF Identification](../e
 | +76 | 4 | `flags_raw` | `a9` | Full merge_flags value |
 | +80 | 1 | `debug_flag` | `a6` | Whether debug sections should be emitted |
 | +83 | 1 | `has_section_names` | computed | Nonzero when `*((_WORD *)v17 + 42) != 0` (shstrtab section index recorded) |
-| +84 | 1 | `callgraph_enabled` | `a9 & 1` | Base bit 0 of `merge_flags` (`0x40401`). Set on the normal link path and read as the "callgraph built / callgraph operations enabled" gate by `sub_44DB00`, `sub_44C030`, `sub_44CA40`, `sub_44CBC0`. *(Earlier wiki revisions called this `preserve_relocs` -- that label belongs at `+85`.)* |
+| +84 | 1 | `callgraph_enabled` | `a9 & 1` | Base bit 0 of `merge_flags` (`0x40401`). Set on the normal link path and read as the "callgraph built / callgraph operations enabled" gate by `sub_44DB00`, `sub_44C030`, `sub_44CA40`, `sub_44CBC0`. *(Earlier wiki revisions called this `preserve_relocs` — that label belongs at `+85`.)* |
 | +85 | 1 | `preserve_relocs` | `(a9 & 2) != 0` | `--preserve-relocs` (CLI byte `byte_2A5F2CE`, merge_flags bit 1). Gates the secondary `.nv.resolvedrela` emission loop at `elfw+384`. |
 | +86 | 1 | `suppress_debug_info` | `(a9 & 0x200) != 0` | merge_flags bit 9. CLI source is `--suppress-debug-info` (CLI byte `byte_2A5F226`), registered at `sub_427AE0:258` and OR'd into bit 9 by `main_0x409800.c:365-369`. The same byte also drives the "no -g" conflict warning at `sub_427AE0:338`. **Legacy-label note**: the wiki previously labelled this slot `stack_protector` on the assumption that the `--device-stack-protector` CLI option (which exists, at `byte_2A5F1FE` registered at `sub_427AE0:268`) was the bit-9 producer. Direct decomp re-verification confirms `byte_2A5F1FE` is read only by `sub_429BA0:240` and never folded into `merge_flags`; bit 9 reflects debug-info suppression, not stack-protector state. |
 | +87 | 1 | `reserve_null` | `(a9 & 4) != 0` | `--reserve-null-pointer` effective flag (CLI byte `byte_2A5F2CD`, bit 2). |
@@ -91,9 +91,9 @@ For the full header encoding, see [Device ELF Format -- ELF Identification](../e
 | +93 | 1 | `extra_warnings` | `BYTE1(a9) & 1` | merge_flags bit 8 (CLI byte `byte_2A5F289`, extra-warnings flag). |
 | +94 | 1 | `extended_smem_sm_gate` | `(a5 > 0x45) & ((a9 >> 7) & 1)` | Sm-gated bit 7: requires `sm_minor > 0x45` AND merge_flags bit 7. *Distinct* from the `--enable-extended-smem` flag (which actually lives at merge_flags bit 25 / `byte_2A5F1FD` per [cli-options.md](../pipeline/cli-options.md#global-variable-map)); this byte at +94 is a sm-detection gate, not a CLI alias for extended-smem. |
 | +96 | 1 | `host_info_mode` | `(a9 & 0x800) != 0` | merge_flags bit 11: set when `byte_2A5F213` (use-host-info) OR `byte_2A5F212` (ignore-host-info) is true. Byte addresses per [cli-options.md global map](../pipeline/cli-options.md#global-variable-map); `byte_2A5F215`/`byte_2A5F216` are the `dump-callgraph-no-demangle`/`dump-callgraph` pair, not host-info. |
-| +99 | 1 | `std_smem_mode` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12 of `merge_flags`. `a9` bit 12 is sourced from `byte_2A5F210` (`--disable-smem-reservation` per the [cli-options global map](../pipeline/cli-options.md#global-variable-map)); the byte at +99 is therefore the **complement** -- it is 1 when smem reservation is **not** disabled (standard layout) and 0 when `--disable-smem-reservation` is set. Used as a gate by `sub_445000` at line 347 to enable the shared-memory rebasing pass `sub_439640`. *(Earlier wiki revisions attributed this byte to `--enable-extended-smem`; that CLI flag actually feeds bit 25 via `byte_2A5F1FD`.)* |
+| +99 | 1 | `std_smem_mode` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12 of `merge_flags`. `a9` bit 12 is sourced from `byte_2A5F210` (`--disable-smem-reservation` per the [cli-options global map](../pipeline/cli-options.md#global-variable-map)); the byte at +99 is therefore the **complement** — it is 1 when smem reservation is **not** disabled (standard layout) and 0 when `--disable-smem-reservation` is set. Used as a gate by `sub_445000` at line 347 to enable the shared-memory rebasing pass `sub_439640`. *(Earlier wiki revisions attributed this byte to `--enable-extended-smem`; that CLI flag actually feeds bit 25 via `byte_2A5F1FD`.)* |
 | +100 | 1 | `flag_bit13` | `(a9 & 0x2000) != 0` | merge_flags bit 13 (no confirmed CLI source observed in `main`'s bit assembly). |
-| +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Bit 15 of merge_flags, set when `byte_2A5F224` (sm > 72 detector) is true. Used by the constructor as the device-ELF gate: triggers OSABI 0x41, allocates tkinfo/cuinfo note buffers, calls `sub_45AC50` for the arch vtable. *(Note: also overwritten at byte word-offset +202 as `symtab_section_idx`; the BYTE at +101 and the WORD at +202 are separate fields -- WORD index 101 = bytes 202..203.)* |
+| +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Bit 15 of merge_flags, set when `byte_2A5F224` (sm > 72 detector) is true. Used by the constructor as the device-ELF gate: triggers OSABI 0x41, allocates tkinfo/cuinfo note buffers, calls `sub_45AC50` for the arch vtable. *(Note: also overwritten at byte word-offset +202 as `symtab_section_idx`; the BYTE at +101 and the WORD at +202 are separate fields — WORD index 101 = bytes 202..203.)* |
 
 #### Dynamic Array Regions (offsets 108--172)
 
@@ -111,7 +111,7 @@ These are only allocated when `is_device_elf` is true (OSABI 0x41 path). Each is
 | Offset | qword | Description |
 |--------|-------|-------------|
 | +216 | `v17[27]` | Reserved / link pointer, set to 0 |
-| +228 | -- | Reserved, set to 0 |
+| +228 | — | Reserved, set to 0 |
 
 #### Hash Tables (offsets 288--303)
 
@@ -126,17 +126,17 @@ Both are created via `sub_4489C0` with hash/compare functions `sub_44E000` / `su
 
 | Offset | qword | Type | Description |
 |--------|-------|------|-------------|
-| +304 | -- | `uint32` | `.strtab` entry count |
-| +308 | -- | `uint32` | Section-level counter |
-| +312 | -- | `uint32` | `.shstrtab` entry count |
-| +316 | -- | -- | Alignment padding |
+| +304 | — | `uint32` | `.strtab` entry count |
+| +308 | — | `uint32` | Section-level counter |
+| +312 | — | `uint32` | `.shstrtab` entry count |
+| +316 | — | — | Alignment padding |
 | +320 | `v17[40]` | `uint32` | Segment counter, initialized to 1 (`v17[39+1]`) |
-| +328 | -- | `ptr` | `.strtab` string pointer array |
-| +336 | -- | `ptr` | `.shstrtab` string pointer array |
+| +328 | — | `ptr` | `.strtab` string pointer array |
+| +336 | — | `ptr` | `.shstrtab` string pointer array |
 | +344 | `v17[43]` | `ptr` | Positive symbol array (sorted array of symbol records, index >= 0) |
 | +352 | `v17[44]` | `ptr` | Negative symbol array (sorted array of symbol records, index < 0) |
 | +360 | `v17[45]` | `ptr` | Section array (ordered list of all section records) |
-| +368 | -- | `ptr` | Section order index array (int32 indices into `+360`) |
+| +368 | — | `ptr` | Section order index array (int32 indices into `+360`) |
 
 Three sorted arrays at +344, +352, and +360 are created via `sub_464AE0` with element sizes of 64, 64, and 64 bytes respectively. The constructor creates a 104-byte null section record (section index 0, `SHN_UNDEF`) and appends it to the section array at `+360`, and a 48-byte null symbol entry appended to both the positive symbol array at `+344` and the negative symbol array at `+352`. The dispatcher `sub_440590` uses `a2 < 0` to select between +352 (negative indices) and +344 (positive indices).
 
@@ -148,7 +148,7 @@ Three sorted arrays at +344, +352, and +360 are created via `sub_464AE0` with el
 | +384 | `v17[48]` | Symbol table list (part 2) |
 | +392 | `v17[49]` | Symbol table list (part 3) |
 | +408 | `v17[51]` | Relocation list (created with element size 32) |
-| +416 | -- | `uint32` at `v17[104]>>32 bits` -- relocation counter |
+| +416 | — | `uint32` at `v17[104]>>32 bits` — relocation counter |
 | +488 | `v17[61]` | Architecture-specific relocation vtable (from `sub_45AC50` or `sub_459640`) |
 
 The architecture vtable is a 632-byte function pointer table created by `sub_45AC50` (Mercury targets, when `mercury_flag` is true) or `sub_459640` (non-Mercury targets). If neither returns a valid vtable, the constructor calls `fatal_error("couldn't initialize arch state")`.
@@ -179,7 +179,7 @@ These indices are written during construction after the initial sections are cre
 | +552 | `v17[69]` | Ordered list (ptr-keyed, 16-byte elements) |
 | +560 | `v17[70]` | Ordered list (ptr-keyed, 16-byte elements) |
 
-Six ordered lists created via `sub_465020` with hash/compare functions and element size 16. These manage ELF segment assignments -- the six lists correspond to different segment categories (text, data, rodata, bss, etc.) used during the layout phase.
+Six ordered lists created via `sub_465020` with hash/compare functions and element size 16. These manage ELF segment assignments — the six lists correspond to different segment categories (text, data, rodata, bss, etc.) used during the layout phase.
 
 #### Hash Table for Section Resolution (offsets 576--584)
 
@@ -202,8 +202,8 @@ When bit `0x400` of merge_flags is set, the constructor creates a dedicated `"el
 
 | Offset | Description |
 |--------|-------------|
-| +624 | `v17[156>>1]` -- arch class value from `sub_42F8B0()` (returns constant 5) |
-| +664 | `v17[83]` -- end marker, set to 0 |
+| +624 | `v17[156>>1]` — arch class value from `sub_42F8B0()` (returns constant 5) |
+| +664 | `v17[83]` — end marker, set to 0 |
 
 The constructor ends by calling `sub_4504B0(elfw, 0)` which performs additional section setup (populating the well-known section name hash table from the static string list at `off_1D3A9C0`).
 
@@ -277,12 +277,12 @@ int64_t elf_write(elf_writer* w, void* data, size_t len) {
 | 0 | Callback | Opaque context for user function at `+8` | Extensibility hook |
 | 1 | No-op | Unused | Dry-run size computation |
 | 2 | Vector | Growable chunk-list header | Intermediate buffering |
-| 3 | FILE\* | `FILE*` from `fopen` | `sub_45C920` -- final output to disk |
-| 4 | Memcpy | Buffer pointer, advances on each write | `sub_45C950` -- Mercury in-memory output |
+| 3 | FILE\* | `FILE*` from `fopen` | `sub_45C920` — final output to disk |
+| 4 | Memcpy | Buffer pointer, advances on each write | `sub_45C950` — Mercury in-memory output |
 
 ### Factory Functions
 
-**sub_45B950 -- File-Mode Factory (Mode 3)**
+**sub_45B950 — File-Mode Factory (Mode 3)**
 
 Allocates 40 bytes from the elfw's arena, sets `mode = 3`, stores a pointer to libc `rewind()` at offset +16 (for potential stream rewinding), and places the `FILE*` at offset +32. The cleanup function at +24 is NULL because `main()` manages the file descriptor lifetime.
 
@@ -298,7 +298,7 @@ elf_writer* create_file_writer(FILE* file, elfw_t* elfw) {
 }
 ```
 
-**sub_45BA30 -- Memory-Mode Factory (Mode 4)**
+**sub_45BA30 — Memory-Mode Factory (Mode 4)**
 
 Allocates 40 bytes, sets `mode = 4`, and stores the buffer pointer at offset +32. Both `rewind_fn` and `cleanup_fn` are NULL. The `dest` pointer advances during serialization: each `memcpy` call advances it by `len` bytes, so after serialization completes, `dest` points past the end of the buffer.
 
@@ -346,7 +346,7 @@ struct vec_header {
 };
 ```
 
-Each chunk linked through the chain is held by a separate 16-byte wrapper allocated by `sub_464460` -- `{next at +0, chunk_t* at +8}`. The wrapper's `+0` is the singly-linked-list link; the wrapper's `+8` is the pointer to the 24-byte chunk header. The `chain_head` field at vec_header `+16` is the head of this wrapper list, *not* a field embedded inside any chunk. The `tail_cursor` at `+24` is the standard self-referencing-tail trick: at init it points at the head slot itself (`result + 2`, i.e. vec_header+16), so the first append's `*tail_cursor = new_wrapper` writes the new wrapper pointer directly into the head field; subsequent appends advance `tail_cursor` to the new wrapper, so the next write lands in that wrapper's next-field at offset +0.
+Each chunk linked through the chain is held by a separate 16-byte wrapper allocated by `sub_464460` — `{next at +0, chunk_t* at +8}`. The wrapper's `+0` is the singly-linked-list link; the wrapper's `+8` is the pointer to the 24-byte chunk header. The `chain_head` field at vec_header `+16` is the head of this wrapper list, *not* a field embedded inside any chunk. The `tail_cursor` at `+24` is the standard self-referencing-tail trick: at init it points at the head slot itself (`result + 2`, i.e. vec_header+16), so the first append's `*tail_cursor = new_wrapper` writes the new wrapper pointer directly into the head field; subsequent appends advance `tail_cursor` to the new wrapper, so the next write lands in that wrapper's next-field at offset +0.
 
 Each chunk itself is a 24-byte header:
 
@@ -376,7 +376,7 @@ The serialization pipeline follows a strict three-step pattern at both entry poi
 
 The serialization engine `sub_45BF00` writes the ELF in a strict sequential order through the polymorphic writer:
 
-1. ELF header (52 or 64 bytes -- the raw bytes from the elfw struct)
+1. ELF header (52 or 64 bytes — the raw bytes from the elfw struct)
 2. Null padding byte
 3. `.shstrtab` contents (section name strings)
 4. `.strtab` contents (symbol name strings)
@@ -387,7 +387,7 @@ The serialization engine `sub_45BF00` writes the ELF in a strict sequential orde
 9. Section header table (40 or 64 bytes per entry)
 10. ELF program header table (conditional, via `sub_45BAA0`)
 
-Every single write operation checks the return value against the expected byte count. Any mismatch triggers `sub_467460` with `"writing file"` -- a fatal error that terminates the linker.
+Every single write operation checks the return value against the expected byte count. Any mismatch triggers `sub_467460` with `"writing file"` — a fatal error that terminates the linker.
 
 ## Destructor: sub_4475B0
 
@@ -430,22 +430,22 @@ The `merge_flags` parameter (`a9`) is a 32-bit bitmask that controls the elfw's 
 | 7 | `0x80` | `extended_smem_sm_gate` | +94 | Gate for `sm_minor > 0x45` AND bit 7 (sm-detection gate, *not* the `--enable-extended-smem` CLI option) |
 | 8 | `0x100` | `extra_warnings` | +93 | `--extra-warnings` (`byte_2A5F289`) |
 | 9 | `0x200` | `suppress_debug_info` | +86 | `--suppress-debug-info` (CLI byte `byte_2A5F226`, registered at `sub_427AE0:258`, OR'd into bit 9 at `main_0x409800.c:365-369`). The `--device-stack-protector` CLI option (`byte_2A5F1FE`, `sub_427AE0:268`) is consumed by `sub_429BA0:240` and does **not** feed `merge_flags`. See the +86 row in [Metadata and Flags](#metadata-and-flags-offsets-64103) for the legacy-label note. |
-| 10 | `0x400` | `private_arena` | -- | Creates dedicated "elfw memory space" arena |
+| 10 | `0x400` | `private_arena` | — | Creates dedicated "elfw memory space" arena |
 | 11 | `0x800` | `host_info_mode` | +96 | `--use-host-info` (`byte_2A5F213`) OR `--ignore-host-info` (`byte_2A5F212`) |
 | 12 | `0x1000` | `disable_smem_reservation` (stored inverted at +99) | +99 | `byte+99 = ((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is the `--disable-smem-reservation` option (`byte_2A5F210` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map)); the stored byte is the inverse, asserting standard smem mode. Read by `sub_445000:347` to gate `sub_439640` (shared-memory variable rebasing). *(`--enable-extended-smem` is a different CLI option that maps to `byte_2A5F1FD` and feeds bit 25, not bit 12.)* |
 | 13 | `0x2000` | `flag_bit13` | +100 | No confirmed CLI source observed in `main`'s bit assembly |
 | 14 | `0x4000` | `optimize_data_layout` | +91 | `--optimize-data-layout` (`byte_2A5F2A8`) |
 | 15 | `0x8000` | `is_device_elf` | +101 | Selects OSABI 0x41 path, enables CUDA-specific sections (sm > 72 from `byte_2A5F224`) |
 | 17-18 | `0x60000` | `segment_flags` | +68 | Bits `a9 & 0x70000` stored at offset +68 |
-| 19 | `0x80000` | `mercury_reloc` | -- | Set when mercury_flag or `a9 & 0x180000`; forces relocatable ELF type |
-| 20 | `0x100000` | `mercury_mode` | -- | Mercury mode (`byte_2A5F222`); also forces relocatable path |
-| 25 | `0x2000000` | `enable_extended_smem` | -- | `--enable-extended-smem` (`byte_2A5F1FD`); distinct CLI option from the bit-12 `--disable-smem-reservation` |
+| 19 | `0x80000` | `mercury_reloc` | — | Set when mercury_flag or `a9 & 0x180000`; forces relocatable ELF type |
+| 20 | `0x100000` | `mercury_mode` | — | Mercury mode (`byte_2A5F222`); also forces relocatable path |
+| 25 | `0x2000000` | `enable_extended_smem` | — | `--enable-extended-smem` (`byte_2A5F1FD`); distinct CLI option from the bit-12 `--disable-smem-reservation` |
 
-When `mercury_flag` is true or bits 19-20 are set, the constructor sets the `mercury_reloc` bit (`a9 |= 0x80000`) in the internal flag word at `+76` and routes through the Mercury initialisation path (`sub_45AC50` arch state). `e_type` itself at `+16` is **not** rewritten by these gates -- it remains the value of the `elf_type` parameter passed in by the caller (set in `main` at line 391 from `(byte_2A5F1E8 == 0) + 1`). The Mercury `0xFF00` `e_type` only appears when the caller passes that value explicitly (e.g. intermediate Mercury serialisations); standard nvlink output is `ET_EXEC=2` or `ET_REL=1` regardless of Mercury flags.
+When `mercury_flag` is true or bits 19-20 are set, the constructor sets the `mercury_reloc` bit (`a9 |= 0x80000`) in the internal flag word at `+76` and routes through the Mercury initialisation path (`sub_45AC50` arch state). `e_type` itself at `+16` is **not** rewritten by these gates — it remains the value of the `elf_type` parameter passed in by the caller (set in `main` at line 391 from `(byte_2A5F1E8 == 0) + 1`). The Mercury `0xFF00` `e_type` only appears when the caller passes that value explicitly (e.g. intermediate Mercury serialisations); standard nvlink output is `ET_EXEC=2` or `ET_REL=1` regardless of Mercury flags.
 
 ## Bit 12 / `std_smem_mode`: Consumer-Side Trace
 
-The byte at `elfw+99` (`std_smem_mode`, written as the **inverse** of `merge_flags` bit 12 -- see the [Metadata and Flags](#metadata-and-flags-offsets-64103) row for the producer-side derivation) is read by exactly two downstream sites. Both branches treat `+99 == 1` as "standard smem layout" and `+99 == 0` as "user passed `--disable-smem-reservation` (`byte_2A5F210`), so do not reserve smem". Confidence: HIGH (direct decompile cross-reference).
+The byte at `elfw+99` (`std_smem_mode`, written as the **inverse** of `merge_flags` bit 12 — see the [Metadata and Flags](#metadata-and-flags-offsets-64103) row for the producer-side derivation) is read by exactly two downstream sites. Both branches treat `+99 == 1` as "standard smem layout" and `+99 == 0` as "user passed `--disable-smem-reservation` (`byte_2A5F210`), so do not reserve smem". Confidence: HIGH (direct decompile cross-reference).
 
 ### Reader 1: Shared-Memory Variable Rebasing (`sub_445000:347`)
 
@@ -464,7 +464,7 @@ if ( v3 == 2 )                        // ET_EXEC only
 }
 ```
 
-`sub_439640` walks the linker's symbol list (`a1 + 256`) and rebases every shared-memory symbol's value by the device-side smem segment base produced by an arch-vtable callback at `*(_QWORD *)(a1 + 488) + 584`. The pass exists only for executable device ELFs that are *not* relocatable and where the standard smem layout was requested. When `--disable-smem-reservation` is set, `+99` is 0 and `sub_439640` is skipped -- symbol values remain at their input offsets, which is the behaviour the CLI flag advertises.
+`sub_439640` walks the linker's symbol list (`a1 + 256`) and rebases every shared-memory symbol's value by the device-side smem segment base produced by an arch-vtable callback at `*(_QWORD *)(a1 + 488) + 584`. The pass exists only for executable device ELFs that are *not* relocatable and where the standard smem layout was requested. When `--disable-smem-reservation` is set, `+99` is 0 and `sub_439640` is skipped — symbol values remain at their input offsets, which is the behaviour the CLI flag advertises.
 
 ### Reader 2: OSABI/std_smem Joint Check (`sub_451D80:2709`)
 
@@ -481,18 +481,18 @@ if ( !v37 && v35 == 65 && !*(_BYTE *)(a1 + 99) )        // OSABI=0x41 AND !std_s
 }
 ```
 
-The diagnostic fires only when the linker is producing a device ELF (`v35 == 65`) **and** `--disable-smem-reservation` was passed (`+99 == 0`). The combined `OSABI=0x41 && !std_smem_mode` gate is the only place in the binary where the inverted-bit-12 semantics flips a *diagnostic* path rather than a *layout* path -- it tells the user that a referenced section is unexpected once smem reservation is opted out.
+The diagnostic fires only when the linker is producing a device ELF (`v35 == 65`) **and** `--disable-smem-reservation` was passed (`+99 == 0`). The combined `OSABI=0x41 && !std_smem_mode` gate is the only place in the binary where the inverted-bit-12 semantics flips a *diagnostic* path rather than a *layout* path — it tells the user that a referenced section is unexpected once smem reservation is opted out.
 
 ### Why this matters for the wiki
 
-The producer-side derivation of `+99` (constructor `sub_4438F0_0x4438f0.c:229`) has been documented exhaustively across four audit waves. The consumer side -- the two readers above -- is what actually *gives* bit 12 its meaning; without them, the byte is unobservable. Together with the [Metadata and Flags](#metadata-and-flags-offsets-64103) row and the [Merge-Flags Bitmask Reference](#merge-flags-bitmask-reference) entry, this section closes the producer/consumer loop for bit 12.
+The producer-side derivation of `+99` (constructor `sub_4438F0_0x4438f0.c:229`) has been documented exhaustively across four audit waves. The consumer side — the two readers above — is what actually *gives* bit 12 its meaning; without them, the byte is unobservable. Together with the [Metadata and Flags](#metadata-and-flags-offsets-64103) row and the [Merge-Flags Bitmask Reference](#merge-flags-bitmask-reference) entry, this section closes the producer/consumer loop for bit 12.
 
 ## Function Reference
 
 | Address | Name | Size | Role |
 |---|---|---|---|
-| `0x4438F0` | `elfw_create` | 14,821 bytes | Constructor -- allocates 672-byte struct, initializes all fields |
-| `0x4475B0` | `elfw_destroy` | 3,023 bytes | Destructor -- tears down all sub-structures |
+| `0x4438F0` | `elfw_create` | 14,821 bytes | Constructor — allocates 672-byte struct, initializes all fields |
+| `0x4475B0` | `elfw_destroy` | 3,023 bytes | Destructor — tears down all sub-structures |
 | `0x4478F0` | `elfw_dump_structure` | 15,098 bytes | Debug dump of entire elfw state |
 | `0x4411F0` | `elfw_copy_section` | 12,184 bytes | Deep-copies a section from one elfw to another |
 | `0x440740` | `elfw_add_section` | 5,410 bytes | Adds a new empty section |
@@ -518,23 +518,23 @@ The producer-side derivation of `+99` (constructor `sub_4438F0_0x4438f0.c:229`) 
 
 **Internal (nvlink wiki):**
 
-- [ELF Serialization](../elf/serialization.md) -- The serialization engine (`sub_45BF00`) that walks the elfw struct and emits bytes through the writer
-- [Program Headers](../elf/program-headers.md) -- Program header construction (`sub_45BAA0`) using section classification from the elfw
-- [Device ELF Format](../elf/device-elf-format.md) -- ELF header encoding at elfw offsets 0--63, `e_flags` semantics, and OSABI values
-- [Output Writing](../pipeline/output.md) -- Pipeline dispatch between `write_elf_to_file` (mode 3) and `write_elf_to_memory` (mode 4)
-- [Mercury FNLZR](../mercury/fnlzr.md) -- Mercury path: serialize to memory buffer via `compute_elf_size` + mode 4, then pass to FNLZR
-- [Relocation Engine](../linker/relocation-engine.md) -- Architecture vtable at elfw+488 dispatches relocation application
-- [R\_CUDA Relocations](../linker/r-cuda-relocations.md) -- Non-Mercury relocation vtable created by `sub_459640`
-- [R\_MERCURY Relocations](../mercury/r-mercury-relocations.md) -- Mercury relocation vtable created by `sub_45AC50`
-- [Section Record](section-record.md) -- 104-byte section records stored in the section array at elfw+360
-- [Symbol Record](symbol-record.md) -- Symbol management via the lists at elfw+376/+384/+392
-- [Memory Arenas](../infra/memory-arenas.md) -- Arena allocator (elfw+608/+616) and the `"elfw memory space"` private arena
-- [Hash Tables](../linker/hash-tables.md) -- Symbol name hash table at elfw+288 and section name hash table at elfw+296 providing O(1) lookup
-- [Linker Context](linker-context.md) -- The broader linker state that contains and manages elfw instances
+- [ELF Serialization](../elf/serialization.md) — The serialization engine (`sub_45BF00`) that walks the elfw struct and emits bytes through the writer
+- [Program Headers](../elf/program-headers.md) — Program header construction (`sub_45BAA0`) using section classification from the elfw
+- [Device ELF Format](../elf/device-elf-format.md) — ELF header encoding at elfw offsets 0--63, `e_flags` semantics, and OSABI values
+- [Output Writing](../pipeline/output.md) — Pipeline dispatch between `write_elf_to_file` (mode 3) and `write_elf_to_memory` (mode 4)
+- [Mercury FNLZR](../mercury/fnlzr.md) — Mercury path: serialize to memory buffer via `compute_elf_size` + mode 4, then pass to FNLZR
+- [Relocation Engine](../linker/relocation-engine.md) — Architecture vtable at elfw+488 dispatches relocation application
+- [R\_CUDA Relocations](../linker/r-cuda-relocations.md) — Non-Mercury relocation vtable created by `sub_459640`
+- [R\_MERCURY Relocations](../mercury/r-mercury-relocations.md) — Mercury relocation vtable created by `sub_45AC50`
+- [Section Record](section-record.md) — 104-byte section records stored in the section array at elfw+360
+- [Symbol Record](symbol-record.md) — Symbol management via the lists at elfw+376/+384/+392
+- [Memory Arenas](../infra/memory-arenas.md) — Arena allocator (elfw+608/+616) and the `"elfw memory space"` private arena
+- [Hash Tables](../linker/hash-tables.md) — Symbol name hash table at elfw+288 and section name hash table at elfw+296 providing O(1) lookup
+- [Linker Context](linker-context.md) — The broader linker state that contains and manages elfw instances
 
 **Sibling wikis:**
 
-- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) -- ptxas-side ELF writer for comparison with nvlink's elfw struct and serialization
+- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) — ptxas-side ELF writer for comparison with nvlink's elfw struct and serialization
 
 ## Confidence Assessment
 
@@ -597,7 +597,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | ~~Extended section array at +140 (2000 elements)~~ (labeling error) | LOW | **ERROR in wiki body**: `sub_43E490((__int64)v17 + 140, 2000)` is a second `note header` init with `descsz=24` (for type 2000) and `type=2000`. The 1000 and 2000 values are NVIDIA note TYPE identifiers, not array capacities |
 | 24-byte NVIDIA note headers at +108 and +140 | HIGH | `sub_43E490` source confirms: `*(_DWORD *)a1 = 12`, `strcpy((char*)(a1+12), "NVIDIA Corp")`, `*(_DWORD *)(a1+8) = a2`; only runs in device-ELF branch (`a9 & 0x8000`) |
 | Note at +108 associated with cuinfo | MEDIUM | `sub_433760((__int64)v17, v91, (__int64)v17 + 108, 4u, 32)` on line 539, where `v91` is the cuinfo note index — suggests +108 is cuinfo, not tkinfo as currently labeled |
-| Named section index fields at +504--+514 | LOW | **ERROR in wiki body (offsets 156-167)**: Page currently lists section indices starting at +504. Decompiled code uses WORD indices 31/101/102/103/104/105 -- byte offsets **62, 202, 204, 206, 208, 210** respectively. Wiki body needs correction |
+| Named section index fields at +504--+514 | LOW | **ERROR in wiki body (offsets 156-167)**: Page currently lists section indices starting at +504. Decompiled code uses WORD indices 31/101/102/103/104/105 — byte offsets **62, 202, 204, 206, 208, 210** respectively. Wiki body needs correction |
 | Shstrtab idx at word 31 (byte 62) | HIGH | `*((_WORD *)v17 + 31) = v53` on line 368 after `.shstrtab` creation |
 | Strtab idx at word 101 (byte 202) | HIGH | `*((_WORD *)v17 + 101) = v58` on line 427 after `.strtab` creation |
 | Symtab idx at word 102 (byte 204) | HIGH | `*((_WORD *)v17 + 102) = v63` on line 494 after `.symtab` creation; also read by `sub_441AC0` lines 219/231 as link field |

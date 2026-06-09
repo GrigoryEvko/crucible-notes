@@ -1,8 +1,8 @@
 # Extended Lambda Overview
 
-Extended lambdas are the most complex NVIDIA addition to the EDG frontend. Standard C++ lambdas produce closure classes with host linkage only -- they cannot appear in `__global__` kernel launches or `__device__` function calls because the closure type has no device-side instantiation. The `--extended-lambda` flag (`dword_106BF38`) enables a transformation pipeline that wraps each annotated lambda in a device-visible template struct, making the closure class callable across the host/device boundary.
+Extended lambdas are the most complex NVIDIA addition to the EDG frontend. Standard C++ lambdas produce closure classes with host linkage only — they cannot appear in `__global__` kernel launches or `__device__` function calls because the closure type has no device-side instantiation. The `--extended-lambda` flag (`dword_106BF38`) enables a transformation pipeline that wraps each annotated lambda in a device-visible template struct, making the closure class callable across the host/device boundary.
 
-Two wrapper types exist. `__nv_dl_wrapper_t` handles device-only lambdas (annotated `__device__`). `__nv_hdl_wrapper_t` handles host-device lambdas (annotated `__host__ __device__`). The wrappers are parameterized template structs that store captured variables as typed fields, providing the device compiler with a concrete, instantiatable type for each lambda's captures. The wrapper templates do not exist in any header file -- they are synthesized as raw C++ text and injected into the compilation stream by the backend code generator.
+Two wrapper types exist. `__nv_dl_wrapper_t` handles device-only lambdas (annotated `__device__`). `__nv_hdl_wrapper_t` handles host-device lambdas (annotated `__host__ __device__`). The wrappers are parameterized template structs that store captured variables as typed fields, providing the device compiler with a concrete, instantiatable type for each lambda's captures. The wrapper templates do not exist in any header file — they are synthesized as raw C++ text and injected into the compilation stream by the backend code generator.
 
 ## Key Facts
 
@@ -20,7 +20,7 @@ Two wrapper types exist. `__nv_dl_wrapper_t` handles device-only lambdas (annota
 
 ## End-to-End Flow
 
-The extended lambda system spans the entire cudafe++ pipeline -- from parsing through backend emission. Five major functions form the chain:
+The extended lambda system spans the entire cudafe++ pipeline — from parsing through backend emission. Five major functions form the chain:
 
 ```text
   FRONTEND (class_decl.c)              BACKEND (cp_gen_be.c + nv_transforms.c)
@@ -44,11 +44,11 @@ The extended lambda system spans the entire cudafe++ pipeline -- from parsing th
 
 The frontend entry point for all lambda expressions. Called from the expression parser when it encounters `[`. For extended lambdas, this function performs three critical operations:
 
-1. **Execution space detection** -- Walks up the scope stack looking for `scope_kind == 17` (function body). Reads execution space byte at offset +182: bit 4 = `__device__`, bit 5 = `__host__`. Sets `can_be_host` and `can_be_device` flags.
+1. **Execution space detection** — Walks up the scope stack looking for `scope_kind == 17` (function body). Reads execution space byte at offset +182: bit 4 = `__device__`, bit 5 = `__host__`. Sets `can_be_host` and `can_be_device` flags.
 
-2. **Annotation processing** -- Parses the `__nv_parent` specifier (NVIDIA extension for closure-to-parent linkage) and `__host__`/`__device__` attribute annotations on the lambda expression itself. Sets decision bits at `lambda_info + 25`.
+2. **Annotation processing** — Parses the `__nv_parent` specifier (NVIDIA extension for closure-to-parent linkage) and `__host__`/`__device__` attribute annotations on the lambda expression itself. Sets decision bits at `lambda_info + 25`.
 
-3. **Validation** -- When `dword_106BF38` is set, validates that the lambda's execution space is compatible with its enclosing context. Emits errors 3592-3634 and 3689-3690 for violations. Records the capture count in the appropriate bitmap via `sub_6BCBF0`.
+3. **Validation** — When `dword_106BF38` is set, validates that the lambda's execution space is compatible with its enclosing context. Emits errors 3592-3634 and 3689-3690 for violations. Records the capture count in the appropriate bitmap via `sub_6BCBF0`.
 
 ### Stage 2: Annotation Detection (Decision Bits)
 
@@ -77,7 +77,7 @@ And at `lambda_info + 25` lower bits:
 
 ### Stage 3: Preamble Trigger (`sub_4864F0`, gen_type_decl)
 
-During backend code generation, `sub_47ECC0` (the master source sequence dispatcher) encounters a type declaration whose name matches `__nv_lambda_preheader_injection`. This sentinel type is never used by user code -- it exists solely as a trigger. When matched:
+During backend code generation, `sub_47ECC0` (the master source sequence dispatcher) encounters a type declaration whose name matches `__nv_lambda_preheader_injection`. This sentinel type is never used by user code — it exists solely as a trigger. When matched:
 
 1. The backend emits `#line 1 "nvcc_internal_extended_lambda_implementation"`.
 2. It calls `sub_6BCC20` (`nv_emit_lambda_preamble`) to inject the entire __nv_* template library.
@@ -92,11 +92,11 @@ This is the single point where all CUDA lambda support templates enter the compi
 3. Array capture helpers via `sub_6BC290` (`__nv_lambda_array_wrapper` primary + dimension 2-8 specializations, `__nv_lambda_field_type` primary + array/const-array specializations)
 4. Primary `__nv_dl_wrapper_t` with `static_assert` + zero-capture `__nv_dl_wrapper_t<Tag>` specialization (emitted as a single string literal)
 5. `__nv_dl_trailing_return_tag` definition + its zero-capture wrapper specialization with `__builtin_unreachable()` body (emitted as two consecutive string literals)
-6. **Device bitmap scan** -- iterates `unk_1286980` (1024 bits). For each set bit N > 0, calls `sub_6BB790(N, emit)` to generate two `__nv_dl_wrapper_t` specializations (standard tag + trailing-return tag) for N captures
+6. **Device bitmap scan** — iterates `unk_1286980` (1024 bits). For each set bit N > 0, calls `sub_6BB790(N, emit)` to generate two `__nv_dl_wrapper_t` specializations (standard tag + trailing-return tag) for N captures
 7. `__nv_hdl_helper` class (anonymous namespace, with `fp_copier`, `fp_deleter`, `fp_caller`, `fp_noobject_caller` static members + out-of-line definitions)
 8. Primary `__nv_hdl_wrapper_t` with `static_assert`
-9. **Host-device bitmap scan** -- iterates `unk_1286900` (1024 bits). For each set bit N (including 0), emits four wrapper specializations per N: `sub_6BBB10(0, N)` (non-mutable, HasFuncPtrConv=false), `sub_6BBEE0(0, N)` (mutable, HasFuncPtrConv=false), `sub_6BBB10(1, N)` (non-mutable, HasFuncPtrConv=true), `sub_6BBEE0(1, N)` (mutable, HasFuncPtrConv=true)
-10. `__nv_hdl_helper_trait_outer` with `const` and non-const operator() specializations, plus conditionally (when `dword_126E270` is set for C++17 noexcept-in-type-system) `const noexcept` and non-const `noexcept` specializations -- all inside the same struct, closed by `\n};`
+9. **Host-device bitmap scan** — iterates `unk_1286900` (1024 bits). For each set bit N (including 0), emits four wrapper specializations per N: `sub_6BBB10(0, N)` (non-mutable, HasFuncPtrConv=false), `sub_6BBEE0(0, N)` (mutable, HasFuncPtrConv=false), `sub_6BBB10(1, N)` (non-mutable, HasFuncPtrConv=true), `sub_6BBEE0(1, N)` (mutable, HasFuncPtrConv=true)
+10. `__nv_hdl_helper_trait_outer` with `const` and non-const operator() specializations, plus conditionally (when `dword_126E270` is set for C++17 noexcept-in-type-system) `const noexcept` and non-const `noexcept` specializations — all inside the same struct, closed by `\n};`
 11. `__nv_hdl_create_wrapper_t` factory
 12. Type trait helpers: `__nv_lambda_trait_remove_const`, `__nv_lambda_trait_remove_volatile`, `__nv_lambda_trait_remove_cv` (composed from the first two)
 13. `__nv_extended_device_lambda_trait_helper` + `#define __nv_is_extended_device_lambda_closure_type(X)` (emitted together in one string)
@@ -125,7 +125,7 @@ __nv_hdl_create_wrapper_t<IsMutable, HasFuncPtrConv, Tag, CaptureTypes...>
     ::__nv_hdl_create_wrapper( /* lambda expression */, capture_args... )
 ```
 
-The lambda expression is emitted inline as the first argument (binds to `Lambda &&lam` in the factory). The factory internally calls `std::move(lam)` when heap-allocating. Unlike the device lambda path, the original lambda body is NOT wrapped in `#if 0` -- it must be visible to both host and device compilers.
+The lambda expression is emitted inline as the first argument (binds to `Lambda &&lam` in the factory). The factory internally calls `std::move(lam)` when heap-allocating. Unlike the device lambda path, the original lambda body is NOT wrapped in `#if 0` — it must be visible to both host and device compilers.
 
 **Neither bit set** (plain lambda or `byte[25] & 0x06 == 0x02`):
 
@@ -173,7 +173,7 @@ do {
 } while (limit != 1024);
 ```
 
-Note that bit 0 is never emitted as a specialization -- the zero-capture case is handled by the primary template itself.
+Note that bit 0 is never emitted as a specialization — the zero-capture case is handled by the primary template itself.
 
 ## The __nv_parent Pragma
 
@@ -374,8 +374,8 @@ The preamble injection point is controlled by a sentinel type declaration: when 
 
 ## Related Pages
 
-- [Device Lambda Wrapper](./device-wrapper.md) -- `__nv_dl_wrapper_t` template structure in detail
-- [Host-Device Lambda Wrapper](./host-device-wrapper.md) -- `__nv_hdl_wrapper_t` type-erased design
-- [Capture Handling](./capture-handling.md) -- `__nv_lambda_field_type`, `__nv_lambda_array_wrapper`
-- [Preamble Injection](./preamble-injection.md) -- `sub_6BCC20` emission pipeline step by step
-- [Lambda Restrictions](./restrictions.md) -- 35+ error categories and validation rules
+- [Device Lambda Wrapper](./device-wrapper.md) — `__nv_dl_wrapper_t` template structure in detail
+- [Host-Device Lambda Wrapper](./host-device-wrapper.md) — `__nv_hdl_wrapper_t` type-erased design
+- [Capture Handling](./capture-handling.md) — `__nv_lambda_field_type`, `__nv_lambda_array_wrapper`
+- [Preamble Injection](./preamble-injection.md) — `sub_6BCC20` emission pipeline step by step
+- [Lambda Restrictions](./restrictions.md) — 35+ error categories and validation rules

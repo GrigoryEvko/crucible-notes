@@ -31,7 +31,7 @@ All output to the `.int.c` file passes through a small set of character-level em
 | `sub_467E50` | `0x467E50` | `emit_string` | If `dword_1065818` is set, calls `emit_line_directive` first. Writes each character of the string via `putc`. Increments `dword_106581C` by the string length. |
 | `sub_467EB0` | `0x467EB0` | `emit_line_number` | Emits `#line N "file"` or `# N "file"` (short form when `dword_106C28C` or MSVC EDG-native mode is set). Constructs the directive in a stack buffer starting with `#line `, appends the decimal line number, then the quoted filename via `sub_5B1940`. Sets `dword_1065820` to the target line number. Resets column counters. |
 | `sub_468150` | `0x468150` | `emit_char` | If `dword_1065818` is set, calls `emit_line_directive` first. Writes a single character via `putc`. Increments `dword_106581C` by 1. |
-| `sub_468190` | `0x468190` | `emit_raw_string` | Like `emit_string` but without `strlen` -- walks the string character by character, incrementing `dword_106581C` per character. Calls `emit_line_directive` first if `dword_1065818` is set. |
+| `sub_468190` | `0x468190` | `emit_raw_string` | Like `emit_string` but without `strlen` — walks the string character by character, incrementing `dword_106581C` per character. Calls `emit_line_directive` first if `dword_1065818` is set. |
 | `sub_468270` | `0x468270` | `emit_decimal` | Writes an unsigned integer as decimal digits. Has fast paths for 1-5 digit numbers (manual digit extraction via division by powers of 10). Falls back to `sub_465480` (sprintf-style) for larger numbers. Calls `emit_line_directive` first if needed. |
 | `sub_46BC80` | `0x46BC80` | `emit_line_start` | If the column counter is nonzero, first emits a newline. Increments `dword_1065834` (indent level). Calls `emit_line_directive` if needed. Then writes the string character by character. Used for the first token on a new line (e.g., `#define`, `#ifdef`). |
 
@@ -40,7 +40,7 @@ All output to the `.int.c` file passes through a small set of character-level em
 | Variable | Address | Type | Role |
 |---|---|---|---|
 | `stream` | `0x106583x` | `FILE*` | Output file handle for `.int.c` |
-| `dword_1065834` | `0x1065834` | int | Indent level counter. Incremented by `emit_line_start`, decremented after each directive block. Not used for actual indentation emission -- tracks logical nesting depth for `#line` management. |
+| `dword_1065834` | `0x1065834` | int | Indent level counter. Incremented by `emit_line_start`, decremented after each directive block. Not used for actual indentation emission — tracks logical nesting depth for `#line` management. |
 | `dword_1065820` | `0x1065820` | int | Output line counter. Tracks the current line number in the generated `.int.c` file. Incremented by every `\n` written. |
 | `dword_106581C` | `0x106581C` | int | Output column counter. Tracks the current column position. Reset to 0 after each newline. |
 | `dword_1065830` | `0x1065830` | int | Column counter after last newline (secondary tracking). Reset to 0 with `dword_106581C`. |
@@ -294,7 +294,7 @@ Followed by a self-checking `#if defined` block:
 #endif
 ```
 
-When extended lambda mode IS active, these macros are not emitted -- the frontend's keyword registration has already defined them as built-in type traits recognized by the parser. The empty `#if defined / #endif` block serves as a guard that downstream tools can detect.
+When extended lambda mode IS active, these macros are not emitted — the frontend's keyword registration has already defined them as built-in type traits recognized by the parser. The empty `#if defined / #endif` block serves as a guard that downstream tools can detect.
 
 ## Phase 4: Main Entity Loop
 
@@ -318,7 +318,7 @@ Each source sequence entry has this layout:
 
 ### Dual-Cursor Iteration
 
-The loop uses two cursors -- `qword_1065748` (primary) and `qword_1065740` (alternate) -- to handle pragma interleavings. When the primary cursor encounters a kind-53 entry (a continuation marker), it switches to the alternate cursor. This mechanism handles the case where pragmas are interleaved between parts of a single declaration:
+The loop uses two cursors — `qword_1065748` (primary) and `qword_1065740` (alternate) — to handle pragma interleavings. When the primary cursor encounters a kind-53 entry (a continuation marker), it switches to the alternate cursor. This mechanism handles the case where pragmas are interleaved between parts of a single declaration:
 
 ```c
 for (i = qword_1065748; i != NULL; ) {
@@ -553,7 +553,7 @@ The variable `byte_10656F0` tracks the current linkage specification:
 | 2 | `extern "C"` linkage |
 | 3 | `extern "C++"` linkage |
 
-Set at initialization: `byte_10656F0 = (dword_126EFB4 != 2) + 2` -- this evaluates to 3 (C++) when in CUDA mode (`dword_126EFB4 == 2`), and 2 (C) otherwise. This controls how the backend wraps declarations that need explicit linkage changes.
+Set at initialization: `byte_10656F0 = (dword_126EFB4 != 2) + 2` — this evaluates to 3 (C++) when in CUDA mode (`dword_126EFB4 == 2`), and 2 (C) otherwise. This controls how the backend wraps declarations that need explicit linkage changes.
 
 ## Phase 5: Empty File Guard
 
@@ -570,7 +570,7 @@ The variable `v12` tracks whether `sub_47ECC0` was called at least once (set to 
 
 ## Phase 6: File Trailer
 
-After all entities and the empty-file guard, the function emits a structured trailer. The call to `sub_466C10` performs scope stack unwinding -- it pops any remaining scope entries, restoring entity attributes that were temporarily modified during code generation (specifically, bits in byte `+82` and `+134` of entity nodes).
+After all entities and the empty-file guard, the function emits a structured trailer. The call to `sub_466C10` performs scope stack unwinding — it pops any remaining scope entries, restoring entity attributes that were temporarily modified during code generation (specifically, bits in byte `+82` and `+134` of entity nodes).
 
 ### #line Reset
 
@@ -594,7 +594,7 @@ The anonymous namespace support macro is emitted:
 #define _NV_ANON_NAMESPACE <unique_id>
 ```
 
-The unique identifier is generated by `sub_6BC7E0` (`get_anonymous_namespace_name`), which returns `"_GLOBAL__N_<filename>"` -- a mangled name that ensures anonymous namespace entities from different translation units do not collide in the final linked binary.
+The unique identifier is generated by `sub_6BC7E0` (`get_anonymous_namespace_name`), which returns `"_GLOBAL__N_<filename>"` — a mangled name that ensures anonymous namespace entities from different translation units do not collide in the final linked binary.
 
 This is followed by a guard block:
 
@@ -805,13 +805,13 @@ extern "C" { extern __attribute__((section(".nvHRCE"))) ... }
 
 ## Cross-References
 
-- [Pipeline Overview](./overview.md) -- where stage 7 fits in the full compilation flow
-- [Frontend Wrapup](./fe-wrapup.md) -- stage 6, produces the finalized IL that the backend consumes
-- [.int.c File Format](../output/int-c-format.md) -- detailed structure of the backend output file
-- [Managed Memory Boilerplate](../output/cuda-runtime.md) -- the `__nv_managed_rt` initialization pattern
-- [Host Reference Arrays](../output/host-reference-arrays.md) -- `.nvHRKI`/`.nvHRDE` section format
-- [Module ID](../output/module-id.md) -- CRC32 module identification
-- [Device/Host Separation](../cuda/device-host-separation.md) -- how the backend filters device vs host code
-- [Kernel Stub Generation](../cuda/kernel-stubs.md) -- `__wrapper__device_stub_` pattern in `gen_routine_decl`
-- [Extended Lambda Overview](../lambda/overview.md) -- lambda wrapper generation
-- [Lambda Preamble Injection](../lambda/preamble-injection.md) -- `sub_6BCC20` emission in `gen_template`
+- [Pipeline Overview](./overview.md) — where stage 7 fits in the full compilation flow
+- [Frontend Wrapup](./fe-wrapup.md) — stage 6, produces the finalized IL that the backend consumes
+- [.int.c File Format](../output/int-c-format.md) — detailed structure of the backend output file
+- [Managed Memory Boilerplate](../output/cuda-runtime.md) — the `__nv_managed_rt` initialization pattern
+- [Host Reference Arrays](../output/host-reference-arrays.md) — `.nvHRKI`/`.nvHRDE` section format
+- [Module ID](../output/module-id.md) — CRC32 module identification
+- [Device/Host Separation](../cuda/device-host-separation.md) — how the backend filters device vs host code
+- [Kernel Stub Generation](../cuda/kernel-stubs.md) — `__wrapper__device_stub_` pattern in `gen_routine_decl`
+- [Extended Lambda Overview](../lambda/overview.md) — lambda wrapper generation
+- [Lambda Preamble Injection](../lambda/preamble-injection.md) — `sub_6BCC20` emission in `gen_template`

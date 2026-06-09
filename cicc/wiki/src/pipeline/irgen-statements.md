@@ -2,9 +2,9 @@
 
 The statement code generator converts EDG IL statement nodes into LLVM IR basic blocks and terminators. It is the control flow backbone of NVVM IR generation: every `if`, `while`, `for`, `switch`, `goto`, `return`, and compound block passes through a single recursive dispatcher (`sub_9363D0`) that reads a statement-kind byte and fans out to 17 specialized handlers. Each handler creates named basic blocks following a fixed naming convention, connects them with conditional or unconditional branches, and attaches metadata for branch prediction and loop optimization. Understanding this subsystem means understanding exactly how C/CUDA source-level control flow maps to the LLVM IR that downstream optimization passes will transform.
 
-**Binary coordinates:** Handlers span `0x930000`--`0x948000` (~96 KB). The dispatcher itself is at `0x9363D0`; the most complex handler (the inline-`asm` statement emitter at `sub_932270`, IL kind 18) is ~12 KB and 2,476 instructions -- a duplicate of `sub_1292420` documented in [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen). Try/catch is not in the dispatch table: the EDG frontend strips it before codegen because CUDA device exceptions are disabled by default (`DEFAULT_EXCEPTIONS_ENABLED = 0`), and the NVVM IR verifier (`sub_2C76F10`) rejects `landingpad`, `invoke`, and `resume` instructions outright.
+**Binary coordinates:** Handlers span `0x930000`--`0x948000` (~96 KB). The dispatcher itself is at `0x9363D0`; the most complex handler (the inline-`asm` statement emitter at `sub_932270`, IL kind 18) is ~12 KB and 2,476 instructions — a duplicate of `sub_1292420` documented in [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen). Try/catch is not in the dispatch table: the EDG frontend strips it before codegen because CUDA device exceptions are disabled by default (`DEFAULT_EXCEPTIONS_ENABLED = 0`), and the NVVM IR verifier (`sub_2C76F10`) rejects `landingpad`, `invoke`, and `resume` instructions outright.
 
-## Statement Dispatcher -- `sub_9363D0` (emitStmt)
+## Statement Dispatcher — `sub_9363D0` (emitStmt)
 
 ```c
 void emitStmt(CGModule *cg, StmtNode *stmt);
@@ -14,7 +14,7 @@ The dispatcher is the only entry point for statement lowering. All control flow 
 
 **Entry logic:**
 
-1. If `cg->currentBB` (offset +96) is NULL, create an anonymous unreachable basic block via `createBB("")` and insert it. This is the "dead code after return" safety net -- it ensures the IR builder always has an insertion point, even for unreachable code that follows a `return` or `goto`.
+1. If `cg->currentBB` (offset +96) is NULL, create an anonymous unreachable basic block via `createBB("")` and insert it. This is the "dead code after return" safety net — it ensures the IR builder always has an insertion point, even for unreachable code that follows a `return` or `goto`.
 
 2. Read `stmt->stmtKind` (byte at StmtNode offset +40).
 
@@ -41,7 +41,7 @@ The dispatcher is the only entry point for statement lowering. All control flow 
 | 17 | Variable declaration | `emitDeclStmt` | `sub_9303A0` |
 | 18 | `asm` statement (`__asm__(...)`) | `emitAsmStmt` | `sub_932270` |
 | 20 | Cleanup/destructor scope | `emitCleanupScope` | `sub_931670` |
-| 24 | Null/empty statement | *(return immediately)* | -- |
+| 24 | Null/empty statement | *(return immediately)* | — |
 | 25 | Expression statement (alt) | `emitExprStmt` | `sub_921EA0` |
 
 Kinds 0 and 25 share the same handler. The split likely distinguishes C expression-statements from GNU statement-expressions or a similar EDG internal distinction. Any unrecognized kind triggers `fatal("unsupported statement type")`.
@@ -52,7 +52,7 @@ The IL-18 handler `sub_932270` is the statement-path (Path A) duplicate of the i
 
 ---
 
-## If Statement -- `sub_937020`
+## If Statement — `sub_937020`
 
 Reads from the StmtNode: condition expression at offset +48, then-body at +72, else-body at +80 (may be NULL).
 
@@ -130,19 +130,19 @@ if.end:
 
 | Flag | Source annotation | Weight encoding | Metadata attached |
 |------|------------------|----------------|-------------------|
-| bit 0x10 | `__builtin_expect(x, 1)` -- likely | weightHint = 1 | `!{!"branch_weights", i32 2000, i32 1}` |
-| bit 0x20 | `__builtin_expect(x, 0)` -- unlikely | weightHint = 2 | `!{!"branch_weights", i32 1, i32 2000}` |
+| bit 0x10 | `__builtin_expect(x, 1)` — likely | weightHint = 1 | `!{!"branch_weights", i32 2000, i32 1}` |
+| bit 0x20 | `__builtin_expect(x, 0)` — unlikely | weightHint = 2 | `!{!"branch_weights", i32 1, i32 2000}` |
 | neither | no annotation | weightHint = 0 | *(no metadata)* |
 
 The 2000:1 ratio represents 99.95% prediction confidence. For compound statements (kind 11), the function recurses into the compound's first child statement to find the annotation.
 
-### Constexpr If -- `sub_936F80`
+### Constexpr If — `sub_936F80`
 
 C++17 `if constexpr` is fully resolved during EDG frontend semantic analysis. By the time the codegen sees it, only the taken branch body survives. The handler reads a selection record from offset +72: a bit at +24 determines which of two fields contains the surviving body pointer. If non-null, it creates `constexpr_if.body` and `constexpr_if.end` BBs and emits the body with an unconditional branch to `.end`. If null (dead branch entirely eliminated), no codegen occurs at all.
 
 ---
 
-## While Loop -- `sub_937180`
+## While Loop — `sub_937180`
 
 ```text
     ┌─────────────────────┐
@@ -196,7 +196,7 @@ The backedge branch (`br label %while.cond` from `while.body`) always receives `
 
 ---
 
-## Do-While Loop -- `sub_936B50`
+## Do-While Loop — `sub_936B50`
 
 The key structural difference from `while`: the body executes before the condition. The condition BB follows the body.
 
@@ -249,7 +249,7 @@ The backedge is the conditional branch in `do.cond` (true edge back to `do.body`
 
 ---
 
-## For Loop -- `sub_936D30`
+## For Loop — `sub_936D30`
 
 The most complex loop handler. Reads four components from the StmtNode: init statement at offset +80 field [0], condition at +48, increment expression at +80 field [1], and body at +72. Any of init, condition, and increment may be NULL.
 
@@ -324,7 +324,7 @@ The `for.inc` BB is only created when an increment expression exists. If omitted
 
 ---
 
-## Switch Statement -- `sub_9359B0`
+## Switch Statement — `sub_9359B0`
 
 The largest pure-control-flow handler (~550 decompiled lines; the inline-`asm` handler at `sub_932270` is larger but is not control flow). Uses a three-phase approach with an internal open-addressing hash table.
 
@@ -375,7 +375,7 @@ switch_case.default_target:        ; default
 
 Note that cicc always emits an LLVM `switch` instruction. The decision to lower a switch into a jump table versus sequential comparisons is made later by the SelectionDAG backend (specifically `NVPTXTargetLowering`), not during IR generation. The codegen produces a clean, canonical `switch` and lets the backend optimize the dispatch strategy.
 
-### Case Label -- `sub_935670`
+### Case Label — `sub_935670`
 
 When the recursive statement walk encounters a case label (kind 15), it looks up the parent switch node (asserts `stmtKind == 16`), finds the pre-allocated target BB from the hash table, and calls `insertBB` to make it the current insertion point. Fatal error `"basic block for case statement not found!"` if the hash table lookup fails.
 
@@ -385,7 +385,7 @@ For the default case (identified by a null value at +8), retrieves the last entr
 
 ## Goto and Label Statements
 
-### Goto -- `sub_931270`
+### Goto — `sub_931270`
 
 Reads the target label from `stmt->auxData+128`. Fatal error if null: `"label for goto statement not found!"`.
 
@@ -401,25 +401,25 @@ Two code paths based on cleanup state:
   br label %label_target
 ```
 
-### Label -- `sub_930570`
+### Label — `sub_930570`
 
 Resolves the label to its BB via `sub_946C80` and inserts it as the current basic block via `insertBB`. The BB name comes from the label's symbol name in the EDG IL.
 
 ### Computed Goto (GCC `&&label` Extension)
 
-Computed goto is handled in the expression codegen layer, not the statement dispatcher. Expression kind `0x6F` at `sub_921EA0` calls the block-address emitter (`sub_1285E30(builder, label, 1)`) to produce an LLVM `blockaddress` constant for the `&&label` GCC extension; expression kind `0x71` calls the same emitter with flag `0` (`sub_1285E30(builder, label, 0)`) to produce the `indirectbr` instruction for `goto *p`; expression kind `0x70` (label-as-value, distinct entry point via `sub_12812E0`) materializes the label reference as a typed value. The resulting `indirectbr` instruction is lowered later by `IndirectBrExpandPass` (pipeline parser index 247, `"indirectbr-expand"`) because NVPTX does not natively support indirect branches -- they are expanded into a switch over all possible target labels.
+Computed goto is handled in the expression codegen layer, not the statement dispatcher. Expression kind `0x6F` at `sub_921EA0` calls the block-address emitter (`sub_1285E30(builder, label, 1)`) to produce an LLVM `blockaddress` constant for the `&&label` GCC extension; expression kind `0x71` calls the same emitter with flag `0` (`sub_1285E30(builder, label, 0)`) to produce the `indirectbr` instruction for `goto *p`; expression kind `0x70` (label-as-value, distinct entry point via `sub_12812E0`) materializes the label reference as a typed value. The resulting `indirectbr` instruction is lowered later by `IndirectBrExpandPass` (pipeline parser index 247, `"indirectbr-expand"`) because NVPTX does not natively support indirect branches — they are expanded into a switch over all possible target labels.
 
 ---
 
-## Return Statement -- `sub_9313C0`
+## Return Statement — `sub_9313C0`
 
 Reads the return expression from StmtNode offset +48. Dispatches on CGModule return-type information (offsets +208 and +216):
 
-**Path A -- Aggregate (struct) return:** If the return type is aggregate (`sub_91B770` returns true), emits a memcpy-like sequence into the `sret` pointer via `sub_947E80`. For multi-register returns (offset +216 > 0), uses bit-width analysis (`_BitScanReverse64`) to determine the return bit layout.
+**Path A — Aggregate (struct) return:** If the return type is aggregate (`sub_91B770` returns true), emits a memcpy-like sequence into the `sret` pointer via `sub_947E80`. For multi-register returns (offset +216 > 0), uses bit-width analysis (`_BitScanReverse64`) to determine the return bit layout.
 
-**Path B -- Scalar return:** Evaluates the expression, creates a `ReturnInst` via `sub_B4D3C0`, and may bitcast the value for ABI compliance via `sub_AE5020`.
+**Path B — Scalar return:** Evaluates the expression, creates a `ReturnInst` via `sub_B4D3C0`, and may bitcast the value for ABI compliance via `sub_AE5020`.
 
-**Path C -- Void return with expression:** Evaluates the expression for side effects only (calls `emitExprStmt`), then falls through to emit a void return.
+**Path C — Void return with expression:** Evaluates the expression for side effects only (calls `emitExprStmt`), then falls through to emit a void return.
 
 **Cleanup before return:** If `cg->hasCleanups` (offset +240) is set, calls `sub_9310E0` to compute the set of locals requiring destruction, emits destructor calls in reverse order, resets the cleanup stack, then emits an unconditional branch to the function's unified return block (offset +200).
 
@@ -438,9 +438,9 @@ The unified return block pattern means every `return` in a function branches to 
 
 ---
 
-## Inline `asm` Statement -- `sub_932270`
+## Inline `asm` Statement — `sub_932270`
 
-IL kind 18 routes to `sub_932270` (~12 KB, 2,476 instructions). The dispatcher's sole call site lives in the `case 18:` arm at `0x9363D0+0x...`, and `sub_932270` itself has exactly one caller -- this statement dispatcher. Its body is the 7-phase CUDA `__asm__()` template-to-LLVM `InlineAsm` translator: template scan with `%N` / `%cN` / `%=` / `%[name]` handling, `'C'` constraint string-literal extraction, constraint-class parsing, operand binding, and tied-operand validation. Diagnostic strings include `"symbolic operand reference not supported!"`, `"asm operand index requested is larger than the number of asm operands provided!"`, `"error extracting string literal operand"`, `"error extracting address of constant for 'C' constraint"`, and `"tied input/output operands not supported!"`.
+IL kind 18 routes to `sub_932270` (~12 KB, 2,476 instructions). The dispatcher's sole call site lives in the `case 18:` arm at `0x9363D0+0x...`, and `sub_932270` itself has exactly one caller — this statement dispatcher. Its body is the 7-phase CUDA `__asm__()` template-to-LLVM `InlineAsm` translator: template scan with `%N` / `%cN` / `%=` / `%[name]` handling, `'C'` constraint string-literal extraction, constraint-class parsing, operand binding, and tied-operand validation. Diagnostic strings include `"symbolic operand reference not supported!"`, `"asm operand index requested is larger than the number of asm operands provided!"`, `"error extracting string literal operand"`, `"error extracting address of constant for 'C' constraint"`, and `"tied input/output operands not supported!"`.
 
 This is the **Path A** copy of the inline-asm emitter; a near-identical Path B copy at `sub_1292420` lives in the function-codegen module and is called from `sub_1296350`. Both share the same constraint table and parser structure; they differ only in which diagnostic and value-resolution helpers they invoke. The full 7-phase pipeline (template parsing, template reconstruction, constraint classification, operand binding, `InlineAsm` construction, sideeffects/alignstack flags, call instruction emission) is documented in detail at [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen).
 
@@ -448,7 +448,7 @@ There is no separate try/catch handler in the statement dispatcher: CUDA device 
 
 ---
 
-## Cleanup/Destructor Scope -- `sub_931670`
+## Cleanup/Destructor Scope — `sub_931670`
 
 Handles statement kind 20. Only active when `cg->hasCleanups` (offset +240) is set.
 
@@ -460,11 +460,11 @@ Walks a linked list at StmtNode offset +72. For each entry where the byte at +8 
 4. If the variable is already registered for cleanup (checked via `sub_91CCF0`), adds it to the pending cleanup list and emits an immediate destructor call via `sub_9465D0`.
 5. If not yet registered, just adds it to the pending list for later processing.
 
-This mechanism ensures that C++ automatic variables with non-trivial destructors are properly destroyed when their scope exits -- whether by normal control flow, `goto`, `return`, or exception propagation.
+This mechanism ensures that C++ automatic variables with non-trivial destructors are properly destroyed when their scope exits — whether by normal control flow, `goto`, `return`, or exception propagation.
 
 ---
 
-## Compound Statement -- `sub_9365F0`
+## Compound Statement — `sub_9365F0`
 
 Handles `{ ... }` blocks (kind 11). This is the workhorse that ties everything together: the function body itself is a compound statement, and every block scope creates a nested compound.
 
@@ -480,7 +480,7 @@ Handles `{ ... }` blocks (kind 11). This is the workhorse that ties everything t
 
 ---
 
-## Variable Declaration -- `sub_9303A0`
+## Variable Declaration — `sub_9303A0`
 
 Reads the variable descriptor from StmtNode offset +72, then the variable's symbol from descriptor +8.
 
@@ -488,9 +488,9 @@ Reads the variable descriptor from StmtNode offset +72, then the variable's symb
 
 | Value | Meaning |
 |-------|---------|
-| 4 | Block-scope static -- `fatal("block scope static variable initialization is not supported!")` |
-| 0, 3 | No dynamic init needed -- skip codegen |
-| 2 | Dynamic initialization -- main path |
+| 4 | Block-scope static — `fatal("block scope static variable initialization is not supported!")` |
+| 0, 3 | No dynamic init needed — skip codegen |
+| 2 | Dynamic initialization — main path |
 
 Dynamic init sub-dispatch (descriptor +48 byte):
 
@@ -499,7 +499,7 @@ Dynamic init sub-dispatch (descriptor +48 byte):
 | 1 | `sub_91DAD0` | Load-address style init |
 | 2 | `sub_91FFE0` | Emit initializer expression |
 | 3 | `sub_92F410` | Direct expression evaluation |
-| other | -- | `fatal("unsupported dynamic initialization")` |
+| other | — | `fatal("unsupported dynamic initialization")` |
 
 After computing the initializer value, the handler checks for volatile store qualification, computes alignment via `sub_91CB50`, retrieves the alloca/global address via `sub_9439D0`, and emits the store via `sub_923130`.
 
@@ -515,7 +515,7 @@ Block-scope static variables (`static int x = expr;`) are explicitly unsupported
 
 ## Loop Metadata: Pragma Unroll and Mustprogress
 
-### Pragma Unroll -- `sub_9305A0`
+### Pragma Unroll — `sub_9305A0`
 
 Called from while, do-while, and for handlers when StmtNode offset +64 (pragma annotation) is non-NULL. Parses `"unroll %d"` from the pragma string via `sscanf`.
 
@@ -535,9 +535,9 @@ The metadata is wrapped in the standard LLVM loop-ID self-referential MDNode pat
 !4 = !{!"llvm.loop.unroll.count", i32 8}
 ```
 
-Global flag `dword_4D046B4` ("skip pragma" mode) gates this entirely -- when set, `sub_9305A0` returns immediately.
+Global flag `dword_4D046B4` ("skip pragma" mode) gates this entirely — when set, `sub_9305A0` returns immediately.
 
-### Loop Mustprogress -- `sub_930810`
+### Loop Mustprogress — `sub_930810`
 
 Called on **every** loop backedge (while, do-while, for). Creates `!{!"llvm.loop.mustprogress"}` and attaches it to the backedge branch. If the backedge already has `!llvm.loop` metadata (from pragma unroll), the existing operands are read and the mustprogress node is appended to create a combined MDNode:
 
@@ -549,35 +549,35 @@ Called on **every** loop backedge (while, do-while, for). Creates `!{!"llvm.loop
 !7 = !{!"llvm.loop.mustprogress"}
 ```
 
-This metadata tells the LLVM optimizer that loops must make forward progress -- it is allowed to remove provably-infinite side-effect-free loops. This corresponds to the C++ forward progress guarantee required by the standard.
+This metadata tells the LLVM optimizer that loops must make forward progress — it is allowed to remove provably-infinite side-effect-free loops. This corresponds to the C++ forward progress guarantee required by the standard.
 
 ---
 
 ## Infrastructure Functions
 
-### createBB -- `sub_945CA0`
+### createBB — `sub_945CA0`
 
 Allocates an 80-byte `BasicBlock` object and initializes it with the LLVM context from CGModule offset +40. The name parameter produces the characteristic BB names visible throughout this page: `"if.then"`, `"while.cond"`, `"for.inc"`, `"switch_case.target"`, `"constexpr_if.body"`, etc.
 
-### insertBB -- `sub_92FEA0`
+### insertBB — `sub_92FEA0`
 
 ```c
 void insertBB(CGModule *cg, BasicBlock *bb, int canDelete);
 ```
 
-Finalizes the current BB (emits an implicit unconditional branch to `bb` if the current BB lacks a terminator), then inserts `bb` into the function's BB list. If `canDelete` is 1 and the BB has no predecessors, the BB is immediately freed -- this garbage-collects unreachable continuation blocks (e.g., `if.end` when both branches terminate, `while.end` when the loop is infinite).
+Finalizes the current BB (emits an implicit unconditional branch to `bb` if the current BB lacks a terminator), then inserts `bb` into the function's BB list. If `canDelete` is 1 and the BB has no predecessors, the BB is immediately freed — this garbage-collects unreachable continuation blocks (e.g., `if.end` when both branches terminate, `while.end` when the loop is infinite).
 
 The `canDelete=1` flag is used for `if.end`, `while.end`, `for.end`, and `do.end` BBs.
 
-### finalizeBB / emitBr -- `sub_92FD90`
+### finalizeBB / emitBr — `sub_92FD90`
 
 If the current BB exists and its last instruction is NOT a terminator (opcode check: `opcode - 30 > 10` filters out `br`, `ret`, `switch`, etc.), creates a `BranchInst` to the target BB and inserts it. Then clears `cg->currentBB` and the insert point.
 
-### emitCondBr -- `sub_945D00`
+### emitCondBr — `sub_945D00`
 
 Creates a conditional `BranchInst` with true/false targets and optional branch weight metadata. When `weightHint != 0`, attaches `!prof branch_weights` metadata via `MDBuilder::createBranchWeights`.
 
-### evalCondition -- `sub_921E00`
+### evalCondition — `sub_921E00`
 
 Evaluates a condition expression and converts the result to `i1`. Checks for aggregate types (fatal error if the condition is an aggregate), determines signedness, evaluates the expression, then emits `icmp ne 0` (integer) or `fcmp une 0.0` (floating point) to produce a boolean.
 
@@ -591,13 +591,13 @@ Reconstructed from usage patterns across all statement handlers:
 |--------|------|-------|
 | +0 | 4 | Source location: line number |
 | +4 | 2 | Source location: column number |
-| +16 | 8 | `nextStmt` -- linked list pointer |
-| +40 | 1 | `stmtKind` -- enum value (0--25 observed) |
+| +16 | 8 | `nextStmt` — linked list pointer |
+| +40 | 1 | `stmtKind` — enum value (0--25 observed) |
 | +41 | 1 | Flags (bit 0x10 = likely, bit 0x20 = unlikely) |
 | +48 | 8 | `exprPayload` / condition expression pointer |
 | +64 | 8 | Pragma annotation (NULL or `"unroll N"` string) |
-| +72 | 8 | `auxData` -- kind-specific (then-body, label, variable descriptor, etc.) |
-| +80 | 8 | `auxData2` -- kind-specific (else-body for if, init/increment for for, etc.) |
+| +72 | 8 | `auxData` — kind-specific (then-body, label, variable descriptor, etc.) |
+| +80 | 8 | `auxData2` — kind-specific (else-body for if, init/increment for for, etc.) |
 
 ## CGModule Offsets Used by Statement Codegen
 
@@ -613,7 +613,7 @@ Reconstructed from usage patterns across all statement handlers:
 | +208 | 8 | `returnValue` / sret pointer |
 | +216 | 4 | `returnAlignment` |
 | +240 | 1 | `hasCleanups` flag |
-| +248 | -- | `cleanupSet` (DenseSet tracking which vars need cleanup) |
+| +248 | — | `cleanupSet` (DenseSet tracking which vars need cleanup) |
 | +424 | 8 | `cleanupStack` pointer (24-byte frames) |
 | +496 | 8 | `switchHashTable.count` |
 | +504 | 8 | `switchHashTable.buckets` |

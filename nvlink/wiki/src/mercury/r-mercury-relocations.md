@@ -1,8 +1,8 @@
 # R_MERCURY Relocations
 
-nvlink defines 65 Mercury-specific ELF relocation types for the capsule Mercury (capmerc) binary format, used on sm100+ architectures (Blackwell and later). These types are stored in `.rela.*` sections of capmerc ELF files and are consumed by the same relocation application engine that handles R_CUDA types, but through a separate descriptor table. Each R_MERCURY type in the ELF is encoded as the table index plus `0x10000` -- the relocation engine subtracts this offset at dispatch time to index into the Mercury-specific descriptor table.
+nvlink defines 65 Mercury-specific ELF relocation types for the capsule Mercury (capmerc) binary format, used on sm100+ architectures (Blackwell and later). These types are stored in `.rela.*` sections of capmerc ELF files and are consumed by the same relocation application engine that handles R_CUDA types, but through a separate descriptor table. Each R_MERCURY type in the ELF is encoded as the table index plus `0x10000` — the relocation engine subtracts this offset at dispatch time to index into the Mercury-specific descriptor table.
 
-Mercury relocations are structurally simpler than their R_CUDA counterparts. Where R_CUDA has 119 types covering six generations of SASS instruction encoding (each with different bit-field positions for the same logical operation), R_MERCURY has 65 types that target a single 128-bit instruction format. The R_MERCURY set eliminates the per-bit-position variants (`R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32`) in favor of position-independent types (`R_MERCURY_ABS32`) -- the bit-field position is encoded in the 64-byte descriptor rather than in the type name.
+Mercury relocations are structurally simpler than their R_CUDA counterparts. Where R_CUDA has 119 types covering six generations of SASS instruction encoding (each with different bit-field positions for the same logical operation), R_MERCURY has 65 types that target a single 128-bit instruction format. The R_MERCURY set eliminates the per-bit-position variants (`R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32`) in favor of position-independent types (`R_MERCURY_ABS32`) — the bit-field position is encoded in the 64-byte descriptor rather than in the type name.
 
 ## Key Facts
 
@@ -120,7 +120,7 @@ Because Mercury targets a single 128-bit instruction format (not the variable 64
 | 0 | `0x10000` | `R_MERCURY_NONE` | No relocation (placeholder / deleted entry) |
 | 64 | `0x10040` | `R_MERCURY_NONE_LAST` | Sentinel marking end of valid type range |
 
-`R_MERCURY_NONE` at index 0 serves the same purpose as `R_CUDA_NONE`: it is a no-op relocation used for entries that have been eliminated by dead code removal or relocation merging. The application engine returns immediately when it encounters a descriptor with all-zero action types. `R_MERCURY_NONE_LAST` at index 64 is a bounds sentinel -- the validation function rejects any type index >= 65.
+`R_MERCURY_NONE` at index 0 serves the same purpose as `R_CUDA_NONE`: it is a no-op relocation used for entries that have been eliminated by dead code removal or relocation merging. The application engine returns immediately when it encounters a descriptor with all-zero action types. `R_MERCURY_NONE_LAST` at index 64 is a bounds sentinel — the validation function rejects any type index >= 65.
 
 ### Global Address Relocation
 
@@ -144,7 +144,7 @@ These relocations apply to data sections and instruction immediate fields using 
 
 The `ABS32_LO` / `ABS32_HI` pair is used when a 32-bit absolute address must be split across two instruction immediates. One instruction loads the low 16 bits, the other loads the high 16 bits. The linker resolves both from the same symbol.
 
-Unlike R_CUDA, which has separate types for each bit-position within the instruction word (`R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32`), the Mercury types are position-independent -- the bit-field offset is stored in the 64-byte descriptor entry.
+Unlike R_CUDA, which has separate types for each bit-position within the instruction word (`R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32`), the Mercury types are position-independent — the bit-field offset is stored in the 64-byte descriptor entry.
 
 ### PC-Relative Relocations
 
@@ -174,7 +174,7 @@ if (descriptor[5] == 16 && rela_entry.section_idx != target_section_idx)
 | 12 | `0x1000C` | `R_MERCURY_SAMP_HEADER_INDEX` | Sampler header table index |
 | 13 | `0x1000D` | `R_MERCURY_SURF_HEADER_INDEX` | Surface header table index |
 
-These relocations resolve bindable resource references -- texture, sampler, and surface objects -- by patching the merged header table index into instruction fields. During linking, individual per-module header tables are merged into a single global table; these relocations update the instruction operands to reference the correct entry in the merged table.
+These relocations resolve bindable resource references — texture, sampler, and surface objects — by patching the merged header table index into instruction fields. During linking, individual per-module header tables are merged into a single global table; these relocations update the instruction operands to reference the correct entry in the merged table.
 
 These are direct equivalents of `R_CUDA_TEX_HEADER_INDEX`, `R_CUDA_SAMP_HEADER_INDEX`, and `R_CUDA_SURF_HEADER_INDEX`. Mercury drops the `SLOT`, `HW_DESC`, and `HW_SW_DESC` variants that exist in R_CUDA, consolidating texture resource binding into the header index mechanism alone.
 
@@ -224,7 +224,7 @@ Direct equivalents of `R_CUDA_8_0` through `R_CUDA_8_56`.
 | 30 | `0x1001E` | `R_MERCURY_G8_48` | 6 | Global byte at bit offset 48 |
 | 31 | `0x1001F` | `R_MERCURY_G8_56` | 7 | Global byte at bit offset 56 |
 
-Byte-granularity relocations for global memory addresses. These are the byte-level counterparts of `R_MERCURY_G64` -- instead of writing a full 64-bit global address, they write a single byte of the address at a specific position. Used when a global address must be assembled byte-by-byte in a data structure.
+Byte-granularity relocations for global memory addresses. These are the byte-level counterparts of `R_MERCURY_G64` — instead of writing a full 64-bit global address, they write a single byte of the address at a specific position. Used when a global address must be assembled byte-by-byte in a data structure.
 
 Direct equivalents of `R_CUDA_G8_0` through `R_CUDA_G8_56`.
 
@@ -334,7 +334,7 @@ value = (value & mask) >> shift;
 
 ### Multi-Word Boundary Handling
 
-Both the extraction (`sub_468670`) and write (`sub_4685B0`) helpers handle bit-fields that span 64-bit word boundaries -- a common situation with 128-bit Mercury instructions. The extraction function is recursive:
+Both the extraction (`sub_468670`) and write (`sub_4685B0`) helpers handle bit-fields that span 64-bit word boundaries — a common situation with 128-bit Mercury instructions. The extraction function is recursive:
 
 ```c
 // sub_468670 -- bitfield_extract (simplified)
@@ -405,15 +405,15 @@ end_ptr    = descriptor_base + 60;             // sentinel at byte +60
 
 ### Action Types Used by Mercury Descriptors
 
-The action types are identical between CUDA and Mercury -- the engine is shared. Mercury descriptors use the following subset:
+The action types are identical between CUDA and Mercury — the engine is shared. Mercury descriptors use the following subset:
 
 | Code | Name | Computation | Mercury Usage |
 |---|---|---|---|
 | `0x00` | end | Skip slot, terminate at sentinel | All types (terminates unused slots) |
-| `0x01` | abs_full | `S + A` -- store all bits | `ABS64`, `ABS32`, `G64`, `FUNC_DESC_64` |
-| `0x06` | abs_lo | `(S + A) & mask` -- low bits | `ABS32_LO`, `UNIFIED32_LO` |
-| `0x07` | abs_hi | `((S + A) >> 32) & mask` -- high bits | `ABS32_HI`, `UNIFIED32_HI` |
-| `0x09` | abs_shifted | `(S + A) >> 2` -- 4-byte aligned | `PROG_REL32` (shifted branch offset) |
+| `0x01` | abs_full | `S + A` — store all bits | `ABS64`, `ABS32`, `G64`, `FUNC_DESC_64` |
+| `0x06` | abs_lo | `(S + A) & mask` — low bits | `ABS32_LO`, `UNIFIED32_LO` |
+| `0x07` | abs_hi | `((S + A) >> 32) & mask` — high bits | `ABS32_HI`, `UNIFIED32_HI` |
+| `0x09` | abs_shifted | `(S + A) >> 2` — 4-byte aligned | `PROG_REL32` (shifted branch offset) |
 | `0x10` | pc_rel | `(int32_t)(S + A) - PC` | `PROG_REL32`, `PROG_REL64` |
 | `0x12` | abs_full (alias) | Same as `0x01` | `UNIFIED`, `UNIFIED_32` |
 | `0x13` | clear | Zero the bit-field | `UNUSED_CLEAR64` |
@@ -428,7 +428,7 @@ Mercury does **not** use action types `0x08` (abs_size), `0x0A` (sec_type_lo), o
 
 ### Difference from R_CUDA Descriptors
 
-Although the table format is identical, the descriptor contents differ from R_CUDA because Mercury's 128-bit instruction words have different field layouts. A relocation that places a 32-bit absolute address at bit position 20 in a 64-bit CUDA instruction will place it at a different bit position in a 128-bit Mercury instruction -- and this difference is encoded in the descriptor's `bit_offset` field, not in the type name.
+Although the table format is identical, the descriptor contents differ from R_CUDA because Mercury's 128-bit instruction words have different field layouts. A relocation that places a 32-bit absolute address at bit position 20 in a 64-bit CUDA instruction will place it at a different bit position in a 128-bit Mercury instruction — and this difference is encoded in the descriptor's `bit_offset` field, not in the type name.
 
 The shared application engine `sub_468760` is type-agnostic: it simply reads the descriptor, executes the action sequence, and patches the bit fields. The distinction between CUDA and Mercury is entirely in which descriptor table is selected at dispatch time.
 
@@ -515,7 +515,7 @@ The "mercury uplift" path converts non-Mercury binaries to Mercury format. The `
 
 | CLI Flag | Description |
 |---|---|
-| `--binary-kind` | `mercury`, `capmerc`, or `sass` -- specifies target binary format |
+| `--binary-kind` | `mercury`, `capmerc`, or `sass` — specifies target binary format |
 | `--cap-merc` | Force Capsule Mercury generation |
 | `--self-check` | Enable self-check verification |
 | `--out-sass` | Generate reconstituted SASS through self-check |
@@ -539,10 +539,10 @@ The following table maps each R_MERCURY type to its closest R_CUDA equivalent. M
 | `R_MERCURY_ABS16` | 4 | `R_CUDA_ABS16_*` | Mercury: position-independent; CUDA: per-bit-position |
 | `R_MERCURY_ABS32_LO` | 5 | `R_CUDA_ABS32_LO_*` | Mercury: 1 type; CUDA: 4 types (per bit-position) |
 | `R_MERCURY_ABS32_HI` | 6 | `R_CUDA_ABS32_HI_*` | Mercury: 1 type; CUDA: 4 types |
-| `R_MERCURY_PROG_REL64` | 7 | -- | No direct CUDA equivalent |
+| `R_MERCURY_PROG_REL64` | 7 | — | No direct CUDA equivalent |
 | `R_MERCURY_PROG_REL32` | 8 | `R_CUDA_PCREL_IMM24_*` | CUDA uses 24-bit; Mercury uses 32-bit |
-| `R_MERCURY_PROG_REL32_LO` | 9 | -- | Mercury-specific |
-| `R_MERCURY_PROG_REL32_HI` | 10 | -- | Mercury-specific |
+| `R_MERCURY_PROG_REL32_LO` | 9 | — | Mercury-specific |
+| `R_MERCURY_PROG_REL32_HI` | 10 | — | Mercury-specific |
 | `R_MERCURY_TEX_HEADER_INDEX` | 11 | `R_CUDA_TEX_HEADER_INDEX` | Identical semantics |
 | `R_MERCURY_SAMP_HEADER_INDEX` | 12 | `R_CUDA_SAMP_HEADER_INDEX` | Identical semantics |
 | `R_MERCURY_SURF_HEADER_INDEX` | 13 | `R_CUDA_SURF_HEADER_INDEX` | Identical semantics |
@@ -551,14 +551,14 @@ The following table maps each R_MERCURY type to its closest R_CUDA equivalent. M
 | `R_MERCURY_8_*` | 16--23 | `R_CUDA_8_*` | Identical semantics |
 | `R_MERCURY_G8_*` | 24--31 | `R_CUDA_G8_*` | Identical semantics |
 | `R_MERCURY_FUNC_DESC_8_*` | 32--39 | `R_CUDA_FUNC_DESC_8_*` | Identical semantics |
-| `R_MERCURY_ABS_PROG_REL32_LO` | 40 | -- | Mercury-specific |
-| `R_MERCURY_ABS_PROG_REL32_HI` | 41 | -- | Mercury-specific |
-| `R_MERCURY_PROG_REL8_*` | 42--49 | -- | Mercury-specific (no CUDA byte-level PC-rel) |
+| `R_MERCURY_ABS_PROG_REL32_LO` | 40 | — | Mercury-specific |
+| `R_MERCURY_ABS_PROG_REL32_HI` | 41 | — | Mercury-specific |
+| `R_MERCURY_PROG_REL8_*` | 42--49 | — | Mercury-specific (no CUDA byte-level PC-rel) |
 | `R_MERCURY_UNIFIED` | 50 | `R_CUDA_UNIFIED` | Identical semantics |
 | `R_MERCURY_UNIFIED_32` | 51 | `R_CUDA_UNIFIED_32` | Identical semantics |
 | `R_MERCURY_UNIFIED_8_*` | 52--59 | `R_CUDA_UNIFIED_8_*` | Identical semantics |
-| `R_MERCURY_ABS_PROG_REL32` | 60 | -- | Mercury-specific |
-| `R_MERCURY_ABS_PROG_REL64` | 61 | -- | Mercury-specific |
+| `R_MERCURY_ABS_PROG_REL32` | 60 | — | Mercury-specific |
+| `R_MERCURY_ABS_PROG_REL64` | 61 | — | Mercury-specific |
 | `R_MERCURY_UNIFIED32_LO` | 62 | `R_CUDA_UNIFIED32_LO_32` | CUDA includes bit-position |
 | `R_MERCURY_UNIFIED32_HI` | 63 | `R_CUDA_UNIFIED32_HI_32` | CUDA includes bit-position |
 | `R_MERCURY_NONE_LAST` | 64 | `R_CUDA_NONE_LAST` | Identical semantics |
@@ -611,18 +611,18 @@ Based on the type semantics and their positions in the table, the following relo
 
 | Relocation | Typical Use | Frequency |
 |---|---|---|
-| `R_MERCURY_PROG_REL32` (8) | Branch and call targets within a kernel | Very high -- every `BRA`/`CALL`/`BRX` instruction |
-| `R_MERCURY_ABS32` (3) | Immediate constant addresses in instruction fields | High -- memory access instructions |
-| `R_MERCURY_ABS32_LO` / `ABS32_HI` (5, 6) | Split 32-bit address loaded in two instructions (LO/HI pair) | High -- `MOV32I` + `IADD3.X` address materialization |
-| `R_MERCURY_G64` (1) | Global variable references | Medium -- global load/store |
-| `R_MERCURY_TEX_HEADER_INDEX` (11) | Texture fetch instructions | Medium -- in texture-heavy kernels |
-| `R_MERCURY_FUNC_DESC_64` (15) | Indirect call targets and virtual function pointers | Low -- only in kernels using function pointers |
+| `R_MERCURY_PROG_REL32` (8) | Branch and call targets within a kernel | Very high — every `BRA`/`CALL`/`BRX` instruction |
+| `R_MERCURY_ABS32` (3) | Immediate constant addresses in instruction fields | High — memory access instructions |
+| `R_MERCURY_ABS32_LO` / `ABS32_HI` (5, 6) | Split 32-bit address loaded in two instructions (LO/HI pair) | High — `MOV32I` + `IADD3.X` address materialization |
+| `R_MERCURY_G64` (1) | Global variable references | Medium — global load/store |
+| `R_MERCURY_TEX_HEADER_INDEX` (11) | Texture fetch instructions | Medium — in texture-heavy kernels |
+| `R_MERCURY_FUNC_DESC_64` (15) | Indirect call targets and virtual function pointers | Low — only in kernels using function pointers |
 
 ### Data Section Relocations
 
 | Relocation | Typical Use | Frequency |
 |---|---|---|
-| `R_MERCURY_8_0` through `8_56` (16--23) | Patching individual bytes in constant bank initializers | High -- one per byte of initialized pointer |
+| `R_MERCURY_8_0` through `8_56` (16--23) | Patching individual bytes in constant bank initializers | High — one per byte of initialized pointer |
 | `R_MERCURY_G8_0` through `G8_56` (24--31) | Global address bytes in descriptor tables | Medium |
 | `R_MERCURY_FUNC_DESC_8_0` through `8_56` (32--39) | Function pointer bytes in vtable-like structures | Low |
 | `R_MERCURY_ABS64` (2) | Full 64-bit address in data section | Medium |
@@ -632,7 +632,7 @@ Based on the type semantics and their positions in the table, the following relo
 
 | Relocation | Typical Use | Frequency |
 |---|---|---|
-| `R_MERCURY_UNIFIED_8_0` through `8_56` (52--59) | UFT/UDT table entries for dynamic parallelism | Low -- only with CDP |
+| `R_MERCURY_UNIFIED_8_0` through `8_56` (52--59) | UFT/UDT table entries for dynamic parallelism | Low — only with CDP |
 | `R_MERCURY_UNIFIED_32` (51) | 32-bit UFT/UDT offset | Low |
 | `R_MERCURY_UNIFIED` (50) | Marker resolved to NONE before application | Low |
 
@@ -714,13 +714,13 @@ And the compatibility attributes:
 | `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION` | `0x245EF08` | Major.minor ISA version for compatibility checking |
 | `EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION` | `0x245EF38` | Patch-level ISA version |
 
-These attributes are not relocation types but are processed alongside relocations during the `.nv.info` section handling phase. The `EIATTR_MERCURY_FINALIZER_OPTIONS` attribute is particularly important because it controls how the FNLZR processes relocations -- it can enable or disable specific finalization passes that affect relocation resolution.
+These attributes are not relocation types but are processed alongside relocations during the `.nv.info` section handling phase. The `EIATTR_MERCURY_FINALIZER_OPTIONS` attribute is particularly important because it controls how the FNLZR processes relocations — it can enable or disable specific finalization passes that affect relocation resolution.
 
 ## Summary Table by Category
 
 | Category | Indices | Count | Computation | Engine Action Types |
 |---|---|---|---|---|
-| Sentinel | 0, 64 | 2 | -- | `0x00` (end) |
+| Sentinel | 0, 64 | 2 | — | `0x00` (end) |
 | Global data | 1 | 1 | `S + A` | `0x01` (abs_full) |
 | Absolute data | 2--6 | 5 | `S + A` (full/lo/hi) | `0x01`, `0x06`, `0x07` |
 | PC-relative | 7--10 | 4 | `(S + A) - PC` (full/lo/hi) | `0x10` (pc_rel), `0x37`, `0x38` |
@@ -734,7 +734,7 @@ These attributes are not relocation types but are processed alongside relocation
 | PC-relative byte-level | 42--49 | 8 | `byte_n((S + A) - PC)` | `0x2F`--`0x36` (masked_shift) |
 | Unified table | 50--59, 62--63 | 12 | `S + A` (full/lo/hi/byte) | `0x12`, `0x2E`, `0x06`, `0x07` |
 | Abs PC-relative (full) | 60--61 | 2 | `\|S + A - PC\|` (32/64) | `0x01` with abs computation |
-| **Total** | -- | **65** | -- | -- |
+| **Total** | — | **65** | — | — |
 
 ## Function Addresses
 
@@ -787,18 +787,18 @@ These attributes are not relocation types but are processed alongside relocation
 ## Cross-References
 
 ### nvlink Internal
-- [Mercury Overview](overview.md) -- Mercury architecture and string evidence
-- [Mercury ELF Sections](elf-sections.md) -- `.nv.merc.rela` section that carries these relocations
-- [Capsule Mercury Format](capmerc-format.md) -- capmerc container format
-- [FNLZR](fnlzr.md) -- finalizer that applies Mercury relocations (`sub_4275C0`, `sub_4748F0`)
-- [R_CUDA Relocations](../linker/r-cuda-relocations.md) -- the 119 R_CUDA relocation types (shared engine, same descriptor format)
-- [R_MERCURY Catalog](../reference/r-mercury-catalog.md) -- pure reference listing of all 65 types with string addresses
-- [R_CUDA Catalog](../reference/r-cuda-catalog.md) -- companion CUDA catalog for cross-reference
-- [Relocation Engine](../linker/r-cuda-relocations.md#descriptor-format) -- shared `sub_468760` engine pseudocode and action type table
-- [Section Merging](../linker/section-merging.md) -- relocation processing during merge (Mercury skip logic)
-- [Bindless Relocations](../linker/bindless-relocations.md) -- bindless texture mechanism (absent from R_MERCURY)
-- [UFT](../elf/uft.md) -- Unified Function Table referenced by `R_MERCURY_UNIFIED_*` types
-- [Function Map](../function-map.md) -- master function address index
+- [Mercury Overview](overview.md) — Mercury architecture and string evidence
+- [Mercury ELF Sections](elf-sections.md) — `.nv.merc.rela` section that carries these relocations
+- [Capsule Mercury Format](capmerc-format.md) — capmerc container format
+- [FNLZR](fnlzr.md) — finalizer that applies Mercury relocations (`sub_4275C0`, `sub_4748F0`)
+- [R_CUDA Relocations](../linker/r-cuda-relocations.md) — the 119 R_CUDA relocation types (shared engine, same descriptor format)
+- [R_MERCURY Catalog](../reference/r-mercury-catalog.md) — pure reference listing of all 65 types with string addresses
+- [R_CUDA Catalog](../reference/r-cuda-catalog.md) — companion CUDA catalog for cross-reference
+- [Relocation Engine](../linker/r-cuda-relocations.md#descriptor-format) — shared `sub_468760` engine pseudocode and action type table
+- [Section Merging](../linker/section-merging.md) — relocation processing during merge (Mercury skip logic)
+- [Bindless Relocations](../linker/bindless-relocations.md) — bindless texture mechanism (absent from R_MERCURY)
+- [UFT](../elf/uft.md) — Unified Function Table referenced by `R_MERCURY_UNIFIED_*` types
+- [Function Map](../function-map.md) — master function address index
 
 ### Sibling Wikis
-- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) -- standalone ptxas capmerc relocation emission (Mercury rela entry format, relocation table layout)
+- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) — standalone ptxas capmerc relocation emission (Mercury rela entry format, relocation table layout)

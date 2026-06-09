@@ -2,7 +2,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-Every loop optimization in cicc ultimately depends on two questions: "what values can this expression take?" and "how many times does this loop iterate?" The SCEV range analysis (`sub_DBB9F0`, corresponding to `ScalarEvolution::getRangeRef`) answers the first by propagating `ConstantRange` intervals through SCEV expression trees. The backedge-taken count (BTC) machinery (`sub_DB9E00` / `sub_DB9040`, corresponding to `computeBackedgeTakenCount` / `computeExitCountForBranch`) answers the second by solving loop exit conditions algebraically. The two systems feed each other: range analysis uses trip counts to bound AddRec expressions, and trip count computation uses ranges to prove overflow behavior. On GPU targets, these analyses gain additional precision from NVIDIA-specific range sources -- thread indices are bounded by block dimensions, `warpSize` is the constant 32, and `__launch_bounds__` metadata constrains block dimensions -- all of which flow into tighter ranges and more computable trip counts.
+Every loop optimization in cicc ultimately depends on two questions: "what values can this expression take?" and "how many times does this loop iterate?" The SCEV range analysis (`sub_DBB9F0`, corresponding to `ScalarEvolution::getRangeRef`) answers the first by propagating `ConstantRange` intervals through SCEV expression trees. The backedge-taken count (BTC) machinery (`sub_DB9E00` / `sub_DB9040`, corresponding to `computeBackedgeTakenCount` / `computeExitCountForBranch`) answers the second by solving loop exit conditions algebraically. The two systems feed each other: range analysis uses trip counts to bound AddRec expressions, and trip count computation uses ranges to prove overflow behavior. On GPU targets, these analyses gain additional precision from NVIDIA-specific range sources — thread indices are bounded by block dimensions, `warpSize` is the constant 32, and `__launch_bounds__` metadata constrains block dimensions — all of which flow into tighter ranges and more computable trip counts.
 
 ## Key Facts
 
@@ -83,22 +83,22 @@ This pre-narrowing ensures that even when the SCEV-kind dispatch returns a full-
 
 The `SCEVAddRecExpr` case (opcode 8) is the most complex, executing up to five phases that progressively narrow the range of a loop induction variable `{start, +, step}`:
 
-**Phase A -- NoWrap Start Refinement.** If the AddRec has NUW or NSW flags (bits at `scev_expr+28`), the unsigned range of the start value is computed and intersected. This ensures that the IV's initial value constrains the overall range even before considering the step.
+**Phase A — NoWrap Start Refinement.** If the AddRec has NUW or NSW flags (bits at `scev_expr+28`), the unsigned range of the start value is computed and intersected. This ensures that the IV's initial value constrains the overall range even before considering the step.
 
-**Phase B -- Step Monotonicity.** If the NSW flag (bit 2, value 0x4) is set:
+**Phase B — Step Monotonicity.** If the NSW flag (bit 2, value 0x4) is set:
 - `sub_DBED40` checks if all step operands are non-negative (monotone up). If so, the signed minimum of start becomes the lower bound: range `[smin(start), SMAX]`.
 - `sub_DBEC80` checks if all steps are non-positive (monotone down). If so, the signed maximum of start becomes the upper bound: range `[SMIN, smax(start)+1]`.
 
-**Phase C -- Trip Count Refinement.** For simple two-operand recurrences (`{start, +, step}` with operand count == 2):
+**Phase C — Trip Count Refinement.** For simple two-operand recurrences (`{start, +, step}` with operand count == 2):
 1. Call `sub_DCF3A0(ctx, loop, 1)` to get the max backedge-taken count.
 2. If the trip count is computable, compute `range(start + step * [0, trip_count])` for both unsigned (`sub_DBEFC0`) and signed (`sub_DBF480`) domains.
 3. Intersect both results into the accumulated range.
 
 This is where range analysis and BTC computation form their feedback loop: the BTC is used to bound the AddRec's range.
 
-**Phase D -- Exit Value Analysis (NVIDIA-gated).** Enabled only when global `qword_4F88C08` is set. Gets the *exact* backedge-taken count (mode=2 via `sub_DCF3A0`), and if the trip count bit width fits within the AddRec's bit width and NSW is set, calls `sub_DE4FD0` to compute the exit value range. This provides the tightest possible bound but is more expensive.
+**Phase D — Exit Value Analysis (NVIDIA-gated).** Enabled only when global `qword_4F88C08` is set. Gets the *exact* backedge-taken count (mode=2 via `sub_DCF3A0`), and if the trip count bit width fits within the AddRec's bit width and NSW is set, calls `sub_DE4FD0` to compute the exit value range. This provides the tightest possible bound but is more expensive.
 
-**Phase E -- Cache and Return.** The final accumulated range (from all intersections) is stored in the cache.
+**Phase E — Cache and Return.** The final accumulated range (from all intersections) is stored in the cache.
 
 ### SCEVUnknown and Instruction-Level Analysis
 
@@ -177,7 +177,7 @@ A secondary per-exit table at `scev_ctx+1168` stores 56-byte entries indexing in
 
 The two primary solvers are:
 
-**howFarToZero** (`sub_DBA850`, 1.7 KB) -- handles `x != 0` exit conditions. The exit condition is normalized to `V = LHS - RHS`, so the loop exits when `V == 0`. For affine AddRec `{Start, +, Step}`:
+**howFarToZero** (`sub_DBA850`, 1.7 KB) — handles `x != 0` exit conditions. The exit condition is normalized to `V = LHS - RHS`, so the loop exits when `V == 0`. For affine AddRec `{Start, +, Step}`:
 
 ```c
 // The loop exits when: Start + Step * N = 0 (mod 2^BW)
@@ -188,7 +188,7 @@ The two primary solvers are:
 
 For quadratic AddRec `{L, +, M, +, N}`, it solves the quadratic equation via `SolveQuadraticAddRecExact`. If the expression is not affine or quadratic, it returns `CouldNotCompute`.
 
-**howManyLessThans** (`sub_DCE310`, 317 lines) -- handles `x < bound` (signed or unsigned) exit conditions. For affine `IV = {Start, +, Step}` with loop-invariant `Bound`:
+**howManyLessThans** (`sub_DCE310`, 317 lines) — handles `x < bound` (signed or unsigned) exit conditions. For affine `IV = {Start, +, Step}` with loop-invariant `Bound`:
 
 ```c
 // Unsigned: count = ceil_div(max(Bound, Start) - Start, Step)
@@ -224,10 +224,10 @@ The NVIDIA-specific knob `aggressive-positive-stride-analysis` (documented as "S
 
 The unroll decision engine (`sub_19BB5C0`) queries `getSmallBestKnownTC` (`sub_2AA7EC0`) which calls the BTC machinery. The result determines the unroll strategy:
 
-- **Exact trip count known and small:** enables full unrolling -- the loop body is replicated exactly N times with no remainder loop. This is the most profitable case for GPU code since it eliminates all loop overhead.
+- **Exact trip count known and small:** enables full unrolling — the loop body is replicated exactly N times with no remainder loop. This is the most profitable case for GPU code since it eliminates all loop overhead.
 - **Exact trip count known but large:** enables partial unrolling with an exact remainder. The unroll factor is chosen to divide the trip count, avoiding a remainder loop entirely.
 - **Only max trip count known:** enables partial unrolling with a runtime remainder check. The unroll factor is bounded by the max trip count.
-- **Trip count unknown:** unrolling is gated by the NVIDIA knob `Disable-unknown-trip-iv` -- when set, IndVarSimplify (`sub_19489B0`) skips loops entirely if the trip count is not computable.
+- **Trip count unknown:** unrolling is gated by the NVIDIA knob `Disable-unknown-trip-iv` — when set, IndVarSimplify (`sub_19489B0`) skips loops entirely if the trip count is not computable.
 
 ### Loop Vectorization
 
@@ -271,7 +271,7 @@ SCEV representation: `{tid.x urem 32, +, 32}`. The start is `[0, 31]` (since `wa
 for (int i = 0; i < blockDim.x; i++)
 ```
 
-When `nvvm.reqntid` metadata is present, `blockDim.x` has a known constant value, and the loop has a compile-time-known trip count. This enables full unrolling -- common for shared memory initialization and reduction loops.
+When `nvvm.reqntid` metadata is present, `blockDim.x` has a known constant value, and the loop has a compile-time-known trip count. This enables full unrolling — common for shared memory initialization and reduction loops.
 
 ## Configuration Knobs
 
@@ -295,43 +295,43 @@ When `nvvm.reqntid` metadata is present, `blockDim.x` has a known constant value
 | `qword_4F88EA8` | (global) | Max recursion depth for range computation |
 | `qword_4F88C08` | (global) | Enable extended exit-value analysis (Phase D) |
 
-The NVIDIA-specific knobs are particularly important. `track-trip-count-more` enables additional effort in BTC computation that upstream LLVM does not attempt -- the exact mechanism is not fully reversed, but the typo in its description string ("aggresively") matches the binary. `aggressive-positive-stride-analysis` is tied to a specific NVIDIA bug (nvbug 3972412) and enables proving NUW on AddRec expressions whose step is known positive from range analysis, creating a positive feedback loop between range computation and NoWrap inference.
+The NVIDIA-specific knobs are particularly important. `track-trip-count-more` enables additional effort in BTC computation that upstream LLVM does not attempt — the exact mechanism is not fully reversed, but the typo in its description string ("aggresively") matches the binary. `aggressive-positive-stride-analysis` is tied to a specific NVIDIA bug (nvbug 3972412) and enables proving NUW on AddRec expressions whose step is known positive from range analysis, creating a positive feedback loop between range computation and NoWrap inference.
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `ScalarEvolution::getRangeRef()` -- core range evaluator | `sub_DBB9F0` | -- | -- |
-| `getRangeForAffineARViaRange()` -- predecessor-based range | `sub_DBB110` | -- | -- |
-| `computeUnsignedRangeFromAddRecTripCount()` | `sub_DBEFC0` | -- | -- |
-| `computeSignedRangeFromAddRecTripCount()` | `sub_DBF480` | -- | -- |
-| `computeExitValueRange()` -- Phase D exit value analysis | `sub_DE4FD0` | -- | -- |
-| `getFullRangeFallback()` -- depth-exceeded fallback | `sub_DDFBD0` | -- | -- |
-| `cacheRange()` -- insert range into hash table | `sub_DB0AC0` | -- | -- |
-| `getKnownBits()` for SCEV (unsigned known bits) | `sub_DB5510` | -- | -- |
-| `getNumSignBits()` for SCEV (signed known bits) | `sub_DB55F0` | -- | -- |
-| `isKnownNonNegative(step)` | `sub_DBED40` | -- | -- |
-| `isKnownNonPositive(step)` | `sub_DBEC80` | -- | -- |
-| `getBackedgeTakenCount(loop, mode)` -- BTC dispatcher | `sub_DCF3A0` | -- | -- |
-| `computeBackedgeTakenCount()` -- per-loop BTC with caching | `sub_DB9E00` | -- | -- |
-| `computeExitCountForBranch()` -- exit condition analysis | `sub_DB9040` | -- | -- |
-| `howFarToZero()` -- "reaches zero" trip count | `sub_DBA850` | -- | -- |
-| `howManyLessThans()` -- "less than" trip count | `sub_DCE310` | -- | -- |
-| `computeExitCountExhaustively()` -- brute-force small loops | `sub_DCFD50` | -- | -- |
-| `computeExitLimit()` -- exit limit from condition | `sub_DCB270` | -- | -- |
-| `getSmallConstantTripCount()` | `sub_DB04E0` | -- | -- |
-| `getSmallConstantMaxTripCount()` | `sub_DB06C0` | -- | -- |
-| BTC hash table growth / rehash | `sub_DB6980` | -- | -- |
-| BTC hash table rehash-in-place (tombstone cleanup) | `sub_DE0180` | -- | -- |
-| `getRangeFromUnknownSCEV()` -- range for SCEVUnknown | `sub_988CD0` | -- | -- |
-| `ConstantRange::intersectWith()` | `sub_AB2160` | -- | -- |
-| `ConstantRange::unionWith()` | `sub_AB3510` | -- | -- |
-| `ConstantRange::addWithNoWrap()` | `sub_ABA0E0` | -- | -- |
-| `ConstantRange::multiply()` | `sub_AB5480` | -- | -- |
-| `ConstantRange::udiv()` | `sub_AB6A50` | -- | -- |
-| `ConstantRange::minmax_combine()` | `sub_ABD750` | -- | -- |
-| `ConstantRange` from `!range` metadata | `sub_ABEA30` | -- | -- |
-| `ConstantRange` from KnownBits | `sub_C4B490` | -- | -- |
+| `ScalarEvolution::getRangeRef()` — core range evaluator | `sub_DBB9F0` | — | — |
+| `getRangeForAffineARViaRange()` — predecessor-based range | `sub_DBB110` | — | — |
+| `computeUnsignedRangeFromAddRecTripCount()` | `sub_DBEFC0` | — | — |
+| `computeSignedRangeFromAddRecTripCount()` | `sub_DBF480` | — | — |
+| `computeExitValueRange()` — Phase D exit value analysis | `sub_DE4FD0` | — | — |
+| `getFullRangeFallback()` — depth-exceeded fallback | `sub_DDFBD0` | — | — |
+| `cacheRange()` — insert range into hash table | `sub_DB0AC0` | — | — |
+| `getKnownBits()` for SCEV (unsigned known bits) | `sub_DB5510` | — | — |
+| `getNumSignBits()` for SCEV (signed known bits) | `sub_DB55F0` | — | — |
+| `isKnownNonNegative(step)` | `sub_DBED40` | — | — |
+| `isKnownNonPositive(step)` | `sub_DBEC80` | — | — |
+| `getBackedgeTakenCount(loop, mode)` — BTC dispatcher | `sub_DCF3A0` | — | — |
+| `computeBackedgeTakenCount()` — per-loop BTC with caching | `sub_DB9E00` | — | — |
+| `computeExitCountForBranch()` — exit condition analysis | `sub_DB9040` | — | — |
+| `howFarToZero()` — "reaches zero" trip count | `sub_DBA850` | — | — |
+| `howManyLessThans()` — "less than" trip count | `sub_DCE310` | — | — |
+| `computeExitCountExhaustively()` — brute-force small loops | `sub_DCFD50` | — | — |
+| `computeExitLimit()` — exit limit from condition | `sub_DCB270` | — | — |
+| `getSmallConstantTripCount()` | `sub_DB04E0` | — | — |
+| `getSmallConstantMaxTripCount()` | `sub_DB06C0` | — | — |
+| BTC hash table growth / rehash | `sub_DB6980` | — | — |
+| BTC hash table rehash-in-place (tombstone cleanup) | `sub_DE0180` | — | — |
+| `getRangeFromUnknownSCEV()` — range for SCEVUnknown | `sub_988CD0` | — | — |
+| `ConstantRange::intersectWith()` | `sub_AB2160` | — | — |
+| `ConstantRange::unionWith()` | `sub_AB3510` | — | — |
+| `ConstantRange::addWithNoWrap()` | `sub_ABA0E0` | — | — |
+| `ConstantRange::multiply()` | `sub_AB5480` | — | — |
+| `ConstantRange::udiv()` | `sub_AB6A50` | — | — |
+| `ConstantRange::minmax_combine()` | `sub_ABD750` | — | — |
+| `ConstantRange` from `!range` metadata | `sub_ABEA30` | — | — |
+| `ConstantRange` from KnownBits | `sub_C4B490` | — | — |
 
 ## Differences from Upstream LLVM
 
@@ -346,9 +346,9 @@ The NVIDIA-specific knobs are particularly important. `track-trip-count-more` en
 
 ## Cross-References
 
-- [SCEV Overview & Construction](./scev.md) -- expression creation, caching, simple mode
-- [Loop Unrolling](./loop-unroll.md) -- how trip counts drive unroll factor selection
-- [LoopVectorize & VPlan](./loop-vectorize.md) -- min trip count threshold, epilogue generation
-- [Loop Strength Reduction](./lsr.md) -- IV manipulation driven by SCEV ranges
-- [KnownBits & DemandedBits](./known-bits.md) -- GPU-specific known-bits feeding into range analysis
-- [LLVM Knobs](../config/knobs.md) -- all SCEV-related knob values
+- [SCEV Overview & Construction](./scev.md) — expression creation, caching, simple mode
+- [Loop Unrolling](./loop-unroll.md) — how trip counts drive unroll factor selection
+- [LoopVectorize & VPlan](./loop-vectorize.md) — min trip count threshold, epilogue generation
+- [Loop Strength Reduction](./lsr.md) — IV manipulation driven by SCEV ranges
+- [KnownBits & DemandedBits](./known-bits.md) — GPU-specific known-bits feeding into range analysis
+- [LLVM Knobs](../config/knobs.md) — all SCEV-related knob values

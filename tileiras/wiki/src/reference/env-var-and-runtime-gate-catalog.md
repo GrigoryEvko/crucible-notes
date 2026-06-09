@@ -4,7 +4,7 @@
 The first is the libc `getenv(3)` family, reachable via the PLT stub at
 `0x004055B0` and through the wrapper `sub_45AE9A0` (`getenv`-into-
 `std::string`). The second is a band of process-wide scalar globals in
-the `0x5B6xxxx` region of `.bss`/`.data` -- the "runtime gates" -- whose
+the `0x5B6xxxx` region of `.bss`/`.data` — the "runtime gates" — whose
 default values are written by C++ static constructors during
 dynamic-linker init, bound by name to LLVM `cl::opt` storage, then read
 directly by optimizer passes. Both mechanisms wire up during program
@@ -13,7 +13,7 @@ time for a couple of LLVM-Support strings), while gates populate
 unconditionally before `main` runs and then optionally get overwritten by
 `--<flag>` command-line arguments parsed through the LLVM CommandLine
 library. Together they form the entire externally-tunable surface of
-`tileiras` -- no config file, no JSON, no INI, just env vars plus
+`tileiras` — no config file, no JSON, no INI, just env vars plus
 `cl::opt` flags backed by these scalar globals.
 
 ## Table 1: Environment Variables
@@ -22,16 +22,16 @@ Columns: env var name | consumer `sub_ADDR` | behavior | default when unset.
 
 | Env var | Consumer (`sub_ADDR`) | Behavior | Default |
 |---------|-----------------------|----------|---------|
-| `MLIR_ENABLE_EVO` | `sub_2D381B0` (`serializeAndDumpSass`) | Master gate for the ptxas-knob-file path. Tested for non-null only -- any non-empty value (including `"0"`, `"false"`) enables. When set together with `PTX_KNOBS_PATH`, ` --knobs-file=<path>` is appended to `basePTXOptions` before `ptxas` is spawned. | Disabled -- knob-file path is skipped via early `goto` even when `PTX_KNOBS_PATH` is set. |
+| `MLIR_ENABLE_EVO` | `sub_2D381B0` (`serializeAndDumpSass`) | Master gate for the ptxas-knob-file path. Tested for non-null only — any non-empty value (including `"0"`, `"false"`) enables. When set together with `PTX_KNOBS_PATH`, ` --knobs-file=<path>` is appended to `basePTXOptions` before `ptxas` is spawned. | Disabled — knob-file path is skipped via early `goto` even when `PTX_KNOBS_PATH` is set. |
 | `PTX_KNOBS_PATH` | `sub_2D381B0` | Path to a `ptxas` internal-knob text file. Forwarded verbatim as `--knobs-file=<path>`; tileiras itself does not parse the contents. Append uses libstdc++'s string max-size guard `0x3FFFFFFFFFFFFFFFLL - 14`. | Disabled. AND-gated on `MLIR_ENABLE_EVO`; unsetting either skips the append. |
 | `TILE_AS_DEBUG_UNLIMITED_SMEM` | `sub_12C8DF0` (TileAS memory planner) | String-equality test against literal `"1"` via `sub_44E1F60`. When equal, the per-CTA dynamic shared-memory ceiling used by the memory planner is raised from 232448 B (227 KiB, the Blackwell SM100/SM103/SM120 limit) to `0x7FFFFFFF`, effectively no ceiling. Used to bypass smem-overcommit checks for diagnostic compiles. | Ceiling = 232448 B (`0xE3C00`). Stored as `ptr[16]` = max-smem-per-CTA in the per-kernel DenseMap built at `sub_12BB050`. |
-| `TILEIR_PREFER_TMA_FOR_LOAD_STORE` | `sub_7B6970` (TMA-vs-`cp.async` chooser) | Value is SSO-copied and then string-compared against `"true"` / `"false"` downstream. `"true"` selects the TMA `cp.async.bulk` path for load/store legalization on SM100+; absence defaults the comparison RHS to literal `"false"`, leaving TMA non-preferred. Non-boolean values fall through with implementation-defined effect. | `"false"` (5 bytes) -- TMA path is **not** preferred; legacy `cp.async` or vector load/store wins the heuristic. |
-| `TILEIR_DELAY_TMA_STORE_WAIT` | `sub_8D9DD0` via `sub_45AE9A0` | Active only when `*a1 == 3` (TMA-store pipeline tier). Read into a `std::string`, then parsed by `strtol(base=10)` after `errno` clear. Empty / non-numeric throws `std::stoi("stoi")`; out-of-range likewise. Final return is `parsed != 0`. Effect: defers the `cp.async.bulk.wait_group` barrier after a TMA store. | Disabled -- function returns `(*a1 == 4)` as the default (pipeline-tier gate only); env-var absence leaves delay-wait off. |
-| `TILEIR_ALWAYS_SWIZZLE` | `sub_7A9D60` (swizzle selector) | Returns `1` (true) immediately if the env-var is non-null. Any value -- including `"0"`, `"false"`, `"no"` -- short-circuits the swizzle-selection chain (`sub_7A9520`, `sub_7A9D30`, `sub_79DA60`, `sub_7A9750`) and forces the swizzled layout. Diagnostic switch only. | Disabled -- swizzle heuristic runs normally. |
+| `TILEIR_PREFER_TMA_FOR_LOAD_STORE` | `sub_7B6970` (TMA-vs-`cp.async` chooser) | Value is SSO-copied and then string-compared against `"true"` / `"false"` downstream. `"true"` selects the TMA `cp.async.bulk` path for load/store legalization on SM100+; absence defaults the comparison RHS to literal `"false"`, leaving TMA non-preferred. Non-boolean values fall through with implementation-defined effect. | `"false"` (5 bytes) — TMA path is **not** preferred; legacy `cp.async` or vector load/store wins the heuristic. |
+| `TILEIR_DELAY_TMA_STORE_WAIT` | `sub_8D9DD0` via `sub_45AE9A0` | Active only when `*a1 == 3` (TMA-store pipeline tier). Read into a `std::string`, then parsed by `strtol(base=10)` after `errno` clear. Empty / non-numeric throws `std::stoi("stoi")`; out-of-range likewise. Final return is `parsed != 0`. Effect: defers the `cp.async.bulk.wait_group` barrier after a TMA store. | Disabled — function returns `(*a1 == 4)` as the default (pipeline-tier gate only); env-var absence leaves delay-wait off. |
+| `TILEIR_ALWAYS_SWIZZLE` | `sub_7A9D60` (swizzle selector) | Returns `1` (true) immediately if the env-var is non-null. Any value — including `"0"`, `"false"`, `"no"` — short-circuits the swizzle-selection chain (`sub_7A9520`, `sub_7A9D30`, `sub_79DA60`, `sub_7A9750`) and forces the swizzled layout. Diagnostic switch only. | Disabled — swizzle heuristic runs normally. |
 | `CUDA_ROOT` | `sub_5773C0` (driver) **and** `sub_1A41D30` (`NVVM::getCUDAToolkitPath()`) | First probe in both chains. `sub_5773C0` SSO-copies into an `std::string`; `sub_1A41D30` returns the raw `const char *` from getenv memory. | Falls through to `CUDA_HOME`. |
 | `CUDA_HOME` | `sub_5773C0` and `sub_1A41D30` | Second probe. Same copy-semantics per resolver as `CUDA_ROOT`. | Falls through to `CUDA_PATH`. |
-| `CUDA_PATH` | `sub_5773C0` and `sub_1A41D30` | Third probe. | `sub_5773C0`: falls back to `sub_45AA3C0(scratch, argv[0])` -- a `/proc/self/exe` walk that strips two trailing path components (`bin/`). `sub_1A41D30`: returns `byte_4FA453E` (rodata empty/null sentinel), which produces the user-visible "Please specify the toolkit path" error from `sub_1A41DB0`. |
-| `LLVM_OVERRIDE_PRODUCER` | `ctor_611` @ `0x00538D90` | Read once during C++ static-ctor execution. Stored into global `qword_5BDF538` -- the producer string used by the `disable-bitcode-version-upgrade` `cl::opt` at LLVM bitcode load time. | Built-in `a2100git` rodata symbol (LLVM version tag). |
+| `CUDA_PATH` | `sub_5773C0` and `sub_1A41D30` | Third probe. | `sub_5773C0`: falls back to `sub_45AA3C0(scratch, argv[0])` — a `/proc/self/exe` walk that strips two trailing path components (`bin/`). `sub_1A41D30`: returns `byte_4FA453E` (rodata empty/null sentinel), which produces the user-visible "Please specify the toolkit path" error from `sub_1A41DB0`. |
+| `LLVM_OVERRIDE_PRODUCER` | `ctor_611` @ `0x00538D90` | Read once during C++ static-ctor execution. Stored into global `qword_5BDF538` — the producer string used by the `disable-bitcode-version-upgrade` `cl::opt` at LLVM bitcode load time. | Built-in `a2100git` rodata symbol (LLVM version tag). |
 | `LLVM_DISABLE_SYMBOLIZATION` | `sub_45B5AC0` (LLVMSymbolizer probe) | Presence (any non-null) disables the in-process `llvm-symbolizer` invocation used by `PrettyStackTrace` / signal-handler backtraces. | Symbolization enabled (subject to finding the symbolizer binary). |
 | `LLVM_SYMBOLIZER_PATH` | `sub_45B5AC0` | Absolute or relative path to a custom `llvm-symbolizer`. When set, `strlen` is passed to `sub_45B0940` (program-path resolver) and PATH search is bypassed. | PATH-walk for basename `"llvm-symbolizer"` (15 bytes). |
 | `LLVM_ENABLE_SYMBOLIZER_MARKUP` | `sub_45B6090` | Empty / unset early-returns 0. Non-empty engages the `{{{bt:...}}}` symbolizer-markup pipeline for stack traces. | Markup path skipped. |
@@ -42,7 +42,7 @@ Columns: env var name | consumer `sub_ADDR` | behavior | default when unset.
 | `TERM` | `sub_45AE730` (color-term detection) | `strlen($TERM)`-switched comparison against hard-coded ASCII packs for `ansi`, `cygwin`, `linux`, `xterm`, `vt100`, `screen`, `rxvt`. Generic tail-check accepts any value containing `"color"`. | Returns 0 (colors disabled). |
 
 Two other `getenv`-touching helpers exist but stay dormant: one for
-command-line-option scanning (`sub_4535E90` -- `llvm::cl::ParseCommandLineOptions`'s `EnvVar`
+command-line-option scanning (`sub_4535E90` — `llvm::cl::ParseCommandLineOptions`'s `EnvVar`
 arg, dormant because `main` passes null) and one for response-file expansion
 (`sub_45AEBB0`). They are listed for completeness; in production runs of
 `tileiras` they read no environment variables.
@@ -80,8 +80,8 @@ direct read.
 
 | Address | Populator | Default | Consumer / `cl::opt` name |
 |---------|-----------|---------|---------------------------|
-| `byte_5B6A640` | `ctor_372` @ `0x491070` | `0` | `-basic-dbe` -- basic dead-barrier-elim (`sub_27DD410`) |
-| `unk_5B6A5A0` (location) | `ctor_371` @ `0x490FF0` | `1` | `-opt-unsafe-algebra` -- `cl::location` external (`sub_27D7EE0` UFSimp) |
+| `byte_5B6A640` | `ctor_372` @ `0x491070` | `0` | `-basic-dbe` — basic dead-barrier-elim (`sub_27DD410`) |
+| `unk_5B6A5A0` (location) | `ctor_371` @ `0x490FF0` | `1` | `-opt-unsafe-algebra` — `cl::location` external (`sub_27D7EE0` UFSimp) |
 | `qword_5B6AEC0` (lo32) | `ctor_374_0` @ `0x492550` | `8` | `-scev-cgp-cross-block-limit` |
 | `qword_5B6B040` (lo32) | `ctor_374_0` | `3` | `-scev-cgp-idom-level-limit` |
 | `qword_5B6B100` (lo32) | `ctor_374_0` | `500` | `-scev-cgp-inst-limit` |
@@ -100,7 +100,7 @@ direct read.
 | `byte_5B6C320` | `ctor_375` | `1` | `-balance-dot-chain` |
 | `qword_5B6C3E0` (lo32) | `ctor_376` @ `0x494040` | `-1` | `-do-clone-for-ip-msp` |
 | `qword_5B6C4B0` (BYTE4) | `ctor_376` | `0` | `-dump-ip-msp` |
-| `byte_5B6CAC0` | `ctor_378` @ `0x494DB0` | `1` | `-lsa-opt` -- copy-struct-args-to-local |
+| `byte_5B6CAC0` | `ctor_378` @ `0x494DB0` | `1` | `-lsa-opt` — copy-struct-args-to-local |
 | `byte_5B6CC40` | `ctor_379_0` @ `0x495350` | `1` | `-track-indir-load` |
 | `byte_5B6CD00` | `ctor_379_0` | `0` | `-dump-ir-after-memory-space-opt` |
 | `byte_5B6CDC0` | `ctor_379_0` | `0` | `-dump-ir-before-memory-space-opt` |
@@ -118,7 +118,7 @@ direct read.
 A second class of gates is .bss-resident with no static writer: they
 default to zero and flip the first time their runtime consumer touches
 them, behaving as a one-shot latch. They never appear in `--help`
-because they are never bound to `cl::opt` storage -- pure runtime state.
+because they are never bound to `cl::opt` storage — pure runtime state.
 Examples: `byte_5B6AF80` (`scev-cgp-check-latency` cache, written by
 `sub_27F7D20`), `byte_5B6B4C0` (BASR pre-filter predicate, written by
 `sub_2800C10`), `dword_5B6B7C0` and `dword_5B6B940` (SCEV-CGP runtime
@@ -132,7 +132,7 @@ dynamic-linker init the C++ static constructors `ctor_3xx` run and write
 default values into the `0x5B6xxxx` band, simultaneously calling
 `sub_4534CC0(..., "<name>", <len>)` to register each gate's textual flag
 name with LLVM's CommandLine global registry. A few env vars are pulled
-this early too -- `LLVM_OVERRIDE_PRODUCER` in `ctor_611` lands in
+this early too — `LLVM_OVERRIDE_PRODUCER` in `ctor_611` lands in
 `qword_5BDF538` before `main` ever runs, so changing it post-launch has no
 effect. **Phase 2 (`main` startup):** the driver invokes
 `llvm::cl::ParseCommandLineOptions`, which walks `argv` and overwrites any
@@ -142,13 +142,13 @@ its toolkit-root `std::string` from `CUDA_ROOT` / `CUDA_HOME` / `CUDA_PATH`
 (or `/proc/self/exe`), and `sub_1A41D30` does the same for `NVVM` later
 when libnvvm is asked to locate libdevice. **Phase 3 (per-pass /
 per-kernel):** consumer passes read the gates directly through the global
-addresses cached at compile time -- there is no `getOption()` indirection
+addresses cached at compile time — there is no `getOption()` indirection
 at the call site, the compiler emitted a literal `mov` from
 `0x5B6xxxx`. The TILEIR-prefixed env vars are an exception to this static
 ladder: each is fetched on first use inside its consumer (`sub_7B6970`,
 `sub_7A9D60`, `sub_8D9DD0`, `sub_12C8DF0`), bypassing the gate band
 entirely because they were never registered with CommandLine. The result
-is two parallel surfaces -- the `cl::opt`-backed gates that respond to
+is two parallel surfaces — the `cl::opt`-backed gates that respond to
 both `--flag` and (for a handful) env vars, and the standalone TILEIR /
 TILE\_AS env vars that have no `--flag` equivalent and are reachable only
 by setting the variable.

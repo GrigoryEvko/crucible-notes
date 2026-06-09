@@ -6,9 +6,9 @@ Rematerialization is the compiler technique of recomputing a value near its use 
 
 | | |
 |---|---|
-| **Phase 28** | SinkRemat -- sinks instructions closer to uses, marks remat candidates |
-| **Phase 54** | OriDoRematEarly -- sets remat mode flag (`ctx+1552 = 4`) |
-| **Phase 69** | OriDoRemat -- late rematerialization after predication and fusion |
+| **Phase 28** | SinkRemat — sinks instructions closer to uses, marks remat candidates |
+| **Phase 54** | OriDoRematEarly — sets remat mode flag (`ctx+1552 = 4`) |
+| **Phase 69** | OriDoRemat — late rematerialization after predication and fusion |
 | **Address range (phase 28)** | Execute: `sub_C5FC20`, core: `sub_913A30` -> `sub_A0F020` |
 | **Address range (phase 69)** | Execute: `sub_C5F910`, core: `sub_A112C0` -> `sub_A11060` -> `sub_A107B0` |
 | **Minimum opt level** | Phase 28: requires level > 4 (knob 487); Phase 69: requires level > 1 |
@@ -398,7 +398,7 @@ if (masked - 22) <= 0x3D:             // unsigned: masked in [22, 83]
 eligible = result | (masked == 297) | (masked == 352)
 ```
 
-The `& 0xFFFFCFFF` mask strips bits 12--13, collapsing instruction variants (e.g. `.WIDE`, `.X`) to their base opcode before testing. The range guard `(masked - 22) <= 0x3D` is an unsigned comparison that rejects values below 22 (which wrap to large unsigned) and above 83 (83 - 22 = 61 = 0x3D). For the shift itself, `LOBYTE(raw_opcode)` is used -- safe because all in-range opcodes fit in a single byte and the variant bits sit above bit 11, outside the low byte.
+The `& 0xFFFFCFFF` mask strips bits 12--13, collapsing instruction variants (e.g. `.WIDE`, `.X`) to their base opcode before testing. The range guard `(masked - 22) <= 0x3D` is an unsigned comparison that rejects values below 22 (which wrap to large unsigned) and above 83 (83 - 22 = 61 = 0x3D). For the shift itself, `LOBYTE(raw_opcode)` is used — safe because all in-range opcodes fit in a single byte and the variant bits sit above bit 11, outside the low byte.
 
 **Bitmask bit decomposition** (`0x2080000010000001` = `0b0010_0000_1000_0000_0000_0000_0000_0001_0000_0000_0000_0000_0000_0000_0000_0001`):
 
@@ -416,7 +416,7 @@ The `& 0xFFFFCFFF` mask strips bits 12--13, collapsing instruction variants (e.g
 | 297    | LOP3     | 1 cycle |
 | 352    | SEL      | 1 cycle |
 
-All six are side-effect-free single-cycle ALU instructions. Opcodes 93 and 95 are **not** part of this whitelist -- they appear in the separate sinkability check (`sub_A105F0`) and MOV-chain analysis (`sub_A10DF0`) inside `sub_A11060`.
+All six are side-effect-free single-cycle ALU instructions. Opcodes 93 and 95 are **not** part of this whitelist — they appear in the separate sinkability check (`sub_A105F0`) and MOV-chain analysis (`sub_A10DF0`) inside `sub_A11060`.
 
 After the eligibility check passes, IMAD (opcode 77) receives extra handling: the instruction's last source operand register class is inspected via `(operand >> 11) & 3 == 2`, and the result is stored at `state+192` as a flag for downstream cost computation.
 
@@ -744,7 +744,7 @@ The post-allocation verifier (`sub_A55D80`, referenced by "REMATERIALIZATION PRO
 
 ## Operand Kind 7: Remat Markers
 
-The Ori IR operand classification includes a dedicated "Remat" kind (value 7) that marks operands participating in rematerialization. This marker is orthogonal to the `vreg+80` flags -- it exists in the instruction's operand descriptors and tells downstream passes that this particular use was created by rematerialization rather than by the original program.
+The Ori IR operand classification includes a dedicated "Remat" kind (value 7) that marks operands participating in rematerialization. This marker is orthogonal to the `vreg+80` flags — it exists in the instruction's operand descriptors and tells downstream passes that this particular use was created by rematerialization rather than by the original program.
 
 The 10 operand kinds in the Ori IR:
 
@@ -756,7 +756,7 @@ The 10 operand kinds in the Ori IR:
 | 3 | Any register | Wildcard |
 | 4 | Regular | Immediate or constant |
 | 5 | Predicated | Guard predicate |
-| 6 | -- | (reserved) |
+| 6 | — | (reserved) |
 | **7** | **Remat** | **Rematerialization marker** |
 | 8 | Spill-refill | Spill/refill pair |
 | 9 | R2P/P2R | Register-to-predicate conversion |
@@ -767,9 +767,9 @@ The virtual register's field at offset +80 encodes rematerialization state throu
 
 | Bit | Mask | Meaning |
 |-----|------|---------|
-| 0 | `0x1` | Remat candidate -- this value CAN be recomputed |
-| 1 | `0x2` | Remat source processed -- cross-block analysis done |
-| 2 | `0x4` | Remat committed -- the allocator should prefer remat over spill |
+| 0 | `0x1` | Remat candidate — this value CAN be recomputed |
+| 1 | `0x2` | Remat source processed — cross-block analysis done |
+| 2 | `0x4` | Remat committed — the allocator should prefer remat over spill |
 | 31 | `0x80000000` | Depth marker / unvisited sentinel |
 
 Common flag combinations:
@@ -783,7 +783,7 @@ Common flag combinations:
 |---------|------|---------|-------|
 | 487 | Gate for SinkRemat pass | (enabled) | Must be true for phase 28 to execute |
 | 862 | Cutlass iteration limit | 5 | Max iterations in cutlass-specific iterative mode |
-| 356 | Instruction count diagnostic | -- | Severity-2 warning when instruction count exceeds 32767 |
+| 356 | Instruction count diagnostic | — | Severity-2 warning when instruction count exceeds 32767 |
 
 The optimization level gating:
 - **Level <= 1 (`-O0`/`-O1`)**: All three remat phases are disabled
@@ -805,8 +805,8 @@ The optimization level gating:
 | `0x90C010` | `sub_90C010` | 70 | Source operand liveness check for remat |
 | `0x90B790` | `sub_90B790` | ~350 | Cost model: remat profitability analysis |
 | `0x8F47E0` | `sub_8F47E0` | 12 | Cutlass detection (`strstr("cutlass")`) |
-| `0x8F4820` | `sub_8F4820` | -- | Build remat worklist |
-| `0x8F4F90` | `sub_8F4F90` | -- | Apply remat decisions from worklist |
+| `0x8F4820` | `sub_8F4820` | — | Build remat worklist |
+| `0x8F4F90` | `sub_8F4F90` | — | Apply remat decisions from worklist |
 
 ### Phase 54 (OriDoRematEarly)
 
@@ -816,7 +816,7 @@ The optimization level gating:
 | `0xC5EF40` | `sub_C5EF40` | 7 | getName() -> returns 54 |
 | `0xC5EF50` | `sub_C5EF50` | 7 | isNoOp() -> returns 1 |
 
-Phase 54 is a degenerate phase. Its execute body is a single store: `*(ctx + 1552) = 4`. Its `isNoOp()` returns 1, so the dispatch loop **skips** `execute()` by default -- the phase does nothing unless an architecture backend overrides the vtable to activate it. When active, the value 4 written to `ctx+1552` advances the pipeline progress counter, which `sub_A11060` checks (`if *(ctx+1552) > 4` triggers the cross-block second pass).
+Phase 54 is a degenerate phase. Its execute body is a single store: `*(ctx + 1552) = 4`. Its `isNoOp()` returns 1, so the dispatch loop **skips** `execute()` by default — the phase does nothing unless an architecture backend overrides the vtable to activate it. When active, the value 4 written to `ctx+1552` advances the pipeline progress counter, which `sub_A11060` checks (`if *(ctx+1552) > 4` triggers the cross-block second pass).
 
 ### Phase 69 (OriDoRemat)
 
@@ -835,8 +835,8 @@ Phase 54 is a degenerate phase. Its execute body is a single store: `*(ctx + 155
 | `0x91E860` | `sub_91E860` | 10 | Cross-block remat cost (latency class -> pipe index) |
 | `0x91E610` | `sub_91E610` | 58 | Operand latency classification (4-path dispatch) |
 | `0x91A0F0` | `sub_91A0F0` | ~350 | General opcode-to-latency-class switch |
-| `0xA0C4A0` | `sub_A0C4A0` | -- | Pressure adjustment (+1 or -1) |
-| `0xA0C410` | `sub_A0C410` | -- | Remat profitability check for a vreg |
+| `0xA0C4A0` | `sub_A0C4A0` | — | Pressure adjustment (+1 or -1) |
+| `0xA0C410` | `sub_A0C410` | — | Remat profitability check for a vreg |
 
 ### Register Allocator Integration
 

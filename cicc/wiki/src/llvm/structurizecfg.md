@@ -83,7 +83,7 @@ The attribute IDs likely map to: 56 = `convergent`, 63 = `nodivergencesource`, 5
 | `structurizecfg-relaxed-uniform-regions` | `ctor_489` @ `0x553F30` | bool | true | Allows treating a region as uniform even if sub-regions contain non-uniform branches, provided there is at most one conditional direct child |
 | `enable-shrink-wrap` (`qword_50400C8`) | `ctor_688` @ `0x5A6520` | int (0/1/2) | 0 | **0** = ask `TargetRegisterInfo` (vtable+72) whether to structurize; **1** = force structurize unconditionally; **2** = skip structurize entirely |
 
-The `enable-shrink-wrap` knob is stored as a global at `qword_50400C8`. Despite its name (borrowed from the generic LLVM shrink-wrapping pass infrastructure), it serves as a master override for the structurization decision. Mode 2 effectively disables the pass, which would produce miscompilation for any function with divergent branches -- it exists purely as a debugging/override mechanism.
+The `enable-shrink-wrap` knob is stored as a global at `qword_50400C8`. Despite its name (borrowed from the generic LLVM shrink-wrapping pass infrastructure), it serves as a master override for the structurization decision. Mode 2 effectively disables the pass, which would produce miscompilation for any function with divergent branches — it exists purely as a debugging/override mechanism.
 
 ## Irreducibility Detection: sub_35CA2C0
 
@@ -438,11 +438,11 @@ For a divergent loop:
 
 ## Flow Block Insertion Algorithm
 
-The previous sections describe the pass at the function-dispatch level. This section provides the complete algorithmic detail of how Flow blocks are actually created, wired, and how PHI networks are maintained -- the core transformation that converts a reducible-but-unstructured CFG into a fully structured CFG suitable for PTX emission.
+The previous sections describe the pass at the function-dispatch level. This section provides the complete algorithmic detail of how Flow blocks are actually created, wired, and how PHI networks are maintained — the core transformation that converts a reducible-but-unstructured CFG into a fully structured CFG suitable for PTX emission.
 
 ### Complexity
 
-Let B = number of basic blocks, E = number of CFG edges, and D = depth of the dominator tree. The irreducibility detection (`sub_35CA2C0`) is O(B * E) -- for each block in reverse RPO, it probes successors against the dominator tree hash table (O(1) per probe). The per-block classification loop is O(B * (P_avg + S_avg)) where P_avg and S_avg are average predecessor and successor counts -- effectively O(B + E). The uniform branch classifier (`sub_35CB4A0`) is O(1) per block (a few flag checks and one DivergenceAnalysis query). The NCA computation (`sub_35C9ED0`) walks the domtree upward from two nodes until convergence: O(D) per call. Each Flow block insertion is O(D + PHI_count) where PHI_count is the number of PHI nodes at the original merge point (each needs entry copying). Recursive child splitting adds at most O(B) new blocks total across the entire function. The bitvector tracking is O(B / 64) per test/set operation. Overall: O(B * D + E + F * PHI_total) where F = number of Flow blocks created. Since F <= B (one Flow per divergent region) and D = O(B) in the worst case, the theoretical worst case is O(B^2 + E). In practice, CUDA CFGs are shallow (D < 20) and sparsely divergent, making the pass effectively O(B + E).
+Let B = number of basic blocks, E = number of CFG edges, and D = depth of the dominator tree. The irreducibility detection (`sub_35CA2C0`) is O(B * E) — for each block in reverse RPO, it probes successors against the dominator tree hash table (O(1) per probe). The per-block classification loop is O(B * (P_avg + S_avg)) where P_avg and S_avg are average predecessor and successor counts — effectively O(B + E). The uniform branch classifier (`sub_35CB4A0`) is O(1) per block (a few flag checks and one DivergenceAnalysis query). The NCA computation (`sub_35C9ED0`) walks the domtree upward from two nodes until convergence: O(D) per call. Each Flow block insertion is O(D + PHI_count) where PHI_count is the number of PHI nodes at the original merge point (each needs entry copying). Recursive child splitting adds at most O(B) new blocks total across the entire function. The bitvector tracking is O(B / 64) per test/set operation. Overall: O(B * D + E + F * PHI_total) where F = number of Flow blocks created. Since F <= B (one Flow per divergent region) and D = O(B) in the worst case, the theoretical worst case is O(B^2 + E). In practice, CUDA CFGs are shallow (D < 20) and sparsely divergent, making the pass effectively O(B + E).
 
 ### Conceptual Model
 
@@ -761,7 +761,7 @@ The pass rejects irreducible CFGs rather than attempting to restructure them. Th
 
 ### What Makes a CFG Irreducible
 
-A CFG is irreducible if it contains a cycle with multiple entry points -- that is, there exist two blocks A and B in the cycle such that neither dominates the other, yet both can be reached from outside the cycle. The classic example is a `goto` into the middle of a loop:
+A CFG is irreducible if it contains a cycle with multiple entry points — that is, there exist two blocks A and B in the cycle such that neither dominates the other, yet both can be reached from outside the cycle. The classic example is a `goto` into the middle of a loop:
 
 ```text
 Irreducible:
@@ -798,7 +798,7 @@ Three factors explain this decision:
 
 1. **CUDA source language guarantee.** Well-formed CUDA C++ does not produce irreducible control flow. The language has no `goto` across loop boundaries (the EDG frontend rejects it), and structured constructs (`if`/`for`/`while`/`do`/`switch`) always produce reducible CFGs. The only way to get irreducible flow is through extreme `goto` abuse in C mode or through a buggy optimization pass that introduces one.
 
-2. **Code size explosion.** Node splitting can exponentially increase code size in pathological cases. For a cycle with N entry points, splitting may duplicate up to 2^N blocks. On a GPU where register pressure is the primary performance limiter, this expansion would be catastrophic -- more blocks means more live ranges, more register pressure, and lower occupancy.
+2. **Code size explosion.** Node splitting can exponentially increase code size in pathological cases. For a cycle with N entry points, splitting may duplicate up to 2^N blocks. On a GPU where register pressure is the primary performance limiter, this expansion would be catastrophic — more blocks means more live ranges, more register pressure, and lower occupancy.
 
 3. **Correctness risk.** `FixIrreduciblePass` transforms the CFG before divergence analysis has finalized. If the splitting creates new blocks with divergent branches, those branches would need re-analysis. The interaction between `FixIrreducible`, `DivergenceAnalysis`, and `StructurizeCFG` is not validated in the NVPTX pipeline.
 
@@ -865,7 +865,7 @@ The reconvergence head/tail stored at function offsets `+672` and `+680` are con
 
 ### Interaction with `SIAnnotateControlFlow` (AMDGPU Comparison)
 
-AMDGPU uses a different approach: `SIAnnotateControlFlow` inserts explicit `if`/`else`/`end_cf` intrinsics after StructurizeCFG. NVPTX does not use this -- instead, the convergence information flows through:
+AMDGPU uses a different approach: `SIAnnotateControlFlow` inserts explicit `if`/`else`/`end_cf` intrinsics after StructurizeCFG. NVPTX does not use this — instead, the convergence information flows through:
 
 1. StructurizeCFG (Flow blocks + function metadata)
 2. CSSA (copy insertion at reconvergence)
@@ -987,7 +987,7 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 **2. Forgetting to update LoopInfo when inserting Flow blocks inside loops.** When `insertLoopFlowBlock` creates a new block between the latch and the exit, that block carries the back-edge to the header and is therefore inside the loop. If LoopInfo is not updated (`loop_info->addBlockToLoop`), subsequent passes (LICM, LSR, LoopUnroll) will not recognize the Flow block as a loop member and may hoist or sink code across it incorrectly. This is a silent miscompilation: the kernel produces wrong results only for inputs that exercise the divergent loop path.
 
-**3. Inverting the Flow block PHI convention.** The pass uses `true = exit loop` (break) and `false = continue loop` (back-edge) for loop Flow blocks. This is counterintuitive -- most programmers expect `true` to mean "condition is met, continue." Reversing this convention causes the back-edge to be the taken path for `true`, which not only produces wrong control flow but also defeats the branch prediction hint that maps the fall-through (false) path to the common-case loop continuation. A reimplementation must match the exact convention documented in the upstream LLVM structurization invariant.
+**3. Inverting the Flow block PHI convention.** The pass uses `true = exit loop` (break) and `false = continue loop` (back-edge) for loop Flow blocks. This is counterintuitive — most programmers expect `true` to mean "condition is met, continue." Reversing this convention causes the back-edge to be the taken path for `true`, which not only produces wrong control flow but also defeats the branch prediction hint that maps the fall-through (false) path to the common-case loop continuation. A reimplementation must match the exact convention documented in the upstream LLVM structurization invariant.
 
 **4. Not writing reconvergence metadata to function offsets `+672`/`+680`.** The AsmPrinter's convergence control framework reads the head and tail stored at these offsets to emit `CONVERGENCECTRL_ENTRY` and `CONVERGENCECTRL_LOOP` pseudo-instructions. A reimplementation that structures the CFG correctly but does not write these metadata values will cause the AsmPrinter to emit PTX without convergence barriers. On architectures with hardware convergence tracking (SM 7.0+), this can lead to threads reconverging at incorrect points, producing silent data corruption.
 
@@ -995,13 +995,13 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 ## Cross-References
 
-- [CSSA](../passes/cssa.md) -- the Conventional SSA pass that consumes Flow blocks to insert warp-safe copies
-- [AsmPrinter](../infra/asmprinter.md) -- convergence control pseudo-instruction emission consuming the `+672`/`+680` metadata
-- [GPU Execution Model](../gpu-execution-model.md) -- warp divergence and reconvergence fundamentals
-- [Branch Folding](branch-folding.md) -- may eliminate redundant Flow blocks after code generation
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- details on the DenseSet implementation used by the BB tracking tables
-- [Pipeline](pipeline.md) -- exact position of `structurizecfg` in the pass ordering
-- [Knobs](../config/knobs.md) -- `structurizecfg-skip-uniform-regions`, `structurizecfg-relaxed-uniform-regions`, `enable-shrink-wrap`
+- [CSSA](../passes/cssa.md) — the Conventional SSA pass that consumes Flow blocks to insert warp-safe copies
+- [AsmPrinter](../infra/asmprinter.md) — convergence control pseudo-instruction emission consuming the `+672`/`+680` metadata
+- [GPU Execution Model](../gpu-execution-model.md) — warp divergence and reconvergence fundamentals
+- [Branch Folding](branch-folding.md) — may eliminate redundant Flow blocks after code generation
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — details on the DenseSet implementation used by the BB tracking tables
+- [Pipeline](pipeline.md) — exact position of `structurizecfg` in the pass ordering
+- [Knobs](../config/knobs.md) — `structurizecfg-skip-uniform-regions`, `structurizecfg-relaxed-uniform-regions`, `enable-shrink-wrap`
 - Upstream LLVM source: `llvm/lib/Transforms/Scalar/StructurizeCFG.cpp`
 
 ## Differences from Upstream LLVM

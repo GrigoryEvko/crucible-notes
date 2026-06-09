@@ -267,7 +267,7 @@ These passes are present in `sub_12DE8F0` but skip when tier==1 (O1):
 | Sink | `sub_1869C50(1,0,1)` | No inter-tier instruction sinking |
 | LoopVectorize/SLP (1st call) | `sub_19B73C0(tier,...)` | No aggressive vectorization |
 
-At O1, the base pipeline (Tier 0) already includes one instance of LoopVectorize with `sub_19B73C0(2,-1,-1,-1,-1,-1,-1)` -- width 2, all thresholds at -1 (unlimited). The tier!=1 guard blocks a SECOND, more aggressive vectorization pass with SM-dependent parameters.
+At O1, the base pipeline (Tier 0) already includes one instance of LoopVectorize with `sub_19B73C0(2,-1,-1,-1,-1,-1,-1)` — width 2, all thresholds at -1 (unlimited). The tier!=1 guard blocks a SECOND, more aggressive vectorization pass with SM-dependent parameters.
 
 ### 2. Tier guard: `tier==3` (O3 only)
 
@@ -354,9 +354,9 @@ sub_1C8A4D0(0)   -- NVVMFinalCleanup or similar minimal pass
 
 Then the common tail at `LABEL_84` adds:
 1. MemorySpaceOpt (conditional, skipped at O0 since `opts[3488]` is typically unset)
-2. `sub_1CEBD10()` -- NVVMFinal / cleanup
-3. `sub_1654860(1)` -- VerifierPass
-4. `sub_12DFE00()` -- Codegen pass setup
+2. `sub_1CEBD10()` — NVVMFinal / cleanup
+3. `sub_1654860(1)` — VerifierPass
+4. `sub_12DFE00()` — Codegen pass setup
 
 The O0 pipeline does NOT call `sub_12DE330` or `sub_12DE8F0`. It runs only the infrastructure passes (TargetLibraryInfo, TargetTransformInfo, BasicAA, AssumptionCacheTracker, ProfileSummaryInfo) plus minimal canonicalization.
 
@@ -555,9 +555,9 @@ The codegen dispatch `sub_12DFE00` reads `opts[200]` (the integer optimization l
 
 ## Cross-References
 
-- [NVVMPassOptions System](nvvm-pass-options.md) -- complete 221-slot, 4,512-byte struct layout
-- [Pipeline Pass Registration](../llvm/pipeline.md) -- 526-pass registration table
-- [Optimizer Architecture](../pipeline/optimizer.md) -- two-phase model, AddPass mechanism
-- [CLI Flags](cli-flags.md) -- `-O#`, `-Ofc=`, `--passes=` routing
-- [Knobs Reference](knobs.md) -- all 1496 cl::opt knobs
-- [Concurrent Compilation](../infra/concurrent-compilation.md) -- Phase I/II threading model
+- [NVVMPassOptions System](nvvm-pass-options.md) — complete 221-slot, 4,512-byte struct layout
+- [Pipeline Pass Registration](../llvm/pipeline.md) — 526-pass registration table
+- [Optimizer Architecture](../pipeline/optimizer.md) — two-phase model, AddPass mechanism
+- [CLI Flags](cli-flags.md) — `-O#`, `-Ofc=`, `--passes=` routing
+- [Knobs Reference](knobs.md) — all 1496 cl::opt knobs
+- [Concurrent Compilation](../infra/concurrent-compilation.md) — Phase I/II threading model

@@ -23,7 +23,7 @@ This page documents the LTO-side line table generator in reimplementation-grade 
 
 The LTO line table pipeline has three phases:
 
-1. **Collection** (`sub_12D2010`): The master debug section builder iterates all functions in the compiled module. For each function, it walks the instruction stream (32-byte stride records), classifies debug record types (1, 49, 51, 52, 55, 56, 58, 83), and collects source location entries -- file index, line number, column, instruction address, is_stmt flag, and inline context id.
+1. **Collection** (`sub_12D2010`): The master debug section builder iterates all functions in the compiled module. For each function, it walks the instruction stream (32-byte stride records), classifies debug record types (1, 49, 51, 52, 55, 56, 58, 83), and collects source location entries — file index, line number, column, instruction address, is_stmt flag, and inline context id.
 
 2. **Encoding** (`sub_12D04E0`): The line program encoder receives the collected entries as a flat array of 12-byte records (file:u16, is_stmt:u16, line:u32, address:u32) and encodes them into DWARF line number program opcodes using the standard state machine model: special opcodes for compact line+address deltas, standard opcodes (`DW_LNS_advance_pc`, `DW_LNS_advance_line`, `DW_LNS_set_file`, `DW_LNS_copy`, `DW_LNS_negate_stmt`) for large deltas, and extended opcodes for context/prologue markers.
 
@@ -75,7 +75,7 @@ The DWARF line program state machine is allocated by `sub_12D1990` as a 464-byte
 | +128 | 8 | `program_buffer` | Pointer to 256,000-byte assembled output |
 | +136 | 8 | `program_size` | Bytes written to program buffer |
 | +160 | 1 | `is_64bit` | DWARF64 mode flag (affects address encoding) |
-| +176--200 | -- | `file_entry_array` | Pointer + count for internal file records |
+| +176--200 | — | `file_entry_array` | Pointer + count for internal file records |
 | +208 | 8 | `total_program_length` | Total length of encoded program data |
 
 The four buffers use a doubling growth strategy: when a write would exceed capacity, a new buffer at 2x the current size is allocated, the old data is copied, and the old buffer is freed via `sub_431000`.
@@ -110,7 +110,7 @@ if (a3 == 0) {
 }
 ```
 
-This uses `sub_4411B0` (find by name) and `sub_434BC0` (create) -- the same section registry infrastructure documented in [Section Merging](../linker/section-merging.md).
+This uses `sub_4411B0` (find by name) and `sub_434BC0` (create) — the same section registry infrastructure documented in [Section Merging](../linker/section-merging.md).
 
 ### Source File Collection
 
@@ -167,8 +167,8 @@ filename\0  dir_index(ULEB128)  mod_time(ULEB128)  file_size(ULEB128)
 
 Each filename is the basename (without directory), and `dir_index` references the directory table (1-based). Modification time and file size are encoded as ULEB128 via `sub_4FA8B0`. On encoding failure, a diagnostic is emitted through `sub_467460`:
 
-- `"when generating LEB128 number for timestamp"` -- mtime encoding overflow
-- `"when generating LEB128 number for file size"` -- file size encoding overflow
+- `"when generating LEB128 number for timestamp"` — mtime encoding overflow
+- `"when generating LEB128 number for file size"` — file size encoding overflow
 
 ### DWARF Header Assembly
 
@@ -306,8 +306,8 @@ if (context_map && context_map[entry_index].context != state->current_context) {
 ```
 
 The diagnostics for these ULEB128 encodings are:
-- `"when generating LEB128 number for setting context"` -- context index overflow
-- `"when generating LEB128 number for setting function Offset"` -- function offset overflow
+- `"when generating LEB128 number for setting context"` — context index overflow
+- `"when generating LEB128 number for setting function Offset"` — function offset overflow
 
 ### Line and Address Advance Encoding
 
@@ -346,8 +346,8 @@ When the special opcode does not fit (line delta too large, address delta too la
 - **Both** (fallback): Emit `DW_LNS_advance_line` + SLEB128, then `DW_LNS_advance_pc` + ULEB128, then `DW_LNS_copy`.
 
 The associated diagnostics are:
-- `"when generating LEB128 number for line advance"` -- line SLEB128 overflow
-- `"when generating LEB128 number for address advance"` -- address ULEB128 overflow
+- `"when generating LEB128 number for line advance"` — line SLEB128 overflow
+- `"when generating LEB128 number for address advance"` — address ULEB128 overflow
 
 ### End of Sequence
 
@@ -564,7 +564,7 @@ The diagnostic string for encoding failure is `"when generating LEB128 number fo
 | `DW_LNE_NV_set_context` | 0x90 | 144 | -112 | Set inline context | ULEB128 context_id, ULEB128 func_offset |
 | `DW_LNE_NV_set_stmt` | 0x92 | 146 | -110 | Set is_stmt flag | ULEB128 is_stmt_val |
 
-Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVIDIA-proprietary. The gap at 0x91 is unused in the current binary -- no emitter or consumer references this value.
+Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVIDIA-proprietary. The gap at 0x91 is unused in the current binary — no emitter or consumer references this value.
 
 ### Wire Format Examples
 
@@ -611,7 +611,7 @@ The complete set of standard DWARF opcodes emitted by nvlink:
 | `DW_LNS_advance_line` | 3 | 1 (SLEB128) | Advance line register by signed operand |
 | `DW_LNS_set_file` | 4 | 1 (ULEB128) | Set file register to operand (1-based) |
 | `DW_LNS_set_column` | 5 | 1 (ULEB128) | Set column register (declared in header, not emitted in practice) |
-| `DW_LNS_negate_stmt` | 6 | 0 | Toggle is_stmt register (declared in header, not emitted -- 0x92 used instead) |
+| `DW_LNS_negate_stmt` | 6 | 0 | Toggle is_stmt register (declared in header, not emitted — 0x92 used instead) |
 | `DW_LNS_set_basic_block` | 7 | 0 | Set basic_block flag (declared in header, not emitted) |
 | `DW_LNS_const_add_pc` | 8 | 0 | Advance address by `(255 - opcode_base) / line_range` (declared, not emitted) |
 | `DW_LNS_fixed_advance_pc` | 9 | 1 (uhalf) | Advance address by fixed 16-bit value (declared, not emitted) |
@@ -732,15 +732,15 @@ These functions follow the same DWARF header format as the LTO path but operate 
 
 The line table data that nvlink merges originates from two upstream toolchain stages:
 
-- **ptxas wiki** -- [Debug Information](../../ptxas/output/debug-info.html): ptxas generates both `.debug_line` (PTX-level) and `.nv_debug_line_sass` (SASS-level) sections. The SASS line table builder at `sub_866BB0` produces the per-CU fragments that nvlink's LTO-side generator (`sub_12D04E0`) replaces during link-time optimization, and that the linker-side merger (`sub_4776E0`--`sub_478A20`) concatenates during regular linking.
-- **cicc wiki** -- [Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html): cicc emits `.loc` and `.file` directives in PTX output, which ptxas then converts to DWARF line program bytes. The `-generate-line-info` flag at cicc controls whether `DILocation` metadata is preserved through the optimizer -- this directly determines whether nvlink receives any line table data to merge.
+- **ptxas wiki** — [Debug Information](../../ptxas/output/debug-info.html): ptxas generates both `.debug_line` (PTX-level) and `.nv_debug_line_sass` (SASS-level) sections. The SASS line table builder at `sub_866BB0` produces the per-CU fragments that nvlink's LTO-side generator (`sub_12D04E0`) replaces during link-time optimization, and that the linker-side merger (`sub_4776E0`--`sub_478A20`) concatenates during regular linking.
+- **cicc wiki** — [Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html): cicc emits `.loc` and `.file` directives in PTX output, which ptxas then converts to DWARF line program bytes. The `-generate-line-info` flag at cicc controls whether `DILocation` metadata is preserved through the optimizer — this directly determines whether nvlink receives any line table data to merge.
 
 ## Cross-References
 
-- [Section Merging](../linker/section-merging.md) -- section creation and data copy primitives
-- [DWARF Processing](dwarf-processing.md) -- broader DWARF debug info pipeline
-- [NVIDIA Extensions](nvidia-extensions.md) -- `.nv_debug_line_sass` and other NVIDIA-specific debug sections
-- [ELF Serialization](../elf/serialization.md) -- final section output to ELF
+- [Section Merging](../linker/section-merging.md) — section creation and data copy primitives
+- [DWARF Processing](dwarf-processing.md) — broader DWARF debug info pipeline
+- [NVIDIA Extensions](nvidia-extensions.md) — `.nv_debug_line_sass` and other NVIDIA-specific debug sections
+- [ELF Serialization](../elf/serialization.md) — final section output to ELF
 
 ## Confidence Assessment
 

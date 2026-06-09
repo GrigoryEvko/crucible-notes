@@ -1,6 +1,6 @@
 # Kernel Launch Syntax (`<<<...>>>`)
 
-The triple-bracket launch operator is the single most recognizable token sequence in CUDA C++. It is also the only piece of CUDA grammar that has no standalone C++ analogue: every other CUDA construct (annotated functions, address spaces, intrinsics) is built on top of attributes or builtins, but `<<<grid, block, smem, stream>>>` is recognized in EDG's expression parser as a dedicated postfix operator whose AST node is then lowered into an ordinary runtime-call sequence before the host compiler ever sees the translation unit. The frontend never emits `<<<` or `>>>` into the `.int.c` file -- by the time host output is generated, every launch has been rewritten as a paired call to `__cudaPushCallConfiguration` followed by an ordinary call to the kernel's host-side stub. This page documents how the operator is tokenized, parsed, validated, and lowered, and enumerates the diagnostics that fire along the way.
+The triple-bracket launch operator is the single most recognizable token sequence in CUDA C++. It is also the only piece of CUDA grammar that has no standalone C++ analogue: every other CUDA construct (annotated functions, address spaces, intrinsics) is built on top of attributes or builtins, but `<<<grid, block, smem, stream>>>` is recognized in EDG's expression parser as a dedicated postfix operator whose AST node is then lowered into an ordinary runtime-call sequence before the host compiler ever sees the translation unit. The frontend never emits `<<<` or `>>>` into the `.int.c` file — by the time host output is generated, every launch has been rewritten as a paired call to `__cudaPushCallConfiguration` followed by an ordinary call to the kernel's host-side stub. This page documents how the operator is tokenized, parsed, validated, and lowered, and enumerates the diagnostics that fire along the way.
 
 ## Key Facts
 
@@ -21,7 +21,7 @@ The triple-bracket launch operator is the single most recognizable token sequenc
 
 ## Abstract
 
-CUDA recognizes `kernel<<<grid, block [, smem [, stream]]>>>(args)` as a primary expression whose result is a `void`-typed call site. EDG's expression parser (`sub_511D40`) reaches this construct via a postfix-operator token whose internal kind is `0x48` (72). When the case fires, the parser locates the runtime helper `__cudaPushCallConfiguration`, parses one-to-four comma-separated launch arguments inside the brackets, expects a closing `>>>`, then parses the ordinary parenthesized argument list. The AST node produced is conceptually a comma expression: `(__cudaPushCallConfiguration(g, b, s, S) || kernel_stub(args))`. The host stub generator (see [Kernel Stub Generation](./kernel-stubs.md)) replaces the original kernel body with a `static __wrapper__device_stub_<name>` whose own placeholder body contains a `::cudaLaunchKernel(0,0,0,0,0,0)` call kept only to anchor the linker dependency. The four arguments are interpreted as `dim3 grid, dim3 block, size_t smem = 0, cudaStream_t stream = 0` -- the literal integer zero, not `cudaStreamPerThread`. Confidence: HIGH (string evidence and runtime lookup symbol both present in the binary).
+CUDA recognizes `kernel<<<grid, block [, smem [, stream]]>>>(args)` as a primary expression whose result is a `void`-typed call site. EDG's expression parser (`sub_511D40`) reaches this construct via a postfix-operator token whose internal kind is `0x48` (72). When the case fires, the parser locates the runtime helper `__cudaPushCallConfiguration`, parses one-to-four comma-separated launch arguments inside the brackets, expects a closing `>>>`, then parses the ordinary parenthesized argument list. The AST node produced is conceptually a comma expression: `(__cudaPushCallConfiguration(g, b, s, S) || kernel_stub(args))`. The host stub generator (see [Kernel Stub Generation](./kernel-stubs.md)) replaces the original kernel body with a `static __wrapper__device_stub_<name>` whose own placeholder body contains a `::cudaLaunchKernel(0,0,0,0,0,0)` call kept only to anchor the linker dependency. The four arguments are interpreted as `dim3 grid, dim3 block, size_t smem = 0, cudaStream_t stream = 0` — the literal integer zero, not `cudaStreamPerThread`. Confidence: HIGH (string evidence and runtime lookup symbol both present in the binary).
 
 ## Grammar
 
@@ -35,7 +35,7 @@ The closing token `>>>` is matched against the same compound-token logic. If the
 
 Two adjacent shift-greater situations interact with the maximal-munch rule:
 
-- **Templated kernel reference inside angle brackets**: `kernel<T><<<g, b>>>(x)` -- the closing `>` of the template-argument list is followed by `<<<`. The lexer disambiguates by tracking the template-instantiation depth: when depth is nonzero, `<<<` is *not* recognized as a launch token, so the inner `>` closes the template list and the *next* token sequence begins the launch. The same machinery handles `kernel<vector<int>><<<g, b>>>(x)` -- the two-`>` template-list closer is greedy first, then `<<<` becomes a launch token.
+- **Templated kernel reference inside angle brackets**: `kernel<T><<<g, b>>>(x)` — the closing `>` of the template-argument list is followed by `<<<`. The lexer disambiguates by tracking the template-instantiation depth: when depth is nonzero, `<<<` is *not* recognized as a launch token, so the inner `>` closes the template list and the *next* token sequence begins the launch. The same machinery handles `kernel<vector<int>><<<g, b>>>(x)` — the two-`>` template-list closer is greedy first, then `<<<` becomes a launch token.
 - **`>>>` versus `>> >`**: Inside a nested template such as `kernel<vector<int>><<<g, b>>>(x)`, the closing `>>>` is matched by the launch parser, not by template-list closure. The launch-position context flag tells the lexer to prefer the three-character compound token.
 
 These rules mean that whitespace between the angle brackets does *not* change parsing: `kernel<<< g , b >>> ( x )` is equivalent to `kernel<<<g,b>>>(x)` because the compound tokens are matched by character sequence, not by token-adjacency.
@@ -44,9 +44,9 @@ These rules mean that whitespace between the angle brackets does *not* change pa
 
 The parser builds a single launch-call AST node consisting of:
 
-1. **The callee** -- the kernel's address-of-function reference (or a parenthesized expression that evaluates to one).
-2. **Up to four configuration arguments** -- `grid`, `block`, optional `smem`, optional `stream`.
-3. **An argument list** -- the ordinary parenthesized arguments that follow the closing `>>>`.
+1. **The callee** — the kernel's address-of-function reference (or a parenthesized expression that evaluates to one).
+2. **Up to four configuration arguments** — `grid`, `block`, optional `smem`, optional `stream`.
+3. **An argument list** — the ordinary parenthesized arguments that follow the closing `>>>`.
 
 The node is rewritten before the IL walker reaches it; downstream phases never observe a "launch" AST kind directly. See [IL Tree Walking](../il/walking.md) for the post-lowering shape.
 
@@ -63,7 +63,7 @@ launch-config:
             [ ',' assignment-expression ] ] '>>>'
 ```
 
-The four positional arguments are bound by position alone -- there is no named-argument form. Any other count (zero, one, three with the third missing context, or five) triggers a parse error from the surrounding expression machinery before launch-specific validation runs.
+The four positional arguments are bound by position alone — there is no named-argument form. Any other count (zero, one, three with the third missing context, or five) triggers a parse error from the surrounding expression machinery before launch-specific validation runs.
 
 ## Semantic Rules
 
@@ -76,7 +76,7 @@ The four positional arguments are bound by position alone -- there is no named-a
 | 3 (smem) | `size_t` | Integral types convertible to `size_t` | Default value: literal `0` |
 | 4 (stream) | `cudaStream_t` | `cudaStream_t` (which is `struct CUstream_st*`) or `nullptr` | Default value: literal `0` |
 
-The conversion is performed by the same overload-resolution code that handles ordinary function arguments -- once the parser has located `__cudaPushCallConfiguration`, the four arguments are bound to its declared signature using standard C++ conversions. See [Overload Resolution](../edg/overload-resolution.md) for how implicit-conversion sequences are computed.
+The conversion is performed by the same overload-resolution code that handles ordinary function arguments — once the parser has located `__cudaPushCallConfiguration`, the four arguments are bound to its declared signature using standard C++ conversions. See [Overload Resolution](../edg/overload-resolution.md) for how implicit-conversion sequences are computed.
 
 ### `__cudaPushCallConfiguration` Lookup
 
@@ -92,25 +92,25 @@ if (!v206 || *(_BYTE *)(v206 + 80) != 11) {        // not found or kind != funct
 }
 ```
 
-The lookup is unqualified and runs in the current scope. The function is declared in `crt/device_runtime.h` (included transitively through `crt/host_runtime.h`); when the include paths are broken the lookup fails and compilation halts with error 3654 (`unable to find __cudaPushCallConfiguration declaration. CUDA toolkit installation may be corrupt.`). Severity `0x0B` (11) maps to a fatal error -- no recovery is attempted.
+The lookup is unqualified and runs in the current scope. The function is declared in `crt/device_runtime.h` (included transitively through `crt/host_runtime.h`); when the include paths are broken the lookup fails and compilation halts with error 3654 (`unable to find __cudaPushCallConfiguration declaration. CUDA toolkit installation may be corrupt.`). Severity `0x0B` (11) maps to a fatal error — no recovery is attempted.
 
 ### Default-Stream Lookup
 
-When only two or three arguments are present inside `<<<...>>>`, the missing positions are filled with literal integer `0`. The `default_stream_launch` tag (string at `0x8463C0`) controls a related diagnostic emitted when a default-stream fallback is detected in a context that disallows it (e.g., RDC mode in some configurations). The default-stream value is `0`, not `cudaStreamPerThread` -- see the QUIRK callout below.
+When only two or three arguments are present inside `<<<...>>>`, the missing positions are filled with literal integer `0`. The `default_stream_launch` tag (string at `0x8463C0`) controls a related diagnostic emitted when a default-stream fallback is detected in a context that disallows it (e.g., RDC mode in some configurations). The default-stream value is `0`, not `cudaStreamPerThread` — see the QUIRK callout below.
 
 ### Explicit-Stream-Required Cases
 
 Two contexts force an explicit fourth argument:
 
-1. **Device-side launches in RDC mode** -- A kernel launched from within a `__device__` or `__global__` function (CUDA Dynamic Parallelism) requires `-rdc=true`. Without it, the `device_launch_no_sepcomp` tag fires: `kernel launch from __device__ or __global__ functions requires separate compilation mode`.
-2. **Certain async-API configurations** -- The `explicit stream argument not provided in kernel launch` diagnostic (error 3655, string at `0x88CAB0`) is emitted from `sub_511D40` at line 2019 when the surrounding context requires an explicit stream but the parsed launch elided it.
+1. **Device-side launches in RDC mode** — A kernel launched from within a `__device__` or `__global__` function (CUDA Dynamic Parallelism) requires `-rdc=true`. Without it, the `device_launch_no_sepcomp` tag fires: `kernel launch from __device__ or __global__ functions requires separate compilation mode`.
+2. **Certain async-API configurations** — The `explicit stream argument not provided in kernel launch` diagnostic (error 3655, string at `0x88CAB0`) is emitted from `sub_511D40` at line 2019 when the surrounding context requires an explicit stream but the parsed launch elided it.
 
 ### Argument Copy Constraints
 
 A device-side launch (one that compiles into a CUDA-runtime call rather than a direct kernel invocation, used by Dynamic Parallelism) cannot pass arguments that require non-trivial copy or destruction. The two relevant diagnostics:
 
-- `device_side_launch_arg_with_user_provided_cctor` (string at `0x855A78`) -- "cannot pass an argument with a user-provided copy-constructor to a device-side kernel launch"
-- `device_side_launch_arg_with_user_provided_dtor` (string at `0x855AA8`) -- "cannot pass an argument with a user-provided destructor to a device-side kernel launch"
+- `device_side_launch_arg_with_user_provided_cctor` (string at `0x855A78`) — "cannot pass an argument with a user-provided copy-constructor to a device-side kernel launch"
+- `device_side_launch_arg_with_user_provided_dtor` (string at `0x855AA8`) — "cannot pass an argument with a user-provided destructor to a device-side kernel launch"
 
 These are enforced after overload resolution selects the argument-binding sequence; if any binding would invoke a user-provided copy constructor or destructor, the diagnostic fires.
 
@@ -148,7 +148,7 @@ The `kernel(a)` call is then resolved to the device stub. The stub's name is `__
 { ::cudaLaunchKernel(0, 0, 0, 0, 0, 0); }
 ```
 
-emitted from the string literal at `0x839CB8` -- see [Kernel Stub Generation](./kernel-stubs.md) for the full mechanism. The body is never actually executed at runtime: at link time the `__wrapper__device_stub_<kernel>` symbol is replaced by an `nvcc`-generated definition that consumes the pushed configuration and dispatches through the driver API. The placeholder `cudaLaunchKernel(0,0,0,0,0,0)` exists solely to anchor a linker dependency on `libcudart`.
+emitted from the string literal at `0x839CB8` — see [Kernel Stub Generation](./kernel-stubs.md) for the full mechanism. The body is never actually executed at runtime: at link time the `__wrapper__device_stub_<kernel>` symbol is replaced by an `nvcc`-generated definition that consumes the pushed configuration and dispatches through the driver API. The placeholder `cudaLaunchKernel(0,0,0,0,0,0)` exists solely to anchor a linker dependency on `libcudart`.
 
 For a four-argument launch:
 
@@ -164,7 +164,7 @@ do {
 } while (0);
 ```
 
-The configuration push is paired one-to-one with the stub call -- the runtime maintains a per-thread stack of pushed configurations, and the stub pops the topmost entry. Confidence: HIGH (the `__cudaPushCallConfiguration` lookup is visible in the binary; the pairing with the host stub is corroborated by the placeholder-body string and the stub prefix).
+The configuration push is paired one-to-one with the stub call — the runtime maintains a per-thread stack of pushed configurations, and the stub pops the topmost entry. Confidence: HIGH (the `__cudaPushCallConfiguration` lookup is visible in the binary; the pairing with the host stub is corroborated by the placeholder-body string and the stub prefix).
 
 ### Why the `do/while(0)` Framing Matters
 
@@ -205,17 +205,17 @@ All severities flow through `sub_4F8200` (the generic diagnostic emitter); sever
 
 ## Quirks
 
-> ⚡ **QUIRK -- Default stream is integer zero, not `cudaStreamPerThread`**
+> ⚡ **QUIRK — Default stream is integer zero, not `cudaStreamPerThread`**
 > When `kernel<<<g, b>>>(args)` is written without a fourth argument, the lowering substitutes the literal integer `0` for the stream parameter. This is the *legacy default stream*, not the per-thread default stream that programs opt into with `--default-stream=per-thread` or `#define CUDA_API_PER_THREAD_DEFAULT_STREAM`. The compiler does not consult the per-thread-stream macro at lowering time; the substitution is unconditionally `0`. Programs that mix two-argument and four-argument launches while compiling with per-thread-default-stream semantics get inconsistent synchronization behavior: the two-argument launches go through the legacy default stream while the four-argument launches with an explicit `0` are reinterpreted by the runtime as per-thread. Always pass an explicit stream when the per-thread mode is in play.
 
-> ⚡ **QUIRK -- The shared-memory argument is `size_t`, not `int`**
-> The third launch-config argument binds to `__cudaPushCallConfiguration`'s `size_t` parameter, not to `int` or `unsigned int`. On LP64 platforms (Linux, macOS) this is a 64-bit value; on LLP64 (Windows MSVC) it is also 64-bit since CUDA target ABI uses 64-bit `size_t`. Passing a negative signed integer triggers implicit conversion to a very large positive `size_t`, which the runtime will then attempt to allocate as dynamic shared memory and fail with `cudaErrorInvalidValue`. The compiler will not warn on the signed-to-unsigned conversion at the launch site because the conversion is exactly what the helper's signature requests -- the cost of using `int` for dynamic-shared-memory size is paid at runtime, not at compile time.
+> ⚡ **QUIRK — The shared-memory argument is `size_t`, not `int`**
+> The third launch-config argument binds to `__cudaPushCallConfiguration`'s `size_t` parameter, not to `int` or `unsigned int`. On LP64 platforms (Linux, macOS) this is a 64-bit value; on LLP64 (Windows MSVC) it is also 64-bit since CUDA target ABI uses 64-bit `size_t`. Passing a negative signed integer triggers implicit conversion to a very large positive `size_t`, which the runtime will then attempt to allocate as dynamic shared memory and fail with `cudaErrorInvalidValue`. The compiler will not warn on the signed-to-unsigned conversion at the launch site because the conversion is exactly what the helper's signature requests — the cost of using `int` for dynamic-shared-memory size is paid at runtime, not at compile time.
 
-> ⚡ **QUIRK -- Device-side launches require `-rdc=true` *and* runtime headers**
+> ⚡ **QUIRK — Device-side launches require `-rdc=true` *and* runtime headers**
 > A launch written inside a `__device__` or `__global__` function (CUDA Dynamic Parallelism) does *not* lower into a `__cudaPushCallConfiguration` call; it lowers into a different runtime path that depends on a set of device-side helpers declared in the CUDA device runtime header. Two independent failure modes exist: the `device_launch_no_sepcomp` tag fires when `-rdc=false` (whole-program compilation), and the `missing_api_for_device_side_launch` tag fires when `-rdc=true` is set but the required device-side helpers were not declared in the translation unit (typically because the device runtime header was not included). Both diagnostics are common when porting code from host-side to device-side launches; the fix differs depending on which fires.
 
-> ⚡ **QUIRK -- Lambda kernels work, but lambda *captures* do not**
-> A lambda expression cast to a function pointer or wrapped in a `__global__`-annotated trampoline can be launched with `<<<>>>`. However, the lambda's captured state still flows through the kernel argument list, and any captured object whose type has a user-provided copy constructor or destructor will trigger `device_side_launch_arg_with_user_provided_cctor` or `device_side_launch_arg_with_user_provided_dtor`. This catches programmers who capture `std::vector`, `std::shared_ptr`, or any class with non-trivial special members "by value" into a device lambda -- the kernel-launch ABI requires trivially-copyable arguments because the captured payload is memcpy'd into the runtime's argument buffer. See [Extended Lambda Overview](../lambda/overview.md) for the full lambda-on-device story.
+> ⚡ **QUIRK — Lambda kernels work, but lambda *captures* do not**
+> A lambda expression cast to a function pointer or wrapped in a `__global__`-annotated trampoline can be launched with `<<<>>>`. However, the lambda's captured state still flows through the kernel argument list, and any captured object whose type has a user-provided copy constructor or destructor will trigger `device_side_launch_arg_with_user_provided_cctor` or `device_side_launch_arg_with_user_provided_dtor`. This catches programmers who capture `std::vector`, `std::shared_ptr`, or any class with non-trivial special members "by value" into a device lambda — the kernel-launch ABI requires trivially-copyable arguments because the captured payload is memcpy'd into the runtime's argument buffer. See [Extended Lambda Overview](../lambda/overview.md) for the full lambda-on-device story.
 
 ## Confidence Tags
 
@@ -225,7 +225,7 @@ All severities flow through `sub_4F8200` (the generic diagnostic emitter); sever
 | `__cudaPushCallConfiguration` lookup mechanism | HIGH | Disassembly excerpt in `output/cuda-runtime.md` matches the symbol string at `0x899213` |
 | Error 3654 wording | HIGH | Verbatim string at `0x88CA48` |
 | Error 3655 wording | HIGH | Verbatim string at `0x88CAB0` |
-| Lowering shape | MED | The `do { ... } while (0)` framing is conceptual; the actual AST node may be a different conjunction operator -- the runtime contract is what matters |
+| Lowering shape | MED | The `do { ... } while (0)` framing is conceptual; the actual AST node may be a different conjunction operator — the runtime contract is what matters |
 | Default-stream = literal zero | HIGH | The `cudaLaunchKernel(0,0,0,0,0,0)` placeholder body confirms the zero-literal convention |
 | Per-thread default stream interaction | MED | Inferred from CUDA runtime semantics; not directly visible in the cudafe++ binary |
 | Tag-to-message mapping | HIGH for verbatim strings, MED for severity assignments |
@@ -241,16 +241,16 @@ All severities flow through `sub_4F8200` (the generic diagnostic emitter); sever
 | `sub_47BFD0` | `gen_routine_decl` | Emits the `__wrapper__device_stub_<name>` stub the lowering targets |
 | `sub_489000` | `process_file_scope_entities` | Backend file-scope walker; consumes the deferred stub list |
 
-The launch lowering itself does not have a dedicated function -- the AST rewrite happens inline in `sub_511D40` at the point where token case `0x48` is reached.
+The launch lowering itself does not have a dedicated function — the AST rewrite happens inline in `sub_511D40` at the point where token case `0x48` is reached.
 
 ## Cross-References
 
-- [Kernel Stub Generation](./kernel-stubs.md) -- the host-side `__wrapper__device_stub_<name>` that the lowered launch ultimately calls; the `cudaLaunchKernel(0,0,0,0,0,0)` placeholder body
-- [CUDA Runtime Boilerplate](../output/cuda-runtime.md#__cudapushcallconfiguration-lookup) -- the `__cudaPushCallConfiguration` lookup mechanism in `sub_511D40` and error 3654
-- [CUDA-Related Diagnostics: Category 7](../diagnostics/cuda-errors.md#category-7-kernel-launch-6-messages) -- the full diagnostic catalog for kernel launch
-- [Expression Parser](../edg/expression-parser.md) -- `sub_511D40` (`scan_expr_full`), the 80KB recursive-descent expression scanner that handles token case `0x48`
-- [CUDA Template Restrictions](../edg/template-cuda.md) -- the `launch_in_system_file` restriction in template-launch context
-- [RDC Mode](./rdc-mode.md) -- separate-compilation requirement for device-side launches
-- [Extended Lambda Overview](../lambda/overview.md) -- lambdas as kernel entry points and the capture restrictions enforced by the launch path
-- [`__global__` Function Constraints](../attributes/global-function.md) -- the callee-side rules that the launch operator exercises
-- [Launch Configuration](../attributes/launch-config.md) -- `__launch_bounds__` and related compile-time constraints that interact with the runtime launch
+- [Kernel Stub Generation](./kernel-stubs.md) — the host-side `__wrapper__device_stub_<name>` that the lowered launch ultimately calls; the `cudaLaunchKernel(0,0,0,0,0,0)` placeholder body
+- [CUDA Runtime Boilerplate](../output/cuda-runtime.md#__cudapushcallconfiguration-lookup) — the `__cudaPushCallConfiguration` lookup mechanism in `sub_511D40` and error 3654
+- [CUDA-Related Diagnostics: Category 7](../diagnostics/cuda-errors.md#category-7-kernel-launch-6-messages) — the full diagnostic catalog for kernel launch
+- [Expression Parser](../edg/expression-parser.md) — `sub_511D40` (`scan_expr_full`), the 80KB recursive-descent expression scanner that handles token case `0x48`
+- [CUDA Template Restrictions](../edg/template-cuda.md) — the `launch_in_system_file` restriction in template-launch context
+- [RDC Mode](./rdc-mode.md) — separate-compilation requirement for device-side launches
+- [Extended Lambda Overview](../lambda/overview.md) — lambdas as kernel entry points and the capture restrictions enforced by the launch path
+- [`__global__` Function Constraints](../attributes/global-function.md) — the callee-side rules that the launch operator exercises
+- [Launch Configuration](../attributes/launch-config.md) — `__launch_bounds__` and related compile-time constraints that interact with the runtime launch

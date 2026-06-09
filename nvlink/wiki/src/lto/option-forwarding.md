@@ -1,6 +1,6 @@
 # Option Forwarding to cicc and ptxas
 
-When nvlink performs link-time optimization it does not compile NVVM IR itself -- it delegates to the cicc back-end through libNVVM. Before invoking `nvvmCompileProgram`, nvlink must assemble a complete option vector that tells cicc which target architecture to generate for, what optimization levels to use, and which per-module math-mode settings the original translation units agreed on. Three functions handle this pipeline: `sub_426CD0` builds the cicc/NVVM option list (an array of string pointers), `sub_429BA0` builds the ptxas option string (a single space-separated string for the embedded assembler), and `sub_4BC6F0` appends host-reference and variables-tracking options at compilation time.
+When nvlink performs link-time optimization it does not compile NVVM IR itself — it delegates to the cicc back-end through libNVVM. Before invoking `nvvmCompileProgram`, nvlink must assemble a complete option vector that tells cicc which target architecture to generate for, what optimization levels to use, and which per-module math-mode settings the original translation units agreed on. Three functions handle this pipeline: `sub_426CD0` builds the cicc/NVVM option list (an array of string pointers), `sub_429BA0` builds the ptxas option string (a single space-separated string for the embedded assembler), and `sub_4BC6F0` appends host-reference and variables-tracking options at compilation time.
 
 | | |
 |---|---|
@@ -25,7 +25,7 @@ These two options appear in every LTO invocation, unconditionally:
 | `-arch=compute_N` | `snprintf("-arch=compute_%d", dword_2A5F314)` | Target SM number from `--arch` |
 | `-link-lto` | Literal string | Tells cicc this is a link-time compilation |
 
-The architecture number is the raw integer from the `--arch` option (e.g. 90, 100), not the `compute_` string -- the format prefix is hardcoded in the `snprintf` call. The buffer is 80 bytes (`0x50`), which limits the formatted string length.
+The architecture number is the raw integer from the `--arch` option (e.g. 90, 100), not the `compute_` string — the format prefix is hardcoded in the `snprintf` call. The buffer is 80 bytes (`0x50`), which limits the formatted string length.
 
 ### Split Compilation Options
 
@@ -91,17 +91,17 @@ These options are emitted only when their corresponding global flag is set:
 | `byte_2A5F285` | force-partial-lto | `--force-device-c` | Force partial LTO (relocatable output) |
 | `byte_2A5F310` | debug | `-g` | Debug compilation |
 
-The `-generate-line-info` option is stored as an SSE constant load (`xmmword_1D34730`) -- the decompiler shows `_mm_load_si128` because the 20-byte string is loaded as a 16-byte SSE register plus a 4-byte `dword`. Similarly, `--force-device-c` uses `xmmword_1D34740`. The underlying strings are `-generate-line-info` and `--force-device-c` respectively.
+The `-generate-line-info` option is stored as an SSE constant load (`xmmword_1D34730`) — the decompiler shows `_mm_load_si128` because the 20-byte string is loaded as a 16-byte SSE register plus a 4-byte `dword`. Similarly, `--force-device-c` uses `xmmword_1D34740`. The underlying strings are `-generate-line-info` and `--force-device-c` respectively.
 
 ### Host Info and Dead Code Elimination
 
 When `byte_2A5F214` (mark-used, meaning `--use-host-info` or `--kernels-used` was specified) is set **and** `byte_2A5F285` (force-partial-lto) is **not** set, two things happen:
 
-1. `sub_426AE0` is called -- this processes the module list using host-provided symbol usage information. `sub_426AE0` inspects each module's host-reference metadata (offsets +24 through +26 in the module descriptor), skipping `cudadevrt` entries. If any module has valid host-reference data (offset +25 set), the function sets `byte_2A5F211 = 1` and optionally invokes up to six host-info insertion functions (`sub_43F020` through `sub_43F340`) that populate the linker's external-symbol tracking sets.
+1. `sub_426AE0` is called — this processes the module list using host-provided symbol usage information. `sub_426AE0` inspects each module's host-reference metadata (offsets +24 through +26 in the module descriptor), skipping `cudadevrt` entries. If any module has valid host-reference data (offset +25 set), the function sets `byte_2A5F211 = 1` and optionally invokes up to six host-info insertion functions (`sub_43F020` through `sub_43F340`) that populate the linker's external-symbol tracking sets.
 
 2. If `byte_2A5F211` is set after the host-info pass, the option `-has-global-host-info` is appended. This flag tells cicc that the linker has provided host symbol usage information, enabling cicc to perform more aggressive dead code elimination during compilation.
 
-The guard on `byte_2A5F285` means that in partial-LTO mode (relocatable compilation), host info is never forwarded -- the linker cannot know which symbols will be needed by future link steps.
+The guard on `byte_2A5F285` means that in partial-LTO mode (relocatable compilation), host info is never forwarded — the linker cannot know which symbols will be needed by future link steps.
 
 ### -Xnvvm Passthrough Options
 
@@ -145,7 +145,7 @@ if qword_2A5F230 != NULL:
         append token to option_list
 ```
 
-The filtering ensures that options which nvlink has already emitted (with possibly different values derived from consensus) are not duplicated. The `-compile-time` option is always stripped -- it is an internal profiling flag that should not be forwarded.
+The filtering ensures that options which nvlink has already emitted (with possibly different values derived from consensus) are not duplicated. The `-compile-time` option is always stripped — it is an internal profiling flag that should not be forwarded.
 
 The tokenization function `sub_44EC40` splits each `-Xnvvm` value on space characters and appends each resulting token to a flat linked list via the callback `sub_4644C0`. The tokenizer passes parameters `(string, delimiter, 0, 1, callback, &list, 0, 0)`.
 
@@ -162,7 +162,7 @@ After processing the `-Xnvvm` tokens, `sub_426CD0` fills in default values for a
 
 There is an asymmetry: `-prec-sqrt` is always emitted regardless of whether an explicit value appeared in `-Xnvvm`, while the other three are only emitted if the `-Xnvvm` scan did not find them. In the decompiled code, `-prec-sqrt` is emitted at line 258 outside any conditional block, while `-prec-div` is gated by `if (!v19)` at line 251 and `-ftz`/`-fma` by their own flags at lines 244 and 262 respectively.
 
-The `seen_prec` flag (v19) is shared between `-prec-div=` and `-prec-sqrt=` in the scan phase, but only `-prec-div` emission respects it. This means if a user provides `-Xnvvm -prec-sqrt=0`, the scan sets `seen_prec = true`, which suppresses the consensus `-prec-div` default -- but the consensus `-prec-sqrt` is still emitted unconditionally, potentially duplicating the user's value. This is either a deliberate safety measure (ensuring cicc always receives an explicit `-prec-sqrt`) or a latent bug where `-prec-sqrt` should have its own `seen_sqrt` flag.
+The `seen_prec` flag (v19) is shared between `-prec-div=` and `-prec-sqrt=` in the scan phase, but only `-prec-div` emission respects it. This means if a user provides `-Xnvvm -prec-sqrt=0`, the scan sets `seen_prec = true`, which suppresses the consensus `-prec-div` default — but the consensus `-prec-sqrt` is still emitted unconditionally, potentially duplicating the user's value. This is either a deliberate safety measure (ensuring cicc always receives an explicit `-prec-sqrt`) or a latent bug where `-prec-sqrt` should have its own `seen_sqrt` flag.
 
 The consensus values come from the per-module option tracking performed during fatbin extraction (see below).
 
@@ -187,7 +187,7 @@ When the linker context field at offset 97 (`elfw[97]`) is set **and** `--force-
 | `-host-ref-eg=` | `elfw[552]` | Externally-visible global references |
 | `-host-ref-ig=` | `elfw[560]` | Internally-visible global references |
 
-Each option is constructed via `strcpy(buf, "-host-ref-XX=")` followed by `strcat(buf, value)` where the value is extracted by `sub_43FBC0` from the corresponding elfw field. Options are only appended if `sub_43FBC0` returns non-NULL for that field. The host-ref values originate from the host ELF analysis during input processing -- the host linker embeds lists of which device symbols the host code references.
+Each option is constructed via `strcpy(buf, "-host-ref-XX=")` followed by `strcat(buf, value)` where the value is extracted by `sub_43FBC0` from the corresponding elfw field. Options are only appended if `sub_43FBC0` returns non-NULL for that field. The host-ref values originate from the host ELF analysis during input processing — the host linker embeds lists of which device symbols the host code references.
 
 ### Variables Flag
 
@@ -268,7 +268,7 @@ The embedded option strings in fatbin metadata use older naming conventions that
 | `-maxreg N` | `strstr(haystack, "-maxreg ")` | `-maxreg=N` (space to equals) |
 | `-split-compile N` | `strstr(haystack, "-split-compile ")` | `-split-compile=N` (space to equals) |
 
-The space-delimited format for `-maxreg` and `-split-compile` in the fatbin string reflects the old cicc command-line convention (positional arguments); the forwarded format uses `key=value` pairs. The underscore-to-hyphen and `-fmad`-to-`-fma` translations are implicit in the forwarding logic -- `sub_42AF40` parses using the old names and stores values in global variables, while `sub_426CD0` emits using the new names from those same globals.
+The space-delimited format for `-maxreg` and `-split-compile` in the fatbin string reflects the old cicc command-line convention (positional arguments); the forwarded format uses `key=value` pairs. The underscore-to-hyphen and `-fmad`-to-`-fma` translations are implicit in the forwarding logic — `sub_42AF40` parses using the old names and stores values in global variables, while `sub_426CD0` emits using the new names from those same globals.
 
 ### Conflict Diagnostics
 
@@ -314,7 +314,7 @@ Each individual option is `snprintf`-formatted into a separately arena-allocated
 | `--device-stack-protector=true/false` | `byte_2A5F1FF` set | Literal `"--device-stack-protector=true"` or `"=false"` | 30 or 31 bytes (literal string) |
 | `-split-compile=N` | `dword_2A5B518 != 1` | `"-split-compile=%d"` | 19 bytes (max 18 chars + null) |
 
-The `--device-stack-protector` value depends on `byte_2A5F1FE`: when set, the string is `"--device-stack-protector=true"` (30 bytes including null); when clear, `"--device-stack-protector=false"` (31 bytes). This value is determined by the CLI parser -- `byte_2A5F1FE` holds the boolean value of the option, while `byte_2A5F1FF` records whether the option was explicitly specified.
+The `--device-stack-protector` value depends on `byte_2A5F1FE`: when set, the string is `"--device-stack-protector=true"` (30 bytes including null); when clear, `"--device-stack-protector=false"` (31 bytes). This value is determined by the CLI parser — `byte_2A5F1FE` holds the boolean value of the option, while `byte_2A5F1FF` records whether the option was explicitly specified.
 
 ### Final String Assembly
 
@@ -332,7 +332,7 @@ snprintf(dest, total_length, "%s %s %s %s %s %s",
 
 The total output buffer length is the sum of all individual component lengths plus 7 (for the six space separators and null terminator). Each NULL pointer is replaced with an empty string `""` before the final `snprintf`.
 
-The `--device-stack-protector-frame-size-threshold` buffer is **not** included in this six-component `snprintf`. Its buffer is allocated and formatted separately, and freed via `sub_431000` at the end of the function (line 301-303). This option reaches the embedded ptxas through a separate mechanism -- it is concatenated into the `-Xptxas` stream or passed as a distinct parameter to the embedded ptxas invocation.
+The `--device-stack-protector-frame-size-threshold` buffer is **not** included in this six-component `snprintf`. Its buffer is allocated and formatted separately, and freed via `sub_431000` at the end of the function (line 301-303). This option reaches the embedded ptxas through a separate mechanism — it is concatenated into the `-Xptxas` stream or passed as a distinct parameter to the embedded ptxas invocation.
 
 After the final string is assembled, if the `-Xptxas` joined string was non-NULL, it is freed via `sub_431000`.
 
@@ -474,7 +474,7 @@ Several options have different names at different stages of the forwarding pipel
 
 1. The SSE constant loads (`_mm_load_si128` of `xmmword_1D34730` and `xmmword_1D34740`) are the decompiler's representation of 16-byte string copies. The strings at those addresses are `-generate-line-info` (20 bytes including terminator, 16 via SSE + 4 via dword) and `--force-device-c` (17 bytes, 16 via SSE + 1 null byte).
 
-2. `sub_426AA0` is the arena-backed string allocator -- it calls `sub_4307C0` (arena_alloc) with the requested size. Every option string is allocated this way and never freed; the arena is destroyed after the entire LTO pipeline completes.
+2. `sub_426AA0` is the arena-backed string allocator — it calls `sub_4307C0` (arena_alloc) with the requested size. Every option string is allocated this way and never freed; the arena is destroyed after the entire LTO pipeline completes.
 
 3. `sub_464C30` appends a value to the end of a linked list created by `sub_464AE0`. `sub_464BB0` returns the list length. `sub_464BC0` converts the list into a flat array (allocated from the arena) and returns the array pointer.
 
@@ -490,20 +490,20 @@ Several options have different names at different stages of the forwarding pipel
 
 ## Cross-References
 
-- [LTO Overview](overview.md) -- high-level pipeline context; the option vector feeds into Step 2 (libnvvm compilation)
-- [libnvvm Integration](libnvvm-integration.md) -- `sub_4BC6F0` passes the assembled option vector to `nvvmCompileProgram`; documents host-ref option construction and `-variables` flag
-- [Split Compilation](split-compilation.md) -- `-split-compile` and `-split-compile-extended` forwarding logic
-- [Whole vs Partial LTO](whole-vs-partial.md) -- `--force-partial-lto` maps to `--force-device-c` when forwarded
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- `-has-global-host-info` option appended when DCE is active; `sub_426AE0` host-info processing
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- `sub_42AF40` consensus tracking for per-module math-mode options
-- [CLI Flags](../config/cli-flags.md) -- nvlink's own CLI option definitions and global variable mapping
-- [Embedded ptxas Options](../config/ptxas-options.md) -- the consumer of the ptxas option string; documents all ~160 ptxas options
+- [LTO Overview](overview.md) — high-level pipeline context; the option vector feeds into Step 2 (libnvvm compilation)
+- [libnvvm Integration](libnvvm-integration.md) — `sub_4BC6F0` passes the assembled option vector to `nvvmCompileProgram`; documents host-ref option construction and `-variables` flag
+- [Split Compilation](split-compilation.md) — `-split-compile` and `-split-compile-extended` forwarding logic
+- [Whole vs Partial LTO](whole-vs-partial.md) — `--force-partial-lto` maps to `--force-device-c` when forwarded
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — `-has-global-host-info` option appended when DCE is active; `sub_426AE0` host-info processing
+- [Fatbin Extraction](../input/fatbin-extraction.md) — `sub_42AF40` consensus tracking for per-module math-mode options
+- [CLI Flags](../config/cli-flags.md) — nvlink's own CLI option definitions and global variable mapping
+- [Embedded ptxas Options](../config/ptxas-options.md) — the consumer of the ptxas option string; documents all ~160 ptxas options
 
 ### Sibling Wiki
 
-- **cicc wiki**: [CLI Flag Inventory](../../../../cicc/wiki/src/config/cli-flags.md) -- the consumer of these forwarded options. Documents how cicc processes `-arch=compute_N`, `-link-lto`, `-maxreg`, `-split-compile`, `-ftz`, `-prec-div`, `-prec-sqrt`, `-fma`, `-g`, `-generate-line-info`, `-inline-info`, `--device-c`, `--force-device-c`, and `-host-ref-*` flags, routing each to the lnk/opt/llc/lto output vectors.
-- **cicc wiki**: [LTO & Module Optimization](../../../../cicc/wiki/src/lto/index.md) -- how cicc processes `-link-lto` and the LTO pass pipeline activated by the forwarded option set
-- **ptxas wiki**: [CLI Options](../../../../ptxas/wiki/src/config/cli-options.md) -- the consumer of the ptxas option string. Documents `-maxrregcount`, `--Ofast-compile`, `-split-compile`, `--device-stack-protector`, `--device-stack-protector-frame-size-threshold`, and `-cuda-api-version`.
+- **cicc wiki**: [CLI Flag Inventory](../../../../cicc/wiki/src/config/cli-flags.md) — the consumer of these forwarded options. Documents how cicc processes `-arch=compute_N`, `-link-lto`, `-maxreg`, `-split-compile`, `-ftz`, `-prec-div`, `-prec-sqrt`, `-fma`, `-g`, `-generate-line-info`, `-inline-info`, `--device-c`, `--force-device-c`, and `-host-ref-*` flags, routing each to the lnk/opt/llc/lto output vectors.
+- **cicc wiki**: [LTO & Module Optimization](../../../../cicc/wiki/src/lto/index.md) — how cicc processes `-link-lto` and the LTO pass pipeline activated by the forwarded option set
+- **ptxas wiki**: [CLI Options](../../../../ptxas/wiki/src/config/cli-options.md) — the consumer of the ptxas option string. Documents `-maxrregcount`, `--Ofast-compile`, `-split-compile`, `--device-stack-protector`, `--device-stack-protector-frame-size-threshold`, and `-cuda-api-version`.
 
 ## Confidence Assessment
 

@@ -91,12 +91,12 @@ Override checker (`sub_432280`) extracts the `0x30` mask from the execution-spac
 
 | Tag | Sev | Message |
 |---|---|---|
-| -- | E | execution space mismatch: overridden entity (%n1) is a \_\_device\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ function |
-| -- | E | execution space mismatch: overridden entity (%n1) is a \_\_device\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ \_\_device\_\_ function |
-| -- | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ function, but overriding entity (%n2) is a \_\_device\_\_ function |
-| -- | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ \_\_device\_\_ function |
-| -- | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ \_\_device\_\_ function, but overriding entity (%n2) is a \_\_device\_\_ function |
-| -- | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ \_\_device\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ function |
+| — | E | execution space mismatch: overridden entity (%n1) is a \_\_device\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ function |
+| — | E | execution space mismatch: overridden entity (%n1) is a \_\_device\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ \_\_device\_\_ function |
+| — | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ function, but overriding entity (%n2) is a \_\_device\_\_ function |
+| — | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ \_\_device\_\_ function |
+| — | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ \_\_device\_\_ function, but overriding entity (%n2) is a \_\_device\_\_ function |
+| — | E | execution space mismatch: overridden entity (%n1) is a \_\_host\_\_ \_\_device\_\_ function, but overriding entity (%n2) is a \_\_host\_\_ function |
 
 ---
 
@@ -152,7 +152,7 @@ Checked in `decl_routine` (`sub_4CE420`) and `check_cuda_attribute_consistency` 
 | `global_function_in_unnamed_inline_ns` | E | A \_\_global\_\_ function or function template cannot be declared within an inline unnamed namespace |
 | `global_operator_function` | E | An operator function cannot be a \_\_global\_\_ function |
 | `global_new_or_delete` | E | *(\_\_global\_\_ on operator new/delete)* |
-| -- | E | function main cannot be marked \_\_device\_\_ or \_\_global\_\_ |
+| — | E | function main cannot be marked \_\_device\_\_ or \_\_global\_\_ |
 
 ### C++ Feature Restrictions
 
@@ -200,9 +200,9 @@ Checked in `decl_routine` (`sub_4CE420`) and `check_cuda_attribute_consistency` 
 | `missing_launch_bounds` | W | no \_\_launch\_bounds\_\_ specified for \_\_global\_\_ function |
 | `cuda_specifier_twice_in_group` | E | *(duplicate CUDA specifier on same declaration)* |
 | `bounds_maxnreg_incompatible_qualifiers` | E | *(\_\_launch\_bounds\_\_ and \_\_maxnreg\_\_ conflict)* |
-| -- | E | The %s qualifiers cannot be applied to the same kernel |
-| -- | E | Multiple %s specifiers are not allowed |
-| -- | E | incorrect value for launch bounds |
+| — | E | The %s qualifiers cannot be applied to the same kernel |
+| — | E | Multiple %s specifiers are not allowed |
+| — | E | incorrect value for launch bounds |
 
 ---
 
@@ -225,7 +225,7 @@ Extended lambdas (`__device__` or `__host__ __device__` lambdas in host code, en
 | `extended_lambda_capture_in_constexpr_if` | E | An extended %s lambda cannot first-capture variable in constexpr-if context |
 | `this_addr_capture_ext_lambda` | W | Implicit capture of 'this' in extended lambda expression |
 | `extended_lambda_hd_init_capture` | E | init-captures are not allowed for extended \_\_host\_\_ \_\_device\_\_ lambdas |
-| -- | E | Unless enabled by language dialect, \*this capture is only supported when the lambda is either \_\_device\_\_ only, or is defined within a \_\_device\_\_ or \_\_global\_\_ function |
+| — | E | Unless enabled by language dialect, \*this capture is only supported when the lambda is either \_\_device\_\_ only, or is defined within a \_\_device\_\_ or \_\_global\_\_ function |
 
 ### Type Restrictions on Captures and Parameters
 
@@ -266,7 +266,7 @@ Extended lambdas (`__device__` or `__host__ __device__` lambdas in host code, en
 | `extended_lambda_inside_constexpr_if` | E | For this host platform/dialect, an extended lambda cannot be defined inside the 'if' or 'else' block of a constexpr if statement |
 | `extended_lambda_multiple_parent` | E | Cannot specify multiple \_\_nv\_parent directives in a lambda declaration |
 | `extended_host_device_generic_lambda` | E | \_\_host\_\_ \_\_device\_\_ extended lambdas cannot be generic lambdas |
-| -- | E | If an extended %s lambda is defined within the body of one or more nested lambda expressions, each of these enclosing lambda expressions must be defined within the immediate or nested block scope of a function. |
+| — | E | If an extended %s lambda is defined within the body of one or more nested lambda expressions, each of these enclosing lambda expressions must be defined within the immediate or nested block scope of a function. |
 
 ### Specifier and Annotation
 
@@ -287,19 +287,19 @@ General restrictions that apply to all GPU-side code (`__device__` and `__global
 |---|---|---|
 | `cuda_device_code_unsupported_operator` | E | The operator '%s' is not allowed in device code |
 | `unsupported_type_in_device_code` | E | %t %s1 a %s2, which is not supported in device code |
-| -- | E | device code does not support exception handling |
+| — | E | device code does not support exception handling |
 | `no_coroutine_on_device` | E | device code does not support coroutines |
-| -- | E | operations on vector types are not supported in device code |
+| — | E | operations on vector types are not supported in device code |
 | `undefined_device_entity` | E | cannot use an entity undefined in device code |
 | `undefined_device_identifier` | E | identifier %sq is undefined in device code |
 | `thread_local_in_device_code` | E | cannot use thread\_local specifier for variable declarations in device code |
 | `unrecognized_pragma_device_code` | W | unrecognized #pragma in device code |
-| -- | E | zero-sized parameter type %t is not allowed in device code |
-| -- | E | zero-sized variable %sq is not allowed in device code |
-| -- | E | dynamic initialization is not supported for a function-scope static %s variable within a \_\_device\_\_/\_\_global\_\_ function |
-| -- | E | function-scope static variable within a \_\_device\_\_/\_\_global\_\_ function requires a memory space specifier |
+| — | E | zero-sized parameter type %t is not allowed in device code |
+| — | E | zero-sized variable %sq is not allowed in device code |
+| — | E | dynamic initialization is not supported for a function-scope static %s variable within a \_\_device\_\_/\_\_global\_\_ function |
+| — | E | function-scope static variable within a \_\_device\_\_/\_\_global\_\_ function requires a memory space specifier |
 | `use_of_virtual_base_on_compute_1x` | E | Use of a virtual base (%t) requires the compute\_20 or higher architecture |
-| -- | E | alloca() is not supported for architectures lower than compute\_52 |
+| — | E | alloca() is not supported for architectures lower than compute\_52 |
 
 ---
 
@@ -309,8 +309,8 @@ General restrictions that apply to all GPU-side code (`__device__` and `__global
 |---|---|---|
 | `device_launch_no_sepcomp` | E | kernel launch from \_\_device\_\_ or \_\_global\_\_ functions requires separate compilation mode |
 | `missing_api_for_device_side_launch` | E | device-side kernel launch could not be processed as the required runtime APIs are not declared |
-| -- | W | explicit stream argument not provided in kernel launch |
-| -- | E | kernel launches from templates are not allowed in system files |
+| — | W | explicit stream argument not provided in kernel launch |
+| — | E | kernel launches from templates are not allowed in system files |
 | `device_side_launch_arg_with_user_provided_cctor` | E | cannot pass an argument with a user-provided copy-constructor to a device-side kernel launch |
 | `device_side_launch_arg_with_user_provided_dtor` | E | cannot pass an argument with a user-provided destructor to a device-side kernel launch |
 
@@ -338,7 +338,7 @@ General restrictions that apply to all GPU-side code (`__device__` and `__global
 | `shared_specifier_in_range_for` | E | the \_\_shared\_\_ memory space specifier is not allowed for a variable declared by the for-range-declaration |
 | `bad_shared_storage_class` | E | \_\_shared\_\_ variables cannot have external linkage |
 | `device_variable_in_unnamed_inline_ns` | E | A %s variable cannot be declared within an inline unnamed namespace |
-| -- | E | member variables of an anonymous union at global or namespace scope cannot be directly accessed in \_\_device\_\_ and \_\_global\_\_ functions |
+| — | E | member variables of an anonymous union at global or namespace scope cannot be directly accessed in \_\_device\_\_ and \_\_global\_\_ functions |
 | `shared_inside_struct` | E | shared type inside a struct or union is not allowed |
 | `shared_parameter` | E | *(\_\_shared\_\_ as function parameter)* |
 
@@ -387,10 +387,10 @@ JIT mode (`-dc` for device-only compilation) restricts host constructs.
 
 | Tag | Sev | Message |
 |---|---|---|
-| -- | E | An inline \_\_device\_\_/\_\_constant\_\_/\_\_managed\_\_ variable must have internal linkage when the program is compiled in whole program mode (-rdc=false) |
+| — | E | An inline \_\_device\_\_/\_\_constant\_\_/\_\_managed\_\_ variable must have internal linkage when the program is compiled in whole program mode (-rdc=false) |
 | `template_global_no_def` | E | when "-static-global-template-stub=true" in whole program compilation mode ("-rdc=false"), a \_\_global\_\_ function template instantiation or specialization (%sq) must have a definition in the current translation unit |
 | `extern_kernel_template` | E | when "-static-global-template-stub=true", extern \_\_global\_\_ function template is not supported in whole program compilation mode ("-rdc=false") |
-| -- | W | address of internal linkage device function (%sq) was taken (nv bug 2001144). mitigation: no mitigation required if the address is not used for comparison, or if the target function is not a CUDA C++ builtin |
+| — | W | address of internal linkage device function (%sq) was taken (nv bug 2001144). mitigation: no mitigation required if the address is not used for comparison, or if the target function is not a CUDA C++ builtin |
 
 ---
 
@@ -449,7 +449,7 @@ NVPTX backend supports fewer inline-assembly constraint letters than x86.
 |---|---|---|
 | `asm_constraint_letter_not_allowed_in_device` | E | asm constraint letter '%s' is not allowed inside a \_\_device\_\_/\_\_global\_\_ function |
 | `asm_constraint_must_have_single_letter` | E | an asm operand may specify only one constraint letter in a \_\_device\_\_/\_\_global\_\_ function |
-| -- | E | The 'C' constraint can only be used for asm statements in device code |
+| — | E | The 'C' constraint can only be used for asm statements in device code |
 | `cc_clobber_in_device` | E | The cc clobber constraint is not supported in device code |
 | `cuda_xasm_strict_placeholder_format` | E | *(strict placeholder format in CUDA asm)* |
 | `addr_of_label_in_device_func` | E | address of label extension is not supported in \_\_device\_\_/\_\_global\_\_ functions |
@@ -508,7 +508,7 @@ Forces all parameters to be passed in registers (compute\_80+).
 | Tag | Sev | Message |
 |---|---|---|
 | `texture_surface_variable_in_unnamed_inline_ns` | E | A texture or surface variable cannot be declared within an inline unnamed namespace |
-| -- | E | A texture or surface variable cannot be used in the non-type template argument of a \_\_device\_\_, \_\_host\_\_ \_\_device\_\_ or \_\_global\_\_ function template instantiation |
+| — | E | A texture or surface variable cannot be used in the non-type template argument of a \_\_device\_\_, \_\_host\_\_ \_\_device\_\_ or \_\_global\_\_ function template instantiation |
 | `reference_to_text_surf_type_in_device_func` | E | a reference to texture/surface type cannot be used in \_\_device\_\_/\_\_global\_\_ functions |
 | `reference_to_text_surf_var_in_device_func` | E | taking reference of texture/surface variable not allowed in \_\_device\_\_/\_\_global\_\_ functions |
 | `addr_of_text_surf_var_in_device_func` | E | cannot take address of texture/surface variable %sq in \_\_device\_\_/\_\_global\_\_ functions |
@@ -1001,7 +1001,7 @@ All 286 CUDA-specific diagnostic tag names extracted from the cudafe++ binary, o
 | 247 | `unannotated_static_not_allowed_in_device` |
 | 248 | `unsupported_nv_attribute` |
 
-### Diagnostic Pragma Actions (6 tags -- not suppressible, but listed for completeness)
+### Diagnostic Pragma Actions (6 tags — not suppressible, but listed for completeness)
 
 | # | Tag Name |
 |---|---|
@@ -1114,7 +1114,7 @@ Quick reference for minimum architecture required by various CUDA features.
 
 ## EDG Diagnostic Namespace (outside this catalog)
 
-Beyond the 286 CUDA-extension tags above, the cudafe++ binary embeds approximately **573 additional snake_case diagnostic tags** belonging to EDG 6.6's standard C++ frontend. They share the same suppression machinery -- `--diag_suppress=<tag>`, `#pragma nv_diag_suppress <tag>`, numeric `#pragma nv_diag_suppress <N>` for codes 0--3456 -- but live in the original error-code range and are emitted without the `20000-D` renumbering.
+Beyond the 286 CUDA-extension tags above, the cudafe++ binary embeds approximately **573 additional snake_case diagnostic tags** belonging to EDG 6.6's standard C++ frontend. They share the same suppression machinery — `--diag_suppress=<tag>`, `#pragma nv_diag_suppress <tag>`, numeric `#pragma nv_diag_suppress <N>` for codes 0--3456 — but live in the original error-code range and are emitted without the `20000-D` renumbering.
 
 The table below summarizes the top category prefixes harvested from the binary's string table. Counts are tag totals per prefix; the *role* column describes what the prefix governs.
 
@@ -1140,10 +1140,10 @@ The table below summarizes the top category prefixes harvested from the binary's
 
 The EDG-base namespace is intentionally not enumerated tag-by-tag in this wiki: the upstream catalog is maintained by EDG and tags are largely stable across EDG 6.x point releases. For a deep dive into specific subsystems consult:
 
-* [Constexpr Interpreter](../edg/constexpr-interpreter.md) -- for the 112 `constexpr_*` tags.
-* [Template Engine](../edg/template-engine.md) and [CUDA Template Restrictions](../edg/template-cuda.md) -- for `template_*`.
-* [Declaration Parser](../edg/declaration-parser.md) -- for `invalid_*` declarator and attribute diagnostics.
-* [Overload Resolution](../edg/overload-resolution.md) -- for `ambiguous_*`.
-* [Pragma Engine](../edg/pragma-engine.md) -- for `pragma_*` and the suppression machinery.
+* [Constexpr Interpreter](../edg/constexpr-interpreter.md) — for the 112 `constexpr_*` tags.
+* [Template Engine](../edg/template-engine.md) and [CUDA Template Restrictions](../edg/template-cuda.md) — for `template_*`.
+* [Declaration Parser](../edg/declaration-parser.md) — for `invalid_*` declarator and attribute diagnostics.
+* [Overload Resolution](../edg/overload-resolution.md) — for `ambiguous_*`.
+* [Pragma Engine](../edg/pragma-engine.md) — for `pragma_*` and the suppression machinery.
 
-Confidence: **MED** -- prefix bucketing is mechanical, but a handful of tags straddle categories (e.g. `module_id_for_source_corresp` could be either modules or RDC).
+Confidence: **MED** — prefix bucketing is mechanical, but a handful of tags straddle categories (e.g. `module_id_for_source_corresp` could be either modules or RDC).

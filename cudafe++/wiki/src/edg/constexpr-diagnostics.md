@@ -19,8 +19,8 @@ emit_constexpr_diagnostic(
 
 The tag identifier is then routed through the diagnostic engine to:
 
-1. Look up the canonical numeric error code (codes in the 2691, 2700, 2701, 2707, 2708, 2721, 2725--3312 range used by the interpreter -- see [Constexpr Interpreter / Error Codes](constexpr-interpreter.md#error-codes)).
-2. Resolve the message template (single source of truth -- there is no localized fork, EDG uses one English template per tag).
+1. Look up the canonical numeric error code (codes in the 2691, 2700, 2701, 2707, 2708, 2721, 2725--3312 range used by the interpreter — see [Constexpr Interpreter / Error Codes](constexpr-interpreter.md#error-codes)).
+2. Resolve the message template (single source of truth — there is no localized fork, EDG uses one English template per tag).
 3. Substitute formatted operands (object identity, type name, array bounds, allocation chain entries).
 4. Optionally chain a stack-trace dump using the `constexpr_called_from*` and `constexpr_begin_report*` framing tags.
 
@@ -28,7 +28,7 @@ Because the tag is a stable string identifier rather than a raw error number, ED
 
 ### Worked Example: Source to Diagnostic
 
-A read past the end of a constexpr array exercises the full pipeline -- evaluator detects the violation, raises `constexpr_out_of_bounds_array_access`, the framing tags wrap it into a report block, and the message router resolves the numeric code:
+A read past the end of a constexpr array exercises the full pipeline — evaluator detects the violation, raises `constexpr_out_of_bounds_array_access`, the framing tags wrap it into a report block, and the message router resolves the numeric code:
 
 ```cpp
 constexpr int arr[3] = {1, 2, 3};
@@ -48,29 +48,29 @@ note: [constexpr_called_from_rout]: called from 'bad()' at line 2
 note: [constexpr_end_report]
 ```
 
-The `_begin_report` / `_end_report` pair frames the block, `_called_from_rout` produces the routine-qualified topmost frame, and the primary `_out_of_bounds_array_access` tag carries the actual violation -- all routed to numeric code 2692.
+The `_begin_report` / `_end_report` pair frames the block, `_called_from_rout` produces the routine-qualified topmost frame, and the primary `_out_of_bounds_array_access` tag carries the actual violation — all routed to numeric code 2692.
 
 ## Grouping Methodology
 
 The 112 tags partition naturally by which interpreter sub-system raises them. The groups below follow the structure of `do_constexpr_expression`'s top-level switch and the helper families surrounding it: object access vs. dynamic storage vs. side-effect tracking vs. type-rule enforcement, with framing/header tags pulled out and the constructor / destructor / function-definition policy tags as their own slice.
 
-Confidence level for the entire catalog: **HIGH**. Tag identifiers are present verbatim in the binary; sub-area assignment follows the keyword stems and the few cross-references to the evaluator functions whose code paths reference them. The exact numeric error code each tag resolves to is **MEDIUM** confidence -- the binary contains both the strings and the code-to-message routing, but we have not exhaustively traced every tag-to-number edge.
+Confidence level for the entire catalog: **HIGH**. Tag identifiers are present verbatim in the binary; sub-area assignment follows the keyword stems and the few cross-references to the evaluator functions whose code paths reference them. The exact numeric error code each tag resolves to is **MEDIUM** confidence — the binary contains both the strings and the code-to-message routing, but we have not exhaustively traced every tag-to-number edge.
 
-## Group 1 -- Object Access and Pointer Validity (20 tags)
+## Group 1 — Object Access and Pointer Validity (20 tags)
 
 The largest single group. Every read through a constexpr pointer is policed for object identity, lifetime, in-bounds-ness, and active-union-member status. The evaluator threads the "home address" parameter (`a4` in `do_constexpr_expression`) through nested member-access and subscript expressions specifically so these checks have the object context they need.
 
 | Tag | Semantic role |
 |---|---|
-| `constexpr_access_one_past_array_end` | Read through a pointer equal to `&arr[N]` -- forming the address is legal, dereferencing is not |
+| `constexpr_access_one_past_array_end` | Read through a pointer equal to `&arr[N]` — forming the address is legal, dereferencing is not |
 | `constexpr_access_past_object` | Pointer arithmetic moved past the end of the complete object (worse than past-the-end of an array element) |
 | `constexpr_access_to_expired_storage` | Read through a pointer whose pointee's lifetime already ended (dangling) |
 | `constexpr_access_to_runtime_storage` | Read of an object that has no compile-time backing (came from a non-constexpr path) |
 | `constexpr_address_unknown` | Could not materialize a stable address for a pointer operation |
-| `constexpr_array_index_*` | (umbrella for array indexing -- see also `constexpr_out_of_bounds_array_access`) |
+| `constexpr_array_index_*` | (umbrella for array indexing — see also `constexpr_out_of_bounds_array_access`) |
 | `constexpr_equality_past_the_end_address` | `==` / `!=` between past-the-end pointers of different arrays is undefined |
 | `constexpr_expiring_temporary` | Read from an object whose lifetime is ending in the current full-expression |
-| `constexpr_implied_source_nonconstant` | Source operand of an operation is itself not a constant -- propagate failure |
+| `constexpr_implied_source_nonconstant` | Source operand of an operation is itself not a constant — propagate failure |
 | `constexpr_invalid_null_ptr_operation` | Arithmetic or dereference on a null pointer |
 | `constexpr_invalid_pdiff` | Subtracting pointers that do not point into the same array object |
 | `constexpr_invalid_pm_access` | Pointer-to-member access with mismatched class hierarchy |
@@ -88,17 +88,17 @@ The largest single group. Every read through a constexpr pointer is policed for 
 | `constexpr_no_active_union_field` | Union has no active field yet (all members destroyed or never set) |
 | `constexpr_weak_address` | Address-of a `weak`/comdat symbol is not a constant expression |
 
-> ⚡ **QUIRK -- "address known" vs. "value known"**
-> EDG distinguishes between "we can name this address" and "we can read through this address" with two different tags (`constexpr_address_unknown` vs. `constexpr_access_to_runtime_storage`). A constexpr context can legally form `&global_var` even when `global_var` itself isn't a constant -- the address is a relocatable constant. The interpreter only escalates to `_access_to_runtime_storage` when a read is actually attempted. This means the same expression can be a constant on the left-hand side of an assignment-to-address and a non-constant on the right.
+> ⚡ **QUIRK — "address known" vs. "value known"**
+> EDG distinguishes between "we can name this address" and "we can read through this address" with two different tags (`constexpr_address_unknown` vs. `constexpr_access_to_runtime_storage`). A constexpr context can legally form `&global_var` even when `global_var` itself isn't a constant — the address is a relocatable constant. The interpreter only escalates to `_access_to_runtime_storage` when a read is actually attempted. This means the same expression can be a constant on the left-hand side of an assignment-to-address and a non-constant on the right.
 
-## Group 2 -- Dynamic Storage (`new` / `delete`) (12 tags)
+## Group 2 — Dynamic Storage (`new` / `delete`) (12 tags)
 
 C++20 added constexpr dynamic allocation, and EDG implements it through `sub_62B100` (`std::allocator::allocate`) and `sub_62B470` (`std::allocator::deallocate`) backed by a global allocation chain at `qword_126FBC0`. Every misuse of the chain has its own tag.
 
 | Tag | Semantic role |
 |---|---|
 | `constexpr_allocation_mismatch` | Allocator type used to deallocate doesn't match the one used to allocate |
-| `constexpr_allocation_pos` | Used by framing -- points to where a still-live allocation was made |
+| `constexpr_allocation_pos` | Used by framing — points to where a still-live allocation was made |
 | `constexpr_allocation_too_large` | Requested allocation exceeded the 64MB type-size cap |
 | `constexpr_alloc_too_large` | Same idea, larger granularity (the request itself, not the element type) |
 | `constexpr_alloc_too_small` | Allocation smaller than required by the type being placed into it |
@@ -108,14 +108,14 @@ C++20 added constexpr dynamic allocation, and EDG implements it through `sub_62B
 | `constexpr_class_specific_new` | Class-specific `operator new` not usable in constexpr |
 | `constexpr_delete_*` | (sub-family of bad-deallocation) |
 | `constexpr_dynamic_*` | (sub-family covering general dynamic-storage misuse) |
-| `constexpr_leftover_allocations` | At end of evaluation, allocation chain is non-empty -- compile-time leak |
+| `constexpr_leftover_allocations` | At end of evaluation, allocation chain is non-empty — compile-time leak |
 | `constexpr_new_*` | (sub-family covering `new`-side misuse, see also `_placement_new`) |
 | `constexpr_placement_new` | Placement-new used outside the contexts the standard whitelists |
 
-> ⚡ **QUIRK -- leak is a hard error, not a warning**
+> ⚡ **QUIRK — leak is a hard error, not a warning**
 > `constexpr_leftover_allocations` fires when constexpr evaluation completes with any entry still on the allocation chain. This is a *compile-time* leak: the program would never have run, the leak only existed inside the interpreter. EDG nevertheless treats it as a constant-expression failure rather than a warning, because the standard requires constexpr evaluation to be self-contained. The framing tag `constexpr_allocation_pos` then points back to the original `new` site so the user can find it.
 
-## Group 3 -- Evaluation Control and Limits (15 tags)
+## Group 3 — Evaluation Control and Limits (15 tags)
 
 This group covers the evaluation engine's own state: depth limits, can't-be-interpreted bailouts, function-undefined cases, and the framing tags used to render a constexpr call stack.
 
@@ -138,10 +138,10 @@ This group covers the evaluation engine's own state: depth limits, can't-be-inte
 | `constexpr_statement_cannot_be_interpreted` | Statement kind the evaluator does not model |
 | `constexpr_too_many_steps` | Step counter exhausted (anti-runaway-loop guard) |
 
-> ⚡ **QUIRK -- two report-block flavors**
+> ⚡ **QUIRK — two report-block flavors**
 > The diagnostic framing tags come in pairs: `constexpr_begin_report` / `constexpr_end_report` for the normal narrative form, and `_tokens` variants used when EDG also wants to dump the tokens of the failed expression. The interpreter selects the token form for cases where the failure is structural (the parse looks fine but evaluation gave up) and the plain form for cases where the failure is semantic (the parse and the call resolution were fine but some value didn't materialize). The user-visible difference is whether the diagnostic includes a quoted source slice underneath the "called from" stack.
 
-## Group 4 -- Side Effects and Mutation (5 tags)
+## Group 4 — Side Effects and Mutation (5 tags)
 
 The interpreter forbids most observable side effects. The handful of tags policing this are small but central.
 
@@ -155,7 +155,7 @@ The interpreter forbids most observable side effects. The handful of tags polici
 
 `constexpr_volatile_fetch` deserves a note: `volatile` is the standard's blunt instrument for "this load has side effects, do not optimize." EDG treats any volatile read as a non-constant by definition, even when the underlying storage is a constexpr literal.
 
-## Group 5 -- Type Rules and Casts (16 tags)
+## Group 5 — Type Rules and Casts (16 tags)
 
 Tags that fire when the user requested a conversion, cast, or type-level operation that constant evaluation can't justify.
 
@@ -181,10 +181,10 @@ Tags that fire when the user requested a conversion, cast, or type-level operati
 | `constexpr_type_invalid` | Type-level operation on a type the interpreter rejects |
 | `constexpr_type_too_large` | Type exceeds the 64MB internal cap |
 
-> ⚡ **QUIRK -- `constexpr_reinterpret_cast` is CUDA-relaxable**
+> ⚡ **QUIRK — `constexpr_reinterpret_cast` is CUDA-relaxable**
 > The standard outright forbids `reinterpret_cast` in constant expressions. EDG honors this for host code, but the CUDA front end has a relaxation flag (`dword_106C2C0` in the binary, set by `--expt-relaxed-constexpr` and related options) that suppresses this tag. Device code that uses pointer-to-integer punning at compile time depends on this. Same flag also relaxes `constexpr_invalid_type_conversion` for a defined subset of pointer/integer transitions. The relaxation is a CUDA extension; the diagnostic is otherwise mandatory.
 
-## Group 6 -- Memcpy and Bit-Cast Operand Validation (5 tags)
+## Group 6 — Memcpy and Bit-Cast Operand Validation (5 tags)
 
 `__builtin_memcpy`, `__builtin_memmove`, and `std::bit_cast` (via `__builtin_bit_cast`) all funnel through validation in the builtin evaluator (`sub_651150`). Five tags cover the violation modes.
 
@@ -197,7 +197,7 @@ Tags that fire when the user requested a conversion, cast, or type-level operati
 | `constexpr_memcpy_overlap` | `memcpy` source and destination ranges overlap (use `memmove`) |
 | `constexpr_memcpy_partial_object` | Byte count covers only part of a subobject (not a complete object slice) |
 
-## Group 7 -- Constructor / Destructor / Function Definition Rules (17 tags)
+## Group 7 — Constructor / Destructor / Function Definition Rules (17 tags)
 
 These tags fire during declaration parsing and during `do_constexpr_ctor` / `do_constexpr_dtor`. They police the special-member rules that the constexpr / consteval specifiers impose.
 
@@ -226,10 +226,10 @@ These tags fire during declaration parsing and during `do_constexpr_ctor` / `do_
 | `constexpr_virtual_base` | Generic virtual-base violation in constexpr code |
 | `constexpr_virtual_combination` | Disallowed combination of virtual specifiers with constexpr |
 
-> ⚡ **QUIRK -- `constexpr_implies_const` is a relic**
-> Before C++14, a constexpr member function was implicitly `const`. C++14 dropped that rule, but EDG retained the diagnostic tag for compatibility messages when compiling in `-std=c++11` mode. It typically renders as a note attached to a primary error rather than as a top-level diagnostic, and modern code essentially never sees it -- but the tag remains in the binary because EDG still supports the older language modes. Same story for `constexpr_ctor_with_dtor` and `constexpr_ctor_with_virtual_base`, both relaxed in C++20.
+> ⚡ **QUIRK — `constexpr_implies_const` is a relic**
+> Before C++14, a constexpr member function was implicitly `const`. C++14 dropped that rule, but EDG retained the diagnostic tag for compatibility messages when compiling in `-std=c++11` mode. It typically renders as a note attached to a primary error rather than as a top-level diagnostic, and modern code essentially never sees it — but the tag remains in the binary because EDG still supports the older language modes. Same story for `constexpr_ctor_with_dtor` and `constexpr_ctor_with_virtual_base`, both relaxed in C++20.
 
-## Group 8 -- Layout / Limits / Reflection / Microsoft (8 tags)
+## Group 8 — Layout / Limits / Reflection / Microsoft (8 tags)
 
 The remainder. Some are general layout-rule violations, some are C++26 reflection failures, and one is a Microsoft-mode compatibility gate.
 
@@ -238,7 +238,7 @@ The remainder. Some are general layout-rule violations, some are C++26 reflectio
 | `constexpr_flexible_array_initializer` | C99-style flexible array member initialized in a constexpr context |
 | `constexpr_goto` | `goto` used inside a constexpr function (banned pre-C++23) |
 | `constexpr_ignored_on_microsoft_nonstatic_member` | MSVC compatibility: `constexpr` ignored on a non-static data member |
-| `constexpr_interpreter_address` | Internal debug tag -- exposes an interpreter address for diagnostics |
+| `constexpr_interpreter_address` | Internal debug tag — exposes an interpreter address for diagnostics |
 | `constexpr_lambdas_not_enabled` | Constexpr lambda used with a language mode that pre-dates it (C++17) |
 | `constexpr_length_too_long_for_make_constexpr_array` | Array-from-initializer-list count exceeds compile-time array cap |
 | `constexpr_local_static` | `static` local variable inside a constexpr function (banned pre-C++23) |
@@ -248,8 +248,8 @@ The remainder. Some are general layout-rule violations, some are C++26 reflectio
 | `constexpr_too_many_nested_anonymous_types` | Anonymous-type nesting exceeded internal cap during materialization |
 | `constexpr_vla` | Variable-length array in constexpr (matches numeric code 2999) |
 
-> ⚡ **QUIRK -- `constexpr_ignored_on_microsoft_nonstatic_member`**
-> MSVC has historically allowed `constexpr` on non-static data member initializers as a synonym for `inline`/static-initialization. The standard does not. EDG accepts the syntax in Microsoft-compatibility mode but emits this tag as an informational diagnostic, then proceeds to treat the keyword as a no-op. This is one of very few `constexpr_*` tags that doesn't cause evaluation to fail -- it's a notification that the keyword was silently downgraded. The behavior key is the Microsoft-mode flag stored alongside the language-version gates (`qword_126EF98`, `dword_126EFB4`); without Microsoft mode the same code yields a hard error from the declaration parser, not this tag.
+> ⚡ **QUIRK — `constexpr_ignored_on_microsoft_nonstatic_member`**
+> MSVC has historically allowed `constexpr` on non-static data member initializers as a synonym for `inline`/static-initialization. The standard does not. EDG accepts the syntax in Microsoft-compatibility mode but emits this tag as an informational diagnostic, then proceeds to treat the keyword as a no-op. This is one of very few `constexpr_*` tags that doesn't cause evaluation to fail — it's a notification that the keyword was silently downgraded. The behavior key is the Microsoft-mode flag stored alongside the language-version gates (`qword_126EF98`, `dword_126EFB4`); without Microsoft mode the same code yields a hard error from the declaration parser, not this tag.
 
 ## Per-Group Tag Counts
 
@@ -270,7 +270,7 @@ Sub-family stems (`constexpr_array_index_*`, `constexpr_delete_*`, `constexpr_dy
 
 ## Tag-to-Error-Code Crosswalk (selected)
 
-The numeric codes listed in [Constexpr Interpreter / Error Codes](constexpr-interpreter.md#error-codes) trace back to the tag system. Confirmed pairings (HIGH confidence -- recovered from cross-references near the emit sites):
+The numeric codes listed in [Constexpr Interpreter / Error Codes](constexpr-interpreter.md#error-codes) trace back to the tag system. Confirmed pairings (HIGH confidence — recovered from cross-references near the emit sites):
 
 | Tag | Numeric code |
 |---|---|
@@ -290,16 +290,16 @@ The numeric codes listed in [Constexpr Interpreter / Error Codes](constexpr-inte
 | `constexpr_vla` | 2999 |
 | `constexpr_memcpy_*` family | 3312 |
 
-Several tags route to the same numeric code -- the tag carries the precise diagnostic context, the code is the user-facing bucket. This is also how the same numeric error can carry different "called from" framing in the rendered message.
+Several tags route to the same numeric code — the tag carries the precise diagnostic context, the code is the user-facing bucket. This is also how the same numeric error can carry different "called from" framing in the rendered message.
 
 ## Cross-References
 
-- [Constexpr Interpreter](constexpr-interpreter.md) -- The 69-function evaluator that emits these tags, and the numeric error-code table they feed
-- [Declaration Parser](declaration-parser.md) -- Where constructor / destructor / function-definition tags from Group 7 originate (the parser flags violations before the interpreter ever runs)
-- [Type System](type-system.md) -- The 22 type kinds whose rules Groups 1 and 5 enforce
-- [Diagnostics Overview](../diagnostics/overview.md) -- Tag-to-message resolution, format specifier handling, SARIF emission
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- CUDA-specific overlays (relevant to the QUIRK callouts in Groups 5 and 8)
-- [Error Message Catalog](../reference/error-catalog.md) -- The full numeric error table that the tag system maps into
+- [Constexpr Interpreter](constexpr-interpreter.md) — The 69-function evaluator that emits these tags, and the numeric error-code table they feed
+- [Declaration Parser](declaration-parser.md) — Where constructor / destructor / function-definition tags from Group 7 originate (the parser flags violations before the interpreter ever runs)
+- [Type System](type-system.md) — The 22 type kinds whose rules Groups 1 and 5 enforce
+- [Diagnostics Overview](../diagnostics/overview.md) — Tag-to-message resolution, format specifier handling, SARIF emission
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — CUDA-specific overlays (relevant to the QUIRK callouts in Groups 5 and 8)
+- [Error Message Catalog](../reference/error-catalog.md) — The full numeric error table that the tag system maps into
 
 ## Open Followups
 

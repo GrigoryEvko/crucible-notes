@@ -2,9 +2,9 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-SCEV analysis results are expensive to compute and are cached aggressively. When the IR mutates -- a loop is unrolled, a value is replaced, a block is deleted -- cached SCEV expressions, range information, and backedge-taken counts can become stale. The invalidation subsystem (`forgetLoop`, `forgetValue`, `forgetAllLoops`) determines exactly which cache entries must be discarded after each transformation. Get it wrong in either direction and the compiler either produces incorrect code (stale data) or wastes time recomputing everything (over-invalidation).
+SCEV analysis results are expensive to compute and are cached aggressively. When the IR mutates — a loop is unrolled, a value is replaced, a block is deleted — cached SCEV expressions, range information, and backedge-taken counts can become stale. The invalidation subsystem (`forgetLoop`, `forgetValue`, `forgetAllLoops`) determines exactly which cache entries must be discarded after each transformation. Get it wrong in either direction and the compiler either produces incorrect code (stale data) or wastes time recomputing everything (over-invalidation).
 
-Delinearization is the complementary recovery problem: given a flat pointer expression like `base + i*N*M + j*M + k`, recover the original multi-dimensional subscripts `[i][j][k]`. This is critical for GPU code because memory coalescing analysis needs to know whether adjacent threads in a warp are accessing adjacent addresses -- a question that can only be answered by examining per-dimension subscripts against the thread index structure.
+Delinearization is the complementary recovery problem: given a flat pointer expression like `base + i*N*M + j*M + k`, recover the original multi-dimensional subscripts `[i][j][k]`. This is critical for GPU code because memory coalescing analysis needs to know whether adjacent threads in a warp are accessing adjacent addresses — a question that can only be answered by examining per-dimension subscripts against the thread index structure.
 
 In cicc v13.0, both subsystems carry NVIDIA-specific modifications. The invalidation engine has an extended exit-analysis depth threshold and an early-out for simple two-operand AddRec expressions common in GPU loops. The delinearization engine has a polymorphic predicate collector that supports GPU-aware strategies for shared memory bank conflict detection and coalescing analysis, plus at least 9 configuration knobs not present in upstream LLVM.
 
@@ -43,7 +43,7 @@ All hash tables use the standard DenseMap infrastructure with LLVM-layer sentine
 
 ### forgetLoop: The 8-Phase Algorithm
 
-`sub_DE2750` is the largest invalidation function -- 10 KB of machine code organized into eight sequential phases. It is called after every loop transformation that might invalidate SCEV data.
+`sub_DE2750` is the largest invalidation function — 10 KB of machine code organized into eight sequential phases. It is called after every loop transformation that might invalidate SCEV data.
 
 **Signature:**
 
@@ -59,13 +59,13 @@ void forgetLoop(
 );
 ```
 
-**Phase 1 -- Block value collection** (`0xDE27C9`). Iterates the loop's basic blocks and collects all Values that have cached SCEV entries. The block array is at `loop[+0x20] -> [+0x10]` (pointer) / `[+0x18]` (count), stored as 32-byte entries. For each Value, a dominance check (`sub_B19D00`) confirms it belongs to the loop, then the SCEV index is extracted from a 27-bit field at `value[+4] & 0x7FFFFFF`. Collected pointers are stored in a SmallVector (inline capacity 6) with bit 2 set as a tag.
+**Phase 1 — Block value collection** (`0xDE27C9`). Iterates the loop's basic blocks and collects all Values that have cached SCEV entries. The block array is at `loop[+0x20] -> [+0x10]` (pointer) / `[+0x18]` (count), stored as 32-byte entries. For each Value, a dominance check (`sub_B19D00`) confirms it belongs to the loop, then the SCEV index is extracted from a 27-bit field at `value[+4] & 0x7FFFFFF`. Collected pointers are stored in a SmallVector (inline capacity 6) with bit 2 set as a tag.
 
-**Phase 1B -- Scope chain collection** (`0xDE28A7`). Walks a scope chain obtained via `sub_B6AC80(SE[0][+0x28], 0x99)`, where `0x99` is the SCEV scope identifier. Filters to `SCEVUnknown` entries (type byte `0x55`) with specific flag conditions (byte `[+0x21] & 0x20`), verifying loop membership and dominance. This captures values not directly in the loop's blocks but semantically part of its analysis scope.
+**Phase 1B — Scope chain collection** (`0xDE28A7`). Walks a scope chain obtained via `sub_B6AC80(SE[0][+0x28], 0x99)`, where `0x99` is the SCEV scope identifier. Filters to `SCEVUnknown` entries (type byte `0x55`) with specific flag conditions (byte `[+0x21] & 0x20`), verifying loop membership and dominance. This captures values not directly in the loop's blocks but semantically part of its analysis scope.
 
-**Phase 2 -- Exit block processing** (`0xDE29D9`). Enumerates exit blocks via `sub_AE6EC0` and processes their AddRec chains. For each exit, reads the chain at `[exit+0x30] & ~7` (stripping tag bits), checks expression kind byte (range `0x1E`--`0x28`), and extracts operands. For the common case of simple `{start, +, step}` two-operand recurrences, an early-out stops after processing 2 operands when `ExtraFlag != 0`. If the loop has exactly 2 exits and `ExtraFlag >= qword_4F88DC8` (a global threshold for maximum exit analysis depth), deep exit analysis is skipped entirely.
+**Phase 2 — Exit block processing** (`0xDE29D9`). Enumerates exit blocks via `sub_AE6EC0` and processes their AddRec chains. For each exit, reads the chain at `[exit+0x30] & ~7` (stripping tag bits), checks expression kind byte (range `0x1E`--`0x28`), and extracts operands. For the common case of simple `{start, +, step}` two-operand recurrences, an early-out stops after processing 2 operands when `ExtraFlag != 0`. If the loop has exactly 2 exits and `ExtraFlag >= qword_4F88DC8` (a global threshold for maximum exit analysis depth), deep exit analysis is skipped entirely.
 
-**Phase 3 -- Expression dependency analysis** (`0xDE2BC5`). The core invalidation loop. Iterates the collected values in **reverse order** and builds a transitive closure of all dependent SCEV expressions. Uses a stack-based worklist (SmallVector, inline capacity 8) and a SmallDenseSet for visited tracking. The dependency walk dispatches on expression type:
+**Phase 3 — Expression dependency analysis** (`0xDE2BC5`). The core invalidation loop. Iterates the collected values in **reverse order** and builds a transitive closure of all dependent SCEV expressions. Uses a stack-based worklist (SmallVector, inline capacity 8) and a SmallDenseSet for visited tracking. The dependency walk dispatches on expression type:
 
 ```text
 Type 0x52 ('R' = AddRec):  Follow Start and Step operands via getSCEV,
@@ -78,19 +78,19 @@ General:                    Follow underlying object, check for pointer
                             types (0x11/0x12), verify integer type
 ```
 
-**Phase 4 -- Primary cache eviction** (`0xDE2DFF`). For each expression identified by Phase 3, looks it up in the ValueExprMap, computes both unsigned and signed ranges via `getRangeRef` (`sub_DBB9F0`), compares old and new ranges via `ConstantRange::contains` (`sub_AB1BB0`), and clears validity bits in the range cache (`[entry+0x20]` for unsigned, `[entry+0x21]` for signed). Wide APInt buffers (>64 bits) are freed through `__libc_free`.
+**Phase 4 — Primary cache eviction** (`0xDE2DFF`). For each expression identified by Phase 3, looks it up in the ValueExprMap, computes both unsigned and signed ranges via `getRangeRef` (`sub_DBB9F0`), compares old and new ranges via `ConstantRange::contains` (`sub_AB1BB0`), and clears validity bits in the range cache (`[entry+0x20]` for unsigned, `[entry+0x21]` for signed). Wide APInt buffers (>64 bits) are freed through `__libc_free`.
 
-**Phase 5 -- BTC eviction** (`0xDE3D2F`). For each collected value, looks it up in the BTC hash table. On hit: writes `TOMBSTONE`, decrements entry count, increments tombstone count, then calls `forgetMemoizedResults` (`sub_DE2690`) to recursively invalidate any expressions that depended on this backedge-taken count. Also evicts the corresponding predicated BTC entry from the secondary table.
+**Phase 5 — BTC eviction** (`0xDE3D2F`). For each collected value, looks it up in the BTC hash table. On hit: writes `TOMBSTONE`, decrements entry count, increments tombstone count, then calls `forgetMemoizedResults` (`sub_DE2690`) to recursively invalidate any expressions that depended on this backedge-taken count. Also evicts the corresponding predicated BTC entry from the secondary table.
 
-**Phase 6 -- AddRec folding cache cleanup** (`0xDE3230`). For AddRec expressions (type `0x52`), invalidates pre-computed folding results. Extracts the 6-bit opcode from `[expr+2] & 0x3F` and dispatches:
+**Phase 6 — AddRec folding cache cleanup** (`0xDE3230`). For AddRec expressions (type `0x52`), invalidates pre-computed folding results. Extracts the 6-bit opcode from `[expr+2] & 0x3F` and dispatches:
 
 - Opcode `0x20` (shift/power-of-two multiply): checks via `countPopulation` whether the step is a power of two, then calls `tryFoldAddRecWithStep` (`sub_DCFD50`)
 - Opcodes `0x22`--`0x29` (binary operations): constructs the appropriate folded expression per operation type and marks it for invalidation
 - Opcode `0x24` with pointer type (`0x0E`): skips pointer-integer cast invalidation
 
-**Phase 7 -- Predicate and assumption cleanup** (`0xDE3856`). Processes the predicate hash table via the loop object's fields. Performs range intersection (`sub_AB0910`), union (`sub_AB0A00`), and emptiness/fullness checks (`sub_AAFBB0`, `sub_AAF760`). If the resulting range is neither empty nor full, stores the updated BTC in the loop's entry.
+**Phase 7 — Predicate and assumption cleanup** (`0xDE3856`). Processes the predicate hash table via the loop object's fields. Performs range intersection (`sub_AB0910`), union (`sub_AB0A00`), and emptiness/fullness checks (`sub_AAFBB0`, `sub_AAF760`). If the resulting range is neither empty nor full, stores the updated BTC in the loop's entry.
 
-**Phase 8 -- Final output** (`0xDE3CCD`). Writes `0x0101` to `loop->flags[+0x20]`, marking the loop as SCEV-forgotten (bit 0 = primary cache invalidated, bit 8 = secondary cache invalidated). Frees heap-allocated collection and output buffers.
+**Phase 8 — Final output** (`0xDE3CCD`). Writes `0x0101` to `loop->flags[+0x20]`, marking the loop as SCEV-forgotten (bit 0 = primary cache invalidated, bit 8 = secondary cache invalidated). Frees heap-allocated collection and output buffers.
 
 ### forgetValue and forgetAllLoops
 
@@ -118,7 +118,7 @@ General:                    Follow underlying object, check for pointer
 
 The `DepthFlag` parameter controls the aggressiveness of invalidation: `0` does shallow invalidation (only direct loop values), `1` follows all dependency chains, and values >1 impose a bounded depth useful for performance in deeply nested loops. The `Visited` parameter (a `SmallDenseSet*`) prevents infinite cycles when nested loops have mutual SCEV dependencies.
 
-The `forget-scev-loop-unroll` knob (boolean) controls whether SCEV cache is invalidated after unrolling -- disabling it is unsound but can be used for compile-time experimentation.
+The `forget-scev-loop-unroll` knob (boolean) controls whether SCEV cache is invalidated after unrolling — disabling it is unsound but can be used for compile-time experimentation.
 
 ## Delinearization
 
@@ -166,7 +166,7 @@ The inline cache (4 slots of 16 bytes at `+0x18`) is a small-buffer optimization
 
 | Kind | Expression type | Handling |
 |------|----------------|----------|
-| 0, 1, 16 | Constant, TruncateExpr (ident), Unknown | Leaf -- return unchanged |
+| 0, 1, 16 | Constant, TruncateExpr (ident), Unknown | Leaf — return unchanged |
 | 2 | TruncateExpr | Recurse into inner, rebuild with `getTruncateExpr` |
 | 3 | SignExtendExpr | Recurse; dimension discovery on AddRec step match |
 | 4 | ZeroExtendExpr | Recurse; dimension discovery on AddRec step match |
@@ -196,7 +196,7 @@ The "changed" flag enables pointer identity short-circuiting: if no operand was 
 
 **AddRecExpr (case 8)** is the most critical case for GPU code. Multi-dimensional array accesses manifest as nested AddRec expressions: `{A[0][0], +, dim1}<outer_loop>` wrapping `{init, +, 1}<inner_loop>`. The delinearizer preserves wrap flags (`NSW`/`NUW`/`NW` from bits `[+0x1C] & 7`) and the step value (`[+0x30]`) when reconstructing via `getAddRecExpr` (`sub_DBFF60`).
 
-**ZeroExtend/SignExtend (cases 3, 4)** are secondary dimension discovery points. When the inner operand is an AddRec whose step matches `Ctx->StepRecurrence` (`+0x68`) and the AddRec has exactly 2 operands (the common `{start, +, step}` form), the handler extracts dimension information: it calls `getElementSize` (`sub_D33D80`) and `getConstant` (`sub_DA4270`) to compute the element count, then pushes a new term into the term collector at `Ctx[+0x58]`. This identifies a dimension boundary -- the extend operation wrapping a matching-step AddRec indicates the point where one array dimension ends and another begins.
+**ZeroExtend/SignExtend (cases 3, 4)** are secondary dimension discovery points. When the inner operand is an AddRec whose step matches `Ctx->StepRecurrence` (`+0x68`) and the AddRec has exactly 2 operands (the common `{start, +, step}` form), the handler extracts dimension information: it calls `getElementSize` (`sub_D33D80`) and `getConstant` (`sub_DA4270`) to compute the element count, then pushes a new term into the term collector at `Ctx[+0x58]`. This identifies a dimension boundary — the extend operation wrapping a matching-step AddRec indicates the point where one array dimension ends and another begins.
 
 **GEP (case 15)** is the primary entry for actual dimension discovery. It first checks the predicate collector (`Ctx[+0x60]`). If present, it searches the collector's table for a matching GEP index entry (type field `== 1`, matching `scev_expr`, operation `== 0x20`). If no predicate collector or no match, it falls back to structural delinearization via `sub_DE97B0`, which analyzes the GEP's index computation structure, iterates discovered terms, and classifies them by dimension type. Terms matching `Ctx->StepRecurrence` go to the direct collector; others go through the predicate collector's virtual dispatch (`vtable[+0x10]`).
 
@@ -214,7 +214,7 @@ The memoization cache ensures unchanged sub-expressions are not recomputed acros
 
 ### Parametric vs Fixed-Size Arrays
 
-Upstream LLVM has the `delinearize-use-fixed-size-array-heuristic` knob (default: `false`). When the standard parametric delinearization fails -- typically because dimension sizes are runtime values with no SCEV relationship -- the fixed-size heuristic uses compile-time-known array dimensions from type metadata to guide decomposition.
+Upstream LLVM has the `delinearize-use-fixed-size-array-heuristic` knob (default: `false`). When the standard parametric delinearization fails — typically because dimension sizes are runtime values with no SCEV relationship — the fixed-size heuristic uses compile-time-known array dimensions from type metadata to guide decomposition.
 
 cicc extends this with an alternative delinearization entry point at `sub_147EE30` (25 KB), which applies additional heuristics controlled by at least 3 of the delinearization config globals (`dword_4F9AB60`, `dword_4F9AE00`, `dword_4F9B340`). This second path is likely NVIDIA-enhanced for cases common in GPU code, such as dynamically-allocated shared memory with dimensions derived from kernel launch parameters.
 
@@ -224,14 +224,14 @@ The dependence analysis subsystem has its own entry points into delinearization 
 
 **Thread grid indexing.** The canonical GPU pattern `threadIdx.x + blockIdx.x * blockDim.x` produces an AddRec with step = `blockDim.x` (grid stride). The delinearizer recognizes this by matching the step recurrence against `Ctx[+0x68]`. When the step corresponds to a grid dimension, the subscript identifies which dimension of a multi-dimensional array is parallelized across the thread grid.
 
-**Shared memory bank conflicts.** For shared memory arrays, the delinearizer feeds into bank conflict analysis. Shared memory has 32 banks with 4-byte interleaving. If delinearization reveals `A[threadIdx.y][threadIdx.x]` with row stride 32 (or any multiple of 32), every thread in a warp hits the same bank -- a 32-way conflict. If the stride is relatively prime to 32, accesses are conflict-free. This analysis requires knowing per-dimension subscripts, which only delinearization can provide from the flat pointer arithmetic.
+**Shared memory bank conflicts.** For shared memory arrays, the delinearizer feeds into bank conflict analysis. Shared memory has 32 banks with 4-byte interleaving. If delinearization reveals `A[threadIdx.y][threadIdx.x]` with row stride 32 (or any multiple of 32), every thread in a warp hits the same bank — a 32-way conflict. If the stride is relatively prime to 32, accesses are conflict-free. This analysis requires knowing per-dimension subscripts, which only delinearization can provide from the flat pointer arithmetic.
 
 **Predicate collector polymorphism.** The `PredicateCollector` at `Ctx[+0x60]` uses virtual dispatch (`vtable[+0x10]`), allowing different delinearization strategies to be plugged in:
 - Standard delinearization for host code
 - GPU-aware delinearization that considers shared memory bank geometry
 - Coalescing-aware delinearization that checks whether the innermost subscript varies with `threadIdx.x`
 
-**High-dimensional tensors.** The term collector at `Ctx[+0x58]` is a growable SmallVector, supporting arrays with arbitrary dimensionality. This matters for tensor operations in CUDA (e.g., CUTLASS library patterns, which cicc special-cases elsewhere -- see the `cutlass` substring check in the dependence analysis region).
+**High-dimensional tensors.** The term collector at `Ctx[+0x58]` is a growable SmallVector, supporting arrays with arbitrary dimensionality. This matters for tensor operations in CUDA (e.g., CUTLASS library patterns, which cicc special-cases elsewhere — see the `cutlass` substring check in the dependence analysis region).
 
 ## SCEV Term Collection
 
@@ -341,13 +341,13 @@ These candidates are passed to `findArrayDimensions` (`sub_147B0D0`) which uses 
 
 | Function | Address |
 |---|---|
-| `getRangeRef` -- range computation | `sub_DBB9F0` |
+| `getRangeRef` — range computation | `sub_DBB9F0` |
 | `ConstantRange::contains` | `sub_AB1BB0` |
 | `ConstantRange::intersectWith` | `sub_AB0910` |
 | `ConstantRange::unionWith` | `sub_AB0A00` |
 | `ConstantRange::isEmptySet` | `sub_AAFBB0` |
 | `ConstantRange::isFullSet` | `sub_AAF760` |
-| `getSCEV` -- expression resolution | `sub_DD8400` |
+| `getSCEV` — expression resolution | `sub_DD8400` |
 | `tryFoldAddRecWithStep` | `sub_DCFD50` |
 | `getAddExpr` (N-ary) | `sub_DC7EB0` |
 | `getMulExpr` (N-ary) | `sub_DC8BD0` |
@@ -374,10 +374,10 @@ These candidates are passed to `findArrayDimensions` (`sub_147B0D0`) which uses 
 
 ## Cross-References
 
-- [ScalarEvolution Overview & Construction](./scev.md) -- SCEV expression creation, the ValueExprMap, and the expression DAG structure that invalidation walks
-- [SCEV Range Analysis & Trip Counts](./scev-range-btc.md) -- range caches and BTC caches that invalidation must clear; the `getRangeRef` and BTC computation functions called during eviction
-- [LoopVectorize & VPlan](./loop-vectorize.md) -- primary consumer of delinearization results for vectorization legality; calls `forgetLoop` after vectorizing
-- [Loop Unrolling](./loop-unroll.md) -- calls `forgetLoop` after unrolling; the `forget-scev-loop-unroll` knob controls this
-- [Loop Strength Reduction (NVIDIA)](./lsr.md) -- uses SCEV for IV analysis; its transformations trigger `forgetValue` calls
-- [MemorySpaceOpt](../passes/memory-space-opt.md) -- NVIDIA-specific pass that triggers SCEV invalidation after address space transformations
-- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) -- delinearization results feed into alias analysis for disambiguating multi-dimensional array accesses
+- [ScalarEvolution Overview & Construction](./scev.md) — SCEV expression creation, the ValueExprMap, and the expression DAG structure that invalidation walks
+- [SCEV Range Analysis & Trip Counts](./scev-range-btc.md) — range caches and BTC caches that invalidation must clear; the `getRangeRef` and BTC computation functions called during eviction
+- [LoopVectorize & VPlan](./loop-vectorize.md) — primary consumer of delinearization results for vectorization legality; calls `forgetLoop` after vectorizing
+- [Loop Unrolling](./loop-unroll.md) — calls `forgetLoop` after unrolling; the `forget-scev-loop-unroll` knob controls this
+- [Loop Strength Reduction (NVIDIA)](./lsr.md) — uses SCEV for IV analysis; its transformations trigger `forgetValue` calls
+- [MemorySpaceOpt](../passes/memory-space-opt.md) — NVIDIA-specific pass that triggers SCEV invalidation after address space transformations
+- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) — delinearization results feed into alias analysis for disambiguating multi-dimensional array accesses

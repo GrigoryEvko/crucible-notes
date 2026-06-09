@@ -6,7 +6,7 @@
 >
 > **LLVM version note:** The upstream `ConstantFolding.cpp` in LLVM 20 handles approximately 30 standard math intrinsics (`llvm.sin`, `llvm.cos`, `llvm.sqrt`, etc.) and a small set of NVPTX-specific intrinsics (ceil, floor, fabs, sqrt in `nvvm.*` form). CICC extends this to 110+ math name variants (C, glibc `__*_finite`, C++ mangled `_Z*`) and 60+ NVVM intrinsic IDs. The upstream `disable-fp-call-folding` knob (`cl::Hidden`, default `false`) is preserved; NVIDIA adds a separate `FPFoldDisable` CiccOption for independent control.
 
-CICC v13.0 extends LLVM's `ConstantFolding` analysis with two large custom functions that together enable compile-time evaluation of over 110 distinct math function name variants and 60+ NVVM intrinsic IDs. Upstream LLVM's `ConstantFoldCall` handles standard `llvm.sin`, `llvm.cos`, `llvm.sqrt`, and a handful of NVPTX-specific intrinsics (ceil, floor, fabs, sqrt in their `nvvm.*` forms, plus FP-to-integer conversion intrinsics). CICC goes far beyond this: it recognizes every C math library name (`sin`, `sinf`), every glibc `__*_finite` internal variant, every C++ mangled form (`_Z3cosf`, `_Z4acosd`), and the full set of NVVM approximate/FTZ math intrinsics -- then evaluates them using the host C math library with an exception-safe wrapper that refuses to produce results when the host FPU signals domain errors, overflow, or underflow.
+CICC v13.0 extends LLVM's `ConstantFolding` analysis with two large custom functions that together enable compile-time evaluation of over 110 distinct math function name variants and 60+ NVVM intrinsic IDs. Upstream LLVM's `ConstantFoldCall` handles standard `llvm.sin`, `llvm.cos`, `llvm.sqrt`, and a handful of NVPTX-specific intrinsics (ceil, floor, fabs, sqrt in their `nvvm.*` forms, plus FP-to-integer conversion intrinsics). CICC goes far beyond this: it recognizes every C math library name (`sin`, `sinf`), every glibc `__*_finite` internal variant, every C++ mangled form (`_Z3cosf`, `_Z4acosd`), and the full set of NVVM approximate/FTZ math intrinsics — then evaluates them using the host C math library with an exception-safe wrapper that refuses to produce results when the host FPU signals domain errors, overflow, or underflow.
 
 The system is split into two cooperating functions. The eligibility checker `sub_14D90D0` (4.6 KB, called `nvvmIntrinsicConstantFold` in the sweep analysis) is a fast predicate that answers "can this call be constant-folded?" without touching operand values. The evaluator `sub_14D1BC0` (10.2 KB, called `nvvmConstantFoldLibCall`) performs the actual computation when all operands are constant. A third function, the NVVM InstCombine intrinsic folder `sub_1169C30` (11.2 KB), handles algebraic simplification of NVVM intrinsics and is documented separately on the [InstCombine](instcombine.md) page.
 
@@ -18,10 +18,10 @@ The system is split into two cooperating functions. The eligibility checker `sub
 | **Safe unary eval wrapper** | `sub_14D19F0` (`0x14D19F0`) |
 | **Safe binary eval wrapper** | `sub_14D1A80` (`0x14D1A80`) |
 | **ConstantFP builder** | `sub_14D17B0` (`0x14D17B0`) |
-| **Custom fabs** | `sub_14D1280` (`0x14D1280`) -- SSE2 sign-bit mask |
-| **Custom floor** | `sub_14D13B0` (`0x14D13B0`) -- truncation + sign correction |
-| **Custom ceil** | `sub_14D1410` (`0x14D1410`) -- truncation + sign correction |
-| **Custom sqrt** | `sub_14D1470` (`0x14D1470`) -- thin wrapper around libc `sqrt` |
+| **Custom fabs** | `sub_14D1280` (`0x14D1280`) — SSE2 sign-bit mask |
+| **Custom floor** | `sub_14D13B0` (`0x14D13B0`) — truncation + sign correction |
+| **Custom ceil** | `sub_14D1410` (`0x14D1410`) — truncation + sign correction |
+| **Custom sqrt** | `sub_14D1470` (`0x14D1470`) — thin wrapper around libc `sqrt` |
 | **Vector math mapping** | `sub_149E420` (`0x149E420`, 5.6 KB) |
 | **LLVM knob** | `disable-fp-call-folding` (upstream, `cl::Hidden`, default `false`) |
 | **NVIDIA knob** | `FPFoldDisable` (NVIDIA CiccOption, disables FP constant folding) |
@@ -38,7 +38,7 @@ The function takes a tagged IR node pointer and a context (intrinsic descriptor)
 
 2. **NoUnwind** (attribute kind `5`): The callee must not throw. Same indirection chain.
 
-3. **Convergent gate** (attribute kind `0x34` = 52): If the callee is marked `convergent`, the function returns 0 immediately. This is the critical safety check for GPU code -- convergent intrinsics like `__syncthreads()`, `__ballot_sync()`, and warp shuffle operations have warp-synchronous semantics that would be violated by folding them away, even when all arguments happen to be constant.
+3. **Convergent gate** (attribute kind `0x34` = 52): If the callee is marked `convergent`, the function returns 0 immediately. This is the critical safety check for GPU code — convergent intrinsics like `__syncthreads()`, `__ballot_sync()`, and warp shuffle operations have warp-synchronous semantics that would be violated by folding them away, even when all arguments happen to be constant.
 
 After attribute filtering, the function reads the intrinsic ID from `[context + 0x24]` (offset +36, unsigned 32-bit enum) and dispatches through a two-level scheme.
 
@@ -244,10 +244,10 @@ Value* safeMathEval(double (*mathFunc)(double), Type* resultType, double arg) {
 
 This design means the folder **refuses to produce a result** whenever the host FPU signals any exceptional condition other than inexact. The implications:
 
-- `sin(1e308)` might overflow on the host -- not folded, left in IR for runtime evaluation.
-- `log(-1.0)` produces a domain error -- not folded.
-- `sqrt(-0.01)` triggers `FE_INVALID` -- not folded.
-- `sin(0.5)` produces an inexact result (since sin(0.5) is irrational) -- folded normally.
+- `sin(1e308)` might overflow on the host — not folded, left in IR for runtime evaluation.
+- `log(-1.0)` produces a domain error — not folded.
+- `sqrt(-0.01)` triggers `FE_INVALID` — not folded.
+- `sin(0.5)` produces an inexact result (since sin(0.5) is irrational) — folded normally.
 
 ### Domain Pre-Checks
 
@@ -263,7 +263,7 @@ The asymmetry is deliberate: `log`/`sqrt` get explicit checks because their doma
 
 ## Host FPU vs. GPU Precision
 
-The constant folder evaluates using the **host CPU's math library** (`j_sin`, `j_cos`, `j_exp`, etc. -- PLT stubs to glibc). This creates a potential precision mismatch: the folded constant may not be bit-identical to what the GPU hardware would compute. NVIDIA mitigates this through several mechanisms:
+The constant folder evaluates using the **host CPU's math library** (`j_sin`, `j_cos`, `j_exp`, etc. — PLT stubs to glibc). This creates a potential precision mismatch: the folded constant may not be bit-identical to what the GPU hardware would compute. NVIDIA mitigates this through several mechanisms:
 
 1. **Custom implementations for exact functions.** `fabs`, `floor`, `ceil`, and `round` have custom host-side implementations that match GPU rounding semantics exactly:
 
@@ -276,11 +276,11 @@ The constant folder evaluates using the **host CPU's math library** (`j_sin`, `j
 
 3. **exp2(x) folded as pow(2.0, x).** Rather than calling `exp2()` directly (which might differ between host and device implementations), the evaluator computes `pow(2.0, x)` through the binary wrapper, ensuring consistent behavior.
 
-4. **No half-precision transcendental folding.** The type check at the evaluator's entry rejects type byte 1 (half) for all trig/exp/log functions. Only basic operations (convert, compare) work on fp16. This is safe because half-precision math functions are implemented as promote-to-float, compute, demote-to-half -- by the time the constant folder runs, the promotion has already been inlined.
+4. **No half-precision transcendental folding.** The type check at the evaluator's entry rejects type byte 1 (half) for all trig/exp/log functions. Only basic operations (convert, compare) work on fp16. This is safe because half-precision math functions are implemented as promote-to-float, compute, demote-to-half — by the time the constant folder runs, the promotion has already been inlined.
 
 ### FTZ and Approximate Intrinsics
 
-NVVM intrinsics like `nvvm.exp2.approx.ftz.f` and `nvvm.sin.approx.ftz.f` carry `.approx` (reduced precision) and `.ftz` (flush-to-zero for denormals) modifiers. These are present in the foldable ID list, which may seem surprising -- folding an "approximate" intrinsic with exact host math could produce a different value than the hardware.
+NVVM intrinsics like `nvvm.exp2.approx.ftz.f` and `nvvm.sin.approx.ftz.f` carry `.approx` (reduced precision) and `.ftz` (flush-to-zero for denormals) modifiers. These are present in the foldable ID list, which may seem surprising — folding an "approximate" intrinsic with exact host math could produce a different value than the hardware.
 
 The rationale: constant folding evaluates the **mathematical function**, not the hardware instruction. If the input is a normal float and the result is a normal float, the folded value is correct regardless of FTZ or approximation quality. The FTZ modifier only affects denormal inputs (which the exception wrapper would catch via `FE_UNDERFLOW`), and the `.approx` modifier only matters for runtime execution speed. For compile-time constants, exact evaluation is strictly better.
 
@@ -315,14 +315,14 @@ The evaluator also handles integer-domain operations when operands have type tag
 - Opcodes `0xEC2`/`0xEC3` (3778/3779): `ctlz` (count leading zeros).
 - Opcodes `0x1014`/`0x1015`, `0x1016`/`0x1017`: Signed/unsigned min/max via APInt comparison.
 - Opcodes `0x104B`/`0x104C`, `0x1087`/`0x1088`: Additional signed/unsigned min/max encodings.
-- Opcode 3811: Division where divisor is known zero -- returns `UndefValue`.
+- Opcode 3811: Division where divisor is known zero — returns `UndefValue`.
 
 **Integer comparison fold** (type tag 14 with integer-domain opcodes):
-- Opcode `0xBB` (187), `0x8C` (140): `icmp eq/ne` -- predicate 0.
-- Opcode `0x61` (97): `icmp slt` -- predicate 2.
-- Opcode `0xBC` (188): `icmp sgt` -- predicate 4.
-- Opcode `0xCE` (206): `icmp uge` -- predicate 3.
-- Opcode `0x08` (8): `icmp ult` -- predicate 1.
+- Opcode `0xBB` (187), `0x8C` (140): `icmp eq/ne` — predicate 0.
+- Opcode `0x61` (97): `icmp slt` — predicate 2.
+- Opcode `0xBC` (188): `icmp sgt` — predicate 4.
+- Opcode `0xCE` (206): `icmp uge` — predicate 3.
+- Opcode `0x08` (8): `icmp ult` — predicate 1.
 
 These produce `ConstantInt` 0 or 1 via `sub_169EBA0`/`sub_169D440`.
 
@@ -355,7 +355,7 @@ The result builder `sub_14D17B0` creates the final LLVM `ConstantFP` IR node fro
 | 2 | `float` | Truncates `double` to `float` via C cast, then converts `float` to `APFloat` via `sub_169D3B0`. |
 | 3 | `double` | Stores full double precision via `sub_169D3F0` (double to APFloat). |
 
-Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `ConstantFP` node from the `APFloat` storage. The float path's truncation via C cast means the folded float value matches what `(float)host_result` produces -- this is IEEE-754 correct because the cast performs round-to-nearest-even.
+Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `ConstantFP` node from the `APFloat` storage. The float path's truncation via C cast means the folded float value matches what `(float)host_result` produces — this is IEEE-754 correct because the cast performs round-to-nearest-even.
 
 ## Function Map
 
@@ -363,30 +363,30 @@ Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `Cons
 |---|---|---|---|
 | NVVM intrinsic constant-fold eligibility | `sub_14D90D0` | 4.6 KB | Eligibility predicate: can this intrinsic be constant-folded? |
 | NVVM constant-fold libcall evaluator | `sub_14D1BC0` | 10.2 KB | Math evaluator: compute constant result from constant args |
-| Extract `double` from `ConstantFP` | `sub_14D1620` | -- | Decodes a `ConstantFP` IR node into a host `double` |
-| Unary math eval wrapper | `sub_14D19F0` | -- | Exception-safe unary evaluation wrapper |
-| Binary math eval wrapper | `sub_14D1A80` | -- | Exception-safe binary evaluation wrapper |
-| `ConstantFP` result builder | `sub_14D17B0` | -- | Builds a `ConstantFP` IR node from an evaluated double |
-| `fabs` evaluator | `sub_14D1280` | -- | SSE2 sign-bit clear |
-| `floor` evaluator | `sub_14D13B0` | -- | Truncation + sign correction |
-| `ceil` evaluator | `sub_14D1410` | -- | Truncation + sign correction |
-| `sqrt` evaluator | `sub_14D1470` | -- | Thin wrapper around libc `sqrt` |
-| `fptoui` / `fptosi` fold | `sub_14D1500` | -- | FP-to-integer conversion fold |
-| APInt move/transfer helper | `sub_14D15E0` | -- | Copies APInt payload between buffers |
+| Extract `double` from `ConstantFP` | `sub_14D1620` | — | Decodes a `ConstantFP` IR node into a host `double` |
+| Unary math eval wrapper | `sub_14D19F0` | — | Exception-safe unary evaluation wrapper |
+| Binary math eval wrapper | `sub_14D1A80` | — | Exception-safe binary evaluation wrapper |
+| `ConstantFP` result builder | `sub_14D17B0` | — | Builds a `ConstantFP` IR node from an evaluated double |
+| `fabs` evaluator | `sub_14D1280` | — | SSE2 sign-bit clear |
+| `floor` evaluator | `sub_14D13B0` | — | Truncation + sign correction |
+| `ceil` evaluator | `sub_14D1410` | — | Truncation + sign correction |
+| `sqrt` evaluator | `sub_14D1470` | — | Thin wrapper around libc `sqrt` |
+| `fptoui` / `fptosi` fold | `sub_14D1500` | — | FP-to-integer conversion fold |
+| APInt move/transfer helper | `sub_14D15E0` | — | Copies APInt payload between buffers |
 | Scalar-to-vector math mapping | `sub_149E420` | 5.6 KB | Table mapping scalar math names to vector variants |
 | Platform function-name canonicalization | `sub_149FA60` | 2.6 KB | Platform-specific name canonicalization |
 | `ConstantExpr` fold / SCEV integration | `sub_14D44C0` | 4.1 KB | ConstantExpr fold path that feeds back into SCEV |
 | Aggregate constant fold | `sub_14D5510` | 2.0 KB | ConstantFold for aggregate types |
 | GEP / `extractvalue` constant fold | `sub_14D66F0` | 0.07 KB | ConstantFold for GEP and extract |
 | `ConstantExpr` + SCEV builder | `sub_14DBA90` | 1.7 KB | Builds ConstantExprs that round-trip through SCEV |
-| `AttributeList::hasAttribute` analog | `sub_1560260` | -- | Attribute query (used 8 times in the eligibility checker) |
-| `Value::getName` analog | `sub_1649960` | -- | Name-string extraction (case 0 path) |
+| `AttributeList::hasAttribute` analog | `sub_1560260` | — | Attribute query (used 8 times in the eligibility checker) |
+| `Value::getName` analog | `sub_1649960` | — | Name-string extraction (case 0 path) |
 | NVVM InstCombine intrinsic fold | `sub_1169C30` | 11.2 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
 
 ## Cross-References
 
-- **[InstCombine](instcombine.md)** -- The NVVM intrinsic canonicalizer (`sub_1169C30`) handles algebraic simplification, negation propagation, and operand folding for NVVM intrinsics. It calls constant folding as a sub-step.
-- **[Pipeline & Ordering](pipeline.md)** -- Where constant folding sits in the optimization pipeline (runs within InstCombine and as a standalone analysis).
-- **[Builtin Table: Math Functions](../builtins/math.md)** -- The complete list of CUDA math builtins and their mapping to NVVM intrinsics.
-- **[CLI Flags](../config/cli-flags.md)** -- `FPFoldDisable` and other optimization control flags.
-- **[LLVM Knobs](../config/knobs.md)** -- The full `disable-fp-call-folding` flag and related InstCombine depth limits.
+- **[InstCombine](instcombine.md)** — The NVVM intrinsic canonicalizer (`sub_1169C30`) handles algebraic simplification, negation propagation, and operand folding for NVVM intrinsics. It calls constant folding as a sub-step.
+- **[Pipeline & Ordering](pipeline.md)** — Where constant folding sits in the optimization pipeline (runs within InstCombine and as a standalone analysis).
+- **[Builtin Table: Math Functions](../builtins/math.md)** — The complete list of CUDA math builtins and their mapping to NVVM intrinsics.
+- **[CLI Flags](../config/cli-flags.md)** — `FPFoldDisable` and other optimization control flags.
+- **[LLVM Knobs](../config/knobs.md)** — The full `disable-fp-call-folding` flag and related InstCombine depth limits.

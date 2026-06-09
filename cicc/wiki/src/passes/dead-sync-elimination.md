@@ -2,7 +2,7 @@
 
 The dead synchronization elimination engine at `sub_2C84BA0` is the largest NVIDIA-custom pass in cicc at 96KB (~3,400 decompiled lines). It removes `__syncthreads()` barriers that provably do not order any memory hazard, reducing warp stall cycles in CUDA kernels without affecting correctness. The algorithm performs a bidirectional fixed-point dataflow analysis across the entire function's CFG, tracking four memory access categories per basic block through eight red-black tree maps. After convergence, it evaluates every barrier against the computed access sets and deletes those that protect no actual hazard. Each deletion triggers a full restart of the analysis, handling cascading redundancies at the cost of quadratic worst-case complexity.
 
-This pass is distinct from the lightweight [`basic-dbe`](./dead-barrier-elim.md) pass (slot 376, `llvm::BasicDeadBarrierEliminationPass`) and from the [`branch-dist`](./branch-distribution.md) pass. All three target dead barriers, but only this engine performs full inter-block dataflow with complete restart -- the other two handle simpler local or single-pass cases.
+This pass is distinct from the lightweight [`basic-dbe`](./dead-barrier-elim.md) pass (slot 376, `llvm::BasicDeadBarrierEliminationPass`) and from the [`branch-dist`](./branch-distribution.md) pass. All three target dead barriers, but only this engine performs full inter-block dataflow with complete restart — the other two handle simpler local or single-pass cases.
 
 ## Key Facts
 
@@ -17,7 +17,7 @@ This pass is distinct from the lightweight [`basic-dbe`](./dead-barrier-elim.md)
 | Per-BB analysis | `sub_2C84640` (bidirectional, parameterized by direction) |
 | State object | 12 red-black tree maps at known offsets in `a1` |
 | Diagnostic | `" Removed dead synch: "` with per-category read/write counts |
-| Upstream equivalent | None -- entirely NVIDIA-proprietary |
+| Upstream equivalent | None — entirely NVIDIA-proprietary |
 
 ## Five-Phase Algorithm
 
@@ -210,7 +210,7 @@ When a barrier is identified as dead, the pass:
 
 2. Calls `sub_B43D60` (`Instruction::eraseFromParent`) to delete the barrier instruction from the IR.
 
-3. **Restarts from Phase 3** (goto LABEL_2) -- a complete re-analysis of the entire function.
+3. **Restarts from Phase 3** (goto LABEL_2) — a complete re-analysis of the entire function.
 
 The restart is not optional. Removing a barrier changes the memory access pattern visible between adjacent barriers: what was previously two separate "above/below" regions separated by a barrier now becomes a single merged region. This merging may cause an adjacent barrier to lose its hazard justification, making it dead as well. The cascading effect can propagate through a chain of barriers.
 
@@ -278,7 +278,7 @@ CICC contains three passes that eliminate dead synchronization barriers. They di
 | Binary size | Small (ctor_261) | 63KB core + helpers | 96KB core + helpers |
 | Knobs | `basic-dbe` | 10 knobs (ctor_525) | None known (controlled by caller) |
 
-`basic-dbe` handles trivially dead barriers detectable without dataflow analysis -- cases where the barrier is immediately adjacent to another barrier, or where the enclosing block contains no memory operations at all. It runs in the standard function pass pipeline and is cheap.
+`basic-dbe` handles trivially dead barriers detectable without dataflow analysis — cases where the barrier is immediately adjacent to another barrier, or where the enclosing block contains no memory operations at all. It runs in the standard function pass pipeline and is cheap.
 
 `branch-dist` performs full CFG propagation with 13 red-black tree maps and restart-on-removal, but it uses NVVM IR opcodes (0x36/0x37/0x3A/0x3B/0x4E) rather than the generic LLVM IR opcodes (61/62/65/66/85) used by the full engine. It also has its own address space filtering logic and 10 configurable knobs.
 
@@ -315,36 +315,36 @@ The numeric values are the boolean (0/1) access flags for each category. When th
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_2C84BA0` | 13 KB native (3,400 lines decomp) | Main engine: 5-phase algorithm |
-| -- | `sub_2C83D20` | small | `isSyncBarrier` predicate |
-| -- | `sub_2C83AE0` | small | `classifyMemoryAccess` (read/write classification) |
-| -- | `sub_2C84640` | medium | Per-BB analysis (bidirectional, direction parameter) |
-| -- | `sub_2C84590` | small | Red-black tree insert (forward/backward maps) |
-| -- | `sub_2C84AF0` | small | Red-black tree insert (bridge maps, different node type) |
-| -- | `sub_2C84080` | small | Map lookup / convergence check helper |
-| -- | `sub_2C83F20` | small | Map initialization / clear helper |
-| -- | `sub_2C83D50` | small | Map destructor / cleanup |
-| -- | `sub_BD3660` | small | `hasOneUse` -- used for intrinsic IDs 8260--8262 special case |
-| -- | `sub_CEA1A0` | small | Barrier intrinsic ID confirmation |
-| -- | `sub_B49E00` | small | `isSharedMemoryAccess` -- CUDA address space check |
-| -- | `sub_B43D60` | small | `Instruction::eraseFromParent` -- barrier deletion |
-| -- | `sub_B46E30` | small | `getNumSuccessors` -- CFG successor count |
-| -- | `sub_B46EC0` | small | `getSuccessor(i)` -- i-th successor retrieval |
-| -- | `sub_CB6200` | small | `raw_ostream::write` -- diagnostic string output |
-| -- | `sub_B91420` | small | Debug location extraction (filename/line) |
-| -- | `sub_B91F50` | small | Debug info accessor |
-| -- | `sub_BD5D20` | small | Type/value accessor |
-| -- | `sub_22409D0` | small | IR utility (instruction manipulation) |
-| -- | `sub_CB59D0` | small | `raw_ostream` integer write |
-| -- | `sub_CB59F0` | small | `raw_ostream` integer write (variant) |
-| -- | `sub_2C88020` | -- | Caller: module-level pass invoking the engine |
-| -- | `sub_2C883F0` | -- | Caller: module-level pass invoking the engine (variant) |
+| — | `sub_2C84BA0` | 13 KB native (3,400 lines decomp) | Main engine: 5-phase algorithm |
+| — | `sub_2C83D20` | small | `isSyncBarrier` predicate |
+| — | `sub_2C83AE0` | small | `classifyMemoryAccess` (read/write classification) |
+| — | `sub_2C84640` | medium | Per-BB analysis (bidirectional, direction parameter) |
+| — | `sub_2C84590` | small | Red-black tree insert (forward/backward maps) |
+| — | `sub_2C84AF0` | small | Red-black tree insert (bridge maps, different node type) |
+| — | `sub_2C84080` | small | Map lookup / convergence check helper |
+| — | `sub_2C83F20` | small | Map initialization / clear helper |
+| — | `sub_2C83D50` | small | Map destructor / cleanup |
+| — | `sub_BD3660` | small | `hasOneUse` — used for intrinsic IDs 8260--8262 special case |
+| — | `sub_CEA1A0` | small | Barrier intrinsic ID confirmation |
+| — | `sub_B49E00` | small | `isSharedMemoryAccess` — CUDA address space check |
+| — | `sub_B43D60` | small | `Instruction::eraseFromParent` — barrier deletion |
+| — | `sub_B46E30` | small | `getNumSuccessors` — CFG successor count |
+| — | `sub_B46EC0` | small | `getSuccessor(i)` — i-th successor retrieval |
+| — | `sub_CB6200` | small | `raw_ostream::write` — diagnostic string output |
+| — | `sub_B91420` | small | Debug location extraction (filename/line) |
+| — | `sub_B91F50` | small | Debug info accessor |
+| — | `sub_BD5D20` | small | Type/value accessor |
+| — | `sub_22409D0` | small | IR utility (instruction manipulation) |
+| — | `sub_CB59D0` | small | `raw_ostream` integer write |
+| — | `sub_CB59F0` | small | `raw_ostream` integer write (variant) |
+| — | `sub_2C88020` | — | Caller: module-level pass invoking the engine |
+| — | `sub_2C883F0` | — | Caller: module-level pass invoking the engine (variant) |
 
 ## Common Pitfalls
 
 These are mistakes a reimplementor is likely to make when building an equivalent dead synchronization elimination engine.
 
-**1. Removing a barrier that protects a cross-thread shared memory hazard invisible to single-thread analysis.** The most dangerous mistake is treating the analysis as a single-thread dataflow problem. The pass classifies memory accesses as read/write *per thread*, but the barrier's purpose is to order accesses *across threads*. If thread A writes to `smem[tid]` above the barrier and thread B reads `smem[tid-1]` below it, a single-thread view sees no RAW hazard (different addresses). The correct analysis must conservatively assume that any shared memory write above and any shared memory read below constitutes a hazard -- the pass uses boolean flags (not address tracking) precisely because aliasing across threads is unknowable at compile time. A reimplementation that attempts to be "smarter" by tracking addresses will remove barriers that are needed.
+**1. Removing a barrier that protects a cross-thread shared memory hazard invisible to single-thread analysis.** The most dangerous mistake is treating the analysis as a single-thread dataflow problem. The pass classifies memory accesses as read/write *per thread*, but the barrier's purpose is to order accesses *across threads*. If thread A writes to `smem[tid]` above the barrier and thread B reads `smem[tid-1]` below it, a single-thread view sees no RAW hazard (different addresses). The correct analysis must conservatively assume that any shared memory write above and any shared memory read below constitutes a hazard — the pass uses boolean flags (not address tracking) precisely because aliasing across threads is unknowable at compile time. A reimplementation that attempts to be "smarter" by tracking addresses will remove barriers that are needed.
 
 **2. Not restarting the full analysis after each barrier removal.** When a barrier is deleted, the two regions it separated merge into one. This merged region may expose an adjacent barrier as dead (it no longer has memory accesses on one side). A reimplementation that removes all identified dead barriers in a single pass and then stops will miss these cascading redundancies. The restart is mandatory: the pass deliberately uses a goto back to Phase 3 after each removal, re-analyzing the entire function from scratch.
 
@@ -377,7 +377,7 @@ __global__ void dead_sync_test(float* out, int n) {
 **What to look for in PTX:**
 - Count the number of `bar.sync 0;` instructions. The kernel has three `__syncthreads()` calls in source, but only **one** should survive: barrier 1 (which orders the write to `smem` against the read from `smem[tid^1]`). Barriers 2 and 3 have no shared memory hazard to protect.
 - The diagnostic `"Removed dead synch:"` (visible with internal dump flags) shows the per-category access flags that justified removal: `Read above: 0, Write above: 0` means no memory accesses reach the barrier from above.
-- To verify the pass preserves necessary barriers, move the `float val = smem[...]` read to between barriers 2 and 3. Now barrier 2 orders the write against this read and must survive -- expect two `bar.sync` instructions.
+- To verify the pass preserves necessary barriers, move the `float val = smem[...]` read to between barriers 2 and 3. Now barrier 2 orders the write against this read and must survive — expect two `bar.sync` instructions.
 - The cascading restart behavior is observable with 5 consecutive `__syncthreads()` with no memory between them. The pass removes one, restarts the analysis, removes the next, and repeats until only one remains.
 
 ## Reimplementation Checklist
@@ -391,7 +391,7 @@ __global__ void dead_sync_test(float* out, int n) {
 
 ## Cross-References
 
-- [Dead Barrier Elimination](./dead-barrier-elim.md) -- overview page covering both `basic-dbe` and this engine
-- [Branch Distribution](./branch-distribution.md) -- the other full dead-sync pass using NVVM IR opcodes
-- [NVIDIA Custom Passes: Inventory](./index.md) -- registry entry for Dead Synchronization Elimination
-- [LLVM Optimizer: Pipeline](../pipeline/optimizer.md) -- pipeline context and Phase I/II interaction
+- [Dead Barrier Elimination](./dead-barrier-elim.md) — overview page covering both `basic-dbe` and this engine
+- [Branch Distribution](./branch-distribution.md) — the other full dead-sync pass using NVVM IR opcodes
+- [NVIDIA Custom Passes: Inventory](./index.md) — registry entry for Dead Synchronization Elimination
+- [LLVM Optimizer: Pipeline](../pipeline/optimizer.md) — pipeline context and Phase I/II interaction

@@ -15,7 +15,7 @@ This page is the central lookup index for identified functions in ptxas. It list
 
 ## Core Infrastructure
 
-These functions appear in 10+ wiki pages -- they are the universal building blocks called by nearly every subsystem.
+These functions appear in 10+ wiki pages — they are the universal building blocks called by nearly every subsystem.
 
 | Address | Identity | Pages | Callers | Notes |
 |---------|----------|:-----:|--------:|-------|
@@ -78,10 +78,10 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 
 | Address | Identity | Pages | Callers | Notes |
 |---------|----------|:-----:|--------:|-------|
-| `0x4094C0` | `ctor_001` -- thread infra init | 4 | 0 | pthread_key_create, mutex |
-| `0x4095D0` | `ctor_003` -- PTX opcode name table | 6 | 0 | ~900 ROT13-encoded PTX mnemonics |
-| `0x40D860` | `ctor_005` -- tuning knob registry | 6 | 0 | 80 KB, 2000+ ROT13 knob names |
-| `0x421290` | `ctor_007` -- scheduler knob registry | 4 | 0 | 98 ROT13 scheduler knobs |
+| `0x4094C0` | `ctor_001` — thread infra init | 4 | 0 | pthread_key_create, mutex |
+| `0x4095D0` | `ctor_003` — PTX opcode name table | 6 | 0 | ~900 ROT13-encoded PTX mnemonics |
+| `0x40D860` | `ctor_005` — tuning knob registry | 6 | 0 | 80 KB, 2000+ ROT13 knob names |
+| `0x421290` | `ctor_007` — scheduler knob registry | 4 | 0 | 98 ROT13 scheduler knobs |
 
 > **Details**: [Pipeline Entry](pipeline/entry.md), [Binary Layout](binary-layout.md)
 
@@ -177,7 +177,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x8E4400` | `InitHWProfile_Warp` | 6 | 3 | Warp/dispatch geometry initializer keyed on codegen-factory value; writes sched-partition count + dispatch slots into the HW-profile struct |
 | `0xA9CDE0` | `scheduling_metadata_builder` | 6 | 1 | Per-instruction sched metadata |
 | `0xA9CF90` | `scheduling_metadata_accessor` | 5 | many | Sched metadata field queries |
-| `0xAED3C0` | `master_lowering_dispatcher` | 4 | 0 | 28,401 B native (~140 KB decomp); ISel/template lowering, not part of the scheduler -- see [templates.md](codegen/templates.md) |
+| `0xAED3C0` | `master_lowering_dispatcher` | 4 | 0 | 28,401 B native (~140 KB decomp); ISel/template lowering, not part of the scheduler — see [templates.md](codegen/templates.md) |
 
 > **Details**: [Scheduling Overview](scheduling/overview.md), [Scheduling Algorithm](scheduling/algorithm.md), [Latency Model](scheduling/latency-model.md), [Scoreboards](scheduling/scoreboards.md)
 
@@ -187,11 +187,11 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 
 | Address | Identity | Pages | Callers | Notes |
 |---------|----------|:-----:|--------:|-------|
-| `0x169B190` | `isel_pattern_dispatch` (master) | 5 | 1 | 280 KB, 65,999 insns -- largest function |
+| `0x169B190` | `isel_pattern_dispatch` (master) | 5 | 1 | 280 KB, 65,999 insns — largest function |
 | `0x143C440` | `sm120_peephole_dispatch` | 4 | 1 | SM120 (RTX 50), 373-case switch |
 | `0x198BCD0` | `sm100_peephole_dispatch` | 4 | 1 | SM100 (Blackwell), 1336 callees |
-| `0x18A2CA0` | `smXX_peephole_dispatch` (3rd SM target) | 1 | 1 | 231 KB, 373-case switch, same vtable column as SM100/120; reached via thunk `0xB12950`. Likely SM103/SM110/SM121 -- CONFIDENCE: MEDIUM |
-| `0xBA9D00` | `smXX_peephole_dispatch` (4th SM target) | 1 | 1 | 204 KB, 373-case switch, same vtable column as SM100/120; reached via thunk `0xB12970`. Likely SM103/SM110/SM121 -- CONFIDENCE: MEDIUM |
+| `0x18A2CA0` | `smXX_peephole_dispatch` (3rd SM target) | 1 | 1 | 231 KB, 373-case switch, same vtable column as SM100/120; reached via thunk `0xB12950`. Likely SM103/SM110/SM121 — CONFIDENCE: MEDIUM |
+| `0xBA9D00` | `smXX_peephole_dispatch` (4th SM target) | 1 | 1 | 204 KB, 373-case switch, same vtable column as SM100/120; reached via thunk `0xB12970`. Likely SM103/SM110/SM121 — CONFIDENCE: MEDIUM |
 | `0x83EF00` | `main_peephole_pass` | 6 | 0 | 29 KB, 392 callees |
 | `0x6D9690` | `master_instruction_encoder` | 7 | 1 | 27 KB native, opcode switch |
 | `0x6E4110` | `sass_codegen_main` | 4 | 1 | EmitSASSForFunction, FNV-1a BB hash |
@@ -210,7 +210,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x7B9B80` | `bitfield_insert(insn, off, wid, val)` | 9 | **18,347** | Most-called by caller count |
 | `0x7BC030` | `encode_register_operand` | 4 | 6,147 | 1-bit + 4-bit type + 10-bit reg |
 | `0x7B9D60` | `encode_reuse_flags_predicate` | 4 | 2,408 | 1-bit reuse + 5-bit predicate |
-| `0x7BC5C0` | `encode_predicate_operand` | 4 | 1,449 | 1-bit presence + 5-bit predicate value (P0..P6/PT + UP/file + `.NOT`); body is a pair of inline bitfield-insert loops into the 1280-bit instruction buffer at `a1+0x220`. See `codegen/encoding.md` -- earlier wiki labelled this "encode_immediate_const_operand", which is wrong |
+| `0x7BC5C0` | `encode_predicate_operand` | 4 | 1,449 | 1-bit presence + 5-bit predicate value (P0..P6/PT + UP/file + `.NOT`); body is a pair of inline bitfield-insert loops into the 1280-bit instruction buffer at `a1+0x220`. See `codegen/encoding.md` — earlier wiki labelled this "encode_immediate_const_operand", which is wrong |
 | `0x7BCF00` | `encode_immediate_const_operand` | 4 | 1,657 | Allocates a slot in the constant-buffer table at `a1+468` (initialized by `sub_7B9D30`), stashes the 64-bit immediate from `*(v5+8)`, then writes presence/type/register-index bitfields into the 1280-bit instruction buffer. Matches the `I` slot in `codegen/encoding.md`; not a predicate encoder |
 | `0x10B6180` | `1_bit_boolean_encoder` | 3 | 8,091 | .S/.U, .STRONG, etc. |
 

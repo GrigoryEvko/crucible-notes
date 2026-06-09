@@ -1,6 +1,6 @@
 # Merge Phase
 
-The merge phase is the heart of nvlink's linking pipeline. After all input files have been read, parsed, and (if needed) JIT-compiled, the linker iterates over every input cubin and merges its sections, symbols, and relocations into a single output ELF. This phase is implemented almost entirely by a single function -- `merge_elf` at `sub_45E7D0` -- which at 89 KB (2,838 lines of decompiled pseudocode, 450+ local variables) is the largest function in the linker core. It is called once per input object, in the order the objects appear on the command line (or were extracted from fatbins/archives).
+The merge phase is the heart of nvlink's linking pipeline. After all input files have been read, parsed, and (if needed) JIT-compiled, the linker iterates over every input cubin and merges its sections, symbols, and relocations into a single output ELF. This phase is implemented almost entirely by a single function — `merge_elf` at `sub_45E7D0` — which at 89 KB (2,838 lines of decompiled pseudocode, 450+ local variables) is the largest function in the linker core. It is called once per input object, in the order the objects appear on the command line (or were extracted from fatbins/archives).
 
 The merge phase sits between the input-reading loop and the shared-memory layout phase. In `main()`, the timing checkpoint `sub_4279C0("merge")` is emitted immediately before the merge loop begins, and another checkpoint fires when the loop completes.
 
@@ -46,7 +46,7 @@ Before merge begins, `main()` has already:
 
 ### cudadevrt Handling
 
-The CUDA device runtime library (`libcudadevrt`) receives special treatment. When full LTO is active (all translation units have IR), `main()` prints `"LTO on everything so remove libcudadevrt from list"` and skips the cudadevrt object entirely -- the LTO compilation subsumes its functionality. The detection uses `sub_4448C0`, which iterates the output ELF's symbol table looking for undefined function symbols. If all function symbols are resolved (or are `__cuda_syscall` intrinsics, or match the syscall constant table checked by `sub_449BE0`), cudadevrt is deemed unnecessary.
+The CUDA device runtime library (`libcudadevrt`) receives special treatment. When full LTO is active (all translation units have IR), `main()` prints `"LTO on everything so remove libcudadevrt from list"` and skips the cudadevrt object entirely — the LTO compilation subsumes its functionality. The detection uses `sub_4448C0`, which iterates the output ELF's symbol table looking for undefined function symbols. If all function symbols are resolved (or are `__cuda_syscall` intrinsics, or match the syscall constant table checked by `sub_449BE0`), cudadevrt is deemed unnecessary.
 
 ### Verbose-Keep Command Reconstruction
 
@@ -108,7 +108,7 @@ The ISA version is extracted from the ELF header (`sub_43E3C0` / `sub_43E420`) a
 
 ### Phase 2: Mapping Table Allocation
 
-Four mapping arrays are allocated -- these translate input-local indices to output-global indices:
+Four mapping arrays are allocated — these translate input-local indices to output-global indices:
 
 | Array | Element size | Count | Description |
 |---|---|---|---|
@@ -121,7 +121,7 @@ All arrays are zero-initialized. Zero in a mapping slot means "not yet mapped" o
 
 ### Phase 3: Symbol Pass (Weak Resolution)
 
-Before processing sections, `merge_elf` makes a first pass over all symbols to handle **weak function definitions**. This is a dedicated pre-pass -- it runs to completion before Phase 4 section iteration begins. The loop walks the input ELF's symbol table and calls `sub_45D180` (`merge_weak_function`, 26 KB) for every symbol whose low nibble of `st_info` equals 2 (the `STB_WEAK` binding code):
+Before processing sections, `merge_elf` makes a first pass over all symbols to handle **weak function definitions**. This is a dedicated pre-pass — it runs to completion before Phase 4 section iteration begins. The loop walks the input ELF's symbol table and calls `sub_45D180` (`merge_weak_function`, 26 KB) for every symbol whose low nibble of `st_info` equals 2 (the `STB_WEAK` binding code):
 
 ```c
 // merge_elf Phase 3 (decompiled lines 762-800)
@@ -148,7 +148,7 @@ for (sym_idx = 0; sym_idx < merge_ctx->num_symbols; sym_idx++) {
 }
 ```
 
-Note the filter condition: `(st_info & 0xF) == 2` checks only the low nibble (symbol binding), not the high nibble (symbol type). This means the weak pass processes all weak symbols regardless of whether they are `STT_FUNC`, `STT_OBJECT`, or `STT_SECTION` -- though in practice CUDA cubins only emit weak function symbols (`STT_FUNC`, type 2).
+Note the filter condition: `(st_info & 0xF) == 2` checks only the low nibble (symbol binding), not the high nibble (symbol type). This means the weak pass processes all weak symbols regardless of whether they are `STT_FUNC`, `STT_OBJECT`, or `STT_SECTION` — though in practice CUDA cubins only emit weak function symbols (`STT_FUNC`, type 2).
 
 The return value of `merge_weak_function` is stored directly into `map_symbol_index[sym_idx]`, providing the output-global symbol index that replaces this input-local index in all subsequent translation.
 
@@ -321,15 +321,15 @@ When the decision tree selects the incoming definition as the winner (via regist
 
 When a weak function is replaced at LABEL\_82, four cleanup passes remove the old definition's metadata from the output ELF:
 
-**Pass 1 -- Relocation nullification** (lines 608-624): Finds the old function's `SHT_REL` (type 9) and `SHT_RELA` (type 4) sections via `sub_442760`, then walks the output's relocation linked list at `ctx+376`. For each relocation entry whose `target_section_idx` (offset +24) matches either section, the `reloc_info` field (offset +8) is zeroed. Verbose: `"remove weak reloc"`.
+**Pass 1 — Relocation nullification** (lines 608-624): Finds the old function's `SHT_REL` (type 9) and `SHT_RELA` (type 4) sections via `sub_442760`, then walks the output's relocation linked list at `ctx+376`. For each relocation entry whose `target_section_idx` (offset +24) matches either section, the `reloc_info` field (offset +8) is zeroed. Verbose: `"remove weak reloc"`.
 
-**Pass 2 -- Debug relocation removal** (lines 625-663): For each of three debug section names (`.debug_line`, `.nv_debug_line_sass`, `.debug_frame`), looks up the section's associated `SHT_REL` and `SHT_RELA` sections. Relocations targeting these are nullified with the same zero-write technique. Verbose: `"remove weak reloc from debug"`.
+**Pass 2 — Debug relocation removal** (lines 625-663): For each of three debug section names (`.debug_line`, `.nv_debug_line_sass`, `.debug_frame`), looks up the section's associated `SHT_REL` and `SHT_RELA` sections. Relocations targeting these are nullified with the same zero-write technique. Verbose: `"remove weak reloc from debug"`.
 
-**Pass 3 -- nvinfo entry removal** (lines 671-734): Walks the output's nvinfo linked list at `ctx+392`. Two sub-cases:
+**Pass 3 — nvinfo entry removal** (lines 671-734): Walks the output's nvinfo linked list at `ctx+392`. Two sub-cases:
 - **Direct match**: If the entry's function reference (offset +4) matches the old section ID, its `attr_code` (offset +1) is zeroed. Verbose: `"remove weak nvinfo"`.
-- **Frame-size-class match**: If the entry's `attr_code` is <= 47 and the 64-bit bitmask `0x800800020000` has the corresponding bit set (true for codes 17, 35, 47 -- FRAME\_SIZE, CRS\_STACK\_SIZE, REGCOUNT), and the payload's first DWORD matches the old symbol index, the `attr_code` is zeroed. Verbose: `"remove weak frame_size"`.
+- **Frame-size-class match**: If the entry's `attr_code` is <= 47 and the 64-bit bitmask `0x800800020000` has the corresponding bit set (true for codes 17, 35, 47 — FRAME\_SIZE, CRS\_STACK\_SIZE, REGCOUNT), and the payload's first DWORD matches the old symbol index, the `attr_code` is zeroed. Verbose: `"remove weak frame_size"`.
 
-**Pass 4 -- OCG constant section removal** (lines 736-766): Constructs the OCG section name as `<module>.<function>` using `sprintf`, where the module name comes from `sub_4401F0` (reading from the vtable at `ctx+488` offset 136). If `sub_4411D0` finds this section in the output, its callgraph record's size (offset +32) is zeroed, all relocation chain entries are freed via `sub_431000`, and the chain pointer (offset +72) is cleared via `sub_464520`. Verbose: `"remove weak ocg constants"`.
+**Pass 4 — OCG constant section removal** (lines 736-766): Constructs the OCG section name as `<module>.<function>` using `sprintf`, where the module name comes from `sub_4401F0` (reading from the vtable at `ctx+488` offset 136). If `sub_4411D0` finds this section in the output, its callgraph record's size (offset +32) is zeroed, all relocation chain entries are freed via `sub_431000`, and the chain pointer (offset +72) is cleared via `sub_464520`. Verbose: `"remove weak ocg constants"`.
 
 #### weak\_processed Flag: Bridging Phase 3 and Phase 4
 
@@ -337,9 +337,9 @@ The result of Phase 3 feeds directly into Phase 4 through two mechanisms:
 
 1. **map\_symbol\_index**: The output symbol index returned by `merge_weak_function` is stored in `map_symbol_index[sym_idx]`. Phase 4 uses this to translate symbol references when copying sections, relocations, and nvinfo entries.
 
-2. **weak\_processed array** (`merge_ctx+64`, stored as `v19[8]` in the decompiled code): A boolean byte array indexed by the input symbol index. Phase 4 sets `weak_processed[sym_idx] = 1` when processing a weak symbol during section iteration (decompiled line 1406). Before processing any weak symbol's constant bank data, Phase 4 checks this array -- if the byte is set, it emits `"weak %s already processed"` (line 1076) and skips to the next symbol. The check at line 1177 also prevents section-index mapping for already-processed symbols: `if (st_shndx != 0 && st_shndx != 0xFFF2 && !weak_processed[sym_idx])`.
+2. **weak\_processed array** (`merge_ctx+64`, stored as `v19[8]` in the decompiled code): A boolean byte array indexed by the input symbol index. Phase 4 sets `weak_processed[sym_idx] = 1` when processing a weak symbol during section iteration (decompiled line 1406). Before processing any weak symbol's constant bank data, Phase 4 checks this array — if the byte is set, it emits `"weak %s already processed"` (line 1076) and skips to the next symbol. The check at line 1177 also prevents section-index mapping for already-processed symbols: `if (st_shndx != 0 && st_shndx != 0xFFF2 && !weak_processed[sym_idx])`.
 
-This two-array system ensures that: (a) Phase 3 resolves all weak conflicts and records winners in `map_symbol_index`, and (b) Phase 4 does not re-process or duplicate data for symbols that Phase 3 already handled. The `.nv.info` merge in Phase 5 also respects `weak_processed` -- EIATTR attribute codes 17 (`FRAME_SIZE`), 35 (`CRS_STACK_SIZE`), 47 (`REGCOUNT`), and 59 are silently skipped for weak-processed symbols.
+This two-array system ensures that: (a) Phase 3 resolves all weak conflicts and records winners in `map_symbol_index`, and (b) Phase 4 does not re-process or duplicate data for symbols that Phase 3 already handled. The `.nv.info` merge in Phase 5 also respects `weak_processed` — EIATTR attribute codes 17 (`FRAME_SIZE`), 35 (`CRS_STACK_SIZE`), 47 (`REGCOUNT`), and 59 are silently skipped for weak-processed symbols.
 
 ### Phase 4: Section Iteration
 
@@ -429,11 +429,11 @@ These are allocated as BSS (no data) via `sub_437BB0`. The function takes the se
 
 Special SMEM reservations for hardware features. The function detects:
 
-- `__nv_reservedSMEM_tcgen05_partition` -- tcgen05 tensor core partition (priority 2)
-- `__nv_reservedSMEM_allocation_phase` -- allocation phase (priority 1)
-- `__nv_reservedSMEM_allocation_mask` -- allocation mask (priority 1)
-- `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier` -- tmem pipeline mbarrier (priority 1)
-- `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier_parity` -- tmem parity (priority 1)
+- `__nv_reservedSMEM_tcgen05_partition` — tcgen05 tensor core partition (priority 2)
+- `__nv_reservedSMEM_allocation_phase` — allocation phase (priority 1)
+- `__nv_reservedSMEM_allocation_mask` — allocation mask (priority 1)
+- `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier` — tmem pipeline mbarrier (priority 1)
+- `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier_parity` — tmem parity (priority 1)
 
 A conflict check at `ctx+664` ensures all input objects agree on the reserved SMEM partition type. Mismatches produce a fatal error through `sub_467460` with `unk_2A5B8C0`.
 
@@ -458,7 +458,7 @@ The merge function processes `.nv.info` by iterating entries and translating sym
 
 Each translated entry is added to the output via `sub_4508F0`.
 
-For entries referencing weak symbols that have already been processed (checked via `weak_processed` array), the entry is silently skipped -- the winning weak definition's `.nv.info` data takes precedence.
+For entries referencing weak symbols that have already been processed (checked via `weak_processed` array), the entry is silently skipped — the winning weak definition's `.nv.info` data takes precedence.
 
 #### `.nv.compat` Sections (`SHT_CUDA_COMPAT`, `0x70000086`)
 
@@ -484,7 +484,7 @@ Relocation entries are copied from the input and translated:
 2. The symbol index is translated through `map_symbol_index`.
 3. For `SHT_RELA` (type 4), addends are also present; for `SHT_REL` (type 9), they are not.
 4. Relocations referencing weak symbols that were already processed are skipped, with verbose trace: `"weak sym %d already relocated"`, `"remove reloc for subsequent weak %d"`.
-5. Debug-related sections (`.debug_line`, `.nv_debug_line_sass`, `.debug_frame`) are checked specially -- weak relocations into these are silently dropped rather than producing errors.
+5. Debug-related sections (`.debug_line`, `.nv_debug_line_sass`, `.debug_frame`) are checked specially — weak relocations into these are silently dropped rather than producing errors.
 
 The actual relocation entry is added to the output via `sub_469790` (SHT\_RELA) or `sub_4698A0` (SHT\_REL). A section copy helper `sub_469230` maps the relocation target section.
 
@@ -492,10 +492,10 @@ The actual relocation entry is added to the output via `sub_469790` (SHT\_RELA) 
 
 Callgraph entries are 8-byte records. A leading record with a zero caller carries a type marker in its high 32 bits (`-1`, `-2`, `-3`, `-4`); subsequent records inherit that type until the next marker. Each non-marker record's symbol index (caller, low 32 bits) is translated through `map_symbol_index`, and the trailing 32 bits encode either a callee section index or a name-string offset depending on the active type. The four edge builders are:
 
-- type `-1` -- `sub_44B9F0(ctx, caller_sec, callee_sec)` -- appends to the caller node's `callee_list` (entry offset `+16`), keyed by callee section id; this is the standard direct-call edge.
-- type `-2` -- `sub_44BA60(ctx, sec, name_attr)` -- interns `name_attr` into the string table at `ctx+288` (via `sub_4405C0`) and stores the resulting **string-table offset** at entry offset `+4` (i.e. the symbol's interned name token, not a callgraph index), then stamps `address_taken=1` at offset `+50`. This name-key is later matched against `-3` alt_call entries (in `sub_44C030`) to resolve by-name address-taken references back to this node.
-- type `-3` -- `sub_44BAA0(ctx, sec, name_attr)` -- appends to the caller's `alt_call_list` (entry offset `+8`), keyed by interned string index; this carries indirect or external-by-name callees.
-- type `-4` -- `sub_44BF90(ctx, caller_sec, callee_sec)` -- appends to the caller's `fn_ptr_edge_list` (entry offset `+32`) and stamps `address_taken=1` on the callee node; this is the function-pointer / address-taken edge.
+- type `-1` — `sub_44B9F0(ctx, caller_sec, callee_sec)` — appends to the caller node's `callee_list` (entry offset `+16`), keyed by callee section id; this is the standard direct-call edge.
+- type `-2` — `sub_44BA60(ctx, sec, name_attr)` — interns `name_attr` into the string table at `ctx+288` (via `sub_4405C0`) and stores the resulting **string-table offset** at entry offset `+4` (i.e. the symbol's interned name token, not a callgraph index), then stamps `address_taken=1` at offset `+50`. This name-key is later matched against `-3` alt_call entries (in `sub_44C030`) to resolve by-name address-taken references back to this node.
+- type `-3` — `sub_44BAA0(ctx, sec, name_attr)` — appends to the caller's `alt_call_list` (entry offset `+8`), keyed by interned string index; this carries indirect or external-by-name callees.
+- type `-4` — `sub_44BF90(ctx, caller_sec, callee_sec)` — appends to the caller's `fn_ptr_edge_list` (entry offset `+32`) and stamps `address_taken=1` on the callee node; this is the function-pointer / address-taken edge.
 
 Entries referencing weak-processed symbols are skipped.
 
@@ -522,15 +522,15 @@ After all sections are processed, merge\_elf performs cleanup:
 
 Before walking through a concrete example, it helps to enumerate the sub-steps `merge_elf` performs for each input object, in execution order. Each input cubin is processed by a single top-level call to `sub_45E7D0` that traverses this list:
 
-1. **Register input in driver list** (`sub_464C30` on `ctx+512`) -- append the input record so later callers can recover the source cubin name, PTX version, ISA bits, and input index. The input's list position becomes its `input_index` for all symbols created from this cubin.
-2. **Parse ELF header** -- `sub_448360`/`sub_46B590` to get the file header, `sub_4484F0`/`sub_46B700` to find `.symtab`, `sub_448370`/`sub_46B5A0` to find the linked string table. Compute `num_sections`, `num_symbols`, `is_64bit`, `is_ewp`, and cache pointers to the raw section/symbol/string buffers inside the 80-byte merge context.
-3. **Allocate four mapping arrays** (lines 706-752) via `sub_4307C0` -- `map_symbol_index`, `map_section_index`, `map_section_offset`, `weak_processed`, all zero-initialised.
-4. **Compute ISA/Mercury flag masks** (lines 753-761) -- `v535` (input compatibility flag) and `v537` (output compatibility flag) gate Mercury section skipping later.
-5. **Weak pre-pass** (lines 762-800) -- iterate symbols; for every entry whose `(st_info & 0xF) == 2`, call `sub_45D180` (`merge_weak_function`) and store the returned output symbol index in `map_symbol_index[sym_idx]`.
-6. **Main symbol/section pass** (lines 801-1600+) -- iterate symbols again; dispatch each by `st_info` binding (local/global/weak), by `st_other & 0xE0` flags (0x40 = shared, 0x80 = constant, 0xA0 = reserved SMEM), and by reclassified section type. This is where the bulk of section creation (`sub_441AC0`), symbol creation (`sub_440740`/`sub_442CA0`), and constant-bank data merge (`sub_438640`) happens.
-7. **Section header pass** -- walk the input's section headers directly to handle `.nv.info` (`SHT_CUDA_INFO`, 0x70000000), `.nv.compat` (`SHT_CUDA_COMPAT`, 0x70000086), `.nv.callgraph` (0x70000001), `.nv.callgraph.info` (0x70000002), debug funcdata (0x70000004), and relocation sections (`SHT_REL`, `SHT_RELA`). Each entry is translated through `map_symbol_index` and `map_section_index` and then appended to the output via `sub_4508F0`, `sub_44B9F0`, `sub_469790`, or `sub_4698A0`.
-8. **Verbose diagnostic dump** (conditional on `-v`) -- print the mapping arrays and call `sub_4478F0` (`elfw_dump_structure`).
-9. **Cleanup** -- free the four mapping arrays and any deferred linked lists via `sub_431000` (`arena_free`) and `sub_464520` (`list_destroy`). Return to `main()`'s merge loop for the next input.
+1. **Register input in driver list** (`sub_464C30` on `ctx+512`) — append the input record so later callers can recover the source cubin name, PTX version, ISA bits, and input index. The input's list position becomes its `input_index` for all symbols created from this cubin.
+2. **Parse ELF header** — `sub_448360`/`sub_46B590` to get the file header, `sub_4484F0`/`sub_46B700` to find `.symtab`, `sub_448370`/`sub_46B5A0` to find the linked string table. Compute `num_sections`, `num_symbols`, `is_64bit`, `is_ewp`, and cache pointers to the raw section/symbol/string buffers inside the 80-byte merge context.
+3. **Allocate four mapping arrays** (lines 706-752) via `sub_4307C0` — `map_symbol_index`, `map_section_index`, `map_section_offset`, `weak_processed`, all zero-initialised.
+4. **Compute ISA/Mercury flag masks** (lines 753-761) — `v535` (input compatibility flag) and `v537` (output compatibility flag) gate Mercury section skipping later.
+5. **Weak pre-pass** (lines 762-800) — iterate symbols; for every entry whose `(st_info & 0xF) == 2`, call `sub_45D180` (`merge_weak_function`) and store the returned output symbol index in `map_symbol_index[sym_idx]`.
+6. **Main symbol/section pass** (lines 801-1600+) — iterate symbols again; dispatch each by `st_info` binding (local/global/weak), by `st_other & 0xE0` flags (0x40 = shared, 0x80 = constant, 0xA0 = reserved SMEM), and by reclassified section type. This is where the bulk of section creation (`sub_441AC0`), symbol creation (`sub_440740`/`sub_442CA0`), and constant-bank data merge (`sub_438640`) happens.
+7. **Section header pass** — walk the input's section headers directly to handle `.nv.info` (`SHT_CUDA_INFO`, 0x70000000), `.nv.compat` (`SHT_CUDA_COMPAT`, 0x70000086), `.nv.callgraph` (0x70000001), `.nv.callgraph.info` (0x70000002), debug funcdata (0x70000004), and relocation sections (`SHT_REL`, `SHT_RELA`). Each entry is translated through `map_symbol_index` and `map_section_index` and then appended to the output via `sub_4508F0`, `sub_44B9F0`, `sub_469790`, or `sub_4698A0`.
+8. **Verbose diagnostic dump** (conditional on `-v`) — print the mapping arrays and call `sub_4478F0` (`elfw_dump_structure`).
+9. **Cleanup** — free the four mapping arrays and any deferred linked lists via `sub_431000` (`arena_free`) and `sub_464520` (`list_destroy`). Return to `main()`'s merge loop for the next input.
 
 When `main()` advances to the next input, the output ELF state (`ctx`) now contains the cumulative symbols, sections, relocations, and metadata contributed by every previous object. The next call to `sub_45E7D0` sees that state and merges on top of it.
 
@@ -561,7 +561,7 @@ nvlink -arch=sm_90 input1.cubin input2.cubin -o merged.cubin
 
 | idx | Name | `st_info` | `st_shndx` | Binding |
 |---|---|---|---|---|
-| 0 | (null) | 0x00 | 0 | -- |
+| 0 | (null) | 0x00 | 0 | — |
 | 1 | `.text.kernel_a` | 0x03 | 1 | `STT_SECTION`, `STB_LOCAL` |
 | 2 | `.nv.constant0.kernel_a` | 0x03 | 5 | `STT_SECTION`, `STB_LOCAL` |
 | 3 | `kernel_a` | 0x12 | 1 | `STT_FUNC`, `STB_GLOBAL` |
@@ -584,7 +584,7 @@ The relocation at `[2] .rela.text.kernel_a + 0x00` is `R_CUDA_ABS32_LO_20` with 
 
 | idx | Name | `st_info` | `st_shndx` | Binding |
 |---|---|---|---|---|
-| 0 | (null) | 0x00 | 0 | -- |
+| 0 | (null) | 0x00 | 0 | — |
 | 1 | `.text.device_fn` | 0x03 | 1 | `STT_SECTION`, `STB_LOCAL` |
 | 2 | `.nv.constant2` | 0x03 | 2 | `STT_SECTION`, `STB_LOCAL` |
 | 3 | `device_fn` | 0x12 | 1 | `STT_FUNC`, `STB_GLOBAL` |
@@ -613,7 +613,7 @@ Both symbol hash maps (`ctx+288`, `ctx+296`) are empty. The driver list at `ctx+
 
 **1b. Parse ELF header** (`sub_448360`, `sub_4484F0`, `sub_448370`): `num_sections = 9` (including null), `num_symbols = 5`, `is_64bit = 1`, `is_ewp = 0`.
 
-**1c. Allocate mapping arrays** (lines 706-752): `map_symbol_index[0..5]`, `map_section_index[0..9]`, `map_section_offset[0..9]`, `weak_processed[0..5]` -- all zero.
+**1c. Allocate mapping arrays** (lines 706-752): `map_symbol_index[0..5]`, `map_section_index[0..9]`, `map_section_offset[0..9]`, `weak_processed[0..5]` — all zero.
 
 **1d. Weak pre-pass** (lines 762-800): No symbol has `(st_info & 0xF) == 2`. The loop makes no calls to `sub_45D180`. `map_symbol_index` remains all zero.
 
@@ -622,7 +622,7 @@ Both symbol hash maps (`ctx+288`, `ctx+296`) are empty. The driver list at `ctx+
 - **`sym_idx = 0`** (null symbol): `st_shndx == 0` and not a matching section name. Falls through the dispatch and is skipped. `map_symbol_index[0] = 0`.
 
 - **`sym_idx = 1`** (`.text.kernel_a`, `STT_SECTION`, `STB_LOCAL`, `st_shndx = 1`):
-  - Looks up section name `.text.kernel_a` in the output via `sub_4411D0` -- **not found** (returns 0).
+  - Looks up section name `.text.kernel_a` in the output via `sub_4411D0` — **not found** (returns 0).
   - Falls into the `sub_444AD0` branch (NVIDIA-pattern section name check). `.text.*` passes the check, so the section is created with `sh_type = 13` (a nvlink-internal code for text sections).
   - Calls `sub_440BE0` (`elfw_add_section_with_data`) which internally:
     1. Allocates a 104-byte section record via `sub_441AC0` (`section_create`), registers it in `ctx+360`, assigns it output section index **6** (next slot after the 5 skeleton sections), and registers the name in the hash map at `ctx+296`.
@@ -632,7 +632,7 @@ Both symbol hash maps (`ctx+288`, `ctx+296`) are empty. The driver list at `ctx+
   - Also copies the input section's data contribution via `sub_432B10` (`merge_overlapping_global_data`), which creates a 40-byte data node pointing at the 384 bytes of SASS, offset 0, and appends it to the section record's `data_list_head` (at section+72). `map_section_offset[1] = 0`.
 
 - **`sym_idx = 2`** (`.nv.constant0.kernel_a`, `STT_SECTION`, `STB_LOCAL`, `st_shndx = 5`):
-  - The output section name is looked up -- not found. The name matches the `.nv.constant0` prefix check at lines 1006-1007 and the type is reclassified to `0x70000064` (`SHT_CUDA_CONSTANT0 + 0`).
+  - The output section name is looked up — not found. The name matches the `.nv.constant0` prefix check at lines 1006-1007 and the type is reclassified to `0x70000064` (`SHT_CUDA_CONSTANT0 + 0`).
   - The full name `.nv.constant0.kernel_a` is actually interpreted as a **kernel-local** constant bank because the `.kernel_a` suffix is non-numeric. The dispatch at lines 1082-1105 calls `sub_438640` (`merge_constant_bank_data`) to merge the 352-byte parameter bank into the kernel-local constant bank namespace.
   - `map_section_index[5] = 7` (new output section index for `.nv.constant0.kernel_a`).
   - `map_symbol_index[2] = 2` (positive symbol, section symbol).
@@ -672,8 +672,8 @@ weak_processed:    [0, 0, 0, 0, 0]
 - **`[4] .nv.info.kernel_a`**: Same treatment, but this is a per-function nvinfo section. A new output section `.nv.info.kernel_a` is created via `sub_4504B0` (or `sub_441AC0` directly), and entries are copied in.
 
 - **`[2] .rela.text.kernel_a`** (`SHT_RELA`): Two relocation entries:
-  1. `r_sym = 4` (`device_fn`) -> translated to **-2**; `r_type = R_CUDA_ABS32_LO_20`; `r_offset = 0x00`; `r_addend = 0`. The target section index is `map_section_index[1] = 6` (the output `.text.kernel_a`). The entry is added via `sub_469790` (`reloc_add_rela`) with symbol index -2 and target section 6. **This is where the extern reference in input1 becomes a live relocation pointing at the undefined symbol record -- it will be re-resolved in step 2 when input2 provides the definition.**
-  2. Second relocation is internal to input1 (loads from `.nv.constant0.kernel_a`) -- `r_sym = 2` translates to positive symbol index 2, target section index 6. Added to the output.
+  1. `r_sym = 4` (`device_fn`) -> translated to **-2**; `r_type = R_CUDA_ABS32_LO_20`; `r_offset = 0x00`; `r_addend = 0`. The target section index is `map_section_index[1] = 6` (the output `.text.kernel_a`). The entry is added via `sub_469790` (`reloc_add_rela`) with symbol index -2 and target section 6. **This is where the extern reference in input1 becomes a live relocation pointing at the undefined symbol record — it will be re-resolved in step 2 when input2 provides the definition.**
+  2. Second relocation is internal to input1 (loads from `.nv.constant0.kernel_a`) — `r_sym = 2` translates to positive symbol index 2, target section index 6. Added to the output.
 
 - **`[6] .nv.callgraph`**: The single 8-byte edge `(kernel_a, device_fn)` is translated to `(-1, -2)` and registered via `sub_44B9F0`. Even though `device_fn` is undefined at this moment, the callgraph records the edge as a signed symbol-index pair; the referenced record will later be overwritten in place when input2 defines `device_fn`, so the edge remains valid.
 
@@ -686,7 +686,7 @@ weak_processed:    [0, 0, 0, 0, 0]
 | sec[6] | `.text.kernel_a` | `0x0D` (text) | 384 | input1[1] |
 | sec[7] | `.nv.constant0.kernel_a` | `0x70000064` | 352 | input1[5] |
 | sec[8] | `.rela.text.kernel_a` | `SHT_RELA` | 48 | input1[2] (auto-created by `sub_441AC0`) |
-| sec[9] | `.nv.info` | `0x70000000` | -- | input1[3] contributions |
+| sec[9] | `.nv.info` | `0x70000000` | — | input1[3] contributions |
 | sec[10] | `.nv.info.kernel_a` | `0x70000000` | 32 | input1[4] |
 
 Symbol table:
@@ -725,7 +725,7 @@ The relocation at `.rela.text.kernel_a + 0x00` now references output symbol -2. 
 - **`sym_idx = 2`** (`.nv.constant2`, `STT_SECTION`, `STB_LOCAL`, `st_shndx = 2`):
   - The section name is just `.nv.constant2` (no `.kernel` suffix). It matches the `.nv.constant` prefix at lines 1006-1007 and the strtol parse at line 1001 yields `bank = 2`. Reclassified to `sh_type = 0x70000064 + 2 = 0x70000066` (`SHT_CUDA_CONSTANT2`).
   - This is a **module-level** constant bank (no per-kernel suffix). `sub_4411D0(ctx, ".nv.constant2")` returns 0.
-  - Created as output section index **12** via `sub_441AC0`. Data is merged via `sub_432B10` -- 64 bytes appended to a fresh data node.
+  - Created as output section index **12** via `sub_441AC0`. Data is merged via `sub_432B10` — 64 bytes appended to a fresh data node.
   - Positive symbol `.nv.constant2` added at index **4**.
   - `map_section_index[2] = 12`, `map_symbol_index[2] = 4`.
 
@@ -733,8 +733,8 @@ The relocation at `.rela.text.kernel_a + 0x00` now references output symbol -2. 
   - `sub_4411B0(ctx, "device_fn")` returns **-2** (found! from input1's undefined reference).
   - The existing record is fetched via `sub_440590(ctx, -2)`. It has `st_shndx = 0` (undefined) and `st_info = 0x10` (global notype).
   - Control flow at line 1037 detects that `st_info >> 4 == 1` (existing is global) and enters the replacement path at `LABEL_267` (line 1253).
-  - Visibility conflict check (`v246 = ^` at line 1258) passes -- both have default visibility.
-  - `sub_440350(ctx, existing)` returns the existing `st_shndx = 0` (not `SHN_COMMON`). The branch at line 1271 falls through to `LABEL_335` with `v250 = 0` (existing size) and `v251 = 0` (new size -- `n` is still 0 because `device_fn`'s `st_size` has not yet been read into `n` on the re-entry path).
+  - Visibility conflict check (`v246 = ^` at line 1258) passes — both have default visibility.
+  - `sub_440350(ctx, existing)` returns the existing `st_shndx = 0` (not `SHN_COMMON`). The branch at line 1271 falls through to `LABEL_335` with `v250 = 0` (existing size) and `v251 = 0` (new size — `n` is still 0 because `device_fn`'s `st_size` has not yet been read into `n` on the re-entry path).
   - At line 1289, `v250 == v251` (both zero) so jumps to `LABEL_323`. At line 1346, `v110 = 1` (new section index) so the code proceeds to `sub_442270` for the existing section (0) followed by `LABEL_325`.
   - At `LABEL_325` (line 1358), the code resolves the existing symbol's section via `sub_440350`. The result is 0 (undefined). The branch at line 1361 takes the "existing has no section" path.
   - The section data copy path at line 1384 (`sub_4377B0` = `add_data_to_existing_section`) is invoked with the new section index mapped to output 11 (`map_section_index[1] = 11`) and the symbol record at signed index -2 is updated in place:
@@ -743,7 +743,7 @@ The relocation at `.rela.text.kernel_a + 0x00` now references output symbol -2. 
     - `st_info` is updated to `0x12` (global function).
     - `input_index` at offset +40 is updated to **1** (the new input's position in `ctx+512`).
   - **This is the resolution step**: the previously undefined symbol record at signed index -2 now has a section and a size. All relocations in the output that referenced -2 (including the `R_CUDA_ABS32_LO_20` from input1's `.rela.text.kernel_a`) automatically become live, because relocations store symbol indices, not pointers to copies.
-  - `map_symbol_index[3] = -2` (the reused existing slot). The verbose trace would emit nothing special -- this is the normal global-defines-undefined path, not a weak or duplicate case.
+  - `map_symbol_index[3] = -2` (the reused existing slot). The verbose trace would emit nothing special — this is the normal global-defines-undefined path, not a weak or duplicate case.
 
 - **`sym_idx = 4`** (`const_data`, `STT_OBJECT`, `STB_GLOBAL`, `st_shndx = 2`):
   - `sub_4411B0(ctx, "const_data")` returns 0 (new).
@@ -778,11 +778,11 @@ After both inputs have been processed, the output ELF contains:
 | Output idx | Name | Type | Size | Origin |
 |---|---|---|---|---|
 | 0 | (null) | 0 | 0 | skeleton |
-| 1 | `.note.nv.cuinfo` | 7 | -- | skeleton |
-| 2 | `.note.nv.tkinfo` | 7 | -- | skeleton |
-| 3 | `.shstrtab` | 3 | -- | skeleton |
-| 4 | `.strtab` | 3 | -- | skeleton |
-| 5 | `.symtab` | 2 | -- | skeleton |
+| 1 | `.note.nv.cuinfo` | 7 | — | skeleton |
+| 2 | `.note.nv.tkinfo` | 7 | — | skeleton |
+| 3 | `.shstrtab` | 3 | — | skeleton |
+| 4 | `.strtab` | 3 | — | skeleton |
+| 5 | `.symtab` | 2 | — | skeleton |
 | 6 | `.text.kernel_a` | 0x0D | 384 | input1[1] |
 | 7 | `.nv.constant0.kernel_a` | 0x70000064 | 352 | input1[5] |
 | 8 | `.rela.text.kernel_a` | 4 | 48 | input1[2] |
@@ -810,11 +810,11 @@ After both inputs have been processed, the output ELF contains:
 - section: **11** (`.text.device_fn`)
 - value: 0
 
-When the later relocation application phase (during output ELF serialization) walks the relocation list and patches the SASS at `.text.kernel_a + 0x00`, it resolves the target address using the updated symbol record -- turning input1's extern call into a live branch to the input2-provided `device_fn` body. No extra pass is needed to "fix up" the relocation; the in-place symbol update makes it automatic.
+When the later relocation application phase (during output ELF serialization) walks the relocation list and patches the SASS at `.text.kernel_a + 0x00`, it resolves the target address using the updated symbol record — turning input1's extern call into a live branch to the input2-provided `device_fn` body. No extra pass is needed to "fix up" the relocation; the in-place symbol update makes it automatic.
 
 ### Key Observations from the Example
 
-1. **Signed symbol indices are stable**: Once an undefined symbol is added (as -2 for `device_fn`), its slot persists. When input2 defines the symbol, the **same** slot is updated in place -- relocations and callgraph edges referring to -2 never need to be rewritten.
+1. **Signed symbol indices are stable**: Once an undefined symbol is added (as -2 for `device_fn`), its slot persists. When input2 defines the symbol, the **same** slot is updated in place — relocations and callgraph edges referring to -2 never need to be rewritten.
 
 2. **Sections are never renumbered**: Output section indices are assigned at creation time and never change during the merge loop. The fact that `.text.kernel_a` lands at output index 6 while `.text.device_fn` lands at 11 is a direct consequence of command-line order and the intervening auto-created sections (`.rela.text.kernel_a`, `.nv.info`, `.nv.info.kernel_a`).
 
@@ -824,7 +824,7 @@ When the later relocation application phase (during output ELF serialization) wa
 
 5. **`.nv.info` accumulates**: Per-kernel REGCOUNT and FRAME\_SIZE entries from every input are appended to the same merged `.nv.info` section. Translation through `map_symbol_index` ensures that the `sym_index` fields in TLV records always refer to the correct output-global symbol after merge.
 
-6. **Module-level vs kernel-local constants**: `.nv.constant2` (module-level, from input2) and `.nv.constant0.kernel_a` (kernel-local, from input1) follow different dispatch paths -- the former goes through the plain section-add path at line 1117 and the latter through `sub_438640` at line 1082. Both end up as distinct output sections with `sh_type` values derived from `strtol(name + 12, NULL, 10) + 0x70000064`.
+6. **Module-level vs kernel-local constants**: `.nv.constant2` (module-level, from input2) and `.nv.constant0.kernel_a` (kernel-local, from input1) follow different dispatch paths — the former goes through the plain section-add path at line 1117 and the latter through `sub_438640` at line 1082. Both end up as distinct output sections with `sh_type` values derived from `strtol(name + 12, NULL, 10) + 0x70000064`.
 
 ## Mercury Section Skipping
 
@@ -887,7 +887,7 @@ merge time: 0.042000
 | `unk_2A5B910` error | `.nv.compat` section missing or invalid | Fatal |
 | `unk_2A5B900` error | ISA\_CLASS mismatch for Mercury target | Fatal |
 | `unk_2A5B9C0` error | Callgraph info validation failure | Fatal |
-| `"weak %s already processed"` | Diagnostic (verbose only) -- not an error | Info |
+| `"weak %s already processed"` | Diagnostic (verbose only) — not an error | Info |
 | `"global.init replaces common for %s"` | Diagnostic (verbose only) | Info |
 | `"increase size of common %s"` | Diagnostic (verbose only) | Info |
 | `"skip mercury section %i"` | Mercury section deferred to FNLZR | Info |
@@ -897,7 +897,7 @@ merge time: 0.042000
 
 | Address | Name | Size | Role |
 |---|---|---|---|
-| `0x45E7D0` | `merge_elf` | 89,156 B | Core merge function -- processes one input cubin |
+| `0x45E7D0` | `merge_elf` | 89,156 B | Core merge function — processes one input cubin |
 | `0x45D180` | `merge_weak_function` | 26,816 B | Weak symbol resolution (register count / PTX version) |
 | `0x45CD30` | `section_map_or_create` | ~1,200 B | Find/create output section for input section index |
 | `0x45E3C0` | `copy_section_with_relocs` | ~1,000 B | Copy section data + relocation entries |
@@ -929,15 +929,15 @@ merge time: 0.042000
 
 ## Cross-References
 
-- [Pipeline Overview](overview.md) -- merge phase in context of the full pipeline
-- [Input File Loop](input-loop.md) -- how input objects are collected before merge
-- [Weak Symbols](../linker/weak-symbols.md) -- detailed weak resolution policy
-- [Section Merging](../linker/section-merging.md) -- section-level merge mechanics
-- [Symbol Resolution](../linker/symbol-resolution.md) -- global/weak/local symbol resolution
-- [NVIDIA Sections](../elf/nvidia-sections.md) -- `.nv.*` section catalog with type codes
-- [`.nv.info`](../elf/nv-info.md) -- per-function metadata format
-- [Layout Phase](layout.md) -- next pipeline phase after merge
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- callgraph-based DCE after merge
+- [Pipeline Overview](overview.md) — merge phase in context of the full pipeline
+- [Input File Loop](input-loop.md) — how input objects are collected before merge
+- [Weak Symbols](../linker/weak-symbols.md) — detailed weak resolution policy
+- [Section Merging](../linker/section-merging.md) — section-level merge mechanics
+- [Symbol Resolution](../linker/symbol-resolution.md) — global/weak/local symbol resolution
+- [NVIDIA Sections](../elf/nvidia-sections.md) — `.nv.*` section catalog with type codes
+- [`.nv.info`](../elf/nv-info.md) — per-function metadata format
+- [Layout Phase](layout.md) — next pipeline phase after merge
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — callgraph-based DCE after merge
 
 ## Confidence Assessment
 

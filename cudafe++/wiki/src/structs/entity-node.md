@@ -1,6 +1,6 @@
 # Entity Node Layout
 
-The entity node is the central data structure in cudafe++ (EDG 6.6) for representing every named declaration: functions, variables, fields, parameters, namespaces, and types. Each node is a variable-size record -- routines occupy 288 bytes, variables 232 bytes, fields 176 bytes -- linked into scope chains and cross-referenced by type nodes, expression nodes, and template instantiation records.
+The entity node is the central data structure in cudafe++ (EDG 6.6) for representing every named declaration: functions, variables, fields, parameters, namespaces, and types. Each node is a variable-size record — routines occupy 288 bytes, variables 232 bytes, fields 176 bytes — linked into scope chains and cross-referenced by type nodes, expression nodes, and template instantiation records.
 
 This page focuses on the CUDA-specific fields that NVIDIA grafted onto the EDG entity node. These fields encode execution space (`__host__`/`__device__`/`__global__`), variable memory space (`__shared__`/`__constant__`/`__managed__`), launch configuration (`__launch_bounds__`/`__cluster_dims__`/`__block_size__`/`__maxnreg__`), and assorted kernel metadata. The attribute application functions in `attribute.c` write these fields; the backend code generator, cross-space validator, IL walker, and stub emitter read them.
 
@@ -124,7 +124,7 @@ The attribute handlers do not set individual bits. They OR entire patterns into 
 | `__device__` | `0x23` | `0x23` | `sub_40EB80` (`apply_nv_device_attr`) | `entity+182 |= 0x23` |
 | `__host__` | `0x15` | `0x15` | `sub_4108E0` (`apply_nv_host_attr`) | `entity+182 |= 0x15` |
 | `__host__ __device__` | `0x23` then `0x15` | `0x37` | Both handlers in sequence | OR of device + host masks |
-| (no annotation) | none | `0x00` | -- | Implicit `__host__` |
+| (no annotation) | none | `0x00` | — | Implicit `__host__` |
 
 The `0x80` bit is set unconditionally at the end of `apply_nv_global_attr`. After the main body ORs `0x61` into byte+182 (setting bit 6 = `global_kernel`), a tail guard checks bit 6 and always ORs `0x80`:
 
@@ -268,7 +268,7 @@ This prevents declaring lambda call operators as kernels via the `__global__` at
 
 ## Parameter List (Pointer +152)
 
-For routine entities, offset `+152` holds a pointer to the function prototype structure. The prototype's first field (`+0`) points to the parameter list head -- a linked list of parameter entities.
+For routine entities, offset `+152` holds a pointer to the function prototype structure. The prototype's first field (`+0`) points to the parameter list head — a linked list of parameter entities.
 
 The `__global__` attribute handler iterates this list to check two constraints:
 
@@ -315,11 +315,11 @@ if ( (v3 & 0x40) != 0 ) {                  // __global__ kernel
 // else: device-only function -- __nv_register_params__ is allowed
 ```
 
-The key check is `(v3 & 0x30) != 0x20`: when the execution space annotation bits indicate device-only (bits 4,5 = 0x20), the error is skipped. This means `__nv_register_params__` is valid only on `__device__` functions -- it is rejected on `__global__`, `__host__`, and `__host__ __device__` functions.
+The key check is `(v3 & 0x30) != 0x20`: when the execution space annotation bits indicate device-only (bits 4,5 = 0x20), the error is skipped. This means `__nv_register_params__` is valid only on `__device__` functions — it is rejected on `__global__`, `__host__`, and `__host__ __device__` functions.
 
 ### __cluster_dims__ Intent (Bit 0x40)
 
-Set by `apply_nv_cluster_dims_attr` (`sub_4115F0`) when the attribute is applied with zero arguments. This marks the function as "wants cluster dimensions" without specifying concrete values -- the values may come from a separate `__block_size__` attribute or from a template parameter.
+Set by `apply_nv_cluster_dims_attr` (`sub_4115F0`) when the attribute is applied with zero arguments. This marks the function as "wants cluster dimensions" without specifying concrete values — the values may come from a separate `__block_size__` attribute or from a template parameter.
 
 ## Template / Linkage Flags (Pointer +184)
 
@@ -341,7 +341,7 @@ The mask `0x800001000000` tests two bits:
 - Bit 47 (`0x800000000000`): template instantiation pending
 - Bit 24 (`0x000001000000`): has definition body
 
-When bit 47 is set but bit 24 is clear, the entity is a template lambda awaiting instantiation that has no body yet -- applying `__global__` (or `__device__`) to such an entity produces error 3469.
+When bit 47 is set but bit 24 is clear, the entity is a template lambda awaiting instantiation that has no body yet — applying `__global__` (or `__device__`) to such an entity produces error 3469.
 
 ## Launch Configuration Struct (Pointer +256)
 
@@ -454,7 +454,7 @@ The entity kind byte at `+80` determines which offsets are valid. CUDA attribute
 
 ## Cross-References
 
-- [Execution Spaces](../cuda/execution-spaces.md) -- deep dive on byte `+182` semantics and the six virtual override mismatch errors
-- [Attributes Overview](../attributes/overview.md) -- attribute kind enum (86-108) and `apply_one_attribute` dispatch
-- [IL Overview](../il/overview.md) -- IL entry kinds 7 (variable), 8 (field), 11 (routine) node sizes
-- [Scope Entry](scope-entry.md) -- 784-byte scope structure that contains entity chains
+- [Execution Spaces](../cuda/execution-spaces.md) — deep dive on byte `+182` semantics and the six virtual override mismatch errors
+- [Attributes Overview](../attributes/overview.md) — attribute kind enum (86-108) and `apply_one_attribute` dispatch
+- [IL Overview](../il/overview.md) — IL entry kinds 7 (variable), 8 (field), 11 (routine) node sizes
+- [Scope Entry](scope-entry.md) — 784-byte scope structure that contains entity chains

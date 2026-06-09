@@ -187,7 +187,7 @@ Scanning produces a linked list of `attr_node_t` nodes. At this stage, the `kind
 
 When the parser reaches a declaration, `get_attr_descr_for_attribute` resolves each attribute name to a descriptor and writes the kind byte. For CUDA attributes, this assigns values in the `'V'`--`'n'` range.
 
-### Phase 3: Application -- `apply_one_attribute` (`sub_413240`)
+### Phase 3: Application — `apply_one_attribute` (`sub_413240`)
 
 The central dispatcher is a 585-line function containing a switch on the kind byte. For each CUDA kind, it calls the corresponding handler:
 
@@ -214,7 +214,7 @@ void apply_one_attribute(attr_node_t* attr, entity_t* entity, int target_kind) {
 
 The outer iteration is `apply_attributes_to_entity` (`sub_413ED0`, 492 lines), which walks the attribute list, calls `apply_one_attribute` for each, and handles deferred attributes, attribute merging, and ordering constraints.
 
-### Phase 4: Post-Declaration Validation -- `sub_6BC890`
+### Phase 4: Post-Declaration Validation — `sub_6BC890`
 
 After all attributes on a declaration are applied, `sub_6BC890` (`nv_validate_cuda_attributes`, from `nv_transforms.c`) performs cross-attribute consistency checking. This function validates that combinations of CUDA attributes are legal:
 
@@ -295,8 +295,8 @@ Each CUDA attribute has a dedicated `apply_*` function registered in the descrip
 | `__device__` | `apply_nv_device_attr` | `sub_40EB80` | 100 | Functions: `entity+182 \|= 0x23`; Variables: `entity+148 \|= 0x01` |
 | `__global__` | `apply_nv_global_attr` | `sub_40E1F0` | 89 | `entity+182 \|= 0x61` |
 | `__global__` (variant 2) | `apply_nv_global_attr` | `sub_40E7F0` | 86 | Same as above (alternate entry point) |
-| `__shared__` | (via device attr path) | -- | -- | `entity+148 \|= 0x02` |
-| `__constant__` | (via device attr path) | -- | -- | `entity+148 \|= 0x04` |
+| `__shared__` | (via device attr path) | — | — | `entity+148 \|= 0x02` |
+| `__constant__` | (via device attr path) | — | — | `entity+148 \|= 0x04` |
 | `__managed__` | `apply_nv_managed_attr` | `sub_40E0D0` | 47 | `entity+148 \|= 0x01`, `entity+149 \|= 0x01` |
 | `__launch_bounds__` | `apply_nv_launch_bounds_attr` | `sub_411C80` | 98 | `entity+256` -> launch config `+0`, `+8`, `+16` |
 | `__maxnreg__` | `apply_nv_maxnreg_attr` | `sub_410F70` | 67 | `entity+256` -> launch config `+32` |
@@ -312,7 +312,7 @@ The function `sub_6B5E50` (160 lines, in the `nv_transforms.c` / `mem_manage.c` 
 The registration creates macro-like definitions that the lexer expands before attribute processing. The function:
 
 1. **Allocates attribute definition nodes** via `sub_6BA0D0` (EDG's node allocator)
-2. **Looks up existing definitions** via `sub_734430` (hash table search) -- if a definition already exists, it chains the new handler onto it via `sub_6AC190`
+2. **Looks up existing definitions** via `sub_734430` (hash table search) — if a definition already exists, it chains the new handler onto it via `sub_6AC190`
 3. **Creates new keyword entries** via `sub_749600` if no prior definition exists
 4. **Registers `__nv_register_params__`** as a 40-byte attribute definition node (kind marker 8961) with chain linkage
 5. **Registers `__noinline__`** as a 30-byte attribute definition node (kind marker 6401), including the `"oinline))"` suffix for `__attribute__((__noinline__))` expansion
@@ -374,7 +374,7 @@ struct launch_config_t {
 };
 ```
 
-This structure is allocated lazily -- only created when a launch configuration attribute is first applied to a function. The allocation function `sub_5E52F0` returns a zero-initialized structure with `maxnreg = -1` and `local_maxnreg = -1` (sentinel for "unset").
+This structure is allocated lazily — only created when a launch configuration attribute is first applied to a function. The allocation function `sub_5E52F0` returns a zero-initialized structure with `maxnreg = -1` and `local_maxnreg = -1` (sentinel for "unset").
 
 ## Attribute Processing Global State
 
@@ -428,21 +428,21 @@ Every CUDA attribute is parsed into a 72-byte attribute IL node (entry kind `0x4
 
 | Attribute | Parse-time IL node | Post-apply form | `.int.c` re-emission | Pipeline consumer |
 |---|---|---|---|---|
-| `__host__` | kind `0x48`, byte `+8 = 'V'` | `entity+182 \|= 0x15` | -- (entity bits only) | Device/host splitter (`mark_to_keep_in_il`) |
-| `__device__` | kind `0x48`, byte `+8 = 'W'` | functions: `entity+182 \|= 0x23`; variables: `entity+148 \|= 0x01` | -- (entity bits only) | Device/host splitter, cross-space checker |
+| `__host__` | kind `0x48`, byte `+8 = 'V'` | `entity+182 \|= 0x15` | — (entity bits only) | Device/host splitter (`mark_to_keep_in_il`) |
+| `__device__` | kind `0x48`, byte `+8 = 'W'` | functions: `entity+182 \|= 0x23`; variables: `entity+148 \|= 0x01` | — (entity bits only) | Device/host splitter, cross-space checker |
 | `__global__` | kind `0x48`, byte `+8 = 'X'` | `entity+182 \|= 0x61`, then `\|= 0x80` | host stub generator emits launch wrapper | Kernel stub emitter (`sub_489000`) |
 | `__tile_global__` | kind `0x48`, byte `+8 = 'Y'` | (no handler) attribute node kept on attr chain | preserved through chain walk | cicc (downstream) |
-| `__shared__` | kind `0x48`, byte `+8 = 'Z'` | `entity+148 \|= 0x02` | -- (entity bits only) | Memory-space declarator |
-| `__constant__` | kind `0x48`, byte `+8 = '['` | `entity+148 \|= 0x04` | -- (entity bits only) | Memory-space declarator |
+| `__shared__` | kind `0x48`, byte `+8 = 'Z'` | `entity+148 \|= 0x02` | — (entity bits only) | Memory-space declarator |
+| `__constant__` | kind `0x48`, byte `+8 = '['` | `entity+148 \|= 0x04` | — (entity bits only) | Memory-space declarator |
 | `__launch_bounds__` | kind `0x48`, byte `+8 = '\\'` | `entity+256 -> launch_config_t` (+0, +8, +16) | re-emitted as IL kind `25` via `sub_540560` | cicc (NVVM IR generator) |
-| `__maxnreg__` | kind `0x48`, byte `+8 = ']'` | `launch_config+32` | -- (struct field) | cicc, ptxas |
-| `__local_maxnreg__` | kind `0x48`, byte `+8 = '^'` | `launch_config+36` | -- (struct field) | cicc, ptxas |
+| `__maxnreg__` | kind `0x48`, byte `+8 = ']'` | `launch_config+32` | — (struct field) | cicc, ptxas |
+| `__local_maxnreg__` | kind `0x48`, byte `+8 = '^'` | `launch_config+36` | — (struct field) | cicc, ptxas |
 | `__tile_builtin__` | kind `0x48`, byte `+8 = '_'` | (no handler) attribute node kept on attr chain | preserved through chain walk | cicc (downstream) |
 | `__managed__` | kind `0x48`, byte `+8 = 'f'` | `entity+148 \|= 0x01` + `entity+149 \|= 0x01` | comma-op host wrapper + RT boilerplate via `sub_489000` | CUDA runtime (`__nv_init_managed_rt`) |
-| `__cluster_dims__` | kind `0x48`, byte `+8 = 'k'` | `launch_config+20/+24/+28` + flag bit 0; zero-arg sets `entity+183 \|= 0x40` | -- (struct fields) | cicc |
-| `__block_size__` | kind `0x48`, byte `+8 = 'l'` | `launch_config+40/+44/+48` + flag bit 1; optional `+20/+24/+28` | -- (struct fields) | cicc |
+| `__cluster_dims__` | kind `0x48`, byte `+8 = 'k'` | `launch_config+20/+24/+28` + flag bit 0; zero-arg sets `entity+183 \|= 0x40` | — (struct fields) | cicc |
+| `__block_size__` | kind `0x48`, byte `+8 = 'l'` | `launch_config+40/+44/+48` + flag bit 1; optional `+20/+24/+28` | — (struct fields) | cicc |
 | `__nv_pure__` | kind `0x48`, byte `+8 = 'n'` | (no entity mutation) attribute node kept on attr chain | re-emitted as IL kind `25` via `sub_540560` (shared path with `\\`) | cicc (applies LLVM `readonly`/`willreturn`) |
-| `__nv_register_params__` | kind `0x48` via GNU path (no CUDA kind byte) | `entity+183 \|= 0x08` | -- (entity bits only) | cicc (ABI selector) |
+| `__nv_register_params__` | kind `0x48` via GNU path (no CUDA kind byte) | `entity+183 \|= 0x08` | — (entity bits only) | cicc (ABI selector) |
 | `__forceinline__` | (no CUDA kind byte; processed via inline-control path) | `entity+177 \|= 0x10` | emitted as `__attribute__((always_inline))` | Host compiler + cicc |
 | `__noinline__` (EDG form) | (no CUDA kind byte) | `entity+179 \|= 0x20` (+ ABI node on prototype in C mode) | emitted as `__attribute__((noinline))` | Host compiler + cicc |
 | `__noinline__` (GNU form) | kind `0x48` via GNU `__attribute__` | `entity+180 \|= 0x80` | emitted as `__attribute__((noinline))` | Host compiler + cicc |
@@ -454,11 +454,11 @@ Every CUDA attribute is parsed into a 72-byte attribute IL node (entry kind `0x4
 
 Reading the matrix vertically, every CUDA attribute lands in exactly one of three categories:
 
-1. **Collapse to entity bits** -- `__host__`, `__device__`, `__shared__`, `__constant__`, `__managed__`, `__nv_register_params__`, `__forceinline__`, `__noinline__`, `__inline_hint__`. After application, no attribute IL node survives. The downstream consumer reads entity bytes (`+148`, `+149`, `+177`, `+179`, `+180`, `+182`, `+183`) instead. The original kind-`0x48` IL node is freed back to the arena when the attribute chain is torn down.
+1. **Collapse to entity bits** — `__host__`, `__device__`, `__shared__`, `__constant__`, `__managed__`, `__nv_register_params__`, `__forceinline__`, `__noinline__`, `__inline_hint__`. After application, no attribute IL node survives. The downstream consumer reads entity bytes (`+148`, `+149`, `+177`, `+179`, `+180`, `+182`, `+183`) instead. The original kind-`0x48` IL node is freed back to the arena when the attribute chain is torn down.
 
-2. **Side-band launch-config struct** -- `__launch_bounds__`, `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__`. The attribute IL node is consumed; the values are extracted into the 56-byte `launch_config_t` pointed to by `entity+256`. `__launch_bounds__` additionally walks back through the writer with `kind_field = 25` so cicc sees it in `.int.c`. The other four are consumed entirely by cudafe++ and the launch-config struct is read by later passes (kernel stub generator, ptxas argument formatter).
+2. **Side-band launch-config struct** — `__launch_bounds__`, `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__`. The attribute IL node is consumed; the values are extracted into the 56-byte `launch_config_t` pointed to by `entity+256`. `__launch_bounds__` additionally walks back through the writer with `kind_field = 25` so cicc sees it in `.int.c`. The other four are consumed entirely by cudafe++ and the launch-config struct is read by later passes (kernel stub generator, ptxas argument formatter).
 
-3. **Preserved on attribute chain** -- `__nv_pure__`, `__tile_global__`, `__tile_builtin__`, `__grid_constant__`. These have no entity-bit collapse (or only a flag bit alongside the chain). The attribute IL node remains attached to the entity through code generation. The `.int.c` writer (`sub_5565E0` family, `sub_540560`) walks the chain and re-emits the attribute textually so cicc can apply the corresponding LLVM-level semantics. For the `__tile_*` pair, no cudafe++ consumer exists -- the attribute is pure pass-through.
+3. **Preserved on attribute chain** — `__nv_pure__`, `__tile_global__`, `__tile_builtin__`, `__grid_constant__`. These have no entity-bit collapse (or only a flag bit alongside the chain). The attribute IL node remains attached to the entity through code generation. The `.int.c` writer (`sub_5565E0` family, `sub_540560`) walks the chain and re-emits the attribute textually so cicc can apply the corresponding LLVM-level semantics. For the `__tile_*` pair, no cudafe++ consumer exists — the attribute is pure pass-through.
 
 ### Why There Is No Per-Attribute IL Node Type
 
@@ -468,12 +468,12 @@ The practical consequence is that "which IL node is emitted for attribute X" is 
 
 ## Cross-References
 
-- [__global__ Function Constraints](global-function.md) -- detailed validation rules for `__global__`
-- [Launch Configuration Attributes](launch-config.md) -- `__launch_bounds__`, `__cluster_dims__`, `__block_size__`
-- [__grid_constant__](grid-constant.md) -- grid-constant parameter attribute
-- [__managed__ Variables](managed-variables.md) -- managed memory attribute
-- [Minor CUDA Attributes](minor-attributes.md) -- `__noinline__`, `__forceinline__`, `__nv_register_params__`, `__nv_pure__`
-- [__nv_* Builtin Intrinsic Names](nv-builtin-intrinsics.md) -- 110 `__nv_*` identifiers that look like attributes but are intrinsics / lambda machinery
-- [Entity Node Layout](../structs/entity-node.md) -- full entity structure with CUDA field offsets
-- [CUDA Execution Spaces](../cuda/execution-spaces.md) -- how execution space bits drive code generation
-- [CUDA Memory Spaces](../cuda/memory-spaces.md) -- memory space bitfield semantics
+- [__global__ Function Constraints](global-function.md) — detailed validation rules for `__global__`
+- [Launch Configuration Attributes](launch-config.md) — `__launch_bounds__`, `__cluster_dims__`, `__block_size__`
+- [__grid_constant__](grid-constant.md) — grid-constant parameter attribute
+- [__managed__ Variables](managed-variables.md) — managed memory attribute
+- [Minor CUDA Attributes](minor-attributes.md) — `__noinline__`, `__forceinline__`, `__nv_register_params__`, `__nv_pure__`
+- [__nv_* Builtin Intrinsic Names](nv-builtin-intrinsics.md) — 110 `__nv_*` identifiers that look like attributes but are intrinsics / lambda machinery
+- [Entity Node Layout](../structs/entity-node.md) — full entity structure with CUDA field offsets
+- [CUDA Execution Spaces](../cuda/execution-spaces.md) — how execution space bits drive code generation
+- [CUDA Memory Spaces](../cuda/memory-spaces.md) — memory space bitfield semantics

@@ -28,7 +28,7 @@ const char *suffix = (severity > 7) ? "" : "-D";
 
 ## Diagnostic Tag Names and Suppression
 
-Each CUDA error has an associated **diagnostic tag name** -- a snake_case identifier that can be passed to `--diag_suppress`, `--diag_warning`, `--diag_error`, or `--diag_default` instead of the numeric code. The tag names are also accepted by `#pragma nv_diag_suppress`, `#pragma nv_diag_warning`, etc.
+Each CUDA error has an associated **diagnostic tag name** — a snake_case identifier that can be passed to `--diag_suppress`, `--diag_warning`, `--diag_error`, or `--diag_default` instead of the numeric code. The tag names are also accepted by `#pragma nv_diag_suppress`, `#pragma nv_diag_warning`, etc.
 
 ```bash
 # Suppress a specific CUDA error by tag name
@@ -50,7 +50,7 @@ The pragma actions understood by cudafe++:
 | `nv_diag_warning` | 32 | Set severity to 5 (warning) |
 | `nv_diag_error` | 33 | Set severity to 7 (error) |
 | `nv_diag_default` | 35 | Restore original severity |
-| `nv_diag_once` | -- | Emit only on first occurrence |
+| `nv_diag_once` | — | Emit only on first occurrence |
 
 ## Category 1: Cross-Space Calling (12 messages)
 
@@ -88,12 +88,12 @@ When a derived class overrides a virtual function, the execution space of the ov
 
 | Tag | Message Template |
 |---|---|
-| -- | `execution space mismatch: overridden entity (%n1) is a __device__ function, but overriding entity (%n2) is a __host__ function` |
-| -- | `execution space mismatch: overridden entity (%n1) is a __device__ function, but overriding entity (%n2) is a __host__ __device__ function` |
-| -- | `execution space mismatch: overridden entity (%n1) is a __host__ function, but overriding entity (%n2) is a __device__ function` |
-| -- | `execution space mismatch: overridden entity (%n1) is a __host__ function, but overriding entity (%n2) is a __host__ __device__ function` |
-| -- | `execution space mismatch: overridden entity (%n1) is a __host__ __device__ function, but overriding entity (%n2) is a __device__ function` |
-| -- | `execution space mismatch: overridden entity (%n1) is a __host__ __device__ function, but overriding entity (%n2) is a __host__ function` |
+| — | `execution space mismatch: overridden entity (%n1) is a __device__ function, but overriding entity (%n2) is a __host__ function` |
+| — | `execution space mismatch: overridden entity (%n1) is a __device__ function, but overriding entity (%n2) is a __host__ __device__ function` |
+| — | `execution space mismatch: overridden entity (%n1) is a __host__ function, but overriding entity (%n2) is a __device__ function` |
+| — | `execution space mismatch: overridden entity (%n1) is a __host__ function, but overriding entity (%n2) is a __host__ __device__ function` |
+| — | `execution space mismatch: overridden entity (%n1) is a __host__ __device__ function, but overriding entity (%n2) is a __device__ function` |
+| — | `execution space mismatch: overridden entity (%n1) is a __host__ __device__ function, but overriding entity (%n2) is a __host__ function` |
 
 **Implementation:** The override checker (`sub_432280`, `record_virtual_function_override`) extracts the `0x30` mask from the execution space byte of both the base and derived function entities. If they differ, the appropriate pair is selected and emitted. The `__global__` space is not included because `__global__` functions cannot be virtual (see Category 4).
 
@@ -155,8 +155,8 @@ When a function is redeclared with a different execution space annotation, cudaf
 | `global_friend_definition` | `A __global__ function or function template cannot be defined in a friend declaration` |
 | `global_function_in_unnamed_inline_ns` | `A __global__ function or function template cannot be declared within an inline unnamed namespace` |
 | `global_operator_function` | `An operator function cannot be a __global__ function` |
-| `global_new_or_delete` | *(internal -- __global__ on operator new/delete)* |
-| -- | `function main cannot be marked __device__ or __global__` |
+| `global_new_or_delete` | *(internal — __global__ on operator new/delete)* |
+| — | `function main cannot be marked __device__ or __global__` |
 
 ### C++ Feature Restrictions
 
@@ -164,7 +164,7 @@ When a function is redeclared with a different execution space annotation, cudaf
 |---|---|
 | `global_function_constexpr` | `A __global__ function or function template cannot be marked constexpr` |
 | `global_function_consteval` | `A __global__ function or function template cannot be marked consteval` |
-| `global_function_inline` | *(internal -- __global__ with inline)* |
+| `global_function_inline` | *(internal — __global__ with inline)* |
 | `global_exception_spec` | `An exception specification is not allowed for a __global__ function or function template` |
 
 ### Template Argument Restrictions
@@ -201,9 +201,9 @@ When a function is redeclared with a different execution space annotation, cudaf
 |---|---|
 | `bounds_attr_only_on_global_func` | `%s is only allowed on a __global__ function` |
 | `maxnreg_attr_only_on_global_func` | *(maxnreg only on __global__)* |
-| -- | `The %s qualifiers cannot be applied to the same kernel` |
-| -- | `Multiple %s specifiers are not allowed` |
-| -- | `no __launch_bounds__ specified for __global__ function` |
+| — | `The %s qualifiers cannot be applied to the same kernel` |
+| — | `Multiple %s specifiers are not allowed` |
+| — | `no __launch_bounds__ specified for __global__ function` |
 | `cuda_specifier_twice_in_group` | *(duplicate CUDA specifier on same declaration)* |
 
 ## Category 5: Extended Lambda Restrictions (35 messages)
@@ -225,7 +225,7 @@ Extended lambdas (`__device__` or `__host__ __device__` lambdas defined within h
 | `extended_lambda_capture_in_constexpr_if` | `An extended %s lambda cannot first-capture variable in constexpr-if context` |
 | `this_addr_capture_ext_lambda` | `Implicit capture of 'this' in extended lambda expression` |
 | `extended_lambda_hd_init_capture` | `init-captures are not allowed for extended __host__ __device__ lambdas` |
-| -- | `Unless enabled by language dialect, *this capture is only supported when the lambda is either __device__ only, or is defined within a __device__ or __global__ function` |
+| — | `Unless enabled by language dialect, *this capture is only supported when the lambda is either __device__ only, or is defined within a __device__ or __global__ function` |
 
 ### Type Restrictions on Captures and Parameters
 
@@ -263,7 +263,7 @@ Extended lambdas (`__device__` or `__host__ __device__` lambdas defined within h
 | `extended_lambda_inside_constexpr_if` | `For this host platform/dialect, an extended lambda cannot be defined inside the 'if' or 'else' block of a constexpr if statement` |
 | `extended_lambda_multiple_parent` | `Cannot specify multiple __nv_parent directives in a lambda declaration` |
 | `extended_host_device_generic_lambda` | `__host__ __device__ extended lambdas cannot be generic lambdas` |
-| -- | `If an extended %s lambda is defined within the body of one or more nested lambda expressions, each of these enclosing lambda expressions must be defined within the immediate or nested block scope of a function.` |
+| — | `If an extended %s lambda is defined within the body of one or more nested lambda expressions, each of these enclosing lambda expressions must be defined within the immediate or nested block scope of a function.` |
 
 ### Specifier and Annotation
 
@@ -271,7 +271,7 @@ Extended lambdas (`__device__` or `__host__ __device__` lambdas defined within h
 |---|---|
 | `extended_lambda_disallowed` | `__host__ or __device__ annotation on lambda requires --extended-lambda nvcc flag` |
 | `extended_lambda_constexpr` | `The %s1 specifier is not allowed for an extended %s2 lambda` |
-| -- | `The operator() function for a lambda cannot be explicitly annotated with execution space annotations (__host__/__device__/__global__), the annotations are derived from its closure class` |
+| — | `The operator() function for a lambda cannot be explicitly annotated with execution space annotations (__host__/__device__/__global__), the annotations are derived from its closure class` |
 
 ## Category 6: Device Code Restrictions (13 messages)
 
@@ -281,17 +281,17 @@ General restrictions that apply to any code executing on the GPU. These errors a
 |---|---|
 | `cuda_device_code_unsupported_operator` | `The operator '%s' is not allowed in device code` |
 | `unsupported_type_in_device_code` | `%t %s1 a %s2, which is not supported in device code` |
-| -- | `device code does not support exception handling` |
-| -- | `device code does not support coroutines` |
-| -- | `operations on vector types are not supported in device code` |
+| — | `device code does not support exception handling` |
+| — | `device code does not support coroutines` |
+| — | `operations on vector types are not supported in device code` |
 | `undefined_device_entity` | `cannot use an entity undefined in device code` |
 | `undefined_device_identifier` | `identifier %sq is undefined in device code` |
 | `thread_local_in_device_code` | `cannot use thread_local specifier for variable declarations in device code` |
 | `unrecognized_pragma_device_code` | `unrecognized #pragma in device code` |
-| -- | `zero-sized parameter type %t is not allowed in device code` |
-| -- | `zero-sized variable %sq is not allowed in device code` |
-| -- | `dynamic initialization is not supported for a function-scope static %s variable within a __device__/__global__ function` |
-| -- | `function-scope static variable within a __device__/__global__ function requires a memory space specifier` |
+| — | `zero-sized parameter type %t is not allowed in device code` |
+| — | `zero-sized variable %sq is not allowed in device code` |
+| — | `dynamic initialization is not supported for a function-scope static %s variable within a __device__/__global__ function` |
+| — | `function-scope static variable within a __device__/__global__ function requires a memory space specifier` |
 
 ## Category 7: Kernel Launch (6 messages)
 
@@ -301,8 +301,8 @@ Errors related to `<<<...>>>` kernel launch syntax.
 |---|---|
 | `device_launch_no_sepcomp` | `kernel launch from __device__ or __global__ functions requires separate compilation mode` |
 | `missing_api_for_device_side_launch` | `device-side kernel launch could not be processed as the required runtime APIs are not declared` |
-| -- | `explicit stream argument not provided in kernel launch` |
-| -- | `kernel launches from templates are not allowed in system files` |
+| — | `explicit stream argument not provided in kernel launch` |
+| — | `kernel launches from templates are not allowed in system files` |
 | `device_side_launch_arg_with_user_provided_cctor` | `cannot pass an argument with a user-provided copy-constructor to a device-side kernel launch` |
 | `device_side_launch_arg_with_user_provided_dtor` | `cannot pass an argument with a user-provided destructor to a device-side kernel launch` |
 
@@ -325,10 +325,10 @@ Errors related to `<<<...>>>` kernel launch syntax.
 |---|---|
 | `illegal_local_to_device_function` | `%s1 %sq2 variable declaration is not allowed inside a device function body` |
 | `illegal_local_to_host_function` | `%s1 %sq2 variable declaration is not allowed inside a host function body` |
-| -- | `the __shared__ memory space specifier is not allowed for a variable declared by the for-range-declaration` |
-| -- | `__shared__ variables cannot have external linkage` |
+| — | `the __shared__ memory space specifier is not allowed for a variable declared by the for-range-declaration` |
+| — | `__shared__ variables cannot have external linkage` |
 | `device_variable_in_unnamed_inline_ns` | `A %s variable cannot be declared within an inline unnamed namespace` |
-| -- | `member variables of an anonymous union at global or namespace scope cannot be directly accessed in __device__ and __global__ functions` |
+| — | `member variables of an anonymous union at global or namespace scope cannot be directly accessed in __device__ and __global__ functions` |
 
 ### Auto-Deduced Device References
 
@@ -371,10 +371,10 @@ Diagnostics related to relocatable device code (`-rdc=true`) and whole-program c
 
 | Tag | Message Template |
 |---|---|
-| -- | `An inline __device__/__constant__/__managed__ variable must have internal linkage when the program is compiled in whole program mode (-rdc=false)` |
+| — | `An inline __device__/__constant__/__managed__ variable must have internal linkage when the program is compiled in whole program mode (-rdc=false)` |
 | `template_global_no_def` | `when "-static-global-template-stub=true" in whole program compilation mode ("-rdc=false"), a __global__ function template instantiation or specialization (%sq) must have a definition in the current translation unit. To resolve this issue, either use separate compilation mode ("-rdc=true"), or explicitly set "-static-global-template-stub=false" (but see nvcc documentation about downsides of turning it off)` |
 | `extern_kernel_template` | `when "-static-global-template-stub=true", extern __global__ function template is not supported in whole program compilation mode ("-rdc=false"). To resolve the issue, either use separate compilation mode ("-rdc=true"), or explicitly set "-static-global-template-stub=false" (but see nvcc documentation about downsides of turning it off)` |
-| -- | `address of internal linkage device function (%sq) was taken (nv bug 2001144). mitigation: no mitigation required if the address is not used for comparison, or if the target function is not a CUDA C++ builtin. Otherwise, write a wrapper function to call the builtin, and take the address of the wrapper function instead` |
+| — | `address of internal linkage device function (%sq) was taken (nv bug 2001144). mitigation: no mitigation required if the address is not used for comparison, or if the target function is not a CUDA C++ builtin. Otherwise, write a wrapper function to call the builtin, and take the address of the wrapper function instead` |
 
 ## Category 12: Atomics (26 messages)
 
@@ -428,9 +428,9 @@ Inline assembly constraints are more restrictive in device code (NVPTX backend s
 | Tag | Message Template |
 |---|---|
 | `asm_constraint_letter_not_allowed_in_device` | `asm constraint letter '%s' is not allowed inside a __device__/__global__ function` |
-| -- | `an asm operand may specify only one constraint letter in a __device__/__global__ function` |
-| -- | `The 'C' constraint can only be used for asm statements in device code` |
-| -- | `The cc clobber constraint is not supported in device code` |
+| — | `an asm operand may specify only one constraint letter in a __device__/__global__ function` |
+| — | `The 'C' constraint can only be used for asm statements in device code` |
+| — | `The cc clobber constraint is not supported in device code` |
 | `cuda_xasm_strict_placeholder_format` | *(strict placeholder format in CUDA asm)* |
 | `addr_of_label_in_device_func` | `address of label extension is not supported in __device__/__global__ functions` |
 
@@ -482,7 +482,7 @@ Texture and surface objects have special memory semantics. These errors enforce 
 | Tag | Message Template |
 |---|---|
 | `texture_surface_variable_in_unnamed_inline_ns` | `A texture or surface variable cannot be declared within an inline unnamed namespace` |
-| -- | `A texture or surface variable cannot be used in the non-type template argument of a __device__, __host__ __device__ or __global__ function template instantiation` |
+| — | `A texture or surface variable cannot be used in the non-type template argument of a __device__, __host__ __device__ or __global__ function template instantiation` |
 | `reference_to_text_surf_type_in_device_func` | `a reference to texture/surface type cannot be used in __device__/__global__ functions` |
 | `reference_to_text_surf_var_in_device_func` | `taking reference of texture/surface variable not allowed in __device__/__global__ functions` |
 | `addr_of_text_surf_var_in_device_func` | `cannot take address of texture/surface variable %sq in __device__/__global__ functions` |
@@ -502,7 +502,7 @@ Texture and surface objects have special memory semantics. These errors enforce 
 | `unsupported_arch_for_managed_capability` | `__managed__ variables require architecture compute_30 or higher` |
 | `unsupported_configuration_for_managed_capability` | `__managed__ variables are not yet supported for this configuration (compilation mode (32/64 bit) and/or target operating system)` |
 | `decltype_of_managed_variable` | `A __managed__ variable cannot be used as an unparenthesized id-expression argument for decltype()` |
-| -- | *(dynamic initialization restrictions for __managed__ variables)* |
+| — | *(dynamic initialization restrictions for __managed__ variables)* |
 
 ## Category 19: Device Function Signature Constraints (5 messages)
 
@@ -539,15 +539,15 @@ Architecture-dependent launch configuration attributes.
 | `cluster_dims_must_be_positive` | *(__cluster_dims__ values must be positive)* |
 | `cluster_dims_too_large` | *(__cluster_dims__ exceeds maximum)* |
 | `conflict_between_cluster_dim_and_block_size` | `cannot specify the second tuple in __block_size__ while __cluster_dims__ is present` |
-| -- | `cannot specify max blocks per cluster for this GPU architecture` |
+| — | `cannot specify max blocks per cluster for this GPU architecture` |
 | `shared_block_size_must_be_positive` | *(shared block size must be positive)* |
 
 ## Category 22: Inline Hint Conflicts (2 messages)
 
 | Tag | Message Template |
 |---|---|
-| -- | `"__inline_hint__" and "__forceinline__" may not be used on the same declaration` |
-| -- | `"__inline_hint__" and "__noinline__" may not be used on the same declaration` |
+| — | `"__inline_hint__" and "__forceinline__" may not be used on the same declaration` |
+| — | `"__inline_hint__" and "__noinline__" may not be used on the same declaration` |
 
 ## Category 23: Miscellaneous CUDA Errors
 
@@ -559,7 +559,7 @@ Remaining CUDA-specific diagnostics that do not fall into the above categories.
 | `cuda_demote_unsupported_floating_point` | *(unsupported floating-point type demoted)* |
 | `illegal_ucn_in_device_identifer` | `Universal character is not allowed in device entity name (%sq)` |
 | `thread_local_for_device_vars` | *(thread_local on device variables)* |
-| -- | `__global__ function or function template cannot have a parameter with va_list type` |
+| — | `__global__ function or function template cannot have a parameter with va_list type` |
 | `global_qualifier_not_allowed` | *(execution space qualifier not allowed here)* |
 
 ## Complete Diagnostic Tag Index (286 tags)

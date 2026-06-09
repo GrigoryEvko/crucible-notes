@@ -1,6 +1,6 @@
 # Template Instance Record
 
-The template instance record is the 128-byte structure that represents a pending or completed template instantiation in cudafe++ (EDG 6.6). Every template entity that may require instantiation -- function templates, class member function templates, variable templates -- gets one of these records allocated by `alloc_template_instance` (`sub_7416E0`). The records are chained into a singly-linked worklist for function/variable templates (`qword_12C7740`). A separate worklist of type entries (not instance records) at `qword_12C7758` tracks pending class template instantiations. A fixpoint loop at translation-unit end drains both lists, instantiating entities until no new work remains.
+The template instance record is the 128-byte structure that represents a pending or completed template instantiation in cudafe++ (EDG 6.6). Every template entity that may require instantiation — function templates, class member function templates, variable templates — gets one of these records allocated by `alloc_template_instance` (`sub_7416E0`). The records are chained into a singly-linked worklist for function/variable templates (`qword_12C7740`). A separate worklist of type entries (not instance records) at `qword_12C7758` tracks pending class template instantiations. A fixpoint loop at translation-unit end drains both lists, instantiating entities until no new work remains.
 
 This page documents the instance record layout, the master instance info record, the two worklists, the depth-tracking mechanisms, the parser state save/restore during instantiation, and the fixpoint algorithm that ties everything together.
 
@@ -30,7 +30,7 @@ Each record is allocated by `alloc_template_instance` (`sub_7416E0`) and zero-in
 | `+0` | 8 | `entity_primary` | Primary entity pointer (the instantiation's own symbol) |
 | `+8` | 8 | `next` | Next entry in the pending worklist (singly-linked) |
 | `+16` | 8 | `inst_info` | Pointer to 32-byte master instance info record (see below) |
-| `+24` | 8 | `master_symbol` | Canonical template symbol -- the entity being instantiated from |
+| `+24` | 8 | `master_symbol` | Canonical template symbol — the entity being instantiated from |
 | `+32` | 8 | `actual_decl` | Declaration entity in the instantiation context |
 | `+40` | 8 | `cached_decl` | Cached declaration for function-local templates (partial specialization lookup result) |
 | `+48` | 8 | `referencing_namespace` | Namespace that triggered the instantiation (set by `determine_referencing_namespace`, `sub_75D5B0`) |
@@ -186,7 +186,7 @@ void find_or_create_master_instance(template_instance_t *inst) {
 
 ## The Two Worklists
 
-Template instantiation uses two separate worklists -- one for class templates, one for function/variable templates. This separation is fundamental to correctness: class templates must be instantiated before function templates within each fixpoint iteration, because function template bodies may reference members of class template instantiations.
+Template instantiation uses two separate worklists — one for class templates, one for function/variable templates. This separation is fundamental to correctness: class templates must be instantiated before function templates within each fixpoint iteration, because function template bodies may reference members of class template instantiations.
 
 ### Function/Variable Worklist (`qword_12C7740`)
 
@@ -411,7 +411,7 @@ bool should_be_instantiated(template_instance_t *inst, int check_implicit) {
 
 ## Depth Tracking
 
-Template instantiation depth is tracked at two levels -- a global counter for function templates and a per-type counter for class templates -- plus a pending-instantiation counter that detects runaway expansion.
+Template instantiation depth is tracked at two levels — a global counter for function templates and a per-type counter for class templates — plus a pending-instantiation counter that detects runaway expansion.
 
 ### Function Template Depth: `qword_12C76E0`
 
@@ -437,7 +437,7 @@ struct factorial {
 };
 ```
 
-Without a depth limit, `factorial<256>` would recurse 256 levels deep, each level re-entering the parser to process the template body. At 255, EDG aborts with a fatal error rather than risk a stack overflow. The C++ standard (Annex B) recommends implementations support at least 1,024 recursively nested template instantiations, but EDG defaults to 255 as a practical limit -- configurable via `qword_106BD10`.
+Without a depth limit, `factorial<256>` would recurse 256 levels deep, each level re-entering the parser to process the template body. At 255, EDG aborts with a fatal error rather than risk a stack overflow. The C++ standard (Annex B) recommends implementations support at least 1,024 recursively nested template instantiations, but EDG defaults to 255 as a practical limit — configurable via `qword_106BD10`.
 
 ### Class Template Depth: Per-Type Counter at `type_entry + 56`
 
@@ -510,11 +510,11 @@ if (!setting_required && is_function_or_variable(master_symbol)) {
 
 ## Parser State Save/Restore During Instantiation
 
-Template instantiation re-enters the parser: the compiler replays the cached template body tokens with substituted types. This means the parser's global state -- scope indices, current token, source position, declaration context -- must be saved before instantiation and restored afterward. EDG uses `movups`/`movaps` SSE instructions to bulk-save/restore this state in 128-bit chunks.
+Template instantiation re-enters the parser: the compiler replays the cached template body tokens with substituted types. This means the parser's global state — scope indices, current token, source position, declaration context — must be saved before instantiation and restored afterward. EDG uses `movups`/`movaps` SSE instructions to bulk-save/restore this state in 128-bit chunks.
 
 ### Why SSE?
 
-The global parser state variables are ordinary integers, pointers, and flags laid out at consecutive addresses. The compiler's register allocator (or manual optimization) packs adjacent globals into 128-bit SSE loads/stores, saving 4 or more individual `mov` instructions per save/restore. This is not a quirk of the architecture -- it is a deliberate performance optimization for a hot path. Template-heavy C++ codebases (Boost, STL, Eigen) can trigger thousands of instantiations, each requiring a state save/restore pair.
+The global parser state variables are ordinary integers, pointers, and flags laid out at consecutive addresses. The compiler's register allocator (or manual optimization) packs adjacent globals into 128-bit SSE loads/stores, saving 4 or more individual `mov` instructions per save/restore. This is not a quirk of the architecture — it is a deliberate performance optimization for a hot path. Template-heavy C++ codebases (Boost, STL, Eigen) can trigger thousands of instantiations, each requiring a state save/restore pair.
 
 ### Function Instantiation: 4 SSE Registers
 
@@ -544,7 +544,7 @@ Restore on exit (always, even on error path):
 
 ### Class Instantiation: 11 + 12 SSE Registers (Conditional)
 
-`f_instantiate_template_class` (`sub_777CE0`) saves substantially more state because class body parsing involves deeper parser perturbation -- member declarations, nested types, access specifiers, base class processing, and member template definitions all modify global parser state.
+`f_instantiate_template_class` (`sub_777CE0`) saves substantially more state because class body parsing involves deeper parser perturbation — member declarations, nested types, access specifiers, base class processing, and member template definitions all modify global parser state.
 
 The save is conditional on the current token kind (`word_126DD58`). If the token kind is between 2 and 8 inclusive (meaning the parser is mid-expression or mid-declaration when the class instantiation is triggered), the full save executes:
 
@@ -598,7 +598,7 @@ The conditional save is a performance optimization: when the parser is in a simp
 
 `sub_7770E0` (434 lines) is the central function that decides whether to add a template instance to the worklist. Its name in EDG source is `update_instantiation_required_flag`, confirmed by the assert string at `templates.c:38863` and the debug trace `"Setting instantiation_required flag to %s for (options=%d)"`.
 
-This function is called whenever a template entity's instantiation status changes -- when a template is first referenced, when it is explicitly instantiated, when its definition becomes available, or when an `extern template` declaration is encountered.
+This function is called whenever a template entity's instantiation status changes — when a template is first referenced, when it is explicitly instantiated, when its definition becomes available, or when an `extern template` declaration is encountered.
 
 ### Parameters
 
@@ -702,19 +702,19 @@ update_instantiation_required_flag(inst, setting, options):
 | `sub_775E00` | `instantiate_template_function_full` | 95% | 839 | Function template instantiation |
 | `sub_777CE0` | `f_instantiate_template_class` | 95% | 516 | Class template instantiation |
 | `sub_774C30` | `instantiate_template_variable` | 95% | 751 | Variable template instantiation |
-| `sub_75D740` | `increment_pending_instantiations` | 95% | -- | Increment per-type depth counter |
-| `sub_75D7C0` | `decrement_pending_instantiations` | 95% | -- | Decrement per-type depth counter |
-| `sub_75D6A0` | `too_many_pending_instantiations` | 95% | -- | Check depth limit, emit diagnostic 456 |
+| `sub_75D740` | `increment_pending_instantiations` | 95% | — | Increment per-type depth counter |
+| `sub_75D7C0` | `decrement_pending_instantiations` | 95% | — | Decrement per-type depth counter |
+| `sub_75D6A0` | `too_many_pending_instantiations` | 95% | — | Check depth limit, emit diagnostic 456 |
 | `sub_75D5B0` | `determine_referencing_namespace` | 95% | 47 | Find namespace that triggered instantiation |
-| `sub_7574B0` | `f_entity_can_be_instantiated` | 95% | -- | Pre-check: body available, constraints satisfied |
-| `sub_756B40` | `f_is_static_or_inline_template_entity` | 95% | -- | Check linkage for instantiation eligibility |
-| `sub_789EF0` | `update_instantiation_flags` | 95% | -- | Update class instantiation flags, add to class worklist |
+| `sub_7574B0` | `f_entity_can_be_instantiated` | 95% | — | Pre-check: body available, constraints satisfied |
+| `sub_756B40` | `f_is_static_or_inline_template_entity` | 95% | — | Check linkage for instantiation eligibility |
+| `sub_789EF0` | `update_instantiation_flags` | 95% | — | Update class instantiation flags, add to class worklist |
 | `sub_72ED70` | `alloc_symbol_list_entry` | 95% | 39 | Allocate 16-byte symbol list node (for inline entity list) |
 
 ## Cross-References
 
-- [Template Engine](../edg/template-engine.md) -- the full instantiation pipeline, substitution engine, argument deduction, partial ordering
-- [CUDA Template Restrictions](../edg/template-cuda.md) -- CUDA-specific template argument accessibility checks
-- [Scope Entry](scope-entry.md) -- 784-byte scope stack entry, template instantiation depth counters at `+576`/`+580`/`+584`
-- [Entity Node Layout](entity-node.md) -- entity kind byte at `+80`, execution space at `+182`
-- [Translation Unit Descriptor](translation-unit.md) -- TU linked list at `qword_106B9F0`, per-TU `needs_recheck` flag at `+393`
+- [Template Engine](../edg/template-engine.md) — the full instantiation pipeline, substitution engine, argument deduction, partial ordering
+- [CUDA Template Restrictions](../edg/template-cuda.md) — CUDA-specific template argument accessibility checks
+- [Scope Entry](scope-entry.md) — 784-byte scope stack entry, template instantiation depth counters at `+576`/`+580`/`+584`
+- [Entity Node Layout](entity-node.md) — entity kind byte at `+80`, execution space at `+182`
+- [Translation Unit Descriptor](translation-unit.md) — TU linked list at `qword_106B9F0`, per-TU `needs_recheck` flag at `+393`

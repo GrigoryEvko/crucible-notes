@@ -186,17 +186,17 @@ Seeds the SLP tree from consecutive stores to adjacent memory addresses. This is
 
 The most complex path. Handles horizontal reductions (e.g., summing all elements of a vector). Proceeds in six phases:
 
-**Phase 0 -- Scalar chain scan.** Reads the reduction operand array at `a1+304` (pointer) and `a1+312` (count). Each bundle entry is 64 bytes. Classifies operands by opcode: values <= `0x1C` are simple scalars (add/sub/mul/etc.), values > `0x1C` are complex (fcmp, icmp variants). Calls `sub_2B0D8B0` (`isReductionOp`) to validate each operation as a legal reduction (add, fadd, mul, fmul, and, or, xor, smin/smax/umin/umax, fmin/fmax).
+**Phase 0 — Scalar chain scan.** Reads the reduction operand array at `a1+304` (pointer) and `a1+312` (count). Each bundle entry is 64 bytes. Classifies operands by opcode: values <= `0x1C` are simple scalars (add/sub/mul/etc.), values > `0x1C` are complex (fcmp, icmp variants). Calls `sub_2B0D8B0` (`isReductionOp`) to validate each operation as a legal reduction (add, fadd, mul, fmul, and, or, xor, smin/smax/umin/umax, fmin/fmax).
 
-**Phase 1 -- Hash table construction.** Builds two open-addressing hash tables. The "AllOps" table uses 32-byte entries with LLVM-layer sentinels (-4096 / -8192). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth/compaction thresholds.
+**Phase 1 — Hash table construction.** Builds two open-addressing hash tables. The "AllOps" table uses 32-byte entries with LLVM-layer sentinels (-4096 / -8192). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth/compaction thresholds.
 
-**Phase 2 -- Bundle pair extraction.** Calls `sub_2B5F980` per bundle to classify reduction opcode pairs. When two consecutive bundles both contain `fadd` reductions (opcode 90), NVIDIA attempts a **paired fadd bundle merge** via `sub_2B3C030`/`sub_2B25EA0`/`sub_2B38BA0`. This is an NVIDIA-specific optimization for warp-level fadd reductions not present in upstream LLVM.
+**Phase 2 — Bundle pair extraction.** Calls `sub_2B5F980` per bundle to classify reduction opcode pairs. When two consecutive bundles both contain `fadd` reductions (opcode 90), NVIDIA attempts a **paired fadd bundle merge** via `sub_2B3C030`/`sub_2B25EA0`/`sub_2B38BA0`. This is an NVIDIA-specific optimization for warp-level fadd reductions not present in upstream LLVM.
 
-**Phase 3 -- Main vectorization loop.** For each bundle, builds candidate operand lists, selects a VF, and tries vectorization with progressively smaller VFs on failure. The VF trial loop uses memoization (`sub_2B3C060`) to avoid re-trying the same (offset, VF) pair. Key substeps: `canVectorize` (legality), `buildTree`, `isTreeTinyAndNotFullyVectorizable` / `isTreeNotBeneficialForArch` (early rejection), `scheduleBlock`, `getTreeCost` + `getReductionCost` (profitability).
+**Phase 3 — Main vectorization loop.** For each bundle, builds candidate operand lists, selects a VF, and tries vectorization with progressively smaller VFs on failure. The VF trial loop uses memoization (`sub_2B3C060`) to avoid re-trying the same (offset, VF) pair. Key substeps: `canVectorize` (legality), `buildTree`, `isTreeTinyAndNotFullyVectorizable` / `isTreeNotBeneficialForArch` (early rejection), `scheduleBlock`, `getTreeCost` + `getReductionCost` (profitability).
 
-**Phase 4 -- Final reduction codegen.** Produces the final horizontal reduction instruction via `sub_2B21C80` (`createFinalReduction`), chaining multiple entries with `sub_2B34820` when multiple sub-trees were vectorized.
+**Phase 4 — Final reduction codegen.** Produces the final horizontal reduction instruction via `sub_2B21C80` (`createFinalReduction`), chaining multiple entries with `sub_2B34820` when multiple sub-trees were vectorized.
 
-**Phase 5 -- Multi-tree scheduling and cleanup.** Builds a multi-tree reduction schedule, iteratively calling `sub_2B2F4A0` (`reduceTreeLevel`) until a single root value remains, then `replaceAllUsesWith` + `eraseFromParent`.
+**Phase 5 — Multi-tree scheduling and cleanup.** Builds a multi-tree reduction schedule, iteratively calling `sub_2B2F4A0` (`reduceTreeLevel`) until a single root value remains, then `replaceAllUsesWith` + `eraseFromParent`.
 
 ## Paired fadd Bundle Merging (NVIDIA-Specific)
 
@@ -411,59 +411,59 @@ The memoization set (`sub_2B3C060`) prevents re-evaluating the same `(offset, VF
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `HorizontalReduction::tryToReduce()` -- main horizontal reduction entry | `sub_2BD1C50` | 85 KB | -- |
-| Straight-line SLP vectorizer entry | `sub_2BCE070` | -- | -- |
-| Store-SLP vectorizer entry | `sub_2BCA110` | -- | -- |
-| `BoUpSLP::buildTree()` | `sub_2BAACB0` | -- | -- |
-| `BoUpSLP::getTreeCost()` | `sub_2B94A80` | 71 KB | -- |
-| `BoUpSLP::vectorizeTree()` (codegen) | `sub_2BC6BE0` | 71 KB | -- |
-| `BoUpSLP::computeScheduleData()` | `sub_2BBDBE0` | 40 KB | -- |
-| `BoUpSLP::scheduleBlock()` | `sub_2BBFB60` | 71 KB | -- |
-| `BoUpSLP::optimizeGatherSequence()` | `sub_2BB3590` | -- | -- |
-| `BoUpSLP::reorderInputsIfNecessary()` | `sub_2BB0460` | -- | -- |
-| `BoUpSLP::buildExternalUses()` | `sub_2B4F3D0` | -- | -- |
-| `getReductionCost()` | `sub_2B28940` | -- | -- |
-| `createFinalReduction()` | `sub_2B21C80` | -- | -- |
-| `createReductionOp()` (`"const.rdx"`) | `sub_2B21B90` | -- | -- |
-| `buildReductionResult()` | `sub_2B2FE10` | -- | -- |
-| `reduceTreeLevel()` | `sub_2B2F4A0` | -- | -- |
-| `isReductionOp()` | `sub_2B0D8B0` | -- | -- |
-| `isHomogeneous()` (all ops satisfy predicate) | `sub_2B0D880` | -- | -- |
-| `canVectorize()` (legality check) | `sub_2B4B450` | -- | -- |
-| `isTreeTinyAndNotFullyVectorizable()` | `sub_2B2DB00` | -- | -- |
-| `isTreeNotBeneficialForArch()` | `sub_2B2DA40` | -- | -- |
-| `adjustVF()` (vectorization factor selection) | `sub_2B1FA70` | -- | -- |
-| `getNextLegalVF()` | `sub_2B1E190` | -- | -- |
-| `getScalarTypeWidth()` | `sub_2B49BC0` | -- | -- |
-| `hasVectorizableReductions()` | `sub_2B6E610` | -- | -- |
-| `tryMergeFaddBundles()` (NVIDIA-specific) | `sub_2B3C030` | -- | -- |
-| `validateMergedBundle()` (NVIDIA-specific) | `sub_2B25EA0` | -- | -- |
-| `rewriteMergedBundle()` (NVIDIA-specific) | `sub_2B38BA0` | -- | -- |
-| `perBundleVectorize()` | `sub_2B77B90` | -- | -- |
-| `emitVectorizedReductionDiagnostic()` | `sub_2B44ED0` | -- | -- |
-| `reorderForCanonical()` | `sub_2B33D00` | -- | -- |
-| SLP tree scheduling | `sub_2BD7F70` | 46 KB | -- |
-| SLP tree cost computation | `sub_2B889C0` | 45 KB | -- |
-| SLP value rewriting (scalar-to-vector) | `sub_2BCFB90` | 44 KB | -- |
-| SLP node creation (tree construction) | `sub_2BCAEC0` | 42 KB | -- |
-| `deleteTree()` (cleanup on failure) | `sub_2B5C350` | -- | -- |
-| `alreadyTried()` (VF memoization) | `sub_2B3C060` | -- | -- |
-| `tryNextVF()` (advance or fail) | `sub_2B399C0` | -- | -- |
-| `classifyReductionPair()` (per-bundle opcode pair extraction) | `sub_2B5F980` | -- | -- |
-| `hasExternalUses()` (external use check for bundles) | `sub_2B27F10` | -- | -- |
-| `getTargetInfo()` (TTI accessor) | `sub_BD5C60` | -- | -- |
-| `initDominatorContext()` | `sub_D5F1F0` | -- | -- |
-| `hashOperandSlice()` (operand slice hash for scheduling cache) | `sub_27B0000` | -- | -- |
-| Extended opcode classifier (opcodes > 0x1C) | `sub_2B15E10` | -- | -- |
-| `buildOperandOrder()` (commutative reorder table) | `sub_2B3D4E0` | -- | -- |
-| `isInScheduledSet()` (scheduling membership test) | `sub_2B3D560` | -- | -- |
-| Reduction use counter (per-operand) | `sub_2B54920` | -- | -- |
-| `TTI::getRegisterBitWidth(Vector)` -- returns 32 | `sub_DFE640` | -- | -- |
-| `TTI::supportsScalableVectors()` -- returns false | `sub_DFE610` | -- | -- |
-| `TTI::getRegisterBitWidth(Scalar)` -- returns 32 | `sub_DFB1B0` | -- | -- |
-| `TTI::getInstructionCost()` (scheduling cost model) | `sub_20E14F0` | 33 KB | -- |
-| `TTI::getInstructionCost()` (IR-level variant) | `sub_B91420` | -- | -- |
-| `TTI::hasAttribute(N)` (function attribute query) | `sub_B2D610` | -- | -- |
+| `HorizontalReduction::tryToReduce()` — main horizontal reduction entry | `sub_2BD1C50` | 85 KB | — |
+| Straight-line SLP vectorizer entry | `sub_2BCE070` | — | — |
+| Store-SLP vectorizer entry | `sub_2BCA110` | — | — |
+| `BoUpSLP::buildTree()` | `sub_2BAACB0` | — | — |
+| `BoUpSLP::getTreeCost()` | `sub_2B94A80` | 71 KB | — |
+| `BoUpSLP::vectorizeTree()` (codegen) | `sub_2BC6BE0` | 71 KB | — |
+| `BoUpSLP::computeScheduleData()` | `sub_2BBDBE0` | 40 KB | — |
+| `BoUpSLP::scheduleBlock()` | `sub_2BBFB60` | 71 KB | — |
+| `BoUpSLP::optimizeGatherSequence()` | `sub_2BB3590` | — | — |
+| `BoUpSLP::reorderInputsIfNecessary()` | `sub_2BB0460` | — | — |
+| `BoUpSLP::buildExternalUses()` | `sub_2B4F3D0` | — | — |
+| `getReductionCost()` | `sub_2B28940` | — | — |
+| `createFinalReduction()` | `sub_2B21C80` | — | — |
+| `createReductionOp()` (`"const.rdx"`) | `sub_2B21B90` | — | — |
+| `buildReductionResult()` | `sub_2B2FE10` | — | — |
+| `reduceTreeLevel()` | `sub_2B2F4A0` | — | — |
+| `isReductionOp()` | `sub_2B0D8B0` | — | — |
+| `isHomogeneous()` (all ops satisfy predicate) | `sub_2B0D880` | — | — |
+| `canVectorize()` (legality check) | `sub_2B4B450` | — | — |
+| `isTreeTinyAndNotFullyVectorizable()` | `sub_2B2DB00` | — | — |
+| `isTreeNotBeneficialForArch()` | `sub_2B2DA40` | — | — |
+| `adjustVF()` (vectorization factor selection) | `sub_2B1FA70` | — | — |
+| `getNextLegalVF()` | `sub_2B1E190` | — | — |
+| `getScalarTypeWidth()` | `sub_2B49BC0` | — | — |
+| `hasVectorizableReductions()` | `sub_2B6E610` | — | — |
+| `tryMergeFaddBundles()` (NVIDIA-specific) | `sub_2B3C030` | — | — |
+| `validateMergedBundle()` (NVIDIA-specific) | `sub_2B25EA0` | — | — |
+| `rewriteMergedBundle()` (NVIDIA-specific) | `sub_2B38BA0` | — | — |
+| `perBundleVectorize()` | `sub_2B77B90` | — | — |
+| `emitVectorizedReductionDiagnostic()` | `sub_2B44ED0` | — | — |
+| `reorderForCanonical()` | `sub_2B33D00` | — | — |
+| SLP tree scheduling | `sub_2BD7F70` | 46 KB | — |
+| SLP tree cost computation | `sub_2B889C0` | 45 KB | — |
+| SLP value rewriting (scalar-to-vector) | `sub_2BCFB90` | 44 KB | — |
+| SLP node creation (tree construction) | `sub_2BCAEC0` | 42 KB | — |
+| `deleteTree()` (cleanup on failure) | `sub_2B5C350` | — | — |
+| `alreadyTried()` (VF memoization) | `sub_2B3C060` | — | — |
+| `tryNextVF()` (advance or fail) | `sub_2B399C0` | — | — |
+| `classifyReductionPair()` (per-bundle opcode pair extraction) | `sub_2B5F980` | — | — |
+| `hasExternalUses()` (external use check for bundles) | `sub_2B27F10` | — | — |
+| `getTargetInfo()` (TTI accessor) | `sub_BD5C60` | — | — |
+| `initDominatorContext()` | `sub_D5F1F0` | — | — |
+| `hashOperandSlice()` (operand slice hash for scheduling cache) | `sub_27B0000` | — | — |
+| Extended opcode classifier (opcodes > 0x1C) | `sub_2B15E10` | — | — |
+| `buildOperandOrder()` (commutative reorder table) | `sub_2B3D4E0` | — | — |
+| `isInScheduledSet()` (scheduling membership test) | `sub_2B3D560` | — | — |
+| Reduction use counter (per-operand) | `sub_2B54920` | — | — |
+| `TTI::getRegisterBitWidth(Vector)` — returns 32 | `sub_DFE640` | — | — |
+| `TTI::supportsScalableVectors()` — returns false | `sub_DFE610` | — | — |
+| `TTI::getRegisterBitWidth(Scalar)` — returns 32 | `sub_DFB1B0` | — | — |
+| `TTI::getInstructionCost()` (scheduling cost model) | `sub_20E14F0` | 33 KB | — |
+| `TTI::getInstructionCost()` (IR-level variant) | `sub_B91420` | — | — |
+| `TTI::hasAttribute(N)` (function attribute query) | `sub_B2D610` | — | — |
 
 ## Data Structure: HorizontalReduction Object
 
@@ -487,12 +487,12 @@ The memoization set (`sub_2B3C060`) prevents re-evaluating the same `(offset, VF
 
 ## Cross-References
 
-- [LoopVectorize & VPlan](./loop-vectorize.md) -- loop-based vectorization, runs alongside SLP in the same pipeline step
-- [Loop Unrolling](./loop-unroll.md) -- unrolling exposes more straight-line code for SLP
-- [Pipeline & Ordering](./pipeline.md) -- SLP placement at pipeline step 31
-- [GVN](./gvn.md) -- runs after SLP to clean up redundancies introduced by vectorization
-- [Optimization Levels](../config/optimization-levels.md) -- SLP enabled at tier 2+; width parameter varies by tier
-- [NVPTX Target Infrastructure](../infra/nvptx-target.md) -- TTI hook return values that drive SLP VF selection and cost model
-- [Type Legalization](./type-legalization.md) -- vector split/scalarize rules that constrain SLP output legality
-- [SelectionDAG & NVPTX Lowering](./selectiondag.md) -- custom lowering of SLP-produced vector loads/stores to `ld.vN`/`st.vN`
-- [GPU Execution Model](../gpu-execution-model.md) -- memory coalescing requirements that motivate SLP on GPU
+- [LoopVectorize & VPlan](./loop-vectorize.md) — loop-based vectorization, runs alongside SLP in the same pipeline step
+- [Loop Unrolling](./loop-unroll.md) — unrolling exposes more straight-line code for SLP
+- [Pipeline & Ordering](./pipeline.md) — SLP placement at pipeline step 31
+- [GVN](./gvn.md) — runs after SLP to clean up redundancies introduced by vectorization
+- [Optimization Levels](../config/optimization-levels.md) — SLP enabled at tier 2+; width parameter varies by tier
+- [NVPTX Target Infrastructure](../infra/nvptx-target.md) — TTI hook return values that drive SLP VF selection and cost model
+- [Type Legalization](./type-legalization.md) — vector split/scalarize rules that constrain SLP output legality
+- [SelectionDAG & NVPTX Lowering](./selectiondag.md) — custom lowering of SLP-produced vector loads/stores to `ld.vN`/`st.vN`
+- [GPU Execution Model](../gpu-execution-model.md) — memory coalescing requirements that motivate SLP on GPU

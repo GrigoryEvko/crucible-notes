@@ -1,6 +1,6 @@
 # Diagnostic System Overview
 
-The cudafe++ diagnostic system is a 7-stage pipeline rooted in EDG 6.6's `error.c`. It manages 3,795 error message templates, 9 severity levels, per-error suppression tracking, `#pragma` diagnostic overrides, and two output formats (text and SARIF JSON). The most-connected function in the entire binary -- `sub_4F2930` (assertion handler) with 5,185 call sites -- feeds into this system, making error handling the single largest cross-cutting concern in cudafe++.
+The cudafe++ diagnostic system is a 7-stage pipeline rooted in EDG 6.6's `error.c`. It manages 3,795 error message templates, 9 severity levels, per-error suppression tracking, `#pragma` diagnostic overrides, and two output formats (text and SARIF JSON). The most-connected function in the entire binary — `sub_4F2930` (assertion handler) with 5,185 call sites — feeds into this system, making error handling the single largest cross-cutting concern in cudafe++.
 
 Each of the 3,795 numeric codes also carries a **snake_case diagnostic tag** accepted by `--diag_suppress` and `#pragma nv_diag_*`. The binary's string table holds approximately **859 such tags**: ~254 in the CUDA extension range (codes 3457--3794, displayed as 20000--20337) and ~605 in the EDG base range (codes 0--3456, displayed unchanged). The CUDA-extension tags are enumerated in [CUDA Errors](./cuda-errors.md) and the [Error Message Catalog](../reference/error-catalog.md); the EDG base namespace is summarized by category prefix at the bottom of the [reference catalog](../reference/error-catalog.md#edg-diagnostic-namespace-outside-this-catalog).
 
@@ -50,7 +50,7 @@ Nine severity values are stored as a single byte at offset 180 of the diagnostic
 
 Uppercase display strings are used when `dword_106BCD4` is set, indicating the diagnostic originates from a predefined macro file context (e.g., `"In predefined macro file: Error #..."`).
 
-The special string `"nv_diag_remark"` at offset +8 yields `"remark"` -- an NVIDIA-specific annotation kind for CUDA diagnostic remarks.
+The special string `"nv_diag_remark"` at offset +8 yields `"remark"` — an NVIDIA-specific annotation kind for CUDA diagnostic remarks.
 
 ### Severity Byte Arrays
 
@@ -58,9 +58,9 @@ Three parallel byte arrays, indexed as `[4 * error_code]`, track per-error sever
 
 | Array | Address | Purpose |
 |---|---|---|
-| `byte_1067920` | `0x1067920` | **Default severity** -- the compile-time severity assigned to each error code |
-| `byte_1067921` | `0x1067921` | **Current severity** -- the effective severity after `#pragma` overrides |
-| `byte_1067922` | `0x1067922` | **Tracking flags** -- bit 0: first-time guard, bit 1: already-emitted, bit 2: has pragma override |
+| `byte_1067920` | `0x1067920` | **Default severity** — the compile-time severity assigned to each error code |
+| `byte_1067921` | `0x1067921` | **Current severity** — the effective severity after `#pragma` overrides |
+| `byte_1067922` | `0x1067922` | **Tracking flags** — bit 0: first-time guard, bit 1: already-emitted, bit 2: has pragma override |
 
 The 4-byte stride means each error code occupies a 4-byte slot across all three arrays, with only the first byte of each slot used. This layout allows the pragma override system (`sub_4F30A0`) to efficiently look up and modify per-error severity.
 
@@ -316,7 +316,7 @@ count_and_exit:
 
 **Minimum severity gate:**
 
-The global `byte_126ED69` is the minimum severity threshold -- diagnostics below this level are silently discarded. When the threshold is 3 (the "suppress" sentinel), an assertion fires, which prevents the threshold from ever being set to the suppress level directly.
+The global `byte_126ED69` is the minimum severity threshold — diagnostics below this level are silently discarded. When the threshold is 3 (the "suppress" sentinel), an assertion fires, which prevents the threshold from ever being set to the suppress level directly.
 
 **System-header promotion:**
 
@@ -385,9 +385,9 @@ file(line): severity #code-D: message text
 ```
 
 Variant formats:
-- `"At end of source: ..."` -- when line number is 0
-- `"In predefined macro file: ..."` -- when `dword_106BCD4` is set
-- `"Line N"` -- when the file name is `"-"` (stdin)
+- `"At end of source: ..."` — when line number is 0
+- `"In predefined macro file: ..."` — when `dword_106BCD4` is set
+- `"Line N"` — when the file name is `"-"` (stdin)
 
 **Sub-diagnostic indentation:**
 
@@ -473,7 +473,7 @@ assertion failed: <prefix> <message> (<file>, line <line> in <func>)
 assertion failed at: "<file>", line <line> in <func>
 ```
 
-The function allocates a 0x400-byte buffer via `sub_6B98A0`, concatenates the message components using `sub_6B9CD0` (buffer append), then calls `sub_4F21C0` (internal_error). Because `sub_4F21C0` is also `__noreturn`, the code after the call is dead -- the decompiler shows a loop structure with `sprintf(v20, "%d", v8)` that is never actually reached.
+The function allocates a 0x400-byte buffer via `sub_6B98A0`, concatenates the message components using `sub_6B9CD0` (buffer append), then calls `sub_4F21C0` (internal_error). Because `sub_4F21C0` is also `__noreturn`, the code after the call is dead — the decompiler shows a loop structure with `sprintf(v20, "%d", v8)` that is never actually reached.
 
 When `dword_126ED40` (suppress assertion output) is set, the message text is replaced with `"<suppressed>"`.
 
@@ -559,8 +559,8 @@ Kind-specific initialization in `alloc_fill_in_entry` (`sub_4F2DE0`):
 
 Initialized by `sub_4F2C10` (`init_colorization`, error.c:825):
 
-1. Check `NOCOLOR` environment variable -- if set, disable colorization
-2. Check `sub_5AF770` (isatty) -- if stderr is not a terminal, disable
+1. Check `NOCOLOR` environment variable — if set, disable colorization
+2. Check `sub_5AF770` (isatty) — if stderr is not a terminal, disable
 3. Read `EDG_COLORS` or `GCC_COLORS` environment variable
 4. Default: `"error=01;31:warning=01;35:note=01;36:locus=01:quote=01:range1=32"`
 
@@ -610,11 +610,11 @@ Controlled by `dword_126ECA0` (colorization requested) and `dword_126ECA4` (colo
 
 | Address | Name (Recovered) | EDG Source | Size | Role |
 |---|---|---|---|---|
-| `0x4EC940` | `allocate_diagnostic_record` | error.c | -- | Pool allocator for diagnostic records |
-| `0x4ECB10` | `write_sarif_physical_location` | error.c | -- | SARIF location JSON fragment |
-| `0x4ECDD0` | `emit_colorization_escape` | error.c | -- | Emit ANSI escape to buffer |
-| `0x4ED190` | `record_pragma_diagnostic` | error.c | -- | Record pragma override in scope |
-| `0x4ED240` | `check_pragma_diagnostic` | error.c | -- | Check if error suppressed by pragma |
+| `0x4EC940` | `allocate_diagnostic_record` | error.c | — | Pool allocator for diagnostic records |
+| `0x4ECB10` | `write_sarif_physical_location` | error.c | — | SARIF location JSON fragment |
+| `0x4ECDD0` | `emit_colorization_escape` | error.c | — | Emit ANSI escape to buffer |
+| `0x4ED190` | `record_pragma_diagnostic` | error.c | — | Record pragma override in scope |
+| `0x4ED240` | `check_pragma_diagnostic` | error.c | — | Check if error suppressed by pragma |
 | `0x4EDCD0` | `process_fill_in` | error.c:4297 | 1,202 lines | Format specifier expansion |
 | `0x4EF620` | `write_message_to_buffer` | error.c:4703 | 159 lines | Template string expansion |
 | `0x4EF8A0` | `write_sarif_message_json` | error.c | 79 lines | SARIF message JSON wrapper |
@@ -629,14 +629,14 @@ Controlled by `dword_126ECA0` (colorization requested) and `dword_126ECA4` (colo
 | `0x4F2C10` | `init_colorization` | error.c:825 | 43 lines | Parse EDG_COLORS/GCC_COLORS |
 | `0x4F2D30` | `error_text_invalid_code` | error.c:911 | 12 lines | Assert on code > 3794 |
 | `0x4F2DE0` | `alloc_fill_in_entry` | error.c | 41 lines | Pool allocator for fill-ins |
-| `0x4F2E90` | `append_fill_in_string` | error.c | -- | Attach string fill-in to diagnostic |
+| `0x4F2E90` | `append_fill_in_string` | error.c | — | Attach string fill-in to diagnostic |
 | `0x4F30A0` | `check_for_overridden_severity` | error.c:3803 | ~130 lines | Pragma diagnostic stack walk |
 | `0x4F3480` | `format_assertion_message` | error.c | ~100 lines | Multi-arg string builder |
-| `0x4F3E50` | `emit_colorization_in_wrap` | error.c | -- | Escape handling during word wrap |
+| `0x4F3E50` | `emit_colorization_in_wrap` | error.c | — | Escape handling during word wrap |
 | `0x4F40C0` | `create_diagnostic_entry` | error.c:5202 | ~50 lines | Base record creator |
 | `0x4F41C0` | `create_diagnostic_entry_with_file_index` | error.c | 13 lines | Wrapper with file-index mode |
 | `0x4F5A70` | `create_sub_diagnostic` | error.c:5242 | 32 lines | kind=2 sub-diagnostic creator |
-| `0x4F6C40` | `format_scope_context` | error.c | -- | Extract instantiation context from scope |
+| `0x4F6C40` | `format_scope_context` | error.c | — | Extract instantiation context from scope |
 
 ## Call Graph
 

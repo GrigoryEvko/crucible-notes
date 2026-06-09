@@ -2,18 +2,18 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-Loop-Invariant Code Motion in cicc v13.0 operates at three distinct levels: an IR-level pass (`"licm"`, backed by MemorySSA), a pre-RA machine pass (`"early-machinelicm"`), and a post-RA machine pass (`"machinelicm"`). The IR-level pass runs in two modes within the same pipeline -- a **hoist invocation** early in the optimization sequence that pulls invariant computations and loads out of loops into preheaders, and a **sink invocation** via `LoopSinkPass` (or implicit re-processing) later that pushes unprofitable hoists back into cold loop blocks. On a CPU, hoisting is almost universally profitable because the preheader executes once per loop entry rather than once per iteration. On a GPU, the calculus is different: every value hoisted into the preheader extends its live range across the entire loop body, consuming a register for all iterations. If that extra register pushes the kernel past an occupancy cliff -- the threshold where the SM can fit one fewer warp -- the net effect is a slowdown, not a speedup. NVIDIA addresses this tension through the interplay of the two invocations, the NVVM alias analysis pipeline that makes cross-address-space loads trivially hoistable, and the downstream rematerialization passes that can undo hoists that turned out to be unprofitable after register allocation.
+Loop-Invariant Code Motion in cicc v13.0 operates at three distinct levels: an IR-level pass (`"licm"`, backed by MemorySSA), a pre-RA machine pass (`"early-machinelicm"`), and a post-RA machine pass (`"machinelicm"`). The IR-level pass runs in two modes within the same pipeline — a **hoist invocation** early in the optimization sequence that pulls invariant computations and loads out of loops into preheaders, and a **sink invocation** via `LoopSinkPass` (or implicit re-processing) later that pushes unprofitable hoists back into cold loop blocks. On a CPU, hoisting is almost universally profitable because the preheader executes once per loop entry rather than once per iteration. On a GPU, the calculus is different: every value hoisted into the preheader extends its live range across the entire loop body, consuming a register for all iterations. If that extra register pushes the kernel past an occupancy cliff — the threshold where the SM can fit one fewer warp — the net effect is a slowdown, not a speedup. NVIDIA addresses this tension through the interplay of the two invocations, the NVVM alias analysis pipeline that makes cross-address-space loads trivially hoistable, and the downstream rematerialization passes that can undo hoists that turned out to be unprofitable after register allocation.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
 | IR pass name | `"licm"` (new PM), `"LICMPass"` (legacy) |
-| IR pass factory | `sub_195E880(0)` -- creates LICM with `AllowSpeculation=false` |
-| IR pass factory (alt) | `sub_184CD60()` -- creates LICM (also identified as ConstantMerge in some sweeps; identity ambiguous -- see Analysis Notes) |
+| IR pass factory | `sub_195E880(0)` — creates LICM with `AllowSpeculation=false` |
+| IR pass factory (alt) | `sub_184CD60()` — creates LICM (also identified as ConstantMerge in some sweeps; identity ambiguous — see Analysis Notes) |
 | Machine pass (pre-RA) | `"early-machinelicm"` / `EarlyMachineLICMPass` |
 | Machine pass (post-RA) | `"machinelicm"` / `MachineLICMPass` |
-| Knob registration | `ctor_457_0` at `0x544C40` (18,398 bytes -- 11 knobs) |
+| Knob registration | `ctor_457_0` at `0x544C40` (18,398 bytes — 11 knobs) |
 | MachineLICM knob registration | `ctor_305` (4 knobs) |
 | Disable flag | `-disable-LICMPass` via `-Xcicc` |
 | PassOptions disable | `-opt "-do-licm=0"` (also forced by `--emit-optix-ir`) |
@@ -76,7 +76,7 @@ for each loop L in post-order (innermost first):
                 hoist(I, preheader)
 ```
 
-The `isLoopInvariant` check verifies that all operands of the instruction are either defined outside the loop or are themselves loop-invariant. The `isSafeToHoist` check queries MemorySSA to determine whether the instruction's memory behavior is loop-invariant -- for loads, this means no store inside the loop may alias the load's address.
+The `isLoopInvariant` check verifies that all operands of the instruction are either defined outside the loop or are themselves loop-invariant. The `isSafeToHoist` check queries MemorySSA to determine whether the instruction's memory behavior is loop-invariant — for loads, this means no store inside the loop may alias the load's address.
 
 **MemorySSA walker interaction.** When LICM calls `getClobberingMemoryAccess(load_in_loop)`, the MemorySSA walker walks upward from the load's MemoryUse through the MemorySSA graph. If the walk reaches the loop's entry MemoryPhi without encountering a MemoryDef that may-alias the load, the load is hoistable. The walk is bounded by `licm-mssa-optimization-cap` to prevent compile-time explosion on functions with dense memory SSA graphs.
 
@@ -145,7 +145,7 @@ This dramatically increases the set of hoistable instructions compared to a flat
 
 CUDA `__syncthreads()` barriers are lowered to `llvm.nvvm.barrier0` intrinsic calls, which are marked `convergent` and have memory side effects on shared memory. The `convergent` attribute prevents LICM from hoisting any instruction that depends (directly or transitively through the call graph) on a convergent call. The memory side effect on the barrier prevents hoisting loads across it even when the load does not depend on the barrier's value, because the barrier's MemoryDef in MemorySSA clobbers all shared-memory accesses.
 
-This means LICM correctly refuses to hoist a shared memory load from below a `__syncthreads()` to above it -- doing so would read a value that the barrier was supposed to synchronize.
+This means LICM correctly refuses to hoist a shared memory load from below a `__syncthreads()` to above it — doing so would read a value that the barrier was supposed to synchronize.
 
 The `NVVMLowerBarriers` pass (`sub_1C98160`) runs between LICM invocations in the pipeline. Its position matters: barriers are still at the intrinsic level during the first LICM invocation, providing the convergent/memory-effect constraint. After lowering, the barrier semantics are encoded differently, which could affect what a later LICM invocation can move.
 
@@ -186,7 +186,7 @@ The pass text-pipeline parser accepts two parameters for the `"licm"` pass:
 | Parameter | Effect |
 |---|---|
 | `allowspeculation` | Allow speculative execution of hoisted instructions (loads that might trap). |
-| `conservative-calls` | Use conservative call analysis -- treat all calls as potentially clobbering. |
+| `conservative-calls` | Use conservative call analysis — treat all calls as potentially clobbering. |
 
 The factory function `sub_195E880(0)` creates LICM with `AllowSpeculation=false`, which is the safe default for GPU code where speculative loads from unmapped memory would fault the entire kernel.
 
@@ -245,7 +245,7 @@ The pipeline analysis identified two factory functions as LICM candidates:
 
 - **`sub_184CD60()`**: Called in the O1 baseline pipeline at position 12 (after LoopRotate), and in the aggressive pipeline. Some sweeps identify this as `ConstantMerge` or `GlobalDCE`. The O1 pipeline context (LoopRotate -> `sub_184CD60` -> IndVarSimplify) strongly suggests this is LICM, as this is the canonical upstream LLVM loop optimization sequence. However, the aggressive pipeline uses it in a position where `ConstantMerge` would also make sense. Without the stripped symbol, the definitive identification relies on structural context.
 
-Both functions likely create the same underlying `LICMPass` -- the difference may be in the parameters (e.g., `AllowSpeculation`, `ConservativeCalls`) or the analysis dependencies they request.
+Both functions likely create the same underlying `LICMPass` — the difference may be in the parameters (e.g., `AllowSpeculation`, `ConservativeCalls`) or the analysis dependencies they request.
 
 ### No Visible NVIDIA Patches to IR-Level LICM
 
@@ -264,17 +264,17 @@ The `--emit-optix-ir` mode (triggered by OptiX runtime compilation with device t
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `LICMPass::create` | `sub_195E880` | -- | IR-level LICM factory (AllowSpeculation=false) |
-| `LICMPass::create` (alt) | `sub_184CD60` | -- | IR-level LICM factory (identity ambiguous, may be ConstantMerge) |
-| LICM knob registration | `ctor_457_0` (`0x544C40`) | -- | 11 `cl::opt` registrations for IR LICM |
-| MachineLICM knob registration | `ctor_305` | -- | 4 `cl::opt` registrations for MachineLICM |
-| `EarlyMachineLICMPass` | (in codegen pipeline) | -- | Pre-RA machine-level LICM |
-| `MachineLICMPass` | (in codegen pipeline) | -- | Post-RA machine-level LICM |
-| `LoopSinkPass` | pipeline parser entry 271 | -- | Inverse of LICM hoist -- sinks unprofitable hoists |
-| NVVM barrier-lowering pass | `sub_1C98160` | -- | Runs between LICM invocations; lowers barrier intrinsics |
-| NVVM AA query | `sub_146F1B0` | -- | Address-space-based NoAlias determination used by MemorySSA |
-| MemorySSA clobber walk | `sub_1A6AFB3` | -- | Walker that LICM uses to determine load hoistability |
-| Loop-invariant check | `sub_1C51340` | -- | Utility for checking if a value is loop-invariant |
+| `LICMPass::create` | `sub_195E880` | — | IR-level LICM factory (AllowSpeculation=false) |
+| `LICMPass::create` (alt) | `sub_184CD60` | — | IR-level LICM factory (identity ambiguous, may be ConstantMerge) |
+| LICM knob registration | `ctor_457_0` (`0x544C40`) | — | 11 `cl::opt` registrations for IR LICM |
+| MachineLICM knob registration | `ctor_305` | — | 4 `cl::opt` registrations for MachineLICM |
+| `EarlyMachineLICMPass` | (in codegen pipeline) | — | Pre-RA machine-level LICM |
+| `MachineLICMPass` | (in codegen pipeline) | — | Post-RA machine-level LICM |
+| `LoopSinkPass` | pipeline parser entry 271 | — | Inverse of LICM hoist — sinks unprofitable hoists |
+| NVVM barrier-lowering pass | `sub_1C98160` | — | Runs between LICM invocations; lowers barrier intrinsics |
+| NVVM AA query | `sub_146F1B0` | — | Address-space-based NoAlias determination used by MemorySSA |
+| MemorySSA clobber walk | `sub_1A6AFB3` | — | Walker that LICM uses to determine load hoistability |
+| Loop-invariant check | `sub_1C51340` | — | Utility for checking if a value is loop-invariant |
 
 ## Differences from Upstream LLVM
 
@@ -290,12 +290,12 @@ The `--emit-optix-ir` mode (triggered by OptiX runtime compilation with device t
 
 ## Cross-References
 
-- [MemorySSA Builder for GPU](../infra/memoryssa.md) -- how MemorySSA exploits NVVM AA for sparse dependency graphs
-- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) -- the cross-address-space NoAlias analysis that enables aggressive hoisting
-- [Rematerialization](../passes/rematerialization.md) -- the safety net that undoes unprofitable hoists
-- [Sinking2](../passes/sinking2.md) -- NVIDIA's custom sinking pass that complements LICM sink mode
-- [LLVM Optimizer](../pipeline/optimizer.md) -- pipeline assembly and two-phase compilation
-- [Optimization Levels](../config/optimization-levels.md) -- per-tier pipeline configuration
-- [Machine-Level Passes](./machine-passes.md) -- MachineLICM pre-RA and post-RA placement
-- [Loop Passes (Standard)](./loop-passes-standard.md) -- LoopRotate, LCSSA, LoopSimplify that canonicalize before LICM
-- [Loop Unrolling](./loop-unroll.md) -- runs after LICM in the pipeline; the LoopUnroll pass factory at `sub_19B73C0` was previously mislabeled as LICM
+- [MemorySSA Builder for GPU](../infra/memoryssa.md) — how MemorySSA exploits NVVM AA for sparse dependency graphs
+- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) — the cross-address-space NoAlias analysis that enables aggressive hoisting
+- [Rematerialization](../passes/rematerialization.md) — the safety net that undoes unprofitable hoists
+- [Sinking2](../passes/sinking2.md) — NVIDIA's custom sinking pass that complements LICM sink mode
+- [LLVM Optimizer](../pipeline/optimizer.md) — pipeline assembly and two-phase compilation
+- [Optimization Levels](../config/optimization-levels.md) — per-tier pipeline configuration
+- [Machine-Level Passes](./machine-passes.md) — MachineLICM pre-RA and post-RA placement
+- [Loop Passes (Standard)](./loop-passes-standard.md) — LoopRotate, LCSSA, LoopSimplify that canonicalize before LICM
+- [Loop Unrolling](./loop-unroll.md) — runs after LICM in the pipeline; the LoopUnroll pass factory at `sub_19B73C0` was previously mislabeled as LICM

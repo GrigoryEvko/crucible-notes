@@ -1,6 +1,6 @@
 # Loop Optimization Passes
 
-Loop optimization is the single most performance-sensitive area of the cicc pipeline. On an NVIDIA GPU, the constraints are fundamentally different from CPU: [register pressure](../gpu-execution-model.md#register-pressure-and-occupancy) dominates (every additional register per thread reduces SM occupancy), [memory coalescing](../gpu-execution-model.md#memory-coalescing) replaces cache locality as the primary memory optimization target, and [warp divergence](../gpu-execution-model.md#divergence) caused by loop-carried control flow destroys SIMT efficiency. NVIDIA's cicc v13.0 addresses these constraints by shipping a mix of stock LLVM loop passes, LLVM passes with GPU-specific threshold overrides, and fully proprietary loop transformations -- all orchestrated through a carefully ordered pipeline where the position of each pass reflects hard-won engineering tradeoffs between register pressure, instruction count, and memory access patterns.
+Loop optimization is the single most performance-sensitive area of the cicc pipeline. On an NVIDIA GPU, the constraints are fundamentally different from CPU: [register pressure](../gpu-execution-model.md#register-pressure-and-occupancy) dominates (every additional register per thread reduces SM occupancy), [memory coalescing](../gpu-execution-model.md#memory-coalescing) replaces cache locality as the primary memory optimization target, and [warp divergence](../gpu-execution-model.md#divergence) caused by loop-carried control flow destroys SIMT efficiency. NVIDIA's cicc v13.0 addresses these constraints by shipping a mix of stock LLVM loop passes, LLVM passes with GPU-specific threshold overrides, and fully proprietary loop transformations — all orchestrated through a carefully ordered pipeline where the position of each pass reflects hard-won engineering tradeoffs between register pressure, instruction count, and memory access patterns.
 
 This page provides the big-picture view of loop optimization in cicc: what passes exist, how they are ordered, what analyses they share, and why the ordering matters for GPU targets. Each pass links to a dedicated sub-page with full algorithmic detail.
 
@@ -8,13 +8,13 @@ This page provides the big-picture view of loop optimization in cicc: what passe
 
 Four properties of the [GPU execution model](../gpu-execution-model.md) distinguish GPU loop optimization from the CPU case that upstream LLVM targets:
 
-**[Register pressure](../gpu-execution-model.md#register-pressure-and-occupancy) is the primary constraint.** Every loop transformation that increases live values (unrolling, vectorization, LICM hoisting) must be evaluated against the SM's register budget and its discrete [occupancy cliffs](../gpu-execution-model.md#occupancy-cliffs) -- adding one register can drop occupancy by a full warp group. CPU compilers never face this tradeoff.
+**[Register pressure](../gpu-execution-model.md#register-pressure-and-occupancy) is the primary constraint.** Every loop transformation that increases live values (unrolling, vectorization, LICM hoisting) must be evaluated against the SM's register budget and its discrete [occupancy cliffs](../gpu-execution-model.md#occupancy-cliffs) — adding one register can drop occupancy by a full warp group. CPU compilers never face this tradeoff.
 
 **[Memory coalescing](../gpu-execution-model.md#memory-coalescing) replaces cache line optimization.** Loop transformations that improve stride-1 access patterns (interchange, vectorization) improve coalescing; transformations that increase the number of live pointers (unrolling, distribution) may degrade it by interleaving access streams.
 
 **[No out-of-order execution](../gpu-execution-model.md#no-out-of-order-execution).** Warps execute instructions in program order; the only latency-hiding mechanism is warp-level multithreading. Unrolling creates ILP within a single warp by exposing independent instructions that the ptxas backend can interleave, but the benefit is bounded by the register pressure cost.
 
-**[Address space semantics](../gpu-execution-model.md#address-space-semantics).** GPU memory is partitioned into address spaces with different pointer widths, hardware addressing modes, and performance characteristics. Loop passes that rewrite address computations (LSR, IndVarSimplify) must respect these distinctions -- strength-reducing a 32-bit shared memory pointer into 64-bit generic form defeats the backend's ability to emit efficient `.shared::` instructions.
+**[Address space semantics](../gpu-execution-model.md#address-space-semantics).** GPU memory is partitioned into address spaces with different pointer widths, hardware addressing modes, and performance characteristics. Loop passes that rewrite address computations (LSR, IndVarSimplify) must respect these distinctions — strength-reducing a 32-bit shared memory pointer into 64-bit generic form defeats the backend's ability to emit efficient `.shared::` instructions.
 
 ## Pipeline Ordering
 
@@ -63,7 +63,7 @@ LoopDeletion                           (remove dead loops)
 LoopSink / LICM (sink)                 (demote unprofitable hoists)
 ```
 
-Several passes appear more than once. LICM runs in both hoist and sink mode. LoopUnroll has an early invocation in the main pipeline and a late invocation gated by `opts[1360]` (`nv-disable-loop-unrolling`). IndVarSimplify runs before vectorization to canonicalize induction variables, then again after unrolling to clean up newly exposed IVs. LoopSimplify and LCSSA are implicit -- they run as required analyses whenever any loop pass requests them, ensuring loops remain in canonical form throughout.
+Several passes appear more than once. LICM runs in both hoist and sink mode. LoopUnroll has an early invocation in the main pipeline and a late invocation gated by `opts[1360]` (`nv-disable-loop-unrolling`). IndVarSimplify runs before vectorization to canonicalize induction variables, then again after unrolling to clean up newly exposed IVs. LoopSimplify and LCSSA are implicit — they run as required analyses whenever any loop pass requests them, ensuring loops remain in canonical form throughout.
 
 The ordering reflects a deliberate strategy: **canonicalize first** (LoopSimplify, LoopRotate, IndVarSimplify), **transform for parallelism** (LoopDistribute, LoopVectorize, LoopInterchange), **replicate for ILP** (LoopUnroll), and **clean up addressing** (LSR, LoopDeletion, LoopSink). Reordering these passes produces measurably different code: running LSR before LoopVectorize would pollute the cost model with strength-reduced IVs that confuse SCEV; running LoopUnroll before LoopVectorize would prevent vectorization of unrolled-but-still-vectorizable loops.
 
@@ -112,7 +112,7 @@ The table below lists every loop pass present in cicc v13.0 with its pipeline po
 | `loop-predication` | Utility | No | stock LLVM | Predicate unswitched loops |
 | `loop-reroll` | Utility | No | stock LLVM | Reverse unrolling (rarely used) |
 
-Passes marked "Utility" are registered in the pipeline infrastructure but are not part of the default optimization sequence -- they are available for explicit pipeline specification via `-mllvm -passes=...`.
+Passes marked "Utility" are registered in the pipeline infrastructure but are not part of the default optimization sequence — they are available for explicit pipeline specification via `-mllvm -passes=...`.
 
 ## Pass Descriptions and Sub-Page Links
 
@@ -126,7 +126,7 @@ Passes marked "Utility" are registered in the pipeline infrastructure but are no
 
 **[Loop Index Split](../passes/loop-index-split.md)** is a revived and heavily reworked version of a pass removed from upstream LLVM 3.0. It splits loops when the loop body contains a condition that depends on the induction variable (e.g., `if (i == K)`), producing two or three loops where each has a uniform body. On GPU, this eliminates warp divergence caused by index-dependent branches. The pass implements three transformation modes: all-but-one peel (for `i == K`), only-one collapse (for nearly-empty special iterations), and full range split (for `i < K` vs `i >= K`). Proprietary, no upstream equivalent.
 
-**[IndVarSimplify (NVIDIA)](./loop-passes-standard.md#indvarsimplify)** is upstream LLVM's induction variable canonicalization pass with three NVIDIA-specific extensions: `Disable-unknown-trip-iv` (bool, `qword_4FAF520`) -- bypasses the pass entirely when SCEV cannot compute the trip count, preventing aggressive IV transforms on warp-divergent loops; `iv-loop-level` (int, default 1, `qword_4FAF440`) -- restricts the pass to loops at a maximum nesting depth to control compile time on deeply nested stencil kernels; and `disable-lftr` (bool, `byte_4FAF6A0`) -- disables Linear Function Test Replace when the IV canonicalization would increase register pressure.
+**[IndVarSimplify (NVIDIA)](./loop-passes-standard.md#indvarsimplify)** is upstream LLVM's induction variable canonicalization pass with three NVIDIA-specific extensions: `Disable-unknown-trip-iv` (bool, `qword_4FAF520`) — bypasses the pass entirely when SCEV cannot compute the trip count, preventing aggressive IV transforms on warp-divergent loops; `iv-loop-level` (int, default 1, `qword_4FAF440`) — restricts the pass to loops at a maximum nesting depth to control compile time on deeply nested stencil kernels; and `disable-lftr` (bool, `byte_4FAF6A0`) — disables Linear Function Test Replace when the IV canonicalization would increase register pressure.
 
 **[LoopVectorize (GPU-Adapted)](./loop-vectorize.md)** is the largest single pass in the cicc loop pipeline (88 KB). On GPU, vectorization means generating `ld.v2`/`ld.v4` wide loads rather than filling SIMD lanes. The pass builds VPlans, selects VF through a GPU-aware cost model that penalizes register pressure, and caps VF at 4 for most GPU targets. Scalable vectors are always disabled. The pass includes an outer-loop vectorization path (rarely triggered on GPU) and an inner-loop path (the main code path).
 
@@ -138,7 +138,7 @@ Passes marked "Utility" are registered in the pipeline infrastructure but are no
 
 **[LICM](./licm-real.md)** (Loop-Invariant Code Motion) hoists loop-invariant computations above the loop and sinks them below it. On GPU, LICM's hoist mode must be conservative: hoisting increases register pressure in the loop preheader, which may push past occupancy cliffs. The sink mode (running later) undoes unprofitable hoists. Stock LLVM with NVIDIA-tuned thresholds.
 
-**LoopInterchange** swaps the nesting order of a perfectly-nested loop pair when doing so improves memory access locality. In cicc, the threshold `loop-interchange-threshold` (`dword_4FB07E0`) defaults to 0, meaning interchange is only performed when the net locality benefit is non-negative AND parallelism improves. The pass has a 100-pair dependence limit (`0x960 bytes`) as a compile-time safety valve. There is no visible CUDA-specific memory space awareness -- the standard LLVM stride-1 locality model applies uniformly. See the [standard loop passes page](./loop-passes-standard.md#loopinterchange) for details.
+**LoopInterchange** swaps the nesting order of a perfectly-nested loop pair when doing so improves memory access locality. In cicc, the threshold `loop-interchange-threshold` (`dword_4FB07E0`) defaults to 0, meaning interchange is only performed when the net locality benefit is non-negative AND parallelism improves. The pass has a 100-pair dependence limit (`0x960 bytes`) as a compile-time safety valve. There is no visible CUDA-specific memory space awareness — the standard LLVM stride-1 locality model applies uniformly. See the [standard loop passes page](./loop-passes-standard.md#loopinterchange) for details.
 
 **IRCE** (Inductive Range Check Elimination) splits a loop into preloop/mainloop/postloop regions, eliminating range checks from the mainloop where the induction variable is provably within bounds. The implementation is stock LLVM with no visible NVIDIA modifications. Configuration globals include a block count threshold (`dword_4FB0000`), a debug flag (`byte_4FAFE40`), and a "constrained" relaxation mode (`byte_4FAFBA0`) that handles slightly non-canonical range checks common in GPU thread-coarsened loops.
 
@@ -146,7 +146,7 @@ Passes marked "Utility" are registered in the pipeline infrastructure but are no
 
 **LoopIdiomRecognize** detects loops that implement common patterns (byte-by-byte copy, memset, mismatch search, string search) and replaces them with optimized multi-block IR or library calls. The expansion routines generate vectorized mismatch detection (`sub_2AA00B0`, 48 KB) and vectorized first-occurrence string search (`sub_2AA3190`, 40 KB), both with page-boundary-safe masked vector loads. Stock LLVM pass; the expansion quality benefits GPU targets where wide loads are profitable.
 
-**LoopDeletion** removes loops proven dead (no observable side effects). Stock LLVM. **LoopSink** moves loop-invariant operations that were hoisted by LICM back into the loop body when doing so reduces register pressure -- particularly valuable on GPU where the register pressure tradeoff is acute.
+**LoopDeletion** removes loops proven dead (no observable side effects). Stock LLVM. **LoopSink** moves loop-invariant operations that were hoisted by LICM back into the loop body when doing so reduces register pressure — particularly valuable on GPU where the register pressure tradeoff is acute.
 
 ## Loop Analysis Infrastructure
 
@@ -197,11 +197,11 @@ The following table consolidates all loop-pass-specific configuration knobs disc
 
 ## Cross-References
 
-- **Pipeline context:** [LLVM Optimizer](../pipeline/optimizer.md) -- two-phase compilation, tier dispatch, NVVMPassOptions
-- **Pipeline ordering:** [Pipeline & Pass Ordering](./pipeline.md) -- complete pass registration table
-- **Vectorization:** [LoopVectorize & VPlan](./loop-vectorize.md) -- GPU-adapted vectorizer with full cost model
-- **Unrolling:** [Loop Unrolling](./loop-unroll.md) -- decision cascade with GPU-specific heuristics
-- **Strength reduction:** [Loop Strength Reduction (NVIDIA)](./lsr.md) -- the most GPU-specific pass in cicc
+- **Pipeline context:** [LLVM Optimizer](../pipeline/optimizer.md) — two-phase compilation, tier dispatch, NVVMPassOptions
+- **Pipeline ordering:** [Pipeline & Pass Ordering](./pipeline.md) — complete pass registration table
+- **Vectorization:** [LoopVectorize & VPlan](./loop-vectorize.md) — GPU-adapted vectorizer with full cost model
+- **Unrolling:** [Loop Unrolling](./loop-unroll.md) — decision cascade with GPU-specific heuristics
+- **Strength reduction:** [Loop Strength Reduction (NVIDIA)](./lsr.md) — the most GPU-specific pass in cicc
 - **NVIDIA custom passes:** [Loop Index Split](../passes/loop-index-split.md), [NVVM Peephole](../passes/nvvm-peephole.md)
 - **SCEV infrastructure:** [ScalarEvolution Overview](./scev.md), [Range Analysis & Trip Counts](./scev-range-btc.md), [SCEV Invalidation](./scev-invalidation.md)
-- **Standard loop passes:** [Standard Loop Passes](./loop-passes-standard.md) -- IndVarSimplify, LoopInterchange, IRCE, LoopDistribute, LoopIdiomRecognize details
+- **Standard loop passes:** [Standard Loop Passes](./loop-passes-standard.md) — IndVarSimplify, LoopInterchange, IRCE, LoopDistribute, LoopIdiomRecognize details

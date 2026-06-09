@@ -82,9 +82,9 @@ Unlike the surface stores which have 165 dedicated builtins, texture reads use a
 
 The NVVM-side lowering for `__nv_tex_surf_handler` (builtin ID 647, hex `0x287`) is the most complex string-based builtin dispatch in cicc. It performs five steps:
 
-**Step 1 -- String extraction.** Walks the AST operand tree from the call expression to locate the constant string naming the texture/surface operation. Validates that byte 173 of the operand node equals `2` (the constant-string-type marker in the EDG AST). The string is the NVVM intrinsic base name, for example `__tex_fetch` or `__surf_read`.
+**Step 1 — String extraction.** Walks the AST operand tree from the call expression to locate the constant string naming the texture/surface operation. Validates that byte 173 of the operand node equals `2` (the constant-string-type marker in the EDG AST). The string is the NVVM intrinsic base name, for example `__tex_fetch` or `__surf_read`.
 
-**Step 2 -- Element type determination.** Decodes the return element type from the AST type node attached to the call. The type switch maps to suffix strings:
+**Step 2 — Element type determination.** Decodes the return element type from the AST type node attached to the call. The type switch maps to suffix strings:
 
 | AST Type | Suffix String | LLVM Type |
 |---|---|---|
@@ -105,7 +105,7 @@ The NVVM-side lowering for `__nv_tex_surf_handler` (builtin ID 647, hex `0x287`)
 
 The `long`/`ulong` width follows the host ABI convention (32-bit on NVPTX).
 
-**Step 3 -- Intrinsic name construction.** Concatenates the operation base name with the element type suffix using underscore separation:
+**Step 3 — Intrinsic name construction.** Concatenates the operation base name with the element type suffix using underscore separation:
 
 ```text
 intrinsic_name = "{operation_string}_{element_type_suffix}"
@@ -113,9 +113,9 @@ intrinsic_name = "{operation_string}_{element_type_suffix}"
 
 For example, `__tex_fetch_v4` + `float` yields `__tex_fetch_v4_float`.
 
-**Step 4 -- Intrinsic lookup.** Resolves the constructed name string via `sub_BA8CA0` (NVVM intrinsic table lookup) to obtain the corresponding LLVM intrinsic function declaration. The EDG-side parallel path uses `sub_1632190`. If the intrinsic is not found, this is a fatal error.
+**Step 4 — Intrinsic lookup.** Resolves the constructed name string via `sub_BA8CA0` (NVVM intrinsic table lookup) to obtain the corresponding LLVM intrinsic function declaration. The EDG-side parallel path uses `sub_1632190`. If the intrinsic is not found, this is a fatal error.
 
-**Step 5 -- Call emission.** Collects all arguments from the call expression, builds the LLVM function type signature from the argument types, and emits the intrinsic call via `sub_921880`. Returns a dummy `i32` value via `sub_AD6530`.
+**Step 5 — Call emission.** Collects all arguments from the call expression, builds the LLVM function type signature from the argument types, and emits the intrinsic call via `sub_921880`. Returns a dummy `i32` value via `sub_AD6530`.
 
 This design allows the compiler to support an arbitrary number of texture/surface read variants without enumerating them in the builtin table. The single ID 647 entry is a trampoline that dispatches to hundreds of different NVVM intrinsics at runtime.
 
@@ -255,14 +255,14 @@ Each opcode corresponds to a PTX texture instruction pattern that the instructio
 
 The most complex texture lowering path. Handles hardware-filtered texture sampling with programmable LOD computation:
 
-1. `sub_3281100` -- Determines element count for the return type
-2. `sub_3281590` -- Computes alignment for the result buffer
-3. `sub_327FD70` -- Resolves the return MVT (machine value type)
-4. `sub_33CC4A0` -- SM-specific path selection (some SM levels use different instruction encodings)
-5. `sub_3406EB0(opcode=57)` -- Creates the core sample DAG node
-6. `sub_33FAF80(opcode=213)` -- LOD computation DAG node
-7. `sub_3406EB0(opcode=186)` -- Merge result node
-8. `sub_33FAF80(opcode=389)` -- Final type fixup
+1. `sub_3281100` — Determines element count for the return type
+2. `sub_3281590` — Computes alignment for the result buffer
+3. `sub_327FD70` — Resolves the return MVT (machine value type)
+4. `sub_33CC4A0` — SM-specific path selection (some SM levels use different instruction encodings)
+5. `sub_3406EB0(opcode=57)` — Creates the core sample DAG node
+6. `sub_33FAF80(opcode=213)` — LOD computation DAG node
+7. `sub_3406EB0(opcode=186)` — Merge result node
+8. `sub_33FAF80(opcode=389)` — Final type fixup
 9. Fallback via `sub_33A1E80` if the target architecture does not support this texture mode
 
 ### Surface Read/Write Handler: `sub_33A3180`
@@ -273,7 +273,7 @@ Intrinsic IDs `0x8E` (surf1Dread), `0x8F` (surf2Dread), `0x90` (surf3Dread) dele
 
 The `nvvm_texsurf_handle` intrinsic (ID 10578) is the mechanism for binding a GlobalVariable to a texture or surface reference. The DAG lowering:
 
-1. Validates that operand 0 is metadata wrapping a `GlobalVariable` -- errors with `"nvvm_texsurf_handle op0 must be metadata wrapping a GlobalVariable"` otherwise
+1. Validates that operand 0 is metadata wrapping a `GlobalVariable` — errors with `"nvvm_texsurf_handle op0 must be metadata wrapping a GlobalVariable"` otherwise
 2. Creates a DAG constant node for the handle via `sub_3400BD0(opcode=10579)`
 3. Binds the handle via `sub_3406EB0(opcode=46)`
 
@@ -283,13 +283,13 @@ The `NVPTXReplaceImageHandles` pass (`sub_21DBEA0`) later resolves these abstrac
 
 For SM 30+ unified texture mode, a more complex sampling path handles the full matrix of texture configurations:
 
-1. `sub_34B8FD0` -- Unpacks the parameter block encoding dimension, filtering, coordinate type
-2. Vtable dispatch at `*src+88` -- Selects the sampling mode (point, linear, etc.)
-3. `sub_3409320` -- Creates the sampler state DAG node
-4. `sub_33EB1C0(opcode=47)` -- Creates the core tex/surf sample DAG node with memory semantics
-5. `sub_33FC220(opcode=2)` -- Merges vector result components
-6. `sub_33E5830` + `sub_3411630(opcode=55)` -- Packages the final result
-7. `sub_B91FC0` -- Attaches debug info
+1. `sub_34B8FD0` — Unpacks the parameter block encoding dimension, filtering, coordinate type
+2. Vtable dispatch at `*src+88` — Selects the sampling mode (point, linear, etc.)
+3. `sub_3409320` — Creates the sampler state DAG node
+4. `sub_33EB1C0(opcode=47)` — Creates the core tex/surf sample DAG node with memory semantics
+5. `sub_33FC220(opcode=2)` — Merges vector result components
+6. `sub_33E5830` + `sub_3411630(opcode=55)` — Packages the final result
+7. `sub_B91FC0` — Attaches debug info
 
 Two modes exist: `v2637=true` (unified texture) and `v2637=false` (legacy separate-handle texture). The unified path is the modern default.
 
@@ -297,9 +297,9 @@ Two modes exist: `v2637=true` (unified texture) and `v2637=false` (legacy separa
 
 These intrinsics handle the compile-time binding of texture and surface references. The lowering checks the `a1+120` flag to determine whether the reference is a `.texref` or `.surfref`:
 
-1. `sub_3382030` -- Initial binding setup
-2. `sub_3382930` -- Variant analysis via `sub_3380DB0` and `sub_B58DC0`
-3. `sub_3386E40` -- Final binding emission
+1. `sub_3382030` — Initial binding setup
+2. `sub_3382930` — Variant analysis via `sub_3380DB0` and `sub_B58DC0`
+3. `sub_3386E40` — Final binding emission
 
 Intrinsic `0x48` (opcode 332) handles global texture handles, while `0x162` (opcode 331) handles sampler handles. Intrinsic `0x169` dispatches to `sub_3400BD0` + `sub_3406EB0(opcode=333)` for indirect texture access.
 
@@ -388,30 +388,30 @@ The 165 surface store builtins are registered unconditionally regardless of targ
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| NVVM builtin lowering dispatch | `sub_955A70` | -- | Main switch; case `0x287` handles `__nv_tex_surf_handler` |
-| Texture/surface sample handler | `sub_954F10` | -- | Red-black tree dispatch for IDs 302--309, 338--345, 395--402 |
-| EDG keyword handler | `sub_72BA30` | -- | Parses `__nv_tex_surf_handle_t` built-in type (keyword 277) |
-| NVPTX intrinsic lowering | `sub_33B0210` | -- | 343KB central dispatch; tex IDs 0x5D--0x8D, surf IDs 0x8E--0x90 |
-| Texture fetch bulk handler | `sub_33A4350` | -- | 50 consecutive intrinsic IDs for all tex1D/2D/3D/array variants |
-| Surface read/write handler | `sub_33A3180` | -- | 3 intrinsic IDs for surf1D/2D/3D read |
-| Tex/surf sample DAG node builder | `sub_33EB1C0` | -- | Creates memory-typed NVPTXISD sample nodes (opcode 47) |
-| Sampler state DAG node builder | `sub_3409320` | -- | Creates sampler state binding nodes |
-| Surface atomics handler | `sub_33AEC60` | -- | Intrinsic IDs 0x9C--0x9D |
-| Surface special handler | `sub_33AFBA0` | -- | Intrinsic ID 0x9E |
-| Texture/surface ISel | `sub_306A930` | -- | 52KB instruction selection for tex/suld/sust patterns |
-| Image type validator | `sub_21DD1A0` | -- | 16KB; validates `.tex`/`.suld`/`.sust`/`suq.` image types |
-| NVPTXReplaceImageHandles | `sub_21DBEA0` | -- | Replaces IR image handles with PTX `.texref`/`.surfref` |
-| Global variable emitter | `sub_2156420` | -- | 20KB; emits `.texref`/`.surfref`/`.samplerref` with initializers |
-| Parameter list emitter | `sub_21502D0` | -- | 22KB; emits `.param .texref`/`.surfref`/`.samplerref` in function signatures |
-| visitNVVMTexSurf | `sub_2077400` | -- | 20KB SelectionDAGBuilder extension for tex/surf handle lowering |
-| NVVM intrinsic lookup | `sub_BA8CA0` | -- | Resolves constructed intrinsic name string to LLVM function declaration |
-| Intrinsic table lookup | `sub_90A810` | -- | Resolves intrinsic ID to function declaration with type overloads |
+| NVVM builtin lowering dispatch | `sub_955A70` | — | Main switch; case `0x287` handles `__nv_tex_surf_handler` |
+| Texture/surface sample handler | `sub_954F10` | — | Red-black tree dispatch for IDs 302--309, 338--345, 395--402 |
+| EDG keyword handler | `sub_72BA30` | — | Parses `__nv_tex_surf_handle_t` built-in type (keyword 277) |
+| NVPTX intrinsic lowering | `sub_33B0210` | — | 343KB central dispatch; tex IDs 0x5D--0x8D, surf IDs 0x8E--0x90 |
+| Texture fetch bulk handler | `sub_33A4350` | — | 50 consecutive intrinsic IDs for all tex1D/2D/3D/array variants |
+| Surface read/write handler | `sub_33A3180` | — | 3 intrinsic IDs for surf1D/2D/3D read |
+| Tex/surf sample DAG node builder | `sub_33EB1C0` | — | Creates memory-typed NVPTXISD sample nodes (opcode 47) |
+| Sampler state DAG node builder | `sub_3409320` | — | Creates sampler state binding nodes |
+| Surface atomics handler | `sub_33AEC60` | — | Intrinsic IDs 0x9C--0x9D |
+| Surface special handler | `sub_33AFBA0` | — | Intrinsic ID 0x9E |
+| Texture/surface ISel | `sub_306A930` | — | 52KB instruction selection for tex/suld/sust patterns |
+| Image type validator | `sub_21DD1A0` | — | 16KB; validates `.tex`/`.suld`/`.sust`/`suq.` image types |
+| NVPTXReplaceImageHandles | `sub_21DBEA0` | — | Replaces IR image handles with PTX `.texref`/`.surfref` |
+| Global variable emitter | `sub_2156420` | — | 20KB; emits `.texref`/`.surfref`/`.samplerref` with initializers |
+| Parameter list emitter | `sub_21502D0` | — | 22KB; emits `.param .texref`/`.surfref`/`.samplerref` in function signatures |
+| visitNVVMTexSurf | `sub_2077400` | — | 20KB SelectionDAGBuilder extension for tex/surf handle lowering |
+| NVVM intrinsic lookup | `sub_BA8CA0` | — | Resolves constructed intrinsic name string to LLVM function declaration |
+| Intrinsic table lookup | `sub_90A810` | — | Resolves intrinsic ID to function declaration with type overloads |
 
 ## Cross-References
 
-- [Builtin System Overview](./index.md) -- Hash table infrastructure and ID assignment
-- [Atomics Builtins](./atomics.md) -- PTX inline asm generation pattern shared by surface stores
-- [NVPTX Instruction Selection](../llvm/isel-patterns.md) -- ISel pattern matching context
-- [SelectionDAG Lowering](../llvm/selectiondag.md) -- DAG node construction infrastructure
-- [PTX Emission](../pipeline/emission.md) -- Final instruction text generation
-- [Address Spaces](../reference/address-spaces.md) -- Memory space qualifiers for tex/surf
+- [Builtin System Overview](./index.md) — Hash table infrastructure and ID assignment
+- [Atomics Builtins](./atomics.md) — PTX inline asm generation pattern shared by surface stores
+- [NVPTX Instruction Selection](../llvm/isel-patterns.md) — ISel pattern matching context
+- [SelectionDAG Lowering](../llvm/selectiondag.md) — DAG node construction infrastructure
+- [PTX Emission](../pipeline/emission.md) — Final instruction text generation
+- [Address Spaces](../reference/address-spaces.md) — Memory space qualifiers for tex/surf

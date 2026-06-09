@@ -1,6 +1,6 @@
 # Address Spaces
 
-This page is the single source of truth for NVPTX address space numbering, hardware mapping, pointer widths, aliasing rules, and the internal bitmask encoding used by MemorySpaceOpt. It supersedes all inline address space tables elsewhere in the wiki -- those pages should cross-reference this one rather than maintaining their own copies.
+This page is the single source of truth for NVPTX address space numbering, hardware mapping, pointer widths, aliasing rules, and the internal bitmask encoding used by MemorySpaceOpt. It supersedes all inline address space tables elsewhere in the wiki — those pages should cross-reference this one rather than maintaining their own copies.
 
 NVPTX defines eight address spaces in cicc v13.0, six of which correspond to physically disjoint hardware memory partitions. The generic (flat) address space is a virtual overlay resolved at runtime by the GPU's address translation unit. The eighth, tensor memory (AS 6), is a Blackwell-era addition accessible only through TMA intrinsics. A ninth, AS 25, is used internally within NVVM IR for device-linkage annotations and never reaches PTX emission. A tenth, AS 53, appears in MemorySpaceOpt initialization as an internal annotation space for global variable tracking.
 
@@ -9,15 +9,15 @@ NVPTX defines eight address spaces in cicc v13.0, six of which correspond to phy
 
 | LLVM AS | Name | PTX Qualifier | Hardware | Pointer Width | Typical Latency | CUDA Qualifier |
 |---------|------|---------------|----------|---------------|-----------------|----------------|
-| 0 | Generic (flat) | `.generic` | Virtual -- address translation unit maps to physical space at runtime | 64-bit | +4-8 cycles over resolved (translation overhead) | Default for unresolved pointers |
+| 0 | Generic (flat) | `.generic` | Virtual — address translation unit maps to physical space at runtime | 64-bit | +4-8 cycles over resolved (translation overhead) | Default for unresolved pointers |
 | 1 | Global | `.global` | Device DRAM, L2 cached, optionally L1 cached | 64-bit | 200-800 cycles (DRAM); 32-128 cycles (L2 hit) | `__device__`, `cudaMalloc` |
 | 3 | Shared | `.shared` | Per-CTA on-chip scratchpad SRAM (48-228 KB per SM) | 32-bit (when `p3:32:32:32` active) or 64-bit | 20-30 cycles (bank-conflict-free) | `__shared__` |
 | 4 | Constant | `.const` | Read-only constant cache (64 KB per SM) | 64-bit | 4-8 cycles (cache hit); DRAM latency on miss | `__constant__` |
 | 5 | Local | `.local` | Per-thread private stack in DRAM, L1 cached | 32-bit (effective) or 64-bit | Same as global (backed by DRAM) | Stack allocations (`alloca`) |
-| 6 | Tensor Memory | N/A (TMA intrinsics only) | Blackwell tensor memory (SM 100+) | 64-bit | Varies (TMA pipeline) | N/A -- accessed via `cp.async.bulk` intrinsics |
+| 6 | Tensor Memory | N/A (TMA intrinsics only) | Blackwell tensor memory (SM 100+) | 64-bit | Varies (TMA pipeline) | N/A — accessed via `cp.async.bulk` intrinsics |
 | 7 | Shared Cluster | `.shared::cluster` | Distributed shared memory across CTAs in a cluster (SM 90+) | 32-bit or 64-bit | ~30-50 cycles (cross-CTA penalty over AS 3) | `__shared__` with cluster scope |
-| 25 | Internal device linkage | N/A | Not a physical memory -- NVVM IR annotation for `__device__` linkage | N/A | N/A | Used internally by module summary for extern device resolution |
-| 53 | Internal annotation | N/A | Not a physical memory -- used by MemorySpaceOpt for global tracking | N/A | N/A | Internal to cicc pipeline |
+| 25 | Internal device linkage | N/A | Not a physical memory — NVVM IR annotation for `__device__` linkage | N/A | N/A | Used internally by module summary for extern device resolution |
+| 53 | Internal annotation | N/A | Not a physical memory — used by MemorySpaceOpt for global tracking | N/A | N/A | Internal to cicc pipeline |
 | 101 | Param | `.param` | Kernel parameter window (mapped into constant bank or global memory) | 64-bit | 4-8 cycles (constant cache path) | Kernel parameters (`__global__` function args) |
 
 Address space 2 is **not used** by NVPTX. The numbering gap between shared (3) and constant (4) is inherited from upstream LLVM NVPTX conventions. The NVVM verifier's valid-AS check uses the formula `(AS + ~2) & 0xFFFFFF) > 2`, which accepts AS values 0, 1, and 3 unconditionally; AS 2 is sometimes valid depending on context.
@@ -30,7 +30,7 @@ The core property exploited by NVVM AA is hardware address space disjointness: p
 | Pointer A | Pointer B | Alias Result | Reason |
 |-----------|-----------|-------------|--------|
 | AS 0 (generic) | Any | MayAlias | Generic can map to any physical space at runtime |
-| AS X (same) | AS X (same) | MayAlias | Same space -- further analysis needed (BasicAA, TBAA) |
+| AS X (same) | AS X (same) | MayAlias | Same space — further analysis needed (BasicAA, TBAA) |
 | AS 1 (global) | AS 101 (param) | MayAlias | `cvta.param` on SM 70+ makes param addressable as global |
 | AS 3 (shared) | AS 7 (shared cluster) | MayAlias | Cluster shared memory overlaps with regular shared |
 | Any other cross-space pair | | **NoAlias** | Physically disjoint hardware memory partitions |
@@ -54,7 +54,7 @@ The `getAddressSpace` helper walks backward through `getUnderlyingObject` (strip
 
 | Address Space | ModRef Mask | Meaning |
 |---------------|-------------|---------|
-| AS 4 (constant) | `NoModRef` | Read-only -- never modified |
+| AS 4 (constant) | `NoModRef` | Read-only — never modified |
 | AS 101 (param) | `NoModRef` | Kernel params are read-only from device code |
 | All others | `ModRef` | May be both read and written |
 
@@ -114,7 +114,7 @@ The EDG memory_space_code at offset +136 maps to LLVM address spaces during IR g
 
 ## The Generic Address Space Problem
 
-The generic (flat, AS 0) address space is the fundamental obstacle to alias precision on GPUs. When the EDG frontend or NVVM IR generator cannot determine which physical memory a pointer targets, it emits the pointer in AS 0. The hardware resolves generic addresses at runtime by checking whether the address falls within the shared memory window, the local memory window, or defaults to global -- a process that adds 4-8 cycles of latency per access.
+The generic (flat, AS 0) address space is the fundamental obstacle to alias precision on GPUs. When the EDG frontend or NVVM IR generator cannot determine which physical memory a pointer targets, it emits the pointer in AS 0. The hardware resolves generic addresses at runtime by checking whether the address falls within the shared memory window, the local memory window, or defaults to global — a process that adds 4-8 cycles of latency per access.
 
 For NVVM AA, a generic pointer forces MayAlias against every other pointer, destroying the disjointness guarantee and blocking optimizations in DSE, LICM, GVN, and MemorySSA. Three mechanisms address this:
 
@@ -174,9 +174,9 @@ The optimization is controlled by three knobs that alias the same underlying glo
 | `nvptx-32-bit-smem` | Backend option (same constructor) |
 | `+sharedmem32bitptr` | Target feature string (passed via `-arch` processing) |
 
-When any of these is active, the data layout gains the `p3:32:32:32` entry, and LLVM's type system treats all `addrspace(3)*` pointers as 32-bit. This is transparent to the rest of the compiler -- DataLayout queries like `getPointerSizeInBits(3)` return 32 automatically, and all pointer arithmetic in shared memory is lowered to 32-bit operations.
+When any of these is active, the data layout gains the `p3:32:32:32` entry, and LLVM's type system treats all `addrspace(3)*` pointers as 32-bit. This is transparent to the rest of the compiler — DataLayout queries like `getPointerSizeInBits(3)` return 32 automatically, and all pointer arithmetic in shared memory is lowered to 32-bit operations.
 
-The same 32-bit treatment applies to local memory (AS 5) in practice: local stack addresses are within the per-thread frame and always fit in 32 bits. However, the data layout does not carry an explicit `p5:32:32:32` entry -- the 32-bit treatment is enforced by the SelectionDAG lowering which uses AS 7 for stack operations.
+The same 32-bit treatment applies to local memory (AS 5) in practice: local stack addresses are within the per-thread frame and always fit in 32 bits. However, the data layout does not carry an explicit `p5:32:32:32` entry — the 32-bit treatment is enforced by the SelectionDAG lowering which uses AS 7 for stack operations.
 
 ### Known-Bits Implications
 
@@ -209,11 +209,11 @@ NVPTX has strict rules for `addrspacecast` instructions, enforced by the NVVM ve
 
 2. **Source and target must be valid.** The verifier rejects invalid address space IDs with `"Invalid target address space"` / `"Invalid source address space"`.
 
-3. **Alloca must be in generic.** `"Allocas are not supported on address spaces except Generic"` -- alloca produces AS 0 pointers; MemorySpaceOpt later promotes them to AS 5.
+3. **Alloca must be in generic.** `"Allocas are not supported on address spaces except Generic"` — alloca produces AS 0 pointers; MemorySpaceOpt later promotes them to AS 5.
 
-4. **Tensor memory (AS 6) rejects load/store.** `"Tensor Memory loads/stores are not supported"` -- AS 6 memory must be accessed through TMA intrinsics (`cp.async.bulk.*`), not regular load/store instructions.
+4. **Tensor memory (AS 6) rejects load/store.** `"Tensor Memory loads/stores are not supported"` — AS 6 memory must be accessed through TMA intrinsics (`cp.async.bulk.*`), not regular load/store instructions.
 
-5. **cmpxchg is restricted.** `"cmpxchg pointer operand must point to generic, global, or shared address space"` -- atomic compare-exchange only supports AS 0, AS 1, and AS 3, with i32/i64/i128 operand types.
+5. **cmpxchg is restricted.** `"cmpxchg pointer operand must point to generic, global, or shared address space"` — atomic compare-exchange only supports AS 0, AS 1, and AS 3, with i32/i64/i128 operand types.
 
 ### cvta Intrinsic Mapping
 
@@ -243,7 +243,7 @@ The SelectionDAG backend uses a secondary address space encoding for the `.param
 | 2 | 3 (shared) | `.shared` |
 | 3 | 4 (constant) | `.const` |
 | 4 | 5 (local) | `.local` |
-| 5 | -- | `.param` (not a real AS, lowered to param window) |
+| 5 | — | `.param` (not a real AS, lowered to param window) |
 | 7 | 7 (shared cluster) | `.shared::cluster` |
 
 Stack operations (SelectionDAG opcode 16, `StackAlloc`) explicitly use AS 7 for the `.param`-like space when lowering stack frames via `sub_33FF780(dag, ..., 7, 0, 1, 0)`.
@@ -251,11 +251,11 @@ Stack operations (SelectionDAG opcode 16, `StackAlloc`) explicitly use AS 7 for 
 
 ## Internal Address Spaces (Non-Physical)
 
-### AS 25 -- Device Linkage Annotation
+### AS 25 — Device Linkage Annotation
 
-Address space 25 is used by the module summary pass (`sub_1C28690` in `p2-H01-nvmodule-summary.txt`) to tag functions and variables with `__device__` linkage during inter-module resolution. When a function's type resolves to AS 25, it indicates the symbol has device-side linkage and requires device-side extern resolution. This address space never appears in emitted PTX -- it is consumed during linking and stripped before codegen.
+Address space 25 is used by the module summary pass (`sub_1C28690` in `p2-H01-nvmodule-summary.txt`) to tag functions and variables with `__device__` linkage during inter-module resolution. When a function's type resolves to AS 25, it indicates the symbol has device-side linkage and requires device-side extern resolution. This address space never appears in emitted PTX — it is consumed during linking and stripped before codegen.
 
-### AS 53 -- MemorySpaceOpt Global Annotation
+### AS 53 — MemorySpaceOpt Global Annotation
 
 During pass initialization (`sub_1CAB590`), MemorySpaceOpt filters module globals that carry address space 53 and registers them into internal tracking structures. This appears to be an annotation mechanism for marking globals that require special address space analysis. Like AS 25, this address space is internal and does not survive to PTX emission.
 
@@ -301,8 +301,8 @@ else
 
 | Knob | Default | Effect |
 |------|---------|--------|
-| `nvptx-short-ptr` | -- | Enable 32-bit pointers for shared/const/local |
-| `nvptx-32-bit-smem` | -- | Same effect as above (alias) |
+| `nvptx-short-ptr` | — | Enable 32-bit pointers for shared/const/local |
+| `nvptx-32-bit-smem` | — | Same effect as above (alias) |
 | `param-always-point-to-global` | true | Resolve ambiguous param pointers to global |
 | `mem-space-alg` | 2 | Algorithm selection for MemorySpaceOpt (2 = default, others select alternate impl at `sub_2CBBE90`) |
 | `track-indir-load` | true | Track pointers loaded from memory during address space analysis |
@@ -316,32 +316,32 @@ else
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| MemorySpaceOpt pass entry | `sub_1C70910` | -- | Mode dispatch, IP-MSP worklist driver |
-| Per-BB instruction scanner | `sub_1CA8CD0` | -- | AS-to-bitmask mapping switch |
-| Use-def chain walker | `sub_1CA5350` | -- | Backward pointer origin tracking |
-| First-time resolver | `sub_1CA2920` | -- | Conservative address space resolution |
-| Second-time resolver | `sub_1CA9E90` | -- | Hash-table-based resolution, isspacep folding |
-| Memory-space cloning engine | `sub_2CBBE90` | -- | Inter-procedural function cloning (11.0 KB binary) |
-| IPMSP module pass variant | `sub_1C6A6C0` | -- | LIBNVVM path (10.5 KB binary) |
-| EDG cvta lowering | `sub_94A030` | -- | Address space cast intrinsic generation |
-| EDG decl-side memspace processing | `sub_6582F0` | -- | CUDA attribute to memory space code resolution |
-| EDG def-side memspace processing | `sub_65F400` | -- | Definition validation and initializer handling |
-| NVVM module verifier | `sub_2C80C90` | -- | Data layout and address space validation |
-| NVVM intrinsic verifier | `sub_2C7B6A0` | -- | Per-intrinsic address space constraint checking |
-| SelectionDAG intrinsic lowering | `sub_33B0210` | -- | Backend AS mapping for param passing |
-| getPointerAlignmentBits | `sub_BD5420` | -- | Known-bits for address space pointer widths |
-| NVIDIA intrinsic known-bits oracle | `sub_F0C4B0` | -- | Special register ranges |
+| MemorySpaceOpt pass entry | `sub_1C70910` | — | Mode dispatch, IP-MSP worklist driver |
+| Per-BB instruction scanner | `sub_1CA8CD0` | — | AS-to-bitmask mapping switch |
+| Use-def chain walker | `sub_1CA5350` | — | Backward pointer origin tracking |
+| First-time resolver | `sub_1CA2920` | — | Conservative address space resolution |
+| Second-time resolver | `sub_1CA9E90` | — | Hash-table-based resolution, isspacep folding |
+| Memory-space cloning engine | `sub_2CBBE90` | — | Inter-procedural function cloning (11.0 KB binary) |
+| IPMSP module pass variant | `sub_1C6A6C0` | — | LIBNVVM path (10.5 KB binary) |
+| EDG cvta lowering | `sub_94A030` | — | Address space cast intrinsic generation |
+| EDG decl-side memspace processing | `sub_6582F0` | — | CUDA attribute to memory space code resolution |
+| EDG def-side memspace processing | `sub_65F400` | — | Definition validation and initializer handling |
+| NVVM module verifier | `sub_2C80C90` | — | Data layout and address space validation |
+| NVVM intrinsic verifier | `sub_2C7B6A0` | — | Per-intrinsic address space constraint checking |
+| SelectionDAG intrinsic lowering | `sub_33B0210` | — | Backend AS mapping for param passing |
+| getPointerAlignmentBits | `sub_BD5420` | — | Known-bits for address space pointer widths |
+| NVIDIA intrinsic known-bits oracle | `sub_F0C4B0` | — | Special register ranges |
 
 
 ## Cross-References
 
-- [Memory Space Optimization](../passes/memory-space-opt.md) -- Two-phase address space resolver, bitmask dataflow, function cloning
-- [IPMSP](../passes/ipmsp.md) -- Inter-procedural memory space propagation, worklist algorithm
-- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) -- Address space disjointness, AA chain, `!noalias.addrspace`
-- [NVPTX Target Infrastructure](../infra/nvptx-target.md) -- Data layout strings, `+sharedmem32bitptr` feature, TTI hooks
-- [KnownBits & DemandedBits](../llvm/known-bits.md) -- Address space pointer width in known-bits, DemandedBits narrowing
-- [NVVM Verifier](../passes/nvvm-verify-deep.md) -- addrspacecast rules, tensor memory restriction, cmpxchg constraints
-- [EDG Frontend](../pipeline/edg.md) -- CUDA memory space attributes (`__shared__`, `__constant__`, `__device__`)
-- [SelectionDAG](../llvm/selectiondag.md) -- Backend address space encoding for param passing
-- [IV Demotion](../passes/iv-demotion.md) -- Exploits 32-bit shared memory pointers for induction variable narrowing
-- [EarlyCSE](../llvm/early-cse.md) -- Shared cluster (AS 7) store handling
+- [Memory Space Optimization](../passes/memory-space-opt.md) — Two-phase address space resolver, bitmask dataflow, function cloning
+- [IPMSP](../passes/ipmsp.md) — Inter-procedural memory space propagation, worklist algorithm
+- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) — Address space disjointness, AA chain, `!noalias.addrspace`
+- [NVPTX Target Infrastructure](../infra/nvptx-target.md) — Data layout strings, `+sharedmem32bitptr` feature, TTI hooks
+- [KnownBits & DemandedBits](../llvm/known-bits.md) — Address space pointer width in known-bits, DemandedBits narrowing
+- [NVVM Verifier](../passes/nvvm-verify-deep.md) — addrspacecast rules, tensor memory restriction, cmpxchg constraints
+- [EDG Frontend](../pipeline/edg.md) — CUDA memory space attributes (`__shared__`, `__constant__`, `__device__`)
+- [SelectionDAG](../llvm/selectiondag.md) — Backend address space encoding for param passing
+- [IV Demotion](../passes/iv-demotion.md) — Exploits 32-bit shared memory pointers for induction variable narrowing
+- [EarlyCSE](../llvm/early-cse.md) — Shared cluster (AS 7) store handling

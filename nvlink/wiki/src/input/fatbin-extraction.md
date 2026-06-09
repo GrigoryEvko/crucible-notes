@@ -1,6 +1,6 @@
 # Fatbin Extraction
 
-NVIDIA's "fat binary" format bundles multiple device code representations -- cubins for different SM architectures, PTX source, NVVM IR, and mercury objects -- into a single file. When nvlink receives a `.fatbin` input, it must unwrap the container, locate the member that matches the target architecture, and convert the extracted content into a cubin suitable for linking. The extraction pipeline spans seven functions across three subsystem layers: the top-level dispatch in `sub_42AF40`, the container library (`sub_4BD0A0` through `sub_4CE8C0`), and the host ELF fatbin section scanner `sub_476D90`.
+NVIDIA's "fat binary" format bundles multiple device code representations — cubins for different SM architectures, PTX source, NVVM IR, and mercury objects — into a single file. When nvlink receives a `.fatbin` input, it must unwrap the container, locate the member that matches the target architecture, and convert the extracted content into a cubin suitable for linking. The extraction pipeline spans seven functions across three subsystem layers: the top-level dispatch in `sub_42AF40`, the container library (`sub_4BD0A0` through `sub_4CE8C0`), and the host ELF fatbin section scanner `sub_476D90`.
 
 | | |
 |---|---|
@@ -33,17 +33,17 @@ The wrapper header contains at minimum:
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
-| 0 | 4 | `magic` | `0xBA55ED50` -- fatbin wrapper magic, read as little-endian u32 (`int32_t -1168773808`) |
+| 0 | 4 | `magic` | `0xBA55ED50` — fatbin wrapper magic, read as little-endian u32 (`int32_t -1168773808`) |
 | 4 | 1 | `version` | Wrapper format version byte; required to be `0x01`. `sub_4CE070`'s nested probe folds this byte into the magic via the 48-bit masked compare against `0x1BA55ED50` |
 | 5 | 1 | _reserved_ | Forced to zero by the 48-bit-mask compare in `sub_4CE070`; never read as data |
 | 6 | 2 | `header_size` | Size of the wrapper header in bytes; read as `uint16_t` in `sub_4CE8C0` (`*(unsigned __int16 *)(content + 6)`) and used as the base offset for the member array |
-| 8 | 4 | `data_size` | Total size of all member entries that follow; read as `int32_t` (signed 4-byte) in `sub_4CE8C0` (`*(int *)(content + 8)`). Negative or zero values exit the member loop immediately. **There is no 8-byte `data_size` field** -- earlier wiki drafts described an 8-byte field here based on a misread of an unaligned `_QWORD` cast |
+| 8 | 4 | `data_size` | Total size of all member entries that follow; read as `int32_t` (signed 4-byte) in `sub_4CE8C0` (`*(int *)(content + 8)`). Negative or zero values exit the member loop immediately. **There is no 8-byte `data_size` field** — earlier wiki drafts described an 8-byte field here based on a misread of an unaligned `_QWORD` cast |
 
 After the wrapper header, the data region contains one or more fatbin containers laid out sequentially.
 
 ### Container Header (Magic `0x464243BC`)
 
-Each container within the wrapper is identified by the 4-byte magic `0x464243BC` (the ASCII bytes `BC`, `B`, `F` reversed -- "FBC" for "Fat Binary Container"). In the decompiled code, the container library validates this magic as a 64-bit value `0x1_464243BC` where the upper byte encodes the container version:
+Each container within the wrapper is identified by the 4-byte magic `0x464243BC` (the ASCII bytes `BC`, `B`, `F` reversed — "FBC" for "Fat Binary Container"). In the decompiled code, the container library validates this magic as a 64-bit value `0x1_464243BC` where the upper byte encodes the container version:
 
 ```c
 // sub_4CE070: container magic validation
@@ -55,7 +55,7 @@ The `0x1` prefix in the 64-bit comparison indicates container version 1. The con
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
-| 0 | 4 | `magic` | `0x464243BC` -- container magic |
+| 0 | 4 | `magic` | `0x464243BC` — container magic |
 | 4 | 2 | `version` | Container version (typically `1`) |
 | 6 | 2 | `header_size` | Size of the container header |
 | 8 | 4 | `data_size` | Total size of all member entries that follow |
@@ -127,9 +127,9 @@ sub_4BD0A0 (pipeline orchestrator)
 
 Three configuration calls set the target parameters on the context:
 
-- `sub_4CE2F0(ctx, sm_arch)` -- sets the target SM architecture number (from `dword_2A5F314`)
-- `sub_4CE380(ctx)` -- optionally sets 64-bit addressing mode (from `byte_2A5F2C0`)
-- `sub_4CE640(ctx, 1)` -- optionally sets debug content preference (from `dword_2A5F30C == 64`)
+- `sub_4CE2F0(ctx, sm_arch)` — sets the target SM architecture number (from `dword_2A5F314`)
+- `sub_4CE380(ctx)` — optionally sets 64-bit addressing mode (from `byte_2A5F2C0`)
+- `sub_4CE640(ctx, 1)` — optionally sets debug content preference (from `dword_2A5F30C == 64`)
 
 These parameters control which member the architecture matcher will select in the next stage.
 
@@ -564,7 +564,7 @@ The dispatch after extraction branches on the type code returned by the containe
 
 **Type 1 (PTX):** The PTX source text is compiled to a cubin via `sub_4BD240`, which delegates to the embedded ptxas compiler. Before compilation, `sub_4BD240` checks for architecture-specific compiler option strings embedded alongside the PTX (`-m64`/`-m32` validation, extra options from `a8`). If compilation fails, it retrieves stderr output from the ptxas subprocess via `sub_4BE3D0` and writes it to `stderr`. The compiled cubin then follows the normal cubin registration path.
 
-**Type 8 (NVVM IR):** The IR blob is registered for LTO (link-time optimization) rather than being compiled immediately. The function parses compiler options embedded in the NVVM metadata string, extracting flags like `-ftz=`, `-prec_div=`, `-prec_sqrt=`, `-fmad=`, `-maxreg`, `-split-compile`, `-generate-line-info`, and `-inline-info`. These are tracked in global state variables with a consensus mechanism -- if all modules agree on a value, it is used; if they disagree, a "mixed" state is recorded. The NVVM content is added to the LTO module collection via `sub_4BD1F0`, and `sub_42A680` registers the module for the later LTO compilation phase. Special handling detects `libcudadevrt` by searching for "cudadevrt" in the filename, storing its IR content in a separate output parameter.
+**Type 8 (NVVM IR):** The IR blob is registered for LTO (link-time optimization) rather than being compiled immediately. The function parses compiler options embedded in the NVVM metadata string, extracting flags like `-ftz=`, `-prec_div=`, `-prec_sqrt=`, `-fmad=`, `-maxreg`, `-split-compile`, `-generate-line-info`, and `-inline-info`. These are tracked in global state variables with a consensus mechanism — if all modules agree on a value, it is used; if they disagree, a "mixed" state is recorded. The NVVM content is added to the LTO module collection via `sub_4BD1F0`, and `sub_42A680` registers the module for the later LTO compilation phase. Special handling detects `libcudadevrt` by searching for "cudadevrt" in the filename, storing its IR content in a separate output parameter.
 
 **Type 16 (Mercury):** Mercury objects (for sm >= 100 Blackwell and later) are processed similarly to cubins but may require an additional post-link transformation via `sub_4275C0` (the finalizer). The finalizer is called when the `byte_2A5F225` mercury flag is set and the object contains mercury-format sections.
 
@@ -735,18 +735,18 @@ Return code 7 receives special treatment in `sub_42AF40`: when the `a5` flag (bi
 
 ## Cross-References
 
-- [Input File Loop](../pipeline/input-loop.md) -- how fatbin files are dispatched from `main()`'s file-type detection loop
-- [File Type Detection](file-type-detection.md) -- the 56-byte header probe that recognizes the `0xBA55ED50` fatbin magic
-- [168-Byte Input Container](container-struct.md) -- field-offset table, lifecycle, and writer/reader pairing for the opaque struct used by `sub_4BD0A0`
-- [Cubin Loading](cubin-loading.md) -- cubins extracted from fatbin containers follow the same validation path documented here
-- [PTX Input & JIT](ptx-input.md) -- how extracted PTX members (type 1) are compiled via embedded ptxas
-- [NVVM IR / LTO IR Input](nvvm-ir-input.md) -- how extracted NVVM IR members (type 8) are registered for LTO
-- [Host ELF Embedding](host-elf.md) -- how `sub_476D90` extracts embedded fatbins from host ELF `.nvFatBinSegment` / `__nv_relfatbin` sections
-- [Archive Processing](archives.md) -- fatbin extraction within archive members
-- [Compatibility](../targets/compatibility.md) -- the cross-architecture matching functions `sub_4709E0` and `sub_470DA0` used during architecture selection
-- [Architecture Profiles](../targets/arch-profiles.md) -- how SM numbers map to architecture capabilities checked during member matching
-- [Mercury Overview](../mercury/overview.md) -- Mercury member type (16) handling and the FNLZR post-link transform
-- [LTO Overview](../lto/overview.md) -- the batch LTO compilation phase that consumes registered IR modules from fatbin extraction
-- [ELF Device Format](../elf/device-elf-format.md) -- cubin ELF format that fatbin members contain
-- **ptxas wiki**: [Output Phase](../../ptxas/pipeline/output.html) -- ptxas cubin output format (the producer of the cubin/mercury members that fatbin containers hold)
-- **ptxas wiki**: [Capsule Mercury](../../ptxas/codegen/capmerc.html) -- capsule mercury format for fatbin type-16 members
+- [Input File Loop](../pipeline/input-loop.md) — how fatbin files are dispatched from `main()`'s file-type detection loop
+- [File Type Detection](file-type-detection.md) — the 56-byte header probe that recognizes the `0xBA55ED50` fatbin magic
+- [168-Byte Input Container](container-struct.md) — field-offset table, lifecycle, and writer/reader pairing for the opaque struct used by `sub_4BD0A0`
+- [Cubin Loading](cubin-loading.md) — cubins extracted from fatbin containers follow the same validation path documented here
+- [PTX Input & JIT](ptx-input.md) — how extracted PTX members (type 1) are compiled via embedded ptxas
+- [NVVM IR / LTO IR Input](nvvm-ir-input.md) — how extracted NVVM IR members (type 8) are registered for LTO
+- [Host ELF Embedding](host-elf.md) — how `sub_476D90` extracts embedded fatbins from host ELF `.nvFatBinSegment` / `__nv_relfatbin` sections
+- [Archive Processing](archives.md) — fatbin extraction within archive members
+- [Compatibility](../targets/compatibility.md) — the cross-architecture matching functions `sub_4709E0` and `sub_470DA0` used during architecture selection
+- [Architecture Profiles](../targets/arch-profiles.md) — how SM numbers map to architecture capabilities checked during member matching
+- [Mercury Overview](../mercury/overview.md) — Mercury member type (16) handling and the FNLZR post-link transform
+- [LTO Overview](../lto/overview.md) — the batch LTO compilation phase that consumes registered IR modules from fatbin extraction
+- [ELF Device Format](../elf/device-elf-format.md) — cubin ELF format that fatbin members contain
+- **ptxas wiki**: [Output Phase](../../ptxas/pipeline/output.html) — ptxas cubin output format (the producer of the cubin/mercury members that fatbin containers hold)
+- **ptxas wiki**: [Capsule Mercury](../../ptxas/codegen/capmerc.html) — capsule mercury format for fatbin type-16 members

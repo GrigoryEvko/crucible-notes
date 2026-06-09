@@ -1,6 +1,6 @@
 # Section Merging
 
-Section merging is the process by which nvlink combines identically-named sections from multiple input cubin ELF objects into single output sections. This spans two pipeline phases: during the **merge phase** (`sub_45E7D0`), input sections are classified, mapped to output sections, and their data appended; during the **layout phase** (`sub_439830`), the merged sections receive final addresses and sizes via the section layout engine. This page covers the section-level mechanics -- how sections are found, created, mapped, populated, and how overlapping data is validated.
+Section merging is the process by which nvlink combines identically-named sections from multiple input cubin ELF objects into single output sections. This spans two pipeline phases: during the **merge phase** (`sub_45E7D0`), input sections are classified, mapped to output sections, and their data appended; during the **layout phase** (`sub_439830`), the merged sections receive final addresses and sizes via the section layout engine. This page covers the section-level mechanics — how sections are found, created, mapped, populated, and how overlapping data is validated.
 
 ## Overview
 
@@ -12,7 +12,7 @@ A conventional linker merges `.text` from N objects into one `.text`. A GPU devi
 4. Validate that overlapping data regions are identical (multiple TUs may define the same global).
 5. Handle per-kernel sections that must be split by entry point (constant banks, local data, shared memory).
 
-The section merging infrastructure is built on four core primitives -- `find_section_by_name`, `section_create`, `section_data_copy`, and `section_layout_engine` -- plus six specialized overlap-merge functions for each memory space, a string-table deduplicator (`sub_442400`/`sub_442520`), and a separate content-equality dedup engine for mercury (`.nv.merc.*`) debug sections (`sub_4748F0`).
+The section merging infrastructure is built on four core primitives — `find_section_by_name`, `section_create`, `section_data_copy`, and `section_layout_engine` — plus six specialized overlap-merge functions for each memory space, a string-table deduplicator (`sub_442400`/`sub_442520`), and a separate content-equality dedup engine for mercury (`.nv.merc.*`) debug sections (`sub_4748F0`).
 
 ## Section Classification
 
@@ -32,7 +32,7 @@ SHT_PROGBITS (1)   (other)                    original sh_type
 
 The constant bank number is parsed from the section name suffix: `strtol(name + 12, NULL, 10)`. This means `.nv.constant0` becomes type `0x70000064`, `.nv.constant2` becomes `0x70000066`, and so on up to `.nv.constant17` (`0x70000075`).
 
-The reclassification is critical because the ELF types alone are ambiguous. A `SHT_NOBITS` section could be global data, shared memory, or local data -- only the name distinguishes them. After reclassification, the type code drives all subsequent dispatch.
+The reclassification is critical because the ELF types alone are ambiguous. A `SHT_NOBITS` section could be global data, shared memory, or local data — only the name distinguishes them. After reclassification, the type code drives all subsequent dispatch.
 
 ## Section Registry
 
@@ -180,10 +180,10 @@ void section_data_copy(elfw *ctx, uint32_t section_idx,
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 8 | `source_sym` -- source symbol index for provenance tracking |
-| 8 | 8 | `offset` -- byte offset within the merged section |
-| 16 | 8 | `alignment` -- alignment this contribution requires |
-| 24 | 8 | `data_ptr` -- pointer to source data (from input ELF) |
+| 0 | 8 | `source_sym` — source symbol index for provenance tracking |
+| 8 | 8 | `offset` — byte offset within the merged section |
+| 16 | 8 | `alignment` — alignment this contribution requires |
+| 24 | 8 | `data_ptr` — pointer to source data (from input ELF) |
 | 32 | 8 | reserved (zeroed) |
 
 ### Copy Algorithm
@@ -287,14 +287,14 @@ for each existing_node in section.symbol_list:
             fatal("overlapping data spans too much")
 ```
 
-The key invariant is that overlapping regions must contain byte-for-byte identical data. If they do not, the linker emits a fatal error via `sub_467460`. This catches the case where two TUs define the same `__device__` variable with different initializers -- a programming error that would cause silent data corruption on the GPU.
+The key invariant is that overlapping regions must contain byte-for-byte identical data. If they do not, the linker emits a fatal error via `sub_467460`. This catches the case where two TUs define the same `__device__` variable with different initializers — a programming error that would cause silent data corruption on the GPU.
 
 Diagnostic strings from this family of functions:
-- `"offset %lld goes past section %d size"` -- bounds check failure
-- `"offset %lld (sym %d) overlaps in section %d"` -- overlap detected (info, not error)
-- `"overlapping non-identical data"` -- fatal: data mismatch in overlap region
-- `"overlapping data spans too much"` -- fatal: overlap exceeds expected bounds
-- `"local data should have offset"` -- (local variant only) missing offset attribute
+- `"offset %lld goes past section %d size"` — bounds check failure
+- `"offset %lld (sym %d) overlaps in section %d"` — overlap detected (info, not error)
+- `"overlapping non-identical data"` — fatal: data mismatch in overlap region
+- `"overlapping data spans too much"` — fatal: overlap exceeds expected bounds
+- `"local data should have offset"` — (local variant only) missing offset attribute
 
 ## Constant Bank Merge (`sub_438640`)
 
@@ -378,9 +378,9 @@ CUDA kernels have per-kernel sections for shared memory, local data, and constan
 ```
 
 Examples:
-- `.nv.shared.my_kernel` -- shared memory for kernel `my_kernel`
-- `.nv.local.my_kernel` -- local memory for kernel `my_kernel`
-- `.nv.constant0.my_kernel` -- constant bank 0 for kernel `my_kernel`
+- `.nv.shared.my_kernel` — shared memory for kernel `my_kernel`
+- `.nv.local.my_kernel` — local memory for kernel `my_kernel`
+- `.nv.constant0.my_kernel` — constant bank 0 for kernel `my_kernel`
 
 The section name is constructed via `sprintf("%s.%s", base_name, entry_name)`. Both `sub_438640` (constant bank merge) and the layout phase (`sub_439830`, Phase 9a) use this convention. The per-entry sections are tracked in linked lists on the elfw object:
 
@@ -403,7 +403,7 @@ The constant deduplication engine (`sub_4339A0`, called during layout Phase 9) g
 
 ## Mercury Sections: Content-Equality Dedup (`sub_4748F0`)
 
-The closest analog in nvlink to traditional ELF COMDAT group semantics is the **mercury** section family. Mercury sections are debug, symtab-shndx, and relocation sections whose canonical name is prefixed with `.nv.merc.` -- for example `.nv.merc.debug_info`, `.nv.merc.debug_line`, `.nv.merc.nv_debug_line_sass`, `.nv.merc.symtab_shndx`, `.nv.merc.rela`. Front-end tooling tags duplicate copies with this prefix so the linker can recognise the candidate set without scanning every section.
+The closest analog in nvlink to traditional ELF COMDAT group semantics is the **mercury** section family. Mercury sections are debug, symtab-shndx, and relocation sections whose canonical name is prefixed with `.nv.merc.` — for example `.nv.merc.debug_info`, `.nv.merc.debug_line`, `.nv.merc.nv_debug_line_sass`, `.nv.merc.symtab_shndx`, `.nv.merc.rela`. Front-end tooling tags duplicate copies with this prefix so the linker can recognise the candidate set without scanning every section.
 
 The dedup is implemented inline in `sub_4748F0` (a large 1,771-line orchestrator that also handles debug-info merge). The algorithm at lines 1564-1662 compares two candidate section vectors element-by-element and accepts the duplicate only if **every** byte of the content matches:
 
@@ -424,7 +424,7 @@ for each parallel entry (a, b) in (candidate_vector, reference_vector):
 accept: drop the candidate, keep the reference
 ```
 
-Three vectors at `elfw+16`, `elfw+24`, and the 60th/61st slots of the per-object array (`v402[60]`, `v402[61]`) participate in the comparison. Each vector entry is a 16-byte `(data_ptr, size)` pair plus auxiliary header fields. The walk requires **identical vector cardinality** -- if the candidate has a different number of entries than the reference, the dedup is rejected outright (`v30 = 19` branch at LABEL_347).
+Three vectors at `elfw+16`, `elfw+24`, and the 60th/61st slots of the per-object array (`v402[60]`, `v402[61]`) participate in the comparison. Each vector entry is a 16-byte `(data_ptr, size)` pair plus auxiliary header fields. The walk requires **identical vector cardinality** — if the candidate has a different number of entries than the reference, the dedup is rejected outright (`v30 = 19` branch at LABEL_347).
 
 This is functionally COMDAT-group elimination at the content level, not at the linkonce-name level: two `.nv.merc.debug_info` sections from independent translation units are merged only if they describe the exact same debug information byte-for-byte. The check is conservative enough that a single differing relocation in `.nv.merc.rela.debug_info` will keep both copies, avoiding silent debug-data corruption.
 
@@ -466,7 +466,7 @@ if (old_offset != 0 && current_strtab_cursor != 0) {
 }
 ```
 
-The string-table dedup is silent (no fatal errors) -- duplicate strings are harmless and the only observable consequence is the reduced size of the output `.shstrtab` / `.strtab`. The verbose trace exists for debugging string-table layout regressions.
+The string-table dedup is silent (no fatal errors) — duplicate strings are harmless and the only observable consequence is the reduced size of the output `.shstrtab` / `.strtab`. The verbose trace exists for debugging string-table layout regressions.
 
 ## Duplicate Weak Parameter Bank Detection
 
@@ -476,7 +476,7 @@ The matching diagnostic for the non-fatal sibling case is `"duplicate param bank
 
 ## EIATTR Duplicate Detection in `.nv.info`
 
-When per-entry `.nv.info` sections are merged (the inline handler in `merge_elf` for `SHT_CUDA_INFO`), the linker walks each EIATTR record and registers it in a per-function info list at `ctx+480`. If a record with the same attribute code re-appears for the same entry function (and the records are not byte-identical), the inline handler emits the fatal diagnostic `"duplicate Meta-Info entry found"`. This catches the case where two cubins declare conflicting `EIATTR_PARAM_CBANK`, `EIATTR_FRAME_SIZE`, or `EIATTR_MAX_THREADS` records for the same kernel -- a programming error that would otherwise produce non-deterministic launch metadata.
+When per-entry `.nv.info` sections are merged (the inline handler in `merge_elf` for `SHT_CUDA_INFO`), the linker walks each EIATTR record and registers it in a per-function info list at `ctx+480`. If a record with the same attribute code re-appears for the same entry function (and the records are not byte-identical), the inline handler emits the fatal diagnostic `"duplicate Meta-Info entry found"`. This catches the case where two cubins declare conflicting `EIATTR_PARAM_CBANK`, `EIATTR_FRAME_SIZE`, or `EIATTR_MAX_THREADS` records for the same kernel — a programming error that would otherwise produce non-deterministic launch metadata.
 
 ## Section Types Reference
 
@@ -522,7 +522,7 @@ Input sh_type = SHT_NOBITS (8):
     else                                      -> remains SHT_NOBITS (8)
 ```
 
-The comparison lengths are exact: `.nv.global` uses `memcmp(name, ".nv.global", 10)`, `.nv.shared.` uses 11 bytes (note trailing dot), `.nv.shared.reserved.` uses 20 bytes, and `.nv.local.` uses 10 bytes. The ordering matters: `.nv.shared.reserved.` is checked *after* `.nv.shared.`, so a `.nv.shared.reserved.foo` section first matches `.nv.shared.` and gets type `0x7000000A`, not `0x70000015`. However, this is the order in both the classifier function and in `merge_elf` itself -- the `.nv.shared.reserved.` check only fires if the `.nv.shared.` check fails, meaning a section named exactly `.nv.shared.reserved.foo` would match `.nv.shared.` first (11-byte prefix match). The reserved variant only matches section names that do NOT begin with `.nv.shared.` at the 11-byte level but DO begin with `.nv.shared.reserved.` at the 20-byte level -- which is impossible. In `merge_elf`, the same sequence appears at lines 975-993 of the decompilation, confirming this is the actual production logic in the binary. In practice, `.nv.shared.reserved.` names are constructed by ptxas to always match the longer prefix in contexts where the 11-byte check is skipped or where the section already has type `0x70000015` from the input cubin.
+The comparison lengths are exact: `.nv.global` uses `memcmp(name, ".nv.global", 10)`, `.nv.shared.` uses 11 bytes (note trailing dot), `.nv.shared.reserved.` uses 20 bytes, and `.nv.local.` uses 10 bytes. The ordering matters: `.nv.shared.reserved.` is checked *after* `.nv.shared.`, so a `.nv.shared.reserved.foo` section first matches `.nv.shared.` and gets type `0x7000000A`, not `0x70000015`. However, this is the order in both the classifier function and in `merge_elf` itself — the `.nv.shared.reserved.` check only fires if the `.nv.shared.` check fails, meaning a section named exactly `.nv.shared.reserved.foo` would match `.nv.shared.` first (11-byte prefix match). The reserved variant only matches section names that do NOT begin with `.nv.shared.` at the 11-byte level but DO begin with `.nv.shared.reserved.` at the 20-byte level — which is impossible. In `merge_elf`, the same sequence appears at lines 975-993 of the decompilation, confirming this is the actual production logic in the binary. In practice, `.nv.shared.reserved.` names are constructed by ptxas to always match the longer prefix in contexts where the 11-byte check is skipped or where the section already has type `0x70000015` from the input cubin.
 
 ### Name-Based Reclassification (PROGBITS Sections)
 
@@ -548,7 +548,7 @@ The constant bank number extraction `strtol(name + 12, NULL, 10)` parses the dec
 | `.nv.constant10` | 10 | `0x7000006E` |
 | `.nv.constant17` | 17 | `0x70000075` |
 
-Per-entry constant sections like `.nv.constant0.my_kernel` also match -- `strtol("0.my_kernel", NULL, 10)` correctly returns 0 because `strtol` stops at the first non-numeric character.
+Per-entry constant sections like `.nv.constant0.my_kernel` also match — `strtol("0.my_kernel", NULL, 10)` correctly returns 0 because `strtol` stops at the first non-numeric character.
 
 ### Pre-classified CUDA Types
 
@@ -647,7 +647,7 @@ Additionally, any type in the constant bank range `0x70000064` through `0x700000
 
 Sections that pass this filter enter the `sub_45E3C0` call that creates output sections and maps input-to-output section indices.
 
-The types explicitly skipped by this filter (`SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`) are not ignored -- they are handled by separate dedicated code paths in the first symbol-iteration pass and the post-merge layout phases.
+The types explicitly skipped by this filter (`SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`) are not ignored — they are handled by separate dedicated code paths in the first symbol-iteration pass and the post-merge layout phases.
 
 ### NOBITS Data Suppression Mask (`0x400D`)
 
@@ -670,7 +670,7 @@ if ((unsigned int)(sh_type - 0x70000007) <= 0xE)
 | 4-13 | `0x7000000B`-`0x70000014` | (various) | 0 | Data pointer preserved |
 | 14 | `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | **1** | Data pointer suppressed (NOBITS) |
 
-When a bit is set, the data pointer passed to `merge_overlapping_global` (`sub_432B10`) is forced to NULL. This means the section participates in the overlap-merge algorithm for offset/size tracking but no byte-level data comparison occurs. This is correct because these section types represent uninitialized GPU memory reservations -- their ELF representation has no data payload.
+When a bit is set, the data pointer passed to `merge_overlapping_global` (`sub_432B10`) is forced to NULL. This means the section participates in the overlap-merge algorithm for offset/size tracking but no byte-level data comparison occurs. This is correct because these section types represent uninitialized GPU memory reservations — their ELF representation has no data payload.
 
 The four NOBITS-semantics types (`GLOBAL`, `LOCAL`, `SHARED`, `SHARED_RESERVED`) all originated from `SHT_NOBITS` (8) input sections. After reclassification, they carry a CUDA-specific type code, but the bitmask preserves their original NOBITS behavior during merge.
 
@@ -856,14 +856,14 @@ The partition type is stored at `ctx+664`. If different input objects disagree o
 | Mercury (`.nv.merc.*`) dedup uses content-equality memcmp in `sub_4748F0` | HIGH | Decompiled lines 1564-1662 show parallel-vector walk with `memcmp(v273, v271, v360)` and `strcmp` on prefix-stripped names; 9-byte (`.nv.merc.`) prefix strip implemented as `+8` after `sub_44E3A0` prefix check |
 | String-table dedup in `sub_442400`/`sub_442520` emits `"set duplicate name for %s(%d) to %d"` | HIGH | String at addr 0x1d39f28 with `referenced_by_functions = ["sub_442400", "sub_442520"]`, xrefs from `0x4424b0` and `0x4425d0` |
 | `"Duplicate weak parameter bank for '%s' is not the same size"` fatal | HIGH | String present in `nvlink_strings.json`; emitted from the weak-entry merge path inside `sub_45E7D0` |
-| `"duplicate Meta-Info entry found"` fatal in `.nv.info` inline handler | MEDIUM | String present; referenced from non-function data table at `0x2459028` -- likely an error-descriptor table consumed by `sub_467460` from inside `sub_45E7D0`'s `.nv.info` branch |
+| `"duplicate Meta-Info entry found"` fatal in `.nv.info` inline handler | MEDIUM | String present; referenced from non-function data table at `0x2459028` — likely an error-descriptor table consumed by `sub_467460` from inside `sub_45E7D0`'s `.nv.info` branch |
 
 ## Cross-References
 
-- [Section Layout Engine](section-layout-engine.md) -- the `sub_4325A0` placement routine that finalizes offsets for every region
-- [Merge Phase](../pipeline/merge.md) -- the per-object merge loop that drives section merging
-- [Layout Phase](../pipeline/layout.md) -- post-merge address assignment using the section layout engine
-- [Symbol Resolution](symbol-resolution.md) -- how global/weak/local symbols are resolved during merge
-- [Weak Symbols](weak-symbols.md) -- weak function selection policy (register count, PTX version)
-- [Data Layout Optimization](data-layout-opt.md) -- constant deduplication and overlap optimization
-- [Dead Code Elimination](dead-code-elimination.md) -- callgraph-based section removal before layout
+- [Section Layout Engine](section-layout-engine.md) — the `sub_4325A0` placement routine that finalizes offsets for every region
+- [Merge Phase](../pipeline/merge.md) — the per-object merge loop that drives section merging
+- [Layout Phase](../pipeline/layout.md) — post-merge address assignment using the section layout engine
+- [Symbol Resolution](symbol-resolution.md) — how global/weak/local symbols are resolved during merge
+- [Weak Symbols](weak-symbols.md) — weak function selection policy (register count, PTX version)
+- [Data Layout Optimization](data-layout-opt.md) — constant deduplication and overlap optimization
+- [Dead Code Elimination](dead-code-elimination.md) — callgraph-based section removal before layout

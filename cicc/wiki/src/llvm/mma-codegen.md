@@ -2,20 +2,20 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-CICC v13.0 contains a complete tensor core code generation pipeline spanning five SM generations (Volta through Blackwell), three distinct MMA instruction families (HMMA/IMMA/BMMA), the SM 90 Warp Group MMA (WGMMA) system, and the SM 100 Tensor Core Generation 5 (tcgen05) engine. The pipeline transforms NVVM intrinsic calls through two parallel lowering paths -- one in the NVVM IR lowering layer (`sub_955A70`) and one in the SelectionDAG backend (`sub_33B0210`) -- before reaching a common PTX instruction emission layer that constructs MMA instructions from packed 64-bit descriptors encoding shape, type, layout, rounding, and saturation.
+CICC v13.0 contains a complete tensor core code generation pipeline spanning five SM generations (Volta through Blackwell), three distinct MMA instruction families (HMMA/IMMA/BMMA), the SM 90 Warp Group MMA (WGMMA) system, and the SM 100 Tensor Core Generation 5 (tcgen05) engine. The pipeline transforms NVVM intrinsic calls through two parallel lowering paths — one in the NVVM IR lowering layer (`sub_955A70`) and one in the SelectionDAG backend (`sub_33B0210`) — before reaching a common PTX instruction emission layer that constructs MMA instructions from packed 64-bit descriptors encoding shape, type, layout, rounding, and saturation.
 
 This page documents the code generation mechanics: how MMA operations flow from source-level `__hmma_*` / `__wmma_*` / `__wgmma_*` builtins through LLVM intrinsic selection, SelectionDAG lowering, and PTX string emission. For the builtin-to-intrinsic mapping and per-ID reference, see [Tensor / MMA Builtins](../builtins/tensor-mma.md). For the SelectionDAG infrastructure that hosts this lowering, see [SelectionDAG](selectiondag.md).
 
 | | |
 |---|---|
-| **NVVM builtin dispatch** | `sub_955A70` (105KB) -- main NVVM builtin lowering dispatcher |
-| **SelectionDAG intrinsic switch** | `sub_33B0210` (343KB, 9,518 lines) -- intrinsic lowering mega-switch, CAT-17 |
-| **SelectionDAG MMA handler** | `sub_33A64B0` -- WMMA/MMA DAG node construction (95 intrinsic IDs) |
-| **WMMA load handler** | `sub_94CAB0` / `sub_94DCB0` -- fragment load codegen |
-| **WMMA MMA handler** | `sub_94E0D0` -- matrix multiply-accumulate codegen |
+| **NVVM builtin dispatch** | `sub_955A70` (105KB) — main NVVM builtin lowering dispatcher |
+| **SelectionDAG intrinsic switch** | `sub_33B0210` (343KB, 9,518 lines) — intrinsic lowering mega-switch, CAT-17 |
+| **SelectionDAG MMA handler** | `sub_33A64B0` — WMMA/MMA DAG node construction (95 intrinsic IDs) |
+| **WMMA load handler** | `sub_94CAB0` / `sub_94DCB0` — fragment load codegen |
+| **WMMA MMA handler** | `sub_94E0D0` — matrix multiply-accumulate codegen |
 | **MMA PTX string builder** | `sub_21E74C0` (AsmPrinter) / `sub_35F3E90` (backend) |
 | **tcgen05.mma lowering** | `sub_304E6C0` (SelectionDAG) / `sub_36E9630` (instruction emission) |
-| **tcgen05 infrastructure** | `sub_30462A0` -- fence/wait/alloc/dealloc/cp/commit |
+| **tcgen05 infrastructure** | `sub_30462A0` — fence/wait/alloc/dealloc/cp/commit |
 | **Address range** | `0x21D0000`--`0x21F0000` (AsmPrinter MMA), `0x304xxxx`--`0x36Fxxxx` (backend) |
 | **Upstream** | `lib/Target/NVPTX/NVPTXISelLowering.cpp` (no upstream MMA; entirely NVIDIA-proprietary) |
 
@@ -68,7 +68,7 @@ Bits     Field       Query key   Values
 [39:32]  shape       "shape"     Shape enum (see below)
 ```
 
-The `"ety"` query reads the result/accumulator element type from bits `[27:24]`, sharing bit positions with `al`/`bl` in a context-dependent manner -- the builder dispatches on the query string to select the correct extraction mask.
+The `"ety"` query reads the result/accumulator element type from bits `[27:24]`, sharing bit positions with `al`/`bl` in a context-dependent manner — the builder dispatches on the query string to select the correct extraction mask.
 
 ### Type Enum
 
@@ -223,12 +223,12 @@ Fragment size (the number of register-width elements per warp fragment) is compu
 
 The WMMA multiply-accumulate handler processes five input operands:
 
-1. `v102` -- destination fragment pointer (output)
-2. `v7` -- A matrix fragment pointer
-3. `v93` -- B matrix fragment pointer
-4. `v92` -- C accumulator fragment pointer
-5. `v8` -- `rowcol` operand (validated range: 0--3 for MMA)
-6. `v9` -- `satf` flag (validated: 0 or 1; skipped for intrinsic 8279)
+1. `v102` — destination fragment pointer (output)
+2. `v7` — A matrix fragment pointer
+3. `v93` — B matrix fragment pointer
+4. `v92` — C accumulator fragment pointer
+5. `v8` — `rowcol` operand (validated range: 0--3 for MMA)
+6. `v9` — `satf` flag (validated: 0 or 1; skipped for intrinsic 8279)
 
 Fragment counts for the MMA operation itself:
 
@@ -282,9 +282,9 @@ This function handles every WMMA/MMA SelectionDAG intrinsic for SM 70--89:
 - `wmma.mma` for all shape/type combinations
 - `mma.sync` (SM 70+), `mma.sp` (SM 80+, structured sparsity), `mma.f64` (SM 80+)
 
-The SelectionDAG path constructs NVPTXISD target-specific DAG nodes that are later matched by the instruction selection tables. The intrinsic IDs from the mega-switch are distinct from the builtin IDs used in the NVVM path -- the mega-switch IDs are LLVM intrinsic table indices, not CUDA builtin numbers.
+The SelectionDAG path constructs NVPTXISD target-specific DAG nodes that are later matched by the instruction selection tables. The intrinsic IDs from the mega-switch are distinct from the builtin IDs used in the NVVM path — the mega-switch IDs are LLVM intrinsic table indices, not CUDA builtin numbers.
 
-## WGMMA -- Warp Group MMA (SM 90 Hopper)
+## WGMMA — Warp Group MMA (SM 90 Hopper)
 
 WGMMA operates on a warp group (4 warps, 128 threads) instead of a single warp. Four builtin IDs (765--768) expand to over 150 LLVM intrinsic variants through compile-time dimension and type dispatch.
 
@@ -322,7 +322,7 @@ The N dimension (extracted via `sub_620FD0` as a constant integer) maps to one o
 | 128 | 10666 | 10667 |
 | 256 | 10738 | 10739 |
 
-For intermediate N values (multiples of 8 from 8 to 256), the mapping continues at stride +4 per N increment. Even intrinsic IDs encode integer-element variants; odd IDs encode float-element variants. The element type is determined by checking whether the LLVM type is an integer with width 10 (i.e., tf32 or bf16 packed as i10 -- a quirk of the NVVM type system).
+For intermediate N values (multiples of 8 from 8 to 256), the mapping continues at stride +4 per N increment. Even intrinsic IDs encode integer-element variants; odd IDs encode float-element variants. The element type is determined by checking whether the LLVM type is an integer with width 10 (i.e., tf32 or bf16 packed as i10 — a quirk of the NVVM type system).
 
 If constant extraction overflows, the compiler emits:
 ```text
@@ -364,9 +364,9 @@ On first call, `sub_953BA0` lazily initializes a red-black tree at `ctx+560` wit
 
 | ID | trans_a | shape | a_nregs | b_nregs | a_type | b_type | c_type |
 |---|---|---|---|---|---|---|---|
-| 745 | 0 | 1 | 1 | 1 | i64 | i64 | -- |
+| 745 | 0 | 1 | 1 | 1 | i64 | i64 | — |
 | 746 | 1 | 0 | 9 | 9 | i32 | i32 | i32x2 |
-| 747 | 0 | 0 | 8 | 8 | i16x2 | i16x2 | -- |
+| 747 | 0 | 0 | 8 | 8 | i16x2 | i16x2 | — |
 | 748 | 0 | 0 | 7 | 7 | i32x4 | i32x4 | i32x8 |
 | 749 | 0 | 0 | 7 | 7 | i32x4 | i32x4 | i32x8 |
 | 750 | 0 | 0 | 7 | 7 | i64 | i32x2 | i32x8 |
@@ -390,11 +390,11 @@ A second red-black tree at `ctx+656` holds 12 entries for MMA async load paramet
 
 | ID | Shape | NRegs | Variant | Fragment Type |
 |---|---|---|---|---|
-| 753 | 1 | 9 | 0 | -- |
-| 754 | 1 | 9 | 1 | -- |
+| 753 | 1 | 9 | 0 | — |
+| 754 | 1 | 9 | 1 | — |
 | 755 | 1 | 9 | 2 | i16x2 |
-| 756 | 25 | 8 | 0 | -- |
-| 757 | 25 | 8 | 1 | -- |
+| 756 | 25 | 8 | 0 | — |
+| 757 | 25 | 8 | 1 | — |
 | 758 | 25 | 10 | 2 | i32x8 |
 | 759 | 23 | 7 | 0 | i32x4 |
 | 760 | 23 | 7 | 1 | i32x4 |
@@ -413,7 +413,7 @@ A second red-black tree at `ctx+656` holds 12 entries for MMA async load paramet
 
 The fence operations pack A/B/C fragment operands via `sub_94B510` and scatter results via `sub_94B940` with name hint `"mmafrag"`.
 
-## tcgen05 -- Tensor Core Generation 5 (SM 100 Blackwell)
+## tcgen05 — Tensor Core Generation 5 (SM 100 Blackwell)
 
 SM 100 introduces tcgen05, a completely new tensor core instruction family with support for MX floating-point formats (MXF4, MXF8F6F4), structured sparsity, weight stationary mode, block scaling, and scaled input accumulators. The tcgen05 system includes both computation (tcgen05.mma) and lifecycle management (alloc, dealloc, fence, wait, commit, cp, relinquish) instructions.
 
@@ -447,7 +447,7 @@ All handled by `sub_30462A0`:
 | tcgen05.relinquish.alloc | 10311 | 4941 | 2 operands |
 | tcgen05.cp.* | 10101 | 4790 | 4 operands |
 
-Commit operations validate multicast mask size -- only 16-bit and 32-bit masks are supported:
+Commit operations validate multicast mask size — only 16-bit and 32-bit masks are supported:
 
 ```text
 "tcgen05.commit.* supports only 16-bit and 32-bit multicast mask size."
@@ -508,16 +508,16 @@ The intrinsic lowering handler (`sub_304E6C0`) maps 10 shape cases (intrinsic op
 
 | Case | Shape Class | Base ISD | +scaleD | +sparsity | +ws | +scaleInputAccum |
 |---|---|---|---|---|---|---|
-| 10299 | Small | 4906 | -- | 4907 | -- | -- |
-| 10300 | Small v2 | 4908 | -- | 4909 | -- | -- |
+| 10299 | Small | 4906 | — | 4907 | — | — |
+| 10300 | Small v2 | 4908 | — | 4909 | — | — |
 | 10301 | Medium | 4905 | 4910 | 4911/4912 | 4937/4938 | yes |
-| 10302 | Medium v2 | 4913 | 4914 | 4915/4916 | -- | yes |
-| 10303 | Large | 4917 | 4918 | 4919/4920 | -- | yes |
-| 10304 | Block-scale small | 4922 | -- | 4923 | -- | -- |
-| 10305 | Block-scale small v2 | 4924 | -- | 4925 | -- | -- |
+| 10302 | Medium v2 | 4913 | 4914 | 4915/4916 | — | yes |
+| 10303 | Large | 4917 | 4918 | 4919/4920 | — | yes |
+| 10304 | Block-scale small | 4922 | — | 4923 | — | — |
+| 10305 | Block-scale small v2 | 4924 | — | 4925 | — | — |
 | 10306 | Block-scale medium | 4921 | 4926 | 4927/4928 | 4939/4940 | yes |
-| 10307 | Block-scale medium v2 | 4929 | 4930 | 4931/4932 | -- | -- |
-| 10308 | Block-scale large | 4933 | 4934 | 4935/4936 | -- | -- |
+| 10307 | Block-scale medium v2 | 4929 | 4930 | 4931/4932 | — | — |
+| 10308 | Block-scale large | 4933 | 4934 | 4935/4936 | — | — |
 
 Operand count varies by variant: small shapes take 5--6 base operands plus optional sparsity operand; medium shapes take 6 base plus optional scale factor; large shapes iterate over additional operands spanning offsets 440--600 (or 440--760 on sm_103 extended variants).
 
@@ -541,7 +541,7 @@ The full set of compile-time validation errors (emitted via `sub_C64ED0`):
 | `"Cannot use 1X as scale vector size for mxf4nvf4 type"` | scale_vec 1X + mxf4nvf4 |
 | `"Cannot use 1X or 4X as scale vector size for mxf4 type"` | scale_vec 1X or 4X + mxf4 |
 
-Note the typo `"colletor"` (missing 'c') in the binary -- this is a genuine NVIDIA binary string, not a transcription error.
+Note the typo `"colletor"` (missing 'c') in the binary — this is a genuine NVIDIA binary string, not a transcription error.
 
 ### tcgen05 Scaled MMA Operand Builder
 
@@ -595,7 +595,7 @@ Multicast modes:
 
 ## Duplicate Backend Copies
 
-Several MMA functions exist as near-identical pairs -- one in the AsmPrinter emission layer (`0x21Dxxxx`--`0x21Exxxx`) and one in the NVPTX backend layer (`0x36Exxxx`). The difference is limited to error reporting and reference counting functions:
+Several MMA functions exist as near-identical pairs — one in the AsmPrinter emission layer (`0x21Dxxxx`--`0x21Exxxx`) and one in the NVPTX backend layer (`0x36Exxxx`). The difference is limited to error reporting and reference counting functions:
 
 | AsmPrinter Copy | Backend Copy | Operation |
 |---|---|---|
@@ -662,26 +662,26 @@ Two error-reporting functions serve the two layers:
 
 Error categories:
 
-1. **Architecture not supported:** `"X is not supported on this architecture"` -- SM gate failure
-2. **Constant validation:** `"rowcol not constant"`, `"satf not constant"` -- non-constant operand
-3. **Type restrictions:** `"Wrong MMA element type"` -- invalid type enum
-4. **Feature combination:** `"ashift is not supported with tcgen05.mma.block_scale"` -- conflicting modifiers
-5. **Scale restrictions:** `"Cannot use N as scale vector size for X type"` -- type/scale mismatch
+1. **Architecture not supported:** `"X is not supported on this architecture"` — SM gate failure
+2. **Constant validation:** `"rowcol not constant"`, `"satf not constant"` — non-constant operand
+3. **Type restrictions:** `"Wrong MMA element type"` — invalid type enum
+4. **Feature combination:** `"ashift is not supported with tcgen05.mma.block_scale"` — conflicting modifiers
+5. **Scale restrictions:** `"Cannot use N as scale vector size for X type"` — type/scale mismatch
 
 ## Differences from Upstream LLVM
 
-Upstream LLVM's NVPTX backend has **no MMA code generation**. The entire MMA pipeline -- builtin tables, three-table lookup, fragment size computation, WGMMA dimension dispatch, tcgen05 lowering, packed descriptor encoding, and all shape/type validation -- is NVIDIA-proprietary code with no upstream equivalent.
+Upstream LLVM's NVPTX backend has **no MMA code generation**. The entire MMA pipeline — builtin tables, three-table lookup, fragment size computation, WGMMA dimension dispatch, tcgen05 lowering, packed descriptor encoding, and all shape/type validation — is NVIDIA-proprietary code with no upstream equivalent.
 
 Upstream LLVM handles MMA operations at the PTX level only: the upstream `NVPTXAsmPrinter` can print PTX `mma.sync` instructions, but the instruction selection, intrinsic lowering, and code generation logic that produces them exists only in NVIDIA's cicc binary. An open-source reimplementation would need to build the entire pipeline from the WMMA/MMA intrinsic definitions through SelectionDAG lowering and PTX emission.
 
 ## Cross-References
 
-- [Tensor / MMA Builtins](../builtins/tensor-mma.md) -- per-builtin-ID reference table and validation rules
-- [SelectionDAG & ISel](selectiondag.md) -- DAG infrastructure hosting MMA lowering
-- [ISel Pattern Matching](isel-patterns.md) -- downstream pattern matcher consuming MMA DAG nodes
-- [SM 90 -- Hopper](../targets/sm90-hopper.md) -- WGMMA feature gate details
-- [SM 100 -- Blackwell](../targets/sm100-blackwell.md) -- tcgen05 feature gate details
-- [SM 120](../targets/sm120.md) -- Blackwell consumer variant features
-- [NVPTX Machine Opcodes](../reference/nvptx-opcodes.md) -- ISD opcode reference
-- [Register Classes](../reference/register-classes.md) -- fragment register allocation
-- [PTX Emission](../pipeline/emission.md) -- downstream PTX text generation
+- [Tensor / MMA Builtins](../builtins/tensor-mma.md) — per-builtin-ID reference table and validation rules
+- [SelectionDAG & ISel](selectiondag.md) — DAG infrastructure hosting MMA lowering
+- [ISel Pattern Matching](isel-patterns.md) — downstream pattern matcher consuming MMA DAG nodes
+- [SM 90 — Hopper](../targets/sm90-hopper.md) — WGMMA feature gate details
+- [SM 100 — Blackwell](../targets/sm100-blackwell.md) — tcgen05 feature gate details
+- [SM 120](../targets/sm120.md) — Blackwell consumer variant features
+- [NVPTX Machine Opcodes](../reference/nvptx-opcodes.md) — ISD opcode reference
+- [Register Classes](../reference/register-classes.md) — fragment register allocation
+- [PTX Emission](../pipeline/emission.md) — downstream PTX text generation

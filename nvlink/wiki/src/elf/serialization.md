@@ -19,14 +19,14 @@ This page documents the serialization machinery at reimplementation grade. For t
 | Program header emitter | `sub_45BAA0` at `0x45BAA0` (5,657 bytes, 228 lines) |
 | Vector append (mode 2) | `sub_44FC10` at `0x44FC10` |
 | Writer context size | 40 bytes |
-| Error handler | `sub_467460` -- fatal error on write failure |
+| Error handler | `sub_467460` — fatal error on write failure |
 | Error strings | `"writing file"`, `"Negative size encountered"`, `"section size mismatch"` |
 
 ## Entry Points
 
 Both entry points follow the same three-step pattern: construct a writer, serialize the ELF, destroy the writer.
 
-### sub\_45C920 -- Write to FILE\*
+### sub\_45C920 — Write to FILE\*
 
 ```c
 void write_elf_to_file(FILE* file, elfw_t* elfw) {
@@ -38,7 +38,7 @@ void write_elf_to_file(FILE* file, elfw_t* elfw) {
 
 Called by `main()` for non-Mercury targets. The `FILE*` is opened externally by `main()` with `fopen(output_filename, "wb")` and closed after this call returns.
 
-### sub\_45C950 -- Write to Memory Buffer
+### sub\_45C950 — Write to Memory Buffer
 
 ```c
 void write_elf_to_memory(void* buffer, elfw_t* elfw) {
@@ -65,7 +65,7 @@ struct elf_writer {                // 40 bytes
 };
 ```
 
-### sub\_45B950 -- File-Mode Factory (Mode 3)
+### sub\_45B950 — File-Mode Factory (Mode 3)
 
 ```c
 elf_writer* create_file_writer(FILE* file, elfw_t* elfw) {
@@ -81,9 +81,9 @@ elf_writer* create_file_writer(FILE* file, elfw_t* elfw) {
 }
 ```
 
-The `rewind_fn` field stores a pointer to libc `rewind()`. This is not called during normal serialization -- it exists so callers could rewind the output stream for multi-pass writing if needed. The `cleanup_fn` is NULL because the `FILE*` lifetime is managed by `main()`.
+The `rewind_fn` field stores a pointer to libc `rewind()`. This is not called during normal serialization — it exists so callers could rewind the output stream for multi-pass writing if needed. The `cleanup_fn` is NULL because the `FILE*` lifetime is managed by `main()`.
 
-### sub\_45BA30 -- Memory-Mode Factory (Mode 4)
+### sub\_45BA30 — Memory-Mode Factory (Mode 4)
 
 ```c
 elf_writer* create_memory_writer(void* buffer, elfw_t* elfw) {
@@ -156,7 +156,7 @@ Mode 1 is never explicitly constructed in observed output paths but is a valid m
 
 Mode 2 uses `sub_44FC10` (vector\_append) to write into a growable arena-backed chunk list. The vector is a linked list of 24-byte chunk headers, each containing `{capacity, remaining, data_ptr}`. When the current chunk cannot hold the write, a new chunk is allocated (sized to at least the vector's default chunk size or the write size, whichever is larger). The 40-byte vector header (stored at `dest+0` for the writer's mode-2 buffer) is laid out: `+0` default chunk size, `+8` total bytes written, `+16` chain head (first wrapper in the wrapper list; NULL until the first append), `+24` tail cursor (pointer-to-pointer initialised to `&chain_head` via the standard `result[3] = result + 2` self-referencing-tail trick, then advanced to each new wrapper's next-slot on append), `+32` current chunk pointer. The wrapper list elements are 16-byte `{next, chunk_ptr}` cells allocated by `sub_464460`; the head/tail-cursor pair lives in the vector header, never inside any chunk. See [ELF Writer Mode 2 layout](../structs/elf-writer.md#mode-2-vector-backed-writer) for the cross-reference.
 
-Mode 3 with a NULL `dest` degrades to byte-by-byte `_IO_putc` to stdout. This path is reachable but not used in practice -- the factory always sets `dest` to a valid `FILE*`.
+Mode 3 with a NULL `dest` degrades to byte-by-byte `_IO_putc` to stdout. This path is reachable but not used in practice — the factory always sets `dest` to a valid `FILE*`.
 
 ### Writer Cleanup: sub\_45B6A0
 
@@ -185,21 +185,21 @@ The serializer reads these fields from the ELF wrapper:
 | `+4` | `uint8` | `uint8` | `e_ident[EI_CLASS]` (1=ELF32, 2=ELF64) |
 | `+7` | `uint8` | `uint8` | `e_ident[EI_OSABI]` ('A' = 0x41 for special flag handling) |
 | `+16` | `uint16` | `uint16` | `e_type` (2 = `ET_EXEC`) |
-| `+28` | `uint32` | -- | `e_phoff` (ELF32 program header offset; computed by serializer as `e_shoff + e_shnum * e_shentsize`) |
+| `+28` | `uint32` | — | `e_phoff` (ELF32 program header offset; computed by serializer as `e_shoff + e_shnum * e_shentsize`) |
 | `+32` | `uint32` | `uint64` | ELF32: `e_shoff`. ELF64: `e_phoff` (standard Elf64\_Ehdr field; serializer computes `e_shoff + e_shnum * e_shentsize` and writes here before Phase 1) |
-| `+40` | -- | `uint64` | `e_shoff` (ELF64 section header offset) |
-| `+44` | `uint16` | -- | `e_phnum` (ELF32; written by serializer preamble) |
-| `+46` | `uint16` | -- | `e_shentsize` (ELF32, always 40) |
+| `+40` | — | `uint64` | `e_shoff` (ELF64 section header offset) |
+| `+44` | `uint16` | — | `e_phnum` (ELF32; written by serializer preamble) |
+| `+46` | `uint16` | — | `e_shentsize` (ELF32, always 40) |
 | `+48` | `uint16/uint32` | `uint32` | `e_shnum` / `e_flags` (dual-use by class) |
-| `+56` | -- | `uint16` | `e_phnum` (ELF64; written by serializer preamble) |
-| `+58` | -- | `uint16` | `e_shentsize` (ELF64, always 64) |
-| `+60` | -- | `uint16` | `e_shnum` (ELF64) |
+| `+56` | — | `uint16` | `e_phnum` (ELF64; written by serializer preamble) |
+| `+58` | — | `uint16` | `e_shentsize` (ELF64, always 64) |
+| `+60` | — | `uint16` | `e_shnum` (ELF64) |
 | `+304` | `uint32` | `uint32` | strtab entry count |
 | `+312` | `uint32` | `uint32` | shstrtab entry count |
 | `+328` | `ptr` | `ptr` | strtab string array |
 | `+336` | `ptr` | `ptr` | shstrtab string array |
-| `+344` | `ptr` | `ptr` | positive symbol array (`pos_symbol_array`) -- serialized as `.symtab` content |
-| `+360` | `ptr` | `ptr` | section array (`section_array`) -- all section records |
+| `+344` | `ptr` | `ptr` | positive symbol array (`pos_symbol_array`) — serialized as `.symtab` content |
+| `+360` | `ptr` | `ptr` | section array (`section_array`) — all section records |
 | `+368` | `ptr` | `ptr` | section order index array (maps output slot -> section index) |
 
 ### Complete Write Sequence
@@ -294,7 +294,7 @@ running_offset = target;
 
 Section 3 is the `.symtab` section in nvlink's canonical ordering: index 0 = null, 1 = `.shstrtab`, 2 = `.strtab`, 3 = `.symtab`. The alignment padding ensures the symbol table (and subsequent sections) begin at their computed file offsets.
 
-The padding pattern is always `0x00` and is emitted one byte per `elf_write` call. The serializer never emits SASS NOP encodings, architecture-specific fill instructions, or any non-zero pattern -- code-section alignment fences and inter-section gaps are byte-for-byte identical to data-section gaps. If a `.text*` section needs intra-section NOP padding for instruction-stream alignment, that padding must already be baked into its fragment list (Phase 7c) by the layout / merge phases before serialization runs.
+The padding pattern is always `0x00` and is emitted one byte per `elf_write` call. The serializer never emits SASS NOP encodings, architecture-specific fill instructions, or any non-zero pattern — code-section alignment fences and inter-section gaps are byte-for-byte identical to data-section gaps. If a `.text*` section needs intra-section NOP padding for instruction-stream alignment, that padding must already be baked into its fragment list (Phase 7c) by the layout / merge phases before serialization runs.
 
 ### Phase 6: Symbol Table Contents (.symtab)
 
@@ -411,7 +411,7 @@ while (node) {
 
 A `desc->sec_offset` of `(uint64_t)-1` (0xFFFFFFFFFFFFFFFF) is treated as a sentinel meaning "no offset specified; append immediately after the previous fragment." This avoids emitting a spurious gap.
 
-NVIDIA-specific TLV-bearing sections -- `.nv.info`, per-kernel `.nv.info.<func>`, `.nv.shared.<func>`, `.nv.constant{0,2,3}.<func>`, `.nv.callgraph`, `.nv.rel.action`, and the rest of the `0x70000000`-range section family that does **not** match the NOBITS bitmask in 7b -- carry no special emission logic in `sub_45BF00`. They flow through this fragment-list traversal identically to standard sections: the merge / finalize phases assemble the TLV byte stream into one or more fragments hanging off `sec+72`, and the serializer concatenates them at the section's computed `sh_offset`. See [.nv.info](nv-info.md) for the TLV record layout that ends up in those fragments.
+NVIDIA-specific TLV-bearing sections — `.nv.info`, per-kernel `.nv.info.<func>`, `.nv.shared.<func>`, `.nv.constant{0,2,3}.<func>`, `.nv.callgraph`, `.nv.rel.action`, and the rest of the `0x70000000`-range section family that does **not** match the NOBITS bitmask in 7b — carry no special emission logic in `sub_45BF00`. They flow through this fragment-list traversal identically to standard sections: the merge / finalize phases assemble the TLV byte stream into one or more fragments hanging off `sec+72`, and the serializer concatenates them at the section's computed `sh_offset`. See [.nv.info](nv-info.md) for the TLV record layout that ends up in those fragments.
 
 #### 7d. Size Validation
 
@@ -509,7 +509,7 @@ The function walks all sections via the section order array, classifying each by
 
 For NOBITS-type sections within the `.shstrtab` group, the alignment contribution is accumulated but no file data is counted (same bitmask check as Phase 7b). The accumulated NOBITS size is added to `p_memsz` but not `p_filesz` for the `.shstrtab` segment.
 
-#### Program Header Construction -- ELF64
+#### Program Header Construction — ELF64
 
 When `elf_class == 2`, each program header entry is 56 bytes (`sizeof(Elf64_Phdr)`). The entries are built on the stack and written as a single contiguous blob:
 
@@ -565,9 +565,9 @@ elf_write(writer, phdr, e_phnum * 56);
 
 Note: the first entry is `PT_PHDR` (type 6), which identifies the program header table to the ELF loader. The last entry is `PT_LOAD` (type 1), which ensures the program header table data is actually loaded into memory. Both entries point to the same file region (`e_phoff`), which is standard ELF practice. The `.strtab` segment uses `PF_R|PF_X` (5), while the `.shstrtab` segment uses `PF_R|PF_W` (6).
 
-#### Program Header Construction -- ELF32
+#### Program Header Construction — ELF32
 
-When `elf_class == 1`, each entry is 32 bytes (`sizeof(Elf32_Phdr)`). The structure differs in field ordering -- note that `p_flags` is at offset +24 in ELF32 (after `p_filesz`/`p_memsz`), not at offset +4 as in ELF64:
+When `elf_class == 1`, each entry is 32 bytes (`sizeof(Elf32_Phdr)`). The structure differs in field ordering — note that `p_flags` is at offset +24 in ELF32 (after `p_filesz`/`p_memsz`), not at offset +4 as in ELF64:
 
 ```text
 Elf32_Phdr: { p_type(+0), p_offset(+4), p_vaddr(+8), p_paddr(+12),
@@ -639,7 +639,7 @@ uint64_t compute_elf_size_64(elfw_t* elfw) {
 }
 ```
 
-The constants 128 (4 x 32) and 224 (4 x 56) represent the maximum program header table size -- space for up to 4 entries of the architecture-appropriate `Phdr` size.
+The constants 128 (4 x 32) and 224 (4 x 56) represent the maximum program header table size — space for up to 4 entries of the architecture-appropriate `Phdr` size.
 
 The `e_shnum == 0` fallback handles ELF's overflow encoding: when the section count exceeds 65535, `e_shnum` is set to 0 and the actual count is stored in `sh_size` of section header entry 0 (the `SHN_UNDEF` entry).
 
@@ -735,28 +735,28 @@ All three call `sub_467460` which is the linker's fatal error handler. The first
 | `0x45B6A0` | `destroy_writer` | ~48 bytes | Calls cleanup function and frees context |
 | `0x45BAA0` | `write_program_headers` | 5,657 bytes | Constructs and writes ELF Phdr table |
 | `0x44FC10` | `vector_append` | ~256 bytes | Growable vector write for mode 2 |
-| `0x438BB0` | `align_up` | -- | `align_up(value, align)` -- returns `value` if already aligned, else `((value / align) + 1) * align`; used by `sub_45BAA0` to accumulate NOBITS extents in the `.shstrtab` segment's `p_memsz` |
-| `0x464DB0` | `list_get` | -- | Ordered list element accessor |
-| `0x464BB0` | `list_size` | -- | Ordered list count accessor |
-| `0x467460` | `fatal_error` | -- | Fatal error reporter (does not return) |
+| `0x438BB0` | `align_up` | — | `align_up(value, align)` — returns `value` if already aligned, else `((value / align) + 1) * align`; used by `sub_45BAA0` to accumulate NOBITS extents in the `.shstrtab` segment's `p_memsz` |
+| `0x464DB0` | `list_get` | — | Ordered list element accessor |
+| `0x464BB0` | `list_size` | — | Ordered list count accessor |
+| `0x467460` | `fatal_error` | — | Fatal error reporter (does not return) |
 
 ## Cross-References
 
 **Internal (nvlink wiki):**
 
-- [ELF Writer](../structs/elf-writer.md) -- The 672-byte `elfw` struct layout and the 40-byte polymorphic writer context used by the serializer
-- [Program Headers](program-headers.md) -- Phase 10 program header table construction (`sub_45BAA0`) called as the final serialization step
-- [Device ELF Format](device-elf-format.md) -- ELF header encoding, `e_shoff`/`e_shnum` fields, and class-dependent field widths
-- [NVIDIA Section Types](nvidia-sections.md) -- Section type constants and the NOBITS bitmask (`0x400D`) used in Phase 7b to skip no-data sections
-- [Output Writing](../pipeline/output.md) -- Pipeline dispatch that selects between `write_elf_to_file` and `write_elf_to_memory` entry points
-- [Layout Phase](../pipeline/layout.md) -- Computes section offsets (`sh_offset`) and `e_shoff` that the serializer uses for alignment padding
-- [Mercury FNLZR](../mercury/fnlzr.md) -- Mercury path pre-allocates buffer via `compute_elf_size`, serializes to memory, then passes to FNLZR
-- [Memory Arenas](../infra/memory-arenas.md) -- Arena allocator (`sub_4307C0`) used by writer factories and vector-backed mode 2
-- [Section Merging](../linker/section-merging.md) -- Builds the fragment linked lists at `sec+72` that Phase 7c traverses during section data emission
+- [ELF Writer](../structs/elf-writer.md) — The 672-byte `elfw` struct layout and the 40-byte polymorphic writer context used by the serializer
+- [Program Headers](program-headers.md) — Phase 10 program header table construction (`sub_45BAA0`) called as the final serialization step
+- [Device ELF Format](device-elf-format.md) — ELF header encoding, `e_shoff`/`e_shnum` fields, and class-dependent field widths
+- [NVIDIA Section Types](nvidia-sections.md) — Section type constants and the NOBITS bitmask (`0x400D`) used in Phase 7b to skip no-data sections
+- [Output Writing](../pipeline/output.md) — Pipeline dispatch that selects between `write_elf_to_file` and `write_elf_to_memory` entry points
+- [Layout Phase](../pipeline/layout.md) — Computes section offsets (`sh_offset`) and `e_shoff` that the serializer uses for alignment padding
+- [Mercury FNLZR](../mercury/fnlzr.md) — Mercury path pre-allocates buffer via `compute_elf_size`, serializes to memory, then passes to FNLZR
+- [Memory Arenas](../infra/memory-arenas.md) — Arena allocator (`sub_4307C0`) used by writer factories and vector-backed mode 2
+- [Section Merging](../linker/section-merging.md) — Builds the fragment linked lists at `sec+72` that Phase 7c traverses during section data emission
 
 **Sibling wikis:**
 
-- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) -- ptxas-side ELF serialization for comparison with nvlink's output path
+- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) — ptxas-side ELF serialization for comparison with nvlink's output path
 
 ## Confidence Assessment
 

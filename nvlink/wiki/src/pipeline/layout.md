@@ -1,6 +1,6 @@
 # Layout Phase
 
-The layout phase (`sub_439830`, 65,776 bytes at `0x439830`) is the single largest phase in the linker core after merge. It assigns addresses to every data item across all NVIDIA GPU memory spaces -- global memory, shared memory (global, local, extern, and reserved), and constant banks -- merges overlapping data, deduplicates constants, resolves extern shared memory fixups, and lays out per-kernel constant sections. The function is called from `main()` immediately after the merge phase completes and before relocation application.
+The layout phase (`sub_439830`, 65,776 bytes at `0x439830`) is the single largest phase in the linker core after merge. It assigns addresses to every data item across all NVIDIA GPU memory spaces — global memory, shared memory (global, local, extern, and reserved), and constant banks — merges overlapping data, deduplicates constants, resolves extern shared memory fixups, and lays out per-kernel constant sections. The function is called from `main()` immediately after the merge phase completes and before relocation application.
 
 Despite the sweep identifying this function as "shared\_memory\_layout," the decompiled code reveals it is actually the **unified layout engine** for the entire device ELF: it handles global data, all four shared memory categories, constant bank layout, constant deduplication, OCG (object-code-generator) constant optimization, bindless resource allocation, reserved shared memory symbols, UFT section setup, and texture/sampler/surface resource counting. The name in the binary's debug trace is simply `"layout"`.
 
@@ -163,7 +163,7 @@ Verbose output includes `"esh %s has offset %d"`, `"shared entry %s:"`, `"entry 
 
 ### Phase 5: Extern Shared Memory Fixups
 
-Extern shared variables (`__shared__ extern`) have no static size -- their offset is determined at link time based on the total non-extern shared memory consumed. This phase resolves those addresses.
+Extern shared variables (`__shared__ extern`) have no static size — their offset is determined at link time based on the total non-extern shared memory consumed. This phase resolves those addresses.
 
 There are two distinct code paths:
 
@@ -242,7 +242,7 @@ This phase handles the CUDA constant memory banks (`.nv.constant0`, `.nv.constan
 7. Verbose: `"OCG constant section %d reaches entry %d(%s)"`, `"need new ocg section %s"`, `"new ocg %s offset = %lld in %d"`, `"reset ocg constant reloc offset from %lld to %lld"`.
 8. After creating all per-entry copies, the original shared OCG section's symbol list is freed and its data zeroed.
 
-**Sub-path 9b: Non-OCG constant sections.** If the constant bank type matches the standard constant type (vtable offset 144 -- typically `.nv.constant0`), the section is laid out using `sub_4325A0`, with an optional `syscall-const-offset` value from `elfw+504`. Verbose: `"constant entry %s:"`.
+**Sub-path 9b: Non-OCG constant sections.** If the constant bank type matches the standard constant type (vtable offset 144 — typically `.nv.constant0`), the section is laid out using `sub_4325A0`, with an optional `syscall-const-offset` value from `elfw+504`. Verbose: `"constant entry %s:"`.
 
 **Sub-path 9c: Constant section merging.** If the used-set filter is active (`elfw+97` set by `--kernels-used` / `--variables-used`) and `elfw+80` (debug_flag) is clear, the function creates a `TEMP_MERGED_CONSTANTS` temporary section, calls `sub_4339A0` (the constant deduplication engine, 13,199 bytes) to merge all constant data into it, then replaces the original section's contents. This function identifies duplicate 32-bit and 64-bit values and aliases symbols. Verbose: `"layout and merge section %s"`, `"found duplicate value 0x%x, alias %s to %s"`.
 
@@ -490,7 +490,7 @@ After the merge phase (`sub_45E7D0`), the `elfw` object holds the following sect
 | `.nv.constant0.kernel_b` | `SHT_PROGBITS` (cbank0) | 128 B | 4 | A | Driver param bank (kernel_b) |
 | `.nv.constant2` | `SHT_PROGBITS` (cbank2) | 4096 B | 16 | A | User const bank, shared between both kernels |
 | `.nv.shared.kernel_a` | `SHT_NOBITS` (smem) | 128 B | 16 | AW | Per-entry shared for `kernel_a` |
-| `.nv.shared` | `SHT_NOBITS` (smem) | -- | 8 | AW | Two globals: `g_tmp` (64 B, align 8) and `g_hist` (96 B, align 16) |
+| `.nv.shared` | `SHT_NOBITS` (smem) | — | 8 | AW | Two globals: `g_tmp` (64 B, align 8) and `g_hist` (96 B, align 16) |
 
 Both kernels contain `R_CUDA_ABS32_LO_20` relocations into `.nv.shared` (global shared variables `g_tmp` and `g_hist`) and `R_CUDA_CONST_FIELD` relocations into `.nv.constant2`. `.nv.constant0.kernel_a` contains three symbols and `.nv.constant0.kernel_b` contains two, both split out during merge (Phase 9a's OCG path).
 
@@ -507,7 +507,7 @@ elfw+272 (per-entry cbank) = list{.nv.constant0.kernel_a, .nv.constant0.kernel_b
 
 ### Step 1: Per-Section Symbol Offsets (`sub_4325A0`)
 
-The layout engine is called on each data-bearing section. `.text.*` sections are **not** touched by `sub_439830` -- they hold fully resolved SASS after merge and have stable internal layout. Only shared/constant/global data sections have their symbol offsets reassigned.
+The layout engine is called on each data-bearing section. `.text.*` sections are **not** touched by `sub_439830` — they hold fully resolved SASS after merge and have stable internal layout. Only shared/constant/global data sections have their symbol offsets reassigned.
 
 #### Step 1a: `.nv.constant0.kernel_a` (Phase 9b)
 
@@ -521,7 +521,7 @@ Symbol list after merge (in insertion order):
 | `__cudaparm_kernel_a_bias` | 4 | 4 |
 | `__cudaparm_kernel_a_mode` | 4 | 4 |
 
-`sub_4325A0` first calls `sub_4647D0(section+72, sub_432440)` to stable-sort by alignment (decreasing). The list becomes `{ptr_out, count, scale, bias, mode}` (unchanged here -- insertion was already sorted). It then walks the list:
+`sub_4325A0` first calls `sub_4647D0(section+72, sub_432440)` to stable-sort by alignment (decreasing). The list becomes `{ptr_out, count, scale, bias, mode}` (unchanged here — insertion was already sorted). It then walks the list:
 
 ```text
 current = 0
@@ -653,7 +653,7 @@ s_local: align=16 -> roundup(160,16)=160 -> value=160, current=160+128=288
 
 `section+32 = 288`. Verbose: `shared entry .nv.shared.kernel_a:` then `variable s_local at offset 160`.
 
-**Step 2e: `kernel_b` has no per-entry `.nv.shared.kernel_b`.** Its shared memory requirement is just the global region it reaches (`g_tmp` at offset 96). If `kernel_b` did **not** reach any global shared variable, the verbose trace would emit `entry kernel_b does not reach global shared` and its hypothetical per-entry section would start at offset 0 instead of 160 -- this is the key optimization: non-overlapping kernels can reuse the low shared addresses.
+**Step 2e: `kernel_b` has no per-entry `.nv.shared.kernel_b`.** Its shared memory requirement is just the global region it reaches (`g_tmp` at offset 96). If `kernel_b` did **not** reach any global shared variable, the verbose trace would emit `entry kernel_b does not reach global shared` and its hypothetical per-entry section would start at offset 0 instead of 160 — this is the key optimization: non-overlapping kernels can reuse the low shared addresses.
 
 Final per-kernel shared memory footprints:
 
@@ -706,7 +706,7 @@ cbank2 (shared by both kernels):
     +4096 +---------------------+
 ```
 
-Both kernels see the **same** cbank2 addresses -- that is the whole point of a non-per-entry constant bank. In contrast, cbank0 is split per entry because the parameter layout differs between kernels.
+Both kernels see the **same** cbank2 addresses — that is the whole point of a non-per-entry constant bank. In contrast, cbank0 is split per entry because the parameter layout differs between kernels.
 
 ### Step 4: Final File `sh_offset` Table
 
@@ -716,7 +716,7 @@ For the merged ELF described above, assuming a standard 64-byte ELF64 header and
 
 | # | Section | `sh_type` | `sh_addralign` | `sh_size` | Raw write start | `sh_offset` (aligned) | `sh_offset + sh_size` |
 |---|---|---|---|---|---|---|---|
-| 0 | `NULL` | `SHT_NULL` | 0 | 0 | -- | 0 | 0 |
+| 0 | `NULL` | `SHT_NULL` | 0 | 0 | — | 0 | 0 |
 | 1 | `.text.kernel_a` | `PROGBITS` | 128 | 2048 | 64 | **128** | 2176 |
 | 2 | `.text.kernel_b` | `PROGBITS` | 128 | 1024 | 2176 | **2176** | 3200 |
 | 3 | `.nv.constant0.kernel_a` | `PROGBITS` | 8 | 24 | 3200 | **3200** | 3224 |
@@ -735,7 +735,7 @@ Alignment padding events to notice:
 - Section 3 (`.nv.constant0.kernel_a`) at 3200 is 8-aligned already: **no padding**.
 - Section 4 (`.nv.constant0.kernel_b`) at 3224 is 8-aligned: **no padding**.
 - Section 5 (`.nv.constant2`) at 3244 must align to 16: **4 bytes of padding** (3244 -> 3248).
-- Sections 6 and 7 are `SHT_NOBITS`: they occupy zero bytes in the file, so their `sh_offset` is set to the current write position but the cursor does **not** advance past them. Both record `sh_offset = 7232`. The same file-vs-memory asymmetry surfaces at program-header level when the cubin is executable -- NOBITS sections in the code segment add to `p_memsz` (via `code_nobits_sz`) without touching `p_filesz`; see [Program Headers: First Pass](../elf/program-headers.md#first-pass-compute-segment-extents).
+- Sections 6 and 7 are `SHT_NOBITS`: they occupy zero bytes in the file, so their `sh_offset` is set to the current write position but the cursor does **not** advance past them. Both record `sh_offset = 7232`. The same file-vs-memory asymmetry surfaces at program-header level when the cubin is executable — NOBITS sections in the code segment add to `p_memsz` (via `code_nobits_sz`) without touching `p_filesz`; see [Program Headers: First Pass](../elf/program-headers.md#first-pass-compute-segment-extents).
 - Section 9 (`.symtab`) aligns 7352 -> 7360: **8 bytes of padding**.
 
 The section content cursor therefore advances: `64 -> 128 -> 2176 -> 3200 -> 3224 -> 3244 -> 3248 -> 7232` (data sections done) `-> 7352 -> 7360 -> ...` (metadata sections). Total file padding: `64 + 4 + 8 = 76` bytes.
@@ -762,20 +762,20 @@ At this point `sub_439830` returns and control passes to the relocation phase (`
 
 ## Cross-References
 
-- [Pipeline Overview](overview.md) -- layout phase in the context of the full 14-phase pipeline
-- [Merge Phase](merge.md) -- preceding phase that produces the merged elfw consumed by layout
-- [Relocation Phase](relocate.md) -- succeeding phase that patches instruction/data bytes against addresses assigned here
-- [Section Merging](../linker/section-merging.md) -- how sections are merged during Phase 9 before layout assigns addresses
-- [Data Layout Optimization](../linker/data-layout-opt.md) -- the constant deduplication and overlap merge sub-algorithms called from layout
-- [Bindless Relocations](../linker/bindless-relocations.md) -- Phase 2 bindless resource processing detail (`sub_438DD0`)
-- [Unified Function Tables](../elf/uft.md) -- Phase 10 UFT/UDT section creation and validation (`sub_463F70`)
-- [Constant Banks](../elf/constant-banks.md) -- `.nv.constant0`/`.nv.constant2` layout and R\_CUDA\_CONST\_FIELD relocations
-- [Program Headers](../elf/program-headers.md) -- how laid-out sections map to ELF program headers in the output
-- [Architecture Profiles](../targets/arch-profiles.md) -- the vtable at `elfw+488` queried throughout layout for architecture-specific limits
-- [ELF Writer Structure](../structs/elf-writer.md) -- the elfw data structure that layout mutates
-- [Section Record](../structs/section-record.md) -- per-section metadata records updated during layout
-- [Symbol Record](../structs/symbol-record.md) -- per-symbol records whose `value` field is assigned during layout
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- callgraph reachability analysis that determines which symbols are live for layout
+- [Pipeline Overview](overview.md) — layout phase in the context of the full 14-phase pipeline
+- [Merge Phase](merge.md) — preceding phase that produces the merged elfw consumed by layout
+- [Relocation Phase](relocate.md) — succeeding phase that patches instruction/data bytes against addresses assigned here
+- [Section Merging](../linker/section-merging.md) — how sections are merged during Phase 9 before layout assigns addresses
+- [Data Layout Optimization](../linker/data-layout-opt.md) — the constant deduplication and overlap merge sub-algorithms called from layout
+- [Bindless Relocations](../linker/bindless-relocations.md) — Phase 2 bindless resource processing detail (`sub_438DD0`)
+- [Unified Function Tables](../elf/uft.md) — Phase 10 UFT/UDT section creation and validation (`sub_463F70`)
+- [Constant Banks](../elf/constant-banks.md) — `.nv.constant0`/`.nv.constant2` layout and R\_CUDA\_CONST\_FIELD relocations
+- [Program Headers](../elf/program-headers.md) — how laid-out sections map to ELF program headers in the output
+- [Architecture Profiles](../targets/arch-profiles.md) — the vtable at `elfw+488` queried throughout layout for architecture-specific limits
+- [ELF Writer Structure](../structs/elf-writer.md) — the elfw data structure that layout mutates
+- [Section Record](../structs/section-record.md) — per-section metadata records updated during layout
+- [Symbol Record](../structs/symbol-record.md) — per-symbol records whose `value` field is assigned during layout
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — callgraph reachability analysis that determines which symbols are live for layout
 
 ## Confidence Assessment
 

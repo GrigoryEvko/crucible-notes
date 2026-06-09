@@ -39,8 +39,8 @@ These checks run in two phases. The per-lambda checks (3593, 3595) occur in `sca
 | 3610 | `extended_lambda_init_capture_initlist` | Init-captures with `std::initializer_list` type are prohibited. The type walk callback `sub_41B420` checks kind and class identity. | `sub_41B420` / `sub_4907A0` |
 | 3602 | `extended_lambda_capture_in_constexpr_if` | An extended lambda cannot first-capture a variable inside a `constexpr if` branch. The capture must be visible outside the discarded branch. | `sub_447930` Phase 6 |
 | 3614 | `extended_lambda_hd_init_capture` | Init-captures are completely prohibited for `__host__ __device__` lambdas. When byte+25 bit 4 is set (HD wrapper) and the lambda has any captures, this error fires and the HD bits are cleared. | `sub_447930` line ~1710 |
-| -- | `this_addr_capture_ext_lambda` | Implicit capture of `this` in an extended lambda triggers a warning. Separate from the errors above; fires during capture list processing. The closure stores a host-side `this` pointer that is meaningless on the device, so the warning steers users to explicit `*this` (by value) or to passing the needed members through the capture list. | `sub_42FE50` / `sub_42D710` |
-| -- | *(no tag)* | `*this` capture requires either `__device__`-only or definition inside `__device__`/`__global__` function, unless enabled by language dialect. | `sub_42FE50` |
+| — | `this_addr_capture_ext_lambda` | Implicit capture of `this` in an extended lambda triggers a warning. Separate from the errors above; fires during capture list processing. The closure stores a host-side `this` pointer that is meaningless on the device, so the warning steers users to explicit `*this` (by value) or to passing the needed members through the capture list. | `sub_42FE50` / `sub_42D710` |
+| — | *(no tag)* | `*this` capture requires either `__device__`-only or definition inside `__device__`/`__global__` function, unless enabled by language dialect. | `sub_42FE50` |
 
 ### Category 2: Type Restrictions
 
@@ -66,7 +66,7 @@ The callback `sub_41B420` uses a global discriminator `dword_E7FE78` to select b
 | 1 | `operator()` signature | 3606 | 3607 |
 | 2 | Parent template args | 3610 | 3611 |
 
-The dispatch formula in `sub_41B420` is `4 * (dword_E7FE78 != 1) + base_error`. For local types, base is 3603; for private types, base is 3604. When `dword_E7FE78 == 0`, the multiplier is 4*1 = 4, yielding 3603+0 / 3604+0. When `dword_E7FE78 == 1`, the multiplier is 4*0 = 0, yielding 3603+3 = 3606 / 3604+3 = 3607. When `dword_E7FE78 == 2` (and `!= 1`), the multiplier is 4*1 = 4, yielding 3603+4 = *(incorrect -- the actual formula uses a conditional)*. In practice the decompiled code shows:
+The dispatch formula in `sub_41B420` is `4 * (dword_E7FE78 != 1) + base_error`. For local types, base is 3603; for private types, base is 3604. When `dword_E7FE78 == 0`, the multiplier is 4*1 = 4, yielding 3603+0 / 3604+0. When `dword_E7FE78 == 1`, the multiplier is 4*0 = 0, yielding 3603+3 = 3606 / 3604+3 = 3607. When `dword_E7FE78 == 2` (and `!= 1`), the multiplier is 4*1 = 4, yielding 3603+4 = *(incorrect — the actual formula uses a conditional)*. In practice the decompiled code shows:
 
 ```c
 // For function-local type check:
@@ -110,19 +110,19 @@ The parent function's template parameter list must satisfy naming and variadic c
 
 | Error | Tag | Restriction |
 |---|---|---|
-| -- | `extended_lambda_parent_template_param_unnamed` | Every template parameter of the enclosing parent function must be named. Anonymous template parameters (`template <typename>`) prevent the wrapper from referencing the parameter in its tag type. Checked per-parameter during scope walk. |
-| -- | `extended_lambda_nest_parent_template_param_unnamed` | Same restriction applied to nested parent scopes (enclosing class templates, enclosing function templates above the immediate parent). |
-| -- | `extended_lambda_multiple_parameter_packs` | The parent template function can have at most one variadic parameter pack, and it must be the last parameter. Multiple packs or non-trailing packs prevent the device compiler from deducing the wrapper specialization. |
+| — | `extended_lambda_parent_template_param_unnamed` | Every template parameter of the enclosing parent function must be named. Anonymous template parameters (`template <typename>`) prevent the wrapper from referencing the parameter in its tag type. Checked per-parameter during scope walk. |
+| — | `extended_lambda_nest_parent_template_param_unnamed` | Same restriction applied to nested parent scopes (enclosing class templates, enclosing function templates above the immediate parent). |
+| — | `extended_lambda_multiple_parameter_packs` | The parent template function can have at most one variadic parameter pack, and it must be the last parameter. Multiple packs or non-trailing packs prevent the device compiler from deducing the wrapper specialization. |
 
 ### Category 5: Nesting and Context Restrictions
 
 | Error | Tag | Restriction | Rationale |
 |---|---|---|---|
-| -- | `extended_lambda_enclosing_function_generic_lambda` | An extended lambda cannot be defined inside a generic lambda expression. Generic lambdas have template `operator()` which makes the closure type non-deducible for wrapper tag generation. | Generic lambdas produce dependent types that the wrapper system cannot resolve. |
-| -- | `extended_lambda_enclosing_function_hd_lambda` | An extended lambda cannot be defined inside another extended `__host__ __device__` lambda. | The wrapper for the outer HD lambda would need to capture the inner wrapper, creating a recursive type dependency. |
-| -- | `extended_host_device_generic_lambda` | A `__host__ __device__` extended lambda cannot be a generic lambda (i.e., with `auto` parameters). | The HD wrapper uses type erasure with concrete function pointer types. Generic lambdas would require polymorphic function pointers, which the type erasure scheme cannot express. |
-| -- | `extended_lambda_inaccessible_ancestor` | An extended lambda cannot be defined inside a class that has private or protected access within another class. | The wrapper tag must be visible to both host and device compilation passes. A privately-nested class is not accessible from the translation-unit scope where the wrapper template is instantiated. |
-| -- | `extended_lambda_inside_constexpr_if` | An extended lambda cannot be defined inside the `if` or `else` block of a `constexpr if` statement (platform/dialect dependent). | Discarded `constexpr if` branches may eliminate the lambda entirely, but the preamble has already been committed. Restriction prevents dangling wrapper specializations. |
+| — | `extended_lambda_enclosing_function_generic_lambda` | An extended lambda cannot be defined inside a generic lambda expression. Generic lambdas have template `operator()` which makes the closure type non-deducible for wrapper tag generation. | Generic lambdas produce dependent types that the wrapper system cannot resolve. |
+| — | `extended_lambda_enclosing_function_hd_lambda` | An extended lambda cannot be defined inside another extended `__host__ __device__` lambda. | The wrapper for the outer HD lambda would need to capture the inner wrapper, creating a recursive type dependency. |
+| — | `extended_host_device_generic_lambda` | A `__host__ __device__` extended lambda cannot be a generic lambda (i.e., with `auto` parameters). | The HD wrapper uses type erasure with concrete function pointer types. Generic lambdas would require polymorphic function pointers, which the type erasure scheme cannot express. |
+| — | `extended_lambda_inaccessible_ancestor` | An extended lambda cannot be defined inside a class that has private or protected access within another class. | The wrapper tag must be visible to both host and device compilation passes. A privately-nested class is not accessible from the translation-unit scope where the wrapper template is instantiated. |
+| — | `extended_lambda_inside_constexpr_if` | An extended lambda cannot be defined inside the `if` or `else` block of a `constexpr if` statement (platform/dialect dependent). | Discarded `constexpr if` branches may eliminate the lambda entirely, but the preamble has already been committed. Restriction prevents dangling wrapper specializations. |
 | 3590 | `extended_lambda_multiple_parent` | Cannot specify `__nv_parent` more than once in a single lambda's capture list. | `__nv_parent` stores a single parent class pointer at `lambda_info + 32`; only one slot exists. |
 | 3634 | *(no dedicated tag)* | `__nv_parent` requires the lambda to be `__device__` annotated. If `__nv_parent` is specified without `__device__` execution space, this error fires. Additionally validates that the enclosing scope has `__host__` but not `__device__` execution space (bits at entity+182). | `__nv_parent` is used to link the device closure to its enclosing class for member access. This is only meaningful in device execution context. |
 
@@ -251,11 +251,11 @@ sub_41A3E0 (validate_type_hd_annotation):
 
 This compact callback (33 lines decompiled) is invoked by `sub_7B0B60` for every type node in the capture's type tree. It checks two properties:
 
-1. **Function-local type** -- `entity+81 bit 0` set: the type is defined inside a function body. Error selection uses `dword_E7FE78` to pick between capture context (3603), operator() context (3606), and parent template-arg context (3610).
+1. **Function-local type** — `entity+81 bit 0` set: the type is defined inside a function body. Error selection uses `dword_E7FE78` to pick between capture context (3603), operator() context (3606), and parent template-arg context (3610).
 
-2. **Private/protected member type** -- `entity+81 bit 2` set AND `entity+80 bits 0-1` in range [1,2] (private or protected access specifier). Error selection parallels the local-type case: 3604, 3607, or 3611 depending on `dword_E7FE78`.
+2. **Private/protected member type** — `entity+81 bit 2` set AND `entity+80 bits 0-1` in range [1,2] (private or protected access specifier). Error selection parallels the local-type case: 3604, 3607, or 3611 depending on `dword_E7FE78`.
 
-Special case: when `entity+132 == 9` (template parameter dependent type) AND `entity+152` points to a class with `byte+86 bit 0` set AND `entity+72` is non-null, the function-local check is suppressed. This handles template parameters that are not themselves local but instantiate with local types -- the error is deferred to instantiation time.
+Special case: when `entity+132 == 9` (template parameter dependent type) AND `entity+152` points to a class with `byte+86 bit 0` set AND `entity+72` is non-null, the function-local check is suppressed. This handles template parameters that are not themselves local but instantiate with local types — the error is deferred to instantiation time.
 
 ## Adjacent Standard-Lambda Diagnostics
 
@@ -283,7 +283,7 @@ The validators above only run under `--extended-lambda`. cudafe++ also exposes t
 | `anon_union_ref_in_lambda` | A reference to a member of an anonymous union appears inside a lambda body. |
 | `braced_list_for_implicit_lambda_type` | A braced-init-list was used in a position where the implicit lambda return type cannot be deduced from it. |
 | `cl_lambdas_option_only_in_cplusplus` | The `--lambdas` cl-style option was passed when compiling C, not C++. |
-| `empty_lambda_template_param_list` | `template <> []()` -- C++20 generic lambda with an empty explicit template parameter list. |
+| `empty_lambda_template_param_list` | `template <> []()` — C++20 generic lambda with an empty explicit template parameter list. |
 | `explicit_lambda_template_parameters_is_cpp20` | Explicit template parameters on lambdas (`[]<typename T>()`) require C++20. |
 | `constexpr_lambdas_not_enabled` | `constexpr` lambda used under a pre-C++17 dialect. |
 | `lambdas_is_cpp11` | A lambda expression encountered under pre-C++11 dialect. |
@@ -371,11 +371,11 @@ If the call operator already has execution space bits set (from explicit annotat
 | `sub_6BCDD0` | `nv_find_parent_lambda_function` | 33 | Scope chain walk to find enclosing host/device function |
 | `sub_6BCBF0` | `nv_record_capture_count` | 13 | Set bit in device or host-device bitmap |
 | `sub_4F9F20` | *(capture count finalizer)* | ~620 | Checks capture count > 0x3FE, calls bitmap setter |
-| `sub_7B0B60` | *(tree walker)* | -- | Recursive type tree traversal, calls callback for each node |
-| `sub_7A8370` | *(is_array_type)* | -- | Returns nonzero if type node is an array type |
-| `sub_7A9310` | *(get_element_type)* | -- | Returns the element type of an array type node |
-| `sub_550E50` | *(check_default_constructible)* | -- | `sub_550E50(30, type, 0)` tests default-constructibility |
-| `sub_510860` | *(check_callable)* | -- | `sub_510860(60, op, type)` tests if operator is callable |
+| `sub_7B0B60` | *(tree walker)* | — | Recursive type tree traversal, calls callback for each node |
+| `sub_7A8370` | *(is_array_type)* | — | Returns nonzero if type node is an array type |
+| `sub_7A9310` | *(get_element_type)* | — | Returns the element type of an array type node |
+| `sub_550E50` | *(check_default_constructible)* | — | `sub_550E50(30, type, 0)` tests default-constructibility |
+| `sub_510860` | *(check_callable)* | — | `sub_510860(60, op, type)` tests if operator is callable |
 
 ## Global State
 
@@ -395,10 +395,10 @@ If the call operator already has execution space bits set (from explicit annotat
 
 ## Related Pages
 
-- [Extended Lambda Overview](./overview.md) -- end-to-end pipeline, annotation bits, `lambda_info` layout
-- [Device Lambda Wrapper](./device-wrapper.md) -- `__nv_dl_wrapper_t` template structure
-- [Host-Device Lambda Wrapper](./host-device-wrapper.md) -- `__nv_hdl_wrapper_t` type-erased design
-- [Capture Handling](./capture-handling.md) -- `__nv_lambda_field_type`, `__nv_lambda_array_wrapper`
-- [Preamble Injection](./preamble-injection.md) -- `sub_6BCC20` emission pipeline
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- complete error index with message templates
-- [Cross-Space Call Validation](../cuda/cross-space-validation.md) -- execution space checking infrastructure
+- [Extended Lambda Overview](./overview.md) — end-to-end pipeline, annotation bits, `lambda_info` layout
+- [Device Lambda Wrapper](./device-wrapper.md) — `__nv_dl_wrapper_t` template structure
+- [Host-Device Lambda Wrapper](./host-device-wrapper.md) — `__nv_hdl_wrapper_t` type-erased design
+- [Capture Handling](./capture-handling.md) — `__nv_lambda_field_type`, `__nv_lambda_array_wrapper`
+- [Preamble Injection](./preamble-injection.md) — `sub_6BCC20` emission pipeline
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — complete error index with message templates
+- [Cross-Space Call Validation](../cuda/cross-space-validation.md) — execution space checking infrastructure

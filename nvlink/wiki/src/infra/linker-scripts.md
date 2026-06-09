@@ -36,13 +36,13 @@ SECTIONS
 
 The `fwrite` call uses size 1 and count 0x82 (130), which is the exact byte length of this string excluding the null terminator. The string is referenced from three separate `fwrite` calls in the binary, all pointing to the same data address.
 
-Note the trailing space after `*(__nv_relfatbin) }` on the second section line -- this is present in the binary and is written verbatim.
+Note the trailing space after `*(__nv_relfatbin) }` on the second section line — this is present in the binary and is written verbatim.
 
 ### The Three Sections
 
 | Section name | ELF convention | Description |
 |---|---|---|
-| `.nvFatBinSegment` | Standard dotted name | Contains the embedded fatbin blob -- the concatenation of device code compiled for all target GPU architectures. This is the primary container that the CUDA runtime locates at program startup. |
+| `.nvFatBinSegment` | Standard dotted name | Contains the embedded fatbin blob — the concatenation of device code compiled for all target GPU architectures. This is the primary container that the CUDA runtime locates at program startup. |
 | `__nv_relfatbin` | Non-dotted (double underscore prefix) | Contains a relocatable reference to the fatbin data. The CUDA runtime's registration mechanism (`__cudaRegisterFatBinary`) uses this section to locate the fatbin at load time. The section data begins with the fatbin magic `0xBA55ED50` followed by a size field. |
 | `.nv_fatbin` | Standard dotted name | Alternative fatbin container used in certain linking configurations (e.g., relocatable linking with `-r`). Provides a secondary location for fatbin data when the primary `.nvFatBinSegment` is not suitable. |
 
@@ -168,13 +168,13 @@ else
 
 The pipeline steps:
 
-1. **`ld --verbose $(flags)`** -- When invoked with `--verbose`, `ld` prints its built-in default linker script between two `===` banner lines. The `$(flags)` substitution passes the architecture flags extracted in step 2, ensuring `ld` selects the correct default script for the target configuration (e.g., 64-bit, PIE, shared).
+1. **`ld --verbose $(flags)`** — When invoked with `--verbose`, `ld` prints its built-in default linker script between two `===` banner lines. The `$(flags)` substitution passes the architecture flags extracted in step 2, ensuring `ld` selects the correct default script for the target configuration (e.g., 64-bit, PIE, shared).
 
-2. **`grep -Fvx -e "$(ld -V)"`** -- Removes the version string that `ld -V` outputs. The `-F` flag treats the pattern as a fixed string, `-v` inverts the match (remove matching lines), and `-x` requires the entire line to match. This strips `ld`'s version identification from the output.
+2. **`grep -Fvx -e "$(ld -V)"`** — Removes the version string that `ld -V` outputs. The `-F` flag treats the pattern as a fixed string, `-v` inverts the match (remove matching lines), and `-x` requires the entire line to match. This strips `ld`'s version identification from the output.
 
-3. **`sed '1,2d;$d'`** -- Deletes the first two lines (the opening `===` banner and blank line) and the last line (the closing `===` banner), leaving just the script body.
+3. **`sed '1,2d;$d'`** — Deletes the first two lines (the opening `===` banner and blank line) and the last line (the closing `===` banner), leaving just the script body.
 
-4. **Output** -- Written to the file specified by `-o`, or to `/dev/stdout` if `-o` is not given. The `/dev/stdout` path is constructed via two hex-encoded memory stores: `0x6474732F7665642F` decodes to `/dev/std` (little-endian) and `byte_74756F` contributes `out`.
+4. **Output** — Written to the file specified by `-o`, or to `/dev/stdout` if `-o` is not given. The `/dev/stdout` path is constructed via two hex-encoded memory stores: `0x6474732F7665642F` decodes to `/dev/std` (little-endian) and `byte_74756F` contributes `out`.
 
 The command is executed via `sub_42FA70` (the `system()` wrapper at `0x42FA70`). If `--verbose` is enabled, the command string is printed to stderr as `#$ <command>` before execution.
 
@@ -212,7 +212,7 @@ strcat(buf, filename);
 strcat(buf, " 2>&1 | grep 'no input files' > /dev/null");
 ```
 
-The validation logic is inverted: since no object files are provided, a syntactically valid script will cause `ld` to emit the error `"no input files"`. The `grep` succeeds (exit 0), and `sub_42FA70` returns 0 -- indicating the script is well-formed. If the script has syntax errors, `ld` emits a different error message, `grep` fails (exit 1), and the validation fails.
+The validation logic is inverted: since no object files are provided, a syntactically valid script will cause `ld` to emit the error `"no input files"`. The `grep` succeeds (exit 0), and `sub_42FA70` returns 0 — indicating the script is well-formed. If the script has syntax errors, `ld` emits a different error message, `grep` fails (exit 1), and the validation fails.
 
 On validation success, the linker proceeds to exit with code 0. On failure, execution jumps to `LABEL_23`, which calls `sub_467460(&unk_2A5B750, ...)` to emit a fatal error.
 
@@ -338,7 +338,7 @@ ld -T <output_file> 2>&1 | grep 'no input files' > /dev/null
 
 ### Parser "State Machine"
 
-nvlink does not parse the `ld --verbose` output itself -- all parsing is delegated to `grep`, `sed`, and `tr`. The effective state machine that the shell pipeline implements is a three-stage line filter. Each stage reads lines from stdin and writes accepted lines to stdout; a line that survives all three stages lands in the output file.
+nvlink does not parse the `ld --verbose` output itself — all parsing is delegated to `grep`, `sed`, and `tr`. The effective state machine that the shell pipeline implements is a three-stage line filter. Each stage reads lines from stdin and writes accepted lines to stdout; a line that survives all three stages lands in the output file.
 
 ```text
 stdin (ld --verbose output)
@@ -398,7 +398,7 @@ The decorative lines that stages A and B together eliminate are exactly:
 4. `==================================================` (opening separator)
 5. `==================================================` (closing separator)
 
-Lines 1, 2, and 4 are the targets of `sed '1,2d;$d'` after stage A, while the multi-line version banner `ld -V` that stage A removes is a near-superset of lines 1-2 of the `--verbose` output -- the authors used belt-and-suspenders filtering because `ld -V` on some distros emits a single line and on others emits several, and the exact line counts differ by binutils version. Running both filters ensures that whichever lines escape `grep -Fvx` are still caught by `sed '1,2d;$d'`.
+Lines 1, 2, and 4 are the targets of `sed '1,2d;$d'` after stage A, while the multi-line version banner `ld -V` that stage A removes is a near-superset of lines 1-2 of the `--verbose` output — the authors used belt-and-suspenders filtering because `ld -V` on some distros emits a single line and on others emits several, and the exact line counts differ by binutils version. Running both filters ensures that whichever lines escape `grep -Fvx` are still caught by `sed '1,2d;$d'`.
 
 ### Template Transformation Rules
 
@@ -414,7 +414,7 @@ The pipeline applies a purely additive transformation. The extracted script body
 
 Because rule R5 is subtle, it is worth restating: when GNU ld sees a linker script containing a standalone `SECTIONS { ... }` block in addition to a full default script body, it processes the two as consecutive SECTIONS commands. Output sections from the first block are placed first, then the second block's sections are appended. This is the mechanism that allows `.nvFatBinSegment`, `__nv_relfatbin`, and `.nv_fatbin` to land in the output image without colliding with the default `.text`, `.data`, and `.bss` placement.
 
-Because rule R1 strips the version banner, the output file is syntactically a pure linker-script fragment -- it is legal as a `-T` argument. The validation step in Step 5 relies on this: if the filter failed to strip the banner (e.g., because `ld -V` returned unexpected output), the extra non-script text would trigger a syntax error and `ld -T` would not print the expected `no input files` message, causing the `grep` to return non-zero and failing validation.
+Because rule R1 strips the version banner, the output file is syntactically a pure linker-script fragment — it is legal as a `-T` argument. The validation step in Step 5 relies on this: if the filter failed to strip the banner (e.g., because `ld -V` returned unexpected output), the extra non-script text would trigger a syntax error and `ld -T` would not print the expected `no input files` message, causing the `grep` to return non-zero and failing validation.
 
 ### Where the Result Goes
 
@@ -425,14 +425,14 @@ The two possible destinations are:
 | `::filename` value | Redirect target | Subsequent consumer |
 |---|---|---|
 | non-NULL (`-o <file>` was given) | the literal filename | `nvcc` passes `-Wl,-T,<file>` (or equivalently `-T <file>` to `collect2`) when it performs the host link |
-| NULL | `/dev/stdout` (`0x6474732F7665642F` + `byte_74756F`) | Whoever invoked `nvlink -ghls` captures stdout -- typically a pipe or here-doc inside the `nvcc` driver |
+| NULL | `/dev/stdout` (`0x6474732F7665642F` + `byte_74756F`) | Whoever invoked `nvlink -ghls` captures stdout — typically a pipe or here-doc inside the `nvcc` driver |
 
 The `/dev/stdout` path is constructed via two hex-encoded memory stores: the 8-byte immediate `0x6474732F7665642F` decodes to `"/dev/std"` (little-endian), and the 4-byte tail `byte_74756F` contributes `"out\0"`. This avoids shipping a separate `/dev/stdout` string in rodata, saving a few bytes and ensuring the path cannot be relocated by a rodata patcher.
 
 Note the asymmetry between Mode 1 and Mode 2:
 
 - In **Mode 1**, the SECTIONS template is written directly to `stdout` (via `fwrite(..., stdout)` at line 1925) when no output file is given. No shell command is invoked.
-- In **Mode 2**, the `ld --verbose` pipeline's redirect points at `/dev/stdout` (not the C stdio stream), and the subsequent SECTIONS append occurs through `fopen(::filename, "a")`. When `::filename` is NULL in Mode 2, the append-step's `fopen` path is skipped -- the only output the user sees is the (already-redirected) `ld --verbose` body from Step 3, without the CUDA SECTIONS block. This is a latent inconsistency in the decompiled code: Mode 2 with no `-o` produces an incomplete script that lacks the CUDA sections. In practice `nvcc` always supplies `-o` when invoking `nvlink -ghls=lcs-abs`, so the buggy branch is never exercised.
+- In **Mode 2**, the `ld --verbose` pipeline's redirect points at `/dev/stdout` (not the C stdio stream), and the subsequent SECTIONS append occurs through `fopen(::filename, "a")`. When `::filename` is NULL in Mode 2, the append-step's `fopen` path is skipped — the only output the user sees is the (already-redirected) `ld --verbose` body from Step 3, without the CUDA SECTIONS block. This is a latent inconsistency in the decompiled code: Mode 2 with no `-o` produces an incomplete script that lacks the CUDA sections. In practice `nvcc` always supplies `-o` when invoking `nvlink -ghls=lcs-abs`, so the buggy branch is never exercised.
 
 ### Who Consumes the Script
 
@@ -468,7 +468,7 @@ if (qword_2A5F2E8) {
 }
 ```
 
-This path bypasses the collect2 detection entirely. The `-Xlinker` values are treated as pre-composed `ld` flags, and the mode 2 pipeline uses them directly in the `ld --verbose` invocation. The option help text describes this as "Specify options directly to the host linker (ignored by nvlink)" -- the options are not used during device linking, only during linker script generation.
+This path bypasses the collect2 detection entirely. The `-Xlinker` values are treated as pre-composed `ld` flags, and the mode 2 pipeline uses them directly in the `ld --verbose` invocation. The option help text describes this as "Specify options directly to the host linker (ignored by nvlink)" — the options are not used during device linking, only during linker script generation.
 
 ## Error Handling
 
@@ -476,9 +476,9 @@ Three error conditions are handled:
 
 | Condition | Error source | Behavior |
 |---|---|---|
-| Cannot open output file | `fopen` returns NULL | `sub_467460(&unk_2A5B710, filename, ...)` -- fatal error with filename |
-| Shell command fails | `sub_42FA70` returns nonzero | `sub_467460(&unk_2A5B750, ...)` -- fatal error for invalid script generation |
-| Validation fails | `ld -T` grep returns nonzero | Same error via `LABEL_23` -- the generated script is malformed |
+| Cannot open output file | `fopen` returns NULL | `sub_467460(&unk_2A5B710, filename, ...)` — fatal error with filename |
+| Shell command fails | `sub_42FA70` returns nonzero | `sub_467460(&unk_2A5B750, ...)` — fatal error for invalid script generation |
+| Validation fails | `ld -T` grep returns nonzero | Same error via `LABEL_23` — the generated script is malformed |
 
 All errors route through the standard error reporting system (`sub_467460`). The error at `unk_2A5B750` is specific to linker script generation failure. The error at `unk_2A5B710` is the generic "cannot open file" error shared with other output paths.
 
@@ -518,28 +518,28 @@ The `lcs-aug` mode is available for cases where `nvcc` wants only the CUDA fragm
 |---|---|---|
 | `main` | `0x409800` | Contains the entire linker script generation logic (lines 1743-1936) |
 | `nvlink_parse_options` | `0x427AE0` | Parses `-ghls`, sets `dword_2A77DC0`, validates mutual exclusion |
-| `sub_42FA70` | `0x42FA70` | `system()` wrapper -- executes the shell pipelines |
+| `sub_42FA70` | `0x42FA70` | `system()` wrapper — executes the shell pipelines |
 | `sub_426AA0` | `0x426AA0` | Arena allocator for command string buffers |
-| `sub_431000` | `0x431000` | Arena free -- releases intermediate buffers |
+| `sub_431000` | `0x431000` | Arena free — releases intermediate buffers |
 | `sub_467460` | `0x467460` | Fatal error emission |
-| `sub_476D90` | `0x476D90` | Consumer side -- validates host ELF contains the three CUDA sections |
-| `sub_476D80` | `0x476D80` | Predicate -- checks for `.nvFatBinSegment` section existence |
+| `sub_476D90` | `0x476D90` | Consumer side — validates host ELF contains the three CUDA sections |
+| `sub_476D80` | `0x476D80` | Predicate — checks for `.nvFatBinSegment` section existence |
 | `sub_476EC0` | `0x476EC0` | Section name lookup predicate used by the above |
 
 ## Cross-References
 
 **Internal (nvlink wiki):**
 
-- [CLI Flags](../config/cli-flags.md) -- `-ghls` / `--gen-host-linker-script` option and its `lcs-aug` / `lcs-abs` argument values
-- [Environment Variables](../config/env-vars.md) -- `--host-ccbin` setting that determines the host compiler used for script generation
-- [Pipeline Entry](../pipeline/entry.md) -- `main()` lines 1743--1936 where the linker script generation logic resides
-- [Output Phase](../pipeline/output.md) -- "Host Linker Script Output" sub-section documents this path from the pipeline's perspective (Mode 2 is one of the non-ELF output routes)
-- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Fatbin sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) referenced in the SECTIONS template
-- [Host ELF Input](../input/host-elf.md) -- Host ELF processing that validates the presence of the three CUDA sections
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- How embedded fatbins in host objects are located and extracted
-- [Error Reporting](error-reporting.md) -- `sub_467460` fatal error emission on script generation or validation failure
-- [Memory Arenas](memory-arenas.md) -- Arena allocator (`sub_426AA0`, `sub_431000`) for command string buffer management
-- [Library Search](library-search.md) -- Another subsystem that composes shell-like arguments from CLI options and environment variables (`-l<name>`, `-L<dir>`, `LIBRARY_PATH`), sharing the same arena-allocated buffer-chain idiom used by the linker script command builder. Both subsystems funnel through infrastructure wrappers: library search invokes `sub_42A2D0` (archive probing with direct `open`/`read` syscalls), while linker script generation invokes `sub_42FA70` (the `system()` wrapper that shells out to `gcc`, `ld`, `grep`, and `sed`)
+- [CLI Flags](../config/cli-flags.md) — `-ghls` / `--gen-host-linker-script` option and its `lcs-aug` / `lcs-abs` argument values
+- [Environment Variables](../config/env-vars.md) — `--host-ccbin` setting that determines the host compiler used for script generation
+- [Pipeline Entry](../pipeline/entry.md) — `main()` lines 1743--1936 where the linker script generation logic resides
+- [Output Phase](../pipeline/output.md) — "Host Linker Script Output" sub-section documents this path from the pipeline's perspective (Mode 2 is one of the non-ELF output routes)
+- [NVIDIA Section Types](../elf/nvidia-sections.md) — Fatbin sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) referenced in the SECTIONS template
+- [Host ELF Input](../input/host-elf.md) — Host ELF processing that validates the presence of the three CUDA sections
+- [Fatbin Extraction](../input/fatbin-extraction.md) — How embedded fatbins in host objects are located and extracted
+- [Error Reporting](error-reporting.md) — `sub_467460` fatal error emission on script generation or validation failure
+- [Memory Arenas](memory-arenas.md) — Arena allocator (`sub_426AA0`, `sub_431000`) for command string buffer management
+- [Library Search](library-search.md) — Another subsystem that composes shell-like arguments from CLI options and environment variables (`-l<name>`, `-L<dir>`, `LIBRARY_PATH`), sharing the same arena-allocated buffer-chain idiom used by the linker script command builder. Both subsystems funnel through infrastructure wrappers: library search invokes `sub_42A2D0` (archive probing with direct `open`/`read` syscalls), while linker script generation invokes `sub_42FA70` (the `system()` wrapper that shells out to `gcc`, `ld`, `grep`, and `sed`)
 
 ## Confidence Assessment
 
@@ -550,7 +550,7 @@ The `lcs-aug` mode is available for cases where `nvcc` wants only the CUDA fragm
 | `-ghls` / `--gen-host-linker-script` option | HIGH | Strings `"gen-host-linker-script"` at `0x1d327fc` and `"Input files are not allowed with -ghls option"` at `0x1d34e80` |
 | `lcs-aug` and `lcs-abs` mode values | HIGH | String `"lcs-aug,lcs-abs"` at `0x1d3282d`; `"lcs-aug"` standalone at `0x1d329bd` |
 | `system()` wrapper at `sub_42FA70` | HIGH | Decompiled: calls `system(v9)` after optional `fprintf(stream, "#$ %s\n", a6)` for verbose trace |
-| Verbose trace prefix `"#$ "` | HIGH | `sub_42FA70` decompiled: `fprintf(stream, "#$ %s\n", a6)` -- exact format |
+| Verbose trace prefix `"#$ "` | HIGH | `sub_42FA70` decompiled: `fprintf(stream, "#$ %s\n", a6)` — exact format |
 | collect2 detection pipeline string | HIGH | Exact string at `0x1d343d8`: `' 2>&1 \| grep collect2  \| grep -wo -e -pie -e "-z [^[:space:]]*" -e "-m [^[:space:]]*" -e -r -e -shared  \| tr "\\n" " "'` |
 | `ld --verbose` extraction command | HIGH | String `"ld --verbose "` at `0x1d3415a` in strings JSON |
 | `ld -T` validation command | HIGH | String `"ld -T "` at `0x1d3416f` |
@@ -561,8 +561,8 @@ The `lcs-aug` mode is available for cases where `nvcc` wants only the CUDA fragm
 | Consumer function `sub_476D90` validates host ELF sections | HIGH | Decompiled file exists; calls `sub_476EC0` for section-name lookup |
 | Mode variable `dword_2A77DC0` values 1 and 2 | MEDIUM | Inferred from main() decompiled conditional branching; not directly visible as named constant |
 | Signal handler in `sub_42FA70` checks `v10 & 0x7F` for tool termination | HIGH | Decompiled: `if (__OFSUB__((v10 & 0x7F) + 1, 1))` followed by `sub_467460(&unk_2A5BB00, ...)` for signal and `sub_467460(&unk_2A5BB40, ...)` for core dump |
-| `" -v --verbose"` is appended via a single 16-byte SSE store from `xmmword_1D34770` | HIGH | Decompiled main() line 1784: `*v173 = _mm_load_si128((const __m128i *)&xmmword_1D34770);` -- 16 bytes exactly matches `" -v --verbose\0\0"` |
+| `" -v --verbose"` is appended via a single 16-byte SSE store from `xmmword_1D34770` | HIGH | Decompiled main() line 1784: `*v173 = _mm_load_si128((const __m128i *)&xmmword_1D34770);` — 16 bytes exactly matches `" -v --verbose\0\0"` |
 | Mode 2 with no `-o` produces a script without the CUDA SECTIONS block | MEDIUM | Decompiled main() line 1892 gates the append-step behind `if (::filename)`; the else-branch at line 1925 writes only the bare template to stdout, which is dead code for Mode 2 because Step 3 already redirected to `/dev/stdout` |
 | `ld -T` replaces (does not augment) the default script | HIGH | GNU ld documented behavior: `-T scriptfile` replaces default; `-dT` or script loaded via `INSERT` augments. Mode 2 generates a script that is self-contained precisely so `-T` (not `-dT`) suffices |
 | Pipeline consumer chain (`nvcc` -> host cc -> `collect2` -> `ld`) | MEDIUM | `nvcc` behavior documented in CUDA toolkit reference; the Mode 2 pipeline's `collect2`-aware flag extraction step (Step 2) is direct evidence that the eventual consumer of the script is a `collect2`-invoked `ld`, not bare `ld` |
-| `/dev/stdout` literal built from two hex stores (`0x6474732F7665642F` + `byte_74756F`) | HIGH | Decompiled main() lines 1876-1878: `*(_QWORD *)v320 = 0x6474732F7665642FLL; *((_DWORD *)v320 + 2) = (_DWORD)&byte_74756F;` -- bytes `2F 76 65 64 2F 73 74 64` decode to `/dev/std` in little-endian, followed by `"out\0"` |
+| `/dev/stdout` literal built from two hex stores (`0x6474732F7665642F` + `byte_74756F`) | HIGH | Decompiled main() lines 1876-1878: `*(_QWORD *)v320 = 0x6474732F7665642FLL; *((_DWORD *)v320 + 2) = (_DWORD)&byte_74756F;` — bytes `2F 76 65 64 2F 73 74 64` decode to `/dev/std` in little-endian, followed by `"out\0"` |

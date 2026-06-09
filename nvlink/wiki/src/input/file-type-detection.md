@@ -21,12 +21,12 @@ container, where file extensions do not exist.
 
 | | |
 |---|---|
-| **Path parser** | `sub_462620` at `0x462620` -- `path_split(path, dir_out, base_out, ext_out)` |
-| **Input loop caller** | `main()` at `0x409800` -- extension test chain starts at `0x40A59E` |
+| **Path parser** | `sub_462620` at `0x462620` — `path_split(path, dir_out, base_out, ext_out)` |
+| **Input loop caller** | `main()` at `0x409800` — extension test chain starts at `0x40A59E` |
 | **Header probe size** | 56 bytes (`fread(header, 1, 56, fp)`) |
 | **Extension-tested format count** | 7 (`cubin`, `ptx`, `fatbin`, `nvvm`, `ltoir`, `bc`, `o`) |
 | **Content-tested fallbacks** | archive (`sub_487A90`), relocatable ELF (`sub_43D9B0`) |
-| **Fatbin-member classifier** | `sub_4CE070` at `0x4CE070` -- classifies NVVM/nested-fatbin/cubin/PTX |
+| **Fatbin-member classifier** | `sub_4CE070` at `0x4CE070` — classifies NVVM/nested-fatbin/cubin/PTX |
 
 ## 1. Header Probe
 
@@ -47,7 +47,7 @@ else if (ferror(v79))       /* abort */
 
 56 bytes is exactly enough to cover:
 
-- ELF32 header (52 bytes) -- `e_ident..e_shstrndx`
+- ELF32 header (52 bytes) — `e_ident..e_shstrndx`
 - ELF64 header (64 bytes) through `e_flags` at offset 48 (required by `sub_43DA40`)
 - The 8-byte `!<arch>\n` / `!<thin>\n` archive magic
 - The 8-byte `.version` PTX magic
@@ -201,7 +201,7 @@ main() input loop, per-file dispatch (main_0x409800.c line ~612-847)
    This is how `cudadevrt.a` and `libcudadevrt.a` are both picked up.
    The accepted magics are `!<arch>\n` (regular) and `!<thin>\n`
    (thin); members are iterated unconditionally with **whole-archive**
-   semantics -- see [Archive Processing](archives.md) for the cursor
+   semantics — see [Archive Processing](archives.md) for the cursor
    and long-name table mechanics.
 4. **`.o` is ambiguous and specially handled.** A `.o` file is
    allowed to be either a host ELF (with an embedded `.nv_fatbin`
@@ -223,7 +223,7 @@ main() input loop, per-file dispatch (main_0x409800.c line ~612-847)
    bitcode directly; LTO IR must be the NVVM-wrapped form produced
    by libnvvm.
 8. **`so` is silently skipped.** A file with extension `so` is
-   treated as "ignore input" unconditionally -- shared objects never
+   treated as "ignore input" unconditionally — shared objects never
    contribute device code.
 
 ## 4. Magic Bytes Reference
@@ -317,7 +317,7 @@ bool is_elf64(const uint8_t *buf) {
 
 This is a *dispatch* predicate, not a hard reject. The loader entry
 points (`sub_43E100`, `sub_43DFC0`) deliberately accept both
-ELFCLASS32 and ELFCLASS64 buffers -- the structural validator
+ELFCLASS32 and ELFCLASS64 buffers — the structural validator
 `sub_43DD30` and the merge path branch on `e_ident[EI_CLASS]` to
 pick the Elf32 (40-byte section header, 32-byte program header) or
 Elf64 (64-byte section header, 56-byte program header) layout.
@@ -432,7 +432,7 @@ bool is_ptx(const char *buf) {
 
 The `0x2000` bitmask in the ctype table is glibc's internal
 `_ISspace` flag, so the whitespace skip is locale-aware only in the
-pedantic sense -- in practice it matches space, tab, CR, LF, VT, FF.
+pedantic sense — in practice it matches space, tab, CR, LF, VT, FF.
 
 Comments are skipped via `sub_45CB90` (at `0x45CB90`), which handles
 both line comments (`//...\n`) and block comments (`/*...*/`). This
@@ -535,7 +535,7 @@ int classify_fatbin_member(fatbin_entry *entry, void *content) {
 
 The function installs a `_setjmp` guard around the actual content
 access so that a malformed fatbin member cannot SIGSEGV the
-linker -- instead the function returns 5 and the caller emits a
+linker — instead the function returns 5 and the caller emits a
 diagnostic. This is one of the few places in nvlink that uses
 `_setjmp`/`longjmp` for structured error recovery.
 
@@ -561,7 +561,7 @@ classification:
 
 | Constant | Value | Field | Offset (ELF64) | Meaning |
 |---|---|---|---|---|
-| `ELFCLASS64` | 2 | `e_ident[EI_CLASS]` | 4 | 64-bit ELF (modern CUDA default); `ELFCLASS32` (1) is also accepted -- the byte selects the Elf32 vs Elf64 accessor family rather than being a hard reject |
+| `ELFCLASS64` | 2 | `e_ident[EI_CLASS]` | 4 | 64-bit ELF (modern CUDA default); `ELFCLASS32` (1) is also accepted — the byte selects the Elf32 vs Elf64 accessor family rather than being a hard reject |
 | `EI_OSABI` legacy | `0x41` (`'A'`) | `e_ident[EI_OSABI]` | 7 | Legacy NVIDIA OSABI (affects SASS flag mask) |
 | `ET_REL` | 1 | `e_type` | 16 | Relocatable object (expected for cubin input) |
 | `EM_CUDA` | 190 (`0xBE`) | `e_machine` | 18 | NVIDIA CUDA device ELF |
@@ -636,21 +636,21 @@ skip the member instead of rejecting the entire container.
 | `0x4CDF80` | 121 B | `is_ptx` | Skip whitespace/comments then `.version` |
 | `0x45CB90` | ~100 B | `skip_comment` | `//...` and `/*...*/` skip used by `is_ptx` |
 | `0x4CE070` | 461 B | `classify_fatbin_member` | Content-only fatbin payload classifier |
-| `0x448360` | -- | `elf64_header_accessor` | Returns `Elf64_Ehdr *` from probe buffer |
-| `0x46B590` | -- | `elf32_header_accessor` | Returns `Elf32_Ehdr *` from probe buffer |
-| `0x467460` | -- | `emit_diagnostic` | Formats and prints a diagnostic from a descriptor |
-| `0x476BF0` | -- | `load_file_body` | Second-pass full-file read used after classification |
-| `0x476E80` | -- | `extract_host_fatbin` | Walks a host ELF `.nv_fatbin` / `__nv_relfatbin` section |
+| `0x448360` | — | `elf64_header_accessor` | Returns `Elf64_Ehdr *` from probe buffer |
+| `0x46B590` | — | `elf32_header_accessor` | Returns `Elf32_Ehdr *` from probe buffer |
+| `0x467460` | — | `emit_diagnostic` | Formats and prints a diagnostic from a descriptor |
+| `0x476BF0` | — | `load_file_body` | Second-pass full-file read used after classification |
+| `0x476E80` | — | `extract_host_fatbin` | Walks a host ELF `.nv_fatbin` / `__nv_relfatbin` section |
 
 ## 10. Cross-References
 
-- [Input File Loop](../pipeline/input-loop.md) -- the `main` dispatch chain that calls every predicate on this page
-- [Entry Point & `main`](../pipeline/entry.md) -- containing function and phase-0 initialisation
-- [Cubin Loading](cubin-loading.md) -- `sub_426570` path taken after `is_elf` + `e_machine == 190` passes
-- [ELF Parsing](elf-parsing.md) -- the ELF header accessors (`sub_448360`, `sub_46B590`) and deeper field parsing
-- [Fatbin Extraction](fatbin-extraction.md) -- `sub_42AF40` fatbin walker that owns fatbin container iteration and calls `classify_fatbin_member`
-- [Host ELF Handling](host-elf.md) -- the `sub_476E80` path for `.o`/`.so` host object files with embedded `.nv_fatbin`
-- [Archive Processing](archives.md) -- regular and thin archive iteration via `sub_4BDAC0`/`sub_4BDAF0` after `is_archive` passes
-- [PTX Input & JIT](ptx-input.md) -- `sub_4BD760` ptxas JIT path taken after the `ptx` extension branch
-- [NVVM IR / LTO IR Input](nvvm-ir-input.md) -- `sub_427A10` IR registration path taken after the `nvvm`/`ltoir` branch (requires `-lto`)
-- [Error Reporting](../infra/error-reporting.md) -- `sub_467460` diagnostic descriptor format and the error strings listed above
+- [Input File Loop](../pipeline/input-loop.md) — the `main` dispatch chain that calls every predicate on this page
+- [Entry Point & `main`](../pipeline/entry.md) — containing function and phase-0 initialisation
+- [Cubin Loading](cubin-loading.md) — `sub_426570` path taken after `is_elf` + `e_machine == 190` passes
+- [ELF Parsing](elf-parsing.md) — the ELF header accessors (`sub_448360`, `sub_46B590`) and deeper field parsing
+- [Fatbin Extraction](fatbin-extraction.md) — `sub_42AF40` fatbin walker that owns fatbin container iteration and calls `classify_fatbin_member`
+- [Host ELF Handling](host-elf.md) — the `sub_476E80` path for `.o`/`.so` host object files with embedded `.nv_fatbin`
+- [Archive Processing](archives.md) — regular and thin archive iteration via `sub_4BDAC0`/`sub_4BDAF0` after `is_archive` passes
+- [PTX Input & JIT](ptx-input.md) — `sub_4BD760` ptxas JIT path taken after the `ptx` extension branch
+- [NVVM IR / LTO IR Input](nvvm-ir-input.md) — `sub_427A10` IR registration path taken after the `nvvm`/`ltoir` branch (requires `-lto`)
+- [Error Reporting](../infra/error-reporting.md) — `sub_467460` diagnostic descriptor format and the error strings listed above

@@ -2,7 +2,7 @@
 
 The `__grid_constant__` attribute marks a `__global__` function parameter as read-only across the entire kernel grid. When applied, the parameter is loaded once from host memory into GPU constant memory at grid launch, and all threads in the grid read from this cached copy instead of loading from the parameter buffer in global memory. The attribute was introduced in CUDA 11.7 and requires compute capability 7.0 or later (Volta+).
 
-cudafe++ enforces 8 validation checks on `__grid_constant__` parameters, distributed across three phases: **attribute application** (checking type constraints -- const qualification, no reference types, SM version), **post-declaration validation** (checking that the annotation appears only on `__global__` function parameters), and **redeclaration/template merging** (checking consistency of annotations between declarations). A ninth related check (error 3669) in the `__global__` apply handler issues an advisory when a kernel parameter lacks a default initializer in device compilation mode, suggesting that `__grid_constant__` would be appropriate.
+cudafe++ enforces 8 validation checks on `__grid_constant__` parameters, distributed across three phases: **attribute application** (checking type constraints — const qualification, no reference types, SM version), **post-declaration validation** (checking that the annotation appears only on `__global__` function parameters), and **redeclaration/template merging** (checking consistency of annotations between declarations). A ninth related check (error 3669) in the `__global__` apply handler issues an advisory when a kernel parameter lacks a default initializer in device compilation mode, suggesting that `__grid_constant__` would be appropriate.
 
 ## Key Facts
 
@@ -11,9 +11,9 @@ cudafe++ enforces 8 validation checks on `__grid_constant__` parameters, distrib
 | Internal keyword | `grid_constant` (stored at `0x82bf0f`), displayed as `__grid_constant__` (at `0x82bf1d`) |
 | Attribute category | Optimization (parameter-level) |
 | Minimum architecture | compute_70 (Volta), gated by `dword_126E4A8 >= 70` |
-| Entity node flag | `entity+164` bit 2 (`0x04`) -- set on the parameter entity during attribute application |
-| Type node flag | `type+133` bit 5 (`0x20`) -- checked by `sub_7A6B60` (type chain query) |
-| Parameter node flag | `param+32` bit 1 (`0x02`) -- checked during post-declaration validation in `sub_6BC890` |
+| Entity node flag | `entity+164` bit 2 (`0x04`) — set on the parameter entity during attribute application |
+| Type node flag | `type+133` bit 5 (`0x20`) — checked by `sub_7A6B60` (type chain query) |
+| Parameter node flag | `param+32` bit 1 (`0x02`) — checked during post-declaration validation in `sub_6BC890` |
 | Total diagnostics | 8 unique error strings + 1 related advisory (3669) + 1 memory space conflict (3577) |
 | Diagnostic tag prefix | `grid_constant_*` (8 tags in `.rodata` at `0x84810f`--`0x857770`) |
 | Message string block | `0x88d8b0`--`0x88dbe8` (contiguous block in `.rodata`) |
@@ -23,7 +23,7 @@ cudafe++ enforces 8 validation checks on `__grid_constant__` parameters, distrib
 A parameter annotated `__grid_constant__` tells the CUDA runtime and compiler three things:
 
 **1. The parameter value is identical for every thread in the grid.**
-This is inherently true for all kernel parameters -- they are passed by value through the kernel launch API -- but the annotation makes this guarantee explicit and mechanically exploitable.
+This is inherently true for all kernel parameters — they are passed by value through the kernel launch API — but the annotation makes this guarantee explicit and mechanically exploitable.
 
 **2. The parameter lives in constant memory, not the parameter buffer.**
 Without the annotation, kernel parameters are placed in a parameter buffer that threads read from global memory (or a dedicated parameter memory space with limited caching). With `__grid_constant__`, the runtime loads the parameter into the GPU's constant memory cache at launch time. This provides:
@@ -36,7 +36,7 @@ Without the annotation, kernel parameters are placed in a parameter buffer that 
 Since the value is shared across the grid and cached in constant memory, writes would be nonsensical. The hardware constant memory is read-only from the kernel's perspective. cudafe++ enforces this at the type level.
 
 **4. The parameter must not be a reference type.**
-References to host memory are meaningless on the device. Kernel parameters are already copied to the device by the CUDA runtime. A reference would dangle because it would point into host address space. Even a reference to device memory is not valid here -- `__grid_constant__` parameters must be values, not indirections.
+References to host memory are meaningless on the device. Kernel parameters are already copied to the device by the CUDA runtime. A reference would dangle because it would point into host address space. Even a reference to device memory is not valid here — `__grid_constant__` parameters must be values, not indirections.
 
 ### SM_70+ Requirement Rationale
 
@@ -108,7 +108,7 @@ __global__ void kernel(__grid_constant__ const int x) { ... }
 | Severity | error |
 | Phase | Attribute application |
 
-The parameter must not be a reference (`&` or `&&`). This check fires independently of the const check -- both can fire on the same parameter.
+The parameter must not be a reference (`&` or `&&`). This check fires independently of the const check — both can fire on the same parameter.
 
 In EDG's type system, reference types have `kind == 7` (lvalue reference) or `kind == 19` (rvalue reference). The check walks the type chain through cv-qualifier wrappers and tests the final type kind:
 
@@ -127,7 +127,7 @@ Example that triggers this error:
 __global__ void kernel(__grid_constant__ const int& x) { ... }
 ```
 
-The rationale is that kernel parameters are copied across the host-device boundary by the CUDA runtime. A reference to host memory would be invalid on the device, and a reference to device memory does not participate in the kernel launch parameter copying mechanism. The `__grid_constant__` attribute specifically requests constant-memory placement of the parameter *value* -- a reference has no value to place.
+The rationale is that kernel parameters are copied across the host-device boundary by the CUDA runtime. A reference to host memory would be invalid on the device, and a reference to device memory does not participate in the kernel launch parameter copying mechanism. The `__grid_constant__` attribute specifically requests constant-memory placement of the parameter *value* — a reference has no value to place.
 
 ## Validation Check 3: Only on __global__ Parameters
 
@@ -181,9 +181,9 @@ void nv_validate_cuda_attributes(entity_t* a1, source_loc_t* a2) {
 }
 ```
 
-The `param->byte_32 & 0x02` test checks bit 1 of the parameter node's byte at offset `+32`. This bit is the `__grid_constant__` flag on the parameter entity node -- it is set by the `__grid_constant__` attribute application handler when the attribute is first applied, and checked here to verify the containing function is actually a kernel.
+The `param->byte_32 & 0x02` test checks bit 1 of the parameter node's byte at offset `+32`. This bit is the `__grid_constant__` flag on the parameter entity node — it is set by the `__grid_constant__` attribute application handler when the attribute is first applied, and checked here to verify the containing function is actually a kernel.
 
-The error fires for any execution space that is NOT `__global__`. The condition skip at the top of the function (`(exec_space & 0x30) == 0x20 && (exec_space & 0x60) != 0x20`) is a pre-filter that handles certain host-side function configurations -- it does NOT suppress the parameter walk for `__global__` functions (which have bit 6 = `0x40` set).
+The error fires for any execution space that is NOT `__global__`. The condition skip at the top of the function (`(exec_space & 0x30) == 0x20 && (exec_space & 0x60) != 0x20`) is a pre-filter that handles certain host-side function configurations — it does NOT suppress the parameter walk for `__global__` functions (which have bit 6 = `0x40` set).
 
 ## Validation Check 4: compute_70+ Architecture
 
@@ -202,7 +202,7 @@ if (dword_126E4A8 < 70)
     emit_error("grid_constant_unsupported_arch", param->src_loc);
 ```
 
-If the user compiles with `-arch=compute_60` or lower and uses `__grid_constant__`, this error fires. The check is a straightforward integer comparison -- no bitmask, no table lookup.
+If the user compiles with `-arch=compute_60` or lower and uses `__grid_constant__`, this error fires. The check is a straightforward integer comparison — no bitmask, no table lookup.
 
 The architecture value reaches cudafe++ through nvcc, which translates user-facing flags like `--gpu-architecture=sm_70` into the internal numeric code and passes it via the `--target` flag. Inside cudafe++, `sub_7525E0` (a 6-byte stub returning `-1`) nominally parses this value, but the actual number is injected by nvcc into the argument string. See [Architecture Feature Gating](../cuda/arch-gating.md) for the full data flow.
 
@@ -212,7 +212,7 @@ The four redeclaration consistency checks share the same algorithmic structure b
 
 ### Why These Checks Exist
 
-The `__grid_constant__` attribute affects the kernel's ABI -- specifically, how the CUDA runtime passes the parameter at launch time. If one translation unit sees a declaration with `__grid_constant__` and another sees a declaration without it, they would generate incompatible kernel launch code. In RDC (relocatable device code) mode, where kernels can be declared in one TU and defined in another, this mismatch would cause silent data corruption at runtime. The compiler catches it at declaration merging time to prevent this.
+The `__grid_constant__` attribute affects the kernel's ABI — specifically, how the CUDA runtime passes the parameter at launch time. If one translation unit sees a declaration with `__grid_constant__` and another sees a declaration without it, they would generate incompatible kernel launch code. In RDC (relocatable device code) mode, where kernels can be declared in one TU and defined in another, this mismatch would cause silent data corruption at runtime. The compiler catches it at declaration merging time to prevent this.
 
 ### Check 5: Function Redeclaration
 
@@ -360,7 +360,7 @@ entity_t* apply_nv_managed_attr(attr_node_t* a1, entity_t* a2, uint8_t a3) {
 }
 ```
 
-The `0x0102` mask on the 16-bit word at `a2 + 148` checks two bits: bit 1 of byte `+148` (`__shared__`, value `0x02`) and bit 0 of byte `+149` (`__managed__`, value `0x01` shifted left by 8 bits = `0x0100`). This means the conflict check fires specifically when a `__grid_constant__` parameter also has `__shared__` or `__managed__` -- these memory spaces are incompatible with constant memory placement.
+The `0x0102` mask on the 16-bit word at `a2 + 148` checks two bits: bit 1 of byte `+148` (`__shared__`, value `0x02`) and bit 0 of byte `+149` (`__managed__`, value `0x01` shifted left by 8 bits = `0x0100`). This means the conflict check fires specifically when a `__grid_constant__` parameter also has `__shared__` or `__managed__` — these memory spaces are incompatible with constant memory placement.
 
 The priority order for the diagnostic message (`__constant__` > `__managed__` > `__shared__` > `__device__`) determines which memory space name appears in the error output when multiple conflicting spaces are present simultaneously.
 
@@ -420,11 +420,11 @@ The three flags serve different purposes: the entity flag records the declaratio
 
 ## IL Emission Path
 
-Unlike the execution- and memory-space attributes, `__grid_constant__` is **not** a pure entity-bit collapse. The parse-time attribute IL node (kind `0x48`, byte `+8 = '_'` for `__grid_constant__` is *not* assigned -- the attribute lacks a dedicated CUDA kind byte and arrives through the generic GNU/scoped path) deposits state into three locations simultaneously:
+Unlike the execution- and memory-space attributes, `__grid_constant__` is **not** a pure entity-bit collapse. The parse-time attribute IL node (kind `0x48`, byte `+8 = '_'` for `__grid_constant__` is *not* assigned — the attribute lacks a dedicated CUDA kind byte and arrives through the generic GNU/scoped path) deposits state into three locations simultaneously:
 
-1. `entity+164` bit 2 -- declaration-side flag, read by redeclaration consistency checks (5--8).
-2. `type+133` bit 5 -- type-level flag, read by `sub_7A6B60` from the `__global__` apply handler to suppress error 3669.
-3. `param+32` bit 1 -- parameter-side flag, read by `nv_validate_cuda_attributes` (`sub_6BC890`) to detect non-`__global__` use (error 3702).
+1. `entity+164` bit 2 — declaration-side flag, read by redeclaration consistency checks (5--8).
+2. `type+133` bit 5 — type-level flag, read by `sub_7A6B60` from the `__global__` apply handler to suppress error 3669.
+3. `param+32` bit 1 — parameter-side flag, read by `nv_validate_cuda_attributes` (`sub_6BC890`) to detect non-`__global__` use (error 3702).
 
 After application, the attribute node is **kept on the entity's attribute chain** so the `.int.c` writer can re-emit the `__grid_constant__` token into the kernel parameter declaration. cicc reads the textual annotation and lowers the parameter to a constant-memory (`ld.const`) load instead of the default parameter-buffer (`ld.param`) load. There is no kind-25 IL re-emission like `__launch_bounds__`/`__nv_pure__`; the attribute survives in its original `0x48` form on the chain because parameter-level attributes are emitted inline with their parameter, not as a separate function attribute.
 
@@ -493,14 +493,14 @@ The attribute name lookup function (`sub_40A250`) strips leading and trailing do
 
 | Tag | Error Code | Message | Phase |
 |---|---|---|---|
-| `grid_constant_not_const` | -- | `a parameter annotated with __grid_constant__ must have const-qualified type` | Application |
-| `grid_constant_reference_type` | -- | `a parameter annotated with __grid_constant__ must not have reference type` | Application |
+| `grid_constant_not_const` | — | `a parameter annotated with __grid_constant__ must have const-qualified type` | Application |
+| `grid_constant_reference_type` | — | `a parameter annotated with __grid_constant__ must not have reference type` | Application |
 | `grid_constant_non_kernel` | 3702 | `__grid_constant__ annotation is only allowed on a parameter of a __global__ function` | Post-validation |
-| `grid_constant_unsupported_arch` | -- | `__grid_constant__ annotation is only allowed for architecture compute_70 or later` | Application |
-| `grid_constant_incompat_redecl` | -- | `incompatible __grid_constant__ annotation for parameter %s in function redeclaration (see previous declaration %p)` | Redeclaration |
-| `grid_constant_incompat_templ_redecl` | -- | `incompatible __grid_constant__ annotation for parameter %s in function template redeclaration (see previous declaration %p)` | Template redecl |
-| `grid_constant_incompat_specialization` | -- | `incompatible __grid_constant__ annotation for parameter %s in function specialization (see previous declaration %p)` | Specialization |
-| `grid_constant_incompat_instantiation_directive` | -- | `incompatible __grid_constant__ annotation for parameter %s in instantiation directive (see previous declaration %p)` | Instantiation |
+| `grid_constant_unsupported_arch` | — | `__grid_constant__ annotation is only allowed for architecture compute_70 or later` | Application |
+| `grid_constant_incompat_redecl` | — | `incompatible __grid_constant__ annotation for parameter %s in function redeclaration (see previous declaration %p)` | Redeclaration |
+| `grid_constant_incompat_templ_redecl` | — | `incompatible __grid_constant__ annotation for parameter %s in function template redeclaration (see previous declaration %p)` | Template redecl |
+| `grid_constant_incompat_specialization` | — | `incompatible __grid_constant__ annotation for parameter %s in function specialization (see previous declaration %p)` | Specialization |
+| `grid_constant_incompat_instantiation_directive` | — | `incompatible __grid_constant__ annotation for parameter %s in instantiation directive (see previous declaration %p)` | Instantiation |
 
 Error codes for checks 1, 2, 4--8 are not individually mapped in the decompiled code available for this analysis. Error 3702 (check 3) is confirmed from the post-validation function `sub_6BC890`. Error 3577 (memory space conflict) is confirmed from `sub_40E0D0` and `sub_40EB80`.
 
@@ -514,8 +514,8 @@ Error codes for checks 1, 2, 4--8 are not individually mapped in the decompiled 
 | `sub_6BC890` | `nv_validate_cuda_attributes` | 161 | `nv_transforms.c` | Post-validation: param walk for 3702 (`grid_constant_non_kernel`) |
 | `sub_40E1F0` | `apply_nv_global_attr` (variant 1) | 89 | `attribute.c` | Parameter iteration with grid_constant flag check (3669 advisory) |
 | `sub_40E7F0` | `apply_nv_global_attr` (variant 2) | 86 | `attribute.c` | Same parameter iteration (alternate call path, `do-while` loop) |
-| `sub_5863A0` | `fe_translation_unit_init` | -- | `fe_init.c` | Registers `__grid_constant__` keyword |
-| `sub_40A250` | attribute name lookup | -- | `attribute.c` | Strips `__` prefix/suffix, searches hash table |
+| `sub_5863A0` | `fe_translation_unit_init` | — | `fe_init.c` | Registers `__grid_constant__` keyword |
+| `sub_40A250` | attribute name lookup | — | `attribute.c` | Strips `__` prefix/suffix, searches hash table |
 
 ## Global Variables
 
@@ -528,11 +528,11 @@ Error codes for checks 1, 2, 4--8 are not individually mapped in the decompiled 
 
 ## Cross-References
 
-- [Attribute System Overview](overview.md) -- attribute node structure, dispatch pipeline, kind byte enumeration
-- [\_\_global\_\_ Function Constraints](global-function.md) -- parameter iteration for `__grid_constant__` advisory (error 3669), full apply handler pseudocode
-- [Entity Node Layout](../structs/entity-node.md) -- `entity+164` bit 2 (grid_constant flag), `param+32` bit 1
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- all 8 `grid_constant_*` diagnostic tags
-- [CLI Flag Inventory](../config/cli-flags.md) -- `--target` flag setting `dword_126E4A8`
-- [Architecture Feature Gating](../cuda/arch-gating.md) -- SM version gating mechanism, `dword_126E4A8` data flow
-- [CUDA Memory Spaces](../cuda/memory-spaces.md) -- constant memory semantics, error 3577 conflict
-- [RDC Mode](../cuda/rdc-mode.md) -- why redeclaration consistency matters across translation units
+- [Attribute System Overview](overview.md) — attribute node structure, dispatch pipeline, kind byte enumeration
+- [\_\_global\_\_ Function Constraints](global-function.md) — parameter iteration for `__grid_constant__` advisory (error 3669), full apply handler pseudocode
+- [Entity Node Layout](../structs/entity-node.md) — `entity+164` bit 2 (grid_constant flag), `param+32` bit 1
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — all 8 `grid_constant_*` diagnostic tags
+- [CLI Flag Inventory](../config/cli-flags.md) — `--target` flag setting `dword_126E4A8`
+- [Architecture Feature Gating](../cuda/arch-gating.md) — SM version gating mechanism, `dword_126E4A8` data flow
+- [CUDA Memory Spaces](../cuda/memory-spaces.md) — constant memory semantics, error 3577 conflict
+- [RDC Mode](../cuda/rdc-mode.md) — why redeclaration consistency matters across translation units

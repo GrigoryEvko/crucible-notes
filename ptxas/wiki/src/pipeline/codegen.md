@@ -286,11 +286,11 @@ When `--split-compile` is active with GNU Make, the thread pool integrates with 
 
 This 647-line function sets up target-specific defaults for each kernel before the OCG pipeline runs. Key responsibilities:
 
-1. **Timing instrumentation** -- records start timestamps, wall-clock time
-2. **Target configuration** -- reads `"ptxocg.0.0"` defaults, sets cache mode, texturing mode, `"specified texturing mode"` string evidence
-3. **Fast-compile shortcuts** -- when `--fast-compile` is active, reduces optimization effort
-4. **ABI setup** -- configures parameter passing, return address register, scratch registers
-5. **Error recovery** -- establishes `setjmp` point for fatal errors during kernel compilation
+1. **Timing instrumentation** — records start timestamps, wall-clock time
+2. **Target configuration** — reads `"ptxocg.0.0"` defaults, sets cache mode, texturing mode, `"specified texturing mode"` string evidence
+3. **Fast-compile shortcuts** — when `--fast-compile` is active, reduces optimization effort
+4. **ABI setup** — configures parameter passing, return address register, scratch registers
+5. **Error recovery** — establishes `setjmp` point for fatal errors during kernel compilation
 
 The function allocates a `_jmp_buf` on the stack for error recovery. If any phase in the downstream pipeline calls the fatal diagnostic path (`sub_42F590` with severity >= 6), execution longjmps back to sub_43A400's recovery handler, which cleans up the partially-compiled kernel and continues to the next.
 
@@ -362,12 +362,12 @@ When called with `index == -1` (aggregate mode after multi-threaded compilation)
 
 This 1,077-line function produces the final per-kernel output artifacts. Key behaviors:
 
-1. **Skip dummy entries** -- checks for `"__cuda_dummy_entry__"` and returns immediately
-2. **Section generation** -- creates `.sass` and `.ucode` ELF sections for each kernel
-3. **Entry banner** -- emits `"\n# ============== entry %s ==============\n"` to the SASS text output
-4. **Register map** -- calls `"reg-fatpoint"` to annotate the register allocation
-5. **Verbose SASS output** -- when `--verbose` is active, formats and writes human-readable SASS text
-6. **Multiple output paths** -- supports mercury, capmerc, and direct SASS output modes
+1. **Skip dummy entries** — checks for `"__cuda_dummy_entry__"` and returns immediately
+2. **Section generation** — creates `.sass` and `.ucode` ELF sections for each kernel
+3. **Entry banner** — emits `"\n# ============== entry %s ==============\n"` to the SASS text output
+4. **Register map** — calls `"reg-fatpoint"` to annotate the register allocation
+5. **Verbose SASS output** — when `--verbose` is active, formats and writes human-readable SASS text
+6. **Multiple output paths** — supports mercury, capmerc, and direct SASS output modes
 
 ## Thread Pool Worker: sub_436DF0
 
@@ -423,7 +423,7 @@ void thread_worker(Context* a1, TaskStruct* task) {
 }
 ```
 
-The timing lock at index 6 (`sub_607D70(6)` / `sub_607D90(6)`) serializes access to the peak wall-clock counter across threads. This is the only shared mutable state in the multi-threaded path -- all other per-kernel state is isolated in the 360-byte work buffer and per-thread hash map copies.
+The timing lock at index 6 (`sub_607D70(6)` / `sub_607D90(6)`) serializes access to the peak wall-clock counter across threads. This is the only shared mutable state in the multi-threaded path — all other per-kernel state is isolated in the 360-byte work buffer and per-thread hash map copies.
 
 ## Data Flow Summary
 
@@ -459,15 +459,15 @@ ELF builder (sub_612DE0)
 
 ## Cross-References
 
-- [Pipeline Overview](overview.md) -- end-to-end compilation flow
-- [Entry Point & CLI](entry.md) -- the top-level driver that calls sub_4428E0
-- [Optimization Pipeline (159 Phases)](optimizer.md) -- the OCG pipeline invoked per-kernel
-- [Code Generation Overview](../codegen/overview.md) -- detailed codegen subsystem
-- [SASS Instruction Encoding](../codegen/encoding.md) -- Mercury encoding phases
-- [Register Allocation](../regalloc/overview.md) -- Fatpoint algorithm invoked at phase 101
-- [Thread Pool & Concurrency](../infra/threading.md) -- thread pool struct and jobserver
-- [Memory Pool Allocator](../infra/memory-pools.md) -- pool allocator used throughout
-- [Knobs System](../config/knobs.md) -- cache-mode knobs read by sub_4428E0
+- [Pipeline Overview](overview.md) — end-to-end compilation flow
+- [Entry Point & CLI](entry.md) — the top-level driver that calls sub_4428E0
+- [Optimization Pipeline (159 Phases)](optimizer.md) — the OCG pipeline invoked per-kernel
+- [Code Generation Overview](../codegen/overview.md) — detailed codegen subsystem
+- [SASS Instruction Encoding](../codegen/encoding.md) — Mercury encoding phases
+- [Register Allocation](../regalloc/overview.md) — Fatpoint algorithm invoked at phase 101
+- [Thread Pool & Concurrency](../infra/threading.md) — thread pool struct and jobserver
+- [Memory Pool Allocator](../infra/memory-pools.md) — pool allocator used throughout
+- [Knobs System](../config/knobs.md) — cache-mode knobs read by sub_4428E0
 
 ## Function Map
 
@@ -490,9 +490,9 @@ ELF builder (sub_612DE0)
 | `sub_43B660` | 3,843 B | ~300 | Register/resource constraint calculator | HIGH |
 | `sub_1CB18B0` | ~200 B | 33 | Thread pool constructor (184-byte struct) | HIGH |
 | `sub_1CB1A50` | ~200 B | 21 | Thread pool task submit | HIGH |
-| `sub_1CB1AE0` | -- | -- | Thread pool wait-for-all | HIGH |
-| `sub_1CB1970` | -- | -- | Thread pool destructor | HIGH |
-| `sub_1CC7300` | 2,027 B | -- | GNU Make jobserver client | HIGH |
+| `sub_1CB1AE0` | — | — | Thread pool wait-for-all | HIGH |
+| `sub_1CB1970` | — | — | Thread pool destructor | HIGH |
+| `sub_1CC7300` | 2,027 B | — | GNU Make jobserver client | HIGH |
 
 ## Diagnostic Strings
 

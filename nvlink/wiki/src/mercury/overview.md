@@ -1,6 +1,6 @@
 # Mercury Overview
 
-Mercury is NVIDIA's internal codename for a new GPU ISA binary format that replaces the legacy SASS (Shader ASSembler) encoding for modern GPU architectures. The name is ROT13-obfuscated throughout the binary as "Zrephel" -- applying ROT13 to "MERCURY" yields "ZREPHEL", the form seen in all instruction-level string tables. In nvlink v13.0.88, Mercury surfaces across four distinct subsystems: the MercExpand instruction expansion engine, the capsule mercury (capmerc) ELF format, the R_MERCURY relocation family, and the FNLZR (finalizer) that converts between SASS and Mercury representations.
+Mercury is NVIDIA's internal codename for a new GPU ISA binary format that replaces the legacy SASS (Shader ASSembler) encoding for modern GPU architectures. The name is ROT13-obfuscated throughout the binary as "Zrephel" — applying ROT13 to "MERCURY" yields "ZREPHEL", the form seen in all instruction-level string tables. In nvlink v13.0.88, Mercury surfaces across four distinct subsystems: the MercExpand instruction expansion engine, the capsule mercury (capmerc) ELF format, the R_MERCURY relocation family, and the FNLZR (finalizer) that converts between SASS and Mercury representations.
 
 ## String Evidence Summary
 
@@ -107,7 +107,7 @@ Before MercExpand runs, each function's IR is a doubly-linked list of instructio
 |---|---|---|---|
 | +0 | 8 | `prev` | Previous node in linked list |
 | +8 | 8 | `next` | Next node in linked list |
-| +16 | -- | `ir_body` | Start of IR body (handlers receive `node+16`) |
+| +16 | — | `ir_body` | Start of IR body (handlers receive `node+16`) |
 | +28 | 2 | `opcode_tag` | IR opcode type tag (the dispatch key) |
 | +32 | 4 | `data_type_id` | Data type identifier (used for surface ops check: 559-560) |
 | +36 | 4 | `sub_type` | Sub-type or variant index |
@@ -143,7 +143,7 @@ Each instruction also carries an attribute bag accessible via `sub_A49150(contex
 | 359 | Return mode | 1960 = return instruction marker |
 | 527, 534, 538 | Opex flags | Operand extension indicators (case 90) |
 
-The attribute-348 field is particularly important -- it tracks where each instruction is in the MercExpand lifecycle:
+The attribute-348 field is particularly important — it tracks where each instruction is in the MercExpand lifecycle:
 
 | Value | Meaning |
 |---|---|
@@ -445,7 +445,7 @@ After processing all instructions, the dispatch function performs final bookkeep
 
 ### The Per-Instruction Handler (`sub_5F38E0`)
 
-`sub_5F38E0` is the 35 KB per-instruction expansion function. It is called from `sub_5FDDB0` indirectly for most non-trivial opcode types. While the dispatch function selects *which* handler runs, this function performs the *actual expansion* -- converting one IR instruction into potentially multiple Mercury machine operations with proper register constraints and scheduling parameters.
+`sub_5F38E0` is the 35 KB per-instruction expansion function. It is called from `sub_5FDDB0` indirectly for most non-trivial opcode types. While the dispatch function selects *which* handler runs, this function performs the *actual expansion* — converting one IR instruction into potentially multiple Mercury machine operations with proper register constraints and scheduling parameters.
 
 #### Initialization
 
@@ -476,7 +476,7 @@ HandleInstruction(state, context, bb_list, is_predicated, pass_number):
 
 #### The Descriptor Lookup
 
-For each IR instruction, the handler looks up the corresponding **target instruction descriptor** -- a 184-byte structure that defines the Mercury encoding constraints:
+For each IR instruction, the handler looks up the corresponding **target instruction descriptor** — a 184-byte structure that defines the Mercury encoding constraints:
 
 ```c
     // Get descriptor index from instruction metadata
@@ -495,7 +495,7 @@ The descriptor at pointer `v19` has this layout:
 |---|---|---|---|
 | +0 | 4 | `desc_id` | Descriptor unique ID |
 | +4 | 4 | `sched_class` | Scheduling class (stored as `v193`) |
-| +8-103 | -- | `constraint_bitvectors` | Register constraint data (6 pairs at +8, +40, +104, +120) |
+| +8-103 | — | `constraint_bitvectors` | Register constraint data (6 pairs at +8, +40, +104, +120) |
 | +104 | 16 | `src_reg_constraints` | Source register constraint bitvectors |
 | +120 | 16 | `dst_reg_constraints` | Destination register constraint bitvectors |
 | +152 | 2 | `reg_class_0` | Register class constraint word 0 |
@@ -553,7 +553,7 @@ The `sub_5F0180` function (14.2 KB) is the core register constraint propagation 
 
 #### Scheduling Distance Computation
 
-After register constraints, the handler computes scheduling distances -- the minimum number of cycles between dependent instructions:
+After register constraints, the handler computes scheduling distances — the minimum number of cycles between dependent instructions:
 
 ```c
     // Query scheduling distance from target capabilities
@@ -911,7 +911,7 @@ The dispatch loop delegates to specialized handlers per instruction category:
 
 The MercExpand output feeds directly into the downstream `MercEncodeAndDecode` pass. The connection points are:
 
-1. **Descriptor index** (metadata +20): Each expanded instruction carries a descriptor index that maps 1:1 to an entry in the Mercury encoder table. The encoder table base is at `target_state+832`, with each entry being 184 bytes. This is the same table consulted during expansion -- the encoder reads the same descriptor to determine the binary encoding format.
+1. **Descriptor index** (metadata +20): Each expanded instruction carries a descriptor index that maps 1:1 to an entry in the Mercury encoder table. The encoder table base is at `target_state+832`, with each entry being 184 bytes. This is the same table consulted during expansion — the encoder reads the same descriptor to determine the binary encoding format.
 
 2. **Encoding size flags** (metadata byte +50 and +51): Set by `sub_5EA930` during expansion:
    - Bit 4 of byte +50 (`0x10`): instruction exceeds minimum encoding width, needs extended format
@@ -1062,7 +1062,7 @@ See [FNLZR (Finalizer)](fnlzr.md) for detailed analysis of the finalization subs
 
 ## MercGenerateSassUCode
 
-The final Mercury pipeline stage is `MercGenerateSassUCode` (`0x2443D02`, xref `0x2444418`), which converts the Mercury internal representation into SASS microcode -- the actual GPU-executable instruction encoding. Related dump utilities exist:
+The final Mercury pipeline stage is `MercGenerateSassUCode` (`0x2443D02`, xref `0x2444418`), which converts the Mercury internal representation into SASS microcode — the actual GPU-executable instruction encoding. Related dump utilities exist:
 
 | Function | String Address | Description |
 |---|---|---|
@@ -1074,20 +1074,20 @@ The `.ucode` section name at `0x1EEC922` and `EIATTR_UCODE_SECTION_DATA` at `0x1
 ## Cross-References
 
 ### nvlink Internal
-- [Capsule Mercury Format](capmerc-format.md) -- detailed capmerc ELF layout and encoding
-- [R_MERCURY Relocations](r-mercury-relocations.md) -- the 67 Mercury relocation types
-- [Mercury ELF Sections](elf-sections.md) -- the 20 `.nv.merc.*` sections
-- [Mercury Compiler Passes](compiler-passes.md) -- MercExpand, MercConverter, MercWARs, MercOpex
-- [FNLZR (Finalizer)](fnlzr.md) -- SASS-to-Mercury and Mercury-to-SASS conversion
-- [Embedded ptxas Overview](../ptxas/overview.md) -- MercExpand mega-hub at `0x5B1D80` in the address map
-- [ISel Hubs](../ptxas/isel-hubs.md) -- MercExpand is the 5th mega-hub dispatch function
-- [SM100 Blackwell](../targets/sm100-blackwell.md) -- Mercury is the default encoding for SM100+ targets
-- [Output Phase](../pipeline/output.md) -- Mercury output path in the linker pipeline
+- [Capsule Mercury Format](capmerc-format.md) — detailed capmerc ELF layout and encoding
+- [R_MERCURY Relocations](r-mercury-relocations.md) — the 67 Mercury relocation types
+- [Mercury ELF Sections](elf-sections.md) — the 20 `.nv.merc.*` sections
+- [Mercury Compiler Passes](compiler-passes.md) — MercExpand, MercConverter, MercWARs, MercOpex
+- [FNLZR (Finalizer)](fnlzr.md) — SASS-to-Mercury and Mercury-to-SASS conversion
+- [Embedded ptxas Overview](../ptxas/overview.md) — MercExpand mega-hub at `0x5B1D80` in the address map
+- [ISel Hubs](../ptxas/isel-hubs.md) — MercExpand is the 5th mega-hub dispatch function
+- [SM100 Blackwell](../targets/sm100-blackwell.md) — Mercury is the default encoding for SM100+ targets
+- [Output Phase](../pipeline/output.md) — Mercury output path in the linker pipeline
 
 ### Sibling Wikis
-- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) -- standalone ptxas Mercury encoder (phases 113--122: encode/decode, MercExpand, WAR, opex, UCode emission)
-- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) -- standalone ptxas capmerc output format, Mercury section binary layouts, finalization pipeline
-- [ptxas: SASS Encoding](../../ptxas/codegen/encoding.html) -- SASS instruction encoding that Mercury wraps
+- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) — standalone ptxas Mercury encoder (phases 113--122: encode/decode, MercExpand, WAR, opex, UCode emission)
+- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) — standalone ptxas capmerc output format, Mercury section binary layouts, finalization pipeline
+- [ptxas: SASS Encoding](../../ptxas/codegen/encoding.html) — SASS instruction encoding that Mercury wraps
 
 ## Confidence Assessment
 

@@ -1,6 +1,6 @@
 # Overload Resolution
 
-The overload resolution engine in cudafe++ is EDG 6.6's implementation of the C++ overload resolution algorithm (ISO C++ [over.match]). It lives in `overload.c` -- approximately 100 functions spanning address range `0x6BE4A0`--`0x6EF7A0` (roughly 200KB of compiled code). Overload resolution is one of the most complex subsystems in any C++ compiler because it sits at the intersection of nearly every other language feature: implicit conversions, user-defined conversions, template argument deduction, SFINAE, partial ordering, reference binding, list initialization, copy elision, and operator overloading each contribute decision branches to the algorithm. EDG implements the standard three-phase architecture -- candidate collection, viability checking, best-viable selection -- with NVIDIA-specific extensions for CUDA execution-space filtering.
+The overload resolution engine in cudafe++ is EDG 6.6's implementation of the C++ overload resolution algorithm (ISO C++ [over.match]). It lives in `overload.c` — approximately 100 functions spanning address range `0x6BE4A0`--`0x6EF7A0` (roughly 200KB of compiled code). Overload resolution is one of the most complex subsystems in any C++ compiler because it sits at the intersection of nearly every other language feature: implicit conversions, user-defined conversions, template argument deduction, SFINAE, partial ordering, reference binding, list initialization, copy elision, and operator overloading each contribute decision branches to the algorithm. EDG implements the standard three-phase architecture — candidate collection, viability checking, best-viable selection — with NVIDIA-specific extensions for CUDA execution-space filtering.
 
 ## Key Facts
 
@@ -66,7 +66,7 @@ Overload resolution is not a simple "find the best match" operation. The C++ sta
 
 ### Phase 1: Candidate Collection
 
-Candidates are collected into an overload set -- a linked list of entries allocated via `sub_6BA0D0` and iterated via `sub_6BA230`. The overload set is built by the caller before invoking `select_overloaded_function`. Sources of candidates include:
+Candidates are collected into an overload set — a linked list of entries allocated via `sub_6BA0D0` and iterated via `sub_6BA230`. The overload set is built by the caller before invoking `select_overloaded_function`. Sources of candidates include:
 
 - **Name lookup results.** All declarations visible by name at the call site, including base class members and using-declarations.
 - **Argument-dependent lookup (ADL).** Additional functions found by searching the associated namespaces of the argument types (Koenig lookup). These are added to the set by the name lookup machinery before overload resolution begins.
@@ -140,7 +140,7 @@ The function implements a two-pass approach visible in the debug trace output: p
 
 ### Phase 3: Best-Viable Selection
 
-`select_overloaded_function` (`sub_6E6400`, 1,483 lines, 20 parameters) performs the final selection. It is the master entry point for overload resolution -- called from the expression parser, from CTAD, and from special member function selection.
+`select_overloaded_function` (`sub_6E6400`, 1,483 lines, 20 parameters) performs the final selection. It is the master entry point for overload resolution — called from the expression parser, from CTAD, and from special member function selection.
 
 ```c
 select_overloaded_function (sub_6E6400, 1483 lines, 20 params)
@@ -314,7 +314,7 @@ Leaving conversion_from_class_possible: <result>
 
 ## The Main Overload Resolution Driver
 
-`sub_6CE6E0` (1,246 lines) is the central driver function -- "THE MONSTER" -- that coordinates the overload resolution pipeline. It is called from `determine_selector_match_level` and from the candidate evaluation logic, acting as the type-comparison and scoring backbone that feeds the higher-level selection functions.
+`sub_6CE6E0` (1,246 lines) is the central driver function — "THE MONSTER" — that coordinates the overload resolution pipeline. It is called from `determine_selector_match_level` and from the candidate evaluation logic, acting as the type-comparison and scoring backbone that feeds the higher-level selection functions.
 
 ```c
 overload_resolution_driver (sub_6CE6E0, 1246 lines)
@@ -364,7 +364,7 @@ overload_resolution_driver (sub_6CE6E0, 1246 lines)
 
 ### Candidate Evaluation Function
 
-`sub_6C4C00` (1,044 lines) is the candidate evaluation function -- it scores each candidate by computing the full set of implicit conversion sequences across all arguments and produces the data that `compare_candidates` uses.
+`sub_6C4C00` (1,044 lines) is the candidate evaluation function — it scores each candidate by computing the full set of implicit conversion sequences across all arguments and produces the data that `compare_candidates` uses.
 
 ```c
 evaluate_candidate (sub_6C4C00, 1044 lines)
@@ -614,7 +614,7 @@ select_overloaded_assignment_operator (sub_6DD600, 492 lines)
 
 ### Copy Elision
 
-C++17 guaranteed copy elision is handled by `handle_elided_copy_constructor_no_guard` (two variants: `sub_6DCD60` 166 lines and `sub_6DD180` 169 lines). Even with elision, the compiler must verify that the copy/move constructor would be callable -- the constructor is selected via `select_overloaded_copy_constructor` but never actually invoked. The wrapper `arg_copy_can_be_done_via_constructor` (`sub_6DCC00`, 55 lines) performs this check.
+C++17 guaranteed copy elision is handled by `handle_elided_copy_constructor_no_guard` (two variants: `sub_6DCD60` 166 lines and `sub_6DD180` 169 lines). Even with elision, the compiler must verify that the copy/move constructor would be callable — the constructor is selected via `select_overloaded_copy_constructor` but never actually invoked. The wrapper `arg_copy_can_be_done_via_constructor` (`sub_6DCC00`, 55 lines) performs this check.
 
 ## List Initialization
 
@@ -675,7 +675,7 @@ The `find_initializer_list_constructor` / `make_initializer_list_object` functio
 
 ## Class Template Argument Deduction (CTAD)
 
-C++17 CTAD is implemented by `deduce_class_template_args` (`sub_6E8300`, 285 lines). CTAD works by synthesizing a set of "deduction guides" -- function-like entities derived from the class template's constructors -- and running overload resolution on them.
+C++17 CTAD is implemented by `deduce_class_template_args` (`sub_6E8300`, 285 lines). CTAD works by synthesizing a set of "deduction guides" — function-like entities derived from the class template's constructors — and running overload resolution on them.
 
 ```c
 deduce_class_template_args (sub_6E8300, 285 lines)
@@ -696,7 +696,7 @@ deduce_class_template_args (sub_6E8300, 285 lines)
     return selected_guide.deduced_args
 ```
 
-CTAD delegates entirely to `select_overloaded_function` for the actual resolution -- the deduction guides are treated as ordinary function candidates with synthesized parameter types.
+CTAD delegates entirely to `select_overloaded_function` for the actual resolution — the deduction guides are treated as ordinary function candidates with synthesized parameter types.
 
 ## Auto Type Deduction
 

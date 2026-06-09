@@ -19,10 +19,10 @@ Both passes operate at the LLVM IR level, immediately before SelectionDAG constr
 | Address sinking | `sub_1D73760` / `sub_2D75700` (65--72 KB), string `"sunkaddr"` |
 | PHI sinking | `sub_1D706F0` / `sub_2D784F0` (64--68 KB), string `"sunk_phi"` |
 | Block splitting | `sub_1D7AA30` / `sub_2D88660` (54--74 KB), strings `".unlikely"`, `".cond.split"` |
-| Main transform | `sub_2D80050` (54 KB) -- orchestrates address mode lowering |
+| Main transform | `sub_2D80050` (54 KB) — orchestrates address mode lowering |
 | SCEV-CGP knob ctor | `ctor_263_0` at `0x4F36F0` (9.9 KB, 44 option strings) |
 | CGP knob ctor | `ctor_288_0` at `0x4FA950` (8.6 KB, 44 option strings) |
-| Master disable | `nv-disable-scev-cgp` (default: `true` -- SCEV-CGP is disabled) |
+| Master disable | `nv-disable-scev-cgp` (default: `true` — SCEV-CGP is disabled) |
 | Upstream source | `llvm/lib/CodeGen/CodeGenPrepare.cpp` |
 | Pipeline position | Late IR, immediately before SelectionDAG ISel |
 
@@ -80,11 +80,11 @@ Key helpers in the v13.0 build:
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | -- | `sub_2D749D0` | -- |
-| -- | -- | `sub_2D67BB0` | -- |
-| -- | -- | `sub_2D6E640` | -- |
-| -- | -- | `sub_2D68450` | -- |
-| -- | -- | `sub_2CE7CF0` | -- |
+| — | — | `sub_2D749D0` | — |
+| — | — | `sub_2D67BB0` | — |
+| — | — | `sub_2D6E640` | — |
+| — | — | `sub_2D68450` | — |
+| — | — | `sub_2CE7CF0` | — |
 
 ### Transform 2: PHI Sinking (`sunk_phi`)
 
@@ -191,7 +191,7 @@ The `nv-disable-scev-cgp` knob defaults to `true` (the description reads `"Disab
 
 ### When SCEV-CGP Would Be Beneficial
 
-Despite being disabled by default, the pass has 11 dedicated knobs -- NVIDIA clearly uses it selectively:
+Despite being disabled by default, the pass has 11 dedicated knobs — NVIDIA clearly uses it selectively:
 
 - **Kernels with complex strided access patterns** where thread ID participates in multi-dimensional address calculations (e.g., `base + tid.x * stride_x + tid.y * stride_y + tid.z * stride_z`). BASR handles the case where multiple accesses share a base, but it does not factor thread ID expressions across dimensions.
 
@@ -259,7 +259,7 @@ CodeGenPrepare/SCEV-CGP and [Loop Strength Reduction](./lsr.md) both optimize ad
 | **Address space** | Full awareness (shared memory protection, 64-bit IV gating) | No special GPU handling | Thread ID aware (`scev-cgp-tid-max-value`) |
 | **Default status** | **Enabled** (with GPU-custom formula solver) | **Enabled** (standard upstream) | **Disabled** (`nv-disable-scev-cgp = true`) |
 
-The key insight is the pipeline ordering: LSR runs first during the optimization phase, rewriting IVs across the loop. CodeGenPrepare runs later, sinking the results into individual use sites. If SCEV-CGP were also enabled, it would run between these two, potentially undoing LSR's IV choices to create "better" address modes -- which may conflict with LSR's register-pressure-informed formula selection.
+The key insight is the pipeline ordering: LSR runs first during the optimization phase, rewriting IVs across the loop. CodeGenPrepare runs later, sinking the results into individual use sites. If SCEV-CGP were also enabled, it would run between these two, potentially undoing LSR's IV choices to create "better" address modes — which may conflict with LSR's register-pressure-informed formula selection.
 
 NVIDIA's solution is pragmatic: keep SCEV-CGP off, let LSR handle SCEV-level optimization, let BASR/CBE handle GPU-specific base sharing, and let upstream CodeGenPrepare handle the final address sinking.
 
@@ -280,28 +280,28 @@ NVIDIA's solution is pragmatic: keep SCEV-CGP off, let LSR handle SCEV-level opt
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_1D73760` | 65 KB | `optimizeMemoryInst` -- address sinking, creates `"sunkaddr"` |
-| -- | `sub_1D706F0` | 68 KB | PHI optimization, creates `"sunk_phi"` |
-| -- | `sub_1D7AA30` | 74 KB | Block splitting, creates `".unlikely"`, `".cond.split"` |
-| -- | `sub_1D779D0` | 71 KB | IR transform (DAG combine-level, possibly `optimizeInst`) |
-| -- | `sub_1D765D0` | 34 KB | Select lowering (`"cond.false"`, `"cond.end"`) |
-| -- | `sub_1D7F9D0` | 31 KB | Deque-based worklist processor |
+| — | `sub_1D73760` | 65 KB | `optimizeMemoryInst` — address sinking, creates `"sunkaddr"` |
+| — | `sub_1D706F0` | 68 KB | PHI optimization, creates `"sunk_phi"` |
+| — | `sub_1D7AA30` | 74 KB | Block splitting, creates `".unlikely"`, `".cond.split"` |
+| — | `sub_1D779D0` | 71 KB | IR transform (DAG combine-level, possibly `optimizeInst`) |
+| — | `sub_1D765D0` | 34 KB | Select lowering (`"cond.false"`, `"cond.end"`) |
+| — | `sub_1D7F9D0` | 31 KB | Deque-based worklist processor |
 
 ### CodeGenPrepare (v13.0 Addresses)
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_2D75700` | 72 KB | Address sinking with `"sunk_phi"`, ValueToSunkAddr DenseMap |
-| -- | `sub_2D784F0` | 64 KB | Address mode lowering orchestrator, calls `sub_2D75700` |
-| -- | `sub_2D80050` | 54 KB | Main CodeGenPrepare transform, calls TTI and address mode logic |
-| -- | `sub_2D82850` | 62 KB | Late lowering/expansion (type widening, custom lowering) |
-| -- | `sub_2D88660` | 70 KB | Block splitting with branch weights (`"hot"`, `"unlikely"`, `"unknown"`) |
-| -- | `sub_2D749D0` | -- | Address mode cache lookup |
-| -- | `sub_2D67BB0` | -- | Address mode legality test |
-| -- | `sub_2D6E640` | -- | Address mode cache insert |
-| -- | `sub_2D68450` | -- | Address mode materialization |
-| -- | `sub_2D6DEE0` | -- | Address mode matching |
-| -- | `sub_2D69E90` | -- | Cleanup/init |
+| — | `sub_2D75700` | 72 KB | Address sinking with `"sunk_phi"`, ValueToSunkAddr DenseMap |
+| — | `sub_2D784F0` | 64 KB | Address mode lowering orchestrator, calls `sub_2D75700` |
+| — | `sub_2D80050` | 54 KB | Main CodeGenPrepare transform, calls TTI and address mode logic |
+| — | `sub_2D82850` | 62 KB | Late lowering/expansion (type widening, custom lowering) |
+| — | `sub_2D88660` | 70 KB | Block splitting with branch weights (`"hot"`, `"unlikely"`, `"unknown"`) |
+| — | `sub_2D749D0` | — | Address mode cache lookup |
+| — | `sub_2D67BB0` | — | Address mode legality test |
+| — | `sub_2D6E640` | — | Address mode cache insert |
+| — | `sub_2D68450` | — | Address mode materialization |
+| — | `sub_2D6DEE0` | — | Address mode matching |
+| — | `sub_2D69E90` | — | Cleanup/init |
 
 ### Helper Range (0x1D60000--0x1D6FFFF)
 
@@ -311,19 +311,19 @@ This 64 KB sub-range contains CodeGenPrepare helper functions. The sweep identif
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `ctor_263_0` (`0x4F36F0`) | 9.9 KB | Registers 44 cl::opt strings for SCEV-CGP + BASR |
-| -- | `ctor_288_0` (`0x4FA950`) | 8.6 KB | Registers 44 cl::opt strings for upstream CodeGenPrepare |
-| -- | `ctor_591` (`0x57C1A0`) | 9.3 KB | Additional CodeGenPrepare sink/split options |
-| -- | `ctor_544_0` (`0x56C190`) | 13.1 KB | CodeGenPrepare options (v13.0 duplicate registration) |
-| -- | `ctor_609_0` (`0x585D30`) | 37.3 KB | NVPTX backend mega-block, includes `nv-disable-scev-cgp` |
+| — | `ctor_263_0` (`0x4F36F0`) | 9.9 KB | Registers 44 cl::opt strings for SCEV-CGP + BASR |
+| — | `ctor_288_0` (`0x4FA950`) | 8.6 KB | Registers 44 cl::opt strings for upstream CodeGenPrepare |
+| — | `ctor_591` (`0x57C1A0`) | 9.3 KB | Additional CodeGenPrepare sink/split options |
+| — | `ctor_544_0` (`0x56C190`) | 13.1 KB | CodeGenPrepare options (v13.0 duplicate registration) |
+| — | `ctor_609_0` (`0x585D30`) | 37.3 KB | NVPTX backend mega-block, includes `nv-disable-scev-cgp` |
 
 ## Cross-References
 
-- [Loop Strength Reduction](./lsr.md) -- SCEV-based IV rewriting, runs before CGP
-- [Base Address Strength Reduction](../passes/base-address-sr.md) -- NVIDIA's preferred GPU address optimization
-- [Common Base Elimination](../passes/common-base-elim.md) -- inter-block complement to BASR
-- [SCEV Analysis](./scev.md) -- the scalar evolution infrastructure both LSR and SCEV-CGP depend on
-- [Known Bits](./known-bits.md) -- thread ID range analysis that `scev-cgp-tid-max-value` feeds into
-- [Code Generation Overview](../pipeline/codegen.md) -- pipeline position context
-- [NVPTX Target & TTI](../infra/nvptx-target.md) -- the `nv-disable-scev-cgp` registration in `ctor_609_0`
-- [Optimizer Pipeline](../pipeline/optimizer.md) -- `do-scev-cgp` in the NVVMPassOptions system
+- [Loop Strength Reduction](./lsr.md) — SCEV-based IV rewriting, runs before CGP
+- [Base Address Strength Reduction](../passes/base-address-sr.md) — NVIDIA's preferred GPU address optimization
+- [Common Base Elimination](../passes/common-base-elim.md) — inter-block complement to BASR
+- [SCEV Analysis](./scev.md) — the scalar evolution infrastructure both LSR and SCEV-CGP depend on
+- [Known Bits](./known-bits.md) — thread ID range analysis that `scev-cgp-tid-max-value` feeds into
+- [Code Generation Overview](../pipeline/codegen.md) — pipeline position context
+- [NVPTX Target & TTI](../infra/nvptx-target.md) — the `nv-disable-scev-cgp` registration in `ctor_609_0`
+- [Optimizer Pipeline](../pipeline/optimizer.md) — `do-scev-cgp` in the NVVMPassOptions system

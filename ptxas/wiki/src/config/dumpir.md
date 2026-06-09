@@ -65,8 +65,8 @@ DUMPIR is part of a family of 17 dump-related OCG knobs across two constructor r
 The "Def Offset" column is the byte offset into the 16-byte-stride knob definition table. Dividing by 16 gives the definition-table index: `DumpCallGraph` is index 329, `DumpSBInstInfo` is index 339. These indices are distinct from the 72-byte runtime knob slot indices used by `GetKnobIntValue`.
 
 Adjacent knobs in `ctor_005` (for boundary context):
-- `0x4129F0`: `DoYieldInsertionWAR_SW2491854` (offset `0x1480`) -- immediately before DumpCallGraph
-- `0x412DB0`: `EmitLDCU` (offset `0x1540`) -- immediately after DumpSBInstInfo
+- `0x4129F0`: `DoYieldInsertionWAR_SW2491854` (offset `0x1480`) — immediately before DumpCallGraph
+- `0x412DB0`: `EmitLDCU` (offset `0x1540`) — immediately after DumpSBInstInfo
 
 ### Mercury/DAG Pipeline Dump Knobs (ctor_007)
 
@@ -98,7 +98,7 @@ if (v12 == 5)                         // type 5 = string
     v14 = *(ptr*)(v11 + 21464);       // string value at +8 from type tag
 ```
 
-### Parser -- `sub_798B60`
+### Parser — `sub_798B60`
 
 The NamedPhases parser (`sub_798B60`, 1,776 bytes) reads the knob value string and parses it into parallel arrays of up to 256 entries. It is called from two sites:
 
@@ -115,7 +115,7 @@ The parser operates as follows:
 6. For each token, calls `sub_798280` (ParsePhaseNameFragment) to split the phase name from optional parameters
 7. Stores results in parallel arrays: names[], values[], full_strings[] (max 256 entries)
 
-### Phase Name Fragment Parser -- `sub_798280`
+### Phase Name Fragment Parser — `sub_798280`
 
 Each comma-separated token in the NamedPhases string is parsed by `sub_798280` into two components:
 
@@ -128,7 +128,7 @@ The `+` character acts as an entry separator (analogous to how the DisablePhases
 -knob NamedPhases=PhaseA,param1+PhaseB,param2+PhaseC
 ```
 
-### Mercury NamedPhases -- `sub_9F4040`
+### Mercury NamedPhases — `sub_9F4040`
 
 The Mercury encoder pipeline (`sub_9F4040`, 1,850 lines decompiled) uses the NamedPhases knob to support phase reordering within the Mercury backend. In addition to standard pipeline phase names, it recognizes Mercury-specific pseudo-phases:
 
@@ -144,11 +144,11 @@ The Mercury encoder pipeline (`sub_9F4040`, 1,850 lines decompiled) uses the Nam
 | `OriPerformLiveDead` | 1556 | `sub_C641D0()` lookup | Liveness analysis within Mercury context |
 | `OriCopyProp` | 1648 | `sub_C641D0()` lookup | Copy propagation within Mercury context |
 
-`shuffle` and `swap1`--`swap6` are pure Mercury pseudo-phases: they do not exist in the main 144-entry phase name table at `off_22BD0C0`. Their name matching is done inline with strlen-guarded character comparison (not `strcmp` -- except `swap6` which uses a full `strcmp` call, likely because it is the last in a fallthrough chain).
+`shuffle` and `swap1`--`swap6` are pure Mercury pseudo-phases: they do not exist in the main 144-entry phase name table at `off_22BD0C0`. Their name matching is done inline with strlen-guarded character comparison (not `strcmp` — except `swap6` which uses a full `strcmp` call, likely because it is the last in a fallthrough chain).
 
 `OriPerformLiveDead` and `OriCopyProp` resolve through `sub_C641D0` (the standard binary search), meaning they ARE in the main phase table. They are special in that Mercury conditionally inserts them into its own phase sequence rather than inheriting them from the standard pipeline ordering. The insertion is guarded by state flags (`v234`, `v252`, `v240` for OriPerformLiveDead; `v222`, `v236`, `v257` for OriCopyProp), suggesting they are injected only when the Mercury encoder detects certain register-pressure or correctness conditions.
 
-## Phase Name Lookup -- `sub_C641D0`
+## Phase Name Lookup — `sub_C641D0`
 
 The binary search function `sub_C641D0` (305 bytes) resolves a phase name string to a phase index. It is the core name resolution used by both DUMPIR and NamedPhases.
 
@@ -185,7 +185,7 @@ int PhaseManager::lookup_phase(const char* query) {
 
 The comparison uses `tolower()` on each character individually, making the search fully case-insensitive. On lookup failure, the function returns 158 (the sentinel NOP phase), not an error code. This means misspelled phase names silently resolve to a no-op rather than producing an error.
 
-### Sorted Table Construction -- `sub_C63FA0`
+### Sorted Table Construction — `sub_C63FA0`
 
 The sorted name table is lazily constructed. `sub_C63FA0` checks whether the current sorted count matches the expected count (stored at `PhaseManager+104`). If they differ, it:
 
@@ -245,7 +245,7 @@ The string addresses in the binary are:
 - `"[Freeable Leaked "` at `0x22BC401`
 - `"All Phases Summary"` at `0x22BC416` (final summary label)
 
-### Phase-Wise Statistics -- `--stat=phase-wise`
+### Phase-Wise Statistics — `--stat=phase-wise`
 
 The `--stat` CLI option (processed in `sub_432A00` at `0x432E5A`) accepts a comma-separated list of report modes:
 
@@ -366,7 +366,7 @@ The memory format reuses the suffix from `"PeakMemoryUsage = %.3lf KB"` (at `0x1
 
 ## Phase Name Table
 
-The static phase name table at `off_22BD0C0` contains 145 entries: 1 sentinel ("All Phases Summary") plus 144 phase names. After sorting by `sub_C63FA0`, the binary search in `sub_C641D0` provides O(log n) lookup -- approximately 8 comparisons for 145 entries.
+The static phase name table at `off_22BD0C0` contains 145 entries: 1 sentinel ("All Phases Summary") plus 144 phase names. After sorting by `sub_C63FA0`, the binary search in `sub_C641D0` provides O(log n) lookup — approximately 8 comparisons for 145 entries.
 
 The 144 non-sentinel entries include:
 - **139 base pipeline phases** (indices 0--138) with fixed names
@@ -393,17 +393,17 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 
 | Address | Size | Function | Confidence |
 |---|---|---|---|
-| `sub_798280` | 900 | `ParsePhaseNameFragment` -- splits `NAME,PARAM` from NamedPhases token | MEDIUM |
-| `sub_798B60` | 1,776 | `NamedPhases::ParsePhaseList` -- tokenizes NamedPhases knob string | CERTAIN |
-| `sub_9F4040` | ~7,400 | `MercuryNamedPhases` -- Mercury pipeline phase selection/reordering | HIGH |
-| `sub_A3A7E0` | ~2,000 | `CodeObject::EmitStats` -- per-function statistics header printer | HIGH |
-| `sub_C639A0` | ~800 | `QuicksortNameTable` -- iterative quicksort for phase name table | MEDIUM |
-| `sub_C63FA0` | ~600 | `EnsureSortedNameTable` -- lazy sorted table construction | MEDIUM |
-| `sub_C641D0` | 305 | `PhaseManager::LookupPhase` -- case-insensitive binary search | CERTAIN |
-| `sub_C64310` | 3,168 | `PhaseManager::ReportPhaseStats` -- per-phase timing/memory reporter | HIGH |
-| `sub_C64F70` | 1,455 | `PhaseManager::Dispatch` -- main phase execution loop | CERTAIN |
-| `sub_A55D80` | ~2,000 | `RegAlloc::VerifyReachingDefs` -- references DUMPIR in error message | HIGH |
-| `sub_A76030` | ~1,000 | `RegAlloc::VerifyMismatch` -- references DUMPIR in error message | HIGH |
+| `sub_798280` | 900 | `ParsePhaseNameFragment` — splits `NAME,PARAM` from NamedPhases token | MEDIUM |
+| `sub_798B60` | 1,776 | `NamedPhases::ParsePhaseList` — tokenizes NamedPhases knob string | CERTAIN |
+| `sub_9F4040` | ~7,400 | `MercuryNamedPhases` — Mercury pipeline phase selection/reordering | HIGH |
+| `sub_A3A7E0` | ~2,000 | `CodeObject::EmitStats` — per-function statistics header printer | HIGH |
+| `sub_C639A0` | ~800 | `QuicksortNameTable` — iterative quicksort for phase name table | MEDIUM |
+| `sub_C63FA0` | ~600 | `EnsureSortedNameTable` — lazy sorted table construction | MEDIUM |
+| `sub_C641D0` | 305 | `PhaseManager::LookupPhase` — case-insensitive binary search | CERTAIN |
+| `sub_C64310` | 3,168 | `PhaseManager::ReportPhaseStats` — per-phase timing/memory reporter | HIGH |
+| `sub_C64F70` | 1,455 | `PhaseManager::Dispatch` — main phase execution loop | CERTAIN |
+| `sub_A55D80` | ~2,000 | `RegAlloc::VerifyReachingDefs` — references DUMPIR in error message | HIGH |
+| `sub_A76030` | ~1,000 | `RegAlloc::VerifyMismatch` — references DUMPIR in error message | HIGH |
 
 ## Reimplementation Notes
 
@@ -413,9 +413,9 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 
 3. **Lookup failure is silent.** An unrecognized phase name in DUMPIR or NamedPhases resolves to phase index 158 (NOP sentinel), not an error. The compiler does not warn about misspelled phase names.
 
-4. **The sorted table is 16 bytes per entry**: `{char* name, int32 index, int32 padding}`. The sort is stable only within the quicksort's three-way partitioning -- duplicate names (which do not occur in practice) would have undefined ordering.
+4. **The sorted table is 16 bytes per entry**: `{char* name, int32 index, int32 padding}`. The sort is stable only within the quicksort's three-way partitioning — duplicate names (which do not occur in practice) would have undefined ordering.
 
-5. **Two DumpIR knob instances** exist (OCG and DAG). They are independent -- setting one does not affect the other. The OCG instance controls the 159-phase optimization pipeline; the DAG instance controls the Mercury SASS pipeline. Three knob names (`DumpCFG`, `DumpIR`, `DumpAnnot`/`DumpRPO`) have separate OCG and DAG instances with distinct ROT13 string addresses.
+5. **Two DumpIR knob instances** exist (OCG and DAG). They are independent — setting one does not affect the other. The OCG instance controls the 159-phase optimization pipeline; the DAG instance controls the Mercury SASS pipeline. Three knob names (`DumpCFG`, `DumpIR`, `DumpAnnot`/`DumpRPO`) have separate OCG and DAG instances with distinct ROT13 string addresses.
 
 6. **Memory statistics format** uses three thresholds: bytes (< 1 KB), kilobytes with 3 decimals (< 10 MB), megabytes with 3 decimals (>= 10 MB). The reporter is `sub_C64310`.
 
@@ -429,9 +429,9 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 
 ## Cross-References
 
-- [Knobs System](./knobs.md) -- DUMPIR and NamedPhases are OCG knobs; ROT13 encoding, type system, access patterns
-- [CLI Options](./cli-options.md) -- `--stat=phase-wise`, `--keep` flags that activate report passes
-- [Phase Manager](../passes/phase-manager.md) -- dispatch loop, phase factory, name table infrastructure
-- [Pass Inventory](../passes/index.md) -- complete 159-phase table with report pass positions
-- [Register Allocator](../regalloc/overview.md) -- DUMPIR=AllocateRegisters diagnostic reference
-- [Mercury Encoder](../codegen/mercury.md) -- Mercury-side NamedPhases and DAG DumpIR knob
+- [Knobs System](./knobs.md) — DUMPIR and NamedPhases are OCG knobs; ROT13 encoding, type system, access patterns
+- [CLI Options](./cli-options.md) — `--stat=phase-wise`, `--keep` flags that activate report passes
+- [Phase Manager](../passes/phase-manager.md) — dispatch loop, phase factory, name table infrastructure
+- [Pass Inventory](../passes/index.md) — complete 159-phase table with report pass positions
+- [Register Allocator](../regalloc/overview.md) — DUMPIR=AllocateRegisters diagnostic reference
+- [Mercury Encoder](../codegen/mercury.md) — Mercury-side NamedPhases and DAG DumpIR knob

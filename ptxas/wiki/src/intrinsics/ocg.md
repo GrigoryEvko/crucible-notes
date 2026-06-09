@@ -2,19 +2,19 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel dispatch mechanism for SM100+ builtin operations. While the classical intrinsic system at `sub_5D1660` maps `__cuda_*` runtime helper names to integer IDs and emits inline PTX code via body templates, the OCG system maps `__nv_ptx_builtin_ocg_*` function names to type-specific handler functions that validate parameters and emit SASS instructions directly -- bypassing the PTX intermediate step entirely.
+The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel dispatch mechanism for SM100+ builtin operations. While the classical intrinsic system at `sub_5D1660` maps `__cuda_*` runtime helper names to integer IDs and emits inline PTX code via body templates, the OCG system maps `__nv_ptx_builtin_ocg_*` function names to type-specific handler functions that validate parameters and emit SASS instructions directly — bypassing the PTX intermediate step entirely.
 
 | | |
 |---|---|
-| **OCG intrinsic table** | `sub_6C9EB0` (13KB) -- `__nv_ptx_builtin_ocg_*` dispatch for SM100+ |
-| **OCG router** | `sub_6CC690` (22KB) -- routes OCG calls to type-specific handlers |
-| **OCG name resolver** | `sub_6C9BC0` -- resolves operation names to internal enums |
+| **OCG intrinsic table** | `sub_6C9EB0` (13KB) — `__nv_ptx_builtin_ocg_*` dispatch for SM100+ |
+| **OCG router** | `sub_6CC690` (22KB) — routes OCG calls to type-specific handlers |
+| **OCG name resolver** | `sub_6C9BC0` — resolves operation names to internal enums |
 
-## Initialization -- `sub_6C9EB0`
+## Initialization — `sub_6C9EB0`
 
 `sub_6C9EB0` initializes a 10,664-byte (0x29A8) lookup table and sets the vtable pointer to `off_202CF48`. The operation name prefix is stored at `*(_QWORD *)(a1 + 120) = "__nv_ptx_builtin_ocg_"`. The table contains 44 operations in 248-byte slots starting at offset 128. Each slot holds the operation name followed by up to 30 sub-operation/modifier string pointers (unused slots are NULL from the memset).
 
-## OCG Builtin Name Table -- Complete (44 Operations)
+## OCG Builtin Name Table — Complete (44 Operations)
 
 The complete OCG builtin table extracted from `sub_6C9EB0`. Thirty numeric string pointers that IDA left unresolved were recovered by reading null-terminated strings from the ptxas binary at `addr - 0x400000` (ELF LOAD virtual address base). The table size 0x29A8 and 248-byte slot stride are verified against the `memset` in the decompiled code.
 
@@ -71,7 +71,7 @@ Note: The SASS mnemonics `UBLKCP` and `UTMAKCP` do not appear as strings in the 
 | 3 | 872 | `cache` | tensor, pf (prefetch), iv (invalidate), ivall (invalidate all) | CCTL / PREFETCH |
 | 4 | 1120 | `ld_mc` | ops: add/min/max/f32add/and/or/xor; types: f16x2/f16x4/f16x8/bf16x2/bf16x4/bf16x8/f32/f32x2/f32x4/f64/u32/s32/s64/u64 | LDG.MC |
 | 5 | 1368 | `ldc` | u32, u64 | LDC |
-| 6 | 1616 | `s2r` | (none -- register 0-255) | S2R |
+| 6 | 1616 | `s2r` | (none — register 0-255) | S2R |
 | 22 | 5584 | `write_async` | release; shared/global; gpu/sys/mmio; v2/v4; u8/s8/u16/s16/b32/b64/u32/f64 | STG.ASYNC |
 | 23 | 5832 | `cctl_c` | ldc/ldcu, shallow/deep, iv/ivall | CCTL |
 
@@ -98,10 +98,10 @@ Note: The SASS mnemonics `UBLKCP` and `UTMAKCP` do not appear as strings in the 
 The `tcmma` operation at slot 34 is the primary Blackwell MMA instruction, successor to HMMA/IMMA/DMMA. Its sub-operations encode:
 - **Descriptor mode**: `gdesc` (global descriptor via UR), `tmem` (tensor memory direct)
 - **Input formats**: `h` (half/f16), `i` (integer), `q` (quarter/fp8), `o` (output descriptor), `mxq` (MX-format quarter for microscaled block-scaling)
-- **Operand reuse**: `areuse`/`akeep` (A matrix), `breuse`/`bkeep` (B matrix) -- register reuse hints
-- **Warp-shared**: `ws` -- warp-shared execution across 2 warps
-- **Block scaling**: `blockscale` with `2x`/`4x` multipliers and `impl` (implementation-defined) -- FP4/FP6 microscaled format support
-- **Buffers**: `buffer0`-`buffer3` -- double/quad buffering for pipelined execution
+- **Operand reuse**: `areuse`/`akeep` (A matrix), `breuse`/`bkeep` (B matrix) — register reuse hints
+- **Warp-shared**: `ws` — warp-shared execution across 2 warps
+- **Block scaling**: `blockscale` with `2x`/`4x` multipliers and `impl` (implementation-defined) — FP4/FP6 microscaled format support
+- **Buffers**: `buffer0`-`buffer3` — double/quad buffering for pipelined execution
 
 The SWS (Software Scoreboard) operations (`tcatomsws`, `tcldsws`, `tcstsws`) are a Blackwell synchronization mechanism for tensor core pipelines that replaces hardware scoreboards with software-managed tracking.
 
@@ -113,10 +113,10 @@ The SWS (Software Scoreboard) operations (`tcatomsws`, `tcldsws`, `tcstsws`) are
 | 43 | 10544 | `sttm` | formats: (same 7 as ldtm); scale: x1-x128; expand16bit; fused; b32 | STTM |
 
 The `ldtm`/`sttm` format strings encode the tensor memory data layout:
-- `16dp128bit` -- 16 data-points, 128-bit total (e.g., 16x fp8)
-- `16dp256bit` -- 16 data-points, 256-bit total (e.g., 16x fp16)
-- `32dp32bit` -- 32 data-points, 32-bit total (e.g., 32x 1-bit)
-- `16dp32bitt0t15` / `16dp32bitt16t31` -- 16 data-points in thread groups 0-15 / 16-31
+- `16dp128bit` — 16 data-points, 128-bit total (e.g., 16x fp8)
+- `16dp256bit` — 16 data-points, 256-bit total (e.g., 16x fp16)
+- `32dp32bit` — 32 data-points, 32-bit total (e.g., 32x 1-bit)
+- `16dp32bitt0t15` / `16dp32bitt16t31` — 16 data-points in thread groups 0-15 / 16-31
 - Scale factors `x1` through `x128` control the number of consecutive elements loaded
 - `sparsify` and `spfactor2to4` enable structured 2:4 sparsity metadata generation
 - `stat` with `nan`/`max`/`maxabs`/`min`/`minabs` enables online statistics collection during load
@@ -157,12 +157,12 @@ The OCG handler cluster at `0x6C0000`--`0x6CC000` contains ~25--30 specialized h
 | `sub_6C1CF0` | 16KB | Mbarrier (arrive, wait, test, counted, bytemask variants) | 88% |
 | `sub_6C2AE0` | 10KB | cp.async (basic async copy) | 85% |
 | `sub_6C3470` | 20KB | cp.async.bulk (bulk async copy with type validation) | 85% |
-| `sub_6C46B0` | -- | cp.red.async.bulk (bulk async reduction) | 85% |
+| `sub_6C46B0` | — | cp.red.async.bulk (bulk async reduction) | 85% |
 | `sub_6C4DA0` | 15KB | Load/store (scope, memory order, domain validation) | 85% |
 | `sub_6C5A40` | 8KB | Cache control (CCTL: shallow/deep, iv/ivall, ldc/ldcu) | 85% |
 | `sub_6C60B0` | 7KB | Distributed shared memory (selfcast/broadcast) | 80% |
 | `sub_6C8100` | 9KB | cp.async.tensor / TMA (1--5D, multicast, tile/im2col) | 85% |
-| `sub_6C9BC0` | -- | Name resolver (operation name -> internal enum) | 80% |
+| `sub_6C9BC0` | — | Name resolver (operation name -> internal enum) | 80% |
 | `sub_6CC690` | 22KB | Router (dispatches to type-specific handlers via vtable) | 80% |
 
 ## OCG Validation Strings
@@ -200,7 +200,7 @@ Notable validation strings from the tcgen05 MMA handler:
 - `"fused and l16dp32bit must be specified together"`
 - `"Inputs vector length is inconsistent with layout and num modifiers"`
 
-## OCG Intrinsic Lowering Pipeline -- `sub_6A97B0` + `sub_6CC690`
+## OCG Intrinsic Lowering Pipeline — `sub_6A97B0` + `sub_6CC690`
 
 The full end-to-end flow that takes a PTX `call.uni __nv_ptx_builtin_ocg_*` intrinsic and produces a binary SASS instruction passes through five stages. Three are data-structure manipulation (matching, cleanup), two are instruction encoding (operand assembly, SASS emission).
 
@@ -302,7 +302,7 @@ sub_6D9690 (master SASS encoder, 94KB)
         │ 5. sub_9253C0: commit encoded instruction to output
 ```
 
-**Internal SASS opcode enum values** assigned by the router (not binary SASS opcodes -- these are routing keys that `sub_C3F490` maps to encoding templates):
+**Internal SASS opcode enum values** assigned by the router (not binary SASS opcodes — these are routing keys that `sub_C3F490` maps to encoding templates):
 
 | Enum | Hex | Meaning |
 |---|---|---|
@@ -371,8 +371,8 @@ See [OCG Intrinsic Lowering Pipeline](#ocg-intrinsic-lowering-pipeline----sub_6a
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
 | `sub_6C9EB0` | 13KB | OCG intrinsic table init (`__nv_ptx_builtin_ocg_*`) | 95% |
-| `sub_6CC690` | 22KB | OCG router -- vtable-dispatched operand assembly and SASS emission | 90% |
-| `sub_6C9BC0` | -- | OCG name parser -- decomposes `__nv_ptx_builtin_ocg_X_Y_Z` into enum + sub-op array | 95% |
+| `sub_6CC690` | 22KB | OCG router — vtable-dispatched operand assembly and SASS emission | 90% |
+| `sub_6C9BC0` | — | OCG name parser — decomposes `__nv_ptx_builtin_ocg_X_Y_Z` into enum + sub-op array | 95% |
 | `sub_6C0D90` | 19KB | OCG atomic/reduction handler | 90% |
 | `sub_6C1CF0` | 16KB | OCG mbarrier handler | 88% |
 | `sub_6C3470` | 20KB | OCG cp.async.bulk handler | 85% |
@@ -384,19 +384,19 @@ See [OCG Intrinsic Lowering Pipeline](#ocg-intrinsic-lowering-pipeline----sub_6a
 | `sub_6D7AF0` | 19KB | TCGen05 MMA handler (SASS encoding) | 90% |
 | `sub_6D5CB0` | 16KB | MMA operand encoder | 80% |
 | `sub_6D69B0` | 12KB | TCGen05 MMA validator | 80% |
-| `sub_6D9290` | -- | OCG vtable entry point (calls `sub_6C9BC0` then `sub_6D8B20`) | 85% |
-| `sub_6CB8A0` | -- | SASS instruction emitter (template lookup via `sub_C3F490`) | 80% |
-| `sub_6CAFD0` | -- | Operand decoder (registers into v134[] slots) | 85% |
-| `sub_6CAE80` | -- | Uniform operand encoder | 85% |
-| `sub_6CAF50` | -- | Scope / memory-order encoder | 85% |
-| `sub_6CBA50` | -- | Barrier-level encoder | 85% |
-| `sub_6CB4B0` | -- | Operand validator (called by `sub_6CB8A0`) | 80% |
-| `sub_6A97B0` | 26KB | LowerIntrinsicOp -- SASS matching and unmatched-node GC | 90% |
-| `sub_6B5F30` | -- | Intrinsic lowering driver (calls `sub_6B40C0` then `sub_6A97B0`) | 90% |
-| `sub_6A92E0` | -- | RB-tree fixup (rotation/recolor after deletion) | 90% |
-| `sub_6BC1D0` | -- | Default opcode validator (vtable[2] of `off_202CF48`) | 90% |
-| `sub_6BCE50` | -- | Default scope validator (vtable[24]) | 90% |
-| `sub_6BBEC0` | -- | Default memory-order validator (vtable[25]) | 90% |
+| `sub_6D9290` | — | OCG vtable entry point (calls `sub_6C9BC0` then `sub_6D8B20`) | 85% |
+| `sub_6CB8A0` | — | SASS instruction emitter (template lookup via `sub_C3F490`) | 80% |
+| `sub_6CAFD0` | — | Operand decoder (registers into v134[] slots) | 85% |
+| `sub_6CAE80` | — | Uniform operand encoder | 85% |
+| `sub_6CAF50` | — | Scope / memory-order encoder | 85% |
+| `sub_6CBA50` | — | Barrier-level encoder | 85% |
+| `sub_6CB4B0` | — | Operand validator (called by `sub_6CB8A0`) | 80% |
+| `sub_6A97B0` | 26KB | LowerIntrinsicOp — SASS matching and unmatched-node GC | 90% |
+| `sub_6B5F30` | — | Intrinsic lowering driver (calls `sub_6B40C0` then `sub_6A97B0`) | 90% |
+| `sub_6A92E0` | — | RB-tree fixup (rotation/recolor after deletion) | 90% |
+| `sub_6BC1D0` | — | Default opcode validator (vtable[2] of `off_202CF48`) | 90% |
+| `sub_6BCE50` | — | Default scope validator (vtable[24]) | 90% |
+| `sub_6BBEC0` | — | Default memory-order validator (vtable[25]) | 90% |
 
 ## Diagnostic Strings
 
@@ -408,13 +408,13 @@ See [OCG Intrinsic Lowering Pipeline](#ocg-intrinsic-lowering-pipeline----sub_6a
 
 ## Cross-References
 
-- [Intrinsic Table Architecture](index.md) -- Classical 607-entry intrinsic system and body template tables
-- [Math Intrinsics](math.md) -- IEEE math software emulation (div, rcp, sqrt, rem)
-- [Tensor Core Intrinsics](tensor.md) -- WMMA, MMA, WGMMA, tcgen05 lowering
-- [Sync & Warp Intrinsics](sync-warp.md) -- Barriers, vote, shuffle, match, redux
-- [SM Architecture Map](../targets/index.md) -- Per-SM capability dispatch tables
-- [TCGen05 -- 5th Gen Tensor Cores](../targets/tcgen05.md) -- Blackwell tensor core ISA detail
-- [Mercury Encoder](../codegen/mercury.md) -- Master SASS encoder `sub_6D9690` (94KB)
-- [SASS Instruction Encoding](../codegen/encoding.md) -- Instruction encoding infrastructure
-- [ISel Pattern Matching](../codegen/isel.md) -- Internal SASS routing values
-- [Pipeline Overview](../pipeline/overview.md) -- OCG-time measurement covers intrinsic lowering
+- [Intrinsic Table Architecture](index.md) — Classical 607-entry intrinsic system and body template tables
+- [Math Intrinsics](math.md) — IEEE math software emulation (div, rcp, sqrt, rem)
+- [Tensor Core Intrinsics](tensor.md) — WMMA, MMA, WGMMA, tcgen05 lowering
+- [Sync & Warp Intrinsics](sync-warp.md) — Barriers, vote, shuffle, match, redux
+- [SM Architecture Map](../targets/index.md) — Per-SM capability dispatch tables
+- [TCGen05 — 5th Gen Tensor Cores](../targets/tcgen05.md) — Blackwell tensor core ISA detail
+- [Mercury Encoder](../codegen/mercury.md) — Master SASS encoder `sub_6D9690` (94KB)
+- [SASS Instruction Encoding](../codegen/encoding.md) — Instruction encoding infrastructure
+- [ISel Pattern Matching](../codegen/isel.md) — Internal SASS routing values
+- [Pipeline Overview](../pipeline/overview.md) — OCG-time measurement covers intrinsic lowering

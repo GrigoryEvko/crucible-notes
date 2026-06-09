@@ -1,6 +1,6 @@
 # FNLZR (Finalizer)
 
-The FNLZR subsystem is nvlink's embedded binary rewriter for Mercury-class targets (sm >= 100). It accepts a fully-linked or partially-linked device ELF, invokes the embedded ptxas/OCG compiler backend to re-emit SASS, and produces a transformed ELF suitable for the target architecture. FNLZR operates in two distinct modes -- pre-link mode, which processes individual cubins before they enter the merge phase, and post-link mode, which applies a capmerc (Capsule Mercury) transformation after the complete link. The name "FNLZR" appears verbatim in diagnostic messages (`FNLZR: Input ELF: %s`, `FNLZR: Pre-Link Mode`, etc.) and is gated behind bit 0 of `dword_2A5F308`, the `--edbg` verbose flags word.
+The FNLZR subsystem is nvlink's embedded binary rewriter for Mercury-class targets (sm >= 100). It accepts a fully-linked or partially-linked device ELF, invokes the embedded ptxas/OCG compiler backend to re-emit SASS, and produces a transformed ELF suitable for the target architecture. FNLZR operates in two distinct modes — pre-link mode, which processes individual cubins before they enter the merge phase, and post-link mode, which applies a capmerc (Capsule Mercury) transformation after the complete link. The name "FNLZR" appears verbatim in diagnostic messages (`FNLZR: Input ELF: %s`, `FNLZR: Pre-Link Mode`, etc.) and is gated behind bit 0 of `dword_2A5F308`, the `--edbg` verbose flags word.
 
 The subsystem comprises two main functions: `sub_4275C0` (3,989 bytes), the front-end dispatcher that selects mode, builds a 160-byte configuration struct, and delegates to the engine; and `sub_4748F0` (48,730 bytes), the full-featured FNLZR engine that orchestrates architecture validation, memory allocation, compilation unit setup, ELF emission, and optional self-check verification. A third entry point, `sub_52DD50`, provides a JIT-specific wrapper that emits `FNLZR: JIT Path` diagnostics and routes through the same `sub_4748F0` engine.
 
@@ -66,7 +66,7 @@ int64_t sub_4275C0(
 
 The dispatcher reads the ELF header flags at offset `+48` of the section header returned by `sub_448360(*a1)` and checks the ELF type byte at offset `+7`.
 
-**Pre-link mode** (`a5 == 0`): Applied to individual cubins before they enter the merge phase. The guard condition checks whether the ELF already contains finalized SASS. For ELF type `0x41` ('A', the Mercury ELF class marker), the check is `(flags >> 2) & 1` -- if that bit is set, finalization has already been applied and the function returns an internal error. For non-Mercury ELF types, the check is `(flags & 0x80004000) == 0` -- if both the capmerc and SASS-present bits are clear, the ELF does not need finalization.
+**Pre-link mode** (`a5 == 0`): Applied to individual cubins before they enter the merge phase. The guard condition checks whether the ELF already contains finalized SASS. For ELF type `0x41` ('A', the Mercury ELF class marker), the check is `(flags >> 2) & 1` — if that bit is set, finalization has already been applied and the function returns an internal error. For non-Mercury ELF types, the check is `(flags & 0x80004000) == 0` — if both the capmerc and SASS-present bits are clear, the ELF does not need finalization.
 
 **Post-link mode** (`a5 == 1`): Applied after the full link+finalization pipeline has serialized the merged ELF. The guard checks whether the SASS-present or capmerc bit is set (the inverse mask from pre-link), confirming the ELF is indeed a Mercury binary that requires post-link transformation.
 
@@ -77,7 +77,7 @@ The dispatcher builds a 160-byte configuration struct (`v28[0..19]`) on the stac
 | Offset (qword index) | Field | Source |
 |---|---|---|
 | `v28[3]` bits 32..39 | Debug flag | `byte_2A5F310 != 0` (i.e. `-g` was passed) |
-| `v28[3]` bits 40..47 | Line info suppression | TODO: identify true byte for suppress_line_info -- previous wiki revisions cited `byte_2A5F210`, but `byte_2A5F210` is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12 per `main:375-379`) and has no documented Mercury subsystem use |
+| `v28[3]` bits 40..47 | Line info suppression | TODO: identify true byte for suppress_line_info — previous wiki revisions cited `byte_2A5F210`, but `byte_2A5F210` is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12 per `main:375-379`) and has no documented Mercury subsystem use |
 | `v28[3]` low dword | Optimization level | 4 (normal) or 5 (debug mode with `byte_2A5F2A9`) |
 | `v28[8]` low dword | Fallback opt level | 3 (when neither debug nor `byte_2A5F310`) |
 | `v28[13]` byte 0 | capmerc transform flag | 1 if Mercury mode (`byte_2A5F222`) |
@@ -122,7 +122,7 @@ uint32_t sub_4748F0(
 );
 ```
 
-The function is enormous (48,730 bytes) with over 330 local variables. It operates as a complete embedded compiler pipeline -- from ELF-in to ELF-out -- orchestrating all phases of Mercury finalization.
+The function is enormous (48,730 bytes) with over 330 local variables. It operates as a complete embedded compiler pipeline — from ELF-in to ELF-out — orchestrating all phases of Mercury finalization.
 
 ### Execution Phases
 
@@ -247,7 +247,7 @@ Four sequential checks gate entry to the compilation pipeline. Any failure short
     #     If capmerc mode requested on wrong ELF type, return error 5.
 ```
 
-The version check at step 2i uses `0x101` (decimal 257) as the ceiling. This corresponds to version 1.1 in the Mercury profile format -- any profile claiming version 1.2 or higher causes immediate rejection.
+The version check at step 2i uses `0x101` (decimal 257) as the ceiling. This corresponds to version 1.1 in the Mercury profile format — any profile claiming version 1.2 or higher causes immediate rejection.
 
 The ELF type byte at `hdr + 7` distinguishes three cases:
 
@@ -324,7 +324,7 @@ The function also applies architecture remapping before the bitmask test:
 | 130 | 107 | sm_103 family (internal code 130) maps to sm_100 base (107) |
 | 101 | 110 | sm_101 maps to sm_110 family |
 
-There is an additional special-case bypass at `LABEL_202` (lines 623--636): when the target is sm_121, the source subtype is 2, and the opt-level is not 5 (debug), and the source arch field matches 120 -- the engine copies the ELF verbatim without even calling `sub_470DA0`. This handles the sm_120-to-sm_121 uplift case where the binaries are known to be identical.
+There is an additional special-case bypass at `LABEL_202` (lines 623--636): when the target is sm_121, the source subtype is 2, and the opt-level is not 5 (debug), and the source arch field matches 120 — the engine copies the ELF verbatim without even calling `sub_470DA0`. This handles the sm_120-to-sm_121 uplift case where the binaries are known to be identical.
 
 #### Phase 4: Compilation Unit Initialization (lines 722--987)
 
@@ -520,7 +520,7 @@ The tkinfo scanning loop is precise about note format validation. Each note entr
 | +12..47 | 36 | Name and alignment padding |
 | +48 | variable | Payload (contains tool name at internal offset) |
 
-The two-pass section loop processes the same section list (`v75`). Pass 1 (`sub_1CF07A0`, ELF_EmitSymbolTable -- 25,255 bytes) builds the symbol table from input sections. Pass 2 (`sub_1CF1690`, ELF_EmitRelocationTable -- 16,049 bytes) processes relocation entries. The three section lists (`v75`, `v419[0]`, `v419[1]`) are created from the same section count (`sub_448730`) but accumulate different section categories during processing -- symbols, data sections, and relocations respectively.
+The two-pass section loop processes the same section list (`v75`). Pass 1 (`sub_1CF07A0`, ELF_EmitSymbolTable — 25,255 bytes) builds the symbol table from input sections. Pass 2 (`sub_1CF1690`, ELF_EmitRelocationTable — 16,049 bytes) processes relocation entries. The three section lists (`v75`, `v419[0]`, `v419[1]`) are created from the same section count (`sub_448730`) but accumulate different section categories during processing — symbols, data sections, and relocations respectively.
 
 #### Phase 6: Compilation and ELF Emission (lines 1057--1492)
 
@@ -676,9 +676,9 @@ The most complex phase. It initializes the compilation pipeline, handles debug i
     *out_buf  = v419[5]
 ```
 
-The relocatable-vs-complete dispatch is determined by `*(byte*)(v350 + 186)` -- the "relocatable output" flag set in Phase 4 based on the ELF subtype. Subtype 1 (relocatable) triggers the relocatable path; subtype 2 (executable) triggers the complete path.
+The relocatable-vs-complete dispatch is determined by `*(byte*)(v350 + 186)` — the "relocatable output" flag set in Phase 4 based on the ELF subtype. Subtype 1 (relocatable) triggers the relocatable path; subtype 2 (executable) triggers the complete path.
 
-The output allocation at step 6r allocates from the "Final memory space" arena created in Phase 2. This arena's lifetime extends beyond the FNLZR engine return -- the caller (`sub_4275C0`) owns the output buffer.
+The output allocation at step 6r allocates from the "Final memory space" arena created in Phase 2. This arena's lifetime extends beyond the FNLZR engine return — the caller (`sub_4275C0`) owns the output buffer.
 
 #### Phase 7: Debug Info Serialization (lines 1294--1372)
 
@@ -733,7 +733,7 @@ Post-compilation processing of `.debug_line` and `.debug_frame` sections.
         sub_474760(&bst_aux)     # destroy auxiliary data
 ```
 
-The BST (binary search tree) at step 7c maps original `.debug_line` section offsets to their new positions in the recompiled output. The relocation type `0x10008` (65,544 decimal) is `R_CUDA_ABS32_HI_20` -- the high 20 bits of a 32-bit absolute relocation used for debug section cross-references.
+The BST (binary search tree) at step 7c maps original `.debug_line` section offsets to their new positions in the recompiled output. The relocation type `0x10008` (65,544 decimal) is `R_CUDA_ABS32_HI_20` — the high 20 bits of a 32-bit absolute relocation used for debug section cross-references.
 
 The `+1` adjustment on the serialized size at steps 7a and 7b (`*(dword*)(result + 16) + 1`) accounts for the NUL terminator byte that the serializer does not include in its reported size.
 
@@ -914,7 +914,7 @@ The recursive call enters the same Phase 1--6 pipeline but with `self_check_data
             return 18   # no matching symbol section found
 ```
 
-The `.nv.merc.` prefix stripping at step 9g/9h handles the fact that Mercury ELF sections have their names prefixed with `.nv.merc.` during compilation. The self-check comparison must ignore this prefix to match corresponding sections between the original compilation and the recompilation. The prefix is exactly 9 bytes (`.nv.merc.`), but the code strips 8 characters -- this is because `sub_44E3A0` returns a pointer to the character after the prefix match, which is at offset 9, and the `+= 8` applies to the pointer returned by the search, not the original name. (This is a quirk of the decompiler representation: `sub_44E3A0` returns the match position, and the actual skip is `name += 8` from that returned position, for a total skip of 9 bytes.)
+The `.nv.merc.` prefix stripping at step 9g/9h handles the fact that Mercury ELF sections have their names prefixed with `.nv.merc.` during compilation. The self-check comparison must ignore this prefix to match corresponding sections between the original compilation and the recompilation. The prefix is exactly 9 bytes (`.nv.merc.`), but the code strips 8 characters — this is because `sub_44E3A0` returns a pointer to the character after the prefix match, which is at offset 9, and the `+= 8` applies to the pointer returned by the search, not the original name. (This is a quirk of the decompiler representation: `sub_44E3A0` returns the match position, and the actual skip is `name += 8` from that returned position, for a total skip of 9 bytes.)
 
 The self-check error codes are intentionally terse:
 
@@ -1007,14 +1007,14 @@ The input file `tcgen05_matmul.cubin` is 18,432 bytes on disk, loaded into memor
 
 The Mercury profile at `.nv.merc.profile` contains a version word of `0x100` (1.0) and a capability bitmask of `0x0001` (sm_100 only). The input contains:
 
-- `.nv.merc.text.tcgen05_matmul` -- 2,048 bytes of pre-finalized Mercury IR for the kernel body
-- `.nv.merc.info.tcgen05_matmul` -- 384 bytes of kernel metadata (register usage, shared memory, barriers)
-- `.nv.info` -- 128 bytes of EIATTR entries (`EIATTR_MAX_REG_COUNT = 128`, `EIATTR_MAX_STACK_SIZE = 0`)
-- `.nv.constant0.tcgen05_matmul` -- 368 bytes of constant bank 0 (parameters)
-- `.symtab` -- 4 symbols (`_Z14tcgen05_matmulPf`, `.text.tcgen05_matmul`, `.nv.constant0.tcgen05_matmul`, `$__internal_0$__sti____cudaRegisterAll`)
+- `.nv.merc.text.tcgen05_matmul` — 2,048 bytes of pre-finalized Mercury IR for the kernel body
+- `.nv.merc.info.tcgen05_matmul` — 384 bytes of kernel metadata (register usage, shared memory, barriers)
+- `.nv.info` — 128 bytes of EIATTR entries (`EIATTR_MAX_REG_COUNT = 128`, `EIATTR_MAX_STACK_SIZE = 0`)
+- `.nv.constant0.tcgen05_matmul` — 368 bytes of constant bank 0 (parameters)
+- `.symtab` — 4 symbols (`_Z14tcgen05_matmulPf`, `.text.tcgen05_matmul`, `.nv.constant0.tcgen05_matmul`, `$__internal_0$__sti____cudaRegisterAll`)
 - `.strtab`, `.shstrtab`
-- `.rel.nv.constant0.tcgen05_matmul` -- 2 `R_CUDA_ABS32_LO_20` relocations (parameter pointer lo/hi)
-- `.note.nv.tkinfo` -- 96-byte tool note stamped by the compiler driver (`cicc`)
+- `.rel.nv.constant0.tcgen05_matmul` — 2 `R_CUDA_ABS32_LO_20` relocations (parameter pointer lo/hi)
+- `.note.nv.tkinfo` — 96-byte tool note stamped by the compiler driver (`cicc`)
 
 The caller (`sub_4275C0` at `main()` line ~727) invokes `sub_4748F0` with:
 
@@ -1066,7 +1066,7 @@ si128 = xmmword_1D40750   // SSE constant for arch profile lookup
 
 Since `option_string` is `NULL`, the entire block at lines 472--493 is skipped. The `a8` config parameter is checked at line 494: since `(dword)a8 == 0` is false (opt-level 4 is stored in low dword), `v33 = a8 = 4` and `HIDWORD(v342) = 4`.
 
-Wait -- re-reading line 496: the check is `if (!(_DWORD)a8) v33 = HIDWORD(v342)`. Since `a8 = 0x0000000400000000`, the low dword is 0, so this branch is taken: `v33 = HIDWORD(v342) = 100` (the target arch). This is the "default config arch to caller arch" step. The target_arch field of config (stored in a8's low dword) is replaced with 100.
+Wait — re-reading line 496: the check is `if (!(_DWORD)a8) v33 = HIDWORD(v342)`. Since `a8 = 0x0000000400000000`, the low dword is 0, so this branch is taken: `v33 = HIDWORD(v342) = 100` (the target arch). This is the "default config arch to caller arch" step. The target_arch field of config (stored in a8's low dword) is replaced with 100.
 
 The PIC byte check at line 499:
 
@@ -1145,9 +1145,9 @@ v71 = sub_43E610(v419[4], &v387)   // v71 = v356 = 1 (profile found)
                                     // v389 = capability mask at offset +2
 ```
 
-**2i. Version ceiling check** (lines 581--599): `v388 = 0x100 < 0x101` -- check passes.
+**2i. Version ceiling check** (lines 581--599): `v388 = 0x100 < 0x101` — check passes.
 
-**2j. Fastpath-eligible branch** (lines 601--654): This is a Mercury ELF (`v72 == 65`), `v71 && v389` are true, so line 601 takes the `if` branch. Line 603 checks `v72 != 65` -- false, so we fall into `LABEL_79`:
+**2j. Fastpath-eligible branch** (lines 601--654): This is a Mercury ELF (`v72 == 65`), `v71 && v389` are true, so line 601 takes the `if` branch. Line 603 checks `v72 != 65` — false, so we fall into `LABEL_79`:
 
 ```text
 LABEL_79:
@@ -1213,11 +1213,11 @@ Capability check (line 842):
 v242 = sub_470DA0(&v387, 100, 100, 1)
 ```
 
-Because target == source (100 == 100) and the capability mask at `v387+16` contains bit 0 (value 1 for sm_100), `sub_470DA0` returns 1 (can fastpath). But with `v240 = 1` (invert flag set by pre-link mode), the function actually inverts its result to test "cannot fastpath this target". The semantics here are: for pre-link mode, we want the fastpath to trigger only when the source ELF cannot be used as-is on the target. Since the source IS the target, fastpath is NOT applicable in this case -- `v242` comes back 0.
+Because target == source (100 == 100) and the capability mask at `v387+16` contains bit 0 (value 1 for sm_100), `sub_470DA0` returns 1 (can fastpath). But with `v240 = 1` (invert flag set by pre-link mode), the function actually inverts its result to test "cannot fastpath this target". The semantics here are: for pre-link mode, we want the fastpath to trigger only when the source ELF cannot be used as-is on the target. Since the source IS the target, fastpath is NOT applicable in this case — `v242` comes back 0.
 
 The decompiled code at line 844 takes the `if (v242)` branch only when fastpath applies. In our walkthrough, `v242 = 0`, so we fall through to Phase 4 proper at line 882.
 
-**(Alternative fastpath outcome)** If the source had been sm_100 but the ELF came from a ptxas cross-compile targeting sm_103 and we were finalizing for sm_100 -- and sm_100 was a subset of the declared capability mask -- then `v242 = 1` would trigger the fastpath at lines 845--880:
+**(Alternative fastpath outcome)** If the source had been sm_100 but the ELF came from a ptxas cross-compile targeting sm_103 and we were finalizing for sm_100 — and sm_100 was a subset of the declared capability mask — then `v242 = 1` would trigger the fastpath at lines 845--880:
 
 ```text
 # 3e. Copy input ELF verbatim
@@ -1322,7 +1322,7 @@ if (*(byte*)(v43+7) == 65):  // Mercury
 *((dword*)v350 + 3) = 100    // source arch at +12
 ```
 
-**4h. ELF subtype branch** (lines 918--932): `*(word*)(v43+16) = 0xFF00 != 1`, so this is NOT a relocatable object -- take the `else` branch:
+**4h. ELF subtype branch** (lines 918--932): `*(word*)(v43+16) = 0xFF00 != 1`, so this is NOT a relocatable object — take the `else` branch:
 
 ```text
 *((byte*)v350 + 191) = 1              // complete object flag
@@ -1352,7 +1352,7 @@ v350[20] = a23 = 0
 v350[19] = a24 = 0
 ```
 
-**4j. Self-check tracker** (lines 965--979): `v124 = BYTE5(a20) = 0` -- skipped.
+**4j. Self-check tracker** (lines 965--979): `v124 = BYTE5(a20) = 0` — skipped.
 
 **4k. Set Mercury profile flag** (lines 980--988):
 
@@ -1407,11 +1407,11 @@ note[0]:
   goto LABEL_134
 ```
 
-Since neither "nvlink" nor "nvJIT API" stamped this cubin, `v67` remains at its previous value of `v35 = 1` (the device_elf_valid flag). Wait -- re-reading line 1026: `v67 = v35` only when the walk exits via LABEL_134 without finding a match. So `v67 = 1` here, but this is the default-false case because the scan completed without a "break" hit.
+Since neither "nvlink" nor "nvJIT API" stamped this cubin, `v67` remains at its previous value of `v35 = 1` (the device_elf_valid flag). Wait — re-reading line 1026: `v67 = v35` only when the walk exits via LABEL_134 without finding a match. So `v67 = 1` here, but this is the default-false case because the scan completed without a "break" hit.
 
-Actually, the logic is inverted: the tool name check sets a "break" that jumps out of the walk. If no tool note matched, the walk falls through the loop back-edge. Re-reading lines 1017--1019: the strcmp result being equal causes `break`, which exits the walking loop, and then `v67 = 1` is set. If there's no match, `v134 += v140 + 24` advances to next note, and the inner loop check at 1022 terminates because `v135 <= v134` -> `goto LABEL_134`. At LABEL_134, `v67 = v35 = 1` is assigned at line 1026 *before* the label. Wait -- line 1026 is executed only in the fall-through path from the `while(1)` loop's natural exit. The default-initialized value of `v67` at line 989 is... actually `v67` was set to `false` earlier at line 564 as part of the subtype check, then reassigned as an accumulator. Let me trust the code: since neither "nvlink" nor "nvJIT API" match, the break doesn't trigger, the walk exits, and `v67 = v35 = 1` at line 1026.
+Actually, the logic is inverted: the tool name check sets a "break" that jumps out of the walk. If no tool note matched, the walk falls through the loop back-edge. Re-reading lines 1017--1019: the strcmp result being equal causes `break`, which exits the walking loop, and then `v67 = 1` is set. If there's no match, `v134 += v140 + 24` advances to next note, and the inner loop check at 1022 terminates because `v135 <= v134` -> `goto LABEL_134`. At LABEL_134, `v67 = v35 = 1` is assigned at line 1026 *before* the label. Wait — line 1026 is executed only in the fall-through path from the `while(1)` loop's natural exit. The default-initialized value of `v67` at line 989 is... actually `v67` was set to `false` earlier at line 564 as part of the subtype check, then reassigned as an accumulator. Let me trust the code: since neither "nvlink" nor "nvJIT API" match, the break doesn't trigger, the walk exits, and `v67 = v35 = 1` at line 1026.
 
-Wait -- that's wrong semantically. The break-on-match sets `v67 = 1` (already_linked = true). If no match, `v67` stays false. Looking again at the assembly pattern, `v67` is being used as a counter value fed into `LOBYTE(v419[66])` at line 1028. For our input, the cubin was stamped by `cicc` (the frontend), not `nvlink` or `nvJIT API`, so `v67` should end up false.
+Wait — that's wrong semantically. The break-on-match sets `v67 = 1` (already_linked = true). If no match, `v67` stays false. Looking again at the assembly pattern, `v67` is being used as a counter value fed into `LOBYTE(v419[66])` at line 1028. For our input, the cubin was stamped by `cicc` (the frontend), not `nvlink` or `nvJIT API`, so `v67` should end up false.
 
 ```text
 LOBYTE(v419[66]) = 0   // already_linked = false
@@ -1499,7 +1499,7 @@ v175[12] = 0xFFFFFFFF
 
 Lines 1153--1194 skipped (no debug sections to process).
 
-**6i. Set debug-present flag** (line 1197): `*((byte*)v350 + 25) |= 0` -- unchanged.
+**6i. Set debug-present flag** (line 1197): `*((byte*)v350 + 25) |= 0` — unchanged.
 
 **6j. Create 80-byte output tracking context** (lines 1199--1226):
 
@@ -1569,11 +1569,11 @@ For our single kernel, one dword is inverted. `v419[63]` was allocated at lines 
 pthread_mutex_destroy(v419[30])
 ```
 
-**Phase 7 (embedded, lines 1294--1315)**: Debug line/frame serialization -- both `v357` and `v358` are NULL, skipped entirely.
+**Phase 7 (embedded, lines 1294--1315)**: Debug line/frame serialization — both `v357` and `v358` are NULL, skipped entirely.
 
-**Phase 7c (embedded, lines 1316--1372)**: Debug address remapping -- `v419[14]` is NULL (no `.debug_info` relocations in our input), skipped.
+**Phase 7c (embedded, lines 1316--1372)**: Debug address remapping — `v419[14]` is NULL (no `.debug_info` relocations in our input), skipped.
 
-**Phase 8 (embedded, lines 1373--1406)**: Tkinfo emission. Check at line 1373: `BYTE3(v419[54]) && LOBYTE(v419[58])`. `BYTE3(v419[54])` is the `--verbose-tkinfo` flag, unset in our config -- skipped.
+**Phase 8 (embedded, lines 1373--1406)**: Tkinfo emission. Check at line 1373: `BYTE3(v419[54]) && LOBYTE(v419[58])`. `BYTE3(v419[54])` is the `--verbose-tkinfo` flag, unset in our config — skipped.
 
 **Continuing Phase 6...**
 
@@ -1635,7 +1635,7 @@ else
 
 `sub_1CF3720` walks `v419[52]` (output section list) and `v419[5]` (output buffer), emitting:
 
-1. ELF header at offset 0 (`e_ident[7] = 0x41`, `e_flags = 0x006400FF` with bit 0 CLEARED now -- finalization complete, bits 5--7 set to mark SASS present)
+1. ELF header at offset 0 (`e_ident[7] = 0x41`, `e_flags = 0x006400FF` with bit 0 CLEARED now — finalization complete, bits 5--7 set to mark SASS present)
 2. Section contents at their computed offsets
 3. Section header table at the tail
 
@@ -1888,7 +1888,7 @@ Back in the caller `sub_4275C0`, the output is written through `sub_43D990` whic
 
 ### Merge-phase Pre-link (a5=0, no output)
 
-7. **Pre-merge finalization** (main line ~1503): When `byte_2A5F221` and `byte_2A5F220` are both set and the input ELF's flags indicate it is not yet finalized, `sub_4275C0` is called with `a4=NULL` (no separate output -- modifies in-place) before the object enters the merge loop.
+7. **Pre-merge finalization** (main line ~1503): When `byte_2A5F221` and `byte_2A5F220` are both set and the input ELF's flags indicate it is not yet finalized, `sub_4275C0` is called with `a4=NULL` (no separate output — modifies in-place) before the object enters the merge loop.
 
 ## JIT Entry Point: sub_52DD50
 
@@ -1904,7 +1904,7 @@ The JIT wrapper at `0x52DD50` provides the FNLZR interface for the nvJIT API pat
 | `a1 + 99` | Line info suppression |
 | `a1 + 101` | Extended debug |
 
-The wrapper emits its own diagnostic set: `"FNLZR: JIT Path"`, `"FNLZR: preLink Mode"`, `"FNLZR: postLink Mode"`, and `"FNLZR: Ending JIT"`. The mode selection follows the same logic as `sub_4275C0` -- checking the ELF flags to determine pre-link vs. post-link -- but the config struct is populated from the JIT context object rather than from global linker state.
+The wrapper emits its own diagnostic set: `"FNLZR: JIT Path"`, `"FNLZR: preLink Mode"`, `"FNLZR: postLink Mode"`, and `"FNLZR: Ending JIT"`. The mode selection follows the same logic as `sub_4275C0` — checking the ELF flags to determine pre-link vs. post-link — but the config struct is populated from the JIT context object rather than from global linker state.
 
 If the engine returns non-zero, the JIT wrapper calls `sub_1CEF420` to translate the numeric error code into a diagnostic string, then routes through `sub_467460` for error reporting.
 
@@ -1912,7 +1912,7 @@ If the engine returns non-zero, the JIT wrapper calls `sub_1CEF420` to translate
 
 Two helper functions implement the "can this ELF be finalized for this target?" query:
 
-### sub_4709E0 -- can_finalize_architecture_check
+### sub_4709E0 — can_finalize_architecture_check
 
 Tests whether the input ELF's architecture is compatible with the finalization target. Uses a lookup table at `dword_1D40660[]` indexed by the "finalization class" byte (values 0-4). The function applies an internal architecture remapping:
 
@@ -1926,7 +1926,7 @@ Family matching uses decade comparison: `source/10 == target/10` means same fami
 
 The `CAN_FINALIZE_DEBUG` environment variable, when set, enables verbose tracing of this check via `strtol` parsing.
 
-### sub_470DA0 -- can_finalize_with_capability_mask
+### sub_470DA0 — can_finalize_with_capability_mask
 
 Extends the architecture check with a capability bitmask. Maps target architecture codes to bitmask values:
 
@@ -1981,13 +1981,13 @@ These options can be injected via the `a6` option string parameter to `sub_4748F
 
 FNLZR does not contain its own instruction selection or register allocation logic. Instead, it delegates the heavy lifting to the embedded ptxas compiler backend via the functions in the `0x1CF0000-0x1D32172` range:
 
-- `sub_1CEF5B0` -- ELF_ProcessRelocations (relocation processing)
-- `sub_1CF07A0` -- ELF_EmitSymbolTable (symbol table emission, 25,255 bytes)
-- `sub_1CF1690` -- ELF_EmitRelocationTable (relocation emission, 16,049 bytes)
-- `sub_1CF2100` -- ELF_EmitSectionHeaders (section header construction, 31,261 bytes)
-- `sub_1CF3720` -- ELF_WriteCompleteObject (complete ELF output, 99,074 bytes)
-- `sub_1CF72E0` -- ELF_EmitProgramHeaders (program header emission, 17,710 bytes)
-- `sub_1CF7F30` -- ELF_WriteRelocatableObject (relocatable output, 44,740 bytes)
+- `sub_1CEF5B0` — ELF_ProcessRelocations (relocation processing)
+- `sub_1CF07A0` — ELF_EmitSymbolTable (symbol table emission, 25,255 bytes)
+- `sub_1CF1690` — ELF_EmitRelocationTable (relocation emission, 16,049 bytes)
+- `sub_1CF2100` — ELF_EmitSectionHeaders (section header construction, 31,261 bytes)
+- `sub_1CF3720` — ELF_WriteCompleteObject (complete ELF output, 99,074 bytes)
+- `sub_1CF72E0` — ELF_EmitProgramHeaders (program header emission, 17,710 bytes)
+- `sub_1CF7F30` — ELF_WriteRelocatableObject (relocatable output, 44,740 bytes)
 
 The compilation unit descriptor at `off_1D49C58` provides the vtable for the OCG (Optimizing Code Generator) backend, which performs the actual Mercury-to-SASS translation. The memory space is managed through the "Final memory space" arena created specifically for each FNLZR invocation.
 
@@ -2021,12 +2021,12 @@ FNLZR: Ending JIT
 
 ### Self-Check Mode
 
-Pass `--self-check` to enable re-compilation verification. The engine compiles the input, then recompiles its own output, and compares the two at the section, symbol, and relocation level. Mismatches produce error codes 17, 18, or 19 with no additional diagnostic text -- the caller must inspect the return code.
+Pass `--self-check` to enable re-compilation verification. The engine compiles the input, then recompiles its own output, and compares the two at the section, symbol, and relocation level. Mismatches produce error codes 17, 18, or 19 with no additional diagnostic text — the caller must inspect the return code.
 
 ### Sibling Wikis
 
-- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) -- standalone ptxas finalizer at `sub_612DE0` (47KB), which performs fastpath optimization for off-target finalization. The nvlink FNLZR engine (`sub_4748F0`) shares the same finalization logic but at different addresses due to static linking. Self-check verifier: `sub_720F00` (64KB Flex lexer) + `sub_729540` (35KB comparator). Off-target compatibility: `sub_60F290`.
-- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) -- standalone ptxas Mercury pipeline that FNLZR re-invokes during finalization.
+- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) — standalone ptxas finalizer at `sub_612DE0` (47KB), which performs fastpath optimization for off-target finalization. The nvlink FNLZR engine (`sub_4748F0`) shares the same finalization logic but at different addresses due to static linking. Self-check verifier: `sub_720F00` (64KB Flex lexer) + `sub_729540` (35KB comparator). Off-target compatibility: `sub_60F290`.
+- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) — standalone ptxas Mercury pipeline that FNLZR re-invokes during finalization.
 
 ## Confidence Assessment
 

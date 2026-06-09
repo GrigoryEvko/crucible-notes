@@ -2,16 +2,16 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-PTX directives -- `.version`, `.target`, `.entry`, `.func`, `.global`, `.shared`, `.local`, `.const`, `.reg`, `.param`, `.weak`, `.common`, `.extern`, `.visible`, `.alias`, `.pragma` -- are parsed and semantically validated by the Bison reduction actions embedded in the 48 KB parser function `sub_4CE6B0`. Unlike instructions which pass through opcode table lookup (`sub_46E000`) and per-instruction semantic validators, directives are handled entirely within the Bison reduction switch: each grammar production's action block reads values from the parser value stack, validates them against the current PTX version and target architecture, and writes the results into the 1,200-byte parser state object or its child compile-unit state (`CU_state`). No intermediate AST is constructed; directives take effect immediately during parsing.
+PTX directives — `.version`, `.target`, `.entry`, `.func`, `.global`, `.shared`, `.local`, `.const`, `.reg`, `.param`, `.weak`, `.common`, `.extern`, `.visible`, `.alias`, `.pragma` — are parsed and semantically validated by the Bison reduction actions embedded in the 48 KB parser function `sub_4CE6B0`. Unlike instructions which pass through opcode table lookup (`sub_46E000`) and per-instruction semantic validators, directives are handled entirely within the Bison reduction switch: each grammar production's action block reads values from the parser value stack, validates them against the current PTX version and target architecture, and writes the results into the 1,200-byte parser state object or its child compile-unit state (`CU_state`). No intermediate AST is constructed; directives take effect immediately during parsing.
 
-The state object maintains 18 linked lists (9 head/tail pairs at offsets 368--512) that track symbols per state space, a string-keyed hash map (offset 208) for target feature flags, and a scope chain (offset 984) rooted at offset 968 for nested function declarations. Two version-gating functions -- `sub_489050` (PTX ISA version) and `sub_489390` (SM architecture) -- guard every directive that was introduced after the baseline ISA.
+The state object maintains 18 linked lists (9 head/tail pairs at offsets 368--512) that track symbols per state space, a string-keyed hash map (offset 208) for target feature flags, and a scope chain (offset 984) rooted at offset 968 for nested function declarations. Two version-gating functions — `sub_489050` (PTX ISA version) and `sub_489390` (SM architecture) — guard every directive that was introduced after the baseline ISA.
 
 | | |
 |---|---|
 | **Bison parser** | `sub_4CE6B0` (48,263 bytes, 631 case labels) |
 | **Version validator** | `sub_44A100` (bsearch over 44 valid PTX version IDs at `xmmword_1CFD940`) |
-| **PTX version gate** | `sub_489050` -- `sub_454E70` + `sub_455A80(major, minor, state)` |
-| **SM arch gate** | `sub_489390` -- checks `state+168 >= required_sm` |
+| **PTX version gate** | `sub_489050` — `sub_454E70` + `sub_455A80(major, minor, state)` |
+| **SM arch gate** | `sub_489390` — checks `state+168 >= required_sm` |
 | **Target handler** | `sub_4B1080` (per-target, texmode logic) |
 | **Function handler** | `sub_497C00` (entry/func declarations, ABI) |
 | **Variable handler** | `sub_4A0CD0` (state-space declarations, type validation) |
@@ -65,7 +65,7 @@ PTX source text
   state+1008: scope map   CU+2456: version string
 ```
 
-## `.version X.Y` -- Case 35
+## `.version X.Y` — Case 35
 
 The `.version` directive establishes the PTX ISA version for the compilation unit. The parser extracts the major and minor version integers from the grammar, validates the combined version against a sorted table of 44 known versions, and stores both the numeric and string forms.
 
@@ -93,7 +93,7 @@ state->ptx_minor = minor;               // state+164
 CU_state->version_string = token;       // CU+2456
 ```
 
-### Version Validation -- `sub_44A100`
+### Version Validation — `sub_44A100`
 
 ```c
 // sub_44A100: validate PTX version against known versions
@@ -109,11 +109,11 @@ bool sub_44A100(int version_id) {
 
 The 44-entry table at `xmmword_1CFD940` contains the combined version IDs (`major*10 + minor`) for every PTX ISA version recognized by ptxas v13.0. This covers PTX 1.0 through 8.7+.
 
-## `.target sm_XX` -- Cases 5 and 38
+## `.target sm_XX` — Cases 5 and 38
 
 The `.target` directive accepts a comma-separated list of targets: SM architecture identifiers (`sm_XX`, `compute_XX`) and feature modifiers (`texmode_unified`, `texmode_independent`, `texmode_raw`, `map_f64_to_f32`, `debug`).
 
-### Case 38 -- Target List Iteration
+### Case 38 — Target List Iteration
 
 ```c
 // Reconstructed from case 38
@@ -123,7 +123,7 @@ for (node = list_begin(*v5); !list_end(node); node = list_next(node)) {
 }
 ```
 
-### Per-Target Handler -- `sub_4B1080`
+### Per-Target Handler — `sub_4B1080`
 
 The function branches on whether the target string contains `"sm_"` or `"compute_"`.
 
@@ -158,7 +158,7 @@ if (entry) {
 | Modifier | PTX Requirement | Action | CU State |
 |---|---|---|---|
 | `map_f64_to_f32` | Deprecated for sm > 12 | Stored in feature map; `CU+152 \|= 1` | Feature flag |
-| `texmode_unified` | -- | Stored in feature map; default if none specified | Default |
+| `texmode_unified` | — | Stored in feature map; default if none specified | Default |
 | `texmode_independent` | PTX >= 1.5 | Stored in feature map; `CU+2464 = 1` | Tex mode |
 | `texmode_raw` | Requires `state+220` flag | Stored in feature map; `CU+2465 = 1` | Tex mode |
 | `debug` | PTX >= 3.0 | `CU+2466 = 1`; `state+1033 = 1`; `state+834 = 1` | Debug on |
@@ -174,7 +174,7 @@ if (map_get(state->feature_map, "texmode_raw"))
 map_put(state->feature_map, "texmode_unified", 1);
 ```
 
-### Case 5 -- Automatic Texmode Inference
+### Case 5 — Automatic Texmode Inference
 
 When the `.target` directive omits an explicit texmode, case 5 infers one based on CLI flags:
 
@@ -192,7 +192,7 @@ if (arch_supports_texmode(CU->arch_capability)) {
 }
 ```
 
-## `.address_size 32|64` -- Case 10
+## `.address_size 32|64` — Case 10
 
 ```c
 // Reconstructed from case 10
@@ -211,11 +211,11 @@ The bit trick `(v - 32) & ~0x20` passes for exactly two values:
 
 Any other value produces a nonzero result and triggers an error.
 
-## `.entry` / `.func` Declarations -- Cases 76+, 82, 88, 97, 103
+## `.entry` / `.func` Declarations — Cases 76+, 82, 88, 97, 103
 
 Function and entry declarations span multiple Bison productions because the grammar decomposes them into prototype, parameter list, linkage qualifier, and body productions. The central handler `sub_497C00` processes both entry functions and device functions.
 
-### `sub_497C00` -- Function Declaration Handler
+### `sub_497C00` — Function Declaration Handler
 
 ```c
 // Reconstructed signature
@@ -258,7 +258,7 @@ int64 sub_497C00(
    - Calls `sub_44FDC0` to record ABI metadata
    - For Blackwell GB10B architecture (`sub_70FA00(CU, 33)`): allocates `__nv_reservedSMEM_gb10b_war_var` in shared memory as a hardware workaround
 
-### Case 82 -- Entry Function
+### Case 82 — Entry Function
 
 ```c
 // Case 82: .entry declaration
@@ -276,7 +276,7 @@ result = sub_497C00(state, decl_type, name,
                     location);
 ```
 
-### Case 88 -- Entry Function Body Completion
+### Case 88 — Entry Function Body Completion
 
 After the function body is parsed, case 88 performs the final validation pass:
 
@@ -300,7 +300,7 @@ After the function body is parsed, case 88 performs the final validation pass:
 
 4. **Debug hash**: If debug mode enabled (`state+856 != 0`), computes `CRC32(name) % 0xFFFF + base` as a debug identifier stored at `func->80+176`.
 
-### Case 97 -- Device Function
+### Case 97 — Device Function
 
 ```c
 // Case 97: .func declaration
@@ -313,7 +313,7 @@ result = sub_497C00(state, decl_type, name,
                     location);
 ```
 
-## State-Space Declarations -- `.global`, `.shared`, `.local`, `.const`
+## State-Space Declarations — `.global`, `.shared`, `.local`, `.const`
 
 State-space directives set the "current state space" field (`CU+24`) and then delegate to `sub_4A0CD0` for variable declaration processing or `sub_4A2020` for declaration-without-initializer processing.
 
@@ -331,7 +331,7 @@ State-space directives set the "current state space" field (`CU+24`) and then de
 
 The odd-numbered cases set the state-space code; the immediately following even-numbered cases trigger the actual declaration processing.
 
-### Variable Validator -- `sub_4A0CD0`
+### Variable Validator — `sub_4A0CD0`
 
 This 4,937-byte function validates variable declarations across all state spaces. Key checks:
 
@@ -353,7 +353,7 @@ This 4,937-byte function validates variable declarations across all state spaces
 
 5. **Initializer handling**: If an initializer is present, calls `sub_4A02A0` to validate constant expressions (no function pointers, no entry functions as values, no opaque type initializers).
 
-### State-Space Linked Lists -- 18 Lists at `state+368`
+### State-Space Linked Lists — 18 Lists at `state+368`
 
 The parser maintains 18 linked list heads (9 head/tail pairs) at state offsets 368--512 to track declared symbols per state space:
 
@@ -370,11 +370,11 @@ Offset    Pair   State Space
 496/504   8      reserved / other
 ```
 
-**Initialization** (case 3 -- section begin): Iterates `j` from 0 to 144 in steps of 8, allocating an 88-byte sentinel node (type=6) for each list. Each node's `+48` field links to per-section tracking data at `state+656 + j`.
+**Initialization** (case 3 — section begin): Iterates `j` from 0 to 144 in steps of 8, allocating an 88-byte sentinel node (type=6) for each list. Each node's `+48` field links to per-section tracking data at `state+656 + j`.
 
-**Scope teardown** (case 76 -- new compilation unit): Destroys old symbol tables via `sub_425D20`, clears the target feature map, and merges scope-level lists into the parent scope by concatenating linked list chains for offsets 16, 48, 112, 128, 144, and 184 of the scope node.
+**Scope teardown** (case 76 — new compilation unit): Destroys old symbol tables via `sub_425D20`, clears the target feature map, and merges scope-level lists into the parent scope by concatenating linked list chains for offsets 16, 48, 112, 128, 144, and 184 of the scope node.
 
-## `.reg` / `.param` -- Register and Parameter Declarations
+## `.reg` / `.param` — Register and Parameter Declarations
 
 Within function bodies, `.reg` and `.param` declarations create typed register/parameter entries. Three grammar productions handle the variants:
 
@@ -393,38 +393,38 @@ Within function bodies, `.reg` and `.param` declarations create typed register/p
 | 44 | int32 | Range end (`0xFFFFFFFF` = no upper bound) |
 | 48 | ptr | Auxiliary data |
 
-**Case 110** -- Single declaration: Reads type info from `CU_state` (offsets +16, +24, +28, +29, +32, +36), allocates the 56-byte node, sets count from the parsed integer, and calls `sub_48BE80(state)` to validate.
+**Case 110** — Single declaration: Reads type info from `CU_state` (offsets +16, +24, +28, +29, +32, +36), allocates the 56-byte node, sets count from the parsed integer, and calls `sub_48BE80(state)` to validate.
 
-**Case 111** -- Range declaration: Same as 110 but sets both start and end bounds. The sentinel value `0xFFFFFFFF` at offset 44 distinguishes range from single declarations.
+**Case 111** — Range declaration: Same as 110 but sets both start and end bounds. The sentinel value `0xFFFFFFFF` at offset 44 distinguishes range from single declarations.
 
-**Case 112** -- Vector declaration: Handles vector type qualifiers (`.v2`, `.v4`).
+**Case 112** — Vector declaration: Handles vector type qualifiers (`.v2`, `.v4`).
 
 ## Visibility / Linkage Directives
 
-### `.weak` -- Case 55
+### `.weak` — Case 55
 
 ```c
 sub_489050(state, 3, 1, ".weak directive", location);  // PTX >= 3.1
 ```
 
-### `.common` -- Case 56
+### `.common` — Case 56
 
 ```c
 sub_489050(state, 5, 0, ".common directive", location);  // PTX >= 5.0
 ```
 
-### Linkage Qualifiers -- Cases 78--81
+### Linkage Qualifiers — Cases 78--81
 
 These set `CU+81` (declaration linkage type) within function prototype production contexts:
 
 | Case | Linkage | PTX Directive |
 |---|---|---|
-| 78 | 1 | *(no qualifier)* -- default internal/static linkage |
+| 78 | 1 | *(no qualifier)* — default internal/static linkage |
 | 79 | 3 | `.extern` |
 | 80 | 2 | `.visible` |
 | 81 | 4 | `.weak` |
 
-## `.alias` -- Case 41
+## `.alias` — Case 41
 
 Symbol aliasing requires PTX >= 6.3 and SM >= 30:
 
@@ -451,7 +451,7 @@ if (!sym2) error("undefined symbol: %s", name2);
 
 On success: `sym1->80->64 = sym2` (sets the alias-target pointer).
 
-## `.pragma` -- Case 42
+## `.pragma` — Case 42
 
 The `.pragma` directive requires PTX >= 2.0 and dispatches through a prefix-matching chain. Each pragma string is compared against known prefixes via `sub_4279D0` (starts-with test):
 
@@ -479,10 +479,10 @@ for (node = list_begin(pragma_list); !list_end(node); node = list_next(node)) {
 | 4 | `sub_457CB0(arch, 5)` | min threads | `sub_4563E0` + `sub_48C6F0` | `CU+164` or `CU+168` |
 | 5 | `sub_457CB0(arch, 9)` | max constraint | `sub_4567E0` + `sub_403D2F` | `CU+176` |
 | 6 | `sub_457CB0(arch, 10)` | min constraint | `sub_4567E0` + `sub_403D2F` | `CU+184` |
-| 7 | `sub_457CB0(arch, 18)` | deprecated | Warning via `dword_29FA6C0` | -- |
-| 8 | `sub_457CC0(arch, 1)` | deprecated | Warning via `dword_29FA6C0` | -- |
-| 9--11 | `sub_457C60/CA0/C70` | unsupported | Warning via `dword_29FA7F0` | -- |
-| 12 | `sub_457D30/D50` | unsupported | Warning via `dword_29FA7F0` | -- |
+| 7 | `sub_457CB0(arch, 18)` | deprecated | Warning via `dword_29FA6C0` | — |
+| 8 | `sub_457CC0(arch, 1)` | deprecated | Warning via `dword_29FA6C0` | — |
+| 9--11 | `sub_457C60/CA0/C70` | unsupported | Warning via `dword_29FA7F0` | — |
+| 12 | `sub_457D30/D50` | unsupported | Warning via `dword_29FA7F0` | — |
 | 13 | `sub_457CB0(arch, 22)` | function-level | Appends to func or module pragma list | `func->80->80` or `state+272` |
 
 Unmatched pragmas trigger an error via `dword_29FA6C0`.
@@ -491,7 +491,7 @@ Unmatched pragmas trigger an error via `dword_29FA6C0`.
 
 Two functions guard every directive against minimum PTX ISA version and SM architecture requirements. They are called hundreds of times throughout the Bison reduction actions.
 
-### `sub_489050` -- PTX ISA Version Check
+### `sub_489050` — PTX ISA Version Check
 
 ```c
 // sub_489050(state, required_major, required_minor, directive_name, location)
@@ -509,7 +509,7 @@ char sub_489050(state, int major, int minor, char* name, location) {
 }
 ```
 
-### `sub_489390` -- SM Architecture Check
+### `sub_489390` — SM Architecture Check
 
 ```c
 // sub_489390(state, required_sm, directive_name, location)
@@ -530,18 +530,18 @@ char sub_489390(state, uint required_sm, char* name, location) {
 
 | Directive | PTX ISA | SM Architecture |
 |---|---|---|
-| `.address_size` | >= 2.3 | -- |
-| `.weak` | >= 3.1 | -- |
-| `.common` | >= 5.0 | -- |
+| `.address_size` | >= 2.3 | — |
+| `.weak` | >= 3.1 | — |
+| `.common` | >= 5.0 | — |
 | `.alias` | >= 6.3 | >= 30 |
 | `.branchtargets` | >= 6.0 | >= 30 |
 | `.calltargets` | >= 2.1 | >= 20 |
 | `.callprototype` | >= 2.1 | >= 20 |
-| `.pragma` | >= 2.0 | -- |
-| `texmode_independent` | >= 1.5 | -- |
-| `debug` target | >= 3.0 | -- |
-| kernel param list | >= 1.4 | -- |
-| opaque types | >= 1.5 | -- |
+| `.pragma` | >= 2.0 | — |
+| `texmode_independent` | >= 1.5 | — |
+| `debug` target | >= 3.0 | — |
+| kernel param list | >= 1.4 | — |
+| opaque types | >= 1.5 | — |
 | `.b128` type | >= 8.3 | >= 70 |
 | kernel params > 4352B | >= 8.1 | >= 70 |
 

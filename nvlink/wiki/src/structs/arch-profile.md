@@ -1,6 +1,6 @@
 # Architecture Profile
 
-The `ArchProfile` struct is a 136-byte heap-allocated descriptor that encodes everything nvlink needs to know about a single GPU architecture target. Each recognized architecture (e.g. `sm_100`) produces three profile instances -- a real profile (`sm_`), a virtual profile (`compute_`), and an LTO profile (`lto_`) -- all stored in a global hash map keyed by name string. The struct is created by `sub_484DB0` and consumed throughout the linking, finalization, and output pipelines.
+The `ArchProfile` struct is a 136-byte heap-allocated descriptor that encodes everything nvlink needs to know about a single GPU architecture target. Each recognized architecture (e.g. `sm_100`) produces three profile instances — a real profile (`sm_`), a virtual profile (`compute_`), and an LTO profile (`lto_`) — all stored in a global hash map keyed by name string. The struct is created by `sub_484DB0` and consumed throughout the linking, finalization, and output pipelines.
 
 This page documents the byte-level layout derived from the constructor (`sub_484DB0`), the database initializer (`sub_484F50`), and the two finalization compatibility checkers (`sub_4709E0`, `sub_470DA0`).
 
@@ -197,7 +197,7 @@ The three 128-bit vectors at offsets +80, +96, and +112 encode hardware capabili
 
 Key observations:
 
-- **Vec 0** is identical for all architectures -- a universal base capability set.
+- **Vec 0** is identical for all architectures — a universal base capability set.
 - **Vec 1** has five distinct values, grouping architectures by instruction set similarity: Turing alone (F20), Ampere-base/Hopper/sm_100/sm_103 (F40), Ampere-extended (F50), and Ada/sm_110/sm_120/sm_121 (F60).
 - **Vec 2** has two values: `1D40F30` for pre-Blackwell (sm_75 through sm_90a) and `1D40F70` for Blackwell-generation (sm_100+).
 
@@ -256,7 +256,7 @@ if (profile->version_limit > 0x101)
     return 25;  // error: version too high
 ```
 
-All profiles are zero-initialized, so this check always passes in CUDA 13.0. The `0x101` threshold (257 decimal) suggests this was designed as a forward-compatibility guard -- if a profile's version exceeds the linker's known maximum, finalization is rejected.
+All profiles are zero-initialized, so this check always passes in CUDA 13.0. The `0x101` threshold (257 decimal) suggests this was designed as a forward-compatibility guard — if a profile's version exceeds the linker's known maximum, finalization is rejected.
 
 ## Linked List Heads (Offsets 48-64)
 
@@ -286,7 +286,7 @@ Links all architectures within the same generation. For Ampere:
 sm_80.compat_list_1 -> { sm_80, sm_86, sm_87, sm_88, sm_89 }
 ```
 
-The sm_89 (Ada) profile is appended to sm_80's family list despite being classified as "Ada" rather than "Ampere" -- this reflects hardware backward compatibility.
+The sm_89 (Ada) profile is appended to sm_80's family list despite being classified as "Ada" rather than "Ampere" — this reflects hardware backward compatibility.
 
 For Blackwell, both intra-family and cross-family links exist:
 
@@ -413,10 +413,10 @@ Offset  Size  Type      Field               Description
 
 ## Cross-References
 
-- [Architecture Profiles (overview)](../targets/arch-profiles.md) -- database initialization sequence, complete architecture table, name parsing
-- [Compatibility](../targets/compatibility.md) -- finalization compatibility rules
-- [Finalize](../pipeline/finalize.md) -- how profiles flow through the finalization pipeline
-- [CLI Options](../pipeline/cli-options.md) -- `--arch` option triggers profile lookup
+- [Architecture Profiles (overview)](../targets/arch-profiles.md) — database initialization sequence, complete architecture table, name parsing
+- [Compatibility](../targets/compatibility.md) — finalization compatibility rules
+- [Finalize](../pipeline/finalize.md) — how profiles flow through the finalization pipeline
+- [CLI Options](../pipeline/cli-options.md) — `--arch` option triggers profile lookup
 
 ## Confidence Assessment
 
@@ -482,7 +482,7 @@ Verified against decompiled `sub_484DB0_0x484db0.c` (constructor), `sub_484F50_0
 | `virtual_ptr` at offset 72 (index [9] in `_QWORD*`) | HIGH | `sub_484F50` line 264: `v6[4].m128i_i64[1] = (__int64)v7;` (offset 72 on `sm_75`, points to `compute_75`) |
 | Compute profile's virtual_ptr is self | HIGH | `sub_484F50` line 265: `v7[9] = v7;` where `v7` is `compute_75` (offset 72 = self) |
 | LTO profile's virtual_ptr points to compute profile | HIGH | `sub_484F50` line 277: `*((_QWORD *)v10 + 9) = v9;` where `v10` is `lto_75` and `v9` is `compute_75` |
-| Offset 72 is NOT written by the constructor | HIGH | `sub_484DB0` writes offsets 0, 1, 8, 16, 24, 32, 40, 48, 56, 64, 128 only -- zeroed by memset prior. Field populated by `sub_484F50` after construction |
+| Offset 72 is NOT written by the constructor | HIGH | `sub_484DB0` writes offsets 0, 1, 8, 16, 24, 32, 40, 48, 56, 64, 128 only — zeroed by memset prior. Field populated by `sub_484F50` after construction |
 
 ### Capability Vectors (offsets 80-127)
 
@@ -498,7 +498,7 @@ Verified against decompiled `sub_484DB0_0x484db0.c` (constructor), `sub_484F50_0
 | sm_103 vec addresses: F10, F40, F70 | HIGH | `sub_484F50` lines 922-926: F10 -> `v128`, F40 -> `v123[6]`, F70 -> `v205` (then into vec 2) |
 | sm_120/sm_121 vec addresses: F10, F60, F70 | HIGH | `sub_484F50` line 1064: F60 -> `v153` (loaded into sm_120 vec 1) |
 | Suffix variants inherit vecs via `_mm_loadu_si128` copy | HIGH | `sub_484F50` line 595-599: `v71 = _mm_loadu_si128(v56 + 6); ... v64[5] = _mm_loadu_si128(v56 + 5); v64[6] = v71; v64[7] = v72;` (sm_90a inherits from sm_90) |
-| `sub_470DA0` reads capability via pointer at +16 in its argument buffer | MEDIUM | `sub_470DA0` line 91: `v11 = *(_DWORD **)(a1 + 16);` -- but this `a1` is NOT an ArchProfile (callers pass local `__m128i` buffers like `v204`, `v205`, `v387`). The claim "profile offset +16" in the wiki body is misleading: this is a different struct |
+| `sub_470DA0` reads capability via pointer at +16 in its argument buffer | MEDIUM | `sub_470DA0` line 91: `v11 = *(_DWORD **)(a1 + 16);` — but this `a1` is NOT an ArchProfile (callers pass local `__m128i` buffers like `v204`, `v205`, `v387`). The claim "profile offset +16" in the wiki body is misleading: this is a different struct |
 | Capability mask values (d=1, g=8, n=2, y=64) | HIGH | `sub_470DA0` lines 96-108: `case 'd': v12 = 1; case 'g': v12 = 8; case 'n': v12 = 2; case 'y': v12 = 64;` |
 
 ### Registration & Globals

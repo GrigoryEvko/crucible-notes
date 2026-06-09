@@ -377,11 +377,11 @@ struct StringPtrSlot {     // 28 bytes
 
 The initialization function `sub_12D6300` populates the struct by iterating all 221 slot indices and calling a chain of helpers for each:
 
-1. **`sub_12D6170` (pass-option registry lookup)** -- looks up a slot index in the hash table at `registry+120`. Returns a pointer to an `OptionNode` struct: `[+40] int16 flags`, `[+48] qword* value_array_ptr`, `[+56] int value_count`. Returns null if the option was not set on the command line.
+1. **`sub_12D6170` (pass-option registry lookup)** — looks up a slot index in the hash table at `registry+120`. Returns a pointer to an `OptionNode` struct: `[+40] int16 flags`, `[+48] qword* value_array_ptr`, `[+56] int value_count`. Returns null if the option was not set on the command line.
 
-2. **`sub_12D6240` (pass-option boolean resolver)** -- resolves a boolean option. Calls `sub_12D6170` to find the option, then if a string value exists, lowercases it via `sub_16D2060` and tests if the first char is `'1'` (0x31) or `'t'` (0x74). If the option was not found, defaults to true (enabled). Returns the boolean packed with the flags in the low 40 bits.
+2. **`sub_12D6240` (pass-option boolean resolver)** — resolves a boolean option. Calls `sub_12D6170` to find the option, then if a string value exists, lowercases it via `sub_16D2060` and tests if the first char is `'1'` (0x31) or `'t'` (0x74). If the option was not found, defaults to true (enabled). Returns the boolean packed with the flags in the low 40 bits.
 
-3. **`sub_1691920` (pass-definition table getter)** -- looks up a PassDef entry in a table where each entry is 64 bytes. Computes: `table[0] + (index - 1) * 64`. The PassDef at `[+32]` holds the pass_id, at `[+36]` a `has_overrides` flag, and at `[+40]` an override index.
+3. **`sub_1691920` (pass-definition table getter)** — looks up a PassDef entry in a table where each entry is 64 bytes. Computes: `table[0] + (index - 1) * 64`. The PassDef at `[+32]` holds the pass_id, at `[+36]` a `has_overrides` flag, and at `[+40]` an override index.
 
 ### Initial Slots (1-6): Global Configuration
 
@@ -420,7 +420,7 @@ Several regions break the standard string/boolean pair pattern:
 
 ### Complete Slot-to-Offset Map with Known Consumers
 
-The following table maps NVVMPassOptions slot indices to struct byte offsets, types, defaults, and -- where the cross-reference to the pipeline assembler's `a4[offset]` guards could be established -- the consuming pass(es). Offsets marked with `*` are confirmed by cross-referencing `a4[offset]` guards in `sub_12E54A0` and `sub_12DE8F0`.
+The following table maps NVVMPassOptions slot indices to struct byte offsets, types, defaults, and — where the cross-reference to the pipeline assembler's `a4[offset]` guards could be established — the consuming pass(es). Offsets marked with `*` are confirmed by cross-referencing `a4[offset]` guards in `sub_12E54A0` and `sub_12DE8F0`.
 
 | Slot | Offset | Type | Default | Known Knob Name | Consuming Pass |
 |------|--------|------|---------|----------------|----------------|
@@ -642,15 +642,15 @@ This design means tier placement is data-driven: the thresholds stored at config
 
 Tier 0 (`sub_12DE330`) is the most comprehensive sub-pipeline at ~40 passes. Its ordering reflects NVIDIA's optimization philosophy for GPU code:
 
-**Phase A -- Value Simplification** (passes 1-8): BreakCriticalEdges normalizes the CFG, then the CGSCC inliner framework runs first to create optimization opportunities. NVVMReflect resolves `__nvvm_reflect()` calls to compile-time constants (GPU architecture queries), and SCCP propagates those constants. GVN and NewGVN/GVNHoist eliminate redundant computations.
+**Phase A — Value Simplification** (passes 1-8): BreakCriticalEdges normalizes the CFG, then the CGSCC inliner framework runs first to create optimization opportunities. NVVMReflect resolves `__nvvm_reflect()` calls to compile-time constants (GPU architecture queries), and SCCP propagates those constants. GVN and NewGVN/GVNHoist eliminate redundant computations.
 
-**Phase B -- NVIDIA-Specific Cleanup** (passes 9-12): NVVMVerifier catches NVVM-specific IR errors early. NVVMPredicateOpt optimizes predicate expressions. ConstantMerge reduces module size.
+**Phase B — NVIDIA-Specific Cleanup** (passes 9-12): NVVMVerifier catches NVVM-specific IR errors early. NVVMPredicateOpt optimizes predicate expressions. ConstantMerge reduces module size.
 
-**Phase C -- Loop Transformations** (passes 13-27): This is the core loop optimization sequence. Sink/MemSSA moves code out of hot paths. LoopIndexSplit divides loops at index boundaries. LICM hoists invariants. LoopUnroll with factor 3 expands small loops. LoopUnswitch moves conditionals out of loops. ADCE removes dead code exposed by loop transformations.
+**Phase C — Loop Transformations** (passes 13-27): This is the core loop optimization sequence. Sink/MemSSA moves code out of hot paths. LoopIndexSplit divides loops at index boundaries. LICM hoists invariants. LoopUnroll with factor 3 expands small loops. LoopUnswitch moves conditionals out of loops. ADCE removes dead code exposed by loop transformations.
 
-**Phase D -- Register Pressure Management** (passes 28-40): InstCombine and SROA simplify the IR further. NVVMRematerialization recomputes values to reduce register pressure -- critical for GPU occupancy. DSE and DCE clean up dead stores and code. The final CGSCC pass and FunctionAttrs prepare for per-function Phase II processing.
+**Phase D — Register Pressure Management** (passes 28-40): InstCombine and SROA simplify the IR further. NVVMRematerialization recomputes values to reduce register pressure — critical for GPU occupancy. DSE and DCE clean up dead stores and code. The final CGSCC pass and FunctionAttrs prepare for per-function Phase II processing.
 
-### Tier 1/2/3 Incremental Additions -- `sub_12DE8F0`
+### Tier 1/2/3 Incremental Additions — `sub_12DE8F0`
 
 | | |
 |---|---|
@@ -774,8 +774,8 @@ All three levels call `sub_12DE330` for the same ~40-pass Tier 0 sub-pipeline. T
 **3. Loop unroll factor.** `sub_1833EB0` is called with factor 3 in the standard pipeline. Tier 3 adds an additional call to TailCallElim and more aggressive LoopUnswitch parameters (the `sub_19B73C0` call receives SM-arch-dependent vector widths at Tier 2/3).
 
 **4. Vectorizer parameters.** `sub_19B73C0` receives different arguments based on tier:
-- Tier 0: `(2, -1, -1, -1, -1, -1, -1)` -- conservative vector width 2, all thresholds unlimited
-- "mid" path: `(3, -1, -1, 0, 0, -1, 0)` -- vector width 3, some thresholds zeroed (disabled)
+- Tier 0: `(2, -1, -1, -1, -1, -1, -1)` — conservative vector width 2, all thresholds unlimited
+- "mid" path: `(3, -1, -1, 0, 0, -1, 0)` — vector width 3, some thresholds zeroed (disabled)
 - Tier 2/3: Parameters vary by SM architecture via config struct lookups
 
 ### Fast-Compile Levels vs O-Levels
@@ -790,13 +790,13 @@ All three levels call `sub_12DE330` for the same ~40-pass Tier 0 sub-pipeline. T
 | `nvopt<O2>` | sub_12DE330 | ~35+ | normal | enabled | Tier 2: full optimization set |
 | `nvopt<O3>` | sub_12DE330 | ~35+ | normal | enabled | Tier 3: aggressive + feature escalation |
 
-Ofcmax is architecturally distinct: it forces `-lsa-opt=0` and `-memory-space-opt=0` in the optimizer flags (confirmed in both `sub_9624D0` line 1358 and `sub_12CC750` line 2025). This means two of NVIDIA's most important proprietary passes -- LSA optimization and MemorySpaceOpt -- are unconditionally disabled regardless of what the user requests.
+Ofcmax is architecturally distinct: it forces `-lsa-opt=0` and `-memory-space-opt=0` in the optimizer flags (confirmed in both `sub_9624D0` line 1358 and `sub_12CC750` line 2025). This means two of NVIDIA's most important proprietary passes — LSA optimization and MemorySpaceOpt — are unconditionally disabled regardless of what the user requests.
 
 ## Pipeline Text Strings and `nvopt<>` Dispatch
 
 ### The `nvopt<>` Naming Convention
 
-NVIDIA replaces LLVM's standard `default<O2>` pipeline naming with a proprietary `nvopt<>` prefix. The new-PM driver `sub_226C400` (35KB, at `0x226C400`) selects one of exactly seven pipeline name strings based on optimization level and fast-compile flags. These strings are passed verbatim to `sub_2277440` (60KB, at `0x2277440`) -- NVIDIA's equivalent of LLVM's `PassBuilder::buildDefaultPipeline()`.
+NVIDIA replaces LLVM's standard `default<O2>` pipeline naming with a proprietary `nvopt<>` prefix. The new-PM driver `sub_226C400` (35KB, at `0x226C400`) selects one of exactly seven pipeline name strings based on optimization level and fast-compile flags. These strings are passed verbatim to `sub_2277440` (60KB, at `0x2277440`) — NVIDIA's equivalent of LLVM's `PassBuilder::buildDefaultPipeline()`.
 
 ```text
 nvopt<O0>       Optimization disabled. ~5-8 infrastructure passes only.
@@ -871,7 +871,7 @@ cicc v13.0 maintains registrations for both the Legacy Pass Manager and the New 
 
 **Legacy PM registration** occurs in pass constructor functions scattered throughout the binary. For example, MemorySpaceOpt registers as `"memory-space-opt-pass"` via `sub_1C97F80`. Each Legacy PM pass calls `RegisterPass<>` with a pass ID and description string.
 
-**New PM registration** is centralized in `sub_2342890` -- a single 2,816-line function that registers every analysis, pass, and printer. It calls `sub_E41FB0(pm, class_name, len, pass_name, len)` for each pass, inserting into a StringMap with open-addressing and linear probing.
+**New PM registration** is centralized in `sub_2342890` — a single 2,816-line function that registers every analysis, pass, and printer. It calls `sub_E41FB0(pm, class_name, len, pass_name, len)` for each pass, inserting into a StringMap with open-addressing and linear probing.
 
 ### New PM Registration Structure
 
@@ -927,7 +927,7 @@ Each parameterized NVIDIA pass also registers a serializer for pipeline text out
 
 ## Pipeline Construction Flow
 
-### The AddPass Mechanism -- `sub_12DE0B0`
+### The AddPass Mechanism — `sub_12DE0B0`
 
 | | |
 |---|---|
@@ -984,9 +984,9 @@ int64 AddPass(PassManager* PM, Pass* pass, uint8_t flags, char barrier) {
 }
 ```
 
-The `flags` parameter encodes the pass type: `0` for module/analysis passes, `1` for function passes. The `barrier` parameter (bit 1) is a scheduling fence that tells the pass manager all preceding passes must complete before this pass runs -- used for passes that require the module in a globally consistent state (e.g., after whole-module inlining).
+The `flags` parameter encodes the pass type: `0` for module/analysis passes, `1` for function passes. The `barrier` parameter (bit 1) is a scheduling fence that tells the pass manager all preceding passes must complete before this pass runs — used for passes that require the module in a globally consistent state (e.g., after whole-module inlining).
 
-The hash table serves two purposes: (a) deduplication -- if the same pass factory is called twice (which happens for NVVMReflect, NVVMIntrinsicLowering, etc.), the second call updates flags rather than inserting a duplicate; and (b) O(1) flag lookup during the codegen dispatch phase (`sub_12DFE00`), where each pass's type and barrier status must be queried efficiently.
+The hash table serves two purposes: (a) deduplication — if the same pass factory is called twice (which happens for NVVMReflect, NVVMIntrinsicLowering, etc.), the second call updates flags rather than inserting a duplicate; and (b) O(1) flag lookup during the codegen dispatch phase (`sub_12DFE00`), where each pass's type and barrier status must be queried efficiently.
 
 The pass manager container is initialized at line 390 of `sub_12E54A0` with inline storage: `v270 = v272` (stack buffer), `v271 = 0x800000000` (capacity/flags encoding with 33-bit sentinel).
 
@@ -1208,7 +1208,7 @@ if (a4[3944]) {
 
 The three language paths in Phase 1/4 represent fundamentally different IR maturity levels. The `a4[3648]` string pointer determines which path is taken, with length at `a4[3656]`.
 
-#### Path A: `"ptx"` -- Light Pipeline (~15 passes)
+#### Path A: `"ptx"` — Light Pipeline (~15 passes)
 
 PTX text input has already been lowered by an earlier compilation stage. This path applies only light cleanup and canonicalization:
 
@@ -1228,7 +1228,7 @@ sub_1C8E680(0) [!a4[1760]]  MemorySpaceOptimization
 
 Key difference: no SROA, no GVN, no loop transformations, no CGSCC inlining. The PTX path trusts that the earlier compilation already optimized the code.
 
-#### Path B: `"mid"` -- Full Optimization (~45 passes)
+#### Path B: `"mid"` — Full Optimization (~45 passes)
 
 The primary path for standard CUDA compilation. The IR comes from the EDG frontend through IR generation and is at "mid-level" maturity (high-level constructs lowered, but not yet optimized).
 
@@ -1281,7 +1281,7 @@ sub_1A13320()  [!a4[2320]]    NVVMRematerialization
 
 Key pattern: NVVMIntrinsicLowering runs 4 times, NVVMReflect runs 3 times, NVVMIRVerification runs 5+ times. The CGSCC pipeline is called with 5 and 8 iteration counts (aggressive devirtualization).
 
-#### Path C: Default -- General Pipeline (~40 passes)
+#### Path C: Default — General Pipeline (~40 passes)
 
 Used for bitcode from external sources (not marked as "ptx" or "mid"). Balances optimization breadth with conservative assumptions about IR maturity.
 
@@ -1336,7 +1336,7 @@ sub_1A62BF0(4,0,0,1,1,0,1)    LLVM standard pipeline #4 (inlining)
 
 Key difference from "mid": default path uses LLVM standard pipeline wrappers (IDs 1,2,4,5,7) more heavily, runs SCCP explicitly, includes LoopIdiomRecognize, and uses a conservative LoopUnswitch with zeroed thresholds `(3,-1,-1,0,0,-1,0)`.
 
-### Codegen Dispatch -- `sub_12DFE00`
+### Codegen Dispatch — `sub_12DFE00`
 
 | | |
 |---|---|
@@ -1404,7 +1404,7 @@ void CodegenDispatch(PassManager* PM, SubtargetInfo* STI, CompilerOpts* opts) {
 
 The dependency graph construction is what makes this function 20KB: it must handle the full LLVM analysis dependency model, including transitive dependencies and analysis preservation. The `getAnalysisUsage` calls return `Required`, `RequiredTransitive`, and `Preserved` sets that define the ordering constraints between passes.
 
-For O0 compilation (`opt_level == 0`), the dependency tracking is skipped entirely -- codegen passes are emitted in a fixed default order since no optimization passes exist that could create ordering conflicts.
+For O0 compilation (`opt_level == 0`), the dependency tracking is skipped entirely — codegen passes are emitted in a fixed default order since no optimization passes exist that could create ordering conflicts.
 
 ## Pass Iteration and Convergence
 
@@ -1425,9 +1425,9 @@ Higher iteration counts allow the CGSCC framework to resolve more indirect calls
 NVVMReflect (`sub_1857160`) runs multiple times in the pipeline because NVVM IR may contain `__nvvm_reflect("__CUDA_ARCH")` calls at different nesting depths. The first run resolves top-level reflect calls to constants. Subsequent optimization passes (inlining, constant propagation, loop unrolling) may expose new reflect calls that were hidden inside inlined functions or unrolled loop bodies. Running NVVMReflect again after these transformations catches these newly-exposed calls.
 
 In the "mid" path, NVVMReflect appears at three distinct positions:
-1. Early (before GVN) -- resolves top-level architecture queries
-2. Mid (after CGSCC inlining and DeadArgElim) -- catches reflect calls exposed by inlining
-3. Late (after LoopSimplify and second CGSCC) -- catches reflect calls exposed by loop transformations
+1. Early (before GVN) — resolves top-level architecture queries
+2. Mid (after CGSCC inlining and DeadArgElim) — catches reflect calls exposed by inlining
+3. Late (after LoopSimplify and second CGSCC) — catches reflect calls exposed by loop transformations
 
 ### NVVMIntrinsicLowering Repetition
 
@@ -1435,13 +1435,13 @@ Similarly, NVVMIntrinsicLowering (`sub_1CB4E40`) runs 4 times in the "mid" path.
 
 ### NVVMIRVerification as a Convergence Check
 
-NVVMIRVerification (`sub_1A223D0`) runs after every major transformation group -- not for optimization, but as a correctness invariant check. In the "mid" path it appears at 5+ positions. In the tier 1/2/3 sub-pipeline it appears 4 times (after NVVMIntrinsicLowering, after barrier lowering, after GenericToNVVM, and after the late optimization sequence). If any transformation violates NVVM IR constraints (invalid address space usage, malformed intrinsic signatures, broken metadata), this pass reports the error immediately rather than allowing it to propagate to codegen where diagnosis would be much harder.
+NVVMIRVerification (`sub_1A223D0`) runs after every major transformation group — not for optimization, but as a correctness invariant check. In the "mid" path it appears at 5+ positions. In the tier 1/2/3 sub-pipeline it appears 4 times (after NVVMIntrinsicLowering, after barrier lowering, after GenericToNVVM, and after the late optimization sequence). If any transformation violates NVVM IR constraints (invalid address space usage, malformed intrinsic signatures, broken metadata), this pass reports the error immediately rather than allowing it to propagate to codegen where diagnosis would be much harder.
 
 ### The Repeat-Until-Clean Philosophy
 
-NVIDIA's pipeline does not use explicit fixed-point loops (run passes until IR stops changing). Instead, it achieves convergence through **strategic repetition**: the same pass appears at multiple carefully-chosen pipeline positions, with different optimization passes running between repetitions. This is more predictable than a true fixed-point approach because compilation time is bounded by the static pipeline length rather than by how many iterations are needed for convergence. The tradeoff is that the pipeline may not reach a true fixed point -- some optimization opportunities exposed by late passes may not be caught -- but in practice, the multi-position placement catches the vast majority of cases.
+NVIDIA's pipeline does not use explicit fixed-point loops (run passes until IR stops changing). Instead, it achieves convergence through **strategic repetition**: the same pass appears at multiple carefully-chosen pipeline positions, with different optimization passes running between repetitions. This is more predictable than a true fixed-point approach because compilation time is bounded by the static pipeline length rather than by how many iterations are needed for convergence. The tradeoff is that the pipeline may not reach a true fixed point — some optimization opportunities exposed by late passes may not be caught — but in practice, the multi-position placement catches the vast majority of cases.
 
-## LLVM Standard Pass Pipeline Factory -- `sub_1A62BF0`
+## LLVM Standard Pass Pipeline Factory — `sub_1A62BF0`
 
 The LLVM standard pass pipeline is invoked multiple times throughout the optimizer via `sub_1A62BF0`. The first parameter is a **pipeline ID** that selects which LLVM extension point to inject passes at:
 
@@ -1617,13 +1617,13 @@ Total unique pass factory addresses: ~55.
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| NVVM pass-options init (populates 4,512-byte options struct) | `sub_12D6300` | 125KB | -- |
-| Pass-option string writer (24-byte string slot) | `sub_12D6090` | ~100B | -- |
-| Pass-option boolean writer (16-byte boolean slot) | `sub_12D6100` | ~80B | -- |
-| Pass-option registry lookup (hash-table) | `sub_12D6170` | ~200B | -- |
-| Pass-option boolean resolver (default = true) | `sub_12D6240` | ~300B | -- |
-| Pass-definition table getter (64-byte stride) | `sub_1691920` | ~50B | -- |
-| String-to-int64 parser | `sub_16D2BB0` | ~100B | -- |
+| NVVM pass-options init (populates 4,512-byte options struct) | `sub_12D6300` | 125KB | — |
+| Pass-option string writer (24-byte string slot) | `sub_12D6090` | ~100B | — |
+| Pass-option boolean writer (16-byte boolean slot) | `sub_12D6100` | ~80B | — |
+| Pass-option registry lookup (hash-table) | `sub_12D6170` | ~200B | — |
+| Pass-option boolean resolver (default = true) | `sub_12D6240` | ~300B | — |
+| Pass-definition table getter (64-byte stride) | `sub_1691920` | ~50B | — |
+| String-to-int64 parser | `sub_16D2BB0` | ~100B | — |
 | Pipeline assembler (master) | `sub_12E54A0` | 49.8KB | 8-phase pipeline construction |
 | AddPass | `sub_12DE0B0` | 3.5KB | Hash-table-based insertion |
 | Tier 0 sub-pipeline | `sub_12DE330` | 4.8KB | ~40 passes, full optimization |
@@ -1657,11 +1657,11 @@ Total unique pass factory addresses: ~55.
 
 ## Cross-References
 
-- [Optimization Levels](../config/optimization-levels.md) -- detailed O0/O1/O2/O3 and fast-compile pipeline construction
-- [Memory Space Optimization](../passes/memory-space-opt.md) -- the MemorySpaceOpt pass (first-time/second-time parameterization)
-- [Rematerialization](../passes/rematerialization.md) -- NVVMRematerialization pass and its register-pressure knobs
-- [Loop Strength Reduction](../llvm/lsr.md) -- NVIDIA's custom LSR overlay with 11 GPU-specific knobs
-- [Sinking2](../passes/sinking2.md) -- NVIDIA's enhanced sinking pass
-- [CGSCC & LazyCallGraph](../infra/lazycallgraph.md) -- the inliner framework and iteration model
-- [Pipeline Entry](entry.md) -- top-level compilation entry and two-phase orchestration
-- [SROA](../llvm/sroa.md), [EarlyCSE](../llvm/early-cse.md), [JumpThreading](../llvm/jump-threading.md) -- scalar pass details (hub: [scalar-passes](../llvm/scalar-passes.md))
+- [Optimization Levels](../config/optimization-levels.md) — detailed O0/O1/O2/O3 and fast-compile pipeline construction
+- [Memory Space Optimization](../passes/memory-space-opt.md) — the MemorySpaceOpt pass (first-time/second-time parameterization)
+- [Rematerialization](../passes/rematerialization.md) — NVVMRematerialization pass and its register-pressure knobs
+- [Loop Strength Reduction](../llvm/lsr.md) — NVIDIA's custom LSR overlay with 11 GPU-specific knobs
+- [Sinking2](../passes/sinking2.md) — NVIDIA's enhanced sinking pass
+- [CGSCC & LazyCallGraph](../infra/lazycallgraph.md) — the inliner framework and iteration model
+- [Pipeline Entry](entry.md) — top-level compilation entry and two-phase orchestration
+- [SROA](../llvm/sroa.md), [EarlyCSE](../llvm/early-cse.md), [JumpThreading](../llvm/jump-threading.md) — scalar pass details (hub: [scalar-passes](../llvm/scalar-passes.md))

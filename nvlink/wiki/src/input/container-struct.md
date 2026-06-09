@@ -1,10 +1,10 @@
 # The 168-Byte Input Container
 
-Every input that flows through the four nvlink input-compile entry points -- `sub_4BD0A0` (fatbin arch-match only), `sub_4BD240` (fatbin member compile-or-copy), `sub_4BD4E0` (whole-program PTX compile), and `sub_4BD760` (relocatable PTX compile) -- shares the same heap-allocated opaque control block. Internally there is no exported type for it; the binary refers to it only by raw offset arithmetic on a `_QWORD *`. This page reconstructs the 168-byte layout (`0xA8` bytes), documents the magic, the lifecycle, and the per-field writer/reader pairing as observed across every setter, the engine, the getter, and the cleanup routine.
+Every input that flows through the four nvlink input-compile entry points — `sub_4BD0A0` (fatbin arch-match only), `sub_4BD240` (fatbin member compile-or-copy), `sub_4BD4E0` (whole-program PTX compile), and `sub_4BD760` (relocatable PTX compile) — shares the same heap-allocated opaque control block. Internally there is no exported type for it; the binary refers to it only by raw offset arithmetic on a `_QWORD *`. This page reconstructs the 168-byte layout (`0xA8` bytes), documents the magic, the lifecycle, and the per-field writer/reader pairing as observed across every setter, the engine, the getter, and the cleanup routine.
 
-The struct is the *only* mutable state shared between the input-detection layer (`main()`), the architecture-matching layer (`sub_4CE8C0`), the embedded-ptxas dispatcher (`sub_4BE350` / `sub_4BDB90`), and the Mercury finalizer (`sub_4748F0`). All four input formats -- raw PTX, NVVM IR / LTO IR, cubin, and fatbin -- funnel through this single container, which is why it is named generically rather than `ptx_ctx` or `fatbin_ctx`.
+The struct is the *only* mutable state shared between the input-detection layer (`main()`), the architecture-matching layer (`sub_4CE8C0`), the embedded-ptxas dispatcher (`sub_4BE350` / `sub_4BDB90`), and the Mercury finalizer (`sub_4748F0`). All four input formats — raw PTX, NVVM IR / LTO IR, cubin, and fatbin — funnel through this single container, which is why it is named generically rather than `ptx_ctx` or `fatbin_ctx`.
 
-**Confidence: HIGH.** Every offset is corroborated by at least one setter and one reader, with a few fields cross-referenced from the cleanup walk in `sub_4BE400`. The magic constant `0x1464243BC` (5,473,715,132 decimal -- not a printable ASCII tag but a deliberate sentinel) is checked at the head of every getter / setter and in the validator `sub_4CE040`.
+**Confidence: HIGH.** Every offset is corroborated by at least one setter and one reader, with a few fields cross-referenced from the cleanup walk in `sub_4BE400`. The magic constant `0x1464243BC` (5,473,715,132 decimal — not a printable ASCII tag but a deliberate sentinel) is checked at the head of every getter / setter and in the validator `sub_4CE040`.
 
 ## Lifecycle Overview
 
@@ -47,7 +47,7 @@ if (a1) {
 return result;   // 1 if NULL, 2 if magic mismatch
 ```
 
-Why 8 bytes for a 32-bit constant? Because the upper 4 bytes are guaranteed zero by the post-allocation `memset` (see *Allocation* below), and the comparison is `_QWORD` for ABI reasons -- the slot is 8-byte aligned and reading it as a full qword saves a sign-extension. The high half being zero also catches a class of buggy aliasing: any free-and-reuse that overwrites only 4 bytes of the header will leave the magic intact-looking on a 32-bit read but break on the 64-bit check.
+Why 8 bytes for a 32-bit constant? Because the upper 4 bytes are guaranteed zero by the post-allocation `memset` (see *Allocation* below), and the comparison is `_QWORD` for ABI reasons — the slot is 8-byte aligned and reading it as a full qword saves a sign-extension. The high half being zero also catches a class of buggy aliasing: any free-and-reuse that overwrites only 4 bytes of the header will leave the magic intact-looking on a 32-bit read but break on the 64-bit check.
 
 ## Allocation: sub_4CDD60
 
@@ -87,8 +87,8 @@ int container_create(void **out_ctx, void *unused) {
 Three things to note:
 
 1. The `0xA8` (168) byte allocation is the only place the size constant appears in the binary; nothing inside the container probes its own size.
-2. The two explicit assignments `ctx[1] = 0` and `ctx[20] = 0` correspond to offset +8 (arch / version qword) and offset +160 (the two accelerated-arch flag bytes packed into a qword). They are zeroed *before* the bulk `memset`, which then zeroes everything from offset +16 through +167 via a single SIMD-friendly loop. The split is a compiler optimization -- the surrounding alignment fix-up math means the bulk store starts at an 8-byte-aligned offset that may or may not include byte 16, so the head bytes are written explicitly.
-3. The post-zero `ctx[0] = 0x1464243BCLL` is the very last write inside the protected region. If a `longjmp` fires between the `sub_4307C0` return and the magic stamp, `out_ctx` is left as a dangling allocation -- but the arena owns it, so it is reclaimed at arena teardown.
+2. The two explicit assignments `ctx[1] = 0` and `ctx[20] = 0` correspond to offset +8 (arch / version qword) and offset +160 (the two accelerated-arch flag bytes packed into a qword). They are zeroed *before* the bulk `memset`, which then zeroes everything from offset +16 through +167 via a single SIMD-friendly loop. The split is a compiler optimization — the surrounding alignment fix-up math means the bulk store starts at an 8-byte-aligned offset that may or may not include byte 16, so the head bytes are written explicitly.
+3. The post-zero `ctx[0] = 0x1464243BCLL` is the very last write inside the protected region. If a `longjmp` fires between the `sub_4307C0` return and the magic stamp, `out_ctx` is left as a dangling allocation — but the arena owns it, so it is reclaimed at arena teardown.
 
 ## Field-Offset Table
 
@@ -102,7 +102,7 @@ Every offset below is corroborated by at least one writer (where the value first
 | 16  | 8 | `flag_word`          | `uint64_t` | `4CE640` | `4BDB90` (`& 2` Mercury test) | Mode-flag bitfield; bit 1 = 64-bit pointers |
 | 24  | 8 | `member_opts`        | `char *`   | `4CE8C0` | `4BDB90` (`v27`, strtok_r'd), `4BE400` (free) | Options harvested from matched fatbin member header |
 | 32  | 8 | `cli_opts_accum`     | `char *`   | `4CE3E0` | `4BDB90` (`v28`, strtok_r'd) | Accumulator for tokens appended via `4CE3E0` (`-c`, `-m64`, `-g`, `-Xptxas`) |
-| 40  | 8 | `?`                  | `void *`   | `4CE8C0` (alt path) | -- | Alternative options buffer in fatbin paths |
+| 40  | 8 | `?`                  | `void *`   | `4CE8C0` (alt path) | — | Alternative options buffer in fatbin paths |
 | 48  | 8 | `?`                  | `char *`   | `4CE8C0`/build | `4BDB90` (`v9`, `strstr "-threads"`) | Mercury thread-count source |
 | 56  | 8 | `aux_buf`            | `void *`   | dynamic   | `4BE400` (`a1[7]`, free) | Auxiliary buffer freed at cleanup |
 | 72  | 8 | `content_ptr`        | `void *`   | `4CE070` | `4BDB90` (raw PTX path) | Input bytes: PTX text, fatbin bytes, cubin bytes, or NVVM IR |
@@ -116,19 +116,19 @@ Every offset below is corroborated by at least one writer (where the value first
 | 144 | 16 | `option_list_head`  | `LL node*` | `4CE3E0`  | `4BE400` (`a1[18]`, walk + free) | Linked list of arena-tracked option strings (intrusive `[next, payload]`) |
 | 160 | 1 | `accelerated`        | `uint8_t`  | `4CE380`  | `4BDB90` (passed to `sub_44E530`) | sm_XXa accelerated-arch flag (trailing 'a' in arch name) |
 | 161 | 1 | `aux_flag`           | `uint8_t`  | `4CE2F0`  | `4CE2F0` (read into `v4`) | Secondary arch flag, forwarded to `sub_44E530` |
-| 162 | 6 | `padding`            | -- | -- | -- | Tail padding -- `168 = 21 qwords` with two stray bytes at +160/+161; the remaining 6 bytes are zero-filled by allocation |
+| 162 | 6 | `padding`            | — | — | — | Tail padding — `168 = 21 qwords` with two stray bytes at +160/+161; the remaining 6 bytes are zero-filled by allocation |
 
 The structure is therefore "mixed-width": 21 qword slots (offsets 0, 8, 16, 24, 32, 40, 48, 56, 64*, 72, 80*, 88, 96*, 104, 112*, 120, 128, 136, 144, 152, 160) with three qword slots used as `<u32, u32>` pairs (`arch:version` at 8/12, `content_ptr:content_type:_` at 72-83, and `matched_data:matched_type:_` at 88-99), plus the trailing flag-byte pair at 160/161. Slots marked `*` were not enumerated above but lie inside the qword-grid: +64 (between `aux_buf` and `content_ptr`), +112 (between `matched_size` and `cubin_output`), and +152 (`stderr_buf`, see below). Each of those is zeroed by allocation and either unused or written by the ptxas backend through the `qword_2A77DD0` call.
 
 ### Stderr Slot (Offset +152)
 
-The ptxas backend, when it fails, writes a diagnostic C string into `ctx[19]` (offset 152). This is read back by `sub_4BE3D0` (`ptxas_get_stderr`), which simply returns `*(char **)(ctx + 152)` and clears it. The setter side is *not* one of the six container setters listed in the page title -- it is the embedded ptxas itself, reaching into the container through the `qword_2A77DD0` ABI. The slot is allocation-zeroed so a successful compile leaves it `NULL`, and `4BE3D0` distinguishes "no diagnostic" from "ptxas raised stderr" purely by null check.
+The ptxas backend, when it fails, writes a diagnostic C string into `ctx[19]` (offset 152). This is read back by `sub_4BE3D0` (`ptxas_get_stderr`), which simply returns `*(char **)(ctx + 152)` and clears it. The setter side is *not* one of the six container setters listed in the page title — it is the embedded ptxas itself, reaching into the container through the `qword_2A77DD0` ABI. The slot is allocation-zeroed so a successful compile leaves it `NULL`, and `4BE3D0` distinguishes "no diagnostic" from "ptxas raised stderr" purely by null check.
 
 ## Per-Setter Anatomy
 
 All six setters share the magic-prologue / setjmp pattern. The bodies differ only in what they store.
 
-### sub_4CE2F0 -- set arch (+8) and validate
+### sub_4CE2F0 — set arch (+8) and validate
 
 ```c
 // 132 bytes, 8 BBs, 4 callees
@@ -155,7 +155,7 @@ int container_set_arch(void *ctx, uint32_t sm_number) {
 
 Important sequencing: the accelerated bytes at +160/+161 must already be set (via `sub_4CE380`) *before* `sub_4CE2F0` is called, because they feed the arch-name formatter. The four input wrappers (`sub_4BD0A0`, `sub_4BD240`, `sub_4BD4E0`, `sub_4BD760`) honor this order: `4CE3B0` then `4CE2F0` then optional `4CE380`. Re-calling `4CE380` after `4CE2F0` would *not* re-validate the new combination.
 
-### sub_4CE3B0 -- set fatbin version (+12)
+### sub_4CE3B0 — set fatbin version (+12)
 
 ```c
 // 37 bytes, 4 BBs, leaf
@@ -169,7 +169,7 @@ int container_set_version(void *ctx, uint32_t v) {
 
 Pure setter, no validation, no allocation. Always the first setter called after `4CDD60`.
 
-### sub_4CE380 -- set accelerated flag (+160)
+### sub_4CE380 — set accelerated flag (+160)
 
 ```c
 // 41 bytes, 4 BBs, leaf
@@ -183,7 +183,7 @@ int container_set_accelerated(void *ctx) {
 
 The hardcoded `= 1` means this is *only* callable to *set* the flag; there is no companion clearer. The container is born with the flag at zero (allocation-time `memset`), and once raised it stays raised for the entire input's lifetime.
 
-### sub_4CE640 -- set flag word (+16)
+### sub_4CE640 — set flag word (+16)
 
 ```c
 // 38 bytes, 4 BBs, leaf
@@ -195,9 +195,9 @@ int container_set_flags(_QWORD *ctx, uint64_t v) {
 }
 ```
 
-Stores a full qword. The two PTX wrappers (`4BD760`, `4BD4E0`) call this with `1` when `dword_2A5F30C == 64` -- which is the only observed value. The Mercury bit-2 test in `sub_4BDB90` (`& 2`) is therefore the residue of an alternate code path that may set the flag to `3` for 64-bit + Mercury, but no caller has been seen to do so. Treat bit 0 as "64-bit" and bit 1 as "Mercury hint" until a counter-example emerges.
+Stores a full qword. The two PTX wrappers (`4BD760`, `4BD4E0`) call this with `1` when `dword_2A5F30C == 64` — which is the only observed value. The Mercury bit-2 test in `sub_4BDB90` (`& 2`) is therefore the residue of an alternate code path that may set the flag to `3` for 64-bit + Mercury, but no caller has been seen to do so. Treat bit 0 as "64-bit" and bit 1 as "Mercury hint" until a counter-example emerges.
 
-### sub_4CE3E0 -- append option token (+32)
+### sub_4CE3E0 — append option token (+32)
 
 ```c
 // 601 bytes, 22 BBs, 9 callees
@@ -234,9 +234,9 @@ int container_append_option(void *ctx, const char *new_token) {
 }
 ```
 
-Every appended string is duplicated into the arena and linked into the cleanup list at +144 (`sub_4644C0` is the list-push helper). The previous accumulator pointer is *not* explicitly freed by `4CE3E0` -- it is reachable only through the list head, and `sub_4BE400` walks the entire list at cleanup. The net effect is `O(n^2)` total memory in the number of appended tokens (each append copies the previous accumulator), but this is bounded by the small number of options typically forwarded.
+Every appended string is duplicated into the arena and linked into the cleanup list at +144 (`sub_4644C0` is the list-push helper). The previous accumulator pointer is *not* explicitly freed by `4CE3E0` — it is reachable only through the list head, and `sub_4BE400` walks the entire list at cleanup. The net effect is `O(n^2)` total memory in the number of appended tokens (each append copies the previous accumulator), but this is bounded by the small number of options typically forwarded.
 
-### sub_4CE070 -- set content and classify (+72, +80)
+### sub_4CE070 — set content and classify (+72, +80)
 
 ```c
 // 633 bytes, 35 BBs, 6 callees
@@ -305,7 +305,7 @@ int container_get_match(void *ctx, _DWORD *out_type, _QWORD *out_size,
 }
 ```
 
-The "no match" sentinel is `matched_data == NULL` (return 1), which the four wrappers translate to an architecture-mismatch error. Note that this getter returns three fields *in one call* -- there is no per-field getter, which simplifies the contract: a successful extract is atomic with respect to type/size/data.
+The "no match" sentinel is `matched_data == NULL` (return 1), which the four wrappers translate to an architecture-mismatch error. Note that this getter returns three fields *in one call* — there is no per-field getter, which simplifies the contract: a successful extract is atomic with respect to type/size/data.
 
 ## Free Path: sub_4BE400
 
@@ -326,32 +326,32 @@ void container_destroy(_QWORD *ctx, ...) {
 
 The cleanup order is deliberate:
 
-1. Free `member_opts` (+24) and `aux_buf` (+56) first -- these are user-supplied / fatbin-walker-supplied buffers.
+1. Free `member_opts` (+24) and `aux_buf` (+56) first — these are user-supplied / fatbin-walker-supplied buffers.
 2. Return `cubin_output` (+120) to the *ptxas* allocator via `qword_2A77DD0(4, ...)`, since it was allocated there.
 3. Free `aux output` (+128) via the *nvlink arena* free `sub_431000`.
 4. Walk the `option_list` at +144, freeing every payload via the arena.
 5. Free the list nodes themselves through `sub_464520`.
 6. Finally free the container itself.
 
-Critically, the magic is **not** zeroed before the final free. This is safe only because `sub_431000` is the arena allocator and immediately reclaims the memory; a subsequent allocation that reuses the slot will overwrite the magic. If a stale pointer is dereferenced after free, the magic check would coincidentally succeed only if the new allocation happens to leave `0x1464243BC` at offset 0 -- vanishingly unlikely for general allocations but trivially possible for another container creation, which is a use-after-free in the spirit of the magic. See QUIRK 3 below.
+Critically, the magic is **not** zeroed before the final free. This is safe only because `sub_431000` is the arena allocator and immediately reclaims the memory; a subsequent allocation that reuses the slot will overwrite the magic. If a stale pointer is dereferenced after free, the magic check would coincidentally succeed only if the new allocation happens to leave `0x1464243BC` at offset 0 — vanishingly unlikely for general allocations but trivially possible for another container creation, which is a use-after-free in the spirit of the magic. See QUIRK 3 below.
 
 ## QUIRK 1: The Magic Is Not a Tag
 
-`0x1464243BC` looks deliberately non-ASCII. The low 32 bits `0x4243BC` are not printable; the upper byte `0x01` makes the whole word fall outside any common type tag. The choice is consistent with a *random* sentinel rather than a four-character cookie. Compare with NVIDIA's other sentinels: fatbin uses the 40-bit pattern `0x1BA55ED50` ("BASSED" + version `0x01`, checked against `*hdr & 0xFFFFFFFFFFFF` as a 48-bit prefix match), the NVVM IR wrapper uses the 32-bit u32 `0x1EE55A01` ("LEESA"), ELF uses `0x464C457F` (".ELF"). The container magic is the only one in nvlink's input pipeline that is *not* a backronym, suggesting it was generated rather than chosen -- which is good practice for an internal sentinel that should not collide with any user-controlled bytes.
+`0x1464243BC` looks deliberately non-ASCII. The low 32 bits `0x4243BC` are not printable; the upper byte `0x01` makes the whole word fall outside any common type tag. The choice is consistent with a *random* sentinel rather than a four-character cookie. Compare with NVIDIA's other sentinels: fatbin uses the 40-bit pattern `0x1BA55ED50` ("BASSED" + version `0x01`, checked against `*hdr & 0xFFFFFFFFFFFF` as a 48-bit prefix match), the NVVM IR wrapper uses the 32-bit u32 `0x1EE55A01` ("LEESA"), ELF uses `0x464C457F` (".ELF"). The container magic is the only one in nvlink's input pipeline that is *not* a backronym, suggesting it was generated rather than chosen — which is good practice for an internal sentinel that should not collide with any user-controlled bytes.
 
 ## QUIRK 2: Two Accelerated-Arch Flag Bytes at +160/+161
 
-The container holds *two* trailing bytes of arch metadata, but only one setter (`sub_4CE380`) is exposed and it writes only `+160 = 1`. The second byte `+161` is read by `sub_4CE2F0` and forwarded to the arch-name formatter `sub_44E530`, but no exported setter writes it. The byte is allocation-zeroed and stays zero unless the container is mutated through a path we have not yet identified -- likely a direct write by `sub_4CE8C0` during fatbin arch matching, where the matched member's own header can specify both 'a' (accelerated) and 'f' (frozen / family) suffixes. This means `+161` may be the `f` (sm_XXf) family-architecture flag, currently zero for every PTX-from-disk path and only nonzero for fatbin members tagged with the family attribute. No verified caller has been observed to set it, so callers compiling family-tagged sm_XXf members from the command line will silently produce a non-family cubin.
+The container holds *two* trailing bytes of arch metadata, but only one setter (`sub_4CE380`) is exposed and it writes only `+160 = 1`. The second byte `+161` is read by `sub_4CE2F0` and forwarded to the arch-name formatter `sub_44E530`, but no exported setter writes it. The byte is allocation-zeroed and stays zero unless the container is mutated through a path we have not yet identified — likely a direct write by `sub_4CE8C0` during fatbin arch matching, where the matched member's own header can specify both 'a' (accelerated) and 'f' (frozen / family) suffixes. This means `+161` may be the `f` (sm_XXf) family-architecture flag, currently zero for every PTX-from-disk path and only nonzero for fatbin members tagged with the family attribute. No verified caller has been observed to set it, so callers compiling family-tagged sm_XXf members from the command line will silently produce a non-family cubin.
 
 ## QUIRK 3: Cleanup Does Not Invalidate the Magic
 
-After `sub_4BE400` returns, the container memory has been freed to the arena, but offset 0 still reads `0x1464243BC` until the arena reuses the slot. A naive double-free or stale-handle access through `sub_4CE040` will succeed (returning 0 = "valid"), and subsequent setter calls will write into freed memory. The defense in `sub_4CE040` against this is structural: the four wrappers (`sub_4BD0A0`, `sub_4BD240`, `sub_4BD4E0`, `sub_4BD760`) all overwrite their local handle with the result of `sub_4CDD60` once and never call `sub_4BE400` twice. There is no double-free check anywhere in the container API -- which is acceptable inside a strict single-owner pipeline but would be a correctness landmine if any future caller passed the container across a thread or stored it in a registry. The magic should arguably be overwritten with `0xDEADBEEFDEADBEEFLL` or similar at the head of cleanup; that this is not done is the most prominent piece of "trust the caller" surface in the input pipeline.
+After `sub_4BE400` returns, the container memory has been freed to the arena, but offset 0 still reads `0x1464243BC` until the arena reuses the slot. A naive double-free or stale-handle access through `sub_4CE040` will succeed (returning 0 = "valid"), and subsequent setter calls will write into freed memory. The defense in `sub_4CE040` against this is structural: the four wrappers (`sub_4BD0A0`, `sub_4BD240`, `sub_4BD4E0`, `sub_4BD760`) all overwrite their local handle with the result of `sub_4CDD60` once and never call `sub_4BE400` twice. There is no double-free check anywhere in the container API — which is acceptable inside a strict single-owner pipeline but would be a correctness landmine if any future caller passed the container across a thread or stored it in a registry. The magic should arguably be overwritten with `0xDEADBEEFDEADBEEFLL` or similar at the head of cleanup; that this is not done is the most prominent piece of "trust the caller" surface in the input pipeline.
 
 ## Cross-References
 
 - **Used by**: [PTX Input & JIT](ptx-input.md) (relocatable, whole-program, fatbin-extracted paths), [Fatbin Extraction](fatbin-extraction.md) (arch-match phase via `sub_4BD0A0`), [NVVM IR / LTO IR Input](nvvm-ir-input.md) (content_type 8 path), [Cubin Loading](cubin-loading.md) (the engine bypasses the container for direct cubins; this page documents the path through which a fatbin-extracted cubin re-enters the merge pipeline).
-- **Allocator**: [Memory Management (Arenas)](../infra/memory-arenas.md) -- `sub_4307C0` / `sub_431000` are the arena pair.
-- **Error descriptor**: [Error Reporting System](../infra/error-reporting.md) -- `sub_44F410` returns the thread-local descriptor that every setter setjmp-saves.
+- **Allocator**: [Memory Management (Arenas)](../infra/memory-arenas.md) — `sub_4307C0` / `sub_431000` are the arena pair.
+- **Error descriptor**: [Error Reporting System](../infra/error-reporting.md) — `sub_44F410` returns the thread-local descriptor that every setter setjmp-saves.
 - **Architecture flags at +160/+161**: [Architecture Profiles](../targets/arch-profiles.md) (formatter `sub_44E530`, validator `sub_486EA0`).
 - **Mercury hint at +16 bit 1**: [FNLZR (Finalizer)](../mercury/fnlzr.md) for the post-ptxas Mercury path.
-- **Engine consumer**: [PTX Input -- Compilation Engine](ptx-input.md#compilation-engine-sub_4bdb90-8025-bytes).
+- **Engine consumer**: [PTX Input — Compilation Engine](ptx-input.md#compilation-engine-sub_4bdb90-8025-bytes).

@@ -39,7 +39,7 @@ Phase 83 is disabled by default (`isNoOp` returns 1). It is activated through th
 
 ---
 
-## Phase 49 -- GvnCse (Global Value Numbering + CSE)
+## Phase 49 — GvnCse (Global Value Numbering + CSE)
 
 ### Overview
 
@@ -57,7 +57,7 @@ mov  rax, [rdi]            ; rax = sm_backend->vtable
 jmp  [rax+0xB8]            ; tail-call vtable[23] -- the actual GVN-CSE implementation
 ```
 
-The real implementation lives in the compilation context's SM backend object (at context+`0x630` / +1584), dispatched through its vtable at offset `0xB8` (slot 23). This indirection means the GVN-CSE algorithm can be overridden by architecture-specific backends that provide a different SM backend vtable. (This object was previously called "optimizer_state" on this page, but it is the same polymorphic SM backend used for legalization, scheduling, and all other architecture-dependent dispatch -- see [data-structures.md](../ir/data-structures.md#sm-backend-object-at-1584).)
+The real implementation lives in the compilation context's SM backend object (at context+`0x630` / +1584), dispatched through its vtable at offset `0xB8` (slot 23). This indirection means the GVN-CSE algorithm can be overridden by architecture-specific backends that provide a different SM backend vtable. (This object was previously called "optimizer_state" on this page, but it is the same polymorphic SM backend used for legalization, scheduling, and all other architecture-dependent dispatch — see [data-structures.md](../ir/data-structures.md#sm-backend-object-at-1584).)
 
 ### Algorithm (Reconstructed)
 
@@ -98,7 +98,7 @@ Chain nodes are 32-byte records allocated from the context's memory arena (alloc
 | `stored_hash` | +24 | 4 | Cached FNV-1a hash (avoids recompute on resize) |
 | (pad) | +28 | 4 | |
 
-Lookup: `bucket = hash & (capacity - 1)`, then linear chain walk comparing `node.key == query_key`. Insert returns a 33-byte result struct: `{table_ptr:8, bucket_idx:8, node_ptr:8, prev_ptr:8, is_new:1}`. Resize triggers when `total_entries > bucket_count` AND `bucket_count <= capacity / 2`; the new capacity is `4 * old_capacity` (`sub_865E40`). Redistribution uses `stored_hash % new_capacity` -- this is the sole reason the hash is stored in each node.
+Lookup: `bucket = hash & (capacity - 1)`, then linear chain walk comparing `node.key == query_key`. Insert returns a 33-byte result struct: `{table_ptr:8, bucket_idx:8, node_ptr:8, prev_ptr:8, is_new:1}`. Resize triggers when `total_entries > bucket_count` AND `bucket_count <= capacity / 2`; the new capacity is `4 * old_capacity` (`sub_865E40`). Redistribution uses `stored_hash % new_capacity` — this is the sole reason the hash is stored in each node.
 
 #### VN transfer function (formal)
 
@@ -114,7 +114,7 @@ VN(I) =
 
 The expression key is `*(I+144)`, a 32-bit index assigned during def-chain construction (`sub_781F80`). Two instructions share the same key iff they define the same value record in the register table at `context+296`. Structural equivalence that determines key sharing is enforced upstream by the def-chain builder, not by the hash table.
 
-#### Eligibility predicate ELIGIBLE(I) -- `sub_BEA1E0`
+#### Eligibility predicate ELIGIBLE(I) — `sub_BEA1E0`
 
 | Masked opcode | Condition on last dest operand | Meaning |
 |---|---|---|
@@ -131,7 +131,7 @@ The expression key is `*(I+144)`, a 32-bit index assigned during def-chain const
 
 1. **Hash-based value table.** The value numbering table uses FNV-1a hashing (seed `0x811C9DC5`, prime `16777619` / `0x01000193`), the same hash primitive used throughout ptxas for instruction fingerprinting, code caching, and scheduling table lookups. The hash function operates on the 32-bit block-index key (not on opcode/operand tuples directly). Hash table entries are 32 bytes each with chained collision resolution; the stored hash field at `+24` enables O(n) resize without rehashing keys.
 
-2. **Dominator-tree scoping.** Values defined in block B are only visible to blocks dominated by B. The Full GVN (`sub_BED7E0`) maintains a **scope tree** -- a red-black BST of 64-byte bitset nodes -- that tracks which blocks have been processed within the current dominator subtree. The protocol has three phases:
+2. **Dominator-tree scoping.** Values defined in block B are only visible to blocks dominated by B. The Full GVN (`sub_BED7E0`) maintains a **scope tree** — a red-black BST of 64-byte bitset nodes — that tracks which blocks have been processed within the current dominator subtree. The protocol has three phases:
 
    **Scope push** (`sub_6B4520`, called at `0xBEDDF5` and `0xBEDFC9`). When the dominator-chain walk discovers that a value's dominator is in a previously-processed block, the current block's index is inserted into the scope tree. The block index is decomposed into a group key and an intra-node bit position:
    ```c
@@ -151,7 +151,7 @@ The expression key is `*(I+144)`, a 32-bit index assigned during def-chain const
 
 5. **Predicate handling.** Predicated instructions (`@P0 IADD R1, R2, R3`) hash the predicate register's value number as an additional operand. Two identical computations under different predicates are distinct values.
 
-6. **Predicate-operand compatibility (`sub_7E7380`).** After opcode and type matching in the caller, `sub_7E7380` performs a focused predicate-operand compatibility check (30 lines, 150 bytes). The function tests: (a) predicate modifier parity -- `instr+73` bit 4 versus `instr+72` bit 12 (`0x1000`); if one instruction has a predicate modifier and the other does not, they are incompatible; (b) last operand 24-bit value ID -- `(instr + 84 + 8*(operand_count-1)) & 0xFFFFFF` must match; (c) second-to-last operand 8-byte encoding -- the two dwords immediately before the last operand slot must be identical. The broader structural comparison (opcodes masked with `& 0xFFFFCFFF`, data types at `+76`, operand counts at `+80`, full per-operand encoding, register class at `+64`) is performed by each of the 21 callers of `sub_7E7380`, not by the function itself. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE by the callers' pre-checks.
+6. **Predicate-operand compatibility (`sub_7E7380`).** After opcode and type matching in the caller, `sub_7E7380` performs a focused predicate-operand compatibility check (30 lines, 150 bytes). The function tests: (a) predicate modifier parity — `instr+73` bit 4 versus `instr+72` bit 12 (`0x1000`); if one instruction has a predicate modifier and the other does not, they are incompatible; (b) last operand 24-bit value ID — `(instr + 84 + 8*(operand_count-1)) & 0xFFFFFF` must match; (c) second-to-last operand 8-byte encoding — the two dwords immediately before the last operand slot must be identical. The broader structural comparison (opcodes masked with `& 0xFFFFCFFF`, data types at `+76`, operand counts at `+80`, full per-operand encoding, register class at `+64`) is performed by each of the 21 callers of `sub_7E7380`, not by the function itself. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE by the callers' pre-checks.
 
 ### GVN Algorithm Details (Binary Trace)
 
@@ -159,12 +159,12 @@ The GVN-CSE body was located by reading SM backend vtable slot 23 (offset `+0xB8
 
 | SM Backend | Vtable | Slot 23 Function | Behavior |
 |---|---|---|---|
-| SM30 (Kepler) | `off_2029DD0` | `sub_661250` | Returns 0 -- **NO-OP** |
-| SM50 (Maxwell) | `off_21B4A50` | `sub_661250` | Returns 0 -- **NO-OP** |
+| SM30 (Kepler) | `off_2029DD0` | `sub_661250` | Returns 0 — **NO-OP** |
+| SM50 (Maxwell) | `off_21B4A50` | `sub_661250` | Returns 0 — **NO-OP** |
 | SM60 (Pascal) | `off_22B2A58` | `sub_BEE590` | Real GVN-CSE |
 | SM70 (Volta) | `off_21D82B0` | `sub_BEE590` | Real GVN-CSE |
-| SM80 (Ampere) | `off_21B2D30` | `sub_661250` | Returns 0 -- **NO-OP** |
-| SM89 (Ada) | `off_21C0C68` | `sub_661250` | Returns 0 -- **NO-OP** |
+| SM80 (Ampere) | `off_21B2D30` | `sub_661250` | Returns 0 — **NO-OP** |
+| SM89 (Ada) | `off_21C0C68` | `sub_661250` | Returns 0 — **NO-OP** |
 | SM90+ (Hopper) | `off_21D6860` | `sub_BEE590` | Real GVN-CSE |
 
 **GVN-CSE (phase 49) is a no-op on Kepler, Maxwell, Ampere, and Ada.** It only executes on Pascal, Volta, and Hopper/Blackwell. SM80/SM89 backends rely on LateOriCommoning (phase 64) and the GeneralOptimize sub-passes for CSE coverage instead. This is a deliberate per-generation decision embedded in each SM backend's vtable.
@@ -188,8 +188,8 @@ GvnCse::execute (0xC5F000)
 
 The mode is determined by knob 402 (`EnableGvnCseMode`), queried through two vtable calls on the knob container at `context+1664`:
 
-1. **Boolean query** -- `knob_container->vtable[9](402)` (offset `+72`): checks if the knob is set at all. The dispatcher has a fast-path optimization: when `vtable[9]` is `sub_6614A0` (the standard implementation), it reads directly from `knob_container+72+28944` instead of dispatching through the vtable.
-2. **Integer query** -- `knob_container->vtable[15](402)` (offset `+120`): reads the mode value as an integer. Similarly fast-pathed when `vtable[15]` is `sub_661470`.
+1. **Boolean query** — `knob_container->vtable[9](402)` (offset `+72`): checks if the knob is set at all. The dispatcher has a fast-path optimization: when `vtable[9]` is `sub_6614A0` (the standard implementation), it reads directly from `knob_container+72+28944` instead of dispatching through the vtable.
+2. **Integer query** — `knob_container->vtable[15](402)` (offset `+120`): reads the mode value as an integer. Similarly fast-pathed when `vtable[15]` is `sub_661470`.
 
 If both queries return truthy, the integer value selects the GVN variant:
 
@@ -209,11 +209,11 @@ Additional flags modulate the mode selection:
 - Context flag at `context+1416` bit 0: when set (and bit 6 is set), selects mode 3 over mode 5-6.
 - SM version threshold `sm_backend+372 <= 0x7FFF` (32767): gates the EBB pre-pass `sub_BED430` via knob 210.
 
-Before the standard GVN (`sub_BEAD00`), the mode dispatcher may invoke `sub_BED430` -- an extended basic block (EBB) pre-pass that identifies and marks multi-block CSE opportunities within single-entry regions. The EBB pre-pass is called unless: (a) SM version > `0x7FFF`, AND (b) knob 210 is set or `context+1368` bit 0 is clear.
+Before the standard GVN (`sub_BEAD00`), the mode dispatcher may invoke `sub_BED430` — an extended basic block (EBB) pre-pass that identifies and marks multi-block CSE opportunities within single-entry regions. The EBB pre-pass is called unless: (a) SM version > `0x7FFF`, AND (b) knob 210 is set or `context+1368` bit 0 is clear.
 
 #### Simple GVN (`sub_BEA450`, Mode 1)
 
-Mode 1 provides the lightest GVN variant -- single-scope CSE without cross-dominator lookup. Reconstructed pseudocode:
+Mode 1 provides the lightest GVN variant — single-scope CSE without cross-dominator lookup. Reconstructed pseudocode:
 
 ```c
 procedure SimpleGvn(gvn_state S):
@@ -300,11 +300,11 @@ FALLBACK:                                              // T1/T2
 
 The `cross_block_flag` (passed as `a2`) gates T3: when set, the standard GVN refuses replacement when the dominator value record has dword `+264 == 1` (block-header sentinel), preventing unsafe cross-block hoisting.
 
-The T4/T6 split is the critical subtlety. When `sub_BEA3B0` returns 0 (extended-scope flag clear, or the raw ordering result was positive), the replacement source is `dom_record.head` -- the dominator's definition serves as canonical representative. When it returns nonzero (extended-scope ordering confirms reachability), the source is `value_record.head` -- the value's own definition. The XOR inversion (`result ^ 1` inside `sub_BEA3B0`) means the cache stores the raw `sub_74D720` result while the caller sees the negated form.
+The T4/T6 split is the critical subtlety. When `sub_BEA3B0` returns 0 (extended-scope flag clear, or the raw ordering result was positive), the replacement source is `dom_record.head` — the dominator's definition serves as canonical representative. When it returns nonzero (extended-scope ordering confirms reachability), the source is `value_record.head` — the value's own definition. The XOR inversion (`result ^ 1` inside `sub_BEA3B0`) means the cache stores the raw `sub_74D720` result while the caller sees the negated form.
 
 #### Dominance Check with Cache (`sub_BEA3B0`)
 
-The dominance check is guarded by `context+1377` bit 5 (`0x20`). When this flag is clear, the function returns 0 immediately (no dominance, meaning "safe to CSE" -- the caller inverts the result).
+The dominance check is guarded by `context+1377` bit 5 (`0x20`). When this flag is clear, the function returns 0 immediately (no dominance, meaning "safe to CSE" — the caller inverts the result).
 
 When the flag is set, the function implements a single-entry global cache to accelerate repeated dominator queries:
 
@@ -487,7 +487,7 @@ Each node covers 256 contiguous block indices. The BST key orders nodes so in-or
 
 Key observations from the binary:
 
-1. **Block walk order is RPO.** The outer loop reads `context+792` -- a struct containing `{int count; int indices[]}` -- and iterates in that order. The RPO array is pre-computed by `sub_7846D0` which also builds the dominator tree.
+1. **Block walk order is RPO.** The outer loop reads `context+792` — a struct containing `{int count; int indices[]}` — and iterates in that order. The RPO array is pre-computed by `sub_7846D0` which also builds the dominator tree.
 
 2. **The value table is a register-indexed array, not a hash map.** Values are stored in `context+296` (an array of pointers indexed by the 24-bit register/value identifier from the operand encoding at `instruction+84`). This gives O(1) lookup by register ID. The dominator tree is used for scoping, not a stack-based hash table.
 
@@ -510,7 +510,7 @@ Key observations from the binary:
 | 122 | Conditional | Type 2-3: always; type 7-8: bit 7 set |
 | 310 | Specialized | `(flags & 0xF) == 2` and `(flags & 0x30) != 0x30` |
 | 145 | Barrier/sync | Separate `sm_backend->vtable[371]` check |
-| all others | -- | Not eligible |
+| all others | — | Not eligible |
 
 Opcodes 119, 186, 211, 283 are only CSE-eligible when `sm_backend+1106` bit 6 (`0x40`) is set. This bit appears to be an architecture-specific capability flag enabling extended CSE for certain GPU-specific instruction classes.
 
@@ -546,7 +546,7 @@ Each block index recovered from the tree triggers a call to `sub_BEA5F0` for per
 | `sub_BED7E0` | FullGvn | ~18KB | Full GVN body (modes 3-6, RPO + scope tree) |
 | `sub_BED430` | EbbPrePass | ~2KB | Extended basic block pre-pass |
 | `sub_BED0A0` | EbbPropagate | ~3KB | EBB eligibility propagation (fixed-point) |
-| `sub_BEC880` | EbbInit | -- | EBB state initialization |
+| `sub_BEC880` | EbbInit | — | EBB state initialization |
 | `sub_BEAD00` | StandardGvn | ~2.5KB | Standard dominator-guided GVN (mode 2) |
 | `sub_BEA5F0` | PerBlockCse | ~9KB | Per-dominated-block CSE + commutative canon. |
 | `sub_BEA450` | SimpleGvn | ~2KB | Simple single-block GVN (mode 1) |
@@ -555,18 +555,18 @@ Each block index recovered from the tree triggers a call to `sub_BEA5F0` for per
 | `sub_BEA000` | EbbCandidateCheck | ~700B | EBB candidate dominator-chain walk |
 | `sub_7E7380` | PredicateCompat | ~150B | Predicate-operand compatibility check |
 | `sub_661250` | NoOp | ~6B | No-op stub (SM30/50/80/89) |
-| `sub_7846D0` | BuildDomTree | -- | Dominator tree + RPO ordering builder |
-| `sub_661750` | ScopeTreeInit | -- | Scoped value tree init/destroy |
-| `sub_9314F0` | InsertMov | -- | Instruction insertion (generates MOV 292) |
-| `sub_934630` | InsertMulti | -- | Instruction insertion (multi-operand variant) |
-| `sub_931920` | InsertNode | -- | Instruction node insertion into linked list |
-| `sub_9253C0` | DeleteInstr | -- | Instruction deletion |
-| `sub_6B4520` | RecordBlock | -- | Block recording for dominator scoping |
-| `sub_74D720` | DomOrdering | -- | Dominator ordering comparison |
-| `sub_69DD70` | TreeExtract | -- | Tree node extraction (deferred processing) |
-| `sub_7A1A90` | KnobQuery | -- | Knob query (per-instruction enablement) |
-| `sub_91BC40` | MemSafetyCheck | -- | Memory operation safety check |
-| `sub_A12EA0` | DomTreeWalk | -- | Dominator tree walker (EBB discovery) |
+| `sub_7846D0` | BuildDomTree | — | Dominator tree + RPO ordering builder |
+| `sub_661750` | ScopeTreeInit | — | Scoped value tree init/destroy |
+| `sub_9314F0` | InsertMov | — | Instruction insertion (generates MOV 292) |
+| `sub_934630` | InsertMulti | — | Instruction insertion (multi-operand variant) |
+| `sub_931920` | InsertNode | — | Instruction node insertion into linked list |
+| `sub_9253C0` | DeleteInstr | — | Instruction deletion |
+| `sub_6B4520` | RecordBlock | — | Block recording for dominator scoping |
+| `sub_74D720` | DomOrdering | — | Dominator ordering comparison |
+| `sub_69DD70` | TreeExtract | — | Tree node extraction (deferred processing) |
+| `sub_7A1A90` | KnobQuery | — | Knob query (per-instruction enablement) |
+| `sub_91BC40` | MemSafetyCheck | — | Memory operation safety check |
+| `sub_A12EA0` | DomTreeWalk | — | Dominator tree walker (EBB discovery) |
 
 ### GPU-Specific CSE Constraints
 
@@ -582,7 +582,7 @@ GPU CSE must respect constraints that do not arise in CPU compilers:
 
 ---
 
-## Phase 50 -- OriReassociateAndCommon
+## Phase 50 — OriReassociateAndCommon
 
 ### Overview
 
@@ -606,7 +606,7 @@ For multi-function compilation units, the pass dispatches through the compilatio
 
 Reassociation operates in two phases: an expression-normalization walk that rewrites instruction trees into a canonical form, followed by a hash-based commoning pass over the normalized IR.
 
-**Phase 1 -- Expression normalization.**  The pass walks each basic block in RPO and inspects every instruction whose opcode is associative and commutative (ADD, MUL, AND, OR, XOR) or is SUB.
+**Phase 1 — Expression normalization.**  The pass walks each basic block in RPO and inspects every instruction whose opcode is associative and commutative (ADD, MUL, AND, OR, XOR) or is SUB.
 
 ```c
 procedure ReassociateAndCommon(function F):
@@ -685,7 +685,7 @@ After reassociation, both expressions flatten to `{R2, R3, R4}`.  Canonical sort
 
 ---
 
-## Phase 64 -- LateOriCommoning
+## Phase 64 — LateOriCommoning
 
 ### Overview
 
@@ -703,16 +703,16 @@ char execute(phase* self, compilation_context* ctx) {
 }
 ```
 
-### Implementation -- `sub_9059B0`
+### Implementation — `sub_9059B0`
 
 `sub_9059B0` is the entry point for late commoning. It:
 
 1. Checks knob 487 (`ForceLateCommoning` at `0x21BD2F0`) to determine whether the pass is enabled
 2. Verifies the function's optimization state has commoning enabled: the byte at `context->field_1664->field_72 + 60696` must be 1, and the dword at offset `+60704` must be nonzero
 3. Allocates a ref-counted working set via the pool allocator
-4. Calls `sub_9055F0` -- the core commoning walker
+4. Calls `sub_9055F0` — the core commoning walker
 
-### Core Commoning Walker -- `sub_9055F0`
+### Core Commoning Walker — `sub_9055F0`
 
 `sub_9055F0` (203 lines decompiled) is the central commoning algorithm for late CSE. It operates on three cooperating data structures that together form the per-block hash-based equivalence table:
 
@@ -722,9 +722,9 @@ char execute(phase* self, compilation_context* ctx) {
 |-------|------|---------|
 | `WS[0]` / `*WS` | `ptr` | Code Object pointer (function state `S`) |
 | `WS[2]` | `i32` | MOV equivalence chain counter (nonzero triggers `sub_8F2CD0` flush) |
-| `WS[7]` | `ptr` | **Per-block class table** -- `u64[block_count]` array indexed by dominator-order number (`bb_array[bix]+144`). Each slot is a Bloom-filter bitmask of instruction classes seen on the dominator path reaching that block. |
+| `WS[7]` | `ptr` | **Per-block class table** — `u64[block_count]` array indexed by dominator-order number (`bb_array[bix]+144`). Each slot is a Bloom-filter bitmask of instruction classes seen on the dominator path reaching that block. |
 | `WS[8]` | `i32` | Allocated capacity of the class table (grown via `sub_6E6650`) |
-| `WS[9]` | `u64` | **Running accumulator** -- OR of all class bitmasks returned by `sub_74ED70` for instructions processed so far on the current dominator path. Reset to 0 at SEL opcodes; snapshotted into the class table at PHI opcodes. |
+| `WS[9]` | `u64` | **Running accumulator** — OR of all class bitmasks returned by `sub_74ED70` for instructions processed so far on the current dominator path. Reset to 0 at SEL opcodes; snapshotted into the class table at PHI opcodes. |
 
 **Register descriptor fields repurposed for VN equivalence** (at `reg_file[reg_id]`, i.e. `*(*(S+88) + 8*reg_id)`):
 
@@ -788,11 +788,11 @@ procedure LateCommoning(working_set WS):
 
 The three infrastructure functions called at the beginning are shared with the GeneralOptimize sub-passes:
 
-- `sub_781F80` -- rebuilds reaching definition chains (also used by GeneralOptimizeEarly)
-- `sub_763070` -- rebuilds use-def chains
-- `sub_7E6090` -- pre-computes instruction hash values
+- `sub_781F80` — rebuilds reaching definition chains (also used by GeneralOptimizeEarly)
+- `sub_763070` — rebuilds use-def chains
+- `sub_7E6090` — pre-computes instruction hash values
 
-### Commoning Check -- `sub_901A90`
+### Commoning Check — `sub_901A90`
 
 `sub_901A90` (387 lines) is the instruction-level CSE checker. It:
 
@@ -802,9 +802,9 @@ The three infrastructure functions called at the beginning are shared with the G
 4. If domination holds, replaces the current instruction's destination with the matched instruction's destination
 5. Returns true if commoning succeeded, false otherwise
 
-#### Structural Equivalence Predicate -- `sub_8F4510`
+#### Structural Equivalence Predicate — `sub_8F4510`
 
-The pairwise equivalence check invoked by `sub_8F46F0` on each candidate is `sub_8F4510(S, block_existing, I_cand, I_cur)`. Two instructions are structurally equivalent -- written **EQUIV(I1, I2)** where I1 is the existing candidate and I2 is the current instruction -- iff all seven conditions hold simultaneously:
+The pairwise equivalence check invoked by `sub_8F46F0` on each candidate is `sub_8F4510(S, block_existing, I_cand, I_cur)`. Two instructions are structurally equivalent — written **EQUIV(I1, I2)** where I1 is the existing candidate and I2 is the current instruction — iff all seven conditions hold simultaneously:
 
 ```text
 EQUIV(I1, I2)  :=
@@ -865,13 +865,13 @@ C7  (per-operand match):  for each operand slot k where op[k] < 0 (definitions):
 
 Source: `sub_8F4510` at `0x8F4510` (101 lines); predicate compatibility from `sub_7E7380` at `0x7E7380` (30 lines).  The outer driver `sub_8F46F0` calls EQUIV, and on success rewrites I2's definition operands to point at I1's value numbers (field +88 of each destination register descriptor).
 
-### Instruction Class Bitmask -- `sub_74ED70`
+### Instruction Class Bitmask — `sub_74ED70`
 
 `sub_74ED70` (304 lines) computes a **class bitmask** (not a scalar hash) for an instruction. The return value is a `u64` where individual bits encode instruction properties:
 
 - Bit 0: base eligibility (1 for most pure instructions)
 - Bits 20-21: memory address space class (`sub_74E530`)
-- Bit 25: destination vreg has `+64` reg_type == 8 (extended type created by `sub_83EF00` for constant-buffer materialisation; **not** the uniform-register class -- UR is reg_type 3, see `ir/registers.md` enum table). Set at `sub_74ED70:83` after gating on `((v10 >> 28) & 7) == 1` and `(*(BYTE *)(a2+91) & 1) == 0`.
+- Bit 25: destination vreg has `+64` reg_type == 8 (extended type created by `sub_83EF00` for constant-buffer materialisation; **not** the uniform-register class — UR is reg_type 3, see `ir/registers.md` enum table). Set at `sub_74ED70:83` after gating on `((v10 >> 28) & 7) == 1` and `(*(BYTE *)(a2+91) & 1) == 0`.
 - Bit 27: non-volatile memory reference
 - Bit 28: non-invariant address
 - Bit 29: specific addressing mode
@@ -888,7 +888,7 @@ Additional property bits are OR'd in based on opcode class (96=LD/ST gets `0x200
 
 ---
 
-## Phase 83 -- OriBackCopyPropagate
+## Phase 83 — OriBackCopyPropagate
 
 ### Overview
 
@@ -999,7 +999,7 @@ Phase 83 is positioned at pipeline slot 83 out of 158, immediately before the re
 
 Phase 83 is disabled by default (`isNoOp` returns 1) for several reasons:
 
-1. **Backward renaming is inherently riskier than forward propagation.** Forward copy propagation modifies uses (safe because the original definition still exists). Backward copy propagation modifies definitions -- changing which register an instruction writes to. A bug here can silently corrupt values used by other instructions.
+1. **Backward renaming is inherently riskier than forward propagation.** Forward copy propagation modifies uses (safe because the original definition still exists). Backward copy propagation modifies definitions — changing which register an instruction writes to. A bug here can silently corrupt values used by other instructions.
 
 2. **Architecture-specific register constraints.** The legality of renaming a destination depends on target-specific constraints: fixed-function registers (thread ID, special purpose), register bank conflicts, paired/grouped register requirements for 64-bit operations, and uniform register constraints on newer architectures (Volta+). Only the architecture backend knows which renames are safe.
 
@@ -1045,7 +1045,7 @@ The two propagation directions are complementary and handle different structural
 
 ---
 
-## Forward Copy Propagation -- OriCopyProp
+## Forward Copy Propagation — OriCopyProp
 
 ### Overview
 
@@ -1059,7 +1059,7 @@ Three Ori opcodes are candidates for forward copy propagation:
 
 | Opcode | Meaning | Propagation Rule |
 |---|---|---|
-| 97 | Definition anchor (`STG` in ROT13; used internally as a register-to-register MOV/definition marker -- actual SASS MOV is opcode 19) | Replace uses of destination with source |
+| 97 | Definition anchor (`STG` in ROT13; used internally as a register-to-register MOV/definition marker — actual SASS MOV is opcode 19) | Replace uses of destination with source |
 | 18 | Predicated copy | Propagate only under matching predicate guard |
 | 124 | Conditional select (CSEL) | Propagate when select condition is provably constant |
 
@@ -1095,7 +1095,7 @@ The execute body (`sub_908EB0`, 217 lines) walks the flat instruction list in a 
 
 | Variable | Decompiler name | Type | Meaning |
 |---|---|---|---|
-| `copy_seen` | `v10` | `bool` | Previous instruction was a recognized copy -- gates the liveness fallback |
+| `copy_seen` | `v10` | `bool` | Previous instruction was a recognized copy — gates the liveness fallback |
 | `def_ctx` | `v11` | `int64_t` | Current definition tracking entry (BB-array pointer set by the most recent opcode 97) |
 
 Initialization calls `sub_781F80(ctx, 1)` to rebuild per-instruction def-chain flags, then enters a single `do-while` over the linked list at `*(ctx+272)`.
@@ -1177,7 +1177,7 @@ procedure OriCopyProp(ctx):
 
 **Transitive chain resolution.** When the pass encounters a CSEL (opcode 124) that was not immediately preceded by a recognized copy (`copy_seen` is false) and the architecture does not support predicate marking, it follows the defining instruction backward through `def_ctx+136`. If the single defining instruction is itself a copy or CSEL (opcode 18 or 124), propagation resolves transitively: the current instruction inherits the `0x100` propagated flag without the intermediate copy needing to be live. For other defining opcodes, the pass walks forward through the linked list calling `sub_7DF3A0` (liveness query) at each step until it finds a live use (stopping) or another copy/CSEL (resolving transitively). Opcode 52 (block boundary marker) terminates the walk in both directions.
 
-**Convergence.** OriCopyProp itself is a single linear scan -- it does not iterate internally. The fixpoint behavior comes from the enclosing GeneralOptimize loop: Variant A (phases 13, 29) caps iterations via knob 464; Variant B (phases 37, 58) uses a cost-based threshold of 0.25 (knob 474). Each invocation may expose constant operands for folding or create dead instructions for DCE, motivating re-invocation.
+**Convergence.** OriCopyProp itself is a single linear scan — it does not iterate internally. The fixpoint behavior comes from the enclosing GeneralOptimize loop: Variant A (phases 13, 29) caps iterations via knob 464; Variant B (phases 37, 58) uses a cost-based threshold of 0.25 (knob 474). Each invocation may expose constant operands for folding or create dead instructions for DCE, motivating re-invocation.
 
 ### Controlling Knobs
 
@@ -1206,8 +1206,8 @@ All 24 knobs controlling copy propagation and CSE:
 | Knob | ROT13 | Address | Controls |
 |---|---|---|---|
 | `EnableGvnCse` | `RanoyrTiaPfr` | `0x21BDA50` | Master enable for phase 49 |
-| `EnableGvnCseMode` | -- | knob 402 | GVN mode selector (0=off, 1=simple, 2=standard, 3-6=full) |
-| `EnableGvnCsePerInstr` | -- | knob 257 | Per-instruction GVN enablement gate |
+| `EnableGvnCseMode` | — | knob 402 | GVN mode selector (0=off, 1=simple, 2=standard, 3-6=full) |
+| `EnableGvnCsePerInstr` | — | knob 257 | Per-instruction GVN enablement gate |
 | `AllowReassociateCSE` | `NyybjErnffbpvngrPFR` | `0x21C0180` | Master enable for reassociation CSE |
 | `ReassociateCSEBudget` | `ErnffbpvngrPFROhqtrg` | `0x21BA810` | Instruction budget |
 | `ReassociateCSEWindow` | `ErnffbpvngrPFRJvaqbj` | `0x21BA7D0` | Sliding window size |
@@ -1294,8 +1294,8 @@ Phase 83: OriBackCopyPropagate
 | `sub_BEA1E0` | ~500 B | GvnCse eligibility check | Opcode-based CSE eligibility (16,122,145,183,186,...) |
 | `sub_BED430` | ~2 KB | EBB pre-pass | Extended basic block identification (gated by knob 210) |
 | `sub_661250` | 6 B | GvnCse no-op stub | Returns 0 (SM30/50/80/89 vtable slot 23) |
-| `sub_7846D0` | -- | Build dominator tree | Also computes RPO ordering at context+792 |
-| `sub_661750` | -- | Scoped value tree | Init/destroy balanced BST for dominator scoping |
+| `sub_7846D0` | — | Build dominator tree | Also computes RPO ordering at context+792 |
+| `sub_661750` | — | Scoped value tree | Init/destroy balanced BST for dominator scoping |
 | `0xC604D0` | 42 B | OriReassociate::execute | Dispatches to sm_backend (context+1584)->vtable[44] |
 | `0xC5EFE0` | 6 B | OriReassociate::getName | Returns 50 |
 | `0xC5EFF0` | 6 B | OriReassociate::isNoOp | Returns 0 (enabled) |
@@ -1314,20 +1314,20 @@ Phase 83: OriBackCopyPropagate
 | `sub_9055F0` | ~800 B | LateCommoning core | Iterates code list, remaps operands, calls commoning check |
 | `sub_901A90` | ~1.5 KB | Commoning check | Hash lookup + dominance verify + replacement |
 | `sub_74ED70` | ~1.2 KB | Instruction hash | Opcode + type + operand VNs + address space -> hash |
-| `sub_781F80` | -- | Rebuild def chains | Reaching definitions for commoning |
-| `sub_763070` | -- | Rebuild use chains | Use-def chains |
-| `sub_7E6090` | -- | Compute hash values | Pre-computes per-instruction hashes |
+| `sub_781F80` | — | Rebuild def chains | Reaching definitions for commoning |
+| `sub_763070` | — | Rebuild use chains | Use-def chains |
+| `sub_7E6090` | — | Compute hash values | Pre-computes per-instruction hashes |
 | `sub_7DDB50` | ~140 B | get_function_count | Returns func count from compilation context |
 | `sub_7DF3A0` | ~80 B | is_pure_instruction | Side-effect-free check (bits 2-3 of status word) |
-| `sub_748440` | -- | Hash combine | Mixes operand hashes into instruction hash |
-| `sub_8F2CD0` | -- | Propagate equivalence | MOV-based value equivalence propagation |
+| `sub_748440` | — | Hash combine | Mixes operand hashes into instruction hash |
+| `sub_8F2CD0` | — | Propagate equivalence | MOV-based value equivalence propagation |
 | `sub_8FCE70` | ~150 B | Ref-count release | Releases ref-counted working set objects |
-| `sub_1245740` | -- | Dominance check | O(1) bitvector bit test for CSE safety |
-| `sub_6B9180` | -- | Set membership test | Commoning set contains check |
-| `sub_9253C0` | -- | Instruction deletion | Removes dead/redundant instructions |
+| `sub_1245740` | — | Dominance check | O(1) bitvector bit test for CSE safety |
+| `sub_6B9180` | — | Set membership test | Commoning set contains check |
+| `sub_9253C0` | — | Instruction deletion | Removes dead/redundant instructions |
 | `sub_90A340` | 1.7 KB | Commoning body | Commoning pass instance (21 callees, confirms operand comparison pattern) |
-| `sub_908A60` | -- | Predicate simplifier | Two-pass (forward+backward) predicate simplification in copy prop |
-| `sub_8F2E50` | -- | Copy/fold eligibility | SM-version-dependent eligibility check (threshold 20479) |
+| `sub_908A60` | — | Predicate simplifier | Two-pass (forward+backward) predicate simplification in copy prop |
+| `sub_8F2E50` | — | Copy/fold eligibility | SM-version-dependent eligibility check (threshold 20479) |
 | `sub_7BA510` | 5.2 KB | HashCompute | Program/instruction sequence hash (FNV/Jenkins variant) |
 | `sub_7BB260` | 3.5 KB | HashAccumulate | Incremental hash accumulation |
 | `sub_8DCF20` | 23 KB | FNV-1a hash table | 8-byte key hash table with chained collision (24-byte entries) |
@@ -1349,13 +1349,13 @@ Hash-related functions identified in the binary:
 
 | Address | Size | Function | Used By |
 |---|---|---|---|
-| `sub_7BA510` | 5.2 KB | `HashCompute` -- program/instruction sequence hash | Shader hash matching (`SH=` knob) |
-| `sub_7BB260` | 3.5 KB | `HashAccumulate` -- incremental hash accumulation | Instruction-at-a-time hashing |
+| `sub_7BA510` | 5.2 KB | `HashCompute` — program/instruction sequence hash | Shader hash matching (`SH=` knob) |
+| `sub_7BB260` | 3.5 KB | `HashAccumulate` — incremental hash accumulation | Instruction-at-a-time hashing |
 | `sub_8DCF20` | 23 KB | FNV-1a hash table (8-byte keys, chained collision) | Instruction deduplication in scheduling |
 | `sub_8DF1C0` | 16 KB | FNV-1a hash table (32-bit keys, two-level) | Opcode pattern classification |
 | `sub_9B1200` | 7.7 KB | Jenkins-style instruction hash for code caching | Register allocator cache hit detection |
 | `sub_74ED70` | ~1.2 KB | Per-instruction hash for commoning | LateOriCommoning (phase 64) |
-| `sub_748440` | -- | Hash combine helper | Mixes operand hashes into instruction hash |
+| `sub_748440` | — | Hash combine helper | Mixes operand hashes into instruction hash |
 
 The code-caching hash at `sub_9B1200` uses a different algorithm from FNV-1a:
 
@@ -1369,11 +1369,11 @@ It processes instruction opcodes (offset `+72`), operand counts (`+80`), operand
 
 ## Cross-References
 
-- [Pass Inventory](index.md) -- complete 159-phase table
-- [GeneralOptimize Bundles](general-optimize.md) -- forward copy propagation (OriCopyProp) sub-pass
-- [Predication](predication.md) -- phase 63 creates opportunities for LateOriCommoning
-- [Liveness Analysis](liveness.md) -- liveness data consumed by copy propagation
-- [Strength Reduction](strength-reduction.md) -- produces normalized expressions for GvnCse
-- [Knobs System](../config/knobs.md) -- ROT13-encoded knob infrastructure
-- [Phase Manager](phase-manager.md) -- vtable dispatch, phase factory
-- [Ori IR](../ir/overview.md) -- instruction representation, operand encoding
+- [Pass Inventory](index.md) — complete 159-phase table
+- [GeneralOptimize Bundles](general-optimize.md) — forward copy propagation (OriCopyProp) sub-pass
+- [Predication](predication.md) — phase 63 creates opportunities for LateOriCommoning
+- [Liveness Analysis](liveness.md) — liveness data consumed by copy propagation
+- [Strength Reduction](strength-reduction.md) — produces normalized expressions for GvnCse
+- [Knobs System](../config/knobs.md) — ROT13-encoded knob infrastructure
+- [Phase Manager](phase-manager.md) — vtable dispatch, phase factory
+- [Ori IR](../ir/overview.md) — instruction representation, operand encoding

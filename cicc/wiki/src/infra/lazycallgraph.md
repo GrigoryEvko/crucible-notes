@@ -1,6 +1,6 @@
 # LazyCallGraph & CGSCC Pass Manager
 
-The LazyCallGraph (LCG) is the data structure that represents which functions call or reference which other functions, built on demand rather than up front. It drives the CGSCC (Call Graph Strongly Connected Components) pass manager, which walks the call graph in bottom-up order so that interprocedural passes -- the inliner, argument promotion, devirtualization, function attribute inference -- process callees before callers. This ordering is essential: the inliner must have finished optimizing a callee's body before it decides whether to inline that callee into a caller. cicc v13.0 uses LLVM's stock LazyCallGraph implementation without NVIDIA-specific modifications to the graph itself. The GPU-specific behavior comes entirely from how the pipeline configures the CGSCC framework: kernels serve as call graph roots, device functions are internal nodes, recursion is rare, and the inline cost model is radically different from any CPU target.
+The LazyCallGraph (LCG) is the data structure that represents which functions call or reference which other functions, built on demand rather than up front. It drives the CGSCC (Call Graph Strongly Connected Components) pass manager, which walks the call graph in bottom-up order so that interprocedural passes — the inliner, argument promotion, devirtualization, function attribute inference — process callees before callers. This ordering is essential: the inliner must have finished optimizing a callee's body before it decides whether to inline that callee into a caller. cicc v13.0 uses LLVM's stock LazyCallGraph implementation without NVIDIA-specific modifications to the graph itself. The GPU-specific behavior comes entirely from how the pipeline configures the CGSCC framework: kernels serve as call graph roots, device functions are internal nodes, recursion is rare, and the inline cost model is radically different from any CPU target.
 
 The LCG cluster occupies approximately 220KB of code at `0xD230A0`--`0xD2F8A0`, containing the graph construction logic, Tarjan's SCC algorithm, incremental SCC mutation operations, and the DOT/text graph printers. A separate 69KB function at `sub_2613930` implements the New PM CGSCC inliner that runs inside this framework.
 
@@ -9,7 +9,7 @@ The LCG cluster occupies approximately 220KB of code at `0xD230A0`--`0xD2F8A0`, 
 
 | Property | Value |
 |---|---|
-| Binary cluster | `0xD230A0` -- `0xD2F8A0` (~220KB, ~25 functions) |
+| Binary cluster | `0xD230A0` — `0xD2F8A0` (~220KB, ~25 functions) |
 | LLVM source | `llvm/lib/Analysis/LazyCallGraph.cpp` |
 | CGSCC pass manager | `sub_1A62BF0` (the `InlinerWrapper`/standard pipeline factory) |
 | CGSCC pipeline parser | `sub_2377300` (103KB) |
@@ -23,17 +23,17 @@ The LCG cluster occupies approximately 220KB of code at `0xD230A0`--`0xD2F8A0`, 
 | DenseMap hash | `hash(ptr) = (ptr >> 4) ^ (ptr >> 9)`, bucket size = 16 bytes |
 | DenseMap sentinels | Empty = `0xFFFFFFFFFFFFF000`, Tombstone = `0xFFFFFFFFFFFFE000` |
 | CGSCC invocations per O1/O2/O3 | 4 passes of `sub_1A62BF0(1,...)`, 1 iteration each |
-| CGSCC invocations at tier 3 | `sub_1A62BF0(5,...)` -- 5 iterations |
+| CGSCC invocations at tier 3 | `sub_1A62BF0(5,...)` — 5 iterations |
 | BumpPtrAllocator | `[LCG+0x150]` cursor, `[LCG+0x158]` slab end |
 
 
 ## Lazy Call Graph Construction
 
-The graph is not built all at once. When the CGSCC pass manager begins, the LCG starts with just the module's externally visible functions and kernel entry points as root nodes. Each node's edges are populated only when first visited by the SCC traversal -- the `Node::populateSlow()` method (`sub_D23BF0` returns the edge iterator range) scans all instructions in the function, recording two kinds of edges:
+The graph is not built all at once. When the CGSCC pass manager begins, the LCG starts with just the module's externally visible functions and kernel entry points as root nodes. Each node's edges are populated only when first visited by the SCC traversal — the `Node::populateSlow()` method (`sub_D23BF0` returns the edge iterator range) scans all instructions in the function, recording two kinds of edges:
 
 **Call edges** (bit 2 set in pointer tag): direct `CallBase` instructions whose callee resolves to a defined function. These form the strong connectivity that defines SCCs.
 
-**Ref edges** (bit 2 clear): any other reference to a defined function -- a function pointer stored in a global, passed as a callback argument, taken address of. These contribute to RefSCC grouping but do not create call-graph cycles.
+**Ref edges** (bit 2 clear): any other reference to a defined function — a function pointer stored in a global, passed as a callback argument, taken address of. These contribute to RefSCC grouping but do not create call-graph cycles.
 
 ```text
 Node layout (deduced from binary):
@@ -86,7 +86,7 @@ SCC layout (136 bytes = 0x88):
   +0x38: DenseMap - node-to-index or similar
 ```
 
-The bottom-up SCC ordering is computed using Tarjan's algorithm, implemented in `sub_D2C610`. The algorithm uses the standard DFS stack with 24-byte entries (`{Node*, EdgeIter, EdgeEnd}`) and the classic `DFSNumber` / `LowLink` fields at node offsets `+0x10` and `+0x14`. When `LowLink == DFSNumber`, the node is an SCC root -- all nodes above it on the DFS result stack are popped into a new SCC, their DFSNumber set to `-1` (completed), and the SCC index written into the LowLink field for reuse.
+The bottom-up SCC ordering is computed using Tarjan's algorithm, implemented in `sub_D2C610`. The algorithm uses the standard DFS stack with 24-byte entries (`{Node*, EdgeIter, EdgeEnd}`) and the classic `DFSNumber` / `LowLink` fields at node offsets `+0x10` and `+0x14`. When `LowLink == DFSNumber`, the node is an SCC root — all nodes above it on the DFS result stack are popped into a new SCC, their DFSNumber set to `-1` (completed), and the SCC index written into the LowLink field for reuse.
 
 The Tarjan inner loop at `0xD2CD90`--`0xD2CEA4` and the SCC member popping at `0xD2CF61`--`0xD2CFD0` are both 4x unrolled, indicating these are hot paths in the CGSCC pipeline.
 
@@ -219,7 +219,7 @@ fn tarjan_recompute_scc(old_scc: &SCC, allocator: &BumpPtrAllocator) -> Vec<SCC>
 - The DFS counter is split between `r12d` and `r13d`, alternating roles. In practice `r13d` holds the next available DFS number, starting at 2 (the root gets 1 via the `0x100000001` packed initialization at `0xD2CD0E`).
 - The 4x-unrolled inner loop at `0xD2CD90` processes four edge entries per iteration before branching back, reducing loop overhead on this hot path.
 - The SCC member popping at `0xD2CF61`--`0xD2CFD0` is likewise 4x unrolled: it pops at offsets `-8`, `-0x10`, `-0x18`, `-0x20` relative to the result stack top, then subtracts `0x20` from the stack pointer per iteration.
-- The completed marker `-1` (`0xFFFFFFFF`) is written to `[node+0x10]` (DFSNumber), and the SCC identifier (the `r14d` counter) is written to `[node+0x14]` (LowLink). After Tarjan completes, the LowLink field holds the SCC index for every node -- the DFSNumber/LowLink fields are repurposed, not preserved.
+- The completed marker `-1` (`0xFFFFFFFF`) is written to `[node+0x10]` (DFSNumber), and the SCC identifier (the `r14d` counter) is written to `[node+0x14]` (LowLink). After Tarjan completes, the LowLink field holds the SCC index for every node — the DFSNumber/LowLink fields are repurposed, not preserved.
 - Only call edges (bit 2 set) are followed during Tarjan. Ref edges (bit 2 clear) are skipped. This is what makes the SCC decomposition "call-SCC" rather than "reference-SCC."
 
 **Complexity:** O(V + E) where V = nodes in the old SCC and E = call edges among those nodes. The 4x unrolling is a constant-factor optimization, not an algorithmic change.
@@ -230,7 +230,7 @@ fn tarjan_recompute_scc(old_scc: &SCC, allocator: &BumpPtrAllocator) -> Vec<SCC>
 When a pass modifies the call graph, the SCC structure must be updated without recomputing the entire graph. The LCG provides six mutation operations, each handling a specific kind of edge change. The two most complex are `switchInternalEdgeToCall` and `switchInternalEdgeToRef`; the others handle cross-RefSCC edges and bulk operations.
 
 
-### switchInternalEdgeToCall -- `sub_D25FD0` (5,526 bytes)
+### switchInternalEdgeToCall — `sub_D25FD0` (5,526 bytes)
 
 Called when a ref edge within the same RefSCC becomes a call edge (the inliner or devirtualization resolves an indirect call to a direct call). This may merge previously separate SCCs into one.
 
@@ -313,10 +313,10 @@ fn switchInternalEdgeToCall(source: &Node, target: &Node, merge_cb: Option<Fn>) 
 
 **Allocation fallback:** The temporary buffer allocation at `0xD27447` has a halving fallback (`sar rbx, 1`): if `operator new` fails for the full size, it retries with half the size. This handles the case where the merge set is unexpectedly large.
 
-**DenseMap double-buffering:** The RefSCC maintains two DenseMaps at offsets `+0x38` and `+0x48`. The flags byte at `+0x40` (bit 0) selects which map is "current." When entries are migrated during SCC merging, old entries are tombstoned (`0xFFFFFFFFFFFFE000`) in the departing map and inserted fresh into the other map via `sub_D24C50`. This avoids a full rehash on every merge -- the tombstone count at `+0x44` is incremented, and the map is only rehashed (via `sub_D25CB0`) when the tombstone ratio crosses a threshold.
+**DenseMap double-buffering:** The RefSCC maintains two DenseMaps at offsets `+0x38` and `+0x48`. The flags byte at `+0x40` (bit 0) selects which map is "current." When entries are migrated during SCC merging, old entries are tombstoned (`0xFFFFFFFFFFFFE000`) in the departing map and inserted fresh into the other map via `sub_D24C50`. This avoids a full rehash on every merge — the tombstone count at `+0x44` is incremented, and the map is only rehashed (via `sub_D25CB0`) when the tombstone ratio crosses a threshold.
 
 
-### switchInternalEdgeToRef -- `sub_D2C610` (5,236 bytes)
+### switchInternalEdgeToRef — `sub_D2C610` (5,236 bytes)
 
 Called when a call edge within a RefSCC is demoted to a ref edge (a direct call is deleted or replaced with an indirect reference). This may split a single SCC into multiple smaller SCCs.
 
@@ -403,22 +403,22 @@ fn switchInternalEdgeToRef(pairs: &[(Node, Node)]) -> Vec<SCC> {
 **SCC object allocation:** New SCC objects (136 bytes each) are allocated from the LCG's `BumpPtrAllocator` at `[LCG+0x150]`. The allocator maintains a cursor/end pair for the current slab. When the slab is exhausted, `sub_9D1E70` allocates a new slab (the slow path). The alignment requirement is 8 bytes, enforced by the `(cursor + 7) & ~7` round-up at `0xD2D0F0`.
 
 
-### switchOutgoingEdgeToCall / switchOutgoingEdgeToRef -- `sub_D27A10` (29,179 bytes)
+### switchOutgoingEdgeToCall / switchOutgoingEdgeToRef — `sub_D27A10` (29,179 bytes)
 
-Handles edges that cross RefSCC boundaries. When a ref edge from one RefSCC to another becomes a call edge (or vice versa), the RefSCC structure may need updating. If the new call edge creates a cycle between previously separate RefSCCs, they merge into one. This is the RefSCC-level analog of `switchInternalEdgeToCall`. The function at `sub_D27A10` is 29KB -- the largest single function in the LCG cluster -- because it must handle both directions (to-call and to-ref) and the full RefSCC merge/split logic.
+Handles edges that cross RefSCC boundaries. When a ref edge from one RefSCC to another becomes a call edge (or vice versa), the RefSCC structure may need updating. If the new call edge creates a cycle between previously separate RefSCCs, they merge into one. This is the RefSCC-level analog of `switchInternalEdgeToCall`. The function at `sub_D27A10` is 29KB — the largest single function in the LCG cluster — because it must handle both directions (to-call and to-ref) and the full RefSCC merge/split logic.
 
 
-### insertInternalRefEdge -- `sub_D2A080` (15,253 bytes)
+### insertInternalRefEdge — `sub_D2A080` (15,253 bytes)
 
 Adds a new ref edge within a RefSCC. Called when optimization introduces a new reference between functions that are already in the same RefSCC (e.g., a new constant expression referencing a sibling function). This does not affect SCC structure (only call edges define SCCs), but it updates the RefSCC's internal edge tracking.
 
 
-### computeRefSCC -- `sub_D2AD40` (12,495 bytes)
+### computeRefSCC — `sub_D2AD40` (12,495 bytes)
 
 Computes the RefSCC decomposition from scratch for a set of nodes. Used during initial graph construction (`sub_D2BEB0`) and when incremental updates are insufficient (e.g., after bulk edge insertion). This runs a second level of Tarjan's algorithm over the ref-edge graph, grouping SCCs into RefSCCs.
 
 
-### mergeRefSCC -- `sub_D2DA90` (17,930 bytes)
+### mergeRefSCC — `sub_D2DA90` (17,930 bytes)
 
 Merges two or more RefSCCs into one. Called when a new ref edge or promoted call edge connects previously separate RefSCCs that are now mutually reachable. This involves relocating all SCCs from the source RefSCC into the target, updating the graph's RefSCC list at `[LCG+0x240]`, and fixing all back-pointers.
 
@@ -501,7 +501,7 @@ fn run_cgscc_pipeline(module: &Module, lcg: &mut LazyCallGraph, max_devirt_itera
 **Iteration semantics:** The `max_devirt_iterations` parameter (argument 1 to `sub_1A62BF0`) controls how many times the pass manager will re-run the CGSCC pipeline on an SCC after the call graph mutates. At O1/O2/O3, this is 1 (single pass, no re-visitation). At tier 3, this is 5 (up to 5 re-runs if devirtualization keeps revealing new direct calls). The devirt iteration check at `sub_2284BC0` emits "Max devirtualization iterations reached" when the limit is hit and the graph is still changing.
 
 
-### CGSCC-to-Function Adaptor -- `sub_2362FB0` (6,700 bytes)
+### CGSCC-to-Function Adaptor — `sub_2362FB0` (6,700 bytes)
 
 The adaptor at `sub_2362FB0` wraps a function-level pass for execution inside the CGSCC framework. When the inliner inlines a callee, the callee's body is absorbed into the caller. The caller must then be re-optimized with function-level passes (SimplifyCFG, InstCombine, etc.) before the next CGSCC pass runs. The adaptor handles this by running the function pipeline on each function in the current SCC after each CGSCC pass that reports a change.
 
@@ -517,11 +517,11 @@ The registered CGSCC passes (from the pipeline parser at `sub_2377300`):
 | `inline` | `sub_2613930` | New PM CGSCC inliner (69KB) |
 | `argpromotion` | `sub_2500970` | Promote pointer args to by-value |
 | `attributor-cgscc` | `sub_2582AC0` | CGSCC attribute deduction (39KB) |
-| `attributor-light-cgscc` | -- | Lightweight variant |
+| `attributor-light-cgscc` | — | Lightweight variant |
 | `function-attrs` | `sub_1841180` | Infer `readonly`, `nounwind`, etc. |
-| `openmp-opt-cgscc` | -- | OpenMP kernel optimization |
-| `coro-annotation-elide` | -- | Coroutine elision |
-| `coro-split` | -- | Coroutine splitting |
+| `openmp-opt-cgscc` | — | OpenMP kernel optimization |
+| `coro-annotation-elide` | — | Coroutine elision |
+| `coro-split` | — | Coroutine splitting |
 | `nv-early-inliner` | via `sub_2342850` | NVIDIA early inliner (wraps InlinerWrapper) |
 
 CGSCC analyses (3 registered):
@@ -529,7 +529,7 @@ CGSCC analyses (3 registered):
 | Analysis name | Purpose |
 |---|---|
 | `no-op-cgscc` | No-op analysis (placeholder) |
-| `fam-proxy` | `FunctionAnalysisManagerCGSCCProxy` -- bridges function-level analyses into CGSCC |
+| `fam-proxy` | `FunctionAnalysisManagerCGSCCProxy` — bridges function-level analyses into CGSCC |
 | `pass-instrumentation` | Pass instrumentation callbacks (via `sub_2342830`) |
 
 
@@ -590,7 +590,7 @@ fn inline_calls_in_scc(scc: &mut SCC, lcg: &mut LazyCallGraph) {
 4. **SCC splitting:** If removing the call edge from caller to callee breaks the only call-path cycle, the SCC splits. New SCCs are created and inserted into the post-order traversal at the correct position.
 
 
-## Initial Graph Construction: buildSCCs -- `sub_D2BEB0` (9,782 bytes)
+## Initial Graph Construction: buildSCCs — `sub_D2BEB0` (9,782 bytes)
 
 The initial call graph is built by `sub_D2BEB0` when the CGSCC pass manager first runs. This function:
 
@@ -603,7 +603,7 @@ The initial call graph is built by `sub_D2BEB0` when the CGSCC pass manager firs
 The post-order traversal helpers (`sub_D2F8A0` at 10KB, `sub_D30800` at 8KB) implement the iterator that the CGSCC pass manager uses to walk RefSCCs and SCCs in bottom-up order. The SCC iteration logic at `sub_D2E510` (7KB) handles advancing through SCCs within each RefSCC.
 
 
-## Graph Verification -- `sub_D29180` (6,417 bytes)
+## Graph Verification — `sub_D29180` (6,417 bytes)
 
 The verifier at `sub_D29180` checks the consistency of the entire LazyCallGraph after mutations. It validates:
 
@@ -644,18 +644,18 @@ LazyCallGraph (pointed to by [RefSCC+0]):
 
 The LCG implementation itself is GPU-agnostic, but the call graph shape on GPU differs fundamentally from CPU:
 
-**Kernels are roots.** Functions annotated with `nvvm.annotations` kernel metadata are externally visible entry points. They are the roots of the call graph -- nothing calls a kernel (launches are host-side). In CGSCC ordering, kernels are processed last (they are the top of the bottom-up traversal).
+**Kernels are roots.** Functions annotated with `nvvm.annotations` kernel metadata are externally visible entry points. They are the roots of the call graph — nothing calls a kernel (launches are host-side). In CGSCC ordering, kernels are processed last (they are the top of the bottom-up traversal).
 
 **Device functions are internal.** Non-kernel `__device__` functions are typically `internal` linkage. They appear in the call graph only as callees. This produces a characteristic tree-like (or DAG-like) call graph with very few cycles, meaning most SCCs contain a single function.
 
-**Recursion is rare.** CUDA hardware historically did not support recursion (stack depth is bounded, and the compiler must statically allocate the call stack). Although modern architectures permit limited recursion, real-world CUDA code almost never uses it. This means SCC merging (`switchInternalEdgeToCall`) is rarely triggered -- most CGSCC processing is trivially single-function SCCs in a DAG.
+**Recursion is rare.** CUDA hardware historically did not support recursion (stack depth is bounded, and the compiler must statically allocate the call stack). Although modern architectures permit limited recursion, real-world CUDA code almost never uses it. This means SCC merging (`switchInternalEdgeToCall`) is rarely triggered — most CGSCC processing is trivially single-function SCCs in a DAG.
 
 **Aggressive inlining collapses the graph.** The NVIDIA inline budget (default 20,000, vs LLVM's 225) causes most device functions to be inlined into their callers. After the early inliner pass, the remaining call graph is typically flat: a handful of kernels with large bodies and very few un-inlined callees. Later CGSCC invocations mostly iterate over single-function SCCs.
 
 
 ## ThinLTO Interaction
 
-When ThinLTO imports functions from other modules, they appear in the call graph as `available_externally` definitions. The LCG treats them like any other defined function -- they get nodes, their edges are lazily populated, and they participate in SCC computation. The NVModuleSummary builder (`sub_12E06D0`) records call graph edges in the module summary, which the ThinLTO import pass uses to decide which cross-module functions to import. Once imported, those functions become candidates for inlining during the CGSCC traversal.
+When ThinLTO imports functions from other modules, they appear in the call graph as `available_externally` definitions. The LCG treats them like any other defined function — they get nodes, their edges are lazily populated, and they participate in SCC computation. The NVModuleSummary builder (`sub_12E06D0`) records call graph edges in the module summary, which the ThinLTO import pass uses to decide which cross-module functions to import. Once imported, those functions become candidates for inlining during the CGSCC traversal.
 
 The `function-inline-cost-multiplier` knob (visible in `sub_2613930`'s string table) penalizes recursive functions during ThinLTO inlining, since recursive inlining can explode code size without bound.
 
@@ -667,11 +667,11 @@ The `function-inline-cost-multiplier` knob (visible in `sub_2613930`'s string ta
 | `inline-budget` | 20,000 | Per-caller NVIDIA inline cost budget (89x LLVM default) |
 | `inline-threshold` | 225 | LLVM default cost threshold (used by New PM inliner) |
 | `nv-inline-all` | off | Bypass cost analysis, force-inline everything |
-| `-aggressive-inline` | -- | CLI flag, routes to `inline-budget=40000` |
-| `intra-scc-cost-multiplier` | -- | Cost multiplier for inlining within the same SCC |
-| `function-inline-cost-multiplier` | -- | Cost multiplier for recursive functions |
+| `-aggressive-inline` | — | CLI flag, routes to `inline-budget=40000` |
+| `intra-scc-cost-multiplier` | — | Cost multiplier for inlining within the same SCC |
+| `function-inline-cost-multiplier` | — | Cost multiplier for recursive functions |
 | `abort-on-max-devirt-iterations-reached` | false | Abort if devirt iteration limit is hit |
-| `cgscc-inline-replay` | -- | Replay file for inline decisions (debugging) |
+| `cgscc-inline-replay` | — | Replay file for inline decisions (debugging) |
 | `cgscc-inline-replay-scope` | `Function` | Replay scope: Function or Module |
 | `cgscc-inline-replay-fallback` | `Original` | Fallback: Original, AlwaysInline, NeverInline |
 | `cgscc-inline-replay-format` | `Line` | Replay format: Line, LineColumn, LineDiscriminator |
@@ -724,57 +724,57 @@ The call graph DOT writer cluster at `0x2280000`--`0x228A000` emits: `"view-call
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| LazyCallGraph cluster start | `sub_D230A0` | -- | -- |
-| `std::rotate` / SCC array reorder | `sub_D23910` | -- | -- |
-| SCC array splitting helper | `sub_D23A60` | -- | -- |
-| `Node::populate()` / edge iterator (lazy population point) | `sub_D23BF0` | -- | -- |
-| `LazyCallGraph::lookupSCC(Node&)` | `sub_D23C40` | -- | -- |
-| `RefSCC::isAncestorOf()` connectivity check | `sub_D23CB0` | -- | -- |
-| `LazyCallGraph::notifyRefSCCChange()` | `sub_D23D60` | -- | -- |
-| `Edge::setKind()` (flip call/ref tag bit) | `sub_D23E00` | -- | -- |
-| SCC constructor | `sub_D23F30` | -- | -- |
-| `LazyCallGraph::insertRefSCC()` | `sub_D248B0` | -- | -- |
-| Node edge list cleanup | `sub_D24960` | -- | -- |
-| DenseMap insert (Node-to-SCC) | `sub_D24C50` | -- | -- |
-| `RefSCC::isPartOfRefSCC()` check | `sub_D24D10` | -- | -- |
-| DenseMap clear (SCC internals) | `sub_D24EE0` | -- | -- |
-| `RefSCC::find()` / updateSCCIndex | `sub_D25AF0` | -- | -- |
-| `RefSCC::SCCIndexMap::find()` | `sub_D25BD0` | -- | -- |
-| DenseMap grow/rehash | `sub_D25CB0` | -- | -- |
-| `switchInternalEdgeToCall()` | `sub_D25FD0` | 5,526 | -- |
-| `Node::setRefSCC()` | `sub_D27750` | -- | -- |
-| `switchOutgoingEdgeToCall/Ref()` | `sub_D27A10` | 29,179 | -- |
-| Call graph verification | `sub_D29180` | 6,417 | -- |
-| DOT graph dumper | `sub_D29900` | 8,235 | -- |
-| `insertInternalRefEdge()` | `sub_D2A080` | 15,253 | -- |
-| `computeRefSCC()` | `sub_D2AD40` | 12,495 | -- |
-| Call graph text printer | `sub_D2B640` | 12,287 | -- |
-| `buildSCCs()` / initial construction | `sub_D2BEB0` | 9,782 | -- |
-| `switchInternalEdgeToRef()` | `sub_D2C610` | 5,236 | -- |
-| `mergeRefSCC()` | `sub_D2DA90` | 17,930 | -- |
-| SCC iteration logic | `sub_D2E510` | 6,890 | -- |
-| `rebuildSCC()` | `sub_D2F240` | 6,141 | -- |
-| Post-order SCC traversal helper | `sub_D2F8A0` | 10,451 | -- |
-| Post-order traversal | `sub_D30800` | 7,796 | -- |
-| Edge management helper | `sub_D301A0` | 5,148 | -- |
-| RefSCC-level operations | `sub_D31270` | 7,696 | -- |
-| CGSCC pass manager / InlinerWrapper factory | `sub_1A62BF0` | -- | -- |
-| NVIDIA custom inliner (old CGSCC) | `sub_1864060` | 75,000 | -- |
-| `Inliner::inlineCallsImpl()` (CGSCC core loop) | `sub_186CA00` | 61,117 | -- |
-| Call graph node visitor | `sub_2280510` | 24,000 | -- |
-| Call graph builder | `sub_2282680` | 33,000 | -- |
-| DevirtSCCRepeatedPass ("Max devirtualization iterations reached") | `sub_2284BC0` | 16,000 | -- |
-| InlinerWrapper factory (nv-early-inliner, inliner-wrapper) | `sub_2342850` | -- | -- |
-| CGSCC-to-function adaptor | `sub_2362FB0` | 6,700 | -- |
-| CGSCC pipeline text parser | `sub_2377300` | 103,000 | -- |
-| Attributor CGSCC pass | `sub_2582AC0` | 39,000 | -- |
-| New PM CGSCC inliner | `sub_2613930` | 69,000 | -- |
+| LazyCallGraph cluster start | `sub_D230A0` | — | — |
+| `std::rotate` / SCC array reorder | `sub_D23910` | — | — |
+| SCC array splitting helper | `sub_D23A60` | — | — |
+| `Node::populate()` / edge iterator (lazy population point) | `sub_D23BF0` | — | — |
+| `LazyCallGraph::lookupSCC(Node&)` | `sub_D23C40` | — | — |
+| `RefSCC::isAncestorOf()` connectivity check | `sub_D23CB0` | — | — |
+| `LazyCallGraph::notifyRefSCCChange()` | `sub_D23D60` | — | — |
+| `Edge::setKind()` (flip call/ref tag bit) | `sub_D23E00` | — | — |
+| SCC constructor | `sub_D23F30` | — | — |
+| `LazyCallGraph::insertRefSCC()` | `sub_D248B0` | — | — |
+| Node edge list cleanup | `sub_D24960` | — | — |
+| DenseMap insert (Node-to-SCC) | `sub_D24C50` | — | — |
+| `RefSCC::isPartOfRefSCC()` check | `sub_D24D10` | — | — |
+| DenseMap clear (SCC internals) | `sub_D24EE0` | — | — |
+| `RefSCC::find()` / updateSCCIndex | `sub_D25AF0` | — | — |
+| `RefSCC::SCCIndexMap::find()` | `sub_D25BD0` | — | — |
+| DenseMap grow/rehash | `sub_D25CB0` | — | — |
+| `switchInternalEdgeToCall()` | `sub_D25FD0` | 5,526 | — |
+| `Node::setRefSCC()` | `sub_D27750` | — | — |
+| `switchOutgoingEdgeToCall/Ref()` | `sub_D27A10` | 29,179 | — |
+| Call graph verification | `sub_D29180` | 6,417 | — |
+| DOT graph dumper | `sub_D29900` | 8,235 | — |
+| `insertInternalRefEdge()` | `sub_D2A080` | 15,253 | — |
+| `computeRefSCC()` | `sub_D2AD40` | 12,495 | — |
+| Call graph text printer | `sub_D2B640` | 12,287 | — |
+| `buildSCCs()` / initial construction | `sub_D2BEB0` | 9,782 | — |
+| `switchInternalEdgeToRef()` | `sub_D2C610` | 5,236 | — |
+| `mergeRefSCC()` | `sub_D2DA90` | 17,930 | — |
+| SCC iteration logic | `sub_D2E510` | 6,890 | — |
+| `rebuildSCC()` | `sub_D2F240` | 6,141 | — |
+| Post-order SCC traversal helper | `sub_D2F8A0` | 10,451 | — |
+| Post-order traversal | `sub_D30800` | 7,796 | — |
+| Edge management helper | `sub_D301A0` | 5,148 | — |
+| RefSCC-level operations | `sub_D31270` | 7,696 | — |
+| CGSCC pass manager / InlinerWrapper factory | `sub_1A62BF0` | — | — |
+| NVIDIA custom inliner (old CGSCC) | `sub_1864060` | 75,000 | — |
+| `Inliner::inlineCallsImpl()` (CGSCC core loop) | `sub_186CA00` | 61,117 | — |
+| Call graph node visitor | `sub_2280510` | 24,000 | — |
+| Call graph builder | `sub_2282680` | 33,000 | — |
+| DevirtSCCRepeatedPass ("Max devirtualization iterations reached") | `sub_2284BC0` | 16,000 | — |
+| InlinerWrapper factory (nv-early-inliner, inliner-wrapper) | `sub_2342850` | — | — |
+| CGSCC-to-function adaptor | `sub_2362FB0` | 6,700 | — |
+| CGSCC pipeline text parser | `sub_2377300` | 103,000 | — |
+| Attributor CGSCC pass | `sub_2582AC0` | 39,000 | — |
+| New PM CGSCC inliner | `sub_2613930` | 69,000 | — |
 
 
 ## Cross-References
 
-- [Inliner Cost Model](../lto/inliner-cost.md) -- the cost computation that the CGSCC inliner uses to decide whether to inline each call site
-- [ThinLTO Function Import](../lto/thinlto-import.md) -- how cross-module functions are imported into the call graph
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where the four CGSCC invocations sit in the overall pass sequence
-- [Optimization Levels](../config/optimization-levels.md) -- how CGSCC iteration counts vary by O-level and tier
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- DenseMap internals, sentinel values, and probing strategy used throughout the LCG
+- [Inliner Cost Model](../lto/inliner-cost.md) — the cost computation that the CGSCC inliner uses to decide whether to inline each call site
+- [ThinLTO Function Import](../lto/thinlto-import.md) — how cross-module functions are imported into the call graph
+- [Pipeline & Ordering](../llvm/pipeline.md) — where the four CGSCC invocations sit in the overall pass sequence
+- [Optimization Levels](../config/optimization-levels.md) — how CGSCC iteration counts vary by O-level and tier
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — DenseMap internals, sentinel values, and probing strategy used throughout the LCG

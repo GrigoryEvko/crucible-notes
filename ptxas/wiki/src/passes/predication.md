@@ -13,7 +13,7 @@
 | **Core driver** | `sub_1381CD0` (206 bytes) |
 | **Main loop** | `sub_1381010` (3,249 bytes) |
 | **Total code** | ~17 KB across 19 functions in `0x137D8B0`--`0x13829F0` |
-| **SSA window** | Yes -- runs at phase 63, within the partial-SSA window (phases 23--73) |
+| **SSA window** | Yes — runs at phase 63, within the partial-SSA window (phases 23--73) |
 | **Pipeline position** | After `OriRemoveRedundantMultiDefMov` (62), before `LateOriCommoning` (64) |
 | **Gating** | Disabled when bit 5 of `context+1376` flags is set; can be disabled via `PTXAS_DISABLED_PASSES` containing `"Predication"` |
 | **Knob controls** | Knob 487 (enable/limit gate), knob 577 (per-region enable), knob 579 (texture-bearing region gate), knob 582 (block-level cold-region query), knob 260 (extra-latency penalty check) |
@@ -22,7 +22,7 @@
 
 The SIMT execution model makes predication qualitatively different from its role on scalar CPUs.
 
-On a scalar CPU, a correctly-predicted branch is essentially free -- the branch predictor eliminates the control flow cost. If-conversion on CPUs is a niche optimization applied only when branches are highly unpredictable.
+On a scalar CPU, a correctly-predicted branch is essentially free — the branch predictor eliminates the control flow cost. If-conversion on CPUs is a niche optimization applied only when branches are highly unpredictable.
 
 On a GPU, a divergent conditional branch forces the warp to serialize: the hardware executes the taken path with some threads masked off, then executes the not-taken path with the complementary mask. Both paths execute regardless, and the warp reconverges at the post-dominator. The cost is the sum of both paths, not the maximum.
 
@@ -53,7 +53,7 @@ The pass operates in three layers:
 2. **Iterative driver** (`sub_1381CD0`): initializes via the SM backend's vtable dispatch at `sm_backend+1296`, then calls the main loop up to 3 times (controlled by a knob at options offset 41768) with different aggressiveness settings.
 3. **Main RPO loop** (`sub_1381010`): walks the RPO block order, identifies candidate branch regions, evaluates profitability, and applies the transformation.
 
-### Entry Point -- `sub_1381DA0`
+### Entry Point — `sub_1381DA0`
 
 ```c
 sub_1381DA0(compilation_unit):
@@ -87,7 +87,7 @@ sub_1381DA0(compilation_unit):
 
 The `context+1385` byte has bit 0 set during predication execution, which signals downstream code (such as `sub_137EE50`) that the pass is active.
 
-### Iterative Driver -- `sub_1381CD0`
+### Iterative Driver — `sub_1381CD0`
 
 ```c
 sub_1381CD0(state):
@@ -143,7 +143,7 @@ if last_iteration:
 
 Bit 3 of `candidate_bb+282` is a "retry-eligible" marker set during earlier passes on blocks that were close to the profitability threshold but did not cross it. `state.byte[76]` is a secondary relaxation gate populated by the SM backend initializer. When both conditions hold, the candidate proceeds to normal evaluation; otherwise it is skipped. This narrows the second pass to only the most promising candidates that nearly qualified on pass 1, avoiding wasted compile time on clearly unprofitable blocks.
 
-### Main Loop -- `sub_1381010`
+### Main Loop — `sub_1381010`
 
 The main loop walks basic blocks in RPO order (via the block index array at `context+512`), identifies candidate branch regions, and decides whether to if-convert each one.
 
@@ -251,13 +251,13 @@ The pass can also handle diamonds where one or both arms chain through a success
        [merge]
 ```
 
-## Region Analysis -- `sub_137E3A0`
+## Region Analysis — `sub_137E3A0`
 
 This function (`sub_137E3A0`, 367 bytes) validates that a basic block is part of a valid if-conversion candidate. It checks:
 
 1. **Predecessor count**: The merge block must have exactly `header_predecessor_count + 1` predecessors.
 2. **Terminator type**: The header's terminator must match opcode 95 after masking bits 12-13 (`STS` in the ROT13 name table; used here as a control-flow terminator class marker, not an actual store-shared instruction).
-3. **Branch predicate**: The branch guard must be a non-negated register operand. Three independent fields are consulted (parallel to the `.UR` multi-field surface described in [Registers](../ir/registers.md#operand-field-encoding)): (a) operand word0 type tag `(word0 >> 28) & 7 == 1` (register-class operand); (b) operand word1 bit 24 (`& 0x1000000`) must be **clear** (negation flag) -- this is the binary-IR counterpart to the textual `!` prefix that `sub_70B780` reads from the operand-descriptor name string at `+2120`; (c) the vreg's `+64` reg_type must match one of the state's two stored predicate file types at `a1[5]` (primary) or `a1[6]` (secondary). The wiki had previously claimed these were "2 or 3, R or UR" -- the state slots actually hold the P / UP file-type values, not R/UR, and the constants are loaded from the SM backend's vtable initializer.
+3. **Branch predicate**: The branch guard must be a non-negated register operand. Three independent fields are consulted (parallel to the `.UR` multi-field surface described in [Registers](../ir/registers.md#operand-field-encoding)): (a) operand word0 type tag `(word0 >> 28) & 7 == 1` (register-class operand); (b) operand word1 bit 24 (`& 0x1000000`) must be **clear** (negation flag) — this is the binary-IR counterpart to the textual `!` prefix that `sub_70B780` reads from the operand-descriptor name string at `+2120`; (c) the vreg's `+64` reg_type must match one of the state's two stored predicate file types at `a1[5]` (primary) or `a1[6]` (secondary). The wiki had previously claimed these were "2 or 3, R or UR" — the state slots actually hold the P / UP file-type values, not R/UR, and the constants are loaded from the SM backend's vtable initializer.
 4. **No backedges**: The predecessor list must not contain a self-edge.
 5. **Merge block successor check**: Validates that the merge block's sole successor leads to the expected continuation block.
 
@@ -294,7 +294,7 @@ bool isTriangleDiamondCandidate(state, bb):
     return true
 ```
 
-## Region Scanning -- `sub_137D990`
+## Region Scanning — `sub_137D990`
 
 This function (1,270 bytes) walks all instructions in a candidate block, counting them and checking each for predicability. It builds a cost model:
 
@@ -312,7 +312,7 @@ For each instruction in the candidate block:
 
 5. **Extra-latency check**: Long-latency opcodes contribute an additive penalty to `candidate+16`. Membership is tested with a two-tier check:
 
-    **Bitmask tier** -- the masked opcode `op` (after clearing bits 12-13) is tested via `(0x2080000010000001 >> (op - 22)) & 1` when `op - 22 < 62`. The four set bits select these Ori opcodes:
+    **Bitmask tier** — the masked opcode `op` (after clearing bits 12-13) is tested via `(0x2080000010000001 >> (op - 22)) & 1` when `op - 22 < 62`. The four set bits select these Ori opcodes:
 
     | Bit position | Ori opcode | SASS mnemonic | Operation class |
     |---|---|---|---|
@@ -321,7 +321,7 @@ For each instruction in the candidate block:
     | 55 | 77 | `EXIT` | Thread exit / program termination |
     | 61 | 83 | `TEX` | Texture fetch |
 
-    **Explicit tier** -- two Mercury extended opcodes are checked by direct comparison: opcode 352 (`MERCURY_addmin_srcs_r_r_0`) and opcode 297 (`MERCURY_barrier_cta_red_popc_srcs_uimm_uimm_0`).
+    **Explicit tier** — two Mercury extended opcodes are checked by direct comparison: opcode 352 (`MERCURY_addmin_srcs_r_r_0`) and opcode 297 (`MERCURY_barrier_cta_red_popc_srcs_uimm_uimm_0`).
 
     For every matching instruction, the SM backend's `getExtraLatency` virtual method at vtable offset +1392 is called. The base-class implementation (`sub_7D72B0`) returns 0, so targets that do not override this slot contribute nothing. When the backend does override the slot, the method receives `(sm_backend_obj, instruction)` and returns an `int` latency penalty in cycles. The return value is **summed** into the accumulator at `candidate+16` (`extra_latency += getExtraLatency(instr)`), so the total is the linear sum over all long-latency instructions in the region. The profitability heuristic at step 6 of `sub_1380BF0` uses this accumulated value: if knob 260 is active and **both** the true-side and false-side candidates have `extra_latency > 0`, if-conversion is rejected outright.
 
@@ -392,7 +392,7 @@ bool analyzeRegion(state, candidate):
     return true
 ```
 
-## Profitability Heuristic -- `sub_1380BF0`
+## Profitability Heuristic — `sub_1380BF0`
 
 The profitability decision (`sub_1380BF0`, 1,055 bytes) is the most complex part of the pass. It considers multiple factors to decide whether converting a branch region to predicated code is profitable.
 
@@ -475,7 +475,7 @@ Cost_branch  = C_bssy + C_branch + C_reconverge + C_serialize
 Cost_pred(N) = N * C_issue
 ```
 
-where `N` is the non-MOV instruction count of the true side and the `C_*` terms are architecture-dependent constants. The heuristic never computes these costs explicitly -- instead it reduces the comparison to `N <= L` where `L` is a backend-provided limit that encodes the breakeven point for each instruction category.
+where `N` is the non-MOV instruction count of the true side and the `C_*` terms are architecture-dependent constants. The heuristic never computes these costs explicitly — instead it reduces the comparison to `N <= L` where `L` is a backend-provided limit that encodes the breakeven point for each instruction category.
 
 The decision tree selects `L` from a 2x2 matrix indexed by two boolean flags:
 
@@ -494,7 +494,7 @@ Entry to the 2x2 matrix requires `mov_count <= mov_threshold` (field `[17]`). Wh
 
 When the true side has memory loads (`has_primary_memory_load`), the 2x2 matrix is bypassed entirely. Instead, entry to the extended diamond analysis (`sub_137FE10`) is gated by field `[12]`: `instr_count <= state[12]`. The same field `[12]` also serves as the combined-size ceiling in the fallback path (`true_count + false_count > state[12]`), giving it dual purpose as the hard cap on total region size.
 
-### Threshold Initialization -- vtable offset 1296
+### Threshold Initialization — vtable offset 1296
 
 The SM backend populates the threshold fields via `vtable(sm_backend)[1296]`. The dispatch in `sub_1381CD0` (lines 15-29) has a fast-path check:
 
@@ -524,7 +524,7 @@ The default backend (`sub_7D82C0`) zero-initializes all threshold fields. Since 
 | `[16]` | 64 | `mov_threshold` | MOV count below which the 2x2 limit matrix applies |
 | `[17]` | 68 | `mov_limit` | MOV-specific threshold in extended analysis |
 
-## Instruction Predication -- `sub_9324E0`
+## Instruction Predication — `sub_9324E0`
 
 Once a region passes the profitability check, each instruction in the region is predicated. The predication is performed by `sub_9324E0` (280 bytes), which transforms each instruction by adding a predicate guard operand.
 
@@ -563,7 +563,7 @@ For a non-branch instruction with opcode `op`:
 // For @!P2 the second slot's word1 has bit 24 set (0x1000000).
 ```
 
-### Already-Predicated Instructions -- `sub_9321B0`
+### Already-Predicated Instructions — `sub_9321B0`
 
 When `sub_9324E0` encounters an instruction with bit 12 already set (predicated by an earlier pass), it delegates to `sub_9321B0` (812 bytes) rather than blindly appending a second guard. The function composes the existing predicate with the new guard by emitting a PLOP3 (Ori opcode 23, three-input predicate logic) that ANDs the two predicates into a freshly-allocated predicate register, then re-predicates the stripped instruction with the combined result.
 
@@ -587,9 +587,9 @@ When `sub_9324E0` encounters an instruction with bit 12 already set (predicated 
 //   negated = (instr[2*(operand_count - 2) + 22] & 0x1000000) != 0
 ```
 
-**Fast path -- accumulator reuse.** The caller passes an optional accumulator pointer (`a9`). When non-null and `*a9 != 0`, its low 5 bits cache the existing predicate index and bits 5-28 cache the previously-allocated combined register from a prior invocation. If the current instruction's existing predicate matches the cached index, the function skips PLOP3 emission: it extracts the combined register as `(*a9 >> 5) & 0xFFFFFF`, builds a type-1 guard operand (`combined_reg | 0x10000000`), strips the old guard (decrement operand count by 2, clear bit 12), and calls `sub_9324E0` to re-predicate with the cached result.
+**Fast path — accumulator reuse.** The caller passes an optional accumulator pointer (`a9`). When non-null and `*a9 != 0`, its low 5 bits cache the existing predicate index and bits 5-28 cache the previously-allocated combined register from a prior invocation. If the current instruction's existing predicate matches the cached index, the function skips PLOP3 emission: it extracts the combined register as `(*a9 >> 5) & 0xFFFFFF`, builds a type-1 guard operand (`combined_reg | 0x10000000`), strips the old guard (decrement operand count by 2, clear bit 12), and calls `sub_9324E0` to re-predicate with the cached result.
 
-**Slow path -- PLOP3 emission.** When no cached result is available:
+**Slow path — PLOP3 emission.** When no cached result is available:
 
 1. **Allocates a new predicate register** via `sub_91BF30(ctx, 5)` (register file class 5 = predicate). The new register index is `allocated & 0xFFFFFF`.
 
@@ -616,7 +616,7 @@ When `sub_9324E0` encounters an instruction with bit 12 already set (predicated 
 
 **Register pressure management.** The predicate file has 7 usable registers (P0-P6) plus hardwired PT. Allocation via `sub_91BF30(ctx, 5)` draws from the same pool used by comparison instructions; when exhausted, the overflow allocator at `*(*(ctx+32)+8)` is consumed (freelist pop) or a fresh 160-byte descriptor is requested from the context's memory manager. The accumulator cache ensures that consecutive instructions sharing the same existing predicate reuse a single combined register, which is the primary mechanism for bounding predicate register pressure during deep if-conversion.
 
-## Post-Transformation -- `sub_137DE90`
+## Post-Transformation — `sub_137DE90`
 
 After predicating all instructions in a region, `sub_137DE90` (1,286 bytes) performs cleanup:
 
@@ -628,7 +628,7 @@ After predicating all instructions in a region, `sub_137DE90` (1,286 bytes) perf
 
 4. **Cleanup**: Resets the per-block tracking arrays (stored at `state[27]`/`state[56..57]`) which track which registers were bitvector-updated during this region.
 
-## Speculative Execution Safety -- `sub_137EE50`
+## Speculative Execution Safety — `sub_137EE50`
 
 After the main if-conversion, `sub_137EE50` (969 bytes) performs a secondary scan to identify instructions that were speculatively moved above their original control-flow guard. This function:
 
@@ -654,11 +654,11 @@ if (category <= 0xB && ((1LL << category) & 0x90E) != 0)
 
 ### Bitmask Decode
 
-`0x90E` = binary `1001 0000 1110` -- bits {1, 2, 3, 8, 11} are set.
+`0x90E` = binary `1001 0000 1110` — bits {1, 2, 3, 8, 11} are set.
 
 | Bit | Category | PTX Space | In `0x90E`? | Role in predication |
 |---|---|---|---|---|
-| 0 | 0 | Generic (unqualified) | No | Unresolved address space -- cannot be classified, excluded |
+| 0 | 0 | Generic (unqualified) | No | Unresolved address space — cannot be classified, excluded |
 | 1 | 1 | `.shared` | **Yes** | CTA-scope scratchpad; always mapped for executing CTA; 20--30 cycle latency |
 | 2 | 2 | `.local` | **Yes** | Thread-private stack/frame; always mapped; backed by L1/L2 |
 | 3 | 3 | `.const` | **Yes** | Constant bank (`c[bank][offset]`); loaded by driver before launch; always mapped |
@@ -668,20 +668,20 @@ if (category <= 0xB && ((1LL << category) & 0x90E) != 0)
 | 7 | 7 | Spill space | No | Compiler-generated register spill/fill; handled separately by regalloc |
 | 8 | 8 | `.tex` | **Yes** | Texture memory; high latency (200+ cycles); texture cache always valid when bound |
 | 9 | 9 | Special (opcode-dep.) | No | Ambiguous classification from case-18 sub-switch in `sub_91C840` |
-| 10 | -- | (unused) | No | No memory space maps to category 10 |
+| 10 | — | (unused) | No | No memory space maps to category 10 |
 | 11 | 11 | `.global` | **Yes** | DRAM-backed global memory; highest latency (300+ cycles) |
 
 Categories 12--18 (code/function, uniform, register file, surface, surface/tensor extended) all exceed the `<= 0xB` range check and are excluded from the bitmask test automatically.
 
 ### What the Bitmask Selects
 
-The five selected categories -- shared, local, const, texture, global -- are the **primary data memory spaces**: the ones that involve real data movement through the GPU memory hierarchy and carry meaningful scheduling latency. These are the loads a scheduler can profitably overlap with predicated computation.
+The five selected categories — shared, local, const, texture, global — are the **primary data memory spaces**: the ones that involve real data movement through the GPU memory hierarchy and carry meaningful scheduling latency. These are the loads a scheduler can profitably overlap with predicated computation.
 
 The excluded categories are either:
-- **Unresolvable** (generic -- could be anything)
-- **Non-load** in practice (param -- folded away, code -- function pointers)
-- **Compiler-internal** (spill, special -- the compiler already knows how to handle these)
-- **Out of range** (register file, uniform, surface, surface/tensor -- categories > 11)
+- **Unresolvable** (generic — could be anything)
+- **Non-load** in practice (param — folded away, code — function pointers)
+- **Compiler-internal** (spill, special — the compiler already knows how to handle these)
+- **Out of range** (register file, uniform, surface, surface/tensor — categories > 11)
 
 ### How the Bitmask Affects Profitability
 
@@ -689,9 +689,9 @@ The bitmask test does NOT directly determine speculation safety. It sets a `has_
 
 1. **True-side memory loads** (`a2+12` set): The profitability check routes to the extended diamond analysis (`sub_137FE10`) instead of the standard size-threshold path. This allows larger regions to be if-converted when they contain meaningful loads.
 
-2. **False-side memory loads -- speculation guard** (`a3+12` set): If the false side has memory loads AND the SM backend's speculation policy (vtable at `sm_backend+1200`) allows it, the detailed speculation analysis (`sub_137F800`) is invoked. If that analysis flags the loads as risky, predication is rejected.
+2. **False-side memory loads — speculation guard** (`a3+12` set): If the false side has memory loads AND the SM backend's speculation policy (vtable at `sm_backend+1200`) allows it, the detailed speculation analysis (`sub_137F800`) is invoked. If that analysis flags the loads as risky, predication is rejected.
 
-3. **False-side memory loads -- profitability boost** (`a3+12` set, passes safety): If the false side has memory loads and passes safety checks, the profitability heuristic returns `true` directly (line 166 of `sub_1380BF0`). The reasoning: if the false-side code contains real memory loads, converting the branch to predicated straight-line code lets the scheduler overlap those loads with other work.
+3. **False-side memory loads — profitability boost** (`a3+12` set, passes safety): If the false side has memory loads and passes safety checks, the profitability heuristic returns `true` directly (line 166 of `sub_1380BF0`). The reasoning: if the false-side code contains real memory loads, converting the branch to predicated straight-line code lets the scheduler overlap those loads with other work.
 
 ### Speculation Safety (Separate Mechanism)
 
@@ -704,7 +704,7 @@ The actual speculation safety tracking is handled by `sub_137EE50` (post-predica
 
 This means global loads (category 11) that are speculatively predicated are **not** tracked as unsafe. In the ptxas cost model, global memory loads under a predicate guard are considered acceptable: the hardware will issue the load speculatively, and if the predicate is false, the result is simply discarded. On architectures with memory access traps (e.g., page faults on unmapped addresses), the hardware masks the fault for lanes where the predicate is false. Surface/tensor extended operations (category 18), however, may have side effects that cannot be masked, so they receive the unsafe designation.
 
-## Fall-Through Block Analysis -- `sub_1380810`
+## Fall-Through Block Analysis — `sub_1380810`
 
 When the standard profitability check is inconclusive, `sub_1380810` (980 bytes) analyzes the fall-through continuation of the merge block. The idea: even if the region itself is borderline, if the code immediately after the merge point contains long-latency operations (loads, texture fetches), the predicated version may be better because the scheduler can overlap the predicated instructions with those long-latency operations.
 
@@ -715,11 +715,11 @@ The function walks instructions in the merge block's successor(s), using the sam
 
 If the fall-through region contains enough long-latency work (compared to `state->fallthrough_limit` and `state->extended_limit`), the function returns true, indicating that predication is profitable despite the region being above the standard size threshold.
 
-## Extended Diamond Analysis -- `sub_137FE10`
+## Extended Diamond Analysis — `sub_137FE10`
 
 For complex diamonds where one side has primary-memory loads that affect profitability thresholds, `sub_137FE10` (2,550 bytes) performs a more thorough analysis. It can "look through" the diamond to the merge block and even one block beyond, checking whether the instruction mix in the continuation makes predication worthwhile. It invokes `sub_137F560` (which also uses the `0x90E` bitmask) to scan continuation blocks for scheduling-relevant loads.
 
-The function also handles the case where the merge block falls through to another conditional branch that itself is a predication candidate -- effectively analyzing a chain of adjacent diamonds.
+The function also handles the case where the merge block falls through to another conditional branch that itself is a predication candidate — effectively analyzing a chain of adjacent diamonds.
 
 ## Interaction with Later Passes
 
@@ -786,16 +786,16 @@ Key opcodes referenced by the predication pass (after `BYTE1 &= 0xCF` masking to
 
 | Value | Mnemonic | Role in predication |
 |---|---|---|
-| 93 | `OUT_FINAL` | ROT13 name is OUT_FINAL; used here as a conditional branch marker -- the instruction being eliminated. Actual SASS BRA is opcode 67. |
+| 93 | `OUT_FINAL` | ROT13 name is OUT_FINAL; used here as a conditional branch marker — the instruction being eliminated. Actual SASS BRA is opcode 67. |
 | 95 | `STS` | ROT13 name is STS; used here as the branch terminator class marker and conditional-select replacement target. Actual SASS EXIT is opcode 77. |
 | 97 | `STG` | ROT13 name is STG; used here as a block boundary sentinel for scan termination. Actual SASS CALL is opcode 71. |
-| 125 | LD (variant) | Load -- checked for speculative safety |
+| 125 | LD (variant) | Load — checked for speculative safety |
 | 130 | `HSET2` | ROT13 name is HSET2; used here as an internal marker for MOV-like instructions counted separately for profitability. Actual SASS MOV is opcode 19. |
-| 183 | LDG | Global load -- speculative-unsafe |
+| 183 | LDG | Global load — speculative-unsafe |
 | 188 | (variant) | Remapped to 190 when predicated |
-| 263 | MOV.PHI | SSA phi -- not counted in instruction totals |
-| 286 | CONV.ALLOC | Convergence allocation marker -- special handling in profitability check |
-| 288 | STG | Global store -- speculative-unsafe |
+| 263 | MOV.PHI | SSA phi — not counted in instruction totals |
+| 286 | CONV.ALLOC | Convergence allocation marker — special handling in profitability check |
+| 288 | STG | Global store — speculative-unsafe |
 | 22 | `R2P` | Long-latency: register-to-predicate cross-file move |
 | 50 | `FRND_X` | Long-latency: extended FP rounding variant |
 | 77 | `EXIT` | Long-latency: thread exit / termination |
@@ -805,13 +805,13 @@ Key opcodes referenced by the predication pass (after `BYTE1 &= 0xCF` masking to
 
 ## Cross-References
 
-- [Pass Inventory](index.md) -- phase 63 in the 159-phase table
-- [Varying Propagation](varying-propagation.md) -- phases 53/70 bracket predication; phase 70 refreshes divergence annotations after CFG changes
-- [IR Overview](../ir/overview.md) -- Ori instruction format, operand encoding, register files
-- [Copy Propagation & CSE](copy-prop-cse.md) -- phase 64 (LateOriCommoning) runs immediately after
-- [GeneralOptimize Bundles](general-optimize.md) -- phase 65 cleans up after predication
-- [Loop Passes](loop-passes.md) -- phase 66 (OriHoistInvariantsLate) hoists newly exposed invariants
-- [Rematerialization](rematerialization.md) -- phase 69 (OriDoRemat) handles increased register pressure
-- [Liveness Analysis](liveness.md) -- liveness rebuilt at entry, bitvectors maintained during transformation
-- [Knobs System](../config/knobs.md) -- knobs 260, 487, 577, 579, 582 control predication behavior
-- [Scheduling](../scheduling/overview.md) -- scheduler backend initializes profitability thresholds
+- [Pass Inventory](index.md) — phase 63 in the 159-phase table
+- [Varying Propagation](varying-propagation.md) — phases 53/70 bracket predication; phase 70 refreshes divergence annotations after CFG changes
+- [IR Overview](../ir/overview.md) — Ori instruction format, operand encoding, register files
+- [Copy Propagation & CSE](copy-prop-cse.md) — phase 64 (LateOriCommoning) runs immediately after
+- [GeneralOptimize Bundles](general-optimize.md) — phase 65 cleans up after predication
+- [Loop Passes](loop-passes.md) — phase 66 (OriHoistInvariantsLate) hoists newly exposed invariants
+- [Rematerialization](rematerialization.md) — phase 69 (OriDoRemat) handles increased register pressure
+- [Liveness Analysis](liveness.md) — liveness rebuilt at entry, bitvectors maintained during transformation
+- [Knobs System](../config/knobs.md) — knobs 260, 487, 577, 579, 582 control predication behavior
+- [Scheduling](../scheduling/overview.md) — scheduler backend initializes profitability thresholds

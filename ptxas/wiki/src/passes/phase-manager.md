@@ -4,7 +4,7 @@
 
 The PhaseManager is the central orchestration layer in ptxas. It owns the entire 159-phase optimization and code generation pipeline, constructs each phase as a polymorphic object via an abstract factory, and drives execution through a virtual dispatch loop. Every compilation unit passes through the same PhaseManager sequence: construct all 159 phase objects, iterate the phase index array calling `execute()` on each, optionally collect per-phase timing and memory statistics, then tear down. The PhaseManager also hosts an optional NvOptRecipe sub-manager (440 bytes) for architecture-specific "advanced phase" hooks that inject additional processing at 16 defined points in the pipeline.
 
-The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch statement maps phase indices to vtable pointers, each vtable provides `execute()`, `isNoOp()`, and `getName()` virtual methods, and the dispatch loop iterates a flat index array that defines execution order. This makes the pipeline fully data-driven -- reordering, disabling, or injecting phases requires only modifying the index array, not the dispatch logic.
+The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch statement maps phase indices to vtable pointers, each vtable provides `execute()`, `isNoOp()`, and `getName()` virtual methods, and the dispatch loop iterates a flat index array that defines execution order. This makes the pipeline fully data-driven — reordering, disabling, or injecting phases requires only modifying the index array, not the dispatch logic.
 
 | | |
 |---|---|
@@ -66,14 +66,14 @@ The vtable provides the interface contract:
 | Vtable offset | Method | Signature |
 |---|---|---|
 | `+0` | `execute` | `void execute(phase*, compilation_context*)` |
-| `+8` | `getIndex` | `int getIndex(phase*)` -- returns the factory/table index (0--158) |
-| `+16` | `isNoOp` | `bool isNoOp(phase*)` -- returns 0 for active phases, 1 for gates skipped by default |
-| `+24` | *(NULL)* | Unused -- NULL in all 159 vtable instances |
-| `+32` | *(NULL)* | Unused -- NULL in all 159 vtable instances |
+| `+8` | `getIndex` | `int getIndex(phase*)` — returns the factory/table index (0--158) |
+| `+16` | `isNoOp` | `bool isNoOp(phase*)` — returns 0 for active phases, 1 for gates skipped by default |
+| `+24` | *(NULL)* | Unused — NULL in all 159 vtable instances |
+| `+32` | *(NULL)* | Unused — NULL in all 159 vtable instances |
 
 The vtable addresses span `off_22BD5C8` (phase 0) through `off_22BEE78` (phase 158), with a stride of `0x28` (40 bytes) between consecutive entries. All vtables reside in `.data.rel.ro`.
 
-## Phase Factory -- `sub_C60D30`
+## Phase Factory — `sub_C60D30`
 
 The factory is a 159-case switch statement that serves as the sole point of phase instantiation. For each case:
 
@@ -103,7 +103,7 @@ pair<phase*, pool*> PhaseFactory(int phase_index, context* ctx) {
 
 Called exclusively by the constructor (`sub_C62720`).
 
-## Construction Sequence -- `sub_C62720`
+## Construction Sequence — `sub_C62720`
 
 The constructor performs 11 steps, building all internal data structures and instantiating every phase:
 
@@ -148,14 +148,14 @@ bool PhaseManager::construct(compilation_unit* cu) {
 ```
 
 Key constants:
-- **159** -- total phase count, used as loop bound and array capacities
-- **1272** -- `159 * 8`, phase name pointer table size in bytes
-- **440** -- NvOptRecipe sub-manager object size
-- **0x2030007** (33,739,079) -- timing sentinel magic value
-- **Option 17928** -- enables per-phase timing/memory reporting
-- **Option 391** -- enables NvOptRecipe sub-manager
+- **159** — total phase count, used as loop bound and array capacities
+- **1272** — `159 * 8`, phase name pointer table size in bytes
+- **440** — NvOptRecipe sub-manager object size
+- **0x2030007** (33,739,079) — timing sentinel magic value
+- **Option 17928** — enables per-phase timing/memory reporting
+- **Option 391** — enables NvOptRecipe sub-manager
 
-## Destruction Sequence -- `sub_C61B20`
+## Destruction Sequence — `sub_C61B20`
 
 Teardown mirrors construction in reverse order, with careful handling of the NvOptRecipe's reference-counted shared state:
 
@@ -192,7 +192,7 @@ void PhaseManager::destroy() {
 
 The ref-count decrement-and-destroy pattern on `shared_list` at `+432` follows C++ `shared_ptr` semantics: the NvOptRecipe may share state across multiple compilation units in library mode.
 
-## Phase Dispatch Loop -- `sub_C64F70`
+## Phase Dispatch Loop — `sub_C64F70`
 
 The dispatch loop is the runtime engine. It takes a slice of the phase index array and executes each phase in order:
 
@@ -261,7 +261,7 @@ with no-op phases contributing empty rows.
 
 The "Before" / "After" diagnostic strings use an interesting encoding trick: the string `"Before "` is stored as the 64-bit integer `0x2065726F666542` in little-endian, allowing the compiler to emit a single `mov` instruction instead of a `memcpy`. The string `"After "` is stored as two writes: a 4-byte `dword 0x65746641` ("Afte") plus a 2-byte `word 0x2072` ("r ") plus a null terminator byte, totaling 7 bytes at `0xC651F7`--`0xC65208`.
 
-## Phase Name Lookup -- `sub_C641D0`
+## Phase Name Lookup — `sub_C641D0`
 
 External callers (e.g., `--ftrace-phase-after` option processing in `sub_9F4040`) resolve phase names to indices through a case-insensitive binary search:
 
@@ -327,7 +327,7 @@ Records are stored in a growable array at `compilation_unit+1560`. Growth uses a
 
 ## NvOptRecipe Sub-Manager (440 bytes)
 
-When option 391 is enabled, the constructor creates a 440-byte NvOptRecipe sub-manager at `PhaseManager+56`. This object provides the runtime for "AdvancedPhase" hooks -- the 16 phases that are no-ops by default but can be activated for architecture-specific or optimization-level-specific processing. The NvOpt level (0--5) controls per-phase aggressiveness independently of the `-O` CLI level: `-O` gates which phases run at all, while the NvOpt level controls how aggressively active phases behave.
+When option 391 is enabled, the constructor creates a 440-byte NvOptRecipe sub-manager at `PhaseManager+56`. This object provides the runtime for "AdvancedPhase" hooks — the 16 phases that are no-ops by default but can be activated for architecture-specific or optimization-level-specific processing. The NvOpt level (0--5) controls per-phase aggressiveness independently of the `-O` CLI level: `-O` gates which phases run at all, while the NvOpt level controls how aggressively active phases behave.
 
 ### Object Layout
 
@@ -364,7 +364,7 @@ NvOptRecipe (440 bytes)
 
 ### Sub-Structures
 
-**Ref-Counted List Node (24 bytes)** -- used at `+16`, `+392`, `+432`:
+**Ref-Counted List Node (24 bytes)** — used at `+16`, `+392`, `+432`:
 
 ```text
 RefCountedListNode (24 bytes)
@@ -375,7 +375,7 @@ RefCountedListNode (24 bytes)
 
 When the refcount reaches zero, the destructor walks the `next` chain freeing each node, then frees the head node itself through the allocator at `+16`.
 
-**Hash Bucket Entry (24 bytes)** -- array at `+408`:
+**Hash Bucket Entry (24 bytes)** — array at `+408`:
 
 ```text
 HashBucketEntry (24 bytes)
@@ -384,7 +384,7 @@ HashBucketEntry (24 bytes)
   +16   int32     chain_count     // number of elements in this bucket
 ```
 
-**Timing Record (584 bytes)** -- array at `+344`:
+**Timing Record (584 bytes)** — array at `+344`:
 
 ```text
 TimingRecord (584 bytes)
@@ -402,30 +402,30 @@ Records are iterated backward during cleanup (`base + 584 * (count + 1) - 584` d
 
 The constructor (`sub_C62720`, lines 356--850 in decompilation) performs these steps:
 
-1. **Check option 391** -- fast path: `*(config_obj[9] + 28152) != 0`; slow path: virtual call with argument `391`. If disabled, skip entirely.
+1. **Check option 391** — fast path: `*(config_obj[9] + 28152) != 0`; slow path: virtual call with argument `391`. If disabled, skip entirely.
 
-2. **Read option 391 value** -- the value is the `recipe_data` pointer. Fast path checks type tag `5` (int64) at config offset `28152`, reads the 64-bit value at offset `28160`. This is an externally-provided pointer, not computed locally.
+2. **Read option 391 value** — the value is the `recipe_data` pointer. Fast path checks type tag `5` (int64) at config offset `28152`, reads the 64-bit value at offset `28160`. This is an externally-provided pointer, not computed locally.
 
 3. **Allocate 440 bytes** from the pool allocator at `compilation_unit->field_16`.
 
-4. **Initialize core fields** -- back-pointers at `+0`/`+8`, `node_pool` at `+16` (24-byte ref-counted node, refcount=1), zero `+24`/`+32`/`+40`, store `recipe_data` at `+312`.
+4. **Initialize core fields** — back-pointers at `+0`/`+8`, `node_pool` at `+16` (24-byte ref-counted node, refcount=1), zero `+24`/`+32`/`+40`, store `recipe_data` at `+312`.
 
-5. **Initialize timing** -- zero `+344`, set `+352` to `-1` (empty sentinel), zero `+360`, copy allocator to `+336` and `+368`.
+5. **Initialize timing** — zero `+344`, set `+352` to `-1` (empty sentinel), zero `+360`, copy allocator to `+336` and `+368`.
 
-6. **Allocate sorted_array** -- initial capacity 8 entries (32 bytes), pre-fill 7 entries, set `+384` = 7, `+388` = 8.
+6. **Allocate sorted_array** — initial capacity 8 entries (32 bytes), pre-fill 7 entries, set `+384` = 7, `+388` = 8.
 
 7. **Allocate `ref_counted_list_2`** at `+392` (24-byte node, refcount=1), zero `+400`/`+408`/`+416`.
 
 8. **Allocate `shared_list`** at `+432` (24-byte node, refcount=1).
 
-9. **Inherit from previous recipe** -- if `PhaseManager+56` already holds an NvOptRecipe from a prior compilation unit:
+9. **Inherit from previous recipe** — if `PhaseManager+56` already holds an NvOptRecipe from a prior compilation unit:
    - Decrement old `shared_list` refcount; free if zero
    - Migrate hash bucket chains from old recipe to new `ref_counted_list_2`
    - Walk old timing records backward (stride 584), freeing sub-allocations
    - Drain old secondary hash table, release old `node_pool`
    - Free old NvOptRecipe object
 
-10. **Install** -- set `PhaseManager+56` = new recipe, `PhaseManager+64` = allocator.
+10. **Install** — set `PhaseManager+56` = new recipe, `PhaseManager+64` = allocator.
 
 ### Destruction Sequence
 
@@ -480,7 +480,7 @@ The `shared_list` at `+432` enables recipe state persistence across compilation 
 | **5** | Maximum valid NvOpt level |
 | **35280** | Recipe config byte offset in target descriptor |
 
-## NvOptRecipe String Applier -- `sub_9F4040`
+## NvOptRecipe String Applier — `sub_9F4040`
 
 The 440-byte sub-manager described above is the *runtime container*; the actual string-driven phase reordering lives in a separate 9,093-byte function called from the alternate compilation entry. Two top-level entry points exist:
 
@@ -513,9 +513,9 @@ __int64 sub_9F63D0(__int64 cu) {
 
 `sub_9F4040` (the recipe applier) is responsible for parsing the option-298 string and writing the resulting phase index sequence into `order[]`. It supports **three operating modes** plus DCE/CopyProp injection slots:
 
-1. **NamedPhases mode** -- explicit ordered phase-name list
-2. **`pNNN` mode** -- explicit per-slot phase index override (243 slots)
-3. **shuffle mode** -- start from default order, then apply `reps` rounds of six parameterized swaps
+1. **NamedPhases mode** — explicit ordered phase-name list
+2. **`pNNN` mode** — explicit per-slot phase index override (243 slots)
+3. **shuffle mode** — start from default order, then apply `reps` rounds of six parameterized swaps
 
 ### Recipe String Grammar
 
@@ -631,7 +631,7 @@ void swap_pair(int dest[], int base, int i, int N) {
 
 ### The Six Swap Slots
 
-The headline finding: **`swap1`--`swap6` do not target named phase pairs**. Each is a **user-supplied integer base offset** into the phase order array; the swap operation that uses it pairs `dest[base+i]` with `dest[base+2i+1]` (mod `N`) for every iteration `i` of the `reps` loop. All six slots default to **0** if absent from the recipe, and the entire shuffle block is skipped unless `reps > 0`. The slots are otherwise interchangeable -- the parser exists solely to give a recipe author six independent base offsets per `reps` round, so a single recipe can perturb up to six widely separated regions of the pipeline simultaneously.
+The headline finding: **`swap1`--`swap6` do not target named phase pairs**. Each is a **user-supplied integer base offset** into the phase order array; the swap operation that uses it pairs `dest[base+i]` with `dest[base+2i+1]` (mod `N`) for every iteration `i` of the `reps` loop. All six slots default to **0** if absent from the recipe, and the entire shuffle block is skipped unless `reps > 0`. The slots are otherwise interchangeable — the parser exists solely to give a recipe author six independent base offsets per `reps` round, so a single recipe can perturb up to six widely separated regions of the pipeline simultaneously.
 
 | Slot | Stored at | Value source | Default | Effect per iteration `i` |
 |---|---|---|---|---|
@@ -642,22 +642,22 @@ The headline finding: **`swap1`--`swap6` do not target named phase pairs**. Each
 | `swap5` | local `v9`   | `strtol(nptr["swap5"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap5+i)%N], dest[(swap5+2i+1)%N])` |
 | `swap6` | local `v230` | `strtol(nptr["swap6"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap6+i)%N], dest[(swap6+2i+1)%N])` |
 
-`N` is the post-injection phase count (= default count if no `dceN`/`cpyN` slots fire, otherwise `default + (number of dce hits) + (number of cpy hits)`). The number of swap pairs executed by a recipe is therefore exactly `6 * reps`. With `reps == 0` (the default) the loop is fully skipped, even if all six `swapN` directives are set -- so `swap1..swap6` are inert without an accompanying `reps,N` (with `N >= 1`).
+`N` is the post-injection phase count (= default count if no `dceN`/`cpyN` slots fire, otherwise `default + (number of dce hits) + (number of cpy hits)`). The number of swap pairs executed by a recipe is therefore exactly `6 * reps`. With `reps == 0` (the default) the loop is fully skipped, even if all six `swapN` directives are set — so `swap1..swap6` are inert without an accompanying `reps,N` (with `N >= 1`).
 
 ### Vestigial Slots
 
 **No swap slot is vestigial.** All six are read independently in the parser (lines 950, 1007, 1061, 1119, 1162, 1202) and all six are dereferenced once per `reps` iteration in the swap loop (lines 1695, 1700, 1705, 1710, 1715, 1720). Removing any one of them would change the observable behavior of any recipe that sets a non-zero value for that key. No string reference to `swap0` or `swap7` exists anywhere in the binary.
 
-The six-slot count appears to be a hard-coded budget rather than a list of "named phase pairs", and the matching `dce1/2/3` + `cpy1/2/3` injection budget is similarly fixed. The naming convention (`swapN`, `dceN`, `cpyN`) suggests the intended use was to give a recipe author six independent perturbation points, three independent DCE injection points, and three independent CopyProp injection points -- a total of 12 + 6 = 18 independent integer parameters that together describe a deterministic transformation of the default 159-phase order.
+The six-slot count appears to be a hard-coded budget rather than a list of "named phase pairs", and the matching `dce1/2/3` + `cpy1/2/3` injection budget is similarly fixed. The naming convention (`swapN`, `dceN`, `cpyN`) suggests the intended use was to give a recipe author six independent perturbation points, three independent DCE injection points, and three independent CopyProp injection points — a total of 12 + 6 = 18 independent integer parameters that together describe a deterministic transformation of the default 159-phase order.
 
 ### How the Swap Modifies the Phase Sequence
 
-The swap installation **physically reorders the `dest[]` array** before it is handed to `sub_C64F70` for dispatch. There is no swap-attribute that the dispatcher honors at run time -- by the time `sub_C64F70` receives `order`, every swap has already happened in `sub_9F4040`. The dispatcher itself is unmodified by the recipe; it walks the array linearly, calling `execute()` on whatever phase indices are present.
+The swap installation **physically reorders the `dest[]` array** before it is handed to `sub_C64F70` for dispatch. There is no swap-attribute that the dispatcher honors at run time — by the time `sub_C64F70` receives `order`, every swap has already happened in `sub_9F4040`. The dispatcher itself is unmodified by the recipe; it walks the array linearly, calling `execute()` on whatever phase indices are present.
 
 This has two consequences:
 
 1. **Re-ordering is bounded by `reps`**, not by recipe complexity. A recipe with `reps,10000` will run 60,000 swap operations on a ~159-element array regardless of how many `swapN` keys are set.
-2. **The same phase index can appear multiple times** if the swap pattern produces it -- the dispatch loop will then `execute()` that phase multiple times. There is no de-duplication step. Recipes that abuse high `reps` values can trivially produce sequences with phases run twice, run zero times, or run out of dependency order; the dispatcher's only validation is the per-phase index range check.
+2. **The same phase index can appear multiple times** if the swap pattern produces it — the dispatch loop will then `execute()` that phase multiple times. There is no de-duplication step. Recipes that abuse high `reps` values can trivially produce sequences with phases run twice, run zero times, or run out of dependency order; the dispatcher's only validation is the per-phase index range check.
 
 ### Worked Example
 
@@ -707,12 +707,12 @@ Step-by-step expansion:
         → `AnalyzeControlFlow` ↔ `AdvancedPhaseBeforeConvUnSup`
     - `swap2`: `swap(dest[(8+0)%N], dest[(8+0+1)%N]) = swap(dest[8], dest[9])`
         → `AdvancedPhaseAfterConvUnSup` ↔ `OriCreateMacroInsts`
-    - `swap3..swap6` all default to `0`: `swap(dest[(0+0)%N], dest[(0+0+1)%N]) = swap(dest[0], dest[1])` -- executed **four times**, which is two pairs of net no-ops on `dest[0]` and `dest[1]`.
+    - `swap3..swap6` all default to `0`: `swap(dest[(0+0)%N], dest[(0+0+1)%N]) = swap(dest[0], dest[1])` — executed **four times**, which is two pairs of net no-ops on `dest[0]` and `dest[1]`.
 
 3. **Phase 2 (shuffle), iteration `i = 1`**:
     - `swap1`: `swap(dest[(3+1)%N], dest[(3+1+1+1)%N]) = swap(dest[4], dest[6])`
     - `swap2`: `swap(dest[(8+1)%N], dest[(8+1+1+1)%N]) = swap(dest[9], dest[11])`
-    - `swap3..swap6` (base 0): `swap(dest[(0+1)%N], dest[(0+1+1+1)%N]) = swap(dest[1], dest[3])` ×4 -- two no-op pairs.
+    - `swap3..swap6` (base 0): `swap(dest[(0+1)%N], dest[(0+1+1+1)%N]) = swap(dest[1], dest[3])` ×4 — two no-op pairs.
 
 After both iterations, the prefix of `dest[]` is a deterministic permutation of the default order with `OriPerformLiveDead` injected at slot 5 and four pair-swaps applied. The dispatcher then executes phases in the resulting order.
 
@@ -720,9 +720,9 @@ After both iterations, the prefix of `dest[]` is a deterministic permutation of 
 
 If the recipe contains keys for multiple modes simultaneously, the parser uses the first mode it finds in this fixed order:
 
-1. `NamedPhases` -- highest priority; consumes all subsequent tokens as phase names from `v343[1..]`
-2. `pNNN` -- if no `NamedPhases` and any `p<digits>` key is present
-3. `shuffle` -- only checked if neither of the above matched; entry condition is the literal string `shuffle` AND the string `reps` with a non-zero value
+1. `NamedPhases` — highest priority; consumes all subsequent tokens as phase names from `v343[1..]`
+2. `pNNN` — if no `NamedPhases` and any `p<digits>` key is present
+3. `shuffle` — only checked if neither of the above matched; entry condition is the literal string `shuffle` AND the string `reps` with a non-zero value
 
 DCE and CopyProp injection (`dce1..3`, `cpy1..3`) are **only honored in shuffle mode**; they are read inside the shuffle-mode branch (lines 1486--1666) and have no effect on `NamedPhases` or `pNNN` modes.
 
@@ -734,7 +734,7 @@ DCE and CopyProp injection (`dce1..3`, `cpy1..3`) are **only honored in shuffle 
 | **21456** | Option 298 type tag offset in config storage (`config[9] + 21456`) |
 | **21464** | Option 298 string pointer offset (`config[9] + 21464`) |
 | **256** | Maximum number of key/value pairs in recipe string (parser buffer size) |
-| **243** | Maximum `pNNN` slot index (`p0`..`p242` -- the 159 phase slots plus headroom) |
+| **243** | Maximum `pNNN` slot index (`p0`..`p242` — the 159 phase slots plus headroom) |
 | **159** | Phase index clamp ceiling for `pNNN` values (`v121 > 159 ? 159 : v121`) |
 | **0..256** | `swapN` / `repsN` / `dceN` / `cpyN` clamp range (`strtol` then clamped) |
 | **6** | Number of `swap` slots (no `swap0` or `swap7` strings exist in the binary) |
@@ -742,7 +742,7 @@ DCE and CopyProp injection (`dce1..3`, `cpy1..3`) are **only honored in shuffle 
 | **`OriPerformLiveDead`** | Phase name injected by `dceN` (resolved via `sub_C641D0` at line 1556) |
 | **`OriCopyProp`** | Phase name injected by `cpyN` (resolved via `sub_C641D0` at line 1648) |
 
-## Multi-Function Dispatch -- `sub_C60BD0`
+## Multi-Function Dispatch — `sub_C60BD0`
 
 When a compilation unit contains more than one function, `sub_C60BD0` redirects to a per-function dispatch path:
 
@@ -773,10 +773,10 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 1 | `ApplyNvOptRecipes` | Apply NvOptRecipe transformations |
 | 2 | `PromoteFP16` | Promote FP16 operations where beneficial |
 | 3 | `AnalyzeControlFlow` | Build/analyze control flow graph |
-| 4 | `AdvancedPhaseBeforeConvUnSup` | **Hook** -- before unsupported op conversion |
+| 4 | `AdvancedPhaseBeforeConvUnSup` | **Hook** — before unsupported op conversion |
 | 5 | `ConvertUnsupportedOps` | Lower unsupported operations to supported sequences |
 | 6 | `SetControlFlowOpLastInBB` | Mark control flow ops as last in basic block |
-| 7 | `AdvancedPhaseAfterConvUnSup` | **Hook** -- after unsupported op conversion |
+| 7 | `AdvancedPhaseAfterConvUnSup` | **Hook** — after unsupported op conversion |
 | 8 | `OriCreateMacroInsts` | Create macro instruction patterns |
 | 9 | `ReportInitialRepresentation` | Diagnostic dump of initial IR |
 | 10 | `EarlyOriSimpleLiveDead` | Early dead code elimination |
@@ -826,7 +826,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 44 | `OptimizeUniformAtomic` | Optimize uniform atomic operations |
 | 45 | `MidExpansion` | Mid-pipeline lowering and expansion |
 | 46 | `GeneralOptimizeMid2` | Second mid-pipeline GeneralOptimize |
-| 47 | `AdvancedPhaseEarlyEnforceArgs` | **Hook** -- before argument restrictions |
+| 47 | `AdvancedPhaseEarlyEnforceArgs` | **Hook** — before argument restrictions |
 | 48 | `EnforceArgumentRestrictions` | Enforce ABI argument constraints |
 | 49 | `GvnCse` | Global value numbering and common subexpression elimination |
 | 50 | `OriReassociateAndCommon` | Reassociation and commoning |
@@ -861,22 +861,22 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 74 | `ConvertToUniformReg` | Promote values to uniform registers |
 | 75 | `LateArchOptimizeFirst` | Architecture-specific late optimization, first pass |
 | 76 | `UpdateAfterOptimize` | Post-optimization bookkeeping |
-| 77 | `AdvancedPhaseLateConvUnSup` | **Hook** -- before late unsupported op expansion |
+| 77 | `AdvancedPhaseLateConvUnSup` | **Hook** — before late unsupported op expansion |
 | 78 | `LateExpansionUnsupportedOps` | Late lowering of unsupported operations |
 | 79 | `OriHoistInvariantsLate2` | Second late invariant hoisting |
 | 80 | `ExpandJmxComputation` | Expand JMX (join/merge) computations |
 | 81 | `LateArchOptimizeSecond` | Architecture-specific late optimization, second pass |
-| 82 | `AdvancedPhaseBackPropVReg` | **Hook** -- before back-copy propagation |
+| 82 | `AdvancedPhaseBackPropVReg` | **Hook** — before back-copy propagation |
 | 83 | `OriBackCopyPropagate` | Backward copy propagation |
 | 84 | `OriPerformLiveDeadFourth` | Liveness analysis, fourth pass |
 | 85 | `OriPropagateGmma` | GMMA/WGMMA propagation |
 | 86 | `InsertPseudoUseDefForConvUR` | Insert pseudo use/def for uniform reg conversion |
 | 87 | `FixupGmmaSequence` | Fix up GMMA instruction sequences |
 | 88 | `OriHoistInvariantsLate3` | Third late invariant hoisting |
-| 89 | `AdvancedPhaseSetRegAttr` | **Hook** -- before register attribute setting |
+| 89 | `AdvancedPhaseSetRegAttr` | **Hook** — before register attribute setting |
 | 90 | `OriSetRegisterAttr` | Set register attributes (types, constraints) |
 | 91 | `OriCalcDependantTex` | Calculate dependent texture operations |
-| 92 | `AdvancedPhaseAfterSetRegAttr` | **Hook** -- after register attribute setting |
+| 92 | `AdvancedPhaseAfterSetRegAttr` | **Hook** — after register attribute setting |
 | 93 | `LateExpansionUnsupportedOps2` | Second late unsupported op expansion |
 | 94 | `FinalInspectionPass` | Final IR validity checks |
 | 95 | `SetAfterLegalization` | Mark legalization complete |
@@ -886,30 +886,30 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | Index | Phase Name | Purpose |
 |---|---|---|
 | 96 | `ReportBeforeScheduling` | Diagnostic dump before scheduling |
-| 97 | `AdvancedPhasePreSched` | **Hook** -- before scheduling |
+| 97 | `AdvancedPhasePreSched` | **Hook** — before scheduling |
 | 98 | `BackPropagateVEC2D` | Back-propagate 2D vector instructions |
 | 99 | `OriDoSyncronization` | Insert synchronization instructions |
 | 100 | `ApplyPostSyncronizationWars` | Apply post-synchronization write-after-read fixes |
-| 101 | `AdvancedPhaseAllocReg` | **Hook** -- register allocation |
+| 101 | `AdvancedPhaseAllocReg` | **Hook** — register allocation |
 | 102 | `ReportAfterRegisterAllocation` | Diagnostic dump after regalloc |
 | 103 | `Get64bRegComponents` | Extract 64-bit register components |
-| 104 | `AdvancedPhasePostExpansion` | **Hook** -- before post-RA expansion worker (phase 127) |
+| 104 | `AdvancedPhasePostExpansion` | **Hook** — before post-RA expansion worker (phase 127) |
 | 105 | `ApplyPostRegAllocWars` | Apply post-regalloc write-after-read fixes |
 
 ### Group 6: Post-Schedule and Code Generation (phases 106--131)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
-| 106 | `AdvancedPhasePostSched` | **Hook** -- before post-scheduling worker (phase 110); writes `ctx+1552=14` |
+| 106 | `AdvancedPhasePostSched` | **Hook** — before post-scheduling worker (phase 110); writes `ctx+1552=14` |
 | 107 | `OriRemoveNopCode` | Remove NOP instructions |
 | 108 | `OptimizeHotColdInLoop` | Hot/cold partitioning within loops |
 | 109 | `OptimizeHotColdFlow` | Hot/cold partitioning across flow |
 | 110 | `PostSchedule` | Post-scheduling fixups |
-| 111 | `AdvancedPhasePostFixUp` | **Hook** -- before post-fixup worker (phase 140 `PostFixUp`); writes `ctx+1552=20` |
+| 111 | `AdvancedPhasePostFixUp` | **Hook** — before post-fixup worker (phase 140 `PostFixUp`); writes `ctx+1552=20` |
 | 112 | `PlaceBlocksInSourceOrder` | Reorder blocks to match source order |
 | 113 | `PostFixForMercTargets` | Mercury target-specific fixups |
 | 114 | `FixUpTexDepBarAndSync` | Fix texture dependency barriers and sync |
-| 115 | `AdvancedScoreboardsAndOpexes` | **Hook** -- before scoreboard generation |
+| 115 | `AdvancedScoreboardsAndOpexes` | **Hook** — before scoreboard generation |
 | 116 | `ProcessO0WaitsAndSBs` | Process O0-level waits and scoreboards |
 | 117 | `MercEncodeAndDecode` | Mercury encode to SASS and decode-verify |
 | 118 | `MercExpandInstructions` | Expand macro instructions to SASS |
@@ -921,7 +921,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 124 | `CalcRegisterMap` | Calculate final register map |
 | 125 | `UpdateAfterPostRegAlloc` | Post-regalloc bookkeeping |
 | 126 | `ReportFinalMemoryUsage` | Report final memory consumption |
-| 127 | `AdvancedPhaseOriPhaseEncoding` | **Hook** -- before final encoding |
+| 127 | `AdvancedPhaseOriPhaseEncoding` | **Hook** — before final encoding |
 | 128 | `UpdateAfterFormatCodeList` | Update after code list formatting |
 | 129 | `DumpNVuCodeText` | Dump NV microcode as text (debug) |
 | 130 | `DumpNVuCodeHex` | Dump NV microcode as hex (debug) |
@@ -933,8 +933,8 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 |---|---|---|
 | 132 | `UpdateAfterConvertUnsupportedOps` | Bookkeeping after late conversion |
 | 133 | `MergeEquivalentConditionalFlow` | Merge equivalent conditional branches |
-| 134 | `AdvancedPhaseAfterMidExpansion` | **Hook** -- after mid-expansion (Type-C, writes `pipeline_progress = 3`) |
-| 135 | `AdvancedPhaseLateExpandSyncInstructions` | **Hook** -- after late sync expansion (Type-B, vtable-override) |
+| 134 | `AdvancedPhaseAfterMidExpansion` | **Hook** — after mid-expansion (Type-C, writes `pipeline_progress = 3`) |
+| 135 | `AdvancedPhaseLateExpandSyncInstructions` | **Hook** — after late sync expansion (Type-B, vtable-override) |
 | 136 | `LateMergeEquivalentConditionalFlow` | Late merge of equivalent conditionals |
 | 137 | `LateExpansionUnsupportedOpsMid` | Mid-point late unsupported op expansion |
 | 138 | `OriSplitHighPressureLiveRanges` | Split live ranges under high register pressure |
@@ -949,19 +949,19 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 147 | `MercGenerateSassUCode` | Final SASS microcode emission (`ctx+0x571` bit 0); execute `sub_C603A0` -> `sub_6EEE90` -> `sub_6E4110` |
 | 148 | `ComputeVCallRegUse` | Target vtable+0x2B8 virtual-call register-usage computation; execute `sub_C5E160` |
 | 149 | `CalcRegisterMap` | Final physical-to-logical register mapping (`ctx+0x590` bit 1); execute `sub_C603C0` -> `sub_95A350` (6.3 KB) |
-| 150 | `UpdateAfterPostRegAlloc` | **`nullsub_630`** -- stripped from release, `isNoOp=1` suppresses diagnostics |
-| 151 | `ReportFinalMemoryUsage` | **`nullsub_629`** -- stripped from release, `isNoOp=1` suppresses diagnostics |
-| 152 | `AdvancedPhaseOriPhaseEncoding` | **Hook** -- Type-C gate writing `pipeline_progress = 21` (execute `sub_C5E0B0`, 11 bytes) |
+| 150 | `UpdateAfterPostRegAlloc` | **`nullsub_630`** — stripped from release, `isNoOp=1` suppresses diagnostics |
+| 151 | `ReportFinalMemoryUsage` | **`nullsub_629`** — stripped from release, `isNoOp=1` suppresses diagnostics |
+| 152 | `AdvancedPhaseOriPhaseEncoding` | **Hook** — Type-C gate writing `pipeline_progress = 21` (execute `sub_C5E0B0`, 11 bytes) |
 | 153 | `FormatCodeList` | Code-list emitter dispatch through `(*ctx+0x648)->vtbl[+0x10]`; execute `sub_C5E080` |
-| 154 | `UpdateAfterFormatCodeList` | **`nullsub_628`** -- stripped from release, `isNoOp=1` suppresses diagnostics |
+| 154 | `UpdateAfterFormatCodeList` | **`nullsub_628`** — stripped from release, `isNoOp=1` suppresses diagnostics |
 | 155 | `DumpNVuCodeText` | Debug SASS-text dumper gate (`ctx+0x598 > 0`); tail-call target is `nullsub_31` in release |
 | 156 | `DumpNVuCodeHex` | Debug SASS-hex dumper gate; tail-call target is `nullsub_30` in release |
-| 157 | `DebuggerBreak` | **`nullsub_627`** -- debug-only breakpoint marker |
-| 158 | `NOP` | **`nullsub_626`** -- terminal sentinel anchoring the 159-phase dispatch loop |
+| 157 | `DebuggerBreak` | **`nullsub_627`** — debug-only breakpoint marker |
+| 158 | `NOP` | **`nullsub_626`** — terminal sentinel anchoring the 159-phase dispatch loop |
 
 All 20 phases in the 139--158 range have names in the static table at `off_22BD0C0` (159 entries total, not 139). Name resolution goes through each phase's `getIndex()` virtual method (vtable+8) returning the phase index as a constant (`mov eax, 0x8b..0x9e; ret`), which the dispatch loop (`sub_C64F70`) uses as the lookup key into the name table. The earlier claim that these phases had names "returned by a `getName()` virtual method" was incorrect.
 
-Of the 20 phases, **five** have `nullsub` execute bodies in release ptxas (150, 151, 154, 157, 158), **two** (155, 156) have non-trivial gate cascades but resolve to nullsub tail-call targets, and **four** set `isNoOp() = 1` to suppress the diagnostic frame around their call (150, 151, 152, 154). `isNoOp = 1` does **not** skip the execute call -- it only suppresses the `"Before <phase>"` / `"After <phase>"` diagnostic prints, and `sub_C64F70:86` `goto LABEL_4` still falls through to the execute dispatch. See [Optimization Pipeline Stage 10](index.md#stage-10----late-cleanup--late-pipeline-phases-132--158) for the full per-phase algorithm breakdown with execute addresses, pseudocode, and gate conditions.
+Of the 20 phases, **five** have `nullsub` execute bodies in release ptxas (150, 151, 154, 157, 158), **two** (155, 156) have non-trivial gate cascades but resolve to nullsub tail-call targets, and **four** set `isNoOp() = 1` to suppress the diagnostic frame around their call (150, 151, 152, 154). `isNoOp = 1` does **not** skip the execute call — it only suppresses the `"Before <phase>"` / `"After <phase>"` diagnostic prints, and `sub_C64F70:86` `goto LABEL_4` still falls through to the execute dispatch. See [Optimization Pipeline Stage 10](index.md#stage-10----late-cleanup--late-pipeline-phases-132--158) for the full per-phase algorithm breakdown with execute addresses, pseudocode, and gate conditions.
 
 ## AdvancedPhase Hook Points
 
@@ -1037,15 +1037,15 @@ PostFixForMercTargets (113)
 | `sub_9F4040` | 9,093 | NvOptRecipe string applier (NamedPhases / `pNNN` / shuffle modes) | VERY HIGH |
 | `sub_9F63D0` | 51 | Recipe-path trampoline (constructs PM, calls applier, dispatches, destructs) | VERY HIGH |
 | `sub_798B60` | 1,776 | Generic comma-delimited key/value tokenizer (shared with knob env parser) | VERY HIGH |
-| `sub_7FB6C0` | -- | Compilation driver: option-298 fork to recipe path or default path | HIGH |
+| `sub_7FB6C0` | — | Compilation driver: option-298 fork to recipe path or default path | HIGH |
 
 ## Cross-References
 
-- [Pass Inventory & Ordering](./index.md) -- full phase sequence and stage grouping
-- [GeneralOptimize Bundles](./general-optimize.md) -- phases 13, 29, 37, 46, 58, 65
-- [Synchronization & Barriers](./sync-barriers.md) -- phases 26, 71, 72, 99, 100
-- [Liveness Analysis](./liveness.md) -- phases 10, 16, 33, 61, 84
-- [Mercury Encoder](../codegen/mercury.md) -- phases 113--122
-- [Memory Pool Allocator](../infra/memory-pools.md) -- pool allocation infrastructure used by PhaseManager
-- [Optimization Levels](../config/opt-levels.md) -- how opt level controls phase behavior
-- [DUMPIR & NamedPhases](../config/dumpir.md) -- phase name resolution for debug output
+- [Pass Inventory & Ordering](./index.md) — full phase sequence and stage grouping
+- [GeneralOptimize Bundles](./general-optimize.md) — phases 13, 29, 37, 46, 58, 65
+- [Synchronization & Barriers](./sync-barriers.md) — phases 26, 71, 72, 99, 100
+- [Liveness Analysis](./liveness.md) — phases 10, 16, 33, 61, 84
+- [Mercury Encoder](../codegen/mercury.md) — phases 113--122
+- [Memory Pool Allocator](../infra/memory-pools.md) — pool allocation infrastructure used by PhaseManager
+- [Optimization Levels](../config/opt-levels.md) — how opt level controls phase behavior
+- [DUMPIR & NamedPhases](../config/dumpir.md) — phase name resolution for debug output

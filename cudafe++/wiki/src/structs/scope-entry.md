@@ -1,6 +1,6 @@
 # Scope Entry
 
-The scope entry is the 784-byte record that forms the elements of the scope stack, the central data structure in cudafe++ for tracking nested lexical scopes during C++ parsing and semantic analysis. The scope stack is a flat array at `qword_126C5E8`, indexed by `dword_126C5E4` (current depth). Every time the parser enters a new scope -- file, block, function body, class definition, template declaration, namespace -- a new 784-byte entry is pushed onto this stack. When the scope closes, the entry is popped and all associated cleanup runs: symbol table housekeeping, using-directive deactivation, name collision discriminator assignment, template parameter restoration, and memory region disposal.
+The scope entry is the 784-byte record that forms the elements of the scope stack, the central data structure in cudafe++ for tracking nested lexical scopes during C++ parsing and semantic analysis. The scope stack is a flat array at `qword_126C5E8`, indexed by `dword_126C5E4` (current depth). Every time the parser enters a new scope — file, block, function body, class definition, template declaration, namespace — a new 784-byte entry is pushed onto this stack. When the scope closes, the entry is popped and all associated cleanup runs: symbol table housekeeping, using-directive deactivation, name collision discriminator assignment, template parameter restoration, and memory region disposal.
 
 This page documents the scope stack entry layout, the scope kind enum, the key flag bytes, the CUDA-specific additions (device/host scope context), the template instantiation depth counters, and the major push/pop functions.
 
@@ -49,7 +49,7 @@ The table documents every field observed in the 784-byte scope stack entry. Thes
 | `+6` | 2 | `scope_flags_2` | Bit 0 = void return flag; **bit 1 = device scope context** (NVIDIA addition); bit 2 = inline namespace; in some contexts bit 1 = `is_extern`, bit 5 = `inline_namespace` |
 | `+7` | 1 | `access_flags` | Bit 0 = in class context; bit 1 = has using-directives; bit 4 = lambda body |
 | `+8` | 1 | `scope_flags_4` | Template/class/reactivation bits; bit 5 (`0x20`) = `is_template_scope` |
-| `+9` | 1 | `scope_flags_5` | **Bit 0 = needs cleanup / scope pop control** -- when set, triggers `sub_67B4E0()` cleanup of template instantiation artifacts before popping |
+| `+9` | 1 | `scope_flags_5` | **Bit 0 = needs cleanup / scope pop control** — when set, triggers `sub_67B4E0()` cleanup of template instantiation artifacts before popping |
 | `+10` | 1 | `scope_flags_6` | Bit 0 = `in_template_context` |
 | `+11` | 1 | sign bit | `in_template_dependent_context` |
 | `+12` | 1 | `scope_flags_7` | Bit 0 = `in_template_arg_scan`; bit 2 = `suppress_diagnostics`; bit 4 = `has_concepts` / `void_return_warned` |
@@ -65,7 +65,7 @@ The table documents every field observed in the 784-byte scope stack entry. Thes
 | `+224` | 8 | `routine_descriptor` | Pointer to the current routine descriptor (set for function scopes) |
 | `+232` | 8 | `namespace_entity` | For namespace scopes: pointer to the namespace entity |
 | `+240` | 4 | `region_number` | Memory region number (-1 = invalid sentinel, set by `alloc_scope`) |
-| `+256` | 4 | `parent_scope_index` | Index of the enclosing scope in the stack (reported at both +240 and +256 in different sweeps -- likely `+240` = region, `+256` = parent) |
+| `+256` | 4 | `parent_scope_index` | Index of the enclosing scope in the stack (reported at both +240 and +256 in different sweeps — likely `+240` = region, `+256` = parent) |
 | `+272` | 8 | `name_hiding_list` | Linked list of names hidden by declarations in this scope |
 | `+296` | 8 | `local_vars_tail` | Tail pointer for the local variables list |
 | `+368` | 8 | `source_begin` | Source position at scope entry |
@@ -77,7 +77,7 @@ The table documents every field observed in the 784-byte scope stack entry. Thes
 | `+496` | 8 | `root_object_lifetime` | Root of the object lifetime tree for this scope |
 | `+512` | 8 | `freed_lifetime_list` | List of freed object lifetimes awaiting reuse |
 | `+560` | 4 | `enclosing_scope_index` | Parent scope index for pop validation |
-| `+576` | 4 | `template_instantiation_depth_counter` | **Nested instantiation depth counter** -- incremented on recursive template instantiation push, decremented on pop; when > 0, pop just decrements without actually popping the scope stack |
+| `+576` | 4 | `template_instantiation_depth_counter` | **Nested instantiation depth counter** — incremented on recursive template instantiation push, decremented on pop; when > 0, pop just decrements without actually popping the scope stack |
 | `+580` | 4 | `orig_depth` | Original scope stack depth at time of template instantiation push; validated during pop |
 | `+584` | 4 | `saved_scope_depth` | Saved scope depth; restored via `dword_126C5AC` on template instantiation pop |
 | `+608` | 8 | `class_def_info_ptr` | Class definition information pointer |
@@ -118,7 +118,7 @@ The scope stack kind byte at `+4` uses a different, larger enum than the IL scop
 
 ### Relationship to IL Scope Kinds
 
-The IL scope node (288 bytes, allocated by `alloc_scope` at `sub_5E7D80`) uses a smaller `sck_*` enum at its `+28` field. The scope stack entry at `+192` points to the IL scope that persists after the stack entry is popped. Not all scope stack kinds produce an IL scope -- reactivation kinds (5, 7) and context kinds (9, 10) reuse existing IL scopes.
+The IL scope node (288 bytes, allocated by `alloc_scope` at `sub_5E7D80`) uses a smaller `sck_*` enum at its `+28` field. The scope stack entry at `+192` points to the IL scope that persists after the stack entry is popped. Not all scope stack kinds produce an IL scope — reactivation kinds (5, 7) and context kinds (9, 10) reuse existing IL scopes.
 
 | IL `sck_*` | Value | Corresponding stack kind(s) |
 |---|---|---|
@@ -445,8 +445,8 @@ Followed by per-scope-kind counts using all scope kind display names.
 
 ## Cross-References
 
-- [Entity Node Layout](entity-node.md) -- entity kind enum, execution space byte at `+182`
-- [IL Overview](../il/overview.md) -- IL scope kinds (`sck_*`), IL entry kind 23 (scope, 288 bytes)
-- [IL Allocation](../il/allocation.md) -- `alloc_scope` allocator for 288-byte IL scope nodes
-- [Template Instance Record](template-instance.md) -- template instantiation data structures
-- [Translation Unit Descriptor](translation-unit.md) -- TU pointer stored at scope entry `+216`
+- [Entity Node Layout](entity-node.md) — entity kind enum, execution space byte at `+182`
+- [IL Overview](../il/overview.md) — IL scope kinds (`sck_*`), IL entry kind 23 (scope, 288 bytes)
+- [IL Allocation](../il/allocation.md) — `alloc_scope` allocator for 288-byte IL scope nodes
+- [Template Instance Record](template-instance.md) — template instantiation data structures
+- [Translation Unit Descriptor](translation-unit.md) — TU pointer stored at scope entry `+216`

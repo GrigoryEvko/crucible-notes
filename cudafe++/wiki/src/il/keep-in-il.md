@@ -38,8 +38,8 @@ Two additional "keep definition" flags exist on specific entity types:
 
 | Entity kind | Field | Bit | Meaning |
 |---|---|---|---|
-| Type (kind 6, class/struct) | `entry + 162` | bit 7 (0x80) | `keep_definition_in_il` -- retain full class body |
-| Routine (kind 11) | `entry + 187` | bit 2 (0x04) | `keep_definition_in_il` -- retain function body |
+| Type (kind 6, class/struct) | `entry + 162` | bit 7 (0x80) | `keep_definition_in_il` — retain full class body |
+| Routine (kind 11) | `entry + 187` | bit 2 (0x04) | `keep_definition_in_il` — retain function body |
 
 The `keep_definition_in_il` flag is stronger than the base `keep_in_il` flag. A type marked with only `keep_in_il` may be emitted as a forward declaration; one marked with `keep_definition_in_il` retains its full member list, base classes, and nested types.
 
@@ -570,13 +570,13 @@ The debug output for eliminated vs. retained entities uses a string trick: `"TAR
 | `sub_5CC1B0` | `eliminate_unneeded_class_definitions` | 100% | ~200 | `il.c` |
 | `sub_5CC570` | `eliminate_unneeded_scope_orphaned_list_entries` | 100% | ~200 | `il.c:29398` |
 | `sub_5CB920` | `process_members_of_eliminated_class_definition` | 100% | ~300 | `il.c:29097` |
-| `sub_5B9EE0` | `lookup_canonical_entry` | -- | -- | `il_walk.c` |
-| `sub_78A380` | `clear_instantiation_required` | -- | -- | `template.c` |
+| `sub_5B9EE0` | `lookup_canonical_entry` | — | — | `il_walk.c` |
+| `sub_78A380` | `clear_instantiation_required` | — | — | `template.c` |
 
 ## Cross-References
 
-- [Pipeline Overview](../pipeline/overview.md) -- overall compilation flow
-- [IL Overview](./overview.md) -- entry kinds, header, regions
-- [IL Tree Walking](./walking.md) -- generic walker with 5 callbacks
-- [Device/Host Separation](../cuda/device-host-separation.md) -- higher-level splitting strategy
-- [Execution Spaces](../cuda/execution-spaces.md) -- how entities get device/host attributes
+- [Pipeline Overview](../pipeline/overview.md) — overall compilation flow
+- [IL Overview](./overview.md) — entry kinds, header, regions
+- [IL Tree Walking](./walking.md) — generic walker with 5 callbacks
+- [Device/Host Separation](../cuda/device-host-separation.md) — higher-level splitting strategy
+- [Execution Spaces](../cuda/execution-spaces.md) — how entities get device/host attributes

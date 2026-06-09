@@ -16,9 +16,9 @@ The printf lowering pass rewrites device-side `printf()` calls into CUDA's runti
 
 Printf lowering happens at two points in the compilation pipeline:
 
-**Stage 1 -- AST-level** (`sub_12992B0`): During initial IR generation from the EDG frontend output, when the code generator encounters a direct call to `printf`, it intercepts the call and emits the `vprintf` rewrite inline. This is the earlier, more detailed pass that handles type promotion, buffer packing, and alloca management.
+**Stage 1 — AST-level** (`sub_12992B0`): During initial IR generation from the EDG frontend output, when the code generator encounters a direct call to `printf`, it intercepts the call and emits the `vprintf` rewrite inline. This is the earlier, more detailed pass that handles type promotion, buffer packing, and alloca management.
 
-**Stage 2 -- Module-level** (`sub_1CB1E60`): A cleanup pass that runs during the LLVM optimization pipeline. It catches any remaining `printf` calls that survived the AST lowering (e.g., from linked bitcode modules or inlined functions) and applies the same transformation. This pass validates that the format string is a string literal: `"The first argument for printf must be a string literal!"`.
+**Stage 2 — Module-level** (`sub_1CB1E60`): A cleanup pass that runs during the LLVM optimization pipeline. It catches any remaining `printf` calls that survived the AST lowering (e.g., from linked bitcode modules or inlined functions) and applies the same transformation. This pass validates that the format string is a string literal: `"The first argument for printf must be a string literal!"`.
 
 ## AST-Level Lowering Algorithm (sub_12992B0)
 
@@ -30,7 +30,7 @@ The pass looks up or creates the `"vprintf"` function declaration in the module:
 
 1. Build the `vprintf` parameter type list: `(i8*, i8*)`
 2. Create the `FunctionType` via `sub_1644EA0`
-3. Call `sub_1632190(Module*, "vprintf", 7, funcType)` -- this is `Module::getOrInsertFunction`
+3. Call `sub_1632190(Module*, "vprintf", 7, funcType)` — this is `Module::getOrInsertFunction`
 
 The literal string `"vprintf"` with length 7 is stored in a local variable.
 
@@ -80,7 +80,7 @@ For each vararg, the pass:
 
 ### Phase 5: Alloca Resize
 
-After processing all arguments, the pass checks whether the total packed size exceeds the current alloca size. If so, it patches the alloca's size operand in-place by manipulating the use-def chain directly -- unlinking the old size constant and linking a new one. This unusual technique avoids creating a second alloca while ensuring a single allocation dominates all printf pack sites.
+After processing all arguments, the pass checks whether the total packed size exceeds the current alloca size. If so, it patches the alloca's size operand in-place by manipulating the use-def chain directly — unlinking the old size constant and linking a new one. This unusual technique avoids creating a second alloca while ensuring a single allocation dominates all printf pack sites.
 
 ### Phase 6: Emit vprintf Call
 
@@ -108,7 +108,7 @@ The module-level pass uses `"vprintfBuffer.local"` as the alloca name (versus `"
 
 **Alloca caching**: `a1[19]` in the IRGenState caches the `"tmp"` alloca across multiple printf calls within the same function. This reduces alloca instruction count in functions with many printf calls.
 
-**Struct nesting limit**: the type-size calculation handles up to 3 levels of nested struct packing (three nested switch statements in the decompilation). Deeper nesting hits a `JUMPOUT` at `0x129A22F` -- likely an assertion for structs nested more than 3 levels in printf arguments.
+**Struct nesting limit**: the type-size calculation handles up to 3 levels of nested struct packing (three nested switch statements in the decompilation). Deeper nesting hits a `JUMPOUT` at `0x129A22F` — likely an assertion for structs nested more than 3 levels in printf arguments.
 
 **Pointer tag bits**: the basic block instruction list uses an intrusive doubly-linked list where the low 3 bits of next/prev pointers carry metadata tags (masked with `0xFFFFFFFFFFFFFFF8`). This is consistent with LLVM's `ilist` implementation using pointer-int pairs.
 

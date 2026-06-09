@@ -43,7 +43,7 @@ The tenth vtable `off_4A026E0` is present in the binary but returns `"!Special!"
 
 Throughout this wiki, the **emission-derived names** (Int16HalfRegs, Int32HalfRegs, Int128Regs) are canonical. Pages written before this consolidation may use the RA-context aliases.
 
-## Register Encoding Scheme -- sub_21583D0
+## Register Encoding Scheme — sub_21583D0
 
 Every virtual register in the NVPTX backend is encoded as a 32-bit value that packs the register class and a per-class index into a single integer. The encoding function at `sub_21583D0` (1.1 KB) implements this:
 
@@ -61,12 +61,12 @@ The bit layout:
 +------+-------------------------------+
 ```
 
-- **Bits [31:28]** -- 4-bit class tag, values `0x1` through `0x9` as listed in the table above.
-- **Bits [27:0]** -- 28-bit register index within that class, supporting up to 268 million registers per class.
+- **Bits [31:28]** — 4-bit class tag, values `0x1` through `0x9` as listed in the table above.
+- **Bits [27:0]** — 28-bit register index within that class, supporting up to 268 million registers per class.
 
 The function operates in two modes:
 
-1. **Physical register** (register_id >= 0): Returns the raw index directly (low 28 bits). Physical registers on NVPTX are a vestigial concept -- the target has no fixed register file -- but LLVM's infrastructure requires them for reserved registers like `%SP` and `%SPL`.
+1. **Physical register** (register_id >= 0): Returns the raw index directly (low 28 bits). Physical registers on NVPTX are a vestigial concept — the target has no fixed register file — but LLVM's infrastructure requires them for reserved registers like `%SP` and `%SPL`.
 
 2. **Virtual register** (register_id < 0, i.e., bit 31 set in LLVM's internal convention): Looks up the register class from the `MachineRegisterInfo` register map, matches the class vtable against the nine known vtable addresses, and returns `class_encoded_id | (register_index & 0x0FFFFFFF)`.
 
@@ -80,7 +80,7 @@ This is a hard abort, not a recoverable diagnostic. It indicates that either a n
 
 ### Why Bits [31:28] and Not Bits [31:29]
 
-LLVM's standard convention uses bit 31 (`0x80000000`) to distinguish physical from virtual registers internally. The NVPTX encoding reclaims this bit as part of the class tag because after encoding, the distinction between physical and virtual is no longer meaningful -- all registers in emitted PTX are virtual. Tag value `0x8` (Int32HalfRegs) has bit 31 set, which would collide with LLVM's virtual-register marker. This works because the encoding is applied only during emission, after register allocation is complete and the physical/virtual distinction is irrelevant.
+LLVM's standard convention uses bit 31 (`0x80000000`) to distinguish physical from virtual registers internally. The NVPTX encoding reclaims this bit as part of the class tag because after encoding, the distinction between physical and virtual is no longer meaningful — all registers in emitted PTX are virtual. Tag value `0x8` (Int32HalfRegs) has bit 31 set, which would collide with LLVM's virtual-register marker. This works because the encoding is applied only during emission, after register allocation is complete and the physical/virtual distinction is irrelevant.
 
 ## Complete Class Separation
 
@@ -92,7 +92,7 @@ The nine register classes are **completely disjoint**. There is no cross-class i
 
 This is unlike CPU targets (x86, AArch64) where integer and floating-point registers can alias through sub-register relationships, or where a single physical register appears in multiple register classes.
 
-## Copy Opcodes -- sub_2162350
+## Copy Opcodes — sub_2162350
 
 The function `sub_2162350` (0.7 KB, `"Copy one register into another with a different width"`) dispatches copy instruction emission based on the source and destination register classes. Each class has two opcodes: one for same-class copies (e.g., `mov.b32 %r1, %r0`) and one for cross-class copies (e.g., bitcasting between `Int32Regs` and `Float32Regs`):
 
@@ -108,11 +108,11 @@ The function `sub_2162350` (0.7 KB, `"Copy one register into another with a diff
 | Int32HalfRegs | 39552 | 39552 | Uses same opcode as Int32Regs same-class |
 | Int128Regs | 39168 | 39168 | No distinct cross-class path |
 
-Classes where both opcodes are identical (`Int1Regs`, `Int16Regs`, `Int32HalfRegs`, `Int128Regs`) have no meaningful cross-class copy path. For predicates (`Int1Regs`), this is because there is no other 1-bit type. For 128-bit registers, tensor-core values have no peer class to bitcast into. The `Int32HalfRegs` class shares its same-class opcode (39552) with `Int32Regs` because both emit `.b32` copies -- the packed v2f16 value is simply treated as a 32-bit bitpattern for copying.
+Classes where both opcodes are identical (`Int1Regs`, `Int16Regs`, `Int32HalfRegs`, `Int128Regs`) have no meaningful cross-class copy path. For predicates (`Int1Regs`), this is because there is no other 1-bit type. For 128-bit registers, tensor-core values have no peer class to bitcast into. The `Int32HalfRegs` class shares its same-class opcode (39552) with `Int32Regs` because both emit `.b32` copies — the packed v2f16 value is simply treated as a 32-bit bitpattern for copying.
 
 The five classes with distinct cross-class opcodes (`Int32Regs`, `Int64Regs`, `Float32Regs`, `Float64Regs`, `Int16HalfRegs`) are exactly those that participate in bitcast operations between integer and floating-point interpretations of the same bit width.
 
-## Register Declaration Emission -- sub_2158E80
+## Register Declaration Emission — sub_2158E80
 
 During function body emission, `sub_2158E80` (3.2 KB) emits `.reg` declarations for every register class used by the function. The process:
 
@@ -135,13 +135,13 @@ During function body emission, `sub_2158E80` (3.2 KB) emits `.reg` declarations 
 
 The count for each class is `max_register_index + 1`. The PTX declaration syntax `%prefix<N>` declares registers `%prefix0` through `%prefix(N-1)`.
 
-Note that `Int16HalfRegs` and `Int16Regs` share the same PTX type suffix (`.b16`) but have different prefixes (`%h` vs `%rs`). Similarly, `Int32HalfRegs` and `Int32Regs` share `.b32` but use `%hh` vs `%r`. The PTX assembler `ptxas` treats these as completely separate register namespaces -- the prefix, not the type, determines the namespace.
+Note that `Int16HalfRegs` and `Int16Regs` share the same PTX type suffix (`.b16`) but have different prefixes (`%h` vs `%rs`). Similarly, `Int32HalfRegs` and `Int32Regs` share `.b32` but use `%hh` vs `%r`. The PTX assembler `ptxas` treats these as completely separate register namespaces — the prefix, not the type, determines the namespace.
 
 Stack pointer registers (`%SP`, `%SPL`) are emitted before the class declarations when the function has a non-zero local frame. These use `.b64` in 64-bit mode or `.b32` in 32-bit mode.
 
 ## Per-Class Detail
 
-### Int1Regs -- Predicates
+### Int1Regs — Predicates
 
 | Property | Value |
 |---|---|
@@ -155,7 +155,7 @@ Stack pointer registers (`%SP`, `%SPL`) are emitted before the class declaration
 
 Predicate registers hold boolean values used for conditional branches (`@%p1 bra target`), select instructions (`selp`), and set-predicate results (`setp`). They are the only 1-bit registers in PTX. There is no cross-class copy path because no other class holds 1-bit values. The coalescer excludes predicates from cross-class analysis entirely.
 
-### Int16Regs -- Short Integers
+### Int16Regs — Short Integers
 
 | Property | Value |
 |---|---|
@@ -169,7 +169,7 @@ Predicate registers hold boolean values used for conditional branches (`@%p1 bra
 
 Short integer registers hold 16-bit integer values. PTX `.param` space widens all scalars below 32 bits to `.b32`, so `%rs` registers appear primarily in computation, not in function signatures. The prefix `%rs` (register-short) distinguishes these from `%h` (Int16HalfRegs) even though both declare as `.b16`.
 
-### Int32Regs -- General-Purpose 32-bit
+### Int32Regs — General-Purpose 32-bit
 
 | Property | Value |
 |---|---|
@@ -184,7 +184,7 @@ Short integer registers hold 16-bit integer values. PTX `.param` space widens al
 
 The workhorse register class. Holds 32-bit integers, addresses in 32-bit mode, loop indices, and general computation results. Cross-class copy opcode 10816 handles bitcast to `Float32Regs` (`%f`).
 
-### Int64Regs -- Double-Width Integer
+### Int64Regs — Double-Width Integer
 
 | Property | Value |
 |---|---|
@@ -199,7 +199,7 @@ The workhorse register class. Holds 32-bit integers, addresses in 32-bit mode, l
 
 Holds 64-bit integers and device pointers in 64-bit mode (the common case). Cross-class copy opcode 11008 handles bitcast to `Float64Regs` (`%fd`).
 
-### Float32Regs -- Single-Precision Float
+### Float32Regs — Single-Precision Float
 
 | Property | Value |
 |---|---|
@@ -212,9 +212,9 @@ Holds 64-bit integers and device pointers in 64-bit mode (the common case). Cros
 | Same-class copy | 30656 |
 | Cross-class copy | 10880 |
 
-Holds IEEE 754 single-precision floats. Note the `.f32` type suffix rather than `.b32` -- PTX distinguishes float from bitwise register types even at the same width. Cross-class copy opcode 10880 handles bitcast to `Int32Regs` (`%r`).
+Holds IEEE 754 single-precision floats. Note the `.f32` type suffix rather than `.b32` — PTX distinguishes float from bitwise register types even at the same width. Cross-class copy opcode 10880 handles bitcast to `Int32Regs` (`%r`).
 
-### Float64Regs -- Double-Precision Float
+### Float64Regs — Double-Precision Float
 
 | Property | Value |
 |---|---|
@@ -229,7 +229,7 @@ Holds IEEE 754 single-precision floats. Note the `.f32` type suffix rather than 
 
 Holds IEEE 754 double-precision floats. Cross-class copy opcode 11072 handles bitcast to `Int64Regs` (`%rd`).
 
-### Int16HalfRegs -- Half-Precision Float
+### Int16HalfRegs — Half-Precision Float
 
 | Property | Value |
 |---|---|
@@ -246,7 +246,7 @@ Despite the `Int16` in the TableGen-derived name, this class holds half-precisio
 
 The semantic alias `Float16Regs` appears in some wiki pages and is equally valid.
 
-### Int32HalfRegs -- Packed Half-Precision Pairs
+### Int32HalfRegs — Packed Half-Precision Pairs
 
 | Property | Value |
 |---|---|
@@ -265,7 +265,7 @@ All vector types wider than 32 bits (`v4f32`, `v2f64`, `v8i32`, etc.) are illega
 
 The semantic alias `Float16x2Regs` appears in some wiki pages.
 
-### Int128Regs -- 128-bit Tensor Core Values
+### Int128Regs — 128-bit Tensor Core Values
 
 | Property | Value |
 |---|---|
@@ -284,7 +284,7 @@ During register coalescing, 128-bit values are tracked as wide register pairs (t
 
 An earlier raw report (`p2c.5-01-register-alloc.txt`) labeled `off_4A02460` as `SpecialRegs`. This was an error in that report's identification. The vtable `off_4A02460` emits `.b128` / `%rq`, which is the 128-bit class for tensor core values, not a class for special/environment registers.
 
-### The Internal-Only Class -- off_4A026E0
+### The Internal-Only Class — off_4A026E0
 
 | Property | Value |
 |---|---|
@@ -293,7 +293,7 @@ An earlier raw report (`p2c.5-01-register-alloc.txt`) labeled `off_4A02460` as `
 | Prefix | `"!Special!"` |
 | Encoded ID | None |
 
-A tenth vtable address appears in the register info initialization path (`sub_2163AB0`). Both `sub_2163730` and `sub_21638D0` return the sentinel string `"!Special!"` for this vtable. It has no encoded ID, no PTX declaration, and never produces emitted registers. The string `"ENVREG10"` at register info offset `+72` (alongside `"Int1Regs"` at offset `+80`) suggests this class is associated with environment registers -- hardware-defined read-only registers like `%tid`, `%ctaid`, `%ntid`, etc. These are emitted by dedicated special-register emission functions (`sub_21E86B0`, `sub_21E9060`) rather than through the register class encoding path.
+A tenth vtable address appears in the register info initialization path (`sub_2163AB0`). Both `sub_2163730` and `sub_21638D0` return the sentinel string `"!Special!"` for this vtable. It has no encoded ID, no PTX declaration, and never produces emitted registers. The string `"ENVREG10"` at register info offset `+72` (alongside `"Int1Regs"` at offset `+80`) suggests this class is associated with environment registers — hardware-defined read-only registers like `%tid`, `%ctaid`, `%ntid`, etc. These are emitted by dedicated special-register emission functions (`sub_21E86B0`, `sub_21E9060`) rather than through the register class encoding path.
 
 ## Register Info Initialization
 
@@ -332,16 +332,16 @@ The register coalescer imposes these constraints based on register class:
 
 Int128Regs (the class at `off_4A02460`, previously mislabeled `SpecialRegs` in the coalescing page) has its constraint flag cleared, excluding it from the coalescing worklist entirely. This makes sense: tensor-core 128-bit values have specific register-pair relationships that the coalescer must not disturb.
 
-Cross-class copies between `Int32Regs`/`Float32Regs` and between `Int64Regs`/`Float64Regs` are bitcasts that the coalescer never eliminates -- they must survive as explicit PTX `mov` instructions because the source and destination live in different register namespaces.
+Cross-class copies between `Int32Regs`/`Float32Regs` and between `Int64Regs`/`Float64Regs` are bitcasts that the coalescer never eliminates — they must survive as explicit PTX `mov` instructions because the source and destination live in different register namespaces.
 
 ## Differences from Upstream LLVM NVPTX
 
 The upstream LLVM NVPTX backend (as of LLVM 20.0.0) defines these register classes in `NVPTXRegisterInfo.td`:
 
-- `Int1Regs`, `Int16Regs`, `Int32Regs`, `Int64Regs` -- identical.
-- `Float16Regs`, `Float16x2Regs` -- upstream names for cicc's `Int16HalfRegs` / `Int32HalfRegs`. The rename reflects NVIDIA's preference for the TableGen-derived integer-typed names.
-- `Float32Regs`, `Float64Regs` -- identical.
-- `Int128Regs` -- present in upstream, matches cicc.
+- `Int1Regs`, `Int16Regs`, `Int32Regs`, `Int64Regs` — identical.
+- `Float16Regs`, `Float16x2Regs` — upstream names for cicc's `Int16HalfRegs` / `Int32HalfRegs`. The rename reflects NVIDIA's preference for the TableGen-derived integer-typed names.
+- `Float32Regs`, `Float64Regs` — identical.
+- `Int128Regs` — present in upstream, matches cicc.
 - No `SpecialRegs` class in upstream. Special registers are handled through dedicated physical registers, not a register class.
 - No `off_4A026E0` internal-only class in upstream.
 
@@ -351,24 +351,24 @@ The encoding scheme (4-bit tag in `[31:28]`, 28-bit index in `[27:0]`) and the f
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Register class encoding (class tag OR index) | `sub_21583D0` | 1.1 KB | -- |
-| Register class -> PTX type suffix (`.pred`, `.b32`, `.f32`, ...) | `sub_2163730` | 0.4 KB | -- |
-| Register class -> PTX prefix (`%p`, `%r`, `%f`, ...) | `sub_21638D0` | 0.5 KB | -- |
-| Copy opcode dispatch by register class | `sub_2162350` | 0.7 KB | -- |
-| Stack frame + register declaration emission | `sub_2158E80` | 3.2 KB | -- |
-| NVPTXRegisterInfo init (legacy PM) | `sub_2163AB0` | 0.3 KB | -- |
-| NVPTXRegisterInfo factory (legacy PM) | `sub_2149CD0` | -- | -- |
-| NVPTXRegisterInfo init (new PM) | `sub_30590F0` | -- | -- |
-| NVPTXRegisterInfo factory (new PM) | `sub_301F0C0` | -- | -- |
-| TargetRegisterInfo::InitMCRegisterInfo | `sub_1F4A910` | -- | -- |
-| Special register emission (%tid, %ctaid, %ntid, %nctaid) | `sub_21E86B0` | -- | -- |
-| Cluster register emission (SM 90+) | `sub_21E9060` | -- | -- |
+| Register class encoding (class tag OR index) | `sub_21583D0` | 1.1 KB | — |
+| Register class -> PTX type suffix (`.pred`, `.b32`, `.f32`, ...) | `sub_2163730` | 0.4 KB | — |
+| Register class -> PTX prefix (`%p`, `%r`, `%f`, ...) | `sub_21638D0` | 0.5 KB | — |
+| Copy opcode dispatch by register class | `sub_2162350` | 0.7 KB | — |
+| Stack frame + register declaration emission | `sub_2158E80` | 3.2 KB | — |
+| NVPTXRegisterInfo init (legacy PM) | `sub_2163AB0` | 0.3 KB | — |
+| NVPTXRegisterInfo factory (legacy PM) | `sub_2149CD0` | — | — |
+| NVPTXRegisterInfo init (new PM) | `sub_30590F0` | — | — |
+| NVPTXRegisterInfo factory (new PM) | `sub_301F0C0` | — | — |
+| TargetRegisterInfo::InitMCRegisterInfo | `sub_1F4A910` | — | — |
+| Special register emission (%tid, %ctaid, %ntid, %nctaid) | `sub_21E86B0` | — | — |
+| Cluster register emission (SM 90+) | `sub_21E9060` | — | — |
 
 ## Cross-References
 
-- [Register Allocation](../llvm/register-allocation.md) -- greedy RA that operates on these classes; pressure tracking and `-maxreg` constraint
-- [Register Coalescing](../llvm/register-coalescing.md) -- same-class-only coalescing policy, copy opcode classification
-- [PTX Emission](../pipeline/emission.md) -- function header orchestrator that calls the register declaration emitter
-- [AsmPrinter](../infra/asmprinter.md) -- per-instruction emission that calls the encoding function
-- [Type Legalization](../llvm/selectiondag.md) -- vector type legalization driven by the Int32HalfRegs-only vector model
-- [NVPTX Target Infrastructure](../infra/nvptx-target.md) -- NVPTXTargetMachine that owns the register info objects
+- [Register Allocation](../llvm/register-allocation.md) — greedy RA that operates on these classes; pressure tracking and `-maxreg` constraint
+- [Register Coalescing](../llvm/register-coalescing.md) — same-class-only coalescing policy, copy opcode classification
+- [PTX Emission](../pipeline/emission.md) — function header orchestrator that calls the register declaration emitter
+- [AsmPrinter](../infra/asmprinter.md) — per-instruction emission that calls the encoding function
+- [Type Legalization](../llvm/selectiondag.md) — vector type legalization driven by the Int32HalfRegs-only vector model
+- [NVPTX Target Infrastructure](../infra/nvptx-target.md) — NVPTXTargetMachine that owns the register info objects

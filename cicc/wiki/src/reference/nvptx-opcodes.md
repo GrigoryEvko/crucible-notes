@@ -195,7 +195,7 @@ Within the PTX emission layer, the atomic operation is encoded in a packed opera
 | `[7:4]` | scope | 0=gpu (default), 1=cta, 2=sys |
 | `[23:16]` (BYTE2) | operation | 0x00=exch, 0x01=add.u, 0x03=and, 0x05=or, 0x06=xor, 0x07=max.s, 0x08=min.s, 0x09=max.u, 0x0A=min.u, 0x0B=add.f, 0x0C=inc, 0x0D=dec, 0x0E=cas |
 
-Note that operation codes 0x02 and 0x04 are absent -- there is no signed atomic add or a second OR variant, matching the PTX ISA specification.
+Note that operation codes 0x02 and 0x04 are absent — there is no signed atomic add or a second OR variant, matching the PTX ISA specification.
 
 On Ampere (SM 80+), each atomic operation has an L2 cache-hinted variant emitted by `sub_21E6420`. The PTX format becomes `atom[.scope].op.L2::cache_hint.type`, instructing the GPU to retain or evict data in L2 after the atomic completes.
 
@@ -427,7 +427,7 @@ The constraint descriptors are purely stack-allocated within `sub_B612D0`'s appr
 
 ## Complete Identified Opcode Summary
 
-The following table consolidates every opcode where the binary-to-PTX mapping has been confirmed or strongly inferred. This represents a partial inventory -- the total opcode space extends to at least 4940, and many opcodes in the gaps (particularly in the load/store, texture, surface, and extended intrinsic ranges) remain unidentified.
+The following table consolidates every opcode where the binary-to-PTX mapping has been confirmed or strongly inferred. This represents a partial inventory — the total opcode space extends to at least 4940, and many opcodes in the gaps (particularly in the load/store, texture, surface, and extended intrinsic ranges) remain unidentified.
 
 | Opcode | Identity | Family | Evidence Source |
 |--------|---------|--------|----------------|
@@ -484,31 +484,31 @@ Recovering these ranges requires systematic analysis of the `sub_33B0210` intrin
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Constraint emission (179-case switch on `word_3F3E6C0`) | `sub_B612D0` | 38.4 KB | -- |
-| Register class set builder (111 cases) | `sub_B5BA00` | 10.1 KB | -- |
-| Operand type decoder (101 cases) | `sub_B6B200` | 10.2 KB | -- |
-| Reg-class constraint builder | `sub_A778C0` | -- | -- |
-| Any-register constraint builder | `sub_A77AD0` | -- | -- |
-| Constraint composer | `sub_A79C90` | -- | -- |
-| Constraint emitter | `sub_A78010` | -- | -- |
-| Opcode-to-copy-type mapping (switch, families 440--503) | `sub_3494EA0` | 3.1 KB | -- |
-| Operand-type classification (reads `byte_444C4A0`) | `sub_34961A0` | 6.4 KB | -- |
-| Register-pair decomposition (wide/paired registers) | `sub_3497B40` | 4.1 KB | -- |
-| `NVPTXTargetLowering::LowerCall` (call ABI opcodes) | `sub_3040BF0` | 19.8 KB | -- |
-| Intrinsic lowering switch (NVVM intrinsic to opcode) | `sub_33B0210` | 60.2 KB | -- |
-| `NVPTXDAGToDAGISel::Select` (ISel entry) | `sub_3090F90` | 12.5 KB | -- |
-| MMA instruction builder (packed descriptor) | `sub_21E74C0` | 2.3 KB | -- |
-| Atomic operation PTX emission (base) | `sub_21E5E70` | -- | -- |
-| L2 cache-hinted atomic PTX emission (SM 80+) | `sub_21E6420` | -- | -- |
-| Memory barrier PTX emission | `sub_21E94F0` | -- | -- |
-| Cluster barrier PTX emission (SM 90+) | `sub_21E8EA0` | -- | -- |
-| Special register PTX emission | `sub_21E86B0` | -- | -- |
-| Cluster special register PTX emission (SM 90+) | `sub_21E9060` | -- | -- |
-| Address space conversion (cvta) PTX emission | `sub_21E7FE0` | -- | -- |
-| tcgen05 Blackwell MMA emission (SM 100+) | `sub_21E8CD0` | -- | -- |
-| Register class to encoded ID mapping | `sub_21583D0` | -- | -- |
-| Register class to PTX type suffix | `sub_2163730` | -- | -- |
-| Register class to PTX register prefix | `sub_21638D0` | -- | -- |
+| Constraint emission (179-case switch on `word_3F3E6C0`) | `sub_B612D0` | 38.4 KB | — |
+| Register class set builder (111 cases) | `sub_B5BA00` | 10.1 KB | — |
+| Operand type decoder (101 cases) | `sub_B6B200` | 10.2 KB | — |
+| Reg-class constraint builder | `sub_A778C0` | — | — |
+| Any-register constraint builder | `sub_A77AD0` | — | — |
+| Constraint composer | `sub_A79C90` | — | — |
+| Constraint emitter | `sub_A78010` | — | — |
+| Opcode-to-copy-type mapping (switch, families 440--503) | `sub_3494EA0` | 3.1 KB | — |
+| Operand-type classification (reads `byte_444C4A0`) | `sub_34961A0` | 6.4 KB | — |
+| Register-pair decomposition (wide/paired registers) | `sub_3497B40` | 4.1 KB | — |
+| `NVPTXTargetLowering::LowerCall` (call ABI opcodes) | `sub_3040BF0` | 19.8 KB | — |
+| Intrinsic lowering switch (NVVM intrinsic to opcode) | `sub_33B0210` | 60.2 KB | — |
+| `NVPTXDAGToDAGISel::Select` (ISel entry) | `sub_3090F90` | 12.5 KB | — |
+| MMA instruction builder (packed descriptor) | `sub_21E74C0` | 2.3 KB | — |
+| Atomic operation PTX emission (base) | `sub_21E5E70` | — | — |
+| L2 cache-hinted atomic PTX emission (SM 80+) | `sub_21E6420` | — | — |
+| Memory barrier PTX emission | `sub_21E94F0` | — | — |
+| Cluster barrier PTX emission (SM 90+) | `sub_21E8EA0` | — | — |
+| Special register PTX emission | `sub_21E86B0` | — | — |
+| Cluster special register PTX emission (SM 90+) | `sub_21E9060` | — | — |
+| Address space conversion (cvta) PTX emission | `sub_21E7FE0` | — | — |
+| tcgen05 Blackwell MMA emission (SM 100+) | `sub_21E8CD0` | — | — |
+| Register class to encoded ID mapping | `sub_21583D0` | — | — |
+| Register class to PTX type suffix | `sub_2163730` | — | — |
+| Register class to PTX register prefix | `sub_21638D0` | — | — |
 
 ## Global Data References
 
@@ -528,9 +528,9 @@ Recovering these ranges requires systematic analysis of the `sub_33B0210` intrin
 
 ## Cross-References
 
-- [Pattern Database](../structs/pattern-db.md) -- detailed constraint descriptor layout and emission sub-functions
-- [Register Coalescing](../llvm/register-coalescing.md) -- the NVPTX-specific coalescer that processes copy family opcodes 440--503
-- [Code Generation](../pipeline/codegen.md) -- pipeline overview including ISel, RA, and machine-level passes
-- [InstrEmitter](../llvm/instr-emitter.md) -- how SDNodes become MachineInstrs with these opcodes
-- [Register Allocation](../llvm/register-allocation.md) -- greedy RA that consumes constraint table data
-- [AsmPrinter](../infra/asmprinter.md) -- the PTX emission layer that converts these opcodes to text
+- [Pattern Database](../structs/pattern-db.md) — detailed constraint descriptor layout and emission sub-functions
+- [Register Coalescing](../llvm/register-coalescing.md) — the NVPTX-specific coalescer that processes copy family opcodes 440--503
+- [Code Generation](../pipeline/codegen.md) — pipeline overview including ISel, RA, and machine-level passes
+- [InstrEmitter](../llvm/instr-emitter.md) — how SDNodes become MachineInstrs with these opcodes
+- [Register Allocation](../llvm/register-allocation.md) — greedy RA that consumes constraint table data
+- [AsmPrinter](../infra/asmprinter.md) — the PTX emission layer that converts these opcodes to text

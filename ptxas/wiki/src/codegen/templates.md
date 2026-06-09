@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-NVIDIA GPUs lack hardware integer dividers and native FP64 arithmetic units on the SFU. When ptxas encounters PTX operations such as `div.s32`, `div.u64`, `rcp.f64`, `sqrt.f64`, or `rsqrt.f64`, it expands them into multi-instruction SASS sequences that synthesize the result from simpler hardware primitives. These expansions are the **math templates** -- pre-built instruction sequence generators that emit 20--100+ SASS instructions per PTX operation, using the MUFU (Multi-Function Unit) for initial approximations and Newton-Raphson iterations for refinement.
+NVIDIA GPUs lack hardware integer dividers and native FP64 arithmetic units on the SFU. When ptxas encounters PTX operations such as `div.s32`, `div.u64`, `rcp.f64`, `sqrt.f64`, or `rsqrt.f64`, it expands them into multi-instruction SASS sequences that synthesize the result from simpler hardware primitives. These expansions are the **math templates** — pre-built instruction sequence generators that emit 20--100+ SASS instructions per PTX operation, using the MUFU (Multi-Function Unit) for initial approximations and Newton-Raphson iterations for refinement.
 
 The template subsystem lives at `0x1700000`--`0x172A090` in the ptxas binary: 36 functions occupying ~180 KB. It is invoked during instruction selection by the master lowering dispatcher `sub_AED3C0` whenever the selected instruction requires multi-instruction expansion.
 
@@ -72,7 +72,7 @@ void DDIV_Handler(template_state *a1, instruction *a2) {
 }
 ```
 
-The `a1->use_template_call` flag (at offset +8) controls whether the expansion is emitted as a callable template (with `BRA` to a named code section) or inlined directly at the call site. The template-call path produces three named code objects -- `__ori_template_DDIV1`, `__ori_template_DDIV2`, `__ori_template_DDIV3` -- that are shared across all DDIV call sites in the same function.
+The `a1->use_template_call` flag (at offset +8) controls whether the expansion is emitted as a callable template (with `BRA` to a named code section) or inlined directly at the call site. The template-call path produces three named code objects — `__ori_template_DDIV1`, `__ori_template_DDIV2`, `__ori_template_DDIV3` — that are shared across all DDIV call sites in the same function.
 
 ### Coordinator Pattern
 
@@ -197,7 +197,7 @@ The DDIV template produces three code sections. The pseudocode below is reconstr
     MOV.LO   dst_lo, v[result_lo]
 ```
 
-The DDIV template emits ~100--120 SASS instructions across 6 sub-expanders, using 298 virtual registers. The two `DFMA` instructions (opcode 0x122) in Part 2 are the mathematical core -- each implements one Newton-Raphson step that doubles precision from the ~23-bit MUFU.RCP seed to ~46 bits (iteration 1) then to the 52+3 guard bits needed for IEEE-correct rounding. The `DMUL` instructions (opcode 0x8B) with the constant `0x4350000000000000` (2^54) perform the final scaled multiply of `a * (1/b)` at extended precision.
+The DDIV template emits ~100--120 SASS instructions across 6 sub-expanders, using 298 virtual registers. The two `DFMA` instructions (opcode 0x122) in Part 2 are the mathematical core — each implements one Newton-Raphson step that doubles precision from the ~23-bit MUFU.RCP seed to ~46 bits (iteration 1) then to the 52+3 guard bits needed for IEEE-correct rounding. The `DMUL` instructions (opcode 0x8B) with the constant `0x4350000000000000` (2^54) perform the final scaled multiply of `a * (1/b)` at extended precision.
 
 ### SASS Instruction Sequence (sub_1705820)
 
@@ -212,7 +212,7 @@ The DDIV Part 2 sub-expander (`sub_1705820`, 7,545 bytes, 1,057 lines decompiled
 | IADD3 | 0x110 | 5 | Three-operand integer add for exponent arithmetic |
 | SHR | 0x19 | 1 | Shift right for exponent extraction |
 | BRA | 0x5F | 5 | Conditional branches for special-case handling |
-| MUFU | 0x3C | 1 | `MUFU.RCP` -- the initial reciprocal seed |
+| MUFU | 0x3C | 1 | `MUFU.RCP` — the initial reciprocal seed |
 | DFMA | 0x122 | 2 | FP64 fused multiply-add (Newton-Raphson iteration) |
 | FP64 op | 0x8B | 2 | FP64 arithmetic (multiply or add) |
 | FP32 hi/lo | 0x86/0x85 | 4+4 | Move FP32 halves of FP64 register pair |
@@ -226,9 +226,9 @@ The inline DDIV handler (`sub_1704070`) selects between three implementations ba
 
 | Register limit | Handler | Strategy |
 |---|---|---|
-| > 20,479 | `sub_1702990` (5,846 bytes) | Full unrolled -- maximum ILP, 14+ dedicated scratch registers |
-| > 16,383 | `sub_1701F10` | Partially spilled -- trades some registers for spill/fill |
-| <= 16,383 | `sub_1701860` | Minimal-register -- reuses registers aggressively, more instructions |
+| > 20,479 | `sub_1702990` (5,846 bytes) | Full unrolled — maximum ILP, 14+ dedicated scratch registers |
+| > 16,383 | `sub_1701F10` | Partially spilled — trades some registers for spill/fill |
+| <= 16,383 | `sub_1701860` | Minimal-register — reuses registers aggressively, more instructions |
 
 This three-tier approach is a register-pressure/throughput tradeoff: kernels with high register demand (and thus low occupancy) use the minimal variant, while kernels with register headroom use the fully unrolled variant for better instruction-level parallelism.
 
@@ -338,7 +338,7 @@ The DRSQRT template emits 65 instructions across Parts 1--2. `IMAD` (0x6E) chain
 
 Integer division and modulo by variable (non-constant) values are expanded into multi-instruction SASS sequences during instruction selection. These sequences use the MUFU.RCP hardware approximation as a starting point, then correct the result with integer arithmetic.
 
-### 32-bit Division -- `sub_1724A20`
+### 32-bit Division — `sub_1724A20`
 
 **Size:** 28,138 bytes decompiled (957 lines), the largest function in the `0x1723000`--`0x17F8000` range.
 **Called from:** `sub_1727130` (coordinator B).
@@ -392,7 +392,7 @@ The complete SASS instruction mix for the 32-bit division template:
 
 Two variants handle 64-bit operands, both called sequentially from `sub_1729B50` (signed first, then unsigned):
 
-#### Unsigned 64-bit -- `sub_1728930`
+#### Unsigned 64-bit — `sub_1728930`
 
 **Size:** 16,545 bytes decompiled (634 lines). Emits 41 SASS instructions (including 4 branches).
 **Temporary pool:** indices 29--58 of the parameter array, providing 30 dedicated scratch registers.
@@ -486,11 +486,11 @@ Complete SASS instruction mix:
 | MOV/CALL | 0x82/0xA8 | 1 | Div-vs-mod output select |
 | **Total** | | **41** | |
 
-#### Signed 64-bit -- `sub_1727AC0`
+#### Signed 64-bit — `sub_1727AC0`
 
 **Size:** 13,776 bytes decompiled (538 lines). Emits 36 instructions (including 1 branch).
 
-The signed variant does NOT call `sub_1728930` -- it inlines its own equivalent unsigned core wrapped with sign handling:
+The signed variant does NOT call `sub_1728930` — it inlines its own equivalent unsigned core wrapped with sign handling:
 
 ```asm
 Phase A -- Sign extraction and absolute value (10 insns + 1 branch)
@@ -626,7 +626,7 @@ The `use_template_call` flag at `template_state + 8` selects between two emissio
 
 #### Decision Algorithm
 
-The flag is computed once during lazy initialization of the 88-byte template state object (first encounter of a template-eligible instruction in the function). The decision is **not count-based** -- it does not depend on how many DDIV/DRCP/DSQRT operations appear. It is driven purely by compilation-context flags:
+The flag is computed once during lazy initialization of the 88-byte template state object (first encounter of a template-eligible instruction in the function). The decision is **not count-based** — it does not depend on how many DDIV/DRCP/DSQRT operations appear. It is driven purely by compilation-context flags:
 
 ```c
 // sub_AED3C0 template state init (identical in cases 48, 49, 138, 180, 222)
@@ -761,10 +761,10 @@ Internal opcode IDs used by the math templates, mapped to SASS mnemonics:
 
 ## Cross-References
 
-- [Code Generation Overview](overview.md) -- pipeline context showing templates as step 5 of 7
-- [Strength Reduction](../passes/strength-reduction.md) -- division-by-constant optimization (Granlund-Montgomery), peephole patterns
-- [Instruction Selection](isel.md) -- ISel mega-selector and pattern matchers that feed into template expansion
-- [SASS Instruction Encoding](encoding.md) -- `sub_7B9B80` bitfield packer used by encoding tables
-- [Peephole Optimization](peephole.md) -- post-template simplification of emitted sequences
-- [Register Model](../ir/registers.md) -- virtual register allocation and the `0x40` template-ownership flag
-- [Scheduling](../scheduling/overview.md) -- scheduling of template-emitted instruction sequences
+- [Code Generation Overview](overview.md) — pipeline context showing templates as step 5 of 7
+- [Strength Reduction](../passes/strength-reduction.md) — division-by-constant optimization (Granlund-Montgomery), peephole patterns
+- [Instruction Selection](isel.md) — ISel mega-selector and pattern matchers that feed into template expansion
+- [SASS Instruction Encoding](encoding.md) — `sub_7B9B80` bitfield packer used by encoding tables
+- [Peephole Optimization](peephole.md) — post-template simplification of emitted sequences
+- [Register Model](../ir/registers.md) — virtual register allocation and the `0x40` template-ownership flag
+- [Scheduling](../scheduling/overview.md) — scheduling of template-emitted instruction sequences

@@ -1,22 +1,22 @@
-# TCGen05 -- 5th Generation Tensor Cores
+# TCGen05 — 5th Generation Tensor Cores
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-TCGen05 is the Blackwell-generation tensor core instruction family introduced with SM 100. It replaces Hopper's WGMMA with a descriptor-based programming model that operates on Tensor Memory (TMEM) -- a dedicated register-file-like storage visible only to the tensor core. ptxas implements TCGen05 as 13 PTX instruction mnemonics (plus 8 debug guardrails), backed by a 90KB MMA codegen function, 11 SASS opcode groups (28 encoding variants), and a set of compiler-inserted validation hooks. TCGen05 is absent on sm_120/sm_121 (consumer Blackwell).
+TCGen05 is the Blackwell-generation tensor core instruction family introduced with SM 100. It replaces Hopper's WGMMA with a descriptor-based programming model that operates on Tensor Memory (TMEM) — a dedicated register-file-like storage visible only to the tensor core. ptxas implements TCGen05 as 13 PTX instruction mnemonics (plus 8 debug guardrails), backed by a 90KB MMA codegen function, 11 SASS opcode groups (28 encoding variants), and a set of compiler-inserted validation hooks. TCGen05 is absent on sm_120/sm_121 (consumer Blackwell).
 
 | | |
 |---|---|
 | **Target architectures** | sm_100, sm_100a, sm_100f, sm_103, sm_103a, sm_103f, sm_110, sm_110a, sm_110f |
-| **NOT available** | sm_120, sm_121 (consumer/DGX Spark) -- gated by SM version checks |
-| **Capability check** | `sub_70FA00(*, 29)` -- returns true for tcgen05-capable targets |
+| **NOT available** | sm_120, sm_121 (consumer/DGX Spark) — gated by SM version checks |
+| **Capability check** | `sub_70FA00(*, 29)` — returns true for tcgen05-capable targets |
 | **PTX instructions** | 13: alloc, dealloc, relinquish_alloc_permit, ld, ld.red, st, commit, cp, shift, fence, wait, mma, mma.ws |
 | **Guardrail instructions** | 8: is_phase_valid, are_columns_allocated, is_current_warp_valid_owner, in_physical_bounds, allocation_granularity, datapath_alignment, sp_consistency_across_idesc_mod, check_sparse_usage |
 | **SASS opcode range** | Opcodes 122--139 (TMEM operations), 213--221 (TCGEN05_MMA/FENCE, TMEM extended), 342--372 (TCGEN05 control) |
-| **Codegen factory** | 36864 (9 << 12) -- shared across all Blackwell targets |
+| **Codegen factory** | 36864 (9 << 12) — shared across all Blackwell targets |
 | **MMA codegen** | `sub_5BBC30` (90KB) |
-| **PTX validator** | `sub_4C5FB0` (28KB -- shared MMA/WMMA/tcgen05 validator) |
-| **Intrinsic handler** | `sub_6D7AF0` (19KB -- TCGen05 MMA handler) |
-| **Intrinsic validator** | `sub_6D69B0` (12KB -- TCGen05 MMA validator) |
+| **PTX validator** | `sub_4C5FB0` (28KB — shared MMA/WMMA/tcgen05 validator) |
+| **Intrinsic handler** | `sub_6D7AF0` (19KB — TCGen05 MMA handler) |
+| **Intrinsic validator** | `sub_6D69B0` (12KB — TCGen05 MMA validator) |
 | **EIATTR markers** | `EIATTR_TCGEN05_1CTA_USED`, `EIATTR_TCGEN05_2CTA_USED` |
 | **Version constraint** | Objects using tcgen05 from CUDA 12.x cannot link with 13.0+; must rebuild |
 
@@ -24,7 +24,7 @@ TCGen05 is the Blackwell-generation tensor core instruction family introduced wi
 
 ### Descriptor-Based Model
 
-TCGen05 abandons the register-operand model of previous tensor core generations (WMMA, HMMA, WGMMA) in favor of descriptors. The instruction descriptor (`idesc`) encodes the matrix operation configuration -- dimensions, data types, data path width, sparsity, and layout. The descriptor is passed as an operand to `tcgen05.mma` rather than encoded in the instruction mnemonic.
+TCGen05 abandons the register-operand model of previous tensor core generations (WMMA, HMMA, WGMMA) in favor of descriptors. The instruction descriptor (`idesc`) encodes the matrix operation configuration — dimensions, data types, data path width, sparsity, and layout. The descriptor is passed as an operand to `tcgen05.mma` rather than encoded in the instruction mnemonic.
 
 This design decouples the instruction encoding from the operation specification. Where WGMMA required hundreds of distinct intrinsic hash entries to cover every shape/type/layout combination, tcgen05 uses a single instruction with different descriptor values. The ~400 numeric MMA hash entries in the intrinsic dispatch table (at `a1+816` in `sub_5D4190`) map WGMMA variants; tcgen05 replaces that complexity with descriptor-driven dispatch.
 
@@ -35,13 +35,13 @@ TMEM is a dedicated storage region private to the tensor core unit. It is not pa
 Key properties from binary analysis:
 
 - **Column-based allocation**: `tcgen05.alloc` reserves columns; `tcgen05.dealloc` releases them
-- **Two CTA granularities**: Operations execute at `.cta_group::1` (single CTA) or `.cta_group::2` (CTA pair) granularity. A function cannot mix both -- ptxas enforces: *"Function '%s' uses single CTA(.cta_group::1) and CTA pair granularity(.cta_group::2) and that is not allowed."*
+- **Two CTA granularities**: Operations execute at `.cta_group::1` (single CTA) or `.cta_group::2` (CTA pair) granularity. A function cannot mix both — ptxas enforces: *"Function '%s' uses single CTA(.cta_group::1) and CTA pair granularity(.cta_group::2) and that is not allowed."*
 - **Allocation tracking**: The compiler inserts reserved shared memory variables to track allocation state:
-  - `__nv_reservedSMEM_tcgen05_partition` -- partition identifier
-  - `__nv_reservedSMEM_allocation_phase` -- current allocation phase
-  - `__nv_reservedSMEM_allocation_mask` -- bitmask of allocated columns
-  - `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier` -- mbarrier for allocation pipeline
-  - `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier_parity` -- parity tracking
+  - `__nv_reservedSMEM_tcgen05_partition` — partition identifier
+  - `__nv_reservedSMEM_allocation_phase` — current allocation phase
+  - `__nv_reservedSMEM_allocation_mask` — bitmask of allocated columns
+  - `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier` — mbarrier for allocation pipeline
+  - `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier_parity` — parity tracking
 
 ### TMEM Address Computation
 
@@ -62,7 +62,7 @@ Five named TMEM address roles exist for MMA operations:
 | Scale B | `__cuda_sm10x_tcgen05_mma_scaleTmemB` | Scale factors for B |
 | Sparse Meta | `__cuda_sm10x_tcgen05_mma_spMetaTmem` | Sparsity metadata |
 
-Constraint from the binary: `"URa must be uint32 when URa is TMEM"` -- uniform registers addressing TMEM must use 32-bit unsigned integers. When addressing a global descriptor: `"URa must be uint64 when URa is GDESC"`.
+Constraint from the binary: `"URa must be uint32 when URa is TMEM"` — uniform registers addressing TMEM must use 32-bit unsigned integers. When addressing a global descriptor: `"URa must be uint64 when URa is GDESC"`.
 
 ## PTX Instruction Set
 
@@ -76,8 +76,8 @@ Constraint from the binary: `"URa must be uint32 when URa is TMEM"` -- uniform r
 
 The alloc instruction has two CTA-granularity variants visible in the prototype strings:
 
-- `__cuda_sm10x_tcgen05_alloc_one_sm` -- single-SM allocation (`.cta_group::1`)
-- `__cuda_sm10x_tcgen05_alloc_two_sm` -- two-SM allocation (`.cta_group::2`)
+- `__cuda_sm10x_tcgen05_alloc_one_sm` — single-SM allocation (`.cta_group::1`)
+- `__cuda_sm10x_tcgen05_alloc_two_sm` — two-SM allocation (`.cta_group::2`)
 
 Both take a destination pointer argument (`__cuda_sm10x_tc_alloc_dst_ptr_arg`) and a column count (`__cuda_sm10x_tc_alloc_num_cols_arg`).
 
@@ -109,8 +109,8 @@ Each has a corresponding `immhalfSplitOff` parameter controlling split behavior:
 | PTX Instruction | Formatter Address | Size | Purpose |
 |---|---|---|---|
 | `tcgen05.commit` | `0x5427F0` | 1,575 B | Commit pending tensor core operations |
-| `tcgen05.fence` | (inline) | -- | Fence preventing reordering of tcgen05 operations |
-| `tcgen05.wait` | (inline) | -- | Wait for committed tcgen05 operations to complete |
+| `tcgen05.fence` | (inline) | — | Fence preventing reordering of tcgen05 operations |
+| `tcgen05.wait` | (inline) | — | Wait for committed tcgen05 operations to complete |
 | `tcgen05.shift` | `0x58FA20` | 4,604 B | Shift accumulator data within TMEM (shared formatter with mma) |
 
 ### Compute Instructions
@@ -120,7 +120,7 @@ Each has a corresponding `immhalfSplitOff` parameter controlling split behavior:
 | `tcgen05.mma` | `0x5BBC30` (codegen) / `0x58FA20` (formatter) | 90KB / 4,604 B | Matrix multiply-accumulate |
 | `tcgen05.mma.ws` | `0x4DA720` (formatter) | 343 B | Warp-specialized MMA variant |
 
-## TCGen05.MMA -- Matrix Multiply-Accumulate
+## TCGen05.MMA — Matrix Multiply-Accumulate
 
 ### Codegen Function: `sub_5BBC30` (90KB)
 
@@ -165,25 +165,25 @@ The MMA data path width determines the number of elements processed per cycle an
 | `_16dp256bit` | 16 data paths, 256 bits each | |
 | `_128dp256bit` | 128 data paths, 256 bits each | |
 
-Constraint: `"fused and l16dp32bit must be specified together"` -- the fused mode requires the 16dp32bit data path.
+Constraint: `"fused and l16dp32bit must be specified together"` — the fused mode requires the 16dp32bit data path.
 
 ### Block Scaling (MX Format)
 
 TCGen05 adds native block scaling support for microscaling (MX) format operations, visible through the `tcmma` prefix strings:
 
-- `"tcmma_*_o must be specified with blockscale"` -- output modifier requires blockscale
-- `"uri width for tcmma_*_o must be 2"` -- output uniform register index width must be 2
-- `"tcmma_*_q with blockscale must have uri width of 2"` -- quantization with blockscale
-- `"tcmma_*_mxq must be specified with blockscale"` -- MX quantization requires blockscale
+- `"tcmma_*_o must be specified with blockscale"` — output modifier requires blockscale
+- `"uri width for tcmma_*_o must be 2"` — output uniform register index width must be 2
+- `"tcmma_*_q with blockscale must have uri width of 2"` — quantization with blockscale
+- `"tcmma_*_mxq must be specified with blockscale"` — MX quantization requires blockscale
 
 ### Warp-Specialized MMA (`.ws`)
 
 The `.ws` modifier enables warp-specialized execution where different warps in a warpgroup contribute to different phases of the MMA pipeline. Constraints from the binary:
 
-- `"When using buffer1-3, WS modifier must be specified"` -- triple buffering requires `.ws`
-- `"ws opcode modifier not allowed with .2CTA"` -- warp specialization is single-CTA only
-- `"ws opcode modifier not allowed with areuse or akeep"` -- `.ws` incompatible with A-matrix reuse
-- `"ws opcode modifier not allowed with ashift"` -- `.ws` incompatible with A-matrix shift
+- `"When using buffer1-3, WS modifier must be specified"` — triple buffering requires `.ws`
+- `"ws opcode modifier not allowed with .2CTA"` — warp specialization is single-CTA only
+- `"ws opcode modifier not allowed with areuse or akeep"` — `.ws` incompatible with A-matrix reuse
+- `"ws opcode modifier not allowed with ashift"` — `.ws` incompatible with A-matrix shift
 
 Triple-buffer register reuse strings for `.ws` mode:
 
@@ -249,7 +249,7 @@ TCGen05 SASS instructions span three opcode regions in the SM 100 SASS ISA. The 
 | 371 | 1 | TCGEN05 release B | F1D70 | 0 op |
 | 372 | 1 | TCGEN05 release C | F1D70 | 0 op |
 
-**Opcode 344 (TCGEN05 execute)** has the most variants (14), spanning encoding classes from F1F08 to F3008 with 2 to 7 operands. This is the actual MMA dispatch instruction -- the wide encoding range reflects the variety of descriptor configurations, operand modes, and data path widths.
+**Opcode 344 (TCGEN05 execute)** has the most variants (14), spanning encoding classes from F1F08 to F3008 with 2 to 7 operands. This is the actual MMA dispatch instruction — the wide encoding range reflects the variety of descriptor configurations, operand modes, and data path widths.
 
 ### Encoding Class Distribution
 
@@ -371,8 +371,8 @@ TCGen05 is complemented by asynchronous bulk copy operations for loading data in
 | Operation | Codegen Handler | Size |
 |---|---|---|
 | `cp.async.bulk.tensor` (1D--5D, tile/im2col, unicast/multicast) | `sub_5AB460` | 45KB |
-| `cp.async.bulk` | `sub_593210` | -- |
-| `cp.async.mbarrier.arrive` | `sub_4DC180` | -- |
+| `cp.async.bulk` | `sub_593210` | — |
+| `cp.async.mbarrier.arrive` | `sub_4DC180` | — |
 
 The `cp.async.bulk.tensor` handler is 45KB and covers all dimensionality variants (1D through 5D), both tile and im2col access patterns, and unicast/multicast delivery modes.
 
@@ -404,7 +404,7 @@ ptxas v13.0.88 includes a linker-level version check for tcgen05 objects:
 
 > *"Object '%s' cannot be linked due to version mismatch. Objects using tcgen05 in 12.x cannot be linked with 13.0 or later, they must be rebuilt with latest compiler"*
 
-The `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` attribute tags objects compiled with the 12.x-era tcgen05 encoding, which is binary-incompatible with the 13.0 encoding. The SASS instruction encoding for tcgen05.mma changed between CUDA 12.x and 13.0 -- objects must be recompiled.
+The `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` attribute tags objects compiled with the 12.x-era tcgen05 encoding, which is binary-incompatible with the 13.0 encoding. The SASS instruction encoding for tcgen05.mma changed between CUDA 12.x and 13.0 — objects must be recompiled.
 
 ### SM 100 vs SM 103 Differences
 
@@ -431,16 +431,16 @@ The intrinsic dispatch table builder (`sub_5D4190`, 41KB) registers tcgen05 hand
 | Registration | PTX Instruction | Handler | Size |
 |---|---|---|---|
 | Line 112 | `tcgen05.mma` | `sub_5BBC30` | 90KB |
-| Lifecycle | `tcgen05.alloc` | `sub_569180` | -- |
-| Lifecycle | `tcgen05.relinquish_alloc_permit` | `sub_526370` | -- |
-| Lifecycle | `tcgen05.dealloc` | `sub_58C7F0` | -- |
-| Data | `tcgen05.ld` | `sub_574050` | -- |
-| Data | `tcgen05.ld.red` | `sub_578DB0` | -- |
-| Data | `tcgen05.st` | `sub_571FE0` | -- |
-| Sync | `tcgen05.commit` | `sub_56C190` | -- |
-| Copy | `tcgen05.cp` | `sub_5427F0` | -- |
-| Compute | `tcgen05.shift` | `sub_4F1A90` | -- |
-| Compute | `tcgen05.mma.ws` | `sub_58FA20` | -- |
+| Lifecycle | `tcgen05.alloc` | `sub_569180` | — |
+| Lifecycle | `tcgen05.relinquish_alloc_permit` | `sub_526370` | — |
+| Lifecycle | `tcgen05.dealloc` | `sub_58C7F0` | — |
+| Data | `tcgen05.ld` | `sub_574050` | — |
+| Data | `tcgen05.ld.red` | `sub_578DB0` | — |
+| Data | `tcgen05.st` | `sub_571FE0` | — |
+| Sync | `tcgen05.commit` | `sub_56C190` | — |
+| Copy | `tcgen05.cp` | `sub_5427F0` | — |
+| Compute | `tcgen05.shift` | `sub_4F1A90` | — |
+| Compute | `tcgen05.mma.ws` | `sub_58FA20` | — |
 
 ### Intrinsic Lowering
 
@@ -479,37 +479,37 @@ The master instruction encoder (`sub_6D9690`, 94KB) handles the final binary enc
 | `sub_500FA0` | 970 B | guardrails.sp_consistency_across_idesc_mod formatter | HIGH |
 | `sub_526370` | 1,287 B | tcgen05.alloc / tcgen05.relinquish_alloc_permit formatter | HIGH |
 | `sub_5427F0` | 1,575 B | tcgen05.commit formatter | HIGH |
-| `sub_569180` | -- | tcgen05.alloc codegen handler | HIGH |
+| `sub_569180` | — | tcgen05.alloc codegen handler | HIGH |
 | `sub_56C190` | 1,842 B | tcgen05.st formatter | HIGH |
 | `sub_571FE0` | 2,066 B | tcgen05.ld.red formatter | HIGH |
 | `sub_574050` | 2,130 B | tcgen05.dealloc formatter | HIGH |
 | `sub_578DB0` | 2,466 B | tcgen05.ld formatter | HIGH |
 | `sub_58C7F0` | 4,282 B | tcgen05.relinquish_alloc_permit / tcgen05.dealloc formatter | HIGH |
 | `sub_58FA20` | 4,604 B | tcgen05.shift + tcgen05.mma formatter | HIGH |
-| `sub_593210` | -- | cp.async.bulk codegen | HIGH |
+| `sub_593210` | — | cp.async.bulk codegen | HIGH |
 | `sub_5AB460` | 45KB | cp.async.bulk.tensor codegen (1D--5D) | HIGH |
 | `sub_5BBC30` | 90KB | tcgen05.mma codegen (main) | HIGH |
 | `sub_6D69B0` | 12KB | TCGen05 MMA validator (encoding zone) | MED |
 | `sub_6D7AF0` | 19KB | TCGen05 MMA handler (encoding zone) | HIGH |
-| `sub_70BC30` | -- | TCGen05 parameter helper | MED |
-| `sub_70BCC0` | -- | TCGen05 parameter helper | MED |
-| `sub_70DEF0` | -- | TCGen05 parameter helper | MED |
-| `sub_70E0E0` | -- | SM100 guardrail bounds-check code generator | MED |
-| `sub_70E740` | -- | TMEM address generator (tmemD) | MED |
-| `sub_70E940` | -- | TMEM address generator (tmemA) | MED |
-| `sub_70EB00` | -- | TMEM address generator (scaleTmemA/B, spMetaTmem) | MED |
-| `sub_70FA00` | -- | Instruction capability checker (29 = tcgen05) | HIGH |
+| `sub_70BC30` | — | TCGen05 parameter helper | MED |
+| `sub_70BCC0` | — | TCGen05 parameter helper | MED |
+| `sub_70DEF0` | — | TCGen05 parameter helper | MED |
+| `sub_70E0E0` | — | SM100 guardrail bounds-check code generator | MED |
+| `sub_70E740` | — | TMEM address generator (tmemD) | MED |
+| `sub_70E940` | — | TMEM address generator (tmemA) | MED |
+| `sub_70EB00` | — | TMEM address generator (scaleTmemA/B, spMetaTmem) | MED |
+| `sub_70FA00` | — | Instruction capability checker (29 = tcgen05) | HIGH |
 | `sub_8E8A90` | 3.0KB + 949 B | SM 100 latency table (base + TCGEN05 supplement) | HIGH |
 
 ## Cross-References
 
-- [Blackwell (SM 100--121)](blackwell.md) -- Target-level architecture gating, codegen factory 36864
-- [SM Architecture Map](index.md) -- Complete SM table, capability dispatch infrastructure
-- [GMMA/WGMMA Pipeline](../passes/gmma-pipeline.md) -- Predecessor tensor core pipeline (sm_90), same warpgroup execution model
-- [Intrinsic Table (608 Entries)](../intrinsics/index.md) -- IDs 0x20--0x3C (tcgen05 guardrails + bulk copy)
-- [Tensor Core Intrinsics](../intrinsics/tensor.md) -- WMMA/MMA/tcgen05 intrinsic lowering detail
-- [Late Expansion & Legalization](../passes/late-legalization.md) -- tcgen05 guardrail insertion during late expansion
-- [SASS Instruction Encoding](../codegen/encoding.md) -- Mercury encoder, opcode tables
-- [Latency Model & HW Profiles](../scheduling/latency-model.md) -- SM 100 TCGEN05 supplement table
-- [SASS Text Generation](../codegen/sass-printing.md) -- TCGen05 instruction formatters
-- [CLI Options](../config/cli-options.md) -- `--g-tensor-memory-access-check` option
+- [Blackwell (SM 100--121)](blackwell.md) — Target-level architecture gating, codegen factory 36864
+- [SM Architecture Map](index.md) — Complete SM table, capability dispatch infrastructure
+- [GMMA/WGMMA Pipeline](../passes/gmma-pipeline.md) — Predecessor tensor core pipeline (sm_90), same warpgroup execution model
+- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — IDs 0x20--0x3C (tcgen05 guardrails + bulk copy)
+- [Tensor Core Intrinsics](../intrinsics/tensor.md) — WMMA/MMA/tcgen05 intrinsic lowering detail
+- [Late Expansion & Legalization](../passes/late-legalization.md) — tcgen05 guardrail insertion during late expansion
+- [SASS Instruction Encoding](../codegen/encoding.md) — Mercury encoder, opcode tables
+- [Latency Model & HW Profiles](../scheduling/latency-model.md) — SM 100 TCGEN05 supplement table
+- [SASS Text Generation](../codegen/sass-printing.md) — TCGen05 instruction formatters
+- [CLI Options](../config/cli-options.md) — `--g-tensor-memory-access-check` option

@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas handles SM 89 (Ada Lovelace -- RTX 4090, L40S) and SM 90/90a (Hopper -- H100, H200) as adjacent but architecturally distinct targets. Ada shares the Ampere codegen factory (28673) and is stored internally as `"Ampere"`-family despite being a different microarchitecture. Hopper gets its own codegen factory (32768), its own family string `"Hopper"`, and introduces the largest single-generation feature addition in ptxas: WGMMA, thread-block clusters, TMA, setmaxnreg, and distributed shared memory.
+ptxas handles SM 89 (Ada Lovelace — RTX 4090, L40S) and SM 90/90a (Hopper — H100, H200) as adjacent but architecturally distinct targets. Ada shares the Ampere codegen factory (28673) and is stored internally as `"Ampere"`-family despite being a different microarchitecture. Hopper gets its own codegen factory (32768), its own family string `"Hopper"`, and introduces the largest single-generation feature addition in ptxas: WGMMA, thread-block clusters, TMA, setmaxnreg, and distributed shared memory.
 
 | | SM 89 (Ada) | SM 90 (Hopper) | SM 90a (Hopper accel) |
 |---|---|---|---|
@@ -14,25 +14,25 @@ ptxas handles SM 89 (Ada Lovelace -- RTX 4090, L40S) and SM 90/90a (Hopper -- H1
 | **Handler B** | `sub_609CF0` | `sub_609C00` | `sub_609C00` (shared) |
 | **Intrinsic init** | `sub_60A810` | `sub_60A5F0` | `sub_60A5F0` (shared) |
 | **HW latency table** | `sub_8E8280` (3.1KB) | `sub_8E8480` (5.2KB) | `sub_8E8780` (4.6KB) |
-| **Suffix variants** | None | `a` only (no `f`) | -- |
+| **Suffix variants** | None | `a` only (no `f`) | — |
 | **Forward compat** | Full (runs on sm_90+) | Full (base variant) | **None** (locked to H100/H200) |
 
-## The "a" Suffix -- Architecture-Accelerated
+## The "a" Suffix — Architecture-Accelerated
 
 SM 90a is the first target to use the `a` suffix. It appears in the accelerated validation table (`unk_1D161C0`, 7 entries). The meaning is precise: `sm_90a` SASS executes **only** on the specific silicon it was compiled for (H100/H200) and will not run on any future architecture. This trades forward compatibility for access to features that may not survive to the next generation.
 
-In ptxas, sm_90 and sm_90a share all 7 dispatch-table handler functions. The `a` suffix does not produce different handler code paths -- it produces different **compatibility metadata** in the output cubin. The ELF header records whether the binary is forward-compatible (base) or arch-locked (accelerated), and the CUDA driver enforces this at load time.
+In ptxas, sm_90 and sm_90a share all 7 dispatch-table handler functions. The `a` suffix does not produce different handler code paths — it produces different **compatibility metadata** in the output cubin. The ELF header records whether the binary is forward-compatible (base) or arch-locked (accelerated), and the CUDA driver enforces this at load time.
 
 Compilation rules from ptxas help text:
 - `sm_90a` PTX **must** be compiled to `sm_90a` SASS (no cross-arch)
 - `sm_90` PTX can compile to `sm_90` or any later SASS target
 - No `sm_90f` variant exists; the `f` suffix starts with Blackwell
 
-## SM 89 -- Ada Lovelace
+## SM 89 — Ada Lovelace
 
 ### Internal Classification
 
-Ada is classified as Ampere-derived in the binary. The profile object constructed by `sub_6765E0` stores `"Ampere"` as the family name and uses codegen factory value 28673 -- identical to sm_80 through sm_88. The compiler distinguishes Ada from Ampere through per-SM capability accessor functions, not through the factory ID.
+Ada is classified as Ampere-derived in the binary. The profile object constructed by `sub_6765E0` stores `"Ampere"` as the family name and uses codegen factory value 28673 — identical to sm_80 through sm_88. The compiler distinguishes Ada from Ampere through per-SM capability accessor functions, not through the factory ID.
 
 The encoded SM version for sm_89 is **28677** (7 << 12 | 5), placing it as the 5th variant in the Ampere generation:
 
@@ -52,13 +52,13 @@ The intrinsic table initializer for sm_89 (`sub_60A810`) enables 39 additional M
 
 | Intrinsic ID Range | Count | Category |
 |---|---|---|
-| 0x209--0x22F | 39 | `__cuda_sm_8x_mma_*` -- extended MMA shapes and types |
+| 0x209--0x22F | 39 | `__cuda_sm_8x_mma_*` — extended MMA shapes and types |
 
 These intrinsics cover FP8 MMA operations, block-scale MMA, and additional type combinations beyond what sm_80--88 support. The MMA validator at `sub_49BBA0` checks for `"mma with FP8 floating point type"` and validates against the target SM version.
 
 ### Ada Scheduling Profile
 
-The HW latency table for sm_89 (`sub_8E8280`, 3.1KB) is smaller than Hopper's (5.2KB), reflecting Ada's simpler pipeline structure -- no WGMMA async pipeline, no cluster operations. The register file geometry from `sub_8E4400`:
+The HW latency table for sm_89 (`sub_8E8280`, 3.1KB) is smaller than Hopper's (5.2KB), reflecting Ada's simpler pipeline structure — no WGMMA async pipeline, no cluster operations. The register file geometry from `sub_8E4400`:
 
 | Parameter | Value | Notes |
 |---|---|---|
@@ -66,7 +66,7 @@ The HW latency table for sm_89 (`sub_8E8280`, 3.1KB) is smaller than Hopper's (5
 | Dispatch slots | 224 | Same as sm_80 class |
 | Sub-architecture variant | 5 | From encoded value 28677 |
 
-## SM 90 / SM 90a -- Hopper
+## SM 90 / SM 90a — Hopper
 
 ### Profile Construction
 
@@ -90,14 +90,14 @@ The HW latency tables for Hopper are substantially larger than any previous arch
 | `sub_8E8480` | 5.2KB | sm_90 | Base Hopper latency model |
 | `sub_8E8780` | 4.6KB | sm_90a | Arch-accelerated variant |
 
-sm_90a gets its own latency table (4.6KB) distinct from sm_90 (5.2KB), even though they share all dispatch handler functions. This is the only architecture where base and `a` variants have separate scheduling profiles -- all Blackwell variants share their tables within each base SM.
+sm_90a gets its own latency table (4.6KB) distinct from sm_90 (5.2KB), even though they share all dispatch handler functions. This is the only architecture where base and `a` variants have separate scheduling profiles — all Blackwell variants share their tables within each base SM.
 
 Register file geometry from `sub_8E4400`:
 
 | Parameter | Value | Notes |
 |---|---|---|
 | Warps per scheduler | 16 | Threshold: encoded SM > 36863 (32768 qualifies) |
-| Dispatch slots | 240 | Maximum -- 2x the sm_80 class |
+| Dispatch slots | 240 | Maximum — 2x the sm_80 class |
 | Sub-architecture variant | 0 | From encoded value 32768 (base variant) |
 | Max threads/CTA | 240 | From code object builder `sub_A465F0` |
 
@@ -113,9 +113,9 @@ The intrinsic initializer for sm_90 (`sub_60A5F0`) enables 38 sub-byte MMA intri
 
 These cover sparse sub-byte MMA operations: s4/u4 sparse variants for m16n8k32, m16n8k64, and m16n8k128 shapes. These are Hopper-specific and do not appear in the Ada (sm_89) intrinsic table.
 
-## WGMMA -- Warpgroup Matrix Multiply-Accumulate
+## WGMMA — Warpgroup Matrix Multiply-Accumulate
 
-WGMMA is Hopper's signature instruction. It operates on **warpgroups** (4 consecutive warps) rather than single warps, and executes asynchronously -- the tensor core operates in parallel with the warp's regular instruction stream. ptxas handles WGMMA through four PTX instructions and a dedicated compiler pass infrastructure.
+WGMMA is Hopper's signature instruction. It operates on **warpgroups** (4 consecutive warps) rather than single warps, and executes asynchronously — the tensor core operates in parallel with the warp's regular instruction stream. ptxas handles WGMMA through four PTX instructions and a dedicated compiler pass infrastructure.
 
 ### PTX Instructions
 
@@ -153,7 +153,7 @@ sub_AE4F70  (coordinator -- outside primary range)
 
 ### Warpgroup Synchronization Injection
 
-The fence insertion pass (`sub_ADEB40`, 43.1KB) scans for `wgmma.mma_async` operations and automatically injects `warpgroup.arrive` and `warpgroup.wait` instructions. These fences manage register ownership when asynchronous tensor core operations are in flight -- the hardware requires explicit handoff between the warpgroup's register file and the tensor core's accumulator registers.
+The fence insertion pass (`sub_ADEB40`, 43.1KB) scans for `wgmma.mma_async` operations and automatically injects `warpgroup.arrive` and `warpgroup.wait` instructions. These fences manage register ownership when asynchronous tensor core operations are in flight — the hardware requires explicit handoff between the warpgroup's register file and the tensor core's accumulator registers.
 
 Diagnostic messages emitted by the compiler:
 - `"warpgroup.arrive is injected in around line %d by compiler to allow use of registers in GMMA in function '%s'"`
@@ -189,7 +189,7 @@ When the threshold is exceeded, the system triggers register spilling or sequenc
 
 ## Thread-Block Clusters
 
-Hopper introduces the concept of a **thread-block cluster** -- a group of cooperating CTAs that can access each other's shared memory (distributed shared memory). ptxas adds several PTX directives and special registers to support this.
+Hopper introduces the concept of a **thread-block cluster** — a group of cooperating CTAs that can access each other's shared memory (distributed shared memory). ptxas adds several PTX directives and special registers to support this.
 
 ### Cluster Directives
 
@@ -200,8 +200,8 @@ The directive validator (`sub_4CE6B0`, 48KB) enforces mutual exclusivity of clus
 ```
 
 Two shared-memory state spaces are distinguished:
-- `.shared::cta` -- CTA-local shared memory (pre-Hopper behavior)
-- `.shared::cluster` -- distributed shared memory accessible across CTAs in a cluster
+- `.shared::cta` — CTA-local shared memory (pre-Hopper behavior)
+- `.shared::cluster` — distributed shared memory accessible across CTAs in a cluster
 
 ### Cluster Special Registers
 
@@ -224,7 +224,7 @@ The intrinsic handler `OCG_DshmemHandler` at `sub_6C60B0` validates distributed 
 - `"Cannot use both the selfcast and the broadcast modifier."`
 - `"Either the selfcast or the broadcast modifier must be used."`
 
-## TMA -- Tensor Memory Accelerator
+## TMA — Tensor Memory Accelerator
 
 The Tensor Memory Accelerator (TMA) provides hardware-accelerated bulk data movement between global and shared memory, using tensor descriptors to specify multi-dimensional copy patterns. In ptxas, TMA is exposed through `cp.async.bulk.tensor`.
 
@@ -254,18 +254,18 @@ The tensormap validator (`sub_4A73C0`, 10.8KB) handles tensor descriptor manipul
 - `".tile"` mode validation
 - `"Tensormap field with input value >= 13"` / `"with input value == 4"` bounds checking
 - `".tensormap::generic"` addressing mode
-- `"Interger Immediate for ordinal"` (sic -- typo preserved from binary)
+- `"Interger Immediate for ordinal"` (sic — typo preserved from binary)
 
 ### Related Bulk Copy Infrastructure
 
 | Handler | Function | Size |
 |---|---|---|
 | `cp.async.bulk` | `sub_593210` | 5.1KB (formatter) |
-| `cp.async.mbarrier.arrive` | `sub_4DC180` | -- |
+| `cp.async.mbarrier.arrive` | `sub_4DC180` | — |
 | `OCG_CpAsyncBulkHandler` | `sub_6C3470` | 20KB |
 | `OCG_CpAsyncHandler` | `sub_6C2AE0` | 10KB |
 
-## setmaxnreg -- Dynamic Register Allocation
+## setmaxnreg — Dynamic Register Allocation
 
 Hopper introduces `setmaxnreg` (PTX opcode 315) for dynamic register count adjustment. This allows kernels to change their register footprint at runtime, enabling techniques like CTA reconfiguration and warpgroup-level resource management.
 
@@ -349,7 +349,7 @@ Note: sm_89 (encoded 28677) falls in the `<= 32767` range, giving it 7 warps / 2
 
 ## Hardware Resource Geometry
 
-Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md -- Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
+Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md — Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
 
 | SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
 |---|---|---|---|---|---|---|---|---|---|
@@ -365,7 +365,7 @@ Per-SM hardware resource limits used by ptxas for register allocation, occupancy
 - **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD).
 - **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`.
 
-sm\_90a shares sm\_90's geometry -- the `a` suffix affects only compatibility metadata, not hardware resource limits. The jump from sm\_89 (7 partitions, 208 slots, 48 warps) to sm\_90 (8 partitions, 224 slots, 64 warps) is the largest single-generation scheduling capacity increase in the binary, directly supporting Hopper's 4-warp warpgroup execution model.
+sm\_90a shares sm\_90's geometry — the `a` suffix affects only compatibility metadata, not hardware resource limits. The jump from sm\_89 (7 partitions, 208 slots, 48 warps) to sm\_90 (8 partitions, 224 slots, 64 warps) is the largest single-generation scheduling capacity increase in the binary, directly supporting Hopper's 4-warp warpgroup execution model.
 
 ## MMA Instruction Validators
 
@@ -407,7 +407,7 @@ Eight architecture-variant statistics printers (clones at 0x700-byte intervals f
 | `sub_4DA4B0` | 295B | `wgmma.fence` formatter | 99% |
 | `sub_4DA5E0` | 311B | `wgmma.commit_group` formatter | 99% |
 | `sub_505B00` | 1066B | `wgmma.wait_group` formatter | 99% |
-| `sub_50AC70` | -- | `wgmma.mma_async` codegen handler | 99% |
+| `sub_50AC70` | — | `wgmma.mma_async` codegen handler | 99% |
 | `sub_5AB460` | 45KB | `cp.async.bulk.tensor` codegen (TMA) | 95% |
 | `sub_609CF0` | ~1.2KB | sm_89 handler B (capability accessor) | 90% |
 | `sub_609DB0` | ~1.2KB | sm_90 handler A (capability accessor) | 90% |
@@ -416,8 +416,8 @@ Eight architecture-variant statistics printers (clones at 0x700-byte intervals f
 | `sub_60A810` | ~1KB | sm_89 intrinsic table initializer | 85% |
 | `sub_61B850` | 10KB | Special register table (cluster regs) | 99% |
 | `sub_64BAF0` | 30KB | Warpgroup/kernel attribute processor | 80% |
-| `sub_6C60B0` | -- | Distributed shared memory intrinsic handler | 65% |
-| `sub_6C8100` | -- | TMA (`cp.async.tensor`) intrinsic handler | 85% |
+| `sub_6C60B0` | — | Distributed shared memory intrinsic handler | 65% |
+| `sub_6C8100` | — | TMA (`cp.async.tensor`) intrinsic handler | 85% |
 | `sub_8E4400` | 3.3KB | Register file geometry initializer | 90% |
 | `sub_8E8280` | 3.1KB | sm_89 (Ada) HW latency table | 85% |
 | `sub_8E8480` | 5.2KB | sm_90 (Hopper) HW latency table | 85% |
@@ -425,9 +425,9 @@ Eight architecture-variant statistics printers (clones at 0x700-byte intervals f
 | `sub_97EC60` | ~3.5KB | setmaxnreg handler (opcode 315) | 90% |
 | `sub_97F540` | ~4KB | CTA reconfig pragma validator | 90% |
 | `sub_98D100` | ~4.8KB | setmaxreg.dealloc validator | 90% |
-| `sub_A94440` | -- | `MBarrierDetector::isNonTrivialMBarrier` | 85% |
-| `sub_A9A5F0` | -- | `MBarrierDetector::classifyMBarrier` | 85% |
-| `sub_AA33C0` | -- | `MBarrierEmitter::rewriteMBarrierOperand` | 85% |
+| `sub_A94440` | — | `MBarrierDetector::isNonTrivialMBarrier` | 85% |
+| `sub_A9A5F0` | — | `MBarrierDetector::classifyMBarrier` | 85% |
+| `sub_AA33C0` | — | `MBarrierEmitter::rewriteMBarrierOperand` | 85% |
 | `sub_ACE480` | 22.7KB | WGMMA serialization warning emitter | 98% |
 | `sub_AD70B0` | 22.6KB | GMMA operand register assignment | 75% |
 | `sub_AD9C20` | 14.4KB | GMMA register class allocator | 75% |
@@ -438,16 +438,16 @@ Eight architecture-variant statistics printers (clones at 0x700-byte intervals f
 | `sub_ADEB40` | 43.1KB | WGMMA sync fence insertion | 95% |
 | `sub_AE0D20` | 16.8KB | GMMA live range builder | 80% |
 | `sub_AE17C0` | 37.9KB | GMMA pipeline stage builder | 85% |
-| `sub_AE4F70` | -- | GMMA pass coordinator (outside range) | 90% |
+| `sub_AE4F70` | — | GMMA pass coordinator (outside range) | 90% |
 | `sub_AE5030` | 15.5KB | GMMA scheduling wrapper (alt entry) | 75% |
 
 ## Cross-References
 
-- [SM Architecture Map](index.md) -- Validation tables, codegen factory values, suffix semantics
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) -- Ampere baseline that Ada inherits
-- [Blackwell (SM 100--121)](blackwell.md) -- Next-generation features (tcgen05, expanded `a`/`f` variants)
-- [Intrinsic Table (608 Entries)](../intrinsics/index.md) -- Full intrinsic catalog with sm_8x and sm_9x ranges
-- [Pass Inventory](../passes/index.md) -- GMMA/WGMMA pipeline pass placement in 159-phase schedule
-- [Scheduling Overview](../scheduling/overview.md) -- HW latency table architecture
-- [CLI Options](../config/cli-options.md) -- `--gpu-name sm_90a` parsing
-- [Knobs System](../config/knobs.md) -- Knob 653 (setmaxnreg mode)
+- [SM Architecture Map](index.md) — Validation tables, codegen factory values, suffix semantics
+- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Ampere baseline that Ada inherits
+- [Blackwell (SM 100--121)](blackwell.md) — Next-generation features (tcgen05, expanded `a`/`f` variants)
+- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Full intrinsic catalog with sm_8x and sm_9x ranges
+- [Pass Inventory](../passes/index.md) — GMMA/WGMMA pipeline pass placement in 159-phase schedule
+- [Scheduling Overview](../scheduling/overview.md) — HW latency table architecture
+- [CLI Options](../config/cli-options.md) — `--gpu-name sm_90a` parsing
+- [Knobs System](../config/knobs.md) — Knob 653 (setmaxnreg mode)

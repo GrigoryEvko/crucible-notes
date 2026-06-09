@@ -1,6 +1,6 @@
 # Binary Layout
 
-cudafe++ ships as a single statically-linked, stripped ELF 64-bit x86-64 executable. Static linking pulls in the entirety of libstdc++ (locale facets, iostream, exception handling), Berkeley SoftFloat 3e (half/quad-precision arithmetic), and glibc CRT startup code. The resulting 8.5 MB binary has no external shared library dependencies -- it runs identically on any Linux x86-64 host regardless of installed C++ runtime version.
+cudafe++ ships as a single statically-linked, stripped ELF 64-bit x86-64 executable. Static linking pulls in the entirety of libstdc++ (locale facets, iostream, exception handling), Berkeley SoftFloat 3e (half/quad-precision arithmetic), and glibc CRT startup code. The resulting 8.5 MB binary has no external shared library dependencies — it runs identically on any Linux x86-64 host regardless of installed C++ runtime version.
 
 This page documents the complete segment and section layout, the internal organization of each major section, and the key data structures located within each region. All addresses are virtual addresses from the ELF load image.
 
@@ -41,7 +41,7 @@ This page documents the complete segment and section layout, the internal organi
 
 Total virtual address space consumed: `0x12D73A8 - 0x400000` = 18.9 MB.
 
-## .text -- Executable Code (4.15 MB)
+## .text — Executable Code (4.15 MB)
 
 The `.text` section contains all 6,501 functions in the binary. It divides into four distinct regions, laid out contiguously by the linker:
 
@@ -52,9 +52,9 @@ The `.text` section contains all 6,501 functions in the binary. It divides into 
    34 KB      8 KB              3.61 MB                  304 KB
 ```
 
-### Assert Stub Region (0x403300 -- 0x408B40, 34 KB)
+### Assert Stub Region (0x403300 — 0x408B40, 34 KB)
 
-Contains 235 small `__noreturn` functions, each encoding a single assertion site. Every stub loads three string constants -- source file path, line number, and function name -- then calls `sub_4F2930` (the `internal_error` handler in `error.c`). These stubs are called from the bodies of larger functions when an impossible condition is detected.
+Contains 235 small `__noreturn` functions, each encoding a single assertion site. Every stub loads three string constants — source file path, line number, and function name — then calls `sub_4F2930` (the `internal_error` handler in `error.c`). These stubs are called from the bodies of larger functions when an impossible condition is detected.
 
 The linker groups all stubs from all 52 `.c` source files into this contiguous block, sorted approximately by source file name. Of the 235 stubs:
 
@@ -63,7 +63,7 @@ The linker groups all stubs from all 52 `.c` source files into this contiguous b
 
 Each stub is exactly 29 bytes: a `lea` for the file path, a `mov` for the line number, a `lea` for the function name, then a `call` to `sub_4F2930`.
 
-### Constructor Region (0x408B40 -- 0x409350, 8 KB)
+### Constructor Region (0x408B40 — 0x409350, 8 KB)
 
 Contains 9 C++ global constructor functions (`ctor_001` through `ctor_009`) registered in the `.ctors` table. These run before `main()` via `__libc_start_main`'s init callback at `0x829640`. The constructors, in execution order:
 
@@ -81,9 +81,9 @@ Contains 9 C++ global constructor functions (`ctor_001` through `ctor_009`) regi
 
 Constructors 4--9 belong to statically-linked libstdc++. Only constructors 1--3 initialize EDG/NVIDIA state.
 
-### EDG Main Body (0x409350 -- 0x7DF400, 3.61 MB)
+### EDG Main Body (0x409350 — 0x7DF400, 3.61 MB)
 
-The core of the compiler. Contains 5,115 functions compiled from 52 EDG `.c` source files plus 3 NVIDIA-specific source files. Functions are laid out in approximate alphabetical order by source file name -- the linker processed object files in directory-listing order:
+The core of the compiler. Contains 5,115 functions compiled from 52 EDG `.c` source files plus 3 NVIDIA-specific source files. Functions are laid out in approximate alphabetical order by source file name — the linker processed object files in directory-listing order:
 
 ```text
 0x409350   attribute.c     (170 functions)
@@ -115,13 +115,13 @@ The 52 source files break down by subsystem:
 
 See [Function Map](./function-map.md) for the complete address-to-source-file table.
 
-### C++ Runtime Region (0x7DF400 -- 0x829722, 304 KB)
+### C++ Runtime Region (0x7DF400 — 0x829722, 304 KB)
 
 Statically-linked library code with no EDG source attribution. Contains approximately 900 functions from three libraries:
 
-**Berkeley SoftFloat 3e** (0x7E0D30 -- 0x7E4150, ~80 functions). IEEE 754 arithmetic for half-precision (float16), extended precision (float80), and quad-precision (float128). Operations: add, sub, mul, div, sqrt, comparisons, int/float conversions. Global state at `12D4820` (exception flags) and `12D4821` (rounding mode). Used by the EDG `floating.c` subsystem for constant folding of non-native float types.
+**Berkeley SoftFloat 3e** (0x7E0D30 — 0x7E4150, ~80 functions). IEEE 754 arithmetic for half-precision (float16), extended precision (float80), and quad-precision (float128). Operations: add, sub, mul, div, sqrt, comparisons, int/float conversions. Global state at `12D4820` (exception flags) and `12D4821` (rounding mode). Used by the EDG `floating.c` subsystem for constant folding of non-native float types.
 
-**libstdc++ / libsupc++** (0x7E42E0 -- 0x829600, ~800 functions). The C++ runtime:
+**libstdc++ / libsupc++** (0x7E42E0 — 0x829600, ~800 functions). The C++ runtime:
 - `operator new`/`operator delete` with new-handler retry loop (`0x7E42E0`)
 - Exception handling: `__cxa_throw` (`0x823050`), `__cxa_begin_catch` (`0x822EB0`), `__cxa_allocate_exception` (`0x7E4750`), `std::terminate` (`0x8231A0`)
 - Emergency exception pool: 72,704-byte fallback allocator for OOM during exception handling (`0x7E45C0`)
@@ -130,11 +130,11 @@ Statically-linked library code with no EDG source attribution. Contains approxim
 
 **CUDA-aware name demangler** (at `0x7CABB0`, technically in the EDG tail region). NVIDIA's custom Itanium ABI demangler with extensions for CUDA lambda wrapper templates. Recognizes mangled prefixes: `"Unvdl"` for `__nv_dl_wrapper_t<>`, `"Unvdtl"` for `__nv_dl_wrapper_t<>` with trailing return, and `"Unvhdl"` for `__nv_hdl_wrapper_t<>`.
 
-**CRT startup** (0x40918C and 0x829640 -- 0x829722). `_start` at `0x40918C` calls `__libc_start_main(main@0x408950, init@0x829640, fini@0x8296D0)`. The `.fini_array` processor at `0x8296E0` iterates backwards through function pointers at `off_D428A0`.
+**CRT startup** (0x40918C and 0x829640 — 0x829722). `_start` at `0x40918C` calls `__libc_start_main(main@0x408950, init@0x829640, fini@0x8296D0)`. The `.fini_array` processor at `0x8296E0` iterates backwards through function pointers at `off_D428A0`.
 
-## .rodata -- Read-Only Data (2.48 MB)
+## .rodata — Read-Only Data (2.48 MB)
 
-The `.rodata` section at `0x829740` -- `0xAA3FA3` holds all constant data: string literals, jump tables, error message templates, IL metadata tables, and format strings. Major structures:
+The `.rodata` section at `0x829740` — `0xAA3FA3` holds all constant data: string literals, jump tables, error message templates, IL metadata tables, and format strings. Major structures:
 
 ### Error Message Table (off_88FAA0)
 
@@ -180,9 +180,9 @@ Switch-statement jump tables for the major dispatch functions. The largest are:
 
 Printf-style format strings for the `.int.c` backend emitter. These include CUDA runtime boilerplate templates (`"#include \"crt/host_runtime.h\""`, `"static __nv_managed_rt ..."`, `"void __device_stub__..."`) and IL display format strings.
 
-## .data -- Initialized Globals (1.22 MB)
+## .data — Initialized Globals (1.22 MB)
 
-The `.data` section at `0xD46480` -- `0xE7EFF0` holds all initialized global variables. Major structures, ordered by address:
+The `.data` section at `0xD46480` — `0xE7EFF0` holds all initialized global variables. Major structures, ordered by address:
 
 ### Attribute Descriptor Table (off_D46820)
 
@@ -200,7 +200,7 @@ The EDG keyword registration system stores keyword-to-token-ID mappings. Initial
 
 Maps error codes to their overridden severity levels. Populated by `--diag_suppress`, `--diag_warning`, `--diag_error` CLI flags.
 
-### libstdc++ Vtables (0xD428C0 -- 0xD45E00, in .data.rel.ro)
+### libstdc++ Vtables (0xD428C0 — 0xD45E00, in .data.rel.ro)
 
 The `.data.rel.ro` section holds vtables for all statically-linked C++ classes. Key vtables:
 
@@ -231,13 +231,13 @@ Located at the tail of `.data`:
 
 A 40-byte doubly-linked list structure at `0xE7FE40..0xE7FE68`. Initialized by `ctor_001` as an empty self-referencing sentinel (both forward and backward pointers point to the list head). Used to chain diagnostic records during compilation.
 
-## .bss -- Zero-Initialized Globals (4.34 MB)
+## .bss — Zero-Initialized Globals (4.34 MB)
 
-The `.bss` section at `0xE7F000` -- `0x12D6F20` is the largest section by virtual size. It contains all zero-initialized global state for both the EDG compiler and the statically-linked runtime. The `.bss` occupies no space in the ELF file on disk -- it is allocated and zeroed by the OS loader.
+The `.bss` section at `0xE7F000` — `0x12D6F20` is the largest section by virtual size. It contains all zero-initialized global state for both the EDG compiler and the statically-linked runtime. The `.bss` occupies no space in the ELF file on disk — it is allocated and zeroed by the OS loader.
 
 The 4.34 MB `.bss` divides into three logical regions:
 
-### EDG Compiler State (0xE7F000 -- 0x1290000, ~4.1 MB)
+### EDG Compiler State (0xE7F000 — 0x1290000, ~4.1 MB)
 
 The bulk of `.bss` holds the EDG frontend's global state. Major structures:
 
@@ -245,7 +245,7 @@ The bulk of `.bss` holds the EDG frontend's global state. Major structures:
 
 **IL region tracking** (~800 KB). Region indices, region-to-scope mappings (`qword_126EB90`), region memory tables (`qword_126EC88`), and IL entry list heads. The region counter at `dword_126EC80` tracks active regions. Each function definition creates a new region.
 
-**Translation unit state** (~400 KB). The TU descriptor itself is dynamically allocated (424 bytes), but the per-TU global variables -- source file table, include stack, macro state, conditional compilation depth -- live in `.bss`. `sub_7A4860` (`reset_tu_state`) zeroes these between compilations.
+**Translation unit state** (~400 KB). The TU descriptor itself is dynamically allocated (424 bytes), but the per-TU global variables — source file table, include stack, macro state, conditional compilation depth — live in `.bss`. `sub_7A4860` (`reset_tu_state`) zeroes these between compilations.
 
 **Parser state** (~600 KB). Token lookahead buffers, declaration nesting depth, template argument stacks, expression evaluation context. The lexer maintains character classification tables and identifier hash buckets.
 
@@ -279,7 +279,7 @@ Bit N set means a lambda with N captures was encountered, triggering emission of
 
 **IL walker callbacks** (5 function pointers at `qword_126FB68..126FB88`). The five IL tree-walk callback slots: entry filter, entry replace, pre-walk check, string callback, and entry callback. Swapped in and out by different IL traversal passes.
 
-### libstdc++ Runtime State (0x1290000 -- 0x12D6F20, ~280 KB)
+### libstdc++ Runtime State (0x1290000 — 0x12D6F20, ~280 KB)
 
 **SoftFloat globals** (16 bytes). Exception flags at `byte_12D4820`, rounding mode at `byte_12D4821`.
 
@@ -304,7 +304,7 @@ Each stream object is backed by a `basic_filebuf` at a known offset (e.g., cout'
 
 **EDG internal lists** (7 x 48 bytes). Seven doubly-linked list structures at `12868C0..1286780` initialized by `ctor_003`. Serve as symbol/scope/type caches with destructor `sub_6BD820`.
 
-### Thread-Local Storage (0x12D6F20 -- 0x12D6F38, 24 bytes)
+### Thread-Local Storage (0x12D6F20 — 0x12D6F38, 24 bytes)
 
 The `.tls` section holds exactly 24 bytes of thread-local data. This is the `__cxa_eh_globals` structure (accessed via `__readfsqword(0) - 16`):
 
@@ -317,23 +317,23 @@ struct __cxa_eh_globals {
 
 Despite cudafe++ being single-threaded, the TLS infrastructure exists because libstdc++ exception handling unconditionally uses TLS offsets compiled into the static library.
 
-## .ctors / .dtors -- Constructor/Destructor Tables
+## .ctors / .dtors — Constructor/Destructor Tables
 
 The `.ctors` section at `0xD42858` is 88 bytes: a `-1` sentinel (8 bytes), 9 constructor function pointers (72 bytes), and a `0` terminator (8 bytes). The 9 constructors are `ctor_001` through `ctor_009` documented above.
 
-The `.dtors` section at `0xD428B0` is 16 bytes: a `-1` sentinel and a `0` terminator. No destructors are registered -- all cleanup is done via `__cxa_atexit` handlers registered during construction.
+The `.dtors` section at `0xD428B0` is 16 bytes: a `-1` sentinel and a `0` terminator. No destructors are registered — all cleanup is done via `__cxa_atexit` handlers registered during construction.
 
-## .eh_frame / .gcc_except_table -- Exception Handling
+## .eh_frame / .gcc_except_table — Exception Handling
 
 The `.eh_frame` section (582 KB) contains DWARF Call Frame Information (CFI) records for stack unwinding during C++ exception propagation. The `.gcc_except_table` section (13.2 KB) contains GCC Language-Specific Data Area (LSDA) records that map program counters to catch handlers and cleanup functions.
 
 The `.eh_frame_hdr` section (48.9 KB) is a binary search index into `.eh_frame`, enabling O(log n) lookup of unwind information by instruction pointer during exception throw.
 
-These sections exist because libstdc++ exception handling requires them. cudafe++ itself rarely throws exceptions -- the EDG frontend uses `longjmp`-based error recovery. However, the statically-linked libstdc++ code (particularly `operator new` and locale initialization) uses C++ exceptions internally.
+These sections exist because libstdc++ exception handling requires them. cudafe++ itself rarely throws exceptions — the EDG frontend uses `longjmp`-based error recovery. However, the statically-linked libstdc++ code (particularly `operator new` and locale initialization) uses C++ exceptions internally.
 
-## .plt / .got.plt -- PLT Stubs
+## .plt / .got.plt — PLT Stubs
 
-The `.plt` section (2.2 KB, 141 entries) and `.got.plt` (1.1 KB) implement lazy binding for the 141 libc functions that cudafe++ imports despite static linking. These are glibc internal symbols resolved at load time. The PLT stubs are the standard x86-64 two-instruction pattern: indirect jump through GOT, then fallback to the dynamic linker (which never executes since the binary is statically linked -- the GOT is pre-resolved by the static linker).
+The `.plt` section (2.2 KB, 141 entries) and `.got.plt` (1.1 KB) implement lazy binding for the 141 libc functions that cudafe++ imports despite static linking. These are glibc internal symbols resolved at load time. The PLT stubs are the standard x86-64 two-instruction pattern: indirect jump through GOT, then fallback to the dynamic linker (which never executes since the binary is statically linked — the GOT is pre-resolved by the static linker).
 
 ## Static Libraries Linked
 
@@ -341,10 +341,10 @@ The binary statically links four library components:
 
 | Library | Functions | .text Range | Purpose |
 |---|---|---|---|
-| libstdc++ (locale) | ~600 | `0x7EA800` -- `0x829600` | Full locale facet implementations |
-| libstdc++ (iostream/exception) | ~60 | `0x7E42E0` -- `0x7EA800` | Streams, exceptions, operator new |
-| Berkeley SoftFloat 3e | ~80 | `0x7E0D30` -- `0x7E4150` | float16/float80/float128 arithmetic |
-| glibc CRT | ~10 | `0x40918C`, `0x829640` -- `0x829722` | `_start`, init, fini |
+| libstdc++ (locale) | ~600 | `0x7EA800` — `0x829600` | Full locale facet implementations |
+| libstdc++ (iostream/exception) | ~60 | `0x7E42E0` — `0x7EA800` | Streams, exceptions, operator new |
+| Berkeley SoftFloat 3e | ~80 | `0x7E0D30` — `0x7E4150` | float16/float80/float128 arithmetic |
+| glibc CRT | ~10 | `0x40918C`, `0x829640` — `0x829722` | `_start`, init, fini |
 
 No shared libraries are loaded at runtime. The binary is fully self-contained.
 
@@ -391,10 +391,10 @@ No shared libraries are loaded at runtime. The binary is fully self-contained.
 
 ## Key Observations
 
-**The .bss dominates.** At 4.34 MB, the `.bss` is the largest section -- larger than `.text`. This reflects the EDG frontend's design: hundreds of global variables hold parser state, scope stacks, symbol tables, and IL region metadata. A reimplementation should strongly consider replacing these globals with a context struct passed through the call chain.
+**The .bss dominates.** At 4.34 MB, the `.bss` is the largest section — larger than `.text`. This reflects the EDG frontend's design: hundreds of global variables hold parser state, scope stacks, symbol tables, and IL region metadata. A reimplementation should strongly consider replacing these globals with a context struct passed through the call chain.
 
-**Static linking adds 304 KB of dead-weight code.** The C++ runtime region (0x7DF400 -- 0x829722) contains 900 functions, the majority of which (600+ locale facet methods) are never called by cudafe++. The locale system is pulled in transitively through iostream initialization. A reimplementation that avoids `std::cout`/`std::cerr` could eliminate this entirely.
+**Static linking adds 304 KB of dead-weight code.** The C++ runtime region (0x7DF400 — 0x829722) contains 900 functions, the majority of which (600+ locale facet methods) are never called by cudafe++. The locale system is pulled in transitively through iostream initialization. A reimplementation that avoids `std::cout`/`std::cerr` could eliminate this entirely.
 
 **The EDG code is tightly packed.** The 3.61 MB EDG main body has almost no inter-function padding. Functions from the same source file are contiguous, and the alphabetical ordering by filename is consistent across the entire range. This makes address-to-source-file attribution reliable.
 
-**The binary is position-dependent.** No PIE (Position-Independent Executable) flag is set. All code references use absolute addressing. The `.got` is minimal (56 bytes / 7 entries) -- almost all data references are direct.
+**The binary is position-dependent.** No PIE (Position-Independent Executable) flag is set. All code references use absolute addressing. The `.got` is minimal (56 bytes / 7 entries) — almost all data references are direct.

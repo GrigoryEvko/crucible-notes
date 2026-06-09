@@ -1,23 +1,23 @@
 # Bitcode Reader/Writer
 
-CICC v13.0 contains the complete LLVM 20.0.0 bitcode serialization infrastructure -- reader, writer, metadata loader, module summary IO, and the full intrinsic upgrader -- spread across two address ranges. The `0x9F0000`--`0xA2FFFF` range hosts a first copy of the bitcode reader/writer core used by the standalone libNVVM pipeline, while the `0x1500000`--`0x157FFFF` range hosts the primary copy used by the two-phase compilation path. Both copies are structurally identical LLVM `BitcodeReader.cpp` and `BitcodeWriter.cpp` compiled at different link addresses. The reader is stock upstream LLVM 20.0.0 with no NVIDIA modifications to the deserialization logic itself. The writer, however, contains a single critical NVIDIA change: it stamps `"LLVM7.0.1"` as the bitcode producer identification string rather than the true `"LLVM20.0.0"`, preserving backward compatibility with the NVVM IR ecosystem.
+CICC v13.0 contains the complete LLVM 20.0.0 bitcode serialization infrastructure — reader, writer, metadata loader, module summary IO, and the full intrinsic upgrader — spread across two address ranges. The `0x9F0000`--`0xA2FFFF` range hosts a first copy of the bitcode reader/writer core used by the standalone libNVVM pipeline, while the `0x1500000`--`0x157FFFF` range hosts the primary copy used by the two-phase compilation path. Both copies are structurally identical LLVM `BitcodeReader.cpp` and `BitcodeWriter.cpp` compiled at different link addresses. The reader is stock upstream LLVM 20.0.0 with no NVIDIA modifications to the deserialization logic itself. The writer, however, contains a single critical NVIDIA change: it stamps `"LLVM7.0.1"` as the bitcode producer identification string rather than the true `"LLVM20.0.0"`, preserving backward compatibility with the NVVM IR ecosystem.
 
-The bitcode subsystem sits at the boundary between all pipeline stages. The [standalone pipeline](../pipeline/entry.md) validates magic bytes on entry, the [module linker](../lto/index.md) reads bitcode from separate compilation objects, the [two-phase orchestrator](../pipeline/emission.md) serializes per-function bitcode blobs between Phase I and Phase II, and the [NVVM container](../structs/nvvm-container.md) wraps bitcode payloads in a proprietary envelope. Every bitcode load also runs the intrinsic upgrader -- a 700+ KB AutoUpgrade subsystem that includes roughly 240 KB of effectively-dead x86 intrinsic renaming tables.
+The bitcode subsystem sits at the boundary between all pipeline stages. The [standalone pipeline](../pipeline/entry.md) validates magic bytes on entry, the [module linker](../lto/index.md) reads bitcode from separate compilation objects, the [two-phase orchestrator](../pipeline/emission.md) serializes per-function bitcode blobs between Phase I and Phase II, and the [NVVM container](../structs/nvvm-container.md) wraps bitcode payloads in a proprietary envelope. Every bitcode load also runs the intrinsic upgrader — a 700+ KB AutoUpgrade subsystem that includes roughly 240 KB of effectively-dead x86 intrinsic renaming tables.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Reader (primary copy) | `sub_151B070` (`0x151B070`, 123 KB) -- parseFunctionBody |
-| Reader (standalone copy) | `sub_9F2A40` (`0x9F2A40`, 185 KB) -- parseFunctionBody |
-| Writer | `sub_1538EC0` (`0x1538EC0`, 58 KB) -- writeModule |
-| Metadata reader | `sub_A09F80` (`0xA09F80`, 121 KB) -- MetadataLoader::parseOneMetadata |
-| X86 AutoUpgrade (name) | `sub_156E800` (`0x156E800`, 593 KB) -- UpgradeIntrinsicFunction |
-| X86 AutoUpgrade (call) | `sub_A939D0` (`0xA939D0`, 457 KB) -- UpgradeIntrinsicCall |
+| Reader (primary copy) | `sub_151B070` (`0x151B070`, 123 KB) — parseFunctionBody |
+| Reader (standalone copy) | `sub_9F2A40` (`0x9F2A40`, 185 KB) — parseFunctionBody |
+| Writer | `sub_1538EC0` (`0x1538EC0`, 58 KB) — writeModule |
+| Metadata reader | `sub_A09F80` (`0xA09F80`, 121 KB) — MetadataLoader::parseOneMetadata |
+| X86 AutoUpgrade (name) | `sub_156E800` (`0x156E800`, 593 KB) — UpgradeIntrinsicFunction |
+| X86 AutoUpgrade (call) | `sub_A939D0` (`0xA939D0`, 457 KB) — UpgradeIntrinsicCall |
 | NVVM version checker | `sub_157E370` (`0x157E370`, 7 KB) |
 | NVVM version checker (standalone) | `sub_12BFF60` (`0x12BFF60`, 9 KB) |
-| Producer init (ctor_036) | `0x48CC90` (544 bytes) -- reads `LLVM_OVERRIDE_PRODUCER` |
-| Producer init (ctor_154) | `0x4CE640` (215 bytes) -- reads `LLVM_OVERRIDE_PRODUCER` |
+| Producer init (ctor_036) | `0x48CC90` (544 bytes) — reads `LLVM_OVERRIDE_PRODUCER` |
+| Producer init (ctor_154) | `0x4CE640` (215 bytes) — reads `LLVM_OVERRIDE_PRODUCER` |
 | Address range (primary) | `0x1500000`--`0x157FFFF` |
 | Address range (standalone copy) | `0x9F0000`--`0xA2FFFF` |
 | Address range (AutoUpgrade) | `0xA80000`--`0xABFFFF` |
@@ -34,7 +34,7 @@ LLVM bitcode uses two magic signatures. The pipeline validates both at module lo
 | `0xDE 0xC0 0x17 0x0B` | Raw LLVM bitcode stream | `sub_12C06E0` (module linker) |
 | `0x42 0x43 0xC0 0xDE` | Bitcode wrapper format (offset + size header around raw stream) | Same function |
 
-If neither signature matches, the pipeline sets `*error_code = 9` ("invalid bitcode") and aborts. The wrapper format is more common in practice -- `nvcc` generates wrapper-format `.bc` files that embed the raw stream at an offset specified in the wrapper header. The wrapper header is 20 bytes:
+If neither signature matches, the pipeline sets `*error_code = 9` ("invalid bitcode") and aborts. The wrapper format is more common in practice — `nvcc` generates wrapper-format `.bc` files that embed the raw stream at an offset specified in the wrapper header. The wrapper header is 20 bytes:
 
 ```c
 struct BitcodeWrapperHeader {
@@ -72,7 +72,7 @@ The function body parser is the largest single reader function. The standalone c
 - **4 nested sub-blocks**: constants (`0xB`), metadata (`0xE`), use-list order (`0x10`), operand bundles (`0x12`).
 - **53 unique error strings** including: `"Alignment value is too large"`, `"Invalid record"`, `"Invalid record: Unsupported version of DISubrange"`, `"METADATA_NAME not followed by METADATA_NAMED_NODE"`.
 
-For each `INST_CALL` record (opcode 85), the reader calls into the AutoUpgrade machinery to rename deprecated intrinsics. This is the hook that triggers the 700+ KB x86 upgrader on every call instruction -- even though the upgrader's x86 branches are dead code for NVPTX targets.
+For each `INST_CALL` record (opcode 85), the reader calls into the AutoUpgrade machinery to rename deprecated intrinsics. This is the hook that triggers the 700+ KB x86 upgrader on every call instruction — even though the upgrader's x86 branches are dead code for NVPTX targets.
 
 Pseudocode for the top-level body parse loop:
 
@@ -149,7 +149,7 @@ Function bodies are not parsed eagerly. The module parser records each function'
 The top-level writer serializes an entire `Module` to a bitcode stream. It orchestrates sub-writers in a fixed order:
 
 1. Enumerate all values via `ValueEnumerator` (`sub_15467B0`, 23 KB)
-2. Write identification block (with producer string -- see next section)
+2. Write identification block (with producer string — see next section)
 3. Write MODULE_BLOCK header
 4. Write type table (`sub_1530240`, 12 KB)
 5. Write attribute groups (`sub_152F610`, 8 KB)
@@ -197,7 +197,7 @@ Role labels below are descriptive (LLVM-equivalent terminology); addresses are t
 | `sub_152F610` | 8 KB | ATTRIBUTE_GROUP_BLOCK writer |
 | `sub_15271D0` | 7 KB | Variable bit-rate (VBR) integer encoding |
 | `sub_15263C0` | 7 KB | Core abbreviated/unabbreviated record emission |
-| `sub_1528330` | -- | Blob data emission |
+| `sub_1528330` | — | Blob data emission |
 
 ## Producer String Hack
 
@@ -209,7 +209,7 @@ This is the single most important NVIDIA deviation in the bitcode subsystem. Two
 
 When `writeModule` (`sub_1538EC0`) writes the IDENTIFICATION_BLOCK, it emits the string `"LLVM7.0.1"` as the producer. This is assembled from the prefix `"LLVM"` plus the version string `"7.0.1"` loaded from the ctor_154 global.
 
-The consequence is that any tool reading CICC's output bitcode (including older libNVVM, nvdisasm, or third-party NVVM IR consumers) sees producer `"LLVM7.0.1"` and interprets the bitcode as LLVM 7.x-era IR. Internally, the IR is LLVM 20.0.0 -- all modern instruction opcodes, metadata formats, and type encodings are present. The producer string is purely a compatibility marker that tells downstream tools which NVVM IR version spec to apply, not the actual LLVM version.
+The consequence is that any tool reading CICC's output bitcode (including older libNVVM, nvdisasm, or third-party NVVM IR consumers) sees producer `"LLVM7.0.1"` and interprets the bitcode as LLVM 7.x-era IR. Internally, the IR is LLVM 20.0.0 — all modern instruction opcodes, metadata formats, and type encodings are present. The producer string is purely a compatibility marker that tells downstream tools which NVVM IR version spec to apply, not the actual LLVM version.
 
 Why `7.0.1` specifically: NVVM IR 2.0 was defined against LLVM 7.0.1. The NVVM toolchain ecosystem (libNVVM, nvcc's device compilation pipeline) standardized on this version string as the "NVVM IR format identifier." Upgrading the producer string would require coordinated changes across the entire CUDA toolkit and all consumers.
 
@@ -242,7 +242,7 @@ void writeIdentificationBlock(BitstreamWriter &Stream) {
 
 **Reimplementation note**: A reimplementation must write `"LLVM7.0.1"` as the producer for compatibility with the existing NVVM ecosystem. Setting `LLVM_OVERRIDE_PRODUCER` to a different value will change the embedded string. The `disable-bitcode-version-upgrade` flag controls whether the reader's AutoUpgrade logic activates for version-mismatched bitcode.
 
-## X86 AutoUpgrade -- Why to Skip It
+## X86 AutoUpgrade — Why to Skip It
 
 The intrinsic upgrader is the single largest code mass in the entire cicc binary. Two functions dominate:
 
@@ -260,7 +260,7 @@ The intrinsic upgrader is the single largest code mass in the entire cicc binary
 
 **Total intrinsic upgrader code**: approximately 1.4 MB across all copies and helpers.
 
-The x86 portion (roughly 1.0 MB) handles SSE/SSE2/SSE4.1/SSE4.2/SSSE3, AVX2, AVX-512 (mask operations, conversions, FMA variants), and ARM NEON patterns (`^arm\.neon\.vld`, `^arm\.neon\.vst`). These branches are functionally dead for NVPTX -- no CUDA program will ever contain an `@llvm.x86.sse2.padds.b` intrinsic. However, the code is NOT unreachable in the CFG sense: the reader calls `UpgradeIntrinsicFunction` on every intrinsic name, the function does a string-prefix match, and falls through the x86/ARM branches without matching. The x86 code paths simply never activate.
+The x86 portion (roughly 1.0 MB) handles SSE/SSE2/SSE4.1/SSE4.2/SSSE3, AVX2, AVX-512 (mask operations, conversions, FMA variants), and ARM NEON patterns (`^arm\.neon\.vld`, `^arm\.neon\.vst`). These branches are functionally dead for NVPTX — no CUDA program will ever contain an `@llvm.x86.sse2.padds.b` intrinsic. However, the code is NOT unreachable in the CFG sense: the reader calls `UpgradeIntrinsicFunction` on every intrinsic name, the function does a string-prefix match, and falls through the x86/ARM branches without matching. The x86 code paths simply never activate.
 
 **Reimplementation guidance**: You can safely exclude the x86 and ARM AutoUpgrade tables (sub_A8A170, the x86 portions of sub_A939D0, and the ARM patterns in sub_15644B0). The NVVM-relevant upgraders must be preserved:
 
@@ -325,7 +325,7 @@ After parsing the module, this function reads the `"nvvmir.version"` named metad
 major == 3  AND  minor <= 2
 ```
 
-If the check fails, the function calls `sub_16BD130` which emits `"Broken module found, compilation aborted!"` and terminates compilation. If the module passes the version check, it proceeds to `sub_166CBC0` (`verifyModule` `[MEDIUM confidence]` -- identification based on call position after bitcode parsing and before optimization, consistent with LLVM's standard verify-after-parse pattern, but no diagnostic string directly confirms the function name) for structural IR verification, then `sub_15ACB40` for post-verification processing.
+If the check fails, the function calls `sub_16BD130` which emits `"Broken module found, compilation aborted!"` and terminates compilation. If the module passes the version check, it proceeds to `sub_166CBC0` (`verifyModule` `[MEDIUM confidence]` — identification based on call position after bitcode parsing and before optimization, consistent with LLVM's standard verify-after-parse pattern, but no diagnostic string directly confirms the function name) for structural IR verification, then `sub_15ACB40` for post-verification processing.
 
 A second instance at `sub_12BFF60` (1.9 KB native) in the standalone pipeline performs the same check with additional `llvm.dbg.cu` debug info presence validation.
 
@@ -458,9 +458,9 @@ Two verifier instances exist:
 |---------|------|------|
 | `0x157E370` | 7 KB | `NVVM version checker` (primary) |
 | `0x12BFF60` | 9 KB | `NVVM version checker` (standalone) |
-| `0x2259720` | -- | `NVVM version checker` (duplicate instance) |
-| `0x48CC90` | 544 B | `ctor_036` -- producer init + disable-bitcode-version-upgrade |
-| `0x4CE640` | 215 B | `ctor_154` -- producer init ("7.0.1" default) |
+| `0x2259720` | — | `NVVM version checker` (duplicate instance) |
+| `0x48CC90` | 544 B | `ctor_036` — producer init + disable-bitcode-version-upgrade |
+| `0x4CE640` | 215 B | `ctor_154` — producer init ("7.0.1" default) |
 
 ### Value Enumeration (`0x1540000`--`0x1549000`)
 
@@ -478,10 +478,10 @@ Two verifier instances exist:
 
 ## Cross-References
 
-- [NVVM Container](../structs/nvvm-container.md) -- wraps bitcode in the proprietary transport format
-- [LTO & Module Optimization](../lto/index.md) -- consumes bitcode from separate compilation objects
-- [NVModuleSummary Builder](../lto/module-summary.md) -- extends module summary with CUDA-specific fields; serialized by `sub_1535340`
-- [Two-Phase Compilation](../pipeline/emission.md) -- serializes/deserializes per-function bitcode between phases
-- [Pipeline Entry](../pipeline/entry.md) -- magic byte validation on bitcode input
-- [Environment Variables](../config/env-vars.md) -- `LLVM_OVERRIDE_PRODUCER`, `NVVM_IR_VER_CHK`
-- [Binary Layout](../binary-layout.md) -- address range context for reader/writer clusters
+- [NVVM Container](../structs/nvvm-container.md) — wraps bitcode in the proprietary transport format
+- [LTO & Module Optimization](../lto/index.md) — consumes bitcode from separate compilation objects
+- [NVModuleSummary Builder](../lto/module-summary.md) — extends module summary with CUDA-specific fields; serialized by `sub_1535340`
+- [Two-Phase Compilation](../pipeline/emission.md) — serializes/deserializes per-function bitcode between phases
+- [Pipeline Entry](../pipeline/entry.md) — magic byte validation on bitcode input
+- [Environment Variables](../config/env-vars.md) — `LLVM_OVERRIDE_PRODUCER`, `NVVM_IR_VER_CHK`
+- [Binary Layout](../binary-layout.md) — address range context for reader/writer clusters

@@ -15,7 +15,7 @@ The five passes transform the raw IL tree into a finalized, pruned representatio
 | Direct callees | 51 |
 | Debug trace name | `"fe_wrapup"` (level 1 via `sub_48AE00`) |
 | Assertion | `"bad translation unit in fe_wrapup"` if `dword_106BA08 == 0` |
-| Error check | `qword_126ED90` -- passes 2-4 skip TUs with errors |
+| Error check | `qword_126ED90` — passes 2-4 skip TUs with errors |
 | Language gate | `dword_126EFB4 == 2` gates C++-only operations in pass 4 |
 
 ## Architecture Overview
@@ -53,7 +53,7 @@ All five passes iterate the same linked list structure. Each translation unit de
 
 Before processing each TU, `sub_7A3D60` (set_current_translation_unit) is called to switch global state to point at that TU. This updates `qword_106BA10` (current TU descriptor), which is then used by all subsystems to find the current scope, IL root, file info, and error state.
 
-The file scope IL node -- the root of the IL tree for a TU -- is at `*(qword_106BA10 + 8)`.
+The file scope IL node — the root of the IL tree for a TU — is at `*(qword_106BA10 + 8)`.
 
 The iteration pattern shared by all passes:
 
@@ -76,9 +76,9 @@ Before the five passes begin, `fe_wrapup` performs:
 
 1. **Debug trace**: If `dword_126EFC8` (debug mode), logs `"fe_wrapup"` at level 1 via `sub_48AE00`.
 2. **Set current TU**: Calls `sub_7A3D60(qword_106B9F0)` to select the primary TU.
-3. **Assertion**: Checks `dword_106BA08 != 0` -- the "full compilation mode" flag. If false, triggers a fatal assertion: `"bad translation unit in fe_wrapup"`. This flag is set during TU initialization; its absence here indicates a corrupted pipeline state.
+3. **Assertion**: Checks `dword_106BA08 != 0` — the "full compilation mode" flag. If false, triggers a fatal assertion: `"bad translation unit in fe_wrapup"`. This flag is set during TU initialization; its absence here indicates a corrupted pipeline state.
 4. **C++ template wrapup**: If `dword_126EFB4 == 2` (C++ mode), calls `sub_78A9D0` (`template_and_inline_entity_wrapup`). This performs cross-TU template instantiation setup, walking all TUs and their pending instantiation lists.
-5. **No-op hook**: Calls `nullsub_5` -- a disabled debug hook in the exprutil address range (`0x56DC80`). Likely a compile-time-disabled expression validation point.
+5. **No-op hook**: Calls `nullsub_5` — a disabled debug hook in the exprutil address range (`0x56DC80`). Likely a compile-time-disabled expression validation point.
 6. **CUDA diagnostics**: If `dword_106C268` is set, calls `sub_6B3260` (CUDA-specific diagnostic processing).
 7. **Source sequence debug**: If debug mode and the `"source_file_for_seq_info"` flag is active, calls `sub_5B9580` to dump source file sequence information.
 
@@ -87,7 +87,7 @@ Before the five passes begin, `fe_wrapup` performs:
 **Function:** `sub_588C60` (`file_scope_il_wrapup`)
 **Address:** `0x588C60`
 **Per-TU:** Yes (iterates all secondary TUs, then processes the primary TU)
-**Error-gated:** No -- runs unconditionally
+**Error-gated:** No — runs unconditionally
 
 This pass performs initial cleanup on each translation unit's IL tree. It runs unconditionally on every TU, regardless of error status, because the cleanup operations (template state release, exception spec finalization) are safe and necessary even after errors.
 
@@ -95,14 +95,14 @@ Operations per TU:
 
 | Step | Function | Purpose |
 |---|---|---|
-| 1 | `sub_7C2690` | Template cleanup -- release deferred template instantiation state |
-| 2 | `sub_68A0C0` | Exception handling cleanup -- finalize exception specifications, resolve pending catch-block types |
-| 3 | `sub_446F80` | Diagnostic finalization (conditional: only if `dword_106C2BC` or `dword_106C2B8` is set, and `dword_106C29C` is clear -- i.e., not preprocessing-only mode) |
-| 4 | `sub_706710` | IL tree walk with parameters `(root, 0, scope_list, 1, 0, 0)` -- traverses the full IL tree performing bookkeeping: arg 2=0 means initial walk, arg 4=1 enables scope processing, arg 3 passes the TU scope list at `qword_106BA10 + 24` |
-| 5 | `sub_706F40` | IL finalize -- post-walk finalization of the IL root node, marks it as ready for lowering |
-| 6 | `sub_5BD350` | Destroy temporaries (C++ only, `dword_126EFB4 == 2`) -- cleans up temporary objects from expression evaluation |
+| 1 | `sub_7C2690` | Template cleanup — release deferred template instantiation state |
+| 2 | `sub_68A0C0` | Exception handling cleanup — finalize exception specifications, resolve pending catch-block types |
+| 3 | `sub_446F80` | Diagnostic finalization (conditional: only if `dword_106C2BC` or `dword_106C2B8` is set, and `dword_106C29C` is clear — i.e., not preprocessing-only mode) |
+| 4 | `sub_706710` | IL tree walk with parameters `(root, 0, scope_list, 1, 0, 0)` — traverses the full IL tree performing bookkeeping: arg 2=0 means initial walk, arg 4=1 enables scope processing, arg 3 passes the TU scope list at `qword_106BA10 + 24` |
+| 5 | `sub_706F40` | IL finalize — post-walk finalization of the IL root node, marks it as ready for lowering |
+| 6 | `sub_5BD350` | Destroy temporaries (C++ only, `dword_126EFB4 == 2`) — cleans up temporary objects from expression evaluation |
 | 7 | (inline loop) | Clear deferred declaration flags (C++ only, `dword_126EE50 == 0`): iterates the declaration chain at `*(root + 280)`, and for each declaration where bit 2 of byte `+81` is set and `sub_5CA6F0` returns true, clears the pointer at `+40` and clears bit 2 of byte `+81`. This removes deferred-initialization markers from declarations whose initialization has completed. |
-| 8 | `sub_65D9A0` | Overload resolution cleanup -- releases candidate sets and viability data |
+| 8 | `sub_65D9A0` | Overload resolution cleanup — releases candidate sets and viability data |
 
 After all secondary TUs are processed, the primary TU itself gets the same treatment:
 
@@ -129,7 +129,7 @@ Before Pass 2 begins, if no errors have occurred (`!qword_126ED90`), `sub_796C00
 **Per-TU:** Yes, but skips TUs with errors (`qword_126ED90` check)
 **Source:** `scope_stk.c:8090`
 
-This pass determines which entities are "needed" -- must be preserved in the IL for backend consumption. It is the EDG "needed flags" computation, which decides based on linkage, usage, and language rules whether each declaration must survive to the output.
+This pass determines which entities are "needed" — must be preserved in the IL for backend consumption. It is the EDG "needed flags" computation, which decides based on linkage, usage, and language rules whether each declaration must survive to the output.
 
 The function operates on a file scope IL node and walks four declaration lists at different offsets:
 
@@ -144,9 +144,9 @@ The function operates on a file scope IL node and walks four declaration lists a
 
 For each variable in the `+112` list, the algorithm checks (in order of precedence):
 
-1. If bit 3 of byte `+80` is set (external/imported), skip -- always mark as needed via `sub_61CE20(entry, 7)`.
-2. Check `sub_7A7850(*(entry+112))` -- if referenced, mark as needed.
-3. Check `sub_7A7890(*(entry+112))` -- if used, mark as needed.
+1. If bit 3 of byte `+80` is set (external/imported), skip — always mark as needed via `sub_61CE20(entry, 7)`.
+2. Check `sub_7A7850(*(entry+112))` — if referenced, mark as needed.
+3. Check `sub_7A7890(*(entry+112))` — if used, mark as needed.
 4. Otherwise evaluate:
    - Byte `+162` bit 4 set and full compilation mode: check linkage class at byte `+128` (1=external) and base type completeness via `sub_75C1F0`.
    - Byte `+128` == 0 (no linkage) or byte `+169` == 2: check initializer pointer at `+224` and constexpr flags at byte `+164`.
@@ -170,9 +170,9 @@ The keep-in-IL bit is bit 7 (0x80) of the byte at `(entity_pointer - 8)`. Testin
 
 ### Operation
 
-1. **Save/restore state**: Saves and restores 9 global callback/state variables (`qword_126FB88` through `dword_126FB60`), installing `sub_617310` (`prune_keep_in_il_walk`) as the walk prune callback at `qword_126FB78`. All other callback slots are zeroed. The callback set at `dword_126FB58` is set to `(byte_at_a1_minus_8 & 2) != 0` -- derived from a flag in the scope node header.
+1. **Save/restore state**: Saves and restores 9 global callback/state variables (`qword_126FB88` through `dword_126FB60`), installing `sub_617310` (`prune_keep_in_il_walk`) as the walk prune callback at `qword_126FB78`. All other callback slots are zeroed. The callback set at `dword_126FB58` is set to `(byte_at_a1_minus_8 & 2) != 0` — derived from a flag in the scope node header.
 
-2. **File scope walk**: When `a2 == 23` and scope kind byte `*(a1+28)` is 0 (file scope), clears bit 7 of byte `*(a1-8)` via `AND 0x7F`. Then calls `sub_6115E0(a1, 23)` -- the recursive `walk_tree_and_set_keep_in_il` traversal on the file scope root.
+2. **File scope walk**: When `a2 == 23` and scope kind byte `*(a1+28)` is 0 (file scope), clears bit 7 of byte `*(a1-8)` via `AND 0x7F`. Then calls `sub_6115E0(a1, 23)` — the recursive `walk_tree_and_set_keep_in_il` traversal on the file scope root.
 
 3. **C++ companion walk**: For C++ mode (`dword_126EFB4 == 2`), calls `sub_6175F0(a1)` to walk scopes and mark out-of-line definitions and friend declarations.
 
@@ -184,10 +184,10 @@ The keep-in-IL bit is bit 7 (0x80) of the byte at `(entity_pointer - 8)`. Testin
 
    | Global range | Tags | Count |
    |---|---|---|
-   | `qword_126E610` -- `qword_126E770` | 1--23 | 23 lists |
-   | `qword_126E7B0` -- `qword_126E7E0` | 27--30 | 4 lists |
-   | `qword_126E810` -- `qword_126E8A0` | 33--42 | 10 lists |
-   | `qword_126E8E0` -- `qword_126E900` | 46--48 | 3 lists |
+   | `qword_126E610` — `qword_126E770` | 1--23 | 23 lists |
+   | `qword_126E7B0` — `qword_126E7E0` | 27--30 | 4 lists |
+   | `qword_126E810` — `qword_126E8A0` | 33--42 | 10 lists |
+   | `qword_126E8E0` — `qword_126E900` | 46--48 | 3 lists |
    | `qword_126E9B0`, `qword_126E9D0`, `qword_126E9E0`, `qword_126E9F0` | 59, 61, 62, 63 | 4 lists |
    | `qword_126EA80` | 72 | 1 list |
 
@@ -220,7 +220,7 @@ For full details on the keep-in-IL mechanism, see [Keep-in-IL](../il/keep-in-il.
 
 This pass has three sub-stages per TU. The first (`sub_5CCA40`) clears flags to prevent unnecessary work. The second (`sub_5CC410`) removes function bodies. The third (`sub_5CCBF0`) removes entire IL entries.
 
-### Stage 4a: Clear Unneeded Instantiation Flags -- `sub_5CCA40`
+### Stage 4a: Clear Unneeded Instantiation Flags — `sub_5CCA40`
 
 **Address:** `0x5CCA40`
 **Source:** `il.c:29450` (`clear_instantiation_required_on_unneeded_entities`)
@@ -237,7 +237,7 @@ The conditions for clearing a routine's instantiation-required flag are:
 
 For non-file scopes (byte `+28` of scope is nonzero), additionally processes variables in the `+112` list with an analogous pattern: byte `+162` bit 6 clear, bits 4-5 in the pattern `(v8 & 0xB0) == 0x10`, with a non-null pointer at `*(entry + 0)`.
 
-### Stage 4b: Eliminate Unneeded Function Bodies -- `sub_5CC410`
+### Stage 4b: Eliminate Unneeded Function Bodies — `sub_5CC410`
 
 **Address:** `0x5CC410`
 **Source:** `il.c:29231` (`eliminate_bodies_of_unneeded_functions`)
@@ -247,8 +247,8 @@ Iterates the scope table (`qword_126EB98`, 16-byte entries: `{qword scope_ptr, i
 
 1. Checks that the file reference at `qword_126EC88[file_index]` is non-null.
 2. Checks TU ownership:
-   - Primary TU (`qword_106BA10 == qword_106B9F0`): checks `(*(scope_ptr - 8) >> 1) ^ 1) & 1` -- bit 1 of the pre-header flags byte must be clear.
-   - Secondary TU: checks `qword_126DFE0[*(scope_ptr + 24)] == qword_106BA10` -- the scope's file index maps to the current TU.
+   - Primary TU (`qword_106BA10 == qword_106B9F0`): checks `(*(scope_ptr - 8) >> 1) ^ 1) & 1` — bit 1 of the pre-header flags byte must be clear.
+   - Secondary TU: checks `qword_126DFE0[*(scope_ptr + 24)] == qword_106BA10` — the scope's file index maps to the current TU.
 3. Verifies scope kind byte `+28` == 17 (class/namespace scope).
 4. Checks the keep-in-il mark: bit 2 of byte `*(scope_ptr + 187)` must be clear (not needed) AND the scope file entry has bit 0 of byte `+29` set (eligible for elimination).
 5. If all checks pass, calls `sub_5CAB40` to remove the function body from the scope.
@@ -257,7 +257,7 @@ In C++ mode with `dword_126EFB4 == 2`, also calls `sub_6FFBA0` to reorganize nam
 
 Debug trace: `"eliminate_bodies_of_unneeded_functions"` at level 3.
 
-### Stage 4c: Eliminate Unneeded IL Entries -- `sub_5CCBF0`
+### Stage 4c: Eliminate Unneeded IL Entries — `sub_5CCBF0`
 
 **Address:** `0x5CCBF0`
 **Source:** `il.c:29598` (`eliminate_unneeded_il_entries`)
@@ -297,40 +297,40 @@ This pass performs final statement-level processing and scope validation, then o
 
 ### Operations
 
-1. **Statement finalization**: `sub_5BAD30` -- finalizes statement-level IL nodes (label resolution, goto target binding, fall-through analysis).
+1. **Statement finalization**: `sub_5BAD30` — finalizes statement-level IL nodes (label resolution, goto target binding, fall-through analysis).
 
 2. **Scope stack assertion** (C++ with `dword_106BA08`): Verifies that `*(qword_126C5E8 + 784 * dword_126C5E4 + 496) == qword_126E4C0`. The scope stack is an array of 784-byte entries at `qword_126C5E8`, indexed by `dword_126C5E4` (current depth). The assertion checks that the scope pointer at offset +496 of the current entry matches the expected file scope entity (`qword_126E4C0`). On mismatch, triggers a fatal assertion at `fe_wrapup.c:559` with function name `file_scope_il_wrapup_part_3`.
 
-3. **Scope cleanup**: For C++ mode, calls `sub_5C9E10(0)` -- finalizes class scope processing, resolves deferred member access checks.
+3. **Scope cleanup**: For C++ mode, calls `sub_5C9E10(0)` — finalizes class scope processing, resolves deferred member access checks.
 
-4. **IL output**: `sub_709250` -- serializes the IL tree to the IL output stream. This produces the internal representation that the backend reads, not the final `.int.c` file.
+4. **IL output**: `sub_709250` — serializes the IL tree to the IL output stream. This produces the internal representation that the backend reads, not the final `.int.c` file.
 
-5. **Template output**: `sub_7C2560` -- serializes template instantiation information to the output.
+5. **Template output**: `sub_7C2560` — serializes template instantiation information to the output.
 
-6. **Mirrored 3-pass sequence** (only when `dword_106BA08` -- full compilation mode): Re-runs passes 2-4 on the main TU's file scope node. This handles entities that were discovered or modified during the per-TU passes. The re-run is necessary because secondary TU processing may have added new cross-references to the primary TU's entities:
-   - `sub_707040(file_scope)` (needed flags) -- if errors appear (`qword_126ED90`), clears `dword_126E55C` and skips remaining
-   - `sub_610420(file_scope, 23)` with `dword_106B640 = 1/0` guard -- again abort if errors
+6. **Mirrored 3-pass sequence** (only when `dword_106BA08` — full compilation mode): Re-runs passes 2-4 on the main TU's file scope node. This handles entities that were discovered or modified during the per-TU passes. The re-run is necessary because secondary TU processing may have added new cross-references to the primary TU's entities:
+   - `sub_707040(file_scope)` (needed flags) — if errors appear (`qword_126ED90`), clears `dword_126E55C` and skips remaining
+   - `sub_610420(file_scope, 23)` with `dword_106B640 = 1/0` guard — again abort if errors
    - `sub_5CCA40(file_scope)` (clear instantiation flags, C++ only)
    - `sub_5CC410()` + `sub_5CCBF0(file_scope)` (eliminate, if `dword_126E55C`)
 
-7. **Source file state**: `sub_6B9580` -- updates source file tracking counters.
+7. **Source file state**: `sub_6B9580` — updates source file tracking counters.
 
-8. **Diagnostic flush**: `sub_4F4030` -- flushes pending diagnostic messages for this TU.
+8. **Diagnostic flush**: `sub_4F4030` — flushes pending diagnostic messages for this TU.
 
-9. **File scope cleanup**: `sub_6B9340(dword_126EC90)` -- closes file scope state, passing the current error count for this file.
+9. **File scope cleanup**: `sub_6B9340(dword_126EC90)` — closes file scope state, passing the current error count for this file.
 
 ## Post-Pass Operations
 
 After all five passes complete, `fe_wrapup` performs a series of global operations that are not per-TU.
 
-### Cross-TU IL Consistency -- `sub_796BA0`
+### Cross-TU IL Consistency — `sub_796BA0`
 
 **Address:** `0x796BA0`
 **Source:** `trans_copy.c:3003` (`copy_secondary_trans_unit_IL_to_primary`)
 
-Called only when there are no errors (`!qword_126ED90`), the multi-TU flag is clear (`!dword_106C2B4`), and there are secondary TUs (`*(qword_106B9F0) != 0`). In the current binary, this function always triggers a fatal assertion at `trans_copy.c:3003` -- the multi-TU IL copy infrastructure is compiled but disabled, likely reserved for future C++ module compilation support. The function traces `"copy_secondary_trans_unit_IL_to_primary"` before aborting.
+Called only when there are no errors (`!qword_126ED90`), the multi-TU flag is clear (`!dword_106C2B4`), and there are secondary TUs (`*(qword_106B9F0) != 0`). In the current binary, this function always triggers a fatal assertion at `trans_copy.c:3003` — the multi-TU IL copy infrastructure is compiled but disabled, likely reserved for future C++ module compilation support. The function traces `"copy_secondary_trans_unit_IL_to_primary"` before aborting.
 
-### Scope Renumbering -- `sub_707480`
+### Scope Renumbering — `sub_707480`
 
 **Address:** `0x707480`
 **Source:** `scope_stk.c`
@@ -359,7 +359,7 @@ For each scope entry at `qword_126EB98 + 16 * idx`:
 
 After the double-loop, clears `dword_126C5A0 = 0`.
 
-### Template Validation -- `sub_765480`
+### Template Validation — `sub_765480`
 
 **Address:** `0x765480`
 **Source:** `templates.c:19822` (`remove_unneeded_instantiations`)
@@ -394,7 +394,7 @@ for (int idx = 2; idx <= dword_126EC80; idx++) {
 
 ### Output Flush and File Close
 
-1. **Conditional flush**: If `dword_106C250` is set and no errors, calls `sub_5F7DF0(0)` -- flushes the IL output stream.
+1. **Conditional flush**: If `dword_106C250` is set and no errors, calls `sub_5F7DF0(0)` — flushes the IL output stream.
 2. **Close three output files** via `sub_4F7B10`:
 
    | Call | File pointer | ID | Identity |
@@ -450,25 +450,25 @@ Allocated space in all categories:
              Max mem alloc                   NNNNNNN
 ```
 
-The "Not listed" entry is computed as `qword_1280700 + qword_1280708 - qword_12806F8 - total_above` -- it captures memory allocated by subsystems that do not have their own `space_used` reporter.
+The "Not listed" entry is computed as `qword_1280700 + qword_1280708 - qword_12806F8 - total_above` — it captures memory allocated by subsystems that do not have their own `space_used` reporter.
 
 ### Debug Dumps
 
 If debug mode (`dword_126EFC8`) is active:
-- `"scope_stack"` flag: calls `sub_702DC0` -- dumps the entire scope stack to stderr, showing all active scopes with their indices, kinds, and entity counts.
-- `"viability"` flag: calls `sub_6C6570` -- dumps overload viability information, showing candidate sets and resolution decisions.
+- `"scope_stack"` flag: calls `sub_702DC0` — dumps the entire scope stack to stderr, showing all active scopes with their indices, kinds, and entity counts.
+- `"viability"` flag: calls `sub_6C6570` — dumps overload viability information, showing candidate sets and resolution decisions.
 
 ### Final Teardown
 
-1. **IL allocator check** -- `sub_5E1D00` (`check_local_constant_use` at `il_alloc.c:1177`): Copies `qword_126EFB8` to `qword_126EDE8` (restores the IL source position to a baseline). Asserts `qword_126F680 == 0` -- no pending local constants should remain after wrapup. If nonzero, fires a fatal assertion.
+1. **IL allocator check** — `sub_5E1D00` (`check_local_constant_use` at `il_alloc.c:1177`): Copies `qword_126EFB8` to `qword_126EDE8` (restores the IL source position to a baseline). Asserts `qword_126F680 == 0` — no pending local constants should remain after wrapup. If nonzero, fires a fatal assertion.
 
 2. **Zero 6 global state variables**:
-   - `qword_126DB48 = 0` -- pending entity pointer (scope tracking)
-   - Call `sub_4ED0E0()` -- declaration subsystem cleanup (releases declaration pools)
-   - `dword_126EE48 = 0` -- init-complete flag (cleared, marking end of frontend processing)
-   - `qword_106BA10 = 0` -- current TU descriptor (no active TU)
-   - `qword_12C7768 = 0` -- template state pointer 1
-   - `qword_12C7770 = 0` -- template state pointer 2
+   - `qword_126DB48 = 0` — pending entity pointer (scope tracking)
+   - Call `sub_4ED0E0()` — declaration subsystem cleanup (releases declaration pools)
+   - `dword_126EE48 = 0` — init-complete flag (cleared, marking end of frontend processing)
+   - `qword_106BA10 = 0` — current TU descriptor (no active TU)
+   - `qword_12C7768 = 0` — template state pointer 1
+   - `qword_12C7770 = 0` — template state pointer 2
 
 3. **Timing**: If debug mode, calls `sub_48AFD0` (print trace timing footer for the fe_wrapup section).
 
@@ -478,31 +478,31 @@ Each pass has a distinct error-gating pattern. The conditions below are verified
 
 | Pass | Error behavior | Decompiled condition |
 |---|---|---|
-| Pass 1 (`sub_588C60`) | No gate -- always runs. Cleanup operations (template release, exception spec finalization) are safe and necessary even after errors. | None. Unconditional iteration of all secondary TUs followed by primary. |
+| Pass 1 (`sub_588C60`) | No gate — always runs. Cleanup operations (template release, exception spec finalization) are safe and necessary even after errors. | None. Unconditional iteration of all secondary TUs followed by primary. |
 | Cross-TU (`sub_796C00`) | Skipped entirely if any errors occurred. This prevents cross-TU marking from propagating errors between units. | `if (!qword_126ED90) sub_796C00();` (line 67-68 of decompiled) |
 | Pass 2 (`sub_707040`) | Per-TU skip. Inside the TU iteration loop, each TU is independently gated: if errors exist when that TU is selected, it is skipped but subsequent TUs may still run. | `sub_7A3D60(tu); if (!qword_126ED90) sub_707040(*(qword_106BA10 + 8));` (lines 77-84) |
 | Pass 3 (`sub_610420`) | Per-TU skip. Same per-TU gating as Pass 2. When a TU is skipped, `dword_106B640` is never set to 1, so the guard flag remains 0. | `sub_7A3D60(tu); if (!qword_126ED90) { dword_106B640 = 1; sub_610420(..., 23); dword_106B640 = 0; }` (lines 97-108) |
 | Pass 4 (`sub_5CCA40` etc.) | Per-TU skip. On error for a TU: `dword_126E55C` is cleared to 0, which prevents stages 4b (`sub_5CC410`) and 4c (`sub_5CCBF0`) from running for that TU. Stage 4a (`sub_5CCA40`) is additionally gated by `dword_126EFB4 == 2` (C++ only). | `sub_7A3D60(tu); if (!qword_126ED90) { ... if (dword_126E55C) { sub_5CC410(); sub_5CCBF0(v8); } } else { dword_126E55C = 0; }` (lines 120-137) |
-| Pass 5 (`sub_588D40`) | No gate on the per-TU iteration -- always runs. However, the internal mirrored 2-3-4 re-run within `sub_588D40` is individually error-gated at each stage. | Unconditional iteration. Internal re-run checks `qword_126ED90` before each of `sub_707040`, `sub_610420`, `sub_5CCA40`. |
+| Pass 5 (`sub_588D40`) | No gate on the per-TU iteration — always runs. However, the internal mirrored 2-3-4 re-run within `sub_588D40` is individually error-gated at each stage. | Unconditional iteration. Internal re-run checks `qword_126ED90` before each of `sub_707040`, `sub_610420`, `sub_5CCA40`. |
 | Post-passes | `sub_796BA0` requires `!qword_126ED90 && !dword_106C2B4 && *(qword_106B9F0) != 0`. `sub_5F7DF0` requires `dword_106C250 && !qword_126ED90`. All others run unconditionally. | Line 158: `if (!qword_126ED90 && !dword_106C2B4 && *v4) sub_796BA0();` Line 213: `if (dword_106C250 && !qword_126ED90) sub_5F7DF0(0);` |
 
 ## Data Flow Summary
 
 | Input | Description |
 |---|---|
-| `qword_106B9F0` | TU chain head -- linked list of all translation units |
-| `*(qword_106BA10 + 8)` | File scope IL root node -- the IL tree for each TU |
-| `qword_126ED90` | Error flag -- nonzero means compilation errors occurred |
-| `dword_126EFB4` | Language mode -- 2 for C++, gates pass 4 and template operations |
-| `dword_106BA08` | Full compilation mode flag -- gates Pass 5's mirrored sequence |
+| `qword_106B9F0` | TU chain head — linked list of all translation units |
+| `*(qword_106BA10 + 8)` | File scope IL root node — the IL tree for each TU |
+| `qword_126ED90` | Error flag — nonzero means compilation errors occurred |
+| `dword_126EFB4` | Language mode — 2 for C++, gates pass 4 and template operations |
+| `dword_106BA08` | Full compilation mode flag — gates Pass 5's mirrored sequence |
 
 | Output | Description |
 |---|---|
 | Finalized IL tree | Entities marked for keeping preserved; all others eliminated |
-| `dword_106B640` | IL emission guard flag -- 0 at completion |
-| `dword_126E55C` | Deferred class members flag -- 0 after processing |
+| `dword_106B640` | IL emission guard flag — 0 at completion |
+| `dword_126E55C` | Deferred class members flag — 0 after processing |
 | Closed output files | Three output streams (IDs 1513-1515) flushed and closed |
-| Zeroed globals | `qword_106BA10`, `dword_126EE48`, `qword_126DB48`, template state -- all cleared |
+| Zeroed globals | `qword_106BA10`, `dword_126EE48`, `qword_126DB48`, template state — all cleared |
 
 ## Function Map
 
@@ -640,11 +640,11 @@ Each pass has a distinct error-gating pattern. The conditions below are verified
 
 ## Cross-References
 
-- [Pipeline Overview](./overview.md) -- fe_wrapup is stage 6 in the 8-stage pipeline
-- [Keep-in-IL](../il/keep-in-il.md) -- detailed coverage of the device code selection mechanism (Pass 3)
-- [IL Overview](../il/overview.md) -- the IL data structures walked by all five passes
-- [Backend Code Generation](./backend.md) -- stage 7, consumes the finalized IL produced by fe_wrapup
-- [Entry Point & Initialization](./entry.md) -- the `main()` function that calls `sub_588F90`
-- [Frontend Invocation](./frontend.md) -- stage 5, builds the IL tree that fe_wrapup finalizes
-- [Timing & Exit](./timing-exit.md) -- fe_wrapup completion marks the end of "Front end time"
-- [Device/Host Separation](../cuda/device-host-separation.md) -- the keep_in_il mechanism's relationship to device code isolation
+- [Pipeline Overview](./overview.md) — fe_wrapup is stage 6 in the 8-stage pipeline
+- [Keep-in-IL](../il/keep-in-il.md) — detailed coverage of the device code selection mechanism (Pass 3)
+- [IL Overview](../il/overview.md) — the IL data structures walked by all five passes
+- [Backend Code Generation](./backend.md) — stage 7, consumes the finalized IL produced by fe_wrapup
+- [Entry Point & Initialization](./entry.md) — the `main()` function that calls `sub_588F90`
+- [Frontend Invocation](./frontend.md) — stage 5, builds the IL tree that fe_wrapup finalizes
+- [Timing & Exit](./timing-exit.md) — fe_wrapup completion marks the end of "Front end time"
+- [Device/Host Separation](../cuda/device-host-separation.md) — the keep_in_il mechanism's relationship to device code isolation

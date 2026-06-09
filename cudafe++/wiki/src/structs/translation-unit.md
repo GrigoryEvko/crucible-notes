@@ -1,6 +1,6 @@
 # Translation Unit Descriptor
 
-The translation unit descriptor is the 424-byte structure at the heart of cudafe++'s multi-TU compilation support. Every source file processed by the frontend -- whether via RDC separate compilation or C++20 module import -- gets its own TU descriptor. The descriptor holds pointers to the parser state, scope stack snapshot, error context, and IL tree root for that translation unit. When the frontend switches from one TU to another, it saves the entire set of per-TU global variables into the outgoing descriptor's storage buffer and restores the incoming descriptor's saved values, making TU switching look like a cooperative context switch for compiler state.
+The translation unit descriptor is the 424-byte structure at the heart of cudafe++'s multi-TU compilation support. Every source file processed by the frontend — whether via RDC separate compilation or C++20 module import — gets its own TU descriptor. The descriptor holds pointers to the parser state, scope stack snapshot, error context, and IL tree root for that translation unit. When the frontend switches from one TU to another, it saves the entire set of per-TU global variables into the outgoing descriptor's storage buffer and restores the incoming descriptor's saved values, making TU switching look like a cooperative context switch for compiler state.
 
 The descriptor is allocated from the region-based arena (`sub_6BA0D0`), linked into a global TU chain, and managed through a TU stack that tracks the active-TU history for nested TU switches (e.g., when processing an entity requires switching to its owning TU temporarily).
 
@@ -9,7 +9,7 @@ The descriptor is allocated from the region-based arena (`sub_6BA0D0`), linked i
 | Property | Value |
 |---|---|
 | Size | 424 bytes (confirmed by `print_trans_unit_statistics`: "translation units ... 424 bytes each") |
-| Allocation | `sub_6BA0D0(424)` -- region-based arena, never individually freed |
+| Allocation | `sub_6BA0D0(424)` — region-based arena, never individually freed |
 | Source file | `trans_unit.c` (EDG 6.6, address range `0x7A3A50`-`0x7A48B0`, ~12 functions) |
 | Allocator | `sub_7A40A0` (`process_translation_unit`) |
 | Save function | `sub_7A3A50` (`save_translation_unit_state`) |
@@ -26,25 +26,25 @@ The table below documents every field in the 424-byte TU descriptor. Offsets are
 
 | Offset | Size | Field | Set By | Read By |
 |---|---|---|---|---|
-| `+0` | 8 | `next_tu` -- linked list pointer to next TU in chain | `process_translation_unit` (via `qword_12C7A90`) | `fe_wrapup` TU iteration loop |
-| `+8` | 8 | `prev_scope_state` -- saved scope pointer (xmmword_126EB60+8) | `save_translation_unit_state` | `switch_translation_unit` |
-| `+16` | 8 | `storage_buffer` -- pointer to bulk registered-variable storage | `process_translation_unit` (allocates `sub_6BA0D0(per_tu_storage_size)`) | `save/switch_translation_unit` |
-| `+24` | 160 | `file_scope_info` -- file scope state block (20 qwords, initialized by `sub_7046E0`) | `sub_7046E0` (zeroes 20 fields at offsets 0-152 within this block) | Scope stack operations, `sub_704490` |
-| `+184` | 8 | (cleared to 0) -- within file scope info tail | `process_translation_unit` | -- |
-| `+192` | 8 | (cleared to 0) -- gap between scope info and registered-variable zone | `process_translation_unit` | -- |
-| `+200` | 160 | **registered-variable direct fields** -- zeroed bulk region (offsets +200 through +359) | `memset` in `process_translation_unit`; individual fields written by registered-variable initialization loop | `save/switch_translation_unit` via storage buffer |
-| `+208` | 8 | `scope_stack_saved_1` -- saved `qword_126EB70` (scope stack depth marker) | `save_translation_unit_state` (a1[26]) | `switch_translation_unit` |
-| `+256` | 8 | `scope_stack_saved_2` -- saved `qword_126EBA0` | `save_translation_unit_state` (a1[32]) | `switch_translation_unit` |
-| `+320` | 8 | `scope_stack_saved_3` -- saved `qword_126EBE0` | `save_translation_unit_state` (a1[40]) | `switch_translation_unit` |
-| `+352` | 8 | (cleared to 0) -- end of registered-variable zone | `process_translation_unit` | -- |
-| `+360` | 8 | (cleared to 0) -- additional state word 1 | `process_translation_unit` | -- |
-| `+368` | 8 | (cleared to 0) -- additional state word 2 | `process_translation_unit` | -- |
-| `+376` | 8 | `module_info_ptr` -- pointer to module info structure (parameter `a3` of `process_translation_unit`) | `process_translation_unit` | Module import path, `a3[2]` back-link |
-| `+384` | 8 | `il_state_ptr` -- shortcut pointer for IL state (1344-byte aggregate at `unk_126E600`), set via registered-variable mechanism with `offset_in_tu = 384` | Registered-variable init loop | IL operations |
-| `+392` | 2 | `flags` -- bit field: byte 0 = `is_primary_tu` (1 if `a3 == NULL`), byte 1 = 0x01 (initialization sentinel, combined initial value = `0x0100`) | `process_translation_unit` | TU classification |
-| `+394` | 14 | (padding / reserved) | -- | -- |
-| `+408` | 4 | `error_severity_level` -- copied from `dword_126EC90` (current maximum error severity) | `process_translation_unit` | Error reporting, recovery decisions |
-| `+416` | 8 | (cleared to 0) -- additional state | `process_translation_unit` | -- |
+| `+0` | 8 | `next_tu` — linked list pointer to next TU in chain | `process_translation_unit` (via `qword_12C7A90`) | `fe_wrapup` TU iteration loop |
+| `+8` | 8 | `prev_scope_state` — saved scope pointer (xmmword_126EB60+8) | `save_translation_unit_state` | `switch_translation_unit` |
+| `+16` | 8 | `storage_buffer` — pointer to bulk registered-variable storage | `process_translation_unit` (allocates `sub_6BA0D0(per_tu_storage_size)`) | `save/switch_translation_unit` |
+| `+24` | 160 | `file_scope_info` — file scope state block (20 qwords, initialized by `sub_7046E0`) | `sub_7046E0` (zeroes 20 fields at offsets 0-152 within this block) | Scope stack operations, `sub_704490` |
+| `+184` | 8 | (cleared to 0) — within file scope info tail | `process_translation_unit` | — |
+| `+192` | 8 | (cleared to 0) — gap between scope info and registered-variable zone | `process_translation_unit` | — |
+| `+200` | 160 | **registered-variable direct fields** — zeroed bulk region (offsets +200 through +359) | `memset` in `process_translation_unit`; individual fields written by registered-variable initialization loop | `save/switch_translation_unit` via storage buffer |
+| `+208` | 8 | `scope_stack_saved_1` — saved `qword_126EB70` (scope stack depth marker) | `save_translation_unit_state` (a1[26]) | `switch_translation_unit` |
+| `+256` | 8 | `scope_stack_saved_2` — saved `qword_126EBA0` | `save_translation_unit_state` (a1[32]) | `switch_translation_unit` |
+| `+320` | 8 | `scope_stack_saved_3` — saved `qword_126EBE0` | `save_translation_unit_state` (a1[40]) | `switch_translation_unit` |
+| `+352` | 8 | (cleared to 0) — end of registered-variable zone | `process_translation_unit` | — |
+| `+360` | 8 | (cleared to 0) — additional state word 1 | `process_translation_unit` | — |
+| `+368` | 8 | (cleared to 0) — additional state word 2 | `process_translation_unit` | — |
+| `+376` | 8 | `module_info_ptr` — pointer to module info structure (parameter `a3` of `process_translation_unit`) | `process_translation_unit` | Module import path, `a3[2]` back-link |
+| `+384` | 8 | `il_state_ptr` — shortcut pointer for IL state (1344-byte aggregate at `unk_126E600`), set via registered-variable mechanism with `offset_in_tu = 384` | Registered-variable init loop | IL operations |
+| `+392` | 2 | `flags` — bit field: byte 0 = `is_primary_tu` (1 if `a3 == NULL`), byte 1 = 0x01 (initialization sentinel, combined initial value = `0x0100`) | `process_translation_unit` | TU classification |
+| `+394` | 14 | (padding / reserved) | — | — |
+| `+408` | 4 | `error_severity_level` — copied from `dword_126EC90` (current maximum error severity) | `process_translation_unit` | Error reporting, recovery decisions |
+| `+416` | 8 | (cleared to 0) — additional state | `process_translation_unit` | — |
 
 ### Layout Diagram
 
@@ -85,10 +85,10 @@ The initialization in `process_translation_unit` proceeds in this order:
 1. `[+0]` = 0 (next_tu pointer, not yet linked)
 2. `[+16]` = `sub_6BA0D0(qword_12C7A98)` (allocate storage buffer, size = accumulated registered-variable total)
 3. `[+8]` = 0 (prev_scope_state)
-4. `sub_7046E0(tu + 24)` -- zero-initialize the 160-byte file scope info block
-5. `[+192]` = 0, `[+352]` = 0, `[+184]` = 0 -- explicit clears around the bulk region
-6. `memset(aligned(tu + 200), 0, ...)` -- bulk-zero the registered-variable direct fields from +200 to +360 (aligned to 8-byte boundary)
-7. `[+360]` = 0, `[+368]` = 0, `[+376]` = 0 -- clear additional state
+4. `sub_7046E0(tu + 24)` — zero-initialize the 160-byte file scope info block
+5. `[+192]` = 0, `[+352]` = 0, `[+184]` = 0 — explicit clears around the bulk region
+6. `memset(aligned(tu + 200), 0, ...)` — bulk-zero the registered-variable direct fields from +200 to +360 (aligned to 8-byte boundary)
+7. `[+360]` = 0, `[+368]` = 0, `[+376]` = 0 — clear additional state
 8. `[+392]` = `0x0100` (flags: initialized sentinel in high byte)
 9. `[+408]` = 0, `[+416]` = 0
 10. Registered-variable default-value loop: iterate `qword_12C7AA8` (registered variable list) and for each entry with `offset_in_tu != 0`, write `variable_address` into `tu_desc[offset_in_tu]`
@@ -121,9 +121,9 @@ process_translation_unit(filename, is_recompilation, module_info_ptr)
 ```
 
 1. If a current TU exists (`qword_106BA10 != 0`), save its state via `save_translation_unit_state`
-2. Reset compilation state (`sub_5EAEC0` -- error state reset)
+2. Reset compilation state (`sub_5EAEC0` — error state reset)
 3. If recompilation mode: reset parse state (`sub_585EE0`)
-4. Set `dword_12C7A8C = 1` (registration complete -- no more variable registrations allowed)
+4. Set `dword_12C7A8C = 1` (registration complete — no more variable registrations allowed)
 5. Allocate the 424-byte descriptor and its storage buffer
 6. Initialize all fields (see sequence above)
 7. Copy registered-variable defaults into the descriptor
@@ -134,8 +134,8 @@ process_translation_unit(filename, is_recompilation, module_info_ptr)
 The descriptor is linked into two structures simultaneously:
 
 **TU Chain** (singly-linked list via `[+0]`):
-- Head: `qword_106B9F0` (primary_translation_unit) -- the first TU processed
-- Tail: `qword_12C7A90` (tu_chain_tail) -- the most recently allocated TU
+- Head: `qword_106B9F0` (primary_translation_unit) — the first TU processed
+- Tail: `qword_12C7A90` (tu_chain_tail) — the most recently allocated TU
 - Linking: `*tu_chain_tail = new_tu; tu_chain_tail = new_tu`
 - Used by: `fe_wrapup` to iterate all TUs during the 5-pass post-processing
 
@@ -156,7 +156,7 @@ qword_106B9F0                        each entry: 16 bytes
 
 ### Phase 4: Active TU Tracking
 
-The global `qword_106BA10` always points to the currently active TU descriptor. All compiler state -- parser globals, scope stack, symbol tables, error context -- corresponds to this TU. Switching the active TU requires a full context switch through `switch_translation_unit`.
+The global `qword_106BA10` always points to the currently active TU descriptor. All compiler state — parser globals, scope stack, symbol tables, error context — corresponds to this TU. Switching the active TU requires a full context switch through `switch_translation_unit`.
 
 ### Phase 5: Processing (5 Passes in fe_wrapup)
 
@@ -417,7 +417,7 @@ TU Stack Entry (16 bytes)
   [8]   8   tu_desc_ptr     pointer to the TU descriptor
 ```
 
-Stack entries are recycled through a free list (`qword_12C7AB8`). They are allocated by `sub_6B7340` (general storage, not arena) on first use and never deallocated -- only returned to the free list on pop.
+Stack entries are recycled through a free list (`qword_12C7AB8`). They are allocated by `sub_6B7340` (general storage, not arena) on first use and never deallocated — only returned to the free list on pop.
 
 ## TU Correspondence (24 bytes)
 
@@ -431,7 +431,7 @@ Trans Unit Correspondence (24 bytes)
   [20]  1   flag            correspondence type flag
 ```
 
-Allocation uses a free list (`qword_12C7AB0`) with fallback to arena allocation (`sub_6BA0D0(24)`). The reference-counted deallocation in `free_trans_unit_corresp` (`sub_7A3BB0`) asserts that `refcount > 0` before decrementing, and only pushes the node onto the free list when the count reaches 1 (not 0 -- the last reference is the free-list entry itself).
+Allocation uses a free list (`qword_12C7AB0`) with fallback to arena allocation (`sub_6BA0D0(24)`). The reference-counted deallocation in `free_trans_unit_corresp` (`sub_7A3BB0`) asserts that `refcount > 0` before decrementing, and only pushes the node onto the free list when the count reaches 1 (not 0 — the last reference is the free-list entry itself).
 
 ## Global Variables
 
@@ -439,14 +439,14 @@ Allocation uses a free list (`qword_12C7AB0`) with fallback to arena allocation 
 
 | Global | Type | Identity |
 |---|---|---|
-| `qword_106BA10` | `tu_desc*` | `current_translation_unit` -- always points to the active TU |
-| `qword_106B9F0` | `tu_desc*` | `primary_translation_unit` -- the first TU processed (head of chain) |
-| `qword_12C7A90` | `tu_desc*` | `tu_chain_tail` -- last TU in the linked list |
-| `qword_106BA18` | `stack_entry*` | `translation_unit_stack_top` -- top of the TU stack |
-| `dword_106B9E8` | `int32` | `tu_stack_depth` -- number of non-primary TUs on the stack |
-| `qword_106BA00` | `char*` | `current_filename` -- source file name for the active TU |
-| `dword_106BA08` | `int32` | `is_recompilation` -- 1 if this TU is being recompiled |
-| `dword_106B9F8` | `int32` | `has_module_info` -- 1 if the active TU has module info |
+| `qword_106BA10` | `tu_desc*` | `current_translation_unit` — always points to the active TU |
+| `qword_106B9F0` | `tu_desc*` | `primary_translation_unit` — the first TU processed (head of chain) |
+| `qword_12C7A90` | `tu_desc*` | `tu_chain_tail` — last TU in the linked list |
+| `qword_106BA18` | `stack_entry*` | `translation_unit_stack_top` — top of the TU stack |
+| `dword_106B9E8` | `int32` | `tu_stack_depth` — number of non-primary TUs on the stack |
+| `qword_106BA00` | `char*` | `current_filename` — source file name for the active TU |
+| `dword_106BA08` | `int32` | `is_recompilation` — 1 if this TU is being recompiled |
+| `dword_106B9F8` | `int32` | `has_module_info` — 1 if the active TU has module info |
 
 ### Registration Infrastructure
 
@@ -454,9 +454,9 @@ Allocation uses a free list (`qword_12C7AB0`) with fallback to arena allocation 
 |---|---|---|
 | `qword_12C7AA8` | `reg_entry*` | `registered_variable_list_head` |
 | `qword_12C7AA0` | `reg_entry*` | `registered_variable_list_tail` |
-| `qword_12C7A98` | `size_t` | `per_tu_storage_size` -- accumulated total size of all registered variables (determines storage buffer allocation) |
-| `dword_12C7A8C` | `int32` | `registration_complete` -- set to 1 when first TU is allocated; guards against late registration |
-| `dword_12C7A88` | `int32` | `has_seen_module_tu` -- set to 1 when a TU with module info is processed |
+| `qword_12C7A98` | `size_t` | `per_tu_storage_size` — accumulated total size of all registered variables (determines storage buffer allocation) |
+| `dword_12C7A8C` | `int32` | `registration_complete` — set to 1 when first TU is allocated; guards against late registration |
+| `dword_12C7A88` | `int32` | `has_seen_module_tu` — set to 1 when a TU with module info is processed |
 
 ### Free Lists and Counters
 
@@ -464,10 +464,10 @@ Allocation uses a free list (`qword_12C7AB0`) with fallback to arena allocation 
 |---|---|---|
 | `qword_12C7AB8` | `stack_entry*` | `stack_entry_free_list` |
 | `qword_12C7AB0` | `corresp*` | `corresp_free_list` |
-| `qword_12C7A78` | `int64` | `tu_count` -- total TU descriptors allocated |
-| `qword_12C7A80` | `int64` | `stack_entry_count` -- total stack entries allocated (not freed) |
-| `qword_12C7A68` | `int64` | `registration_count` -- total registered variable entries |
-| `qword_12C7A70` | `int64` | `corresp_count` -- total correspondence nodes allocated |
+| `qword_12C7A78` | `int64` | `tu_count` — total TU descriptors allocated |
+| `qword_12C7A80` | `int64` | `stack_entry_count` — total stack entries allocated (not freed) |
+| `qword_12C7A68` | `int64` | `registration_count` — total registered variable entries |
+| `qword_12C7A70` | `int64` | `corresp_count` — total correspondence nodes allocated |
 
 ### Correspondence State
 
@@ -484,7 +484,7 @@ Allocation uses a free list (`qword_12C7AB0`) with fallback to arena allocation 
 
 Two reset functions exist for different scopes:
 
-**`reset_translation_unit_state`** (`sub_7A4860`) -- zeroes the 6 core runtime globals. Called during error recovery or frontend teardown:
+**`reset_translation_unit_state`** (`sub_7A4860`) — zeroes the 6 core runtime globals. Called during error recovery or frontend teardown:
 
 ```c
 qword_106BA10 = 0;  // current_tu
@@ -495,7 +495,7 @@ qword_106BA18 = 0;  // tu_stack_top
 dword_106B9E8 = 0;  // tu_stack_depth
 ```
 
-**`init_translation_unit_tracking`** (`sub_7A48B0`) -- zeroes all 13 tracking globals. Called during frontend initialization before any registrations:
+**`init_translation_unit_tracking`** (`sub_7A48B0`) — zeroes all 13 tracking globals. Called during frontend initialization before any registrations:
 
 ```c
 qword_12C7AA8 = 0;  // registered_variable_list_head
@@ -560,9 +560,9 @@ The TU system contains 8 assertion sites (calls to `sub_4F2930` with source path
 
 ## Cross-References
 
-- [RDC Mode](../cuda/rdc-mode.md) -- multi-TU compilation: correspondence system, cross-TU IL copying, module ID generation
-- [Frontend Wrapup](../pipeline/fe-wrapup.md) -- the 5-pass post-processing architecture that iterates the TU chain
-- [Scope Entry](scope-entry.md) -- 784-byte scope stack entries saved/restored during TU switches
-- [Entity Node](entity-node.md) -- entities carry a back-pointer to their owning TU (extracted via `sub_741960`)
-- [IL Overview](../il/overview.md) -- the IL tree rooted in each TU's file scope
-- [Pipeline Overview](../pipeline/overview.md) -- where `process_translation_unit` sits in the full pipeline
+- [RDC Mode](../cuda/rdc-mode.md) — multi-TU compilation: correspondence system, cross-TU IL copying, module ID generation
+- [Frontend Wrapup](../pipeline/fe-wrapup.md) — the 5-pass post-processing architecture that iterates the TU chain
+- [Scope Entry](scope-entry.md) — 784-byte scope stack entries saved/restored during TU switches
+- [Entity Node](entity-node.md) — entities carry a back-pointer to their owning TU (extracted via `sub_741960`)
+- [IL Overview](../il/overview.md) — the IL tree rooted in each TU's file scope
+- [Pipeline Overview](../pipeline/overview.md) — where `process_translation_unit` sits in the full pipeline

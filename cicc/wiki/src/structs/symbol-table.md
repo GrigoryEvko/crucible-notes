@@ -1,6 +1,6 @@
 # DenseMap, Symbol Table, and EDG Frontend Structures
 
-The EDG 6.6 frontend layered on LLVM's DenseMap maintains its own declaration nodes, type nodes, and scope stack for C/C++/CUDA semantic analysis. This page documents the EDG-level structures that ride on top of the DenseMap. For the DenseMap implementation itself -- layout, hash function, probing, sentinel values, and growth policy -- see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md).
+The EDG 6.6 frontend layered on LLVM's DenseMap maintains its own declaration nodes, type nodes, and scope stack for C/C++/CUDA semantic analysis. This page documents the EDG-level structures that ride on top of the DenseMap. For the DenseMap implementation itself — layout, hash function, probing, sentinel values, and growth policy — see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md).
 
 The EDG symbol tables in this subsystem use the NVVM-layer sentinel pair (-8 / -16) and the pointer hash `(ptr >> 9) ^ (ptr >> 4)`. See the [sentinel reference table](../infra/hash-infrastructure.md#which-sentinel-set-to-expect) for other subsystems.
 
@@ -10,7 +10,7 @@ The EDG symbol tables in this subsystem use the NVVM-layer sentinel pair (-8 / -
 
 The EDG 6.6 frontend represents every C/C++ declaration as a variable-length structure. The canonical declaration node layout was recovered from the top-level declarator parser `sub_662DE0` and the declaration-specifier resolver `sub_7C0F00`.
 
-### Declaration Node (a_decl_node) -- 456+ bytes
+### Declaration Node (a_decl_node) — 456+ bytes
 
 | Offset | Size | Type | Field | Evidence |
 |--------|------|------|-------|----------|
@@ -232,7 +232,7 @@ The full enumeration recovered from `sub_7386E0`:
 | 32 | Address space 32 (shared memory) |
 | 33 | Address space 33 (constant memory) |
 
-### Type Canonicalization -- `sub_72EC50`
+### Type Canonicalization — `sub_72EC50`
 
 Before any type comparison, both sides are canonicalized by stripping non-template typedef aliases:
 
@@ -481,7 +481,7 @@ fn compare_types(type_A, type_B, flags) -> bool:
 | `sub_89AB40` | Template-args comparator | Template argument list comparison |
 | `sub_89BAF0` | Template-args full-context comparator | Full template context compare |
 
-### Key Global: `dword_4F07588` -- unique_id optimization
+### Key Global: `dword_4F07588` — unique_id optimization
 
 When set, enables O(1) identity comparison via the `unique_id` field at `scope+32`. This avoids recursive structural comparison for named classes and enums. The field is compared as a non-null integer; matching non-null values prove the two types refer to the same entity.
 
@@ -489,7 +489,7 @@ When set, enables O(1) identity comparison via the `unique_id` field at `scope+3
 
 ## IL Tree Walker and Copier
 
-### Tree Walker -- `sub_7506E0` (37 KB native; 7,283 lines decomp)
+### Tree Walker — `sub_7506E0` (37 KB native; 7,283 lines decomp)
 
 The generic IL tree walker visits every node in the EDG intermediate representation. It dispatches on 83 node kinds (1-86 with gaps at 24-26) using a massive switch statement.
 
@@ -520,7 +520,7 @@ for cursor = node.field; cursor; cursor = cursor.next:
 
 Next-pointer stride varies by node kind: +0, +16, +24, +32, +56, +112, +120 bytes.
 
-### Tree Copier -- `sub_766570` (24 KB native; 5,187 lines decomp)
+### Tree Copier — `sub_766570` (24 KB native; 5,187 lines decomp)
 
 The copier is driven by template instantiation (`sub_8C5CD0` -> `sub_8C4EC0` -> `sub_8C2C50` -> `sub_766570`). It uses the walker's callback infrastructure:
 
@@ -602,45 +602,45 @@ DenseMap instances appear at these known locations:
 - **SelectionDAG builder context**: Map A (+120), Map B (+152), Set C (+184) for node deduplication and worklist.
 - **Per-node analysis**: embedded DenseSet at +72 inside analysis structures created during DAG construction.
 - **Instruction constraint table**: the global `word_3F3E6C0` array is a flat table rather than a DenseMap, but the constraint emission functions use DenseMaps for lookup caching.
-- **EDG type translation**: 5 distinct caches -- visited set, type cache, type-value map, scope table, and type index table.
+- **EDG type translation**: 5 distinct caches — visited set, type cache, type-value map, scope table, and type index table.
 - **Base class comparison**: `qword_4D03BF8` hash table for overload-resolution base class triple lookup.
 
 The consistency of the hash function, sentinel values, and growth policy across all instances is documented in [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md).
 
 ## Cross-References
 
-- [IR Node Layout](ir-node.md) -- NVVM IR node structure and operand access
-- [DAG Node](dag-node.md) -- SelectionDAG builder that consumes DenseMap instances
-- [Pattern Database](pattern-db.md) -- instruction selection patterns indexed by DenseMap
-- [Address Spaces](../reference/address-spaces.md) -- CUDA memory space qualifier values
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- comprehensive DenseMap documentation
-- [EDG Frontend](../pipeline/edg.md) -- EDG tokenizer and keyword dispatch
-- [IRGen Types](../pipeline/irgen-types.md) -- EDG-to-LLVM type translation detail
+- [IR Node Layout](ir-node.md) — NVVM IR node structure and operand access
+- [DAG Node](dag-node.md) — SelectionDAG builder that consumes DenseMap instances
+- [Pattern Database](pattern-db.md) — instruction selection patterns indexed by DenseMap
+- [Address Spaces](../reference/address-spaces.md) — CUDA memory space qualifier values
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — comprehensive DenseMap documentation
+- [EDG Frontend](../pipeline/edg.md) — EDG tokenizer and keyword dispatch
+- [IRGen Types](../pipeline/irgen-types.md) — EDG-to-LLVM type translation detail
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_662DE0` | `sub_662DE0` | -- | Top-level EDG declarator parser |
-| `sub_672A20` | `sub_672A20` | -- | EDG decl-specifier while/switch token dispatcher |
-| `sub_7C0F00` | `sub_7C0F00` | -- | EDG scope-chain + qualified-name resolver |
-| `sub_7386E0` | `sub_7386E0` | -- | Structural type-tree comparison |
-| `sub_739370` | `sub_739370` | -- | Linked-list type comparator |
-| `sub_739430` | `sub_739430` | -- | Declaration-level type comparator |
-| `sub_72EC50` | `sub_72EC50` | -- | Typedef / elaborated-alias stripper |
-| `sub_74A390` | `sub_74A390` | -- | Type-to-string for diagnostics |
-| `sub_7506E0` | `sub_7506E0` | -- | 190KB IL tree walker (297 recursive calls) |
-| `sub_766570` | `sub_766570` | -- | 148KB IL tree copier |
-| `sub_854590` | `sub_854590` | -- | Push scope stack entry |
-| `sub_854430` | `sub_854430` | -- | Pop scope stack entry |
-| `sub_82BDA0` | `sub_82BDA0` | -- | Scope-chain emission |
-| `sub_7D5DD0` | `sub_7D5DD0` | -- | Unqualified name lookup |
-| `sub_7D4600` | `sub_7D4600` | -- | Qualified name lookup (after `::`) |
-| `sub_7D2AC0` | `sub_7D2AC0` | -- | Lookup with specific mode flags |
-| `sub_7D4A40` | `sub_7D4A40` | -- | Lookup in namespace scope |
-| `sub_8D97D0` | `sub_8D97D0` | -- | Entity-identity comparison |
-| `sub_91AED0` | `sub_91AED0` | -- | Top-level EDG-to-LLVM type-translation entry |
-| `sub_91AB30` | `sub_91AB30` | -- | Type-translation fixed-point iteration driver |
-| `sub_918E50` | `sub_918E50` | -- | Type-kind dispatch for translation |
-| `sub_911D10` | `sub_911D10` | -- | Core type-pair comparison + replacement |
-| `sub_84DCB0` | `sub_84DCB0` | -- | 152-byte declaration-node allocator |
+| `sub_662DE0` | `sub_662DE0` | — | Top-level EDG declarator parser |
+| `sub_672A20` | `sub_672A20` | — | EDG decl-specifier while/switch token dispatcher |
+| `sub_7C0F00` | `sub_7C0F00` | — | EDG scope-chain + qualified-name resolver |
+| `sub_7386E0` | `sub_7386E0` | — | Structural type-tree comparison |
+| `sub_739370` | `sub_739370` | — | Linked-list type comparator |
+| `sub_739430` | `sub_739430` | — | Declaration-level type comparator |
+| `sub_72EC50` | `sub_72EC50` | — | Typedef / elaborated-alias stripper |
+| `sub_74A390` | `sub_74A390` | — | Type-to-string for diagnostics |
+| `sub_7506E0` | `sub_7506E0` | — | 190KB IL tree walker (297 recursive calls) |
+| `sub_766570` | `sub_766570` | — | 148KB IL tree copier |
+| `sub_854590` | `sub_854590` | — | Push scope stack entry |
+| `sub_854430` | `sub_854430` | — | Pop scope stack entry |
+| `sub_82BDA0` | `sub_82BDA0` | — | Scope-chain emission |
+| `sub_7D5DD0` | `sub_7D5DD0` | — | Unqualified name lookup |
+| `sub_7D4600` | `sub_7D4600` | — | Qualified name lookup (after `::`) |
+| `sub_7D2AC0` | `sub_7D2AC0` | — | Lookup with specific mode flags |
+| `sub_7D4A40` | `sub_7D4A40` | — | Lookup in namespace scope |
+| `sub_8D97D0` | `sub_8D97D0` | — | Entity-identity comparison |
+| `sub_91AED0` | `sub_91AED0` | — | Top-level EDG-to-LLVM type-translation entry |
+| `sub_91AB30` | `sub_91AB30` | — | Type-translation fixed-point iteration driver |
+| `sub_918E50` | `sub_918E50` | — | Type-kind dispatch for translation |
+| `sub_911D10` | `sub_911D10` | — | Core type-pair comparison + replacement |
+| `sub_84DCB0` | `sub_84DCB0` | — | 152-byte declaration-node allocator |

@@ -68,7 +68,7 @@ GPU OpenMP kernels operate in one of two execution modes, and the choice fundame
 | SPMD | 2 | All threads execute the same code from kernel entry. Serial sections between parallel regions are guarded by `tid == 0` checks with shared-memory output promotion and `__kmpc_barrier_simple_spmd` barriers. | Active from first instruction |
 | Generic-SPMD | 3 | Transient state during the Generic-to-SPMD transformation. Never observed at runtime. | N/A |
 
-The execution mode is encoded in a bit-vector attached to the kernel function's metadata. The runtime function `__kmpc_target_init` (index 155) reads the `KernelEnvironmentTy` struct which embeds the `ConfigurationEnvironmentTy` -- the first byte of that inner struct encodes the execution mode. `__kmpc_is_spmd_exec_mode` (index 186) queries it at runtime.
+The execution mode is encoded in a bit-vector attached to the kernel function's metadata. The runtime function `__kmpc_target_init` (index 155) reads the `KernelEnvironmentTy` struct which embeds the `ConfigurationEnvironmentTy` — the first byte of that inner struct encodes the execution mode. `__kmpc_is_spmd_exec_mode` (index 186) queries it at runtime.
 
 The SPMD-vs-Generic distinction affects which runtime calls appear in the generated IR:
 
@@ -90,7 +90,7 @@ Once a declaration is obtained, `sub_921880` (create runtime library call instru
 | State machine generation | `sub_2678420` | 41 KB | 155 (target_init), 156 (target_deinit), 171 (kernel_parallel), 172 (kernel_end_parallel), 188 (barrier_simple_generic) |
 | Parallel region outliner | `sub_313D1B0` | 47 KB | 7 (fork_call), 158 (parallel_51) |
 | Parallel region merging | `sub_2680940` | 52 KB | 180 (alloc_shared), 181 (free_shared), 187 (barrier_simple_spmd) |
-| Attributor OpenMP driver | `sub_269F530` | 63 KB | All -- identifies/folds known runtime calls by index |
+| Attributor OpenMP driver | `sub_269F530` | 63 KB | All — identifies/folds known runtime calls by index |
 
 ## Complete Runtime Function Table
 
@@ -125,7 +125,7 @@ Index 7 (`__kmpc_fork_call`) and index 118 (`__kmpc_fork_teams`) are the only tw
 | 15 | `__kmpc_get_hardware_num_threads_in_block` | `i32()` | blockDim.x equivalent |
 | 16 | `__kmpc_get_warp_size` | `i32()` | Warp size (32 on NVIDIA) |
 
-These three functions have no parameters -- they are direct wrappers around PTX special registers (`%nctaid.x`, `%ntid.x`, and a compile-time constant 32).
+These three functions have no parameters — they are direct wrappers around PTX special registers (`%nctaid.x`, `%ntid.x`, and a compile-time constant 32).
 
 ### OMP Standard Library API (17--45)
 
@@ -161,7 +161,7 @@ These three functions have no parameters -- they are direct wrappers around PTX 
 | 44 | `omp_set_schedule` | `void(i32, i32)` | Set loop schedule |
 | 45 | `omp_set_max_active_levels` | `void(i32)` | Set max nesting |
 
-These are the user-facing OpenMP API functions. On GPU, most return compile-time constants or trivial register reads. The Attributor-based OpenMP driver (`sub_269F530`) can fold many of these to constants when the execution mode and team configuration are statically known -- for example, `omp_get_num_threads` folds to the `blockDim.x` launch parameter.
+These are the user-facing OpenMP API functions. On GPU, most return compile-time constants or trivial register reads. The Attributor-based OpenMP driver (`sub_269F530`) can fold many of these to constants when the execution mode and team configuration are statically known — for example, `omp_get_num_threads` folds to the `blockDim.x` launch parameter.
 
 ### Begin/End (53--54)
 
@@ -374,7 +374,7 @@ The shuffle functions take `(value, lane_offset, warp_size)` and implement butte
 | 177 | `__kmpc_nvptx_teams_reduce_nowait_v2` | `i32(ident_t*, i32, i8*, i64, i8*, ShuffleReductFctPtr, InterWarpCopyFctPtr, ListGlobalFctPtr, ListGlobalFctPtr, ListGlobalFctPtr, ListGlobalFctPtr)` | Cross-CTA team reduction (11 params) |
 | 178 | `__kmpc_reduction_get_fixed_buffer` | `i8*()` | Get global reduction scratch buffer |
 
-These are the GPU-specific reduction entries -- the single most important performance-critical runtime calls for OpenMP on NVIDIA GPUs. The parallel reduction (index 176) uses a two-phase approach: (1) intra-warp reduction via shuffle, then (2) inter-warp reduction via shared memory copy. The compiler generates the `ShuffleReductFctPtr` and `InterWarpCopyFctPtr` callback functions as outlined helpers that the runtime calls during the reduction tree.
+These are the GPU-specific reduction entries — the single most important performance-critical runtime calls for OpenMP on NVIDIA GPUs. The parallel reduction (index 176) uses a two-phase approach: (1) intra-warp reduction via shuffle, then (2) inter-warp reduction via shared memory copy. The compiler generates the `ShuffleReductFctPtr` and `InterWarpCopyFctPtr` callback functions as outlined helpers that the runtime calls during the reduction tree.
 
 The teams reduction (index 177) adds four `ListGlobalFctPtr` callbacks for managing global memory buffers across CTAs, plus an extra size parameter. This is the most complex runtime call in the entire table, with 11 parameters.
 
@@ -543,7 +543,7 @@ worker_loop:
     }
 ```
 
-### SPMD Mode Kernel -- Simple (mode byte = 2, single parallel region)
+### SPMD Mode Kernel — Simple (mode byte = 2, single parallel region)
 
 After successful Generic-to-SPMD transformation:
 
@@ -561,7 +561,7 @@ exit.threads:
     __kmpc_target_deinit()                            // [156]
 ```
 
-### SPMD Mode Kernel -- Complex (guarded regions, multiple parallel regions)
+### SPMD Mode Kernel — Complex (guarded regions, multiple parallel regions)
 
 ```c
 entry:
@@ -629,24 +629,24 @@ When a call instruction references a function not in this set, the SPMD transfor
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_312CF50` -- OpenMP runtime declaration factory (194-case switch) | `0x312CF50` | -- | -- |
-| `sub_3122A50` -- `registerRuntimeFunction(context, index, funcDecl)` | `0x3122A50` | -- | -- |
-| `sub_2686D90` -- OpenMP runtime declaration table (58 KB native, outer wrapper) | `0x2686D90` | -- | -- |
-| `sub_26968A0` -- Generic-to-SPMD transformation (10 KB native) | `0x26968A0` | -- | -- |
-| `sub_2680940` -- Parallel region merging (10 KB native) | `0x2680940` | -- | -- |
-| `sub_2678420` -- State machine generation for Generic mode (9 KB native) | `0x2678420` | -- | -- |
-| `sub_269F530` -- Attributor-based OpenMP optimization driver (10 KB native) | `0x269F530` | -- | -- |
-| `sub_313D1B0` -- Parallel region outliner (10 KB native) | `0x313D1B0` | -- | -- |
-| `sub_BCF480` -- `FunctionType::get(retTy, paramTys, count, isVarArg)` | `0xBCF480` | -- | -- |
-| `sub_BA8CB0` -- `Module::getNamedValue(name)` | `0xBA8CB0` | -- | -- |
-| `sub_B2C660` -- `Function::Create(funcTy, linkage, name, module)` | `0xB2C660` | -- | -- |
-| `sub_B994D0` -- `addAttribute(26, value)` -- set function attribute | `0xB994D0` | -- | -- |
-| `sub_B91C10` -- `hasAttribute(26)` -- check function attribute | `0xB91C10` | -- | -- |
-| `sub_B9C770` -- Attribute construction (varargs attribute) | `0xB9C770` | -- | -- |
-| `sub_B8C960` -- Attribute kind construction | `0xB8C960` | -- | -- |
-| `sub_B2BE50` -- `Function::getContext()` | `0xB2BE50` | -- | -- |
-| `sub_921880` -- Create runtime library call instruction | `0x921880` | -- | -- |
-| `sub_5FB5C0` -- OpenMP variant processing (`%s$$OMP_VARIANT%06d`) | `0x5FB5C0` | -- | -- |
+| `sub_312CF50` — OpenMP runtime declaration factory (194-case switch) | `0x312CF50` | — | — |
+| `sub_3122A50` — `registerRuntimeFunction(context, index, funcDecl)` | `0x3122A50` | — | — |
+| `sub_2686D90` — OpenMP runtime declaration table (58 KB native, outer wrapper) | `0x2686D90` | — | — |
+| `sub_26968A0` — Generic-to-SPMD transformation (10 KB native) | `0x26968A0` | — | — |
+| `sub_2680940` — Parallel region merging (10 KB native) | `0x2680940` | — | — |
+| `sub_2678420` — State machine generation for Generic mode (9 KB native) | `0x2678420` | — | — |
+| `sub_269F530` — Attributor-based OpenMP optimization driver (10 KB native) | `0x269F530` | — | — |
+| `sub_313D1B0` — Parallel region outliner (10 KB native) | `0x313D1B0` | — | — |
+| `sub_BCF480` — `FunctionType::get(retTy, paramTys, count, isVarArg)` | `0xBCF480` | — | — |
+| `sub_BA8CB0` — `Module::getNamedValue(name)` | `0xBA8CB0` | — | — |
+| `sub_B2C660` — `Function::Create(funcTy, linkage, name, module)` | `0xB2C660` | — | — |
+| `sub_B994D0` — `addAttribute(26, value)` — set function attribute | `0xB994D0` | — | — |
+| `sub_B91C10` — `hasAttribute(26)` — check function attribute | `0xB91C10` | — | — |
+| `sub_B9C770` — Attribute construction (varargs attribute) | `0xB9C770` | — | — |
+| `sub_B8C960` — Attribute kind construction | `0xB8C960` | — | — |
+| `sub_B2BE50` — `Function::getContext()` | `0xB2BE50` | — | — |
+| `sub_921880` — Create runtime library call instruction | `0x921880` | — | — |
+| `sub_5FB5C0` — OpenMP variant processing (`%s$$OMP_VARIANT%06d`) | `0x5FB5C0` | — | — |
 
 ## OpenMP Variant Processing
 
@@ -654,10 +654,10 @@ cicc also supports OpenMP variant dispatch during EDG front-end processing. The 
 
 ## Cross-References
 
-- [Generic-to-SPMD Transformation](./spmd-transform.md) -- the primary consumer of the runtime table, performing mode conversion using entries 6, 155, 156, 180, 181, 187, 188
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where `openmp-opt` (ID 75), `openmp-opt-postlink` (ID 76), and `openmp-opt-cgscc` (ID 154) sit in the pass pipeline
-- [CLI Flags](../config/cli-flags.md) -- compiler flags that control OpenMP code generation
-- [LLVM Knobs](../config/knobs.md) -- the `openmp-opt-*` knobs listed above
-- [Kernel Metadata](../pipeline/ir-generation.md) -- how `KernelEnvironmentTy` and execution mode are set during IR generation
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- the open-addressing hash table pattern used by the SPMD-amenable function set
-- [GPU Execution Model](../gpu-execution-model.md) -- broader context on SPMD vs Generic execution
+- [Generic-to-SPMD Transformation](./spmd-transform.md) — the primary consumer of the runtime table, performing mode conversion using entries 6, 155, 156, 180, 181, 187, 188
+- [Pipeline & Ordering](../llvm/pipeline.md) — where `openmp-opt` (ID 75), `openmp-opt-postlink` (ID 76), and `openmp-opt-cgscc` (ID 154) sit in the pass pipeline
+- [CLI Flags](../config/cli-flags.md) — compiler flags that control OpenMP code generation
+- [LLVM Knobs](../config/knobs.md) — the `openmp-opt-*` knobs listed above
+- [Kernel Metadata](../pipeline/ir-generation.md) — how `KernelEnvironmentTy` and execution mode are set during IR generation
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — the open-addressing hash table pattern used by the SPMD-amenable function set
+- [GPU Execution Model](../gpu-execution-model.md) — broader context on SPMD vs Generic execution

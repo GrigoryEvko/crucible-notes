@@ -2,14 +2,14 @@
 
 This page is the single authoritative reference for the GPU hardware properties that drive cicc's optimization decisions. Every other wiki page that mentions register pressure, occupancy cliffs, memory coalescing, warp divergence, or the `.param` calling convention should cross-reference this page rather than re-explaining the concepts inline. The page exists because these properties shape literally every pass in the compiler, from SROA (which exists to avoid `.local` memory) through register allocation (which trades register count for occupancy) to LTO inlining (which eliminates `.param` marshaling). Understanding the execution model is a prerequisite for understanding any cicc optimization decision that differs from upstream LLVM.
 
-The material below describes the hardware model as cicc sees it -- the properties that are visible in the binary through TTI hooks, threshold constants, cost model comparisons, and diagnostic strings. Where specific numbers vary by SM generation, the sm_70+ (Volta through Blackwell) values are given unless otherwise noted.
+The material below describes the hardware model as cicc sees it — the properties that are visible in the binary through TTI hooks, threshold constants, cost model comparisons, and diagnostic strings. Where specific numbers vary by SM generation, the sm_70+ (Volta through Blackwell) values are given unless otherwise noted.
 
 
 ## SIMT Warp Execution
 
-NVIDIA GPUs execute threads in groups of 32 called **warps**. All 32 threads in a warp share a single program counter under the SIMT (Single Instruction, Multiple Threads) model. The hardware issues one instruction per clock to all 32 threads simultaneously -- there is no per-thread instruction decode, fetch, or issue overhead. Each thread has its own register state and can execute a different data path, but they all advance through the program in lockstep.
+NVIDIA GPUs execute threads in groups of 32 called **warps**. All 32 threads in a warp share a single program counter under the SIMT (Single Instruction, Multiple Threads) model. The hardware issues one instruction per clock to all 32 threads simultaneously — there is no per-thread instruction decode, fetch, or issue overhead. Each thread has its own register state and can execute a different data path, but they all advance through the program in lockstep.
 
-This is not SIMD in the CPU sense. On a CPU with AVX-512, the programmer (or compiler) explicitly packs 16 floats into a vector register and issues a single vector instruction. On a GPU, the programmer writes scalar code for one thread, and the hardware transparently replicates it across 32 threads. The distinction matters for cicc because **vectorization on GPU does not fill SIMD lanes** -- it produces wide loads (`ld.v2`, `ld.v4`) within a single thread's scalar stream to improve memory transaction width and reduce instruction count. The VF returned by `TTI::getRegisterBitWidth(Vector)` is 32 bits (one scalar register), not 512 or 1024.
+This is not SIMD in the CPU sense. On a CPU with AVX-512, the programmer (or compiler) explicitly packs 16 floats into a vector register and issues a single vector instruction. On a GPU, the programmer writes scalar code for one thread, and the hardware transparently replicates it across 32 threads. The distinction matters for cicc because **vectorization on GPU does not fill SIMD lanes** — it produces wide loads (`ld.v2`, `ld.v4`) within a single thread's scalar stream to improve memory transaction width and reduce instruction count. The VF returned by `TTI::getRegisterBitWidth(Vector)` is 32 bits (one scalar register), not 512 or 1024.
 
 ### Divergence
 
@@ -38,7 +38,7 @@ Each Streaming Multiprocessor (SM) has a fixed 32-bit register file:
 | SM 90 (Hopper) | 65,536 | 255 |
 | SM 100 (Blackwell) | 65,536 | 255 |
 
-These 65,536 registers are **shared among all resident threads**. The hardware partitions them at kernel launch time based on the per-thread register count reported by `ptxas`. The partition is coarse-grained -- registers are allocated in units of warp groups, not individual threads.
+These 65,536 registers are **shared among all resident threads**. The hardware partitions them at kernel launch time based on the per-thread register count reported by `ptxas`. The partition is coarse-grained — registers are allocated in units of warp groups, not individual threads.
 
 ### Occupancy Cliffs
 
@@ -59,23 +59,23 @@ Registers/thread    Max warps/SM    Max threads/SM    Occupancy
 
 (Exact thresholds vary by SM generation and block size; these are representative for sm_70+ with standard block configurations.)
 
-Adding a single register -- from 32 to 33 registers per thread -- drops maximum occupancy from 64 warps to 48 warps, a 25% reduction. These are the **occupancy cliffs** that cicc's heuristics are designed to avoid. The cost is asymmetric: the 33rd register provides trivial benefit (one fewer spill), but the occupancy loss costs 25% of the SM's latency-hiding capacity.
+Adding a single register — from 32 to 33 registers per thread — drops maximum occupancy from 64 warps to 48 warps, a 25% reduction. These are the **occupancy cliffs** that cicc's heuristics are designed to avoid. The cost is asymmetric: the 33rd register provides trivial benefit (one fewer spill), but the occupancy loss costs 25% of the SM's latency-hiding capacity.
 
 This is why:
 - The [loop unroller](llvm/loop-unroll.md) uses conservative thresholds that balance ILP against register growth
 - The [loop vectorizer](llvm/loop-vectorize.md) limits VF to 2 or 4 even though wider vectors are legal
 - [LSR](llvm/lsr.md) has an `lsr-rp-limit` knob that hard-rejects formulae exceeding a register pressure ceiling
-- [LICM](llvm/licm-real.md) runs twice -- once to hoist, once to sink back values whose extended live ranges hurt occupancy
+- [LICM](llvm/licm-real.md) runs twice — once to hoist, once to sink back values whose extended live ranges hurt occupancy
 - The [rematerialization](passes/rematerialization.md) pass recomputes values rather than keeping them live across long ranges
 - The [register allocator](llvm/register-allocation.md) uses `-maxreg` (default 70) as a pressure cap rather than a physical assignment constraint
 
-The cicc binary contains no explicit occupancy table -- it delegates final register assignment and occupancy computation to `ptxas`. But the thresholds in the optimization passes (LSR's `lsr-rp-limit`, the unroller's `PartialThreshold`, the vectorizer's register-pressure-bounded interleave count) are all calibrated to stay below known cliff boundaries.
+The cicc binary contains no explicit occupancy table — it delegates final register assignment and occupancy computation to `ptxas`. But the thresholds in the optimization passes (LSR's `lsr-rp-limit`, the unroller's `PartialThreshold`, the vectorizer's register-pressure-bounded interleave count) are all calibrated to stay below known cliff boundaries.
 
 ### PTX Virtual Registers
 
-PTX has no fixed physical register file from the compiler's perspective. cicc emits virtual registers in nine typed classes (`%p`, `%rs`, `%r`, `%rd`, `%f`, `%fd`, `%h`, `%hh`, `%rq` -- see [Register Classes](reference/register-classes.md)). The `ptxas` assembler performs the actual register allocation from virtual to physical registers, using the SM's register file as the constraint. cicc's job is to minimize the number of simultaneously live virtual registers so that `ptxas` can produce a low register-count assignment.
+PTX has no fixed physical register file from the compiler's perspective. cicc emits virtual registers in nine typed classes (`%p`, `%rs`, `%r`, `%rd`, `%f`, `%fd`, `%h`, `%hh`, `%rq` — see [Register Classes](reference/register-classes.md)). The `ptxas` assembler performs the actual register allocation from virtual to physical registers, using the SM's register file as the constraint. cicc's job is to minimize the number of simultaneously live virtual registers so that `ptxas` can produce a low register-count assignment.
 
-The typed register model means that a 32-bit integer (`%r`) and a 32-bit float (`%f`) occupy separate register namespaces -- they never alias. A 64-bit value (`%rd`, `%fd`) occupies two 32-bit register slots. An `Int128Regs` value (`%rq`) occupies four. This is why the [type legalization](llvm/type-legalization.md) pass aggressively scalarizes vector types and the [IV demotion](passes/iv-demotion.md) pass narrows 64-bit induction variables to 32-bit: every bit of width reduction directly saves register pressure.
+The typed register model means that a 32-bit integer (`%r`) and a 32-bit float (`%f`) occupy separate register namespaces — they never alias. A 64-bit value (`%rd`, `%fd`) occupies two 32-bit register slots. An `Int128Regs` value (`%rq`) occupies four. This is why the [type legalization](llvm/type-legalization.md) pass aggressively scalarizes vector types and the [IV demotion](passes/iv-demotion.md) pass narrows 64-bit induction variables to 32-bit: every bit of width reduction directly saves register pressure.
 
 
 ## Memory Hierarchy
@@ -86,7 +86,7 @@ GPU memory is organized into physically disjoint address spaces with radically d
 
 | Memory | LLVM AS | PTX Qualifier | Latency (cycles) | Scope | Capacity |
 |---|---|---|---|---|---|
-| Registers | -- | `%r`, `%f`, etc. | 0 | Per-thread | 255 per thread (SM 70+) |
+| Registers | — | `%r`, `%f`, etc. | 0 | Per-thread | 255 per thread (SM 70+) |
 | Shared | 3 | `.shared` | 20-30 | Per-CTA (block) | 48-228 KB per SM |
 | Constant cache | 4 | `.const` | 4-8 (hit) | Read-only, device-wide | 64 KB per SM |
 | Parameter | 101 | `.param` | 4-8 | Per-kernel launch | Mapped to constant bank |
@@ -97,24 +97,24 @@ GPU memory is organized into physically disjoint address spaces with radically d
 | Generic | 0 | `.generic` | +4-8 over resolved | Virtual | Runtime-resolved |
 | Shared cluster | 7 | `.shared::cluster` | 30-50 | Cross-CTA (SM 90+) | Cluster shared pool |
 
-The 200-800 cycle range for global DRAM access is the defining constraint of GPU performance. It means that a single cache-missing load stalls the executing warp for hundreds of cycles. The hardware hides this latency through **warp-level multithreading** (see next section), but only if enough warps are resident -- which brings us back to register pressure and occupancy.
+The 200-800 cycle range for global DRAM access is the defining constraint of GPU performance. It means that a single cache-missing load stalls the executing warp for hundreds of cycles. The hardware hides this latency through **warp-level multithreading** (see next section), but only if enough warps are resident — which brings us back to register pressure and occupancy.
 
 ### Why Each Memory Matters for cicc
 
-**Registers vs. `.local`:** Every alloca that [SROA](llvm/sroa.md) fails to promote becomes a `.local` allocation backed by DRAM. A `.local` access that misses L1 costs 200-400 cycles versus zero for a register. This is why SROA runs twice in the pipeline and why cicc's inline budget (20,000 vs upstream 225) is so aggressive -- inlining eliminates allocas from byval parameter copies.
+**Registers vs. `.local`:** Every alloca that [SROA](llvm/sroa.md) fails to promote becomes a `.local` allocation backed by DRAM. A `.local` access that misses L1 costs 200-400 cycles versus zero for a register. This is why SROA runs twice in the pipeline and why cicc's inline budget (20,000 vs upstream 225) is so aggressive — inlining eliminates allocas from byval parameter copies.
 
-**Shared memory (AS 3):** On-chip SRAM with 20-30 cycle latency, shared across all threads in a CTA (thread block). Uses 32-bit pointers (when `+sharedmem32bitptr` is active), saving one register per pointer compared to 64-bit global pointers. This is why [LSR](llvm/lsr.md) has `disable-lsr-for-sharedmem32-ptr` -- strength-reducing a 32-bit shared pointer can produce 64-bit intermediates that defeat the optimization.
+**Shared memory (AS 3):** On-chip SRAM with 20-30 cycle latency, shared across all threads in a CTA (thread block). Uses 32-bit pointers (when `+sharedmem32bitptr` is active), saving one register per pointer compared to 64-bit global pointers. This is why [LSR](llvm/lsr.md) has `disable-lsr-for-sharedmem32-ptr` — strength-reducing a 32-bit shared pointer can produce 64-bit intermediates that defeat the optimization.
 
 **Constant memory (AS 4):** Hardware-cached read-only memory with 4-8 cycle latency on cache hit. The NVVM AA marks AS 4 as `NoModRef`, enabling LICM to hoist constant loads without checking for intervening stores.
 
 **`.param` space (AS 101):** Used for function argument passing (see the calling convention section below). Read-only from device code. Mapped to the constant cache path, so reads are 4-8 cycles.
 
-**Generic (AS 0):** The performance killer. A generic pointer forces a runtime address-space lookup (+4-8 cycles per access) and destroys alias analysis precision (every generic pointer `MayAlias` with everything). This is why [MemorySpaceOpt](passes/memory-space-opt.md) exists -- resolving generic pointers to specific address spaces is one of the highest-impact optimizations in cicc.
+**Generic (AS 0):** The performance killer. A generic pointer forces a runtime address-space lookup (+4-8 cycles per access) and destroys alias analysis precision (every generic pointer `MayAlias` with everything). This is why [MemorySpaceOpt](passes/memory-space-opt.md) exists — resolving generic pointers to specific address spaces is one of the highest-impact optimizations in cicc.
 
 
 ## Memory Coalescing
 
-The GPU memory subsystem services warp-wide requests in **128-byte transactions** (or 32-byte sectors on some architectures). When 32 threads in a warp access 32 consecutive 4-byte values (128 bytes total), the hardware coalesces the 32 individual requests into a single transaction. This is the **stride-1 access pattern** -- the ideal case.
+The GPU memory subsystem services warp-wide requests in **128-byte transactions** (or 32-byte sectors on some architectures). When 32 threads in a warp access 32 consecutive 4-byte values (128 bytes total), the hardware coalesces the 32 individual requests into a single transaction. This is the **stride-1 access pattern** — the ideal case.
 
 ```text
 Thread 0  loads addr+0    ┐
@@ -126,20 +126,20 @@ Thread 31 loads addr+124  ┘
 
 When threads access non-consecutive addresses (stride > 1, scattered, or misaligned), the hardware must issue multiple transactions to satisfy the warp's requests. In the worst case (32 threads accessing 32 different cache lines), a single warp load generates 32 separate transactions, reducing effective bandwidth by 32x.
 
-Coalescing is why the [loop vectorizer](llvm/loop-vectorize.md) targets VF=2 or VF=4 on GPU: vectorizing a per-thread loop with `ld.v4.f32` loads four consecutive elements per thread in a single wide transaction, improving bytes-per-transaction. It is also why the loop unroller enforces [power-of-two factors](llvm/loop-unroll.md) -- non-power-of-two unroll factors create asymmetric access patterns that interact poorly with the 128-byte transaction boundary.
+Coalescing is why the [loop vectorizer](llvm/loop-vectorize.md) targets VF=2 or VF=4 on GPU: vectorizing a per-thread loop with `ld.v4.f32` loads four consecutive elements per thread in a single wide transaction, improving bytes-per-transaction. It is also why the loop unroller enforces [power-of-two factors](llvm/loop-unroll.md) — non-power-of-two unroll factors create asymmetric access patterns that interact poorly with the 128-byte transaction boundary.
 
-The memory coalescing model also explains why cicc's [SLP vectorizer](llvm/slp-vectorizer.md) pairs adjacent scalar loads into `ld.v2` / `ld.v4` instructions -- not for SIMD parallelism (there is none) but for transaction width optimization.
+The memory coalescing model also explains why cicc's [SLP vectorizer](llvm/slp-vectorizer.md) pairs adjacent scalar loads into `ld.v2` / `ld.v4` instructions — not for SIMD parallelism (there is none) but for transaction width optimization.
 
 
 ## No Out-of-Order Execution
 
 GPU warps execute instructions **strictly in program order**. There is no out-of-order execution, no speculative execution, no branch prediction, and no reorder buffer. A warp that encounters a long-latency operation (global memory load, texture fetch) simply stalls until the result is available.
 
-The sole latency-hiding mechanism is **warp-level multithreading**. Each SM maintains multiple warps in flight simultaneously. When one warp stalls on a memory access, the hardware switches to another ready warp in the same clock cycle (zero-cost context switch, because each warp has its own register state). This is why occupancy matters -- more resident warps means more opportunities to hide latency through interleaving.
+The sole latency-hiding mechanism is **warp-level multithreading**. Each SM maintains multiple warps in flight simultaneously. When one warp stalls on a memory access, the hardware switches to another ready warp in the same clock cycle (zero-cost context switch, because each warp has its own register state). This is why occupancy matters — more resident warps means more opportunities to hide latency through interleaving.
 
 The absence of OOO execution has profound implications for cicc:
 
-**ILP must be compiler-created.** On a CPU, the hardware reorder buffer discovers and exploits instruction-level parallelism dynamically. On a GPU, the compiler (cicc + ptxas) must explicitly schedule independent instructions adjacent to each other so the hardware can overlap them. This is why [loop unrolling](llvm/loop-unroll.md) is so valuable on GPU -- it creates independent instructions from different iterations that the scheduler can interleave -- and why the interleave count in the [loop vectorizer](llvm/loop-vectorize.md) exists (it replicates the vectorized body to expose more ILP).
+**ILP must be compiler-created.** On a CPU, the hardware reorder buffer discovers and exploits instruction-level parallelism dynamically. On a GPU, the compiler (cicc + ptxas) must explicitly schedule independent instructions adjacent to each other so the hardware can overlap them. This is why [loop unrolling](llvm/loop-unroll.md) is so valuable on GPU — it creates independent instructions from different iterations that the scheduler can interleave — and why the interleave count in the [loop vectorizer](llvm/loop-vectorize.md) exists (it replicates the vectorized body to expose more ILP).
 
 **Every stall is a stall.** There is no store buffer to absorb write latency, no load queue to speculatively issue reads. The scheduling passes ([instruction scheduling](llvm/scheduling.md), [block placement](llvm/block-placement.md)) must model this accurately.
 
@@ -173,7 +173,7 @@ ret;
 ld.param.b32 %r6, [retval0+0];            // Load return value
 ```
 
-Each function call generates **O(n) `st.param` + O(n) `ld.param` instructions** where n is the total number of argument fields (not just argument count -- structs are marshaled field-by-field). A function with 8 struct arguments containing 4 fields each generates 32 stores + 32 loads + the call instruction itself. At shared/constant-cache latency (4-8 cycles per access), this is 256-512 cycles of pure marshaling overhead.
+Each function call generates **O(n) `st.param` + O(n) `ld.param` instructions** where n is the total number of argument fields (not just argument count — structs are marshaled field-by-field). A function with 8 struct arguments containing 4 fields each generates 32 stores + 32 loads + the call instruction itself. At shared/constant-cache latency (4-8 cycles per access), this is 256-512 cycles of pure marshaling overhead.
 
 Additionally:
 - **Call boundaries destroy scheduling freedom.** The hardware cannot overlap instructions across a call/return boundary.
@@ -181,9 +181,9 @@ Additionally:
 - **Indirect calls are catastrophic.** An indirect call (`call.uni` through a register) prevents all of the above from being optimized statically. No inlining, no cross-function register allocation, no dead argument elimination.
 
 This is why:
-- cicc's [custom inliner](lto/inliner-cost.md) uses a 20,000-unit budget (89x upstream LLVM's 225) -- the `.param` marshaling cost for a typical function easily exceeds the 225-unit threshold
-- [LTO](lto/index.md) is dramatically more valuable on GPU than on CPU -- cross-module inlining eliminates `.param` overhead for functions in separate translation units
-- [Whole-program devirtualization](lto/devirtualization.md) is critical -- converting indirect calls to direct calls enables inlining and eliminates the worst-case register spill scenario
+- cicc's [custom inliner](lto/inliner-cost.md) uses a 20,000-unit budget (89x upstream LLVM's 225) — the `.param` marshaling cost for a typical function easily exceeds the 225-unit threshold
+- [LTO](lto/index.md) is dramatically more valuable on GPU than on CPU — cross-module inlining eliminates `.param` overhead for functions in separate translation units
+- [Whole-program devirtualization](lto/devirtualization.md) is critical — converting indirect calls to direct calls enables inlining and eliminates the worst-case register spill scenario
 - 60% of the NVIDIA custom inliner's code computes type-size comparisons for argument coercion cost, because the `.param` marshaling cost dominates the inlining decision
 
 ### The SelectionDAG Encoding
@@ -193,7 +193,7 @@ The SelectionDAG backend uses opcodes `DeclareParam` (505), `DeclareScalarParam`
 
 ## Address Space Semantics
 
-GPU memory is partitioned into physically disjoint hardware regions. Pointers in different non-generic address spaces can never reference the same byte -- a property that [NVVM AA](infra/alias-analysis.md) exploits for O(1) NoAlias determination. The generic address space (AS 0) is a virtual overlay resolved at runtime by the hardware's address translation unit, which tests whether the address falls in the shared, local, or global window.
+GPU memory is partitioned into physically disjoint hardware regions. Pointers in different non-generic address spaces can never reference the same byte — a property that [NVVM AA](infra/alias-analysis.md) exploits for O(1) NoAlias determination. The generic address space (AS 0) is a virtual overlay resolved at runtime by the hardware's address translation unit, which tests whether the address falls in the shared, local, or global window.
 
 The following properties have direct optimization impact:
 
@@ -207,9 +207,9 @@ The following properties have direct optimization impact:
 
 \* 32-bit when `+sharedmem32bitptr` target feature is active (the default for sm_70+).
 
-The 32-bit pointer optimization for shared memory saves one register per shared-memory pointer and reduces all address arithmetic from 64-bit to 32-bit operations. This is encoded in the NVPTX data layout string as `p3:32:32:32` and is the reason the [IV Demotion](passes/iv-demotion.md) pass exists -- it narrows 64-bit induction variables to 32-bit when the loop operates entirely in shared memory.
+The 32-bit pointer optimization for shared memory saves one register per shared-memory pointer and reduces all address arithmetic from 64-bit to 32-bit operations. This is encoded in the NVPTX data layout string as `p3:32:32:32` and is the reason the [IV Demotion](passes/iv-demotion.md) pass exists — it narrows 64-bit induction variables to 32-bit when the loop operates entirely in shared memory.
 
-For the complete address space reference -- including aliasing rules, the MemorySpaceOpt bitmask encoding, `cvta` intrinsic mapping, `isspacep` folding, and per-SM shared memory sizes -- see [Address Spaces](reference/address-spaces.md).
+For the complete address space reference — including aliasing rules, the MemorySpaceOpt bitmask encoding, `cvta` intrinsic mapping, `isspacep` folding, and per-SM shared memory sizes — see [Address Spaces](reference/address-spaces.md).
 
 
 ## Compiler Implications Summary
@@ -242,7 +242,7 @@ Upstream LLVM's NVPTX backend correctly implements the PTX virtual register mode
 
 3. **LICM assumes hoisting is always profitable.** On CPU, moving an operation from loop body to preheader is strictly beneficial. On GPU, it extends the live range of the hoisted value across the entire loop, consuming a register for all iterations. NVIDIA runs LICM twice (hoist then sink) and relies on rematerialization to undo unprofitable hoists.
 
-4. **Vectorization targets SIMD lane width.** `TTI::getRegisterBitWidth(Vector)` returns 256 (AVX2) or 512 (AVX-512) on CPU. NVPTX returns 32 -- there are no SIMD lanes. Vectorization targets memory transaction width, not ALU parallelism.
+4. **Vectorization targets SIMD lane width.** `TTI::getRegisterBitWidth(Vector)` returns 256 (AVX2) or 512 (AVX-512) on CPU. NVPTX returns 32 — there are no SIMD lanes. Vectorization targets memory transaction width, not ALU parallelism.
 
 5. **No occupancy model exists in upstream.** CPU register allocation minimizes spill cost. GPU register allocation must minimize total register count to maximize occupancy. These are different objective functions.
 
@@ -251,20 +251,20 @@ Upstream LLVM's NVPTX backend correctly implements the PTX virtual register mode
 
 ## Cross-References
 
-- [Address Spaces](reference/address-spaces.md) -- complete encoding, aliasing rules, MemorySpaceOpt bitmask, data layout strings
-- [Register Classes](reference/register-classes.md) -- nine typed register classes, encoding scheme, coalescing rules
-- [Register Allocation](llvm/register-allocation.md) -- greedy RA, `-maxreg` constraint, pressure tracking
-- [Loop Vectorize](llvm/loop-vectorize.md) -- VF selection, memory coalescing motivation, register-pressure-bounded IC
-- [Loop Unroll](llvm/loop-unroll.md) -- ILP vs register pressure tradeoff, power-of-two enforcement
-- [LSR (NVIDIA Custom)](llvm/lsr.md) -- occupancy-aware formula solver, register pressure gating
-- [LICM](llvm/licm-real.md) -- hoist/sink dual invocation, register pressure tension
-- [SROA](llvm/sroa.md) -- `.local` elimination, dual-invocation pipeline position
-- [Inliner Cost Model](lto/inliner-cost.md) -- 20K budget, `.param` marshaling cost, four parallel models
-- [LTO & Module Optimization](lto/index.md) -- closed-world model, dead kernel elimination
-- [MemorySpaceOpt](passes/memory-space-opt.md) -- generic-to-specific address space resolution
-- [StructurizeCFG](llvm/structurizecfg.md) -- divergence-safe control flow restructuring
-- [CSSA](passes/cssa.md) -- conventional SSA for SIMT divergence correctness
-- [Rematerialization](passes/rematerialization.md) -- register pressure reduction via recomputation
-- [IV Demotion](passes/iv-demotion.md) -- 64-bit to 32-bit IV narrowing for shared memory
-- [Instruction Scheduling](llvm/scheduling.md) -- in-order scheduling, MRPA pressure tracking
-- [NVPTX Target Infrastructure](infra/nvptx-target.md) -- TTI hooks, data layout, target features
+- [Address Spaces](reference/address-spaces.md) — complete encoding, aliasing rules, MemorySpaceOpt bitmask, data layout strings
+- [Register Classes](reference/register-classes.md) — nine typed register classes, encoding scheme, coalescing rules
+- [Register Allocation](llvm/register-allocation.md) — greedy RA, `-maxreg` constraint, pressure tracking
+- [Loop Vectorize](llvm/loop-vectorize.md) — VF selection, memory coalescing motivation, register-pressure-bounded IC
+- [Loop Unroll](llvm/loop-unroll.md) — ILP vs register pressure tradeoff, power-of-two enforcement
+- [LSR (NVIDIA Custom)](llvm/lsr.md) — occupancy-aware formula solver, register pressure gating
+- [LICM](llvm/licm-real.md) — hoist/sink dual invocation, register pressure tension
+- [SROA](llvm/sroa.md) — `.local` elimination, dual-invocation pipeline position
+- [Inliner Cost Model](lto/inliner-cost.md) — 20K budget, `.param` marshaling cost, four parallel models
+- [LTO & Module Optimization](lto/index.md) — closed-world model, dead kernel elimination
+- [MemorySpaceOpt](passes/memory-space-opt.md) — generic-to-specific address space resolution
+- [StructurizeCFG](llvm/structurizecfg.md) — divergence-safe control flow restructuring
+- [CSSA](passes/cssa.md) — conventional SSA for SIMT divergence correctness
+- [Rematerialization](passes/rematerialization.md) — register pressure reduction via recomputation
+- [IV Demotion](passes/iv-demotion.md) — 64-bit to 32-bit IV narrowing for shared memory
+- [Instruction Scheduling](llvm/scheduling.md) — in-order scheduling, MRPA pressure tracking
+- [NVPTX Target Infrastructure](infra/nvptx-target.md) — TTI hooks, data layout, target features

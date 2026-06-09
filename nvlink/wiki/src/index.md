@@ -18,7 +18,7 @@ This wiki documents the internal architecture of **nvlink v13.0.88**, NVIDIA's C
 
 ## What nvlink Is
 
-nvlink is the CUDA device linker -- the tool that combines separately compiled GPU object files into a single device executable. It is invoked by `nvcc` (or directly by build systems) after `cicc` and `ptxas` have compiled individual translation units into cubin objects. nvlink resolves cross-TU symbol references, applies R\_CUDA relocations, merges `.nv.info` metadata, lays out shared memory, eliminates dead code, and emits the final device ELF.
+nvlink is the CUDA device linker — the tool that combines separately compiled GPU object files into a single device executable. It is invoked by `nvcc` (or directly by build systems) after `cicc` and `ptxas` have compiled individual translation units into cubin objects. nvlink resolves cross-TU symbol references, applies R\_CUDA relocations, merges `.nv.info` metadata, lays out shared memory, eliminates dead code, and emits the final device ELF.
 
 But nvlink is not just a linker. It is a **hybrid linker-compiler**: a large fraction of the binary is an embedded GPU compiler backend that enables link-time optimization and JIT compilation of PTX and NVVM IR inputs. The tool name says "linker," but the binary contains a full assembler.
 
@@ -35,7 +35,7 @@ The single most important structural fact about nvlink is its size distribution:
 | Infrastructure | ~1.5 MB (4%) | ~1,100 | Memory arenas, option parsing, error reporting, compression |
 | Mercury / FNLZR | ~0.8 MB (2%) | ~400 | SM100+ capsule mercury post-link transformation |
 
-Approximately **95% of the binary is compiler backend** -- the same ptxas assembler that ships as a separate tool in the CUDA Toolkit, statically linked into nvlink to support LTO and PTX JIT compilation. Only about **5% (~1.2 MB) is the actual linker**. This has a direct consequence for reverse engineering: most functions in the binary are instruction selection patterns, SASS encoders, or register allocator internals, not linker logic.
+Approximately **95% of the binary is compiler backend** — the same ptxas assembler that ships as a separate tool in the CUDA Toolkit, statically linked into nvlink to support LTO and PTX JIT compilation. Only about **5% (~1.2 MB) is the actual linker**. This has a direct consequence for reverse engineering: most functions in the binary are instruction selection patterns, SASS encoders, or register allocator internals, not linker logic.
 
 ## Architecture Overview
 
@@ -167,153 +167,153 @@ This wiki is organized into 13 sections plus supporting reference pages. Every p
 
 End-to-end flow from `main()` through output writing. Covers entry point, CLI parsing, mode dispatch, library resolution, input file loop, merge, layout, relocation, finalization, and output serialization. Start here for the linker-specific logic.
 
-- [Pipeline Overview](pipeline/overview.md) -- End-to-end pipeline diagram with phase boundaries and key function addresses.
-- [Entry Point & Main](pipeline/entry.md) -- The 58KB `main()` function: initialization, file dispatch, phase orchestration.
-- [CLI Option Parsing](pipeline/cli-options.md) -- 60+ registered options, the option parser infrastructure, validation logic.
-- [Mode Dispatch](pipeline/mode-dispatch.md) -- How input file type determines the processing path.
-- [Library Resolution](pipeline/library-resolution.md) -- `-l`/`-L` search, libcudadevrt special handling, archive iteration.
-- [Input File Loop](pipeline/input-loop.md) -- The linked-list input iteration with per-file type dispatch.
-- [Merge Phase](pipeline/merge.md) -- The 89KB `merge_elf` function: section merging, symbol resolution, weak selection.
-- [Layout Phase](pipeline/layout.md) -- Shared memory layout, section ordering, address assignment.
-- [Relocation Phase](pipeline/relocate.md) -- R\_CUDA relocation application, UFT/UDT resolution.
-- [Finalization Phase](pipeline/finalize.md) -- Final patching, entry property computation, register propagation.
-- [Output Writing](pipeline/output.md) -- ELF serialization, host linker script generation, verbose stats.
+- [Pipeline Overview](pipeline/overview.md) — End-to-end pipeline diagram with phase boundaries and key function addresses.
+- [Entry Point & Main](pipeline/entry.md) — The 58KB `main()` function: initialization, file dispatch, phase orchestration.
+- [CLI Option Parsing](pipeline/cli-options.md) — 60+ registered options, the option parser infrastructure, validation logic.
+- [Mode Dispatch](pipeline/mode-dispatch.md) — How input file type determines the processing path.
+- [Library Resolution](pipeline/library-resolution.md) — `-l`/`-L` search, libcudadevrt special handling, archive iteration.
+- [Input File Loop](pipeline/input-loop.md) — The linked-list input iteration with per-file type dispatch.
+- [Merge Phase](pipeline/merge.md) — The 89KB `merge_elf` function: section merging, symbol resolution, weak selection.
+- [Layout Phase](pipeline/layout.md) — Shared memory layout, section ordering, address assignment.
+- [Relocation Phase](pipeline/relocate.md) — R\_CUDA relocation application, UFT/UDT resolution.
+- [Finalization Phase](pipeline/finalize.md) — Final patching, entry property computation, register propagation.
+- [Output Writing](pipeline/output.md) — ELF serialization, host linker script generation, verbose stats.
 
 ### Input Processing
 
 How each input format is identified, validated, and converted to an internal ELF representation.
 
-- [File Type Detection](input/file-type-detection.md) -- 56-byte header read, magic number dispatch (ELF, fatbin 0xBA55ED50, PTX, NVVM).
-- [ELF Parsing (Elf32/Elf64)](input/elf-parsing.md) -- Device ELF validation (e\_machine == 190), section enumeration.
-- [Cubin Loading](input/cubin-loading.md) -- Architecture validation, elfw creation, section import.
-- [Fatbin Extraction](input/fatbin-extraction.md) -- Container magic, member iteration, LZ4 decompression, type dispatch.
-- [Archive Processing](input/archives.md) -- .a member iteration, thin archive support, libcudadevrt handling.
-- [PTX Input & JIT](input/ptx-input.md) -- PTX-to-SASS compilation via embedded ptxas backend.
-- [NVVM IR / LTO IR Input](input/nvvm-ir-input.md) -- IR module registration, `-lto` requirement, libdevice detection.
-- [Host ELF Embedding](input/host-elf.md) -- .o/.so handling, `--use-host-info`, host symbol extraction.
+- [File Type Detection](input/file-type-detection.md) — 56-byte header read, magic number dispatch (ELF, fatbin 0xBA55ED50, PTX, NVVM).
+- [ELF Parsing (Elf32/Elf64)](input/elf-parsing.md) — Device ELF validation (e\_machine == 190), section enumeration.
+- [Cubin Loading](input/cubin-loading.md) — Architecture validation, elfw creation, section import.
+- [Fatbin Extraction](input/fatbin-extraction.md) — Container magic, member iteration, LZ4 decompression, type dispatch.
+- [Archive Processing](input/archives.md) — .a member iteration, thin archive support, libcudadevrt handling.
+- [PTX Input & JIT](input/ptx-input.md) — PTX-to-SASS compilation via embedded ptxas backend.
+- [NVVM IR / LTO IR Input](input/nvvm-ir-input.md) — IR module registration, `-lto` requirement, libdevice detection.
+- [Host ELF Embedding](input/host-elf.md) — .o/.so handling, `--use-host-info`, host symbol extraction.
 
 ### Linker Core
 
 The fundamental linking algorithms: symbol resolution, section merging, relocation processing, and optimization.
 
-- [Symbol Resolution](linker/symbol-resolution.md) -- Global/local/weak binding, multi-definition detection, COMDAT handling.
-- [Symbol Tables & Hash Maps](linker/hash-tables.md) -- Hash table infrastructure, string interning, O(1) symbol lookup.
-- [Section Merging](linker/section-merging.md) -- Per-type merge rules for `.nv.global`, `.nv.shared`, `.nv.constant`, `.text`.
-- [R\_CUDA Relocations](linker/r-cuda-relocations.md) -- CUDA-specific relocation types, per-architecture encoding.
-- [Relocation Application Engine](linker/relocation-engine.md) -- The 27KB `apply_relocations` function.
-- [Weak Symbol Handling](linker/weak-symbols.md) -- Register-count and PTX-version comparison for weak function selection.
-- [Dead Code Elimination](linker/dead-code-elimination.md) -- Callgraph reachability analysis, address-taken function preservation.
-- [Bindless Relocations](linker/bindless-relocations.md) -- Texture/surface bindless reference resolution.
-- [Data Layout Optimization](linker/data-layout-opt.md) -- Constant deduplication, overlapping data merge, `.nv.global` optimization.
+- [Symbol Resolution](linker/symbol-resolution.md) — Global/local/weak binding, multi-definition detection, COMDAT handling.
+- [Symbol Tables & Hash Maps](linker/hash-tables.md) — Hash table infrastructure, string interning, O(1) symbol lookup.
+- [Section Merging](linker/section-merging.md) — Per-type merge rules for `.nv.global`, `.nv.shared`, `.nv.constant`, `.text`.
+- [R\_CUDA Relocations](linker/r-cuda-relocations.md) — CUDA-specific relocation types, per-architecture encoding.
+- [Relocation Application Engine](linker/relocation-engine.md) — The 27KB `apply_relocations` function.
+- [Weak Symbol Handling](linker/weak-symbols.md) — Register-count and PTX-version comparison for weak function selection.
+- [Dead Code Elimination](linker/dead-code-elimination.md) — Callgraph reachability analysis, address-taken function preservation.
+- [Bindless Relocations](linker/bindless-relocations.md) — Texture/surface bindless reference resolution.
+- [Data Layout Optimization](linker/data-layout-opt.md) — Constant deduplication, overlapping data merge, `.nv.global` optimization.
 
 ### Link-Time Optimization
 
 The LTO pipeline: IR collection, libnvvm integration, compilation modes, and option forwarding.
 
-- [LTO Overview](lto/overview.md) -- Architecture of the LTO pipeline, whole-program vs. relocatable compilation.
-- [libnvvm Integration](lto/libnvvm-integration.md) -- dlopen mechanics, API surface, `__nvvmHandle` resolution.
-- [Whole vs. Partial LTO](lto/whole-vs-partial.md) -- Mode selection, `--force-whole-lto`, `--force-partial-lto`, fallback behavior.
-- [Split Compilation](lto/split-compilation.md) -- Thread pool dispatch, `--split-compile-extended`, per-function parallelism.
-- [Option Forwarding to cicc](lto/option-forwarding.md) -- `--Xptxas`, `--Xnvvm`, `--maxrregcount` passthrough.
-- [LTO IR Format Versions](lto/ir-format-versions.md) -- NVVM IR version detection, bitcode compatibility.
+- [LTO Overview](lto/overview.md) — Architecture of the LTO pipeline, whole-program vs. relocatable compilation.
+- [libnvvm Integration](lto/libnvvm-integration.md) — dlopen mechanics, API surface, `__nvvmHandle` resolution.
+- [Whole vs. Partial LTO](lto/whole-vs-partial.md) — Mode selection, `--force-whole-lto`, `--force-partial-lto`, fallback behavior.
+- [Split Compilation](lto/split-compilation.md) — Thread pool dispatch, `--split-compile-extended`, per-function parallelism.
+- [Option Forwarding to cicc](lto/option-forwarding.md) — `--Xptxas`, `--Xnvvm`, `--maxrregcount` passthrough.
+- [LTO IR Format Versions](lto/ir-format-versions.md) — NVVM IR version detection, bitcode compatibility.
 
 ### Embedded ptxas
 
 The ~24MB PTX assembler backend statically linked into nvlink. Covers ISel, register allocation, scheduling, and encoding.
 
-- [Architecture Overview](ptxas/overview.md) -- Binary layout, subsystem decomposition, relationship to standalone ptxas.
-- [Architecture Dispatch (vtables)](ptxas/arch-dispatch.md) -- Per-SM vtable-based dispatch for ISel, encoding, and feature queries.
-- [Instruction Selection Hubs](ptxas/isel-hubs.md) -- PTX-to-IR lowering, pattern matching, SM-variant parametric clones.
-- [Register Allocation](ptxas/register-allocation.md) -- Greedy RA, register pressure, `--maxrregcount` enforcement.
-- [Instruction Scheduling](ptxas/scheduling.md) -- Latency-aware scheduling, scoreboard model, barrier insertion.
-- [Peephole Optimization](ptxas/peephole.md) -- Post-RA peephole patterns, YIELD-to-NOP conversion, strength reduction.
-- [IR Node Infrastructure](ptxas/ir-nodes.md) -- 22 leaf accessors, node types, DAG representation.
-- [PTX Parsing](ptxas/ptx-parsing.md) -- PTX text-to-IR frontend, instruction handler registration, builtin table.
+- [Architecture Overview](ptxas/overview.md) — Binary layout, subsystem decomposition, relationship to standalone ptxas.
+- [Architecture Dispatch (vtables)](ptxas/arch-dispatch.md) — Per-SM vtable-based dispatch for ISel, encoding, and feature queries.
+- [Instruction Selection Hubs](ptxas/isel-hubs.md) — PTX-to-IR lowering, pattern matching, SM-variant parametric clones.
+- [Register Allocation](ptxas/register-allocation.md) — Greedy RA, register pressure, `--maxrregcount` enforcement.
+- [Instruction Scheduling](ptxas/scheduling.md) — Latency-aware scheduling, scoreboard model, barrier insertion.
+- [Peephole Optimization](ptxas/peephole.md) — Post-RA peephole patterns, YIELD-to-NOP conversion, strength reduction.
+- [IR Node Infrastructure](ptxas/ir-nodes.md) — 22 leaf accessors, node types, DAG representation.
+- [PTX Parsing](ptxas/ptx-parsing.md) — PTX text-to-IR frontend, instruction handler registration, builtin table.
 
 ### Mercury
 
 The SM100+ (Blackwell) capsule mercury format and associated infrastructure.
 
-- [Mercury Overview](mercury/overview.md) -- What Mercury is, why it exists, the ROT13 obfuscation convention.
-- [Capsule Mercury Format](mercury/capmerc-format.md) -- Container structure, capsule layout, relationship to cubin.
-- [R\_MERCURY Relocations](mercury/r-mercury-relocations.md) -- Mercury-specific relocation types and processing.
-- [Mercury ELF Sections](mercury/elf-sections.md) -- `.nv.merc`, HRKE/HRKI/HRCE/HRCI/HRDE/HRDI sections.
-- [Mercury Compiler Passes](mercury/compiler-passes.md) -- MercExpand engine, Mercury-specific ISel patterns.
-- [FNLZR (Finalizer)](mercury/fnlzr.md) -- Post-link binary rewriter, pre-link vs. post-link modes, capability masks.
+- [Mercury Overview](mercury/overview.md) — What Mercury is, why it exists, the ROT13 obfuscation convention.
+- [Capsule Mercury Format](mercury/capmerc-format.md) — Container structure, capsule layout, relationship to cubin.
+- [R\_MERCURY Relocations](mercury/r-mercury-relocations.md) — Mercury-specific relocation types and processing.
+- [Mercury ELF Sections](mercury/elf-sections.md) — `.nv.merc`, HRKE/HRKI/HRCE/HRCI/HRDE/HRDI sections.
+- [Mercury Compiler Passes](mercury/compiler-passes.md) — MercExpand engine, Mercury-specific ISel patterns.
+- [FNLZR (Finalizer)](mercury/fnlzr.md) — Post-link binary rewriter, pre-link vs. post-link modes, capability masks.
 
 ### GPU Targets
 
 Architecture profiles, compatibility logic, and per-generation feature details.
 
-- [Architecture Profiles](targets/arch-profiles.md) -- Profile database structure, per-SM feature flags, capability masks.
-- [Compatibility Checking](targets/compatibility.md) -- Cross-architecture linking rules, family matching, version validation.
-- [SM75 Turing](targets/sm75-turing.md) -- Minimum supported architecture, Turing-specific encoding.
-- [SM80--88 Ampere](targets/sm80-ampere.md) -- Ampere backend, GA100/GA10x variants.
-- [SM89 Ada](targets/sm89-ada.md) -- Ada Lovelace specifics, shared backend with SM90.
-- [SM90 Hopper](targets/sm90-hopper.md) -- Cluster launch, WGMMA, TMA, asynchronous barriers.
-- [SM100 Blackwell](targets/sm100-blackwell.md) -- Mercury output, FNLZR integration, new MMA shapes.
-- [SM103 / SM110 / SM120 / SM121](targets/sm103-121.md) -- Blackwell Ultra, Jetson Thor, consumer RTX 50-series, DGX Spark.
+- [Architecture Profiles](targets/arch-profiles.md) — Profile database structure, per-SM feature flags, capability masks.
+- [Compatibility Checking](targets/compatibility.md) — Cross-architecture linking rules, family matching, version validation.
+- [SM75 Turing](targets/sm75-turing.md) — Minimum supported architecture, Turing-specific encoding.
+- [SM80--88 Ampere](targets/sm80-ampere.md) — Ampere backend, GA100/GA10x variants.
+- [SM89 Ada](targets/sm89-ada.md) — Ada Lovelace specifics, shared backend with SM90.
+- [SM90 Hopper](targets/sm90-hopper.md) — Cluster launch, WGMMA, TMA, asynchronous barriers.
+- [SM100 Blackwell](targets/sm100-blackwell.md) — Mercury output, FNLZR integration, new MMA shapes.
+- [SM103 / SM110 / SM120 / SM121](targets/sm103-121.md) — Blackwell Ultra, Jetson Thor, consumer RTX 50-series, DGX Spark.
 
 ### CUDA Device ELF
 
 The output format: NVIDIA's CUDA device ELF (cubin) with its proprietary sections and metadata.
 
-- [Device ELF Format](elf/device-elf-format.md) -- e\_machine 190 (EM\_CUDA), ELF32/64, section layout conventions.
-- [NVIDIA Section Types](elf/nvidia-sections.md) -- `.nv.global`, `.nv.shared`, `.nv.constant`, `.nv.info`, `.nv.local`.
-- [.nv.info Metadata](elf/nv-info.md) -- EIATTR entries, register counts, barrier counts, CRS attributes.
-- [Constant Banks (.nv.constant)](elf/constant-banks.md) -- Bank numbering, per-kernel constants, `ptx.const0.size`.
-- [Unified Function Tables](elf/uft.md) -- UFT/UDT structure, UUID-keyed mapping, `__UFT_OFFSET`/`__UDT_OFFSET`.
-- [Program Headers](elf/program-headers.md) -- LOAD segments, alignment, entry point metadata.
-- [ELF Serialization](elf/serialization.md) -- The `write_elf_to_buffer` function, section ordering, size validation.
+- [Device ELF Format](elf/device-elf-format.md) — e\_machine 190 (EM\_CUDA), ELF32/64, section layout conventions.
+- [NVIDIA Section Types](elf/nvidia-sections.md) — `.nv.global`, `.nv.shared`, `.nv.constant`, `.nv.info`, `.nv.local`.
+- [.nv.info Metadata](elf/nv-info.md) — EIATTR entries, register counts, barrier counts, CRS attributes.
+- [Constant Banks (.nv.constant)](elf/constant-banks.md) — Bank numbering, per-kernel constants, `ptx.const0.size`.
+- [Unified Function Tables](elf/uft.md) — UFT/UDT structure, UUID-keyed mapping, `__UFT_OFFSET`/`__UDT_OFFSET`.
+- [Program Headers](elf/program-headers.md) — LOAD segments, alignment, entry point metadata.
+- [ELF Serialization](elf/serialization.md) — The `write_elf_to_buffer` function, section ordering, size validation.
 
 ### Debug Information
 
 DWARF processing, line table merging, and NVIDIA-specific debug extensions.
 
-- [DWARF Processing](debug/dwarf-processing.md) -- Debug section handling during merge, DWARF abbreviation tables.
-- [Line Table Merging](debug/line-tables.md) -- Cross-TU line table merge, file table construction.
-- [NVIDIA Debug Extensions](debug/nvidia-extensions.md) -- NVIDIA-proprietary debug section formats.
-- [Mercury Debug Sections](debug/mercury-debug.md) -- Debug representation in capsule mercury output.
-- [Debug Options & Levels](debug/options.md) -- `-g`, `--suppress-debug-info`, debug section generation control.
+- [DWARF Processing](debug/dwarf-processing.md) — Debug section handling during merge, DWARF abbreviation tables.
+- [Line Table Merging](debug/line-tables.md) — Cross-TU line table merge, file table construction.
+- [NVIDIA Debug Extensions](debug/nvidia-extensions.md) — NVIDIA-proprietary debug section formats.
+- [Mercury Debug Sections](debug/mercury-debug.md) — Debug representation in capsule mercury output.
+- [Debug Options & Levels](debug/options.md) — `-g`, `--suppress-debug-info`, debug section generation control.
 
 ### Infrastructure
 
 Shared services used across the linker: memory management, error handling, threading, and utilities.
 
-- [Memory Management (Arenas)](infra/memory-arenas.md) -- The custom arena allocator, size-class free lists, page pools.
-- [Error Reporting System](infra/error-reporting.md) -- Diagnostic infrastructure, warning/error/info message emission.
-- [Thread Pool](infra/thread-pool.md) -- pthread-based pool for split compilation, barrier synchronization.
-- [Library Search](infra/library-search.md) -- `-L` path management, library file resolution algorithm.
-- [Timing Infrastructure](infra/timing.md) -- Phase timing (`sub_45CCD0`), profiling support, `--verbose` output.
-- [Linker Script Generation](infra/linker-scripts.md) -- `--gen-host-linker-script`, `.nvFatBinSegment` SECTIONS output.
+- [Memory Management (Arenas)](infra/memory-arenas.md) — The custom arena allocator, size-class free lists, page pools.
+- [Error Reporting System](infra/error-reporting.md) — Diagnostic infrastructure, warning/error/info message emission.
+- [Thread Pool](infra/thread-pool.md) — pthread-based pool for split compilation, barrier synchronization.
+- [Library Search](infra/library-search.md) — `-L` path management, library file resolution algorithm.
+- [Timing Infrastructure](infra/timing.md) — Phase timing (`sub_45CCD0`), profiling support, `--verbose` output.
+- [Linker Script Generation](infra/linker-scripts.md) — `--gen-host-linker-script`, `.nvFatBinSegment` SECTIONS output.
 
 ### Data Structures
 
 Detailed layouts of the key internal structures.
 
-- [Linker Context Object](structs/linker-context.md) -- Global state, input file list, target architecture, flags.
-- [ELF Writer (elfw)](structs/elf-writer.md) -- Section array, symbol table, relocation lists, string tables.
-- [Symbol Record](structs/symbol-record.md) -- Per-symbol metadata: binding, type, section, value, size.
-- [Section Record](structs/section-record.md) -- Per-section metadata: type, flags, data pointer, relocations.
-- [Architecture Profile](structs/arch-profile.md) -- Per-SM capability record, feature flags, encoding table pointers.
+- [Linker Context Object](structs/linker-context.md) — Global state, input file list, target architecture, flags.
+- [ELF Writer (elfw)](structs/elf-writer.md) — Section array, symbol table, relocation lists, string tables.
+- [Symbol Record](structs/symbol-record.md) — Per-symbol metadata: binding, type, section, value, size.
+- [Section Record](structs/section-record.md) — Per-section metadata: type, flags, data pointer, relocations.
+- [Architecture Profile](structs/arch-profile.md) — Per-SM capability record, feature flags, encoding table pointers.
 
 ### Configuration
 
 Command-line interface, environment variables, and embedded ptxas option forwarding.
 
-- [CLI Flags Reference](config/cli-flags.md) -- Complete catalog of 60+ registered options with types and defaults.
-- [Environment Variables](config/env-vars.md) -- `CAN_FINALIZE_DEBUG` and other environment-based controls.
-- [Embedded ptxas Options](config/ptxas-options.md) -- `--Xptxas` forwarding, `--maxrregcount`, optimization levels.
+- [CLI Flags Reference](config/cli-flags.md) — Complete catalog of 60+ registered options with types and defaults.
+- [Environment Variables](config/env-vars.md) — `CAN_FINALIZE_DEBUG` and other environment-based controls.
+- [Embedded ptxas Options](config/ptxas-options.md) — `--Xptxas` forwarding, `--maxrregcount`, optimization levels.
 
 ### Reference
 
 Lookup tables and catalogs for quick reference during reverse engineering.
 
-- [R\_CUDA Relocation Catalog](reference/r-cuda-catalog.md) -- All R\_CUDA relocation types with semantics and encoding.
-- [R\_MERCURY Relocation Catalog](reference/r-mercury-catalog.md) -- Mercury-specific relocation types.
-- [NVIDIA ELF Section Catalog](reference/section-catalog.md) -- All `.nv.*` section names, types, and purposes.
-- [elfLink Error Codes](reference/elflink-errors.md) -- Error code catalog with diagnostic strings.
-- [ROT13-Encoded Pass Names](reference/rot13-passes.md) -- Decoder ring for obfuscated internal identifiers.
+- [R\_CUDA Relocation Catalog](reference/r-cuda-catalog.md) — All R\_CUDA relocation types with semantics and encoding.
+- [R\_MERCURY Relocation Catalog](reference/r-mercury-catalog.md) — Mercury-specific relocation types.
+- [NVIDIA ELF Section Catalog](reference/section-catalog.md) — All `.nv.*` section names, types, and purposes.
+- [elfLink Error Codes](reference/elflink-errors.md) — Error code catalog with diagnostic strings.
+- [ROT13-Encoded Pass Names](reference/rot13-passes.md) — Decoder ring for obfuscated internal identifiers.
 
 ## Reading Order
 
@@ -323,79 +323,79 @@ The wiki contains 85+ pages. These four reading paths guide you through the mate
 
 Goal: understand what a CUDA device linker does and how nvlink transforms input cubins into a final device executable.
 
-1. **[Pipeline Overview](pipeline/overview.md)** -- The end-to-end flow diagram. Establishes all phases and their relationships. Read this first to build the mental model that every other page assumes.
-2. **[Entry Point & Main](pipeline/entry.md)** -- How nvlink is invoked, the 58KB `main()` function, initialization sequence, and phase orchestration.
-3. **[File Type Detection](input/file-type-detection.md)** -- The 56-byte header read and magic number dispatch. Understand how nvlink decides whether an input is a cubin, PTX, fatbin, NVVM IR, archive, or host ELF.
-4. **[Cubin Loading](input/cubin-loading.md)** -- The most common input path: how device ELF objects are validated, parsed, and imported into the internal `elfw` representation.
-5. **[Merge Phase](pipeline/merge.md)** -- The 89KB `merge_elf` function that combines multiple input ELFs. This is the heart of the linker: section merging, symbol resolution, and weak symbol selection.
-6. **[Symbol Resolution](linker/symbol-resolution.md)** -- How global, local, and weak symbols are resolved across translation units. COMDAT handling and multi-definition detection.
-7. **[R\_CUDA Relocations](linker/r-cuda-relocations.md)** -- CUDA-specific relocation types and how they differ from standard ELF relocations.
-8. **[Layout Phase](pipeline/layout.md)** -- Shared memory layout, section ordering, address assignment. The overlap-set analysis that makes `.nv.shared` work.
-9. **[Relocation Phase](pipeline/relocate.md)** -- How relocations are applied to produce position-dependent binary code.
-10. **[Output Writing](pipeline/output.md)** -- Final ELF serialization, host linker script generation, and the Mercury output path for SM100+.
-11. **[Device ELF Format](elf/device-elf-format.md)** -- The output format: `e_machine` 190, NVIDIA-proprietary sections, and the differences from standard ELF.
+1. **[Pipeline Overview](pipeline/overview.md)** — The end-to-end flow diagram. Establishes all phases and their relationships. Read this first to build the mental model that every other page assumes.
+2. **[Entry Point & Main](pipeline/entry.md)** — How nvlink is invoked, the 58KB `main()` function, initialization sequence, and phase orchestration.
+3. **[File Type Detection](input/file-type-detection.md)** — The 56-byte header read and magic number dispatch. Understand how nvlink decides whether an input is a cubin, PTX, fatbin, NVVM IR, archive, or host ELF.
+4. **[Cubin Loading](input/cubin-loading.md)** — The most common input path: how device ELF objects are validated, parsed, and imported into the internal `elfw` representation.
+5. **[Merge Phase](pipeline/merge.md)** — The 89KB `merge_elf` function that combines multiple input ELFs. This is the heart of the linker: section merging, symbol resolution, and weak symbol selection.
+6. **[Symbol Resolution](linker/symbol-resolution.md)** — How global, local, and weak symbols are resolved across translation units. COMDAT handling and multi-definition detection.
+7. **[R\_CUDA Relocations](linker/r-cuda-relocations.md)** — CUDA-specific relocation types and how they differ from standard ELF relocations.
+8. **[Layout Phase](pipeline/layout.md)** — Shared memory layout, section ordering, address assignment. The overlap-set analysis that makes `.nv.shared` work.
+9. **[Relocation Phase](pipeline/relocate.md)** — How relocations are applied to produce position-dependent binary code.
+10. **[Output Writing](pipeline/output.md)** — Final ELF serialization, host linker script generation, and the Mercury output path for SM100+.
+11. **[Device ELF Format](elf/device-elf-format.md)** — The output format: `e_machine` 190, NVIDIA-proprietary sections, and the differences from standard ELF.
 
 Optional extensions:
 
-- **[Dead Code Elimination](linker/dead-code-elimination.md)** -- How unreachable functions are stripped via callgraph reachability.
-- **[CLI Option Parsing](pipeline/cli-options.md)** -- The 60+ registered options and how they control pipeline behavior.
-- **[.nv.info Metadata](elf/nv-info.md)** -- EIATTR attribute encoding: register counts, barrier usage, CRS stack depth.
+- **[Dead Code Elimination](linker/dead-code-elimination.md)** — How unreachable functions are stripped via callgraph reachability.
+- **[CLI Option Parsing](pipeline/cli-options.md)** — The 60+ registered options and how they control pipeline behavior.
+- **[.nv.info Metadata](elf/nv-info.md)** — EIATTR attribute encoding: register counts, barrier usage, CRS stack depth.
 
 ### Path 2: LTO Deep-Dive
 
-Goal: understand nvlink's link-time optimization pipeline -- how NVVM IR modules are collected, compiled to PTX via libnvvm, assembled to SASS via the embedded ptxas, and merged back into the normal linking flow.
+Goal: understand nvlink's link-time optimization pipeline — how NVVM IR modules are collected, compiled to PTX via libnvvm, assembled to SASS via the embedded ptxas, and merged back into the normal linking flow.
 
-1. **[LTO Overview](lto/overview.md)** -- Architecture of the LTO pipeline: whole-program vs. relocatable compilation, the three-phase flow (collect IR, compile IR to PTX, assemble PTX to SASS).
-2. **[NVVM IR / LTO IR Input](input/nvvm-ir-input.md)** -- How NVVM IR modules are detected in input files, the `-lto` requirement, and libdevice detection.
-3. **[libnvvm Integration](lto/libnvvm-integration.md)** -- The dlopen/dlsym mechanics for loading `libnvvm.so`, the API surface nvlink calls, and `__nvvmHandle` resolution.
-4. **[Whole vs. Partial LTO](lto/whole-vs-partial.md)** -- How `--force-whole-lto` and `--force-partial-lto` change compilation scope, and the fallback behavior when LTO fails.
-5. **[Option Forwarding to cicc](lto/option-forwarding.md)** -- How `--Xptxas`, `--Xnvvm`, and `--maxrregcount` are forwarded through the LTO pipeline.
-6. **[Split Compilation](lto/split-compilation.md)** -- Thread pool dispatch for `--split-compile-extended`, work item lifecycle, and per-function parallelism.
-7. **[PTX Input & JIT](input/ptx-input.md)** -- How the PTX output from libnvvm is fed into the embedded ptxas backend for assembly.
-8. **[Merge Phase](pipeline/merge.md)** -- The LTO-compiled cubins re-enter the normal merge flow. Understanding the merge phase is necessary to see where LTO output rejoins the pipeline.
+1. **[LTO Overview](lto/overview.md)** — Architecture of the LTO pipeline: whole-program vs. relocatable compilation, the three-phase flow (collect IR, compile IR to PTX, assemble PTX to SASS).
+2. **[NVVM IR / LTO IR Input](input/nvvm-ir-input.md)** — How NVVM IR modules are detected in input files, the `-lto` requirement, and libdevice detection.
+3. **[libnvvm Integration](lto/libnvvm-integration.md)** — The dlopen/dlsym mechanics for loading `libnvvm.so`, the API surface nvlink calls, and `__nvvmHandle` resolution.
+4. **[Whole vs. Partial LTO](lto/whole-vs-partial.md)** — How `--force-whole-lto` and `--force-partial-lto` change compilation scope, and the fallback behavior when LTO fails.
+5. **[Option Forwarding to cicc](lto/option-forwarding.md)** — How `--Xptxas`, `--Xnvvm`, and `--maxrregcount` are forwarded through the LTO pipeline.
+6. **[Split Compilation](lto/split-compilation.md)** — Thread pool dispatch for `--split-compile-extended`, work item lifecycle, and per-function parallelism.
+7. **[PTX Input & JIT](input/ptx-input.md)** — How the PTX output from libnvvm is fed into the embedded ptxas backend for assembly.
+8. **[Merge Phase](pipeline/merge.md)** — The LTO-compiled cubins re-enter the normal merge flow. Understanding the merge phase is necessary to see where LTO output rejoins the pipeline.
 
 Optional extensions:
 
-- **[LTO IR Format Versions](lto/ir-format-versions.md)** -- NVVM IR version detection and bitcode compatibility across CUDA toolkit releases.
-- **[Embedded ptxas Overview](ptxas/overview.md)** -- How the embedded ptxas backend relates to the standalone `ptxas` binary.
-- **[Embedded ptxas Options](config/ptxas-options.md)** -- The `--Xptxas` forwarding mechanism and how optimization levels propagate.
+- **[LTO IR Format Versions](lto/ir-format-versions.md)** — NVVM IR version detection and bitcode compatibility across CUDA toolkit releases.
+- **[Embedded ptxas Overview](ptxas/overview.md)** — How the embedded ptxas backend relates to the standalone `ptxas` binary.
+- **[Embedded ptxas Options](config/ptxas-options.md)** — The `--Xptxas` forwarding mechanism and how optimization levels propagate.
 
 ### Path 3: Mercury Investigation
 
-Goal: understand the SM100+ (Blackwell) capsule mercury format -- the new ISA container that replaces traditional cubin output for Blackwell and later architectures.
+Goal: understand the SM100+ (Blackwell) capsule mercury format — the new ISA container that replaces traditional cubin output for Blackwell and later architectures.
 
-1. **[Mercury Overview](mercury/overview.md)** -- What Mercury is, why it exists, the ROT13 obfuscation convention (`zrephel` = Mercury), and the global mode flag that gates Mercury output.
-2. **[Mercury ELF Sections](mercury/elf-sections.md)** -- The `.nv.merc`, HRKE/HRKI/HRCE/HRCI/HRDE/HRDI sections. How Mercury data is embedded within the ELF container.
-3. **[Capsule Mercury Format](mercury/capmerc-format.md)** -- The container structure, capsule layout, and relationship to traditional cubin.
-4. **[Mercury Compiler Passes](mercury/compiler-passes.md)** -- The MercExpand engine (204KB at `sub_5B1D80`) and Mercury-specific ISel patterns.
-5. **[FNLZR (Finalizer)](mercury/fnlzr.md)** -- The post-link binary rewriter, the 10-phase finalization pipeline, pre-link vs. post-link modes, and capability masks.
-6. **[R\_MERCURY Relocations](mercury/r-mercury-relocations.md)** -- Mercury-specific relocation types, how they differ from R\_CUDA, and the relocation application flow.
+1. **[Mercury Overview](mercury/overview.md)** — What Mercury is, why it exists, the ROT13 obfuscation convention (`zrephel` = Mercury), and the global mode flag that gates Mercury output.
+2. **[Mercury ELF Sections](mercury/elf-sections.md)** — The `.nv.merc`, HRKE/HRKI/HRCE/HRCI/HRDE/HRDI sections. How Mercury data is embedded within the ELF container.
+3. **[Capsule Mercury Format](mercury/capmerc-format.md)** — The container structure, capsule layout, and relationship to traditional cubin.
+4. **[Mercury Compiler Passes](mercury/compiler-passes.md)** — The MercExpand engine (204KB at `sub_5B1D80`) and Mercury-specific ISel patterns.
+5. **[FNLZR (Finalizer)](mercury/fnlzr.md)** — The post-link binary rewriter, the 10-phase finalization pipeline, pre-link vs. post-link modes, and capability masks.
+6. **[R\_MERCURY Relocations](mercury/r-mercury-relocations.md)** — Mercury-specific relocation types, how they differ from R\_CUDA, and the relocation application flow.
 
 Optional extensions:
 
-- **[SM100 Blackwell](targets/sm100-blackwell.md)** -- Mercury output format, FNLZR integration, new MMA shapes.
-- **[Mercury Debug Sections](debug/mercury-debug.md)** -- How debug information is represented in capsule mercury output.
-- **[ROT13-Encoded Pass Names](reference/rot13-passes.md)** -- The decoder ring for Mercury-related obfuscated identifiers.
+- **[SM100 Blackwell](targets/sm100-blackwell.md)** — Mercury output format, FNLZR integration, new MMA shapes.
+- **[Mercury Debug Sections](debug/mercury-debug.md)** — How debug information is represented in capsule mercury output.
+- **[ROT13-Encoded Pass Names](reference/rot13-passes.md)** — The decoder ring for Mercury-related obfuscated identifiers.
 
 ### Path 4: Architecture Hacker
 
 Goal: understand how nvlink supports 22 SM architectures (sm\_75 through sm\_121), how per-architecture dispatch works, and how the embedded ptxas backend selects encoding tables and ISel patterns per target.
 
-1. **[Architecture Profiles](targets/arch-profiles.md)** -- The profile database structure: per-SM feature flags, capability masks, and encoding table pointers.
-2. **[Compatibility Checking](targets/compatibility.md)** -- Cross-architecture linking rules: family matching, version validation, and the constraints on mixing objects from different SM versions.
-3. **[Architecture Dispatch (vtables)](ptxas/arch-dispatch.md)** -- Per-SM vtable-based dispatch for ISel, encoding, and feature queries. How the binary selects the correct code paths for each target.
-4. **[SM75 Turing](targets/sm75-turing.md)** -- The minimum supported architecture, baseline feature set, and Turing-specific encoding.
-5. **[SM90 Hopper](targets/sm90-hopper.md)** -- Cluster launch, WGMMA, TMA, asynchronous barriers. The last pre-Mercury architecture.
-6. **[SM100 Blackwell](targets/sm100-blackwell.md)** -- The Mercury transition: new output format, FNLZR integration, new MMA shapes.
-7. **[SM103 / SM110 / SM120 / SM121](targets/sm103-121.md)** -- Blackwell Ultra, Jetson Thor, consumer RTX 50-series, DGX Spark. How newer architectures derive from SM100.
-8. **[Embedded ptxas Overview](ptxas/overview.md)** -- The ~24MB embedded compiler backend: subsystem decomposition and relationship to standalone ptxas.
-9. **[Instruction Selection Hubs](ptxas/isel-hubs.md)** -- The five ISel mega-functions (160--280KB each) and how they dispatch per SM variant.
+1. **[Architecture Profiles](targets/arch-profiles.md)** — The profile database structure: per-SM feature flags, capability masks, and encoding table pointers.
+2. **[Compatibility Checking](targets/compatibility.md)** — Cross-architecture linking rules: family matching, version validation, and the constraints on mixing objects from different SM versions.
+3. **[Architecture Dispatch (vtables)](ptxas/arch-dispatch.md)** — Per-SM vtable-based dispatch for ISel, encoding, and feature queries. How the binary selects the correct code paths for each target.
+4. **[SM75 Turing](targets/sm75-turing.md)** — The minimum supported architecture, baseline feature set, and Turing-specific encoding.
+5. **[SM90 Hopper](targets/sm90-hopper.md)** — Cluster launch, WGMMA, TMA, asynchronous barriers. The last pre-Mercury architecture.
+6. **[SM100 Blackwell](targets/sm100-blackwell.md)** — The Mercury transition: new output format, FNLZR integration, new MMA shapes.
+7. **[SM103 / SM110 / SM120 / SM121](targets/sm103-121.md)** — Blackwell Ultra, Jetson Thor, consumer RTX 50-series, DGX Spark. How newer architectures derive from SM100.
+8. **[Embedded ptxas Overview](ptxas/overview.md)** — The ~24MB embedded compiler backend: subsystem decomposition and relationship to standalone ptxas.
+9. **[Instruction Selection Hubs](ptxas/isel-hubs.md)** — The five ISel mega-functions (160--280KB each) and how they dispatch per SM variant.
 
 Optional extensions:
 
-- **[SM80--88 Ampere](targets/sm80-ampere.md)** and **[SM89 Ada](targets/sm89-ada.md)** -- Per-generation feature details.
-- **[Peephole Optimization](ptxas/peephole.md)** -- Post-RA peephole patterns that vary by architecture.
-- **[R\_CUDA Relocation Catalog](reference/r-cuda-catalog.md)** -- Architecture-dependent relocation types.
+- **[SM80--88 Ampere](targets/sm80-ampere.md)** and **[SM89 Ada](targets/sm89-ada.md)** — Per-generation feature details.
+- **[Peephole Optimization](ptxas/peephole.md)** — Post-RA peephole patterns that vary by architecture.
+- **[R\_CUDA Relocation Catalog](reference/r-cuda-catalog.md)** — Architecture-dependent relocation types.
 
 ## Relationship to Other CUDA Toolchain Wikis
 
@@ -421,24 +421,24 @@ nvlink  -->  linked device executable (cubin or capsule mercury)
 
 ### Cross-Wiki References
 
-**[cudafe++ wiki](../cudafe++/index.html)** (8.5 MB binary, 6,483 functions) -- Documents the CUDA frontend compiler built on EDG 6.6. cudafe++ separates device code from host code and emits the EDG Intermediate Language consumed by cicc. The execution-space bitfield encoding (`__device__`, `__global__`, `__host__`) defined by cudafe++ determines which symbols appear in the device objects that nvlink eventually merges. The lambda wrapper templates (`__nv_dl_wrapper_t`, `__nv_hdl_wrapper_t`) injected by cudafe++ produce the weak symbols that nvlink resolves during merge.
+**[cudafe++ wiki](../cudafe++/index.html)** (8.5 MB binary, 6,483 functions) — Documents the CUDA frontend compiler built on EDG 6.6. cudafe++ separates device code from host code and emits the EDG Intermediate Language consumed by cicc. The execution-space bitfield encoding (`__device__`, `__global__`, `__host__`) defined by cudafe++ determines which symbols appear in the device objects that nvlink eventually merges. The lambda wrapper templates (`__nv_dl_wrapper_t`, `__nv_hdl_wrapper_t`) injected by cudafe++ produce the weak symbols that nvlink resolves during merge.
 
-**[cicc wiki](../cicc/index.html)** (60 MB binary, 80,562 functions) -- Documents the CUDA C-to-PTX compiler built on EDG 6.6 + LLVM 20.0.0. cicc transforms CUDA source into PTX assembly or NVVM IR bitcode. When nvlink operates in LTO mode, it loads `libnvvm.so` (a shared library containing cicc's LLVM backend) to compile NVVM IR modules back to PTX. The `--Xnvvm` option forwarding documented in this wiki's [Option Forwarding](lto/option-forwarding.md) page passes flags to cicc's LLVM pipeline.
+**[cicc wiki](../cicc/index.html)** (60 MB binary, 80,562 functions) — Documents the CUDA C-to-PTX compiler built on EDG 6.6 + LLVM 20.0.0. cicc transforms CUDA source into PTX assembly or NVVM IR bitcode. When nvlink operates in LTO mode, it loads `libnvvm.so` (a shared library containing cicc's LLVM backend) to compile NVVM IR modules back to PTX. The `--Xnvvm` option forwarding documented in this wiki's [Option Forwarding](lto/option-forwarding.md) page passes flags to cicc's LLVM pipeline.
 
-**[ptxas wiki](../ptxas/index.html)** (37.7 MB binary, 40,185 functions) -- Documents the PTX-to-SASS assembler. nvlink embeds a copy of the ptxas backend statically linked into its binary (~24 MB, ~20,000 functions). The embedded ptxas section of this wiki provides a summary, but the ptxas wiki covers the same compiler in far greater depth: the 159-phase optimization pipeline, the fatpoint register allocator, the Mercury encoder architecture, and the 1,294 ROT13-encoded internal knobs. When investigating nvlink's embedded compiler behavior, consult the ptxas wiki for detailed pass descriptions.
+**[ptxas wiki](../ptxas/index.html)** (37.7 MB binary, 40,185 functions) — Documents the PTX-to-SASS assembler. nvlink embeds a copy of the ptxas backend statically linked into its binary (~24 MB, ~20,000 functions). The embedded ptxas section of this wiki provides a summary, but the ptxas wiki covers the same compiler in far greater depth: the 159-phase optimization pipeline, the fatpoint register allocator, the Mercury encoder architecture, and the 1,294 ROT13-encoded internal knobs. When investigating nvlink's embedded compiler behavior, consult the ptxas wiki for detailed pass descriptions.
 
 ### When to Use Which Wiki
 
 | Question | Wiki |
 |---|---|
-| How does nvlink resolve cross-TU device symbols? | **nvlink** -- [Symbol Resolution](linker/symbol-resolution.md) |
-| How does the PTX-to-SASS compiler work internally? | **ptxas** -- the 74-page PTX assembler wiki |
+| How does nvlink resolve cross-TU device symbols? | **nvlink** — [Symbol Resolution](linker/symbol-resolution.md) |
+| How does the PTX-to-SASS compiler work internally? | **ptxas** — the 74-page PTX assembler wiki |
 | How does LTO compile NVVM IR to PTX? | **nvlink** [LTO Overview](lto/overview.md) + **cicc** LLVM optimizer |
-| What CUDA C++ syntax maps to which device IL? | **cudafe++** -- EDG frontend, execution spaces |
+| What CUDA C++ syntax maps to which device IL? | **cudafe++** — EDG frontend, execution spaces |
 | How are Mercury/capsule sections structured? | **nvlink** [Mercury](mercury/overview.md) + **ptxas** capsule mercury |
 | How does `--Xptxas` affect code generation? | **nvlink** [Embedded ptxas Options](config/ptxas-options.md) + **ptxas** knobs system |
-| What are the 159 optimization phases? | **ptxas** -- [Pass Inventory & Ordering](../ptxas/passes/index.html) |
-| How does register allocation determine occupancy? | **ptxas** -- [Allocator Architecture](../ptxas/regalloc/overview.html) |
+| What are the 159 optimization phases? | **ptxas** — [Pass Inventory & Ordering](../ptxas/passes/index.html) |
+| How does register allocation determine occupancy? | **ptxas** — [Allocator Architecture](../ptxas/regalloc/overview.html) |
 
 ## Methodology
 

@@ -2,10 +2,10 @@
 
 nvlink contains a custom thread pool built on pthreads. It parallelizes two distinct PTX-to-SASS assembly paths, both within the LTO pipeline:
 
-1. **LTO split-compile** (`main()` at line ~1208) -- Splits a single PTX stream into N chunks and assembles them concurrently. Controlled by `-split-compile-extended=N`.
-2. **Embedded ptxas per-kernel compilation** (`sub_1112F30` at line ~1889) -- Compiles each kernel in a multi-kernel PTX input as a separate task. Controlled by the `--split-compile` option forwarded to the embedded ptxas subsystem.
+1. **LTO split-compile** (`main()` at line ~1208) — Splits a single PTX stream into N chunks and assembles them concurrently. Controlled by `-split-compile-extended=N`.
+2. **Embedded ptxas per-kernel compilation** (`sub_1112F30` at line ~1889) — Compiles each kernel in a multi-kernel PTX input as a separate task. Controlled by the `--split-compile` option forwarded to the embedded ptxas subsystem.
 
-All other linker phases -- merge, layout, relocation, finalization -- run single-threaded on the main thread. Each pool instance is created, used, and destroyed within a single scope and does not persist across pipeline phases.
+All other linker phases — merge, layout, relocation, finalization — run single-threaded on the main thread. Each pool instance is created, used, and destroyed within a single scope and does not persist across pipeline phases.
 
 For the LTO split-compile path, the thread count is controlled by `-split-compile-extended=N`. When N is 0 or unspecified, the pool auto-detects via `sysconf(_SC_NPROCESSORS_ONLN)`. When N is 1, the split-compile path runs single-threaded and the pool is never created. The embedded ptxas path reads the thread count from offset +668 in the compilation driver state block.
 
@@ -52,7 +52,7 @@ long thread_pool_get_nproc(void) {
 
 ### thread_pool_create (`sub_43FDB0` at `0x43FDB0`)
 
-Allocates the control block, initializes the mutex and both condition variables, creates the task queue, then spawns N worker threads in a loop. All threads are immediately detached via `pthread_detach`, meaning the pool does not call `pthread_join` -- shutdown synchronization is handled entirely through the `done_cond` condition variable and the `thread_count` field.
+Allocates the control block, initializes the mutex and both condition variables, creates the task queue, then spawns N worker threads in a loop. All threads are immediately detached via `pthread_detach`, meaning the pool does not call `pthread_join` — shutdown synchronization is handled entirely through the `done_cond` condition variable and the `thread_count` field.
 
 ```c
 pool_t *thread_pool_create(size_t num_threads) {
@@ -213,7 +213,7 @@ void thread_pool_destroy(pool_t *pool) {
 }
 ```
 
-The pool control block and thread array are freed with `free()`, matching the `calloc` in `thread_pool_create`. These are not arena-allocated -- the thread pool manages its own memory independently of nvlink's arena allocator. The task queue's backing storage, however, is arena-allocated (see below).
+The pool control block and thread array are freed with `free()`, matching the `calloc` in `thread_pool_create`. These are not arena-allocated — the thread pool manages its own memory independently of nvlink's arena allocator. The task queue's backing storage, however, is arena-allocated (see below).
 
 ## Task Queue
 
@@ -240,7 +240,7 @@ Allocates the 32-byte queue struct and the initial element array from the arena 
 
 Inserts an element at position `count`, then sifts up by comparing with the parent at `(index - 1) / 2`. If the comparator returns 0 (parent should come after child), the elements are swapped and the process continues up the heap. Growth doubles the capacity when `count >= capacity`, using `sub_4313A0` (arena realloc).
 
-Since the comparator always returns 1, the sift-up loop always breaks immediately on the first comparison -- the new element stays at the end. Combined with the sift-down behavior in pop, this produces approximate FIFO ordering: the first element pushed is always at position 0 (the root), and elements dequeue in insertion order.
+Since the comparator always returns 1, the sift-up loop always breaks immediately on the first comparison — the new element stays at the end. Combined with the sift-down behavior in pop, this produces approximate FIFO ordering: the first element pushed is always at position 0 (the root), and elements dequeue in insertion order.
 
 ### pqueue_pop (`sub_44DE20` at `0x44DE20`)
 
@@ -325,7 +325,7 @@ Offset  Size  Field          Description
  36      4    result_code    Written by worker (return value of sub_4BD760)
 ```
 
-Each work item is described in [Split Compilation -- Work Item Layout](../lto/split-compilation.md#path-3-extended-split-compile-multi-threaded).
+Each work item is described in [Split Compilation — Work Item Layout](../lto/split-compilation.md#path-3-extended-split-compile-multi-threaded).
 
 ## Usage Site 2: Embedded ptxas Per-Kernel Compilation
 
@@ -439,7 +439,7 @@ All status updates use `_InterlockedCompareExchange(status, new, 0)` for atomic 
 
 | Status | Meaning |
 |---|---|
-| 0 | Success -- jobserver initialized |
+| 0 | Success — jobserver initialized |
 | 5 | `MAKEFLAGS` environment variable not set |
 | 6 | `--jobserver-auth=` token not found in `MAKEFLAGS` |
 | 7 | Parse error, `open` failure, `dup` failure, or `fcntl` failure |
@@ -450,7 +450,7 @@ All status updates use `_InterlockedCompareExchange(status, new, 0)` for atomic 
 
 Workers call `sub_1D1E300` (acquire) before compiling a kernel and `sub_1D1E480` (release) after. The acquire function reads one byte from the jobserver pipe to claim a token; the release function writes one byte back. Internal coordination uses a condition variable and counters within the 296-byte struct to handle the case where all tokens are in use (workers block until a token is returned).
 
-The first token is "free" -- the initial-token flag at offset +8 of the jobserver struct is set to 1, so the first worker skips the pipe read. Subsequent workers must acquire real tokens from the Make jobserver.
+The first token is "free" — the initial-token flag at offset +8 of the jobserver struct is set to 1, so the first worker skips the pipe read. Subsequent workers must acquire real tokens from the Make jobserver.
 
 ### Error Messages
 
@@ -461,7 +461,7 @@ The first token is "free" -- the initial-token flag at offset +8 of the jobserve
 
 ### Relationship to ptxas
 
-ptxas has an identical jobserver client at `sub_1CC7300` (see [ptxas: Threading -- Jobserver](../../ptxas/infra/threading.html)). Both use the same `sub_1D1E740` parser and `sub_1D1EF30` initialization code, compiled from NVIDIA's shared `generic_jobserver_impl` infrastructure.
+ptxas has an identical jobserver client at `sub_1CC7300` (see [ptxas: Threading — Jobserver](../../ptxas/infra/threading.html)). Both use the same `sub_1D1E740` parser and `sub_1D1EF30` initialization code, compiled from NVIDIA's shared `generic_jobserver_impl` infrastructure.
 
 ## Worked Example: Thread Pool Lifecycle
 
@@ -553,7 +553,7 @@ The pool uses a deliberate split between two allocators:
 | Queue struct (32 B) | Arena (`sub_4307C0`) | Lives as long as the pool; freed via arena in `pqueue_destroy` |
 | Queue backing array | Arena (`sub_4313A0`) | Grows via arena realloc; freed in `pqueue_destroy` |
 
-The task nodes use the system allocator (`malloc`/`free`) rather than the arena because they are allocated and freed from different threads. The arena allocator has per-arena mutex protection and is thread-safe, but the task nodes are short-lived and small -- using `malloc` avoids contention on the arena lock during high-throughput submission.
+The task nodes use the system allocator (`malloc`/`free`) rather than the arena because they are allocated and freed from different threads. The arena allocator has per-arena mutex protection and is thread-safe, but the task nodes are short-lived and small — using `malloc` avoids contention on the arena lock during high-throughput submission.
 
 ## Synchronization Details
 
@@ -608,7 +608,7 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 | `0x1D1EF30` | `jobserver_init` | ~560 B | Allocates 296-byte jobserver client, calls `parse_makeflags`, creates internal pipe |
 | `0x1D1E300` | `jobserver_acquire` | ~320 B | Acquires one token from the jobserver (reads 1 byte from pipe) |
 | `0x1D1E480` | `jobserver_release` | ~400 B | Releases one token back to the jobserver (writes 1 byte to pipe) |
-| `0x1D1E060` | `jobserver_cleanup` | -- | Returns remaining tokens and cleans up jobserver state |
+| `0x1D1E060` | `jobserver_cleanup` | — | Returns remaining tokens and cleans up jobserver state |
 
 ### Embedded ptxas Compilation Driver
 
@@ -629,36 +629,36 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 
 **Internal (nvlink wiki):**
 
-- [Split Compilation](../lto/split-compilation.md) -- The LTO split-compile pipeline, including work item layout and the `split_compile_worker` function
-- [LTO Overview](../lto/overview.md) -- High-level LTO pipeline diagram showing where multi-threaded PTX-to-SASS assembly fits
-- [Pipeline Entry](../pipeline/entry.md) -- `main()` thread pool lifecycle at lines ~1208--1286 of the decompiled output
-- [Memory Arenas](memory-arenas.md) -- Arena allocator thread safety: the queue uses arena allocation while task nodes use `malloc`/`free`
-- [Error Reporting](error-reporting.md) -- Per-thread TLS diagnostic state (`sub_44F410`) that the thread pool workers inherit
-- [CLI Flags](../config/cli-flags.md) -- `-split-compile-extended=N` option controlling thread count
-- [Environment Variables](../config/env-vars.md) -- `MAKEFLAGS` environment variable documentation with full MAKEFLAGS parser analysis
+- [Split Compilation](../lto/split-compilation.md) — The LTO split-compile pipeline, including work item layout and the `split_compile_worker` function
+- [LTO Overview](../lto/overview.md) — High-level LTO pipeline diagram showing where multi-threaded PTX-to-SASS assembly fits
+- [Pipeline Entry](../pipeline/entry.md) — `main()` thread pool lifecycle at lines ~1208--1286 of the decompiled output
+- [Memory Arenas](memory-arenas.md) — Arena allocator thread safety: the queue uses arena allocation while task nodes use `malloc`/`free`
+- [Error Reporting](error-reporting.md) — Per-thread TLS diagnostic state (`sub_44F410`) that the thread pool workers inherit
+- [CLI Flags](../config/cli-flags.md) — `-split-compile-extended=N` option controlling thread count
+- [Environment Variables](../config/env-vars.md) — `MAKEFLAGS` environment variable documentation with full MAKEFLAGS parser analysis
 
 **Sibling wikis:**
 
-- [ptxas: Threading](../../ptxas/infra/threading.html) -- ptxas has a structurally identical thread pool (`sub_1CB18B0`, 184-byte pool struct, 24-byte task nodes, `pthread_detach` + condition-variable shutdown) used for parallel kernel compilation. The pool constructor, worker loop, submit, wait, and destroy functions are compiled from the same source.
-- [ptxas: Memory Pools](../../ptxas/infra/memory-pools.html) -- ptxas memory pool allocator that parallels nvlink's arena system
+- [ptxas: Threading](../../ptxas/infra/threading.html) — ptxas has a structurally identical thread pool (`sub_1CB18B0`, 184-byte pool struct, 24-byte task nodes, `pthread_detach` + condition-variable shutdown) used for parallel kernel compilation. The pool constructor, worker loop, submit, wait, and destroy functions are compiled from the same source.
+- [ptxas: Memory Pools](../../ptxas/infra/memory-pools.html) — ptxas memory pool allocator that parallels nvlink's arena system
 
 ## Confidence Assessment
 
 | Claim | Confidence | Evidence |
 |---|---|---|
-| Pool control block is 184 bytes (0xB8) via `calloc(1, 0xB8)` | HIGH | `sub_43FDB0` decompiled: `calloc(1u, 0xB8u)` -- exact match |
+| Pool control block is 184 bytes (0xB8) via `calloc(1, 0xB8)` | HIGH | `sub_43FDB0` decompiled: `calloc(1u, 0xB8u)` — exact match |
 | Thread array is `calloc(nmemb, 0x10)` (16 bytes per thread) | HIGH | `sub_43FDB0` decompiled: `calloc(nmemb, 0x10u)` |
-| `thread_count` at offset 168 (QWORD index 21) | HIGH | `sub_43FDB0`: `*((_QWORD *)v1 + 21) = nmemb` -- offset `21 * 8 = 168` |
-| `pending_count` at offset 16 (DWORD index 4) | HIGH | `sub_43FDB0`: `*((_DWORD *)v1 + 4) = 0` -- offset `4 * 4 = 16`; `sub_43FF50` increments `*(_DWORD *)(a1 + 16)` |
+| `thread_count` at offset 168 (QWORD index 21) | HIGH | `sub_43FDB0`: `*((_QWORD *)v1 + 21) = nmemb` — offset `21 * 8 = 168` |
+| `pending_count` at offset 16 (DWORD index 4) | HIGH | `sub_43FDB0`: `*((_DWORD *)v1 + 4) = 0` — offset `4 * 4 = 16`; `sub_43FF50` increments `*(_DWORD *)(a1 + 16)` |
 | Mutex at offset 24, task_cond at 64, done_cond at 112 | HIGH | `sub_43FDB0`: `pthread_mutex_init(v1 + 24)`, `pthread_cond_init(v1 + 64)`, `pthread_cond_init(v1 + 112)` |
 | Shutdown flag at offset 176 (byte) | HIGH | `sub_43FE70` (destroy): `ptr[176] = 1`; `start_routine`: `if (a1[176])` |
 | `active_count` at offset 160 | HIGH | `sub_43FFE0` (wait): `if (!*(_QWORD *)(a1 + 160))` break when not shutdown |
 | Workers are detached via `pthread_detach` | HIGH | `sub_43FDB0` loop: `pthread_create` then `pthread_detach(v4)` |
-| Task nodes are 24 bytes via `malloc(0x18)` | HIGH | `sub_43FF50`: `v4 = malloc(0x18u)` -- exact match |
+| Task nodes are 24 bytes via `malloc(0x18)` | HIGH | `sub_43FF50`: `v4 = malloc(0x18u)` — exact match |
 | `pthread_cond_broadcast` on submit | HIGH | `sub_43FF50`: `pthread_cond_broadcast((pthread_cond_t *)(a1 + 64))` |
 | `pthread_cond_signal` on done_cond | HIGH | `start_routine`: `pthread_cond_signal(v1)` where `v1 = a1 + 112` |
-| `thread_pool_get_nproc` returns `sysconf(83)` | HIGH | `sub_43FD90` decompiled: `return sysconf(83);` -- exact one-liner |
-| Default pthread stack size (NULL attr) | HIGH | `sub_43FDB0`: `pthread_create(..., 0, ...)` -- NULL attr argument |
+| `thread_pool_get_nproc` returns `sysconf(83)` | HIGH | `sub_43FD90` decompiled: `return sysconf(83);` — exact one-liner |
+| Default pthread stack size (NULL attr) | HIGH | `sub_43FDB0`: `pthread_create(..., 0, ...)` — NULL attr argument |
 | `-split-compile-extended` CLI option | HIGH | Strings `"-split-compile-extended=%d"` at `0x1d32268` and `"-split-compile-extended"` at `0x1d32283` |
 | "Unable to create thread pool" error message | HIGH | String at `0x1d342db` in strings JSON |
 | Task queue uses `sub_43FC70` comparator (always returns 1) | HIGH | `sub_43FDB0`: `sub_44DC60(sub_43FC70, 0)` passes comparator function; `sub_43FC70` is an 8-byte function |
@@ -667,10 +667,10 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 | Shared design with ptxas thread pool | HIGH | ptxas `sub_1CB18B0` has identical 184-byte struct, same `pthread_detach` pattern, same 24-byte task nodes, same condition-variable protocol |
 | Second usage site in `sub_1112F30` | HIGH | `sub_43FDB0`/`sub_43FF50`/`sub_43FFE0`/`sub_43FE70` calls at decompiled lines 1906/1935/1943/1944 |
 | `--jobserver` flag at embedded ptxas offset +609 | HIGH | `sub_1104950` line 284: `sub_42E390(v11, "jobserver", (a3 + 609), 1u)` |
-| Jobserver client struct is 296 bytes | HIGH | `sub_1D1EF30`: `sub_1D26B40(296, ...)` -- exact allocation size |
+| Jobserver client struct is 296 bytes | HIGH | `sub_1D1EF30`: `sub_1D26B40(296, ...)` — exact allocation size |
 | MAKEFLAGS parsed by `sub_1D1E740` | HIGH | `getenv("MAKEFLAGS")` at line 57 of decompiled `sub_1D1E740` |
-| `--jobserver-auth=` is the only recognized token format | HIGH | `sub_1D27380(&ptr, "--jobserver-auth=", -1, 17)` -- string literal match |
-| FIFO mode opens with `O_RDWR | O_NONBLOCK` (0x802) | HIGH | `open(file, 2050)` in `sub_1D1E740` -- 2050 decimal = 0x802 |
+| `--jobserver-auth=` is the only recognized token format | HIGH | `sub_1D27380(&ptr, "--jobserver-auth=", -1, 17)` — string literal match |
+| FIFO mode opens with `O_RDWR | O_NONBLOCK` (0x802) | HIGH | `open(file, 2050)` in `sub_1D1E740` — 2050 decimal = 0x802 |
 | Pipe mode uses `dup()` + `fcntl(FD_CLOEXEC)` | HIGH | `dup(v31)` then `fcntl(v32, 2, 2048)` in `sub_1D1E740` |
 | Worker `sub_1107420` acquires/releases jobserver tokens | HIGH | Calls `sub_1D1E300()` at line 20 and `sub_1D1E480()` at line 57 |
 | Per-kernel work item is 48 bytes | HIGH | `sub_4307C0(v203, 48)` at `sub_1112F30` line 1918 |

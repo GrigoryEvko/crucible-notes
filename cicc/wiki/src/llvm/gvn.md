@@ -230,7 +230,7 @@ The `profusegvn` knob (default true) enables verbose output through NVIDIA's cus
 | Classic GVN entry (`GVN::runOnFunction` analog) | `sub_1900BB0` | 11.5 KB | Main classic GVN pass |
 | Replace-uses + erase helper | `sub_19003A0` | 2.0 KB | RAUW + eraseFromParent for replaced values |
 | NewGVN entry | `sub_19F99A0` | 12.3 KB | Partition-based congruence-class GVN |
-| GVN knob constructor | `ctor_201` (`0x4E0990`) | -- | Registers 11 GVN `cl::opt` knobs |
+| GVN knob constructor | `ctor_201` (`0x4E0990`) | — | Registers 11 GVN `cl::opt` knobs |
 | Expression hash | `sub_18FDEE0` | 0.7 KB | Hashes opcode + operand pointers (commutative-canonicalized) |
 | Expression equality | `sub_18FB980` | 0.4 KB | Structural compare for hash-table key |
 | 5-key store-expression hash | `sub_18FEB70` | 0.3 KB | 5-element store key (opcode, type, ptr, val, align) |
@@ -399,7 +399,7 @@ These four passes form the core scalar optimization chain in CICC's mid-pipeline
 | **GVN** | Canonical forms from InstCombine, MemDep/AA results | Forwarded loads, eliminated redundancies, exposed dead stores |
 | **DSE** | Dead stores exposed by GVN, MemorySSA/AA results | Eliminated stores, reduced memory traffic |
 
-**Why this ordering matters for GPU code:** SROA is existential because un-promoted allocas become `.local` memory (200-400 cycle penalty). InstCombine must run before GVN because GVN's hash-table matching requires canonical expression forms -- without InstCombine, `(a + 0)` and `a` would hash differently and miss the CSE opportunity. GVN must run before DSE because GVN's load forwarding is what exposes dead stores: once GVN proves that a load reads a value already available as an SSA register, the store that was keeping that value alive becomes dead. DSE then removes it, reducing the memory write traffic that is the primary bandwidth bottleneck on GPU architectures.
+**Why this ordering matters for GPU code:** SROA is existential because un-promoted allocas become `.local` memory (200-400 cycle penalty). InstCombine must run before GVN because GVN's hash-table matching requires canonical expression forms — without InstCombine, `(a + 0)` and `a` would hash differently and miss the CSE opportunity. GVN must run before DSE because GVN's load forwarding is what exposes dead stores: once GVN proves that a load reads a value already available as an SSA register, the store that was keeping that value alive becomes dead. DSE then removes it, reducing the memory write traffic that is the primary bandwidth bottleneck on GPU architectures.
 
 ## Optimization Level Behavior
 
@@ -412,7 +412,7 @@ These four passes form the core scalar optimization chain in CICC's mid-pipeline
 | **O2** | Runs (2-3 instances across Tier 0/1/2) | Not run | Enabled | Enabled |
 | **O3** | Runs (2-3 instances, most aggressive inlining exposes more CSE) | Not run | Enabled | Enabled |
 
-GVN is a core mid-pipeline pass that runs at O1 and above. It appears multiple times in the pipeline -- typically once after CGSCC inlining and once in the late scalar cleanup. Each instance benefits from different preceding transformations (inlining, SROA, InstCombine). NewGVN is compiled into the binary but not scheduled in any standard pipeline tier. The `enable-pre` and `enable-load-pre` knobs are both true by default across all levels. See [Optimization Levels](../config/optimization-levels.md) for the complete tier structure.
+GVN is a core mid-pipeline pass that runs at O1 and above. It appears multiple times in the pipeline — typically once after CGSCC inlining and once in the late scalar cleanup. Each instance benefits from different preceding transformations (inlining, SROA, InstCombine). NewGVN is compiled into the binary but not scheduled in any standard pipeline tier. The `enable-pre` and `enable-load-pre` knobs are both true by default across all levels. See [Optimization Levels](../config/optimization-levels.md) for the complete tier structure.
 
 ## Differences from Upstream LLVM
 
@@ -438,7 +438,7 @@ All diagnostic strings recovered from the binary. GVN uses NVIDIA's custom profu
 | (profuse GVN diagnostic output) | `sub_1909530` (1.1 KB) | Debug | `profusegvn` knob enabled (default true); emits at value replacement, store/load match, and PRE insertion decisions |
 | (PHI removal diagnostic output) | `sub_19003A0` region | Debug | `dump-phi-remove` > 0; dumps which PHI nodes are being removed and why |
 
-The `profusegvn` framework follows the same pattern as `profuseinline` -- it is a custom NVIDIA diagnostic channel likely controlled by environment variables such as `CICC_PROFUSE_DIAGNOSTICS`, not the standard LLVM `OptimizationRemark` / `ORE` system. The `dump-phi-remove` knob (default 0) separately enables diagnostic output during PHI removal.
+The `profusegvn` framework follows the same pattern as `profuseinline` — it is a custom NVIDIA diagnostic channel likely controlled by environment variables such as `CICC_PROFUSE_DIAGNOSTICS`, not the standard LLVM `OptimizationRemark` / `ORE` system. The `dump-phi-remove` knob (default 0) separately enables diagnostic output during PHI removal.
 
 ## Allocation Strategy
 
@@ -466,4 +466,4 @@ __global__ void gvn_test(const float* __restrict__ in, float* __restrict__ out, 
 - Only **one** `ld.global.f32` instruction for `in[tid]`, not two. GVN assigns the same value number to both loads (same pointer, no intervening aliasing store thanks to `__restrict__`) and replaces the second with the first's result.
 - The arithmetic should reduce to something equivalent to `in[tid] * 5.0f`. After GVN eliminates the redundant load, InstCombine or the backend may simplify `a*2 + a*3` into `a*5`.
 - Remove `__restrict__` and add an intervening store (`out[tid] = b;` between the two loads). Without `__restrict__`, GVN cannot prove the second load is redundant (the store to `out` might alias `in`), so both `ld.global.f32` instructions survive. This demonstrates how alias analysis feeds GVN.
-- For store-to-load forwarding: insert `out[tid] = 42.0f;` followed by `float e = out[tid];`. GVN should replace the load with the constant `42.0f` -- no `ld.global` emitted for `e`.
+- For store-to-load forwarding: insert `out[tid] = 42.0f;` followed by `float e = out[tid];`. GVN should replace the load with the constant `42.0f` — no `ld.global` emitted for `e`.

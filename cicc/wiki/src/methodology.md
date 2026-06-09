@@ -1,6 +1,6 @@
 # Methodology
 
-This page documents how the reverse engineering of cicc v13.0 was performed. It serves as both a transparency record -- so readers can assess the confidence of any claim in this wiki -- and as a practical guide for anyone who wants to reproduce or extend the analysis.
+This page documents how the reverse engineering of cicc v13.0 was performed. It serves as both a transparency record — so readers can assess the confidence of any claim in this wiki — and as a practical guide for anyone who wants to reproduce or extend the analysis.
 
 ## Scope and Scale
 
@@ -20,7 +20,7 @@ The 281 functions that Hex-Rays could not decompile are predominantly very small
 
 ## Toolchain
 
-All analysis was performed with IDA Pro 8.x and the Hex-Rays x86-64 decompiler. No dynamic analysis (debugging, tracing, instrumentation) was used -- the entire effort is static analysis of the binary at rest. Supplementary tools:
+All analysis was performed with IDA Pro 8.x and the Hex-Rays x86-64 decompiler. No dynamic analysis (debugging, tracing, instrumentation) was used — the entire effort is static analysis of the binary at rest. Supplementary tools:
 
 | Tool | Purpose |
 |---|---|
@@ -41,11 +41,11 @@ LLVM is a string-rich codebase. Error messages, pass names, option descriptions,
 
 Specific high-value string patterns:
 
-- **LLVM pass registration**: `"instcombine"`, `"gvn"`, `"nvvm-memspace-opt"` -- each appears in exactly one `RegisterPass` constructor or `PassInfo` initializer.
-- **`cl::opt` names**: `"-nvvm-enable-remat"`, `"-nvvm-branch-dist-threshold"` -- each names a global variable and its registration constructor.
+- **LLVM pass registration**: `"instcombine"`, `"gvn"`, `"nvvm-memspace-opt"` — each appears in exactly one `RegisterPass` constructor or `PassInfo` initializer.
+- **`cl::opt` names**: `"-nvvm-enable-remat"`, `"-nvvm-branch-dist-threshold"` — each names a global variable and its registration constructor.
 - **Error messages with context**: `"parseFunctionBody: ..."` (174 unique error strings in the bitcode reader), `"visitCallInst: ..."` (298 verification messages in the verifier).
-- **Timer names**: `"CUDA C++ Front-End"`, `"LibNVVM"`, `"Optimizer"` -- appear in timer-creation calls that bracket pipeline stages.
-- **EDG error templates**: `"expected a %s"`, `"declaration not allowed here"` -- 2,500+ diagnostic strings anchoring the frontend parser.
+- **Timer names**: `"CUDA C++ Front-End"`, `"LibNVVM"`, `"Optimizer"` — appear in timer-creation calls that bracket pipeline stages.
+- **EDG error templates**: `"expected a %s"`, `"declaration not allowed here"` — 2,500+ diagnostic strings anchoring the frontend parser.
 
 ### LLVM Pass Registration Patterns (Very High Confidence)
 
@@ -67,15 +67,15 @@ The pipeline orchestrator at `sub_12C35D0` (41 KB) is a particularly productive 
 
 ### Size and Structural Fingerprinting (Medium Confidence)
 
-Some functions are identifiable by their size and structural characteristics alone. LLVM's InstCombine main visitor is famously enormous (405 KB / 9,258 lines in this binary -- the single largest function) because it inlines the per-opcode dispatch for every LLVM instruction and intrinsic. `SelectionDAG::LegalizeTypes` (348 KB) contains a switch with 967 case labels. These mega-functions have no structural equivalents and can be identified by size alone with reasonable confidence.
+Some functions are identifiable by their size and structural characteristics alone. LLVM's InstCombine main visitor is famously enormous (405 KB / 9,258 lines in this binary — the single largest function) because it inlines the per-opcode dispatch for every LLVM instruction and intrinsic. `SelectionDAG::LegalizeTypes` (348 KB) contains a switch with 967 case labels. These mega-functions have no structural equivalents and can be identified by size alone with reasonable confidence.
 
-Similarly, the EDG frontend's constexpr evaluator (`sub_786210`, 317 KB) is identifiable by its 124 case labels corresponding to C++ operator opcodes -- a characteristic that matches the known EDG evaluator design.
+Similarly, the EDG frontend's constexpr evaluator (`sub_786210`, 317 KB) is identifiable by its 124 case labels corresponding to C++ operator opcodes — a characteristic that matches the known EDG evaluator design.
 
 ### Known Library Fingerprinting (Medium Confidence)
 
 jemalloc was identified by its 199 configuration string names (`"background_thread"`, `"dirty_decay_ms"`, `"narenas"`, etc.), which are unique to jemalloc's `malloc_conf_init` function. Once the allocator library was identified, its 767 functions were bulk-labeled, removing them from the analysis scope.
 
-The X86 AutoUpgrade function (`sub_A939D0`, 457 KB) is an LLVM artifact -- leftover x86 intrinsic renaming code that ships in every LLVM-based binary regardless of target. It was identified by its intrinsic name strings (`"llvm.x86.sse2.*"`, `"llvm.x86.avx.*"`) and excluded from NVPTX-specific analysis.
+The X86 AutoUpgrade function (`sub_A939D0`, 457 KB) is an LLVM artifact — leftover x86 intrinsic renaming code that ships in every LLVM-based binary regardless of target. It was identified by its intrinsic name strings (`"llvm.x86.sse2.*"`, `"llvm.x86.avx.*"`) and excluded from NVPTX-specific analysis.
 
 ## Confidence Levels
 
@@ -110,10 +110,10 @@ Output: `foundation/taxonomy/modules/wiki_known_functions.json`, `wiki_module_ad
 
 Loads the three IDA JSON databases (functions, strings, xrefs) and builds four pickle-serialized indices for O(1) lookup in subsequent steps:
 
-- `addr_to_func.pkl` -- address to function metadata (name, size, instruction count, library/thunk flags).
-- `string_to_xrefs.pkl` -- string address to string value and xref list.
-- `func_to_callers.pkl` -- function name to list of caller names.
-- `func_to_callees.pkl` -- function name to list of callee names.
+- `addr_to_func.pkl` — address to function metadata (name, size, instruction count, library/thunk flags).
+- `string_to_xrefs.pkl` — string address to string value and xref list.
+- `func_to_callers.pkl` — function name to list of caller names.
+- `func_to_callees.pkl` — function name to list of callee names.
 
 Output: `foundation/indices/`.
 
@@ -134,10 +134,10 @@ Output: `foundation/taxonomy/strings/error_messages.json`, `optimization_passes.
 
 The core classification engine. Assigns each of the 80,562 functions to one of eight compiler subsystem modules (or `unknown`) using four strategies applied in decreasing confidence order:
 
-1. **Wiki ground truth** (100% confidence) -- addresses found in wiki pages in Step 0.
-2. **String content analysis** (80% confidence) -- functions whose string xrefs match module-specific keyword patterns (e.g., a function referencing `"tensor"`, `"mma"`, or `"tcgen"` strings is classified as `tensor_core_codegen`).
-3. **Call proximity propagation** (30-60% confidence, 3 iterations) -- unclassified functions are assigned to the module voted by their callers (weighted 2x) and callees. A minimum of 2 votes is required. Each iteration propagates classifications outward from already-classified functions.
-4. **Code location heuristics** (40% confidence) -- address range rules for known code regions (e.g., `0x2F00000-0x3000000` maps to `register_allocation`).
+1. **Wiki ground truth** (100% confidence) — addresses found in wiki pages in Step 0.
+2. **String content analysis** (80% confidence) — functions whose string xrefs match module-specific keyword patterns (e.g., a function referencing `"tensor"`, `"mma"`, or `"tcgen"` strings is classified as `tensor_core_codegen`).
+3. **Call proximity propagation** (30-60% confidence, 3 iterations) — unclassified functions are assigned to the module voted by their callers (weighted 2x) and callees. A minimum of 2 votes is required. Each iteration propagates classifications outward from already-classified functions.
+4. **Code location heuristics** (40% confidence) — address range rules for known code regions (e.g., `0x2F00000-0x3000000` maps to `register_allocation`).
 
 The eight modules are: `optimization_framework`, `register_allocation`, `compilation_pipeline`, `ptx_emission`, `instruction_selection`, `error_handling`, `tensor_core_codegen`, `architecture_detection`.
 
@@ -147,9 +147,9 @@ Output: `foundation/taxonomy/modules/function_to_module_map.json`, `module_list.
 
 Computes three structural properties of the call graph:
 
-- **Entry points** -- functions with zero callers and nonzero callees (top 100 by callee count). These are pipeline entry points, API functions, or global constructors.
-- **Leaf functions** -- functions with zero callees and nonzero callers (top 1,000 by caller count). These are utility functions, allocators, and assertion handlers.
-- **Hot paths** -- functions ranked by caller count (top 1,000). The highest-traffic functions in the binary.
+- **Entry points** — functions with zero callers and nonzero callees (top 100 by callee count). These are pipeline entry points, API functions, or global constructors.
+- **Leaf functions** — functions with zero callees and nonzero callers (top 1,000 by caller count). These are utility functions, allocators, and assertion handlers.
+- **Hot paths** — functions ranked by caller count (top 1,000). The highest-traffic functions in the binary.
 
 Output: `foundation/callgraph/entry_points.json`, `leaf_functions.json`, `hot_paths.json`.
 
@@ -192,36 +192,36 @@ Generates a skeleton `README.md` for each module with function counts, analysis 
 
 Six additional scripts perform targeted analyses independent of the L0/L1 pipeline:
 
-**`analyze_nvvm_pipeline.py`** -- Loads the NVVM call graph (`nvvm_callgraph.json`, exported from the LibNVVM shared object analysis) and traces the compilation flow from `nvvmCompileProgram`. Identifies NVVM API entry points, finds LLVM optimization pass function symbols, traces call paths to depth 10, identifies hub functions (nodes with in-degree or out-degree above 10), and extracts the optimization pass ordering reachable from the compile entry point.
+**`analyze_nvvm_pipeline.py`** — Loads the NVVM call graph (`nvvm_callgraph.json`, exported from the LibNVVM shared object analysis) and traces the compilation flow from `nvvmCompileProgram`. Identifies NVVM API entry points, finds LLVM optimization pass function symbols, traces call paths to depth 10, identifies hub functions (nodes with in-degree or out-degree above 10), and extracts the optimization pass ordering reachable from the compile entry point.
 
-**`deep_pipeline_trace.py`** -- Performs deep BFS traversal (up to depth 15, width 100 per level) from `nvvmCompileProgram` through the NVVM call graph. Annotates each function with structural characteristics (LEAF, HUB, FANOUT, FANIN) and groups results by call depth to reveal the pipeline's stage boundaries. Also traces from secondary API entry points (`nvvmVerifyProgram`, `nvvmAddModuleToProgram`, `nvvmCreateProgram`).
+**`deep_pipeline_trace.py`** — Performs deep BFS traversal (up to depth 15, width 100 per level) from `nvvmCompileProgram` through the NVVM call graph. Annotates each function with structural characteristics (LEAF, HUB, FANOUT, FANIN) and groups results by call depth to reveal the pipeline's stage boundaries. Also traces from secondary API entry points (`nvvmVerifyProgram`, `nvvmAddModuleToProgram`, `nvvmCreateProgram`).
 
-**`extract_pipeline_structure.py`** -- Parses the 188,141 strings database for `disable-*Pass` patterns and `Disable *` description strings to extract the complete list of optimization passes by name. Categorizes passes into groups (Dead Code Elimination, Loop Optimizations, Inlining, Memory, NVVM-Specific, Lowering, etc.) and reconstructs the 13-stage compilation pipeline from NVVM module loading through PTX code generation. Also extracts compilation mode information (fast-compile, split-compile, partial-link).
+**`extract_pipeline_structure.py`** — Parses the 188,141 strings database for `disable-*Pass` patterns and `Disable *` description strings to extract the complete list of optimization passes by name. Categorizes passes into groups (Dead Code Elimination, Loop Optimizations, Inlining, Memory, NVVM-Specific, Lowering, etc.) and reconstructs the 13-stage compilation pipeline from NVVM module loading through PTX code generation. Also extracts compilation mode information (fast-compile, split-compile, partial-link).
 
-**`analyze_performance_hotspots.py`** -- Loads the full function database (`cicc_functions.json`) and computes: global hotspot ranking (top 100 most-called functions), hot path chains (BFS from top 50 hotspots through callees, tracking weighted call frequency), size-efficiency analysis (bytes per call for each function), loop depth estimation (regex-based nesting analysis of decompiled C files), bottleneck identification (functions with 500+ callers), and module-level hotspot distribution.
+**`analyze_performance_hotspots.py`** — Loads the full function database (`cicc_functions.json`) and computes: global hotspot ranking (top 100 most-called functions), hot path chains (BFS from top 50 hotspots through callees, tracking weighted call frequency), size-efficiency analysis (bytes per call for each function), loop depth estimation (regex-based nesting analysis of decompiled C files), bottleneck identification (functions with 500+ callers), and module-level hotspot distribution.
 
-**`catalog_optimization_framework.py`** -- Specialized script for the optimization_framework module. Reads per-function metadata from the L1 module directories, builds a critical function registry sorted by size, extracts HIGH-tier statistics (size tier distribution, top 20 most-called), scans decompiled code for optimization-related string patterns (pass references, iteration patterns, technique keywords), and identifies entry points (functions with 2 or fewer callers).
+**`catalog_optimization_framework.py`** — Specialized script for the optimization_framework module. Reads per-function metadata from the L1 module directories, builds a critical function registry sorted by size, extracts HIGH-tier statistics (size tier distribution, top 20 most-called), scans decompiled code for optimization-related string patterns (pass references, iteration patterns, technique keywords), and identifies entry points (functions with 2 or fewer callers).
 
-**`validate_callgraph.py`** -- Comprehensive validation system that cross-checks the call graph data against module classifications. Performs six verification analyses: cross-module call matrix verification (counting inter-module edges and sampling for spot-checks), entry point validation (confirming claimed entry points have zero callers), reachability analysis (BFS from main to find dead code), module dependency cycle detection (DFS on the module dependency graph), integration hotspot verification (functions called by all 8 modules), and bridge function identification (functions that both call into and are called from 2+ other modules).
+**`validate_callgraph.py`** — Comprehensive validation system that cross-checks the call graph data against module classifications. Performs six verification analyses: cross-module call matrix verification (counting inter-module edges and sampling for spot-checks), entry point validation (confirming claimed entry points have zero callers), reachability analysis (BFS from main to find dead code), module dependency cycle detection (DFS on the module dependency graph), integration hotspot verification (functions called by all 8 modules), and bridge function identification (functions that both call into and are called from 2+ other modules).
 
 ### Evidence Index Builders
 
 Two versions of the evidence aggregation engine synthesize all data sources into per-function quality scores:
 
-**`build_evidence_index.py`** (v1) -- Loads all five databases (functions, callgraph, strings, xrefs, names, comments, module map) into memory. For each of the 80,562 functions, counts eight evidence types (metadata, callers, callees, strings, xrefs, name pattern, size, module consistency) and computes a weighted confidence score (string evidence weighted highest at 20 points, callgraph at 15 each, xrefs at 15, metadata and name at 10 each, module at 10, size at 5). Produces nine output files including quality tier assignments (GOLD >= 80%, SILVER >= 50%, BRONZE < 50%), citation density analysis, cross-reference statistics, and prioritized recommendations for further analysis.
+**`build_evidence_index.py`** (v1) — Loads all five databases (functions, callgraph, strings, xrefs, names, comments, module map) into memory. For each of the 80,562 functions, counts eight evidence types (metadata, callers, callees, strings, xrefs, name pattern, size, module consistency) and computes a weighted confidence score (string evidence weighted highest at 20 points, callgraph at 15 each, xrefs at 15, metadata and name at 10 each, module at 10, size at 5). Produces nine output files including quality tier assignments (GOLD >= 80%, SILVER >= 50%, BRONZE < 50%), citation density analysis, cross-reference statistics, and prioritized recommendations for further analysis.
 
-**`build_evidence_index_v2.py`** (v2, optimized) -- Memory-efficient reimplementation that avoids loading the full xref list into memory. Instead of building complete xref lookup tables, it streams the xref file line-by-line and counts only. The callgraph is preprocessed into a caller/callee count map rather than a full edge list. Produces the same nine analysis files as v1 with identical quality tier logic. Recommended for systems with less than 32 GB RAM.
+**`build_evidence_index_v2.py`** (v2, optimized) — Memory-efficient reimplementation that avoids loading the full xref list into memory. Instead of building complete xref lookup tables, it streams the xref file line-by-line and counts only. The callgraph is preprocessed into a caller/callee count map rather than a full edge list. Produces the same nine analysis files as v1 with identical quality tier logic. Recommended for systems with less than 32 GB RAM.
 
 ### Cross-Module Dependency Analysis
 
-**`07_analyze_cross_module_dependencies.py`** -- The most complex standalone analysis. Streams the full call graph (using `ijson` for memory-efficient parsing) four times to compute:
+**`07_analyze_cross_module_dependencies.py`** — The most complex standalone analysis. Streams the full call graph (using `ijson` for memory-efficient parsing) four times to compute:
 
-1. **Inter-module call matrix** -- for each pair of the 8 modules, the number of call edges crossing the boundary.
-2. **Module dependency depth** -- per-module statistics on how many other modules each function depends on, identifying isolated functions and hub functions.
-3. **Critical bridges** -- functions that call into 3 or more other modules (top 100 by bridge count).
-4. **Integration hotspots** -- functions called by 3 or more other modules (top 100 by fan-in).
-5. **Module dependency graph** -- a JSON graph structure with weighted edges suitable for visualization.
-6. **Integration patterns** -- entry point modules (highest out-degree), utility hub modules (highest in-degree), and linear dependency chains.
+1. **Inter-module call matrix** — for each pair of the 8 modules, the number of call edges crossing the boundary.
+2. **Module dependency depth** — per-module statistics on how many other modules each function depends on, identifying isolated functions and hub functions.
+3. **Critical bridges** — functions that call into 3 or more other modules (top 100 by bridge count).
+4. **Integration hotspots** — functions called by 3 or more other modules (top 100 by fan-in).
+5. **Module dependency graph** — a JSON graph structure with weighted edges suitable for visualization.
+6. **Integration patterns** — entry point modules (highest out-degree), utility hub modules (highest in-degree), and linear dependency chains.
 
 ## Data Flow and Directory Structure
 
@@ -342,7 +342,7 @@ The analysis scripts require only the Python 3.8+ standard library with one exce
 
 In addition to the automated scripts, the analysis produced 90+ raw binary sweep reports stored in `cicc/raw/`. Each report covers a contiguous address range (typically 128 KB to 512 KB) and contains per-function identification notes, string evidence citations, structural observations, and confidence assessments. The reports are named by address range (e.g., `p1.3-01-sweep-0x8F0000-0x90FFFF.txt` covers the compilation pipeline entry region) and organized into 10 sweep phases corresponding to the binary's major sections. A second sweep phase (`p2-*` and `p2a-p2g`) provides focused analyses of specific subsystems (EDG frontend, IR generation, optimization passes, SelectionDAG, register allocation, scheduling, configuration).
 
-These raw reports are the primary source material from which the wiki pages were written. They are not cleaned or edited for presentation -- they contain working notes, false starts, and corrections made during the analysis process.
+These raw reports are the primary source material from which the wiki pages were written. They are not cleaned or edited for presentation — they contain working notes, false starts, and corrections made during the analysis process.
 
 ## Limitations and Known Gaps
 

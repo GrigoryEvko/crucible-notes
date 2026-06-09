@@ -6,11 +6,11 @@
 
 NVIDIA ships two entirely separate LSR implementations inside cicc v13.0. The first is upstream LLVM's `LoopStrengthReducePass` (approximately 200 helpers across `0x284F650`--`0x287C150`, compiled from `llvm/lib/Transforms/Scalar/LoopStrengthReduce.cpp`). The second is a custom 160KB formula solver (`sub_19A87A0`, 2688 decompiled lines) sitting at `0x199A`--`0x19BF`, wrapped by `NVLoopStrengthReduce` at `sub_19CE990`. Both are invoked through the `"loop-reduce"` pass name in the LLVM new pass manager pipeline, but NVIDIA's overlay replaces the formula generation and selection phases with GPU-aware logic while reusing LLVM's SCEV infrastructure, IV rewriting, and chain construction.
 
-This page documents the NVIDIA overlay -- the most GPU-specific LLVM pass in cicc. If you are reimplementing cicc's optimizer, this is the pass you cannot skip.
+This page documents the NVIDIA overlay — the most GPU-specific LLVM pass in cicc. If you are reimplementing cicc's optimizer, this is the pass you cannot skip.
 
 ## Why NVIDIA Rebuilt LSR
 
-The root motivation is a single equation that does not exist on CPUs: **register count determines occupancy, and occupancy determines performance.** On a GPU, each additional register per thread can cross a discrete [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), dropping warp-level parallelism by an entire warp group -- see the [GPU Execution Model](../gpu-execution-model.md#register-pressure-and-occupancy) for the register budget and cliff table.
+The root motivation is a single equation that does not exist on CPUs: **register count determines occupancy, and occupancy determines performance.** On a GPU, each additional register per thread can cross a discrete [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), dropping warp-level parallelism by an entire warp group — see the [GPU Execution Model](../gpu-execution-model.md#register-pressure-and-occupancy) for the register budget and cliff table.
 
 On a CPU, LSR's primary concern is minimizing the number of live induction variables to reduce register pressure, with a secondary goal of producing address expressions that fold into hardware addressing modes. The cost model compares formulae by counting registers, base additions, immediate encoding costs, and setup instructions. This works because a CPU's register file is fixed (16 GPRs on x86-64) and the cost of spilling to cache is relatively uniform.
 
@@ -28,7 +28,7 @@ LLVM's stock cost model knows none of this. It calls `TTI::isLSRCostLess` which 
 
 ## Architecture Overview
 
-The NVIDIA LSR overlay is structured as a 7-phase formula solver pipeline. The main entry point is `sub_19A87A0`, which takes a single argument: a pointer to an LSR state object (referred to as `a1` throughout). The state object is large -- relevant fields span from offset 0 through offset 32160.
+The NVIDIA LSR overlay is structured as a 7-phase formula solver pipeline. The main entry point is `sub_19A87A0`, which takes a single argument: a pointer to an LSR state object (referred to as `a1` throughout). The state object is large — relevant fields span from offset 0 through offset 32160.
 
 ### LSR State Object Layout
 
@@ -48,7 +48,7 @@ The NVIDIA LSR overlay is structured as a 7-phase formula solver pipeline. The m
 | `+32152` | `uint32_t` | Formula hash table bucket count |
 | `+32160` | `void*` | Working formula set |
 
-Each loop record is 1984 bytes. Each use record within a loop is 96 bytes. The loop's use array starts at loop record offset `+744`, with the use count at `+752`. The stride at these sizes -- 1984 bytes per loop, 96 bytes per use -- is a constant throughout all 7 phases. The solver iterates `loop_count * uses_per_loop` in every phase, making this an O(L * U * S) algorithm where S is the stride factor table size.
+Each loop record is 1984 bytes. Each use record within a loop is 96 bytes. The loop's use array starts at loop record offset `+744`, with the use count at `+752`. The stride at these sizes — 1984 bytes per loop, 96 bytes per use — is a constant throughout all 7 phases. The solver iterates `loop_count * uses_per_loop` in every phase, making this an O(L * U * S) algorithm where S is the stride factor table size.
 
 ## The 7-Phase Formula Solver Pipeline
 
@@ -67,7 +67,7 @@ The output of Phase 1 is a set of initial formula candidates, one per (use, scal
 
 This phase targets uses where `base == NULL` (pure IV uses, no base pointer). It performs two sub-passes:
 
-**Sub-pass A (unfold offset into base):** For each pure-IV use, calls `sub_19A2680` per scaled register to generate candidate formulae that move the offset expression into the base register field. This is the inverse of LLVM's stock "fold offset into immediate" transform -- NVIDIA sometimes wants the offset in a register because GPU addressing modes have limited immediate widths.
+**Sub-pass A (unfold offset into base):** For each pure-IV use, calls `sub_19A2680` per scaled register to generate candidate formulae that move the offset expression into the base register field. This is the inverse of LLVM's stock "fold offset into immediate" transform — NVIDIA sometimes wants the offset in a register because GPU addressing modes have limited immediate widths.
 
 **Sub-pass B (factor loop bounds into formula):** Builds an iterator set from the loop's start bound (`+712`) and end bound (`+720`), then calls `sub_19A2820` per (scaled register, iterator bound) pair. This generates formulae that factor common strides out of the loop bounds. For example, if the loop runs `i = 0..N` and a use computes `4*i + base`, this phase can factor out the stride 4 and produce a formula with a single-step IV.
 
@@ -103,7 +103,7 @@ Key logic:
 - For immediate-type uses (`type == 3`), also considers promoting to with-offset mode (`type == 1`).
 - Each candidate is validated through `sub_1995490`.
 - Operands are rewritten via `sub_145CF80` (SCEV multiply by stride factor).
-- The flag at loop record `+728` controls address-space-aware chain construction. When set, chains respect address space constraints -- critical for shared memory (see the `disable-lsr-for-sharedmem32-ptr` knob section).
+- The flag at loop record `+728` controls address-space-aware chain construction. When set, chains respect address space constraints — critical for shared memory (see the `disable-lsr-for-sharedmem32-ptr` knob section).
 
 ### Phase 5: Reuse Chain Matching (lines 1093--1256)
 
@@ -145,10 +145,10 @@ The phase then:
 2. Cross-references into Hash Table 2 for use counting, merging bitmaps via `sub_1998630`.
 3. Iterates the formula set again and, for each formula, traverses the linked list of referencing uses.
 4. Computes combined cost using `sub_220EFE0` (reads cost from a binary tree node at `+32`).
-5. Finds the **median-cost insertion point** (threshold at `total_cost / 2`) -- this is a key difference from upstream LLVM, which always picks the cheapest formula. NVIDIA's median heuristic avoids both extremes: the cheapest formula might use too many registers, while the most register-efficient formula might use too many instructions.
+5. Finds the **median-cost insertion point** (threshold at `total_cost / 2`) — this is a key difference from upstream LLVM, which always picks the cheapest formula. NVIDIA's median heuristic avoids both extremes: the cheapest formula might use too many registers, while the most register-efficient formula might use too many instructions.
 6. Builds (register_id, distance) candidate pairs for each (formula, use) combination. If the candidate set exceeds 31 entries, it migrates from an inline `SmallVector` to a balanced tree set (`sub_19A5C50`).
 
-The use-count bitmap uses a compact inline representation: if `(value & 1)`, the high bits encode `max_reg_id` and the remaining bits form the bitmap directly; otherwise, the value is a pointer to a heap-allocated `BitVector` (size at `+16`, data at `+0`). The popcount check at line 1927 (`popcount != 1`) filters out expressions used by only one use -- they cannot benefit from strength reduction.
+The use-count bitmap uses a compact inline representation: if `(value & 1)`, the high bits encode `max_reg_id` and the remaining bits form the bitmap directly; otherwise, the value is a pointer to a heap-allocated `BitVector` (size at `+16`, data at `+0`). The popcount check at line 1927 (`popcount != 1`) filters out expressions used by only one use — they cannot benefit from strength reduction.
 
 ### Phase 7: Final Formula Selection and Commitment (lines 2042--2686)
 
@@ -204,7 +204,7 @@ The integration between LSR and register pressure is the single most important d
 
 ### Level 1: Hard Gate (lsr-check-rp + lsr-rp-limit)
 
-Before committing any reuse chain formula (Phase 5) and internally within the legality check `sub_1995490`, the solver calls `sub_19955B0(rp_tracker, scev_value, loop_idx)`. This function reads the pre-computed per-loop register pressure estimate from offset `a1+32128` and compares the projected post-formula RP against `lsr-rp-limit`. If the projected RP exceeds the limit, the formula is rejected outright -- it does not even enter the candidate set.
+Before committing any reuse chain formula (Phase 5) and internally within the legality check `sub_1995490`, the solver calls `sub_19955B0(rp_tracker, scev_value, loop_idx)`. This function reads the pre-computed per-loop register pressure estimate from offset `a1+32128` and compares the projected post-formula RP against `lsr-rp-limit`. If the projected RP exceeds the limit, the formula is rejected outright — it does not even enter the candidate set.
 
 This prevents the pathological case where LSR produces a formula that requires one less instruction per iteration but needs two more live registers, pushing the kernel past an occupancy cliff. On GPU, that one extra instruction is vastly cheaper than the occupancy loss.
 
@@ -283,7 +283,7 @@ When `lsr-sxtopt` is enabled, the solver actively seeks to fold sign-extension o
 2. If LSR can express the IV in a narrower type from the start, the sign-extension becomes dead code.
 3. When `count-sxt-opt-for-reg-pressure` is also enabled, the cost model credits this saving.
 
-The sign-extension check appears in Phase 7's width-fit verification. After constructing a replacement formula, the solver computes the value range using APInt arithmetic and checks whether `abs(distance) < value_range`. If the replacement fits, the sign-extension can be eliminated. An additional sign-bit check (line 2545) rejects replacements where the sign bit of the result matches the sign of the distance -- this would cause the formula to wrap, producing incorrect values.
+The sign-extension check appears in Phase 7's width-fit verification. After constructing a replacement formula, the solver computes the value range using APInt arithmetic and checks whether `abs(distance) < value_range`. If the replacement fits, the sign-extension can be eliminated. An additional sign-bit check (line 2545) rejects replacements where the sign bit of the result matches the sign of the distance — this would cause the formula to wrap, producing incorrect values.
 
 ## Complexity Discount Heuristic
 
@@ -291,8 +291,8 @@ When `disable-lsr-complexity-discount` is `false` (the default), the cost model 
 
 Consider two formulae for a memory access inside a loop:
 
-- Formula A: `base + 4*i` -- one multiplication, one addition. Requires a scaled index register.
-- Formula B: `ptr += 4` each iteration -- one addition per iteration, no multiplication. Requires one increment register.
+- Formula A: `base + 4*i` — one multiplication, one addition. Requires a scaled index register.
+- Formula B: `ptr += 4` each iteration — one addition per iteration, no multiplication. Requires one increment register.
 
 Formula B is "simpler" in addressing complexity but might use one more register (the incrementing pointer) alongside the existing base. The complexity discount gives Formula B a bonus in the cost model, reflecting the GPU reality that address computation instructions compete with arithmetic instructions for issue slots, while an extra register has low cost when the kernel is not at an occupancy cliff.
 
@@ -331,7 +331,7 @@ The NVIDIA overlay does not replace everything. It reuses:
 
 - **Formula generation** (Phases 1--5): entirely custom, with address-space awareness, stride factor expansion, and reuse chain matching with RP validation.
 - **Formula-to-use mapping** (Phase 6): custom hash tables replacing LLVM's `DenseSet`-based uniquification with a design optimized for linked-list traversal and median-cost computation.
-- **Final selection** (Phase 7): custom selection with width-fit checks, sign-extension validation, and cross-IV replacement -- none of which exist in upstream LLVM.
+- **Final selection** (Phase 7): custom selection with width-fit checks, sign-extension validation, and cross-IV replacement — none of which exist in upstream LLVM.
 
 ## Key Helper Function Map
 
@@ -394,7 +394,7 @@ For reimplementation reference, the critical helpers and their roles:
 
 1. **Start with the knob infrastructure.** Register all 11 `cl::opt` knobs before anything else. The pass wrapper (`sub_19CE990`) reads these early and uses them to gate entire phases.
 
-2. **The RP tracker must exist before the solver runs.** The register pressure estimate at `a1+32128` is computed by an earlier pass (likely during loop analysis). The NVIDIA LSR does not compute RP itself -- it only reads and compares.
+2. **The RP tracker must exist before the solver runs.** The register pressure estimate at `a1+32128` is computed by an earlier pass (likely during loop analysis). The NVIDIA LSR does not compute RP itself — it only reads and compares.
 
 3. **The hash function is deterministic.** `(val >> 9) ^ (val >> 4)` masked to bucket count. Quadratic probing with tombstone support. If you are reimplementing the hash tables, use the same scheme or your formula deduplication will differ.
 

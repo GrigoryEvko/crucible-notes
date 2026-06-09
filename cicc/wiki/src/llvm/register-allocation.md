@@ -8,7 +8,7 @@
 >
 > **LLVM version note:** CICC v13.0 ships two complete copies of `RAGreedy` (legacy PM at `0x1EC0400`, new PM at `0x2F4C2E0`). The new PM variant matches the LLVM 20 `RAGreedyPass` interface. The `PriorityAdvisor`/`EvictionAdvisor` infrastructure matches LLVM 15+ patterns. All NVPTX-specific behavior (pressure-driven allocation, `-maxreg` ceiling, occupancy-aware rematerialization) is layered on top of stock `RAGreedy` via TTI hooks and custom knobs.
 
-NVPTX register allocation in CICC v13.0 operates under a fundamentally different model from CPU targets. PTX has no fixed physical register file -- registers are virtual (`%r0`, `%r1`, `%f0`, ...) and the hardware scheduler maps them to physical resources at launch time. The "physical register" concept in LLVM's greedy allocator maps to register pressure constraints rather than actual hardware registers, making the allocator pressure-driven rather than assignment-driven. The primary constraint is the `-maxreg` limit (default 70), which bounds total live registers across all classes to control occupancy on the SM.
+NVPTX register allocation in CICC v13.0 operates under a fundamentally different model from CPU targets. PTX has no fixed physical register file — registers are virtual (`%r0`, `%r1`, `%f0`, ...) and the hardware scheduler maps them to physical resources at launch time. The "physical register" concept in LLVM's greedy allocator maps to register pressure constraints rather than actual hardware registers, making the allocator pressure-driven rather than assignment-driven. The primary constraint is the `-maxreg` limit (default 70), which bounds total live registers across all classes to control occupancy on the SM.
 
 | | |
 |---|---|
@@ -31,13 +31,13 @@ Both are registered under the pass name "Greedy Register Allocator" via `RAGreed
 
 ## NVPTX Register Classes
 
-CICC defines nine register classes plus one internal-only class. The complete register class table -- vtable addresses, PTX type suffixes, prefixes, encoded IDs, copy opcodes, and coalescing constraints -- is in [Register Classes](../reference/register-classes.md).
+CICC defines nine register classes plus one internal-only class. The complete register class table — vtable addresses, PTX type suffixes, prefixes, encoded IDs, copy opcodes, and coalescing constraints — is in [Register Classes](../reference/register-classes.md).
 
-The classes are completely disjoint -- there is no cross-class interference. Each type lives in its own namespace: integer 32-bit values occupy `%r` registers, 32-bit floats occupy `%f` registers, and so on. Copy instructions are class-specific, with both same-class and cross-class opcodes dispatched by `sub_2162350` (see the [copy opcode table](../reference/register-classes.md#copy-opcodes----sub_2162350)).
+The classes are completely disjoint — there is no cross-class interference. Each type lives in its own namespace: integer 32-bit values occupy `%r` registers, 32-bit floats occupy `%f` registers, and so on. Copy instructions are class-specific, with both same-class and cross-class opcodes dispatched by `sub_2162350` (see the [copy opcode table](../reference/register-classes.md#copy-opcodes----sub_2162350)).
 
-## Greedy selectOrSplit -- Detailed Algorithm
+## Greedy selectOrSplit — Detailed Algorithm
 
-**Complexity.** Let V = number of virtual registers, R = number of register units, and I = total MachineInstr count. The main allocation loop processes V virtual registers in priority order. For each VReg, `selectOrSplit` performs: (1) operand scanning in O(operands) with 40-byte stride, (2) interference scanning (`scanInterference`) in O(R) via the RegAllocMatrix, (3) assignment or eviction attempts in O(R) per candidate. The `tryLastChanceRecoloring` path is bounded by `lcr-max-depth` (default 5) and `lcr-max-interf` (default 8), giving O(8^5) = O(32768) per VReg in the absolute worst case -- though this path is rarely taken. Live range splitting (`splitAroundRegion`, 93KB) iterates segments in O(S) where S = number of live range segments, with interference analysis per segment in O(R). Overall: O(V * R) for the common case, O(V * R + V * 8^D) when last-chance recoloring is exercised at depth D. The interference cache's open-addressing hash map with `37 * reg` provides O(1) amortized lookups. Spill cost computation (`setupSpillCosts`) is O(V * I_avg) where I_avg is average instructions per VReg's live range. On NVPTX, the completely disjoint register classes mean cross-class interference is zero, reducing the effective R to the per-class register count.
+**Complexity.** Let V = number of virtual registers, R = number of register units, and I = total MachineInstr count. The main allocation loop processes V virtual registers in priority order. For each VReg, `selectOrSplit` performs: (1) operand scanning in O(operands) with 40-byte stride, (2) interference scanning (`scanInterference`) in O(R) via the RegAllocMatrix, (3) assignment or eviction attempts in O(R) per candidate. The `tryLastChanceRecoloring` path is bounded by `lcr-max-depth` (default 5) and `lcr-max-interf` (default 8), giving O(8^5) = O(32768) per VReg in the absolute worst case — though this path is rarely taken. Live range splitting (`splitAroundRegion`, 93KB) iterates segments in O(S) where S = number of live range segments, with interference analysis per segment in O(R). Overall: O(V * R) for the common case, O(V * R + V * 8^D) when last-chance recoloring is exercised at depth D. The interference cache's open-addressing hash map with `37 * reg` provides O(1) amortized lookups. Spill cost computation (`setupSpillCosts`) is O(V * I_avg) where I_avg is average instructions per VReg's live range. On NVPTX, the completely disjoint register classes mean cross-class interference is zero, reducing the effective R to the per-class register count.
 
 The core allocation algorithm (`sub_2F49070`, 82KB, 2,314 decompiled lines) follows LLVM's standard `RAGreedy::selectOrSplit` structure with NVPTX-specific adaptations for pressure-driven allocation. The following pseudocode is reconstructed from the decompiled binary and covers the key phases visible in the new-pass-manager instance.
 
@@ -74,7 +74,7 @@ fn selectOrSplit(this: &mut RAGreedyState, VirtReg: &LiveInterval) -> PhysReg {
 
 The `RegUnitStates` array is the central per-unit bookkeeping structure for the entire allocation of a single virtual register. Each 4-byte slot tracks whether that register unit is free, already interfering with the current live range, or reserved by the target. The array is zeroed at the start of every `selectOrSplit` invocation and released at cleanup (lines 2192--2313).
 
-The interference cache at `this+648` is distinct from LLVM's standard `InterferenceCache` (allocated at `0x2C0` bytes via `sub_2FB0E40` during driver setup). This per-invocation cache is a lightweight open-addressing map used to deduplicate interference queries within a single `selectOrSplit` call. The hash function `37 * reg` is a small Knuth-style multiplicative hash chosen for speed over distribution quality -- adequate because register numbers are small consecutive integers.
+The interference cache at `this+648` is distinct from LLVM's standard `InterferenceCache` (allocated at `0x2C0` bytes via `sub_2FB0E40` during driver setup). This per-invocation cache is a lightweight open-addressing map used to deduplicate interference queries within a single `selectOrSplit` call. The hash function `37 * reg` is a small Knuth-style multiplicative hash chosen for speed over distribution quality — adequate because register numbers are small consecutive integers.
 
 ### Operand Scanning (lines 690--1468)
 
@@ -132,22 +132,22 @@ After operand scanning, the allocator calls `sub_2F43DC0` (scanInterference) to 
 
 `sub_2F43DC0` is the interference scanner. It walks the `RegAllocMatrix` (set up by `sub_3501A90` during driver init) to find live range overlaps. For each physical register unit that overlaps the current virtual register's live range, it inserts an entry into the interference cache using the `37 * reg` hash. The scanner distinguishes between two conflict types:
 
-- **Constrained conflicts** (tied operands, early-clobber, regmask kills) -- these route to `sub_2F48CE0` (tryEviction), which attempts to evict the conflicting virtual register from its current assignment if the eviction cost is lower than the current candidate's spill weight.
-- **Normal conflicts** -- these route to `sub_2F47B00` (tryAssign), which attempts a simple recoloring without eviction.
+- **Constrained conflicts** (tied operands, early-clobber, regmask kills) — these route to `sub_2F48CE0` (tryEviction), which attempts to evict the conflicting virtual register from its current assignment if the eviction cost is lower than the current candidate's spill weight.
+- **Normal conflicts** — these route to `sub_2F47B00` (tryAssign), which attempts a simple recoloring without eviction.
 
 Additional helper functions participate in this phase:
 
 | Function | Role |
 |---|---|
-| `sub_2F47200` | processConstrainedCopies -- handles operands where a COPY forced a specific register |
-| `sub_2F46530` | tryLastChanceRecoloring -- last-resort recoloring bounded by `lcr-max-depth` (default 5) and `lcr-max-interf` (default 8) |
-| `sub_2F46EE0` | rehashInterferenceTable -- grows/rehashes when load factor exceeds 75% |
-| `sub_2F424E0` | updateInterferenceCache -- inserts a newly discovered conflict |
-| `sub_2F42840` | markRegReserved -- marks a physical register as reserved in `RegUnitStates` |
+| `sub_2F47200` | processConstrainedCopies — handles operands where a COPY forced a specific register |
+| `sub_2F46530` | tryLastChanceRecoloring — last-resort recoloring bounded by `lcr-max-depth` (default 5) and `lcr-max-interf` (default 8) |
+| `sub_2F46EE0` | rehashInterferenceTable — grows/rehashes when load factor exceeds 75% |
+| `sub_2F424E0` | updateInterferenceCache — inserts a newly discovered conflict |
+| `sub_2F42840` | markRegReserved — marks a physical register as reserved in `RegUnitStates` |
 
 The tryLastChanceRecoloring path (`sub_2F46530`) is the most expensive fallback. It recursively attempts to reassign conflicting registers, up to `lcr-max-depth` levels deep and considering at most `lcr-max-interf` conflicting live ranges at each level. The `exhaustive-register-search` flag bypasses both cutoffs, trading compile time for allocation quality.
 
-### Copy Coalescing Hints -- Kinds 20 and 21 (lines 1060--1163)
+### Copy Coalescing Hints — Kinds 20 and 21 (lines 1060--1163)
 
 During operand scanning, the allocator identifies COPY-like instructions by checking the **operand kind** field. Two kind values trigger coalescing hint recording:
 
@@ -197,7 +197,7 @@ The live-through bitvector at `this+736` is the key data structure for this phas
 
 The function releases the `RegUnitStates` array, clears the interference cache, frees the live-through bitvector, and returns 1 on success (physical register assigned) or 0 on failure (must spill).
 
-## Live Range Splitting -- Detailed Algorithm
+## Live Range Splitting — Detailed Algorithm
 
 The splitting engine (`sub_2F2D9F0`, 93KB, 2,339 lines) implements `RAGreedy::splitAroundRegion` with `SplitAnalysis` and `SplitEditor` integration. This is the largest single function in the register allocation cluster.
 
@@ -238,7 +238,7 @@ fn splitAroundRegion(this: &mut SplitEditor, MF: &MachineFunction) {
             seg = seg.next;                              // stride = 40 bytes
 ```
 
-The gap flag is the primary signal for split point selection. When the allocator detects a gap between two live segments, it can insert a split there without introducing a new spill -- the value is simply not live during the gap, so the split editor can create two separate live ranges that each get a different physical register. The sub-range flag indicates that the segment belongs to a sub-register lane (e.g., the low half of an `Int64Regs` value), which requires special handling to avoid breaking the lane structure.
+The gap flag is the primary signal for split point selection. When the allocator detects a gap between two live segments, it can insert a split there without introducing a new spill — the value is simply not live during the gap, so the split editor can create two separate live ranges that each get a different physical register. The sub-range flag indicates that the segment belongs to a sub-register lane (e.g., the low half of an `Int64Regs` value), which requires special handling to avoid breaking the lane structure.
 
 ### Copy Hint Detection and Local Splitting
 
@@ -304,7 +304,7 @@ The vtable-indirect calls at offsets `[1064]` and `[1072]` correspond to `tryRea
 
 ## Register Pressure and the -maxreg Constraint
 
-The real allocation constraint on NVPTX is not register scarcity but register pressure -- higher per-thread register usage reduces [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy), directly impacting throughput through fewer warps available for latency hiding. The `-maxreg` CLI flag (parsed at `sub_900130`, stored at compilation context offset `+1192`) caps the total live register count. Duplicate `-maxreg` definitions produce the error: `"libnvvm : error: -maxreg defined more than once"` (`sub_9624D0`).
+The real allocation constraint on NVPTX is not register scarcity but register pressure — higher per-thread register usage reduces [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy), directly impacting throughput through fewer warps available for latency hiding. The `-maxreg` CLI flag (parsed at `sub_900130`, stored at compilation context offset `+1192`) caps the total live register count. Duplicate `-maxreg` definitions produce the error: `"libnvvm : error: -maxreg defined more than once"` (`sub_9624D0`).
 
 ### Concrete Occupancy Examples
 
@@ -382,11 +382,11 @@ Additional rematerialization knobs registered separately include `do-remat` (def
 
 Spill costs are computed during driver initialization by `sub_2RAD5E0` (step 5 of the driver sequence), which calculates `VirtRegAuxInfo` spill weights for every virtual register before the main allocation loop begins. The spill weight determines priority in the allocation queue and eviction decisions.
 
-On NVPTX, "spilling" is a misnomer because PTX has no stack spill in the traditional CPU sense -- a spilled value either gets rematerialized (re-computed from inputs) or written to local memory (per-thread DRAM-backed memory, orders of magnitude slower than registers). The cost model therefore heavily penalizes local memory spills and strongly favors rematerialization.
+On NVPTX, "spilling" is a misnomer because PTX has no stack spill in the traditional CPU sense — a spilled value either gets rematerialized (re-computed from inputs) or written to local memory (per-thread DRAM-backed memory, orders of magnitude slower than registers). The cost model therefore heavily penalizes local memory spills and strongly favors rematerialization.
 
 The `PriorityAdvisor` (looked up via global `dword_5023AC8`) determines the order in which virtual registers enter the allocation queue. The `EvictionAdvisor` (looked up via `dword_5023BA8`) determines when to evict a lower-priority register to make room for a higher-priority one. Both advisors are initialized via vtable `[24]` calls during driver setup and can be customized via the `regalloc-evict` and `regalloc-priority` analysis passes registered in the pipeline parser.
 
-## Allocation Failure Handler (sub_2F418E0) -- Three Error Paths
+## Allocation Failure Handler (sub_2F418E0) — Three Error Paths
 
 When physical register assignment fails (`sub_2F418E0`), three error paths exist:
 
@@ -404,7 +404,7 @@ The register class has zero allocatable registers. This can happen for the [inte
 "ran out of registers during register allocation"
 ```
 
-The allocation order exists but all registers are occupied/interfering. This fires when the eviction/split pipeline exhausts all options -- the sequence is: tryAssign -> tryEviction -> tryLastChanceRecoloring -> trySplit -> fail. Uses `sub_B2BE50` for source location, `sub_B157E0` for `DebugLoc`, and `sub_B158E0` for diagnostic formatting.
+The allocation order exists but all registers are occupied/interfering. This fires when the eviction/split pipeline exhausts all options — the sequence is: tryAssign -> tryEviction -> tryLastChanceRecoloring -> trySplit -> fail. Uses `sub_B2BE50` for source location, `sub_B157E0` for `DebugLoc`, and `sub_B158E0` for diagnostic formatting.
 
 ### Path 3: Inline Assembly Overflow
 
@@ -424,23 +424,23 @@ The top-level driver (`sub_2F5A640`) orchestrates the full allocation pass:
 
 1. Store `MachineFunction` at `a1[96]`, retrieve `SubTarget` (vtable `+128`).
 2. Optional debug dump: `"Before greedy register allocator"`.
-3. `sub_35B4B20` -- calculate register class info.
-4. `sub_2F55040` -- check if any virtual registers need allocation.
-5. `sub_2FAD5E0` -- setup spill costs.
-6. `sub_2F54D60` -- compute live intervals.
+3. `sub_35B4B20` — calculate register class info.
+4. `sub_2F55040` — check if any virtual registers need allocation.
+5. `sub_2FAD5E0` — setup spill costs.
+6. `sub_2F54D60` — compute live intervals.
 7. Query vtable `+328` for `getRegPressureSetLimit` (stored at `a1[3633]`).
 8. Look up `EvictionAdvisor` (`dword_5023BA8`) and `PriorityAdvisor` (`dword_5023AC8`) via `std::map` lookups.
 9. Initialize advisors via vtable `[24]`.
 10. Allocate `InterferenceCache` (0x2C0 bytes, `sub_2FB0E40`).
 11. Allocate `SplitAnalysis` (0x738 bytes, `sub_2FB1ED0`).
-12. `sub_3501A90` -- setup `RegAllocMatrix`.
+12. `sub_3501A90` — setup `RegAllocMatrix`.
 13. Initialize `PhysRegEntries` array (32 entries, 144-byte stride).
-14. `sub_2F55730` -- reset priority queue.
-15. `sub_35B5380` -- seed queue from virtual registers.
-16. `sub_2F58C00` -- main allocation loop.
+14. `sub_2F55730` — reset priority queue.
+15. `sub_35B5380` — seed queue from virtual registers.
+16. `sub_2F58C00` — main allocation loop.
 17. Optional debug dump: `"Before post optimization"`.
 18. Post-allocation optimization via vtable `[24]`.
-19. `sub_2F5A580`, `sub_2F50510` -- finalize.
+19. `sub_2F5A580`, `sub_2F50510` — finalize.
 
 ## Differences from Upstream LLVM
 
@@ -452,7 +452,7 @@ The following table summarizes where CICC's register allocator diverges from ups
 | **Register classes** | Often overlapping (e.g., GR32 is a subset of GR64 on x86) | 9 completely disjoint classes; no cross-class interference |
 | **Spill destination** | Stack frame (cheap, L1/L2 latency) | Local memory (DRAM-backed, 100x+ latency) or rematerialization |
 | **Rematerialization** | LLVM built-in `MachineInstr::isRematerializable()` | Massive custom infrastructure: 11+ `nv-remat-*` knobs, separate IR-level remat pass (`sub_1CE7DD0`), iterative pressure reduction loop |
-| **Occupancy awareness** | None -- CPU has no occupancy concept | `remat-for-occ` (default 120) drives occupancy-targeted register reduction; `MaxRegsForMaxWarp` ptxas knob |
+| **Occupancy awareness** | None — CPU has no occupancy concept | `remat-for-occ` (default 120) drives occupancy-targeted register reduction; `MaxRegsForMaxWarp` ptxas knob |
 | **Interference cache hash** | Standard LLVM `DenseMap` with `(ptr >> 4) ^ (ptr >> 9)` | Custom open-addressing map with `37 * reg` hash, `-1`/`-2` sentinels |
 | **Operand stride** | 32 bytes (`MachineOperand` size) | 40 bytes (8-byte NVPTX extension for class tag + flags) |
 | **Dual pass manager** | Single implementation used by both old and new PM | Two complete copies: Instance A at `0x1EC0400`, Instance B at `0x2F4C2E0` |
@@ -469,24 +469,24 @@ The following table summarizes where CICC's register allocator diverges from ups
 Upstream LLVM's register allocation framework was designed for CPU targets where the register file is a fixed, small, physically-interfering resource. Every core assumption breaks on NVPTX:
 
 - **Upstream assumes spills are cheap (L1/L2 latency).** On x86/AArch64, a spill is a store to the stack frame backed by L1 cache (3-5 cycles). On GPU, a "spill" writes to local memory backed by device DRAM at 200-800 cycle latency. This 40-160x penalty makes rematerialization nearly always preferable to spilling, which is why NVIDIA ships 11+ custom `nv-remat-*` knobs and an iterative remat loop that has no upstream equivalent.
-- **Upstream assumes a fixed physical register set with cross-class interference.** CPU ISAs have a static register file (e.g., 16 GPRs on x86-64) where GR32 is a sub-register of GR64 and allocating one constrains the other. NVPTX has no fixed register count and its nine register classes are completely disjoint -- allocating `%r5` (Int32Regs) never conflicts with `%f5` (Float32Regs). The entire interference-graph framework is solving the wrong problem.
-- **Upstream has no concept of occupancy.** CPU register allocation never reduces parallelism -- a function uses N registers and that is the end of the story. On GPU, every additional register per thread can cross an [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), losing an entire warp group and halving throughput. The allocator must minimize pressure to a target, not just avoid running out of registers.
+- **Upstream assumes a fixed physical register set with cross-class interference.** CPU ISAs have a static register file (e.g., 16 GPRs on x86-64) where GR32 is a sub-register of GR64 and allocating one constrains the other. NVPTX has no fixed register count and its nine register classes are completely disjoint — allocating `%r5` (Int32Regs) never conflicts with `%f5` (Float32Regs). The entire interference-graph framework is solving the wrong problem.
+- **Upstream has no concept of occupancy.** CPU register allocation never reduces parallelism — a function uses N registers and that is the end of the story. On GPU, every additional register per thread can cross an [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), losing an entire warp group and halving throughput. The allocator must minimize pressure to a target, not just avoid running out of registers.
 - **Upstream assumes one allocation pass produces the final assignment.** On CPU, LLVM's greedy RA emits final machine code. On NVPTX, cicc's allocator emits PTX with virtual registers bounded by `-maxreg`, and then ptxas performs an entirely separate second allocation pass with its own 72+ knobs to map virtual PTX registers to hardware resources. The LLVM allocator is half the pipeline, not the whole thing.
-- **Upstream's callee-saved register convention is irrelevant.** CPU ABIs define callee-saved sets (e.g., `rbx`, `rbp` on SysV x86-64) that the allocator must respect. NVPTX has no callee-saved convention at all -- there is no hardware call stack for registers. The `regalloc-csr-first-time-cost` knob is dead code on this target.
+- **Upstream's callee-saved register convention is irrelevant.** CPU ABIs define callee-saved sets (e.g., `rbx`, `rbp` on SysV x86-64) that the allocator must respect. NVPTX has no callee-saved convention at all — there is no hardware call stack for registers. The `regalloc-csr-first-time-cost` knob is dead code on this target.
 
 ## Common Pitfalls
 
 These are mistakes a reimplementor is likely to make when building a register allocator for an NVPTX-like GPU target.
 
-**1. Treating register allocation as an assignment problem instead of a pressure problem.** On CPU targets, the allocator must map N virtual registers to K physical registers, and the problem is coloring a fixed interference graph. On NVPTX, there is no fixed physical register file -- PTX registers are virtual and unlimited. The real constraint is the `-maxreg` ceiling, which controls occupancy. A reimplementation that tries to assign physical registers will produce correct but meaningless output; the correct approach is to minimize peak live register count below the `-maxreg` threshold, and let ptxas handle the final hardware mapping.
+**1. Treating register allocation as an assignment problem instead of a pressure problem.** On CPU targets, the allocator must map N virtual registers to K physical registers, and the problem is coloring a fixed interference graph. On NVPTX, there is no fixed physical register file — PTX registers are virtual and unlimited. The real constraint is the `-maxreg` ceiling, which controls occupancy. A reimplementation that tries to assign physical registers will produce correct but meaningless output; the correct approach is to minimize peak live register count below the `-maxreg` threshold, and let ptxas handle the final hardware mapping.
 
 **2. Ignoring occupancy cliffs when setting the register target.** Going from 64 to 65 registers per thread crosses an occupancy cliff that halves the number of active warps on SM 8.0 (from 32 warps at 50% to 21 warps at 33%). A reimplementation that treats the register ceiling as a hard binary constraint (under = good, over = bad) will miss the fact that reducing from 65 to 64 is worth enormous effort (doubles throughput), while reducing from 63 to 62 is nearly worthless. The `remat-for-occ` knob (default 120) exists specifically to drive rematerialization toward the nearest cliff boundary, not just toward the ceiling.
 
-**3. Using CPU-calibrated spill costs.** On x86, a spill is a store to L1-cached stack memory at 3-5 cycle latency. On GPU, a "spill" writes to per-thread local memory backed by device DRAM at 200-800 cycle latency -- a 40-160x penalty. A reimplementation that uses upstream LLVM's default spill cost formula without recalibrating for GPU memory latency will spill aggressively when it should rematerialize. NVIDIA's 11+ `nv-remat-*` knobs and the iterative rematerialization loop exist because rematerialization is almost always cheaper than spilling on GPU.
+**3. Using CPU-calibrated spill costs.** On x86, a spill is a store to L1-cached stack memory at 3-5 cycle latency. On GPU, a "spill" writes to per-thread local memory backed by device DRAM at 200-800 cycle latency — a 40-160x penalty. A reimplementation that uses upstream LLVM's default spill cost formula without recalibrating for GPU memory latency will spill aggressively when it should rematerialize. NVIDIA's 11+ `nv-remat-*` knobs and the iterative rematerialization loop exist because rematerialization is almost always cheaper than spilling on GPU.
 
 **4. Assuming cross-class register interference exists.** NVPTX's nine register classes are completely disjoint: `Int32Regs` (`%r`) never conflicts with `Float32Regs` (`%f`), `Int64Regs` (`%rd`) never conflicts with `Float64Regs` (`%fd`), and so on. A reimplementation that builds a global interference graph spanning all classes will waste significant compile time computing interference relationships that are always empty. The correct approach is per-class allocation with independent pressure tracking.
 
-**5. Forgetting that cicc's allocation is only half the pipeline.** The LLVM greedy allocator in cicc emits PTX with virtual registers bounded by `-maxreg`. Then ptxas performs an entirely separate second allocation pass with its own 72+ knobs to map virtual PTX registers to hardware resources. A reimplementation that tries to produce final hardware register assignments at the LLVM level is solving the wrong problem -- the output should be well-pressure-managed virtual registers, not hardware assignments.
+**5. Forgetting that cicc's allocation is only half the pipeline.** The LLVM greedy allocator in cicc emits PTX with virtual registers bounded by `-maxreg`. Then ptxas performs an entirely separate second allocation pass with its own 72+ knobs to map virtual PTX registers to hardware resources. A reimplementation that tries to produce final hardware register assignments at the LLVM level is solving the wrong problem — the output should be well-pressure-managed virtual registers, not hardware assignments.
 
 ## Diagnostic Strings
 
@@ -530,54 +530,54 @@ Diagnostic strings recovered from the register allocation binary region (`p2c.5-
 |--------|--------|
 | `"Greedy Register Allocator"` | Pass name for both Instance A (`0x1EC0400`) and Instance B (`0x2F4C2E0`) |
 | `"Register Coalescer"` | `sub_2F60C50` pass registration |
-| `"nv-remat-block"` | `ctor_361_0` at `0x5108E0` -- machine-level remat pass registration |
-| `"Legacy IR Remat"` | `sub_1CE7DD0` region -- IR-level remat pass display name |
+| `"nv-remat-block"` | `ctor_361_0` at `0x5108E0` — machine-level remat pass registration |
+| `"Legacy IR Remat"` | `sub_1CE7DD0` region — IR-level remat pass display name |
 | `"nvvmrematerialize"` | IR-level remat pass pipeline ID |
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `RAGreedy::runOnMachineFunction` analog | `sub_2F5A640` | -- | Top-level driver (466 lines) |
-| `RAGreedy::selectOrSplit` analog | `sub_2F49070` | -- | Core allocator (82KB, 2,314 lines) |
-| `selectOrSplit` thunk | `sub_2F4BAF0` | -- | Redirects to `sub_2F49070(this+200)` |
-| `selectOrSplit` + SplitEditor path | `sub_2F4BB00` | -- | Spill-or-split path |
-| `SplitEditor::splitAroundRegion` analog | `sub_2F2D9F0` | -- | Live range splitting (93KB) |
-| `tryLocalSplit` analog | `sub_2F2A2A0` | -- | Local split within a single basic block |
-| Split-segment materialization | `sub_2FDF330` | -- | Inserts new split segments after region split |
-| Interference-cache populate | `sub_2F43DC0` | -- | Populates the per-PhysReg interference cache |
-| `tryAssign` analog | `sub_2F47B00` | -- | Simple assignment path |
-| `tryEvict` analog | `sub_2F48CE0` | -- | Evict conflicting VReg |
-| `tryLastChanceRecoloring` analog | `sub_2F46530` | -- | Recursive recoloring fallback |
-| Constrained-copy processor | `sub_2F47200` | -- | Handles tied-operand COPYs |
-| Interference table rehash | `sub_2F46EE0` | -- | Grows the interference cache hash |
-| Coalescing-hint table rehash | `sub_2F46A90` | -- | Grows the coalescing-hint table |
-| Reserved-unit marker | `sub_2F42840` | -- | Marks a register unit as reserved |
-| Assignment recorder | `sub_2F42240` | -- | Records a successful PhysReg assignment |
-| Interference-cache insert | `sub_2F424E0` | -- | Inserts a new conflict entry |
-| Coalescing-hint recorder | `sub_2F41240` | -- | Records a parent-chain coalescing hint |
-| `collectHintInfo` analog | `sub_2F434D0` | -- | Gathers all coalescing hints for priority |
-| Allocation-failure handler | `sub_2F418E0` | -- | Fallback when no PhysReg is available |
-| VReg pre-flight check | `sub_2F55040` | -- | Has-VRegs-to-allocate test |
-| `computeLiveIntervals` analog | `sub_2F54D60` | -- | Build live interval data |
-| Priority queue reset | `sub_2F55730` | -- | Clears and re-initializes the priority queue |
-| Main allocation loop | `sub_2F58C00` | -- | Per-VReg dispatch loop |
-| Post-allocation finalize | `sub_2F50510` | -- | Cleanup after allocation completes |
-| Spill-cost setup | `sub_2FAD5E0` | -- | Computes VirtRegAuxInfo spill weights |
-| `InterferenceCache::init` analog | `sub_2FB0E40` | -- | Allocates the 0x2C0-byte interference cache |
-| `SplitAnalysis::init` analog | `sub_2FB1ED0` | -- | Allocates the 0x738-byte split-analysis structure |
-| Reg-alloc matrix setup | `sub_3501A90` | -- | Builds the global interference matrix |
-| Reg-class info precompute | `sub_35B4B20` | -- | Pre-computes class sizes/orders |
-| Initial queue seeding | `sub_35B5380` | -- | Populates the priority queue from VRegs |
-| `RegisterCoalescer::runOnMachineFunction` analog | `sub_2F71140` | -- | Register coalescing (80KB) |
-| MachineFunction property printer | `sub_2E78A80` | -- | Includes the `FailedRegAlloc` flag |
-| Virtual-register encoder | `sub_21583D0` | -- | `CLASS_BITS`-based virtual register encoding |
-| Copy-instruction emitter | `sub_2162350` | -- | Emits class-specific copy opcodes |
+| `RAGreedy::runOnMachineFunction` analog | `sub_2F5A640` | — | Top-level driver (466 lines) |
+| `RAGreedy::selectOrSplit` analog | `sub_2F49070` | — | Core allocator (82KB, 2,314 lines) |
+| `selectOrSplit` thunk | `sub_2F4BAF0` | — | Redirects to `sub_2F49070(this+200)` |
+| `selectOrSplit` + SplitEditor path | `sub_2F4BB00` | — | Spill-or-split path |
+| `SplitEditor::splitAroundRegion` analog | `sub_2F2D9F0` | — | Live range splitting (93KB) |
+| `tryLocalSplit` analog | `sub_2F2A2A0` | — | Local split within a single basic block |
+| Split-segment materialization | `sub_2FDF330` | — | Inserts new split segments after region split |
+| Interference-cache populate | `sub_2F43DC0` | — | Populates the per-PhysReg interference cache |
+| `tryAssign` analog | `sub_2F47B00` | — | Simple assignment path |
+| `tryEvict` analog | `sub_2F48CE0` | — | Evict conflicting VReg |
+| `tryLastChanceRecoloring` analog | `sub_2F46530` | — | Recursive recoloring fallback |
+| Constrained-copy processor | `sub_2F47200` | — | Handles tied-operand COPYs |
+| Interference table rehash | `sub_2F46EE0` | — | Grows the interference cache hash |
+| Coalescing-hint table rehash | `sub_2F46A90` | — | Grows the coalescing-hint table |
+| Reserved-unit marker | `sub_2F42840` | — | Marks a register unit as reserved |
+| Assignment recorder | `sub_2F42240` | — | Records a successful PhysReg assignment |
+| Interference-cache insert | `sub_2F424E0` | — | Inserts a new conflict entry |
+| Coalescing-hint recorder | `sub_2F41240` | — | Records a parent-chain coalescing hint |
+| `collectHintInfo` analog | `sub_2F434D0` | — | Gathers all coalescing hints for priority |
+| Allocation-failure handler | `sub_2F418E0` | — | Fallback when no PhysReg is available |
+| VReg pre-flight check | `sub_2F55040` | — | Has-VRegs-to-allocate test |
+| `computeLiveIntervals` analog | `sub_2F54D60` | — | Build live interval data |
+| Priority queue reset | `sub_2F55730` | — | Clears and re-initializes the priority queue |
+| Main allocation loop | `sub_2F58C00` | — | Per-VReg dispatch loop |
+| Post-allocation finalize | `sub_2F50510` | — | Cleanup after allocation completes |
+| Spill-cost setup | `sub_2FAD5E0` | — | Computes VirtRegAuxInfo spill weights |
+| `InterferenceCache::init` analog | `sub_2FB0E40` | — | Allocates the 0x2C0-byte interference cache |
+| `SplitAnalysis::init` analog | `sub_2FB1ED0` | — | Allocates the 0x738-byte split-analysis structure |
+| Reg-alloc matrix setup | `sub_3501A90` | — | Builds the global interference matrix |
+| Reg-class info precompute | `sub_35B4B20` | — | Pre-computes class sizes/orders |
+| Initial queue seeding | `sub_35B5380` | — | Populates the priority queue from VRegs |
+| `RegisterCoalescer::runOnMachineFunction` analog | `sub_2F71140` | — | Register coalescing (80KB) |
+| MachineFunction property printer | `sub_2E78A80` | — | Includes the `FailedRegAlloc` flag |
+| Virtual-register encoder | `sub_21583D0` | — | `CLASS_BITS`-based virtual register encoding |
+| Copy-instruction emitter | `sub_2162350` | — | Emits class-specific copy opcodes |
 
 ## Reimplementation Checklist
 
 1. **Pressure-driven allocation model.** Replace the standard assignment-to-physical-registers model with a pressure-tracking model: PTX registers are virtual, so the allocator must track and bound total live register count per class against the `-maxreg` ceiling (default 70) rather than assigning to a finite physical register set.
-2. **Nine disjoint register classes.** Define the nine NVPTX register classes (Int1Regs, Int16Regs, Int32Regs, Int64Regs, Float32Regs, Float64Regs, Int16HalfRegs, Int32HalfRegs, Int128Regs) with complete cross-class disjointness -- no interference between classes, class-specific copy opcodes, and per-class pressure tracking.
+2. **Nine disjoint register classes.** Define the nine NVPTX register classes (Int1Regs, Int16Regs, Int32Regs, Int64Regs, Float32Regs, Float64Regs, Int16HalfRegs, Int32HalfRegs, Int128Regs) with complete cross-class disjointness — no interference between classes, class-specific copy opcodes, and per-class pressure tracking.
 3. **Greedy selectOrSplit with NVPTX adaptations.** Implement the core allocation loop: per-unit RegUnitStates array (free/interfering/reserved), interference cache with `37 * reg` hash, 40-byte-stride operand scanning, copy coalescing hints (kinds 20/21), and live-through bitvector for detecting worst-case live ranges.
 4. **Live range splitting with SplitKit.** Implement `splitAroundRegion` (93KB equivalent): identify split points at block boundaries and within blocks, create sub-ranges with new virtual registers, insert copies at split points, and update the interference cache.
 5. **Eviction and last-chance recoloring.** Implement `tryEviction` (compare spill weights to decide whether evicting a conflicting VReg is cheaper) and `tryLastChanceRecoloring` (recursive reassignment bounded by `lcr-max-depth=5` and `lcr-max-interf=8`).
@@ -596,4 +596,4 @@ NVPTX's register allocation differs from all other LLVM targets in several funda
 
 ## ptxas Interaction
 
-Register allocation in cicc is the first of two allocation stages. cicc's greedy RA assigns virtual PTX registers (`%r0`, `%f3`, etc.) bounded by the `-maxreg` ceiling to control occupancy, but these are not hardware registers -- they are symbolic names in the PTX text. `ptxas` then performs its own complete register allocation pass, mapping cicc's virtual registers onto the SM's physical register file (e.g., 255 32-bit registers per thread on SM 80+). ptxas has 72+ RA-related knobs (`RegAllocScheme`, `DynamicRegAlloc`, `RegUsageOpt`, etc.) and may split, coalesce, or spill registers differently than cicc anticipated. The `-maxreg` value cicc enforces serves as a hint to ptxas about the desired occupancy target, but ptxas makes the final hardware binding decision.
+Register allocation in cicc is the first of two allocation stages. cicc's greedy RA assigns virtual PTX registers (`%r0`, `%f3`, etc.) bounded by the `-maxreg` ceiling to control occupancy, but these are not hardware registers — they are symbolic names in the PTX text. `ptxas` then performs its own complete register allocation pass, mapping cicc's virtual registers onto the SM's physical register file (e.g., 255 32-bit registers per thread on SM 80+). ptxas has 72+ RA-related knobs (`RegAllocScheme`, `DynamicRegAlloc`, `RegUsageOpt`, etc.) and may split, coalesce, or spill registers differently than cicc anticipated. The `-maxreg` value cicc enforces serves as a hint to ptxas about the desired occupancy target, but ptxas makes the final hardware binding decision.

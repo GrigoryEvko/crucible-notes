@@ -1,8 +1,8 @@
 # NVVM IR Generation
 
-Between the EDG 6.6 frontend and the LLVM optimizer sits a layer that has no upstream LLVM equivalent: the NVVM IR generation subsystem. Its job is to translate the EDG intermediate language (IL) tree -- a C-level AST produced by EDG's source-to-source backend -- into LLVM IR suitable for the NVPTX target. This is cicc's equivalent of Clang's `CodeGen` library (`lib/CodeGen/CGExpr.cpp`, `CGStmt.cpp`, `CGDecl.cpp`, etc.), but it operates on EDG's proprietary IL node format rather than a Clang AST. Understanding this layer is essential because it determines every structural property of the LLVM IR that the optimizer and backend will see: address space annotations on pointers, alloca placement conventions, kernel metadata encoding, and the specific IR patterns used for CUDA-specific constructs like `threadIdx.x` or `__shared__` memory.
+Between the EDG 6.6 frontend and the LLVM optimizer sits a layer that has no upstream LLVM equivalent: the NVVM IR generation subsystem. Its job is to translate the EDG intermediate language (IL) tree — a C-level AST produced by EDG's source-to-source backend — into LLVM IR suitable for the NVPTX target. This is cicc's equivalent of Clang's `CodeGen` library (`lib/CodeGen/CGExpr.cpp`, `CGStmt.cpp`, `CGDecl.cpp`, etc.), but it operates on EDG's proprietary IL node format rather than a Clang AST. Understanding this layer is essential because it determines every structural property of the LLVM IR that the optimizer and backend will see: address space annotations on pointers, alloca placement conventions, kernel metadata encoding, and the specific IR patterns used for CUDA-specific constructs like `threadIdx.x` or `__shared__` memory.
 
-The EDG frontend does not produce LLVM IR directly. Its backend mode (`BACK_END_IS_C_GEN_BE = 1`) emits transformed C code into `.int.c`, `.device.c`, and `.stub.c` files. A second compilation pass then parses these files back through EDG to produce an IL tree -- a typed, linked representation of every declaration, statement, and expression in the translation unit. The IR generation layer walks this IL tree recursively, creating LLVM `BasicBlock`s, `Instruction`s, and `GlobalVariable`s via a hand-rolled IR builder that directly manipulates LLVM's in-memory data structures. The result is a complete LLVM `Module` containing one function per device-side function definition, with kernel entry points annotated via `nvvm.annotations` metadata.
+The EDG frontend does not produce LLVM IR directly. Its backend mode (`BACK_END_IS_C_GEN_BE = 1`) emits transformed C code into `.int.c`, `.device.c`, and `.stub.c` files. A second compilation pass then parses these files back through EDG to produce an IL tree — a typed, linked representation of every declaration, statement, and expression in the translation unit. The IR generation layer walks this IL tree recursively, creating LLVM `BasicBlock`s, `Instruction`s, and `GlobalVariable`s via a hand-rolled IR builder that directly manipulates LLVM's in-memory data structures. The result is a complete LLVM `Module` containing one function per device-side function definition, with kernel entry points annotated via `nvvm.annotations` metadata.
 
 ## Dual-Path Architecture
 
@@ -23,7 +23,7 @@ One of the most distinctive features of cicc's IR generation is that **two compl
 | **Type translation** | `sub_91AED0` | (parallel) |
 | **Kernel metadata emitter** | `sub_93AE30` | (parallel) |
 
-These are not shared-library variations or template instantiations across different types. They are structurally identical copies of the same algorithms with the same string constants (e.g., `"allocapt"`, `"agg.result"`, `"entry"`, `"return"`, `".addr"`) and the same error messages (e.g., `"unsupported expression!"`, `"Argument mismatch in generation function prolog!"`). The two copies use different calling conventions for their codegen context objects -- Path A passes codegen state through a flat struct with LLVM API vtable pointers, while Path B uses a pointer-to-pointer indirection scheme -- but the algorithmic logic and IR output are byte-for-byte identical.
+These are not shared-library variations or template instantiations across different types. They are structurally identical copies of the same algorithms with the same string constants (e.g., `"allocapt"`, `"agg.result"`, `"entry"`, `"return"`, `".addr"`) and the same error messages (e.g., `"unsupported expression!"`, `"Argument mismatch in generation function prolog!"`). The two copies use different calling conventions for their codegen context objects — Path A passes codegen state through a flat struct with LLVM API vtable pointers, while Path B uses a pointer-to-pointer indirection scheme — but the algorithmic logic and IR output are byte-for-byte identical.
 
 The remainder of this page uses Path B addresses (the `0x12xxxxx` range) as the primary reference because they correspond to the standalone compilation path that `nvcc` invokes, and because the B-series analysis reports provide the most detailed coverage of this path. Every function described here has a direct counterpart in Path A at the corresponding `0x9xxxxx` address.
 
@@ -43,11 +43,11 @@ The remainder of this page uses Path B addresses (the `0x12xxxxx` range) as the 
 
 ## The IRGenState Object
 
-Every codegen function receives a context object -- called `IRGenState` or `CodeGenState` in this wiki -- that carries all mutable state for the current function being compiled. Two distinct layouts exist depending on whether the context is accessed through the Path A flat struct or the Path B double-indirection pattern. Both layouts carry the same logical fields; the difference is structural.
+Every codegen function receives a context object — called `IRGenState` or `CodeGenState` in this wiki — that carries all mutable state for the current function being compiled. Two distinct layouts exist depending on whether the context is accessed through the Path A flat struct or the Path B double-indirection pattern. Both layouts carry the same logical fields; the difference is structural.
 
 ### Path B Layout (pointer-to-pointer pattern)
 
-In Path B, the primary codegen context `a1` is a `CodeGenState**` -- a pointer to a pointer. The outer pointer dereferences to a struct containing the core IR builder state, and sibling pointers at `a1[1]`, `a1[2]`, etc., reach related context objects:
+In Path B, the primary codegen context `a1` is a `CodeGenState**` — a pointer to a pointer. The outer pointer dereferences to a struct containing the core IR builder state, and sibling pointers at `a1[1]`, `a1[2]`, etc., reach related context objects:
 
 | Access | Offset | Field | Purpose |
 |---|---|---|---|
@@ -86,7 +86,7 @@ The `"allocapt"` marker deserves special attention. When the function entry-bloc
 
 ## EDG IL Node Layout
 
-Every codegen function traverses EDG IL nodes -- linked structures that represent declarations, statements, and expressions from the parsed CUDA source. The node layout is consistent across all codegen paths:
+Every codegen function traverses EDG IL nodes — linked structures that represent declarations, statements, and expressions from the parsed CUDA source. The node layout is consistent across all codegen paths:
 
 **Expression node** (passed as `a2` to the expression master dispatch):
 
@@ -125,7 +125,7 @@ This walks through chains of typedef aliases (kind 12) until it reaches the cano
 When cicc processes a device-side function, IR generation proceeds through a fixed sequence of stages. The entry point is the function entry-block setup routine (`sub_946060`), which sets up the function skeleton and then calls the parameter-prolog emitter (`sub_938240`) to emit parameter handling, followed by recursive statement emission.
 
 **Stage 1: Function skeleton** (`sub_946060`).
-Creates the LLVM `Function*` object, resolves the function type through the EDG typedef chain, and optionally sets a section name. Then creates two basic blocks: `"entry"` (the function entry point) and `"return"` (the single return block -- all return paths branch here). Inserts the `"allocapt"` sentinel into the entry block. For non-void functions, creates a `"retval"` alloca to hold the return value; for sret functions (returning aggregates), uses the first argument directly.
+Creates the LLVM `Function*` object, resolves the function type through the EDG typedef chain, and optionally sets a section name. Then creates two basic blocks: `"entry"` (the function entry point) and `"return"` (the single return block — all return paths branch here). Inserts the `"allocapt"` sentinel into the entry block. For non-void functions, creates a `"retval"` alloca to hold the return value; for sret functions (returning aggregates), uses the first argument directly.
 
 **Stage 2: Function prolog** (`sub_938240`).
 Iterates the EDG parameter linked list (next pointer at offset +112, stride 40 bytes per LLVM argument slot) in lockstep with the LLVM function's argument list. For each parameter:
@@ -185,7 +185,7 @@ sub_127FC40(ctx, type, name, alignment, addrspace)
      -> return alloca pointer
 ```
 
-The critical detail: when `arraySize == 0` (the common case), the alloca is inserted at `IRGenState+456+24` -- the position just before the allocapt marker. This ensures all allocas land at the top of the entry block regardless of where in the function body they are created.
+The critical detail: when `arraySize == 0` (the common case), the alloca is inserted at `IRGenState+456+24` — the position just before the allocapt marker. This ensures all allocas land at the top of the entry block regardless of where in the function body they are created.
 
 ### Instruction insertion and debug location
 
@@ -251,7 +251,7 @@ Device-side `printf` cannot use C varargs. The compiler rewrites it to CUDA's `v
 5. If the total packed size exceeds the current alloca size, patch the alloca's size operand in-place by manipulating the use-def chain.
 6. Emit `call i32 @vprintf(ptr %fmt, ptr %buf)`.
 
-The alloca in-place resize (step 5) is unusual -- most LLVM passes would create a new alloca. NVIDIA's motivation is to maintain a single alloca that dominates all printf pack sites within a function.
+The alloca in-place resize (step 5) is unusual — most LLVM passes would create a new alloca. NVIDIA's motivation is to maintain a single alloca that dominates all printf pack sites within a function.
 
 ## Type Translation System
 
@@ -261,7 +261,7 @@ The EDG-to-LLVM type translation (`sub_91AED0` and its callees) is a worklist-dr
 - **Pointer types**: Carry qualifier words at node+18 that encode CUDA address spaces (qualifier 1 = global/addrspace 1, qualifier 32 = shared/addrspace 3, qualifier 33 = constant/addrspace 4).
 - **Struct/union/class types**: Recursive member-by-member translation with reference counting to handle shared sub-types and diamond inheritance.
 - **Typedef chains**: Stripped by the standard `for (t = type; tag == 12; t = *(t+160))` idiom.
-- **Template specializations**: Two-pass approach -- syntactic substitution (`sub_908040`) followed by semantic matching (`sub_910920`), gated by optimization flags.
+- **Template specializations**: Two-pass approach — syntactic substitution (`sub_908040`) followed by semantic matching (`sub_910920`), gated by optimization flags.
 - **Mutually recursive types**: Handled by the fixed-point iteration `do { changed = process_all(); } while (changed)`.
 
 All hash tables in the type system use the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the common implementation.
@@ -314,10 +314,10 @@ The IR generation layer produces named IR values that match Clang's naming conve
 
 The IR generation subsystem is documented in detail across four sub-pages, each covering a major functional area:
 
-- **[Expression & Constant Codegen](./irgen-expressions.md)** -- The expression master dispatch (`sub_128D0F0`), its 40-operator inner switch, compile-time constant emission (`sub_127D8B0`), and the cast/conversion codegen (`sub_128A450`). Covers every C/C++ expression type from array decay to pointer subtraction to logical short-circuit.
+- **[Expression & Constant Codegen](./irgen-expressions.md)** — The expression master dispatch (`sub_128D0F0`), its 40-operator inner switch, compile-time constant emission (`sub_127D8B0`), and the cast/conversion codegen (`sub_128A450`). Covers every C/C++ expression type from array decay to pointer subtraction to logical short-circuit.
 
-- **[Statement & Control Flow Codegen](./irgen-statements.md)** -- The statement dispatcher (`sub_9363D0`), basic block creation for if/while/do-while/for/switch, cleanup scope management for C++ destructors, label and goto handling, and `#pragma unroll` metadata attachment.
+- **[Statement & Control Flow Codegen](./irgen-statements.md)** — The statement dispatcher (`sub_9363D0`), basic block creation for if/while/do-while/for/switch, cleanup scope management for C++ destructors, label and goto handling, and `#pragma unroll` metadata attachment.
 
-- **[Function, Call & Inline Asm Codegen](./irgen-functions.md)** -- Function skeleton creation (`sub_946060`), the parameter prolog (`sub_938240`), call instruction emission with ABI classification (`sub_93CB50`), inline asm template parsing and constraint construction (`sub_1292420`), printf-to-vprintf lowering (`sub_12992B0`), and the 770-entry builtin dispatch table (`sub_12B3FD0`).
+- **[Function, Call & Inline Asm Codegen](./irgen-functions.md)** — Function skeleton creation (`sub_946060`), the parameter prolog (`sub_938240`), call instruction emission with ABI classification (`sub_93CB50`), inline asm template parsing and constraint construction (`sub_1292420`), printf-to-vprintf lowering (`sub_12992B0`), and the 770-entry builtin dispatch table (`sub_12B3FD0`).
 
-- **[Type Translation, Globals & Special Vars](./irgen-types.md)** -- The fixed-point type translation system (`sub_91AED0`), address space mapping for CUDA memory qualifiers, global variable creation (`sub_916430`), kernel metadata emission (`sub_93AE30`), function attribute handling (`sub_12735D0`), and special variable codegen for threadIdx/blockIdx/blockDim/gridDim/warpSize.
+- **[Type Translation, Globals & Special Vars](./irgen-types.md)** — The fixed-point type translation system (`sub_91AED0`), address space mapping for CUDA memory qualifiers, global variable creation (`sub_916430`), kernel metadata emission (`sub_93AE30`), function attribute handling (`sub_12735D0`), and special variable codegen for threadIdx/blockIdx/blockDim/gridDim/warpSize.

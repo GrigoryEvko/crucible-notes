@@ -1,8 +1,8 @@
 # JIT Mode
 
-JIT mode is a compilation mode where cudafe++ produces **device code only** -- no host `.int.c` file, no kernel stubs, no CUDA runtime registration tables. The output is a standalone device IL payload suitable for runtime compilation via NVRTC (`nvrtcCompileProgram`) or direct loading through the CUDA Driver API (`cuModuleLoadData`, `cuModuleLoadDataEx`). Because there is no host compiler invocation downstream, anything that belongs exclusively to the host side is illegal: explicit `__host__` functions, unannotated functions (which default to `__host__`), namespace-scope variables without memory-space qualifiers, non-const class static data members, and lambda closures inferred to have `__host__` execution space.
+JIT mode is a compilation mode where cudafe++ produces **device code only** — no host `.int.c` file, no kernel stubs, no CUDA runtime registration tables. The output is a standalone device IL payload suitable for runtime compilation via NVRTC (`nvrtcCompileProgram`) or direct loading through the CUDA Driver API (`cuModuleLoadData`, `cuModuleLoadDataEx`). Because there is no host compiler invocation downstream, anything that belongs exclusively to the host side is illegal: explicit `__host__` functions, unannotated functions (which default to `__host__`), namespace-scope variables without memory-space qualifiers, non-const class static data members, and lambda closures inferred to have `__host__` execution space.
 
-The `--default-device` flag inverts the annotation default -- unannotated entities become `__device__` instead of `__host__`, allowing C++ code written without CUDA annotations to compile directly for the GPU. This is the recommended workaround for all four unannotated-entity diagnostics.
+The `--default-device` flag inverts the annotation default — unannotated entities become `__device__` instead of `__host__`, allowing C++ code written without CUDA annotations to compile directly for the GPU. This is the recommended workaround for all four unannotated-entity diagnostics.
 
 ## Key Facts
 
@@ -14,7 +14,7 @@ The `--default-device` flag inverts the annotation default -- unannotated entiti
 | Default execution space (normal) | `__host__` (entity+182 byte == `0x00`) |
 | Default execution space (JIT + `--default-device`) | `__device__` (entity+182 byte `0x23`) |
 | Annotation override flag | `--default-device` (passed to cudafe++ by NVRTC or nvcc) |
-| RDC mode flag | `--device-c` (flag 77) -- relocatable device code; orthogonal to JIT |
+| RDC mode flag | `--device-c` (flag 77) — relocatable device code; orthogonal to JIT |
 | JIT diagnostic count | 5 error messages (1 explicit-host + 4 unannotated-entity) |
 | Diagnostic tag suffix | All five tags end with `_in_jit` |
 | NVRTC integration | NVRTC calls cudafe++ with JIT-appropriate flags internally |
@@ -22,15 +22,15 @@ The `--default-device` flag inverts the annotation default -- unannotated entiti
 
 ## How JIT Mode Is Activated
 
-cudafe++ is never invoked directly by application code. In the standard offline compilation pipeline, nvcc invokes cudafe++ with both `--gen_c_file_name` (flag 45, the host `.int.c` path) and `--gen_device_file_name` (flag 85, the device IL path). Both outputs are generated from a single frontend invocation -- cudafe++ uses a single-pass architecture internally (see [Device/Host Separation](../cuda/device-host-separation.md)).
+cudafe++ is never invoked directly by application code. In the standard offline compilation pipeline, nvcc invokes cudafe++ with both `--gen_c_file_name` (flag 45, the host `.int.c` path) and `--gen_device_file_name` (flag 85, the device IL path). Both outputs are generated from a single frontend invocation — cudafe++ uses a single-pass architecture internally (see [Device/Host Separation](../cuda/device-host-separation.md)).
 
-In JIT mode, the driving tool -- typically NVRTC -- invokes cudafe++ with **only** the device-side output path. The host-output file name (`--gen_c_file_name`) is not provided, so no `.int.c` file is generated. The absence of a host output target is what structurally makes this "JIT mode": without a host file, there is no host compiler to feed, and therefore no host-side constructs can be tolerated.
+In JIT mode, the driving tool — typically NVRTC — invokes cudafe++ with **only** the device-side output path. The host-output file name (`--gen_c_file_name`) is not provided, so no `.int.c` file is generated. The absence of a host output target is what structurally makes this "JIT mode": without a host file, there is no host compiler to feed, and therefore no host-side constructs can be tolerated.
 
 ### Activation Conditions
 
 JIT mode is not a single user-facing CLI flag. It is an internal compilation state activated by the combination of flags that the driving tool (nvcc or NVRTC) sets when invoking cudafe++:
 
-1. **NVRTC invocation.** NVRTC always invokes cudafe++ in JIT mode. NVRTC compiles CUDA C++ source to PTX at application runtime. There is no host compiler, no host object file, and no linking -- the output is pure device code.
+1. **NVRTC invocation.** NVRTC always invokes cudafe++ in JIT mode. NVRTC compiles CUDA C++ source to PTX at application runtime. There is no host compiler, no host object file, and no linking — the output is pure device code.
 
 2. **nvcc `--ptx` or `--cubin` without host compilation.** When nvcc is asked to produce only PTX or cubin output (no host object), it may invoke cudafe++ with the JIT mode configuration to skip host-side generation entirely.
 
@@ -68,7 +68,7 @@ The PTX or cubin produced by the JIT pipeline is consumed by the CUDA Driver API
 - **`cuLinkAddData` / `cuLinkComplete`**: Link multiple compiled objects into a single module (JIT linking for RDC workflows).
 - **`cuModuleGetFunction`**: Retrieve a `__global__` kernel handle from the loaded module for launch via `cuLaunchKernel`.
 
-Because JIT-compiled code has no host-side registration (no `__cudaRegisterFunction` calls, no fatbin embedding), the Driver API is the only path to launch kernels from JIT-compiled modules. The CUDA Runtime API launch syntax (`<<<>>>`) is not available for JIT-compiled kernels -- the application must use `cuLaunchKernel` explicitly.
+Because JIT-compiled code has no host-side registration (no `__cudaRegisterFunction` calls, no fatbin embedding), the Driver API is the only path to launch kernels from JIT-compiled modules. The CUDA Runtime API launch syntax (`<<<>>>`) is not available for JIT-compiled kernels — the application must use `cuLaunchKernel` explicitly.
 
 ## The --default-device Flag
 
@@ -84,7 +84,7 @@ The `--default-device` flag changes the default:
 | Namespace-scope variable (no memory space) | Host variable | `__device__` variable (entity+148 bit 0 set) |
 | Non-const class static data member | Host variable | `__device__` variable |
 | Lambda closure class (namespace scope) | `__host__` inferred space | `__device__` inferred space |
-| Explicitly `__host__` function | `__host__` (unchanged) | `__host__` (unchanged -- always error in JIT) |
+| Explicitly `__host__` function | `__host__` (unchanged) | `__host__` (unchanged — always error in JIT) |
 | Explicitly `__device__` function | `__device__` (unchanged) | `__device__` (unchanged) |
 | `__global__` kernel | `__global__` (unchanged) | `__global__` (unchanged) |
 
@@ -92,9 +92,9 @@ Entities with explicit annotations are unaffected. Only entities that would othe
 
 ### Interaction with Entity+182
 
-The execution-space bitfield at entity+182 (documented in [Execution Spaces](../cuda/execution-spaces.md)) is set during attribute application. Without `--default-device`, an unannotated function has byte `0x00` at entity+182 -- the `0x30` mask extracts `0x00`, which is treated as implicit `__host__`. With `--default-device` active, the frontend treats unannotated functions as if `__device__` had been applied, setting byte+182 to `0x23` (the standard `__device__` OR mask: `device_capable | device_explicit | device_annotation`).
+The execution-space bitfield at entity+182 (documented in [Execution Spaces](../cuda/execution-spaces.md)) is set during attribute application. Without `--default-device`, an unannotated function has byte `0x00` at entity+182 — the `0x30` mask extracts `0x00`, which is treated as implicit `__host__`. With `--default-device` active, the frontend treats unannotated functions as if `__device__` had been applied, setting byte+182 to `0x23` (the standard `__device__` OR mask: `device_capable | device_explicit | device_annotation`).
 
-This means the downstream subsystems -- keep-in-IL marking, cross-space validation, device-only filtering -- all see a properly-annotated `__device__` entity and process it identically to an explicitly annotated one. The flag does not add a "JIT mode" code path through every subsystem; it simply changes the default annotation, and the existing execution-space machinery handles the rest.
+This means the downstream subsystems — keep-in-IL marking, cross-space validation, device-only filtering — all see a properly-annotated `__device__` entity and process it identically to an explicitly annotated one. The flag does not add a "JIT mode" code path through every subsystem; it simply changes the default annotation, and the existing execution-space machinery handles the rest.
 
 ### How to Pass the Flag
 
@@ -124,7 +124,7 @@ Five error messages enforce JIT mode restrictions. All five are emitted during s
 A function explicitly marked as a __host__ function is not allowed in JIT mode
 ```
 
-**Trigger:** The function declaration carries an explicit `__host__` annotation (entity+182 has bit 4 set via the `0x15` OR mask from `apply_nv_host_attr` at `sub_4108E0`). This is unconditionally illegal in JIT mode -- there is no device-side representation of a host-only function, and JIT mode produces no host output.
+**Trigger:** The function declaration carries an explicit `__host__` annotation (entity+182 has bit 4 set via the `0x15` OR mask from `apply_nv_host_attr` at `sub_4108E0`). This is unconditionally illegal in JIT mode — there is no device-side representation of a host-only function, and JIT mode produces no host output.
 
 **No `--default-device` suggestion:** This is the only JIT diagnostic that does not suggest `--default-device`. The flag only affects unannotated entities. An explicit `__host__` annotation overrides the default. The fix must be a source code change: remove `__host__`, change it to `__device__`, or change it to `__host__ __device__`.
 
@@ -150,7 +150,7 @@ Consider using -default-device flag to process unannotated functions as __device
 functions in JIT mode
 ```
 
-**Trigger:** A function entity has `(entity+182 & 0x30) == 0x00` -- no explicit execution-space annotation. By default this means implicit `__host__`, which is illegal in JIT mode.
+**Trigger:** A function entity has `(entity+182 & 0x30) == 0x00` — no explicit execution-space annotation. By default this means implicit `__host__`, which is illegal in JIT mode.
 
 **Fix:** Either add `__device__` to the function declaration, or compile with `--default-device`.
 
@@ -181,7 +181,7 @@ to process unannotated namespace scope variables as __device__ variables in JIT 
 
 The check applies to the memory-space bitfield at entity+148, not the execution-space bitfield at entity+182. Without any annotation, none of the memory-space bits (`__device__` bit 0, `__shared__` bit 1, `__constant__` bit 2, `__managed__` bit 3) are set.
 
-**Scope note:** This check targets namespace-scope variables only. Local variables inside `__device__` or `__global__` functions are not subject to this check -- they live on the device stack or in registers.
+**Scope note:** This check targets namespace-scope variables only. Local variables inside `__device__` or `__global__` functions are not subject to this check — they live on the device stack or in registers.
 
 **Fix:** Add a memory-space annotation, or compile with `--default-device`.
 
@@ -296,7 +296,7 @@ All five diagnostics use the standard cudafe++ diagnostic system. They can be co
 
 ### Single-Pass Architecture Impact
 
-cudafe++ uses a single-pass architecture: the EDG frontend parses the source once, builds a unified IL tree, and tags every entity with execution-space bits at entity+182. In normal mode, two output filters run on this tree -- one for the host `.int.c` file (driven by `sub_489000` -> `sub_47ECC0`), one for the device IL (driven by the keep-in-IL walk at `sub_610420`). In JIT mode, only the device IL output path runs. The host output path is simply never invoked because no host output was requested.
+cudafe++ uses a single-pass architecture: the EDG frontend parses the source once, builds a unified IL tree, and tags every entity with execution-space bits at entity+182. In normal mode, two output filters run on this tree — one for the host `.int.c` file (driven by `sub_489000` -> `sub_47ECC0`), one for the device IL (driven by the keep-in-IL walk at `sub_610420`). In JIT mode, only the device IL output path runs. The host output path is simply never invoked because no host output was requested.
 
 This means JIT mode does not require a fundamentally different code path through the frontend. Parsing, semantic analysis, template instantiation, and IL construction all proceed identically. The difference manifests at two points:
 
@@ -308,13 +308,13 @@ This means JIT mode does not require a fundamentally different code path through
 
 ### RDC (Relocatable Device Code)
 
-JIT mode is orthogonal to RDC (`--device-c`, flag 77). RDC controls whether device code is compiled for separate linking (enabling cross-TU `__device__` function calls and `extern __device__` variables), while JIT mode controls whether host output is produced. Both can be active simultaneously -- for example, NVRTC with `--relocatable-device-code=true` compiles device code for separate device linking without any host output.
+JIT mode is orthogonal to RDC (`--device-c`, flag 77). RDC controls whether device code is compiled for separate linking (enabling cross-TU `__device__` function calls and `extern __device__` variables), while JIT mode controls whether host output is produced. Both can be active simultaneously — for example, NVRTC with `--relocatable-device-code=true` compiles device code for separate device linking without any host output.
 
 When RDC is combined with JIT mode, NVRTC compiles each source file to relocatable device code, and the driver-API linker (`cuLinkAddData`, `cuLinkComplete`) resolves cross-references at load time. Without RDC, all device code must be self-contained within a single translation unit.
 
 ### Extended Lambdas
 
-Extended lambdas (`--expt-extended-lambda`, controlled by `dword_106BF38`) interact with JIT mode through the lambda closure class inference. The `host_closure_class_in_jit` diagnostic targets the case where a lambda's closure is inferred as host-side. With `--default-device`, the inference changes to device-side, resolving the conflict. Extended lambda capture rules still apply in JIT mode -- captures must be trivially device-copyable, subject to the 1023-capture limit, and array captures are limited to 7 dimensions.
+Extended lambdas (`--expt-extended-lambda`, controlled by `dword_106BF38`) interact with JIT mode through the lambda closure class inference. The `host_closure_class_in_jit` diagnostic targets the case where a lambda's closure is inferred as host-side. With `--default-device`, the inference changes to device-side, resolving the conflict. Extended lambda capture rules still apply in JIT mode — captures must be trivially device-copyable, subject to the 1023-capture limit, and array captures are limited to 7 dimensions.
 
 ### Relaxed Constexpr
 
@@ -397,12 +397,12 @@ const float Constants::EPSILON = 1e-6f;            // Annotated for JIT mode
 
 ## Cross-References
 
-- [Execution Spaces](../cuda/execution-spaces.md) -- entity+182 bitfield, `__host__`/`__device__`/`__global__` OR masks, `0x30` mask classification
-- [Device/Host Separation](../cuda/device-host-separation.md) -- single-pass architecture, keep-in-IL walk, host/device output file generation
-- [Cross-Space Validation](../cuda/cross-space-validation.md) -- execution-space call checking (still applies in JIT mode for HD entities)
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- Category 10 (JIT Mode), all five diagnostic messages with tag names
-- [CLI Flag Inventory](../config/cli-flags.md) -- flag table, `--gen_device_file_name` (85), `--gen_c_file_name` (45), `--device-c` (77)
-- [Architecture Feature Gating](../cuda/arch-gating.md) -- `--target` SM code (`dword_126E4A8`) and feature thresholds
-- [Extended Lambda Overview](../lambda/overview.md) -- lambda closure class execution-space inference, wrapper types
-- [Kernel Stubs](../cuda/kernel-stubs.md) -- `__wrapper__device_stub_` mechanism (absent in JIT mode)
-- [RDC Mode](../cuda/rdc-mode.md) -- relocatable device code, separate compilation for device-side linking
+- [Execution Spaces](../cuda/execution-spaces.md) — entity+182 bitfield, `__host__`/`__device__`/`__global__` OR masks, `0x30` mask classification
+- [Device/Host Separation](../cuda/device-host-separation.md) — single-pass architecture, keep-in-IL walk, host/device output file generation
+- [Cross-Space Validation](../cuda/cross-space-validation.md) — execution-space call checking (still applies in JIT mode for HD entities)
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — Category 10 (JIT Mode), all five diagnostic messages with tag names
+- [CLI Flag Inventory](../config/cli-flags.md) — flag table, `--gen_device_file_name` (85), `--gen_c_file_name` (45), `--device-c` (77)
+- [Architecture Feature Gating](../cuda/arch-gating.md) — `--target` SM code (`dword_126E4A8`) and feature thresholds
+- [Extended Lambda Overview](../lambda/overview.md) — lambda closure class execution-space inference, wrapper types
+- [Kernel Stubs](../cuda/kernel-stubs.md) — `__wrapper__device_stub_` mechanism (absent in JIT mode)
+- [RDC Mode](../cuda/rdc-mode.md) — relocatable device code, separate compilation for device-side linking

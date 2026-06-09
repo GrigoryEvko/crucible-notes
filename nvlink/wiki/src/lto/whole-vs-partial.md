@@ -1,12 +1,12 @@
 # Whole vs Partial LTO
 
-When nvlink performs link-time optimization, it must decide between two fundamentally different compilation strategies: **whole-program** compilation, where all device code is merged into a single NVVM IR module and compiled as one unit; and **partial** (relocatable) compilation, where the LTO-compiled code is emitted as a relocatable object that will be linked conventionally against non-LTO inputs. The decision is driven by a single byte-sized global flag, `byte_2A5F286`, which starts at 0 (whole-program) and is flipped to 1 (partial) when any input object lacks LTO IR. The `--force-whole-lto` and `--force-partial-lto` CLI flags can override this automatic detection, with conflict checking at option-parse time -- but as shown below, `--force-whole-lto` is only effective when every non-LTO input is `libcudadevrt`.
+When nvlink performs link-time optimization, it must decide between two fundamentally different compilation strategies: **whole-program** compilation, where all device code is merged into a single NVVM IR module and compiled as one unit; and **partial** (relocatable) compilation, where the LTO-compiled code is emitted as a relocatable object that will be linked conventionally against non-LTO inputs. The decision is driven by a single byte-sized global flag, `byte_2A5F286`, which starts at 0 (whole-program) and is flipped to 1 (partial) when any input object lacks LTO IR. The `--force-whole-lto` and `--force-partial-lto` CLI flags can override this automatic detection, with conflict checking at option-parse time — but as shown below, `--force-whole-lto` is only effective when every non-LTO input is `libcudadevrt`.
 
 | | |
 |---|---|
 | **Decision variable** | `byte_2A5F286` at address `0x2A5F286` (1 byte). 0 = whole-program, 1 = partial/relocatable |
-| **Force-whole flag** | `byte_2A5F284` -- set by `--force-whole-lto` |
-| **Force-partial flag** | `byte_2A5F285` -- set by `--force-partial-lto` (also auto-set by `register_module`) |
+| **Force-whole flag** | `byte_2A5F284` — set by `--force-whole-lto` |
+| **Force-partial flag** | `byte_2A5F285` — set by `--force-partial-lto` (also auto-set by `register_module`) |
 | **Whole-program compiler** | `sub_4BD4E0` (`ptxas_whole_program`) at `0x4BD4E0` |
 | **Relocatable compiler** | `sub_4BD760` (`ptxas_compile`) at `0x4BD760` |
 | **IR collector** | `sub_426CD0` (`lto_collect_ir`) at `0x426CD0` |
@@ -33,10 +33,10 @@ The following matrix captures every documented path from user input and flag sta
 
 | # | CLI flags | Input composition | Parse-time result | Runtime decision | Effective mode | Source |
 |---|-----------|-------------------|-------------------|------------------|----------------|--------|
-| 1 | no `-lto` | any | `byte_2A5F286=0` (unused) | -- | **No LTO** (pipeline skipped) | `sub_427AE0` does not enter the `byte_2A5F288` branch |
-| 2 | `-lto --force-partial-lto --force-whole-lto` | any | **Error** -- mutual conflict | -- | -- | `sub_427AE0` line 1194--1202 emits `-force-partial-lto vs -force-whole-lto` conflict |
-| 3 | `--force-partial-lto` **without** `-dlto`/`-lto` | any | **Error** -- requires `-dlto` | -- | -- | `sub_427AE0` line 1231--1232 |
-| 4 | `--force-whole-lto` **without** `-dlto`/`-lto` | any | **Error** -- requires `-dlto` | -- | -- | `sub_427AE0` line 1233--1234 |
+| 1 | no `-lto` | any | `byte_2A5F286=0` (unused) | — | **No LTO** (pipeline skipped) | `sub_427AE0` does not enter the `byte_2A5F288` branch |
+| 2 | `-lto --force-partial-lto --force-whole-lto` | any | **Error** — mutual conflict | — | — | `sub_427AE0` line 1194--1202 emits `-force-partial-lto vs -force-whole-lto` conflict |
+| 3 | `--force-partial-lto` **without** `-dlto`/`-lto` | any | **Error** — requires `-dlto` | — | — | `sub_427AE0` line 1231--1232 |
+| 4 | `--force-whole-lto` **without** `-dlto`/`-lto` | any | **Error** — requires `-dlto` | — | — | `sub_427AE0` line 1233--1234 |
 | 5 | `-lto -r` (`--relocatable-link`) | any | `byte_2A5F285=1` forced | register\_module + dispatch pick partial | **Partial** (forced) | `sub_427AE0` line 1151--1153: `if (byte_2A5F1E8) byte_2A5F285 = 1;` |
 | 6 | `-lto --force-partial-lto` | any | `byte_2A5F285=1`, flows to `LABEL_71` | `byte_2A5F286=1` at parse time | **Partial** (explicit) | `sub_427AE0` line 1209 sets `byte_2A5F286 = 1` |
 | 7 | `-lto --force-whole-lto` | all inputs have LTO IR | `byte_2A5F284=1`, `byte_2A5F285=0` | nvvmCompileProgram returns 100 -> `byte_2A5F286=0`; also main line 1074 override | **Whole** (redundant force) | `sub_4BC6F0` line 393--395 and `main` line 1073--1074 |
@@ -46,7 +46,7 @@ The following matrix captures every documented path from user input and flag sta
 | 11 | `-lto` only, no force flags | all inputs have LTO IR, but nvvm splits the IR into multiple modules | defaults: `byte_2A5F286=0` | `sub_4BC6F0` -> nvvmCompileProgram returns 0 -> `*a5=1` | **Partial** (nvvm decided to split) | `sub_4BC6F0` line 405--410 |
 | 12 | `-lto` only | some inputs are native cubins, all of them `libcudadevrt` | defaults | `register_module` sets `byte_2A5F286=1`, `byte_2A5F285` stays 0, no warning | **Partial** (cudadevrt-only silent) | `sub_42A680` line 485--488 |
 | 13 | `-lto` only | some inputs are native cubins, at least one not `libcudadevrt` | defaults | `register_module` sets `byte_2A5F286=1` and `byte_2A5F285=1`, emits warning | **Partial** (auto with warning) | `sub_42A680` line 485--493 |
-| 14 | `-lto --emit-ptx --force-partial-lto` | any | `byte_2A5F286=1`, enters `LABEL_66` (split-compat check) | -- | **Partial** (with split-compile compatibility validation) | `sub_427AE0` line 1206--1225 |
+| 14 | `-lto --emit-ptx --force-partial-lto` | any | `byte_2A5F286=1`, enters `LABEL_66` (split-compat check) | — | **Partial** (with split-compile compatibility validation) | `sub_427AE0` line 1206--1225 |
 
 ### Simplified User-Facing Matrix
 
@@ -62,20 +62,20 @@ The original task-requested matrix, after collapsing the runtime details:
 | `--force-whole-lto`, non-cudadevrt native cubin present | **Partial** (silently) | `register_module` sets `byte_2A5F285`, which blocks the main-line-1074 override |
 | `--force-partial-lto` + `--force-whole-lto` | **Error** | Mutual conflict |
 
-The non-obvious case is row 9 / the last silent-fallback row: **`--force-whole-lto` is not a hard override.** It only wins when `register_module` hasn't also forced `byte_2A5F285=1` on a non-cudadevrt input. Because the CLI conflict check in `sub_427AE0` runs at parse time but `register_module` runs during the later input loop, this combination never triggers a diagnostic -- the partial-mode decision just silently sticks.
+The non-obvious case is row 9 / the last silent-fallback row: **`--force-whole-lto` is not a hard override.** It only wins when `register_module` hasn't also forced `byte_2A5F285=1` on a non-cudadevrt input. Because the CLI conflict check in `sub_427AE0` runs at parse time but `register_module` runs during the later input loop, this combination never triggers a diagnostic — the partial-mode decision just silently sticks.
 
 ## CLI Flags That Control the Mode
 
 | Flag | Short | Type | Global | Behavior |
 |---|---|---|---|---|
 | `--link-time-opt` | `-lto` | bool | `byte_2A5F288` | Master LTO enable. Required for any mode decision to be meaningful. Implied by `--dlto` (`sub_427AE0` line 1075--1076) |
-| `--dlto` | -- | bool | `byte_2A5F287` | Distributed LTO mode. Sets `byte_2A5F288` as a side effect at line 1076 |
-| `--force-whole-lto` | -- | bool (hidden) | `byte_2A5F284` | Requests whole-program mode. Help text: `"force doing whole program LTO when -dlto"`. Only effective if `!byte_2A5F285` (see row 8 vs row 9 above) |
-| `--force-partial-lto` | -- | bool (hidden) | `byte_2A5F285` | Requests partial/relocatable mode. Help text: `"force doing partial LTO when -dlto"`. Also auto-set by `register_module` and by `-r` |
+| `--dlto` | — | bool | `byte_2A5F287` | Distributed LTO mode. Sets `byte_2A5F288` as a side effect at line 1076 |
+| `--force-whole-lto` | — | bool (hidden) | `byte_2A5F284` | Requests whole-program mode. Help text: `"force doing whole program LTO when -dlto"`. Only effective if `!byte_2A5F285` (see row 8 vs row 9 above) |
+| `--force-partial-lto` | — | bool (hidden) | `byte_2A5F285` | Requests partial/relocatable mode. Help text: `"force doing partial LTO when -dlto"`. Also auto-set by `register_module` and by `-r` |
 | `--relocatable-link` | `-r` | bool | `byte_2A5F1E8` | Generate relocatable object. When combined with `-lto`, implicitly forces `byte_2A5F285=1` (partial) |
-| `--emit-ptx` | -- | bool | `byte_2A5F29A` | Emit intermediate PTX. Under `-lto`, triggers the `LABEL_66` split-compile compatibility check |
-| `--nvvmpath` | -- | string | `qword_2A5F278` | Path to `libnvvm.so`. Required when `-lto` is active (`"-nvvmpath should be specified with -lto"` at line 1146) |
-| `--split-compile-extended` | -- | int | `dword_2A5B514` | Per-module parallel ptxas. Interacts with partial mode to enable the thread-pool path (see [Split Compilation](split-compilation.md)) |
+| `--emit-ptx` | — | bool | `byte_2A5F29A` | Emit intermediate PTX. Under `-lto`, triggers the `LABEL_66` split-compile compatibility check |
+| `--nvvmpath` | — | string | `qword_2A5F278` | Path to `libnvvm.so`. Required when `-lto` is active (`"-nvvmpath should be specified with -lto"` at line 1146) |
+| `--split-compile-extended` | — | int | `dword_2A5B514` | Per-module parallel ptxas. Interacts with partial mode to enable the thread-pool path (see [Split Compilation](split-compilation.md)) |
 
 **Visibility flag.** Both `--force-whole-lto` and `--force-partial-lto` are registered with flag value 4 (hidden from `--help`). They exist primarily for CUDA-toolchain internal use and debug workflows. The public expectation is that `nvcc` selects the correct mode automatically based on the object mix it produces.
 
@@ -123,7 +123,7 @@ if (byte_2A5F288) {              // LTO is enabled
 When LTO is active (`byte_2A5F288 == 1`) and `register_module` receives an input that already has compiled cubin data (parameter `a3` is non-NULL), the object was not compiled with `-dc` / device-code separation and therefore has no LTO IR. The linker:
 
 1. Sets `byte_2A5F286 = 1` to switch to partial mode.
-2. Checks whether the object is `libcudadevrt` (via `strstr(filename, "cudadevrt")`). If it is NOT cudadevrt, also sets `byte_2A5F285 = 1` (the force-partial flag) and emits a warning message. The cudadevrt exception exists because cudadevrt is always a native archive and is expected to lack LTO IR -- its presence alone should not trigger a partial-mode warning, and should not disable the subsequent `--force-whole-lto` override.
+2. Checks whether the object is `libcudadevrt` (via `strstr(filename, "cudadevrt")`). If it is NOT cudadevrt, also sets `byte_2A5F285 = 1` (the force-partial flag) and emits a warning message. The cudadevrt exception exists because cudadevrt is always a native archive and is expected to lack LTO IR — its presence alone should not trigger a partial-mode warning, and should not disable the subsequent `--force-whole-lto` override.
 
 The cudadevrt vs non-cudadevrt distinction is the only reason `--force-whole-lto` can still have an effect after partial mode has been auto-selected: a cudadevrt-only partial trigger leaves `byte_2A5F285=0`, satisfying the override's guard at main line 1070.
 
@@ -211,7 +211,7 @@ if (byte_2A5F288) {               // -lto active
    - `nvvmDestroyProgram`
    - `__nvvmHandle` (NVIDIA-internal callback registration)
 
-2. Builds the option array. Scans the provided option strings for `--force-device-c` -- if present, sets a flag (`v25 = 1`). If absent AND the linker context byte at `a7 + 97` is set, appends host-reference export/import keys (`-host-ref-ek=`, `-host-ref-ik=`, `-host-ref-ec=`, `-host-ref-ic=`, `-host-ref-eg=`, `-host-ref-ig=`).
+2. Builds the option array. Scans the provided option strings for `--force-device-c` — if present, sets a flag (`v25 = 1`). If absent AND the linker context byte at `a7 + 97` is set, appends host-reference export/import keys (`-host-ref-ek=`, `-host-ref-ik=`, `-host-ref-ec=`, `-host-ref-ic=`, `-host-ref-eg=`, `-host-ref-ig=`).
 
 3. Calls `nvvmCompileProgram` with the assembled options.
 
@@ -344,7 +344,7 @@ if (byte_2A5F286) {
 }
 ```
 
-`sub_4BD760` is the relocatable ptxas backend. Unlike `sub_4BD4E0`, it passes additional flags that tell the embedded ptxas to produce a relocatable object (`.o`) rather than a fully-linked cubin. The key difference is the use of `setjmp`/`longjmp` for error recovery -- if compilation fails, the function can recover gracefully (lines 114--152 of `sub_4BD760`).
+`sub_4BD760` is the relocatable ptxas backend. Unlike `sub_4BD4E0`, it passes additional flags that tell the embedded ptxas to produce a relocatable object (`.o`) rather than a fully-linked cubin. The key difference is the use of `setjmp`/`longjmp` for error recovery — if compilation fails, the function can recover gracefully (lines 114--152 of `sub_4BD760`).
 
 In partial mode, the compiled cubin is a relocatable ELF that must be merged into the output alongside the non-LTO objects. The merge happens through `sub_45E7D0` (merge\_elf), the same 89KB function used for all input cubins.
 
@@ -367,7 +367,7 @@ The mode choice has significant impact on compile time, output size, and runtime
 | **`--maxrregcount` forwarding** | Applied once to the merged program | Applied to each module individually; can produce inconsistent results if modules disagree |
 | **Symbol visibility changes** | Internal symbols can be promoted to static/hidden aggressively | Internal symbols that cross module boundaries must keep external linkage |
 | **Debug info quality** | One DWARF context covers all functions; line-table merging is not needed | Each module contributes its own DWARF; line tables must be merged at link time |
-| **Error recovery** | `sub_4BD4E0` has no `setjmp` wrapper -- a ptxas crash terminates the linker | `sub_4BD760` uses `setjmp`/`longjmp` so a single-module ptxas failure is isolated |
+| **Error recovery** | `sub_4BD4E0` has no `setjmp` wrapper — a ptxas crash terminates the linker | `sub_4BD760` uses `setjmp`/`longjmp` so a single-module ptxas failure is isolated |
 
 **Rule of thumb.** Partial mode is always strictly weaker than whole-program mode on optimization quality, and is slower in total wall-clock time once merge overhead is counted. It exists solely to support mixed builds where not every input was compiled with `-dc`. The linker emits the `"requested LTO but '%s' not built for LTO so doing partial LTO"` warning specifically to flag this performance regression to the user.
 
@@ -396,7 +396,7 @@ The only user-visible acknowledgement is the warning `"requested LTO but '%s' no
 
 ### The "should only see nvvm files when -lto" error
 
-There is one hard-error path. In `main` line 767, if nvlink encounters a `.nvvm` file while `-lto` is **not** active, it fatals with `"should only see nvvm files when -lto"`. This is the mirror case: you cannot feed IR inputs to a non-LTO link. But there is no mirror error for the opposite direction -- you *can* feed native cubins to an `-lto` link, you just get partial mode.
+There is one hard-error path. In `main` line 767, if nvlink encounters a `.nvvm` file while `-lto` is **not** active, it fatals with `"should only see nvvm files when -lto"`. This is the mirror case: you cannot feed IR inputs to a non-LTO link. But there is no mirror error for the opposite direction — you *can* feed native cubins to an `-lto` link, you just get partial mode.
 
 ### Why the override design is this way
 
@@ -405,7 +405,7 @@ The asymmetry (partial-lto auto-force blocks whole-lto override; whole-lto does 
 1. Merge them at the cubin level (partial mode), or
 2. Fatal out.
 
-NVIDIA picked (1) with a warning, under the reasoning that `nvcc`-driven builds are the primary use case and `nvcc` knows how to feed mode-consistent inputs. For the `libcudadevrt` special case, the runtime-helper library is so small and so universally inlined that stripping it wholesale after whole-program compile is safe -- hence the exception.
+NVIDIA picked (1) with a warning, under the reasoning that `nvcc`-driven builds are the primary use case and `nvcc` knows how to feed mode-consistent inputs. For the `libcudadevrt` special case, the runtime-helper library is so small and so universally inlined that stripping it wholesale after whole-program compile is safe — hence the exception.
 
 ## IR Collection: How byte_2A5F286 Affects sub_426CD0
 
@@ -534,18 +534,18 @@ Final dispatch (main lines 1155-1202)
 
 ## Cross-References
 
-- [LTO Overview](overview.md) -- pipeline context showing the whole-vs-partial dispatch in the main flow
-- [libnvvm Integration](libnvvm-integration.md) -- `sub_4BC6F0` returns 100 (whole) or 0 (partial) to determine the path; exact `dlsym` resolution order
-- [Option Forwarding](option-forwarding.md) -- `--force-partial-lto` maps to `--force-device-c` when forwarded to cicc; `--Xnvvm` option deduplication
-- [Split Compilation](split-compilation.md) -- partial mode with `split_compile_extended > 1` uses the thread pool; work item lifecycle
-- [LTO IR Format Versions](ir-format-versions.md) -- `lto_` profile tags (`lto_75` through `lto_121f`) that identify LTO-eligible targets
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- guard condition `(!lto || force_partial_lto)` controls whether linker DCE runs alongside LTO
-- [Merge Phase](../pipeline/merge.md) -- compiled cubins from partial LTO are merged via `merge_elf`
-- [Symbol Resolution](../linker/symbol-resolution.md) -- partial-mode merges keep cross-module externals live
-- [Pipeline Entry](../pipeline/entry.md) -- where option parsing (`sub_427AE0`) and the LTO pipeline call fit into the 14-phase flow
-- [CLI Options](../pipeline/cli-options.md) -- complete nvlink CLI option catalog including the hidden `--force-*-lto` flags
+- [LTO Overview](overview.md) — pipeline context showing the whole-vs-partial dispatch in the main flow
+- [libnvvm Integration](libnvvm-integration.md) — `sub_4BC6F0` returns 100 (whole) or 0 (partial) to determine the path; exact `dlsym` resolution order
+- [Option Forwarding](option-forwarding.md) — `--force-partial-lto` maps to `--force-device-c` when forwarded to cicc; `--Xnvvm` option deduplication
+- [Split Compilation](split-compilation.md) — partial mode with `split_compile_extended > 1` uses the thread pool; work item lifecycle
+- [LTO IR Format Versions](ir-format-versions.md) — `lto_` profile tags (`lto_75` through `lto_121f`) that identify LTO-eligible targets
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — guard condition `(!lto || force_partial_lto)` controls whether linker DCE runs alongside LTO
+- [Merge Phase](../pipeline/merge.md) — compiled cubins from partial LTO are merged via `merge_elf`
+- [Symbol Resolution](../linker/symbol-resolution.md) — partial-mode merges keep cross-module externals live
+- [Pipeline Entry](../pipeline/entry.md) — where option parsing (`sub_427AE0`) and the LTO pipeline call fit into the 14-phase flow
+- [CLI Options](../pipeline/cli-options.md) — complete nvlink CLI option catalog including the hidden `--force-*-lto` flags
 
 ### Sibling Wiki
 
-- **cicc wiki**: [LTO & Module Optimization](../../cicc/lto/index.html) -- the compiler-side LTO pipeline inside libnvvm. Documents the five-pass IR optimization (GlobalOpt, inliner, devirtualization, ThinLTO import) that fires when `nvvmCompileProgram` is called in whole-program mode
-- **cicc wiki**: [Module Summary](../../cicc/lto/module-summary.html) -- NVModuleSummary builder used by ThinLTO import decisions that run inside libnvvm during partial-mode compiles
+- **cicc wiki**: [LTO & Module Optimization](../../cicc/lto/index.html) — the compiler-side LTO pipeline inside libnvvm. Documents the five-pass IR optimization (GlobalOpt, inliner, devirtualization, ThinLTO import) that fires when `nvvmCompileProgram` is called in whole-program mode
+- **cicc wiki**: [Module Summary](../../cicc/lto/module-summary.html) — NVModuleSummary builder used by ThinLTO import decisions that run inside libnvvm during partial-mode compiles

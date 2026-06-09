@@ -1,6 +1,6 @@
 # .nv.info Metadata
 
-The `.nv.info` section is NVIDIA's proprietary ELF metadata format that encodes per-kernel resource requirements and compilation artifacts. Every CUDA kernel carries a `.nv.info` section (or a per-function variant) that tells the GPU driver how many registers to allocate, how much shared memory to reserve, what barriers the kernel uses, and dozens of other resource descriptors. Without this metadata, the driver cannot launch the kernel -- it would have no way to know the kernel's hardware resource footprint.
+The `.nv.info` section is NVIDIA's proprietary ELF metadata format that encodes per-kernel resource requirements and compilation artifacts. Every CUDA kernel carries a `.nv.info` section (or a per-function variant) that tells the GPU driver how many registers to allocate, how much shared memory to reserve, what barriers the kernel uses, and dozens of other resource descriptors. Without this metadata, the driver cannot launch the kernel — it would have no way to know the kernel's hardware resource footprint.
 
 nvlink both reads and writes `.nv.info` sections. During the merge phase it parses incoming `.nv.info` records to extract register counts for weak symbol resolution. During finalization it encodes computed properties (propagated register counts, barrier counts, stack sizes) back into `.nv.info` records in the output cubin. The embedded ptxas compiler produces `.nv.info` through a massive emission subsystem spanning ~190 functions across 1 MB of code.
 
@@ -18,7 +18,7 @@ nvlink both reads and writes `.nv.info` sections. During the merge phase it pars
 | Record node creation (indexed) | `sub_450B70` (`create_eiattr_indexed_record`) |
 | Record node creation (any format) | `sub_4508F0` (`create_eiattr_node`) |
 | TLV byte emission | In-memory chunks attached to each `.nv.info` section by `sub_4504B0`/`sub_450B70`; flushed by the section data writer `sub_45BF00` (called from `sub_45C920` during ELF output) |
-| Master emission function | `sub_15C58F0` (78,811 bytes -- largest nv.info emitter, embedded ptxas) |
+| Master emission function | `sub_15C58F0` (78,811 bytes — largest nv.info emitter, embedded ptxas) |
 | Emission function count | ~190 functions at `0x15CF070`--`0x160FFFF` |
 | Name table | 97 x 16-byte entries at VA `0x1D37D60` (8-byte string ptr + 8-byte metadata) |
 | Diagnostic format string | `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"` |
@@ -31,7 +31,7 @@ A cubin contains two kinds of `.nv.info` sections, distinguished by name:
 
 ### Global `.nv.info`
 
-A single section named `.nv.info` with `sh_link = 0` (no associated symbol). This contains attributes that apply to the entire compilation unit -- CUDA API version, compatibility flags, and shared metadata that is not specific to any one kernel.
+A single section named `.nv.info` with `sh_link = 0` (no associated symbol). This contains attributes that apply to the entire compilation unit — CUDA API version, compatibility flags, and shared metadata that is not specific to any one kernel.
 
 `sub_4504B0` creates this section when called with `a2 = 0` (no symbol index). It calls `sub_4411D0` to find an existing `.nv.info` section; if none exists, it creates one via `sub_441AC0` with type `0x70000000`, alignment 4, and `sh_flags = 0`.
 
@@ -45,7 +45,7 @@ During the merge phase (`sub_45E7D0`), nvlink identifies `.nv.info` sections by 
 
 ## TLV Record Format
 
-Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV (Type-Length-Value) records. There is no section header or record count -- the parser walks from byte 0 to `sh_size`, consuming records sequentially.
+Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV (Type-Length-Value) records. There is no section header or record count — the parser walks from byte 0 to `sh_size`, consuming records sequentially.
 
 ### On-Disk Record Layout
 
@@ -85,7 +85,7 @@ The format byte at offset 0 controls how the payload is interpreted:
 | `0x01` | Free format | Raw bytes, attribute-specific layout | Instruction offset tables, parameter info, WAR patches |
 | `0x02` | Value format | Single 32-bit value (no symbol index) | Module-wide flags (`HAS_PRE_V10_OBJECT`, `NUM_BARRIERS` in some paths) |
 | `0x03` | Sized format | 16-bit value in the size field | `MAXREG_COUNT`, `CBANK_PARAM_SIZE`, `MERCURY_ISA_VERSION` |
-| `0x04` | Indexed format | `[sym_index:4] [value:4]` -- per-symbol attribute | Most per-function resource attributes |
+| `0x04` | Indexed format | `[sym_index:4] [value:4]` — per-symbol attribute | Most per-function resource attributes |
 
 Format `0x04` (indexed) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to. The linker uses this index for symbol remapping during merge and for extracting per-function properties during finalization.
 
@@ -176,8 +176,8 @@ All 97 codes in numeric order. Use this as the authoritative reference when pars
 
 | Code | Hex | Name | Format | Type |
 |---:|---:|---|---|---|
-| 0 | `0x00` | `EIATTR_ERROR` | -- | Sentinel |
-| 1 | `0x01` | `EIATTR_PAD` | -- | Sentinel |
+| 0 | `0x00` | `EIATTR_ERROR` | — | Sentinel |
+| 1 | `0x01` | `EIATTR_PAD` | — | Sentinel |
 | 2 | `0x02` | `EIATTR_IMAGE_SLOT` | Indexed | Texture |
 | 3 | `0x03` | `EIATTR_JUMPTABLE_RELOCS` | Free | Metadata |
 | 4 | `0x04` | `EIATTR_CTAIDZ_USED` | Indexed | Metadata |
@@ -262,7 +262,7 @@ All 97 codes in numeric order. Use this as the authoritative reference when pars
 | 83 | `0x53` | `EIATTR_GEN_ERRBAR_AT_EXIT` | Indexed | Blackwell |
 | 84 | `0x54` | `EIATTR_REG_RECONFIG` | Indexed | Blackwell |
 | 85 | `0x55` | `EIATTR_ANNOTATIONS` | Free | Metadata |
-| 86 | `0x56` | `EIATTR_UNKNOWN` | -- | Sentinel |
+| 86 | `0x56` | `EIATTR_UNKNOWN` | — | Sentinel |
 | 87 | `0x57` | `EIATTR_STACK_CANARY_TRAP_OFFSETS` | Free | Offsets |
 | 88 | `0x58` | `EIATTR_STUB_FUNCTION_KIND` | Indexed | Metadata |
 | 89 | `0x59` | `EIATTR_LOCAL_CTA_ASYNC_STORE_OFFSETS` | Free | Offsets |
@@ -272,13 +272,13 @@ All 97 codes in numeric order. Use this as the authoritative reference when pars
 | 93 | `0x5D` | `EIATTR_SYSCALLS_FALLBACK` | Free | Metadata |
 | 94 | `0x5E` | `EIATTR_CUDA_REQ` | Free | Metadata |
 | 95 | `0x5F` | `EIATTR_MERCURY_ISA_VERSION` | Sized | Mercury |
-| 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Sentinel |
+| 96 | `0x60` | `EIATTR_ERROR_LAST` | — | Sentinel |
 
 ## Most Important EIATTR Entries
 
 This section provides detailed format information for the EIATTR entries that are most critical to GPU kernel launch, driver resource allocation, and the linker's own processing.
 
-### EIATTR_REGCOUNT (0x2F) -- Register Count
+### EIATTR_REGCOUNT (0x2F) — Register Count
 
 The single most important occupancy-determining attribute. The GPU driver computes `max_warps_per_SM = total_registers / (regcount * warp_size)` to determine how many warps can execute concurrently.
 
@@ -304,7 +304,7 @@ nvlink creates REGCOUNT records via `sub_450B70(elfw, 0x2F, 8, payload_ptr, sym_
 
 4. **Validation**: If no REGCOUNT is found for an entry function, the linker emits `"no regcount?"` via the error system. If a max-regcount-limited entry function calls a callee with a higher register count, it prints: `"entry function '%s' with max regcount of %d calls function '%s' with regcount of %d"`.
 
-### EIATTR_NUM_BARRIERS (0x4C) -- Named Barrier Count
+### EIATTR_NUM_BARRIERS (0x4C) — Named Barrier Count
 
 Controls how many named barrier slots the CTA hardware allocates. Most architectures support up to 16 barriers per CTA.
 
@@ -336,7 +336,7 @@ After creating the nv.info record, the section flags are cleared: `sh_flags &= 0
 
 **Barrier propagation:** If a callee requires more barriers than the entry kernel's current count, the linker propagates the higher count: `"Propagating higher barcount %d to the section flags of %s of entry symbol %s"`.
 
-### EIATTR_FRAME_SIZE (0x11) -- Per-Thread Local Memory Frame
+### EIATTR_FRAME_SIZE (0x11) — Per-Thread Local Memory Frame
 
 ```text
 Format: 0x04 (Indexed)
@@ -346,7 +346,7 @@ frame_size: bytes of local memory per thread (register spills + local arrays)
 
 One of the three resource attributes stripped during weak symbol replacement (bitmask bit 17). The frame size determines the `.nv.local.<funcname>` section size visible to the driver.
 
-### EIATTR_MAX_STACK_SIZE (0x23) -- Maximum Stack Size
+### EIATTR_MAX_STACK_SIZE (0x23) — Maximum Stack Size
 
 ```text
 Format: 0x04 (Indexed)
@@ -357,7 +357,7 @@ The worst-case per-thread stack allocation, computed by propagating CRS (Call-Re
 
 One of the three resource attributes stripped during weak replacement (bitmask bit 35).
 
-### EIATTR_MIN_STACK_SIZE (0x12) -- Minimum Stack Size
+### EIATTR_MIN_STACK_SIZE (0x12) — Minimum Stack Size
 
 ```text
 Format: 0x04 (Indexed)
@@ -366,7 +366,7 @@ Payload: [sym_idx:4][min_stack_bytes:4]
 
 The non-recursive stack size minimum. Used when the callgraph has no recursion and the exact stack depth is statically known. For recursive kernels, the linker emits `"Stack size for entry function '%s' cannot be statically determined"`.
 
-### EIATTR_CRS_STACK_SIZE (0x1E) -- Call-Return Stack Size
+### EIATTR_CRS_STACK_SIZE (0x1E) — Call-Return Stack Size
 
 ```text
 Format: 0x04 (Indexed)
@@ -375,7 +375,7 @@ Payload: [sym_idx:4][crs_bytes:4]
 
 Size of the call-return stack for nested function calls. Propagated through the callgraph to compute per-entry worst-case stack requirements.
 
-### EIATTR_SAM_REGION_STACK_SIZE (0x3B) -- SAM Region Stack
+### EIATTR_SAM_REGION_STACK_SIZE (0x3B) — SAM Region Stack
 
 ```text
 Format: 0x04 (Indexed)
@@ -384,7 +384,7 @@ Payload: [sym_idx:4][sam_stack_bytes:4]
 
 SAM (Streaming Asynchronous Memory) region stack size. Processed by `sub_44C880` during `compute_entry_properties` (case `0x3B` at line 1322 in `sub_451D80`). One of the resource attributes subject to symbol index remapping during merge (same case group as 17, 35, 47).
 
-### EIATTR_MAX_THREADS (0x05) -- Maximum Threads Per Block
+### EIATTR_MAX_THREADS (0x05) — Maximum Threads Per Block
 
 ```text
 Format: 0x04 (Indexed)
@@ -392,7 +392,7 @@ Payload: [sym_idx:4][max_threads:4]
 max_threads: maximum threads per block (from .maxntid PTX directive)
 ```
 
-### EIATTR_REQNTID (0x10) -- Required Thread Count
+### EIATTR_REQNTID (0x10) — Required Thread Count
 
 ```text
 Format: 0x04 (Indexed)
@@ -400,7 +400,7 @@ Payload: [sym_idx:4][reqntid:4]
 reqntid: required thread count per dimension (from .reqntid PTX directive)
 ```
 
-### EIATTR_MAXREG_COUNT (0x1B) -- Maximum Register Hint
+### EIATTR_MAXREG_COUNT (0x1B) — Maximum Register Hint
 
 ```text
 Format: 0x03 (Sized)
@@ -410,9 +410,9 @@ On-disk layout (4 bytes total, no payload):
   Bytes 2-3:  maxreg  (uint16, from --maxrregcount or .maxnreg)
 ```
 
-This is a compiler hint, not an absolute limit. The value comes from `--maxrregcount` or the `.maxnreg` PTX directive. Uses sized format (0x03) -- the value is encoded directly in the 16-bit size field with no additional payload.
+This is a compiler hint, not an absolute limit. The value comes from `--maxrregcount` or the `.maxnreg` PTX directive. Uses sized format (0x03) — the value is encoded directly in the 16-bit size field with no additional payload.
 
-### EIATTR_NUM_MBARRIERS (0x38) -- Memory Barrier Count
+### EIATTR_NUM_MBARRIERS (0x38) — Memory Barrier Count
 
 ```text
 Format: 0x04 (Indexed)
@@ -421,7 +421,7 @@ Payload: [sym_idx:4][num_mbarriers:4]
 
 Number of `mbarrier` objects used by the kernel. Processed in `compute_entry_properties` at case `0x38`.
 
-### EIATTR_PARAM_CBANK (0x0A) -- Parameter Constant Bank
+### EIATTR_PARAM_CBANK (0x0A) — Parameter Constant Bank
 
 ```text
 Format: 0x04 (Indexed)
@@ -431,14 +431,14 @@ bank_offset: packed {bank_number:16, offset:16}
 
 Identifies which constant bank and at what offset kernel parameters begin. During merge, the symbol index is remapped with lazy symbol creation (case 10 in the merge switch). The linker may need to create a new symbol table entry if the constant bank symbol doesn't yet exist in the output.
 
-### EIATTR_CBANK_PARAM_SIZE (0x19) -- Constant Bank Parameter Size
+### EIATTR_CBANK_PARAM_SIZE (0x19) — Constant Bank Parameter Size
 
 ```text
 Format: 0x03 (Sized)
 Value: uint16 in the size field = parameter constant bank size in bytes
 ```
 
-### EIATTR_KPARAM_INFO (0x17) -- Kernel Parameter Info
+### EIATTR_KPARAM_INFO (0x17) — Kernel Parameter Info
 
 ```text
 Format: 0x01 (Free)
@@ -448,7 +448,7 @@ Payload: variable-length array of parameter descriptors
 
 Describes the type, size, and alignment of each kernel parameter. The v2 variant (`EIATTR_KPARAM_INFO_V2`, code 69/0x45) carries additional fields.
 
-### EIATTR_EXTERNS (0x0F) -- External Symbol References
+### EIATTR_EXTERNS (0x0F) — External Symbol References
 
 ```text
 Format: 0x01 (Free)
@@ -458,7 +458,7 @@ Payload: array of uint32 symbol indices
 
 During merge, every 4-byte entry in the payload is remapped through the symbol index translation table (case 15 in the merge switch). During finalization, `compute_entry_properties` creates new EXTERNS records via `sub_450B70(elfw, 0x0F, 4*count, payload, root_kernel_sym, ...)`.
 
-### EIATTR_CUDA_API_VERSION (0x37) -- CUDA API Version
+### EIATTR_CUDA_API_VERSION (0x37) — CUDA API Version
 
 ```text
 Format: 0x04 (Indexed)
@@ -468,7 +468,7 @@ api_version: encoded CUDA version (e.g., 0x83 = CUDA 13.1)
 
 During merge, this attribute triggers a version compatibility check (case 55). If the input's CUDA API version exceeds the linker's current maximum (`elfw+628`), the linker emits an error. This prevents linking objects compiled for a newer CUDA version than the linker supports.
 
-### EIATTR_AT_ENTRY_FRAGMENTS (0x4F) -- Entry Fragments (Blackwell)
+### EIATTR_AT_ENTRY_FRAGMENTS (0x4F) — Entry Fragments (Blackwell)
 
 ```text
 Format: 0x01 (Free)
@@ -477,7 +477,7 @@ Payload: array of uint32 fragment type descriptors
 
 During merge, each 4-byte entry is analyzed for fragment types: values 4--5 indicate type 1, values 6--7 indicate type 2. The detected fragment type is stored at `elfw+664`. If conflicting fragment types are found across inputs, an error is emitted. During finalization, EXTERNS-style record creation via `sub_450B70(elfw, 0x4F, size, payload, root_sym, ...)`.
 
-### EIATTR_RESERVED_SMEM_USED (0x41) -- Reserved Shared Memory
+### EIATTR_RESERVED_SMEM_USED (0x41) — Reserved Shared Memory
 
 ```text
 Format: 0x04 (Indexed)
@@ -486,7 +486,7 @@ Payload: [sym_idx:4][flags:4]
 
 Processed in `compute_entry_properties` at case `0x41`. The linker resolves the owning section through `sub_442270` and checks if the referenced `.nv.reservedSmem.*` section has content. Related sections in the binary: `.nv.reservedSmem.begin`, `.nv.reservedSmem.cap`, `.nv.reservedSmem.offset0`, `.nv.reservedSmem.offset1`, `.nv.reservedSmem.end`.
 
-### EIATTR_SHARED_SCRATCH (0x32) -- Shared Scratch Space
+### EIATTR_SHARED_SCRATCH (0x32) — Shared Scratch Space
 
 ```text
 Format: 0x04 (Indexed)
@@ -632,7 +632,7 @@ Hardware errata requiring instruction-level patching by the driver.
 |---:|---:|---|---|---|
 | 72 | `0x48` | `EIATTR_GRAPHICS_GLOBAL_CBANK` | Indexed | Global constant bank for graphics shaders. |
 | 73 | `0x49` | `EIATTR_SHADER_TYPE` | Indexed | Shader type (vertex, fragment, compute, etc.). |
-| 74 | `0x4A` | `EIATTR_VRC_CTA_INIT_COUNT` | Indexed | Virtual Register Count CTA init count. Processed in `compute_entry_properties` (case `0x4A`) -- resolves owning section and tracks max value per entry function. |
+| 74 | `0x4A` | `EIATTR_VRC_CTA_INIT_COUNT` | Indexed | Virtual Register Count CTA init count. Processed in `compute_entry_properties` (case `0x4A`) — resolves owning section and tracks max value per entry function. |
 
 ### Blackwell+ Features (sm_100+)
 
@@ -657,10 +657,10 @@ Hardware errata requiring instruction-level patching by the driver.
 
 | Code | Hex | Name | Format | Description |
 |---:|---:|---|---|---|
-| 0 | `0x00` | `EIATTR_ERROR` | -- | Invalid/error sentinel. Used to "delete" records: the merge sets `attr_code = 0` to suppress them. |
-| 1 | `0x01` | `EIATTR_PAD` | -- | Padding record (ignored by parser). |
-| 86 | `0x56` | `EIATTR_UNKNOWN` | -- | Unknown attribute placeholder. |
-| 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Upper bound sentinel for the main enum range. |
+| 0 | `0x00` | `EIATTR_ERROR` | — | Invalid/error sentinel. Used to "delete" records: the merge sets `attr_code = 0` to suppress them. |
+| 1 | `0x01` | `EIATTR_PAD` | — | Padding record (ignored by parser). |
+| 86 | `0x56` | `EIATTR_UNKNOWN` | — | Unknown attribute placeholder. |
+| 96 | `0x60` | `EIATTR_ERROR_LAST` | — | Upper bound sentinel for the main enum range. |
 
 ## How nvlink Processes .nv.info
 
@@ -721,7 +721,7 @@ The rationale: when a weak function is replaced, the replacement's resource desc
 
 ### Phase 3: Pre-Finalization (Callgraph Processing)
 
-`sub_44C030` (the callgraph closure pass, called from `sub_44DB00` in the pre-finalization fixup) walks the callgraph at `elfw+408` and augments it before `.nv.info` is serialized later in finalize. It is not itself a TLV emitter -- the wiki previously misattributed serialization to this function; binary EIATTR output happens during `sub_445000`'s EIATTR list traversal.
+`sub_44C030` (the callgraph closure pass, called from `sub_44DB00` in the pre-finalization fixup) walks the callgraph at `elfw+408` and augments it before `.nv.info` is serialized later in finalize. It is not itself a TLV emitter — the wiki previously misattributed serialization to this function; binary EIATTR output happens during `sub_445000`'s EIATTR list traversal.
 
 1. **Alt-call resolution**: For every callgraph node `src`, walks the `-3` alt_call list at `src+8` (built by `sub_44BAA0`) and matches each entry's interned name-token (`entry+8`) against the name field (`+4`) of every node flagged `address_taken=1` at `+50`. Each match records the resolved edge via `sub_4644C0`. This is what gives by-name address-taken references a concrete target node. See [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1).
 
@@ -731,7 +731,7 @@ The rationale: when a weak function is replaced, the replacement's resource desc
 
 ### Phase 4: Finalization (Output Generation)
 
-`compute_entry_properties` (`sub_451D80`, 97,969 bytes -- the largest function in the linker) runs during the finalization phase. It operates on all nv.info records and computes derived properties for each kernel entry point:
+`compute_entry_properties` (`sub_451D80`, 97,969 bytes — the largest function in the linker) runs during the finalization phase. It operates on all nv.info records and computes derived properties for each kernel entry point:
 
 **4a. Symbol index fixup**: For indexed records with codes 2, 6--10, 17--20, 23, 35, 38, 47, 59, 69 (the same set as in merge remapping), the function re-resolves symbol indices through the positive/negative symbol mapping tables (`elfw+456`/`elfw+464`). If a symbol was deleted but the record still references it, `attr_code` is set to 0 (suppressed).
 
@@ -769,7 +769,7 @@ If a callee's barrier count exceeds the entry kernel's:
 
 **4d. EXTERNS and AT_ENTRY_FRAGMENTS creation**: For entry functions, the finalization phase creates EIATTR_EXTERNS (0x0F) and EIATTR_AT_ENTRY_FRAGMENTS (0x4F) records for the transitive closure of external references and fragment descriptors.
 
-**4e. TLV byte emission**: There is no dedicated standalone "nvinfo_encode" entry point. The 16-byte in-memory node `[fmt:1][attr:1][size:2][secidx:4][payload_ptr:8]` already mirrors the on-disk header, and the payload bytes are stored exactly as they will appear in the section. During finalization (`sub_445000`) the EIATTR linked list at `elfw+392` is reversed (line 540) into emit order, and per-section data chunks are appended to the section's chunk list at offset `+72`. Each chunk-list cell is a 16-byte pair `{ next_cell, fragment_descriptor_ptr }`; the descriptor itself carries `{ data_ptr (+0), sec_offset (+8), _reserved (+16), frag_size (+24) }`. The chunk list is a singly-linked traversal -- `sub_45BF00` reads the head from `section+72`, then for each cell follows `cell[1]` to the descriptor, gap-pads zeros up to `desc->sec_offset` within the section, and emits `desc->frag_size` bytes from `desc->data_ptr` through `sub_45B6D0`; an `sec_offset == (uint64_t)-1` sentinel suppresses gap padding. The top-level output driver is `sub_45C920`, invoked from `main` after `fopen(output_path, "wb")`; it allocates a mode-3 FILE\* writer via `sub_45B950`, runs `sub_45BF00` (the section-data + ELF-image serializer), and tears down the writer with `sub_45B6A0`. Note: `sub_468760` is *not* the EIATTR encoder -- it is the relocation-action dispatcher / instruction-field bitpacker called from `sub_469D60` (`apply_relocations`); see [Relocation Engine](../linker/relocation-engine.md) and the `function-map.md` entry `reloc_action_dispatcher`. The SSE2 `__m128i` loads in `sub_468760` reference the per-relocation-type 64-byte descriptor table (`off_1D3CBE0`), not EIATTR records.
+**4e. TLV byte emission**: There is no dedicated standalone "nvinfo_encode" entry point. The 16-byte in-memory node `[fmt:1][attr:1][size:2][secidx:4][payload_ptr:8]` already mirrors the on-disk header, and the payload bytes are stored exactly as they will appear in the section. During finalization (`sub_445000`) the EIATTR linked list at `elfw+392` is reversed (line 540) into emit order, and per-section data chunks are appended to the section's chunk list at offset `+72`. Each chunk-list cell is a 16-byte pair `{ next_cell, fragment_descriptor_ptr }`; the descriptor itself carries `{ data_ptr (+0), sec_offset (+8), _reserved (+16), frag_size (+24) }`. The chunk list is a singly-linked traversal — `sub_45BF00` reads the head from `section+72`, then for each cell follows `cell[1]` to the descriptor, gap-pads zeros up to `desc->sec_offset` within the section, and emits `desc->frag_size` bytes from `desc->data_ptr` through `sub_45B6D0`; an `sec_offset == (uint64_t)-1` sentinel suppresses gap padding. The top-level output driver is `sub_45C920`, invoked from `main` after `fopen(output_path, "wb")`; it allocates a mode-3 FILE\* writer via `sub_45B950`, runs `sub_45BF00` (the section-data + ELF-image serializer), and tears down the writer with `sub_45B6A0`. Note: `sub_468760` is *not* the EIATTR encoder — it is the relocation-action dispatcher / instruction-field bitpacker called from `sub_469D60` (`apply_relocations`); see [Relocation Engine](../linker/relocation-engine.md) and the `function-map.md` entry `reloc_action_dispatcher`. The SSE2 `__m128i` loads in `sub_468760` reference the per-relocation-type 64-byte descriptor table (`off_1D3CBE0`), not EIATTR records.
 
 ## Emission Subsystem (Embedded ptxas)
 
@@ -819,7 +819,7 @@ The uniformity across ~190 functions suggests they are generated from a data-dri
 
 ## How .nv.info Drives GPU Resource Allocation
 
-The `.nv.info` section is not just metadata for tools -- it is the primary input to the GPU driver's kernel launch resource allocator. The relationship is:
+The `.nv.info` section is not just metadata for tools — it is the primary input to the GPU driver's kernel launch resource allocator. The relationship is:
 
 1. **Register allocation**: `EIATTR_REGCOUNT` tells the driver how many registers each thread needs. The driver computes: `max_warps_per_SM = total_registers / (regcount * warp_size)`. This is the single most important occupancy-determining attribute.
 
@@ -868,18 +868,18 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` also exists at `0x245E8D9`, sugg
 
 ## Cross-References
 
-- [NVIDIA Section Types](nvidia-sections.md) -- `SHT_CUDA_INFO` definition and section flag encoding
-- [Section Catalog](../reference/section-catalog.md) -- `.nv.info` and `.nv.info.<funcname>` catalog entries
-- [Weak Symbol Handling](../linker/weak-symbols.md) -- Register count extraction from `.nv.info` during weak resolution
-- [Section Merging](../linker/section-merging.md) -- `.nv.info` section merge with symbol index remapping
-- [Finalization Phase](../pipeline/finalize.md) -- `compute_entry_properties` and `propagate_register_counts`
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- Per-SM nv.info emitter callback registration
-- [Constant Banks](constant-banks.md) -- `EIATTR_PARAM_CBANK` and `EIATTR_CBANK_PARAM_SIZE` interaction
+- [NVIDIA Section Types](nvidia-sections.md) — `SHT_CUDA_INFO` definition and section flag encoding
+- [Section Catalog](../reference/section-catalog.md) — `.nv.info` and `.nv.info.<funcname>` catalog entries
+- [Weak Symbol Handling](../linker/weak-symbols.md) — Register count extraction from `.nv.info` during weak resolution
+- [Section Merging](../linker/section-merging.md) — `.nv.info` section merge with symbol index remapping
+- [Finalization Phase](../pipeline/finalize.md) — `compute_entry_properties` and `propagate_register_counts`
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — Per-SM nv.info emitter callback registration
+- [Constant Banks](constant-banks.md) — `EIATTR_PARAM_CBANK` and `EIATTR_CBANK_PARAM_SIZE` interaction
 
 **Sibling wikis (ptxas):**
 
-- [ptxas: Section Catalog & EIATTR](../../ptxas/output/sections.html) -- ptxas-side EIATTR emission pipeline and section type constants
-- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR attribute code reference from the ptxas perspective
+- [ptxas: Section Catalog & EIATTR](../../ptxas/output/sections.html) — ptxas-side EIATTR emission pipeline and section type constants
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) — EIATTR attribute code reference from the ptxas perspective
 
 ## Confidence Assessment
 

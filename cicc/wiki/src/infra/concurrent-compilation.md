@@ -2,12 +2,12 @@
 
 CICC implements a **two-phase concurrent compilation model** that is entirely absent from upstream LLVM. The optimizer runs twice over the same module: Phase I performs whole-module analysis and early IR optimizations on a single thread, then Phase II runs per-function backend optimization in parallel across a thread pool. The design exploits the fact that most backend passes (instruction selection prep, register pressure reduction, peephole) are function-local and do not require cross-function information once Phase I has completed interprocedural analysis.
 
-The two-phase protocol lives in `sub_12E7E70` (2,118 bytes native), which calls the same master pipeline function `sub_12E54A0` twice, discriminated only by a TLS phase counter. The concurrency infrastructure spans the `0x12D4000`--`0x12EA000` address range and includes a GNU Make jobserver integration for build-system-aware parallelism throttling -- a feature that allows `make -j8` to correctly limit total system load even when each cicc invocation itself wants to spawn threads.
+The two-phase protocol lives in `sub_12E7E70` (2,118 bytes native), which calls the same master pipeline function `sub_12E54A0` twice, discriminated only by a TLS phase counter. The concurrency infrastructure spans the `0x12D4000`--`0x12EA000` address range and includes a GNU Make jobserver integration for build-system-aware parallelism throttling — a feature that allows `make -j8` to correctly limit total system load even when each cicc invocation itself wants to spawn threads.
 
 | | |
 |---|---|
 | **Phase I/II orchestrator** | `sub_12E7E70` (2,118 bytes native) |
-| **Phase counter (TLS)** | `qword_4FBB3B0` -- values 1, 2, 3 |
+| **Phase counter (TLS)** | `qword_4FBB3B0` — values 1, 2, 3 |
 | **Concurrency eligibility** | `sub_12D4250` (161 bytes native) |
 | **Function sorting** | `sub_12E0CA0` (4,678 bytes native) |
 | **Concurrent entry** | `sub_12E1EF0` (10,509 bytes native) |
@@ -19,8 +19,8 @@ The two-phase protocol lives in `sub_12E7E70` (2,118 bytes native), which calls 
 | **Thread pool create** | `sub_16D4AB0` |
 | **Thread pool enqueue** | `sub_16D5230` |
 | **Thread pool join** | `sub_16D4EC0` |
-| **Disable env var** | `LIBNVVM_DISABLE_CONCURRENT_API` -- `byte_4F92D70` |
-| **Pipeline function** | `sub_12E54A0` (9,968 bytes native) -- called by both phases |
+| **Disable env var** | `LIBNVVM_DISABLE_CONCURRENT_API` — `byte_4F92D70` |
+| **Pipeline function** | `sub_12E54A0` (9,968 bytes native) — called by both phases |
 
 ## Two-Phase Architecture
 
@@ -32,8 +32,8 @@ The phase counter `qword_4FBB3B0` is a TLS variable accessed via `sub_16D40E0` (
 
 | Value | Meaning | Set point |
 |-------|---------|-----------|
-| 1 | Phase I active -- analysis + early IR optimization | Before first `sub_12E54A0` call |
-| 2 | Phase II active -- backend optimization + codegen prep | Before second `sub_12E54A0` call |
+| 1 | Phase I active — analysis + early IR optimization | Before first `sub_12E54A0` call |
+| 2 | Phase II active — backend optimization + codegen prep | Before second `sub_12E54A0` call |
 | 3 | Compilation complete for this module | After second `sub_12E54A0` returns |
 
 ### Sequential Path (sub_12E7E70)
@@ -48,7 +48,7 @@ if (!verbose && num_defined_functions <= 1) {
 }
 ```
 
-This means the optimizer runs both phases in a single invocation -- passes see no phase counter and run unconditionally. For multi-function modules or when verbose logging is active, the full two-phase protocol engages:
+This means the optimizer runs both phases in a single invocation — passes see no phase counter and run unconditionally. For multi-function modules or when verbose logging is active, the full two-phase protocol engages:
 
 ```c
 // Phase I
@@ -196,7 +196,7 @@ Before sorting, `sub_12E0CA0` enumerates all functions and globals via an iterat
 | End check | `sub_12D3CA0` | Test if iterator reached end |
 
 For each function, the enumeration:
-1. Checks the node type discriminator at `*(byte*)(node + 16)` -- type 0 = Function, type 1 = GlobalVariable
+1. Checks the node type discriminator at `*(byte*)(node + 16)` — type 0 = Function, type 1 = GlobalVariable
 2. For functions: calls `sub_15E4F60` (isDeclaration check), `sub_12D3D20` (priority), `sub_1649960` (name), inserts into `v359` hash table (name to function) and `v362` hash table (name to linkage type)
 3. For global variables: walks the parent/linked GlobalValue chain via `sub_164A820`, inserts callee references into `v365` hash table for split-module tracking
 
@@ -266,7 +266,7 @@ int actual_threads = min(requested_threads, num_functions);
 sub_16D4AB0(thread_pool, actual_threads);
 ```
 
-The thread count is clamped to the number of functions -- there is no point spawning more threads than there are work items.
+The thread count is clamped to the number of functions — there is no point spawning more threads than there are work items.
 
 ### Thread Count Resolution
 
@@ -284,7 +284,7 @@ if (thread_count == 0)
 |--------|------|--------|---------|---------|
 | Primary | 203 (0xCB) | 4104 | -1 (auto) | Explicit thread count |
 | Fallback | 205 (0xCD) | 4144 | -1 (auto) | Secondary thread count |
-| System | -- | -- | -- | `get_nprocs()` return value |
+| System | — | — | — | `get_nprocs()` return value |
 
 The `-1` sentinel means "auto-detect." When both slots are `-1`, the system falls back to the number of online CPUs. In practice, this means a 16-core machine will spawn 16 threads for concurrent Phase II compilation unless the user or calling tool overrides the count.
 
@@ -292,11 +292,11 @@ The `-1` sentinel means "auto-detect." When both slots are `-1`, the system fall
 
 Before submitting each function to the thread pool, `sub_12E1EF0` builds a self-contained compilation context (4,632 bytes) containing everything the worker needs:
 
-1. **Bitcode extraction**: `sub_1AB9F40(&buffer, *module_bc, &iterators, sub_12D4BD0, &filter_state)` -- extracts the bitcode for a single function using `sub_12D4BD0` as a filter callback that checks the function name against the work hash table
-2. **Bitcode parsing**: `sub_153BF40(module_data, &context, 0, 0, 0, 0)` -- parses the extracted bitcode into an LLVM Module
+1. **Bitcode extraction**: `sub_1AB9F40(&buffer, *module_bc, &iterators, sub_12D4BD0, &filter_state)` — extracts the bitcode for a single function using `sub_12D4BD0` as a filter callback that checks the function name against the work hash table
+2. **Bitcode parsing**: `sub_153BF40(module_data, &context, 0, 0, 0, 0)` — parses the extracted bitcode into an LLVM Module
 3. **Context copy**: Copies all iterator state (`v391`--`v395`), context/options/error callbacks (`v405`--`v409`), module name string, the full 4,512-byte NVVMPassOptions struct, and module bitcode vectors
 
-Each function gets its own independent copy of the options struct and module -- there is no shared mutable state between worker threads during Phase II.
+Each function gets its own independent copy of the options struct and module — there is no shared mutable state between worker threads during Phase II.
 
 ## Worker Entry and Completion
 
@@ -431,44 +431,44 @@ Upstream LLVM has no two-phase compilation model. The standard LLVM pipeline run
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Function iterator: next | `sub_12D3C60` | ~200 | -- |
-| Function iterator: advance | `sub_12D3C80` | ~230 | -- |
-| Function iterator: end check | `sub_12D3CA0` | ~260 | -- |
-| Function attribute/priority query | `sub_12D3D20` | 585 | -- |
-| Auto thread count determination | `sub_12D3FC0` | 3,600 | -- |
-| Concurrency eligibility check | `sub_12D4250` | 626 | -- |
-| Insertion sort (small N) | `sub_12D48A0` | -- | -- |
-| Per-function bitcode filter callback | `sub_12D4BD0` | 2,384 | -- |
-| Work item destructor callback | `sub_12D4D90` | 2,742 | -- |
-| Introsort (large N) | `sub_12D57D0` | -- | -- |
-| Function sorting and enumeration | `sub_12E0CA0` | 23,422 | -- |
-| Concurrent compilation top-level entry | `sub_12E1EF0` | 51,325 | -- |
-| Master pipeline assembly (both phases) | `sub_12E54A0` | 49,800 | -- |
-| Concurrent worker entry | `sub_12E7B90` | 2,997 | -- |
-| Phase I/II orchestrator | `sub_12E7E70` | 9,405 | -- |
-| Per-function Phase II optimizer | `sub_12E86C0` | 7,687 | -- |
-| Per-function completion callback | `sub_12E8D50` | -- | -- |
-| LLVM module linker (post-merge) | `sub_12F5610` | 7,339 | -- |
-| Bitcode reader/verifier | `sub_153BF40` | -- | -- |
-| `isDeclaration()` check | `sub_15E4F60` | -- | -- |
-| Get function name | `sub_1649960` | -- | -- |
-| Walk to parent GlobalValue | `sub_164A820` | -- | -- |
-| Jobserver error check/cleanup | `sub_1682740` | -- | -- |
-| MAKEFLAGS `--jobserver-auth=` parser | `sub_1682BF0` | -- | -- |
-| GNU jobserver init (296-byte state) | `sub_16832F0` | -- | -- |
-| TLS set (`qword_4FBB3B0`) | `sub_16D40E0` | -- | -- |
-| TLS get (`qword_4FBB3B0`) | `sub_16D40F0` | -- | -- |
-| Thread pool create | `sub_16D4AB0` | -- | -- |
-| Thread pool join | `sub_16D4EC0` | -- | -- |
-| Thread pool enqueue work item | `sub_16D5230` | -- | -- |
-| Per-function bitcode extraction | `sub_1AB9F40` | -- | -- |
-| `get_nprocs()` wrapper | `sub_22420F0` | -- | -- |
+| Function iterator: next | `sub_12D3C60` | ~200 | — |
+| Function iterator: advance | `sub_12D3C80` | ~230 | — |
+| Function iterator: end check | `sub_12D3CA0` | ~260 | — |
+| Function attribute/priority query | `sub_12D3D20` | 585 | — |
+| Auto thread count determination | `sub_12D3FC0` | 3,600 | — |
+| Concurrency eligibility check | `sub_12D4250` | 626 | — |
+| Insertion sort (small N) | `sub_12D48A0` | — | — |
+| Per-function bitcode filter callback | `sub_12D4BD0` | 2,384 | — |
+| Work item destructor callback | `sub_12D4D90` | 2,742 | — |
+| Introsort (large N) | `sub_12D57D0` | — | — |
+| Function sorting and enumeration | `sub_12E0CA0` | 23,422 | — |
+| Concurrent compilation top-level entry | `sub_12E1EF0` | 51,325 | — |
+| Master pipeline assembly (both phases) | `sub_12E54A0` | 49,800 | — |
+| Concurrent worker entry | `sub_12E7B90` | 2,997 | — |
+| Phase I/II orchestrator | `sub_12E7E70` | 9,405 | — |
+| Per-function Phase II optimizer | `sub_12E86C0` | 7,687 | — |
+| Per-function completion callback | `sub_12E8D50` | — | — |
+| LLVM module linker (post-merge) | `sub_12F5610` | 7,339 | — |
+| Bitcode reader/verifier | `sub_153BF40` | — | — |
+| `isDeclaration()` check | `sub_15E4F60` | — | — |
+| Get function name | `sub_1649960` | — | — |
+| Walk to parent GlobalValue | `sub_164A820` | — | — |
+| Jobserver error check/cleanup | `sub_1682740` | — | — |
+| MAKEFLAGS `--jobserver-auth=` parser | `sub_1682BF0` | — | — |
+| GNU jobserver init (296-byte state) | `sub_16832F0` | — | — |
+| TLS set (`qword_4FBB3B0`) | `sub_16D40E0` | — | — |
+| TLS get (`qword_4FBB3B0`) | `sub_16D40F0` | — | — |
+| Thread pool create | `sub_16D4AB0` | — | — |
+| Thread pool join | `sub_16D4EC0` | — | — |
+| Thread pool enqueue work item | `sub_16D5230` | — | — |
+| Per-function bitcode extraction | `sub_1AB9F40` | — | — |
+| `get_nprocs()` wrapper | `sub_22420F0` | — | — |
 
 ## Cross-References
 
-- [Entry Point & CLI](../pipeline/entry.md) -- pipeline dispatch that leads to the optimizer, including `-jobserver` flag routing
-- [Optimizer Pipeline](../pipeline/optimizer.md) -- `sub_12E54A0`, the pipeline function called by both phases
-- [NVVMPassOptions](../config/knobs.md) -- the 221-slot options table including thread count and jobserver slots
-- [Environment Variables](../config/env-vars.md) -- `LIBNVVM_DISABLE_CONCURRENT_API` and `MAKEFLAGS`
-- [CLI Flags](../config/cli-flags.md) -- `-jobserver`, `-split-compile`, `-split-compile-extended`
-- [Bitcode I/O](../infra/bitcode-io.md) -- `sub_153BF40` bitcode reader used for per-function module extraction
+- [Entry Point & CLI](../pipeline/entry.md) — pipeline dispatch that leads to the optimizer, including `-jobserver` flag routing
+- [Optimizer Pipeline](../pipeline/optimizer.md) — `sub_12E54A0`, the pipeline function called by both phases
+- [NVVMPassOptions](../config/knobs.md) — the 221-slot options table including thread count and jobserver slots
+- [Environment Variables](../config/env-vars.md) — `LIBNVVM_DISABLE_CONCURRENT_API` and `MAKEFLAGS`
+- [CLI Flags](../config/cli-flags.md) — `-jobserver`, `-split-compile`, `-split-compile-extended`
+- [Bitcode I/O](../infra/bitcode-io.md) — `sub_153BF40` bitcode reader used for per-function module extraction

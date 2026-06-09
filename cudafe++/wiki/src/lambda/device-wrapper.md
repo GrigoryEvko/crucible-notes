@@ -1,6 +1,6 @@
 # Device Lambda Wrapper (`__nv_dl_wrapper_t`)
 
-When a C++ lambda is annotated `__device__` inside CUDA code compiled with `--extended-lambda`, the closure class that the frontend creates has host linkage only -- it cannot be instantiated on the device. The device lambda wrapper system solves this by replacing the lambda expression at the call site with a construction of `__nv_dl_wrapper_t<Tag, F1, ..., FN>`, a template struct whose type parameters encode the lambda's identity (via `Tag`) and whose fields store the captured variables in device-accessible storage. The wrapper struct has a dummy `operator()` that never executes real code on the device side -- its purpose is purely to carry captured state across the host/device boundary. The actual device-side call is dispatched through the tag type, which encodes a function pointer to the lambda's `operator()` as a non-type template parameter.
+When a C++ lambda is annotated `__device__` inside CUDA code compiled with `--extended-lambda`, the closure class that the frontend creates has host linkage only — it cannot be instantiated on the device. The device lambda wrapper system solves this by replacing the lambda expression at the call site with a construction of `__nv_dl_wrapper_t<Tag, F1, ..., FN>`, a template struct whose type parameters encode the lambda's identity (via `Tag`) and whose fields store the captured variables in device-accessible storage. The wrapper struct has a dummy `operator()` that never executes real code on the device side — its purpose is purely to carry captured state across the host/device boundary. The actual device-side call is dispatched through the tag type, which encodes a function pointer to the lambda's `operator()` as a non-type template parameter.
 
 Two tag types exist. `__nv_dl_tag` is the standard tag for lambdas with auto-deduced return types. `__nv_dl_trailing_return_tag` handles lambdas with explicit trailing return types, preserving the user-specified return type through the wrapper. Both tag types carry the lambda's `operator()` function pointer and a unique ID as template parameters.
 
@@ -24,7 +24,7 @@ The wrapper template does not exist in any header file. It is synthesized as raw
 
 ## Primary Template and Zero-Capture Specialization
 
-The primary template is a static_assert trap -- any instantiation with a non-zero variadic pack that was not explicitly specialized triggers a compilation error. The zero-capture specialization (Tag only, no F parameters) provides a trivial constructor and a dummy `operator()` returning 0.
+The primary template is a static_assert trap — any instantiation with a non-zero variadic pack that was not explicitly specialized triggers a compilation error. The zero-capture specialization (Tag only, no F parameters) provides a trivial constructor and a dummy `operator()` returning 0.
 
 This code is emitted verbatim as a single string literal from `sub_6BCC20`:
 
@@ -42,9 +42,9 @@ int operator()(U1...) { return 0; }
 };
 ```
 
-Note: no space after the comma in `Tag,typename...` and no indentation -- this is the literal text injected into the `.int.c` output. The primary template and the zero-capture specialization are emitted as a single string literal.
+Note: no space after the comma in `Tag,typename...` and no indentation — this is the literal text injected into the `.int.c` output. The primary template and the zero-capture specialization are emitted as a single string literal.
 
-The primary template's `static_assert` acts as a safety net: if the frontend records a capture count of N but fails to emit the corresponding N-capture specialization, the host compiler will produce a diagnostic rather than silently generating broken code. The zero-capture specialization's `operator()` returns `int(0)` -- this value is never used at runtime because the device compiler dispatches through the tag's encoded function pointer, not through the wrapper's `operator()`.
+The primary template's `static_assert` acts as a safety net: if the frontend records a capture count of N but fails to emit the corresponding N-capture specialization, the host compiler will produce a diagnostic rather than silently generating broken code. The zero-capture specialization's `operator()` returns `int(0)` — this value is never used at runtime because the device compiler dispatches through the tag's encoded function pointer, not through the wrapper's `operator()`.
 
 ## Tag Types
 
@@ -57,7 +57,7 @@ template <typename U, U func, unsigned>
 struct __nv_dl_tag { };
 ```
 
-The string is `"\ntemplate <typename U, U func, unsigned>\nstruct __nv_dl_tag { };\n"` -- note the leading newline.
+The string is `"\ntemplate <typename U, U func, unsigned>\nstruct __nv_dl_tag { };\n"` — note the leading newline.
 
 | Parameter | Role |
 |---|---|
@@ -90,7 +90,7 @@ template <typename T>
 struct __nvdl_remove_const<T const> { typedef T type; };
 ```
 
-The `__nvdl_remove_ref` specialization for function references (`T(&)(Args...)`) is notable: it converts a function reference type to a function pointer type (`T(*)(Args...)`). This handles the case where a lambda captures a function by reference -- the wrapper field needs a copyable function pointer, not a reference.
+The `__nvdl_remove_ref` specialization for function references (`T(&)(Args...)`) is notable: it converts a function reference type to a function pointer type (`T(*)(Args...)`). This handles the case where a lambda captures a function by reference — the wrapper field needs a copyable function pointer, not a reference.
 
 ### `__nv_dl_trailing_return_tag`
 
@@ -119,9 +119,9 @@ struct __nv_dl_wrapper_t<__nv_dl_trailing_return_tag<U, func, Return, Id> > {
 };
 ```
 
-Note: the `__nv_dl_trailing_return_tag` definition and its zero-capture wrapper specialization are emitted together (two strings in immediate succession: the first ends at `{ ` before `__builtin_unreachable`, the second contains `__builtin_unreachable(); }\n}; \n\n` -- note the trailing space before the newlines).
+Note: the `__nv_dl_trailing_return_tag` definition and its zero-capture wrapper specialization are emitted together (two strings in immediate succession: the first ends at `{ ` before `__builtin_unreachable`, the second contains `__builtin_unreachable(); }\n}; \n\n` — note the trailing space before the newlines).
 
-The `__builtin_unreachable()` tells the compiler this code path is never taken, so no return value needs to be materialized. This is safe because the wrapper's `operator()` is never called on the device side -- the device compiler resolves the call through the tag's encoded function pointer directly.
+The `__builtin_unreachable()` tells the compiler this code path is never taken, so no return value needs to be materialized. This is safe because the wrapper's `operator()` is never called on the device side — the device compiler resolves the call through the tag's encoded function pointer directly.
 
 ## Per-Capture-Count Specialization Generator (`sub_6BB790`)
 
@@ -183,9 +183,9 @@ Specializations for array types (emitted by `sub_6BC290`) map `T[D1]...[DN]` to 
 
 The decompiled `sub_6BB790` reveals the emission is entirely printf-based, building C++ source text in a 1064-byte stack buffer (`v29[1064]`) and passing each fragment through the emit callback. The function has two major branches:
 
-**Branch 1: `a1 == 0` (zero captures)** -- Dead code. Falls through to emit `__nv_dl_wrapper_t(Tag,) :` with a trailing comma and empty initializer list, which would produce syntactically invalid C++. This path is never reached because the bitmap scan loop in `sub_6BCC20` skips bit 0 (`if (v2 && (v3 & 1) != 0)`). The zero-capture case is handled by the primary template's `__nv_dl_wrapper_t<Tag>` specialization emitted unconditionally as a string literal in `sub_6BCC20`.
+**Branch 1: `a1 == 0` (zero captures)** — Dead code. Falls through to emit `__nv_dl_wrapper_t(Tag,) :` with a trailing comma and empty initializer list, which would produce syntactically invalid C++. This path is never reached because the bitmap scan loop in `sub_6BCC20` skips bit 0 (`if (v2 && (v3 & 1) != 0)`). The zero-capture case is handled by the primary template's `__nv_dl_wrapper_t<Tag>` specialization emitted unconditionally as a string literal in `sub_6BCC20`.
 
-**Branch 2: `a1 > 0` (N captures)** -- Generates the N-ary specializations through seven sequential loops:
+**Branch 2: `a1 > 0` (N captures)** — Generates the N-ary specializations through seven sequential loops:
 
 ```text
 Loop 1:  Emit template parameter list    ", typename F1, ..., typename FN"
@@ -402,11 +402,11 @@ These traits and macros enable the CUDA runtime headers and device compiler to d
 | `sub_6BCBF0` | `nv_record_capture_count` | `nv_transforms.c` | 13 | Set bit N in device or host-device bitmap |
 | `sub_6BCBC0` | `nv_reset_capture_bitmasks` | `nv_transforms.c` | 9 | Zero both 128-byte bitmaps before each TU |
 | `sub_47B890` | `gen_lambda` | `cp_gen_be.c` | 336 | Per-lambda wrapper call emission in `.int.c` output |
-| `sub_467E50` | `emit_string` | `cp_gen_be.c` | -- | Low-level string emitter to output buffer |
-| `sub_46BC80` | `emit_preprocessor_directive` | `cp_gen_be.c` | -- | Emit `#if 0` / `#endif` suppression blocks |
-| `sub_475820` | `emit_closure_tag_type` | `cp_gen_be.c` | -- | Emit tag type for wrapper construction |
-| `sub_46E640` | `emit_capture_type_list` | `cp_gen_be.c` | -- | Emit template argument list of capture types |
-| `sub_46E550` | `emit_capture_value_list` | `cp_gen_be.c` | -- | Emit constructor arguments (captured values) |
+| `sub_467E50` | `emit_string` | `cp_gen_be.c` | — | Low-level string emitter to output buffer |
+| `sub_46BC80` | `emit_preprocessor_directive` | `cp_gen_be.c` | — | Emit `#if 0` / `#endif` suppression blocks |
+| `sub_475820` | `emit_closure_tag_type` | `cp_gen_be.c` | — | Emit tag type for wrapper construction |
+| `sub_46E640` | `emit_capture_type_list` | `cp_gen_be.c` | — | Emit template argument list of capture types |
+| `sub_46E550` | `emit_capture_value_list` | `cp_gen_be.c` | — | Emit constructor arguments (captured values) |
 | `sub_6BC290` | `emit_array_capture_helpers` | `nv_transforms.c` | 183 | Emit `__nv_lambda_array_wrapper` for dim 2-8 |
 
 ## Global State
@@ -421,9 +421,9 @@ These traits and macros enable the CUDA runtime headers and device compiler to d
 
 ## Related Pages
 
-- [Extended Lambda Overview](./overview.md) -- End-to-end flow through the five pipeline stages
-- [Host-Device Lambda Wrapper](./host-device-wrapper.md) -- `__nv_hdl_wrapper_t` type-erased design
-- [Capture Handling](./capture-handling.md) -- `__nv_lambda_field_type`, `__nv_lambda_array_wrapper` for array captures
-- [Preamble Injection](./preamble-injection.md) -- `sub_6BCC20` full emission sequence
-- [Lambda Restrictions](./restrictions.md) -- Validation rules and error codes
-- [Kernel Stub Generation](../cuda/kernel-stubs.md) -- Parallel `#if 0` suppression pattern for `__global__` functions
+- [Extended Lambda Overview](./overview.md) — End-to-end flow through the five pipeline stages
+- [Host-Device Lambda Wrapper](./host-device-wrapper.md) — `__nv_hdl_wrapper_t` type-erased design
+- [Capture Handling](./capture-handling.md) — `__nv_lambda_field_type`, `__nv_lambda_array_wrapper` for array captures
+- [Preamble Injection](./preamble-injection.md) — `sub_6BCC20` full emission sequence
+- [Lambda Restrictions](./restrictions.md) — Validation rules and error codes
+- [Kernel Stub Generation](../cuda/kernel-stubs.md) — Parallel `#if 0` suppression pattern for `__global__` functions

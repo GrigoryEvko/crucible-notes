@@ -84,8 +84,8 @@ The linear scan at the end (iterating all positive symbols) is a fallback for th
 
 ## Cross-References
 
-- [Symbol Resolution](symbol-resolution.md) -- `sub_440350` and the 0xFFFF virtual-section indirection that this resolver chases through
-- [Symbol Addition](symbol-addition.md) -- populates the `pos_symbols`/`neg_symbols`/`merged_symbol_array` structures that this resolver reads
-- [Section Merging](section-merging.md) -- creates the multi-input-to-one-output mapping that drives the linear-scan fallback
-- [Relocation Application Engine](relocation-engine.md) -- the primary caller for input-to-output index translation
-- [Merge Phase](../pipeline/merge.md) -- `sub_45E7D0` section-copy loop that invokes this resolver
+- [Symbol Resolution](symbol-resolution.md) — `sub_440350` and the 0xFFFF virtual-section indirection that this resolver chases through
+- [Symbol Addition](symbol-addition.md) — populates the `pos_symbols`/`neg_symbols`/`merged_symbol_array` structures that this resolver reads
+- [Section Merging](section-merging.md) — creates the multi-input-to-one-output mapping that drives the linear-scan fallback
+- [Relocation Application Engine](relocation-engine.md) — the primary caller for input-to-output index translation
+- [Merge Phase](../pipeline/merge.md) — `sub_45E7D0` section-copy loop that invokes this resolver

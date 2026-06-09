@@ -1,6 +1,6 @@
 # R_MERCURY Relocation Catalog
 
-Complete reference listing of all 65 R_MERCURY relocation types defined in nvlink v13.0.88 for the capsule Mercury (capmerc) binary format. The binary contains 71 total `R_MERCURY`/`MERCURY`-bearing strings: 65 relocation type names, 2 trailing-space formatting duplicates, and 4 `.nv.info` attribute names -- all documented below. For semantic details, descriptor table structure, and dispatch logic, see [R_MERCURY Relocations](../mercury/r-mercury-relocations.md). For the CUDA counterpart catalog, see [R_CUDA Relocation Catalog](r-cuda-catalog.md).
+Complete reference listing of all 65 R_MERCURY relocation types defined in nvlink v13.0.88 for the capsule Mercury (capmerc) binary format. The binary contains 71 total `R_MERCURY`/`MERCURY`-bearing strings: 65 relocation type names, 2 trailing-space formatting duplicates, and 4 `.nv.info` attribute names — all documented below. For semantic details, descriptor table structure, and dispatch logic, see [R_MERCURY Relocations](../mercury/r-mercury-relocations.md). For the CUDA counterpart catalog, see [R_CUDA Relocation Catalog](r-cuda-catalog.md).
 
 ## Encoding
 
@@ -19,10 +19,10 @@ Every R_MERCURY type is stored in ELF `r_info` as `index + 0x10000`. The relocat
 | 4 | `0x10004` | `R_MERCURY_ABS16` | `0x1D35A54` | Absolute data | `R_CUDA_ABS16_*` (4 types) |
 | 5 | `0x10005` | `R_MERCURY_ABS32_LO` | `0x1D35A64` | Absolute data | `R_CUDA_ABS32_LO_*` (4 types) |
 | 6 | `0x10006` | `R_MERCURY_ABS32_HI` | `0x1D35A77` | Absolute data | `R_CUDA_ABS32_HI_*` (4 types) |
-| 7 | `0x10007` | `R_MERCURY_PROG_REL64` | `0x1D35A8A` | PC-relative | -- (Mercury-specific) |
+| 7 | `0x10007` | `R_MERCURY_PROG_REL64` | `0x1D35A8A` | PC-relative | — (Mercury-specific) |
 | 8 | `0x10008` | `R_MERCURY_PROG_REL32` | `0x1D35A9F` | PC-relative | `R_CUDA_PCREL_IMM24_*` (24-bit) |
-| 9 | `0x10009` | `R_MERCURY_PROG_REL32_LO` | `0x1D35AB4` | PC-relative | -- (Mercury-specific) |
-| 10 | `0x1000A` | `R_MERCURY_PROG_REL32_HI` | `0x1D35ACC` | PC-relative | -- (Mercury-specific) |
+| 9 | `0x10009` | `R_MERCURY_PROG_REL32_LO` | `0x1D35AB4` | PC-relative | — (Mercury-specific) |
+| 10 | `0x1000A` | `R_MERCURY_PROG_REL32_HI` | `0x1D35ACC` | PC-relative | — (Mercury-specific) |
 | 11 | `0x1000B` | `R_MERCURY_TEX_HEADER_INDEX` | `0x1D35AE4` | Texture/sampler/surface | `R_CUDA_TEX_HEADER_INDEX` |
 | 12 | `0x1000C` | `R_MERCURY_SAMP_HEADER_INDEX` | `0x1D35AFF` | Texture/sampler/surface | `R_CUDA_SAMP_HEADER_INDEX` |
 | 13 | `0x1000D` | `R_MERCURY_SURF_HEADER_INDEX` | `0x1D35B1B` | Texture/sampler/surface | `R_CUDA_SURF_HEADER_INDEX` |
@@ -52,16 +52,16 @@ Every R_MERCURY type is stored in ELF `r_info` as `index + 0x10000`. The relocat
 | 37 | `0x10025` | `R_MERCURY_FUNC_DESC_8_40` | `0x1D35CD6` | Func desc byte-level | `R_CUDA_FUNC_DESC_8_40` |
 | 38 | `0x10026` | `R_MERCURY_FUNC_DESC_8_48` | `0x1D35CEF` | Func desc byte-level | `R_CUDA_FUNC_DESC_8_48` |
 | 39 | `0x10027` | `R_MERCURY_FUNC_DESC_8_56` | `0x1D35D08` | Func desc byte-level | `R_CUDA_FUNC_DESC_8_56` |
-| 40 | `0x10028` | `R_MERCURY_ABS_PROG_REL32_LO` | `0x1D35D21` | Abs PC-relative | -- (Mercury-specific) |
-| 41 | `0x10029` | `R_MERCURY_ABS_PROG_REL32_HI` | `0x1D35D3D` | Abs PC-relative | -- (Mercury-specific) |
-| 42 | `0x1002A` | `R_MERCURY_PROG_REL8_0` | `0x1D35D59` | PC-rel byte-level | -- (Mercury-specific) |
-| 43 | `0x1002B` | `R_MERCURY_PROG_REL8_8` | `0x1D35D6F` | PC-rel byte-level | -- (Mercury-specific) |
-| 44 | `0x1002C` | `R_MERCURY_PROG_REL8_16` | `0x1D35D85` | PC-rel byte-level | -- (Mercury-specific) |
-| 45 | `0x1002D` | `R_MERCURY_PROG_REL8_24` | `0x1D35D9C` | PC-rel byte-level | -- (Mercury-specific) |
-| 46 | `0x1002E` | `R_MERCURY_PROG_REL8_32` | `0x1D35DB3` | PC-rel byte-level | -- (Mercury-specific) |
-| 47 | `0x1002F` | `R_MERCURY_PROG_REL8_40` | `0x1D35DCA` | PC-rel byte-level | -- (Mercury-specific) |
-| 48 | `0x10030` | `R_MERCURY_PROG_REL8_48` | `0x1D35DE1` | PC-rel byte-level | -- (Mercury-specific) |
-| 49 | `0x10031` | `R_MERCURY_PROG_REL8_56` | `0x1D35DF8` | PC-rel byte-level | -- (Mercury-specific) |
+| 40 | `0x10028` | `R_MERCURY_ABS_PROG_REL32_LO` | `0x1D35D21` | Abs PC-relative | — (Mercury-specific) |
+| 41 | `0x10029` | `R_MERCURY_ABS_PROG_REL32_HI` | `0x1D35D3D` | Abs PC-relative | — (Mercury-specific) |
+| 42 | `0x1002A` | `R_MERCURY_PROG_REL8_0` | `0x1D35D59` | PC-rel byte-level | — (Mercury-specific) |
+| 43 | `0x1002B` | `R_MERCURY_PROG_REL8_8` | `0x1D35D6F` | PC-rel byte-level | — (Mercury-specific) |
+| 44 | `0x1002C` | `R_MERCURY_PROG_REL8_16` | `0x1D35D85` | PC-rel byte-level | — (Mercury-specific) |
+| 45 | `0x1002D` | `R_MERCURY_PROG_REL8_24` | `0x1D35D9C` | PC-rel byte-level | — (Mercury-specific) |
+| 46 | `0x1002E` | `R_MERCURY_PROG_REL8_32` | `0x1D35DB3` | PC-rel byte-level | — (Mercury-specific) |
+| 47 | `0x1002F` | `R_MERCURY_PROG_REL8_40` | `0x1D35DCA` | PC-rel byte-level | — (Mercury-specific) |
+| 48 | `0x10030` | `R_MERCURY_PROG_REL8_48` | `0x1D35DE1` | PC-rel byte-level | — (Mercury-specific) |
+| 49 | `0x10031` | `R_MERCURY_PROG_REL8_56` | `0x1D35DF8` | PC-rel byte-level | — (Mercury-specific) |
 | 50 | `0x10032` | `R_MERCURY_UNIFIED` | `0x1D35E0F` | Unified table | `R_CUDA_UNIFIED` |
 | 51 | `0x10033` | `R_MERCURY_UNIFIED_32` | `0x1D35E21` | Unified table | `R_CUDA_UNIFIED_32` |
 | 52 | `0x10034` | `R_MERCURY_UNIFIED_8_0` | `0x1D35E36` | Unified byte-level | `R_CUDA_UNIFIED_8_0` |
@@ -72,8 +72,8 @@ Every R_MERCURY type is stored in ELF `r_info` as `index + 0x10000`. The relocat
 | 57 | `0x10039` | `R_MERCURY_UNIFIED_8_40` | `0x1D35EA7` | Unified byte-level | `R_CUDA_UNIFIED_8_40` |
 | 58 | `0x1003A` | `R_MERCURY_UNIFIED_8_48` | `0x1D35EBE` | Unified byte-level | `R_CUDA_UNIFIED_8_48` |
 | 59 | `0x1003B` | `R_MERCURY_UNIFIED_8_56` | `0x1D35ED5` | Unified byte-level | `R_CUDA_UNIFIED_8_56` |
-| 60 | `0x1003C` | `R_MERCURY_ABS_PROG_REL32` | `0x1D35EEC` | Abs PC-relative | -- (Mercury-specific) |
-| 61 | `0x1003D` | `R_MERCURY_ABS_PROG_REL64` | `0x1D35F05` | Abs PC-relative | -- (Mercury-specific) |
+| 60 | `0x1003C` | `R_MERCURY_ABS_PROG_REL32` | `0x1D35EEC` | Abs PC-relative | — (Mercury-specific) |
+| 61 | `0x1003D` | `R_MERCURY_ABS_PROG_REL64` | `0x1D35F05` | Abs PC-relative | — (Mercury-specific) |
 | 62 | `0x1003E` | `R_MERCURY_UNIFIED32_LO` | `0x1D35F1E` | Unified table | `R_CUDA_UNIFIED32_LO_32` |
 | 63 | `0x1003F` | `R_MERCURY_UNIFIED32_HI` | `0x1D35F35` | Unified table | `R_CUDA_UNIFIED32_HI_32` |
 | 64 | `0x10040` | `R_MERCURY_NONE_LAST` | `0x1D35F4C` | Sentinel | `R_CUDA_NONE_LAST` |
@@ -246,7 +246,7 @@ The `UNIFIED32_LO`/`UNIFIED32_HI` pair (indices 62--63) is non-contiguous with t
 
 | Category | Indices | Count | Computation | Description |
 |----------|---------|------:|-------------|-------------|
-| Sentinel | 0, 64 | 2 | -- | No-op / bounds marker |
+| Sentinel | 0, 64 | 2 | — | No-op / bounds marker |
 | Global address | 1 | 1 | `S + A` | 64-bit global memory addresses |
 | Absolute data | 2--6 | 5 | `S + A` (full / lo / hi) | Data section and immediate addresses |
 | PC-relative | 7--10 | 4 | `(S + A) - PC` (full / lo / hi) | Branch / call targets |
@@ -259,7 +259,7 @@ The `UNIFIED32_LO`/`UNIFIED32_HI` pair (indices 62--63) is non-contiguous with t
 | Abs PC-relative | 40--41, 60--61 | 4 | `\|S + A - PC\|` (lo / hi / 32 / 64) | Unsigned distance fields |
 | PC-relative byte-level | 42--49 | 8 | `byte_n((S + A) - PC)` | PC-relative byte patching |
 | Unified table | 50--59, 62--63 | 12 | `S + A` (generic / 32 / byte / lo / hi) | UDT/UFT table references |
-| **Total** | -- | **65** | -- | -- |
+| **Total** | — | **65** | — | — |
 
 ## R_CUDA Equivalence Summary
 
@@ -299,7 +299,7 @@ Of the 65 Mercury types, 50 have a direct R_CUDA semantic equivalent and 15 are 
 The Mercury-specific types break into three families:
 1. **PC-relative extensions** (indices 7, 9--10, 42--49): 64-bit PC-relative, split 32-bit PC-relative, and a full byte-level PC-relative set. R_CUDA has only 24-bit immediate PC-relative (`R_CUDA_PCREL_IMM24_23`, `R_CUDA_PCREL_IMM24_26`).
 2. **Absolute PC-relative** (indices 40--41, 60--61): Unsigned distance computation (`|S + A - PC|`). No R_CUDA counterpart.
-3. **Naming simplification** (not counted above): Where R_CUDA encodes the bit-position in the type name (e.g., `R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32` -- four types for the same semantic), Mercury uses a single position-independent type (e.g., `R_MERCURY_ABS32`). The bit-field position is encoded in the 64-byte descriptor, not the type name. This collapses 25 CUDA `ABS*_<bitpos>` instruction types into 5 Mercury `ABS*` types.
+3. **Naming simplification** (not counted above): Where R_CUDA encodes the bit-position in the type name (e.g., `R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32` — four types for the same semantic), Mercury uses a single position-independent type (e.g., `R_MERCURY_ABS32`). The bit-field position is encoded in the 64-byte descriptor, not the type name. This collapses 25 CUDA `ABS*_<bitpos>` instruction types into 5 Mercury `ABS*` types.
 
 ## R_CUDA Categories Absent from R_MERCURY
 
@@ -350,7 +350,7 @@ The corresponding R_CUDA trailing-space duplicates are adjacent:
 | `0x1D3CB9F` | `"R_CUDA_UNIFIED_8_0 "` | 20 bytes + NUL |
 | `0x1D3CBB3` | `"R_CUDA_UNIFIED_8_8 "` | 20 bytes + NUL |
 
-All four trailing-space strings cluster at `0x1D3CB71`--`0x1D3CBC6`, 26 bytes before the Mercury descriptor table at `0x1D3CBE0`. These are formatting artifacts in `.rodata` -- name strings embedded within or adjacent to descriptor table entries, not distinct relocation types. Only the `UNIFIED_8_0` and `UNIFIED_8_8` entries have this artifact; the other 63 entries reference strings from the primary name pool.
+All four trailing-space strings cluster at `0x1D3CB71`--`0x1D3CBC6`, 26 bytes before the Mercury descriptor table at `0x1D3CBE0`. These are formatting artifacts in `.rodata` — name strings embedded within or adjacent to descriptor table entries, not distinct relocation types. Only the `UNIFIED_8_0` and `UNIFIED_8_8` entries have this artifact; the other 63 entries reference strings from the primary name pool.
 
 ### EIATTR / EICOMPAT Attribute Names
 
@@ -378,7 +378,7 @@ These are `.nv.info` section attribute names processed alongside relocations dur
 | Trailing-space strings | `0x1D3CB71`--`0x1D3CBC6` | ~86 bytes | 4 strings (2 Mercury, 2 CUDA) |
 | Application engine | `sub_468760` | 14,322 bytes | Shared CUDA/Mercury |
 | Validation function | `sub_42F6C0` | ~250 bytes | Shared CUDA/Mercury |
-| Table limit | `0x41` (65) | -- | Immediate constant in validation |
+| Table limit | `0x41` (65) | — | Immediate constant in validation |
 
 ### Descriptor Table Overlap
 
@@ -409,16 +409,16 @@ The validation function accesses `*((_DWORD *)v8 + 2)` (offset +8, field_0) to c
 
 **Internal (nvlink wiki):**
 
-- [R\_MERCURY Relocations](../mercury/r-mercury-relocations.md) -- Semantic details, descriptor table structure, and dispatch logic for Mercury relocation types
-- [Relocation Engine](../linker/relocation-engine.md) -- Shared CUDA/Mercury application engine (`sub_468760`) that processes both descriptor tables
-- [R\_CUDA Catalog](r-cuda-catalog.md) -- The CUDA counterpart catalog with 117 relocation types
-- [Mercury Overview](../mercury/overview.md) -- High-level Mercury architecture context for the capsule Mercury binary format
-- [Capsule Mercury Format](../mercury/capmerc-format.md) -- Binary layout of the capmerc format that uses R\_MERCURY relocations
-- [Bindless Relocations](../linker/bindless-relocations.md) -- Texture/surface relocation handling shared between CUDA and Mercury types
+- [R\_MERCURY Relocations](../mercury/r-mercury-relocations.md) — Semantic details, descriptor table structure, and dispatch logic for Mercury relocation types
+- [Relocation Engine](../linker/relocation-engine.md) — Shared CUDA/Mercury application engine (`sub_468760`) that processes both descriptor tables
+- [R\_CUDA Catalog](r-cuda-catalog.md) — The CUDA counterpart catalog with 117 relocation types
+- [Mercury Overview](../mercury/overview.md) — High-level Mercury architecture context for the capsule Mercury binary format
+- [Capsule Mercury Format](../mercury/capmerc-format.md) — Binary layout of the capmerc format that uses R\_MERCURY relocations
+- [Bindless Relocations](../linker/bindless-relocations.md) — Texture/surface relocation handling shared between CUDA and Mercury types
 
 **Sibling wikis:**
 
-- [ptxas: Relocations](../../ptxas/output/relocations.html) -- ptxas-side relocation emission that generates the R\_MERCURY entries nvlink processes
+- [ptxas: Relocations](../../ptxas/output/relocations.html) — ptxas-side relocation emission that generates the R\_MERCURY entries nvlink processes
 
 ## Confidence Assessment
 
@@ -428,7 +428,7 @@ All 12 spot-checked names found verbatim in `nvlink_strings.json` at their docum
 
 | Entry | Address | Verified? |
 |-------|---------|-----------|
-| `R_MERCURY_NONE` | `0x1D35A17` | YES -- xrefs to `0x1D371E0` (name table), `0x1D3CBE0` (descriptor table) |
+| `R_MERCURY_NONE` | `0x1D35A17` | YES — xrefs to `0x1D371E0` (name table), `0x1D3CBE0` (descriptor table) |
 | `R_MERCURY_G64` | `0x1D35A26` | YES |
 | `R_MERCURY_ABS64` | `0x1D35A34` | YES |
 | `R_MERCURY_ABS32` | `0x1D35A44` | YES |
@@ -445,7 +445,7 @@ All 12 spot-checked names found verbatim in `nvlink_strings.json` at their docum
 
 | Aspect | Confidence | Basis |
 |--------|------------|-------|
-| Type names (all 65 entries) | **HIGH** | All 65 names found in `nvlink_strings.json` at contiguous addresses `0x1D35A17`--`0x1D35F4C`; 12/12 spot-checked -- 0 failures |
+| Type names (all 65 entries) | **HIGH** | All 65 names found in `nvlink_strings.json` at contiguous addresses `0x1D35A17`--`0x1D35F4C`; 12/12 spot-checked — 0 failures |
 | String addresses (all 65 entries) | **HIGH** | Addresses extracted directly from `nvlink_strings.json` `addr` field; verified contiguous and densely packed |
 | Name table address (`off_1D371E0`) | **HIGH** | Confirmed in decompiled `sub_42F6C0` (line 17: `v7 = &off_1D371E0`); Mercury branch with `a1 -= 0x10000` at line 15 |
 | Name table entry size (16 bytes) | **HIGH** | Stride `v7[2 * a1]` in `sub_42F6C0` (line 29); 2 qwords = 16 bytes |

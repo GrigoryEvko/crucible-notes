@@ -46,7 +46,7 @@ Warp vote operations evaluate a per-lane predicate across the active threads in 
 
 On sm100+ (Blackwell), `VOTEU` is available as a uniform-register variant of `VOTE` for cases where the result feeds only uniform consumers.
 
-### Codegen Handler Structure -- `sub_580E50`
+### Codegen Handler Structure — `sub_580E50`
 
 The vote handler follows the standard intrinsic codegen pattern: allocates a 50,000-byte scratch buffer via `sub_424070`, then builds an inline PTX function body through sequential `sprintf()` calls. The handler dispatches on three architecture tiers:
 
@@ -131,7 +131,7 @@ Warp shuffle moves data between lanes within a warp. The codegen handler `sub_58
 
 The `c` operand packs the clamp value and width: `c = ((width - 1) << 8) | clamp`. The optional predicate output `p` indicates whether the source lane was within bounds.
 
-### Codegen Handler -- `sub_5801D0`
+### Codegen Handler — `sub_5801D0`
 
 The shuffle handler is structurally similar to vote. It reads up to 5 operands (source value, lane offset, clamp/width, membermask, and optional predicate output) through the accessor chain:
 
@@ -183,7 +183,7 @@ Warp match instructions compare a value across lanes and return which lanes hold
 | `match.sync.any.b64 d, a, membermask` | `MATCH.ANY` | 64-bit value comparison variant |
 | `match.sync.all.b64 d\|p, a, membermask` | `MATCH.ALL` | 64-bit value comparison variant |
 
-### Codegen Handler -- `sub_58A730`
+### Codegen Handler — `sub_58A730`
 
 The match handler has three architecture tiers and handles both b32 and b64 operand widths:
 
@@ -237,7 +237,7 @@ Warp redux performs a warp-wide reduction operation and returns the result to al
 
 The scheduler tracks redux operations on the dedicated `redux` functional unit pipeline, alongside `adu`, `alu`, `cbu`, `fma2x`, `fma`, `half`, `transcendental`, `ipa`, `lsu`, `schedDisp`, `tex`, `ttu`, `udp`, and the various MMA pipelines.
 
-### Codegen Handler -- `sub_567680`
+### Codegen Handler — `sub_567680`
 
 ```c
 sub_567680(ctx, string_table):
@@ -297,7 +297,7 @@ Thread-block barriers synchronize all threads within a CTA (Cooperative Thread A
 | `sub_500BF0` | `0x500BF0` | 1.2KB | `bar.arrive` |
 | `sub_52D590` | `0x52D590` | 1.5KB | `bar.red.{and,or,popc}` |
 | `sub_570290` | `0x570290` | 2.5KB | `barrier.sync`, `barrier` |
-| `sub_570940` | `0x570940` | -- | `barrier.arrive` |
+| `sub_570940` | `0x570940` | — | `barrier.arrive` |
 | `sub_5889B0` | `0x5889B0` | 4.8KB | `barrier.red` |
 | `sub_56A5A0` | `0x56A5A0` | 1.9KB | `bar.warp.sync` |
 
@@ -318,7 +318,7 @@ Thread-block barriers synchronize all threads within a CTA (Cooperative Thread A
 
 The hardware provides 16 named barriers (indices 0--15). The `EIATTR_NUM_BARRIERS` metadata records the maximum barrier index used per kernel, which the driver uses to partition the convergence barrier file at launch.
 
-### Codegen Handler Details -- `sub_524FB0`
+### Codegen Handler Details — `sub_524FB0`
 
 The `bar.sync` / `bar` handler dispatches across three architecture generations:
 
@@ -368,7 +368,7 @@ The sm70 intrinsic block registers barrier operations combinatorially:
 
 This combinatorial explosion produces 160 intrinsic entries for barriers alone (16 indices x 2 count variants x 5 operation types).
 
-### Barrier Codegen Pattern -- `sub_570290`
+### Barrier Codegen Pattern — `sub_570290`
 
 The `barrier` (PTX 8.0 form) handler at `sub_570290` (2.5KB) is the most complex barrier handler. It adds cluster-awareness for sm90+ and handles the `barrier.cta.*` variants. The handler has an elaborate multi-level dispatch:
 
@@ -391,7 +391,7 @@ sub_570290(ctx, string_table):
 
 ## Memory Barriers and Fences
 
-### Memory Barriers -- `sub_4DB410`
+### Memory Barriers — `sub_4DB410`
 
 The `membar` codegen handler at `sub_4DB410` (84 lines decompiled) is the smallest sync handler. It generates memory barrier instructions across three scope levels.
 
@@ -439,7 +439,7 @@ On Blackwell (sm100+), dedicated `FENCE_G`, `FENCE_S`, and `FENCE_T` SASS opcode
 
 The `StageAndFence` pass (`sub_1392E30`, 166 bytes entry, `sub_1390B30` 8,956 bytes core) inserts fence instructions after loop unrolling to re-establish memory ordering correctness. When loop unrolling replicates memory operations that crossed a synchronization boundary in the original loop body, this pass inserts `fence.proxy` or `MEMBAR` pseudo-instructions at the boundaries of unrolled iterations.
 
-The core function takes floating-point parameters (double/\_\_m128d), indicating it incorporates latency and throughput heuristics when deciding fence placement -- preferring to merge adjacent fences or delay them to overlap with independent computation.
+The core function takes floating-point parameters (double/\_\_m128d), indicating it incorporates latency and throughput heuristics when deciding fence placement — preferring to merge adjacent fences or delay them to overlap with independent computation.
 
 ## Warp-Level Synchronization
 
@@ -462,7 +462,7 @@ The `BSSY` / `BSYNC` instruction pair replaces the pre-Volta implicit reconverge
 | `BSSY B, target` | Push a synchronization barrier; `target` is the reconvergence point |
 | `BSYNC B` | Pop and wait at the convergence barrier B |
 
-These are not directly exposed as PTX instructions -- they are inserted by the compiler during phase 72 (`LateExpandSyncInstructions`) and the architecture-specific sync expansion passes (phases 99, 100, 114). The `EIATTR_SYNC_STACK` metadata records the convergence barrier stack depth.
+These are not directly exposed as PTX instructions — they are inserted by the compiler during phase 72 (`LateExpandSyncInstructions`) and the architecture-specific sync expansion passes (phases 99, 100, 114). The `EIATTR_SYNC_STACK` metadata records the convergence barrier stack depth.
 
 ### ELECT
 
@@ -665,7 +665,7 @@ When scope and memory order are both present, the modifier word carries them thr
 - **Scope `.gpu`** (token 4, value 6): Atomic is visible to all thread blocks on the device
 - **Memory order relaxed** (token 0, value 4): No ordering guarantees beyond atomicity
 
-The handler does not encode `acquire`, `release`, or `acq_rel` memory orders -- these are handled by the separate memory fence/order handler at `sub_6C1CF0`. The deprecation warning for scope-without-order indicates ptxas is transitioning toward requiring explicit memory order qualifiers for all scoped atomics.
+The handler does not encode `acquire`, `release`, or `acq_rel` memory orders — these are handled by the separate memory fence/order handler at `sub_6C1CF0`. The deprecation warning for scope-without-order indicates ptxas is transitioning toward requiring explicit memory order qualifiers for all scoped atomics.
 
 ### Limitations and Notable Behavior
 
@@ -694,9 +694,9 @@ The complete synchronization processing pipeline spans 8 optimizer phases:
 
 The progression is: early fence insertion (25) -> cross-function barrier elimination (26) -> mbarrier expansion (42) -> optimization within partial-SSA (71) -> final expansion (72) -> pre-RA sync insertion and WAR fixup (99, 100) -> post-PostSchedule barrier fixup (114). Note: phases 99 and 100 both run **before** register allocation at phase 101; only phase 114 is genuinely post-RA in this sequence.
 
-### Ori IR Opcode 130 -- Sync Analysis Target
+### Ori IR Opcode 130 — Sync Analysis Target
 
-The optimizer phases 26 and 71 identify synchronization instructions by checking for Ori opcode 130 (`HSET2` in the ROT13 name table; used as an internal Ori IR marker for barrier/sync instructions -- actual SASS BAR is opcode 61, MEMBAR is opcode 111). For each barrier instruction found:
+The optimizer phases 26 and 71 identify synchronization instructions by checking for Ori opcode 130 (`HSET2` in the ROT13 name table; used as an internal Ori IR marker for barrier/sync instructions — actual SASS BAR is opcode 61, MEMBAR is opcode 111). For each barrier instruction found:
 
 1. Extract the destination operand from `field+84`
 2. Resolve the register through the register table at `context+88`
@@ -723,29 +723,29 @@ Complete mapping of all synchronization and warp SASS opcodes, with their ROT13-
 | ROT13 (Binary) | SASS Opcode | Table Offset | Category |
 |---|---|---|---|
 | `IBGR` | `VOTE` | 4600 | Warp vote |
-| `IBGRH` | `VOTEU` | -- | Uniform warp vote (sm100+) |
+| `IBGRH` | `VOTEU` | — | Uniform warp vote (sm100+) |
 | `ONE` | `BAR` | 5160 | Thread-block barrier |
-| `ONE_VAQRKRQ` | `BAR_INDEXED` | -- | Indexed barrier variant |
+| `ONE_VAQRKRQ` | `BAR_INDEXED` | — | Indexed barrier variant |
 | `REEONE` | `ERRBAR` | 4184 | Error barrier |
-| `QRCONE` | `DEPBAR` | -- | Dependency barrier (scoreboard) |
-| `ZNGPU` | `MATCH` | -- | Warp match |
-| `ZRZONE` | `MEMBAR` | -- | Memory barrier |
-| `JNECFLAP` | `WARPSYNC` | -- | Warp synchronize |
-| `OFLAP` | `BSYNC` | -- | Convergence barrier sync |
-| `OFFL` | `BSSY` | -- | Convergence barrier set |
+| `QRCONE` | `DEPBAR` | — | Dependency barrier (scoreboard) |
+| `ZNGPU` | `MATCH` | — | Warp match |
+| `ZRZONE` | `MEMBAR` | — | Memory barrier |
+| `JNECFLAP` | `WARPSYNC` | — | Warp synchronize |
+| `OFLAP` | `BSYNC` | — | Convergence barrier sync |
+| `OFFL` | `BSSY` | — | Convergence barrier set |
 | `E2O` | `R2B` | 5128 | Register to barrier transfer |
-| -- | `ELECT` | -- | Warp lane election (sm75+) |
-| -- | `NANOSLEEP` | -- | Nanosleep hint |
-| -- | `FENCE_G` | -- | Global fence (sm100+) |
-| -- | `FENCE_S` | -- | Shared fence (sm100+) |
-| -- | `FENCE_T` | -- | Texture fence (sm100+) |
-| -- | `CGABAR_ARV` | -- | CGA barrier arrive (sm100+) |
-| -- | `CGABAR_GET` | -- | CGA barrier query (sm100+) |
-| -- | `CGABAR_SET` | -- | CGA barrier set (sm100+) |
-| -- | `CGABAR_WAIT` | -- | CGA barrier wait (sm100+) |
-| -- | `CGAERRBAR` | -- | CGA error barrier (sm100+) |
-| -- | `SYNCS_BASIC` | -- | Basic sync (sm100+) |
-| -- | `SYNCS_LD_UNIFM` | -- | Sync with uniform load (sm100+) |
+| — | `ELECT` | — | Warp lane election (sm75+) |
+| — | `NANOSLEEP` | — | Nanosleep hint |
+| — | `FENCE_G` | — | Global fence (sm100+) |
+| — | `FENCE_S` | — | Shared fence (sm100+) |
+| — | `FENCE_T` | — | Texture fence (sm100+) |
+| — | `CGABAR_ARV` | — | CGA barrier arrive (sm100+) |
+| — | `CGABAR_GET` | — | CGA barrier query (sm100+) |
+| — | `CGABAR_SET` | — | CGA barrier set (sm100+) |
+| — | `CGABAR_WAIT` | — | CGA barrier wait (sm100+) |
+| — | `CGAERRBAR` | — | CGA error barrier (sm100+) |
+| — | `SYNCS_BASIC` | — | Basic sync (sm100+) |
+| — | `SYNCS_LD_UNIFM` | — | Sync with uniform load (sm100+) |
 | `NGBZ` | `ATOM` | 102 | Atomic (generic address space) |
 | `NGBZT` | `ATOMG` | 103 | Atomic (global memory) |
 | `ERQ` | `RED` | 104 | Reduction (fire-and-forget) |
@@ -762,16 +762,16 @@ Complete mapping of all synchronization and warp SASS opcodes, with their ROT13-
 | `sub_524FB0` | BarSyncCodegen | ~1.8KB | PTX `bar.sync` / `bar` |
 | `sub_570290` | BarrierCodegen | ~2.5KB | PTX `barrier.*` (PTX 8.0) |
 | `sub_500BF0` | BarArriveCodegen | ~1.2KB | PTX `bar.arrive` |
-| `sub_570940` | BarrierArriveCodegen | -- | PTX `barrier.arrive` |
+| `sub_570940` | BarrierArriveCodegen | — | PTX `barrier.arrive` |
 | `sub_52D590` | BarRedCodegen | ~1.5KB | PTX `bar.red.{and,or,popc}` |
 | `sub_5889B0` | BarrierRedCodegen | ~4.8KB | PTX `barrier.red` |
 | `sub_56A5A0` | BarWarpCodegen | ~1.9KB | PTX `bar.warp.sync` |
 | `sub_4DB410` | MembarCodegen | ~0.8KB | PTX `membar.*` |
 | `sub_A9A410` | isSM70WarpSync | 194B | Intrinsic prefix detection |
 | `sub_A94440` | isNonTrivialMBarrier | 412B | Mbarrier operation classifier |
-| `sub_A9A5F0` | classifyMBarrier | -- | Mbarrier type enum resolver |
-| `sub_A9A920` | resolveMBarrierBaseName | -- | Extract mbarrier base name from symbol |
-| `sub_AA33C0` | constructMBarrierSymbol | -- | Build `%%mbarrier_%s_%s` symbol |
+| `sub_A9A5F0` | classifyMBarrier | — | Mbarrier type enum resolver |
+| `sub_A9A920` | resolveMBarrierBaseName | — | Extract mbarrier base name from symbol |
+| `sub_AA33C0` | constructMBarrierSymbol | — | Build `%%mbarrier_%s_%s` symbol |
 | `sub_1392E30` | StageAndFence (phase 25) | 166B entry | Post-unroll fence insertion |
 | `sub_1390B30` | StageAndFence core | 8,956B | Main fence insertion logic |
 | `sub_790A40` | RemoveRedundantBarriers | 2,288B | Cross-function barrier elimination |

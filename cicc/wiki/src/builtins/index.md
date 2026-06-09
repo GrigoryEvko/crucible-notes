@@ -34,7 +34,7 @@ sub_913450 (public API: name -> builtin ID)
 
 The builtin name table uses a specialized 20-byte hash table header at `context+480` with a parallel hash cache array and wyhash-v4 string hashing. The table employs quadratic probing with triangular-number increments and grows at 75% load factor. For 770 entries the capacity sequence is `16 -> 32 -> 64 -> 128 -> 256 -> 512 -> 1024`.
 
-Full structural details -- table layout, bucket format, string entry format, wyhash length-dispatch table with pseudocode, probing algorithm, triple-gated comparison guard, rehash procedure, and sentinel values -- are documented in [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md#builtin-name-table----specialized-hash-table). The "wyhash v4 String Hasher" and "Probing Strategy" sections on that page are the canonical references.
+Full structural details — table layout, bucket format, string entry format, wyhash length-dispatch table with pseudocode, probing algorithm, triple-gated comparison guard, rehash procedure, and sentinel values — are documented in [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md#builtin-name-table----specialized-hash-table). The "wyhash v4 String Hasher" and "Probing Strategy" sections on that page are the canonical references.
 
 ## Complete Builtin ID Inventory
 

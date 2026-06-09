@@ -9,7 +9,7 @@ Liveness analysis is the most frequently repeated computation in the ptxas pipel
 | **Dedicated liveness phases** | 6 (phases 10, 16, 19, 33, 61, 84) |
 | **Core bitvector library** | `0xBDBA60`--`0xBDDD40` (15+ functions; bulk Boolean ops are SSE2) |
 | **BitVector object size** | 20 bytes header + dynamic word array |
-| **Word size** | 32-bit (`uint32_t`) -- indexed by `>> 5` and `& 0x1F` |
+| **Word size** | 32-bit (`uint32_t`) — indexed by `>> 5` and `& 0x1F` |
 | **Transfer function** | `out = gen \| (in - kill)` via `orWithAndNot` |
 | **Fixed-point detection** | `orIfChanged` / `andIfChanged` return `bool` |
 | **Liveness storage** | Code Object `+832` (main), `+856` (uniform) |
@@ -76,7 +76,7 @@ This computes F_B(LiveOut(B)) and unions it into LiveIn(B) without materializing
 
 The solver (`sub_774370`, called via `sub_775010` -> guard at `ctx+1370` bit 6) operates in two stages:
 
-**Stage 1 -- Initialization.** For every block B in RPO order (array at `ctx+512`, computed by `sub_BDE150`):
+**Stage 1 — Initialization.** For every block B in RPO order (array at `ctx+512`, computed by `sub_BDE150`):
 
 ```text
 LiveIn^0(B)  = empty-set
@@ -85,7 +85,7 @@ LiveOut^0(B) = empty-set          -- bottom of lattice L
 
 Each bitvector is allocated via `sub_BDBAD0` with `(ctx+520)+1` bits, then zeroed. Exit blocks have their LiveOut initialized to the set of callee-saved / return-value registers via `sub_BDBB80` (setBit per register at `block+144`).
 
-**Stage 2 -- Iteration.** Repeat until no set changes (boolean `changed` stays false for an entire pass):
+**Stage 2 — Iteration.** Repeat until no set changes (boolean `changed` stays false for an entire pass):
 
 ```c
 for each block B in reverse RPO order (ctx+512, index ctx+520 downto 0):
@@ -108,11 +108,11 @@ The analysis is a forward Kleene iteration on a complete lattice and is guarante
 
 1. **Lattice.** L = (2^V, subset-eq) is a complete lattice with bottom = empty-set and top = V. Height h(L) = |V| (at most 255 for R-class registers, 64 for UR-class).
 
-2. **Monotonicity.** F_B is monotone: if X subset-eq Y then gen(B) union (X \ kill(B)) subset-eq gen(B) union (Y \ kill(B)). The meet operator (union) is likewise monotone. The `orIfChanged` / `orWithAndNotIfChanged` implementations enforce monotonicity structurally -- they can only set bits, never clear them (`dst |= ...`).
+2. **Monotonicity.** F_B is monotone: if X subset-eq Y then gen(B) union (X \ kill(B)) subset-eq gen(B) union (Y \ kill(B)). The meet operator (union) is likewise monotone. The `orIfChanged` / `orWithAndNotIfChanged` implementations enforce monotonicity structurally — they can only set bits, never clear them (`dst |= ...`).
 
 3. **Initialization at bottom.** LiveIn^0(B) = LiveOut^0(B) = empty-set for all B. Since empty-set subset-eq F_B(empty-set) for any B, the iterates form an ascending chain.
 
-4. **Termination.** Each iteration either adds at least one bit to some set (strictly ascending) or detects no change and halts. Since h(L) = |V| and there are |Blocks| sets, the maximum number of iterations is bounded by |V| * |Blocks|. In practice, RPO traversal ensures convergence in d+2 iterations where d is the loop nesting depth -- typically 2--3 passes for acyclic code, confirmed by the `changed` boolean collapsing to false within 2 full RPO sweeps on straight-line CFGs.
+4. **Termination.** Each iteration either adds at least one bit to some set (strictly ascending) or detects no change and halts. Since h(L) = |V| and there are |Blocks| sets, the maximum number of iterations is bounded by |V| * |Blocks|. In practice, RPO traversal ensures convergence in d+2 iterations where d is the loop nesting depth — typically 2--3 passes for acyclic code, confirmed by the `changed` boolean collapsing to false within 2 full RPO sweeps on straight-line CFGs.
 
 ## BitVector Implementation
 
@@ -197,11 +197,11 @@ GPU register allocation manages multiple register files. ptxas tracks liveness s
 | **UR** (uniform GPR) | Bits 0..63 | Code Object `+856` | Parallel solve, conditionally allocated |
 | **P** (predicate, 1-bit) | Per-block set | Operand-level: `(v >> 28) & 7 == 5` | Per-block set operations during scheduling |
 | **UP** (uniform predicate) | Per-block set | Tracked when UR enabled | Same path as P |
-| **B** (barrier, `reg_type=9`) | -- | **Excluded from GEN/KILL** | Ordering deps only (`sub_A0D800`) |
+| **B** (barrier, `reg_type=9`) | — | **Excluded from GEN/KILL** | Ordering deps only (`sub_A0D800`) |
 
 ### Independent Solve Per File
 
-The R and UR bitvectors are solved independently: each has its own GEN, KILL, and live-in/live-out sets, and the iterative fixed-point converges separately for each. The scheduling entry point (`sub_A0F970`) allocates the R bitvector unconditionally at `func+832` via `sub_BDBAD0`, then conditionally allocates the UR bitvector at `func+856` only when the flag at Code Object `+1368` bit 4 is set (indicating the function uses uniform registers). The per-block scheduler (`sub_A06A60`) processes both bitvectors in the same instruction walk -- for each instruction it updates R liveness at `+832` and, when the `v76` flag (`+1368` bit 4) is set, also updates UR liveness at `+856`. Both updates use the same `orWithAndNotIfChanged` transfer function but operate on separate bitvector objects. When the first scheduling pass fails, `sub_A0F970` supports a "retry without uniform regs" fallback (v63 toggle) that disables UR tracking for the retry attempt.
+The R and UR bitvectors are solved independently: each has its own GEN, KILL, and live-in/live-out sets, and the iterative fixed-point converges separately for each. The scheduling entry point (`sub_A0F970`) allocates the R bitvector unconditionally at `func+832` via `sub_BDBAD0`, then conditionally allocates the UR bitvector at `func+856` only when the flag at Code Object `+1368` bit 4 is set (indicating the function uses uniform registers). The per-block scheduler (`sub_A06A60`) processes both bitvectors in the same instruction walk — for each instruction it updates R liveness at `+832` and, when the `v76` flag (`+1368` bit 4) is set, also updates UR liveness at `+856`. Both updates use the same `orWithAndNotIfChanged` transfer function but operate on separate bitvector objects. When the first scheduling pass fails, `sub_A0F970` supports a "retry without uniform regs" fallback (v63 toggle) that disables UR tracking for the retry attempt.
 
 ### P/UP: Operand-Level Tracking
 
@@ -209,11 +209,11 @@ Predicate registers (P, UP) are not tracked in the main bitvectors. Instead, the
 
 ### Cross-File Dependency: P2R / R2P
 
-The P2R (predicate-to-register) and R2P (register-to-predicate) instructions create a cross-file data dependency: P2R packs up to 8 predicate bits into a single GPR, and R2P unpacks them back. This coupling matters for two reasons. First, during predicate spilling the allocator uses P2R/R2P pairs to spill predicate registers through GPR stack slots, creating chains where P liveness depends on R liveness of the base GPR. Second, the regalloc verifier (`sub_A55D80`) explicitly validates that every R2P has a matching P2R (case 3: `P2R_R2P_PATTERN_FAILURE`) and that no instruction overwrites the base GPR between the pair (case 8: `P2R_R2P_BASE_DESTROYED`). Despite this coupling, the liveness solvers remain structurally independent -- the cross-file constraint is enforced at the allocator and verifier level rather than by unifying the dataflow lattices.
+The P2R (predicate-to-register) and R2P (register-to-predicate) instructions create a cross-file data dependency: P2R packs up to 8 predicate bits into a single GPR, and R2P unpacks them back. This coupling matters for two reasons. First, during predicate spilling the allocator uses P2R/R2P pairs to spill predicate registers through GPR stack slots, creating chains where P liveness depends on R liveness of the base GPR. Second, the regalloc verifier (`sub_A55D80`) explicitly validates that every R2P has a matching P2R (case 3: `P2R_R2P_PATTERN_FAILURE`) and that no instruction overwrites the base GPR between the pair (case 8: `P2R_R2P_BASE_DESTROYED`). Despite this coupling, the liveness solvers remain structurally independent — the cross-file constraint is enforced at the allocator and verifier level rather than by unifying the dataflow lattices.
 
 ### Barrier Register Exclusion from GEN/KILL
 
-Barrier registers (`reg_type = 9`, covering B0--B15 and UB0--UB15) are excluded from the standard liveness GEN/KILL computation. The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG. This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups -- they do not carry data values that participate in the liveness lattice. The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
+Barrier registers (`reg_type = 9`, covering B0--B15 and UB0--UB15) are excluded from the standard liveness GEN/KILL computation. The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG. This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups — they do not carry data values that participate in the liveness lattice. The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
 
 ## Phase 10: EarlyOriSimpleLiveDead
 
@@ -221,7 +221,7 @@ The earliest liveness pass, running immediately after initial IR construction (a
 
 **Pipeline context:** At this point, the IR has just been lowered from PTX. Many PTX instructions expand to multiple Ori instructions, some of which produce values that are immediately dead (e.g., condition codes that are never tested, intermediate values from multi-instruction expansions). EarlyOriSimpleLiveDead removes this low-hanging dead code before the main optimization pipeline begins, reducing the working set for all subsequent passes.
 
-**Implementation evidence:** The sweep at `p1.10` (`W010`) confirms this pass uses the bitvector infrastructure at `sub_BDBA60`--`sub_BDDD40` (the RPO helper `sub_BDE150` sits past the bitvector range) for liveness computation. The "simple" in the name may indicate a local-only (per-BB) analysis that avoids the cost of full global iterative dataflow -- sufficient for removing obviously dead definitions that have no uses within the same block.
+**Implementation evidence:** The sweep at `p1.10` (`W010`) confirms this pass uses the bitvector infrastructure at `sub_BDBA60`--`sub_BDDD40` (the RPO helper `sub_BDE150` sits past the bitvector range) for liveness computation. The "simple" in the name may indicate a local-only (per-BB) analysis that avoids the cost of full global iterative dataflow — sufficient for removing obviously dead definitions that have no uses within the same block.
 
 ## Phases 16, 33, 61, 84: OriPerformLiveDead
 
@@ -251,13 +251,13 @@ function OriPerformLiveDead(func):
 ### Side-Effect Preservation
 
 Not all instructions with dead destinations can be removed. The DCE must preserve:
-- **Memory stores** (`STG`, `STS`, `STL`, `ATOM`, etc.) -- observable side effects
-- **Barrier instructions** (`BAR`, `MEMBAR`) -- synchronization semantics
-- **Control flow** (`BRA`, `EXIT`, `RET`, `CALL`) -- program structure
+- **Memory stores** (`STG`, `STS`, `STL`, `ATOM`, etc.) — observable side effects
+- **Barrier instructions** (`BAR`, `MEMBAR`) — synchronization semantics
+- **Control flow** (`BRA`, `EXIT`, `RET`, `CALL`) — program structure
 - **Texture operations** with side effects
 - **Instructions with volatile flags**
 
-The opcode mask `& 0xCFFF` (seen in `sub_A06A60`) strips modifier bits to obtain the base opcode for side-effect classification. Opcodes 93 (`OUT_FINAL` in the ROT13 name table; used as a call-like marker -- actual CALL is opcode 71), 94 (`LDS`)/95 (`STS`) (used as block boundary markers), 97 (`STG`; used as a branch-like marker -- actual BRA is opcode 67), and 52 (`AL2P_INDEXED`; used as NOP/boundary) receive special handling.
+The opcode mask `& 0xCFFF` (seen in `sub_A06A60`) strips modifier bits to obtain the base opcode for side-effect classification. Opcodes 93 (`OUT_FINAL` in the ROT13 name table; used as a call-like marker — actual CALL is opcode 71), 94 (`LDS`)/95 (`STS`) (used as block boundary markers), 97 (`STG`; used as a branch-like marker — actual BRA is opcode 67), and 52 (`AL2P_INDEXED`; used as NOP/boundary) receive special handling.
 
 ### DCE Integration
 
@@ -302,15 +302,15 @@ This phase splits live ranges at loop boundaries and across phi/copy chains to r
 
 ### Motivation
 
-On GPUs, register pressure directly determines occupancy (the number of concurrent warps). A value defined before a loop and used only after the loop occupies a register for the entire loop body, even though it is not accessed within the loop. Splitting the live range at the loop boundary -- by inserting a copy before the loop and a copy after -- can free the register for use inside the loop, reducing peak pressure and enabling higher occupancy.
+On GPUs, register pressure directly determines occupancy (the number of concurrent warps). A value defined before a loop and used only after the loop occupies a register for the entire loop body, even though it is not accessed within the loop. Splitting the live range at the loop boundary — by inserting a copy before the loop and a copy after — can free the register for use inside the loop, reducing peak pressure and enabling higher occupancy.
 
 ### Algorithm (Decompiled from sub\_BEF110)
 
 The function operates in five distinct phases:
 
-**Phase 1: Pre-analysis** -- Rebuilds basic blocks (`sub_781F80`), allocates three bitvector fields per virtual register (kill at `VR+96`, gen at `VR+24`, live-through at `VR+176`), then runs the standard iterative liveness solver (`sub_775010` + `sub_773140`). Walks the register table checking interference chains: for each VR with a chain at `VR+136`, tests whether the chain target's kill set is a subset of the VR's kill set (`sub_BDC390 = isSubsetOf`). Non-subset cases receive the `+264 bit 1` flag, marking them as interference candidates.
+**Phase 1: Pre-analysis** — Rebuilds basic blocks (`sub_781F80`), allocates three bitvector fields per virtual register (kill at `VR+96`, gen at `VR+24`, live-through at `VR+176`), then runs the standard iterative liveness solver (`sub_775010` + `sub_773140`). Walks the register table checking interference chains: for each VR with a chain at `VR+136`, tests whether the chain target's kill set is a subset of the VR's kill set (`sub_BDC390 = isSubsetOf`). Non-subset cases receive the `+264 bit 1` flag, marking them as interference candidates.
 
-**Phase 2: Work structure allocation** -- Allocates a scratch array `s[]` (one entry per split candidate), a hash table for interference tracking (power-of-2 buckets sized via `_BitScanReverse64`), and an array of 64-byte per-block split records:
+**Phase 2: Work structure allocation** — Allocates a scratch array `s[]` (one entry per split candidate), a hash table for interference tracking (power-of-2 buckets sized via `_BitScanReverse64`), and an array of 64-byte per-block split records:
 
 ```c
 struct PerBlockSplitRecord {    // 64 bytes, indexed by block ID
@@ -326,7 +326,7 @@ struct PerBlockSplitRecord {    // 64 bytes, indexed by block ID
 };
 ```
 
-**Phase 3: Main splitting loop** -- Iterates the ordered register array at `ctx+792` in **reverse** order (highest VR ID first). For each VR, walks the def-use chain via `ctx+296` (register table), classifying instructions by opcode:
+**Phase 3: Main splitting loop** — Iterates the ordered register array at `ctx+792` in **reverse** order (highest VR ID first). For each VR, walks the def-use chain via `ctx+296` (register table), classifying instructions by opcode:
 
 | Opcode (masked) | Meaning | Split Action |
 |-----------------|---------|-------------|
@@ -348,7 +348,7 @@ if ((1 << vr_class_id) & kill_set[vr_class_id >> 5]) != 0)
 
 When this single-bit probe returns zero, the candidate is skipped immediately. When it returns non-zero, Phase 4 calls `sub_BEE7F0` for a full bitvector intersection.
 
-**Phase 4: Interference hash processing** -- Builds a global interference hash table using FNV-1a (`0x811C9DC5` offset basis, `16777619` prime). Walks per-block split records, for each entry scans the kill bitvector (`sub_BDDC00` clears from position, scanning forward) to find concurrently live VRs. Tests interference via `sub_BEE7F0` and emits split instructions via `sub_934630` (opcode 46). The hash table resizes when load factor exceeds 50%.
+**Phase 4: Interference hash processing** — Builds a global interference hash table using FNV-1a (`0x811C9DC5` offset basis, `16777619` prime). Walks per-block split records, for each entry scans the kill bitvector (`sub_BDDC00` clears from position, scanning forward) to find concurrently live VRs. Tests interference via `sub_BEE7F0` and emits split instructions via `sub_934630` (opcode 46). The hash table resizes when load factor exceeds 50%.
 
 **Interference hash table layout.** The hash table object (`a2` in `sub_BEEC80`) contains a pointer to a 192-byte bucket array, a bucket count (always a power of two, initially 8), an entry count, and a total-entries counter. The 192-byte array holds 8 buckets of 24 bytes each:
 
@@ -374,7 +374,7 @@ When the hash table grows (`sub_865E40` at load factor > 50%), a new 192-byte ar
 
 **Full bitvector intersection (sub\_BEE7F0, 1166 bytes).** Called as `sub_BEE7F0(result, hash_node, kill_bitvec)`. The function receives two bitvectors as sparse iterators and an RB-tree node from the hash table. It constructs two bitvector iterators via `sub_BDBEF0` (begin) and `sub_BDBF80` (end), then walks the RB-tree rooted at `hash_node+8` in order. Each tree node carries a 4-qword (32-byte) bitvector chunk at offset `+0x20` through `+0x3F`, and a bucket index at `+0x18`.
 
-The core intersection loop synchronizes two cursors -- one over the kill bitvector's qword array and one over the tree node's chunk array. For each tree node visited in order:
+The core intersection loop synchronizes two cursors — one over the kill bitvector's qword array and one over the tree node's chunk array. For each tree node visited in order:
 
 1. Computes a composite position `(4 * node[+0x18]) | (chunk_offset)` and advances the kill-bitvector cursor (skipping zero qwords) to match.
 2. When positions align, performs a qword AND between the kill-bitvector word and the tree-node chunk word. A non-zero result means interference exists.
@@ -383,7 +383,7 @@ The core intersection loop synchronizes two cursors -- one over the kill bitvect
 
 The bitvector uses a mixed-width layout: when the declared size (`VR+8`) is odd, the last element is stored as a 32-bit dword at `base + 4*(size-1)` instead of a full qword, handled by a special-case branch at each comparison point. Tree traversal follows standard in-order successor logic (right-child-then-leftmost, or walk-up-to-first-right-parent), advancing through all interference entries for the given hash bucket.
 
-**Phase 5: Cleanup** -- Marks phi/copy chains with the `+245` rewrite flag (triggering opcode mutation from 188 to 93 or 95), frees hash tables and per-block records, clears `ctx+1370 bit 2` to signal liveness invalidation.
+**Phase 5: Cleanup** — Marks phi/copy chains with the `+245` rewrite flag (triggering opcode mutation from 188 to 93 or 95), frees hash tables and per-block records, clears `ctx+1370 bit 2` to signal liveness invalidation.
 
 ```c
 function OriSplitLiveRanges(func):
@@ -465,7 +465,7 @@ The allocator uses liveness information for interference computation, spill cost
 
 #### Fat-Point Model vs Traditional Interference Graph
 
-A traditional graph-coloring allocator (Chaitin-Briggs) builds an explicit interference graph -- one node per VR, one edge per pair of simultaneously-live VRs -- then simplifies, selects, and spills. The ptxas allocator builds no such graph. Instead, the interference builder `sub_926A30` (4005 lines) converts liveness overlap into **constraint nodes** attached to each VR at `vreg+144`. During allocation, `sub_957160` iterates these constraints to fill two 512-DWORD pressure histograms (primary and secondary), then picks the physical slot with the lowest accumulated weight. The key structural differences:
+A traditional graph-coloring allocator (Chaitin-Briggs) builds an explicit interference graph — one node per VR, one edge per pair of simultaneously-live VRs — then simplifies, selects, and spills. The ptxas allocator builds no such graph. Instead, the interference builder `sub_926A30` (4005 lines) converts liveness overlap into **constraint nodes** attached to each VR at `vreg+144`. During allocation, `sub_957160` iterates these constraints to fill two 512-DWORD pressure histograms (primary and secondary), then picks the physical slot with the lowest accumulated weight. The key structural differences:
 
 | | Traditional IG | ptxas Fat-Point |
 |---|---|---|
@@ -476,7 +476,7 @@ A traditional graph-coloring allocator (Chaitin-Briggs) builds an explicit inter
 | Relaxation | Spill-and-retry | Per-iteration soft-constraint skip threshold (OCG knob) |
 | Complexity | O(N^2) build + O(N) simplify | O(N * C) per VR, C = constraint count |
 
-The term "fat point" refers to the pressure histogram: each physical register slot is a point in the histogram, and the accumulated weight at that point is the "fat" -- the total interference cost from all constraints that map to that slot.
+The term "fat point" refers to the pressure histogram: each physical register slot is a point in the histogram, and the accumulated weight at that point is the "fat" — the total interference cost from all constraints that map to that slot.
 
 #### The 15 Constraint Types
 
@@ -484,22 +484,22 @@ Each constraint node stores a type (0--15), a target VR/physical register index,
 
 | Type | Name | Effect on histogram |
 |------|------|---------------------|
-| 0 | Point | `primary[phys_reg_of(target)] += weight` -- hard same-point interference |
-| 1 | Exclude-one | All slots except one get weight -- blocks a single physical register |
-| 2 | Exclude-all-but | All slots except target get weight -- forces VR into one register |
-| 3 | Below-point | Slots below target get weight -- downward-exposed liveness |
+| 0 | Point | `primary[phys_reg_of(target)] += weight` — hard same-point interference |
+| 1 | Exclude-one | All slots except one get weight — blocks a single physical register |
+| 2 | Exclude-all-but | All slots except target get weight — forces VR into one register |
+| 3 | Below-point | Slots below target get weight — downward-exposed liveness |
 | 4 | (reserved) | Dispatched through vtable\[240\] fallback |
-| 5 | Paired-low | Even-indexed slot only -- low half of 64-bit pair |
-| 6 | Paired-high | Odd-indexed slot only -- high half of pair |
-| 7 | Aligned-pair | Both even and odd slots -- full pair constraint |
-| 8 | Phi-related | Stride-2 accumulation across primary -- soft, from CSSA phis |
+| 5 | Paired-low | Even-indexed slot only — low half of 64-bit pair |
+| 6 | Paired-high | Odd-indexed slot only — high half of pair |
+| 7 | Aligned-pair | Both even and odd slots — full pair constraint |
+| 8 | Phi-related | Stride-2 accumulation across primary — soft, from CSSA phis |
 | 9 | (reserved) | Dispatched through vtable\[240\] fallback |
 | 10 | (reserved) | Dispatched through vtable\[240\] fallback |
-| 11 | Paired-even-parity | All slots except offset -- bank-conflict avoidance (even parity) |
-| 12 | Paired-odd-parity | All slots except inverse offset -- bank-conflict avoidance (odd parity) |
+| 11 | Paired-even-parity | All slots except offset — bank-conflict avoidance (even parity) |
+| 12 | Paired-odd-parity | All slots except inverse offset — bank-conflict avoidance (odd parity) |
 | 13 | Paired-parity-group | Even-only exclusion for bank groups |
 | 14 | Paired-parity-extended | Odd-only exclusion for wider register groups (quads) |
-| 15 | Range | **Secondary** array only -- interval-proportional weight for tie-breaking |
+| 15 | Range | **Secondary** array only — interval-proportional weight for tie-breaking |
 
 Type 15 is architecturally distinct: it is the only type that writes to the secondary histogram. All others write to primary. This separation means primary captures hard interference while secondary captures long-range preference signals that break ties when multiple slots have equal primary cost.
 
@@ -529,7 +529,7 @@ The scheduler uses liveness to:
 The dependency graph builder (`sub_A0F970`, `sub_A0D800`) uses liveness to:
 - Determine which registers are live at block boundaries
 - Identify anti-dependencies (WAR) that constrain scheduling
-- Track callee-clobbered registers at call sites (opcode 93; `OUT_FINAL` in ROT13, used as call-like marker -- actual CALL is opcode 71)
+- Track callee-clobbered registers at call sites (opcode 93; `OUT_FINAL` in ROT13, used as call-like marker — actual CALL is opcode 71)
 
 ### Multi-Set Register Manager
 
@@ -541,19 +541,19 @@ The dependency graph builder (`sub_A0F970`, `sub_A0D800`) uses liveness to:
 
 ## Data Flow Infrastructure for Scheduling
 
-The scheduling subsystem has its own dataflow infrastructure (separate from the optimizer's OriPerformLiveDead). Decompilation reveals these 9 functions implement two reusable data structures -- a **memory allocator** (red-black tree backed free-list) and an **FNV-1a hash table** -- that the scheduler instantiates for its dataflow bookkeeping:
+The scheduling subsystem has its own dataflow infrastructure (separate from the optimizer's OriPerformLiveDead). Decompilation reveals these 9 functions implement two reusable data structures — a **memory allocator** (red-black tree backed free-list) and an **FNV-1a hash table** — that the scheduler instantiates for its dataflow bookkeeping:
 
 | Address | Size | True identity |
 |---------|------|---------------|
-| `sub_8DB070` | 8.2KB | `PoolAllocator::free` -- coalesces freed blocks into a segregated free-list; blocks <= 512B go to size-class bins at `+96`; larger blocks go to sorted lists at `+72`/`+80` |
-| `sub_8DB5F0` | 8.4KB | `RBTree::rebalance` -- red-black tree fix-up after delete; color flag at node `+40` (0=red, 1=black), children at `+24`/`+32`, parent at `+16` |
-| `sub_8DBAF0` | 16KB | `PoolAllocator::allocFromTree` -- allocates from RB-tree ordered free-list; best-fit search for blocks > 512B, splits remainder back into tree; calls `sub_8DB5F0` for rebalancing |
-| `sub_8DC3F0` | 3.0KB | `PoolAllocator::alloc` -- sized allocation entry point; tries size-class bin at `+96`, then bitmap scan (`tzcnt`), then falls through to `sub_8DBAF0` (tree) and `sub_8DAC50`/`sub_8DAA10` (slab) |
-| `sub_8DC620` | 3.3KB | `PoolAllocator::allocAligned` -- like `sub_8DC3F0` but adds 8 bytes for header alignment; returns `result + 8` to caller |
-| `sub_8DC880` | 10KB | `HashMap::insertOrFind` -- FNV-1a hash (seed `0x811C9DC5`, prime `16777619`) on 4-byte key; 8-bucket initial table; rehashes at load-factor > 50% by allocating 4x buckets and redistributing via `hash % new_size` |
-| `sub_8DCF20` | 23KB | `HashMap::insertOrFindWide` -- FNV-1a hash on 8-byte key (address + ID pair); includes inline `memcpy` for payload transfer to new node; same rehash policy as `sub_8DC880` |
-| `sub_8DE7A0` | 12KB | `HashMap::insertWideWithPayload` -- allocates a 168-byte dataflow node; stores payload at `+32`/`+8`/`+24`; builds two nested hash tables (at offsets `+40` and `+136`); inserts into outer table via FNV-1a on (uint32, uint64) compound key |
-| `sub_8DEF90` | 2.0KB | `HashMap::lookupTwoLevel` -- two-level lookup: first hashes (uint32, uint64) into the outer table to get a dataflow-node ID, then hashes that ID into the inner table at `+80` to retrieve the result pointer |
+| `sub_8DB070` | 8.2KB | `PoolAllocator::free` — coalesces freed blocks into a segregated free-list; blocks <= 512B go to size-class bins at `+96`; larger blocks go to sorted lists at `+72`/`+80` |
+| `sub_8DB5F0` | 8.4KB | `RBTree::rebalance` — red-black tree fix-up after delete; color flag at node `+40` (0=red, 1=black), children at `+24`/`+32`, parent at `+16` |
+| `sub_8DBAF0` | 16KB | `PoolAllocator::allocFromTree` — allocates from RB-tree ordered free-list; best-fit search for blocks > 512B, splits remainder back into tree; calls `sub_8DB5F0` for rebalancing |
+| `sub_8DC3F0` | 3.0KB | `PoolAllocator::alloc` — sized allocation entry point; tries size-class bin at `+96`, then bitmap scan (`tzcnt`), then falls through to `sub_8DBAF0` (tree) and `sub_8DAC50`/`sub_8DAA10` (slab) |
+| `sub_8DC620` | 3.3KB | `PoolAllocator::allocAligned` — like `sub_8DC3F0` but adds 8 bytes for header alignment; returns `result + 8` to caller |
+| `sub_8DC880` | 10KB | `HashMap::insertOrFind` — FNV-1a hash (seed `0x811C9DC5`, prime `16777619`) on 4-byte key; 8-bucket initial table; rehashes at load-factor > 50% by allocating 4x buckets and redistributing via `hash % new_size` |
+| `sub_8DCF20` | 23KB | `HashMap::insertOrFindWide` — FNV-1a hash on 8-byte key (address + ID pair); includes inline `memcpy` for payload transfer to new node; same rehash policy as `sub_8DC880` |
+| `sub_8DE7A0` | 12KB | `HashMap::insertWideWithPayload` — allocates a 168-byte dataflow node; stores payload at `+32`/`+8`/`+24`; builds two nested hash tables (at offsets `+40` and `+136`); inserts into outer table via FNV-1a on (uint32, uint64) compound key |
+| `sub_8DEF90` | 2.0KB | `HashMap::lookupTwoLevel` — two-level lookup: first hashes (uint32, uint64) into the outer table to get a dataflow-node ID, then hashes that ID into the inner table at `+80` to retrieve the result pointer |
 
 The scheduler instantiates these structures at Code Object `+832` to maintain per-block dataflow state. The RB-tree in `sub_8DBAF0`/`sub_8DB5F0` manages the backing memory pool (node `+40` color flag, rotations for balance), not liveness intervals directly. The hash tables in `sub_8DC880`--`sub_8DEF90` store the actual dataflow facts keyed by (block-ID, register-address) pairs, using the standard FNV-1a hash seen throughout ptxas. The two-level lookup in `sub_8DEF90` enables the iterative solver to efficiently query "what is the dataflow state of register R at block B?" without scanning all blocks.
 
@@ -650,10 +650,10 @@ Over 50 call sites reference this function across the optimizer, register alloca
 
 ## Cross-References
 
-- [Pass Inventory](index.md) -- full 159-phase listing with liveness phase positions
-- [Optimizer Pipeline](../pipeline/optimizer.md) -- pipeline stage groupings
-- [Ori IR](../ir/overview.md) -- Code Object layout, bitvector infrastructure details
-- [Allocator Architecture](../regalloc/overview.md) -- liveness as input to fat-point allocator
-- [Spill Mechanism](../regalloc/spilling.md) -- liveness range calculator for spill placement
-- [Scheduler Architecture](../scheduling/overview.md) -- scheduling-specific liveness
-- [Scheduling Algorithm](../scheduling/algorithm.md) -- priority function's pressure estimates
+- [Pass Inventory](index.md) — full 159-phase listing with liveness phase positions
+- [Optimizer Pipeline](../pipeline/optimizer.md) — pipeline stage groupings
+- [Ori IR](../ir/overview.md) — Code Object layout, bitvector infrastructure details
+- [Allocator Architecture](../regalloc/overview.md) — liveness as input to fat-point allocator
+- [Spill Mechanism](../regalloc/spilling.md) — liveness range calculator for spill placement
+- [Scheduler Architecture](../scheduling/overview.md) — scheduling-specific liveness
+- [Scheduling Algorithm](../scheduling/algorithm.md) — priority function's pressure estimates

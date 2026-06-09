@@ -2,7 +2,7 @@
 
 The constexpr interpreter is the compile-time expression evaluation engine inside cudafe++. It lives in EDG 6.6's `interpret.c` (69 functions at `0x620CE0`--`0x65DE10`, approximately 33,000 decompiled lines) and implements a virtual machine that executes arbitrary C++ expressions during compilation. Its central function, `do_constexpr_expression` (`sub_634740`), is the single largest function in the entire cudafe++ binary: 11,205 decompiled lines, 63KB of machine code, 128 unique callees, and 28 self-recursive call sites.
 
-The interpreter exists because C++ constexpr evaluation requires the compiler to act as an execution engine. Since C++11, constexpr has grown from simple return-expression functions to a Turing-complete subset of C++ that includes loops, branches, dynamic memory allocation (C++20), virtual dispatch, exception-like control flow, and -- as of C++26 -- compile-time reflection. The interpreter must evaluate all of these constructs faithfully, track object lifetimes, detect undefined behavior, and convert results back into IL constants.
+The interpreter exists because C++ constexpr evaluation requires the compiler to act as an execution engine. Since C++11, constexpr has grown from simple return-expression functions to a Turing-complete subset of C++ that includes loops, branches, dynamic memory allocation (C++20), virtual dispatch, exception-like control flow, and — as of C++26 — compile-time reflection. The interpreter must evaluate all of these constructs faithfully, track object lifetimes, detect undefined behavior, and convert results back into IL constants.
 
 ## Key Facts
 
@@ -587,7 +587,7 @@ cleanup:
 
 ### Recursion Depth Tracking
 
-The interpreter tracks call depth through the `call_chain` linked list at offset `+72` in the interpreter state. Each `do_constexpr_call` invocation pushes a frame; each return pops it. The chain is also used for diagnostic output -- when a constexpr evaluation fails, the error message includes the call stack showing how the offending expression was reached.
+The interpreter tracks call depth through the `call_chain` linked list at offset `+72` in the interpreter state. Each `do_constexpr_call` invocation pushes a frame; each return pops it. The chain is also used for diagnostic output — when a constexpr evaluation fails, the error message includes the call stack showing how the offending expression was reached.
 
 ## Constructor Evaluation: do_constexpr_ctor
 
@@ -924,9 +924,9 @@ int do_constexpr_builtin_function(
 
 Two functions handle constexpr destructor calls, splitting responsibilities:
 
-**`do_constexpr_dtor` variant 1** (`sub_64EFE0`, 503 lines) -- Evaluates the destructor body itself. Runs the user-written destructor code, then destroys members in reverse declaration order.
+**`do_constexpr_dtor` variant 1** (`sub_64EFE0`, 503 lines) — Evaluates the destructor body itself. Runs the user-written destructor code, then destroys members in reverse declaration order.
 
-**`do_constexpr_dtor` variant 2 / `perform_destructions`** (`sub_64FB10`, 877 lines) -- Handles the full destruction sequence including base class destructors and array element destruction. Also implements `perform_destructions`, the post-evaluation cleanup that destroys all constexpr-created objects when their scope ends.
+**`do_constexpr_dtor` variant 2 / `perform_destructions`** (`sub_64FB10`, 877 lines) — Handles the full destruction sequence including base class destructors and array element destruction. Also implements `perform_destructions`, the post-evaluation cleanup that destroys all constexpr-created objects when their scope ends.
 
 ## Materialization: Interpreter Objects to IL Constants
 
@@ -980,7 +980,7 @@ il_node *copy_interpreter_object_to_constant(
 }
 ```
 
-This function also contains `get_reflection_string_entry` and `translate_interpreter_offset` as inlined helpers -- the former handles C++26 reflection string extraction, and the latter converts interpreter memory addresses into IL address expressions with proper relocations.
+This function also contains `get_reflection_string_entry` and `translate_interpreter_offset` as inlined helpers — the former handles C++26 reflection string extraction, and the latter converts interpreter memory addresses into IL address expressions with proper relocations.
 
 ### extract_value_from_constant (reverse direction)
 
@@ -990,23 +990,23 @@ This function also contains `get_reflection_string_entry` and `translate_interpr
 
 Two functions implement the byte-level serialization needed for `std::bit_cast`:
 
-**`translate_interpreter_object_to_target_bytes`** (`sub_62A490`, 461 lines) -- Serializes an interpreter object to a target-format byte sequence. Must handle endianness conversion, padding bytes, and bitfield layout according to the target ABI.
+**`translate_interpreter_object_to_target_bytes`** (`sub_62A490`, 461 lines) — Serializes an interpreter object to a target-format byte sequence. Must handle endianness conversion, padding bytes, and bitfield layout according to the target ABI.
 
-**`translate_target_bytes_to_interpreter_object`** (`sub_62C670`, 529 lines) -- Deserializes target-format bytes back into an interpreter object. Validates that the source bytes represent a valid value for the destination type (e.g., no trap representations for `bool`).
+**`translate_target_bytes_to_interpreter_object`** (`sub_62C670`, 529 lines) — Deserializes target-format bytes back into an interpreter object. Validates that the source bytes represent a valid value for the destination type (e.g., no trap representations for `bool`).
 
 ## C++20 Constexpr Memory Support
 
 ### std::allocator<T>::allocate
 
-`sub_62B100` (`do_constexpr_std_allocator_allocate`, 177 lines) -- Handles `new` expressions in constexpr context. Allocates from the interpreter arena, sets the allocation-chain flag (bit 2), and links the allocation into the tracking chain.
+`sub_62B100` (`do_constexpr_std_allocator_allocate`, 177 lines) — Handles `new` expressions in constexpr context. Allocates from the interpreter arena, sets the allocation-chain flag (bit 2), and links the allocation into the tracking chain.
 
 ### std::allocator<T>::deallocate
 
-`sub_62B470` (`do_constexpr_std_allocator_deallocate`, 195 lines) -- Handles `delete` in constexpr context. Validates the pointer was allocated by `std::allocator::allocate()` by searching the allocation chain (`qword_126FBC0` / `qword_126FBB8`).
+`sub_62B470` (`do_constexpr_std_allocator_deallocate`, 195 lines) — Handles `delete` in constexpr context. Validates the pointer was allocated by `std::allocator::allocate()` by searching the allocation chain (`qword_126FBC0` / `qword_126FBB8`).
 
 ### std::construct_at
 
-`sub_64F920` (`do_constexpr_std_construct_at`, 108 lines) -- Handles `std::construct_at()` (C++20). Validates the target pointer, then delegates to `do_constexpr_ctor` for actual construction.
+`sub_64F920` (`do_constexpr_std_construct_at`, 108 lines) — Handles `std::construct_at()` (C++20). Validates the target pointer, then delegates to `do_constexpr_ctor` for actual construction.
 
 ## C++26 Reflection Support
 
@@ -1014,16 +1014,16 @@ EDG 6.6 includes experimental support for the P2996 compile-time reflection prop
 
 | Function | Address | Lines | Reflection operation |
 |---|---|---|---|
-| `do_constexpr_std_meta_substitute` | `sub_628510` | 526 | `std::meta::substitute()` -- template argument substitution |
-| `do_constexpr_std_meta_enumerators_of` | `sub_62EB00` | 342 | `std::meta::enumerators_of()` -- enum value list |
-| `do_constexpr_std_meta_subobjects_of` | `sub_62F0B0` | 434 | `std::meta::subobjects_of()` -- all subobjects |
-| `do_constexpr_std_meta_bases_of` | `sub_62F7B0` | 339 | `std::meta::bases_of()` -- base class list |
+| `do_constexpr_std_meta_substitute` | `sub_628510` | 526 | `std::meta::substitute()` — template argument substitution |
+| `do_constexpr_std_meta_enumerators_of` | `sub_62EB00` | 342 | `std::meta::enumerators_of()` — enum value list |
+| `do_constexpr_std_meta_subobjects_of` | `sub_62F0B0` | 434 | `std::meta::subobjects_of()` — all subobjects |
+| `do_constexpr_std_meta_bases_of` | `sub_62F7B0` | 339 | `std::meta::bases_of()` — base class list |
 | `do_constexpr_std_meta_nonstatic_data_members_of` | `sub_62FD30` | 308 | `std::meta::nonstatic_data_members_of()` |
 | `do_constexpr_std_meta_static_data_members_of` | `sub_630280` | 308 | `std::meta::static_data_members_of()` |
-| `do_constexpr_std_meta_members_of` | `sub_6307E0` | 590 | `std::meta::members_of()` -- all members |
-| `do_constexpr_std_meta_define_class` | `sub_65DE10` | 553 | `std::meta::define_class()` -- class synthesis |
+| `do_constexpr_std_meta_members_of` | `sub_6307E0` | 590 | `std::meta::members_of()` — all members |
+| `do_constexpr_std_meta_define_class` | `sub_65DE10` | 553 | `std::meta::define_class()` — class synthesis |
 
-These functions operate on "infovecs" -- information vectors created by `make_infovec` (`sub_62E1B0`, 241 lines) that encode reflection metadata as interpreter-internal objects. The `get_interpreter_string` and `get_interpreter_string_length` helpers (also within `sub_65DE10`) extract string values from these infovecs for operations that take string parameters (member names, type names).
+These functions operate on "infovecs" — information vectors created by `make_infovec` (`sub_62E1B0`, 241 lines) that encode reflection metadata as interpreter-internal objects. The `get_interpreter_string` and `get_interpreter_string_length` helpers (also within `sub_65DE10`) extract string values from these infovecs for operations that take string parameters (member names, type names).
 
 The `define_class` operation is particularly notable: it allows constexpr code to synthesize entirely new class types at compile time, a capability that goes beyond simple introspection.
 
@@ -1129,8 +1129,8 @@ The interpreter emits detailed diagnostics when constexpr evaluation fails. Each
 | Function | Address | Lines | Purpose |
 |---|---|---|---|
 | `do_constexpr_dynamic_init` | `sub_64A040` | 1,111 | Dynamic initialization of constexpr variables |
-| `do_constexpr_lambda` | (within `sub_64A040`) | -- | Lambda capture evaluation |
-| `do_array_constructor_copy` | (within `sub_64A040`) | -- | Array construction via copy ctor |
+| `do_constexpr_lambda` | (within `sub_64A040`) | — | Lambda capture evaluation |
+| `do_array_constructor_copy` | (within `sub_64A040`) | — | Array construction via copy ctor |
 
 ### Debug and Diagnostics
 
@@ -1212,9 +1212,9 @@ The interpreter emits detailed diagnostics when constexpr evaluation fails. Each
 
 ## Cross-References
 
-- [EDG 6.6 Overview](overview.md) -- Position of `interpret.c` in the source tree
-- [Type System](type-system.md) -- The 22 type kinds that the interpreter evaluates
-- [Template Engine](template-engine.md) -- Constexpr evaluation during template instantiation
-- [IL Overview](../il/overview.md) -- IL constant nodes that materialization produces
-- [Diagnostics Overview](../diagnostics/overview.md) -- Error message system for constexpr failures
-- [Pipeline Overview](../pipeline/overview.md) -- Where constexpr evaluation sits in the compilation pipeline
+- [EDG 6.6 Overview](overview.md) — Position of `interpret.c` in the source tree
+- [Type System](type-system.md) — The 22 type kinds that the interpreter evaluates
+- [Template Engine](template-engine.md) — Constexpr evaluation during template instantiation
+- [IL Overview](../il/overview.md) — IL constant nodes that materialization produces
+- [Diagnostics Overview](../diagnostics/overview.md) — Error message system for constexpr failures
+- [Pipeline Overview](../pipeline/overview.md) — Where constexpr evaluation sits in the compilation pipeline

@@ -162,7 +162,7 @@ The `ruleId` is formed by emitting the literal `"EC"` prefix followed by the dec
 
 Multiple diagnostics are comma-separated: a comma is prepended before `{` when `unk_4F074B0 + unk_4F074B8 > 1` (more than one diagnostic emitted so far).
 
-**Include-stack annotations.** When include depth (`dword_4F04C64`) is greater than zero, `sub_6837D0` walks the include stack (776-byte records at `qword_4F04C68`) calling `sub_67B7E0` to build context annotations. These are linked as children at `diag+40/+48`. The English-locale templates that survive in the string table are `"detected during:"` and the family of `"detected during instantiation of %nt %p"` / `"detected during implicit generation of %nt %p"` / `"detected during processing of template argument list for %na %p"` strings -- EDG uses the C++ instantiation-context vocabulary, not C-preprocessor `"in file included from"` phrasing. Diagnostic numbers 453, 1063, 1064, and 1150 select which of these templates renders for the current include-stack frame.
+**Include-stack annotations.** When include depth (`dword_4F04C64`) is greater than zero, `sub_6837D0` walks the include stack (776-byte records at `qword_4F04C68`) calling `sub_67B7E0` to build context annotations. These are linked as children at `diag+40/+48`. The English-locale templates that survive in the string table are `"detected during:"` and the family of `"detected during instantiation of %nt %p"` / `"detected during implicit generation of %nt %p"` / `"detected during processing of template argument list for %na %p"` strings — EDG uses the C++ instantiation-context vocabulary, not C-preprocessor `"in file included from"` phrasing. Diagnostic numbers 453, 1063, 1064, and 1150 select which of these templates renders for the current include-stack frame.
 
 **Warning-as-error promotion.** When a warning (severity 5) has been emitted and `unk_4D04728` is set, the function creates a synthetic "warnings treated as errors" diagnostic via `sub_67D610(0xE7D, ..., 4)` with severity 4 (remark), then recursively calls `sub_6837D0` on it.
 
@@ -172,7 +172,7 @@ Filtering happens in `sub_6837D0` before either renderer is invoked:
 
 1. **Severity threshold**: `byte_4F07481[0]` stores the minimum severity. Diagnostics below this level are silently suppressed.
 2. **Duplicate detection**: `byte_4CFFE80[4*errnum + 2]` bit flags track "already seen" diagnostics. Bit 0 marks first occurrence, bit 1 marks already emitted. On second hit, the diagnostic is counted but not emitted.
-3. **Pragma suppression**: `sub_67D520` checks whether the diagnostic is disabled via `#pragma nv_diag_suppress` (the spelling that survives in the string table -- the legacy `diag_suppress` form is accepted as an alias by the EDG pragma parser but is not the literal stored alongside the dispatcher). `sub_67D470` records the suppression.
+3. **Pragma suppression**: `sub_67D520` checks whether the diagnostic is disabled via `#pragma nv_diag_suppress` (the spelling that survives in the string table — the legacy `diag_suppress` form is accepted as an alias by the EDG pragma parser but is not the literal stored alongside the dispatcher). `sub_67D470` records the suppression.
 4. **Error limit**: When `qword_4F074B0 + qword_4F074B8 >= unk_4F07478`, the dispatcher fprintfs `sub_67C860(1508)` ("error limit reached") directly to the stderr stream and calls `sub_7235F0(9)` to abort. The 1508 is a localized message-string index used by `sub_67C860`, not a diagnostic record number — no `sub_67D610` call is made in this path.
 
 ## Diagnostic Severity Enum
@@ -191,7 +191,7 @@ The severity byte at `diag+180` encodes the following levels, used by both the t
 | 10 | catastrophe | ESC 2 (red) | (no `case 10u` → falls through to `"error"`) | C / c |
 | 11 | internal-error | ESC 2 (red) | `"internal_error"` | C / c (terminal also prepends `"(internal error) "`) |
 
-Severity values 9, 10, and 11 are fatal: after emission, `sub_7AFBD0` (`longjmp` / error propagation `[LOW confidence]` -- the function is called on fatal error paths and does not return to its caller, consistent with `longjmp` or `exit`, but could also be a custom `abort`-style handler; no `setjmp`/`longjmp` string evidence found) and `sub_7235F0(severity)` terminate compilation. Internal errors (11) additionally prepend `"(internal error) "` to the log output and use the prefix for error 3709.
+Severity values 9, 10, and 11 are fatal: after emission, `sub_7AFBD0` (`longjmp` / error propagation `[LOW confidence]` — the function is called on fatal error paths and does not return to its caller, consistent with `longjmp` or `exit`, but could also be a custom `abort`-style handler; no `setjmp`/`longjmp` string evidence found) and `sub_7235F0(severity)` terminate compilation. Internal errors (11) additionally prepend `"(internal error) "` to the log output and use the prefix for error 3709.
 
 Note: severity 2 is the EDG sub-note level — it is the value `sub_6855B0` hard-codes when allocating attached notes via `sub_67D610(diag_num, ptr, 2, …)`. It is distinct from LLVM optimization remarks and from EDG severity-4 *remark* diagnostics. Severity-2 records suppress their own `note_list` children during recursive emission (a note cannot itself have further notes) and never appear as top-level SARIF results — they ride along the parent's `relatedLocations` chain.
 
@@ -479,49 +479,49 @@ All three diagnostic systems share the same growable string buffer used for mess
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_67B780` | `0x67B780` | -- | EDG: Increment error/warning counters |
-| `sub_67B7E0` | `0x67B7E0` | -- | EDG: Build include-stack annotation |
-| `sub_67B9F0` | `0x67B9F0` | -- | EDG: Diagnostic record pool allocator |
-| `sub_67BB20` | `0x67BB20` | -- | EDG: Argument node allocator |
-| `sub_67BBF0` | `0x67BBF0` | -- | EDG: Set ANSI color state for output |
-| `sub_67BD40` | `0x67BD40` | -- | EDG: Emit newline/flush for source context |
-| `sub_67BDC0` | `0x67BDC0` | -- | EDG: Load file metadata and tab stop width |
-| `sub_67C120` | `0x67C120` | -- | EDG/SARIF: Emit `physicalLocation` JSON |
-| `sub_67C860` | `0x67C860` | -- | EDG: Localized string lookup by ID |
-| `sub_67D2D0` | `0x67D2D0` | -- | EDG: Convert internal diag ID to user-visible number |
-| `sub_67D470` | `0x67D470` | -- | EDG: Record pragma-based suppression |
-| `sub_67D520` | `0x67D520` | -- | EDG: Check pragma-based suppression |
-| `sub_67D610` | `0x67D610` | -- | EDG: Diagnostic-record allocator — takes `(diag_num, src_pos, severity, …)`, calls `sub_67B9F0` to pool-allocate the record, stores the numeric ID at `+176`, severity at `+180` (capped at 7 via `if (sev <= 7u)` after `sub_67C4B0`), source-position fields at `+96/+104/+128`. Used by every emission path (not only warnings-as-errors). |
-| `sub_681B50` | `0x681B50` | -- | EDG: Populate message text into header buffer |
+| `sub_67B780` | `0x67B780` | — | EDG: Increment error/warning counters |
+| `sub_67B7E0` | `0x67B7E0` | — | EDG: Build include-stack annotation |
+| `sub_67B9F0` | `0x67B9F0` | — | EDG: Diagnostic record pool allocator |
+| `sub_67BB20` | `0x67BB20` | — | EDG: Argument node allocator |
+| `sub_67BBF0` | `0x67BBF0` | — | EDG: Set ANSI color state for output |
+| `sub_67BD40` | `0x67BD40` | — | EDG: Emit newline/flush for source context |
+| `sub_67BDC0` | `0x67BDC0` | — | EDG: Load file metadata and tab stop width |
+| `sub_67C120` | `0x67C120` | — | EDG/SARIF: Emit `physicalLocation` JSON |
+| `sub_67C860` | `0x67C860` | — | EDG: Localized string lookup by ID |
+| `sub_67D2D0` | `0x67D2D0` | — | EDG: Convert internal diag ID to user-visible number |
+| `sub_67D470` | `0x67D470` | — | EDG: Record pragma-based suppression |
+| `sub_67D520` | `0x67D520` | — | EDG: Check pragma-based suppression |
+| `sub_67D610` | `0x67D610` | — | EDG: Diagnostic-record allocator — takes `(diag_num, src_pos, severity, …)`, calls `sub_67B9F0` to pool-allocate the record, stores the numeric ID at `+176`, severity at `+180` (capped at 7 via `if (sev <= 7u)` after `sub_67C4B0`), source-position fields at `+96/+104/+128`. Used by every emission path (not only warnings-as-errors). |
+| `sub_681B50` | `0x681B50` | — | EDG: Populate message text into header buffer |
 | `sub_681D20` | `0x681D20` | 37KB | EDG: Terminal text diagnostic renderer |
-| `sub_683690` | `0x683690` | -- | EDG/SARIF: Emit JSON-escaped `message` object |
+| `sub_683690` | `0x683690` | — | EDG/SARIF: Emit JSON-escaped `message` object |
 | `sub_6837D0` | `0x6837D0` | 20KB | EDG: Diagnostic dispatch and SARIF renderer |
-| `sub_721AB0` | `0x721AB0` | -- | EDG: Multi-byte character byte count |
-| `sub_722DF0` | `0x722DF0` | -- | EDG/SARIF: Resolve file-id to path string |
-| `sub_722FC0` | `0x722FC0` | -- | EDG: Format filename into buffer |
-| `sub_723260` | `0x723260` | -- | EDG: Get filename string from file info |
-| `sub_723640` | `0x723640` | -- | EDG: Get decorated source location string |
-| `sub_729B10` | `0x729B10` | -- | EDG: Retrieve file/line data for source context |
-| `sub_729E00` | `0x729E00` | -- | EDG/SARIF: Decompose packed source position |
-| `sub_729F80` | `0x729F80` | -- | EDG: Promote severity (hard error) |
-| `sub_7235F0` | `0x7235F0` | -- | EDG: Fatal exit with severity code |
-| `sub_7AF1D0` | `0x7AF1D0` | -- | EDG: Newline character mapping lookup |
-| `sub_823800` | `0x823800` | -- | Shared: Reset/clear growable string buffer |
-| `sub_823810` | `0x823810` | -- | Shared: Grow/realloc string buffer |
-| `sub_8237A0` | `0x8237A0` | -- | Shared: Allocate new growable buffer |
-| `sub_8238B0` | `0x8238B0` | -- | Shared: Append to string buffer |
-| `sub_B16430` | `0xB16430` | -- | LLVM Remark: Create named string attribute |
-| `sub_B16530` | `0xB16530` | -- | LLVM Remark: Append named value |
-| `sub_B16B10` | `0xB16B10` | -- | LLVM Remark: Create named integer attribute |
-| `sub_B157E0` | `0xB157E0` | -- | LLVM Remark: Get DebugLoc for remark source location |
-| `sub_B17560` | `0xB17560` | -- | LLVM Remark: Construct `OptimizationRemark` (passed) |
-| `sub_B178C0` | `0xB178C0` | -- | LLVM Remark: Construct warning-level `DiagnosticInfo` |
-| `sub_B180C0` | `0xB180C0` | -- | LLVM Remark: Finalize and prepare remark for emission |
-| `sub_B18290` | `0xB18290` | -- | LLVM Remark: Append raw string to remark message |
-| `sub_B2BE50` | `0xB2BE50` | -- | LLVM Remark: `getRemarkStreamer` |
-| `sub_B6EA50` | `0xB6EA50` | -- | LLVM Remark: `isEnabled` check |
-| `sub_B6F970` | `0xB6F970` | -- | LLVM Remark: `getRemarkFilter` |
-| `sub_B91220` | `0xB91220` | -- | LLVM Remark: Free remark string |
+| `sub_721AB0` | `0x721AB0` | — | EDG: Multi-byte character byte count |
+| `sub_722DF0` | `0x722DF0` | — | EDG/SARIF: Resolve file-id to path string |
+| `sub_722FC0` | `0x722FC0` | — | EDG: Format filename into buffer |
+| `sub_723260` | `0x723260` | — | EDG: Get filename string from file info |
+| `sub_723640` | `0x723640` | — | EDG: Get decorated source location string |
+| `sub_729B10` | `0x729B10` | — | EDG: Retrieve file/line data for source context |
+| `sub_729E00` | `0x729E00` | — | EDG/SARIF: Decompose packed source position |
+| `sub_729F80` | `0x729F80` | — | EDG: Promote severity (hard error) |
+| `sub_7235F0` | `0x7235F0` | — | EDG: Fatal exit with severity code |
+| `sub_7AF1D0` | `0x7AF1D0` | — | EDG: Newline character mapping lookup |
+| `sub_823800` | `0x823800` | — | Shared: Reset/clear growable string buffer |
+| `sub_823810` | `0x823810` | — | Shared: Grow/realloc string buffer |
+| `sub_8237A0` | `0x8237A0` | — | Shared: Allocate new growable buffer |
+| `sub_8238B0` | `0x8238B0` | — | Shared: Append to string buffer |
+| `sub_B16430` | `0xB16430` | — | LLVM Remark: Create named string attribute |
+| `sub_B16530` | `0xB16530` | — | LLVM Remark: Append named value |
+| `sub_B16B10` | `0xB16B10` | — | LLVM Remark: Create named integer attribute |
+| `sub_B157E0` | `0xB157E0` | — | LLVM Remark: Get DebugLoc for remark source location |
+| `sub_B17560` | `0xB17560` | — | LLVM Remark: Construct `OptimizationRemark` (passed) |
+| `sub_B178C0` | `0xB178C0` | — | LLVM Remark: Construct warning-level `DiagnosticInfo` |
+| `sub_B180C0` | `0xB180C0` | — | LLVM Remark: Finalize and prepare remark for emission |
+| `sub_B18290` | `0xB18290` | — | LLVM Remark: Append raw string to remark message |
+| `sub_B2BE50` | `0xB2BE50` | — | LLVM Remark: `getRemarkStreamer` |
+| `sub_B6EA50` | `0xB6EA50` | — | LLVM Remark: `isEnabled` check |
+| `sub_B6F970` | `0xB6F970` | — | LLVM Remark: `getRemarkFilter` |
+| `sub_B91220` | `0xB91220` | — | LLVM Remark: Free remark string |
 | `sub_C2E790` | `0xC2E790` | 6KB | LLVM Remark: `createRemarkSerializer` factory |
 | `sub_C302C0` | `0xC302C0` | 4KB | LLVM Remark: YAML remark serializer emit |
 | `sub_C30A00` | `0xC30A00` | 6KB | LLVM Remark: YAML remark parser (6 type tags) |
@@ -530,20 +530,20 @@ All three diagnostic systems share the same growable string buffer used for mess
 | `sub_EFD2C0` | `0xEFD2C0` | 18KB | LLVM Remark: Bitstream record writer |
 | `sub_EFE900` | `0xEFE900` | 30KB | LLVM Remark: Bitstream remark parser |
 | `sub_F01350` | `0xF01350` | 23KB | LLVM Remark: Bitstream remark serializer |
-| `sub_1049740` | `0x1049740` | -- | LLVM Remark: Publish remark to diagnostic handler |
-| `sub_15CA330` | `0x15CA330` | -- | LLVM Remark: `OptimizationRemark` constructor |
-| `sub_15CA540` | `0x15CA540` | -- | LLVM Remark: `OptimizationRemarkMissed` constructor |
-| `sub_15CAB20` | `0x15CAB20` | -- | LLVM Remark: `OptimizationRemark::operator<<(StringRef)` |
+| `sub_1049740` | `0x1049740` | — | LLVM Remark: Publish remark to diagnostic handler |
+| `sub_15CA330` | `0x15CA330` | — | LLVM Remark: `OptimizationRemark` constructor |
+| `sub_15CA540` | `0x15CA540` | — | LLVM Remark: `OptimizationRemarkMissed` constructor |
+| `sub_15CAB20` | `0x15CAB20` | — | LLVM Remark: `OptimizationRemark::operator<<(StringRef)` |
 | `sub_15CAD70` | `0x15CAD70` | 13KB | LLVM Remark: YAML remark serializer (NVIDIA-extended) |
-| `sub_1DCCCA0` | `0x1DCCCA0` | -- | LLVM Remark: `OptimizationRemarkEmitter::emit` |
+| `sub_1DCCCA0` | `0x1DCCCA0` | — | LLVM Remark: `OptimizationRemarkEmitter::emit` |
 
 ## Cross-References
 
-- [Entry Point & CLI](../pipeline/entry.md) -- flag routing for `-w`, `-Werror`, `-inline-info`, `-Xopt` pass-through
-- [GVN](../llvm/gvn.md) -- `profusegvn` knob and GVN diagnostic output
-- [Inliner Cost Model](../lto/inliner-cost.md) -- `profuseinline` knob and inline cost diagnostics
-- [LLVM Pass Pipeline](../llvm/pipeline.md) -- `opt-remark-emit` and `machine-opt-remark-emitter` analysis pass registration
-- [EDG Frontend](../pipeline/edg.md) -- EDG option registration including `--diagnostics_format`
-- [CLI Flags](../config/cli-flags.md) -- complete flag-to-pipeline routing table
-- [Knobs](../config/knobs.md) -- `profuseinline`, `profusegvn`, and remark-related knobs
-- [AsmPrinter](asmprinter.md) -- remark emission during code generation
+- [Entry Point & CLI](../pipeline/entry.md) — flag routing for `-w`, `-Werror`, `-inline-info`, `-Xopt` pass-through
+- [GVN](../llvm/gvn.md) — `profusegvn` knob and GVN diagnostic output
+- [Inliner Cost Model](../lto/inliner-cost.md) — `profuseinline` knob and inline cost diagnostics
+- [LLVM Pass Pipeline](../llvm/pipeline.md) — `opt-remark-emit` and `machine-opt-remark-emitter` analysis pass registration
+- [EDG Frontend](../pipeline/edg.md) — EDG option registration including `--diagnostics_format`
+- [CLI Flags](../config/cli-flags.md) — complete flag-to-pipeline routing table
+- [Knobs](../config/knobs.md) — `profuseinline`, `profusegvn`, and remark-related knobs
+- [AsmPrinter](asmprinter.md) — remark emission during code generation

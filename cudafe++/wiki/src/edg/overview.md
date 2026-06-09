@@ -1,6 +1,6 @@
 # EDG 6.6 Overview
 
-cudafe++ is built on top of Edison Design Group's (EDG) commercial C++ frontend, version 6.6. EDG provides the complete C++ language implementation -- lexer, preprocessor, parser, semantic analysis, type system, template instantiation, overload resolution, constant evaluation, and Itanium ABI name mangling. NVIDIA licenses this frontend and compiles it from source with CUDA-specific modifications injected at three distinct integration levels: a dedicated NVIDIA source file (`nv_transforms.c`), surgical modifications to EDG source files that call into NVIDIA headers, and a large layer of CUDA property-query leaf functions that permeate every compilation phase.
+cudafe++ is built on top of Edison Design Group's (EDG) commercial C++ frontend, version 6.6. EDG provides the complete C++ language implementation — lexer, preprocessor, parser, semantic analysis, type system, template instantiation, overload resolution, constant evaluation, and Itanium ABI name mangling. NVIDIA licenses this frontend and compiles it from source with CUDA-specific modifications injected at three distinct integration levels: a dedicated NVIDIA source file (`nv_transforms.c`), surgical modifications to EDG source files that call into NVIDIA headers, and a large layer of CUDA property-query leaf functions that permeate every compilation phase.
 
 The build path embedded in the binary is:
 
@@ -20,7 +20,7 @@ The binary contains debug path references to 52 `.c` files and 13 `.h` files. To
 | 2 | `class_decl.c` | Class/struct/union declaration processing, lambda scanning |
 | 3 | `cmd_line.c` | Command-line argument parsing (276 flags) |
 | 4 | `const_ints.c` | Compile-time integer constant evaluation |
-| 5 | `cp_gen_be.c` | **Backend** -- `.int.c` code generation, source sequence walking |
+| 5 | `cp_gen_be.c` | **Backend** — `.int.c` code generation, source sequence walking |
 | 6 | `debug.c` | Debug output and IL dump infrastructure |
 | 7 | `decl_inits.c` | Declaration initializer processing |
 | 8 | `decl_spec.c` | Declaration specifier parsing (storage class, type qualifiers) |
@@ -51,7 +51,7 @@ The binary contains debug path references to 52 `.c` files and 13 `.h` files. To
 | 33 | `macro.c` | Preprocessor macro expansion |
 | 34 | `mem_manage.c` | Internal memory management (arena allocator, tracking) |
 | 35 | `modules.c` | C++20 module support (mostly stubs in CUDA build) |
-| 36 | **`nv_transforms.c`** | **NVIDIA-authored** -- CUDA AST transforms, lambda wrappers |
+| 36 | **`nv_transforms.c`** | **NVIDIA-authored** — CUDA AST transforms, lambda wrappers |
 | 37 | `overload.c` | C++ overload resolution |
 | 38 | `pch.c` | Precompiled header support |
 | 39 | `pragma.c` | Pragma processing (43 pragma kinds) |
@@ -79,7 +79,7 @@ The binary contains debug path references to 52 `.c` files and 13 `.h` files. To
 | 4 | `lexical.h` | Token kind enums, lexer state |
 | 5 | `mem_manage.h` | Memory allocator interface |
 | 6 | `modules.h` | Module system declarations |
-| 7 | **`nv_transforms.h`** | **NVIDIA-authored** -- CUDA transform API, called from EDG files |
+| 7 | **`nv_transforms.h`** | **NVIDIA-authored** — CUDA transform API, called from EDG files |
 | 8 | `overload.h` | Overload resolution structures |
 | 9 | `scope_stk.h` | Scope stack interface |
 | 10 | `symbol_tbl.h` | Symbol table interface |
@@ -166,10 +166,10 @@ EDG implements a textbook multi-pass compiler frontend. cudafe++ drives it in a 
 
 The `process_translation_unit` function (`sub_7A40A0` in `trans_unit.c`) is the main entry point for compilation. It allocates a 424-byte TU descriptor, opens the source file, and orchestrates the parse-to-IL sequence. For the main compilation path, it calls:
 
-1. `sub_586240` -- parse the translation unit (drives lexer + parser)
-2. `sub_4E8A60` -- standard compilation finalization (IL completion)
-3. `sub_588F90` -- `fe_wrapup` (5-pass IL finalization)
-4. `sub_489000` -- backend entry (`.int.c` emission, "Back end time")
+1. `sub_586240` — parse the translation unit (drives lexer + parser)
+2. `sub_4E8A60` — standard compilation finalization (IL completion)
+3. `sub_588F90` — `fe_wrapup` (5-pass IL finalization)
+4. `sub_489000` — backend entry (`.int.c` emission, "Back end time")
 
 ## NVIDIA Modifications
 
@@ -194,7 +194,7 @@ A single dedicated NVIDIA source file at address range `0x6BAE70`--`0x6BE4A0`, c
 | `nv_emit_host_reference_array` | `0x6BCF80` | Generate `.nvHRKE`/`.nvHRDI`/etc. ELF section arrays |
 | `nv_get_full_nv_static_prefix` | `0x6BE300` | Build scoped name + register entity in host ref arrays |
 
-The companion header `nv_transforms.h` declares the API surface that EDG source files call into. This is the primary NVIDIA integration point -- EDG code never calls `nv_transforms.c` functions directly; it calls through the header's declarations.
+The companion header `nv_transforms.h` declares the API surface that EDG source files call into. This is the primary NVIDIA integration point — EDG code never calls `nv_transforms.c` functions directly; it calls through the header's declarations.
 
 Key data structures managed by `nv_transforms.c`:
 
@@ -212,11 +212,11 @@ Key data structures managed by `nv_transforms.c`:
 
 Three EDG source files contain direct calls into `nv_transforms.h` functions, making them the "NVIDIA-aware" EDG files:
 
-**`cp_gen_be.c`** -- The backend code generator. When it encounters a type named `__nv_lambda_preheader_injection` during source sequence walking, it calls `nv_emit_lambda_preamble` (`sub_6BCC20`) to inject the entire `__nv_*` template library. It also calls NVIDIA functions for host reference array emission, managed variable boilerplate, and device stub generation.
+**`cp_gen_be.c`** — The backend code generator. When it encounters a type named `__nv_lambda_preheader_injection` during source sequence walking, it calls `nv_emit_lambda_preamble` (`sub_6BCC20`) to inject the entire `__nv_*` template library. It also calls NVIDIA functions for host reference array emission, managed variable boilerplate, and device stub generation.
 
-**`class_decl.c`** -- The class/struct declaration processor. The `scan_lambda` function (`sub_447930`, 2113 lines) detects `__host__`/`__device__` annotations on lambda expressions, validates CUDA-specific constraints (35+ error codes in range 3592--3690), and records capture counts in the bitmaps via `nv_record_capture_count`.
+**`class_decl.c`** — The class/struct declaration processor. The `scan_lambda` function (`sub_447930`, 2113 lines) detects `__host__`/`__device__` annotations on lambda expressions, validates CUDA-specific constraints (35+ error codes in range 3592--3690), and records capture counts in the bitmaps via `nv_record_capture_count`.
 
-**`statements.c`** -- The statement parser. Calls NVIDIA transform functions for statement-level CUDA validation, such as checking that `__syncthreads()` is not called in divergent control flow within `__global__` functions.
+**`statements.c`** — The statement parser. Calls NVIDIA transform functions for statement-level CUDA validation, such as checking that `__syncthreads()` is not called in divergent control flow within `__global__` functions.
 
 ### Level 3: CUDA Property Query Layer
 
@@ -247,7 +247,7 @@ These 104 accessors account for 3,648 total call sites across the binary. The to
 | `0x7A8DC0` | 169 | `is_function_type` | kind == 14 |
 | `0x7A6E90` | 140 | `is_void_type` | kind == 1 |
 
-CUDA integration is pervasive because these tiny accessors are called from every phase of compilation -- the parser checks execution space during declaration, semantic analysis validates cross-space calls, the type system queries CUDA qualifiers during overload resolution, and the backend reads them during IL emission. There is no isolated "CUDA layer"; the CUDA awareness is distributed across the entire frontend through these leaf functions.
+CUDA integration is pervasive because these tiny accessors are called from every phase of compilation — the parser checks execution space during declaration, semantic analysis validates cross-space calls, the type system queries CUDA qualifiers during overload resolution, and the backend reads them during IL emission. There is no isolated "CUDA layer"; the CUDA awareness is distributed across the entire frontend through these leaf functions.
 
 ### Type Kind Constants
 
@@ -298,7 +298,7 @@ Block structure (48+ bytes header per 64KB block):
 | +24 | `void*` | End-of-block pointer |
 | +32 | `int64` | Block total size (0 if sub-block) |
 | +40 | `byte` | Trimmed flag |
-| +48 | -- | Start of usable data |
+| +48 | — | Start of usable data |
 
 The `free_fe` function (`sub_6BA230`, 533 lines) implements a hash-table-based deduplicating allocator for front-end object deallocation, using open addressing with linear probing.
 
@@ -306,9 +306,9 @@ The `free_fe` function (`sub_6BA230`, 533 lines) implements a hash-table-based d
 
 The `modules.c` file (address range `0x7C0C60`--`0x7C2560`) contains approximately 20 functions implementing the C++20 module import/export interface. CUDA does not support C++20 modules, so most functions are stubs that return 0:
 
-- `has_pending_template_definition_from_module` -- returns 0
-- `has_pending_template_specializations_from_module` -- returns 0
-- Seven additional stub functions at `0x7C2350`--`0x7C2410` -- all return 0
+- `has_pending_template_definition_from_module` — returns 0
+- `has_pending_template_specializations_from_module` — returns 0
+- Seven additional stub functions at `0x7C2350`--`0x7C2410` — all return 0
 
 The non-stub functions handle the binary module interface file format (magic header `{0x9A, 0x13, 0x37, 0x7D}`) and basic module name matching, likely preserved from the EDG baseline for future CUDA module support.
 
@@ -316,10 +316,10 @@ The non-stub functions handle the binary module interface file format (magic hea
 
 When compiling with Relocatable Device Code (`--rdc`), multiple translation units are processed sequentially. The `trans_corresp.c` file (address range `0x7A00D0`--`0x7A38A0`) implements structural equivalence checking between types from different TUs:
 
-- `verify_class_type_correspondence` (`sub_7A00D0`, 703 lines) -- Deep comparison of class types: base classes, friend declarations, member functions, nested types, template parameters
-- `verify_enum_type_correspondence` (`sub_7A0E10`) -- Enum underlying type and enumerator list comparison
-- `verify_function_type_correspondence` (`sub_7A1230`) -- Parameter list and return type comparison
-- `set_type_correspondence` (`sub_7A1460`) -- Links two corresponding types across TUs
+- `verify_class_type_correspondence` (`sub_7A00D0`, 703 lines) — Deep comparison of class types: base classes, friend declarations, member functions, nested types, template parameters
+- `verify_enum_type_correspondence` (`sub_7A0E10`) — Enum underlying type and enumerator list comparison
+- `verify_function_type_correspondence` (`sub_7A1230`) — Parameter list and return type comparison
+- `set_type_correspondence` (`sub_7A1460`) — Links two corresponding types across TUs
 
 The `trans_unit.c` file manages TU lifecycle with a stack-based model:
 
@@ -334,12 +334,12 @@ The `trans_unit.c` file manages TU lifecycle with a stack-based model:
 
 ## Cross-References
 
-- [Pipeline Overview](../pipeline/overview.md) -- How EDG stages map to the 8-stage pipeline
-- [IL Overview](../il/overview.md) -- The 85 entry kinds that EDG produces
-- [Extended Lambda Overview](../lambda/overview.md) -- The `nv_transforms.c` lambda pipeline in detail
-- [Type System](type-system.md) -- Deep dive on 22 type kinds and class layout
-- [Template Engine](template-engine.md) -- Template instantiation worklist
-- [Name Mangling](name-mangling.md) -- Itanium ABI encoding with CUDA extensions
-- [Lexer](lexer.md) -- Tokenizer and keyword registration
-- [Overload Resolution](overload-resolution.md) -- Candidate evaluation and ICS ranking
-- [Diagnostics Overview](../diagnostics/overview.md) -- The 3,795 error message system
+- [Pipeline Overview](../pipeline/overview.md) — How EDG stages map to the 8-stage pipeline
+- [IL Overview](../il/overview.md) — The 85 entry kinds that EDG produces
+- [Extended Lambda Overview](../lambda/overview.md) — The `nv_transforms.c` lambda pipeline in detail
+- [Type System](type-system.md) — Deep dive on 22 type kinds and class layout
+- [Template Engine](template-engine.md) — Template instantiation worklist
+- [Name Mangling](name-mangling.md) — Itanium ABI encoding with CUDA extensions
+- [Lexer](lexer.md) — Tokenizer and keyword registration
+- [Overload Resolution](overload-resolution.md) — Candidate evaluation and ICS ranking
+- [Diagnostics Overview](../diagnostics/overview.md) — The 3,795 error message system

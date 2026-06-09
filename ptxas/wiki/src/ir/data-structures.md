@@ -4,7 +4,7 @@
 
 This page documents the key internal data structures in ptxas v13.0.88: the compilation context ("god object"), the Ori Code Object, symbol tables, constant/shared memory descriptors, the pool allocator's object model, and the generic container types (hash maps, linked lists, growable arrays) that underpin nearly every subsystem.
 
-All offsets are byte offsets from the structure base unless otherwise noted. Types are inferred from decompiled access patterns. Field names are reverse-engineered -- the binary is stripped.
+All offsets are byte offsets from the structure base unless otherwise noted. Types are inferred from decompiled access patterns. Field names are reverse-engineered — the binary is stripped.
 
 ## Compilation Context (the "God Object")
 
@@ -43,8 +43,8 @@ The map is grouped by functional region rather than strict offset order, so that
 | +72 | `u32` | (zero-init counter) | Ctor line 239 |
 | +80 | `allocator*` | `first_lookup_container_alloc` | Ctor line 236: `*(a1+80) = v16`. **Correction**: the +80..+100 region is a growable-container header in the standard ptxas layout, not a standalone `last_exit_code_alloc` field. Ctor line 603 calls `sub_7F0C10((_QWORD*)(a1+80), 512)`, which is the generic grow helper whose argument is the container base. Inside `sub_7F0C10` (`sub_7F0C10_0x7f0c10.c:13-34`), the helper reads `*((unsigned int*)a1+5)` = offset +20 from its argument as the capacity, and `*((int*)a1+4)` = offset +16 as the current count. So the container laid over +80 has: allocator@+80, buffer@+88, count@+96 (u32), capacity@+100 (u32). The 512 capacity suggests a symbol-id or name-hash table companion to the +144 name table |
 | +88 | `ptr` | `first_lookup_container_buffer` | Ctor line 240: `*(a1+88) = 0`. Buffer pointer for the +80 container; after the ctor:603 grow-to-512 call, this points at an array of 512 qwords (4 KiB) |
-| +96 | `i32` | `compile_unit_index` / `container_count` | Ctor line 231: `*(_QWORD*)(a1+96) = 0xFFFFFFFFLL` -- a **qword** write of -1 that sets `+96` to `-1` (the container count-sentinel) and `+100` to `0` (initial capacity). `sub_C64F70:71` writes the low 32 bits into the +20 slot of every timing record (`v46 = *(_DWORD*)(*a1+96)`). **Partial**: the original documentation called this `compile_unit_index`, but the qword-init pattern is identical to the count/capacity init used by every other container in the ctx. Either (a) +96 genuinely serves dual duty as container-count **and** cu-index (unlikely because the two would collide on grow), or (b) it is the container count and the "cu_idx" column in timing records is actually a phase-sequence number. Marked partial until a disambiguating write site is found |
-| +100 | `u32` | `container_capacity_or_reserved` | Implicit from ctor:231 qword write setting the high dword to 0, and from `sub_7F0C10`'s generic grow helper reading offset +20 as capacity. After ctor:603 line, this becomes `512`. Marked **partial** -- could also be a tail half of +96 if +96 is truly a qword semantic field |
+| +96 | `i32` | `compile_unit_index` / `container_count` | Ctor line 231: `*(_QWORD*)(a1+96) = 0xFFFFFFFFLL` — a **qword** write of -1 that sets `+96` to `-1` (the container count-sentinel) and `+100` to `0` (initial capacity). `sub_C64F70:71` writes the low 32 bits into the +20 slot of every timing record (`v46 = *(_DWORD*)(*a1+96)`). **Partial**: the original documentation called this `compile_unit_index`, but the qword-init pattern is identical to the count/capacity init used by every other container in the ctx. Either (a) +96 genuinely serves dual duty as container-count **and** cu-index (unlikely because the two would collide on grow), or (b) it is the container count and the "cu_idx" column in timing records is actually a phase-sequence number. Marked partial until a disambiguating write site is found |
+| +100 | `u32` | `container_capacity_or_reserved` | Implicit from ctor:231 qword write setting the high dword to 0, and from `sub_7F0C10`'s generic grow helper reading offset +20 as capacity. After ctor:603 line, this becomes `512`. Marked **partial** — could also be a tail half of +96 if +96 is truly a qword semantic field |
 
 #### Embedded Hash-Map Containers, Bin 1 (+104..+200)
 
@@ -52,7 +52,7 @@ This bin holds three or four small hash-map / sorted-array containers. The alloc
 
 | Offset | Type | Field | Evidence |
 |--------|------|-------|----------|
-| +104 | `ptr` | `bin1_container_a_hdr0` | Ctor line 241: `*(_QWORD*)(a1+104) = 0`. First qword of an opaque five-qword region that looks like a second growable-container or hash-map slot. Not wrapped by `sub_7F0C10`, which suggests it is a manually-managed structure rather than the standard `{alloc, buf, count, cap}` layout -- possibly a small `std::list`-style sentinel node (prev/next/head/tail/count) |
+| +104 | `ptr` | `bin1_container_a_hdr0` | Ctor line 241: `*(_QWORD*)(a1+104) = 0`. First qword of an opaque five-qword region that looks like a second growable-container or hash-map slot. Not wrapped by `sub_7F0C10`, which suggests it is a manually-managed structure rather than the standard `{alloc, buf, count, cap}` layout — possibly a small `std::list`-style sentinel node (prev/next/head/tail/count) |
 | +112 | `ptr` | `bin1_container_a_hdr1` | Ctor line 242: `*(_QWORD*)(a1+112) = 0` |
 | +120 | `ptr` | `bin1_container_a_hdr2` | Ctor line 243: `*(_QWORD*)(a1+120) = 0` |
 | +128 | `ptr` | `bin1_container_a_hdr3` | Ctor line 244: `*(_QWORD*)(a1+128) = 0` |
@@ -80,7 +80,7 @@ The most-accessed structural region of the ctx. This is the **function-id-indexe
 | +272 | `node*` | `pending_legalize_list_head` | Linked list head used by `sub_752CF0:17` to walk Ori instructions whose opcode bits match `(opcode & 0xFFFFCFFF) == 0x89` (a specific instruction class). Each node has `next = *(v+8)` and a payload at +72/+84/+204/+232/+264. Confirmed iterating list in `sub_18F4850:89-117` (`v8 = *(a1+272); ...; v8 = *(_QWORD *)(v8+8)`) |
 | +280 | `ptr` | `current_iter_node` | Pointer used as a moving cursor on `+272` list during phase iteration; `sub_7846F0:201` reads `v7 = *(a1+280)` then dereferences `*v7+21` for an instruction id |
 | +288 | `allocator*` | `func_table_alloc` | Ctor line 328: `*(a1+288) = v23`; the allocator handle used by the grow path at line 611 |
-| +296 | `Code Object**` | `function_table_buffer` | **Documented** -- the function-id-indexed lookup table. `*(a1+296) + 8*id` returns the per-function `Code Object`. Read at hundreds of sites |
+| +296 | `Code Object**` | `function_table_buffer` | **Documented** — the function-id-indexed lookup table. `*(a1+296) + 8*id` returns the per-function `Code Object`. Read at hundreds of sites |
 | +304 | `i32` | `function_table_count` | Ctor line 324 sets `0xFFFFFFFFLL` (-1 sentinel); grows on demand. Read as `*(_DWORD *)(a1+304)` everywhere a phase iterates over all functions, e.g., `sub_781F80:329`, `sub_7846F0:217`, `sub_A0F020:361` |
 | +308 | `i32` | `function_table_capacity` | Ctor line 605: `v55 = *(_DWORD *)(a1+308); if (v55 <= 127) { v56 = grow ... }` |
 | +312 | `allocator*` | `func_table_alloc_view` | Same allocator, second handle (used by grow loop) |
@@ -98,7 +98,7 @@ A second growable array, parallel to the function object table, storing per-func
 | +344 | `ptr` | (zero) | Ctor line 350 |
 | +352 | `i32` | `name_table_alt_count` | Ctor line 331: `0xFFFFFFFFLL` |
 | +360 | `allocator*` | `func_name_alloc` | Ctor line 332 |
-| +368 | `name**` | `function_name_array` | **Documented** -- buffer pointer |
+| +368 | `name**` | `function_name_array` | **Documented** — buffer pointer |
 | +376 | `i32` | `function_name_count` | Ctor line 333: `0xFFFFFFFFLL` (-1 = empty); read at `sub_781F80:982`, `sub_A0F020:141` (`for (i=0; i <= *(a1+376); ++i)`) |
 | +380 | `i32` | `function_name_capacity` | Ctor line 631: `v61 = *(_DWORD *)(a1+380); if (v61 <= 15) ...` (grow path) |
 | +384 | `allocator*` | `func_name_alloc_view` | Ctor line 334 |
@@ -119,7 +119,7 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 | +456 | `allocator*` | `stage_array_alloc_b` | Ctor line 403 |
 | +464 / +472 / +480 / +488 | various | additional growable-array slots | Ctor lines 391-405 (see "Inline buffer block" below) |
 | +496 / +504 | `i32 / allocator*` | -1 sentinel / allocator | Ctor lines 392/406 |
-| +512 | `i32*` | `function_worklist_buffer` | Active function-id worklist (typically a `int[N]`). Ctor line 400. Read with `*(_DWORD *)(*(a1+512) + 4*idx)` -- e.g., `sub_796D60:102-104` indexes into the function table via this list |
+| +512 | `i32*` | `function_worklist_buffer` | Active function-id worklist (typically a `int[N]`). Ctor line 400. Read with `*(_DWORD *)(*(a1+512) + 4*idx)` — e.g., `sub_796D60:102-104` indexes into the function table via this list |
 | +520 | `i32` | `function_worklist_count` | Ctor line 394: `0xFFFFFFFFLL` (sentinel). Read at `sub_796D60:95` (`v36 = *(a1+520)`), `sub_781F80:349`, `sub_793220:87`. Often used as `for (i=1; i <= *(a1+520); ++i)`, indicating 1-based indexing |
 | +528 | `allocator*` | `worklist_alloc` | Ctor line 409 |
 | +536 / +544 | `i32 / i32` | sentinel slots | Ctor lines 396/402 |
@@ -142,7 +142,7 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 |--------|------|-------|----------|
 | +736 | `refcount*` | `traversal_refcount_a` | Ctor lines 415-419 allocate a 24-byte refcount block |
 | +744 / +752 / +760 | `ptr` / `ptr` / `ptr` | linked list head/tail/iter | Ctor lines 421-423; subsequent passes traverse via these |
-| +776 | `u8*` | `opcode_attribute_table` | **Correction** -- not a linked-list slot. Ctor lines 904-932 allocate a **1428-byte** buffer via `(*(a1+16)->alloc)(v139, 1428)`, write `*v140 = 355` into the first 4 bytes (marker / max opcode id), zero-initialize the rest in a 4-qword-stride loop, then store `*(a1+776) = v141` where `v141 = v140 + 1` (i.e., **the pointer skips the 8-byte header**). Immediately afterward, ctor lines 934-1229 OR individual flag bits into byte offsets `v142[17]`, `[25]`, `[29]`, `[37]`, `[64]`, ..., `[1420]`, `[1424]` -- the decompiler types `v142` as `_QWORD*` but the bounds and `\|= 0xXX` patterns prove it is effectively a `_BYTE*` with byte indices. This buffer is the **per-opcode attribute/capability bitmap**: each of the ~355 Ori opcodes has one or more attribute bytes describing legality, pool, scheduling class, etc. The mask values observed (0x9C, 0x11, 0x1C, 0x1E, 0x40, 0x80, ...) select distinct attribute subsets. Observed masks stored per-opcode include: 0x01 (valid), 0x02 (has-side-effect), 0x04 (reads-memory), 0x08 (writes-memory), 0x10 (late-expansion), 0x20 (sm9+-only), 0x40 (cluster-aware), 0x80 (dual-issue) -- these are inferred from usage context, and the table should be treated as **partial** until each bit is cross-referenced with a phase-execute body that tests it |
+| +776 | `u8*` | `opcode_attribute_table` | **Correction** — not a linked-list slot. Ctor lines 904-932 allocate a **1428-byte** buffer via `(*(a1+16)->alloc)(v139, 1428)`, write `*v140 = 355` into the first 4 bytes (marker / max opcode id), zero-initialize the rest in a 4-qword-stride loop, then store `*(a1+776) = v141` where `v141 = v140 + 1` (i.e., **the pointer skips the 8-byte header**). Immediately afterward, ctor lines 934-1229 OR individual flag bits into byte offsets `v142[17]`, `[25]`, `[29]`, `[37]`, `[64]`, ..., `[1420]`, `[1424]` — the decompiler types `v142` as `_QWORD*` but the bounds and `\|= 0xXX` patterns prove it is effectively a `_BYTE*` with byte indices. This buffer is the **per-opcode attribute/capability bitmap**: each of the ~355 Ori opcodes has one or more attribute bytes describing legality, pool, scheduling class, etc. The mask values observed (0x9C, 0x11, 0x1C, 0x1E, 0x40, 0x80, ...) select distinct attribute subsets. Observed masks stored per-opcode include: 0x01 (valid), 0x02 (has-side-effect), 0x04 (reads-memory), 0x08 (writes-memory), 0x10 (late-expansion), 0x20 (sm9+-only), 0x40 (cluster-aware), 0x80 (dual-issue) — these are inferred from usage context, and the table should be treated as **partial** until each bit is cross-referenced with a phase-execute body that tests it |
 | +784 | `allocator*` | `opcode_attribute_table_alloc` | Ctor line 933: `*(a1+784) = v139` where `v139 = *(_QWORD*)(a1+16)`. Paired with +776: `sub_7F7DC0:928-930` uses `*(_QWORD*)(a1+784)` to free an earlier buffer (the deallocator call dereferences `*(a1+784)` and dispatches vtable[32]) |
 | +792 | `cg_node*` | `call_graph_object` | Lazily allocated by `sub_784220` if null. Holds a function pre-order walk over the call graph; `*(cg+0) = node_count`, `*(cg+8) = i32* node_array`, `*(cg+16) = allocator`, `*(cg+24) = visited_flag`. Read in `sub_793220:62` (`*(_DWORD *)(a1+940) = *(_DWORD *)(v2+4)`), `sub_A0F020:159, 190, 201, 205`. Allocated using `4 * (function_count+1) + 8` bytes |
 | +800 | `allocator*` | `call_graph_alloc` | Ctor line 434; passed as second handle in `sub_784220:69` |
@@ -152,8 +152,8 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 | +848 | `i32` | `aux_count` | Ctor line 441 |
 | +856 / +864 / +872 | various | linked list slots | Ctor lines 442-444 |
 | +880 | `__m128i` | (SSE init) | Ctor line 428 from `xmmword_2027590` |
-| +896 | `i32` | `assembler_mode` | Ctor line 445; read in `sub_784220:258` (`if (*(a1+896) == 4) sub_74AEE0(...)`) -- value 4 triggers a special handling path |
-| +900 | `i32` | `cluster_dimension_mode` | Ctor lines 849-861: set from `*(a2+1796)` -- 0/1/2 selecting cluster geometry mode (0=none, 1=auto, 2=explicit) |
+| +896 | `i32` | `assembler_mode` | Ctor line 445; read in `sub_784220:258` (`if (*(a1+896) == 4) sub_74AEE0(...)`) — value 4 triggers a special handling path |
+| +900 | `i32` | `cluster_dimension_mode` | Ctor lines 849-861: set from `*(a2+1796)` — 0/1/2 selecting cluster geometry mode (0=none, 1=auto, 2=explicit) |
 | +904 / +908 | `u8` / `u8` | bit flags | Ctor lines 446-447 |
 | +912 / +940 | `_OWORD` | SSE-init slots | Ctor lines 430, 433 |
 | +928 | `i32` | (zero) | Ctor line 448 |
@@ -164,7 +164,7 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 | +960 | `allocator*` | (allocator view) | Ctor line 431 |
 | +968 / +976 | `ptr` / `i32` | aux array | Ctor lines 452-453 |
 | +984 / +1000 | `ptr` | (zero) | Ctor lines 436, 454 |
-| +992 | `back_ptr_block*` | `back_ptr_to_self` | Ctor lines 894-900: 32-byte block holding `[a1, allocator, 0, -1]` -- a self-reference used for callback hooks |
+| +992 | `back_ptr_block*` | `back_ptr_to_self` | Ctor lines 894-900: 32-byte block holding `[a1, allocator, 0, -1]` — a self-reference used for callback hooks |
 | +1008 | `journal*` | `memstate_rewrite_journal_hdr` | 24-byte refcount block `{refcount=2, freelist_head, allocator}` allocated at ctor lines 456-465. **Identified**: per-BB **memory-state-token rewrite journal** — the drain at `sub_8116B0_0x8116b0.c:184-212` walks a trail-bucket array, splicing old values back via `*target = *(header+8); *(header+8) = old_value` (classic undo-trail pattern). Captures rewrites dispatched through `vtable+2456` (operands whose backing descriptor has `*(desc+64)==8`, opcode ≠ 263) during the per-instruction sweep. Supersedes the older "analysis_pool_alloc" label |
 | +1016 | `i32` | `memstate_journal_count` | Non-empty DWORD guard checked before drain (`sub_8116B0:184`) |
 | +1024 | `rewrite_rec*` | `memstate_journal_bucket_base` | Trail-bucket array (24-byte records `{old_value, target_ptr, tag_dword}`) |
@@ -180,7 +180,7 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 |--------|------|-------|----------|
 | +1120..+1136 | `ptr` | (zero-init) | Ctor lines 478-480 |
 | +1144 | `node*` | `function_list_head` | **Documented**; ctor line 481 |
-| +1152 | `node*` | `aux_list_head_a` | Ctor line 482; written/read in `sub_781F80:384, 389` -- secondary linked list traversed during legalization |
+| +1152 | `node*` | `aux_list_head_a` | Ctor line 482; written/read in `sub_781F80:384, 389` — secondary linked list traversed during legalization |
 | +1160 | `node*` | `entry_list_head` | **Documented**; ctor line 483 |
 | +1168 | `node*` | `aux_list_head_b` | Ctor line 484 |
 | +1176..+1231 | `hash_map` (56B) | `embedded_hash_map_a` | Ctor line 485 calls `sub_7F0A90(a1+1176, a1)`. Layout: `{back_ptr_to_ctx, bucket_array_ptr, head, tail, ptr, count}`. Used by sub-passes to map id->object |
@@ -190,7 +190,7 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 | +1312 / +1320 / +1328 | `ptr` | aux slots | Ctor lines 497-499 |
 | +1344 / +1352 | `ptr` | aux slots | Ctor lines 501-502 |
 | +1360 | `subobj*` | `optional_56B_subobj` | Ctor lines 881-892: only allocated if `*(a2+920) > 0`, and bit `+1378 \|= 8` is set. A 56-byte sub-object initialized via `sub_7DC3C0(v135, a1, a2)` |
-| +1372 | `i32` | `legalization_iter_phase` | Ctor line 709: `*(a1+1372) = 0`. Read in `sub_7846F0:240` (`if (!*(_DWORD *)(a1+1372) && *(char*)(a1+1415) < 0)`) -- gates a legalization sub-mode |
+| +1372 | `i32` | `legalization_iter_phase` | Ctor line 709: `*(a1+1372) = 0`. Read in `sub_7846F0:240` (`if (!*(_DWORD *)(a1+1372) && *(char*)(a1+1415) < 0)`) — gates a legalization sub-mode |
 
 #### Phase Bitfield Bank (+1368..+1421)
 
@@ -221,15 +221,15 @@ A 54-byte region of densely packed boolean / multi-bit gate flags. The construct
 | +1400 | `u32` | `error_count_or_threshold` | line 752 | Set from `*(a2+272)` if non-negative; gates rate-limited diagnostic emission |
 | +1404 | `u8` | `error_count_set_marker` | line 751 | Set to 1 once `+1400` has been initialized from options |
 | +1408 | `u8` | flag byte | line 755: `&= 0xE0` | low 5 bits used as a sub-mode tag |
-| +1412 | `u8` | `compilation_flags_byte` | **Documented** | line 756: `& 0xC0` -- ctor packs `*(a2+136), +137, +138, +139` into low bits, then more from `*(a2+1060), +1064` |
-| +1413 | `u8` | `optimizer_gate_bits` | lines 759-782 | Most bit-rich byte: ctor sets bit 1 from `*(a2+137)`, bit 0 from `*(a2+138)`, bit 2 from `(a1+1412 & 0x380)==0`, bit 3 from `*(a2+1060)`, bits 4-5 from `*(a2+1064)`, bit 6 from `*(a2+1068)`, bit 7 from `*(a2+424)==1`. Special override line 774-778: `if (*(a2+348) > 36863 && (v91&8)==0 && (v91&0x30)!=0x10) v91 \|= 0x20` -- forces bit 5 on for SM_90+ with certain non-CUTLASS settings |
+| +1412 | `u8` | `compilation_flags_byte` | **Documented** | line 756: `& 0xC0` — ctor packs `*(a2+136), +137, +138, +139` into low bits, then more from `*(a2+1060), +1064` |
+| +1413 | `u8` | `optimizer_gate_bits` | lines 759-782 | Most bit-rich byte: ctor sets bit 1 from `*(a2+137)`, bit 0 from `*(a2+138)`, bit 2 from `(a1+1412 & 0x380)==0`, bit 3 from `*(a2+1060)`, bits 4-5 from `*(a2+1064)`, bit 6 from `*(a2+1068)`, bit 7 from `*(a2+424)==1`. Special override line 774-778: `if (*(a2+348) > 36863 && (v91&8)==0 && (v91&0x30)!=0x10) v91 \|= 0x20` — forces bit 5 on for SM_90+ with certain non-CUTLASS settings |
 | +1414 | `u8` | `late_expansion_flags` | lines 786-794 | **Documented** bit 0x02 = LateExpansion prerequisite; ctor packs more bits from `*(a2+140), +1080, +1084, +1088, +144` |
 | +1415 | `u8` | `optimization_path_flags` | lines 796-801 | bit 2 from `*(a2+172)`, bit 3 from `*(a2+176)`, bit 4 from `*(a2+180)`. Sign-bit (bit 7) tested at `sub_7846F0:240` to gate the legalization sub-mode |
 | +1416 | `u8` | `output_detail_flags` | **Documented**: bits 4-5 control latency reporting | lines 803-807: bit 6 from `*(a2+148)`, bit 2 from `*(a2+156)` |
 | +1417 | `u8` | `late_expansion_aux_bits` | lines 808-833 | Most-touched flag byte (modified in 12+ separate ctor lines from many a2 fields including +152, +772, +1516, +324, +1096, +1048, +764) |
 | +1418 | `u8` | `codegen_mode_flags` | **Documented** | lines 814-834: packs bits from `*(a2+1112), +1528, +1524, +1100, +1104, +1532` and forces bit 6 ON unconditionally (line 831: `v117 \|= 0x40u`) |
 | +1419 | `u8` | `cluster_and_misc_bits` | lines 835-845 | bit 0 from `*(a2+1760)==1`, bit 3 from `*(a2+1116)`, bit 4 from `*(a2+1120)`, bit 5 from `*(a2+1124)`, bit 6 from `*(a2+1128)`, bit 7 from `*(a2+1768)` |
-| +1420 | `u8` | `cluster_geometry_bits` | lines 847-866 | bit 0 from `*(a2+1794)`, bit 1 from `*(a2+1792)`, bit 2 from `*(a2+1800)`, bit 3 from `*(a2+1132)`, bits 4-5 from `*(a2+1076) << 4`, bits 6-7 from `*(a2+1076)` -- entirely cluster-launch related |
+| +1420 | `u8` | `cluster_geometry_bits` | lines 847-866 | bit 0 from `*(a2+1794)`, bit 1 from `*(a2+1792)`, bit 2 from `*(a2+1800)`, bit 3 from `*(a2+1132)`, bits 4-5 from `*(a2+1076) << 4`, bits 6-7 from `*(a2+1076)` — entirely cluster-launch related |
 | +1421 | `u8` | `aggregator_flags` | lines 738/742/867-871 | bit 1 set unconditionally; bits 2-3 from `*(a2+1808) & 3`; bit 6 from `*(a2+1136)`; bit 7 from `*(a2+1140)` |
 | +1424 | `i32` | `pipeline_option_word` | line 506 | `*(a2+704)` |
 | +1428 | `i32` | `function_index` | **Documented** | line 507: `*(a2+352)` |
@@ -239,11 +239,11 @@ A 54-byte region of densely packed boolean / multi-bit gate flags. The construct
 
 | Offset | Type | Field | Evidence |
 |--------|------|-------|----------|
-| +1440..+1551 | `stream` (~112B) | `output_stream` | **Documented**; ctor line 509: `sub_7F7CB0((a1+1440), a1)` -- the iostream-style output object |
+| +1440..+1551 | `stream` (~112B) | `output_stream` | **Documented**; ctor line 509: `sub_7F7CB0((a1+1440), a1)` — the iostream-style output object |
 | +1552 | `i32` | `pipeline_progress` | **Documented**; ctor line 524: `*(a1+1552) = 0` |
 | +1560 | `allocator*` | `timing_records_alloc` | Ctor line 530: `*(a1+1560) = v44` (allocator handle for the timing growable array). The wiki previously described `+1560` as "the records pointer", but `+1560` is the allocator and `+1568` is the actual records buffer |
 | +1568 | `timing_record*` | `timing_records_buffer` | Ctor line 510: `*(a1+1568) = 0`. Each timing record is **32 bytes** with layout `{u32 phase_id, char* phase_name, u32 invocation_depth, u32 cu_index, u32 spare}`. Confirmed in `sub_C64F70:75-81`: writes `*(buffer + 32*idx) = phase_id`, `+8 = name_str`, `+16 = depth`, `+20 = cu_idx`, `+24 = spare` |
-| +1576 | `i32` | `timing_count` | **Documented** -- but ctor line 512 actually initializes it to `0xFFFFFFFFLL` (-1) |
+| +1576 | `i32` | `timing_count` | **Documented** — but ctor line 512 actually initializes it to `0xFFFFFFFFLL` (-1) |
 | +1584 | `sm_backend*` | `sm_backend` | **Documented** |
 | +1592 | `ptr` | (zero-init) | Ctor line 513 |
 | +1600..+1648 | `ptr` | aux slots | Ctor lines 514-520; mostly zero-initialized |
@@ -257,12 +257,12 @@ A `std::string`-like growable byte buffer used to accumulate the output filename
 
 | Offset | Type | Field | Evidence |
 |--------|------|-------|----------|
-| +1672 | `u64` | `output_string_capacity` | Ctor line 525: 0; checked at line 678 (`if (v74 >= *(_QWORD *)(a1+1672)) sub_66B450(...)` -- realloc) |
+| +1672 | `u64` | `output_string_capacity` | Ctor line 525: 0; checked at line 678 (`if (v74 >= *(_QWORD *)(a1+1672)) sub_66B450(...)` — realloc) |
 | +1680 | `char*` | `output_string_start` | Ctor line 527 |
 | +1688 | `char*` | `output_string_pos` | Ctor line 532; advanced via `*(a1+1688) += strlen(filename)` at line 684 |
 | +1696 | `allocator*` | `output_string_alloc` | Ctor line 531 |
-| +1704 | `i32` | `compile_timeout_ms` | Ctor line 528: `*(a2+116)` -- a timeout/limit option |
-| +1708 | `i32` | `verbosity_level` | Ctor line 533: `*(a2+120)` -- verbosity option |
+| +1704 | `i32` | `compile_timeout_ms` | Ctor line 528: `*(a2+116)` — a timeout/limit option |
+| +1708 | `i32` | `verbosity_level` | Ctor line 533: `*(a2+120)` — verbosity option |
 | +1712 | `i32` | `report_format` | Ctor line 534: `*(a2+124)` |
 | +1716 | `i32` | `report_level` | Ctor line 540: `*(a2+128)` |
 
@@ -274,9 +274,9 @@ A `std::string`-like growable byte buffer used to accumulate the output filename
 | +1728 | `allocator*` | `regalloc_alloc_view` | Ctor line 536 |
 | +1736 / +1744 / +1752 | `ptr / i32 / i32` | aux | Ctor lines 539, 537, 541; +1744 = -1 sentinel |
 | +1760 | `ptr` | (zero) | Ctor line 543 |
-| +1768 | `i32` | `phase_invocation_depth` | Ctor line 544: 0. Read at `sub_C64F70:70` as `v9 = *(*a1 + 1768) + 1` -- this is the per-phase invocation depth that gets recorded into each timing record at offset +16 |
+| +1768 | `i32` | `phase_invocation_depth` | Ctor line 544: 0. Read at `sub_C64F70:70` as `v9 = *(*a1 + 1768) + 1` — this is the per-phase invocation depth that gets recorded into each timing record at offset +16 |
 | +1776 | `sched_state*` | `scheduler_state` | Ctor line 545: 0. Holds the live scheduling state during the scheduler pass; layout includes `+16 = bucket_array, +24 = bucket_count, +28 = bucket_capacity` (per `sub_92E1F0:114-127`) |
-| +1784 | `latency_model*` | `latency_model` | Ctor line 546: 0. Polymorphic cost-model object with vtable `{[0] is_available() -> bool, [8] estimate_latency(insn*) -> double}`. Used at `sub_8BF4B0:11-30`, `sub_92E1F0:110`, `sub_8D1730:104-265`, `sub_931920:283-307` -- the scheduler asks this object for instruction latencies. See [Scheduling Latency Model](#scheduling-latency-model) below |
+| +1784 | `latency_model*` | `latency_model` | Ctor line 546: 0. Polymorphic cost-model object with vtable `{[0] is_available() -> bool, [8] estimate_latency(insn*) -> double}`. Used at `sub_8BF4B0:11-30`, `sub_92E1F0:110`, `sub_8D1730:104-265`, `sub_931920:283-307` — the scheduler asks this object for instruction latencies. See [Scheduling Latency Model](#scheduling-latency-model) below |
 | +1792 / +1800 / +1808 / +1816 | `ptr` | aux slots | Ctor lines 547, 549-551 |
 | +1824 | `i32` | `aux_state_word` | Ctor line 552 |
 | +1832 | `refcount*` | `aux_refcount_b` | Ctor line 548: stores `*(a1+24)` (the second weak ref block); bumps its refcount via `++*v47` |
@@ -289,18 +289,18 @@ This region holds pointers and dwords copied from the options struct (`a2`), for
 |--------|------|-------|----------|
 | +1840 | `ptr` | (zero) | Ctor line 556 |
 | +1848 | `i32` | (zero) | Ctor line 557 |
-| +1856 | `pool_config*` | `compile_pool_config` | Ctor line 559: `*(a2+88)` -- driver-supplied pool configuration |
+| +1856 | `pool_config*` | `compile_pool_config` | Ctor line 559: `*(a2+88)` — driver-supplied pool configuration |
 | +1864 | `bb_structure*` | `bb_structure` | **Documented** |
 | +1872 | `per_func_data*` | `per_func_data` | **Documented** |
 | +1880 | `function_context*` | `function_context` | **Documented** |
-| +1888 | `optix_config*` | `optix_config` | Ctor line 562: `*(a2+984)` -- pointer to OptiX-specific configuration block (only set when compiling for OptiX IR) |
-| +1896 | `i32` | `optix_target_version` | Ctor line 568: `*(int *)(a2+980)` -- companion to +1888 (OptiX target version number) |
+| +1888 | `optix_config*` | `optix_config` | Ctor line 562: `*(a2+984)` — pointer to OptiX-specific configuration block (only set when compiling for OptiX IR) |
+| +1896 | `i32` | `optix_target_version` | Ctor line 568: `*(int *)(a2+980)` — companion to +1888 (OptiX target version number) |
 | +1904 | `allocator*` | `backend_alloc_view` | Ctor line 563 |
 | +1912 | `ptr` | (zero) | Ctor line 566 |
 | +1920 | `i32` | `backend_count_sentinel` | Ctor line 564: `0xFFFFFFFFLL` |
 | +1928 | `codegen_ctx*` | `codegen_ctx` | **Documented** |
 | +1936 / +1944 | `ptr` | (zero) | Ctor lines 569-570 |
-| +1952 | `ctx*` | `self_pointer` | Ctor line 571: `*(a1+1952) = a1` -- a self-reference, used by sub-objects that need a back-pointer to the owning context but only have a stable handle on `+1952` |
+| +1952 | `ctx*` | `self_pointer` | Ctor line 571: `*(a1+1952) = a1` — a self-reference, used by sub-objects that need a back-pointer to the owning context but only have a stable handle on `+1952` |
 | +1960 / +1968 | `ptr` | (zero) | Ctor lines 572-573 |
 | +1976 | `i32` | (zero) | Ctor line 575 |
 
@@ -335,7 +335,7 @@ Queue B (full pending + committed, 6-slot triple):
 | +2120 | `ptr` | `extension_object_b` | Ctor line 591: `*(a2+1408)` |
 | +2128 | `u8` | `extension_object_b_present` | Ctor line 600: `!v53 = (*(int *)(a2+1416) != 0)` |
 | +2132 | `i32` | `tail_sentinel` | Ctor line 599: -1 |
-| +2136..+2167 | -- | (cloned-variant tail only, 32 bytes) | The alternate constructor `sub_A60B60` builds a **2168-byte** object (not "24KB RegisterStatCollector" as prior docs claimed) — this is the per-nested-parse PTX input-buffer cursor for nested text re-entry (e.g. `.include` scopes). +2136 = include-buffer-name list head, +2144 = raw buffer read pointer (`const char *`, init 0xFFFFFFFF), +2152 = remaining-bytes DWORD counter, +2160 = saved-line-number linked list head. Evidence: `sub_A60B60_0xa60b60.c:754,771,822`; `sub_71C140_0x71c140.c:31-47` (fills +2136/+2144/+2152 from an `a2` string); `sub_71C910_0x71c910.c:394` error `"ptxset_lineno called with no buffer"`, lines 403-436 pop linked list nodes via `sub_4248B0`, lines 463-497 decrement +2152 per read. The primary constructor `sub_7F7DC0` tops out at +2132 and never touches this tail |
+| +2136..+2167 | — | (cloned-variant tail only, 32 bytes) | The alternate constructor `sub_A60B60` builds a **2168-byte** object (not "24KB RegisterStatCollector" as prior docs claimed) — this is the per-nested-parse PTX input-buffer cursor for nested text re-entry (e.g. `.include` scopes). +2136 = include-buffer-name list head, +2144 = raw buffer read pointer (`const char *`, init 0xFFFFFFFF), +2152 = remaining-bytes DWORD counter, +2160 = saved-line-number linked list head. Evidence: `sub_A60B60_0xa60b60.c:754,771,822`; `sub_71C140_0x71c140.c:31-47` (fills +2136/+2144/+2152 from an `a2` string); `sub_71C910_0x71c910.c:394` error `"ptxset_lineno called with no buffer"`, lines 403-436 pop linked list nodes via `sub_4248B0`, lines 463-497 decrement +2152 per read. The primary constructor `sub_7F7DC0` tops out at +2132 and never touches this tail |
 
 ### SM Backend Object at +1584
 
@@ -365,17 +365,17 @@ Key sub-fields on the SM backend:
 
 ### Pipeline Progress Counter at +1552
 
-The field at `context+1552` is a monotonically increasing `int32` that tracks how far the compilation has progressed through the 159-phase pipeline. It is **not** a legalization-only counter -- it is incremented by phases across all categories (legalization, optimization, scheduling, regalloc). Each increment is performed by a small thunk function whose sole body is `*(ctx + 1552) = N`.
+The field at `context+1552` is a monotonically increasing `int32` that tracks how far the compilation has progressed through the 159-phase pipeline. It is **not** a legalization-only counter — it is incremented by phases across all categories (legalization, optimization, scheduling, regalloc). Each increment is performed by a small thunk function whose sole body is `*(ctx + 1552) = N`.
 
 Known values and their associated phases:
 
 | Value | Thunk Address | Phase / Context |
 |-------|---------------|-----------------|
-| 0 | (init) | `sub_7F7DC0` -- compilation context constructor |
+| 0 | (init) | `sub_7F7DC0` — compilation context constructor |
 | 1 | `sub_C5F620` | Early pipeline (before ConvertUnsupportedOps) |
 | 2 | `sub_C5F5A0` | After ConvertUnsupportedOps (phase 5) |
 | 3 | `sub_C5EF80` | After MidExpansion (phase 45) |
-| 4 | `sub_C5EF30` | After OriDoRematEarly (phase 54) -- signals remat mode active |
+| 4 | `sub_C5EF30` | After OriDoRematEarly (phase 54) — signals remat mode active |
 | 5 | `sub_1233D70` | Mid-pipeline scheduling/ISel context |
 | 7 | `sub_6612E0` / `sub_C60AA0` | After LateExpansion (phase 55) |
 | 8 | `sub_849C60` | Post-optimization context |
@@ -472,9 +472,9 @@ if (flags & NEEDS_LATE_EXPANSION)
     schedule_late_expansion(insn);
 ```
 
-Each opcode appears to occupy between 1 and 4 bytes in the table, with the exact stride determined by the opcode's class. Because the ctor writes span byte offsets up to 1426 (out of 1420 usable bytes after the 8-byte header) and 355 opcodes * 4 bytes = 1420 bytes, the **most likely layout is 4 attribute bytes per opcode** -- giving 32 bits of per-opcode flags, of which ~8-10 bits are actively used in the ctor.
+Each opcode appears to occupy between 1 and 4 bytes in the table, with the exact stride determined by the opcode's class. Because the ctor writes span byte offsets up to 1426 (out of 1420 usable bytes after the 8-byte header) and 355 opcodes * 4 bytes = 1420 bytes, the **most likely layout is 4 attribute bytes per opcode** — giving 32 bits of per-opcode flags, of which ~8-10 bits are actively used in the ctor.
 
-**Deallocator path** (`sub_7F7DC0:928-930`): when the ctx is freed, the code recovers the original base via `v145 = *(_QWORD*)(a1+776); ... free(v145 - 8)` -- this is the evidence that +776 points 8 bytes past the allocation base. Without this offset correction, a naive `free(*(a1+776))` would corrupt the allocator's metadata.
+**Deallocator path** (`sub_7F7DC0:928-930`): when the ctx is freed, the code recovers the original base via `v145 = *(_QWORD*)(a1+776); ... free(v145 - 8)` — this is the evidence that +776 points 8 bytes past the allocation base. Without this offset correction, a naive `free(*(a1+776))` would corrupt the allocator's metadata.
 
 The table should be treated as **partial**: each individual bit's meaning needs confirmation by cross-referencing a phase-execute body that actually tests it. The bit positions and inferred roles above come from the ctor init pattern alone.
 
@@ -528,7 +528,7 @@ The constructor (`sub_A3B080`) takes two arguments: `a1` (the Code Object to ini
 | +272 | `ptr` | `instr_head` | Instruction linked-list head |
 | +280 | `u32` | (zeroed) | |
 | +288 | `ptr` | (zeroed) | |
-| +296 | `ptr` | `bb_array` | `BasicBlock**` -- dense array of pointers to heap BB objects (8-byte stride). Indexed `*(ctx+296) + 8*bix` in `sub_781F80:339`, `sub_78B430:107`, `sub_1908D90:21`. |
+| +296 | `ptr` | `bb_array` | `BasicBlock**` — dense array of pointers to heap BB objects (8-byte stride). Indexed `*(ctx+296) + 8*bix` in `sub_781F80:339`, `sub_78B430:107`, `sub_1908D90:21`. |
 | +304 | `u32` | `bb_index` | Current basic block count (iteration bound: `for (i=0; i<=ctx[+304]; i++)`) |
 | +312 | `ptr` | `options` | `OptionsManager*` for knob queries |
 | +320--359 | `u128[3]` | (zeroed) | |
@@ -649,10 +649,10 @@ Note: The stats emitter accesses the Code Object through a float pointer (`v3`),
 
 ## Basic Block Representation (two parallel structures)
 
-ptxas uses **two separate basic-block containers** that coexist in the Code Object, and an **earlier draft of this wiki conflated them into a single "40-byte BasicBlock" struct**. The conflation is the source of apparent contradictions between this page and the per-pass documentation (which accesses offsets like `bb+128`, `bb+144`, `bb+152`, `bb+232`, `bb+280`, `bb+292` -- all far beyond 40 bytes). The reality is:
+ptxas uses **two separate basic-block containers** that coexist in the Code Object, and an **earlier draft of this wiki conflated them into a single "40-byte BasicBlock" struct**. The conflation is the source of apparent contradictions between this page and the per-pass documentation (which accesses offsets like `bb+128`, `bb+144`, `bb+152`, `bb+232`, `bb+280`, `bb+292` — all far beyond 40 bytes). The reality is:
 
-1. **`bb_array` at Code Object +296** -- a dense `BasicBlock**` table (8-byte stride), i.e. *one pointer per block* to a **heap-allocated full BasicBlock object (≥293 bytes)**. Used by every optimization pass that needs CFG structure (predecessors, successors, RPO, flags, loop attributes).
-2. **`block_info` at Code Object +976** -- an *inline contiguous array* of **40-byte scheduling descriptors** (40-byte stride). Each 40-byte entry is the scheduling / DOT-dumper view of a block and is *not* a BasicBlock -- it carries an instruction-range bracket (head / tail-sentinel), the block index, and a flag byte.
+1. **`bb_array` at Code Object +296** — a dense `BasicBlock**` table (8-byte stride), i.e. *one pointer per block* to a **heap-allocated full BasicBlock object (≥293 bytes)**. Used by every optimization pass that needs CFG structure (predecessors, successors, RPO, flags, loop attributes).
+2. **`block_info` at Code Object +976** — an *inline contiguous array* of **40-byte scheduling descriptors** (40-byte stride). Each 40-byte entry is the scheduling / DOT-dumper view of a block and is *not* a BasicBlock — it carries an instruction-range bracket (head / tail-sentinel), the block index, and a flag byte.
 
 The two structures are parallel: index `i` in `bb_array` and index `i` in `block_info` describe the same logical block. Count-wise, `bb_array[0..ctx[+304]]` is the iteration range (inclusive upper bound), and `block_info[0..ctx[+984]]` is the iteration range for the 40-byte array (also inclusive). The two counts are set independently but remain in lock-step because the creation paths update both.
 
@@ -675,13 +675,13 @@ Field interpretation, cross-checked against the three primary consumers:
 
 | Offset | Width | Field | Evidence |
 |--------|-------|-------|----------|
-| +0  | `ptr` | `insn_head` -- first instruction of the block (scheduling view) | `sub_1C348B0:129` reads `v80 = *v79` then iterates instructions until reaching `v79[1]`; `sub_BE21D0:41` reads `*(_QWORD*)v11` as a pointer and fetches a `_DWORD` at `*v11+152` for the DOT label. |
-| +8  | `ptr` | `insn_tail_sentinel` -- marks end of the scheduling instruction range | `sub_1C348B0:130` loads `v79[1]` as the walk terminator; `sub_6FC810:728` writes `v37[+8] = v12` immediately after `sub_10AE800` returns the new entry. |
-| +16 | `u64` | `reserved_a` -- written by `sub_10AE800` from `a8.lo` but no consumer has been identified; zero in the common path. | |
-| +20 | `i32` | `reserved_b` -- zeroed immediately after append (`sub_6FC810:727`: `*(_DWORD*)(v37+20) = 0`). | |
-| +24 | `i32` | scheduling scratch -- `sub_6FC810:726` writes `0`; the scheduling / regalloc pipeline later stashes per-block scratch state here. | |
-| +28 | `i32` | `bix` -- block index, the same unique ID used in all CFG hash tables | `sub_BE21D0:39`: `v12 = v11[7]` (DWORD index 7 = byte +28) then `printf("bix%u", v12)` in the DOT dumper. |
-| +32 | `u8`  | `flags` -- bit 1 (`0x02`) = "block ends in branch-with-side-effect 1506 opcode" | `sub_BE0690:1467`: `*(_BYTE*)(v126+32) \|= 2u`. `sub_8A5240:62`: `if ((*(_BYTE*)(result+32) & 2) == 0)` gates backedge-map insertion. |
+| +0  | `ptr` | `insn_head` — first instruction of the block (scheduling view) | `sub_1C348B0:129` reads `v80 = *v79` then iterates instructions until reaching `v79[1]`; `sub_BE21D0:41` reads `*(_QWORD*)v11` as a pointer and fetches a `_DWORD` at `*v11+152` for the DOT label. |
+| +8  | `ptr` | `insn_tail_sentinel` — marks end of the scheduling instruction range | `sub_1C348B0:130` loads `v79[1]` as the walk terminator; `sub_6FC810:728` writes `v37[+8] = v12` immediately after `sub_10AE800` returns the new entry. |
+| +16 | `u64` | `reserved_a` — written by `sub_10AE800` from `a8.lo` but no consumer has been identified; zero in the common path. | |
+| +20 | `i32` | `reserved_b` — zeroed immediately after append (`sub_6FC810:727`: `*(_DWORD*)(v37+20) = 0`). | |
+| +24 | `i32` | scheduling scratch — `sub_6FC810:726` writes `0`; the scheduling / regalloc pipeline later stashes per-block scratch state here. | |
+| +28 | `i32` | `bix` — block index, the same unique ID used in all CFG hash tables | `sub_BE21D0:39`: `v12 = v11[7]` (DWORD index 7 = byte +28) then `printf("bix%u", v12)` in the DOT dumper. |
+| +32 | `u8`  | `flags` — bit 1 (`0x02`) = "block ends in branch-with-side-effect 1506 opcode" | `sub_BE0690:1467`: `*(_BYTE*)(v126+32) \|= 2u`. `sub_8A5240:62`: `if ((*(_BYTE*)(result+32) & 2) == 0)` gates backedge-map insertion. |
 | +33 | `u8`[7] | padding / future-use bytes up to the 40-byte stride | |
 
 Size proof: the appender writes exactly `40 * n` bytes, the DOT dumper advances its cursor by literally `v9 += 40` per iteration (`sub_BE21D0:38`), the last-element helper `sub_10AE8E0` computes `base + 40 * num_blocks`, and the grow-path `memcpy` copies `8 * (5*count + 5)` = `40 * (count+1)` bytes. Every independent site agrees on stride 40.
@@ -730,10 +730,10 @@ The entries of `bb_array` point to a much larger heap object. The size has not b
 
 | Offset | Width | Pass access | Field (from CFG / liveness docs) |
 |--------|-------|-------------|----------------------------------|
-| +8   | `ptr`   | `sub_78B430:110` (`**(_QWORD**)(v13+8)+72` -- first-instr opcode) | instruction list head |
+| +8   | `ptr`   | `sub_78B430:110` (`**(_QWORD**)(v13+8)+72` — first-instr opcode) | instruction list head |
 | +120 | `u32`   | `sub_781F80:342` (`= 0`) | scheduling-state scratch dword |
 | +128 | `u128`  | `sub_781F80:344` (`*(_OWORD*)(v16+128) = 0`) | successor list head + aux qword |
-| +136 | `ptr`   | `sub_78B430:112` (`*(__int64***)(v13+136)` -- walk preds) | predecessor list head |
+| +136 | `ptr`   | `sub_78B430:112` (`*(__int64***)(v13+136)` — walk preds) | predecessor list head |
 | +144 | `u128`  | `sub_781F80:343` (`*(_OWORD*)(v16+144) = 0`), `sub_78B430:107` (`rpo_number`) | RPO number + adjacent metadata (16 bytes) |
 | +152 | `i32`   | `sub_781F80:770` (`*(v20+152) = v163` where `v163 = pred->rpo_number`) | loop-exit RPO marker / label id (dual-purpose; BBAnalysis overwrites during the pass) |
 | +216 | `i32`   | `sub_781F80:731` (`v102 = *(int*)(v21+216)`) | operand-side scratch (only reached via `ctx+368` not `ctx+296`, so this may belong to a different struct; flagged here for completeness) |
@@ -744,7 +744,7 @@ The entries of `bb_array` point to a much larger heap object. The size has not b
 
 The access at offset `+292` (a byte, written with `|= 8`) sets the lower bound on the BasicBlock size at **≥ 293 bytes**, and the natural alignment of the arena allocator rounds this up to a multiple of 8 (so the next valid allocator bucket is 296 bytes). **The earlier "BasicBlock = 40 bytes" claim is wrong** and was the result of describing the 40-byte `block_info` entry as if it were the full block object.
 
-The previous revision of this section also misattributed the scheduling-pass initializer `sub_8D0640` to the 40-byte array. That was wrong: `sub_8D0640` walks a *separate* linked list rooted at `scheduling_ctx[+104]` (`for (i = *(v21+104); i; i = (__int64*)*i)`), with the zeroing pattern `i[7] = 0`, `i[13] = 0`, `*((_DWORD*)i+19) = 0`, `*((_DWORD*)i+21) = -1`. This linked list stores *per-scheduling-group* records (qword fields at +56, +104; dword fields at +76, +84), not block_info entries. The 40-byte entries are never rewritten in a single pass like that -- they are populated incrementally during CFG construction via `sub_10AE800` and mutated in-place by `sub_BE0690` / `sub_8A5240` when backedge analysis needs to mark a terminator.
+The previous revision of this section also misattributed the scheduling-pass initializer `sub_8D0640` to the 40-byte array. That was wrong: `sub_8D0640` walks a *separate* linked list rooted at `scheduling_ctx[+104]` (`for (i = *(v21+104); i; i = (__int64*)*i)`), with the zeroing pattern `i[7] = 0`, `i[13] = 0`, `*((_DWORD*)i+19) = 0`, `*((_DWORD*)i+21) = -1`. This linked list stores *per-scheduling-group* records (qword fields at +56, +104; dword fields at +76, +84), not block_info entries. The 40-byte entries are never rewritten in a single pass like that — they are populated incrementally during CFG construction via `sub_10AE800` and mutated in-place by `sub_BE0690` / `sub_8A5240` when backedge analysis needs to mark a terminator.
 
 ### Access cheat sheet
 
@@ -1111,7 +1111,7 @@ The output stream used for diagnostics and stats reporting (e.g., at compilation
 
 ## ORI Record Serializer (`sub_A50650`)
 
-The ORI Record Serializer (`sub_A50650`, 74 KB, 2,728 decompiled lines) is the central function that takes a Code Object's in-memory state and flattens it into a linear output buffer organized as a table of typed section records. It is the serialization backbone for both the DUMPIR diagnostic subsystem and the compilation output path. Despite the `_ORI_` string it contains, it is not an optimization pass -- it is infrastructure.
+The ORI Record Serializer (`sub_A50650`, 74 KB, 2,728 decompiled lines) is the central function that takes a Code Object's in-memory state and flattens it into a linear output buffer organized as a table of typed section records. It is the serialization backbone for both the DUMPIR diagnostic subsystem and the compilation output path. Despite the `_ORI_` string it contains, it is not an optimization pass — it is infrastructure.
 
 | | |
 |---|---|
@@ -1268,12 +1268,12 @@ This wrapper is the typical entry point reached through vtable dispatch.
 
 ## Related Pages
 
-- [Ori IR Overview](./overview.md) -- top-level IR design, Code Object field summary
-- [Instructions](./instructions.md) -- detailed instruction format and encoding
-- [CFG](./cfg.md) -- FNV-1a hash map CFG implementation
-- [Registers](./registers.md) -- register descriptor layout
-- [Phase Manager](../passes/phase-manager.md) -- PhaseManager object layout, phase dispatch
-- [Memory Pool Allocator](../infra/memory-pools.md) -- full allocator internals
-- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) -- hash map and bitvector details
-- [Knobs System](../config/knobs.md) -- knob descriptors, value types, ROT13 encoding
-- [Entry Point & CLI](../pipeline/entry.md) -- compilation driver, options block
+- [Ori IR Overview](./overview.md) — top-level IR design, Code Object field summary
+- [Instructions](./instructions.md) — detailed instruction format and encoding
+- [CFG](./cfg.md) — FNV-1a hash map CFG implementation
+- [Registers](./registers.md) — register descriptor layout
+- [Phase Manager](../passes/phase-manager.md) — PhaseManager object layout, phase dispatch
+- [Memory Pool Allocator](../infra/memory-pools.md) — full allocator internals
+- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) — hash map and bitvector details
+- [Knobs System](../config/knobs.md) — knob descriptors, value types, ROT13 encoding
+- [Entry Point & CLI](../pipeline/entry.md) — compilation driver, options block

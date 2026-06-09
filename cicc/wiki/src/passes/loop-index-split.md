@@ -1,6 +1,6 @@
 # Loop Index Split
 
-`loop-index-split` is a loop transformation pass that splits or peels loops when a condition inside the loop body depends on the loop induction variable. The pass was originally part of upstream LLVM 2.x (circa 2008--2009) but was removed around LLVM 3.0 due to correctness concerns and limited applicability. NVIDIA revived and heavily modified it for CUDA workloads, where loops with index-dependent conditionals are extremely common -- boundary handling in stencil computations, tile edge processing, and index-based predication are pervasive GPU kernel patterns. The NVIDIA version is substantially more sophisticated than the original, implementing three distinct transformation modes with full SCEV-based analysis.
+`loop-index-split` is a loop transformation pass that splits or peels loops when a condition inside the loop body depends on the loop induction variable. The pass was originally part of upstream LLVM 2.x (circa 2008--2009) but was removed around LLVM 3.0 due to correctness concerns and limited applicability. NVIDIA revived and heavily modified it for CUDA workloads, where loops with index-dependent conditionals are extremely common — boundary handling in stencil computations, tile edge processing, and index-based predication are pervasive GPU kernel patterns. The NVIDIA version is substantially more sophisticated than the original, implementing three distinct transformation modes with full SCEV-based analysis.
 
 By eliminating index-dependent branches from loop bodies, the pass reduces warp divergence on NVIDIA GPUs. When threads in a warp take different paths through a branch, the GPU must serialize both paths (predicated execution or divergent branch), wasting throughput. Splitting the loop so that each resulting loop has a uniform body eliminates this divergence entirely within the split regions, restoring full SIMT efficiency.
 
@@ -64,7 +64,7 @@ for (i = 0; i < N; i++) {
 if (K >= 0 && K < N) doWork();
 ```
 
-This transforms an O(N) loop into O(1) code -- a dramatic optimization when the original loop's only purpose was to find and execute a single iteration.
+This transforms an O(N) loop into O(1) code — a dramatic optimization when the original loop's only purpose was to find and execute a single iteration.
 
 **Implementation:** `sub_2CC4A70` (3.7 KB native, New PM) / part of `sub_1C77080` (10 KB native, Legacy PM).
 
@@ -189,43 +189,43 @@ SCEV is the critical dependency: it provides induction variable identification, 
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `0x2CBEC60` | — | New PM pass registration |
-| -- | `0x2CBFF20` | — | New PM factory |
-| -- | `0x2CC3FF0` | 13KB | `processAllButOneIterationLoop` (Mode A) |
-| -- | `0x2CC4A70` | 19KB | `processOnlyOneIterationLoop` (Mode B) |
-| -- | `0x2CC5900` | 68KB | Main driver + `processSplitRangeLoop` (Mode C) |
-| -- | `0x2CC1B10` | 42KB | Loop cloning and CFG rewiring |
-| -- | `0x2CC0040` | 7KB | Split boundary computation |
-| -- | `0x2CC0CC0` | 7KB | Alternate split boundary computation |
-| -- | `0x2CC9AA0` | 18KB | Helper |
-| -- | `0x2CCB3B0` | 25KB | Helper |
-| -- | `0x2CCCE20` | 13KB | Helper |
-| -- | `0x2CCDD70` | 15KB | Helper |
-| -- | `0x2CCED30` | 8KB | Helper |
-| -- | `0x2CCF450` | 57KB | Large helper / alternate path |
-| -- | `0x2CBED80` | — | Comparison classifier (IV operand) |
-| -- | `0x2CBED00` | — | Comparison classifier (bound operand) |
-| -- | `0x2CBEE00` | — | Comparison direction classifier |
-| -- | `0x2CBEE80` | — | Extended comparison classifier |
-| -- | `0x2CBFC80` | — | Split legality validation |
-| -- | `0x2CBF770` | — | Loop structure validation |
-| -- | `0x2CBF180` | — | Create new preheader |
+| — | `0x2CBEC60` | — | New PM pass registration |
+| — | `0x2CBFF20` | — | New PM factory |
+| — | `0x2CC3FF0` | 13KB | `processAllButOneIterationLoop` (Mode A) |
+| — | `0x2CC4A70` | 19KB | `processOnlyOneIterationLoop` (Mode B) |
+| — | `0x2CC5900` | 68KB | Main driver + `processSplitRangeLoop` (Mode C) |
+| — | `0x2CC1B10` | 42KB | Loop cloning and CFG rewiring |
+| — | `0x2CC0040` | 7KB | Split boundary computation |
+| — | `0x2CC0CC0` | 7KB | Alternate split boundary computation |
+| — | `0x2CC9AA0` | 18KB | Helper |
+| — | `0x2CCB3B0` | 25KB | Helper |
+| — | `0x2CCCE20` | 13KB | Helper |
+| — | `0x2CCDD70` | 15KB | Helper |
+| — | `0x2CCED30` | 8KB | Helper |
+| — | `0x2CCF450` | 57KB | Large helper / alternate path |
+| — | `0x2CBED80` | — | Comparison classifier (IV operand) |
+| — | `0x2CBED00` | — | Comparison classifier (bound operand) |
+| — | `0x2CBEE00` | — | Comparison direction classifier |
+| — | `0x2CBEE80` | — | Extended comparison classifier |
+| — | `0x2CBFC80` | — | Split legality validation |
+| — | `0x2CBF770` | — | Loop structure validation |
+| — | `0x2CBF180` | — | Create new preheader |
 
 ### Legacy PM Implementation
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `0x1C76080` | — | Legacy PM pass registration |
-| -- | `0x1C76180` | — | Legacy PM factory |
-| -- | `0x1C76260` | — | Alternate factory |
-| -- | `0x1C76340` | 7KB | Hash table management for visited set |
-| -- | `0x1C768C0` | 4KB | Helper |
-| -- | `0x1C76B50` | 4KB | Block cloning helper |
-| -- | `0x1C76EB0` | 2.5KB | Recursive loop tree walker |
-| -- | `0x1C77080` | 46KB | `processAllButOneIterationLoop` + `processOnlyOneIterationLoop` |
-| -- | `0x1C797A0` | 15KB | Split legality checking |
-| -- | `0x1C7A300` | 21KB | Loop body cloning |
-| -- | `0x1C7B2C0` | 84KB | `processSplitRangeLoop` + main driver |
+| — | `0x1C76080` | — | Legacy PM pass registration |
+| — | `0x1C76180` | — | Legacy PM factory |
+| — | `0x1C76260` | — | Alternate factory |
+| — | `0x1C76340` | 7KB | Hash table management for visited set |
+| — | `0x1C768C0` | 4KB | Helper |
+| — | `0x1C76B50` | 4KB | Block cloning helper |
+| — | `0x1C76EB0` | 2.5KB | Recursive loop tree walker |
+| — | `0x1C77080` | 46KB | `processAllButOneIterationLoop` + `processOnlyOneIterationLoop` |
+| — | `0x1C797A0` | 15KB | Split legality checking |
+| — | `0x1C7A300` | 21KB | Loop body cloning |
+| — | `0x1C7B2C0` | 84KB | `processSplitRangeLoop` + main driver |
 
 **Total code size:** ~180KB (Legacy PM) + ~260KB (New PM) = ~440KB. This is one of the largest individual passes in cicc.
 

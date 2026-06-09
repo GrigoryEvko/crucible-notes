@@ -1,6 +1,6 @@
 # Libdevice Linking
 
-NVIDIA embeds a complete copy of the `libdevice` math library -- 455,876 bytes of LLVM bitcode -- directly inside the cicc binary. This library provides GPU-optimized implementations of ~350 mathematical intrinsics (trigonometric, exponential, rounding, Bessel functions, error functions, type conversions, and integer utilities) that are linked into every CUDA compilation during the LNK pipeline stage. The linker (`sub_12C06E0`, 63KB) validates bitcode magic bytes, enforces the `nvptx64-` target triple prefix, checks NVVM IR version metadata for cross-release compatibility, and performs symbol-size matching across all modules before producing a single merged module. Two identical copies of the embedded bitcode exist in the binary -- one for each compilation path -- ensuring the library is always available without filesystem access.
+NVIDIA embeds a complete copy of the `libdevice` math library — 455,876 bytes of LLVM bitcode — directly inside the cicc binary. This library provides GPU-optimized implementations of ~350 mathematical intrinsics (trigonometric, exponential, rounding, Bessel functions, error functions, type conversions, and integer utilities) that are linked into every CUDA compilation during the LNK pipeline stage. The linker (`sub_12C06E0`, 63KB) validates bitcode magic bytes, enforces the `nvptx64-` target triple prefix, checks NVVM IR version metadata for cross-release compatibility, and performs symbol-size matching across all modules before producing a single merged module. Two identical copies of the embedded bitcode exist in the binary — one for each compilation path — ensuring the library is always available without filesystem access.
 
 Upstream LLVM has no equivalent of this embedded-library mechanism. Clang relies on external `libdevice.10.bc` files discovered through `--cuda-path` at driver level. NVIDIA's approach eliminates the file-lookup step entirely, making cicc self-contained: the entire math library ships inside the compiler binary itself.
 
@@ -34,8 +34,8 @@ Both copies contain identical LLVM bitcode with:
 
 - **Data layout**: `e-i64:64-v16:16-v32:32-n16:32:64`
 - **Target triple**: `nvptx64-nvidia-gpulibs` (note: `gpulibs`, not `cuda`)
-- **Producer**: `clang version 3.8.0 (tags/RELEASE_380/final)` -- the bitcode was originally compiled with an ancient Clang but has been maintained through bitcode format upgrades across CUDA toolkit releases
-- **Version metadata**: `!nvvmir.version = !{i32 2, i32 0}` -- this specific version tuple `(2, 0)` is hard-coded in the version checker as an always-compatible sentinel
+- **Producer**: `clang version 3.8.0 (tags/RELEASE_380/final)` — the bitcode was originally compiled with an ancient Clang but has been maintained through bitcode format upgrades across CUDA toolkit releases
+- **Version metadata**: `!nvvmir.version = !{i32 2, i32 0}` — this specific version tuple `(2, 0)` is hard-coded in the version checker as an always-compatible sentinel
 
 The duplication exists because the two compilation paths (`sub_905EE0` for Path A, `sub_1265970` for Path B) are entirely independent code paths with no shared module state. Deduplicating the data would require introducing a shared pointer, which NVIDIA apparently considered not worth the ~445KB savings in a 60MB binary.
 
@@ -71,7 +71,7 @@ The library defines 352 functions across 10 categories. All 349 public functions
 | Classification | 11 | `__nv_isinff`, `__nv_isnand`, `__nv_isfinited`, `__nv_signbitf`, `__nv_ilogb`, `__nv_logb` |
 | Internal helpers | 3 | `__internal_trig_reduction_slowpathd`, `__internal_accurate_pow`, `__internal_lgamma_pos` |
 
-Every public function body contains calls to `@__nvvm_reflect` with query strings (`__CUDA_FTZ`, `__CUDA_ARCH`, `__CUDA_PREC_SQRT`) that are resolved by the NVVMReflect pass during optimization. This is how the same bitcode adapts to different precision modes and SM architectures -- see [NVVMReflect](../passes/nvvm-reflect.md) for details on the reflection mechanism. The 2,016 reflect calls across 352 functions means an average of ~5.7 architecture/precision branch points per function.
+Every public function body contains calls to `@__nvvm_reflect` with query strings (`__CUDA_FTZ`, `__CUDA_ARCH`, `__CUDA_PREC_SQRT`) that are resolved by the NVVMReflect pass during optimization. This is how the same bitcode adapts to different precision modes and SM architectures — see [NVVMReflect](../passes/nvvm-reflect.md) for details on the reflection mechanism. The 2,016 reflect calls across 352 functions means an average of ~5.7 architecture/precision branch points per function.
 
 ### Struct Types
 
@@ -106,7 +106,7 @@ The bitcode contains precomputed coefficient tables in address space 1 (global m
 For each module in the input list (from `a1[0]` to `a1[1]`, stepping by 4 qwords per entry), the linker:
 
 1. Opens and reads the module data via `sub_16C2450`
-2. Validates LLVM bitcode magic bytes -- accepts two formats:
+2. Validates LLVM bitcode magic bytes — accepts two formats:
    - Raw bitcode: bytes `0xDE 0xC0 0x17 0x0B` (little-endian `0x0B17C0DE`)
    - Bitcode wrapper: bytes `0x42 0x43 0xC0 0xDE` (ASCII "BC" prefix)
 3. Determines the buffer name (falls back to `"Unknown buffer"` if the vtable function is `sub_12BCB10`)
@@ -144,7 +144,7 @@ The libdevice bitcode has triple `nvptx64-nvidia-gpulibs`, which passes this pre
 
 ### Phase C: IR Version Check
 
-For each module, the linker calls `sub_12BFF60` (the version checker -- see next section). If the check fails, the linker emits a diagnostic and returns error code 3:
+For each module, the linker calls `sub_12BFF60` (the version checker — see next section). If the check fails, the linker emits a diagnostic and returns error code 3:
 
 ```c
 for each parsed_module:
@@ -166,7 +166,7 @@ For N > 1 user modules, the linker:
 
 1. Selects one module as the "primary" (index `v57`)
 2. Copies the primary module's triple and data layout to all secondary modules (ensuring consistency)
-3. Calls `sub_12F5610` -- NVIDIA's wrapper around LLVM's `Linker::linkModules` -- to merge all user modules into a single module
+3. Calls `sub_12F5610` — NVIDIA's wrapper around LLVM's `Linker::linkModules` — to merge all user modules into a single module
 
 ```c
 if module_count > 1:
@@ -182,7 +182,7 @@ if module_count > 1:
 
 ### Phase F: Builtin Linking
 
-After user modules are merged, the linker processes builtin modules from `a1[3]` to `a1[4]` (this is where libdevice lives). Each builtin module goes through the same bitcode validation and parsing as user modules, then is linked into the main module using `sub_1CCEBE0` -- a different linking function than the user-module linker, likely `Linker::linkModules` with `Linker::OverrideFromSrc` flags for builtin definitions:
+After user modules are merged, the linker processes builtin modules from `a1[3]` to `a1[4]` (this is where libdevice lives). Each builtin module goes through the same bitcode validation and parsing as user modules, then is linked into the main module using `sub_1CCEBE0` — a different linking function than the user-module linker, likely `Linker::linkModules` with `Linker::OverrideFromSrc` flags for builtin definitions:
 
 ```c
 for each builtin in modules[a1[3] .. a1[4]]:
@@ -239,8 +239,8 @@ The version checker validates the `nvvmir.version` metadata node that every NVVM
 
 **Metadata lookup**: The checker searches for two named metadata nodes:
 
-1. `"nvvmir.version"` -- the IR version tuple
-2. `"llvm.dbg.cu"` -- debug compile unit (presence indicates debug info exists)
+1. `"nvvmir.version"` — the IR version tuple
+2. `"llvm.dbg.cu"` — debug compile unit (presence indicates debug info exists)
 
 Both are looked up via `sub_1632310` (named metadata search on the module).
 
@@ -251,11 +251,11 @@ Both are looked up via `sub_1632310` (named metadata search on the module).
 | 2-element | `{major, minor}` | IR version only |
 | 4-element | `{major, minor, dbg_major, dbg_minor}` | IR version + debug IR version |
 
-**Compatibility check**: For the IR version, `sub_12BDA30` performs the actual comparison. The special case `(major=2, minor=0)` always passes -- this is exactly the version carried by the embedded libdevice, ensuring it is compatible with any user module regardless of toolkit version.
+**Compatibility check**: For the IR version, `sub_12BDA30` performs the actual comparison. The special case `(major=2, minor=0)` always passes — this is exactly the version carried by the embedded libdevice, ensuring it is compatible with any user module regardless of toolkit version.
 
 For the debug version, `sub_12BD890` checks compatibility with a similar special case: `(debug_major=3, debug_minor<=2)` always passes.
 
-**Unique node deduplication**: The checker builds a hash set of unique metadata nodes using the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and probing strategy. This deduplication handles the case where multiple source files within a compilation unit carry identical version metadata -- each unique version is checked exactly once.
+**Unique node deduplication**: The checker builds a hash set of unique metadata nodes using the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and probing strategy. This deduplication handles the case where multiple source files within a compilation unit carry identical version metadata — each unique version is checked exactly once.
 
 **Final gate**: If debug info is present in the module, the debug mode flag is set, but no debug version was validated (because the metadata lacked elements 2-3), the checker returns 3 (incompatible). This catches the case where a debug-compiled user module is linked against a non-debug library that lacks debug version metadata.
 
@@ -275,7 +275,7 @@ The net effect: a kernel calling `__nv_sinf` ends up with the sinf implementatio
 
 ## Constant Folding Interaction
 
-The constant folding engine (`sub_14D90D0`, 27KB) has special knowledge of libdevice functions. When a libdevice intrinsic is called with constant arguments, the fold eligibility checker determines whether the call can be evaluated at compile time -- *before* the libdevice function is inlined.
+The constant folding engine (`sub_14D90D0`, 27KB) has special knowledge of libdevice functions. When a libdevice intrinsic is called with constant arguments, the fold eligibility checker determines whether the call can be evaluated at compile time — *before* the libdevice function is inlined.
 
 This creates an important ordering constraint:
 
@@ -359,8 +359,8 @@ The `.lnk.bc` file is useful for verifying which libdevice functions survived li
 | `sub_12BCB00` | ~1KB | API wrapper that adds a bitcode buffer to the compilation unit (string-confirmed: `"nvvmCUAddModuleFromBuffer"`) |
 | `sub_12BC0F0` | 3KB | Resolves LibNVVM API function pointers by hash ID |
 | `sub_15099C0` | ~8KB | LLVM bitcode parser entry point |
-| `sub_1CCEBE0` | ~4KB | Links a single builtin module into the main module (`Linker::linkModules` with `OverrideFromSrc` `[MEDIUM confidence]` -- inferred from the override-from-source semantics of builtin linking and the 4KB size matching a thin wrapper around LLVM's linker API, but no diagnostic string confirms the exact LLVM API call) |
-| `sub_12F5610` | ~4KB | Links multiple user modules (`Linker::linkModules` `[MEDIUM confidence]` -- same reasoning as above; wrapper size and call pattern match, but unconfirmed by string evidence) |
+| `sub_1CCEBE0` | ~4KB | Links a single builtin module into the main module (`Linker::linkModules` with `OverrideFromSrc` `[MEDIUM confidence]` — inferred from the override-from-source semantics of builtin linking and the 4KB size matching a thin wrapper around LLVM's linker API, but no diagnostic string confirms the exact LLVM API call) |
+| `sub_12F5610` | ~4KB | Links multiple user modules (`Linker::linkModules` `[MEDIUM confidence]` — same reasoning as above; wrapper size and call pattern match, but unconfirmed by string evidence) |
 | `sub_14D90D0` | 27KB | Constant-fold eligibility checker for math intrinsics |
 | `unk_3EA0080` | 455,876B | Embedded libdevice (Path A): raw LLVM bitcode blob |
 | `unk_420FD80` | 455,876B | Embedded libdevice (Path B): raw LLVM bitcode blob (identical copy) |
@@ -376,8 +376,8 @@ The `.lnk.bc` file is useful for verifying which libdevice functions survived li
 
 ## Cross-References
 
-- [Entry Point & CLI](../pipeline/entry.md) -- dual-path architecture, `-nvvmir-library` flag handling
-- [NVVMReflect](../passes/nvvm-reflect.md) -- resolution of `__nvvm_reflect` calls embedded in libdevice functions
-- [Optimizer Pipeline](../pipeline/optimizer.md) -- OPT stage where inlining and DCE process linked libdevice
-- [Environment Variables](../config/env-vars.md) -- `NVVM_IR_VER_CHK` documentation
-- [Bitcode I/O](../infra/bitcode-io.md) -- bitcode reader/writer infrastructure used by the linker
+- [Entry Point & CLI](../pipeline/entry.md) — dual-path architecture, `-nvvmir-library` flag handling
+- [NVVMReflect](../passes/nvvm-reflect.md) — resolution of `__nvvm_reflect` calls embedded in libdevice functions
+- [Optimizer Pipeline](../pipeline/optimizer.md) — OPT stage where inlining and DCE process linked libdevice
+- [Environment Variables](../config/env-vars.md) — `NVVM_IR_VER_CHK` documentation
+- [Bitcode I/O](../infra/bitcode-io.md) — bitcode reader/writer infrastructure used by the linker

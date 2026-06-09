@@ -1,6 +1,6 @@
 # Archive Processing
 
-nvlink processes Unix `ar(1)` archives -- static libraries containing multiple object files bundled under a single `.a` path. When the input loop's 56-byte header probe matches the 8-byte magic `"!<arch>\n"` (regular archive) or `"!<thin>\n"` (thin archive), execution enters the archive subsystem. The subsystem allocates an 80-byte iterator context, then loops over every member entry in the archive. For each member it parses the standard 60-byte `ar` header, resolves the member name (with GNU long-name table support), builds a composite `"archive:member"` path string, extracts or opens the member's content, and re-enters the input loop's type dispatch so the member is classified and processed exactly as if it had been a standalone file on the command line.
+nvlink processes Unix `ar(1)` archives — static libraries containing multiple object files bundled under a single `.a` path. When the input loop's 56-byte header probe matches the 8-byte magic `"!<arch>\n"` (regular archive) or `"!<thin>\n"` (thin archive), execution enters the archive subsystem. The subsystem allocates an 80-byte iterator context, then loops over every member entry in the archive. For each member it parses the standard 60-byte `ar` header, resolves the member name (with GNU long-name table support), builds a composite `"archive:member"` path string, extracts or opens the member's content, and re-enters the input loop's type dispatch so the member is classified and processed exactly as if it had been a standalone file on the command line.
 
 The archive layer is split into two tiers: five low-level functions in the `0x487000` range that implement `ar` format parsing, and four thin wrapper functions in the `0x4BDA00` range that translate return codes through a dispatch table (`dword_1D48A50`) and provide the API surface called from `main()`.
 
@@ -8,12 +8,12 @@ The archive layer is split into two tiers: five low-level functions in the `0x48
 
 | | |
 |---|---|
-| **Magic detection** | `sub_487A90` at `0x487A90` (51 bytes) -- tests `"!<arch>\n"` and `"!<thin>\n"` |
-| **Archive open** | `sub_487C20` at `0x487C20` (2,549 bytes) -- allocates 80-byte context |
-| **Member iteration** | `sub_487E10` at `0x487E10` (5,592 bytes) -- parses `ar` headers, advances cursor |
-| **Name resolution** | `sub_487AD0` at `0x487AD0` (356 bytes) -- builds `"archive:member"` path |
-| **Member path accessor** | `sub_488290` at `0x488290` (8 bytes) -- returns context+40 (current path) |
-| **Context destroy** | `sub_488200` at `0x488200` (144 bytes) -- frees context, member lists, path strings |
+| **Magic detection** | `sub_487A90` at `0x487A90` (51 bytes) — tests `"!<arch>\n"` and `"!<thin>\n"` |
+| **Archive open** | `sub_487C20` at `0x487C20` (2,549 bytes) — allocates 80-byte context |
+| **Member iteration** | `sub_487E10` at `0x487E10` (5,592 bytes) — parses `ar` headers, advances cursor |
+| **Name resolution** | `sub_487AD0` at `0x487AD0` (356 bytes) — builds `"archive:member"` path |
+| **Member path accessor** | `sub_488290` at `0x488290` (8 bytes) — returns context+40 (current path) |
+| **Context destroy** | `sub_488200` at `0x488200` (144 bytes) — frees context, member lists, path strings |
 | **API wrappers** | `sub_4BDAC0` (open), `sub_4BDAF0` (next), `sub_4BDB30` (close), `sub_4BDB60` (get path) |
 | **Caller** | `main()` at `0x409800`, archive dispatch branch at source line 850 |
 | **Trigger** | First 8 bytes of file match `"!<arch>\n"` or `"!<thin>\n"` |
@@ -28,8 +28,8 @@ Every archive begins with an 8-byte magic string. nvlink recognizes two variants
 
 | Magic (ASCII) | Hex bytes | Meaning |
 |---|---|---|
-| `!<arch>\n` | `21 3C 61 72 63 68 3E 0A` | Regular archive -- member data is embedded inline |
-| `!<thin>\n` | `21 3C 74 68 69 6E 3E 0A` | Thin archive -- member data lives in external files |
+| `!<arch>\n` | `21 3C 61 72 63 68 3E 0A` | Regular archive — member data is embedded inline |
+| `!<thin>\n` | `21 3C 74 68 69 6E 3E 0A` | Thin archive — member data lives in external files |
 
 The first member header begins immediately after this 8-byte global magic, at file offset 8. The old BSD `__.SYMDEF` symbol-table format is **not** recognized; nvlink only handles the GNU / System V `ar` variant. No reference to the `__.SYMDEF` string appears anywhere in the binary's string table (confirmed by scanning `nvlink_strings.json` for `SYMDEF`, which returns zero matches).
 
@@ -41,7 +41,7 @@ The first member header begins immediately after this 8-byte global magic, at fi
 | GNU 64-bit symbol table | `/SYM64/` member name (used when total archive size exceeds 4 GB, with 8-byte big-endian offsets in place of 4-byte) | The name starts with `/` followed by the non-digit `S`, so it lands in the same "symbol table" branch as the regular `/` armap and is skipped without inspection. The 64-bit-ness is irrelevant because nvlink never consults symbol-table contents. |
 | GNU thin armap (`/SYM64/` inside thin archive) | Same name, same skip logic | Same behavior; thin archives with 64-bit armaps work transparently for nvlink because the armap is ignored either way. |
 | AIX big-format `ar` (`<bigaf>\n`, `<aiaff>\n`) | Distinct global magics | Rejected at `sub_487A90`; the file is not an archive from nvlink's perspective and falls through to the next type predicate. |
-| COFF import library (Microsoft `.lib`) | Uses `!<arch>\n` magic with special `/` and `//` linker members containing COFF-flavored symbol tables and import descriptors | Magic match succeeds; iteration treats the linker members as the symbol-table / long-name pair and skips them. The COFF object members that follow are then handed to `sub_4BDB70` for classification, which checks for ELF magic and fails, so they are quietly dropped. No diagnostic is emitted -- the archive appears to contribute no inputs. |
+| COFF import library (Microsoft `.lib`) | Uses `!<arch>\n` magic with special `/` and `//` linker members containing COFF-flavored symbol tables and import descriptors | Magic match succeeds; iteration treats the linker members as the symbol-table / long-name pair and skips them. The COFF object members that follow are then handed to `sub_4BDB70` for classification, which checks for ELF magic and fails, so they are quietly dropped. No diagnostic is emitted — the archive appears to contribute no inputs. |
 
 ### Member Header (60 bytes)
 
@@ -57,7 +57,7 @@ Each member is preceded by a fixed 60-byte ASCII header with the following layou
 | 48 | 10 | `ar_size` | Decimal ASCII | Member data size in bytes |
 | 58 | 2 | `ar_fmag` | `` `\n `` (`0x60 0x0A`) | End-of-header magic (backtick + newline) |
 
-**Fields nvlink actually parses**: only `ar_name` (offset 0, for identity) and `ar_size` (offset 48, for advancing the cursor). The timestamp, UID, GID, mode, and trailing `ar_fmag` bytes are never inspected -- nvlink does not validate the header magic and does not extract file metadata. This is consistent with its role as a device-code linker: owner, permissions, and mtime are irrelevant to GPU code.
+**Fields nvlink actually parses**: only `ar_name` (offset 0, for identity) and `ar_size` (offset 48, for advancing the cursor). The timestamp, UID, GID, mode, and trailing `ar_fmag` bytes are never inspected — nvlink does not validate the header magic and does not extract file metadata. This is consistent with its role as a device-code linker: owner, permissions, and mtime are irrelevant to GPU code.
 
 nvlink reads the size field at offset +48 by copying 10 bytes into a local buffer, NUL-terminating it, and calling `strtol(buf, NULL, 10)`. This matches the decompiled code in `sub_487E10`:
 
@@ -92,11 +92,11 @@ else
 }
 ```
 
-The expression `v6 - v6 % 2 + 2` is an overly-verbose way of writing `v6 + 1` when `v6` is odd, and equals `v6` when `v6` is even -- equivalent to `(v6 + 1) & ~1`. The decompiler preserved the original source's branching structure rather than collapsing it.
+The expression `v6 - v6 % 2 + 2` is an overly-verbose way of writing `v6 + 1` when `v6` is odd, and equals `v6` when `v6` is even — equivalent to `(v6 + 1) & ~1`. The decompiler preserved the original source's branching structure rather than collapsing it.
 
 Bounds checking: after computing the next header position, the function verifies `v10 < buffer + buffer_size`. If the new position is at or past the end of the archive, the iterator returns with `content_out = NULL`, signalling end-of-archive:
 
-The check guards only the *start* of the next header, not its full 60-byte extent. If the archive is truncated such that `buffer + size` falls inside a member header (i.e. `v10 + 60 > buffer + size` but `v10 < buffer + size`), the subsequent `strncpy(dest, v10 + 48, 10)` reads up to 10 bytes past the buffer end into a stack-local. The read is bounded (`strncpy` with `n=10`), so it cannot overflow nvlink's stack, but it does touch unmapped memory if the archive is loaded via `mmap` rather than `sub_476BF0`'s `fread`-into-arena -- in practice `sub_476BF0` always allocates the arena buffer with the file size plus arena alignment slop, so the read lands in arena padding and the parsed size becomes whatever those bytes happen to encode. The result is a non-fatal misparse rather than a crash, but a malformed truncated archive can therefore produce arbitrary `member_size` values that subsequent iterations then reject via the same bounds check.
+The check guards only the *start* of the next header, not its full 60-byte extent. If the archive is truncated such that `buffer + size` falls inside a member header (i.e. `v10 + 60 > buffer + size` but `v10 < buffer + size`), the subsequent `strncpy(dest, v10 + 48, 10)` reads up to 10 bytes past the buffer end into a stack-local. The read is bounded (`strncpy` with `n=10`), so it cannot overflow nvlink's stack, but it does touch unmapped memory if the archive is loaded via `mmap` rather than `sub_476BF0`'s `fread`-into-arena — in practice `sub_476BF0` always allocates the arena buffer with the file size plus arena alignment slop, so the read lands in arena padding and the parsed size becomes whatever those bytes happen to encode. The result is a non-fatal misparse rather than a crash, but a malformed truncated archive can therefore produce arbitrary `member_size` values that subsequent iterations then reject via the same bounds check.
 
 ```c
 if ( v10 >= (unsigned __int64)&v8->__size[v9] )  // buffer + size
@@ -113,11 +113,11 @@ Several member names have special meaning in GNU `ar` archives. nvlink handles t
 
 | Name pattern | Identity | nvlink behavior |
 |---|---|---|
-| `/` followed by non-digit | GNU symbol table (armap), including `/SYM64/` 64-bit variant and any other `/<non-digit>` name | Detected: `name[0]=='/'` and `isdigit(name[1])==false`. Cursor advances past it; member content is **ignored**. The check is purely structural -- it does not distinguish `/` from `/SYM64/`, and any future variant whose name happens to start with `/<non-digit>` would be silently absorbed here. |
-| `//` (slash + slash) | GNU long-name string table | Detected: `v34 == 2` (the `v30 + 1` branch where `v30` equals `(name[1]==47)` returns 2). Pointer stored at `ctx+48` for subsequent long-name lookups. Cursor advances past it. Only the *first* `//` member is honored -- if a malformed archive contains two, the second overwrites `ctx->longnames_ptr` and any earlier `/NNN` references that have already been resolved retain their (already-allocated) strings, but subsequent references resolve against the new table. |
+| `/` followed by non-digit | GNU symbol table (armap), including `/SYM64/` 64-bit variant and any other `/<non-digit>` name | Detected: `name[0]=='/'` and `isdigit(name[1])==false`. Cursor advances past it; member content is **ignored**. The check is purely structural — it does not distinguish `/` from `/SYM64/`, and any future variant whose name happens to start with `/<non-digit>` would be silently absorbed here. |
+| `//` (slash + slash) | GNU long-name string table | Detected: `v34 == 2` (the `v30 + 1` branch where `v30` equals `(name[1]==47)` returns 2). Pointer stored at `ctx+48` for subsequent long-name lookups. Cursor advances past it. Only the *first* `//` member is honored — if a malformed archive contains two, the second overwrites `ctx->longnames_ptr` and any earlier `/NNN` references that have already been resolved retain their (already-allocated) strings, but subsequent references resolve against the new table. |
 | `__.LIBDEP` | Library dependency metadata | 9-byte prefix comparison (see `__.LIBDEP` Skipping below). Always skipped. |
 
-Note that nvlink's detection of the symbol table is **structural, not semantic**: it simply skips any member whose name starts with `/` and is not a long-name reference. It never reads the armap contents, meaning it has no way to use the symbol index for on-demand loading even if it wanted to -- which it doesn't (see [Whole-Archive vs On-Demand Loading](#whole-archive-vs-on-demand-loading)).
+Note that nvlink's detection of the symbol table is **structural, not semantic**: it simply skips any member whose name starts with `/` and is not a long-name reference. It never reads the armap contents, meaning it has no way to use the symbol index for on-demand loading even if it wanted to — which it doesn't (see [Whole-Archive vs On-Demand Loading](#whole-archive-vs-on-demand-loading)).
 
 ## Magic Detection (sub\_487A90)
 
@@ -217,7 +217,7 @@ int archive_next_member(const char **content_out,   // a1: receives content poin
                         void       *ctx);            // a3: the 80-byte iterator context
 ```
 
-The `pthread_mutexattr_t *` type for `a2` is a decompiler artifact -- the caller (`sub_4BDAF0`) passes a local `pthread_mutexattr_t v4[4]` array, and the function writes `*size = v6` to its first qword. This is an opaque by-reference `size_t` out-parameter, not an actual mutex-attribute structure.
+The `pthread_mutexattr_t *` type for `a2` is a decompiler artifact — the caller (`sub_4BDAF0`) passes a local `pthread_mutexattr_t v4[4]` array, and the function writes `*size = v6` to its first qword. This is an opaque by-reference `size_t` out-parameter, not an actual mutex-attribute structure.
 
 ### Iteration Algorithm
 
@@ -330,13 +330,13 @@ if ( *a2 == 47 && ((*__ctype_b_loc())[a2[1]] & 0x800) != 0 )  // '/' + digit
 
 The pointer arithmetic `a3 + v20 + 60` is crucial: `a3` is the start of the `//` member's 60-byte header, so `a3 + 60` is the start of the long-name string table data, and adding `v20` (the decimal offset from the name field) gets to the specific filename. The name is terminated by a `/` character within the table (each entry in the GNU format ends with `/\n`), so `strchr(v9, '/')` locates the end.
 
-If a long-name reference appears before the `//` member has been seen (i.e., the `//` member was placed *after* long-name members in the archive), `a3` is NULL and `sub_467460` is called with the diagnostic string `"longnames header not found"` -- a fatal error. A well-formed archive always places the `//` table before any members that reference it.
+If a long-name reference appears before the `//` member has been seen (i.e., the `//` member was placed *after* long-name members in the archive), `a3` is NULL and `sub_467460` is called with the diagnostic string `"longnames header not found"` — a fatal error. A well-formed archive always places the `//` table before any members that reference it.
 
-The decimal offset parser is `strtol(a2 + 1, 0, 10)` with no upper bound and no validation against `//`-table size. A malicious archive whose `ar_name` reads `/4000000000` produces `v9 = longnames_ptr + 60 + 4_000_000_000`, which on a 64-bit host overflows past the arena buffer end. The subsequent `strchr(v9, '/')` then scans linearly through whatever memory follows -- typically other arena allocations or unmapped pages, the latter producing a SIGSEGV. nvlink does not bound-check the offset against the `//` member's declared size. In practice, GNU `ar` produces offsets bounded by the long-name table size, so this is a robustness concern for hostile inputs rather than a correctness issue for honest toolchains.
+The decimal offset parser is `strtol(a2 + 1, 0, 10)` with no upper bound and no validation against `//`-table size. A malicious archive whose `ar_name` reads `/4000000000` produces `v9 = longnames_ptr + 60 + 4_000_000_000`, which on a 64-bit host overflows past the arena buffer end. The subsequent `strchr(v9, '/')` then scans linearly through whatever memory follows — typically other arena allocations or unmapped pages, the latter producing a SIGSEGV. nvlink does not bound-check the offset against the `//` member's declared size. In practice, GNU `ar` produces offsets bounded by the long-name table size, so this is a robustness concern for hostile inputs rather than a correctness issue for honest toolchains.
 
 ## Name Resolution and Path Construction (sub\_487AD0)
 
-Every archive member receives a composite path string in the format `"archive_path:member_name"`. This path serves as the member's identity throughout the linker pipeline -- it appears in diagnostics, symbol records, and debug information.
+Every archive member receives a composite path string in the format `"archive_path:member_name"`. This path serves as the member's identity throughout the linker pipeline — it appears in diagnostics, symbol records, and debug information.
 
 ```c
 // sub_487AD0 at 0x487AD0 -- 356 bytes
@@ -348,7 +348,7 @@ char *build_member_path(const char *archive_path,    // a1 (called "src"): the .
 
 The function handles two name formats:
 
-**Direct name** (no long-name reference): The member name starts at `header_ptr` and extends to the first `/` character (which terminates `ar` names in GNU format). The terminating `/` is not included in the output. If no `/` is found at all (meaning the name fills all 16 bytes with no terminator), the function calls `sub_467460` with `"unexpected archive format"` -- a fatal error indicating a malformed `ar` header.
+**Direct name** (no long-name reference): The member name starts at `header_ptr` and extends to the first `/` character (which terminates `ar` names in GNU format). The terminating `/` is not included in the output. If no `/` is found at all (meaning the name fills all 16 bytes with no terminator), the function calls `sub_467460` with `"unexpected archive format"` — a fatal error indicating a malformed `ar` header.
 
 **Long-name reference** (`/offset`): When the name starts with `/` followed by a digit, the function looks up the offset in the long-name string table. The resolved name starts at `longnames_ptr + offset + 60` (60 bytes past the `//` member header) and extends to the next `/`.
 
@@ -372,17 +372,17 @@ Thin archives (`"!<thin>\n"` magic) differ from regular archives in one critical
 
 When `sub_487E10` encounters a member in a thin archive (`ctx->is_thin == 1` at offset +72), it takes a different extraction path:
 
-1. Builds the composite path via `sub_487AD0` as usual -- this produces `"libfoo.a:path/to/bar.o"` where the part after the `:` is the external filename recorded in the thin archive's name field.
+1. Builds the composite path via `sub_487AD0` as usual — this produces `"libfoo.a:path/to/bar.o"` where the part after the `:` is the external filename recorded in the thin archive's name field.
 2. Extracts the external file path from the composite path: `external = strchr(composite, ':') + 1`.
-3. Opens and reads the external file via `sub_476BF0` -- which internally calls `fopen(path, "rb")`, `fseek/ftell` to determine size, `sub_4307C0` to allocate a buffer, and `fread` to load the full content. The returned pointer is an arena-owned read buffer.
+3. Opens and reads the external file via `sub_476BF0` — which internally calls `fopen(path, "rb")`, `fseek/ftell` to determine size, `sub_4307C0` to allocate a buffer, and `fread` to load the full content. The returned pointer is an arena-owned read buffer.
 4. Validates the loaded content via `sub_476E90`, which checks for ELF magic (`0x7F454C46`) at offset 0 and returns the same pointer (or NULL on mismatch).
-5. If `sub_476BF0` fails (file not found, read error), the iterator returns 2 -- "thin archive resolve failure". The caller (`sub_4BDAF0` -> `main()`) translates this through `dword_1D48A50` into a fatal error.
+5. If `sub_476BF0` fails (file not found, read error), the iterator returns 2 — "thin archive resolve failure". The caller (`sub_4BDAF0` -> `main()`) translates this through `dword_1D48A50` into a fatal error.
 
 For regular archives, the content pointer is computed as `header_ptr + 60` (immediately after the 60-byte `ar` header), pointing directly into the memory-mapped archive buffer. No additional I/O is required, and no extra allocation is performed. This makes regular-archive member access effectively free after the initial parse.
 
 ## __.LIBDEP Skipping
 
-The `__.LIBDEP` pseudo-member is a GNU extension that records library dependency information -- a list of libraries that should also be searched when this archive is used. nvlink explicitly skips this member; it never parses or acts on LIBDEP contents. The detection in `sub_487E10` uses a 9-byte comparison against the string `"__.LIBDEP"` at the start of the member name:
+The `__.LIBDEP` pseudo-member is a GNU extension that records library dependency information — a list of libraries that should also be searched when this archive is used. nvlink explicitly skips this member; it never parses or acts on LIBDEP contents. The detection in `sub_487E10` uses a 9-byte comparison against the string `"__.LIBDEP"` at the start of the member name:
 
 ```c
 // sub_487E10: LIBDEP detection (simplified from decompiled byte-compare loop at lines 149-162)
@@ -404,13 +404,13 @@ if ( match )
 
 The comparison is a hand-rolled memcmp-like inline loop, preserved by the decompiler because the compiler inlined strncmp/memcmp. The effect is a 9-byte prefix check; anything starting with `"__.LIBDEP"` is skipped. This means dependency metadata members never reach the type-dispatch system and are invisible to the rest of the linker.
 
-Two xrefs to the `"__.LIBDEP"` string exist in the binary (at `0x487f1d` and `0x4880ad`, both inside `sub_487E10`), reflecting the two code paths that may encounter it -- one for regular members and one for the post-slash-check fallthrough, due to the decompiler's control-flow reconstruction producing two separate comparison blocks.
+Two xrefs to the `"__.LIBDEP"` string exist in the binary (at `0x487f1d` and `0x4880ad`, both inside `sub_487E10`), reflecting the two code paths that may encounter it — one for regular members and one for the post-slash-check fallthrough, due to the decompiler's control-flow reconstruction producing two separate comparison blocks.
 
 ## Whole-Archive vs On-Demand Loading
 
 A traditional Unix linker (GNU ld, lld, BSD ld) processes archives **on-demand**: at each archive encounter, it scans the archive's symbol table (armap, the `/` member), identifies members that define any currently-unresolved symbol, and loads only those members. Members whose symbols are not currently needed are skipped. The `-Wl,--whole-archive` flag overrides this behavior and unconditionally loads every member. ld also re-scans an archive when later inputs introduce new undefined references to it; `--start-group`/`--end-group` makes this re-scan iterate to a fixed point across a group of archives.
 
-> **QUIRK vs GNU ld -- archive traversal**: nvlink performs a **single pass** over each archive that loads **every** member. There is no symbol-index consultation, no on-demand extraction, no second pass when later inputs introduce new undefined symbols, no `--start-group`/`--end-group`, no `--whole-archive`/`--no-whole-archive`, and consequently no fixed-point convergence loop. The `qword_2A5F2F0` seen-archive set positively prevents an archive from being processed more than once even if it appears multiple times on the command line. The only state machine here is "have we seen this path? if not, iterate all members exactly once".
+> **QUIRK vs GNU ld — archive traversal**: nvlink performs a **single pass** over each archive that loads **every** member. There is no symbol-index consultation, no on-demand extraction, no second pass when later inputs introduce new undefined symbols, no `--start-group`/`--end-group`, no `--whole-archive`/`--no-whole-archive`, and consequently no fixed-point convergence loop. The `qword_2A5F2F0` seen-archive set positively prevents an archive from being processed more than once even if it appears multiple times on the command line. The only state machine here is "have we seen this path? if not, iterate all members exactly once".
 
 **nvlink does not implement on-demand loading.** The archive dispatch in `main()` (`main_0x409800.c` lines 746-790) unconditionally iterates every member of every archive and processes each one through `sub_42AF40` (the member handler), without ever consulting the symbol resolver to check if the member is needed:
 
@@ -444,9 +444,9 @@ Although every archive member is initially loaded, nvlink still produces lean ou
 
 2. **Symbol resolution** ([Symbol Resolution](../linker/symbol-resolution.md)): multiply-defined strong symbols produce errors; weak symbols are overridden by strong; undefined references are flagged. Archive members that defined duplicate symbols may trigger "multiply defined" errors here, unlike GNU ld where unneeded archive members would have been skipped silently.
 
-3. **Dead code elimination** ([Dead Code Elimination](../linker/dead-code-elimination.md)): the DCE pass walks the callgraph starting from entry points (host-launched kernels identified via `--use-host-info` / `--kernels-used`) and marks every reachable function. Unreachable functions from any source -- including archive members -- are then swept out of the output. The gate function is `sub_426AE0` (`mark_used_symbols`), the core DCE function is `sub_44AD40` (`dead_code_eliminate`), and both emit verbose diagnostics like `"dead function %d(%s)"` and `"removed un-used section %s (%d)"` when `-v` is active.
+3. **Dead code elimination** ([Dead Code Elimination](../linker/dead-code-elimination.md)): the DCE pass walks the callgraph starting from entry points (host-launched kernels identified via `--use-host-info` / `--kernels-used`) and marks every reachable function. Unreachable functions from any source — including archive members — are then swept out of the output. The gate function is `sub_426AE0` (`mark_used_symbols`), the core DCE function is `sub_44AD40` (`dead_code_eliminate`), and both emit verbose diagnostics like `"dead function %d(%s)"` and `"removed un-used section %s (%d)"` when `-v` is active.
 
-The practical effect is that from the user's perspective, nvlink behaves similarly to a symbol-directed linker: if `libdevice.a` contains 200 device functions and the application only uses 5, the final cubin contains only those 5 (plus their transitive callees). But the internal mechanism is completely different -- every function was momentarily present in the linker's state and was then deleted by DCE, rather than never being loaded at all.
+The practical effect is that from the user's perspective, nvlink behaves similarly to a symbol-directed linker: if `libdevice.a` contains 200 device functions and the application only uses 5, the final cubin contains only those 5 (plus their transitive callees). But the internal mechanism is completely different — every function was momentarily present in the linker's state and was then deleted by DCE, rather than never being loaded at all.
 
 ### Consequences of Whole-Archive Loading
 
@@ -460,7 +460,7 @@ This design has several implications:
 
 - **DCE is not optional for lean output**: users who disable DCE (via `--ignore-host-info` without providing explicit `--kernels-used` / `--variables-used` lists) will end up with every archive function in their final cubin. The `byte_2A5F212` and `byte_2A5F213` flags gate this behavior; see [Dead Code Elimination](../linker/dead-code-elimination.md) for the guard logic.
 
-- **The `/` symbol table is never consulted**: nvlink skips the symbol table member but never reads its contents. This is a deliberate simplification consistent with whole-archive semantics -- without on-demand loading, there's nothing useful the armap could tell the linker.
+- **The `/` symbol table is never consulted**: nvlink skips the symbol table member but never reads its contents. This is a deliberate simplification consistent with whole-archive semantics — without on-demand loading, there's nothing useful the armap could tell the linker.
 
 ## Worked Example: Processing libdevice.a
 
@@ -487,7 +487,7 @@ Here is the step-by-step processing trace:
 - Stores `buffer` at offset 0, `12288` at offset 8
 - Zeros offsets 16-71
 - Strdups `"libdevice.a"` into the arena and stores the pointer at offset 32
-- Tests `memcmp(buffer, "!<thin>\n", 8)` -- false, so sets `is_thin = 0` at offset 72
+- Tests `memcmp(buffer, "!<thin>\n", 8)` — false, so sets `is_thin = 0` at offset 72
 - Returns 0 (success) via `dword_1D48A50[0]`
 
 **Step 4**: First call to `sub_4BDAF0(&content, ctx)` -> `sub_487E10`:
@@ -513,7 +513,7 @@ Here is the step-by-step processing trace:
 - Parse `ar_size`: gets `2408`
 - `strchr(pos, '/')` returns some offset inside the name (e.g., `pos + 11` where the `/` terminator is after `__nv_sqrt.o`)
 - `v12 > pos`, so this is a regular member with a direct (short) name
-- Check `__.LIBDEP`: first byte is `_`, second is `_`, third is `n` -- does NOT match `"__.LIBDEP"` at position 2. Fall through.
+- Check `__.LIBDEP`: first byte is `_`, second is `_`, third is `n` — does NOT match `"__.LIBDEP"` at position 2. Fall through.
 - Call `sub_487AD0("libdevice.a", pos, longnames_ptr)`:
     - `*pos == '_'`, not `/`, so take the direct-name branch
     - `v10 = strchr(pos, '/')`, returns the terminator
@@ -521,7 +521,7 @@ Here is the step-by-step processing trace:
     - Allocate `strlen("libdevice.a") + 1 + 11 + 1 = 12 + 1 + 11 + 1 = 25` bytes
     - Construct `"libdevice.a:__nv_sqrt.o"`
 - `ctx->member_path = "libdevice.a:__nv_sqrt.o"` (offset +40)
-- `is_thin == 0`, so `content = sub_476E90(pos + 60)` -- validates ELF magic at the start of the member data and returns the pointer
+- `is_thin == 0`, so `content = sub_476E90(pos + 60)` — validates ELF magic at the start of the member data and returns the pointer
 - `*size_out = 2408`, `*content_out = pos + 60`
 - Track in member list via `sub_4644C0(content, ctx+56)`
 - Advance: `cursor = pos + 60`, `member_size = 2408`
@@ -531,19 +531,19 @@ Here is the step-by-step processing trace:
 - `s1` is the content pointer, `v316 = sub_4BDB60(ctx)` returns `"libdevice.a:__nv_sqrt.o"`
 - `sub_4BDB70(ptr, s1, v316)` classifies the content: ELF magic found, `e_machine == 190`, so it is classified as a cubin
 - `sub_42AF40(ptr[0], s1, v316, v55, 1, &v365, &v355, &v353, &v354)` is called with the classification result
-- The `1` argument indicates "from archive" -- the member is processed and merged into the link set
+- The `1` argument indicates "from archive" — the member is processed and merged into the link set
 - The member's path `"libdevice.a:__nv_sqrt.o"` is attached to its symbols, so any later linker diagnostic referencing these symbols will identify their origin
 
 **Step 8**: Second call to `sub_4BDAF0` returns the second regular member, which is actually a long-name reference `/0`:
 - `pos = previous + (2408+1)&~1 = previous + 2408`. (2408 is even.)
 - `strchr(pos, '/')` returns `pos`
 - `pos[1] = '0'`, which IS a digit (isdigit matches 0x800)
-- This is a long-name reference -- break out of classification, treat as regular member
+- This is a long-name reference — break out of classification, treat as regular member
 - Check `__.LIBDEP`: first byte `/`, no match, fall through
 - Call `sub_487AD0("libdevice.a", pos, longnames_ptr)`:
     - `*pos == '/'`, `pos[1] == '0'` is digit, take long-name branch
     - `v20 = strtol("0/__nv_sqrt_device_impl.o/...", NULL, 10) = 0` (stops at non-digit)
-    - `v9 = longnames_ptr + 0 + 60` -- start of the long-name table data, where the first entry is `"__nv_sqrt_device_impl.o"`
+    - `v9 = longnames_ptr + 0 + 60` — start of the long-name table data, where the first entry is `"__nv_sqrt_device_impl.o"`
     - `strchr(v9, '/')` gives the terminator position, length = 24
     - Allocate, construct `"libdevice.a:__nv_sqrt_device_impl.o"`
 - Continue exactly as step 6-7 above
@@ -551,9 +551,9 @@ Here is the step-by-step processing trace:
 
 **Step 9**: Third regular member `__nv_fma.o` is processed analogously to step 6-7.
 
-**Step 10**: Fourth regular member is `/24` -- another long-name reference:
+**Step 10**: Fourth regular member is `/24` — another long-name reference:
 - Parse offset = 24 (decimal)
-- `v9 = longnames_ptr + 24 + 60` -- this skips past the first 24 bytes of the long-name table (`"__nv_sqrt_device_impl.o/"` which is 23 chars + `\n` = 24 bytes)
+- `v9 = longnames_ptr + 24 + 60` — this skips past the first 24 bytes of the long-name table (`"__nv_sqrt_device_impl.o/"` which is 23 chars + `\n` = 24 bytes)
 - Lands on `"__nv_fma_device_rounding.o"`
 - Build path `"libdevice.a:__nv_fma_device_rounding.o"`
 - Process as cubin member
@@ -570,7 +570,7 @@ Here is the step-by-step processing trace:
 - Clears `ctx->buffer`, `ctx->size`
 - Frees `ctx->path` (archive path string)
 - Frees `ctx->member_path` (last composite path string)
-- Walks `ctx->member_list` at +56 calling `nullsub_4()` per entry (no-op -- content pointers are not owned by this list), then frees the list container
+- Walks `ctx->member_list` at +56 calling `nullsub_4()` per entry (no-op — content pointers are not owned by this list), then frees the list container
 - Walks `ctx->path_list` at +64, freeing each allocated composite path string, then frees the list container
 - Frees the 80-byte context itself
 - Returns 0
@@ -606,7 +606,7 @@ __int64 sub_4BDAC0(_QWORD *a1, pthread_mutexattr_t *a2, __int64 a3, const char *
 
 The `dword_1D48A50` table maps internal codes 0/1/2 to the API-level codes that `main()` expects. For codes > 2, the wrapper returns 1 (error) directly without consulting the table. This indirection isolates the archive parser's internal error semantics from the linker's top-level error handling, and also allows the table to be shared across other subsystems (several other wrapper functions in the `0x4BD*` range use the same table).
 
-`sub_4BDB60` is a pure thunk that forwards to `sub_488290` with no return code translation -- `sub_488290` simply returns `*(ctx + 40)`, which is always a valid pointer or NULL, with no error semantics.
+`sub_4BDB60` is a pure thunk that forwards to `sub_488290` with no return code translation — `sub_488290` simply returns `*(ctx + 40)`, which is always a valid pointer or NULL, with no error semantics.
 
 ## Member Re-Entry into Type Dispatch
 
@@ -664,7 +664,7 @@ __int64 __fastcall sub_488200(_QWORD *a1, unsigned __int64 a2)
 }
 ```
 
-The member tracking list at offset +56 uses a no-op destructor (`nullsub_4`), meaning the member data pointers are not freed -- they point into the archive buffer (for regular archives) or into arena-allocated read buffers (for thin archives) that are cleaned up when the arena is destroyed. The list exists purely for future extensibility; currently it is walked only to count nodes for `sub_464520`.
+The member tracking list at offset +56 uses a no-op destructor (`nullsub_4`), meaning the member data pointers are not freed — they point into the archive buffer (for regular archives) or into arena-allocated read buffers (for thin archives) that are cleaned up when the arena is destroyed. The list exists purely for future extensibility; currently it is walked only to count nodes for `sub_464520`.
 
 ## Integration with Library Resolution
 
@@ -695,10 +695,10 @@ After an archive has been processed, its path is recorded in `qword_2A5F2F0` (th
 | `0x476BF0` | 384 B | `read_file` (`sub_476BF0`) | Opens file, reads entire content into arena buffer (thin-archive member loading and main archive load) |
 | `0x476E90` | 32 B | `validate_elf_magic` (`sub_476E90`) | Returns input pointer if first 4 bytes are `0x7F454C46` (ELF magic); used to confirm cubin content inside archive members |
 | `0x4644C0` | 112 B | `list_prepend` (`sub_4644C0`) | Prepends a node to a singly-linked list (member/path tracking, seen-archive set) |
-| `0x4307C0` | -- | `arena_alloc` (`sub_4307C0`) | Arena allocator, used for context and path allocation |
-| `0x431000` | -- | `arena_free` (`sub_431000`) | Arena free, called by `sub_488200` for cleanup |
-| `0x45CAC0` | -- | `oom_handler` (`sub_45CAC0`) | OOM diagnostic; may longjmp back to the archive open/next setjmp frame |
-| `0x467460` | -- | `fatal_error` (`sub_467460`) | Diagnostic reporter, called on archive format errors |
+| `0x4307C0` | — | `arena_alloc` (`sub_4307C0`) | Arena allocator, used for context and path allocation |
+| `0x431000` | — | `arena_free` (`sub_431000`) | Arena free, called by `sub_488200` for cleanup |
+| `0x45CAC0` | — | `oom_handler` (`sub_45CAC0`) | OOM diagnostic; may longjmp back to the archive open/next setjmp frame |
+| `0x467460` | — | `fatal_error` (`sub_467460`) | Diagnostic reporter, called on archive format errors |
 
 ## Diagnostic Strings
 
@@ -714,15 +714,15 @@ Note: the old-BSD `__.SYMDEF` symbol-table name and the GNU `/SYMDEF` variant do
 
 ## Cross-References
 
-- [File Type Detection](file-type-detection.md) -- The `sub_487A90` predicate in the detection function table; the 56-byte header probe that feeds the archive dispatch
-- [Input File Loop](../pipeline/input-loop.md) -- The dispatch branch that enters archive iteration at `main_0x409800.c` source line 850
-- [Library Resolution](../pipeline/library-resolution.md) -- How `-lfoo` resolves to `libfoo.a` and the two-pass search strategy; also the `qword_2A5F2F0` seen-archive set
-- [Cubin Loading](cubin-loading.md) -- Processing of ELF members extracted from archives (the usual case for `libdevice.a`)
-- [Fatbin Extraction](fatbin-extraction.md) -- Fatbin members found inside archives; recursive extraction via `sub_42AF40`
-- [NVVM IR / LTO IR Input](nvvm-ir-input.md) -- IR members in archives (when `-lto` is active)
-- [Symbol Resolution](../linker/symbol-resolution.md) -- Where archive members' symbols are deduplicated and resolved; how the whole-archive loading interacts with multiple-definition diagnostics
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- How the DCE pass removes unreachable archive members after whole-archive loading; `sub_44AD40` callgraph sweep
-- [Weak Symbols](../linker/weak-symbols.md) -- Weak-vs-strong resolution rules applied uniformly across the archive-loaded set
+- [File Type Detection](file-type-detection.md) — The `sub_487A90` predicate in the detection function table; the 56-byte header probe that feeds the archive dispatch
+- [Input File Loop](../pipeline/input-loop.md) — The dispatch branch that enters archive iteration at `main_0x409800.c` source line 850
+- [Library Resolution](../pipeline/library-resolution.md) — How `-lfoo` resolves to `libfoo.a` and the two-pass search strategy; also the `qword_2A5F2F0` seen-archive set
+- [Cubin Loading](cubin-loading.md) — Processing of ELF members extracted from archives (the usual case for `libdevice.a`)
+- [Fatbin Extraction](fatbin-extraction.md) — Fatbin members found inside archives; recursive extraction via `sub_42AF40`
+- [NVVM IR / LTO IR Input](nvvm-ir-input.md) — IR members in archives (when `-lto` is active)
+- [Symbol Resolution](../linker/symbol-resolution.md) — Where archive members' symbols are deduplicated and resolved; how the whole-archive loading interacts with multiple-definition diagnostics
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — How the DCE pass removes unreachable archive members after whole-archive loading; `sub_44AD40` callgraph sweep
+- [Weak Symbols](../linker/weak-symbols.md) — Weak-vs-strong resolution rules applied uniformly across the archive-loaded set
 
 ## Confidence Assessment
 
@@ -735,7 +735,7 @@ Note: the old-BSD `__.SYMDEF` symbol-table name and the GNU `/SYMDEF` variant do
 | Name resolution function `sub_487AD0` at `0x487AD0`, 356 bytes | **HIGH** | Full decompiled source read; diagnostic strings `"longnames header not found"` and `"unexpected archive format"` confirm call sites |
 | 80-byte iterator context layout (offsets 0-72) | **HIGH** | Offsets derived from decompiled accesses: `v15[0]`, `v15[1]`, `ctx+16`, `ctx+24`, `ctx+32`, `ctx+40`, `ctx+48`, `a1[7]`, `a1[8]`, `ctx+72` all visible in source |
 | Member header layout (name/date/uid/gid/mode/size/fmag, offsets 0/16/28/34/40/48/58) | **HIGH** | Standard GNU `ar` format; nvlink only reads offset 0 and offset 48, which is directly visible in `sub_487E10` (`v10 + 48` for ar_size) |
-| Only `ar_name` and `ar_size` are read by nvlink | **HIGH** | Exhaustive review of `sub_487E10` and `sub_487AD0` -- no reads from offsets 16, 28, 34, 40, or 58 |
+| Only `ar_name` and `ar_size` are read by nvlink | **HIGH** | Exhaustive review of `sub_487E10` and `sub_487AD0` — no reads from offsets 16, 28, 34, 40, or 58 |
 | 2-byte alignment for odd-sized members | **HIGH** | Formula `v6 - v6 % 2 + 2` visible at source line 87 of `sub_487E10_0x487e10.c` |
 | `//` long-name table detection via `v34 == 2` branch | **HIGH** | Visible in decompiled source; assignment `ctx+48 = v10` only reached when `v30+1 == 2` |
 | `__.LIBDEP` 9-byte prefix skip | **HIGH** | Two xrefs to the string at `0x1D40FC7` from `sub_487E10`; the 9-byte byte-compare loop is visible in decompiled output |

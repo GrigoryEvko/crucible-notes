@@ -4,12 +4,12 @@ This page covers the four subsystems that together translate CUDA/C++ function d
 
 | | |
 |---|---|
-| **Function entry-block setup** | `sub_946060` (Path A) -- creates entry BB, allocapt sentinel, dispatches to prolog |
-| **Parameter prolog emitter** | `sub_938240` (16 KB) -- parameter iteration, ABI dispatch, alloca emission |
-| **Call-expression emitter** | `sub_93CB50` (1,293 lines) -- type resolution, ABI classification, call emission |
-| **Inline-asm emitter** | `sub_1292420` (53 KB, 2,087 lines) -- 7-phase asm template-to-IR pipeline |
-| **Builtin lowering** | `sub_12B3FD0` (103 KB, 3,409 lines) -- mega-switch over ~250 builtin IDs |
-| **Function attribute emitter** | `sub_12735D0` / `sub_1273F90` -- grid_constant, preserve_n, custom ABI metadata |
+| **Function entry-block setup** | `sub_946060` (Path A) — creates entry BB, allocapt sentinel, dispatches to prolog |
+| **Parameter prolog emitter** | `sub_938240` (16 KB) — parameter iteration, ABI dispatch, alloca emission |
+| **Call-expression emitter** | `sub_93CB50` (1,293 lines) — type resolution, ABI classification, call emission |
+| **Inline-asm emitter** | `sub_1292420` (53 KB, 2,087 lines) — 7-phase asm template-to-IR pipeline |
+| **Builtin lowering** | `sub_12B3FD0` (103 KB, 3,409 lines) — mega-switch over ~250 builtin IDs |
+| **Function attribute emitter** | `sub_12735D0` / `sub_1273F90` — grid_constant, preserve_n, custom ABI metadata |
 
 
 ## Function Prolog: Entry Block Setup
@@ -51,7 +51,7 @@ function_entry_setup(IRGenState *S, FunctionDecl *Decl, Function *F,
  10.  Tail-call parameter_prolog(S, Decl, F, Params, TI, Loc, ByvalDemotion)
 ```
 
-The `allocapt` sentinel is the critical mechanism. It is a dead `bitcast void undef to void` instruction that serves as an insertion anchor. When `CreateTmpAlloca` (at `sub_921D70`) is called with no explicit array size -- the common case -- it inserts the new `AllocaInst` **before** the `allocapt` marker rather than at the current builder insertion point. This ensures that all `alloca` instructions cluster at the top of the entry block regardless of where in the function body they were requested, which is a hard requirement for LLVM's `mem2reg` pass to promote them to SSA registers.
+The `allocapt` sentinel is the critical mechanism. It is a dead `bitcast void undef to void` instruction that serves as an insertion anchor. When `CreateTmpAlloca` (at `sub_921D70`) is called with no explicit array size — the common case — it inserts the new `AllocaInst` **before** the `allocapt` marker rather than at the current builder insertion point. This ensures that all `alloca` instructions cluster at the top of the entry block regardless of where in the function body they were requested, which is a hard requirement for LLVM's `mem2reg` pass to promote them to SSA registers.
 
 The sentinel is eventually dead-code-eliminated in a later pass since it produces no usable value.
 
@@ -76,15 +76,15 @@ Before entering the parameter loop, a helper (`sub_938130`) checks whether the f
 
 For each parameter, the ABI variant field at `TypeInfo+12` selects one of four lowering paths:
 
-**Variant 0/1 -- Indirect/Aggregate Pass.** The parameter arrives as a pointer to caller-allocated memory. If the type is an aggregate (struct/union/class/array -- type kinds 8--11 checked by the aggregate-type predicate at `sub_91B770`), the prolog creates a local alloca named `<param>.addr`, stores the incoming argument into it, and registers the alloca in the declaration map via the parameter-decl registrar (`sub_9446C0`). If the type is a scalar, it goes directly to the registrar without an intermediate alloca.
+**Variant 0/1 — Indirect/Aggregate Pass.** The parameter arrives as a pointer to caller-allocated memory. If the type is an aggregate (struct/union/class/array — type kinds 8--11 checked by the aggregate-type predicate at `sub_91B770`), the prolog creates a local alloca named `<param>.addr`, stores the incoming argument into it, and registers the alloca in the declaration map via the parameter-decl registrar (`sub_9446C0`). If the type is a scalar, it goes directly to the registrar without an intermediate alloca.
 
-**Variant 2 -- Direct Pass (most common).** The parameter is passed by value in a register or register pair. Two sub-paths exist:
+**Variant 2 — Direct Pass (most common).** The parameter is passed by value in a register or register pair. Two sub-paths exist:
 
 - **Byval demotion path.** When the `ByvalDemotion` flag (parameter `a7`) is set and the parameter carries a `byval` attribute (TypeInfo+16 nonzero), the prolog consults a global name-set (`dword_4D04688`) to decide whether to create a `__val_param` temporary. If selected, it allocates a `"tmp"` alloca via the temp-alloca creator (`sub_921D70`), stores the argument into it, names the alloca `"__val_param" + param_name`, and falls through to the parameter-decl registrar. The `__val_param` prefix is NVIDIA-specific and marks parameters that have been demoted from byval to local copy for downstream optimization passes.
 
 - **Normal path.** For non-byval scalars, calls the registrar directly. A guard validates that non-aggregate arguments are not marked indirect: `"Non-aggregate arguments passed indirectly are not supported!"`.
 
-**Variant 3 -- Coercion.** The parameter's LLVM type does not match the source type and requires a coercion cast. For aggregates, a `"tmp"` alloca is created. For scalars, the declaration is looked up and wrapped with a bitcast. The result is forwarded to the parameter-decl registrar.
+**Variant 3 — Coercion.** The parameter's LLVM type does not match the source type and requires a coercion cast. For aggregates, a `"tmp"` alloca is created. For scalars, the declaration is looked up and wrapped with a bitcast. The result is forwarded to the parameter-decl registrar.
 
 #### Parameter Registration (`sub_9446C0`)
 
@@ -119,7 +119,7 @@ Call emission (`sub_93CB50`) is a 1,293-line function that handles direct calls,
 
 ### Phase 1: Type Resolution
 
-The callee operand is extracted from the call node's first operand slot (offset +72). The function resolves the callee's declaration via `sub_72B0F0`, then peels through the type chain -- stripping typedef aliases (kind 12) by following offset +160 -- until it reaches a pointer-to-function type (kind 6) wrapping a function type (kind 7). Fatal assertions guard both steps: `"Expected pointer to function!"` and `"unexpected: Callee does not have routine type!"`.
+The callee operand is extracted from the call node's first operand slot (offset +72). The function resolves the callee's declaration via `sub_72B0F0`, then peels through the type chain — stripping typedef aliases (kind 12) by following offset +160 — until it reaches a pointer-to-function type (kind 6) wrapping a function type (kind 7). Fatal assertions guard both steps: `"Expected pointer to function!"` and `"unexpected: Callee does not have routine type!"`.
 
 ### Phase 2: Builtin Dispatch
 
@@ -141,7 +141,7 @@ These dispatch to `sub_939370`, a dedicated handler that bypasses the normal ABI
 
 Arguments are codegen'd by walking the argument linked list and calling `sub_921F50` on each expression. Results are collected into a dynamically-growing array (24 bytes per entry, managed by `sub_C8D5F0`).
 
-When bit 1 of the call node's flags byte (offset +60) is set -- indicating variadic or reversed-evaluation convention -- arguments are first collected into a temporary linked list and then written into the array in reverse order. This preserves the C right-to-left evaluation order for variadic calls.
+When bit 1 of the call node's flags byte (offset +60) is set — indicating variadic or reversed-evaluation convention — arguments are first collected into a temporary linked list and then written into the array in reverse order. This preserves the C right-to-left evaluation order for variadic calls.
 
 ### Phase 5: ABI Classification
 
@@ -162,7 +162,7 @@ If the callee operand is a bitcast (byte[0] == 5), the optimizer walks back to t
 
 ### Phase 7: Pre-Call Hooks and printf Interception
 
-Debug location metadata is emitted via `sub_92FD10`. Then a special case: if the call is direct (opcode 20) and the callee name is literally `"printf"`, control transfers to the printf-expansion routine at `sub_939F40` which performs GPU printf lowering -- converting the `printf` call into a `vprintf`-style call that writes formatted output through the GPU's printf buffer mechanism.
+Debug location metadata is emitted via `sub_92FD10`. Then a special case: if the call is direct (opcode 20) and the callee name is literally `"printf"`, control transfers to the printf-expansion routine at `sub_939F40` which performs GPU printf lowering — converting the `printf` call into a `vprintf`-style call that writes formatted output through the GPU's printf buffer mechanism.
 
 ### Phase 8: preserve_n Operand Bundles
 
@@ -251,7 +251,7 @@ call_emitter(Result *Out, CodegenCtx *Ctx, CallNode *Call, u64 DestFlags, u32 Al
 
 ## Inline Assembly Codegen
 
-The inline asm handler (`sub_1292420`, 53 KB) translates a CUDA `__asm__()` statement into an LLVM `InlineAsm` call instruction through a strict 7-phase pipeline. A nearly-identical duplicate exists at `sub_932270` for the Path A codegen context -- same parsing logic, same constraint table, different diagnostic function pointers.
+The inline asm handler (`sub_1292420`, 53 KB) translates a CUDA `__asm__()` statement into an LLVM `InlineAsm` call instruction through a strict 7-phase pipeline. A nearly-identical duplicate exists at `sub_932270` for the Path A codegen context — same parsing logic, same constraint table, different diagnostic function pointers.
 
 ### Phase 1: Template String Parsing
 
@@ -265,7 +265,7 @@ The parser handles the CUDA-to-LLVM syntax translation:
 | `%%` | `%` | Literal percent |
 | `%N` (operand ref) | Fragment kind=1, index=N | Multi-digit decimal parse |
 | `%=` (unique ID) | `${:uid}` | LLVM unique-identifier modifier |
-| `%[name]` | -- | Fatal: `"symbolic operand reference not supported!"` |
+| `%[name]` | — | Fatal: `"symbolic operand reference not supported!"` |
 | `%cN` (modifier+operand) | Fragment kind=1, modifier=c, index=N | Alpha char + decimal parse |
 
 For operands referencing string literal constants (the `C` constraint), the parser resolves the constant through the EDG value chain, validates the type is `array of char`, extracts each byte, escapes any `$` characters, strips the trailing NUL, and emits the entire string as a literal fragment.
@@ -282,7 +282,7 @@ This is where the CUDA `%N` convention is translated to LLVM's `$N` convention. 
 
 ### Phase 3: Constraint String Construction
 
-The parser iterates the EDG operand linked list, building a comma-separated LLVM constraint string. Each EDG operand carries a constraint type-chain -- a linked list of tag bytes that map through a 61-byte global lookup table at `0x4B6DEC0` (`"@,&%#*?!Xg0123456789rhlCfmpoV><insFabcdSDRqQAtuxYyIJMKNLGHeZ~"`) to produce LLVM constraint letters.
+The parser iterates the EDG operand linked list, building a comma-separated LLVM constraint string. Each EDG operand carries a constraint type-chain — a linked list of tag bytes that map through a 61-byte global lookup table at `0x4B6DEC0` (`"@,&%#*?!Xg0123456789rhlCfmpoV><insFabcdSDRqQAtuxYyIJMKNLGHeZ~"`) to produce LLVM constraint letters.
 
 **Output operands** (`flags & 2 != 0`):
 - Pointer types: constraint prefix `"=*"` + letters (indirect output).
@@ -292,7 +292,7 @@ The parser iterates the EDG operand linked list, building a comma-separated LLVM
 **Input operands:**
 - Same tag-to-letter mapping.
 - Tags 10--19 are prohibited: `"tied input/output operands not supported!"` (GCC-style matching-digit constraints are not implemented).
-- Tag 23 (the `C` constraint on inputs) creates an `undef` value -- the constant's value was already inlined into the template string during Phase 1.
+- Tag 23 (the `C` constraint on inputs) creates an `undef` value — the constant's value was already inlined into the template string during Phase 1.
 
 Special tag handling:
 

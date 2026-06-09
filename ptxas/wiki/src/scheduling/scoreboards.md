@@ -2,17 +2,17 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The NVIDIA GPU hardware uses a software-managed scoreboard system for instruction-level hazard tracking. Unlike CPUs that detect dependencies in hardware, NVIDIA's warp schedulers rely on per-instruction metadata -- encoded in a **control word** -- to determine when an instruction's operands are available, when a warp should yield, and which dependency barriers to set or wait on. ptxas generates this metadata in three pipeline phases (114--116) that together produce the final scoreboard annotations embedded in the SASS binary.
+The NVIDIA GPU hardware uses a software-managed scoreboard system for instruction-level hazard tracking. Unlike CPUs that detect dependencies in hardware, NVIDIA's warp schedulers rely on per-instruction metadata — encoded in a **control word** — to determine when an instruction's operands are available, when a warp should yield, and which dependency barriers to set or wait on. ptxas generates this metadata in three pipeline phases (114--116) that together produce the final scoreboard annotations embedded in the SASS binary.
 
 | | |
 |---|---|
-| **Phase 114** | `FixUpTexDepBarAndSync` -- texture dependency barrier fixup |
-| **Phase 115** | `AdvancedScoreboardsAndOpexes` -- full scoreboard generation (-O1+) |
-| **Phase 116** | `ProcessO0WaitsAndSBs` -- conservative scoreboard insertion (-O0) |
-| **Control word generator** | `sub_A36360` (52 KB) -- per-instruction control word encoder |
-| **Scheduling heuristic** | `sub_A23CF0` (54 KB) -- DAG list scheduler with dependency analysis |
-| **Instruction dispatcher** | `sub_85C890` -- opcode-based fast-path / slow-path router |
-| **Mercury opex pass** | `sub_6FFDC0` (66 KB) -- MercGenerateOpex, phase 120 |
+| **Phase 114** | `FixUpTexDepBarAndSync` — texture dependency barrier fixup |
+| **Phase 115** | `AdvancedScoreboardsAndOpexes` — full scoreboard generation (-O1+) |
+| **Phase 116** | `ProcessO0WaitsAndSBs` — conservative scoreboard insertion (-O0) |
+| **Control word generator** | `sub_A36360` (52 KB) — per-instruction control word encoder |
+| **Scheduling heuristic** | `sub_A23CF0` (54 KB) — DAG list scheduler with dependency analysis |
+| **Instruction dispatcher** | `sub_85C890` — opcode-based fast-path / slow-path router |
+| **Mercury opex pass** | `sub_6FFDC0` (66 KB) — MercGenerateOpex, phase 120 |
 | **HW barrier limit** | 6 dependency barriers per warp (hardware constraint) |
 
 ## Control Word Format
@@ -38,7 +38,7 @@ Total: 26 bits of scheduling metadata per instruction in the internal representa
 
 ### SASS Control Word (Binary Encoding)
 
-In the final SASS binary, the control word is packed into 23 bits per instruction slot within a 128-bit scheduling control instruction. Three instruction slots share one control instruction, yielding a 4:3 instruction-to-encoding ratio. (MED -- per-field widths confirmed against `sub_A36360` encoder shifts; the 3-slot packing layout is inferred from cuobjdump output and the encoder loop structure rather than a single literal in the binary.)
+In the final SASS binary, the control word is packed into 23 bits per instruction slot within a 128-bit scheduling control instruction. Three instruction slots share one control instruction, yielding a 4:3 instruction-to-encoding ratio. (MED — per-field widths confirmed against `sub_A36360` encoder shifts; the 3-slot packing layout is inferred from cuobjdump output and the encoder loop structure rather than a single literal in the binary.)
 
 ```text
 128-bit scheduling control instruction:
@@ -99,11 +99,11 @@ Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fet
 
 ### Summary
 
-Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200--400+ cycles, exceeding the 4-bit stall-count range. Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings. The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class -- the primary motivation for this pass. The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
+Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200--400+ cycles, exceeding the 4-bit stall-count range. Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings. The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass. The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
 
 ## Phase 115: AdvancedScoreboardsAndOpexes
 
-Phase 115 is the main scoreboard generation pass. It is an `AdvancedPhase` hook -- a no-op in the default vtable, activated only when the architecture backend overrides it. At `-O1` and above, this phase runs the full dependency analysis and scoreboard assignment. At `-O0`, it is skipped entirely (phase 116 handles the conservative path instead).
+Phase 115 is the main scoreboard generation pass. It is an `AdvancedPhase` hook — a no-op in the default vtable, activated only when the architecture backend overrides it. At `-O1` and above, this phase runs the full dependency analysis and scoreboard assignment. At `-O0`, it is skipped entirely (phase 116 handles the conservative path instead).
 
 ### Architecture Dispatch
 
@@ -114,10 +114,10 @@ The phase entry point dispatches through the architecture backend vtable to `sub
 `sub_85C890` classifies instructions by their masked opcode (`opcode & 0xFFFFCFFF`) and routes them:
 
 **Handled by fast path** (direct barrier assignment without full DAG analysis):
-- Opcodes 60, 62, 78, 79: Texture/surface operations -- processed via `sub_A22B40` (write barrier assignment) after checking architecture capability at vtable+1928
-- Opcode 4 with operand types (7, 6): Specific ALU patterns with predicate operands -- dual operand processing via `sub_A220A0`
-- Opcode 111 with operand types (7, 7, 6): Triple-source patterns -- processed via triple `sub_A220A0` calls
-- Opcodes 120, 121: GMMA/tensor operations -- processed via `sub_A220A0` + `sub_A22B40` with variable operand counts
+- Opcodes 60, 62, 78, 79: Texture/surface operations — processed via `sub_A22B40` (write barrier assignment) after checking architecture capability at vtable+1928
+- Opcode 4 with operand types (7, 6): Specific ALU patterns with predicate operands — dual operand processing via `sub_A220A0`
+- Opcode 111 with operand types (7, 7, 6): Triple-source patterns — processed via triple `sub_A220A0` calls
+- Opcodes 120, 121: GMMA/tensor operations — processed via `sub_A220A0` + `sub_A22B40` with variable operand counts
 - Opcodes 126--128: Complex operations with architecture-specific operand counts (2--4 source operands)
 - Opcodes 195, 270, 280, 281: Memory operations with specific addressing modes
 - Opcodes 350, 351: Extended operations with operand subtype 11--12
@@ -125,7 +125,7 @@ The phase entry point dispatches through the architecture backend vtable to `sub
 **Fall-through to slow path** (full DAG scheduler):
 - All other opcodes
 - Fast-path opcodes that fail capability checks (vtable+1928 returns false)
-- Instructions with the 0x1000 flag set (bit 12 of opcode word) -- handled via `sub_A227F0` first, then fall through
+- Instructions with the 0x1000 flag set (bit 12 of opcode word) — handled via `sub_A227F0` first, then fall through
 
 The fast-path check at vtable+1928 tests `(*(_BYTE *)(a1 + 1090) & 4) != 0`, which corresponds to an architecture feature flag controlling whether the backend supports direct scoreboard assignment for specific instruction classes.
 
@@ -152,7 +152,7 @@ The scheduler:
 
 #### Stall-vs-Barrier Decision Algorithm
 
-The core decision lives in `sub_A220A0` (9 KB), called once per source operand that requires dependency tracking. This is the single most critical algorithm in the scoreboard pass -- it decides whether a dependency is expressed as a stall count in the control word or as a barrier register allocation with a wait bit.
+The core decision lives in `sub_A220A0` (9 KB), called once per source operand that requires dependency tracking. This is the single most critical algorithm in the scoreboard pass — it decides whether a dependency is expressed as a stall count in the control word or as a barrier register allocation with a wait bit.
 
 ```c
 function AssignOperandScoreboard(backend, func, instr, operand_idx, insert_pt, sched_state):
@@ -249,13 +249,13 @@ function AssignOperandScoreboard(backend, func, instr, operand_idx, insert_pt, s
 
 | Address | Size | Purpose |
 |---------|------|---------|
-| `sub_A220A0` | 9 KB | Instruction attribute / property query -- fills a scheduling descriptor for a specific operand |
-| `sub_A22B40` | -- | Write barrier assignment for a specific operand -- determines which barrier index to assign |
-| `sub_A22BC0` | -- | Read barrier dependency -- sets up wait mask for operand |
-| `sub_A22CE0` | -- | Instruction classification -- determines if instruction needs scoreboard processing |
-| `sub_A231E0` | -- | Scheduling score computation -- determines if full DAG analysis is needed |
-| `sub_A227F0` | -- | Pre-processing for flagged instructions (bit 12 set in opcode) |
-| `sub_A22D00` | -- | Dependency distance computation |
+| `sub_A220A0` | 9 KB | Instruction attribute / property query — fills a scheduling descriptor for a specific operand |
+| `sub_A22B40` | — | Write barrier assignment for a specific operand — determines which barrier index to assign |
+| `sub_A22BC0` | — | Read barrier dependency — sets up wait mask for operand |
+| `sub_A22CE0` | — | Instruction classification — determines if instruction needs scoreboard processing |
+| `sub_A231E0` | — | Scheduling score computation — determines if full DAG analysis is needed |
+| `sub_A227F0` | — | Pre-processing for flagged instructions (bit 12 set in opcode) |
+| `sub_A22D00` | — | Dependency distance computation |
 
 ## Phase 116: ProcessO0WaitsAndSBs
 
@@ -354,10 +354,10 @@ function GenerateControlWord(ctx, instr):
 
 | Address | Size | Purpose |
 |---------|------|---------|
-| `sub_A318F0` | 4 KB | Barrier dependency distance computation -- measures the instruction distance between a barrier set and its corresponding wait |
-| `sub_A31390` | 4 KB | Barrier set intersection / conflict detection -- checks whether two instructions' barrier usage conflicts |
-| `sub_A32C70` | -- | Source/destination operand dependency analysis -- identifies which operands create dependencies |
-| `sub_A31040` | -- | Master field encoding dispatcher -- coordinates all six per-field encoders |
+| `sub_A318F0` | 4 KB | Barrier dependency distance computation — measures the instruction distance between a barrier set and its corresponding wait |
+| `sub_A31390` | 4 KB | Barrier set intersection / conflict detection — checks whether two instructions' barrier usage conflicts |
+| `sub_A32C70` | — | Source/destination operand dependency analysis — identifies which operands create dependencies |
+| `sub_A31040` | — | Master field encoding dispatcher — coordinates all six per-field encoders |
 
 ## Dependency Barrier Allocation Algorithm
 
@@ -559,7 +559,7 @@ Per-record layout (40 bytes):
 | +8 | 8 | `QWORD` | 0 | Producer instruction pointer (or NULL when free) |
 | +16 | 8 | `QWORD` | 0 | Set cycle / consumer tracking state |
 | +24 | 4 | `DWORD` | 0 | Barrier flags / consumer count |
-| +28 | 4 | -- | -- | (padding) |
+| +28 | 4 | — | — | (padding) |
 | +32 | 8 | `ptr` | slot 19 ref | Cross-reference to counter slot 19 (allocator back-pointer) |
 
 Record index to offset mapping:
@@ -622,7 +622,7 @@ ScoreboardObject (952 bytes)
 
 ### Design Notes
 
-The counter nodes use reference counting (initial refcount = 1, incremented when cross-referenced from Region 2 or Region 3). This enables sharing counter state across multiple tracking contexts -- for example, when the scheduling passes for pre-scheduling and post-scheduling need to track the same barrier state.
+The counter nodes use reference counting (initial refcount = 1, incremented when cross-referenced from Region 2 or Region 3). This enables sharing counter state across multiple tracking contexts — for example, when the scheduling passes for pre-scheduling and post-scheduling need to track the same barrier state.
 
 The 14 barrier records provide 6 slots for the hardware barrier registers plus 8 extended slots. Current architectures use exactly 6 dependency barriers per warp, but the extended slots provide headroom for the expanded barrier model hinted at in sm_100+ configurations (see `*(ctx+1040) & 0x10` extended barriers flag).
 
@@ -800,7 +800,7 @@ The scheduling context stores the related stall threshold at `sched_ctx+408` (kn
 | sm_100 | Blackwell | 4 | 3 | `*(sm_backend+912)` / 4 |
 | sm_120 | Blackwell | 4 | 3 | `*(sm_backend+912)` / 4 |
 
-The yield threshold itself (the `> 3` comparison) does not vary by architecture -- it is a compile-time constant in `sub_8F3650`. What varies per architecture is the **yield batch size** at `sm_backend+912`: for texture-opcode yield sequences (opcode 288 path at `sub_8F3650+0xA8`), the function reads `*(sm_backend+912) / 4` to determine how many texture operations share a single yield group. The SM backend vtable calls at offsets `+904` and `+936` provide the texture group index and batch divisor respectively.
+The yield threshold itself (the `> 3` comparison) does not vary by architecture — it is a compile-time constant in `sub_8F3650`. What varies per architecture is the **yield batch size** at `sm_backend+912`: for texture-opcode yield sequences (opcode 288 path at `sub_8F3650+0xA8`), the function reads `*(sm_backend+912) / 4` to determine how many texture operations share a single yield group. The SM backend vtable calls at offsets `+904` and `+936` provide the texture group index and batch divisor respectively.
 
 ## Mercury Opex Path (Phase 120)
 
@@ -825,7 +825,7 @@ After the control word fields are computed, the scheduling output pipeline (0x8F
 
 | Address | Size | Function | Purpose |
 |---------|------|----------|---------|
-| `sub_8F1EB0` | 15 KB | EncodeScheduleWords | Main scheduling output encoder -- iterates all instructions and produces control words |
+| `sub_8F1EB0` | 15 KB | EncodeScheduleWords | Main scheduling output encoder — iterates all instructions and produces control words |
 | `sub_8F3130` | 1.0 KB | EncodeStallField | Packs 4-bit stall count into control word |
 | `sub_8F31F0` | 6.1 KB | EncodeBarrierField | Packs barrier set/wait fields with architecture-specific layout |
 | `sub_8F3650` | 2.7 KB | EncodeYieldField | Packs yield flag; hardcoded threshold `stall > 3`; per-instruction override via `*(instr_desc+73)`; texture batch path via `*(sm_backend+912) / 4` |
@@ -877,7 +877,7 @@ The two control word generators (`sub_A36360` for final emission, `sub_8D7760` f
 
 Pre-scheduling (`sub_8D7760`) and post-scheduling (`sub_A36360` / `sub_A23CF0`) run on opposite sides of register allocation. Pre-scheduling operates on virtual registers with estimated latencies; post-scheduling sees physical registers with final instruction distances. Because register allocation may insert spill/reload instructions, reorder operands, or coalesce registers, the physical distances between a producer and its consumers can differ from the virtual-register estimates. The reconciliation protocol ensures the final control word reflects the true physical distances rather than the stale pre-scheduling guesses.
 
-**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots. For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25--29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23). The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete). These annotations travel through register allocation unchanged -- the allocator preserves the operand descriptor high bits and the tracking flag.
+**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots. For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25--29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23). The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete). These annotations travel through register allocation unchanged — the allocator preserves the operand descriptor high bits and the tracking flag.
 
 **Post-scheduling re-evaluation.** When `sub_A36360` processes each instruction in final order, it does not blindly copy pre-scheduling barrier indices. Instead, it runs a full three-step reconciliation:
 
@@ -950,46 +950,46 @@ The `sub_A2D340` (32 KB) function writes these fields through a large if/else ca
 
 | Address | Size | Identity |
 |---------|------|---------|
-| `sub_85C890` | 1.5 KB | ScoreboardDispatcher -- opcode-based fast/slow path router |
-| `sub_A220A0` | 9 KB | InstructionPropertyQuery -- scheduling descriptor filler |
-| `sub_A22B40` | -- | WriteBarrierAssign -- barrier index assignment for operand |
-| `sub_A22BC0` | -- | ReadBarrierAssign -- wait mask assignment for operand |
-| `sub_A22CE0` | -- | InstructionClassify -- scoreboard processing classification |
-| `sub_A22D00` | -- | DependencyDistance -- compute instruction distance |
-| `sub_A227F0` | -- | FlaggedInstrPreprocess -- bit-12-set instruction handling |
-| `sub_A231E0` | -- | SchedulingScore -- full-DAG-analysis necessity check |
-| `sub_A23CF0` | 54 KB | **DAGListScheduler** -- full dependency-driven scoreboard |
-| `sub_A265B0` | 10 KB | BarrierDependencyTracker -- barrier assignment tracking |
-| `sub_A29220` | 12 KB | InstructionEmissionFilter -- instruction emission gating |
-| `sub_A2BD90` | 23 KB | ArchControlWordConfig -- architecture-specific parameter loader |
-| `sub_A2D340` | 32 KB | InstructionControlWordEncoder -- per-opcode field writer |
-| `sub_A31040` | -- | MasterFieldEncoder -- coordinates per-field encoders |
-| `sub_A31390` | 4 KB | BarrierConflictDetect -- barrier set intersection check |
-| `sub_A318F0` | 4 KB | BarrierDistanceCompute -- dependency distance to barrier |
-| `sub_A31F80` | 7 KB | ComputeReuseFlags -- operand reuse buffer hints |
-| `sub_A32C70` | -- | OperandDependencyAnalysis -- source/dest dep extraction |
-| `sub_A333A0` | 3 KB | EncodeStallAndYield -- 4-bit stall + 1-bit yield |
-| `sub_A33660` | 7 KB | EncodeReadBarrierMask -- 6-bit read barrier mask |
-| `sub_A342E0` | 9 KB | EncodeWriteBarrierIndex -- 3-bit write barrier index |
-| `sub_A34B70` | 10 KB | EncodeWaitBarrierMask -- 6-bit wait barrier mask |
-| `sub_A356A0` | 12 KB | EncodeScoreboardFields -- combined scoreboard encoder |
-| `sub_A36360` | 52 KB | **GenerateControlWord** -- master control word generator |
-| `sub_8D7760` | 41 KB | StallAndBarrierInsertion -- pre-scheduling control words |
-| `sub_8E4920` | 6.9 KB | BuildScoreboardEntries -- scoreboard BST construction |
-| `sub_8E5CA0` | 20 KB | EmitScheduleOutput -- control word output encoder |
-| `sub_8F1EB0` | 15 KB | EncodeScheduleWords -- SASS control word output |
-| `sub_8F4140` | 5.6 KB | EncodeFullControlWord -- 23-bit packing |
-| `sub_A95DC0` | 36 KB | SASSControlWordEncoder -- architecture-dispatched encoder |
-| `sub_6FFDC0` | 66 KB | MercOpexBody -- Mercury opex scoreboard generation |
-| `sub_703480` | 1.4 KB | RunOpexPass -- MercGenerateOpex entry |
+| `sub_85C890` | 1.5 KB | ScoreboardDispatcher — opcode-based fast/slow path router |
+| `sub_A220A0` | 9 KB | InstructionPropertyQuery — scheduling descriptor filler |
+| `sub_A22B40` | — | WriteBarrierAssign — barrier index assignment for operand |
+| `sub_A22BC0` | — | ReadBarrierAssign — wait mask assignment for operand |
+| `sub_A22CE0` | — | InstructionClassify — scoreboard processing classification |
+| `sub_A22D00` | — | DependencyDistance — compute instruction distance |
+| `sub_A227F0` | — | FlaggedInstrPreprocess — bit-12-set instruction handling |
+| `sub_A231E0` | — | SchedulingScore — full-DAG-analysis necessity check |
+| `sub_A23CF0` | 54 KB | **DAGListScheduler** — full dependency-driven scoreboard |
+| `sub_A265B0` | 10 KB | BarrierDependencyTracker — barrier assignment tracking |
+| `sub_A29220` | 12 KB | InstructionEmissionFilter — instruction emission gating |
+| `sub_A2BD90` | 23 KB | ArchControlWordConfig — architecture-specific parameter loader |
+| `sub_A2D340` | 32 KB | InstructionControlWordEncoder — per-opcode field writer |
+| `sub_A31040` | — | MasterFieldEncoder — coordinates per-field encoders |
+| `sub_A31390` | 4 KB | BarrierConflictDetect — barrier set intersection check |
+| `sub_A318F0` | 4 KB | BarrierDistanceCompute — dependency distance to barrier |
+| `sub_A31F80` | 7 KB | ComputeReuseFlags — operand reuse buffer hints |
+| `sub_A32C70` | — | OperandDependencyAnalysis — source/dest dep extraction |
+| `sub_A333A0` | 3 KB | EncodeStallAndYield — 4-bit stall + 1-bit yield |
+| `sub_A33660` | 7 KB | EncodeReadBarrierMask — 6-bit read barrier mask |
+| `sub_A342E0` | 9 KB | EncodeWriteBarrierIndex — 3-bit write barrier index |
+| `sub_A34B70` | 10 KB | EncodeWaitBarrierMask — 6-bit wait barrier mask |
+| `sub_A356A0` | 12 KB | EncodeScoreboardFields — combined scoreboard encoder |
+| `sub_A36360` | 52 KB | **GenerateControlWord** — master control word generator |
+| `sub_8D7760` | 41 KB | StallAndBarrierInsertion — pre-scheduling control words |
+| `sub_8E4920` | 6.9 KB | BuildScoreboardEntries — scoreboard BST construction |
+| `sub_8E5CA0` | 20 KB | EmitScheduleOutput — control word output encoder |
+| `sub_8F1EB0` | 15 KB | EncodeScheduleWords — SASS control word output |
+| `sub_8F4140` | 5.6 KB | EncodeFullControlWord — 23-bit packing |
+| `sub_A95DC0` | 36 KB | SASSControlWordEncoder — architecture-dispatched encoder |
+| `sub_6FFDC0` | 66 KB | MercOpexBody — Mercury opex scoreboard generation |
+| `sub_703480` | 1.4 KB | RunOpexPass — MercGenerateOpex entry |
 
 ## Cross-References
 
-- [Scheduler Overview](overview.md) -- 3-phase scheduler architecture, scheduling output pipeline
-- [Scheduling Algorithm](algorithm.md) -- priority list scheduling, dependency DAG construction
-- [Latency Model](latency-model.md) -- per-opcode latency tables used by stall count computation
-- [Mercury Encoder](../codegen/mercury.md) -- Mercury pipeline including MercGenerateOpex (phase 120)
-- [SASS Encoding](../codegen/encoding.md) -- instruction encoding format including control word bit layout
-- [Phase Manager](../passes/phase-manager.md) -- how phases 114--116 fit in the 159-phase pipeline
-- [Sync & Barriers](../passes/sync-barriers.md) -- software synchronization barriers (distinct from dependency barriers)
-- [Knobs](../config/knobs.md) -- scheduling knobs 741 (stall threshold), 805/806 (stall caps)
+- [Scheduler Overview](overview.md) — 3-phase scheduler architecture, scheduling output pipeline
+- [Scheduling Algorithm](algorithm.md) — priority list scheduling, dependency DAG construction
+- [Latency Model](latency-model.md) — per-opcode latency tables used by stall count computation
+- [Mercury Encoder](../codegen/mercury.md) — Mercury pipeline including MercGenerateOpex (phase 120)
+- [SASS Encoding](../codegen/encoding.md) — instruction encoding format including control word bit layout
+- [Phase Manager](../passes/phase-manager.md) — how phases 114--116 fit in the 159-phase pipeline
+- [Sync & Barriers](../passes/sync-barriers.md) — software synchronization barriers (distinct from dependency barriers)
+- [Knobs](../config/knobs.md) — scheduling knobs 741 (stall threshold), 805/806 (stall caps)

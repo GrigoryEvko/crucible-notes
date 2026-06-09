@@ -1,12 +1,12 @@
 # nvcc-to-cicc Interface Contract
 
-When nvcc compiles device code, it invokes cicc as an external process, passing the preprocessed CUDA source (or LLVM bitcode) along with a carefully translated set of flags. cicc never sees the raw `-fmad=1` or `-prec_sqrt=0` flags that the user typed on the nvcc command line -- those are rewritten through a **flag translation table** implemented as a global `std::map` red-black tree at `sub_8FE280`. This page documents the complete interface contract: how nvcc invokes cicc, how flags are translated, how the mode cookie selects CUDA vs. OpenCL behavior, what input formats are accepted, and what output modes are available.
+When nvcc compiles device code, it invokes cicc as an external process, passing the preprocessed CUDA source (or LLVM bitcode) along with a carefully translated set of flags. cicc never sees the raw `-fmad=1` or `-prec_sqrt=0` flags that the user typed on the nvcc command line — those are rewritten through a **flag translation table** implemented as a global `std::map` red-black tree at `sub_8FE280`. This page documents the complete interface contract: how nvcc invokes cicc, how flags are translated, how the mode cookie selects CUDA vs. OpenCL behavior, what input formats are accepted, and what output modes are available.
 
 The flag translation is split into two stages. Stage 1 (`sub_8FE280`) translates nvcc-facing flags into cicc-facing flags, producing a dual-slot result with an EDG front-end flag and an internal cicc flag. Stage 2 (`sub_95EB40`) further expands each cicc-facing flag into a three-column architecture mapping, routing each flag to the EDG frontend, the NVVM optimizer, and the LLC backend. The composition of these two stages means a single nvcc flag like `-fmad=1` can silently become `--emit-llvm-bc` (always injected), nothing to EDG, nothing to OPT, and `-nvptx-fma-level=1` to LLC.
 
 | | |
 |---|---|
-| **Flag translation tree** | `sub_8FE280` -- global `std::map` at `qword_4F6D2A0`, 40+ entries |
+| **Flag translation tree** | `sub_8FE280` — global `std::map` at `qword_4F6D2A0`, 40+ entries |
 | **Tree guard** | `qword_4F6D2C8` (set to 1 after first initialization) |
 | **Tree node size** | 72+ bytes: key at +32, length at +40, `FlagPair*` at +64 |
 | **CLI parser (Path A)** | `sub_900130` (39 KB, 12 parameters) |
@@ -27,8 +27,8 @@ cicc [mode-flags] [translated-flags] [pass-through-flags] -o <output> <input>
 
 For the standard CUDA compilation path (no explicit `-lXXX` mode flag), cicc enters `sub_8F9C90` (real main, 10,066 bytes at `0x8F9C90`), parses all arguments into ~12 local variables, resolves the Path A / Path B dispatch variable `v253`, and calls one of:
 
-- **Path A** (EDG pipeline): `sub_902D10` -- invokes `sub_900130` for CLI parsing, then the EDG frontend via `sub_905880`, then the LibNVVM pipeline via `sub_905EE0`.
-- **Path B** (standalone LLVM pipeline): `sub_1262860` -- similar flow but through standalone LLVM infrastructure at `0x1262860`.
+- **Path A** (EDG pipeline): `sub_902D10` — invokes `sub_900130` for CLI parsing, then the EDG frontend via `sub_905880`, then the LibNVVM pipeline via `sub_905EE0`.
+- **Path B** (standalone LLVM pipeline): `sub_1262860` — similar flow but through standalone LLVM infrastructure at `0x1262860`.
 
 Path selection is controlled by `v253`, which defaults to 2 (unresolved) and is resolved through the obfuscated environment variable `NV_NVVM_VERSION`. For SM >= 100 (Blackwell and later), the default is Path B unless the `-nvc` flag is present. For SM < 100, the default is Path A. See [Entry Point](entry.md) for the full dispatch matrix.
 
@@ -70,7 +70,7 @@ After all arguments are processed, architecture strings are appended:
 
 ## Mode Cookies
 
-The `sub_9624D0` flag catalog function takes a fourth parameter `a4` that selects the language mode. This is not a user-visible flag -- it is passed internally by the pipeline orchestrator.
+The `sub_9624D0` flag catalog function takes a fourth parameter `a4` that selects the language mode. This is not a user-visible flag — it is passed internally by the pipeline orchestrator.
 
 | Cookie | Hex | Decimal | Language |
 |--------|-----|---------|----------|
@@ -89,7 +89,7 @@ The cookie affects multiple behaviors:
 
 **OptiX IR emission.** The `--emit-optix-ir` flag is only valid when the cookie is `0xABBA` or `0xDEED`.
 
-**Internal compile call.** The LibNVVM compile function `nvvmCUCompile` (dispatch ID `0xBEAD`) is called with phase code 57,069 (`0xDEED`) regardless of the outer cookie -- this is the internal LibNVVM compile phase code, not a language selector.
+**Internal compile call.** The LibNVVM compile function `nvvmCUCompile` (dispatch ID `0xBEAD`) is called with phase code 57,069 (`0xDEED`) regardless of the outer cookie — this is the internal LibNVVM compile phase code, not a language selector.
 
 ## Flag Translation Table
 
@@ -235,7 +235,7 @@ Missing input file
 Recognized input file extensions are: .bc .ci .i .cup .optixir
 ```
 
-Note that `.ii` is not mentioned in the error message despite being accepted -- this appears to be a minor oversight in the error string.
+Note that `.ii` is not mentioned in the error message despite being accepted — this appears to be a minor oversight in the error string.
 
 ## Output Modes
 
@@ -360,7 +360,7 @@ In CUDA mode, without explicit flags, value names are discarded by default. In O
 
 ### Wizard Mode Interaction
 
-The `-v` (verbose), `-keep` (keep intermediates), and `-dryrun` flags are parsed in `sub_8F9C90` but are **only effective when wizard mode is active**. Wizard mode is gated by `getenv("NVVMCCWIZ") == 553282`, which sets `byte_4F6D280 = 1`. Without wizard mode, these flags are silently accepted but have no effect -- `v259` (verbose) and `v262` (keep) remain 0. This is a deliberate anti-reverse-engineering measure.
+The `-v` (verbose), `-keep` (keep intermediates), and `-dryrun` flags are parsed in `sub_8F9C90` but are **only effective when wizard mode is active**. Wizard mode is gated by `getenv("NVVMCCWIZ") == 553282`, which sets `byte_4F6D280 = 1`. Without wizard mode, these flags are silently accepted but have no effect — `v259` (verbose) and `v262` (keep) remain 0. This is a deliberate anti-reverse-engineering measure.
 
 ### Default Values When Flags Are Absent
 
@@ -427,20 +427,20 @@ The `a13` parameter in `sub_9624D0` is an IN/OUT bitmask tracking compilation mo
 |---|---|---|---|
 | `sub_8F9C90` | `0x8F9C90` | 10,066 B | Real main entry point |
 | `sub_8FE280` | `0x8FE280` | ~35 KB | Flag translation tree builder (nvcc -> cicc) |
-| `sub_8FE150` | `0x8FE150` | -- | Tree lookup (lower_bound + insert) |
-| `sub_8FDFD0` | `0x8FDFD0` | -- | Tree insert + rebalance |
-| `sub_8FD0D0` | `0x8FD0D0` | -- | Architecture flag scanner (first pass) |
+| `sub_8FE150` | `0x8FE150` | — | Tree lookup (lower_bound + insert) |
+| `sub_8FDFD0` | `0x8FDFD0` | — | Tree insert + rebalance |
+| `sub_8FD0D0` | `0x8FD0D0` | — | Architecture flag scanner (first pass) |
 | `sub_900130` | `0x900130` | 39 KB | CLI processing Path A (12 params) |
 | `sub_902D10` | `0x902D10` | ~9 KB | Path A orchestrator |
-| `sub_904450` | `0x904450` | -- | Push flag to argument vector |
+| `sub_904450` | `0x904450` | — | Push flag to argument vector |
 | `sub_905880` | `0x905880` | ~6 KB | EDG frontend stage |
 | `sub_905EE0` | `0x905EE0` | 43 KB | Path A multi-stage pipeline driver |
-| `sub_908220` | `0x908220` | -- | LLC output callback (ID 56993) |
-| `sub_908850` | `0x908850` | -- | Triple construction (`nvptx64-nvidia-cuda`) |
-| `sub_9085A0` | `0x9085A0` | -- | OPT output callback (ID 64222) |
+| `sub_908220` | `0x908220` | — | LLC output callback (ID 56993) |
+| `sub_908850` | `0x908850` | — | Triple construction (`nvptx64-nvidia-cuda`) |
+| `sub_9085A0` | `0x9085A0` | — | OPT output callback (ID 64222) |
 | `sub_95EB40` | `0x95EB40` | 38 KB | 3-column architecture mapping table builder |
 | `sub_9624D0` | `0x9624D0` | 75 KB | Flag catalog (4 output vectors, ~111 flags) |
-| `sub_1262860` | `0x1262860` | -- | Path B simple dispatch |
+| `sub_1262860` | `0x1262860` | — | Path B simple dispatch |
 | `sub_1265970` | `0x1265970` | 48 KB | Path B multi-stage pipeline driver |
 
 ### Global Variables
@@ -460,10 +460,10 @@ The `a13` parameter in `sub_9624D0` is an IN/OUT bitmask tracking compilation mo
 
 ## Cross-References
 
-- [Entry Point & CLI](entry.md) -- full `sub_8F9C90` analysis, Path A/B dispatch, wizard mode
-- [CLI Flag Inventory](../config/cli-flags.md) -- complete flag listing across all five parsing sites
-- [Optimization Levels](../config/optimization-levels.md) -- O0-O3 and fast-compile tier pipeline details
-- [Environment Variables](../config/env-vars.md) -- `NVVMCCWIZ`, `NV_NVVM_VERSION`
-- [EDG Frontend](edg.md) -- what happens after EDG flags are forwarded
-- [OptiX IR](optix-ir.md) -- OptiX IR emission pipeline
-- [Optimizer](optimizer.md) -- how `-opt=N` and fast-compile flags affect the optimization pipeline
+- [Entry Point & CLI](entry.md) — full `sub_8F9C90` analysis, Path A/B dispatch, wizard mode
+- [CLI Flag Inventory](../config/cli-flags.md) — complete flag listing across all five parsing sites
+- [Optimization Levels](../config/optimization-levels.md) — O0-O3 and fast-compile tier pipeline details
+- [Environment Variables](../config/env-vars.md) — `NVVMCCWIZ`, `NV_NVVM_VERSION`
+- [EDG Frontend](edg.md) — what happens after EDG flags are forwarded
+- [OptiX IR](optix-ir.md) — OptiX IR emission pipeline
+- [Optimizer](optimizer.md) — how `-opt=N` and fast-compile flags affect the optimization pipeline

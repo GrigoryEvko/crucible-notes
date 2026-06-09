@@ -1,8 +1,8 @@
 # Rematerialization
 
-NVIDIA's rematerialization infrastructure in CICC operates at two levels: an IR-level pass (`nvvmrematerialize` / `"Legacy IR Remat"`) that reduces register pressure before instruction selection, and a machine-level pass (`nv-remat-block` / `"Do Remat Machine Block"`) that performs the same transformation on MachineIR after register allocation decisions have been made. Both passes share the same fundamental strategy -- recompute cheap values at their use sites rather than keeping them live across long spans -- but they differ significantly in their cost models, candidate selection criteria, and interaction with the surrounding pipeline.
+NVIDIA's rematerialization infrastructure in CICC operates at two levels: an IR-level pass (`nvvmrematerialize` / `"Legacy IR Remat"`) that reduces register pressure before instruction selection, and a machine-level pass (`nv-remat-block` / `"Do Remat Machine Block"`) that performs the same transformation on MachineIR after register allocation decisions have been made. Both passes share the same fundamental strategy — recompute cheap values at their use sites rather than keeping them live across long spans — but they differ significantly in their cost models, candidate selection criteria, and interaction with the surrounding pipeline.
 
-On NVIDIA GPUs, register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) -- the number of concurrent warps per SM -- with discrete cliff boundaries where a single additional register can drop an entire warp group. Rematerialization trades extra ALU work for reduced register count, a tradeoff that is almost always profitable on GPUs where compute throughput vastly exceeds register file bandwidth.
+On NVIDIA GPUs, register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) — the number of concurrent warps per SM — with discrete cliff boundaries where a single additional register can drop an entire warp group. Rematerialization trades extra ALU work for reduced register count, a tradeoff that is almost always profitable on GPUs where compute throughput vastly exceeds register file bandwidth.
 
 ## Key Facts
 
@@ -15,7 +15,7 @@ On NVIDIA GPUs, register pressure directly determines [occupancy](../gpu-executi
 | Runtime positions | Tier 0 #34 (NVVMRematerialization via `sub_1A13320`); Tier 1/2/3 #55 (gated by `!opts[2320]`); see [Pipeline](../llvm/pipeline.md) |
 | Pass factory | `sub_1A13320` |
 | Machine-level companion | `nv-remat-block` / `"Do Remat Machine Block"` at `sub_2186D90` |
-| Upstream equivalent | None -- entirely NVIDIA-proprietary |
+| Upstream equivalent | None — entirely NVIDIA-proprietary |
 
 ## IR-Level Rematerialization (`nvvmrematerialize`)
 
@@ -33,7 +33,7 @@ The pass is registered at `sub_1CD0BE0` with pass ID `"nvvmrematerialize"` and e
 
 ### Main Algorithm (`sub_1CE7DD0`, 67KB)
 
-**Complexity.** Let B = number of basic blocks, I = total instructions, and L = number of live-in values. The live-in analysis uses hardware `popcnt` on bitvectors of size ceil(I / 64) per block, giving O(B * I / 64) per iteration. The intersection of live-in sets (bitwise AND) is O(B * I / 64). The rematizability check for each candidate walks its def chain: O(D) where D is the def-chain depth (bounded by `max-recurse-depth`). The pull-in cost model (`sub_1CE3AF0`) scores each candidate in O(U * D) where U = uses per candidate. Candidate sorting is O(K^2) via selection sort where K = candidates selected. The block executor clones instructions in O(K * B). The outer loop runs at most 5 iterations. Overall IR-level: O(5 * (B * I / 64 + K * U * D + K * B)). For the machine-level pass (`sub_2186D90`): max-live computation is O(I) per block (reverse walk), giving O(I) total. Candidate classification is O(I) for the initial scan, plus O(K * 50) for recursive pullability checks (depth bounded at 50). The second-chance heuristic iterates until convergence -- bounded by the candidate count K. The outer loop runs at most `nv-remat-max-times` (default 10) iterations. Overall machine-level: O(10 * (I + K^2)).
+**Complexity.** Let B = number of basic blocks, I = total instructions, and L = number of live-in values. The live-in analysis uses hardware `popcnt` on bitvectors of size ceil(I / 64) per block, giving O(B * I / 64) per iteration. The intersection of live-in sets (bitwise AND) is O(B * I / 64). The rematizability check for each candidate walks its def chain: O(D) where D is the def-chain depth (bounded by `max-recurse-depth`). The pull-in cost model (`sub_1CE3AF0`) scores each candidate in O(U * D) where U = uses per candidate. Candidate sorting is O(K^2) via selection sort where K = candidates selected. The block executor clones instructions in O(K * B). The outer loop runs at most 5 iterations. Overall IR-level: O(5 * (B * I / 64 + K * U * D + K * B)). For the machine-level pass (`sub_2186D90`): max-live computation is O(I) per block (reverse walk), giving O(I) total. Candidate classification is O(I) for the initial scan, plus O(K * 50) for recursive pullability checks (depth bounded at 50). The second-chance heuristic iterates until convergence — bounded by the candidate count K. The outer loop runs at most `nv-remat-max-times` (default 10) iterations. Overall machine-level: O(10 * (I + K^2)).
 
 The driver implements an iterative register pressure reduction loop with up to 5 iterations. The high-level flow:
 
@@ -90,7 +90,7 @@ Candidates are filtered by three thresholds:
 
 After scoring, candidates are sorted by cost (cheapest first via selection sort), and the cheapest N are selected where N is the target reduction count. At `dump-remat >= 4`, the pass prints `"Total pull-in cost = %d"`.
 
-### NLO -- Simplify Live Output (`sub_1CE10B0` + `sub_1CDC1F0`)
+### NLO — Simplify Live Output (`sub_1CE10B0` + `sub_1CDC1F0`)
 
 The NLO sub-pass normalizes live-out values at block boundaries to reduce register pressure. Controlled by `simplify-live-out` (default 2):
 
@@ -303,27 +303,27 @@ Per-block pressure is computed by starting with the live-out set size, walking i
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
-| Pass registration | `sub_1CD0BE0` | -- | Registers `"nvvmrematerialize"` |
+| Pass registration | `sub_1CD0BE0` | — | Registers `"nvvmrematerialize"` |
 | Main driver | `sub_1CE7DD0` | 67KB | Iterative live-in reduction loop |
 | Block executor | `sub_1CE67D0` | 32KB | `"remat_"` / `"uclone_"` creation |
 | Pull-in cost | `sub_1CE3AF0` | 56KB | Cost model and candidate selection |
 | NLO main | `sub_1CE10B0` | 48KB | Live-out normalization |
 | NLO helper | `sub_1CDC1F0` | 35KB | Inter-block NLO propagation |
 | IV demotion | `sub_1CD74B0` | 75KB | Induction variable narrowing |
-| Load remat | `sub_1CDE4D0` | -- | Load rematerialization sub-pass |
-| Per-function init | `sub_1CDA600` | -- | Data structure initialization |
-| Rematizability check | `sub_1CD06C0` | -- | Determines if a value can be recomputed |
+| Load remat | `sub_1CDE4D0` | — | Load rematerialization sub-pass |
+| Per-function init | `sub_1CDA600` | — | Data structure initialization |
+| Rematizability check | `sub_1CD06C0` | — | Determines if a value can be recomputed |
 
 ### Machine-Level
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
 | Main engine | `sub_2186D90` | 47KB | Iterative pull-in algorithm |
-| Max-live computation | `sub_2186590` | -- | Per-block pressure analysis |
+| Max-live computation | `sub_2186590` | — | Per-block pressure analysis |
 | MULTIDEF check | `sub_217E810` | ~230 lines | Single-definition verification |
 | Recursive pullability | `sub_2181550` | ~110 lines | Operand chain verification (depth 50) |
 | Second-chance | `sub_2181870` | ~800 lines | Re-evaluation of rejected candidates |
-| Cost evaluator | `sub_2183E30` | -- | Clone cost computation |
+| Cost evaluator | `sub_2183E30` | — | Clone cost computation |
 | Liveness propagation | `sub_2185250` | ~650 lines | Backward propagation + cloning |
 | Instruction replacement | `sub_21810D0` | ~290 lines | Register use rewriting |
 | Remat allocation helper | `sub_2184890` | ~477 lines | Pressure simulation |

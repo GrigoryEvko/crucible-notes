@@ -1,6 +1,6 @@
 # Generic-to-SPMD Transformation
 
-The Generic-to-SPMD transformation (`sub_26968A0`, 61 KB, ~1807 lines) is cicc's most impactful OpenMP target optimization. It converts GPU kernels from Generic execution mode -- where thread 0 acts as a master running serial code through a state machine while all other threads idle at a barrier -- into SPMD mode, where every thread in the block executes the same code from the first instruction. The transformation eliminates the worker state machine loop entirely, removes warp divergence at kernel entry, replaces heavyweight generic barriers with lightweight SPMD barriers (`__syncthreads`), and enables the hardware scheduler to fill warps from the very first cycle. On real workloads this routinely yields 2-4x speedups for simple `target parallel for` regions. The pass emits diagnostic `OMP120` on success and `OMP121` when a callee's side effects prevent conversion.
+The Generic-to-SPMD transformation (`sub_26968A0`, 61 KB, ~1807 lines) is cicc's most impactful OpenMP target optimization. It converts GPU kernels from Generic execution mode — where thread 0 acts as a master running serial code through a state machine while all other threads idle at a barrier — into SPMD mode, where every thread in the block executes the same code from the first instruction. The transformation eliminates the worker state machine loop entirely, removes warp divergence at kernel entry, replaces heavyweight generic barriers with lightweight SPMD barriers (`__syncthreads`), and enables the hardware scheduler to fill warps from the very first cycle. On real workloads this routinely yields 2-4x speedups for simple `target parallel for` regions. The pass emits diagnostic `OMP120` on success and `OMP121` when a callee's side effects prevent conversion.
 
 ## Key Facts
 
@@ -12,7 +12,7 @@ The Generic-to-SPMD transformation (`sub_26968A0`, 61 KB, ~1807 lines) is cicc's
 | Post-link variant | `openmp-opt-postlink` (slot 76) |
 | CGSCC variant | `openmp-opt-cgscc` (slot 154) |
 | Parameters | `a1` = PassState, `a2` = ModuleContext, `a3` = OutputFlag |
-| Eligibility flag | `*(a1+241)` -- boolean, set by prior analysis |
+| Eligibility flag | `*(a1+241)` — boolean, set by prior analysis |
 | Parallel region array | `*(a1+280)` base, `*(a1+288)` count |
 | Diagnostic handler | `*(a2+4392)` |
 | Success diagnostic | OMP120: "Transformed generic-mode kernel to SPMD-mode." |
@@ -29,13 +29,13 @@ Understanding the two execution modes is essential before examining the transfor
 | Serial code | Master executes directly | Wrapped in `if (tid == 0)` guard |
 | Parallel region | Master signals workers via `parallel_level`; workers wake, execute outlined fn, re-barrier | All threads already executing; outlined fn body inlined |
 | Barrier type | `__kmpc_barrier_simple_generic` (poll-based state machine) | `__kmpc_barrier_simple_spmd` (maps to `bar.sync` / `__syncthreads`) |
-| Worker idle loop | `while(true) { barrier(); if(parallel_level) { exec(); barrier(); } }` | No idle loop -- eliminated entirely |
+| Worker idle loop | `while(true) { barrier(); if(parallel_level) { exec(); barrier(); } }` | No idle loop — eliminated entirely |
 | Warp divergence | Warps containing thread 0 diverge at entry gate | No divergence at entry |
-| Occupancy | Lower -- workers consume registers/shared mem while idle | Higher -- all resources used productively |
+| Occupancy | Lower — workers consume registers/shared mem while idle | Higher — all resources used productively |
 | Execution mode constant | 1 (`OMP_TGT_EXEC_MODE_GENERIC`) | 2 (`OMP_TGT_EXEC_MODE_SPMD`) |
-| Transition marker | -- | 3 (`OMP_TGT_EXEC_MODE_GENERIC_SPMD`, intermediate during transform) |
+| Transition marker | — | 3 (`OMP_TGT_EXEC_MODE_GENERIC_SPMD`, intermediate during transform) |
 
-In Generic mode the runtime creates a CTA (Cooperative Thread Array) where only thread 0 enters user code. The remaining N-1 threads enter a polling loop: they call `__kmpc_barrier_simple_generic`, check the `parallel_level` variable, and if a parallel region has been entered by the master, they wake up, execute the outlined parallel function, then return to polling. This "state machine" pattern is the primary performance bottleneck -- it wastes cycles on barrier polling, causes massive warp divergence on the first warp (which contains both the master and worker lanes), and prevents the scheduler from issuing useful work for idle threads.
+In Generic mode the runtime creates a CTA (Cooperative Thread Array) where only thread 0 enters user code. The remaining N-1 threads enter a polling loop: they call `__kmpc_barrier_simple_generic`, check the `parallel_level` variable, and if a parallel region has been entered by the master, they wake up, execute the outlined parallel function, then return to polling. This "state machine" pattern is the primary performance bottleneck — it wastes cycles on barrier polling, causes massive warp divergence on the first warp (which contains both the master and worker lanes), and prevents the scheduler from issuing useful work for idle threads.
 
 SPMD mode eliminates all of this. Every thread begins executing user code at kernel entry. Serial code sections that cannot be parallelized are protected by lightweight `tid == 0` guards, with results broadcast to all threads through shared memory and `bar.sync` barriers.
 
@@ -89,7 +89,7 @@ The diagnostic is constructed via `sub_B178C0` (warning constructor), message ap
 
 ### Condition 3: No Unresolvable Side Effects
 
-The kernel must not contain operations that are inherently unsafe when executed by multiple threads simultaneously -- for example, I/O operations with ordering requirements, or accesses to thread-local storage that assumes single-thread access.
+The kernel must not contain operations that are inherently unsafe when executed by multiple threads simultaneously — for example, I/O operations with ordering requirements, or accesses to thread-local storage that assumes single-thread access.
 
 ### Legality Pseudocode
 
@@ -114,7 +114,7 @@ function is_spmd_eligible(kernel, module_ctx):
     return true
 ```
 
-The call-like instruction detection uses a bitmask test: `(opcode - 34) <= 0x33` followed by `bittest(0x8000000000041, opcode - 34)`, which matches opcodes 34 (call), 52 (invoke), and 86 (callbr) -- the three LLVM call-family instructions.
+The call-like instruction detection uses a bitmask test: `(opcode - 34) <= 0x33` followed by `bittest(0x8000000000041, opcode - 34)`, which matches opcodes 34 (call), 52 (invoke), and 86 (callbr) — the three LLVM call-family instructions.
 
 ## Transformation Algorithm
 
@@ -372,7 +372,7 @@ When a value computed inside a guarded region (master-only code) is needed by al
 
 ## State Machine Elimination
 
-The state machine elimination is the core performance win of the SPMD transformation. Understanding the state machine that gets eliminated -- and its fallback generator -- is essential for reimplementation.
+The state machine elimination is the core performance win of the SPMD transformation. Understanding the state machine that gets eliminated — and its fallback generator — is essential for reimplementation.
 
 ### Generic-Mode Worker State Machine (What Gets Eliminated)
 
@@ -426,7 +426,7 @@ worker_state_machine:
 }
 ```
 
-The state machine consumes five runtime calls per parallel-region invocation per worker thread: two `__kmpc_barrier_simple_generic` (ID 188) for poll/sync barriers, one `__kmpc_kernel_parallel` (ID 171) to check for dispatched work, one indirect or direct call to the outlined function, and one `__kmpc_kernel_end_parallel` (ID 172) to signal completion. Each `__kmpc_barrier_simple_generic` call compiles to a poll loop on a shared-memory flag -- not a hardware `bar.sync` -- because the generic barrier must handle the asymmetric wakeup protocol where the master thread signals workers through `__kmpc_kernel_prepare_parallel`.
+The state machine consumes five runtime calls per parallel-region invocation per worker thread: two `__kmpc_barrier_simple_generic` (ID 188) for poll/sync barriers, one `__kmpc_kernel_parallel` (ID 171) to check for dispatched work, one indirect or direct call to the outlined function, and one `__kmpc_kernel_end_parallel` (ID 172) to signal completion. Each `__kmpc_barrier_simple_generic` call compiles to a poll loop on a shared-memory flag — not a hardware `bar.sync` — because the generic barrier must handle the asymmetric wakeup protocol where the master thread signals workers through `__kmpc_kernel_prepare_parallel`.
 
 ### Worker State Machine Generator: `sub_2678420` (9 KB native)
 
@@ -509,7 +509,7 @@ The runtime calls consumed by `sub_2678420`:
 
 ### SPMD Amenability Analysis Pipeline
 
-The eligibility flag at `*(a1+241)` -- which gates whether `sub_26968A0` attempts the SPMD transformation -- is computed by the Attributor-based OpenMP optimization driver at `sub_269F530` (10 KB native). This driver orchestrates interprocedural fixed-point analysis using the standard LLVM Attributor framework.
+The eligibility flag at `*(a1+241)` — which gates whether `sub_26968A0` attempts the SPMD transformation — is computed by the Attributor-based OpenMP optimization driver at `sub_269F530` (10 KB native). This driver orchestrates interprocedural fixed-point analysis using the standard LLVM Attributor framework.
 
 The analysis pipeline:
 
@@ -545,7 +545,7 @@ The fixed-point analysis in `sub_251CD10` converges by iterating over all abstra
 
    The set uses the standard DenseMap infrastructure with LLVM-layer sentinels (-4096 / -8192); see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md). If any callee fails the lookup, the analysis sets `*(a1+241) = 0` and the transformation will emit OMP121 diagnostics instead.
 
-3. **No unresolvable side effects.** Operations that are inherently unsafe when executed by all threads simultaneously -- such as I/O with ordering requirements, thread-local storage accesses assuming single-thread semantics, or calls to external functions with unknown side-effect profiles -- prevent SPMDization.
+3. **No unresolvable side effects.** Operations that are inherently unsafe when executed by all threads simultaneously — such as I/O with ordering requirements, thread-local storage accesses assuming single-thread semantics, or calls to external functions with unknown side-effect profiles — prevent SPMDization.
 
 The Attributor driver at `sub_269F530` also feeds into `sub_2678420` (state machine generator) for kernels that fail SPMD eligibility, and into `sub_2680940` (parallel region merging) for kernels that pass. The decision tree:
 
@@ -567,7 +567,7 @@ sub_269F530 analysis complete
 
 The actual elimination happens in `sub_26968A0` and proceeds differently for simple vs. complex kernels, but the core mechanism is the same: replace the asymmetric master/worker execution model with symmetric all-thread execution.
 
-**Step 1: Remove the `__kmpc_target_init` return-value gate.**  In Generic mode, `__kmpc_target_init` returns `-1` for workers and the kernel branches workers to the state machine loop. In SPMD mode, the return value is not used as a gate -- all threads fall through to user code. The transformation does not literally delete the `__kmpc_target_init` call (it is still needed for runtime initialization), but changes the execution mode attribute so the runtime initializes all threads as active.
+**Step 1: Remove the `__kmpc_target_init` return-value gate.**  In Generic mode, `__kmpc_target_init` returns `-1` for workers and the kernel branches workers to the state machine loop. In SPMD mode, the return value is not used as a gate — all threads fall through to user code. The transformation does not literally delete the `__kmpc_target_init` call (it is still needed for runtime initialization), but changes the execution mode attribute so the runtime initializes all threads as active.
 
 **Step 2: Eliminate the worker loop entirely.**  The basic blocks `worker_state_machine.begin`, `.is_active.check`, `.parallel_region.check`, `.parallel_region.execute`, `.fallback.execute`, `.done.barrier`, and `.finished` become dead code once the execution mode flips to SPMD. They are not explicitly deleted by `sub_26968A0`; instead, setting mode=2 in the `KernelEnvironmentTy` means the runtime never creates the worker branch, so the dead blocks are eliminated by subsequent DCE passes.
 
@@ -596,7 +596,7 @@ The state machine elimination saves:
 | Worker idle polling | N-1 threads spin in `__kmpc_barrier_simple_generic` | No idle threads | 100% of idle cycles |
 | Barrier latency | Poll-based shared-memory loop (10s-100s of cycles) | Hardware `bar.sync` (single cycle dispatch) | ~10-100x per barrier |
 | Warp divergence at entry | Warp 0 diverges (thread 0 = master, threads 1-31 = workers) | No divergence | 1 warp fully utilized |
-| Indirect calls | `__kmpc_kernel_parallel` returns fn ptr for indirect dispatch | No indirect calls -- outlined fn body inlined/direct | Branch predictor pressure eliminated |
+| Indirect calls | `__kmpc_kernel_parallel` returns fn ptr for indirect dispatch | No indirect calls — outlined fn body inlined/direct | Branch predictor pressure eliminated |
 | Register pressure | Workers hold state machine registers while idle | No state machine registers | Improved occupancy |
 | Shared memory | Generic barriers use shared-memory flags | Only guarded-output allocations use shared memory | Reduced shared memory pressure |
 
@@ -707,9 +707,9 @@ The state machine fallback (`sub_2678420`) uses a different set of runtime calls
 |---|---|---|---|
 | 155 | `__kmpc_target_init` | `i32(KernelEnvironmentTy*, KernelLaunchEnvironmentTy*)` | Return value no longer gates workers |
 | 156 | `__kmpc_target_deinit` | `void()` | Retained (still needed for cleanup) |
-| 157 | `__kmpc_kernel_prepare_parallel` | `void(i8*)` | Eliminated -- no worker dispatch needed |
-| 171 | `__kmpc_kernel_parallel` | `i1(i8**)` | Eliminated -- no worker polling loop |
-| 172 | `__kmpc_kernel_end_parallel` | `void()` | Eliminated -- no worker completion signal |
+| 157 | `__kmpc_kernel_prepare_parallel` | `void(i8*)` | Eliminated — no worker dispatch needed |
+| 171 | `__kmpc_kernel_parallel` | `i1(i8**)` | Eliminated — no worker polling loop |
+| 172 | `__kmpc_kernel_end_parallel` | `void()` | Eliminated — no worker completion signal |
 | 188 | `__kmpc_barrier_simple_generic` | `void(ident_t*, i32)` | Replaced with ID 187 (SPMD barrier) |
 
 Additionally, the SPMD-amenable function set at `*(a2+208)+34952` is populated by the runtime table builder (`sub_312CF50`) during module initialization. Functions declared via `sub_312CF50` cases 0-193 are automatically considered, along with user-annotated functions.
@@ -718,67 +718,67 @@ Additionally, the SPMD-amenable function set at `*(a2+208)+34952` is populated b
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Generic-to-SPMD transformation pass (this function, 61 KB) | `sub_26968A0` | -- | -- |
-| Worker state machine generation (Generic fallback, 41 KB) | `sub_2678420` | -- | -- |
-| Attributor-based OpenMP optimization driver (63 KB, sets `a1+241`) | `sub_269F530` | -- | -- |
-| Parallel region merging (52 KB) | `sub_2680940` | -- | -- |
-| AbstractAttribute infrastructure (Attributor framework) | `sub_251BBC0` | -- | -- |
-| Attributor::runTillFixpoint (53 KB, fixed-point iteration engine) | `sub_251CD10` | -- | -- |
-| OpenMP kernel info collector (populates PassState) | `sub_26747F0` | -- | -- |
-| Attributor Module Pass entry point (51 KB) | `sub_2591C20` | -- | -- |
-| Read execution mode from attribute map | `sub_2674090` | -- | -- |
-| Read execution mode (alternate entry) | `sub_2674040` | -- | -- |
-| Get parallel region thread configuration | `sub_250CBE0` | -- | -- |
-| Read attribute from kernel attribute map | `sub_2673FD0` | -- | -- |
-| Create secondary barrier call | `sub_2673A60` | -- | -- |
-| OpenMP runtime call table lookup by ID (194-case switch, 117 KB) | `sub_312CF50` | -- | -- |
-| registerRuntimeFunction (registers declaration in table) | `sub_3122A50` | -- | -- |
-| Parallel region outliner (47 KB, creates `.omp_par` functions) | `sub_313D1B0` | -- | -- |
-| Get function entry basic block | `sub_25096F0` | -- | -- |
-| Get function scope / debug info | `sub_BD5C60` | -- | -- |
-| Build CFG region (start/end blocks) | `sub_AA8550` | -- | -- |
-| Build exit/cleanup block | `sub_AA4D50` | -- | -- |
-| Split basic block | `sub_F36960` | -- | -- |
-| Allocate IR instruction node | `sub_BD2C40` | -- | -- |
-| Fill instruction as runtime-call value load | `sub_B4A410` | -- | -- |
-| Create integer constant (zero for tid check) | `sub_AD64C0` | -- | -- |
-| Create integer constant (alternate entry, used in complex path) | `sub_AD6530` | -- | -- |
-| Create icmp instruction | `sub_B52500` | -- | -- |
-| Create branch instruction (opcode 3) | `sub_B4C9A0` | -- | -- |
-| Create shared-memory alloca (addr space 7) | `sub_B30000` | -- | -- |
-| Create store instruction | `sub_B4D460` | -- | -- |
-| Create load instruction | `sub_B4D230` | -- | -- |
-| Replace all uses of a value | `sub_256E5A0` | -- | -- |
-| Create runtime library call instruction | `sub_921880` | -- | -- |
-| Create bit-vector entry | `sub_ACD640` | -- | -- |
-| Insert into attribute map | `sub_AAAE30` | -- | -- |
-| Register block in pass manager worklist | `sub_D695C0` | -- | -- |
-| Construct remark DiagnosticInfo | `sub_B174A0` | -- | -- |
-| Construct warning DiagnosticInfo | `sub_B178C0` | -- | -- |
-| Append string to diagnostic message | `sub_B18290` | -- | -- |
-| Emit diagnostic to handler | `sub_1049740` | -- | -- |
-| Check if instruction is a call | `sub_B46970` | -- | -- |
-| Check if instruction is an invoke | `sub_B46420` | -- | -- |
-| Get invoke exception handler count | `sub_BD2BC0` | -- | -- |
-| Insert guard instructions at range boundary | `sub_B444E0` | -- | -- |
-| Fast-path comparison instruction creation | `sub_AAB310` | -- | -- |
-| Full comparison instruction creation | `sub_B523C0` | -- | -- |
-| Build name from debug info + suffix | `sub_CA0F50` | -- | -- |
-| Ref-count increment on metadata/debug-info | `sub_B96E90` | -- | -- |
-| Ref-count decrement on metadata/debug-info | `sub_B91220` | -- | -- |
-| Transfer metadata ownership between blocks | `sub_B976B0` | -- | -- |
-| Get terminator's successor block pointer | `sub_986580` | -- | -- |
-| Add operand bundle to instruction | `sub_B99FD0` | -- | -- |
-| Duplicate metadata reference | `sub_266EF50` | -- | -- |
-| Process entry block terminator successor | `sub_B491C0` | -- | -- |
-| Get instruction value type | `sub_ACA8A0` | -- | -- |
-| Get IR node name | `sub_BD5D20` | -- | -- |
-| Vector push_back (dynamic arrays) | `sub_C8CC70` | -- | -- |
-| Vector reserve/grow | `sub_C8D5F0` | -- | -- |
+| Generic-to-SPMD transformation pass (this function, 61 KB) | `sub_26968A0` | — | — |
+| Worker state machine generation (Generic fallback, 41 KB) | `sub_2678420` | — | — |
+| Attributor-based OpenMP optimization driver (63 KB, sets `a1+241`) | `sub_269F530` | — | — |
+| Parallel region merging (52 KB) | `sub_2680940` | — | — |
+| AbstractAttribute infrastructure (Attributor framework) | `sub_251BBC0` | — | — |
+| Attributor::runTillFixpoint (53 KB, fixed-point iteration engine) | `sub_251CD10` | — | — |
+| OpenMP kernel info collector (populates PassState) | `sub_26747F0` | — | — |
+| Attributor Module Pass entry point (51 KB) | `sub_2591C20` | — | — |
+| Read execution mode from attribute map | `sub_2674090` | — | — |
+| Read execution mode (alternate entry) | `sub_2674040` | — | — |
+| Get parallel region thread configuration | `sub_250CBE0` | — | — |
+| Read attribute from kernel attribute map | `sub_2673FD0` | — | — |
+| Create secondary barrier call | `sub_2673A60` | — | — |
+| OpenMP runtime call table lookup by ID (194-case switch, 117 KB) | `sub_312CF50` | — | — |
+| registerRuntimeFunction (registers declaration in table) | `sub_3122A50` | — | — |
+| Parallel region outliner (47 KB, creates `.omp_par` functions) | `sub_313D1B0` | — | — |
+| Get function entry basic block | `sub_25096F0` | — | — |
+| Get function scope / debug info | `sub_BD5C60` | — | — |
+| Build CFG region (start/end blocks) | `sub_AA8550` | — | — |
+| Build exit/cleanup block | `sub_AA4D50` | — | — |
+| Split basic block | `sub_F36960` | — | — |
+| Allocate IR instruction node | `sub_BD2C40` | — | — |
+| Fill instruction as runtime-call value load | `sub_B4A410` | — | — |
+| Create integer constant (zero for tid check) | `sub_AD64C0` | — | — |
+| Create integer constant (alternate entry, used in complex path) | `sub_AD6530` | — | — |
+| Create icmp instruction | `sub_B52500` | — | — |
+| Create branch instruction (opcode 3) | `sub_B4C9A0` | — | — |
+| Create shared-memory alloca (addr space 7) | `sub_B30000` | — | — |
+| Create store instruction | `sub_B4D460` | — | — |
+| Create load instruction | `sub_B4D230` | — | — |
+| Replace all uses of a value | `sub_256E5A0` | — | — |
+| Create runtime library call instruction | `sub_921880` | — | — |
+| Create bit-vector entry | `sub_ACD640` | — | — |
+| Insert into attribute map | `sub_AAAE30` | — | — |
+| Register block in pass manager worklist | `sub_D695C0` | — | — |
+| Construct remark DiagnosticInfo | `sub_B174A0` | — | — |
+| Construct warning DiagnosticInfo | `sub_B178C0` | — | — |
+| Append string to diagnostic message | `sub_B18290` | — | — |
+| Emit diagnostic to handler | `sub_1049740` | — | — |
+| Check if instruction is a call | `sub_B46970` | — | — |
+| Check if instruction is an invoke | `sub_B46420` | — | — |
+| Get invoke exception handler count | `sub_BD2BC0` | — | — |
+| Insert guard instructions at range boundary | `sub_B444E0` | — | — |
+| Fast-path comparison instruction creation | `sub_AAB310` | — | — |
+| Full comparison instruction creation | `sub_B523C0` | — | — |
+| Build name from debug info + suffix | `sub_CA0F50` | — | — |
+| Ref-count increment on metadata/debug-info | `sub_B96E90` | — | — |
+| Ref-count decrement on metadata/debug-info | `sub_B91220` | — | — |
+| Transfer metadata ownership between blocks | `sub_B976B0` | — | — |
+| Get terminator's successor block pointer | `sub_986580` | — | — |
+| Add operand bundle to instruction | `sub_B99FD0` | — | — |
+| Duplicate metadata reference | `sub_266EF50` | — | — |
+| Process entry block terminator successor | `sub_B491C0` | — | — |
+| Get instruction value type | `sub_ACA8A0` | — | — |
+| Get IR node name | `sub_BD5D20` | — | — |
+| Vector push_back (dynamic arrays) | `sub_C8CC70` | — | — |
+| Vector reserve/grow | `sub_C8D5F0` | — | — |
 
 ## Cross-References
 
-- [OpenMP Runtime Declaration Table](../openmp/runtime-table.md) -- complete runtime function table (`sub_312CF50`), including `__kmpc_barrier_simple_spmd` (ID 187) and `__kmpc_get_hardware_thread_id_in_block` (ID 6)
-- [Entry Point & CLI](../pipeline/entry.md) -- how OpenMP target offloading flags reach the optimizer
-- [LLVM Optimizer](../pipeline/optimizer.md) -- pipeline slots 75/76/154 where `openmp-opt` runs
-- [CLI Flags](../config/cli-flags.md) -- `openmp-opt-*` knob documentation
+- [OpenMP Runtime Declaration Table](../openmp/runtime-table.md) — complete runtime function table (`sub_312CF50`), including `__kmpc_barrier_simple_spmd` (ID 187) and `__kmpc_get_hardware_thread_id_in_block` (ID 6)
+- [Entry Point & CLI](../pipeline/entry.md) — how OpenMP target offloading flags reach the optimizer
+- [LLVM Optimizer](../pipeline/optimizer.md) — pipeline slots 75/76/154 where `openmp-opt` runs
+- [CLI Flags](../config/cli-flags.md) — `openmp-opt-*` knob documentation

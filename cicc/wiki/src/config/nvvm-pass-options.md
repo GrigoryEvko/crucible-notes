@@ -1,6 +1,6 @@
 # NVVMPassOptions
 
-NVVMPassOptions is NVIDIA's proprietary per-pass configuration system -- a 4,512-byte flat struct containing 221 option slots that controls every aspect of the NVVM optimization pipeline. It has no upstream LLVM equivalent. Where LLVM uses scattered `cl::opt<T>` globals that each pass reads independently, NVIDIA consolidates all pass configuration into a single contiguous struct that is allocated once and threaded through the entire pipeline assembler as a parameter. This design allows the pipeline to make pass-enable decisions through simple byte reads at known offsets rather than hash-table lookups, and it ensures that the complete configuration state can be copied between Phase I and Phase II of the two-phase compilation model.
+NVVMPassOptions is NVIDIA's proprietary per-pass configuration system — a 4,512-byte flat struct containing 221 option slots that controls every aspect of the NVVM optimization pipeline. It has no upstream LLVM equivalent. Where LLVM uses scattered `cl::opt<T>` globals that each pass reads independently, NVIDIA consolidates all pass configuration into a single contiguous struct that is allocated once and threaded through the entire pipeline assembler as a parameter. This design allows the pipeline to make pass-enable decisions through simple byte reads at known offsets rather than hash-table lookups, and it ensures that the complete configuration state can be copied between Phase I and Phase II of the two-phase compilation model.
 
 The struct is populated by a single 27 KB native function (`sub_12D6300`, ~4,786 lines decompiled) that reads from a `PassOptionRegistry` hash table and flattens the results into 221 typed slots. The pipeline assembler (`sub_12E54A0`) and its sub-pipeline builders (`sub_12DE330`, `sub_12DE8F0`) then read individual slots by offset to decide which passes to insert and how to configure them.
 
@@ -31,11 +31,11 @@ Offset  Size   Field
 4480    32     zero trailer (4 qwords, sentinel)
 ```
 
-Slot offsets are deterministic -- they depend on the type sequence hard-coded into `sub_12D6300`. String slots consume 24 bytes, boolean and integer slots consume 16 bytes, and the unique string-pointer slot at index 181 consumes 28 bytes. The initializer writes each slot at a compile-time-constant offset; there is no dynamic layout calculation.
+Slot offsets are deterministic — they depend on the type sequence hard-coded into `sub_12D6300`. String slots consume 24 bytes, boolean and integer slots consume 16 bytes, and the unique string-pointer slot at index 181 consumes 28 bytes. The initializer writes each slot at a compile-time-constant offset; there is no dynamic layout calculation.
 
 ## Slot Types
 
-### Type A: String Option (24 bytes) -- `sub_12D6090`
+### Type A: String Option (24 bytes) — `sub_12D6090`
 
 114 slots. Stores a string value (pass name or parametric value) along with flags, optimization level, and pass ID.
 
@@ -49,7 +49,7 @@ struct StringOption {       // 24 bytes, written by sub_12D6090
 };
 ```
 
-### Type B: Boolean Compact (16 bytes) -- `sub_12D6100`
+### Type B: Boolean Compact (16 bytes) — `sub_12D6100`
 
 83 slots. The most common boolean representation. The helper encapsulates the lookup-parse-resolve sequence.
 
@@ -63,7 +63,7 @@ struct BoolCompactOption {  // 16 bytes, written by sub_12D6100
 };
 ```
 
-### Type C: Boolean Inline (16 bytes) -- direct write
+### Type C: Boolean Inline (16 bytes) — direct write
 
 17 slots. Identical layout to Type B, but written directly by `sub_12D6300` rather than through the `sub_12D6100` helper. These correspond to option pairs where the boolean resolution requires checking `PassDef+36` (has_overrides byte) and resolving via `sub_1691920` inline. The 17 inline boolean slots are: 7, 11, 13, 49, 53, 55, 59, 61, 95, 103, 119, 127, 151, 159, 169, 177, 211.
 
@@ -77,7 +77,7 @@ struct BoolInlineOption {   // 16 bytes, same layout as Type B
 };
 ```
 
-### Type D: Integer (16 bytes) -- direct write via `sub_16D2BB0`
+### Type D: Integer (16 bytes) — direct write via `sub_16D2BB0`
 
 6 slots. The integer value is parsed from the registry string by `sub_16D2BB0` (string-to-int64). Layout is identical to boolean compact but the first 4 bytes store a full `int32_t` rather than a single byte.
 
@@ -90,7 +90,7 @@ struct IntegerOption {      // 16 bytes
 };
 ```
 
-### Type E: String Pointer (28 bytes) -- slot 181 only
+### Type E: String Pointer (28 bytes) — slot 181 only
 
 Unique. Stores a raw `char*` plus length rather than a managed string. Likely a file path or regex pattern that requires direct C-string access.
 
@@ -108,8 +108,8 @@ struct StringPtrOption {    // 28 bytes, slot 181 only
 
 The 221 slots follow a predominantly paired layout. Slots 1--6 are six standalone STRING options (likely the global compilation parameters: ftz, prec-div, prec-sqrt, fmad, opt-level, sm-arch). Starting at slot 7, slots are organized in `(EVEN, ODD)` pairs:
 
-- **Even slot N**: STRING option -- the pass's parameter value or name
-- **Odd slot N+1**: BOOLEAN or INTEGER option -- the enable/disable toggle
+- **Even slot N**: STRING option — the pass's parameter value or name
+- **Odd slot N+1**: BOOLEAN or INTEGER option — the enable/disable toggle
 
 Each "pass knob" thus gets a string parameter slot and a boolean gate. The pipeline assembler reads the boolean to decide whether to insert the pass, and passes the string value as the pass's configuration parameter.
 
@@ -124,7 +124,7 @@ Exceptions to the pair pattern:
 
 ## Helper Functions
 
-### `sub_12D6170` -- pass-option registry lookup
+### `sub_12D6170` — pass-option registry lookup
 
 Looks up an option by its 1-based slot index in the hash table at `registry+120`. Returns a pointer to an `OptionNode` or 0 if the option was not set from the command line:
 
@@ -140,9 +140,9 @@ Looks up an option by its 1-based slot index in the hash table at `registry+120`
 
 The hash table uses open addressing. The lookup computes `hash(option_index)` and probes linearly. When an option is not present in the registry (meaning the user did not supply a CLI override), the caller falls back to the hard-coded default in `sub_12D6300`.
 
-### `sub_12D6240` -- pass-option boolean resolver
+### `sub_12D6240` — pass-option boolean resolver
 
-Resolves a boolean option with a default value. This is the critical function for all 100 boolean slots -- it performs a three-step resolution:
+Resolves a boolean option with a default value. This is the critical function for all 100 boolean slots — it performs a three-step resolution:
 
 ```text
 sub_12D6240(registry, option_index, default_string):
@@ -157,7 +157,7 @@ sub_12D6240(registry, option_index, default_string):
 
 The packing convention is significant: the boolean value occupies the low 8 bits and the flags occupy bits 8--39. Callers unpack with `(result & 0xFF)` for the boolean and `(result >> 8)` for the flags.
 
-### `sub_1691920` -- pass-definition table getter
+### `sub_1691920` — pass-definition table getter
 
 Resolves a 1-based pass index to its PassDef entry in a table with 64-byte stride:
 
@@ -173,13 +173,13 @@ Resolves a 1-based pass index to its PassDef entry in a table with 64-byte strid
 
 The pass_id field is written into every option slot and later used by the pipeline assembler to map configuration back to the pass factory that should receive it.
 
-### `sub_16D2BB0` -- string-to-int64 parser
+### `sub_16D2BB0` — string-to-int64 parser
 
 Parses a string to a 64-bit integer. Used for the 6 integer-typed option slots (9, 197, 203, 205, 207, 215).
 
 ## Default Values
 
-Most boolean slots default to `0` (disabled). 14 slots default to `1` (enabled) -- these represent passes that run by default and must be explicitly disabled:
+Most boolean slots default to `0` (disabled). 14 slots default to `1` (enabled) — these represent passes that run by default and must be explicitly disabled:
 
 > **Confidence note:** Pass associations marked `[MEDIUM]` are inferred from pipeline guard cross-references (`a4[offset]`). Associations marked `[LOW]` are based solely on offset proximity or default-value patterns.
 
@@ -265,15 +265,15 @@ v12 = *(int32_t*)(opts + 200);           // opts[200] = opt threshold (default=1
 // used to configure codegen dispatch in sub_12DFE00
 ```
 
-The key insight is that the pipeline assembler never performs string comparison or hash-table lookup at pass-insertion time -- it reads pre-resolved values from the flat struct. This makes the ~150 pass-insertion decisions in `sub_12E54A0` essentially free in terms of runtime cost.
+The key insight is that the pipeline assembler never performs string comparison or hash-table lookup at pass-insertion time — it reads pre-resolved values from the flat struct. This makes the ~150 pass-insertion decisions in `sub_12E54A0` essentially free in terms of runtime cost.
 
 ## Offset-to-Pass Mapping
 
-The following table maps struct offsets (as seen in pipeline assembler guards `opts[OFFSET]`) to the passes they control. Offsets are byte offsets from the struct base. "Guard sense" indicates whether the pass runs when the byte is 0 (`!opts[X]` -- most common, where the option is a disable flag) or when it is nonzero (`opts[X]` -- the option is an enable flag).
+The following table maps struct offsets (as seen in pipeline assembler guards `opts[OFFSET]`) to the passes they control. Offsets are byte offsets from the struct base. "Guard sense" indicates whether the pass runs when the byte is 0 (`!opts[X]` — most common, where the option is a disable flag) or when it is nonzero (`opts[X]` — the option is an enable flag).
 
 | Offset | Slot | Guard Sense | Controlled Pass | Factory |
 |---|---|---|---|---|
-| 200 | 9 | value | Optimization threshold (integer, read by `sub_12DFE00`) | -- |
+| 200 | 9 | value | Optimization threshold (integer, read by `sub_12DFE00`) | — |
 | 280 | 14-15 | `!opts` | DCE (DeadCodeElimination) | `sub_18DEFF0` |
 | 320 | 16-17 | `!opts` | TailCallElim / JumpThreading | `sub_1833EB0` |
 | 360 | 18-19 | `!opts` | NVVMLateOpt | `sub_1C46000` |
@@ -334,21 +334,21 @@ The following table maps struct offsets (as seen in pipeline assembler guards `o
 | 3080 | 153 | `opts` | NVIDIA-specific loop pass | `sub_1922F90` |
 | 3120 | 155 | `opts` | MemorySpaceOpt second-pass enable (default=1) | `sub_1C8E680` |
 | 3160 | 157 | `opts` | PrintModulePass enable (default=1) | `sub_17060B0` |
-| 3200 | 159 | `opts` | Optimization-level gate (default=1) | -- |
+| 3200 | 159 | `opts` | Optimization-level gate (default=1) | — |
 | 3328 | 165 | `opts` | Late-pipeline enable block (default=1) | multiple |
 | 3488 | 174-175 | `opts` | NVVMBarrierAnalysis + LowerBarriers enable | `sub_18E4A00` |
 | 3648 | 181 | string | Language string (`"ptx"`/`"mid"`) | path dispatch |
 | 3704 | 185 | `opts` | Late optimization flag | `sub_1C8A4D0` |
 | 3904 | 193 | `opts` | Debug / verification mode | `sub_12D3E60` |
 | 3944 | 195 | `opts` | Basic block naming (`"F%d_B%d"`) | sprintf |
-| 3984 | 197 | value | Integer limit (default=20) | -- |
+| 3984 | 197 | value | Integer limit (default=20) | — |
 | 4064 | 201 | value | Concurrent compilation override | `sub_12D4250` |
 | 4104 | 203 | value | Thread count (default=-1, auto-detect) | `sub_12E7E70` |
 | 4144 | 205 | value | Thread count fallback (default=-1) | `sub_12E7E70` |
-| 4184 | 207 | value | Integer parameter (default=-1) | -- |
+| 4184 | 207 | value | Integer parameter (default=-1) | — |
 | 4224 | 209 | `opts` | Optimization enabled flag | tier dispatch |
 | 4304 | 213 | `opts` | Device-code flag | Pipeline B |
-| 4344 | 215 | value | Integer counter (default=0) | -- |
+| 4344 | 215 | value | Integer counter (default=0) | — |
 | 4384 | 217 | `opts` | Fast-compile bypass flag | Pipeline B dispatch |
 | 4464 | 221 | `!opts` | Late CFG cleanup guard | `sub_1654860` |
 
@@ -361,20 +361,20 @@ Option names are stored in the `PassOptionRegistry` hash table, not in `sub_12D6
 | Name | Likely Slot Region | Default |
 |---|---|---|
 | `do-ip-msp` | MemorySpaceOpt area | enabled |
-| `do-clone-for-ip-msp` | MemorySpaceOpt variant | -- |
+| `do-clone-for-ip-msp` | MemorySpaceOpt variant | — |
 | `do-licm` | offset 2880 (slot 143) | 1 (enabled) |
 | `do-remat` | offset 2320 (slot 117) | enabled |
-| `do-cssa` | CSSA pass area | -- |
-| `do-scev-cgp` | SCEV-CGP area | -- |
-| `do-function-scev-cgp` | function-level SCEV-CGP | -- |
-| `do-scev-cgp-aggresively` [sic] | aggressive SCEV-CGP mode | -- |
-| `do-base-address-strength-reduce` | BaseAddrSR area | -- |
-| `do-base-address-strength-reduce-chain` | BaseAddrSR chain variant | -- |
-| `do-comdat-renaming` | COMDAT pass | -- |
-| `do-counter-promotion` | PGO counter promotion | -- |
-| `do-lsr-64-bit` | 64-bit loop strength reduction | -- |
-| `do-sign-ext-expand` | sign extension expansion | -- |
-| `do-sign-ext-simplify` | sign extension simplification | -- |
+| `do-cssa` | CSSA pass area | — |
+| `do-scev-cgp` | SCEV-CGP area | — |
+| `do-function-scev-cgp` | function-level SCEV-CGP | — |
+| `do-scev-cgp-aggresively` [sic] | aggressive SCEV-CGP mode | — |
+| `do-base-address-strength-reduce` | BaseAddrSR area | — |
+| `do-base-address-strength-reduce-chain` | BaseAddrSR chain variant | — |
+| `do-comdat-renaming` | COMDAT pass | — |
+| `do-counter-promotion` | PGO counter promotion | — |
+| `do-lsr-64-bit` | 64-bit loop strength reduction | — |
+| `do-sign-ext-expand` | sign extension expansion | — |
+| `do-sign-ext-simplify` | sign extension simplification | — |
 
 ### Dump/Debug Toggles
 
@@ -407,34 +407,34 @@ Option names are stored in the `PassOptionRegistry` hash table, not in `sub_12D6
 | `remat-gep-cost` | 6000 | GEP rematerialization cost threshold |
 | `remat-lli-factor` | 10 | Long-latency instruction factor |
 | `remat-max-live-limit` | 10 | Maximum live range limit for remat |
-| `remat-single-cost-limit` | -- | Single-instruction remat cost limit |
-| `remat-loop-trip` | -- | Loop trip count for remat decisions |
-| `remat-use-limit` | -- | Use count limit for remat candidates |
-| `remat-maxreg-ceiling` | -- | Register ceiling for remat |
-| `remat-move` | -- | Remat move control |
-| `remat-load-param` | -- | Parameter load remat control |
-| `remat-ignore-single-cost` | -- | Ignore single-cost heuristic |
+| `remat-single-cost-limit` | — | Single-instruction remat cost limit |
+| `remat-loop-trip` | — | Loop trip count for remat decisions |
+| `remat-use-limit` | — | Use count limit for remat candidates |
+| `remat-maxreg-ceiling` | — | Register ceiling for remat |
+| `remat-move` | — | Remat move control |
+| `remat-load-param` | — | Parameter load remat control |
+| `remat-ignore-single-cost` | — | Ignore single-cost heuristic |
 | `branch-dist-block-limit` | -1 | Max blocks for branch distribution (-1 = unlimited) |
 | `branch-dist-func-limit` | -1 | Max functions for branch distribution |
 | `branch-dist-norm` | 0 | Branch distribution normalization mode |
-| `scev-cgp-control` | -- | SCEV-CGP mode selector |
-| `scev-cgp-norm` | -- | SCEV-CGP normalization |
-| `scev-cgp-check-latency` | -- | Latency check threshold |
-| `scev-cgp-cross-block-limit` | -- | Cross-block limit |
-| `scev-cgp-idom-level-limit` | -- | Immediate dominator level limit |
-| `scev-cgp-inst-limit` | -- | Instruction count limit |
-| `scev-cgp-old-base` | -- | Old base address mode |
-| `scev-cgp-tid-max-value` | -- | Thread ID max value |
-| `base-address-strength-reduce-iv-limit` | -- | IV limit for base addr SR |
-| `base-address-strength-reduce-max-iv` | -- | Max IV count |
-| `cssa-coalesce` | -- | CSSA coalescing mode |
-| `cssa-verbosity` | -- | CSSA diagnostic verbosity |
-| `memory-space-opt-pass` | -- | MSP pass variant selector |
-| `peephole-opt` | -- | Peephole optimizer control |
-| `loop-index-split` | -- | Loop index split control |
-| `va-use-scdg` | -- | Value analysis SCDG mode |
-| `nvvm-peephole-optimizer` | -- | NVVM peephole enable |
-| `nvvm-intr-range` | -- | Intrinsic range analysis control |
+| `scev-cgp-control` | — | SCEV-CGP mode selector |
+| `scev-cgp-norm` | — | SCEV-CGP normalization |
+| `scev-cgp-check-latency` | — | Latency check threshold |
+| `scev-cgp-cross-block-limit` | — | Cross-block limit |
+| `scev-cgp-idom-level-limit` | — | Immediate dominator level limit |
+| `scev-cgp-inst-limit` | — | Instruction count limit |
+| `scev-cgp-old-base` | — | Old base address mode |
+| `scev-cgp-tid-max-value` | — | Thread ID max value |
+| `base-address-strength-reduce-iv-limit` | — | IV limit for base addr SR |
+| `base-address-strength-reduce-max-iv` | — | Max IV count |
+| `cssa-coalesce` | — | CSSA coalescing mode |
+| `cssa-verbosity` | — | CSSA diagnostic verbosity |
+| `memory-space-opt-pass` | — | MSP pass variant selector |
+| `peephole-opt` | — | Peephole optimizer control |
+| `loop-index-split` | — | Loop index split control |
+| `va-use-scdg` | — | Value analysis SCDG mode |
+| `nvvm-peephole-optimizer` | — | NVVM peephole enable |
+| `nvvm-intr-range` | — | Intrinsic range analysis control |
 
 ## Differences from Upstream LLVM
 
@@ -450,7 +450,7 @@ Upstream LLVM has nothing resembling this system. The closest analogue is the `c
 | Override mechanism | `cl::opt` command-line parser | `PassOptionRegistry` hash table with fallback defaults |
 | Pass gating | Pass decides internally whether to run | Pipeline assembler decides before constructing pass |
 
-The thread-safety property is crucial for the two-phase concurrent compilation model. When Phase II runs per-function compilation in parallel threads, each thread receives a copy of the NVVMPassOptions struct. If NVIDIA used upstream `cl::opt` globals for pass configuration, they would need global locks or TLS for every option read during pass execution -- an unacceptable overhead for a GPU compiler that may process hundreds of kernels in a single translation unit.
+The thread-safety property is crucial for the two-phase concurrent compilation model. When Phase II runs per-function compilation in parallel threads, each thread receives a copy of the NVVMPassOptions struct. If NVIDIA used upstream `cl::opt` globals for pass configuration, they would need global locks or TLS for every option read during pass execution — an unacceptable overhead for a GPU compiler that may process hundreds of kernels in a single translation unit.
 
 ## Interaction with Two-Phase Compilation
 
@@ -464,7 +464,7 @@ sub_12D6300(opts, registry);            // populate from CLI-parsed registry
 // ... pass same opts to sub_12E54A0 for Phase II ...
 ```
 
-Both phases receive the same `opts` pointer. Individual passes within the pipeline assembler check `qword_4FBB3B0` (the TLS phase counter) to skip themselves in the wrong phase -- but the NVVMPassOptions struct itself does not change between phases. This means a pass cannot be enabled in Phase I but disabled in Phase II through NVVMPassOptions alone; phase selection is handled by the separate TLS mechanism.
+Both phases receive the same `opts` pointer. Individual passes within the pipeline assembler check `qword_4FBB3B0` (the TLS phase counter) to skip themselves in the wrong phase — but the NVVMPassOptions struct itself does not change between phases. This means a pass cannot be enabled in Phase I but disabled in Phase II through NVVMPassOptions alone; phase selection is handled by the separate TLS mechanism.
 
 The second caller, `sub_12F4060` (TargetMachine creation in the standalone path), performs an identical allocation and initialization sequence, confirming that every compilation path goes through the same NVVMPassOptions infrastructure.
 
@@ -483,10 +483,10 @@ The second caller, `sub_12F4060` (TargetMachine creation in the standalone path)
 
 ## Cross-References
 
-- [LLVM Optimizer](../pipeline/optimizer.md) -- pipeline assembler that consumes NVVMPassOptions
-- [Configuration Knobs](./knobs.md) -- all three knob systems (cl::opt, NVVMPassOptions, codegen)
-- [CLI Flags](./cli-flags.md) -- flag catalog and routing to opt phase vector
-- [Optimization Levels](./optimization-levels.md) -- O-level encoding and fast-compile modes
-- [Concurrent Compilation](../infra/concurrent-compilation.md) -- Phase I/II threading model
-- [Entry Point & CLI](../pipeline/entry.md) -- wizard mode and -opt flag dispatching
-- [OptiX IR](../pipeline/optix-ir.md) -- forces `do-ip-msp=0` and `do-licm=0`
+- [LLVM Optimizer](../pipeline/optimizer.md) — pipeline assembler that consumes NVVMPassOptions
+- [Configuration Knobs](./knobs.md) — all three knob systems (cl::opt, NVVMPassOptions, codegen)
+- [CLI Flags](./cli-flags.md) — flag catalog and routing to opt phase vector
+- [Optimization Levels](./optimization-levels.md) — O-level encoding and fast-compile modes
+- [Concurrent Compilation](../infra/concurrent-compilation.md) — Phase I/II threading model
+- [Entry Point & CLI](../pipeline/entry.md) — wizard mode and -opt flag dispatching
+- [OptiX IR](../pipeline/optix-ir.md) — forces `do-ip-msp=0` and `do-licm=0`

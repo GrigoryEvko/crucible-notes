@@ -1,6 +1,6 @@
 # __global__ Function Constraints
 
-The `__global__` attribute designates a CUDA kernel -- a function that executes on the GPU and is callable from host code via the `<<<...>>>` launch syntax. Of all CUDA execution space attributes, `__global__` imposes the most constraints. cudafe++ enforces these constraints across three separate validation passes: **attribute application** (when `__global__` is first applied to an entity), **post-declaration validation** (after all attributes on a declaration are resolved), and **semantic analysis** (during template instantiation, redeclaration merging, and lambda processing). This page documents all constraint checks, their implementation in the binary, the entity node fields they inspect, and the diagnostics they emit.
+The `__global__` attribute designates a CUDA kernel — a function that executes on the GPU and is callable from host code via the `<<<...>>>` launch syntax. Of all CUDA execution space attributes, `__global__` imposes the most constraints. cudafe++ enforces these constraints across three separate validation passes: **attribute application** (when `__global__` is first applied to an entity), **post-declaration validation** (after all attributes on a declaration are resolved), and **semantic analysis** (during template instantiation, redeclaration merging, and lambda processing). This page documents all constraint checks, their implementation in the binary, the entity node fields they inspect, and the diagnostics they emit.
 
 ## Key Facts
 
@@ -135,7 +135,7 @@ entity_t* apply_nv_global_attr(attr_node_t* a1, entity_t* a2, uint8_t a3) {
 
 ### Execution Order Detail
 
-The `0x61` bitmask is applied **before** the local-function (3688) and main() (3538) checks but **after** all structural checks (3507, 3644, 3647, 3481, 3505/3506, 3503). This means the bitmask is set even when errors are emitted -- cudafe++ continues processing after errors to collect as many diagnostics as possible in a single compilation pass.
+The `0x61` bitmask is applied **before** the local-function (3688) and main() (3538) checks but **after** all structural checks (3507, 3644, 3647, 3481, 3505/3506, 3503). This means the bitmask is set even when errors are emitted — cudafe++ continues processing after errors to collect as many diagnostics as possible in a single compilation pass.
 
 The constexpr-lambda check at the top (error 3469) is the only check that causes an early return. If the function is a constexpr lambda with wrong linkage, the bitmask is NOT set and no further validation is performed.
 
@@ -153,7 +153,7 @@ The 37 validation errors are organized by the phase in which they are checked an
 
 Error 3505 and 3506 are mutually exclusive paths guarded by the `byte+179 & 0x10` constexpr flag. When the function is not constexpr, the handler checks whether it is a lambda (3506 path, which checks `byte+191` bit 0) or a regular function (3505 path, which resolves through `skip_typedefs` via `sub_7A68F0` and tests `is_void_type` via `sub_7A6E90`). The `skip_typedefs` function follows the type chain while `type->kind == 12` (cv-qualifier wrapper) and `type->byte_161 & 0x7F == 0` (no qualifier flags). The `is_void_type` function follows the same chain and returns `kind == 1` (void).
 
-Error 3647 is checked independently of 3505/3506. The check examines the exception specification pointer at prototype offset `+56`. In EDG's type system, `auto` and `decltype(auto)` return types are represented with a non-null exception specification node on the return type's prototype -- this is a repurposed field that indicates the return type is deduced.
+Error 3647 is checked independently of 3505/3506. The check examines the exception specification pointer at prototype offset `+56`. In EDG's type system, `auto` and `decltype(auto)` return types are represented with a non-null exception specification node on the return type's prototype — this is a repurposed field that indicates the return type is deduced.
 
 ### Category 2: Parameters
 
@@ -161,10 +161,10 @@ Error 3647 is checked independently of 3505/3506. The check examines the excepti
 |---|---|---|---|
 | 3503 | 8 | `proto+16 & 0x01` (has ellipsis) | `a __global__ function cannot have ellipsis` |
 | 3702 | 7 | `param_flags & 0x02` (rvalue ref) | `a __global__ function cannot have a parameter with rvalue reference type` |
-| -- | 7 | Parameter with `__restrict__` on reference type | `a __global__ function cannot have a parameter with __restrict__ qualified reference type` |
-| -- | 7 | Parameter of type `va_list` | `A __global__ function or function template cannot have a parameter with va_list type` |
-| -- | 7 | Parameter of type `std::initializer_list` | `a __global__ function or function template cannot have a parameter with type std::initializer_list` |
-| -- | 7 | Oversized alignment on win32 | `cannot pass a parameter with a too large explicit alignment to a __global__ function on win32 platforms` |
+| — | 7 | Parameter with `__restrict__` on reference type | `a __global__ function cannot have a parameter with __restrict__ qualified reference type` |
+| — | 7 | Parameter of type `va_list` | `A __global__ function or function template cannot have a parameter with va_list type` |
+| — | 7 | Parameter of type `std::initializer_list` | `a __global__ function or function template cannot have a parameter with type std::initializer_list` |
+| — | 7 | Oversized alignment on win32 | `cannot pass a parameter with a too large explicit alignment to a __global__ function on win32 platforms` |
 | 3669 | 8 | Device-scope parameter without default init | `__grid_constant__` parameter warning (device-side check) |
 
 Error 3503 (ellipsis) is checked in the apply handler by testing bit 0 of the function prototype's flags word at offset `+16`. This bit indicates the parameter list ends with `...`.
@@ -173,7 +173,7 @@ Error 3702 (rvalue reference) is checked in the **post-validation** pass (`sub_6
 
 The `__restrict__` reference, `va_list`, `initializer_list`, and win32 alignment checks are scattered across separate validation functions in `nv_transforms.c` and are triggered during declaration processing rather than during attribute application.
 
-Error 3669 is checked in the apply handler's parameter iteration loop. It walks each parameter, resolves through cv-qualifier wrappers, and tests whether `sub_7A6B60` returns false (meaning the parameter type has bit 5 of `byte+133` clear -- not a `__grid_constant__` type) AND the scope lookup produces a non-array, non-qualifier type without a default initializer at `type+120`.
+Error 3669 is checked in the apply handler's parameter iteration loop. It walks each parameter, resolves through cv-qualifier wrappers, and tests whether `sub_7A6B60` returns false (meaning the parameter type has bit 5 of `byte+133` clear — not a `__grid_constant__` type) AND the scope lookup produces a non-array, non-qualifier type without a default initializer at `type+120`.
 
 ### Category 3: Modifiers
 
@@ -182,11 +182,11 @@ Error 3669 is checked in the apply handler's parameter iteration loop. It walks 
 | 3507 | 5 | `(signed char)byte_176 < 0 && !(byte_81 & 0x04)` | `A __global__ function or function template cannot be marked constexpr` (warning for static member) |
 | 3688 | 8 | `byte_81 & 0x04` (local function) | `A __global__ function or function template cannot be marked constexpr` (constexpr local) |
 | 3481 | 8 | Execution space conflict (see matrix) | Conflicting CUDA execution spaces |
-| -- | 7 | Function is consteval | `A __global__ function or function template cannot be marked consteval` |
+| — | 7 | Function is consteval | `A __global__ function or function template cannot be marked consteval` |
 | 3644 | 7 | `byte_166 == 5` (operator function kind) | `An operator function cannot be a __global__ function` |
-| -- | 7 | Defined in friend declaration | `A __global__ function or function template cannot be defined in a friend declaration` |
-| -- | 7 | Exception specification present | `An exception specification is not allowed for a __global__ function or function template` |
-| -- | 7 | Declared in inline unnamed namespace | `A __global__ function or function template cannot be declared within an inline unnamed namespace` |
+| — | 7 | Defined in friend declaration | `A __global__ function or function template cannot be defined in a friend declaration` |
+| — | 7 | Exception specification present | `An exception specification is not allowed for a __global__ function or function template` |
+| — | 7 | Declared in inline unnamed namespace | `A __global__ function or function template cannot be declared within an inline unnamed namespace` |
 | 3538 | 7 | `a2 == qword_126EB70` (is `main()`) | `function main cannot be marked __device__ or __global__` |
 
 Error 3507 deserves special attention. The decompiled code shows:
@@ -194,7 +194,7 @@ Error 3507 deserves special attention. The decompiled code shows:
 if ((signed char)a2->byte_176 < 0 && !(a2->byte_81 & 0x04))
     emit_warning(3507, ...);
 ```
-The `signed char` cast means `byte_176 >= 0x80` (bit 7 set = static member function). The `!(byte_81 & 0x04)` condition ensures it is NOT a local function. The emitter uses severity 5 (warning via `sub_4F8DB0`), meaning this is a **warning**, not an error -- NVIDIA chose to warn rather than reject `__global__` on static members, though the official documentation says it is not allowed. The displayed string is `"A __global__ function or function template cannot be marked constexpr"` with `"__global__"` as the attribute name parameter, though the actual semantic is "static member function" per the field being checked.
+The `signed char` cast means `byte_176 >= 0x80` (bit 7 set = static member function). The `!(byte_81 & 0x04)` condition ensures it is NOT a local function. The emitter uses severity 5 (warning via `sub_4F8DB0`), meaning this is a **warning**, not an error — NVIDIA chose to warn rather than reject `__global__` on static members, though the official documentation says it is not allowed. The displayed string is `"A __global__ function or function template cannot be marked constexpr"` with `"__global__"` as the attribute name parameter, though the actual semantic is "static member function" per the field being checked.
 
 Error 3644 checks `entity+166 == 5`. This field stores the "operator function kind" enum value, where 5 corresponds to `operator()`. This prevents lambda call operators or functors from being directly marked `__global__`.
 
@@ -206,8 +206,8 @@ Error 3538 compares the entity pointer against `qword_126EB70`, which holds the 
 
 | Error | Severity | Check | Message |
 |---|---|---|---|
-| -- | 7 | Pack parameter is not last template parameter | `Pack template parameter must be the last template parameter for a variadic __global__ function template` |
-| -- | 7 | Multiple pack parameters | `Multiple pack parameters are not allowed for a variadic __global__ function template` |
+| — | 7 | Pack parameter is not last template parameter | `Pack template parameter must be the last template parameter for a variadic __global__ function template` |
+| — | 7 | Multiple pack parameters | `Multiple pack parameters are not allowed for a variadic __global__ function template` |
 
 These checks are performed during template declaration processing in `decls.c`, not in the apply handler. They constrain variadic `__global__` function templates: CUDA requires that pack parameters appear last (so the runtime can enumerate kernel arguments), and only a single pack is permitted (the CUDA launch infrastructure cannot handle multiple parameter packs).
 
@@ -215,17 +215,17 @@ These checks are performed during template declaration processing in `decls.c`, 
 
 | Error | Severity | Check | Message |
 |---|---|---|---|
-| -- | 7 | Previously `__global__`, now no execution space | `a __global__ function(%no1) redeclared without __global__` |
-| -- | 7 | Previously `__global__`, now `__host__` | `a __global__ function(%no1) redeclared with __host__` |
-| -- | 7 | Previously `__global__`, now `__device__` | `a __global__ function(%no1) redeclared with __device__` |
-| -- | 7 | Previously `__global__`, now `__host__ __device__` | `a __global__ function(%no1) redeclared with __host__ __device__` |
+| — | 7 | Previously `__global__`, now no execution space | `a __global__ function(%no1) redeclared without __global__` |
+| — | 7 | Previously `__global__`, now `__host__` | `a __global__ function(%no1) redeclared with __host__` |
+| — | 7 | Previously `__global__`, now `__device__` | `a __global__ function(%no1) redeclared with __device__` |
+| — | 7 | Previously `__global__`, now `__host__ __device__` | `a __global__ function(%no1) redeclared with __host__ __device__` |
 
 These four error variants are symmetrical with the reverse direction:
 - `a __device__ function(%no1) redeclared with __global__`
 - `a __host__ function(%no1) redeclared with __global__`
 - `a __host__ __device__ function(%no1) redeclared with __global__`
 
-Redeclaration checks occur during declaration merging in `class_decl.c`. When a function is redeclared and the execution space of the new declaration does not match the original, cudafe++ emits one of these errors. The `%no1` format specifier inserts the function name. These checks run independently of the `apply_nv_global_attr` handler -- they operate on the merged entity after both attribute sets have been processed.
+Redeclaration checks occur during declaration merging in `class_decl.c`. When a function is redeclared and the execution space of the new declaration does not match the original, cudafe++ emits one of these errors. The `%no1` format specifier inserts the function name. These checks run independently of the `apply_nv_global_attr` handler — they operate on the merged entity after both attribute sets have been processed.
 
 ### Category 6: Constexpr Lambda Linkage
 
@@ -281,7 +281,7 @@ The OR mask `0x61` sets three bits in the execution space byte:
   bit 6 (0x40):  global_kernel      -- function is a __global__ kernel
 ```
 
-Bit 0 is shared with `__device__` (0x23) and `__host__` (0x15). It serves as a "has CUDA annotation" predicate -- any entity with bit 0 set has been explicitly annotated with at least one execution space keyword. This enables fast `if (byte_182 & 0x01)` checks throughout the codebase.
+Bit 0 is shared with `__device__` (0x23) and `__host__` (0x15). It serves as a "has CUDA annotation" predicate — any entity with bit 0 set has been explicitly annotated with at least one execution space keyword. This enables fast `if (byte_182 & 0x01)` checks throughout the codebase.
 
 Bit 5 is shared with `__device__`. A `__global__` function is considered device-annotated because kernel code executes on the GPU.
 
@@ -442,7 +442,7 @@ if (byte_182 & 0x10)
 | `0x23` (`__device__`) | | true | false | error 3481 (unless relaxed) |
 | `0x15` (`__host__`) | | false | true | error 3481 |
 | `0x37` (`__host__ __device__`) | | false | true | error 3481 |
-| `0x61` (`__global__`) | | true | false | error 3481 (unless relaxed) -- idempotent bitmask |
+| `0x61` (`__global__`) | | true | false | error 3481 (unless relaxed) — idempotent bitmask |
 
 In relaxed mode (`dword_106BFF0 != 0`), the first condition is suppressed, allowing `__device__` + `__global__` combinations. The second condition (explicit `__host__`) is never relaxed.
 
@@ -496,15 +496,15 @@ Functions marked `__global__` (or `__device__`) are subject to additional restri
 
 `__global__` collapses entirely into entity bits at application time. The parse-time attribute IL node (kind `0x48`, byte `+8 = 'X'`) is consumed by `apply_nv_global_attr` and never reaches the IL output dispatcher. The post-application footprint is:
 
-- `entity+182` bits 0, 5, 6 (mask `0x61`) -- the canonical "is kernel" predicate read by every downstream pass.
-- `entity+182` bit 7 (mask `0x80`) -- the combined HD flag, set automatically after `0x61` is applied.
-- `entity+256` -- optional launch-config struct pointer if `__launch_bounds__`/`__cluster_dims__`/`__block_size__` were also applied; written by those handlers, not by `apply_nv_global_attr` itself.
+- `entity+182` bits 0, 5, 6 (mask `0x61`) — the canonical "is kernel" predicate read by every downstream pass.
+- `entity+182` bit 7 (mask `0x80`) — the combined HD flag, set automatically after `0x61` is applied.
+- `entity+256` — optional launch-config struct pointer if `__launch_bounds__`/`__cluster_dims__`/`__block_size__` were also applied; written by those handlers, not by `apply_nv_global_attr` itself.
 
 Three downstream emitters react to `byte_182 & 0x40`:
 
-1. **Kernel stub generator** -- emits the host-side launch wrapper (`<<<...>>>` lowering, `cudaPushCallConfiguration`/`cudaLaunchKernel` sequence) into `.int.c`. The stub references the kernel's mangled name and the launch-config struct fields.
-2. **Device-IL marker** (`mark_to_keep_in_il`) -- sets the prefix byte bit 7 (`0x80`, "keep in IL") on the routine entry so the device-side IL output retains the kernel definition.
-3. **Device-host splitter** -- ensures the function body is preserved in the device IL while the host IL retains only the stub.
+1. **Kernel stub generator** — emits the host-side launch wrapper (`<<<...>>>` lowering, `cudaPushCallConfiguration`/`cudaLaunchKernel` sequence) into `.int.c`. The stub references the kernel's mangled name and the launch-config struct fields.
+2. **Device-IL marker** (`mark_to_keep_in_il`) — sets the prefix byte bit 7 (`0x80`, "keep in IL") on the routine entry so the device-side IL output retains the kernel definition.
+3. **Device-host splitter** — ensures the function body is preserved in the device IL while the host IL retains only the stub.
 
 There is no `kind 25` re-emission for `__global__` and no preserved chain entry. The kernel-ness of the function is conveyed downstream entirely through entity bytes; cicc reads them via the host stub's serialization and the device IL's keep-in-il marking.
 
@@ -538,11 +538,11 @@ There is no `kind 25` re-emission for `__global__` and no preserved chain entry.
 
 ## Cross-References
 
-- [Execution Spaces](../cuda/execution-spaces.md) -- bitfield layout, conflict matrix, virtual override checking
-- [Attribute System Overview](overview.md) -- dispatch table, attribute node structure, application pipeline
-- [__grid_constant__](grid-constant.md) -- the parameter attribute that interacts with the 3669 check
-- [Launch Configuration Attributes](launch-config.md) -- `__launch_bounds__`, `__cluster_dims__`, `__block_size__` (post-validation errors 3534, 3707, 3715, 3719, 3695)
-- [Entity Node Layout](../structs/entity-node.md) -- full byte map with all CUDA fields
-- [Kernel Stubs](../cuda/kernel-stubs.md) -- host-side stub generation triggered by `byte_182 & 0x40`
-- [CUDA Template Restrictions](../edg/template-cuda.md) -- template argument type restrictions for `__global__` instantiations
-- [Diagnostics Overview](../diagnostics/overview.md) -- error emission functions and severity levels
+- [Execution Spaces](../cuda/execution-spaces.md) — bitfield layout, conflict matrix, virtual override checking
+- [Attribute System Overview](overview.md) — dispatch table, attribute node structure, application pipeline
+- [__grid_constant__](grid-constant.md) — the parameter attribute that interacts with the 3669 check
+- [Launch Configuration Attributes](launch-config.md) — `__launch_bounds__`, `__cluster_dims__`, `__block_size__` (post-validation errors 3534, 3707, 3715, 3719, 3695)
+- [Entity Node Layout](../structs/entity-node.md) — full byte map with all CUDA fields
+- [Kernel Stubs](../cuda/kernel-stubs.md) — host-side stub generation triggered by `byte_182 & 0x40`
+- [CUDA Template Restrictions](../edg/template-cuda.md) — template argument type restrictions for `__global__` instantiations
+- [Diagnostics Overview](../diagnostics/overview.md) — error emission functions and severity levels

@@ -1,6 +1,6 @@
 # PTX Input & JIT
 
-When nvlink encounters PTX (Parallel Thread Execution) assembly source as input -- either as a standalone `.ptx` file on the command line, as a type-1 member extracted from a fatbin container, or as the text output of a cicc-LTO whole-program compilation -- it cannot merge the text directly into the output ELF. PTX is architecture-neutral assembly; it must be compiled to SASS machine code for a specific SM target before linking. nvlink handles this by invoking the embedded ptxas backend (the same compiler backend that the standalone `ptxas` tool uses) entirely in-process, through a single function-pointer entry point at `qword_2A77DD0` (bound to `sub_52E060` by `sub_4FFC30`). The resulting cubin is then fed back into the normal merge pipeline as if it had been a cubin input from the start.
+When nvlink encounters PTX (Parallel Thread Execution) assembly source as input — either as a standalone `.ptx` file on the command line, as a type-1 member extracted from a fatbin container, or as the text output of a cicc-LTO whole-program compilation — it cannot merge the text directly into the output ELF. PTX is architecture-neutral assembly; it must be compiled to SASS machine code for a specific SM target before linking. nvlink handles this by invoking the embedded ptxas backend (the same compiler backend that the standalone `ptxas` tool uses) entirely in-process, through a single function-pointer entry point at `qword_2A77DD0` (bound to `sub_52E060` by `sub_4FFC30`). The resulting cubin is then fed back into the normal merge pipeline as if it had been a cubin input from the start.
 
 This page documents the complete path: PTX detection, file loading, the three compilation entry points (relocatable, whole-program, and fatbin-embedded), the compilation context object, the argv construction, option forwarding, embedded ptxas invocation, return-code translation, Mercury post-processing, and error handling.
 
@@ -16,10 +16,10 @@ This page documents the complete path: PTX detection, file loading, the three co
 | `sub_4BD760` | `ptx_compile_relocatable` | Top-level relocatable PTX compile (produces relocatable cubin) |
 | `sub_4BD4E0` | `ptx_compile_whole_program` | Top-level whole-program PTX compile (produces final cubin) |
 | `sub_4BD240` | `fatbin_member_compile` | Compiles PTX (or copies cubin) extracted from a fatbin container |
-| `sub_4BD0A0` | `fatbin_arch_match` | Creates context, loads fatbin, runs arch matching -- returns matched content |
+| `sub_4BD0A0` | `fatbin_arch_match` | Creates context, loads fatbin, runs arch matching — returns matched content |
 | `sub_4BDB90` | `ptxas_compile_engine` | Core engine: builds argv, invokes embedded ptxas, runs Mercury finalizer |
 | `sub_4BE350` | `ptxas_dispatch` | Thin dispatcher that validates context and calls `sub_4BDB90` |
-| `sub_4BE3D0` | `ptxas_get_stderr` | Reads `context+152` -- ptxas diagnostic string |
+| `sub_4BE3D0` | `ptxas_get_stderr` | Reads `context+152` — ptxas diagnostic string |
 | `sub_4BE400` | `ptxas_cleanup_context` | Frees cubin, option strings, linked list items, and context itself |
 | `sub_4CDD60` | `container_create` | Allocates a 168-byte context, writes magic `0x1464243BC` |
 | `sub_4CE040` | `container_validate` | Validates that an opaque pointer is a valid container |
@@ -38,7 +38,7 @@ This page documents the complete path: PTX detection, file loading, the three co
 
 ## PTX Detection (sub\_4CDF80)
 
-PTX detection is one of the content-sniffing predicates invoked from `main()` during the [file-type detection](file-type-detection.md) phase. The function examines raw text content for the `.version` directive -- the mandatory first semantic token in any PTX source file -- while tolerating leading whitespace, C-style line comments, and C-style block comments.
+PTX detection is one of the content-sniffing predicates invoked from `main()` during the [file-type detection](file-type-detection.md) phase. The function examines raw text content for the `.version` directive — the mandatory first semantic token in any PTX source file — while tolerating leading whitespace, C-style line comments, and C-style block comments.
 
 ### Algorithm
 
@@ -100,7 +100,7 @@ void skip_comment(char **pp) {
 }
 ```
 
-An unterminated block comment causes the outer loop to exit with `p` pointing at the null terminator, which makes the final `memcmp(p, ".version", 8)` return non-zero -- detection correctly fails on truncated files.
+An unterminated block comment causes the outer loop to exit with `p` pointing at the null terminator, which makes the final `memcmp(p, ".version", 8)` return non-zero — detection correctly fails on truncated files.
 
 ### Dispatch in main()
 
@@ -145,7 +145,7 @@ For fatbin-extracted PTX, the content is already in memory as the output of the 
 
 ## The Compilation Context (168-byte "Container")
 
-Both the relocatable and whole-program paths share a common opaque structure -- internally called a *container* -- allocated by `sub_4CDD60` and freed by `sub_4BE400`. The same structure is used by `sub_4BD0A0` for pure fatbin extraction (arch matching only, no compile) and by `sub_4BD240` for compiling content already extracted from a fatbin, which is why the object is named generically.
+Both the relocatable and whole-program paths share a common opaque structure — internally called a *container* — allocated by `sub_4CDD60` and freed by `sub_4BE400`. The same structure is used by `sub_4BD0A0` for pure fatbin extraction (arch matching only, no compile) and by `sub_4BD240` for compiling content already extracted from a fatbin, which is why the object is named generically.
 
 ### Layout
 
@@ -153,27 +153,27 @@ Offsets verified by inspecting every setter (`sub_4CE2F0`, `sub_4CE3B0`, `sub_4C
 
 | Offset | Size | Field | Writer | Reader | Notes |
 |---|---|---|---|---|---|
-| 0 | 8 | `magic` | `sub_4CDD60` | every setter | Constant `0x1464243BC` -- validates the object |
+| 0 | 8 | `magic` | `sub_4CDD60` | every setter | Constant `0x1464243BC` — validates the object |
 | 8 | 4 | `arch` | `sub_4CE2F0` | `sub_4BDB90`, `sub_42AF40` | SM architecture number (e.g., 90 for sm_90) |
 | 12 | 4 | `version` | `sub_4CE3B0` | `sub_4BDB90` line 247 | Fatbin compatibility version (from `dword_2A5B528`) |
 | 16 | 8 | `flags` | `sub_4CE640` | `sub_4BDB90` line 265 (`& 2`) | Mode-flag word. Bit tests observed: `& 2` in Mercury path |
 | 24 | 8 | `extra_options_1` | `sub_4CE8C0` line 446/946 | `sub_4BDB90` line 131 (`v27`) | Option string harvested from matched fatbin member header |
 | 32 | 8 | `extra_options_2` | `sub_4CE3E0` | `sub_4BDB90` line 132 (`v28`) | Accumulator for options appended via `sub_4CE3E0` (`-c`, `-m64`, `-g`, -Xptxas tokens) |
-| 40 | 8 | `?` | -- | -- | Used in alternative extra-options path |
-| 48 | 8 | `?` | -- | `sub_4BDB90` line 264 (`v9`) | Checked for `-threads` substring during Mercury path |
-| 56 | 8 | `?` | -- | `sub_4BE400` (`a1[7]`) | Freed on cleanup -- auxiliary option buffer |
+| 40 | 8 | `?` | — | — | Used in alternative extra-options path |
+| 48 | 8 | `?` | — | `sub_4BDB90` line 264 (`v9`) | Checked for `-threads` substring during Mercury path |
+| 56 | 8 | `?` | — | `sub_4BE400` (`a1[7]`) | Freed on cleanup — auxiliary option buffer |
 | 72 | 8 | `content_ptr` | `sub_4CE070` | `sub_4BDB90` line 97 | Input content pointer (PTX text, fatbin bytes, cubin bytes, NVVM IR) |
 | 80 | 4 | `content_type` | `sub_4CE070` | `sub_4BDB90` line 98 | 1=compiled (LTO-IR/cubin), 2=fatbin, 3=ELF cubin, 4=PTX, 8=NVVM |
 | 88 | 8 | `matched_data` | `sub_4CE8C0` | `sub_4CE670`, `sub_4BDB90` line 91 | Content extracted by arch matching |
 | 96 | 4 | `matched_type` | `sub_4CE8C0` | `sub_4CE670`, `sub_4BDB90` line 79 | 1, 8, or 16 observed. 16 = Mercury-class result (triggers finalizer) |
 | 104 | 8 | `matched_size` | `sub_4CE8C0` | `sub_4CE670`, `sub_4BDB90` line 92 | Size in bytes of matched content |
 | 120 | 8 | `cubin_output` | `sub_4BDB90` line 322 | `sub_4BE400` | Compiled cubin pointer (freed via `qword_2A77DD0(4, ...)`) |
-| 128 | 8 | `?` | -- | `sub_4BE400` (`a1[16]`) | Auxiliary output buffer, freed with `sub_431000` |
+| 128 | 8 | `?` | — | `sub_4BE400` (`a1[16]`) | Auxiliary output buffer, freed with `sub_431000` |
 | 136 | 8 | `obfuscation_key` | `sub_4CE8C0`/fatbin walker | `sub_4BDB90` line 100 | Non-zero when PTX was obfuscated; emits warning + `-ok`/`-ptxlen` |
 | 144 | 16 | `option_list` | `sub_4CE3E0` line 84 | `sub_4BE400` (`a1[18]`) | Linked list head for arena-tracked option strings |
 | 152 | 8 | `stderr_buf` | `sub_4BDB90` via ptxas | `sub_4BE3D0` | Last diagnostic string from ptxas |
 | 160 | 1 | `accelerated` | `sub_4CE380` | `sub_4BDB90` line 130 | sm_XXa accelerated-arch flag (passed to `sub_44E530` arch DB lookup) |
-| 161 | 1 | `?` | -- | `sub_4CE2F0` line 18 | Secondary arch flag (read into `v4` and passed to `sub_44E530`) |
+| 161 | 1 | `?` | — | `sub_4CE2F0` line 18 | Secondary arch flag (read into `v4` and passed to `sub_44E530`) |
 
 ## Relocatable Compilation (sub\_4BD760)
 
@@ -258,7 +258,7 @@ Before the memcpy step, `sub_4BD760` saves a jump buffer via `_setjmp(env)` and 
 
 ## Whole-Program Compilation (sub\_4BD4E0)
 
-This entry is used when nvlink operates in "whole program compile" mode -- logged by `main()` as `"whole program compile\n"` to stderr when `dword_2A5F308 & 1` (verbose flag) is set. The function is structurally similar to `sub_4BD760` but has three key differences.
+This entry is used when nvlink operates in "whole program compile" mode — logged by `main()` as `"whole program compile\n"` to stderr when `dword_2A5F308 & 1` (verbose flag) is set. The function is structurally similar to `sub_4BD760` but has three key differences.
 
 ### Differences from Relocatable Mode
 
@@ -268,7 +268,7 @@ This entry is used when nvlink operates in "whole program compile" mode -- logge
 | `-g` flag appended | `if (debug_info)` | `if (debug_info)` (same) |
 | `-m64`/`-m32` appended | Yes | Yes |
 | Direct-copy path (matched_type == 1) | Rejoins main flow and does arena memcpy | Returns 1 immediately (signal: content needs further processing) |
-| setjmp around memcpy | Yes | No -- simpler linear flow |
+| setjmp around memcpy | Yes | No — simpler linear flow |
 | Arch mismatch return | 7 | 5 + 2 = 7 (computed as `2 * (v17 == 3) + 5`) |
 
 The whole-program mode is invoked from `main()` at line 1165 and is specifically for taking the PTX text produced by the cicc-LTO pipeline and turning it into a final, non-relocatable cubin. Because LTO has already done whole-program optimization, the result doesn't need `-c` (which would prepare the cubin for further linking); ptxas produces the final SASS directly.
@@ -278,7 +278,7 @@ The whole-program mode is invoked from `main()` at line 1165 and is specifically
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Direct-copy early exit (`matched_type != 1`) -- caller should handle |
+| 1 | Direct-copy early exit (`matched_type != 1`) — caller should handle |
 | 5 | Error |
 | 7 | Arch mismatch |
 | 8 | ptxas failure without diagnostic |
@@ -287,8 +287,8 @@ The whole-program mode is invoked from `main()` at line 1165 and is specifically
 
 When PTX is encountered inside a fatbin container, the two-phase split is different:
 
-1. **Phase 1 -- Arch match**: `sub_42AF40` calls `sub_4BD0A0` to create a container, load the fatbin bytes, run `sub_4CE8C0` architecture matching, and extract `(matched_data, matched_type, matched_size)`. `sub_4BD0A0` does *not* compile -- it returns the container handle to the caller.
-2. **Phase 2 -- Compile-or-copy**: `sub_42AF40` then calls `sub_4BD240` passing the container and the extracted content. Depending on `matched_type`, this either compiles (PTX path) or directly copies the already-compiled cubin.
+1. **Phase 1 — Arch match**: `sub_42AF40` calls `sub_4BD0A0` to create a container, load the fatbin bytes, run `sub_4CE8C0` architecture matching, and extract `(matched_data, matched_type, matched_size)`. `sub_4BD0A0` does *not* compile — it returns the container handle to the caller.
+2. **Phase 2 — Compile-or-copy**: `sub_42AF40` then calls `sub_4BD240` passing the container and the extracted content. Depending on `matched_type`, this either compiles (PTX path) or directly copies the already-compiled cubin.
 
 ### sub\_4BD240 Algorithm
 
@@ -334,11 +334,11 @@ direct_copy:
 }
 ```
 
-Note that unlike `sub_4BD760`, this function does not call `sub_4CE380` (set accelerated), nor does it re-run `sub_4CE3B0`/`sub_4CE2F0`/`sub_4CE070` -- all of that was done by `sub_4BD0A0` during phase 1, including the arch DB validation and the `sub_4CE8C0` matching. `sub_4BD240` only appends compilation options and invokes ptxas.
+Note that unlike `sub_4BD760`, this function does not call `sub_4CE380` (set accelerated), nor does it re-run `sub_4CE3B0`/`sub_4CE2F0`/`sub_4CE070` — all of that was done by `sub_4BD0A0` during phase 1, including the arch DB validation and the `sub_4CE8C0` matching. `sub_4BD240` only appends compilation options and invokes ptxas.
 
 ## The Embedded ptxas Pipeline
 
-The actual PTX-to-SASS compilation is performed by `sub_4BDB90`, the core engine behind the `sub_4BE350` dispatcher. This function constructs a command-line argument vector and invokes the embedded ptxas compiler backend through `qword_2A77DD0`. The function pointer is initialized by `sub_4FFC30` to `sub_52E060` -- the entry point of the in-process ptxas library.
+The actual PTX-to-SASS compilation is performed by `sub_4BDB90`, the core engine behind the `sub_4BE350` dispatcher. This function constructs a command-line argument vector and invokes the embedded ptxas compiler backend through `qword_2A77DD0`. The function pointer is initialized by `sub_4FFC30` to `sub_52E060` — the entry point of the in-process ptxas library.
 
 ### Dispatcher (sub\_4BE350)
 
@@ -488,10 +488,10 @@ int ptxas_compile_engine(container *ctx, void **output, size_t *output_size) {
 
 Extracted from the binary at `.rodata`:
 
-- **`off_1D48AE8`** -- first pointer is `"-arch"` (address `0x1D326F4`)
-- **`off_1D48AF0`** -- first pointer is `"--input-as-string"` (address `0x1D48A85`)
+- **`off_1D48AE8`** — first pointer is `"-arch"` (address `0x1D326F4`)
+- **`off_1D48AF0`** — first pointer is `"--input-as-string"` (address `0x1D48A85`)
 
-Both tables contain subsequent function-pointer slots into the `sub_4BE970`/`sub_4BE980`/`sub_4BE990`/`sub_4BE9A0`/`sub_4BE9B0`/`sub_4BE9B7` range -- these are argv-tracking helper callbacks (likely deallocation/trace hooks installed by the ptxas library via a registration protocol). The first PTX-related slot layout is therefore:
+Both tables contain subsequent function-pointer slots into the `sub_4BE970`/`sub_4BE980`/`sub_4BE990`/`sub_4BE9A0`/`sub_4BE9B0`/`sub_4BE9B7` range — these are argv-tracking helper callbacks (likely deallocation/trace hooks installed by the ptxas library via a registration protocol). The first PTX-related slot layout is therefore:
 
 | Slot | Content | Source |
 |---|---|---|
@@ -505,7 +505,7 @@ Both tables contain subsequent function-pointer slots into the `sub_4BE970`/`sub
 | ... | `"-ok"`, `0x<hex_key>` | If obfuscation_key != 0 |
 | ... | `"-ptxlen"`, `0x<hex_len>` | If obfuscation_key != 0 and ptx_len != 0 |
 
-The `--input-as-string` flag tells the embedded ptxas to read the PTX source directly from the next argv pointer (treated as a char* buffer) rather than opening a file -- this is how the in-process compilation path avoids writing the PTX to a temporary file.
+The `--input-as-string` flag tells the embedded ptxas to read the PTX source directly from the next argv pointer (treated as a char* buffer) rather than opening a file — this is how the in-process compilation path avoids writing the PTX to a temporary file.
 
 ### Return-Code Translation (dword\_1D48AC0)
 
@@ -530,7 +530,7 @@ dword_1D48AC0 = { 0, 4, 4, 6, 6, 6, 5, 7, 8 }
 
 ### Mercury Post-Compilation (sub\_4748F0)
 
-When the target SM is >= 100 (Blackwell and beyond), the initial cubin emitted by the embedded ptxas requires additional post-processing to produce the final Mercury/CapMerc binary format. `sub_4BDB90` detects this by checking the content type after the compile: if `matched_type == 16`, it invokes `sub_4748F0` -- the same in-process Mercury finalizer used by the post-link phase via `sub_4275C0`.
+When the target SM is >= 100 (Blackwell and beyond), the initial cubin emitted by the embedded ptxas requires additional post-processing to produce the final Mercury/CapMerc binary format. `sub_4BDB90` detects this by checking the content type after the compile: if `matched_type == 16`, it invokes `sub_4748F0` — the same in-process Mercury finalizer used by the post-link phase via `sub_4275C0`.
 
 The finalizer setup includes parsing a `-threads` substring from the accumulated options (via `strstr` + `strtol`) to configure parallel finalization threads, and populating a 152-byte configuration block with Mercury-specific parameters before calling `sub_4748F0`. Failure of the finalizer returns diagnostic code 9 via `sub_1CEF420` (error-message translator).
 
@@ -540,7 +540,7 @@ See [Mercury Finalizer](../mercury/fnlzr.md) for the 10-phase finalization pipel
 
 nvlink forwards several option categories to the embedded ptxas. The forwarding logic is centralized in `sub_429BA0`, which builds the space-delimited option string that `sub_4BDB90` later tokenizes. The complete end-to-end matrix (including the parallel `-Xnvvm` path that feeds cicc instead of ptxas, and the per-module consensus mechanism for math-mode flags carried inside fatbin members) is documented in [Option Forwarding to cicc and ptxas](../lto/option-forwarding.md); this section focuses only on the ptxas-bound subset that reaches `sub_4BDB90` via `context+32`.
 
-### sub\_429BA0 -- Option String Construction
+### sub\_429BA0 — Option String Construction
 
 The function reads `qword_2A5F238` (the accumulated `-Xptxas` list) and walks its entries via the `sub_464740`/`sub_464A80`/`sub_464A90`/`sub_464AA0`/`sub_464AC0` iterator protocol (an internal container-walker pattern used across nvlink). Each entry is concatenated into a single `char *` with space separators. Then `dword_2A5F22C` (`--maxrregcount`) is appended if > 0, and a number of other global flags contribute additional tokens.
 
@@ -580,12 +580,12 @@ Several nvlink-level CLI flags are automatically translated to ptxas options by 
 When the embedded ptxas reports an error:
 
 1. `sub_4BE350` (or `sub_4BDB90` directly) returns a non-zero status.
-2. The caller (`sub_4BD760`, `sub_4BD4E0`, or `sub_4BD240`) allocates a local `char *s = NULL` and calls `sub_4BE3D0(ctx, &s)`, which simply reads `*(ctx + 152)` -- the stderr string the ptxas backend populated during the failed compile.
+2. The caller (`sub_4BD760`, `sub_4BD4E0`, or `sub_4BD240`) allocates a local `char *s = NULL` and calls `sub_4BE3D0(ctx, &s)`, which simply reads `*(ctx + 152)` — the stderr string the ptxas backend populated during the failed compile.
 3. If `s != NULL`, it is written to the process stderr with `fputs(s, stderr)`.
 4. `sub_4BE400(ctx)` is invoked, which walks the cleanup chain:
    - Frees `context+24` (extra_options_1) via `sub_431000`
    - Frees `context+56` via `sub_431000`
-   - Frees `context+120` (cubin_output) via `qword_2A77DD0(4, ...)` -- this returns the cubin buffer to the ptxas backend's allocator
+   - Frees `context+120` (cubin_output) via `qword_2A77DD0(4, ...)` — this returns the cubin buffer to the ptxas backend's allocator
    - Frees `context+128` via `sub_431000`
    - Walks the linked list at `context+144` and frees each entry's `[1]` field via `sub_431000`
    - Calls `sub_464520` on the list head, then `sub_431000` on the context itself
@@ -597,15 +597,15 @@ If `sub_4CE8C0` returns 3 (arch DB lookup rejected the PTX `.target` directive),
 
 ### setjmp/longjmp Recovery
 
-`sub_4BD760`, `sub_4BD240`, `sub_4CDD60`, `sub_4CE3E0`, `sub_4CE070`, and `sub_4CE670` each save a `jmp_buf` via `_setjmp(env)` and install it in the error-descriptor slot (`sub_44F410` returns the descriptor at the current execution context). A fatal error deep inside the arena allocator or the ptxas backend (assertion, OOM) triggers `longjmp` back to the nearest saved point. The recovery branch clears the context, sets the error flag, and returns the appropriate error code without crashing the process. The surrounding state -- in particular the prior error descriptor and the two-byte status flags -- is saved in local variables (`v45`, `v46`, `v47`, `v48`, etc.) and restored before any early return.
+`sub_4BD760`, `sub_4BD240`, `sub_4CDD60`, `sub_4CE3E0`, `sub_4CE070`, and `sub_4CE670` each save a `jmp_buf` via `_setjmp(env)` and install it in the error-descriptor slot (`sub_44F410` returns the descriptor at the current execution context). A fatal error deep inside the arena allocator or the ptxas backend (assertion, OOM) triggers `longjmp` back to the nearest saved point. The recovery branch clears the context, sets the error flag, and returns the appropriate error code without crashing the process. The surrounding state — in particular the prior error descriptor and the two-byte status flags — is saved in local variables (`v45`, `v46`, `v47`, `v48`, etc.) and restored before any early return.
 
 ### NVVM Rejection
 
-If PTX dispatch is reached with a context whose `matched_type == 8` (NVVM IR), `sub_4BDB90` emits the diagnostic "NVVM" through `sub_467460(dword_2A5BF80, "NVVM")` and returns 3. This is a defensive check -- NVVM inputs should have been caught earlier in `main()` and routed to the cicc library via [LTO Integration](../lto/libnvvm-integration.md) -- but if a fatbin member is misclassified, this path prevents the embedded ptxas from being fed IR it cannot consume.
+If PTX dispatch is reached with a context whose `matched_type == 8` (NVVM IR), `sub_4BDB90` emits the diagnostic "NVVM" through `sub_467460(dword_2A5BF80, "NVVM")` and returns 3. This is a defensive check — NVVM inputs should have been caught earlier in `main()` and routed to the cicc library via [LTO Integration](../lto/libnvvm-integration.md) — but if a fatbin member is misclassified, this path prevents the embedded ptxas from being fed IR it cannot consume.
 
 ### PTX Obfuscation Warning
 
-When `context+136` is non-zero (set by the fatbin walker when it encounters an obfuscated PTX member), `sub_4BDB90` emits the warning `"PTX Obfuscation"` via `sub_467460(dword_2A5BEB0, ...)` before proceeding with compilation. The obfuscation key is then passed to ptxas via the `-ok 0x<key>` argument and the original PTX length via `-ptxlen 0x<len>` -- this protocol allows the embedded ptxas to deobfuscate the PTX internally before compilation.
+When `context+136` is non-zero (set by the fatbin walker when it encounters an obfuscated PTX member), `sub_4BDB90` emits the warning `"PTX Obfuscation"` via `sub_467460(dword_2A5BEB0, ...)` before proceeding with compilation. The obfuscation key is then passed to ptxas via the `-ok 0x<key>` argument and the original PTX length via `-ptxlen 0x<len>` — this protocol allows the embedded ptxas to deobfuscate the PTX internally before compilation.
 
 ## Difference Between PTX Input and LTO IR Input
 
@@ -624,9 +624,9 @@ Both PTX and NVVM LTO IR ultimately produce device SASS, but they travel differe
 | Post-processing | Optional Mercury finalizer | cicc-LTO emits PTX which is then compiled via `sub_4BD760`/`sub_4BD4E0` |
 | Merged path | Direct to merge pipeline | Producer of PTX that re-enters the PTX compile path |
 
-The second-to-last row is the critical one: LTO IR eventually *becomes* PTX as output of the cicc-LTO whole-program compile, and that PTX is then fed back through the embedded-ptxas path described on this page. The "compile linked lto ir:" stderr message in `main()` (line 941) is printed just before this re-entry. So LTO input and PTX input ultimately converge on `sub_4BDB90` -- the LTO path just has an extra libnvvm stage in front.
+The second-to-last row is the critical one: LTO IR eventually *becomes* PTX as output of the cicc-LTO whole-program compile, and that PTX is then fed back through the embedded-ptxas path described on this page. The "compile linked lto ir:" stderr message in `main()` (line 941) is printed just before this re-entry. So LTO input and PTX input ultimately converge on `sub_4BDB90` — the LTO path just has an extra libnvvm stage in front.
 
-The `sub_4BDB90` engine actively rejects type-8 content (`return 3` with "NVVM" diagnostic), ensuring that NVVM IR can never reach the embedded ptxas directly -- it must first pass through the libnvvm lowering stage.
+The `sub_4BDB90` engine actively rejects type-8 content (`return 3` with "NVVM" diagnostic), ensuring that NVVM IR can never reach the embedded ptxas directly — it must first pass through the libnvvm lowering stage.
 
 See [LTO Integration](../lto/libnvvm-integration.md) and [LTO Overview](../lto/overview.md) for the complete LTO pipeline.
 
@@ -640,21 +640,21 @@ nvlink -extract kernel.ptx -m64 -arch=sm_90 -o kernel_extracted.ptx
 
 The file is written via `fopen(path, "w")` when the extracted name contains `.ptx`, or `fopen(path, "wb")` otherwise. The `printf` format string appears at `main()` line 1471.
 
-For NVVM IR, the log entry is `nvlink -lto-add-module <name>.nvvm` at line 279 of `sub_42AF40`. The verbose-keep path never logs the exact argv used for the embedded-ptxas invocation -- instead the reconstructed equivalent is what the user sees. To capture the actual embedded-ptxas arguments, one would need to hook `qword_2A77DD0` or place a breakpoint at `sub_4BDB90+0x...` where the `qword_2A77DD0` call is issued.
+For NVVM IR, the log entry is `nvlink -lto-add-module <name>.nvvm` at line 279 of `sub_42AF40`. The verbose-keep path never logs the exact argv used for the embedded-ptxas invocation — instead the reconstructed equivalent is what the user sees. To capture the actual embedded-ptxas arguments, one would need to hook `qword_2A77DD0` or place a breakpoint at `sub_4BDB90+0x...` where the `qword_2A77DD0` call is issued.
 
 ## Result Handling
 
 After successful compilation, the cubin buffer produced by the embedded ptxas lives in the ptxas backend's own allocator. `sub_4BDB90` stores the pointer into `context+120` (`cubin_output`). The wrapper function (`sub_4BD760` / `sub_4BD4E0` / `sub_4BD240`) then allocates a fresh buffer from the nvlink arena (`sub_4307C0`) sized to `matched_size` and memcpy's the cubin into it. This copy step is important because:
 
 1. The nvlink arena outlives individual compilation contexts and has well-defined cleanup semantics at program exit.
-2. `sub_4BE400` (context cleanup) calls `qword_2A77DD0(4, ctx->cubin_output, ...)` which returns the original cubin buffer to the ptxas allocator -- the memcpy ensures the caller has an independent copy before cleanup.
+2. `sub_4BE400` (context cleanup) calls `qword_2A77DD0(4, ctx->cubin_output, ...)` which returns the original cubin buffer to the ptxas allocator — the memcpy ensures the caller has an independent copy before cleanup.
 
 The cubin pointer is then returned to `main()`, which passes it through:
 
-1. `sub_43D970` -- validate ELF magic and `e_machine == 190` (EM_CUDA)
-2. `sub_426570` -- validate architecture compatibility (`e_flags` vs link target)
-3. `sub_4275C0` -- optional Mercury finalization for sm >= 100
-4. `sub_42A680` -- register the module with the link table
+1. `sub_43D970` — validate ELF magic and `e_machine == 190` (EM_CUDA)
+2. `sub_426570` — validate architecture compatibility (`e_flags` vs link target)
+3. `sub_4275C0` — optional Mercury finalization for sm >= 100
+4. `sub_42A680` — register the module with the link table
 5. The merge phase ([Merge](../pipeline/merge.md)) then treats it identically to any directly-provided cubin input.
 
 ## Diagnostic Strings
@@ -681,6 +681,6 @@ Strings located via `.rodata` cross-references:
 - **Post-processing**: [Mercury Finalizer](../mercury/fnlzr.md) for sm >= 100 output
 - **Backend**: [Embedded ptxas](../ptxas/overview.md) documents the in-process ptxas library internals
 - **Related inputs**: [Fatbin Extraction](fatbin-extraction.md) (shares the 168-byte container object); [LTO Integration](../lto/libnvvm-integration.md) and [LTO Overview](../lto/overview.md) (alternative path for NVVM IR that eventually re-enters here)
-- **Container struct**: [168-Byte Input Container](container-struct.md) -- dedicated page documenting the field-offset table, magic, and lifecycle of the opaque object shared by all four input entry points
+- **Container struct**: [168-Byte Input Container](container-struct.md) — dedicated page documenting the field-offset table, magic, and lifecycle of the opaque object shared by all four input entry points
 - **Architecture validation**: [Architecture Profiles](../targets/arch-profiles.md) (the `sub_44E530`/`sub_486EA0` arch DB used by `sub_4CE2F0`)
 - **Options surface**: [CLI Options](../pipeline/cli-options.md) covers `-Xptxas`, `-maxrregcount`, `-debug`, `-suppress-debug-info`, `--verbose-keep`

@@ -2,9 +2,9 @@
 
 nvlink does **not** have a traditional mode selector in the style of `ld`'s `-r` versus `-dc`. Instead, the "mode" of a given invocation emerges from a combination of independent boolean and enumeration globals set during option parsing, each of which gates a different branch inside the 1,936-line `main()` function at `0x409800`. There are three layers:
 
-1. **Top-level dispatch** -- `dword_2A77DC0` (the `-ghls` mode) chooses between the device-link pipeline and two host-linker-script generation paths. This is the only dispatch that completely skips the device linker.
-2. **Device-link sub-mode** -- when top-level dispatch selects device link, several globals (`byte_2A5F1E8`, `byte_2A5F288`, `byte_2A5F286`, `byte_2A5F222`, `byte_2A5F2C1`, `byte_2A5F225`) together decide which pipeline phases actually execute and what the output format is. The compilation-mode enum `dword_2A5B528` (0/2/4/6) summarises some of this.
-3. **Side-effect modes** -- `byte_2A5F29A` (emit-ptx), `byte_2A5F216`/`byte_2A5F215` (dump-callgraph), `qword_2A5F2D0` (dot-file), `qword_2A5F2E0` (register-link-binaries) do not themselves skip phases, but they add extra output files or cause LTO to stop early at PTX.
+1. **Top-level dispatch** — `dword_2A77DC0` (the `-ghls` mode) chooses between the device-link pipeline and two host-linker-script generation paths. This is the only dispatch that completely skips the device linker.
+2. **Device-link sub-mode** — when top-level dispatch selects device link, several globals (`byte_2A5F1E8`, `byte_2A5F288`, `byte_2A5F286`, `byte_2A5F222`, `byte_2A5F2C1`, `byte_2A5F225`) together decide which pipeline phases actually execute and what the output format is. The compilation-mode enum `dword_2A5B528` (0/2/4/6) summarises some of this.
+3. **Side-effect modes** — `byte_2A5F29A` (emit-ptx), `byte_2A5F216`/`byte_2A5F215` (dump-callgraph), `qword_2A5F2D0` (dot-file), `qword_2A5F2E0` (register-link-binaries) do not themselves skip phases, but they add extra output files or cause LTO to stop early at PTX.
 
 This page enumerates every nvlink operational mode, the CLI flag(s) that enable it, the pipeline phases it runs versus skips, and the output format produced. All line numbers reference `decompiled/main_0x409800.c` and `decompiled/sub_427AE0_0x427ae0.c` unless noted.
 
@@ -132,7 +132,7 @@ The `(dword_2A77DC0 - 1) > 1` test at line 385 is an unsigned comparison: mode 0
 
 ## Mode Catalog
 
-### Mode A -- Full Device Link (default)
+### Mode A — Full Device Link (default)
 
 The default mode when no `-ghls` is specified and `byte_2A5F1E8 == 0`.
 
@@ -152,7 +152,7 @@ The default mode when no `-ghls` is specified and `byte_2A5F1E8 == 0`.
 
 **Typical use case**: Static device linking of cubin/PTX/fatbin objects into a single executable device image for CUDA runtime registration.
 
-### Mode B -- Relocatable Device Link (`-r`)
+### Mode B — Relocatable Device Link (`-r`)
 
 Triggered by `-r` or `--relocatable-link`. The output is a relocatable ELF that can be further linked.
 
@@ -163,7 +163,7 @@ Triggered by `-r` or `--relocatable-link`. The output is a relocatable ELF that 
 | `byte_2A5F1E8` | 1 |
 | `byte_2A5F212` (ignore-host-info) | forced to 1 at `sub_427AE0` line 1116 |
 | Implementing function | `main` at `0x409800`, same path as Mode A |
-| Output ELF type | 1 (ET_REL), via `(byte_2A5F1E8 == 0) + 1 = 0 + 1 = 1` at line 486 -- **see note below** |
+| Output ELF type | 1 (ET_REL), via `(byte_2A5F1E8 == 0) + 1 = 0 + 1 = 1` at line 486 — **see note below** |
 | Output format | Relocatable device object with unresolved symbols and relocation tables |
 | Exit code path | `exit(0)` or `exit(-1)` |
 
@@ -178,7 +178,7 @@ Triggered by `-r` or `--relocatable-link`. The output is a relocatable ELF that 
 
 **Typical use case**: Partial device linking where the output will be combined with other device objects in a later nvlink invocation, or embedded into an archive.
 
-### Mode C -- LTO Whole-Program Link (`-lto`)
+### Mode C — LTO Whole-Program Link (`-lto`)
 
 Triggered by `-lto` or `--link-time-opt` (or the alias `-dlto`/`--dlto`). Inputs are NVVM IR / LTO IR modules; nvlink calls into `libnvvm.so` to compile them to PTX, then to cubin, then links normally.
 
@@ -188,7 +188,7 @@ Triggered by `-lto` or `--link-time-opt` (or the alias `-dlto`/`--dlto`). Inputs
 | `dword_2A77DC0` | 0 |
 | `byte_2A5F288` | 1 |
 | `byte_2A5F286` (partial LTO) | 0 (whole program) |
-| `dword_2A5B528` (compilation mode) | 4 (LTO) -- set at `sub_427AE0` line 1163 (`LABEL_110`) |
+| `dword_2A5B528` (compilation mode) | 4 (LTO) — set at `sub_427AE0` line 1163 (`LABEL_110`) |
 | Implementing functions | `main` at `0x409800`, LTO section lines 910-1367; helpers: `sub_426CD0` (collect IR), `sub_4BC6F0` (lto_compile), `sub_4BD4E0` (ptxas whole-program), `sub_4BC470` (libdevice load) |
 | Output format | Executable device cubin (whole-program-optimised) |
 
@@ -202,7 +202,7 @@ Triggered by `-lto` or `--link-time-opt` (or the alias `-dlto`/`--dlto`). Inputs
 
 **Typical use case**: Whole-program device optimisation using LTO IR produced by `cicc -dlto`.
 
-### Mode D -- LTO Partial (Relocatable) Link (`-lto -r` or `--force-partial-lto`)
+### Mode D — LTO Partial (Relocatable) Link (`-lto -r` or `--force-partial-lto`)
 
 A variant of mode C that produces a relocatable device object for later linking. Triggered by either combining `-r` with `-lto`, or by `--force-partial-lto`.
 
@@ -225,7 +225,7 @@ A variant of mode C that produces a relocatable device object for later linking.
 
 **Typical use case**: Producing an intermediate relocatable LTO object for later combination with more device code.
 
-### Mode E -- LTO Emit-PTX (`-lto --emit-ptx`)
+### Mode E — LTO Emit-PTX (`-lto --emit-ptx`)
 
 Stops after LTO generates PTX. No ptxas invocation, no device link. Triggered by `--emit-ptx` in combination with `-lto`.
 
@@ -249,7 +249,7 @@ Stops after LTO generates PTX. No ptxas invocation, no device link. Triggered by
 
 **Typical use case**: Dumping LTO-optimised PTX for inspection or for a later ptxas invocation with custom flags.
 
-### Mode F -- Mercury Device Link (derived, SM >= 100)
+### Mode F — Mercury Device Link (derived, SM >= 100)
 
 Not a CLI-enabled mode, but a derived mode entered when `--arch` selects a Blackwell-class target (sm_100+). The entire device link pipeline runs, but the output is transformed by the FNLZR (`sub_4275C0`) into the capsule Mercury binary format.
 
@@ -269,7 +269,7 @@ Not a CLI-enabled mode, but a derived mode entered when `--arch` selects a Black
 
 **Typical use case**: Producing the final deployable cubin for Blackwell+ architectures where the SASS layout must be transformed by FNLZR for the driver runtime.
 
-### Mode G -- Archive Output (derived, `sub_44E490(arch)`)
+### Mode G — Archive Output (derived, `sub_44E490(arch)`)
 
 When `--arch` selects a target for which `sub_44E490` returns non-zero (host-side archive targets), `byte_2A5F2C1` is set to 1 and `dword_2A5B528` is set to 2. This places nvlink in a "passthrough archive" mode where the output file is an archive aggregating objects rather than a linked cubin. This mode is mutually exclusive with Mercury mode (`byte_2A5F2C1=1` sets mode 2, then `byte_2A5F225=1` overrides to 6 if Mercury).
 
@@ -283,7 +283,7 @@ When `--arch` selects a target for which `sub_44E490` returns non-zero (host-sid
 
 The exact semantics of this derived mode are outside the scope of the mode-dispatch page; see [Architecture Compatibility](../targets/compatibility.md) for the `sub_44E490` archive-arch predicate.
 
-### Mode H -- `-ghls=lcs-aug` Absolute Linker Script
+### Mode H — `-ghls=lcs-aug` Absolute Linker Script
 
 Mode 1 is the simplest path. It writes a fixed CUDA section definition block either to the output file (`-o`) or to stdout:
 
@@ -327,7 +327,7 @@ If `-o` is specified, the script is written to that file and the linker exits wi
 
 **Typical use case**: NVCC emits this script when the host compiler needs CUDA-aware section directives but no default script is required.
 
-### Mode I -- `-ghls=lcs-abs` Augmented Linker Script
+### Mode I — `-ghls=lcs-abs` Augmented Linker Script
 
 Mode 2 extracts the host linker's built-in default linker script, appends the CUDA section definitions, and validates the result. This is significantly more complex than mode H.
 
@@ -386,9 +386,9 @@ ld --verbose $(extracted_flags) \
 ```
 
 The pipeline:
-1. `ld --verbose $(flags)` -- prints the default linker script for the given configuration between marker lines.
-2. `grep -Fvx -e "$(ld -V)"` -- removes the version identification line that `ld -V` produces.
-3. `sed '1,2d;$d'` -- strips the first two lines (the `===` banner) and the last line (closing `===`), leaving just the script body.
+1. `ld --verbose $(flags)` — prints the default linker script for the given configuration between marker lines.
+2. `grep -Fvx -e "$(ld -V)"` — removes the version identification line that `ld -V` produces.
+3. `sed '1,2d;$d'` — strips the first two lines (the `===` banner) and the last line (closing `===`), leaving just the script body.
 4. Output goes to the file specified by `-o`, or to `/dev/stdout` if `-o` is not given (line 1877 constructs the `/dev/stdout` path via direct byte writes).
 
 The shell command is executed via `sub_42FA70` (a `system()` wrapper, line 1882). If verbose mode (`byte_2A5F2D8`) is enabled, the command is printed to stderr prefixed with `#$ ` (line 1880).
@@ -407,11 +407,11 @@ After appending, the linker validates the generated script by running `ld -T` on
 ld -T <output_file> 2>&1 | grep 'no input files' > /dev/null
 ```
 
-This invokes `ld` with the script as a linker script (`-T`). Since no input files are provided, a working script will produce the error `"no input files"` -- which is the expected success signal. If `ld` instead produces a syntax error (meaning the script is malformed), the grep fails, `sub_42FA70` returns nonzero at line 1917, and the linker branches to `LABEL_23` (fatal error).
+This invokes `ld` with the script as a linker script (`-T`). Since no input files are provided, a working script will produce the error `"no input files"` — which is the expected success signal. If `ld` instead produces a syntax error (meaning the script is malformed), the grep fails, `sub_42FA70` returns nonzero at line 1917, and the linker branches to `LABEL_23` (fatal error).
 
 If validation succeeds, the linker exits with code 0. If it fails, a fatal error is emitted.
 
-### Mode J -- Verbose-Keep Command Reconstruction (`--verbose-keep`)
+### Mode J — Verbose-Keep Command Reconstruction (`--verbose-keep`)
 
 Not a standalone mode but worth noting: when `byte_2A5F29B` (`--verbose-keep` / `-vkeep`) is set, the LTO compile path and the Mercury output path both print reconstructed nvlink invocations to stdout. This does not skip any phases but does dump intermediate files. Controlled by lines 1102-1119 (LTO) and 1463-1479 (Mercury).
 
@@ -581,18 +581,18 @@ These sections must appear in the host linker script so that `ld` preserves them
 
 ## See Also
 
-- [Pipeline Overview](overview.md) -- full pipeline diagram showing how mode dispatch gates individual phases
-- [Entry Point & Main](entry.md) -- the `main()` function containing all mode dispatch logic, with phase-by-phase walkthrough
-- [CLI Option Parsing](cli-options.md) -- `--gen-host-linker-script`, `--relocatable-link`, `--link-time-opt`, `--emit-ptx` option registration and validation
-- [Input File Loop](input-loop.md) -- Phase 7, only runs in modes A-F (never in modes H or I)
-- [Library Resolution](library-resolution.md) -- skipped for modes H and I
-- [Merge](merge.md) -- skipped for mode E (emit-ptx) and modes H/I
-- [Output Writing](output.md) -- output phase behavior varies by mode (ELF vs PTX vs linker script vs Mercury capsule)
-- [LTO Overview](../lto/overview.md) -- detailed LTO pipeline for modes C, D, E
-- [Mercury FNLZR](../mercury/fnlzr.md) -- FNLZR invocation pattern for Mode F
-- [Architecture Compatibility](../targets/compatibility.md) -- SM-number thresholds that derive Mercury/SASS/archive modes
-- [Linker Scripts](../infra/linker-scripts.md) -- the `ld --verbose` pipeline used by Mode I
-- [Environment Variables](../config/env-vars.md) -- `LIBRARY_PATH` consumed during Phase 4 (skipped for modes H/I)
+- [Pipeline Overview](overview.md) — full pipeline diagram showing how mode dispatch gates individual phases
+- [Entry Point & Main](entry.md) — the `main()` function containing all mode dispatch logic, with phase-by-phase walkthrough
+- [CLI Option Parsing](cli-options.md) — `--gen-host-linker-script`, `--relocatable-link`, `--link-time-opt`, `--emit-ptx` option registration and validation
+- [Input File Loop](input-loop.md) — Phase 7, only runs in modes A-F (never in modes H or I)
+- [Library Resolution](library-resolution.md) — skipped for modes H and I
+- [Merge](merge.md) — skipped for mode E (emit-ptx) and modes H/I
+- [Output Writing](output.md) — output phase behavior varies by mode (ELF vs PTX vs linker script vs Mercury capsule)
+- [LTO Overview](../lto/overview.md) — detailed LTO pipeline for modes C, D, E
+- [Mercury FNLZR](../mercury/fnlzr.md) — FNLZR invocation pattern for Mode F
+- [Architecture Compatibility](../targets/compatibility.md) — SM-number thresholds that derive Mercury/SASS/archive modes
+- [Linker Scripts](../infra/linker-scripts.md) — the `ld --verbose` pipeline used by Mode I
+- [Environment Variables](../config/env-vars.md) — `LIBRARY_PATH` consumed during Phase 4 (skipped for modes H/I)
 
 ## Confidence Assessment
 

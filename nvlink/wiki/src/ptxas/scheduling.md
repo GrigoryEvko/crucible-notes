@@ -1,6 +1,6 @@
 # Instruction Scheduling
 
-> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas scheduling pipeline, see [ptxas Scheduling overview](../../ptxas/scheduling/overview.html), [algorithm](../../ptxas/scheduling/algorithm.html), [latency model](../../ptxas/scheduling/latency-model.html), and [scoreboards](../../ptxas/scheduling/scoreboards.html).
+> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki — see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas scheduling pipeline, see [ptxas Scheduling overview](../../ptxas/scheduling/overview.html), [algorithm](../../ptxas/scheduling/algorithm.html), [latency model](../../ptxas/scheduling/latency-model.html), and [scoreboards](../../ptxas/scheduling/scoreboards.html).
 
 The embedded ptxas backend in nvlink v13.0.88 contains two complete instruction scheduling subsystems: the **pre-register-allocation scheduler** (three named strategy modes operating on IR-level instructions) and the **tepid scheduler** (a post-register-allocation pipeline simulator that assigns stall counts, yield hints, and scoreboard barriers to the final SASS instruction stream). Both subsystems run per-function and per-basic-block. Together they span approximately 1.2 MB of code across three address ranges: `0x1680000`--`0x16E0000`, `0x16F6000`--`0x1740000`, and `0x1850000`--`0x186F000`, plus scoreboard/dependency tracking at `0x1B40000`--`0x1B60000`.
 
@@ -8,7 +8,7 @@ The embedded ptxas backend in nvlink v13.0.88 contains two complete instruction 
 
 The compilation pipeline invokes scheduling at two distinct points:
 
-1. **Pre-RA scheduling** (`ScheduleInstructions` and variants). Runs before register allocation on the internal IR. Its goal is to maximize instruction-level parallelism (ILP) and hide memory latency while respecting a register pressure budget. The three strategy modes -- `ScheduleInstructions`, `ScheduleInstructionsReduceReg`, and `ScheduleInstructionsDynBatch` -- are selected per-function based on workload characteristics and knob configuration.
+1. **Pre-RA scheduling** (`ScheduleInstructions` and variants). Runs before register allocation on the internal IR. Its goal is to maximize instruction-level parallelism (ILP) and hide memory latency while respecting a register pressure budget. The three strategy modes — `ScheduleInstructions`, `ScheduleInstructionsReduceReg`, and `ScheduleInstructionsDynBatch` — are selected per-function based on workload characteristics and knob configuration.
 
 2. **Post-RA scheduling** (the "tepid" scheduler). Runs after register allocation on the SASS instruction stream with physical register assignments finalized. It models the GPU hardware pipeline, computes concrete stall counts, assigns scoreboard barriers, determines dual-issue pairing, inserts yield hints, and sets the scheduling control words that appear every 4th instruction in the SASS binary.
 
@@ -29,7 +29,7 @@ The two schedulers communicate indirectly through the register allocation pass: 
 
 ### Entry Point and Driver Hierarchy
 
-The main entry point is `sub_1851DC0` (85 KB, 2,938 lines) -- `ScheduleInstructions_main_driver`. This is one of the largest single functions in the scheduling subsystem. It takes a compilation context, an IR module, and a function pointer, and orchestrates the entire pre-RA scheduling pass for one function.
+The main entry point is `sub_1851DC0` (85 KB, 2,938 lines) — `ScheduleInstructions_main_driver`. This is one of the largest single functions in the scheduling subsystem. It takes a compilation context, an IR module, and a function pointer, and orchestrates the entire pre-RA scheduling pass for one function.
 
 The driver hierarchy is:
 
@@ -43,9 +43,9 @@ ScheduleInstructions_main_driver  (0x1851DC0, 85 KB)
 
 The main driver also conditionally invokes two companion passes that are tightly integrated with scheduling:
 
-- `HoistInvariants` -- loop-invariant code motion, lifted out of loops before scheduling.
-- `OptimizeNaNOrZero` -- a peephole pass that simplifies NaN-producing and zero-producing instruction sequences.
-- `ConvertMemoryToRegisterOrUniform` -- promotes shared memory accesses to register or uniform register operations where safe.
+- `HoistInvariants` — loop-invariant code motion, lifted out of loops before scheduling.
+- `OptimizeNaNOrZero` — a peephole pass that simplifies NaN-producing and zero-producing instruction sequences.
+- `ConvertMemoryToRegisterOrUniform` — promotes shared memory accesses to register or uniform register operations where safe.
 
 ### Three Scheduling Modes
 
@@ -101,12 +101,12 @@ Six functions specifically handle CUTLASS workloads:
 
 | Address | Size | Function |
 |---|---|---|
-| `0x1866CF0` | 3.5 KB | `schedule_check_cutlass_workload` -- detects CUTLASS pattern |
-| `0x1866FA0` | 28 KB | `schedule_optimize_nan_or_zero` -- NaN/zero peephole with CUTLASS awareness |
-| `0x1868E50` | 19 KB | `schedule_handle_cutlass_pattern` -- CUTLASS GEMM scheduling |
-| `0x186A9F0` | 14 KB | `schedule_reorder_memory_ops` -- memory operation reordering for CUTLASS |
-| `0x186BE40` | 14 KB | `schedule_optimize_texture_ops` -- texture op scheduling for CUTLASS |
-| `0x185F980` | 6 KB | `schedule_dynbatch_heuristic` -- DynBatch mode heuristic |
+| `0x1866CF0` | 3.5 KB | `schedule_check_cutlass_workload` — detects CUTLASS pattern |
+| `0x1866FA0` | 28 KB | `schedule_optimize_nan_or_zero` — NaN/zero peephole with CUTLASS awareness |
+| `0x1868E50` | 19 KB | `schedule_handle_cutlass_pattern` — CUTLASS GEMM scheduling |
+| `0x186A9F0` | 14 KB | `schedule_reorder_memory_ops` — memory operation reordering for CUTLASS |
+| `0x186BE40` | 14 KB | `schedule_optimize_texture_ops` — texture op scheduling for CUTLASS |
+| `0x185F980` | 6 KB | `schedule_dynbatch_heuristic` — DynBatch mode heuristic |
 
 The CUTLASS detection mechanism checks function names and instruction patterns for the characteristic GEMM structure: interleaved tensor-core MMA instructions with global memory loads and shared memory stores. When detected, the scheduler applies specialized reordering that overlaps MMA computation with memory transfers, a pattern critical for achieving peak throughput on tensor cores.
 
@@ -148,14 +148,14 @@ The `OptimizeNaNOrZero` peephole runs immediately after invariant hoisting. Its 
 
 Key sub-passes:
 
-- `nan_zero_check_operand_pattern` (`0x187AA90`) -- matches known NaN-producing patterns (e.g., `0.0 * x` where `x` may be infinity).
-- `nan_zero_propagate_through_phi` (`0x187DDD0`, 13 KB) -- propagates NaN/zero knowledge through phi nodes across basic block boundaries.
-- `nan_zero_speculative_elimination` (`0x187EB20`) -- speculatively eliminates NaN checks when the producer is known to be non-NaN.
-- `nan_zero_transform_branch` (`0x187C0C0`, 9 KB) -- simplifies conditional branches that test for NaN or zero when the condition is statically determinable.
+- `nan_zero_check_operand_pattern` (`0x187AA90`) — matches known NaN-producing patterns (e.g., `0.0 * x` where `x` may be infinity).
+- `nan_zero_propagate_through_phi` (`0x187DDD0`, 13 KB) — propagates NaN/zero knowledge through phi nodes across basic block boundaries.
+- `nan_zero_speculative_elimination` (`0x187EB20`) — speculatively eliminates NaN checks when the producer is known to be non-NaN.
+- `nan_zero_transform_branch` (`0x187C0C0`, 9 KB) — simplifies conditional branches that test for NaN or zero when the condition is statically determinable.
 
 ## Tepid Scheduler (Post-RA)
 
-The tepid scheduler is NVIDIA's post-register-allocation instruction scheduler. It operates on the final SASS instruction stream with physical register assignments, modeling the actual hardware pipeline to produce optimal scheduling control words. The name "tepid" appears in internal string references (`"TepidMacUtil"`, `"TepidTime"`) and refers to a "warm" scheduling approach -- not as aggressive as full software pipelining, but more than simple in-order emission.
+The tepid scheduler is NVIDIA's post-register-allocation instruction scheduler. It operates on the final SASS instruction stream with physical register assignments, modeling the actual hardware pipeline to produce optimal scheduling control words. The name "tepid" appears in internal string references (`"TepidMacUtil"`, `"TepidTime"`) and refers to a "warm" scheduling approach — not as aggressive as full software pipelining, but more than simple in-order emission.
 
 ### Address Ranges
 
@@ -167,7 +167,7 @@ The tepid scheduler spans two regions:
 
 ### Main Loop and Pipeline Model
 
-The tepid scheduler's main loop is `sub_17027F0` (38 KB, 1,216 lines) -- `tepid_scheduler_main_loop`. It walks basic-block instruction lists from begin to end, simulating the GPU execution pipeline.
+The tepid scheduler's main loop is `sub_17027F0` (38 KB, 1,216 lines) — `tepid_scheduler_main_loop`. It walks basic-block instruction lists from begin to end, simulating the GPU execution pipeline.
 
 For each basic block:
 
@@ -183,10 +183,10 @@ For each basic block:
 5. Use vtable callbacks at `a1+16` for ISA-specific scheduling decisions.
 
 The main loop references four distinct loop categories in its string context:
-- **"For Mac Loop"** -- multiply-accumulate dominated loops (tensor/GEMM)
-- **"For Dma Loop"** -- DMA/memory-transfer dominated loops
-- **"For Math Loop"** -- general ALU-dominated loops
-- **"For Epilogue"** -- loop epilogue regions
+- **"For Mac Loop"** — multiply-accumulate dominated loops (tensor/GEMM)
+- **"For Dma Loop"** — DMA/memory-transfer dominated loops
+- **"For Math Loop"** — general ALU-dominated loops
+- **"For Epilogue"** — loop epilogue regions
 
 ### Pipeline Simulation Components
 
@@ -235,8 +235,8 @@ The block processor also checks the architecture capability at knob-table offset
 
 A critical heuristic in the tepid scheduler is the math-to-DMA ratio balancer. Two named ratios appear in string references:
 
-- **`MathToDmaWaitRatio`** -- the ratio of math instruction cycles to DMA wait cycles. When this ratio is too low, the scheduler has insufficient math work to hide DMA latency.
-- **`MathToDmaTepidRatio`** -- the tepid scheduler's target ratio. The scheduler attempts to interleave math and DMA instructions to approach this target.
+- **`MathToDmaWaitRatio`** — the ratio of math instruction cycles to DMA wait cycles. When this ratio is too low, the scheduler has insufficient math work to hide DMA latency.
+- **`MathToDmaTepidRatio`** — the tepid scheduler's target ratio. The scheduler attempts to interleave math and DMA instructions to approach this target.
 
 Additional ratios for epilogue regions:
 - **`MathToEpilogueWaitRatio`**
@@ -250,12 +250,12 @@ The tepid scheduler includes software pipelining support for loop bodies:
 
 | Address | Size | Function |
 |---|---|---|
-| `0x17130F0` | 11 KB | `scheduler_software_pipeline` -- main software pipelining |
+| `0x17130F0` | 11 KB | `scheduler_software_pipeline` — main software pipelining |
 | `0x1713930` | 8 KB | `scheduler_software_pipeline_helper` |
 | `0x1714870` | 4 KB | `scheduler_modulo_schedule_helper` |
-| `0x17151D0` | 6 KB | `scheduler_iteration_interval` -- compute initiation interval |
-| `0x17157F0` | 5 KB | `scheduler_stage_assignment` -- assign pipeline stages |
-| `0x1712B70` | 4 KB | `scheduler_loop_rotation` -- loop rotation for pipelining |
+| `0x17151D0` | 6 KB | `scheduler_iteration_interval` — compute initiation interval |
+| `0x17157F0` | 5 KB | `scheduler_stage_assignment` — assign pipeline stages |
+| `0x1712B70` | 4 KB | `scheduler_loop_rotation` — loop rotation for pipelining |
 
 The iteration interval calculator at `0x17151D0` computes the minimum initiation interval (II) based on resource constraints and recurrence constraints. The stage assignment at `0x17157F0` assigns each instruction to a pipeline stage for modulo scheduling. Loop rotation at `0x1712B70` transforms the loop structure to enable overlapped execution of iterations.
 
@@ -315,11 +315,11 @@ The scoreboard subsystem at `0x1B40000`--`0x1B60000` contains:
 
 | Address | Size | Function |
 |---|---|---|
-| `0x1B40920` | 38 KB | `scoreboard_dependency_tracker` -- main dependency tracking (1,256 lines) |
-| `0x1B41E10` | 23 KB | `wait_barrier_optimizer` -- reduce unnecessary waits |
-| `0x1B42E30` | 22 KB | `yield_optimization_pass` -- optimize yield hints |
-| `0x1B43E30` | 14 KB | `stall_count_propagation` -- propagate stall counts |
-| `0x1B44940` | 13 KB | `control_word_builder` -- build SASS control words |
+| `0x1B40920` | 38 KB | `scoreboard_dependency_tracker` — main dependency tracking (1,256 lines) |
+| `0x1B41E10` | 23 KB | `wait_barrier_optimizer` — reduce unnecessary waits |
+| `0x1B42E30` | 22 KB | `yield_optimization_pass` — optimize yield hints |
+| `0x1B43E30` | 14 KB | `stall_count_propagation` — propagate stall counts |
+| `0x1B44940` | 13 KB | `control_word_builder` — build SASS control words |
 
 The dependency tracker at `0x1B40920` (38 KB, 1,256 lines) is the core of scoreboard management. It maintains read/write barrier state, tracks instruction completion status, and updates the scoreboard through simulated instruction execution.
 
@@ -347,7 +347,7 @@ Control word (64 bits per instruction slot):
   Bits [20:15] = barrier count (dual-issue marker, reserved bits)
 ```
 
-The control-word builder at `0x1B44940` (13 KB) assembles these fields. The stall-count optimizer at `0x1B1CB00` (11 KB) reduces stall counts by analyzing actual dependency distances -- if the dependent instruction is far enough away in the instruction stream, the stall can be reduced or eliminated.
+The control-word builder at `0x1B44940` (13 KB) assembles these fields. The stall-count optimizer at `0x1B1CB00` (11 KB) reduces stall counts by analyzing actual dependency distances — if the dependent instruction is far enough away in the instruction stream, the stall can be reduced or eliminated.
 
 ### Scoreboard Pressure Analysis
 
@@ -361,16 +361,16 @@ SCOREBOARD PRESSURE GUIDANCE (N SBs):
   Unordered VQ Stat: ...
 ```
 
-The companion reporter at `0x1A8ABC0` (11 KB) produces `": SbOverload"` and `", SbStallDiff"` metrics. These diagnostics identify situations where scoreboard pressure is causing performance loss -- when the number of in-flight instructions exceeds the available scoreboard entries, the scheduler must serialize operations.
+The companion reporter at `0x1A8ABC0` (11 KB) produces `": SbOverload"` and `", SbStallDiff"` metrics. These diagnostics identify situations where scoreboard pressure is causing performance loss — when the number of in-flight instructions exceeds the available scoreboard entries, the scheduler must serialize operations.
 
 ## Scheduling Guidance Output
 
 The scheduling guidance system at `0x19C1A70` (10 KB) produces the `"SCHEDULING GUIDANCE:"` output section in the compiler's diagnostic output. This includes:
 
 - **Estimated latency** per function and per loop.
-- **Bottleneck identification** -- which functional unit is the throughput bottleneck.
+- **Bottleneck identification** — which functional unit is the throughput bottleneck.
 - **Resource utilization** estimates for all major functional units.
-- **`LOOP STATIC METRICS`** -- per-loop scheduling statistics.
+- **`LOOP STATIC METRICS`** — per-loop scheduling statistics.
 
 The guidance computation at `0x19C2740` (5 KB) identifies the bottleneck unit, and the resource usage calculator at `0x19C2B50` (5 KB) estimates utilization of each functional unit category: ADU, ALU, CBU, FMA, FMA2x, HALF, transcendental, IPA, LSU, REDUX, TEX, TTU, UDP.
 
@@ -1171,14 +1171,14 @@ function pressure_aware_priority(sched_ctx, instruction, reg_info):
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) -- scheduling in the 48-pass pipeline (passes 23--38)
-- [Register Allocation](register-allocation.md) -- runs before the tepid scheduler
-- [ISel Hubs](isel-hubs.md) -- runs before scheduling
-- [Peephole](peephole.md) -- peephole passes at `0x1866FA0` interleaved with scheduling
-- [Mercury Compiler Passes](../mercury/compiler-passes.md) -- Mercury-specific scheduling passes (MercWARs, MercOpex)
+- [Embedded ptxas Overview](overview.md) — scheduling in the 48-pass pipeline (passes 23--38)
+- [Register Allocation](register-allocation.md) — runs before the tepid scheduler
+- [ISel Hubs](isel-hubs.md) — runs before scheduling
+- [Peephole](peephole.md) — peephole passes at `0x1866FA0` interleaved with scheduling
+- [Mercury Compiler Passes](../mercury/compiler-passes.md) — Mercury-specific scheduling passes (MercWARs, MercOpex)
 
 ### Sibling Wikis
-- [ptxas: Scheduling Overview](../../ptxas/scheduling/overview.html) -- standalone ptxas scheduling infrastructure
-- [ptxas: Algorithm](../../ptxas/scheduling/algorithm.html) -- scheduling algorithm details
-- [ptxas: Latency Model](../../ptxas/scheduling/latency-model.html) -- per-instruction latency tables
-- [ptxas: Scoreboards](../../ptxas/scheduling/scoreboards.html) -- dependency barrier assignment
+- [ptxas: Scheduling Overview](../../ptxas/scheduling/overview.html) — standalone ptxas scheduling infrastructure
+- [ptxas: Algorithm](../../ptxas/scheduling/algorithm.html) — scheduling algorithm details
+- [ptxas: Latency Model](../../ptxas/scheduling/latency-model.html) — per-instruction latency tables
+- [ptxas: Scoreboards](../../ptxas/scheduling/scoreboards.html) — dependency barrier assignment

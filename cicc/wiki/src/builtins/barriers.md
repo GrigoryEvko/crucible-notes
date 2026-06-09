@@ -44,10 +44,10 @@ Thread block cluster operations were introduced with SM 90 (Hopper). These built
 | 8 | `__nv_clusterDimIsSpecified_impl` | `sub_12AB0E0(ctx, 0)` | Whether cluster dimensions are explicit |
 | 9 | `__nv_clusterRelativeBlockRank_impl` | `sub_12AB0E0(ctx, 1)` | Block rank within cluster |
 | 10 | `__nv_clusterSizeInBlocks_impl` | `sub_12AB0E0(ctx, 2)` | Number of blocks in cluster |
-| 405 | `__nv_clusterDim_impl` | -- | Cluster dimension |
-| 406 | `__nv_clusterRelativeBlockIdx_impl` | -- | Block index within cluster |
-| 407 | `__nv_clusterGridDimInClusters_impl` | -- | Grid dimension in cluster units |
-| 408 | `__nv_clusterIdx_impl` | -- | Cluster index |
+| 405 | `__nv_clusterDim_impl` | — | Cluster dimension |
+| 406 | `__nv_clusterRelativeBlockIdx_impl` | — | Block index within cluster |
+| 407 | `__nv_clusterGridDimInClusters_impl` | — | Grid dimension in cluster units |
+| 408 | `__nv_clusterIdx_impl` | — | Cluster index |
 
 ### Cluster Barriers (IDs 11--14)
 
@@ -74,7 +74,7 @@ ID 203 has an SM-dependent lowering path: on SM <= 63, the handler returns an in
 
 Memory fences are emitted as inline PTX assembly because they have no direct LLVM IR equivalent. Two handlers exist:
 
-### `sub_94F9E0` -- membar (CTA/Device/System)
+### `sub_94F9E0` — membar (CTA/Device/System)
 
 Generates `membar.{scope};` where scope is determined by the scope parameter:
 
@@ -86,7 +86,7 @@ Generates `membar.{scope};` where scope is determined by the scope parameter:
 
 The constraint string is `~{memory}` to ensure the compiler treats the fence as a full memory clobber. The emitted node receives two memory attributes: `inaccessiblemem` (attribute 41) and a readonly fence marker (attribute 6).
 
-### `sub_94FDF0` -- fence (with explicit ordering)
+### `sub_94FDF0` — fence (with explicit ordering)
 
 Generates `fence.{ordering}.{scope};` for SM 70+ targets:
 
@@ -123,11 +123,11 @@ These are lowered through `sub_12AB730` / `sub_94C5F0`, which builds the `cp.asy
 
 Barrier builtins use three distinct lowering strategies:
 
-1. **LLVM intrinsic call** -- `__syncthreads`, barrier reductions, cluster barriers. These map to well-known LLVM/NVVM intrinsic IDs (8259, 8925, 9296, etc.) and emit via `sub_1285290`.
+1. **LLVM intrinsic call** — `__syncthreads`, barrier reductions, cluster barriers. These map to well-known LLVM/NVVM intrinsic IDs (8259, 8925, 9296, etc.) and emit via `sub_1285290`.
 
-2. **Inline IR generation** -- Memory barriers (`__nvvm_membar_*`). The handler directly constructs barrier store IR nodes without going through an intrinsic lookup.
+2. **Inline IR generation** — Memory barriers (`__nvvm_membar_*`). The handler directly constructs barrier store IR nodes without going through an intrinsic lookup.
 
-3. **Inline PTX assembly** -- Memory fences (`membar.*`, `fence.*`). These have no LLVM IR equivalent and are emitted as inline asm strings with `~{memory}` clobber constraints.
+3. **Inline PTX assembly** — Memory fences (`membar.*`, `fence.*`). These have no LLVM IR equivalent and are emitted as inline asm strings with `~{memory}` clobber constraints.
 
 ## Convergence Contract and Deadlock Conditions
 

@@ -27,7 +27,7 @@ Every Ori instruction is a 296-byte C++ object allocated from the Code Object's 
 | +72 | 4 | `u32` | `opcode` | Full opcode word (lower 12 bits = base opcode, bits 12-13 = modifier) |
 | +76 | 4 | `u32` | `opcode_aux` | Auxiliary opcode data (sub-operation, comparison predicate) |
 | +80 | 4 | `u32` | `operand_count` | Total number of operands (destinations + sources); max inline N = 6 |
-| +84 | 48 | `u64[6]` | `operands[0..5]` | Inline operand array -- 6 slots of 8 bytes each (+84 through +131). Accessed uniformly as `*(uint32_t*)(instr + 8*i + 84)` for the low word and `*(uint32_t*)(instr + 8*i + 88)` for the high word. See [Operand Array Layout](#operand-array-layout) below |
+| +84 | 48 | `u64[6]` | `operands[0..5]` | Inline operand array — 6 slots of 8 bytes each (+84 through +131). Accessed uniformly as `*(uint32_t*)(instr + 8*i + 84)` for the low word and `*(uint32_t*)(instr + 8*i + 88)` for the high word. See [Operand Array Layout](#operand-array-layout) below |
 | +132 | 4 | `u32` | `reserved_132` | Padding between operand array end and +136 |
 | +136 | 16 | `u128` | `reserved_136` | Zeroed as OWORD by constructor; purpose TBD |
 | +152 | 8 | `u64` | `reserved_152` | Zeroed as part of second OWORD by constructor (covers +152..+167) |
@@ -111,7 +111,7 @@ int dst_count = *(uint32_t*)(instr + 80) - adj;
 
 ### Canonical Opcode Reference
 
-The opcode value stored at instruction+72 is the same index into the ROT13 name table at `InstructionInfo+4184`. There is a single numbering system -- the ROT13 table index IS the runtime opcode. This was verified by tracing `sub_BEBAC0` (getName), which computes `InstructionInfo + 4184 + 16 * opcode` with no remapping.
+The opcode value stored at instruction+72 is the same index into the ROT13 name table at `InstructionInfo+4184`. There is a single numbering system — the ROT13 table index IS the runtime opcode. This was verified by tracing `sub_BEBAC0` (getName), which computes `InstructionInfo + 4184 + 16 * opcode` with no remapping.
 
 The following table lists frequently-referenced opcodes from decompiled code, with their canonical SASS mnemonic names from the ROT13 table. Each opcode appears in 10+ decompiled functions reading `*(instr+72)`.
 
@@ -378,7 +378,7 @@ InstructionInfo object:
   +10624   (end of encoding category map)
 ```
 
-Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** additional name entries -- they are a 322-element `int32` array mapping each opcode index to an encoding category number (see [Encoding Category Map](#encoding-category-map) below).
+Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** additional name entries — they are a 322-element `int32` array mapping each opcode index to an encoding category number (see [Encoding Category Map](#encoding-category-map) below).
 
 ### Full Decoded Opcode Table (322 entries, sm_70 through sm_104)
 
@@ -734,13 +734,13 @@ The ~400 opcodes group into these functional categories:
 
 **Predicate (4 opcodes):** `PLOP3`, `P2R`, `R2P`, `VOTE`
 
-**Memory -- Global (4 opcodes):** `LDG`, `STG`, `LD`, `ST`
+**Memory — Global (4 opcodes):** `LDG`, `STG`, `LD`, `ST`
 
-**Memory -- Shared (4 opcodes):** `LDS`, `STS`, `LDSM`, `STSM`
+**Memory — Shared (4 opcodes):** `LDS`, `STS`, `LDSM`, `STSM`
 
-**Memory -- Local (2 opcodes):** `LDL`, `STL`
+**Memory — Local (2 opcodes):** `LDL`, `STL`
 
-**Memory -- Constant (2 opcodes):** `LDC`, `LDCU`
+**Memory — Constant (2 opcodes):** `LDC`, `LDCU`
 
 **Atomic/Reduction (6 opcodes):** `ATOM`, `ATOMG`, `ATOMS`, `RED`, `REDUX`, `REDAS`
 
@@ -769,7 +769,7 @@ The `InstructionInfo` class at `sub_BE7390` (inheriting from the base class at `
 1. **Base class init** (`sub_738E20`): sets vtable, stores parent pointer, allocates the opcode-to-descriptor mapping array (512 bytes, 64 QWORD slots), zeroes all four descriptor data areas (+744..+3624), queries SM version and stores at +3728, allocates per-opcode property array (`4 * sm_opcode_count` bytes at +4112), allocates a reference-counted descriptor block (24 bytes at +4136), queries knobs 812/867/822/493 for configuration. Sets `+4132 = 8` and `+4176 = 0` (init incomplete).
 2. **Override vtable**: `+0 = off_233ADC0` (derived vtable).
 3. **Populate ROT13 name table**: 322 inline entries (indices 0-321) at offsets +4184..+9328, each 16 bytes (`{char* name_ptr, u64 length}`).
-4. **Bulk-copy encoding category map**: `qmemcpy(+9336, unk_22B2320, 0x508)` -- 322-entry `int32` array (1288 bytes) mapping opcode index to encoding category number. The source table varies by arch constructor (see below).
+4. **Bulk-copy encoding category map**: `qmemcpy(+9336, unk_22B2320, 0x508)` — 322-entry `int32` array (1288 bytes) mapping opcode index to encoding category number. The source table varies by arch constructor (see below).
 5. **Initialize post-table fields**: zero offsets +10624..+10680.
 6. **Store sentinels**: `+11200 = -2`, `+11224 = 0xFFFFFFFF`.
 7. **Set constants**: `+4048 = 2`, `+4056 = 10`, `+3733 = 1`.
@@ -917,7 +917,7 @@ Total: 322 named opcodes. Index `N` name is at offset `4184 + 16*N`. The `getNam
 
 The 1288-byte block at +9336 is a 322-element `int32` array that maps each opcode index to an **encoding category** number. The SASS mnemonic lookup function (`sub_1377C60`) uses this to resolve a `(mnemonic, arch)` pair to a binary encoding format descriptor.
 
-**Base table (`unk_21C0E00`, 322 x int32 = 0x508 bytes) -- verified identity map:**
+**Base table (`unk_21C0E00`, 322 x int32 = 0x508 bytes) — verified identity map:**
 
 Binary extraction of all 322 entries at VA `0x21C0E00` confirms a pure identity mapping:
 
@@ -925,7 +925,7 @@ Binary extraction of all 322 entries at VA `0x21C0E00` confirms a pure identity 
 encoding_category_map[i] = i    for all i in 0..321
 ```
 
-Every opcode index maps to itself as the encoding category number. No exceptions, no gaps, no remapping -- the full 1288-byte block is the sequence `{0, 1, 2, 3, ..., 319, 320, 321}` stored as little-endian `int32` values. This means the base constructor establishes a 1:1 correspondence between opcode indices (from the ROT13 name table above) and encoding category numbers.
+Every opcode index maps to itself as the encoding category number. No exceptions, no gaps, no remapping — the full 1288-byte block is the sequence `{0, 1, 2, 3, ..., 319, 320, 321}` stored as little-endian `int32` values. This means the base constructor establishes a 1:1 correspondence between opcode indices (from the ROT13 name table above) and encoding category numbers.
 
 **Arch-specific source tables:**
 
@@ -935,7 +935,7 @@ Every opcode index maps to itself as the encoding category number. No exceptions
 | `sub_7C5410` | `unk_21C3600` | Arch-remapped: selected entries differ from identity |
 | `sub_BE7390` | `unk_22B2320` | Arch-remapped: selected entries differ from identity |
 
-Arch-specific constructors bulk-copy their own variant of this table over the base identity map. The remapped tables share the same 322-entry `int32` format but redirect selected opcode indices to different encoding category numbers so the same mnemonic at different opcode indices can map to different encoding formats. For example, DMMA at opcode index 180 maps to encoding category 434 on one arch, while DMMA at opcode index 215 maps to encoding category 515 on another. Categories above 321 (e.g. 434, 515) index into an extended encoding format space that has no corresponding ROT13 name entry -- they exist only as encoding format keys.
+Arch-specific constructors bulk-copy their own variant of this table over the base identity map. The remapped tables share the same 322-entry `int32` format but redirect selected opcode indices to different encoding category numbers so the same mnemonic at different opcode indices can map to different encoding formats. For example, DMMA at opcode index 180 maps to encoding category 434 on one arch, while DMMA at opcode index 215 maps to encoding category 515 on another. Categories above 321 (e.g. 434, 515) index into an extended encoding format space that has no corresponding ROT13 name entry — they exist only as encoding format keys.
 
 **Reader: `sub_1377C60` (SASS mnemonic lookup)**
 
@@ -995,7 +995,7 @@ Allocated by the derived constructor and stored at `+10656`. The block is `10288
 
 **Section 0** (5,128 bytes): 641 QWORD slots. Only the payload (slots 1..640, 5,120 bytes) is explicitly zeroed. Each slot corresponds to a base opcode index. With 402 named opcodes, ~240 slots remain spare.
 
-**Section 1** (5,144 bytes): 643 QWORD slots. The header is zeroed but the payload is NOT explicitly zeroed -- it relies on the arena allocator's default behavior or lazy initialization during opcode registration. Likely stores modifier-variant descriptors (e.g., entries for `opcode | 0x1000` when bits 12-13 carry sub-operation modifiers).
+**Section 1** (5,144 bytes): 643 QWORD slots. The header is zeroed but the payload is NOT explicitly zeroed — it relies on the arena allocator's default behavior or lazy initialization during opcode registration. Likely stores modifier-variant descriptors (e.g., entries for `opcode | 0x1000` when bits 12-13 carry sub-operation modifiers).
 
 **Section 2** (16 bytes): Two back-pointers for navigating from the descriptor block back to its owning objects (parent compilation context and the InstructionInfo instance).
 
@@ -1063,7 +1063,7 @@ Starting at offset +11360, `sub_896D50` populates an alphabetically sorted ROT13
 - `OZZN.168128` (BMMA.168128)
 - `PPGY.P.YQP.VINYY` (CCTL.C.LDC.IVALL)
 - `VZNQ.JVQR.ERNQ.NO` (IMAD.WIDE.READ.AB)
-- `VZZN.FC.{168128.*|16864.*8.*8}` (IMMA.SP.{...} -- regex patterns for variant matching)
+- `VZZN.FC.{168128.*|16864.*8.*8}` (IMMA.SP.{...} — regex patterns for variant matching)
 
 This table is used for SASS assembly parsing and opcode-to-encoding resolution, where a single base opcode may map to multiple encoding variants distinguished by modifier suffixes.
 
@@ -1172,10 +1172,10 @@ Used by specific instruction families (MMA/tensor, texture, guardrail formatters
 | `sub_707530` | `getPrecisionString` | 12B | varies | `(ctx) -> str` | `off_2033FA0[*(ctx+640)]` |
 | `sub_707C60` | `getAddressingMode` | 12B | varies | `(ctx) -> bool` | `(*(ctx+600) & 0x40) != 0` |
 | `sub_707C80` | `getScopeString` | 22B | varies | `(ctx) -> str` | `off_2033E00[(*(ctx+600) & 0x40) != 0]` |
-| `sub_7075E0` | `getLayoutString` | 22B | varies | `(ctx) -> str` | `off_2033EE0[*(ctx+600) & 1]` -- WMMA/TCGEN05 |
-| `sub_707BE0` | `getShapeString` | 22B | varies | `(ctx) -> str` | `off_2033E30[(*(ctx+600) & 4) != 0]` -- WMMA/TCGEN05 |
-| `sub_7075C0` | `getInstrFlagA` | 7B | varies | `(ctx) -> u8` | `*(ctx+600) & 1` -- WMMA/rsqrt |
-| `sub_707BC0` | `getInstrFlagB` | varies | varies | `(ctx) -> varies` | Secondary flag accessor -- WMMA/rsqrt |
+| `sub_7075E0` | `getLayoutString` | 22B | varies | `(ctx) -> str` | `off_2033EE0[*(ctx+600) & 1]` — WMMA/TCGEN05 |
+| `sub_707BE0` | `getShapeString` | 22B | varies | `(ctx) -> str` | `off_2033E30[(*(ctx+600) & 4) != 0]` — WMMA/TCGEN05 |
+| `sub_7075C0` | `getInstrFlagA` | 7B | varies | `(ctx) -> u8` | `*(ctx+600) & 1` — WMMA/rsqrt |
+| `sub_707BC0` | `getInstrFlagB` | varies | varies | `(ctx) -> varies` | Secondary flag accessor — WMMA/rsqrt |
 | `sub_70D3B0` | `getFieldA` | 91B | 2 | `(ctx) -> str` | Returns `".transA"` if operand count matches MMA shape |
 | `sub_70D410` | `getFieldB` | 99B | 2 | `(ctx) -> str` | Returns `".transB"` (symmetric with `getFieldA`) |
 | `sub_70D480` | `getFieldC` | 91B | 2 | `(ctx) -> str` | MMA field C modifier string |
@@ -1200,8 +1200,8 @@ The accessor functions perform table-driven lookups using static string pointer 
 | `off_2033720` | 4 | `(ctx+627 >> N) & 3` | Extended operand strings |
 | `off_2033DE0` | 2 | `ctx+600 >> 7` | Address operand strings |
 | `off_2033E00` | 2 | `(ctx+600 & 0x40) != 0` | Scope strings (`.cta`, `.gpu`, etc.) |
-| `off_2033E30` | 2 | `(ctx+600 & 4) != 0` | Shape strings -- WMMA/TCGEN05 |
-| `off_2033EE0` | 2 | `ctx+600 & 1` | Layout strings -- WMMA/TCGEN05 |
+| `off_2033E30` | 2 | `(ctx+600 & 4) != 0` | Shape strings — WMMA/TCGEN05 |
+| `off_2033EE0` | 2 | `ctx+600 & 1` | Layout strings — WMMA/TCGEN05 |
 | `off_2033FA0` | indexed by int | `ctx+640` | Precision strings for texture ops |
 
 ### Architectural Notes
@@ -1228,7 +1228,7 @@ The primary instruction allocator at `sub_7DD010` (called from pass code that ne
 6. Assigns a unique instruction index: `*(instr + 264) = index`
 7. Invalidates cached analysis (RPO at +792)
 
-The instruction is created unlinked -- it is not yet in any basic block's linked list.
+The instruction is created unlinked — it is not yet in any basic block's linked list.
 
 ### Linking: `sub_925510` (Insert Before)
 
@@ -1342,7 +1342,7 @@ The complex def-use chain builder `sub_7E6090` (650 lines decompiled) is the cor
 6. Handles CSE matching: compares operand arrays of instructions with matching opcode, operand count, and auxiliary data to detect redundant computations
 7. Takes parameter `a5` as a bitmask of register file types to process (bit per register class)
 
-## Instruction Lowering Handler -- `sub_65D640` (48 KB)
+## Instruction Lowering Handler — `sub_65D640` (48 KB)
 
 The central PTX-to-Ori instruction lowering handler lives at `sub_65D640`. It is installed at vtable offset +32 in the ISel Phase 1 dispatch table (`sub_660CE0`) and called through the vtable for every PTX instruction during lowering.
 
@@ -1357,9 +1357,9 @@ The function reads the PTX opcode from `*(*(ptx_node+32)+8)` and dispatches thro
 | 5 | `prmt` (byte permute) | inline | Decodes 8-bit per-byte channel mask, sets 2 operands |
 | 6 | `prmt` (extended) | inline | Two-operand permute with address computation via `sub_6294E0` |
 | 10 | `mov` (special) | inline | Clears immediate flag for float type 109 |
-| 12 | (delegated) | `sub_659F90` | -- |
+| 12 | (delegated) | `sub_659F90` | — |
 | 13 | multi-operand expansion | inline | Expands via `sub_62E840`, resolves type 87 (address) and 97 (register) operands |
-| 17, 18, 24 | `mov`/`cvt` variants | `sub_652FA0` | -- |
+| 17, 18, 24 | `mov`/`cvt` variants | `sub_652FA0` | — |
 | 19, 20, 23 | surface ops | inline | ~200 lines: multi-register data, `sub_6273E0` operand classification, up to 4 data regs + address |
 | 34, 35 | load/store | inline | Optional address resolution gated on `(ptx_node+61 & 0xC)` |
 | 45, 238 | conversion | inline | Rewrites operand type to 20 (integer), binds address via `sub_6294E0` |
@@ -1371,15 +1371,15 @@ The function reads the PTX opcode from `*(*(ptx_node+32)+8)` and dispatches thro
 | 87 | reg class adjustment | inline | Table lookup at `dword_2026C60`, swaps operands 1/2, sets opcode 150 |
 | 88 | matrix config | inline | MMA dimension table at `dword_2026C48`, sets fields 179/180 |
 | 104 | 4-wide load | inline | Creates 4-operand instruction, address binding via `sub_6294E0` |
-| 110 | (delegated) | `sub_652610` | -- |
+| 110 | (delegated) | `sub_652610` | — |
 | 123 | **generic addressing** | inline | Converts flat-to-specific addresses; SM-version-dependent multi-instruction sequences |
 | 124, 125 | **cvta / isspacep** | inline | Address space conversion; creates CVTA opcode 538/539 on SM > 0x1A |
 | 130 | instruction fusion | inline | Fuses instruction if operand count is not 3 or 4 |
-| 165 | (delegated) | `sub_65BF40` | -- |
+| 165 | (delegated) | `sub_65BF40` | — |
 | 175--178 | **texture addr_mode** | inline | Resolves `.addr_mode_0/1/2` attributes from texture descriptor |
 | 179 | atomic address mode | inline | Classifies atomic op type, creates SEL + ATOM sequence |
-| 180 | (delegated) | `sub_65CE90` | -- |
-| 181, 182 | (delegated) | `sub_64FF20` | -- |
+| 180 | (delegated) | `sub_65CE90` | — |
+| 181, 182 | (delegated) | `sub_64FF20` | — |
 | 183 | conditional atomic | inline | State space 0x20: rewrites to opcode 71 with mask 0xFF01010101 |
 | 184--190 | surface/texture lowering | inline | Handles SULD/SUST/SURED (opcodes 449-456); SM-dependent operand resolution |
 | 197, 198 | call site lowering | inline | Same-module vs cross-module call dispatch |
@@ -1448,13 +1448,13 @@ Memory addressing modes for load/store/atomic instructions are not enumerated as
 
 | Offset | Handler | Size | Role |
 |---|---|---|---|
-| +0 | `sub_650840` | -- | Primary handler |
-| +8 | `sub_64EEB0` | -- | Operand handler |
-| +16 | `sub_64F270` | -- | Type handler |
+| +0 | `sub_650840` | — | Primary handler |
+| +8 | `sub_64EEB0` | — | Operand handler |
+| +16 | `sub_64F270` | — | Type handler |
 | +24 | `sub_6575D0` | 49 KB | Register-class-to-opcode dispatch |
 | +32 | `sub_65D640` | 48 KB | **Instruction lowering (this function)** |
-| +40 | `sub_64EDD0` | -- | Auxiliary handler |
-| +128 | `sub_64EEC0` | -- | Lowering helper |
+| +40 | `sub_64EDD0` | — | Auxiliary handler |
+| +128 | `sub_64EEC0` | — | Lowering helper |
 
 ## Key Function Reference
 
@@ -1468,7 +1468,7 @@ Memory addressing modes for load/store/atomic instructions are not enumerated as
 | `sub_7DDCA0` | 0.2KB | `Observer::notify` | Walk observer chain and notify |
 | `sub_9253C0` | 0.5KB | `Instruction::remove` | Remove instruction from linked list (634 callers) |
 | `sub_925510` | 0.5KB | `Instruction::insertBefore` | Insert instruction before another (13 callers) |
-| `sub_917A60` | 6.8KB | `packRegClassField` | Bitfield packer keyed on field-ID 91--340; per-field LUT remap then OR into `desc[1]`/`desc[2]`. Not an opcode→regclass table -- see `ir/registers.md` (221 callers) |
+| `sub_917A60` | 6.8KB | `packRegClassField` | Bitfield packer keyed on field-ID 91--340; per-field LUT remap then OR into `desc[1]`/`desc[2]`. Not an opcode→regclass table — see `ir/registers.md` (221 callers) |
 | `sub_91A0F0` | 5.6KB | `InstrInfo::resolveRegClass` | Resolve operand register class with constraints |
 | `sub_9314F0` | 0.4KB | `RegClass::query` | Register class query (1,547 callers) |
 | `sub_738E20` | 10KB | `InstrDescTable::init` | Base instruction descriptor table constructor |
@@ -1490,12 +1490,12 @@ Memory addressing modes for load/store/atomic instructions are not enumerated as
 
 ## Related Pages
 
-- [Ori IR Overview](./overview.md) -- Code Object, basic blocks, CFG, register files
-- [Registers](./registers.md) -- Register descriptor layout, register file types
-- [CFG](./cfg.md) -- Basic block structure, control-flow graph
-- [Data Structures](./data-structures.md) -- Hash tables, bitvectors, linked lists
-- [Peephole Optimization](../codegen/peephole.md) -- Instruction rewriting passes
-- [SASS Encoding](../codegen/encoding.md) -- How Ori instructions become SASS binary
-- [Instruction Selection](../codegen/isel.md) -- Pattern matching for instruction selection
-- [PTX-to-Ori Pipeline](../pipeline/ptx-to-ori.md) -- Full lowering pipeline context for `sub_65D640`
-- [Scheduling](../scheduling/overview.md) -- 3-phase instruction scheduler
+- [Ori IR Overview](./overview.md) — Code Object, basic blocks, CFG, register files
+- [Registers](./registers.md) — Register descriptor layout, register file types
+- [CFG](./cfg.md) — Basic block structure, control-flow graph
+- [Data Structures](./data-structures.md) — Hash tables, bitvectors, linked lists
+- [Peephole Optimization](../codegen/peephole.md) — Instruction rewriting passes
+- [SASS Encoding](../codegen/encoding.md) — How Ori instructions become SASS binary
+- [Instruction Selection](../codegen/isel.md) — Pattern matching for instruction selection
+- [PTX-to-Ori Pipeline](../pipeline/ptx-to-ori.md) — Full lowering pipeline context for `sub_65D640`
+- [Scheduling](../scheduling/overview.md) — 3-phase instruction scheduler

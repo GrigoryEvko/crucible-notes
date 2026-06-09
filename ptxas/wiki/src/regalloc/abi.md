@@ -6,15 +6,15 @@ The ptxas ABI engine implements the NVIDIA GPU calling convention for device-sid
 
 | | |
 |---|---|
-| **Master ABI setup** | `sub_19D1AF0` (5608 bytes) -- orchestrates full per-function ABI pipeline |
-| **Per-pass lowering** | `sub_19DC4B0` (6459 bytes) -- 3-pass instruction transform driver |
-| **Opcode-level dispatch** | `sub_19CFC30` -- routes 11 opcodes to ABI handlers |
-| **Parameter allocator** | `sub_19CA730` (2277 bytes) -- 2048-bit free-list bitmap allocator |
-| **Return address validator** | `sub_19CDFF0` (7.5 KB) -- 12 diagnostic strings, warnings 7001--7009 |
-| **Return address setup** | `sub_19D1720` (4.8 KB) -- validates and assigns return address registers |
-| **Register transfer lowering** | `sub_19CC1A0` (3873 bytes) -- generates MOV/STS/LDS/PRMT sequences |
-| **gb10b WAR** | `sub_19D9E00` + `sub_19DA2A0` -- `__nv_reservedSMEM_gb10b_war_var` |
-| **Convergent checker** | `sub_19D13F0` (4.3 KB) -- `allowConvAlloc` boundary validation |
+| **Master ABI setup** | `sub_19D1AF0` (5608 bytes) — orchestrates full per-function ABI pipeline |
+| **Per-pass lowering** | `sub_19DC4B0` (6459 bytes) — 3-pass instruction transform driver |
+| **Opcode-level dispatch** | `sub_19CFC30` — routes 11 opcodes to ABI handlers |
+| **Parameter allocator** | `sub_19CA730` (2277 bytes) — 2048-bit free-list bitmap allocator |
+| **Return address validator** | `sub_19CDFF0` (7.5 KB) — 12 diagnostic strings, warnings 7001--7009 |
+| **Return address setup** | `sub_19D1720` (4.8 KB) — validates and assigns return address registers |
+| **Register transfer lowering** | `sub_19CC1A0` (3873 bytes) — generates MOV/STS/LDS/PRMT sequences |
+| **gb10b WAR** | `sub_19D9E00` + `sub_19DA2A0` — `__nv_reservedSMEM_gb10b_war_var` |
+| **Convergent checker** | `sub_19D13F0` (4.3 KB) — `allowConvAlloc` boundary validation |
 | **Address range** | `0x19C6230`--`0x1A00FFF` (~250 KB, 276 functions) |
 
 ## Reserved Registers
@@ -131,7 +131,7 @@ function abi_alloc_params(func):
 
 #### find\_contiguous\_free: Inlined Bitmap Scan
 
-The `find_contiguous_free` call in the pseudocode above is not a separate function -- it is inlined directly in `sub_19CA730`. The algorithm scans the 256-byte free-list for `count` contiguous free slots starting at an aligned offset. Each candidate start position is forced to the next alignment boundary using a negative-mask trick.
+The `find_contiguous_free` call in the pseudocode above is not a separate function — it is inlined directly in `sub_19CA730`. The algorithm scans the 256-byte free-list for `count` contiguous free slots starting at an aligned offset. Each candidate start position is forced to the next alignment boundary using a negative-mask trick.
 
 ```c
 // Inlined in sub_19CA730 (lines ~395-421 of decompiled output).
@@ -225,7 +225,7 @@ The function also enforces the mutual exclusion rule (warning 7006): `"ABI allow
 
 Registers not reserved by the ABI and not used for parameters or return values may be classified as **scratch** (callee-clobbered). The ABI engine tracks scratch classification per register and validates it against coroutine semantics. At SUSPEND points in coroutine functions, a register marked as scratch must not also appear in the preserved set. Violation triggers warning 7011.
 
-The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee. The spill codegen (`sub_94F150`) adjusts per-vreg spill costs at every CALL instruction (opcode 97 used here as an internal CALL-like marker; `STG` in the 322-entry ROT13 SASS name table -- the actual SASS `CALL` is opcode 71) based on this classification:
+The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee. The spill codegen (`sub_94F150`) adjusts per-vreg spill costs at every CALL instruction (opcode 97 used here as an internal CALL-like marker; `STG` in the 322-entry ROT13 SASS name table — the actual SASS `CALL` is opcode 71) based on this classification:
 
 ```c
 function adjust_spill_cost_for_abi(alloc, func, instr):
@@ -284,13 +284,13 @@ The `2 * base_weight` factor (30.0 default, 6.0 under pressure) reflects the pai
 
 The instruction-level ABI transform driver (6459 bytes, 95% confidence). Called from both `sub_98F430` and `sub_A9DDD0`. It makes three passes over the instruction stream, each performing different transformations:
 
-### Pass 1 -- Convergent Boundary Fixup
+### Pass 1 — Convergent Boundary Fixup
 
 - Fixes convergent boundary annotations (`allowConvAlloc`).
 - Handles `SHFL.NI` (shuffle, no-index) fixups for intra-warp communication.
 - Propagates the `.uniform` bit on `CAL` (call) instructions.
 
-### Pass 2 -- Instruction Lowering
+### Pass 2 — Instruction Lowering
 
 Lowers high-level Ori opcodes into ABI-conforming SASS sequences. Entry is gated on a disjunction of six ABI capability flags read from `abi_spec+1096..1107` crossed against function state flags at `ctx+1368..1382`. If none of the flags are set, Pass 2 returns immediately.
 
@@ -302,7 +302,7 @@ Lowers high-level Ori opcodes into ABI-conforming SASS sequences. Entry is gated
 | 185 | ATOMG | `+1105 & 0x20` | `sub_19D5DD0` |
 | 183 | (special) | `+1107 & 0x02` or `+1105 & 0x02` | `sub_7E2670` reclassification to mode 2/3 |
 
-The instruction stream is scanned linearly. For CALL instructions (Ori opcode 109 in this pass's local opcode-to-handler table -- note this is the table-row index from the lowering table above, not the 322-entry ROT13 SASS name table where index 109 is `CCTLL` and index 71 is the actual SASS `CALL`), two sub-phases execute in sequence:
+The instruction stream is scanned linearly. For CALL instructions (Ori opcode 109 in this pass's local opcode-to-handler table — note this is the table-row index from the lowering table above, not the 322-entry ROT13 SASS name table where index 109 is `CCTLL` and index 71 is the actual SASS `CALL`), two sub-phases execute in sequence:
 
 #### CALL lowering: parameter register fixup (`sub_19D5680`)
 
@@ -361,7 +361,7 @@ lower_call_saves(ctx, call_insn):
 
 These two sub-phases connect to the separate opcode-72 (CAL) lowering in `sub_19CFC30` ([below](#opcode-level-abi-dispatch-sub_19cfc30)). Opcode 109 is the Ori-level abstract call; opcode 72 is the SASS-level concrete call. Pass 2 rewrites CALL operands; `sub_19CFC30` later emits the pre-call save (`sub_19CB590`: STL/STS bracket) and post-call restore (`sub_19CB7E0`: LDL/LDS bracket) around the CAL.
 
-### Pass 3 -- Architecture-Specific Fixups
+### Pass 3 — Architecture-Specific Fixups
 
 Conditioned on SM generation:
 
@@ -636,7 +636,7 @@ propagate_abi_limits(compilation_ctx):
 
 ## Call Instruction ABI Lowering: sub\_19D41E0
 
-The call lowering function (2247 bytes, 85% confidence) processes each call instruction (opcode 97; `STG` in the ROT13 name table, but used here as an internal CALL-like marker -- actual SASS CALL is opcode 71) in the function. For each call site it:
+The call lowering function (2247 bytes, 85% confidence) processes each call instruction (opcode 97; `STG` in the ROT13 name table, but used here as an internal CALL-like marker — actual SASS CALL is opcode 71) in the function. For each call site it:
 
 1. Sets up parameter passing registers according to the callee's ABI specification.
 2. Inserts pre-call register save sequences for caller-saved registers.
@@ -798,7 +798,7 @@ The ABI engine emits 15 distinct warning codes (7001--7017) from six functions. 
 | 7004 | `0x1B5C` | `sub_19CDFF0` | `"Return Address %d overlaps with parameters in range %d - %d"` | Return addr bit set in parameter allocation bitmap |
 | 7005 | `0x1B5D` | `sub_19CDFF0` | `"With specified parameters, return address is %d registers and exceeds specified max reg (%d)"` | Auto-placed return addr pushed beyond register file limit |
 | 7006 | `0x1B5E` | `sub_19D1720` | `"ABI allows either specifying return address or return address before params"` | Mode 1 (fixed) with explicit `return_addr != -1` |
-| 7007 | `0x1B5F` | -- | -- | Unused/reserved in this binary version |
+| 7007 | `0x1B5F` | — | — | Unused/reserved in this binary version |
 | 7008 | `0x1B60` | `sub_19CDFF0` | `"Return address (%d) should be between %d and %d"` | Return addr outside valid range from target vtable query |
 | 7009 | `0x1B61` | `sub_19CDFF0` | `"SM does not support uniform registers for return address"` | Mode 3 (uniform) on target without UR support (`!(func+1408 & 0x02)`) |
 | 7010 | `0x1B62` | `sub_13B6DF0` | `"Relative 32-bit return address requires a caller-save 64-bit scratch register pair"` | 32-bit relative call without available scratch pair |

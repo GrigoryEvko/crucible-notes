@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The PTX-to-Ori lowering is the transition from parsed PTX assembly into the Ori internal representation -- the SASS-level, virtual-register IR that all subsequent optimization operates on. Unlike a traditional compiler where the parser builds an AST and a separate lowering pass consumes it, ptxas has **no materialized AST**: the Bison parser's reduction actions directly construct Ori IR nodes, basic blocks, and CFG edges inline. What the `--compiler-stats` timer calls "DAGgen-time" measures this inline construction phase. The result is a raw Ori IR that still uses PTX-derived opcodes and has unresolved architecture-dependent constructs. Fourteen "bridge phases" (pipeline indices 0--13) then transform this raw IR into the optimizer-ready form where every instruction carries its final SASS opcode, the CFG is fully annotated, and architecture-incompatible operations have been legalized.
+The PTX-to-Ori lowering is the transition from parsed PTX assembly into the Ori internal representation — the SASS-level, virtual-register IR that all subsequent optimization operates on. Unlike a traditional compiler where the parser builds an AST and a separate lowering pass consumes it, ptxas has **no materialized AST**: the Bison parser's reduction actions directly construct Ori IR nodes, basic blocks, and CFG edges inline. What the `--compiler-stats` timer calls "DAGgen-time" measures this inline construction phase. The result is a raw Ori IR that still uses PTX-derived opcodes and has unresolved architecture-dependent constructs. Fourteen "bridge phases" (pipeline indices 0--13) then transform this raw IR into the optimizer-ready form where every instruction carries its final SASS opcode, the CFG is fully annotated, and architecture-incompatible operations have been legalized.
 
 The key architectural consequence of this design: there is no separate "lowering" function that you can point at and say "this converts PTX to Ori." The conversion is distributed across (1) the Bison parser's 443 reduction actions, (2) a 44 KB operand processing function, (3) the MercConverter instruction legalization pass, and (4) six additional bridge phases that handle FP16 promotion, control flow canonicalization, macro fusion, and recipe application.
 
@@ -77,7 +77,7 @@ PTX source text
 
 ## Inline IR Construction (Bison -> Ori)
 
-The Bison parser at `sub_4CE6B0` has 512 grammar productions with 443 reduction-action cases. Each reduction action constructs IR directly -- no intermediate AST is ever materialized. The instruction table builder (`sub_46E000`, 93 KB, 1,141 per-opcode registration calls to `sub_46BED0`) runs during parser initialization and registers the legal type combinations for every PTX instruction. The instruction lookup subsystem (`sub_46C690` entry, `sub_46C6E0` matcher at 6.4 KB) classifies operands into 12 categories at parse time.
+The Bison parser at `sub_4CE6B0` has 512 grammar productions with 443 reduction-action cases. Each reduction action constructs IR directly — no intermediate AST is ever materialized. The instruction table builder (`sub_46E000`, 93 KB, 1,141 per-opcode registration calls to `sub_46BED0`) runs during parser initialization and registers the legal type combinations for every PTX instruction. The instruction lookup subsystem (`sub_46C690` entry, `sub_46C6E0` matcher at 6.4 KB) classifies operands into 12 categories at parse time.
 
 When the parser encounters a PTX instruction like `add.f32 %r1, %r2, %r3`, it:
 
@@ -90,7 +90,7 @@ When the parser encounters a PTX instruction like `add.f32 %r1, %r2, %r3`, it:
 
 Special PTX registers (`%ntid`, `%laneid`, `%smid`, `%ctaid`, `%clock64`, etc.) are mapped to internal identifiers during parser initialization at `sub_451730`. The mapping table is built from the ROT13-encoded opcode table populated by `ctor_003` at `0x4095D0`.
 
-## Operand Processing -- `sub_6273E0`
+## Operand Processing — `sub_6273E0`
 
 The 44 KB operand processing function handles all PTX operand forms. It reads `v12 = *(_BYTE *)a2` (the first byte of the PTX AST node) and switches on `v12 & 0x3F`. The 11 active case values and the default are:
 
@@ -107,22 +107,22 @@ The 44 KB operand processing function handles all PTX operand forms. It reads `v
 | 0xC (12) | Parenthesized expr | `(%r1)` | Passthrough | Unwraps one level: recursively calls `sub_62A760` on the inner child. If `a5` (destination context) flag is set and `a12` is zero, chains through `sub_624680` for destination address qualification |
 | 0xE (14) | Operand list | `%r1, %r2, %r3` | Chained via `sub_620AF0` | If `a4` tag is 66 (predicated): checks type-qualifier size (4 or 8 bytes) via `sub_4574A0`/`sub_4574B0` family to set predicate flags, then delegates to `sub_629E40`. Otherwise: iterates the linked list (`*v56` walk), recursively calling `sub_6273E0` on each element and chaining results with `sub_620AF0(ctx, new, prev, index)` |
 | 0x10 (16) | Predicate register | `%p0`, `@%p1` | Predicate-typed value | Calls `sub_61C9B0` for type resolution, then `sub_620320(ctx, typeCode, 1, &v283)` to create a predicate-width operand node |
-| default | (unknown tag) | -- | Returns 0 | Unrecognized node tag; returns null |
+| default | (unknown tag) | — | Returns 0 | Unrecognized node tag; returns null |
 
 String references in callees of `sub_6273E0` (not in the function itself, but in its direct callees `sub_627380`, `sub_623AB0`, `sub_4CE6B0`):
-- `".nv.reservedSmem.{begin,end,cap,offset0,offset1}"` -- reserved shared memory region symbols resolved by `sub_627380` (called from case 4, storage class 3, state-space codes 'e'--'i')
-- `"COARSEOFFSET"` -- coarse-grained offset label created by `sub_623AB0` for large address space indexing
-- `"__$endLabel$__%s"` -- end-of-scope label synthesized by the Bison parser (`sub_4CE6B0`) for structured control flow
+- `".nv.reservedSmem.{begin,end,cap,offset0,offset1}"` — reserved shared memory region symbols resolved by `sub_627380` (called from case 4, storage class 3, state-space codes 'e'--'i')
+- `"COARSEOFFSET"` — coarse-grained offset label created by `sub_623AB0` for large address space indexing
+- `"__$endLabel$__%s"` — end-of-scope label synthesized by the Bison parser (`sub_4CE6B0`) for structured control flow
 
 The function bridges PTX's explicitly-typed operand model (where `.u32`, `.f32`, `.b64` qualifiers are part of the syntax) to Ori's implicitly-typed model where the operand type is determined by the SASS opcode. Type resolution at `sub_61C9B0` maps PTX type qualifiers to a 5-entry size class via `dword_20249C0[min(typeClass, 4)]`, producing a size-category byte (255 for out-of-range) that is packed into the high word of the Ori operand descriptor.
 
 ## Bridge Phases (0--13)
 
-### Phase 0: OriCheckInitialProgram -- Validation
+### Phase 0: OriCheckInitialProgram — Validation
 
 Validates the raw Ori IR produced by the Bison parser for structural correctness: all basic blocks have valid entry/exit points, instruction operand counts match opcode requirements, register references are within bounds, and CFG edges are consistent. This is a pure validation pass that produces no IR transformations. It catches malformed IR early, before any optimization pass can amplify a structural error into a hard-to-diagnose miscompile.
 
-### Phase 1: ApplyNvOptRecipes -- Optimization Level Configuration
+### Phase 1: ApplyNvOptRecipes — Optimization Level Configuration
 
 Applies NvOptRecipe transformations controlled by option 391. When enabled, the PhaseManager's constructor (`sub_C62720`) allocates a 440-byte NvOptRecipe sub-manager at `PhaseManager+56`. This sub-manager configures per-phase behavior based on the NvOpt level (0--5), controlling which later phases are active and their aggressiveness:
 
@@ -149,7 +149,7 @@ NvOptRecipe Sub-Manager (440 bytes, at PhaseManager+56)
   +432    shared_list_ptr (ref-counted)
 ```
 
-### Phase 2: PromoteFP16 -- Half-Precision Type Promotion
+### Phase 2: PromoteFP16 — Half-Precision Type Promotion
 
 Promotes half-precision (FP16) operations where hardware support is insufficient or promotion yields better throughput. The promotion strategy is architecture-dependent:
 
@@ -159,7 +159,7 @@ Promotes half-precision (FP16) operations where hardware support is insufficient
 
 The phase walks the instruction linked list, inspects each instruction's type encoding at offset `+72`, and rewrites FP16 operations to FP32 equivalents by replacing the opcode and inserting conversion instructions (`F2F` in SASS terminology) at use/def boundaries.
 
-### Phase 3: AnalyzeControlFlow -- CFG Finalization
+### Phase 3: AnalyzeControlFlow — CFG Finalization
 
 Builds and finalizes the control flow graph data structures that the optimizer requires:
 
@@ -179,7 +179,7 @@ Phases 4 (`AdvancedPhaseBeforeConvUnSup`) and 7 (`AdvancedPhaseAfterConvUnSup`) 
 
 These hooks are part of the 16 `AdvancedPhase` injection points distributed throughout the 159-phase pipeline. The architecture vtable factory at `sub_1CCEEE0` (17 KB, 244 callees) selects which overrides are active based on the `sm_version`.
 
-### Phase 5: ConvertUnsupportedOps -- Instruction Legalization
+### Phase 5: ConvertUnsupportedOps — Instruction Legalization
 
 The most substantial bridge phase. Lowers PTX operations that have no direct SASS equivalent for the target architecture. This phase runs the MercConverter engine (see next section) and handles:
 
@@ -194,23 +194,23 @@ After ConvertUnsupportedOps completes, every instruction in the IR has a valid S
 
 The late phase 132 (`UpdateAfterConvertUnsupportedOps`) runs cleanup for edge cases introduced by this phase that are only detectable after optimization.
 
-### Phase 6: SetControlFlowOpLastInBB -- CFG Structural Fixup
+### Phase 6: SetControlFlowOpLastInBB — CFG Structural Fixup
 
 Enforces a critical structural invariant: **control flow operations must be the last instruction in their basic block.** If a branch, jump, return, or exit instruction is followed by other instructions in the same block (which can happen during lowering when a PTX instruction expands to a sequence ending in a branch), this phase splits the block at the control flow point.
 
 The invariant is required by the scheduler (which assumes only the last instruction in a block can transfer control) and the register allocator (which computes live-out sets at block boundaries). The phase rewrites the instruction linked list and allocates new 40-byte basic block entries as needed.
 
-### Phase 8: OriCreateMacroInsts -- Macro Fusion
+### Phase 8: OriCreateMacroInsts — Macro Fusion
 
 Identifies and fuses instruction sequences into macro instructions for hardware efficiency. The phase scans the instruction linked list for patterns that the GPU hardware can execute as a single macro-op:
 
 - **Compare + branch**: fused into a conditional branch macro instruction
-- **Multiply + add**: fused into FMA where not already (different from PTX `fma` -- this catches `mul` followed by `add` on the same operands)
+- **Multiply + add**: fused into FMA where not already (different from PTX `fma` — this catches `mul` followed by `add` on the same operands)
 - **Address computation + memory access**: fused sequences for coalesced access patterns
 
 The fused macro instructions carry composite semantics in a single IR node. They are expanded back into individual SASS instructions much later at phase 118 (`MercExpandInstructions`), after scheduling has determined the optimal placement. This late expansion allows the optimizer to treat the fused sequence as atomic, preventing passes from inserting unrelated instructions between the components.
 
-### Phase 9: ReportInitialRepresentation -- Diagnostic Dump
+### Phase 9: ReportInitialRepresentation — Diagnostic Dump
 
 Dumps the Ori IR state for debugging, active when `DUMPIR` or `--ftrace` diagnostics are enabled. The stats emitter at `sub_A3A7E0` prints a per-function profile:
 
@@ -239,7 +239,7 @@ This snapshot provides the pre-optimization baseline. Comparing it against `Repo
 
 ## The MercConverter Engine
 
-The MercConverter (`sub_9F1A90`, 35 KB) is the instruction conversion engine at the heart of `ConvertUnsupportedOps`. Despite its name referencing "Mercury" (NVIDIA's SASS encoding format), it operates purely at the IR level -- converting instruction semantics, not binary encodings.
+The MercConverter (`sub_9F1A90`, 35 KB) is the instruction conversion engine at the heart of `ConvertUnsupportedOps`. Despite its name referencing "Mercury" (NVIDIA's SASS encoding format), it operates purely at the IR level — converting instruction semantics, not binary encodings.
 
 ### Call Chain
 
@@ -422,7 +422,7 @@ The dispatch reads `*(instr+72)`, masks byte 1 with `&= 0xCF` (strips modifier b
 | `sub_9DA6B0` | small | Misc ALU + MMA passthrough | 38,59,106,180,182,192,194,215,221,242 (POPC through UTMALDG) |
 | `sub_9D54B0` | small | Bit/barrier manipulation | 42,53,55,66 (MUFU, BREV, BMOV_R, DEPBAR) |
 | `sub_9D4C10` | small | Uniform integer ops | 139--141,143 (UBMSK, UCLEA, UISETP, ULEA) |
-| `sub_9E6600` | 25 KB | Instruction expansion | 61,63,80 (BAR, SETCTAID, MATCH -- multi-instruction) |
+| `sub_9E6600` | 25 KB | Instruction expansion | 61,63,80 (BAR, SETCTAID, MATCH — multi-instruction) |
 | `sub_9E5EE0` | med | Control flow lowering | 60,62,78,79 (LEPC, BAR_INDEXED, RTT, BSYNC) |
 | `sub_9D09C0` | small | Predicated lowering (v8=1) | 52,54,72,97 (AL2P_INDEXED, BMOV_B, RET, STG) |
 | `sub_9EAC30` | med | Quarter-precision MMA | 201,202,204,285 (QMMA family) |
@@ -563,7 +563,7 @@ Key semantic differences at the transition:
 
 2. **Register namespace unification**: PTX's typed virtual registers (`%r` for int, `%f` for float, `%rd` for 64-bit, `%p` for predicate) merge into Ori's four register files (R, UR, P, UP) with type tracked in the register descriptor at offset `+64`.
 
-3. **Operand count changes**: SASS `IADD3` takes 3 source operands where PTX `add` takes 2 -- the third source defaults to `RZ` (the hardware zero register). This is handled by the expansion in `sub_9E6600`.
+3. **Operand count changes**: SASS `IADD3` takes 3 source operands where PTX `add` takes 2 — the third source defaults to `RZ` (the hardware zero register). This is handled by the expansion in `sub_9E6600`.
 
 4. **Multi-instruction expansion**: Complex PTX operations expand to multiple SASS instructions. A PTX `div.f32` may become a Newton-Raphson sequence of `RCP` + `FMUL` + correction iterations.
 
@@ -571,7 +571,7 @@ Key semantic differences at the transition:
 
 ### Mapping Tables
 
-**Table 1 -- PTX type qualifier to SASS opcode prefix.** The type qualifier is consumed during MercConverter dispatch and encoded into the SASS mnemonic prefix. Peephole field 0x7E (slot 126) carries the data type qualifier internally (547 = `.f32`, 548 = `.f64`); the ISel field 22 encodes integer sign (99 = unsigned, 101 = signed). The `U` prefix denotes the uniform-register variant, not a type.
+**Table 1 — PTX type qualifier to SASS opcode prefix.** The type qualifier is consumed during MercConverter dispatch and encoded into the SASS mnemonic prefix. Peephole field 0x7E (slot 126) carries the data type qualifier internally (547 = `.f32`, 548 = `.f64`); the ISel field 22 encodes integer sign (99 = unsigned, 101 = signed). The `U` prefix denotes the uniform-register variant, not a type.
 
 | PTX type qualifier | SASS prefix | Arithmetic | Compare | Conversion | Example |
 |---|---|---|---|---|---|
@@ -582,24 +582,24 @@ Key semantic differences at the transition:
 | `.s8`--`.s64` | `I` | `IADD3`, `IMAD`, `IMAD_WIDE` | `ISETP` | `I2I`, `I2F` | `add.s32` -> `IADD3` |
 | `.u8`--`.u64` | `I` | `IADD3`, `IMAD` | `ISETP` | `I2I`, `I2F` | `mul.lo.u32` -> `IMAD` |
 | `.b8`--`.b128` | (none) | `LOP3`, `SHF`, `PRMT` | `ISETP` | `I2I` | `and.b32` -> `LOP3` |
-| `.pred` | `P` (in operand) | `PLOP3` | -- | `P2R`, `R2P` | `and.pred` -> `PLOP3` |
+| `.pred` | `P` (in operand) | `PLOP3` | — | `P2R`, `R2P` | `and.pred` -> `PLOP3` |
 
-Signed vs. unsigned `.s`/`.u` distinction does not change the SASS mnemonic -- both map to `I`-prefixed instructions. The sign is encoded in a modifier bit (ISel field 22: value 99 for `.u`, 101 for `.s`), which the SASS printer emits as `.U32` vs no suffix on `ISETP`.
+Signed vs. unsigned `.s`/`.u` distinction does not change the SASS mnemonic — both map to `I`-prefixed instructions. The sign is encoded in a modifier bit (ISel field 22: value 99 for `.u`, 101 for `.s`), which the SASS printer emits as `.U32` vs no suffix on `ISETP`.
 
-**Table 2 -- PTX state space to SASS memory instruction.** The state space qualifier on `ld`/`st` selects the SASS opcode suffix. Peephole field 0x119 (slot 281) carries the address space qualifier with enum values 1435--1440. Atomics follow the same suffix pattern (`ATOM`/`ATOMG`/`ATOMS`).
+**Table 2 — PTX state space to SASS memory instruction.** The state space qualifier on `ld`/`st` selects the SASS opcode suffix. Peephole field 0x119 (slot 281) carries the address space qualifier with enum values 1435--1440. Atomics follow the same suffix pattern (`ATOM`/`ATOMG`/`ATOMS`).
 
 | PTX state space | SASS load | SASS store | SASS atomic | Field 281 value |
 |---|---|---|---|---|
 | `.global` | `LDG` | `STG` | `ATOMG` | 1436 |
 | `.shared` | `LDS` | `STS` | `ATOMS` | 1437 |
-| `.local` | `LDL` | `STL` | -- | 1438 |
-| `.const` | `LDC` | -- | -- | 1439 |
-| `.param` | `LDC` (bank 0) | -- | -- | 1440 |
+| `.local` | `LDL` | `STL` | — | 1438 |
+| `.const` | `LDC` | — | — | 1439 |
+| `.param` | `LDC` (bank 0) | — | — | 1440 |
 | (generic) | `LD` | `ST` | `ATOM` | 1435 |
 
 Additional memory instructions: `LDSM` (load shared matrix, sm_75+), `LDGSTS` (async global-to-shared, sm_80+), `LDGDEPBAR` (load with dependency barrier), `LDTRAM` (load TMEM, sm_100+).
 
-**Table 3 -- PTX comparison/rounding modifiers to SASS encoding.** Modifiers that survive as SASS instruction suffixes are encoded through the modifier-encode functions in the 0x10B region. Field 345 (slot 0x159) selects rounding; field 150 (slot 0x096) selects comparison mode. The SASS printer emits these via `vtable[1760]` (rounding) and `vtable[1392]`/`vtable[3528]` (comparison).
+**Table 3 — PTX comparison/rounding modifiers to SASS encoding.** Modifiers that survive as SASS instruction suffixes are encoded through the modifier-encode functions in the 0x10B region. Field 345 (slot 0x159) selects rounding; field 150 (slot 0x096) selects comparison mode. The SASS printer emits these via `vtable[1760]` (rounding) and `vtable[1392]`/`vtable[3528]` (comparison).
 
 | PTX modifier | Field ID | Enum value | SASS suffix | Encoding bits | Encoder |
 |---|---|---|---|---|---|
@@ -608,7 +608,7 @@ Additional memory instructions: `LDSM` (load shared matrix, sm_75+), `LDGSTS` (a
 | `.rm` (round minus-inf) | 345 | 1902 | `.RM` | field 300 = 1515 | `sub_10B6220` |
 | `.rp` (round plus-inf) | 345 | 1903 | `.RP` | field 300 = 1516 | `sub_10B6220` |
 | `.ftz` (flush to zero) | 301 | 1521 | `.FTZ` | 1-bit flag | `sub_10B6180` (1-bit) |
-| `.sat` (saturate) | (stage) | -- | `.SAT` | 1-bit flag | `sub_10B6180` |
+| `.sat` (saturate) | (stage) | — | `.SAT` | 1-bit flag | `sub_10B6180` |
 | `.eq .ne .lt .le .gt .ge` | 150 | 650, 651 | `.EQ .NE .LT .LE .GT .GE` | 4-bit, `(mod>>4)&0xF` | `sub_10B4650` (4-bit) |
 | `.equ .neu .ltu .leu .gtu .geu` | 150 | 650, 651 | `.EQU .NEU ...` | 4-bit + unordered bit | `sub_10B4650` |
 | `.num .nan` | 150 | 650, 651 | `.NUM .NAN` | 4-bit | `sub_10B4650` |
@@ -673,12 +673,12 @@ The boundary between "lowering" and "optimization" is therefore between phase 13
 
 ## Cross-References
 
-- [PTX Parser](ptx-parser.md) -- Flex scanner + Bison LALR(1) parser (the source of raw Ori IR)
-- [Ori IR](../ir/overview.md) -- IR design: Code Object, basic blocks, instruction format, register files
-- [Optimization Pipeline](optimizer.md) -- 159-phase pipeline (phases 0--13 are the bridge)
-- [Phase Manager](../passes/phase-manager.md) -- PhaseManager object, phase factory, dispatch loop
-- [Optimization Levels](../config/opt-levels.md) -- NvOpt levels 0--5 and their effect on recipes
-- [SASS Opcodes](../reference/sass-opcodes.md) -- target SASS instruction set after lowering
+- [PTX Parser](ptx-parser.md) — Flex scanner + Bison LALR(1) parser (the source of raw Ori IR)
+- [Ori IR](../ir/overview.md) — IR design: Code Object, basic blocks, instruction format, register files
+- [Optimization Pipeline](optimizer.md) — 159-phase pipeline (phases 0--13 are the bridge)
+- [Phase Manager](../passes/phase-manager.md) — PhaseManager object, phase factory, dispatch loop
+- [Optimization Levels](../config/opt-levels.md) — NvOpt levels 0--5 and their effect on recipes
+- [SASS Opcodes](../reference/sass-opcodes.md) — target SASS instruction set after lowering
 
 ## Function Map
 

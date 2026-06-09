@@ -344,31 +344,31 @@ Offset  Type   Field
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `PrologEpilogInserter::runOnMachineFunction` — main entry (68 KB) | `sub_35B1110` | -- | -- |
-| PEI pre-setup: initialize frame object tracking | `sub_35AC440` | -- | -- |
-| Record frame object into chunk table | `sub_35AFAD0` | -- | -- |
-| Determine CSR frame index range (writes PEI+208, +212) | `sub_35AEEB0` | -- | -- |
-| Post-save fixup | `sub_35AE230` | -- | -- |
-| Insert restore instructions at epilog points | `sub_35ADBC0` | -- | -- |
-| Assign offsets to categorized frame object bucket | `sub_35B0830` | -- | -- |
-| Push frame object index into categorized bucket | `sub_35B0B10` | -- | -- |
-| Post-prolog/epilog fixup | `sub_35AC7B0` | -- | -- |
-| Try to eliminate a single frame index operand | `sub_35ABF20` | -- | -- |
-| Initialize register scavenger for a MBB | `sub_35C5BD0` | -- | -- |
-| Advance register scavenger | `sub_35C5C00` | -- | -- |
-| Post-scavenging callee-save cleanup | `sub_35C6D20` | -- | -- |
-| Format stack-size annotation | `sub_35AE7D0` | -- | -- |
-| PTX emitter: `emitFunctionFrameSetup()` (__local_depot + %SP/%SPL) | `sub_2158E80` | -- | -- |
-| Local depot helper | `sub_214C040` | -- | -- |
-| Local depot helper | `sub_2154370` | -- | -- |
-| Collect callee-saved registers | `sub_2E77EA0` | -- | -- |
-| Get register class for physical register | `sub_2FF6500` | -- | -- |
-| Build sub-register decomposition list | `sub_2F26260` | -- | -- |
-| Insert compound save instruction | `sub_2E8EAD0` | -- | -- |
-| Check optimization level flag | `sub_B2D610` | -- | -- |
-| Check function attribute existence | `sub_B2D620` | -- | -- |
-| Get function attribute value | `sub_B2D7E0` | -- | -- |
-| Build stack-size diagnostic message | `sub_B15960` | -- | -- |
+| `PrologEpilogInserter::runOnMachineFunction` — main entry (68 KB) | `sub_35B1110` | — | — |
+| PEI pre-setup: initialize frame object tracking | `sub_35AC440` | — | — |
+| Record frame object into chunk table | `sub_35AFAD0` | — | — |
+| Determine CSR frame index range (writes PEI+208, +212) | `sub_35AEEB0` | — | — |
+| Post-save fixup | `sub_35AE230` | — | — |
+| Insert restore instructions at epilog points | `sub_35ADBC0` | — | — |
+| Assign offsets to categorized frame object bucket | `sub_35B0830` | — | — |
+| Push frame object index into categorized bucket | `sub_35B0B10` | — | — |
+| Post-prolog/epilog fixup | `sub_35AC7B0` | — | — |
+| Try to eliminate a single frame index operand | `sub_35ABF20` | — | — |
+| Initialize register scavenger for a MBB | `sub_35C5BD0` | — | — |
+| Advance register scavenger | `sub_35C5C00` | — | — |
+| Post-scavenging callee-save cleanup | `sub_35C6D20` | — | — |
+| Format stack-size annotation | `sub_35AE7D0` | — | — |
+| PTX emitter: `emitFunctionFrameSetup()` (__local_depot + %SP/%SPL) | `sub_2158E80` | — | — |
+| Local depot helper | `sub_214C040` | — | — |
+| Local depot helper | `sub_2154370` | — | — |
+| Collect callee-saved registers | `sub_2E77EA0` | — | — |
+| Get register class for physical register | `sub_2FF6500` | — | — |
+| Build sub-register decomposition list | `sub_2F26260` | — | — |
+| Insert compound save instruction | `sub_2E8EAD0` | — | — |
+| Check optimization level flag | `sub_B2D610` | — | — |
+| Check function attribute existence | `sub_B2D620` | — | — |
+| Get function attribute value | `sub_B2D7E0` | — | — |
+| Build stack-size diagnostic message | `sub_B15960` | — | — |
 
 ## Differences from Upstream LLVM
 

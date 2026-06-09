@@ -2,19 +2,19 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The scheduling engine implements a classical priority list scheduling algorithm extended with GPU-specific heuristics for register pressure management, functional unit contention avoidance, yield hint generation, and barrier-aware instruction ordering. A single unified engine (`sub_688DD0`, 20 KB) serves all three scheduling phases -- ReduceReg, ILP/Latency, and DynBatch -- differentiated only by a mode byte that selects different priority weight configurations. The algorithm iterates basic blocks, builds a ready list of zero-dependency instructions, selects the highest-priority candidate via an 8-bit packed heuristic, emits it into the final schedule, updates the dependency DAG, and repeats until all instructions in the block are placed.
+The scheduling engine implements a classical priority list scheduling algorithm extended with GPU-specific heuristics for register pressure management, functional unit contention avoidance, yield hint generation, and barrier-aware instruction ordering. A single unified engine (`sub_688DD0`, 20 KB) serves all three scheduling phases — ReduceReg, ILP/Latency, and DynBatch — differentiated only by a mode byte that selects different priority weight configurations. The algorithm iterates basic blocks, builds a ready list of zero-dependency instructions, selects the highest-priority candidate via an 8-bit packed heuristic, emits it into the final schedule, updates the dependency DAG, and repeats until all instructions in the block are placed.
 
 | | |
 |---|---|
-| **Unified engine** | `sub_688DD0` (20 KB) -- mode-parameterized core loop |
-| **Priority function** | `sub_8C9320` (47 KB, ~1300 lines) -- 8-bit packed heuristic |
-| **Ready list builder** | `sub_6820B0` (1.5 KB) -- zero-predecessor scan |
-| **Dependency pre-scan** | `sub_8CF880` (28 KB) -- reverse BB iteration |
-| **Edge builder** | `sub_8D9930` (19 KB) -- RAW/WAR/WAW/memory/barrier edges |
-| **Instruction mover** | `sub_925510` (341 bytes) -- doubly-linked list relink |
-| **Resource tracker** | `sub_A09530` (365 bytes) -- per-instruction stall update |
-| **Stall/barrier encoder** | `sub_8D7760` (41 KB) -- control word generation |
-| **Alternative loop** | `sub_68B9C0` (46 KB) -- combined DAG + scheduling |
+| **Unified engine** | `sub_688DD0` (20 KB) — mode-parameterized core loop |
+| **Priority function** | `sub_8C9320` (47 KB, ~1300 lines) — 8-bit packed heuristic |
+| **Ready list builder** | `sub_6820B0` (1.5 KB) — zero-predecessor scan |
+| **Dependency pre-scan** | `sub_8CF880` (28 KB) — reverse BB iteration |
+| **Edge builder** | `sub_8D9930` (19 KB) — RAW/WAR/WAW/memory/barrier edges |
+| **Instruction mover** | `sub_925510` (341 bytes) — doubly-linked list relink |
+| **Resource tracker** | `sub_A09530` (365 bytes) — per-instruction stall update |
+| **Stall/barrier encoder** | `sub_8D7760` (41 KB) — control word generation |
+| **Alternative loop** | `sub_68B9C0` (46 KB) — combined DAG + scheduling |
 | **BB size limit** | 4095 instructions (split via `sub_931920`) |
 | **Large function limit** | 16383 instructions (chunk-based via `sub_A9DDD0`) |
 
@@ -140,7 +140,7 @@ function BuildReadyList(sched):
             *(DWORD*)(metadata + 28) = 0           // reset latency counter
 ```
 
-The ready list is a singly-linked list threaded through SchedNode offset `+16` (the `nextReady` field). Sort order is maintained at insertion time by the priority function -- each new instruction is inserted at its correct position so that the head of the list is always the highest-priority candidate. All `metadata+N` offsets throughout the scheduling pages refer to fields within the SchedNode block pointed to by `instr+40` (`sched_slot`), not offsets from the instruction object itself. See the [SchedNode layout](overview.md#per-instruction-scheduling-metadata-schednode) for the complete field map.
+The ready list is a singly-linked list threaded through SchedNode offset `+16` (the `nextReady` field). Sort order is maintained at insertion time by the priority function — each new instruction is inserted at its correct position so that the head of the list is always the highest-priority candidate. All `metadata+N` offsets throughout the scheduling pages refer to fields within the SchedNode block pointed to by `instr+40` (`sched_slot`), not offsets from the instruction object itself. See the [SchedNode layout](overview.md#per-instruction-scheduling-metadata-schednode) for the complete field map.
 
 Opcode 52 instructions are phantom BB boundary markers. The builder skips them but follows their linked-list successors to reach real instructions beyond the boundary.
 
@@ -205,7 +205,7 @@ The function scans the full ready list in a single pass (not limited by knob 770
 | `queue_depth` | knob 770 | Depth threshold parameter (default 4); controls critical-path activation |
 | `per_bb_flag` | knob 769 | Per-BB scheduling flag; when set, resets yield state between BBs |
 | `scheduler+420` | state | Spill-mode countdown; when > 0, forces aggressive scheduling with bit 1 = 1 |
-| `scheduler+464` | state | Depth threshold -- number of barrier targets that must be ready before critical-path activates |
+| `scheduler+464` | state | Depth threshold — number of barrier targets that must be ready before critical-path activates |
 | `scheduler+480` | state | Current scheduling cycle; used for stall-free evaluation |
 | `scheduler+523` | state | Hot-cold tracking enable flag; gated by knob |
 | `scheduler+524` | state | Current yield state; propagated to CONTROL instructions via bit 6 |
@@ -219,8 +219,8 @@ The function scans the full ready list in a single pass (not limited by knob 770
 | `sub_8C67A0` | 3.7 KB | Compute per-instruction resource cost. Calls `sub_A08A00` (resource model) three times: mode 1 = instruction's own cost, mode 2 = operand release cost, mode 3 = combined BB-level impact. Uses SSE `_mm_add_epi32` for vector accumulation. |
 | `sub_8C7290` | 5.1 KB | Copy 10-element int32 resource vector from per-BB table at `scheduler+672`. SSE `_mm_loadu_si128` bulk copy. Special case: opcode 97 (`STG` in ROT13; used as control/boundary marker) returns base scheduler state with zeroed deltas. |
 | `sub_8C7720` | 20 KB | Red-black tree operations for instruction reordering within BB. Maintains a balanced BST of scheduling candidates for O(log N) insertion, removal, and priority update. |
-| `sub_8C7120` | -- | Barrier tracking state update. |
-| `sub_693BC0` | -- | Memory space classification and latency query. |
+| `sub_8C7120` | — | Barrier tracking state update. |
+| `sub_693BC0` | — | Memory space classification and latency query. |
 | `sub_6818D0` | 24 B | `RegToHWUnits`: conditionally doubles register count when `LivenessCountRegComp` (bit 3 of `scheduling_mode_flags`) is set (sm\_70+). |
 
 ### Priority Function Internals
@@ -302,7 +302,7 @@ if old_threshold < barrier_table_count:
 
 The inner loop is equivalent to an iterative selection of the next-smallest distinct latency tier from an unsorted array. Each tier groups barrier targets that share the same latency counter value. The `do...while old_threshold > accum` condition ensures the threshold absorbs at least `old_threshold` instructions before stopping. On subsequent invocations within the same BB, `scheduler+464 >= 0` and the computation is skipped.
 
-During Phase 2 candidate evaluation, the critical-path bit activates when `scheduler+464 > 0 && scheduler+464 <= barrier_count` -- i.e., enough barrier targets are ready to meet the depth threshold.
+During Phase 2 candidate evaluation, the critical-path bit activates when `scheduler+464 > 0 && scheduler+464 <= barrier_count` — i.e., enough barrier targets are ready to meet the depth threshold.
 
 #### Phase 2: Register Budget Prologue
 
@@ -344,7 +344,7 @@ Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) is set on sm\
 
 | SM Generation | HW Alloc Granularity | Bit 3 | Multiplier | Effect |
 |---|---|---|---|---|
-| sm\_30 -- sm\_60 | 2 regs/thread (64/warp) | 0 | 1x | count passes through unchanged |
+| sm\_30 — sm\_60 | 2 regs/thread (64/warp) | 0 | 1x | count passes through unchanged |
 | sm\_70+ | 8 regs/thread (256/warp) | 1 | 2x | count doubled to match 8-reg blocks |
 
 `budget_hw` sets the threshold for bit 4 (pressure overflow). `reduced_hw` provides a tighter threshold used in the critical-path assessment. `queue_depth` (knob 770) limits how many candidates receive full priority evaluation; the rest use cached values from initial insertion.
@@ -353,7 +353,7 @@ Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) is set on sm\
 
 For each instruction in the ready list, `sub_8C7290` extracts its per-register-class deltas (4 classes: GPR, predicate, address, UGP) and the same-BB flag. Then each priority bit is computed:
 
-**Bit 7 -- Yield-related.** Determined by opcode. Only opcode 39 (YIELD instruction variant) can set this bit. The condition checks the last operand's low 2 bits:
+**Bit 7 — Yield-related.** Determined by opcode. Only opcode 39 (YIELD instruction variant) can set this bit. The condition checks the last operand's low 2 bits:
 
 ```c
 if opcode_masked == 39:
@@ -365,7 +365,7 @@ else:
 
 When set, the instruction is a yield boundary marker and receives absolute highest priority regardless of all other heuristics.
 
-**Bit 6 -- Yield flag.** Set only for opcode 96 (CONTROL instruction):
+**Bit 6 — Yield flag.** Set only for opcode 96 (CONTROL instruction):
 
 ```c
 if opcode_masked == 96:
@@ -382,7 +382,7 @@ if (bit5_set || bit4_set):
 
 The yield flag propagates the scheduler's warp yield state only through CONTROL instructions, ensuring yield hints align with scheduling barriers.
 
-**Bit 5 -- Hot-cold classification.** Requires hot-cold tracking to be active (`scheduler+523` set, gated by `scheduler+532 > 0`):
+**Bit 5 — Hot-cold classification.** Requires hot-cold tracking to be active (`scheduler+523` set, gated by `scheduler+532 > 0`):
 
 ```c
 if hot_cold_active:
@@ -396,9 +396,9 @@ if sub_A9CF90(target_desc, context, instruction):    // is_cold?
     critical_extension = 0                            // suppress lookahead
 ```
 
-`sub_A9CDE0` returns true for global memory loads (`LDG`), texture fetches (`TEX`, `TLD`), and surface operations -- instructions with latencies in the hundreds of cycles. `sub_A9CF90` returns true for constant loads (`LDC`), shared memory operations (`LDS`/`STS`) -- low-latency operations. Hot instructions (bit 5 = 1) get higher priority to schedule early and overlap their long latencies with computation. Cold instructions (bit 5 = 0) are deprioritized.
+`sub_A9CDE0` returns true for global memory loads (`LDG`), texture fetches (`TEX`, `TLD`), and surface operations — instructions with latencies in the hundreds of cycles. `sub_A9CF90` returns true for constant loads (`LDC`), shared memory operations (`LDS`/`STS`) — low-latency operations. Hot instructions (bit 5 = 1) get higher priority to schedule early and overlap their long latencies with computation. Cold instructions (bit 5 = 0) are deprioritized.
 
-**Bit 4 -- Pressure overflow.** This bit does NOT appear directly in the initial packing as a single variable. Instead, the pressure overflow signal (`v81` in decompiled source) feeds into the candidate comparison logic as an override. The mechanism:
+**Bit 4 — Pressure overflow.** This bit does NOT appear directly in the initial packing as a single variable. Instead, the pressure overflow signal (`v81` in decompiled source) feeds into the candidate comparison logic as an override. The mechanism:
 
 ```c
 // For barrier-target instructions:
@@ -418,18 +418,18 @@ else:
     pressure_overflow = overflow
 ```
 
-When pressure_overflow = 1, the candidate wins the comparison regardless of other bits -- it is the scheduler's mechanism for emergency register pressure relief. In the packed byte's bit 4 position, the hot-cold flag occupies the slot. The pressure overflow signal operates at a higher level: it can force the candidate to win even when its packed priority byte is lower.
+When pressure_overflow = 1, the candidate wins the comparison regardless of other bits — it is the scheduler's mechanism for emergency register pressure relief. In the packed byte's bit 4 position, the hot-cold flag occupies the slot. The pressure overflow signal operates at a higher level: it can force the candidate to win even when its packed priority byte is lower.
 
 **Per-register-class overflow limits.** The four register classes each have a fixed overflow threshold. Three are hardcoded constants; the fourth is dynamic:
 
 | Class | Scheduler field | Limit | Comparison | Source |
 |---|---|---|---|---|
-| 0 -- GPR | `scheduler[72]` | `budget_hw` | `current + delta > budget_hw` | `RegToHWUnits(scheduler, budget_base)`, dynamic per-kernel |
-| 1 -- Predicate | `scheduler[68]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1044 |
-| 2 -- Address | `scheduler[56]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1045 |
-| 3 -- UGP | `scheduler[60]` | `sm_backend[624]` | `current + delta >= limit` | Read from target descriptor at runtime |
+| 0 — GPR | `scheduler[72]` | `budget_hw` | `current + delta > budget_hw` | `RegToHWUnits(scheduler, budget_base)`, dynamic per-kernel |
+| 1 — Predicate | `scheduler[68]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1044 |
+| 2 — Address | `scheduler[56]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1045 |
+| 3 — UGP | `scheduler[60]` | `sm_backend[624]` | `current + delta >= limit` | Read from target descriptor at runtime |
 
-Note the asymmetry: classes 0--2 use strict greater-than (`>`), while class 3 uses greater-than-or-equal (`>=`). In the decompiled source, the class 3 check is `v81 = (target_desc[624] < delta + current)` at line 1086 -- strict less-than from the limit's perspective, which is `>=` from the sum's perspective. This means UGP overflow triggers one count sooner than the other classes relative to their limits.
+Note the asymmetry: classes 0--2 use strict greater-than (`>`), while class 3 uses greater-than-or-equal (`>=`). In the decompiled source, the class 3 check is `v81 = (target_desc[624] < delta + current)` at line 1086 — strict less-than from the limit's perspective, which is `>=` from the sum's perspective. This means UGP overflow triggers one count sooner than the other classes relative to their limits.
 
 **`sm_backend[624]` values by architecture.** The UGP limit is a field on the SM backend object, accessed via `*(*(context+1584) + 624)`. Its value tracks the architectural uniform register file size:
 
@@ -442,9 +442,9 @@ Note the asymmetry: classes 0--2 use strict greater-than (`>`), while class 3 us
 | Hopper | sm_90 | 63 | UR0--UR62 | Same UR geometry |
 | Blackwell | sm_100+ | 63 | UR0--UR62 | Same UR geometry |
 
-All sm_75+ architectures share a 63-entry UR file (UR63 = URZ, the zero register). On pre-Turing targets, `sm_backend[624]` is 0, making the `>= 0` comparison always true for any nonzero UGP delta -- but this is moot because no UGP registers are allocated on those targets, so `ugp_delta` is always 0.
+All sm_75+ architectures share a 63-entry UR file (UR63 = URZ, the zero register). On pre-Turing targets, `sm_backend[624]` is 0, making the `>= 0` comparison always true for any nonzero UGP delta — but this is moot because no UGP registers are allocated on those targets, so `ugp_delta` is always 0.
 
-**Bit 3 -- Same-BB preference.** Output parameter from `sub_8C7290`:
+**Bit 3 — Same-BB preference.** Output parameter from `sub_8C7290`:
 
 ```c
 same_bb = sub_8C7290.output_param_5     // boolean from resource copy
@@ -452,7 +452,7 @@ same_bb = sub_8C7290.output_param_5     // boolean from resource copy
 
 Set when the instruction belongs to the currently-scheduled basic block. Instructions imported from other BBs by global scheduling get `same_bb = 0`, reducing their priority relative to local instructions.
 
-**Bit 2 -- Stall-free.** Computed from the earliest-available-cycle field:
+**Bit 2 — Stall-free.** Computed from the earliest-available-cycle field:
 
 ```c
 if countdown_active (scheduler[420] != 0):
@@ -472,9 +472,9 @@ else:
         stall_free = 0
 ```
 
-`metadata+32` is the instruction's earliest available cycle -- the latest completion time among all its producer instructions. `scheduler+480` is the current scheduling cycle. When earliest >= current, all producers have retired and the instruction can issue with zero pipeline stalls.
+`metadata+32` is the instruction's earliest available cycle — the latest completion time among all its producer instructions. `scheduler+480` is the current scheduling cycle. When earliest >= current, all producers have retired and the instruction can issue with zero pipeline stalls.
 
-**Bit 1 -- Critical-path / latency-bound.** Complex multi-path computation:
+**Bit 1 — Critical-path / latency-bound.** Complex multi-path computation:
 
 ```c
 if countdown_active (scheduler[420] != 0):
@@ -550,7 +550,7 @@ exit_spill:
 
 The sentinel value `depthThreshold = -1` causes the next `SelectBestInstruction` invocation to zero all three counters and re-run the barrier-target pre-scan, which recomputes the depth threshold from the updated ready list. This ensures the transition back to NORMAL mode uses fresh pressure data rather than stale values from the previous spill episode.
 
-**Bit 0 -- Tiebreaker (barrier-target).** Read directly from instruction metadata:
+**Bit 0 — Tiebreaker (barrier-target).** Read directly from instruction metadata:
 
 ```c
 tiebreaker = metadata[108] & 1      // barrier-target flag
@@ -610,14 +610,14 @@ for class in classes:
 // all four equal -> fall through to priority byte XOR scan
 ```
 
-The direction is uniformly **ascending** across all four classes: the candidate with the smaller pressure score wins. A score of 0 means the instruction does not push the register class above its safe occupancy threshold; larger values indicate increasing pressure overflow. By checking GPR first, the scheduler prioritizes the widest register file -- the class with the greatest spill cost impact.
+The direction is uniformly **ascending** across all four classes: the candidate with the smaller pressure score wins. A score of 0 means the instruction does not push the register class above its safe occupancy threshold; larger values indicate increasing pressure overflow. By checking GPR first, the scheduler prioritizes the widest register file — the class with the greatest spill cost impact.
 
 2. **Priority byte XOR scan**: When resource vectors are equal, the function XORs the current and best packed bytes and checks differing bits in this order:
-   - Bit 4 (0x10) -- pressure: winner has bit 4 set (higher pressure need)
-   - Bit 6 (0x40) -- yield: winner has bit 6 set (yield participation)
-   - Bit 1 (0x02) -- critical: winner has bit 1 set
-   - Bit 2 (0x04) -- stall-free: winner has bit 2 set
-   - Bit 5 (0x20) -- hot-cold: winner has bit 5 set (hot memory op)
+   - Bit 4 (0x10) — pressure: winner has bit 4 set (higher pressure need)
+   - Bit 6 (0x40) — yield: winner has bit 6 set (yield participation)
+   - Bit 1 (0x02) — critical: winner has bit 1 set
+   - Bit 2 (0x04) — stall-free: winner has bit 2 set
+   - Bit 5 (0x20) — hot-cold: winner has bit 5 set (hot memory op)
 
 3. **Secondary tiebreakers** (when all checked bits match):
    - Barrier group index (`v213` vs `v253`)
@@ -759,8 +759,8 @@ For each pair of instructions within a BB, checks for five dependency types:
 | True | RAW | Read-after-write on same register | Producer's pipeline latency |
 | Anti | WAR | Write-after-read on same register | 0 (ordering constraint only) |
 | Output | WAW | Write-after-write on same register | 1 (minimum separation) |
-| Memory | -- | Store before load to same memory space | Conservative; full ordering |
-| Barrier | -- | Instruction depends on barrier/sync result | Barrier completion latency |
+| Memory | — | Store before load to same memory space | Conservative; full ordering |
+| Barrier | — | Instruction depends on barrier/sync result | Barrier completion latency |
 
 Operand analysis is performed by `sub_894290` (27 KB), which processes 16-bit operand descriptors encoding:
 
@@ -770,11 +770,11 @@ Operand analysis is performed by `sub_894290` (27 KB), which processes 16-bit op
 | 8--11 | Bank number |
 | 0--7 | Dependency type |
 
-Memory dependencies are conservative: all stores are ordered before subsequent loads to the same memory space. The scheduler does not perform alias analysis -- it relies on the memory space classification from `sub_693BC0` to determine whether two operations might conflict.
+Memory dependencies are conservative: all stores are ordered before subsequent loads to the same memory space. The scheduler does not perform alias analysis — it relies on the memory space classification from `sub_693BC0` to determine whether two operations might conflict.
 
 #### Pair-check pruning via last-writer tracking
 
-Despite the "for each pair" description above, the implementation does **not** perform an all-pairs O(N^2) comparison. `sub_68A690` (BuildDependencies) maintains two RB-trees keyed by register ID -- one for the last **writer** of each register, one for the last **reader** set -- and uses bitvector-indexed iteration to touch only the registers an instruction actually references.
+Despite the "for each pair" description above, the implementation does **not** perform an all-pairs O(N^2) comparison. `sub_68A690` (BuildDependencies) maintains two RB-trees keyed by register ID — one for the last **writer** of each register, one for the last **reader** set — and uses bitvector-indexed iteration to touch only the registers an instruction actually references.
 
 ```c
 function BuildDependencies(reg_tree, bb, slot_index):
@@ -830,10 +830,10 @@ These functions handle specific aspects of dependency construction in the 0x6A00
 
 | Address | Size | Purpose |
 |---|---|---|
-| `sub_68A690` | 31 KB | BuildDependencies -- walks instruction lists and creates producer-consumer dependency edges from def-use chains |
-| `sub_6A97B0` | 26 KB | AddDependencyEdges -- register-level data dependency edges |
-| `sub_6A2D30` | 11 KB | ChainDependencies -- memory ordering constraints (ordering edges between memory operations even without explicit data deps) |
-| `sub_6A78F0` | 23 KB | ProcessOperands -- iterates operand arrays at instruction `+84`, extracts register file pressure and dependency distance information |
+| `sub_68A690` | 31 KB | BuildDependencies — walks instruction lists and creates producer-consumer dependency edges from def-use chains |
+| `sub_6A97B0` | 26 KB | AddDependencyEdges — register-level data dependency edges |
+| `sub_6A2D30` | 11 KB | ChainDependencies — memory ordering constraints (ordering edges between memory operations even without explicit data deps) |
+| `sub_6A78F0` | 23 KB | ProcessOperands — iterates operand arrays at instruction `+84`, extracts register file pressure and dependency distance information |
 
 ## Instruction Emission
 
@@ -897,10 +897,10 @@ Each per-BB resource slot occupies 84 bytes (21 DWORDs) stored at `*(scheduler+6
 
 | Address | Size | Purpose |
 |---|---|---|
-| `sub_A091C0` | -- | Initialize per-BB resource arrays to zero |
+| `sub_A091C0` | — | Initialize per-BB resource arrays to zero |
 | `sub_A09530` | 365 bytes | Update stall cycle counters after scheduling an instruction. Decrements pending latency counters for all tracked resources. |
-| `sub_A09D40` | -- | Update WAR (anti-dependency) resource tracking for register operands |
-| `sub_A08A00` | -- | Resource model query (called in 3 modes by `sub_8C67A0`) |
+| `sub_A09D40` | — | Update WAR (anti-dependency) resource tracking for register operands |
+| `sub_A08A00` | — | Resource model query (called in 3 modes by `sub_8C67A0`) |
 
 The resource model `sub_A08A00` is called three times per instruction by `sub_8C67A0`:
 - **Mode 1**: instruction's own execution cost (FU assignment + pipeline latency)
@@ -942,12 +942,12 @@ Each instruction has a pointer at `instr+40` to a heap-allocated SchedNode block
 
 | Offset | Type | Content |
 |---|---|---|
-| +8 | int32 | `dep_count` -- unsatisfied predecessor count (0 = ready) |
-| +16 | QWORD | `next_ready` -- linked-list pointer in ready list |
-| +24 | int32 | `bbSlot` -- 1-based BB position (-1 = unscheduled) |
-| +28 | int32 | `latency_counter` -- current stall counter |
-| +32 | int32 | `earliestCycle` -- earliest available cycle |
-| +40 | int32 | `latestDeadline` -- latest deadline cycle |
+| +8 | int32 | `dep_count` — unsatisfied predecessor count (0 = ready) |
+| +16 | QWORD | `next_ready` — linked-list pointer in ready list |
+| +24 | int32 | `bbSlot` — 1-based BB position (-1 = unscheduled) |
+| +28 | int32 | `latency_counter` — current stall counter |
+| +32 | int32 | `earliestCycle` — earliest available cycle |
+| +40 | int32 | `latestDeadline` — latest deadline cycle |
 | +44 | int32 | Barrier group index |
 | +88 | int32 | `maxPredecessorCycle` |
 | +92 | int32 | `maxDependencyCycle` |
@@ -960,13 +960,13 @@ The alternative scheduling loop `sub_68B9C0` (46 KB) and the main scheduling dri
 
 | Offset | Size | Type | Name | Purpose |
 |---|---|---|---|---|
-| +112 | 16 | -- | (reserved) | Alignment padding / internal state between +111 and +128 |
+| +112 | 16 | — | (reserved) | Alignment padding / internal state between +111 and +128 |
 | +128 | 8 | `ptr` | `regionChainNext` | Singly-linked next pointer for the cross-block region chain. `sub_68B9C0` walks this chain to iterate over BB-representative nodes: `for (node = head; node; node = *(QWORD*)(node + 128))`. Also written during chain construction: `*(QWORD*)(node + 128) = prev_head`. Separate from the `func+104` metadata chain at +0. |
-| +136 | 8 | -- | (reserved) | Padding between chain pointer and scheduling region index |
+| +136 | 8 | — | (reserved) | Padding between chain pointer and scheduling region index |
 | +144 | 4 | `i32` | `schedRegionIndex` | Index into the 72-byte per-block scheduling record array at `scheduler+184`. Used as `72 * *(int*)(node + 144)` to reach the block's pressure snapshot and resource state. Also serves as the hash key for the FNV-1a region dedup cache in `sub_68B9C0` (hashed with constants `0x811C9DC5` / `16777619`). |
-| +148 | 16 | -- | (reserved) | Gap between region index and resource class |
+| +148 | 16 | — | (reserved) | Gap between region index and resource class |
 | +164 | 4 | `i32` | `resourceClassIndex` | Index into the resource-class record array (40 bytes per entry). `sub_688DD0` computes `src + 40 * *(int*)(node + 164)` to look up the 10-element register-delta vector for pressure subtraction during unscheduling. |
-| +168 | 68 | -- | (reserved) | Internal state for the cross-block scheduling engine. Offsets +168 through +232 are not directly accessed via named patterns in `sub_68B9C0` or `sub_688DD0`. |
+| +168 | 68 | — | (reserved) | Internal state for the cross-block scheduling engine. Offsets +168 through +232 are not directly accessed via named patterns in `sub_68B9C0` or `sub_688DD0`. |
 | +236 | 4 | `i32` | `regionOrderWeight` | Region ordering weight used by the cross-block BB traversal. `sub_68B9C0` reads this to decide whether to skip or schedule a region: values near `INT_MIN` (`0x80000001`) or `INT_MAX` (`0x7FFFFFFF`) are sentinels meaning "boundary" (the test `(weight + 0x7FFFFFFF) > 0x7FFFFFFE` catches both). The loop iterates through the region chain comparing consecutive weights to detect region transitions. |
 
 The scheduling loop also reads Ori instruction fields directly (not via the SchedNode): `instr+72` (opcode), `instr+80` (operand count), `instr+84` (operand descriptors).
@@ -984,7 +984,7 @@ For each instruction in the scheduled order:
 | Field | Computation | Range |
 |---|---|---|
 | Stall count | Distance in cycles to the nearest dependent consumer | 0--15 (capped by knob 805, max 16) |
-| Yield hint | Warp scheduling hint -- should the HW scheduler switch to another warp? | 0 or 1 |
+| Yield hint | Warp scheduling hint — should the HW scheduler switch to another warp? | 0 or 1 |
 | Barrier assignment | Which of the 6 available barriers this instruction writes/waits on | 0--5, or none |
 | Scoreboard deps | Read/write dependency tracking for the hardware scoreboard | Bitmask |
 
@@ -996,9 +996,9 @@ Per-SM parameters from [`per_sm_scoreboard_configs.json`](../../../extracted/per
 
 | SM | Gen | HW barriers | SB entries | Max triplets | Dep rules | Max stall | Max barrier lat |
 |---|---|---|---|---|---|---|---|
-| sm_60 | Pascal | 6 | -- | -- | 619 | 39 | 56 |
-| sm_70 | Volta | 6 | -- | -- | 619 | 39 | 56 |
-| sm_75 | Turing | 6 | -- | -- | 619 | 39 | 56 |
+| sm_60 | Pascal | 6 | — | — | 619 | 39 | 56 |
+| sm_70 | Volta | 6 | — | — | 619 | 39 | 56 |
+| sm_75 | Turing | 6 | — | — | 619 | 39 | 56 |
 | sm_80 | Ampere | 6 | 31 | 1 | 256 | 39 | 56 |
 | sm_86 | Ampere | 6 | 31 | 1 | 256 | 39 | 56 |
 | sm_89 | Ada | 6 | 32 | 1 | 256 | 39 | 56 |
@@ -1053,12 +1053,12 @@ Internal structure:
 2. Initialize ready-list management (`sub_687080`)
 3. Check resource conflicts (`sub_687410`)
 4. **Inner loop** (`while(2)` infinite loop with break conditions):
-   - Check if ready list is empty -- break if so
-   - Check opcode 97 (`STG` in ROT13; used as scheduling barrier/control marker) -- special handling
+   - Check if ready list is empty — break if so
+   - Check opcode 97 (`STG` in ROT13; used as scheduling barrier/control marker) — special handling
    - Select best instruction from ready list
    - Schedule it: assign cycle, update resources, process edges
    - For each successor: decrement `dep_count`, add to ready list if zero
-   - Check boundary condition (`v236`) -- break if done
+   - Check boundary condition (`v236`) — break if done
 5. Track first-pass initialization via `v215`
 
 This function accesses the Ori instruction's opcode at `instr+72`, plus SchedNode fields (via `instr+40` pointer): `+24` (bbSlot), `+144` (scheduling slot), `+164` (resource class), and `+236` (latency).
@@ -1076,7 +1076,7 @@ The region 0x89C550--0x8BE320 contains 17+ specialized scheduling strategies. Th
 | `sub_8B6D60` | 12 KB | Pressure-optimized | Minimizes live range overlap by scheduling defs as close to their uses as possible. |
 | `sub_8B77C0` | 15 KB | Dual-issue | Pairs co-issuable instructions for dual-issue architectures (sm_50/Maxwell). Uses `sub_A9CDE0` and `sub_A9CF90` for compatibility checks. |
 | `sub_8B8900` | 12 KB | Tensor scheduling | HMMA/BMMA/BGMMA grouping for warpgroup tensor operations. |
-| `sub_8B9390` | 23 KB | Software pipelining | Loop body overlapping -- interleaves iterations to fill pipeline bubbles. |
+| `sub_8B9390` | 23 KB | Software pipelining | Loop body overlapping — interleaves iterations to fill pipeline bubbles. |
 | `sub_8BAAE0` | 15 KB | Loop-aware | Trip count + register awareness for loop bodies. |
 | `sub_8BB9C0` | 8.2 KB | Prefetch scheduling | Inserts and schedules memory prefetch instructions. |
 | `sub_8BC0B0` | 6.1 KB | Barrier coalescence | Merges adjacent barrier instructions to reduce overhead. |
@@ -1111,31 +1111,31 @@ Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_6820B0` | 1.5 KB | BuildReadyList -- zero-dep instruction scan | HIGH |
-| `sub_682200` | -- | UnlinkFromReadyList -- remove and update deps | HIGH |
-| `sub_682490` | 14 KB | RegisterPressureAnalyzer -- per-class deltas | HIGH |
-| `sub_6833F0` | 10 KB | InitScheduleRegion -- per-BB setup, knob query | HIGH |
-| `sub_685700` | -- | InitSchedulingState -- loop initialization | MEDIUM |
-| `sub_685A10` | 11 KB | InstructionBarrierCheck -- opcode analysis | HIGH |
-| `sub_687080` | -- | ReadyListManagementHelper | MEDIUM |
-| `sub_687410` | -- | ResourceConflictCheck | MEDIUM |
-| `sub_687FE0` | 12 KB | ScheduleBlock -- per-BB scheduling entry | HIGH |
-| `sub_688DD0` | 20 KB | **ScheduleEngine** -- unified 3-mode core loop | HIGH |
-| `sub_68A690` | 31 KB | BuildDependencies -- def-use chain DAG | HIGH |
-| `sub_68B9C0` | 46 KB | MainSchedulingLoop -- combined DAG + scheduling | HIGH |
-| `sub_692200` | 18 KB | SchedulingHeuristic -- priority with FP scoring | HIGH |
-| `sub_695530` | 15 KB | ComputeLatencies -- instruction latency computation | HIGH |
-| `sub_69B7D0` | 17 KB | TopologicalSort -- valid execution ordering | HIGH |
-| `sub_69F170` | 12 KB | CriticalPathAnalysis -- DAG critical path | HIGH |
-| `sub_893100` | 17 KB | ClassifyInstruction -- opcode/operand analysis | HIGH |
-| `sub_894290` | 27 KB | BuildOperandDependencies -- operand-level edges | HIGH |
-| `sub_89C550` | 14 KB | InnerScheduleLoop -- inner scheduling iteration | HIGH |
-| `sub_89EFC0` | 16 KB | ReadyListManager -- BST management | HIGH |
+| `sub_6820B0` | 1.5 KB | BuildReadyList — zero-dep instruction scan | HIGH |
+| `sub_682200` | — | UnlinkFromReadyList — remove and update deps | HIGH |
+| `sub_682490` | 14 KB | RegisterPressureAnalyzer — per-class deltas | HIGH |
+| `sub_6833F0` | 10 KB | InitScheduleRegion — per-BB setup, knob query | HIGH |
+| `sub_685700` | — | InitSchedulingState — loop initialization | MEDIUM |
+| `sub_685A10` | 11 KB | InstructionBarrierCheck — opcode analysis | HIGH |
+| `sub_687080` | — | ReadyListManagementHelper | MEDIUM |
+| `sub_687410` | — | ResourceConflictCheck | MEDIUM |
+| `sub_687FE0` | 12 KB | ScheduleBlock — per-BB scheduling entry | HIGH |
+| `sub_688DD0` | 20 KB | **ScheduleEngine** — unified 3-mode core loop | HIGH |
+| `sub_68A690` | 31 KB | BuildDependencies — def-use chain DAG | HIGH |
+| `sub_68B9C0` | 46 KB | MainSchedulingLoop — combined DAG + scheduling | HIGH |
+| `sub_692200` | 18 KB | SchedulingHeuristic — priority with FP scoring | HIGH |
+| `sub_695530` | 15 KB | ComputeLatencies — instruction latency computation | HIGH |
+| `sub_69B7D0` | 17 KB | TopologicalSort — valid execution ordering | HIGH |
+| `sub_69F170` | 12 KB | CriticalPathAnalysis — DAG critical path | HIGH |
+| `sub_893100` | 17 KB | ClassifyInstruction — opcode/operand analysis | HIGH |
+| `sub_894290` | 27 KB | BuildOperandDependencies — operand-level edges | HIGH |
+| `sub_89C550` | 14 KB | InnerScheduleLoop — inner scheduling iteration | HIGH |
+| `sub_89EFC0` | 16 KB | ReadyListManager — BST management | HIGH |
 | `sub_8A9D80` | 21 KB | DepthFirstSchedule | MEDIUM |
 | `sub_8AB750` | 9.8 KB | CriticalPathCompute | MEDIUM |
 | `sub_8B1190` | 16 KB | ScheduleWithBacktrack | MEDIUM |
-| `sub_8B2D90` | 18 KB | GlobalScheduleOpt -- cross-BB scheduling | MEDIUM |
-| `sub_8B4590` | 13 KB | PermuteSchedule -- permutation search | MEDIUM |
+| `sub_8B2D90` | 18 KB | GlobalScheduleOpt — cross-BB scheduling | MEDIUM |
+| `sub_8B4590` | 13 KB | PermuteSchedule — permutation search | MEDIUM |
 | `sub_8B5400` | 14 KB | ScheduleForLatency | MEDIUM |
 | `sub_8B6D60` | 12 KB | ScheduleForPressure | MEDIUM |
 | `sub_8B77C0` | 15 KB | DualIssueScheduler | MEDIUM |
@@ -1148,32 +1148,32 @@ Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-
 | `sub_8BCFA0` | 6.8 KB | WarpScheduleOpt | MEDIUM |
 | `sub_8BDC40` | 7.9 KB | DualIssuePairing | MEDIUM |
 | `sub_8BE320` | 25 KB | ComplexSchedulePass | MEDIUM |
-| `sub_8C67A0` | 3.7 KB | ComputeResourceCost -- per-instruction FU cost | HIGH |
-| `sub_8C7120` | -- | BarrierTrackingUpdate | MEDIUM |
-| `sub_8C7290` | 5.1 KB | GetResourceVector -- SSE-optimized copy | HIGH |
-| `sub_8C7720` | 20 KB | ReorderInstructions -- red-black tree | HIGH |
-| `sub_8C9320` | 47 KB | **ComputePriority** -- 8-bit packed heuristic | HIGH |
-| `sub_8CBAD0` | 2.9 KB | PreScheduleSetup -- BB scan, 4095-instr limit | HIGH |
-| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp -- latency > 19 check | HIGH |
-| `sub_8CD160` | 9.3 KB | ScheduleBasicBlock -- per-BB ordering loop | HIGH |
-| `sub_8CF880` | 28 KB | BuildDependencyGraph -- pre-scan stage 1 | HIGH |
-| `sub_8D0640` | 22 KB | ScheduleInstructions -- top-level orchestrator | HIGH |
+| `sub_8C67A0` | 3.7 KB | ComputeResourceCost — per-instruction FU cost | HIGH |
+| `sub_8C7120` | — | BarrierTrackingUpdate | MEDIUM |
+| `sub_8C7290` | 5.1 KB | GetResourceVector — SSE-optimized copy | HIGH |
+| `sub_8C7720` | 20 KB | ReorderInstructions — red-black tree | HIGH |
+| `sub_8C9320` | 47 KB | **ComputePriority** — 8-bit packed heuristic | HIGH |
+| `sub_8CBAD0` | 2.9 KB | PreScheduleSetup — BB scan, 4095-instr limit | HIGH |
+| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp — latency > 19 check | HIGH |
+| `sub_8CD160` | 9.3 KB | ScheduleBasicBlock — per-BB ordering loop | HIGH |
+| `sub_8CF880` | 28 KB | BuildDependencyGraph — pre-scan stage 1 | HIGH |
+| `sub_8D0640` | 22 KB | ScheduleInstructions — top-level orchestrator | HIGH |
 | `sub_8D1730` | 19 KB | ExecuteSchedulePass | HIGH |
-| `sub_8D2510` | 3.6 KB | UpdateDependencies -- post-schedule dep update | HIGH |
+| `sub_8D2510` | 3.6 KB | UpdateDependencies — post-schedule dep update | HIGH |
 | `sub_8D3150` | 2.0 KB | CheckResourceConflict | MEDIUM |
-| `sub_8D32D0` | 14 KB | ScheduleInstruction -- schedule single instruction | HIGH |
+| `sub_8D32D0` | 14 KB | ScheduleInstruction — schedule single instruction | HIGH |
 | `sub_8D3D60` | 1.4 KB | InsertStall | HIGH |
 | `sub_8D3E20` | 2.1 KB | ComputeStallCycles | HIGH |
 | `sub_8D4000` | 3.0 KB | InsertBarrier | HIGH |
-| `sub_8D5E00` | 38 KB | MainSchedulingLoop -- workhorse | HIGH |
-| `sub_8D7760` | 41 KB | StallAndBarrierInsertion -- control word generation | HIGH |
-| `sub_8D9930` | 19 KB | BuildDependencyEdges -- RAW/WAR/WAW/memory/barrier | HIGH |
-| `sub_925510` | 341 bytes | MoveInstruction -- doubly-linked list relink | HIGH |
-| `sub_A08A00` | -- | ResourceModel -- FU cost query (3 modes) | HIGH |
-| `sub_A091C0` | -- | InitResourceTracking | MEDIUM |
-| `sub_A09530` | 365 bytes | UpdateStallCycles -- per-instruction latency update | HIGH |
-| `sub_A09D40` | -- | UpdateWARTracking -- anti-dependency tracking | MEDIUM |
-| `sub_A9DDD0` | 11.5 KB | HandleLargeFunction -- chunk-based scheduling | MEDIUM |
+| `sub_8D5E00` | 38 KB | MainSchedulingLoop — workhorse | HIGH |
+| `sub_8D7760` | 41 KB | StallAndBarrierInsertion — control word generation | HIGH |
+| `sub_8D9930` | 19 KB | BuildDependencyEdges — RAW/WAR/WAW/memory/barrier | HIGH |
+| `sub_925510` | 341 bytes | MoveInstruction — doubly-linked list relink | HIGH |
+| `sub_A08A00` | — | ResourceModel — FU cost query (3 modes) | HIGH |
+| `sub_A091C0` | — | InitResourceTracking | MEDIUM |
+| `sub_A09530` | 365 bytes | UpdateStallCycles — per-instruction latency update | HIGH |
+| `sub_A09D40` | — | UpdateWARTracking — anti-dependency tracking | MEDIUM |
+| `sub_A9DDD0` | 11.5 KB | HandleLargeFunction — chunk-based scheduling | MEDIUM |
 
 ## Per-SM Scheduling Backends
 
@@ -1190,23 +1190,23 @@ The function `sub_7DDB50` reads an SM architecture index from `context+2104` and
 | `sub_C5FFC0` | `SmVersion > 1` | Backend C (RBT List), mode 1 | Pre-scheduling |
 | `sub_C5FFF0` | `SmVersion > 1` | Backend C (RBT List), mode 0 | Post-scheduling |
 
-When `SmVersion <= 1` (sm_50 through sm_75 -- Maxwell through Volta), control falls through to the main Backend A documented in the preceding sections. When `SmVersion >= 2` (sm_80+ -- Ampere, Ada Lovelace, Hopper, Blackwell), Backends B and C replace Backend A entirely.
+When `SmVersion <= 1` (sm_50 through sm_75 — Maxwell through Volta), control falls through to the main Backend A documented in the preceding sections. When `SmVersion >= 2` (sm_80+ — Ampere, Ada Lovelace, Hopper, Blackwell), Backends B and C replace Backend A entirely.
 
 `sub_C60910` has a secondary activation path: if `*(options + 23544) == 1 && *(options + 23552) != 0`, Backend B activates regardless of SM version, providing a knob override for testing the codec scheduler on older architectures.
 
 Backends B and C are **complementary, not competing**. Backend C handles pre-scheduling and post-scheduling (the same pipeline stages as Backend A's 3-phase ReduceReg/ILP/DynBatch), while Backend B handles a separate codec/ISel scheduling step that has no equivalent in the legacy path.
 
-### Backend B -- SM89/90 Codec Scheduler (0x1225000)
+### Backend B — SM89/90 Codec Scheduler (0x1225000)
 
 Backend B is a forward-then-backward scheduling pass with continuous floating-point priority weighting. It replaces Backend A's discrete 8-bit packed heuristic with a configurable pressure/ILP tradeoff expressed as doubles.
 
 | | |
 |---|---|
-| **Entry** | `sub_1233D70` (1,527 B, 321 lines) -- pass phase 5 |
-| **Forward scheduler** | `sub_122AD60` (17.5 KB, 4,118 lines) -- largest function in range |
+| **Entry** | `sub_1233D70` (1,527 B, 321 lines) — pass phase 5 |
+| **Forward scheduler** | `sub_122AD60` (17.5 KB, 4,118 lines) — largest function in range |
 | **Backward scheduler** | `sub_122F650` (18.2 KB, 3,917 lines) |
-| **Preparation** | `sub_123E0D0` -- instruction characterization |
-| **Post-fixup** | `sub_A112C0` -- scheduling result finalization |
+| **Preparation** | `sub_123E0D0` — instruction characterization |
+| **Post-fixup** | `sub_A112C0` — scheduling result finalization |
 | **Priority structure** | BST with FNV-1a hash tracking |
 | **Code region** | 0x1225000--0x1240000 (132 functions, 111 KB) |
 
@@ -1214,16 +1214,16 @@ Backend B is a forward-then-backward scheduling pass with continuous floating-po
 
 The entry point `sub_1233D70` initializes two pairs of floating-point weights from the options object at `*(context+1664) + 72`:
 
-**Pair 1 -- Pressure/ILP tradeoff** (options offsets 7200/7208):
+**Pair 1 — Pressure/ILP tradeoff** (options offsets 7200/7208):
 
 | Weight | Default | Meaning |
 |---|---|---|
 | `pressure_weight` | **1.8** | Contribution of register pressure to scheduling priority. Positive = favors orderings that reduce live register count. |
 | `ilp_weight` | **-0.8** | Contribution of instruction-level parallelism. Negative = penalizes moves that reduce available parallelism. |
 
-The two weights sum to 1.0 and form a weighted combination on a unit scale. The default 1.8/-0.8 split heavily favors register pressure reduction, accepting moderate ILP degradation -- appropriate for register-hungry Ada Lovelace and Hopper kernels.
+The two weights sum to 1.0 and form a weighted combination on a unit scale. The default 1.8/-0.8 split heavily favors register pressure reduction, accepting moderate ILP degradation — appropriate for register-hungry Ada Lovelace and Hopper kernels.
 
-**Pair 2 -- Secondary scoring axis** (options offsets 7560/7568):
+**Pair 2 — Secondary scoring axis** (options offsets 7560/7568):
 
 | Weight | Default | Meaning |
 |---|---|---|
@@ -1305,25 +1305,25 @@ The forward scheduler implements list scheduling with a BST priority queue, iter
 
 The backward scheduler receives `range` and `secondary_slope` as direct double parameters (a2, a3) and processes basic blocks in reverse order. It evaluates both Pair 1 and Pair 2 scores, using the scheduling context fields at offsets +136/+144/+152 for the secondary pair. It calls into the barrier/scoreboard system (`sub_BDC080`, `sub_BDBA60`, `sub_BDC0A0`) and performs register liveness analysis via `sub_A0EDE0`. The function uses BST operations with left/right/parent pointer traversal and explicit rebalancing, then performs iterative tree cleanup at exit.
 
-### Backend C -- RBT List Scheduler (0x18CD000)
+### Backend C — RBT List Scheduler (0x18CD000)
 
 Backend C is a complete reimplementation of the list scheduling algorithm using a red-black tree priority queue, double-precision scoring, and an evaluate-then-commit model with hash-table solution caching. It replaces Backend A for all sm_80+ targets.
 
 | | |
 |---|---|
-| **Orchestrator** | `sub_1908D90` -- pre/post mode dispatch (`mode=1` for pre-RA via `sub_C5FFC0`, `mode=0` for post-RA via [phase 110 `PostSchedule`](post-schedule.md) and side-channel `sub_C5FFF0`) |
-| **Driver** | `sub_1906090` -- per-block scheduling loop |
-| **Core scheduler** | `sub_1902B70` (19 KB) -- RBT-based list scheduling |
-| **Solution evaluator** | `sub_1904B70` (26 KB) -- constraint check + commit |
-| **Constraint validator** | `sub_19043F0` (10 KB) -- feasibility testing |
-| **Pressure cost model** | `sub_18F3CB0` (16 KB) -- register-pressure cost model |
-| **Recursive cost propagation** | `sub_18FFD70` (23 KB) -- call-graph-aware scoring |
-| **Dependency update** | `sub_1902100` (15 KB) -- post-scheduling DAG update |
-| **RBT insert** | `sub_18FD370` -- balanced insertion with 3-key comparison |
-| **RBT extract** | `sub_18FCDA0` -- pop highest-priority node |
-| **RBT reset** | `sub_18F7EC0` -- tree cleanup |
-| **Score computation** | `sub_18FDAF0` -- double-precision weighted score |
-| **Hash table** | `sub_1906510` (14 KB) -- FNV-1a instruction ID lookup |
+| **Orchestrator** | `sub_1908D90` — pre/post mode dispatch (`mode=1` for pre-RA via `sub_C5FFC0`, `mode=0` for post-RA via [phase 110 `PostSchedule`](post-schedule.md) and side-channel `sub_C5FFF0`) |
+| **Driver** | `sub_1906090` — per-block scheduling loop |
+| **Core scheduler** | `sub_1902B70` (19 KB) — RBT-based list scheduling |
+| **Solution evaluator** | `sub_1904B70` (26 KB) — constraint check + commit |
+| **Constraint validator** | `sub_19043F0` (10 KB) — feasibility testing |
+| **Pressure cost model** | `sub_18F3CB0` (16 KB) — register-pressure cost model |
+| **Recursive cost propagation** | `sub_18FFD70` (23 KB) — call-graph-aware scoring |
+| **Dependency update** | `sub_1902100` (15 KB) — post-scheduling DAG update |
+| **RBT insert** | `sub_18FD370` — balanced insertion with 3-key comparison |
+| **RBT extract** | `sub_18FCDA0` — pop highest-priority node |
+| **RBT reset** | `sub_18F7EC0` — tree cleanup |
+| **Score computation** | `sub_18FDAF0` — double-precision weighted score |
+| **Hash table** | `sub_1906510` (14 KB) — FNV-1a instruction ID lookup |
 | **Code region** | 0x18CD000--0x190FFFF (392 functions, 275 KB) |
 
 #### Red-Black Tree Priority Queue
@@ -1332,9 +1332,9 @@ The critical difference from Backend A is the priority queue data structure. Bac
 
 Each RBT node is 40 bytes allocated from a pool, with `node+24` pointing to the instruction's scheduling entry. The tree ordering uses a **three-key comparison** in `sub_18FD370`:
 
-1. **Priority integer** at `scheduling_entry + 384` (descending -- higher priority nodes are left children)
-2. **Latency double** at `scheduling_entry + 368` (descending -- higher latency scheduled first among equal-priority instructions)
-3. **Instruction ID** at `*(scheduling_entry + 16) + 12` (ascending -- deterministic tiebreaker)
+1. **Priority integer** at `scheduling_entry + 384` (descending — higher priority nodes are left children)
+2. **Latency double** at `scheduling_entry + 368` (descending — higher latency scheduled first among equal-priority instructions)
+3. **Instruction ID** at `*(scheduling_entry + 16) + 12` (ascending — deterministic tiebreaker)
 
 This three-key comparison provides O(log N) insertion and extraction, a significant improvement for basic blocks with hundreds of instructions where Backend A's O(N) sorted insertion becomes a bottleneck.
 
@@ -1452,8 +1452,8 @@ The threshold mechanism controls which evaluated solutions proceed to hash table
 
 | Offset | Type | Initial | Meaning |
 |---|---|---|---|
-| `context+360` | double | 0.0 | `best_threshold` -- score ceiling for acceptance |
-| `context+368` | byte | 0 | `threshold_active` -- gate enable flag |
+| `context+360` | double | 0.0 | `best_threshold` — score ceiling for acceptance |
+| `context+368` | byte | 0 | `threshold_active` — gate enable flag |
 
 `sub_18FEE60` (context constructor) initializes both to zero. The gate logic in `sub_1904B70` is:
 
@@ -1479,7 +1479,7 @@ function EvaluateAndCache(context, block, ...):           // sub_1904B70, line 8
     SolutionHashInsert(block, candidate, sched_entry)
 ```
 
-At initialization, `threshold_active = 0`, so `!0 = true` short-circuits the OR and all candidates are rejected. The threshold is activated externally (via vtable callback or iterative refinement pass) by setting `context+368 = 1` and writing a ceiling score into `context+360`. Once active, only solutions with `score <= best_threshold` pass through to the hash table. Lower scores are better -- the threshold acts as a ceiling that tightens as the scheduler discovers improving solutions.
+At initialization, `threshold_active = 0`, so `!0 = true` short-circuits the OR and all candidates are rejected. The threshold is activated externally (via vtable callback or iterative refinement pass) by setting `context+368 = 1` and writing a ceiling score into `context+360`. Once active, only solutions with `score <= best_threshold` pass through to the hash table. Lower scores are better — the threshold acts as a ceiling that tightens as the scheduler discovers improving solutions.
 
 ##### Solution Hash Table (`block+304`)
 
@@ -1488,10 +1488,10 @@ Each per-block evaluation record (368 bytes, iterated at stride 368 by the drive
 | Offset | Type | Content |
 |---|---|---|
 | `block+304` | ptr | Free-list head for 32-byte hash chain nodes |
-| `block+312` | int32 | `total_entries` -- total distinct keys inserted |
-| `block+316` | int32 | `total_chain_length` -- sum of per-bucket chain lengths |
-| `block+320` | ptr | `buckets` -- pointer to array of 24-byte bucket headers |
-| `block+328` | int64 | `capacity` -- number of bucket slots (power of 2) |
+| `block+312` | int32 | `total_entries` — total distinct keys inserted |
+| `block+316` | int32 | `total_chain_length` — sum of per-bucket chain lengths |
+| `block+320` | ptr | `buckets` — pointer to array of 24-byte bucket headers |
+| `block+328` | int64 | `capacity` — number of bucket slots (power of 2) |
 
 Each 24-byte bucket header contains: `{chain_head (ptr), chain_tail (ptr), chain_count (int32)}`. Chain nodes are 32 bytes: `{next (ptr), key (int32), value (ptr), hash (int32)}`.
 
@@ -1557,7 +1557,7 @@ Backend C uniquely supports cross-function scheduling awareness through recursiv
 5. Clear register usage bits at `reg_entry + 28`
 6. Update double-precision scores at offsets 88 and 96
 
-This propagation allows scheduling decisions in callee functions to influence caller scheduling priorities -- a form of interprocedural scheduling absent from both Backend A and Backend B.
+This propagation allows scheduling decisions in callee functions to influence caller scheduling priorities — a form of interprocedural scheduling absent from both Backend A and Backend B.
 
 ### Backend Comparison
 
@@ -1584,41 +1584,41 @@ This propagation allows scheduling decisions in callee functions to influence ca
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_1233D70` | 1.5 KB | SM89/90 CodecScheduleEntry -- pass phase 5, float weight init | HIGH |
-| `sub_122AD60` | 17.5 KB | ForwardCodecScheduler -- BST list scheduling, FNV-1a hash tracking | HIGH |
-| `sub_122F650` | 18.2 KB | BackwardCodecScheduler -- reverse pass, barrier/scoreboard integration | HIGH |
-| `sub_123ADD0` | 5.8 KB | CodecDependencyGraphBuilder -- dispatched via vtable | MEDIUM |
-| `sub_12371D0` | 3.8 KB | CodecInstructionClassifier -- convergence-based property testing | MEDIUM |
-| `sub_123E0D0` | -- | CodecSchedulePreparation -- instruction characterization | MEDIUM |
-| `sub_A112C0` | -- | CodecSchedulePostFixup -- result finalization | MEDIUM |
-| `sub_1908D90` | -- | RBTScheduleOrchestrator -- pre/post mode dispatch (mode 1 = pre-RA, mode 0 = post-RA; entered through `sub_C5FFC0`, `sub_C5FFF0`, or sub-target vtable+0x90 at phase 110) | HIGH |
-| `sub_1906090` | -- | RBTScheduleDriver -- per-block loop, 368-byte block stride | HIGH |
-| `sub_1902B70` | 19 KB | RBTCoreListScheduler -- RB-tree priority queue loop | HIGH |
-| `sub_1904B70` | 26 KB | RBTSolutionEvaluator -- constraint check, score threshold, hash commit | HIGH |
-| `sub_19043F0` | 10 KB | RBTConstraintValidator -- mode 5/6 feasibility | HIGH |
-| `sub_19038E0` | 15 KB | RBTInitialEvaluation -- per-block constraint bootstrapping | MEDIUM |
-| `sub_18F3CB0` | 16 KB | RBTPressureCostModel -- register-pressure cost model | HIGH |
-| `sub_18FFD70` | 23 KB | RBTRecursiveCostPropagation -- call-graph-aware scoring | HIGH |
-| `sub_1902100` | 15 KB | RBTDependencyUpdate -- post-scheduling DAG maintenance | HIGH |
-| `sub_18FD370` | -- | RBTreeInsert -- 3-key balanced insertion + fix-up | HIGH |
-| `sub_18FCDA0` | -- | RBTreeExtractMax -- pop highest-priority node | HIGH |
-| `sub_18F7EC0` | -- | RBTreeReset -- tree cleanup | HIGH |
-| `sub_18F8580` | -- | RBTRegisterPressureInit -- pressure state initialization | MEDIUM |
-| `sub_18F5460` | -- | RBTLatencyLookup -- vtable-dispatched latency query | MEDIUM |
-| `sub_18FDAF0` | -- | RBTScoreComputation -- double-precision weighted score | HIGH |
-| `sub_1906510` | 14 KB | RBTHashLookup -- FNV-1a instruction ID hash table | HIGH |
-| `sub_18FB850` | -- | RBTHashResize -- power-of-2 growth, 0.5 load factor | HIGH |
-| `sub_1901200` | -- | RBTScorePropagationDriver -- calls sub_18FFD70 | MEDIUM |
-| `sub_19081F0` | 17 KB | RBTBlockDependencyGraphBuild -- per-block DAG construction | HIGH |
-| `sub_19072F0` | 14 KB | RBTInterBlockScheduling -- cross-BB register dependency | MEDIUM |
-| `sub_18FEE60` | -- | RBTScheduleStateCreate -- 528-byte state construction | MEDIUM |
-| `sub_18FE320` | -- | RBTScheduleDataPrepare -- pre-scheduling data setup | MEDIUM |
-| `sub_18F94C0` | -- | RBTCleanup -- state teardown | MEDIUM |
-| `sub_C5FFC0` | -- | DispatchPreSchedule -- SM gate -> Backend C (mode 1) | CERTAIN |
-| `sub_C5FFF0` | -- | DispatchPostSchedule -- SM gate -> Backend C (mode 0) | CERTAIN |
-| `sub_C5FEF0` | -- | DispatchCodecSchedule -- SM gate -> Backend B | CERTAIN |
-| `sub_C60910` | -- | DispatchConditionalCodecSchedule -- SM gate + knob override | CERTAIN |
-| `sub_7DDB50` | -- | GetSmVersionIndex -- reads context+2104 | HIGH |
+| `sub_1233D70` | 1.5 KB | SM89/90 CodecScheduleEntry — pass phase 5, float weight init | HIGH |
+| `sub_122AD60` | 17.5 KB | ForwardCodecScheduler — BST list scheduling, FNV-1a hash tracking | HIGH |
+| `sub_122F650` | 18.2 KB | BackwardCodecScheduler — reverse pass, barrier/scoreboard integration | HIGH |
+| `sub_123ADD0` | 5.8 KB | CodecDependencyGraphBuilder — dispatched via vtable | MEDIUM |
+| `sub_12371D0` | 3.8 KB | CodecInstructionClassifier — convergence-based property testing | MEDIUM |
+| `sub_123E0D0` | — | CodecSchedulePreparation — instruction characterization | MEDIUM |
+| `sub_A112C0` | — | CodecSchedulePostFixup — result finalization | MEDIUM |
+| `sub_1908D90` | — | RBTScheduleOrchestrator — pre/post mode dispatch (mode 1 = pre-RA, mode 0 = post-RA; entered through `sub_C5FFC0`, `sub_C5FFF0`, or sub-target vtable+0x90 at phase 110) | HIGH |
+| `sub_1906090` | — | RBTScheduleDriver — per-block loop, 368-byte block stride | HIGH |
+| `sub_1902B70` | 19 KB | RBTCoreListScheduler — RB-tree priority queue loop | HIGH |
+| `sub_1904B70` | 26 KB | RBTSolutionEvaluator — constraint check, score threshold, hash commit | HIGH |
+| `sub_19043F0` | 10 KB | RBTConstraintValidator — mode 5/6 feasibility | HIGH |
+| `sub_19038E0` | 15 KB | RBTInitialEvaluation — per-block constraint bootstrapping | MEDIUM |
+| `sub_18F3CB0` | 16 KB | RBTPressureCostModel — register-pressure cost model | HIGH |
+| `sub_18FFD70` | 23 KB | RBTRecursiveCostPropagation — call-graph-aware scoring | HIGH |
+| `sub_1902100` | 15 KB | RBTDependencyUpdate — post-scheduling DAG maintenance | HIGH |
+| `sub_18FD370` | — | RBTreeInsert — 3-key balanced insertion + fix-up | HIGH |
+| `sub_18FCDA0` | — | RBTreeExtractMax — pop highest-priority node | HIGH |
+| `sub_18F7EC0` | — | RBTreeReset — tree cleanup | HIGH |
+| `sub_18F8580` | — | RBTRegisterPressureInit — pressure state initialization | MEDIUM |
+| `sub_18F5460` | — | RBTLatencyLookup — vtable-dispatched latency query | MEDIUM |
+| `sub_18FDAF0` | — | RBTScoreComputation — double-precision weighted score | HIGH |
+| `sub_1906510` | 14 KB | RBTHashLookup — FNV-1a instruction ID hash table | HIGH |
+| `sub_18FB850` | — | RBTHashResize — power-of-2 growth, 0.5 load factor | HIGH |
+| `sub_1901200` | — | RBTScorePropagationDriver — calls sub_18FFD70 | MEDIUM |
+| `sub_19081F0` | 17 KB | RBTBlockDependencyGraphBuild — per-block DAG construction | HIGH |
+| `sub_19072F0` | 14 KB | RBTInterBlockScheduling — cross-BB register dependency | MEDIUM |
+| `sub_18FEE60` | — | RBTScheduleStateCreate — 528-byte state construction | MEDIUM |
+| `sub_18FE320` | — | RBTScheduleDataPrepare — pre-scheduling data setup | MEDIUM |
+| `sub_18F94C0` | — | RBTCleanup — state teardown | MEDIUM |
+| `sub_C5FFC0` | — | DispatchPreSchedule — SM gate -> Backend C (mode 1) | CERTAIN |
+| `sub_C5FFF0` | — | DispatchPostSchedule — SM gate -> Backend C (mode 0) | CERTAIN |
+| `sub_C5FEF0` | — | DispatchCodecSchedule — SM gate -> Backend B | CERTAIN |
+| `sub_C60910` | — | DispatchConditionalCodecSchedule — SM gate + knob override | CERTAIN |
+| `sub_7DDB50` | — | GetSmVersionIndex — reads context+2104 | HIGH |
 
 ## Scheduling Guidance Output
 
@@ -1645,7 +1645,7 @@ Two independent verbosity mechanisms gate the output:
 | 4 | `0x10` | Show worst-case latency: `# [worstcaseLat=%f]` |
 | 5 | `0x20` | Show average-case latency: `# [avgcaseLat=%f]` |
 
-Bits 4 and 5 are mutually exclusive -- only one latency variant is emitted.
+Bits 4 and 5 are mutually exclusive — only one latency variant is emitted.
 
 ### Emitter Functions
 
@@ -1722,18 +1722,18 @@ The post-regalloc format maps abstract functional unit names to hardware executi
 
 | Post-Regalloc Pipe | Pre-Regalloc Equivalent | Description |
 |---|---|---|
-| `adu` | -- | Address Divergence Unit (address computation) |
+| `adu` | — | Address Divergence Unit (address computation) |
 | `alu` | `fp` | Arithmetic Logic Unit (integer + FP32 combined) |
 | `cbu` | `controlFlow` | Control/Branch Unit (branch, exit, barrier) |
-| `fma2x` | -- | Double-precision FMA (separate pipe on sm_80+) |
+| `fma2x` | — | Double-precision FMA (separate pipe on sm_80+) |
 | `fma` | `fp` | Fused Multiply-Add (FP32) |
 | `half` | `half` | FP16 operations |
 | `lsu` | `loadStore` + `shared` | Load/Store Unit (unified) |
-| `redux` | -- | Reduction Unit (warp-level reductions) |
-| `schedDisp` | -- | Scheduler Dispatch (internal overhead) |
+| `redux` | — | Reduction Unit (warp-level reductions) |
+| `schedDisp` | — | Scheduler Dispatch (internal overhead) |
 | `tex` | `tex` | Texture Unit |
-| `ttu` | -- | Tensor Texture Unit (Ada Lovelace+) |
-| `udp` | -- | Uniform Data Path operations |
+| `ttu` | — | Tensor Texture Unit (Ada Lovelace+) |
+| `udp` | — | Uniform Data Path operations |
 
 ### Binary-Embedded Statistics Record (sub_A4B8F0)
 
@@ -1836,12 +1836,12 @@ Both emitter families read from the same ~1400-byte statistics object. The objec
 
 ## Cross-References
 
-- [Scheduler Overview](overview.md) -- 3-phase architecture, register budget, scheduling knobs
-- [Latency Model](latency-model.md) -- per-opcode latency tables, functional unit mapping, architecture profiles
-- [Scoreboards & Barriers](scoreboards.md) -- scoreboard encoding, dependency barrier assignment, stall/yield format
-- [Register Allocation](../regalloc/overview.md) -- the allocator that the scheduler interacts with
-- [Phase Manager](../passes/phase-manager.md) -- how ScheduleInstructions fits in the 159-phase pipeline
-- [Knobs](../config/knobs.md) -- the 76 scheduling knobs and the knob query infrastructure
-- [GMMA Pipeline](../passes/gmma-pipeline.md) -- GMMA/WGMMA operations targeted by DynBatch
-- [DUMPIR Configuration](../config/dumpir.md) -- DUMPIR levels that trigger statistics output
-- [Spilling](../regalloc/spilling.md) -- spill metrics (LSpillB, SSpillB) referenced in guidance output
+- [Scheduler Overview](overview.md) — 3-phase architecture, register budget, scheduling knobs
+- [Latency Model](latency-model.md) — per-opcode latency tables, functional unit mapping, architecture profiles
+- [Scoreboards & Barriers](scoreboards.md) — scoreboard encoding, dependency barrier assignment, stall/yield format
+- [Register Allocation](../regalloc/overview.md) — the allocator that the scheduler interacts with
+- [Phase Manager](../passes/phase-manager.md) — how ScheduleInstructions fits in the 159-phase pipeline
+- [Knobs](../config/knobs.md) — the 76 scheduling knobs and the knob query infrastructure
+- [GMMA Pipeline](../passes/gmma-pipeline.md) — GMMA/WGMMA operations targeted by DynBatch
+- [DUMPIR Configuration](../config/dumpir.md) — DUMPIR levels that trigger statistics output
+- [Spilling](../regalloc/spilling.md) — spill metrics (LSpillB, SSpillB) referenced in guidance output

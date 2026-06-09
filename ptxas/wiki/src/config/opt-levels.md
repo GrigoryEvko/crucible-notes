@@ -140,8 +140,8 @@ if (ofast_compile == "min") {
 
 Optimization levels control the pipeline through two mechanisms:
 
-1. **Static `isNoOp()` overrides** -- The AdvancedPhase gate vtables are overridden at pipeline construction time based on the target architecture and opt-level.
-2. **Runtime opt-level checks** -- Individual pass execute functions call `sub_7DDB50` (the opt-level accessor) and early-return when the level is below their threshold.
+1. **Static `isNoOp()` overrides** — The AdvancedPhase gate vtables are overridden at pipeline construction time based on the target architecture and opt-level.
+2. **Runtime opt-level checks** — Individual pass execute functions call `sub_7DDB50` (the opt-level accessor) and early-return when the level is below their threshold.
 
 ### Gate Accessor: sub_7DDB50
 
@@ -257,14 +257,14 @@ For every instruction:
     yield       = 1             // yield after every instruction
 ```
 
-This eliminates all instruction-level parallelism. Every instruction waits the maximum time and clears all dependency barriers before executing. The result is correct but extremely slow code -- suitable only for debugging.
+This eliminates all instruction-level parallelism. Every instruction waits the maximum time and clears all dependency barriers before executing. The result is correct but extremely slow code — suitable only for debugging.
 
 ### O1+: Full Analysis Path (Phase 115)
 
 Phase 115 (`AdvancedScoreboardsAndOpexes`) runs the complete dependency analysis pipeline:
 
-1. `sub_A36360` (52 KB) -- Master control word generator with per-opcode dispatch
-2. `sub_A23CF0` (54 KB) -- DAG list scheduler heuristic for barrier assignment
+1. `sub_A36360` (52 KB) — Master control word generator with per-opcode dispatch
+2. `sub_A23CF0` (54 KB) — DAG list scheduler heuristic for barrier assignment
 3. Per-field encoders for stall, yield, barrier, and scoreboard dependency fields
 
 The full path computes precise stall counts based on actual instruction latencies from the hardware profile, assigns the minimum necessary dependency barriers (6 available per SM), and inserts yield hints only where the warp scheduler benefits from switching.
@@ -321,7 +321,7 @@ Several knobs have default values that vary by optimization level. The most sign
 | 487 | enabled | enabled | enabled | Master optimization enable (checked by many passes) |
 | 499 | (varies) | (varies) | (varies) | Guard knob for `sub_7DDB50` opt-level accessor |
 | 595 | true | true | true | Scheduling enable (but O0 uses conservative path) |
-| 419 | -- | -- | -- | Forward scheduling mode (bit 3 in scheduler flags) |
+| 419 | — | — | — | Forward scheduling mode (bit 3 in scheduler flags) |
 
 Knob 487 is the most pervasive: it is checked by loop simplification, barrier optimization, sync optimization, predication, rematerialization, and scheduling passes. Disabling it overrides the opt-level and turns off the corresponding pass regardless of `-O` setting.
 
@@ -404,33 +404,33 @@ jle    return                  ; skip if opt_level <= 1
 
 ## Cross-References
 
-- [CLI Options](cli-options.md) -- `--opt-level`, `--device-debug`, `--Ofast-compile`, `--allow-expensive-optimizations`
-- [Knobs System](knobs.md) -- Knob 487 (master enable), knob 499 (opt-level guard)
-- [Pass Inventory](../passes/index.md) -- Complete 159-phase table with per-phase descriptions
-- [Phase Manager](../passes/phase-manager.md) -- AdvancedPhase hooks and dispatch loop
-- [Scoreboards](../scheduling/scoreboards.md) -- Phase 115/116 scoreboard generation
-- [Scheduling](../scheduling/overview.md) -- Forward vs reverse scheduling direction
-- [Rematerialization](../passes/rematerialization.md) -- O-level-dependent remat behavior
-- [Branch & Switch](../passes/branch-switch.md) -- O0 disables all branch/switch optimization
-- [Sync & Barriers](../passes/sync-barriers.md) -- Per-pass opt_level thresholds
-- [Loop Passes](../passes/loop-passes.md) -- O4/O5 aggressive loop peeling
-- [Optimization Pipeline](../pipeline/optimizer.md) -- Pipeline-level O0 vs O1+ gating
+- [CLI Options](cli-options.md) — `--opt-level`, `--device-debug`, `--Ofast-compile`, `--allow-expensive-optimizations`
+- [Knobs System](knobs.md) — Knob 487 (master enable), knob 499 (opt-level guard)
+- [Pass Inventory](../passes/index.md) — Complete 159-phase table with per-phase descriptions
+- [Phase Manager](../passes/phase-manager.md) — AdvancedPhase hooks and dispatch loop
+- [Scoreboards](../scheduling/scoreboards.md) — Phase 115/116 scoreboard generation
+- [Scheduling](../scheduling/overview.md) — Forward vs reverse scheduling direction
+- [Rematerialization](../passes/rematerialization.md) — O-level-dependent remat behavior
+- [Branch & Switch](../passes/branch-switch.md) — O0 disables all branch/switch optimization
+- [Sync & Barriers](../passes/sync-barriers.md) — Per-pass opt_level thresholds
+- [Loop Passes](../passes/loop-passes.md) — O4/O5 aggressive loop peeling
+- [Optimization Pipeline](../pipeline/optimizer.md) — Pipeline-level O0 vs O1+ gating
 
 ## Key Functions
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
-| `sub_434320` | -- | CLI option parser; parses `--opt-level` at line 216, handles `--Ofast-compile` at lines 635--679, sets `allow-expensive-optimizations` default at line 768 | 0.95 |
-| `sub_431A40` | -- | Debug mode override; forces opt-level to 0, disables cloning, resets register-usage-level when `-g` is active | 0.95 |
+| `sub_434320` | — | CLI option parser; parses `--opt-level` at line 216, handles `--Ofast-compile` at lines 635--679, sets `allow-expensive-optimizations` default at line 768 | 0.95 |
+| `sub_431A40` | — | Debug mode override; forces opt-level to 0, disables cloning, resets register-usage-level when `-g` is active | 0.95 |
 | `sub_7DDB50` | 232B | Opt-level accessor; returns `ctx+2104` opt-level if knob 499 is enabled, otherwise returns 1 (O1 fallback). Called by 20+ passes as the runtime opt-level gate | 0.95 |
-| `sub_1C96470` | -- | Generic CLI argument reader; called by `sub_434320` to read `--opt-level` into options block offset `+148` | 0.85 |
-| `sub_67EB60` | -- | Fast-path knob query vtable function; identified inside `sub_7DDB50` for knob 499 check | 0.80 |
-| `sub_6614A0` | -- | Knob state direct-read function; used by `sub_7DDB50` to read knob 499 via direct field access at offset 35928 | 0.80 |
-| `sub_78B430` | -- | `OriLoopSimplification` execute function; checks opt_level for aggressive loop peeling (O4+) | 0.85 |
-| `sub_913A30` | -- | `SinkRemat` core (phase 28); two-tier opt-level guard: skips at O0--O1, limited at O2--O4, full cutlass mode at O5 | 0.90 |
-| `sub_8D0640` | -- | Scheduling infrastructure; selects forward (O1--O2) vs reverse (O3+) scheduling direction | 0.85 |
-| `sub_8CBAD0` | -- | `PreScheduleSetup`; called with `opt_level > 2` boolean to configure scheduling direction | 0.85 |
-| `sub_957160` | -- | Fat-point greedy register allocator; does not directly branch on opt-level but is affected indirectly | 0.90 |
+| `sub_1C96470` | — | Generic CLI argument reader; called by `sub_434320` to read `--opt-level` into options block offset `+148` | 0.85 |
+| `sub_67EB60` | — | Fast-path knob query vtable function; identified inside `sub_7DDB50` for knob 499 check | 0.80 |
+| `sub_6614A0` | — | Knob state direct-read function; used by `sub_7DDB50` to read knob 499 via direct field access at offset 35928 | 0.80 |
+| `sub_78B430` | — | `OriLoopSimplification` execute function; checks opt_level for aggressive loop peeling (O4+) | 0.85 |
+| `sub_913A30` | — | `SinkRemat` core (phase 28); two-tier opt-level guard: skips at O0--O1, limited at O2--O4, full cutlass mode at O5 | 0.90 |
+| `sub_8D0640` | — | Scheduling infrastructure; selects forward (O1--O2) vs reverse (O3+) scheduling direction | 0.85 |
+| `sub_8CBAD0` | — | `PreScheduleSetup`; called with `opt_level > 2` boolean to configure scheduling direction | 0.85 |
+| `sub_957160` | — | Fat-point greedy register allocator; does not directly branch on opt-level but is affected indirectly | 0.90 |
 | `sub_A36360` | 52KB | Master scoreboard control word generator (phase 115, O1+ path) | 0.90 |
 | `sub_A23CF0` | 54KB | DAG list scheduler heuristic for barrier assignment (phase 115, O1+ path) | 0.90 |
-| `sub_C173E0` | -- | NvOpt level validator; emits `"Invalid nvopt level : %d."` for out-of-range values | 0.85 |
+| `sub_C173E0` | — | NvOpt level validator; emits `"Invalid nvopt level : %d."` for out-of-range values | 0.85 |

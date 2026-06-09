@@ -210,18 +210,18 @@ Two related passes are registered alongside DSE in the same code region:
 | Overwrite detection engine | `sub_19DDCB0` | 4.4 KB | Complete/partial overwrite classification |
 | Function-level partial-overwrite pass | `sub_19DF5F0` | 4.8 KB | Tracks partial overwrites across the function |
 | Store-to-load forwarding | `sub_19DBD20` | 3.6 KB | Forwards stored values into dominated loads |
-| Overlap record construction | `sub_19D8AF0` | -- | Builds 72-byte overlap record entries |
-| Compare-set assembly | `sub_19D91E0` | -- | Gathers store-set to compare against current store |
-| Chain-level elimination | `sub_19D94E0` | -- | Drops a chain of dead stores in one pass |
-| Loop-level DSE worker | `sub_19DCB70` | -- | Handles dead stores inside individual loops |
-| Block-level entry | `sub_19DCC90` | -- | Per-basic-block DSE driver |
-| Store-operand extraction | `sub_19DD690` | -- | Reads base pointer + stored value from a store inst |
-| Dead-store candidate lookup | `sub_19DD7C0` | -- | Hash-table probe for known overlapping stores |
-| GEP-based store decomposition | `sub_19DD950` | -- | Breaks aggregate stores into per-element pieces |
-| Partial-overwrite operand collection | `sub_19DEFC0` | -- | Gathers operands feeding partial overwrites |
-| Per-pair partial-overwrite check | `sub_19DEE70` | -- | Checks one partial overlap relationship |
-| Single-store elimination attempt | `sub_19DF200` | -- | Tries to delete one identified dead store |
-| Store-table rehash | `sub_19DF220` | -- | Grows the partial-overwrite tracking table |
+| Overlap record construction | `sub_19D8AF0` | — | Builds 72-byte overlap record entries |
+| Compare-set assembly | `sub_19D91E0` | — | Gathers store-set to compare against current store |
+| Chain-level elimination | `sub_19D94E0` | — | Drops a chain of dead stores in one pass |
+| Loop-level DSE worker | `sub_19DCB70` | — | Handles dead stores inside individual loops |
+| Block-level entry | `sub_19DCC90` | — | Per-basic-block DSE driver |
+| Store-operand extraction | `sub_19DD690` | — | Reads base pointer + stored value from a store inst |
+| Dead-store candidate lookup | `sub_19DD7C0` | — | Hash-table probe for known overlapping stores |
+| GEP-based store decomposition | `sub_19DD950` | — | Breaks aggregate stores into per-element pieces |
+| Partial-overwrite operand collection | `sub_19DEFC0` | — | Gathers operands feeding partial overwrites |
+| Per-pair partial-overwrite check | `sub_19DEE70` | — | Checks one partial overlap relationship |
+| Single-store elimination attempt | `sub_19DF200` | — | Tries to delete one identified dead store |
+| Store-table rehash | `sub_19DF220` | — | Grows the partial-overwrite tracking table |
 
 ## Differences from Upstream LLVM
 

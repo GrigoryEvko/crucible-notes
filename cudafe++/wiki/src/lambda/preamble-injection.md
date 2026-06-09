@@ -1,6 +1,6 @@
 # Preamble Injection
 
-The entire CUDA extended lambda template library -- every `__nv_dl_wrapper_t`, every `__nv_hdl_wrapper_t`, every trait helper and detection macro -- enters the compilation through a single function: `sub_6BCC20` (`nv_emit_lambda_preamble`). This 244-line function in `nv_transforms.c` accepts a `void(*emit)(const char*)` callback and produces raw C++ source text that is injected into the `.int.c` output stream. The preamble is emitted exactly once per translation unit, triggered by a sentinel type declaration named `__nv_lambda_preheader_injection`. The trigger mechanism lives in `sub_4864F0` (`gen_type_decl` in `cp_gen_be.c`), which string-compares each type declaration's name against the sentinel marker, emits a synthetic `#line` directive, and then calls the master emitter.
+The entire CUDA extended lambda template library — every `__nv_dl_wrapper_t`, every `__nv_hdl_wrapper_t`, every trait helper and detection macro — enters the compilation through a single function: `sub_6BCC20` (`nv_emit_lambda_preamble`). This 244-line function in `nv_transforms.c` accepts a `void(*emit)(const char*)` callback and produces raw C++ source text that is injected into the `.int.c` output stream. The preamble is emitted exactly once per translation unit, triggered by a sentinel type declaration named `__nv_lambda_preheader_injection`. The trigger mechanism lives in `sub_4864F0` (`gen_type_decl` in `cp_gen_be.c`), which string-compares each type declaration's name against the sentinel marker, emits a synthetic `#line` directive, and then calls the master emitter.
 
 The preamble contains 20 logical emission steps, ranging from simple type traits (4 lines each) to bitmap-driven loops that generate hundreds of template specializations. The design is driven by a critical optimization: rather than emitting all 1024 possible capture-count specializations for each wrapper type, cudafe++ maintains two 1024-bit bitmaps (`unk_1286980` for device lambdas, `unk_1286900` for host-device lambdas) that track which capture counts were actually used during frontend parsing. The preamble emitter scans these bitmaps and generates only the specializations that the translation unit requires.
 
@@ -78,11 +78,11 @@ if ((*(_BYTE *)(v4 - 8) & 0x10) != 0)
 
 Three conditions must all be true for preamble emission:
 
-1. **Marker bit set** -- The type declaration node has bit `0x10` set at offset `-8` (the IL node header flags). This bit marks NVIDIA-injected synthetic declarations.
+1. **Marker bit set** — The type declaration node has bit `0x10` set at offset `-8` (the IL node header flags). This bit marks NVIDIA-injected synthetic declarations.
 
-2. **Extended lambda mode active** -- `dword_106BF38` is nonzero, meaning `--extended-lambda` (or `--expt-extended-lambda`) was passed to nvcc.
+2. **Extended lambda mode active** — `dword_106BF38` is nonzero, meaning `--extended-lambda` (or `--expt-extended-lambda`) was passed to nvcc.
 
-3. **Name matches sentinel** -- The type's name at offset `+8` is byte-equal to `"__nv_lambda_preheader_injection"` (a 31-character string including NUL; the comparison loop runs up to 32 iterations).
+3. **Name matches sentinel** — The type's name at offset `+8` is byte-equal to `"__nv_lambda_preheader_injection"` (a 31-character string including NUL; the comparison loop runs up to 32 iterations).
 
 ### Synthetic Source File Context
 
@@ -112,7 +112,7 @@ else if ((*(_BYTE *)(v4 - 8) & 0x10) != 0)
 }
 ```
 
-The sentinel type `__nv_lambda_preheader_injection` never reaches the host compiler's type system -- it exists solely as a positional marker in the IL. Because the EDG frontend inserts exactly one such declaration per translation unit, and the backend processes declarations sequentially, the preamble is guaranteed to be emitted exactly once.
+The sentinel type `__nv_lambda_preheader_injection` never reaches the host compiler's type system — it exists solely as a positional marker in the IL. Because the EDG frontend inserts exactly one such declaration per translation unit, and the backend processes declarations sequentially, the preamble is guaranteed to be emitted exactly once.
 
 After emission, `dword_1065820` (output line counter) and `qword_1065828` (output state pointer) are reset to zero, ensuring subsequent `#line` directives correctly track the user's source file.
 
@@ -124,13 +124,13 @@ The function signature:
 __int64 __fastcall sub_6BCC20(void (__fastcall *a1)(const char *));
 ```
 
-The single parameter `a1` is an output callback. In production, this is always `sub_467E50` -- the function that writes raw text to the `.int.c` output stream. Every `a1("...")` call appends the given string literal to the output. The function has no other state parameters; all needed state (bitmaps, C++17 flag) is read from globals.
+The single parameter `a1` is an output callback. In production, this is always `sub_467E50` — the function that writes raw text to the `.int.c` output stream. Every `a1("...")` call appends the given string literal to the output. The function has no other state parameters; all needed state (bitmaps, C++17 flag) is read from globals.
 
 The 20 emission steps are executed unconditionally in a fixed order. Steps 6 and 9 contain bitmap-scanning loops that conditionally call sub-emitters based on which capture counts were registered during frontend parsing. Step 11 is gated on the C++17 noexcept flag.
 
 ### Step 1: Type Removal Traits and Wrapper Helper Macro
 
-The first `a1(...)` call emits the largest single string literal in the function -- three foundational metaprogramming utilities:
+The first `a1(...)` call emits the largest single string literal in the function — three foundational metaprogramming utilities:
 
 ```cpp
 #define __NV_LAMBDA_WRAPPER_HELPER(X, Y) decltype(X), Y
@@ -219,7 +219,7 @@ struct __nv_lambda_field_type<const T [D1]...[DN]> {
 };
 ```
 
-The loop structure in `sub_6BC290` uses two stack buffers: `v33[1024]` for the nested-for-loop lines (each `sprintf` call formats four copies of the loop index variable) and `s[1064]` for dimension parameters and array subscript expressions. The outer loop runs from `v1 = 2` to `v1 = 8` (inclusive, 7 iterations). 1D arrays do not need a wrapper -- they can be captured directly. Arrays of 9+ dimensions are unsupported (the primary template's `static_assert` fires).
+The loop structure in `sub_6BC290` uses two stack buffers: `v33[1024]` for the nested-for-loop lines (each `sprintf` call formats four copies of the loop index variable) and `s[1064]` for dimension parameters and array subscript expressions. The outer loop runs from `v1 = 2` to `v1 = 8` (inclusive, 7 iterations). 1D arrays do not need a wrapper — they can be captured directly. Arrays of 9+ dimensions are unsupported (the primary template's `static_assert` fires).
 
 See [Capture Handling](./capture-handling.md) for detailed documentation.
 
@@ -240,7 +240,7 @@ struct __nv_dl_wrapper_t<Tag> {
 };
 ```
 
-The primary template traps any instantiation with a non-zero capture count that lacks a matching specialization. The zero-capture specialization provides a trivial constructor and a dummy `operator()` returning `int(0)`. This return value is never used at runtime -- the device compiler dispatches through the tag's encoded function pointer.
+The primary template traps any instantiation with a non-zero capture count that lacks a matching specialization. The zero-capture specialization provides a trivial constructor and a dummy `operator()` returning `int(0)`. This return value is never used at runtime — the device compiler dispatches through the tag's encoded function pointer.
 
 ### Step 5: Trailing-Return Tag and Base Specialization
 
@@ -342,7 +342,7 @@ Same safety-net pattern as the device wrapper.
 
 ### Step 9: Host-Device Lambda Bitmap Scan
 
-Scans `unk_1286900` (the host-device bitmap, 1024 bits). Unlike the device scan, this loop does **not** skip bit 0 -- the zero-capture host-device case still requires distinct specializations for `HasFuncPtrConv=true` vs `HasFuncPtrConv=false`.
+Scans `unk_1286900` (the host-device bitmap, 1024 bits). Unlike the device scan, this loop does **not** skip bit 0 — the zero-capture host-device case still requires distinct specializations for `HasFuncPtrConv=true` vs `HasFuncPtrConv=false`.
 
 For each set bit N, four specialization calls are made:
 
@@ -381,7 +381,7 @@ The inner `while ((v7 & 1) == 0)` loop provides fast skipping over consecutive u
 | `sub_6BBB10(1, N, emit)` | 1 | N | false | true | `const noexcept(NeverThrows)` |
 | `sub_6BBEE0(1, N, emit)` | 1 | N | true | true | `noexcept(NeverThrows)` (no const) |
 
-The sole difference between `sub_6BBB10` and `sub_6BBEE0` is that `sub_6BBB10` emits `"false,"` for `IsMutable` and adds `a3("const ")` before the `noexcept` qualifier on `operator()`, while `sub_6BBEE0` emits `"true,"` and omits the `const`. They are otherwise structurally identical -- 238 vs 236 lines, the 2-line difference being exactly the `a3("const ")` call.
+The sole difference between `sub_6BBB10` and `sub_6BBEE0` is that `sub_6BBB10` emits `"false,"` for `IsMutable` and adds `a3("const ")` before the `noexcept` qualifier on `operator()`, while `sub_6BBEE0` emits `"true,"` and omits the `const`. They are otherwise structurally identical — 238 vs 236 lines, the 2-line difference being exactly the `a3("const ")` call.
 
 See [Host-Device Lambda Wrapper](./host-device-wrapper.md) for the complete internal structure of each specialization.
 
@@ -417,7 +417,7 @@ struct __nv_hdl_helper_trait_outer {
 
 The primary `__nv_hdl_helper_trait` inherits from a specialization on `decltype(&Lambda::operator())`. The compiler deduces the member function pointer type and pattern-matches against the const or non-const specialization. Both produce `NeverThrows=false`.
 
-This block is emitted without a closing `};` -- the noexcept variants (step 11) are conditionally appended before the closing brace.
+This block is emitted without a closing `};` — the noexcept variants (step 11) are conditionally appended before the closing brace.
 
 ### Step 11: C++17 Noexcept Trait Variants (Conditional)
 
@@ -544,7 +544,7 @@ struct __nv_extended_device_lambda_with_trailing_return_trait_helper<
         typename __nv_lambda_trait_remove_cv<X>::type>::value
 ```
 
-Detects whether a device lambda wrapper uses the trailing-return tag variant. Needed because trailing-return lambdas require different handling during device compilation -- the return type is explicit and must be preserved, rather than deduced.
+Detects whether a device lambda wrapper uses the trailing-return tag variant. Needed because trailing-return lambdas require different handling during device compilation — the return type is explicit and must be preserved, rather than deduced.
 
 ### Step 17: Host-Device Lambda Detection Trait
 
@@ -614,7 +614,7 @@ void sub_6BCBC0(void)
 | Calls per set bit | 1 (`sub_6BB790`) | 4 (`sub_6BBB10` x2 + `sub_6BBEE0` x2) |
 | Specializations per set bit | 2 (standard + trailing-return) | 4 (IsMutable x HasFuncPtrConv) |
 
-The device scan skips bit 0 because the zero-capture case is handled by the always-emitted primary template. The host-device scan processes bit 0 because the zero-capture case requires explicit specializations for the `HasFuncPtrConv` and `IsMutable` dimensions -- the always-emitted primary template contains only a `static_assert` trap.
+The device scan skips bit 0 because the zero-capture case is handled by the always-emitted primary template. The host-device scan processes bit 0 because the zero-capture case requires explicit specializations for the `HasFuncPtrConv` and `IsMutable` dimensions — the always-emitted primary template contains only a `static_assert` trap.
 
 ## Complete Emission Order Summary
 
@@ -663,7 +663,7 @@ The preamble is emitted as raw C++ source text rather than constructed as AST no
 - **Matches output format.** The `.int.c` file is plain C++ text consumed by the host compiler. Since the templates must eventually become text, generating them as text from the start eliminates a serialize-deserialize round trip.
 - **Self-documenting.** The emitted text is directly readable in the `.int.c` file. `grep` for `__nv_dl_wrapper_t` to see exactly what was produced.
 
-The cost is that the templates exist only as generated text, not as first-class IL entities. They cannot be analyzed or transformed by other EDG passes. This is acceptable because the preamble templates are infrastructure -- they are never the target of user-facing diagnostics or transformations.
+The cost is that the templates exist only as generated text, not as first-class IL entities. They cannot be analyzed or transformed by other EDG passes. This is acceptable because the preamble templates are infrastructure — they are never the target of user-facing diagnostics or transformations.
 
 ### Why Bitmaps Instead of Lists
 
@@ -689,7 +689,7 @@ The host-device zero-capture case requires distinct specializations for `HasFunc
 | `sub_6BBEE0` | `emit_hdl_wrapper_mutable` | `nv_transforms.c` | 236 | Step 9: `__nv_hdl_wrapper_t<true,...>` specialization |
 | `sub_6BCBF0` | `nv_record_capture_count` | `nv_transforms.c` | 13 | Sets bit N in device or HD bitmap |
 | `sub_6BCBC0` | `nv_reset_capture_bitmasks` | `nv_transforms.c` | 9 | Zeroes both 128-byte bitmaps before each TU |
-| `sub_46BC80` | `emit_preprocessor_directive` | `cp_gen_be.c` | -- | Emits `#if 0` / `#endif` suppression blocks |
+| `sub_46BC80` | `emit_preprocessor_directive` | `cp_gen_be.c` | — | Emits `#if 0` / `#endif` suppression blocks |
 
 ## Global State
 
@@ -708,8 +708,8 @@ The host-device zero-capture case requires distinct specializations for `HasFunc
 
 ## Related Pages
 
-- [Extended Lambda Overview](./overview.md) -- end-to-end pipeline architecture and bitmap system
-- [Device Lambda Wrapper](./device-wrapper.md) -- `__nv_dl_wrapper_t` template structure, `sub_6BB790` emitter
-- [Host-Device Lambda Wrapper](./host-device-wrapper.md) -- `__nv_hdl_wrapper_t` type erasure design, `sub_6BBB10`/`sub_6BBEE0`
-- [Capture Handling](./capture-handling.md) -- `__nv_lambda_field_type`, `__nv_lambda_array_wrapper`, `sub_6BC290`
-- [Lambda Restrictions](./restrictions.md) -- validation rules and error codes
+- [Extended Lambda Overview](./overview.md) — end-to-end pipeline architecture and bitmap system
+- [Device Lambda Wrapper](./device-wrapper.md) — `__nv_dl_wrapper_t` template structure, `sub_6BB790` emitter
+- [Host-Device Lambda Wrapper](./host-device-wrapper.md) — `__nv_hdl_wrapper_t` type erasure design, `sub_6BBB10`/`sub_6BBEE0`
+- [Capture Handling](./capture-handling.md) — `__nv_lambda_field_type`, `__nv_lambda_array_wrapper`, `sub_6BC290`
+- [Lambda Restrictions](./restrictions.md) — validation rules and error codes

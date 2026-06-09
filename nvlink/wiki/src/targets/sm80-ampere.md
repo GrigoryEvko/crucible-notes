@@ -1,6 +1,6 @@
 # SM80-88 Ampere
 
-The Ampere family in nvlink v13.0.88 covers four compute capabilities -- sm_80, sm_86, sm_87, and sm_88 -- all sharing the ISA class string `"Ampere"`, the same ISel backend at `0xCA0000`--`0xDA0000` (1 MB), and the same 128-bit SASS instruction encoding introduced by Turing. The sm_88 variant is new in CUDA 13.0. None of the four Ampere targets carry `'a'` or `'f'` suffix variants (unlike Blackwell targets), so the profile database contains exactly 12 Ampere profile entries: 4 real, 4 virtual, and 4 LTO.
+The Ampere family in nvlink v13.0.88 covers four compute capabilities — sm_80, sm_86, sm_87, and sm_88 — all sharing the ISA class string `"Ampere"`, the same ISel backend at `0xCA0000`--`0xDA0000` (1 MB), and the same 128-bit SASS instruction encoding introduced by Turing. The sm_88 variant is new in CUDA 13.0. None of the four Ampere targets carry `'a'` or `'f'` suffix variants (unlike Blackwell targets), so the profile database contains exactly 12 Ampere profile entries: 4 real, 4 virtual, and 4 LTO.
 
 For general Ampere architecture details (hardware specs, PTX ISA requirements, codegen factory encoding, scheduler parameters, latency tables), see the [ptxas wiki: Turing/Ampere](../../ptxas/targets/turing-ampere.html). For cicc-level feature gates and optimizer flag configuration, see the [cicc wiki: SM70-89](../../cicc/targets/sm70-89.html). This page focuses on the nvlink-internal per-sub-architecture data: profile registration, capability vectors, dispatch table function pointers, and the ISel backend shared by all four.
 
@@ -56,7 +56,7 @@ sm_80->capability[2] = xmmword_1D40F30;   // offset +112
 
 After registering each sub-architecture, `sub_484F50` links it into the Ampere family chain. sm_86 is appended to sm_80's family list (`compat_list_0` and `compat_list_1`), sm_87 and sm_88 follow the same chaining to sm_86's lists (which transitively connect back to sm_80).
 
-The `dword_2A5F8CC = 80` assignment (line 326) sets the default minimum architecture to sm_80 -- any link operation that does not specify an explicit `--arch` flag defaults to this value.
+The `dword_2A5F8CC = 80` assignment (line 326) sets the default minimum architecture to sm_80 — any link operation that does not specify an explicit `--arch` flag defaults to this value.
 
 ### Architecture Identity Matrix
 
@@ -107,13 +107,13 @@ Key observations:
 
 ### What Distinguishes Each Sub-Architecture
 
-**sm_80 (GA100 -- datacenter Ampere).** The base Ampere target and generational anchor. It uses `xmmword_1D40F40` for Vec 1, which differs from the sm_86+ value `xmmword_1D40F50`. This means sm_80's capability mask is a strict subset of sm_86's -- code finalized for sm_86 is not guaranteed to be re-finalizable for sm_80 without capability mask verification. sm_80's codegen factory is 28673 (`0x7001`), placing it at sub-variant 1 within generation 7. In the ptxas scheduler, sm_80 falls through to the default variant (0 or 1) and uses baseline latency tables.
+**sm_80 (GA100 — datacenter Ampere).** The base Ampere target and generational anchor. It uses `xmmword_1D40F40` for Vec 1, which differs from the sm_86+ value `xmmword_1D40F50`. This means sm_80's capability mask is a strict subset of sm_86's — code finalized for sm_86 is not guaranteed to be re-finalizable for sm_80 without capability mask verification. sm_80's codegen factory is 28673 (`0x7001`), placing it at sub-variant 1 within generation 7. In the ptxas scheduler, sm_80 falls through to the default variant (0 or 1) and uses baseline latency tables.
 
-**sm_86 (GA10x -- consumer/enterprise Ampere).** Extends sm_80 with `xmmword_1D40F50` capability bits. The codegen factory is 28674 (`0x7002`, sub-variant 2). In the ptxas scheduler, sm_86 maps to sub-architecture variant 2, receiving tuned scheduling parameters distinct from sm_80's baseline. The ptxas latency table for sm_86 (`sub_8E7D80`, 4.4 KB) is the largest in the Ampere family, reflecting the different pipeline characteristics of the RTX 30xx consumer die versus the A100 datacenter die.
+**sm_86 (GA10x — consumer/enterprise Ampere).** Extends sm_80 with `xmmword_1D40F50` capability bits. The codegen factory is 28674 (`0x7002`, sub-variant 2). In the ptxas scheduler, sm_86 maps to sub-architecture variant 2, receiving tuned scheduling parameters distinct from sm_80's baseline. The ptxas latency table for sm_86 (`sub_8E7D80`, 4.4 KB) is the largest in the Ampere family, reflecting the different pipeline characteristics of the RTX 30xx consumer die versus the A100 datacenter die.
 
-**sm_87 (GA10B -- Jetson Orin).** Capability-identical to sm_86 (same Vec 1 `xmmword_1D40F50`, copied at line 418 via `v37 = _mm_load_si128(&v211)` where `v211` holds sm_86's vector). The codegen factory is 28675 (`0x7003`, sub-variant 3). The ptxas scheduler maps it to variant 3, giving Orin its own latency profile (`sub_8E8070`, 3.5 KB). This is the only material binary difference between sm_86 and sm_87 in nvlink -- the capability mask, ISel patterns, and encoding pipeline are identical.
+**sm_87 (GA10B — Jetson Orin).** Capability-identical to sm_86 (same Vec 1 `xmmword_1D40F50`, copied at line 418 via `v37 = _mm_load_si128(&v211)` where `v211` holds sm_86's vector). The codegen factory is 28675 (`0x7003`, sub-variant 3). The ptxas scheduler maps it to variant 3, giving Orin its own latency profile (`sub_8E8070`, 3.5 KB). This is the only material binary difference between sm_86 and sm_87 in nvlink — the capability mask, ISel patterns, and encoding pipeline are identical.
 
-**sm_88 (undocumented -- CUDA 13.0).** Capability-identical to sm_86 and sm_87 (same Vec 1, copied at line 458 via the sm_87 chain). The codegen factory is 28676 (`0x7004`, sub-variant 4). The ptxas scheduler maps it to variant 4, shared with sm_110 (Jetson Thor). No separate latency table was found in the ptxas sweep data -- sm_88 may share sm_86's or sm_87's table. No public product ships on sm_88; it may represent an unreleased Ampere derivative or internal validation target.
+**sm_88 (undocumented — CUDA 13.0).** Capability-identical to sm_86 and sm_87 (same Vec 1, copied at line 458 via the sm_87 chain). The codegen factory is 28676 (`0x7004`, sub-variant 4). The ptxas scheduler maps it to variant 4, shared with sm_110 (Jetson Thor). No separate latency table was found in the ptxas sweep data — sm_88 may share sm_86's or sm_87's table. No public product ships on sm_88; it may represent an unreleased Ampere derivative or internal validation target.
 
 ## Dispatch Table (sub_15C0CE0)
 
@@ -180,11 +180,11 @@ The transition from Turing (sm_75, generation 6) to Ampere (sm_80, generation 7)
 | Codegen factory | 24577 (`0x6001`) | 28673 (`0x7001`) |
 | Vec 1 capability | `xmmword_1D40F20` | `xmmword_1D40F40` |
 | Same-decade group | 7 | 8 |
-| Default arch flag | -- | `dword_2A5F8CC = 80` |
+| Default arch flag | — | `dword_2A5F8CC = 80` |
 
 ### Capability Boundary
 
-The Vec 1 change from `xmmword_1D40F20` (Turing) to `xmmword_1D40F40` (Ampere) marks a hard capability boundary. Code finalized for sm_80 cannot be re-finalized for sm_75 -- the capability mask comparison in `sub_470DA0` will fail because Ampere capabilities are a superset of Turing capabilities. The reverse direction (sm_75 code on sm_80 targets) is permitted by the same-decade rule only if both are in the same family linked list, which they are not (different decades: 7 vs 8).
+The Vec 1 change from `xmmword_1D40F20` (Turing) to `xmmword_1D40F40` (Ampere) marks a hard capability boundary. Code finalized for sm_80 cannot be re-finalized for sm_75 — the capability mask comparison in `sub_470DA0` will fail because Ampere capabilities are a superset of Turing capabilities. The reverse direction (sm_75 code on sm_80 targets) is permitted by the same-decade rule only if both are in the same family linked list, which they are not (different decades: 7 vs 8).
 
 ### ISel Backend Independence
 
@@ -195,9 +195,9 @@ Despite sharing the same 128-bit instruction encoding format, sm_75 and sm_80 us
 | Address range | `0xF16000`--`0x100C000` (984 KB) | `0xCA0000`--`0xDA0000` (1 MB) |
 | Mega-hub | `sub_FBB810` (280 KB) | `sub_D5FD70` (239 KB) |
 | Pattern matchers | 276 | 259 |
-| SASS opcodes | -- | 19 (in LTO subset) |
+| SASS opcodes | — | 19 (in LTO subset) |
 
-The Ampere ISel is slightly smaller than Turing's despite being a later generation. The reduction in pattern matchers (276 to 259) reflects instruction set refinement rather than feature removal -- Ampere reorganized and consolidated some multi-variant patterns.
+The Ampere ISel is slightly smaller than Turing's despite being a later generation. The reduction in pattern matchers (276 to 259) reflects instruction set refinement rather than feature removal — Ampere reorganized and consolidated some multi-variant patterns.
 
 ### Feature Gates in cicc and ptxas
 
@@ -250,7 +250,7 @@ The reverse direction (sm_86 cubin targeting sm_80) follows a different path:
 
 1. Parse: `record_a = {86, ...}`, `record_b = {80, ...}`.
 2. Case 1: `profile_family_match(sm_86.family_list, sm_80)`.
-3. sm_86's `compat_list_1` contains `{ sm_86 }` -- it does **not** contain sm_80.
+3. sm_86's `compat_list_1` contains `{ sm_86 }` — it does **not** contain sm_80.
 4. **Result: incompatible.** sm_86 code cannot be linked for sm_80.
 
 This asymmetry reflects the forward-compatibility guarantee: code compiled for a lower SM within a family runs on higher SMs, but not the reverse.
@@ -259,7 +259,7 @@ However, capability mask verification at finalization time (`sub_470DA0`) adds a
 
 ## ISel Backend (0xCA0000--0xDA0000)
 
-All four Ampere sub-architectures share a single ISel backend. The backend is variant-agnostic -- it produces identical SASS encoding for sm_80, sm_86, sm_87, and sm_88. Any differences between sub-architectures are resolved upstream in the dispatch table (slot A8 codegen factory) and downstream in the scheduler (latency tables), not within the ISel code itself.
+All four Ampere sub-architectures share a single ISel backend. The backend is variant-agnostic — it produces identical SASS encoding for sm_80, sm_86, sm_87, and sm_88. Any differences between sub-architectures are resolved upstream in the dispatch table (slot A8 codegen factory) and downstream in the scheduler (latency tables), not within the ISel code itself.
 
 ### Address Map
 
@@ -377,7 +377,7 @@ The format field at `*(a2+14)` selects the operand encoding layout. Formats obse
 
 The following tables list all 80 operand emission functions in Zone 1, organized by opcode. Each row is one (opcode, format) combination.
 
-#### HMMA (Tensor Core) -- 11 variants
+#### HMMA (Tensor Core) — 11 variants
 
 | Address | Identity | Format | Size | Notes |
 |---|---|---|---|---|
@@ -393,7 +393,7 @@ The following tables list all 80 operand emission functions in Zone 1, organized
 | `sub_CD7EE0` | sm80_emit_HMMA_TC.WIDE1 | 42 | 11,188 B | Complex multi-variant with fixup tables |
 | `sub_CD8AC0` | sm80_emit_HMMA_TC.WIDE3 | 44 | 11,204 B | Complex multi-variant with fixup tables |
 
-#### FFMA -- 12 variants
+#### FFMA — 12 variants
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -410,7 +410,7 @@ The following tables list all 80 operand emission functions in Zone 1, organized
 | `sub_CC4AF0` | sm80_emit_FFMA_RR.WIDE | 10 | 3,685 B |
 | `sub_CC5440` | sm80_emit_FFMA_RR.ADD | 11 | 3,701 B |
 
-#### LDG (Global Memory Load) -- 9 variants
+#### LDG (Global Memory Load) — 9 variants
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -426,7 +426,7 @@ The following tables list all 80 operand emission functions in Zone 1, organized
 
 The RR/RI/RC/RR.ALT base forms are substantially larger (~11 KB each) than the predicated (.P) and shuffle forms (~3.5 KB), reflecting the complex cache hierarchy modifiers (`strongOrder`, `eviction`, `scope`, `cacheOp`, `memoryType`) that the base forms must encode.
 
-#### IMAD.WIDE (64-bit Multiply-Add) -- 9 variants
+#### IMAD.WIDE (64-bit Multiply-Add) — 9 variants
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -589,13 +589,13 @@ Despite having fewer ISel patterns than SM75, the SM80 mega-hub matches the SM50
 ## Cross-References
 
 ### nvlink Internal
-- [Architecture Profiles](arch-profiles.md) -- SM80 family profiles in the linker database, struct layout, capability vector table
-- [SM75 Turing](sm75-turing.md) -- predecessor ISel backend
-- [SM89 Ada](sm89-ada.md) -- successor backend, dispatch table comparison
-- [Compatibility Checking](compatibility.md) -- same-decade rule, family linkage, capability mask verification
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- per-arch function pointer dispatch mechanism
-- [ISel Hubs](../ptxas/isel-hubs.md) -- SM80 mega-hub `sub_D5FD70` (239 KB)
+- [Architecture Profiles](arch-profiles.md) — SM80 family profiles in the linker database, struct layout, capability vector table
+- [SM75 Turing](sm75-turing.md) — predecessor ISel backend
+- [SM89 Ada](sm89-ada.md) — successor backend, dispatch table comparison
+- [Compatibility Checking](compatibility.md) — same-decade rule, family linkage, capability mask verification
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — per-arch function pointer dispatch mechanism
+- [ISel Hubs](../ptxas/isel-hubs.md) — SM80 mega-hub `sub_D5FD70` (239 KB)
 
 ### Sibling Wikis
-- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- standalone ptxas SM80 target documentation (codegen factory encoding, scheduler profiles, latency tables, SASS encoding format)
-- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc compiler SM80 through SM88 feature gates (`__VA_OPT__`, convergent branches, L2 cache hint atomics)
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) — standalone ptxas SM80 target documentation (codegen factory encoding, scheduler profiles, latency tables, SASS encoding format)
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) — cicc compiler SM80 through SM88 feature gates (`__VA_OPT__`, convergent branches, L2 cache hint atomics)

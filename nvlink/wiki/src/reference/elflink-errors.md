@@ -8,7 +8,7 @@ Beyond the elfLink subsystem's 14 return codes, nvlink emits over 100 distinct u
 
 | Code | String (addr) | Symbolic Name |
 |---:|---|---|
-| 0 | *(success -- no error)* | `ELFLINK_OK` |
+| 0 | *(success — no error)* | `ELFLINK_OK` |
 | 1 | `elfLink internal error` (`0x1D4883F`) | `ELFLINK_INTERNAL` |
 | 2 | `elfLink error on cubin` (`0x1D48856`) | `ELFLINK_CUBIN_ERROR` |
 | 3 | `elfLink fatbinary error` (`0x1D4886D`) | `ELFLINK_FATBIN_ERROR` |
@@ -43,19 +43,19 @@ The function is called from five sites in the binary:
 
 | Caller | Address | Context |
 |---|---|---|
-| `sub_4297B0` | `0x4297B0` | Generic error handler -- translates any non-zero elfLink code (except 4 and 7) into a fatal diagnostic |
-| `sub_42AF40` | `0x42AF40` | Input processing loop -- handles per-module load failures during LTO and cubin extraction |
-| `sub_42A2D0` | `0x42A2D0` | Host-ELF extraction path -- iterates embedded cubins and reports per-cubin elfLink errors |
-| `sub_427A10` | `0x427A10` | LTO add-module path -- loads NVVM IR into the LTO program object |
-| `main` | `0x409800` | Top-level pipeline -- reports errors from library loading (`sub_4BC470`) and final LTO compilation (`sub_4BC6F0`) |
+| `sub_4297B0` | `0x4297B0` | Generic error handler — translates any non-zero elfLink code (except 4 and 7) into a fatal diagnostic |
+| `sub_42AF40` | `0x42AF40` | Input processing loop — handles per-module load failures during LTO and cubin extraction |
+| `sub_42A2D0` | `0x42A2D0` | Host-ELF extraction path — iterates embedded cubins and reports per-cubin elfLink errors |
+| `sub_427A10` | `0x427A10` | LTO add-module path — loads NVVM IR into the LTO program object |
+| `main` | `0x409800` | Top-level pipeline — reports errors from library loading (`sub_4BC470`) and final LTO compilation (`sub_4BC6F0`) |
 
 ## Detailed Error Code Reference
 
-### Code 0 -- Success
+### Code 0 — Success
 
 No error. Returned when module loading, compilation, or linking completes without failure. Never passed to `sub_4BC270` in practice.
 
-### Code 1 -- Internal Error
+### Code 1 — Internal Error
 
 **String:** `elfLink internal error` (`0x1D4883F`)
 
@@ -65,7 +65,7 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **User fix:** Verify input files with `readelf -h` to confirm valid ELF headers. Recompile inputs with the same toolkit version as nvlink.
 
-### Code 2 -- Cubin Error
+### Code 2 — Cubin Error
 
 **String:** `elfLink error on cubin` (`0x1D48856`)
 
@@ -75,7 +75,7 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **User fix:** Recompile the failing source file. If the file was produced by an older CUDA toolkit, upgrade the compilation to match the linker version.
 
-### Code 3 -- Fatbinary Error
+### Code 3 — Fatbinary Error
 
 **String:** `elfLink fatbinary error` (`0x1D4886D`)
 
@@ -85,11 +85,11 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **User fix:** Rebuild from scratch (`make clean && make`). Check for filesystem corruption or incomplete file copies.
 
-### Code 4 -- Incompatible Code (Memory Error)
+### Code 4 — Incompatible Code (Memory Error)
 
 **String:** `elfLink memory error` (`0x1D48885`)
 
-**Special handling:** Code 4 receives unique treatment in `sub_4297B0` -- instead of passing through `sub_4BC270`, the handler constructs a custom message by prepending a descriptive prefix (loaded from `xmmword_1D34750` / `xmmword_1D34760`) and appending `" code in <filename>"`. This produces a user-facing message like `"elfLink found incompatible code in foo.o"` rather than the generic table string. The same custom-message logic is duplicated in `sub_42A2D0` for the host-ELF iteration path.
+**Special handling:** Code 4 receives unique treatment in `sub_4297B0` — instead of passing through `sub_4BC270`, the handler constructs a custom message by prepending a descriptive prefix (loaded from `xmmword_1D34750` / `xmmword_1D34760`) and appending `" code in <filename>"`. This produces a user-facing message like `"elfLink found incompatible code in foo.o"` rather than the generic table string. The same custom-message logic is duplicated in `sub_42A2D0` for the host-ELF iteration path.
 
 **Trigger:** Returned by `sub_4BD0A0` (NVVM IR compilation driver at `0x4BD0A0`) when the compilation pipeline fails at any stage: target architecture setup (`sub_4CE2F0`), debug mode configuration (`sub_4CE380`), 64-bit mode configuration (`sub_4CE640`), module addition (`sub_4CE070`), or final compilation (`sub_4CE8C0`). Also returned by `sub_4BD240` (cubin post-processing at `0x4BD240`) when ABI validation fails (`-m32`/`-m64` mismatch) or when the cubin bytecode extractor (`sub_4BE350`) fails.
 
@@ -97,7 +97,7 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **User fix:** Ensure all `.o` files were compiled with the same `-arch=sm_XX` and `-m64`/`-m32` flags. Check `nvcc --version` matches the nvlink version.
 
-### Code 5 -- JIT Compile Failed
+### Code 5 — JIT Compile Failed
 
 **String:** `elfLink JIT compile failed` (`0x1D4889A`)
 
@@ -107,7 +107,7 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **User fix:** Verify the `compute_` and `sm_` targets are compatible. With LTO (`-dlto`), all objects must use the same CUDA toolkit major version.
 
-### Code 6 -- JIT Link Failed
+### Code 6 — JIT Link Failed
 
 **String:** `elfLink JIT link failed` (`0x1D488B5`)
 
@@ -117,7 +117,7 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **User fix:** Ensure that device-side `extern` declarations match across translation units. Check for conflicting function prototypes in device code headers.
 
-### Code 7 -- NVVM Error (Unresolved References)
+### Code 7 — NVVM Error (Unresolved References)
 
 **String:** `elfLink nvvm error` (`0x1D488CD`)
 
@@ -127,13 +127,13 @@ No error. Returned when module loading, compilation, or linking completes withou
 nvvm IR for arch <target_arch> not found in <filename>
 ```
 
-**Trigger:** Returned by `sub_4BD0A0` when `sub_4CE8C0` returns status 3, indicating that the NVVM compilation produced NVVM IR output (not SASS) -- meaning the module contains unresolved references that require a subsequent link step. This is expected for LTO intermediate objects and libcudadevrt.
+**Trigger:** Returned by `sub_4BD0A0` when `sub_4CE8C0` returns status 3, indicating that the NVVM compilation produced NVVM IR output (not SASS) — meaning the module contains unresolved references that require a subsequent link step. This is expected for LTO intermediate objects and libcudadevrt.
 
 **Diagnosis:** Typically not a true error. It indicates the module contains NVVM IR that cannot be finalized to SASS in isolation because it has unresolved references. When linking with `-dlto`, this is normal for all LTO input objects. It becomes a user-visible error only when encountered during non-LTO linking without `-lto-allow-unresolved`.
 
 **User fix:** If you see this error, add `-dlto` to enable LTO linking. For libraries containing device runtime code, this is expected behavior.
 
-### Code 8 -- Cubin Not Relocatable
+### Code 8 — Cubin Not Relocatable
 
 **String:** `elfLink error cubin not relocatable` (`0x1D488E0`)
 
@@ -143,7 +143,7 @@ nvvm IR for arch <target_arch> not found in <filename>
 
 **User fix:** Add `-dc` (or equivalently `-rdc=true`) to the `nvcc` compile command. For static libraries, ensure they were built with `-rdc=true`.
 
-### Code 9 -- Cubin Not Compatible
+### Code 9 — Cubin Not Compatible
 
 **String:** `elfLink error cubin not compatible` (`0x1D48908`)
 
@@ -156,7 +156,7 @@ nvvm IR for arch <target_arch> not found in <filename>
 
 **User fix:** Recompile all objects with the same toolkit version and matching address-size flags.
 
-### Code 10 -- Architecture Not Compatible
+### Code 10 — Architecture Not Compatible
 
 **String:** `elfLink cubin arch not compatible` (`0x1D48930`)
 
@@ -166,7 +166,7 @@ nvvm IR for arch <target_arch> not found in <filename>
 
 **User fix:** Verify that the CUDA toolkit installation is complete and that `libnvvm.so` is on the library search path (set via `--libnvvm-path` or the toolkit's `lib64/` directory). Check `LD_LIBRARY_PATH` if needed.
 
-### Code 11 -- Linker Library Load Error
+### Code 11 — Linker Library Load Error
 
 **String:** `elfLink linker library load error` (`0x1D48958`)
 
@@ -176,7 +176,7 @@ nvvm IR for arch <target_arch> not found in <filename>
 
 **User fix:** Ensure that all input objects were compiled with the same CUDA toolkit version as the nvlink binary. Check `nvcc --version` and `nvlink --version` output.
 
-### Code 12 -- Incompatible Formats
+### Code 12 — Incompatible Formats
 
 **String:** `elfLink error incompatible formats` (`0x1D48980`)
 
@@ -186,7 +186,7 @@ nvvm IR for arch <target_arch> not found in <filename>
 
 **User fix:** Ensure all inputs are of the same format type. Do not mix Mercury objects with standard CUDA objects unless the linker is configured for Mercury mode.
 
-### Code 13 -- Finalization Failed
+### Code 13 — Finalization Failed
 
 **String:** `elfLink error finalization failed` (`0x1D489A8`)
 
@@ -216,7 +216,7 @@ sub_4297B0(error_code, filename):
         fatal(msg)
 ```
 
-The same dispatch logic is replicated in `sub_42A2D0` (host-ELF extraction path), which additionally handles the host-ELF iterator loop (`sub_4BDAF0`) -- calling the dispatch for each extracted cubin.
+The same dispatch logic is replicated in `sub_42A2D0` (host-ELF extraction path), which additionally handles the host-ELF iterator loop (`sub_4BDAF0`) — calling the dispatch for each extracted cubin.
 
 All fatal diagnostics go through `sub_467460`, which formats the message with the `"error   "` severity prefix and writes to stderr. When `--Werror` is active, warnings are promoted to the `"error*  "` level.
 
@@ -272,7 +272,7 @@ The diagnostic system at `0x1D3C660` defines six severity levels:
 | `SM Arch ('%s') must be >= 20` | `0x1D34F8E` | fatal | `sub_427AE0` | Target architecture too old | Use `sm_20` or newer |
 | `SM Arch ('%s') not found in '%s'` | `0x1D34BC8` | error | main | Fatbinary does not contain code for the target arch | Recompile input for the correct `-arch` target |
 | `Cannot target %s when input '%s' is SASS` | `0x1D34850` | error | `sub_427AE0` | SASS object cannot be retargeted to a different architecture | Recompile source for the desired target arch |
-| `Input file '%s' arch does not match target '%s'` | -- | error | `sub_426570` | Object compiled for wrong `sm_` target | Recompile with matching `-arch` flag |
+| `Input file '%s' arch does not match target '%s'` | — | error | `sub_426570` | Object compiled for wrong `sm_` target | Recompile with matching `-arch` flag |
 | `Input file '%s' abi does not match` | `0x1D34C68` | error | `sub_426570` | ELF ABI version mismatch | Recompile with matching toolkit version |
 | `Input file '%s' size does not match target '%s'` | `0x1D34C90` | error | `sub_426570` | 32-bit vs 64-bit object/target mismatch | Match `-m32`/`-m64` across all objects |
 | `Input file '%s' ABI version '%u' is incompatible with target ABI version '%u'` | `0x1D34CF0` | error | `sub_426570` | Detailed ABI version incompatibility | Recompile with current toolkit |
@@ -305,10 +305,10 @@ The diagnostic system at `0x1D3C660` defines six severity levels:
 |---|---|---|---|---|---|
 | `File uses too much global %s data (0x%llx bytes, 0x%x max)` | `0x1D39B88` | error | `sub_445000` | Global/constant memory overflow | Reduce global variable sizes; split across modules |
 | `Entry function '%s' uses too much %s data (0x%llx bytes, 0x%x max)` | `0x1D39BC8` | error | `sub_445000` | Per-kernel resource limit exceeded | Reduce per-kernel memory usage |
-| `More than %d %s used in entry function '%s'` | -- | error | `sub_438DD0` | Register/barrier count exceeded | Reduce register pressure; use `__launch_bounds__` |
+| `More than %d %s used in entry function '%s'` | — | error | `sub_438DD0` | Register/barrier count exceeded | Reduce register pressure; use `__launch_bounds__` |
 | `Entry function '%s' uses too much data for compiler-generated constants; please recompile with -Xptxas --disable-optimizer-constants` | `0x1D39B00` | error | `sub_445000` | Constant bank overflow from optimizations | Add `-Xptxas --disable-optimizer-constants` |
 | `Stack size for entry function '%s' cannot be statically determined` | `0x1D39A88` | warning | `sub_44AD40` | Indirect calls prevent stack analysis | Use `--suppress-stack-size-warning` to silence |
-| `Function '%s' uses %d bytes stack but limited to %d` | -- | warning | `sub_44C030` | Stack usage exceeds budget | Reduce function stack usage or increase limit |
+| `Function '%s' uses %d bytes stack but limited to %d` | — | warning | `sub_44C030` | Stack usage exceeds budget | Reduce function stack usage or increase limit |
 
 ### Category 6: CLI Option Errors
 
@@ -329,7 +329,7 @@ The diagnostic system at `0x1D3C660` defines six severity levels:
 | Message | Addr | Sev | Source | Trigger | User Fix |
 |---|---|---|---|---|---|
 | `Ignoring -dlto option because no LTO objects found` | `0x1D34998` | warning | main | `-dlto` specified but no LTO inputs | Remove `-dlto` or ensure inputs contain NVVM IR |
-| `Some objects do not have '%s' specified but others do; will build everything with '%s=%d'` | -- | warning | main | Mixed compilation options across LTO objects | Compile all objects with the same options |
+| `Some objects do not have '%s' specified but others do; will build everything with '%s=%d'` | — | warning | main | Mixed compilation options across LTO objects | Compile all objects with the same options |
 | `error in LTO callback` | `0x1D3425D` | fatal | main | `__nvvmHandle` callback returned error | Internal error; report bug with reproduction steps |
 | `could not find __nvvmHandle` | `0x1D34241` | fatal | main | `dlsym` for `__nvvmHandle` failed | Verify `libnvvm.so` is from the correct toolkit version |
 | `could not find CALLBACK Handle` | `0x1D345C0` | fatal | main | Second-level callback resolution failed | Same as above; toolkit installation issue |
@@ -343,7 +343,7 @@ The diagnostic system at `0x1D3C660` defines six severity levels:
 
 | Message | Addr | Sev | Source | Trigger | User Fix |
 |---|---|---|---|---|---|
-| `Option '%s' is not fully implemented for gpu architecture '%s' and may not work as expected` | -- | warning | `sub_427AE0` | Feature partially implemented for target | Check release notes for arch-specific feature support |
+| `Option '%s' is not fully implemented for gpu architecture '%s' and may not work as expected` | — | warning | `sub_427AE0` | Feature partially implemented for target | Check release notes for arch-specific feature support |
 | `Option '%s' not supported for gpu architecture '%s'` | `0x1D348E0` | warning | `sub_427AE0` | Feature not available for target | Remove the unsupported option |
 | `Input file '%s' newer than toolkit (%d vs %d)` | `0x1D34B70` | warning | `sub_426570` | Forward-compatibility concern | Update nvlink to match input file toolkit version |
 | `Function '%s' and function '%s' have conflicting cache preference, falling back to use cache preference of entry '%s'` | `0x1D39760` | warning | `sub_451D80` | Cache preference conflict across functions | Use consistent cache preference attributes |
@@ -359,12 +359,12 @@ These indicate linker bugs or unexpected states. They are routed through descrip
 | `Internal FNLZR error '%s'` | `0x1D34F74` | `sub_4275C0` | Finalizer returned an error string |
 | `Bailing out due to earlier errors` | `0x1D3B978` | main | Accumulated error count exceeded threshold |
 | `merge_elf failed` | `0x1D34360` | main | ELF merge phase set fatal-error flag |
-| `expected libcudadevrt object` | -- | main | LTO pipeline expected cudadevrt but found different input |
-| `linking with -ewp objects requires using current toolkit` | -- | `sub_426570` | EWP objects from different toolkit version |
-| `cubin not an elf?` | -- | main | Input claimed to be cubin but failed ELF validation |
-| `cubin not a device elf?` | -- | main | ELF is valid but not a device ELF |
-| `fatbin wrong format?` | -- | main | Fatbinary header validation failed |
-| `should never see bc files` | -- | main | Unexpected bitcode file in input stream |
+| `expected libcudadevrt object` | — | main | LTO pipeline expected cudadevrt but found different input |
+| `linking with -ewp objects requires using current toolkit` | — | `sub_426570` | EWP objects from different toolkit version |
+| `cubin not an elf?` | — | main | Input claimed to be cubin but failed ELF validation |
+| `cubin not a device elf?` | — | main | ELF is valid but not a device ELF |
+| `fatbin wrong format?` | — | main | Fatbinary header validation failed |
+| `should never see bc files` | — | main | Unexpected bitcode file in input stream |
 | `unexpected cpuArch` | `0x1D34002` | `sub_42A2D0` | Host CPU architecture not recognized |
 
 ### Category 10: External Tool Errors
@@ -559,16 +559,16 @@ All error-related strings confirmed in `nvlink_strings.json`, organized by addre
 
 **Internal (nvlink wiki):**
 
-- [Error Reporting](../infra/error-reporting.md) -- `diag_emit` (`sub_467460`) diagnostic pipeline with the complete 88-descriptor catalog and 40+ internal assertion messages
-- [LTO Overview](../lto/overview.md) -- LTO pipeline context where elfLink codes 5--7 arise from NVVM IR compilation
-- [libnvvm Integration](../lto/libnvvm-integration.md) -- `dlsym`/`dlopen` lifecycle for `libnvvm.so` loading (codes 10--11)
-- [Split Compilation](../lto/split-compilation.md) -- LTO split-compile path where elfLink errors propagate from parallel PTX-to-SASS workers
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- Fatbinary parsing path where code 3 (fatbin error) originates
-- [Cubin Loading](../input/cubin-loading.md) -- Input cubin validation where codes 8 (not relocatable) and 9 (not compatible) originate
-- [Architecture Compatibility](../targets/compatibility.md) -- Arch mismatch checks that produce code 10 (arch not compatible)
-- [Pipeline Entry](../pipeline/entry.md) -- `main()` top-level error handling that translates elfLink codes to user diagnostics
-- [Symbol Resolution](../linker/symbol-resolution.md) -- Symbol merge/resolve logic that produces multiple-definition and undefined-reference errors
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- DCE callgraph logic that can trigger "reference to deleted symbol" assertions
+- [Error Reporting](../infra/error-reporting.md) — `diag_emit` (`sub_467460`) diagnostic pipeline with the complete 88-descriptor catalog and 40+ internal assertion messages
+- [LTO Overview](../lto/overview.md) — LTO pipeline context where elfLink codes 5--7 arise from NVVM IR compilation
+- [libnvvm Integration](../lto/libnvvm-integration.md) — `dlsym`/`dlopen` lifecycle for `libnvvm.so` loading (codes 10--11)
+- [Split Compilation](../lto/split-compilation.md) — LTO split-compile path where elfLink errors propagate from parallel PTX-to-SASS workers
+- [Fatbin Extraction](../input/fatbin-extraction.md) — Fatbinary parsing path where code 3 (fatbin error) originates
+- [Cubin Loading](../input/cubin-loading.md) — Input cubin validation where codes 8 (not relocatable) and 9 (not compatible) originate
+- [Architecture Compatibility](../targets/compatibility.md) — Arch mismatch checks that produce code 10 (arch not compatible)
+- [Pipeline Entry](../pipeline/entry.md) — `main()` top-level error handling that translates elfLink codes to user diagnostics
+- [Symbol Resolution](../linker/symbol-resolution.md) — Symbol merge/resolve logic that produces multiple-definition and undefined-reference errors
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — DCE callgraph logic that can trigger "reference to deleted symbol" assertions
 
 ## Confidence Assessment
 

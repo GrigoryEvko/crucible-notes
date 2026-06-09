@@ -1,6 +1,6 @@
 # Memory Space Optimization
 
-The Memory Space Optimization pass (`memory-space-opt`) is NVIDIA's inter-procedural address space resolution engine. Its job is to convert generic (flat) pointers into specific address spaces -- global, shared, local, constant, or parameter -- so that the backend can emit specialized memory instructions (`ld.shared`, `st.global`, etc.) instead of generic ones (`ld`, `st`) that require address translation hardware at runtime. On NVIDIA GPUs, generic memory accesses go through an address translation unit that adds latency; resolving pointer provenance at compile time eliminates this overhead entirely and is one of the most impactful optimizations in the CUDA compilation pipeline.
+The Memory Space Optimization pass (`memory-space-opt`) is NVIDIA's inter-procedural address space resolution engine. Its job is to convert generic (flat) pointers into specific address spaces — global, shared, local, constant, or parameter — so that the backend can emit specialized memory instructions (`ld.shared`, `st.global`, etc.) instead of generic ones (`ld`, `st`) that require address translation hardware at runtime. On NVIDIA GPUs, generic memory accesses go through an address translation unit that adds latency; resolving pointer provenance at compile time eliminates this overhead entirely and is one of the most impactful optimizations in the CUDA compilation pipeline.
 
 The pass is implemented as a multi-function cluster totaling roughly 250KB of decompiled code, with two cooperating systems: an intra-procedural address space resolver and an inter-procedural function cloning engine.
 
@@ -17,7 +17,7 @@ The pass is implemented as a multi-function cluster totaling roughly 250KB of de
 | Pass factory | `sub_1C8E680` |
 | NVVMPassOptions slot | Offset `+2680` (disable), offset `+3120` (mode parameter) |
 | Binary size | ~250 KB total (multi-function cluster) |
-| Upstream equivalent | None -- entirely NVIDIA-proprietary |
+| Upstream equivalent | None — entirely NVIDIA-proprietary |
 
 ## NVPTX Address Space Numbering
 
@@ -97,9 +97,9 @@ When different call sites pass pointers from different address spaces to the sam
 
 The cloning engine (`sub_2CBBE90`, 71KB) uses two distinct strategies based on function linkage:
 
-**Strategy 1 -- In-place specialization** (internal/private linkage): All call sites are visible within the module, so the function is modified directly. Pointer argument types are changed from generic (AS 0) to the resolved specific space. No clone is created. This is the cheaper path.
+**Strategy 1 — In-place specialization** (internal/private linkage): All call sites are visible within the module, so the function is modified directly. Pointer argument types are changed from generic (AS 0) to the resolved specific space. No clone is created. This is the cheaper path.
 
-**Strategy 2 -- Clone and specialize** (external/linkonce/weak linkage): The function might have callers outside the module, so the original must be preserved. A clone is created with internal linkage (`0x4007`), its argument types are specialized, and internal call sites are rewritten to target the clone. The original remains for any remaining generic-pointer callers.
+**Strategy 2 — Clone and specialize** (external/linkonce/weak linkage): The function might have callers outside the module, so the original must be preserved. A clone is created with internal linkage (`0x4007`), its argument types are specialized, and internal call sites are rewritten to target the clone. The original remains for any remaining generic-pointer callers.
 
 The cloning process (`sub_F4BFF0`):
 1. Iterate all formal args of the original function.
@@ -120,8 +120,8 @@ The core resolver walks backward through use-def chains to find the original all
 
 | IR Node | Behavior |
 |---------|----------|
-| GEP (`H`) | Transparent -- follow pointer operand |
-| Bitcast (`G`) | Transparent -- follow source operand |
+| GEP (`H`) | Transparent — follow pointer operand |
+| Bitcast (`G`) | Transparent — follow source operand |
 | PHI (`O`) | Follow all incoming values (adds all to worklist) |
 | Call (`M`) | Check if returns a known-space pointer |
 | Load (subcode 32) | Tracked if `track-indir-load` is enabled |
@@ -208,7 +208,7 @@ The pass detects and reports illegal address-space/operation combinations as sof
 | Vector atomic | Local | `"Cannot to vector atomic on local memory"` |
 | Vector atomic | Constant | `"Cannot to vector atomic on const memory"` |
 
-Note: The vector atomic messages contain a typo in NVIDIA's source -- `"Cannot to"` should read `"Cannot do"`. This typo is present in all three vector atomic warning strings.
+Note: The vector atomic messages contain a typo in NVIDIA's source — `"Cannot to"` should read `"Cannot do"`. This typo is present in all three vector atomic warning strings.
 
 ## Key Functions
 
@@ -222,12 +222,12 @@ Note: The vector atomic messages contain a typo in NVIDIA's source -- `"Cannot t
 | Pass initialization | `sub_1CAB590` | 1040 lines | Global registration, data structure setup |
 | Memory-space cloning engine | `sub_2CBBE90` | 71KB | Inter-procedural function cloning |
 | IPMSPPass variant | `sub_1C6A6C0` | 54KB | LIBNVVM module-pass variant |
-| Address space inference | `sub_2CE96D0` | -- | Dataflow analysis for single argument |
-| CloneFunction | `sub_F4BFF0` | -- | Full function clone with type rewriting |
-| shouldProcessFunction | `sub_2CBA650` | -- | Multi-condition filter for worklist eligibility |
-| hasUnresolvedPointerArgs | `sub_2CBA520` | -- | Checks if any arg is an unresolved generic pointer |
-| replaceAllUsesWith | `sub_BD84D0` | -- | Rewrites call sites to target the clone |
-| propagateSpacesToCallees | `sub_2CF5840` | -- | Propagates resolved spaces through call graph |
+| Address space inference | `sub_2CE96D0` | — | Dataflow analysis for single argument |
+| CloneFunction | `sub_F4BFF0` | — | Full function clone with type rewriting |
+| shouldProcessFunction | `sub_2CBA650` | — | Multi-condition filter for worklist eligibility |
+| hasUnresolvedPointerArgs | `sub_2CBA520` | — | Checks if any arg is an unresolved generic pointer |
+| replaceAllUsesWith | `sub_BD84D0` | — | Rewrites call sites to target the clone |
+| propagateSpacesToCallees | `sub_2CF5840` | — | Propagates resolved spaces through call graph |
 
 ## Alternate Algorithm
 
@@ -255,7 +255,7 @@ A parallel implementation exists at `sub_2CBBE90` / `sub_2CEAC10` / `sub_2CF2C20
 | `process-alloca-always` | true | Treat `alloca` instructions as definite local (AS 5) regardless of context |
 | `wmma-memory-space-opt` | true | Enable memory space optimization for WMMA operations |
 | `strong-global-assumptions` | true | Assume const buffer pointers always point to globals |
-| `process-builtin-assume` | -- | Process `__builtin_assume(__is*(p))` assertions for space deduction |
+| `process-builtin-assume` | — | Process `__builtin_assume(__is*(p))` assertions for space deduction |
 
 ### IP-MSP Pass Knobs (ctor_528)
 
@@ -268,12 +268,12 @@ A parallel implementation exists at `sub_2CBBE90` / `sub_2CEAC10` / `sub_2CF2C20
 
 | Level | Phase 1 (first-time) | Phase 2 (second-time) | IP-MSP Cloning |
 |-------|---------------------|----------------------|----------------|
-| **O0** | Runs (mode 0) -- address space resolution is required for correct PTX emission | Not run | Not run |
+| **O0** | Runs (mode 0) — address space resolution is required for correct PTX emission | Not run | Not run |
 | **Ofcmax** | Runs (mode 0); `LSA-Opt` forced to 0, limiting resolution depth | Not run | Not run |
 | **Ofcmid** | Runs (mode 0) | Runs (mode 1) after IP-MSP propagation | Enabled (`do-clone-for-ip-msp=-1`) |
 | **O1+** | Runs (mode 0) early in pipeline | Runs (mode 1) after IP-MSP propagation | Enabled; iterates to fixed point |
 
-This pass is unusual in that it runs even at O0 -- address space resolution is a correctness requirement, not purely an optimization. Without it, all memory accesses would use generic (flat) addressing, which is functionally correct but significantly slower due to the address translation hardware penalty. At Ofcmax, the pass runs in a reduced mode with `LSA-Opt` disabled. See [Optimization Levels](../config/optimization-levels.md) for the complete pipeline structure.
+This pass is unusual in that it runs even at O0 — address space resolution is a correctness requirement, not purely an optimization. Without it, all memory accesses would use generic (flat) addressing, which is functionally correct but significantly slower due to the address translation hardware penalty. At Ofcmax, the pass runs in a reduced mode with `LSA-Opt` disabled. See [Optimization Levels](../config/optimization-levels.md) for the complete pipeline structure.
 
 ## Diagnostic Strings
 
@@ -391,7 +391,7 @@ The following diagram shows how three cooperating subsystems exchange data to re
 | Both phases | Resolved pointer address spaces on all IR values | NVVM AA (`nvptx-aa`) |
 | NVVM AA | `NoAlias` for cross-space pointer pairs | GVN, DSE, LICM, MemorySSA |
 
-The feedback loop between MemorySpaceOpt and IP-MSP is the critical insight: phase 1 resolves locally-obvious cases, IP-MSP propagates those resolutions across call boundaries (cloning when necessary), and phase 2 picks up the newly-available information to resolve cases that were previously ambiguous. The worklist iterates until no more argument spaces change, guaranteeing a fixed point. NVVM AA is the downstream beneficiary -- every resolved pointer pair that previously required a conservative `MayAlias` answer can now return `NoAlias`, enabling more aggressive optimization in GVN, DSE, LICM, and scheduling.
+The feedback loop between MemorySpaceOpt and IP-MSP is the critical insight: phase 1 resolves locally-obvious cases, IP-MSP propagates those resolutions across call boundaries (cloning when necessary), and phase 2 picks up the newly-available information to resolve cases that were previously ambiguous. The worklist iterates until no more argument spaces change, guaranteeing a fixed point. NVVM AA is the downstream beneficiary — every resolved pointer pair that previously required a conservative `MayAlias` answer can now return `NoAlias`, enabling more aggressive optimization in GVN, DSE, LICM, and scheduling.
 
 ## Common Pitfalls
 
@@ -399,11 +399,11 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 **1. Resolving ambiguous pointers to the wrong default space.** When the bitmask has multiple bits set (e.g., `0x03` = global OR shared), the pass defaults to global if `param-always-point-to-global` is true. A reimplementation that defaults to shared instead will silently produce `ld.shared` instructions for what is actually global memory, causing out-of-bounds accesses on the shared memory aperture. The correct behavior is: ambiguous always resolves to global (the safe conservative choice), never to a more restrictive space.
 
-**2. Forgetting to re-run after inter-procedural propagation.** The pass must run twice: once before IP-MSP to resolve locally-obvious cases, and again after IP-MSP to consume propagated information. A single-pass reimplementation will miss every case where a callee's argument space is only known from the caller's context. The second run (mode 1) is not optional -- it catches the majority of inter-procedural resolutions and performs `isspacep` folding that the first run cannot do.
+**2. Forgetting to re-run after inter-procedural propagation.** The pass must run twice: once before IP-MSP to resolve locally-obvious cases, and again after IP-MSP to consume propagated information. A single-pass reimplementation will miss every case where a callee's argument space is only known from the caller's context. The second run (mode 1) is not optional — it catches the majority of inter-procedural resolutions and performs `isspacep` folding that the first run cannot do.
 
-**3. Cloning functions with external linkage instead of specializing in-place.** The pass uses two strategies: in-place specialization for internal/private functions (all call sites visible) and clone-and-specialize for external/weak linkage. Reversing this logic -- cloning internal functions or modifying external ones -- either wastes compile time on unnecessary clones or breaks callers outside the module who still pass generic pointers. The linkage check (`0x4007` for internal) is the discriminator and must not be inverted.
+**3. Cloning functions with external linkage instead of specializing in-place.** The pass uses two strategies: in-place specialization for internal/private functions (all call sites visible) and clone-and-specialize for external/weak linkage. Reversing this logic — cloning internal functions or modifying external ones — either wastes compile time on unnecessary clones or breaks callers outside the module who still pass generic pointers. The linkage check (`0x4007` for internal) is the discriminator and must not be inverted.
 
-**4. Failing to handle the `addrspacecast` chain correctly.** After resolving a pointer's space, the pass inserts `addrspacecast` from generic to the specific space and replaces all uses. A reimplementation that replaces the pointer type directly (without the cast) will break LLVM's type system invariants, causing assertion failures in downstream passes. The cast must exist in the IR even though it is semantically a no-op -- LLVM's type-based alias analysis and GEP arithmetic depend on it.
+**4. Failing to handle the `addrspacecast` chain correctly.** After resolving a pointer's space, the pass inserts `addrspacecast` from generic to the specific space and replaces all uses. A reimplementation that replaces the pointer type directly (without the cast) will break LLVM's type system invariants, causing assertion failures in downstream passes. The cast must exist in the IR even though it is semantically a no-op — LLVM's type-based alias analysis and GEP arithmetic depend on it.
 
 **5. Not iterating the IP-MSP worklist to a fixed point.** The worklist must iterate until no argument bitmask changes. A reimplementation that runs one pass over all functions and stops will miss transitive resolutions through call chains (A calls B calls C). The bitmask OR is monotone (can only grow), so convergence is guaranteed, but early termination produces incomplete resolutions that leave generic pointers in the IR and forfeit the performance benefit of specialized memory instructions.
 
@@ -422,8 +422,8 @@ __global__ void memspace_test(float *global_out, int n) {
 ```
 
 **What to look for in PTX:**
-- `ld.shared.f32` for the read from `smem` -- confirms the pass resolved the shared pointer from generic (AS 0) to shared (AS 3). If you see a plain `ld.f32` without the `.shared` qualifier, the access goes through the generic address translation unit at runtime.
-- `st.global.f32` for the write to `global_out` -- confirms global pointer resolution (AS 1).
+- `ld.shared.f32` for the read from `smem` — confirms the pass resolved the shared pointer from generic (AS 0) to shared (AS 3). If you see a plain `ld.f32` without the `.shared` qualifier, the access goes through the generic address translation unit at runtime.
+- `st.global.f32` for the write to `global_out` — confirms global pointer resolution (AS 1).
 - Absence of `cvta.to.shared` / `cvta.to.global` instructions. These `cvta` (convert address) instructions indicate the backend is converting generic pointers at runtime instead of using resolved address spaces at compile time. Their absence means the pass succeeded fully.
 - Compare with `-O0` to see the unresolved version where generic `ld`/`st` instructions dominate.
 

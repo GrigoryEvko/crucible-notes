@@ -19,7 +19,7 @@ The NVVM IR Verifier (`nvvm-verify`) is NVIDIA's three-layer correctness gate th
 | Primary knobs | `nvvm-verify-show-info` |
 | Error model | Accumulate-and-continue (no early abort) |
 | SM encoding | Internal SM * 10 (e.g., sm_90 = 900) at context offset +8 |
-| Upstream equivalent | None -- fully proprietary |
+| Upstream equivalent | None — fully proprietary |
 
 ## Three-Layer Verification Architecture
 
@@ -69,7 +69,7 @@ All three verifiers share a context object passed as the first argument:
 
 The module verifier validates the module's target triple against two whitelists depending on mode.
 
-### UnifiedNVVMIR Mode (mode == 1) -- Exact Match
+### UnifiedNVVMIR Mode (mode == 1) — Exact Match
 
 Eight triples are accepted:
 
@@ -88,7 +88,7 @@ The `nvsass` triples confirm that CICC can compile directly to native GPU assemb
 
 Failure message: `"Invalid target triple"`.
 
-### Standard Mode (mode != 1) -- Prefix + Suffix Match
+### Standard Mode (mode != 1) — Prefix + Suffix Match
 
 The triple must begin with `"nvptx-"` or `"nvptx64-"` and end with `"-cuda"`. The middle component is wildcarded.
 
@@ -122,11 +122,11 @@ After calling `sub_2C771D0` for function-level checks, the module verifier itera
 | 0x40 | `fence` | In UnifiedNVVMIR mode: only `acq_rel` and `seq_cst` allowed. Otherwise: rejected entirely via `sub_2C76F10` |
 | 0x41 | `cmpxchg` | Only i32/i64/i128 types. Pointer must be in generic, global, or shared AS |
 | 0x42 | *(GEP/addrspacecast helper)* | Calls `sub_2C7AF00` |
-| 0x4F | `addrspacecast` | Validates source and target AS are in range. `"Cannot cast non-generic pointer to different non-generic pointer"` -- at least one side must be AS 0 (generic) |
+| 0x4F | `addrspacecast` | Validates source and target AS are in range. `"Cannot cast non-generic pointer to different non-generic pointer"` — at least one side must be AS 0 (generic) |
 | 0x55 | `call` (intrinsic) | Dispatches to `sub_2C7B6A0` (NVVM intrinsic verifier) |
 | 0x5F | `landingpad` | Rejected: `"landingpad"` unsupported |
 
-The unsupported instructions -- `indirectbr`, `invoke`, `resume`, `landingpad` -- are CPU exception-handling features with no GPU equivalent. Their rejection at the IR level prevents downstream passes from encountering them.
+The unsupported instructions — `indirectbr`, `invoke`, `resume`, `landingpad` — are CPU exception-handling features with no GPU equivalent. Their rejection at the IR level prevents downstream passes from encountering them.
 
 ### Address Space Casting Rules
 
@@ -200,14 +200,14 @@ The intrinsic verifier (`sub_2C7B6A0`) uses the SM version stored at context off
 |---|---|---|---|
 | sm_70 (Volta) | <= 699 | `llvm.nvvm.branch.if.all.convergent` (ID 0x205A) | `"...not supported on pre-Volta Architectures"` |
 | sm_72 (Volta+) | <= 719 | `llvm.nvvm.cvt` base conversion (ID 0x2106) | `"this instrinsic is only supported for Volta (sm_72)+"` |
-| sm_75 (Turing) | <= 749 | `cvt` extended types -- BF16, TF32 conversions (within ID 0x2106) | `"conversion type only supported for Turing (sm_75)+"` |
+| sm_75 (Turing) | <= 749 | `cvt` extended types — BF16, TF32 conversions (within ID 0x2106) | `"conversion type only supported for Turing (sm_75)+"` |
 | sm_80 (Ampere) | <= 799 | `llvm.nvvm.branch.if.convergent` (ID 0x205B) | `"...not supported on pre-Ampere Architectures"` |
 | sm_89 (Ada) | <= 889 | Extended type conversion intrinsic (ID 0x2107) | `"this instrinsic is only supported for Ada (sm_89)+"` |
 | sm_90 (Hopper) | <= 899 | TMA, async copy (IDs 0x2279, 0x232D), cluster dims, bulk async (IDs 0x244D-0x2459, 0x2487-0x2489) | `"this intrinsic is only supported for Hopper+"` |
 | sm_90 (Hopper) | <= 899 | 64-bit pointer requirement for TMA | `"this intrinsic is only supported when pointer size is >= 64 bits"` |
 | sm_100+ (Blackwell) | <= 1199 | `.offset.bindless` intrinsics (checked via `sub_CEA320`) | `".offset.bindless intrinsics are not supported on pre-Blackwell architectures"` |
 
-Note the typo `"instrinsic"` in the Volta and Ada messages -- this is present in the binary. The Blackwell gate threshold of 1199 means the `.offset.bindless` intrinsics are available on sm_120 (value 1200) and above, covering all Blackwell-generation architectures including consumer (sm_120/121) and datacenter (sm_100/103).
+Note the typo `"instrinsic"` in the Volta and Ada messages — this is present in the binary. The Blackwell gate threshold of 1199 means the `.offset.bindless` intrinsics are available on sm_120 (value 1200) and above, covering all Blackwell-generation architectures including consumer (sm_120/121) and datacenter (sm_100/103).
 
 ## Intrinsic Verification Categories
 
@@ -336,7 +336,7 @@ The Hopper register-reallocation intrinsic accepts only specific count values:
 | Range | `"reg_count argument to nvvm.setmaxnreg must be within [24, 256]"` |
 | Granularity | `"reg_count argument to nvvm.setmaxnreg must be in multiples of 8"` |
 
-Combined, the legal `reg_count` set is `{24, 32, 40, ..., 248, 256}` -- 30 distinct values.
+Combined, the legal `reg_count` set is `{24, 32, 40, ..., 248, 256}` — 30 distinct values.
 
 ### H. Texture/Surface Validation
 
@@ -489,7 +489,7 @@ These checks fire only on sm_100+ targets; on earlier architectures the intrinsi
 
 ### Q. Architecture-Gated MMA / Vector Intrinsic Variants
 
-Beyond the eight monolithic SM gates in the [Architecture Gates](#architecture-gates-sm-gated-features) table, each MMA, vector-atomic, and TMA-2CTA variant has a private threshold check colocated with its lowering helper. The helpers live outside `sub_2C7B6A0` proper but are reached from the same dispatch -- the verifier walks an arch-availability sub-table per feature rather than collapsing them into the main switch.
+Beyond the eight monolithic SM gates in the [Architecture Gates](#architecture-gates-sm-gated-features) table, each MMA, vector-atomic, and TMA-2CTA variant has a private threshold check colocated with its lowering helper. The helpers live outside `sub_2C7B6A0` proper but are reached from the same dispatch — the verifier walks an arch-availability sub-table per feature rather than collapsing them into the main switch.
 
 The encoding is uniform across all variants: `*(_DWORD *)(ctx + 1136)` resolves to the target descriptor, and field `+344` carries the compute capability as `major * 10 + minor` (e.g. sm_70 = 70, sm_72 = 72, sm_75 = 75, sm_90 = 90, sm_100 = 100). The threshold uses `<=` so `<= 0x45u` rejects sm_69 and below, admitting sm_70+. Two helpers (2CTA-TMA, block-scale tcgen05) use a second field at `+340` to encode an extended family token (values like 1101, 1102 select Blackwell-datacenter-family) and a third at `+336` for the family-base SM.
 
@@ -527,11 +527,11 @@ The encoding is uniform across all variants: `*(_DWORD *)(ctx + 1136)` resolves 
 | family token | Blackwell `-a` | TMA 2CTA, Im2Col_W/W128, tcgen05 scale-input |
 | string-only | sm_90a | WGMMA (frontend builtin) |
 
-The IMMA family has a two-stage check: the base test `v <= 0x47` admits sm_72, but several IMMA variants then add `&& opc > 1` or `&& a2 in {386,387,1595,1596}` to forbid sm_72 specifically -- those subvariants need sm_75. The dispatch matches each sm_72/sm_75 split point to a different LLVM intrinsic ID, so a sm_72 user reaching a sm_75-only intrinsic ID gets the same `"immaXXX is not supported"` message rather than a distinct one. The BMMA threshold of `0x48` (72) rejects sm_72 cleanly because sm_73 and sm_74 do not exist in the NVIDIA ISA lineup -- the next valid value after 72 is 75, which is where BMMA debuted on Turing.
+The IMMA family has a two-stage check: the base test `v <= 0x47` admits sm_72, but several IMMA variants then add `&& opc > 1` or `&& a2 in {386,387,1595,1596}` to forbid sm_72 specifically — those subvariants need sm_75. The dispatch matches each sm_72/sm_75 split point to a different LLVM intrinsic ID, so a sm_72 user reaching a sm_75-only intrinsic ID gets the same `"immaXXX is not supported"` message rather than a distinct one. The BMMA threshold of `0x48` (72) rejects sm_72 cleanly because sm_73 and sm_74 do not exist in the NVIDIA ISA lineup — the next valid value after 72 is 75, which is where BMMA debuted on Turing.
 
-> **QUIRK:** The 2CTA-TMA gate in `sub_36EC510` is not a simple `<=` threshold but a three-clause family-token test on field `+340` (extended SM token, e.g. 1101 = sm_110a, 1102 = sm_111a) joined to field `+336` (family-base SM). The expression `(__ROR4__(-858993459 * v38 + 1717986918, 1) > 0x19999999u || v39 <= 0x57) && v39 <= 0x55` is a compiler-folded modulo-5 test (`-858993459 = -0x33333333` is the magic multiplier for `n % 5`), checking that the family token is not a multiple of 5 while the base SM is in the `[85, 87]` window -- this is the verifier's way of admitting `sm_100a` / `sm_103a` / `sm_110a` while rejecting `sm_100` / `sm_103` / `sm_110` (non-`a` variants).
+> **QUIRK:** The 2CTA-TMA gate in `sub_36EC510` is not a simple `<=` threshold but a three-clause family-token test on field `+340` (extended SM token, e.g. 1101 = sm_110a, 1102 = sm_111a) joined to field `+336` (family-base SM). The expression `(__ROR4__(-858993459 * v38 + 1717986918, 1) > 0x19999999u || v39 <= 0x57) && v39 <= 0x55` is a compiler-folded modulo-5 test (`-858993459 = -0x33333333` is the magic multiplier for `n % 5`), checking that the family token is not a multiple of 5 while the base SM is in the `[85, 87]` window — this is the verifier's way of admitting `sm_100a` / `sm_103a` / `sm_110a` while rejecting `sm_100` / `sm_103` / `sm_110` (non-`a` variants).
 
-> **QUIRK:** BMMA threshold `0x48u` (72) versus the user-facing "BMMA requires sm_75". The verifier accepts any value `>= 73`, but no such SM exists in the NVIDIA range, so the effective minimum is sm_75. This single-byte threshold avoids encoding the sm_73/74 holes explicitly -- the gap is implicit in the SM numbering.
+> **QUIRK:** BMMA threshold `0x48u` (72) versus the user-facing "BMMA requires sm_75". The verifier accepts any value `>= 73`, but no such SM exists in the NVIDIA range, so the effective minimum is sm_75. This single-byte threshold avoids encoding the sm_73/74 holes explicitly — the gap is implicit in the SM numbering.
 
 > **QUIRK:** The IMMA ld-C gate `sub_36E7EA0` uses a four-value whitelist `{386, 387, 1595, 1596}` on the intrinsic-ID argument to forbid sm_72 selectively. These four IDs correspond to s8/u8 packed-load intrinsics that landed in sm_75; the sm_72 IMMA path supports only the unpacked variants. A more conventional implementation would split into two separate intrinsic IDs with separate gates, but the verifier collapses both into one ID-range check, which is why a single helper raises `"immaldc is not supported on this architecture"` for two structurally different errors (pre-Volta+ vs. sm_72-extended).
 
@@ -541,19 +541,19 @@ Several "unexpected"-prefixed messages indicate the verifier detected an MMA var
 
 | Category | IDs | Key Messages |
 |---|---|---|
-| Coroutine | -- | `"llvm.nvvm.coro.create.suspend must have exactly one argument, which must be a constant integer"` |
+| Coroutine | — | `"llvm.nvvm.coro.create.suspend must have exactly one argument, which must be a constant integer"` |
 | Subop mode | 9383-9384 | `"Invalid subop mode"` (bits[3:1] > 5) |
-| Geometry output | -- | `"geometry out mode not a valid value"`, `"op1 of GeometryOut intrinsic must be constant when CUT mode"`, `"op1 of GeometryOut intrinsic must be 0 when CUT mode"` |
-| Syncwarp | -- | `"syncwarp mode not a valid value"` |
-| Cache operations | -- | `"invalid cache type"`, `"invalid cache op"` |
-| Wait intrinsic | -- | `"Invalid wait mode"` |
+| Geometry output | — | `"geometry out mode not a valid value"`, `"op1 of GeometryOut intrinsic must be constant when CUT mode"`, `"op1 of GeometryOut intrinsic must be 0 when CUT mode"` |
+| Syncwarp | — | `"syncwarp mode not a valid value"` |
+| Cache operations | — | `"invalid cache type"`, `"invalid cache op"` |
+| Wait intrinsic | — | `"Invalid wait mode"` |
 | ISBE | 0x2BC1 (11201) | `"Only writes to MAP or ATTR are supported"`, `"Cannot write to input ISBE"` |
-| `llvm.nvvm.sub` | -- | `"First argument of 'llvm.nvvm.sub' must be a constant."` |
-| Load/store first arg | -- | `"The first argument of load/store intrinsic must be a constant."` |
-| Address-space cvt deprecation | -- | `"nvvm address space conversion intrinsics are not supported. Please use addrspacecast instruction for address space conversions"` |
-| `read.sreg` overload | -- | `"Unsupported overloaded declaration of llvm.nvvm.read.sreg intrinsic"` |
-| `read.sreg` SM gate | -- | Specific sreg IDs gate on SM version (clock64 needs sm_30+, etc.) |
-| Unsupported fallback | -- | `"Unsupported intrinsic: <name>"` |
+| `llvm.nvvm.sub` | — | `"First argument of 'llvm.nvvm.sub' must be a constant."` |
+| Load/store first arg | — | `"The first argument of load/store intrinsic must be a constant."` |
+| Address-space cvt deprecation | — | `"nvvm address space conversion intrinsics are not supported. Please use addrspacecast instruction for address space conversions"` |
+| `read.sreg` overload | — | `"Unsupported overloaded declaration of llvm.nvvm.read.sreg intrinsic"` |
+| `read.sreg` SM gate | — | Specific sreg IDs gate on SM version (clock64 needs sm_30+, etc.) |
+| Unsupported fallback | — | `"Unsupported intrinsic: <name>"` |
 
 ## Cmpxchg Restrictions
 
@@ -629,26 +629,26 @@ Role labels below are descriptive; only `sub_<HEX>` addresses are binary-confirm
 | `sub_2C771D0` | 36KB | Function-level verifier: attributes, params, cluster dims, entry funcs |
 | `sub_2C7B6A0` | 143KB | Intrinsic-level verifier: SM gates, types, MMA, atomics, tex/surf |
 | `sub_12D4560` | small | NVVMVerifier pass wrapper: pipeline entry, creates context, invokes module verifier |
-| `sub_2C797D0` | -- | Per-global validation |
-| `sub_2C7A130` | -- | Function declaration checker (declarations, not definitions) |
-| `sub_2C7AA20` | -- | Named metadata validation |
-| `sub_2C7AF00` | -- | addrspacecast / GEP rule checker |
-| `sub_2C795F0` | -- | Non-intrinsic call validation, pragma check |
-| `sub_2C76F10` | -- | Produces `"<name> is not supported"` diagnostics |
-| `sub_CE9220` | -- | Kernel calling convention predicate |
-| `sub_CE8EA0` | -- | Reads cluster dims from function metadata |
-| `sub_CE9030` | -- | Reads max cluster blocks from metadata |
-| `sub_A73ED0` | -- | Tests presence of attribute by ID |
-| `sub_CEA320` | -- | `.offset.bindless` predicate (Blackwell gate) |
-| `sub_BD5D20` | -- | Returns intrinsic name string for error messages |
-| `sub_BCAE30` | -- | Integer bit-width query helper |
-| `sub_CA1930` | -- | Aggregate/vector total bit-width computation |
+| `sub_2C797D0` | — | Per-global validation |
+| `sub_2C7A130` | — | Function declaration checker (declarations, not definitions) |
+| `sub_2C7AA20` | — | Named metadata validation |
+| `sub_2C7AF00` | — | addrspacecast / GEP rule checker |
+| `sub_2C795F0` | — | Non-intrinsic call validation, pragma check |
+| `sub_2C76F10` | — | Produces `"<name> is not supported"` diagnostics |
+| `sub_CE9220` | — | Kernel calling convention predicate |
+| `sub_CE8EA0` | — | Reads cluster dims from function metadata |
+| `sub_CE9030` | — | Reads max cluster blocks from metadata |
+| `sub_A73ED0` | — | Tests presence of attribute by ID |
+| `sub_CEA320` | — | `.offset.bindless` predicate (Blackwell gate) |
+| `sub_BD5D20` | — | Returns intrinsic name string for error messages |
+| `sub_BCAE30` | — | Integer bit-width query helper |
+| `sub_CA1930` | — | Aggregate/vector total bit-width computation |
 
 ## Cross-References
 
-- [GPU Target Architecture](../targets/index.md) -- SM table and architecture gating
-- [Hopper (sm_90)](../targets/sm90-hopper.md) -- TMA, cluster operations, WGMMA
-- [Blackwell (sm_100)](../targets/sm100-blackwell.md) -- tcgen05, .offset.bindless
-- [Memory Space Optimization](./memory-space-opt.md) -- address space enforcement and resolution
-- [NVIDIA Custom Passes index](./index.md) -- pass inventory
-- [IP Memory Space Propagation](./ipmsp.md) -- inter-procedural address space analysis
+- [GPU Target Architecture](../targets/index.md) — SM table and architecture gating
+- [Hopper (sm_90)](../targets/sm90-hopper.md) — TMA, cluster operations, WGMMA
+- [Blackwell (sm_100)](../targets/sm100-blackwell.md) — tcgen05, .offset.bindless
+- [Memory Space Optimization](./memory-space-opt.md) — address space enforcement and resolution
+- [NVIDIA Custom Passes index](./index.md) — pass inventory
+- [IP Memory Space Propagation](./ipmsp.md) — inter-procedural address space analysis

@@ -1,20 +1,20 @@
 # Device ELF Format
 
-CUDA device code is packaged as ELF binaries with an NVIDIA-proprietary OS/ABI and a dedicated machine type. nvlink both consumes and produces these device ELFs. This page documents the complete device ELF format as understood from reverse engineering the elfw constructor (`sub_4438F0`) and the ELF serialization path (`sub_45BF00`), cross-referenced with the header validation functions and the main linking loop. The format is a strict superset of standard ELF64 (or ELF32 for legacy targets) -- every field follows the System V ELF specification, but NVIDIA overloads the `e_ident`, `e_type`, `e_flags`, and section type spaces with GPU-specific semantics.
+CUDA device code is packaged as ELF binaries with an NVIDIA-proprietary OS/ABI and a dedicated machine type. nvlink both consumes and produces these device ELFs. This page documents the complete device ELF format as understood from reverse engineering the elfw constructor (`sub_4438F0`) and the ELF serialization path (`sub_45BF00`), cross-referenced with the header validation functions and the main linking loop. The format is a strict superset of standard ELF64 (or ELF32 for legacy targets) — every field follows the System V ELF specification, but NVIDIA overloads the `e_ident`, `e_type`, `e_flags`, and section type spaces with GPU-specific semantics.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| `e_machine` | `0xBE` (190) -- `EM_CUDA`, registered with the ELF standards committee |
-| OS/ABI (64-bit GPU) | `0x41` (65) at `e_ident[EI_OSABI]` -- device ABI for 64-bit CUDA targets |
-| OS/ABI (32-bit GPU) | `0x33` (51) -- device ABI for 32-bit CUDA targets (legacy) |
+| `e_machine` | `0xBE` (190) — `EM_CUDA`, registered with the ELF standards committee |
+| OS/ABI (64-bit GPU) | `0x41` (65) at `e_ident[EI_OSABI]` — device ABI for 64-bit CUDA targets |
+| OS/ABI (32-bit GPU) | `0x33` (51) — device ABI for 32-bit CUDA targets (legacy) |
 | ELF class | `ELFCLASS64` (2) for all modern targets; `ELFCLASS32` (1) for 32-bit device code |
 | `e_type` values | `ET_REL` (1) relocatable, `ET_EXEC` (2) executable, `0xFF00` Mercury relocatable |
-| Constructor | `sub_4438F0` (`elfw_create`) -- 14,821 bytes, allocates 672-byte `elfw` struct |
-| Serializer | `sub_45BF00` (`write_elf_to_buffer`) -- 13,258 bytes |
-| File writer | `sub_45C920` -- writes elfw to file descriptor |
-| Memory writer | `sub_45C950` -- writes elfw to arena buffer |
+| Constructor | `sub_4438F0` (`elfw_create`) — 14,821 bytes, allocates 672-byte `elfw` struct |
+| Serializer | `sub_45BF00` (`write_elf_to_buffer`) — 13,258 bytes |
+| File writer | `sub_45C920` — writes elfw to file descriptor |
+| Memory writer | `sub_45C950` — writes elfw to arena buffer |
 | Initial sections | `.shstrtab`, `.strtab`, `.symtab`, `.symtab_shndx` (always); `.note.nv.tkinfo`, `.note.nv.cuinfo` (device ELF only) |
 
 ## ELF Identification (`e_ident`)
@@ -32,7 +32,7 @@ The 16-byte ELF identification array carries both standard ELF metadata and NVID
 | 7 | `EI_OSABI` | `0x41` (65) | `0x33` (51) | Selects the `e_flags` encoding scheme |
 | 8 | `EI_ABIVERSION` | `a3` (ELF ABI version) | `a3` | Passed through from caller |
 
-The OS/ABI byte determines far more than ABI compatibility -- it selects which `e_flags` encoding is used and how the SM architecture is packed into the header. When `a9 & 0x8000` is set in the constructor, the ELF is marked as a device ELF (OSABI `0x41`); otherwise it is a 32-bit device ELF (OSABI `0x33`).
+The OS/ABI byte determines far more than ABI compatibility — it selects which `e_flags` encoding is used and how the SM architecture is packed into the header. When `a9 & 0x8000` is set in the constructor, the ELF is marked as a device ELF (OSABI `0x41`); otherwise it is a 32-bit device ELF (OSABI `0x33`).
 
 ### OS/ABI Selection Logic
 
@@ -89,7 +89,7 @@ For the legacy (OSABI `0x33`) path, the `e_type` is also set from the first para
 
 The `e_flags` field encodes the SM architecture and a link-state tag. The encoding differs between OSABI `0x41` and OSABI `0x33`. Debug state and other ABI attributes are stored in the `merge_flags` field of the `elfw` struct (offset 76), not in `e_flags` itself.
 
-### OSABI 0x41 (64-bit GPU) -- `e_flags` Layout
+### OSABI 0x41 (64-bit GPU) — `e_flags` Layout
 
 | Bits | Width | Field | Description |
 |---|---|---|---|
@@ -136,7 +136,7 @@ if ((mask & *(DWORD *)(elfw + 48)) == 0)
     // Not relocatable
 ```
 
-### OSABI 0x33 (32-bit GPU) -- `e_flags` Layout
+### OSABI 0x33 (32-bit GPU) — `e_flags` Layout
 
 | Bits | Width | Field | Description |
 |---|---|---|---|
@@ -161,25 +161,25 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 | Bit in `a9` | `elfw` offset | Meaning |
 |---|---|---|
 | `0x0001` (bit 0) | byte 84 | `callgraph_enabled` (always-set base bit of seed `0x40401`) |
-| `0x0002` (bit 1) | byte 85 | `preserve_relocs` -- `--preserve-relocs` (`byte_2A5F2CE`) |
-| `0x0004` (bit 2) | byte 87 | `reserve_null` -- reserve-null-pointer (`byte_2A5F2CD`) |
-| `0x0008` (bit 3) | byte 88 | `allow_undef_globals` -- `--allow-undefined-globals` (`byte_2A5F2CC`) |
-| `0x0010` (bit 4) | byte 89 | `force_rela` -- `--force-rela` (`byte_2A5F2AA`); also forced when `a10` (relocatable) or mercury path set |
-| `0x0020` (bit 5) | byte 90 | `no_opt` -- `--no-opt` (`byte_2A5F2A9`) |
-| `0x0040` (bit 6) | byte 92 | `suppress_stack_warn` -- `--suppress-stack-size-warning` (`byte_2A5F299`) |
-| `0x0080` (bit 7) | byte 94 | Sm-gated extended-smem detection: `(sm_minor > 0x45) & ((a9 >> 7) & 1)` -- *distinct* from the bit-25 `--enable-extended-smem` CLI option |
-| `0x0100` (bit 8) | byte 93 | `extra_warnings` -- `byte_2A5F289` (extra-warnings flag) |
-| `0x0200` (bit 9) | byte 86 | `suppress_debug_info` -- `--suppress-debug-info` (CLI byte `byte_2A5F226`, registered at `sub_427AE0:258` and OR'd into bit 9 at `main_0x409800.c:365-369`). The `--device-stack-protector` CLI option lives at `byte_2A5F1FE` and is consumed by `sub_429BA0:240` without feeding `merge_flags` -- the legacy `stack_protector` label on this slot was a misnomer. See [elf-writer.md](../structs/elf-writer.md#metadata-and-flags-offsets-64103) for the resolved naming. |
-| `0x0400` (bit 10) | -- | Private-arena seed (part of base value `0x40401`) -- allocates a dedicated "elfw memory space" arena |
-| `0x0800` (bit 11) | byte 96 | `host_info_mode` -- set when `byte_2A5F213` (`--use-host-info`) OR `byte_2A5F212` (`--ignore-host-info`) is true |
-| `0x1000` (bit 12) | byte 99 | `std_smem_mode` -- **inverted** `((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is sourced from `byte_2A5F210` (`--disable-smem-reservation`); the stored byte is therefore 1 in the standard layout and 0 when the user passed `--disable-smem-reservation`. Read by `sub_445000:347` to gate `sub_439640` (shared-memory rebasing). |
-| `0x2000` (bit 13) | byte 100 | `flag_bit13` -- no confirmed CLI source observed in `main`'s bit assembly |
-| `0x4000` (bit 14) | byte 91 | `optimize_data_layout` -- `--optimize-data-layout` (`byte_2A5F2A8`) |
-| `0x8000` (bit 15) | byte 101 | `is_device_elf` -- triggers OSABI 0x41 path; sourced from `byte_2A5F224` (sm > 72 detector) |
+| `0x0002` (bit 1) | byte 85 | `preserve_relocs` — `--preserve-relocs` (`byte_2A5F2CE`) |
+| `0x0004` (bit 2) | byte 87 | `reserve_null` — reserve-null-pointer (`byte_2A5F2CD`) |
+| `0x0008` (bit 3) | byte 88 | `allow_undef_globals` — `--allow-undefined-globals` (`byte_2A5F2CC`) |
+| `0x0010` (bit 4) | byte 89 | `force_rela` — `--force-rela` (`byte_2A5F2AA`); also forced when `a10` (relocatable) or mercury path set |
+| `0x0020` (bit 5) | byte 90 | `no_opt` — `--no-opt` (`byte_2A5F2A9`) |
+| `0x0040` (bit 6) | byte 92 | `suppress_stack_warn` — `--suppress-stack-size-warning` (`byte_2A5F299`) |
+| `0x0080` (bit 7) | byte 94 | Sm-gated extended-smem detection: `(sm_minor > 0x45) & ((a9 >> 7) & 1)` — *distinct* from the bit-25 `--enable-extended-smem` CLI option |
+| `0x0100` (bit 8) | byte 93 | `extra_warnings` — `byte_2A5F289` (extra-warnings flag) |
+| `0x0200` (bit 9) | byte 86 | `suppress_debug_info` — `--suppress-debug-info` (CLI byte `byte_2A5F226`, registered at `sub_427AE0:258` and OR'd into bit 9 at `main_0x409800.c:365-369`). The `--device-stack-protector` CLI option lives at `byte_2A5F1FE` and is consumed by `sub_429BA0:240` without feeding `merge_flags` — the legacy `stack_protector` label on this slot was a misnomer. See [elf-writer.md](../structs/elf-writer.md#metadata-and-flags-offsets-64103) for the resolved naming. |
+| `0x0400` (bit 10) | — | Private-arena seed (part of base value `0x40401`) — allocates a dedicated "elfw memory space" arena |
+| `0x0800` (bit 11) | byte 96 | `host_info_mode` — set when `byte_2A5F213` (`--use-host-info`) OR `byte_2A5F212` (`--ignore-host-info`) is true |
+| `0x1000` (bit 12) | byte 99 | `std_smem_mode` — **inverted** `((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is sourced from `byte_2A5F210` (`--disable-smem-reservation`); the stored byte is therefore 1 in the standard layout and 0 when the user passed `--disable-smem-reservation`. Read by `sub_445000:347` to gate `sub_439640` (shared-memory rebasing). |
+| `0x2000` (bit 13) | byte 100 | `flag_bit13` — no confirmed CLI source observed in `main`'s bit assembly |
+| `0x4000` (bit 14) | byte 91 | `optimize_data_layout` — `--optimize-data-layout` (`byte_2A5F2A8`) |
+| `0x8000` (bit 15) | byte 101 | `is_device_elf` — triggers OSABI 0x41 path; sourced from `byte_2A5F224` (sm > 72 detector) |
 | `0x70000` (bits 16--18) | dword at offset 68 | `link_mode` / cached `e_flags` (stored as `a9 & 0x70000`) |
-| `0x80000` (bit 19) | dword at offset 76 | `relocatable_link` -- forced on when `a10` is set or `a9 & 0x180000` (mercury / forced-relocatable path) |
-| `0x100000` (bit 20) | -- | `mercury_forced_relocatable` -- `byte_2A5F222` (mercury mode); also forces relocatable path |
-| `0x2000000` (bit 25) | -- | `--enable-extended-smem` (`byte_2A5F1FD`) -- distinct CLI option from the bit-12 `--disable-smem-reservation`; raw in `elfw+76` only, no decomposed byte |
+| `0x80000` (bit 19) | dword at offset 76 | `relocatable_link` — forced on when `a10` is set or `a9 & 0x180000` (mercury / forced-relocatable path) |
+| `0x100000` (bit 20) | — | `mercury_forced_relocatable` — `byte_2A5F222` (mercury mode); also forces relocatable path |
+| `0x2000000` (bit 25) | — | `--enable-extended-smem` (`byte_2A5F1FD`) — distinct CLI option from the bit-12 `--disable-smem-reservation`; raw in `elfw+76` only, no decomposed byte |
 
 ## The `elfw` Struct (672 bytes)
 
@@ -189,9 +189,9 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
-| 0 | 4 | `elf_magic` | `0x464C457F` -- the `\x7fELF` magic, stored in native byte order |
-| 4 | 1 | `ei_class` | `(is_64bit != 0) + 1` -- `1` for Elf32, `2` for Elf64 |
-| 5--6 | 2 | `ei_data_version` | `0x0101` -- ELFDATA2LSB + EV_CURRENT |
+| 0 | 4 | `elf_magic` | `0x464C457F` — the `\x7fELF` magic, stored in native byte order |
+| 4 | 1 | `ei_class` | `(is_64bit != 0) + 1` — `1` for Elf32, `2` for Elf64 |
+| 5--6 | 2 | `ei_data_version` | `0x0101` — ELFDATA2LSB + EV_CURRENT |
 | 7 | 1 | `ei_osabi` | `0x41` (device) or `0x33` (32-bit) |
 | 8 | 1 | `ei_abiversion` | `a3` parameter |
 | 16 | 2 | `e_type` | ELF type (1, 2, or 0xFF00) |
@@ -200,7 +200,7 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 | 48 | 4 | `e_flags` | OSABI 0x41: `(sm_major << 8) \| link_state`; OSABI 0x33: `sm_major \| (sm_minor << 16) \| reloc_bit` |
 | 62 | 2 | `shstrtab_idx` | Section index of `.shstrtab` |
 | 64 | 1 | `verbose_flags` | `a8` parameter (verbose output level) |
-| 68 | 4 | `link_mode` | `a9 & 0x70000` -- link mode control bits |
+| 68 | 4 | `link_mode` | `a9 & 0x70000` — link mode control bits |
 | 72 | 4 | `sm_arch` | `a4` parameter (SM major version) |
 | 76 | 4 | `merge_flags` | Full `a9` parameter (or `a9 \| 0x80000` if relocatable) |
 | 80 | 1 | `debug_flag` | `a6` parameter |
@@ -269,17 +269,17 @@ elfw_create(
 8. **Input file record**: Creates a 16-byte `<input>` record with the SM minor version.
 
 9. **Core sections**:
-   - `.shstrtab` -- section header string table (SHT_STRTAB = 3, alignment 1)
-   - `.strtab` -- symbol string table (SHT_STRTAB = 3, alignment 1)
-   - `.symtab` -- symbol table (SHT_SYMTAB = 2, linked to `.strtab`). Entry size is 24 bytes for Elf64 or 16 bytes for Elf32; alignment is 8 or 4 respectively.
-   - `.symtab_shndx` -- extended section indices (SHT_SYMTAB_SHNDX = 18, 4-byte entries)
+   - `.shstrtab` — section header string table (SHT_STRTAB = 3, alignment 1)
+   - `.strtab` — symbol string table (SHT_STRTAB = 3, alignment 1)
+   - `.symtab` — symbol table (SHT_SYMTAB = 2, linked to `.strtab`). Entry size is 24 bytes for Elf64 or 16 bytes for Elf32; alignment is 8 or 4 respectively.
+   - `.symtab_shndx` — extended section indices (SHT_SYMTAB_SHNDX = 18, 4-byte entries)
 
 10. **Device-only sections** (when `is_device_elf`):
-    - `.note.nv.tkinfo` -- tool kit info note (SHT_NOTE = 7, alignment `0x2000000`)
-    - `.note.nv.cuinfo` -- CUDA info note (SHT_NOTE = 7, alignment `0x1000000`)
+    - `.note.nv.tkinfo` — tool kit info note (SHT_NOTE = 7, alignment `0x2000000`)
+    - `.note.nv.cuinfo` — CUDA info note (SHT_NOTE = 7, alignment `0x1000000`)
 
 11. **UFT section** (when `e_type != ET_REL`):
-    - `.nv.uft.entry` -- unified function table entry points (section type `0x70000011` = 1879048209, 32-byte entries with 32-byte alignment)
+    - `.nv.uft.entry` — unified function table entry points (section type `0x70000011` = 1879048209, 32-byte entries with 32-byte alignment)
 
 12. **Section name registry**: Populates the section name hash from a static table at `off_1D3A9C0` containing known NVIDIA section name strings.
 
@@ -301,17 +301,17 @@ Device ELF sections use both standard ELF section types and NVIDIA vendor types 
 | `0x00000007` | `SHT_NOTE` | Note sections (`.note.nv.tkinfo`, `.note.nv.cuinfo`) |
 | `0x00000008` | `SHT_NOBITS` | Uninitialized data (`.nv.shared.*`, `.bss`) |
 | `0x00000012` | `SHT_SYMTAB_SHNDX` | Extended section indices (`.symtab_shndx`) |
-| `0x70000000` | `SHT_CUDA_INFO` | `.nv.info`, `.nv.info.<func>` -- EIATTR metadata records |
-| `0x70000007` | `SHT_CUDA_GLOBAL` | `.nv.global` -- uninitialized `__device__` BSS |
-| `0x70000009` | `SHT_CUDA_LOCAL` | `.nv.local.<func>` -- per-kernel register spill / local arrays |
-| `0x7000000A` | `SHT_CUDA_SHARED` | `.nv.shared.<func>` -- per-kernel `__shared__` memory |
-| `0x70000011` | `SHT_CUDA_UFT_ENTRY` | `.nv.uft.entry` -- unified function table entries |
-| `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | `.nv.reservedSmem*` -- reserved shared-memory region markers |
-| `0x70000086` | `SHT_CUDA_COMPAT` | `.nv.compat` -- forward/backward compatibility attribute table |
+| `0x70000000` | `SHT_CUDA_INFO` | `.nv.info`, `.nv.info.<func>` — EIATTR metadata records |
+| `0x70000007` | `SHT_CUDA_GLOBAL` | `.nv.global` — uninitialized `__device__` BSS |
+| `0x70000009` | `SHT_CUDA_LOCAL` | `.nv.local.<func>` — per-kernel register spill / local arrays |
+| `0x7000000A` | `SHT_CUDA_SHARED` | `.nv.shared.<func>` — per-kernel `__shared__` memory |
+| `0x70000011` | `SHT_CUDA_UFT_ENTRY` | `.nv.uft.entry` — unified function table entries |
+| `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | `.nv.reservedSmem*` — reserved shared-memory region markers |
+| `0x70000086` | `SHT_CUDA_COMPAT` | `.nv.compat` — forward/backward compatibility attribute table |
 
 (See [NVIDIA Section Types](nvidia-sections.md) and [Section Catalog](../reference/section-catalog.md) for the full type assignment.)
 
-The data-range validator (`sub_43DD30`) recognizes a *subset* of these -- specifically the four "virtual" types that occupy device memory at runtime but have no file content -- through a bitmask check on `(type - 0x70000007)`:
+The data-range validator (`sub_43DD30`) recognizes a *subset* of these — specifically the four "virtual" types that occupy device memory at runtime but have no file content — through a bitmask check on `(type - 0x70000007)`:
 
 ```c
 // Data-less vendor section recognition in elf_validate
@@ -324,7 +324,7 @@ if (offset <= 14) {
 
 The bitmask `0x400D` = `0b0100_0000_0000_1101` selects offsets 0 (`0x70000007 = SHT_CUDA_GLOBAL`), 2 (`0x70000009 = SHT_CUDA_LOCAL`), 3 (`0x7000000A = SHT_CUDA_SHARED`), and 14 (`0x70000015 = SHT_CUDA_SHARED_RESERVED`).
 
-> **QUIRK -- bitmask is based at `SHT_CUDA_GLOBAL` rather than `SHT_LOPROC`.** Standard ELF places the processor-specific range at `SHT_LOPROC = 0x70000000`, but the validator subtracts `0x70000007` (`SHT_CUDA_GLOBAL`) instead. The first seven CUDA types (`SHT_CUDA_INFO`..`SHT_CUDA_METADATA`) all carry real file content and are never exempt; clustering the data-less types into a contiguous run starting at `0x70000007` lets the validator fold the membership test into a single 16-bit immediate `0x400D` and one bit shift. `SHT_CUDA_COMPAT` (`0x70000086`) and `SHT_CUDA_HOST` (`0x70000087`) sit far outside this window and are dispatched separately.
+> **QUIRK — bitmask is based at `SHT_CUDA_GLOBAL` rather than `SHT_LOPROC`.** Standard ELF places the processor-specific range at `SHT_LOPROC = 0x70000000`, but the validator subtracts `0x70000007` (`SHT_CUDA_GLOBAL`) instead. The first seven CUDA types (`SHT_CUDA_INFO`..`SHT_CUDA_METADATA`) all carry real file content and are never exempt; clustering the data-less types into a contiguous run starting at `0x70000007` lets the validator fold the membership test into a single 16-bit immediate `0x400D` and one bit shift. `SHT_CUDA_COMPAT` (`0x70000086`) and `SHT_CUDA_HOST` (`0x70000087`) sit far outside this window and are dispatched separately.
 
 ## ELF Serialization
 
@@ -332,23 +332,23 @@ The output ELF is serialized by `sub_45BF00` (`write_elf_to_buffer`), which writ
 
 ### Write Order
 
-1. **ELF header** (64 bytes for Elf64, 52 bytes for Elf32) -- written from the first 64/52 bytes of the elfw struct, which contain the standard ELF header fields.
+1. **ELF header** (64 bytes for Elf64, 52 bytes for Elf32) — written from the first 64/52 bytes of the elfw struct, which contain the standard ELF header fields.
 
-2. **Padding byte** -- a single NUL byte after the header. Always written, verified with size check.
+2. **Padding byte** — a single NUL byte after the header. Always written, verified with size check.
 
-3. **Section header string table** (`.shstrtab`) -- all registered section names as NUL-terminated strings, concatenated. Written by iterating the shstrtab entry array.
+3. **Section header string table** (`.shstrtab`) — all registered section names as NUL-terminated strings, concatenated. Written by iterating the shstrtab entry array.
 
-4. **Symbol string table** (`.strtab`) -- all registered symbol names, same format as shstrtab.
+4. **Symbol string table** (`.strtab`) — all registered symbol names, same format as shstrtab.
 
-5. **Padding** to `.shstrtab` section offset -- NUL bytes to reach the declared `sh_offset` of section index 3.
+5. **Padding** to `.shstrtab` section offset — NUL bytes to reach the declared `sh_offset` of section index 3.
 
-6. **Symbol table** (`.symtab`) -- symbol entries in Elf64_Sym (24 bytes each) or Elf32_Sym (16 bytes) format.
+6. **Symbol table** (`.symtab`) — symbol entries in Elf64_Sym (24 bytes each) or Elf32_Sym (16 bytes) format.
 
-7. **Section data** -- remaining sections in index order, with padding between sections to satisfy alignment requirements. Each section's `sh_offset` is validated against the current write position; a mismatch triggers the "Negative size encountered" error.
+7. **Section data** — remaining sections in index order, with padding between sections to satisfy alignment requirements. Each section's `sh_offset` is validated against the current write position; a mismatch triggers the "Negative size encountered" error.
 
-8. **Program headers** -- program header table, placed after all section data.
+8. **Program headers** — program header table, placed after all section data.
 
-9. **Section headers** -- section header table at the file's end.
+9. **Section headers** — section header table at the file's end.
 
 ### Program Header Count Selection
 
@@ -450,7 +450,7 @@ The `a9 & 0x8000` test (bit 15) is the master switch between device and host ELF
 | `a9 & 0x8000` set | `0x41` | `.note.nv.tkinfo`, `.note.nv.cuinfo`, `.nv.uft.entry` | `sub_45AC50` or `sub_459640` |
 | `a9 & 0x8000` clear | `0x33` | Standard sections only (no NVIDIA notes) | None (32-bit GPU path) |
 
-Device ELFs receive the NVIDIA-specific note sections for tool kit information and CUDA kernel metadata. The architecture state initializer is called differently depending on whether the output is relocatable (`sub_45AC50`) or executable (`sub_459640`) -- both return a pointer stored at `elfw+488` that provides architecture-specific encoding tables, relocation handlers, and instruction format metadata.
+Device ELFs receive the NVIDIA-specific note sections for tool kit information and CUDA kernel metadata. The architecture state initializer is called differently depending on whether the output is relocatable (`sub_45AC50`) or executable (`sub_459640`) — both return a pointer stored at `elfw+488` that provides architecture-specific encoding tables, relocation handlers, and instruction format metadata.
 
 ## Cross-References
 
@@ -485,9 +485,9 @@ Device ELFs receive the NVIDIA-specific note sections for tool kit information a
 
 The device ELF format described here is the same format ptxas generates as output. For the ptxas-side ELF construction (which uses a parallel 672-byte `ELFW` struct), see the ptxas wiki:
 
-- [Custom ELF Emitter](../../ptxas/output/elf-emitter.html) -- ptxas-side ELFW constructor (`sub_1CB53A0`), section creator, serializer
-- [Section Catalog & EIATTR](../../ptxas/output/sections.html) -- section types emitted by ptxas, EIATTR encoding
-- [Relocations & Symbols](../../ptxas/output/relocations.html) -- R_CUDA and R_MERCURY relocation type definitions
+- [Custom ELF Emitter](../../ptxas/output/elf-emitter.html) — ptxas-side ELFW constructor (`sub_1CB53A0`), section creator, serializer
+- [Section Catalog & EIATTR](../../ptxas/output/sections.html) — section types emitted by ptxas, EIATTR encoding
+- [Relocations & Symbols](../../ptxas/output/relocations.html) — R_CUDA and R_MERCURY relocation type definitions
 
 ## Confidence Assessment
 

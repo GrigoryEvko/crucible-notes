@@ -6,7 +6,7 @@
 
 CICC v13.0 ships LLVM's `JumpThreadingPass` at `sub_2DC4260` (12,932 bytes, address range `0x2DC4260`--`0x2DC74E4`). The pass duplicates basic blocks so that predecessors whose branch conditions can be statically resolved jump directly to the correct successor, eliminating a conditional branch from the critical path. On a GPU, this directly reduces warp divergence: a branch that was previously data-dependent becomes unconditional along each incoming edge, so the warp scheduler never needs to serialize the two paths.
 
-The pass is fundamentally at odds with PTX's requirement for reducible control flow. Block duplication can create multi-entry loops (irreducible cycles) when the duplicated block is a loop header or when the threading target sits inside a loop whose header is not the threading source. CICC addresses this through three layered mechanisms -- loop header protection, conservative duplication thresholds, and a late-pipeline StructurizeCFG safety net -- that collectively keep the CFG reducible without sacrificing the pass's optimization value.
+The pass is fundamentally at odds with PTX's requirement for reducible control flow. Block duplication can create multi-entry loops (irreducible cycles) when the duplicated block is a loop header or when the threading target sits inside a loop whose header is not the threading source. CICC addresses this through three layered mechanisms — loop header protection, conservative duplication thresholds, and a late-pipeline StructurizeCFG safety net — that collectively keep the CFG reducible without sacrificing the pass's optimization value.
 
 | Property | Value |
 |----------|-------|
@@ -54,7 +54,7 @@ Six `cl::opt` globals control the pass, registered in `ctor_456` at `0x544220`:
 | `jump-threading-phi-threshold` | **76** (`0x4C`) | `qword_4FFD9E0` | Max PHI nodes in a block eligible for duplication |
 | `jump-threading-across-loop-headers` | **false** | `qword_4FFD900` | Allow threading across loop headers (testing only) |
 | `jump-threading-disable-select-unfolding` | **false** | `qword_4FFDC80` | Disable unfolding `select` instructions into branches |
-| `print-lvi-after-jump-threading` | **false** | -- | Debug: print LazyValueInfo cache after pass completes |
+| `print-lvi-after-jump-threading` | **false** | — | Debug: print LazyValueInfo cache after pass completes |
 
 The block-size threshold of 6 matches upstream LLVM. The PHI threshold of 76 is significantly higher than upstream's default (which is typically lower), reflecting GPU kernels' tendency toward wider PHI nodes due to predication and convergence patterns. The implication search depth of 3 is conservative, limiting compile-time cost from predecessor chain analysis in the typically shorter basic-block chains of GPU code.
 
@@ -65,9 +65,9 @@ CICC registers **two** independent `cl::opt` flags that suppress jump threading 
 | Flag | Registration | Subsystem | Effect |
 |------|-------------|-----------|--------|
 | `"disable-JumpThreadingPass"` | `ctor_637` @ `0x5934A7` | JumpThreading pass itself | Disables the standalone `JumpThreadingPass` invocations in the pipeline |
-| `"disable-jump-threading"` | `ctor_073` @ `0x49A91E` (also `ctor_243` @ `0x4ED0C0`) | SimplifyCFG | Disables jump threading logic *within SimplifyCFG* -- the per-block branch-through-PHI threading that SimplifyCFG performs as part of its CFG simplification |
+| `"disable-jump-threading"` | `ctor_073` @ `0x49A91E` (also `ctor_243` @ `0x4ED0C0`) | SimplifyCFG | Disables jump threading logic *within SimplifyCFG* — the per-block branch-through-PHI threading that SimplifyCFG performs as part of its CFG simplification |
 
-The `"disable-jump-threading"` flag carries the annotation **"Disable jump threading for OCG experiments"**, where OCG is NVIDIA's Optimizing Code Generation research infrastructure. This is a SimplifyCFG option, not a JumpThreadingPass option -- SimplifyCFG has its own internal implementation of branch threading through PHI nodes that is separate from the standalone pass. NVIDIA engineers can disable either or both independently.
+The `"disable-jump-threading"` flag carries the annotation **"Disable jump threading for OCG experiments"**, where OCG is NVIDIA's Optimizing Code Generation research infrastructure. This is a SimplifyCFG option, not a JumpThreadingPass option — SimplifyCFG has its own internal implementation of branch threading through PHI nodes that is separate from the standalone pass. NVIDIA engineers can disable either or both independently.
 
 The `"fold-with-var-cond"` flag is registered alongside `"disable-jump-threading"` in the same SimplifyCFG constructor group, controlling a related NVIDIA-specific extension for folding branches with variance conditions.
 
@@ -83,7 +83,7 @@ The `jump-threading-across-loop-headers` flag defaults to `false`. Before thread
 
 A parallel DominatorTree query at `0x2DC4839` (using `dword_501D4C8`) verifies loop membership and nesting depth. If the block is found within a loop, a threshold override is loaded from `qword_501D628`, replacing the standard duplication threshold with a loop-specific one. A second override from `qword_501D548` applies to blocks found via the DominatorTree-based lookup.
 
-This double check -- LoopInfo for header identification, DominatorTree for membership -- prevents the most common source of irreducibility: duplicating a loop header creates a second entry into the loop body.
+This double check — LoopInfo for header identification, DominatorTree for membership — prevents the most common source of irreducibility: duplicating a loop header creates a second entry into the loop body.
 
 ### 2. Conservative Duplication Thresholds
 
@@ -152,9 +152,9 @@ The virtual dispatch at `0x2DC67D6` (`call qword ptr [rax+78h]`) invokes `LVI::g
 ### Cleanup
 
 On exit, if LVI was used, three cleanup calls occur:
-- `sub_FFCE90` -- `LVI::eraseBlock` (invalidation)
-- `sub_FFD870` -- `LVI::clear`
-- `sub_FFBC40` -- `LVI::releaseMemory`
+- `sub_FFCE90` — `LVI::eraseBlock` (invalidation)
+- `sub_FFD870` — `LVI::clear`
+- `sub_FFBC40` — `LVI::releaseMemory`
 
 ## Main Algorithm
 
@@ -203,7 +203,7 @@ For each basic block, the pass examines the terminator instruction:
 
    Other condition codes cause the block to be skipped.
 
-4. **Operand analysis** (`0x2DC465F`--`0x2DC467C`): The operand count is extracted (AND with `0x7FFFFFF` mask -- the use-count field in LLVM's `Value` layout). If the branch condition is an ICmp with a constant operand (type byte `0x11` = 17 = `ConstantInt`), threading is potentially profitable.
+4. **Operand analysis** (`0x2DC465F`--`0x2DC467C`): The operand count is extracted (AND with `0x7FFFFFF` mask — the use-count field in LLVM's `Value` layout). If the branch condition is an ICmp with a constant operand (type byte `0x11` = 17 = `ConstantInt`), threading is potentially profitable.
 
 ### Condition-Specific Threading Paths
 
@@ -398,40 +398,40 @@ The core algorithm is unmodified from upstream. NVIDIA's changes are configurati
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `JumpThreadingPass::run` (main pass body) | `sub_2DC4260` | 12,932 bytes | -- |
-| Block cloning engine | `sub_2DC22F0` | 2,797 bytes | -- |
-| CFG finalization after threading | `sub_2DC30A0` | 1,094 bytes | -- |
-| Single-instruction threading | `sub_2DC37C0` | 2,288 bytes | -- |
-| Select unfolding helper | `sub_2DC40B0` | 420 bytes | -- |
-| SmallVector append/copy for instruction map | `sub_2DC1F40` | 349 bytes | -- |
-| LazyValueInfo predicate query | `sub_11F3070` | -- | -- |
-| Edge condition evaluator | `sub_DFABC0` | -- | -- |
-| Edge constant lookup helper | `sub_988330` | -- | -- |
-| Implied-condition checker | `sub_AC4810` | -- | -- |
-| ICmp simplifier | `sub_AA93C0` | -- | -- |
-| Branch-condition getter | `sub_981210` | -- | -- |
-| Conditional-branch builder | `sub_B4C9A0` | -- | -- |
-| Unconditional-branch builder | `sub_B4C8F0` | -- | -- |
-| `PHINode::addIncoming` | `sub_B99FD0` | -- | -- |
-| `PHINode::Create` | `sub_D5C860` | -- | -- |
-| `SplitBlockAndInsertIfThen` | `sub_F36990` | -- | -- |
-| `BasicBlock::getContext` | `sub_BD5C60` | -- | -- |
-| `operator new(0x50)` (allocate BasicBlock) | `sub_22077B0` | -- | -- |
-| `BasicBlock::insertInto` | `sub_AA4D50` | -- | -- |
-| `Value::replaceAllUsesWith` | `sub_BD84D0` | -- | -- |
-| `Instruction::eraseFromParent` | `sub_B43D60` | -- | -- |
-| `DominatorTree::changeImmediateDominator` | `sub_FFB3D0` | -- | -- |
-| `PHINode::getIncomingValueForBlock` | `sub_AD69F0` | -- | -- |
-| LoopInfo pass lookup | `sub_C959E0` | -- | -- |
-| Predicate implies branch check | `sub_B532B0` | -- | -- |
-| Threaded-edge builder | `sub_B52EF0` | -- | -- |
-| `CloneBasicBlock` | `sub_92B530` | -- | -- |
-| `CloneBasicBlock` (alternate path) | `sub_929DE0` | -- | -- |
+| `JumpThreadingPass::run` (main pass body) | `sub_2DC4260` | 12,932 bytes | — |
+| Block cloning engine | `sub_2DC22F0` | 2,797 bytes | — |
+| CFG finalization after threading | `sub_2DC30A0` | 1,094 bytes | — |
+| Single-instruction threading | `sub_2DC37C0` | 2,288 bytes | — |
+| Select unfolding helper | `sub_2DC40B0` | 420 bytes | — |
+| SmallVector append/copy for instruction map | `sub_2DC1F40` | 349 bytes | — |
+| LazyValueInfo predicate query | `sub_11F3070` | — | — |
+| Edge condition evaluator | `sub_DFABC0` | — | — |
+| Edge constant lookup helper | `sub_988330` | — | — |
+| Implied-condition checker | `sub_AC4810` | — | — |
+| ICmp simplifier | `sub_AA93C0` | — | — |
+| Branch-condition getter | `sub_981210` | — | — |
+| Conditional-branch builder | `sub_B4C9A0` | — | — |
+| Unconditional-branch builder | `sub_B4C8F0` | — | — |
+| `PHINode::addIncoming` | `sub_B99FD0` | — | — |
+| `PHINode::Create` | `sub_D5C860` | — | — |
+| `SplitBlockAndInsertIfThen` | `sub_F36990` | — | — |
+| `BasicBlock::getContext` | `sub_BD5C60` | — | — |
+| `operator new(0x50)` (allocate BasicBlock) | `sub_22077B0` | — | — |
+| `BasicBlock::insertInto` | `sub_AA4D50` | — | — |
+| `Value::replaceAllUsesWith` | `sub_BD84D0` | — | — |
+| `Instruction::eraseFromParent` | `sub_B43D60` | — | — |
+| `DominatorTree::changeImmediateDominator` | `sub_FFB3D0` | — | — |
+| `PHINode::getIncomingValueForBlock` | `sub_AD69F0` | — | — |
+| LoopInfo pass lookup | `sub_C959E0` | — | — |
+| Predicate implies branch check | `sub_B532B0` | — | — |
+| Threaded-edge builder | `sub_B52EF0` | — | — |
+| `CloneBasicBlock` | `sub_92B530` | — | — |
+| `CloneBasicBlock` (alternate path) | `sub_929DE0` | — | — |
 
 ## Cross-References
 
-- [StructurizeCFG](./structurizecfg.md) -- the late-pipeline safety net that catches irreducible CFG created by threading or other passes
-- [Scalar Passes Hub](./scalar-passes.md) -- hub page linking SROA, EarlyCSE, and JumpThreading with GPU-context summaries
-- [GVN](./gvn.md) -- runs between JumpThreading invocations in the tier-2 sequence; can expose new threadable branches
-- [Pipeline & Ordering](./pipeline.md) -- tier-dependent scheduling of all three invocations
-- [Knobs](../config/knobs.md) -- master knob inventory including all six JumpThreading knobs
+- [StructurizeCFG](./structurizecfg.md) — the late-pipeline safety net that catches irreducible CFG created by threading or other passes
+- [Scalar Passes Hub](./scalar-passes.md) — hub page linking SROA, EarlyCSE, and JumpThreading with GPU-context summaries
+- [GVN](./gvn.md) — runs between JumpThreading invocations in the tier-2 sequence; can expose new threadable branches
+- [Pipeline & Ordering](./pipeline.md) — tier-dependent scheduling of all three invocations
+- [Knobs](../config/knobs.md) — master knob inventory including all six JumpThreading knobs

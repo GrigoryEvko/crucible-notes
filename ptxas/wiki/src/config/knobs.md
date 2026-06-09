@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The knobs system is ptxas's internal configuration mechanism -- a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob. The system is shared with cicc via a common header (`generic_knobs_impl.h`) but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs). All knob names are stored ROT13-encoded in the binary, a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
+The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob. The system is shared with cicc via a common header (`generic_knobs_impl.h`) but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs). All knob names are stored ROT13-encoded in the binary, a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
 
 The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x6F8000` (DAG knob instantiation, shared with the Mercury SASS pipeline) and `0x797000`--`0x7A2000` (OCG knob instantiation, the larger set). Both regions are compiled from the same template in `generic_knobs_impl.h`.
 
@@ -81,7 +81,7 @@ if (tolower(query_char) != tolower(c))
     goto mismatch;
 ```
 
-The `& 0xDF` trick converts lowercase to uppercase before range-checking, so both `'a'-'m'` and `'A'-'M'` hit the first branch. Non-alphabetic characters pass through unchanged. This means knob names like `SchedNumBB_Limit` with underscores and digits are handled correctly -- only the alphabetic portion rotates.
+The `& 0xDF` trick converts lowercase to uppercase before range-checking, so both `'a'-'m'` and `'A'-'M'` hit the first branch. Non-alphabetic characters pass through unchanged. This means knob names like `SchedNumBB_Limit` with underscores and digits are handled correctly — only the alphabetic portion rotates.
 
 To reverse-engineer knob names from the binary: extract the ROT13 strings from the knob definition table (64-byte stride at the table base pointer), apply ROT13, and you get the cleartext name. A reference decoder lives at `tools/decode_rot13_knobs.py` and operates directly on `ptxas_strings.json`; the prefix-filter mode (`--prefix Mercury`, `--prefix URF`, `--prefix Speculatively`) keeps the output narrow when triaging a specific subsystem.
 
@@ -173,7 +173,7 @@ The type tag at runtime differs from the definition-table type tag. The definiti
 
 ### Per-Type Slot Usage (confirmed from decompilation)
 
-**Types 1, 2, 3, 4, 5, 7, 8** -- scalar types using only bytes +0 through +15:
+**Types 1, 2, 3, 4, 5, 7, 8** — scalar types using only bytes +0 through +15:
 
 ```text
 Type 1 (int32):      +0 = 0x01, +8 = int32 value (4 bytes)
@@ -185,7 +185,7 @@ Type 7 (budget):     +0 = 0x07, +8 = int32 primary, +12 = int32 secondary
 Type 8 (int-range):  +0 = 0x08, +8 = int32 low, +12 = int32 high
 ```
 
-**Types 6 and 9** -- doubly-linked list types using the full 72 bytes:
+**Types 6 and 9** — doubly-linked list types using the full 72 bytes:
 
 ```text
 +0:   byte   type tag (6 or 9)
@@ -206,7 +206,7 @@ Type 6 node: [next(8), prev(8), string_ptr(8)]
 Type 9 node: [next(8), prev(8), opcode_id(4) | int_value(4)]
 ```
 
-**Type 10** -- dynamic growable array:
+**Type 10** — dynamic growable array:
 
 ```text
 +0:   byte   = 0x0A
@@ -223,10 +223,10 @@ The definition-table type tag (at descriptor offset `+16`) determines how `Parse
 
 | Type Tag | Name | Count | Parse Rule |
 |---|---|---|---|
-| 1 | `OKT_NONE` | 139 | Boolean flag -- presence = true, no value needed |
-| 2 | `OKT_INT` | 616 | `strtol(value, NULL, 0)` -- accepts decimal, hex (`0x`), octal (`0`) |
+| 1 | `OKT_NONE` | 139 | Boolean flag — presence = true, no value needed |
+| 2 | `OKT_INT` | 616 | `strtol(value, NULL, 0)` — accepts decimal, hex (`0x`), octal (`0`) |
 | 3 | `OKT_BDGT` | 88 | Same as INT but stores with secondary field zeroed (budget type) |
-| 4 | `OKT_IRNG` | 8 | `"lo..hi"` range -- two integers separated by `..` |
+| 4 | `OKT_IRNG` | 8 | `"lo..hi"` range — two integers separated by `..` |
 | 5 | `OKT_ILIST` | 3 | Comma-separated integers: `"1,2,3,4"` |
 | 6 | `OKT_FLOAT` | 12 | `sscanf(value, "%f", &result)` |
 | 7 | `OKT_DBL` | 100 | `sscanf(value, "%lf", &result)` |
@@ -240,7 +240,7 @@ The INT type (616 knobs, 47.6%) dominates. These control thresholds, limits, and
 
 ### Definition-Type to Runtime-Type Mapping
 
-The definition-table type tag drives parsing; `ParseKnobValue` writes a different runtime type tag into the 72-byte slot. The mapping is not 1:1 -- several definition types collapse into the same runtime type, and compound types undergo a pre-initialization phase before the main parse:
+The definition-table type tag drives parsing; `ParseKnobValue` writes a different runtime type tag into the 72-byte slot. The mapping is not 1:1 — several definition types collapse into the same runtime type, and compound types undergo a pre-initialization phase before the main parse:
 
 | Def Type | Definition Name | Runtime Type | Runtime Name | Pre-init? |
 |---|---|---|---|---|
@@ -263,7 +263,7 @@ Types 11 and 12 are aliases: type 11 shares the exact handler with type 8 (both 
 
 `ParseKnobValue` (`sub_79F540`, source lines 435--551 of `generic_knobs_impl.h`) implements a two-phase dispatch. The first switch pre-initializes compound types; the second switch parses the value string.
 
-**Phase 1 -- Pre-initialization (compound types only):**
+**Phase 1 — Pre-initialization (compound types only):**
 
 ```c
 // v15 = definition type tag at (knob_descriptor + 16)
@@ -294,11 +294,11 @@ case 12:  // OKT_ILIST variant -> runtime type 10
 }
 ```
 
-**Phase 2 -- Value parsing (all types):**
+**Phase 2 — Value parsing (all types):**
 
 **Type 1 (`OKT_NONE`, boolean):** No value string needed. Stores runtime type 4 (boolean true). Presence alone indicates the knob is set.
 
-**Type 2 (`OKT_INT`, integer):** Calls `sub_6F71D0(value, NULL)` -- a `strtol` wrapper with base 0, which auto-detects decimal, hex (`0x` prefix), and octal (`0` prefix). Stores runtime type 1, value at slot+8 as `int32`.
+**Type 2 (`OKT_INT`, integer):** Calls `sub_6F71D0(value, NULL)` — a `strtol` wrapper with base 0, which auto-detects decimal, hex (`0x` prefix), and octal (`0` prefix). Stores runtime type 1, value at slot+8 as `int32`.
 
 **Type 3 (`OKT_BDGT`, budget):** Same integer parsing as type 2. Stores runtime type 7 with the primary value at slot+8 and the secondary (budget counter) at slot+12 zeroed. Cost models decrement the secondary field as optimization budget is consumed.
 
@@ -321,7 +321,7 @@ The `..` separator is detected by checking `*endptr == '.' && endptr[1] == '.'`.
 
 **Type 7 (`OKT_DBL`, double):** Calls `sscanf(value, "%lf", &result)`. Stores runtime type 3, value at slot+8 as an 8-byte IEEE 754 double. Returns error `"Invalid double value"` if `sscanf` does not return 1.
 
-**Type 8/11 (`OKT_STR`, string):** Both handled identically. Stores runtime type 5 with a direct pointer copy: `*(char**)(slot+8) = value`. The string is NOT duplicated -- the pointer references the original buffer, so the caller must ensure the string's lifetime exceeds the knob's.
+**Type 8/11 (`OKT_STR`, string):** Both handled identically. Stores runtime type 5 with a direct pointer copy: `*(char**)(slot+8) = value`. The string is NOT duplicated — the pointer references the original buffer, so the caller must ensure the string's lifetime exceeds the knob's.
 
 **Type 9 (`OKT_WHEN`, when-condition):** Pre-switch already initialized the linked list (runtime type 6). Allocates a 24-byte node via the allocator's vtable (`allocator_vtable[3](allocator, 24)`). Node layout: `[next_ptr(8), prev_ptr(8), string_ptr(8)]`. The condition string pointer is stored at node+16. Nodes are inserted at the tail of the doubly-linked list. Error if value is NULL; empty string is permitted.
 
@@ -344,7 +344,7 @@ Format: `"FADD,3,FMUL,2"` produces two nodes: (FADD_id, 3) and (FMUL_id, 2). The
 3. Grow array via `sub_6EFD20(slot+8, count+2)`
 4. Store opcode ID as `int32` in the array
 
-Format: `"FADD,FMUL,IADD3"` -- opcode names only, no integers. Each is resolved to its internal opcode ID.
+Format: `"FADD,FMUL,IADD3"` — opcode names only, no integers. Each is resolved to its internal opcode ID.
 
 **Default:** Error `"Invalid knob type"` (line 551).
 
@@ -370,7 +370,7 @@ Format: `"FADD,FMUL,IADD3"` -- opcode names only, no integers. Each is resolved 
 | `"Empty integer value"` | 522 | 10 | Integer after opcode resolves to NULL |
 | `"Empty opcode list"` | 536 | 12 | Opcode-list variant with NULL value |
 | `"Invalid knob type"` | 551 | — | Unrecognized type tag in definition table |
-| `"Invalid knob identifier"` | 395 | — | `GetKnobIndex` -- name not found |
+| `"Invalid knob identifier"` | 395 | — | `GetKnobIndex` — name not found |
 
 All errors carry source attribution: `generic_knobs_impl.h` with a line number and function name (`"GetKnobIndex"`, `"ParseKnobValue"`, `"ReadKnobsFile"`). Error constructors: `sub_79CDB0` (simple format string) and `sub_79AED0` (format with knob name and value context).
 
@@ -419,7 +419,7 @@ WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200
 Key implementation details:
 
 - **Entire file read at once.** The file is `fseek`/`ftell`-measured, then `fread` into a single buffer of `size + 1` bytes. No line-by-line streaming.
-- **`strstr`-based header detection.** The `[knobs]` marker is located via `strstr`, so it can appear anywhere in the file -- not necessarily on the first line. Everything before it (comments, version metadata, other INI sections) is silently ignored.
+- **`strstr`-based header detection.** The `[knobs]` marker is located via `strstr`, so it can appear anywhere in the file — not necessarily on the first line. Everything before it (comments, version metadata, other INI sections) is silently ignored.
 - **Parsing starts at marker+7.** Exactly 7 characters (`[knobs]`) are skipped. The parse callback is `ParseKnobsString` (`sub_79B530`), which processes newline-delimited `key=value` pairs. The `~` separator and `WHEN=` conditional syntax are supported.
 - **Result/Expected monad.** Every I/O operation has a corresponding error path. Errors are accumulated via `sub_79A3D0` (ErrorChainAppend) and propagated through a tagged result object. Multiple errors from a single file are chained, not short-circuited.
 
@@ -446,11 +446,11 @@ WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200~WHEN=IH=0x12345;DisableCSE=1
 ```
 
 `ParseKnobsString` (`sub_79B530`) recognizes these prefixes (case-insensitive):
-- **`WHEN=`** -- conditional knob application
-- **`SH=`** -- match by shader hash (decimal, hex with `0x`, or range with `..`)
-- **`IH=`** -- match by instruction hash
-- **`K=`** -- direct knob setting (no condition)
-- **`INJECTSTRING`** -- special directive terminated by `;;` (double semicolon)
+- **`WHEN=`** — conditional knob application
+- **`SH=`** — match by shader hash (decimal, hex with `0x`, or range with `..`)
+- **`IH=`** — match by instruction hash
+- **`K=`** — direct knob setting (no condition)
+- **`INJECTSTRING`** — special directive terminated by `;;` (double semicolon)
 
 The full conditional override system is parsed by `ParseKnobOverrides` (`sub_79C210`), which iterates a linked list of override entries at `knob_state + 68904`. Each entry carries the condition (hash match criterion) and the knob assignment to apply when matched.
 
@@ -487,7 +487,7 @@ DAG knobs referenced in the binary include knob indices 8 and 17 (pipeline optio
 
 ### OCG Knobs (sub_79B240)
 
-The OCG (Optimizing Code Generator) knob table contains 1,195 entries -- the vast majority of all knobs. These control the optimization passes, register allocation, instruction scheduling, and code generation.
+The OCG (Optimizing Code Generator) knob table contains 1,195 entries — the vast majority of all knobs. These control the optimization passes, register allocation, instruction scheduling, and code generation.
 
 | Property | Value |
 |---|---|
@@ -518,8 +518,8 @@ Offset    Size    Field
 ```
 
 The vtable at `off_21C0738` provides virtual methods for knob access:
-- `vtable+72`: `IsKnobSet(index)` -- check if a knob has a value
-- `vtable+152`: `GetKnobIntValue(index)` -- retrieve int32 value
+- `vtable+72`: `IsKnobSet(index)` — check if a knob has a value
+- `vtable+152`: `GetKnobIntValue(index)` — retrieve int32 value
 - And others for bool, string, double retrieval
 
 ## Knob Access Helpers
@@ -534,7 +534,7 @@ Throughout the codebase, knobs are accessed by index via small helper functions:
 | `SetKnobValue` | `sub_7A2860` | Writes value with optional WHEN=SH= condition |
 | `IsKnobSet` | (inlined) | Checks `*(byte*)(state + 72*idx) != 0` |
 
-Access is O(1) by index -- no hash lookup or name comparison at runtime. The `GetKnobIndex` name-to-index translation happens only during initialization.
+Access is O(1) by index — no hash lookup or name comparison at runtime. The `GetKnobIndex` name-to-index translation happens only during initialization.
 
 ## Pass Disable Mechanism
 
@@ -676,7 +676,7 @@ Rematerialization recomputes values instead of spilling them. The allocator trea
 | 652 | `RegAllocRematReuseBudget` | BDGT | Budget for remat-reuse optimization attempts |
 | 654 | `RegAllocOrderRematCandHeuristic` | INT | Heuristic for ordering remat candidates |
 
-Knob 650 (`RegAllocRematDisableRange`) is unique as the only IRNG-type knob in the set, accepting `"lo..hi"` to disable rematerialization for a range of instruction indices -- a debugging aid for bisecting remat-related miscompiles.
+Knob 650 (`RegAllocRematDisableRange`) is unique as the only IRNG-type knob in the set, accepting `"lo..hi"` to disable rematerialization for a range of instruction indices — a debugging aid for bisecting remat-related miscompiles.
 
 #### C. Pre-Assignment / MAC (8 knobs)
 
@@ -717,7 +717,7 @@ Progressive constraint relaxation: on retry iteration N, if the performance diff
 
 #### F. Register Target Selection (13 knobs)
 
-The target selection phase determines how many physical registers to aim for -- the occupancy/performance tradeoff. More registers per thread means fewer warps can execute concurrently.
+The target selection phase determines how many physical registers to aim for — the occupancy/performance tradeoff. More registers per thread means fewer warps can execute concurrently.
 
 | Index | Name | Type | Purpose |
 |---|---|---|---|
@@ -919,7 +919,7 @@ The hardware scoreboard tracks instruction completion. These knobs tune how the 
 | 772 | `SchedReadSBBaseLatency` | INT | Scoreboard base read latency |
 | 773 | `SchedReadSBBaseUseLSULat` | BOOL | Use LSU latency as scoreboard base |
 
-Note: `SbXBlock` appears in both cross-block (D) and scoreboard (I) categories because it serves both purposes -- it controls whether the scoreboard state propagates across block boundaries, which is a prerequisite for cross-block scheduling correctness.
+Note: `SbXBlock` appears in both cross-block (D) and scoreboard (I) categories because it serves both purposes — it controls whether the scoreboard state propagates across block boundaries, which is a prerequisite for cross-block scheduling correctness.
 
 #### J. MMA Coupling (3 knobs)
 
@@ -958,13 +958,13 @@ General scheduling control knobs covering budgets, loop iteration estimates, the
 
 ### Disable Switches (75 knobs)
 
-The disable switches are boolean knobs that turn off specific passes, optimizations, or workarounds. All 75 knobs containing "Disable" were decoded from ROT13 strings at `0x21BDE30`--`0x21BFA10`. Nearly all are `OKT_NONE` (boolean) type -- setting them with no value or any value disables the corresponding feature. The single exception is `RegAllocRematDisableRange`, which is `OKT_IRNG` and accepts a `"lo..hi"` instruction index range.
+The disable switches are boolean knobs that turn off specific passes, optimizations, or workarounds. All 75 knobs containing "Disable" were decoded from ROT13 strings at `0x21BDE30`--`0x21BFA10`. Nearly all are `OKT_NONE` (boolean) type — setting them with no value or any value disables the corresponding feature. The single exception is `RegAllocRematDisableRange`, which is `OKT_IRNG` and accepts a `"lo..hi"` instruction index range.
 
-The bare `Disable` knob at `0x21BE860` appears to be a master pass-disable switch. `SchedDisableAll` is the master scheduler disable. `DisablePragmaKnobs` prevents PTX `.pragma` directives from setting knobs -- a meta-level control that protects the knob system itself.
+The bare `Disable` knob at `0x21BE860` appears to be a master pass-disable switch. `SchedDisableAll` is the master scheduler disable. `DisablePragmaKnobs` prevents PTX `.pragma` directives from setting knobs — a meta-level control that protects the knob system itself.
 
 #### A. Workaround (WAR) Switches (9 knobs)
 
-These disable hardware or compiler bug workarounds. Each `War_SW*` knob corresponds to an NVIDIA internal bug tracker ID. Disabling a WAR reverts to the unpatched behavior -- useful for bisecting whether a WAR is causing a regression.
+These disable hardware or compiler bug workarounds. Each `War_SW*` knob corresponds to an NVIDIA internal bug tracker ID. Disabling a WAR reverts to the unpatched behavior — useful for bisecting whether a WAR is causing a regression.
 
 | Name | Feature Disabled |
 |---|---|
@@ -989,7 +989,7 @@ These control address computation, memory access conversion, and shared-memory o
 | `DisableErrbarAfterMembar` | Error barrier (`BAR.SYNC 15`) insertion after `membar.sys` |
 | `DisableForceLDCTOLDCUConv` | LDC to LDCU (constant uniform load) conversion |
 | `DisableImplicitMemDesc` | Implicit memory descriptor inference |
-| `DisableLDCU256` | LDCU.256 -- 256-bit constant uniform load |
+| `DisableLDCU256` | LDCU.256 — 256-bit constant uniform load |
 | `DisableLDCUWithURb` | LDCU with uniform register base addressing |
 | `DisableLongIntArithAddressFolding` | Long integer arithmetic folding into address computation |
 | `DisableRemoveSmemLea` | Shared memory LEA (load effective address) removal |
@@ -1134,7 +1134,7 @@ The 35 knobs split into two contiguous blocks in the descriptor table plus one o
 | 712 | `RematEnablePReg` | NONE | Enable predicate register rematerialization (boolean flag) |
 | 726 | `RematStressTest` | NONE | Force all remat candidates to be rematerialized (debug, boolean flag) |
 
-Knob 711 (`RematEnable`) is the master switch. When zeroed via `-knob RematEnable=0`, Phase 69 skips its core loop entirely. Knob 710 (`RematEarlyEnable`) independently controls Phase 54's mode flag write (`ctx+1552 = 4`). Knob 726 (`RematStressTest`) is a debug-only boolean that forces every candidate to be rematerialized regardless of profitability -- useful for stress-testing correctness.
+Knob 711 (`RematEnable`) is the master switch. When zeroed via `-knob RematEnable=0`, Phase 69 skips its core loop entirely. Knob 710 (`RematEarlyEnable`) independently controls Phase 54's mode flag write (`ctx+1552 = 4`). Knob 726 (`RematStressTest`) is a debug-only boolean that forces every candidate to be rematerialized regardless of profitability — useful for stress-testing correctness.
 
 #### B. Remat Cost Model (10 knobs)
 
@@ -1163,7 +1163,7 @@ These 10 knobs parameterize the remat profitability function (`sub_90B790`). The
 | 723 | `RematRegTargetFactor` | DBL | Scaling factor for computing the register pressure target |
 | 724 | `RematRegTargetTrialLimit` | INT | Max iterations when searching for optimal register target |
 
-The register target is the pressure level below which rematerialization becomes profitable. `RematRegTargetFactor` (723) scales the occupancy-derived target. `RematRegTargetTrialLimit` (724) caps the binary-search iterations in the target-finding loop. `RematMaxRegCount` (718) is a hard ceiling -- if current pressure exceeds this value, the remat pass operates in aggressive mode.
+The register target is the pressure level below which rematerialization becomes profitable. `RematRegTargetFactor` (723) scales the occupancy-derived target. `RematRegTargetTrialLimit` (724) caps the binary-search iterations in the target-finding loop. `RematMaxRegCount` (718) is a hard ceiling — if current pressure exceeds this value, the remat pass operates in aggressive mode.
 
 #### D. Instruction and Code Limits (2 knobs)
 
@@ -1218,10 +1218,10 @@ This knob sits in the general MOV-weight family (indices 474--476) rather than t
 
 ## Recovered Knobs Not Yet Documented
 
-Confidence: HIGH (names recovered via ROT13 decode of the descriptor table); MED for purpose attributions (inferred from name semantics, not yet cross-referenced to consumer sites). The categories below cover roughly 240 knobs absent from the curated sections above. Indices are not assigned here -- they require a fresh `DUMP_KNOBS_TO_FILE` dump.
+Confidence: HIGH (names recovered via ROT13 decode of the descriptor table); MED for purpose attributions (inferred from name semantics, not yet cross-referenced to consumer sites). The categories below cover roughly 240 knobs absent from the curated sections above. Indices are not assigned here — they require a fresh `DUMP_KNOBS_TO_FILE` dump.
 
 > ⚡ **QUIRK — double-ROT13 strings**
-> A handful of knob names appear as plaintext in `strings(1)` output (e.g. `ScheduleInstructions`, `ForwardProgress`, `BarFlowControl`). These are not duplicate registrations -- they are diagnostic format strings emitted by the dumper after ROT13 decode. The authoritative descriptor table stores the obfuscated form (`FpurqhyrVafgehpgvbaf`, `SbejneqCebterff`, `OneSybjPbageby`); the cleartext form leaks only at dump time. Treat the cleartext copies as observation artifacts, not separate knobs.
+> A handful of knob names appear as plaintext in `strings(1)` output (e.g. `ScheduleInstructions`, `ForwardProgress`, `BarFlowControl`). These are not duplicate registrations — they are diagnostic format strings emitted by the dumper after ROT13 decode. The authoritative descriptor table stores the obfuscated form (`FpurqhyrVafgehpgvbaf`, `SbejneqCebterff`, `OneSybjPbageby`); the cleartext form leaks only at dump time. Treat the cleartext copies as observation artifacts, not separate knobs.
 
 ### Mercury Backend (~20 knobs)
 
@@ -1295,7 +1295,7 @@ Offset  Size  Field
 +104    8     capacity (or remaining inline bytes)
 ```
 
-Paths of 15 bytes or fewer are stored inline without heap allocation. Longer paths allocate via the arena allocator at knob_state+8. The dump is produced later during compilation -- `KnobInit` only stores the path; the actual file write happens after all knobs are resolved.
+Paths of 15 bytes or fewer are stored inline without heap allocation. Longer paths allocate via the arena allocator at knob_state+8. The dump is produced later during compilation — `KnobInit` only stores the path; the actual file write happens after all knobs are resolved.
 
 This is the primary mechanism for discovering which knobs exist and what their current values are. Setting it produces a text file with all 1,294 knob names and their resolved values.
 
@@ -1399,7 +1399,7 @@ Errors propagate through a tagged result: bit 0 of `*(result + 16)` is set on er
 
 To reimplement the knobs system:
 
-1. **Define the knob table** as a compile-time array of descriptors (name, alias, type). No need for ROT13 -- that is purely obfuscation. Use an enum for knob indices so call sites reference `KNOB_SchedNumBB_Limit` instead of magic index 294.
+1. **Define the knob table** as a compile-time array of descriptors (name, alias, type). No need for ROT13 — that is purely obfuscation. Use an enum for knob indices so call sites reference `KNOB_SchedNumBB_Limit` instead of magic index 294.
 
 2. **Parse order matters.** Process sources in the documented priority order (env, file, CLI, pragma, WHEN). Last-write-wins semantics.
 
@@ -1413,10 +1413,10 @@ To reimplement the knobs system:
 
 ## Cross-References
 
-- [CLI Options](./cli-options.md) -- public command-line flags, the user-facing layer above knobs
-- [Optimization Levels](./opt-levels.md) -- O-levels set specific knob presets
-- [DUMPIR & NamedPhases](./dumpir.md) -- DUMPIR knob and phase-level dump control
-- [Phase Manager](../passes/phase-manager.md) -- pass disable mechanism consumes the DisablePhases knob
-- [Scheduling Algorithm](../scheduling/algorithm.md) -- consumes Sched* knobs
-- [Allocator Architecture](../regalloc/overview.md) -- consumes RegAlloc* knobs
-- [Mercury Encoder](../codegen/mercury.md) -- consumes Mercury* knobs and DAG knob table
+- [CLI Options](./cli-options.md) — public command-line flags, the user-facing layer above knobs
+- [Optimization Levels](./opt-levels.md) — O-levels set specific knob presets
+- [DUMPIR & NamedPhases](./dumpir.md) — DUMPIR knob and phase-level dump control
+- [Phase Manager](../passes/phase-manager.md) — pass disable mechanism consumes the DisablePhases knob
+- [Scheduling Algorithm](../scheduling/algorithm.md) — consumes Sched* knobs
+- [Allocator Architecture](../regalloc/overview.md) — consumes RegAlloc* knobs
+- [Mercury Encoder](../codegen/mercury.md) — consumes Mercury* knobs and DAG knob table

@@ -1,8 +1,8 @@
 # Embedded ptxas: Compilation Driver (`sub_1112F30`)
 
-> **Note**: This page is the algorithm reference for the per-module compilation driver inside nvlink's embedded ptxas. It is a binary-recovered companion to the standalone wiki -- for the equivalent algorithm in the open-coded standalone `ptxas` (without nvlink's split-compile harness, EWP fallback rules, or 168-byte input-container plumbing) see [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) and [ptxas: Entry Point](../../ptxas/pipeline/entry.html). The 26-phase ordering, callback identities, and stack-snapshot widths documented below are unique to the nvlink-embedded copy in v13.0.88; their cross-version stability is unverified.
+> **Note**: This page is the algorithm reference for the per-module compilation driver inside nvlink's embedded ptxas. It is a binary-recovered companion to the standalone wiki — for the equivalent algorithm in the open-coded standalone `ptxas` (without nvlink's split-compile harness, EWP fallback rules, or 168-byte input-container plumbing) see [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) and [ptxas: Entry Point](../../ptxas/pipeline/entry.html). The 26-phase ordering, callback identities, and stack-snapshot widths documented below are unique to the nvlink-embedded copy in v13.0.88; their cross-version stability is unverified.
 
-The function at `0x1112F30` is the per-module compilation orchestrator in nvlink's embedded ptxas. Hex-Rays recovers 2,088 lines (13,774 instruction bytes across 2,641 instructions in 538 basic blocks) from a single function with no helper extraction. It is reached from two entry points -- `sub_4BD760` (PTX JIT path) and `sub_4BC6F0` (LTO finalization after libnvvm produces PTX) -- with a module-context pointer in `rdi` and a PTX module descriptor in `rsi`. The body partitions cleanly into 26 sequential phases: option capture, timing, callback registration, mode dispatch, header emission, flag negotiation, table allocation, per-function configuration, the inner compile loop (sequential or thread-pooled), and teardown. The function returns 0 on success; failures longjmp through `sub_45CAC0` to the linker's top-level error handler.
+The function at `0x1112F30` is the per-module compilation orchestrator in nvlink's embedded ptxas. Hex-Rays recovers 2,088 lines (13,774 instruction bytes across 2,641 instructions in 538 basic blocks) from a single function with no helper extraction. It is reached from two entry points — `sub_4BD760` (PTX JIT path) and `sub_4BC6F0` (LTO finalization after libnvvm produces PTX) — with a module-context pointer in `rdi` and a PTX module descriptor in `rsi`. The body partitions cleanly into 26 sequential phases: option capture, timing, callback registration, mode dispatch, header emission, flag negotiation, table allocation, per-function configuration, the inner compile loop (sequential or thread-pooled), and teardown. The function returns 0 on success; failures longjmp through `sub_45CAC0` to the linker's top-level error handler.
 
 This page documents each phase, the per-function inner pipeline at Phase 23, the mode-flag matrix at Phase 6, the C pseudocode of the driver loop, and three quirks that distinguish this driver from the standalone `ptxas` entry path.
 
@@ -11,13 +11,13 @@ This page documents each phase, the per-function inner pipeline at Phase 23, the
 | Address | Symbol | Size | Decompilation depth | Confidence |
 |---|---|---|---|---|
 | `0x1112F30` | `sub_1112F30` (= `ptxas_compile_module`) | 13,774 B / 2,641 insns / 538 BBs | 2,088 lines (`decompiled/sub_1112F30_0x1112f30.c`) | **HIGH** |
-| `0x4BD760` | `ptxas_jit_compile` | -- | calling site #1 (PTX from disk) | HIGH |
-| `0x4BC6F0` | `compile_linked_lto_ir` | -- | calling site #2 (LTO post-libnvvm) | HIGH |
+| `0x4BD760` | `ptxas_jit_compile` | — | calling site #1 (PTX from disk) | HIGH |
+| `0x4BC6F0` | `compile_linked_lto_ir` | — | calling site #2 (LTO post-libnvvm) | HIGH |
 
 The arguments at entry are:
 
-- `a1` (rdi) -- the module compilation context: a >5,000-byte structure holding option booleans (offsets ~104..~890), timing buffers (`a1+128`, `a1+144`, `a1+160`), the cancellation callback (`a1+288..a1+304`), the IR walk roots (`a1+408`, `a1+416`), the per-function descriptor array head (`a1+256`), the codegen-config slot (`a1+1192`), and the SM dispatch vtable pointer.
-- `a2` (rsi) -- the PTX module descriptor: contains `.target` string (`a2+184`), `.version` integer (`a2+196`), file path (`a2+144`), entry-point list head (`a2+88`), and ~30 mode-affecting flag bytes between offsets 218 and 1065.
+- `a1` (rdi) — the module compilation context: a >5,000-byte structure holding option booleans (offsets ~104..~890), timing buffers (`a1+128`, `a1+144`, `a1+160`), the cancellation callback (`a1+288..a1+304`), the IR walk roots (`a1+408`, `a1+416`), the per-function descriptor array head (`a1+256`), the codegen-config slot (`a1+1192`), and the SM dispatch vtable pointer.
+- `a2` (rsi) — the PTX module descriptor: contains `.target` string (`a2+184`), `.version` integer (`a2+196`), file path (`a2+144`), entry-point list head (`a2+88`), and ~30 mode-affecting flag bytes between offsets 218 and 1065.
 
 Both pointers are owned by the caller; the driver never frees them.
 
@@ -25,7 +25,7 @@ Both pointers are owned by the caller; the driver never frees them.
 
 The 26 phases below are listed in execution order. Phase numbers correspond to the trim-preserved table in [Architecture Overview](overview.md#phase-table); this page expands each row with the actual callees and the structural role.
 
-### Phase 1 -- Option Query and Cache Configuration
+### Phase 1 — Option Query and Cache Configuration
 
 ```c
 bool def_load   = option_get_bool("def-load-cache");      // sub_42E... family
@@ -37,7 +37,7 @@ bool force_store = option_get_bool("force-store-cache");
 
 Four queries against the option store populated by `sub_1103030` (option definition table) and `sub_1104950` (option processing). Stored on the driver's stack frame; not written to `a1`.
 
-### Phase 2 -- Cancellation Check
+### Phase 2 — Cancellation Check
 
 ```c
 if (a1->cancel_token /* a1+288 */) {
@@ -49,11 +49,11 @@ if (a1->cancel_token /* a1+288 */) {
 
 The host (nvlink front-end, or a CUDA-driver caller for JIT) can register a non-null callback at `a1+296`. Returning 1 from the callback aborts the compile immediately, before any IR is touched.
 
-### Phase 3 -- Timing Gate
+### Phase 3 — Timing Gate
 
 If `a1[104]` (profiling enabled) is set, `sub_45CCD0((struct timeval*)(a1+128))` is called to record wall-clock start; if `a1[105]` is set, `sub_44EF30()` writes a high-resolution start at `a1+160`. The dual-flag arrangement lets the host capture both timeval-grade and ns-grade timing without paying for the high-res clock when unused. Phase 25 emits the matching stops.
 
-### Phase 4 -- Callback Registration
+### Phase 4 — Callback Registration
 
 ```c
 sub_464700(a1[408], (cb_t)sub_1108860, a1);  // per-PTX-file walker
@@ -64,7 +64,7 @@ sub_12B31D0(a2);                              // install version exceptions
 
 Two universal callbacks are installed. `sub_1108860` is the file walker: for each PTX file in `a1[408]` it copies eight pre-flight bytes (`a2[214,176,245,249,266]`) into the PTX descriptor and calls `sub_12AF200` to parse. `sub_1101EB0` is the string walker: it does the same byte copy and calls `sub_12AF550` against the `application ptx input` literal. `sub_12B30E0` initializes the version compatibility tables and runs `sub_44E4F0(target_string)` to compute the SM ordinal; `sub_12B31D0` installs the version exception table.
 
-### Phase 5 -- SM Version Validation
+### Phase 5 — SM Version Validation
 
 ```c
 int target_sm; sscanf(a2->target /* a2+184 */, "sm_%d", &target_sm);
@@ -74,11 +74,11 @@ if (!sub_12A8360(a2->version, target_sm))
 
 `.target sm_XX` is parsed from the PTX header and matched against the `.version` field. `sub_12A8360` consults the version table installed in Phase 4 and aborts via `dword_2A5DCA0` if the module's SM ordinal exceeds the maximum compiled-in support.
 
-### Phase 6 -- Mode Flag Dispatch
+### Phase 6 — Mode Flag Dispatch
 
 Picks one of four `(init_fn, begin_fn)` pairs from `--compile-only`, `--compile-as-tools-patch`, `--assyscall`, `--extensible-whole-program`, and `--device-debug`. See the [Compilation Mode Matrix](overview.md#compilation-mode-matrix). The selected pair is stashed at `a1+1184` / `a1+1188` for Phase 15 and the per-function loop.
 
-### Phase 7 -- PTX Header Emission
+### Phase 7 — PTX Header Emission
 
 If `a2[178]` is set and `a2[236]` is clear (in-memory mode), `sub_12AF550` emits a synthetic header into a temporary buffer using three separate format strings (`\t.version %s`, `\t.target  %s`, `\t.entry %s { ret; }`):
 
@@ -90,11 +90,11 @@ fprintf(buf, "\t.entry %s { ret; }\n", "__cuda_dummy_entry__");
 
 Otherwise the driver opens the file at `a2+184` via `fopen`, writes the same triple, and re-parses via `sub_12AF200`. The dummy entry exists because the PTX validator (`sub_147EF50`, ~28 KB / 5,872 insns) refuses to operate on a header-only module; the entry is later pruned during dead-code elimination if no real entries reference it.
 
-### Phase 8 -- Tools-Patch Warnings
+### Phase 8 — Tools-Patch Warnings
 
-When `--compile-as-tools-patch` is active, the driver checks `a2[860..864]` for cross-references to additional shared memory, textures, surfaces, samplers, and constants. Each set bit emits a warning through `sub_467460(dword_2A5D940, …)` naming the resource class. The same five bits are re-checked under `--assyscall` against `dword_2A5D940` but with a different warning string. This is the only phase that has no functional side effect -- pure diagnostics.
+When `--compile-as-tools-patch` is active, the driver checks `a2[860..864]` for cross-references to additional shared memory, textures, surfaces, samplers, and constants. Each set bit emits a warning through `sub_467460(dword_2A5D940, …)` naming the resource class. The same five bits are re-checked under `--assyscall` against `dword_2A5D940` but with a different warning string. This is the only phase that has no functional side effect — pure diagnostics.
 
-### Phase 9 -- Compilation Flag Setup
+### Phase 9 — Compilation Flag Setup
 
 ```c
 if (a2[218]) {                              // calls-without-ABI module
@@ -109,7 +109,7 @@ if (sm < 100 && a1->g_tensor_memory_check)            warn();
 
 Resolves three classes of flag conflict: ABI-less modules disable `--fast-compile` and `--extensible-whole-program`; `--legacy-bar-warp-wide-behavior` is rejected outside SM70; `--g-tensor-memory-access-check` is rejected outside SM100+. The `--position-independent-code` flag at `a2+248` is silently dropped for ABI-less modules.
 
-### Phase 10 -- Hash Maps and Codegen Context
+### Phase 10 — Hash Maps and Codegen Context
 
 ```c
 for (int i = 0; i < 8; ++i)
@@ -120,7 +120,7 @@ a1->result_array        = sub_465020(/*entry_size=*/112, …);
 
 Eight `LinkerHash` maps are constructed for symbol -> codegen-record lookup, callee usage tracking, alias resolution, and per-function diagnostic queues. The capacities (0x100, 0x400, 0x40, 0x20) are fixed and never resized; the per-function resource array at `a1+336` is sized to the function count returned by `sub_12AE300`.
 
-### Phase 11 -- Register Callbacks on Module IR
+### Phase 11 — Register Callbacks on Module IR
 
 ```c
 walk(a1->func_list,    sub_1102AC0);  // per-function entry
@@ -134,7 +134,7 @@ walk(a1->symbol_list,  sub_1101F60);  // post-process pass
 
 Six IR walker callbacks are installed; the fourth (per-global) is suppressed under `--compile-only` to avoid touching state that the tools-patch path leaves uninitialized.
 
-### Phase 12 -- Address Width and Register Budget
+### Phase 12 — Address Width and Register Budget
 
 ```c
 if (sm <= 13) {
@@ -150,11 +150,11 @@ a1->address_width = address_width;
 
 SM13 and earlier are hard-coded to 32-bit with a 32-register budget (Tesla generation). Modern SMs read the width from a metadata byte; 32-bit mode is fatal on SM90 and above because Hopper's MMA instructions assume 64-bit pointers in their operand encoding.
 
-### Phase 13 -- Entry Point Collection
+### Phase 13 — Entry Point Collection
 
 When `-e <name>` or `-E <regex>` is passed, the driver iterates the module symbol table to find matches and builds an ordered entry list. Otherwise it takes the head pointer at `a2+88` (the module's default entry list). The ordered list is stored at `a1+424`.
 
-### Phase 14 -- Transfer State into Codegen Context
+### Phase 14 — Transfer State into Codegen Context
 
 ```c
 memcpy(a1 + 1072, &a1->raw_flags, 224);      // copy 224 B of flag state
@@ -162,11 +162,11 @@ a1->alias_map      = sub_4489C0(0x100);      // alias resolution map
 a1->callee_use_map = sub_4489C0(0x418);      // per-function callee usage
 ```
 
-The driver snapshots ~224 bytes of flag state at offset 1072 of `a1`. This snapshot is what each per-function compile reads from -- subsequent flag mutations in Phase 23 worker threads operate on per-thread copies and never alias the snapshot.
+The driver snapshots ~224 bytes of flag state at offset 1072 of `a1`. This snapshot is what each per-function compile reads from — subsequent flag mutations in Phase 23 worker threads operate on per-thread copies and never alias the snapshot.
 
-### Phase 15 -- `init_callback(ctx, entries)`
+### Phase 15 — `init_callback(ctx, entries)`
 
-Calls the `init_fn` selected at Phase 6 (`sub_110CD20` 907 B, `sub_110CBA0` 370 B, `sub_110D0B0` 82 B, or `sub_110D110` 399 B). The three larger variants iterate the entry list; `sub_110D0B0` is the degenerate single-entry path used when no entry walk is required. All four ultimately call `sub_110BC90` (3,843 B) to allocate a codegen descriptor (`sub_110BC90` returns a `pthread_mutexattr_t *` pointing at a fresh descriptor; this is a Hex-Rays artifact -- the actual type is `CodegenRecord`). The descriptor is inserted into the map at `a1+1192` keyed by the entry's symbol name.
+Calls the `init_fn` selected at Phase 6 (`sub_110CD20` 907 B, `sub_110CBA0` 370 B, `sub_110D0B0` 82 B, or `sub_110D110` 399 B). The three larger variants iterate the entry list; `sub_110D0B0` is the degenerate single-entry path used when no entry walk is required. All four ultimately call `sub_110BC90` (3,843 B) to allocate a codegen descriptor (`sub_110BC90` returns a `pthread_mutexattr_t *` pointing at a fresh descriptor; this is a Hex-Rays artifact — the actual type is `CodegenRecord`). The descriptor is inserted into the map at `a1+1192` keyed by the entry's symbol name.
 
 ```c
 for (entry = entries; entry; entry = entry->next) {
@@ -175,19 +175,19 @@ for (entry = entries; entry; entry = entry->next) {
 }
 ```
 
-### Phase 16 -- Load/Store Cache Mode
+### Phase 16 — Load/Store Cache Mode
 
 Per function in the codegen map: `force-load-cache` overrides everything (mode 2); else `def-load-cache` (mode 1); else the callee analysis chooses mode 0. Same scheme for stores. The result is written into `record->load_cache_mode` and `record->store_cache_mode`.
 
-### Phase 17 -- Indirect Call and MMA Validation
+### Phase 17 — Indirect Call and MMA Validation
 
-For each function in the codegen map, if the function has indirect calls and references `mma.f64`, emit a warning (indirect dispatch defeats the hardware tensor-core scheduler). If the function carries a mutual-recursion marker (set by `sub_1101F60` at Phase 11), abort -- mutual recursion is unsupported by the PTX call ABI.
+For each function in the codegen map, if the function has indirect calls and references `mma.f64`, emit a warning (indirect dispatch defeats the hardware tensor-core scheduler). If the function carries a mutual-recursion marker (set by `sub_1101F60` at Phase 11), abort — mutual recursion is unsupported by the PTX call ABI.
 
-### Phase 18 -- Scheduling Class Assignment
+### Phase 18 — Scheduling Class Assignment
 
 Each function gets a scheduling class in `{0, 1, 2}` propagated through the call graph. Class 0 is the default; class 1 enables the standard scheduler; class 2 enables the aggressive scheduler that walks callee bodies during latency estimation. Class 2 requires `--fast-compile` to be off.
 
-### Phase 19 -- Debug Info Setup
+### Phase 19 — Debug Info Setup
 
 ```c
 if (a1->device_debug /* a1+105 */) {
@@ -197,7 +197,7 @@ if (a1->device_debug /* a1+105 */) {
 
 `sub_1672520` allocates a 216-byte DWARF state object; subsequent passes record `.loc` directives into it.
 
-### Phase 20 -- Reserved Register Configuration
+### Phase 20 — Reserved Register Configuration
 
 ```c
 int first = max(4, a1->first_reserved_rreg);   // min 4 (R0-R3 are caller-saved)
@@ -207,15 +207,15 @@ a1->reserved_rreg_range = (count << 16) | first;
 
 `R0..R3` are always reserved (caller-saved); user options may reserve additional registers from the top. The encoded range is read by the register allocator at Phase 23's pass 22.
 
-### Phase 21 -- Build Per-Function Codegen Config and `CodegenPipeline`
+### Phase 21 — Build Per-Function Codegen Config and `CodegenPipeline`
 
 The driver constructs a config struct packing ~50 flags: `device_debug`, `lineinfo`, `fast_compile`, `maxrregcount`, `opt_level`, `compile_only`, `tools_patch`, `ewp`, `preserve_relocs`, `sm_version`, `address_width`, `default_load_cache`, `default_store_cache`, `pic`, `legacy_bar`, `g_tensor_check`, plus 30 minor toggles. The config is handed to `sub_16257C0` which constructs a `CodegenPipeline` object (vtable + state). Stored at `a1+1296`.
 
-### Phase 22 -- Output File Setup
+### Phase 22 — Output File Setup
 
 If `--output` is set, the file is opened with `O_TRUNC` so the SASS dump appended in Phase 23-finalize starts clean.
 
-### Phase 23 -- Per-Function Compile Loop
+### Phase 23 — Per-Function Compile Loop
 
 The largest phase. Selects between sequential and parallel based on `a1->thread_count /* a1+668 */`:
 
@@ -255,10 +255,10 @@ Worker function `sub_1107420` runs `sub_1102B30` (setjmp-wrapped `vtable->compil
 | `codegen_init` | `sub_110AA30` | Allocate 360-B per-function state; create OCG context; set `producer="NVIDIA"`, `tool="ptxocg.0.0"`; configure ~30 SM-specific fields via the dispatch vtable |
 | `codegen_per_func` | `sub_1655A60` | Drive the 48-pass codegen pipeline (passes 0..47; see [Architecture Overview](overview.md#the-48-pass-codegen-pipeline-sub_1655a60)) |
 | `codegen_compile` | `sub_1102B30` | `setjmp(env)`; on longjmp, set retry/fail flags and report through `dword_2A5DCA0`; else call `vtable->compile(ctx, func, &record)` |
-| timing | -- | record start/end via `sub_45CCD0` + `sub_44EF30` |
+| timing | — | record start/end via `sub_45CCD0` + `sub_44EF30` |
 | `codegen_finalize` | `sub_110D2A0` | Emit `.text`, `.nv.info`, `.nv.constant` sections; write EIATTR register-usage records; emit SASS binary; release per-function OCG state |
 
-### Phase 24 -- Post-Compilation Cleanup
+### Phase 24 — Post-Compilation Cleanup
 
 ```c
 if (a1->compile_only /* a1+726 */) {
@@ -269,11 +269,11 @@ if (a1->compile_only /* a1+726 */) {
 
 Under `--compile-only` (the tools-patch path), the driver re-walks the call graph to verify that each caller's register budget can host its callees' usage. Fatal if any pair exceeds the per-function `maxrregcount` set in Phase 21.
 
-### Phase 25 -- Pipeline Config Teardown
+### Phase 25 — Pipeline Config Teardown
 
 `sub_1626480` destroys the `CodegenPipeline` object built in Phase 21. Timing snapshots from Phase 3 are captured into the host's profiling buffer if `a1[104] || a1[105]`.
 
-### Phase 26 -- Final Cleanup
+### Phase 26 — Final Cleanup
 
 ```c
 for (int i = 0; i < 8; ++i) sub_4650A0(a1->maps[i]);
@@ -363,29 +363,29 @@ int ptxas_compile_module(ModuleCtx *a1, PtxModule *a2) {
 
 ## Quirks
 
-**QUIRK 1: EWP+debug silently degrades to compile-only.** When both `--extensible-whole-program` and `--device-debug` are set, the Phase 6 dispatch matrix selects the *compile-only* `(init_fn, begin_fn)` pair (`sub_110CD20`, `sub_11089E0`), not the EWP pair. There is no warning. The user-facing flag combination is technically accepted but the whole-program optimization is silently disabled because the EWP code path mutates symbol visibility in ways that break DWARF location lists. This is unique to the nvlink-embedded driver -- standalone ptxas's entry path rejects the combination outright; see [ptxas: Entry Point](../../ptxas/pipeline/entry.html).
+**QUIRK 1: EWP+debug silently degrades to compile-only.** When both `--extensible-whole-program` and `--device-debug` are set, the Phase 6 dispatch matrix selects the *compile-only* `(init_fn, begin_fn)` pair (`sub_110CD20`, `sub_11089E0`), not the EWP pair. There is no warning. The user-facing flag combination is technically accepted but the whole-program optimization is silently disabled because the EWP code path mutates symbol visibility in ways that break DWARF location lists. This is unique to the nvlink-embedded driver — standalone ptxas's entry path rejects the combination outright; see [ptxas: Entry Point](../../ptxas/pipeline/entry.html).
 
-**QUIRK 2: Phase 7 always emits a dummy entry.** Even when the module has real `.entry` definitions, the header-emission phase writes `.entry __cuda_dummy_entry__ { ret; }` into the synthetic header. The dummy entry is required because the PTX semantic analyzer (`sub_147EF50`) refuses to validate header-only or entry-less modules; after Phase 13 collects the real entries, dead-code elimination removes the dummy. Standalone ptxas does not need this trick because its frontend operates on a file directly. The dummy entry sometimes surfaces in DWARF debug output for empty modules -- this is the cause.
+**QUIRK 2: Phase 7 always emits a dummy entry.** Even when the module has real `.entry` definitions, the header-emission phase writes `.entry __cuda_dummy_entry__ { ret; }` into the synthetic header. The dummy entry is required because the PTX semantic analyzer (`sub_147EF50`) refuses to validate header-only or entry-less modules; after Phase 13 collects the real entries, dead-code elimination removes the dummy. Standalone ptxas does not need this trick because its frontend operates on a file directly. The dummy entry sometimes surfaces in DWARF debug output for empty modules — this is the cause.
 
-**QUIRK 3: Parallel mode runs `codegen_finalize` sequentially.** Phase 23b's barrier (`sub_43FFE0`) is followed by a *sequential* finalize loop in the main thread. Each `sub_110D2A0` call mutates module-wide register-budget state (the cross-function constraint propagation at Phase 24), so finalize must observe a deterministic order. The performance cost is a function of the slowest-to-finalize record, but for typical CUDA modules (5--50 functions) this overhead is dominated by parse and ISel. Standalone ptxas under `--split-compile-extended` has the same constraint -- see [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) for the equivalent.
+**QUIRK 3: Parallel mode runs `codegen_finalize` sequentially.** Phase 23b's barrier (`sub_43FFE0`) is followed by a *sequential* finalize loop in the main thread. Each `sub_110D2A0` call mutates module-wide register-budget state (the cross-function constraint propagation at Phase 24), so finalize must observe a deterministic order. The performance cost is a function of the slowest-to-finalize record, but for typical CUDA modules (5--50 functions) this overhead is dominated by parse and ISel. Standalone ptxas under `--split-compile-extended` has the same constraint — see [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) for the equivalent.
 
 ## Cross-References
 
 ### nvlink Internal
-- [Architecture Overview](overview.md) -- the 26-phase table this page expands, plus the embedded-ptxas address map
-- [Architecture Dispatch (vtables)](arch-dispatch.md) -- the 7 SM dispatch maps consulted from Phase 21 onward
-- [Instruction Selection Hubs](isel-hubs.md) -- the five mega-hubs invoked by Phase 23's pass 23-38
-- [Register Allocation](register-allocation.md) -- the regalloc consumed by Phase 23 passes 22 and 23-38
-- [Instruction Scheduling](scheduling.md) -- `ScheduleInstructions` invoked by Phase 23
-- [PTX Parsing](ptx-parsing.md) -- `sub_12AF200` / `sub_12AF550` called from Phases 4 and 7
-- [Function Map](../function-map.md#sub_1112F30) -- one-line role and entry in the global function index
-- [Split Compilation](../lto/split-compilation.md) -- how the thread-pool mode at Phase 23b is configured from the linker driver
-- [CLI Option Parsing](../pipeline/cli-options.md) -- where the Phase 1 booleans originate
+- [Architecture Overview](overview.md) — the 26-phase table this page expands, plus the embedded-ptxas address map
+- [Architecture Dispatch (vtables)](arch-dispatch.md) — the 7 SM dispatch maps consulted from Phase 21 onward
+- [Instruction Selection Hubs](isel-hubs.md) — the five mega-hubs invoked by Phase 23's pass 23-38
+- [Register Allocation](register-allocation.md) — the regalloc consumed by Phase 23 passes 22 and 23-38
+- [Instruction Scheduling](scheduling.md) — `ScheduleInstructions` invoked by Phase 23
+- [PTX Parsing](ptx-parsing.md) — `sub_12AF200` / `sub_12AF550` called from Phases 4 and 7
+- [Function Map](../function-map.md#sub_1112F30) — one-line role and entry in the global function index
+- [Split Compilation](../lto/split-compilation.md) — how the thread-pool mode at Phase 23b is configured from the linker driver
+- [CLI Option Parsing](../pipeline/cli-options.md) — where the Phase 1 booleans originate
 
 ### Sibling Wikis
-- [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) -- standalone ptxas 159-phase pipeline (this driver corresponds to its entry/dispatch path)
-- [ptxas: Entry Point](../../ptxas/pipeline/entry.html) -- standalone ptxas `main()` and option processing
-- [ptxas: Codegen Overview](../../ptxas/codegen/overview.html) -- the 48-pass per-function pipeline run by Phase 23's `sub_1655A60`
-- [ptxas: Instruction Selection](../../ptxas/codegen/isel.html) -- the ISel algorithm dispatched through Phase 23
-- [ptxas: Scheduling Algorithm](../../ptxas/scheduling/algorithm.html) -- the scheduling algorithm invoked from Phase 18 and Phase 23
-- [ptxas: Passes Index](../../ptxas/passes/index.html) -- the standalone pass numbering for reference
+- [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) — standalone ptxas 159-phase pipeline (this driver corresponds to its entry/dispatch path)
+- [ptxas: Entry Point](../../ptxas/pipeline/entry.html) — standalone ptxas `main()` and option processing
+- [ptxas: Codegen Overview](../../ptxas/codegen/overview.html) — the 48-pass per-function pipeline run by Phase 23's `sub_1655A60`
+- [ptxas: Instruction Selection](../../ptxas/codegen/isel.html) — the ISel algorithm dispatched through Phase 23
+- [ptxas: Scheduling Algorithm](../../ptxas/scheduling/algorithm.html) — the scheduling algorithm invoked from Phase 18 and Phase 23
+- [ptxas: Passes Index](../../ptxas/passes/index.html) — the standalone pass numbering for reference

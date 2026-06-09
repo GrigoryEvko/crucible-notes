@@ -1,6 +1,6 @@
 # Pipeline & Pass Ordering
 
-> **Mixed provenance.** The PassBuilder, pipeline parser, and `StringMap`-driven registry are stock LLVM 20.0.0 infrastructure; the **35 NVIDIA custom pass classes** (`nvvm-reflect`, `nvvm-intrinsic-lowering`, `process-restrict`, `lower-struct-args`, `lower-aggr-copies`, `nv-memory-space-opt`, the seven `nvopt<...>` pipeline shorthands, etc.) and the per-tier driver (`sub_12E54A0`) are NVIDIA additions injected via the standard extension-callback table at `[PassBuilder+2208]`. The **33 entries** counted later in this page are `StringMap` *registration rows* in `sub_2342890` -- two NVIDIA classes register under multiple keys (parameterized variants), so the row count is lower than the class count. See [NVIDIA Custom Passes Overview](../passes/index.md) for the canonical definition and full inventory.
+> **Mixed provenance.** The PassBuilder, pipeline parser, and `StringMap`-driven registry are stock LLVM 20.0.0 infrastructure; the **35 NVIDIA custom pass classes** (`nvvm-reflect`, `nvvm-intrinsic-lowering`, `process-restrict`, `lower-struct-args`, `lower-aggr-copies`, `nv-memory-space-opt`, the seven `nvopt<...>` pipeline shorthands, etc.) and the per-tier driver (`sub_12E54A0`) are NVIDIA additions injected via the standard extension-callback table at `[PassBuilder+2208]`. The **33 entries** counted later in this page are `StringMap` *registration rows* in `sub_2342890` — two NVIDIA classes register under multiple keys (parameterized variants), so the row count is lower than the class count. See [NVIDIA Custom Passes Overview](../passes/index.md) for the canonical definition and full inventory.
 >
 > **Upstream source:** `llvm/lib/Passes/PassBuilder.cpp`, `PassRegistry.def`, `PassBuilderPipelines.cpp`, `llvm/include/llvm/Passes/PassBuilder.h` (LLVM 20.0.0). NVPTX target-specific pipeline hooks: `llvm/lib/Target/NVPTX/NVPTXTargetMachine.cpp::registerPassBuilderCallbacks`.
 
@@ -9,13 +9,13 @@ CICC v13.0 implements the LLVM New Pass Manager pipeline infrastructure, with NV
 | | |
 |---|---|
 | **Master registration** | `sub_2342890` (`0x2342890`, ~2,816 lines) |
-| **Hash table insert** | `sub_E41FB0` (`0xE41FB0`) -- open-addressing, 48-byte entries |
-| **String equality** | `sub_9691B0` (`0x9691B0`) -- `len==len && memcmp==0` |
-| **AA name resolver** | `sub_233BD40` (`0x233BD40`) -- chain of string comparisons |
-| **AA pipeline parser** | `sub_233C0C0` (`0x233C0C0`) -- splits on `,`, special-cases `"default"` |
-| **Extension callback** | `sub_233C300` (`0x233C300`) -- iterates `[PassBuilder+2208]`, stride 32 |
-| **Option parser** | `sub_233A120` (`0x233A120`) -- splits on `;`, validates tokens |
-| **Help/listing** | `sub_233C410` (`0x233C410`) -- `--print-pipeline-passes` handler |
+| **Hash table insert** | `sub_E41FB0` (`0xE41FB0`) — open-addressing, 48-byte entries |
+| **String equality** | `sub_9691B0` (`0x9691B0`) — `len==len && memcmp==0` |
+| **AA name resolver** | `sub_233BD40` (`0x233BD40`) — chain of string comparisons |
+| **AA pipeline parser** | `sub_233C0C0` (`0x233C0C0`) — splits on `,`, special-cases `"default"` |
+| **Extension callback** | `sub_233C300` (`0x233C300`) — iterates `[PassBuilder+2208]`, stride 32 |
+| **Option parser** | `sub_233A120` (`0x233A120`) — splits on `;`, validates tokens |
+| **Help/listing** | `sub_233C410` (`0x233C410`) — `--print-pipeline-passes` handler |
 | **Pipeline assembler** | `sub_12E54A0` (`0x12E54A0`, 49.8KB, 1,553 lines) |
 | **AddPass** | `sub_12DE0B0` (`0x12DE0B0`, hash-based pass insertion) |
 | **Tier 0 sub-pipeline** | `sub_12DE330` (`0x12DE330`, ~40 passes) |
@@ -647,7 +647,7 @@ No NVIDIA-specific machine function passes were identified in the registration t
 
 Registration order (above) describes **what is known to the pipeline parser**. Runtime execution order is determined by `sub_12E54A0` (the pipeline assembler) and controlled by the tier system. The execution order varies dramatically depending on: (1) optimization level, (2) fast-compile mode, (3) language string, and (4) individual pass enable/disable flags in NVVMPassOptions.
 
-### The AddPass Mechanism -- `sub_12DE0B0`
+### The AddPass Mechanism — `sub_12DE0B0`
 
 All runtime pass insertion uses `sub_12DE0B0` (`0x12DE0B0`), a hash-table-based function that:
 
@@ -719,7 +719,7 @@ These five passes are always inserted first, regardless of optimization level:
 | 4 | `sub_1361950` | `AssumptionCacheTracker` | `(PM, _, 0, 0)` Module |
 | 5 | `sub_1CB0F50` | `ProfileSummaryInfoWrapperPass` | `(PM, _, 1, 0)` Function |
 
-### Tier 0 -- Full Optimization (`sub_12DE330`)
+### Tier 0 — Full Optimization (`sub_12DE330`)
 
 Called when `opts[4224]` (optimization enabled) and the phase threshold is exceeded. This is the primary optimization sub-pipeline for O1/O2/O3, adding ~40 passes. Address: `0x12DE330`.
 
@@ -739,8 +739,8 @@ Called when `opts[4224]` (optimization enabled) and the phase threshold is excee
 | 10 | `sub_12D4560` | NVVMVerifier | always |
 | 11 | `sub_18A3090` | NVVMPredicateOpt | always |
 | 12 | `sub_184CD60` | ConstantMerge | always |
-| 13 | `sub_1869C50(1,0,1)` | Sink/MemSSA `[MEDIUM confidence]` -- three-arg factory matches Sink with MemSSA parameters, but could also be a custom sinking variant | `!opts[1040]` |
-| 14 | `sub_1833EB0(3)` | TailCallElim/JumpThreading `[MEDIUM confidence]` -- integer arg=3 could be JumpThreading threshold or TailCallElim mode; no disambiguating string | always |
+| 13 | `sub_1869C50(1,0,1)` | Sink/MemSSA `[MEDIUM confidence]` — three-arg factory matches Sink with MemSSA parameters, but could also be a custom sinking variant | `!opts[1040]` |
+| 14 | `sub_1833EB0(3)` | TailCallElim/JumpThreading `[MEDIUM confidence]` — integer arg=3 could be JumpThreading threshold or TailCallElim mode; no disambiguating string | always |
 | 15 | `sub_17060B0(1,0)` | PrintModulePass | `opts[3160]` |
 | 16 | `sub_1952F90(-1)` | LoopIndexSplit | always |
 | 17 | `sub_1A62BF0(1,...)` | LLVM standard pipeline #1 | always |
@@ -765,10 +765,10 @@ Called when `opts[4224]` (optimization enabled) and the phase threshold is excee
 | 36 | `sub_18F5480` | DSE | always |
 | 37 | `sub_18DEFF0` | DCE | always |
 | 38 | `sub_1A62BF0(1,...)` | LLVM standard pipeline #1 | always |
-| 39 | `sub_18B1DE0` | NVVMLoopPass/BarrierOpt `[MEDIUM confidence]` -- address is in NVVM pass range, but dual name reflects ambiguity between loop optimization and barrier optimization roles | always |
+| 39 | `sub_18B1DE0` | NVVMLoopPass/BarrierOpt `[MEDIUM confidence]` — address is in NVVM pass range, but dual name reflects ambiguity between loop optimization and barrier optimization roles | always |
 | 40 | `sub_1841180` | FunctionAttrs | always |
 
-### Tier 1/2/3 -- Phase-Specific Sub-pipeline (`sub_12DE8F0`)
+### Tier 1/2/3 — Phase-Specific Sub-pipeline (`sub_12DE8F0`)
 
 Called with tier number (1, 2, or 3). Address: `0x12DE8F0`. Stores the tier value to `qword_4FBB410`. When tier==3, sets `qword_4FBB370` = 6 if BYTE4 was 0 (enables advanced barrier and memory space optimization features).
 
@@ -880,9 +880,9 @@ O1/O2/O3 all route through the same `sub_12DE330` (Tier 0). The difference manif
 
 **Ofcmax critical behavior**: when fast-compile level == 2 (max), the libnvvm pipeline builder **forces** `-lsa-opt=0` and `-memory-space-opt=0` even if the user explicitly enables them. This is confirmed in both `sub_9624D0` (line 1358) and `sub_12CC750` (line 2025).
 
-### Codegen Dispatch -- `sub_12DFE00`
+### Codegen Dispatch — `sub_12DFE00`
 
-After all optimization tiers complete, `sub_12DFE00` (`0x12DFE00`) performs codegen pass scheduling. This is NOT a simple pass adder -- it performs a full dependency graph construction:
+After all optimization tiers complete, `sub_12DFE00` (`0x12DFE00`) performs codegen pass scheduling. This is NOT a simple pass adder — it performs a full dependency graph construction:
 
 1. Reads optimization level from `opts[200]` (0 = minimal, >1 = enable dependency tracking)
 2. Iterates all passes already in the pass manager
@@ -1073,7 +1073,7 @@ The NVVMPassOptions struct (4,512 bytes, 221 slots) controls which passes execut
 
 ## Cross-References
 
-- [Optimizer](../pipeline/optimizer.md) -- runtime pipeline assembly, two-phase model, concurrent compilation
-- [NVVMPassOptions](../config/nvvm-pass-options.md) -- 221-slot option struct controlling pass enablement
-- [Optimization Levels](../config/optimization-levels.md) -- O0/O1/O2/O3 and Ofcmin/Ofcmid/Ofcmax
-- [Concurrent Compilation](../infra/concurrent-compilation.md) -- Phase I/II, thread pool, GNU Jobserver
+- [Optimizer](../pipeline/optimizer.md) — runtime pipeline assembly, two-phase model, concurrent compilation
+- [NVVMPassOptions](../config/nvvm-pass-options.md) — 221-slot option struct controlling pass enablement
+- [Optimization Levels](../config/optimization-levels.md) — O0/O1/O2/O3 and Ofcmin/Ofcmid/Ofcmax
+- [Concurrent Compilation](../infra/concurrent-compilation.md) — Phase I/II, thread pool, GNU Jobserver

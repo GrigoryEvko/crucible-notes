@@ -116,11 +116,11 @@ void main(int argc, char **argv, char **envp)
 }
 ```
 
-The `while(1)` loop with `sub_5AF1D0` (which calls `exit()` / `abort()`) never actually iterates -- the call to `sub_5AF1D0` is `__noreturn`. The compiler just arranged the basic blocks this way: the backend stage at label `LABEL_16` falls through from a `goto` at the top of the loop when `dword_106C254 == 0` (no errors).
+The `while(1)` loop with `sub_5AF1D0` (which calls `exit()` / `abort()`) never actually iterates — the call to `sub_5AF1D0` is `__noreturn`. The compiler just arranged the basic blocks this way: the backend stage at label `LABEL_16` falls through from a `goto` at the top of the loop when `dword_106C254 == 0` (no errors).
 
 ## Stage Details
 
-### Stage 1: fe_pre_init -- `sub_585D60` (0x585D60)
+### Stage 1: fe_pre_init — `sub_585D60` (0x585D60)
 
 **Source:** `fe_init.c`
 
@@ -131,7 +131,7 @@ Performs absolute minimum initialization before anything else can run. Called wi
 | 1 | `sub_48B3C0` | `error_pre_init` | `error.c` | Zero 4 error-tracking globals (`qword_1065870`, `qword_1065868`, `qword_1065858` = 0; `dword_1065860` = -1) |
 | 2 | `sub_6BB290` | `source_file_mgr_pre_init` | `srcfile.c` | Zero 10 file-descriptor-table globals: file chain head, file count, file hash, include stack |
 | 3 | `sub_5B1E70` | `host_envir_early_init` | `host_envir.c` | Install SIGINT/SIGTERM/SIGXCPU/SIGXFSZ handlers; set LC_NUMERIC=C; capture CWD into `qword_126EEA0`; read `EDG_BASE`/`EDG_SUPPRESS_ASSERTION_LINE_NUMBER`; disable RLIMIT_CPU; set `dword_126EFB4`=2 (default C++ mode); zero ~50 host-env globals |
-| -- | *(inline)* | `scope_index_init` | `fe_init.c` | `dword_126C5E4 = -1` (current scope stack index = "none"); `dword_126C5C8 = -1` (secondary scope index = "none") |
+| — | *(inline)* | `scope_index_init` | `fe_init.c` | `dword_126C5E4 = -1` (current scope stack index = "none"); `dword_126C5C8 = -1` (secondary scope index = "none") |
 | 4 | `sub_752C90` | `type_system_pre_init` | `type.c` | Set `dword_126E4A8` = -1 (dialect version unset); allocate type table via `sub_7515D0`; set host compiler default `qword_126E1F0` = 70300 (GCC 7.3.0); init 3 type comparison descriptor pools |
 | 5 | `sub_45EB40` | `cmd_line_pre_init` | `cmd_line.c` | Zero 272-flag was-set bitmap (`byte_E7FF40`, 0x110 bytes); set `dword_E7FF20` = 1 (skip argv[0]); initialize ~350 global config variables to defaults; set `dword_106C064` = 1 (stack-limit-adjustment ON) |
 | 6 | `sub_4ED530` | `declaration_pre_init` | `decls.c` | Set `stderr` into two global stream pointers; zero error/warning counters (`qword_126ED80..qword_126EDE0`); set diagnostic defaults (`byte_126ED69`=5, `byte_126ED68`=8); set `qword_126ED60` = 100 (max-errors default); clear the 15.2 KB diagnostic severity table (`byte_1067920`, 0x3B50 bytes) |
@@ -139,7 +139,7 @@ Performs absolute minimum initialization before anything else can run. Called wi
 | 8 | `sub_7A48B0` | `tu_tracking_pre_init` | `trans_unit.c` | Zero 13 TU tracking globals: source filename, compilation mode flags, TU stack pointers, PCH state |
 | 9 | `sub_7C00F0` | `template_pre_init` | `template.c` | Single assignment: `dword_106BA20` = 0 (template nesting depth = 0) |
 
-Calls 1, 2, 6, 7, 8 are pure global-zeroing routines and execute in under a microsecond each. Call 3 (`host_envir_early_init`) dominates the wall-clock cost of pre-init -- the `getcwd()` retry loop, four `sigaction()` syscalls, `newlocale()`, and `getrlimit`/`setrlimit` together account for essentially all stage-1 latency. Call 5 (`cmd_line_pre_init`) is the second-heaviest because it touches ~350 config globals, though all writes are register-resident.
+Calls 1, 2, 6, 7, 8 are pure global-zeroing routines and execute in under a microsecond each. Call 3 (`host_envir_early_init`) dominates the wall-clock cost of pre-init — the `getcwd()` retry loop, four `sigaction()` syscalls, `newlocale()`, and `getrlimit`/`setrlimit` together account for essentially all stage-1 latency. Call 5 (`cmd_line_pre_init`) is the second-heaviest because it touches ~350 config globals, though all writes are register-resident.
 
 The inline `scope_index_init` assignments to `dword_126C5E4` and `dword_126C5C8` are emitted directly between calls 3 and 4 in `sub_585D60`'s body, rather than wrapped in a helper. They are listed here as a separate row because they constitute distinct initialization work, even though `idautils.Functions()` does not see them as a callee.
 
@@ -147,7 +147,7 @@ For per-callee detail (signal-handler addresses, `host_envir.c` sentinel validat
 
 **Data flow:** No input beyond process args. Output: global state zeroed and ready for CLI parsing.
 
-### Stage 2: proc_command_line -- `sub_459630` (0x459630)
+### Stage 2: proc_command_line — `sub_459630` (0x459630)
 
 **Source:** `cmd_line.c` (4105 decompiled lines)
 
@@ -171,7 +171,7 @@ The parser builds four hash tables for macro defines (`qword_106C248`), include 
 
 **Data flow:** Input: `argv`. Output: ~150+ global configuration variables populated.
 
-### Stage 3: fe_one_time_init -- `sub_585DB0` (0x585DB0)
+### Stage 3: fe_one_time_init — `sub_585DB0` (0x585DB0)
 
 **Source:** `fe_init.c`
 
@@ -228,7 +228,7 @@ The heaviest initialization stage. Calls 38 subsystem initializers in dependency
 
 **Data flow:** Input: populated config globals. Output: all subsystems initialized, keyword table built, output file open.
 
-### Stage 4: reset_tu_state -- `sub_7A4860` (0x7A4860)
+### Stage 4: reset_tu_state — `sub_7A4860` (0x7A4860)
 
 **Source:** `trans_unit.c`
 
@@ -245,7 +245,7 @@ dword_106B9E8 = 0;   // tu_stack_depth
 
 **Data flow:** No input. Output: TU state clean-slated.
 
-### Stage 5: process_translation_unit -- `sub_7A40A0` (0x7A40A0)
+### Stage 5: process_translation_unit — `sub_7A40A0` (0x7A40A0)
 
 **Source:** `trans_unit.c`
 
@@ -258,18 +258,18 @@ The main frontend workhorse. This single call parses the entire `.cu` source fil
 5. Initialize TU scope state (offsets 24..192 via `sub_7046E0`)
 6. Set as primary TU (`qword_106B9F0`) if first
 7. Link into TU chain
-8. Call `sub_586240` -- parse the source file (this enters the EDG parser, which handles all of C++ plus CUDA extensions: `__device__`, `__host__`, `__global__`, `__shared__`, `__managed__`, etc.)
+8. Call `sub_586240` — parse the source file (this enters the EDG parser, which handles all of C++ plus CUDA extensions: `__device__`, `__host__`, `__global__`, `__shared__`, `__managed__`, etc.)
 9. Depending on mode:
    - Module compilation: `sub_6FDDF0`
    - Standard compilation: `sub_6F4AD0` (header-unit) + `sub_4E8A60` (standard)
-10. Post-processing: `sub_588E90` (translation_unit_wrapup -- scope closure, template wrapup, IL output)
+10. Post-processing: `sub_588E90` (translation_unit_wrapup — scope closure, template wrapup, IL output)
 11. Debug trace: `"Done processing translation unit %s"`
 
 At the end of this stage, the EDG IL tree is fully built. Every declaration, type, expression, and statement from the source has been parsed into IL nodes. CUDA execution-space attributes (`__device__`, `__host__`, `__global__`) have been recorded on entity nodes at byte offset +182 (bit 6 = device/global, bits 4-5 = execution space).
 
 **Data flow:** Input: source filename from `qword_126EEE0`. Output: complete EDG IL tree anchored at `qword_106BA10` (TU descriptor), source sequence list at `*(qword_106BA10 + 8)`.
 
-### Stage 6: fe_wrapup -- `sub_588F90` (0x588F90)
+### Stage 6: fe_wrapup — `sub_588F90` (0x588F90)
 
 **Source:** `fe_wrapup.c`
 
@@ -296,7 +296,7 @@ Post-pass operations:
 
 **Data flow:** Input: fully built IL tree. Output: finalized IL with dead entities eliminated and device-needed entities marked. The source sequence list (`qword_1065748`) is the ordered list of top-level declarations the backend will walk.
 
-### Stage 7: Backend Code Generation -- `sub_489000` (0x489000)
+### Stage 7: Backend Code Generation — `sub_489000` (0x489000)
 
 **Source:** `cp_gen_be.c` (723 decompiled lines, the largest single function in the backend)
 
@@ -333,7 +333,7 @@ Trailer:
 
 **Data flow:** Input: finalized source sequence from stage 6. Output: `.int.c` file on disk.
 
-### Stage 8: exit_with_status -- `sub_5AF1D0` (0x5AF1D0)
+### Stage 8: exit_with_status — `sub_5AF1D0` (0x5AF1D0)
 
 **Source:** `host_envir.c`
 
@@ -344,7 +344,7 @@ Maps internal compilation status to process exit codes:
 | 3, 4, 5 | Success | 0 | `exit(0)` |
 | 8 | Warnings only | 2 | `exit(2)` |
 | 9, 10 | Errors | 4 | `exit(4)` + `"Compilation terminated."` |
-| 11 | Internal error | -- | `abort()` + `"Compilation aborted."` |
+| 11 | Internal error | — | `abort()` + `"Compilation aborted."` |
 
 In SARIF mode (`dword_106BBB8`), text messages are suppressed but exit codes remain the same.
 
@@ -385,22 +385,22 @@ The timing is implemented via `sub_5AF350` (capture_time: records `clock()` as C
 The `main()` function contains a `while(1)` loop that appears to support re-compilation (the TU processing infrastructure has a `dword_106BA08` "is_recompilation" flag and `sub_7A40A0` checks an `a2` recompilation parameter). In practice, for the standard CUDA compilation flow, this loop executes exactly once: `sub_5AF1D0` is `__noreturn` and terminates the process.
 
 The loop body:
-1. `sub_6B8B20(0)` -- reset file state for the source file manager
-2. `sub_589530()` -- write output signoff (`sub_5AEE00`) + close source manager (`sub_6B8DE0`)
+1. `sub_6B8B20(0)` — reset file state for the source file manager
+2. `sub_589530()` — write output signoff (`sub_5AEE00`) + close source manager (`sub_6B8DE0`)
 3. Compute exit code from `qword_126ED90` (errors) and `qword_126ED88` (additional status)
 4. Print total timing if enabled
 5. Restore stack limit if it was raised
-6. `sub_5AF1D0(exit_code)` -- terminate
+6. `sub_5AF1D0(exit_code)` — terminate
 
 ## Cross-References
 
-- [Entry Point & Initialization](./entry.md) -- detailed breakdown of stages 1-3
-- [CLI Processing](./cli.md) -- all 276 flags parsed in stage 2
-- [Frontend Invocation](./frontend.md) -- stage 5 (parse + IL build) in depth
-- [Frontend Wrapup](./fe-wrapup.md) -- 5-pass architecture of stage 6
-- [Backend Code Generation](./backend.md) -- stage 7 (`.int.c` emission) in depth
-- [Timing & Exit](./timing-exit.md) -- stage 8 and exit code mapping
-- [Device/Host Separation](../cuda/device-host-separation.md) -- how the backend filters device vs host code
-- [Kernel Stub Generation](../cuda/kernel-stubs.md) -- `__wrapper__device_stub_` pattern
-- [Extended Lambda Overview](../lambda/overview.md) -- lambda wrapper generation in backend
-- [.int.c File Format](../output/int-c-format.md) -- structure of the backend output
+- [Entry Point & Initialization](./entry.md) — detailed breakdown of stages 1-3
+- [CLI Processing](./cli.md) — all 276 flags parsed in stage 2
+- [Frontend Invocation](./frontend.md) — stage 5 (parse + IL build) in depth
+- [Frontend Wrapup](./fe-wrapup.md) — 5-pass architecture of stage 6
+- [Backend Code Generation](./backend.md) — stage 7 (`.int.c` emission) in depth
+- [Timing & Exit](./timing-exit.md) — stage 8 and exit code mapping
+- [Device/Host Separation](../cuda/device-host-separation.md) — how the backend filters device vs host code
+- [Kernel Stub Generation](../cuda/kernel-stubs.md) — `__wrapper__device_stub_` pattern
+- [Extended Lambda Overview](../lambda/overview.md) — lambda wrapper generation in backend
+- [.int.c File Format](../output/int-c-format.md) — structure of the backend output

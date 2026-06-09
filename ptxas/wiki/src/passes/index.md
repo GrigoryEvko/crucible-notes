@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas compilation pipeline consists of exactly 159 phases, executed in a fixed order determined by a static index table at `0x22BEEA0`. Every compilation traverses the same sequence -- phase skipping is handled per-phase via `isNoOp()` virtual method overrides, not by reordering the table. This page is the definitive inventory of all 159 phases: their index, name, category, one-line description, and cross-references to detailed documentation where available.
+The ptxas compilation pipeline consists of exactly 159 phases, executed in a fixed order determined by a static index table at `0x22BEEA0`. Every compilation traverses the same sequence — phase skipping is handled per-phase via `isNoOp()` virtual method overrides, not by reordering the table. This page is the definitive inventory of all 159 phases: their index, name, category, one-line description, and cross-references to detailed documentation where available.
 
 All 159 phases have names in the static name table at `off_22BD0C0` (159 entries, indexed 0--158). The factory switch at `sub_C60D30` allocates each phase as a 16-byte polymorphic object with a 5-slot vtable: `execute()` at +0, `getIndex()` at +8 (returns the factory/table index), and `isNoOp()` at +16 (returns 0 for active phases, 1 for phases skipped by default). Slots +24 and +32 are NULL.
 
@@ -21,7 +21,7 @@ All 159 phases have names in the static name table at `off_22BD0C0` (159 entries
 
 ## Phase Categories
 
-Each phase is tagged with one of 10 categories. These are not present in the binary -- they are an analytical classification applied during reverse engineering.
+Each phase is tagged with one of 10 categories. These are not present in the binary — they are an analytical classification applied during reverse engineering.
 
 | Tag | Meaning | Count |
 |---|---|---|
@@ -34,11 +34,11 @@ Each phase is tagged with one of 10 categories. These are not present in the bin
 | **RegAlloc** | Register allocation and related fixups | 6 |
 | **Encoding** | Mercury SASS encoding, expansion, microcode generation | 9 |
 | **Cleanup** | Post-transformation updates, NOP removal, block layout | 13 |
-| **Gate** | Conditional hooks (`AdvancedPhase*`) -- no-op by default | 17 |
+| **Gate** | Conditional hooks (`AdvancedPhase*`) — no-op by default | 17 |
 
 Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards, register map computation, diagnostics, and a terminal NOP. They have the same vtable infrastructure as phases 0--138 and are fully named in the static table.
 
-## Numbering Discrepancy -- Complete Wiki-to-Binary Mapping
+## Numbering Discrepancy — Complete Wiki-to-Binary Mapping
 
 > **Warning:** The wiki phase numbers 0--138 use a compressed scheme that omits 23 binary indices from the contiguous range 0--139. Of these 23, seven are displaced to wiki positions 132--138, and 16 have no wiki number at all. The divergence begins at binary index 8 (`UpdateAfterConvertUnsupportedOps`, skipped in the wiki) and accumulates to a delta of +23 by wiki phase 116. Phases 140--158 match their binary indices. Every cross-reference on this page and 40+ linked pages uses wiki numbers, NOT binary indices. Use the table below to convert.
 
@@ -58,22 +58,22 @@ Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards,
 | 5 | 5 | `ConvertUnsupportedOps` | 5 | 0 | | 85 | `ConvertAllMovPhiToMov` | 73 | +12 |
 | 6 | 6 | `SetControlFlowOpLastInBB` | 6 | 0 | | 86 | `ConvertToUniformReg` | 74 | +12 |
 | 7 | 7 | `AdvPhAfterConvUnSup` | 7 | 0 | | 87 | `LateArchOptimizeFirst` | 75 | +12 |
-| **8** | -- | **`UpdateAfterConvUnSupOps`** | **132** | **DISP** | | 88 | `UpdateAfterOptimize` | 76 | +12 |
+| **8** | — | **`UpdateAfterConvUnSupOps`** | **132** | **DISP** | | 88 | `UpdateAfterOptimize` | 76 | +12 |
 | 9 | 10 | `OriCreateMacroInsts` | 8 | +1 | | 89 | `AdvPhLateConvUnSup` | 77 | +12 |
 | 10 | 11 | `ReportInitialRepresentation` | 9 | +1 | | 90 | `LateExpUnSupportedOps` | 78 | +12 |
 | 11 | 12 | `EarlyOriSimpleLiveDead` | 10 | +1 | | **91** | **`LateMergeEquivCondFlow`** | **136** | **DISP** |
 | 12 | 13 | `ReplaceUniformsWithImm` | 11 | +1 | | 92 | `OriHoistInvariantsLate2` | 79 | +13 |
 | 13 | 14 | `OriSanitize` | 12 | +1 | | **93** | **`LateExpUnSupOpsMid`** | **137** | **DISP** |
 | 14 | 16 | `GeneralOptimizeEarly` | 13 | +1 | | 94 | `ExpandJmxComputation` | 80 | +14 |
-| **15** | -- | **`MergeEquivCondFlow`** | **133** | **DISP** | | 95 | `LateArchOptimizeSecond` | 81 | +14 |
+| **15** | — | **`MergeEquivCondFlow`** | **133** | **DISP** | | 95 | `LateArchOptimizeSecond` | 81 | +14 |
 | 16 | 18 | `DoSwitchOptFirst` | 14 | +2 | | 96 | `AdvPhBackPropVReg` | 82 | +14 |
 | 17 | 19 | `OriBranchOpt` | 15 | +2 | | 97 | `OriBackCopyPropagate` | 83 | +14 |
 | 18 | 20 | `OriPerformLiveDeadFirst` | 16 | +2 | | **98** | **`OriSplitHiPressLR`** | **138** | **DISP** |
 | 19 | 21 | `OptimizeBindlessHeaderLoads` | 17 | +2 | | 99 | `OriPerformLiveDeadFourth` | 84 | +15 |
 | 20 | 23 | `OriLoopSimplification` | 18 | +2 | | 100 | `OriPropagateGmma` | 85 | +15 |
 | 21 | 24 | `OriSplitLiveRanges` | 19 | +2 | | 101 | `InsertPseudoUseDefConvUR` | 86 | +15 |
-| **22** | -- | **`OriCopyProp`** | -- | **SKIP** | | 102 | `FixupGmmaSequence` | 87 | +15 |
-| 23 | 26 | `PerformPGO` | 20 | +3 | | **103** | **`LateEnforceArgRestr`** | -- | **SKIP** |
+| **22** | — | **`OriCopyProp`** | — | **SKIP** | | 102 | `FixupGmmaSequence` | 87 | +15 |
+| 23 | 26 | `PerformPGO` | 20 | +3 | | **103** | **`LateEnforceArgRestr`** | — | **SKIP** |
 | 24 | 27 | `OriStrengthReduce` | 21 | +3 | | 104 | `OriHoistInvariantsLate3` | 88 | +16 |
 | 25 | 28 | `OriLoopUnrolling` | 22 | +3 | | 105 | `AdvPhSetRegAttr` | 89 | +16 |
 | 26 | 29 | `GenerateMovPhi` | 23 | +3 | | 106 | `OriSetRegisterAttr` | 90 | +16 |
@@ -82,32 +82,32 @@ Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards,
 | 29 | 33 | `OriRemoveRedundantBarriers` | 26 | +3 | | 109 | `LateExpUnSupportedOps2` | 93 | +16 |
 | 30 | 34 | `AnalyzeUniformsForSpec` | 27 | +3 | | 110 | `FinalInspectionPass` | 94 | +16 |
 | 31 | 35 | `SinkRemat` | 28 | +3 | | 111 | `SetAfterLegalization` | 95 | +16 |
-| **32** | -- | **`OptimizeNaNOrZero`** | -- | **SKIP** | | 112 | `ReportBeforeScheduling` | 96 | +16 |
+| **32** | — | **`OptimizeNaNOrZero`** | — | **SKIP** | | 112 | `ReportBeforeScheduling` | 96 | +16 |
 | 33 | 38 | `GeneralOptimize` | 29 | +4 | | 113 | `AdvPhPreSched` | 97 | +16 |
-| 34 | 39 | `DoSwitchOptSecond` | 30 | +4 | | **114** | **`ScheduleInstructions`** | -- | **SKIP** |
-| 35 | 40 | `OriLinearReplacement` | 31 | +4 | | **115** | **`UpdateAfterSchedInstr`** | -- | **SKIP** |
+| 34 | 39 | `DoSwitchOptSecond` | 30 | +4 | | **114** | **`ScheduleInstructions`** | — | **SKIP** |
+| 35 | 40 | `OriLinearReplacement` | 31 | +4 | | **115** | **`UpdateAfterSchedInstr`** | — | **SKIP** |
 | 36 | 42 | `CompactLocalMemory` | 32 | +4 | | 116 | `BackPropagateVEC2D` | 98 | +18 |
-| **37** | -- | **`ConvMemToRegOrUniform`** | -- | **SKIP** | | 117 | `OriDoSyncronization` | 99 | +18 |
-| 38 | 44 | `OriPerformLiveDeadSecond` | 33 | +5 | | **118** | **`UpdateAfterOriDoSync`** | -- | **SKIP** |
+| **37** | — | **`ConvMemToRegOrUniform`** | — | **SKIP** | | 117 | `OriDoSyncronization` | 99 | +18 |
+| 38 | 44 | `OriPerformLiveDeadSecond` | 33 | +5 | | **118** | **`UpdateAfterOriDoSync`** | — | **SKIP** |
 | 39 | 45 | `ExtractShaderConstsFirst` | 34 | +5 | | 119 | `ApplyPostSyncWars` | 100 | +19 |
-| 40 | 46 | `OriHoistInvariantsEarly` | 35 | +5 | | **120** | **`ReportBeforeRegAlloc`** | -- | **SKIP** |
-| **41** | -- | **`Vectorization`** | -- | **SKIP** | | 121 | `AdvPhAllocReg` | 101 | +20 |
-| 42 | 48 | `EmitPSI` | 36 | +6 | | **122** | **`AllocateRegisters`** | -- | **SKIP** |
+| 40 | 46 | `OriHoistInvariantsEarly` | 35 | +5 | | **120** | **`ReportBeforeRegAlloc`** | — | **SKIP** |
+| **41** | — | **`Vectorization`** | — | **SKIP** | | 121 | `AdvPhAllocReg` | 101 | +20 |
+| 42 | 48 | `EmitPSI` | 36 | +6 | | **122** | **`AllocateRegisters`** | — | **SKIP** |
 | 43 | 49 | `GeneralOptimizeMid` | 37 | +6 | | 123 | `ReportAfterRegAlloc` | 102 | +21 |
-| 44 | 50 | `OptimizeNestedCondBranches` | 38 | +6 | | **124** | **`UpdateAfterOriAllocReg`** | -- | **SKIP** |
+| 44 | 50 | `OptimizeNestedCondBranches` | 38 | +6 | | **124** | **`UpdateAfterOriAllocReg`** | — | **SKIP** |
 | 45 | 51 | `ConvertVTGReadWrite` | 39 | +6 | | 125 | `Get64bRegComponents` | 103 | +22 |
 | 46 | 53 | `DoVirtualCTAExpansion` | 40 | +6 | | 126 | `AdvPhPostExpansion` | 104 | +22 |
-| 47 | 54 | `MarkAdditionalColdBlocks` | 41 | +6 | | **127** | **`PostExpansion`** | -- | **SKIP** |
+| 47 | 54 | `MarkAdditionalColdBlocks` | 41 | +6 | | **127** | **`PostExpansion`** | — | **SKIP** |
 | 48 | 55 | `ExpandMbarrier` | 42 | +6 | | 128 | `ApplyPostRegAllocWars` | 105 | +23 |
 | 49 | 56 | `ForwardProgress` | 43 | +6 | | 129 | `AdvPhPostSched` | 106 | +23 |
 | 50 | 58 | `OptimizeUniformAtomic` | 44 | +6 | | 130 | `OriRemoveNopCode` | 107 | +23 |
 | 51 | 59 | `MidExpansion` | 45 | +6 | | 131 | `OptimizeHotColdInLoop` | 108 | +23 |
-| **52** | -- | **`AdvPhAfterMidExpansion`** | **134** | **DISP** | | 132 | `OptimizeHotColdFlow` | 109 | +23 |
+| **52** | — | **`AdvPhAfterMidExpansion`** | **134** | **DISP** | | 132 | `OptimizeHotColdFlow` | 109 | +23 |
 | 53 | 61 | `GeneralOptimizeMid2` | 46 | +7 | | 133 | `PostSchedule` | 110 | +23 |
 | 54 | 62 | `AdvPhEarlyEnforceArgs` | 47 | +7 | | 134 | `AdvPhPostFixUp` | 111 | +23 |
 | 55 | 63 | `EnforceArgumentRestrictions` | 48 | +7 | | 135 | `PlaceBlocksInSourceOrder` | 112 | +23 |
 | 56 | 64 | `GvnCse` | 49 | +7 | | 136 | `PostFixForMercTargets` | 113 | +23 |
-| **57** | -- | **`OriCommoning`** | -- | **SKIP** | | 137 | `FixUpTexDepBarAndSync` | 114 | +23 |
+| **57** | — | **`OriCommoning`** | — | **SKIP** | | 137 | `FixUpTexDepBarAndSync` | 114 | +23 |
 | 58 | 66 | `OriReassociateAndCommon` | 50 | +8 | | 138 | `AdvScoreboardsAndOpexes` | 115 | +23 |
 | 59 | 67 | `ExtractShaderConstsFinal` | 51 | +8 | | 139 | `ProcessO0WaitsAndSBs` | 116 | +23 |
 | 60 | 68 | `OriReplaceEquivMultiDefMov` | 52 | +8 | | 140--158 | *(19 late-pipeline phases)* | 140--158 | 0 |
@@ -119,15 +119,15 @@ Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards,
 | 66 | 76 | `GeneralOptimizeLate` | 58 | +8 | | | | | |
 | 67 | 78 | `OriLoopFusion` | 59 | +8 | | | | | |
 | 68 | 79 | `DoVTGMultiViewExpansion` | 60 | +8 | | | | | |
-| **69** | -- | **`OriSimpleLiveDead`** | -- | **SKIP** | | | | | |
+| **69** | — | **`OriSimpleLiveDead`** | — | **SKIP** | | | | | |
 | 70 | 81 | `OriPerformLiveDeadThird` | 61 | +9 | | | | | |
 | 71 | 82 | `OriRemoveRedundantMultiDefMov` | 62 | +9 | | | | | |
 | 72 | 84 | `OriDoPredication` | 63 | +9 | | | | | |
-| **73** | -- | **`LateVectorization`** | -- | **SKIP** | | | | | |
+| **73** | — | **`LateVectorization`** | — | **SKIP** | | | | | |
 | 74 | 86 | `LateOriCommoning` | 64 | +10 | | | | | |
 | 75 | 87 | `GeneralOptimizeLate2` | 65 | +10 | | | | | |
 | 76 | 88 | `OriHoistInvariantsLate` | 66 | +10 | | | | | |
-| **77** | -- | **`SinkCodeIntoBlock`** | -- | **SKIP** | | | | | |
+| **77** | — | **`SinkCodeIntoBlock`** | — | **SKIP** | | | | | |
 | 78 | 90 | `DoKillMovement` | 67 | +11 | | | | | |
 | 79 | 92 | `DoTexMovement` | 68 | +11 | | | | | |
 
@@ -174,7 +174,7 @@ These phases exist in the binary at early/mid positions but were assigned wiki n
 
 Seventeen phase instances (16 unique gates, plus `AdvancedPhaseOriPhaseEncoding` appearing at both wiki 127 and 152) are conditional extension points whose `isNoOp()` returns `true` in the default vtable. They exist as insertion points for architecture backends and optimization-level overrides. When a specific SM target or `-O` level requires additional processing at a given pipeline position, the backend overrides the phase's vtable to provide a real `execute()` implementation.
 
-Gate passes bracket major pipeline transitions. For example, phases 4 and 7 bracket `ConvertUnsupportedOps` (phase 5), allowing a backend to inject pre- and post-legalization logic without modifying the fixed phase table. Phase 101 (`AdvancedPhaseAllocReg`) is the most critical gate -- the entire register allocation subsystem is driven through this hook; the base pipeline contains no hardcoded allocator.
+Gate passes bracket major pipeline transitions. For example, phases 4 and 7 bracket `ConvertUnsupportedOps` (phase 5), allowing a backend to inject pre- and post-legalization logic without modifying the fixed phase table. Phase 101 (`AdvancedPhaseAllocReg`) is the most critical gate — the entire register allocation subsystem is driven through this hook; the base pipeline contains no hardcoded allocator.
 
 The naming convention is consistent: `AdvancedPhase` prefix followed by the pipeline position or action name. One exception is `AdvancedScoreboardsAndOpexes` (phase 115), which uses `Advanced` without `Phase`.
 
@@ -204,7 +204,7 @@ All 17 gate passes fall into three categories when activated by a backend overri
 | `AdvPhOriPhaseEncoding` (127) | 152 | C | `sub_C5E0B0` (7B) | `ctx+1552 = 21`; marks encoding boundary | P2_15 disasm; `sub_8C0270` checks `== 19` |
 | *(total: 5 type A, 5 type B, 6 type C = 16 gates)* | | | | | |
 
-**Type A** gates (5) dispatch to a named worker phase in the static name table -- valid `DUMPIR`/`NamedPhases`/`DisablePhases` targets. `AdvPhEarlyEnforceArgs` was reclassified from C to A based on P5_02 evidence: it dispatches to `EnforceArgumentRestrictions` [48], with `LateEnforceArgumentRestrictions` [103] as its late counterpart. **Type B** gates (5) dispatch through an SM backend vtable slot at `ctx+0x630`; the worker code lives in the per-SM backend object. Specific vtable offsets: +0x168 (late sync expansion), +0x178 (late unsupported ops), +0x110 (post-reg-attr, guarded by default-impl check against `nullsub_170@0x7D6C80`). **Type C** gates (6) write `ctx+1552` (pipeline_progress) to values 1--21, forming a monotonically increasing timeline that 20+ downstream guards check. `AdvPhPostSched` was reclassified from B to C based on P0_03 evidence: `sub_C5E830` is a 7-byte thunk writing `ctx+1552 = 14`, identical in structure to the other progress thunks.
+**Type A** gates (5) dispatch to a named worker phase in the static name table — valid `DUMPIR`/`NamedPhases`/`DisablePhases` targets. `AdvPhEarlyEnforceArgs` was reclassified from C to A based on P5_02 evidence: it dispatches to `EnforceArgumentRestrictions` [48], with `LateEnforceArgumentRestrictions` [103] as its late counterpart. **Type B** gates (5) dispatch through an SM backend vtable slot at `ctx+0x630`; the worker code lives in the per-SM backend object. Specific vtable offsets: +0x168 (late sync expansion), +0x178 (late unsupported ops), +0x110 (post-reg-attr, guarded by default-impl check against `nullsub_170@0x7D6C80`). **Type C** gates (6) write `ctx+1552` (pipeline_progress) to values 1--21, forming a monotonically increasing timeline that 20+ downstream guards check. `AdvPhPostSched` was reclassified from B to C based on P0_03 evidence: `sub_C5E830` is a 7-byte thunk writing `ctx+1552 = 14`, identical in structure to the other progress thunks.
 
 See [Optimization Levels](../config/opt-levels.md) for per-gate activation rules.
 
@@ -220,11 +220,11 @@ Nine phases refresh data structures invalidated by preceding transformations. Si
 | 132 | 8 | `UpdateAfterConvertUnsupportedOps` | Rebuilds IR metadata after late unsupported-op expansion |
 | 150 | 150 | `UpdateAfterPostRegAlloc` | Late-pipeline duplicate: rebuilds IR metadata after post-RA processing (no-op by default) |
 | 154 | 154 | `UpdateAfterFormatCodeList` | Late-pipeline duplicate: rebuilds IR data structures after FormatCodeList (no-op by default) |
-| -- | *(true 115)* | `UpdateAfterScheduleInstructions` | Refreshes IR after scheduling completes (omitted from compressed numbering) |
-| -- | *(true 118)* | `UpdateAfterOriDoSyncronization` | Refreshes IR after sync insertion (omitted from compressed numbering) |
-| -- | *(true 124)* | `UpdateAfterOriAllocateRegisters` | Refreshes IR after register allocation (omitted from compressed numbering) |
+| — | *(true 115)* | `UpdateAfterScheduleInstructions` | Refreshes IR after scheduling completes (omitted from compressed numbering) |
+| — | *(true 118)* | `UpdateAfterOriDoSyncronization` | Refreshes IR after sync insertion (omitted from compressed numbering) |
+| — | *(true 124)* | `UpdateAfterOriAllocateRegisters` | Refreshes IR after register allocation (omitted from compressed numbering) |
 
-These are lightweight passes that call into the IR's internal consistency maintenance routines. They do not transform the IR -- they only update auxiliary data structures (liveness bitmaps, instruction lists, block layout caches) so that downstream passes see a coherent view. Phases 150 and 154 are late-pipeline duplicates whose `isNoOp()` returns 1 by default; they only activate when a backend requires a second update cycle. The three `*(true N)*` entries are in the static name table at the indicated indices but are not yet assigned wiki phase numbers.
+These are lightweight passes that call into the IR's internal consistency maintenance routines. They do not transform the IR — they only update auxiliary data structures (liveness bitmaps, instruction lists, block layout caches) so that downstream passes see a coherent view. Phases 150 and 154 are late-pipeline duplicates whose `isNoOp()` returns 1 by default; they only activate when a backend requires a second update cycle. The three `*(true N)*` entries are in the static name table at the indicated indices but are not yet assigned wiki phase numbers.
 
 ## Report Passes
 
@@ -235,7 +235,7 @@ Ten phases produce diagnostic output. They are no-ops unless specific debug opti
 | 9 | 10 | `ReportInitialRepresentation` | Dumps the Ori IR immediately after initial lowering |
 | 96 | 112 | `ReportBeforeScheduling` | Dumps the IR as it enters the scheduling/RA stage |
 | 102 | 123 | `ReportAfterRegisterAllocation` | Dumps the IR after register allocation completes |
-| -- | *(true 120)* | `ReportBeforeRegisterAllocation` | Dumps IR before register allocation; omitted from compressed numbering (name at `0x22BD068`) |
+| — | *(true 120)* | `ReportBeforeRegisterAllocation` | Dumps IR before register allocation; omitted from compressed numbering (name at `0x22BD068`) |
 | 126 | 151 | `ReportFinalMemoryUsage` | Prints memory pool consumption summary |
 | 129 | 155 | `DumpNVuCodeText` | SASS text disassembly (`cuobjdump`-style) |
 | 130 | 156 | `DumpNVuCodeHex` | Raw SASS hex dump |
@@ -243,7 +243,7 @@ Ten phases produce diagnostic output. They are no-ops unless specific debug opti
 | 155 | 155 | `DumpNVuCodeText` | Late-pipeline duplicate: SASS text disassembly; guarded by `ctx+0x598` and `ctx+0x740` |
 | 156 | 156 | `DumpNVuCodeHex` | Late-pipeline duplicate: raw SASS hex dump; same guard as phase 155 |
 
-Phase 131 (`DebuggerBreak`) is a development-only hook that triggers a breakpoint -- it is not a report pass per se, but serves a similar diagnostic purpose. Phase 157 is its late-pipeline counterpart (empty body in release builds).
+Phase 131 (`DebuggerBreak`) is a development-only hook that triggers a breakpoint — it is not a report pass per se, but serves a similar diagnostic purpose. Phase 157 is its late-pipeline counterpart (empty body in release builds).
 
 ## GeneralOptimize Bundles
 
@@ -284,7 +284,7 @@ The 159-phase pipeline does **not** carry any opt-level metadata on the phase ob
      /* ... allocate & emit "After <name>" diagnostic string ... */
    ```
 
-   The `goto LABEL_4` branch bypasses *only* the diagnostic-string formatting block (lines 88--159); control still falls through to `execute()` at line 161. `isNoOp()` is therefore a **diagnostic-suppression flag**, not an execution gate. The pre-`execute` call at line 86 hides the "Before" string; the post-`execute` call at line 162 hides the "After" string; the `execute()` body itself runs every iteration regardless. See [Phase Manager -- Phase Dispatch Loop](phase-manager.md#phase-dispatch-loop----sub_c64f70) for the full annotated dispatch pseudocode and the `isNoOp` timing discussion.
+   The `goto LABEL_4` branch bypasses *only* the diagnostic-string formatting block (lines 88--159); control still falls through to `execute()` at line 161. `isNoOp()` is therefore a **diagnostic-suppression flag**, not an execution gate. The pre-`execute` call at line 86 hides the "Before" string; the post-`execute` call at line 162 hides the "After" string; the `execute()` body itself runs every iteration regardless. See [Phase Manager — Phase Dispatch Loop](phase-manager.md#phase-dispatch-loop----sub_c64f70) for the full annotated dispatch pseudocode and the `isNoOp` timing discussion.
 
 3. **The gate lives inside each `execute` body.** Phases that honour the `-O` level do so via an early-return prologue in their `execute()` thunk. The canonical pattern (instantiated ~82 times in the `0xC5F7xx`--`0xC60Bxx` range) is:
 
@@ -297,7 +297,7 @@ The 159-phase pipeline does **not** carry any opt-level metadata on the phase ob
    }
    ```
 
-   `sub_7DDB50` (the opt-level accessor at `0x7DDB50`, 232 bytes) reads the cached 32-bit opt_level field from `ocg_ctx + 2104` (i.e. `ctx + 0x838`), but only when knob 499 is active; otherwise it returns `1`, capping effective behaviour at O1. The knob-499 kill-switch and the iteration-budget counter at `kv->state[35940]` are documented in [Optimization Levels -- Gate Accessor](../config/opt-levels.md#gate-accessor-sub_7ddb50).
+   `sub_7DDB50` (the opt-level accessor at `0x7DDB50`, 232 bytes) reads the cached 32-bit opt_level field from `ocg_ctx + 2104` (i.e. `ctx + 0x838`), but only when knob 499 is active; otherwise it returns `1`, capping effective behaviour at O1. The knob-499 kill-switch and the iteration-budget counter at `kv->state[35940]` are documented in [Optimization Levels — Gate Accessor](../config/opt-levels.md#gate-accessor-sub_7ddb50).
 
 **Important corollary.** Because `execute()` is always invoked, every phase's timing record and pre-snapshot (written at `sub_C64F70:72--85`, before the first `isNoOp()` call) are also recorded. `--ftime` output therefore contains a row for all 159 phases in every compilation, including phases that immediately early-returned because the opt-level guard failed. Gated-off phases show near-zero elapsed time rather than being omitted.
 
@@ -361,14 +361,14 @@ Scanning all phase wrappers in `0xC5F7xx`--`0xC60Bxx` (the per-phase `execute` t
 
 | Gate predicate                                            | Wrappers | Meaning |
 |-----------------------------------------------------------|----------|---------|
-| (none -- wrapper unconditionally calls implementation)    | ~50      | Phase runs at every `-O` level |
+| (none — wrapper unconditionally calls implementation)    | ~50      | Phase runs at every `-O` level |
 | `(int)sub_7DDB50(ctx) > 1`                                | ~78      | Phase runs at O2, O3, O4, O5 |
 | `(unsigned int)sub_7DDB50(ctx) == 1 && knob_235` (or similar guarded O1 path) | 3--4 | Phase runs at O1 only when an auxiliary knob is set |
-| `> 1 \|\| (ctx+1424 == 199 && == 1)`                       | 1        | Phase 58 `GeneralOptimizeLate` -- O2+ **or** O1 with option-31 extended value 199 (see [General Optimize](general-optimize.md)) |
+| `> 1 \|\| (ctx+1424 == 199 && == 1)`                       | 1        | Phase 58 `GeneralOptimizeLate` — O2+ **or** O1 with option-31 extended value 199 (see [General Optimize](general-optimize.md)) |
 
 **Zero layer-1 wrappers** use the thresholds `> 0` (would mean "O1+"), `> 2` ("O3+"), `> 3` ("O4+"), or `> 4` ("O5 only"). Fine-grained opt-level branching (e.g. `opt_level <= 2` in `sub_78DB70`, `<= 3` in `sub_914B40`, `> 2` in `sub_8FB5D0` / `sub_9FC860` / `sub_9F8C00`, `> 3` in `sub_137EE50`) happens **inside** the implementation bodies, *after* the wrapper has already let control through. Those internal decisions toggle sub-algorithms (e.g. forward vs. reverse scheduler pass, loop-peeling depth, remat strategy) rather than enabling or disabling the phase as a whole.
 
-**The phase-to-O-level activity matrix is therefore regular**: the layer-1 wrapper either runs the phase at every level, or gates it at exactly one threshold (`opt_level > 1`). Per-phase irregularity exists only at layer 2 -- inside the implementations that the wrappers call. This collapses the "159 phases × 6 opt-levels" table to a **two-column classification** at the outer dispatch layer:
+**The phase-to-O-level activity matrix is therefore regular**: the layer-1 wrapper either runs the phase at every level, or gates it at exactly one threshold (`opt_level > 1`). Per-phase irregularity exists only at layer 2 — inside the implementations that the wrappers call. This collapses the "159 phases × 6 opt-levels" table to a **two-column classification** at the outer dispatch layer:
 
 ```text
 +------------------------------+-------------------------------------+
@@ -391,9 +391,9 @@ Scanning all phase wrappers in `0xC5F7xx`--`0xC60Bxx` (the per-phase `execute` t
 Resolving the gate with `opt_level = 0` (i.e. `sub_7DDB50` returns 0) against the 159-phase pipeline and the Category-B wrappers identified above:
 
 **At -O0, the following phases early-return (runtime no-ops):**
-Phase 14 `DoSwitchOptFirst` (gate `sub_C5F720`), 15 `OriBranchOpt` (`sub_C5F950`), 22 `OriLoopUnrolling`, 24 `OriPipelining`, 26 `OriRemoveRedundantBarriers`, 28 `SinkRemat`, 30 `DoSwitchOptSecond` (`sub_C5FC80`), 38 `OptimizeNestedCondBranches` (`sub_C5FA70`), 49 `GvnCse`, 54 `OriDoRematEarly`, 58 `GeneralOptimizeLate` (`sub_C603E0`, unless option-31 override), 63 `OriDoPredication`, 69 `OriDoRemat`, 71 `OptimizeSyncInstructions`, 72 `LateExpandSyncInstructions`, 95 `SetAfterLegalization`, 99 `OriDoSyncronization`, 100 `ApplyPostSyncronizationWars`, 110 `PostSchedule`, 115 `AdvancedScoreboardsAndOpexes`, and ~60 other Category-B phases. At `-O0` the scheduling subsystem *does* still run phase 116 `ProcessO0WaitsAndSBs`, which performs the conservative-scoreboard insertion that makes O0 code actually executable -- phase 116 is itself a Category-A wrapper that dispatches to `sub_C5E2A0` only when the target architecture has `sm_version > 0x3FFF`.
+Phase 14 `DoSwitchOptFirst` (gate `sub_C5F720`), 15 `OriBranchOpt` (`sub_C5F950`), 22 `OriLoopUnrolling`, 24 `OriPipelining`, 26 `OriRemoveRedundantBarriers`, 28 `SinkRemat`, 30 `DoSwitchOptSecond` (`sub_C5FC80`), 38 `OptimizeNestedCondBranches` (`sub_C5FA70`), 49 `GvnCse`, 54 `OriDoRematEarly`, 58 `GeneralOptimizeLate` (`sub_C603E0`, unless option-31 override), 63 `OriDoPredication`, 69 `OriDoRemat`, 71 `OptimizeSyncInstructions`, 72 `LateExpandSyncInstructions`, 95 `SetAfterLegalization`, 99 `OriDoSyncronization`, 100 `ApplyPostSyncronizationWars`, 110 `PostSchedule`, 115 `AdvancedScoreboardsAndOpexes`, and ~60 other Category-B phases. At `-O0` the scheduling subsystem *does* still run phase 116 `ProcessO0WaitsAndSBs`, which performs the conservative-scoreboard insertion that makes O0 code actually executable — phase 116 is itself a Category-A wrapper that dispatches to `sub_C5E2A0` only when the target architecture has `sm_version > 0x3FFF`.
 
-**At -O3 (the default), every Category-A wrapper runs**, and every Category-B wrapper also runs because `sub_7DDB50` returns `3` which satisfies `> 1`. The difference between -O2 and -O3 at the wrapper level is therefore **zero phases** -- both levels activate the same 159 wrappers. The -O2/-O3 distinction happens entirely inside the implementation bodies (e.g. scheduling direction in `sub_8D0640`, which branches on `opt_level > 2`). The same is true for -O3 vs. -O4 vs. -O5: identical layer-1 wrapper activation, different internal algorithm selection. Only the `-O0` and `-O1` thresholds produce layer-1 visible skips.
+**At -O3 (the default), every Category-A wrapper runs**, and every Category-B wrapper also runs because `sub_7DDB50` returns `3` which satisfies `> 1`. The difference between -O2 and -O3 at the wrapper level is therefore **zero phases** — both levels activate the same 159 wrappers. The -O2/-O3 distinction happens entirely inside the implementation bodies (e.g. scheduling direction in `sub_8D0640`, which branches on `opt_level > 2`). The same is true for -O3 vs. -O4 vs. -O5: identical layer-1 wrapper activation, different internal algorithm selection. Only the `-O0` and `-O1` thresholds produce layer-1 visible skips.
 
 This two-tier design explains why the wiki's "O-Level" column in the 159-phase table below is sparse: most phases have no entry because they always run (Category A) or because the visible O-level branching is buried inside a layer-2 implementation and does not show up at the phase wrapper at all.
 
@@ -429,7 +429,7 @@ See [Optimization Levels](../config/opt-levels.md) for the confirmed per-phase t
 > - **Report phases** → [§Report Passes](#report-passes): phases **9, 96, 102, 126, 129, 130, 131, 151, 155, 156**. The §Report Passes section explains that these are no-ops unless specific debug knobs (`DUMPIR`, `--stat=phase-wise`, `--keep`) are enabled, and that 151/155/156 are nullsubs in release.
 > - **Late-pipeline nullsubs / state-trackers** → [§Phase-by-phase deep dive (139--158)](#phase-by-phase-deep-dive-139158): phases **150, 151, 152, 154, 157, 158**. The deep-dive gives the execute thunk address, body byte count, `isNoOp()` return value, and the reason each slot is preserved (ABI compatibility with debug builds, or terminal dispatch sentinel).
 
-### Stage 1 -- Initial Setup (Phases 0--13)
+### Stage 1 — Initial Setup (Phases 0--13)
 
 Program validation, recipe application, FP16 promotion, control flow analysis, unsupported-op conversion, macro creation, initial diagnostics.
 
@@ -450,7 +450,7 @@ Program validation, recipe application, FP16 promotion, control flow analysis, u
 | 12 | 13 | `OriSanitize` | Validation |  | Validates IR consistency after initial setup transformations |  |
 | 13 | 14 | `GeneralOptimizeEarly` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (early) | [GeneralOptimize](general-optimize.md) |
 
-### Stage 2 -- Early Optimization (Phases 14--32)
+### Stage 2 — Early Optimization (Phases 14--32)
 
 Branch/switch optimization, loop canonicalization, strength reduction, software pipelining, SSA phi insertion, barrier optimization.
 
@@ -476,7 +476,7 @@ Branch/switch optimization, loop canonicalization, strength reduction, software 
 | 31 | 35 | `OriLinearReplacement` | Optimization |  | Multi-pattern affine-expression linearizer; eleven-case opcode dispatch collapses `IADD`/`IMAD`/`SHL`/`SEL`/`MOV` chains into single LEA-style IADD3/IMAD.WIDE; impl `sub_7EC4B0` (7,084 B, 241 BBs, 71 callees); knobs 487 + 416; 29-bucket memoization cache | [Linear Replacement](linear-replacement.md) |
 | 32 | 36 | `CompactLocalMemory` | Optimization |  | Compacts local memory allocations by eliminating dead slots and reordering |  |
 
-### Stage 3 -- Mid-Level Optimization (Phases 33--52)
+### Stage 3 — Mid-Level Optimization (Phases 33--52)
 
 GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument enforcement.
 
@@ -503,7 +503,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | 51 | 59 | `ExtractShaderConstsFinal` | Optimization |  | Final shader constant extraction pass (after GVN may expose new constants); impl **shared** with phase 34 = `sub_1C72640` (4,582 B); called via `sub_C5FDD0` with `is_final_pos = 1`, the finalize sub-step `sub_1C68760` runs and commits bank allocations | [Shader Const Extraction](shader-const-extraction.md) |
 | 52 | 60 | `OriReplaceEquivMultiDefMov` | Optimization |  | Eliminates redundant multi-definition move instructions with equivalent sources |  |
 
-### Stage 4 -- Late Optimization (Phases 53--77)
+### Stage 4 — Late Optimization (Phases 53--77)
 
 Predication, rematerialization, loop fusion, varying propagation, sync optimization, phi destruction, uniform register conversion.
 
@@ -524,9 +524,9 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 65 | 75 | `GeneralOptimizeLate2` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (late 2nd) | [GeneralOptimize](general-optimize.md) |
 | 66 | 76 | `OriHoistInvariantsLate` | Optimization |  | LICM: hoists loop-invariant code (late, after predication may expose new invariants) | [Loop Passes](loop-passes.md) |
 | 67 | 78 | `DoKillMovement` | Optimization | **> 2** | Sinks kill markers downward toward last use to regularize allocator spill heuristic; wrapper `sub_C5FE00` (34 B) tail-calls **shared engine** `sub_8FFDE0` (573 B) with `esi=0`, direction `+1` | [Instruction Movement](instruction-movement.md) |
-| -- | -- | *sibling A* (unnamed) | Optimization | **> 2** | Kill-class upward movement; wrapper `sub_C5FE30` (34 B), engine `esi=1`, direction `−1`; shares `"HoistInvariants"` named-phase token with `DoKillMovement` (no separate DUMPIR target) | [Instruction Movement](instruction-movement.md) |
+| — | — | *sibling A* (unnamed) | Optimization | **> 2** | Kill-class upward movement; wrapper `sub_C5FE30` (34 B), engine `esi=1`, direction `−1`; shares `"HoistInvariants"` named-phase token with `DoKillMovement` (no separate DUMPIR target) | [Instruction Movement](instruction-movement.md) |
 | 68 | 79 | `DoTexMovement` | Optimization | **> 2** | Hoists texture fetches upward toward latest safe hoist point to hide latency; wrapper `sub_C5FE60` (34 B), engine `esi=2`, direction `−1`; post-cleanup via `sub_785E20` | [Instruction Movement](instruction-movement.md) |
-| -- | -- | *sibling B* (unnamed) | Optimization | **> 2** | TEX-class upward movement without post-cleanup (skips `sub_785E20`); wrapper `sub_C5FE90` (34 B), engine `esi=3`, direction `−1`; shares `"HoistInvariants"` named-phase token with `DoTexMovement` | [Instruction Movement](instruction-movement.md) |
+| — | — | *sibling B* (unnamed) | Optimization | **> 2** | TEX-class upward movement without post-cleanup (skips `sub_785E20`); wrapper `sub_C5FE90` (34 B), engine `esi=3`, direction `−1`; shares `"HoistInvariants"` named-phase token with `DoTexMovement` | [Instruction Movement](instruction-movement.md) |
 | 69 | 80 | `OriDoRemat` | Optimization | **> 1** | Late rematerialization: recomputes values exposed by predication and fusion | [Rematerialization](rematerialization.md) |
 | 70 | 81 | `OriPropagateVaryingSecond` | Optimization |  | Propagates varying annotations (2nd pass, after predication changes control flow) | [Varying Propagation](varying-propagation.md) |
 | 71 | 82 | `OptimizeSyncInstructions` | Optimization | **> 1** | Eliminates and simplifies synchronization instructions | [Sync & Barriers](sync-barriers.md) |
@@ -537,7 +537,7 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 76 | 88 | `UpdateAfterOptimize` | Cleanup |  | Rebuilds IR metadata invalidated by the late optimization group |  |
 | 77 | 89 | `AdvancedPhaseLateConvUnSup` | Gate |  | Type B: `0xC5EA50` dispatches `ctx+0x630` vtable+0x178 (slot 376); drives `LateExpansionUnsupportedOps` [78] | [Late Legalization](late-legalization.md) |
 
-### Stage 5 -- Legalization (Phases 78--96)
+### Stage 5 — Legalization (Phases 78--96)
 
 Late unsupported-op expansion, backward copy propagation, GMMA fixup, register attributes, final validation.
 
@@ -563,7 +563,7 @@ Late unsupported-op expansion, backward copy propagation, GMMA fixup, register a
 | 95 | 111 | `SetAfterLegalization` | Cleanup | **> 1** | Sets post-legalization flag on the compilation context |  |
 | 96 | 112 | `ReportBeforeScheduling` | Reporting |  | Dumps IR before scheduling (no-op unless diagnostic options enabled) |  |
 
-### Stage 6 -- Scheduling & Register Allocation (Phases 97--103)
+### Stage 6 — Scheduling & Register Allocation (Phases 97--103)
 
 Synchronization insertion, WAR fixup, register allocation, 64-bit register handling.
 
@@ -577,7 +577,7 @@ Synchronization insertion, WAR fixup, register allocation, 64-bit register handl
 | 102 | 123 | `ReportAfterRegisterAllocation` | Reporting |  | Dumps IR after register allocation (no-op unless diagnostic options enabled) |  |
 | 103 | 125 | `Get64bRegComponents` | RegAlloc |  | Splits 64-bit register pairs into 32-bit components for architectures that require it | [RegAlloc Architecture](../regalloc/overview.md) |
 
-### Stage 7 -- Post-RA & Post-Scheduling (Phases 104--116)
+### Stage 7 — Post-RA & Post-Scheduling (Phases 104--116)
 
 Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboard generation.
 
@@ -599,7 +599,7 @@ Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboard 
 
 Scoreboard generation has two mutually exclusive paths. At `-O1` and above, phase 115 (`AdvancedScoreboardsAndOpexes`) runs the full dependency analysis using `sub_A36360` (52 KB) and `sub_A23CF0` (54 KB DAG list scheduler), while phase 116 is a no-op. At `-O0`, phase 115 is a no-op and phase 116 inserts conservative stall counts.
 
-### Stage 8 -- Mercury Backend (Phases 117--122)
+### Stage 8 — Mercury Backend (Phases 117--122)
 
 SASS instruction encoding, expansion, WAR generation, opex computation, microcode emission.
 
@@ -614,7 +614,7 @@ SASS instruction encoding, expansion, WAR generation, opex computation, microcod
 
 "Mercury" is NVIDIA's internal name for the SASS encoding framework. WAR generation runs in two passes (119, 121) because instruction expansion in phase 118 can introduce new write-after-read hazards. The MercConverter infrastructure (`sub_9F1A90`, 35 KB) drives instruction-level legalization via a visitor pattern dispatched through `sub_9ED2D0` (25 KB opcode switch).
 
-### Stage 9 -- Post-Mercury (Phases 123--131)
+### Stage 9 — Post-Mercury (Phases 123--131)
 
 Register map computation, diagnostics, debug output.
 
@@ -630,7 +630,7 @@ Register map computation, diagnostics, debug output.
 | 130 | 156 | `DumpNVuCodeHex` | Reporting |  | Dumps raw SASS binary as hex |  |
 | 131 | 157 | `DebuggerBreak` | Cleanup |  | Development hook: triggers a debugger breakpoint at this pipeline position |  |
 
-### Stage 10 -- Late Cleanup & Late Pipeline (Phases 132--158)
+### Stage 10 — Late Cleanup & Late Pipeline (Phases 132--158)
 
 Late merge operations, late unsupported-op expansion, high-pressure live range splitting, Mercury encoding pipeline, register map computation, diagnostics, and debug hooks.
 
@@ -643,7 +643,7 @@ Late merge operations, late unsupported-op expansion, high-pressure live range s
 | 136 | 91 | `LateMergeEquivalentConditionalFlow` | Optimization |  | Second conditional flow merge pass (catches cases exposed by late transforms) |  |
 | 137 | 93 | `LateExpansionUnsupportedOpsMid` | Lowering |  | Mid-late unsupported-op expansion (between the two merge passes) | [Late Legalization](late-legalization.md) |
 | 138 | 98 | `OriSplitHighPressureLiveRanges` | RegAlloc |  | Last-resort live range splitter when register pressure exceeds hardware limits | [RegAlloc Architecture](../regalloc/overview.md) |
-Columns: `#` (wiki number) = `Bin#` (binary factory index) for all late-pipeline phases (no renumbering gap from phase 139 onward). `Execute` = address of the vtable-slot-0 `execute(ctx)` function allocated by `sub_C60D30` (factory cases 139--158 at lines 1006--1125); worker / tail-call target addresses are listed in the Description column. `Gate` = the runtime predicate checked inside execute (if any) before the body runs; "unconditional" means the execute body has no skip branch. SM activation is `all` unless marked otherwise -- the only phase with an SM-version check in its execute body is 139.
+Columns: `#` (wiki number) = `Bin#` (binary factory index) for all late-pipeline phases (no renumbering gap from phase 139 onward). `Execute` = address of the vtable-slot-0 `execute(ctx)` function allocated by `sub_C60D30` (factory cases 139--158 at lines 1006--1125); worker / tail-call target addresses are listed in the Description column. `Gate` = the runtime predicate checked inside execute (if any) before the body runs; "unconditional" means the execute body has no skip branch. SM activation is `all` unless marked otherwise — the only phase with an SM-version check in its execute body is 139.
 
 | # = Bin# | Phase Name | Category | Execute | Gate | Description (algorithm / nullsub status / cross-ref) |
 |---|---|---|---|---|---|
@@ -651,24 +651,24 @@ Columns: `#` (wiki number) = `Bin#` (binary factory index) for all late-pipeline
 | 140 | `PostFixUp` | Cleanup | `sub_C5E270` (13 B) | unconditional | Tail-calls `target.vtable[+0x148]`; each Mercury target installs a target-specific post-fixup method (texture-barrier placement on Volta, scoreboard packing on Turing+, etc.), non-Mercury targets install a nullptr-safe stub. `isNoOp=0`. |
 | 141 | `MercConverter` | Encoding | `sub_C60300` (8 B thunk) -> `sub_9F3760` | `cu[+1398] & 0x20` (bit 5 inside body) | Second MercConverter pass re-lowering PTX-derived opcodes introduced by optimization (rematerialization, peephole, loop xforms); dispatches on `target.sm_code` to the per-generation path, then routes through `sub_9F1A90` / `sub_9ED2D0` (the 35 KB opcode dispatcher reused from phase 5 `ConvertUnsupportedOps`). After completion every IR instruction carries a valid SASS opcode. See [Mercury: MercConverter](../codegen/mercury.md#mercconverter-operand-reorganization-for-encoding). |
 | 142 | `MercEncodeAndDecode` | Encoding | `sub_C60310` (8 B thunk) -> `sub_18F21F0` | `ctx[+0x571] & 0x02` (bit 1) AND `ctx[+0x788] != NULL` (Mercury ctx present) | Encodes every Ori IR node to a Mercury node via the master encoder `sub_6D9690`, then round-trip-decodes each node to verify the binary encoding is reversible. After this phase all subsequent pipeline stages operate on Mercury nodes exclusively. See [Mercury: Stage 1 MercEncodeAndDecode](../codegen/mercury.md#stage-1-mercencodeanddecode-roundtrip-verification). |
-| 143 | `MercExpandInstructions` | Encoding | `sub_C60320` (16 B) -> `sub_C3DFC0` (102 B orchestrator) | `ctx[+0x570] & 0x20` (bit 5) | Expands compound Mercury pseudo-instructions -- multi-word branches, multi-step LDG/STG sequences, sm_120 TCGEN05 macros -- into their primitive SASS sequences. `sub_C3DFC0` walks the Mercury list via `sub_C3CC60` and invokes each node's `vtable[+0x40]` Expand hook. See [Mercury: Stage 2 MercExpandInstructions](../codegen/mercury.md#stage-2-mercexpandinstructions-pseudo-instruction-expansion). |
-| 144 | `MercGenerateWARs1` | Encoding | `sub_C60340` (16 B) -> `sub_6FC240` (47 B) | `ctx[+0x570] & 0x80` (bit 7, `js` opcode test) | First WAR (write-after-read) hazard annotation pass -- walks the Mercury node list and tags each consumer with the stall counts the target's hazard model requires. Runs before `MercGenerateOpex` (145). See [Mercury: Stage 3 MercGenerateWARs](../codegen/mercury.md#stage-3-mercgeneratewars-war-hazard-annotation). |
-| 145 | `MercGenerateOpex` | Encoding | `sub_C60380` (16 B) -> `sub_7032A0` (472 B) | `ctx[+0x570] & 0x40` (bit 6) | Generates Opex (operand-exchange) annotations -- the per-instruction control bits that tell the hardware which physical register bank to read each operand from, required by the sm_90+ banked-register-file microarchitecture to avoid read-port conflicts. See [Mercury: Stage 4 MercGenerateOpex](../codegen/mercury.md#stage-4-mercgenerateopex-opex-generation). |
+| 143 | `MercExpandInstructions` | Encoding | `sub_C60320` (16 B) -> `sub_C3DFC0` (102 B orchestrator) | `ctx[+0x570] & 0x20` (bit 5) | Expands compound Mercury pseudo-instructions — multi-word branches, multi-step LDG/STG sequences, sm_120 TCGEN05 macros — into their primitive SASS sequences. `sub_C3DFC0` walks the Mercury list via `sub_C3CC60` and invokes each node's `vtable[+0x40]` Expand hook. See [Mercury: Stage 2 MercExpandInstructions](../codegen/mercury.md#stage-2-mercexpandinstructions-pseudo-instruction-expansion). |
+| 144 | `MercGenerateWARs1` | Encoding | `sub_C60340` (16 B) -> `sub_6FC240` (47 B) | `ctx[+0x570] & 0x80` (bit 7, `js` opcode test) | First WAR (write-after-read) hazard annotation pass — walks the Mercury node list and tags each consumer with the stall counts the target's hazard model requires. Runs before `MercGenerateOpex` (145). See [Mercury: Stage 3 MercGenerateWARs](../codegen/mercury.md#stage-3-mercgeneratewars-war-hazard-annotation). |
+| 145 | `MercGenerateOpex` | Encoding | `sub_C60380` (16 B) -> `sub_7032A0` (472 B) | `ctx[+0x570] & 0x40` (bit 6) | Generates Opex (operand-exchange) annotations — the per-instruction control bits that tell the hardware which physical register bank to read each operand from, required by the sm_90+ banked-register-file microarchitecture to avoid read-port conflicts. See [Mercury: Stage 4 MercGenerateOpex](../codegen/mercury.md#stage-4-mercgenerateopex-opex-generation). |
 | 146 | `MercGenerateWARs2` | Encoding | `sub_C60360` (16 B) -> `sub_6FC240` | `ctx[+0x570] & 0x80` (bit 7) | Second WAR pass, byte-for-byte identical to phase 144 except for the vtable store. Two WAR passes bracket Opex (145) because Opex can rewrite operand banks and thereby introduce new write-to-read distances that must be re-annotated. See [Mercury: Stage 3 MercGenerateWARs](../codegen/mercury.md#stage-3-mercgeneratewars-war-hazard-annotation). |
 | 147 | `MercGenerateSassUCode` | Encoding | `sub_C603A0` (16 B) -> `sub_6EEE90` (1472 B) -> `sub_6E4110` (24 KB) | `ctx[+0x571] & 0x01` (bit 0) | Terminal Mercury stage: walks the fully-annotated Mercury node list and emits the final SASS binary microcode bytes that end up in the ELF `.text` section. `sub_6EEE90` is a 0x110-byte stack-scratch wrapper that calls `sub_6E8EB0` for per-function setup, then hands off to the 24 KB emitter `sub_6E4110`. See [Mercury: Stage 5 MercGenerateSassUCode](../codegen/mercury.md#stage-5-mercgeneratesassucode-final-sass-emission) and [SASS Printing](../codegen/sass-printing.md). |
 | 148 | `ComputeVCallRegUse` | RegAlloc | `sub_C5E160` (13 B) | unconditional | Tail-calls `target.vtable[+0x2B8]` to compute register usage at virtual call sites (indirect calls, function pointers). The result is written into the target-side register-use tracker and later emitted as `EIATTR_EXTERNS` / `EIATTR_INDIRECT_BRANCH_TARGETS` metadata so the CUDA runtime can honour conservative register budgets for callees whose footprint is unknown at compile time. |
 | 149 | `CalcRegisterMap` | RegAlloc | `sub_C603C0` (32 B) -> `sub_95A350` (6456 B) | `ctx[+0x590] & 0x02` (bit 1) | Computes the final physical-to-logical register mapping that gets emitted as `EIATTR_REGCOUNT` / `EIATTR_MIN_STACK_SIZE` metadata. The execute thunk indirects through `ctx.target[+0x18]` (the SM-specific sub-target) before tail-calling `sub_95A350` (the actual mapping builder). The map is needed by the CUDA driver to inflate saved contexts during preemption and by NVRTC for relocation. See [RegAlloc Architecture](../regalloc/overview.md). |
-| 150 | `UpdateAfterPostRegAlloc` | Cleanup | **`nullsub_630` at `0xC5E110` (2 B)** | -- | **True no-op in release ptxas.** Empty `repz ret` body; `isNoOp()` = 1 (`sub_C5E130`, 6 B) suppresses the "Before/After" diagnostic frame. Slot retained for ABI compatibility with debug builds where the body would be `PhaseManager::RebuildAfterPostRegAlloc`. |
-| 151 | `ReportFinalMemoryUsage` | Reporting | **`nullsub_629` at `0xC5E0E0` (2 B)** | -- | **True no-op.** `isNoOp()` = 1 (`sub_C5E100`). Debug builds would dump the memory-arena high-water mark to stderr here; release strips the body entirely. |
-| 152 | `AdvancedPhaseOriPhaseEncoding` | Gate | `sub_C5E0B0` (11 B) | unconditional | Type-C gate: `movl dword [rsi+0x610], 0x15; ret` -- writes `pipeline_progress = 21` (the final value of the monotonic `ctx[+0x610]` counter). Downstream consumers: `sub_8C0270` checks `*(ctx+0x610) == 19`; scoreboard guards check values 16--19. `isNoOp()` = 1 (`sub_C5E0D0`) because this is state-tracking, not an IR transform. |
-| 153 | `FormatCodeList` | Encoding | `sub_C5E080` (13 B) | unconditional | The one late-pipeline phase that indirects through `ctx[+0x648]` (the code-list / ELF-section emitter) rather than `ctx[+0x630]` (target) or `ctx[+0x788]` (Mercury). Tail-calls `emitter.vtable[+0x10]` -- the "format" entry point that serialises the fully-encoded instructions into the final ELF text-section layout (addresses, relocations, alignment). `isNoOp=0`. See [Mercury](../codegen/mercury.md). |
-| 154 | `UpdateAfterFormatCodeList` | Cleanup | **`nullsub_628` at `0xC5E050` (2 B)** | -- | **True no-op.** `isNoOp()` = 1 (`sub_C5E070`). Hook point kept in case a backend needs to re-sync IR metadata after FormatCodeList reorders instructions, but no release target uses it. |
-| 155 | `DumpNVuCodeText` | Reporting | `sub_C60420` (54 B) | `ctx[+0x598] > 0 && ctx[+0x740] != NULL && *ctx[+0x740] != NULL` | Guarded by `-dump_nvu_code_text=1` knob; the full gate cascade is retained, but the tail-call target `0x67FF60` resolves to **`nullsub_31` (2 B)** -- the actual text dumper has been stripped from release ptxas, leaving the gate as an orphan that falls through to a stub. Effective no-op. See [SASS Printing](../codegen/sass-printing.md). |
+| 150 | `UpdateAfterPostRegAlloc` | Cleanup | **`nullsub_630` at `0xC5E110` (2 B)** | — | **True no-op in release ptxas.** Empty `repz ret` body; `isNoOp()` = 1 (`sub_C5E130`, 6 B) suppresses the "Before/After" diagnostic frame. Slot retained for ABI compatibility with debug builds where the body would be `PhaseManager::RebuildAfterPostRegAlloc`. |
+| 151 | `ReportFinalMemoryUsage` | Reporting | **`nullsub_629` at `0xC5E0E0` (2 B)** | — | **True no-op.** `isNoOp()` = 1 (`sub_C5E100`). Debug builds would dump the memory-arena high-water mark to stderr here; release strips the body entirely. |
+| 152 | `AdvancedPhaseOriPhaseEncoding` | Gate | `sub_C5E0B0` (11 B) | unconditional | Type-C gate: `movl dword [rsi+0x610], 0x15; ret` — writes `pipeline_progress = 21` (the final value of the monotonic `ctx[+0x610]` counter). Downstream consumers: `sub_8C0270` checks `*(ctx+0x610) == 19`; scoreboard guards check values 16--19. `isNoOp()` = 1 (`sub_C5E0D0`) because this is state-tracking, not an IR transform. |
+| 153 | `FormatCodeList` | Encoding | `sub_C5E080` (13 B) | unconditional | The one late-pipeline phase that indirects through `ctx[+0x648]` (the code-list / ELF-section emitter) rather than `ctx[+0x630]` (target) or `ctx[+0x788]` (Mercury). Tail-calls `emitter.vtable[+0x10]` — the "format" entry point that serialises the fully-encoded instructions into the final ELF text-section layout (addresses, relocations, alignment). `isNoOp=0`. See [Mercury](../codegen/mercury.md). |
+| 154 | `UpdateAfterFormatCodeList` | Cleanup | **`nullsub_628` at `0xC5E050` (2 B)** | — | **True no-op.** `isNoOp()` = 1 (`sub_C5E070`). Hook point kept in case a backend needs to re-sync IR metadata after FormatCodeList reorders instructions, but no release target uses it. |
+| 155 | `DumpNVuCodeText` | Reporting | `sub_C60420` (54 B) | `ctx[+0x598] > 0 && ctx[+0x740] != NULL && *ctx[+0x740] != NULL` | Guarded by `-dump_nvu_code_text=1` knob; the full gate cascade is retained, but the tail-call target `0x67FF60` resolves to **`nullsub_31` (2 B)** — the actual text dumper has been stripped from release ptxas, leaving the gate as an orphan that falls through to a stub. Effective no-op. See [SASS Printing](../codegen/sass-printing.md). |
 | 156 | `DumpNVuCodeHex` | Reporting | `sub_C60460` (~48 B) | `ctx[+0x598] > 0 && ctx[+0x740] != NULL` | Mirror image of phase 155 with a simpler gate (no extra pointer indirection) and tail-call target `0x67FF50` = **`nullsub_30` (2 B)**. Same conclusion: stripped from release, orphan gate only. See [SASS Printing](../codegen/sass-printing.md). |
-| 157 | `DebuggerBreak` | Cleanup | **`nullsub_627` at `0xC5DFE0` (2 B)** | -- | Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so the "Before/After" diagnostic frame still fires -- useful when running ptxas under `gdb` with `b *0xC5DFE0` because the dispatch loop will print `"Before DebuggerBreak"` / `"After DebuggerBreak"` on either side of the breakpoint. |
-| 158 | `NOP` | Cleanup | **`nullsub_626` at `0xC5DFB0` (2 B)** | -- | Terminal sentinel. The 159-phase dispatch loop (`sub_C64F70`) iterates `a1[0] .. a1[158]` and needs a final slot to anchor the loop end; `NOP` is that anchor. `isNoOp()` = 0 (`sub_C5DFD0`), so the final `"Before NOP"` / `"After NOP"` prints appear in verbose dumps as the explicit terminator for `"All Phases Summary"`. |
+| 157 | `DebuggerBreak` | Cleanup | **`nullsub_627` at `0xC5DFE0` (2 B)** | — | Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so the "Before/After" diagnostic frame still fires — useful when running ptxas under `gdb` with `b *0xC5DFE0` because the dispatch loop will print `"Before DebuggerBreak"` / `"After DebuggerBreak"` on either side of the breakpoint. |
+| 158 | `NOP` | Cleanup | **`nullsub_626` at `0xC5DFB0` (2 B)** | — | Terminal sentinel. The 159-phase dispatch loop (`sub_C64F70`) iterates `a1[0] .. a1[158]` and needs a final slot to anchor the loop end; `NOP` is that anchor. `isNoOp()` = 0 (`sub_C5DFD0`), so the final `"Before NOP"` / `"After NOP"` prints appear in verbose dumps as the explicit terminator for `"All Phases Summary"`. |
 
-Phases 139--158 are 20 late-pipeline phases whose vtable pointers range from `off_22BEB80` to `off_22BEE78` (40-byte stride, 20 * 0x28 bytes). All 20 have names in the static table at `off_22BD0C0` (159 entries -- the earlier wiki note claiming "139 entries" was based on a compressed model that excluded these phases). Name resolution for the dispatch-loop diagnostic (`sub_C64F70`) goes through the static table indexed by `getIndex()` at vtable+8.
+Phases 139--158 are 20 late-pipeline phases whose vtable pointers range from `off_22BEB80` to `off_22BEE78` (40-byte stride, 20 * 0x28 bytes). All 20 have names in the static table at `off_22BD0C0` (159 entries — the earlier wiki note claiming "139 entries" was based on a compressed model that excluded these phases). Name resolution for the dispatch-loop diagnostic (`sub_C64F70`) goes through the static table indexed by `getIndex()` at vtable+8.
 
 **Vtable layout (3 slots, 24 bytes per object, `off_22BExxx`).** Every late-pipeline phase object has exactly three virtual methods:
 
@@ -676,9 +676,9 @@ Phases 139--158 are 20 late-pipeline phases whose vtable pointers range from `of
 |---|---|---|---|
 | 0 | vtbl+0 | `execute(ctx)` | Entry point called by `sub_C64F70` dispatch loop (`LABEL_4`). See per-phase details below. |
 | 1 | vtbl+8 | `getIndex()` | Returns the constant 139--158 (`mov eax, 0x8b..0x9e; ret`). Index into `off_22BD0C0` for the name string. Always 6 bytes. |
-| 2 | vtbl+16 | `isNoOp()` | Either `xor eax,eax; ret` (3 bytes, always false) or `mov eax,1; ret` (6 bytes, always true). **Does not skip execute** -- it suppresses the `"Before <phase>"` / `"After <phase>"` diagnostic print around the call (see `sub_C64F70:86`, the `goto LABEL_4` branch falls into `execute` either way). |
+| 2 | vtbl+16 | `isNoOp()` | Either `xor eax,eax; ret` (3 bytes, always false) or `mov eax,1; ret` (6 bytes, always true). **Does not skip execute** — it suppresses the `"Before <phase>"` / `"After <phase>"` diagnostic print around the call (see `sub_C64F70:86`, the `goto LABEL_4` branch falls into `execute` either way). |
 
-The phase object itself is 16 bytes: `[0]=vtable*`, `[8]=ctx*`. No per-phase instance state -- all state lives in the shared OCG context passed to every `execute()` call.
+The phase object itself is 16 bytes: `[0]=vtable*`, `[8]=ctx*`. No per-phase instance state — all state lives in the shared OCG context passed to every `execute()` call.
 
 **`isNoOp` statistics.** 16 of 20 phases return 0 from `isNoOp()` (diagnostics printed). Exactly **4 phases** return 1 (diagnostics suppressed): 150, 151, 152, 154. Of those, three (150, 151, 154) also have `nullsub` execute bodies and are truly vestigial; phase 152 has an 11-byte body that writes `pipeline_progress = 21` but is hidden from dumps because it is a state-tracking marker, not an IR transform.
 
@@ -686,7 +686,7 @@ The phase object itself is 16 bytes: `[0]=vtable*`, `[8]=ctx*`. No per-phase ins
 
 Each entry gives: execute function address, body size in bytes, vtable address, gate condition (if any), and pseudocode. All addresses are verified via (a) the factory switch in `sub_C60D30` (cases 139--158 at lines 1006--1125), (b) the raw pointer-table dump at `0x22BEB80`--`0x22BEE78` read from `.rodata`, and (c) direct `objdump` of the `.text` segment.
 
-**Phase 139 `ProcessO0WaitsAndSBs`** -- `vtable=0x22BEB80` -- execute `sub_C5E2A0` (41 bytes, IDA missed it, recovered via objdump).
+**Phase 139 `ProcessO0WaitsAndSBs`** — `vtable=0x22BEB80` — execute `sub_C5E2A0` (41 bytes, IDA missed it, recovered via objdump).
 Runs on sm50+ only. Tail-dispatches to the target's `ApplyConservativeScoreboards` hook (vtable slot `0x150`) with flag `edx=1` (O0 mode). On sm30 / sm_3x and pre-sm50 architectures the phase returns immediately because the legacy shader-processor scoreboard model does not apply.
 ```asm
 mov  rdi, [rsi+0x630]          ; rdi = ocg_ctx->target
@@ -700,7 +700,7 @@ ret
 ```
 `isNoOp` returns 0 (`sub_C5E2E0`, 3 bytes). No pipeline_progress write.
 
-**Phase 140 `PostFixUp`** -- `vtable=0x22BEBA8` -- execute `sub_C5E270` (13 bytes).
+**Phase 140 `PostFixUp`** — `vtable=0x22BEBA8` — execute `sub_C5E270` (13 bytes).
 Unconditional target-hook dispatch. Every Mercury target registers a post-fixup method at vtable slot `0x148`; non-Mercury targets install a nullptr-safe stub. The method performs target-specific cleanup after schedule and register allocation are final (examples: texture barrier placement on Volta, scoreboard packing on Turing+).
 ```asm
 mov  rdi, [rsi+0x630]          ; target
@@ -709,7 +709,7 @@ jmp  [rax+0x148]                ; target->PostFixUp(target)
 ```
 `isNoOp` = 0 (`sub_C5E290`).
 
-**Phase 141 `MercConverter`** -- `vtable=0x22BEBD0` -- execute `sub_C60300` (8 bytes, thunk) -> body `sub_9F3760`.
+**Phase 141 `MercConverter`** — `vtable=0x22BEBD0` — execute `sub_C60300` (8 bytes, thunk) -> body `sub_9F3760`.
 Second MercConverter invocation, re-running the 35 KB opcode-dispatch machinery from phase 5 (`ConvertUnsupportedOps`) on instructions introduced by optimization passes (rematerialization, peephole, loop transforms) that may carry unlegalized PTX-derived opcodes. Internal gate `testb $0x10, [rdi+0x570]` (bit 4) inside `sub_9F3760` makes the body an immediate return on non-Mercury targets. When enabled the body dispatches on `target.sm_code` at `[rdi+0x174]` with the arch constants `0x9000`/`0x7005`/`0x7001`/`0x6001` to pick a per-generation conversion path. After completion every IR instruction carries a valid SASS opcode ready for encoding. See [Mercury](../codegen/mercury.md) `sub_9F1A90` / `sub_9ED2D0` for the full opcode dispatch.
 ```asm
 ; execute thunk
@@ -722,7 +722,7 @@ jz   .return
 ...
 ```
 
-**Phase 142 `MercEncodeAndDecode`** -- `vtable=0x22BEBF8` -- execute `sub_C60310` (8 bytes, thunk) -> body `sub_18F21F0`.
+**Phase 142 `MercEncodeAndDecode`** — `vtable=0x22BEBF8` — execute `sub_C60310` (8 bytes, thunk) -> body `sub_18F21F0`.
 Encodes each Ori IR node to its Mercury-node form via `sub_6D9690` (the master encoder), then round-trip-decodes to verify the binary encoding is reversible. After this phase all subsequent pipeline stages operate on Mercury nodes exclusively. Internal gate `testb $0x2, [rdi+0x571]` (bit 1 of the high byte of `ctx+0x570`) makes it a no-op when Mercury is not the active backend.
 ```asm
 mov  rdi, rsi
@@ -737,7 +737,7 @@ jz   .return
 ...
 ```
 
-**Phase 143 `MercExpandInstructions`** -- `vtable=0x22BEC20` -- execute `sub_C60320` (16 bytes).
+**Phase 143 `MercExpandInstructions`** — `vtable=0x22BEC20` — execute `sub_C60320` (16 bytes).
 Expands compound Mercury pseudo-instructions (e.g. multi-word branches, multi-step LDG/STG sequences, sm_120 TCGEN05 macros) into their SASS primitives. Gated by `ctx+0x570` bit 5; the Mercury backend sets this bit during its init recipe. Tail-calls `sub_C3DFC0` (102 bytes, an orchestrator that calls `sub_C3CC60` to iterate the Mercury list and invokes per-instruction `vtable+0x40` `Expand` hooks). `sub_C3DFC0` also emits the `"After MercExpand"` diagnostic on completion.
 ```asm
 testb [rsi+0x570], 0x20        ; bit 5: MercExpandEnable
@@ -748,7 +748,7 @@ mov  rdi, [rsi+0x788]          ; rdi = Mercury context
 jmp  0xC3DFC0                  ; RunMercExpandPass
 ```
 
-**Phase 144 `MercGenerateWARs1`** -- `vtable=0x22BEC48` -- execute `sub_C60340` (16 bytes).
+**Phase 144 `MercGenerateWARs1`** — `vtable=0x22BEC48` — execute `sub_C60340` (16 bytes).
 First WAR-hazard annotation pass. Walks the Mercury node list and tags each consumer with the write-after-read stall counts needed to satisfy the target's hazard model. Runs after `MercExpandInstructions` (143) but before `MercGenerateOpex` (145); the "pass-1" naming reflects that two WAR passes are needed because Opex (145) can rewrite operand banks and introduce new write-to-read distances that pass 146 then re-annotates. Gated by the sign bit (`cmpb $0, [rsi+0x570]; js` i.e. bit 7) of `ctx+0x570`.
 ```asm
 cmpb [rsi+0x570], 0             ; js = "if signed" = bit 7 set
@@ -759,8 +759,8 @@ mov  rdi, [rsi+0x788]
 jmp  0x6FC240                  ; RunMercWARsPass (47 bytes)
 ```
 
-**Phase 145 `MercGenerateOpex`** -- `vtable=0x22BEC70` -- execute `sub_C60380` (16 bytes).
-Generates Opex (operand-exchange) annotations per instruction -- extra control bits that tell the hardware which physical register bank to read each operand from, required by the sm_90+ banked-register file to avoid bank conflicts. Gated by `ctx+0x570` bit 6. Tail-calls `sub_7032A0` (472 bytes, `RunMercOpexPass`). See [Mercury](../codegen/mercury.md) Stage 4.
+**Phase 145 `MercGenerateOpex`** — `vtable=0x22BEC70` — execute `sub_C60380` (16 bytes).
+Generates Opex (operand-exchange) annotations per instruction — extra control bits that tell the hardware which physical register bank to read each operand from, required by the sm_90+ banked-register file to avoid bank conflicts. Gated by `ctx+0x570` bit 6. Tail-calls `sub_7032A0` (472 bytes, `RunMercOpexPass`). See [Mercury](../codegen/mercury.md) Stage 4.
 ```asm
 testb [rsi+0x570], 0x40
 jnz  .active
@@ -770,7 +770,7 @@ mov  rdi, [rsi+0x788]
 jmp  0x7032A0
 ```
 
-**Phase 146 `MercGenerateWARs2`** -- `vtable=0x22BEC98` -- execute `sub_C60360` (16 bytes).
+**Phase 146 `MercGenerateWARs2`** — `vtable=0x22BEC98` — execute `sub_C60360` (16 bytes).
 Second WAR-hazard pass. Identical instruction body to phase 144 (same `sub_6FC240` tail-call, same bit-7 gate); the two invocations bracket phase 145 (Opex) which may rewrite operand banks and thereby introduce new write-to-read distances that need re-annotation. Opcode bytes are byte-for-byte identical to phase 144 modulo the vtable store before it.
 ```asm
 cmpb [rsi+0x570], 0
@@ -781,7 +781,7 @@ mov  rdi, [rsi+0x788]
 jmp  0x6FC240                  ; same entry as phase 144
 ```
 
-**Phase 147 `MercGenerateSassUCode`** -- `vtable=0x22BECC0` -- execute `sub_C603A0` (16 bytes).
+**Phase 147 `MercGenerateSassUCode`** — `vtable=0x22BECC0` — execute `sub_C603A0` (16 bytes).
 The terminal Mercury stage: walks the fully-annotated Mercury node list and emits the final SASS binary microcode bytes that will end up in the ELF `.text` section. Gated by `ctx+0x571` bit 0 (the lowest bit of the second flag byte). Tail-calls `sub_6EEE90` (1472 bytes), which is a thin wrapper that allocates a 0x110-byte stack scratch area, invokes `sub_6E8EB0` for per-function setup, then calls into `sub_6E4110` (24 KB, the real emitter documented in [Mercury](../codegen/mercury.md) Stage 5).
 ```asm
 testb [rsi+0x571], 0x1
@@ -792,7 +792,7 @@ mov  rdi, [rsi+0x788]
 jmp  0x6EEE90                  ; MercGenerateSassUCode::Run
 ```
 
-**Phase 148 `ComputeVCallRegUse`** -- `vtable=0x22BECE8` -- execute `sub_C5E160` (13 bytes).
+**Phase 148 `ComputeVCallRegUse`** — `vtable=0x22BECE8` — execute `sub_C5E160` (13 bytes).
 Computes register usage at virtual call sites (indirect calls, function pointers) and stores the result in the target-side register-use tracker. The data is consumed during ELF emission as `EIATTR_EXTERNS`/`EIATTR_INDIRECT_BRANCH_TARGETS` metadata so that the CUDA runtime can honour conservative register budgets for callees whose register footprint is unknown at compile time. Unconditional; all architectures route through the target vtable slot `0x2B8`.
 ```asm
 mov  rdi, [rsi+0x630]           ; target
@@ -800,7 +800,7 @@ mov  rax, [rdi]                 ; vtable
 jmp  [rax+0x2B8]                ; target->ComputeVCallRegUse(target)
 ```
 
-**Phase 149 `CalcRegisterMap`** -- `vtable=0x22BED10` -- execute `sub_C603C0` (32 bytes).
+**Phase 149 `CalcRegisterMap`** — `vtable=0x22BED10` — execute `sub_C603C0` (32 bytes).
 Computes the final physical-to-logical register mapping that gets emitted as `EIATTR_REGCOUNT` / `EIATTR_MIN_STACK_SIZE` metadata. The mapping is needed by the CUDA driver to inflate saved contexts during preemption and by NVRTC for relocation. Gated by `ctx+0x590` bit 1 (register-map-export knob). Indirects through `ctx.target->tex_or_fat_target` at `ctx+0x630 ; [rax+0x18]` then tail-calls `sub_95A350` (6456 bytes, the actual mapping builder).
 ```asm
 testb [rsi+0x590], 0x2
@@ -812,32 +812,32 @@ mov  rdi, [rax+0x18]            ; target.sub_target (sm-specific)
 jmp  0x95A350                   ; CalcRegisterMap body
 ```
 
-**Phase 150 `UpdateAfterPostRegAlloc`** -- `vtable=0x22BED38` -- execute `nullsub_630` at `0xC5E110` (**2 bytes, `repz ret`**).
+**Phase 150 `UpdateAfterPostRegAlloc`** — `vtable=0x22BED38` — execute `nullsub_630` at `0xC5E110` (**2 bytes, `repz ret`**).
 **True no-op in release ptxas.** `isNoOp()` returns 1 (`sub_C5E130`, 6 bytes) to suppress the diagnostic frame around the call. The phase slot is kept for ABI compatibility with debug builds where the body is `PhaseManager::RebuildAfterPostRegAlloc`, but the release build strips it.
 
-**Phase 151 `ReportFinalMemoryUsage`** -- `vtable=0x22BED60` -- execute `nullsub_629` at `0xC5E0E0` (**2 bytes, `repz ret`**).
+**Phase 151 `ReportFinalMemoryUsage`** — `vtable=0x22BED60` — execute `nullsub_629` at `0xC5E0E0` (**2 bytes, `repz ret`**).
 **True no-op.** `isNoOp()` = 1 (`sub_C5E100`). Debug builds would dump the memory-arena high-water mark to stderr here; release strips the body entirely.
 
-**Phase 152 `AdvancedPhaseOriPhaseEncoding`** -- `vtable=0x22BED88` -- execute `sub_C5E0B0` (**11 bytes**). The single surviving late-pipeline gate hook.
+**Phase 152 `AdvancedPhaseOriPhaseEncoding`** — `vtable=0x22BED88` — execute `sub_C5E0B0` (**11 bytes**). The single surviving late-pipeline gate hook.
 ```asm
 movl dword [rsi+0x610], 0x15   ; pipeline_progress = 21
 ret
 ```
 Writes `pipeline_progress = 21` (the final value of the monotonic `ctx+0x610` counter; see [Targets](../targets/index.md#runtime-state-layout) offset +1552). Downstream consumers: `sub_8C0270` checks `*(ctx+0x610) == 19`; scoreboard guards check values 16--19. `isNoOp()` = 1 (`sub_C5E0D0`) because the write is state-tracking, not IR transformation.
 
-**Phase 153 `FormatCodeList`** -- `vtable=0x22BEDB0` -- execute `sub_C5E080` (13 bytes).
-Indirects through a different context object than the other late phases: `ctx+0x648` is the code-list / ELF-section emitter rather than `ctx+0x630` (target) or `ctx+0x788` (Mercury context). Tail-calls `vtable+0x10` on that object -- the "format" entry point that serialises the fully-encoded instructions into the final ELF text-section layout (addresses, relocations, alignment).
+**Phase 153 `FormatCodeList`** — `vtable=0x22BEDB0` — execute `sub_C5E080` (13 bytes).
+Indirects through a different context object than the other late phases: `ctx+0x648` is the code-list / ELF-section emitter rather than `ctx+0x630` (target) or `ctx+0x788` (Mercury context). Tail-calls `vtable+0x10` on that object — the "format" entry point that serialises the fully-encoded instructions into the final ELF text-section layout (addresses, relocations, alignment).
 ```asm
 mov  rdi, [rsi+0x648]           ; code-list emitter
 mov  rax, [rdi]                 ; its vtable
 jmp  [rax+0x10]                 ; emitter->FormatCodeList()
 ```
 
-**Phase 154 `UpdateAfterFormatCodeList`** -- `vtable=0x22BEDD8` -- execute `nullsub_628` at `0xC5E050` (**2 bytes, `repz ret`**).
+**Phase 154 `UpdateAfterFormatCodeList`** — `vtable=0x22BEDD8` — execute `nullsub_628` at `0xC5E050` (**2 bytes, `repz ret`**).
 **True no-op.** `isNoOp()` = 1 (`sub_C5E070`). Kept as a hook point in case a target backend needs to re-sync IR metadata after FormatCodeList reordered instructions, but no release target uses it.
 
-**Phase 155 `DumpNVuCodeText`** -- `vtable=0x22BEE00` -- execute `sub_C60420` (54 bytes).
-The gate cascade `ctx+0x598 > 0 && ctx+0x740 != NULL && *(ctx+0x740) != NULL` is fully retained, so the code path is reachable when the hidden `-dump_nvu_code_text=1` knob is set, but the tail-call target `0x67FF60` resolves to **`nullsub_31` (2 bytes)** -- the actual text dumper has been stripped from release ptxas, leaving an orphan gate that falls through to a stub.
+**Phase 155 `DumpNVuCodeText`** — `vtable=0x22BEE00` — execute `sub_C60420` (54 bytes).
+The gate cascade `ctx+0x598 > 0 && ctx+0x740 != NULL && *(ctx+0x740) != NULL` is fully retained, so the code path is reachable when the hidden `-dump_nvu_code_text=1` knob is set, but the tail-call target `0x67FF60` resolves to **`nullsub_31` (2 bytes)** — the actual text dumper has been stripped from release ptxas, leaving an orphan gate that falls through to a stub.
 ```asm
 mov  eax, [rsi+0x598]           ; verbosity level
 test eax, eax
@@ -855,20 +855,20 @@ jmp  0x67FF60                   ; nullsub_31 -- stub
 repz ret
 ```
 
-**Phase 156 `DumpNVuCodeHex`** -- `vtable=0x22BEE28` -- execute `sub_C60460` (~48 bytes).
+**Phase 156 `DumpNVuCodeHex`** — `vtable=0x22BEE28` — execute `sub_C60460` (~48 bytes).
 Mirror image of phase 155 with a simpler gate (no extra pointer indirection) and tail-call target `0x67FF50` = **`nullsub_30`**. Same conclusion: stripped from release, orphan gate only.
 
-**Phase 157 `DebuggerBreak`** -- `vtable=0x22BEE50` -- execute `nullsub_627` at `0xC5DFE0` (**2 bytes, `repz ret`**).
-Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so the diagnostic frame still fires -- useful when running ptxas under `gdb` with `b *0xC5DFE0` because the dispatch loop will print `"Before DebuggerBreak"` / `"After DebuggerBreak"` on either side of the breakpoint.
+**Phase 157 `DebuggerBreak`** — `vtable=0x22BEE50` — execute `nullsub_627` at `0xC5DFE0` (**2 bytes, `repz ret`**).
+Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so the diagnostic frame still fires — useful when running ptxas under `gdb` with `b *0xC5DFE0` because the dispatch loop will print `"Before DebuggerBreak"` / `"After DebuggerBreak"` on either side of the breakpoint.
 
-**Phase 158 `NOP`** -- `vtable=0x22BEE78` -- execute `nullsub_626` at `0xC5DFB0` (**2 bytes, `repz ret`**).
+**Phase 158 `NOP`** — `vtable=0x22BEE78` — execute `nullsub_626` at `0xC5DFB0` (**2 bytes, `repz ret`**).
 Terminal sentinel. The 159-phase dispatch loop (`sub_C64F70`) iterates `a1[0] .. a1[158]` and needs a final slot to anchor the loop end; `NOP` is that anchor. `isNoOp()` = 0 (`sub_C5DFD0`), so the final "Before NOP" / "After NOP" prints appear in verbose dumps as the explicit terminator for `"All Phases Summary"`.
 
-**Summary of nullsubs (release build).** Five of the 20 phases have bodies that are pure `ret` stubs: **150, 151, 154, 157, 158**. Two more (**155, 156**) have non-trivial gate cascades but their tail-call targets resolve to nullsubs, making them effectively no-ops too. That leaves **13 phases (139--149, 152, 153)** that actually transform IR or pipeline state in a release build. Of the 13 active phases, seven are Mercury encoder stages (141--147) gated by `ctx+0x570`/`ctx+0x571` bits -- so on a non-Mercury backend the active count drops to six (139, 140, 148, 149, 152, 153).
+**Summary of nullsubs (release build).** Five of the 20 phases have bodies that are pure `ret` stubs: **150, 151, 154, 157, 158**. Two more (**155, 156**) have non-trivial gate cascades but their tail-call targets resolve to nullsubs, making them effectively no-ops too. That leaves **13 phases (139--149, 152, 153)** that actually transform IR or pipeline state in a release build. Of the 13 active phases, seven are Mercury encoder stages (141--147) gated by `ctx+0x570`/`ctx+0x571` bits — so on a non-Mercury backend the active count drops to six (139, 140, 148, 149, 152, 153).
 
 **No per-SM arch split across these phases.** None of the 20 execute bodies contain an `sm_version` switch on `ctx.target[+0x174]` at the phase level; the only such check is in phase 139's gate (`> 0x3FFF` i.e. "sm50-and-up"). All per-generation specialisation happens one level down, inside the target vtable methods each phase tail-calls (Mercury backend for 141--147, target vtable slots `0x148`/`0x150`/`0x2B8` for 140/139/148). The pipeline itself is arch-uniform; backends differ only in the methods they plug into the vtables.
 
-The Mercury phases (141--147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`, allowing non-Mercury backends to selectively disable encoding stages. WAR generation runs in two passes (144, 146) bracketing Opex (145) because Opex can rewrite operand banks and thereby introduce new write-to-read distances that need re-annotation -- phase 143 (MercExpandInstructions) also runs before the pair but has its own bit-5 gate.
+The Mercury phases (141--147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`, allowing non-Mercury backends to selectively disable encoding stages. WAR generation runs in two passes (144, 146) bracketing Opex (145) because Opex can rewrite operand banks and thereby introduce new write-to-read distances that need re-annotation — phase 143 (MercExpandInstructions) also runs before the pair but has its own bit-5 gate.
 
 ---
 
@@ -876,7 +876,7 @@ The Mercury phases (141--147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`,
 
 **Stage numbering.** The 10 stages on this page (Stage 1--10) subdivide the 159-phase OCG pipeline. They are distinct from the 6 timed phases in [Pipeline Overview](../pipeline/overview.md) (Parse, CompileUnitSetup, DAGgen, OCG, ELF, DebugInfo), which cover the entire program lifecycle. All 10 stages here fall within the single OCG timed phase.
 
-**Identity ordering.** The default ordering table at `0x22BEEA0` (159 x `uint32`) is an identity mapping for indices 0--156: `exec[N] = factory[N]`. The last two entries are zero: `exec[157] = 0` and `exec[158] = 0`, mapping both slots back to factory index 0 instead of the expected 157 and 158. This is benign -- phase 157 (`DebuggerBreak`, empty body in release builds) and phase 158 (`NOP`, terminal sentinel) both have trivial `execute()` bodies, so the factory index they resolve through is irrelevant to pipeline behavior. For all practical purposes the factory index IS the execution order: phases execute in strict index order 0--158, and the two trailing zeros are don't-care slots. The original wiki analysis that placed phases 132--138 as "out-of-order slots" was based on a compressed 139-phase model that excluded 20 phases (see note below).
+**Identity ordering.** The default ordering table at `0x22BEEA0` (159 x `uint32`) is an identity mapping for indices 0--156: `exec[N] = factory[N]`. The last two entries are zero: `exec[157] = 0` and `exec[158] = 0`, mapping both slots back to factory index 0 instead of the expected 157 and 158. This is benign — phase 157 (`DebuggerBreak`, empty body in release builds) and phase 158 (`NOP`, terminal sentinel) both have trivial `execute()` bodies, so the factory index they resolve through is irrelevant to pipeline behavior. For all practical purposes the factory index IS the execution order: phases execute in strict index order 0--158, and the two trailing zeros are don't-care slots. The original wiki analysis that placed phases 132--138 as "out-of-order slots" was based on a compressed 139-phase model that excluded 20 phases (see note below).
 
 **Repeated passes.** Several transformations run at multiple pipeline positions because intervening passes expose new opportunities:
 
@@ -901,42 +901,42 @@ The Mercury phases (141--147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`,
 | `ComputeVCallRegUse` | 2 | 123, 148 |
 | `CalcRegisterMap` | 2 | 124, 149 |
 | `DebuggerBreak` | 2 | 131, 157 |
-| `Vectorization`/`LateVectorization` | 2 | *(true 41, 73)* -- omitted from compressed numbering |
-| `EnforceArgumentRestrictions`/`Late...` | 2 | 48 (wiki), *(true 103)* -- late variant omitted |
+| `Vectorization`/`LateVectorization` | 2 | *(true 41, 73)* — omitted from compressed numbering |
+| `EnforceArgumentRestrictions`/`Late...` | 2 | 48 (wiki), *(true 103)* — late variant omitted |
 
 ## Cross-References
 
-- [Optimization Pipeline](../pipeline/optimizer.md) -- pipeline infrastructure, PhaseManager data structures, dispatch loop
-- [Phase Manager Infrastructure](phase-manager.md) -- PhaseManager object layout, constructor, destructor, factory switch
-- [GeneralOptimize Bundles](general-optimize.md) -- sub-pass decomposition of compound optimization passes
-- [Branch & Switch Optimization](branch-switch.md) -- phases 14, 15, 30, 38
-- [Loop Passes](loop-passes.md) -- phases 18, 22, 24, 35, 59, 66, 79, 88
-- [Strength Reduction](strength-reduction.md) -- phase 21
-- [Copy Propagation & CSE](copy-prop-cse.md) -- phases 49, 50, 64, 83
-- [Predication](predication.md) -- phase 63
-- [Rematerialization](rematerialization.md) -- phases 28, 54, 69
-- [Liveness Analysis](liveness.md) -- phases 10, 16, 19, 33, 61, 84
-- [Synchronization & Barriers](sync-barriers.md) -- phases 25, 26, 42, 71, 72, 99, 100, 114
-- [Hot/Cold Partitioning](hot-cold.md) -- phases 41, 108, 109
-- [GMMA/WGMMA Pipeline](gmma-pipeline.md) -- phases 85, 87
-- [Uniform Register Optimization](uniform-regs.md) -- phases 11, 27, 74, 86
-- [Late Expansion & Legalization](late-legalization.md) -- phases 5, 45, 55, 78, 93, 137
-- [Register Allocator Architecture](../regalloc/overview.md) -- phases 101, 103, 105, 123, 124, 138, 148, 149
-- [Scheduler Architecture](../scheduling/overview.md) -- phases 90, 97--100, 110
-- [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) -- phases 114, 115, 116
-- [Mercury Encoder](../codegen/mercury.md) -- phases 113, 117--122, 141--147, 153
-- [Optimization Levels](../config/opt-levels.md) -- O-level gating of gate passes
-- [DUMPIR & NamedPhases](../config/dumpir.md) -- user-specified phase targeting and reordering
+- [Optimization Pipeline](../pipeline/optimizer.md) — pipeline infrastructure, PhaseManager data structures, dispatch loop
+- [Phase Manager Infrastructure](phase-manager.md) — PhaseManager object layout, constructor, destructor, factory switch
+- [GeneralOptimize Bundles](general-optimize.md) — sub-pass decomposition of compound optimization passes
+- [Branch & Switch Optimization](branch-switch.md) — phases 14, 15, 30, 38
+- [Loop Passes](loop-passes.md) — phases 18, 22, 24, 35, 59, 66, 79, 88
+- [Strength Reduction](strength-reduction.md) — phase 21
+- [Copy Propagation & CSE](copy-prop-cse.md) — phases 49, 50, 64, 83
+- [Predication](predication.md) — phase 63
+- [Rematerialization](rematerialization.md) — phases 28, 54, 69
+- [Liveness Analysis](liveness.md) — phases 10, 16, 19, 33, 61, 84
+- [Synchronization & Barriers](sync-barriers.md) — phases 25, 26, 42, 71, 72, 99, 100, 114
+- [Hot/Cold Partitioning](hot-cold.md) — phases 41, 108, 109
+- [GMMA/WGMMA Pipeline](gmma-pipeline.md) — phases 85, 87
+- [Uniform Register Optimization](uniform-regs.md) — phases 11, 27, 74, 86
+- [Late Expansion & Legalization](late-legalization.md) — phases 5, 45, 55, 78, 93, 137
+- [Register Allocator Architecture](../regalloc/overview.md) — phases 101, 103, 105, 123, 124, 138, 148, 149
+- [Scheduler Architecture](../scheduling/overview.md) — phases 90, 97--100, 110
+- [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) — phases 114, 115, 116
+- [Mercury Encoder](../codegen/mercury.md) — phases 113, 117--122, 141--147, 153
+- [Optimization Levels](../config/opt-levels.md) — O-level gating of gate passes
+- [DUMPIR & NamedPhases](../config/dumpir.md) — user-specified phase targeting and reordering
 
 ## Key Functions
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
-| `sub_C60D30` | -- | Phase factory switch; allocates each of the 159 phases as a 16-byte polymorphic object with a 5-slot vtable (`execute`, `getIndex`, `isNoOp`, NULL, NULL) | 0.92 |
+| `sub_C60D30` | — | Phase factory switch; allocates each of the 159 phases as a 16-byte polymorphic object with a 5-slot vtable (`execute`, `getIndex`, `isNoOp`, NULL, NULL) | 0.92 |
 | `sub_7DDB50` | 232B | Opt-level accessor; runtime gate called by 20+ pass execute functions to check opt-level threshold | 0.95 |
 | `sub_A36360` | 52KB | Master scoreboard control word generator; per-opcode dispatch for phase 115 (`AdvancedScoreboardsAndOpexes`) | 0.90 |
 | `sub_A23CF0` | 54KB | DAG list scheduler heuristic; barrier assignment for phase 115 scoreboard generation | 0.90 |
 | `sub_9F1A90` | 35KB | MercConverter infrastructure; drives instruction-level legalization for Mercury phases 117--122 via visitor pattern | 0.92 |
 | `sub_9ED2D0` | 25KB | Opcode switch inside MercConverter; dispatches per-opcode legalization/conversion | 0.90 |
-| `sub_9F3760` | -- | Phase 141 (`MercConverter`) execute function; initial Mercury conversion of Ori instructions | 0.85 |
-| `sub_18F21F0` | -- | Phase 142 (`MercEncodeAndDecode`) execute function; encode/decode round-trip verification | 0.85 |
+| `sub_9F3760` | — | Phase 141 (`MercConverter`) execute function; initial Mercury conversion of Ori instructions | 0.85 |
+| `sub_18F21F0` | — | Phase 142 (`MercEncodeAndDecode`) execute function; encode/decode round-trip verification | 0.85 |

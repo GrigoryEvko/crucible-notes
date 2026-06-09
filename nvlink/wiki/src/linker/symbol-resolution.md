@@ -8,18 +8,18 @@ The ELF writer object (the "elfw" context, first argument `a1` in most functions
 
 | Offset in elfw | Type | Role |
 |---|---|---|
-| `+344` | `dyn_array*` | **Positive symbol array** -- local symbols, section symbols, and non-global definitions. Indexed by non-negative indices (`>= 0`). |
-| `+352` | `dyn_array*` | **Negative symbol array** -- global and weak symbols. Indexed by negative indices (stored as `-index`). |
-| `+288` | `hash_map*` | **Name lookup hash map** -- maps symbol name string to signed symbol index. |
-| `+296` | `hash_map*` | **Section name lookup hash map** -- maps section name string to signed section index. |
-| `+304` | `uint32` | **Name counter** -- total distinct names registered in the hash map. |
-| `+360` | `dyn_array*` | **Section descriptor array** -- section records indexed by section index. |
-| `+368` | `uint32*` | **Virtual section indirection table** -- maps virtual section ordinal to real section index. |
-| `+456` | `uint32*` | **Positive remap table** (`symbol_index_mapping`) -- old positive symbol index to new symbol index (DCE remap source). |
-| `+464` | `uint32*` | **Negative remap table** (`neg_symbol_index_mapping`) -- old negative symbol index (absolute value) to new symbol index (DCE remap target). |
-| `+592` | `SortedArray*` | **Merged symbol array** (`merged_symbol_array`) -- holds the resolved section indices for symbols whose `st_shndx == 0xFFFF`. Indexed by the remapped value from `+456`/`+464`, or directly by `sym+24` when the extended store is present. |
-| `+600` | `SortedArray*` | **Extended symbol store** (`extended_symbol_store`) -- set during advanced merge paths; when non-NULL, takes precedence over the remap chain and resolves negative `sym+24` values directly. |
-| `+624` | `uint32` | **Arch class constant** (`option_parser_result`) -- result of `sub_42F8B0`, which returns the constant `5`. The `sub_42F850` / STO\_CUDA\_OBSCURE warning level is sourced elsewhere; this slot is not that counter. |
+| `+344` | `dyn_array*` | **Positive symbol array** — local symbols, section symbols, and non-global definitions. Indexed by non-negative indices (`>= 0`). |
+| `+352` | `dyn_array*` | **Negative symbol array** — global and weak symbols. Indexed by negative indices (stored as `-index`). |
+| `+288` | `hash_map*` | **Name lookup hash map** — maps symbol name string to signed symbol index. |
+| `+296` | `hash_map*` | **Section name lookup hash map** — maps section name string to signed section index. |
+| `+304` | `uint32` | **Name counter** — total distinct names registered in the hash map. |
+| `+360` | `dyn_array*` | **Section descriptor array** — section records indexed by section index. |
+| `+368` | `uint32*` | **Virtual section indirection table** — maps virtual section ordinal to real section index. |
+| `+456` | `uint32*` | **Positive remap table** (`symbol_index_mapping`) — old positive symbol index to new symbol index (DCE remap source). |
+| `+464` | `uint32*` | **Negative remap table** (`neg_symbol_index_mapping`) — old negative symbol index (absolute value) to new symbol index (DCE remap target). |
+| `+592` | `SortedArray*` | **Merged symbol array** (`merged_symbol_array`) — holds the resolved section indices for symbols whose `st_shndx == 0xFFFF`. Indexed by the remapped value from `+456`/`+464`, or directly by `sym+24` when the extended store is present. |
+| `+600` | `SortedArray*` | **Extended symbol store** (`extended_symbol_store`) — set during advanced merge paths; when non-NULL, takes precedence over the remap chain and resolves negative `sym+24` values directly. |
+| `+624` | `uint32` | **Arch class constant** (`option_parser_result`) — result of `sub_42F8B0`, which returns the constant `5`. The `sub_42F850` / STO\_CUDA\_OBSCURE warning level is sourced elsewhere; this slot is not that counter. |
 
 Each symbol record is a 48-byte structure (allocated via `sub_4307C0` with size 48):
 
@@ -91,7 +91,7 @@ if (binding == STB_GLOBAL) {
 }
 ```
 
-`sub_464BB0` returns `*(qword*)(arr + 8)` -- the element count. `sub_464C30` appends an element, growing the backing allocation (doubling capacity) when full. The dynamic array primitives are documented in [Symbol Addition](symbol-addition.md#dynamic-array-primitives).
+`sub_464BB0` returns `*(qword*)(arr + 8)` — the element count. `sub_464C30` appends an element, growing the backing allocation (doubling capacity) when full. The dynamic array primitives are documented in [Symbol Addition](symbol-addition.md#dynamic-array-primitives).
 
 ## Name Lookup Hash Map
 
@@ -214,7 +214,7 @@ These arrays serve a dual role:
 - **Write side** (add-symbol path, `sub_440BE0`): they hold the real section index for symbols whose `st_shndx` had to be set to `0xFFFF` because the index exceeded the 16-bit range.
 - **Read side** (resolve path, `sub_440350`): when `extended_symbol_store` is present, the resolver uses it as an override that bypasses the DCE remap chain entirely. `merged_symbol_array` is the target of the remap-then-lookup branch when the override is absent.
 
-The special value `0xFFF2` (`SHN_COMMON`) bypasses this path entirely -- common symbols are stored directly in `st_shndx` without going through `merged_symbol_array`.
+The special value `0xFFF2` (`SHN_COMMON`) bypasses this path entirely — common symbols are stored directly in `st_shndx` without going through `merged_symbol_array`.
 
 ## Symbol Index Remapping
 
@@ -245,9 +245,9 @@ int remap_symbol_index(elfw* ctx, int old_index, ...) {
 }
 ```
 
-The remap tables are `uint32_t` arrays (4 bytes per entry), indexed by the absolute value of the old symbol index. A zero entry means the symbol was deleted -- any attempt to reference it triggers the `"reference to deleted symbol"` fatal error via `sub_467460`.
+The remap tables are `uint32_t` arrays (4 bytes per entry), indexed by the absolute value of the old symbol index. A zero entry means the symbol was deleted — any attempt to reference it triggers the `"reference to deleted symbol"` fatal error via `sub_467460`.
 
-This function is called from the relocation engine (`sub_469D60`), from section index resolution (`sub_440350`), and from the extended symbol resolution function (`sub_4411F0` -- see [Extended Symbol Resolution](extended-symbol-resolution.md)). The pattern of checking the remap table, falling through to the `"reference to deleted symbol"` error, and then re-reading the table entry (as a defensive measure against the fatal handler returning) is repeated verbatim across all call sites; it is documented in [Symbol Addition](symbol-addition.md#reference-to-deleted-symbol-error).
+This function is called from the relocation engine (`sub_469D60`), from section index resolution (`sub_440350`), and from the extended symbol resolution function (`sub_4411F0` — see [Extended Symbol Resolution](extended-symbol-resolution.md)). The pattern of checking the remap table, falling through to the `"reference to deleted symbol"` error, and then re-reading the table entry (as a defensive measure against the fatal handler returning) is repeated verbatim across all call sites; it is documented in [Symbol Addition](symbol-addition.md#reference-to-deleted-symbol-error).
 
 ## Function Map
 
@@ -313,11 +313,11 @@ This function is called from the relocation engine (`sub_469D60`), from section 
 
 ## Cross-References
 
-- [Symbol Addition](symbol-addition.md) -- `sub_440BE0` / `sub_442CA0` insertion algorithm and the `"reference to deleted symbol"` diagnostic path
-- [Symbol Resolution Walkthrough](symbol-resolution-walkthrough.md) -- end-to-end worked example with hash values, line-level traces, and the resolution-rules matrix
-- [Extended Symbol Resolution](extended-symbol-resolution.md) -- `sub_4411F0` symbol-to-output-section resolver with the linear-scan fallback
-- [Merge Phase](../pipeline/merge.md) -- symbol addition during input processing
-- [Weak Symbol Handling](weak-symbols.md) -- weak resolution policy that drives symbol replacement
-- [Dead Code Elimination](dead-code-elimination.md) -- creates the remap tables after removing unreachable symbols
-- [Relocation Engine](relocation-engine.md) -- consumer of `elfw_get_symbol` and `elfw_remap_symbol_index`
-- [Section Merging](section-merging.md) -- section-level counterpart to symbol resolution
+- [Symbol Addition](symbol-addition.md) — `sub_440BE0` / `sub_442CA0` insertion algorithm and the `"reference to deleted symbol"` diagnostic path
+- [Symbol Resolution Walkthrough](symbol-resolution-walkthrough.md) — end-to-end worked example with hash values, line-level traces, and the resolution-rules matrix
+- [Extended Symbol Resolution](extended-symbol-resolution.md) — `sub_4411F0` symbol-to-output-section resolver with the linear-scan fallback
+- [Merge Phase](../pipeline/merge.md) — symbol addition during input processing
+- [Weak Symbol Handling](weak-symbols.md) — weak resolution policy that drives symbol replacement
+- [Dead Code Elimination](dead-code-elimination.md) — creates the remap tables after removing unreachable symbols
+- [Relocation Engine](relocation-engine.md) — consumer of `elfw_get_symbol` and `elfw_remap_symbol_index`
+- [Section Merging](section-merging.md) — section-level counterpart to symbol resolution

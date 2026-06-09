@@ -2,7 +2,7 @@
 
 `sinking2` is an NVIDIA-proprietary instruction sinking pass that moves instructions closer to their uses, with specific awareness of GPU texture and surface memory operations. It is entirely distinct from LLVM's stock `sink` pass: while both perform code sinking, Sinking2 is tailored for NVIDIA's memory hierarchy and iterates to a fixed point rather than making a single pass. The primary motivation is reducing register pressure by deferring computation of values until just before they are consumed, which is especially impactful on GPUs where register files are shared across hundreds of concurrent threads.
 
-The pass is particularly focused on sinking instructions into texture load blocks. Texture operations on NVIDIA GPUs have high latency but are served by a dedicated cache; by sinking the address computation and other operands into the block that performs the texture fetch, the compiler reduces the live range of those values and frees registers for other warps. This directly improves occupancy -- the number of warps that can execute simultaneously on an SM.
+The pass is particularly focused on sinking instructions into texture load blocks. Texture operations on NVIDIA GPUs have high latency but are served by a dedicated cache; by sinking the address computation and other operands into the block that performs the texture fetch, the compiler reduces the live range of those values and frees registers for other warps. This directly improves occupancy — the number of warps that can execute simultaneously on an SM.
 
 ## Pipeline Position
 
@@ -85,8 +85,8 @@ The legacy PM entry `sub_1CCA270` performs these steps:
 
 1. Fetches `DominatorTree` analysis (via `DominatorTreeWrapperPass` at `unk_4F9E06C`)
 2. Fetches `LoopInfo` analysis (via `LoopInfoWrapperPass` at `unk_4F96DB4`)
-3. Reads `sink-into-texture` knob (`qword_4FBF2C0[20]`) -- must be non-zero (enabled)
-4. Reads `sink-limit` knob (`qword_4FBF1E0[20]`) -- must be greater than zero
+3. Reads `sink-into-texture` knob (`qword_4FBF2C0[20]`) — must be non-zero (enabled)
+4. Reads `sink-limit` knob (`qword_4FBF1E0[20]`) — must be greater than zero
 5. Calls the main worklist driver `sub_1CC9110`
 
 The New PM entry `sub_2D1C160` (19KB) performs the same logic using `AnalysisManager` to fetch analyses, then dispatches to `sub_2D1CFB0` (13KB).
@@ -153,7 +153,7 @@ function SinkingWorklist(F, DT, LI, textureLevel, sinkLimit):
 
 Key design points:
 
-- **DFS preorder** ensures parent blocks are processed before children. Instructions sunk from a parent into a child on one iteration may expose further sinking opportunities for grandchild blocks on the next iteration -- hence the fixpoint loop.
+- **DFS preorder** ensures parent blocks are processed before children. Instructions sunk from a parent into a child on one iteration may expose further sinking opportunities for grandchild blocks on the next iteration — hence the fixpoint loop.
 - **Bottom-up within each block** processes the last instruction first. This is important because sinking an instruction may make an earlier instruction's operands dead, which DCE will clean up later.
 - **Loop headers are skipped** to prevent creating loop-carried dependencies (a value defined in the header, consumed in the latch, sunk into the latch would create a cycle).
 
@@ -164,11 +164,11 @@ For each candidate instruction, this function:
 1. Walks the use chain to find all consumers (via `sub_15F4D60`, multi-use check)
 2. For each user, determines the containing basic block
 3. Computes the **lowest common dominator** (LCD) of all user blocks using the dominator tree
-4. If LCD == current block, no benefit from sinking -- the instruction is already as close to its uses as possible while dominating all of them
+4. If LCD == current block, no benefit from sinking — the instruction is already as close to its uses as possible while dominating all of them
 5. Builds a sink mapping: instruction to target block
 6. Checks memory safety via alias analysis (`sub_13575E0`)
 7. Validates that sinking does not violate memory ordering constraints
-8. Respects PHI nodes (LLVM opcode `PHI`) as sink boundaries -- an instruction cannot be sunk past a PHI insertion point
+8. Respects PHI nodes (LLVM opcode `PHI`) as sink boundaries — an instruction cannot be sunk past a PHI insertion point
 
 The target block selection algorithm effectively finds the **nearest common dominator** of all uses that is **strictly dominated by** the current block. If the instruction has a single use, the target is trivially the use's block (or its immediate dominator if the use is a PHI operand).
 
@@ -212,18 +212,18 @@ Additional memory safety layer beyond alias checking:
 
 ### Texture/Surface Awareness
 
-The pass identifies "texture blocks" -- basic blocks containing calls to texture/surface intrinsics (the `tex.*`, `suld.*`, `sust.*` family). Address computations that feed these intrinsic calls are the primary sink candidates, because texture address computation chains (`GEP` + index arithmetic) produce intermediate values that are consumed only at the texture fetch site. Without sinking, these intermediates occupy registers across potentially many instructions.
+The pass identifies "texture blocks" — basic blocks containing calls to texture/surface intrinsics (the `tex.*`, `suld.*`, `sust.*` family). Address computations that feed these intrinsic calls are the primary sink candidates, because texture address computation chains (`GEP` + index arithmetic) produce intermediate values that are consumed only at the texture fetch site. Without sinking, these intermediates occupy registers across potentially many instructions.
 
 The `sink-into-texture` knob controls aggressiveness:
 
 | Level | Behavior |
 |---|---|
-| 0 | Disabled -- no texture-aware sinking |
+| 0 | Disabled — no texture-aware sinking |
 | 1 | **Cross-block only**: move instructions across block boundaries into texture blocks |
 | 2 | **Cross-block + intra-block**: also reorder instructions within a block to position them immediately before their texture use |
 | 3 (default) | **All of the above + outside-only**: consider instructions whose only uses are in blocks other than where the instruction is defined |
 
-Level 3 catches the important case where a GEP in a preheader feeds a texture load inside a loop -- the GEP has no uses in its own block, only "outside" uses.
+Level 3 catches the important case where a GEP in a preheader feeds a texture load inside a loop — the GEP has no uses in its own block, only "outside" uses.
 
 Address space checks for NVPTX (see [reference/address-spaces](../reference/address-spaces.md)):
 - AS 1 (global): may alias with texture reads in some configurations
@@ -236,7 +236,7 @@ Address space checks for NVPTX (see [reference/address-spaces](../reference/addr
 Sinking2 is loop-aware but conservative:
 
 1. **Never sinks OUT of a loop**: moving an instruction from a loop body to an exit block would change its execution count. The pass skips this entirely.
-2. **May sink INTO loop bodies**: when an instruction in a loop preheader feeds only uses inside the loop (particularly texture fetches), sinking it into the loop is profitable despite increasing execution count -- the register pressure reduction from shorter live ranges outweighs the extra computation.
+2. **May sink INTO loop bodies**: when an instruction in a loop preheader feeds only uses inside the loop (particularly texture fetches), sinking it into the loop is profitable despite increasing execution count — the register pressure reduction from shorter live ranges outweighs the extra computation.
 3. **Skips loop headers**: prevents creating loop-carried dependencies.
 4. **Runs after LoopSimplify**: the early instance (`sub_18B1DE0`) runs after LoopSimplify/LCSSA have canonicalized loop structure, so preheaders, latches, and exit blocks are well-formed.
 
@@ -271,7 +271,7 @@ Sinking2 appears at **three to four** pipeline positions. Each run has different
 | Post-peephole | `sub_18B3080(1)` | Fast (flag=1) | After NVVMPeephole. Peephole may create new sinking opportunities. Reduced iteration budget. |
 | Late SM-specific | `sub_1CC60B0()` | SM-gated | After barrier lowering and warp shuffle. Gated by `opts[3328] && !opts[2440]`. |
 
-For fast-compile mode (Ofcmax), only `sub_18B3080(1)` runs -- the single Sinking2 in fast mode with reduced iteration budget. No stock Sink, no NVVMSinking2.
+For fast-compile mode (Ofcmax), only `sub_18B3080(1)` runs — the single Sinking2 in fast mode with reduced iteration budget. No stock Sink, no NVVMSinking2.
 
 The rationale for multiple runs:
 - **Run 1 (stock Sink)** handles straightforward cases using MemorySSA's precise alias information
@@ -386,23 +386,23 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_1CC7010` | -- | Legacy PM pass registration |
-| -- | `sub_1CC7100` | -- | Legacy PM factory |
-| -- | `sub_1CC71E0` | -- | Legacy PM alternate factory |
-| -- | `sub_1CC7510` | 16KB | `processInstruction`: sink candidate evaluation, use-chain walk, LCD computation |
-| -- | `sub_1CC8170` | 13KB | Dominance ordering: DFS numbering for block comparison |
-| -- | `sub_1CC8920` | 4KB | Alias checking helper: validates no conflicting memory accesses on path |
-| -- | `sub_1CC8CA0` | 6KB | Memory dependency helper: store-load forwarding, store ordering, volatile |
-| -- | `sub_1CC9110` | 22KB | Main worklist driver: fixpoint iteration over dominator tree |
-| -- | `sub_1CCA270` | -- | Legacy PM `runOnFunction` entry |
-| -- | `sub_2D1B410` | -- | New PM pass registration |
-| -- | `sub_2D1BC50` | -- | New PM factory |
-| -- | `sub_2D1C160` | 19KB | New PM `run()` entry |
-| -- | `sub_2D1CFB0` | 13KB | New PM core logic |
-| -- | `sub_2D1D770` | 7KB | New PM helper |
-| -- | `sub_2D1DCF0` | 7KB | New PM helper |
-| -- | `sub_2315E20` | -- | RTTI name printer |
-| -- | `0x4F7750` | -- | Knob constructor (`ctor_275`) |
+| — | `sub_1CC7010` | — | Legacy PM pass registration |
+| — | `sub_1CC7100` | — | Legacy PM factory |
+| — | `sub_1CC71E0` | — | Legacy PM alternate factory |
+| — | `sub_1CC7510` | 16KB | `processInstruction`: sink candidate evaluation, use-chain walk, LCD computation |
+| — | `sub_1CC8170` | 13KB | Dominance ordering: DFS numbering for block comparison |
+| — | `sub_1CC8920` | 4KB | Alias checking helper: validates no conflicting memory accesses on path |
+| — | `sub_1CC8CA0` | 6KB | Memory dependency helper: store-load forwarding, store ordering, volatile |
+| — | `sub_1CC9110` | 22KB | Main worklist driver: fixpoint iteration over dominator tree |
+| — | `sub_1CCA270` | — | Legacy PM `runOnFunction` entry |
+| — | `sub_2D1B410` | — | New PM pass registration |
+| — | `sub_2D1BC50` | — | New PM factory |
+| — | `sub_2D1C160` | 19KB | New PM `run()` entry |
+| — | `sub_2D1CFB0` | 13KB | New PM core logic |
+| — | `sub_2D1D770` | 7KB | New PM helper |
+| — | `sub_2D1DCF0` | 7KB | New PM helper |
+| — | `sub_2315E20` | — | RTTI name printer |
+| — | `0x4F7750` | — | Knob constructor (`ctor_275`) |
 
 **Related pipeline factories:**
 
@@ -420,7 +420,7 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 
 ## GPU-Specific Motivation
 
-Register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) -- each additional live register per thread reduces the number of warps available for latency hiding, with discrete cliff boundaries where a single register can drop an entire warp group.
+Register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) — each additional live register per thread reduces the number of warps available for latency hiding, with discrete cliff boundaries where a single register can drop an entire warp group.
 
 Sinking instructions closer to their uses shortens live ranges and reduces the peak number of simultaneously live registers. This is especially valuable for texture load sequences, which typically involve address computation (GEP chains, index arithmetic) that produces values consumed only at the texture fetch site. Without sinking, these intermediate values occupy registers across potentially many instructions, bloating register pressure unnecessarily.
 
@@ -430,11 +430,11 @@ The multi-run pattern (early Sinking2, post-peephole fast Sinking2, late NVVMSin
 
 ## Cross-References
 
-- [Dead Synchronization Elimination](dead-sync-elimination.md) -- runs earlier, removes barriers that Sinking2 would otherwise treat as memory fences
-- [LICM](../llvm/licm-real.md) -- counterpart: hoists loop-invariant code into preheaders; Sinking2 sinks address computation out of preheaders
-- [NVVMPeephole](nvvm-peephole.md) -- runs before late Sinking2, may create new sinking opportunities
-- [Rematerialization](rematerialization.md) -- runs after all sinking; rematerialization + sinking together minimize register pressure (ptxas `SinkRematEnable` knob)
-- [MemorySpaceOpt](../passes/other.md) -- changes address spaces which affects sinking profitability
-- [NVVMPassOptions](../config/nvvm-pass-options.md) -- `opts[1040]` disables stock Sink; `opts[2440]` disables NVVMSinking2
-- [Register Allocation](../llvm/register-allocation.md) -- ultimate consumer of the register pressure reduction that sinking provides
-- [Optimization Levels](../config/optimization-levels.md) -- Ofcmax runs only fast-mode Sinking2; O2/O3 run full multi-run pattern
+- [Dead Synchronization Elimination](dead-sync-elimination.md) — runs earlier, removes barriers that Sinking2 would otherwise treat as memory fences
+- [LICM](../llvm/licm-real.md) — counterpart: hoists loop-invariant code into preheaders; Sinking2 sinks address computation out of preheaders
+- [NVVMPeephole](nvvm-peephole.md) — runs before late Sinking2, may create new sinking opportunities
+- [Rematerialization](rematerialization.md) — runs after all sinking; rematerialization + sinking together minimize register pressure (ptxas `SinkRematEnable` knob)
+- [MemorySpaceOpt](../passes/other.md) — changes address spaces which affects sinking profitability
+- [NVVMPassOptions](../config/nvvm-pass-options.md) — `opts[1040]` disables stock Sink; `opts[2440]` disables NVVMSinking2
+- [Register Allocation](../llvm/register-allocation.md) — ultimate consumer of the register pressure reduction that sinking provides
+- [Optimization Levels](../config/optimization-levels.md) — Ofcmax runs only fast-mode Sinking2; O2/O3 run full multi-run pattern

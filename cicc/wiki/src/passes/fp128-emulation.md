@@ -1,6 +1,6 @@
 # FP128/I128 Emulation
 
-No NVIDIA GPU in any SM generation has native 128-bit arithmetic hardware. Neither `fp128` (IEEE 754 binary128) nor `i128` (128-bit integer) operations can be lowered to PTX instructions directly. CICC handles this by replacing every `fp128` and `i128` operation in LLVM IR with a call to one of 48 distinct NVIDIA runtime library functions whose implementations live in a separate bitcode module. The pass at `sub_1C8C170` walks each function in the module, inspects every instruction, dispatches on the LLVM opcode byte, and emits the appropriate `__nv_*` call in place of the original operation. This is a correctness-critical legalization pass -- if any `fp128`/`i128` operation survives past it, instruction selection will abort because NVPTX has no patterns for 128-bit types.
+No NVIDIA GPU in any SM generation has native 128-bit arithmetic hardware. Neither `fp128` (IEEE 754 binary128) nor `i128` (128-bit integer) operations can be lowered to PTX instructions directly. CICC handles this by replacing every `fp128` and `i128` operation in LLVM IR with a call to one of 48 distinct NVIDIA runtime library functions whose implementations live in a separate bitcode module. The pass at `sub_1C8C170` walks each function in the module, inspects every instruction, dispatches on the LLVM opcode byte, and emits the appropriate `__nv_*` call in place of the original operation. This is a correctness-critical legalization pass — if any `fp128`/`i128` operation survives past it, instruction selection will abort because NVPTX has no patterns for 128-bit types.
 
 The pass is structurally part of `lower-ops` (`LowerOpsPass`), NVIDIA's umbrella module pass for lowering operations that the NVPTX backend cannot handle natively. Within the `lower-ops` framework, `sub_1C8C170` is the dedicated handler for 128-bit types. It runs as a module-level pass early in the pipeline, after libdevice linking and before the main optimization sequence, so that the generated calls can be inlined and optimized by subsequent passes.
 
@@ -66,7 +66,7 @@ Integer division and remainder for `i128`. No native PTX instruction exists for 
 | `__nv_urem128` | `i128` remainder | unsigned | 12 |
 | `__nv_irem128` | `i128` remainder | signed | 12 |
 
-Lowered through `sub_1C8BD70` with string length 12. Note: `i128` add/sub/mul are NOT lowered here -- those can be decomposed into pairs of 64-bit operations by standard LLVM legalization. Only division and remainder require the runtime call path because they involve complex multi-word algorithms.
+Lowered through `sub_1C8BD70` with string length 12. Note: `i128` add/sub/mul are NOT lowered here — those can be decomposed into pairs of 64-bit operations by standard LLVM legalization. Only division and remainder require the runtime call path because they involve complex multi-word algorithms.
 
 ### FP128-to-Integer Conversions (10 functions)
 
@@ -238,7 +238,7 @@ The pass has no dedicated knobs. It is controlled indirectly through the `lower-
 |---|---|
 | `enable-optimization` | Parameter to `LowerOpsPass` registration (slot 144). When enabled, the lowered calls may be marked with optimization attributes. |
 
-There are no knobs in `knobs.txt` specific to `fp128` or `i128` lowering. The pass runs unconditionally whenever `lower-ops` is in the pipeline -- there is no way to disable 128-bit emulation because leaving `fp128`/`i128` operations in the IR would cause a fatal error in the NVPTX backend.
+There are no knobs in `knobs.txt` specific to `fp128` or `i128` lowering. The pass runs unconditionally whenever `lower-ops` is in the pipeline — there is no way to disable 128-bit emulation because leaving `fp128`/`i128` operations in the IR would cause a fatal error in the NVPTX backend.
 
 ## Diagnostic Strings
 
@@ -277,17 +277,17 @@ The pass itself emits no diagnostic messages or debug prints. All diagnostic inf
 | Function | Address | Size | Role |
 |---|---|---|---|
 | Main entry | `sub_1C8C170` | 25 KB | Opcode dispatch, instruction walk, type checks |
-| FP128 binary lowering | `sub_1C8A5C0` | -- | Emits `__nv_{add,sub,mul,div,rem}_fp128` calls |
-| FP128 conversion lowering | `sub_1C8ADC0` | -- | Emits `__nv_fp128_to_*` / `__nv_*_to_fp128` calls |
-| I128 division lowering | `sub_1C8BD70` | -- | Emits `__nv_{u,i}div128` / `__nv_{u,i}rem128` calls |
-| I128-float lowering | `sub_1C8BF90` | -- | Emits `__nv_cvt_*` calls (rz/rn variants) |
-| Type width check | `sub_1642F90` | -- | Tests whether a type has a given bit-width (e.g., 128) |
+| FP128 binary lowering | `sub_1C8A5C0` | — | Emits `__nv_{add,sub,mul,div,rem}_fp128` calls |
+| FP128 conversion lowering | `sub_1C8ADC0` | — | Emits `__nv_fp128_to_*` / `__nv_*_to_fp128` calls |
+| I128 division lowering | `sub_1C8BD70` | — | Emits `__nv_{u,i}div128` / `__nv_{u,i}rem128` calls |
+| I128-float lowering | `sub_1C8BF90` | — | Emits `__nv_cvt_*` calls (rz/rn variants) |
+| Type width check | `sub_1642F90` | — | Tests whether a type has a given bit-width (e.g., 128) |
 
 ## Cross-References
 
-- [NVIDIA Custom Passes](./index.md) -- pass registry including `lower-ops`
-- [Other NVIDIA Passes](./other.md) -- summary entry for this pass
-- [Type Legalization](../llvm/type-legalization.md) -- SelectionDAG SoftenFloat path for fp128 (preempted by this pass)
-- [Libdevice Linking](../infra/libdevice-linking.md) -- how the embedded libdevice is linked (standard math, not fp128)
-- [Cast Codegen](../pipeline/irgen-expressions.md) -- EDG frontend cast generation, type tag `5` = fp128
-- [Struct Splitting](./struct-splitting.md) -- sibling pass within the same address cluster
+- [NVIDIA Custom Passes](./index.md) — pass registry including `lower-ops`
+- [Other NVIDIA Passes](./other.md) — summary entry for this pass
+- [Type Legalization](../llvm/type-legalization.md) — SelectionDAG SoftenFloat path for fp128 (preempted by this pass)
+- [Libdevice Linking](../infra/libdevice-linking.md) — how the embedded libdevice is linked (standard math, not fp128)
+- [Cast Codegen](../pipeline/irgen-expressions.md) — EDG frontend cast generation, type tag `5` = fp128
+- [Struct Splitting](./struct-splitting.md) — sibling pass within the same address cluster

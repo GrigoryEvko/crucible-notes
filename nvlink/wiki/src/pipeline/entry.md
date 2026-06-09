@@ -1,6 +1,6 @@
 # Entry Point & Main
 
-`main()` at `0x409800` is the single entry point for nvlink. It is 57,970 bytes (1,936 lines of decompiled pseudocode) and is declared `__noreturn` -- every execution path terminates with `exit(0)` or `exit(-1)`. The function orchestrates every phase of device linking: option parsing, file type dispatch, LTO compilation, ELF merging, shared memory layout, relocation, finalization, and output. It also handles the host-linker-script generation path, which skips device linking entirely.
+`main()` at `0x409800` is the single entry point for nvlink. It is 57,970 bytes (1,936 lines of decompiled pseudocode) and is declared `__noreturn` — every execution path terminates with `exit(0)` or `exit(-1)`. The function orchestrates every phase of device linking: option parsing, file type dispatch, LTO compilation, ELF merging, shared memory layout, relocation, finalization, and output. It also handles the host-linker-script generation path, which skips device linking entirely.
 
 ## Function Signature
 
@@ -87,7 +87,7 @@ The `merge_flags` bitfield `v44` is assembled from multiple option flags:
 
 | Bit | Source | Meaning |
 |---|---|---|
-| 0 (and 10, 18) | base | always set on the normal link path -- initial value `0x40401` (corresponds to `elfw+84` "callgraph enabled") |
+| 0 (and 10, 18) | base | always set on the normal link path — initial value `0x40401` (corresponds to `elfw+84` "callgraph enabled") |
 | 1 | `byte_2A5F2CE` | preserve-relocs (corresponds to `elfw+85`) |
 | 2 | `byte_2A5F2CD` | reserve-null-pointer (derived effective flag; corresponds to `elfw+87`) |
 | 3 | `byte_2A5F2CC` | allow-undefined-globals (corresponds to `elfw+88`) |
@@ -103,7 +103,7 @@ The `merge_flags` bitfield `v44` is assembled from multiple option flags:
 | 20 | `byte_2A5F222` | mercury mode (also forces relocatable path) |
 | 25 | `byte_2A5F1FD` | enable-extended-smem. Per [cli-options.md](cli-options.md#linking-behavior-options), `byte_2A5F1FD` is the CLI byte for `--enable-extended-smem`; the `fdcmpt` flag lives at `byte_2A5F228`. Earlier wiki revisions labelled this row `fdcmpt`, which conflicted with the cli-options global map. |
 
-Bit attribution is recovered from `main_0x409800.c` lines 338--389 -- the consecutive `if (cli_byte) v41 |= bit;` assembly. Earlier wiki revisions reused a stale table that swapped the bit-1/bit-2/bit-4 trio (preserve-relocs / reserve-null / force-rela) and conflated bit 5/6/14 (no-opt / suppress-stack-warn / optimize-data-layout); the wrong mappings propagated through `structs/elf-writer.md`, `structs/linker-context.md`, and `linker/data-layout-opt.md` and have been corrected.
+Bit attribution is recovered from `main_0x409800.c` lines 338--389 — the consecutive `if (cli_byte) v41 |= bit;` assembly. Earlier wiki revisions reused a stale table that swapped the bit-1/bit-2/bit-4 trio (preserve-relocs / reserve-null / force-rela) and conflated bit 5/6/14 (no-opt / suppress-stack-warn / optimize-data-layout); the wrong mappings propagated through `structs/elf-writer.md`, `structs/linker-context.md`, and `linker/data-layout-opt.md` and have been corrected.
 
 After ELF creation, Mercury mode sets `elfw[104] = 2`; non-Mercury sets it to 0 or 1 based on `byte_2A5F225`. Additional setup:
 
@@ -369,10 +369,10 @@ if no_errors:
 ```
 
 The four pipeline stages execute sequentially with timing trace points between them:
-1. `sub_439830` -- shared memory layout (65,776 bytes, handles global/extern/local/reserved shared memory allocation, overlap set analysis)
-2. `sub_469D60` -- relocation application (26,578 bytes, resolves R_CUDA relocations, handles UDT/UFT unified table relocations)
-3. `sub_445000` -- finalization (55,681 bytes, final relocation pass, section content generation)
-4. `sub_45C920` / `sub_45C950` -- ELF serialization (13,258 bytes, writes headers, sections, program headers)
+1. `sub_439830` — shared memory layout (65,776 bytes, handles global/extern/local/reserved shared memory allocation, overlap set analysis)
+2. `sub_469D60` — relocation application (26,578 bytes, resolves R_CUDA relocations, handles UDT/UFT unified table relocations)
+3. `sub_445000` — finalization (55,681 bytes, final relocation pass, section content generation)
+4. `sub_45C920` / `sub_45C950` — ELF serialization (13,258 bytes, writes headers, sections, program headers)
 
 For Mercury targets (SM >= 100), the serialized ELF is passed through `sub_4275C0` (the FNLZR finalizer) as a post-link transform before writing to disk. This converts the SASS cubin into the capsule mercury format.
 
@@ -613,32 +613,32 @@ When `dword_2A5F308 & 0x20` is set (verbose timing), `sub_4279C0` records timest
 
 ### Pipeline Pages
 
-- [Pipeline Overview](overview.md) -- high-level 14-phase pipeline diagram and data flow summary
-- [CLI Option Parsing](cli-options.md) -- `nvlink_parse_options` internals and all 68 option registrations
-- [Mode Dispatch](mode-dispatch.md) -- the `dword_2A77DC0` mode variable and host linker script paths
-- [Library Resolution](library-resolution.md) -- how `-L`/`-l` flags build the input file list
-- [Input File Loop](input-loop.md) -- the file type dispatch table inside `main()`
-- [Merge Phase](merge.md) -- the 89KB `merge_elf` function called per input object
-- [Layout Phase](layout.md) -- shared memory allocation and constant dedup after merge
-- [Relocation Phase](relocate.md) -- `apply_relocations` bit-field patching
-- [Finalization Phase](finalize.md) -- symbol/section reindexing and ELF header finalization
-- [Output Writing](output.md) -- ELF serialization and Mercury FNLZR post-link
+- [Pipeline Overview](overview.md) — high-level 14-phase pipeline diagram and data flow summary
+- [CLI Option Parsing](cli-options.md) — `nvlink_parse_options` internals and all 68 option registrations
+- [Mode Dispatch](mode-dispatch.md) — the `dword_2A77DC0` mode variable and host linker script paths
+- [Library Resolution](library-resolution.md) — how `-L`/`-l` flags build the input file list
+- [Input File Loop](input-loop.md) — the file type dispatch table inside `main()`
+- [Merge Phase](merge.md) — the 89KB `merge_elf` function called per input object
+- [Layout Phase](layout.md) — shared memory allocation and constant dedup after merge
+- [Relocation Phase](relocate.md) — `apply_relocations` bit-field patching
+- [Finalization Phase](finalize.md) — symbol/section reindexing and ELF header finalization
+- [Output Writing](output.md) — ELF serialization and Mercury FNLZR post-link
 
 ### Input Formats
 
-- [File Type Detection](../input/file-type-detection.md) -- 56-byte probe and magic number classification
-- [Cubin Loading](../input/cubin-loading.md) -- device ELF validation and architecture matching
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- `sub_42AF40` fatbin container processing
-- [PTX Input & JIT](../input/ptx-input.md) -- embedded ptxas compilation via `sub_4BD760`
-- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) -- IR module registration for LTO
+- [File Type Detection](../input/file-type-detection.md) — 56-byte probe and magic number classification
+- [Cubin Loading](../input/cubin-loading.md) — device ELF validation and architecture matching
+- [Fatbin Extraction](../input/fatbin-extraction.md) — `sub_42AF40` fatbin container processing
+- [PTX Input & JIT](../input/ptx-input.md) — embedded ptxas compilation via `sub_4BD760`
+- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) — IR module registration for LTO
 
 ### Related Sections
 
-- [LTO Overview](../lto/overview.md) -- the LTO sub-pipeline (collect IR, compile, split-compile)
-- [Mercury / FNLZR](../mercury/fnlzr.md) -- FNLZR post-link transform for sm >= 100
-- [ELF Writer Structure](../structs/elf-writer.md) -- the `elfw` data structure created in Phase 1
-- [Error Reporting](../infra/error-reporting.md) -- `sub_467460` diagnostic system
-- [Memory Arenas](../infra/memory-arenas.md) -- arena allocator backing all allocations
+- [LTO Overview](../lto/overview.md) — the LTO sub-pipeline (collect IR, compile, split-compile)
+- [Mercury / FNLZR](../mercury/fnlzr.md) — FNLZR post-link transform for sm >= 100
+- [ELF Writer Structure](../structs/elf-writer.md) — the `elfw` data structure created in Phase 1
+- [Error Reporting](../infra/error-reporting.md) — `sub_467460` diagnostic system
+- [Memory Arenas](../infra/memory-arenas.md) — arena allocator backing all allocations
 
 ### Sibling Tool Wikis
 

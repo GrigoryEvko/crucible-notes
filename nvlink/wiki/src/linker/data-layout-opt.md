@@ -104,7 +104,7 @@ for each symbol node in source_section->symbol_list:
         default:  section_data_copy(...)  // no dedup, just copy
 ```
 
-The reachability check `sub_43FB70` determines whether a constant symbol is referenced by any live entry-point function. It checks the debug flag (`elfw+80`) and the `kernels-used / variables-used filter-active` flag (`elfw+97`). When neither is set, the call returns the debug flag itself (typically 1, meaning "no DCE -- keep the symbol"). When the filter is active, it queries entry-function reachability via the per-symbol-class used-set: for global symbols (binding bit 4 set), it checks against the function set at `elfw+536`; for local symbols, against `elfw+544`. Both queries use `sub_43EB40`, a string-based set membership test on the symbol name. The `+97` flag is raised by `sub_43F360` / `sub_43F950` (`--kernels-used` / `--variables-used` loaders) and by the auxiliary loaders `sub_43F510` / `sub_43F040` / `sub_43F020`; it is *not* the merge-constants flag.
+The reachability check `sub_43FB70` determines whether a constant symbol is referenced by any live entry-point function. It checks the debug flag (`elfw+80`) and the `kernels-used / variables-used filter-active` flag (`elfw+97`). When neither is set, the call returns the debug flag itself (typically 1, meaning "no DCE — keep the symbol"). When the filter is active, it queries entry-function reachability via the per-symbol-class used-set: for global symbols (binding bit 4 set), it checks against the function set at `elfw+536`; for local symbols, against `elfw+544`. Both queries use `sub_43EB40`, a string-based set membership test on the symbol name. The `+97` flag is raised by `sub_43F360` / `sub_43F950` (`--kernels-used` / `--variables-used` loaders) and by the auxiliary loaders `sub_43F510` / `sub_43F040` / `sub_43F020`; it is *not* the merge-constants flag.
 
 ### 32-Bit Value Deduplication
 
@@ -148,7 +148,7 @@ if (existing != NULL && val != 0) {
 
 The zero-value case receives special treatment. Zero-valued constants are common (uninitialized constant declarations compile to zero-filled entries), and in OCG mode each entry function may have its own instance. The overlap set `a15` tracks which entry-function scopes have already allocated a zero-value slot to prevent redundant copies while still allowing per-entry uniqueness.
 
-When a duplicate is found, the aliasing sets `sym_record->value` (field at offset +8 in the symbol record) to the existing symbol's value. This is the address within the target section. No data is copied -- the duplicate symbol simply points to the same physical location as the original.
+When a duplicate is found, the aliasing sets `sym_record->value` (field at offset +8 in the symbol record) to the existing symbol's value. This is the address within the target section. No data is copied — the duplicate symbol simply points to the same physical location as the original.
 
 ### 64-Bit Value Deduplication
 
@@ -251,7 +251,7 @@ Key observations from the decompiled code:
 
 - **Prepend, not append**: New entries are prepended to the list head via `sub_4644C0` (generic linked-list prepend). This means recently seen values are found first, which is beneficial when translation units define constants in similar order.
 
-- **No hash, no index**: The linked-list approach for large values (rather than a hash table) is a deliberate tradeoff. These sizes are rare in practice -- most GPU constants are 4 or 8 bytes (scalar floats, doubles, pointers). The O(n) linear scan with `memcmp` is faster than computing and comparing a hash for the small typical population of each size class. A program with 50 distinct `float4` (16-byte) constants would require at most 50 comparisons per lookup, each of which is a single 16-byte `memcmp` -- likely a single SSE instruction on x86-64.
+- **No hash, no index**: The linked-list approach for large values (rather than a hash table) is a deliberate tradeoff. These sizes are rare in practice — most GPU constants are 4 or 8 bytes (scalar floats, doubles, pointers). The O(n) linear scan with `memcmp` is faster than computing and comparing a hash for the small typical population of each size class. A program with 50 distinct `float4` (16-byte) constants would require at most 50 comparisons per lookup, each of which is a single 16-byte `memcmp` — likely a single SSE instruction on x86-64.
 
 - **Size-class isolation**: Each of the seven supported large sizes has an independent list. A 16-byte constant is never compared against a 32-byte constant. This eliminates the need for a size field in the comparison and keeps each list short.
 
@@ -265,7 +265,7 @@ If the alignment matches the size exactly for the 4-byte or 8-byte cases, the fu
 
 After aliasing or placing a constant in the target section, the function rewrites relocations that reference the original constant section. This is critical because the constants have moved from their original per-TU sections into the merged temporary section.
 
-The relocation rewriting logic is embedded directly in `sub_4339A0` (appearing four times in the decompiled output -- once for each of the 32-bit and 64-bit paths, each with two sub-cases for the overlap-set tracking). The algorithm walks the relocation linked list (`a14`):
+The relocation rewriting logic is embedded directly in `sub_4339A0` (appearing four times in the decompiled output — once for each of the 32-bit and 64-bit paths, each with two sub-cases for the overlap-set tracking). The algorithm walks the relocation linked list (`a14`):
 
 ```c
 // Invoked after placing/aliasing a constant symbol
@@ -412,7 +412,7 @@ void overlap_validate(elfw* ctx, uint32_t sym_idx, uint32_t sec_idx,
 
 ### Three Overlap Cases
 
-**Case 1: Partial forward overlap** -- The new data's start offset falls strictly inside an existing record's range (`existing.offset < new.offset < existing.offset + existing.size`):
+**Case 1: Partial forward overlap** — The new data's start offset falls strictly inside an existing record's range (`existing.offset < new.offset < existing.offset + existing.size`):
 
 ```c
 validate_partial_overlap:
@@ -432,7 +432,7 @@ validate_partial_overlap:
     free_record(rec);
 ```
 
-**Case 2: Exact offset match** -- The new data starts at exactly the same offset as an existing record. Two sub-cases:
+**Case 2: Exact offset match** — The new data starts at exactly the same offset as an existing record. Two sub-cases:
 
 ```c
 validate_exact_overlap:
@@ -477,7 +477,7 @@ validate_exact_overlap:
     }
 ```
 
-**Case 3: Tail overlap** -- The new data ends at exactly the same offset as an existing record (`new.offset + new.size == existing.offset + existing.size`) and is larger than the existing record:
+**Case 3: Tail overlap** — The new data ends at exactly the same offset as an existing record (`new.offset + new.size == existing.offset + existing.size`) and is larger than the existing record:
 
 ```c
 validate_tail_overlap:
@@ -504,7 +504,7 @@ The overlap validation enforces three strict invariants:
 
 3. **Sorted order**: Records are maintained in ascending offset order within the linked list, enabling the single-pass walk to detect all overlaps.
 
-These checks are critical for correctness: when multiple translation units contribute the same constant (e.g., a `__constant__` variable defined in a header included by multiple `.cu` files), their data regions may legally overlap in the merged section. The validation ensures the link is sound -- overlapping regions contain identical content, so the merged section is well-defined.
+These checks are critical for correctness: when multiple translation units contribute the same constant (e.g., a `__constant__` variable defined in a header included by multiple `.cu` files), their data regions may legally overlap in the merged section. The validation ensures the link is sound — overlapping regions contain identical content, so the merged section is well-defined.
 
 ## The Two Invocation Contexts
 
@@ -641,7 +641,7 @@ The mode tag stored at `header+84` bits [7:4] controls which fast path the looku
 
 ### Hash Functions
 
-The two hash functions used by the constant dedup tables are trivially simple, optimized for speed over distribution quality -- acceptable because constant values in GPU programs have low collision rates in practice.
+The two hash functions used by the constant dedup tables are trivially simple, optimized for speed over distribution quality — acceptable because constant values in GPU programs have low collision rates in practice.
 
 **32-bit identity hash** (`sub_44E120` at `0x44E120`):
 
@@ -727,7 +727,7 @@ entry[i] = {
 }
 ```
 
-New entries are allocated by scanning the occupancy bitmap for the first zero bit (using `_BitScanForward` on the bitwise complement). The bitmap at header offset +96 tracks which entry slots are in use -- one bit per slot, packed into 32-bit words.
+New entries are allocated by scanning the occupancy bitmap for the first zero bit (using `_BitScanForward` on the bitwise complement). The bitmap at header offset +96 tracks which entry slots are in use — one bit per slot, packed into 32-bit words.
 
 ### Lookup Algorithm (`sub_449A80`)
 
@@ -900,7 +900,7 @@ When `sub_4339A0` processes these:
 
 1. **c1** (value 0x4048F5C3): Not in 32-bit hash table. Insert at offset 0. Hash table: `{0x4048F5C3 -> c1}`.
 2. **c2** (value 0x402D70A4): Not in 32-bit hash table. Insert at offset 4. Hash table: `{0x4048F5C3 -> c1, 0x402D70A4 -> c2}`.
-3. **c3** (value 0x4048F5C3): Found in hash table -- duplicate of c1. Alias: `c3.value = c1.value = 0`. No data copied. Verbose: `"found duplicate value 0x4048f5c3, alias c3 to c1"`.
+3. **c3** (value 0x4048F5C3): Found in hash table — duplicate of c1. Alias: `c3.value = c1.value = 0`. No data copied. Verbose: `"found duplicate value 0x4048f5c3, alias c3 to c1"`.
 4. **c4** (value 0x3FF0...): Not in 64-bit hash table. Insert at offset 8 (aligned to 8). Hash table updated.
 
 Result: merged section is 16 bytes instead of 20, and c3 shares c1's storage.
@@ -947,10 +947,10 @@ Result: merged section is 16 bytes instead of 20, and c3 shares c1's storage.
 
 ## Related Pages
 
-- [Layout Phase](../pipeline/layout.md) -- parent phase (sub_439830) containing all 10 layout sub-phases
-- [Section Merging](section-merging.md) -- how sections from multiple TUs are combined before dedup
-- [Dead Code Elimination](dead-code-elimination.md) -- callgraph-based reachability that feeds into constant liveness
-- [Hash Tables](hash-tables.md) -- general hash table infrastructure used by the dedup engine
-- [Symbol Resolution](symbol-resolution.md) -- symbol records whose offsets are modified during constant dedup
-- [Bindless Relocations](bindless-relocations.md) -- bindless descriptor sections in the same constant banks optimized here
-- [R\_CUDA Relocations](r-cuda-relocations.md) -- R\_CUDA\_CONST\_FIELD relocations rewritten during OCG dedup
+- [Layout Phase](../pipeline/layout.md) — parent phase (sub_439830) containing all 10 layout sub-phases
+- [Section Merging](section-merging.md) — how sections from multiple TUs are combined before dedup
+- [Dead Code Elimination](dead-code-elimination.md) — callgraph-based reachability that feeds into constant liveness
+- [Hash Tables](hash-tables.md) — general hash table infrastructure used by the dedup engine
+- [Symbol Resolution](symbol-resolution.md) — symbol records whose offsets are modified during constant dedup
+- [Bindless Relocations](bindless-relocations.md) — bindless descriptor sections in the same constant banks optimized here
+- [R\_CUDA Relocations](r-cuda-relocations.md) — R\_CUDA\_CONST\_FIELD relocations rewritten during OCG dedup

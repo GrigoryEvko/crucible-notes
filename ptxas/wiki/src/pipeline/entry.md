@@ -2,13 +2,13 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas binary has a deceptively simple entry point. The exported `main` at `0x409460` is an 84-byte wrapper that sets up unbuffered I/O and immediately tail-calls `sub_446240` -- the real compilation driver. This driver is a monolithic 11 KB function that allocates a 1,352-byte master options block on the stack, establishes `setjmp`-based error recovery, parses all command-line options through a generic framework, reads PTX input, and then loops over compile units running the full `Parse -> CompileUnitSetup -> DAGgen -> OCG -> ELF -> DebugInfo` pipeline for each. The entire error-handling strategy is non-local: any of the 2,350 call sites to the central diagnostic emitter `sub_42FBA0` can trigger a `longjmp` back to the driver's recovery point on fatal errors.
+The ptxas binary has a deceptively simple entry point. The exported `main` at `0x409460` is an 84-byte wrapper that sets up unbuffered I/O and immediately tail-calls `sub_446240` — the real compilation driver. This driver is a monolithic 11 KB function that allocates a 1,352-byte master options block on the stack, establishes `setjmp`-based error recovery, parses all command-line options through a generic framework, reads PTX input, and then loops over compile units running the full `Parse -> CompileUnitSetup -> DAGgen -> OCG -> ELF -> DebugInfo` pipeline for each. The entire error-handling strategy is non-local: any of the 2,350 call sites to the central diagnostic emitter `sub_42FBA0` can trigger a `longjmp` back to the driver's recovery point on fatal errors.
 
 The same binary doubles as an in-process library. When nvcc loads ptxas as a shared object rather than spawning a subprocess, three extra arguments to the driver carry an output buffer pointer, an extra option count, and an extra options array. Callback function pointers at fixed offsets in the options block allow the host process to receive diagnostics and progress notifications without going through stderr.
 
 | | |
 |---|---|
-| **main()** | `0x409460` (84 bytes) -- `setvbuf` + tail-call to `sub_446240` |
+| **main()** | `0x409460` (84 bytes) — `setvbuf` + tail-call to `sub_446240` |
 | **Real main** | `sub_446240` (11,064 bytes, ~900 lines) |
 | **Options block** | 1,352 bytes on stack |
 | **Error recovery** | `setjmp` / `longjmp` (no C++ exceptions) |
@@ -56,9 +56,9 @@ main (0x409460, 84B)
 
 ## Pre-main Static Constructors
 
-Before `main` executes, four static constructors run as part of the ELF `.init_array`. Three of them populate ROT13-obfuscated lookup tables that are foundational to the rest of the binary. This obfuscation is deliberate -- it prevents trivial string searching for internal opcode names and tuning knob identifiers in the stripped binary.
+Before `main` executes, four static constructors run as part of the ELF `.init_array`. Three of them populate ROT13-obfuscated lookup tables that are foundational to the rest of the binary. This obfuscation is deliberate — it prevents trivial string searching for internal opcode names and tuning knob identifiers in the stripped binary.
 
-### ctor_001 -- Thread Infrastructure (`0x4094C0`, 204 bytes)
+### ctor_001 — Thread Infrastructure (`0x4094C0`, 204 bytes)
 
 Initializes the POSIX threading foundation used throughout ptxas:
 
@@ -73,7 +73,7 @@ __cxa_atexit(cleanup_func, ...);                // registered destruction
 
 The TLS key created here is the one used by `sub_4280C0` (3,928 callers), making it the single most important piece of global state in the binary.
 
-### ctor_003 -- PTX Opcode Name Table (`0x4095D0`, 17,007 bytes)
+### ctor_003 — PTX Opcode Name Table (`0x4095D0`, 17,007 bytes)
 
 Populates a table at `0x29FE300+` with approximately 900 ROT13-encoded PTX opcode mnemonic strings. Each entry is a `(string_ptr, length)` pair. The ROT13 encoding maps `A-Z` to `N-Z,A-M` and `a-z` to `n-z,a-m`, leaving digits and punctuation unchanged.
 
@@ -92,7 +92,7 @@ Populates a table at `0x29FE300+` with approximately 900 ROT13-encoded PTX opcod
 
 These decoded names are the canonical PTX opcode mnemonics used during parsing and validation. The table is consumed by the PTX lexer initialization at `sub_451730` and the opcode-to-handler dispatch table at `sub_46E000` (93 KB, the largest function in the front-end range).
 
-### ctor_005 -- Mercury Tuning Knob Registry (`0x40D860`, 80,397 bytes)
+### ctor_005 — Mercury Tuning Knob Registry (`0x40D860`, 80,397 bytes)
 
 The single largest function in the front-end address range. Registers 2,000+ ROT13-encoded internal tuning knob names, each paired with a hexadecimal default value string. These are the "Mercury" (OCG) backend tuning parameters that control every aspect of code generation, scheduling, and register allocation.
 
@@ -106,7 +106,7 @@ The single largest function in the front-end address range. Registers 2,000+ ROT
 
 The knob system is documented in detail in the [Knobs System](../config/knobs.md) page. The ROT13 encoding applies identically to all knob name strings in all four constructors.
 
-### ctor_007 -- Scheduler Knob Registry (`0x421290`, 7,921 bytes)
+### ctor_007 — Scheduler Knob Registry (`0x421290`, 7,921 bytes)
 
 A smaller companion to ctor_005 that registers 98 scheduler-specific knobs. These control the instruction scheduler (Mercury/OCG) behavior at a finer granularity than the general knobs:
 
@@ -114,7 +114,7 @@ Decoded examples: `XBlockWaitOut`, `XBlockWaitInOut`, `XBlockWaitInOnTarget`, `W
 
 Knob names containing `_SW` followed by a number (e.g., `_SW4397903`) indicate workarounds for specific hardware bugs identified by NVIDIA's internal bug tracking system.
 
-## Real Main -- `sub_446240`
+## Real Main — `sub_446240`
 
 The exported `main()` tail-calls `sub_446240` with three zero arguments appended. This function is the complete compilation orchestrator: it owns the options block, the error recovery, the compilation loop, and the statistics output.
 
@@ -135,7 +135,7 @@ int sub_446240(int argc, char **argv,
                char **extra_opts);      // a5: array of extra option strings
 ```
 
-When `main` calls this, a3/a4/a5 are all zero -- standalone mode. When nvcc loads ptxas as a shared library and calls the entry point directly, these arguments carry non-null values:
+When `main` calls this, a3/a4/a5 are all zero — standalone mode. When nvcc loads ptxas as a shared library and calls the entry point directly, these arguments carry non-null values:
 
 - **a3 (output_buf)**: Pointer to a memory buffer where the compiled cubin is written. Eliminates the need for temporary files and filesystem round-trips, which matters for large CUDA compilations where nvcc may invoke ptxas hundreds of times.
 - **a4 (extra_opt_count)**: Number of additional option strings injected by nvcc beyond what appears on the command line.
@@ -155,7 +155,7 @@ if (setjmp(jmp_buf) != 0) {
 }
 ```
 
-This is the **only** error recovery mechanism in ptxas -- there are no C++ exceptions (the binary is compiled as C, not C++). Any function anywhere in the call tree that encounters an unrecoverable error calls `sub_42FBA0` with severity >= 6, which internally calls `longjmp(jmp_buf, 1)` to unwind directly back to this point. The approach is simple but has a critical implication: all resources allocated between the `setjmp` and the fatal error are leaked unless explicitly tracked and cleaned up at the recovery site.
+This is the **only** error recovery mechanism in ptxas — there are no C++ exceptions (the binary is compiled as C, not C++). Any function anywhere in the call tree that encounters an unrecoverable error calls `sub_42FBA0` with severity >= 6, which internally calls `longjmp(jmp_buf, 1)` to unwind directly back to this point. The approach is simple but has a critical implication: all resources allocated between the `setjmp` and the fatal error are leaked unless explicitly tracked and cleaned up at the recovery site.
 
 ### The 1,352-Byte Options Block
 
@@ -197,11 +197,11 @@ PeakMemoryUsage = 2048.000 KB
 
 When `--compiler-stats-file` is specified, the same data is written in JSON format using the shared JSON builder (`sub_1CBA950`). When `--fdevice-time-trace` is active, `sub_439880` parses Chrome DevTools trace format JSON and merges ptxas timing events into the trace.
 
-## Option Parser -- `sub_434320` and `sub_432A00`
+## Option Parser — `sub_434320` and `sub_432A00`
 
 Option parsing is split into two phases: registration and processing.
 
-### Option Registration -- `sub_432A00`
+### Option Registration — `sub_432A00`
 
 This 6,427-byte function calls `sub_1C97210` approximately 100 times, once per recognized option. Each call provides the option's long name, short name, value type, help text, and default value to the generic option framework (implemented in the `0x1C96xxx`--`0x1C97xxx` range, shared with other NVIDIA tools).
 
@@ -236,7 +236,7 @@ This 6,427-byte function calls `sub_1C97210` approximately 100 times, once per r
 | `--disable-smem-reservation` | — | bool | Disable shared memory reservation |
 | `--generate-relocatable-object` | `-c` | bool | Generate relocatable object |
 
-### Option Processing -- `sub_434320`
+### Option Processing — `sub_434320`
 
 The 10,289-byte parser iterates over argv (and any extra options from library mode), matches each argument against registered options via the framework, and populates fields in the 1,352-byte options block. Special handling exists for:
 
@@ -256,7 +256,7 @@ The option parsing library lives in the `0x1C96000`--`0x1C97FFF` range and is sh
 | `sub_1C97210` | Option registrar | Registers one option with name, type, help |
 | `sub_1C97640` | Help printer | Iterates all registered options, prints help text |
 
-## Diagnostic System -- `sub_42FBA0`
+## Diagnostic System — `sub_42FBA0`
 
 The central diagnostic emitter is the most important error-reporting function in ptxas. With 2,350 call sites, it handles every warning, error, and fatal message in the entire binary.
 
@@ -274,13 +274,13 @@ void sub_42FBA0(
 
 | Level | Prefix | Tag | Behavior |
 |---|---|---|---|
-| 0 | (none) | — | Suppressed -- message is silently discarded |
+| 0 | (none) | — | Suppressed — message is silently discarded |
 | 1 | `"info    "` | `@I@` | Informational |
 | 2 | `"info    "` | `@I@` | Informational (alternate) |
 | 3 | `"warning "` / `"error   "` | `@W@` / `@E@` | Warning, promoted to error if TLS[50] set |
 | 4 | `"error*  "` | `@O@` | Non-fatal error with special marker |
 | 5 | `"error   "` | `@E@` | Non-fatal error |
-| 6 | `"fatal   "` | `@E@` | Fatal -- triggers `longjmp(jmp_buf, 1)` |
+| 6 | `"fatal   "` | `@E@` | Fatal — triggers `longjmp(jmp_buf, 1)` |
 
 The machine-readable tags (`@E@`, `@W@`, `@O@`, `@I@`) allow nvcc and other tools to parse ptxas output programmatically, extracting severity without parsing the human-readable text.
 
@@ -310,7 +310,7 @@ This implements the `--Werror` equivalent: when the Werror flag is active in the
 
 When source is available, the diagnostic emitter reads the PTX input file, seeks to line N, and prints the source line prefixed with `"# "`. To avoid O(n) seeking through large files on every diagnostic, it maintains a hash map (`sub_426150`/`sub_426D60`) that caches file byte offsets every 10 lines for fast random access to arbitrary line numbers.
 
-### Fatal Error Handler -- `sub_42BDB0`
+### Fatal Error Handler — `sub_42BDB0`
 
 A 14-byte wrapper called from 3,825 sites (nearly every allocation in ptxas). It fires whenever the pool allocator `sub_424070` returns NULL:
 
@@ -322,7 +322,7 @@ void sub_42BDB0(...) {
 
 The descriptor at `unk_29FA530` has severity 6 (fatal), so this always triggers `longjmp` back to the driver's recovery point.
 
-## Thread-Local Storage -- `sub_4280C0`
+## Thread-Local Storage — `sub_4280C0`
 
 The most-called function in the entire binary (3,928 callers). Returns a pointer to a 280-byte per-thread context struct, allocating and initializing it on first access.
 
@@ -355,7 +355,7 @@ void *sub_4280C0(void) {
 
 The TLS key is created by `ctor_001` before `main` runs, and a destructor function registered via `pthread_key_create` frees the 280-byte struct when a thread terminates. This per-thread context enables concurrent compilation of multiple compile units (when the thread pool is active), with each thread maintaining independent error state and diagnostic suppression flags.
 
-## PTX Input Setup -- `sub_4428E0`
+## PTX Input Setup — `sub_4428E0`
 
 After options are parsed, this 13,774-byte function reads and preprocesses the PTX input:
 
@@ -378,7 +378,7 @@ Key diagnostic strings from this function:
 - `"device-debug or lineinfo"`
 - `"unified Functions"`
 
-## Target Configuration -- `sub_43A400`
+## Target Configuration — `sub_43A400`
 
 A 4,696-byte function that configures target-specific defaults after option parsing completes. It reads the SM architecture number from the options block and sets:
 
@@ -389,7 +389,7 @@ A 4,696-byte function that configures target-specific defaults after option pars
 
 The function references `"NVIDIA"` and `"ptxocg.0.0"` (the internal name for the OCG optimization pass), suggesting it also initializes the pass pipeline configuration for the target architecture.
 
-## Register Constraint Calculator -- `sub_43B660`
+## Register Constraint Calculator — `sub_43B660`
 
 A 3,843-byte function that resolves potentially conflicting register limit specifications into a single register budget per function. Register constraints come from four sources with different priorities:
 
@@ -403,12 +403,12 @@ A 3,843-byte function that resolves potentially conflicting register limit speci
 The occupancy-derived limit is computed from `.minnctapersm` and `.maxntid`: given a minimum number of CTAs per SM and a maximum thread count per CTA, the function calculates the maximum register count that allows the requested occupancy level, accounting for per-SM register file size.
 
 Diagnostic strings indicate the resolution process:
-- `"computed using thread count"` -- derived from `.maxntid`
-- `"of .maxnreg"` -- explicit per-function limit
-- `"of maxrregcount option"` -- CLI override
-- `"global register limit specified"` -- global cap applied
+- `"computed using thread count"` — derived from `.maxntid`
+- `"of .maxnreg"` — explicit per-function limit
+- `"of maxrregcount option"` — CLI override
+- `"global register limit specified"` — global cap applied
 
-## Per-Entry Compilation -- `sub_43CC70`
+## Per-Entry Compilation — `sub_43CC70`
 
 A 5,425-byte function that processes each entry function through the complete backend pipeline. For each entry:
 
@@ -421,7 +421,7 @@ A 5,425-byte function that processes each entry function through the complete ba
 
 The function also handles `reg-fatpoint` configuration (the register allocation algorithm, documented in the [Fatpoint Algorithm](../regalloc/algorithm.md) page).
 
-## Function/ABI Setup -- `sub_43F400`
+## Function/ABI Setup — `sub_43F400`
 
 A 9,078-byte function that configures the calling convention for each function before compilation. This includes:
 
@@ -432,7 +432,7 @@ A 9,078-byte function that configures the calling convention for each function b
 | Return address register | `"return address register"` |
 | Scratch data registers | `"scratch data registers"` |
 | Scratch control barriers | `"scratch control barriers"` |
-| Call prototype | `"callprotoype"` (sic -- misspelled in binary) |
+| Call prototype | `"callprotoype"` (sic — misspelled in binary) |
 | Call target | `"calltarget"` |
 
 The function handles both entry functions (kernels launched from the host) and device functions (callable from other device code), with different ABI requirements for each. Entry functions use a simplified ABI where parameters come from constant memory, while device functions use register-based parameter passing.
@@ -474,12 +474,12 @@ The `--compile-as-tools-patch` and `--sw200428197` flags activate a special ABI 
 
 ## Cross-References
 
-- [Pipeline Overview](overview.md) -- full PTX-to-SASS compilation flow
-- [CLI Options](../config/cli-options.md) -- complete option catalog
-- [Knobs System](../config/knobs.md) -- the 2,000+ Mercury tuning knobs registered in ctor_005
-- [Memory Pool Allocator](../infra/memory-pools.md) -- the allocator (`sub_424070`) that calls `sub_42BDB0` on OOM
-- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) -- the hash map used by diagnostics for line offset caching
-- [Thread Pool & Concurrency](../infra/threading.md) -- thread pool that creates the TLS contexts
-- [PTX Parser](ptx-parser.md) -- the parser initialized by `sub_451730`
-- [Optimization Pipeline](optimizer.md) -- the 159-phase pipeline invoked per compile unit
-- [Fatpoint Algorithm](../regalloc/algorithm.md) -- register allocation referenced in per-entry compilation
+- [Pipeline Overview](overview.md) — full PTX-to-SASS compilation flow
+- [CLI Options](../config/cli-options.md) — complete option catalog
+- [Knobs System](../config/knobs.md) — the 2,000+ Mercury tuning knobs registered in ctor_005
+- [Memory Pool Allocator](../infra/memory-pools.md) — the allocator (`sub_424070`) that calls `sub_42BDB0` on OOM
+- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) — the hash map used by diagnostics for line offset caching
+- [Thread Pool & Concurrency](../infra/threading.md) — thread pool that creates the TLS contexts
+- [PTX Parser](ptx-parser.md) — the parser initialized by `sub_451730`
+- [Optimization Pipeline](optimizer.md) — the 159-phase pipeline invoked per compile unit
+- [Fatpoint Algorithm](../regalloc/algorithm.md) — register allocation referenced in per-entry compilation

@@ -8,13 +8,13 @@ These phases operate on the Ori IR before register allocation and scheduling. At
 
 | | |
 |---|---|
-| **DoSwitchOptFirst** | Phase 14 -- vtable at `off_22BD7F8` |
-| **OriBranchOpt** | Phase 15 -- vtable at `off_22BD820` |
-| **DoSwitchOptSecond** | Phase 30 -- vtable at `off_22BDA78` |
-| **OptimizeNestedCondBranches** | Phase 38 -- vtable at `off_22BDBB8` |
+| **DoSwitchOptFirst** | Phase 14 — vtable at `off_22BD7F8` |
+| **OriBranchOpt** | Phase 15 — vtable at `off_22BD820` |
+| **DoSwitchOptSecond** | Phase 30 — vtable at `off_22BDA78` |
+| **OptimizeNestedCondBranches** | Phase 38 — vtable at `off_22BDBB8` |
 | **Phase factory** | `sub_C60D30` cases 14, 15, 30, 38 |
 | **Phase object size** | 16 bytes (standard `{vtable_ptr, allocator_ptr}`) |
-| **IR level** | Ori -- SASS opcodes with virtual registers |
+| **IR level** | Ori — SASS opcodes with virtual registers |
 | **Key opcodes** | `OEN` (BRA), `OFFL` (BSSY), `OFLAP` (BSYNC) |
 | **CFG infrastructure** | FNV-1a hash maps at Code Object +648 (successors), +680 (backedges) |
 | **Related passes** | 31 `OriLinearReplacement`, 63 `OriDoPredication`, 80 `ExpandJmxComputation`, 133/136 `MergeEquivalentConditionalFlow` |
@@ -48,11 +48,11 @@ Phase 136  LateMergeEquivalentConditionalFlow
 
 The first pass (phase 14) runs immediately after the initial `GeneralOptimizeEarly` compound pass. At this point, constant folding and copy propagation have resolved many switch selector values, enabling the optimizer to determine case density and choose a lowering strategy.
 
-The second pass (phase 30) runs after loop unrolling (phase 22), strength reduction (phase 21), SSA phi insertion (phase 23), and software pipelining (phase 24). These transformations can expose new switch patterns -- particularly after loop unrolling duplicates switch bodies, creating opportunities for case clustering that were not visible before.
+The second pass (phase 30) runs after loop unrolling (phase 22), strength reduction (phase 21), SSA phi insertion (phase 23), and software pipelining (phase 24). These transformations can expose new switch patterns — particularly after loop unrolling duplicates switch bodies, creating opportunities for case clustering that were not visible before.
 
 Despite their names, the two passes use **different dispatch paths**. Phase 14 dispatches through the SM backend's vtable at offset +136 (`*(*(ctx+1584)+136)`), making it a polymorphic, architecture-specific switch optimization. Phase 30 calls the generic switch optimization core (`sub_77CF40` via `sub_791F00`). This means phase 14 runs whatever switch optimization the current SM target provides, while phase 30 always runs the generic algorithm. The two passes share pipeline position semantics (first pass vs. second pass) but not necessarily the same code.
 
-### Phase 14 Vtable Slot 17 -- Per-SM Dispatch Resolution
+### Phase 14 Vtable Slot 17 — Per-SM Dispatch Resolution
 
 The vtable call at offset +136 (slot 17) resolves to three distinct handlers depending on the SM backend's construction case in `sub_662920`. Resolved from the binary by reading each SM backend vtable at file offset `(vtable_VA + 136 - 0x400000)`:
 
@@ -66,7 +66,7 @@ The vtable call at offset +136 (slot 17) resolves to three distinct handlers dep
 | SM89 (Ada) | `off_21C0C68` | `sub_729160` (546B) | Per-instruction branch-distance rewriter |
 | SM90+ (Hopper/Blackwell) | `off_21D6860` | `sub_849110` (613B) | Sync-pattern restructuring + branch scan |
 
-Phase 14 is a **no-op on Kepler and Maxwell** -- those legacy architectures rely entirely on the generic phase 30 path. On all active targets (sm_75+), one of two real implementations runs.
+Phase 14 is a **no-op on Kepler and Maxwell** — those legacy architectures rely entirely on the generic phase 30 path. On all active targets (sm_75+), one of two real implementations runs.
 
 **Handler A: `sub_849110` (Pascal, Volta/Turing, Hopper/Blackwell).** Two-phase operation:
 
@@ -87,17 +87,17 @@ Phase 14 is a **no-op on Kepler and Maxwell** -- those legacy architectures rely
 | 297 (JMXU), 352 (EXIT) | Jump/exit | `sub_7E3790` / `sub_7E3800` result |
 | Other | Unhandled | -1 (0xFFFFFFFF) |
 
-After classification, the handler scans forward through operands checking register class membership (class 6 or 3), then optionally invokes `sub_687C00` to rewrite the branch target based on distance thresholds read from knob offsets 44280 and 44208 on the knob container. This replaces near branches with short-encoding variants when the target is within range -- an Ampere/Ada-specific optimization that exploits shorter branch encodings available on those architectures.
+After classification, the handler scans forward through operands checking register class membership (class 6 or 3), then optionally invokes `sub_687C00` to rewrite the branch target based on distance thresholds read from knob offsets 44280 and 44208 on the knob container. This replaces near branches with short-encoding variants when the target is within range — an Ampere/Ada-specific optimization that exploits shorter branch encodings available on those architectures.
 
-## DoSwitchOpt -- Switch Statement Optimization (Phases 14, 30)
+## DoSwitchOpt — Switch Statement Optimization (Phases 14, 30)
 
 ### Overview
 
 `DoSwitchOpt` transforms high-level switch statements from their initial representation as cascading conditional branches into one of three lowered forms, selected based on case density and count. The input is a chain of `ISETP` (integer set-predicate) + `BRA` (conditional branch) instruction pairs that compare the switch selector against successive case constants. The output is one of:
 
-1. **Jump table** -- a contiguous array of branch targets indexed by the selector value
-2. **Binary search tree** -- a balanced tree of comparisons that narrows the target in O(log n)
-3. **Cascading if-else chain** -- the original form, retained when the switch is small or sparse
+1. **Jump table** — a contiguous array of branch targets indexed by the selector value
+2. **Binary search tree** — a balanced tree of comparisons that narrows the target in O(log n)
+3. **Cascading if-else chain** — the original form, retained when the switch is small or sparse
 
 ### Input: Switch Pattern Recognition
 
@@ -126,23 +126,23 @@ The recognizer collects:
 
 The pattern recognizer is not a rigid ISETP+BRA pair matcher. It walks the instruction linked list from the block head at `code_object+280` and tolerates several forms of non-ideal input. The scanning loop in `sub_77CF40` (4698 bytes) processes each instruction through a three-stage filter:
 
-**Stage 1 -- Control-flow skip.** `sub_7DF3A0` reads the masked opcode (`*(instr+72) & 0xFFFFCFFF`) and returns a per-opcode property pointer. If bit 0 of that property is set (control-flow instruction), the instruction is skipped without terminating the chain. This is how interleaved `BRA` instructions are consumed: they are classified as control-flow and silently stepped over while the scanner continues looking for comparison instructions.
+**Stage 1 — Control-flow skip.** `sub_7DF3A0` reads the masked opcode (`*(instr+72) & 0xFFFFCFFF`) and returns a per-opcode property pointer. If bit 0 of that property is set (control-flow instruction), the instruction is skipped without terminating the chain. This is how interleaved `BRA` instructions are consumed: they are classified as control-flow and silently stepped over while the scanner continues looking for comparison instructions.
 
-**Stage 2 -- Chain-terminating opcodes.** When parameter `a3` is set (second-pass mode), the scanner reads the first instruction of the successor block (`*(*(block+8))+72`). If that unmasked opcode is 159 (sm_73+ control), 32 (`VABSDIFF4`), or 271 (warpgroup arrive/wait), the chain terminates with a `found_chain` flag set. These mark block boundaries that cannot be part of a switch cascade -- convergence points, GMMA synchronization, or SIMT barriers.
+**Stage 2 — Chain-terminating opcodes.** When parameter `a3` is set (second-pass mode), the scanner reads the first instruction of the successor block (`*(*(block+8))+72`). If that unmasked opcode is 159 (sm_73+ control), 32 (`VABSDIFF4`), or 271 (warpgroup arrive/wait), the chain terminates with a `found_chain` flag set. These mark block boundaries that cannot be part of a switch cascade — convergence points, GMMA synchronization, or SIMT barriers.
 
-**Stage 3 -- Accepted comparison opcodes.** Instructions surviving stages 1--2 are collected into the case set. The block number (field +144) is recorded, and the masked opcode determines acceptance:
+**Stage 3 — Accepted comparison opcodes.** Instructions surviving stages 1--2 are collected into the case set. The block number (field +144) is recorded, and the masked opcode determines acceptance:
 
 | Masked opcode | SASS mnemonic | Acceptance condition |
 |---------------|---------------|----------------------|
-| 96 | `LDG` | Unconditional -- any `LDG` in the chain is accepted |
+| 96 | `LDG` | Unconditional — any `LDG` in the chain is accepted |
 | 190 | (sm_82+ extended) | `sub_745D80`: operand type bits 28--30 == 6, value 1--3 |
 | 31 | `VABSDIFF` | Last source operand type bits 5--7 == 2 (immediate constant) |
-| (other) | -- | Falls through to operand scan without immediate acceptance |
+| (other) | — | Falls through to operand scan without immediate acceptance |
 
 **Operand backward scan.** After collection, the inner loop walks the operand array from index `operand_count - 1` down to 0 (operands at `instr + 8*idx + 84`). Two helpers classify each operand:
 
 - `sub_7DEB50` (14B): returns true when the register descriptor's class == 16 (predicate register). Identifies which predicate each comparison writes.
-- `sub_7DEAD0` (19B): returns true for a constant-zero predicate definition -- class 16, sub-type bits 10--12 == 4, value == 0. Identifies the PT (always-true) guard operand.
+- `sub_7DEAD0` (19B): returns true for a constant-zero predicate definition — class 16, sub-type bits 10--12 == 4, value == 0. Identifies the PT (always-true) guard operand.
 
 The scan terminates on a negative operand word (sentinel) or operand exhaustion.
 
@@ -165,12 +165,12 @@ Two OCG knobs (registered in `ctor_005`) influence the strategy selection:
 
 | Knob | ROT13 | VA | Type | Semantics |
 |------|-------|----|------|-----------|
-| `SwitchOptBudget` | `FjvgpuBcgOhqtrg` | `0x21B7CE0` | integer (03) | Limits the optimization effort budget -- controls how many cases or how much analysis the pass performs before falling back to the default BST strategy |
+| `SwitchOptBudget` | `FjvgpuBcgOhqtrg` | `0x21B7CE0` | integer (03) | Limits the optimization effort budget — controls how many cases or how much analysis the pass performs before falling back to the default BST strategy |
 | `SwitchOptExtendedPatternMatch` | `FjvgpuBcgRkgraqrqCnggreaZngpu` | `0x21B7CB0` | boolean (02) | When enabled, the pattern recognizer accepts interleaved instruction patterns beyond the simple `ISETP`+`BRA` pair, allowing it to match switches that have been partially transformed by earlier passes |
 
-The exact default values of these knobs are set by the OCG knob initialization system (`sub_79D990`) and are not visible as immediate constants at the registration site. The knob names follow the standard ROT13 obfuscation convention. Neither knob is checked by the `sub_7DDB50` opt-level gate -- they are consumed directly within the switch optimization algorithm in `sub_77CF40` and its callees.
+The exact default values of these knobs are set by the OCG knob initialization system (`sub_79D990`) and are not visible as immediate constants at the registration site. The knob names follow the standard ROT13 obfuscation convention. Neither knob is checked by the `sub_7DDB50` opt-level gate — they are consumed directly within the switch optimization algorithm in `sub_77CF40` and its callees.
 
-**Jump table** is preferred when case values are dense -- the selector maps directly to a table index with a bounds check and a subtraction. This produces the fastest code but consumes data memory proportional to the value range (not the case count).
+**Jump table** is preferred when case values are dense — the selector maps directly to a table index with a bounds check and a subtraction. This produces the fastest code but consumes data memory proportional to the value range (not the case count).
 
 **Binary search tree** is the default for large sparse switches. The pass sorts case constants and generates a balanced BST of `ISETP` + `BRA` pairs. Each comparison eliminates half the remaining candidates, reaching the target in O(log N) branches.
 
@@ -234,7 +234,7 @@ BitsetRBTreeNode (64 bytes):
 
 Insertion (`sub_7436F0`) decomposes a case's RPO block index (from block offset +144) into `key = index >> 8` and `bit = index & 0xFF`, locates or creates the RBT node keyed by the high bits, then sets `bitmap[bit >> 6] |= (1 << bit)`. If the node already exists (same key), the bit is OR'd into the existing bitmap. The RBT maintains sorted order by key, and `sub_6887C0` rebalances after insertion.
 
-The BST emission driver (LABEL_46 in `sub_77CF40`) iterates the sorted set in **descending** order. `sub_758210` initializes an iterator pointing to the highest set bit of the last RBT node. Each step extracts the current bit position via `_BitScanReverse64`, computes a composite index `(bit_position) | (rbt_key << 6)`, removes the bit via `sub_7654E0`, and processes the corresponding case block at `SwitchOptContext+104 + 40 * rpo_index`. This yields cases in descending RPO order without an explicit sort pass -- the RBT provides O(log N) insertion and inherently sorted traversal.
+The BST emission driver (LABEL_46 in `sub_77CF40`) iterates the sorted set in **descending** order. `sub_758210` initializes an iterator pointing to the highest set bit of the last RBT node. Each step extracts the current bit position via `_BitScanReverse64`, computes a composite index `(bit_position) | (rbt_key << 6)`, removes the bit via `sub_7654E0`, and processes the corresponding case block at `SwitchOptContext+104 + 40 * rpo_index`. This yields cases in descending RPO order without an explicit sort pass — the RBT provides O(log N) insertion and inherently sorted traversal.
 
 #### PGO Early-Exit Guard
 
@@ -247,7 +247,7 @@ if code_obj[1404] != 0        // PGO profile data is attached
     return                     // skip switch optimization entirely
 ```
 
-When profile-guided optimization data is present and fully processed, the pass exits without modifying any switch statements. PGO-guided code layout has already arranged case blocks by execution frequency, making static BST rebalancing counterproductive -- the profiled block ordering already minimizes expected branch depth for the observed workload.
+When profile-guided optimization data is present and fully processed, the pass exits without modifying any switch statements. PGO-guided code layout has already arranged case blocks by execution frequency, making static BST rebalancing counterproductive — the profiled block ordering already minimizes expected branch depth for the observed workload.
 
 Inside the main loop, PGO also affects the block reachability check (`sub_76ABE0`). When `code_obj[1370] & 0x40` is set (PGO block-frequency data available), the function uses a fast bitmask lookup at `block+176` instead of querying the profile object at `code_obj+1168` via `sub_76AAE0`. This bitmask records which successor blocks were observed as reachable during profiling, allowing unreachable-case pruning before BST construction.
 
@@ -294,16 +294,16 @@ Switch optimization interacts directly with SIMT execution. On a GPU, when threa
 
 For GPU code, jump tables are strongly preferred when density permits, because they minimize the number of divergence points to exactly one (the `BRX`), regardless of case count.
 
-## OriBranchOpt -- Branch Simplification (Phase 15)
+## OriBranchOpt — Branch Simplification (Phase 15)
 
 ### Overview
 
 `OriBranchOpt` performs four categories of CFG-level simplification on the Ori IR. It runs as a single pass that iterates over all basic blocks and applies the following transformations until no further changes occur:
 
-1. **Unconditional branch folding** -- eliminates `BRA` instructions that jump to the immediately following block
-2. **Unreachable block elimination** -- removes basic blocks with no predecessors (except the entry block)
-3. **Conditional branch simplification** -- simplifies conditional branches where the condition is provably constant or the true/false targets are identical
-4. **Branch chain threading** -- redirects branches that target blocks consisting of a single unconditional `BRA`, directly to the final destination
+1. **Unconditional branch folding** — eliminates `BRA` instructions that jump to the immediately following block
+2. **Unreachable block elimination** — removes basic blocks with no predecessors (except the entry block)
+3. **Conditional branch simplification** — simplifies conditional branches where the condition is provably constant or the true/false targets are identical
+4. **Branch chain threading** — redirects branches that target blocks consisting of a single unconditional `BRA`, directly to the final destination
 
 ### Transformation 1: Unconditional Branch Folding
 
@@ -330,9 +330,9 @@ The erase function operates on a CFG context object that contains three parallel
 
 | Context Offset | Type | Field |
 |----------------|------|-------|
-| +16 (`a1[2]`) | `int*` | `pred_count[]` -- predecessor count per block |
-| +64 (`a1[8]`) | `int*` | `rpo_number[]` -- RPO position per block |
-| `*a1 + 720` | `int*` | `rpo_to_bix[]` -- maps RPO position to block index |
+| +16 (`a1[2]`) | `int*` | `pred_count[]` — predecessor count per block |
+| +64 (`a1[8]`) | `int*` | `rpo_number[]` — RPO position per block |
+| `*a1 + 720` | `int*` | `rpo_to_bix[]` — maps RPO position to block index |
 
 ```c
 function erase_block(ctx, bix, counter):       // sub_BDE6C0
@@ -366,7 +366,7 @@ function erase_block(ctx, bix, counter):       // sub_BDE6C0
 
 Key design decisions confirmed from the binary:
 
-1. **Predecessor count zeroed first, successor map walked but not modified.** The erase function clears `pred_count[bix]` immediately (line `*result = 0` at 0xBDE6F2), then reads the successor edge map at +648 to find cascade targets. Successor hash map nodes are never unlinked -- the stale entries remain in the bucket chains. The `pred_count == 0` sentinel is the authoritative "deleted" marker.
+1. **Predecessor count zeroed first, successor map walked but not modified.** The erase function clears `pred_count[bix]` immediately (line `*result = 0` at 0xBDE6F2), then reads the successor edge map at +648 to find cascade targets. Successor hash map nodes are never unlinked — the stale entries remain in the bucket chains. The `pred_count == 0` sentinel is the authoritative "deleted" marker.
 
 2. **Recursive cascade for single-predecessor successors.** For each successor `S`, the function checks `pred_count[S] == 1` (at 0xBDE7DF: `cmp dword ptr [rdx+rax*4], 1`). If the sole predecessor of `S` is the block being erased, `S` itself is unreachable and is recursively erased. This propagates deletion forward through chains of single-predecessor blocks without requiring a separate worklist.
 
@@ -461,7 +461,7 @@ Key structural properties:
 - **Single RPO pass, not a global fixed point.** The outer loop executes exactly once over all blocks. The pass does not restart from the beginning when a change is made. Global convergence across blocks relies on later re-invocations of the phase by the pass manager (or on the nested conditional optimizer in phase 38 cleaning up remaining patterns).
 - **CFG rebuild** (`sub_785E20`) runs unconditionally before the traversal and conditionally after. The post-pass rebuild is gated on the `changed` flag (`r12` in the binary), which latches to true on any successful match and is never reset.
 
-## OptimizeNestedCondBranches -- Nested Conditional Flattening (Phase 38)
+## OptimizeNestedCondBranches — Nested Conditional Flattening (Phase 38)
 
 ### Overview
 
@@ -473,11 +473,11 @@ The pass runs after `GeneralOptimizeMid` (phase 37), which provides fresh consta
 
 `sub_A0F020` is a three-stage pipeline wrapped in a global fixed-point loop. The outer `while(2)` re-executes the entire pipeline whenever Stage 3 makes progress.
 
-**Stage 1 -- Liveness-driven operand simplification.** Iterates blocks in reverse RPO via the priority array at `ctx+792`. For each block, calls `sub_A06A60` with callback `sub_A08250`. The callback scans each instruction's operand array and replaces dead-in operands (not in the live-in bitset at `ctx+832`) with the tombstone value `0xF0000000`. A flag at `ctx+1368` bit 4 enables a two-pass strategy: the first pass is aggressive (`v63=1`), and if it makes no changes, the second pass runs conservatively (`v63=0`). This stage does not combine branches -- it prunes operands to expose merging opportunities.
+**Stage 1 — Liveness-driven operand simplification.** Iterates blocks in reverse RPO via the priority array at `ctx+792`. For each block, calls `sub_A06A60` with callback `sub_A08250`. The callback scans each instruction's operand array and replaces dead-in operands (not in the live-in bitset at `ctx+832`) with the tombstone value `0xF0000000`. A flag at `ctx+1368` bit 4 enables a two-pass strategy: the first pass is aggressive (`v63=1`), and if it makes no changes, the second pass runs conservatively (`v63=0`). This stage does not combine branches — it prunes operands to expose merging opportunities.
 
-**Stage 2 -- Block-pair merging.** Iterates blocks in reverse RPO again, calling `sub_A06A60` with callback `sub_A07DA0`. This callback examines operand liveness within each instruction: for each source operand referencing a virtual register (type tag 1, extracted as `(operand >> 28) & 7 == 1`), if the register index is not in the range 41--44 (the dedicated predicate registers P0--P3, checked as `(operand & 0xFFFFFF) - 41 <= 3`) and the operand is dead-in, it marks the live bit via `sub_BDBC70`. This builds the kill set used by Stage 3.
+**Stage 2 — Block-pair merging.** Iterates blocks in reverse RPO again, calling `sub_A06A60` with callback `sub_A07DA0`. This callback examines operand liveness within each instruction: for each source operand referencing a virtual register (type tag 1, extracted as `(operand >> 28) & 7 == 1`), if the register index is not in the range 41--44 (the dedicated predicate registers P0--P3, checked as `(operand & 0xFFFFFF) - 41 <= 3`) and the operand is dead-in, it marks the live bit via `sub_BDBC70`. This builds the kill set used by Stage 3.
 
-**Stage 3 -- Nested branch combination.** This is the core transformation. It scans basic blocks (at `ctx+296`) looking for a conditional branch (opcode 95 after masking bits 12--13) whose taken target leads to another conditional branch. When it finds such a chain, it walks backward through the intermediate instructions checking each one with `sub_A07940` for combinability, then splices the two branches into one using `sub_91E070`.
+**Stage 3 — Nested branch combination.** This is the core transformation. It scans basic blocks (at `ctx+296`) looking for a conditional branch (opcode 95 after masking bits 12--13) whose taken target leads to another conditional branch. When it finds such a chain, it walks backward through the intermediate instructions checking each one with `sub_A07940` for combinability, then splices the two branches into one using `sub_91E070`.
 
 ### Maximum Nesting Depth
 
@@ -493,7 +493,7 @@ The guard `sub_7DDB50(ctx) != 1` gates re-iteration: if the function has been re
 
 - Instructions flagged at `sub_7DF3A0` with bit 3 set (convergence barrier) or with a negative byte at offset +28 (predication lock)
 - Instructions with a negated-predicate output (bit 5 of the last operand for opcodes 288/183, bit 20 for opcode 16, or a flag in the predicate descriptor at `ctx+416` for opcode 85)
-- Four explicitly excluded opcodes after masking: **186** (`BMOV`), **119** (`LEA`), **211** (`PLOP3`), **283** (`VOTE`) -- these have side effects or warp-level semantics that prevent reordering
+- Four explicitly excluded opcodes after masking: **186** (`BMOV`), **119** (`LEA`), **211** (`PLOP3`), **283** (`VOTE`) — these have side effects or warp-level semantics that prevent reordering
 - Opcode **250** (`ISETP`) with a nonzero combined-condition field in its last operand
 - Opcode **226** (`FSETP`) with operand count minus modifier adjustment equal to 1 and a non-negative first operand
 - Opcode **9** (`BRX`) with a non-negative second operand (resolved indirect branch)
@@ -529,11 +529,11 @@ Mixed: if (a && (b || c)) --> two rounds: first OR(b,c), then AND(a, b|c)
 
 The pass applies these transformations only when:
 
-1. **No side effects** between the nested branches -- the intermediate block must contain only the branch and optionally predicate-setting instructions. The four excluded opcodes (186, 119, 211, 283) block combination because they have warp-level or memory side effects.
-2. **No live-out values** from the intermediate block other than the predicate -- checked via the liveness bitset at `ctx+832`. Stage 1 tombstones dead operands to make this check precise.
-3. **Both branches target the same merge point** -- the not-taken path of both the outer and inner branches must reach the same basic block.
-4. **The predicates are independent** -- `sub_A07940` verifies that the predicate output is not negated and not locked by a convergence barrier. If P1's definition depends on P0's branch outcome, the instructions fail the eligibility walk because the shared live range appears in the merge-point liveness bitmap (checked in `sub_7F44D0` via `sub_7DEEB0`; see [predicate independence check](branch-switch.md#predicate-independence-check-sub_7f44d0) above in the GO-19 section).
-5. **No already-folded setp** -- `sub_7F44D0` checks whether the predicate-defining instruction is itself a LOP3/PLOP3 with 2 inputs (field at descriptor+4 equals 2). This prevents composing a 4-input expression that exceeds LOP3's 3-input limit.
+1. **No side effects** between the nested branches — the intermediate block must contain only the branch and optionally predicate-setting instructions. The four excluded opcodes (186, 119, 211, 283) block combination because they have warp-level or memory side effects.
+2. **No live-out values** from the intermediate block other than the predicate — checked via the liveness bitset at `ctx+832`. Stage 1 tombstones dead operands to make this check precise.
+3. **Both branches target the same merge point** — the not-taken path of both the outer and inner branches must reach the same basic block.
+4. **The predicates are independent** — `sub_A07940` verifies that the predicate output is not negated and not locked by a convergence barrier. If P1's definition depends on P0's branch outcome, the instructions fail the eligibility walk because the shared live range appears in the merge-point liveness bitmap (checked in `sub_7F44D0` via `sub_7DEEB0`; see [predicate independence check](branch-switch.md#predicate-independence-check-sub_7f44d0) above in the GO-19 section).
+5. **No already-folded setp** — `sub_7F44D0` checks whether the predicate-defining instruction is itself a LOP3/PLOP3 with 2 inputs (field at descriptor+4 equals 2). This prevents composing a 4-input expression that exceeds LOP3's 3-input limit.
 
 ### Relationship to Predication
 
@@ -608,16 +608,16 @@ All four phases follow the standard 16-byte phase object model. Each vtable has 
 | 30 `DoSwitchOptSecond` | case 30 | `off_22BDA78` | `sub_C5FC80` (34B) | returns false |
 | 38 `OptimizeNestedCondBranches` | case 38 | `off_22BDBB8` | `sub_C5FA70` (34B) | returns false |
 
-All four `isNoOp` methods return false unconditionally -- gating is performed inside the execute body, not via `isNoOp`. Each execute body calls `sub_7DDB50` (156B), which reads the optimization level from `compilation_context+2104` and checks knob 499. The guard is `opt_level > 1`, so these phases execute at `-O2` and above. At `-O0` and `-O1`, `sub_7DDB50` returns 1 and the execute body returns without action.
+All four `isNoOp` methods return false unconditionally — gating is performed inside the execute body, not via `isNoOp`. Each execute body calls `sub_7DDB50` (156B), which reads the optimization level from `compilation_context+2104` and checks knob 499. The guard is `opt_level > 1`, so these phases execute at `-O2` and above. At `-O0` and `-O1`, `sub_7DDB50` returns 1 and the execute body returns without action.
 
 ### Execute Body Details
 
-**Phase 14 -- `sub_C5F720` (42 bytes).** After the `sub_7DDB50` gate, dispatches through the SM backend object's vtable: `(*(*(ctx+1584) + 136))(*(ctx+1584))`. Offset +136 is vtable slot 17 on the SM backend. This is a **polymorphic call** -- each SM target (sm_50, sm_75, sm_89, sm_100, etc.) provides its own switch optimization implementation. The SM backend object at `compilation_context+1584` is documented in [data-structures.md](../ir/data-structures.md#sm-backend-object-at-1584).
+**Phase 14 — `sub_C5F720` (42 bytes).** After the `sub_7DDB50` gate, dispatches through the SM backend object's vtable: `(*(*(ctx+1584) + 136))(*(ctx+1584))`. Offset +136 is vtable slot 17 on the SM backend. This is a **polymorphic call** — each SM target (sm_50, sm_75, sm_89, sm_100, etc.) provides its own switch optimization implementation. The SM backend object at `compilation_context+1584` is documented in [data-structures.md](../ir/data-structures.md#sm-backend-object-at-1584).
 
-**Phase 15 -- `sub_C5F950` (34 bytes).** After the gate, calls `sub_7917F0` (529B) directly -- no polymorphic dispatch. `sub_7917F0` is the branch simplification core:
+**Phase 15 — `sub_C5F950` (34 bytes).** After the gate, calls `sub_7917F0` (529B) directly — no polymorphic dispatch. `sub_7917F0` is the branch simplification core:
 
-1. Checks `context+1382` bit 2 (CFG validity flag) -- returns immediately if clear
-2. Checks knob 214 via the knob state dispatcher -- if set, skips the pass (OriBranchOpt disable switch)
+1. Checks `context+1382` bit 2 (CFG validity flag) — returns immediately if clear
+2. Checks knob 214 via the knob state dispatcher — if set, skips the pass (OriBranchOpt disable switch)
 3. Checks knob 487 (general optimization enablement)
 4. Calls `sub_785E20` (266B) to rebuild the CFG
 5. Calls `sub_781F80` (8335B) for block preparation infrastructure
@@ -625,7 +625,7 @@ All four `isNoOp` methods return false unconditionally -- gating is performed in
 7. Iterates over basic blocks in RPO order (block list at `*(ctx+296)`, RPO indices at `*(ctx+512)`). For each block, calls `sub_753600` (1351B) for the transformation, with a convergence loop gated by knob 464
 8. After convergence, calls `sub_785E20` again to finalize the CFG
 
-**Phase 30 -- `sub_C5FC80` (34 bytes).** After the gate, calls `sub_791F00(ctx, 1)`. The second argument `1` indicates this is the second switch optimization pass. `sub_791F00` (587B) performs lazy initialization of a 152-byte `SwitchOptContext` cached at `code_object+1288`:
+**Phase 30 — `sub_C5FC80` (34 bytes).** After the gate, calls `sub_791F00(ctx, 1)`. The second argument `1` indicates this is the second switch optimization pass. `sub_791F00` (587B) performs lazy initialization of a 152-byte `SwitchOptContext` cached at `code_object+1288`:
 
 ```text
 SwitchOptContext (152 bytes, allocated at code_object+1288):
@@ -638,9 +638,9 @@ SwitchOptContext (152 bytes, allocated at code_object+1288):
     +112 tertiary collection array
 ```
 
-After setup, `sub_791F00` calls `sub_77CF40` (4698B, 987 instructions) -- the main switch optimization algorithm containing pattern matching, strategy selection (jump table vs. BST vs. cascading if-else), and code emission.
+After setup, `sub_791F00` calls `sub_77CF40` (4698B, 987 instructions) — the main switch optimization algorithm containing pattern matching, strategy selection (jump table vs. BST vs. cascading if-else), and code emission.
 
-**Phase 38 -- `sub_C5FA70` (34 bytes).** After the gate, calls `sub_A0F020` (2375B, 563 instructions) directly. `sub_A0F020` implements the nested conditional optimizer as a fixed-point loop. It allocates a 16-byte work context at `code_object+1648` (lazy init), then iterates: scan blocks for nested branch patterns, combine predicates with LOP3, remove eliminated blocks, repeat until stable. The function also accesses code object fields +832 (block hash map) and +856 (edge data) for CFG manipulation.
+**Phase 38 — `sub_C5FA70` (34 bytes).** After the gate, calls `sub_A0F020` (2375B, 563 instructions) directly. `sub_A0F020` implements the nested conditional optimizer as a fixed-point loop. It allocates a 16-byte work context at `code_object+1648` (lazy init), then iterates: scan blocks for nested branch patterns, combine predicates with LOP3, remove eliminated blocks, repeat until stable. The function also accesses code object fields +832 (block hash map) and +856 (edge data) for CFG manipulation.
 
 ### Knob Gating Summary
 
@@ -650,8 +650,8 @@ After setup, `sub_791F00` calls `sub_77CF40` (4698B, 987 instructions) -- the ma
 | OriBranchOpt disable | 214 | bool | Disables branch simplification | `sub_7917F0` (phase 15) |
 | General optimization | 487 | bool | Enables/disables optimizer passes | `sub_7917F0` (phase 15) |
 | Convergence loop | 464 | bool | Gates the fixed-point iteration | `sub_7917F0` (phase 15) |
-| SwitchOptBudget | -- | int | Limits switch optimization effort budget | `sub_77CF40` (phases 14, 30) |
-| SwitchOptExtendedPatternMatch | -- | bool | Enables extended pattern recognition | `sub_77CF40` (phases 14, 30) |
+| SwitchOptBudget | — | int | Limits switch optimization effort budget | `sub_77CF40` (phases 14, 30) |
+| SwitchOptExtendedPatternMatch | — | bool | Enables extended pattern recognition | `sub_77CF40` (phases 14, 30) |
 
 ### Interaction with ExpandJmxComputation (Phase 80)
 
@@ -665,11 +665,11 @@ The pseudo-instruction left by `DoSwitchOpt` is expanded by phase 80 into the fi
 
 ### Interaction with OriLinearReplacement (Phase 31)
 
-Phase 31 runs immediately after `DoSwitchOptSecond` (phase 30). It targets branch-heavy patterns that survived switch optimization and attempts to replace them with branchless (linear) computation sequences using `SEL` (select) and predicated `MOV` instructions. This is a complement to predication (phase 63) -- it operates earlier in the pipeline on simpler patterns, while predication handles more complex diamond-shaped control flow later.
+Phase 31 runs immediately after `DoSwitchOptSecond` (phase 30). It targets branch-heavy patterns that survived switch optimization and attempts to replace them with branchless (linear) computation sequences using `SEL` (select) and predicated `MOV` instructions. This is a complement to predication (phase 63) — it operates earlier in the pipeline on simpler patterns, while predication handles more complex diamond-shaped control flow later.
 
 ### Interaction with MergeEquivalentConditionalFlow (Phases 133, 136)
 
-Two late-pipeline passes perform tail merging -- identifying basic blocks with identical instruction sequences that branch to the same targets, and merging them into a single block. This catches redundancy left over after branch optimization, particularly in switch case bodies that perform similar operations on different case values.
+Two late-pipeline passes perform tail merging — identifying basic blocks with identical instruction sequences that branch to the same targets, and merging them into a single block. This catches redundancy left over after branch optimization, particularly in switch case bodies that perform similar operations on different case values.
 
 ## Algorithmic Summary
 
@@ -696,30 +696,30 @@ All addresses from ptxas v13.0.88. Vtable entries resolved by reading the ELF `.
 
 | Address | Size | Phase | Vtable slot | Role |
 |---------|------|-------|-------------|------|
-| `sub_C5F720` | 42B | 14 | `+0` | execute -- dispatches to SM backend vtable[17] |
-| `sub_C5F4A0` | 6B | 14 | `+8` | getPhaseNumber -- returns 14 |
-| `sub_C5F4B0` | 3B | 14 | `+16` | isNoOp -- returns false |
-| `sub_C5F950` | 34B | 15 | `+0` | execute -- calls `sub_7917F0` |
-| `sub_C5F480` | 6B | 15 | `+8` | getPhaseNumber -- returns 15 |
-| `sub_C5F490` | 3B | 15 | `+16` | isNoOp -- returns false |
-| `sub_C5FC80` | 34B | 30 | `+0` | execute -- calls `sub_791F00(ctx, 1)` |
-| `sub_C5F2A0` | 6B | 30 | `+8` | getPhaseNumber -- returns 30 |
-| `sub_C5F2B0` | 3B | 30 | `+16` | isNoOp -- returns false |
-| `sub_C5FA70` | 34B | 38 | `+0` | execute -- calls `sub_A0F020` |
-| `sub_C5F1A0` | 6B | 38 | `+8` | getPhaseNumber -- returns 38 |
-| `sub_C5F1B0` | 3B | 38 | `+16` | isNoOp -- returns false |
+| `sub_C5F720` | 42B | 14 | `+0` | execute — dispatches to SM backend vtable[17] |
+| `sub_C5F4A0` | 6B | 14 | `+8` | getPhaseNumber — returns 14 |
+| `sub_C5F4B0` | 3B | 14 | `+16` | isNoOp — returns false |
+| `sub_C5F950` | 34B | 15 | `+0` | execute — calls `sub_7917F0` |
+| `sub_C5F480` | 6B | 15 | `+8` | getPhaseNumber — returns 15 |
+| `sub_C5F490` | 3B | 15 | `+16` | isNoOp — returns false |
+| `sub_C5FC80` | 34B | 30 | `+0` | execute — calls `sub_791F00(ctx, 1)` |
+| `sub_C5F2A0` | 6B | 30 | `+8` | getPhaseNumber — returns 30 |
+| `sub_C5F2B0` | 3B | 30 | `+16` | isNoOp — returns false |
+| `sub_C5FA70` | 34B | 38 | `+0` | execute — calls `sub_A0F020` |
+| `sub_C5F1A0` | 6B | 38 | `+8` | getPhaseNumber — returns 38 |
+| `sub_C5F1B0` | 3B | 38 | `+16` | isNoOp — returns false |
 
 ### Core Algorithm Functions
 
 | Address | Size | Callers | Description |
 |---------|------|---------|-------------|
-| `sub_77CF40` | 4698B | 1 | DoSwitchOpt core -- pattern match, strategy select, code emit |
-| `sub_7917F0` | 529B | 2 | OriBranchOpt core -- single RPO pass with per-block inner convergence loop |
-| `sub_A0F020` | 2375B | 11 | OptimizeNestedCondBranches core -- predicate combining |
-| `sub_791F00` | 587B | 3 | DoSwitchOpt setup -- SwitchOptContext init, calls `sub_77CF40` |
-| `sub_661210` | 2B | -- | SM backend slot 17 NO-OP (`rep ret`) -- SM30, SM50 |
-| `sub_849110` | 613B | -- | SM backend slot 17 handler A -- sync restructuring + branch scan (SM60/70/90+) |
-| `sub_729160` | 546B | -- | SM backend slot 17 handler B -- branch-distance rewriter (SM80/89) |
+| `sub_77CF40` | 4698B | 1 | DoSwitchOpt core — pattern match, strategy select, code emit |
+| `sub_7917F0` | 529B | 2 | OriBranchOpt core — single RPO pass with per-block inner convergence loop |
+| `sub_A0F020` | 2375B | 11 | OptimizeNestedCondBranches core — predicate combining |
+| `sub_791F00` | 587B | 3 | DoSwitchOpt setup — SwitchOptContext init, calls `sub_77CF40` |
+| `sub_661210` | 2B | — | SM backend slot 17 NO-OP (`rep ret`) — SM30, SM50 |
+| `sub_849110` | 613B | — | SM backend slot 17 handler A — sync restructuring + branch scan (SM60/70/90+) |
+| `sub_729160` | 546B | — | SM backend slot 17 handler B — branch-distance rewriter (SM80/89) |
 | `sub_848F40` | 472B | 1 | Sync-pattern restructuring helper (called by `sub_849110`) |
 | `sub_A9D9B0` | 256B | 2 | Per-instruction branch-target operand rewriter |
 
@@ -739,8 +739,8 @@ All addresses from ptxas v13.0.88. Vtable entries resolved by reading the ELF `.
 
 | Symbol | Address | Description |
 |--------|---------|-------------|
-| `sub_C60D30` | `0xC60D30` | Phase factory -- 159-case switch, allocates 16-byte phase objects |
-| `off_22BD5C8` | `0x22BD5C8` | Vtable base -- 40-byte stride, index = phase number |
+| `sub_C60D30` | `0xC60D30` | Phase factory — 159-case switch, allocates 16-byte phase objects |
+| `off_22BD5C8` | `0x22BD5C8` | Vtable base — 40-byte stride, index = phase number |
 | `off_22BD7F8` | `0x22BD7F8` | Phase 14 vtable (base + 14 * 0x28) |
 | `off_22BD820` | `0x22BD820` | Phase 15 vtable (base + 15 * 0x28) |
 | `off_22BDA78` | `0x22BDA78` | Phase 30 vtable (base + 30 * 0x28) |
@@ -748,15 +748,15 @@ All addresses from ptxas v13.0.88. Vtable entries resolved by reading the ELF `.
 
 ## Cross-References
 
-- [Pass Inventory](index.md) -- complete 159-phase table with phase numbers and categories
-- [Optimization Pipeline](../pipeline/optimizer.md) -- pipeline infrastructure, dispatch loop, phase ordering
-- [Ori IR](../ir/overview.md) -- instruction layout, opcode table (OEN = BRA, OFFL = BSSY, OFLAP = BSYNC), CFG hash maps
-- [GeneralOptimize Bundles](general-optimize.md) -- phases 13, 29, 37 that feed constant/copy information to branch passes
-- [Liveness Analysis](liveness.md) -- phase 16 (DCE cleanup after branch/switch optimization)
-- [Predication](predication.md) -- phase 63 (if-conversion, consumes simplified CFG from phases 15 and 38)
-- [Varying Propagation](varying-propagation.md) -- divergence analysis behind `UBRA` (uniform-branch) eligibility and the speculation-safety hand-off in `AnalyzeUniformsForSpeculation`
-- [Hot/Cold Partitioning](hot-cold.md) -- phases 41, 108, 109 (block placement interacts with branch layout)
-- [Synchronization & Barriers](sync-barriers.md) -- BSSY/BSYNC reconvergence mechanism
-- [Data Structures](../ir/data-structures.md) -- SM backend object at +1584 (phase 14 polymorphic dispatch target)
-- [Optimization Levels](../config/opt-levels.md) -- `sub_7DDB50` opt-level gate, knob 499 interaction
-- [Knobs System](../config/knobs.md) -- knobs 214, 464, 487, 499 gating branch/switch phases; SwitchOptBudget and SwitchOptExtendedPatternMatch controlling switch lowering strategy
+- [Pass Inventory](index.md) — complete 159-phase table with phase numbers and categories
+- [Optimization Pipeline](../pipeline/optimizer.md) — pipeline infrastructure, dispatch loop, phase ordering
+- [Ori IR](../ir/overview.md) — instruction layout, opcode table (OEN = BRA, OFFL = BSSY, OFLAP = BSYNC), CFG hash maps
+- [GeneralOptimize Bundles](general-optimize.md) — phases 13, 29, 37 that feed constant/copy information to branch passes
+- [Liveness Analysis](liveness.md) — phase 16 (DCE cleanup after branch/switch optimization)
+- [Predication](predication.md) — phase 63 (if-conversion, consumes simplified CFG from phases 15 and 38)
+- [Varying Propagation](varying-propagation.md) — divergence analysis behind `UBRA` (uniform-branch) eligibility and the speculation-safety hand-off in `AnalyzeUniformsForSpeculation`
+- [Hot/Cold Partitioning](hot-cold.md) — phases 41, 108, 109 (block placement interacts with branch layout)
+- [Synchronization & Barriers](sync-barriers.md) — BSSY/BSYNC reconvergence mechanism
+- [Data Structures](../ir/data-structures.md) — SM backend object at +1584 (phase 14 polymorphic dispatch target)
+- [Optimization Levels](../config/opt-levels.md) — `sub_7DDB50` opt-level gate, knob 499 interaction
+- [Knobs System](../config/knobs.md) — knobs 214, 464, 487, 499 gating branch/switch phases; SwitchOptBudget and SwitchOptExtendedPatternMatch controlling switch lowering strategy

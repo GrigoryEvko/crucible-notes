@@ -22,9 +22,9 @@ JumpThreading duplicates basic blocks so that predecessors with statically-deter
 
 ## Cross-References
 
-- [Pipeline & Ordering](./pipeline.md) -- tier-dependent scheduling of all three passes
-- [Register Allocation](./register-allocation.md) -- surviving allocas after SROA become register pressure; failed promotion leads to `.local` memory spills
-- [StructurizeCFG](./structurizecfg.md) -- the safety net that catches irreducible CFG created by JumpThreading or other passes
-- [GVN](./gvn.md) -- GVN performs load CSE and redundancy elimination complementary to EarlyCSE, running later in the pipeline with more expensive analysis
-- [MemorySpaceOpt](../passes/memory-space-opt.md) -- resolves generic pointers to specific address spaces; interacts with EarlyCSE's address-space-aware load forwarding
-- [DSE](./dse.md) -- Dead Store Elimination complements EarlyCSE's within-block store-to-load forwarding with cross-block dead store detection
+- [Pipeline & Ordering](./pipeline.md) — tier-dependent scheduling of all three passes
+- [Register Allocation](./register-allocation.md) — surviving allocas after SROA become register pressure; failed promotion leads to `.local` memory spills
+- [StructurizeCFG](./structurizecfg.md) — the safety net that catches irreducible CFG created by JumpThreading or other passes
+- [GVN](./gvn.md) — GVN performs load CSE and redundancy elimination complementary to EarlyCSE, running later in the pipeline with more expensive analysis
+- [MemorySpaceOpt](../passes/memory-space-opt.md) — resolves generic pointers to specific address spaces; interacts with EarlyCSE's address-space-aware load forwarding
+- [DSE](./dse.md) — Dead Store Elimination complements EarlyCSE's within-block store-to-load forwarding with cross-block dead store detection

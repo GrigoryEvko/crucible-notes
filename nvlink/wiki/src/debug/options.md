@@ -77,7 +77,7 @@ This compact reference summarizes every debug-related flag accepted on the nvlin
 - **`--device-debug` + `--generate-line-info`**: The embedded ptxas parser reports the conflict pair as `"device-debug or lineinfo"` (`sub_1104950` line 692). Full debug subsumes line info.
 - **`-g` + `--maxrregcount`**: Full debug overrides the register count limit, emitting `"Potential Performance Loss: 'setmaxnreg' ignored to allow debugging."` (register allocator).
 - **`-g` + `--suppress-debug-info`** (nvlink): Clears `byte_2A5F310` to 0. Equivalent to not passing `-g`.
-- **`--suppress-debug-info` alone**: Fatal diagnostic `"-suppress-debug-info" / "no -g"` -- aborts the link. The binary's help text describes the option as "ignored" without `--debug`, but the validation block in `sub_427AE0` calls `sub_467460(dword_2A5B650, ...)` (the same severity slot that produces a fatal error for `--no-opt` / `--optimize-data-layout` and `--force-partial-lto` / `--force-whole-lto`).
+- **`--suppress-debug-info` alone**: Fatal diagnostic `"-suppress-debug-info" / "no -g"` — aborts the link. The binary's help text describes the option as "ignored" without `--debug`, but the validation block in `sub_427AE0` calls `sub_467460(dword_2A5B650, ...)` (the same severity slot that produces a fatal error for `--no-opt` / `--optimize-data-layout` and `--force-partial-lto` / `--force-whole-lto`).
 - **`-g` without `--verbose-tkinfo`**: `byte_2A5F223` is auto-set to 1.
 - **`byte_2A5F224` + 32-bit**: Cleared back to 0 with a diagnostic. Extended debug requires 64-bit addressing.
 
@@ -87,7 +87,7 @@ Three debug-related options are registered in `nvlink_parse_options` (`sub_427AE
 
 ### `-g` / `--device-debug`
 
-Enables full device debug information. Registered with the long name `"debug"` and short name `"g"` (type 1, boolean). Stores a 1-byte boolean into `byte_2A5F310`. This is the master debug switch -- when set, nvlink:
+Enables full device debug information. Registered with the long name `"debug"` and short name `"g"` (type 1, boolean). Stores a 1-byte boolean into `byte_2A5F310`. This is the master debug switch — when set, nvlink:
 
 1. Forwards `-g` to cicc during LTO compilation (via `sub_426CD0`).
 2. Passes `--device-debug` to the embedded ptxas back-end.
@@ -112,7 +112,7 @@ if ( byte_2A5F226 )          // --suppress-debug-info set?
 
 ### `--generate-line-info` / `-lineinfo`
 
-Enables line number information only, without full debug data. Unlike `-g`, this option does not carry source variable locations or type information -- it produces only `.debug_line` sections mapping SASS instructions to source lines.
+Enables line number information only, without full debug data. Unlike `-g`, this option does not carry source variable locations or type information — it produces only `.debug_line` sections mapping SASS instructions to source lines.
 
 The value is stored in `byte_2A5F24C` (the consensus value byte) with `dword_2A5F248` tracking the consensus state. This option participates in the per-module consensus mechanism during fatbin extraction (documented in [Option Forwarding](../lto/option-forwarding.md)): when multiple translation units disagree on whether `--generate-line-info` was active, the consensus state machine resolves the conflict.
 
@@ -134,7 +134,7 @@ The help text reads: `"Do not preserve debug symbols in output.\nNote: This opti
 
 When `-g` IS also present, the suppress flag clears `byte_2A5F310` to zero, effectively converting the build to a non-debug build. Debug sections are never generated (pre-generation suppression, not post-generation stripping as might be assumed).
 
-In the FNLZR pipeline, `byte_2A5F223` (at `0x2A5F223`, one byte before `byte_2A5F224`) serves double duty: it is set by `--verbose-tkinfo` (or auto-set by `-g`) and is also read by FNLZR as the tkinfo verbosity flag. There is no separate FNLZR-level suppress flag -- the suppression is accomplished by clearing `byte_2A5F310` before compilation begins.
+In the FNLZR pipeline, `byte_2A5F223` (at `0x2A5F223`, one byte before `byte_2A5F224`) serves double duty: it is set by `--verbose-tkinfo` (or auto-set by `-g`) and is also read by FNLZR as the tkinfo verbosity flag. There is no separate FNLZR-level suppress flag — the suppression is accomplished by clearing `byte_2A5F310` before compilation begins.
 
 ## nvlink Internal Debug Options
 
@@ -170,8 +170,8 @@ When set, nvlink calls `sub_42FA60()` to install a signal handler that traps int
 
 The embedded ptxas back-end registers its own set of debug options in two functions:
 
-- `sub_1103030` (option definition table builder, `0x1103030`, 29,803 bytes) -- registers option names, types, and help text via `sub_42F130`.
-- `sub_1104950` (command option parser, `0x1104950`, 37,578 bytes) -- extracts option values into the per-module compilation state via `sub_42E390`.
+- `sub_1103030` (option definition table builder, `0x1103030`, 29,803 bytes) — registers option names, types, and help text via `sub_42F130`.
+- `sub_1104950` (command option parser, `0x1104950`, 37,578 bytes) — extracts option values into the per-module compilation state via `sub_42E390`.
 
 ### `--device-debug` / `-g`
 
@@ -264,9 +264,9 @@ Three flag bytes are derived from the target architecture during option parsing 
 
 | Flag | Address | Condition | Meaning |
 |---|---|---|---|
-| `byte_2A5F224` | `0x2A5F224` | sm > 72 (`0x48`) | Extended debug info available -- architectures above Volta support richer debug section formats including SASS-level annotations |
-| `byte_2A5F225` | `0x2A5F225` | sm > 89 (`0x59`) | SASS output mode -- the linker produces native SASS (not PTX), enabling SASS-level debug line tables |
-| `byte_2A5F222` | `0x2A5F222` | sm > 99 (`0x63`) | Mercury mode -- debug sections get `.nv.merc.` prefix during ELF emission |
+| `byte_2A5F224` | `0x2A5F224` | sm > 72 (`0x48`) | Extended debug info available — architectures above Volta support richer debug section formats including SASS-level annotations |
+| `byte_2A5F225` | `0x2A5F225` | sm > 89 (`0x59`) | SASS output mode — the linker produces native SASS (not PTX), enabling SASS-level debug line tables |
+| `byte_2A5F222` | `0x2A5F222` | sm > 99 (`0x63`) | Mercury mode — debug sections get `.nv.merc.` prefix during ELF emission |
 
 The `byte_2A5F224` flag has a special interaction with 32-bit mode: if sm > 72 but `dword_2A5F30C` (machine width) is 32, the flag is cleared and a diagnostic is emitted. This means extended debug info requires 64-bit address mode.
 
@@ -282,18 +282,18 @@ The debug sections included in the output depend on the combination of flags and
 
 | Debug Level | `.debug_info` | `.debug_abbrev` | `.debug_line` | `.debug_str` | `.debug_frame` | `.debug_loc` | NVIDIA ext |
 |---|---|---|---|---|---|---|---|
-| `-g0` (no flag, default) | -- | -- | -- | -- | -- | -- | -- |
-| `-lineinfo` / `--generate-line-info` | -- | -- | Yes | -- | -- | -- | `.nv_debug_line_sass` only (sm > 89) |
+| `-g0` (no flag, default) | — | — | — | — | — | — | — |
+| `-lineinfo` / `--generate-line-info` | — | — | Yes | — | — | — | `.nv_debug_line_sass` only (sm > 89) |
 | `-g` / `--device-debug` (full) | Yes | Yes | Yes | Yes | Yes | Yes | Yes (all `.nv_debug_*`, arch-gated) |
-| `-g` + `--suppress-debug-info` | -- | -- | -- | -- | -- | -- | -- |
-| `-lineinfo` + `--suppress-debug-info` (nvlink level) | -- | -- | Yes | -- | -- | -- | `.nv_debug_line_sass` only (sm > 89) |
-| `-lineinfo` + `--suppress-debug-info` (ptxas level) | -- | -- | -- | -- | -- | -- | -- |
+| `-g` + `--suppress-debug-info` | — | — | — | — | — | — | — |
+| `-lineinfo` + `--suppress-debug-info` (nvlink level) | — | — | Yes | — | — | — | `.nv_debug_line_sass` only (sm > 89) |
+| `-lineinfo` + `--suppress-debug-info` (ptxas level) | — | — | — | — | — | — | — |
 
 Notes on the summary matrix:
 
-1. **`-g0` is not a registered flag.** "No debug" is the default state when neither `-g` nor `--generate-line-info` is specified. The row is labelled `-g0` for familiarity with the nvcc spelling, but nvlink has no `-g0` token -- the absence of `byte_2A5F310` and `byte_2A5F24C` encodes this state.
+1. **`-g0` is not a registered flag.** "No debug" is the default state when neither `-g` nor `--generate-line-info` is specified. The row is labelled `-g0` for familiarity with the nvcc spelling, but nvlink has no `-g0` token — the absence of `byte_2A5F310` and `byte_2A5F24C` encodes this state.
 2. **`-g` + `--suppress-debug-info` clears `byte_2A5F310` pre-generation** (see `sub_427AE0` line 1086-1087). No debug sections are ever generated, so the result is indistinguishable from `-g0`. This is cheaper than post-generation stripping because cicc and ptxas are invoked without `-g`.
-3. **`-lineinfo` + `--suppress-debug-info` is asymmetric between the two parsers.** The nvlink-level `--suppress-debug-info` only clears `byte_2A5F310` -- it does not touch `byte_2A5F24C`, so line tables still survive. The ptxas-level `--suppress-debug-info` (documented as "ignored if used without --device-debug or --generate-line-info option") does suppress line info when passed to the embedded compiler. This is the one observable semantic difference between the two registrations.
+3. **`-lineinfo` + `--suppress-debug-info` is asymmetric between the two parsers.** The nvlink-level `--suppress-debug-info` only clears `byte_2A5F310` — it does not touch `byte_2A5F24C`, so line tables still survive. The ptxas-level `--suppress-debug-info` (documented as "ignored if used without --device-debug or --generate-line-info option") does suppress line info when passed to the embedded compiler. This is the one observable semantic difference between the two registrations.
 4. **NVIDIA extension column is architecture-gated.** For `-lineinfo` the only NVIDIA extension section ever emitted is `.nv_debug_line_sass`, and only on sm > 89. For `-g` the full set (`.nv_debug_line_sass`, `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_ptx_txt`, `.nv_debug_info_ptx`) is emitted, subject to the individual arch gates in the per-section matrices below.
 
 See [DWARF Processing](dwarf-processing.md) for the layout of each `.debug_*` section, [Line Tables](line-tables.md) for the construction of `.debug_line` and `.nv_debug_line_sass`, and [NVIDIA Debug Extensions](nvidia-extensions.md) for the five `.nv_debug_*` formats.
@@ -315,10 +315,10 @@ See [DWARF Processing](dwarf-processing.md) for the layout of each `.debug_*` se
 |---|---|---|---|---|---|
 | `.nv_debug_line_sass` | Yes | Yes | No | No | sm > 89 |
 | `.nv_debug_info_reg_sass` | Yes | No | No | No | sm > 89 |
-| `.nv_debug_ptx_txt` | Yes | No | No | No | -- |
-| `.nv_debug_info_reg_type` | Yes | No | No | No | -- |
-| `.nv_debug_info_ptx` | Yes | No | No | No | -- |
-| `.nv_debug.shared` | -- | -- | -- | -- | metadata-only (excluded from linking) |
+| `.nv_debug_ptx_txt` | Yes | No | No | No | — |
+| `.nv_debug_info_reg_type` | Yes | No | No | No | — |
+| `.nv_debug_info_ptx` | Yes | No | No | No | — |
+| `.nv_debug.shared` | — | — | — | — | metadata-only (excluded from linking) |
 
 ### Mercury Debug Sections (sm > 99)
 
@@ -443,7 +443,7 @@ The `--generate-line-info` option is special because it participates in the per-
 | `NOT_SEEN` | 0 | No module has specified this option yet |
 | `ABSENT` | 1 | At least one module lacked the option |
 | `PRESENT` | 2 | At least one module specified the option |
-| `CONFLICT` | 3 | Modules disagree -- both present and absent seen |
+| `CONFLICT` | 3 | Modules disagree — both present and absent seen |
 
 The decompiled consensus logic in `sub_42AF40` (fatbin extraction, lines 469-489):
 
@@ -548,29 +548,29 @@ Recognizes the same 15 sections with `.nv.merc.` prefix. Additionally checks for
 
 ### Debug section internals
 
-- [DWARF Processing](dwarf-processing.md) -- structure and re-emission of `.debug_info`, `.debug_abbrev`, `.debug_str`, `.debug_frame`, `.debug_loc`; DW_AT_NV_general_flags handling; the DWARF parser state machine. Read this after the Debug Section Output Matrix above to see how each enabled section is actually populated.
-- [Line Table Merging](line-tables.md) -- `.debug_line` and `.nv_debug_line_sass` construction, NVIDIA extended DWARF line opcodes, sequence deduplication, and the line table diagnostics (`"Duplicate debug line sequence for a section found"`, `"Debug line table not present for current sequence"`, `"Dwarf debug line error %s"`). This is the landing page for the `-lineinfo` row of the Debug Level Summary Matrix.
-- [NVIDIA Debug Extensions](nvidia-extensions.md) -- byte-level format of the five `.nv_debug_*` sections: `.nv_debug_line_sass`, `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_ptx_txt`, `.nv_debug_info_ptx`. Includes the architecture gates (sm > 89 for the `_sass` variants) referenced in the NVIDIA Extension Sections sub-matrix.
-- [Mercury Debug](mercury-debug.md) -- the `.nv.merc.debug_*` prefix scheme, the Mercury flag (`0x10000000`) in `sh_flags`, and the five Mercury-only section names (`.nv.merc.debug_aranges`, `.nv.merc.debug_ranges`, `.nv.merc.debug_macinfo`, `.nv.merc.debug_pubnames`, `.nv.merc.debug_pubtypes`).
+- [DWARF Processing](dwarf-processing.md) — structure and re-emission of `.debug_info`, `.debug_abbrev`, `.debug_str`, `.debug_frame`, `.debug_loc`; DW_AT_NV_general_flags handling; the DWARF parser state machine. Read this after the Debug Section Output Matrix above to see how each enabled section is actually populated.
+- [Line Table Merging](line-tables.md) — `.debug_line` and `.nv_debug_line_sass` construction, NVIDIA extended DWARF line opcodes, sequence deduplication, and the line table diagnostics (`"Duplicate debug line sequence for a section found"`, `"Debug line table not present for current sequence"`, `"Dwarf debug line error %s"`). This is the landing page for the `-lineinfo` row of the Debug Level Summary Matrix.
+- [NVIDIA Debug Extensions](nvidia-extensions.md) — byte-level format of the five `.nv_debug_*` sections: `.nv_debug_line_sass`, `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_ptx_txt`, `.nv_debug_info_ptx`. Includes the architecture gates (sm > 89 for the `_sass` variants) referenced in the NVIDIA Extension Sections sub-matrix.
+- [Mercury Debug](mercury-debug.md) — the `.nv.merc.debug_*` prefix scheme, the Mercury flag (`0x10000000`) in `sh_flags`, and the five Mercury-only section names (`.nv.merc.debug_aranges`, `.nv.merc.debug_ranges`, `.nv.merc.debug_macinfo`, `.nv.merc.debug_pubnames`, `.nv.merc.debug_pubtypes`).
 
 ### Option processing infrastructure
 
-- [CLI Option Parsing](../pipeline/cli-options.md) -- the generic `sub_42E390` / `sub_42E580` option registration and extraction framework that backs all three nvlink-level debug flags.
-- [Option Forwarding to cicc](../lto/option-forwarding.md) -- the `sub_426CD0` cicc option builder, including the SSE load of `xmmword_1D34730` for the 20-character `-generate-line-info` string and the dedup loop against `-Xnvvm` options at lines 227-233.
-- [Embedded ptxas Options](../config/ptxas-options.md) -- full catalog of 89 ptxas options; see the debug category section for the `sub_1103030` / `sub_1104950` registration pair.
+- [CLI Option Parsing](../pipeline/cli-options.md) — the generic `sub_42E390` / `sub_42E580` option registration and extraction framework that backs all three nvlink-level debug flags.
+- [Option Forwarding to cicc](../lto/option-forwarding.md) — the `sub_426CD0` cicc option builder, including the SSE load of `xmmword_1D34730` for the 20-character `-generate-line-info` string and the dedup loop against `-Xnvvm` options at lines 227-233.
+- [Embedded ptxas Options](../config/ptxas-options.md) — full catalog of 89 ptxas options; see the debug category section for the `sub_1103030` / `sub_1104950` registration pair.
 
 ### Pipeline integration
 
-- [FNLZR](../mercury/fnlzr.md) -- finalization pipeline: reads `byte_2A5F310` (debug flag), `byte_2A5F224` (extended debug), `byte_2A5F223` (verbose-tkinfo), `byte_2A5F225` (SASS mode) from the global flag block and carries or strips debug sections accordingly. Implements the `.nv.merc.` prefix stripping via the 8-byte pointer advance in `sub_4748F0`.
-- [ELF Output](../pipeline/output.md) -- cubin header config word at offset `+24`: value `4` for non-debug builds, `5` when `byte_2A5F310 == 1`. This is the authoritative external marker for a debug cubin.
-- [Compilation Pipeline Entry](../pipeline/entry.md) -- where `sub_427AE0` sits in the overall flow and how `dword_2A5B528` (compilation mode word) is consumed by the downstream stages.
+- [FNLZR](../mercury/fnlzr.md) — finalization pipeline: reads `byte_2A5F310` (debug flag), `byte_2A5F224` (extended debug), `byte_2A5F223` (verbose-tkinfo), `byte_2A5F225` (SASS mode) from the global flag block and carries or strips debug sections accordingly. Implements the `.nv.merc.` prefix stripping via the 8-byte pointer advance in `sub_4748F0`.
+- [ELF Output](../pipeline/output.md) — cubin header config word at offset `+24`: value `4` for non-debug builds, `5` when `byte_2A5F310 == 1`. This is the authoritative external marker for a debug cubin.
+- [Compilation Pipeline Entry](../pipeline/entry.md) — where `sub_427AE0` sits in the overall flow and how `dword_2A5B528` (compilation mode word) is consumed by the downstream stages.
 
 ### Sibling wikis
 
 The debug flag semantics documented here originate in the upstream CUDA toolchain. nvlink forwards these flags through LTO and the embedded ptxas back-end:
 
-- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- the ptxas side of `--device-debug`, `--generate-line-info`, and `--suppress-debug-info`. Documents the three-way debug mode enum (none / lineinfo / full), the auto-enable relationship between `-g` and `--sp-bounds-check` / `--g-tensor-memory-access-check`, and the SASS-level DWARF section emission path. The ptxas wiki's Mercury and SASS debug classifiers are the upstream counterparts to nvlink's `sub_1CED0E0` and `sub_1CED7C0`.
-- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) -- cicc's four-stage debug metadata lifecycle and the `-g` / `-generate-line-info` handling at the LLVM IR level. nvlink's `sub_426CD0` forwards these flags to cicc's `nvvmCompileProgram` entry, where cicc either preserves full `!DILocation`/`!DISubprogram` metadata (`-g`), strips variable/type info but keeps line info (`-generate-line-info`), or strips everything. nvlink's consensus mechanism in `byte_2A5F24C`/`dword_2A5F248` resolves conflicts across per-module line-info state before this upstream call.
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) — the ptxas side of `--device-debug`, `--generate-line-info`, and `--suppress-debug-info`. Documents the three-way debug mode enum (none / lineinfo / full), the auto-enable relationship between `-g` and `--sp-bounds-check` / `--g-tensor-memory-access-check`, and the SASS-level DWARF section emission path. The ptxas wiki's Mercury and SASS debug classifiers are the upstream counterparts to nvlink's `sub_1CED0E0` and `sub_1CED7C0`.
+- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) — cicc's four-stage debug metadata lifecycle and the `-g` / `-generate-line-info` handling at the LLVM IR level. nvlink's `sub_426CD0` forwards these flags to cicc's `nvvmCompileProgram` entry, where cicc either preserves full `!DILocation`/`!DISubprogram` metadata (`-g`), strips variable/type info but keeps line info (`-generate-line-info`), or strips everything. nvlink's consensus mechanism in `byte_2A5F24C`/`dword_2A5F248` resolves conflicts across per-module line-info state before this upstream call.
 
 ## Confidence Assessment
 
@@ -586,7 +586,7 @@ The debug flag semantics documented here originate in the upstream CUDA toolchai
 | `byte_2A5F225` set when sm > 89 (SASS mode) | HIGH | Decompiled `sub_427AE0` line 1058: `byte_2A5F225 = 1` within Mercury branch; line 1064 also sets it when Mercury is active |
 | `dword_2A5B528` compilation mode values (2/4/6) | HIGH | Decompiled `sub_427AE0` line 1138: `dword_2A5B528 = 2` (passthrough), line 1140: `dword_2A5B528 = 6` (SASS mode), line 1163: `dword_2A5B528 = 4` (LTO mode) all confirmed |
 | cicc option builder forwards `-g`, `-generate-line-info`, `-inline-info` | HIGH | Decompiled `sub_426CD0` line 147: `if ( byte_2A5F24C )`, line 155: `if ( byte_2A5F244 )`, line 157: `strcpy(s, "-inline-info")`, line 177: `if ( byte_2A5F310 )` exact matches |
-| cicc option dedup against `-Xnvvm` at lines 226-233 | HIGH | Decompiled `sub_426CD0` lines 226-233: `strcmp("-link-lto", v22) && (!byte_2A5F24C || strcmp("-generate-line-info", v22)) && (!byte_2A5F244 || strcmp("-inline-info", v22)) && ... (!byte_2A5F310 || *v23 != 45 || v23[1] != 103 || v23[2])` -- ASCII 45='-' and 103='g' confirm `-g` literal match |
+| cicc option dedup against `-Xnvvm` at lines 226-233 | HIGH | Decompiled `sub_426CD0` lines 226-233: `strcmp("-link-lto", v22) && (!byte_2A5F24C || strcmp("-generate-line-info", v22)) && (!byte_2A5F244 || strcmp("-inline-info", v22)) && ... (!byte_2A5F310 || *v23 != 45 || v23[1] != 103 || v23[2])` — ASCII 45='-' and 103='g' confirm `-g` literal match |
 | Fatbin `-generate-line-info` consensus state machine | HIGH | Decompiled `sub_42AF40` lines 469-489: `if ( strstr(v54, "-generate-line-info") ) { byte_2A5F24C = 1; if ( !dword_2A5F248 ) dword_2A5F248 = 2; else if ( dword_2A5F248 != 1 ) ... dword_2A5F248 = 3; }` state transitions match the NOT_SEEN/ABSENT/PRESENT/CONFLICT table |
 | Consensus state values 0/1/2/3 | HIGH | Decompiled `sub_42AF40` lines 474, 480, 489 show state assignments `= 2` (PRESENT), `= 3` (CONFLICT), `= 1` (ABSENT) matching wiki documentation |
 | @@DWARF directive handler `sub_1442040` at `0x1442040` | HIGH | Decompiled file present at exact address; line 55 references `"@@DWARF directive"` and line 62 references `".section directive"` with version `"2.0"` passed to diagnostic helper `sub_467A70` |

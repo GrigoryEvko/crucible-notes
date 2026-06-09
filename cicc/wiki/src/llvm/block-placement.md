@@ -2,7 +2,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-MachineBlockPlacement decides the physical ordering of basic blocks in a MachineFunction. On CPU, it is primarily an I-cache optimization. On GPU, block ordering has deeper consequences: PTX is a structured ISA where every taken branch stalls the SM instruction fetch pipeline, warp divergence must reconverge at post-dominators, and instruction cache capacity is measured in tens of kilobytes per SM partition. cicc carries two separate instances of this pass -- a stock LLVM copy for internal use and an NVPTX-pipeline copy at `sub_3521FF0` that participates in GPU-specific analysis. The NVPTX instance queries a divergence flag on the MachineFunction to decide whether tail duplication is profitable, and adds an alternative layout proposal path (`sub_34BEDF0` / `sub_34C7080`) that is absent from upstream LLVM.
+MachineBlockPlacement decides the physical ordering of basic blocks in a MachineFunction. On CPU, it is primarily an I-cache optimization. On GPU, block ordering has deeper consequences: PTX is a structured ISA where every taken branch stalls the SM instruction fetch pipeline, warp divergence must reconverge at post-dominators, and instruction cache capacity is measured in tens of kilobytes per SM partition. cicc carries two separate instances of this pass — a stock LLVM copy for internal use and an NVPTX-pipeline copy at `sub_3521FF0` that participates in GPU-specific analysis. The NVPTX instance queries a divergence flag on the MachineFunction to decide whether tail duplication is profitable, and adds an alternative layout proposal path (`sub_34BEDF0` / `sub_34C7080`) that is absent from upstream LLVM.
 
 ## Key Facts
 
@@ -21,7 +21,7 @@ MachineBlockPlacement decides the physical ordering of basic blocks in a Machine
 
 Three properties of GPU execution make block ordering non-trivial.
 
-**Instruction fetch pipeline.** GPU SMs fetch instructions sequentially. A taken branch introduces a fetch bubble -- the warp scheduler cannot issue from the new target until the instruction cache services the request. Every fall-through edge is free; every taken branch costs at least one cycle of fetch latency. The `misfetch-cost` (default 1) and `jump-inst-cost` (default 1) knobs model this cost. Maximizing fall-through sequences directly reduces warp stall cycles at branch points.
+**Instruction fetch pipeline.** GPU SMs fetch instructions sequentially. A taken branch introduces a fetch bubble — the warp scheduler cannot issue from the new target until the instruction cache services the request. Every fall-through edge is free; every taken branch costs at least one cycle of fetch latency. The `misfetch-cost` (default 1) and `jump-inst-cost` (default 1) knobs model this cost. Maximizing fall-through sequences directly reduces warp stall cycles at branch points.
 
 **Instruction cache pressure.** GPU instruction caches are small (typically 32-128 KB per SM partition). Code duplication through tail-dup increases I-cache working set. The `tail-dup-placement-penalty` (default 2%) penalizes code copies that improve fall-through at the expense of I-cache pressure. The ext-TSP model, when enabled, explicitly optimizes for I-cache utilization by modeling forward/backward reference distances.
 
@@ -106,7 +106,7 @@ runOnMachineFunction(MF):
 
 `sub_3521900` (`buildChains`) is the workhorse. It operates in four steps.
 
-#### Step 1 -- Initial Chain Construction
+#### Step 1 — Initial Chain Construction
 
 For every BB in the MachineFunction (iterated via the doubly-linked intrusive list from `MF+328` to sentinel `MF+320`), the builder:
 
@@ -114,9 +114,9 @@ For every BB in the MachineFunction (iterated via the doubly-linked intrusive li
 2. Inserts the BB-to-chain mapping into the chain-map via `sub_3515040` (DenseMap insert with pointer hash `((ptr >> 9) ^ (ptr >> 4)) & (bucket_count - 1)`).
 3. Attempts to extend the chain forward: calls `TII->analyzeBranch()` (vtable+344) on the current BB. If analyzable and a fall-through successor exists, calls `sub_2E32580` to verify the successor is valid for chaining (not already claimed by a different chain, not a landing pad, not the function entry if it would create a cycle). If valid, the successor is appended to the chain's BB array (growing from inline storage to heap allocation via `sub_C7D6A0` when needed), and the walk continues from the successor.
 
-The result is a set of maximal fall-through chains -- each chain represents a sequence of BBs where every transition is a fall-through edge according to `analyzeBranch`.
+The result is a set of maximal fall-through chains — each chain represents a sequence of BBs where every transition is a fall-through edge according to `analyzeBranch`.
 
-#### Step 2 -- Loop Chain Merging
+#### Step 2 — Loop Chain Merging
 
 Read the MachineLoopInfo structure at `pass+584`. Iterate loops from innermost outward. For each loop, call `sub_351EBB0` (`buildLoopChains`), which:
 
@@ -126,7 +126,7 @@ Read the MachineLoopInfo structure at `pass+584`. Iterate loops from innermost o
 
 Cold blocks within the loop (where `loop_freq / block_freq > loop-to-cold-block-ratio`) are ejected from the loop chain and will be placed at the function's end during the commit step.
 
-#### Step 3 -- Global Successor Ordering
+#### Step 3 — Global Successor Ordering
 
 Call `sub_35157A0` (`selectBestSuccessor`) for each BB to find the globally best successor chain ordering. The selection considers:
 - Edge probability from `sub_2E441D0` (`getEdgeProbability`)
@@ -135,9 +135,9 @@ Call `sub_35157A0` (`selectBestSuccessor`) for each BB to find the globally best
 
 Then `sub_351D700` (`buildChainForBlock`) performs a greedy walk from the function entry, building the top-level chain by repeatedly selecting the best unchained successor and appending it.
 
-#### Step 4 -- Commit
+#### Step 4 — Commit
 
-Walk the final chain's BB array and splice each BB into position using intrusive-list pointer swaps on the MachineFunction's BB list (pointer updates at `BB+0` and `BB+8` -- the prev/next pointers of the doubly-linked list).
+Walk the final chain's BB array and splice each BB into position using intrusive-list pointer swaps on the MachineFunction's BB list (pointer updates at `BB+0` and `BB+8` — the prev/next pointers of the doubly-linked list).
 
 ### Ext-TSP Layout (Optional Path)
 
@@ -147,9 +147,9 @@ The ext-TSP path builds a BB index hash-map using LLVM's DenseMap pattern (hash:
 
 | Function | Role |
 |---|---|
-| `sub_29BAF70` | `calcExtTspScore()` -- score the original layout |
-| `sub_29BAC40` | `calcExtTspScore()` -- score the alternative layout |
-| `sub_29BB2B0` | `computeExtTspLayout()` -- reorder chains by ext-TSP objective |
+| `sub_29BAF70` | `calcExtTspScore()` — score the original layout |
+| `sub_29BAC40` | `calcExtTspScore()` — score the alternative layout |
+| `sub_29BB2B0` | `computeExtTspLayout()` — reorder chains by ext-TSP objective |
 
 The pass compares original vs. reordered cost and commits the better ordering via `sub_3519A10` (`applyBlockOrder`). Additional ext-TSP tuning knobs (registered in `ctor_492` at `0x5545a0`):
 
@@ -171,9 +171,9 @@ The pass compares original vs. reordered cost and commits the better ordering vi
 
 ### Divergence-Gated Tail Duplication
 
-The most significant GPU-specific behavior is the divergence check before tail duplication. At step (G) in the algorithm, the pass reads `MF+8+688 bit 0` -- a flag set by earlier divergence analysis passes indicating the function contains warp-divergent branches. When this bit is set, `sub_35185B0` (`tailDupPlacement`) is skipped entirely.
+The most significant GPU-specific behavior is the divergence check before tail duplication. At step (G) in the algorithm, the pass reads `MF+8+688 bit 0` — a flag set by earlier divergence analysis passes indicating the function contains warp-divergent branches. When this bit is set, `sub_35185B0` (`tailDupPlacement`) is skipped entirely.
 
-The rationale: tail duplication creates an additional copy of a basic block to convert a diamond-shaped CFG into a straight-line fall-through. On CPU, this eliminates a taken branch on the hot path. On GPU with divergent branches, both sides of the diamond execute regardless (the warp mask simply toggles), so duplicating the tail block doubles code size for zero fall-through benefit. The divergence flag is a conservative gate -- it disables tail-dup for the entire function, not per-branch.
+The rationale: tail duplication creates an additional copy of a basic block to convert a diamond-shaped CFG into a straight-line fall-through. On CPU, this eliminates a taken branch on the hot path. On GPU with divergent branches, both sides of the diamond execute regardless (the warp mask simply toggles), so duplicating the tail block doubles code size for zero fall-through benefit. The divergence flag is a conservative gate — it disables tail-dup for the entire function, not per-branch.
 
 ### Alternative Layout Proposal Algorithm
 
@@ -191,7 +191,7 @@ if (byte_503C568 is set AND MF.size() > 3):
 
 The gate variable `byte_503C568` corresponds to the `branch-fold-placement` knob (default true). When branch-fold-placement is active and the function has enough basic blocks to justify the extra analysis cost, the alternative path fires.
 
-#### State Object Initialization -- `sub_34BEDF0` (321 bytes)
+#### State Object Initialization — `sub_34BEDF0` (321 bytes)
 
 `sub_34BEDF0` is a constructor that initializes a 0x100-byte evaluator state object. It takes six arguments: `(rdi=state, rsi=profile_available, rdx=?, rcx=MBFI*, r8=TII*, r9=MBPI*)`. The initialization zeroes the majority of the structure and sets up internal storage pointers:
 
@@ -227,7 +227,7 @@ struct LayoutEvaluatorState {      // 0x100 bytes, initialized by sub_34BEDF0
 
 The `force_mode` field at offset `+0x81` is set based on the global `qword_503AD08`. When this global equals 0, the force mode takes the `profile_available` argument. When it equals 1, force mode is unconditionally set to 1 (always evaluate). Any other value causes a straight return (skip evaluation). This provides a three-way override: 0=auto, 1=always, other=never.
 
-#### Dispatch Wrapper -- `sub_34C7080` (17 bytes)
+#### Dispatch Wrapper — `sub_34C7080` (17 bytes)
 
 `sub_34C7080` is a thin guard:
 
@@ -239,22 +239,22 @@ return sub_34C6AF0(rdi, rsi, rdx, rcx, r8, (bool)r9);
 
 The NULL check on `rdx` (the chain-data pointer) provides a fast exit when the chain builder produced no intermediate state worth re-evaluating.
 
-#### Core Layout Evaluator -- `sub_34C6AF0` (1419 bytes)
+#### Core Layout Evaluator — `sub_34C6AF0` (1419 bytes)
 
 `sub_34C6AF0` is the real body of the alternative layout evaluator. It operates on the evaluator state object (from `sub_34BEDF0`) and the MachineFunction, performing a complete re-evaluation of the chain-based layout against a different cost model. The algorithm proceeds in six steps:
 
-**Step 1 -- Iteration counter and hash table reset.**
+**Step 1 — Iteration counter and hash table reset.**
 Increment the iteration count at `state+0x18`. If the hash table at `state+0x20` is not fresh (byte at `state+0x34` is 0), compute a minimum table size as `max(32, 4 * (capacity - count))`, and if the current table is undersized, fill it with 0xFF sentinels via `memset`. This hash table tracks which BBs have been visited during the current evaluation pass.
 
-**Step 2 -- State initialization from MachineFunction.**
+**Step 2 — State initialization from MachineFunction.**
 Clear the running cost accumulator at `state+0x2C..+0x30`. Read the first BB from the MachineFunction's chain data. Store the chain data pointer, the iteration limit from `state+0x84`, and the analysis pointers (MBPI at `state+0x98`, TII at `state+0xA0`) into the evaluator's working slots.
 
 Read `MF->getSubtarget()->something` at offset `+0x220` and subtract `0x2A` (decimal 42). This produces an SM-generation index (sm_70=0, sm_75=1, sm_80=2, ..., sm_90=6, sm_100=16 based on this encoding). This index determines which cost table row is used for the fetch-penalty model.
 
-**Step 3 -- Divergence-aware block scanning.**
-For the first BB in the chain, check bit 2 of the flags at `BB[0]+0x158`. If set, dispatch to `TII->vtable+0x210` (which is compared against `sub_2FF52D0` -- the default stub). If the target overrides this vtable slot, call the override with the MachineFunction to determine if the block needs special handling. When the default is in use, set `state+0x83` (needs_reconverge) to 1 unconditionally. This appears to be an NVPTX check for whether the block is in a reconvergence region where layout ordering has correctness implications, not just performance.
+**Step 3 — Divergence-aware block scanning.**
+For the first BB in the chain, check bit 2 of the flags at `BB[0]+0x158`. If set, dispatch to `TII->vtable+0x210` (which is compared against `sub_2FF52D0` — the default stub). If the target overrides this vtable slot, call the override with the MachineFunction to determine if the block needs special handling. When the default is in use, set `state+0x83` (needs_reconverge) to 1 unconditionally. This appears to be an NVPTX check for whether the block is in a reconvergence region where layout ordering has correctness implications, not just performance.
 
-**Step 4 -- Main evaluation loop.**
+**Step 4 — Main evaluation loop.**
 Call `sub_34BA1B0` to snapshot the current chain state into a temporary structure on the stack. Then enter the main loop:
 
 ```c
@@ -286,7 +286,7 @@ while (true):
 
 `sub_34C4890` advances through the MachineFunction's basic blocks in frequency-priority order, proposing a reordering when a higher-frequency successor is not the current fall-through. `sub_34C2D70` performs the actual chain manipulation to implement the proposed swap.
 
-**Step 5 -- Loop-level re-evaluation.**
+**Step 5 — Loop-level re-evaluation.**
 The calls to `sub_34C56D0` (5137 bytes, called from `sub_34C6AF0` via the loop-iteration path at `0x34C6E90`) perform loop-level cost re-evaluation. This function:
 - Walks the MachineFunction's loop tree (from `MF+0x148`, the MachineLoopInfo block list)
 - For each loop, evaluates whether the proposed layout improves or degrades the loop body's fall-through density
@@ -298,7 +298,7 @@ The calls to `sub_34C56D0` (5137 bytes, called from `sub_34C6AF0` via the loop-i
 
 `sub_34C0690` (called on the sm_70/sm_75 path gated by `qword_503AA68`) is a lighter variant that omits the divergence-aware sub-evaluations, appropriate for older SM architectures where divergence reconvergence is handled differently.
 
-**Step 6 -- Final cost comparison and bitvector scan.**
+**Step 6 — Final cost comparison and bitvector scan.**
 After the evaluation loop terminates, build a bitvector tracking which BBs changed position. The bitvector uses 64-bit words with word index `= bb_index >> 6` and bit position `= bb_index & 63`. Walk the MachineFunction's loop tree blocks (`MF+0x148` linked list):
 - For each block in the loop, walk the instruction list starting at `BB+0x20`
 - For each instruction, mask the opcode with `0xFFFFFF` and compute `opcode * 5` as a stride
@@ -370,7 +370,7 @@ For GPU kernels where loops are the dominant compute pattern, correct loop rotat
 
 ## Hot/Cold Splitting
 
-cicc does **not** perform function-level hot/cold splitting. This is expected: GPU kernels are designed for all threads in a warp to execute the same path. There is no equivalent of a CPU "cold" exception handler that should be placed far from hot code. The `loop-to-cold-block-ratio` knob (default 5) does enable outlining individual cold blocks from loop chains -- moving them to the end of the function -- but this is intra-function block reordering, not function splitting.
+cicc does **not** perform function-level hot/cold splitting. This is expected: GPU kernels are designed for all threads in a warp to execute the same path. There is no equivalent of a CPU "cold" exception handler that should be placed far from hot code. The `loop-to-cold-block-ratio` knob (default 5) does enable outlining individual cold blocks from loop chains — moving them to the end of the function — but this is intra-function block reordering, not function splitting.
 
 The knob `force-loop-cold-block` (default false) forces cold block outlining from loops regardless of the frequency ratio. When `loop_freq / block_freq > loop-to-cold-block-ratio`, the block is moved out of the loop chain to reduce the loop body's I-cache footprint.
 
@@ -386,7 +386,7 @@ After layout is committed, two post-processing steps run:
 - `align-all-nofallthru-blocks` (default 0): force alignment on blocks without fall-through predecessors
 - `max-bytes-for-alignment` (default 0): cap padding bytes
 
-On GPU, block alignment is generally not useful -- PTX does not expose alignment constraints on basic blocks, and the hardware instruction fetch unit does not benefit from aligned block boundaries the way a CPU I-cache line does.
+On GPU, block alignment is generally not useful — PTX does not expose alignment constraints on basic blocks, and the hardware instruction fetch unit does not benefit from aligned block boundaries the way a CPU I-cache line does.
 
 ## Configuration Knobs
 
@@ -437,11 +437,11 @@ size_t hash = ((ptr >> 9) ^ (ptr >> 4)) & (bucket_count - 1);
 
 ### Why This Pass Matters More on GPU Than on CPU
 
-On CPU, MachineBlockPlacement is primarily an I-cache optimization -- placing hot blocks contiguously reduces cache misses. On GPU, the stakes are higher for three reasons:
+On CPU, MachineBlockPlacement is primarily an I-cache optimization — placing hot blocks contiguously reduces cache misses. On GPU, the stakes are higher for three reasons:
 
 1. **No branch prediction.** GPU SMs do not speculate. Every taken branch is a guaranteed fetch stall. The ratio of taken branches to fall-throughs directly translates to warp scheduler utilization. Optimal block placement can eliminate 10-30% of fetch bubbles in branch-heavy kernels.
 
-2. **Instruction cache is tiny and shared.** A single SM partition has 32-128 KB of instruction cache shared across all active warps. Code duplication (tail-dup, loop unrolling) competes with warp occupancy for this shared resource. The tail-dup-placement-penalty (2%) is conservative -- on kernels with high warp counts, even small code size increases can cause I-cache thrashing.
+2. **Instruction cache is tiny and shared.** A single SM partition has 32-128 KB of instruction cache shared across all active warps. Code duplication (tail-dup, loop unrolling) competes with warp occupancy for this shared resource. The tail-dup-placement-penalty (2%) is conservative — on kernels with high warp counts, even small code size increases can cause I-cache thrashing.
 
 3. **Reconvergence is layout-sensitive.** On architectures before Ampere (sm_70, sm_75), the stack-based reconvergence mechanism depends on the post-dominator being reachable from both sides of a divergent branch. Block placement that separates a post-dominator from its divergent predecessors can increase the live warp state, consuming scarce convergence stack entries. The alternative layout evaluator's `sub_34C0690` path specifically addresses this by evaluating reconvergence distance.
 
@@ -457,53 +457,53 @@ This constraint actually simplifies placement in some cases (fewer valid orderin
 
 ### Interaction with PTX Emission
 
-The final block ordering directly determines which branches in the PTX output are `bra` instructions (taken) vs. fall-throughs (implicit). The AsmPrinter (see [AsmPrinter](../infra/asmprinter.md)) emits `bra` only for non-fall-through edges. Since `ptxas` performs its own block scheduling on the PTX input, the cicc block ordering serves as a strong hint rather than a final answer -- but `ptxas` generally respects the input ordering for blocks within the same structured region.
+The final block ordering directly determines which branches in the PTX output are `bra` instructions (taken) vs. fall-throughs (implicit). The AsmPrinter (see [AsmPrinter](../infra/asmprinter.md)) emits `bra` only for non-fall-through edges. Since `ptxas` performs its own block scheduling on the PTX input, the cicc block ordering serves as a strong hint rather than a final answer — but `ptxas` generally respects the input ordering for blocks within the same structured region.
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `runOnMachineFunction` | `sub_3521FF0` | -- | Entry point, 82 KB |
-| `buildChains` | `sub_3521900` | -- | Initial chain construction |
-| `tailDupPlacement` | `sub_35185B0` | -- | Tail-dup-aware chain merging |
-| `applyBlockOrder` | `sub_3519A10` | -- | Commit final BB ordering to MF |
-| `alignBlocks` | `sub_3516980` | -- | Post-placement alignment |
-| `buildLoopChains` | `sub_351EBB0` | -- | Loop-aware chain merging |
-| `buildChainForBlock` | `sub_351D700` | -- | Greedy successor chain walk |
-| `selectBestSuccessor` | `sub_35157A0` | -- | Pick best fall-through successor |
-| `chainLookup` | `sub_3515040` | -- | DenseMap BB-to-chain lookup |
-| `rotateLoop` | `sub_351C710` | -- | Loop rotation heuristic |
-| `mergeTails` | `sub_351A710` | -- | Chain tail merge logic |
-| `lowerChain` | `sub_35161F0` | -- | Final lowering of chain to BB list |
-| (helper) | `sub_3515CB0` | -- | Chain cost model evaluation |
-| (helper) | `sub_3515280` | -- | Chain building iteration |
-| (helper) | `sub_3516000` | -- | Chain length query |
-| (NVIDIA addition) | `sub_34BEDF0` | -- | Layout evaluator state constructor (321 bytes) |
-| (NVIDIA addition) | `sub_34C7080` | -- | Layout evaluator dispatch wrapper (17 bytes, guards `sub_34C6AF0`) |
-| (NVIDIA addition) | `sub_34C6AF0` | -- | Core layout evaluator body (1419 bytes, SM-aware) |
-| (NVIDIA addition) | `sub_34C4890` | -- | Frequency-priority BB advancement |
-| (NVIDIA addition) | `sub_34C2D70` | -- | Chain swap application |
-| (NVIDIA addition) | `sub_34C56D0` | -- | Loop-level cost re-evaluation (5137 bytes, divergence-aware) |
-| (NVIDIA addition) | `sub_34C0690` | -- | Lightweight loop evaluator (sm_70/sm_75 path) |
-| (NVIDIA addition) | `sub_34BA1B0` | -- | Chain state snapshot |
-| (NVIDIA addition) | `sub_34C0EE0` | -- | Block-level cost query |
-| (NVIDIA addition) | `sub_34BE7F0` | -- | Chain adjacency analysis |
-| (NVPTX) | `sub_350FE30` | -- | Pass registration |
-| (NVPTX) | `sub_350FEE0` | -- | Stats pass registration |
-| (generic) | `sub_1DE8060` | -- | Generic LLVM pass registration |
-| (generic) | `sub_1DE8500` | -- | Generic LLVM stats registration |
-| cleanup | `sub_3511770` | -- | Chain-map teardown |
-| cleanup | `sub_35142F0` | -- | Loop chain data teardown |
-| cleanup | `sub_3510940` | -- | Bump allocator teardown |
-| `calcExtTspScore` | `sub_29BAF70` | -- | Ext-TSP score (original layout) |
-| `calcExtTspScore` | `sub_29BAC40` | -- | Ext-TSP score (alternative layout) |
-| `computeExtTspLayout` | `sub_29BB2B0` | -- | Ext-TSP chain reordering solver |
-| (helper) | `sub_2EE6520` | -- | Ext-TSP enable decision |
-| (helper) | `sub_2EE6AD0` | -- | Branch redirect profitability check |
-| `getEdgeProbability` | `sub_2E441D0` | -- | Edge probability query |
-| (default stub) | `sub_2FDC800` | -- | Default `getTailDupThreshold` implementation |
-| (default stub) | `sub_2FF52D0` | -- | Default reconvergence-region query |
-| (default stub) | `sub_2FDC810` | -- | Default layout-accept threshold query |
+| `runOnMachineFunction` | `sub_3521FF0` | — | Entry point, 82 KB |
+| `buildChains` | `sub_3521900` | — | Initial chain construction |
+| `tailDupPlacement` | `sub_35185B0` | — | Tail-dup-aware chain merging |
+| `applyBlockOrder` | `sub_3519A10` | — | Commit final BB ordering to MF |
+| `alignBlocks` | `sub_3516980` | — | Post-placement alignment |
+| `buildLoopChains` | `sub_351EBB0` | — | Loop-aware chain merging |
+| `buildChainForBlock` | `sub_351D700` | — | Greedy successor chain walk |
+| `selectBestSuccessor` | `sub_35157A0` | — | Pick best fall-through successor |
+| `chainLookup` | `sub_3515040` | — | DenseMap BB-to-chain lookup |
+| `rotateLoop` | `sub_351C710` | — | Loop rotation heuristic |
+| `mergeTails` | `sub_351A710` | — | Chain tail merge logic |
+| `lowerChain` | `sub_35161F0` | — | Final lowering of chain to BB list |
+| (helper) | `sub_3515CB0` | — | Chain cost model evaluation |
+| (helper) | `sub_3515280` | — | Chain building iteration |
+| (helper) | `sub_3516000` | — | Chain length query |
+| (NVIDIA addition) | `sub_34BEDF0` | — | Layout evaluator state constructor (321 bytes) |
+| (NVIDIA addition) | `sub_34C7080` | — | Layout evaluator dispatch wrapper (17 bytes, guards `sub_34C6AF0`) |
+| (NVIDIA addition) | `sub_34C6AF0` | — | Core layout evaluator body (1419 bytes, SM-aware) |
+| (NVIDIA addition) | `sub_34C4890` | — | Frequency-priority BB advancement |
+| (NVIDIA addition) | `sub_34C2D70` | — | Chain swap application |
+| (NVIDIA addition) | `sub_34C56D0` | — | Loop-level cost re-evaluation (5137 bytes, divergence-aware) |
+| (NVIDIA addition) | `sub_34C0690` | — | Lightweight loop evaluator (sm_70/sm_75 path) |
+| (NVIDIA addition) | `sub_34BA1B0` | — | Chain state snapshot |
+| (NVIDIA addition) | `sub_34C0EE0` | — | Block-level cost query |
+| (NVIDIA addition) | `sub_34BE7F0` | — | Chain adjacency analysis |
+| (NVPTX) | `sub_350FE30` | — | Pass registration |
+| (NVPTX) | `sub_350FEE0` | — | Stats pass registration |
+| (generic) | `sub_1DE8060` | — | Generic LLVM pass registration |
+| (generic) | `sub_1DE8500` | — | Generic LLVM stats registration |
+| cleanup | `sub_3511770` | — | Chain-map teardown |
+| cleanup | `sub_35142F0` | — | Loop chain data teardown |
+| cleanup | `sub_3510940` | — | Bump allocator teardown |
+| `calcExtTspScore` | `sub_29BAF70` | — | Ext-TSP score (original layout) |
+| `calcExtTspScore` | `sub_29BAC40` | — | Ext-TSP score (alternative layout) |
+| `computeExtTspLayout` | `sub_29BB2B0` | — | Ext-TSP chain reordering solver |
+| (helper) | `sub_2EE6520` | — | Ext-TSP enable decision |
+| (helper) | `sub_2EE6AD0` | — | Branch redirect profitability check |
+| `getEdgeProbability` | `sub_2E441D0` | — | Edge probability query |
+| (default stub) | `sub_2FDC800` | — | Default `getTailDupThreshold` implementation |
+| (default stub) | `sub_2FF52D0` | — | Default reconvergence-region query |
+| (default stub) | `sub_2FDC810` | — | Default layout-accept threshold query |
 
 ## Differences from Upstream LLVM
 
@@ -519,8 +519,8 @@ The final block ordering directly determines which branches in the PTX output ar
 
 ## Cross-References
 
-- **[StructurizeCFG](structurizecfg.md)** -- runs before block placement; produces the structured CFG that constrains which block orderings are legal. Structured regions must remain contiguous.
-- **[BranchFolding](branch-folding.md)** -- runs after placement; performs tail merging and branch folding on the committed layout. See `sub_2F336B0`.
-- **[Instruction Scheduling](scheduling.md)** -- block ordering affects scheduling windows. Post-placement scheduling operates within the committed layout.
-- **[Register Allocation](register-allocation.md)** -- register pressure is affected by block ordering through live range extent.
-- **[AsmPrinter](../infra/asmprinter.md)** -- emits PTX from the final block ordering, generating `bra` instructions for taken branches and fall-through for sequential blocks.
+- **[StructurizeCFG](structurizecfg.md)** — runs before block placement; produces the structured CFG that constrains which block orderings are legal. Structured regions must remain contiguous.
+- **[BranchFolding](branch-folding.md)** — runs after placement; performs tail merging and branch folding on the committed layout. See `sub_2F336B0`.
+- **[Instruction Scheduling](scheduling.md)** — block ordering affects scheduling windows. Post-placement scheduling operates within the committed layout.
+- **[Register Allocation](register-allocation.md)** — register pressure is affected by block ordering through live range extent.
+- **[AsmPrinter](../infra/asmprinter.md)** — emits PTX from the final block ordering, generating `bra` instructions for taken branches and fall-through for sequential blocks.

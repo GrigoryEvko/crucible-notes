@@ -5,16 +5,16 @@ Debug information in cicc follows a four-stage lifecycle: generation in the EDG/
 | | |
 |---|---|
 | **Debug info generation** | `sub_9433F0` (per-parameter), `sub_943430` (per-global), `sub_941230` (source location) |
-| **Debug version module flag** | `sub_915400` -- emits `"Debug Info Version"` = 3 |
-| **Flag filter** | `sub_12C6910` -- checks `-debug-compile`, `-g`, `-generate-line-info` |
-| **Verification pass** | `sub_29C8000` (12,480B, 434 BBs) -- runs after each optimization pass |
+| **Debug version module flag** | `sub_915400` — emits `"Debug Info Version"` = 3 |
+| **Flag filter** | `sub_12C6910` — checks `-debug-compile`, `-g`, `-generate-line-info` |
+| **Verification pass** | `sub_29C8000` (12,480B, 434 BBs) — runs after each optimization pass |
 | **Per-instruction verifier** | `sub_29C3AB0` (5,592B) |
 | **Debugify injector** | `sub_29C1CB0` |
 | **Stripping passes** | `#110`--`#114` in the pipeline parser |
 | **`.loc` emission** | `sub_31D55F0` (per-instruction), `sub_31E4280` (function-scope `.file`/`.loc`) |
 | **DWARF section emission** | `sub_399B1E0` (5.2 KB native, `DwarfDebug::beginModule`) |
 | **NVVM container field** | `DebugInfo` at container offset +12 (enum: NONE/LINE_INFO/DWARF) |
-| **cl::opt registration** | `ctor_043` at `0x48D7F0` -- `debug-compile`, `generate-line-info`, `line-info-inlined-at` |
+| **cl::opt registration** | `ctor_043` at `0x48D7F0` — `debug-compile`, `generate-line-info`, `line-info-inlined-at` |
 
 ## Three Compilation Modes
 
@@ -24,11 +24,11 @@ cicc supports three debug info levels. The mode is selected at the CLI layer and
 |---|---|---|---|---|
 | `-g` | `+296` | `-debug-compile` to LNK and OPT stages | `NVVM_DEBUG_INFO_DWARF` (2) | `FullDebug` |
 | `-generate-line-info` | `+328` | `-generate-line-info` to OPT stage only | `NVVM_DEBUG_INFO_LINE_INFO` (1) | `LineTablesOnly` |
-| (neither) | -- | -- | `NVVM_DEBUG_INFO_NONE` (0) | `NoDebug` |
+| (neither) | — | — | `NVVM_DEBUG_INFO_NONE` (0) | `NoDebug` |
 
 The distinction between `-g` and `-generate-line-info` is critical and non-obvious:
 
-- **`-g`** routes as `-debug-compile` to **both** the linker (LNK) and optimizer (OPT) stages. The linker stage needs the flag because libdevice linking must preserve debug info from the user module when merging with the stripped libdevice bitcode. The optimizer preserves all metadata: `DICompileUnit`, `DISubprogram`, `DILocalVariable`, `DIType`, scope chains, `dbg.value()`/`dbg.declare()` intrinsics -- everything. The backend emits complete DWARF sections. cuda-gdb can step through source, inspect variables, and reconstruct inlined call stacks.
+- **`-g`** routes as `-debug-compile` to **both** the linker (LNK) and optimizer (OPT) stages. The linker stage needs the flag because libdevice linking must preserve debug info from the user module when merging with the stripped libdevice bitcode. The optimizer preserves all metadata: `DICompileUnit`, `DISubprogram`, `DILocalVariable`, `DIType`, scope chains, `dbg.value()`/`dbg.declare()` intrinsics — everything. The backend emits complete DWARF sections. cuda-gdb can step through source, inspect variables, and reconstruct inlined call stacks.
 
 - **`-generate-line-info`** routes only to the OPT stage (not the linker). Early in the optimizer, `StripNonLineTableDebugInfoPass` strips all metadata except `DILocation` / `DISubprogram` / `DICompileUnit` with `LineTablesOnly` emission kind. This is enough for profiler source correlation (Nsight Compute maps `.loc` directives back to source lines) but not enough for variable inspection or source-level debugging in cuda-gdb.
 
@@ -67,11 +67,11 @@ The module finalizer `sub_915400` runs after all globals and functions have been
 
 1. Calls `sub_9151E0` to emit `nvvmir.version` metadata. When `[ctx+0x170]` is non-null, the version tuple has 4 operands instead of 2, including address-space-qualified indices.
 2. Calls `sub_914410` to emit `nvvm.annotations` metadata.
-3. If `[ctx+0x170] != 0`: calls `sub_BA93D0` (`Module::addModuleFlag`) with `("Debug Info Version", 3)`. This module flag is mandatory -- without it, LLVM's DWARF backend refuses to emit debug sections.
+3. If `[ctx+0x170] != 0`: calls `sub_BA93D0` (`Module::addModuleFlag`) with `("Debug Info Version", 3)`. This module flag is mandatory — without it, LLVM's DWARF backend refuses to emit debug sections.
 
 ### DIBuilder Infrastructure
 
-The actual metadata node creation uses LLVM's `DIBuilder` infrastructure at `0xAD0000`--`0xAF0000` (Zone 2 of the type system module). This includes `DIBasicType` / `DIDerivedType` / `DICompositeType` uniquing, scope chain construction, and the standard LLVM `!dbg` attachment API. cicc uses the standard LLVM `DIBuilder` without modifications -- the NVIDIA-specific aspects are in the calling patterns (which EDG nodes map to which DI metadata), not in the metadata creation API itself.
+The actual metadata node creation uses LLVM's `DIBuilder` infrastructure at `0xAD0000`--`0xAF0000` (Zone 2 of the type system module). This includes `DIBasicType` / `DIDerivedType` / `DICompositeType` uniquing, scope chain construction, and the standard LLVM `!dbg` attachment API. cicc uses the standard LLVM `DIBuilder` without modifications — the NVIDIA-specific aspects are in the calling patterns (which EDG nodes map to which DI metadata), not in the metadata creation API itself.
 
 ## Stage 2: Optimizer Preservation and Stripping
 
@@ -97,9 +97,9 @@ cicc registers five debug stripping passes in the pipeline parser, all standard 
 | `"strip-debug-declare"` | #112 | `StripDebugDeclarePass` | `dbg.declare()` intrinsics only | `dbg.value()`, all metadata |
 | `"strip-nondebug"` | #113 | `StripNonDebugSymbolsPass` | Non-debug symbols | All debug metadata |
 | `"strip-nonlinetable-debuginfo"` | #114 | `StripNonLineTableDebugInfoPass` | Everything except line tables | `DILocation`, `DISubprogram`, `DIFile` |
-| (core stripping at `0xAE0000`) | -- | `stripDebugInfo()` | All `llvm.dbg.*` intrinsics | Nothing |
+| (core stripping at `0xAE0000`) | — | `stripDebugInfo()` | All `llvm.dbg.*` intrinsics | Nothing |
 
-The core debug stripping implementation at `0xAE0000` (Zone 3 of the type system module) is the nuclear option -- it calls `stripDebugInfo()` to remove everything. The four named passes provide finer granularity.
+The core debug stripping implementation at `0xAE0000` (Zone 3 of the type system module) is the nuclear option — it calls `stripDebugInfo()` to remove everything. The four named passes provide finer granularity.
 
 ### Optimizer Pass Behavior with Debug Info
 
@@ -136,7 +136,7 @@ sub_29C8000(M, errs(), dbgCU, hashMap, "instcombine", 11, file, fileLen, jsonOut
 // Returns: true = PASS, false = FAIL (debug info degraded)
 ```
 
-The pass name argument lets the JSON report attribute degradation to the specific pass responsible. The eight-table metadata snapshot captures `DISubprogram`, `DIScope`, `DIGlobalVariable`, `DILocalVariable`, `DIType`, `DIImportedEntity`, `DILabel`, and retained nodes -- far more comprehensive than upstream LLVM's `CheckDebugInfoPass`, which only tracks subprograms and debug variable intrinsics.
+The pass name argument lets the JSON report attribute degradation to the specific pass responsible. The eight-table metadata snapshot captures `DISubprogram`, `DIScope`, `DIGlobalVariable`, `DILocalVariable`, `DIType`, `DIImportedEntity`, `DILabel`, and retained nodes — far more comprehensive than upstream LLVM's `CheckDebugInfoPass`, which only tracks subprograms and debug variable intrinsics.
 
 ### Verification Modes
 
@@ -217,7 +217,7 @@ ld.global.f32 %f1, [%rd2];
 mul.f32 %f2, %f1, %f1;
 ```
 
-This is purely a readability feature -- the comments are ignored by ptxas and have no effect on debug quality. The `nvptx-emit-src` LLVM knob description string is `"Emit source line in ptx file"`.
+This is purely a readability feature — the comments are ignored by ptxas and have no effect on debug quality. The `nvptx-emit-src` LLVM knob description string is `"Emit source line in ptx file"`.
 
 ### `.file` Directive Emission
 
@@ -236,15 +236,15 @@ When full debug info (`-g`) is active, a separate DWARF emission module at `0x39
 
 | Address | Size | Function |
 |---|---|---|
-| `sub_399B1E0` | 29KB | `DwarfDebug::beginModule()` -- initializes from `llvm.dbg.cu`, strings: `"DWARF Debug Writer"`, `"DWARF Emission"` |
-| `sub_3997B50` | 33KB | `.debug_aranges` emission -- address range tables |
+| `sub_399B1E0` | 29KB | `DwarfDebug::beginModule()` — initializes from `llvm.dbg.cu`, strings: `"DWARF Debug Writer"`, `"DWARF Emission"` |
+| `sub_3997B50` | 33KB | `.debug_aranges` emission — address range tables |
 | `sub_399D1D0` | 12KB | Range list emission (`DW_RLE_base_address`, `DW_RLE_offset_pair`, `DW_RLE_start_length`) |
-| `sub_399EB70` | 12KB | Register location expressions -- strings: `"no DWARF register encoding"`, `"sub-register"` |
-| `sub_39BDF60` | 38KB | `.debug_names` accelerator table -- bucket count, name count, augmentation string |
-| `sub_39B6390` | 33KB | DWARF form size calculator -- switch on `DW_FORM_*` codes |
+| `sub_399EB70` | 12KB | Register location expressions — strings: `"no DWARF register encoding"`, `"sub-register"` |
+| `sub_39BDF60` | 38KB | `.debug_names` accelerator table — bucket count, name count, augmentation string |
+| `sub_39B6390` | 33KB | DWARF form size calculator — switch on `DW_FORM_*` codes |
 | `sub_215ACD0` | 8.1KB | Module-level emission entry (NVPTX Debug Info Emission) |
 
-The module-level entry `sub_215ACD0` checks `*(a1+240)->field_344` to determine if DWARF is enabled, then looks up the `"NVPTX DWARF Debug Writer"` / `"NVPTX Debug Info Emission"` pass info. The NVPTX backend does not emit physical register locations -- GPUs have no DWARF register numbering scheme that maps to hardware. Instead, it emits virtual register references that ptxas resolves through SASS-level debug info.
+The module-level entry `sub_215ACD0` checks `*(a1+240)->field_344` to determine if DWARF is enabled, then looks up the `"NVPTX DWARF Debug Writer"` / `"NVPTX Debug Info Emission"` pass info. The NVPTX backend does not emit physical register locations — GPUs have no DWARF register numbering scheme that maps to hardware. Instead, it emits virtual register references that ptxas resolves through SASS-level debug info.
 
 The DWARF string/enum tables at `0xE00000`--`0xE0FFFF` (tag-to-string conversion, attribute-to-string, operation encoding) are stock LLVM 20 `BinaryFormat/Dwarf.cpp` utilities with no visible NVIDIA modifications.
 
@@ -273,7 +273,7 @@ Current version: `Major=3, Minor<=2`. The version check logic in `sub_CD41B0`:
 - `Minor > 2`: warning printed, parse continues
 - If absent: default `{3, 2}` is assumed
 
-This version tracks the debug metadata schema independently of the NVVM IR version (`NvvmIRVersion` at `0x06`--`0x07`, current `Major=2, Minor<=0x62`). The separation allows debug format evolution without breaking IR compatibility -- NVIDIA can add new debug metadata fields (e.g., for new SM features) without requiring a full IR version bump.
+This version tracks the debug metadata schema independently of the NVVM IR version (`NvvmIRVersion` at `0x06`--`0x07`, current `Major=2, Minor<=0x62`). The separation allows debug format evolution without breaking IR compatibility — NVIDIA can add new debug metadata fields (e.g., for new SM features) without requiring a full IR version bump.
 
 The container's `DebugInfo` field (at deserialized struct offset +12) also encodes the debug level as an enum that must be consistent with the module metadata:
 
@@ -297,7 +297,7 @@ cicc v13.0 inherits LLVM 20's support for the new debug records format (`DbgReco
 | `write-experimental-debuginfo-iterators-to-bitcode` | bool | true | Serialize debug records to bitcode |
 | `preserve-input-debuginfo-format` | boolOrDefault | false | When true, preserve whatever format the input uses |
 
-The `write-experimental-debuginfo` default of `true` means cicc v13.0 uses the new `DbgRecord` format internally by default. This is an LLVM 20 feature where debug info is stored as `DbgVariableRecord` and `DbgLabelRecord` objects attached directly to instructions rather than as separate `dbg.value()` intrinsic calls. The format change is transparent to the optimizer and backend -- the verification pass and AsmPrinter handle both formats identically.
+The `write-experimental-debuginfo` default of `true` means cicc v13.0 uses the new `DbgRecord` format internally by default. This is an LLVM 20 feature where debug info is stored as `DbgVariableRecord` and `DbgLabelRecord` objects attached directly to instructions rather than as separate `dbg.value()` intrinsic calls. The format change is transparent to the optimizer and backend — the verification pass and AsmPrinter handle both formats identically.
 
 ## End-to-End Flow Diagram
 
@@ -370,7 +370,7 @@ PTX Output
 | `debugify-level` | enum | location+variables | LLVM | `locations` or `location+variables` |
 | `debugify-quiet` | bool | off | LLVM | Suppress debugify diagnostics |
 | `debugify-func-limit` | int | unlimited | LLVM | Max functions to debugify |
-| `debugify-export` | string | -- | LLVM | Export debugify results to file |
+| `debugify-export` | string | — | LLVM | Export debugify results to file |
 | `verify-each` | bool | off | LLVM | Run IR verifier after every pass |
 | `verify-debuginfo-preserve` | bool | off | LLVM | Enable debug info preservation checking |
 | `no-inline-line-tables` | bool | off | LLVM | Prevent inlining from merging line tables |
@@ -386,11 +386,11 @@ PTX Output
 
 2. **Eight-table verification.** Upstream `CheckDebugInfoPass` tracks `DISubprogram` and debug variable intrinsics. NVIDIA's `sub_29C8000` maintains eight separate hash tables covering subprograms, scopes, global variables, local variables, types, imported entities, labels, and retained nodes.
 
-3. **JSON structured reporting.** NVIDIA added a YAML/JSON serializer to the verification pass that produces machine-parseable bug reports with per-pass attribution -- no upstream equivalent.
+3. **JSON structured reporting.** NVIDIA added a YAML/JSON serializer to the verification pass that produces machine-parseable bug reports with per-pass attribution — no upstream equivalent.
 
 4. **Metadata reconstruction.** After verification, NVIDIA's pass reconstructs the module's metadata tables from verified versions (Phase 8), effectively serving as a "repair" pass that normalizes metadata after corruption.
 
-5. **Container debug versioning.** The `NvvmDebugVersion` field in the NVVM container header tracks the debug metadata schema independently of the IR version -- a concept that does not exist in upstream LLVM.
+5. **Container debug versioning.** The `NvvmDebugVersion` field in the NVVM container header tracks the debug metadata schema independently of the IR version — a concept that does not exist in upstream LLVM.
 
 6. **Three-level debug info enum.** The `NVVM_DEBUG_INFO_NONE` / `LINE_INFO` / `DWARF` enum in the container provides a compile-unit-level debug mode indicator that ptxas and libNVVM can check without parsing the full module metadata.
 
@@ -398,41 +398,41 @@ PTX Output
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Emit `DILocalVariable` for function parameter | `sub_9433F0` | -- | -- |
-| Emit debug info for `GlobalVariable` (conditional on `[ctx+0x170]`) | `sub_943430` | -- | -- |
-| Set IR builder `DebugLoc` from EDG source position | `sub_941230` | -- | -- |
-| Module finalizer: emit `"Debug Info Version" = 3` module flag | `sub_915400` | 133B | -- |
-| Flag filter: checks `-debug-compile`, `-g`, `-generate-line-info` | `sub_12C6910` | -- | -- |
-| Debug info verification pass (main entry) | `sub_29C8000` | 12,480B | -- |
-| Per-instruction `DILocation` verifier | `sub_29C3AB0` | 5,592B | -- |
-| Debugify synthetic debug info injector | `sub_29C1CB0` | -- | -- |
-| `NewPMCheckDebugifyPass` wrapper | `sub_22702B0` | -- | -- |
-| `NewPMDebugifyPass` wrapper | `sub_2270390` | -- | -- |
-| Per-instruction `.loc` emission | `sub_31D55F0` | -- | -- |
-| Function-scope `.file`/`.loc` emission | `sub_31E4280` | -- | -- |
-| `insertDebugLocEntry` (file/line to MCSymbol mapping) | `sub_31E6100` | -- | -- |
-| Instruction-level debug comment emission | `sub_31D89B0` | -- | -- |
-| `emitHeader` (`.version`, `.target ... , debug`) | `sub_214F370` | 7.2KB | -- |
-| Module-level emission entry / NVPTX Debug Info Emission | `sub_215ACD0` | 8.1KB | -- |
-| `DwarfDebug::beginModule()` | `sub_399B1E0` | 29KB | -- |
-| `.debug_aranges` emission | `sub_3997B50` | 33KB | -- |
-| Range list emission (`DW_RLE_*`) | `sub_399D1D0` | 12KB | -- |
-| Register location expressions | `sub_399EB70` | 12KB | -- |
-| `.debug_names` accelerator table | `sub_39BDF60` | 38KB | -- |
-| DWARF form size calculator | `sub_39B6390` | 33KB | -- |
-| `DIBuilder` / debug metadata helper | `sub_ADCDB0` | -- | -- |
-| `cl::opt` registration: `debug-compile`, `generate-line-info`, `line-info-inlined-at` | `sub_48D7F0` | -- | -- |
-| NVVM container version check (validates `NvvmDebugVersion.Major == 3`) | `sub_CD41B0` | -- | -- |
+| Emit `DILocalVariable` for function parameter | `sub_9433F0` | — | — |
+| Emit debug info for `GlobalVariable` (conditional on `[ctx+0x170]`) | `sub_943430` | — | — |
+| Set IR builder `DebugLoc` from EDG source position | `sub_941230` | — | — |
+| Module finalizer: emit `"Debug Info Version" = 3` module flag | `sub_915400` | 133B | — |
+| Flag filter: checks `-debug-compile`, `-g`, `-generate-line-info` | `sub_12C6910` | — | — |
+| Debug info verification pass (main entry) | `sub_29C8000` | 12,480B | — |
+| Per-instruction `DILocation` verifier | `sub_29C3AB0` | 5,592B | — |
+| Debugify synthetic debug info injector | `sub_29C1CB0` | — | — |
+| `NewPMCheckDebugifyPass` wrapper | `sub_22702B0` | — | — |
+| `NewPMDebugifyPass` wrapper | `sub_2270390` | — | — |
+| Per-instruction `.loc` emission | `sub_31D55F0` | — | — |
+| Function-scope `.file`/`.loc` emission | `sub_31E4280` | — | — |
+| `insertDebugLocEntry` (file/line to MCSymbol mapping) | `sub_31E6100` | — | — |
+| Instruction-level debug comment emission | `sub_31D89B0` | — | — |
+| `emitHeader` (`.version`, `.target ... , debug`) | `sub_214F370` | 7.2KB | — |
+| Module-level emission entry / NVPTX Debug Info Emission | `sub_215ACD0` | 8.1KB | — |
+| `DwarfDebug::beginModule()` | `sub_399B1E0` | 29KB | — |
+| `.debug_aranges` emission | `sub_3997B50` | 33KB | — |
+| Range list emission (`DW_RLE_*`) | `sub_399D1D0` | 12KB | — |
+| Register location expressions | `sub_399EB70` | 12KB | — |
+| `.debug_names` accelerator table | `sub_39BDF60` | 38KB | — |
+| DWARF form size calculator | `sub_39B6390` | 33KB | — |
+| `DIBuilder` / debug metadata helper | `sub_ADCDB0` | — | — |
+| `cl::opt` registration: `debug-compile`, `generate-line-info`, `line-info-inlined-at` | `sub_48D7F0` | — | — |
+| NVVM container version check (validates `NvvmDebugVersion.Major == 3`) | `sub_CD41B0` | — | — |
 
 ## Cross-References
 
-- [Debug Info Verification](../infra/debug-verify.md) -- detailed `sub_29C8000` algorithm, 9-phase walk, JSON output format
-- [AsmPrinter & PTX Body Emission](../infra/asmprinter.md) -- `.loc`/`.file` directive emission, per-instruction debug annotation, inlined-at chain
-- [PTX Emission](./emission.md) -- module-level emission, `.target ... , debug` suffix
-- [Entry Point & CLI](./entry.md) -- `-g`, `-generate-line-info` flag parsing in `sub_8F9C90`
-- [NVVM IR Generation](./ir-generation.md) -- dual-path architecture, codegen context
-- [CLI Flags](../config/cli-flags.md) -- flag routing through the 3-column dispatch table
-- [LLVM Knobs](../config/knobs.md) -- `debugify-*`, `verify-each`, `dwarf-*` knobs
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where debug verification fits in the pass ordering
-- [NVVM Container](../structs/nvvm-container.md) -- `NvvmDebugVersion` field in the binary header
-- [Inliner Cost Model](../lto/inliner-cost.md) -- inlining decisions that create the inlined-at chains
+- [Debug Info Verification](../infra/debug-verify.md) — detailed `sub_29C8000` algorithm, 9-phase walk, JSON output format
+- [AsmPrinter & PTX Body Emission](../infra/asmprinter.md) — `.loc`/`.file` directive emission, per-instruction debug annotation, inlined-at chain
+- [PTX Emission](./emission.md) — module-level emission, `.target ... , debug` suffix
+- [Entry Point & CLI](./entry.md) — `-g`, `-generate-line-info` flag parsing in `sub_8F9C90`
+- [NVVM IR Generation](./ir-generation.md) — dual-path architecture, codegen context
+- [CLI Flags](../config/cli-flags.md) — flag routing through the 3-column dispatch table
+- [LLVM Knobs](../config/knobs.md) — `debugify-*`, `verify-each`, `dwarf-*` knobs
+- [Pipeline & Ordering](../llvm/pipeline.md) — where debug verification fits in the pass ordering
+- [NVVM Container](../structs/nvvm-container.md) — `NvvmDebugVersion` field in the binary header
+- [Inliner Cost Model](../lto/inliner-cost.md) — inlining decisions that create the inlined-at chains

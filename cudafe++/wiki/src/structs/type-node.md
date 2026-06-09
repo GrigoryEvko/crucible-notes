@@ -1,6 +1,6 @@
 # Type Node
 
-The type node is the fundamental type representation in EDG's intermediate language (IL). Every C++ type -- from `int` to `const volatile std::vector<std::pair<int, float>>*&` -- is represented as a 176-byte type node allocated by `alloc_type` (`sub_5E3D40` in `il_alloc.c`). Type nodes form the backbone of the type system: every variable, field, routine, expression, and parameter carries a pointer to its type node. There are approximately 4,448 call sites across 128 type-query leaf functions in `types.c` alone.
+The type node is the fundamental type representation in EDG's intermediate language (IL). Every C++ type — from `int` to `const volatile std::vector<std::pair<int, float>>*&` — is represented as a 176-byte type node allocated by `alloc_type` (`sub_5E3D40` in `il_alloc.c`). Type nodes form the backbone of the type system: every variable, field, routine, expression, and parameter carries a pointer to its type node. There are approximately 4,448 call sites across 128 type-query leaf functions in `types.c` alone.
 
 The type node is a discriminated union. The `type_kind` byte at offset `+132` selects one of 22 type kinds (0-21), and certain type kinds trigger allocation of a separate supplementary structure (class_type_supplement, routine_type_supplement, etc.) that hangs off the type node at offset `+152`. The base 176 bytes contain the common header shared with all IL entries (96 bytes), the type discriminator, qualifier flags, size/alignment, and type-kind-specific inline payload fields.
 
@@ -143,9 +143,9 @@ The type kind byte at offset `+132` holds one of 22 values. The `set_type_kind` 
 | 9 | `tk_struct` | `struct S` | 208-byte `class_type_supplement` | kind stored at supplement+100 |
 | 10 | `tk_class` | `class C` | 208-byte `class_type_supplement` | kind stored at supplement+100 |
 | 11 | `tk_union` | `union U` | 208-byte `class_type_supplement` | kind stored at supplement+100 |
-| 12 | `tk_typeref` | `typedef`, `using` alias, elaborated type specifiers | 56-byte `typeref_type_supplement` | -- |
+| 12 | `tk_typeref` | `typedef`, `using` alias, elaborated type specifiers | 56-byte `typeref_type_supplement` | — |
 | 13 | `tk_typeof` | `typeof(expr)`, `__typeof__` | None | zeroed |
-| 14 | `tk_template_param` | `typename T`, template type/non-type/template parameters | 40-byte `templ_param_supplement` | -- |
+| 14 | `tk_template_param` | `typename T`, template type/non-type/template parameters | 40-byte `templ_param_supplement` | — |
 | 15 | `tk_decltype` | `decltype(expr)` | None | zeroed |
 | 16 | `tk_pack_expansion` | `T...` (parameter pack expansion) | None | zeroed |
 | 17 | `tk_pack_expansion_alt` | Alternate pack expansion form | None | no-op |
@@ -154,7 +154,7 @@ The type kind byte at offset `+132` holds one of 22 values. The `set_type_kind` 
 | 20 | `tk_nullptr_t` | `std::nullptr_t` | None | no-op |
 | 21 | `tk_reserved_21` | Reserved / unused | None | no-op |
 
-**Reconciling set_type_kind with types.c query functions**: There is an apparent conflict between the `set_type_kind` dispatch (where case 7 allocates a routine supplement, case 0xD/13 is typeof, case 0xE/14 is template_param) and the `types.c` query function catalog (where `is_reference_type` tests kind==7, `is_pointer_to_member_type` tests kind==13, `is_function_type` tests kind==14). The `set_type_kind` switch is the authoritative source for allocation behavior -- it is a 279-line DEFINITE-confidence function with the embedded error string `"set_type_kind: bad type kind"`. The types.c catalog was reconstructed from runtime query patterns and may reflect a different numbering or the fact that type kind values are reassigned after initial allocation. The table above follows the `set_type_kind` dispatch numbering. The types.c query mappings are documented in the query function catalog below for cross-reference.
+**Reconciling set_type_kind with types.c query functions**: There is an apparent conflict between the `set_type_kind` dispatch (where case 7 allocates a routine supplement, case 0xD/13 is typeof, case 0xE/14 is template_param) and the `types.c` query function catalog (where `is_reference_type` tests kind==7, `is_pointer_to_member_type` tests kind==13, `is_function_type` tests kind==14). The `set_type_kind` switch is the authoritative source for allocation behavior — it is a 279-line DEFINITE-confidence function with the embedded error string `"set_type_kind: bad type kind"`. The types.c catalog was reconstructed from runtime query patterns and may reflect a different numbering or the fact that type kind values are reassigned after initial allocation. The table above follows the `set_type_kind` dispatch numbering. The types.c query mappings are documented in the query function catalog below for cross-reference.
 
 ### set_type_kind Dispatch Summary
 
@@ -506,12 +506,12 @@ The types.c query functions use the following kind tests for pointer/reference c
 
 | Query | Kind Test | +152 Test | Matches |
 |---|---|---|---|
-| `is_pointer_type` | kind==6 | -- | `T*`, `T C::*` |
+| `is_pointer_type` | kind==6 | — | `T*`, `T C::*` |
 | `is_object_pointer_type` | kind==6 | !(bit 0) | `T*` only |
 | `is_member_pointer_flag` | kind==6 | bit 0 | `T C::*` only |
-| `is_reference_type` | kind==7 | -- | `T&` (lvalue reference) |
-| `is_rvalue_reference_type` | kind==19 | -- | `T&&` |
-| `is_pointer_to_member_type` | kind==13 | -- | `T C::*` (alternate encoding) |
+| `is_reference_type` | kind==7 | — | `T&` (lvalue reference) |
+| `is_rvalue_reference_type` | kind==19 | — | `T&&` |
+| `is_pointer_to_member_type` | kind==13 | — | `T C::*` (alternate encoding) |
 
 The `pm_class_type` (`sub_7A9A10`) and `pm_member_type` (`sub_7A99D0`) access `+144` and `+152` respectively for kind-13 nodes.
 
@@ -546,14 +546,14 @@ Class types (kinds 9, 10, 11) carry two flag bytes at offsets `+161` and `+163` 
 | 2 | `0x04` | no_name_linkage | `ttt_is_type_with_no_name_linkage` (`0x7A4B40`) |
 | 4 | `0x10` | is_template_class | `is_template_class_type` (`0x7A8EA0`) |
 | 5 | `0x20` | is_anonymous | `is_non_anonymous_class_type` tests !(bit 5) (`0x7A8A90`) |
-| 7 | `0x80` | has_nested_types | -- |
+| 7 | `0x80` | has_nested_types | — |
 
 ### type_node+163 (class_flags_2)
 
 | Bit | Mask | Field | Query Function |
 |---|---|---|---|
 | 0 | `0x01` | extern_template_inst | `is_empty_class` checks this (`0x7A` range) |
-| 3 | `0x08` | alignment_set | -- |
+| 3 | `0x08` | alignment_set | — |
 | 4 | `0x10` | is_scoped | `is_scoped_union_type` (`0x7A8B00`) |
 
 ### class_type_supplement+86

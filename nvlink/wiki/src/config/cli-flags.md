@@ -11,17 +11,17 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 
 ## Reading the Table
 
-**Type** -- the parser's internal type code: `bool` (1-byte 0/1), `string` (8-byte pointer), `int` (4-byte dword), `file-list` (linked list of positional args).
+**Type** — the parser's internal type code: `bool` (1-byte 0/1), `string` (8-byte pointer), `int` (4-byte dword), `file-list` (linked list of positional args).
 
-**Default** -- the value the parser assigns if the flag is absent from the command line. `--` means no default (value is zero-initialized or not applicable for booleans).
+**Default** — the value the parser assigns if the flag is absent from the command line. `--` means no default (value is zero-initialized or not applicable for booleans).
 
-**Visibility** -- whether the flag appears in `--help` output. Hidden flags have registration flag bit 2 (`0x04`) or bit 3 (`0x08`) set.
+**Visibility** — whether the flag appears in `--help` output. Hidden flags have registration flag bit 2 (`0x04`) or bit 3 (`0x08`) set.
 
 ## Alphabetical Flag Table
 
 | # | Flag | Short | Type | Default | Visibility | Description |
 |---|---|---|---|---|---|---|
-| 1 | `--allow-undefined-globals` | -- | bool | false | hidden | Allow undefined globals and their relocations in linked executable. |
+| 1 | `--allow-undefined-globals` | — | bool | false | hidden | Allow undefined globals and their relocations in linked executable. |
 | 2 | `--arch` | `-arch` | string | *(none)* | public | Specify the `sm_` name of the target GPU architecture. Validated against the supported SM table; must be > sm\_19. |
 | 3 | `--cpu-arch` | `-cpu-arch` | string | `unknown` | public | Specify the host CPU architecture. Allowed values: `unknown`, `X86`, `X86_64`, `ARMv7`, `AARCH64`, `PPC64LE`. |
 | 4 | `--cuda-api-version` | `-cuda-api-version` | string | *(none)* | hidden | CUDA API version for linking. Parsed as `%u.%u`; major must match toolkit version. |
@@ -45,7 +45,7 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 | 22 | `--force-rela` | `-force-rela` | bool | false | hidden | Force RELA relocations in executables instead of REL. |
 | 23 | `--force-whole-lto` | `-force-whole-lto` | bool | false | hidden | Force whole-program LTO when `--dlto` is specified. Mutually exclusive with `--force-partial-lto`. |
 | 24 | `--gen-host-linker-script` | `-ghls` | string | `lcs-abs` | public | Generate a host linker script. Allowed values: `lcs-aug` (augmented), `lcs-abs` (absolute). |
-| 25 | `--help` | `-h` | bool | -- | public | Print help information and exit. |
+| 25 | `--help` | `-h` | bool | — | public | Print help information and exit. |
 | 26 | `--host-ccbin` | `-host-ccbin` | string | *(none)* | hidden | Path to host compiler binary (gcc/clang). |
 | 27 | `--host-linker-options` | `-Xlinker` | string | *(none)* | hidden | Options forwarded directly to the host linker. Multi-value (accumulates). Ignored by device linker. |
 | 28 | `--ignore-host-info` | `-ignore-host-info` | bool | false | public | Ignore host reference information; do not remove potentially host-referenced device code. Mutually exclusive with `--use-host-info`. |
@@ -64,7 +64,7 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 | 41 | `--options-file` | `-optf` | file-list | *(none)* | public | Read additional command-line options from the specified file. Multi-value. Supports `@file` syntax. |
 | 42 | `--output-file` | `-o` | string | *(none)* | public | Name and location of the output file. |
 | 43 | `--preserve-relocs` | `-preserve-relocs` | bool | false | public | Preserve resolved relocations in linked executable. Warning on SM > 89: not supported. |
-| 44 | `--register-link-binaries` | -- | string | *(none)* | public | Output file listing `cudaRegister` routine names for each linked input. |
+| 44 | `--register-link-binaries` | — | string | *(none)* | public | Output file listing `cudaRegister` routine names for each linked input. |
 | 45 | `--relocatable-link` | `-r` | bool | false | public | Perform relocatable (incremental) link. Forces `--ignore-host-info` and partial LTO mode. |
 | 46 | `--report-arch` | `-report-arch` | bool | false | public | Include SM target architecture name in error messages. |
 | 47 | `--reserve-null-pointer` | `-reserve-null-pointer` | bool | false | hidden | Reserve address 0 as NULL pointer. Overridden by `--dont-reserve-null-pointer`. |
@@ -72,7 +72,7 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 | 49 | `--split-compile` | `-split-compile` | int | 1 | public | Maximum threads NVVM may use for split compilation. Only effective with LTO. |
 | 50 | `--split-compile-extended` | `-split-compile-extended` | int | 1 | public | Maximum threads the linker may use for extended split compilation. Only effective with LTO. |
 | 51 | `--suppress-arch-warning` | `-suppress-arch-warning` | bool | false | public | Suppress warnings about objects not containing code for the target architecture. |
-| 52 | `--suppress-debug-info` | `-suppress-debug-info` | bool | false | public | Do not preserve debug symbols in output. Requires `--debug`; fatal error otherwise. **QUIRK:** The binary's embedded help text reads "This option is ignored if used without --debug option", but the post-extraction validator actually calls `sub_467460(dword_2A5B650, ...)` -- the fatal-severity slot -- so the option aborts the link instead of being silently ignored. |
+| 52 | `--suppress-debug-info` | `-suppress-debug-info` | bool | false | public | Do not preserve debug symbols in output. Requires `--debug`; fatal error otherwise. **QUIRK:** The binary's embedded help text reads "This option is ignored if used without --debug option", but the post-extraction validator actually calls `sub_467460(dword_2A5B650, ...)` — the fatal-severity slot — so the option aborts the link instead of being silently ignored. |
 | 53 | `--suppress-stack-size-warning` | `-suppress-stack-size-warning` | bool | false | public | Suppress warnings when stack size cannot be determined. |
 | 54 | `--syscall-const-offset` | `-syscall-const-offset` | int | 0 | hidden | Byte offset where syscall constants begin in the constant bank. |
 | 55 | `--time` | `-time` | string | *(none)* | public | Append CSV timing data to the specified file. Use `-` for stdout. |
@@ -85,7 +85,7 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 | 62 | `--verbose` | `-v` | bool | false | public | Enable verbose mode; print code generation statistics. |
 | 63 | `--verbose-keep` | `-vkeep` | bool | false | **internal** | Show nvlink pipeline steps and keep intermediate files. |
 | 64 | `--verbose-tkinfo` | `-verbose-tkinfo` | bool | false | hidden | Emit object name and command-line arguments into the tkinfo section. Forced on by `--debug`. |
-| 65 | `--version` | `-V` | bool | -- | public | Print version information and exit. |
+| 65 | `--version` | `-V` | bool | — | public | Print version information and exit. |
 | 66 | `--warning-as-error` | `-Werror` | bool | false | public | Promote all warnings to errors. |
 | 67 | `--Xnvvm` | `-Xnvvm` | string | *(none)* | public | Options forwarded to NVVM (cicc) during LTO. Multi-value. |
 | 68 | `--Xptxas` | `-Xptxas` | string | *(none)* | public | Options forwarded to ptxas during LTO. Multi-value. |
@@ -110,11 +110,11 @@ Public flags use flag bits `0x00` or `0x10` (the `0x10` bit enables `--no-<name>
 
 ## Cross-References
 
-- [CLI Option Parsing](../pipeline/cli-options.md) -- parser infrastructure, option entry layout, registration sequence, post-extraction validation, mutual-exclusion rules, dependency rules, architecture-gated behavior, global variable map.
-- [Pipeline Overview](../pipeline/overview.md) -- how parsed flags drive mode dispatch.
-- [LTO Option Forwarding](../lto/option-forwarding.md) -- how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas.
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE.
-- [Debug Options](../debug/options.md) -- detailed semantics of `--debug`, `--suppress-debug-info`, `--edbg`.
+- [CLI Option Parsing](../pipeline/cli-options.md) — parser infrastructure, option entry layout, registration sequence, post-extraction validation, mutual-exclusion rules, dependency rules, architecture-gated behavior, global variable map.
+- [Pipeline Overview](../pipeline/overview.md) — how parsed flags drive mode dispatch.
+- [LTO Option Forwarding](../lto/option-forwarding.md) — how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas.
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE.
+- [Debug Options](../debug/options.md) — detailed semantics of `--debug`, `--suppress-debug-info`, `--edbg`.
 
 ## Confidence Assessment
 

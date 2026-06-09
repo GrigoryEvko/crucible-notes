@@ -1,8 +1,8 @@
-# CSSA -- Conventional SSA for GPU Divergence
+# CSSA — Conventional SSA for GPU Divergence
 
-Standard SSA form assumes that a PHI node selects its incoming value based solely on the control flow edge along which execution arrived. On a scalar CPU, exactly one predecessor edge is taken per dynamic execution of the PHI, so this assumption holds trivially. On an NVIDIA GPU, it does not. A warp of 32 threads executes in lockstep, and when control flow diverges -- different threads take different branches -- all paths are eventually serialized and the warp reconverges. At the reconvergence point, a standard PHI node cannot correctly select a single incoming value because the warp carries live values from *multiple* predecessors simultaneously. The wrong thread could see the wrong value.
+Standard SSA form assumes that a PHI node selects its incoming value based solely on the control flow edge along which execution arrived. On a scalar CPU, exactly one predecessor edge is taken per dynamic execution of the PHI, so this assumption holds trivially. On an NVIDIA GPU, it does not. A warp of 32 threads executes in lockstep, and when control flow diverges — different threads take different branches — all paths are eventually serialized and the warp reconverges. At the reconvergence point, a standard PHI node cannot correctly select a single incoming value because the warp carries live values from *multiple* predecessors simultaneously. The wrong thread could see the wrong value.
 
-CSSA (Conventional SSA) is NVIDIA's transformation that rewrites the IR so that every PHI node is safe under warp-divergent execution. It does this by inserting explicit copy instructions at points where threads reconverge, ensuring that each thread's value is materialized into its own copy before the PHI merges anything. The name "Conventional SSA" comes from the SSA literature: a program is in CSSA form when every PHI node's operands can be simultaneously live without interfering -- the PHI web has no overlapping live ranges. This property is exactly what GPU divergence demands.
+CSSA (Conventional SSA) is NVIDIA's transformation that rewrites the IR so that every PHI node is safe under warp-divergent execution. It does this by inserting explicit copy instructions at points where threads reconverge, ensuring that each thread's value is materialized into its own copy before the PHI merges anything. The name "Conventional SSA" comes from the SSA literature: a program is in CSSA form when every PHI node's operands can be simultaneously live without interfering — the PHI web has no overlapping live ranges. This property is exactly what GPU divergence demands.
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ CSSA (Conventional SSA) is NVIDIA's transformation that rewrites the IR so that 
 | **Container knob** | `CSSACoalescing` (NVVM container format, parsed at `sub_CD9990`) |
 | **Debug string** | `"IR Module before CSSA:\n"` (sole string ref in pass body) |
 | **Helper cluster** | `sub_371F790` (4014B, 197bb) PCP propagator, `sub_371F160` (1079B) copy materializer, `sub_371EDF0` (875B) inserter, `sub_371CDC0` (227B) instruction factory |
-| **NVVM opcode** | `0x22D7` (8919) -- divergence-safe copy mnemonic |
+| **NVVM opcode** | `0x22D7` (8919) — divergence-safe copy mnemonic |
 | **Pass-option slot** | One of the 221 NVVMPassOptions slots (boolean do/don't pair) |
 | **Pipeline position** | Late IR, after optimization, before SelectionDAG lowering |
 | **Upstream equivalent** | None. LLVM has no concept of warp-divergent PHI semantics. |
@@ -38,7 +38,7 @@ Consider a diamond CFG:
          join        <-- PHI(%x = [then: %a], [else: %b])
 ```
 
-On a CPU, the PHI at `join` works correctly: execution came from exactly one predecessor, so the PHI selects the corresponding value. On a GPU warp where threads 0-15 took `then` and threads 16-31 took `else`, both paths executed sequentially. When the warp reconverges at `join`, the PHI must produce `%a` for threads 0-15 and `%b` for threads 16-31 *simultaneously in the same register*. A naive lowering of the PHI to a simple register copy is incorrect -- whichever path executed last would overwrite the value from the first path.
+On a CPU, the PHI at `join` works correctly: execution came from exactly one predecessor, so the PHI selects the corresponding value. On a GPU warp where threads 0-15 took `then` and threads 16-31 took `else`, both paths executed sequentially. When the warp reconverges at `join`, the PHI must produce `%a` for threads 0-15 and `%b` for threads 16-31 *simultaneously in the same register*. A naive lowering of the PHI to a simple register copy is incorrect — whichever path executed last would overwrite the value from the first path.
 
 ### The CSSA Solution
 
@@ -54,7 +54,7 @@ CSSA transforms the IR so that the PHI web has non-interfering live ranges. Conc
      %x = PHI [then: %a_copy], [else: %b_copy]
 ```
 
-Now the PHI's operands occupy distinct virtual registers. During later register allocation, the allocator can assign them the same physical register only when their live ranges truly do not overlap -- which is the correct condition for divergent execution. The copies give the allocator the freedom to keep the values separate when divergence requires it.
+Now the PHI's operands occupy distinct virtual registers. During later register allocation, the allocator can assign them the same physical register only when their live ranges truly do not overlap — which is the correct condition for divergent execution. The copies give the allocator the freedom to keep the values separate when divergence requires it.
 
 ## Algorithm
 
@@ -62,7 +62,7 @@ Now the PHI's operands occupy distinct virtual registers. During later register 
 
 The five phases below correspond to the four major loop nests in the decompiler output (`0x3720740`--`0x37208BB` numbering, `0x37208C0`--`0x3720A28` PHI map, `0x3720A2F`--`0x3720A88` propagation + cleanup, with the copy-insertion block at `0x3720B40`--`0x3720E18` invoked from inside the PHI map walk).
 
-### Phase 1: Basic Block Ordering and Numbering -- HIGH
+### Phase 1: Basic Block Ordering and Numbering — HIGH
 
 The function begins by walking every basic block in the LLVM `Function` (accessed via `[r15]` -> Module pointer) and stamping each block with a preorder index at offset `+0x48` and a reverse-postorder index at offset `+0x4C`. These indices are used downstream for dominance/reconvergence queries and to keep the inserted copies in a deterministic position relative to terminators. The block worklist lives on the stack in `v130[]` and grows via `sub_C8D5F0` (the standard SmallVector growth helper, see [Hash and Container Infrastructure](../infra/hash-infrastructure.md)).
 
@@ -117,7 +117,7 @@ void cssa_phase1_number_blocks(Function *F, PassState *PS) {
 
 The latch (byte `[PS+0x70]`) makes phase 1 strictly run-once per `Function`; later re-entries (for example after the pass driver discards and rerunning a verifier) skip directly to phase 2 with a reset PHI counter. HIGH confidence (latch read at `0x37207C0`, write at `0x3720881`).
 
-### Phase 2: PHI Discovery and Hash Map Population -- HIGH
+### Phase 2: PHI Discovery and Hash Map Population — HIGH
 
 After numbering, the pass walks every block (outer loop at `0x37208C0`), and within each block walks the instruction use-list at offset `+0x18` (inner loop at `0x3720930`). The block-list bounds come from the sentinel pointers `[F+0x48]` (begin) and `[F+0x50]` (end); each instruction header carries its LLVM opcode in the byte at `[I-0x18]`. PHI nodes are opcode `0x54` (decimal 84).
 
@@ -190,13 +190,13 @@ static void cssa_phi_map_insert(PhiMap *m, void *key, uint32_t id) {
 
 The map serves two purposes: it dedupes PHIs encountered through multiple control-flow paths, and it gives `sub_371F790` (phase 4) an O(1) test for "is this value a PHI node I just rewrote?". HIGH confidence (the inline body of `sub_A41E30` and the `-4096 / -8192` sentinels are visible verbatim in the decomp at `0x3720E15`).
 
-### Phase 3: Copy Insertion at Predecessor Terminators -- HIGH
+### Phase 3: Copy Insertion at Predecessor Terminators — HIGH
 
 For every PHI discovered in phase 2, the pass materializes one copy per incoming edge. The body lives at `0x3720B40`--`0x3720E18` and is invoked synchronously from inside the phase-2 walk (the decompiler hoists it out, but the call site is `LABEL_53`'s call to `sub_371F160`). For each PHI operand, three helper calls run in sequence:
 
-1. `sub_371F160(out, F, phi, incoming_use, 1)` -- finds the predecessor block and computes the position immediately before its terminator. The `flag=1` argument requests copy materialization. The four-byte return buffer (`v126[]`) carries the destination value pointer plus the predecessor-block handle.
-2. `sub_371CDC0(0x22D7, builder, 1, args, 2, name_ptr, type)` -- constructs the new IR instruction. Opcode `0x22D7` (8919 decimal) is the NVVM-internal "divergence-safe copy" mnemonic; the name pointer is the constant string `"pcp"` (PHI Copy Propagation prefix, set at `v128 = "pcp"` immediately before the call at `0x3720D34`).
-3. `sub_371EDF0(F, new_inst, 1, ...)` followed by `sub_BD84D0(insert_point, new_inst, ...)` -- splices the freshly built instruction into the predecessor block before its terminator and rewires the PHI's use-def chain.
+1. `sub_371F160(out, F, phi, incoming_use, 1)` — finds the predecessor block and computes the position immediately before its terminator. The `flag=1` argument requests copy materialization. The four-byte return buffer (`v126[]`) carries the destination value pointer plus the predecessor-block handle.
+2. `sub_371CDC0(0x22D7, builder, 1, args, 2, name_ptr, type)` — constructs the new IR instruction. Opcode `0x22D7` (8919 decimal) is the NVVM-internal "divergence-safe copy" mnemonic; the name pointer is the constant string `"pcp"` (PHI Copy Propagation prefix, set at `v128 = "pcp"` immediately before the call at `0x3720D34`).
+3. `sub_371EDF0(F, new_inst, 1, ...)` followed by `sub_BD84D0(insert_point, new_inst, ...)` — splices the freshly built instruction into the predecessor block before its terminator and rewires the PHI's use-def chain.
 
 ```c
 /* Phase 3: for every (PHI, incoming) pair, drop one "pcp" copy at the end
@@ -250,13 +250,13 @@ void cssa_phase3_insert_copies(Function *F, PassState *PS,
 }
 ```
 
-> ⚡ **QUIRK -- Copies materialize at the terminator, not in the merge block**
+> ⚡ **QUIRK — Copies materialize at the terminator, not in the merge block**
 > Every `"pcp"` copy is inserted before the predecessor's terminator (`sub_BD84D0` is called with `v47 - 24` as the anchor, which is the terminator instruction header minus its opcode prefix). Putting the copy in the merge block instead would defeat CSSA: the warp has already reconverged at that point, and whichever divergent path wrote last would clobber the values that the earlier paths produced. The terminator anchor is non-negotiable. HIGH confidence.
 
-> ⚡ **QUIRK -- Opcode `0x22D7` is invisible to upstream LLVM**
+> ⚡ **QUIRK — Opcode `0x22D7` is invisible to upstream LLVM**
 > The constant `8919` is hard-coded as the opcode for the inserted copy. It is an NVVM-internal opcode (not in LLVM's `Instruction.def`) that survives until the SelectionDAG lowering, where it is matched as a plain "move" but carries a flag bit telling the register allocator that this copy is allowed to coalesce with its source only when divergence analysis proves the live ranges are non-interfering. A naive lowerer that treated `0x22D7` as a generic copy and let the coalescer eliminate it unconditionally would reintroduce the original CPU-vs-GPU bug. MED confidence on the "flag bit" semantics (inferred from the surrounding coalescer knobs), HIGH on the opcode value itself.
 
-### Phase 4: PHI-Map-Driven Copy Propagation -- HIGH
+### Phase 4: PHI-Map-Driven Copy Propagation — HIGH
 
 Once every PHI has its predecessor-side copies, `sub_3720740` walks every basic block a second time (`0x3720A2F`--`0x3720A62`) and hands each block to `sub_371F790`, the 4 KB "PHI Copy Propagator" (PCP) helper:
 
@@ -273,9 +273,9 @@ void cssa_phase4_propagate(Function *F, PassState *PS) {
 
 `sub_371F790` itself does three things per block, in order:
 
-1. **Reconvergence-point hash-map build.** It scans the block looking for instruction opcodes in the range `[30, 40]` (the `(*v9 - 30) <= 0xA` test at `0x37203B6`), which is the NVVM control-flow family (branch, conditional branch, switch, indirect-branch, invoke, ret, unreachable, etc.). For each such terminator-like instruction it inserts an entry into a *local* DenseMap (`v150`/`v151` / capacity in `v153`) keyed on the instruction's operand-zero pointer. This local map is the "reconvergence index" -- it tells the propagator, for any block, what set of predecessor terminators target it.
+1. **Reconvergence-point hash-map build.** It scans the block looking for instruction opcodes in the range `[30, 40]` (the `(*v9 - 30) <= 0xA` test at `0x37203B6`), which is the NVVM control-flow family (branch, conditional branch, switch, indirect-branch, invoke, ret, unreachable, etc.). For each such terminator-like instruction it inserts an entry into a *local* DenseMap (`v150`/`v151` / capacity in `v153`) keyed on the instruction's operand-zero pointer. This local map is the "reconvergence index" — it tells the propagator, for any block, what set of predecessor terminators target it.
 
-2. **Per-PHI-operand copy rewrite.** For every populated slot in the local map (the `*v45 != -8192 && *v45 != -4096` filter at `0x37200CB`), the helper calls `sub_371CDC0(0x22D7, ...)` *again* with the same `"pcp"` name and the local map's value as the type/template. This second construction creates a copy at the *consumer* side -- inside the block that will read the PHI's result -- and threads it through the same use-list manipulation that phase 3 did for the producer side.
+2. **Per-PHI-operand copy rewrite.** For every populated slot in the local map (the `*v45 != -8192 && *v45 != -4096` filter at `0x37200CB`), the helper calls `sub_371CDC0(0x22D7, ...)` *again* with the same `"pcp"` name and the local map's value as the type/template. This second construction creates a copy at the *consumer* side — inside the block that will read the PHI's result — and threads it through the same use-list manipulation that phase 3 did for the producer side.
 
 ```c
 /* Sketch of sub_371F790's per-block work. Type names are reconstructed. */
@@ -316,15 +316,15 @@ void pcp_run_on_block(PassState *PS, Instruction *anchor) {
 }
 ```
 
-3. **Live-range propagation.** Each consumer-side copy is added to the pass-level use-graph at `[PS+0x40..+0x4C]` -- the *same* DenseMap structure used in phase 2, just keyed on different pointers. This is how PCP guarantees that the cleanup phase (phase 5) sees every freshly inserted copy: the live-range graph is the cleanup worklist.
+3. **Live-range propagation.** Each consumer-side copy is added to the pass-level use-graph at `[PS+0x40..+0x4C]` — the *same* DenseMap structure used in phase 2, just keyed on different pointers. This is how PCP guarantees that the cleanup phase (phase 5) sees every freshly inserted copy: the live-range graph is the cleanup worklist.
 
-> ⚡ **QUIRK -- PHI propagation uses a *local* hash map per block, not a global one**
-> Most LLVM-style propagators reuse a single global map across the whole function. CSSA's PCP allocates a fresh DenseMap on the stack for each block (the `v150 / v151 / v152 / v153` quartet in `sub_371F790`) and frees it with `sub_C7D6A0` at the end of the block. This means the same PHI pointer can hash to different slots in different blocks -- a deliberate design choice that lets the propagator distinguish "this PHI was seen via predecessor edge A" from "this PHI was seen via predecessor edge B" without having to track edges explicitly. The cost is one DenseMap allocation per block, which the heap-style introsort depth limit `_BitScanReverse64(2 * (63 - log2(span)))` keeps cache-friendly. HIGH confidence.
+> ⚡ **QUIRK — PHI propagation uses a *local* hash map per block, not a global one**
+> Most LLVM-style propagators reuse a single global map across the whole function. CSSA's PCP allocates a fresh DenseMap on the stack for each block (the `v150 / v151 / v152 / v153` quartet in `sub_371F790`) and frees it with `sub_C7D6A0` at the end of the block. This means the same PHI pointer can hash to different slots in different blocks — a deliberate design choice that lets the propagator distinguish "this PHI was seen via predecessor edge A" from "this PHI was seen via predecessor edge B" without having to track edges explicitly. The cost is one DenseMap allocation per block, which the heap-style introsort depth limit `_BitScanReverse64(2 * (63 - log2(span)))` keeps cache-friendly. HIGH confidence.
 
-> ⚡ **QUIRK -- PHI-with-self-edge requires the propagator's deduplication**
+> ⚡ **QUIRK — PHI-with-self-edge requires the propagator's deduplication**
 > A loop header PHI whose incoming edge is its own block (`%x = phi [latch: %x.update], [preheader: %x.init]`) produces an instruction that is *both* a consumer (it reads `%x.update`) and a producer (every iteration overwrites `%x`). Without the local-map dedup in step (2), the propagator would insert an unbounded chain of copies as it follows the use-def cycle. The hash-map check at `0x37200CB` (`*v45 != -8192 && *v45 != -4096`) is what breaks the cycle: once a value has been mapped, it is never remapped, so the propagator visits each self-edge exactly once. HIGH confidence.
 
-### Phase 5: Dead Copy Cleanup -- HIGH
+### Phase 5: Dead Copy Cleanup — HIGH
 
 The final phase walks a linked list rooted at `[F+0x28]` (the pass-state's cleanup worklist, populated incrementally by phases 3 and 4). For each entry, if the instruction has zero remaining uses, it is erased via `sub_B43D60` (which is `Instruction::eraseFromParent`).
 
@@ -346,19 +346,19 @@ void cssa_phase5_cleanup(Function *F) {
 }
 ```
 
-The two-pointer loop at `0x3720A6F` (`while (1) { v38 = j[1]; if (!v38[2]) break; ... sub_B43D60(v38); }`) is exactly this pattern: it walks until it finds a copy that still has uses, then breaks. Cleanup is therefore a forward-only pass -- it never revisits a copy once one is found live. HIGH confidence.
+The two-pointer loop at `0x3720A6F` (`while (1) { v38 = j[1]; if (!v38[2]) break; ... sub_B43D60(v38); }`) is exactly this pattern: it walks until it finds a copy that still has uses, then breaks. Cleanup is therefore a forward-only pass — it never revisits a copy once one is found live. HIGH confidence.
 
-> ⚡ **QUIRK -- Cleanup must run only after propagation, never interleaved**
+> ⚡ **QUIRK — Cleanup must run only after propagation, never interleaved**
 > Erasing a copy mid-propagation would invalidate the use-def chains that PCP is still walking. The pass enforces ordering by populating the cleanup worklist (`[F+0x28]`) during phases 3 and 4 but never reading it until phase 5. A reimplementation that tries to be clever by erasing dead copies as soon as the propagator decides they are dead will hit use-after-free in the live-range propagation step, because the use-list nodes are reused across phases via the same arena. HIGH confidence (the worklist node layout at `[node+0]` / `[node+8]` matches the use-list node layout exactly).
 
 ## Copy Coalescing
 
-The `cssa-coalesce` knob controls how aggressively the pass coalesces the inserted copies back together. Without coalescing, CSSA inserts one copy per PHI operand per predecessor -- potentially a large number of copies in control flow with many branches. Coalescing identifies cases where two or more copies carry the same value and can share a single register, reducing the copy overhead.
+The `cssa-coalesce` knob controls how aggressively the pass coalesces the inserted copies back together. Without coalescing, CSSA inserts one copy per PHI operand per predecessor — potentially a large number of copies in control flow with many branches. Coalescing identifies cases where two or more copies carry the same value and can share a single register, reducing the copy overhead.
 
 The `CSSACoalescing` knob in the NVVM container format (parsed by `sub_CD9990` from the finalizer knobs structure) provides a separate control path for the same behavior. The container knob is categorized alongside register allocation and scheduling controls (`AdvancedRemat`, `DisablePredication`, `DisableXBlockSched`, `ReorderCSE`), confirming that CSSA coalescing is considered part of the register allocation subsystem.
 
-> ⚡ **QUIRK -- "Coalesce copies on split edges" is a subtarget default, not a global one**
-> The strings `"Coalesce copies on split edges (default=subtarget)"` and `"Coalesce copies that span blocks (default=subtarget)"` appear in the binary alongside the CSSA strings. The `(default=subtarget)` suffix means the default value depends on the GPU architecture in use -- newer SMs may aggressively coalesce edge-split copies while older SMs leave them alone. A reimplementor that hard-codes a single default will produce different code than cicc on at least one SM. MED confidence (string evidence is direct; subtarget-table cross-reference is inferred).
+> ⚡ **QUIRK — "Coalesce copies on split edges" is a subtarget default, not a global one**
+> The strings `"Coalesce copies on split edges (default=subtarget)"` and `"Coalesce copies that span blocks (default=subtarget)"` appear in the binary alongside the CSSA strings. The `(default=subtarget)` suffix means the default value depends on the GPU architecture in use — newer SMs may aggressively coalesce edge-split copies while older SMs leave them alone. A reimplementor that hard-codes a single default will produce different code than cicc on at least one SM. MED confidence (string evidence is direct; subtarget-table cross-reference is inferred).
 
 ## deSSA Alternative
 
@@ -366,8 +366,8 @@ The `usedessa` knob (default value 2, registered at `ctor_358_0` at `0x50E8D0`, 
 
 | Mode | Pre-RA Scheduling | Post-RA Scheduling | Behavior |
 |------|---|---|---|
-| 1 | Skipped | Minimal (single pass) | Simple mode -- no pre-RA scheduling |
-| 2 (default) | Full (`&unk_4FC8A0C`) | Three passes + StackSlotColoring | Full mode -- complete scheduling pipeline |
+| 1 | Skipped | Minimal (single pass) | Simple mode — no pre-RA scheduling |
+| 2 (default) | Full (`&unk_4FC8A0C`) | Three passes + StackSlotColoring | Full mode — complete scheduling pipeline |
 
 The deSSA mode and CSSA transformation are complementary. CSSA operates at the LLVM IR level, converting PHI nodes into a form safe for GPU divergence *before* instruction selection. The `usedessa` mode controls how PHI nodes are ultimately eliminated *during* the MachineIR lowering, after SelectionDAG has already consumed the CSSA-transformed IR. When `usedessa=2` (default), the full scheduling pipeline runs, giving the register allocator maximum flexibility to handle the extra copies that CSSA introduced. When `usedessa=1`, the minimal scheduling mode may be appropriate for debugging or for kernels where scheduling causes regressions.
 
@@ -434,14 +434,14 @@ The `"pcp"` prefix is assigned to all copy instructions created by the CSSA pass
 | DenseMap grow helper | `sub_C8D5F0` | 470B / 29bb | SmallVector/DenseMap capacity growth | HIGH |
 | Knob registration | `ctor_705` (`0x5BD430`) | 5.4KB | Registers `cssa-coalesce`, `cssa-verbosity`, `dump-before-cssa` | HIGH |
 | Container knob parser | `sub_CD9990` | 31KB | Parses `CSSACoalescing` from NVVM container | HIGH |
-| deSSA dispatch (post-RA) | `sub_21668D0` | -- | Scheduling pipeline mode selector | MED |
-| deSSA dispatch (pre-RA) | `sub_2165850` | -- | Pre-RA scheduling mode selector | MED |
+| deSSA dispatch (post-RA) | `sub_21668D0` | — | Scheduling pipeline mode selector | MED |
+| deSSA dispatch (pre-RA) | `sub_2165850` | — | Pre-RA scheduling mode selector | MED |
 
 ## Differences from Upstream LLVM
 
-LLVM's standard PHI elimination pass (`llvm::PHIEliminationPass`, registered as `"phi-node-elimination"` at pipeline slot 493 in CICC's pass parser) lowers PHI nodes to machine copies during the SelectionDAG-to-MachineIR transition. It operates under the assumption that PHI semantics follow scalar control flow -- exactly one predecessor contributes a value at each dynamic execution.
+LLVM's standard PHI elimination pass (`llvm::PHIEliminationPass`, registered as `"phi-node-elimination"` at pipeline slot 493 in CICC's pass parser) lowers PHI nodes to machine copies during the SelectionDAG-to-MachineIR transition. It operates under the assumption that PHI semantics follow scalar control flow — exactly one predecessor contributes a value at each dynamic execution.
 
-NVIDIA's CSSA pass runs *before* instruction selection, at the LLVM IR level, and transforms the IR into a form where PHI elimination can proceed safely even when the underlying execution model is SIMT. The two passes are not alternatives -- CSSA runs first to prepare the IR, then standard PHI elimination runs later to lower the CSSA-safe PHI nodes to machine copies.
+NVIDIA's CSSA pass runs *before* instruction selection, at the LLVM IR level, and transforms the IR into a form where PHI elimination can proceed safely even when the underlying execution model is SIMT. The two passes are not alternatives — CSSA runs first to prepare the IR, then standard PHI elimination runs later to lower the CSSA-safe PHI nodes to machine copies.
 
 This is one of the fundamental semantic gaps between LLVM's CPU-centric IR model and GPU reality. LLVM assumes sequential scalar semantics; NVIDIA's CSSA pass bridges that gap by making the implicit thread-level parallelism explicit in the copy structure of the IR.
 
@@ -451,13 +451,13 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 **1. Inserting copies only at the merge block instead of at the end of each predecessor.** The entire point of CSSA is that copies must be placed *before* the warp reconverges, not *at* the reconvergence point. If you insert the copy instruction at the beginning of the merge block (after the PHI), the warp has already reconverged and whichever path executed last has overwritten the register value for all threads. Copies must be at the terminator position of each predecessor block, before control leaves that block. This is the fundamental GPU-vs-CPU distinction: on a CPU, only one predecessor executes so placement does not matter; on a GPU, all predecessors may execute sequentially within the same warp.
 
-**2. Coalescing copies that have divergent live ranges.** The `cssa-coalesce` knob controls how aggressively copies are merged back together. Over-aggressive coalescing can assign two copies to the same physical register when their live ranges overlap under divergence -- threads from different predecessor paths would see each other's values. The coalescer must verify that live ranges are truly non-interfering under the SIMT execution model, not just under the sequential CFG model. A reimplementation that reuses a standard LLVM register coalescer without divergence-aware interference checking will produce silent miscompilation on any kernel with divergent control flow.
+**2. Coalescing copies that have divergent live ranges.** The `cssa-coalesce` knob controls how aggressively copies are merged back together. Over-aggressive coalescing can assign two copies to the same physical register when their live ranges overlap under divergence — threads from different predecessor paths would see each other's values. The coalescer must verify that live ranges are truly non-interfering under the SIMT execution model, not just under the sequential CFG model. A reimplementation that reuses a standard LLVM register coalescer without divergence-aware interference checking will produce silent miscompilation on any kernel with divergent control flow.
 
 **3. Failing to insert copies for uniform PHI nodes that become divergent after later transformations.** CSSA runs before instruction selection, but divergence analysis at that point may be imprecise. A PHI node classified as uniform (all threads agree on the incoming edge) may become effectively divergent after subsequent loop transformations or predication changes the control flow. The safe approach is to insert copies for all PHI nodes and let the coalescing phase remove unnecessary ones. A reimplementation that skips "uniform" PHI nodes based on divergence analysis risks correctness if that analysis is later invalidated.
 
-**4. Using a standard LLVM `PHIElimination` pass without the CSSA preprocessing step.** LLVM's built-in PHI elimination assumes scalar control flow semantics (exactly one predecessor contributes at runtime). Running it directly on GPU IR without first converting to CSSA form will produce incorrect register assignments whenever a warp diverges at a branch leading to a PHI merge point. CSSA is not a replacement for PHI elimination -- it is a prerequisite that transforms PHI semantics into a form safe for the standard lowering.
+**4. Using a standard LLVM `PHIElimination` pass without the CSSA preprocessing step.** LLVM's built-in PHI elimination assumes scalar control flow semantics (exactly one predecessor contributes at runtime). Running it directly on GPU IR without first converting to CSSA form will produce incorrect register assignments whenever a warp diverges at a branch leading to a PHI merge point. CSSA is not a replacement for PHI elimination — it is a prerequisite that transforms PHI semantics into a form safe for the standard lowering.
 
-**5. Not propagating the `"pcp"` copy through the instruction graph after insertion.** Phase 4 of the algorithm (copy propagation via `sub_371F790`) replaces uses of original values with uses of the inserted copies. A reimplementation that inserts copies but skips this propagation step will leave the PHI node still referencing the original value, making the copies dead. The subsequent dead-copy cleanup (Phase 5) will then erase them, and the transformation has no effect -- the original divergence-unsafe PHI remains.
+**5. Not propagating the `"pcp"` copy through the instruction graph after insertion.** Phase 4 of the algorithm (copy propagation via `sub_371F790`) replaces uses of original values with uses of the inserted copies. A reimplementation that inserts copies but skips this propagation step will leave the PHI node still referencing the original value, making the copies dead. The subsequent dead-copy cleanup (Phase 5) will then erase them, and the transformation has no effect — the original divergence-unsafe PHI remains.
 
 **6. Splitting critical edges before CSSA but not re-running block numbering.** If a downstream pass between phase 1 and phase 2 (or a re-entry into CSSA via the latch byte) splits a critical edge, the new edge-split block has no preorder/RPO index. The PHI map will still work because it is keyed on instruction pointers, but the `[BB+0x48]` / `[BB+0x4C]` indices will be stale for the new blocks. The pass guards against this with the latch byte: the second time `sub_3720740` runs on the same function with `[PS+0x70]` already set, only the PHI counter (`[PS+0x74]`) is reset; phase 1 is skipped. A reimplementor must either always re-run phase 1 or never split edges after CSSA.
 
@@ -472,12 +472,12 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 ## Cross-References
 
-- [NVIDIA Custom Passes](./index.md) -- CSSA listed as `sub_3720740` with knobs `cssa-coalesce`, `cssa-verbosity`, `dump-before-cssa`
-- [Rematerialization](./rematerialization.md) -- runs before CSSA; rematerializable values reduce the number of PHI copies CSSA must insert
-- [Sinking2](./sinking2.md) -- runs adjacent to CSSA; can move definitions across PHI boundaries, increasing CSSA's workload
-- [Register Allocation](../llvm/register-allocation.md) -- greedy RA consumes CSSA-prepared IR
-- [Scheduling](../llvm/scheduling.md) -- `usedessa` knob controls pre-RA/post-RA scheduling mode
-- [Code Generation Pipeline](../pipeline/codegen.md) -- CSSA's position in the overall compilation flow
-- [StructurizeCFG](../llvm/structurizecfg.md) -- related pass that ensures structured control flow for PTX
-- [Hash and Container Infrastructure](../infra/hash-infrastructure.md) -- DenseMap and SmallVector primitives shared with phase-1 worklist and phase-2 PHI map
-- [Configuration Knobs](../config/knobs.md) -- full knob inventory
+- [NVIDIA Custom Passes](./index.md) — CSSA listed as `sub_3720740` with knobs `cssa-coalesce`, `cssa-verbosity`, `dump-before-cssa`
+- [Rematerialization](./rematerialization.md) — runs before CSSA; rematerializable values reduce the number of PHI copies CSSA must insert
+- [Sinking2](./sinking2.md) — runs adjacent to CSSA; can move definitions across PHI boundaries, increasing CSSA's workload
+- [Register Allocation](../llvm/register-allocation.md) — greedy RA consumes CSSA-prepared IR
+- [Scheduling](../llvm/scheduling.md) — `usedessa` knob controls pre-RA/post-RA scheduling mode
+- [Code Generation Pipeline](../pipeline/codegen.md) — CSSA's position in the overall compilation flow
+- [StructurizeCFG](../llvm/structurizecfg.md) — related pass that ensures structured control flow for PTX
+- [Hash and Container Infrastructure](../infra/hash-infrastructure.md) — DenseMap and SmallVector primitives shared with phase-1 worklist and phase-2 PHI map
+- [Configuration Knobs](../config/knobs.md) — full knob inventory

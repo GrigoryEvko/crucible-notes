@@ -60,7 +60,7 @@ if (!is_attribute) {
 
 ### Attribute Table (off_1D371E0)
 
-The attribute relocation table at `off_1D371E0` contains 65 entries (indices 0 through 64, validated against limit `0x41` = 65). Attribute relocations are identified by having their type encoded with the `0x10000` offset -- when the relocation engine encounters a type >= `0x10000`, it subtracts `0x10000` and uses this table instead.
+The attribute relocation table at `off_1D371E0` contains 65 entries (indices 0 through 64, validated against limit `0x41` = 65). Attribute relocations are identified by having their type encoded with the `0x10000` offset — when the relocation engine encounters a type >= `0x10000`, it subtracts `0x10000` and uses this table instead.
 
 ```c
 // Attribute relocation path (type >= 0x10000)
@@ -126,7 +126,7 @@ action_ptr = descriptor_base + 12;             // first action at byte offset +1
 end_ptr    = descriptor_base + 60;             // sentinel at byte offset +60
 ```
 
-The header fields at offsets +0, +4, +8 are not used by the application engine itself. They are consumed by the resolved-rela emitter (`sub_46ADC0`) on the *primary* relocation list at `ctx+376` (the secondary `.nv.resolvedrela` loop at `ctx+384` does not run the bit-field extraction -- it emits the record verbatim). Each round specifies a `(bit_offset, bit_width, present)` triple at descriptor `uint32` indices `[3,4,5]`, `[7,8,9]`, `[11,12,13]` -- index 5 / 9 / 13 (the third uint32 of each triple) is the "present" flag gating whether extraction occurs, indices 3 / 7 / 11 are the starting bit offset within the 64-bit instruction word at the relocation site, and indices 4 / 8 / 12 are the bit width. The `sub_468670` reader handles widths that cross the 64-bit boundary by walking forward through consecutive QWORDs and stitching the pieces together. Extracted values are *added* (not replaced) into the record's `extra` slot at `+16` -- which becomes the on-disk `r_addend` -- so multi-piece relocations like the `R_CUDA_ABS55_16_34` / `R_CUDA_ABS56_16_34` split-field family naturally reconstruct the full immediate by summing two extracted pieces.
+The header fields at offsets +0, +4, +8 are not used by the application engine itself. They are consumed by the resolved-rela emitter (`sub_46ADC0`) on the *primary* relocation list at `ctx+376` (the secondary `.nv.resolvedrela` loop at `ctx+384` does not run the bit-field extraction — it emits the record verbatim). Each round specifies a `(bit_offset, bit_width, present)` triple at descriptor `uint32` indices `[3,4,5]`, `[7,8,9]`, `[11,12,13]` — index 5 / 9 / 13 (the third uint32 of each triple) is the "present" flag gating whether extraction occurs, indices 3 / 7 / 11 are the starting bit offset within the 64-bit instruction word at the relocation site, and indices 4 / 8 / 12 are the bit width. The `sub_468670` reader handles widths that cross the 64-bit boundary by walking forward through consecutive QWORDs and stitching the pieces together. Extracted values are *added* (not replaced) into the record's `extra` slot at `+16` — which becomes the on-disk `r_addend` — so multi-piece relocations like the `R_CUDA_ABS55_16_34` / `R_CUDA_ABS56_16_34` split-field family naturally reconstruct the full immediate by summing two extracted pieces.
 
 ### Action Slot Processing Pseudocode
 
@@ -303,14 +303,14 @@ int reloc_apply_engine(
 | Code | Name | Computation |
 |---|---|---|
 | `0x00` | **end** | Skip slot; terminate if at sentinel |
-| `0x01` | **abs_full** | `S + A` -- full absolute, store all bits |
-| `0x06` | **abs_lo** | `(S + A) & mask` -- low bits of absolute |
-| `0x07` | **abs_hi** | `((S + A) >> 32) & mask` -- high 32 bits of absolute |
-| `0x08` | **abs_size** | `extra + symbol_size` when `is_absolute`, else `extracted + symbol_size` -- overwrites the running value; no symbol address is mixed in |
-| `0x09` | **abs_shifted** | `(S + A) >> 2` -- absolute right-shifted by 2 (4-byte aligned) |
-| `0x0A` | **sec_type_lo** | `section_type & (0xFF >> (8 - width))` -- low nybble of section type |
-| `0x0B` | **sec_type_hi** | `(section_type >> 4) & (0xFF >> (8 - width))` -- high nybble of section type |
-| `0x10` | **pc_rel** | `(int32_t)(S + A) - PC` -- PC-relative offset |
+| `0x01` | **abs_full** | `S + A` — full absolute, store all bits |
+| `0x06` | **abs_lo** | `(S + A) & mask` — low bits of absolute |
+| `0x07` | **abs_hi** | `((S + A) >> 32) & mask` — high 32 bits of absolute |
+| `0x08` | **abs_size** | `extra + symbol_size` when `is_absolute`, else `extracted + symbol_size` — overwrites the running value; no symbol address is mixed in |
+| `0x09` | **abs_shifted** | `(S + A) >> 2` — absolute right-shifted by 2 (4-byte aligned) |
+| `0x0A` | **sec_type_lo** | `section_type & (0xFF >> (8 - width))` — low nybble of section type |
+| `0x0B` | **sec_type_hi** | `(section_type >> 4) & (0xFF >> (8 - width))` — high nybble of section type |
+| `0x10` | **pc_rel** | `(int32_t)(S + A) - PC` — PC-relative offset |
 | `0x12` | **abs_full** | Alias of `0x01` (same behavior) |
 | `0x13` | **clear** | Zero the bit-field (write 0) |
 | `0x14` | **clear** | Alias of `0x13` (same behavior) |
@@ -746,7 +746,7 @@ The vtable is populated based on the target SM range:
 | 90--99 | Hopper | Major differences in slots 10/11/28/50--53, new desc types |
 | 100--103, 110--121 | Mercury (Blackwell+) | Distinct handler for slot 13, new constant field sizes |
 
-The vtable is allocated via `sub_4307C0` (arena allocator) and the first 78 slots are populated. Slots that are not explicitly set remain NULL (zero), and the relocation engine skips NULL handlers. This is how unsupported relocation types are detected at runtime -- a NULL vtable entry for a required type triggers an error.
+The vtable is allocated via `sub_4307C0` (arena allocator) and the first 78 slots are populated. Slots that are not explicitly set remain NULL (zero), and the relocation engine skips NULL handlers. This is how unsupported relocation types are detected at runtime — a NULL vtable entry for a required type triggers an error.
 
 ## Mercury vs CUDA Type Mapping
 
@@ -913,12 +913,12 @@ Note: The catalog contains 119 unique name strings as extracted from the binary.
 
 The 117 standard-table entries do not all light up on every architecture. Some types are baseline (present from Kepler), some appear with a specific ISA extension (Volta's `YIELD`, Turing's 21-bit constant fields, Hopper's 128-bit `INSTRUCTION128`, Blackwell's `ABS56`), and some are synthetic types translated away before the application engine ever indexes the descriptor table. The matrix below maps every `r_type` index to a pair:
 
-- **`introduced_at`** -- the lowest SM tier at which the type was observed in the binary or its ISA usage is plausible. Tiers are SM ranges (`sm_30+` = Kepler-and-later baseline, `sm_50+` = Maxwell+, `sm_70+` = Volta+, `sm_75+` = Turing+, `sm_80+` = Ampere+, `sm_90+` = Hopper+, `sm_100+` = Blackwell/Mercury+).
-- **`resolved_by`** -- the component that performs the patch:
-  - **`nvlink`** -- standard relocation engine `sub_469D60` reads the descriptor and patches via `sub_468760`.
-  - **`nvlink+bindless`** -- the bindless pass `sub_438DD0` rewrites the symbol target to `$NVLINKBINDLESSOFF_<name>` before `nvlink` applies the patch (see [Bindless Relocations](bindless-relocations.md)).
-  - **`ptxas-runtime`** -- a synthetic type emitted by ptxas (`UNIFIED_*` family targeting `__UFT_*` / `__UDT_*` synthetic symbols); the unified-table manager translates these to `R_CUDA_NONE` (type 0) before relocation application, so the descriptor at this index is reached only by the resolved-rela emitter.
-  - **`FNLZR`** -- on Mercury targets, the post-link finalizer `sub_4748F0` re-applies the same descriptor table (`off_1D3DBE0`, indexed by the CUDA type *without* the `0x10000` offset) when `--preserve-relocs` produced a `.nv.resolvedrela` section that survives capmerc emission. See [§ sm_100+ FNLZR-Deferred Path](bindless-relocations.md#sm_100-fnlzr-deferred-path).
+- **`introduced_at`** — the lowest SM tier at which the type was observed in the binary or its ISA usage is plausible. Tiers are SM ranges (`sm_30+` = Kepler-and-later baseline, `sm_50+` = Maxwell+, `sm_70+` = Volta+, `sm_75+` = Turing+, `sm_80+` = Ampere+, `sm_90+` = Hopper+, `sm_100+` = Blackwell/Mercury+).
+- **`resolved_by`** — the component that performs the patch:
+  - **`nvlink`** — standard relocation engine `sub_469D60` reads the descriptor and patches via `sub_468760`.
+  - **`nvlink+bindless`** — the bindless pass `sub_438DD0` rewrites the symbol target to `$NVLINKBINDLESSOFF_<name>` before `nvlink` applies the patch (see [Bindless Relocations](bindless-relocations.md)).
+  - **`ptxas-runtime`** — a synthetic type emitted by ptxas (`UNIFIED_*` family targeting `__UFT_*` / `__UDT_*` synthetic symbols); the unified-table manager translates these to `R_CUDA_NONE` (type 0) before relocation application, so the descriptor at this index is reached only by the resolved-rela emitter.
+  - **`FNLZR`** — on Mercury targets, the post-link finalizer `sub_4748F0` re-applies the same descriptor table (`off_1D3DBE0`, indexed by the CUDA type *without* the `0x10000` offset) when `--preserve-relocs` produced a `.nv.resolvedrela` section that survives capmerc emission. See [§ sm_100+ FNLZR-Deferred Path](bindless-relocations.md#sm_100-fnlzr-deferred-path).
 
 Tier inferences are derived from three sources: (a) the architecture-class field in the standard table (`sub_42F6C0`/`sub_42F8C0`), which gives a coarse 5-bucket grouping; (b) name suffixes encoding bit positions that match known ISA encodings (`*_20` = Maxwell+, `*_34` = Turing+ wide immediate, `*_38` = Ampere+); (c) the per-architecture vtable (`sub_459640`) which populates handler slots conditionally. Confidence is marked **HIGH** where the architecture-class field directly classifies the entry, **MED** where the suffix gives a strong hint but no decompiled gate confirms it, and **LOW** where the inference rests solely on naming convention.
 
@@ -1040,7 +1040,7 @@ Tier inferences are derived from three sources: (a) the architecture-class field
 | 113 | `R_CUDA_UNIFIED32_HI_32` | sm_75+ | ptxas-runtime | HIGH |
 | 114 | `R_CUDA_ABS56_16_34` | sm_100+ | nvlink / FNLZR | HIGH |
 | 115 | `R_CUDA_CONST_FIELD22_37` | sm_100+ | nvlink / FNLZR | MED |
-| 116 | `R_CUDA_NONE_LAST` | -- (sentinel) | nvlink (rejected) | HIGH |
+| 116 | `R_CUDA_NONE_LAST` | — (sentinel) | nvlink (rejected) | HIGH |
 
 ### Tier-Grouping Summary
 
@@ -1056,30 +1056,30 @@ Tier inferences are derived from three sources: (a) the architecture-class field
 | sm_100+ (Blackwell/Mercury) | 3 | 56-bit immediate, 22-bit `CONST_FIELD`, 2-bit narrow field | `R_CUDA_ABS56_16_34`, `R_CUDA_CONST_FIELD22_37`, `R_CUDA_2_47` |
 | sentinel | 6 | `R_CUDA_NONE`, `R_CUDA_NONE_LAST`, four legacy entries with no live use observed | `R_CUDA_NONE`, `R_CUDA_NONE_LAST` |
 
-The `sm_30+` and `sm_35+` baseline rows are anchored by the `arch_class == 1` bucket in `sub_42F8C0` (Kepler-through-Volta). The `sm_75+` group is corroborated by the `arch_class == 3` bucket (Turing-specific) plus the `arch_class == 5` boundary at `sm >= 76`, which separates Turing from Ampere. The four Blackwell-tier entries (`ABS56_16_34`, `CONST_FIELD22_37`, `2_47`, and the implied 22-bit/2-bit narrow-field family) appear at descriptor-table indices 114-115 -- the highest non-sentinel slots -- consistent with their being the last additions before the table was frozen at 117 entries.
+The `sm_30+` and `sm_35+` baseline rows are anchored by the `arch_class == 1` bucket in `sub_42F8C0` (Kepler-through-Volta). The `sm_75+` group is corroborated by the `arch_class == 3` bucket (Turing-specific) plus the `arch_class == 5` boundary at `sm >= 76`, which separates Turing from Ampere. The four Blackwell-tier entries (`ABS56_16_34`, `CONST_FIELD22_37`, `2_47`, and the implied 22-bit/2-bit narrow-field family) appear at descriptor-table indices 114-115 — the highest non-sentinel slots — consistent with their being the last additions before the table was frozen at 117 entries.
 
-> ⚡ **QUIRK -- `sm_30+` baseline contains 26 entries, but only 17 are reachable via class-1 vtable slots**
+> ⚡ **QUIRK — `sm_30+` baseline contains 26 entries, but only 17 are reachable via class-1 vtable slots**
 > The `sm_30+` rows in the matrix are inferred from name shape (data widths and texture/sampler/surface bindings predate the bit-position-encoded instruction relocs). However, the per-architecture vtable (`sub_459640`) leaves several slots NULL for Kepler-only targets, including the bindless-related entries (indices 22, 29, 30, 51). On a true Kepler target, attempting to apply `R_CUDA_TEX_BINDLESSOFF13_32` triggers the `"Relocation %s not supported on %s"` warning even though the descriptor itself decodes cleanly. The `introduced_at` column reflects *when the descriptor became legal*, not *when the type was first emitted by ptxas*. The downstream gate is the vtable, not the table.
 
-> ⚡ **QUIRK -- `UNIFIED_*` types are dead by the time the application engine sees them**
+> ⚡ **QUIRK — `UNIFIED_*` types are dead by the time the application engine sees them**
 > The 12 `R_CUDA_UNIFIED*` rows (indices 102-113) are marked `resolved_by = ptxas-runtime` because the unified-table manager rewrites every `UNIFIED_*` relocation targeting a synthetic symbol (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) to type 0 (`R_CUDA_NONE`) before the relocation phase runs. The descriptors at indices 102-113 are still byte-decoded for the resolved-rela emitter (`sub_46ADC0`), but `sub_469D60` never indexes them through the live patch path. They are effectively "synthetic" types: real entries in the type space, real descriptors in the table, but no instruction stream is ever patched through them at link time.
 
-> ⚡ **QUIRK -- Blackwell-tier entries share descriptor encoding with Hopper-tier entries**
-> The three sm_100+ entries (`ABS56_16_34`, `CONST_FIELD22_37`, `2_47`) are not encoded with new action codes -- they reuse the same `slot0.action = 0x09` (`SHIFTED_2`, used for the low piece of wide split fields) and `slot1.action = 0x15` (decimal 21, the "second-piece" continuation action listed in [R_CUDA Relocation Catalog § `action` enum](../reference/r-cuda-catalog.md#action-enum-dword-at-byte-20)) that already serve the Hopper-era 55-bit and 21-bit types. The only difference is the descriptor's `bit_width` field: 56 instead of 55 (`R_CUDA_ABS56_16_34` decodes as `slot0=(16, 8, 9, 2); slot1=(34, 48, 21, 10)`, summing to 8 + 48 = 56), 22 instead of 21, 2 instead of 6. The continuation action `0x15` is distinct from the `MASKED_SHIFT` family at `0x16..0x1D` / `0x2F..0x36` -- it lives in the gap immediately below it. The application engine has no Mercury-specific code path -- it patches Mercury fields with the same dispatch as Hopper, and the FNLZR path inherits the same dispatch when re-applying preserved relocations after capmerc emission. See [§ sm_100+ FNLZR-Deferred Path](bindless-relocations.md#sm_100-fnlzr-deferred-path) for the consumer side.
+> ⚡ **QUIRK — Blackwell-tier entries share descriptor encoding with Hopper-tier entries**
+> The three sm_100+ entries (`ABS56_16_34`, `CONST_FIELD22_37`, `2_47`) are not encoded with new action codes — they reuse the same `slot0.action = 0x09` (`SHIFTED_2`, used for the low piece of wide split fields) and `slot1.action = 0x15` (decimal 21, the "second-piece" continuation action listed in [R_CUDA Relocation Catalog § `action` enum](../reference/r-cuda-catalog.md#action-enum-dword-at-byte-20)) that already serve the Hopper-era 55-bit and 21-bit types. The only difference is the descriptor's `bit_width` field: 56 instead of 55 (`R_CUDA_ABS56_16_34` decodes as `slot0=(16, 8, 9, 2); slot1=(34, 48, 21, 10)`, summing to 8 + 48 = 56), 22 instead of 21, 2 instead of 6. The continuation action `0x15` is distinct from the `MASKED_SHIFT` family at `0x16..0x1D` / `0x2F..0x36` — it lives in the gap immediately below it. The application engine has no Mercury-specific code path — it patches Mercury fields with the same dispatch as Hopper, and the FNLZR path inherits the same dispatch when re-applying preserved relocations after capmerc emission. See [§ sm_100+ FNLZR-Deferred Path](bindless-relocations.md#sm_100-fnlzr-deferred-path) for the consumer side.
 
 ## Cross-References
 
-- [Relocation Phase](../pipeline/relocate.md) -- the pipeline stage that consumes these types
-- [Finalization Phase](../pipeline/finalize.md) -- second-pass relocation application
-- [Relocation Application Engine](relocation-engine.md) -- the bit-field patching engine
-- [Bindless Relocations](bindless-relocations.md) -- bindless texture/surface resolution
-- [Symbol Resolution](symbol-resolution.md) -- symbol resolution that feeds resolved addresses to relocation application
-- [Section Merging](section-merging.md) -- merge phase that collects `.rela.*` sections from input objects
-- [Binary Layout](../binary-layout.md) -- locations of descriptor tables in the nvlink binary
+- [Relocation Phase](../pipeline/relocate.md) — the pipeline stage that consumes these types
+- [Finalization Phase](../pipeline/finalize.md) — second-pass relocation application
+- [Relocation Application Engine](relocation-engine.md) — the bit-field patching engine
+- [Bindless Relocations](bindless-relocations.md) — bindless texture/surface resolution
+- [Symbol Resolution](symbol-resolution.md) — symbol resolution that feeds resolved addresses to relocation application
+- [Section Merging](section-merging.md) — merge phase that collects `.rela.*` sections from input objects
+- [Binary Layout](../binary-layout.md) — locations of descriptor tables in the nvlink binary
 
 ### Sibling Wiki
 
-- **ptxas wiki**: [Relocations & Symbols](../../ptxas/output/relocations.html) -- how ptxas generates R\_CUDA and R\_MERCURY relocation entries during code emission (the producer side of what nvlink consumes)
+- **ptxas wiki**: [Relocations & Symbols](../../ptxas/output/relocations.html) — how ptxas generates R\_CUDA and R\_MERCURY relocation entries during code emission (the producer side of what nvlink consumes)
 
 ## Confidence Assessment
 

@@ -1,6 +1,6 @@
 # Format Specifiers
 
-The cudafe++ diagnostic system uses a custom format specifier language -- not printf -- to expand parameterized error messages. The expansion engine is `process_fill_in` (`sub_4EDCD0`, 1,202 decompiled lines in error.c), called by `write_message_to_buffer` (`sub_4EF620`, 159 lines) during template string expansion. Each diagnostic record carries a linked list of typed fill-in entries that supply the actual values -- type nodes, entity pointers, strings, integers, source positions -- which the format engine renders into the final message text.
+The cudafe++ diagnostic system uses a custom format specifier language — not printf — to expand parameterized error messages. The expansion engine is `process_fill_in` (`sub_4EDCD0`, 1,202 decompiled lines in error.c), called by `write_message_to_buffer` (`sub_4EF620`, 159 lines) during template string expansion. Each diagnostic record carries a linked list of typed fill-in entries that supply the actual values — type nodes, entity pointers, strings, integers, source positions — which the format engine renders into the final message text.
 
 This page documents the specifier syntax, the fill-in kind system, entity-kind dispatch, suffix options, numeric indexing, and the labeled fill-in mechanism.
 
@@ -94,7 +94,7 @@ Each fill-in entry is a 40-byte node allocated from a pool (`qword_106B490`) or 
 |---|---|---|---|
 | 0 | 4 | `kind` | Fill-in kind (0--7, from specifier letter mapping) |
 | 4 | 1 | `used_flag` | Set to 1 when consumed during expansion |
-| 5 | 3 | (padding) | -- |
+| 5 | 3 | (padding) | — |
 | 8 | 8 | `next` | Next fill-in in linked list |
 | 16 | 8+ | `payload` | Union, varies by kind (see below) |
 
@@ -104,20 +104,20 @@ Each fill-in entry is a 40-byte node allocated from a pool (`qword_106B490`) or 
 
 | Offset | Size | Field |
 |---|---|---|
-| 16 | 8 | `value` -- int64 for kind 0/1, `const char*` for kind 3, type node pointer for kind 5/6 |
+| 16 | 8 | `value` — int64 for kind 0/1, `const char*` for kind 3, type node pointer for kind 5/6 |
 
 **Kind 2 (position, `%p`):**
 
 | Offset | Size | Field |
 |---|---|---|
-| 16 | 8 | `position_cookie` -- initialized to `qword_126EFB8` (current source position) at allocation time |
+| 16 | 8 | `position_cookie` — initialized to `qword_126EFB8` (current source position) at allocation time |
 
 **Kind 4 (entity name, `%n`):**
 
 | Offset | Size | Field |
 |---|---|---|
-| 16 | 8 | `entity_ptr` -- pointer to entity node |
-| 24 | 4 | `scope_index` -- initialized to `0xFFFFFFFF` (invalid) |
+| 16 | 8 | `entity_ptr` — pointer to entity node |
+| 24 | 4 | `scope_index` — initialized to `0xFFFFFFFF` (invalid) |
 | 28 | 1 | `full_qualification_flag` |
 | 29 | 1 | `original_name_flag` |
 | 30 | 1 | `parameter_list_flag` |
@@ -184,7 +184,7 @@ The index is a single digit 0--9. Index 0 behaves identically to index 1 (the co
 calling a __device__ function(%sq1) from a __host__ function(%sq2) is not allowed
 ```
 
-Here `%sq1` and `%sq2` are both kind 3 (string) with option `q` (quoted), selecting the first and second string fill-ins respectively. The caller attaches two string fill-ins -- the called function's name and the calling function's name.
+Here `%sq1` and `%sq2` are both kind 3 (string) with option `q` (quoted), selecting the first and second string fill-ins respectively. The caller attaches two string fill-ins — the called function's name and the calling function's name.
 
 ## Suffix Options
 
@@ -199,7 +199,7 @@ The `%s` specifier accepts only one option character: `q` for quoted output.
 
 The `q` option wraps the string in double-quote characters (`"`) and applies colorization if enabled (quote category, code 6 = bold). Any other option character on `%s` triggers: `"process_fill_in: bad option"` (error.c:4364).
 
-Multiple `q` characters are permitted syntactically (the parser loops over all option chars validating each is `q`) but have no additional effect -- only one layer of quoting is applied.
+Multiple `q` characters are permitted syntactically (the parser loops over all option chars validating each is `q`) but have no additional effect — only one layer of quoting is applied.
 
 ### Entity Name Options (`%n`)
 
@@ -241,15 +241,15 @@ if (*options != '\0')
 
 ## Kind-Specific Rendering
 
-### Kind 0 -- Signed Decimal (`%d`)
+### Kind 0 — Signed Decimal (`%d`)
 
 Renders the 64-bit signed integer payload using `snprintf(buf, 20, "%lli", value)`, then writes the result to the output buffer. The 20-character buffer accommodates the full range of `int64_t` values including the sign.
 
-### Kind 1 -- Unsigned Decimal (`%u`)
+### Kind 1 — Unsigned Decimal (`%u`)
 
 Formats the payload through `sub_4F63D0`, which renders the unsigned 64-bit value into a dynamically-sized string buffer.
 
-### Kind 2 -- Source Position (`%p`)
+### Kind 2 — Source Position (`%p`)
 
 Calls `sub_4F6820` (`form_source_position`) with the position cookie from the fill-in payload. The rendering includes:
 
@@ -259,7 +259,7 @@ Calls `sub_4F6820` (`form_source_position`) with the position cookie from the fi
 
 The caller passes context strings like `" (declared "`, `")"`, `"(at end of source)"` to frame the position reference. When the position resolves to line 0 or the file is `"-"` (stdin), alternate formats are used.
 
-### Kind 3 -- String (`%s` / `%sq`)
+### Kind 3 — String (`%s` / `%sq`)
 
 Without the `q` option, writes the string pointer payload directly to the output buffer via `strlen` + `sub_6B9CD0` (buffer append).
 
@@ -275,7 +275,7 @@ if (colorization_active)
 write_char(buffer, '"');
 ```
 
-### Kind 5 -- Type, Lowercase (`%t`)
+### Kind 5 — Type, Lowercase (`%t`)
 
 Renders the type node through the type formatting subsystem. The rendering pipeline:
 
@@ -284,11 +284,11 @@ Renders the type node through the type formatting subsystem. The rendering pipel
 3. Call `sub_600740` (format type for display) with the type node and the entity formatter callback table (`qword_1067860`)
 4. Write closing `"`
 5. Check via `sub_7BE9C0` if the type has an "aka" (also-known-as) desugared form
-6. If yes, append `' (aka "desugared_type")'` -- comparing the rendered forms to avoid redundant output when they are identical
+6. If yes, append `' (aka "desugared_type")'` — comparing the rendered forms to avoid redundant output when they are identical
 
 The aka check compares the rendered text of the original type against the desugared type. If they produce identical strings (same length, same content via `strncmp`), the aka suffix is suppressed by truncating the buffer back to the pre-aka position.
 
-### Kind 6 -- Type, Uppercase (`%T`)
+### Kind 6 — Type, Uppercase (`%T`)
 
 Renders a type template argument list in angle brackets:
 
@@ -306,7 +306,7 @@ write_string(buffer, ">\"");
 
 Template argument entries with `kind == 3` (at byte offset +8) are pack-expansion markers and are skipped during rendering.
 
-### Kind 7 -- Template Parameter Reference (`%r`)
+### Kind 7 — Template Parameter Reference (`%r`)
 
 Renders a template parameter by looking up the parameter entity through `sub_5B9EE0` (entity lookup by scope + index). If found and non-null, renders via `sub_4F3970` (unqualified entity name). Otherwise, falls back to `sub_6011F0` (generic template parameter formatting).
 
@@ -318,9 +318,9 @@ The dispatch handles 25 entity kind values (0--24, with gaps at 14/15/16/24 hand
 
 | Entity Kind | Value | Kind Label String | Index in `off_88FAA0` | Rendering Logic |
 |---|---|---|---|---|
-| keyword | 0 | (none -- literal `"keyword"`) | -- | Write `keyword "`, then the keyword's name string from `entity->name_sym->name` |
+| keyword | 0 | (none — literal `"keyword"`) | — | Write `keyword "`, then the keyword's name string from `entity->name_sym->name` |
 | concept | 1 | (from table) | 1462 | Simple: write kind label + quoted name |
-| constant template parameter | 2 | `"constant"` or `"nontype"` | -- | Check template parameter subkind: type_kind 14 with subkind 2 = `"nontype"`, else `"constant"` |
+| constant template parameter | 2 | `"constant"` or `"nontype"` | — | Check template parameter subkind: type_kind 14 with subkind 2 = `"nontype"`, else `"constant"` |
 | template parameter | 3 | (from table) | 1464 or 1465 | Check whether the template parameter is a type parameter (type_kind != 14) → index 1465, else 1464 |
 | class | 4 | (from table, CUDA-aware) | 1466--1468 | CUDA mode: `1467` or `1468` (class vs struct); non-CUDA: `1466` |
 | struct | 5 | (same as class) | 1466--1468 | Same dispatch as class, differentiated by `v46 != 5` |
@@ -331,10 +331,10 @@ The dispatch handles 25 entity kind values (0--24, with gaps at 14/15/16/24 hand
 | function | 10 | `"function"` or `"deduction guide"` | 1478 or 2892 | Check linkage kind (offset 166 == 7): deduction guide → index 2892. Otherwise `"function"` (1478). Walk qualified type chain to strip cv-qualifiers |
 | function overload | 11 | (same as function) | 1478 or 2892 | Same dispatch as function (case 10), merged in the switch |
 | namespace | 12 | (from table) | 1463 | Simple: write kind label + quoted name |
-| label | 13 | (none) | -- | Write quoted name only, no kind prefix, no type info |
+| label | 13 | (none) | — | Write quoted name only, no kind prefix, no type info |
 | typedef (indirect variable) | 14 | `"variable"` | 1475 | Dereferences through `entity->info_ptr->pointed_to` and renders as variable |
 | typedef (indirect function) | 15 | `"function"` | 1478 | Dereferences through `entity->info_ptr`, extracts function entity + routine info |
-| typedef | 16 | -- | -- | Assertion: `"form_symbol_summary: projection of projection kind"` (error.c:2020). Should have been resolved before dispatch |
+| typedef | 16 | — | — | Assertion: `"form_symbol_summary: projection of projection kind"` (error.c:2020). Should have been resolved before dispatch |
 | using declaration | 17 | (from table) | 1479 | Simple: write kind label + quoted name |
 | parameter | 18 | `"parameter"` | 1473 | Simple: write `"parameter"` + quoted name with type info |
 | class (anonymous/unnamed) | 19 | (from table) | 1469--1471 or 1889 | Multiple sub-cases: anonymous class bit 0x40 → index 1469; class-template with bit 0x02 → index 1470; deduction_guide bit → index 1889; else index 1471 |
@@ -342,7 +342,7 @@ The dispatch handles 25 entity kind values (0--24, with gaps at 14/15/16/24 hand
 | variable template | 21 | (from table) | 2750 | Simple: write kind label + quoted name |
 | alias template | 22 | (from table) | 3050 | Simple: write kind label + quoted name |
 | concept template | 23 | (from table) | 1482 | Simple: write kind label + quoted name |
-| resolved namespace alias | 24 | -- | -- | Assertion: `"form_symbol_summary: projection of projection kind"` (same as kind 16). Should have been resolved |
+| resolved namespace alias | 24 | — | — | Assertion: `"form_symbol_summary: projection of projection kind"` (same as kind 16). Should have been resolved |
 
 Any entity kind value outside 0--24 (excluding the gaps that trigger assertions) hits the default case: `"form_symbol_summary: unsupported symbol kind"` (error.c:2023).
 
@@ -462,9 +462,9 @@ if (!entry->name) {
 }
 ```
 
-The label table entries reference string indices in the same `off_88FAA0` table used for error messages. This allows a single error template to produce different text depending on compilation mode -- for example, using `"class"` vs `"struct"` based on a language-mode flag, or `"virtual"` vs `""` based on a feature flag.
+The label table entries reference string indices in the same `off_88FAA0` table used for error messages. This allows a single error template to produce different text depending on compilation mode — for example, using `"class"` vs `"struct"` based on a language-mode flag, or `"virtual"` vs `""` based on a feature flag.
 
-The label text is written directly to the output buffer without further format specifier processing -- labels cannot contain nested `%` specifiers.
+The label text is written directly to the output buffer without further format specifier processing — labels cannot contain nested `%` specifiers.
 
 ## Output Buffer
 
@@ -472,8 +472,8 @@ All rendering targets the global message text buffer at `qword_106B488`:
 
 - Initial allocation: 0x400 bytes (1 KB) via `sub_6B98A0`
 - Dynamic growth: `sub_6B9B20` doubles the buffer when capacity is exceeded
-- String append: `sub_6B9CD0(buffer, data, length)` -- the workhorse write function
-- String write: `sub_6B9EA0(buffer, string)` -- convenience wrapper (calls `strlen` + `sub_6B9CD0`)
+- String append: `sub_6B9CD0(buffer, data, length)` — the workhorse write function
+- String write: `sub_6B9EA0(buffer, string)` — convenience wrapper (calls `strlen` + `sub_6B9CD0`)
 
 The entity display callback infrastructure at `qword_1067860` allows the type/name formatting subsystem to write to the same buffer through an indirect call:
 
@@ -495,7 +495,7 @@ When `dword_126ECA4` (colorization active) is non-zero, the format engine insert
 |---|---|---|---|
 | Opening quote (`"`) | 6 (quote) | `\033[01m` | Bold |
 | Closing quote (`"`) | 1 (reset) | `\033[0m` | Normal |
-| Type rendering context | (inherited) | -- | Inherits from diagnostic severity color |
+| Type rendering context | (inherited) | — | Inherits from diagnostic severity color |
 
 The escape sequences are emitted by `sub_4ECDD0(buffer, color_code)`. The color codes correspond to the categories parsed from `EDG_COLORS` / `GCC_COLORS` environment variables during initialization.
 
@@ -510,24 +510,24 @@ The escape sequences are emitted by `sub_4ECDD0(buffer, color_code)`. The color 
 | `0x4F2930` | `assertion_handler` | 101 lines | `__noreturn`, 5,185 callers |
 | `0x4F3480` | `format_assertion_message` | ~100 lines | Multi-arg string builder for assertion text |
 | `0x4F6820` | `form_source_position` | ~130 lines | Render `%p` source position with file + line |
-| `0x4F3970` | `format_entity_unqualified` | -- | Render unqualified entity name |
-| `0x4F39E0` | `format_entity_with_template` | -- | Render entity with template args + accessibility |
-| `0x737A00` | `format_qualified_name` | -- | Render fully-qualified name through scope chain |
-| `0x5FE8B0` | `format_type_with_qualifiers` | -- | Render type with cv-qualifiers for `%n` prefix |
-| `0x5FB270` | `format_function_parameters` | -- | Render function parameter type list |
-| `0x6016F0` | `format_simple_type` | -- | Render simple type suffix |
-| `0x600740` | `format_type_for_display` | -- | Render type for `%t` specifier |
-| `0x7BE9C0` | `has_desugared_type` | -- | Check if type has an "aka" form |
-| `0x5FA660` | `format_template_argument_list` | -- | Render template argument list for `%n` `a` option |
-| `0x5FA0D0` | `format_template_argument` | -- | Render single template argument for `%T` |
-| `0x5B9EE0` | `lookup_entity_by_scope` | -- | Entity lookup for `%r` template parameter |
-| `0x4F63D0` | `format_unsigned_decimal` | -- | Render unsigned integer for `%u` |
-| `0x6B9CD0` | `buffer_append` | -- | Write bytes to dynamic buffer |
-| `0x6B9EA0` | `buffer_write_string` | -- | Write null-terminated string to buffer |
-| `0x4ECDD0` | `emit_colorization_escape` | -- | Emit ANSI escape sequence |
+| `0x4F3970` | `format_entity_unqualified` | — | Render unqualified entity name |
+| `0x4F39E0` | `format_entity_with_template` | — | Render entity with template args + accessibility |
+| `0x737A00` | `format_qualified_name` | — | Render fully-qualified name through scope chain |
+| `0x5FE8B0` | `format_type_with_qualifiers` | — | Render type with cv-qualifiers for `%n` prefix |
+| `0x5FB270` | `format_function_parameters` | — | Render function parameter type list |
+| `0x6016F0` | `format_simple_type` | — | Render simple type suffix |
+| `0x600740` | `format_type_for_display` | — | Render type for `%t` specifier |
+| `0x7BE9C0` | `has_desugared_type` | — | Check if type has an "aka" form |
+| `0x5FA660` | `format_template_argument_list` | — | Render template argument list for `%n` `a` option |
+| `0x5FA0D0` | `format_template_argument` | — | Render single template argument for `%T` |
+| `0x5B9EE0` | `lookup_entity_by_scope` | — | Entity lookup for `%r` template parameter |
+| `0x4F63D0` | `format_unsigned_decimal` | — | Render unsigned integer for `%u` |
+| `0x6B9CD0` | `buffer_append` | — | Write bytes to dynamic buffer |
+| `0x6B9EA0` | `buffer_write_string` | — | Write null-terminated string to buffer |
+| `0x4ECDD0` | `emit_colorization_escape` | — | Emit ANSI escape sequence |
 
 ## Cross-References
 
-- [Diagnostic Overview](./overview.md) -- 7-stage pipeline, severity levels, diagnostic record layout
-- [CUDA Error Catalog](./cuda-errors.md) -- all 338 CUDA-specific error templates with specifier usage
-- [SARIF & Pragma Control](./sarif-pragmas.md) -- SARIF JSON output and `#pragma nv_diagnostic` system
+- [Diagnostic Overview](./overview.md) — 7-stage pipeline, severity levels, diagnostic record layout
+- [CUDA Error Catalog](./cuda-errors.md) — all 338 CUDA-specific error templates with specifier usage
+- [SARIF & Pragma Control](./sarif-pragmas.md) — SARIF JSON output and `#pragma nv_diagnostic` system

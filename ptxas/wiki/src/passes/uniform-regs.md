@@ -8,7 +8,7 @@ Four passes in the ptxas pipeline collectively manage the conversion of general-
 |---|---|
 | **Phases** | 11, 27, 74, 86 |
 | **Phase names** | `ReplaceUniformsWithImm`, `AnalyzeUniformsForSpeculation`, `ConvertToUniformReg`, `InsertPseudoUseDefForConvUR` |
-| **Target** | sm_75+ (Turing and later) -- no-op on earlier architectures |
+| **Target** | sm_75+ (Turing and later) — no-op on earlier architectures |
 | **Register file** | UR: UR0--UR62 usable, UR63 = URZ (zero register); UP: UP0--UP6, UP7 = UPT |
 | **Hardware limit** | 63 uniform GPRs, 7 uniform predicates per thread |
 | **Code Object field** | `+99` = UR count; `+856` = UR liveness bitvector |
@@ -53,11 +53,11 @@ sm_75+ architectures provide a dedicated set of uniform-only SASS instructions t
 | `VOTEU` | `IBGRH` | Uniform vote |
 
 Blackwell (sm_100+) extends the uniform ISA with:
-- `UFADD`, `UFFMA`, `UFSEL`, `UFSETP` -- uniform floating-point operations
-- `UVIADDR` -- uniform virtual address computation
-- `UCLEA`, `UCVTA`, `ULEPC` -- uniform address operations
-- `UTMAPC`, `UTMALDG`, `UTMAPF`, `UTMAREDG` -- uniform TMA (tensor memory accelerator) operations
-- `UBLKPC`, `UBLKRED`, `UBLKPF` -- uniform block operations
+- `UFADD`, `UFFMA`, `UFSEL`, `UFSETP` — uniform floating-point operations
+- `UVIADDR` — uniform virtual address computation
+- `UCLEA`, `UCVTA`, `ULEPC` — uniform address operations
+- `UTMAPC`, `UTMALDG`, `UTMAPF`, `UTMAREDG` — uniform TMA (tensor memory accelerator) operations
+- `UBLKPC`, `UBLKRED`, `UBLKPF` — uniform block operations
 
 The `R2UR` instruction transfers a value from the R file to the UR file; `UR2R` does the reverse. These are the bridge instructions that `ConvertToUniformReg` inserts at file boundaries.
 
@@ -108,14 +108,14 @@ The pass is gated by knob 487 (general optimization enablement).
 |---|---|
 | **Phase index** | 27 (binary index 30; vtable `off_22BDA00`) |
 | **Pipeline position** | Stage 2 (Early Optimization), after `OriRemoveRedundantBarriers` (26), before `SinkRemat` (28) |
-| **Category** | Analysis (read-only -- annotates constant load speculation safety, does not transform instructions) |
+| **Category** | Analysis (read-only — annotates constant load speculation safety, does not transform instructions) |
 | **String reference** | `"AnalyzeUniformsForSpeculation"` at `0x22BC647` |
 
 ### Purpose
 
 > **Correction (2026-04-16).** The previous version of this section described phase 27 as a per-register uniformity marker that sets `vreg+49` bit 2. Cross-reference analysis of the binary revealed that description was incorrect. The per-register varying flag at `vreg+49` bit 2 is set by `OriPropagateVarying` (phases 53 and 70), not by this pass. The previous description was admittedly reconstructed from consumer passes without decompiling the execute body; this revision corrects the misattribution.
 
-Analysis pass that examines constant bank (`c[]`) accesses and determines which constant memory loads can be safely speculated -- that is, hoisted or sunk across control-flow boundaries without changing program semantics. The pass name `AnalyzeUniformsForSpeculation` refers to the *speculation safety of uniform-address constant loads*, not to per-register divergence classification.
+Analysis pass that examines constant bank (`c[]`) accesses and determines which constant memory loads can be safely speculated — that is, hoisted or sunk across control-flow boundaries without changing program semantics. The pass name `AnalyzeUniformsForSpeculation` refers to the *speculation safety of uniform-address constant loads*, not to per-register divergence classification.
 
 Constant memory loads via `LDC c[bank][offset]` are pure (no side effects) when the address is uniform, but hoisting them above a branch may introduce a load on a path that the original program never executed. This is benign for constant memory (the load cannot fault and the value is fixed), but the compiler must still confirm that the address expression is safe to evaluate speculatively. Phase 27 performs this confirmation and records the result so that downstream passes know which `LDC` instructions (and their dependent computations) may be freely moved across control flow.
 
@@ -123,11 +123,11 @@ Constant memory loads via `LDC c[bank][offset]` are pure (no side effects) when 
 
 Three later passes read the speculation-safety annotations produced by this pass:
 
-1. **`SinkRemat` (phase 28)** -- the core sink+remat driver `sub_A0F020` calls `sub_A107B0` per definition. When a constant load has been flagged as speculation-safe, SinkRemat may sink it past a divergent branch and insert a rematerialized copy near the use, because the load is guaranteed side-effect-free.
+1. **`SinkRemat` (phase 28)** — the core sink+remat driver `sub_A0F020` calls `sub_A107B0` per definition. When a constant load has been flagged as speculation-safe, SinkRemat may sink it past a divergent branch and insert a rematerialized copy near the use, because the load is guaranteed side-effect-free.
 
-2. **`SpeculativeHoistComInsts` (phase 56)** -- hoists common sub-expressions above divergent branches when operands are speculation-safe. For constant bank loads, the phase 27 annotation confirms that the `LDC` can be moved above the branch without introducing a fault or observably wrong value.
+2. **`SpeculativeHoistComInsts` (phase 56)** — hoists common sub-expressions above divergent branches when operands are speculation-safe. For constant bank loads, the phase 27 annotation confirms that the `LDC` can be moved above the branch without introducing a fault or observably wrong value.
 
-3. **`Predication` (phase 63)** -- the profitability scanner at `sub_1380190` checks `state->has_uniform_speculation` before scoring candidates. When set, the predication pass verifies that constant-load operands in the if-conversion region remain safe to speculatively execute after branch elimination.
+3. **`Predication` (phase 63)** — the profitability scanner at `sub_1380190` checks `state->has_uniform_speculation` before scoring candidates. When set, the predication pass verifies that constant-load operands in the if-conversion region remain safe to speculatively execute after branch elimination.
 
 Branch optimization also benefits: when a branch condition depends only on speculation-safe constant loads, it qualifies for `UBRA` encoding on sm_75+ and can eliminate `BSSY`/`BSYNC` pairs.
 
@@ -163,7 +163,7 @@ The main UR promotion pass. Converts qualifying R-register values to UR register
 
 Phase 74 runs immediately after SSA destruction (`ConvertAllMovPhiToMov`, phase 73). This is deliberate:
 - **After SSA destruction**: phi nodes have been converted to plain MOVs, giving the pass a clear view of all definitions and uses without phi-node complications.
-- **After varying propagation** (phases 53 and 70): the divergence annotations are complete -- the pass knows which values are proven uniform.
+- **After varying propagation** (phases 53 and 70): the divergence annotations are complete — the pass knows which values are proven uniform.
 - **After predication** (phase 63): if-conversion has already eliminated short branches, which may have exposed new uniform values.
 - **Before register allocation**: UR conversion reduces R-register demand before the fat-point allocator runs (phase 101), directly improving occupancy.
 - **Before scheduling**: the scheduler (phases 97+) can exploit UR-specific latency characteristics.
@@ -172,7 +172,7 @@ Phase 74 runs immediately after SSA destruction (`ConvertAllMovPhiToMov`, phase 
 
 The eligibility check (`sub_90C010`, 456 bytes) tests all five criteria simultaneously per instruction. A value qualifies for R-to-UR conversion when all hold:
 
-1. **R-file source operand.** The operand word at `inst+84+8*idx` must have type field `(operand>>28) & 7 == 1` (register-class operand -- this 3-bit field carries 1=register, 2/3=wide-register pair/quad, 5=constant-pool indirect; it does **not** distinguish R from UR -- both R and UR sources appear with class 1) and byte `+7` low bit clear (special/fixed flag). The R-vs-UR discriminator is the referenced vreg's `+64` reg_type (R is class 1, UR is class 3 in the enum at `ir/registers.md`); the check at `sub_90C010:21` is structurally only a "must be register class" gate, and the subsequent reg_type test (`v8 = vreg[+64]`) is what selects R-source candidates for promotion. The function returns 0 immediately if either gate fails.
+1. **R-file source operand.** The operand word at `inst+84+8*idx` must have type field `(operand>>28) & 7 == 1` (register-class operand — this 3-bit field carries 1=register, 2/3=wide-register pair/quad, 5=constant-pool indirect; it does **not** distinguish R from UR — both R and UR sources appear with class 1) and byte `+7` low bit clear (special/fixed flag). The R-vs-UR discriminator is the referenced vreg's `+64` reg_type (R is class 1, UR is class 3 in the enum at `ir/registers.md`); the check at `sub_90C010:21` is structurally only a "must be register class" gate, and the subsequent reg_type test (`v8 = vreg[+64]`) is what selects R-source candidates for promotion. The function returns 0 immediately if either gate fails.
 
 2. **UR-expressible opcode.** The opcode (masked to `opcode & 0xFFFFCFFF` to strip modifier bits) must match the 64-bit bitmask `0x2080000010000001` shifted by base 22, selecting exactly four opcode classes: **IADD3** (22), **PRMT** (50), **SEL** (77), **SGXT** (83). Opcodes **297** and **352** (VOTEU and a predicate variant) pass via explicit equality checks. MOV (164) is explicitly *rejected* in `sub_90B790`, returning cost 1 (bridge-only).
 
@@ -239,7 +239,7 @@ Phase 84 (`OriPerformLiveDeadFourth`) runs DCE between conversion (phase 74) and
 
 The pass iterates every basic block, skipping blocks with null instruction lists or the non-schedulable flag (`block[281] & 0x08`). For each block it resolves the owning BB via the register-to-BB lookup array (`ctx+296`) and walks the successor chain. The walk stops early when `allow_reorder` is set and a reorder barrier is reached (`bb[245] != 0`).
 
-**Convergent boundary scan.** Within each BB, the pass scans for CONV boundary markers -- instructions whose opcode after masking (`opcode & ~0x3000`) equals 27 (CS2R). A per-block bitmask (`live_mask`, sized `ceil(reg_count/64)` words) tracks which block IDs have been seen inside a convergent region. If the block's guard bit (`block.qword280 & 1`) is set, the bitmask bit is cleared instead of set.
+**Convergent boundary scan.** Within each BB, the pass scans for CONV boundary markers — instructions whose opcode after masking (`opcode & ~0x3000`) equals 27 (CS2R). A per-block bitmask (`live_mask`, sized `ceil(reg_count/64)` words) tracks which block IDs have been seen inside a convergent region. If the block's guard bit (`block.qword280 & 1`) is set, the bitmask bit is cleared instead of set.
 
 **Eligibility check.** After reaching a use through the successor chain, the pass examines the defining instruction. If that definition is already a CONV.ALLOC (opcode 286), it is skipped. Otherwise, a multi-case opcode switch determines whether the use requires a convergent boundary. The switch tests modifier bits per opcode:
 
@@ -316,7 +316,7 @@ Registers that remain with bit 2 clear after convergence are proven uniform and 
 
 ### Pipeline Position
 
-**Phase 53 (`OriPropagateVaryingFirst`)** runs after `OriReplaceEquivMultiDefMov` (phase 52) and before `OriDoRematEarly` (phase 54). This is the first divergence snapshot -- it feeds early rematerialization (54) and speculative hoisting (56), both of which need to know whether a value is uniform before deciding to duplicate or move it.
+**Phase 53 (`OriPropagateVaryingFirst`)** runs after `OriReplaceEquivMultiDefMov` (phase 52) and before `OriDoRematEarly` (phase 54). This is the first divergence snapshot — it feeds early rematerialization (54) and speculative hoisting (56), both of which need to know whether a value is uniform before deciding to duplicate or move it.
 
 **Phase 70 (`OriPropagateVaryingSecond`)** runs after `OriDoRemat` (phase 69) and before `OptimizeSyncInstructions` (phase 71). It recomputes divergence because predication (phase 63) may have converted divergent branches into predicated straight-line code, changing which `MovPhi` nodes merge across divergent edges, and rematerialization (69) may have introduced new definitions. The refreshed annotations are the ones that `ConvertToUniformReg` (phase 74) consumes.
 
@@ -332,7 +332,7 @@ Registers that remain with bit 2 clear after convergence are proven uniform and 
 
 | Case | Op   | Replacement strategy |
 |------|------|----------------------|
-| 0    | ADD  | Full coalescing -- `sub_88FC40` or `sub_88F810` depending on return-value liveness |
+| 0    | ADD  | Full coalescing — `sub_88FC40` or `sub_88F810` depending on return-value liveness |
 | 3    | MIN  | Warp-reduce to single lane via `sub_891280` |
 | 4    | MAX  | Same as MIN path |
 | 7    | AND  | Bitwise warp-reduce |
@@ -380,9 +380,9 @@ This fires on pre-sm_75 targets where the UR file does not exist, or when a CLI 
 
 | SM range | UR support | UR ALU instructions | Uniform FP |
 |---|---|---|---|
-| sm_30 -- sm_72 | None | None | None |
-| sm_75 -- sm_89 | UR0--UR62, UP0--UP6 | UIADD3, UIMAD, ULOP3, UISETP, UMOV, UPRMT, USGXT, UPOPC, UBREV | None |
-| sm_90 -- sm_90a | UR0--UR62, UP0--UP6 | Full integer uniform ALU | None (LDCU requires `-forcetext -sso`) |
+| sm_30 — sm_72 | None | None | None |
+| sm_75 — sm_89 | UR0--UR62, UP0--UP6 | UIADD3, UIMAD, ULOP3, UISETP, UMOV, UPRMT, USGXT, UPOPC, UBREV | None |
+| sm_90 — sm_90a | UR0--UR62, UP0--UP6 | Full integer uniform ALU | None (LDCU requires `-forcetext -sso`) |
 | sm_100+ | UR0--UR62, UP0--UP6 | Full integer + FP uniform ALU | UFADD, UFFMA, UFSEL, UFSETP, UVIADDR |
 
 The `LDCU` (Load Constant Uniform) instruction is gated by architecture capability. The validation at `sub_B28400` (345 bytes) checks:
@@ -409,7 +409,7 @@ The function `sub_910840` (`ConvertMemoryToRegisterOrUniform`, gated by knob 487
 
 The entry function checks knob 487 for enablement (via vtable+152 dispatch), builds def-use chains via `sub_905B50`, then calls `sub_90FBA0` for the actual promotion.
 
-The `sub_911030` core function (10.7 KB) handles the "OrUniform" part -- it iterates through the variable list, checks variable properties (address space, type), and decides whether to promote to R or UR. The decision process involves:
+The `sub_911030` core function (10.7 KB) handles the "OrUniform" part — it iterates through the variable list, checks variable properties (address space, type), and decides whether to promote to R or UR. The decision process involves:
 1. Checking the register's `vreg+49` flags byte (bit 2 = uniform marker from `sub_907870`)
 2. Evaluating whether the variable's address space permits UR promotion
 3. Confirming that the defining and using instructions have UR-compatible forms
@@ -440,7 +440,7 @@ The per-register-class property accessors at `sub_900C50`--`sub_9013F0` (6 nearl
 | `sub_7E5060` | 268 B | R-to-UR conversion commit | Verifies `ctx+1368` bit 4, calls `sub_74D720` to flip register file |
 | `sub_8F5220` | 328 B | Pass state initializer | Zeros 4 BSTs, hash maps, and flags at state+32..+200 |
 | `sub_8F59C0` | 400 B | Early termination check | Returns 1 if all BST candidates rejected; breaks retry loop |
-| `sub_8F47E0` | 80 B | Cutlass kernel detector | `strstr(kernel_name, "cutlass")` -- enables UR override for cutlass |
+| `sub_8F47E0` | 80 B | Cutlass kernel detector | `strstr(kernel_name, "cutlass")` — enables UR override for cutlass |
 | `sub_902AB0` | small | Red-black tree rebalance | Maintains BST ordering for min-first candidate extraction |
 | `sub_7BC360` | ~1 KB | UR register encoder | Encodes UR operands in SASS instruction words (126 callers) |
 | `sub_7BD7D0` | ~1 KB | UR register decoder | Decodes UR operands from SASS instruction words (type=4) |
@@ -449,14 +449,14 @@ The per-register-class property accessors at `sub_900C50`--`sub_9013F0` (6 nearl
 
 ## Related Pages
 
-- [Varying Propagation](varying-propagation.md) -- the divergence analysis (phases 53, 70) that produces the `vreg+49` bit 2 input this page consumes
-- [Register Model](../ir/registers.md) -- UR file, register descriptor layout, allocator classes
-- [Ori IR Overview](../ir/overview.md) -- instruction format, partial SSA window
-- [Pass Inventory](index.md) -- complete 159-phase table
-- [Liveness Analysis](liveness.md) -- bitvector infrastructure used by UR liveness tracking
-- [Rematerialization](rematerialization.md) -- phases 28, 54, 69 (interact with speculation analysis)
-- [Predication](predication.md) -- phase 63, changes divergence landscape before UR conversion
-- [Register Allocator](../regalloc/overview.md) -- 7-class allocator handling R and UR independently
-- [GMMA Pipeline](gmma-pipeline.md) -- phases 85, 87 (adjacent to InsertPseudoUseDefForConvUR)
-- [GPU ABI](../regalloc/abi.md) -- convergent allocation, allowConvAlloc enforcement
-- [Scheduler Architecture](../scheduling/overview.md) -- UR pressure tracking in scheduling
+- [Varying Propagation](varying-propagation.md) — the divergence analysis (phases 53, 70) that produces the `vreg+49` bit 2 input this page consumes
+- [Register Model](../ir/registers.md) — UR file, register descriptor layout, allocator classes
+- [Ori IR Overview](../ir/overview.md) — instruction format, partial SSA window
+- [Pass Inventory](index.md) — complete 159-phase table
+- [Liveness Analysis](liveness.md) — bitvector infrastructure used by UR liveness tracking
+- [Rematerialization](rematerialization.md) — phases 28, 54, 69 (interact with speculation analysis)
+- [Predication](predication.md) — phase 63, changes divergence landscape before UR conversion
+- [Register Allocator](../regalloc/overview.md) — 7-class allocator handling R and UR independently
+- [GMMA Pipeline](gmma-pipeline.md) — phases 85, 87 (adjacent to InsertPseudoUseDefForConvUR)
+- [GPU ABI](../regalloc/abi.md) — convergent allocation, allowConvAlloc enforcement
+- [Scheduler Architecture](../scheduling/overview.md) — UR pressure tracking in scheduling

@@ -6,19 +6,19 @@ When the fat-point register allocator cannot fit all simultaneously-live virtual
 
 | | |
 |---|---|
-| **Spill trigger** | `sub_94FDD0` (155 lines) -- sets flag `0x40000` when assignment exceeds budget |
-| **Spill guidance** | `sub_96D940` (2983 lines) -- builds 7 priority queues of spill candidates |
-| **Spill codegen** | `sub_94F150` (561 lines) -- inserts spill stores and refill loads |
-| **LMEM setup** | `sub_939BD0` (65 lines) -- local memory slot allocator configuration |
-| **SMEM allocator** | `sub_9539C0` (1873 lines) -- shared memory spill alternative |
-| **Retry driver** | `sub_971A90` (355 lines) -- NOSPILL then SPILL retry loop |
-| **Finalization** | `sub_9714E0` (290 lines) -- commit spills, emit errors on failure |
-| **SASS codegen** | `sub_9850F0` (520 lines) -- generate LDL/STL instruction sequences |
+| **Spill trigger** | `sub_94FDD0` (155 lines) — sets flag `0x40000` when assignment exceeds budget |
+| **Spill guidance** | `sub_96D940` (2983 lines) — builds 7 priority queues of spill candidates |
+| **Spill codegen** | `sub_94F150` (561 lines) — inserts spill stores and refill loads |
+| **LMEM setup** | `sub_939BD0` (65 lines) — local memory slot allocator configuration |
+| **SMEM allocator** | `sub_9539C0` (1873 lines) — shared memory spill alternative |
+| **Retry driver** | `sub_971A90` (355 lines) — NOSPILL then SPILL retry loop |
+| **Finalization** | `sub_9714E0` (290 lines) — commit spills, emit errors on failure |
+| **SASS codegen** | `sub_9850F0` (520 lines) — generate LDL/STL instruction sequences |
 | **Key knobs** | 623 (spill mode), 638/639 (retry limits), 684 (interference threshold) |
 
 ## Spill Trigger
 
-The spill trigger fires inside the per-virtual-register assignment function `sub_94FDD0` (155 lines). When the fat-point allocator (`sub_957160`) selects a physical slot for a virtual register, it calls `sub_94FDD0` to commit the assignment. If the chosen slot index equals or exceeds the per-class register budget, the function does not commit -- instead it marks the virtual register for spilling.
+The spill trigger fires inside the per-virtual-register assignment function `sub_94FDD0` (155 lines). When the fat-point allocator (`sub_957160`) selects a physical slot for a virtual register, it calls `sub_94FDD0` to commit the assignment. If the chosen slot index equals or exceeds the per-class register budget, the function does not commit — instead it marks the virtual register for spilling.
 
 ```c
 function assign_register(alloc, ctx, mode, vreg, regclass_info, slot, cost):
@@ -58,8 +58,8 @@ The two flag bits at `vreg+48` encode spill state:
 
 | Bit | Mask | Meaning |
 |-----|------|---------|
-| 14 | `0x4000` | Already spilled -- prevents the same vreg from being spilled again |
-| 18 | `0x40000` | Needs spill -- triggers spill codegen on the next `sub_94FDD0` call |
+| 14 | `0x4000` | Already spilled — prevents the same vreg from being spilled again |
+| 18 | `0x40000` | Needs spill — triggers spill codegen on the next `sub_94FDD0` call |
 
 Register consumption (`sub_939CE0`, 23 lines) accounts for paired registers. For double-width registers (pair mode 3 at `vreg+48` bits 20--21), it returns `assignment + 1`, consuming two physical slots.
 
@@ -107,7 +107,7 @@ function alloc_with_spill_retry(alloc, ctx, class_id):
         commit_results()
 ```
 
-The debug string `"-CLASS NOSPILL REGALLOC: attemp "` (note the typo -- present in the binary) is printed for every attempt.
+The debug string `"-CLASS NOSPILL REGALLOC: attemp "` (note the typo — present in the binary) is printed for every attempt.
 
 For SMEM spilling (modes 3/6 when `ctx+896 == 5`), the driver activates spill setup before entering the retry loop:
 
@@ -131,7 +131,7 @@ The function contains 7 near-identical code blocks, one per register class (R, P
 
 The guidance engine allocates a single 11,112-byte working structure from the arena (vtable `+24`). The structure is organized into five regions.
 
-**Region 0 -- Header and core pointers (bytes 0--271)**
+**Region 0 — Header and core pointers (bytes 0--271)**
 
 | Byte offset | QWORD idx | Type | Init | Field |
 |-------------|-----------|------|------|-------|
@@ -158,7 +158,7 @@ The guidance engine allocates a single 11,112-byte working structure from the ar
 | 248 | [31] | QWORD | 0 | Free list head |
 | 256 | [32] | QWORD | 0 | Free list count |
 
-**Region 1 -- Bitmask arrays (bytes 272--1327)**
+**Region 1 — Bitmask arrays (bytes 272--1327)**
 
 Two 508-byte bitmask arrays (127 DWORDs each), separated by single-byte sentinels:
 
@@ -171,7 +171,7 @@ Two 508-byte bitmask arrays (127 DWORDs each), separated by single-byte sentinel
 
 Each bitmask array is zeroed via an SSE2 vectorized loop (16 bytes per iteration, `0x1F` iterations). The `0x80` sentinel byte at the start of each array marks initialization completion.
 
-**Region 2 -- Priority queue table blocks (bytes 1328--2063)**
+**Region 2 — Priority queue table blocks (bytes 1328--2063)**
 
 Five embedded priority queue tables, each containing an entry count (QWORD) followed by an array of 6 queue entries (24 bytes each):
 
@@ -198,11 +198,11 @@ Each 24-byte queue entry has this layout:
 
 Queue entries are built by `sub_8BE190` and sorted by `sub_7553C0`. Candidates are inserted via `sub_9370A0` (with tie-breaking) and removed via `sub_9365A0` (bit-clear in bitvector).
 
-**Region 3 -- Candidate node management (bytes ~2064--10591)**
+**Region 3 — Candidate node management (bytes ~2064--10591)**
 
 The largest region (~8,528 bytes). Contains working storage for spill candidate evaluation across all 7 register classes. This region is zeroed during initialization and populated during the instruction walk phase by `sub_93BF50` (candidate evaluation), `sub_936610` (candidate insertion with cost), `sub_9680F0` (cost propagation), and `sub_93A1F0` (interference counting). The exact internal sub-layout varies by register class and virtual register count.
 
-**Region 4 -- Linked list, accumulators, and tail (bytes 10592--11111)**
+**Region 4 — Linked list, accumulators, and tail (bytes 10592--11111)**
 
 | Byte offset | QWORD idx | Type | Init | Field |
 |-------------|-----------|------|------|-------|
@@ -275,7 +275,7 @@ After bitvector iteration, each stack-local queue header is built by `sub_8BE190
 
 Three phases: (A) stack-local queue init, (B) structure alloc + instruction walk, (C) finalization.
 
-#### Phase A -- Per-class bitvector copy and sort
+#### Phase A — Per-class bitvector copy and sort
 
 ```c
 function compute_spill_guidance(ctx, alloc, attempt):
@@ -303,7 +303,7 @@ function compute_spill_guidance(ctx, alloc, attempt):
         build_overflow_queue(qblk_end); qblk.count += 7; sort_queue(qblk_end)
 ```
 
-#### Phase B -- Structure init and instruction walk
+#### Phase B — Structure init and instruction walk
 
 ```c
     g = arena_alloc(ctx+16, 11112)                     // guidance structure
@@ -353,7 +353,7 @@ function compute_spill_guidance(ctx, alloc, attempt):
           // Iterate set bits; remove VRs with cls<=attempt, end<=budget.
 ```
 
-#### Phase C -- Finalization
+#### Phase C — Finalization
 
 ```c
     if ctx.class_nospill[ctx.active_class]:
@@ -1176,9 +1176,9 @@ The Ori IR includes dedicated instruction type markers for spill/refill patterns
 
 The `SpillRefill` pass attempts to match and optimize these patterns. Error strings reveal three failure modes:
 
-1. `"Failed to find matching spill for refilling load that is involved in this operand computation"` -- the refill load has no corresponding spill store
-2. `"Failed to establish match for bit-spill-refill pattern involved in this operand computation"` -- the bit-spill pattern does not match expected form
-3. `"Some instruction(s) are destroying the base of bit-spill-refill pattern involved in this operand computation"` -- instructions between spill and refill clobber the base address register
+1. `"Failed to find matching spill for refilling load that is involved in this operand computation"` — the refill load has no corresponding spill store
+2. `"Failed to establish match for bit-spill-refill pattern involved in this operand computation"` — the bit-spill pattern does not match expected form
+3. `"Some instruction(s) are destroying the base of bit-spill-refill pattern involved in this operand computation"` — instructions between spill and refill clobber the base address register
 
 Debug strings include `" spill-regill bug "` and `" bit-spill bug "` (both with typos present in the binary).
 
@@ -1226,7 +1226,7 @@ match_spill_refill_pairs(verifier, post_insn, operand_idx):
 
 **`find_matching_spill`** (`sub_A677C0`) uses an FNV-1a hash map keyed on instruction ID to locate the spill chain node corresponding to a refill load. It verifies that the store and load target the same basic block (via the remapped-instruction map), then returns a chain structure containing the matched store instruction and a bitmask of register classes involved.
 
-**`clobber_check_ok`** (`sub_A56F80`) iterates the def-use chain of the matched spill-store node. For each def whose operand index matches the target, it looks up the defining instruction in the remapped-instruction map. If any such instruction was remapped (indicating an intervening write to the same physical register), the check returns false -- the base register was clobbered between spill and refill.
+**`clobber_check_ok`** (`sub_A56F80`) iterates the def-use chain of the matched spill-store node. For each def whose operand index matches the target, it looks up the defining instruction in the remapped-instruction map. If any such instruction was remapped (indicating an intervening write to the same physical register), the check returns false — the base register was clobbered between spill and refill.
 
 **`is_spill_store` / `is_refill_load`** (`sub_A56CE0` / `sub_A56DE0`) check the instruction opcode (183 for STL, 288 for LDL), then verify the source/dest vreg has spill flags set (bit 14 or bit 17 in `vreg_desc+36`), and confirm the register class == 2.
 
@@ -1252,8 +1252,8 @@ match_spill_refill_pairs(verifier, post_insn, operand_idx):
 | `sub_96D940` | 2,983 | Spill guidance engine (7 class-parallel queues) | HIGH |
 | `sub_971A90` | 355 | NOSPILL / SPILL retry driver | HIGH |
 | `sub_9850F0` | 520 | SASS-level spill instruction generator | HIGH |
-| `sub_9997D0` | -- | Spill cost initialization | MEDIUM |
-| `sub_9998A0` | -- | Spill cost computation | MEDIUM |
-| `sub_999950` | -- | Spill cost comparison | MEDIUM |
-| `sub_999AA0` | -- | Spill benefit estimation | MEDIUM |
-| `sub_9A8270` | -- | Live range spill cost computation (14 KB) | MEDIUM |
+| `sub_9997D0` | — | Spill cost initialization | MEDIUM |
+| `sub_9998A0` | — | Spill cost computation | MEDIUM |
+| `sub_999950` | — | Spill cost comparison | MEDIUM |
+| `sub_999AA0` | — | Spill benefit estimation | MEDIUM |
+| `sub_9A8270` | — | Live range spill cost computation (14 KB) | MEDIUM |

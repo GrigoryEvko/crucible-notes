@@ -4,9 +4,9 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 **Notation conventions:**
 
-- `<funcname>` -- kernel or device function name suffix (e.g., `.text._Z6kernelPf`).
-- `<secname>` -- target section name (e.g., `.rela.text._Z6kernelPf`).
-- `(prefix)` -- the string in the binary is a prefix used with `strncmp`; the full name is formed by appending a suffix at runtime.
+- `<funcname>` — kernel or device function name suffix (e.g., `.text._Z6kernelPf`).
+- `<secname>` — target section name (e.g., `.rela.text._Z6kernelPf`).
+- `(prefix)` — the string in the binary is a prefix used with `strncmp`; the full name is formed by appending a suffix at runtime.
 - Format strings like `.rela%s` show how nvlink constructs the name via `sprintf`.
 
 ---
@@ -27,7 +27,7 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 | 5 | `.nv.info.<funcname>` | `0x70000000` | `SHT_CUDA_INFO` | Per-kernel EIATTR metadata (regcount, stack sizes, barriers, params, etc.). `sh_link` references the owning function symbol. Created by `sub_4504B0:63`. |
 | 6 | `.nv.metadata` | `0x70000004` | `SHT_CUDA_METADATA` | Module metadata (`__nv_module_id`, version info). Extracted by `register_module_for_linking` (`sub_42A680`); section created by `sub_43D6B0:31`. |
 | 7 | `.nv.prototype` | `0x70000002` | `SHT_CUDA_PROTOTYPE` | Kernel launch prototype descriptors (parameter layout). Created by `sub_44D9D0:25`. |
-| 8 | `.nv.ptx.const0.size` | -- | (metadata key) | Constant bank 0 size record from PTX compilation. Not a real ELF section; a metadata key string. |
+| 8 | `.nv.ptx.const0.size` | — | (metadata key) | Constant bank 0 size record from PTX compilation. Not a real ELF section; a metadata key string. |
 
 ## Relocation Sections
 
@@ -45,7 +45,7 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 |---|---|---|---|---|
 | 14 | `.nv.global` | `0x70000007` | `SHT_CUDA_GLOBAL` | Uninitialized global device memory (`__device__` BSS). Input arrives as `SHT_NOBITS`, reclassified by linker. Created by `sub_436410:128`, `sub_439830:494`. |
 | 15 | `.nv.global.init` | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | Initialized global device memory (`__device__` with initializer). Carries `SHT_PROGBITS` data. Created by `sub_436740:105`. |
-| 16 | `.nv.host` | `0x70000087` | `SHT_CUDA_HOST` | Host-visible data section. Created by `sub_435B60:110` with type `1879048327` (`0x70000087`) -- not `SHT_PROGBITS` as previously catalogued. |
+| 16 | `.nv.host` | `0x70000087` | `SHT_CUDA_HOST` | Host-visible data section. Created by `sub_435B60:110` with type `1879048327` (`0x70000087`) — not `SHT_PROGBITS` as previously catalogued. |
 
 ## Local Memory (Per-Thread)
 
@@ -137,7 +137,7 @@ These are logical names for constant memory regions within specific banks. They 
 | 60 | `.note.nv.cuver` | `0x07` | `SHT_NOTE` | CUDA toolkit version stamp. |
 | 61 | `.note.nv.tkinfo` | `0x07` | `SHT_NOTE` | Extended toolkit metadata (controllable with `--verbose-tkinfo`). |
 
-## Debug Sections -- NVIDIA Proprietary
+## Debug Sections — NVIDIA Proprietary
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
@@ -149,7 +149,7 @@ These are logical names for constant memory regions within specific banks. They 
 
 The prefix `.nv_debug_` appears in the binary as a string used with `strncmp` to recognize sections. The linker constructs `.nv_debug_line_sass` programmatically via `section_create`.
 
-## Debug Sections -- Standard DWARF
+## Debug Sections — Standard DWARF
 
 The linker recognizes any section with prefix `.debug_` as a standard DWARF section. Common instances in cubins:
 
@@ -175,12 +175,12 @@ These sections support incremental linking through hash-based relocation trackin
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
-| 78 | `.nvHRCE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Code External -- external code hash entries. |
-| 79 | `.nvHRCI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Code Internal -- internal code hash entries. |
-| 80 | `.nvHRDE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Data External -- external data hash entries. |
-| 81 | `.nvHRDI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Data Internal -- internal data hash entries. |
-| 82 | `.nvHRKE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Key External -- external key hash entries. |
-| 83 | `.nvHRKI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Key Internal -- internal key hash entries. |
+| 78 | `.nvHRCE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Code External — external code hash entries. |
+| 79 | `.nvHRCI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Code Internal — internal code hash entries. |
+| 80 | `.nvHRDE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Data External — external data hash entries. |
+| 81 | `.nvHRDI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Data Internal — internal data hash entries. |
+| 82 | `.nvHRKE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Key External — external key hash entries. |
+| 83 | `.nvHRKI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Key Internal — internal key hash entries. |
 
 ## Mercury Sections (sm100+)
 
@@ -222,7 +222,7 @@ All Mercury sections carry `SHF_CUDA_MERCURY` (`0x10000000`) in `sh_flags`. The 
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
-| 101 | `.nv.merc.nv.shared.reserved.` | `0x08` | `SHT_NOBITS` | Mercury reserved shared memory region. Prefix -- suffix is the reservation ID (e.g., `tcgen05_partition`). |
+| 101 | `.nv.merc.nv.shared.reserved.` | `0x08` | `SHT_NOBITS` | Mercury reserved shared memory region. Prefix — suffix is the reservation ID (e.g., `tcgen05_partition`). |
 | 102 | `.nv.merc.rela` | `0x04` | `SHT_RELA` | Mercury relocation section. Contains `Elf64_Rela` records referencing the Mercury symbol table. |
 | 103 | `.nv.merc.symtab_shndx` | `0x12` | `SHT_SYMTAB_SHNDX` | Mercury extended section index table (for >65535 sections). |
 
@@ -257,7 +257,7 @@ SECTIONS {
 
 ### NVIDIA CUDA-Specific Types (`0x70000000`--`0x70000087`)
 
-Each row lists the value as it is actually passed to `sub_441AC0` (the section creator) in the decompiled code. The constant names are synthetic -- NVIDIA does not publish a public header with `SHT_CUDA_*` identifiers -- but the hex values are verbatim from the decompiled function bodies.
+Each row lists the value as it is actually passed to `sub_441AC0` (the section creator) in the decompiled code. The constant names are synthetic — NVIDIA does not publish a public header with `SHT_CUDA_*` identifiers — but the hex values are verbatim from the decompiled function bodies.
 
 | sh_type (hex) | Constant | Section(s) | Creation site |
 |---|---|---|---|
@@ -323,7 +323,7 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 | Binary string | Catalog entry | Notes |
 |---|---|---|
 | `.debug_` | #67--77 | Prefix matcher for all DWARF sections |
-| `.debug_str+` | -- | Internal variant for merged debug string pools |
+| `.debug_str+` | — | Internal variant for merged debug string pools |
 | `.merc.tmp` | #85 | Appears as `.nv.merc.tmp` after prefix construction |
 | `.note.nv.cuinfo` | #59 | — |
 | `.note.nv.cuver` | #60 | — |
@@ -430,19 +430,19 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 
 **Internal (nvlink wiki):**
 
-- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Detailed semantics for each section category: type constants, flags, merge handlers, and lifecycle
-- [Constant Banks](../elf/constant-banks.md) -- Deep dive on `.nv.constant*` sections: bank numbering, dedup, hardware limits
-- [.nv.info Metadata](../elf/nv-info.md) -- EIATTR attribute format and the 90+ constants carried in `.nv.info` sections
-- [Unified Function Tables](../elf/uft.md) -- UFT/UDT section management for `.nv.uft`, `.nv.udt`, `.nv.uidx`
-- [Mercury ELF Sections](../mercury/elf-sections.md) -- The 19 `.nv.merc.*` Mercury sections (entries #84--#102)
-- [R\_CUDA Catalog](r-cuda-catalog.md) -- Relocation type catalog for relocations referencing these sections
-- [Section Merging](../linker/section-merging.md) -- `merge_elf` name-prefix dispatch that classifies input sections
-- [Device ELF Format](../elf/device-elf-format.md) -- ELF header and standard infrastructure sections (`.symtab`, `.strtab`, `.shstrtab`)
+- [NVIDIA Section Types](../elf/nvidia-sections.md) — Detailed semantics for each section category: type constants, flags, merge handlers, and lifecycle
+- [Constant Banks](../elf/constant-banks.md) — Deep dive on `.nv.constant*` sections: bank numbering, dedup, hardware limits
+- [.nv.info Metadata](../elf/nv-info.md) — EIATTR attribute format and the 90+ constants carried in `.nv.info` sections
+- [Unified Function Tables](../elf/uft.md) — UFT/UDT section management for `.nv.uft`, `.nv.udt`, `.nv.uidx`
+- [Mercury ELF Sections](../mercury/elf-sections.md) — The 19 `.nv.merc.*` Mercury sections (entries #84--#102)
+- [R\_CUDA Catalog](r-cuda-catalog.md) — Relocation type catalog for relocations referencing these sections
+- [Section Merging](../linker/section-merging.md) — `merge_elf` name-prefix dispatch that classifies input sections
+- [Device ELF Format](../elf/device-elf-format.md) — ELF header and standard infrastructure sections (`.symtab`, `.strtab`, `.shstrtab`)
 
 **Sibling wikis:**
 
-- [ptxas: Sections](../../ptxas/output/sections.html) -- How ptxas creates the sections that nvlink consumes and merges
-- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR constants that populate `.nv.info` sections
+- [ptxas: Sections](../../ptxas/output/sections.html) — How ptxas creates the sections that nvlink consumes and merges
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) — EIATTR constants that populate `.nv.info` sections
 
 ## Confidence Assessment
 
@@ -490,9 +490,9 @@ Every NVIDIA-specific `sh_type` in the catalog was re-derived from the `sub_441A
 | `.nv.compat` | `0x70000086` | `0x70000086` (`1879048326`) | YES | `sub_451BA0:64`, `sub_451920:113` |
 | `.nv.host` | `0x70000087` | `0x70000087` (`1879048327`) | YES | `sub_435B60:110` |
 
-**P081 correction history:** An earlier revision of this catalog assigned `sh_type` values via a flawed sequential increment pattern starting from `.nv.info = 0x70000001`. The correct assignment begins at `.nv.info = 0x70000000` and is not contiguous -- four identifiers in the `0x70000005`--`0x7000000D` range are unused in the nvlink creator, and `.nv.compat` / `.nv.host` live in a separate `0x70000086`--`0x70000087` block. All wrong values from that pattern have been replaced with the actual arguments observed in the `sub_441AC0` calls cited above.
+**P081 correction history:** An earlier revision of this catalog assigned `sh_type` values via a flawed sequential increment pattern starting from `.nv.info = 0x70000001`. The correct assignment begins at `.nv.info = 0x70000000` and is not contiguous — four identifiers in the `0x70000005`--`0x7000000D` range are unused in the nvlink creator, and `.nv.compat` / `.nv.host` live in a separate `0x70000086`--`0x70000087` block. All wrong values from that pattern have been replaced with the actual arguments observed in the `sub_441AC0` calls cited above.
 
-Cross-reference with the [ptxas Sections](../../ptxas/output/sections.html) page: ptxas also uses `SHT_CUDA_INFO = 0x70000000`, which is consistent with nvlink's creator. The ptxas wiki's earlier claim that `SHT_CUDA_CALLGRAPH = 0x70000064` conflicts with nvlink's `0x70000001` -- the ptxas wiki entry at that page (line 90) still needs correction.
+Cross-reference with the [ptxas Sections](../../ptxas/output/sections.html) page: ptxas also uses `SHT_CUDA_INFO = 0x70000000`, which is consistent with nvlink's creator. The ptxas wiki's earlier claim that `SHT_CUDA_CALLGRAPH = 0x70000064` conflicts with nvlink's `0x70000001` — the ptxas wiki entry at that page (line 90) still needs correction.
 
 | Aspect | Confidence | Basis |
 |---|---|---|

@@ -1,6 +1,6 @@
 # Host Reference Arrays
 
-When cudafe++ splits a CUDA source file into device and host halves, the host-side `.int.c` output is compiled by a standard C++ compiler (GCC, Clang, or MSVC) that has no concept of device symbols. The CUDA runtime, however, needs to know which `__global__` kernels, `__device__` variables, and `__constant__` variables exist so it can register them at program startup. cudafe++ solves this by emitting **host reference arrays** -- static byte arrays containing the mangled names of device symbols, placed into specially-named ELF sections that downstream tools (the fatbinary linker and `crt/host_runtime.h` registration code) read to enumerate device entities. The mechanism exists because the host compiler's symbol table contains only host-side symbols; the `.nvHR*` sections provide the complementary device-side symbol directory that the CUDA runtime needs to build the host-device binding table.
+When cudafe++ splits a CUDA source file into device and host halves, the host-side `.int.c` output is compiled by a standard C++ compiler (GCC, Clang, or MSVC) that has no concept of device symbols. The CUDA runtime, however, needs to know which `__global__` kernels, `__device__` variables, and `__constant__` variables exist so it can register them at program startup. cudafe++ solves this by emitting **host reference arrays** — static byte arrays containing the mangled names of device symbols, placed into specially-named ELF sections that downstream tools (the fatbinary linker and `crt/host_runtime.h` registration code) read to enumerate device entities. The mechanism exists because the host compiler's symbol table contains only host-side symbols; the `.nvHR*` sections provide the complementary device-side symbol directory that the CUDA runtime needs to build the host-device binding table.
 
 The arrays are emitted at the very end of the `.int.c` file, after the `#undef _NV_ANON_NAMESPACE` cleanup, by six calls to `nv_emit_host_reference_array` (`sub_6BCF80`, 79 lines, `nv_transforms.c`). Each call handles one combination of symbol type (kernel, device variable, constant variable) and linkage class (external, internal). The split by linkage is critical for RDC (relocatable device code) compilation: external-linkage symbols are globally visible across translation units and resolved by `nvlink`, while internal-linkage symbols (from `static` declarations or anonymous namespaces) are TU-local and must carry module-ID-based name prefixes to avoid collisions.
 
@@ -37,7 +37,7 @@ The arrays are organized into 6 ELF sections along two axes: **symbol type** (3 
 
 The section name encoding is: `.nvHR` (host reference) + one letter for symbol type (`K`=kernel, `D`=device, `C`=constant) + one letter for linkage (`E`=external, `I`=internal).
 
-Note that `__shared__` variables are **not** included -- they have no host-visible address and exist only within a kernel's execution lifetime.
+Note that `__shared__` variables are **not** included — they have no host-visible address and exist only within a kernel's execution lifetime.
 
 ## Emission Architecture
 
@@ -83,7 +83,7 @@ else:
     else:                       list = unk_1286800, section = ".nvHRCE", name = "hostRefConstantArrayExternalLinkage"
 ```
 
-Note the precedence: the kernel flag is checked first. When `is_kernel=1`, the `is_device` flag is ignored entirely -- kernels are always kernels regardless of `is_device`.
+Note the precedence: the kernel flag is checked first. When `is_kernel=1`, the `is_device` flag is ignored entirely — kernels are always kernels regardless of `is_device`.
 
 ### Emission Output Format
 
@@ -106,7 +106,7 @@ Key details about the emitted C:
 
 - **`extern "C"`** wrapping ensures no C++ name mangling is applied to the array itself. The section name in the ELF binary is the sole identifier.
 - **`__attribute__((section(".nvHRXX")))`** places the array in a named ELF section that downstream tools scan by name.
-- **`__attribute__((weak))`** allows multiple translation units to define the same array name without causing linker errors. When multiple TUs each emit their own `hostRefKernelArrayExternalLinkage`, the linker keeps one copy. This is safe because the CUDA runtime reads the section contents, not the symbol -- it concatenates all `.nvHRKE` section contributions from all object files.
+- **`__attribute__((weak))`** allows multiple translation units to define the same array name without causing linker errors. When multiple TUs each emit their own `hostRefKernelArrayExternalLinkage`, the linker keeps one copy. This is safe because the CUDA runtime reads the section contents, not the symbol — it concatenates all `.nvHRKE` section contributions from all object files.
 - **`const unsigned char[]`** encodes each mangled name as individual hex bytes, not as a string literal. This avoids any issues with embedded NUL bytes or special characters in mangled names.
 - Each symbol name is preceded by a `/* mangled_name */` comment for human readability.
 - Each name is terminated by `0x0` (NUL byte).
@@ -191,7 +191,7 @@ For `static` functions, anonymous-namespace entities, or entities with forced in
 
 For entities with default (external) linkage, the path is simpler:
 
-1. A `" ::"` scope prefix is prepended (string at address `10998575`, corresponding to `" ::"` -- two bytes).
+1. A `" ::"` scope prefix is prepended (string at address `10998575`, corresponding to `" ::"` — two bytes).
 
 2. If the entity has a parent scope (byte `+28 == 3` at the scope entry), the scope-qualified name is built by recursing through parent scopes, concatenating `"::"` separators and hashing each level with `sub_6BD1C0`.
 
@@ -306,8 +306,8 @@ The recursion visits ancestor scopes from outermost to innermost, concatenating 
 During compilation, cudafe++ maintains a trie (prefix tree) structure for deduplicating host reference entries. This trie is stored alongside the linear lists and prevents the same symbol from being registered twice if it is referenced from multiple points in the source.
 
 The trie is cleaned up at the end of compilation by:
-- `sub_6BD530` (`nv_free_host_ref_tree`, 257 lines) -- deeply recursive tree destructor with 9 levels of inlined recursion
-- `sub_6BD820` (`nv_free_host_ref_list`, 34 lines) -- iterates the linked list, calling `nv_free_host_ref_tree` for each node's tree, then frees the node
+- `sub_6BD530` (`nv_free_host_ref_tree`, 257 lines) — deeply recursive tree destructor with 9 levels of inlined recursion
+- `sub_6BD820` (`nv_free_host_ref_list`, 34 lines) — iterates the linked list, calling `nv_free_host_ref_tree` for each node's tree, then frees the node
 
 Each trie node structure:
 
@@ -388,7 +388,7 @@ Note how `c_table` (declared `static __constant__`) appears in the internal-link
 | `sub_6BCF10` | `nv_check_device_variable_in_host` | nv_transforms.c | 16 | Validates device variable not improperly referenced from host |
 | `sub_5AF830` | `make_module_id` | host_envir.c | ~450 | CRC32-based TU identifier used in internal-linkage prefixes |
 | `sub_489000` | `process_file_scope_entities` | cp_gen_be.c | 723 | Backend entry point; calls `sub_6BCF80` x6 in trailer |
-| `sub_467E50` | (emit string) | cp_gen_be.c | -- | Primary string emission callback passed to `sub_6BCF80` |
+| `sub_467E50` | (emit string) | cp_gen_be.c | — | Primary string emission callback passed to `sub_6BCF80` |
 
 ## Global Variables
 
@@ -407,11 +407,11 @@ Note how `c_table` (declared `static __constant__`) appears in the internal-link
 
 ## Cross-References
 
-- [.int.c File Format](./int-c-format.md) -- complete file structure showing where host reference arrays sit (sections 13--14)
-- [CUDA Runtime Boilerplate](./cuda-runtime.md) -- managed memory initialization that references registered symbols
-- [Module ID & Registration](./module-id.md) -- CRC32 hash computation used in internal-linkage prefixes
-- [RDC Mode](../cuda/rdc-mode.md) -- how the internal/external split interacts with separate compilation
-- [Memory Spaces](../cuda/memory-spaces.md) -- `__device__` / `__constant__` / `__shared__` attribute encoding
-- [Name Mangling](../edg/name-mangling.md) -- `nv_get_full_nv_static_prefix` and Itanium ABI encoding
-- [Backend Code Generation](../pipeline/backend.md) -- Phase 7 host reference array emission
-- [CLI Flag Inventory](../config/cli-flags.md) -- flags controlling device/constant registration
+- [.int.c File Format](./int-c-format.md) — complete file structure showing where host reference arrays sit (sections 13--14)
+- [CUDA Runtime Boilerplate](./cuda-runtime.md) — managed memory initialization that references registered symbols
+- [Module ID & Registration](./module-id.md) — CRC32 hash computation used in internal-linkage prefixes
+- [RDC Mode](../cuda/rdc-mode.md) — how the internal/external split interacts with separate compilation
+- [Memory Spaces](../cuda/memory-spaces.md) — `__device__` / `__constant__` / `__shared__` attribute encoding
+- [Name Mangling](../edg/name-mangling.md) — `nv_get_full_nv_static_prefix` and Itanium ABI encoding
+- [Backend Code Generation](../pipeline/backend.md) — Phase 7 host reference array emission
+- [CLI Flag Inventory](../config/cli-flags.md) — flags controlling device/constant registration

@@ -2,7 +2,7 @@
 
 CICC implements a custom GlobalOpt pass (`sub_18612A0`, 65 KB, 2179 decompiled lines) that replaces LLVM's stock `GlobalOptPass` with GPU-aware global variable transformations. The pass operates on NVIDIA's internal IR representation rather than LLVM IR directly, and adds address-space-aware logic that stock LLVM lacks entirely: it extracts the CUDA address space from the global's flags byte (`(flags >> 2) & 7`), preserves address space through all generated replacement globals, and applies promotion thresholds calibrated for GPU memory hierarchy. The pass runs at pipeline position 30 in the tier-2 and tier-3 optimization sequences (via wrapper `sub_196A2B0`), immediately after GlobalDCE / ConstantProp (`sub_1968390`) and before LoopVectorize. It runs at `-O2` and above; tier-1 does not include it. The inliner cost model at `sub_18612A0` also calls into GlobalOpt as a subroutine when evaluating whether a callee's globals can be folded after inlining, creating a tight coupling between inlining decisions and global optimization.
 
-The pass implements four transformation strategies with decreasing priority: small-constant promotion for globals under 2047 bits, scalar replacement of aggregates (SRA) for struct globals with up to 16 fields, malloc/free elimination for heap-allocated globals with single-unit access, and a hash-table-driven deduplication cleanup pass. Each strategy preserves the original global's NVPTX address space, which is critical -- a `__device__` global in address space 1 must remain in AS 1 after splitting, not silently migrate to AS 0 (generic). The generated IR uses distinctive suffixes (`.body`, `.init`, `.val`, `.notinit`, `.f0`..`.f15`, `.isneg`, `.isnull`) that survive through to PTX emission and are visible in `cuobjdump` output.
+The pass implements four transformation strategies with decreasing priority: small-constant promotion for globals under 2047 bits, scalar replacement of aggregates (SRA) for struct globals with up to 16 fields, malloc/free elimination for heap-allocated globals with single-unit access, and a hash-table-driven deduplication cleanup pass. Each strategy preserves the original global's NVPTX address space, which is critical — a `__device__` global in address space 1 must remain in AS 1 after splitting, not silently migrate to AS 0 (generic). The generated IR uses distinctive suffixes (`.body`, `.init`, `.val`, `.notinit`, `.f0`..`.f15`, `.isneg`, `.isnull`) that survive through to PTX emission and are visible in `cuobjdump` output.
 
 | | |
 |---|---|
@@ -41,13 +41,13 @@ if ((1 << type_tag) & bitmask) {
 }
 ```
 
-Additionally, struct (tag 13), vector (tag 14), and array (tag 16) types are accepted if `sub_16435F0(type, 0)` returns true -- this is the `isAnalyzableType` predicate that recursively checks whether the type's leaf elements are all scalars or pointers.
+Additionally, struct (tag 13), vector (tag 14), and array (tag 16) types are accepted if `sub_16435F0(type, 0)` returns true — this is the `isAnalyzableType` predicate that recursively checks whether the type's leaf elements are all scalars or pointers.
 
-After type filtering, the pass walks the global's use-list. Every user must be either a store (opcode tag 54) or a load (opcode tag 55). If any user is an arithmetic instruction (tag <= 23), a GEP used in a non-trivial way, or any other instruction kind, the global is rejected -- it cannot be optimized because its address escapes or is used in a way the pass cannot model.
+After type filtering, the pass walks the global's use-list. Every user must be either a store (opcode tag 54) or a load (opcode tag 55). If any user is an arithmetic instruction (tag <= 23), a GEP used in a non-trivial way, or any other instruction kind, the global is rejected — it cannot be optimized because its address escapes or is used in a way the pass cannot model.
 
 ## Path A: Small-Constant Promotion
 
-When the global's initializer is a struct constant and its total bit-size (including alignment padding) fits within 2047 bits (0x7FF), the pass promotes it into a function-local value with a separate initializer function. This threshold is NVIDIA-specific -- upstream LLVM uses different heuristics based on `TargetData` layout considerations. The 2047-bit ceiling corresponds roughly to 64 32-bit registers, aligning with the per-thread register budget on most SM architectures where promoting beyond that limit would spill to local memory and negate the benefit.
+When the global's initializer is a struct constant and its total bit-size (including alignment padding) fits within 2047 bits (0x7FF), the pass promotes it into a function-local value with a separate initializer function. This threshold is NVIDIA-specific — upstream LLVM uses different heuristics based on `TargetData` layout considerations. The 2047-bit ceiling corresponds roughly to 64 32-bit registers, aligning with the per-thread register budget on most SM architectures where promoting beyond that limit would spill to local memory and negate the benefit.
 
 ### Size Computation
 
@@ -69,7 +69,7 @@ The pass walks the type tree recursively to compute total bit-size. The implemen
 | 0xF | opaque ptr | `sub_15A9520(target, addr_space) * 8` |
 | 0x0, 0x8, 0xA, 0xC, 0x10 | array variants | element_size * array_length (recursive) |
 
-Note that opaque pointers (tag 0xF) use `getPointerSizeInBits(target, addr_space)` -- the pointer size varies by address space on NVPTX (64-bit for AS 0/1, potentially 32-bit for AS 3/5 on some targets). Tags 0x0, 0x8 (label/token), 0xA (metadata), and 0xC (bfloat) all fall into the array-multiplier path -- they extract an element count and recurse, which handles the case where these type wrappers contain inner array types.
+Note that opaque pointers (tag 0xF) use `getPointerSizeInBits(target, addr_space)` — the pointer size varies by address space on NVPTX (64-bit for AS 0/1, potentially 32-bit for AS 3/5 on some targets). Tags 0x0, 0x8 (label/token), 0xA (metadata), and 0xC (bfloat) all fall into the array-multiplier path — they extract an element count and recurse, which handles the case where these type wrappers contain inner array types.
 
 The pseudocode for the size computation:
 
@@ -235,12 +235,12 @@ After rewriting all uses, if the `.init` function has users, it is linked into t
 
 ## Path B: Scalar Replacement of Aggregates (SRA)
 
-When a global is too large for constant promotion, the pass attempts SRA -- exploding a struct global into per-field scalar globals. This path has stricter preconditions:
+When a global is too large for constant promotion, the pass attempts SRA — exploding a struct global into per-field scalar globals. This path has stricter preconditions:
 
-1. The caller's `flag` parameter (a4) must be zero -- when set, SRA is disabled.
+1. The caller's `flag` parameter (a4) must be zero — when set, SRA is disabled.
 2. The initializer must be the unique initializer for this global (verified via `sub_15A0680`).
 3. The type must be a struct (tag 13) with 1 to 16 fields: `field_count - 1 <= 0xF`.
-4. Every user must reference only this global -- no cross-global pointer arithmetic.
+4. Every user must reference only this global — no cross-global pointer arithmetic.
 
 The 16-field limit is a hardcoded constant at line 822 of the decompilation. It prevents combinatorial explosion in the null-check and free chains that follow: each field generates one `icmp eq` (null check), one `or`, one conditional branch, one `free_it` block, and one `next` block. Beyond 16 fields the cost of the generated guard code would exceed the benefit of splitting.
 
@@ -278,10 +278,10 @@ void collect_store_values(Global *global, Module *module,
 
 ### Global-Only-Use Validation
 
-After collection, lines 878-1017 validate that every user of every collected global references **only** the target global -- no cross-global pointer arithmetic is allowed. The validation walks the use chain of each collected global. For each operand slot (24-byte stride, count from `*(uint32_t *)(global + 20) & 0xFFFFFFF`):
+After collection, lines 878-1017 validate that every user of every collected global references **only** the target global — no cross-global pointer arithmetic is allowed. The validation walks the use chain of each collected global. For each operand slot (24-byte stride, count from `*(uint32_t *)(global + 20) & 0xFFFFFFF`):
 
 - If the operand is the module itself: accepted.
-- If the opcode tag is <= 0x17 (arithmetic/comparison): rejected -- the global's address is used in computation.
+- If the opcode tag is <= 0x17 (arithmetic/comparison): rejected — the global's address is used in computation.
 - If the opcode is 77 (GEP): the pass calls `sub_16CC9F0` (find in sorted set) to verify the GEP's base pointer is the same global being split.
 - If the opcode is 54 (store): the pass checks that the store's parent basic block (at offset -24 from the operand) belongs to the global being analyzed.
 
@@ -358,7 +358,7 @@ The field globals are stored in a dynamically-grown `std::vector` with realloc g
 
 ### Null/Negative Guards
 
-After field explosion, the pass generates safety checks for the original global's pointer value. This pattern handles the case where the global was heap-allocated via malloc -- the original pointer might be null or negative (indicating allocation failure on some platforms). The guard chain is constructed at lines 1478-1535:
+After field explosion, the pass generates safety checks for the original global's pointer value. This pattern handles the case where the global was heap-allocated via malloc — the original pointer might be null or negative (indicating allocation failure on some platforms). The guard chain is constructed at lines 1478-1535:
 
 ```c
 // sub_18612A0, lines 1478-1535 — Null/negative guard chain generation
@@ -410,7 +410,7 @@ The generated IR for a 3-field struct:
 br i1 %tmp2, label %malloc_ret_null, label %malloc_cont
 ```
 
-The `.isneg` guard is created by `sub_15FEC10` with opcode 51 (ICmp), predicate 40 (SLT with zero). Per-field `.isnull` guards use predicate 32 (EQ with null). The guards are chained with OR instructions (opcode 27) via `sub_15FB440`. The chain evaluation is linear in the number of fields -- for the maximum 16 fields, this produces 17 `icmp` instructions and 16 `or` instructions, plus one terminal conditional branch.
+The `.isneg` guard is created by `sub_15FEC10` with opcode 51 (ICmp), predicate 40 (SLT with zero). Per-field `.isnull` guards use predicate 32 (EQ with null). The guards are chained with OR instructions (opcode 27) via `sub_15FB440`. The chain evaluation is linear in the number of fields — for the maximum 16 fields, this produces 17 `icmp` instructions and 16 `or` instructions, plus one terminal conditional branch.
 
 ### Malloc/Free Decomposition Algorithm
 
@@ -550,7 +550,7 @@ The address space preservation logic is woven throughout both the field explosio
 
 2. **Constant memory splitting**: A `__constant__` struct (AS 4) split into fields must remain in AS 4 to benefit from the constant cache's broadcast capability. A single warp reading the same constant field hits the cache once and broadcasts to all 32 threads. In AS 0 (generic), this broadcast would not occur.
 
-3. **Pointer size consistency**: On some NVPTX targets, pointers in AS 3 (shared) and AS 5 (local) are 32-bit, while AS 0 and AS 1 pointers are 64-bit. The size computation for opaque pointers (tag 0xF) calls `sub_15A9520(target, addr_space)` -- if the address space were lost during splitting, the pointer size calculation would be wrong, producing incorrect field offsets and corrupted stores.
+3. **Pointer size consistency**: On some NVPTX targets, pointers in AS 3 (shared) and AS 5 (local) are 32-bit, while AS 0 and AS 1 pointers are 64-bit. The size computation for opaque pointers (tag 0xF) calls `sub_15A9520(target, addr_space)` — if the address space were lost during splitting, the pointer size calculation would be wrong, producing incorrect field offsets and corrupted stores.
 
 The per-field null checks in the guard chain also respect address space: the `icmp eq` with null uses a null pointer of the correct address space width. A 32-bit null in AS 3 is not the same bit pattern as a 64-bit null in AS 1.
 
@@ -742,14 +742,14 @@ int globalopt_transform(Global *global, Module *module, Type *type,
 GlobalOpt benefits significantly from LTO's whole-program visibility. In single-compilation mode, a `__device__` global with external linkage cannot be optimized because the compiler cannot prove it is unused by other translation units. With ThinLTO, the [NVModuleSummary](./module-summary.md) builder records per-global reference edges, and the [ThinLTO importer](./thinlto-import.md) pulls definitions across module boundaries. After import, GlobalOpt can see all users of a global across the entire program and make decisions that are impossible in per-module compilation:
 
 - **Internalization**: A global referenced only within one module (after import) can be marked internal (linkage 7), enabling all four transformation paths.
-- **Dead global elimination**: A global with zero users after import is trivially dead and erased. The [NVModuleSummary](./module-summary.md) builder's address-space tracking ensures that `__device__` globals referenced by kernels are not prematurely killed -- a kernel's reference counts as a use even when no host-side code touches the global.
+- **Dead global elimination**: A global with zero users after import is trivially dead and erased. The [NVModuleSummary](./module-summary.md) builder's address-space tracking ensures that `__device__` globals referenced by kernels are not prematurely killed — a kernel's reference counts as a use even when no host-side code touches the global.
 - **Cross-module constant propagation**: After import, if a `__device__` global is stored exactly once (from a host-side `cudaMemcpyToSymbol`) and loaded many times across multiple device functions, the single-store can be propagated as a constant, unlocking Path A's small-constant promotion.
 
-The pass wrapper `sub_196A2B0` is also called from the inliner cost model (`sub_18612A0` address shared by both -- the inliner calls the GlobalOpt transform function to evaluate whether post-inline global folding would pay for the inline cost). This creates a feedback loop: inlining a caller that references a global may expose the global for optimization, which reduces code size, which makes further inlining cheaper.
+The pass wrapper `sub_196A2B0` is also called from the inliner cost model (`sub_18612A0` address shared by both — the inliner calls the GlobalOpt transform function to evaluate whether post-inline global folding would pay for the inline cost). This creates a feedback loop: inlining a caller that references a global may expose the global for optimization, which reduces code size, which makes further inlining cheaper.
 
 ## Recursion
 
-After completing either Path A or Path B, the pass recursively calls `sub_185B1D0` on the newly created replacement globals. This handles cascading opportunities: splitting a struct global into fields may expose one of the field globals for further small-constant promotion (if a field is a small struct itself), or for dead elimination (if one field is never used). The recursion terminates when no further transformations apply -- each recursive call runs the same type filter and use validation, so it will return 0 for leaf scalars or globals with non-store/load users.
+After completing either Path A or Path B, the pass recursively calls `sub_185B1D0` on the newly created replacement globals. This handles cascading opportunities: splitting a struct global into fields may expose one of the field globals for further small-constant promotion (if a field is a small struct itself), or for dead elimination (if one field is never used). The recursion terminates when no further transformations apply — each recursive call runs the same type filter and use validation, so it will return 0 for leaf scalars or globals with non-store/load users.
 
 ## Knobs and Thresholds
 
@@ -765,7 +765,7 @@ After completing either Path A or Path B, the pass recursively calls `sub_185B1D
 | Pipeline gate | opts[1440] | Config array | When set, the `sub_196A2B0` wrapper is skipped |
 | Optimization tier | >= 2 | Pipeline config | GlobalOpt not run at tier 1 |
 
-The pipeline parser registers `"globalopt"` at slot 45 in the pass name table, mapping to `llvm::GlobalOptPass`. The NVIDIA wrapper `sub_196A2B0` is gated by the config array at offset 1440 -- when `opts[1440]` is set, the wrapper skips the pass entirely. At tier 2, GlobalOpt runs unconditionally at pipeline position 30. At tier 3, it runs with the same parameters but benefits from more aggressive SCCP and GlobalDCE having run upstream.
+The pipeline parser registers `"globalopt"` at slot 45 in the pass name table, mapping to `llvm::GlobalOptPass`. The NVIDIA wrapper `sub_196A2B0` is gated by the config array at offset 1440 — when `opts[1440]` is set, the wrapper skips the pass entirely. At tier 2, GlobalOpt runs unconditionally at pipeline position 30. At tier 3, it runs with the same parameters but benefits from more aggressive SCCP and GlobalDCE having run upstream.
 
 There are no user-facing CLI flags that directly control the 2047-bit threshold or the 16-field SRA limit. These are compile-time constants in the binary. The only external control is the tier-level gate and the `opts[1440]` kill switch.
 
@@ -773,63 +773,63 @@ There are no user-facing CLI flags that directly control the 2047-bit threshold 
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_18612A0` | `0x18612A0` | -- | Core transform: type filter, Path A, Path B |
-| `sub_196A2B0` | `0x196A2B0` | -- | Pipeline wrapper (calls core after GlobalDCE) |
-| `sub_185B1D0` | `0x185B1D0` | -- | Recursive re-application to split globals |
-| `sub_185B7E0` | `0x185B7E0` | -- | Pre-SRA setup |
-| `sub_1860410` | `0x1860410` | -- | Hash table rehash |
-| `sub_1860630` | `0x1860630` | -- | Hash table lookup |
-| `sub_1860BE0` | `0x1860BE0` | -- | Per-user SRA rewrite |
-| `sub_185C560` | `0x185C560` | -- | Collect all store values for a global |
-| `sub_185C920` | `0x185C920` | -- | Analyze single store for optimizability |
-| `sub_185CAF0` | `0x185CAF0` | -- | Collect stored value into hash set |
-| `sub_15E51E0` | `0x15E51E0` | -- | Create global variable (88 bytes, with AS) |
-| `sub_15E5070` | `0x15E5070` | -- | Create init function |
-| `sub_164D160` | `0x164D160` | -- | RAUW (Replace All Uses With) |
-| `sub_15F20C0` | `0x15F20C0` | -- | Erase instruction from parent |
-| `sub_15E55B0` | `0x15E55B0` | -- | Erase global declaration |
-| `sub_15A9520` | `0x15A9520` | -- | `getPointerSizeInBits(target, addr_space)` |
-| `sub_15A9930` | `0x15A9930` | -- | `getStructLayout` (field offsets) |
-| `sub_15A06D0` | `0x15A06D0` | -- | `computeFieldOffset` |
-| `sub_1646BA0` | `0x1646BA0` | -- | `getStructFieldType` |
-| `sub_16435F0` | `0x16435F0` | -- | `isAnalyzableType(type, depth)` |
-| `sub_140B2F0` | `0x140B2F0` | -- | `evaluateInitializer(module, target, ..., 1)` |
-| `sub_15FB630` | `0x15FB630` | -- | Create `notinit` sentinel |
-| `sub_15FB440` | `0x15FB440` | -- | Create binary OR (opcode 27) |
-| `sub_15FEC10` | `0x15FEC10` | -- | Create ICmp instruction |
-| `sub_15F8650` | `0x15F8650` | -- | Create conditional branch |
-| `sub_15F8590` | `0x15F8590` | -- | Create unconditional branch |
-| `sub_157FBF0` | `0x157FBF0` | -- | Create basic block |
-| `sub_15FED60` | `0x15FED60` | -- | Create ICmp NE (opcode 51, predicate 33) |
-| `sub_15F9330` | `0x15F9330` | -- | Create alloca (`"tmp"` variable in block) |
-| `sub_15FDB00` | `0x15FDB00` | -- | Wire def into use-def chain |
-| `sub_15F9850` | `0x15F9850` | -- | Create store-to-field-global |
-| `sub_157E9C0` | `0x157E9C0` | -- | Create return basic block (null-return) |
-| `sub_157FB60` | `0x157FB60` | -- | Create basic block with predecessor |
-| `sub_15F55D0` | `0x15F55D0` | -- | Grow operand list |
-| `sub_1648700` | `0x1648700` | -- | `getInstruction(use)` from use-chain |
-| `sub_1649960` | `0x1649960` | -- | `getName(global/fn)` returns C string |
-| `sub_1648A60` | `0x1648A60` | -- | `IRBuilder::create(size, kind)` allocates IR node |
-| `sub_15E5530` | `0x15E5530` | -- | Destroy function body |
-| `sub_159D9E0` | `0x159D9E0` | -- | Destroy function |
-| `sub_164BE60` | `0x164BE60` | -- | Drop all references |
-| `sub_1648B90` | `0x1648B90` | -- | Mark dead (flags or-equals 1) |
-| `sub_1631BE0` | `0x1631BE0` | -- | Insert into function list |
-| `sub_15A9FE0` | `0x15A9FE0` | -- | `getAlignment(target, type)` ABI alignment |
-| `sub_15A0680` | `0x15A0680` | -- | `lookupSymbol(module_sym, idx, flags)` |
-| `sub_16463B0` | `0x16463B0` | -- | `getArrayElementType(ptr, idx)` |
-| `sub_159C540` | `0x159C540` | -- | `getTerminalType(type)` |
-| `sub_1752100` | `0x1752100` | -- | Collect use-def chain |
-| `sub_15E6480` | `0x15E6480` | -- | Copy metadata from global to global |
-| `sub_15F8F80` | `0x15F8F80` | -- | Create extractvalue instruction |
-| `sub_15F9480` | `0x15F9480` | -- | Create store-init (initializer store) |
-| `sub_15F9660` | `0x15F9660` | -- | Create field store (offset + field global) |
-| `sub_15FD590` | `0x15FD590` | -- | Create local variable (`"newgv"`) |
-| `sub_15FEBE0` | `0x15FEBE0` | -- | Create bitcast/GEP for field extraction |
-| `sub_1648780` | `0x1648780` | -- | Replace use with value |
-| `sub_16CC920` | `0x16CC920` | -- | Grow scratch buffer |
-| `sub_16CC9F0` | `0x16CC9F0` | -- | Find in sorted set |
-| `sub_1968390` | `0x1968390` | -- | GlobalDCE / ConstantProp (runs before GlobalOpt) |
+| `sub_18612A0` | `0x18612A0` | — | Core transform: type filter, Path A, Path B |
+| `sub_196A2B0` | `0x196A2B0` | — | Pipeline wrapper (calls core after GlobalDCE) |
+| `sub_185B1D0` | `0x185B1D0` | — | Recursive re-application to split globals |
+| `sub_185B7E0` | `0x185B7E0` | — | Pre-SRA setup |
+| `sub_1860410` | `0x1860410` | — | Hash table rehash |
+| `sub_1860630` | `0x1860630` | — | Hash table lookup |
+| `sub_1860BE0` | `0x1860BE0` | — | Per-user SRA rewrite |
+| `sub_185C560` | `0x185C560` | — | Collect all store values for a global |
+| `sub_185C920` | `0x185C920` | — | Analyze single store for optimizability |
+| `sub_185CAF0` | `0x185CAF0` | — | Collect stored value into hash set |
+| `sub_15E51E0` | `0x15E51E0` | — | Create global variable (88 bytes, with AS) |
+| `sub_15E5070` | `0x15E5070` | — | Create init function |
+| `sub_164D160` | `0x164D160` | — | RAUW (Replace All Uses With) |
+| `sub_15F20C0` | `0x15F20C0` | — | Erase instruction from parent |
+| `sub_15E55B0` | `0x15E55B0` | — | Erase global declaration |
+| `sub_15A9520` | `0x15A9520` | — | `getPointerSizeInBits(target, addr_space)` |
+| `sub_15A9930` | `0x15A9930` | — | `getStructLayout` (field offsets) |
+| `sub_15A06D0` | `0x15A06D0` | — | `computeFieldOffset` |
+| `sub_1646BA0` | `0x1646BA0` | — | `getStructFieldType` |
+| `sub_16435F0` | `0x16435F0` | — | `isAnalyzableType(type, depth)` |
+| `sub_140B2F0` | `0x140B2F0` | — | `evaluateInitializer(module, target, ..., 1)` |
+| `sub_15FB630` | `0x15FB630` | — | Create `notinit` sentinel |
+| `sub_15FB440` | `0x15FB440` | — | Create binary OR (opcode 27) |
+| `sub_15FEC10` | `0x15FEC10` | — | Create ICmp instruction |
+| `sub_15F8650` | `0x15F8650` | — | Create conditional branch |
+| `sub_15F8590` | `0x15F8590` | — | Create unconditional branch |
+| `sub_157FBF0` | `0x157FBF0` | — | Create basic block |
+| `sub_15FED60` | `0x15FED60` | — | Create ICmp NE (opcode 51, predicate 33) |
+| `sub_15F9330` | `0x15F9330` | — | Create alloca (`"tmp"` variable in block) |
+| `sub_15FDB00` | `0x15FDB00` | — | Wire def into use-def chain |
+| `sub_15F9850` | `0x15F9850` | — | Create store-to-field-global |
+| `sub_157E9C0` | `0x157E9C0` | — | Create return basic block (null-return) |
+| `sub_157FB60` | `0x157FB60` | — | Create basic block with predecessor |
+| `sub_15F55D0` | `0x15F55D0` | — | Grow operand list |
+| `sub_1648700` | `0x1648700` | — | `getInstruction(use)` from use-chain |
+| `sub_1649960` | `0x1649960` | — | `getName(global/fn)` returns C string |
+| `sub_1648A60` | `0x1648A60` | — | `IRBuilder::create(size, kind)` allocates IR node |
+| `sub_15E5530` | `0x15E5530` | — | Destroy function body |
+| `sub_159D9E0` | `0x159D9E0` | — | Destroy function |
+| `sub_164BE60` | `0x164BE60` | — | Drop all references |
+| `sub_1648B90` | `0x1648B90` | — | Mark dead (flags or-equals 1) |
+| `sub_1631BE0` | `0x1631BE0` | — | Insert into function list |
+| `sub_15A9FE0` | `0x15A9FE0` | — | `getAlignment(target, type)` ABI alignment |
+| `sub_15A0680` | `0x15A0680` | — | `lookupSymbol(module_sym, idx, flags)` |
+| `sub_16463B0` | `0x16463B0` | — | `getArrayElementType(ptr, idx)` |
+| `sub_159C540` | `0x159C540` | — | `getTerminalType(type)` |
+| `sub_1752100` | `0x1752100` | — | Collect use-def chain |
+| `sub_15E6480` | `0x15E6480` | — | Copy metadata from global to global |
+| `sub_15F8F80` | `0x15F8F80` | — | Create extractvalue instruction |
+| `sub_15F9480` | `0x15F9480` | — | Create store-init (initializer store) |
+| `sub_15F9660` | `0x15F9660` | — | Create field store (offset + field global) |
+| `sub_15FD590` | `0x15FD590` | — | Create local variable (`"newgv"`) |
+| `sub_15FEBE0` | `0x15FEBE0` | — | Create bitcast/GEP for field extraction |
+| `sub_1648780` | `0x1648780` | — | Replace use with value |
+| `sub_16CC920` | `0x16CC920` | — | Grow scratch buffer |
+| `sub_16CC9F0` | `0x16CC9F0` | — | Find in sorted set |
+| `sub_1968390` | `0x1968390` | — | GlobalDCE / ConstantProp (runs before GlobalOpt) |
 
 ## Differences from Upstream LLVM GlobalOpt
 
@@ -839,7 +839,7 @@ Stock LLVM's `GlobalOptPass` (in `lib/Transforms/IPO/GlobalOpt.cpp`) performs si
 
 2. **2047-bit constant promotion threshold.** LLVM does not have a single bit-count gate for constant promotion. NVIDIA's threshold likely targets the GPU register file: 2047 bits is approximately 64 32-bit registers, close to the per-thread register budget on many SM architectures.
 
-3. **Per-field malloc decomposition.** Stock LLVM's `tryToOptimizeStoreOfMallocToGlobal` handles malloc/free as a single pair. NVIDIA generates per-field null checks, conditional frees, and continuation blocks -- a more aggressive decomposition.
+3. **Per-field malloc decomposition.** Stock LLVM's `tryToOptimizeStoreOfMallocToGlobal` handles malloc/free as a single pair. NVIDIA generates per-field null checks, conditional frees, and continuation blocks — a more aggressive decomposition.
 
 4. **Custom hash table.** LLVM uses `DenseMap`/`SmallPtrSet`. NVIDIA uses a hand-rolled open-addressing hash table with 32-byte entries (see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and sentinel values).
 
@@ -851,13 +851,13 @@ Stock LLVM's `GlobalOptPass` (in `lib/Transforms/IPO/GlobalOpt.cpp`) performs si
 
 ## Cross-References
 
-- [NVModuleSummary Builder](./module-summary.md) -- builds the global reference edges that determine which globals are live across modules
-- [Inliner Cost Model](./inliner-cost.md) -- calls GlobalOpt's transform function to evaluate post-inline global optimization benefit
-- [ThinLTO Function Import](./thinlto-import.md) -- imports functions across module boundaries, exposing globals for cross-module optimization
-- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) -- address-space-aware alias analysis that informs which memory operations can alias globals in different address spaces
-- [MemorySpaceOpt](../passes/memory-space-opt.md) -- resolves generic pointers to specific address spaces; runs before GlobalOpt and may expose globals that were previously behind generic pointers
-- [Pipeline & Ordering](../llvm/pipeline.md) -- full pass ordering showing GlobalOpt's position at step 30
-- [Type Translation, Globals & Special Vars](../pipeline/irgen-types.md) -- how EDG frontend assigns address spaces to global variables during IR generation
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- hash function, sentinel values, and probing strategy used by the processed-globals table
-- [Struct Splitting](../passes/struct-splitting.md) -- the NewPM `lower-aggr-copies` pass that handles similar aggregate decomposition at a different pipeline stage
-- [Address Spaces](../reference/address-spaces.md) -- complete NVPTX address space reference including pointer sizes and latency characteristics
+- [NVModuleSummary Builder](./module-summary.md) — builds the global reference edges that determine which globals are live across modules
+- [Inliner Cost Model](./inliner-cost.md) — calls GlobalOpt's transform function to evaluate post-inline global optimization benefit
+- [ThinLTO Function Import](./thinlto-import.md) — imports functions across module boundaries, exposing globals for cross-module optimization
+- [Alias Analysis & NVVM AA](../infra/alias-analysis.md) — address-space-aware alias analysis that informs which memory operations can alias globals in different address spaces
+- [MemorySpaceOpt](../passes/memory-space-opt.md) — resolves generic pointers to specific address spaces; runs before GlobalOpt and may expose globals that were previously behind generic pointers
+- [Pipeline & Ordering](../llvm/pipeline.md) — full pass ordering showing GlobalOpt's position at step 30
+- [Type Translation, Globals & Special Vars](../pipeline/irgen-types.md) — how EDG frontend assigns address spaces to global variables during IR generation
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — hash function, sentinel values, and probing strategy used by the processed-globals table
+- [Struct Splitting](../passes/struct-splitting.md) — the NewPM `lower-aggr-copies` pass that handles similar aggregate decomposition at a different pipeline stage
+- [Address Spaces](../reference/address-spaces.md) — complete NVPTX address space reference including pointer sizes and latency characteristics

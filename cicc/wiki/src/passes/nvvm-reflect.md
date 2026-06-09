@@ -1,8 +1,8 @@
 # NVVMReflect
 
-The NVVMReflect pass resolves calls to `__nvvm_reflect()` -- a compile-time introspection mechanism that lets CUDA device code query compilation parameters such as the target GPU architecture, flush-to-zero mode, and precision settings. Each `__nvvm_reflect("__CUDA_ARCH")` call is replaced with an integer constant derived from the target SM version, and each `__nvvm_reflect("__CUDA_FTZ")` is replaced with `0` or `1` depending on the `-ftz` flag. After replacement, the constant result feeds into conditional branches that standard LLVM passes (SimplifyCFG, SCCP, ADCE) can fold away, eliminating dead architecture-specific code paths at compile time. This is NVIDIA's primary mechanism for producing architecture-specialized code from a single portable source: libdevice alone contains hundreds of `__nvvm_reflect` calls that select between FTZ and non-FTZ instruction variants.
+The NVVMReflect pass resolves calls to `__nvvm_reflect()` — a compile-time introspection mechanism that lets CUDA device code query compilation parameters such as the target GPU architecture, flush-to-zero mode, and precision settings. Each `__nvvm_reflect("__CUDA_ARCH")` call is replaced with an integer constant derived from the target SM version, and each `__nvvm_reflect("__CUDA_FTZ")` is replaced with `0` or `1` depending on the `-ftz` flag. After replacement, the constant result feeds into conditional branches that standard LLVM passes (SimplifyCFG, SCCP, ADCE) can fold away, eliminating dead architecture-specific code paths at compile time. This is NVIDIA's primary mechanism for producing architecture-specialized code from a single portable source: libdevice alone contains hundreds of `__nvvm_reflect` calls that select between FTZ and non-FTZ instruction variants.
 
-The pass is relatively small in code size but architecturally critical -- it runs multiple times at different pipeline positions because inlining, loop unrolling, and other transformations continuously expose new `__nvvm_reflect` calls that were previously hidden inside un-inlined function bodies.
+The pass is relatively small in code size but architecturally critical — it runs multiple times at different pipeline positions because inlining, loop unrolling, and other transformations continuously expose new `__nvvm_reflect` calls that were previously hidden inside un-inlined function bodies.
 
 ## Key Facts
 
@@ -17,7 +17,7 @@ The pass is relatively small in code size but architecturally critical -- it run
 | Global knob constructor | `ctor_271` |
 | Vtable (likely) | `unk_3C2026C` |
 | Post-processing pass | `nvvm-reflect-pp` = `SimplifyConstantConditionalsPass` |
-| New PM registration | Not separately registered -- NVVMReflect is a legacy-PM pass invoked from the pipeline assembler; `nvvm-reflect-pp` is the New PM companion at registration line 2237 of `sub_2342890` |
+| New PM registration | Not separately registered — NVVMReflect is a legacy-PM pass invoked from the pipeline assembler; `nvvm-reflect-pp` is the New PM companion at registration line 2237 of `sub_2342890` |
 | Upstream equivalent | `NVVMReflect` in `llvm/lib/Target/NVPTX/NVVMReflect.cpp` |
 | Occurrences in pipeline | ~8 invocations across all paths (see [Multi-Run Pattern](#multi-run-pattern)) |
 
@@ -109,7 +109,7 @@ The string extraction logic must handle the IR pattern produced by the CUDA fron
 %1 = call i32 @__nvvm_reflect(ptr @.str)
 ```
 
-The pass walks through the argument operand, stripping `ConstantExpr` GEPs and bitcasts, to reach the `ConstantDataArray` containing the query string. If the argument is not a resolvable constant string, the call is left unmodified (this is a no-op safety -- in practice, all reflect calls use literal string arguments).
+The pass walks through the argument operand, stripping `ConstantExpr` GEPs and bitcasts, to reach the `ConstantDataArray` containing the query string. If the argument is not a resolvable constant string, the call is left unmodified (this is a no-op safety — in practice, all reflect calls use literal string arguments).
 
 ## Interaction with Constant Propagation and Dead Code Elimination
 
@@ -237,7 +237,7 @@ Within the tiered sub-pipeline, NVVMReflect appears with additional gating:
 Consider this scenario:
 
 1. User code calls `__nv_sinf(x)` (a libdevice function).
-2. Initially, `__nv_sinf` is an external function call -- its body contains `__nvvm_reflect("__CUDA_FTZ")` but the reflect call is not visible to the optimizer.
+2. Initially, `__nv_sinf` is an external function call — its body contains `__nvvm_reflect("__CUDA_FTZ")` but the reflect call is not visible to the optimizer.
 3. **First NVVMReflect run**: No-op for this function (the reflect is inside `__nv_sinf`'s body, which has not been inlined yet).
 4. **CGSCC Inliner runs**: Inlines `__nv_sinf` into the caller, expanding its body with the `__nvvm_reflect` call.
 5. **Second NVVMReflect run**: Now sees the freshly-inlined `__nvvm_reflect` call and resolves it to a constant.
@@ -275,7 +275,7 @@ The reflect query values flow from the CLI through three layers:
 
 1. **CLI**: `-arch=compute_90` is parsed by `sub_95EB40` / `sub_12C8DD0`
 2. **EDG frontend**: Receives `-R __CUDA_ARCH=900` and defines the preprocessor macro
-3. **Optimizer**: Receives `-opt-arch=sm_90`. The NVVMReflect pass reads the SM version from the target machine configuration (not from `-R` flags -- those are for the preprocessor)
+3. **Optimizer**: Receives `-opt-arch=sm_90`. The NVVMReflect pass reads the SM version from the target machine configuration (not from `-R` flags — those are for the preprocessor)
 
 For FTZ/precision flags, the path is:
 1. `-ftz=1` maps to `-R __CUDA_FTZ=1` (EDG) and `-nvptx-f32ftz` (optimizer/backend)
@@ -299,14 +299,14 @@ The multi-run strategy is the most significant difference. Upstream LLVM assumes
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| NVVMReflect pass factory | `sub_1857160` | -- | Creates and returns a new NVVMReflect pass instance |
-| NVVMReflect constructor knob | `ctor_271` | -- | Registers `nvvm-reflect-enable` cl::opt |
-| SimplifyConstantConditionalsPass (nvvm-reflect-pp) | registered at line 2237 of `sub_2342890` | -- | Post-reflect dead branch cleanup |
-| Pipeline assembler | `sub_12E54A0` | -- | Inserts NVVMReflect at multiple positions |
-| Tier 0 pipeline builder | `sub_12DE330` | -- | Inserts NVVMReflect as pass #7 |
-| Tiered sub-pipeline | `sub_12DE8F0` | -- | Inserts NVVMReflect at tier-gated positions |
-| Architecture detection table | `sub_95EB40` | -- | Maps `-arch=compute_XX` to `__CUDA_ARCH` values |
-| Architecture detection (libnvvm) | `sub_12C8DD0` | -- | Parallel mapping table for the libnvvm path |
+| NVVMReflect pass factory | `sub_1857160` | — | Creates and returns a new NVVMReflect pass instance |
+| NVVMReflect constructor knob | `ctor_271` | — | Registers `nvvm-reflect-enable` cl::opt |
+| SimplifyConstantConditionalsPass (nvvm-reflect-pp) | registered at line 2237 of `sub_2342890` | — | Post-reflect dead branch cleanup |
+| Pipeline assembler | `sub_12E54A0` | — | Inserts NVVMReflect at multiple positions |
+| Tier 0 pipeline builder | `sub_12DE330` | — | Inserts NVVMReflect as pass #7 |
+| Tiered sub-pipeline | `sub_12DE8F0` | — | Inserts NVVMReflect at tier-gated positions |
+| Architecture detection table | `sub_95EB40` | — | Maps `-arch=compute_XX` to `__CUDA_ARCH` values |
+| Architecture detection (libnvvm) | `sub_12C8DD0` | — | Parallel mapping table for the libnvvm path |
 
 ## Test This
 
@@ -332,7 +332,7 @@ nvcc -ptx -arch=sm_90 -ftz=false reflect_test.cu -o reflect_noftz.ptx
 **What to look for in PTX:**
 - With `-ftz=true`: the PTX should contain flush-to-zero math instructions (e.g., `sin.approx.ftz.f32`). The NVVMReflect pass resolved `__nvvm_reflect("__CUDA_FTZ")` to `1`, SimplifyCFG folded the branch, and only the FTZ code path survived.
 - With `-ftz=false`: the PTX should contain precise math instructions without the `.ftz` suffix. The reflect resolved to `0`, selecting the non-FTZ path.
-- The key evidence is that the PTX contains only **one** code path -- no conditional branch choosing between FTZ and non-FTZ variants. If both paths survive, NVVMReflect or its downstream cleanup passes failed.
+- The key evidence is that the PTX contains only **one** code path — no conditional branch choosing between FTZ and non-FTZ variants. If both paths survive, NVVMReflect or its downstream cleanup passes failed.
 - Comparing `-arch=sm_75` vs. `-arch=sm_90` exercises the `__CUDA_ARCH` reflect. Functions like `__nv_dsqrt_rn` use architecture comparisons (`icmp sge i32 %arch, 800`) to select between SM 8.0+ instruction sequences and legacy fallbacks.
 
 ## Common Pitfalls
@@ -341,7 +341,7 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 **1. Returning the wrong `__CUDA_ARCH` encoding.** The `__CUDA_ARCH` value is `major * 100 + minor * 10`, not `major * 10 + minor`. For SM 9.0, the correct value is 900, not 90. For SM 10.0, the correct value is 1000, not 100. A reimplementation that uses the wrong encoding will select the wrong code paths in libdevice, potentially enabling instructions not supported by the target architecture (e.g., SM 7.0 paths on an SM 9.0 target) or disabling instructions that should be available. This encoding is also used by the CUDA preprocessor (`__CUDA_ARCH__`), so consistency between the frontend macro and the reflect value is critical.
 
-**2. Running NVVMReflect only once in the pipeline.** The pass must run multiple times (approximately 8 invocations across the full pipeline) because `__nvvm_reflect` calls are hidden inside un-inlined libdevice function bodies. The first run resolves calls visible at the top level, but each subsequent inlining pass exposes new reflect calls from freshly inlined libdevice functions. A reimplementation with a single early invocation will leave reflected branches unresolved in all functions inlined after that point, resulting in both FTZ and non-FTZ code paths surviving to the final binary -- doubling code size and defeating the entire specialization mechanism.
+**2. Running NVVMReflect only once in the pipeline.** The pass must run multiple times (approximately 8 invocations across the full pipeline) because `__nvvm_reflect` calls are hidden inside un-inlined libdevice function bodies. The first run resolves calls visible at the top level, but each subsequent inlining pass exposes new reflect calls from freshly inlined libdevice functions. A reimplementation with a single early invocation will leave reflected branches unresolved in all functions inlined after that point, resulting in both FTZ and non-FTZ code paths surviving to the final binary — doubling code size and defeating the entire specialization mechanism.
 
 **3. Not running `SimplifyConstantConditionalsPass` (nvvm-reflect-pp) after reflect resolution.** After NVVMReflect replaces `__nvvm_reflect("__CUDA_FTZ")` with the constant `1`, the IR contains `icmp ne i32 1, 0` feeding a conditional branch. If no pass simplifies this to an unconditional branch, the dead code path survives through the rest of the pipeline, consuming compile time in every subsequent pass and inflating the final binary. While standard LLVM SimplifyCFG will eventually handle it, the dedicated `nvvm-reflect-pp` pass provides immediate cleanup at the point where it matters most.
 
@@ -351,8 +351,8 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 ## Cross-References
 
-- [Optimizer Pipeline](../pipeline/optimizer.md) -- NVVMReflect pipeline positions and the NVVMPassOptions system
-- [NVIDIA Custom Passes](index.md) -- registry of all NVIDIA-proprietary passes
-- [NVVM Intrinsic Constant-Fold Eligibility (K02)](../pipeline/optimizer.md) -- `sub_14D90D0`, the companion pass that checks whether an intrinsic can be constant-folded (NVVMReflect calls are resolved *before* K02 runs)
-- [Architecture Detection](../pipeline/optimizer.md) -- the `sub_95EB40` table that maps CLI flags to `__CUDA_ARCH` values
-- [Optimization Levels](../pipeline/optimizer.md) -- how NVVMReflect placement varies across O0/O1/O2/O3 and fast-compile tiers
+- [Optimizer Pipeline](../pipeline/optimizer.md) — NVVMReflect pipeline positions and the NVVMPassOptions system
+- [NVIDIA Custom Passes](index.md) — registry of all NVIDIA-proprietary passes
+- [NVVM Intrinsic Constant-Fold Eligibility (K02)](../pipeline/optimizer.md) — `sub_14D90D0`, the companion pass that checks whether an intrinsic can be constant-folded (NVVMReflect calls are resolved *before* K02 runs)
+- [Architecture Detection](../pipeline/optimizer.md) — the `sub_95EB40` table that maps CLI flags to `__CUDA_ARCH` values
+- [Optimization Levels](../pipeline/optimizer.md) — how NVVMReflect placement varies across O0/O1/O2/O3 and fast-compile tiers

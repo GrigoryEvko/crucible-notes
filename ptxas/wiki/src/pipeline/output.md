@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-After all per-kernel SASS encoding completes, ptxas enters the ELF output phase -- the final stage of the compilation pipeline. This phase transforms the accumulated per-kernel SASS bytes, relocation metadata, constant bank data, shared memory layouts, and debug information into a complete NVIDIA CUBIN file. The CUBIN is a standard ELF container with NVIDIA-proprietary extensions: machine type `EM_CUDA` (`0xBE`), non-standard ELF class bytes, CUDA-specific section types, and a rich per-entry metadata system called EIATTR. The output pipeline is a custom implementation with no libelf dependency -- ptxas constructs every byte of the ELF from scratch, including headers, section tables, symbol tables, string tables, relocations, and program headers.
+After all per-kernel SASS encoding completes, ptxas enters the ELF output phase — the final stage of the compilation pipeline. This phase transforms the accumulated per-kernel SASS bytes, relocation metadata, constant bank data, shared memory layouts, and debug information into a complete NVIDIA CUBIN file. The CUBIN is a standard ELF container with NVIDIA-proprietary extensions: machine type `EM_CUDA` (`0xBE`), non-standard ELF class bytes, CUDA-specific section types, and a rich per-entry metadata system called EIATTR. The output pipeline is a custom implementation with no libelf dependency — ptxas constructs every byte of the ELF from scratch, including headers, section tables, symbol tables, string tables, relocations, and program headers.
 
 The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy default), **Mercury** (SM 75--99 default), and **Capsule Mercury** (SM 100+ default, supporting deferred finalization). All three produce a valid CUBIN ELF; the difference is whether the `.text` sections contain final SASS bytes or Mercury-encoded streams that a downstream finalizer resolves at link or load time.
 
@@ -12,9 +12,9 @@ The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy
 | **ELFW constructor** | `sub_1CB53A0` (3,480 bytes, 672-byte central object) |
 | **Section creator** | `sub_1CB3570` (1,963 bytes, 44 call sites) |
 | **Symbol table builder** | `sub_1CB68D0` (9,578 bytes, ~1,700 decompiled lines) |
-| **Master ELF emitter** | `sub_1C9F280` (15,263 B native / 97 KB decomp -- largest function in output range) |
+| **Master ELF emitter** | `sub_1C9F280` (15,263 B native / 97 KB decomp — largest function in output range) |
 | **Section layout calculator** | `sub_1C9DC60` (5,663 B native) |
-| **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp -- shared/constant/local addresses) |
+| **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp — shared/constant/local addresses) |
 | **nvinfo/EIATTR builder** | `sub_1CC9800` (14,764 B native / 86 KB decomp) |
 | **Master relocation resolver** | `sub_1CD48C0` (4,184 B native / 20 KB decomp) |
 | **File serializer** | `sub_1CD13A0` (2,541 B native / 11 KB decomp, writes final bytes to disk) |
@@ -87,7 +87,7 @@ OUTPUT: .cubin / .o file
 
 ## Custom ELF Emitter
 
-ptxas builds the entire ELF output without libelf. The custom implementation spans approximately 20 functions in the `0x1C99`--`0x1CD6` address range (~300 KB of binary code). At the center is the **ELFW** ("ELF world") object -- a 672-byte structure that owns all sections, symbols, and string tables for a single compilation unit.
+ptxas builds the entire ELF output without libelf. The custom implementation spans approximately 20 functions in the `0x1C99`--`0x1CD6` address range (~300 KB of binary code). At the center is the **ELFW** ("ELF world") object — a 672-byte structure that owns all sections, symbols, and string tables for a single compilation unit.
 
 ### ELFW Object Layout
 
@@ -173,13 +173,13 @@ CUDA supports up to 18 numbered constant banks (0--17) plus 6 named banks:
 |---|---|---|
 | 0 | `.nv.constant0` | Kernel parameters + compiler constants (per-entry) |
 | 1--17 | `.nv.constant1`--`.nv.constant17` | User-declared `__constant__` variables |
-| -- | `.nv.constant.entry_params` | Entry point parameter block |
-| -- | `.nv.constant.entry_image_header_indices` | Texture/surface header index table |
-| -- | `.nv.constant.driver` | Driver-injected constants |
-| -- | `.nv.constant.optimizer` | Optimizer-generated constants (OCG) |
-| -- | `.nv.constant.user` | User-specified constants |
-| -- | `.nv.constant.pic` | Position-independent code constants |
-| -- | `.nv.constant.tools_data` | Tools/debugger-injected data |
+| — | `.nv.constant.entry_params` | Entry point parameter block |
+| — | `.nv.constant.entry_image_header_indices` | Texture/surface header index table |
+| — | `.nv.constant.driver` | Driver-injected constants |
+| — | `.nv.constant.optimizer` | Optimizer-generated constants (OCG) |
+| — | `.nv.constant.user` | User-specified constants |
+| — | `.nv.constant.pic` | Position-independent code constants |
+| — | `.nv.constant.tools_data` | Tools/debugger-injected data |
 
 ### Section Ordering
 
@@ -213,7 +213,7 @@ Two section types receive special treatment during layout: `.nv.constant0` (addr
 
 ## EIATTR Metadata
 
-Each kernel's `.nv.info.<funcname>` section contains a sequence of EIATTR (Entry Information Attribute) records. These encode per-kernel metadata that the CUDA driver reads at launch time to configure the hardware correctly. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp, 51 callees) -- one of the largest functions in the output pipeline.
+Each kernel's `.nv.info.<funcname>` section contains a sequence of EIATTR (Entry Information Attribute) records. These encode per-kernel metadata that the CUDA driver reads at launch time to configure the hardware correctly. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp, 51 callees) — one of the largest functions in the output pipeline.
 
 ### EIATTR Encoding
 
@@ -325,13 +325,13 @@ The relocation system handles symbol resolution for branch targets, constant ban
 
 The resolver performs these operations for each relocation entry:
 
-1. **Alias resolution** -- redirect relocations from alias symbols to their targets (`"change alias reloc %s to %s"`)
-2. **Dead function filtering** -- skip relocations on eliminated functions (`"ignore reloc on dead func %s"`)
-3. **UFT/UDT pseudo-relocation** -- handle `__UFT_OFFSET`, `__UFT_CANONICAL`, `__UDT_OFFSET`, `__UDT_CANONICAL` synthetic symbols
-4. **PC-relative validation** -- ensure branch targets are in the same section (`"PC relative branch address should be in the same section"`)
-5. **YIELD-to-NOP conversion** -- convert YIELD instructions to NOP when forward progress requirements prevent yielding
-6. **Unified reloc replacement** -- convert type 103 (unified) to type 1 (absolute) for final resolution
-7. **Address computation** -- compute final patched value from symbol address + addend
+1. **Alias resolution** — redirect relocations from alias symbols to their targets (`"change alias reloc %s to %s"`)
+2. **Dead function filtering** — skip relocations on eliminated functions (`"ignore reloc on dead func %s"`)
+3. **UFT/UDT pseudo-relocation** — handle `__UFT_OFFSET`, `__UFT_CANONICAL`, `__UDT_OFFSET`, `__UDT_CANONICAL` synthetic symbols
+4. **PC-relative validation** — ensure branch targets are in the same section (`"PC relative branch address should be in the same section"`)
+5. **YIELD-to-NOP conversion** — convert YIELD instructions to NOP when forward progress requirements prevent yielding
+6. **Unified reloc replacement** — convert type 103 (unified) to type 1 (absolute) for final resolution
+7. **Address computation** — compute final patched value from symbol address + addend
 
 Output relocation sections (`.nv.resolvedrela`) are written by `sub_1CD5920`.
 
@@ -432,9 +432,9 @@ A typical CUDA program compiles multiple kernels and device functions into a sin
 
 Each entry function and each device function gets its own `.text` section (the `-ffunction-sections` pattern). This enables:
 
-- **Function-level dead code elimination** -- `sub_1CBC090` removes `.text`, `.rela.text`, `.nv.info`, and `.nv.constant0` sections for unreachable functions
-- **Linker granularity** -- `nvlink` can select individual functions from relocatable objects
-- **Driver loading** -- the CUDA runtime can load individual kernels by name
+- **Function-level dead code elimination** — `sub_1CBC090` removes `.text`, `.rela.text`, `.nv.info`, and `.nv.constant0` sections for unreachable functions
+- **Linker granularity** — `nvlink` can select individual functions from relocatable objects
+- **Driver loading** — the CUDA runtime can load individual kernels by name
 
 ### Call Graph Construction
 
@@ -452,12 +452,12 @@ Dead functions are eliminated by `sub_1CBC090`:
 
 The master section allocator `sub_1CABD60` (11,856 B native / 66 KB decomp, 69 callees) assigns addresses to all memory-space sections across all kernels. It runs a multi-pass algorithm:
 
-1. **Global shared allocation** -- shared variables visible to multiple kernels
-2. **Per-entry shared memory** -- shared variables private to each kernel
-3. **Extern shared handling** -- dynamically-sized shared memory (`extern __shared__`)
-4. **Reserved shared memory** -- runtime reservations (`.nv.reservedSmem.begin`, `.nv.reservedSmem.cap`, `.nv.reservedSmem.offset0`, `.nv.reservedSmem.offset1`)
-5. **Local memory** -- per-thread spill storage
-6. **Constant bank merging** -- merges constant bank data across kernels, with deduplication (`sub_1CA6890`: `"found duplicate value 0x%x, alias %s to %s"`)
+1. **Global shared allocation** — shared variables visible to multiple kernels
+2. **Per-entry shared memory** — shared variables private to each kernel
+3. **Extern shared handling** — dynamically-sized shared memory (`extern __shared__`)
+4. **Reserved shared memory** — runtime reservations (`.nv.reservedSmem.begin`, `.nv.reservedSmem.cap`, `.nv.reservedSmem.offset0`, `.nv.reservedSmem.offset1`)
+5. **Local memory** — per-thread spill storage
+6. **Constant bank merging** — merges constant bank data across kernels, with deduplication (`sub_1CA6890`: `"found duplicate value 0x%x, alias %s to %s"`)
 
 The shared memory allocator `sub_1CA92F0` (2,804 bytes) builds an interference graph for shared objects and performs group allocation for non-overlapping variables.
 
@@ -472,7 +472,7 @@ Large CUDA programs can exceed the ELF 65,280-section limit (`SHN_LORESERVE` = 0
 5. Symbol `st_shndx` = `SHN_XINDEX` when real index >= 0xFF00
 6. `.symtab_shndx` entries hold the actual section indices
 
-This is standard ELF overflow handling, and it is production-critical -- `sub_1CB68D0` checks for it with `"overflow number of sections %d"`.
+This is standard ELF overflow handling, and it is production-critical — `sub_1CB68D0` checks for it with `"overflow number of sections %d"`.
 
 ## Key Functions
 
@@ -506,17 +506,17 @@ This is standard ELF overflow handling, and it is production-critical -- `sub_1C
 | `sub_1CB3570` | 1,963 B | 10 KB | Section creator (44 call sites) |
 | `sub_1C98C60` | 1,755 B | 9 KB | Mercury debug section classifier |
 | `sub_1CB2CA0` | 2,038 B | 8 KB | Symbol fixup (post-deletion) |
-| `sub_1CC7FB0` | -- | -- | .nv.info section name formatter |
-| `sub_1CB9FF0` | -- | -- | Section count accessor |
-| `sub_1CB9C40` | -- | -- | Get section by index |
+| `sub_1CC7FB0` | — | — | .nv.info section name formatter |
+| `sub_1CB9FF0` | — | — | Section count accessor |
+| `sub_1CB9C40` | — | — | Get section by index |
 
 ## Cross-References
 
-- [Custom ELF Emitter](../output/elf-emitter.md) -- deep dive into ELFW object, header construction, section management, file serialization
-- [Section Catalog & EIATTR](../output/sections.md) -- complete inventory of section types and EIATTR attribute encoding
-- [Relocations & Symbols](../output/relocations.md) -- relocation resolution, UFT/UDT management, symbol table details
-- [Debug Information](../output/debug-info.md) -- DWARF generation and `.debug_*` section handling
-- [Capsule Mercury & Finalization](../codegen/capmerc.md) -- capmerc packaging format, off-target finalization, self-check
-- [Mercury Encoder](../codegen/mercury.md) -- Mercury instruction encoding (phases 117--122) that feeds the ELF emitter
-- [SASS Code Generation](codegen.md) -- the upstream per-kernel compilation that produces SASS bytes
-- [Pipeline Overview](overview.md) -- where the ELF phase fits in the full PTX-to-SASS flow
+- [Custom ELF Emitter](../output/elf-emitter.md) — deep dive into ELFW object, header construction, section management, file serialization
+- [Section Catalog & EIATTR](../output/sections.md) — complete inventory of section types and EIATTR attribute encoding
+- [Relocations & Symbols](../output/relocations.md) — relocation resolution, UFT/UDT management, symbol table details
+- [Debug Information](../output/debug-info.md) — DWARF generation and `.debug_*` section handling
+- [Capsule Mercury & Finalization](../codegen/capmerc.md) — capmerc packaging format, off-target finalization, self-check
+- [Mercury Encoder](../codegen/mercury.md) — Mercury instruction encoding (phases 117--122) that feeds the ELF emitter
+- [SASS Code Generation](codegen.md) — the upstream per-kernel compilation that produces SASS bytes
+- [Pipeline Overview](overview.md) — where the ELF phase fits in the full PTX-to-SASS flow

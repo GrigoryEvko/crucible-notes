@@ -2,14 +2,14 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas v13.0.88 handles five Blackwell-era base targets -- sm_100, sm_103, sm_110, sm_120, sm_121 -- spanning datacenter, automotive, consumer, and DGX product lines. All share generation 9 (upper nibble `0x9000` of the codegen factory) and the `"Blackwell"` family string internally, but each uses a distinct sub-variant: sm_100=36864 (`0x9000`), sm_103=36867 (`0x9003`), sm_110=36868 (`0x9004`), sm_120=sm_121=36869 (`0x9005`). The defining Blackwell feature is **Capsule Mercury** (capmerc) as the default binary output format, automatically enabled for SM numbers exceeding 99. The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
+ptxas v13.0.88 handles five Blackwell-era base targets — sm_100, sm_103, sm_110, sm_120, sm_121 — spanning datacenter, automotive, consumer, and DGX product lines. All share generation 9 (upper nibble `0x9000` of the codegen factory) and the `"Blackwell"` family string internally, but each uses a distinct sub-variant: sm_100=36864 (`0x9000`), sm_103=36867 (`0x9003`), sm_110=36868 (`0x9004`), sm_120=sm_121=36869 (`0x9005`). The defining Blackwell feature is **Capsule Mercury** (capmerc) as the default binary output format, automatically enabled for SM numbers exceeding 99. The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
 
 | | |
 |---|---|
 | **SM targets** | sm_100, sm_103, sm_110, sm_120, sm_121 (+ `a` and `f` sub-variants each) |
 | **Codegen factory range** | 36864--36869 (`0x9000`--`0x9005`, generation 9) |
 | **Family string** | `"Blackwell"` (all five targets) |
-| **Default binary format** | Capsule Mercury (capmerc) -- auto-enabled for SM > 99 |
+| **Default binary format** | Capsule Mercury (capmerc) — auto-enabled for SM > 99 |
 | **SASS encoding** | 128-bit per instruction (Mercury-encoded) |
 | **Warp geometry** | 16 warps, 240 dispatch slots (shared with Hopper sm_90) |
 | **Sub-variants per SM** | 3: base, `a` (accelerated), `f` (feature-reduced) |
@@ -32,7 +32,7 @@ ptxas v13.0.88 handles five Blackwell-era base targets -- sm_100, sm_103, sm_110
 
 ## Sub-Variant System
 
-Every Blackwell SM has three sub-variants. The base and `a`/`f` variants within an SM share **all 7 dispatch table handler functions** -- they are identical silicon with different compatibility metadata and feature exposure.
+Every Blackwell SM has three sub-variants. The base and `a`/`f` variants within an SM share **all 7 dispatch table handler functions** — they are identical silicon with different compatibility metadata and feature exposure.
 
 ### Profile Object Fields
 
@@ -127,7 +127,7 @@ These variant indices select different entries within the per-SM latency tables,
 
 ## Hardware Resource Geometry
 
-Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md -- Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
+Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md — Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
 
 | SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
 |---|---|---|---|---|---|---|---|---|---|
@@ -146,9 +146,9 @@ Per-SM hardware resource limits used by ptxas for register allocation, occupancy
 - **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD).
 - **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`.
 
-All Blackwell targets share the 16-partition / 240-slot geometry (identical to Hopper sm\_90). The `a` and `f` sub-variants within each SM share the same geometry -- differentiation is in compatibility metadata and feature exposure, not in resource limits. The primary distinction across Blackwell SMs is in the latency tables and tcgen05 availability, not in the scheduling partition structure.
+All Blackwell targets share the 16-partition / 240-slot geometry (identical to Hopper sm\_90). The `a` and `f` sub-variants within each SM share the same geometry — differentiation is in compatibility metadata and feature exposure, not in resource limits. The primary distinction across Blackwell SMs is in the latency tables and tcgen05 availability, not in the scheduling partition structure.
 
-## Capsule Mercury (capmerc) -- Default Output Format
+## Capsule Mercury (capmerc) — Default Output Format
 
 Capsule Mercury is automatically enabled for all Blackwell targets. When the SM architecture number exceeds 99, ptxas sets the capmerc flag at offset+81 in the compilation context. This applies to sm_100, sm_103, sm_110, sm_120, and sm_121 uniformly.
 
@@ -156,8 +156,8 @@ Capsule Mercury is automatically enabled for all Blackwell targets. When the SM 
 
 | Mode | String | Default For | SM Range |
 |---|---|---|---|
-| `mercury` | `"mercury"` | sm_75 -- sm_90 | Turing through Hopper |
-| `capmerc` | `"capmerc"` | sm_100 -- sm_121 | All Blackwell |
+| `mercury` | `"mercury"` | sm_75 — sm_90 | Turing through Hopper |
+| `capmerc` | `"capmerc"` | sm_100 — sm_121 | All Blackwell |
 | `sass` | `"sass"` | None (explicit only) | Any |
 
 ### Capsule Mercury vs Mercury
@@ -171,12 +171,12 @@ The capsule descriptor (constructed by `sub_1C9C300`, 24KB) contains the Mercury
 
 ### Opportunistic Finalization
 
-Capsule Mercury enables deferred finalization -- compiling once for one SM and reconstituting SASS for a different SM at link or load time.
+Capsule Mercury enables deferred finalization — compiling once for one SM and reconstituting SASS for a different SM at link or load time.
 
 | Level | Name | Behavior | Example |
 |---|---|---|---|
-| 0 | default | Standard finalization (compile-target only) | -- |
-| 1 | none | No finalization; output stays as capmerc | -- |
+| 0 | default | Standard finalization (compile-target only) | — |
+| 1 | none | No finalization; output stays as capmerc | — |
 | 2 | intra-family | Finalize within same SM family | sm_100 -> sm_103 |
 | 3 | intra+inter | Finalize across SM families | sm_100 -> sm_120 |
 
@@ -192,7 +192,7 @@ The `--self-check` CLI option performs roundtrip verification:
 
 The reconstituted SASS can be dumped with `--out-sass` for debugging self-check failures.
 
-## TCGen05 -- 5th Generation Tensor Cores
+## TCGen05 — 5th Generation Tensor Cores
 
 TCGen05 is the defining hardware feature of Blackwell datacenter parts. It introduces **tensor memory (TMEM)** as a dedicated register-like storage directly connected to the tensor core, eliminating the shared-memory bottleneck of previous WGMMA designs.
 
@@ -201,12 +201,14 @@ TCGen05 is the defining hardware feature of Blackwell datacenter parts. It intro
 | SM | tcgen05 Available | Notes |
 |---|---|---|
 | sm_100 / 100a / 100f | Yes | Full datacenter tcgen05 |
-| sm_103 / 103a / 103f | Yes | Blackwell Ultra -- same tcgen05 ISA |
-| sm_110 / 110a / 110f | Yes | Jetson Thor -- full tcgen05 hardware |
-| sm_120 / 120a / 120f | **No** | Consumer -- no TMEM, no tcgen05 |
-| sm_121 / 121a / 121f | **No** | DGX Spark -- no TMEM, no tcgen05 |
+| sm_103 / 103a / 103f | Yes | Blackwell Ultra — same tcgen05 ISA |
+| sm_110 / 110a / 110f | Yes | Jetson Thor — full tcgen05 hardware |
+| sm_120 / 120a / 120f | **No** | Consumer — no TMEM, no tcgen05 |
+| sm_121 / 121a / 121f | **No** | DGX Spark — no TMEM, no tcgen05 |
 
-The tcgen05 ISA is gated by SM version checks (visible as `sub_70FA00(*, 29)` capability queries). sm_120 and sm_121 fall back to inherited HMMA/IMMA/WGMMA tensor core paths.
+The tcgen05 ISA is gated by SM version checks (visible as `sub_70FA00(*, 29)` capability queries). sm_120 and sm_121 have no warpgroup or tensor-memory MMA at all: the tensor path is warp-level `mma.sync` (the HMMA/IMMA lineage from sm_70--sm_89) extended with the block-scaled narrow-precision family (`mma.sync.aligned.kind::f8f6f4` and `kind::mxf4nvf4` for FP4/FP6/FP8).
+
+> **CORRECTION (WGMMA-01) —** earlier revisions of this page listed WGMMA (`wgmma.mma_async`) among the tensor paths inherited by Blackwell. That is wrong: WGMMA is **Hopper-exclusive**. ptxas v13.1.115 assembles `wgmma.fence`/`wgmma.commit_group` only for `.target sm_90a`; every Blackwell target — datacenter *and* consumer — rejects it with `error: Instruction 'wgmma.fence' not supported on .target 'sm_100a'` (and identically for `sm_103a`/`sm_110a`/`sm_120a`/`sm_121a`). Datacenter Blackwell replaced the warpgroup matmul with tcgen05; consumer Blackwell fell back to warp-level `mma.sync`. No software knob re-enables a hardware instruction the silicon lacks.
 
 ### PTX Instructions
 
@@ -215,18 +217,18 @@ Registered in the opcode dispatch table at `sub_5D4190`:
 | PTX Instruction | Codegen Handler | Formatter | Size |
 |---|---|---|---|
 | `tcgen05.alloc` | `sub_569180` | `sub_526370` | 1287B |
-| `tcgen05.relinquish_alloc_permit` | `sub_526370` | -- | -- |
+| `tcgen05.relinquish_alloc_permit` | `sub_526370` | — | — |
 | `tcgen05.dealloc` | `sub_58C7F0` | `sub_574050` | 2130B |
 | `tcgen05.ld` | `sub_574050` | `sub_578DB0` | 2466B |
-| `tcgen05.ld.red` | `sub_578DB0` | -- | -- |
+| `tcgen05.ld.red` | `sub_578DB0` | — | — |
 | `tcgen05.st` | `sub_571FE0` | `sub_56C190` | 1842B |
 | `tcgen05.commit` | `sub_56C190` | `sub_5427F0` | 1575B |
 | `tcgen05.cp` | `sub_5427F0` | `sub_4F1A90` | 903B |
 | `tcgen05.shift` | `sub_4F1A90` | `sub_58FA20` | 4604B |
-| `tcgen05.mma` | `sub_5BBC30` (90KB) | -- | -- |
+| `tcgen05.mma` | `sub_5BBC30` (90KB) | — | — |
 | `tcgen05.mma.ws` | `sub_58FA20` | `sub_4DA720` | 343B |
 
-The `tcgen05.mma` codegen handler at `sub_5BBC30` is **90KB** -- the largest single-instruction handler in ptxas -- reflecting the complexity of 5th-gen tensor core MMA with tensor memory operands, scale factors, sparsity, and accumulator management.
+The `tcgen05.mma` codegen handler at `sub_5BBC30` is **90KB** — the largest single-instruction handler in ptxas — reflecting the complexity of 5th-gen tensor core MMA with tensor memory operands, scale factors, sparsity, and accumulator management.
 
 ### TCGen05 Guardrail Functions
 
@@ -254,11 +256,11 @@ The bounds checker (`sub_70E0E0`, 296 lines decompiled) generates inline PTX cod
 
 Additional tcgen05 helper intrinsics observed in decompiled code:
 
-- `__cuda_sm_100_tcgen05_ld_red_immhalfSplitOff` -- load-reduce with immediate half-split offset
-- `__cuda_sm_100_tcgen05_ld_immhalfSplitOff` -- load with immediate half-split offset
-- `__cuda_sm_100_tcgen05_st_immhalfSplitOff` -- store with immediate half-split offset
-- `__cuda_sm_100_tcgen05_ld_red_funcRetArr` -- load-reduce returning array
-- `__cuda_sm_100_tcgen05_ld_funcRetArr` -- load returning array
+- `__cuda_sm_100_tcgen05_ld_red_immhalfSplitOff` — load-reduce with immediate half-split offset
+- `__cuda_sm_100_tcgen05_ld_immhalfSplitOff` — load with immediate half-split offset
+- `__cuda_sm_100_tcgen05_st_immhalfSplitOff` — store with immediate half-split offset
+- `__cuda_sm_100_tcgen05_ld_red_funcRetArr` — load-reduce returning array
+- `__cuda_sm_100_tcgen05_ld_funcRetArr` — load returning array
 
 These helpers (decompiled in `sub_70D910` and `sub_70DDB0`) generate inline PTX for complex tensor memory access patterns including array returns via `ld.param.b32` sequences.
 
@@ -266,7 +268,7 @@ These helpers (decompiled in `sub_70D910` and `sub_70DDB0`) generate inline PTX 
 
 18 intrinsics in the `__cuda_sm1xx_*` namespace cover `cp.async.bulk.tensor` 1D--5D in tile and im2col modes. These extend the Hopper TMA infrastructure with Blackwell-specific enhancements.
 
-## SM 100 / SM 100a / SM 100f -- Blackwell Datacenter
+## SM 100 / SM 100a / SM 100f — Blackwell Datacenter
 
 sm_100 is the reference Blackwell architecture. Codegen factory 36864 (`0x9000`), CUDA_ARCH 1000.
 
@@ -278,7 +280,7 @@ B100, B200 (datacenter GPU), paired as GB200 NVL72 superchips.
 
 - **TCGen05**: Full 5th-gen tensor core with TMEM (alloc, dealloc, ld, st, commit, cp, shift, mma, mma.ws)
 - **Capsule Mercury**: Default output format (auto-enabled for SM > 99)
-- **WGMMA inherited**: Warpgroup MMA from Hopper carries forward
+- **No WGMMA**: the Hopper `wgmma.mma_async` warpgroup matmul does *not* carry forward (ptxas rejects `wgmma.*` on `sm_100a`) — datacenter Blackwell's warpgroup-class matmul is **tcgen05** instead
 - **Cluster operations**: Thread-block clusters, distributed shared memory (from Hopper)
 - **setmaxnreg**: Dynamic register allocation (from Hopper)
 - **Uniform register ALU**: UFADD, UFFMA, UFSEL, UFSETP, UVIADDR (Blackwell uniform register ISA additions)
@@ -295,7 +297,7 @@ B100, B200 (datacenter GPU), paired as GB200 NVL72 superchips.
 
 ### HW Latency Table
 
-`sub_8E8A90` (3.0KB) -- the base Blackwell latency table. Two-part structure: a 3.0KB base table for standard instructions plus a ~949-byte TCGEN05 supplement covering tensor core scheduling classes 745--772+.
+`sub_8E8A90` (3.0KB) — the base Blackwell latency table. Two-part structure: a 3.0KB base table for standard instructions plus a ~949-byte TCGEN05 supplement covering tensor core scheduling classes 745--772+.
 
 ### Profile Object
 
@@ -311,7 +313,7 @@ CUDA_ARCH:     "-D__CUDA_ARCH__=1000"
 
 The profile constructor stores `dword_29FE2C4 = 100` after constructing all sm_100 sub-variants, likely recording the current highest-registered base SM number.
 
-## SM 103 / SM 103a / SM 103f -- Blackwell Ultra
+## SM 103 / SM 103a / SM 103f — Blackwell Ultra
 
 sm_103 is Blackwell Ultra, targeting the GB300 NVL72 platform. Codegen factory 36867 (`0x9003`), CUDA_ARCH 1030.
 
@@ -327,7 +329,7 @@ From sweep data on the SM103-specific encoding path:
 - Sets encoding flags XOR 0x10, XOR 0x40 for sm_103-specific instruction variants
 - New operand layout for transcendental instructions (rsqrt, likely also rcp/sqrt)
 
-sm_103 has a separate 618-byte supplementary latency table -- the smallest in the binary -- suggesting minimal scheduling parameter changes from sm_100.
+sm_103 has a separate 618-byte supplementary latency table — the smallest in the binary — suggesting minimal scheduling parameter changes from sm_100.
 
 ### Handler Functions
 
@@ -351,7 +353,7 @@ Family:        "Blackwell"
 CUDA_ARCH:     "-D__CUDA_ARCH__=1030"
 ```
 
-## SM 110 / SM 110a / SM 110f -- Jetson Thor
+## SM 110 / SM 110a / SM 110f — Jetson Thor
 
 sm_110 targets the Jetson Thor SoC for automotive and robotics applications. Codegen factory 36868 (`0x9004`), CUDA_ARCH 1100.
 
@@ -369,15 +371,15 @@ sm_101 (with variants sm_101a and sm_101f) was the original internal name for Je
 | Accelerated (`unk_1D161C0`) | `{101, 8, 6}` | 8.6 | Accepts `sm_101a` |
 | Feature-reduced (`unk_1D16160`) | `{101, 8, 8}` | 8.8 | Accepts `sm_101f` |
 
-The validation tables use `bsearch()` (`sub_484B70` comparator), so both sm_101 and sm_110 are independently findable. However, `sub_6765E0` (the profile constructor) registers only sm_110 / sm_110a / sm_110f -- there is no profile object for sm_101. After passing validation, sm_101 must resolve to the sm_110 profile through an internal aliasing path (likely in `sub_4B1080`, the target directive parser).
+The validation tables use `bsearch()` (`sub_484B70` comparator), so both sm_101 and sm_110 are independently findable. However, `sub_6765E0` (the profile constructor) registers only sm_110 / sm_110a / sm_110f — there is no profile object for sm_101. After passing validation, sm_101 must resolve to the sm_110 profile through an internal aliasing path (likely in `sub_4B1080`, the target directive parser).
 
-The PTX ISA version difference is notable: sm_101 requires PTX 8.6 (same as sm_100), while sm_110 requires PTX 9.0. This reflects the timeline -- sm_101 was named when the Jetson Thor target was first added alongside sm_100, before the sm_110 numbering and PTX 9.0 specification existed.
+The PTX ISA version difference is notable: sm_101 requires PTX 8.6 (same as sm_100), while sm_110 requires PTX 9.0. This reflects the timeline — sm_101 was named when the Jetson Thor target was first added alongside sm_100, before the sm_110 numbering and PTX 9.0 specification existed.
 
 ### Key Characteristics
 
 - **Full tcgen05 hardware**: Retains datacenter-class tensor memory and tensor core features
-- **Same WGMMA/cluster support**: Inherits Hopper-era warpgroup and cluster operations
-- **SoC-specific constraints**: Differentiated from sm_100 through capability flags, not through missing features -- the capability accessor functions (`sub_609F30`, `sub_608F50`) return SoC-appropriate resource limits
+- **Cluster operations inherited**: thread-block clusters and distributed shared memory carry forward from Hopper; the WGMMA matmul does *not* (replaced by tcgen05, as on sm_100)
+- **SoC-specific constraints**: Differentiated from sm_100 through capability flags, not through missing features — the capability accessor functions (`sub_609F30`, `sub_608F50`) return SoC-appropriate resource limits
 
 ### Handler Functions
 
@@ -401,7 +403,7 @@ CUDA_ARCH:     "-D__CUDA_ARCH__=1100"
 
 Note: sm_110 uses different `xmmword` constants for profile fields `[5]`--`[7]` compared to sm_100, visible in the profile constructor where `v98[5] = xmmword_2027D70; v98[6] = v103 (from v209); v98[7] = v104 (from v207)`. This encodes different hardware resource parameters.
 
-## SM 120 / SM 120a / SM 120f -- Blackwell Consumer
+## SM 120 / SM 120a / SM 120f — Blackwell Consumer
 
 sm_120 targets consumer and enterprise workstation GPUs. Codegen factory 36869 (`0x9005`), CUDA_ARCH 1200.
 
@@ -411,12 +413,14 @@ RTX 5090, RTX 5080, RTX 5070 Ti, RTX 5070, RTX 5060 (consumer). RTX Blackwell Pr
 
 ### The tcgen05 Gap
 
-sm_120 is architecturally distinct from sm_100 despite sharing the `"Blackwell"` family string. The critical difference: **no tcgen05 support**. The entire tensor memory subsystem (alloc, dealloc, ld, st, commit, cp, shift, mma) is absent. Tensor operations fall back to:
+sm_120 is architecturally distinct from sm_100 despite sharing the `"Blackwell"` family string. The critical difference: **no tcgen05 support**. The entire tensor memory subsystem (alloc, dealloc, ld, st, commit, cp, shift, mma) is absent. The tensor path is **warp-level only**:
 
-- HMMA/IMMA inherited from sm_70--sm_89 (direct MMA path)
-- WGMMA inherited from sm_90 (warpgroup async MMA)
+- **HMMA/IMMA** inherited from sm_70--sm_89 — the warp-level `mma.sync` matmul (no warpgroup; accumulators live in RMEM, not TMEM)
+- **Block-scaled narrow precision** — the sm_120-native addition: `mma.sync.aligned.kind::f8f6f4.m16n8k32` (FP4 `e2m1`, FP6 `e2m3`/`e3m2`, FP8 `e4m3`/`e5m2`) and the scale-vector `kind::mxf4nvf4` form
 
-This is gated by SM version checks in the capability accessor functions. The intrinsic table initializer (`sub_608DF0`) does not register tcgen05 intrinsic handlers for sm_120.
+There is **no WGMMA and no tcgen05** — both the Hopper warpgroup path and the datacenter tensor-memory path are absent. This is gated by SM version checks in the capability accessor functions; the intrinsic table initializer (`sub_608DF0`) registers neither tcgen05 nor `wgmma.*` handlers for sm_120.
+
+> **GOTCHA —** what sm_120 *does* carry forward from Hopper is the **data-movement and scheduling** model — TMA bulk-async tensor copies, thread-block clusters, and warp-specialized producer/consumer pipelines — not the matmul instruction. A kernel chasing MFU on sm_120 pairs warp-level `mma.sync` compute with TMA + warp-specialized async staging; it cannot issue `wgmma.mma_async` (ptxas v13.1.115 rejects it for `sm_120a`).
 
 ### HW Latency Table
 
@@ -451,7 +455,7 @@ CUDA_ARCH:     "-D__CUDA_ARCH__=1200"
 
 sm_120 uses a third distinct set of `xmmword` constants for profile fields, including `xmmword_2027DC0` at field `[6]`, confirming different hardware resource parameters from both sm_100 and sm_110.
 
-## SM 121 / SM 121a / SM 121f -- DGX Spark
+## SM 121 / SM 121a / SM 121f — DGX Spark
 
 sm_121 targets the DGX Spark desktop AI workstation. Codegen factory 36869 (`0x9005`), CUDA_ARCH 1210.
 
@@ -463,7 +467,7 @@ NVIDIA DGX Spark (desktop AI workstation with Grace CPU + Blackwell GPU).
 
 sm_121 shares the same codegen factory sub-variant (5) as sm_120 in the scheduling sub-architecture table, and inherits sm_120's `xmmword` profile constants. This suggests sm_121 is a binned or slightly modified sm_120 die, similar to how sm_86 relates to sm_80 in the Ampere generation.
 
-Like sm_120, sm_121 has **no tcgen05 support** -- tensor operations use the HMMA/IMMA/WGMMA path.
+Like sm_120, sm_121 has **no tcgen05 support** and **no WGMMA** — tensor operations use the warp-level `mma.sync` path (HMMA/IMMA plus block-scaled FP4/FP6/FP8 `kind::f8f6f4`/`mxf4nvf4`), identical to sm_120.
 
 ### Handler Functions
 
@@ -511,9 +515,9 @@ All Blackwell targets share codegen factory 36864+ (`0x9000`+). The binary uses 
 | `codegen_factory >= 36864` | >= sm_100 | Blackwell generation features |
 | `codegen_factory == 36864` | sm_100 exactly | sm_100-specific paths |
 | `SM_number > 99` | sm_100+ | Capsule Mercury auto-enable |
-| `sub_70FA00(*, 29)` | -- | tcgen05 capability query (SM-specific) |
+| `sub_70FA00(*, 29)` | — | tcgen05 capability query (SM-specific) |
 
-The tcgen05 gating is not a simple threshold -- it uses a per-SM capability query (`sub_70FA00` with argument 29) that returns true for sm_100/103/110 and false for sm_120/121.
+The tcgen05 gating is not a simple threshold — it uses a per-SM capability query (`sub_70FA00` with argument 29) that returns true for sm_100/103/110 and false for sm_120/121.
 
 ### BB Initialization (Secondary Encoding)
 
@@ -533,10 +537,10 @@ Blackwell targets share the 16-warp / 240-slot geometry with Hopper but have dis
 | SM | Latency Table | Size | Structure |
 |---|---|---|---|
 | sm_100 | `sub_8E8A90` | 3.0KB | Base + 949B TCGEN05 supplement |
-| sm_103 | (supplementary) | 618B | Smallest table -- minimal delta from sm_100 |
-| sm_110 | (shared with sm_100 or dedicated) | -- | Not separately identified in sweep |
+| sm_103 | (supplementary) | 618B | Smallest table — minimal delta from sm_100 |
+| sm_110 | (shared with sm_100 or dedicated) | — | Not separately identified in sweep |
 | sm_120 | `sub_8E9000` + `sub_8E92E0` | 2.9KB + 5.5KB | Two-part consumer table |
-| sm_121 | (likely shares sm_120's table) | -- | Same sub-variant index as sm_120 |
+| sm_121 | (likely shares sm_120's table) | — | Same sub-variant index as sm_120 |
 | Universal | `sub_8E97B0` | 8.8KB | Fallback / universal |
 
 The 5.5KB extended table for sm_120 is the **largest individual latency table** in the binary, reflecting the consumer microarchitecture's distinct pipeline design. The sm_100 table uses a supplement mechanism for TCGEN05-specific scheduling classes that the consumer sm_120 table does not need (since sm_120 lacks tcgen05).
@@ -548,8 +552,8 @@ From the opcode-to-scheduling-class mapper `sub_89FBA0` (85KB), Blackwell-era op
 | Class Range | Category | Architecture |
 |---|---|---|
 | 700--772+ | Mercury/Blackwell tensor ops | sm_100+ with tcgen05 |
-| 745 | WGMMA primary | sm_90+ (Hopper carry-forward) |
-| 744 | WGMMA variant | sm_90+ |
+| 745 | WGMMA primary | `wgmma` cost-model class; the instruction is Hopper `sm_90a`-only (see CORRECTION WGMMA-01) — never emitted on Blackwell |
+| 744 | WGMMA variant | Hopper `sm_90a`-only (see CORRECTION WGMMA-01) |
 | 765--767 | BGMMA/QMMA (Blackwell-specific MMA types) | sm_100+ |
 | 759 | HMMA/BMMA tensor core | sm_100+ |
 | 757, 761 | Narrow/wide DP tensor | sm_100+ |
@@ -557,7 +561,7 @@ From the opcode-to-scheduling-class mapper `sub_89FBA0` (85KB), Blackwell-era op
 
 ## Intrinsic Table
 
-Blackwell intrinsic availability is cumulative -- all sm_70, sm_80, sm_8x, and sm_9x intrinsics carry forward. Blackwell adds two new intrinsic groups:
+Blackwell intrinsic availability is cumulative — all sm_70, sm_80, sm_8x, and sm_9x intrinsics carry forward. Blackwell adds two new intrinsic groups:
 
 ### sm_10x Intrinsics (21 entries)
 
@@ -603,7 +607,7 @@ Beyond tcgen05, Blackwell introduces or extends several instruction families vis
 | `viaddmax` / `viaddmin` | Integer add-with-max/min | OCG builtin table |
 | BGMMA / QMMA | Block/quantized MMA | Scheduling classes 765--767 |
 
-## CLI Options -- Tensor Memory Checks
+## CLI Options — Tensor Memory Checks
 
 Two CLI options control tcgen05 guardrail instrumentation:
 
@@ -612,7 +616,7 @@ Two CLI options control tcgen05 guardrail instrumentation:
 | `--g-tensor-memory-access-check` | `-g-tmem-access-check` | Enabled with `-g` | Enable tensor memory access checks for tcgen05 operations |
 | `--gno-tensor-memory-access-check` | `-gno-tmem-access-check` | false | Disable checks (overrides the above) |
 
-When enabled, the compiler inserts inline validation code (the 8 guardrail functions) around tcgen05 operations. These emit trap instructions if tensor memory invariants are violated at runtime -- useful for debugging TMEM allocation errors, bounds violations, and ownership conflicts.
+When enabled, the compiler inserts inline validation code (the 8 guardrail functions) around tcgen05 operations. These emit trap instructions if tensor memory invariants are violated at runtime — useful for debugging TMEM allocation errors, bounds violations, and ownership conflicts.
 
 ## Feature Comparison
 
@@ -623,13 +627,13 @@ When enabled, the compiler inserts inline validation code (the 8 guardrail funct
 | Family string | Blackwell | Blackwell | Blackwell | Blackwell | Blackwell |
 | Capsule Mercury default | Yes | Yes | Yes | Yes | Yes |
 | tcgen05 (tensor memory) | Yes | Yes | Yes | **No** | **No** |
-| WGMMA (from Hopper) | Yes | Yes | Yes | Yes | Yes |
+| WGMMA (`wgmma.*`; Hopper sm_90a-only) | No | No | No | No | No |
 | Cluster operations | Yes | Yes | Yes | Yes | Yes |
 | setmaxnreg | Yes | Yes | Yes | Yes | Yes |
 | Uniform FP ALU (UFADD etc.) | Yes | Yes | Yes | Yes | Yes |
 | BGMMA/QMMA | Yes | Yes | Yes | ? | ? |
 | Guardrail instrumentation | Yes | Yes | Yes | N/A | N/A |
-| HW latency table | 3.0KB + 949B | 618B (supp.) | -- | 2.9KB + 5.5KB | (shared w/ sm_120) |
+| HW latency table | 3.0KB + 949B | 618B (supp.) | — | 2.9KB + 5.5KB | (shared w/ sm_120) |
 | `a` sub-variant | Yes | Yes | Yes | Yes | Yes |
 | `f` sub-variant | Yes | Yes | Yes | Yes | Yes |
 | Products | B100/B200 | GB300 | Jetson Thor | RTX 50xx | DGX Spark |
@@ -689,20 +693,20 @@ The encoding subsystem covers 16 instruction format groups with full Blackwell I
 | `sub_8E97B0` | 8.8KB | Universal fallback latency table | all | 85% |
 | `sub_89FBA0` | 85KB | Opcode-to-scheduling-class mapper | all | 90% |
 | `sub_5BBC30` | 90KB | tcgen05.mma codegen handler | sm_100 | 98% |
-| `sub_5D4190` | -- | Opcode dispatch table (tcgen05 registrations) | all | 99% |
+| `sub_5D4190` | — | Opcode dispatch table (tcgen05 registrations) | all | 99% |
 | `sub_1C9C300` | 24KB | Capsule Mercury section processor | all | 85% |
 | `sub_1C9B110` | 23KB | Mercury capsule builder | all | 85% |
 
 ## Cross-References
 
-- [SM Architecture Map](index.md) -- Validation tables, codegen factory encoding, suffix semantics
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) -- Baseline features that Blackwell inherits
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) -- WGMMA, clusters, TMA -- carried forward to Blackwell
-- [TCGen05 -- 5th Gen Tensor Cores](tcgen05.md) -- Detailed tcgen05 ISA, TMEM model, instruction encoding
-- [Capsule Mercury & Finalization](../codegen/capmerc.md) -- Capmerc format, ELF structure, finalization levels
-- [Mercury Encoder](../codegen/mercury.md) -- Shared encoding pipeline for all Mercury/capmerc output
-- [Intrinsic Table (608 Entries)](../intrinsics/index.md) -- Full intrinsic catalog with sm_10x and sm_1xx ranges
-- [Latency Model & HW Profiles](../scheduling/latency-model.md) -- Per-SM scheduling parameters and functional units
-- [Uniform Register Optimization](../passes/uniform-regs.md) -- UR-file passes, Blackwell uniform ALU additions
-- [CLI Options](../config/cli-options.md) -- `--gpu-name`, `--binary-kind`, tensor memory check flags
-- [SASS Instruction Encoding](../codegen/encoding.md) -- 128-bit format, Mercury encoder selection
+- [SM Architecture Map](index.md) — Validation tables, codegen factory encoding, suffix semantics
+- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Baseline features that Blackwell inherits
+- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — WGMMA, clusters, TMA — carried forward to Blackwell
+- [TCGen05 — 5th Gen Tensor Cores](tcgen05.md) — Detailed tcgen05 ISA, TMEM model, instruction encoding
+- [Capsule Mercury & Finalization](../codegen/capmerc.md) — Capmerc format, ELF structure, finalization levels
+- [Mercury Encoder](../codegen/mercury.md) — Shared encoding pipeline for all Mercury/capmerc output
+- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Full intrinsic catalog with sm_10x and sm_1xx ranges
+- [Latency Model & HW Profiles](../scheduling/latency-model.md) — Per-SM scheduling parameters and functional units
+- [Uniform Register Optimization](../passes/uniform-regs.md) — UR-file passes, Blackwell uniform ALU additions
+- [CLI Options](../config/cli-options.md) — `--gpu-name`, `--binary-kind`, tensor memory check flags
+- [SASS Instruction Encoding](../codegen/encoding.md) — 128-bit format, Mercury encoder selection

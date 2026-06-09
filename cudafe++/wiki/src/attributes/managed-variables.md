@@ -1,8 +1,8 @@
 # __managed__ Variables
 
-The `__managed__` attribute declares a variable in CUDA Unified Memory -- a memory region accessible from both host (CPU) and device (GPU) code, with the CUDA runtime handling page migration transparently. Unlike `__device__` variables (accessible only from device code without explicit `cudaMemcpy`), managed variables can be read and written by both the host and device using the same pointer. The hardware and driver cooperate to migrate pages on demand between CPU and GPU memory, so neither the programmer nor the compiler needs to issue explicit copies.
+The `__managed__` attribute declares a variable in CUDA Unified Memory — a memory region accessible from both host (CPU) and device (GPU) code, with the CUDA runtime handling page migration transparently. Unlike `__device__` variables (accessible only from device code without explicit `cudaMemcpy`), managed variables can be read and written by both the host and device using the same pointer. The hardware and driver cooperate to migrate pages on demand between CPU and GPU memory, so neither the programmer nor the compiler needs to issue explicit copies.
 
-The constraint set on `__managed__` reflects two fundamental realities. First, unified memory is a **runtime feature**: the compiler cannot resolve managed addresses at compile time, so every host-side access must be gated behind a lazy initialization call that registers the variable with the CUDA runtime's unified memory subsystem. Second, unified memory requires **hardware support**: the Kepler architecture (compute capability 3.0) introduced the UVA (Unified Virtual Addressing) infrastructure that managed memory depends on. These two realities drive the entire implementation -- the attribute handler sets both a managed flag and a device flag (because managed memory is device-global memory with extra runtime semantics), the validation chain rejects memory spaces and qualifiers that conflict with runtime writability, and the code generator wraps every host-side access in a comma-operator expression that forces lazy initialization.
+The constraint set on `__managed__` reflects two fundamental realities. First, unified memory is a **runtime feature**: the compiler cannot resolve managed addresses at compile time, so every host-side access must be gated behind a lazy initialization call that registers the variable with the CUDA runtime's unified memory subsystem. Second, unified memory requires **hardware support**: the Kepler architecture (compute capability 3.0) introduced the UVA (Unified Virtual Addressing) infrastructure that managed memory depends on. These two realities drive the entire implementation — the attribute handler sets both a managed flag and a device flag (because managed memory is device-global memory with extra runtime semantics), the validation chain rejects memory spaces and qualifiers that conflict with runtime writability, and the code generator wraps every host-side access in a comma-operator expression that forces lazy initialization.
 
 ## Key Facts
 
@@ -12,7 +12,7 @@ The constraint set on `__managed__` reflects two fundamental realities. First, u
 | Handler function | `sub_40E0D0` (`apply_nv_managed_attr`, 47 lines, `attribute.c:10523`) |
 | Entity node flags set | `entity+149` bit 0 (`__managed__`) AND `entity+148` bit 0 (`__device__`) |
 | Detection bitmask | `(*(_WORD*)(entity + 148) & 0x101) == 0x101` |
-| Minimum architecture | compute_30 (Kepler) -- `dword_126E4A8 >= 30` |
+| Minimum architecture | compute_30 (Kepler) — `dword_126E4A8 >= 30` |
 | Applies to | Variables only (entity kind 7) |
 | Diagnostic codes | 3481, 3482, 3485, 3577 (attribute application); arch/config errors (declaration processing) |
 | Managed RT boilerplate emitter | `sub_489000` (`process_file_scope_entities`, line 218) |
@@ -34,7 +34,7 @@ This is fundamentally different from the other three memory spaces:
 | `__constant__` | Device read-only (host writes via `cudaMemcpyToSymbol`) | Manual | Program lifetime |
 | `__managed__` | Host and device, same pointer | Automatic (page faults) | Program lifetime |
 
-Because managed memory is fundamentally device global memory with runtime-managed migration, the `__managed__` handler always sets the `__device__` bit alongside the `__managed__` bit. This is not redundant -- it ensures that all code paths that check for "device-accessible variable" (error 3483 scope checks, external linkage warning 3648, cross-space reference validation) treat managed variables correctly. A managed variable IS a device variable; it just happens to also be host-accessible through the runtime's page migration.
+Because managed memory is fundamentally device global memory with runtime-managed migration, the `__managed__` handler always sets the `__device__` bit alongside the `__managed__` bit. This is not redundant — it ensures that all code paths that check for "device-accessible variable" (error 3483 scope checks, external linkage warning 3648, cross-space reference validation) treat managed variables correctly. A managed variable IS a device variable; it just happens to also be host-accessible through the runtime's page migration.
 
 ### Worked Example: Source to Emitted Wrapper
 
@@ -68,13 +68,13 @@ The lazy-init guard is what the access wrapper emitters at `sub_4768F0` / `sub_4
 
 Each validation check enforced by the handler exists for a specific hardware or semantic reason:
 
-- **Variables only (kind 7)**: Unified memory is a storage concept. Functions do not reside in managed memory -- they have execution spaces, not memory spaces.
+- **Variables only (kind 7)**: Unified memory is a storage concept. Functions do not reside in managed memory — they have execution spaces, not memory spaces.
 
 - **Cannot be `__shared__` or `__constant__`**: These are mutually exclusive memory spaces that occupy different physical hardware. `__shared__` is per-block on-chip SRAM with no concept of host accessibility. `__constant__` is a read-only cached region with no write path from device code. Managed memory is global DRAM with page migration. They cannot coexist.
 
 - **Cannot be `thread_local`**: Thread-local storage uses thread-specific addressing (TLS segments) which is a host-side concept incompatible with CUDA's execution model. A managed variable must have a single global address visible to all threads on both host and device.
 
-- **Cannot be a local variable or reference type**: Managed variables require runtime registration with the CUDA driver during module loading. Local variables are stack-allocated with lifetimes that cannot be tracked by the runtime. References cannot cross address spaces -- a reference to a managed variable on the host would hold a CPU virtual address that is meaningless on the device.
+- **Cannot be a local variable or reference type**: Managed variables require runtime registration with the CUDA driver during module loading. Local variables are stack-allocated with lifetimes that cannot be tracked by the runtime. References cannot cross address spaces — a reference to a managed variable on the host would hold a CPU virtual address that is meaningless on the device.
 
 - **Requires compute_30+**: Unified Virtual Addressing (UVA), the hardware foundation for managed memory, was introduced with the Kepler architecture (compute capability 3.0). On earlier architectures, host and device have separate, non-overlapping virtual address spaces, making transparent page migration impossible.
 
@@ -82,7 +82,7 @@ Each validation check enforced by the handler exists for a specific hardware or 
 
 ## Attribute Application: apply_nv_managed_attr
 
-### sub_40E0D0 -- Full Pseudocode
+### sub_40E0D0 — Full Pseudocode
 
 The `__managed__` attribute handler is the simplest of the four memory space handlers and demonstrates the complete validation template. Called from `apply_one_attribute` (`sub_413240`) when the attribute kind byte is `'f'` (102).
 
@@ -168,8 +168,8 @@ entity_t* apply_nv_managed_attr(attr_node_t* a1, entity_t* a2, uint8_t a3) {
 
 | Offset | Field | Bits Set | Meaning |
 |---|---|---|---|
-| `+148` | `memory_space` | bit 0 (`0x01`) | `__device__` -- variable lives in device global memory |
-| `+149` | `extended_space` | bit 0 (`0x01`) | `__managed__` -- variable is in unified memory |
+| `+148` | `memory_space` | bit 0 (`0x01`) | `__device__` — variable lives in device global memory |
+| `+149` | `extended_space` | bit 0 (`0x01`) | `__managed__` — variable is in unified memory |
 
 ### Entity Node Fields Read (Validation)
 
@@ -192,7 +192,7 @@ The `__device__` handler's variable path (entity kind 7) is structurally identic
 4. Check error 3485 (local variable)
 5. Check error 3577 (grid_constant conflict)
 
-The only difference: `__managed__` additionally sets `byte_149 |= 0x01`. The `__device__` handler also has a function path (kind 11) for setting execution space bits -- `__managed__` has no function path because managed memory is a storage concept, not an execution concept.
+The only difference: `__managed__` additionally sets `byte_149 |= 0x01`. The `__device__` handler also has a function path (kind 11) for setting execution space bits — `__managed__` has no function path because managed memory is a storage concept, not an execution concept.
 
 ## Architecture Gating
 
@@ -221,7 +221,7 @@ The original `0x48` attribute IL node is consumed at application time and never 
 
 ## Managed Runtime Boilerplate
 
-Every `.int.c` file emitted by cudafe++ contains a block of managed runtime initialization code, emitted unconditionally by `sub_489000` (`process_file_scope_entities`) at line 218. This block is emitted regardless of whether the translation unit contains any `__managed__` variables -- the static guard flag ensures zero overhead when no managed variables exist.
+Every `.int.c` file emitted by cudafe++ contains a block of managed runtime initialization code, emitted unconditionally by `sub_489000` (`process_file_scope_entities`) at line 218. This block is emitted regardless of whether the translation unit contains any `__managed__` variables — the static guard flag ensures zero overhead when no managed variables exist.
 
 ### Static Declarations
 
@@ -243,8 +243,8 @@ Each symbol serves a specific role in the initialization chain:
 |---|---|---|
 | `__nv_inited_managed_rt` | `static char` | Guard flag: 0 = uninitialized, nonzero = initialized |
 | `__nv_fatbinhandle_for_managed_rt` | `static void**` | Cached fatbinary handle, populated during `__cudaRegisterFatBinary` |
-| `__nv_save_fatbinhandle_for_managed_rt` | `static void(void**)` | Callback that stores the fatbin handle -- called at program startup |
-| `__nv_init_managed_rt_with_module` | `static char(void**)` | Forward declaration -- defined later by `crt/host_runtime.h` |
+| `__nv_save_fatbinhandle_for_managed_rt` | `static void(void**)` | Callback that stores the fatbin handle — called at program startup |
+| `__nv_init_managed_rt_with_module` | `static char(void**)` | Forward declaration — defined later by `crt/host_runtime.h` |
 
 The forward declaration of `__nv_init_managed_rt_with_module` is critical: this function is provided by the CUDA runtime headers and performs the actual `cudaRegisterManagedVariable` calls. By forward-declaring it here, the managed runtime boilerplate can reference it before the runtime header is `#include`d later in the `.int.c` file.
 
@@ -345,19 +345,19 @@ Reading from inside out:
 ^--- dereference: access the managed variable's storage ---------------------------------^
 ```
 
-1. **Ternary** `__nv_inited_managed_rt ? (void)0 : __nv_init_managed_rt()` -- The guard flag is checked. If nonzero (already initialized), the expression evaluates to `(void)0`, which generates no code. If zero (first access), `__nv_init_managed_rt()` is called, which performs CUDA runtime registration and sets the guard flag to nonzero.
+1. **Ternary** `__nv_inited_managed_rt ? (void)0 : __nv_init_managed_rt()` — The guard flag is checked. If nonzero (already initialized), the expression evaluates to `(void)0`, which generates no code. If zero (first access), `__nv_init_managed_rt()` is called, which performs CUDA runtime registration and sets the guard flag to nonzero.
 
-2. **Comma operator** `(init_expr, (managed_var))` -- The C comma operator evaluates its left operand for side effects only, discards the result, then evaluates and returns its right operand. This guarantees the initialization side-effect is sequenced before the variable access, per C/C++ sequencing rules (C11 6.5.17, C++17 [expr.comma]).
+2. **Comma operator** `(init_expr, (managed_var))` — The C comma operator evaluates its left operand for side effects only, discards the result, then evaluates and returns its right operand. This guarantees the initialization side-effect is sequenced before the variable access, per C/C++ sequencing rules (C11 6.5.17, C++17 [expr.comma]).
 
-3. **Outer dereference** `*(...)` -- The outer `*` dereferences the result. After runtime registration, the managed variable's symbol resolves to the unified memory pointer that the CUDA runtime allocated via `cudaMallocManaged`. The dereference yields the actual variable value.
+3. **Outer dereference** `*(...)` — The outer `*` dereferences the result. After runtime registration, the managed variable's symbol resolves to the unified memory pointer that the CUDA runtime allocated via `cudaMallocManaged`. The dereference yields the actual variable value.
 
-The entire expression is parenthesized to be safely usable in any expression context -- assignments, function arguments, member access, etc.
+The entire expression is parenthesized to be safely usable in any expression context — assignments, function arguments, member access, etc.
 
 ### Two Emitter Paths
 
 The access transformation is applied by two separate functions, covering different name resolution contexts:
 
-**sub_484940 (`gen_variable_name`, 52 lines)** -- handles direct variable name emission. Simpler structure: check the `0x101` bitmask, emit prefix, emit the name (handling three sub-cases: thread-local via `this`, anonymous via `sub_483A80`, or regular via `sub_472730`), emit suffix.
+**sub_484940 (`gen_variable_name`, 52 lines)** — handles direct variable name emission. Simpler structure: check the `0x101` bitmask, emit prefix, emit the name (handling three sub-cases: thread-local via `this`, anonymous via `sub_483A80`, or regular via `sub_472730`), emit suffix.
 
 ```c
 // sub_484940 -- gen_variable_name (pseudocode)
@@ -383,7 +383,7 @@ void gen_variable_name(entity_t* a1) {
 }
 ```
 
-**sub_4768F0 (`gen_name_ref`, 237 lines)** -- handles qualified name references with `::` scope resolution, template arguments, `__super::` qualifier, and member access. The managed wrapping applies an additional gate: `a3 == 7` (entity is a variable) AND `!v7` (the fourth parameter is zero, meaning no nested context that already handles initialization).
+**sub_4768F0 (`gen_name_ref`, 237 lines)** — handles qualified name references with `::` scope resolution, template arguments, `__super::` qualifier, and member access. The managed wrapping applies an additional gate: `a3 == 7` (entity is a variable) AND `!v7` (the fourth parameter is zero, meaning no nested context that already handles initialization).
 
 ```c
 // sub_4768F0 -- gen_name_ref, managed wrapping (lines 160-163, 231-236)
@@ -418,7 +418,7 @@ if ((*(uint16_t*)(var_info + 148) & 0x0101) == 0x0101)
     return;  // managed variable -- host access is legal
 ```
 
-This uses the same `0x0101` bitmask to detect managed variables. The exemption exists because managed variables are explicitly designed for host access -- that is their entire purpose. Without this exemption, every host-side `__managed__` variable access would trigger a spurious "reference to device variable from host code" error.
+This uses the same `0x0101` bitmask to detect managed variables. The exemption exists because managed variables are explicitly designed for host access — that is their entire purpose. Without this exemption, every host-side `__managed__` variable access would trigger a spurious "reference to device variable from host code" error.
 
 ## Managed Variables and constexpr
 
@@ -486,12 +486,12 @@ Managed variables therefore trigger this warning if they have external linkage a
 
 | Address | Name | Lines | Role |
 |---|---|---|---|
-| `sub_40E0D0` | `apply_nv_managed_attr` | 47 | Attribute handler -- sets flags, validates |
+| `sub_40E0D0` | `apply_nv_managed_attr` | 47 | Attribute handler — sets flags, validates |
 | `sub_40EB80` | `apply_nv_device_attr` | 100 | Device handler (variable path is structurally identical) |
-| `sub_413240` | `apply_one_attribute` | 585 | Dispatch -- routes kind `'f'` to `sub_40E0D0` |
+| `sub_413240` | `apply_one_attribute` | 585 | Dispatch — routes kind `'f'` to `sub_40E0D0` |
 | `sub_489000` | `process_file_scope_entities` | 723 | Emits managed RT boilerplate into `.int.c` |
-| `sub_4768F0` | `gen_name_ref` | 237 | Access wrapper -- qualified name path |
-| `sub_484940` | `gen_variable_name` | 52 | Access wrapper -- direct name path |
+| `sub_4768F0` | `gen_name_ref` | 237 | Access wrapper — qualified name path |
+| `sub_484940` | `gen_variable_name` | 52 | Access wrapper — direct name path |
 | `sub_4DEC90` | `variable_declaration` | 1098 | Declaration processing, constexpr/VLA checks |
 | `sub_4DC200` | `mark_defined_variable` | 26 | External linkage warning (error 3648) |
 | `sub_72A650` | `record_symbol_reference_full` | ~400 | Cross-space check with managed exemption |
@@ -499,10 +499,10 @@ Managed variables therefore trigger this warning if they have external linkage a
 
 ## Cross-References
 
-- [Memory Spaces](../cuda/memory-spaces.md) -- bitfield encoding at entity `+148`/`+149`, all four memory space handlers
-- [Attribute System Overview](./overview.md) -- dispatch table, attribute kind enum, application pipeline
-- [__grid_constant__](./grid-constant.md) -- error 3577 conflict with managed
-- [Architecture Feature Gating](../cuda/arch-gating.md) -- compute_30 gate for `__managed__`
-- [CUDA Runtime Boilerplate](../output/cuda-runtime.md) -- managed RT emission, lambda stubs, `__cudaPushCallConfiguration`
-- [Cross-Space Validation](../cuda/cross-space-validation.md) -- managed exemption in host access checks
-- [Entity Node Layout](../structs/entity-node.md) -- byte `+148`/`+149` field definitions
+- [Memory Spaces](../cuda/memory-spaces.md) — bitfield encoding at entity `+148`/`+149`, all four memory space handlers
+- [Attribute System Overview](./overview.md) — dispatch table, attribute kind enum, application pipeline
+- [__grid_constant__](./grid-constant.md) — error 3577 conflict with managed
+- [Architecture Feature Gating](../cuda/arch-gating.md) — compute_30 gate for `__managed__`
+- [CUDA Runtime Boilerplate](../output/cuda-runtime.md) — managed RT emission, lambda stubs, `__cudaPushCallConfiguration`
+- [Cross-Space Validation](../cuda/cross-space-validation.md) — managed exemption in host access checks
+- [Entity Node Layout](../structs/entity-node.md) — byte `+148`/`+149` field definitions

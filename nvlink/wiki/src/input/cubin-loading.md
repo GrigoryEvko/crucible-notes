@@ -1,6 +1,6 @@
 # Cubin Loading
 
-A cubin is a CUDA device ELF -- an ELF binary with `e_machine == 190` (`EM_CUDA`) containing compiled SASS instructions, constant data, and NVIDIA-specific metadata sections. When nvlink encounters a cubin input (either directly on the command line or extracted from a fatbin container), it must validate the ELF structure, confirm the SM architecture matches the link target, distinguish SASS from PTX-only cubins, classify every symbol into kernels / device functions / globals, and decide whether the object requires pre-link finalization. This page documents the complete path from raw bytes to a validated cubin whose sections, symbols, and metadata have been integrated into the linker state ready for the merge phase.
+A cubin is a CUDA device ELF — an ELF binary with `e_machine == 190` (`EM_CUDA`) containing compiled SASS instructions, constant data, and NVIDIA-specific metadata sections. When nvlink encounters a cubin input (either directly on the command line or extracted from a fatbin container), it must validate the ELF structure, confirm the SM architecture matches the link target, distinguish SASS from PTX-only cubins, classify every symbol into kernels / device functions / globals, and decide whether the object requires pre-link finalization. This page documents the complete path from raw bytes to a validated cubin whose sections, symbols, and metadata have been integrated into the linker state ready for the merge phase.
 
 **Confidence:** HIGH for the detection, validation, architecture-match, and FNLZR paths (all decompiled functions read end-to-end from `sub_43D970`, `sub_43D9A0`, `sub_43D9B0`, `sub_43DA40`, `sub_43DA80`, `sub_43DD30`, `sub_43E100`, `sub_43E260`, `sub_43E2F0`, `sub_43E420`, `sub_43E610`, `sub_43E6F0`, `sub_426570`, `sub_4275C0`). HIGH for section-name dispatch and `.nv.compat` TLV parsing (extracted from `sub_45E3C0` and `sub_45E7D0` lines 975-1012 and 1804-1851). MEDIUM for the exact STT type branches in `sub_45D180` (read but not line-by-line verified against SysV ELF spec) and HIGH for the absence of LZ4/zlib/SHF_COMPRESSED cubin decompression (the only compression symbols in the binary live inside the bundled libcompiler OCG at addresses `0x1CExxxx`--`0x1D3xxxx`, not on the cubin-loading path).
 
@@ -21,7 +21,7 @@ A cubin is a CUDA device ELF -- an ELF binary with `e_machine == 190` (`EM_CUDA`
 | `sub_43E6F0` | `has_abi_suffix` | 172 B | Detects the `a` suffix flag (ABI variant) in `e_flags` |
 | `sub_43E610` | `read_nv_compat` | 168 B | Parses the `.nv.compat` section for extended arch metadata |
 | `sub_426570` | `validate_arch_and_add` | 7,427 B | Validates architecture match, configures link mode, adds cubin to linker |
-| `sub_4275C0` | `post_link_transform` | 3,989 B | FNLZR (Finalizer) -- post-link binary rewriting for Mercury/SASS targets |
+| `sub_4275C0` | `post_link_transform` | 3,989 B | FNLZR (Finalizer) — post-link binary rewriting for Mercury/SASS targets |
 | `sub_4878A0` | `arch_string_match` | 328 B | Compares input arch string against target `--arch` value |
 | `sub_45E7D0` | `merge_cubin_into_elfw` | 52,000+ B | Symbol-table iteration, section-name dispatch, `.nv.compat` TLV parsing, `.nv.info` attribute patching |
 | `sub_45E3C0` | `classify_and_register_section` | 2,800 B | Maps section name to NVIDIA section type; the standalone section-classifier entry point |
@@ -50,7 +50,7 @@ The `e_machine` check happens inline in `main()` after the ELF magic matches. An
 
 1. `sub_43E100` line 52 (`load_cubin_from_file` final gate): `if (get_elf32_header(buf)->e_machine != 190) return NULL;`
 2. The main file-dispatch loop: before calling `sub_426570`, main() reads `e_machine` from the header probe and dispatches cubins vs host ELFs.
-3. `sub_43DD30` does **not** check `e_machine` -- it only validates the structural integrity of the header and section arrays. A host ELF that accidentally matches `e_machine==190` would still fail later in `sub_426570` due to the architecture mismatch (host ELFs have no valid `e_flags` SM version).
+3. `sub_43DD30` does **not** check `e_machine` — it only validates the structural integrity of the header and section arrays. A host ELF that accidentally matches `e_machine==190` would still fail later in `sub_426570` due to the architecture mismatch (host ELFs have no valid `e_flags` SM version).
 
 The `EM_CUDA` constant is hardcoded as a literal in three decompiled files:
 - `sub_43E100` line 52: `*(_WORD *)(sub_46B590(v10) + 18) == 190`
@@ -91,7 +91,7 @@ bool is_host_elf(void *elf_buf) {
 }
 ```
 
-Device cubins produced by ptxas have `e_type == ET_REL` (1) on legacy targets or the Mercury custom type `0xFF00` on sm >= 100; ptxas never emits `ET_EXEC`. `ET_EXEC` (2) appears only on cubins produced as the final output of a previous nvlink invocation -- these are rejected by `sub_426570` because fully-linked executables cannot be re-linked. All variants still carry `e_machine == 190`. The combination of `e_machine == 190` with any `e_type` value routes through the cubin handler; `sub_43D9B0` is used later (e.g., in the LTO path) to distinguish host `.o` files from device cubins by testing `e_type == ET_REL`.
+Device cubins produced by ptxas have `e_type == ET_REL` (1) on legacy targets or the Mercury custom type `0xFF00` on sm >= 100; ptxas never emits `ET_EXEC`. `ET_EXEC` (2) appears only on cubins produced as the final output of a previous nvlink invocation — these are rejected by `sub_426570` because fully-linked executables cannot be re-linked. All variants still carry `e_machine == 190`. The combination of `e_machine == 190` with any `e_type` value routes through the cubin handler; `sub_43D9B0` is used later (e.g., in the LTO path) to distinguish host `.o` files from device cubins by testing `e_type == ET_REL`.
 
 ## SASS Flag Detection
 
@@ -218,9 +218,9 @@ if (relative <= 14)
     exempt |= (0x400D >> relative) & 1;  // bits 0, 2, 3, 14 set
 ```
 
-The bitmask `0x400D` in binary is `0100 0000 0000 1101`, exempting offsets 0, 2, 3, and 14 relative to `0x70000007` -- i.e. types `0x70000007` (`SHT_CUDA_GLOBAL`), `0x70000009` (`SHT_CUDA_LOCAL`), `0x7000000A` (`SHT_CUDA_SHARED`), and `0x70000015` (`SHT_CUDA_SHARED_RESERVED`). All four are "virtual" sections that occupy device memory at runtime but have no backing bytes in the cubin file.
+The bitmask `0x400D` in binary is `0100 0000 0000 1101`, exempting offsets 0, 2, 3, and 14 relative to `0x70000007` — i.e. types `0x70000007` (`SHT_CUDA_GLOBAL`), `0x70000009` (`SHT_CUDA_LOCAL`), `0x7000000A` (`SHT_CUDA_SHARED`), and `0x70000015` (`SHT_CUDA_SHARED_RESERVED`). All four are "virtual" sections that occupy device memory at runtime but have no backing bytes in the cubin file.
 
-> **QUIRK -- the exemption base `0x70000007` is not `SHT_LOPROC`.** Standard ELF defines `SHT_LOPROC = 0x70000000`, but the validator uses `0x70000007` (`SHT_CUDA_GLOBAL`) as the bit-shift origin. This is purely a code-size optimization: the only NVIDIA section types that can be data-less are clustered in the `0x70000007`..`0x70000015` range, so re-basing at `0x70000007` keeps the shift amount and the bitmask both in the 0..14 range, which fits in a 16-bit immediate. Section types `0x70000000`..`0x70000006` (info, callgraph, prototype, resolvedrela, metadata, ...) all carry real file content and are not exemption candidates.
+> **QUIRK — the exemption base `0x70000007` is not `SHT_LOPROC`.** Standard ELF defines `SHT_LOPROC = 0x70000000`, but the validator uses `0x70000007` (`SHT_CUDA_GLOBAL`) as the bit-shift origin. This is purely a code-size optimization: the only NVIDIA section types that can be data-less are clustered in the `0x70000007`..`0x70000015` range, so re-basing at `0x70000007` keeps the shift amount and the bitmask both in the 0..14 range, which fits in a 16-bit immediate. Section types `0x70000000`..`0x70000006` (info, callgraph, prototype, resolvedrela, metadata, ...) all carry real file content and are not exemption candidates.
 
 ## Architecture Extraction from e\_flags
 
@@ -362,7 +362,7 @@ The buffer is 12 bytes, and there is an explicit overflow check: if `snprintf` r
 
 ### Architecture Match
 
-`sub_4878A0` (`arch_string_match`) compares the constructed `arch_str` against the global target `qword_2A5F318` (the `--arch` value). The comparison is not a simple string equality -- it parses both architecture strings into structured records and applies version compatibility rules:
+`sub_4878A0` (`arch_string_match`) compares the constructed `arch_str` against the global target `qword_2A5F318` (the `--arch` value). The comparison is not a simple string equality — it parses both architecture strings into structured records and applies version compatibility rules:
 
 - **Exact match**: sm\_90 == sm\_90 (passes)
 - **Family match**: sm\_90a is compatible with sm\_90 as a target
@@ -409,7 +409,7 @@ if (is_sass_cubin) {
 }
 ```
 
-When the first non-SASS cubin arrives, the linker locks into legacy mode: Mercury flags are cleared and cannot be re-enabled. This is a one-way transition -- once a legacy cubin enters the link, the entire output is legacy.
+When the first non-SASS cubin arrives, the linker locks into legacy mode: Mercury flags are cleared and cannot be re-enabled. This is a one-way transition — once a legacy cubin enters the link, the entire output is legacy.
 
 ### Toolkit Version Validation
 
@@ -542,7 +542,7 @@ Raw numeric values from the decompiled code:
 | `1879048292` | `0x70000064` | `SHT_CUDA_CONSTANT0` | `.nv.constant0` |
 | `1879048198` | `0x70000006` | `SHT_CUDA_CONSTANT` (generic) | incoming base for constant banks |
 
-The expression `strtol(name+12, 0, 10) + 1879048292` at line 1001 (`LABEL_427`) reads the decimal digits that follow `.nv.constant` and adds them to the base. `.nv.constant0` becomes `0x70000064`, `.nv.constant17` becomes `0x70000075`. This is how the 18 numbered banks get their distinct section type IDs and how the merge phase later identifies which bank a section belongs to without re-parsing the name. The same encoding is reused for the 7 specialized/named constant banks, which also use `SHT_CUDA_CONSTANT` as an input type -- see [Constant Banks](../elf/constant-banks.md) for the full table.
+The expression `strtol(name+12, 0, 10) + 1879048292` at line 1001 (`LABEL_427`) reads the decimal digits that follow `.nv.constant` and adds them to the base. `.nv.constant0` becomes `0x70000064`, `.nv.constant17` becomes `0x70000075`. This is how the 18 numbered banks get their distinct section type IDs and how the merge phase later identifies which bank a section belongs to without re-parsing the name. The same encoding is reused for the 7 specialized/named constant banks, which also use `SHT_CUDA_CONSTANT` as an input type — see [Constant Banks](../elf/constant-banks.md) for the full table.
 
 ### Per-Section Dispatch After Classification
 
@@ -550,7 +550,7 @@ Once the section type has been normalized, `sub_45E7D0` dispatches based on the 
 
 | Classified type | Dispatch action |
 |---|---|
-| `0x70000000` (`SHT_CUDA_INFO`, `.nv.info*`) | Parsed inline as TLV records by `sub_45E7D0` itself (record loop at decompiled line ~1854); target section allocated via `sub_4504B0`. *Earlier wiki revisions incorrectly cited `sub_44E8B0` here -- that function is a generic string tokenizer used for option/library parsing, not a TLV parser.* |
+| `0x70000000` (`SHT_CUDA_INFO`, `.nv.info*`) | Parsed inline as TLV records by `sub_45E7D0` itself (record loop at decompiled line ~1854); target section allocated via `sub_4504B0`. *Earlier wiki revisions incorrectly cited `sub_44E8B0` here — that function is a generic string tokenizer used for option/library parsing, not a TLV parser.* |
 | `0x70000001` (`SHT_CUDA_CALLGRAPH`, `.nv.callgraph`) | Indexed as a call-graph input for dead-code elimination |
 | `0x70000002` (`SHT_CUDA_CALLGRAPH_INFO`, `.nv.callgraph.info`) | Per-function callgraph metadata |
 | `0x70000006`-`0x70000075` (constant banks) | Routed through `sub_438640` for bank-specific merging |
@@ -607,7 +607,7 @@ The parser classifies `tag_id` by a bitmask on `(1 << tag_id)`:
 
 | `tag_id` | `1 << tag_id` | `& 0x6C`? | `& 0x180`? | Handler | Meaning |
 |---|---|---|---|---|---|
-| 2 | `0x04` | yes | no | `sub_451920(linker, 2, value_byte)` | `ISA_CLASS` -- rejected if ISA class > 0x7F on Mercury |
+| 2 | `0x04` | yes | no | `sub_451920(linker, 2, value_byte)` | `ISA_CLASS` — rejected if ISA class > 0x7F on Mercury |
 | 3 | `0x08` | yes | no | `sub_451920(linker, 3, value_byte)` | ABI variant |
 | 5 | `0x20` | yes | no | `sub_451920(linker, 5, value_byte)` | ISA feature |
 | 6 | `0x40` | yes | no | `sub_451920(linker, 6, value_byte)` | ISA feature |
@@ -617,7 +617,7 @@ The parser classifies `tag_id` by a bitmask on `(1 << tag_id)`:
 
 Unknown attributes emit `"unknown .nv.compat attribute (%x) encoutered.\n"` (note the original typo) to stderr when the `0x10` verbose flag is set, then continue. The record-advance logic is `cursor += (tag_kind == 4) ? 4 + length : 4`, so `tag_kind == 4` is a length-prefixed record while other kinds carry the immediate value in the same 4 bytes.
 
-After the walk finishes, a "missing attributes" sweep runs at `sub_45E7D0:1743-1801`. For each required attribute (2, 3, 5, 6, 7), if the corresponding `BYTE(v600, tag_id)` was never set, a default value is installed -- and for `tag_id == 2` on Mercury, ISA class > `0x7F` triggers the error `unk_2A5B900` ("ISA_CLASS out of range").
+After the walk finishes, a "missing attributes" sweep runs at `sub_45E7D0:1743-1801`. For each required attribute (2, 3, 5, 6, 7), if the corresponding `BYTE(v600, tag_id)` was never set, a default value is installed — and for `tag_id == 2` on Mercury, ISA class > `0x7F` triggers the error `unk_2A5B900` ("ISA_CLASS out of range").
 
 ## Symbol Classification: Kernels, Device Functions, and Globals
 
@@ -642,7 +642,7 @@ Inside `sub_45D180`, the function then consults `st_other & 0x10` (NVIDIA's visi
 | `st_other[6]` | `0x40` | Exported across translation units |
 | `st_other[7]` | `0x80` | Internal / intrinsic |
 
-When `(st_other ^ existing_st_other) & 0x10` is non-zero, the function emits `unk_2A5B8F0` -- "conflicting definitions for %s, one is a kernel and the other is not" -- and aborts. Kernels and device functions with the same mangled name cannot coexist.
+When `(st_other ^ existing_st_other) & 0x10` is non-zero, the function emits `unk_2A5B8F0` — "conflicting definitions for %s, one is a kernel and the other is not" — and aborts. Kernels and device functions with the same mangled name cannot coexist.
 
 The classification then dispatches:
 
@@ -667,10 +667,10 @@ The second pass (`sub_45E7D0:802-1014`) handles `st_info & 0xF` values 0, 1, 3-1
 For each STT_OBJECT entry (global variable), the code:
 
 1. Reads `st_shndx` from `st_info` (symbol's owning section index).
-2. Looks up the corresponding linker section via `v19[1]` -- the section index map built earlier in the first pass.
+2. Looks up the corresponding linker section via `v19[1]` — the section index map built earlier in the first pass.
 3. Fails with `"section not mapped"` (`unk_2A5B990`) if the source section was filtered out.
 4. Adds the symbol via `sub_4411B0` (symbol-add by name) or `sub_440740` (symbol-add with explicit attributes).
-5. On collision with an existing definition, checks that the `st_info` types match -- if not, emits `unk_2A5BA10` ("symbol type mismatch for %s").
+5. On collision with an existing definition, checks that the `st_info` types match — if not, emits `unk_2A5BA10` ("symbol type mismatch for %s").
 
 A special case handles `st_shndx == SHN_ABS (0xFFF1)` and `st_shndx == 0`: these symbols bypass section mapping entirely and go straight into the global namespace.
 
@@ -680,7 +680,7 @@ After both passes, `v19[1]` contains the input-to-linker symbol-index map. This 
 
 ## Constant Bank Extraction
 
-The constant-bank extraction happens as a natural consequence of the section dispatch described above. There is no separate extraction pass -- the moment a `.nv.constant<N>` section is classified with type `0x70000064 + N`, it becomes a routine section input for the constant-bank merge pipeline (`sub_438640`).
+The constant-bank extraction happens as a natural consequence of the section dispatch described above. There is no separate extraction pass — the moment a `.nv.constant<N>` section is classified with type `0x70000064 + N`, it becomes a routine section input for the constant-bank merge pipeline (`sub_438640`).
 
 ### From .nv.constant to SHT_CUDA_CONSTANTn
 
@@ -701,7 +701,7 @@ After sub_45E7D0:1006-1012 classification:
                                 then + 0x40 from the NV offset = 0x70000064)
 ```
 
-Wait -- the literal in the decompiled code is `1879048292` which equals `0x70000064` directly. The `0x70000024` base from the earlier description is the value `1879048228`, but the actual code uses `1879048292 = 0x70000064` which already includes the `+64` offset. Correcting the formula:
+Wait — the literal in the decompiled code is `1879048292` which equals `0x70000064` directly. The `0x70000024` base from the earlier description is the value `1879048228`, but the actual code uses `1879048292 = 0x70000064` which already includes the `+64` offset. Correcting the formula:
 
 ```text
 internal_type = strtol(name + 12, 0, 10) + 0x70000064   // bank 0 at base
@@ -714,18 +714,18 @@ So `.nv.constant0` -> `0x70000064` (SHT_CUDA_CONSTANT0), `.nv.constant1` -> `0x7
 
 Once classified, the constant-bank section is added to the linker state via the same `sub_441AC0` + `sub_440590` + `sub_440350` chain used for all other sections. The raw bytes are copied by `sub_432B10` (memory allocator + memcpy). At merge time, `sub_438640` collects all sections with the same bank number across all input cubins and concatenates/deduplicates them using the hash-based dedup engine `sub_4339A0`. The dedup hash keys on the byte content, so two cubins with identical bank-0 constants share storage.
 
-Relocations that point into constant banks (`R_CUDA_ABS32_LO_0`, `R_CUDA_ABS32_HI_0`, `R_CUDA_CONST_FIELD`, etc.) are resolved after merge in `sub_46C1B0` -- see [linker/r-cuda-relocations.md](../linker/r-cuda-relocations.md) for the full relocation set.
+Relocations that point into constant banks (`R_CUDA_ABS32_LO_0`, `R_CUDA_ABS32_HI_0`, `R_CUDA_CONST_FIELD`, etc.) are resolved after merge in `sub_46C1B0` — see [linker/r-cuda-relocations.md](../linker/r-cuda-relocations.md) for the full relocation set.
 
 ## Compressed Section Handling
 
-**nvlink does NOT decompress cubin sections.** There is no LZ4, zlib, zstd, or `SHF_COMPRESSED` (`0x800`) handling on the cubin-loading path. The validator `sub_43DD30` does not even acknowledge the `SHF_COMPRESSED` flag -- any section whose bytes appear compressed would simply be treated as opaque bytes, merged verbatim, and almost certainly fail later relocation resolution or FNLZR parsing.
+**nvlink does NOT decompress cubin sections.** There is no LZ4, zlib, zstd, or `SHF_COMPRESSED` (`0x800`) handling on the cubin-loading path. The validator `sub_43DD30` does not even acknowledge the `SHF_COMPRESSED` flag — any section whose bytes appear compressed would simply be treated as opaque bytes, merged verbatim, and almost certainly fail later relocation resolution or FNLZR parsing.
 
 Proof by exhaustion:
 
 1. A keyword search for `LZ4`, `lz4`, `zlib`, `inflate`, `deflate`, `zstd`, `compress`, `ELFCOMPRESS`, `SHF_COMPRESSED`, and `0x800000` across all 40,210 decompiled functions finds only matches inside the bundled OCG (open code generator, libcompiler) in the `0x1CCxxxx`--`0x1D3xxxx` address range. Those functions are invoked from PTX codegen (constant table compression) and LTO bitcode packing, not from the cubin-loading or section-merging paths.
 2. `sub_45E7D0` reads section bytes via `&a2->__size[sh_offset]` and passes them straight to `memcpy`. There is no conditional decompression.
 3. Ptxas does not emit `SHF_COMPRESSED` sections in cubin output. DWARF debug sections in cubins are uncompressed, unlike their host-ELF counterparts. The host linker (`ld`) may insert `.debug_*` compression into the final executable, but device cubins embedded in a fatbin are raw.
-4. Fatbin containers themselves *can* be LZ4-compressed (the fatbin header records a compression method), but that decompression happens in `sub_43B2D0` -- the fatbin extractor -- **before** the resulting cubin bytes reach `sub_426570`. See [Fatbin Extraction](fatbin-extraction.md) for the decompression details.
+4. Fatbin containers themselves *can* be LZ4-compressed (the fatbin header records a compression method), but that decompression happens in `sub_43B2D0` — the fatbin extractor — **before** the resulting cubin bytes reach `sub_426570`. See [Fatbin Extraction](fatbin-extraction.md) for the decompression details.
 
 This means that a cubin on disk is always in the exact byte format ptxas produced. The linker simply maps it into arena memory and walks it.
 
@@ -743,7 +743,7 @@ Documented above. This layer verifies:
 - Per-section data range within buffer (excluding `SHT_NOBITS` and NVIDIA's exempted types)
 - No integer overflow in offset + size arithmetic
 
-Return: bool -- false on any violation. The caller (`sub_43E100`, the fatbin extractor, `sub_426570`) must discard the cubin on failure.
+Return: bool — false on any violation. The caller (`sub_43E100`, the fatbin extractor, `sub_426570`) must discard the cubin on failure.
 
 ### Layer 2: Extent (`sub_43DA80`)
 
@@ -756,7 +756,7 @@ This value must not exceed the buffer length. `sub_43DD30` uses it as the final 
 
 ### Layer 3: Architecture (`sub_426570`)
 
-- `e_type != ET_EXEC (2)` -- fully-linked executables (a previous nvlink output) rejected outright; the test reads `*(WORD *)(ehdr + 16) == 2`
+- `e_type != ET_EXEC (2)` — fully-linked executables (a previous nvlink output) rejected outright; the test reads `*(WORD *)(ehdr + 16) == 2`
 - ELF class matches `--machine` (`dword_2A5F30C`, 32 or 64)
 - `e_ident[EI_OSABI]` matches the expected value (`0x41` for Mercury, `0` for legacy)
 - `e_ident[EI_CLASS]` sub-field (NVIDIA uses byte 7 as a sub-class indicator; expected 7 for Elf32/legacy, 8 for Mercury)
@@ -773,7 +773,7 @@ Applied only if FNLZR is invoked:
 - **Post-link mode**: cubin MUST have the SASS flag set (`e_flags & 0x1` on Mercury, `e_flags & 0x80000000` on legacy)
 - **Pre-link mode**: cubin MUST NOT have the "already finalized" flag (`(e_flags >> 2) & 1` on Mercury, `(e_flags & 0x80004000) == 0` on legacy)
 
-Violations in either case emit `"Internal error"` (`unk_2A5B670`). These are defensive asserts -- if the earlier pipeline is correct, they never fire.
+Violations in either case emit `"Internal error"` (`unk_2A5B670`). These are defensive asserts — if the earlier pipeline is correct, they never fire.
 
 ### Integer Overflow Protection
 
@@ -857,16 +857,16 @@ All error messages are emitted through the unified diagnostic function `sub_4674
 
 ## Cross-References
 
-- [Input File Loop](../pipeline/input-loop.md) -- how cubins are dispatched from the main file loop
-- [Fatbin Extraction](fatbin-extraction.md) -- cubins extracted from fatbin containers follow the same validation path; fatbin LZ4 decompression happens before the cubin bytes reach `sub_426570`
-- [168-Byte Input Container](container-struct.md) -- the shared opaque struct that fatbin-extracted cubins traverse before re-entering this validation path (content_type 3)
-- [ELF Parsing](elf-parsing.md) -- the `sub_448360` / `sub_46B590` ELF header accessor functions; `sub_43DD30` validator documented in both pages
-- [Constant Banks](../elf/constant-banks.md) -- the name-to-index mapping and merge pipeline for sections classified here as `SHT_CUDA_CONSTANTn`
-- [.nv.info Metadata](../elf/nv-info.md) -- the TLV attribute catalog; sections allocated by `sub_4504B0` and parsed inline by `sub_45E7D0` (merge) / `sub_451D80` (finalize) after section classification
-- [NVIDIA Sections](../elf/nvidia-sections.md) -- full catalog of `SHT_CUDA_*` section types referenced by the dispatch table
-- [Section Merging](../linker/section-merging.md) -- the downstream merge stage that consumes classified sections
-- [R_CUDA Relocations](../linker/r-cuda-relocations.md) -- relocations that reference constant banks and other NV sections after merge
-- [Merge Phase](../pipeline/merge.md) -- where validated cubins are merged into the output ELF (driver for `sub_45E7D0`)
-- [Finalization Phase](../pipeline/finalize.md) -- the FNLZR post-link transform context
-- [Mercury / FNLZR](../mercury/fnlzr.md) -- detailed breakdown of the `sub_4748F0` finalizer engine invoked by `sub_4275C0`
-- [Device ELF Format](../elf/device-elf-format.md) -- `e_machine == 190`, `e_flags` SM version encoding, and the Mercury `e_type == 0xFF00` variant
+- [Input File Loop](../pipeline/input-loop.md) — how cubins are dispatched from the main file loop
+- [Fatbin Extraction](fatbin-extraction.md) — cubins extracted from fatbin containers follow the same validation path; fatbin LZ4 decompression happens before the cubin bytes reach `sub_426570`
+- [168-Byte Input Container](container-struct.md) — the shared opaque struct that fatbin-extracted cubins traverse before re-entering this validation path (content_type 3)
+- [ELF Parsing](elf-parsing.md) — the `sub_448360` / `sub_46B590` ELF header accessor functions; `sub_43DD30` validator documented in both pages
+- [Constant Banks](../elf/constant-banks.md) — the name-to-index mapping and merge pipeline for sections classified here as `SHT_CUDA_CONSTANTn`
+- [.nv.info Metadata](../elf/nv-info.md) — the TLV attribute catalog; sections allocated by `sub_4504B0` and parsed inline by `sub_45E7D0` (merge) / `sub_451D80` (finalize) after section classification
+- [NVIDIA Sections](../elf/nvidia-sections.md) — full catalog of `SHT_CUDA_*` section types referenced by the dispatch table
+- [Section Merging](../linker/section-merging.md) — the downstream merge stage that consumes classified sections
+- [R_CUDA Relocations](../linker/r-cuda-relocations.md) — relocations that reference constant banks and other NV sections after merge
+- [Merge Phase](../pipeline/merge.md) — where validated cubins are merged into the output ELF (driver for `sub_45E7D0`)
+- [Finalization Phase](../pipeline/finalize.md) — the FNLZR post-link transform context
+- [Mercury / FNLZR](../mercury/fnlzr.md) — detailed breakdown of the `sub_4748F0` finalizer engine invoked by `sub_4275C0`
+- [Device ELF Format](../elf/device-elf-format.md) — `e_machine == 190`, `e_flags` SM version encoding, and the Mercury `e_type == 0xFF00` variant

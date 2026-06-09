@@ -85,7 +85,7 @@ void check_sto_cuda_obscure(uint32_t warn_level, ..., uint64_t hdr_qword0) {
 }
 ```
 
-The warning level is stored at `elfw+624` and is set via `sub_440210`. When bit 3 of the symbol's `st_other` byte (bit 43 of the header qword, mask `0x08` in `st_other`) is set, the symbol carries the CUDA-specific "obscure" attribute -- a visibility modifier that affects how the symbol participates in resolution across compilation units. The diagnostic is emitted at warning levels 1 through 4 (controlled by `--extra-warnings` / `--warning-as-error`).
+The warning level is stored at `elfw+624` and is set via `sub_440210`. When bit 3 of the symbol's `st_other` byte (bit 43 of the header qword, mask `0x08` in `st_other`) is set, the symbol carries the CUDA-specific "obscure" attribute — a visibility modifier that affects how the symbol participates in resolution across compilation units. The diagnostic is emitted at warning levels 1 through 4 (controlled by `--extra-warnings` / `--warning-as-error`).
 
 ## The `st_shndx` Field and the 0xFFFF Virtual Marker
 
@@ -93,10 +93,10 @@ The section index is a 16-bit value. ELF reserves indices above `0xFEFF` (65,279
 
 | Value | Meaning |
 |---|---|
-| `0x0000` | `SHN_UNDEF` -- undefined symbol |
+| `0x0000` | `SHN_UNDEF` — undefined symbol |
 | `0x0001`..`0xFEFF` | Direct section index |
-| `0xFFF2` | `SHN_COMMON` -- common symbol (unallocated) |
-| `0xFFFF` | Virtual marker -- real index stored in extended tables |
+| `0xFFF2` | `SHN_COMMON` — common symbol (unallocated) |
+| `0xFFFF` | Virtual marker — real index stored in extended tables |
 
 When a symbol's owning section has an index exceeding `0xFEFF` (which happens in large cubins with thousands of per-function sections), nvlink sets `st_shndx = 0xFFFF` and stores the real section index in a pair of extended dynamic arrays at `elfw+592` (positive side) and `elfw+600` (negative side), keyed by the symbol's `sym_index`.
 
@@ -283,7 +283,7 @@ The function returns the signed `sym_index` value. If a hash map entry was found
 
 A specialized version that hardcodes `sym_type = STT_FUNC` and always registers the symbol in the callgraph. It additionally calls `sub_442820` to handle unified function table (UFT) stub merging. If the name does not start with `__cuda_uf_stub_` (checked by `sub_440230`), a `.text.<name>` section is created via `sub_441AC0`. If it does match the stub prefix, the symbol is directed to the `.nv.uft` section.
 
-`sub_442CA0` takes only four parameters (ctx, name, binding, visibility) -- the section index, value, ordinal, and size are determined internally from the text section assignment.
+`sub_442CA0` takes only four parameters (ctx, name, binding, visibility) — the section index, value, ordinal, and size are determined internally from the text section assignment.
 
 ## Section Index Resolution: `sub_440350`
 
@@ -366,13 +366,13 @@ A zero entry in the remap table means the symbol was deleted. Any attempt to res
 
 The finalization function `sub_445000` (55,681 bytes) iterates both symbol arrays and writes each record into the output `.symtab` section. The serialization order follows ELF convention:
 
-1. **Index 0**: The null symbol (`STN_UNDEF`) -- all fields zero.
+1. **Index 0**: The null symbol (`STN_UNDEF`) — all fields zero.
 2. **Positive array**: Local symbols and section symbols, in array order.
 3. **Negative array**: Global and weak symbols, in array order.
 
 For each symbol record, the first 24 bytes (`st_name` through `st_size`) are written directly, as they already match the `Elf64_Sym` layout. The remaining 24 bytes (internal bookkeeping) are discarded.
 
-The `sh_info` field of the `.symtab` section header is set to the index of the first global symbol -- which equals the count of local symbols (the positive array size). This satisfies the ELF requirement that `sh_info` marks the boundary between local and global symbols.
+The `sh_info` field of the `.symtab` section header is set to the index of the first global symbol — which equals the count of local symbols (the positive array size). This satisfies the ELF requirement that `sh_info` marks the boundary between local and global symbols.
 
 The `.strtab` section is written in parallel: for each unique name registered through `sub_4405C0`, the NUL-terminated string is placed at the byte offset recorded in `st_name`.
 
@@ -426,13 +426,13 @@ During constant bank optimization, when two symbols point to identical data, one
 
 ## Cross-References
 
-- [Symbol Resolution](../linker/symbol-resolution.md) -- higher-level symbol resolution policy and merge logic
-- [Weak Symbol Handling](../linker/weak-symbols.md) -- weak resolution that drives symbol replacement
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- creates remap tables after removing unreachable symbols
-- [ELF Writer](elf-writer.md) -- the elfw context structure that owns symbol arrays
-- [Section Record](section-record.md) -- companion data structure for sections
-- [Hash Tables](../linker/hash-tables.md) -- hash map implementation backing name lookups
-- [Serialization](../elf/serialization.md) -- `.symtab` output format
+- [Symbol Resolution](../linker/symbol-resolution.md) — higher-level symbol resolution policy and merge logic
+- [Weak Symbol Handling](../linker/weak-symbols.md) — weak resolution that drives symbol replacement
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — creates remap tables after removing unreachable symbols
+- [ELF Writer](elf-writer.md) — the elfw context structure that owns symbol arrays
+- [Section Record](section-record.md) — companion data structure for sections
+- [Hash Tables](../linker/hash-tables.md) — hash map implementation backing name lookups
+- [Serialization](../elf/serialization.md) — `.symtab` output format
 
 ## Confidence Assessment
 

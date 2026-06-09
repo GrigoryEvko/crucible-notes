@@ -80,10 +80,10 @@ reveals the NVIDIA internal build tree layout:
 ```
 
 Key observations:
-- **`/dvs/p4/`** -- Perforce depot root on the DVS (Driver Verification System) build farm.
-- **`sw/rel/gpgpu/toolkit/r13.0/`** -- Release branch for CUDA toolkit 13.0.
-- **`compiler/drivers/common/`** -- Shared compiler driver code (used by both ptxas and cicc).
-- **`generic_knobs_impl.h`** -- The knob system implementation header; the `__FILE__` macro at lines 395-1090 of this file is embedded in ptxas error metadata.
+- **`/dvs/p4/`** — Perforce depot root on the DVS (Driver Verification System) build farm.
+- **`sw/rel/gpgpu/toolkit/r13.0/`** — Release branch for CUDA toolkit 13.0.
+- **`compiler/drivers/common/`** — Shared compiler driver code (used by both ptxas and cicc).
+- **`generic_knobs_impl.h`** — The knob system implementation header; the `__FILE__` macro at lines 395-1090 of this file is embedded in ptxas error metadata.
 
 ## Evidence Index
 
@@ -101,8 +101,8 @@ Key observations:
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
-| `sub_432A00` | -- | CLI option registration; contains `--version` / `--list-version` self-identification strings (`"Ptx optimizing assembler"`, `"NVIDIA (R)"`, `"ptxocg.0.0"`) | 0.92 |
-| `sub_43A400` | -- | Compilation setup; references the `"ptxocg.0.0"` backend version tag | 0.85 |
-| `sub_6784B0` | -- | Default target architecture selector; returns **sm_75** (Turing) when no `--gpu-name` flag is supplied | 0.90 |
-| `sub_1C9F280` | -- | ELF emitter; SM-version-to-code-object mapping for cubin output | 0.85 |
-| `sub_A3D000` | -- | SM version encoding table; example encodings (12288 = sm_30, 20481 = sm_50) | 0.80 |
+| `sub_432A00` | — | CLI option registration; contains `--version` / `--list-version` self-identification strings (`"Ptx optimizing assembler"`, `"NVIDIA (R)"`, `"ptxocg.0.0"`) | 0.92 |
+| `sub_43A400` | — | Compilation setup; references the `"ptxocg.0.0"` backend version tag | 0.85 |
+| `sub_6784B0` | — | Default target architecture selector; returns **sm_75** (Turing) when no `--gpu-name` flag is supplied | 0.90 |
+| `sub_1C9F280` | — | ELF emitter; SM-version-to-code-object mapping for cubin output | 0.85 |
+| `sub_A3D000` | — | SM version encoding table; example encodings (12288 = sm_30, 20481 = sm_50) | 0.80 |

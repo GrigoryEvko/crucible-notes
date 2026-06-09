@@ -8,12 +8,12 @@ ptxas models four hardware register files plus two auxiliary barrier register fi
 
 | File | Mnemonic | Width | Usable range | Zero/True | ABI type | Introduced |
 |------|----------|-------|--------------|-----------|----------|------------|
-| R | General-purpose | 32 bits | R0 -- R254 | RZ (R255) | 2 | sm\_30 |
-| UR | Uniform | 32 bits | UR0 -- UR62 | URZ (UR63) | 3 | sm\_75 |
-| P | Predicate | 1 bit | P0 -- P6 | PT (P7) | 5 | sm\_30 |
-| UP | Uniform predicate | 1 bit | UP0 -- UP6 | UPT (UP7) | -- | sm\_75 |
+| R | General-purpose | 32 bits | R0 — R254 | RZ (R255) | 2 | sm\_30 |
+| UR | Uniform | 32 bits | UR0 — UR62 | URZ (UR63) | 3 | sm\_75 |
+| P | Predicate | 1 bit | P0 — P6 | PT (P7) | 5 | sm\_30 |
+| UP | Uniform predicate | 1 bit | UP0 — UP6 | UPT (UP7) | — | sm\_75 |
 
-**R registers** are per-thread 32-bit general-purpose registers. They hold integers, floating-point values, and addresses. 64-bit values occupy consecutive even/odd pairs (R4:R5); 128-bit values occupy aligned quads (R0:R1:R2:R3). The total R-register count for a function is `field[159] + field[102]` (reserved + allocated), stored in the Code Object at offsets +159 and +102. Maximum usable: 254 (R0--R254). R255 is the hardware zero register RZ -- reads return 0, writes are discarded.
+**R registers** are per-thread 32-bit general-purpose registers. They hold integers, floating-point values, and addresses. 64-bit values occupy consecutive even/odd pairs (R4:R5); 128-bit values occupy aligned quads (R0:R1:R2:R3). The total R-register count for a function is `field[159] + field[102]` (reserved + allocated), stored in the Code Object at offsets +159 and +102. Maximum usable: 254 (R0--R254). R255 is the hardware zero register RZ — reads return 0, writes are discarded.
 
 **UR registers** (uniform general-purpose) are warp-uniform: every thread in a warp sees the same value. Available on sm\_75 and later. Range: UR0--UR62 usable, UR63 is the uniform zero register URZ. The UR count is at Code Object +99. Attempting to use UR on pre-sm\_75 targets triggers the diagnostic `"Uniform registers were disallowed, but the compiler required (%d) uniform registers for correct code generation."`.
 
@@ -29,15 +29,15 @@ The fat-point allocator processes 7 register classes, indexed by the `reg_type` 
 
 | Class ID | Role | `+48` init | `physical_reg` init | `func+1369` bit | Creation count | Creator profile |
 |----------|------|-----------:|:-------------------:|:---------------:|---------------:|-----------------|
-| 0 | Cross-class constraint list (skipped by per-class pass; populated by bucketer at `sub_9721C0:530`) | n/a | n/a | -- | 0 static | Never created directly |
-| 1 | R "wide-init" variant: R-family register created already in the active/initialised state. | `0x1018` (bits 12+4+3 set) | `-1` | -- | **3 static sites** | Exclusively early/prologue emitters: `sub_BE3B90` (barrier set prologue), `sub_BEF110`, `sub_19D7470` (early SM init). Not reachable from generic lowering |
-| 2 | R "bridge / shadow" variant: dormant R register created as a shadow for a non-R source (e.g. predicate). | `0x1000` (bit 12 only; bits 3--4 **clear**) | `-1` | -- | 10 static sites | Sentinel slot 44 in `sub_7D82E0` (one of 46 function-ABI argument/return sentinel slots) and predicate→R conversion in `sub_86D0D0` case 5u (line 83), plus `sub_A22D00`/`sub_A28EB0` bridge paths |
-| 3 | UR "bridge / shadow" variant: dormant UR register created as a shadow for a non-UR source. | `0x1000` (bit 12 only; bits 3--4 **clear**) | `-1` | -- | 37 static sites | Sentinel slot 43 in `sub_7D82E0`; tensor→UR conversion in `sub_86D0D0` case 6u (line 75); shares sm\_5x constraint-split retry with class 6 via `sub_971A90:132` |
+| 0 | Cross-class constraint list (skipped by per-class pass; populated by bucketer at `sub_9721C0:530`) | n/a | n/a | — | 0 static | Never created directly |
+| 1 | R "wide-init" variant: R-family register created already in the active/initialised state. | `0x1018` (bits 12+4+3 set) | `-1` | — | **3 static sites** | Exclusively early/prologue emitters: `sub_BE3B90` (barrier set prologue), `sub_BEF110`, `sub_19D7470` (early SM init). Not reachable from generic lowering |
+| 2 | R "bridge / shadow" variant: dormant R register created as a shadow for a non-R source (e.g. predicate). | `0x1000` (bit 12 only; bits 3--4 **clear**) | `-1` | — | 10 static sites | Sentinel slot 44 in `sub_7D82E0` (one of 46 function-ABI argument/return sentinel slots) and predicate→R conversion in `sub_86D0D0` case 5u (line 83), plus `sub_A22D00`/`sub_A28EB0` bridge paths |
+| 3 | UR "bridge / shadow" variant: dormant UR register created as a shadow for a non-UR source. | `0x1000` (bit 12 only; bits 3--4 **clear**) | `-1` | — | 37 static sites | Sentinel slot 43 in `sub_7D82E0`; tensor→UR conversion in `sub_86D0D0` case 6u (line 75); shares sm\_5x constraint-split retry with class 6 via `sub_971A90:132` |
 | 4 | UR "direct-emit" variant: UR register created already active, used by intrinsic lowering that emits real UR destinations. Setting this class **sticks a function-scope flag** (see below). | `0x1018` (bits 12+4+3 set) | `-1` | **bit 1 (`0x02`) set** | 26 static sites | Intrinsic-lowering emitters: `sub_815820` (5 calls, opcode lowering), `sub_67FC80`, `sub_A356A0`, `sub_A36360` (4 calls), `sub_9B9CD0`/`sub_9BAAF0`/`sub_9BBC50` (emitter helpers) |
-| 5 | Predicate (P / UP), 1-bit | `0x1018` | `-1` | -- | 82 static sites | Predicate create paths, `sub_7D82E0` sentinel slot 42 |
-| 6 | Tensor / accumulator (MMA / WGMMA operand class) | `0x1018` | `-1` | -- | **275 static sites** | Dominant: over 200 intrinsic lowering functions in the `0x6B`--`0x6D` range, plus `sub_7D82E0` slots 0--41 + 45 (42 of 46 sentinel slots) |
-| 7 | Fixed compile-time register (physical pre-assigned) | `0x1018` | **`0`** (line 61) | -- | 9 static sites | Used where the emitter needs a specific fixed register — `sub_6D9690`, `sub_84EC30`, `sub_9B8000`, `sub_9BF1D0`. Not a per-class allocator bucket; bypasses the `reg_type <= 6` guard |
-| 9+ | Barrier (B / UB) — outside `reg_type <= 6` guard | `0x1018` | `-1` | -- | 6 static sites | `sub_BE38B0` (B / UB creator used by `sub_BE3B90`), synchronisation lowering |
+| 5 | Predicate (P / UP), 1-bit | `0x1018` | `-1` | — | 82 static sites | Predicate create paths, `sub_7D82E0` sentinel slot 42 |
+| 6 | Tensor / accumulator (MMA / WGMMA operand class) | `0x1018` | `-1` | — | **275 static sites** | Dominant: over 200 intrinsic lowering functions in the `0x6B`--`0x6D` range, plus `sub_7D82E0` slots 0--41 + 45 (42 of 46 sentinel slots) |
+| 7 | Fixed compile-time register (physical pre-assigned) | `0x1018` | **`0`** (line 61) | — | 9 static sites | Used where the emitter needs a specific fixed register — `sub_6D9690`, `sub_84EC30`, `sub_9B8000`, `sub_9BF1D0`. Not a per-class allocator bucket; bypasses the `reg_type <= 6` guard |
+| 9+ | Barrier (B / UB) — outside `reg_type <= 6` guard | `0x1018` | `-1` | — | 6 static sites | `sub_BE38B0` (B / UB creator used by `sub_BE3B90`), synchronisation lowering |
 
 Static call-site counts come from enumerating callers of `sub_91BF30(&out, ctx, <literal>)` in `ptxas/decompiled/`. Variable-class clones (e.g. `sub_4074C4:25`, which passes `*(vreg_src+64)` to reproduce the source class) are counted separately and amount to ~34 additional sites across 20 files.
 
@@ -219,13 +219,13 @@ Every virtual register in a function is represented by a 160-byte descriptor all
 | +0 | 8 | `ptr` | `next` | Linked list pointer (allocation worklist) |
 | +8 | 4 | `i32` | `id` | Unique register ID within function |
 | +12 | 4 | `i32` | `class_index` | Allocator register class (0--6) |
-| +16 | 4 | -- | (padding) | Cleared by qword write at +12 |
+| +16 | 4 | — | (padding) | Cleared by qword write at +12 |
 | +20 | 4 | `i32` | `state_flags` | Per-register state; bit 0x20 = live. Init -1 |
 | +24 | 4 | `i32` | `bb_index` | Basic block of definition. Init -1 |
 | +28 | 4 | `i32` | `epoch` | Epoch counter for liveness tracking |
 | +32 | 8 | `ptr` | `coalesce_chain` | Next in coalescing chain (aliased register) |
 | +40 | 4 | `f32` | `spill_cost` | Accumulated spill cost. Init -1.0f |
-| +44 | 4 | -- | (padding) | Cleared by qword write at +36 |
+| +44 | 4 | — | (padding) | Cleared by qword write at +36 |
 | +48 | 8 | `u64` | `flags` | Multi-purpose flag word (see below) |
 | +56 | 8 | `ptr` | `def_instr` | Defining instruction pointer |
 | +64 | 4 | `i32` | `reg_type` | Register file type enum |
@@ -247,7 +247,7 @@ Every virtual register in a function is represented by a 160-byte descriptor all
 | +144 | 8 | `ptr` | `constraint_list` | Constraint list head for allocator |
 | +152 | 8 | `ptr` | `split_list` | Live range split point list head |
 
-**Constructor qword write at +20 (overlap explained).** The constructor stores `*(_QWORD*)(v6+20) = -1`, a single 8-byte write that sets bytes +20 through +27 all to 0xFF. This simultaneously initializes two i32 fields: `state_flags` (+20) = -1 (0xFFFFFFFF) and `bb_index` (+24) = -1. The decompiler shows this as one operation; there is no separate "flags_byte = 0" followed by "alias_parent = -1". The earlier wiki entry conflated this write with the `alias_parent` field at +36, which does not exist as a separate pointer -- the coalescing chain is the single 8-byte pointer at +32. The constructor initializes +32..+39 to NULL via the overlapping qword writes at +28 and +36 (`*(_QWORD*)(v6+28) = 0` covers +28..+35; `*(_QWORD*)(v6+36) = 0xBF80000000000000` covers +36..+43, where the low 4 bytes at +36..+39 are 0 completing the NULL pointer, and the high 4 bytes at +40..+43 are 0xBF800000 = -1.0f for `spill_cost`).
+**Constructor qword write at +20 (overlap explained).** The constructor stores `*(_QWORD*)(v6+20) = -1`, a single 8-byte write that sets bytes +20 through +27 all to 0xFF. This simultaneously initializes two i32 fields: `state_flags` (+20) = -1 (0xFFFFFFFF) and `bb_index` (+24) = -1. The decompiler shows this as one operation; there is no separate "flags_byte = 0" followed by "alias_parent = -1". The earlier wiki entry conflated this write with the `alias_parent` field at +36, which does not exist as a separate pointer — the coalescing chain is the single 8-byte pointer at +32. The constructor initializes +32..+39 to NULL via the overlapping qword writes at +28 and +36 (`*(_QWORD*)(v6+28) = 0` covers +28..+35; `*(_QWORD*)(v6+36) = 0xBF80000000000000` covers +36..+43, where the low 4 bytes at +36..+39 are 0 completing the NULL pointer, and the high 4 bytes at +40..+43 are 0xBF800000 = -1.0f for `spill_cost`).
 
 **Interference edge lists at +128/+136.** Both store singly-linked list heads of interference edge nodes. Each edge node is `{ptr next; i32 padding; i32 neighbor_id}` (12 bytes). `sub_749200` removes edges by neighbor ID from the +136 list; `sub_749290` removes from both +136 and +128 symmetrically. The two lists represent the two directions of an undirected interference edge.
 
@@ -306,11 +306,11 @@ This enum determines the register file a VR belongs to. It is used by the regist
 | 4 | UR (ext) | 4 | Uniform GPR variant (triggers flag update at +1369 in constructor) |
 | 5 | P / UP | 5 | Predicate register (1-bit); covers both P and UP |
 | 6 | Tensor/Acc | 6 | Tensor/accumulator register for MMA/WGMMA operations |
-| 7 | P (alt) | -- | Predicate variant (physical = 0 at init); above allocator cutoff |
-| 8 | -- | -- | Extended type (created by `sub_83EF00`); above allocator cutoff |
-| 9 | B / UB | -- | Barrier register; above allocator cutoff, separate allocation |
-| 10 | R2 | -- | Extended register pair (64-bit, two consecutive R regs) |
-| 11 | R4 | -- | Extended register quad (128-bit, four consecutive R regs) |
+| 7 | P (alt) | — | Predicate variant (physical = 0 at init); above allocator cutoff |
+| 8 | — | — | Extended type (created by `sub_83EF00`); above allocator cutoff |
+| 9 | B / UB | — | Barrier register; above allocator cutoff, separate allocation |
+| 10 | R2 | — | Extended register pair (64-bit, two consecutive R regs) |
+| 11 | R4 | — | Extended register quad (128-bit, four consecutive R regs) |
 
 Values 0--6 are within the allocator's class system (the distribution loop in `sub_9721C0` guards with `reg_type <= 6`). Values 7+ are handled by separate mechanisms. The `off_21D2400` name table is indexed by reg_type and provides display strings for diagnostic output.
 
@@ -382,10 +382,10 @@ The allocator skips architectural predicate registers by index number:
 | Index | Register | Treatment |
 |-------|----------|-----------|
 | 39 | (special) | Skipped during allocation (skip predicate `sub_9446D0`) |
-| 41 | PT | Skipped -- hardwired true predicate |
-| 42 | P0 | Skipped -- architectural predicate |
-| 43 | P1 | Skipped -- architectural predicate |
-| 44 | P2 | Skipped -- architectural predicate |
+| 41 | PT | Skipped — hardwired true predicate |
+| 42 | P0 | Skipped — architectural predicate |
+| 43 | P1 | Skipped — architectural predicate |
+| 44 | P2 | Skipped — architectural predicate |
 
 The skip check in `sub_9446D0` returns `true` (skip) for register indices 41--44 and 39, regardless of register class. For other registers, it checks whether the instruction is a CSSA phi (opcode 195 with barrier type 9) or whether the register is in the exclusion set hash table at `alloc+360`.
 
@@ -469,7 +469,7 @@ The 4-bit register file type field in the SASS encoding maps the **operand-recor
 | 64 | 10 | (extended pair) |
 | 128 | 11 | (extended quad) |
 
-The `.UR` discriminator at the SASS encoding layer is therefore the **encoded value 2 or 3** of this 4-bit field (originating from operand `+20` raw codes 3 or 4). A parallel sentinel exists in the operand-record's first byte: the small one-liner cluster at `sub_B28E00`..`sub_B28EF0` checks fixed byte constants (`sub_B28E80` = 3 = R class; `sub_B28E90` = 15 = UR class; `sub_B28EB0` = 14 = **PT** -- the always-true predicate sentinel consumed by the predicate-register encoder `sub_7BCF00` at line 65 as `*(BYTE*)v5 != 14`; `sub_B28EA0` = 13 and `sub_B28EC0` = 16 are two further special operand families used by IR-level lowering helpers such as `sub_B2A420`). The 3-bit field in the operand word at bits [30:28] is **not** the `.UR` flag -- it does not carry uniformity information at all.
+The `.UR` discriminator at the SASS encoding layer is therefore the **encoded value 2 or 3** of this 4-bit field (originating from operand `+20` raw codes 3 or 4). A parallel sentinel exists in the operand-record's first byte: the small one-liner cluster at `sub_B28E00`..`sub_B28EF0` checks fixed byte constants (`sub_B28E80` = 3 = R class; `sub_B28E90` = 15 = UR class; `sub_B28EB0` = 14 = **PT** — the always-true predicate sentinel consumed by the predicate-register encoder `sub_7BCF00` at line 65 as `*(BYTE*)v5 != 14`; `sub_B28EA0` = 13 and `sub_B28EC0` = 16 are two further special operand families used by IR-level lowering helpers such as `sub_B2A420`). The 3-bit field in the operand word at bits [30:28] is **not** the `.UR` flag — it does not carry uniformity information at all.
 
 A second predicate-related encoder, `sub_7BCF00` (856 bytes, 1657 callers), branches on operand byte[0]: it takes the "side-effecting" path only when byte[0] is **not** 14 (PT) **and** byte[0] is in `{15, 16}` (the UR / extended-UR sentinels), clearing the pointer slot at `+8` of the operand record. Earlier wiki revisions described this encoder as "2-bit type + 3-bit condition + 8-bit value"; the actual body emits a different bitfield layout and the 14-vs-15/16 gating is part of how it disambiguates a PT-fed predicate slot from a UR-bridge slot rather than encoding the value field directly.
 
@@ -548,8 +548,8 @@ Registers R0--R3 are unconditionally reserved by the ABI across all SM generatio
 | SM generation | Value | SM targets | Minimum registers |
 |---------------|-------|------------|-------------------|
 | 3 | `(sm_target+372) >> 12 == 3` | sm\_35, sm\_37 | (no minimum) |
-| 4 | `== 4` | sm\_50 -- sm\_53 | 16 |
-| 5 | `== 5` | sm\_60 -- sm\_89 | 16 |
+| 4 | `== 4` | sm\_50 — sm\_53 | 16 |
+| 5 | `== 5` | sm\_60 — sm\_89 | 16 |
 | 9 | `== 9` | sm\_90, sm\_90a | 24 |
 | >9 | `> 9` | sm\_100+ | 24 |
 
@@ -625,8 +625,8 @@ The register class name table at `off_21D2400` is a pointer array indexed by the
 | `sub_A60B60` | 4560B | `collectRegisterStats` | Enumerates ~25 register sub-classes via vtable getters |
 | `sub_7BC030` | 814B | `encodeRegOperand` | Packs register into SASS instruction: 1-bit presence + 4-bit type + 10-bit number |
 | `sub_7BCF00` | 856B | `encodePredOperand` | Packs predicate into SASS: 2-bit type + 3-bit condition + 8-bit value |
-| `sub_9B3C20` | -- | `decodeRegOperand` | Decoder helper: extracts register, maps 255 to 1023 (RZ) |
-| `sub_9B3D60` | -- | `decodePredOperand` | Decoder helper: extracts predicate, maps 7 to 31 (PT) |
+| `sub_9B3C20` | — | `decodeRegOperand` | Decoder helper: extracts register, maps 255 to 1023 (RZ) |
+| `sub_9B3D60` | — | `decodePredOperand` | Decoder helper: extracts predicate, maps 7 to 31 (PT) |
 | `sub_1B6B250` | 2965B | `regClassToHardware` | Maps (class, sub\_index) to hardware number: `class * 32 + sub_index` |
 | `sub_1B73060` | 19B | `regClassToHardwareGuard` | Guard wrapper: returns 0 for no-register case |
 | `sub_1B72F60` | 32B | `writeRegField` | Packs encoded register into instruction word bits [13:9] and [28:26] |
@@ -636,10 +636,10 @@ The register class name table at `off_21D2400` is a pointer array indexed by the
 | `sub_A0D800` | 39KB | `buildDependencyGraph` | Per-block dependency graph with register-to-instruction mapping |
 | `sub_A06A60` | 15KB | `scheduleWithPressure` | Per-block scheduling loop tracking live register set bitvector |
 | `sub_682490` | 14KB | `computeRegPressureDeltas` | Per-instruction register pressure delta computation |
-| `sub_B28E00` | -- | `getRegClass` | Returns register class (1023 = wildcard, 1 = GPR) |
-| `sub_B28E10` | -- | `isRegOperand` | Predicate: is this a register operand? |
-| `sub_B28E20` | -- | `isPredOperand` | Predicate: is this a predicate operand? |
-| `sub_B28E90` | -- | `isUReg` | Predicate: is this a uniform register? |
+| `sub_B28E00` | — | `getRegClass` | Returns register class (1023 = wildcard, 1 = GPR) |
+| `sub_B28E10` | — | `isRegOperand` | Predicate: is this a register operand? |
+| `sub_B28E20` | — | `isPredOperand` | Predicate: is this a predicate operand? |
+| `sub_B28E90` | — | `isUReg` | Predicate: is this a uniform register? |
 
 ### Special VReg Sentinels (Slots 38--45)
 
@@ -701,7 +701,7 @@ char buildEncodingDescriptor(Context *a1, Instruction *a2, uint32_t *a3);
 
 The function is a two-level dispatch:
 
-1. **Outer switch** on the Ori opcode at `*(instr->info + 8)` -- 168 unique case values spanning opcodes 3 (`IADD3`) through 0xF5 (`PIXLD`).
+1. **Outer switch** on the Ori opcode at `*(instr->info + 8)` — 168 unique case values spanning opcodes 3 (`IADD3`) through 0xF5 (`PIXLD`).
 
 2. **Inner encoding** per opcode (or group): assigns an encoding category ID to `a3[0]`, then calls the bitfield packers to fill `a3[1..2]` with register class attributes.
 
@@ -709,7 +709,7 @@ Two helper functions pack fields into the descriptor:
 
 | Function | Role | Call count | Field ID range |
 |----------|------|------------|----------------|
-| `sub_917A60` (`packRegClassField`) | Bitfield encoder -- field IDs 91--340 map to specific bit positions in `a3[1]` and `a3[2]` | 112 | 91--340 |
+| `sub_917A60` (`packRegClassField`) | Bitfield encoder — field IDs 91--340 map to specific bit positions in `a3[1]` and `a3[2]` | 112 | 91--340 |
 | `sub_A2FF00` (`packOperandField`) | Alternate encoder for operand-level slots (data type, memory space) | 28 | 3--71 |
 
 ### Encoding Category Assignment
@@ -787,7 +787,7 @@ The output descriptor `a3` is a 4-DWORD (16-byte) structure:
 
 | DWORD | Content |
 |-------|---------|
-| `a3[0]` | Encoding category ID (0--542) -- selects SASS format template |
+| `a3[0]` | Encoding category ID (0--542) — selects SASS format template |
 | `a3[1]` | Packed bitfield: memory space (bits 0--3), address type (bits 4--7) |
 | `a3[2]` | Packed bitfield: register class attributes (data width, type, modifiers) |
 | `a3[3]` | Auxiliary flags (bit 1 = texture scope, bit 29 = special) |
@@ -903,11 +903,11 @@ The function references 28 static lookup tables that map instruction attribute v
 
 ## Related Pages
 
-- [Ori IR Overview](./overview.md) -- register files in the context of the full IR
-- [Instructions](./instructions.md) -- packed operand format and opcode encoding
-- [Allocator Architecture](../regalloc/overview.md) -- the 7-class fat-point allocator
-- [Fat-Point Algorithm](../regalloc/algorithm.md) -- pressure arrays, constraint types, selection loop
-- [GPU ABI](../regalloc/abi.md) -- reserved registers, parameter passing, return address
-- [Spilling](../regalloc/spilling.md) -- spill/reload for each register class
-- [Scheduler](../scheduling/overview.md) -- 10 per-block pressure counters at record +4..+40
-- [SASS Encoding](../codegen/encoding.md) -- how the descriptor drives instruction word layout
+- [Ori IR Overview](./overview.md) — register files in the context of the full IR
+- [Instructions](./instructions.md) — packed operand format and opcode encoding
+- [Allocator Architecture](../regalloc/overview.md) — the 7-class fat-point allocator
+- [Fat-Point Algorithm](../regalloc/algorithm.md) — pressure arrays, constraint types, selection loop
+- [GPU ABI](../regalloc/abi.md) — reserved registers, parameter passing, return address
+- [Spilling](../regalloc/spilling.md) — spill/reload for each register class
+- [Scheduler](../scheduling/overview.md) — 10 per-block pressure counters at record +4..+40
+- [SASS Encoding](../codegen/encoding.md) — how the descriptor drives instruction word layout

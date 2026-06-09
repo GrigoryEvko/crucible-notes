@@ -1,6 +1,6 @@
 # Alias Analysis & NVVM AA
 
-cicc ships a custom alias analysis pass (NVVM AA, registered as `nvptx-aa`) that exploits GPU address space disjointness to prove pointer pairs cannot alias. On a GPU, each hardware memory partition -- global DRAM, shared scratchpad, local stack, constant cache, kernel parameter window -- occupies a physically separate address range. Pointers into different address spaces can never reference the same byte, a property that does not hold on any mainstream CPU ISA. NVVM AA encodes this hardware invariant into the LLVM AA pipeline, returning `NoAlias` for any cross-address-space pointer pair. This single fact unlocks aggressive dead-store elimination, load-store motion, GVN load forwarding, and MemorySSA precision that would be impossible on a flat-memory machine. The pass is stateless, trivially cheap, and runs first in the AA chain so that more expensive analyses (BasicAA, TBAA) can skip pairs that NVVM AA already resolved.
+cicc ships a custom alias analysis pass (NVVM AA, registered as `nvptx-aa`) that exploits GPU address space disjointness to prove pointer pairs cannot alias. On a GPU, each hardware memory partition — global DRAM, shared scratchpad, local stack, constant cache, kernel parameter window — occupies a physically separate address range. Pointers into different address spaces can never reference the same byte, a property that does not hold on any mainstream CPU ISA. NVVM AA encodes this hardware invariant into the LLVM AA pipeline, returning `NoAlias` for any cross-address-space pointer pair. This single fact unlocks aggressive dead-store elimination, load-store motion, GVN load forwarding, and MemorySSA precision that would be impossible on a flat-memory machine. The pass is stateless, trivially cheap, and runs first in the AA chain so that more expensive analyses (BasicAA, TBAA) can skip pairs that NVVM AA already resolved.
 
 Beyond pure address-space disjointness, cicc augments the standard LLVM AA infrastructure in three further ways: (1) a `process-restrict` pass that propagates `noalias` attributes from `__restrict__` kernel parameters, (2) `!noalias.addrspace` metadata (metadata kind 42) that tags pointers with the set of address spaces they provably do not alias with, and (3) NVIDIA-specific knobs controlling traversal depth, TBAA strictness, and fence relaxation.
 
@@ -14,13 +14,13 @@ Beyond pure address-space disjointness, cicc augments the standard LLVM AA infra
 | Legacy wrapper | `NVPTXAAWrapperPass` (ImmutablePass, char ID) |
 | External wrapper | `NVPTXExternalAAWrapper` (hooks into `ExternalAAWrapperPass`, `RunEarly=true`) |
 | Result class | `NVPTXAAResult : AAResultBase` |
-| State | Stateless -- `invalidate()` always returns false |
+| State | Stateless — `invalidate()` always returns false |
 | AA chain position | First (before BasicAA) |
 | Address traversal depth | Controlled by `nvptx-traverse-address-aliasing-limit` (default 6) |
 | AA evaluator pass | `aa-eval` at `sub_13549C0` (11,038 bytes) |
-| AA query entry point | `sub_134CB50` -- `AAResults::alias(MemoryLocation, MemoryLocation)` |
-| ModRef query (call, loc) | `sub_134F0E0` -- `AAResults::getModRefInfo(CallBase, MemoryLocation)` |
-| ModRef query (call, call) | `sub_134F530` -- `AAResults::getModRefInfo(CallBase, CallBase)` |
+| AA query entry point | `sub_134CB50` — `AAResults::alias(MemoryLocation, MemoryLocation)` |
+| ModRef query (call, loc) | `sub_134F0E0` — `AAResults::getModRefInfo(CallBase, MemoryLocation)` |
+| ModRef query (call, call) | `sub_134F530` — `AAResults::getModRefInfo(CallBase, CallBase)` |
 
 
 ## GPU Address Space Table
@@ -78,14 +78,14 @@ unsigned getAddressSpace(const Value *V, unsigned MaxLookup) {
 
 The `getAddressSpace` helper is the key difference from a naive check. A pointer may be in generic address space (AS 0) at its use site but was produced by an `addrspacecast` from a specific space. The traversal walks backward through `getUnderlyingObject` (which strips GEPs, bitcasts, PHIs) to find the original non-generic space. The depth limit (`nvptx-traverse-address-aliasing-limit`, default 6) prevents exponential blowup on deeply nested pointer chains.
 
-The `getModRefInfoMask` method adds a further optimization: pointers into constant memory (AS 4) or parameter memory (AS 101) are read-only, so it returns `NoModRef` -- the pointer's memory is never modified. This allows DSE to skip analysis of stores that might alias with const/param loads, and lets LICM hoist loads from constant memory without checking for intervening stores.
+The `getModRefInfoMask` method adds a further optimization: pointers into constant memory (AS 4) or parameter memory (AS 101) are read-only, so it returns `NoModRef` — the pointer's memory is never modified. This allows DSE to skip analysis of stores that might alias with const/param loads, and lets LICM hoist loads from constant memory without checking for intervening stores.
 
 The `getMemoryEffects` method handles inline assembly: PTX inline asm without side-effects or `{memory}` clobbers is treated as having no memory effects, which prevents it from blocking optimizations.
 
 
 ## The Generic Address Space Problem
 
-The generic (flat, AS 0) address space is the fundamental obstacle to alias precision on GPUs. When the frontend cannot determine which physical memory a pointer targets, it emits the pointer in AS 0. The hardware resolves generic addresses at runtime using address range checks -- a pointer into the shared memory window maps to shared, otherwise it maps to global.
+The generic (flat, AS 0) address space is the fundamental obstacle to alias precision on GPUs. When the frontend cannot determine which physical memory a pointer targets, it emits the pointer in AS 0. The hardware resolves generic addresses at runtime using address range checks — a pointer into the shared memory window maps to shared, otherwise it maps to global.
 
 For NVVM AA, a generic pointer forces `MayAlias` against every other pointer, destroying the disjointness guarantee. This is why MemorySpaceOpt is so critical: it runs before the main optimization pipeline and converts generic pointers to specific address spaces wherever possible, feeding precise AS information into NVVM AA.
 
@@ -122,7 +122,7 @@ NVVM AA  -->  BasicAA  -->  TBAA  -->  ScopedNoAliasAA  -->  GlobalsAA
   +-- Address space disjointness (stateless, O(depth) per query)
 ```
 
-The chain is queried through `AAResults::alias()` (`sub_134CB50`), which dispatches through the registered AA providers in order. Each provider returns `NoAlias`, `MayAlias`, `PartialAlias`, or `MustAlias`. If any provider returns `NoAlias`, the chain short-circuits -- subsequent providers are not consulted. This is why NVVM AA runs first: cross-address-space pairs are resolved in O(1) without invoking the more expensive BasicAA GEP decomposition.
+The chain is queried through `AAResults::alias()` (`sub_134CB50`), which dispatches through the registered AA providers in order. Each provider returns `NoAlias`, `MayAlias`, `PartialAlias`, or `MustAlias`. If any provider returns `NoAlias`, the chain short-circuits — subsequent providers are not consulted. This is why NVVM AA runs first: cross-address-space pairs are resolved in O(1) without invoking the more expensive BasicAA GEP decomposition.
 
 The `AAResults` object consumed by MemorySSA, GVN, DSE, and LICM is the same chained result. All memory-aware passes benefit transparently from NVVM AA without any code changes.
 
@@ -131,11 +131,11 @@ The `AAResults` object consumed by MemorySSA, GVN, DSE, and LICM is the same cha
 
 NVVM AA's impact flows through every pass that queries alias information:
 
-**MemorySSA** (`sub_1A6A260`) builds its memory SSA graph using `AAResults` at `[this+0xB8]` (retrieved via tag `unk_4F9D3C0`). When NVVM AA proves that a store to shared memory and a load from global memory are `NoAlias`, MemorySSA does not create a dependency edge between them, resulting in a sparser -- and more precise -- memory graph. This precision propagates to every consumer of MemorySSA.
+**MemorySSA** (`sub_1A6A260`) builds its memory SSA graph using `AAResults` at `[this+0xB8]` (retrieved via tag `unk_4F9D3C0`). When NVVM AA proves that a store to shared memory and a load from global memory are `NoAlias`, MemorySSA does not create a dependency edge between them, resulting in a sparser — and more precise — memory graph. This precision propagates to every consumer of MemorySSA.
 
 **GVN** (`sub_1900BB0`) uses AA for load elimination and store forwarding. With NVVM AA, a load from `%p_global` can be forwarded past a store to `%q_shared` because they provably do not alias. Without NVVM AA, GVN would conservatively assume they might alias and abandon the forwarding. The GVN implementation queries `sub_134CB50` indirectly through `MemoryDependenceResults`, which itself consults `AAResults`.
 
-**DSE** (`sub_19DD1D0` and related functions) eliminates dead stores by proving that no subsequent load reads the stored value. DSE requires `AAResults` at `unk_4F9D3C0`. The DSE report confirms: "The alias analysis that DSE consumes already handles address-space separation. CUDA address spaces (shared=3, global=1, local=5, constant=4) are handled by the underlying NVVM alias analysis which knows that different address spaces cannot alias." DSE does NOT implement its own address-space checks -- it relies entirely on NVVM AA.
+**DSE** (`sub_19DD1D0` and related functions) eliminates dead stores by proving that no subsequent load reads the stored value. DSE requires `AAResults` at `unk_4F9D3C0`. The DSE report confirms: "The alias analysis that DSE consumes already handles address-space separation. CUDA address spaces (shared=3, global=1, local=5, constant=4) are handled by the underlying NVVM alias analysis which knows that different address spaces cannot alias." DSE does NOT implement its own address-space checks — it relies entirely on NVVM AA.
 
 **LICM** uses AA to determine whether a load inside a loop can be hoisted out. If NVVM AA proves a loop-invariant load from constant memory (AS 4, `getModRefInfoMask` returns `NoModRef`) cannot be modified by any store in the loop, LICM hoists it. This is especially impactful for `__constant__` kernel arguments accessed repeatedly in hot loops.
 
@@ -149,8 +149,8 @@ cicc provides two mechanisms for marking kernel pointer parameters as non-aliasi
 **2. `-allow-restrict-in-struct` (flag at offset +1128).** Extends `__restrict__` handling to pointer fields inside struct arguments. When enabled, the `process-restrict` pass annotates struct-member pointers with `noalias` scope metadata, enabling AA to disambiguate pointers extracted from different struct fields. This flag routes to both the opt and llc argument vectors as `-allow-restrict-in-struct`.
 
 Supporting knobs:
-- `apply-multi-level-restrict` -- apply `__restrict__` to all pointer indirection levels (not just the outermost pointer)
-- `dump-process-restrict` -- debug dump during restrict processing
+- `apply-multi-level-restrict` — apply `__restrict__` to all pointer indirection levels (not just the outermost pointer)
+- `dump-process-restrict` — debug dump during restrict processing
 
 The `noalias` attribute interacts with the AA chain through `ScopedNoAliasAA`, which reads `!noalias` and `!alias.scope` metadata attached to instructions. cicc's frontend emits these metadata nodes when `__restrict__` qualifiers are present in the CUDA source.
 
@@ -236,7 +236,7 @@ ProcessRestrictPass::run(Function &F):
     print annotated IR to dbgs()
 ```
 
-**Propagate-only mode.** Skips Phase 1 annotation -- does not create new `noalias` attributes or scopes. Instead, it only reads existing `!alias.scope` and `!noalias` metadata from callers and propagates them through inlined call chains. This mode is used in later pipeline stages where new restrict annotations would be unsound (the interprocedural calling context has changed due to inlining).
+**Propagate-only mode.** Skips Phase 1 annotation — does not create new `noalias` attributes or scopes. Instead, it only reads existing `!alias.scope` and `!noalias` metadata from callers and propagates them through inlined call chains. This mode is used in later pipeline stages where new restrict annotations would be unsound (the interprocedural calling context has changed due to inlining).
 
 ### How ScopedNoAliasAA Consumes the Metadata
 
@@ -303,7 +303,7 @@ __global__ void kernel(float ** __restrict__ ptrs) {
 Without this flag, only the outermost pointer level receives `noalias` treatment. With it, the pass follows dereference chains and creates scopes for each indirection level.
 
 
-## NVVM AA Query Logic -- Internal Detail
+## NVVM AA Query Logic — Internal Detail
 
 The AA chain in cicc is queried through `AAResults::alias()` at `sub_134CB50`. This function dispatches through the registered AA providers in registration order. The chain ordering observed in cicc v13.0 is:
 
@@ -346,15 +346,15 @@ AAResults::alias(MemoryLocation &A, MemoryLocation &B)   [sub_134CB50]
 Final AliasResult (NoAlias / MayAlias / PartialAlias / MustAlias)
 ```
 
-Any provider returning `NoAlias` short-circuits the chain -- subsequent providers are never consulted. This is why NVVM AA runs first: cross-address-space pairs are resolved with zero overhead from BasicAA's GEP decomposition.
+Any provider returning `NoAlias` short-circuits the chain — subsequent providers are never consulted. This is why NVVM AA runs first: cross-address-space pairs are resolved with zero overhead from BasicAA's GEP decomposition.
 
 ### ModRef Queries
 
 Two additional entry points handle call-site interactions:
 
-**`sub_134F0E0` -- `AAResults::getModRefInfo(CallBase, MemoryLocation)`.** Returns a `ModRefInfo` encoding that combines Mod/Ref bits with MustAlias information (8 values, 0--7). This is used by DSE and LICM to determine whether a call can read or write a specific memory location.
+**`sub_134F0E0` — `AAResults::getModRefInfo(CallBase, MemoryLocation)`.** Returns a `ModRefInfo` encoding that combines Mod/Ref bits with MustAlias information (8 values, 0--7). This is used by DSE and LICM to determine whether a call can read or write a specific memory location.
 
-**`sub_134F530` -- `AAResults::getModRefInfo(CallBase, CallBase)`.** Same encoding but for two call sites. Used by MemorySSA to build dependencies between calls.
+**`sub_134F530` — `AAResults::getModRefInfo(CallBase, CallBase)`.** Same encoding but for two call sites. Used by MemorySSA to build dependencies between calls.
 
 The `getModRefInfoMask` method in NVVM AA adds a key optimization: pointers into constant memory (AS 4) or parameter memory (AS 101) return `NoModRef` because these memories are read-only from the kernel's perspective. This lets DSE skip alias analysis entirely for constant/param loads and lets LICM hoist them unconditionally.
 
@@ -363,7 +363,7 @@ The `getModRefInfoMask` method in NVVM AA adds a key optimization: pointers into
 NVVM AA's `getMemoryEffects` method inspects PTX inline assembly blocks. An inline asm statement without the `sideeffect` flag and without a `{memory}` clobber constraint is classified as having no memory effects (`MemoryEffects::none()`). This prevents innocent inline asm (register manipulation, warp votes) from blocking load motion, store elimination, and CSE across the asm block.
 
 
-## Address-Space-Based NoAlias Rules -- Complete Matrix
+## Address-Space-Based NoAlias Rules — Complete Matrix
 
 The cross-address-space NoAlias decision is the cheapest and most impactful alias analysis in cicc. The full decision matrix for all pairs:
 
@@ -444,8 +444,8 @@ The most significant delta is the ecosystem: upstream NVPTX has the AA pass but 
 |------|------|---------|-------------|
 | `nvptx-traverse-address-aliasing-limit` | unsigned | 6 | Maximum depth for `getAddressSpace` traversal through `getUnderlyingObject` |
 | `nvptxaa-relax-fences` | bool | (unknown) | Enable ordering relaxation for fence instructions in AA |
-| `strict-aliasing` | bool | (unknown) | "Datatype based strict alias" -- NVIDIA extension for type-based disambiguation |
-| `traverse-address-aliasing` | bool | (unknown) | "Find address space through traversal" -- master enable for the traversal in `getAddressSpace` |
+| `strict-aliasing` | bool | (unknown) | "Datatype based strict alias" — NVIDIA extension for type-based disambiguation |
+| `traverse-address-aliasing` | bool | (unknown) | "Find address space through traversal" — master enable for the traversal in `getAddressSpace` |
 | `assume-default-is-flat-addrspace` | bool | false | Treat default address space (0) as flat/generic (testing knob) |
 
 ### Standard LLVM AA Knobs (present in cicc)
@@ -492,32 +492,32 @@ The `aa-eval` diagnostic pass (`sub_13549C0`) uses 14 independent boolean flags 
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `AAResults::alias(MemoryLocation, MemoryLocation)` -- main alias query entry | `sub_134CB50` | -- | -- |
-| `AAResults::getModRefInfo(CallBase, MemoryLocation)` | `sub_134F0E0` | -- | -- |
-| `AAResults::getModRefInfo(CallBase, CallBase)` | `sub_134F530` | -- | -- |
-| `AAEvaluator::runOnFunction` -- the `aa-eval` diagnostic pass | `sub_13549C0` | 11,038 B | -- |
-| `SmallPtrSet::insert` (pointer collection in aa-eval) | `sub_13540B0` | -- | -- |
-| Pointer-pair result printer (aa-eval) | `sub_1352080` | -- | -- |
-| Call-site pair result printer (aa-eval) | `sub_1351E00` | -- | -- |
-| Formatted alias result printer (aa-eval) | `sub_13523B0` | -- | -- |
-| `GlobalsAA` main analysis function | `sub_13C7380` | 35.7 KB | -- |
-| `GlobalsAA` helper (per-function analysis) | `sub_13C5530` | 21 KB | -- |
-| `GlobalsAA` call-site analysis | `sub_13C4410` | 6.7 KB | -- |
-| `GlobalsAA` alias query | `sub_13C34D0` | 12.6 KB | -- |
-| AA iteration / chaining logic | `sub_FD1250` | 23.4 KB | -- |
-| Dominator-tree-based AA query setup (used by MemorySSA) | `sub_14A4050` | -- | -- |
-| Metadata kind registration (including `noalias.addrspace` = kind 42) | `sub_B6EEA0` | 9 KB | -- |
-| MemorySpaceOpt pass entry (IP-MSP worklist driver) | `sub_1C70910` | ~2,427 lines | -- |
-| MemorySpaceOpt per-BB scanner + address-space bitmask builder | `sub_1CA8CD0` | ~898 lines | -- |
+| `AAResults::alias(MemoryLocation, MemoryLocation)` — main alias query entry | `sub_134CB50` | — | — |
+| `AAResults::getModRefInfo(CallBase, MemoryLocation)` | `sub_134F0E0` | — | — |
+| `AAResults::getModRefInfo(CallBase, CallBase)` | `sub_134F530` | — | — |
+| `AAEvaluator::runOnFunction` — the `aa-eval` diagnostic pass | `sub_13549C0` | 11,038 B | — |
+| `SmallPtrSet::insert` (pointer collection in aa-eval) | `sub_13540B0` | — | — |
+| Pointer-pair result printer (aa-eval) | `sub_1352080` | — | — |
+| Call-site pair result printer (aa-eval) | `sub_1351E00` | — | — |
+| Formatted alias result printer (aa-eval) | `sub_13523B0` | — | — |
+| `GlobalsAA` main analysis function | `sub_13C7380` | 35.7 KB | — |
+| `GlobalsAA` helper (per-function analysis) | `sub_13C5530` | 21 KB | — |
+| `GlobalsAA` call-site analysis | `sub_13C4410` | 6.7 KB | — |
+| `GlobalsAA` alias query | `sub_13C34D0` | 12.6 KB | — |
+| AA iteration / chaining logic | `sub_FD1250` | 23.4 KB | — |
+| Dominator-tree-based AA query setup (used by MemorySSA) | `sub_14A4050` | — | — |
+| Metadata kind registration (including `noalias.addrspace` = kind 42) | `sub_B6EEA0` | 9 KB | — |
+| MemorySpaceOpt pass entry (IP-MSP worklist driver) | `sub_1C70910` | ~2,427 lines | — |
+| MemorySpaceOpt per-BB scanner + address-space bitmask builder | `sub_1CA8CD0` | ~898 lines | — |
 
 
 ## Cross-References
 
-- [MemorySpaceOpt](../passes/memory-space-opt.md) -- the interprocedural pass that resolves generic pointers to specific address spaces, directly feeding NVVM AA
-- [IP Memory Space Propagation](../passes/ipmsp.md) -- the interprocedural wrapper around MemorySpaceOpt
-- [GVN](../llvm/gvn.md) -- consumes AA for load elimination and store forwarding
-- [DSE](../llvm/dse.md) -- relies on AA for dead store detection; confirmed to have no internal address-space checks
-- [LICM](../llvm/licm-real.md) -- uses AA to hoist/sink memory operations across loops
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where NVVM AA fits in the overall pass schedule
-- [LLVM Knobs](../config/knobs.md) -- complete knob inventory including AA-related knobs
-- [Optimization Levels](../config/optimization-levels.md) -- how `NVVMAliasAnalysis` appears in the tier 2+ pipeline
+- [MemorySpaceOpt](../passes/memory-space-opt.md) — the interprocedural pass that resolves generic pointers to specific address spaces, directly feeding NVVM AA
+- [IP Memory Space Propagation](../passes/ipmsp.md) — the interprocedural wrapper around MemorySpaceOpt
+- [GVN](../llvm/gvn.md) — consumes AA for load elimination and store forwarding
+- [DSE](../llvm/dse.md) — relies on AA for dead store detection; confirmed to have no internal address-space checks
+- [LICM](../llvm/licm-real.md) — uses AA to hoist/sink memory operations across loops
+- [Pipeline & Ordering](../llvm/pipeline.md) — where NVVM AA fits in the overall pass schedule
+- [LLVM Knobs](../config/knobs.md) — complete knob inventory including AA-related knobs
+- [Optimization Levels](../config/optimization-levels.md) — how `NVVMAliasAnalysis` appears in the tier 2+ pipeline

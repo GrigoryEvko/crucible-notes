@@ -10,7 +10,7 @@ The pointer `a1` returned from allocation points to the start of the fixed heade
 |--------|------|------|-------|-------|
 | +0 | 1B | `uint8_t` | `opcode` | Switch key in `sub_162D4F0`; values 0x04..0x22+ |
 | +2 | 2B | `uint16_t` | `subopcode` | Intrinsic ID; read for opcodes 0x1C, 0x1D, 0x1E |
-| +4 | 4B | -- | (padding) | Not accessed directly |
+| +4 | 4B | — | (padding) | Not accessed directly |
 | +8 | 4B | `uint32_t` | `num_operands` | Controls operand access range |
 | +16 | 8B | `tagged_ptr` | `context_ptr` | Low 3 bits are tag; mask with `& ~7` for pointer |
 | +24 | 8B | varies | `extra_A` | DWORD for opcodes 0x1A/0x1B; pointer for 0x10/0x22 |
@@ -60,7 +60,7 @@ The uniquing function `sub_162D4F0` performs a byte-level switch on `*(_BYTE *)a
 
 The opcodes fall into two categories: "simple" opcodes that use sub-function tables at fixed stride, and "complex" opcodes that use dedicated DenseMap instances at individually-known offsets.
 
-**Simple opcodes (0x04--0x15)** -- These 18 opcodes share a uniform dispatch pattern. Each routes to a sub-function table at a fixed byte offset within the context object, spaced 32 bytes apart:
+**Simple opcodes (0x04--0x15)** — These 18 opcodes share a uniform dispatch pattern. Each routes to a sub-function table at a fixed byte offset within the context object, spaced 32 bytes apart:
 
 | Opcode | Context Byte Offset | Semantic Category |
 |--------|-------------------|-------------------|
@@ -76,7 +76,7 @@ The opcodes fall into two categories: "simple" opcodes that use sub-function tab
 | 0x0D | +784 | Integer constant |
 | 0x0E | +816 | FP constant |
 | 0x0F | +848 | Constant expression |
-| 0x10 | -- | *Special*: uses DenseMap at qw[178] |
+| 0x10 | — | *Special*: uses DenseMap at qw[178] |
 | 0x11 | +912 | (simple node) |
 | 0x12 | +944 | (simple node) |
 | 0x13 | +976 | Struct / aggregate type |
@@ -85,22 +85,22 @@ The opcodes fall into two categories: "simple" opcodes that use sub-function tab
 
 Each sub-function table entry at these offsets is a 32-byte structure containing the callback address and metadata for hash-table probing.
 
-**Complex opcodes (0x16--0x22)** -- These opcodes each own a full DenseMap within the context object. Each DenseMap occupies 4 qwords at the indicated base, plus associated dword counters:
+**Complex opcodes (0x16--0x22)** — These opcodes each own a full DenseMap within the context object. Each DenseMap occupies 4 qwords at the indicated base, plus associated dword counters:
 
 | Opcode | QWord Base | Byte Offset | DenseMap Dwords | Identified Semantic |
 |--------|-----------|-------------|-----------------|---------------------|
 | 0x16 | qw[130] | +1040 | dw[264..266] | Metadata node |
-| 0x17 | -- | +1104 | -- | (simple-table path at +1104) |
-| 0x18 | -- | +1136 | -- | Alloca (bitcode 0x18/0x58) |
-| 0x19 | -- | -- | -- | Load |
+| 0x17 | — | +1104 | — | (simple-table path at +1104) |
+| 0x18 | — | +1136 | — | Alloca (bitcode 0x18/0x58) |
+| 0x19 | — | — | — | Load |
 | 0x1A | qw[146] | +1168 | dw[296..298] | Branch (br) |
 | 0x1B | qw[150] | +1200 | dw[304..306] | Switch |
 | 0x1C | qw[154] | +1232 | dw[312..314] | Invoke (reads subopcode) |
 | 0x1D | qw[158] | +1264 | dw[320..322] | Unreachable / resume (reads subopcode) |
 | 0x1E | qw[162] | +1296 | dw[328..330] | LandingPad (reads subopcode) |
 | 0x1F | qw[166] | +1328 | dw[336..338] | Call instruction |
-| 0x20 | -- | -- | -- | PHI node |
-| 0x21 | -- | -- | -- | IndirectBr |
+| 0x20 | — | — | — | PHI node |
+| 0x21 | — | — | — | IndirectBr |
 | 0x22 | qw[178] | +1424 | dw[360..362] | Special (extra_A = ptr) |
 
 Opcodes 0x1C, 0x1D, and 0x1E read the `subopcode` field at `*(unsigned __int16 *)(a1 + 2)` as part of the hash key, because these node types require the intrinsic ID to distinguish structurally identical nodes with different semantic meaning.
@@ -131,24 +131,24 @@ NVIDIA uses LLVM's standard instruction opcode numbering with minor adjustments.
 
 | Opcode | Hex | LLVM Instruction | Verifier Checks |
 |--------|-----|------------------|-----------------|
-| 0x0B | 11 | `ret` | -- |
-| 0x0E | 14 | `br` | -- |
-| 0x0F | 15 | `switch` | -- |
+| 0x0B | 11 | `ret` | — |
+| 0x0E | 14 | `br` | — |
+| 0x0F | 15 | `switch` | — |
 | 0x15 | 21 | `invoke` | "invoke" unsupported via `sub_2C76F10` |
 | 0x18 | 24 | `alloca` | Alignment <= 2^23; AS must be Generic |
-| 0x19 | 25 | `load` | -- |
+| 0x19 | 25 | `load` | — |
 | 0x1A | 26 | `br` (cond) | Validates "Branch condition is not 'i1' type!" |
-| 0x1B | 27 | `switch` (extended) | -- |
-| 0x1C | 28 | `invoke` (extended) | -- |
-| 0x1D | 29 | `unreachable` | -- |
-| 0x1E | 30 | `resume` | -- |
+| 0x1B | 27 | `switch` (extended) | — |
+| 0x1C | 28 | `invoke` (extended) | — |
+| 0x1D | 29 | `unreachable` | — |
+| 0x1E | 30 | `resume` | — |
 | 0x1F | 31 | `call` | Pragma metadata validation |
-| 0x20 | 32 | `phi` | -- |
+| 0x20 | 32 | `phi` | — |
 | 0x21 | 33 | `indirectbr` | "indirectbr" unsupported |
 | 0x22 | 34 | `call` (variant) | Validates callee type signature |
 | 0x23 | 35 | `resume` (verifier) | "resume" unsupported |
-| 0x23--0x34 | 35--52 | Binary ops (add/sub/mul/div/rem/shift/logic) | -- |
-| 0x35--0x38 | 53--56 | Casts (trunc/zext/sext/fpcast) | -- |
+| 0x23--0x34 | 35--52 | Binary ops (add/sub/mul/div/rem/shift/logic) | — |
+| 0x35--0x38 | 53--56 | Casts (trunc/zext/sext/fpcast) | — |
 | 0x3C | 60 | `alloca` | Alignment and address-space checks |
 | 0x3D | 61 | `load` | Atomic loads rejected; tensor memory AS rejected |
 | 0x3E | 62 | `store` | Atomic stores rejected; tensor memory AS rejected |
@@ -164,28 +164,28 @@ The binary opcodes in the 0x23--0x34 range follow LLVM's `BinaryOperator` number
 
 | Opcode | Hex | Operation | IRBuilder Helper |
 |--------|-----|-----------|-----------------|
-| 0x23 | 35 | `add` | -- |
-| 0x24 | 36 | `fadd` | -- |
-| 0x25 | 37 | `sub` | -- |
-| 0x26 | 38 | `fsub` | -- |
-| 0x27 | 39 | `mul` | -- |
-| 0x28 | 40 | `fmul` | -- |
-| 0x29 | 41 | `udiv` | -- |
-| 0x2A | 42 | `sdiv` | -- |
-| 0x2B | 43 | `fdiv` | -- |
-| 0x2C | 44 | `urem` | -- |
-| 0x2D | 45 | `srem` | -- |
-| 0x2E | 46 | `frem` | -- |
-| 0x2F | 47 | `shl` | -- |
-| 0x30 | 48 | `lshr` | -- |
-| 0x31 | 49 | `ashr` | -- |
-| 0x32 | 50 | `and` | -- |
-| 0x33 | 51 | `or` | -- |
-| 0x34 | 52 | `xor` | -- |
+| 0x23 | 35 | `add` | — |
+| 0x24 | 36 | `fadd` | — |
+| 0x25 | 37 | `sub` | — |
+| 0x26 | 38 | `fsub` | — |
+| 0x27 | 39 | `mul` | — |
+| 0x28 | 40 | `fmul` | — |
+| 0x29 | 41 | `udiv` | — |
+| 0x2A | 42 | `sdiv` | — |
+| 0x2B | 43 | `fdiv` | — |
+| 0x2C | 44 | `urem` | — |
+| 0x2D | 45 | `srem` | — |
+| 0x2E | 46 | `frem` | — |
+| 0x2F | 47 | `shl` | — |
+| 0x30 | 48 | `lshr` | — |
+| 0x31 | 49 | `ashr` | — |
+| 0x32 | 50 | `and` | — |
+| 0x33 | 51 | `or` | — |
+| 0x34 | 52 | `xor` | — |
 
 ### InstCombine Internal Opcode Table
 
-The InstCombine mega-visitor `sub_10EE7A0` (60 KB native; 9,258 lines decomp, among the largest functions in cicc) uses a *different* opcode numbering -- the full LLVM `Instruction::getOpcode()` values rather than the bitcode record codes. These are accessed via `sub_987FE0` (getOpcode equivalent). Key ranges observed:
+The InstCombine mega-visitor `sub_10EE7A0` (60 KB native; 9,258 lines decomp, among the largest functions in cicc) uses a *different* opcode numbering — the full LLVM `Instruction::getOpcode()` values rather than the bitcode record codes. These are accessed via `sub_987FE0` (getOpcode equivalent). Key ranges observed:
 
 | Opcode Range | LLVM Instructions |
 |-------------|-------------------|
@@ -277,8 +277,8 @@ Complete mapping:
 
 The context destructor confirms the layout by freeing resources in order:
 
-1. Calls `j___libc_free_0` on bucket pointers at offsets +272 through +792 (stride 32) -- frees all 16 simple opcode hash tables.
-2. Destroys sub-objects via `sub_16BD9D0`, `sub_1605960`, `sub_16060D0` -- these tear down the complex DenseMap instances and any heap-allocated overflow chains.
+1. Calls `j___libc_free_0` on bucket pointers at offsets +272 through +792 (stride 32) — frees all 16 simple opcode hash tables.
+2. Destroys sub-objects via `sub_16BD9D0`, `sub_1605960`, `sub_16060D0` — these tear down the complex DenseMap instances and any heap-allocated overflow chains.
 3. Releases vtable-referenced objects at offsets +200, +224, +248.
 
 The separate LLVMContext destructor (`sub_B76CB0`, 97KB) frees 28+ hash tables from the full ~3,656-byte context structure, confirming that the uniquing tables are only part of the overall context.
@@ -309,16 +309,16 @@ NVIDIA's LLVM fork provides a set of instruction creation functions that allocat
 
 | Address | Size | Signature | LLVM Equivalent |
 |---------|------|-----------|-----------------|
-| `sub_B504D0` | -- | `(opcode, op0, op1, state, 0, 0)` | `BinaryOperator::Create` / `IRBuilder::CreateBinOp` |
-| `sub_B50640` | -- | `(val, state, 0, 0)` | Result-typed instruction / `CreateNeg` wrapper |
-| `sub_B51BF0` | -- | `(inst, src, destTy, state, 0, 0)` | `IRBuilder::CreateZExtOrBitCast` |
-| `sub_B51D30` | -- | `(opcode, src, destTy, state, 0, 0)` | `CmpInst::Create` / `IRBuilder::CreateCast` |
-| `sub_B52190` | -- | `(...)` | `BitCastInst::Create` |
-| `sub_B52260` | -- | `(...)` | `GetElementPtrInst::Create` (single-index) |
-| `sub_B52500` | -- | `(...)` | `CastInst::Create` with predicate |
-| `sub_B33D10` | -- | `(ctx, intrinsicID, args, numArgs, ...)` | `IRBuilder::CreateIntrinsicCall` |
-| `sub_BD2DA0` | -- | `(80)` | `Instruction::Create` (allocates 80-byte IR node) |
-| `sub_BD2C40` | -- | `(72, N)` | `Instruction::Create` (72-byte base, N operands) |
+| `sub_B504D0` | — | `(opcode, op0, op1, state, 0, 0)` | `BinaryOperator::Create` / `IRBuilder::CreateBinOp` |
+| `sub_B50640` | — | `(val, state, 0, 0)` | Result-typed instruction / `CreateNeg` wrapper |
+| `sub_B51BF0` | — | `(inst, src, destTy, state, 0, 0)` | `IRBuilder::CreateZExtOrBitCast` |
+| `sub_B51D30` | — | `(opcode, src, destTy, state, 0, 0)` | `CmpInst::Create` / `IRBuilder::CreateCast` |
+| `sub_B52190` | — | `(...)` | `BitCastInst::Create` |
+| `sub_B52260` | — | `(...)` | `GetElementPtrInst::Create` (single-index) |
+| `sub_B52500` | — | `(...)` | `CastInst::Create` with predicate |
+| `sub_B33D10` | — | `(ctx, intrinsicID, args, numArgs, ...)` | `IRBuilder::CreateIntrinsicCall` |
+| `sub_BD2DA0` | — | `(80)` | `Instruction::Create` (allocates 80-byte IR node) |
+| `sub_BD2C40` | — | `(72, N)` | `Instruction::Create` (72-byte base, N operands) |
 
 ### Opcode Constants for Creation
 
@@ -368,7 +368,7 @@ All three ultimately route through the uniquing function `sub_162D4F0` to dedupl
 
 NVVM IR nodes are allocated from a slab-based bump allocator:
 
-- **Slab growth**: `4096 << (slab_index >> 7)` -- exponential, capped at 4TB.
+- **Slab growth**: `4096 << (slab_index >> 7)` — exponential, capped at 4TB.
 - **Alignment**: 8 bytes (pointer aligned via `(ptr + 7) & ~7`).
 - **Deallocation**: no individual free; entire slabs are released at once.
 - **Overflow**: triggers a new slab via `malloc()`.
@@ -377,44 +377,44 @@ This is the standard LLVM BumpPtrAllocator pattern, consistent with how upstream
 
 ## Cross-References
 
-- [DenseMap / Hash Infrastructure](../infra/hash-infrastructure.md) -- universal hash function and DenseMap layout
-- [DAG Node](./dag-node.md) -- SelectionDAG-level node layout (104-byte SDNode)
-- [NVVM Container](./nvvm-container.md) -- the NVVMPassOptions/container that wraps the context
-- [Bitcode I/O](../infra/bitcode-io.md) -- bitcode opcode encoding and parseFunctionBody
-- [InstCombine](../llvm/instcombine.md) -- the 405KB mega-visitor that consumes these nodes
-- [NVVM Verifier](../passes/nvvm-verify-deep.md) -- per-opcode validation rules
+- [DenseMap / Hash Infrastructure](../infra/hash-infrastructure.md) — universal hash function and DenseMap layout
+- [DAG Node](./dag-node.md) — SelectionDAG-level node layout (104-byte SDNode)
+- [NVVM Container](./nvvm-container.md) — the NVVMPassOptions/container that wraps the context
+- [Bitcode I/O](../infra/bitcode-io.md) — bitcode opcode encoding and parseFunctionBody
+- [InstCombine](../llvm/instcombine.md) — the 405KB mega-visitor that consumes these nodes
+- [NVVM Verifier](../passes/nvvm-verify-deep.md) — per-opcode validation rules
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Node uniquing: lookup-or-insert, opcode dispatch | `sub_162D4F0` | 49KB | -- |
-| Node erase from uniquing tables (tombstone writer) | `sub_1621740` | 14KB | -- |
-| IR builder / node cloner | `sub_16275A0` | 21KB | -- |
-| Multi-operand node create (MDTuple::get) | `sub_1627350` | -- | -- |
-| Binary node create | `sub_15B9E00` | -- | -- |
-| Variadic node create | `sub_15C4420` | -- | -- |
-| Hash computation for multi-operand nodes | `sub_15B3480` | -- | -- |
-| Context destructor (frees 20+ hash tables) | `sub_1608300` | 90KB | -- |
-| LLVMContext destructor (~3,656-byte object) | `sub_B76CB0` | 97KB | -- |
-| `BinaryOperator::Create` / `IRBuilder::CreateBinOp` | `sub_B504D0` | -- | -- |
-| Result-typed instruction create / `CreateNeg` | `sub_B50640` | -- | -- |
-| `IRBuilder::CreateZExtOrBitCast` | `sub_B51BF0` | -- | -- |
-| `CmpInst::Create` / `IRBuilder::CreateCast` | `sub_B51D30` | -- | -- |
-| `BitCastInst::Create` | `sub_B52190` | -- | -- |
-| `GetElementPtrInst::Create` (single-index) | `sub_B52260` | -- | -- |
-| `CastInst::Create` with predicate | `sub_B52500` | -- | -- |
-| `IRBuilder::CreateIntrinsicCall` | `sub_B33D10` | -- | -- |
-| `Instruction::Create` (80-byte allocation) | `sub_BD2DA0` | -- | -- |
-| `Instruction::Create` (variable-size) | `sub_BD2C40` | -- | -- |
-| `create_empty_ir_node` (204 callers, EDG front-end) | `sub_72C9A0` | -- | -- |
-| IR builder / node constructor (349x calls) | `sub_1623A60` | -- | -- |
-| IR builder / node constructor variant (337x calls) | `sub_1623210` | -- | -- |
-| Create node with 5 args (276x calls) | `sub_15FB440` | -- | -- |
-| Node accessor / property query (463x calls) | `sub_161E7C0` | -- | -- |
-| `BitcodeReader::parseFunctionBody` (stock LLVM) | `sub_166A310` | 60KB | -- |
-| `parseFunctionBody` (two-phase compilation path) | `sub_151B070` | 123KB | -- |
-| `parseFunctionBody` (standalone libNVVM path) | `sub_9F2A40` | 185KB | -- |
-| `InstCombinerImpl::visitInstruction` (full opcode switch) | `sub_10EE7A0` | 405KB | -- |
-| InstCombine master visit dispatcher | `sub_F2CFA0` | -- | -- |
-| NVVM module verifier (per-opcode validation) | `sub_2C80C90` | 51KB | -- |
+| Node uniquing: lookup-or-insert, opcode dispatch | `sub_162D4F0` | 49KB | — |
+| Node erase from uniquing tables (tombstone writer) | `sub_1621740` | 14KB | — |
+| IR builder / node cloner | `sub_16275A0` | 21KB | — |
+| Multi-operand node create (MDTuple::get) | `sub_1627350` | — | — |
+| Binary node create | `sub_15B9E00` | — | — |
+| Variadic node create | `sub_15C4420` | — | — |
+| Hash computation for multi-operand nodes | `sub_15B3480` | — | — |
+| Context destructor (frees 20+ hash tables) | `sub_1608300` | 90KB | — |
+| LLVMContext destructor (~3,656-byte object) | `sub_B76CB0` | 97KB | — |
+| `BinaryOperator::Create` / `IRBuilder::CreateBinOp` | `sub_B504D0` | — | — |
+| Result-typed instruction create / `CreateNeg` | `sub_B50640` | — | — |
+| `IRBuilder::CreateZExtOrBitCast` | `sub_B51BF0` | — | — |
+| `CmpInst::Create` / `IRBuilder::CreateCast` | `sub_B51D30` | — | — |
+| `BitCastInst::Create` | `sub_B52190` | — | — |
+| `GetElementPtrInst::Create` (single-index) | `sub_B52260` | — | — |
+| `CastInst::Create` with predicate | `sub_B52500` | — | — |
+| `IRBuilder::CreateIntrinsicCall` | `sub_B33D10` | — | — |
+| `Instruction::Create` (80-byte allocation) | `sub_BD2DA0` | — | — |
+| `Instruction::Create` (variable-size) | `sub_BD2C40` | — | — |
+| `create_empty_ir_node` (204 callers, EDG front-end) | `sub_72C9A0` | — | — |
+| IR builder / node constructor (349x calls) | `sub_1623A60` | — | — |
+| IR builder / node constructor variant (337x calls) | `sub_1623210` | — | — |
+| Create node with 5 args (276x calls) | `sub_15FB440` | — | — |
+| Node accessor / property query (463x calls) | `sub_161E7C0` | — | — |
+| `BitcodeReader::parseFunctionBody` (stock LLVM) | `sub_166A310` | 60KB | — |
+| `parseFunctionBody` (two-phase compilation path) | `sub_151B070` | 123KB | — |
+| `parseFunctionBody` (standalone libNVVM path) | `sub_9F2A40` | 185KB | — |
+| `InstCombinerImpl::visitInstruction` (full opcode switch) | `sub_10EE7A0` | 405KB | — |
+| InstCombine master visit dispatcher | `sub_F2CFA0` | — | — |
+| NVVM module verifier (per-opcode validation) | `sub_2C80C90` | 51KB | — |

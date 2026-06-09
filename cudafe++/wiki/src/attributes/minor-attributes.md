@@ -7,10 +7,10 @@ cudafe++ defines several CUDA-specific attributes beyond the core execution-spac
 | Kind | Hex | ASCII | Display Name | Category | Handler / Flag |
 |------|------|-------|--------------|----------|----------------|
 | 110 | 0x6E | `'n'` | `__nv_pure__` | Optimization | entity+183 (via IL propagation) |
-| -- | -- | -- | `__nv_register_params__` | ABI | `sub_40B0A0` (38 lines), entity+183 bit 3 |
-| -- | -- | -- | `__forceinline__` | Inline control | entity+177 bit 4 |
-| -- | -- | -- | `__noinline__` | Inline control | `sub_40F5F0` / `sub_40F6F0`, entity+179 bit 5, entity+180 bit 7 |
-| -- | -- | -- | `__inline_hint__` | Inline control | entity+179 bit 4 |
+| — | — | — | `__nv_register_params__` | ABI | `sub_40B0A0` (38 lines), entity+183 bit 3 |
+| — | — | — | `__forceinline__` | Inline control | entity+177 bit 4 |
+| — | — | — | `__noinline__` | Inline control | `sub_40F5F0` / `sub_40F6F0`, entity+179 bit 5, entity+180 bit 7 |
+| — | — | — | `__inline_hint__` | Inline control | entity+179 bit 4 |
 | 89 | 0x59 | `'Y'` | `__tile_global__` | Internal | (no handler observed) |
 | 95 | 0x5F | `'_'` | `__tile_builtin__` | Internal | (no handler observed) |
 | 94 | 0x5E | `'^'` | `__local_maxnreg__` | Launch config | `sub_411090` (67 lines) |
@@ -27,7 +27,7 @@ Note: `__nv_register_params__`, `__forceinline__`, `__noinline__`, and `__inline
 `__nv_pure__` marks a function as having no observable side effects: given the same inputs, it always returns the same result and does not modify any state visible to the caller. This is an **optimization hint for cicc** (the CUDA compiler backend). A pure function can be:
 
 - **Common-subexpression eliminated (CSE):** if `f(x)` appears twice in the same basic block, the second call can be replaced by the first call's result.
-- **Hoisted out of loops:** if `f(x)` is invariant across loop iterations, it can be computed once before the loop (LICM -- loop-invariant code motion).
+- **Hoisted out of loops:** if `f(x)` is invariant across loop iterations, it can be computed once before the loop (LICM — loop-invariant code motion).
 - **Dead-code eliminated:** if the result of `f(x)` is never used and the function has no side effects, the call can be removed entirely.
 
 This is semantically equivalent to GCC's `__attribute__((pure))` and LLVM's `readonly` function attribute, but expressed through NVIDIA's internal attribute system rather than the standard GNU attribute path. The choice of a separate internal attribute rather than reusing the GNU `pure` attribute reflects cudafe++'s design of routing all CUDA-specific semantics through its own kind-byte dispatch, keeping the NVIDIA optimization pipeline cleanly separated from EDG's standard attribute handling.
@@ -158,7 +158,7 @@ This means `__nv_register_params__` is only valid on `__device__` functions (not
 
 ### Registration at Startup
 
-The function `sub_6B5E50` (called during compiler initialization) registers `__nv_register_params__` as a preprocessor macro expansion. It looks up the name via `sub_734430`, and if not found, creates a new macro definition node and registers it in the symbol table via `sub_749600`. The macro body is a 40-byte token sequence that, when expanded, produces the `__attribute__((__nv_register_params__))` syntax that EDG's attribute parser can consume. This macro-based registration is why `__nv_register_params__` does not have a CUDA kind byte -- it enters the attribute system through the standard GNU `__attribute__` path, not through the CUDA attribute descriptor table.
+The function `sub_6B5E50` (called during compiler initialization) registers `__nv_register_params__` as a preprocessor macro expansion. It looks up the name via `sub_734430`, and if not found, creates a new macro definition node and registers it in the symbol table via `sub_749600`. The macro body is a 40-byte token sequence that, when expanded, produces the `__attribute__((__nv_register_params__))` syntax that EDG's attribute parser can consume. This macro-based registration is why `__nv_register_params__` does not have a CUDA kind byte — it enters the attribute system through the standard GNU `__attribute__` path, not through the CUDA attribute descriptor table.
 
 The same startup function also registers `__noinline__` with a similar mechanism, and `_Pragma` (if Clang compatibility mode requires it).
 
@@ -298,7 +298,7 @@ This is consistent with the attribute being consumed downstream by cicc or anoth
 
 `__tile_builtin__` is another **internal** attribute in the CUDA kind enum, with kind value 95 (0x5F, ASCII `'_'`). Its kind value is the last in the original dense block (86--95).
 
-The name suggests this attribute marks functions that are **tile-level builtins** -- compiler intrinsics that implement tile-based operations. These would be functions like `cooperative_groups::tiled_partition::shfl()`, `cooperative_groups::tiled_partition::ballot()`, or TMA copy intrinsics, which are compiled by cudafe++ as ordinary function calls but need special handling by cicc for efficient code generation.
+The name suggests this attribute marks functions that are **tile-level builtins** — compiler intrinsics that implement tile-based operations. These would be functions like `cooperative_groups::tiled_partition::shfl()`, `cooperative_groups::tiled_partition::ballot()`, or TMA copy intrinsics, which are compiled by cudafe++ as ordinary function calls but need special handling by cicc for efficient code generation.
 
 ### Binary Evidence
 
@@ -490,7 +490,7 @@ entity+256  [pointer]:    launch_config_t* (for __local_maxnreg__, __block_size_
 | 3659 | `register_params_not_enabled` | `__nv_register_params__` |
 | 3661 | `register_params_unsupported_function` | `__nv_register_params__` |
 | 3662 | `register_params_ellipsis_function` | `__nv_register_params__` |
-| -- | `register_params_unsupported_arch` | `__nv_register_params__` |
+| — | `register_params_unsupported_arch` | `__nv_register_params__` |
 | 3786 | `local_maxnreg_negative` | `__local_maxnreg__` |
 | 3787 | `local_maxnreg_too_large` | `__local_maxnreg__` |
 | 3788 | `block_size_must_be_positive` | `__block_size__` |
@@ -501,10 +501,10 @@ entity+256  [pointer]:    launch_config_t* (for __local_maxnreg__, __block_size_
 
 ## Cross-References
 
-- [Attribute System Overview](overview.md) -- kind enum, descriptor table, application pipeline
-- [Launch Configuration Attributes](launch-config.md) -- shared launch_config_t struct, `__launch_bounds__`, `__maxnreg__`, `__cluster_dims__`
-- [\_\_global\_\_ Function Constraints](global-function.md) -- post-validation checks in `sub_6BC890`
-- [Entity Node Layout](../structs/entity-node.md) -- entity+177, +179, +180, +182, +183 field definitions
-- [Cross-Space Validation](../cuda/cross-space-validation.md) -- `__forceinline__` relaxation in cross-space calling
-- [Architecture Feature Gating](../cuda/arch-gating.md) -- `__nv_register_params__` compute_80 requirement
-- [__nv_* Builtin Intrinsic Names](nv-builtin-intrinsics.md) -- companion catalogue of `__nv_*` names that are *not* attributes (intrinsics, lambda machinery)
+- [Attribute System Overview](overview.md) — kind enum, descriptor table, application pipeline
+- [Launch Configuration Attributes](launch-config.md) — shared launch_config_t struct, `__launch_bounds__`, `__maxnreg__`, `__cluster_dims__`
+- [\_\_global\_\_ Function Constraints](global-function.md) — post-validation checks in `sub_6BC890`
+- [Entity Node Layout](../structs/entity-node.md) — entity+177, +179, +180, +182, +183 field definitions
+- [Cross-Space Validation](../cuda/cross-space-validation.md) — `__forceinline__` relaxation in cross-space calling
+- [Architecture Feature Gating](../cuda/arch-gating.md) — `__nv_register_params__` compute_80 requirement
+- [__nv_* Builtin Intrinsic Names](nv-builtin-intrinsics.md) — companion catalogue of `__nv_*` names that are *not* attributes (intrinsics, lambda machinery)

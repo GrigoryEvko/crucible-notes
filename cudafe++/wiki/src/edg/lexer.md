@@ -1,8 +1,8 @@
 # Lexer & Tokenizer
 
-The lexer in cudafe++ is EDG 6.6's `lexical.c` implementation -- a hand-coded, state-machine-driven tokenizer that converts raw source bytes into a stream of 357 distinct token kinds. It spans approximately 185 functions across the address range `0x668330`--`0x689130` and constitutes one of the densest subsystems in the binary. The design is a classic multi-layered scanner: a byte-level character scanner (`sub_679800`, 907 lines) feeds into a token acquisition engine (`sub_6810F0`, 3,811 lines), which in turn is wrapped by a cache-aware token delivery function (`sub_676860`, 1,995 lines). CUDA keyword recognition is injected at the `get_token_main` level, gated on `dword_106C2C0` (GPU compilation mode flag).
+The lexer in cudafe++ is EDG 6.6's `lexical.c` implementation — a hand-coded, state-machine-driven tokenizer that converts raw source bytes into a stream of 357 distinct token kinds. It spans approximately 185 functions across the address range `0x668330`--`0x689130` and constitutes one of the densest subsystems in the binary. The design is a classic multi-layered scanner: a byte-level character scanner (`sub_679800`, 907 lines) feeds into a token acquisition engine (`sub_6810F0`, 3,811 lines), which in turn is wrapped by a cache-aware token delivery function (`sub_676860`, 1,995 lines). CUDA keyword recognition is injected at the `get_token_main` level, gated on `dword_106C2C0` (GPU compilation mode flag).
 
-The lexer does not use generated tables from tools like flex. Instead, every character-class test, keyword match, and operator scan is written as explicit C switch/if chains, compiled into dense jump tables by the optimizer. This produces extremely large functions -- `get_token_main` alone has approximately 300 local variables in its decompiled form -- but eliminates the overhead of table-driven DFA transitions for a language as context-sensitive as C++.
+The lexer does not use generated tables from tools like flex. Instead, every character-class test, keyword match, and operator scan is written as explicit C switch/if chains, compiled into dense jump tables by the optimizer. This produces extremely large functions — `get_token_main` alone has approximately 300 local variables in its decompiled form — but eliminates the overhead of table-driven DFA transitions for a language as context-sensitive as C++.
 
 ## Key Facts
 
@@ -120,9 +120,9 @@ The token cache provides the lookahead, backtracking, and macro-expansion replay
 | macro_def | 2 | Macro definition pointer | Macro definition for re-expansion (calls `sub_5BA500`) |
 | pragma | 3 | Pragma data | Preprocessor pragma for deferred processing |
 | pp_number | 4 | Number text | Preprocessing number (not yet classified as int/float) |
-| (reserved) | 5 | -- | Not observed in use |
+| (reserved) | 5 | — | Not observed in use |
 | string | 6 | String data + encoding | String literal token |
-| (reserved) | 7 | -- | Not observed in use |
+| (reserved) | 7 | — | Not observed in use |
 | concatenated_string | 8 | Concatenated string data | Wide or multi-piece concatenated string literal |
 
 ### Cache Management Globals
@@ -157,7 +157,7 @@ The scanner reads the byte at the current input position and enters one of the f
 | First Byte | Action |
 |---|---|
 | `0x00` (NUL) | Control byte processing (8 embedded control types, see below) |
-| `0x09` (TAB), `0x0B` (VT), `0x0C` (FF), `0x20` (space) | Whitespace -- advance and retry |
+| `0x09` (TAB), `0x0B` (VT), `0x0C` (FF), `0x20` (space) | Whitespace — advance and retry |
 | `a`--`z`, `A`--`Z`, `_` | Identifier or keyword scanning |
 | `0`--`9` | Numeric literal scanning (decimal, hex, octal, binary) |
 | `'` | Character literal scanning |
@@ -177,12 +177,12 @@ The input buffer uses embedded NUL bytes (`0x00`) as in-band control markers. Wh
 
 | Control Type | Value | Action |
 |---|---|---|
-| Newline marker | 1 | End of line -- calls `sub_6702F0` (`refill_buffer`) to read next source line |
-| (reserved) | 2 | -- |
-| Macro position | 3 | Macro expansion position marker -- calls `sub_66A770` to update position tracking |
+| Newline marker | 1 | End of line — calls `sub_6702F0` (`refill_buffer`) to read next source line |
+| (reserved) | 2 | — |
+| Macro position | 3 | Macro expansion position marker — calls `sub_66A770` to update position tracking |
 | End of directive | 4 | Marks end of a preprocessor directive |
-| EOF (primary) | 5 | End of current source file -- pops file stack |
-| Stale position | 6 | Invalid position marker -- emits diagnostic 1192 or 861 |
+| EOF (primary) | 5 | End of current source file — pops file stack |
+| Stale position | 6 | Invalid position marker — emits diagnostic 1192 or 861 |
 | Continuation | 7 | Backslash-newline continuation was here |
 | EOF (secondary) | 8 | Secondary EOF marker for nested includes |
 
@@ -868,12 +868,12 @@ The stop-token table at `qword_126DB48 + 8` (357 entries) controls which token k
 
 ## Cross-References
 
-- [Pipeline Overview](../pipeline/overview.md) -- keyword registration during `sub_5863A0`
-- [Entry Point & Initialization](../pipeline/entry.md) -- frontend init calls keyword_init
-- [Template Engine](template-engine.md) -- template argument scanning at lexer level
-- [Type System](type-system.md) -- entity kind classification used by lexer
-- [Token Kind Table](../reference/token-kinds.md) -- full 357-entry token table
-- [Scope Entry](../structs/scope-entry.md) -- 784-byte scope entry structure
-- [Entity Node Layout](../structs/entity-node.md) -- entity node offsets used by identifier classification
-- [Global Variable Index](../reference/global-variables.md) -- all global addresses referenced here
-- [Attribute System Overview](../attributes/overview.md) -- CUDA attribute handling at token level
+- [Pipeline Overview](../pipeline/overview.md) — keyword registration during `sub_5863A0`
+- [Entry Point & Initialization](../pipeline/entry.md) — frontend init calls keyword_init
+- [Template Engine](template-engine.md) — template argument scanning at lexer level
+- [Type System](type-system.md) — entity kind classification used by lexer
+- [Token Kind Table](../reference/token-kinds.md) — full 357-entry token table
+- [Scope Entry](../structs/scope-entry.md) — 784-byte scope entry structure
+- [Entity Node Layout](../structs/entity-node.md) — entity node offsets used by identifier classification
+- [Global Variable Index](../reference/global-variables.md) — all global addresses referenced here
+- [Attribute System Overview](../attributes/overview.md) — CUDA attribute handling at token level

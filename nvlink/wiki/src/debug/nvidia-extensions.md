@@ -27,8 +27,8 @@ For standard DWARF section processing, see [DWARF Processing](dwarf-processing.m
 | `.nv_debug_info_reg_sass` | Register allocation debug data | `sub_181B160` | `.nv.merc.nv_debug_info_reg_sass` |
 | `.nv_debug_info_reg_type` | Register type annotations | `sub_181B270` | `.nv.merc.nv_debug_info_reg_type` |
 | `.nv_debug_ptx_txt` | Embedded PTX source text | (prefix-matched, opaque passthrough) | `.nv.merc.nv_debug_ptx_txt` |
-| `.nv_debug_info_ptx` | PTX-level debug information | (DWARF parser at `sub_1D1D2F0`) | -- |
-| `.nv_debug.shared` | Shared memory debug metadata | (filter predicate only) | -- |
+| `.nv_debug_info_ptx` | PTX-level debug information | (DWARF parser at `sub_1D1D2F0`) | — |
+| `.nv_debug.shared` | Shared memory debug metadata | (filter predicate only) | — |
 
 ## Section Descriptions
 
@@ -54,7 +54,7 @@ In the section-to-offset mapper, `.nv_debug_info_reg_type` maps to context offse
 
 Embedded PTX source text carried verbatim through the linker. This section contains the raw PTX assembly text of the compilation unit, enabling debuggers to display PTX source alongside SASS disassembly. The section classifier (`sub_1CED7C0`) uses the prefix-matching function `sub_44E3A0` rather than exact `strcmp`/`memcmp` to recognize this section, testing whether the section name starts with `.nv_debug_ptx_txt`. This is the only NVIDIA debug section matched by prefix rather than exact name in the classifier.
 
-The section is passed through as opaque data -- there is no dedicated writer or parser for the content. The Mercury variant `.nv.merc.nv_debug_ptx_txt` is similarly prefix-matched in `sub_1CED0E0` during output emission.
+The section is passed through as opaque data — there is no dedicated writer or parser for the content. The Mercury variant `.nv.merc.nv_debug_ptx_txt` is similarly prefix-matched in `sub_1CED0E0` during output emission.
 
 ### .nv_debug_info_ptx
 
@@ -70,7 +70,7 @@ if (memcmp(section_name, ".nv_debug_info_ptx", 19) == 0)
 
 This means `.nv_debug_info_ptx` uses the same DWARF abbreviation/attribute/form encoding as standard `.debug_info`, but contains PTX-level scope, variable, and type information rather than source-level debug data.
 
-This section has a single xref at `0x1D1D6B3` in `sub_1D1D2F0` and does not appear in the Mercury namespace -- it is consumed during linking and its information is folded into the standard debug sections.
+This section has a single xref at `0x1D1D6B3` in `sub_1D1D2F0` and does not appear in the Mercury namespace — it is consumed during linking and its information is folded into the standard debug sections.
 
 ### .nv_debug.shared
 
@@ -209,7 +209,7 @@ Concrete slot bases in the linker context:
 
 | Writer | List head | Output buffer | Total size | Delta from prev |
 |---|---|---|---|---|
-| `sub_181B050` (`.debug_frame`) | `+384` | `+392` | `+400` | -- |
+| `sub_181B050` (`.debug_frame`) | `+384` | `+392` | `+400` | — |
 | `sub_181B160` (`.nv_debug_info_reg_sass`) | `+408` | `+416` | `+424` | +24 |
 | `sub_181B270` (`.nv_debug_info_reg_type`) | `+432` | `+440` | `+448` | +24 |
 
@@ -257,7 +257,7 @@ The first seven checks use `memcmp` with an explicit length. This means a sectio
 
 ### Section Type Preprocessing
 
-Before each name comparison, the function inspects the section header's `sh_type` field (`a2[1]`). The magic constants `1879048198` (`0x70000006`, `SHT_CUDA_CONSTANT` -- the generic constant-bank base) through `1879048292` (`0x70000064`, `SHT_CUDA_CONSTANT0`) correspond to NVIDIA-specific ELF section types in the `SHT_LOPROC` range (`0x70000000`..`0x7FFFFFFF`). A bitmask `0x5D05` is used to quickly classify section types into "possibly debug" or "definitely not debug" categories, avoiding expensive string comparisons for clearly non-debug sections.
+Before each name comparison, the function inspects the section header's `sh_type` field (`a2[1]`). The magic constants `1879048198` (`0x70000006`, `SHT_CUDA_CONSTANT` — the generic constant-bank base) through `1879048292` (`0x70000064`, `SHT_CUDA_CONSTANT0`) correspond to NVIDIA-specific ELF section types in the `SHT_LOPROC` range (`0x70000000`..`0x7FFFFFFF`). A bitmask `0x5D05` is used to quickly classify section types into "possibly debug" or "definitely not debug" categories, avoiding expensive string comparisons for clearly non-debug sections.
 
 ## Section-to-Offset Mapper: sub_1CEDD50
 
@@ -397,24 +397,24 @@ The NVIDIA debug extensions integrate with the standard DWARF processing pipelin
 
 **Internal (nvlink wiki) — debug subsystem:**
 
-- [DWARF Processing](dwarf-processing.md) -- Core DWARF-2/3 parsing pipeline, abbreviation table cache, vendor-specific attributes (`DW_AT_NV_*`), and form value decoding. Used by `.nv_debug_info_ptx` via `sub_1D1D2F0` and shared with standard `.debug_info` parsing
-- [Line Table Merging](line-tables.md) -- DWARF line program merging, NVIDIA extended opcodes, and the `.nv_debug_line_sass` SASS-level line-table pipeline that produces the merged output
-- [Mercury Debug Sections](mercury-debug.md) -- Mercury-specific debug section handling and the `.nv.merc.*` namespace; cross-reference for the Mercury dispatcher (`sub_1CF1690`) and acceptance gate at context offset `+432`
-- [Debug Options](options.md) -- CLI flags (`-g`, `-lineinfo`, `--strip-debug`) that control which NVIDIA debug sections are emitted by upstream ptxas and which survive nvlink processing
+- [DWARF Processing](dwarf-processing.md) — Core DWARF-2/3 parsing pipeline, abbreviation table cache, vendor-specific attributes (`DW_AT_NV_*`), and form value decoding. Used by `.nv_debug_info_ptx` via `sub_1D1D2F0` and shared with standard `.debug_info` parsing
+- [Line Table Merging](line-tables.md) — DWARF line program merging, NVIDIA extended opcodes, and the `.nv_debug_line_sass` SASS-level line-table pipeline that produces the merged output
+- [Mercury Debug Sections](mercury-debug.md) — Mercury-specific debug section handling and the `.nv.merc.*` namespace; cross-reference for the Mercury dispatcher (`sub_1CF1690`) and acceptance gate at context offset `+432`
+- [Debug Options](options.md) — CLI flags (`-g`, `-lineinfo`, `--strip-debug`) that control which NVIDIA debug sections are emitted by upstream ptxas and which survive nvlink processing
 
 **Internal (nvlink wiki) — ELF and section management:**
 
-- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Section type constants for `.nv_debug_*` sections in the CUDA section catalog (the `1879048198`--`1879048292` = `0x70000006`..`0x70000064` `SHT_LOPROC`-range constants that the classifier and filter use as a fast pre-check)
-- [Section Catalog](../reference/section-catalog.md) -- Alphabetical index entries #62--#66 covering all NVIDIA debug sections, including their full sh_type hex values and creation phase
-- [Mercury ELF Sections](../mercury/elf-sections.md) -- The Mercury container and DWARF mirror sections that carry debug data for sm100+ targets. Documents the parallel `.nv.merc.*` namespace
-- [Section Merging](../linker/section-merging.md) -- How debug sections are classified by `merge_elf` name-prefix dispatch and routed to the writers documented above
-- [UFT: Unified Function Table](../elf/uft.md) -- The `.nv.uft` / `.nv.uft.rel` / `.nv.uft.entry` family is unrelated to debug info despite naming similarity; it implements function-pointer indirection for cross-module calls
+- [NVIDIA Section Types](../elf/nvidia-sections.md) — Section type constants for `.nv_debug_*` sections in the CUDA section catalog (the `1879048198`--`1879048292` = `0x70000006`..`0x70000064` `SHT_LOPROC`-range constants that the classifier and filter use as a fast pre-check)
+- [Section Catalog](../reference/section-catalog.md) — Alphabetical index entries #62--#66 covering all NVIDIA debug sections, including their full sh_type hex values and creation phase
+- [Mercury ELF Sections](../mercury/elf-sections.md) — The Mercury container and DWARF mirror sections that carry debug data for sm100+ targets. Documents the parallel `.nv.merc.*` namespace
+- [Section Merging](../linker/section-merging.md) — How debug sections are classified by `merge_elf` name-prefix dispatch and routed to the writers documented above
+- [UFT: Unified Function Table](../elf/uft.md) — The `.nv.uft` / `.nv.uft.rel` / `.nv.uft.entry` family is unrelated to debug info despite naming similarity; it implements function-pointer indirection for cross-module calls
 
 **Sibling wikis:**
 
-- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- ptxas-side generation of `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, and SASS line tables
-- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) -- How ptxas emits debug sections into the cubin that nvlink later processes
-- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) -- cicc's four-stage debug metadata lifecycle; cicc does not directly produce NVIDIA-specific sections but generates the LLVM debug metadata that ptxas converts to `.nv_debug_*` formats
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) — ptxas-side generation of `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, and SASS line tables
+- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) — How ptxas emits debug sections into the cubin that nvlink later processes
+- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) — cicc's four-stage debug metadata lifecycle; cicc does not directly produce NVIDIA-specific sections but generates the LLVM debug metadata that ptxas converts to `.nv_debug_*` formats
 
 ## Confidence Assessment
 
@@ -422,7 +422,7 @@ The NVIDIA debug extensions integrate with the standard DWARF processing pipelin
 |---|---|---|
 | Section classifier `sub_1CED7C0` recognizes 15 section names in documented order | HIGH | Decompiled file confirms sequential `memcmp`/`strcmp` chain: `.debug_abbrev` (memcmp 14 bytes) at line 50, `.debug_aranges` (memcmp 15 bytes) at line 76, with `0x5D05` bitmask at line 45 |
 | Bitmask `0x5D05` for section type pre-filtering | HIGH | Decompiled: `(0x5D05uLL >> ((unsigned __int8)v4 - 6)) & 1` at line 45; magic constants `1879048198` (`0x70000006`) and `1879048292` (`0x70000064`) confirm the `SHT_LOPROC` range that the bitmask covers |
-| Section-to-offset mapper `sub_1CEDD50` -- all 7 offset values | HIGH | Decompiled: `.debug_line` -> `*(a1+80)`, `.debug_frame` -> `*(a1+72)`, `.nv_debug_line_sass` -> `*(a1+88)`, `.debug_info` -> `*(a1+112)`, `.debug_loc` -> `*(a1+120)`, `.nv_debug_info_reg_sass` -> `*(a1+96)`, `.nv_debug_info_reg_type` -> `*(a1+104)` -- all exact |
+| Section-to-offset mapper `sub_1CEDD50` — all 7 offset values | HIGH | Decompiled: `.debug_line` -> `*(a1+80)`, `.debug_frame` -> `*(a1+72)`, `.nv_debug_line_sass` -> `*(a1+88)`, `.debug_info` -> `*(a1+112)`, `.debug_loc` -> `*(a1+120)`, `.nv_debug_info_reg_sass` -> `*(a1+96)`, `.nv_debug_info_reg_type` -> `*(a1+104)` — all exact |
 | Three writers structurally identical, differing only in offsets and names | HIGH | Decompiled `sub_181B050`/`sub_181B160`/`sub_181B270` are byte-for-byte identical in call sequence; offsets +384/+408/+432, +400/+424/+448, +392/+416/+440 confirmed; section name strings `.debug_frame`, `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type` at `sub_434BC0` call |
 | 6 NVIDIA-specific section names | HIGH | All confirmed in `nvlink_strings.json`: `.nv_debug_line_sass`, `.nv_debug_info_reg_sass` (`0x241282C`), `.nv_debug_info_reg_type` (`0x2412844`), `.nv_debug_ptx_txt`, `.nv_debug_info_ptx` (`0x245E6D4`), `.nv_debug.shared` (`0x1D38995`) |
 | `.nv_debug_ptx_txt` matched by prefix via `sub_44E3A0` | MEDIUM | `sub_44E3A0` is a starts-with predicate confirmed by its use in `sub_1CECBB0` (decompiled line 38); its use for `.nv_debug_ptx_txt` in the classifier is documented but not individually verified in the dense `sub_1CED7C0` decompilation |

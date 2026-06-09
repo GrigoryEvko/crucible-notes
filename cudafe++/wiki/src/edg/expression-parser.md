@@ -1,6 +1,6 @@
 # Expression Parser
 
-The expression parser is the largest subsystem in cudafe++. It lives in EDG 6.6's `expr.c`, which compiles to approximately 335KB of code (address range `0x4F8000`--`0x556600`) containing roughly 320 functions. The central function `scan_expr_full` (`sub_511D40`) alone occupies 80KB -- approximately 2,000 decompiled lines with over 300 local variables. EDG uses a hand-written recursive descent parser, not a generated one (no yacc/bison). Each C++ operator precedence level has its own scanning function, and the call chain follows the precedence hierarchy: assignment, conditional, logical-or, logical-and, bitwise-or, bitwise-xor, bitwise-and, equality, relational, shift, additive, multiplicative, pointer-to-member, unary, postfix, primary.
+The expression parser is the largest subsystem in cudafe++. It lives in EDG 6.6's `expr.c`, which compiles to approximately 335KB of code (address range `0x4F8000`--`0x556600`) containing roughly 320 functions. The central function `scan_expr_full` (`sub_511D40`) alone occupies 80KB — approximately 2,000 decompiled lines with over 300 local variables. EDG uses a hand-written recursive descent parser, not a generated one (no yacc/bison). Each C++ operator precedence level has its own scanning function, and the call chain follows the precedence hierarchy: assignment, conditional, logical-or, logical-and, bitwise-or, bitwise-xor, bitwise-and, equality, relational, shift, additive, multiplicative, pointer-to-member, unary, postfix, primary.
 
 CUDA-specific extensions are woven directly into this subsystem: cross-execution-space call validation at every function call site, remapping of GCC `__sync_fetch_and_*` builtins to NVIDIA `__nv_atomic_fetch_*` intrinsics, and constexpr-if gating of literal evaluation based on compilation mode.
 
@@ -80,7 +80,7 @@ The parser assigns numeric precedence levels internally, passed as the `a3` (thi
 
 When `scan_expr_full` encounters a binary operator token whose precedence is lower than the current precedence parameter, it returns immediately, allowing the caller at that precedence level to consume the operator. This is the standard recursive descent technique: each level calls the next-higher-precedence scanner for its operands.
 
-## scan_expr_full -- The Central Dispatcher
+## scan_expr_full — The Central Dispatcher
 
 `scan_expr_full` (`sub_511D40`, 80KB) is the largest function in the entire cudafe++ binary. Its structure follows this pattern:
 
@@ -311,7 +311,7 @@ The master switch in `scan_expr_full` covers approximately 120 distinct token ca
 | 8 | Literal operator call | `make_func_operand_for_literal_operator_call` (`sub_4FFFB0`) |
 | 18, 80--136, 165, 180, 183 | Type keywords in expression context | `scan_type_returning_type_trait_operator` / `scan_identifier` |
 | 25 | `__extension__` | `scan_expr_splicer` (`sub_52FD70`) or `scan_statement_expression` (`sub_4F9F20`) |
-| 27 | `(` | `scan_cast_or_expr` (`sub_544290`) -- disambiguates cast/group/fold/stmt-expr |
+| 27 | `(` | `scan_cast_or_expr` (`sub_544290`) — disambiguates cast/group/fold/stmt-expr |
 | 31, 32 | `++` / `--` (prefix) | `scan_prefix_incr_decr` (`sub_516080`) |
 | 33 | `&` (address-of) | `scan_ampersand_operator` (`sub_516720`) |
 | 34 | `*` (indirection) | `scan_indirection_operator` (`sub_517270`) |
@@ -369,7 +369,7 @@ The master switch in `scan_expr_full` covers approximately 120 distinct token ca
 | 304 | `__edg_is_deducible` | `sub_51B360` |
 | 306, 307 | `__builtin_source_location` | `sub_5BC720` / `sub_534920` |
 
-## scan_conditional_operator -- Ternary `? :`
+## scan_conditional_operator — Ternary `? :`
 
 `scan_conditional_operator` (`sub_526E30`, 48KB) is the second-largest expression-scanning function. The ternary operator is notoriously complex because it must unify the types of two branches that may have completely different types. The function handles:
 
@@ -433,19 +433,19 @@ function scan_conditional_operator(context, result, flags) {
 
 The complexity arises from the 15+ different type-pair combinations (arithmetic-arithmetic, pointer-pointer, pointer-null, class-class with conversions, void-void, throw-anything, lvalue-lvalue GCC extension) that each require different conversion logic.
 
-## scan_function_call -- All Call Forms
+## scan_function_call — All Call Forms
 
 `scan_function_call` (`sub_545F00`, 2,490 lines) handles every form of function call expression. It is invoked from the postfix operator dispatch in `scan_expr_full` when a `(` follows a primary expression, and also from various specialized paths.
 
 The function handles:
 
 1. **Regular function calls** with overload resolution
-2. **Builtin function calls** -- GCC/Clang `__builtin_*` with special semantics
-3. **Pseudo-calls to builtins** -- `va_start`, `__builtin_va_start`, etc.
-4. **GNU `__builtin_classify_type`** -- compile-time type classification
-5. **SFINAE context** -- failed overload resolution suppresses errors instead of aborting
+2. **Builtin function calls** — GCC/Clang `__builtin_*` with special semantics
+3. **Pseudo-calls to builtins** — `va_start`, `__builtin_va_start`, etc.
+4. **GNU `__builtin_classify_type`** — compile-time type classification
+5. **SFINAE context** — failed overload resolution suppresses errors instead of aborting
 6. **Template argument deduction** for function templates at call sites
-7. **CUDA atomic builtin remapping** -- delegates to `adjust_sync_atomic_builtin` (see below)
+7. **CUDA atomic builtin remapping** — delegates to `adjust_sync_atomic_builtin` (see below)
 
 ```c
 function scan_function_call(callee_operand, flags, context, ...) {
@@ -525,7 +525,7 @@ function scan_call_arguments(arg_list_out, ...) {
 }
 ```
 
-## scan_new_operator -- All `new` Forms
+## scan_new_operator — All `new` Forms
 
 `scan_new_operator` (`sub_54AED0`, 2,333 lines) implements the complete C++ `new` expression. The function name strings embedded in the binary confirm the following sub-operations:
 
@@ -588,7 +588,7 @@ function scan_new_operator(result, flags, context, ...) {
 }
 ```
 
-## scan_identifier -- Name Resolution in Expression Context
+## scan_identifier — Name Resolution in Expression Context
 
 `scan_identifier` (`sub_5512B0`, 1,406 lines) handles the case where the current token is an identifier in expression context. This is far more complex than a simple name lookup because identifiers in C++ can resolve to variables, functions, enumerators, type names (triggering functional-notation casts), anonymous union members, or preprocessing constants.
 
@@ -835,7 +835,7 @@ The function validates that the pointee type is one of the supported atomic type
 
 When a template is instantiated, expression trees from the template definition are re-evaluated with concrete template argument substitutions. This is handled by `rescan_expr_with_substitution_internal` (`sub_5565E0`, 1,558 lines), the third-largest function in the expression parser.
 
-The function dispatches on expression kind (not token kind -- these are IL expression nodes, not source tokens) and recursively rescans each sub-expression with substitutions applied:
+The function dispatches on expression kind (not token kind — these are IL expression nodes, not source tokens) and recursively rescans each sub-expression with substitutions applied:
 
 | Assert String | Purpose |
 |---|---|
@@ -886,8 +886,8 @@ The C++20 three-way comparison operator (`<=>`) triggers rewriting of traditiona
 | `sub_501020` | `determine_defaulted_spaceship_return_type` |
 | `sub_5015D0` | `synthesize_defaulted_comparison_body` |
 | `sub_501B00` | `check_comparison_category_type` |
-| `sub_505E10` | `token_for_rel_op` -- maps operator kinds to tokens (16->43, 17->44, 32->45, 33->46) |
-| `sub_505E80` | `complete_comparison_rewrite` -- core rewrite engine |
+| `sub_505E10` | `token_for_rel_op` — maps operator kinds to tokens (16->43, 17->44, 32->45, 33->46) |
+| `sub_505E80` | `complete_comparison_rewrite` — core rewrite engine |
 | `sub_506430` | `check_defaulted_eq_properties` |
 | `sub_5068F0` | `check_defaulted_secondary_comp` |
 

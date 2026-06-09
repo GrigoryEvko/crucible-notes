@@ -2,9 +2,9 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Ori -- short for "Original IR" -- is ptxas's sole intermediate representation. It is a fully proprietary, SASS-level IR with virtual registers, its own CFG infrastructure, and a partial-SSA discipline. Ori has no relationship to LLVM IR: there is no LLVM Value hierarchy, no LLVM-style use-def chains, no SSA dominance-frontier construction. Every IR-level optimization pass in ptxas (prefixed `Ori` in the NamedPhases table: `OriCopyProp`, `OriSanitize`, `OriBranchOpt`, `OriLoopSimplification`, `OriStrengthReduce`, `OriDoPredication`, etc.) operates on this representation.
+Ori — short for "Original IR" — is ptxas's sole intermediate representation. It is a fully proprietary, SASS-level IR with virtual registers, its own CFG infrastructure, and a partial-SSA discipline. Ori has no relationship to LLVM IR: there is no LLVM Value hierarchy, no LLVM-style use-def chains, no SSA dominance-frontier construction. Every IR-level optimization pass in ptxas (prefixed `Ori` in the NamedPhases table: `OriCopyProp`, `OriSanitize`, `OriBranchOpt`, `OriLoopSimplification`, `OriStrengthReduce`, `OriDoPredication`, etc.) operates on this representation.
 
-The key design decision that distinguishes Ori from PTX: **Ori uses SASS opcode names, not PTX mnemonics.** After the MercConverter pass (`sub_9F1A90`, 35KB) runs, every instruction carries the name of the hardware SASS instruction it will become -- `IMAD`, `FFMA`, `LDG`, `STG`, `BAR`, `BRA`, `EXIT`, etc. -- just with virtual (not physical) register operands. This means the optimizer already knows exactly which hardware functional unit each instruction will execute on, enabling accurate latency modeling and scheduling from the earliest optimization phases.
+The key design decision that distinguishes Ori from PTX: **Ori uses SASS opcode names, not PTX mnemonics.** After the MercConverter pass (`sub_9F1A90`, 35KB) runs, every instruction carries the name of the hardware SASS instruction it will become — `IMAD`, `FFMA`, `LDG`, `STG`, `BAR`, `BRA`, `EXIT`, etc. — just with virtual (not physical) register operands. This means the optimizer already knows exactly which hardware functional unit each instruction will execute on, enabling accurate latency modeling and scheduling from the earliest optimization phases.
 
 ## Key Facts
 
@@ -13,7 +13,7 @@ The key design decision that distinguishes Ori from PTX: **Ori uses SASS opcode 
 | Name | Ori ("Original IR") |
 | Heritage | Fully proprietary (not LLVM-based) |
 | Level | SASS machine-level with virtual registers |
-| SSA form | Partial -- constructed by phase 23, destroyed by phase 73 |
+| SSA form | Partial — constructed by phase 23, destroyed by phase 73 |
 | Code Object size | ~1136 bytes per function (C++ object) |
 | Code Object vtable | `0x21EE238` |
 | Register files | 4: R (GPR), UR (uniform), P (predicate), UP (uniform predicate) |
@@ -67,7 +67,7 @@ The key design decision that distinguishes Ori from PTX: **Ori uses SASS opcode 
 
 ## The Code Object
 
-Every function under compilation is represented by a single Code Object -- a ~1136-byte C++ structure that owns all IR data for that function. The Code Object vtable is at `0x21EE238`. Its constructor is at `sub_A3B080`.
+Every function under compilation is represented by a single Code Object — a ~1136-byte C++ structure that owns all IR data for that function. The Code Object vtable is at `0x21EE238`. Its constructor is at `sub_A3B080`.
 
 ### Field Map
 
@@ -94,7 +94,7 @@ Every function under compilation is represented by a single Code Object -- a ~11
 
 ### Register and Instruction Counts (SM Backend Object)
 
-The register counts and instruction counts live in the **SM backend object** at `*(code_obj+1584)`, accessed via DWORD-indexed fields (not Code Object byte offsets). Earlier versions of this page incorrectly listed these as Code Object offsets +99, +102, +159, +335, +341 -- those are DWORD indices, making the actual byte offsets 396, 408, 636, 1340, and 1364 respectively within the SM backend.
+The register counts and instruction counts live in the **SM backend object** at `*(code_obj+1584)`, accessed via DWORD-indexed fields (not Code Object byte offsets). Earlier versions of this page incorrectly listed these as Code Object offsets +99, +102, +159, +335, +341 — those are DWORD indices, making the actual byte offsets 396, 408, 636, 1340, and 1364 respectively within the SM backend.
 
 | DWORD Index | Byte Offset | Type | Field | Description |
 |-------------|-------------|------|-------|-------------|
@@ -133,7 +133,7 @@ Basic blocks are stored as 40-byte entries in a contiguous array at Code Object 
 |--------|------|-------|
 | +0 | `ptr` | Head instruction pointer (first instruction in BB) |
 | +8 | `ptr` | Instruction list link / tail |
-| +28 | `i32` | `bix` -- block index (unique ID for CFG operations) |
+| +28 | `i32` | `bix` — block index (unique ID for CFG operations) |
 | +32 | `u64` | Flags / padding |
 
 Blocks are additionally accessible via a sub-block array at Code Object +368, indexed as `*(ctx+368) + 8*blockIndex`.
@@ -338,7 +338,7 @@ The `0xFFFFCFFF` mask (clear bits 12-13) strips modifier/suboperation bits from 
 
 ### ROT13 Opcode Names
 
-All SASS opcode mnemonic strings stored in the binary are ROT13-encoded. The master table is initialized in `sub_BE7390` (`InstructionInfo` constructor) at offset 4184 of the InstructionInfo object, with 16-byte `{name, length}` entries. This is lightweight obfuscation -- not a security measure.
+All SASS opcode mnemonic strings stored in the binary are ROT13-encoded. The master table is initialized in `sub_BE7390` (`InstructionInfo` constructor) at offset 4184 of the InstructionInfo object, with 16-byte `{name, length}` entries. This is lightweight obfuscation — not a security measure.
 
 Selected decoded names (~200+ total, covering the full sm_70+ SASS ISA):
 
@@ -386,10 +386,10 @@ Ori maintains four distinct register files, mirroring the SASS hardware register
 
 | File | Width | Range | Special | ABI type | Code Object offset |
 |------|-------|-------|---------|----------|-------------------|
-| R | 32-bit | R0 -- R255 | RZ (read-zero) | 2 | +102 (alloc), +159 (reserved) |
-| UR | 32-bit | UR0 -- UR63 | URZ (read-zero) | 3 | +99 |
-| P | 1-bit | P0 -- P6 | PT (always-true) | 5 | (tracked separately) |
-| UP | 1-bit | UP0 -- UP6 | UPT (always-true) | -- | (tracked separately) |
+| R | 32-bit | R0 — R255 | RZ (read-zero) | 2 | +102 (alloc), +159 (reserved) |
+| UR | 32-bit | UR0 — UR63 | URZ (read-zero) | 3 | +99 |
+| P | 1-bit | P0 — P6 | PT (always-true) | 5 | (tracked separately) |
+| UP | 1-bit | UP0 — UP6 | UPT (always-true) | — | (tracked separately) |
 
 **R registers** are the main 32-bit general-purpose registers. 64-bit values occupy consecutive pairs (e.g., R4:R5). The total R-register count for a function is `field[159] + field[102]` (reserved + allocated). Maximum is 255 usable registers (R0-R254); R255 is the hardware zero register RZ.
 
@@ -435,11 +435,11 @@ Ori does not maintain full SSA form at all times. Instead, it uses a bounded "pa
 
 ### Phase 23: GenerateMovPhi
 
-Constructs phi-like `MovPhi` pseudo-instructions at CFG merge points. Inserted after loop unrolling (phase 22) and before pipelining (phase 24). This establishes partial SSA form -- not through LLVM-style dominance-frontier phi insertion, but through explicit `MovPhi` nodes that represent value merging at control-flow join points.
+Constructs phi-like `MovPhi` pseudo-instructions at CFG merge points. Inserted after loop unrolling (phase 22) and before pipelining (phase 24). This establishes partial SSA form — not through LLVM-style dominance-frontier phi insertion, but through explicit `MovPhi` nodes that represent value merging at control-flow join points.
 
 ### Phase 73: ConvertAllMovPhiToMov
 
-Destructs SSA form by lowering every `MovPhi` into a plain `MOV` instruction. Runs after sync instruction expansion (phase 72) and before uniform register conversion (phase 74). This is SSA destruction without the need for interference-graph-based coalescing -- the `MovPhi` nodes simply become copies.
+Destructs SSA form by lowering every `MovPhi` into a plain `MOV` instruction. Runs after sync instruction expansion (phase 72) and before uniform register conversion (phase 74). This is SSA destruction without the need for interference-graph-based coalescing — the `MovPhi` nodes simply become copies.
 
 ### The SSA Window
 
@@ -470,7 +470,7 @@ All optimizations between these two phases can rely on the single-definition pro
 
 ### MovPhi Instruction Format
 
-A `MovPhi` is not a distinct opcode -- it reuses the MOV opcode (19) with a distinguishing flag in the instruction's auxiliary fields. Phase 73 (`ConvertAllMovPhiToMov`) converts MovPhi to plain MOV by clearing this flag, without changing the opcode value.
+A `MovPhi` is not a distinct opcode — it reuses the MOV opcode (19) with a distinguishing flag in the instruction's auxiliary fields. Phase 73 (`ConvertAllMovPhiToMov`) converts MovPhi to plain MOV by clearing this flag, without changing the opcode value.
 
 ```text
 MovPhi operand layout:
@@ -505,7 +505,7 @@ The IR supports 10 distinct operand kinds, identified through the register alloc
 |---|------|-------------|
 | 1 | R/UR register | General-purpose or uniform register operand |
 | 2 | P/UP register | Predicate or uniform-predicate register operand |
-| 3 | Any register | Wildcard -- matches any register class |
+| 3 | Any register | Wildcard — matches any register class |
 | 4 | Offset | Memory offset for address computation |
 | 5 | Regular | Standard immediate or constant value |
 | 6 | Predicated | Guard predicate controlling conditional execution |
@@ -540,7 +540,7 @@ The pattern matcher infrastructure at `0xB7D000`--`0xBA9D00` (~390 functions) us
 
 ## Ori vs. PTX
 
-PTX is a virtual ISA -- a stable interface between the compiler frontend and the architecture-specific backend. Ori is the architecture-specific backend representation that replaces PTX opcodes with actual SASS instructions early in compilation.
+PTX is a virtual ISA — a stable interface between the compiler frontend and the architecture-specific backend. Ori is the architecture-specific backend representation that replaces PTX opcodes with actual SASS instructions early in compilation.
 
 | Aspect | PTX | Ori |
 |--------|-----|-----|
@@ -569,7 +569,7 @@ After MercConverter (`sub_9F1A90`), this becomes the Ori instruction:
 FADD R3, R1, R2
 ```
 
-The type qualifier `.f32` disappears -- the "F" in FADD encodes the float type. Register names `%f1`, `%f2`, `%f3` become virtual register IDs R1, R2, R3 in the R (GPR) register file.
+The type qualifier `.f32` disappears — the "F" in FADD encodes the float type. Register names `%f1`, `%f2`, `%f3` become virtual register IDs R1, R2, R3 in the R (GPR) register file.
 
 ### Instruction Object in Memory
 
@@ -627,23 +627,23 @@ Memory operands carry a space type enum, resolved by `sub_91C840` which maps the
 
 | Input | PTX Space | Internal Category | Notes |
 |-------|-----------|-------------------|-------|
-| 0 | (none) | -- | Unmapped, no memory space |
+| 0 | (none) | — | Unmapped, no memory space |
 | 1 | Register / generic | 16 | Register file address |
 | 2 | Code / function | 12 | Function address |
-| 3 | (gap) | -- | Unmapped |
+| 3 | (gap) | — | Unmapped |
 | 4 | `.shared` | 1 | Shared memory |
 | 5 | `.const` | 3 | Constant memory |
 | 6 | `.global` | 11 | Global memory |
 | 7 | `.local` | 2 | Local memory |
-| 8 | (gap) | -- | Unmapped |
+| 8 | (gap) | — | Unmapped |
 | 9 | `.local` (variant) | 2 | Same as 7, alternate encoding |
-| 10--11 | (gap) | -- | Unmapped |
+| 10--11 | (gap) | — | Unmapped |
 | 12 | `.param` | 4 | Parameter memory |
 | 13 | Generic (unqualified) | 0 | Generic address space |
 | 14 | `.tex` | 8 | Texture memory |
 | 15 | `.surf` | 17 | Surface memory |
 | 16 | Spill space | 7 | Register spill/fill scratch |
-| 17 | (gap) | -- | Unmapped |
+| 17 | (gap) | — | Unmapped |
 | 18 | (instruction-dependent) | varies | Sub-classifies by opcode at `a2[1]` |
 | 19 | `.uniform` | 15 | Uniform (sm_75+) |
 | 20 | `.global` (extended) | 6 | Global, extended variant |
@@ -653,46 +653,46 @@ Memory operands carry a space type enum, resolved by `sub_91C840` which maps the
 
 Case 18 (`0x12`) uses a sub-switch on the opcode value at `a2[1]` to further classify: opcodes 7, 43, 45, 53 map to category 6 (global-like); opcode 111 and opcodes in the 183--199 range map to category 5 (constant-like); opcodes 54 and 189 map to category 9 (special).
 
-The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) consumes the internal category to partition instructions for scheduling. Hot memory operations (global loads/stores, certain atomics -- category 11) have long latencies and benefit from aggressive scheduling; cold operations (constant loads -- category 3) have shorter latencies and are treated more conservatively.
+The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) consumes the internal category to partition instructions for scheduling. Hot memory operations (global loads/stores, certain atomics — category 11) have long latencies and benefit from aggressive scheduling; cold operations (constant loads — category 3) have shorter latencies and are treated more conservatively.
 
 ## Related Pages
 
-- [Instructions](./instructions.md) -- detailed instruction format and encoding
-- [CFG](./cfg.md) -- basic block and control-flow-graph internals
-- [Registers](./registers.md) -- register model, descriptor layout, allocation interface
-- [Data Structures](./data-structures.md) -- hash tables, bitvectors, linked lists
-- [Pipeline Overview](../pipeline/overview.md) -- where Ori sits in the full PTX-to-SASS flow
-- [PTX-to-Ori Lowering](../pipeline/ptx-to-ori.md) -- how PTX becomes Ori
-- [Optimizer](../pipeline/optimizer.md) -- the 159-phase optimization pipeline
-- [Hash Tables and Bitvectors](../infra/hash-bitvector.md) -- FNV-1a maps and SSE2 bitvectors used by the CFG
+- [Instructions](./instructions.md) — detailed instruction format and encoding
+- [CFG](./cfg.md) — basic block and control-flow-graph internals
+- [Registers](./registers.md) — register model, descriptor layout, allocation interface
+- [Data Structures](./data-structures.md) — hash tables, bitvectors, linked lists
+- [Pipeline Overview](../pipeline/overview.md) — where Ori sits in the full PTX-to-SASS flow
+- [PTX-to-Ori Lowering](../pipeline/ptx-to-ori.md) — how PTX becomes Ori
+- [Optimizer](../pipeline/optimizer.md) — the 159-phase optimization pipeline
+- [Hash Tables and Bitvectors](../infra/hash-bitvector.md) — FNV-1a maps and SSE2 bitvectors used by the CFG
 
 ## Key Functions
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
-| `sub_A3B080` | -- | Code Object constructor; allocates ~1136-byte per-function IR container (vtable at `0x21EE238`) | 0.90 |
-| `sub_A4B8F0` | -- | Register count formula: `total_R = v5[159] + v5[102]`, `instr_count = v5[335] - v5[341]` | 0.90 |
-| `sub_A3A7E0` | -- | Stats emitter; prints per-function profile (instruction count, register count, occupancy, latency) | 0.90 |
+| `sub_A3B080` | — | Code Object constructor; allocates ~1136-byte per-function IR container (vtable at `0x21EE238`) | 0.90 |
+| `sub_A4B8F0` | — | Register count formula: `total_R = v5[159] + v5[102]`, `instr_count = v5[335] - v5[341]` | 0.90 |
+| `sub_A3A7E0` | — | Stats emitter; prints per-function profile (instruction count, register count, occupancy, latency) | 0.90 |
 | `sub_BE21D0` | 1.4KB | `CFG::dumpDOT`; emits Graphviz DOT output for the control flow graph | 0.92 |
 | `sub_BDE150` | 9KB | `CFG::computeRPO`; explicit DFS stack, assigns reverse post-order numbers into Code Object +720 array | 0.92 |
 | `sub_BDE8B0` | 2KB | `CFG::printEdges`; FNV-1a lookup, prints `"bix%d -> bix%d\n"` | 0.92 |
 | `sub_BDEA50` | 4KB | `CFG::dumpRPOAndBackedges`; RPO traversal order + backedge debug dump | 0.92 |
-| `sub_BE0690` | 54KB | `CFG::buildAndAnalyze`; main CFG constructor -- predecessors, successors, RPO, loop detection | 0.92 |
+| `sub_BE0690` | 54KB | `CFG::buildAndAnalyze`; main CFG constructor — predecessors, successors, RPO, loop detection | 0.92 |
 | `sub_BE2330` | 4KB | `CFG::computeDominators`; post-build dominator and loop analysis with bitvector operations | 0.92 |
-| `sub_BE7390` | -- | `InstructionInfo` constructor; initializes 322-entry ROT13 opcode name table at object offset +4184 | 0.90 |
+| `sub_BE7390` | — | `InstructionInfo` constructor; initializes 322-entry ROT13 opcode name table at object offset +4184 | 0.90 |
 | `sub_9F1A90` | 35KB | MercConverter pass; transforms PTX-derived opcodes into SM-specific SASS opcodes | 0.92 |
 | `sub_9ED2D0` | 25KB | Opcode switch inside MercConverter; dispatches per-opcode legalization | 0.90 |
-| `sub_91C840` | -- | Memory space classifier; maps PTX-level space identifiers (0--23) to internal category numbers | 0.98 |
-| `sub_A9CDE0` | -- | Hot/cold memory classifier (hot path); partitions instructions by memory category for scheduling | 0.85 |
-| `sub_A9CF90` | -- | Hot/cold memory classifier (cold path); complement of `sub_A9CDE0` | 0.85 |
+| `sub_91C840` | — | Memory space classifier; maps PTX-level space identifiers (0--23) to internal category numbers | 0.98 |
+| `sub_A9CDE0` | — | Hot/cold memory classifier (hot path); partitions instructions by memory category for scheduling | 0.85 |
+| `sub_A9CF90` | — | Hot/cold memory classifier (cold path); complement of `sub_A9CDE0` | 0.85 |
 | `sub_A60B60` | 24KB | Register stat collector; enumerates ~25 register sub-classes (R, P, B, UR, UP, UB, Tensor/Acc, etc.) | 0.85 |
-| `sub_A55D80` | -- | Register allocator verifier; classifies 10 operand-kind problem categories for regalloc validation | 0.95 |
-| `sub_40848E` | -- | Operand extended-flag checker; tests `(word1 & 0xFE000000) != 0` across all operands | 0.85 |
-| `sub_405769` | -- | Operand flag tester; tests `0x1000000` and `0x6000000` combinations in operand word 1 | 0.85 |
-| `sub_404AD0` | -- | Peephole guard; verifies `(word1 & 0xFE000000) == 0` before allowing peephole transforms | 0.85 |
-| `sub_B28E10` | -- | `isRegOperand`; ISel pattern matcher operand predicate | 0.90 |
-| `sub_B28E20` | -- | `isPredOperand`; ISel pattern matcher operand predicate | 0.90 |
-| `sub_B28E40` | -- | `isImmOperand`; ISel pattern matcher operand predicate | 0.90 |
-| `sub_B28E80` | -- | `isConstOperand`; ISel pattern matcher operand predicate | 0.90 |
-| `sub_B28E90` | -- | `isUReg`; ISel pattern matcher operand predicate | 0.90 |
-| `sub_B28E00` | -- | `getRegClass`; returns register class (1023 = wildcard, 1 = GPR) | 0.90 |
+| `sub_A55D80` | — | Register allocator verifier; classifies 10 operand-kind problem categories for regalloc validation | 0.95 |
+| `sub_40848E` | — | Operand extended-flag checker; tests `(word1 & 0xFE000000) != 0` across all operands | 0.85 |
+| `sub_405769` | — | Operand flag tester; tests `0x1000000` and `0x6000000` combinations in operand word 1 | 0.85 |
+| `sub_404AD0` | — | Peephole guard; verifies `(word1 & 0xFE000000) == 0` before allowing peephole transforms | 0.85 |
+| `sub_B28E10` | — | `isRegOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E20` | — | `isPredOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E40` | — | `isImmOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E80` | — | `isConstOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E90` | — | `isUReg`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E00` | — | `getRegClass`; returns register class (1023 = wildcard, 1 = GPR) | 0.90 |

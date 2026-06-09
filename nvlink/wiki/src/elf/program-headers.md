@@ -1,6 +1,6 @@
 # Program Headers
 
-Program headers in CUDA device ELFs describe loadable segments that the GPU driver maps into device memory. Unlike CPU ELFs where program headers drive virtual memory setup and dynamic linking, CUDA device ELFs use a minimal program header table that serves a narrower purpose: telling the CUDA runtime which byte ranges in the cubin file correspond to code (SASS instructions) versus data (constant banks, global initializers). The program header table is only emitted for executable ELFs (`e_type == ET_EXEC`); relocatable objects (`-r` mode) have no program headers. All `p_vaddr` fields are zero -- the CUDA runtime uses `p_offset` for segment location and `p_flags` for segment classification.
+Program headers in CUDA device ELFs describe loadable segments that the GPU driver maps into device memory. Unlike CPU ELFs where program headers drive virtual memory setup and dynamic linking, CUDA device ELFs use a minimal program header table that serves a narrower purpose: telling the CUDA runtime which byte ranges in the cubin file correspond to code (SASS instructions) versus data (constant banks, global initializers). The program header table is only emitted for executable ELFs (`e_type == ET_EXEC`); relocatable objects (`-r` mode) have no program headers. All `p_vaddr` fields are zero — the CUDA runtime uses `p_offset` for segment location and `p_flags` for segment classification.
 
 The program header table is written by `sub_45BAA0` (5,657 bytes at `0x45BAA0`), called as the final step of ELF serialization from within `sub_45BF00`. The table is appended **after** the section header table, at the very end of the file. This placement is unusual compared to standard ELF practice where program headers typically sit near the beginning of the file, immediately after the ELF header. CUDA device ELFs place them last because the GPU driver parses section headers directly for detailed metadata access, and the program headers serve as a secondary, coarse-grained segment map.
 
@@ -17,7 +17,7 @@ The program header table is written by `sub_45BAA0` (5,657 bytes at `0x45BAA0`),
 | Max entries | 4 (PT_PHDR + up to 2 PT_LOAD for data/code + 1 PT_LOAD for phdr table) |
 | Max table size | 128 bytes (ELF32) or 224 bytes (ELF64) |
 | Alignment | `p_align = 8` for all segments (ELF64), `p_align = 4` for all segments (ELF32) |
-| Helper function | `sub_438BB0` at `0x438BB0` -- align-up helper |
+| Helper function | `sub_438BB0` at `0x438BB0` — align-up helper |
 | Error handler | `sub_467460` with `"writing file"` on write failure |
 
 ## When Program Headers Are Emitted
@@ -121,7 +121,7 @@ The base value `0x70000007` in the decompiled code appears as the decimal litera
 | 3 | `0x7000000A` | SHT_CUDA_SHARED (per-CTA shared memory) |
 | 14 | `0x70000015` | SHT_CUDA_SHARED_RESERVED (compiler-reserved shared memory) |
 
-Plus `SHT_NOBITS` (type 8) as a separate check. All five types represent GPU memory spaces that have addresses but carry no file-backed data -- their `sh_size` defines a memory reservation only. Note that `SHT_CUDA_GLOBAL_INIT` (`0x70000008`, offset 1) is deliberately excluded because it carries initialized data that must be present in the file.
+Plus `SHT_NOBITS` (type 8) as a separate check. All five types represent GPU memory spaces that have addresses but carry no file-backed data — their `sh_size` defines a memory reservation only. Note that `SHT_CUDA_GLOBAL_INIT` (`0x70000008`, offset 1) is deliberately excluded because it carries initialized data that must be present in the file.
 
 ## Segment Construction
 
@@ -199,7 +199,7 @@ Elf64_Phdr {
 }
 ```
 
-This self-referential segment points to the program header table itself. Its file offset equals `e_phoff` (which is computed as `e_shoff + e_shnum * e_shentsize`), pointing past the section header table to where the program headers are physically written. The `p_vaddr` field is 0 (left zeroed by `memset`) because CUDA device ELFs do not use virtual address mappings in program headers -- see the [p_vaddr section](#p_vaddr-and-the-segment-address-model) below.
+This self-referential segment points to the program header table itself. Its file offset equals `e_phoff` (which is computed as `e_shoff + e_shnum * e_shentsize`), pointing past the section header table to where the program headers are physically written. The `p_vaddr` field is 0 (left zeroed by `memset`) because CUDA device ELFs do not use virtual address mappings in program headers — see the [p_vaddr section](#p_vaddr-and-the-segment-address-model) below.
 
 **Entry 1: PT_LOAD for data (only if `data_base != 0`)**
 
@@ -216,7 +216,7 @@ Elf64_Phdr {
 }
 ```
 
-Data sections are marked with `PF_R | PF_X` (5). On a GPU, these flags do not carry the same semantics as on a CPU -- `PF_X` does not mean "executable" in the CPU sense. The CUDA runtime interprets these flags to distinguish read-only metadata (constant banks, global init data) from mutable code segments. `p_filesz` and `p_memsz` are both set to `data_end` because every section reaching the data branch is `SHT_PROGBITS` (constant banks, `.nv.global.init`, `.nv.host`); NOBITS device-memory sections (`.nv.global`, `.nv.local.*`, `.nv.shared.*`) carry internal flags 0 and never enter this segment, which is why no `data_nobits_sz` accumulator exists.
+Data sections are marked with `PF_R | PF_X` (5). On a GPU, these flags do not carry the same semantics as on a CPU — `PF_X` does not mean "executable" in the CPU sense. The CUDA runtime interprets these flags to distinguish read-only metadata (constant banks, global init data) from mutable code segments. `p_filesz` and `p_memsz` are both set to `data_end` because every section reaching the data branch is `SHT_PROGBITS` (constant banks, `.nv.global.init`, `.nv.host`); NOBITS device-memory sections (`.nv.global`, `.nv.local.*`, `.nv.shared.*`) carry internal flags 0 and never enter this segment, which is why no `data_nobits_sz` accumulator exists.
 
 **Entry 2: PT_LOAD for code (only if `code_base != 0`)**
 
@@ -235,7 +235,7 @@ Elf64_Phdr {
 
 Code sections are marked with `PF_R | PF_W` (6). The write permission reflects the reality that the GPU driver or FNLZR post-link transform may need to patch SASS instruction encodings (control-flow metadata, scheduling bits, instruction addresses) at load time.
 
-The `p_filesz` and `p_memsz` fields differ structurally: `p_filesz` receives `code_offset` (the end of the address range for file-backed `SHT_PROGBITS` sections), while `p_memsz` receives `code_offset + code_nobits_sz` (adding the aligned, accumulated size of any `is_nobits()`-classified sections so the loader reserves device memory the file does not back). In practice, all code sections (`.text.*`) are `SHT_PROGBITS`, so `code_nobits_sz` is 0 and `p_filesz == p_memsz`. The data branch performs no equivalent split: `p_filesz = p_memsz = data_end` unconditionally, which relies on NOBITS variables (`.nv.global`, `.nv.local.*`, `.nv.shared.*`) never being classified into the data segment -- see [Section-to-Segment Mapping](#section-to-segment-mapping) below.
+The `p_filesz` and `p_memsz` fields differ structurally: `p_filesz` receives `code_offset` (the end of the address range for file-backed `SHT_PROGBITS` sections), while `p_memsz` receives `code_offset + code_nobits_sz` (adding the aligned, accumulated size of any `is_nobits()`-classified sections so the loader reserves device memory the file does not back). In practice, all code sections (`.text.*`) are `SHT_PROGBITS`, so `code_nobits_sz` is 0 and `p_filesz == p_memsz`. The data branch performs no equivalent split: `p_filesz = p_memsz = data_end` unconditionally, which relies on NOBITS variables (`.nv.global`, `.nv.local.*`, `.nv.shared.*`) never being classified into the data segment — see [Section-to-Segment Mapping](#section-to-segment-mapping) below.
 
 **Entry 3: PT_LOAD for program header table (always present)**
 
@@ -309,7 +309,7 @@ Elf32_Phdr {
 
 All program header `p_vaddr` and `p_paddr` fields are **zero** in CUDA device ELFs. The entire program header array is zeroed by `memset` before construction, and no code path writes a non-zero value to any `p_vaddr` or `p_paddr` position. Only `p_type`, `p_flags`, `p_offset`, `p_filesz`, `p_memsz`, and `p_align` are explicitly set.
 
-This differs from CPU ELF conventions where `p_vaddr` is the process virtual address the loader maps the segment to. In CUDA device ELFs, GPU virtual addresses are assigned by the driver at kernel launch time -- the cubin file does not dictate mapping addresses. The CUDA runtime locates segment data using `p_offset` alone and ignores `p_vaddr`. Section `sh_addr` values (which equal file offsets in CUDA device ELFs) provide per-section addressing but are not propagated into program header virtual addresses.
+This differs from CPU ELF conventions where `p_vaddr` is the process virtual address the loader maps the segment to. In CUDA device ELFs, GPU virtual addresses are assigned by the driver at kernel launch time — the cubin file does not dictate mapping addresses. The CUDA runtime locates segment data using `p_offset` alone and ignores `p_vaddr`. Section `sh_addr` values (which equal file offsets in CUDA device ELFs) provide per-section addressing but are not propagated into program header virtual addresses.
 
 ## Segment Flag Inversion
 
@@ -325,7 +325,7 @@ The rationale:
 
 - **Code gets PF_R\|PF_W (6)**: SASS instructions may be patched by the driver or FNLZR at load time. The Mercury post-link transform (`sub_4275C0`) rewrites instruction scheduling metadata, control-flow annotations, and branch target addresses after the full binary is available. The write permission signals that code bytes are mutable up until dispatch.
 
-- **Data/metadata gets PF_R\|PF_X (5)**: Constant banks and metadata sections are immutable once loaded. The `PF_X` bit does not mean "executable" -- it is repurposed as a flag indicating the segment contains structured metadata that the CUDA runtime should parse (section headers, constant initializers) rather than instruction bytes.
+- **Data/metadata gets PF_R\|PF_X (5)**: Constant banks and metadata sections are immutable once loaded. The `PF_X` bit does not mean "executable" — it is repurposed as a flag indicating the segment contains structured metadata that the CUDA runtime should parse (section headers, constant initializers) rather than instruction bytes.
 
 ## PT\_NOTE Absence
 
@@ -343,7 +343,7 @@ The mapping from sections to segments is determined by the internal flags bitmas
 | N/A | PT_LOAD flags=5 | Program header table itself (always) |
 | N/A | PT_PHDR | Program header table itself (always) |
 
-NOBITS sections (`SHT_NOBITS`, `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`) carry a `sh_size` that reserves memory but is not backed by file bytes -- the data emitter in `sub_45C950` skips them entirely (see [Output Phase 6: NOBITS skip](../pipeline/output.md#phase-6-section-data)). When such a section is in the code segment (internal flag bit 0x1), `sub_45BAA0` accumulates its aligned `sh_size` into `code_nobits_sz` so `p_memsz = code_offset + code_nobits_sz` exceeds `p_filesz = code_offset` by exactly that reservation. The data branch has no symmetric accumulator, so NOBITS variables are kept out of the data segment by classification: `.nv.global` (`SHT_CUDA_GLOBAL`), `.nv.local.*`, `.nv.shared.*`, and `.nv.reservedSmem*` all receive internal flags 0 (neither code nor data), so they appear in the section header table but in no `PT_LOAD`. Only `.nv.global.init` (`SHT_PROGBITS`) and the constant banks reach the data segment, keeping `p_filesz == p_memsz` for it. The NOBITS branch on the code path therefore remains defensive against future reclassification rather than active in any current build.
+NOBITS sections (`SHT_NOBITS`, `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`) carry a `sh_size` that reserves memory but is not backed by file bytes — the data emitter in `sub_45C950` skips them entirely (see [Output Phase 6: NOBITS skip](../pipeline/output.md#phase-6-section-data)). When such a section is in the code segment (internal flag bit 0x1), `sub_45BAA0` accumulates its aligned `sh_size` into `code_nobits_sz` so `p_memsz = code_offset + code_nobits_sz` exceeds `p_filesz = code_offset` by exactly that reservation. The data branch has no symmetric accumulator, so NOBITS variables are kept out of the data segment by classification: `.nv.global` (`SHT_CUDA_GLOBAL`), `.nv.local.*`, `.nv.shared.*`, and `.nv.reservedSmem*` all receive internal flags 0 (neither code nor data), so they appear in the section header table but in no `PT_LOAD`. Only `.nv.global.init` (`SHT_PROGBITS`) and the constant banks reach the data segment, keeping `p_filesz == p_memsz` for it. The NOBITS branch on the code path therefore remains defensive against future reclassification rather than active in any current build.
 
 ## Mercury and Stub Executables
 
@@ -359,7 +359,7 @@ The size computation function `sub_45C980` mirrors this logic exactly, so the pr
 
 ### Mercury vs SASS Program Header Format
 
-When program headers ARE emitted (post-FNLZR Mercury executables or standard SASS executables), the segment structure is **identical**. There is no Mercury-specific segment type, flag value, or alignment. The sub_45BAA0 function contains no architecture-specific code paths -- it constructs the same PT_PHDR + PT_LOAD entries regardless of target SM version. The only difference is the emission gate: SASS always emits for `ET_EXEC`; Mercury conditionally suppresses based on the `e_flags` finalization bit.
+When program headers ARE emitted (post-FNLZR Mercury executables or standard SASS executables), the segment structure is **identical**. There is no Mercury-specific segment type, flag value, or alignment. The sub_45BAA0 function contains no architecture-specific code paths — it constructs the same PT_PHDR + PT_LOAD entries regardless of target SM version. The only difference is the emission gate: SASS always emits for `ET_EXEC`; Mercury conditionally suppresses based on the `e_flags` finalization bit.
 
 ## File Layout Position
 
@@ -627,19 +627,19 @@ The program header `p_flags` values have specific implications for how the CUDA 
 
 **Internal (nvlink wiki):**
 
-- [Device ELF Format](device-elf-format.md) -- ELF header fields (`e_phoff`, `e_phnum`, `e_phentsize`) and `e_flags` encoding that gates program header emission
-- [ELF Serialization](serialization.md) -- Phase 10 writes the program header table as the final step of the serialize engine
-- [NVIDIA Section Types](nvidia-sections.md) -- Section type constants and the `SHT_NOBITS`/`SHT_CUDA_*` classification used by the `is_nobits` bitmask
-- [ELF Writer](../structs/elf-writer.md) -- The 672-byte `elfw` struct and 40-byte polymorphic writer context that `sub_45BAA0` writes through
-- [Layout Phase](../pipeline/layout.md) -- Section address assignment that determines `code_base` and `data_base` inputs to program header construction
-- [Output Writing](../pipeline/output.md) -- Pipeline dispatch deciding between file and memory serialization paths
-- [Mercury FNLZR](../mercury/fnlzr.md) -- Pre-FNLZR stub executables that suppress program header emission via `e_flags` gating
-- [Capsule Mercury Format](../mercury/capmerc-format.md) -- ABI variant `'A'` where the flag check uses bit 0 instead of bit 31
+- [Device ELF Format](device-elf-format.md) — ELF header fields (`e_phoff`, `e_phnum`, `e_phentsize`) and `e_flags` encoding that gates program header emission
+- [ELF Serialization](serialization.md) — Phase 10 writes the program header table as the final step of the serialize engine
+- [NVIDIA Section Types](nvidia-sections.md) — Section type constants and the `SHT_NOBITS`/`SHT_CUDA_*` classification used by the `is_nobits` bitmask
+- [ELF Writer](../structs/elf-writer.md) — The 672-byte `elfw` struct and 40-byte polymorphic writer context that `sub_45BAA0` writes through
+- [Layout Phase](../pipeline/layout.md) — Section address assignment that determines `code_base` and `data_base` inputs to program header construction
+- [Output Writing](../pipeline/output.md) — Pipeline dispatch deciding between file and memory serialization paths
+- [Mercury FNLZR](../mercury/fnlzr.md) — Pre-FNLZR stub executables that suppress program header emission via `e_flags` gating
+- [Capsule Mercury Format](../mercury/capmerc-format.md) — ABI variant `'A'` where the flag check uses bit 0 instead of bit 31
 
 **Sibling wikis:**
 
-- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) -- ptxas-side ELF emission that produces the input cubins consumed by nvlink
-- [ptxas: Sections](../../ptxas/output/sections.html) -- Section creation in ptxas that establishes the section types nvlink classifies for program headers
+- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) — ptxas-side ELF emission that produces the input cubins consumed by nvlink
+- [ptxas: Sections](../../ptxas/output/sections.html) — Section creation in ptxas that establishes the section types nvlink classifies for program headers
 
 ## Confidence Assessment
 

@@ -2,7 +2,7 @@
 
 The type system in cudafe++ is EDG 6.6's implementation of the C++ type representation, query, construction, comparison, and layout infrastructure. It lives primarily in `types.c` (250+ functions at `0x7A4940`--`0x7C02A0`) with type allocation in `il_alloc.c` (`0x5E2E80`--`0x5E45C0`), type construction helpers in `il.c` (`0x5D64F0`--`0x5D6DB0`), and class layout computation in `layout.c` (`0x65EA50`--`0x665B50`).
 
-Every C++ entity -- variable, function parameter, expression result, template argument -- carries a type pointer. EDG represents types as 176-byte heap-allocated nodes organized by a `type_kind` discriminant, with supplementary structures for complex kinds (classes, functions, integers, typedefs, template parameters). Type identity in the IL is pointer-based: two types are the "same type" if and only if they resolve to the same canonical node after chasing typedef chains. This page documents the complete type node architecture, the 22 type kinds, the 130 leaf query functions, the MRU-cached type construction pipeline, and the Itanium ABI class layout engine.
+Every C++ entity — variable, function parameter, expression result, template argument — carries a type pointer. EDG represents types as 176-byte heap-allocated nodes organized by a `type_kind` discriminant, with supplementary structures for complex kinds (classes, functions, integers, typedefs, template parameters). Type identity in the IL is pointer-based: two types are the "same type" if and only if they resolve to the same canonical node after chasing typedef chains. This page documents the complete type node architecture, the 22 type kinds, the 130 leaf query functions, the MRU-cached type construction pipeline, and the Itanium ABI class layout engine.
 
 ## Key Facts
 
@@ -48,7 +48,7 @@ Every type in the IL is a 176-byte node allocated by `alloc_type` (`sub_5E3D40`)
 | `+163` | 1 | `class_flags_2` | (valid when kind==9/10/11) Bit 0 = empty class |
 | `+164` | 1 | `feature_usage` | Copied to `byte_12C7AFC` by `record_type_features_used` |
 
-Note: Fields at offsets `+144`--`+164` form a union-like region. Different type kinds interpret these bytes differently. The overlap is intentional -- a pointer type uses `+152` for the class pointer while an array type uses `+153` for VLA flags, and so on.
+Note: Fields at offsets `+144`--`+164` form a union-like region. Different type kinds interpret these bytes differently. The overlap is intentional — a pointer type uses `+152` for the class pointer while an array type uses `+153` for VLA flags, and so on.
 
 The `type_kind` byte at `+132` is the single most frequently read field in the entire binary. Every type query function begins by checking it, and the canonical typedef-chase pattern reads it in a tight loop.
 
@@ -58,32 +58,32 @@ EDG uses 22 type kind values (`tk_*`), each with optional supplementary allocati
 
 | Value | Name | Supplement | Supplement Size | Description |
 |---|---|---|---|---|
-| 0 | `tk_none` | -- | -- | Sentinel / uninitialized |
-| 1 | `tk_void` | -- | -- | `void` type |
+| 0 | `tk_none` | — | — | Sentinel / uninitialized |
+| 1 | `tk_void` | — | — | `void` type |
 | 2 | `tk_integer` | `integer_type_supplement` | 32 B | All integer types: `bool`, `char`, `short`, `int`, `long`, `long long`, `__int128`, `_BitInt(N)`, and enumerations. Subkind at `+145` discriminates |
-| 3 | `tk_float` | -- | -- | `float` (format byte at `+144` = 2) |
-| 4 | `tk_double` | -- | -- | `double` |
-| 5 | `tk_long_double` | -- | -- | `long double`, `__float128`, `_Float16`, `__bf16` |
-| 6 | `tk_pointer` | -- | -- | Pointer to T. Bit 0 of `+152` distinguishes member pointers from object pointers |
+| 3 | `tk_float` | — | — | `float` (format byte at `+144` = 2) |
+| 4 | `tk_double` | — | — | `double` |
+| 5 | `tk_long_double` | — | — | `long double`, `__float128`, `_Float16`, `__bf16` |
+| 6 | `tk_pointer` | — | — | Pointer to T. Bit 0 of `+152` distinguishes member pointers from object pointers |
 | 7 | `tk_routine` | `routine_type_supplement` | 64 B | Function type. Supplement holds parameter list, calling convention, `this`-class pointer, exception specification |
-| 8 | `tk_array` | -- | -- | Array of T. Bound at `+160`, element type at `+144` |
+| 8 | `tk_array` | — | — | Array of T. Bound at `+160`, element type at `+144` |
 | 9 | `tk_struct` | `class_type_supplement` | 208 B | `struct` type |
 | 10 | `tk_class` | `class_type_supplement` | 208 B | `class` type |
 | 11 | `tk_union` | `class_type_supplement` | 208 B | `union` type |
 | 12 | `tk_typeref` | `typeref_type_supplement` | 56 B | Typedef / elaborated type. References the underlying type at `+144`. This is the "chase me" kind |
-| 13 | `tk_pointer_to_member` | -- | -- | Pointer-to-member. Member type at `+144`, class type at `+152` |
+| 13 | `tk_pointer_to_member` | — | — | Pointer-to-member. Member type at `+144`, class type at `+152` |
 | 14 | `tk_template_param` | `templ_param_supplement` | 40 B | Unresolved template type parameter |
-| 15 | `tk_typeof` | -- | -- | `typeof` / `__typeof__` expression type |
-| 16 | `tk_decltype` | -- | -- | `decltype(expr)` type |
-| 17 | `tk_pack_expansion` | -- | -- | Parameter pack expansion |
-| 18 | `tk_auto` | -- | -- | `auto` / `decltype(auto)` placeholder |
-| 19 | `tk_rvalue_reference` | -- | -- | Rvalue reference `T&&` |
-| 20 | `tk_nullptr_t` | -- | -- | `std::nullptr_t` |
-| 21 | `tk_reserved` | -- | -- | Reserved / unused (handled as no-op in `set_type_kind`) |
+| 15 | `tk_typeof` | — | — | `typeof` / `__typeof__` expression type |
+| 16 | `tk_decltype` | — | — | `decltype(expr)` type |
+| 17 | `tk_pack_expansion` | — | — | Parameter pack expansion |
+| 18 | `tk_auto` | — | — | `auto` / `decltype(auto)` placeholder |
+| 19 | `tk_rvalue_reference` | — | — | Rvalue reference `T&&` |
+| 20 | `tk_nullptr_t` | — | — | `std::nullptr_t` |
+| 21 | `tk_reserved` | — | — | Reserved / unused (handled as no-op in `set_type_kind`) |
 
 ### The Integer Type Supplement (32 Bytes)
 
-Integer types (kind 2) carry a 32-byte supplement allocated by `set_type_kind` and tracked by `qword_126F8E8`. This supplement discriminates the enormous variety of C++ integer types -- `bool`, `char`, `signed char`, `unsigned char`, `wchar_t`, `char8_t`, `char16_t`, `char32_t`, `short`, `int`, `long`, `long long`, `__int128`, `_BitInt(N)`, and all scoped/unscoped enumerations.
+Integer types (kind 2) carry a 32-byte supplement allocated by `set_type_kind` and tracked by `qword_126F8E8`. This supplement discriminates the enormous variety of C++ integer types — `bool`, `char`, `signed char`, `unsigned char`, `wchar_t`, `char8_t`, `char16_t`, `char32_t`, `short`, `int`, `long`, `long long`, `__int128`, `_BitInt(N)`, and all scoped/unscoped enumerations.
 
 The integer subkind value (at byte `+145` of the parent type node) encodes:
 
@@ -170,7 +170,7 @@ using   CIPtr        = CI*;          // CIPtr-> ptr -> typeref -> typeref -> int
 CIPtr p;
 ```
 
-The type pointer for `p` walks the IL graph as: `kind=6 (tk_pointer)` -> follow `+144` -> `kind=12 (tk_typeref CI)` cv-bits=const -> `+144` -> `kind=12 (tk_typeref I)` -> `+144` -> `kind=2 (tk_integer, int)`. `is_class_or_struct_or_union_type(typeof(p))` calls `skip_typedefs` which stops at the pointer (kind 6, not 12) and returns false in a single iteration -- the typedef layers under the pointer are never touched. By contrast, `type_pointed_to` peels the pointer first, then `skip_typedefs` strips both `tk_typeref` nodes to reach `int` while preserving the accumulated `const` qualifier.
+The type pointer for `p` walks the IL graph as: `kind=6 (tk_pointer)` -> follow `+144` -> `kind=12 (tk_typeref CI)` cv-bits=const -> `+144` -> `kind=12 (tk_typeref I)` -> `+144` -> `kind=2 (tk_integer, int)`. `is_class_or_struct_or_union_type(typeof(p))` calls `skip_typedefs` which stops at the pointer (kind 6, not 12) and returns false in a single iteration — the typedef layers under the pointer are never touched. By contrast, `type_pointed_to` peels the pointer first, then `skip_typedefs` strips both `tk_typeref` nodes to reach `int` while preserving the accumulated `const` qualifier.
 
 ### Why 130 Separate Functions?
 
@@ -368,7 +368,7 @@ void set_type_kind(type_t *type, int kind) {
 
 ## Qualified Type Construction: The MRU Cache
 
-When the compiler needs a `const int` given an `int`, it calls `f_make_qualified_type` (`sub_5D64F0`). This function is called extremely frequently -- every variable declaration, function parameter, and expression type computation may need cv-qualified variants. EDG optimizes this with a move-to-front (MRU) linked list cache on each type node.
+When the compiler needs a `const int` given an `int`, it calls `f_make_qualified_type` (`sub_5D64F0`). This function is called extremely frequently — every variable declaration, function parameter, and expression type computation may need cv-qualified variants. EDG optimizes this with a move-to-front (MRU) linked list cache on each type node.
 
 ```c
 type_t *f_make_qualified_type(type_t *base_type, int qualifiers) {
@@ -619,7 +619,7 @@ void do_class_layout(type_t *class_type) {
 
 ### Empty Base Optimization
 
-The EBO is one of the most subtle parts of C++ layout. The C++ standard requires that two distinct subobjects of the same type have different addresses. But empty base classes (no data members, no virtual functions, all bases empty) can be placed at offset 0 without consuming space -- unless another subobject of the same type already occupies that address.
+The EBO is one of the most subtle parts of C++ layout. The C++ standard requires that two distinct subobjects of the same type have different addresses. But empty base classes (no data members, no virtual functions, all bases empty) can be placed at offset 0 without consuming space — unless another subobject of the same type already occupies that address.
 
 `empty_base_conflict` (`sub_65EE70`, 240 lines) is self-recursive: it walks the entire base class hierarchy checking for address collisions. When a conflict is detected, the layout engine advances the offset by the base's alignment until no conflict exists.
 
@@ -628,10 +628,10 @@ The EBO is one of the most subtle parts of C++ layout. The C++ standard requires
 `alignment_of_field_full` (`sub_6621E0`, 193 lines) computes the effective alignment of a data member considering all alignment modifiers in priority order:
 
 1. Natural alignment of the field's type.
-2. `__attribute__((aligned(N)))` -- increases alignment.
-3. `__attribute__((packed))` -- reduces alignment to 1.
-4. `#pragma pack(N)` -- caps alignment at N.
-5. `__declspec(align(N))` -- MSVC mode alignment.
+2. `__attribute__((aligned(N)))` — increases alignment.
+3. `__attribute__((packed))` — reduces alignment to 1.
+4. `#pragma pack(N)` — caps alignment at N.
+5. `__declspec(align(N))` — MSVC mode alignment.
 
 The interaction between these modifiers follows complex ABI rules. For example, `#pragma pack(4)` on a struct with a `double` member reduces the `double`'s alignment from 8 to 4, but `__attribute__((aligned(16)))` on the same member overrides the pack to 16.
 
@@ -665,7 +665,7 @@ Every type-related allocation increments a per-kind counter. `print_trans_unit_s
 | `qword_126F948` | Class type supplements | 208 B |
 | `qword_126F8F0` | Typeref supplements | 56 B |
 | `qword_126F8F8` | Template param supplements | 40 B |
-| `qword_126F280` | Pointer-to-member types constructed | -- |
+| `qword_126F280` | Pointer-to-member types constructed | — |
 
 ## CUDA-Specific Type Extensions
 
@@ -694,8 +694,8 @@ The constexpr interpreter (`sub_628DE0`, `f_value_bytes_for_type`) enforces a 64
 |---|---|---|---|
 | `0x5D64F0` | 340 | `f_make_qualified_type` | il.c |
 | `0x5DB220` | 63 | `ptr_to_member_type_full` | il.c |
-| `0x5E2E80` | -- | `set_type_kind` | il_alloc.c |
-| `0x5E3D40` | -- | `alloc_type` | il_alloc.c |
+| `0x5E2E80` | — | `set_type_kind` | il_alloc.c |
+| `0x5E3D40` | — | `alloc_type` | il_alloc.c |
 | `0x65EA50` | 105 | `trailing_base_does_not_affect_gnu_size` | layout.c |
 | `0x65EE70` | 240 | `empty_base_conflict` | layout.c |
 | `0x65FC20` | 271 | `subobject_conflict` | layout.c |
@@ -703,12 +703,12 @@ The constexpr interpreter (`sub_628DE0`, `f_value_bytes_for_type`) enforces a 64
 | `0x6614A0` | 204 | `set_virtual_base_class_offset` | layout.c |
 | `0x6621E0` | 193 | `alignment_of_field_full` | layout.c |
 | `0x662670` | 2548 | `do_class_layout` | layout.c |
-| `0x7A4B40` | -- | `ttt_is_type_with_no_name_linkage` | types.c |
-| `0x7A4F10` | -- | `record_type_features_used` | types.c |
-| `0x7A5E10` | -- | `compare_attribute_specifiers` | types.c |
-| `0x7A6260` | -- | `type_has_flexible_array_or_vla` | types.c |
-| `0x7A6320` | -- | `make_cv_combined_type` | types.c |
-| `0x7A68F0`--`0x7A9F90` | -- | 130 leaf query functions | types.c |
+| `0x7A4B40` | — | `ttt_is_type_with_no_name_linkage` | types.c |
+| `0x7A4F10` | — | `record_type_features_used` | types.c |
+| `0x7A5E10` | — | `compare_attribute_specifiers` | types.c |
+| `0x7A6260` | — | `type_has_flexible_array_or_vla` | types.c |
+| `0x7A6320` | — | `make_cv_combined_type` | types.c |
+| `0x7A68F0`--`0x7A9F90` | — | 130 leaf query functions | types.c |
 | `0x7AA150` | 636 | `types_are_identical` | types.c |
 | `0x7AB9B0` | 423 | `construct_function_type` | types.c |
 | `0x7AE680` | 541 | `adjust_type_for_templates` | types.c |
@@ -720,4 +720,4 @@ The constexpr interpreter (`sub_628DE0`, `f_value_bytes_for_type`) enforces a 64
 | `0x7B9670` | 459 | `deduce_template_argument_type` | types.c |
 | `0x7BDCB0` | 510 | `evaluate_type_trait` | types.c |
 | `0x7BF630` | 348 | `format_type_for_diagnostic` | types.c |
-| `0x7C02A0` | -- | `compatible_ms_bit_field_container_types` | types.c |
+| `0x7C02A0` | — | `compatible_ms_bit_field_container_types` | types.c |

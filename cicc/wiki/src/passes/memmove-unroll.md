@@ -1,8 +1,8 @@
 # Memmove Unrolling
 
-CUDA GPUs have no hardware instruction for bulk memory copy. On a CPU, `memcpy` and `memmove` compile down to optimized microcode sequences (REP MOVSB, AVX-512 scatter/gather, or libc hand-tuned SIMD loops). On an SM, every byte of a copy must pass through explicit load and store instructions executed by individual threads. LLVM's standard `memcpy` lowering in SelectionDAG produces reasonable load/store sequences, but it operates late in the pipeline and cannot reason about NVVM IR semantics -- address spaces, alignment guarantees from the CUDA memory model, or the interaction between copy direction and overlapping shared-memory buffers. NVIDIA's memmove unrolling pass replaces `llvm.memmove` and `llvm.memcpy` intrinsic calls at the NVVM IR level with explicit element-wise copy loops, generating both forward and reverse copy paths to handle overlapping memory correctly.
+CUDA GPUs have no hardware instruction for bulk memory copy. On a CPU, `memcpy` and `memmove` compile down to optimized microcode sequences (REP MOVSB, AVX-512 scatter/gather, or libc hand-tuned SIMD loops). On an SM, every byte of a copy must pass through explicit load and store instructions executed by individual threads. LLVM's standard `memcpy` lowering in SelectionDAG produces reasonable load/store sequences, but it operates late in the pipeline and cannot reason about NVVM IR semantics — address spaces, alignment guarantees from the CUDA memory model, or the interaction between copy direction and overlapping shared-memory buffers. NVIDIA's memmove unrolling pass replaces `llvm.memmove` and `llvm.memcpy` intrinsic calls at the NVVM IR level with explicit element-wise copy loops, generating both forward and reverse copy paths to handle overlapping memory correctly.
 
-The pass lives in the aggregate-lowering cluster at `0x1C80000`--`0x1CBFFFF`, adjacent to [struct splitting](struct-splitting.md) (`sub_1C86CA0`) and [FP128/I128 emulation](fp128-emulation.md) (`sub_1C8C170`). It is part of the `lower-aggr-copies` pipeline pass (pass index 417), which coordinates memmove unrolling, struct splitting, and aggregate store lowering as a single pipeline unit. Upstream LLVM has no equivalent IR-level memmove unroller -- this is entirely NVIDIA-proprietary.
+The pass lives in the aggregate-lowering cluster at `0x1C80000`--`0x1CBFFFF`, adjacent to [struct splitting](struct-splitting.md) (`sub_1C86CA0`) and [FP128/I128 emulation](fp128-emulation.md) (`sub_1C8C170`). It is part of the `lower-aggr-copies` pipeline pass (pass index 417), which coordinates memmove unrolling, struct splitting, and aggregate store lowering as a single pipeline unit. Upstream LLVM has no equivalent IR-level memmove unroller — this is entirely NVIDIA-proprietary.
 
 ## Key Facts
 
@@ -16,7 +16,7 @@ The pass lives in the aggregate-lowering cluster at `0x1C80000`--`0x1CBFFFF`, ad
 | IR level | NVVM IR (pre-instruction-selection) |
 | Unroll threshold global | `dword_4FBD560` |
 | Knob constructor | `ctor_265` at `0x4F48E0` |
-| LLVM upstream | No equivalent -- NVIDIA-proprietary |
+| LLVM upstream | No equivalent — NVIDIA-proprietary |
 | Neighbor passes | Struct splitting (`sub_1C86CA0`), FP128 emulation (`sub_1C8C170`) |
 
 ## Why This Pass Exists
@@ -72,7 +72,7 @@ br i1 %cmp, label %forward.for, label %reverse.for   ; sub_15F83E0
 
 The ICMP instruction is created via `sub_12AA0C0` with opcode `0x22` (34 decimal, corresponding to an unsigned-less-than integer comparison). The conditional branch is created via `sub_15F83E0`. When `dst < src`, memory does not overlap in the forward direction, so the forward path is safe. When `dst >= src`, copying forward would overwrite source bytes before they are read, so the reverse path is required.
 
-### Step 3: Copy Generation -- Small/Static Path
+### Step 3: Copy Generation — Small/Static Path
 
 When the copy size is statically known and satisfies `size <= dword_4FBD560` (the compile-time unroll threshold), the pass generates fully unrolled element-by-element copies with no loop overhead.
 
@@ -102,7 +102,7 @@ store i8 %val.N, ptr %dst.gep.N, align A
 
 Each load is created via `sub_15F9210` (InitLoadInstruction, opcode 64 type 1) and each store via `sub_15F9650` (InitStoreInstruction, opcode 64 type 2). Alignment is set on both loads and stores via `sub_15F8F50` / `sub_15F9450`, preserving the alignment from the original memmove intrinsic call (passed as parameter `a15`). Memory attributes (volatile flags, etc.) are propagated through parameters `a16` and `a17`.
 
-### Step 4: Copy Generation -- Large/Dynamic Path
+### Step 4: Copy Generation — Large/Dynamic Path
 
 When the copy size exceeds the threshold or is not statically known, the pass generates a single-iteration loop body with a PHI induction variable:
 
@@ -142,7 +142,7 @@ The pass preserves the alignment annotation from the original memmove/memcpy int
 
 ### Step 6: Cleanup
 
-After generating the replacement CFG, the original memmove/memcpy intrinsic call is erased. The pass uses `sub_164D160` (RAUW -- Replace All Uses With) to rewire any remaining references.
+After generating the replacement CFG, the original memmove/memcpy intrinsic call is erased. The pass uses `sub_164D160` (RAUW — Replace All Uses With) to rewire any remaining references.
 
 ## Unroll Threshold
 
@@ -165,9 +165,9 @@ The pass names its generated GEP instructions with distinctive prefixes that are
 | Instruction | Name string | Notes |
 |-------------|-------------|-------|
 | Source GEP | `"src.memmove.gep.unroll"` | Period-separated |
-| Destination GEP | `"dst.memmove.gep,unroll"` | Comma before `unroll` -- a typo in the binary [sic] |
+| Destination GEP | `"dst.memmove.gep,unroll"` | Comma before `unroll` — a typo in the binary [sic] |
 
-The comma in `"dst.memmove.gep,unroll"` (where a period would be expected by analogy with the source GEP name) is a benign naming inconsistency baked into the binary string table. It has no semantic effect -- LLVM IR value names are arbitrary strings -- but it serves as a reliable fingerprint for identifying output from this specific pass. A reimplementation should preserve this exact string if binary-identical IR output is desired, or normalize it to `"dst.memmove.gep.unroll"` if not.
+The comma in `"dst.memmove.gep,unroll"` (where a period would be expected by analogy with the source GEP name) is a benign naming inconsistency baked into the binary string table. It has no semantic effect — LLVM IR value names are arbitrary strings — but it serves as a reliable fingerprint for identifying output from this specific pass. A reimplementation should preserve this exact string if binary-identical IR output is desired, or normalize it to `"dst.memmove.gep.unroll"` if not.
 
 ## Configuration
 
@@ -175,11 +175,11 @@ Knobs registered at `ctor_265` (`0x4F48E0`), applicable to the `lower-aggr-copie
 
 | Knob | Global | Description |
 |------|--------|-------------|
-| `lower-aggr-unrolled-stores-limit` | -- | Maximum number of stores in unrolled mode |
-| `large-aggr-store-limit` | -- | Element count above which aggregate stores use a loop |
-| `max-aggr-copy-size` | -- | Maximum aggregate copy size the pass will handle |
-| `skiploweraggcopysafechk` | -- | Skip safety check in aggregate copy lowering |
-| `devicefn-param-always-local` | -- | Treat device function parameter space as local |
+| `lower-aggr-unrolled-stores-limit` | — | Maximum number of stores in unrolled mode |
+| `large-aggr-store-limit` | — | Element count above which aggregate stores use a loop |
+| `max-aggr-copy-size` | — | Maximum aggregate copy size the pass will handle |
+| `skiploweraggcopysafechk` | — | Skip safety check in aggregate copy lowering |
+| `devicefn-param-always-local` | — | Treat device function parameter space as local |
 
 The pass can be invoked via the pipeline text interface:
 
@@ -212,23 +212,23 @@ Related aggregate lowering knobs from `ctor_089` (`0x4A0D60`):
 | Function | Address | Size | Role |
 |----------|---------|------|------|
 | Memmove unroller | `sub_1C82A50` | 39KB | Main pass: CFG construction, copy generation |
-| ICMP creation | `sub_12AA0C0` | -- | Creates integer comparison (opcode 0x22) |
-| Conditional branch | `sub_15F83E0` | -- | Creates `br i1` |
-| InitLoadInstruction | `sub_15F9210` | -- | Creates load instruction (opcode 64, type 1) |
-| InitStoreInstruction | `sub_15F9650` | -- | Creates store instruction (opcode 64, type 2) |
-| SetLoadAlignment | `sub_15F8F50` | -- | Sets alignment on load |
-| SetStoreAlignment | `sub_15F9450` | -- | Sets alignment on store |
-| InitInstruction (PHI) | `sub_15F1EA0` | -- | Creates PHI node (opcode 53) |
-| CreateConstant | `sub_15A0680` | -- | Creates integer constant (e.g., 1 for increment) |
-| CreateBinaryOp | `sub_15FB440` | -- | Creates binary operation node (5-arg constructor) |
-| CreateBinaryOp (variant) | `sub_15A2B60` | -- | Alternative binary op constructor |
-| RAUW | `sub_164D160` | -- | Replace All Uses With |
-| Pipeline param parser | `sub_233A3B0` | -- | Parses `lower-aggr-func-args` parameter |
+| ICMP creation | `sub_12AA0C0` | — | Creates integer comparison (opcode 0x22) |
+| Conditional branch | `sub_15F83E0` | — | Creates `br i1` |
+| InitLoadInstruction | `sub_15F9210` | — | Creates load instruction (opcode 64, type 1) |
+| InitStoreInstruction | `sub_15F9650` | — | Creates store instruction (opcode 64, type 2) |
+| SetLoadAlignment | `sub_15F8F50` | — | Sets alignment on load |
+| SetStoreAlignment | `sub_15F9450` | — | Sets alignment on store |
+| InitInstruction (PHI) | `sub_15F1EA0` | — | Creates PHI node (opcode 53) |
+| CreateConstant | `sub_15A0680` | — | Creates integer constant (e.g., 1 for increment) |
+| CreateBinaryOp | `sub_15FB440` | — | Creates binary operation node (5-arg constructor) |
+| CreateBinaryOp (variant) | `sub_15A2B60` | — | Alternative binary op constructor |
+| RAUW | `sub_164D160` | — | Replace All Uses With |
+| Pipeline param parser | `sub_233A3B0` | — | Parses `lower-aggr-func-args` parameter |
 
 ## Cross-References
 
-- [Struct/Aggregate Splitting](struct-splitting.md) -- sibling pass in the same `lower-aggr-copies` pipeline unit; decomposes struct-typed operations into scalar field operations
-- [FP128/I128 Emulation](fp128-emulation.md) -- neighbor in the `0x1C80000` cluster; replaces wide arithmetic with runtime library calls
-- [NVVM Verifier](nvvm-verify-deep.md) -- validates that memmove/memcpy targets are not in constant address space
-- [NVIDIA Custom Passes](index.md) -- master index of all proprietary passes
-- [SROA](../llvm/sroa.md) -- upstream LLVM pass that splits alloca-based aggregates; handles memcpy/memmove during alloca rewriting
+- [Struct/Aggregate Splitting](struct-splitting.md) — sibling pass in the same `lower-aggr-copies` pipeline unit; decomposes struct-typed operations into scalar field operations
+- [FP128/I128 Emulation](fp128-emulation.md) — neighbor in the `0x1C80000` cluster; replaces wide arithmetic with runtime library calls
+- [NVVM Verifier](nvvm-verify-deep.md) — validates that memmove/memcpy targets are not in constant address space
+- [NVIDIA Custom Passes](index.md) — master index of all proprietary passes
+- [SROA](../llvm/sroa.md) — upstream LLVM pass that splits alloca-based aggregates; handles memcpy/memmove during alloca rewriting

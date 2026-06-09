@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded instruction streams with relocation metadata, debug information, and a snapshot of compilation knobs, enabling deferred finalization for a target SM that may differ from the original compilation target. Where standard Mercury produces a fully-resolved SASS binary bound to a single SM, capmerc produces an intermediate ELF object that a downstream tool (the driver or linker) can finalize into native SASS at load time. This is the default output format for all SM 100+ targets (Blackwell, Jetson Thor, consumer RTX 50-series). The capmerc data lives in `.nv.capmerc<funcname>` per-function ELF sections alongside 21 types of `.nv.merc.*` auxiliary sections carrying cloned debug data, memory-space metadata, and Mercury-specific relocations. Finalization can be "opportunistic" -- the same capmerc object may be finalized for different SMs within or across architectural families, controlled by `--opportunistic-finalization-lvl`.
+Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded instruction streams with relocation metadata, debug information, and a snapshot of compilation knobs, enabling deferred finalization for a target SM that may differ from the original compilation target. Where standard Mercury produces a fully-resolved SASS binary bound to a single SM, capmerc produces an intermediate ELF object that a downstream tool (the driver or linker) can finalize into native SASS at load time. This is the default output format for all SM 100+ targets (Blackwell, Jetson Thor, consumer RTX 50-series). The capmerc data lives in `.nv.capmerc<funcname>` per-function ELF sections alongside 21 types of `.nv.merc.*` auxiliary sections carrying cloned debug data, memory-space metadata, and Mercury-specific relocations. Finalization can be "opportunistic" — the same capmerc object may be finalized for different SMs within or across architectural families, controlled by `--opportunistic-finalization-lvl`.
 
 | | |
 |---|---|
@@ -43,7 +43,7 @@ if (sm_version > 99) {
 }
 ```
 
-The Mercury mode flag `*(DWORD*)(context+385) == 2` is shared between Mercury and capmerc -- both use the identical Mercury encoder pipeline (phases 117--122). The capmerc distinction is purely at the ELF emission level: capmerc wraps the phase-122 SASS output in a capsule descriptor with relocation metadata instead of emitting it directly as a `.text` section.
+The Mercury mode flag `*(DWORD*)(context+385) == 2` is shared between Mercury and capmerc — both use the identical Mercury encoder pipeline (phases 117--122). The capmerc distinction is purely at the ELF emission level: capmerc wraps the phase-122 SASS output in a capsule descriptor with relocation metadata instead of emitting it directly as a `.text` section.
 
 ## Capsule Mercury ELF Structure
 
@@ -86,14 +86,14 @@ CUBIN ELF (capmerc mode)
     └── .nv.merc.<memory-space>        (cloned constant/global/local/shared)
 ```
 
-### Capsule Descriptor -- `sub_1C9C300`
+### Capsule Descriptor — `sub_1C9C300`
 
 Each function produces a `.nv.capmerc<funcname>` section constructed by `sub_1C9C300` (24KB, 3816 bytes binary). This function processes `.nv.capmerc` and `.merc` markers, embeds KNOBS data (compilation configuration snapshot), manages constant bank replication, and creates the per-function descriptor.
 
 The descriptor is a 328-byte object containing:
 - Mercury-encoded instruction stream for the function
 - R_MERCURY_* relocation entries that must be patched during finalization
-- KNOBS block -- a serialized snapshot of all knob values affecting code generation, optimization level, target parameters, and feature flags
+- KNOBS block — a serialized snapshot of all knob values affecting code generation, optimization level, target parameters, and feature flags
 - References to the `.nv.merc.*` auxiliary sections
 - Function-level metadata: register counts, barrier counts, shared memory usage
 
@@ -354,7 +354,7 @@ Key design observations:
 
 **KNOBS indirection (+0x0D0).** The KNOBS data does not live inline in the descriptor. Instead, +0x0D0 points to a separately allocated 64-byte sub-object carrying the ELF coordinates (section index, file offset, size, and name pointer) of the KNOBS section. This allows the KNOBS data to reside in a dedicated ELF section while the descriptor references it by position. The KNOBS pair list at +0x138 and the generic key-value list at +0x130 store the parsed key-value pairs from marker type 90 data blocks; the "KNOBS" string literal serves as the discriminator between the two lists.
 
-**Dual-descriptor pattern.** When the merc section mirror is active, the constructor allocates a second 328-byte object for the `.merc<funcname>` companion section. This companion receives a copy of the SASS data (not a pointer -- an actual `memcpy` of `sass_data_size` bytes), the function name with a `.merc` prefix, and the section flags from the original ELF section header at +0x0A0. The companion's weak_symbol_index (+0x008) is always zero.
+**Dual-descriptor pattern.** When the merc section mirror is active, the constructor allocates a second 328-byte object for the `.merc<funcname>` companion section. This companion receives a copy of the SASS data (not a pointer — an actual `memcpy` of `sass_data_size` bytes), the function name with a `.merc` prefix, and the section flags from the original ELF section header at +0x0A0. The companion's weak_symbol_index (+0x008) is always zero.
 
 **Relocation containers.** The three sorted containers at +0x060, +0x068, and +0x078 (created via `sub_425CA0` with comparator pair `sub_427750`/`sub_427760` and element size 0x20 = 32 bytes) form a three-level relocation index. The reloc_index_set stores symbol indices that appear in relocations. The per_reloc_data_set stores per-symbol relocation metadata. The reloc_payload_map associates symbol indices with the actual payload data that the finalizer patches into instruction bytes. These are populated by marker sub-types 10, 23, 25, 28, 40, 46, 49, 52, 57, 64, 68, 70, 71, 85, and 87.
 
@@ -449,9 +449,9 @@ Capsule Mercury defines its own relocation type namespace for references within 
 
 ### Sub-Byte Relocation Design
 
-The eight `R_MERCURY_8_*` types enable patching individual bytes within a 64-bit instruction word. Mercury instruction encodings pack multiple fields into single 8-byte QWORDs (the 1280-bit instruction buffer at `a1+544` is organized as 20 QWORDs). During finalization for a different SM, only certain bit-fields within an instruction word may need updating -- for example, the opcode variant bits or register class encoding -- while neighboring fields remain unchanged. The sub-byte types let the finalizer patch exactly one byte at a specific position within the word without a read-modify-write cycle on the entire QWORD.
+The eight `R_MERCURY_8_*` types enable patching individual bytes within a 64-bit instruction word. Mercury instruction encodings pack multiple fields into single 8-byte QWORDs (the 1280-bit instruction buffer at `a1+544` is organized as 20 QWORDs). During finalization for a different SM, only certain bit-fields within an instruction word may need updating — for example, the opcode variant bits or register class encoding — while neighboring fields remain unchanged. The sub-byte types let the finalizer patch exactly one byte at a specific position within the word without a read-modify-write cycle on the entire QWORD.
 
-### Relocation Resolution Algorithm -- `sub_1CD48C0`
+### Relocation Resolution Algorithm — `sub_1CD48C0`
 
 The master resolver (22KB, 17 callees) walks the relocation linked list at `elfw+376` and applies five major stages per entry. Reconstructed pseudocode from the decompiled binary:
 
@@ -521,11 +521,11 @@ resolve_relocations(elfw):
                     sym.st_size, section.sh_type - 0x70000064)
 ```
 
-The sub-byte `R_MERCURY_8_N` types (ordinals 4--11) use patch mode 6 in `sub_1CD34E0`, which extracts byte `N/8` from the computed value and writes it to the target offset without touching adjacent bytes. This avoids a read-modify-write on the full QWORD -- the descriptor's `bit_start` field encodes the byte position (0, 8, 16, ... 56) and `bit_width` is always 8.
+The sub-byte `R_MERCURY_8_N` types (ordinals 4--11) use patch mode 6 in `sub_1CD34E0`, which extracts byte `N/8` from the computed value and writes it to the target offset without touching adjacent bytes. This avoids a read-modify-write on the full QWORD — the descriptor's `bit_start` field encodes the byte position (0, 8, 16, ... 56) and `bit_width` is always 8.
 
 ## Mercury Section Binary Layouts
 
-### Section Classifier Algorithm -- `sub_1C98C60`
+### Section Classifier Algorithm — `sub_1C98C60`
 
 The 9KB classifier uses a two-stage guard-then-waterfall pattern to identify `.nv.merc.*` sections from their ELF section headers.
 
@@ -555,10 +555,10 @@ Within Range A, the bitmask `0x5D05` (binary `0101_1101_0000_0101`) selects seve
 
 Bit 28 of `sh_flags` is an NVIDIA extension: **SHF_NV_MERC**. All `.nv.merc.*` sections carry this flag. It serves two purposes:
 
-1. **Fast filtering** -- the classifier checks this bit before string comparisons, giving O(1) rejection for the common case of non-merc sections.
-2. **Namespace separation** -- during section index remapping (`sub_1C99BB0`), sections with `SHF_NV_MERC` are remapped into a separate merc section index space. The finalizer uses this flag to identify which sections require relocation patching during off-target finalization.
+1. **Fast filtering** — the classifier checks this bit before string comparisons, giving O(1) rejection for the common case of non-merc sections.
+2. **Namespace separation** — during section index remapping (`sub_1C99BB0`), sections with `SHF_NV_MERC` are remapped into a separate merc section index space. The finalizer uses this flag to identify which sections require relocation patching during off-target finalization.
 
-### `.nv.capmerc<funcname>` -- Capsule Data Layout
+### `.nv.capmerc<funcname>` — Capsule Data Layout
 
 The per-function capsule section contains the full marker stream, SASS data, KNOBS block, and optionally replicated constant bank data. The section is created by `sub_1C9C300`.
 
@@ -612,7 +612,7 @@ Section data is organized as four consecutive regions:
          └──────────────────────────────────────────────────────┘
 ```
 
-### `.nv.merc.debug_info` -- Cloned DWARF Debug Info
+### `.nv.merc.debug_info` — Cloned DWARF Debug Info
 
 The cloner (`sub_1CA2E40`) produces a byte-for-byte copy of the source `.debug_info` section, placed into the merc namespace with modified ELF section header properties.
 
@@ -651,7 +651,7 @@ Section data is standard DWARF `.debug_info` format:
 
 The critical difference from standard `.debug_info`: all cross-section offset references point to other `.nv.merc.*` sections, not the original `.debug_*` sections. The `.nv.merc.rela.debug_info` relocation table handles rebinding these offsets during finalization.
 
-### `.nv.merc.rela` / `.nv.merc.rela<secname>` -- Mercury Relocations
+### `.nv.merc.rela` / `.nv.merc.rela<secname>` — Mercury Relocations
 
 Mercury relocation sections use standard `Elf64_Rela` on-disk format (24 bytes per entry) but encode Mercury-specific relocation types with a `0x10000` offset in the type field.
 
@@ -763,7 +763,7 @@ The `--opportunistic-finalization-lvl` flag controls how aggressively capmerc bi
 | 2 | intra-family | Finalize for any SM within the same architectural family |
 | 3 | intra+inter | Finalize across SM families |
 
-Level 2 allows a capmerc binary compiled for sm_100 (datacenter Blackwell) to be finalized for sm_103 (Blackwell Ultra / GB300) without recompilation. Level 3 extends this across families -- for example, sm_100 capmerc finalized for sm_120 (consumer RTX 50-series).
+Level 2 allows a capmerc binary compiled for sm_100 (datacenter Blackwell) to be finalized for sm_103 (Blackwell Ultra / GB300) without recompilation. Level 3 extends this across families — for example, sm_100 capmerc finalized for sm_120 (consumer RTX 50-series).
 
 The key constraint is instruction encoding compatibility: the sub-byte R_MERCURY_8_* relocations can patch SM-specific encoding bits, but the overall instruction format and register file layout must be compatible between source and target.
 
@@ -911,14 +911,14 @@ void EmitELF(context) {
 | `sub_729540` | 35 KB (decomp) | SASS assembly verification (self-check comparator) |
 | `sub_703AB0` | 10 KB (decomp) | Binary-kind CLI parser |
 | `sub_612DE0` | 47 KB (decomp) | Kernel finalizer / ELF builder (fastpath optimization) |
-| `sub_60F290` | -- | Off-target compatibility checker |
+| `sub_60F290` | — | Off-target compatibility checker |
 | `sub_1CD13A0` | 11 KB (decomp) | ELF serialization (final file writer) |
 
 ## Cross-References
 
-- [Mercury Encoder Pipeline](./mercury.md) -- phases 113--122, the upstream encoding that capmerc wraps
-- [SASS Instruction Encoding](./encoding.md) -- bit-level encoding format and 1280-bit instruction buffer
-- [Code Generation Overview](./overview.md) -- high-level codegen pipeline context
-- [Knobs System](../config/knobs.md) -- knob infrastructure that KNOBS embedding serializes
-- [Phase Manager](../passes/phase-manager.md) -- 159-phase pipeline infrastructure
-- [SM Architecture Map](../targets/index.md) -- SM version numbers and family groupings
+- [Mercury Encoder Pipeline](./mercury.md) — phases 113--122, the upstream encoding that capmerc wraps
+- [SASS Instruction Encoding](./encoding.md) — bit-level encoding format and 1280-bit instruction buffer
+- [Code Generation Overview](./overview.md) — high-level codegen pipeline context
+- [Knobs System](../config/knobs.md) — knob infrastructure that KNOBS embedding serializes
+- [Phase Manager](../passes/phase-manager.md) — 159-phase pipeline infrastructure
+- [SM Architecture Map](../targets/index.md) — SM version numbers and family groupings

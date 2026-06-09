@@ -1,6 +1,6 @@
 # ThinLTO Function Import
 
-CICC v13.0 implements LLVM's ThinLTO function import pipeline with GPU-specific modifications to the threshold computation, candidate filtering, and provenance tracking. The core of the system lives in two functions -- `sub_1854A20` (the import driver, 4,326 bytes) and `sub_1853180` (the threshold computation engine, 5,059 bytes) -- with an entry point at `sub_1855B10` that parses the `-summary-file` / `-function-import` command line and orchestrates the whole-module import flow. The fundamental difference from CPU ThinLTO is that GPU compilation operates in a closed-world model: there are no shared libraries, no dynamic linking, and no PLT/GOT indirection. Every device function will be statically linked into the final PTX. This means CICC can afford far more aggressive import thresholds than CPU compilers, because the code size cost of importing is paid once per GPU binary rather than once per shared-object load.
+CICC v13.0 implements LLVM's ThinLTO function import pipeline with GPU-specific modifications to the threshold computation, candidate filtering, and provenance tracking. The core of the system lives in two functions — `sub_1854A20` (the import driver, 4,326 bytes) and `sub_1853180` (the threshold computation engine, 5,059 bytes) — with an entry point at `sub_1855B10` that parses the `-summary-file` / `-function-import` command line and orchestrates the whole-module import flow. The fundamental difference from CPU ThinLTO is that GPU compilation operates in a closed-world model: there are no shared libraries, no dynamic linking, and no PLT/GOT indirection. Every device function will be statically linked into the final PTX. This means CICC can afford far more aggressive import thresholds than CPU compilers, because the code size cost of importing is paid once per GPU binary rather than once per shared-object load.
 
 The import subsystem reads `NVModuleSummary` data (built by `sub_D7D4E0`, see [Module Summary](./module-summary.md)) to make summary-guided decisions about which functions to pull from other translation units. Each candidate is evaluated against a floating-point threshold that incorporates callsite hotness, linkage type, and a per-priority-class multiplier. A global import budget caps the total number of imports to prevent compile-time explosion. After import, each materialized function receives `thinlto_src_module` metadata so downstream passes (particularly the [inliner](./inliner-cost.md)) know its origin module.
 
@@ -57,7 +57,7 @@ The priority is determined by querying the `ImportPriorityTable` (parameter `a4`
 **Functions that are NEVER imported:**
 - **Kernels (`__global__` functions).** These are entry points. They are never candidates for cross-module import because they represent the root of execution; they are called from host code, not from other device functions. The summary builder marks them as non-importable.
 - **Host functions.** Host code is handled by the host compiler (gcc/clang), not cicc. They never appear in the device module summary.
-- **Functions in address space 25.** The summary builder at lines 1388-1395 explicitly skips functions whose type resolves to address space 25, with a `goto LABEL_495` that bypasses the import-eligible path. The raw report notes: "device functions can't be cross-module imported in ThinLTO" -- this refers specifically to functions that are *declarations only* with device-memory address space linkage, meaning they reference device-side symbols without a definition in the current TU.
+- **Functions in address space 25.** The summary builder at lines 1388-1395 explicitly skips functions whose type resolves to address space 25, with a `goto LABEL_495` that bypasses the import-eligible path. The raw report notes: "device functions can't be cross-module imported in ThinLTO" — this refers specifically to functions that are *declarations only* with device-memory address space linkage, meaning they reference device-side symbols without a definition in the current TU.
 - **Functions with the "not importable" flag.** Bit 4 (`0x10`) of the linkage byte at offset `+0x0C` in the function summary entry. The import driver checks `test byte [entry+0Ch], 0x10` and skips on set.
 
 ## Import Algorithm: Complete Pseudocode
@@ -535,15 +535,15 @@ fn import_driver(
 
 | Pass | List head offset | Summary offset | Importable-flag offset | Interpretation |
 |------|-----------------|----------------|----------------------|----------------|
-| 1 (primary) | `[map+0x00]` | `node[-0x38]` | `node[-0x21] & 0x20` | Direct call targets from the current module -- highest priority because they are on the critical path |
-| 2 (secondary) | `[map+0x10]` | `node[-0x38]` | `node[-0x21] & 0x20` | Transitively-reachable functions (callees of callees) -- import enables deeper inlining chains |
-| 3 (tertiary) | `[map+0x30]` | `node[-0x30]` | `node[-0x19] & 0x20` | Speculative candidates (address-taken functions, indirect call targets inferred from devirtualization) -- lowest confidence |
+| 1 (primary) | `[map+0x00]` | `node[-0x38]` | `node[-0x21] & 0x20` | Direct call targets from the current module — highest priority because they are on the critical path |
+| 2 (secondary) | `[map+0x10]` | `node[-0x38]` | `node[-0x21] & 0x20` | Transitively-reachable functions (callees of callees) — import enables deeper inlining chains |
+| 3 (tertiary) | `[map+0x30]` | `node[-0x30]` | `node[-0x19] & 0x20` | Speculative candidates (address-taken functions, indirect call targets inferred from devirtualization) — lowest confidence |
 
 The different offsets in pass 3 (`-0x30` instead of `-0x38`, `-0x19` instead of `-0x21`) indicate a different node layout for speculative candidates. These nodes carry less metadata (8 fewer bytes between the summary pointer and the node base, and the importable flag is 8 bytes closer to the node).
 
 ### Threshold Comparison Gate (`sub_18518A0`)
 
-The gate function takes two arguments -- `hot_count` (rdi) and `cost` (rsi) -- and returns nonzero if the candidate qualifies for import. The driver calls it at three points (once per pass). This function encapsulates the final accept/reject decision after the per-priority-class threshold adjustment has already been applied by `sub_1853180`.
+The gate function takes two arguments — `hot_count` (rdi) and `cost` (rsi) — and returns nonzero if the candidate qualifies for import. The driver calls it at three points (once per pass). This function encapsulates the final accept/reject decision after the per-priority-class threshold adjustment has already been applied by `sub_1853180`.
 
 ```c
 // sub_18518A0 -- Threshold comparison gate
@@ -572,7 +572,7 @@ The four floating-point multiplier constants are stored in the `.data` section a
 | `dword_4FAADA0` | `import-critical-multiplier` | 100.0 | Multiplier for critical callsites |
 | `dword_4FAB040` | (default path) | 1.0 | Multiplier when no priority class matches |
 
-With the upstream default `import-instr-limit` of 100, a hot callsite gets threshold 1,000 instructions and a critical callsite gets threshold 10,000. The cold multiplier of 0.0 means cold functions are *never* imported by default -- the threshold evaluates to zero.
+With the upstream default `import-instr-limit` of 100, a hot callsite gets threshold 1,000 instructions and a critical callsite gets threshold 10,000. The cold multiplier of 0.0 means cold functions are *never* imported by default — the threshold evaluates to zero.
 
 **Effective threshold table** (for `import-instr-limit=100`):
 
@@ -581,7 +581,7 @@ With the upstream default `import-instr-limit` of 100, a hot callsite gets thres
 | Critical (4) | 100.0x | 10,000 instructions | Manually annotated hot paths, PGO-identified critical edges |
 | Hot (3) | 10.0x | 1,000 instructions | Profile-guided hot callsites, frequently-called templates |
 | Default (0,2) | 1.0x | 100 instructions | Standard callsites without profile data |
-| Cold (1) | 0.0x | 0 instructions | Provably cold paths -- never imported at default settings |
+| Cold (1) | 0.0x | 0 instructions | Provably cold paths — never imported at default settings |
 
 The evolution factors control how thresholds decay as imports cascade through the call graph:
 
@@ -624,7 +624,7 @@ The counter increment at `0x1853510`:
 add  cs:dword_4FAA770, 1     ; increment after successful import
 ```
 
-This is a non-atomic `add` -- safe because ThinLTO import runs single-threaded per module in CICC (unlike CPU LLVM where the thin link runs in parallel). The counter resets to 0 at the start of each module's import phase.
+This is a non-atomic `add` — safe because ThinLTO import runs single-threaded per module in CICC (unlike CPU LLVM where the thin link runs in parallel). The counter resets to 0 at the start of each module's import phase.
 
 ## Integration with the 20,000-Budget Inliner
 
@@ -680,7 +680,7 @@ fn function_import_pass_entry(module):
 
 All knobs are registered across three constructors:
 
-**`ctor_184_0` at `0x4DA920`** (13,693 B -- ThinLTO Function Import options):
+**`ctor_184_0` at `0x4DA920`** (13,693 B — ThinLTO Function Import options):
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
@@ -698,7 +698,7 @@ All knobs are registered across three constructors:
 | `summary-file` | string | (none) | Summary file path for `-function-import` |
 | `import-all-index` | bool | false | Import every external function in the index |
 
-**`ctor_420_0` at `0x532010`** (11,787 B -- pass-level ThinLTO options):
+**`ctor_420_0` at `0x532010`** (11,787 B — pass-level ThinLTO options):
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
@@ -706,14 +706,14 @@ All knobs are registered across three constructors:
 | `import-declaration` | bool | false | Import function declarations as fallback |
 | `thinlto-workload-def` | string | (none) | JSON file mapping root functions to import lists |
 
-**`ctor_029` at `0x489C80`** (1,120 B -- supplementary ThinLTO options):
+**`ctor_029` at `0x489C80`** (1,120 B — supplementary ThinLTO options):
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
 | `propagate-attrs` | bool | true | Propagate attributes through the summary index |
 | `import-constants-with-refs` | bool | true | Import constant globals that have references |
 
-**`ctor_419` at `0x531850`** (6,358 B -- FunctionAttrs inference):
+**`ctor_419` at `0x531850`** (6,358 B — FunctionAttrs inference):
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
@@ -782,37 +782,37 @@ Header: `[+0x08]` = current count, `[+0x0C]` = capacity. Growth is handled by a 
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| ThinLTO import driver (triple-pass candidate processing) | `sub_1854A20` | 4,326 B | -- |
-| Threshold computation with GUID dedup and priority-class multipliers | `sub_1853180` | 5,059 B | -- |
-| Threshold comparison gate (returns nonzero if candidate qualifies) | `sub_18518A0` | -- | -- |
-| Import candidate evaluator (prepares candidate for threshold check) | `sub_1852CC0` | -- | -- |
-| Import list builder (called by `sub_1853180`) | `sub_1852FB0` | -- | -- |
-| Import list node allocator (called by `sub_1853180`) | `sub_1852A30` | -- | -- |
-| Import list initialization (called by `sub_1853180`) | `sub_1851200` | -- | -- |
-| Execute import decision (materialize function into destination) | `sub_15E4B20` | -- | -- |
-| Resolve function name/info from summary | `sub_15E4EB0` | -- | -- |
-| Entry point (parses `-function-import` / `-summary-file`) | `sub_1855B10` | 10,503 B | -- |
-| Whole-module ThinLTO processing | `sub_1858B90` | 31,344 B | -- |
-| Type metadata propagation during import | `sub_185E850` | 24,263 B | -- |
-| Attach named metadata (used for `thinlto_src_module`) | `sub_1627100` | -- | -- |
-| Create optimization remark (import diagnostic) | `sub_1627350` | -- | -- |
-| Resolve source module name string | `sub_161FF10` | -- | -- |
-| Check if function exists in a given module | `sub_1670560` | -- | -- |
-| Get "import source" module handle | `sub_16704E0` | -- | -- |
-| Get "import destination" module handle | `sub_16704F0` | -- | -- |
-| Format import remark (cost component) | `sub_16C1840` | -- | -- |
-| Format import remark (threshold component) | `sub_16C1A90` | -- | -- |
-| Finalize import remark string | `sub_16C1AA0` | -- | -- |
-| Hash table insert (GUID dedup table) | `sub_1851560` | -- | -- |
-| Initialize resolved function summary storage | `sub_1674380` | -- | -- |
-| Finalize empty-import path cleanup | `sub_1851C60` | -- | -- |
-| Release import list entry data | `sub_161E7C0` | -- | -- |
-| `malloc` wrapper (used for 16-byte dedup node allocation) | `sub_22077B0` | -- | -- |
+| ThinLTO import driver (triple-pass candidate processing) | `sub_1854A20` | 4,326 B | — |
+| Threshold computation with GUID dedup and priority-class multipliers | `sub_1853180` | 5,059 B | — |
+| Threshold comparison gate (returns nonzero if candidate qualifies) | `sub_18518A0` | — | — |
+| Import candidate evaluator (prepares candidate for threshold check) | `sub_1852CC0` | — | — |
+| Import list builder (called by `sub_1853180`) | `sub_1852FB0` | — | — |
+| Import list node allocator (called by `sub_1853180`) | `sub_1852A30` | — | — |
+| Import list initialization (called by `sub_1853180`) | `sub_1851200` | — | — |
+| Execute import decision (materialize function into destination) | `sub_15E4B20` | — | — |
+| Resolve function name/info from summary | `sub_15E4EB0` | — | — |
+| Entry point (parses `-function-import` / `-summary-file`) | `sub_1855B10` | 10,503 B | — |
+| Whole-module ThinLTO processing | `sub_1858B90` | 31,344 B | — |
+| Type metadata propagation during import | `sub_185E850` | 24,263 B | — |
+| Attach named metadata (used for `thinlto_src_module`) | `sub_1627100` | — | — |
+| Create optimization remark (import diagnostic) | `sub_1627350` | — | — |
+| Resolve source module name string | `sub_161FF10` | — | — |
+| Check if function exists in a given module | `sub_1670560` | — | — |
+| Get "import source" module handle | `sub_16704E0` | — | — |
+| Get "import destination" module handle | `sub_16704F0` | — | — |
+| Format import remark (cost component) | `sub_16C1840` | — | — |
+| Format import remark (threshold component) | `sub_16C1A90` | — | — |
+| Finalize import remark string | `sub_16C1AA0` | — | — |
+| Hash table insert (GUID dedup table) | `sub_1851560` | — | — |
+| Initialize resolved function summary storage | `sub_1674380` | — | — |
+| Finalize empty-import path cleanup | `sub_1851C60` | — | — |
+| Release import list entry data | `sub_161E7C0` | — | — |
+| `malloc` wrapper (used for 16-byte dedup node allocation) | `sub_22077B0` | — | — |
 
 ## Cross-References
 
-- **[Inliner Cost Model](./inliner-cost.md)** -- the downstream consumer of imported functions. Import brings bodies into the module; the 20,000-budget inliner decides whether to fold them into callers.
-- **[Module Summary](./module-summary.md)** -- `sub_D7D4E0` builds the `NVModuleSummary` that drives import decisions. The 4-level priority system, complexity budget, and CUDA-specific filtering all originate here.
-- **[Pipeline & Ordering](../llvm/pipeline.md)** -- `function-import` is registered as pipeline slot 43, a Module-level pass.
-- **[IP Memory Space Propagation](../passes/ipmsp.md)** -- after import, cross-module functions may carry address-space annotations that IPMSP must reconcile.
-- **[Hash Infrastructure](../infra/hash-infrastructure.md)** -- the GUID dedup table uses the same DenseMap pattern documented there.
+- **[Inliner Cost Model](./inliner-cost.md)** — the downstream consumer of imported functions. Import brings bodies into the module; the 20,000-budget inliner decides whether to fold them into callers.
+- **[Module Summary](./module-summary.md)** — `sub_D7D4E0` builds the `NVModuleSummary` that drives import decisions. The 4-level priority system, complexity budget, and CUDA-specific filtering all originate here.
+- **[Pipeline & Ordering](../llvm/pipeline.md)** — `function-import` is registered as pipeline slot 43, a Module-level pass.
+- **[IP Memory Space Propagation](../passes/ipmsp.md)** — after import, cross-module functions may carry address-space annotations that IPMSP must reconcile.
+- **[Hash Infrastructure](../infra/hash-infrastructure.md)** — the GUID dedup table uses the same DenseMap pattern documented there.

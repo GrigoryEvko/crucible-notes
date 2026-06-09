@@ -24,9 +24,9 @@ The name mangling subsystem in cudafe++ implements the Itanium C++ ABI name mang
 
 Name mangling occurs at two distinct points in the cudafe++ pipeline:
 
-1. **Forward mangling** (IL lowering): EDG's `lower_name.c` converts entity nodes into Itanium ABI mangled names during the IL-to-text code generation phase. The entry point is `mangle_entity_name` (`sub_6A1F00`), which dispatches through 60+ helper functions to handle every C++ construct -- namespaces, classes, templates, operators, expressions, lambdas, and vendor-extended types.
+1. **Forward mangling** (IL lowering): EDG's `lower_name.c` converts entity nodes into Itanium ABI mangled names during the IL-to-text code generation phase. The entry point is `mangle_entity_name` (`sub_6A1F00`), which dispatches through 60+ helper functions to handle every C++ construct — namespaces, classes, templates, operators, expressions, lambdas, and vendor-extended types.
 
-2. **Reverse demangling** (diagnostics): A statically linked demangler at `sub_7CABB0` converts mangled names back to human-readable form for error messages and debug output. This demangler is not EDG code -- it is NVIDIA's custom implementation that wraps the standard Itanium ABI demangling algorithm with CUDA-specific extensions for device lambda wrapper types.
+2. **Reverse demangling** (diagnostics): A statically linked demangler at `sub_7CABB0` converts mangled names back to human-readable form for error messages and debug output. This demangler is not EDG code — it is NVIDIA's custom implementation that wraps the standard Itanium ABI demangling algorithm with CUDA-specific extensions for device lambda wrapper types.
 
 ```text
 Entity Node (IL)
@@ -60,7 +60,7 @@ Entity Node (IL)
 
 Assert: `"mangled_operator_name: bad kind"` at `lower_name.c:11557`.
 
-Four operators are context-sensitive -- their mangled code depends on whether the usage is unary (arity `a2==1`) or binary:
+Four operators are context-sensitive — their mangled code depends on whether the usage is unary (arity `a2==1`) or binary:
 
 | Kind | Unary | Binary | C++ Operator |
 |---|---|---|---|
@@ -92,7 +92,7 @@ Four operators are context-sensitive -- their mangled code depends on whether th
 
 Kinds 3, 4, 8, 10, 15, 18--23, 25, 28--29, 35--36, 38--39 return pointers to `.rodata` string constants (`unk_A7C560` etc.) that encode the remaining standard operators (`dv`, `eo`, `aS`, `pL`, `mI`, `mL`, `dV`, `eO`, `aa`, `oo`, `mm`, `cm`).
 
-Note kinds 45 and 46: these are vendor-extended operators using the `v<length><name>` Itanium ABI encoding. `v23min` and `v23max` are NVIDIA/CUDA-specific min/max operators with a length prefix of `23` -- this encodes the string `"min"` (3 chars) and `"max"` (3 chars) as vendor-qualified identifiers.
+Note kinds 45 and 46: these are vendor-extended operators using the `v<length><name>` Itanium ABI encoding. `v23min` and `v23max` are NVIDIA/CUDA-specific min/max operators with a length prefix of `23` — this encodes the string `"min"` (3 chars) and `"max"` (3 chars) as vendor-qualified identifiers.
 
 ## Entity Name Mangling (sub_6A1F00)
 
@@ -162,7 +162,7 @@ Pointer and reference types are encoded with prefix qualifiers: `P` (pointer), `
 
 #### Worked Example
 
-A namespace-qualified template function with mixed argument kinds exercises every encoding piece -- the `N..E` namespace wrapper, template-argument brackets `I..E`, builtin type codes, pointer and cv-qualifier prefixes, and substitution references:
+A namespace-qualified template function with mixed argument kinds exercises every encoding piece — the `N..E` namespace wrapper, template-argument brackets `I..E`, builtin type codes, pointer and cv-qualifier prefixes, and substitution references:
 
 ```cpp
 namespace ns {
@@ -387,7 +387,7 @@ After parsing the name, the function checks for `I` (template argument list, `0x
 
 The key NVIDIA extensions are triggered when the demangler encounters the vendor-extended type prefix `U` followed by `nv` (bytes `0x55 0x6E 0x76`). Three patterns are recognized:
 
-#### Unvdl -- Device Lambda Wrapper
+#### Unvdl — Device Lambda Wrapper
 
 Pattern: `Unvdl<arity><encoding><type>...`
 
@@ -406,7 +406,7 @@ Decoded step by step:
 7. Parse remaining captured types (count from step 3)
 8. Emit `> >`
 
-#### Unvdtl -- Trailing Return Device Lambda
+#### Unvdtl — Trailing Return Device Lambda
 
 Pattern: `Unvdtl<arity><return_type><encoding><captured_types>...`
 
@@ -422,7 +422,7 @@ Same as `Unvdl` except:
 4. Parse a function type via `sub_7CE5D0` (adds 1 to result pointer for the `E` terminator)
 5. Then parse remaining captured types
 
-#### Unvhdl -- Host-Device Lambda Wrapper
+#### Unvhdl — Host-Device Lambda Wrapper
 
 Pattern: `Unvhdl<bool1><bool2><bool3><arity><encoding><captured_types>...`
 
@@ -433,7 +433,7 @@ Output: "__nv_hdl_wrapper_t<true/false, true/false, true/false,
 ```
 
 The three boolean template parameters are decoded first:
-1. Parse numeric value via `sub_7C3180` -- if value != 2 (i.e., `false` in the encoding), emit `true,`; otherwise emit `false,`
+1. Parse numeric value via `sub_7C3180` — if value != 2 (i.e., `false` in the encoding), emit `true,`; otherwise emit `false,`
 2. Repeat for `HasFuncPtrConv` (second boolean)
 3. Repeat for `NeverThrows` (third boolean)
 4. Then proceed identically to `Unvdl` (emit `__nv_dl_tag<`, parse captures, etc.), but with `v68=1` flag marking the host-device variant
@@ -511,7 +511,7 @@ Where `off_E7C768` is a global prefix string (likely `"_nv_static_"`), the `%lu`
 
 **External linkage**:
 
-1. Build name with `" ::"` scope prefix (the leading space is intentional -- it matches the demangler output format)
+1. Build name with `" ::"` scope prefix (the leading space is intentional — it matches the demangler output format)
 2. Walk scope chain via `sub_6BD2F0` if the entity has a parent scope with kind 3 (namespace)
 3. Hash the entity name via `sub_6BD1C0`
 4. Append `"_"` separator
@@ -542,7 +542,7 @@ A separate type mangling subsystem exists in the `0x7C3000`--`0x7D0E00` range, u
 |---|---|---|---|
 | `sub_7C3480` | `encode_operator_name` | 716 | Operator name encoding for diagnostics |
 | `sub_7C5650` | `encode_type_for_mangling` | 794 | Full type encoding dispatcher |
-| `sub_7C6290` | `encode_expression` | 2519 | Largest function -- expression encoding |
+| `sub_7C6290` | `encode_expression` | 2519 | Largest function — expression encoding |
 | `sub_7C8BE0` | `encode_special_expression` | 674 | Special expression forms |
 | `sub_7CBB90` | `encode_builtin_type` | 1314 | All builtin type mappings |
 | `sub_7CEAE0` | `encode_template_args` | 1417 | Template argument encoding |
@@ -603,9 +603,9 @@ Assert: `"mangled_entity_reference"` at `lower_name.c:4183`.
 | `0x69CCB0` | 76 | `set_signature_mark` | HIGH |
 | `0x69CE10` | 36 | `ttt_mark_entry` | HIGH |
 | `0x69CF10` | 170 | `mangled_scalable_vector_name` | HIGH |
-| `0x69D530` | -- | `append_string` | MEDIUM |
-| `0x69D580` | -- | `append_number` | MEDIUM |
-| `0x69D850` | -- | `append_char_to_buffer` | MEDIUM |
+| `0x69D530` | — | `append_string` | MEDIUM |
+| `0x69D580` | — | `append_number` | MEDIUM |
+| `0x69D850` | — | `append_char_to_buffer` | MEDIUM |
 | `0x69DAA0` | 63 | `mangle_number` | MEDIUM |
 | `0x69DBE0` | 72 | `mangle_discriminator` | MEDIUM |
 | `0x69E380` | 116 | `mangle_cv_qualifiers` | MEDIUM |

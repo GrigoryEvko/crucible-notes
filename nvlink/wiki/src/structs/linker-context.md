@@ -1,6 +1,6 @@
 # Linker Context Object
 
-The linker context is a 672-byte arena-allocated structure (`elfw` -- ELF wrapper) that serves as the single mutable state object threaded through every phase of nvlink's pipeline. Created by `sub_4438F0` (`elfw_create`) during Phase 5 and destroyed by `sub_4475B0` (`elfw_destroy`) at the end of `main()`, this object holds the ELF header fields, all section and symbol storage arrays, hash tables for name-based lookup, architecture-specific vtable pointers, relocation lists, index mapping tables, and configuration flags decoded from the merge-flags bitmask. Every pipeline function -- merge, layout, relocation, finalization, serialization -- receives this structure as its first argument (`a1`).
+The linker context is a 672-byte arena-allocated structure (`elfw` — ELF wrapper) that serves as the single mutable state object threaded through every phase of nvlink's pipeline. Created by `sub_4438F0` (`elfw_create`) during Phase 5 and destroyed by `sub_4475B0` (`elfw_destroy`) at the end of `main()`, this object holds the ELF header fields, all section and symbol storage arrays, hash tables for name-based lookup, architecture-specific vtable pointers, relocation lists, index mapping tables, and configuration flags decoded from the merge-flags bitmask. Every pipeline function — merge, layout, relocation, finalization, serialization — receives this structure as its first argument (`a1`).
 
 This page documents the internal layout of the 672-byte structure at reimplementation depth, the allocation and initialization sequence, the destruction sequence, and how the context flows through the linker pipeline.
 
@@ -210,7 +210,7 @@ SectionRecord *elfw_get_section(elfw *ctx, int signed_index) {
 }
 ```
 
-The `0xFFFF` sentinel at `sym+6` means "this symbol's section has not been directly assigned yet -- look it up through the mapping chain." This indirection supports lazy resolution during multi-pass merge operations.
+The `0xFFFF` sentinel at `sym+6` means "this symbol's section has not been directly assigned yet — look it up through the mapping chain." This indirection supports lazy resolution during multi-pass merge operations.
 
 ## Symbol Index Remapping
 
@@ -261,31 +261,31 @@ elfw *elfw_create(
 
 The construction proceeds in 11 ordered steps:
 
-**Step 1 -- Private arena** (conditional on `merge_flags & 0x400`):
+**Step 1 — Private arena** (conditional on `merge_flags & 0x400`):
 
 Creates an isolated "elfw memory space" arena via `sub_432020` with 4096-byte page size. Stores the arena at `ctx[76]` and its handle at `ctx[77]`. When this flag is not set, allocations go to the parent arena.
 
-**Step 2 -- Struct allocation and zeroing**:
+**Step 2 — Struct allocation and zeroing**:
 
 Allocates 672 bytes from the arena via `sub_4307C0`. Zeroes the entire buffer with `memset`. Sets the end marker at `ctx[83]` to 0.
 
-**Step 3 -- ELF header template**:
+**Step 3 — ELF header template**:
 
 Writes `\x7fELF` magic, class byte, data encoding (LSB), version, OSABI (0x41 for device, 0x33 for 32-bit), machine type (190 = EM_CUDA). For device ELF (`merge_flags & 0x8000`), sets `e_type = ET_EXEC` (2) for non-relocatable or `e_type = ET_REL` (1) for relocatable. The relocatable bit is also stamped into `e_flags` separately (bit 31 = `0x80000000` for non-Mercury, bit 10 = `0x400` for OSABI 0x41); `e_type` itself stays within the 16-bit ELF spec.
 
-**Step 4 -- Merge-flags decomposition**:
+**Step 4 — Merge-flags decomposition**:
 
 Extracts the 17 individual boolean flags into bytes 84--100. Forces `is_relocatable = 1` if `a10` is set or if `merge_flags & 0x180000` is nonzero, setting `merge_flags |= 0x80000`.
 
-**Step 5 -- Architecture state initialization**:
+**Step 5 — Architecture state initialization**:
 
 Calls `sub_45AC50` (Mercury/relocatable path) or `sub_459640` (non-Mercury path) with the SM version. The returned pointer is stored at `ctx[61]` (offset 488). This is a vtable of ~70 function pointers covering all architecture-specific behaviors: relocation handlers, instruction encoders, section layout rules. If the call returns NULL, the constructor emits `"couldn't initialize arch state"` via `sub_467460` and aborts.
 
-**Step 6 -- Hash table creation**:
+**Step 6 — Hash table creation**:
 
 Creates two 512-bucket `LinkerHash` instances for symbol name lookup (`ctx[36]`, offset 288) and section name lookup (`ctx[37]`, offset 296). Both use MurmurHash3-based string hashing (`sub_44E000`) and `strcmp` equality (`sub_44E180`).
 
-**Step 7 -- Sorted array creation**:
+**Step 7 — Sorted array creation**:
 
 Creates nine sorted arrays via `sub_465020` (six with 16-element initial capacity) and `sub_464AE0` (three with 64-element initial capacity):
 
@@ -296,15 +296,15 @@ Creates nine sorted arrays via `sub_465020` (six with 16-element initial capacit
 | `neg_symbol_array` | 352 | [44] | 64 | Negative-index symbols |
 | `section_array` | 360 | [45] | 64 | Section data records |
 
-**Step 8 -- Nested sub-structures**:
+**Step 8 — Nested sub-structures**:
 
 Allocates a 104-byte sub-structure and links it into `section_array`. Allocates a 48-byte sub-structure and links it into both `pos_symbol_array` and `neg_symbol_array`. These serve as the initial (index-0) sentinel entries.
 
-**Step 9 -- Input file records**:
+**Step 9 — Input file records**:
 
 Creates an 8-element sorted array at `ctx[64]` (offset 512). Allocates a 16-byte `<input>` record containing the string `"<input>"` as the name pointer and the SM minor version as the architecture identifier. Links this record into the array.
 
-**Step 10 -- Core ELF sections**:
+**Step 10 — Core ELF sections**:
 
 Uses `sub_441AC0` (elfw\_add\_section) to create the mandatory sections:
 
@@ -326,7 +326,7 @@ For non-relocatable output only:
 |---|---|---|---|
 | `.nv.uft.entry` | 0x70000011 | 32 | Unified function table entries |
 
-**Step 11 -- Entry-point hash and callgraph**:
+**Step 11 — Entry-point hash and callgraph**:
 
 Creates a 32-bucket string-keyed `LinkerHash` at `ctx[62]` (offset 496) for entry-point symbol tracking. Populates it with the built-in CUDA syscall names from the static table at `off_1D3A9C0`. Creates an 8-bucket integer-keyed `LinkerHash` at `ctx[72]` (offset 576) for relocation type tracking. Calls `sub_4504B0` to initialize callgraph structures.
 
@@ -336,7 +336,7 @@ The destructor takes the context pointer and a mode flag. It has two code paths:
 
 ### Path 1: Private arena (ctx[76] != 0)
 
-When the context owns a private arena, destruction is simple -- destroy the arena and everything allocated from it goes away:
+When the context owns a private arena, destruction is simple — destroy the arena and everything allocated from it goes away:
 
 ```c
 void elfw_destroy(elfw *ctx, uint64_t mode) {
@@ -364,7 +364,7 @@ When no private arena exists, each sub-structure must be freed individually. The
 9. **Input file records** (offset 512): Iterate entries, free each 16-byte record, destroy array
 10. **Global symbol list** (offset 448): Free via `sub_464520`
 11. **Additional arrays** (offsets 424, 432, 440): Free via `sub_464520`
-12. **Callgraph cleanup**: `sub_44CC60(ctx)` -- destroys callgraph state
+12. **Callgraph cleanup**: `sub_44CC60(ctx)` — destroys callgraph state
 13. **Sorted arrays** (offsets 256, 272, 280, 264): Free via `sub_464520`
 14. **Section order map** (offset 368): Free via `arena_free`
 15. **Section records in section_array** (offset 360): Iterate entries, free section data at `entry+72`, free each record, destroy array
@@ -375,7 +375,7 @@ When no private arena exists, each sub-structure must be freed individually. The
 20. **Arch state** (offset 488): Destroy via `sub_45B680`
 21. **The struct itself**: Free via `arena_free`
 
-The ordering is significant -- hash tables must be walked before the entries they reference are freed, and the arch state must outlive any code that might call through the vtable during teardown.
+The ordering is significant — hash tables must be walked before the entries they reference are freed, and the arch state must outlive any code that might call through the vtable during teardown.
 
 ## Context Flow Through Pipeline Phases
 
@@ -617,9 +617,9 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 
 ## Cross-References
 
-- [Device ELF Format](../elf/device-elf-format.md) -- wire-format perspective on the same 672-byte structure
-- [Symbol Tables & Hash Maps](../linker/hash-tables.md) -- LinkerHash implementation used at offsets 288, 296, 496, 576
-- [Pipeline Overview](../pipeline/overview.md) -- the 14-phase pipeline that threads this context
-- [Merge Phase](../pipeline/merge.md) -- primary consumer of the context during linking
-- [Relocation Engine](../linker/relocation-engine.md) -- uses the arch vtable at offset 488
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- depends on symbol mapping tables at offsets 456/464
+- [Device ELF Format](../elf/device-elf-format.md) — wire-format perspective on the same 672-byte structure
+- [Symbol Tables & Hash Maps](../linker/hash-tables.md) — LinkerHash implementation used at offsets 288, 296, 496, 576
+- [Pipeline Overview](../pipeline/overview.md) — the 14-phase pipeline that threads this context
+- [Merge Phase](../pipeline/merge.md) — primary consumer of the context during linking
+- [Relocation Engine](../linker/relocation-engine.md) — uses the arch vtable at offset 488
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — depends on symbol mapping tables at offsets 456/464

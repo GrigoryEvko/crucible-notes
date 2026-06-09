@@ -1,6 +1,6 @@
 # Code Generation
 
-NVPTX backend: SelectionDAG lowering, instruction selection, register allocation, and machine-level passes. Address range `0x1700000`–`0x35EFFFF` (~37 MB of code) -- the largest address range in the binary. This page is the hub for the entire code generation pipeline; each stage has a dedicated deep-dive page linked below.
+NVPTX backend: SelectionDAG lowering, instruction selection, register allocation, and machine-level passes. Address range `0x1700000`–`0x35EFFFF` (~37 MB of code) — the largest address range in the binary. This page is the hub for the entire code generation pipeline; each stage has a dedicated deep-dive page linked below.
 
 | | |
 |---|---|
@@ -75,38 +75,38 @@ Items marked **★ NVIDIA** are NVIDIA-proprietary additions not present in upst
 
 ## Stage Overview
 
-**CodeGenPrepare** ([detail](../llvm/codegen-prepare.md)) -- last IR-level pass before ISel. Sinks address computations, creates PHI nodes for sunk values, and splits critical edges. NVIDIA adds an optional SCEV-CGP extension.
+**CodeGenPrepare** ([detail](../llvm/codegen-prepare.md)) — last IR-level pass before ISel. Sinks address computations, creates PHI nodes for sunk values, and splits critical edges. NVIDIA adds an optional SCEV-CGP extension.
 
-**SelectionDAG Build** ([detail](../llvm/selectiondag.md)) -- converts LLVM IR into a target-independent DAG. NVPTX intercepts for `.param`-space argument passing and texture/surface handle lowering.
+**SelectionDAG Build** ([detail](../llvm/selectiondag.md)) — converts LLVM IR into a target-independent DAG. NVPTX intercepts for `.param`-space argument passing and texture/surface handle lowering.
 
-**Type Legalization** ([detail](../llvm/type-legalization.md)) -- rewrites every illegal type into legal equivalents via promote, expand, soften, or split-vector actions.
+**Type Legalization** ([detail](../llvm/type-legalization.md)) — rewrites every illegal type into legal equivalents via promote, expand, soften, or split-vector actions.
 
-**Operation Legalization** -- processes nodes whose opcodes are illegal for the target. [Atomic operations](../builtins/atomics.md) receive NVIDIA-specific scope-aware lowering (CTA/GPU/SYS) with per-SM feature gates.
+**Operation Legalization** — processes nodes whose opcodes are illegal for the target. [Atomic operations](../builtins/atomics.md) receive NVIDIA-specific scope-aware lowering (CTA/GPU/SYS) with per-SM feature gates.
 
-**DAG Combining** -- folds redundant operations, canonicalizes patterns, and reduces the DAG before instruction selection. The [KnownBits](../llvm/known-bits.md) analysis feeds into combining decisions.
+**DAG Combining** — folds redundant operations, canonicalizes patterns, and reduces the DAG before instruction selection. The [KnownBits](../llvm/known-bits.md) analysis feeds into combining decisions.
 
-**Instruction Selection** ([detail](../llvm/isel-patterns.md)) -- matches DAG nodes against PTX instruction patterns via a three-level dispatch hierarchy. A compressed per-SM-variant legality table gates which opcodes exist on which GPU architecture.
+**Instruction Selection** ([detail](../llvm/isel-patterns.md)) — matches DAG nodes against PTX instruction patterns via a three-level dispatch hierarchy. A compressed per-SM-variant legality table gates which opcodes exist on which GPU architecture.
 
-**Instruction Scheduling** ([detail](../llvm/scheduling.md)) -- post-RA scheduling plus an optional software pipeliner. NVIDIA's custom MRPA provides incremental register pressure tracking.
+**Instruction Scheduling** ([detail](../llvm/scheduling.md)) — post-RA scheduling plus an optional software pipeliner. NVIDIA's custom MRPA provides incremental register pressure tracking.
 
-**Register Allocation** ([detail](../llvm/register-allocation.md)) -- pressure-driven greedy allocator adapted for PTX's virtual register model. Works with nine typed [register classes](../reference/register-classes.md); [live range splitting](../llvm/live-range-calc.md) and [rematerialization](../passes/rematerialization.md) reduce spill pressure.
+**Register Allocation** ([detail](../llvm/register-allocation.md)) — pressure-driven greedy allocator adapted for PTX's virtual register model. Works with nine typed [register classes](../reference/register-classes.md); [live range splitting](../llvm/live-range-calc.md) and [rematerialization](../passes/rematerialization.md) reduce spill pressure.
 
-**Machine-Level Passes** ([detail](../llvm/machine-passes.md)) -- NVIDIA-proprietary and stock LLVM passes that optimize register pressure, promote stack objects back to registers, and prepare clean PTX for `ptxas`.
+**Machine-Level Passes** ([detail](../llvm/machine-passes.md)) — NVIDIA-proprietary and stock LLVM passes that optimize register pressure, promote stack objects back to registers, and prepare clean PTX for `ptxas`.
 
-**StructurizeCFG** ([detail](../llvm/structurizecfg.md)) -- mandatory pass that converts arbitrary CFGs into the structured form PTX requires, rejecting irreducible CFGs and EH funclets.
+**StructurizeCFG** ([detail](../llvm/structurizecfg.md)) — mandatory pass that converts arbitrary CFGs into the structured form PTX requires, rejecting irreducible CFGs and EH funclets.
 
 ## Two-Stage Compilation: cicc + ptxas
 
-CUDA compilation is a two-stage process. cicc (this binary) compiles CUDA/NVVM IR down to PTX assembly text -- a virtual ISA with unlimited registers and structured control flow. `ptxas` then compiles the PTX into SASS machine code for a specific SM target. This split means that many of cicc's code generation decisions (register allocation, instruction scheduling, peephole optimization) are revisited by ptxas with full hardware knowledge. cicc's code generation pipeline therefore optimizes for two audiences simultaneously: (1) reducing register pressure and producing clean PTX that gives ptxas maximum optimization freedom, and (2) performing target-aware lowering (type legalization, instruction selection, structured CFG) that ptxas cannot undo. The practical consequence is that cicc's backend is pressure-driven rather than latency-driven -- scheduling for low register count matters more than scheduling for pipeline throughput, because ptxas will re-schedule for the hardware but cannot reduce register demand below what cicc emitted.
+CUDA compilation is a two-stage process. cicc (this binary) compiles CUDA/NVVM IR down to PTX assembly text — a virtual ISA with unlimited registers and structured control flow. `ptxas` then compiles the PTX into SASS machine code for a specific SM target. This split means that many of cicc's code generation decisions (register allocation, instruction scheduling, peephole optimization) are revisited by ptxas with full hardware knowledge. cicc's code generation pipeline therefore optimizes for two audiences simultaneously: (1) reducing register pressure and producing clean PTX that gives ptxas maximum optimization freedom, and (2) performing target-aware lowering (type legalization, instruction selection, structured CFG) that ptxas cannot undo. The practical consequence is that cicc's backend is pressure-driven rather than latency-driven — scheduling for low register count matters more than scheduling for pipeline throughput, because ptxas will re-schedule for the hardware but cannot reduce register demand below what cicc emitted.
 
 ## Cross-References
 
-- [NVPTX Subtarget & feature flags](../infra/nvptx-target.md) -- SM processor table, type legality offsets
-- [GPU target feature gates](../targets/index.md) -- per-SM architecture feature matrix
-- [DAG node structure](../structs/dag-node.md) -- SDNode 104-byte layout, operand stride
-- [Pattern database](../structs/pattern-db.md) -- ISel pattern table format
-- [NVPTX machine opcodes](../reference/nvptx-opcodes.md) -- opcode reference
-- [Address spaces](../reference/address-spaces.md) -- global, shared, local, param encoding
-- [PTX emission](emission.md) -- downstream consumer of machine-level output
-- [Register coalescing](../llvm/register-coalescing.md) -- pre-RA copy elimination
-- [PrologEpilogInserter](../llvm/prolog-epilog.md) -- `.local` frame layout
+- [NVPTX Subtarget & feature flags](../infra/nvptx-target.md) — SM processor table, type legality offsets
+- [GPU target feature gates](../targets/index.md) — per-SM architecture feature matrix
+- [DAG node structure](../structs/dag-node.md) — SDNode 104-byte layout, operand stride
+- [Pattern database](../structs/pattern-db.md) — ISel pattern table format
+- [NVPTX machine opcodes](../reference/nvptx-opcodes.md) — opcode reference
+- [Address spaces](../reference/address-spaces.md) — global, shared, local, param encoding
+- [PTX emission](emission.md) — downstream consumer of machine-level output
+- [Register coalescing](../llvm/register-coalescing.md) — pre-RA copy elimination
+- [PrologEpilogInserter](../llvm/prolog-epilog.md) — `.local` frame layout

@@ -189,14 +189,14 @@ Hex-encoded flag checks in `sub_8F9C90`:
 
 | User flag | Type | Store | lnk | opt | llc | Default |
 |-----------|------|-------|-----|-----|-----|---------|
-| `-opt=0` | [BST] | +392 | -- | -- | -- | |
-| `-opt=1` | [BST] | +392 | -- | -- | -- | |
-| `-opt=2` | [BST] | +392 | -- | -- | -- | |
-| `-opt=3` | [BST] | +392 | -- | -- | -- | **default** |
-| `-Osize` | [BST] | +488 | -- | `-Osize` | `-Osize` | off |
-| `-Om` | [BST] | +520 | -- | `-Om` | `-Om` | off |
+| `-opt=0` | [BST] | +392 | — | — | — | |
+| `-opt=1` | [BST] | +392 | — | — | — | |
+| `-opt=2` | [BST] | +392 | — | — | — | |
+| `-opt=3` | [BST] | +392 | — | — | — | **default** |
+| `-Osize` | [BST] | +488 | — | `-Osize` | `-Osize` | off |
+| `-Om` | [BST] | +520 | — | `-Om` | `-Om` | off |
 | `-disable-allopts` | [BST] | +424 | `-lnk-disable-allopts` | `-opt-disable-allopts` | `-llc-disable-allopts` | off |
-| `-disable-llc-opts` | [BST] | +840 | -- | -- | -- | off |
+| `-disable-llc-opts` | [BST] | +840 | — | — | — | off |
 
 The `-opt=<N>` flags do not directly emit to any vector at registration time. Instead, at the routing stage (lines 1444-1563 of `sub_9624D0`), the optimization level drives one of three code paths:
 
@@ -208,21 +208,21 @@ The `-opt=<N>` flags do not directly emit to any vector at registration time. In
 
 | User flag | Type | Store | lnk | opt | llc | Default |
 |-----------|------|-------|-----|-----|-----|---------|
-| `-ftz=0` | [BST] | +584 | -- | -- | -- | **default** |
+| `-ftz=0` | [BST] | +584 | — | — | — | **default** |
 | `-ftz=1` | [BST] | +584 | `-R __CUDA_FTZ=1` | `-nvptx-f32ftz` | `-nvptx-f32ftz` | |
-| `-prec-sqrt=0` | [BST] | +616 | -- | -- | `-nvptx-prec-sqrtf32=0` | CL default |
-| `-prec-sqrt=1` | [BST] | +616 | `-R __CUDA_PREC_SQRT=1` | -- | `-nvptx-prec-sqrtf32=1` | **CUDA default** |
-| `-prec-div=0` (CL) | [BST] | +648 | -- | `-opt-use-prec-div=false` | `-nvptx-prec-divf32=0` | |
-| `-prec-div=0` (CUDA) | [BST] | +648 | -- | `-opt-use-prec-div=false` | `-nvptx-prec-divf32=1` | |
-| `-prec-div=1` (CL) | [BST] | +648 | -- | `-opt-use-prec-div=true` | `-nvptx-prec-divf32=1` | |
+| `-prec-sqrt=0` | [BST] | +616 | — | — | `-nvptx-prec-sqrtf32=0` | CL default |
+| `-prec-sqrt=1` | [BST] | +616 | `-R __CUDA_PREC_SQRT=1` | — | `-nvptx-prec-sqrtf32=1` | **CUDA default** |
+| `-prec-div=0` (CL) | [BST] | +648 | — | `-opt-use-prec-div=false` | `-nvptx-prec-divf32=0` | |
+| `-prec-div=0` (CUDA) | [BST] | +648 | — | `-opt-use-prec-div=false` | `-nvptx-prec-divf32=1` | |
+| `-prec-div=1` (CL) | [BST] | +648 | — | `-opt-use-prec-div=true` | `-nvptx-prec-divf32=1` | |
 | `-prec-div=1` (CUDA) | [BST] | +648 | `-R __CUDA_PREC_DIV=1` | `-opt-use-prec-div=true` | `-nvptx-prec-divf32=2` | **default** |
-| `-prec-div=2` | [BST] | +648 | -- | -- | `-nvptx-prec-divf32=3` | |
-| `-fma=0` | [BST] | +680 | -- | -- | `-nvptx-fma-level=0` | |
-| `-fma=1` | [BST] | +680 | -- | -- | `-nvptx-fma-level=1` | **default** |
-| `-enable-mad` | [BST] | +712 | -- | -- | `-nvptx-fma-level=1` | off |
-| `-opt-fdiv=0` | [BST] | +456 | -- | `-opt-fdiv=0` | -- | **default** |
-| `-opt-fdiv=1` | [BST] | +456 | -- | `-opt-fdiv=1` | -- | |
-| `-no-signed-zeros` | [BST] | +1160 | -- | `-opt-no-signed-zeros` | -- | off |
+| `-prec-div=2` | [BST] | +648 | — | — | `-nvptx-prec-divf32=3` | |
+| `-fma=0` | [BST] | +680 | — | — | `-nvptx-fma-level=0` | |
+| `-fma=1` | [BST] | +680 | — | — | `-nvptx-fma-level=1` | **default** |
+| `-enable-mad` | [BST] | +712 | — | — | `-nvptx-fma-level=1` | off |
+| `-opt-fdiv=0` | [BST] | +456 | — | `-opt-fdiv=0` | — | **default** |
+| `-opt-fdiv=1` | [BST] | +456 | — | `-opt-fdiv=1` | — | |
+| `-no-signed-zeros` | [BST] | +1160 | — | `-opt-no-signed-zeros` | — | off |
 
 Note on `-prec-div`: the CUDA vs CL distinction is controlled by the magic cookie `a4` (0xABBA = CUDA, 0xDEED = OpenCL). CUDA `-prec-div=1` maps to `-nvptx-prec-divf32=2` (IEEE-correct division), while CL maps to level 1 (software approximation). When `-prec-div=0` is set under CUDA, it still maps to `-nvptx-prec-divf32=1` (not 0), because CUDA never drops below software approximation.
 
@@ -232,42 +232,42 @@ Note on `-prec-div`: the CUDA vs CL distinction is controlled by the magic cooki
 |-----------|------|-------|-----|-----|-----|
 | `-unsafe-math` | [BST] | +744 | `-R FAST_RELAXED_MATH=1` `-R __CUDA_FTZ=1` | `-opt-use-fast-math` `-nvptx-f32ftz` | `-nvptx-fma-level=1` `-nvptx-f32ftz` |
 | `-fast-math` (CL) | [BST] | +776 | `-R FAST_RELAXED_MATH=1` `-R __CUDA_FTZ=1` | `-opt-use-fast-math` `-nvptx-f32ftz` | `-nvptx-f32ftz` |
-| `-fast-math` (CUDA) | [BST] | +776 | `-R __CUDA_USE_FAST_MATH=1` | `-opt-use-fast-math` | -- |
+| `-fast-math` (CUDA) | [BST] | +776 | `-R __CUDA_USE_FAST_MATH=1` | `-opt-use-fast-math` | — |
 
-`-unsafe-math` always sets FTZ in the backend (`-nvptx-f32ftz`), while CUDA `-fast-math` does not touch the backend FTZ flag -- it only sets the preprocessor define and the optimizer flag.
+`-unsafe-math` always sets FTZ in the backend (`-nvptx-f32ftz`), while CUDA `-fast-math` does not touch the backend FTZ flag — it only sets the preprocessor define and the optimizer flag.
 
 ### Debug and Diagnostic Flags
 
 | User flag | Type | Store | lnk | opt | llc | Default |
 |-----------|------|-------|-----|-----|-----|---------|
-| `-g` | [BST] | +296 | `-debug-compile` | `-debug-compile` | -- | off |
-| `-generate-line-info` | [BST] | +328 | -- | `-generate-line-info` | -- | off |
-| `-no-lineinfo-inlined-at` | [BST] | +360 | -- | -- | `-line-info-inlined-at=0` | off |
-| `-show-src` | [BST] | +808 | -- | -- | `-nvptx-emit-src` | off |
-| `-enable-verbose-asm` | [BST] | +1224 | -- | -- | `-asm-verbose` | off |
-| `-w` | [BST] | +872 | -- | `-w` | `-w` | off |
-| `-Werror` | [BST] | +904 | -- | `-Werror` | `-Werror` | off |
-| `-debug-compile` | [BST] | +296 | -- | `-debug-compile` | -- | off |
-| `-line-info-inlined-at=0` | alias | -- | -- | -- | `-line-info-inlined-at=0` | off |
-| `-inline-info` | [HC] | -- | -- | `-pass-remarks=inline` `-pass-remarks-missed=inline` `-pass-remarks-analysis=inline` | -- | off |
+| `-g` | [BST] | +296 | `-debug-compile` | `-debug-compile` | — | off |
+| `-generate-line-info` | [BST] | +328 | — | `-generate-line-info` | — | off |
+| `-no-lineinfo-inlined-at` | [BST] | +360 | — | — | `-line-info-inlined-at=0` | off |
+| `-show-src` | [BST] | +808 | — | — | `-nvptx-emit-src` | off |
+| `-enable-verbose-asm` | [BST] | +1224 | — | — | `-asm-verbose` | off |
+| `-w` | [BST] | +872 | — | `-w` | `-w` | off |
+| `-Werror` | [BST] | +904 | — | `-Werror` | `-Werror` | off |
+| `-debug-compile` | [BST] | +296 | — | `-debug-compile` | — | off |
+| `-line-info-inlined-at=0` | alias | — | — | — | `-line-info-inlined-at=0` | off |
+| `-inline-info` | [HC] | — | — | `-pass-remarks=inline` `-pass-remarks-missed=inline` `-pass-remarks-analysis=inline` | — | off |
 
 ### Inlining and Function Flags
 
 | User flag | Type | Store | lnk | opt | llc | Default |
 |-----------|------|-------|-----|-----|-----|---------|
-| `-disable-inlining` | [BST] | +1064 | -- | `-disable-inlining` | -- | off |
-| `-aggressive-inline` | [BST] | +1608 | -- | `-inline-budget=40000` | -- | off |
-| `-restrict` | [BST] | +1096 | -- | -- | `-nvptx-kernel-params-restrict` | off |
-| `-allow-restrict-in-struct` | [BST] | +1128 | -- | `-allow-restrict-in-struct` | `-allow-restrict-in-struct` | off |
-| `-enable-opt-byval` | [BST] | +1032 | -- | `-enable-opt-byval` | -- | off |
+| `-disable-inlining` | [BST] | +1064 | — | `-disable-inlining` | — | off |
+| `-aggressive-inline` | [BST] | +1608 | — | `-inline-budget=40000` | — | off |
+| `-restrict` | [BST] | +1096 | — | — | `-nvptx-kernel-params-restrict` | off |
+| `-allow-restrict-in-struct` | [BST] | +1128 | — | `-allow-restrict-in-struct` | `-allow-restrict-in-struct` | off |
+| `-enable-opt-byval` | [BST] | +1032 | — | `-enable-opt-byval` | — | off |
 
 ### Optimization Control Flags
 
 | User flag | Type | Store | lnk | opt | llc | Default |
 |-----------|------|-------|-----|-----|-----|---------|
-| `-opt-disable-allopts` | derived | -- | -- | `-opt-disable-allopts` | -- | off |
-| `-lnk-disable-allopts` | derived | -- | `-lnk-disable-allopts` | -- | -- | off |
-| `-llc-disable-allopts` | derived | -- | -- | -- | `-llc-disable-allopts` | off |
+| `-opt-disable-allopts` | derived | — | — | `-opt-disable-allopts` | — | off |
+| `-lnk-disable-allopts` | derived | — | `-lnk-disable-allopts` | — | — | off |
+| `-llc-disable-allopts` | derived | — | — | — | `-llc-disable-allopts` | off |
 
 These three are emitted by `-disable-allopts` (see above); they do not exist as independent user flags.
 
@@ -275,10 +275,10 @@ These three are emitted by `-disable-allopts` (see above); they do not exist as 
 
 | User flag | Type | Store | lnk | opt | llc |
 |-----------|------|-------|-----|-----|-----|
-| `-vasp-fix` | [BST] | +1352 | -- | -- | `-vasp-fix1=true -vasp-fix2=true` |
-| `-new-nvvm-remat` | [BST] | +1384 | -- | -- | `-enable-new-nvvm-remat=true -nv-disable-remat=true -rp-aware-mcse=true` |
-| `-disable-new-nvvm-remat` | [BST] | +1416 | -- | -- | `-enable-new-nvvm-remat=false -nv-disable-remat=false -rp-aware-mcse=false` |
-| `-disable-nvvm-remat` | [BST] | +1448 | -- | -- | `-enable-new-nvvm-remat=false -nv-disable-remat=true -rp-aware-mcse=false` |
+| `-vasp-fix` | [BST] | +1352 | — | — | `-vasp-fix1=true -vasp-fix2=true` |
+| `-new-nvvm-remat` | [BST] | +1384 | — | — | `-enable-new-nvvm-remat=true -nv-disable-remat=true -rp-aware-mcse=true` |
+| `-disable-new-nvvm-remat` | [BST] | +1416 | — | — | `-enable-new-nvvm-remat=false -nv-disable-remat=false -rp-aware-mcse=false` |
+| `-disable-nvvm-remat` | [BST] | +1448 | — | — | `-enable-new-nvvm-remat=false -nv-disable-remat=true -rp-aware-mcse=false` |
 
 These are multi-flag compound emissions. Note the subtle difference: `-disable-nvvm-remat` sets `-nv-disable-remat=true` (disables classic remat) but `-enable-new-nvvm-remat=false` (also disables new remat), while `-disable-new-nvvm-remat` disables both new remat AND classic remat AND register-pressure-aware MCSE.
 
@@ -286,8 +286,8 @@ These are multi-flag compound emissions. Note the subtle difference: `-disable-n
 
 | User flag | Type | Store | lnk | opt | llc |
 |-----------|------|-------|-----|-----|-----|
-| `-no-aggressive-positive-stride-analysis` | [BST] | +1544 | -- | `-aggressive-positive-stride-analysis=false` | -- |
-| `disable-load-select-transform` | [BST] | +1576 | -- | `-disable-load-select-transform=true` | -- |
+| `-no-aggressive-positive-stride-analysis` | [BST] | +1544 | — | `-aggressive-positive-stride-analysis=false` | — |
+| `disable-load-select-transform` | [BST] | +1576 | — | `-disable-load-select-transform=true` | — |
 
 Note: `disable-load-select-transform` is registered WITHOUT a leading `-` in the catalog.
 
@@ -306,13 +306,13 @@ Each consumes the next argument from argv.
 
 | User flag | a13 bitmask effect | lto vector | Notes |
 |-----------|-------------------|-----------|-------|
-| `-lto` | `(a13 & 0x300) \| 0x23` | -- | Full LTO mode |
+| `-lto` | `(a13 & 0x300) \| 0x23` | — | Full LTO mode |
 | `-gen-lto` | `(a13 & 0x300) \| 0x21` | `-gen-lto` | Emit LTO bitcode |
 | `-gen-lto-and-llc` | `a13 \|= 0x20` | `-gen-lto` | Emit LTO + run LLC |
 | `-link-lto` | `(a13 & 0x300) \| 0x26` | `-link-lto` | Link LTO modules |
-| `-olto` | -- | `-olto` + argv[i+1] | Takes next arg as LTO opt level |
-| `-gen-opt-lto` | sets `v280=1` | -- | Affects lowering at end of parsing |
-| `--trace-lto` | -- | `--trace` | LTO tracing |
+| `-olto` | — | `-olto` + argv[i+1] | Takes next arg as LTO opt level |
+| `-gen-opt-lto` | sets `v280=1` | — | Affects lowering at end of parsing |
+| `--trace-lto` | — | `--trace` | LTO tracing |
 
 ### Device Compilation Flags [HC]
 
@@ -339,14 +339,14 @@ Each consumes the next argument from argv.
 | User flag | Store | Routing | Default |
 |-----------|-------|---------|---------|
 | `-opt-passes=<pipeline>` | +1512 | opt: `-passes=<pipeline>` (overrides `-O<N>`) | unset |
-| `-passes=<pipeline>` | -- | opt: `-passes=<pipeline>` (`sub_9624D0` only) | unset |
-| `-lsa-opt=0` | -- | opt: `-lsa-opt=0` | generated by `-Ofast-compile=max` or CL-mode |
-| `-memory-space-opt=0` | -- | opt: `-memory-space-opt=0` | generated by `-Ofast-compile=max` |
-| `-memory-space-opt=1` | -- | opt: `-memory-space-opt=1` | generated when opt level allows |
-| `-rox-opt=0` | -- | opt: `-rox-opt=0` | generated when `-prec-div=0` or `-prec-sqrt=0` (non-CL) |
-| `-do-ip-msp=<0\|1>` | -- | opt: `-do-ip-msp=<val>` | |
-| `-do-licm=<0\|1>` | -- | opt: `-do-licm=<val>` | |
-| `-optimize-unused-variables` | -- | lto: `-optimize-unused-variables` | off |
+| `-passes=<pipeline>` | — | opt: `-passes=<pipeline>` (`sub_9624D0` only) | unset |
+| `-lsa-opt=0` | — | opt: `-lsa-opt=0` | generated by `-Ofast-compile=max` or CL-mode |
+| `-memory-space-opt=0` | — | opt: `-memory-space-opt=0` | generated by `-Ofast-compile=max` |
+| `-memory-space-opt=1` | — | opt: `-memory-space-opt=1` | generated when opt level allows |
+| `-rox-opt=0` | — | opt: `-rox-opt=0` | generated when `-prec-div=0` or `-prec-sqrt=0` (non-CL) |
+| `-do-ip-msp=<0\|1>` | — | opt: `-do-ip-msp=<val>` | |
+| `-do-licm=<0\|1>` | — | opt: `-do-licm=<val>` | |
+| `-optimize-unused-variables` | — | lto: `-optimize-unused-variables` | off |
 
 ### Ofast-compile Levels [HC]
 
@@ -368,13 +368,13 @@ When `-Ofast-compile` is active (level >= 1), the `-passes=`/`-O` routing is byp
 | `-maxreg=<N>` | +1192 | opt: `-maxreg=<N>`, llc: `-maxreg=<N>` | Error on duplicate |
 | `-split-compile=<N>` | +1480 | opt: `-split-compile=<N>` | Error on duplicate |
 | `-split-compile-extended=<N>` | +1480 | opt: `-split-compile-extended=<N>`, sets `a1+1644=1` | Same storage as -split-compile |
-| `-jump-table-density=<N>` | -- | llc: `-jump-table-density=<N>` | |
-| `-jobserver` | -- | opt: `-jobserver` | |
-| `-cl-mode` | -- | No forwarding; sets `v278=1` | Affects `-prec-div`, `-prec-sqrt`, `-fast-math` routing |
-| `-time-passes` | -- | Unsupported in LibNVVM API (error if `a14 != NULL`) | Must be sole flag |
-| `--emit-optix-ir` | -- | opt: `-do-ip-msp=0`, opt: `-do-licm=0`; `a13 = (a13 & 0x300) \| 0x43` | |
-| `--nvvm-64` | -- | `a13 \|= 0x100` | 64-bit NVVM mode |
-| `--nvvm-32` | -- | `a13 \|= 0x200` | 32-bit NVVM mode |
+| `-jump-table-density=<N>` | — | llc: `-jump-table-density=<N>` | |
+| `-jobserver` | — | opt: `-jobserver` | |
+| `-cl-mode` | — | No forwarding; sets `v278=1` | Affects `-prec-div`, `-prec-sqrt`, `-fast-math` routing |
+| `-time-passes` | — | Unsupported in LibNVVM API (error if `a14 != NULL`) | Must be sole flag |
+| `--emit-optix-ir` | — | opt: `-do-ip-msp=0`, opt: `-do-licm=0`; `a13 = (a13 & 0x300) \| 0x43` | |
+| `--nvvm-64` | — | `a13 \|= 0x100` | 64-bit NVVM mode |
+| `--nvvm-32` | — | `a13 \|= 0x200` | 32-bit NVVM mode |
 
 ### Discard-Value-Names [HC]
 
@@ -592,10 +592,10 @@ All error strings follow the pattern `"libnvvm : error: <message>"`:
 
 ## Cross-References
 
-- [Optimization Levels](./optimization-levels.md) -- O-level pipeline builders and fast-compile tiers
-- [Configuration Knobs](./knobs.md) -- 1,496 `cl::opt` knobs set by the flags documented here
-- [NVVMPassOptions](./nvvm-pass-options.md) -- 221-slot struct that receives CLI-routed values
-- [Environment Variables](./env-vars.md) -- environment-based configuration (parallel to CLI)
-- [Pipeline Overview](../pipeline/overview.md) -- how the four output vectors feed into pipeline stages
-- [nvcc Interface](../pipeline/nvcc-interface.md) -- how nvcc constructs the argv passed to cicc
-- [Architecture Targets](../targets/index.md) -- SM feature gating driven by `-arch=compute_<N>`
+- [Optimization Levels](./optimization-levels.md) — O-level pipeline builders and fast-compile tiers
+- [Configuration Knobs](./knobs.md) — 1,496 `cl::opt` knobs set by the flags documented here
+- [NVVMPassOptions](./nvvm-pass-options.md) — 221-slot struct that receives CLI-routed values
+- [Environment Variables](./env-vars.md) — environment-based configuration (parallel to CLI)
+- [Pipeline Overview](../pipeline/overview.md) — how the four output vectors feed into pipeline stages
+- [nvcc Interface](../pipeline/nvcc-interface.md) — how nvcc constructs the argv passed to cicc
+- [Architecture Targets](../targets/index.md) — SM feature gating driven by `-arch=compute_<N>`

@@ -1,6 +1,6 @@
 # CoroSplit & CoroFrame: Coroutine Lowering on GPU
 
-cicc v13.0 carries the complete LLVM coroutine lowering pipeline -- CoroEarly, CoroSplit, CoroElide, CoroAnnotationElide, and CoroCleanup -- largely unchanged from upstream LLVM 19. The pass infrastructure processes C++20 `co_await`/`co_yield`/`co_return` coroutines emitted by the EDG 6.6 frontend, splitting a single coroutine function into separate resume, destroy, and cleanup functions while computing a coroutine frame struct to carry live state across suspend points. NVIDIA adds one proprietary intrinsic (`llvm.nvvm.coro.create.suspend`) and emits a `.pragma "coroutine"` annotation in PTX, but the core splitting and frame layout algorithms are stock LLVM. The practical constraint is that coroutine frame allocation on GPU defaults to `malloc` in device heap -- extremely expensive on current architectures -- making CoroElide (which replaces heap allocation with a caller-stack alloca) the pass that determines whether GPU coroutines are viable or pathological.
+cicc v13.0 carries the complete LLVM coroutine lowering pipeline — CoroEarly, CoroSplit, CoroElide, CoroAnnotationElide, and CoroCleanup — largely unchanged from upstream LLVM 19. The pass infrastructure processes C++20 `co_await`/`co_yield`/`co_return` coroutines emitted by the EDG 6.6 frontend, splitting a single coroutine function into separate resume, destroy, and cleanup functions while computing a coroutine frame struct to carry live state across suspend points. NVIDIA adds one proprietary intrinsic (`llvm.nvvm.coro.create.suspend`) and emits a `.pragma "coroutine"` annotation in PTX, but the core splitting and frame layout algorithms are stock LLVM. The practical constraint is that coroutine frame allocation on GPU defaults to `malloc` in device heap — extremely expensive on current architectures — making CoroElide (which replaces heap allocation with a caller-stack alloca) the pass that determines whether GPU coroutines are viable or pathological.
 
 ## Key Facts
 
@@ -69,7 +69,7 @@ The `coro-cond` module analysis (registered in the pipeline parser at `sub_2337E
 
 ### CoroSplit as a CGSCC Pass
 
-CoroSplit is registered as CGSCC pass #156 with an optional `reuse-storage` parameter. When `reuse-storage` is active, the pass attempts to reuse the storage of coroutine frames that are provably dead -- relevant for generators where the frame is allocated once and resumed many times. In the CGSCC context, CoroSplit runs alongside the inliner (`inline`) and `function-attrs`, allowing newly split resume/destroy functions to be immediately considered for inlining into callers within the same SCC.
+CoroSplit is registered as CGSCC pass #156 with an optional `reuse-storage` parameter. When `reuse-storage` is active, the pass attempts to reuse the storage of coroutine frames that are provably dead — relevant for generators where the frame is allocated once and resumed many times. In the CGSCC context, CoroSplit runs alongside the inliner (`inline`) and `function-attrs`, allowing newly split resume/destroy functions to be immediately considered for inlining into callers within the same SCC.
 
 ## CoroSplit: Suspend Point Detection and Function Splitting
 
@@ -100,9 +100,9 @@ The bitmask `0x8000000000041` encodes three intrinsic opcodes:
 
 | Bit position | Opcode | Intrinsic |
 |-------------|--------|-----------|
-| 0 | `0x22` | `llvm.coro.suspend` -- normal suspend point |
-| 6 | `0x28` | `llvm.coro.suspend.retcon` -- returned-continuation suspend |
-| 51 | `0x55` | `llvm.coro.end` -- coroutine termination |
+| 0 | `0x22` | `llvm.coro.suspend` — normal suspend point |
+| 6 | `0x28` | `llvm.coro.suspend.retcon` — returned-continuation suspend |
+| 51 | `0x55` | `llvm.coro.end` — coroutine termination |
 
 This single 64-bit `bt` (bit-test) instruction replaces what would otherwise be a three-way comparison or switch, a pattern upstream LLVM uses in its `Intrinsic::ID` checking.
 
@@ -224,7 +224,7 @@ The format is: `Split '<function_name>' (frame_size=N, align=M)` where `N` is th
 
 ### The `.corodispatch` Trampoline
 
-The CoroSplit dispatcher at `sub_3160A60` (9 KB native, second code cluster) generates a `.corodispatch` function -- a lightweight trampoline that:
+The CoroSplit dispatcher at `sub_3160A60` (9 KB native, second code cluster) generates a `.corodispatch` function — a lightweight trampoline that:
 
 1. Loads `__coro_index` from the coroutine frame at offset `+0x10`
 2. Switches on the index value to select the correct resume point
@@ -236,7 +236,7 @@ For GPU targets, the musttail semantics are critical: stack space is per-thread 
 
 ## CoroFrame: Frame Layout Computation
 
-`sub_24F6730` is the largest and most complex function in the coroutine pipeline, with a 5,624-byte stack frame (`0x15F8`) -- one of the largest in the entire cicc binary. Its job: determine which SSA values are live across suspend points and must be "spilled" into the coroutine frame struct.
+`sub_24F6730` is the largest and most complex function in the coroutine pipeline, with a 5,624-byte stack frame (`0x15F8`) — one of the largest in the entire cicc binary. Its job: determine which SSA values are live across suspend points and must be "spilled" into the coroutine frame struct.
 
 ### Algorithm Overview
 
@@ -376,7 +376,7 @@ The inline buffer holds up to 6 spill entries without heap allocation. When exce
 
 Both hash tables in CoroFrame share identical parameters (see [hash-infrastructure.md](../infra/hash-infrastructure.md) for the universal pattern):
 
-- **Hash function:** `(val >> 4) ^ (val >> 9)` -- same hash used throughout cicc
+- **Hash function:** `(val >> 4) ^ (val >> 9)` — same hash used throughout cicc
 - **Entry size:** 16 bytes (8-byte key + 8-byte metadata)
 - **Empty sentinel:** `0xFFFFFFFFF000`
 - **Load factor threshold:** 75% (triggers growth when `count * 4 >= capacity * 3`)
@@ -390,9 +390,9 @@ Both hash tables in CoroFrame share identical parameters (see [hash-infrastructu
 
 Standard LLVM coroutines allocate the frame on the heap via `operator new` (or a custom allocator returned by `get_return_object_on_allocation_failure`). On GPU, this calls into the device-side `malloc`, which has severe limitations:
 
-**Fixed-size heap.** The device heap is controlled by `cudaLimitMallocHeapSize` (default 8 MB across the entire GPU). A kernel launching 65,536 threads, each with a 256-byte coroutine frame, requires 16 MB of heap -- already exceeding the default. Increasing the limit helps, but the heap must be pre-allocated before kernel launch, wasting memory for non-coroutine workloads.
+**Fixed-size heap.** The device heap is controlled by `cudaLimitMallocHeapSize` (default 8 MB across the entire GPU). A kernel launching 65,536 threads, each with a 256-byte coroutine frame, requires 16 MB of heap — already exceeding the default. Increasing the limit helps, but the heap must be pre-allocated before kernel launch, wasting memory for non-coroutine workloads.
 
-**Serialized allocation.** Device `malloc` implementation uses a global free list protected by atomics. Within a warp, threads attempting simultaneous allocation serialize on this atomic. Across warps on the same SM, L2 cache line bouncing on the free-list head pointer creates further contention. Under heavy allocation pressure (hundreds of concurrent warps), the effective throughput of device `malloc` can drop to single-digit allocations per microsecond -- three orders of magnitude slower than a register read.
+**Serialized allocation.** Device `malloc` implementation uses a global free list protected by atomics. Within a warp, threads attempting simultaneous allocation serialize on this atomic. Across warps on the same SM, L2 cache line bouncing on the free-list head pointer creates further contention. Under heavy allocation pressure (hundreds of concurrent warps), the effective throughput of device `malloc` can drop to single-digit allocations per microsecond — three orders of magnitude slower than a register read.
 
 **Fragmentation under concurrency.** Thousands of threads allocating and freeing small frames (64--512 bytes) rapidly fragment the device heap. The device allocator does not perform compaction. Once fragmented, even a heap with sufficient total free space may fail individual allocations, causing `malloc` to return `nullptr` and triggering coroutine allocation failure paths (if the user provided `get_return_object_on_allocation_failure`) or program termination.
 
@@ -400,7 +400,7 @@ Standard LLVM coroutines allocate the frame on the heap via `operator new` (or a
 
 | Location | Latency | Bandwidth per SM | Notes |
 |----------|---------|------------------|-------|
-| Registers | 0 cycles | N/A (direct) | Best case -- values that don't cross suspends |
+| Registers | 0 cycles | N/A (direct) | Best case — values that don't cross suspends |
 | Local memory (L1 hit) | ~28 cycles | ~12 TB/s | Stack alloca destination after CoroElide |
 | Local memory (L1 miss, L2 hit) | ~200 cycles | ~3 TB/s | Large frames that spill L1 |
 | Global memory (device heap) | ~400-800 cycles | ~1 TB/s | Default without CoroElide |
@@ -410,13 +410,13 @@ The combined overhead of malloc latency + global memory access latency makes un-
 
 ### CoroElide: The GPU Escape Analysis
 
-`sub_24DF350` (11 KB native -- the largest coroutine pass) implements the classic heap allocation elision. It runs as a function-level pass (#220 in the pipeline parser), meaning it analyzes each caller individually after CoroSplit has already split the coroutine.
+`sub_24DF350` (11 KB native — the largest coroutine pass) implements the classic heap allocation elision. It runs as a function-level pass (#220 in the pipeline parser), meaning it analyzes each caller individually after CoroSplit has already split the coroutine.
 
 #### Elision Preconditions
 
 For each `llvm.coro.id` call site in the caller, CoroElide attempts to prove that:
 
-1. **No handle escape.** The coroutine handle (pointer to `__coro_frame`) does not escape the caller's scope. Specifically, the handle is not stored to memory visible to other threads, not passed to functions that might store it, and not returned from the caller. On GPU, the "visible to other threads" criterion is complicated by shared memory (`addrspace(3)`) and generic address space (`addrspace(0)`) casts -- a handle stored through a generic pointer could be visible to any thread.
+1. **No handle escape.** The coroutine handle (pointer to `__coro_frame`) does not escape the caller's scope. Specifically, the handle is not stored to memory visible to other threads, not passed to functions that might store it, and not returned from the caller. On GPU, the "visible to other threads" criterion is complicated by shared memory (`addrspace(3)`) and generic address space (`addrspace(0)`) casts — a handle stored through a generic pointer could be visible to any thread.
 
 2. **No external aliases.** No alias of the handle is created that could outlive the caller. This includes GEPs into the frame, bitcasts, and pointer arithmetic. The alias analysis at this stage uses the results from the function-level AA pipeline.
 
@@ -491,7 +491,7 @@ nvcc -Xptxas -v --compiler-options="-Rpass-missed=coro-elide" foo.cu
 
 ### CoroAnnotationElide: Developer-Asserted Elision
 
-`sub_24E2340` (6 KB native) is the newer annotation-driven elision from LLVM 19. It looks for the `"elide_safe_attr"` function attribute and `".noalloc"` suffix on coroutine function names. When both are present, elision proceeds without the full escape analysis -- the developer has asserted safety.
+`sub_24E2340` (6 KB native) is the newer annotation-driven elision from LLVM 19. It looks for the `"elide_safe_attr"` function attribute and `".noalloc"` suffix on coroutine function names. When both are present, elision proceeds without the full escape analysis — the developer has asserted safety.
 
 This is particularly useful for GPU code where the developer knows the coroutine is single-thread-scoped but the compiler cannot prove it due to pointer-to-generic-address-space casts. The `"caller_presplit"` attribute marks the caller as needing coroutine lowering, enabling the annotation elide pass to fire during the CGSCC iteration before the caller itself is split.
 
@@ -535,7 +535,7 @@ The binary contains a second, independent cluster of coroutine functions, likely
 | Attributor analysis helper | `0x3150D70` | 43 KB |
 | Attributor analysis helper | `0x314DBB0` | 40 KB |
 
-These functions reference the same string literals and implement the same algorithms as the primary cluster. The primary cluster at `0x24D`--`0x25C` and this cluster at `0x314`--`0x317` are structurally identical -- they differ only in binary address due to compilation unit or LTO merge ordering.
+These functions reference the same string literals and implement the same algorithms as the primary cluster. The primary cluster at `0x24D`--`0x25C` and this cluster at `0x314`--`0x317` are structurally identical — they differ only in binary address due to compilation unit or LTO merge ordering.
 
 Additionally, three helper functions in the primary cluster's vicinity handle specialized aspects:
 
@@ -551,23 +551,23 @@ Additionally, three helper functions in the primary cluster's vicinity handle sp
 
 The CoroSplit implementation at `0x316D160` emits two diagnostic errors:
 
-- `"Coroutines cannot handle non static allocas yet"` -- triggered when a coroutine body contains a VLA (variable-length array) or `alloca()` with a dynamic size. The frame layout computation requires compile-time-known sizes for all frame slots. Dynamic allocas would require a separate heap allocation per suspend-resume cycle.
+- `"Coroutines cannot handle non static allocas yet"` — triggered when a coroutine body contains a VLA (variable-length array) or `alloca()` with a dynamic size. The frame layout computation requires compile-time-known sizes for all frame slots. Dynamic allocas would require a separate heap allocation per suspend-resume cycle.
 
-- `"alignment requirement of frame variables"` -- triggered when a spill slot requires alignment exceeding the frame's maximum supported alignment. This can occur with over-aligned types (e.g., `alignas(256)` variables that must survive across suspends).
+- `"alignment requirement of frame variables"` — triggered when a spill slot requires alignment exceeding the frame's maximum supported alignment. This can occur with over-aligned types (e.g., `alignas(256)` variables that must survive across suspends).
 
 The CoroFrame at `0x3171DA0` emits:
 
-- `"token definition separated from use by suspend point"` -- a fatal error when an LLVM token value (which cannot be stored to memory) crosses a suspend boundary. Tokens are used for exception handling state and musttail call tracking; they are inherently non-materializable.
+- `"token definition separated from use by suspend point"` — a fatal error when an LLVM token value (which cannot be stored to memory) crosses a suspend boundary. Tokens are used for exception handling state and musttail call tracking; they are inherently non-materializable.
 
-- `"Unable to handle alias with unknown offset before CoroBegin"` -- triggered when a GEP with a non-constant offset operates on a value computed before `coro.begin`. The frame layout computation needs constant offsets to compute spill slot positions.
+- `"Unable to handle alias with unknown offset before CoroBegin"` — triggered when a GEP with a non-constant offset operates on a value computed before `coro.begin`. The frame layout computation needs constant offsets to compute spill slot positions.
 
 ## EDG Frontend Support
 
 The EDG 6.6 frontend fully implements C++20 coroutine semantics in two key functions:
 
-- **`sub_87AFA0`** (3 KB native) -- Coroutine body processor. Resolves `promise_type` methods: `initial_suspend`, `final_suspend`, `unhandled_exception`, `get_return_object`, `get_return_object_on_allocation_failure`. Generates the coroutine body scaffolding including the implicit try-catch around user code.
+- **`sub_87AFA0`** (3 KB native) — Coroutine body processor. Resolves `promise_type` methods: `initial_suspend`, `final_suspend`, `unhandled_exception`, `get_return_object`, `get_return_object_on_allocation_failure`. Generates the coroutine body scaffolding including the implicit try-catch around user code.
 
-- **`sub_87BD00`** (1.4 KB native) -- Coroutine trait resolver. Looks up `std::coroutine_traits<R, Args...>::promise_type`, `std::coroutine_handle`, `return_value`, `return_void`. The EDG IL walker maps these as IL node type 64 (`il_coroutine`), with expression sub-type `0x21` (`coroutine_expr`). The IL copier handles coroutine handles as entity type 72 (`coroutine_handle`).
+- **`sub_87BD00`** (1.4 KB native) — Coroutine trait resolver. Looks up `std::coroutine_traits<R, Args...>::promise_type`, `std::coroutine_handle`, `return_value`, `return_void`. The EDG IL walker maps these as IL node type 64 (`il_coroutine`), with expression sub-type `0x21` (`coroutine_expr`). The IL copier handles coroutine handles as entity type 72 (`coroutine_handle`).
 
 The frontend does **not** restrict coroutines to host-side code. The EDG configuration sets `COROUTINE_ENABLING_POSSIBLE = 1` globally, meaning `__device__` functions can be coroutines. The full coroutine IR (with `llvm.coro.id`, `llvm.coro.begin`, `llvm.coro.suspend`, etc.) flows into the NVVM optimizer pipeline regardless of the function's execution space.
 
@@ -599,43 +599,43 @@ The frontend does **not** restrict coroutines to host-side code. The EDG configu
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| CoroEarly pass entry | `sub_24DCD10` | 41 KB | -- |
-| CoroElide pass entry | `sub_24DF350` | 80 KB | -- |
-| CoroAnnotationElide pass entry | `sub_24E2340` | 33 KB | -- |
-| CoroSplit pass entry | `sub_24EF980` | 71 KB | -- |
-| Core frame layout computation | `sub_24F5860` | -- | -- |
-| CoroFrame layout entry | `sub_24F6730` | 11 KB | -- |
-| CoroFrame Spill Analysis helper | `sub_25C1030` | 37 KB | -- |
-| CoroFrame Materializer (heap-to-stack) | `sub_25C5C80` | 49 KB | -- |
-| CoroSplit Cloner/Driver | `sub_25CA370` | 55 KB | -- |
-| createResumeFunction | `sub_2284030` | -- | -- |
-| createDestroyFunction | `sub_2284040` | -- | -- |
-| Function cloner (used for resume/destroy) | `sub_D2E510` | -- | -- |
-| Frame-already-computed check | `sub_B2D610` | -- | -- |
-| Get function name string | `sub_BD5D20` | -- | -- |
-| Register in coroutine metadata table | `sub_BC1CD0` | -- | -- |
-| Create optimization remark | `sub_B17560` | -- | -- |
-| Publish remark to diagnostic handler | `sub_1049740` | -- | -- |
-| Allocator (frame info, spill entries, BFS deque) | `sub_22077B0` | -- | -- |
-| `coro-cond` module analysis checker | `sub_2337E30` | 15 KB | -- |
-| Attributor helper (coroutine attributes) | `sub_314DBB0` | 40 KB | -- |
-| Attributor helper (coroutine attributes) | `sub_3150D70` | 43 KB | -- |
-| CoroElide (second cluster) | `sub_315A7B0` | 41 KB | -- |
-| CoroSplit dispatcher (`.corodispatch`) | `sub_3160A60` | 48 KB | -- |
-| Spill/reload generation | `sub_31650D0` | 47 KB | -- |
-| Frame type builder | `sub_3169200` | 46 KB | -- |
-| CoroSplit splitting logic (second cluster) | `sub_316D160` | 49 KB | -- |
-| CoroFrame layout (second cluster) | `sub_3171DA0` | 55 KB | -- |
-| EDG coroutine body processor | `sub_87AFA0` | 14 KB | -- |
-| EDG coroutine trait resolver | `sub_87BD00` | 6 KB | -- |
+| CoroEarly pass entry | `sub_24DCD10` | 41 KB | — |
+| CoroElide pass entry | `sub_24DF350` | 80 KB | — |
+| CoroAnnotationElide pass entry | `sub_24E2340` | 33 KB | — |
+| CoroSplit pass entry | `sub_24EF980` | 71 KB | — |
+| Core frame layout computation | `sub_24F5860` | — | — |
+| CoroFrame layout entry | `sub_24F6730` | 11 KB | — |
+| CoroFrame Spill Analysis helper | `sub_25C1030` | 37 KB | — |
+| CoroFrame Materializer (heap-to-stack) | `sub_25C5C80` | 49 KB | — |
+| CoroSplit Cloner/Driver | `sub_25CA370` | 55 KB | — |
+| createResumeFunction | `sub_2284030` | — | — |
+| createDestroyFunction | `sub_2284040` | — | — |
+| Function cloner (used for resume/destroy) | `sub_D2E510` | — | — |
+| Frame-already-computed check | `sub_B2D610` | — | — |
+| Get function name string | `sub_BD5D20` | — | — |
+| Register in coroutine metadata table | `sub_BC1CD0` | — | — |
+| Create optimization remark | `sub_B17560` | — | — |
+| Publish remark to diagnostic handler | `sub_1049740` | — | — |
+| Allocator (frame info, spill entries, BFS deque) | `sub_22077B0` | — | — |
+| `coro-cond` module analysis checker | `sub_2337E30` | 15 KB | — |
+| Attributor helper (coroutine attributes) | `sub_314DBB0` | 40 KB | — |
+| Attributor helper (coroutine attributes) | `sub_3150D70` | 43 KB | — |
+| CoroElide (second cluster) | `sub_315A7B0` | 41 KB | — |
+| CoroSplit dispatcher (`.corodispatch`) | `sub_3160A60` | 48 KB | — |
+| Spill/reload generation | `sub_31650D0` | 47 KB | — |
+| Frame type builder | `sub_3169200` | 46 KB | — |
+| CoroSplit splitting logic (second cluster) | `sub_316D160` | 49 KB | — |
+| CoroFrame layout (second cluster) | `sub_3171DA0` | 55 KB | — |
+| EDG coroutine body processor | `sub_87AFA0` | 14 KB | — |
+| EDG coroutine trait resolver | `sub_87BD00` | 6 KB | — |
 
 ## Cross-References
 
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where coroutine passes sit in the optimization sequence
-- [SROA](../llvm/sroa.md) -- SROA interacts with coroutine frame allocas; decomposes aggregate allocas into scalar SSA values
-- [AsmPrinter & PTX Body Emission](../infra/asmprinter.md) -- `.pragma "coroutine"` emission
-- [Inliner Cost Model](../lto/inliner-cost.md) -- inlining decisions for split resume/destroy functions
-- [StructurizeCFG](../llvm/structurizecfg.md) -- structurizes the resume dispatch switch
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- universal DenseMap pattern used by CoroFrame
-- [Diagnostics & Optimization Remarks](../infra/diagnostics.md) -- remark emission protocol
-- [Address Spaces](../reference/address-spaces.md) -- local (5), shared (3), generic (0) spaces relevant to elision
+- [Pipeline & Ordering](../llvm/pipeline.md) — where coroutine passes sit in the optimization sequence
+- [SROA](../llvm/sroa.md) — SROA interacts with coroutine frame allocas; decomposes aggregate allocas into scalar SSA values
+- [AsmPrinter & PTX Body Emission](../infra/asmprinter.md) — `.pragma "coroutine"` emission
+- [Inliner Cost Model](../lto/inliner-cost.md) — inlining decisions for split resume/destroy functions
+- [StructurizeCFG](../llvm/structurizecfg.md) — structurizes the resume dispatch switch
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — universal DenseMap pattern used by CoroFrame
+- [Diagnostics & Optimization Remarks](../infra/diagnostics.md) — remark emission protocol
+- [Address Spaces](../reference/address-spaces.md) — local (5), shared (3), generic (0) spaces relevant to elision

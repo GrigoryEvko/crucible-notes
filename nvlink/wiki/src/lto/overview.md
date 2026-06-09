@@ -1,6 +1,6 @@
 # LTO Overview
 
-Link-Time Optimization (LTO) in nvlink v13.0.88 compiles NVVM IR into SASS machine code at link time instead of at translation-unit compile time. The design follows a delegation model: nvlink orchestrates the pipeline, `libnvvm.so` compiles IR to PTX, and an embedded ptxas backend assembles PTX into SASS. nvlink itself contains zero LLVM infrastructure -- no "LLVM" strings appear anywhere in the 26.2 MB binary. All IR-level optimization is offloaded to libnvvm via its public C API.
+Link-Time Optimization (LTO) in nvlink v13.0.88 compiles NVVM IR into SASS machine code at link time instead of at translation-unit compile time. The design follows a delegation model: nvlink orchestrates the pipeline, `libnvvm.so` compiles IR to PTX, and an embedded ptxas backend assembles PTX into SASS. nvlink itself contains zero LLVM infrastructure — no "LLVM" strings appear anywhere in the 26.2 MB binary. All IR-level optimization is offloaded to libnvvm via its public C API.
 
 This page is the definitive entry point for understanding nvlink's LTO implementation. It documents the complete pipeline end-to-end: input collection, per-module option reconciliation, library injection, compilation dispatch, libnvvm API usage, PTX extraction, ptxas assembly, split-compilation thread pool mechanics, and result merge back into the linking pipeline. Every function address and control-flow decision point is traced from the decompiled binary.
 
@@ -553,11 +553,11 @@ After all modules have been processed (post-input-loop, `main` lines 945--982), 
 
 | Final State | Action |
 |---|---|
-| 0 (UNSEEN) | No modules processed -- LTO not active |
-| 1 (ABSENT) | Option not present in any module -- use default |
-| 2 (PRESENT) | All modules agree -- use the common value |
-| 3 (MIXED) | **Warning**: `sub_467460(&unk_2A5B5F0, "-<name>")` -- option present in some modules but not all. The discovered value is used for modules that had it; default for those that did not |
-| 4 (CONFLICT) | **Error**: `sub_467460(&unk_2A5B600, "-<name>")` -- conflicting values across modules. This is a fatal diagnostic for `-ftz`, `-prec-div`, `-prec-sqrt`, `-fmad`, `-split-compile` |
+| 0 (UNSEEN) | No modules processed — LTO not active |
+| 1 (ABSENT) | Option not present in any module — use default |
+| 2 (PRESENT) | All modules agree — use the common value |
+| 3 (MIXED) | **Warning**: `sub_467460(&unk_2A5B5F0, "-<name>")` — option present in some modules but not all. The discovered value is used for modules that had it; default for those that did not |
+| 4 (CONFLICT) | **Error**: `sub_467460(&unk_2A5B600, "-<name>")` — conflicting values across modules. This is a fatal diagnostic for `-ftz`, `-prec-div`, `-prec-sqrt`, `-fmad`, `-split-compile` |
 
 ### Tracked Options
 
@@ -645,8 +645,8 @@ sub_4BC6F0 returns:
 |---|---|---|---|
 | Whole-program | `-lto` | `--force-partial-lto`, `-r` | All inputs are LTO IR (including cudadevrt) |
 | Relocatable single | `-lto` | `--force-whole-lto` | Any non-cudadevrt SASS cubin in inputs |
-| Split-compile | `-lto`, `--split-compile-extended=N` (N > 1) | -- | nvvmCompileProgram returns multiple output modules |
-| No LTO | (no `-lto`) | -- | Default when no IR inputs present |
+| Split-compile | `-lto`, `--split-compile-extended=N` (N > 1) | — | nvvmCompileProgram returns multiple output modules |
+| No LTO | (no `-lto`) | — | Default when no IR inputs present |
 
 ## libnvvm API Call Sequence
 
@@ -771,15 +771,15 @@ The thread pool used for split compilation follows a classic producer-consumer p
 
 ### Lifecycle
 
-1. **Create**: `sub_43FDB0(N)` -- allocates pool, creates N detached worker threads. Each thread runs `start_routine` which blocks on `work_available` condition.
+1. **Create**: `sub_43FDB0(N)` — allocates pool, creates N detached worker threads. Each thread runs `start_routine` which blocks on `work_available` condition.
 
-2. **Submit**: `sub_43FF50(pool, fn, arg)` -- allocates 24-byte queue node, enqueues work, increments pending count, broadcasts `work_available`.
+2. **Submit**: `sub_43FF50(pool, fn, arg)` — allocates 24-byte queue node, enqueues work, increments pending count, broadcasts `work_available`.
 
 3. **Worker**: Wakes on broadcast, dequeues work item, calls `fn(arg)` (which is `sub_4264B0`), which calls `sub_4BD760` with the unpacked work item fields, stores return code at offset 36.
 
-4. **Wait**: `sub_43FFE0(pool)` -- caller blocks on `work_done` condition until pending count reaches 0 and work queue is empty.
+4. **Wait**: `sub_43FFE0(pool)` — caller blocks on `work_done` condition until pending count reaches 0 and work queue is empty.
 
-5. **Destroy**: `sub_43FE70(pool)` -- sets shutdown flag, broadcasts `work_available` to wake all workers, waits for all threads to exit, destroys synchronization primitives, frees memory.
+5. **Destroy**: `sub_43FE70(pool)` — sets shutdown flag, broadcasts `work_available` to wake all workers, waits for all threads to exit, destroys synchronization primitives, frees memory.
 
 ## FNLZR Post-Link Transform
 
@@ -825,20 +825,20 @@ For architectures SM 90 and above (Hopper, Blackwell, and beyond), the SASS outp
 | Option | Short | Type | Global | Description |
 |---|---|---|---|---|
 | `--link-time-opt` | `-lto` | bool | `byte_2A5F288` | Enable LTO. Required for IR inputs |
-| `--dlto` | -- | bool | `byte_2A5F287` | Distributed LTO mode |
-| `--force-partial-lto` | -- | bool | `byte_2A5F285` | Force partial LTO even when whole-program is possible |
-| `--force-whole-lto` | -- | bool | `byte_2A5F284` | Force whole-program LTO. Only effective when `byte_2A5F285` is not set by `register_module` |
-| `--nvvmpath` | -- | string | `qword_2A5F278` | Path to `libnvvm.so`. Required with `-lto` |
-| `--emit-ptx` | -- | bool | `byte_2A5F29A` | Emit intermediate PTX instead of SASS |
-| `--split-compile` | -- | int | `dword_2A5F260` | Split compilation mode |
-| `--split-compile-extended` | -- | int | `dword_2A5B514` | Extended split-compile thread count |
-| `--Xnvvm` | -- | string (multi) | `qword_2A5F230` | Pass-through options to libnvvm/cicc |
-| `--Xptxas` | -- | string (multi) | `qword_2A5F238` | Pass-through options to embedded ptxas |
-| `--maxrregcount` | -- | int | `dword_2A5F22C` | Maximum register count per thread |
+| `--dlto` | — | bool | `byte_2A5F287` | Distributed LTO mode |
+| `--force-partial-lto` | — | bool | `byte_2A5F285` | Force partial LTO even when whole-program is possible |
+| `--force-whole-lto` | — | bool | `byte_2A5F284` | Force whole-program LTO. Only effective when `byte_2A5F285` is not set by `register_module` |
+| `--nvvmpath` | — | string | `qword_2A5F278` | Path to `libnvvm.so`. Required with `-lto` |
+| `--emit-ptx` | — | bool | `byte_2A5F29A` | Emit intermediate PTX instead of SASS |
+| `--split-compile` | — | int | `dword_2A5F260` | Split compilation mode |
+| `--split-compile-extended` | — | int | `dword_2A5B514` | Extended split-compile thread count |
+| `--Xnvvm` | — | string (multi) | `qword_2A5F230` | Pass-through options to libnvvm/cicc |
+| `--Xptxas` | — | string (multi) | `qword_2A5F238` | Pass-through options to embedded ptxas |
+| `--maxrregcount` | — | int | `dword_2A5F22C` | Maximum register count per thread |
 | `--Ofast-compile` | `-Ofc` | string | `qword_2A5F258` | Compilation speed vs quality tradeoff. Values: `"0"`, `"min"`, `"mid"`, `"max"` |
 | `--verbose-keep` | `-vkeep` | bool | `byte_2A5F29B` | Dump intermediate files (PTX, cubin) and print command-line reconstructions |
-| `-g` / `--debug` | -- | bool | `byte_2A5F310` | Enable debug info generation in compiled output |
-| `--use-host-info` | -- | bool | `byte_2A5F214` | Enable host-side symbol usage information for cross-module DCE |
+| `-g` / `--debug` | — | bool | `byte_2A5F310` | Enable debug info generation in compiled output |
+| `--use-host-info` | — | bool | `byte_2A5F214` | Enable host-side symbol usage information for cross-module DCE |
 
 ## Key Functions
 
@@ -950,19 +950,19 @@ Each clone set contains 50--60 functions implementing identical lowering logic s
 
 ## Related Pages
 
-- [libnvvm Integration](libnvvm-integration.md) -- API loading, callback mechanism, error handling, `__nvvmHandle` magic cookies
-- [Whole vs Partial LTO](whole-vs-partial.md) -- Decision logic, flag interactions, 14-row mode decision matrix, partial LTO warnings
-- [Split Compilation](split-compilation.md) -- Thread pool lifecycle, work item format, synchronization protocol
-- [Option Forwarding to cicc](option-forwarding.md) -- How `sub_426CD0` and `sub_429BA0` assemble the option vectors for libnvvm and ptxas
-- [LTO IR Format Versions](ir-format-versions.md) -- NVVM IR bitcode detection and version constraints
-- [Pipeline Overview](../pipeline/overview.md) -- Full 14-phase pipeline context (LTO is Phase 8)
-- [Entry Point & Main](../pipeline/entry.md) -- `main()` walkthrough with line numbers for every phase including LTO
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM-variant vtable selection for ISel clones
-- [Merge Phase](../pipeline/merge.md) -- post-LTO merge that integrates compiled cubins into the output ELF
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- linker-level DCE suppressed during full LTO, active during partial LTO
-- [Symbol Resolution](../linker/symbol-resolution.md) -- symbol handling for LTO-compiled modules merged into the output
-- [Mercury Finalizer](../mercury/fnlzr.md) -- FNLZR post-link transform applied to LTO output for SM >= 100
+- [libnvvm Integration](libnvvm-integration.md) — API loading, callback mechanism, error handling, `__nvvmHandle` magic cookies
+- [Whole vs Partial LTO](whole-vs-partial.md) — Decision logic, flag interactions, 14-row mode decision matrix, partial LTO warnings
+- [Split Compilation](split-compilation.md) — Thread pool lifecycle, work item format, synchronization protocol
+- [Option Forwarding to cicc](option-forwarding.md) — How `sub_426CD0` and `sub_429BA0` assemble the option vectors for libnvvm and ptxas
+- [LTO IR Format Versions](ir-format-versions.md) — NVVM IR bitcode detection and version constraints
+- [Pipeline Overview](../pipeline/overview.md) — Full 14-phase pipeline context (LTO is Phase 8)
+- [Entry Point & Main](../pipeline/entry.md) — `main()` walkthrough with line numbers for every phase including LTO
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — SM-variant vtable selection for ISel clones
+- [Merge Phase](../pipeline/merge.md) — post-LTO merge that integrates compiled cubins into the output ELF
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — linker-level DCE suppressed during full LTO, active during partial LTO
+- [Symbol Resolution](../linker/symbol-resolution.md) — symbol handling for LTO-compiled modules merged into the output
+- [Mercury Finalizer](../mercury/fnlzr.md) — FNLZR post-link transform applied to LTO output for SM >= 100
 
 ### Sibling Wiki
 
-- **cicc wiki**: [LTO & Module Optimization](../../cicc/lto/index.html) -- compiler-side LTO pipeline (five-pass IR optimization, inliner cost model, cross-module import). nvlink delegates IR compilation to cicc via libnvvm; this page documents what cicc does with the IR
+- **cicc wiki**: [LTO & Module Optimization](../../cicc/lto/index.html) — compiler-side LTO pipeline (five-pass IR optimization, inliner cost model, cross-module import). nvlink delegates IR compilation to cicc via libnvvm; this page documents what cicc does with the IR

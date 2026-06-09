@@ -1,10 +1,10 @@
 # Peephole Optimization
 
-> **Note**: This page documents the peephole optimization subsystem inside the embedded ptxas copy in nvlink v13.0.88 -- specifically the early SASS-level cluster at `0x406377`, the ORI named-phase pass pipeline inside MercConverter, and the late `OptimizeNaNOrZero`/`TexNodep` passes. The standalone ptxas binary uses three monolithic 233--280 KB peephole mega-dispatchers (generic, SM120, post-schedule) at completely different addresses; for that architecture see [ptxas Peephole Optimization](../../ptxas/codegen/peephole.html).
+> **Note**: This page documents the peephole optimization subsystem inside the embedded ptxas copy in nvlink v13.0.88 — specifically the early SASS-level cluster at `0x406377`, the ORI named-phase pass pipeline inside MercConverter, and the late `OptimizeNaNOrZero`/`TexNodep` passes. The standalone ptxas binary uses three monolithic 233--280 KB peephole mega-dispatchers (generic, SM120, post-schedule) at completely different addresses; for that architecture see [ptxas Peephole Optimization](../../ptxas/codegen/peephole.html).
 
 The nvlink embedded ptxas backend applies peephole optimizations at three distinct points in the compilation pipeline: (1) an early SASS-level peephole pass in the linker finalization path (`0x406377`--`0x4094FD`), operating on already-encoded instruction buffers; (2) the ORI (Operand Rewriting Infrastructure) pass pipeline embedded within the MercConverter instruction lowering phase (`0x1916000`--`0x1960000`), which runs swap, copy-propagation, dead-code elimination, and liveness passes on the machine-level IR; and (3) late peephole passes integrated into the scheduling and verification phases, including `OptimizeNaNOrZero` (`0x1866FA0`) and the `TexNodep` texture node peephole (`0x19938E0`). Together these three layers constitute approximately 350 KB of peephole-related code across ~50 functions.
 
-The peephole infrastructure is unusual relative to standard LLVM: rather than a single instcombine-style pass, nvlink scatters small, targeted transformation passes across the pipeline. The ORI system is entirely NVIDIA-proprietary -- it has no upstream LLVM equivalent and operates on NVIDIA's machine-level IR after instruction selection but before final scheduling and register allocation.
+The peephole infrastructure is unusual relative to standard LLVM: rather than a single instcombine-style pass, nvlink scatters small, targeted transformation passes across the pipeline. The ORI system is entirely NVIDIA-proprietary — it has no upstream LLVM equivalent and operates on NVIDIA's machine-level IR after instruction selection but before final scheduling and register allocation.
 
 ## Pipeline Position
 
@@ -40,9 +40,9 @@ ISel pattern match  ->  MercConverter (with ORI passes)  ->  HoistInvariants
 | Total peephole code | ~350 KB across ~50 functions |
 | Pass name strings | `"swap1"`--`"swap6"`, `"cpy1"`--`"cpy3"`, `"dce1"`--`"dce3"`, `"OriPerformLiveDead"`, `"OriCopyProp"`, `"NamedPhases"`, `"OptimizeNaNOrZero"`, `"TexNodep"` |
 
-## Early SASS-Level Peephole (0x406377 -- 0x4094FD)
+## Early SASS-Level Peephole (0x406377 — 0x4094FD)
 
-This cluster of 10 functions at the very beginning of the `.text` section performs peephole optimization directly on SASS instruction buffers. These functions have no string references -- they are identified entirely by their instruction-level access patterns (checking opcode fields at offsets +72, +76 against constants like 126, 120, 11, 12, 6).
+This cluster of 10 functions at the very beginning of the `.text` section performs peephole optimization directly on SASS instruction buffers. These functions have no string references — they are identified entirely by their instruction-level access patterns (checking opcode fields at offsets +72, +76 against constants like 126, 120, 11, 12, 6).
 
 ### Functions
 
@@ -50,7 +50,7 @@ This cluster of 10 functions at the very beginning of the `.text` section perfor
 |---|---|---|---|
 | `sub_406377` | 7,438 B | `peephole_pattern_match` | Pattern match and transform instruction sequences |
 | `sub_4069EE` | 4,693 B | `peephole_control_flow` | Branch/jump simplification |
-| `sub_406DC0` | 6,830 B | `peephole_optimizer_main` | Main driver -- orchestrates all sub-passes |
+| `sub_406DC0` | 6,830 B | `peephole_optimizer_main` | Main driver — orchestrates all sub-passes |
 | `sub_407634` | 5,320 B | `peephole_instruction_combine` | Combine instruction pairs sharing operands |
 | `sub_407C0A` | 3,160 B | `peephole_strength_reduce` | Replace expensive ops with cheaper equivalents |
 | `sub_407F94` | 3,692 B | `peephole_constant_fold` | Fold constant operands at instruction level |
@@ -93,7 +93,7 @@ The `peephole_instruction_combine` function checks two source operands of each i
 
 The `peephole_pattern_match` function implements multi-instruction pattern recognition. It accesses decoded instruction fields at various offsets, performs boolean logic for condition-code analysis, and rewrites matched sequences into more efficient forms.
 
-## ORI Pass Pipeline (0x1916000 -- 0x198A000)
+## ORI Pass Pipeline (0x1916000 — 0x198A000)
 
 The ORI (Operand Rewriting Infrastructure) is a proprietary NVIDIA machine-level optimization framework that runs as part of the MercConverter instruction lowering phase. It implements a named-phase pass manager that dispatches to 14 distinct sub-passes.
 
@@ -103,7 +103,7 @@ The ORI (Operand Rewriting Infrastructure) is a proprietary NVIDIA machine-level
 
 The MercConverter calls into ORI sub-passes directly (string evidence shows `"swap3"`, `"swap5"`, `"OriCopyProp"` referenced from within the converter), meaning some ORI passes run interleaved with the conversion rather than purely as a post-processing step.
 
-### ORI Named Phase Manager -- Architecture
+### ORI Named Phase Manager — Architecture
 
 `sub_197A120` (49 KB, 1,850 lines) is the ORI named-phase **sequence builder**. It does not execute passes directly; instead it constructs an opcode array that the pass executor (`sub_1AEECD0`) then iterates. The architecture has three layers:
 
@@ -258,7 +258,7 @@ int ori_build_sequence(context_t *ctx, opcode_table_t *table, int32_t *dest) {
 }
 ```
 
-**Confidence: HIGH** -- the control flow, string comparisons, `strtol` calls, and `sub_1AEDF30` lookups are directly visible in the decompilation. The `sprintf(s, "p%d", i)` call for `NamedPhases` mode is at line ~467 of the decompilation.
+**Confidence: HIGH** — the control flow, string comparisons, `strtol` calls, and `sub_1AEDF30` lookups are directly visible in the decompilation. The `sprintf(s, "p%d", i)` call for `NamedPhases` mode is at line ~467 of the decompilation.
 
 ### Pass Execution Engine
 
@@ -279,7 +279,7 @@ The pass objects live in a table indexed by opcode ID. Each pass object has a st
 
 ### What Each Phase Actually Does
 
-#### swap1 through swap6 -- Operand Canonicalization
+#### swap1 through swap6 — Operand Canonicalization
 
 The swap phases do not each target a distinct class of commutativity. Instead, the `swap1`--`swap6` names are **iteration count parameters** that control how many adjacent-element swaps to apply at different offsets within the pass ordering. The decompiled shuffle loop (lines 1693--1729 of `sub_197A120`) shows six swap pairs per iteration:
 
@@ -297,11 +297,11 @@ for (int r = 0; r < reps; r++) {
 
 Each swap class provides an independent starting offset for the permutation. With six classes and a repeat count, NVIDIA can systematically explore pass orderings. This is a standard compiler testing technique: randomize pass order to verify that optimizations are order-independent (or to find the best ordering empirically).
 
-When not in shuffle mode, the swap opcodes in the base pass table perform actual operand rewriting. The per-instruction dispatcher `sub_19733B0` handles these through the general opcode switch (cases covering all ~150 SASS opcodes), where operand positions are swapped to canonical form -- for example, ensuring the smaller register number appears first in commutative operations, or normalizing FMA source order.
+When not in shuffle mode, the swap opcodes in the base pass table perform actual operand rewriting. The per-instruction dispatcher `sub_19733B0` handles these through the general opcode switch (cases covering all ~150 SASS opcodes), where operand positions are swapped to canonical form — for example, ensuring the smaller register number appears first in commutative operations, or normalizing FMA source order.
 
-**Confidence: HIGH** -- the shuffle loop with modular arithmetic on six offset variables is clearly visible in the decompilation.
+**Confidence: HIGH** — the shuffle loop with modular arithmetic on six offset variables is clearly visible in the decompilation.
 
-#### dce1, dce2, dce3 -- Dead Code Elimination (Three Rounds)
+#### dce1, dce2, dce3 — Dead Code Elimination (Three Rounds)
 
 The three DCE phases remove instructions whose definitions are never used. Each phase is parameterized by an iteration count that controls when `OriPerformLiveDead` is injected before it:
 
@@ -328,9 +328,9 @@ IMAD  R7, R4, R6, R8 ;
 STG   [R0], R7       ;
 ```
 
-**Confidence: MEDIUM** -- the injection logic and `OriPerformLiveDead` string are directly observed; the specific DCE algorithm is inferred from standard compiler practice and the structure of the pass table.
+**Confidence: MEDIUM** — the injection logic and `OriPerformLiveDead` string are directly observed; the specific DCE algorithm is inferred from standard compiler practice and the structure of the pass table.
 
-#### cpy1, cpy2, cpy3 -- Copy Propagation (Three Rounds)
+#### cpy1, cpy2, cpy3 — Copy Propagation (Three Rounds)
 
 The three copy propagation phases replace uses of a register that holds a copy of another register with the original source. Like DCE, each phase has its own injection point for `OriCopyProp`:
 
@@ -366,9 +366,9 @@ IADD3 R5, R2, R4, RZ ;   // direct use
 IADD3 R5, R2, R4, RZ ;
 ```
 
-**Confidence: MEDIUM** -- the `sub_19756C0` linked-list traversal and node allocation are directly observed; the exact copy-equivalence detection logic is partially inferred.
+**Confidence: MEDIUM** — the `sub_19756C0` linked-list traversal and node allocation are directly observed; the exact copy-equivalence detection logic is partially inferred.
 
-#### OriPerformLiveDead -- Liveness Analysis
+#### OriPerformLiveDead — Liveness Analysis
 
 This pass computes per-basic-block live-in and live-out register sets using backward dataflow analysis. It is not a standalone named pass that users configure; rather, it is automatically injected before DCE rounds by the sequence builder.
 
@@ -381,15 +381,15 @@ live_in[B]  = (live_out[B] - def[B]) | use[B]
 
 This iterates to a fixed point. The result is stored in per-basic-block metadata and consumed by subsequent DCE passes to determine which definitions are dead.
 
-**Confidence: HIGH** -- the string `"OriPerformLiveDead"` and its injection point are directly observed in decompilation. The algorithm is standard backward liveness.
+**Confidence: HIGH** — the string `"OriPerformLiveDead"` and its injection point are directly observed in decompilation. The algorithm is standard backward liveness.
 
-#### OriCopyProp -- Global Copy Propagation
+#### OriCopyProp — Global Copy Propagation
 
 This pass is the global variant of copy propagation, injected before each cpy round. While `cpy1`--`cpy3` control the local per-instruction copy forwarding, `OriCopyProp` performs interprocedural copy analysis across basic block boundaries.
 
 The opcode is resolved via `sub_1AEDF30(table, "OriCopyProp")` (line 1648). The pass builds a global copy graph mapping destination registers to source registers across the entire function, then replaces uses that cross basic block boundaries.
 
-**Confidence: MEDIUM** -- the string and injection point are directly observed; the global scope is inferred from its position relative to the local cpy passes.
+**Confidence: MEDIUM** — the string and injection point are directly observed; the global scope is inferred from its position relative to the local cpy passes.
 
 ### ORI Pass Manager Merge
 
@@ -401,7 +401,7 @@ The opcode is resolved via `sub_1AEDF30(table, "OriCopyProp")` (line 1648). The 
 
 The FNV-1a hash is used for pattern matching in a hash table at offset +752 in the context structure. This enables O(1) lookup of multi-instruction rewrite patterns by instruction hash.
 
-**Confidence: HIGH** -- the FNV-1a constant `16777619` and seed `0x811C9DC5` are unmistakable in the decompilation.
+**Confidence: HIGH** — the FNV-1a constant `16777619` and seed `0x811C9DC5` are unmistakable in the decompilation.
 
 ### Per-Instruction Dispatch (sub_19733B0)
 
@@ -506,7 +506,7 @@ word = (operand_count << 13) & 0x1FE000
      | 0x60000000;  // ORI instruction marker
 ```
 
-**Confidence: HIGH** -- the encoding formula is directly visible in `sub_1977AA0` line 34--38.
+**Confidence: HIGH** — the encoding formula is directly visible in `sub_1977AA0` line 34--38.
 
 ### ORI Diff Detection
 
@@ -529,7 +529,7 @@ bool modified = (changes != 0);
 
 If modifications were detected AND custom options were NOT provided, the modified opcode array is written back to the output buffer `a3` (the third argument to `sub_197A120`). Otherwise the `dest[]` local array (which may have been reordered by shuffle) is written back.
 
-**Confidence: HIGH** -- the popcount-via-bit-clearing loop is a well-known pattern and is directly visible in the decompilation.
+**Confidence: HIGH** — the popcount-via-bit-clearing loop is a well-known pattern and is directly visible in the decompilation.
 
 ## OptimizeNaNOrZero (0x1866FA0)
 
@@ -545,7 +545,7 @@ This pass targets a specific pattern common in matrix multiplication kernels (es
 
 In these cases the pass replaces the floating-point computation with a direct move of the known result value, eliminating unnecessary FMA/FADD/FMUL instructions and their associated pipeline latency.
 
-The `"cutlass"` string reference indicates CUTLASS workload detection gates this optimization -- it is conditionally enabled when the scheduler detects a CUTLASS-style GEMM pattern (checked via `sub_1866CF0`, 3,541 bytes).
+The `"cutlass"` string reference indicates CUTLASS workload detection gates this optimization — it is conditionally enabled when the scheduler detects a CUTLASS-style GEMM pattern (checked via `sub_1866CF0`, 3,541 bytes).
 
 ### Integration with Scheduling
 
@@ -563,7 +563,7 @@ ScheduleInstructions_main_driver (sub_1851DC0, 85 KB)
 
 The NaN/zero optimization runs before per-block scheduling so the scheduler can account for eliminated instructions in its latency calculations.
 
-## TexNodep -- Texture Node Peephole (0x19938E0)
+## TexNodep — Texture Node Peephole (0x19938E0)
 
 `sub_19938E0` (39 KB, 1,387 lines) implements a texture node peephole optimization that runs after register allocation, in the codegen verification phase. String reference: `"TexNodep"`.
 
@@ -615,9 +615,9 @@ The hoisting pass has three main components:
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_186C7A0` | 24 KB | `HoistInvariants_core` -- core hoisting logic |
-| `sub_186D520` | 38 KB | `HoistInvariants_per_function` -- per-function driver |
-| `sub_186EE80` | 41 KB | `HoistInvariants_analysis_driver` -- analysis + transformation |
+| `sub_186C7A0` | 24 KB | `HoistInvariants_core` — core hoisting logic |
+| `sub_186D520` | 38 KB | `HoistInvariants_per_function` — per-function driver |
+| `sub_186EE80` | 41 KB | `HoistInvariants_analysis_driver` — analysis + transformation |
 
 Helper functions in the `0x1871000`--`0x188A000` range (~35 functions) implement:
 
@@ -641,7 +641,7 @@ Several internal pass and configuration names in the binary are stored as ROT13-
 
 SASS opcode mnemonics referenced by peephole passes are also ROT13-encoded in the opcode table (`sub_1A85E40`). Key examples: `VZNQ` = IMAD, `SZHY` = FMUL, `SNQQ` = FADD, `SRAPR` = FENCE, `ZREPHEL` = MERCURY. The peephole passes decode these at runtime to match instruction opcodes by name.
 
-## Tepid Instruction Scheduler (0x16F6000 -- 0x1740000)
+## Tepid Instruction Scheduler (0x16F6000 — 0x1740000)
 
 The "Tepid" scheduler is a second, independent instruction scheduling pipeline that operates at a different level than the main `ScheduleInstructions` pass. Located in the `0x16F6000`--`0x1740000` range (~296 KB, ~50 functions), it runs peephole-like local scheduling transformations with a focus on latency hiding.
 
@@ -664,20 +664,20 @@ Key Tepid sub-functions:
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_16F35A0` | 36 KB | `scheduler_block_processor` -- main per-block scheduling |
-| `sub_16F6390` | 4 KB | `tepid_mac_loop_stats` -- MAC loop statistics |
-| `sub_16F7370` | 5 KB | `scheduler_latency_calculator` -- instruction latency computation |
-| `sub_16F7830` | 5 KB | `scheduler_resource_tracker` -- resource utilization tracking |
-| `sub_16F7BB0` | 4 KB | `scheduler_dependency_checker` -- data dependency checking |
-| `sub_16F7F70` | 4 KB | `scheduler_stall_detector` -- scheduling stall detection |
-| `sub_16F8640` | 5 KB | `scheduler_reuse_tracker` -- register reuse tracking |
-| `sub_16F8B80` | 4 KB | `scheduler_issue_slot_manager` -- issue slot assignment |
-| `sub_16F9080` | 8 KB | `scheduler_anti_dependency_resolver` -- anti-dependency resolution |
-| `sub_16F9980` | 15 KB | `scheduler_latency_hiding_analyzer` -- latency hiding quality metrics |
-| `sub_16FAB00` | 3 KB | `scheduler_small_helper` -- utility |
-| `sub_16FAD00` | 10 KB | `scheduler_block_stats_collector` -- per-block statistics |
-| `sub_16FB430` | 5 KB | `scheduler_instruction_classifier` -- instruction classification |
-| `sub_16FB800` | 6 KB | `scheduler_dual_issue_checker` -- dual-issue compatibility |
+| `sub_16F35A0` | 36 KB | `scheduler_block_processor` — main per-block scheduling |
+| `sub_16F6390` | 4 KB | `tepid_mac_loop_stats` — MAC loop statistics |
+| `sub_16F7370` | 5 KB | `scheduler_latency_calculator` — instruction latency computation |
+| `sub_16F7830` | 5 KB | `scheduler_resource_tracker` — resource utilization tracking |
+| `sub_16F7BB0` | 4 KB | `scheduler_dependency_checker` — data dependency checking |
+| `sub_16F7F70` | 4 KB | `scheduler_stall_detector` — scheduling stall detection |
+| `sub_16F8640` | 5 KB | `scheduler_reuse_tracker` — register reuse tracking |
+| `sub_16F8B80` | 4 KB | `scheduler_issue_slot_manager` — issue slot assignment |
+| `sub_16F9080` | 8 KB | `scheduler_anti_dependency_resolver` — anti-dependency resolution |
+| `sub_16F9980` | 15 KB | `scheduler_latency_hiding_analyzer` — latency hiding quality metrics |
+| `sub_16FAB00` | 3 KB | `scheduler_small_helper` — utility |
+| `sub_16FAD00` | 10 KB | `scheduler_block_stats_collector` — per-block statistics |
+| `sub_16FB430` | 5 KB | `scheduler_instruction_classifier` — instruction classification |
+| `sub_16FB800` | 6 KB | `scheduler_dual_issue_checker` — dual-issue compatibility |
 
 The Tepid scheduler queries knob 610 for scheduling aggressiveness level and checks architecture capabilities at offset +43920 in the knob table. It supports dual-issue checking (important for SM7x+ architectures where certain instruction pairs can issue simultaneously).
 
@@ -696,7 +696,7 @@ The peephole passes are controlled by the internal knob system and compiler opti
 
 ## Function Map
 
-### Early SASS Peephole (0x406377 -- 0x4094FD)
+### Early SASS Peephole (0x406377 — 0x4094FD)
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
@@ -712,7 +712,7 @@ The peephole passes are controlled by the internal knob system and compiler opti
 | `sub_408EC2` | 7,693 B | `peephole_register_analysis` | LOW |
 | `sub_4094FD` | 2,753 B | `peephole_post_sched` | LOW |
 
-### ORI Pipeline (0x1916000 -- 0x198A000)
+### ORI Pipeline (0x1916000 — 0x198A000)
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
@@ -730,7 +730,7 @@ The peephole passes are controlled by the internal knob system and compiler opti
 | `sub_1AEDF30` | 1,312 B | `ORI_name_to_opcode` (case-insensitive binary search) | HIGH |
 | `sub_1AEECD0` | 4,416 B | `ORI_pass_executor` (iterates opcode array) | HIGH |
 
-### Scheduling-Phase Peepholes (0x1850000 -- 0x19A0000)
+### Scheduling-Phase Peepholes (0x1850000 — 0x19A0000)
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
@@ -741,7 +741,7 @@ The peephole passes are controlled by the internal knob system and compiler opti
 | `sub_19938E0` | 39,040 B | `TexNodep_optimization_pass` | HIGH |
 | `sub_199E6E0` | 27,529 B | `tex_node_driver_per_function` | HIGH |
 
-### Tepid Scheduler (0x16F6000 -- 0x1740000)
+### Tepid Scheduler (0x16F6000 — 0x1740000)
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
@@ -752,11 +752,11 @@ The peephole passes are controlled by the internal knob system and compiler opti
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) -- complete address map and compilation pipeline context
-- [Instruction Scheduling](scheduling.md) -- the main ScheduleInstructions pass that invokes OptimizeNaNOrZero
-- [Register Allocation](register-allocation.md) -- the regalloc pass that TexNodep runs after
-- [IR Nodes](ir-nodes.md) -- the IR node structure manipulated by peephole passes
-- [Mercury Compiler Passes](../mercury/compiler-passes.md) -- Mercury-specific ORI pass integration
+- [Embedded ptxas Overview](overview.md) — complete address map and compilation pipeline context
+- [Instruction Scheduling](scheduling.md) — the main ScheduleInstructions pass that invokes OptimizeNaNOrZero
+- [Register Allocation](register-allocation.md) — the regalloc pass that TexNodep runs after
+- [IR Nodes](ir-nodes.md) — the IR node structure manipulated by peephole passes
+- [Mercury Compiler Passes](../mercury/compiler-passes.md) — Mercury-specific ORI pass integration
 
 ### Sibling Wikis
-- [ptxas: Peephole Optimization](../../ptxas/codegen/peephole.html) -- standalone ptxas peephole pass (three 250KB dispatch functions)
+- [ptxas: Peephole Optimization](../../ptxas/codegen/peephole.html) — standalone ptxas peephole pass (three 250KB dispatch functions)

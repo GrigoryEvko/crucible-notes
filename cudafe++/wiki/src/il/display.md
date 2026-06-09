@@ -226,26 +226,26 @@ Fields displayed by `display_source_corresp`:
 | `unmangled_name_or_mangled_encoding` | string | Direct string |
 | `decl_position` | position | seq + column sub-fields |
 | `name_references` | IL pointer | name_reference entry |
-| `is_class_member` | bool | -- |
+| `is_class_member` | bool | — |
 | `access` | enum | `off_A6F760` (4 entries: public/protected/private/none) |
 | `parent_scope` | IL pointer | Scope entry |
 | `enclosing_routine` | IL pointer | Routine entry |
-| `referenced` | bool | -- |
-| `needed` | bool | -- |
-| `is_local_to_function` | bool | -- |
-| `parent_via_local_scope_ref` | IL pointer | -- |
+| `referenced` | bool | — |
+| `needed` | bool | — |
+| `is_local_to_function` | bool | — |
+| `parent_via_local_scope_ref` | IL pointer | — |
 | `name_linkage` | enum | `off_E6E040` (none/internal/external/C/C++) |
-| `has_associated_pragma` | bool | -- |
-| `is_decl_after_first_in_comma_list` | bool | -- |
-| `copied_from_secondary_trans_unit` | bool | -- |
-| `same_name_as_external_entity_in_secondary_trans_unit` | bool | -- |
-| `member_of_unknown_base` | bool | -- |
-| `qualified_unknown_base_member` | bool | -- |
-| `marked_as_gnu_extension` | bool | -- |
-| `is_deprecated_or_unavailable` | bool | -- |
-| `externalized` | bool | -- |
+| `has_associated_pragma` | bool | — |
+| `is_decl_after_first_in_comma_list` | bool | — |
+| `copied_from_secondary_trans_unit` | bool | — |
+| `same_name_as_external_entity_in_secondary_trans_unit` | bool | — |
+| `member_of_unknown_base` | bool | — |
+| `qualified_unknown_base_member` | bool | — |
+| `marked_as_gnu_extension` | bool | — |
+| `is_deprecated_or_unavailable` | bool | — |
+| `externalized` | bool | — |
 | `maybe_unused` | bool | `[[maybe_unused]]` attribute |
-| `source_sequence_entry` | IL pointer | -- |
+| `source_sequence_entry` | IL pointer | — |
 | `attributes` | IL pointer | Attribute list |
 
 ### type (Kind 6)
@@ -362,7 +362,7 @@ Fields displayed by `display_source_corresp`:
 
 **C99-specific fields** (displayed when `dword_126EBA8 == 1` and `std_version > 199900`):
 
-`fp_contract`, `fenv_access`, `cx_limited_range` -- pragma state values from `off_A6F460` (4 entries).
+`fp_contract`, `fenv_access`, `cx_limited_range` — pragma state values from `off_A6F460` (4 entries).
 
 **Boolean flags** (approximately 60 flags spanning bytes 176--191):
 
@@ -487,7 +487,7 @@ final_suspend_call, unhandled_exception_call, get_return_object_call,
 new_routine, delete_routine, ...
 ```
 
-The field name `"paramter_copies"` (missing the 'e' in "parameter") is a typo preserved verbatim from the EDG source. This confirms the display strings originate from Edison Design Group's own `il_to_str.c` -- a reimplementation would spell it correctly.
+The field name `"paramter_copies"` (missing the 'e' in "parameter") is a typo preserved verbatim from the EDG source. This confirms the display strings originate from Edison Design Group's own `il_to_str.c` — a reimplementation would spell it correctly.
 
 ### scope (Kind 23)
 
@@ -832,7 +832,7 @@ The display subsystem includes approximately 50 additional helper functions in t
 
 ## The "paramter_copies" Typo
 
-The coroutine statement display (case 9 in `display_statement`) prints the field label `"paramter_copies"` -- missing the 'e' in "parameter." This typo is present in the compiled binary's string table and originates from Edison Design Group's source code. It serves as strong provenance evidence: a clean-room reimplementation would not reproduce this exact spelling error, confirming that cudafe++ links genuine EDG `il_to_str.c` object code.
+The coroutine statement display (case 9 in `display_statement`) prints the field label `"paramter_copies"` — missing the 'e' in "parameter." This typo is present in the compiled binary's string table and originates from Edison Design Group's source code. It serves as strong provenance evidence: a clean-room reimplementation would not reproduce this exact spelling error, confirming that cudafe++ links genuine EDG `il_to_str.c` object code.
 
 ## Complete Call Graph
 
@@ -887,6 +887,6 @@ display_single_entity (sub_5F7D50) ─── TARGETED DISPLAY
 
 The IL display subsystem is read-only: it never modifies the IL graph. It shares the same entry walker functions used by the [IL Tree Walking](walking.md) framework (`walk_file_scope_il` = `sub_60E4F0`, `walk_routine_scope_il` = `sub_610200`) and the [Keep-in-IL](keep-in-il.md) mark phase, but passes `display_il_entry` as the callback instead of a transformation function.
 
-The [IL Allocation](allocation.md) subsystem provides `dump_il_table_stats` (`sub_5E99D0`), which dumps allocation counters rather than IL content -- a complementary diagnostic activated separately.
+The [IL Allocation](allocation.md) subsystem provides `dump_il_table_stats` (`sub_5E99D0`), which dumps allocation counters rather than IL content — a complementary diagnostic activated separately.
 
 The field offsets printed by the display functions serve as ground truth for the [IL Overview](overview.md) entry kind table and the [Entity Node Layout](../structs/entity-node.md) documentation.

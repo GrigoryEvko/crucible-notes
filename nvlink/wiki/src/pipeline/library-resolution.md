@@ -1,27 +1,27 @@
 # Library Resolution
 
-nvlink resolves `-l` library names to filesystem paths using a search algorithm modeled on traditional Unix linker behavior: build a search path list from `-L` flags and environment variables, then probe each directory for files matching the library name. The implementation departs from `ld` in several ways -- it searches only for static archives (`.a`), never shared objects or bare object files; it processes archive members through an architecture-matching callback that silently skips incompatible objects; and it special-cases `libcudadevrt` for both archive validation suppression and LTO removal.
+nvlink resolves `-l` library names to filesystem paths using a search algorithm modeled on traditional Unix linker behavior: build a search path list from `-L` flags and environment variables, then probe each directory for files matching the library name. The implementation departs from `ld` in several ways — it searches only for static archives (`.a`), never shared objects or bare object files; it processes archive members through an architecture-matching callback that silently skips incompatible objects; and it special-cases `libcudadevrt` for both archive validation suppression and LTO removal.
 
-Library resolution runs once, early in `main`, after option parsing and before the input-file dispatch loop. It is skipped entirely in host-linker-script-only mode (`-ghls`) and augmented mode. Resolution is deferred in the sense that the archive contents are not extracted at this point -- only the filesystem path to the `.a` file is resolved and appended to the input list. Actual member extraction happens later during the [input loop](input-loop.md).
+Library resolution runs once, early in `main`, after option parsing and before the input-file dispatch loop. It is skipped entirely in host-linker-script-only mode (`-ghls`) and augmented mode. Resolution is deferred in the sense that the archive contents are not extracted at this point — only the filesystem path to the `.a` file is resolved and appended to the input list. Actual member extraction happens later during the [input loop](input-loop.md).
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Entry function | `sub_4622D0` (0x4622D0) -- creates search context |
-| Path append | `sub_462500` (0x462500) -- appends a directory to search list |
-| Env var callback | `sub_462520` (0x462520) -- callback for LIBRARY_PATH parsing |
-| Env parser | `sub_44EC40` (0x44EC40) -- splits string on delimiter, invokes callback per token |
-| Search function | `sub_462870` (0x462870) -- searches directories for a file, with optional acceptance callback |
-| Path split | `sub_462620` (0x462620) -- splits path into directory, basename, extension |
-| Dir+file join | `sub_462550` (0x462550) -- constructs `dir/basename.ext` path |
-| Name transform | `sub_429AA0` (0x429AA0) -- converts `-l` name to `lib<name>.a` |
-| Archive callback | `sub_42A2D0` (0x42A2D0) -- opens archive, iterates members, validates arch |
-| Cleanup | `sub_462320` (0x462320) -- destroys search context |
-| Search path global | `qword_2A5F300` -- linked list of `-L` directories |
-| Library list global | `qword_2A5F2F8` -- linked list of `-l` library names |
-| Input file list | `qword_2A5F330` -- linked list of resolved input files |
-| Mode guard | `dword_2A77DC0` -- linker mode (resolution skipped for modes 1 and 2) |
+| Entry function | `sub_4622D0` (0x4622D0) — creates search context |
+| Path append | `sub_462500` (0x462500) — appends a directory to search list |
+| Env var callback | `sub_462520` (0x462520) — callback for LIBRARY_PATH parsing |
+| Env parser | `sub_44EC40` (0x44EC40) — splits string on delimiter, invokes callback per token |
+| Search function | `sub_462870` (0x462870) — searches directories for a file, with optional acceptance callback |
+| Path split | `sub_462620` (0x462620) — splits path into directory, basename, extension |
+| Dir+file join | `sub_462550` (0x462550) — constructs `dir/basename.ext` path |
+| Name transform | `sub_429AA0` (0x429AA0) — converts `-l` name to `lib<name>.a` |
+| Archive callback | `sub_42A2D0` (0x42A2D0) — opens archive, iterates members, validates arch |
+| Cleanup | `sub_462320` (0x462320) — destroys search context |
+| Search path global | `qword_2A5F300` — linked list of `-L` directories |
+| Library list global | `qword_2A5F2F8` — linked list of `-l` library names |
+| Input file list | `qword_2A5F330` — linked list of resolved input files |
+| Mode guard | `dword_2A77DC0` — linker mode (resolution skipped for modes 1 and 2) |
 
 ## CLI Flags That Affect Resolution
 
@@ -143,7 +143,7 @@ This sequence shows that library resolution is a single, non-interruptible phase
 
 ## Search Context Data Structure
 
-`sub_4622D0` allocates the search context -- a 16-byte structure that serves as the head of a singly-linked list of search directories:
+`sub_4622D0` allocates the search context — a 16-byte structure that serves as the head of a singly-linked list of search directories:
 
 ```c
 // sub_4622D0 -- search_context_create
@@ -209,7 +209,7 @@ split_and_callback(env, ":", /*include_empty=*/0, /*keep_delim=*/1,
 
 The `sub_44EC40` function is a general-purpose string tokenizer. It copies the input string, then repeatedly calls `sub_44E8B0` (a token extractor that handles quoting, escaping, and bracket syntax) to split on the delimiter. For each non-empty token, it invokes the callback. Empty path components (from consecutive `:` delimiters) are silently skipped because `include_empty` is 0.
 
-The callback `sub_462520` is identical in logic to `sub_462500` -- it wraps the token in a list node and appends to the search context. The distinction exists because the two functions have swapped argument order: `sub_462500` takes `(ctx, path)` while `sub_462520` takes `(path, ctx)`, the latter matching the `(token, user_data)` callback signature expected by the tokenizer.
+The callback `sub_462520` is identical in logic to `sub_462500` — it wraps the token in a list node and appends to the search context. The distinction exists because the two functions have swapped argument order: `sub_462500` takes `(ctx, path)` while `sub_462520` takes `(path, ctx)`, the latter matching the `(token, user_data)` callback signature expected by the tokenizer.
 
 ### Phase 3: No Built-in Paths
 
@@ -249,7 +249,7 @@ char* make_library_filename(char* name, bool shared) {
 }
 ```
 
-The integer constants decode as: `0x0062696C` = `"lib"` (little-endian bytes `6C 69 62 00`) and `0x006F732E` = `".so"` (bytes `2E 73 6F 00`). The function uses DWORD writes instead of `strcpy` for the short prefix/suffix strings -- a micro-optimization pattern seen throughout nvlink.
+The integer constants decode as: `0x0062696C` = `"lib"` (little-endian bytes `6C 69 62 00`) and `0x006F732E` = `".so"` (bytes `2E 73 6F 00`). The function uses DWORD writes instead of `strcpy` for the short prefix/suffix strings — a micro-optimization pattern seen throughout nvlink.
 
 **Critical detail:** `main` always calls `sub_429AA0` with a single argument, meaning the `shared` parameter defaults to 0 (false). The `.a` code path is always taken; the `.so` code path is dead code in the current binary. nvlink is a device linker and only searches for static archives. The `.so` support may be inherited from a shared codebase with the host linker.
 
@@ -355,14 +355,14 @@ This prevents the same archive from being processed twice when it appears in mul
 
 ## Deferred vs Immediate Resolution
 
-Library resolution in nvlink is **deferred** -- the resolution phase identifies and validates the archive file's existence and architecture compatibility, but does not extract archive members or process their contents. The resolved path is appended to `qword_2A5F330`, the same input file list that holds directly-specified object files. Actual archive processing occurs later during the [input loop](input-loop.md), which:
+Library resolution in nvlink is **deferred** — the resolution phase identifies and validates the archive file's existence and architecture compatibility, but does not extract archive members or process their contents. The resolved path is appended to `qword_2A5F330`, the same input file list that holds directly-specified object files. Actual archive processing occurs later during the [input loop](input-loop.md), which:
 
 1. Opens the archive (`sub_4BDAC0`)
 2. Iterates members (`sub_4BDAF0`)
 3. Extracts each member (`sub_4BDB30`, `sub_4BDB60`, `sub_4BDB70`)
 4. Classifies and processes each member through the file-type dispatch table
 
-The only "immediate" work done during resolution is the Pass 2 archive validation callback (`sub_42A2D0`), which opens the archive and scans for a member with the correct CPU architecture. This validation does not extract or retain any member data -- it is purely a compatibility check.
+The only "immediate" work done during resolution is the Pass 2 archive validation callback (`sub_42A2D0`), which opens the archive and scans for a member with the correct CPU architecture. This validation does not extract or retain any member data — it is purely a compatibility check.
 
 ### Implication for Link Order
 
@@ -428,7 +428,7 @@ During the Pass 2 archive validation callback (`sub_42A2D0`), architecture misma
 
 During archive member iteration in the input loop (line 854 of `main`), the first `cudadevrt`-containing archive triggers a special code path. If the LTO object list (`v353`) is empty, and the current archive name contains `"cudadevrt"`, the archive is skipped entirely (`goto LABEL_131`). This prevents the pre-compiled device runtime from being loaded when LTO has not yet produced any objects that would need it.
 
-If the LTO object list is non-empty (meaning other archives have already contributed IR), the cudadevrt archive is processed normally -- its members are extracted and passed to `sub_42AF40` for IR collection.
+If the LTO object list is non-empty (meaning other archives have already contributed IR), the cudadevrt archive is processed normally — its members are extracted and passed to `sub_42AF40` for IR collection.
 
 ### 3. IR Extraction for LTO (sub\_42AF40)
 
@@ -557,13 +557,13 @@ Modes 1 and 2 (the `-ghls` host linker script modes) skip the entire library res
 
 ### Relocatable vs Final Link
 
-In relocatable mode (`-r` / `byte_2A5F1E8`), library resolution runs normally -- the mode guard `dword_2A77DC0` is still 0 (device link). However, the downstream behavior changes: in a relocatable link, unresolved symbols are permitted, so the consequences of a missing library are less severe (the undefined references are carried forward into the output `.o` file rather than causing hard errors).
+In relocatable mode (`-r` / `byte_2A5F1E8`), library resolution runs normally — the mode guard `dword_2A77DC0` is still 0 (device link). However, the downstream behavior changes: in a relocatable link, unresolved symbols are permitted, so the consequences of a missing library are less severe (the undefined references are carried forward into the output `.o` file rather than causing hard errors).
 
 In final (non-relocatable) link mode, any symbol left unresolved after all libraries are processed results in a fatal error during the symbol resolution phase.
 
 ### LTO Interaction
 
-When LTO is active (`byte_2A5F288`), library resolution still runs identically -- it finds the `.a` files on disk. The difference manifests during the input loop: archives containing NVVM IR members are fed to the LTO compilation pipeline (`sub_4BC4A0` / `sub_4BC6F0`) rather than being directly merged. The `libcudadevrt` removal logic (described above) only activates when LTO is active and the `--keep-system-libraries` flag is not set.
+When LTO is active (`byte_2A5F288`), library resolution still runs identically — it finds the `.a` files on disk. The difference manifests during the input loop: archives containing NVVM IR members are fed to the LTO compilation pipeline (`sub_4BC4A0` / `sub_4BC6F0`) rather than being directly merged. The `libcudadevrt` removal logic (described above) only activates when LTO is active and the `--keep-system-libraries` flag is not set.
 
 ## Function Map
 
@@ -604,16 +604,16 @@ When LTO is active (`byte_2A5F288`), library resolution still runs identically -
 
 ## Cross-References
 
-- [Library Search (infra)](../infra/library-search.md) -- infrastructure-level documentation of the search context, tokenizer, path manipulation, and archive validation callback at reimplementation depth
-- [CLI Options](cli-options.md) -- `-L`, `-l`, `--library`, `--library-path`, `--keep-system-libraries`, `--cpu-arch` option registration
-- [Input Loop](input-loop.md) -- processes the resolved input file list (`qword_2A5F330`); extracts archive members that resolution identified
-- [Archives](../input/archives.md) -- archive member iteration (`sub_4BDAC0`, `sub_4BDAF0`, `sub_4BDB30`)
-- [libnvvm Integration](../lto/libnvvm-integration.md) -- `sub_4BC470` libnvvm.so loading; `--nvvmpath` requirement; the LTO compilation pipeline that consumes the IR collected from resolved libraries
-- [LTO Overview](../lto/overview.md) -- libcudadevrt removal during whole-program LTO; the full LTO pipeline flow
-- [Mode Dispatch](mode-dispatch.md) -- linker mode values (0/1/2) and their meaning; explains why modes 1 and 2 skip resolution
-- [Memory Arenas](../infra/memory-arenas.md) -- `sub_4307C0` / `sub_431000` arena allocator used for all search context allocations
-- [Error Reporting](../infra/error-reporting.md) -- `sub_467460` diagnostic emission; `unk_2A5B670` (fatal), `unk_2A5B610` (arch mismatch warning)
-- [Environment Variables](../config/env-vars.md) -- `LIBRARY_PATH` getenv call
+- [Library Search (infra)](../infra/library-search.md) — infrastructure-level documentation of the search context, tokenizer, path manipulation, and archive validation callback at reimplementation depth
+- [CLI Options](cli-options.md) — `-L`, `-l`, `--library`, `--library-path`, `--keep-system-libraries`, `--cpu-arch` option registration
+- [Input Loop](input-loop.md) — processes the resolved input file list (`qword_2A5F330`); extracts archive members that resolution identified
+- [Archives](../input/archives.md) — archive member iteration (`sub_4BDAC0`, `sub_4BDAF0`, `sub_4BDB30`)
+- [libnvvm Integration](../lto/libnvvm-integration.md) — `sub_4BC470` libnvvm.so loading; `--nvvmpath` requirement; the LTO compilation pipeline that consumes the IR collected from resolved libraries
+- [LTO Overview](../lto/overview.md) — libcudadevrt removal during whole-program LTO; the full LTO pipeline flow
+- [Mode Dispatch](mode-dispatch.md) — linker mode values (0/1/2) and their meaning; explains why modes 1 and 2 skip resolution
+- [Memory Arenas](../infra/memory-arenas.md) — `sub_4307C0` / `sub_431000` arena allocator used for all search context allocations
+- [Error Reporting](../infra/error-reporting.md) — `sub_467460` diagnostic emission; `unk_2A5B670` (fatal), `unk_2A5B610` (arch mismatch warning)
+- [Environment Variables](../config/env-vars.md) — `LIBRARY_PATH` getenv call
 
 ## Confidence Assessment
 

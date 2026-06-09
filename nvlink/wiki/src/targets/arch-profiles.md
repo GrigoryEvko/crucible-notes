@@ -1,8 +1,8 @@
 # Architecture Profiles
 
-> **Note:** This page defers to [structs/arch-profile.md](../structs/arch-profile.md) for the authoritative `ArchProfile` struct byte-level layout. The layout shown here is a condensed summary -- if the two pages ever disagree, `structs/arch-profile.md` is canonical (it was verified field-by-field against the decompiled constructor `sub_484DB0` at `0x484DB0`).
+> **Note:** This page defers to [structs/arch-profile.md](../structs/arch-profile.md) for the authoritative `ArchProfile` struct byte-level layout. The layout shown here is a condensed summary — if the two pages ever disagree, `structs/arch-profile.md` is canonical (it was verified field-by-field against the decompiled constructor `sub_484DB0` at `0x484DB0`).
 
-nvlink maintains a compile-time database of every GPU architecture it can target. The database is a lazily-initialized singleton hash map (`qword_2A5F8D8`) populated by `sub_484F50` (53,974 bytes, 1,330 decompiled lines). Each entry is a 136-byte **architecture profile** struct created by `sub_484DB0`. For every physical architecture (e.g. `sm_100`) the database stores three profile variants -- real (`sm_`), virtual (`compute_`), and LTO (`lto_`) -- interlinked by pointer chains. Companion functions parse architecture name strings into numeric IDs, detect suffix modifiers, and handle legacy/deprecated architectures.
+nvlink maintains a compile-time database of every GPU architecture it can target. The database is a lazily-initialized singleton hash map (`qword_2A5F8D8`) populated by `sub_484F50` (53,974 bytes, 1,330 decompiled lines). Each entry is a 136-byte **architecture profile** struct created by `sub_484DB0`. For every physical architecture (e.g. `sm_100`) the database stores three profile variants — real (`sm_`), virtual (`compute_`), and LTO (`lto_`) — interlinked by pointer chains. Companion functions parse architecture name strings into numeric IDs, detect suffix modifiers, and handle legacy/deprecated architectures.
 
 ## Key Functions
 
@@ -68,7 +68,7 @@ The `capability_data` region at offsets +80..+127 stores three 128-bit vectors l
 
 ## Profile Initialization Sequence
 
-`sub_484F50` is called lazily -- every code path that needs architecture information calls it, but the `byte_2A5F8D0` guard ensures the body executes exactly once. The function uses `setjmp`/`longjmp` for error handling (the same pattern used throughout nvlink for OOM recovery).
+`sub_484F50` is called lazily — every code path that needs architecture information calls it, but the `byte_2A5F8D0` guard ensures the body executes exactly once. The function uses `setjmp`/`longjmp` for error handling (the same pattern used throughout nvlink for OOM recovery).
 
 The initialization proceeds in strict order:
 
@@ -181,7 +181,7 @@ compute_100f->suffix_f_flag = 1;
 lto_100f->suffix_f_flag = 1;            // LTO also gets the flag
 ```
 
-The ISA class name for all suffix variants is the string `"(profile_sm_NNN)->isaClass"` rather than a family name like `"Blackwell"`. This string is a literal in the binary -- it is not a macro expansion but rather a debug-friendly name indicating ISA inheritance. The LTO define string for 'a' variants appends `"0"` to the suffix: `"-D__CUDA_ARCH__=100a0"`, `"-D__CUDA_ARCH__=90a0"`, etc. Similarly 'f' variants get `"-D__CUDA_ARCH__=100f0"`.
+The ISA class name for all suffix variants is the string `"(profile_sm_NNN)->isaClass"` rather than a family name like `"Blackwell"`. This string is a literal in the binary — it is not a macro expansion but rather a debug-friendly name indicating ISA inheritance. The LTO define string for 'a' variants appends `"0"` to the suffix: `"-D__CUDA_ARCH__=100a0"`, `"-D__CUDA_ARCH__=90a0"`, etc. Similarly 'f' variants get `"-D__CUDA_ARCH__=100f0"`.
 
 ### Step 4: Finalize
 
@@ -199,29 +199,29 @@ The 22 base architectures registered by `sub_484F50`, in order of registration:
 
 | # | Real Profile | Virtual Profile | LTO Profile | ISA Class | `__CUDA_ARCH__` | Suffix Variants | Family |
 |---|---|---|---|---|---|---|---|
-| 1 | `sm_75` | `compute_75` | `lto_75` | Turing | 750 | -- | Turing |
-| 2 | `sm_80` | `compute_80` | `lto_80` | Ampere | 800 | -- | Ampere |
-| 3 | `sm_86` | `compute_86` | `lto_86` | Ampere | 860 | -- | Ampere |
-| 4 | `sm_87` | `compute_87` | `lto_87` | Ampere | 870 | -- | Ampere |
-| 5 | `sm_88` | `compute_88` | `lto_88` | Ampere | 880 | -- | Ampere |
-| 6 | `sm_89` | `compute_89` | `lto_89` | Ada | 890 | -- | Ada |
-| 7 | `sm_90` | `compute_90` | `lto_90` | Hopper | 900 | -- | Hopper |
+| 1 | `sm_75` | `compute_75` | `lto_75` | Turing | 750 | — | Turing |
+| 2 | `sm_80` | `compute_80` | `lto_80` | Ampere | 800 | — | Ampere |
+| 3 | `sm_86` | `compute_86` | `lto_86` | Ampere | 860 | — | Ampere |
+| 4 | `sm_87` | `compute_87` | `lto_87` | Ampere | 870 | — | Ampere |
+| 5 | `sm_88` | `compute_88` | `lto_88` | Ampere | 880 | — | Ampere |
+| 6 | `sm_89` | `compute_89` | `lto_89` | Ada | 890 | — | Ada |
+| 7 | `sm_90` | `compute_90` | `lto_90` | Hopper | 900 | — | Hopper |
 | 8 | `sm_90a` | `compute_90a` | `lto_90a` | (sm_90) | 900 | a | Hopper |
-| 9 | `sm_100` | `compute_100` | `lto_100` | Blackwell | 1000 | -- | Blackwell |
+| 9 | `sm_100` | `compute_100` | `lto_100` | Blackwell | 1000 | — | Blackwell |
 | 10 | `sm_100a` | `compute_100a` | `lto_100a` | (sm_100) | 1000 | a | Blackwell |
 | 11 | `sm_100f` | `compute_100f` | `lto_100f` | (sm_100) | 1000 | f | Blackwell |
-| 12 | `sm_110` | `compute_110` | `lto_110` | Blackwell | 1100 | -- | Blackwell |
+| 12 | `sm_110` | `compute_110` | `lto_110` | Blackwell | 1100 | — | Blackwell |
 | 13 | `sm_110a` | `compute_110a` | `lto_110a` | (sm_110) | 1100 | a | Blackwell |
 | 14 | `sm_110f` | `compute_110f` | `lto_110f` | (sm_110) | 1100 | f | Blackwell |
-| 15 | `sm_103` | `compute_103` | `lto_103` | Blackwell | 1030 | -- | Blackwell |
+| 15 | `sm_103` | `compute_103` | `lto_103` | Blackwell | 1030 | — | Blackwell |
 | 16 | `sm_103a` | `compute_103a` | `lto_103a` | (sm_103) | 1030 | a | Blackwell |
 | 17 | `sm_103f` | `compute_103f` | `lto_103f` | (sm_103) | 1030 | f | Blackwell |
-| 18 | `sm_120` | `compute_120` | `lto_120` | Blackwell | 1200 | -- | Blackwell |
+| 18 | `sm_120` | `compute_120` | `lto_120` | Blackwell | 1200 | — | Blackwell |
 | 19 | `sm_120a` | `compute_120a` | `lto_120a` | (sm_120) | 1200 | a | Blackwell |
 | 20 | `sm_120f` | `compute_120f` | `lto_120f` | (sm_120) | 1200 | f | Blackwell |
-| 21 | `sm_121` | `compute_121` | `lto_121` | Blackwell | 1210 | -- | Blackwell |
+| 21 | `sm_121` | `compute_121` | `lto_121` | Blackwell | 1210 | — | Blackwell |
 | 22 | `sm_121a` | `compute_121a` | `lto_121a` | (sm_121) | 1210 | a | Blackwell |
-| -- | `sm_121f` | `compute_121f` | `lto_121f` | (sm_121) | 1210 | f | Blackwell |
+| — | `sm_121f` | `compute_121f` | `lto_121f` | (sm_121) | 1210 | f | Blackwell |
 
 Total hash map entries: 22 base architectures x 3 variants (sm/compute/lto) + suffix variants (8 'a' + 8 'f' x 3 each) = **66 base + 48 suffix = 114 profile entries** in `qword_2A5F8D8`.
 
@@ -267,7 +267,7 @@ sm_75.compat_2      -> { compute_75 }
 compute_75.compat_2 -> { sm_75 }
 ```
 
-Note: this offset used to be mis-documented on this page as `virtual_profile_ptr`. It is in fact a list head -- the virtual pointer lives at offset +72 (see `structs/arch-profile.md`).
+Note: this offset used to be mis-documented on this page as `virtual_profile_ptr`. It is in fact a list head — the virtual pointer lives at offset +72 (see `structs/arch-profile.md`).
 
 ## Architecture Name Parsing
 
@@ -294,7 +294,7 @@ uint32_t arch_extract_sm_number(const char *name) {
 }
 ```
 
-The `compute_` path has a length check (`strlen > 9`). A 9-character `compute_` string would be `"compute_X"` (single digit) -- these are handled as valid only if the total length exceeds 9, meaning two-or-more-digit architecture numbers. Single-digit compute architectures (which would be ancient, pre-Fermi) fall through to the LTO check and ultimately to the error path.
+The `compute_` path has a length check (`strlen > 9`). A 9-character `compute_` string would be `"compute_X"` (single digit) — these are handled as valid only if the total length exceeds 9, meaning two-or-more-digit architecture numbers. Single-digit compute architectures (which would be ancient, pre-Fermi) fall through to the LTO check and ultimately to the error path.
 
 ### sub_44E490: Is Virtual
 
@@ -395,10 +395,10 @@ These correspond to historical NVIDIA GPU architectures no longer supported for 
 | 30, 32, 35, 37 | Kepler (GK104/GK110/GK210) | 2012-2014 |
 | 50, 52, 53 | Maxwell (GM107/GM200/GM204) | 2014-2016 |
 | 60, 61, 62 | Pascal (GP100/GP102/GP106) | 2016-2018 |
-| 69 | (unknown/internal) | -- |
+| 69 | (unknown/internal) | — |
 | 70 | Volta (GV100) | 2017-2019 |
 
-Notably absent from both the active database and the deprecated list: sm_72 (Xavier Volta) and sm_71 (not a real arch). sm_69 is listed as deprecated but does not correspond to any known public GPU -- it is an internal test target.
+Notably absent from both the active database and the deprecated list: sm_72 (Xavier Volta) and sm_71 (not a real arch). sm_69 is listed as deprecated but does not correspond to any known public GPU — it is an internal test target.
 
 ### The SASS Capability Check
 
@@ -440,7 +440,7 @@ The capability data is consumed by the finalization pipeline (`sub_4709E0`, `sub
 
 ## Thread Safety
 
-The init-once guard `byte_2A5F8D0` is protected by `sub_4FFBF0(4)` / `sub_4FFC10(4)`, which acquire and release the fourth slot in nvlink's global mutex array. This makes the lazy initialization thread-safe for the concurrent finalization (JIT API) path. Once initialized, the hash map and profile structs are immutable -- no locking is needed for read-only lookups.
+The init-once guard `byte_2A5F8D0` is protected by `sub_4FFBF0(4)` / `sub_4FFC10(4)`, which acquire and release the fourth slot in nvlink's global mutex array. This makes the lazy initialization thread-safe for the concurrent finalization (JIT API) path. Once initialized, the hash map and profile structs are immutable — no locking is needed for read-only lookups.
 
 ## How Profiles Are Used
 
@@ -476,19 +476,19 @@ For general architecture details (hardware specs, product lines), see the [ptxas
 ## Cross-References
 
 ### nvlink Internal
-- [Compatibility](compatibility.md) -- architecture compatibility checking using profile data
-- [SM100 Blackwell](sm100-blackwell.md) -- Blackwell-specific ISA and encoding details
-- [SM103/110/120/121](sm103-121.md) -- extended Blackwell family profiles
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- embedded ptxas vtable dispatch (7 maps per SM)
-- [Device ELF Format](../elf/device-elf-format.md) -- e_flags encoding derived from profiles
+- [Compatibility](compatibility.md) — architecture compatibility checking using profile data
+- [SM100 Blackwell](sm100-blackwell.md) — Blackwell-specific ISA and encoding details
+- [SM103/110/120/121](sm103-121.md) — extended Blackwell family profiles
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — embedded ptxas vtable dispatch (7 maps per SM)
+- [Device ELF Format](../elf/device-elf-format.md) — e_flags encoding derived from profiles
 
 ### Sibling Wikis
-- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) -- standalone ptxas profile construction (`sub_6765E0`, 54KB) and 7 parallel capability dispatch tables
-- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- SM75/SM80/SM86/SM87/SM89 targets in standalone ptxas
-- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- SM89/SM90 targets in standalone ptxas
-- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) -- SM100+ targets in standalone ptxas
-- [cicc: Targets Index](../../cicc/targets/index.html) -- cicc compiler target definitions
-- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc Volta through Ada targets
-- [cicc: SM90 Hopper](../../cicc/targets/sm90-hopper.html) -- cicc Hopper target
-- [cicc: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html) -- cicc Blackwell target
-- [cicc: SM120](../../cicc/targets/sm120.html) -- cicc SM120 consumer target
+- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) — standalone ptxas profile construction (`sub_6765E0`, 54KB) and 7 parallel capability dispatch tables
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) — SM75/SM80/SM86/SM87/SM89 targets in standalone ptxas
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) — SM89/SM90 targets in standalone ptxas
+- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) — SM100+ targets in standalone ptxas
+- [cicc: Targets Index](../../cicc/targets/index.html) — cicc compiler target definitions
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) — cicc Volta through Ada targets
+- [cicc: SM90 Hopper](../../cicc/targets/sm90-hopper.html) — cicc Hopper target
+- [cicc: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html) — cicc Blackwell target
+- [cicc: SM120](../../cicc/targets/sm120.html) — cicc SM120 consumer target

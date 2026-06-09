@@ -1,6 +1,6 @@
 # IR Node Infrastructure
 
-> **Note**: This page documents the embedded ptxas IR in nvlink v13.0.88 -- specifically the 96-byte minimal IR node and 32-byte operand slot used by ISel pattern matchers, plus the NVInst instruction object. The standalone ptxas binary uses a different in-memory layout (296-byte Ori instruction inside a per-function Code Object); for the Ori IR architecture, instruction representation, and CFG, see: [ptxas IR overview](../../ptxas/ir/overview.html), [instructions](../../ptxas/ir/instructions.html), [registers](../../ptxas/ir/registers.html), [CFG](../../ptxas/ir/cfg.html), [data structures](../../ptxas/ir/data-structures.html).
+> **Note**: This page documents the embedded ptxas IR in nvlink v13.0.88 — specifically the 96-byte minimal IR node and 32-byte operand slot used by ISel pattern matchers, plus the NVInst instruction object. The standalone ptxas binary uses a different in-memory layout (296-byte Ori instruction inside a per-function Code Object); for the Ori IR architecture, instruction representation, and CFG, see: [ptxas IR overview](../../ptxas/ir/overview.html), [instructions](../../ptxas/ir/instructions.html), [registers](../../ptxas/ir/registers.html), [CFG](../../ptxas/ir/cfg.html), [data structures](../../ptxas/ir/data-structures.html).
 
 The IR node subsystem is the central data structure layer of the embedded ptxas backend. Every instruction, operand, and modifier field in the compiler pipeline is represented as an IR node or a field within one. Two functions dominate the entire binary by call count: `sub_530FB0` (`IRNode_GetOperand`, 31,399 callers) returns a pointer to the Nth operand of any IR node, and `sub_A49150` (`NVInst::getOperandField`, 30,768 callers) reads any named field from any instruction. Together they form the universal accessor layer through which every optimization pass, instruction selector, register allocator, and encoder interacts with instructions. This page documents the IR node structure layout, the operand slot format, the NVInst instruction object (a ~1,550-byte structure initialized by an 11 KB constructor), and the four giant operand dispatch switches that total 453 KB of compiled code.
 
@@ -79,7 +79,7 @@ Four massive switch-on-opcode functions that implement per-instruction read/writ
 
 ## IR Node Structure Layout
 
-The minimal IR node structure is accessed by the 22 leaf functions at `0x530E80`--`0x530FD0`. This is the structure passed to ISel pattern matchers and MercExpand handlers -- a lightweight view of any instruction or operand.
+The minimal IR node structure is accessed by the 22 leaf functions at `0x530E80`--`0x530FD0`. This is the structure passed to ISel pattern matchers and MercExpand handlers — a lightweight view of any instruction or operand.
 
 ```text
 IRNode (minimum 96 bytes, exact total size unknown)
@@ -142,9 +142,9 @@ The `type_tag` byte at offset +0 in both the IR node and each operand slot encod
 | 8 | **TexRef** | `sub_530F70` | `sub_4C6AD0` | Texture or surface resource reference. 8-bit resource index at offset +4. Initializer identical to type 4 and type 5; distinguished solely by the type tag. Used by TEX/TLD/TXQ/SULD/SUST instructions (opcode families near 270). |
 | 9 | **Predicate** | `sub_530ED0` | `sub_4C5F90` | Predicate register (P0-P6, PT). Created conditionally: bit test at position `8*param+1` in the instruction bitstream selects type 9 (predicate) vs type 1 (immediate). 5-bit register number from bitstream at offset `8*param+3`. |
 | 10 | **Uniform** | `sub_530EC0` | `sub_4C60F0` | Uniform register (UR0-UR63). Uses the same initializer as type 2 but passed as `a5=10`. The initializer decodes 4-bit register class and 10-bit register number from distinct bitstream positions. Register value 1023 is the wildcard "any" class. |
-| 11 | **UReg64** | `sub_530F60` | `sub_4C6500` | 64-bit uniform register pair. Simple operand created via `sub_4C6500` with `a5=11`. No register decoding -- the initializer only checks the destination/source bitmask. Appears as destination operand in 64-bit uniform load/store patterns (opcode 11). |
+| 11 | **UReg64** | `sub_530F60` | `sub_4C6500` | 64-bit uniform register pair. Simple operand created via `sub_4C6500` with `a5=11`. No register decoding — the initializer only checks the destination/source bitmask. Appears as destination operand in 64-bit uniform load/store patterns (opcode 11). |
 | 12 | **CbufReg** | (none) | `sub_4C60F0` | Constant-buffer-indexed register. Descriptor-init-only type: when `sub_4C60F0` receives `a5=12`, it overwrites `type_tag` to 2 (Register) and decodes a 6-bit register class from `dword_1D492A0[]` and a 9-bit doubled register number (511 maps to wildcard 1023). Never survives past init. |
-| 13 | **CbufRef** | `sub_530F20` | `sub_4C6640` / `sub_A49020` | Constant buffer reference (`c[bank][offset]`). Created two ways: (1) `sub_4C6640` stores a 12-bit constant-buffer address in `extended` (+8); (2) `sub_A49020` stores a bank index in `extended` (+8) and zeros `modifier_b`. In ISel patterns, checked first -- the operand at position `first_src_index` is tested for type 13 before checking subsequent source operands. |
+| 13 | **CbufRef** | `sub_530F20` | `sub_4C6640` / `sub_A49020` | Constant buffer reference (`c[bank][offset]`). Created two ways: (1) `sub_4C6640` stores a 12-bit constant-buffer address in `extended` (+8); (2) `sub_A49020` stores a bank index in `extended` (+8) and zeros `modifier_b`. In ISel patterns, checked first — the operand at position `first_src_index` is tested for type 13 before checking subsequent source operands. |
 | 14 | **CbufAddr** | `sub_530F30` | `sub_A49040` | Constant buffer address with offset. `sub_A49040` sets `type_tag=14`, stores address value in `extended` (+8), and sets `modifier_b=2`. In ISel pattern matchers, typically checked in an OR pattern with type 16: `isType14(op) \|\| isType16(op)`. Appears as the last constant-buffer source operand in multi-source patterns. |
 | 15 | **SymExpr** | `sub_530F10` | (operand conversion) | Symbol expression or resolved reference. In ISel pattern matchers, always checked in an OR pattern with type 3: `isSymbol(op) \|\| isType15(op)`. Semantically equivalent to Symbol but marks a resolved or elaborated form. Used in branch/call patterns where the target may be either a raw label (type 3) or a computed symbol expression (type 15). |
 | 16 | **CbufImm** | `sub_530F40` | (operand conversion) | Constant buffer immediate offset. In ISel pattern matchers, always checked in an OR pattern with type 14: `isType14(op) \|\| isType16(op)`. Semantically similar to CbufAddr but represents an immediate (literal) constant-buffer offset rather than an address-register-based one. |
@@ -183,7 +183,7 @@ The identity lookup table at `0x1E31200` (10 entries, indexed by `type_tag - 2`)
 | Index | Tag | Identity Value | Meaning |
 |---|---|---|---|
 | 0 | 2 (Register) | 255 | RZ (zero register) |
-| 1 | 3 (Symbol) | (excluded by bitmask) | -- |
+| 1 | 3 (Symbol) | (excluded by bitmask) | — |
 | 2 | 4 (ConstExpr) | 0 | Null constant |
 | 3 | 5 (CondCode) | 15 | Always-true condition |
 | 4 | 6 (MemRef) | 0 | Null memory reference |
@@ -193,7 +193,7 @@ The identity lookup table at `0x1E31200` (10 entries, indexed by `type_tag - 2`)
 | 8 | 10 (Uniform) | 63 | URZ (uniform zero register) |
 | 9 | 11 (UReg64) | 31 | Default 64-bit uniform sentinel |
 
-The identity values match the PTX ISA conventions: RZ is register 255, PT is predicate 7, URZ is uniform register 63. The bitmask `0xFF6` = `0b111111110110` excludes type 0 (unused) and type 3 (Symbol -- symbols have no identity value since every symbol is unique).
+The identity values match the PTX ISA conventions: RZ is register 255, PT is predicate 7, URZ is uniform register 63. The bitmask `0xFF6` = `0b111111110110` excludes type 0 (unused) and type 3 (Symbol — symbols have no identity value since every symbol is unique).
 
 The companion function `sub_A48FE0` (`NVOperand::setToIdentity`) initializes an operand to its identity state:
 
@@ -285,11 +285,11 @@ The constructor at `sub_A4AB10` follows this sequence:
 
 | Bit | Meaning |
 |---|---|
-| 0 | `has_special_flag` -- instruction has a special processing flag |
-| 1 | `invalid_encoding` -- set by `markInvalid` (`sub_A490E0`) |
-| 3 | `unimplemented_opcode` -- set by `markUnimplemented` (`sub_A49100`) |
-| 8 | `unimplemented_mark` -- checked by `needsRegisterAllocation` |
-| 10 | `post_decode_validated` -- set after decode + analysis pass |
+| 0 | `has_special_flag` — instruction has a special processing flag |
+| 1 | `invalid_encoding` — set by `markInvalid` (`sub_A490E0`) |
+| 3 | `unimplemented_opcode` — set by `markUnimplemented` (`sub_A49100`) |
+| 8 | `unimplemented_mark` — checked by `needsRegisterAllocation` |
+| 10 | `post_decode_validated` — set after decode + analysis pass |
 
 ### Analysis Flag Bits (offset +1136)
 
@@ -399,16 +399,16 @@ The two-phase lookup (existence check then value extraction) means every field a
 
 | Initializer | Operand type |
 |---|---|
-| `sub_4C5F90` | `initPredicateOp` -- Predicate register (type 9) or immediate (type 1); always last operand |
-| `sub_4C60F0` | `initRegisterOp` -- Register (type 2), uniform (type 10), or cbuf-register (type 12, remapped to 2) |
-| `sub_4C6380` | `initImmediateOp` -- Immediate value (type 1); 5-bit from bitstream |
-| `sub_4C6500` | `initSimpleOp` -- Simple tag-only operand; used for UReg64 (type 11) and others |
-| `sub_4C6640` | `initCbufRefOp` -- Constant buffer reference (type 13); 12-bit cbuf address |
-| `sub_4C67B0` | `initCondCodeOp` -- Condition code (type 5); 8-bit value |
-| `sub_4C6940` | `initConstExprOp` -- Constant expression (type 4); 8-bit value |
-| `sub_4C6AD0` | `initTexRefOp` -- Texture/surface reference (type 8); 8-bit resource index |
-| `sub_4C6C60` | `initMemRefOp` -- Memory reference (type 6); 12-bit addressing mode |
-| `sub_4C6DC0` | `initSymbolOp` -- Symbol (type 3); 2-bit mode + 3-bit + 8-bit fields |
+| `sub_4C5F90` | `initPredicateOp` — Predicate register (type 9) or immediate (type 1); always last operand |
+| `sub_4C60F0` | `initRegisterOp` — Register (type 2), uniform (type 10), or cbuf-register (type 12, remapped to 2) |
+| `sub_4C6380` | `initImmediateOp` — Immediate value (type 1); 5-bit from bitstream |
+| `sub_4C6500` | `initSimpleOp` — Simple tag-only operand; used for UReg64 (type 11) and others |
+| `sub_4C6640` | `initCbufRefOp` — Constant buffer reference (type 13); 12-bit cbuf address |
+| `sub_4C67B0` | `initCondCodeOp` — Condition code (type 5); 8-bit value |
+| `sub_4C6940` | `initConstExprOp` — Constant expression (type 4); 8-bit value |
+| `sub_4C6AD0` | `initTexRefOp` — Texture/surface reference (type 8); 8-bit resource index |
+| `sub_4C6C60` | `initMemRefOp` — Memory reference (type 6); 12-bit addressing mode |
+| `sub_4C6DC0` | `initSymbolOp` — Symbol (type 3); 2-bit mode + 3-bit + 8-bit fields |
 
 6. **Modifier field decoders**: N calls to `sub_50xxxx`/`sub_51xxxx` functions that extract modifier fields from the instruction bitstream at `inst+536..+560+`.
 
@@ -519,13 +519,13 @@ Use-def chains are the fundamental data structure for SSA-based optimizations in
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) -- full address map showing IR node location at `0x530000`--`0x620000`
-- [ISel Hubs](isel-hubs.md) -- ISel mega-hubs that consume IR nodes via `sub_530FB0` and `sub_A49150`
-- [Register Allocation](register-allocation.md) -- regalloc pass that reads/modifies IR node register fields
-- [Peephole](peephole.md) -- peephole passes that rewrite IR node operands
+- [Embedded ptxas Overview](overview.md) — full address map showing IR node location at `0x530000`--`0x620000`
+- [ISel Hubs](isel-hubs.md) — ISel mega-hubs that consume IR nodes via `sub_530FB0` and `sub_A49150`
+- [Register Allocation](register-allocation.md) — regalloc pass that reads/modifies IR node register fields
+- [Peephole](peephole.md) — peephole passes that rewrite IR node operands
 
 ### Sibling Wikis
-- [ptxas: IR Overview](../../ptxas/ir/overview.html) -- standalone ptxas Ori IR architecture
-- [ptxas: IR Instructions](../../ptxas/ir/instructions.html) -- Ori instruction representation
-- [ptxas: IR Registers](../../ptxas/ir/registers.html) -- register file and classes
-- [ptxas: IR Data Structures](../../ptxas/ir/data-structures.html) -- CFG and data structure internals
+- [ptxas: IR Overview](../../ptxas/ir/overview.html) — standalone ptxas Ori IR architecture
+- [ptxas: IR Instructions](../../ptxas/ir/instructions.html) — Ori instruction representation
+- [ptxas: IR Registers](../../ptxas/ir/registers.html) — register file and classes
+- [ptxas: IR Data Structures](../../ptxas/ir/data-structures.html) — CFG and data structure internals

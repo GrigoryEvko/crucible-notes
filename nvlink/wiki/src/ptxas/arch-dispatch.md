@@ -2,7 +2,7 @@
 
 > **Note**: This page documents the nvlink-specific 7-vtable SM dispatch table used by the embedded ptxas copy in nvlink v13.0.88. The standalone ptxas binary uses a structurally similar 7-parallel-hash-map design at different addresses; for the per-SM target catalog and CUDA_ARCH macro values, see the standalone wiki: [SM Architecture Map](../../ptxas/targets/index.html), [Turing/Ampere](../../ptxas/targets/turing-ampere.html), [Ada/Hopper](../../ptxas/targets/ada-hopper.html), [Blackwell](../../ptxas/targets/blackwell.html).
 
-The embedded ptxas compiler in nvlink supports 22 architecture strings across 12 distinct silicon targets. Rather than scattering per-SM `if/else` chains throughout 24 MB of code, the compiler concentrates all architecture-dependent selection into a single initialization function (`sub_15C0CE0`) that populates 7 hash-map vtables. Each vtable maps an architecture string (e.g. `"sm_90"`) to a function pointer or data pointer implementing that SM's behavior for one compilation aspect. Callers never check the SM version directly -- they look up the appropriate callback from the correct vtable and call through the function pointer. This page documents the singleton initializer, the 7 vtable maps, the 22 registered architecture strings, pointer sharing between SM variants, the accessor/dispatcher functions, and the related 11-byte ISel mega-hub wrappers at `0x5272D0`--`0x527310`.
+The embedded ptxas compiler in nvlink supports 22 architecture strings across 12 distinct silicon targets. Rather than scattering per-SM `if/else` chains throughout 24 MB of code, the compiler concentrates all architecture-dependent selection into a single initialization function (`sub_15C0CE0`) that populates 7 hash-map vtables. Each vtable maps an architecture string (e.g. `"sm_90"`) to a function pointer or data pointer implementing that SM's behavior for one compilation aspect. Callers never check the SM version directly — they look up the appropriate callback from the correct vtable and call through the function pointer. This page documents the singleton initializer, the 7 vtable maps, the 22 registered architecture strings, pointer sharing between SM variants, the accessor/dispatcher functions, and the related 11-byte ISel mega-hub wrappers at `0x5272D0`--`0x527310`.
 
 ## Key Functions
 
@@ -46,16 +46,16 @@ All seven maps use mode-0 (string keys) with `sub_44E000` (MurmurHash3) and `sub
 
 ## Singleton Initialization
 
-`sub_15C0CE0` is called lazily on every vtable access. It checks `byte_2A644C0` and returns immediately if already initialized. The initialization is wrapped in `setjmp`/`longjmp` for exception safety -- if any allocation or registration fails, the longjmp path restores the error context without leaving the maps in a half-initialized state.
+`sub_15C0CE0` is called lazily on every vtable access. It checks `byte_2A644C0` and returns immediately if already initialized. The initialization is wrapped in `setjmp`/`longjmp` for exception safety — if any allocation or registration fails, the longjmp path restores the error context without leaving the maps in a half-initialized state.
 
 The init sequence:
 
 1. Acquire lock via `sub_4FFBF0(5)` (mutex index 5).
 2. Save the current error handler context via `sub_44F410(5, ...)`.
 3. Install a `setjmp` landing pad. On longjmp, restore the previous error handler and set error flags.
-4. Double-check `byte_2A644C0` (DCL pattern -- another thread may have initialized while we waited on the lock).
+4. Double-check `byte_2A644C0` (DCL pattern — another thread may have initialized while we waited on the lock).
 5. Call `sub_45CAE0(0, 0)` to save the current arena state (for rollback on failure).
-6. Create 7 hash maps via `sub_4489C0(sub_44E000, sub_44E180, 8)` -- initial capacity hint of 8 slots each.
+6. Create 7 hash maps via `sub_4489C0(sub_44E000, sub_44E180, 8)` — initial capacity hint of 8 slots each.
 7. Register all architecture entries (154 insert calls total).
 8. Register `sub_15C1CA0` as the cleanup callback via `sub_45CC80`.
 9. Restore the arena state via `sub_45CAE0(saved, 0)`.
@@ -67,7 +67,7 @@ The init sequence:
 
 ### Map B8: cpf_optx callback (`qword_2A644B8`)
 
-Each entry is a function pointer with signature `bool (*)(int64_t context, int64_t compilation_state)`. The callback resolves the `"cpf_optx"` option through the compilation state's vtable at offset +40, stores the resolved option ID at compilation_state+100, then calls `sub_166DA30(state, 0)` to apply the option. The `0` argument distinguishes this from map B0. All 12 silicon targets register distinct function pointers, though the bodies are structurally identical -- they differ only in address, allowing per-SM specialization through different `sub_166DA30` dispatch paths within the same codegen driver.
+Each entry is a function pointer with signature `bool (*)(int64_t context, int64_t compilation_state)`. The callback resolves the `"cpf_optx"` option through the compilation state's vtable at offset +40, stores the resolved option ID at compilation_state+100, then calls `sub_166DA30(state, 0)` to apply the option. The `0` argument distinguishes this from map B0. All 12 silicon targets register distinct function pointers, though the bodies are structurally identical — they differ only in address, allowing per-SM specialization through different `sub_166DA30` dispatch paths within the same codegen driver.
 
 Representative decompilation (sm_75 entry, `sub_15C2AA0`):
 ```c
@@ -127,7 +127,7 @@ Created during initialization but no `sub_448E70` insert calls are observed in t
 
 ### Map 90: perf-stats callback (`qword_2A64490`)
 
-Each entry is a function pointer with signature `int (*)(void)`. All observed callbacks call `sub_467460(dword_2A5EEF0, "sm_20", "--perf-stats")`, which queries the option database for the `--perf-stats` flag relative to a baseline `sm_20` profile. Despite using the same pattern, each SM registers a distinct function address -- for future per-SM perf-stats customization or to allow hot-patching (the distinct addresses ensure the dispatch table can differentiate callers).
+Each entry is a function pointer with signature `int (*)(void)`. All observed callbacks call `sub_467460(dword_2A5EEF0, "sm_20", "--perf-stats")`, which queries the option database for the `--perf-stats` flag relative to a baseline `sm_20` profile. Despite using the same pattern, each SM registers a distinct function address — for future per-SM perf-stats customization or to allow hot-patching (the distinct addresses ensure the dispatch table can differentiate callers).
 
 Representative decompilation (sm_75 entry, `sub_15C1C80`):
 ```c
@@ -138,7 +138,7 @@ int perf_stats_sm75(void) {
 
 ### Map 88: codegen options callback (`qword_2A64488`)
 
-Each entry is a function pointer with signature `int64_t (*)(DWORD* arch_params, int reg_count, int smem_size, bool flag_a, bool flag_b, uint32_t* result)`. These callbacks compute architecture-specific codegen parameters -- primarily occupancy calculations. They read hardware constants from the `arch_params` structure at offsets 20 (total regs), 21 (total smem), 23 (warp size), 27 (max blocks), and 28 (reg granularity), then compute the maximum number of concurrent blocks given the resource requirements. The result is written through the `result` pointer, and the function returns 0 on success or a nonzero error code (1 or 2) on constraint violation.
+Each entry is a function pointer with signature `int64_t (*)(DWORD* arch_params, int reg_count, int smem_size, bool flag_a, bool flag_b, uint32_t* result)`. These callbacks compute architecture-specific codegen parameters — primarily occupancy calculations. They read hardware constants from the `arch_params` structure at offsets 20 (total regs), 21 (total smem), 23 (warp size), 27 (max blocks), and 28 (reg granularity), then compute the maximum number of concurrent blocks given the resource requirements. The result is written through the `result` pointer, and the function returns 0 on success or a nonzero error code (1 or 2) on constraint violation.
 
 Representative decompilation (sm_75 entry, `sub_15C2610`):
 ```c
@@ -174,7 +174,7 @@ The following table lists every architecture string registered in `sub_15C0CE0`,
 
 ### Per-Arch-String Dispatch Table
 
-The complete per-architecture-string dispatch table below expands every variant alias. This is the full set of 22 architecture strings exactly as registered in `sub_15C0CE0`, in registration order. Each row shows the 6 function pointer addresses and the A0 data pointer stored for that exact key string. Rows sharing a silicon group are identical -- listed individually to serve as a lookup reference for any arch string encountered in the binary.
+The complete per-architecture-string dispatch table below expands every variant alias. This is the full set of 22 architecture strings exactly as registered in `sub_15C0CE0`, in registration order. Each row shows the 6 function pointer addresses and the A0 data pointer stored for that exact key string. Rows sharing a silicon group are identical — listed individually to serve as a lookup reference for any arch string encountered in the binary.
 
 ```text
 Arch String  B8 (cpf_optx)  B0 (cpf_alt)   A8 (nv.info)   A0 (CC data)    90 (perf)      88 (codegen)
@@ -259,7 +259,7 @@ This means the 22 architecture strings collapse to 12 distinct codegen configura
 
 Five accessor functions wrap the lazy-init + hash-lookup pattern. Each calls `sub_15C0CE0` to ensure tables are initialized, then calls `sub_449A80` to look up the appropriate map.
 
-### `sub_15C3D60` -- cpf_optx dispatcher
+### `sub_15C3D60` — cpf_optx dispatcher
 
 ```c
 int64_t lookup_cpf_optx(uint64_t arch_key, bool mode) {
@@ -273,7 +273,7 @@ int64_t lookup_cpf_optx(uint64_t arch_key, bool mode) {
 
 The `mode` boolean selects between the two cpf_optx maps. The caller (in the codegen driver) sets `mode=1` for standard compilation and `mode=0` for an alternate pass ordering.
 
-### `sub_15C3DB0` -- nv.info emitter lookup
+### `sub_15C3DB0` — nv.info emitter lookup
 
 ```c
 int64_t lookup_nv_info_emitter(uint64_t arch_key) {
@@ -284,7 +284,7 @@ int64_t lookup_nv_info_emitter(uint64_t arch_key) {
 
 Returns the per-SM compilation state factory function. The returned function pointer is called to create a 1,936-byte codegen context structure.
 
-### `sub_15C3DD0` -- compute capability lookup
+### `sub_15C3DD0` — compute capability lookup
 
 ```c
 uint32_t lookup_compute_capability(uint64_t arch_key) {
@@ -298,7 +298,7 @@ uint32_t lookup_compute_capability(uint64_t arch_key) {
 
 Returns a 32-bit compute capability encoding. The sentinel `0xFFFFFFFF` indicates an unrecognized architecture string.
 
-### `sub_15C3E00` -- perf-stats dispatch
+### `sub_15C3E00` — perf-stats dispatch
 
 ```c
 int64_t dispatch_perf_stats(uint64_t arch_key, ..., arg3, arg4, arg5) {
@@ -310,7 +310,7 @@ int64_t dispatch_perf_stats(uint64_t arch_key, ..., arg3, arg4, arg5) {
 
 Looks up and immediately invokes the perf-stats callback, forwarding the caller's arguments.
 
-### `sub_15C3E50` -- codegen options dispatch
+### `sub_15C3E50` — codegen options dispatch
 
 ```c
 int64_t dispatch_codegen_opts(uint64_t arch_key, ..., a3, a4, a5, a6, a7) {
@@ -338,7 +338,7 @@ These wrappers have 0 direct callers in the binary because they are invoked excl
 
 ## The Opcode Dispatch Table
 
-`sub_5272C0` (79,511 bytes, 4,115 lines) is the master opcode-to-SASS-encoding-ID dispatch table. It is not part of the SM vtable system described above -- it lives in the same address neighborhood and is called from the encoding engine, not through the dispatch maps. However, it is closely related: its output encoding IDs are consumed by the per-SM instruction encoders that the vtable system selects.
+`sub_5272C0` (79,511 bytes, 4,115 lines) is the master opcode-to-SASS-encoding-ID dispatch table. It is not part of the SM vtable system described above — it lives in the same address neighborhood and is called from the encoding engine, not through the dispatch maps. However, it is closely related: its output encoding IDs are consumed by the per-SM instruction encoders that the vtable system selects.
 
 The function implements a two-level switch:
 
@@ -433,7 +433,7 @@ per-instruction encoder (SM100+ at 0x620000)   -- emit 128-bit SASS word
 
 2. **String-keyed dispatch.** Using string keys (`"sm_100"`, `"compute_100"`) rather than integer SM numbers means the dispatch tables naturally handle the naming convention used throughout the compilation pipeline. No integer-to-string conversion is needed at lookup time.
 
-3. **Variant aliasing is free.** Registering `sm_100`, `sm_100a`, `sm_100f` with the same function pointer costs only 3 hash insertions per map. The alternative -- a normalization function that strips suffixes before lookup -- would add code complexity and a lookup-time cost.
+3. **Variant aliasing is free.** Registering `sm_100`, `sm_100a`, `sm_100f` with the same function pointer costs only 3 hash insertions per map. The alternative — a normalization function that strips suffixes before lookup — would add code complexity and a lookup-time cost.
 
 4. **Double-checked locking.** The init function checks `byte_2A644C0` twice: once without the lock (fast path for already-initialized case) and once after acquiring mutex 5 (correctness under concurrent access). This is the standard DCL pattern for lazy singletons.
 
@@ -442,14 +442,14 @@ per-instruction encoder (SM100+ at 0x620000)   -- emit 128-bit SASS word
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) -- full address map and compilation pipeline
-- [ISel Hubs](isel-hubs.md) -- the five mega-hub functions selected by these dispatch tables
-- [Architecture Profiles](../targets/arch-profiles.md) -- the linker-side architecture profile database at `sub_484F50`
-- [Compatibility](../targets/compatibility.md) -- architecture compatibility checking in the linker
+- [Embedded ptxas Overview](overview.md) — full address map and compilation pipeline
+- [ISel Hubs](isel-hubs.md) — the five mega-hub functions selected by these dispatch tables
+- [Architecture Profiles](../targets/arch-profiles.md) — the linker-side architecture profile database at `sub_484F50`
+- [Compatibility](../targets/compatibility.md) — architecture compatibility checking in the linker
 
 ### Sibling Wikis
-- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) -- standalone ptxas target dispatch (7 parallel hash maps via `sub_607DB0`)
-- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- SM75/SM80 target details
-- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- SM89/SM90 target details
-- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) -- SM100+ target details
-- [cicc: Targets Index](../../cicc/targets/index.html) -- cicc compiler target dispatch
+- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) — standalone ptxas target dispatch (7 parallel hash maps via `sub_607DB0`)
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) — SM75/SM80 target details
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) — SM89/SM90 target details
+- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) — SM100+ target details
+- [cicc: Targets Index](../../cicc/targets/index.html) — cicc compiler target dispatch

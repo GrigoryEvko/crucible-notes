@@ -1,6 +1,6 @@
 # Device/Host Separation
 
-A single `.cu` file contains both host and device code intermixed. Conventional wisdom assumes cudafe++ splits them with two compilation passes -- one for host, one for device. That assumption is wrong. cudafe++ uses a **single-pass, tag-and-filter architecture**: the EDG frontend builds one unified IL tree from the entire translation unit, every entity gets execution-space bits written into its node, and then two separate output paths filter the tagged IL -- one path emits the `.int.c` host file, the other emits the device IL for cicc. There is no re-parse, no second invocation of the frontend.
+A single `.cu` file contains both host and device code intermixed. Conventional wisdom assumes cudafe++ splits them with two compilation passes — one for host, one for device. That assumption is wrong. cudafe++ uses a **single-pass, tag-and-filter architecture**: the EDG frontend builds one unified IL tree from the entire translation unit, every entity gets execution-space bits written into its node, and then two separate output paths filter the tagged IL — one path emits the `.int.c` host file, the other emits the device IL for cicc. There is no re-parse, no second invocation of the frontend.
 
 This page documents the global variables that control the split, the IL-marking walk that selects device-reachable entries, the host-output filtering logic that suppresses device-only entities, and the output files produced.
 
@@ -9,10 +9,10 @@ This page documents the global variables that control the split, the IL-marking 
 | Property | Value |
 |---|---|
 | Architecture | Single-pass: parse once, tag with execution-space bits, filter at output time |
-| Language mode flag | `dword_126EFB4` -- language mode (`1` = C, `2` = C++) |
-| Host compiler identity | `dword_126EFA4` -- clang mode; `dword_126EFA8` -- gcc mode |
-| Device stub mode | `dword_1065850` -- toggled per-entity in `sub_47BFD0` (`gen_routine_decl`) |
-| Device-only filter | `sub_46B3F0` -- returns 0 for device-only entities when generating host output |
+| Language mode flag | `dword_126EFB4` — language mode (`1` = C, `2` = C++) |
+| Host compiler identity | `dword_126EFA4` — clang mode; `dword_126EFA8` — gcc mode |
+| Device stub mode | `dword_1065850` — toggled per-entity in `sub_47BFD0` (`gen_routine_decl`) |
+| Device-only filter | `sub_46B3F0` — returns 0 for device-only entities when generating host output |
 | Keep-in-IL entry point | `sub_610420` (`mark_to_keep_in_il`), 892 lines |
 | Keep-in-IL worker | `sub_6115E0` (`walk_tree_and_set_keep_in_il`), 4649 lines |
 | Prune callback | `sub_617310` (`prune_keep_in_il_walk`), 127 lines |
@@ -36,11 +36,11 @@ Old NVIDIA documentation and third-party descriptions sometimes describe a "two-
 
 4. **The device IL is a byte-level binary dump** of marked entries, not the output of a separate code-generation pass. The host output is a text-mode C++ file produced by the `gen_*` family of functions.
 
-The practical implication: every CUDA entity exists once in memory with its execution-space tag at `entity+182`. The tag drives all downstream decisions -- what goes into device IL, what appears in host `.int.c`, what gets wrapped in `#if 0`, and what gets a kernel stub.
+The practical implication: every CUDA entity exists once in memory with its execution-space tag at `entity+182`. The tag drives all downstream decisions — what goes into device IL, what appears in host `.int.c`, what gets wrapped in `#if 0`, and what gets a kernel stub.
 
 ## Control Globals
 
-### dword_126EFB4 -- Language Mode
+### dword_126EFB4 — Language Mode
 
 | Value | Meaning |
 |---|---|
@@ -50,15 +50,15 @@ The practical implication: every CUDA entity exists once in memory with its exec
 
 Set during CLI processing (`sub_45C200`, case 228/240/246/251/252 for C++ standard versions). In CUDA compilation this is always `2` because `.cu` files are compiled as C++. The keep-in-IL logic at `sub_610420` checks `dword_126EFB4 == 2` to decide whether to run the secondary routine-definition marking pass (`sub_6175F0`).
 
-### dword_126EFA4 -- Clang Mode / Device Code Mode
+### dword_126EFA4 — Clang Mode / Device Code Mode
 
 This global has different semantics depending on context. In CLI processing (case 187), it records whether clang host compiler mode is active. In the template instantiation system (`p1.18` sweep), it acts as a device-code mode flag (`1` = device code path, `0` = host stubs). The dual use reflects the fact that cudafe++ reuses the same global for different phases.
 
-### dword_126EFA8 -- GCC Mode / GPU Compilation Mode
+### dword_126EFA8 — GCC Mode / GPU Compilation Mode
 
 Set when gcc host compiler mode is active. In template-related code paths, a nonzero value indicates GPU compilation mode is enabled.
 
-### dword_1065850 -- Device Stub Mode Toggle
+### dword_1065850 — Device Stub Mode Toggle
 
 This global flag controls how `__global__` kernel bodies are emitted. It is toggled inside `gen_routine_decl` (`sub_47BFD0`). The toggle mechanism is a self-inverting flip that causes `gen_routine_decl` to process each `__global__` kernel TWICE. Because the toggle fires at the TOP of the function (before body emission), the first call (0->1) emits the static stub definition, and the recursive call (1->0) emits the forwarding body.
 
@@ -118,7 +118,7 @@ The recursive invocation toggles `dword_1065850` back to 0, emits the forwarding
 
 The flag is also set in `sub_47ECC0` when processing template instantiation directives (source sequence kind 54): if the entity has `byte_182 & 0x40` (device/global annotation) and CUDA language mode is active, `dword_1065850` is set to `1` before emitting the instantiation directive.
 
-### dword_126EBA8 -- Language Standard Mode
+### dword_126EBA8 — Language Standard Mode
 
 Value `1` indicates C language standard mode. The device-only filtering function `sub_46B3F0` references this to determine whether EBA (EDG binary archive) mode applies.
 
@@ -204,11 +204,11 @@ __device__ void device_only_function() {
 
 This pattern appears in three locations:
 
-1. **Type declarations** -- `sub_47ECC0` wraps device-only types via `sub_46B3F0` check.
+1. **Type declarations** — `sub_47ECC0` wraps device-only types via `sub_46B3F0` check.
 
-2. **Routine declarations** -- `sub_47BFD0` checks `entity->byte_81 & 0x04` (has device scope) combined with execution-space bits at `entity+182`. When a function is device-only and the current output track is host, the function body is suppressed.
+2. **Routine declarations** — `sub_47BFD0` checks `entity->byte_81 & 0x04` (has device scope) combined with execution-space bits at `entity+182`. When a function is device-only and the current output track is host, the function body is suppressed.
 
-3. **Lambda bodies** -- `sub_47B890` (`gen_lambda`) wraps device lambda bodies in `#if 0` / `#endif` and emits `__nv_dl_wrapper_t` wrapper types instead.
+3. **Lambda bodies** — `sub_47B890` (`gen_lambda`) wraps device lambda bodies in `#if 0` / `#endif` and emits `__nv_dl_wrapper_t` wrapper types instead.
 
 ### The nv_is_device_only_routine Check
 
@@ -226,7 +226,7 @@ The double-mask check distinguishes three cases:
 - `(byte & 0x30) == 0x20`: has `__device__` but not `__host__` (bits 4-5)
 - `(byte & 0x60) == 0x20`: has `__device__` but not `__global__` (bits 5-6)
 
-A `__global__` function fails the second test because bit 6 is set (`byte & 0x60 == 0x60`). This matters because `__global__` functions ARE emitted in host output -- as stubs that call `__wrapper__device_stub_<name>`.
+A `__global__` function fails the second test because bit 6 is set (`byte & 0x60 == 0x60`). This matters because `__global__` functions ARE emitted in host output — as stubs that call `__wrapper__device_stub_<name>`.
 
 ## The Keep-in-IL Walk (Device Code Selection)
 
@@ -290,7 +290,7 @@ Everything reachable from a seed gets the keep bit. Everything without the keep 
 
 Functions annotated with both `__host__` and `__device__` have bits 4 and 5 set in `entity+182`, producing `(byte & 0x30) == 0x30`. These functions participate in BOTH output paths:
 
-1. **Host output (.int.c):** The function passes the `nv_is_device_only_routine` check (it returns false because bit 4 is set alongside bit 5). The function body is emitted normally -- no `#if 0` wrapping, no stub substitution.
+1. **Host output (.int.c):** The function passes the `nv_is_device_only_routine` check (it returns false because bit 4 is set alongside bit 5). The function body is emitted normally — no `#if 0` wrapping, no stub substitution.
 
 2. **Device IL:** The keep-in-IL walk marks the function and all its dependencies because it has device-capable bits set. The full function body is retained in the device IL.
 
@@ -409,9 +409,9 @@ For template kernels, the forwarding stub includes explicit template arguments: 
 
 ## Cross-References
 
-- [Execution Spaces](./execution-spaces.md) -- byte `+182` bitfield encoding for `__host__`/`__device__`/`__global__`; the `nv_is_device_only_routine` predicate that drives host-output filtering
-- [Kernel Stubs](./kernel-stubs.md) -- detailed stub generation logic: forwarding body (pass 1) and static cudaLaunchKernel body (pass 2)
-- [Keep-in-IL](../il/keep-in-il.md) -- full documentation of the device code marking walk, the keep bit at `entry_ptr - 8`, and the transitive closure algorithm
-- [Memory Spaces](./memory-spaces.md) -- variable-side `__device__`/`__shared__`/`__constant__` at entity+148; these are the seed entries for the keep-in-IL walk
-- [.int.c File Format](../output/int-c-format.md) -- structure of the generated host translation file
-- [Entity Node Layout](../structs/entity-node.md) -- full byte map of the entity structure including offset +176 (flags field) and +182 (execution space byte)
+- [Execution Spaces](./execution-spaces.md) — byte `+182` bitfield encoding for `__host__`/`__device__`/`__global__`; the `nv_is_device_only_routine` predicate that drives host-output filtering
+- [Kernel Stubs](./kernel-stubs.md) — detailed stub generation logic: forwarding body (pass 1) and static cudaLaunchKernel body (pass 2)
+- [Keep-in-IL](../il/keep-in-il.md) — full documentation of the device code marking walk, the keep bit at `entry_ptr - 8`, and the transitive closure algorithm
+- [Memory Spaces](./memory-spaces.md) — variable-side `__device__`/`__shared__`/`__constant__` at entity+148; these are the seed entries for the keep-in-IL walk
+- [.int.c File Format](../output/int-c-format.md) — structure of the generated host translation file
+- [Entity Node Layout](../structs/entity-node.md) — full byte map of the entity structure including offset +176 (flags field) and +182 (execution space byte)

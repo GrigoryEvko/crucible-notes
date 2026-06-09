@@ -60,15 +60,15 @@ void register_command_flag(
 );
 ```
 
-The function writes into the next free slot at index `dword_E80058`, precomputes `strlen(name)` into `name_length`, always sets the `is_valid` byte to 1, then increments the counter. If the counter reaches 552, it panics via `sub_40351D` -- the table is statically sized.
+The function writes into the next free slot at index `dword_E80058`, precomputes `strlen(name)` into `name_length`, always sets the `is_valid` byte to 1, then increments the counter. If the counter reaches 552, it panics via `sub_40351D` — the table is statically sized.
 
 ### Paired Toggle Registration
 
 Approximately half of all flags are boolean toggles registered as pairs: `--flag` and `--no_flag` share the same `case_id` but differ in which value they write. Pairs are registered in two ways:
 
-1. **Two sequential `register_command_flag` calls** -- both point to the same `case_id`; the parsing loop determines whether the matched name starts with `no_` and sets the target global to 0 or 1 accordingly.
+1. **Two sequential `register_command_flag` calls** — both point to the same `case_id`; the parsing loop determines whether the matched name starts with `no_` and sets the target global to 0 or 1 accordingly.
 
-2. **Inline table population** -- seven additional paired flags (`relaxed_abstract_checking`, `concepts`, `colors`, `keep_restrict_in_signatures`, `check_unicode_security`, `old_id_chars`, `add_match_notes`) are written directly into the array without going through `register_command_flag`.
+2. **Inline table population** — seven additional paired flags (`relaxed_abstract_checking`, `concepts`, `colors`, `keep_restrict_in_signatures`, `check_unicode_security`, `old_id_chars`, `add_match_notes`) are written directly into the array without going through `register_command_flag`.
 
 ## Parsing Loop
 
@@ -96,11 +96,11 @@ The default-suppressed diagnostics are EDG warnings that NVIDIA considers noise 
 
 The loop processes `argv[dword_E7FF20]` through `argv[argc-1]`. For each argument:
 
-1. **Dash detection** -- if the argument does not start with `-`, it is treated as the input filename (stored in `qword_126EEE0`). Only one non-flag argument is expected.
+1. **Dash detection** — if the argument does not start with `-`, it is treated as the input filename (stored in `qword_126EEE0`). Only one non-flag argument is expected.
 
-2. **Short flag matching** -- for single-dash arguments (`-X`), the parser scans the flag table for an entry whose `short_char` matches. If the flag `takes_value`, the next argv element is consumed as the value.
+2. **Short flag matching** — for single-dash arguments (`-X`), the parser scans the flag table for an entry whose `short_char` matches. If the flag `takes_value`, the next argv element is consumed as the value.
 
-3. **Long flag matching** -- for double-dash arguments (`--flag-name`), the parser calls `parse_flag_name_value` (`sub_451EC0`) to split on `=`:
+3. **Long flag matching** — for double-dash arguments (`--flag-name`), the parser calls `parse_flag_name_value` (`sub_451EC0`) to split on `=`:
 
 ```c
 // sub_451EC0: split "--name=value" into name and value
@@ -111,10 +111,10 @@ void parse_flag_name_value(char* src, char** name_out, char** value_out);
 
 The name portion is then matched against the flag table using `strncmp` with each entry's precomputed `name_length`. The parser iterates all entries and counts exact and prefix matches:
 
-- **Exact match** (length equals `name_length` and `strncmp` returns 0) -- dispatches immediately.
-- **Unique prefix match** (only one entry's name starts with the given prefix) -- dispatches to that entry.
-- **Ambiguous prefix** (multiple entries match the prefix) -- emits error 923 ("ambiguous command-line option").
-- **No match** -- the argument is silently ignored or treated as input.
+- **Exact match** (length equals `name_length` and `strncmp` returns 0) — dispatches immediately.
+- **Unique prefix match** (only one entry's name starts with the given prefix) — dispatches to that entry.
+- **Ambiguous prefix** (multiple entries match the prefix) — emits error 923 ("ambiguous command-line option").
+- **No match** — the argument is silently ignored or treated as input.
 
 ### Conflict Detection
 
@@ -139,7 +139,7 @@ After a flag is matched, its `case_id` indexes into a giant switch statement occ
 
 | Case | Flag | Global | Behavior |
 |---|---|---|---|
-| 14 | `no_code_gen` | `dword_106C254 = 1` | Parse-only mode -- sets the skip-backend flag, preventing `process_file_scope_entities` from running |
+| 14 | `no_code_gen` | `dword_106C254 = 1` | Parse-only mode — sets the skip-backend flag, preventing `process_file_scope_entities` from running |
 | 20 | `timing` | `dword_106C0A4 = 1` | Enable compilation phase timing. `main()` checks this flag to decide whether to call `sub_5AF350`/`sub_5AF390` for "Front end time", "Back end time", "Total compilation time" |
 | 21 | `version` | *(stdout)* | Print the version banner and continue (does not exit). Banner includes: `"cudafe: NVIDIA (R) Cuda Language Front End"`, `"Portions Copyright (c) 2005, 2024-YYYY NVIDIA Corporation"`, `"Portions Copyright (c) 1988-2018, 2024 Edison Design Group Inc."`, `"Based on Edison Design Group C/C++ Front End, version 6.6"`, `"Cuda compilation tools, release 13.0, V13.0.88"` |
 | 22 | `no_warnings` | `byte_126ED69 = 7` | Set diagnostic severity threshold to error-only (suppress all warnings and remarks) |
@@ -237,7 +237,7 @@ Case 30 (`define_macro` / `-D`) builds a linked list of macro definitions via `s
 
 ### Language Standard Selection (Cases 228, 240--252)
 
-These cases set `dword_126EF68` -- the internal value of `__cplusplus` or `__STDC_VERSION__`:
+These cases set `dword_126EF68` — the internal value of `__cplusplus` or `__STDC_VERSION__`:
 
 | Case(s) | Flag | `dword_126EF68` | Standard |
 |---|---|---|---|
@@ -394,9 +394,9 @@ Users can override these defaults with explicit `--diag_error=111` (or similar) 
 | `sub_452010` | `0x452010` | 3,849 | `init_command_line_flags` | Registers all 276 flags (called once from `proc_command_line`) |
 | `sub_4595D0` | `0x4595D0` | 21 | `append_to_linked_list` | Allocates 24-byte node, appends to `-D`/`-I` argument lists |
 | `sub_45EB40` | `0x45EB40` | 470 | `default_init` | Zeros 350 global config variables + flag-was-set bitmap |
-| `sub_44C4F0` | `0x44C4F0` | -- | `set_c_mode` | Sets language mode: 0=C, 1=K&R, 2=C++ |
-| `sub_44C460` | `0x44C460` | -- | `parse_integer_arg` | Parses string argument as integer (used by `error_limit`, etc.) |
-| `sub_4ED400` | `0x4ED400` | -- | `set_diagnostic_severity` | Sets severity for a single diagnostic number |
+| `sub_44C4F0` | `0x44C4F0` | — | `set_c_mode` | Sets language mode: 0=C, 1=K&R, 2=C++ |
+| `sub_44C460` | `0x44C460` | — | `parse_integer_arg` | Parses string argument as integer (used by `error_limit`, etc.) |
+| `sub_4ED400` | `0x4ED400` | — | `set_diagnostic_severity` | Sets severity for a single diagnostic number |
 
 ## Key Global Variables
 

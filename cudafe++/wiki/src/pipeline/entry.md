@@ -1,6 +1,6 @@
 # Entry Point & Initialization
 
-`main()` at `0x408950` is a 488-byte `__noreturn` function that orchestrates the entire cudafe++ compilation pipeline. It takes the standard POSIX signature `(int argc, char **argv, char **envp)`, performs two phases of subsystem initialization, optionally raises the process stack limit, then runs the frontend, backend, and exit sequence in a linearized loop that executes exactly once. The function has 22 direct callees (including `getrlimit`, `setrlimit`, and library calls) and never returns -- `sub_5AF1D0` at the bottom of the loop calls `exit()` or `abort()`.
+`main()` at `0x408950` is a 488-byte `__noreturn` function that orchestrates the entire cudafe++ compilation pipeline. It takes the standard POSIX signature `(int argc, char **argv, char **envp)`, performs two phases of subsystem initialization, optionally raises the process stack limit, then runs the frontend, backend, and exit sequence in a linearized loop that executes exactly once. The function has 22 direct callees (including `getrlimit`, `setrlimit`, and library calls) and never returns — `sub_5AF1D0` at the bottom of the loop calls `exit()` or `abort()`.
 
 ## Key Facts
 
@@ -12,7 +12,7 @@
 | Signature | `void __noreturn main(int argc, char **argv, char **envp)` |
 | Direct callees | 22 (9 pre-init + CLI + heavy-init + 5 pipeline stages + timing/exit helpers) |
 | Stack frame | `0x88` bytes (136 bytes: 6 timing stamps + rlimit struct + alignment) |
-| Attribute | `__noreturn` -- the `while(1)` loop terminates via `sub_5AF1D0` which calls `exit()`/`abort()` |
+| Attribute | `__noreturn` — the `while(1)` loop terminates via `sub_5AF1D0` which calls `exit()`/`abort()` |
 
 ## Annotated Decompilation
 
@@ -109,7 +109,7 @@ void __noreturn main(int argc, char **argv, char **envp)
 
 The `while(1)` never actually loops. The call to `sub_5AF1D0` is `__noreturn` (it calls `exit()` or `abort()` internally), so control never reaches the second iteration. The compiler arranged the basic blocks this way because the backend code at `backend:` is reached via a `goto` from the error-gate check, placing it logically "after" the exit call in the CFG.
 
-## Phase 1: fe_pre_init -- `sub_585D60` (0x585D60)
+## Phase 1: fe_pre_init — `sub_585D60` (0x585D60)
 
 The first thing `main()` does after redirecting stderr is call `sub_585D60`, which performs the absolute minimum initialization needed before command-line parsing can proceed. This function lives in `fe_init.c` and makes 9 sequential calls to subsystem pre-initializers, plus two inline global assignments.
 
@@ -124,7 +124,7 @@ The first thing `main()` does after redirecting stderr is call `sub_585D60`, whi
 | 5 | `sub_45EB40` | cmd_line_pre_init | cmd_line.c | Zero the 272-flag was-set bitmap (`byte_E7FF40`, 0x110 bytes), set `dword_E7FF20`=1 (skip argv[0]), initialize ~350 global config variables to defaults. Notable: `dword_106C064`=1 (stack limit adjustment ON by default) |
 | 6 | `sub_4ED530` | declaration_pre_init | decls.c | Set `stderr` into two global stream pointers, zero error/warning counters (`qword_126ED80..qword_126EDE0`), set diagnostic defaults (`byte_126ED69`=5, `byte_126ED68`=8, `qword_126ED60`=100 max errors), clear 15.2KB diagnostic severity table (`byte_1067920`, 0x3B50 bytes) |
 | 7 | `sub_6F6020` | il_pre_init | il.c | Zero 3 globals: `dword_12C6C8C`=0 (PCH event counter), `qword_12C6EC0`=0, `qword_12C6EB8`=0 |
-| -- | *(inline)* | scope_index_init | fe_init.c | `dword_126C5E4 = -1` (current scope stack index = "none"), `dword_126C5C8 = -1` (secondary scope index = "none") |
+| — | *(inline)* | scope_index_init | fe_init.c | `dword_126C5E4 = -1` (current scope stack index = "none"), `dword_126C5C8 = -1` (secondary scope index = "none") |
 | 8 | `sub_7A48B0` | tu_tracking_pre_init | trans_unit.c | Zero 13 TU tracking globals: source filename, compilation mode flags, TU stack pointers, PCH state |
 | 9 | `sub_7C00F0` | template_pre_init | template.c | Single assignment: `dword_106BA20 = 0` (template nesting depth = 0) |
 
@@ -148,14 +148,14 @@ After signal setup, `dword_E6E120` is set to 0 so handlers are registered only o
 **Working directory:** Iteratively calls `getcwd()` with a growing buffer (starting at 256 bytes, expanding by 256 on `ERANGE`) until it fits, then copies the result into `qword_126EEA0` via permanent allocation.
 
 **Environment variables:**
-- `EDG_BASE` -- read into `qword_126EE38` (base path for EDG data files; empty string if unset)
-- `EDG_SUPPRESS_ASSERTION_LINE_NUMBER` -- if set and not `"0"`, sets `dword_126ED40 = 1` (suppress line numbers in internal assertion messages)
+- `EDG_BASE` — read into `qword_126EE38` (base path for EDG data files; empty string if unset)
+- `EDG_SUPPRESS_ASSERTION_LINE_NUMBER` — if set and not `"0"`, sets `dword_126ED40 = 1` (suppress line numbers in internal assertion messages)
 
 **CPU time limit:** Calls `getrlimit(RLIMIT_CPU)` then `setrlimit()` with `rlim_cur = RLIM_INFINITY` to disable the CPU time limit.
 
 **Global zeroing:** Zeros ~50 host-environment globals including file descriptors, path buffers, platform flags, output filename pointers.
 
-**Language mode:** Sets `dword_126EFB4 = 2` (default to C++ mode -- this is later overridden by CLI parsing if `-x c` is specified).
+**Language mode:** Sets `dword_126EFB4 = 2` (default to C++ mode — this is later overridden by CLI parsing if `-x c` is specified).
 
 **Sentinel validation:** Checks `off_E6E0E0` against the string `"last"` to verify that the `predef_macro_mode_names` table was properly initialized at link time. On mismatch, asserts with `"predef_macro_mode_names not initialized properly"` at `host_envir.c:6927`.
 
@@ -173,9 +173,9 @@ if (dword_106C064 && !getrlimit(RLIMIT_STACK, &rlimits)) {
 
 The flag `dword_106C064` is set to 1 by default in `sub_45EB40` (cmd_line_pre_init) and can be disabled via the `--modify_stack_limit=false` CLI flag. The purpose is to prevent stack overflow during deep recursion in the C++ parser, template instantiation engine, and constexpr interpreter. After compilation completes (just before exit), `main()` restores the original `rlim_cur` value.
 
-## Phase 3: fe_one_time_init -- `sub_585DB0` (0x585DB0)
+## Phase 3: fe_one_time_init — `sub_585DB0` (0x585DB0)
 
-This is the heaviest initialization stage. It zeroes the token state (`qword_126DD38` -- 6 bytes packed as a dword + word), optionally calls `sub_5AF330` for profiling init if `dword_106BD4C` is set, then makes 38 sequential calls to subsystem one-time initializers.
+This is the heaviest initialization stage. It zeroes the token state (`qword_126DD38` — 6 bytes packed as a dword + word), optionally calls `sub_5AF330` for profiling init if `dword_106BD4C` is set, then makes 38 sequential calls to subsystem one-time initializers.
 
 ### One-Time Init Call Table
 
@@ -233,17 +233,17 @@ if (funcs_6F71AE || off_D560C0 != nullsub_6)
 
 This validates two conditions:
 
-1. **`funcs_6F71AE` must be zero.** This global acts as a "dirty flag" -- if any initializer wrote a nonzero value here, the table was not properly zeroed during static initialization.
+1. **`funcs_6F71AE` must be zero.** This global acts as a "dirty flag" — if any initializer wrote a nonzero value here, the table was not properly zeroed during static initialization.
 
-2. **`off_D560C0` must point to `nullsub_6` (0x585B00).** The address `off_D560C0` is the last entry in a function pointer dispatch table in `.rodata`. The empty function `nullsub_6` acts as a sentinel -- its known address is compared against the table's last slot to verify that the table was correctly populated at link time. If the linker reordered or dropped entries, the sentinel would not match.
+2. **`off_D560C0` must point to `nullsub_6` (0x585B00).** The address `off_D560C0` is the last entry in a function pointer dispatch table in `.rodata`. The empty function `nullsub_6` acts as a sentinel — its known address is compared against the table's last slot to verify that the table was correctly populated at link time. If the linker reordered or dropped entries, the sentinel would not match.
 
-If either check fails, `sub_4F21C0` emits a fatal diagnostic (`"function_pointers is incorrectly initialized"`) and then falls through to `sub_585EE0` (fe_init_part_1) regardless -- this is a non-recoverable error that will likely cause crashes later, but the code attempts to continue.
+If either check fails, `sub_4F21C0` emits a fatal diagnostic (`"function_pointers is incorrectly initialized"`) and then falls through to `sub_585EE0` (fe_init_part_1) regardless — this is a non-recoverable error that will likely cause crashes later, but the code attempts to continue.
 
 On successful validation, `sub_585DB0` returns without calling `sub_585EE0`. However, `sub_585EE0` is actually called from a *different* path: the normal flow is that `sub_585DB0` returns, and `main()` proceeds. The `sub_585EE0` call on the error path in `sub_585DB0` appears to be a fallthrough from the panic handler.
 
 **Correction from the sweep report:** Examination of the actual decompiled code shows that `sub_585EE0` (fe_init_part_1) is called only on the *error path* of the sentinel check within `sub_585DB0`. On the normal (no-error) path, `sub_585DB0` returns `sub_7DF400()`'s return value directly. This means `fe_init_part_1` is called from the sentinel-check error handler, not from the main success path of `sub_585DB0`. The actual invocation of `fe_init_part_1` in the normal flow must occur elsewhere in the pipeline (likely called from within one of the subsystem initializers or from `sub_7A40A0`).
 
-## fe_init_part_1 -- `sub_585EE0` (0x585EE0)
+## fe_init_part_1 — `sub_585EE0` (0x585EE0)
 
 This function performs per-compilation-unit initialization. It is identified by the debug trace string `"fe_init_part_1"` at level 5 and an assertion path `fe_init.c:2007`. Its responsibilities:
 
@@ -391,7 +391,7 @@ if (!qword_126ED90)          // qword_126ED90 = error count from frontend
 dword_106C254 = 1;           // errors → set skip-backend flag
 ```
 
-When `dword_106C254 == 1`, the backend stage (`sub_489000`) is skipped entirely. The process still writes a signoff trailer and exits with a nonzero status code. This means a cudafe++ compilation with frontend errors produces no `.int.c` output file -- the backend never runs.
+When `dword_106C254 == 1`, the backend stage (`sub_489000`) is skipped entirely. The process still writes a signoff trailer and exits with a nonzero status code. This means a cudafe++ compilation with frontend errors produces no `.int.c` output file — the backend never runs.
 
 ## Exit Code Mapping
 
@@ -409,11 +409,11 @@ In SARIF mode (`dword_106BBB8` set), the text messages (`"Compilation terminated
 
 ## Cross-References
 
-- [Pipeline Overview](./overview.md) -- complete 8-stage pipeline diagram
-- [CLI Processing](./cli.md) -- detailed breakdown of `sub_459630` and all 276 flags
-- [Frontend Invocation](./frontend.md) -- `sub_7A40A0` (process_translation_unit) internals
-- [Frontend Wrapup](./fe-wrapup.md) -- 5-pass architecture of `sub_588F90`
-- [Backend Code Generation](./backend.md) -- `sub_489000` (.int.c emission)
-- [Timing & Exit](./timing-exit.md) -- `sub_5AF350`/`sub_5AF390`/`sub_5AF1D0` details
-- [EDG Overview](../edg/overview.md) -- EDG 6.6 source tree and NVIDIA modifications
-- [EDG Lexer](../edg/lexer.md) -- keyword registration performed during `sub_5863A0`
+- [Pipeline Overview](./overview.md) — complete 8-stage pipeline diagram
+- [CLI Processing](./cli.md) — detailed breakdown of `sub_459630` and all 276 flags
+- [Frontend Invocation](./frontend.md) — `sub_7A40A0` (process_translation_unit) internals
+- [Frontend Wrapup](./fe-wrapup.md) — 5-pass architecture of `sub_588F90`
+- [Backend Code Generation](./backend.md) — `sub_489000` (.int.c emission)
+- [Timing & Exit](./timing-exit.md) — `sub_5AF350`/`sub_5AF390`/`sub_5AF1D0` details
+- [EDG Overview](../edg/overview.md) — EDG 6.6 source tree and NVIDIA modifications
+- [EDG Lexer](../edg/lexer.md) — keyword registration performed during `sub_5863A0`

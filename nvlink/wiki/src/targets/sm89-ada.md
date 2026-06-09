@@ -43,9 +43,9 @@ The profile registration function `sub_484F50` builds a 136-byte descriptor per 
 v47->m128i_i8[3] = 1;   // byte[3] of the sm_89 profile descriptor
 ```
 
-This flag is **unique to sm_89** -- it is not set for sm_90, sm_90a, or any other SM target in the entire registration function. The corresponding byte[4] flag is reserved for "a" and "f" sub-variants (sm_90a, sm_100a, sm_100f, etc.) and is never set on sm_89.
+This flag is **unique to sm_89** — it is not set for sm_90, sm_90a, or any other SM target in the entire registration function. The corresponding byte[4] flag is reserved for "a" and "f" sub-variants (sm_90a, sm_100a, sm_100f, etc.) and is never set on sm_89.
 
-**What byte[3] gates.** The profile descriptor byte[3] is propagated through the ELF section merger and instruction validation infrastructure (`sub_46EE00`, `sub_46C690`). Ada Lovelace is the only architecture that supports the full fixed-function graphics pipeline (tessellation, geometry shading, rasterization) at the SM level -- Hopper (sm_90) is a datacenter-only GPU that drops fixed-function graphics hardware. Setting byte[3] = 1 on the sm_89 descriptor marks it as a **graphics-capable** architecture, gating tessellation-related code paths in the linker's section merging and instruction validation. When the linker processes shader sections that require graphics pipeline stages, this flag determines whether the target supports them.
+**What byte[3] gates.** The profile descriptor byte[3] is propagated through the ELF section merger and instruction validation infrastructure (`sub_46EE00`, `sub_46C690`). Ada Lovelace is the only architecture that supports the full fixed-function graphics pipeline (tessellation, geometry shading, rasterization) at the SM level — Hopper (sm_90) is a datacenter-only GPU that drops fixed-function graphics hardware. Setting byte[3] = 1 on the sm_89 descriptor marks it as a **graphics-capable** architecture, gating tessellation-related code paths in the linker's section merging and instruction validation. When the linker processes shader sections that require graphics pipeline stages, this flag determines whether the target supports them.
 
 ### Dispatch Table: Seven Slots, All Functionally Distinct
 
@@ -55,13 +55,13 @@ The `sub_15C0CE0` registration function populates seven callback tables (`qword_
 |---|---|---|---|---|
 | B8 | Pre-compilation | `sub_15C2D40` | `sub_15C2CE0` | Identical behavior: both call `sub_166DA30(a2, 0)` and look up `"cpf_optx"` |
 | B0 | Compilation | `sub_15C2C20` | `sub_15C2B30` | Identical behavior: both call `sub_166DA30(a2, 1)` and look up `"cpf_optx"` |
-| A8 | Backend init | `sub_15C3740` | `sub_15C3520` | **Different** -- see below |
+| A8 | Backend init | `sub_15C3740` | `sub_15C3520` | **Different** — see below |
 | A0 | Internal version | `byte_2A5EE2C` | `asc_2A5EE28` | Different integer constant (sm_89 = internal 29, sm_90 = internal 30) |
 | 90 | Perf-stats | `sub_15C1F90` | `sub_15C1ED0` | Identical behavior: both emit `dword_2A5EEF0` warning for `"sm_20"` / `"--perf-stats"` |
 | 88 | Resource calc | `sub_15C2370` | `sub_15C2290` | Identical algorithm: same register file size / occupancy calculation |
 | 98 | Cleanup | (via `qword_2A64498`) | (via `qword_2A64498`) | Not individually registered per-arch for sm_89/90 |
 
-Despite having six distinct function addresses, only **one slot (A8)** has materially different behavior between sm_89 and sm_90. The remaining five are duplicated code (same algorithm, different object addresses) -- a consequence of the template-based dispatch architecture where each SM target gets its own instantiation even when the logic is identical.
+Despite having six distinct function addresses, only **one slot (A8)** has materially different behavior between sm_89 and sm_90. The remaining five are duplicated code (same algorithm, different object addresses) — a consequence of the template-based dispatch architecture where each SM target gets its own instantiation even when the logic is identical.
 
 ### Backend Initialization: sub_15C3740 (Ada) vs sub_15C3520 (Hopper)
 
@@ -158,7 +158,7 @@ The main compilation driver `sub_1112F30` contains three SM-version-dependent co
 | 1150 | `*(a1+376) <= 26` | Gates tensor-memory-access-check; for sm_89 and sm_90 (both > 26), the check is inverted |
 | 1303 | `*(a1+376) > 26` | Second tensor-memory-access gate for multi-function compilation mode |
 
-None of these conditions distinguish sm_89 from sm_90 specifically -- they both fall on the same side of every threshold (both have internal version > 26). The only per-architecture differentiation occurs through the feature flag configurator and the backend init constants documented above.
+None of these conditions distinguish sm_89 from sm_90 specifically — they both fall on the same side of every threshold (both have internal version > 26). The only per-architecture differentiation occurs through the feature flag configurator and the backend init constants documented above.
 
 ### Summary of Differences
 
@@ -181,7 +181,7 @@ None of these conditions distinguish sm_89 from sm_90 specifically -- they both 
 
 ## Instruction Encoder Templates (0x100C000--0x10FFFFF)
 
-The 750 functions in this region are template-instantiated instruction encoding initializers. Each function initializes one SASS instruction variant -- a specific opcode with a specific operand pattern. All share an identical structure:
+The 750 functions in this region are template-instantiated instruction encoding initializers. Each function initializes one SASS instruction variant — a specific opcode with a specific operand pattern. All share an identical structure:
 
 ```text
 1. sub_4C28B0(a1, offset, fieldlen, value)   // 5-8 calls setting bitfield params
@@ -583,14 +583,14 @@ For general Ada/Hopper architecture details, see the [ptxas wiki: Ada/Hopper](..
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](../ptxas/overview.md) -- full address map including the SM89/90 backend at `0x100C000`--`0x11EA000`
-- [Instruction Selection Hubs](../ptxas/isel-hubs.md) -- the five mega-hub functions, including `sub_119BF40`
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM89/SM90 vtable registration and callbacks
-- [SM80 Ampere](sm80-ampere.md) -- the preceding ISel backend at `0xCA0000`--`0xDA0000`
-- [SM90 Hopper](sm90-hopper.md) -- SM90 shares this same backend; Hopper-specific features gated by SM version
-- [SM75 Turing](sm75-turing.md) -- the preceding architecture backend at `0xF16000`--`0x100C000`
-- [Architecture Profiles](arch-profiles.md) -- SM89 profile metadata
+- [Embedded ptxas Overview](../ptxas/overview.md) — full address map including the SM89/90 backend at `0x100C000`--`0x11EA000`
+- [Instruction Selection Hubs](../ptxas/isel-hubs.md) — the five mega-hub functions, including `sub_119BF40`
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — SM89/SM90 vtable registration and callbacks
+- [SM80 Ampere](sm80-ampere.md) — the preceding ISel backend at `0xCA0000`--`0xDA0000`
+- [SM90 Hopper](sm90-hopper.md) — SM90 shares this same backend; Hopper-specific features gated by SM version
+- [SM75 Turing](sm75-turing.md) — the preceding architecture backend at `0xF16000`--`0x100C000`
+- [Architecture Profiles](arch-profiles.md) — SM89 profile metadata
 
 ### Sibling Wikis
-- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- standalone ptxas SM89/SM90 target documentation
-- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc compiler SM89 Ada Lovelace target
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) — standalone ptxas SM89/SM90 target documentation
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) — cicc compiler SM89 Ada Lovelace target

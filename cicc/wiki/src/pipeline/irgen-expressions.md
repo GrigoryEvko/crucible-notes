@@ -137,7 +137,7 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 
 The `EmitCompare` (`sub_128F580`) triple `(fpPred, sIntPred, uIntPred)` carries three LLVM `CmpInst::Predicate` values selected by operand type. The function dispatches: floating-point operand → `FCmp` with `fpPred`, signed integer (or pointer, signed semantics) → `ICmp` with `sIntPred`, unsigned integer → `ICmp` with `uIntPred`. Internally, the helper calls `sub_15FEC10` with opcode `51` (ICmp) or `52` (FCmp) and one of the predicate numbers; on the constant-fold path it calls `sub_15A37B0(pred, lhs, rhs)`. Predicate numbering matches LLVM: `FCMP_OEQ=1`, `FCMP_OGT=2`, `FCMP_OGE=3`, `FCMP_OLT=4`, `FCMP_OLE=5`, `FCMP_UNE=14`; `ICMP_EQ=32`, `ICMP_NE=33`, `ICMP_UGT=34`, `ICMP_UGE=35`, `ICMP_ULT=36`, `ICMP_ULE=37`, `ICMP_SGT=38`, `ICMP_SGE=39`, `ICMP_SLT=40`, `ICMP_SLE=41`. Diagnostic strings inside the helper are `"cmp"`.
 
-Shifts and bitwise operators (`<<`, `>>`, `&`, `|`, `^`) are not handled here -- they ride `EmitBinaryArithBitwise` (`sub_128F9F0`) under cases `0x35`-`0x39`. That helper's inner `switch (*(_BYTE*)(a2 + 56))` dispatches the same opcode byte a second time: cases `'\''`-`'+'` (`0x27`-`0x2B`) call the per-operator arithmetic helpers (`sub_1288F60` add, `sub_1288370` sub, `sub_1288770` mul, `sub_1289D20` div, `sub_1288DC0` rem); cases `'5'`-`'9'` (`0x35`-`0x39`) handle shift-left, shift-right, and-with-mask shortcut, or-with-zero shortcut, and xor respectively. The default arm raises `"unsupported binary expression!"`.
+Shifts and bitwise operators (`<<`, `>>`, `&`, `|`, `^`) are not handled here — they ride `EmitBinaryArithBitwise` (`sub_128F9F0`) under cases `0x35`-`0x39`. That helper's inner `switch (*(_BYTE*)(a2 + 56))` dispatches the same opcode byte a second time: cases `'\''`-`'+'` (`0x27`-`0x2B`) call the per-operator arithmetic helpers (`sub_1288F60` add, `sub_1288370` sub, `sub_1288770` mul, `sub_1289D20` div, `sub_1288DC0` rem); cases `'5'`-`'9'` (`0x35`-`0x39`) handle shift-left, shift-right, and-with-mask shortcut, or-with-zero shortcut, and xor respectively. The default arm raises `"unsupported binary expression!"`.
 
 #### Increment / decrement detail
 
@@ -177,7 +177,7 @@ Opcode `0x49` handles struct field access (`.` and `->`) through a multi-path di
 
 3. **Nested/union access** (field count > 1): Calls `ComputeCompositeMemberAddr` (`sub_1289860`) for multi-level GEP computation, then `EmitComplexMemberLoad` (`sub_12843D0`).
 
-4. **Write-only context**: If the assignment bit (`a2+25`, bit 2) is set, returns null -- the caller only needs the address, not the loaded value.
+4. **Write-only context**: If the assignment bit (`a2+25`, bit 2) is set, returns null — the caller only needs the address, not the loaded value.
 
 #### Caller graph: how `sub_1287ED0` (EmitLvalueLoad) is reached
 
@@ -239,7 +239,7 @@ The dispatch table for the constant-fold vs IR-instruction paths:
 | Sub (constant) | `CreateBinOp`(13=Sub) | `ConstantFoldSub` (`sub_15A2B60`) |
 | SDiv exact | `CreateBinOp`(18=SDiv) + `SetExactFlag` | `ConstantFoldSDiv` (`sub_15A2C90`) |
 
-When the constant path is taken, no LLVM instruction is created and no BB insertion occurs -- the result is a pure `llvm::Constant*` that can be used directly. This is critical for expressions like `sizeof(int) + 4` where no runtime code should be emitted.
+When the constant path is taken, no LLVM instruction is created and no BB insertion occurs — the result is a pure `llvm::Constant*` that can be used directly. This is critical for expressions like `sizeof(int) + 4` where no runtime code should be emitted.
 
 ## Key Expression Patterns
 
@@ -266,7 +266,7 @@ Opcode `0x34`. The classic 5-step Clang pattern for `(p1 - p2)`:
 %sub.ptr.div      = sdiv exact i64 %sub.ptr.sub, 4    ; element_size=4 for int*
 ```
 
-Step 5 (the `sdiv exact`) is **skipped entirely** when the element size is 1 (i.e., `char*` arithmetic), since division by 1 is a no-op. The element size comes from the pointed-to type at offset +128. The `exact` flag on `sdiv` tells the optimizer that the division is known to produce no remainder -- a critical optimization hint.
+Step 5 (the `sdiv exact`) is **skipped entirely** when the element size is 1 (i.e., `char*` arithmetic), since division by 1 is a no-op. The element size comes from the pointed-to type at offset +128. The `exact` flag on `sdiv` tells the optimizer that the division is known to produce no remainder — a critical optimization hint.
 
 ### Logical AND (short-circuit)
 
@@ -363,7 +363,7 @@ Created via `CreateUnaryOp` (`sub_15FB630`) which synthesizes `xor` with `-1` (a
 
 ### Dereference with address-of elision
 
-Opcode `0x05`. Before emitting a load for unary `*`, the function checks if the child is an address-of expression via `IsAddressOfExpr` (`sub_127B420`). If so, the dereference and address-of cancel out -- no IR is emitted, only a debug annotation is attached. This handles the common pattern `*&x` becoming just `x`.
+Opcode `0x05`. Before emitting a load for unary `*`, the function checks if the child is an address-of expression via `IsAddressOfExpr` (`sub_127B420`). If so, the dereference and address-of cancel out — no IR is emitted, only a debug annotation is attached. This handles the common pattern `*&x` becoming just `x`.
 
 ## Bitfield Codegen
 
@@ -471,10 +471,10 @@ All bitfield IR values use a consistent naming scheme:
 | `highclear` | Load fast | Fast-path `lshr` to clear high bits |
 | `zeroext` | Load fast | Fast-path zero-extend result |
 | `signext` | Load fast | Fast-path `ashr` sign extension |
-| `bf.value` | Store | `and(input, width_mask)` -- isolated field bits |
+| `bf.value` | Store | `and(input, width_mask)` — isolated field bits |
 | `bf.prev.cleared` | Store fast | Container with old field bits cleared |
 | `bf.newval.positioned` | Store fast | New value shifted to field position |
-| `bf.finalcontainerval` | Store fast | `or(cleared, positioned)` -- final container |
+| `bf.finalcontainerval` | Store fast | `or(cleared, positioned)` — final container |
 | `bf.reload.val` | Store | Truncated value for compound assignment reload |
 | `bf.reload.sext` | Store | Sign-extended reload via shift pair |
 | `bassign.tmp` | Store | Alloca for temporary during bitfield assignment |
@@ -489,7 +489,7 @@ Volatile detection uses a global flag at `unk_4D0463C`. When set, `sub_126A420` 
 
 ### Duplicate implementations
 
-Two additional copies exist at `sub_923780` (store) and `sub_925930` (load) -- identical algorithms with the same string names, same opcodes, same control flow. These likely correspond to different template instantiations or address-space variants in the original NVIDIA source. The `0x92xxxx` copies are in the main NVVM frontend region while the `0x128xxxx` copies are in the codegen helper region.
+Two additional copies exist at `sub_923780` (store) and `sub_925930` (load) — identical algorithms with the same string names, same opcodes, same control flow. These likely correspond to different template instantiations or address-space variants in the original NVIDIA source. The `0x92xxxx` copies are in the main NVVM frontend region while the `0x128xxxx` copies are in the codegen helper region.
 
 ## Constant Expression Codegen
 
@@ -535,7 +535,7 @@ The character width is determined from a lookup table `qword_4F06B40` indexed by
 | 3 | from global | platform-dependent |
 | 4 | from global | platform-dependent |
 
-The raw byte buffer is built by copying `byte_count` bytes from the EDG node, reading each character through `edg::ReadIntFromBuffer(src, width)` -- an endian-aware read function (the EDG IL may store string data in a platform-independent byte order). The buffer is then passed to `ConstantDataArray::getRaw(data, byte_count)` to create the LLVM constant.
+The raw byte buffer is built by copying `byte_count` bytes from the EDG node, reading each character through `edg::ReadIntFromBuffer(src, width)` — an endian-aware read function (the EDG IL may store string data in a platform-independent byte order). The buffer is then passed to `ConstantDataArray::getRaw(data, byte_count)` to create the LLVM constant.
 
 For each character width, the LLVM element type is selected: `i8` for 1-byte, `i16` for 2-byte, `i32` for 4-byte, `i64` for 8-byte. Empty strings create zero-element arrays. If the array type override `a3` provides a larger size than the literal, the remaining bytes are zero-filled.
 
@@ -557,9 +557,9 @@ All extended-precision types (long double, `__float80`, `__float128`) are silent
 
 Sub-dispatched by a byte at `expr[11].byte[0]`:
 
-- **Byte 0 -- Variable/global reference**: Calls `GetOrCreateGlobalVariable` (`sub_1276020`), returning a `GlobalVariable*` as a constant pointer. Debug info is optionally attached.
-- **Byte 1 -- Function reference**: Calls `GetOrCreateFunction` (`sub_1277140`). For static-linkage functions, resolves through `LookupFunctionStaticVar`.
-- **Byte 2 -- String literal reference** (`&"..."`): Validates the node kind is 2 (string), then calls `CreateStringGlobalConstant` (`sub_126A1B0`).
+- **Byte 0 — Variable/global reference**: Calls `GetOrCreateGlobalVariable` (`sub_1276020`), returning a `GlobalVariable*` as a constant pointer. Debug info is optionally attached.
+- **Byte 1 — Function reference**: Calls `GetOrCreateFunction` (`sub_1277140`). For static-linkage functions, resolves through `LookupFunctionStaticVar`.
+- **Byte 2 — String literal reference** (`&"..."`): Validates the node kind is 2 (string), then calls `CreateStringGlobalConstant` (`sub_126A1B0`).
 
 Post-processing applies a constant GEP offset if `expr[12].qword[0]` is nonzero, and performs pointer type cast if the produced type differs from the expected type. Same-address-space mismatches use `ConstantExpr::getBitCast`; cross-address-space mismatches use `ConstantExpr::getAddrSpaceCast`. Pointer-to-integer mismatches use `ConstantExpr::getPtrToInt` with address-space normalization to `addrspace(0)` first.
 
@@ -981,9 +981,9 @@ PHI nodes are used by three expression types: logical AND (`0x57`), logical OR (
 
 1. **Allocate**: `AllocatePHI` (`sub_1648B60`) with 64 bytes.
 2. **Initialize**: `InitPHINode` (`sub_15F1F50`) with opcode 53 (PHI), type, and zero for parent/count/incoming.
-3. **Set capacity**: `*(phi+56) = 2` -- two incoming edges.
+3. **Set capacity**: `*(phi+56) = 2` — two incoming edges.
 4. **Set name**: `SetValueName` (`sub_164B780`) with `"land.ext"`, `"lor.ext"`, or `"cond"`.
-5. **Reserve slots**: `sub_1648880(phi, 2, 1)` -- reserve 2 incoming at initial capacity 1.
+5. **Reserve slots**: `sub_1648880(phi, 2, 1)` — reserve 2 incoming at initial capacity 1.
 
 Adding each incoming value:
 
@@ -1014,7 +1014,7 @@ The PHI operand layout is `[val0, val1, ..., bb0, bb1, ...]` where each value sl
 
 ## Duplicate Implementations
 
-Two additional copies of the bitfield codegen exist at `sub_923780` (store) and `sub_925930` (load) -- identical algorithms with the same string names, same opcodes, same control flow. These are in the `0x92xxxx` range (NVVM frontend region) while the primary copies are in the `0x128xxxx` range (codegen helper region). They likely correspond to different template instantiations or address-space variants in the original NVIDIA source code.
+Two additional copies of the bitfield codegen exist at `sub_923780` (store) and `sub_925930` (load) — identical algorithms with the same string names, same opcodes, same control flow. These are in the `0x92xxxx` range (NVVM frontend region) while the primary copies are in the `0x128xxxx` range (codegen helper region). They likely correspond to different template instantiations or address-space variants in the original NVIDIA source code.
 
 ## Diagnostic String Index
 
@@ -1041,8 +1041,8 @@ Two additional copies of the bitfield codegen exist at `sub_923780` (store) and 
 
 ## Cross-References
 
-- [IRGen Types](irgen-types.md) -- type translation from EDG to LLVM
-- [Statement Codegen](irgen-stmts.md) -- statement-level emission that calls into `EmitExpr`
-- [Cast Codegen detail](irgen-expressions.md#cast--conversion-codegen) -- `EmitCast` subsystem
-- [Diagnostics](../infra/diagnostics.md) -- diagnostic emission infrastructure
-- [Address Spaces](../reference/address-spaces.md) -- NVPTX address space model affecting pointer casts
+- [IRGen Types](irgen-types.md) — type translation from EDG to LLVM
+- [Statement Codegen](irgen-stmts.md) — statement-level emission that calls into `EmitExpr`
+- [Cast Codegen detail](irgen-expressions.md#cast--conversion-codegen) — `EmitCast` subsystem
+- [Diagnostics](../infra/diagnostics.md) — diagnostic emission infrastructure
+- [Address Spaces](../reference/address-spaces.md) — NVPTX address space model affecting pointer casts

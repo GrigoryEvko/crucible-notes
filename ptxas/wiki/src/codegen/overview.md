@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The SASS code generation subsystem converts optimized Ori IR into executable GPU machine code. It is the largest subsystem in ptxas by every metric: approximately 12,000 functions, 9 MB of binary code, and nine functions so large that Hex-Rays cannot decompile them. The pipeline spans phases 112--158 of the 159-phase PhaseManager and comprises seven interlinked subsystems -- instruction selection, SASS binary encoding, peephole optimization, the Mercury encoding pipeline, Newton-Raphson math templates, SASS text generation, and ELF output packaging. Every subsystem dispatches through per-SM-family tables, so the same high-level flow produces correct output for targets from Kepler (sm_30) through Blackwell Ultra (sm_121).
+The SASS code generation subsystem converts optimized Ori IR into executable GPU machine code. It is the largest subsystem in ptxas by every metric: approximately 12,000 functions, 9 MB of binary code, and nine functions so large that Hex-Rays cannot decompile them. The pipeline spans phases 112--158 of the 159-phase PhaseManager and comprises seven interlinked subsystems — instruction selection, SASS binary encoding, peephole optimization, the Mercury encoding pipeline, Newton-Raphson math templates, SASS text generation, and ELF output packaging. Every subsystem dispatches through per-SM-family tables, so the same high-level flow produces correct output for targets from Kepler (sm_30) through Blackwell Ultra (sm_121).
 
 | | |
 |---|---|
@@ -10,9 +10,9 @@ The SASS code generation subsystem converts optimized Ori IR into executable GPU
 | **Total functions** | ~12,000 (ISel, encoding, peephole, Mercury, formatters, ELF) |
 | **Total binary size** | ~9 MB of machine code |
 | **Non-decompilable functions** | 9 (3 peephole + 6 encoding megadispatchers) |
-| **Core primitive** | `sub_7B9B80` -- bitfield insert (216 bytes, 18,347 callers) |
-| **Architecture selector** | `*(int*)(config+372) >> 12` -- SM generation ID |
-| **Largest function** | `sub_169B190` -- generic peephole dispatcher (280 KB) |
+| **Core primitive** | `sub_7B9B80` — bitfield insert (216 bytes, 18,347 callers) |
+| **Architecture selector** | `*(int*)(config+372) >> 12` — SM generation ID |
+| **Largest function** | `sub_169B190` — generic peephole dispatcher (280 KB) |
 | **Output modes** | `mercury` (SM 75--99), `capmerc` (SM 100+), `sass` (explicit) |
 | **CLI option** | `--binary-kind mercury,capmerc,sass` |
 
@@ -75,22 +75,22 @@ The code generation pipeline occupies phases 112--158. This table maps each phas
 | 120 | `MercGenerateOpex` | Mercury core | [mercury.md](./mercury.md) |
 | 121 | `MercGenerateWARs2` | Mercury core | [mercury.md](./mercury.md) |
 | 122 | `MercGenerateSassUCode` | Mercury core | [mercury.md](./mercury.md) |
-| 123 | `ComputeVCallRegUse` | Post-Mercury bookkeeping | -- |
-| 124 | `CalcRegisterMap` | Post-Mercury bookkeeping | -- |
-| 125 | `UpdateAfterPostRegAlloc` | Post-Mercury bookkeeping | -- |
+| 123 | `ComputeVCallRegUse` | Post-Mercury bookkeeping | — |
+| 124 | `CalcRegisterMap` | Post-Mercury bookkeeping | — |
+| 125 | `UpdateAfterPostRegAlloc` | Post-Mercury bookkeeping | — |
 | 126 | `ReportFinalMemoryUsage` | Reporting | [dumpir.md](../config/dumpir.md) |
-| 127 | `AdvancedPhaseOriPhaseEncoding` | Encoding hook | -- |
-| 128 | `UpdateAfterFormatCodeList` | Post-Mercury bookkeeping | -- |
+| 127 | `AdvancedPhaseOriPhaseEncoding` | Encoding hook | — |
+| 128 | `UpdateAfterFormatCodeList` | Post-Mercury bookkeeping | — |
 | 129 | `DumpNVuCodeText` | SASS text output | [sass-printing.md](./sass-printing.md) |
 | 130 | `DumpNVuCodeHex` | SASS hex output | [dumpir.md](../config/dumpir.md) |
-| 131 | `DebuggerBreak` | Debug | -- |
-| 132 | `UpdateAfterConvertUnsupportedOps` | Late cleanup | -- |
-| 133 | `MergeEquivalentConditionalFlow` | Late cleanup | -- |
-| 134 | `AdvancedPhaseAfterMidExpansion` | Late cleanup hook | -- |
-| 135 | `AdvancedPhaseLateExpandSyncInstructions` | Late cleanup hook | -- |
-| 136 | `LateMergeEquivalentConditionalFlow` | Late cleanup | -- |
-| 137 | `LateExpansionUnsupportedOpsMid` | Late lowering | -- |
-| 138 | `OriSplitHighPressureLiveRanges` | Late regalloc fixup | -- |
+| 131 | `DebuggerBreak` | Debug | — |
+| 132 | `UpdateAfterConvertUnsupportedOps` | Late cleanup | — |
+| 133 | `MergeEquivalentConditionalFlow` | Late cleanup | — |
+| 134 | `AdvancedPhaseAfterMidExpansion` | Late cleanup hook | — |
+| 135 | `AdvancedPhaseLateExpandSyncInstructions` | Late cleanup hook | — |
+| 136 | `LateMergeEquivalentConditionalFlow` | Late cleanup | — |
+| 137 | `LateExpansionUnsupportedOpsMid` | Late lowering | — |
+| 138 | `OriSplitHighPressureLiveRanges` | Late regalloc fixup | — |
 | 139--158 | *(architecture-specific)* | Arch backends | [phase-manager.md](../passes/phase-manager.md) |
 
 Subsystem grouping summary:
@@ -135,7 +135,7 @@ See [Instruction Selection](./isel.md) for the full DAG matcher protocol, helper
 
 The encoding subsystem translates ISel output into packed binary SASS machine code. Each instruction is encoded into a 1280-bit (160-byte, 20-QWORD) buffer via the universal bitfield packer `sub_7B9B80`. The full architecture is documented in [SASS Instruction Encoding](./encoding.md); the key facts for the overview:
 
-- **~4,000 encoding handler functions** -- each follows an identical 10-phase template, differing only in constants and modifier helpers
+- **~4,000 encoding handler functions** — each follows an identical 10-phase template, differing only in constants and modifier helpers
 - **6 megadispatchers** (750 KB total) route field-level queries by instruction category: `setField` (180 KB), `getFieldOffset` (197 KB), `hasField` (187 KB), `setFieldDefault` (142 KB), `getOperandFieldOffset` (68 KB), `setOperandField` (65 KB)
 - **2,095 bitfield accessor functions** at `0x10B0000`--`0x10BF2C0` (1,661 under 200 bytes)
 - **530 encoding table initializers** at `0xC66000`--`0xD27000`, each populating one instruction format row
@@ -168,7 +168,7 @@ See [Newton-Raphson Templates](./templates.md) for the complete template hierarc
 
 ## SASS Text Generation
 
-Phase 129 (`DumpNVuCodeText`) converts the internal instruction stream into human-readable SASS assembly text for `--verbose` output and `--out-sass` dumps. The dispatcher `sub_5D4190` (12.9 KB) routes 81 named opcodes via direct string comparison and 473 via hash-based switch to 580 template-generated formatter functions at `0x4DA340`--`0x5A8E40` (~850 KB). All formatters use a monolithic 1.8 MB format string table -- an unusual design that trades memory for formatting speed.
+Phase 129 (`DumpNVuCodeText`) converts the internal instruction stream into human-readable SASS assembly text for `--verbose` output and `--out-sass` dumps. The dispatcher `sub_5D4190` (12.9 KB) routes 81 named opcodes via direct string comparison and 473 via hash-based switch to 580 template-generated formatter functions at `0x4DA340`--`0x5A8E40` (~850 KB). All formatters use a monolithic 1.8 MB format string table — an unusual design that trades memory for formatting speed.
 
 See [SASS Text Generation](./sass-printing.md) for the full formatter architecture and opcode routing details.
 
@@ -234,7 +234,7 @@ Handler functions that consume this table:
 
 | Handler | Size | Operations |
 |---|---|---|
-| `sub_6C0D90` | 19 KB | Atomic reduce (atom.add/min/max/cas -- 54 validation strings) |
+| `sub_6C0D90` | 19 KB | Atomic reduce (atom.add/min/max/cas — 54 validation strings) |
 | `sub_6C3470` | 20 KB | cp.async.bulk (bulk async copy) |
 | `sub_6C1CF0` | 16 KB | mbarrier (arrive, wait, test, counted variants) |
 | `sub_6C4DA0` | 15 KB | Load/store with scope, memory order, domain validation |
@@ -255,7 +255,7 @@ Post-register-allocation operand legalization rewrites instructions that cannot 
 |---|---|---|
 | `sub_AB3C30` | 32 KB | Post-RA instruction legalization (opcodes 288, 167, 185, 241, 299, 300, 317) |
 | `sub_AB2D50` | 18 KB | Per-class operand legalization (opcode 307 = ternary/FMA-like) |
-| `sub_ACF4D0` | 14 KB | Constraint solver -- splits instructions when direct encoding fails |
+| `sub_ACF4D0` | 14 KB | Constraint solver — splits instructions when direct encoding fails |
 | `sub_AB8940` | 19 KB | Register move coalescing / copy elimination |
 | `sub_AC2750` | 36 KB | Operand-to-encoding converter (36-byte operand records) |
 
@@ -311,16 +311,16 @@ See [function-map.md](../function-map.md) for the complete table (~30 entries wi
 
 ## Cross-References
 
-- [Instruction Selection](./isel.md) -- DAG pattern matching, builder variants, operand validation
-- [SASS Instruction Encoding](./encoding.md) -- bit-level encoding format, 10-phase template, opcode hierarchy
-- [Peephole Optimization](./peephole.md) -- 3 mega-dispatchers, 3,185 matchers, priority-based rewrite
-- [Mercury Encoder Pipeline](./mercury.md) -- 6-stage sub-pipeline, WAR resolution, opex
-- [Capsule Mercury & Finalization](./capmerc.md) -- SM 100+ variant with embedded PTX + relocations
-- [Newton-Raphson Templates](./templates.md) -- DDIV/DRCP/DSQRT/DRSQRT software sequences
-- [SASS Text Generation](./sass-printing.md) -- 580 formatters, format string table
-- [Pipeline Overview](../pipeline/overview.md) -- full PTX-to-SASS compilation flow
-- [Phase Manager](../passes/phase-manager.md) -- 159-phase pipeline infrastructure
-- [Scheduling Architecture](../scheduling/overview.md) -- 3-phase scheduler (pre-codegen)
-- [Register Allocation](../regalloc/overview.md) -- Fatpoint algorithm (pre-codegen)
-- [ELF/Cubin Output](../output/elf-emitter.md) -- custom ELF emitter, section catalog
-- [Knobs System](../config/knobs.md) -- knobs controlling codegen behavior
+- [Instruction Selection](./isel.md) — DAG pattern matching, builder variants, operand validation
+- [SASS Instruction Encoding](./encoding.md) — bit-level encoding format, 10-phase template, opcode hierarchy
+- [Peephole Optimization](./peephole.md) — 3 mega-dispatchers, 3,185 matchers, priority-based rewrite
+- [Mercury Encoder Pipeline](./mercury.md) — 6-stage sub-pipeline, WAR resolution, opex
+- [Capsule Mercury & Finalization](./capmerc.md) — SM 100+ variant with embedded PTX + relocations
+- [Newton-Raphson Templates](./templates.md) — DDIV/DRCP/DSQRT/DRSQRT software sequences
+- [SASS Text Generation](./sass-printing.md) — 580 formatters, format string table
+- [Pipeline Overview](../pipeline/overview.md) — full PTX-to-SASS compilation flow
+- [Phase Manager](../passes/phase-manager.md) — 159-phase pipeline infrastructure
+- [Scheduling Architecture](../scheduling/overview.md) — 3-phase scheduler (pre-codegen)
+- [Register Allocation](../regalloc/overview.md) — Fatpoint algorithm (pre-codegen)
+- [ELF/Cubin Output](../output/elf-emitter.md) — custom ELF emitter, section catalog
+- [Knobs System](../config/knobs.md) — knobs controlling codegen behavior

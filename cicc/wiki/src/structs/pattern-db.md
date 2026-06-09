@@ -1,6 +1,6 @@
 # Instruction Constraint Table (Pattern Database)
 
-The instruction selection backend in cicc v13.0 uses a global constraint table to map target opcodes to their operand requirements. This table drives the `sub_B612D0` constraint emission function (38 KB native), which consults a packed 16-bit word array to determine register classes and constraint patterns for each machine instruction. The constraint table is the single authoritative source of truth for every NVPTX MachineInstr's register requirements -- any reimplementation of the backend codegen must reproduce it exactly.
+The instruction selection backend in cicc v13.0 uses a global constraint table to map target opcodes to their operand requirements. This table drives the `sub_B612D0` constraint emission function (38 KB native), which consults a packed 16-bit word array to determine register classes and constraint patterns for each machine instruction. The constraint table is the single authoritative source of truth for every NVPTX MachineInstr's register requirements — any reimplementation of the backend codegen must reproduce it exactly.
 
 ## Global Table: `word_3F3E6C0`
 
@@ -57,19 +57,19 @@ These IDs are specific to the pattern database constraint system and differ from
 | 22 | Int16Regs (`%rs`) | 16 bits |
 | 24 | Int16HalfRegs (`%h`) | 16 bits (f16/bf16) |
 | 27 | Int32HalfRegs (`%hh`) | 32 bits (v2f16/v2bf16) |
-| 29 | (unidentified) | -- |
-| 32 | (unidentified) | -- |
-| 36 | (unidentified) | -- |
-| 39 | (unidentified) | -- |
+| 29 | (unidentified) | — |
+| 32 | (unidentified) | — |
+| 36 | (unidentified) | — |
+| 39 | (unidentified) | — |
 | 40 | Float32Regs (`%f`) | 32 bits |
-| 41 | (unidentified) | -- |
+| 41 | (unidentified) | — |
 | 43 | Float16Regs (`%h`, alias of Int16HalfRegs) | 16 bits |
 | 50 | Int64Regs (`%rd`) | 64 bits |
 | 51 | Float64Regs (`%fd`) | 64 bits |
 | 52 | Int128Regs (`%rq`) | 128 bits |
-| 67 | (unidentified) | -- |
-| 72 | (unidentified) | -- |
-| 76 | (unidentified) | -- |
+| 67 | (unidentified) | — |
+| 72 | (unidentified) | — |
+| 76 | (unidentified) | — |
 | 78 | Int1Regs (`%p`) | 1 bit |
 | 86 | SpecialRegs (internal-only, `off_4A026E0`) | varies |
 
@@ -86,7 +86,7 @@ A secondary classification table at `byte_3F252E0` categorizes constraint entrie
 | 0x10 | Sized/ranged | Operands with explicit bit-width requirements (sub-register extracts) |
 | 0x18 | Compound | Multi-register operands; types 86-97 in the classification table |
 
-The merge function `sub_A7A6D0` (7KB) performs set intersection across constraint families when two constraint sets must be unified (e.g., during register coalescing or inline asm constraint resolution). The "compound" family (0x18) covers instructions that require register pairs or wider groupings -- tensor core MMA instructions fall into this category.
+The merge function `sub_A7A6D0` (7KB) performs set intersection across constraint families when two constraint sets must be unified (e.g., during register coalescing or inline asm constraint resolution). The "compound" family (0x18) covers instructions that require register pairs or wider groupings — tensor core MMA instructions fall into this category.
 
 ## Key Sub-Functions
 
@@ -94,12 +94,12 @@ The constraint emission pipeline involves these collaborating functions:
 
 | Address | Size | Function | Purpose |
 |---------|------|----------|---------|
-| `sub_A778C0` | -- | Reg-class constraint builder | Build a register-class constraint entry; stores class ID in `value` field |
-| `sub_A77AD0` | -- | Any-register constraint builder | Build an "any register" constraint (unconstrained operand) |
-| `sub_A79C90` | -- | Constraint composer | Compose N descriptor entries into a single constraint record |
+| `sub_A778C0` | — | Reg-class constraint builder | Build a register-class constraint entry; stores class ID in `value` field |
+| `sub_A77AD0` | — | Any-register constraint builder | Build an "any register" constraint (unconstrained operand) |
+| `sub_A79C90` | — | Constraint composer | Compose N descriptor entries into a single constraint record |
 | `sub_A7A6D0` | 7KB | Constraint merger / intersector | Merge/intersect two constraint sets using `byte_3F252E0` classification |
 | `sub_B5BA00` | 21KB | Output constraint builder | Build the output register constraint; 111-case switch on class ID |
-| `sub_A78010` | -- | `emitConstraint(a1, &desc_array, N)` | Emit the final constraint with N entries to the instruction descriptor |
+| `sub_A78010` | — | `emitConstraint(a1, &desc_array, N)` | Emit the final constraint with N entries to the instruction descriptor |
 | `sub_B612D0` | 104KB | `emitInstrConstraint(a1, opcode)` | Top-level: lookup `word_3F3E6C0`, dispatch on constraint class, build and emit |
 
 The `sub_B5BA00` function (10 KB native) is itself a 111-case switch that translates register class IDs into the internal constraint representation. It produces the `value` field for output constraint entries. Its size suggests that it handles not just the 9 primary register classes but also sub-register classes, paired classes, and special accumulator classes for tensor operations.
@@ -390,7 +390,7 @@ The constraint table is consumed during instruction selection by the three-level
 
 4. **TableGen-generated selector** (`sub_348D3E0`, 256KB): Auto-generated from NVPTX `.td` instruction pattern definitions. Calls `sub_969240` 45 times, `sub_32889F0` 38 times.
 
-5. **Complex addressing mode selector** (`sub_33D4EF0`, 114KB): Handles NVPTX load/store addressing with address space qualifiers. Calls `sub_969240` 399 times -- the single function with the most SDNode accesses in the entire binary.
+5. **Complex addressing mode selector** (`sub_33D4EF0`, 114KB): Handles NVPTX load/store addressing with address space qualifiers. Calls `sub_969240` 399 times — the single function with the most SDNode accesses in the entire binary.
 
 After pattern matching selects a MachineInstr opcode, the constraint table is queried via `sub_B612D0` to determine register requirements. The selected opcode is the index into `word_3F3E6C0`.
 
@@ -424,22 +424,22 @@ The global table `word_3F3E6C0` is in the `.data` section, allocated at link tim
 
 ## Cross-References
 
-- [reference/register-classes.md](../reference/register-classes.md) -- Authoritative register class table with encoding scheme
-- [reference/nvptx-opcodes.md](../reference/nvptx-opcodes.md) -- NVPTX MachineInstr opcode inventory (consumers of this constraint table)
-- [llvm/isel-patterns.md](../llvm/isel-patterns.md) -- ISel pattern matching that feeds opcodes into this table
-- [llvm/selectiondag.md](../llvm/selectiondag.md) -- SelectionDAG construction that precedes constraint emission
-- [llvm/register-allocation.md](../llvm/register-allocation.md) -- Greedy RA that consumes the emitted constraints
-- [llvm/register-coalescing.md](../llvm/register-coalescing.md) -- Copy family opcodes 440-503 and coalescing constraints
+- [reference/register-classes.md](../reference/register-classes.md) — Authoritative register class table with encoding scheme
+- [reference/nvptx-opcodes.md](../reference/nvptx-opcodes.md) — NVPTX MachineInstr opcode inventory (consumers of this constraint table)
+- [llvm/isel-patterns.md](../llvm/isel-patterns.md) — ISel pattern matching that feeds opcodes into this table
+- [llvm/selectiondag.md](../llvm/selectiondag.md) — SelectionDAG construction that precedes constraint emission
+- [llvm/register-allocation.md](../llvm/register-allocation.md) — Greedy RA that consumes the emitted constraints
+- [llvm/register-coalescing.md](../llvm/register-coalescing.md) — Copy family opcodes 440-503 and coalescing constraints
 
 ## Function Map
 
 | Address | Size | Role |
 |---|---|---|
-| `sub_A778C0` | -- | Build register-class input constraint entry |
-| `sub_A77AD0` | -- | Build unconstrained ("any") input constraint |
-| `sub_A79C90` | -- | Merge N descriptor entries into compound constraint |
+| `sub_A778C0` | — | Build register-class input constraint entry |
+| `sub_A77AD0` | — | Build unconstrained ("any") input constraint |
+| `sub_A79C90` | — | Merge N descriptor entries into compound constraint |
 | `sub_A7A6D0` | 7KB | Set-intersection of constraints using `byte_3F252E0` |
-| `sub_A78010` | -- | Finalize and emit constraint record |
+| `sub_A78010` | — | Finalize and emit constraint record |
 | `sub_B5BA00` | 21KB | Output constraint builder: 111-case switch (class ID to output representation) |
 | `sub_B612D0` | 104KB | Top-level constraint emitter: 179-case constraint class dispatch |
 | `sub_B6B200` | 44KB | Operand type decoder from bytecode stream (101-case) |

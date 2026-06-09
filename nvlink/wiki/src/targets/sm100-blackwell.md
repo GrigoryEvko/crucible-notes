@@ -53,7 +53,7 @@ Bit Range    Width   Name              Description
 |---|---|---|
 | Format 1 | 308 | Simpler register-register forms, 3-operand ALU, branches |
 | Format 2 | 1,227 | Extended forms with immediates, predicated variants, memory ops |
-| Format 3 | 1 | Wide format -- only `HSETP2` (opcode 0x6F sub 0x04, half-precision paired comparison) |
+| Format 3 | 1 | Wide format — only `HSETP2` (opcode 0x6F sub 0x04, half-precision paired comparison) |
 
 ### Operand Field Encoding
 
@@ -66,7 +66,7 @@ Bits 32-127 encode operand references, modifier flags, and immediates. The layou
 | 58-63 | Destination modifiers, saturation |
 | 64-79 | Extended opcode / sub-function qualifiers (word 1) |
 | 80-127 | Instruction-specific operand fields, immediates |
-| 134-132 (offset 0x84) | Format2 field -- secondary format indicator (3 bits) |
+| 134-132 (offset 0x84) | Format2 field — secondary format indicator (3 bits) |
 
 ### Register Operand Types
 
@@ -145,7 +145,7 @@ __int64 __fastcall encode_XXX(__int64 buf, __int64 ir_instr)
 
 ### Decoder Architecture
 
-Decoders mirror encoders -- each unpacks a 128-bit instruction word into the internal IR:
+Decoders mirror encoders — each unpacks a 128-bit instruction word into the internal IR:
 
 ```c
 __int64 __fastcall decode_XXX(__int64 buf, __int64 ir_out)
@@ -203,7 +203,7 @@ The following tables enumerate all 118 instruction families across the three maj
 | 0x04 | INT-SHIFT | 6 | R2-3, I0-1 | Integer shift operations |
 | 0x06 | INT-ARITH | 12 | R2-3, I0-1 | Integer arithmetic (ADD, SUB) |
 | 0x08 | INT-MUL | 3 | R2-3 | Integer multiply |
-| 0x09 | INT-MAD-EXT | 26 | R2-4, I0-1 | Integer multiply-add extended -- largest family in major 1 |
+| 0x09 | INT-MAD-EXT | 26 | R2-4, I0-1 | Integer multiply-add extended — largest family in major 1 |
 | 0x0A | FLOAT-CVT | 3 | R2-3 | Float conversion |
 | 0x0C | CVT | 1 | R2 | Type conversion |
 | 0x0D | INT-MAD | 10 | R2-3, I0-1 | Integer multiply-add |
@@ -243,12 +243,12 @@ The following tables enumerate all 118 instruction families across the three maj
 | 0x49 | ATOM-GLOBAL | 6 | R2-3, I1-2, P0-1 | Global memory atomic operations |
 | 0x4A | REDUCE | 4 | R2-3, I0-1 | Reduction operations |
 | 0x4C | MEM-FENCE | 4 | R2-3, I0-1, P0-1 | Memory fence instructions |
-| 0x4E | CORE-VEC | 63+ | R3-4, I1, P1 | Core vector ALU -- **largest family** |
+| 0x4E | CORE-VEC | 63+ | R3-4, I1, P1 | Core vector ALU — **largest family** |
 | 0x4F | CORE-VEC-EXT | 25 | R2-4, I0-2, P0-1 | Extended core vector ALU |
 | 0x52 | INT-SET-PRED | 6 | R2-3, I0-1 | Integer set predicate |
 | 0x54 | LOAD-SHARED-EXT | 6 | R3, P1 | Extended shared memory load |
 | 0x56 | WARP-BARRIER | 4+ | R1-2, P0-1 | Warp-level barrier operations |
-| 0x59 | MMA-TENSOR | 30 | R4-7, I0-1, P0-2 | Tensor core MMA -- 2nd largest family |
+| 0x59 | MMA-TENSOR | 30 | R4-7, I0-1, P0-2 | Tensor core MMA — 2nd largest family |
 | 0x5C | LOAD-GLOBAL | 6 | R3-4, P0-1 | Global memory load |
 | 0x61 | STORE-GLOBAL | 5 | R1-3, I1-4, P0-2 | Global memory store |
 | 0x62 | STORE-SHARED | 6 | R2-3, P0-2 | Shared memory store |
@@ -277,7 +277,7 @@ The following tables enumerate all 118 instruction families across the three maj
 | 0xB3 | MMA-SPECIAL | 5 | R4, P1 | Special MMA variant |
 | 0xCF | PRED-LOGIC | 3 | R1-2, P0-1 | Predicate logic operations |
 | 0xD4 | SELECT | 2 | R1-2, P0-1 | Conditional select / cmov |
-| 0xDF | IMM-MOV | 14 | R1-2, I1-3, P0-1 | Immediate move -- most immediate-rich family |
+| 0xDF | IMM-MOV | 14 | R1-2, I1-3, P0-1 | Immediate move — most immediate-rich family |
 | 0xE1 | STORE-EXT | 4 | R1-3, I1-3, P0-2 | Extended store operations |
 | 0xEE | WARP-SHUFFLE | 3 | R2-3, P0-1 | Warp shuffle operations |
 
@@ -285,7 +285,7 @@ The following tables enumerate all 118 instruction families across the three maj
 
 | Minor | Family | Variants | Operands | Description |
 |---|---|---|---|---|
-| 0x6F | HSETP2-WIDE | 1 | R4, I1, P2 | Half-precision set predicate, paired comparison -- the only format 3 instruction in the entire ISA |
+| 0x6F | HSETP2-WIDE | 1 | R4, I1, P2 | Half-precision set predicate, paired comparison — the only format 3 instruction in the entire ISA |
 
 ## Instruction Families by Functional Class
 
@@ -467,20 +467,20 @@ The 54 predicate functions live at `0x12B5670`--`0x12B5C20` (16 bytes each, all 
 | 52 | `sub_12B5C10` | 55 | 55 | Extended sparse |
 | 53 | `sub_12B5C20` | 60 | 60 | Extended sparse |
 
-Type IDs 9, 12, 14, 17, 20, 22, 57 are absent from the enum -- either reserved for future expansion or used by related subsystems not routed through this classifier.
+Type IDs 9, 12, 14, 17, 20, 22, 57 are absent from the enum — either reserved for future expansion or used by related subsystems not routed through this classifier.
 
 The type ID groupings inferred from the classification order and the modifier suffix strings:
 
-- **IDs 1--8**: Base MMA types (standard precision combinations -- the 8 fundamental `tcgen05.mma` configurations)
+- **IDs 1--8**: Base MMA types (standard precision combinations — the 8 fundamental `tcgen05.mma` configurations)
 - **IDs 10--16**: Extended base types with non-standard precision or accumulator widths
 - **IDs 18--24**: Extended type A variants (wider accumulator or non-standard rounding)
-- **IDs 25--29**: Blockscale variants (`_blockscale` modifier -- block-level scaling for MX formats)
+- **IDs 25--29**: Blockscale variants (`_blockscale` modifier — block-level scaling for MX formats)
 - **IDs 30--33**: Quantized MMA types (`tcmma_*_q` / `tcmma_*_mxq` internal names)
 - **IDs 34--37**: Mixed-precision variants (asymmetric A/B input types)
 - **IDs 38--41**: FP8/FP6/FP4 narrow-type variants (e4m3, e5m2, e3m2, e2m3, e2m1 combinations)
-- **IDs 42--43**: Sparse MMA variants (structured sparsity -- 2:4 or 4:8 patterns)
-- **IDs 44--46**: Ashift variants (`_ashift` modifier -- arithmetic shift on matrix A)
-- **IDs 47--48**: Fused variants (`_fused` modifier -- fused accumulation)
+- **IDs 42--43**: Sparse MMA variants (structured sparsity — 2:4 or 4:8 patterns)
+- **IDs 44--46**: Ashift variants (`_ashift` modifier — arithmetic shift on matrix A)
+- **IDs 47--48**: Fused variants (`_fused` modifier — fused accumulation)
 - **IDs 49--51**: Pack/Expand variants (`_pack16bit`, `_expand16bit` modifiers)
 - **IDs 52--56**: MXQ (Mixed-precision Quantized) types (`_blockscale` + quantization)
 - **IDs 58--59**: Maxabs/Minabs variants (`_maxabs`, `_minabs` reduction modifiers)
@@ -489,7 +489,7 @@ The type ID groupings inferred from the classification order and the modifier su
 
 #### Guardrails Code Generation
 
-`sub_16E1DB0` (10,365 bytes, 325 lines) generates inline PTX boundary-checking code that validates tensor memory accesses before `tcgen05.mma` execution. This is a compiler-inserted safety mechanism -- the guardrails are weak functions that can be overridden at link time.
+`sub_16E1DB0` (10,365 bytes, 325 lines) generates inline PTX boundary-checking code that validates tensor memory accesses before `tcgen05.mma` execution. This is a compiler-inserted safety mechanism — the guardrails are weak functions that can be overridden at link time.
 
 **Symbol selection** (line 67--73): The function selects one of two guardrail symbol prefixes based on the instruction opcode at offset 776:
 
@@ -500,12 +500,12 @@ The type ID groupings inferred from the classification order and the modifier su
 
 Both prefixes get `nCols` appended to form the final guardrail variable name (e.g., `__cuda__sm10x_tcgen05_guardrails_in_physical_bounds_nCols`).
 
-**nCols computation** (line 82--318): The number of columns accessed by the MMA instruction is computed via a multi-level dispatch. The first dispatch key is `BYTE2(v63) & 0x1C` -- a 3-bit field extracted from the instruction descriptor at offset 632:
+**nCols computation** (line 82--318): The number of columns accessed by the MMA instruction is computed via a multi-level dispatch. The first dispatch key is `BYTE2(v63) & 0x1C` — a 3-bit field extracted from the instruction descriptor at offset 632:
 
 | Field Value | nCols Computation |
 |---|---|
 | `0x10` (16) | Constant: `mov.u32 %s, 8` |
-| `0x14` (20) | Dynamic: reads descriptor field at offset 634, dispatches on `(byte >> 5)` -- see sub-table below |
+| `0x14` (20) | Dynamic: reads descriptor field at offset 634, dispatches on `(byte >> 5)` — see sub-table below |
 | `0x18` (24) | Register: copies from operand at offset 664 via `mov.u32 %s, %s` |
 | `0x1C` (28) | Register: copies from operand at offset 656 via `mov.u32 %s, %s` |
 | other | Falls through to instruction-opcode-based dispatch |
@@ -542,7 +542,7 @@ The nCols value is modified by two flags in the instruction descriptor at offset
 
 Case 3 checks whether either matrix A (offset 611, bits[5:4]) or matrix B (offset 627, bits[5:4]) uses FP16 format (`== 1`). If so, nCols is fixed at 4; otherwise, a full bitfield extraction from the descriptor determines the value dynamically.
 
-Case 4 is notable for using floating-point arithmetic (`cvt.rp.f32.u32`, `div.rp.f32`, `cvt.rpi.u32.f32`) to compute a ceiling division -- `nCols = ceil(bits * 8 / 64) * 2`. This computes the number of 64-byte-aligned column groups needed.
+Case 4 is notable for using floating-point arithmetic (`cvt.rp.f32.u32`, `div.rp.f32`, `cvt.rpi.u32.f32`) to compute a ceiling division — `nCols = ceil(bits * 8 / 64) * 2`. This computes the number of 64-byte-aligned column groups needed.
 
 #### Tensor Memory Address Computation
 
@@ -556,7 +556,7 @@ Five functions generate the inline PTX for computing tensor memory (tmem) addres
 | `sub_16E2990` | 99 lines | `__cuda_sm10x_tcgen05_mma_scaleTmemA` | Scale A | Offset 648 + 8*N (dynamic) |
 | `sub_16E2B80` | 99 lines | `__cuda_sm10x_tcgen05_mma_scaleTmemB` | Scale B | Offset 648 + 8*N (dynamic) |
 
-A sixth function at `sub_16E2D70` (93 lines) handles `__cuda_sm10x_tcgen05_mma_spMetaTmem` -- the sparsity metadata tensor memory address, reading from offset 672 (slot 3).
+A sixth function at `sub_16E2D70` (93 lines) handles `__cuda_sm10x_tcgen05_mma_spMetaTmem` — the sparsity metadata tensor memory address, reading from offset 672 (slot 3).
 
 Each function follows the same two-path pattern:
 
@@ -675,7 +675,7 @@ The SM100-specific compiler backend extends from `0x1782540` through `0x17B9300`
 
 Two monumental encoding functions handle the final SASS binary emission:
 
-- `sub_17F2670` (156,611 bytes, 4,858 lines): The **master instruction encoder** -- the largest function in the entire nvlink binary. Dispatches to individual encoding routines for all SASS instruction types. ~640 local variables, 0x2C8-byte stack frame.
+- `sub_17F2670` (156,611 bytes, 4,858 lines): The **master instruction encoder** — the largest function in the entire nvlink binary. Dispatches to individual encoding routines for all SASS instruction types. ~640 local variables, 0x2C8-byte stack frame.
 - `sub_17F9AE0` (61,531 bytes, 2,150 lines): Secondary encoder for less common instruction types.
 
 ## Format Descriptor Tables
@@ -706,7 +706,7 @@ Each instruction references a 16-byte (128-bit) format descriptor loaded via SSE
 | `xmmword_1F46E28` | 72 | Wide instruction format |
 | `xmmword_1F461F0` | 64 | Predicate instruction format |
 
-The universal operand descriptor at `xmmword_1F460E0`/`xmmword_1F460F0` (32 bytes) is referenced by all 4,236 encoder+decoder+descriptor functions -- it defines the register class mapping for the SM100 architecture.
+The universal operand descriptor at `xmmword_1F460E0`/`xmmword_1F460F0` (32 bytes) is referenced by all 4,236 encoder+decoder+descriptor functions — it defines the register class mapping for the SM100 architecture.
 
 ## Internal Data Structures
 
@@ -791,7 +791,7 @@ Offset  Size  Description
 | Encoder dispatch `sub_E43C20` (92 lines) | HIGH | Address and size consistent with function catalog |
 | Decoder dispatch `sub_EFE6C0` (93 lines) | HIGH | Address and size consistent with function catalog |
 | SM100 opcode table constructor `sub_1782540` (111,076 B) | HIGH | One of the largest functions; address consistent |
-| Master encoder `sub_17F2670` (156,611 B) -- largest function in binary | HIGH | Size claim from function boundary analysis; consistent with claimed 4,858 lines |
+| Master encoder `sub_17F2670` (156,611 B) — largest function in binary | HIGH | Size claim from function boundary analysis; consistent with claimed 4,858 lines |
 | Format descriptor tables (`xmmword_1E30DA0`, etc.) | HIGH | Rodata addresses from decompiled encoder functions |
 | Major opcode 3 has only 1 encoder (HSETP2) | MEDIUM | Derived from opcode distribution analysis; single format-3 instruction |
 
@@ -800,18 +800,18 @@ For general Blackwell architecture details, see the [ptxas wiki: Blackwell](../.
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](../ptxas/overview.md) -- SM100+ codec at `0xDA0000`--`0xF16000` and `0x620000`--`0xA70000`
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM100/100a/100f vtable registration and callbacks
-- [Architecture Profiles](arch-profiles.md) -- SM100 profile in linker database
-- [Compatibility](compatibility.md) -- SM100 finalization compatibility and capability bitmasks
-- [SM103/110/120/121](sm103-121.md) -- derived Blackwell-family architectures
-- [Mercury Overview](../mercury/overview.md) -- Mercury encoding is the default for SM100+
-- [FNLZR](../mercury/fnlzr.md) -- finalizer for Mercury/capmerc SM100+ output
-- [Capsule Mercury Format](../mercury/capmerc-format.md) -- capmerc output format for SM100+
+- [Embedded ptxas Overview](../ptxas/overview.md) — SM100+ codec at `0xDA0000`--`0xF16000` and `0x620000`--`0xA70000`
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — SM100/100a/100f vtable registration and callbacks
+- [Architecture Profiles](arch-profiles.md) — SM100 profile in linker database
+- [Compatibility](compatibility.md) — SM100 finalization compatibility and capability bitmasks
+- [SM103/110/120/121](sm103-121.md) — derived Blackwell-family architectures
+- [Mercury Overview](../mercury/overview.md) — Mercury encoding is the default for SM100+
+- [FNLZR](../mercury/fnlzr.md) — finalizer for Mercury/capmerc SM100+ output
+- [Capsule Mercury Format](../mercury/capmerc-format.md) — capmerc output format for SM100+
 
 ### Sibling Wikis
-- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) -- standalone ptxas SM100+ target documentation
-- [ptxas: tcgen05](../../ptxas/targets/tcgen05.html) -- standalone ptxas tcgen05 tensor intrinsics
-- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) -- Mercury pipeline for SM100+ encoding
-- [ptxas: Capsule Mercury](../../ptxas/codegen/capmerc.html) -- capmerc format in standalone ptxas
-- [cicc: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html) -- cicc compiler SM100 Blackwell target
+- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) — standalone ptxas SM100+ target documentation
+- [ptxas: tcgen05](../../ptxas/targets/tcgen05.html) — standalone ptxas tcgen05 tensor intrinsics
+- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) — Mercury pipeline for SM100+ encoding
+- [ptxas: Capsule Mercury](../../ptxas/codegen/capmerc.html) — capmerc format in standalone ptxas
+- [cicc: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html) — cicc compiler SM100 Blackwell target

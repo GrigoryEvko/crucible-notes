@@ -1,6 +1,6 @@
 # CUDA Runtime Boilerplate
 
-Every `.int.c` file emitted by cudafe++ contains a fixed block of CUDA runtime initialization code, injected unconditionally before the main body. This boilerplate implements lazy initialization of the CUDA managed memory runtime and defines macro stubs for the extended lambda detection system. The managed runtime block is always emitted regardless of whether the translation unit uses `__managed__` variables -- the static flag `__nv_inited_managed_rt` ensures the runtime is initialized at most once, and the `static` linkage prevents symbol conflicts across translation units. The lambda detection macros provide a compile-time protocol between cudafe++ and `crt/host_runtime.h`: the runtime header inspects these macros to decide whether to compile lambda wrapper infrastructure.
+Every `.int.c` file emitted by cudafe++ contains a fixed block of CUDA runtime initialization code, injected unconditionally before the main body. This boilerplate implements lazy initialization of the CUDA managed memory runtime and defines macro stubs for the extended lambda detection system. The managed runtime block is always emitted regardless of whether the translation unit uses `__managed__` variables — the static flag `__nv_inited_managed_rt` ensures the runtime is initialized at most once, and the `static` linkage prevents symbol conflicts across translation units. The lambda detection macros provide a compile-time protocol between cudafe++ and `crt/host_runtime.h`: the runtime header inspects these macros to decide whether to compile lambda wrapper infrastructure.
 
 ## Key Facts
 
@@ -50,7 +50,7 @@ Each component serves a specific role:
 | `__nv_inited_managed_rt` | `static char` | Guard flag: 0 = not initialized, nonzero = initialized |
 | `__nv_fatbinhandle_for_managed_rt` | `static void**` | Cached fatbinary handle, set during `__cudaRegisterFatBinary` |
 | `__nv_save_fatbinhandle_for_managed_rt` | `static void (void**)` | Stores the fatbin handle for later use by the init function |
-| `__nv_init_managed_rt_with_module` | `static char (void**)` | Forward declaration -- defined by `crt/host_runtime.h` |
+| `__nv_init_managed_rt_with_module` | `static char (void**)` | Forward declaration — defined by `crt/host_runtime.h` |
 
 The forward declaration of `__nv_init_managed_rt_with_module` is critical: this function is provided by the CUDA runtime headers (`crt/host_runtime.h`) and performs the actual CUDA runtime API calls to register managed variables with the unified memory system. By forward-declaring it here, the managed runtime boilerplate can reference it before the header is `#include`d later in the file.
 
@@ -107,8 +107,8 @@ The complete managed memory initialization sequence spans the compilation pipeli
 
 When the backend encounters a reference to a `__managed__` variable during code generation, it wraps the access in a comma-operator expression that forces lazy initialization. This transformation is performed by two functions:
 
-- `sub_4768F0` (`gen_name_ref`, xref at `0x476DCF`) -- handles qualified name references
-- `sub_484940` (`gen_variable_name`, xref at `0x484A08`) -- handles direct variable name emission
+- `sub_4768F0` (`gen_name_ref`, xref at `0x476DCF`) — handles qualified name references
+- `sub_484940` (`gen_variable_name`, xref at `0x484A08`) — handles direct variable name emission
 
 ### Detection Condition
 
@@ -144,13 +144,13 @@ After the variable name is emitted normally, the suffix `)))` closes the express
 
 Breaking down the expression:
 
-1. **Outer `*(...)`** -- dereferences the result (the managed variable is accessed through a pointer after initialization)
-2. **Comma operator `(init_expr, (managed_var))`** -- evaluates the init expression for its side effect, then yields the variable
-3. **Ternary `__nv_inited_managed_rt ? (void)0 : __nv_init_managed_rt()`** -- lazy init guard: if already initialized, the ternary evaluates to `(void)0` (no-op). Otherwise, calls `__nv_init_managed_rt()` which performs runtime registration
+1. **Outer `*(...)`** — dereferences the result (the managed variable is accessed through a pointer after initialization)
+2. **Comma operator `(init_expr, (managed_var))`** — evaluates the init expression for its side effect, then yields the variable
+3. **Ternary `__nv_inited_managed_rt ? (void)0 : __nv_init_managed_rt()`** — lazy init guard: if already initialized, the ternary evaluates to `(void)0` (no-op). Otherwise, calls `__nv_init_managed_rt()` which performs runtime registration
 
 This pattern guarantees that any access to any `__managed__` variable triggers runtime initialization exactly once, regardless of access order. The comma operator ensures the initialization is a sequenced side effect evaluated before the variable access.
 
-### sub_4768F0 (gen_name_ref) -- Qualified Access Path
+### sub_4768F0 (gen_name_ref) — Qualified Access Path
 
 The name reference generator at `sub_4768F0` handles the more complex case where the variable access includes scope qualification (`::`, template arguments, member access):
 
@@ -173,7 +173,7 @@ if (v13) {
 }
 ```
 
-### sub_484940 (gen_variable_name) -- Direct Access Path
+### sub_484940 (gen_variable_name) — Direct Access Path
 
 The direct variable name emitter at `sub_484940` follows the same pattern but with a simpler structure:
 
@@ -195,9 +195,9 @@ if (v1) {
 
 This function handles three variable name forms:
 
-1. **Thread-local variables** (byte `+163` bit 7 set) -- emits `"this"` string (4 characters via inline loop)
-2. **Anonymous variables** (byte `+165` bit 2 set) -- dispatches to `sub_483A80` for generated name emission
-3. **Regular variables** -- dispatches to `sub_472730` (`gen_expression_or_name`, mode 7)
+1. **Thread-local variables** (byte `+163` bit 7 set) — emits `"this"` string (4 characters via inline loop)
+2. **Anonymous variables** (byte `+165` bit 2 set) — dispatches to `sub_483A80` for generated name emission
+3. **Regular variables** — dispatches to `sub_472730` (`gen_expression_or_name`, mode 7)
 
 The managed wrapper is applied around all three forms.
 
@@ -232,7 +232,7 @@ CUDA toolkit installation may be corrupt.
 
 This error indicates that the CUDA runtime headers have not been properly included or that the toolkit installation is broken. The `__cudaPushCallConfiguration` function is declared in `crt/device_runtime.h` (included transitively through `crt/host_runtime.h`), so this error should only appear if the include paths are misconfigured.
 
-The error is emitted with severity `0x0B` (11), which maps to a fatal error -- compilation cannot continue without this function because every kernel launch depends on it.
+The error is emitted with severity `0x0B` (11), which maps to a fatal error — compilation cannot continue without this function because every kernel launch depends on it.
 
 ### Kernel Launch Lowering
 
@@ -275,7 +275,7 @@ Verbatim emitted code:
 #endif
 ```
 
-Note the missing space before `&&` in the second conjunction -- this is exactly how the string appears in the binary at `0x83ADE8`. The `#if defined(...)` block is a compile-time assertion: if any of the three macros were `#undef`'d by a misbehaving header between this point and their use in `crt/host_runtime.h`, the preprocessor would silently skip lambda-related code rather than producing cryptic template errors. The `#endif` immediately follows -- the block has no body because its purpose is solely the existence check.
+Note the missing space before `&&` in the second conjunction — this is exactly how the string appears in the binary at `0x83ADE8`. The `#if defined(...)` block is a compile-time assertion: if any of the three macros were `#undef`'d by a misbehaving header between this point and their use in `crt/host_runtime.h`, the preprocessor would silently skip lambda-related code rather than producing cryptic template errors. The `#endif` immediately follows — the block has no body because its purpose is solely the existence check.
 
 These macros are consumed by `crt/host_runtime.h` to conditionally compile lambda wrapper infrastructure. When all three evaluate to `false`, the runtime header skips device lambda wrapper template instantiation, host-device lambda wrapper instantiation, and trailing-return-type lambda handling.
 
@@ -402,11 +402,11 @@ The push/pop is emitted only when the host compiler supports it: Clang (`dword_1
 
 ## Cross-References
 
-- [.int.c File Format](./int-c-format.md) -- complete file structure showing where runtime boilerplate sits
-- [Device Lambda Wrapper](../lambda/device-wrapper.md) -- `__nv_dl_wrapper_t` matched by trait macros
-- [Host-Device Lambda Wrapper](../lambda/host-device-wrapper.md) -- `__nv_hdl_wrapper_t` matched by trait macros
-- [Preamble Injection](../lambda/preamble-injection.md) -- `sub_6BCC20` emission of trait templates
-- [Entity Node Layout](../structs/entity-node.md) -- byte +148/+149 memory space bitfield
-- [\_\_managed\_\_ Variables](../attributes/managed-variables.md) -- attribute handler setting the 0x101 bits
-- [Kernel Stub Generation](../cuda/kernel-stubs.md) -- device stub side of kernel launch lowering
-- [Host Reference Arrays](./host-reference-arrays.md) -- registration tables that reference managed variables
+- [.int.c File Format](./int-c-format.md) — complete file structure showing where runtime boilerplate sits
+- [Device Lambda Wrapper](../lambda/device-wrapper.md) — `__nv_dl_wrapper_t` matched by trait macros
+- [Host-Device Lambda Wrapper](../lambda/host-device-wrapper.md) — `__nv_hdl_wrapper_t` matched by trait macros
+- [Preamble Injection](../lambda/preamble-injection.md) — `sub_6BCC20` emission of trait templates
+- [Entity Node Layout](../structs/entity-node.md) — byte +148/+149 memory space bitfield
+- [\_\_managed\_\_ Variables](../attributes/managed-variables.md) — attribute handler setting the 0x101 bits
+- [Kernel Stub Generation](../cuda/kernel-stubs.md) — device stub side of kernel launch lowering
+- [Host Reference Arrays](./host-reference-arrays.md) — registration tables that reference managed variables

@@ -48,7 +48,7 @@ The following table reconciles field accesses across `sub_F20C20` (DAG combiner 
 
 Operands are stored in a contiguous array of `SDUse` structures. Two storage modes exist:
 
-**Mode A -- backward inline** (common for small operand counts). Operands are stored *before* the node in memory, growing toward lower addresses:
+**Mode A — backward inline** (common for small operand counts). Operands are stored *before* the node in memory, growing toward lower addresses:
 
 ```c
 operand[i] = *(qword*)(N + 32*(i - NumOps))
@@ -57,7 +57,7 @@ operand[i] = *(qword*)(N + 32*(i - NumOps))
 
 This 32-byte operand stride is confirmed across `sub_F3D570`, `sub_F20C20`, and `sub_F5A610`.
 
-**Mode B -- indirect pointer** (when `node_flags_byte` bit 6 is set). An 8-byte pointer at `N-8` points to a separately allocated operand array:
+**Mode B — indirect pointer** (when `node_flags_byte` bit 6 is set). An 8-byte pointer at `N-8` points to a separately allocated operand array:
 
 ```c
 if (*(byte*)(N+7) & 0x40):
@@ -180,10 +180,10 @@ TokenFactor = getNode(ISD::TokenFactor, dl, MVT::Other, chains[])
 ```
 
 Chain handling utilities in the builder:
-- `sub_20993A0` (11KB) -- chain/token helper for load/store sequences
-- `sub_2098400` -- chain token node creator
-- `sub_20989A0` -- memory scheduling chain builder
-- `sub_F6C1B0` (16KB) -- chain management in combining, uses `sub_B46970` (isTokenFactor)
+- `sub_20993A0` (11KB) — chain/token helper for load/store sequences
+- `sub_2098400` — chain token node creator
+- `sub_20989A0` — memory scheduling chain builder
+- `sub_F6C1B0` (16KB) — chain management in combining, uses `sub_B46970` (isTokenFactor)
 
 **Glue (flag) chains.** Certain node pairs must be scheduled adjacently (e.g., CopyToReg + CALL). These use a "glue" value type (MVT::Glue) as an additional operand/result. The call lowering in `sub_3040BF0` threads glue through the entire call sequence: `CallSeqBegin -> DeclareParam* -> Store* -> CallProto -> CallStart -> LoadRetParam* -> CallSeqEnd`.
 
@@ -225,10 +225,10 @@ sub_F4CEE0(SelectionDAG *DAG, unsigned Opcode, SDVTList VTs, SDValue *Ops, unsig
 ```
 
 Node builder variants handle different operand counts:
-- `sub_F49030` (38KB) -- complex node construction with operand/result type setup
-- `sub_F429C0` (34KB) -- merge/TokenFactor/indexed node creation
-- `sub_F44160` (22KB) -- CSE rebuild after modification
-- `sub_F40FD0` (16KB) -- node construction with chain initialization
+- `sub_F49030` (38KB) — complex node construction with operand/result type setup
+- `sub_F429C0` (34KB) — merge/TokenFactor/indexed node creation
+- `sub_F44160` (22KB) — CSE rebuild after modification
+- `sub_F40FD0` (16KB) — node construction with chain initialization
 
 The AllNodes list (`qword_4F81430`) is a doubly-linked intrusive list of all SDNodes in the current DAG, used for iteration during combining and legalization passes.
 
@@ -336,15 +336,15 @@ After the initial DAG is built, three legalization phases transform it into a fo
 
 The DAGTypeLegalizer iterates to fixpoint. For each node, it reads the result/operand types and checks the legality table at `TLI + 259 * VT + opcode + 2422`. If illegal, it applies one of: promote, expand, soften, scalarize, or split-vector. The worklist iterates until no node has an illegal type.
 
-NVPTX legal vector types are extremely limited (only v2f16, v2bf16, v2i16, v4i8 -- all packing into 32-bit registers via `Int32HalfRegs`). This means virtually all LLVM-IR vector operations pass through the split/scalarize paths.
+NVPTX legal vector types are extremely limited (only v2f16, v2bf16, v2i16, v4i8 — all packing into 32-bit registers via `Int32HalfRegs`). This means virtually all LLVM-IR vector operations pass through the split/scalarize paths.
 
 Type legalization workers:
-- `sub_201E5F0` (81KB) -- promote/expand secondary dispatch (441 case labels, 6 switches)
-- `sub_201BB90` (75KB) -- ExpandIntegerResult (632 case labels)
-- `sub_2029C10` -- SplitVectorResult dispatcher (reads opcode at `node+24`)
-- `sub_202E5A0` -- SplitVectorOperand dispatcher
-- `sub_2036110` -- ScalarizeVectorResult
-- `sub_2035F80` -- ScalarizeVectorOperand
+- `sub_201E5F0` (81KB) — promote/expand secondary dispatch (441 case labels, 6 switches)
+- `sub_201BB90` (75KB) — ExpandIntegerResult (632 case labels)
+- `sub_2029C10` — SplitVectorResult dispatcher (reads opcode at `node+24`)
+- `sub_202E5A0` — SplitVectorOperand dispatcher
+- `sub_2036110` — ScalarizeVectorResult
+- `sub_2035F80` — ScalarizeVectorOperand
 
 ### Phase 2: Operation Legalization (`sub_1FFB890`, 169KB)
 
@@ -367,25 +367,25 @@ Actions dispatch through a five-way switch:
 Custom lowering invokes `NVPTXTargetLowering::LowerOperation()` (`sub_32E3060`, 111KB) through the vtable. This is where all NVPTX-specific operation lowering happens: `BUILD_VECTOR` splat detection, `VECTOR_SHUFFLE` three-level lowering, `EXTRACT_VECTOR_ELT` three-path dispatch, and the `.param`-space calling convention.
 
 Additional action tables:
-- Second table at `TLI + opcode + 2681` -- for BSWAP/CTLZ/CTTZ/BITREVERSE (opcodes 43--45, 199)
-- Third table at `TLI + opcode + 3976` -- for FSINCOS (opcode 211)
-- Fourth table at `TLI + 18112` -- packed nibble format for FP_TO_SINT/FP_TO_UINT/SELECT_CC, indexed by `(VT_id >> 3) + 15 * condcode_type`
+- Second table at `TLI + opcode + 2681` — for BSWAP/CTLZ/CTTZ/BITREVERSE (opcodes 43--45, 199)
+- Third table at `TLI + opcode + 3976` — for FSINCOS (opcode 211)
+- Fourth table at `TLI + 18112` — packed nibble format for FP_TO_SINT/FP_TO_UINT/SELECT_CC, indexed by `(VT_id >> 3) + 15 * condcode_type`
 
 ### Phase 3: DAG Combining (Three Passes)
 
 DAG combining runs after each legalization phase. The orchestrator (`sub_F681E0`, 65KB) manages a worklist of SDNodes and calls the per-node visitor (`sub_F20C20`, 64KB) for each. The visitor implements a six-phase combine algorithm:
 
-1. **Opcode-specific combine** via `sub_100E380` -- target-independent pattern matching
-2. **Known-bits narrowing** -- for constants, calls `sub_11A3F30` (computeKnownBits/SimplifyDemandedBits) and narrows if fewer bits demanded
-3. **Operand type-narrowing loop** -- walks all operands, promotes/truncates to legal types, creates `SIGN_EXTEND`/`TRUNCATE` casts
-4. **All-constant-operand fold** -- 4x-unrolled check via `sub_1028510` (ConstantFold)
-5. **Division-by-constant strength reduction** -- shift+mask replacement for power-of-2 divisors
-6. **Vector stride / reassociation** -- `sub_F15770` (shift-fold), `sub_F17ED0` (stride patterns)
+1. **Opcode-specific combine** via `sub_100E380` — target-independent pattern matching
+2. **Known-bits narrowing** — for constants, calls `sub_11A3F30` (computeKnownBits/SimplifyDemandedBits) and narrows if fewer bits demanded
+3. **Operand type-narrowing loop** — walks all operands, promotes/truncates to legal types, creates `SIGN_EXTEND`/`TRUNCATE` casts
+4. **All-constant-operand fold** — 4x-unrolled check via `sub_1028510` (ConstantFold)
+5. **Division-by-constant strength reduction** — shift+mask replacement for power-of-2 divisors
+6. **Vector stride / reassociation** — `sub_F15770` (shift-fold), `sub_F17ED0` (stride patterns)
 
 **NVPTX-specific combines** run as a post-legalize pass:
-- `sub_33C0CA0` (62KB) -- `PerformDAGCombine`, the NVPTX target hook
-- `sub_32EC4F0` (92KB) -- post-legalize combine
-- `sub_3425710` (142KB) -- the NVIDIA DAGCombiner with internal `"COVERED"`/`"INCLUDED"` debug tracing strings (not present in upstream LLVM)
+- `sub_33C0CA0` (62KB) — `PerformDAGCombine`, the NVPTX target hook
+- `sub_32EC4F0` (92KB) — post-legalize combine
+- `sub_3425710` (142KB) — the NVIDIA DAGCombiner with internal `"COVERED"`/`"INCLUDED"` debug tracing strings (not present in upstream LLVM)
 
 The worklist uses the same DenseMap infrastructure as the builder context, with the hash at `DAG+2072` (capacity at `DAG+2088`, count at `DAG+2080`). Node replacement goes through `sub_F162A0` (CombineTo/ReplaceAllUsesWith), which walks the use-list, hashes each user into the worklist map, then calls `sub_BD84D0` for the actual use-chain splice.
 
@@ -393,15 +393,15 @@ The worklist uses the same DenseMap infrastructure as the builder context, with 
 
 The builder context uses a slab-based bump allocator identical to the one used for NVVM IR nodes:
 
-- **Slab growth**: `4096 << (slab_index >> 7)` -- exponential, capped at 4TB.
+- **Slab growth**: `4096 << (slab_index >> 7)` — exponential, capped at 4TB.
 - **Alignment**: 8 bytes.
 - **No per-node free**: entire slabs are released when the DAG is destroyed.
 - **Overflow**: allocates a new slab via `malloc()`.
 
 Since every base SDNode is exactly 104 bytes (13 qwords), a single 4096-byte initial slab holds approximately 39 nodes before overflow triggers slab growth. Extended node types (ConstantSDNode, MemSDNode) may be larger and are allocated via separate paths:
-- `sub_BD2C40` -- standard SDNode allocation (bump allocator)
-- `sub_BD2DA0` -- SDNode allocation variant (80 bytes, for lightweight nodes)
-- `sub_22077B0` -- `operator new[]` (128 bytes, for MemSDNode with chain/alignment fields)
+- `sub_BD2C40` — standard SDNode allocation (bump allocator)
+- `sub_BD2DA0` — SDNode allocation variant (80 bytes, for lightweight nodes)
+- `sub_22077B0` — `operator new[]` (128 bytes, for MemSDNode with chain/alignment fields)
 
 ## Basic Block Iteration
 
@@ -451,19 +451,19 @@ This matches the LLVM `ilist` intrusive linked list pattern where the list hook 
 | Merge/TokenFactor creation | `sub_F429C0` | 34KB | Chain merging, indexed nodes |
 | DAG combiner orchestrator | `sub_F681E0` | 65KB | Worklist management |
 | DAG combiner visitor | `sub_F20C20` | 64KB | Per-node combine algorithm |
-| combine() opcode dispatch | `sub_100E380` | -- | Target-independent combines |
-| CombineTo / RAUW | `sub_F162A0` | -- | Use-chain replacement + worklist push |
-| SDNode allocation | `sub_BD2C40` | -- | Bump allocator |
-| SDNode constructor | `sub_B44260` | -- | Initialization |
-| SDUse add to use list | `sub_B43C20` | -- | Use-chain linkage |
-| SDUse remove from use list | `sub_B43D60` | -- | Use-chain unlinkage |
-| ReplaceAllUsesWith | `sub_BD84D0` | -- | Raw use-chain splice |
-| transferDbgValues | `sub_BD6B90` | -- | Debug info transfer |
-| setOperand | `sub_B91C10` | -- | Operand mutation |
-| replaceOperand | `sub_B99FD0` | -- | Single operand swap |
+| combine() opcode dispatch | `sub_100E380` | — | Target-independent combines |
+| CombineTo / RAUW | `sub_F162A0` | — | Use-chain replacement + worklist push |
+| SDNode allocation | `sub_BD2C40` | — | Bump allocator |
+| SDNode constructor | `sub_B44260` | — | Initialization |
+| SDUse add to use list | `sub_B43C20` | — | Use-chain linkage |
+| SDUse remove from use list | `sub_B43D60` | — | Use-chain unlinkage |
+| ReplaceAllUsesWith | `sub_BD84D0` | — | Raw use-chain splice |
+| transferDbgValues | `sub_BD6B90` | — | Debug info transfer |
+| setOperand | `sub_B91C10` | — | Operand mutation |
+| replaceOperand | `sub_B99FD0` | — | Single operand swap |
 | DAGTypeLegalizer::run | `sub_20019C0` | 348KB | Type legalization master dispatch |
 | LegalizeOp | `sub_1FFB890` | 169KB | Operation legalization |
-| ExpandNode | `sub_1FF6F70` | -- | Full node expansion fallback |
+| ExpandNode | `sub_1FF6F70` | — | Full node expansion fallback |
 | NVPTXTargetLowering::LowerOperation | `sub_32E3060` | 111KB | NVPTX custom operation lowering |
 | NVPTXTargetLowering::LowerCall | `sub_3040BF0` | 88KB | `.param` calling convention |
 | Intrinsic lowering switch | `sub_33B0210` | 343KB | 200+ CUDA intrinsic IDs |
@@ -475,11 +475,11 @@ This matches the LLVM `ilist` intrusive linked list pattern where the list hook 
 
 ## Cross-References
 
-- [SelectionDAG & Instruction Selection](../llvm/selectiondag.md) -- pipeline overview, NVPTX lowering, combine detail
-- [Type Legalization](../llvm/type-legalization.md) -- 348KB type legalizer deep-dive
-- [ISel Patterns](../llvm/isel-patterns.md) -- instruction selection pattern database
-- [Register Classes](../reference/register-classes.md) -- NVPTX register class constraints
-- [Address Spaces](../reference/address-spaces.md) -- address space encoding
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- universal DenseMap documentation
-- [IR Node Structure](ir-node.md) -- NVVM IR node layout (pre-SelectionDAG)
-- [Pattern Database](pattern-db.md) -- ISel pattern constraint classes
+- [SelectionDAG & Instruction Selection](../llvm/selectiondag.md) — pipeline overview, NVPTX lowering, combine detail
+- [Type Legalization](../llvm/type-legalization.md) — 348KB type legalizer deep-dive
+- [ISel Patterns](../llvm/isel-patterns.md) — instruction selection pattern database
+- [Register Classes](../reference/register-classes.md) — NVPTX register class constraints
+- [Address Spaces](../reference/address-spaces.md) — address space encoding
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — universal DenseMap documentation
+- [IR Node Structure](ir-node.md) — NVVM IR node layout (pre-SelectionDAG)
+- [Pattern Database](pattern-db.md) — ISel pattern constraint classes

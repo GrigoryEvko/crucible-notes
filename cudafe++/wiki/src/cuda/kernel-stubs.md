@@ -1,6 +1,6 @@
 # Kernel Stub Generation
 
-When cudafe++ generates the `.int.c` host translation of a CUDA source file, every `__global__` kernel function undergoes a critical transformation: the original kernel body is suppressed and replaced with a **device stub** -- a lightweight host-callable wrapper that delegates to `cudaLaunchKernel`. This mechanism is how CUDA kernel launch syntax (`kernel<<<grid, block>>>(args)`) ultimately becomes a regular C++ function call that the host compiler can process. The stub generation logic lives entirely within `gen_routine_decl` (`sub_47BFD0`), a 1,831-line function in `cp_gen_be.c` that is the central code generator for all C++ function declarations and definitions. A secondary function, `gen_bare_name` (`sub_473F10`), handles the character-by-character emission of the `__wrapper__device_stub_` prefix into function names.
+When cudafe++ generates the `.int.c` host translation of a CUDA source file, every `__global__` kernel function undergoes a critical transformation: the original kernel body is suppressed and replaced with a **device stub** — a lightweight host-callable wrapper that delegates to `cudaLaunchKernel`. This mechanism is how CUDA kernel launch syntax (`kernel<<<grid, block>>>(args)`) ultimately becomes a regular C++ function call that the host compiler can process. The stub generation logic lives entirely within `gen_routine_decl` (`sub_47BFD0`), a 1,831-line function in `cp_gen_be.c` that is the central code generator for all C++ function declarations and definitions. A secondary function, `gen_bare_name` (`sub_473F10`), handles the character-by-character emission of the `__wrapper__device_stub_` prefix into function names.
 
 The stub mechanism operates in two passes controlled by a global toggle, `dword_1065850` (the `device_stub_mode` flag). The toggle fires at the top of `gen_routine_decl`, BEFORE the body-selection logic runs. Because the toggle is `dword_1065850 = (dword_1065850 == 0)`, it flips 0->1 on the first invocation. This means:
 
@@ -96,7 +96,7 @@ sub_468190(*(char **)(v3 + 8));  // entity name string at offset +8
 
 After the function name, template arguments must be forwarded. The logic branches on whether the function is an explicit template specialization (`v153`) or a non-template member of a template class:
 
-**Case A: Explicit specialization** (`v153 != 0`) -- uses the template argument list at entity offset `+224`:
+**Case A: Explicit specialization** (`v153 != 0`) — uses the template argument list at entity offset `+224`:
 
 ```c
 v135 = *(v3 + 224);  // template_args linked list
@@ -122,7 +122,7 @@ if (v135) {
 }
 ```
 
-**Case B: Non-specialization** -- template parameters from the enclosing class template are forwarded:
+**Case B: Non-specialization** — template parameters from the enclosing class template are forwarded:
 
 ```c
 // v162 = template parameter info from enclosing scope
@@ -277,7 +277,7 @@ Not all CUDA-annotated functions are `__global__` kernels. Device-only functions
 
 ### Condition for Dummy Body Emission
 
-The dummy body path activates in the ELSE branch of the `__global__` check -- that is, for non-kernel device functions. The condition from the decompiled code (lines 1603-1606):
+The dummy body path activates in the ELSE branch of the `__global__` check — that is, for non-kernel device functions. The condition from the decompiled code (lines 1603-1606):
 
 ```c
 // This path is reached when (byte[182] & 0x40) == 0 -- entity is NOT __global__
@@ -293,7 +293,7 @@ if (!dword_106BFDC || (entity->byte_81 & 4) != 0)   // whole-program flag check
 }
 ```
 
-The bitmask `0x30000000000500` extracts the device-annotation and definition bits from the 8-byte flags field. The target value `0x20000000000000` selects entities that have device annotation set but no host-side definition -- exactly the functions that need a dummy body to satisfy the host compiler.
+The bitmask `0x30000000000500` extracts the device-annotation and definition bits from the 8-byte flags field. The target value `0x20000000000000` selects entities that have device annotation set but no host-side definition — exactly the functions that need a dummy body to satisfy the host compiler.
 
 ### Constructor/Destructor Dummy (definition_kind 1 or 2)
 
@@ -393,9 +393,9 @@ The CLI flag `-static-global-template-stub=true` controls how template `__global
 
 The flag produces two diagnostic messages when it encounters problematic patterns:
 
-1. **Extern template kernel**: `"when "-static-global-template-stub=true", extern __global__ function template is not supported in whole program compilation mode ("-rdc=false")"` -- An `extern` template kernel cannot receive a static stub because the definitions would conflict across TUs.
+1. **Extern template kernel**: `"when "-static-global-template-stub=true", extern __global__ function template is not supported in whole program compilation mode ("-rdc=false")"` — An `extern` template kernel cannot receive a static stub because the definitions would conflict across TUs.
 
-2. **Missing definition**: `"when "-static-global-template-stub=true" in whole program compilation mode ("-rdc=false"), a __global__ function template instantiation or specialization (%sq) must have a definition in the current translation unit"` -- The static stub requires a local definition to replace.
+2. **Missing definition**: `"when "-static-global-template-stub=true" in whole program compilation mode ("-rdc=false"), a __global__ function template instantiation or specialization (%sq) must have a definition in the current translation unit"` — The static stub requires a local definition to replace.
 
 Both diagnostics recommend either switching to `-rdc=true` (separate compilation) or explicitly setting `-static-global-template-stub=false`.
 
@@ -512,12 +512,12 @@ void add_one(int *data, int n) {__wrapper__device_stub_add_one(data, n);return;}
 ```
 
 The forwarding body is assembled character-by-character:
-1. `{` -- open brace
+1. `{` — open brace
 2. Scope qualifier (none for file-scope kernels; `ns::` for namespaced ones)
-3. `__wrapper__device_stub_` -- the stub prefix from string at `0x839420`
-4. `add_one` -- the original function name from `entity + 8`
-5. `(data, n)` -- parameter names forwarded (no types, just names via `sub_474BB0`)
-6. `);return;}` -- close the forwarding call and return
+3. `__wrapper__device_stub_` — the stub prefix from string at `0x839420`
+4. `add_one` — the original function name from `entity + 8`
+5. `(data, n)` — parameter names forwarded (no types, just names via `sub_474BB0`)
+6. `);return;}` — close the forwarding call and return
 
 The original body appears in `#if 0` in both outputs because both code paths reach the same `LABEL_457` -> `sub_46BC80("#if 0")` emission point.
 
@@ -575,8 +575,8 @@ The `__attribute__((unused))` prefix is emitted when the function's execution sp
 
 ## Cross-References
 
-- [Execution Spaces](./execution-spaces.md) -- byte `+182` bitfield that drives the `__global__` check; complete redeclaration matrix
-- [Device/Host Separation](./device-host-separation.md) -- IL marking that determines which functions need stubs; the `dword_1065850` toggle lifecycle
-- [RDC Mode](./rdc-mode.md) -- separate compilation mode that affects stub linkage
-- [.int.c File Format](../output/int-c-format.md) -- overall structure of the generated host file
-- [CUDA Runtime Boilerplate](../output/cuda-runtime.md) -- managed memory initialization emitted alongside stubs
+- [Execution Spaces](./execution-spaces.md) — byte `+182` bitfield that drives the `__global__` check; complete redeclaration matrix
+- [Device/Host Separation](./device-host-separation.md) — IL marking that determines which functions need stubs; the `dword_1065850` toggle lifecycle
+- [RDC Mode](./rdc-mode.md) — separate compilation mode that affects stub linkage
+- [.int.c File Format](../output/int-c-format.md) — overall structure of the generated host file
+- [CUDA Runtime Boilerplate](../output/cuda-runtime.md) — managed memory initialization emitted alongside stubs

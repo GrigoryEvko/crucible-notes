@@ -7,16 +7,16 @@ When nvlink is invoked with `-lto`, input files carrying NVVM IR bitcode are not
 | **File extensions** | `.nvvm`, `.ltoir` |
 | **Magic number** | `0x1EE55A01` (4 bytes, little-endian: `01 5A E5 1E`) stored as decimal `518347265` in the decompiled source |
 | **Padded variant** | 4 zero bytes followed by `0x1EE55A01` at byte offset 4 (fatbin-wrapped form) |
-| **Required flag** | `-lto` (`byte_2A5F288`) -- absent triggers fatal error |
+| **Required flag** | `-lto` (`byte_2A5F288`) — absent triggers fatal error |
 | **Registration function** | `sub_427A10` at `0x427A10` |
 | **Module add function** | `sub_4BC4A0` at `0x4BC4A0` (2,548 bytes) |
 | **Program create function** | `sub_4BC290` at `0x4BC290` (2,475 bytes) |
 | **Compile + extract function** | `sub_4BC6F0` at `0x4BC6F0` (13,602 bytes) |
 | **Option collection function** | `sub_426CD0` at `0x426CD0` (7,040 bytes) |
-| **Module counter** | `dword_2A5F280` -- count of non-libdevice IR modules |
-| **PTX emit (whole-program)** | `sub_4BD4E0` at `0x4BD4E0` -- feeds whole LTO PTX through embedded ptxas |
-| **PTX emit (per-split)** | `sub_4BD760` at `0x4BD760` -- per-thread ptxas invocation during split compile |
-| **Split-compile work item** | `sub_4264B0` at `0x4264B0` -- thread-pool callback that unpacks the work item and calls `sub_4BD760` |
+| **Module counter** | `dword_2A5F280` — count of non-libdevice IR modules |
+| **PTX emit (whole-program)** | `sub_4BD4E0` at `0x4BD4E0` — feeds whole LTO PTX through embedded ptxas |
+| **PTX emit (per-split)** | `sub_4BD760` at `0x4BD760` — per-thread ptxas invocation during split compile |
+| **Split-compile work item** | `sub_4264B0` at `0x4264B0` — thread-pool callback that unpacks the work item and calls `sub_4BD760` |
 
 ## Detection
 
@@ -61,7 +61,7 @@ The content-magic classification lives inside the embedded ptxas engine and is c
 | ELF header + `e_machine == 0xBE` (`EM_CUDA`) | 3 | Cubin (device ELF) |
 | First dword == `0x1EE55A01` | 1 | NVVM IR / LTO IR (unpadded) |
 | Bytes 0-3 are zero AND bytes 4-7 == `0x1EE55A01` | 1 | NVVM IR / LTO IR (padded variant used inside fatbin envelopes) |
-| `sub_4CDF80` matches -- whitespace-skipped prefix `.version` | 4 | PTX source text |
+| `sub_4CDF80` matches — whitespace-skipped prefix `.version` | 4 | PTX source text |
 | None of the above | error 30675157 | "unsupported input format" diagnostic |
 
 The padded-variant test encodes the alternative as a 64-bit comparison: `LODWORD(*p) == 0x1EE55A01 || (LODWORD(*p) == 0 && HIDWORD(*p) == 0x1EE55A01)`. This accommodates IR modules that are embedded in fatbin members with a 4-byte alignment pad before the magic.
@@ -151,7 +151,7 @@ int register_ir_module(void *ir_data, size_t ir_size, void *lto_ctx,
 
 Key behaviors:
 
-- **Fatal without `-lto`**: If `byte_2A5F288` is not set, the error `"should only see nvvm files when -lto"` is raised through `sub_467460`. This is a hard requirement -- there is no fallback.
+- **Fatal without `-lto`**: If `byte_2A5F288` is not set, the error `"should only see nvvm files when -lto"` is raised through `sub_467460`. This is a hard requirement — there is no fallback.
 - **libdevice exclusion**: Modules whose path contains both `"nvvm"` and `"libdevice"` are excluded from `dword_2A5F280`. This counter drives the whole-vs-partial LTO decision: if zero non-libdevice IR modules remain after dead code elimination, LTO compilation is skipped.
 - **Verbose trace**: Under `--verbose-keep` (`byte_2A5F29B`), the line `nvlink -lto-add-module <name>.nvvm` is printed to stdout, recording every IR module added to the LTO program.
 
@@ -208,9 +208,9 @@ Opcodes observed in nvlink:
 
 | Opcode | Returns | Used in |
 |---|---|---|
-| 8320 | Add-module callback | `sub_4BC4A0` -- registers an IR module with the program |
-| 45242 | Get-module-list callback | `sub_4BC6F0` -- retrieves compiled module list |
-| 61453 | Get-variable-count callback | `sub_4BC6F0` -- queries per-module variable counts |
+| 8320 | Add-module callback | `sub_4BC4A0` — registers an IR module with the program |
+| 45242 | Get-module-list callback | `sub_4BC6F0` — retrieves compiled module list |
+| 61453 | Get-variable-count callback | `sub_4BC6F0` — queries per-module variable counts |
 
 The program handle is stored at offset 648 within the LTO context structure. The library handle (from `dlopen`) is at offset 640.
 
@@ -253,7 +253,7 @@ unsigned int nvvm_create_program(void *lto_ctx, size_t unused, void *lib_handle)
 }
 ```
 
-The function uses `dlsym` directly for `nvvmCreateProgram` -- this is one of the few libNVVM API functions resolved by name rather than through `__nvvmHandle`. The reason is that program creation must happen before the dispatcher is available.
+The function uses `dlsym` directly for `nvvmCreateProgram` — this is one of the few libNVVM API functions resolved by name rather than through `__nvvmHandle`. The reason is that program creation must happen before the dispatcher is available.
 
 ## LTO Option Collection: sub\_426CD0
 
@@ -299,7 +299,7 @@ The consensus logic: for each option, as IR modules are added, the fatbin extrac
 
 Options passed via `-Xnvvm` on the nvlink command line are stored in `qword_2A5F230`. During option collection, `sub_426CD0` iterates these user-supplied options and appends them to the option array. However, it applies deduplication: if a user-supplied option matches one of the fixed options already added (like `-link-lto`, `-generate-line-info`, `-inline-info`, `--device-c`, `--force-device-c`, `-g`, `-Ofast-compile=*`, `-compile-time`, or `-has-global-host-info`), the duplicate is suppressed.
 
-The user-supplied `-Xnvvm` options are also scanned for `-ftz=`, `-prec-div=`, `-prec-sqrt=`, and `-fma=` prefixes. If any of these are found in the user options, the corresponding consensus-derived value is NOT injected -- the user's explicit setting takes priority.
+The user-supplied `-Xnvvm` options are also scanned for `-ftz=`, `-prec-div=`, `-prec-sqrt=`, and `-fma=` prefixes. If any of these are found in the user options, the corresponding consensus-derived value is NOT injected — the user's explicit setting takes priority.
 
 ## Compilation and Result Extraction: sub\_4BC6F0
 
@@ -426,10 +426,10 @@ Each value is retrieved via `sub_43FBC0` and only appended if non-NULL. After th
 |---|---|
 | 0 | Compilation succeeded, result extracted, program destroyed |
 | 1 | API function call failed (result retrieval, variable query, or destroy) |
-| 8 | Compilation error -- `*error_msg` contains the diagnostic text |
+| 8 | Compilation error — `*error_msg` contains the diagnostic text |
 | 10 | One or more libNVVM API functions could not be resolved via `dlsym` |
 
-The special `nvvmCompileProgram` return code 100 is handled as a "no output" signal -- `*success_flag` is set to false but no error is raised. This occurs when the compiler determines all input is dead code and there is nothing to emit.
+The special `nvvmCompileProgram` return code 100 is handled as a "no output" signal — `*success_flag` is set to false but no error is raised. This occurs when the compiler determines all input is dead code and there is nothing to emit.
 
 ## Per-Module Option Consensus
 
@@ -440,7 +440,7 @@ When IR modules are extracted from fatbin containers, `sub_42AF40` parses embedd
 | 0 | Not seen | No module has provided this option yet |
 | 1 | Present | First module provided a value |
 | 2 | Agreed | Multiple modules, all with the same value |
-| 3 | Conflict | Modules disagree -- fall back to default |
+| 3 | Conflict | Modules disagree — fall back to default |
 
 The eight tracked options and their global variable pairs:
 
@@ -750,13 +750,13 @@ Low confidence / speculation (flagged accordingly):
 
 ## Cross-References
 
-- [File Type Detection](file-type-detection.md) -- Magic `0x1EE55A01` detection and extension dispatch
-- [Fatbin Extraction](fatbin-extraction.md) -- Type-8 member extraction and per-module option consensus state machine
-- [PTX Input](ptx-input.md) -- The embedded ptxas driver (`sub_4BD760`, `sub_4CE070`, context layout) shared with LTO PTX emission
-- [168-Byte Input Container](container-struct.md) -- offset table for the shared opaque struct including the NVVM-bound content_type (8) classification
-- [LTO Overview](../lto/overview.md) -- The full LTO pipeline including whole/partial/split dispatch and the thread pool
-- [libNVVM Integration](../lto/libnvvm-integration.md) -- `dlopen`/`dlsym` resolution, `__nvvmHandle` opcode dispatch, error propagation
-- [Split Compilation](../lto/split-compilation.md) -- Thread pool lifecycle and work item queueing for `-split-compile-extended`
-- [Whole vs Partial LTO](../lto/whole-vs-partial.md) -- Decision logic for `--device-c` / `--force-device-c` and consensus fallback
-- [CLI Options](../pipeline/cli-options.md) -- `-lto`, `-Xnvvm`, `-nvvmpath`, `--force-partial-lto`, `--force-whole-lto`
-- [Entry Point & Main](../pipeline/entry.md) -- The `main()` function that orchestrates the LTO phases
+- [File Type Detection](file-type-detection.md) — Magic `0x1EE55A01` detection and extension dispatch
+- [Fatbin Extraction](fatbin-extraction.md) — Type-8 member extraction and per-module option consensus state machine
+- [PTX Input](ptx-input.md) — The embedded ptxas driver (`sub_4BD760`, `sub_4CE070`, context layout) shared with LTO PTX emission
+- [168-Byte Input Container](container-struct.md) — offset table for the shared opaque struct including the NVVM-bound content_type (8) classification
+- [LTO Overview](../lto/overview.md) — The full LTO pipeline including whole/partial/split dispatch and the thread pool
+- [libNVVM Integration](../lto/libnvvm-integration.md) — `dlopen`/`dlsym` resolution, `__nvvmHandle` opcode dispatch, error propagation
+- [Split Compilation](../lto/split-compilation.md) — Thread pool lifecycle and work item queueing for `-split-compile-extended`
+- [Whole vs Partial LTO](../lto/whole-vs-partial.md) — Decision logic for `--device-c` / `--force-device-c` and consensus fallback
+- [CLI Options](../pipeline/cli-options.md) — `-lto`, `-Xnvvm`, `-nvvmpath`, `--force-partial-lto`, `--force-whole-lto`
+- [Entry Point & Main](../pipeline/entry.md) — The `main()` function that orchestrates the LTO phases

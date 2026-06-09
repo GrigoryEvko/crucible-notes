@@ -14,7 +14,7 @@ ptxas provides built-in IEEE-compliant math functions for operations that have n
 | **SFU functional unit** | Index 8 in the latency model (RCP, RSQ, SIN, COS, EX2, LG2) |
 | **MUFU encoding variants** | 14 (reg/reg, reg/pred, reg/ureg, bar operands) |
 
-## MUFU -- Multi-Function Unit
+## MUFU — Multi-Function Unit
 
 The MUFU instruction is a single-cycle-issue instruction that computes transcendental approximations on the SFU (Special Function Unit). Each SM has a dedicated SFU pipe that executes MUFU operations independently of the ALU pipes.
 
@@ -55,11 +55,11 @@ In the Mercury/Blackwell encoding, MUFU is major opcode `0x58` with a single var
 | Encoding function | `sub_10C0170` |
 
 The variant table at `0xF7CEB0`--`0xF80760` defines 14 encoding patterns for MUFU, supporting combinations of:
-- `reg2, reg2` -- standard register source and destination
-- `reg2, pred3` -- predicated source
-- `reg2, reg10` -- extended register class
-- `reg2, ureg4` -- uniform register source (sm_100+ addition)
-- `reg2, bar6` -- barrier operand (scheduling)
+- `reg2, reg2` — standard register source and destination
+- `reg2, pred3` — predicated source
+- `reg2, reg10` — extended register class
+- `reg2, ureg4` — uniform register source (sm_100+ addition)
+- `reg2, bar6` — barrier operand (scheduling)
 
 Uniform register support (`ureg4`) in MUFU is a Blackwell-specific addition, allowing MUFU to consume values directly from the uniform register file without a prior `UMOV` to a general-purpose register.
 
@@ -92,8 +92,8 @@ A single MUFU instruction. This is the default for `sin.approx.f32`, `cos.approx
 Multi-instruction sequences that use MUFU as a seed and refine with Newton-Raphson iterations using FMA instructions. These produce results that are correctly rounded to the specified IEEE 754 rounding mode (round-to-nearest-even, round-down, round-up, round-toward-zero). The instruction count ranges from ~15 for FP32 operations to ~120 for FP64 operations.
 
 The IEEE-compliant paths are implemented in two ways:
-1. **Inline templates** -- Multi-instruction SASS sequences emitted directly at the call site by the Newton-Raphson template subsystem (`0x1700000`--`0x172A090`). Used for FP64 division, reciprocal, sqrt, and rsqrt.
-2. **Callable helpers** -- Calls to `__cuda_sm20_*` functions whose bodies are pre-compiled PTX routines linked from libdevice. Used for FP32 operations with directed rounding modes and all slowpath variants.
+1. **Inline templates** — Multi-instruction SASS sequences emitted directly at the call site by the Newton-Raphson template subsystem (`0x1700000`--`0x172A090`). Used for FP64 division, reciprocal, sqrt, and rsqrt.
+2. **Callable helpers** — Calls to `__cuda_sm20_*` functions whose bodies are pre-compiled PTX routines linked from libdevice. Used for FP32 operations with directed rounding modes and all slowpath variants.
 
 ## PTX Math Codegen Handlers
 
@@ -315,8 +315,8 @@ sub_AED3C0 (Master Lowering Dispatcher, 28 KB)
 Algorithm for `a / b`:
 
 1. Extract the high 32 bits of the FP64 divisor `b`
-2. Convert to FP32 and compute `MUFU.RCP` -- ~23-bit seed for `1/b`
-3. Newton-Raphson iteration 1: `x1 = x0 * (2 - b * x0)` via DFMA -- ~46 bits
+2. Convert to FP32 and compute `MUFU.RCP` — ~23-bit seed for `1/b`
+3. Newton-Raphson iteration 1: `x1 = x0 * (2 - b * x0)` via DFMA — ~46 bits
 4. Newton-Raphson iteration 2 (partial): guard bits for correct rounding
 5. Compute `a * (1/b)` using the refined reciprocal
 6. Apply IEEE 754 rounding, handle overflow/underflow/NaN
@@ -333,7 +333,7 @@ The complete DDIV template emits ~100--120 SASS instructions across 3 named code
 
 Algorithm for `1/b`:
 
-1. `MUFU.RCP(float32(b))` -- ~23-bit seed
+1. `MUFU.RCP(float32(b))` — ~23-bit seed
 2. Newton-Raphson iteration 1: `x1 = x0 * (2 - b * x0)` via DFMA
 3. Newton-Raphson iteration 2: doubles precision to ~52+ bits
 4. Final rounding to FP64 precision
@@ -344,7 +344,7 @@ Implemented by `sub_1718D60` (coordinator at `sub_1718790`, 289 vregs, 7 sub-exp
 
 Algorithm for `sqrt(a)`:
 
-1. `MUFU.RSQ(float32(a))` -- ~23-bit seed for `1/sqrt(a)`
+1. `MUFU.RSQ(float32(a))` — ~23-bit seed for `1/sqrt(a)`
 2. Newton-Raphson refinement: `y1 = y0 * (3 - a * y0^2) / 2`
 3. Compute `sqrt(a) = a * (1/sqrt(a))`
 4. Apply IEEE 754 rounding
@@ -355,8 +355,8 @@ Shares the coordinator with DRCP (`sub_1718790`), selecting the DSQRT sub-expand
 
 The most complex template handler (`sub_17276C0`). Dispatches based on a hardware capability flag at `*(*(ctx+1584)+1037) & 1`:
 
-- **Flag set** (sm_80+ with enhanced SFU): `sub_1727130` -- 59 vregs, fewer refinement iterations due to `MUFU.RSQ64H` providing better initial precision
-- **Flag clear** (older architectures): `sub_1720D60` -- 247 vregs, full Newton-Raphson with 5 sub-expanders
+- **Flag set** (sm_80+ with enhanced SFU): `sub_1727130` — 59 vregs, fewer refinement iterations due to `MUFU.RSQ64H` providing better initial precision
+- **Flag clear** (older architectures): `sub_1720D60` — 247 vregs, full Newton-Raphson with 5 sub-expanders
 
 ### Integer Division via MUFU
 
@@ -367,11 +367,11 @@ I2F(b) -> MUFU.RCP -> F2I -> IMAD.HI -> correction
 ```
 
 Specifically:
-1. `float_b = I2F(b)` -- convert divisor to FP32
-2. `rcp = MUFU.RCP(float_b)` -- ~23-bit reciprocal approximation
-3. `int_rcp = F2I(rcp)` -- convert back to integer
-4. `q_est = IMAD.HI(a, int_rcp, 0)` -- estimated quotient
-5. `r_est = IMAD(q_est, -b, a)` -- estimated remainder
+1. `float_b = I2F(b)` — convert divisor to FP32
+2. `rcp = MUFU.RCP(float_b)` — ~23-bit reciprocal approximation
+3. `int_rcp = F2I(rcp)` — convert back to integer
+4. `q_est = IMAD.HI(a, int_rcp, 0)` — estimated quotient
+5. `r_est = IMAD(q_est, -b, a)` — estimated remainder
 6. Correction: up to 2 iterations of `if (r_est >= b) q_est++; r_est -= b`
 
 The correction steps (at most 2) are needed because MUFU.RCP is accurate to within 2 ULP. This sequence emits ~50 SASS instructions for 32-bit (`sub_1724A20`, 28 KB decompiled) and ~80 for 64-bit unsigned (`sub_1728930`, 16.5 KB).
@@ -382,9 +382,9 @@ The correction steps (at most 2) are needed because MUFU.RCP is accurate to with
 
 For FP32 operations, the codegen handler selects between:
 
-1. **Single MUFU** -- for `.approx` modifier. One instruction, ~23-bit precision.
-2. **MUFU + correction** -- for `.rn`/`.rd`/`.ru`/`.rz` with FTZ. MUFU seed plus 1--2 FMA correction steps, inline.
-3. **Helper function call** -- for directed rounding modes (RD/RU/RZ) without FTZ, or when denormal handling is required (slowpath variants). Calls to `__cuda_sm20_*` or `__cuda_sm3x_*` functions.
+1. **Single MUFU** — for `.approx` modifier. One instruction, ~23-bit precision.
+2. **MUFU + correction** — for `.rn`/`.rd`/`.ru`/`.rz` with FTZ. MUFU seed plus 1--2 FMA correction steps, inline.
+3. **Helper function call** — for directed rounding modes (RD/RU/RZ) without FTZ, or when denormal handling is required (slowpath variants). Calls to `__cuda_sm20_*` or `__cuda_sm3x_*` functions.
 
 ### Flush-to-Zero (FTZ)
 
@@ -407,13 +407,13 @@ FP16 (`half`) math operations do not use MUFU directly. Instead, ptxas:
 2. Performs the FP32 MUFU operation
 3. Converts the result back to FP16 via `F2H` (float-to-half conversion)
 
-For HMMA (half-precision matrix multiply-accumulate) operations, the tensor core path is used instead -- see [Tensor Core Intrinsics](tensor.md).
+For HMMA (half-precision matrix multiply-accumulate) operations, the tensor core path is used instead — see [Tensor Core Intrinsics](tensor.md).
 
 The `HADD2`, `HMUL2`, `HFMA2` instructions operate on packed FP16x2 values and are separate from the MUFU path. These are direct hardware instructions dispatched to the ALU pipe, not the SFU.
 
 ## Codegen Handler Deep Dive
 
-### `sub_5B76D0` -- Division Codegen (64 KB)
+### `sub_5B76D0` — Division Codegen (64 KB)
 
 The largest math codegen handler at 1,466 decompiled lines. Its dispatch tree:
 
@@ -442,26 +442,26 @@ sub_70CA60(instr, 0) -> operand type
 
 The FP32 path at rounding mode > 39 generates a multi-segment inline PTX sequence with ~20 `sprintf()` calls, each appending a PTX instruction to the output buffer. This is the full-range IEEE-compliant FP32 division path that uses MUFU.RCP as a seed followed by FMA-based correction.
 
-### `sub_5B0CD0` -- Reciprocal Codegen (44 KB)
+### `sub_5B0CD0` — Reciprocal Codegen (44 KB)
 
 Similar structure to the division handler. Dispatches by type (f32/f64) and rounding mode. For FP64, calls `__cuda_sm20_rcp_f64_v3`. For FP32, selects between 4 rounding modes x 2 FTZ variants x 2 paths (fast/slowpath) = up to 16 different intrinsic calls.
 
-### `sub_5B4040` -- Square Root Codegen (49 KB)
+### `sub_5B4040` — Square Root Codegen (49 KB)
 
 Handles both FP32 (`__cuda_sm20_sqrt_*`) and FP64 (`__cuda_sm20_dsqrt_*`) variants. For FP64, the `dsqrt_rn_f64_mediumpath_v1` variant provides an intermediate-complexity path between the fast approximation and the full Newton-Raphson template.
 
-### `sub_583190` -- Base-2 Exponential (ex2)
+### `sub_583190` — Base-2 Exponential (ex2)
 
 Dispatches by operand type:
 - FP32 with mode 1: short-form approximate path (single MUFU.EX2)
 - FP32 with rounding mode > 39: full-range inline sequence with ~18 `sprintf()` segments generating a PTX sequence that includes range reduction, MUFU.EX2, and polynomial correction
 - FP64: multi-operand call to a helper function
 
-### `sub_57BFC0` -- Reciprocal Square Root (rsqrt)
+### `sub_57BFC0` — Reciprocal Square Root (rsqrt)
 
 Dispatches by type:
 - FP64 with mode 1: short-form call to `__cuda_sm20_drsqrt_f64_v2`
-- FP64 with rounding mode > 39: full inline sequence with ~35 `sprintf()` segments -- the longest inline math expansion for a single-precision-equivalent operation. The sequence implements range reduction, MUFU.RSQ, Newton-Raphson correction, and renormalization
+- FP64 with rounding mode > 39: full inline sequence with ~35 `sprintf()` segments — the longest inline math expansion for a single-precision-equivalent operation. The sequence implements range reduction, MUFU.RSQ, Newton-Raphson correction, and renormalization
 - FP32: `MUFU.RSQ` for approximate, helper call for IEEE-compliant
 
 ## Scheduling and Latency
@@ -498,19 +498,19 @@ The scheduler (`sub_815820`) places MUFU instructions to maximize overlap with A
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_5B76D0` | 64 KB | `div` codegen handler -- dispatches all division variants |
-| `sub_5B0CD0` | 44 KB | `rcp` codegen handler -- reciprocal for f32/f64 |
-| `sub_5B4040` | 49 KB | `sqrt` codegen handler -- square root for f32/f64 |
-| `sub_57BFC0` | ~10 KB | `rsqrt` codegen handler -- reciprocal square root |
-| `sub_583190` | ~14 KB | `ex2` codegen handler -- base-2 exponential |
-| `sub_52A5C0` | ~5 KB | `lg2` codegen handler -- base-2 logarithm |
-| `sub_505B00` | ~5 KB | `tanh` codegen handler -- hyperbolic tangent |
-| `sub_573860` | ~7 KB | `div.full` codegen handler -- FP64 full-precision division |
-| `sub_589810` | ~13 KB | `rem` codegen handler -- integer remainder |
+| `sub_5B76D0` | 64 KB | `div` codegen handler — dispatches all division variants |
+| `sub_5B0CD0` | 44 KB | `rcp` codegen handler — reciprocal for f32/f64 |
+| `sub_5B4040` | 49 KB | `sqrt` codegen handler — square root for f32/f64 |
+| `sub_57BFC0` | ~10 KB | `rsqrt` codegen handler — reciprocal square root |
+| `sub_583190` | ~14 KB | `ex2` codegen handler — base-2 exponential |
+| `sub_52A5C0` | ~5 KB | `lg2` codegen handler — base-2 logarithm |
+| `sub_505B00` | ~5 KB | `tanh` codegen handler — hyperbolic tangent |
+| `sub_573860` | ~7 KB | `div.full` codegen handler — FP64 full-precision division |
+| `sub_589810` | ~13 KB | `rem` codegen handler — integer remainder |
 | `sub_5D1660` | 46 KB | Master intrinsic registration (608 entries) |
 | `sub_5FF700` | 354 KB | Prototype generator (PTX `.weak .func` declarations) |
-| `sub_80E9B0` | ~1.5 KB | `LowerSpecialFunctions` -- MUFU emission pass |
-| `sub_170E8B0` | -- | DDIV top-level handler |
+| `sub_80E9B0` | ~1.5 KB | `LowerSpecialFunctions` — MUFU emission pass |
+| `sub_170E8B0` | — | DDIV top-level handler |
 | `sub_1718D60` | 790 B | DRCP/DSQRT coordinator wrapper |
 | `sub_17276C0` | 1,011 B | DRSQRT coordinator wrapper |
 | `sub_1704070` | 263 B | DDIV register-pressure dispatcher |

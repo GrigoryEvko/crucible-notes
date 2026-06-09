@@ -1,6 +1,6 @@
 # NVVM Container Binary Format
 
-The NVVM container is a proprietary binary envelope that wraps LLVM bitcode with compiler metadata for transport between pipeline stages in cicc v13.0. It carries target architecture, optimization options, fast-math flags, memory window configurations, per-kernel resource tables, and the IR payload itself -- all in a single serializable blob. Two serialization paths exist: a compact binary wire format used in production (`nvcc` / `ptxas` pipelines) and an XML-based format used for debugging and interchange. This page specifies the binary format in sufficient detail to write a conformant parser and serializer.
+The NVVM container is a proprietary binary envelope that wraps LLVM bitcode with compiler metadata for transport between pipeline stages in cicc v13.0. It carries target architecture, optimization options, fast-math flags, memory window configurations, per-kernel resource tables, and the IR payload itself — all in a single serializable blob. Two serialization paths exist: a compact binary wire format used in production (`nvcc` / `ptxas` pipelines) and an XML-based format used for debugging and interchange. This page specifies the binary format in sufficient detail to write a conformant parser and serializer.
 
 The format is implemented across 26 functions in the `0xCCBB10`--`0xCDD2D0` address range (Cluster C in the binary layout). The six top-level entry points:
 
@@ -128,9 +128,9 @@ The serializer (`sub_CD17A0`, called 121 times from `NvvmContainer_serialize`) w
 
 ### Delta Encoding Strategy
 
-The serializer allocates a default-initialized 440-byte Options struct and compares each field in the current Options against the corresponding default. Only fields that differ from the default are written as tag/value pairs. This makes typical containers very compact -- a standard compilation targeting SM 89 with `-O2` might emit fewer than 20 tag/value pairs, covering just `SmMajor`, `SmMinor`, `CompileMode`, and a handful of target-specific flags.
+The serializer allocates a default-initialized 440-byte Options struct and compares each field in the current Options against the corresponding default. Only fields that differ from the default are written as tag/value pairs. This makes typical containers very compact — a standard compilation targeting SM 89 with `-O2` might emit fewer than 20 tag/value pairs, covering just `SmMajor`, `SmMinor`, `CompileMode`, and a handful of target-specific flags.
 
-The deserializer reverses this: it allocates a default Options struct first, then overwrites individual fields as tags are encountered. Unknown tags are silently skipped, which is the mechanism that provides forward compatibility -- a newer serializer can emit tags that an older deserializer simply ignores.
+The deserializer reverses this: it allocates a default Options struct first, then overwrites individual fields as tags are encountered. Unknown tags are silently skipped, which is the mechanism that provides forward compatibility — a newer serializer can emit tags that an older deserializer simply ignores.
 
 ## Blob Data Region
 
@@ -344,7 +344,7 @@ These tags are conditionally parsed based on the value of tag 301 (`ExtOpt.Field
 | 401 | `Field344 == 1` | 56+ B | `TMADescriptor` | SM 90 Hopper TMA bulk-copy descriptors. 44-byte fixed header + 16 bytes per entry. |
 | 402 | `Field344 == 4` | 40+ B | `TCGen05Config` | SM 100 Blackwell TCGen05 tensor configurations. 32-byte fixed header + 12 bytes per entry. |
 
-The conditional parsing means a single container cannot carry both TMA and TCGen05 data -- the `Field344` value selects which hardware generation's tensor memory interface is active.
+The conditional parsing means a single container cannot carry both TMA and TCGen05 data — the `Field344` value selects which hardware generation's tensor memory interface is active.
 
 #### TMADescriptor Layout (Tag 401, Field344 == 1)
 
@@ -371,7 +371,7 @@ See [SM 90 Hopper](../targets/sm90-hopper.md) for the TMA instruction format and
 
 #### TCGen05Config Layout (Tag 402, Field344 == 4)
 
-TCGen05 (Tensor Core Generation 5) configurations describe Blackwell SM 100 tensor memory operations. The TCGen05 instruction set includes `tcgen05.alloc`, `tcgen05.dealloc`, `tcgen05.commit`, `tcgen05.fence`, `tcgen05.wait`, and `tcgen05.relinquish.alloc` -- all gated by the SM 100 arch-conditional check at `sub_30462A0`. The blob layout:
+TCGen05 (Tensor Core Generation 5) configurations describe Blackwell SM 100 tensor memory operations. The TCGen05 instruction set includes `tcgen05.alloc`, `tcgen05.dealloc`, `tcgen05.commit`, `tcgen05.fence`, `tcgen05.wait`, and `tcgen05.relinquish.alloc` — all gated by the SM 100 arch-conditional check at `sub_30462A0`. The blob layout:
 
 ```c
 struct TCGen05Config {
@@ -439,7 +439,7 @@ struct NvvmContainerHeader {          /* 248 bytes total                   */
 /* sizeof(NvvmContainerHeader) == 248 (0xF8) */
 ```
 
-The Options pointer is stored at offset 208 (0xD0) of the container header during deserialization -- the container header acts as both a data holder and an index into the full Options struct.
+The Options pointer is stored at offset 208 (0xD0) of the container header during deserialization — the container header acts as both a data holder and an index into the full Options struct.
 
 ## Options Struct (440 bytes)
 
@@ -617,7 +617,7 @@ The HW variants use a `major * 1000 + minor * 10` encoding for their internal nu
 | `NVVM_ARCH_HW_SM_10_0` | 1000 | Blackwell datacenter |
 | `NVVM_ARCH_HW_SM_10_1` | 1010 | Blackwell Ultra (GB300) |
 | `NVVM_ARCH_HW_SM_10_3` | 1030 | Blackwell variant |
-| `NVVM_ARCH_HW_SM_10_4` | 1200 | Maps to SM 120 value -- not publicly documented |
+| `NVVM_ARCH_HW_SM_10_4` | 1200 | Maps to SM 120 value — not publicly documented |
 
 The `HW_SM_10_4 = 1200` mapping is notable: SM 10.4 in the HW enum space corresponds to the SM 120 consumer architecture. This reveals that "SM 120" is internally considered a Blackwell 10.4 die variant, not a separate generation.
 
@@ -680,7 +680,7 @@ The full set of XML field names parsed by `NvvmOptions_parse_fast_math` (`0xCCF5
 | `ReassociateFloatAddOverMad` | 26 | bit | Float add reassociation over MAD |
 | `NoFloatMAD` | 31 | bit | Disable float MAD formation |
 | `LaxFP16ApproximateDivision` | 33 | bit | Lax FP16 approximate division |
-| `Divide` | -- | enum | Division precision sub-enum (above) |
+| `Divide` | — | enum | Division precision sub-enum (above) |
 
 The `Divide` field is serialized as a nested enum element in XML; in the binary format it is encoded as part of the fast-math reserved int32 at Options +204 (tag 18).
 
@@ -746,7 +746,7 @@ Version checking is the first operation performed on a container buffer, impleme
 
 A separate standalone validator (`0xCCD5F0`) adds a mode-dependent check: in binary dump mode (`a5=0`), the LLVM version must be exactly 20; in normal mode (`a5=1`), it must be `<= 20`.
 
-The philosophy is clear: major version bumps signal breaking format changes and are hard failures. Minor version bumps add new tags but never change existing tag semantics -- the delta encoding and unknown-tag-skipping design ensures forward compatibility.
+The philosophy is clear: major version bumps signal breaking format changes and are hard failures. Minor version bumps add new tags but never change existing tag semantics — the delta encoding and unknown-tag-skipping design ensures forward compatibility.
 
 ### Current Version Constants (cicc v13.0)
 
@@ -787,7 +787,7 @@ The XML path (`NvvmContainer_parse_header` at `0xCDCA30`) uses NVIDIA's YAML-bas
 </NvvmContainer>
 ```
 
-All enum values are serialized by their full string names (e.g., `NVVM_COMPILE_MODE_SEPARATE_ABI`), not by numeric value. The XML format does **not** use delta encoding -- every field is written regardless of whether it matches the default, making XML containers significantly larger but human-readable.
+All enum values are serialized by their full string names (e.g., `NVVM_COMPILE_MODE_SEPARATE_ABI`), not by numeric value. The XML format does **not** use delta encoding — every field is written regardless of whether it matches the default, making XML containers significantly larger but human-readable.
 
 ## Serialization Flow
 
@@ -928,7 +928,7 @@ The serialization framework uses virtual dispatch: each serializable type regist
 
 ### Finalizer Knobs Integration
 
-The container Options struct also feeds into the NVIDIA finalizer knobs system through `NvvmOptions_parse_finalizer_knobs` (`0xCD9990`, 31,702 bytes -- the 7th largest function in the binary). This parser ingests the complete set of NVIDIA-specific backend configuration knobs:
+The container Options struct also feeds into the NVIDIA finalizer knobs system through `NvvmOptions_parse_finalizer_knobs` (`0xCD9990`, 31,702 bytes — the 7th largest function in the binary). This parser ingests the complete set of NVIDIA-specific backend configuration knobs:
 
 - Shader pipeline controls: `PromoteHalf`, `PromoteFixed`, `USePIXBAR`, `VSIsVREnabled`, `VSIsLastVTGStage`
 - Codegen controls: `DisablePredication`, `DisableXBlockSched`, `EnableJumpTable`, `ScheduleKils`
@@ -938,7 +938,7 @@ The container Options struct also feeds into the NVIDIA finalizer knobs system t
 - Per-CTA controls: `CTASizeX`, `CTASizeY`, `CTASizeZ`, `SharedMemorySize`, `SMemScratchBase`
 - Register controls: `MaxActiveWarpsPerSM`, `NumReservedUReg`, `NumScratchURegs`
 
-These knobs are distinct from the NVVMPassOptions system (see [NVVMPassOptions](../config/nvvm-pass-options.md)) -- the finalizer knobs configure the backend code generator, while NVVMPassOptions configure the optimization pipeline.
+These knobs are distinct from the NVVMPassOptions system (see [NVVMPassOptions](../config/nvvm-pass-options.md)) — the finalizer knobs configure the backend code generator, while NVVMPassOptions configure the optimization pipeline.
 
 ## Tag Summary Statistics
 
@@ -953,15 +953,15 @@ These knobs are distinct from the NVVMPassOptions system (see [NVVMPassOptions](
 | 401--402 | 2 | Structured conditional blobs (TMA / TCGen05) |
 | **Total** | **144** | **Distinct tag IDs across 6 ranges** |
 
-The deserializer switch statement has 103 unique case labels -- the remaining 41 tags share code paths with other tags (e.g., all single-bit tags in a byte share a case that reads the bit position from a secondary table).
+The deserializer switch statement has 103 unique case labels — the remaining 41 tags share code paths with other tags (e.g., all single-bit tags in a byte share a case that reads the bit position from a secondary table).
 
 ## Cross-References
 
-- [NVVMPassOptions](../config/nvvm-pass-options.md) -- 221-slot optimization pipeline configuration
-- [Pipeline Entry](../pipeline/entry.md) -- LibNVVM API and CLI entry points
-- [OptiX IR](../pipeline/optix-ir.md) -- IRLevel=2 OptiX pipeline
-- [LTO Pipeline](../lto/index.md) -- IRLevel=1 link-time optimization
-- [SM 90 Hopper](../targets/sm90-hopper.md) -- TMA descriptor usage (tag 401)
-- [SM 100 Blackwell](../targets/sm100-blackwell.md) -- TCGen05 config usage (tag 402)
-- [Bitcode I/O](../infra/bitcode-io.md) -- LLVM bitcode reader/writer wrapping the IR payload
-- [nvcc Interface](../pipeline/nvcc-interface.md) -- Driver-to-cicc container passing
+- [NVVMPassOptions](../config/nvvm-pass-options.md) — 221-slot optimization pipeline configuration
+- [Pipeline Entry](../pipeline/entry.md) — LibNVVM API and CLI entry points
+- [OptiX IR](../pipeline/optix-ir.md) — IRLevel=2 OptiX pipeline
+- [LTO Pipeline](../lto/index.md) — IRLevel=1 link-time optimization
+- [SM 90 Hopper](../targets/sm90-hopper.md) — TMA descriptor usage (tag 401)
+- [SM 100 Blackwell](../targets/sm100-blackwell.md) — TCGen05 config usage (tag 402)
+- [Bitcode I/O](../infra/bitcode-io.md) — LLVM bitcode reader/writer wrapping the IR payload
+- [nvcc Interface](../pipeline/nvcc-interface.md) — Driver-to-cicc container passing

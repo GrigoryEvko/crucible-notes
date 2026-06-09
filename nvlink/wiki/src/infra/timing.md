@@ -1,8 +1,8 @@
 # Timing Infrastructure
 
-nvlink embeds a lightweight phase-timer system that measures wall-clock elapsed time for each major pipeline stage. The system has two independent output paths: a human-readable stderr trace controlled by the `--verbose` / `-edbg` flag (bit 5, mask `0x20`), and a machine-readable CSV log controlled by the `-time <file>` CLI option. Both paths share the same `gettimeofday`-based stopwatch primitives but serve different audiences -- stderr output helps developers identify slow phases during interactive builds, while the CSV path feeds automated performance-regression infrastructure at NVIDIA.
+nvlink embeds a lightweight phase-timer system that measures wall-clock elapsed time for each major pipeline stage. The system has two independent output paths: a human-readable stderr trace controlled by the `--verbose` / `-edbg` flag (bit 5, mask `0x20`), and a machine-readable CSV log controlled by the `-time <file>` CLI option. Both paths share the same `gettimeofday`-based stopwatch primitives but serve different audiences — stderr output helps developers identify slow phases during interactive builds, while the CSV path feeds automated performance-regression infrastructure at NVIDIA.
 
-The timer is deliberately simple: a single global `struct timeval` at `0x2A5F1B0`, a boolean "started" flag at `byte_2A5F1C0`, and three small functions totaling under 200 bytes of code. There is no per-thread timing, no nested/hierarchical timers, and no high-resolution clock source -- `gettimeofday` provides microsecond resolution which is sufficient for link phases that typically run in the millisecond-to-second range.
+The timer is deliberately simple: a single global `struct timeval` at `0x2A5F1B0`, a boolean "started" flag at `byte_2A5F1C0`, and three small functions totaling under 200 bytes of code. There is no per-thread timing, no nested/hierarchical timers, and no high-resolution clock source — `gettimeofday` provides microsecond resolution which is sufficient for link phases that typically run in the millisecond-to-second range.
 
 ## Key Facts
 
@@ -13,24 +13,24 @@ The timer is deliberately simple: a single global `struct timeval` at `0x2A5F1B0
 | Stop timer / compute elapsed | `sub_45CCE0` at `0x45CCE0` (52 bytes) |
 | CSV header writer | `sub_432270` at `0x432270` (208 bytes) |
 | CSV row writer | `sub_432340` at `0x432340` (255 bytes) |
-| Timer state | `unk_2A5F1B0` -- global `struct timeval` (16 bytes) |
-| Started flag | `byte_2A5F1C0` -- initialized to 0, set to 1 on first call |
-| Timing file path | `qword_2A5F290` -- set from `-time <file>` CLI option |
-| Arch string (column source) | `qword_2A5F318` -- written into the `arch` CSV column |
-| Verbose/edbg flags | `dword_2A5F308` -- set by the `-edbg` CLI option |
+| Timer state | `unk_2A5F1B0` — global `struct timeval` (16 bytes) |
+| Started flag | `byte_2A5F1C0` — initialized to 0, set to 1 on first call |
+| Timing file path | `qword_2A5F290` — set from `-time <file>` CLI option |
+| Arch string (column source) | `qword_2A5F318` — written into the `arch` CSV column |
+| Verbose/edbg flags | `dword_2A5F308` — set by the `-edbg` CLI option |
 | Verbose timing gate (main) | `elfw[64] & 0x20` (bit 5 of ELF wrapper flags byte) |
 | Verbose timing gate (LTO) | `dword_2A5F308 & 0x20` (same bit in global debug flags) |
-| Clock source | `gettimeofday(2)` -- microsecond wall-clock |
+| Clock source | `gettimeofday(2)` — microsecond wall-clock |
 | Time unit | milliseconds (32-bit float) |
 | Timing tags | 9 labels: `init`, `cicc-lto`, `ptxas-lto`, `read`, `merge`, `layout`, `relocate`, `finalize`, `write` |
-| CLI flag (CSV file) | `-time <file>` (arg string at `0x1D3233D` -- shared tail of `"-compile-time"`) |
+| CLI flag (CSV file) | `-time <file>` (arg string at `0x1D3233D` — shared tail of `"-compile-time"`) |
 | CSV format string | `"%s , %s , %s , %s , %s , %s , %.4f , ms\n"` at `0x1D38700` |
 | CSV header string | at `0x1D38698`, length `0x63` (99 bytes) |
 | Stderr format string | `"%s time: %f\n"` at `0x1D32413` |
 
 ## Timer Primitives
 
-### sub_45CCD0 -- Start Timer
+### sub_45CCD0 — Start Timer
 
 ```c
 // 0x45CCD0 -- 12 bytes
@@ -41,7 +41,7 @@ int timer_start(struct timeval *tv) {
 
 A trivial wrapper around `gettimeofday`. Stores the current wall-clock time into the provided `struct timeval`. Called with a pointer to the global timer at `0x2A5F1B0`.
 
-### sub_45CCE0 -- Stop Timer / Compute Elapsed
+### sub_45CCE0 — Stop Timer / Compute Elapsed
 
 ```c
 // 0x45CCE0 -- 52 bytes
@@ -54,7 +54,7 @@ float timer_stop(struct timeval *start) {
 }
 ```
 
-Reads the current time, computes the difference from `start` as a float in milliseconds. The arithmetic is done in 32-bit float, which gives roughly 6-7 significant digits -- adequate for timing measurements up to a few thousand seconds.
+Reads the current time, computes the difference from `start` as a float in milliseconds. The arithmetic is done in 32-bit float, which gives roughly 6-7 significant digits — adequate for timing measurements up to a few thousand seconds.
 
 The exact IDA-decompiled expression is:
 
@@ -65,7 +65,7 @@ The exact IDA-decompiled expression is:
 
 -- seconds difference times 1000 plus microseconds difference divided by 1000, yielding total elapsed milliseconds. Note that `*a1` reads `tv_sec` as a raw 32-bit dword (`LODWORD`), which is a decompiler artifact on 64-bit `time_t`; the low 32 bits are sufficient for any realistic compile time.
 
-### sub_4279C0 -- Phase Timer Checkpoint
+### sub_4279C0 — Phase Timer Checkpoint
 
 ```c
 // 0x4279C0 -- 32 bytes
@@ -81,9 +81,9 @@ __int64 phase_timer(const char *label, float elapsed) {
 }
 ```
 
-This is the core timing checkpoint. On the first call (with label `"init"`), it sets the started flag and starts the timer without printing anything -- the "init" phase has no preceding checkpoint, so there is no elapsed time to report. On every subsequent call, it stops the timer, prints the elapsed time for the *preceding* phase to stderr, then restarts the timer for the next phase.
+This is the core timing checkpoint. On the first call (with label `"init"`), it sets the started flag and starts the timer without printing anything — the "init" phase has no preceding checkpoint, so there is no elapsed time to report. On every subsequent call, it stops the timer, prints the elapsed time for the *preceding* phase to stderr, then restarts the timer for the next phase.
 
-The decompiler lists `float a2` as the second parameter, but in practice `a2` is just the x87/xmm0 register holding the return value of `sub_45CCE0` from the immediately-preceding call -- IDA does not realize that `fprintf`'s `%f` argument comes from the freshly-computed `timer_stop` return. The `nullsub_2()` call is a no-op stub that was left over after stripping a logging or tracing hook from the release build.
+The decompiler lists `float a2` as the second parameter, but in practice `a2` is just the x87/xmm0 register holding the return value of `sub_45CCE0` from the immediately-preceding call — IDA does not realize that `fprintf`'s `%f` argument comes from the freshly-computed `timer_stop` return. The `nullsub_2()` call is a no-op stub that was left over after stripping a logging or tracing hook from the release build.
 
 ## Stderr Timing Output
 
@@ -101,7 +101,7 @@ if (dword_2A5F308 & 0x20)          // LTO pipeline: global -edbg flags word
 
 `dword_2A5F308` is the `-edbg` integer option registered in `sub_427AE0` via `sub_42E390(v2, "edbg", &dword_2A5F308, 4)`. Users pass `-edbg 32` (or any value with bit 5 set) to enable stderr phase timing. `elfw[64]` is a byte inside the ELF wrapper structure created by `sub_4438F0`; it is populated from `dword_2A5F308` when the wrapper is built, and mirrors the relevant bits so the main pipeline does not need to look up a global on every check.
 
-The same `0x20` bit controls other verbose diagnostics such as the `"link input %s\n"` trace (which actually uses bit 0, mask `0x01`, at the same `elfw[64]` byte) -- the byte packs several verbose sub-flags together.
+The same `0x20` bit controls other verbose diagnostics such as the `"link input %s\n"` trace (which actually uses bit 0, mask `0x01`, at the same `elfw[64]` byte) — the byte packs several verbose sub-flags together.
 
 ### Output Format
 
@@ -124,7 +124,7 @@ finalize time: 5.432000
 write time: 1.234000
 ```
 
-Note that `init` never appears on stderr -- on the first `phase_timer("init")` call, the started flag is false so only the `byte_2A5F1C0 = 1` / `nullsub_2()` / `sub_45CCD0` branch runs, and no `fprintf` is emitted. The first printed line is whichever tag follows `init`.
+Note that `init` never appears on stderr — on the first `phase_timer("init")` call, the started flag is false so only the `byte_2A5F1C0 = 1` / `nullsub_2()` / `sub_45CCD0` branch runs, and no `fprintf` is emitted. The first printed line is whichever tag follows `init`.
 
 ## CSV Output Format
 
@@ -137,7 +137,7 @@ The CSV timing file is controlled by the `-time <file>` option, registered in `s
 sub_42E390(v2, "time", &qword_2A5F290, 8);  // string at 0x1D3233D
 ```
 
-The option name string is at `0x1D3233D`, which is the `"time"` tail of the `"-compile-time"` string at `0x1D32334` -- the linker reuses the last five bytes (`time\0`) as the shorter option name. The 8-byte storage slot is `qword_2A5F290`, which holds a `char *` to the user-supplied filename (or NULL if `-time` was not passed).
+The option name string is at `0x1D3233D`, which is the `"time"` tail of the `"-compile-time"` string at `0x1D32334` — the linker reuses the last five bytes (`time\0`) as the shorter option name. The 8-byte storage slot is `qword_2A5F290`, which holds a `char *` to the user-supplied filename (or NULL if `-time` was not passed).
 
 The help text for the option (at `0x1D33380`, xref from `0x428190`) reads verbatim:
 
@@ -151,7 +151,7 @@ The CSV header is written by `sub_432270` at `0x432270`. The exact header string
 source file name , phase name , phase input files , phase output file , arch , tool, metric , unit
 ```
 
-That is: eight columns separated by ` , ` (comma-space-space on each side, inconsistent -- note that the fifth separator between `tool` and `metric` is written as `, ` with no leading space, which is a typo in the NVIDIA header string that has been preserved verbatim). The row format uses a uniform ` , ` (space-comma-space) on every separator, so the header and rows are not byte-identical in their delimiter style, but CSV parsers that split on comma with whitespace trimming handle both correctly.
+That is: eight columns separated by ` , ` (comma-space-space on each side, inconsistent — note that the fifth separator between `tool` and `metric` is written as `, ` with no leading space, which is a typo in the NVIDIA header string that has been preserved verbatim). The row format uses a uniform ` , ` (space-comma-space) on every separator, so the header and rows are not byte-identical in their delimiter style, but CSV parsers that split on comma with whitespace trimming handle both correctly.
 
 ### Field-by-Field Description
 
@@ -187,7 +187,7 @@ Row 2 (LTO cicc compile): `a3="cicc"`, `a4="lto.nvvm"`, `a5=""`, `a6="lto.ptx"`,
 
 Row 3 (LTO ptxas compile): `a3="ptxas"`, `a4="lto.ptx"`, `a5=""`, `a6="lto.cubin"`, `a8=qword_2A5F318`. The synthetic `"lto.ptx"` is consumed by ptxas to produce `"lto.cubin"`.
 
-The string literals `"lto.nvvm"`, `"lto.ptx"`, `"lto.cubin"`, `"cicc"`, `"ptxas"`, `"nvlink"` are all static strings compiled into nvlink's `.rodata`, not actual filenames on disk -- they serve as symbolic phase identifiers for the CSV consumer. The empty-string columns (`r8d = offset asc_1D410D3+2`, which points at a `\0` byte just past `..` in the rodata) are compiled as the address of a single NUL byte, so the `%s` format prints nothing for those fields.
+The string literals `"lto.nvvm"`, `"lto.ptx"`, `"lto.cubin"`, `"cicc"`, `"ptxas"`, `"nvlink"` are all static strings compiled into nvlink's `.rodata`, not actual filenames on disk — they serve as symbolic phase identifiers for the CSV consumer. The empty-string columns (`r8d = offset asc_1D410D3+2`, which points at a `\0` byte just past `..` in the rodata) are compiled as the address of a single NUL byte, so the `%s` format prints nothing for those fields.
 
 ### File Handling
 
@@ -261,7 +261,7 @@ CSV rows are emitted at three points in `main()`, each gated by `if (qword_2A5F2
 | 2 | ~983-1094 | LTO cicc compile (`sub_4BC6F0`) | `"cicc"` | `"lto.nvvm"` -> `"lto.ptx"` |
 | 3 | ~1282 | LTO ptxas compile (`sub_4BD4E0`) | `"ptxas"` | `"lto.ptx"` -> `"lto.cubin"` |
 
-At each call site the pattern is the same: `sub_45CCE0(ptr)` stops the timer and returns elapsed ms in xmm0, then `sub_432340(qword_2A5F290, "nvlink", phase, src, input, output, elapsed, arch)` writes the row, then `sub_45CCD0(ptr)` restarts the timer for the next measurement. The timer state used here is the stack-local `ptr` (a separate `struct timeval` inside `main()`'s frame), not the global `unk_2A5F1B0` used by the stderr `phase_timer` -- the CSV path and the stderr path are completely independent timers that happen to share the same `gettimeofday` primitives.
+At each call site the pattern is the same: `sub_45CCE0(ptr)` stops the timer and returns elapsed ms in xmm0, then `sub_432340(qword_2A5F290, "nvlink", phase, src, input, output, elapsed, arch)` writes the row, then `sub_45CCD0(ptr)` restarts the timer for the next measurement. The timer state used here is the stack-local `ptr` (a separate `struct timeval` inside `main()`'s frame), not the global `unk_2A5F1B0` used by the stderr `phase_timer` — the CSV path and the stderr path are completely independent timers that happen to share the same `gettimeofday` primitives.
 
 Crucially, the CSV path times **sub-tool invocations** (individual ptxas/cicc runs), while the stderr path times **pipeline phases**. A link with N input files generates N CSV rows for the per-input ptxas runs, plus up to 2 more rows for LTO cicc and LTO ptxas if LTO is active, but only 9 stderr phase tags total. The two systems answer different questions: "how long did each sub-tool invocation take?" vs. "how long did each linker phase take?".
 
@@ -271,7 +271,7 @@ The 9 stderr timing tags map to pipeline phases described in the [pipeline overv
 
 | Order | Tag | Gate | Pipeline stage | Entry function |
 |---|---|---|---|---|
-| 1 | `"init"` | `elfw[64] & 0x20` | Option parsing, arena setup, library resolution complete | -- (first checkpoint, no elapsed time printed) |
+| 1 | `"init"` | `elfw[64] & 0x20` | Option parsing, arena setup, library resolution complete | — (first checkpoint, no elapsed time printed) |
 | 2 | `"cicc-lto"` | `dword_2A5F308 & 0x20` | LTO IR compilation via libnvvm/cicc | `sub_4BC6F0` |
 | 3 | `"ptxas-lto"` | `dword_2A5F308 & 0x20` | LTO PTX-to-SASS assembly | `sub_4BD4E0` |
 | 4 | `"read"` | `elfw[64] & 0x20` | Input file loop complete (all cubins, ptx, fatbins read) | Input dispatch loop |
@@ -364,13 +364,13 @@ The timing infrastructure uses a minimal set of global variables:
 
 | Address | Type | Name | Description |
 |---|---|---|---|
-| `0x2A5F1B0` | `struct timeval` (16 bytes) | `g_timer` | stderr timer -- stores `tv_sec`/`tv_usec` of the last `phase_timer` checkpoint |
+| `0x2A5F1B0` | `struct timeval` (16 bytes) | `g_timer` | stderr timer — stores `tv_sec`/`tv_usec` of the last `phase_timer` checkpoint |
 | `0x2A5F1C0` | `uint8_t` | `g_timer_started` | 0 before first `phase_timer` call, 1 after |
 | `0x2A5F290` | `char *` | `timing_file_path` | CSV output path; NULL disables CSV timing; `"-"` means stdout |
 | `0x2A5F308` | `uint32_t` | `edbg_flags` | `-edbg` option value; bit 5 (`0x20`) enables stderr timing in LTO paths |
 | `0x2A5F318` | `char *` | `arch_name` | Target architecture string (e.g. `"sm_90a"`) written into CSV `arch` column |
 
-Note that the CSV path does not use `unk_2A5F1B0`; it uses a separate stack-local `struct timeval` inside `main()` named `ptr` in the decompilation. This is why CSV row timings and stderr phase timings do not double-count or interfere -- they measure different intervals on different timers.
+Note that the CSV path does not use `unk_2A5F1B0`; it uses a separate stack-local `struct timeval` inside `main()` named `ptr` in the decompilation. This is why CSV row timings and stderr phase timings do not double-count or interfere — they measure different intervals on different timers.
 
 The `elfw[64]` byte in the ELF wrapper (set by `sub_4438F0` during wrapper creation) mirrors the low byte of `dword_2A5F308` so the main pipeline can check the verbose bit from the wrapper rather than a global. Both paths test the same `0x20` bit; the duplication exists because the LTO sub-pipeline runs before the ELF wrapper is fully populated for some code paths, so it must reach to the global directly.
 
@@ -398,20 +398,20 @@ To reimplement the timing infrastructure:
 
 **Internal (nvlink wiki):**
 
-- [Pipeline Overview](../pipeline/overview.md) -- The 9 stderr timing tags map directly to the pipeline phases described here; see the phase list for the canonical ordering
-- [Pipeline Entry](../pipeline/entry.md) -- `main()` timing checkpoint placement at phase boundaries, with exact line numbers and surrounding context
-- [LTO Overview](../lto/overview.md) -- LTO pipeline stages that generate the `cicc-lto` and `ptxas-lto` timing tags and the corresponding CSV rows
-- [Split Compilation](../lto/split-compilation.md) -- The thread pool runs between `cicc-lto` and `ptxas-lto` timing checkpoints but does not emit per-worker timings of its own
-- [libnvvm Integration](../lto/libnvvm-integration.md) -- `sub_4BC6F0` is the cicc-lto entry point whose runtime is captured in the `cicc` CSV row
-- [CLI Flags](../config/cli-flags.md) -- `-time <file>` for CSV output and `-edbg <int>` for stderr verbose (bit 5)
-- [Environment Variables](../config/env-vars.md) -- No environment variables control the timing infrastructure; it is driven entirely by CLI flags
-- [Error Reporting](error-reporting.md) -- Fatal error descriptor `unk_2A5B890` is invoked by `sub_467460` when the timing CSV file cannot be opened in either `sub_432270` (initial create) or `sub_432340` (append)
+- [Pipeline Overview](../pipeline/overview.md) — The 9 stderr timing tags map directly to the pipeline phases described here; see the phase list for the canonical ordering
+- [Pipeline Entry](../pipeline/entry.md) — `main()` timing checkpoint placement at phase boundaries, with exact line numbers and surrounding context
+- [LTO Overview](../lto/overview.md) — LTO pipeline stages that generate the `cicc-lto` and `ptxas-lto` timing tags and the corresponding CSV rows
+- [Split Compilation](../lto/split-compilation.md) — The thread pool runs between `cicc-lto` and `ptxas-lto` timing checkpoints but does not emit per-worker timings of its own
+- [libnvvm Integration](../lto/libnvvm-integration.md) — `sub_4BC6F0` is the cicc-lto entry point whose runtime is captured in the `cicc` CSV row
+- [CLI Flags](../config/cli-flags.md) — `-time <file>` for CSV output and `-edbg <int>` for stderr verbose (bit 5)
+- [Environment Variables](../config/env-vars.md) — No environment variables control the timing infrastructure; it is driven entirely by CLI flags
+- [Error Reporting](error-reporting.md) — Fatal error descriptor `unk_2A5B890` is invoked by `sub_467460` when the timing CSV file cannot be opened in either `sub_432270` (initial create) or `sub_432340` (append)
 
 ## Confidence Assessment
 
 | Claim | Confidence | Evidence |
 |---|---|---|
-| `timer_start` at `sub_45CCD0` wraps `gettimeofday` | HIGH | Decompiled: `return gettimeofday(a1, 0);` -- one-liner, exact match |
+| `timer_start` at `sub_45CCD0` wraps `gettimeofday` | HIGH | Decompiled: `return gettimeofday(a1, 0);` — one-liner, exact match |
 | `timer_stop` at `sub_45CCE0` computes milliseconds via float arithmetic | HIGH | Decompiled: `(float)(LODWORD(v2.tv_sec) - *a1) * 1000.0 + (float)(LODWORD(v2.tv_usec) - a1[2]) / 1000.0` |
 | `phase_timer` at `sub_4279C0` checks `byte_2A5F1C0` started flag | HIGH | Decompiled: `if (byte_2A5F1C0)` then `fprintf(stderr, "%s time: %f\n", ...)` else `byte_2A5F1C0 = 1; nullsub_2()` |
 | Stderr format string `"%s time: %f\n"` | HIGH | `sub_4279C0` decompiled shows exact string; confirmed at `0x1D32413` in strings JSON |
@@ -440,5 +440,5 @@ To reimplement the timing infrastructure:
 | CSV writer uses stack-local `ptr` timer distinct from global | HIGH | asm at `0x40a060-63`, `0x40b1a2`, `0x40b597` all pass `r13 = lea [rsp+offset]` to `sub_45CCE0`, not `&unk_2A5F1B0` |
 | `nullsub_2` is a no-op stub | HIGH | Decompiled file `nullsub_2_0x45ccc0.c` exists and is a no-op |
 | Timing CSV error uses `unk_2A5B890` descriptor | HIGH | Both `sub_432270` and `sub_432340` call `sub_467460(&unk_2A5B890, filename, ...)` on `fopen` failure |
-| CSV header delimiter inconsistency (`tool,` vs `, `) | HIGH | Exact header string includes `... arch , tool, metric ...` verbatim at `0x1D38698` -- the missing space is a typo preserved across all nvlink releases |
+| CSV header delimiter inconsistency (`tool,` vs `, `) | HIGH | Exact header string includes `... arch , tool, metric ...` verbatim at `0x1D38698` — the missing space is a typo preserved across all nvlink releases |
 | Empty-string fields come from `asc_1D410D3+2` | HIGH | asm: `r9d = (offset asc_1D410D3+2)` at `0x40a079` passes a pointer to a single `\0` byte |

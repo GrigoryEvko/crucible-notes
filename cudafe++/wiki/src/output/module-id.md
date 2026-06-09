@@ -1,6 +1,6 @@
 # Module ID & Registration
 
-When CUDA programs are compiled with separate compilation (`-rdc=true`), each `.cu` translation unit is compiled independently and later linked by nvlink. The host-side registration code emitted by cudafe++ must associate its `__cudaRegisterFatBinary` call with the correct device fatbinary, and anonymous namespace device symbols must receive globally unique mangled names. The **module ID** is a string identifier computed by `make_module_id` (`sub_5AF830`, host_envir.c, ~450 lines) that provides this uniqueness. It is derived from a CRC32 hash of the compiler options and source filename, combined with the output filename and process ID. Once computed, the module ID is cached in `qword_126F0C0` and referenced throughout the backend code generator -- in `_NV_ANON_NAMESPACE` construction, `_GLOBAL__N_` mangling, `_INTERNAL` prefixing, host reference array scoped names, and the module ID file written for nvlink consumption.
+When CUDA programs are compiled with separate compilation (`-rdc=true`), each `.cu` translation unit is compiled independently and later linked by nvlink. The host-side registration code emitted by cudafe++ must associate its `__cudaRegisterFatBinary` call with the correct device fatbinary, and anonymous namespace device symbols must receive globally unique mangled names. The **module ID** is a string identifier computed by `make_module_id` (`sub_5AF830`, host_envir.c, ~450 lines) that provides this uniqueness. It is derived from a CRC32 hash of the compiler options and source filename, combined with the output filename and process ID. Once computed, the module ID is cached in `qword_126F0C0` and referenced throughout the backend code generator — in `_NV_ANON_NAMESPACE` construction, `_GLOBAL__N_` mangling, `_INTERNAL` prefixing, host reference array scoped names, and the module ID file written for nvlink consumption.
 
 ## Key Facts
 
@@ -29,7 +29,7 @@ When CUDA programs are compiled with separate compilation (`-rdc=true`), each `.
 
 ## Algorithm Overview
 
-The module ID generator has three source modes, tried in priority order. The result is always cached in `qword_126F0C0` -- the function returns immediately if the cache is populated.
+The module ID generator has three source modes, tried in priority order. The result is always cached in `qword_126F0C0` — the function returns immediately if the cache is populated.
 
 ### Mode 1: Module ID File
 
@@ -182,7 +182,7 @@ The leading underscore comes from the `options_hex` format (`"_%08lx"`). All dot
 
 ## CRC32 Implementation
 
-The function contains an inline CRC32 implementation that appears **three times** in the decompiled output -- once for the options string hash, once for the source filename hash, and once for the extra string hash. All three are byte-identical in the binary, indicating the compiler inlined a shared helper (likely a `static inline` function or macro) at each call site.
+The function contains an inline CRC32 implementation that appears **three times** in the decompiled output — once for the options string hash, once for the source filename hash, and once for the extra string hash. All three are byte-identical in the binary, indicating the compiler inlined a shared helper (likely a `static inline` function or macro) at each call site.
 
 The algorithm is the standard bit-by-bit reflected CRC-32 used by ISO 3309, ITU-T V.42, Ethernet, PNG, and zlib. The polynomial `0xEDB88320` is the bit-reversed form of the generator polynomial `0x04C11DB7`.
 
@@ -268,7 +268,7 @@ Copy 2 is a two-pass CRC: it first hashes the source filename string, then conti
 
 The original C source almost certainly had a single `crc32_string()` helper function (or macro) that the compiler inlined at each call site during optimization. The EDG front-end codebase uses similar inline expansion patterns elsewhere (e.g., the 9 copies of UTF-8 decoding logic in the same file).
 
-## Module ID Source Modes -- Decision Tree
+## Module ID Source Modes — Decision Tree
 
 ```text
 make_module_id(src)
@@ -310,7 +310,7 @@ An alternative entry path into the module ID system is `use_variable_or_routine_
 
 ### Selection Criteria
 
-The function is invoked during IL processing. It first checks `sub_5AF820` (`get_module_id`) -- if a module ID is already cached, it returns immediately. Otherwise, it evaluates the candidate entity:
+The function is invoked during IL processing. It first checks `sub_5AF820` (`get_module_id`) — if a module ID is already cached, it returns immediately. Otherwise, it evaluates the candidate entity:
 
 ```c
 // sub_5CF030, simplified
@@ -559,10 +559,10 @@ The `getpid()` call ensures that concurrent compilations of the same source file
 
 ## Cross-References
 
-- [.int.c File Format](./int-c-format.md) -- `_NV_ANON_NAMESPACE` trailer section that consumes the module ID
-- [CUDA Runtime Boilerplate](./cuda-runtime.md) -- managed memory registration that uses the fatbinary handle
-- [Host Reference Arrays](./host-reference-arrays.md) -- `.nvHR*` sections where scoped names include the module ID
-- [RDC Mode](../cuda/rdc-mode.md) -- separate compilation mode that requires module IDs for cross-TU linking
-- [CLI Flag Inventory](../config/cli-flags.md) -- flags 83 (`gen_module_id_file`) and 87 (`module_id_file_name`)
-- [Backend Code Generation](../pipeline/backend.md) -- output phase where `write_module_id_to_file` is called
-- [Frontend Wrapup](../pipeline/fe-wrapup.md) -- `translation_unit_wrapup` triggers early module ID computation
+- [.int.c File Format](./int-c-format.md) — `_NV_ANON_NAMESPACE` trailer section that consumes the module ID
+- [CUDA Runtime Boilerplate](./cuda-runtime.md) — managed memory registration that uses the fatbinary handle
+- [Host Reference Arrays](./host-reference-arrays.md) — `.nvHR*` sections where scoped names include the module ID
+- [RDC Mode](../cuda/rdc-mode.md) — separate compilation mode that requires module IDs for cross-TU linking
+- [CLI Flag Inventory](../config/cli-flags.md) — flags 83 (`gen_module_id_file`) and 87 (`module_id_file_name`)
+- [Backend Code Generation](../pipeline/backend.md) — output phase where `write_module_id_to_file` is called
+- [Frontend Wrapup](../pipeline/fe-wrapup.md) — `translation_unit_wrapup` triggers early module ID computation

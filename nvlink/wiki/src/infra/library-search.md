@@ -108,8 +108,8 @@ void search_context_append_cb(char* dir_path, search_context_t* ctx) {
 The only difference is argument order: `sub_462500` takes `(ctx, path)` while `sub_462520` takes `(path, ctx)`. The latter matches the `(token, user_data)` callback signature expected by the string tokenizer `sub_44EC40`.
 
 Both functions update two pointers:
-1. `*ctx->tail = n` -- writes the new node's address into the `next` field of the previous tail node (or into `head` if the list was empty)
-2. `ctx->tail = n` -- advances the tail pointer to the new node, so the next append will write into the new node's `next` field
+1. `*ctx->tail = n` — writes the new node's address into the `next` field of the previous tail node (or into `head` if the list was empty)
+2. `ctx->tail = n` — advances the tail pointer to the new node, so the next append will write into the new node's `next` field
 
 ## Search Path Construction
 
@@ -199,7 +199,7 @@ The token extractor `sub_44E8B0` is a 4,780-byte function that implements statef
 
 ### path\_split (sub\_462620)
 
-Decomposes a filesystem path into three arena-allocated components: directory, basename, and extension. Uses `strrchr` for both `.` (extension separator) and `/` (directory separator), handling the edge case where a dot appears only in the directory portion (e.g., `/usr/lib.d/foo` -- the dot is part of the directory, not an extension).
+Decomposes a filesystem path into three arena-allocated components: directory, basename, and extension. Uses `strrchr` for both `.` (extension separator) and `/` (directory separator), handling the edge case where a dot appears only in the directory portion (e.g., `/usr/lib.d/foo` — the dot is part of the directory, not an extension).
 
 ```c
 // sub_462620 -- path_split
@@ -372,11 +372,11 @@ char* path_search(
 
 The function implements a multi-stage search with fallback:
 
-**Stage 1 -- Direct path detection.** The filename is copied into arena memory. If `strrchr(copy, '/')` finds a directory separator, the path has an explicit directory component. The code splits the filename at the last `/` into a directory part and a base part.
+**Stage 1 — Direct path detection.** The filename is copied into arena memory. If `strrchr(copy, '/')` finds a directory separator, the path has an explicit directory component. The code splits the filename at the last `/` into a directory part and a base part.
 
-**Stage 2 -- Absolute path or no search context.** If the directory component starts with `/` (absolute path), or the directory is empty, or `ctx` is NULL, or `search_dirs` is false, the code checks the original filename directly via `stat()`. If the file exists, it is accepted immediately (a deep copy of the filename is returned).
+**Stage 2 — Absolute path or no search context.** If the directory component starts with `/` (absolute path), or the directory is empty, or `ctx` is NULL, or `search_dirs` is false, the code checks the original filename directly via `stat()`. If the file exists, it is accepted immediately (a deep copy of the filename is returned).
 
-**Stage 3 -- Directory list iteration.** For relative paths with a search context, the code iterates every node in the search context linked list:
+**Stage 3 — Directory list iteration.** For relative paths with a search context, the code iterates every node in the search context linked list:
 
 ```c
 search_dir_node_t* node = ctx->head;
@@ -400,7 +400,7 @@ while (node) {
 
 The path construction is performed inline using the string builder (`sub_44FB20`), appending directory characters while stripping trailing slashes, adding a `/` separator, then appending the filename via `sub_44FE60`.
 
-**Stage 4 -- Path decomposition fallback.** If `try_split` is true and no match was found in stages 1--3, the function decomposes the filename using `path_split` into directory, basename, and extension. It then reconstructs the filename from the components and recursively calls itself with `try_split=0` and the reconstructed path. This handles cases where the path structure encodes search semantics (not used for standard `-l` resolution).
+**Stage 4 — Path decomposition fallback.** If `try_split` is true and no match was found in stages 1--3, the function decomposes the filename using `path_split` into directory, basename, and extension. It then reconstructs the filename from the components and recursively calls itself with `try_split=0` and the reconstructed path. This handles cases where the path structure encodes search semantics (not used for standard `-l` resolution).
 
 ### Two-Pass Search Strategy
 
@@ -495,7 +495,7 @@ no_match:
 }
 ```
 
-`sub_4297B0` (`archive_status_report`) is NOT a member processor -- it checks the status code returned by `archive_close` and emits diagnostics accordingly: status 0 is a no-op, status 7 emits an architecture mismatch warning (suppressed for `cudadevrt` paths), status 4 emits a format error, and any other status is converted to an error string via `sub_4BC270`.
+`sub_4297B0` (`archive_status_report`) is NOT a member processor — it checks the status code returned by `archive_close` and emits diagnostics accordingly: status 0 is a no-op, status 7 emits an architecture mismatch warning (suppressed for `cudadevrt` paths), status 4 emits a format error, and any other status is converted to an error string via `sub_4BC270`.
 
 ### CPU Architecture Mapping
 
@@ -597,7 +597,7 @@ Path construction uses the shared string builder infrastructure (`sub_44FB20` cr
 
 After the library resolution loop completes, `main` calls `sub_462320(ctx, 0)`. The destroy function has two cleanup modes selected by the second parameter (a byte flag):
 
-- **Flag = 0 (used by main):** calls `sub_464520` to iterate and free the linked-list node structures only. The path strings stored in each node are NOT individually freed -- they remain in arena memory until the arena is destroyed.
+- **Flag = 0 (used by main):** calls `sub_464520` to iterate and free the linked-list node structures only. The path strings stored in each node are NOT individually freed — they remain in arena memory until the arena is destroyed.
 - **Flag = 1:** calls `sub_464550` which iterates nodes and invokes a callback (`sub_45CAD0`) to free both the data pointer and the node.
 
 After freeing the list contents, the context structure itself is freed via `sub_431000`.
@@ -608,31 +608,31 @@ Every string allocation in the search subsystem goes through the arena allocator
 
 ## Cross-References
 
-- [Library Resolution (pipeline)](../pipeline/library-resolution.md) -- pipeline-level view of when and how library search runs
-- [CLI Option Parsing](../pipeline/cli-options.md) -- `-L`, `-l`, `--cpu-arch`, `--nvvmpath`, `--keep-system-libraries` registration
-- [Archive Processing](../input/archives.md) -- `sub_4BDAC0`, `sub_4BDAF0`, `sub_4BDB30` archive member API
-- [Input File Loop](../pipeline/input-loop.md) -- consumes the resolved input file list
-- [Memory Arenas](memory-arenas.md) -- `sub_4307C0` / `sub_431000` arena allocator used throughout
-- [Error Reporting](error-reporting.md) -- `sub_467460` diagnostic emission; `unk_2A5B610` (arch mismatch), `unk_2A5B660` (arch warn), `unk_2A5B670` (fatal)
-- [libnvvm Integration](../lto/libnvvm-integration.md) -- `sub_4BC470` libnvvm.so loading; `--nvvmpath` requirement
-- [LTO Overview](../lto/overview.md) -- libcudadevrt IR extraction during LTO compilation
-- [Environment Variables](../config/env-vars.md) -- `LIBRARY_PATH` getenv call
+- [Library Resolution (pipeline)](../pipeline/library-resolution.md) — pipeline-level view of when and how library search runs
+- [CLI Option Parsing](../pipeline/cli-options.md) — `-L`, `-l`, `--cpu-arch`, `--nvvmpath`, `--keep-system-libraries` registration
+- [Archive Processing](../input/archives.md) — `sub_4BDAC0`, `sub_4BDAF0`, `sub_4BDB30` archive member API
+- [Input File Loop](../pipeline/input-loop.md) — consumes the resolved input file list
+- [Memory Arenas](memory-arenas.md) — `sub_4307C0` / `sub_431000` arena allocator used throughout
+- [Error Reporting](error-reporting.md) — `sub_467460` diagnostic emission; `unk_2A5B610` (arch mismatch), `unk_2A5B660` (arch warn), `unk_2A5B670` (fatal)
+- [libnvvm Integration](../lto/libnvvm-integration.md) — `sub_4BC470` libnvvm.so loading; `--nvvmpath` requirement
+- [LTO Overview](../lto/overview.md) — libcudadevrt IR extraction during LTO compilation
+- [Environment Variables](../config/env-vars.md) — `LIBRARY_PATH` getenv call
 
 ## Confidence Assessment
 
 | Claim | Confidence | Evidence |
 |---|---|---|
-| Search context is 16 bytes with self-referencing tail pointer | HIGH | `sub_4622D0` decompiled: `sub_4307C0(v2, 16)`, then `*result = 0; result[1] = result` -- self-reference confirmed |
+| Search context is 16 bytes with self-referencing tail pointer | HIGH | `sub_4622D0` decompiled: `sub_4307C0(v2, 16)`, then `*result = 0; result[1] = result` — self-reference confirmed |
 | `search_context_append` at `sub_462500` takes `(ctx, path)` | HIGH | Decompiled: `sub_464460(a2, 0)` then `**(_QWORD **)(a1 + 8) = result; *(_QWORD *)(a1 + 8) = result` |
-| `search_context_append_cb` at `sub_462520` swaps argument order `(path, ctx)` | HIGH | Decompiled: `sub_464460(a1, 0)` then operates on `a2` -- argument swap confirmed |
+| `search_context_append_cb` at `sub_462520` swaps argument order `(path, ctx)` | HIGH | Decompiled: `sub_464460(a1, 0)` then operates on `a2` — argument swap confirmed |
 | `make_library_filename` uses DWORD trick `0x0062696C` for "lib" | HIGH | `sub_429AA0` decompiled: `*(_DWORD *)v4 = 6449516` which is `0x62696C` = `"lib\0"` little-endian |
-| `.so` suffix via DWORD `0x006F732E` | HIGH | `sub_429AA0` decompiled: `*(_DWORD *)stpcpy(v8, v5) = (_DWORD)&loc_6F732E` -- address encodes `.so\0` |
+| `.so` suffix via DWORD `0x006F732E` | HIGH | `sub_429AA0` decompiled: `*(_DWORD *)stpcpy(v8, v5) = (_DWORD)&loc_6F732E` — address encodes `.so\0` |
 | `.a` suffix via `strcpy` | HIGH | `sub_429AA0` decompiled: `strcpy(stpcpy(v8, v5), ".a")` |
 | `path_search` at `sub_462870` (4,905 B) iterates directories with `stat()` | HIGH | Decompiled function exists (large, matches described size); uses `stat` for existence check |
 | CPU architecture mapping: `X86_64`=62, `X86`=3, `ARMv7`=40, `AARCH64`=183, `PPC64LE`=21 | HIGH | String `"unknown,X86,X86_64,ARMv7,AARCH64,PPC64LE"` at `0x1d332f0`; individual arch strings at `0x1d33fe5`--`0x1d33ffa` |
 | `"unexpected cpuArch"` error message | HIGH | String at `0x1d34002` in strings JSON |
 | `cudadevrt` suppression for arch mismatch warnings | HIGH | String `"found IR for libcudadevrt"` at `0x1d340a8`; `strstr` check visible in decompiled `sub_42A2D0` |
-| `LIBRARY_PATH` environment variable used for search path | HIGH | Decompiled main line 399: `getenv("LIBRARY_PATH")`; the string is at `0x225fcdd` (offset +3 within `"LD_LIBRARY_PATH\0"` at `0x225fcda` -- standard string tail-sharing). `LD_LIBRARY_PATH` is referenced only by `sub_15C3FD0` (embedded ld-linux), not nvlink code |
+| `LIBRARY_PATH` environment variable used for search path | HIGH | Decompiled main line 399: `getenv("LIBRARY_PATH")`; the string is at `0x225fcdd` (offset +3 within `"LD_LIBRARY_PATH\0"` at `0x225fcda` — standard string tail-sharing). `LD_LIBRARY_PATH` is referenced only by `sub_15C3FD0` (embedded ld-linux), not nvlink code |
 | String tokenizer at `sub_44EC40` (576 B) with `sub_44E8B0` (4,780 B) | HIGH | Both decompiled files exist with matching sizes; `sub_44EC40` calls `sub_44E8B0` in a loop |
 | Tail-pointer linked list idiom | HIGH | Confirmed by `sub_4622D0` decompiled code: `result[1] = result` is the self-referencing tail initialization |
 | Two-pass search strategy (stat-only then archive validation) | HIGH | Confirmed in main lines 404--408: Pass 1 (`callback=NULL`), Pass 2 (`callback=sub_42A2D0`); both passes use same `lib<name>.a` filename |
@@ -640,6 +640,6 @@ Every string allocation in the search subsystem goes through the arena allocator
 | `--cpu-arch` option string | HIGH | String `"cpu-arch"` at `0x1d326cd` in strings JSON |
 | libnvvm.so loaded from `<nvvmpath>/lib64/libnvvm.so` | HIGH | `sub_4BC470` calls `sub_5F5AC0(path, "libnvvm.so", 0)`; main builds `path = nvvmpath + "/lib64"` |
 | `--nvvmpath` required when `-lto` is used | HIGH | Decompiled `sub_427AE0` line 1143--1150: fatal error if `qword_2A5F278` is NULL when `byte_2A5F288` is set |
-| Duplicate path check before appending to input list | HIGH | Main line 412: `sub_4646A0(qword_2A5F330, v189, sub_44E180)` -- linear list search with comparator |
+| Duplicate path check before appending to input list | HIGH | Main line 412: `sub_4646A0(qword_2A5F330, v189, sub_44E180)` — linear list search with comparator |
 | `sub_4297B0` is `archive_status_report`, not `process_member` | HIGH | Decompiled `sub_4297B0`: checks status codes 0/7/4/other and emits diagnostics; no member processing logic |
 | Unreferenced error strings ("Skipping incompatible", "Library file not found") | LOW | Strings at `0x1d34ab8`, `0x1d34bf0`, `0x1d34c18` have zero IDA xrefs; may be table-driven or dead code |

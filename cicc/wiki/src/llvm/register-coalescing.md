@@ -2,7 +2,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-Register coalescing in CICC v13.0 eliminates redundant copy instructions by merging the live ranges of their source and destination virtual registers. NVPTX's unlimited virtual register model (PTX has no fixed physical register file) changes the purpose of coalescing compared to CPU targets: rather than reducing physical register pressure to avoid spills, the goal is strictly copy elimination -- fewer `mov` instructions in the emitted PTX, which in turn gives `ptxas` a cleaner input with fewer live-range constraints to resolve during its own physical allocation. CICC runs two coalescing passes in sequence: the standard LLVM `RegisterCoalescer` at `sub_2F71140` (which handles generic `COPY` pseudo-instructions) and a separate NVPTX-specific coalescer rooted at `sub_34AF4A0` (which handles NVPTX copy instruction families in the opcode 440--503 range that the generic pass does not recognize). This page documents both, with emphasis on the NVPTX-specific pass where the bulk of the proprietary logic resides.
+Register coalescing in CICC v13.0 eliminates redundant copy instructions by merging the live ranges of their source and destination virtual registers. NVPTX's unlimited virtual register model (PTX has no fixed physical register file) changes the purpose of coalescing compared to CPU targets: rather than reducing physical register pressure to avoid spills, the goal is strictly copy elimination — fewer `mov` instructions in the emitted PTX, which in turn gives `ptxas` a cleaner input with fewer live-range constraints to resolve during its own physical allocation. CICC runs two coalescing passes in sequence: the standard LLVM `RegisterCoalescer` at `sub_2F71140` (which handles generic `COPY` pseudo-instructions) and a separate NVPTX-specific coalescer rooted at `sub_34AF4A0` (which handles NVPTX copy instruction families in the opcode 440--503 range that the generic pass does not recognize). This page documents both, with emphasis on the NVPTX-specific pass where the bulk of the proprietary logic resides.
 
 | | |
 |---|---|
@@ -16,7 +16,7 @@ Register coalescing in CICC v13.0 eliminates redundant copy instructions by merg
 | **Range rebuild after merge** | `sub_34A46B0` (13KB) |
 | **Opcode -> copy-type mapping** | `sub_3494EA0` (12.7KB) |
 | **Operand type classification table** | `byte_444C4A0` (16-byte entries) |
-| **Address range** | `0x3494EA0` -- `0x34BF740` |
+| **Address range** | `0x3494EA0` — `0x34BF740` |
 | **Pass parameters** | `(pass_obj*, func_info*, MF*, copy_limit, coalesce_limit)` |
 | **Pass ordering** | After TwoAddressInstruction, before greedy RA |
 
@@ -24,7 +24,7 @@ Register coalescing in CICC v13.0 eliminates redundant copy instructions by merg
 
 On CPU targets, coalescing reduces register pressure by allowing two virtual registers to share one physical register, potentially preventing a spill. On NVPTX the motivation is different. PTX is a virtual ISA with typed, unlimited registers (`%r0`, `%r1`, ... for 32-bit integers; `%f0`, `%f1`, ... for 32-bit floats). The "physical" allocation is deferred entirely to `ptxas`, which maps virtual registers to the hardware register file at kernel launch time based on occupancy targets. CICC's coalescing therefore serves three purposes:
 
-1. **Copy elimination.** Every `mov` instruction that survives into emitted PTX is dead weight -- it costs an issue slot and extends the live range of both source and destination. Coalescing removes these by unifying src and dst into a single virtual register.
+1. **Copy elimination.** Every `mov` instruction that survives into emitted PTX is dead weight — it costs an issue slot and extends the live range of both source and destination. Coalescing removes these by unifying src and dst into a single virtual register.
 
 2. **Reduced register name count.** Even though PTX registers are virtual, `ptxas` must solve a graph-coloring problem on them. Fewer distinct register names (after coalescing merges equivalents) give `ptxas` a smaller interference graph and faster compilation.
 
@@ -80,9 +80,9 @@ The constraint flag at offset +3 (mask `0x10`) gates whether the operand partici
 
 ### Register Class Constraints
 
-Coalescing is constrained to same-class merges. The NVPTX register classes are completely disjoint -- an `Int32Regs` (`%r`) register cannot coalesce with a `Float32Regs` (`%f`) register even though both are 32 bits wide. This is a consequence of PTX's typed register model: `.reg .b32 %r0` and `.reg .f32 %f0` are distinct storage locations from `ptxas`'s perspective. The complete register class table and coalescing constraint flags are in [Register Classes](../reference/register-classes.md#coalescing-constraints). All eight primary classes are same-class-only; `Int128Regs` is excluded from the coalescing worklist entirely (constraint flag cleared).
+Coalescing is constrained to same-class merges. The NVPTX register classes are completely disjoint — an `Int32Regs` (`%r`) register cannot coalesce with a `Float32Regs` (`%f`) register even though both are 32 bits wide. This is a consequence of PTX's typed register model: `.reg .b32 %r0` and `.reg .f32 %f0` are distinct storage locations from `ptxas`'s perspective. The complete register class table and coalescing constraint flags are in [Register Classes](../reference/register-classes.md#coalescing-constraints). All eight primary classes are same-class-only; `Int128Regs` is excluded from the coalescing worklist entirely (constraint flag cleared).
 
-Cross-class copies (e.g., bitcasting an `i32` to `f32`) use distinct cross-class copy opcodes (see the [copy opcode table](../reference/register-classes.md#copy-opcodes----sub_2162350)) and are never eliminated by the coalescer -- they must survive as explicit instructions in PTX.
+Cross-class copies (e.g., bitcasting an `i32` to `f32`) use distinct cross-class copy opcodes (see the [copy opcode table](../reference/register-classes.md#copy-opcodes----sub_2162350)) and are never eliminated by the coalescer — they must survive as explicit instructions in PTX.
 
 ### Sub-Register Handling
 
@@ -112,7 +112,7 @@ Build the interval tree via `sub_2DACB60` and `sub_C8CD80`. Cross-compare forwar
 
 ### Phase 4: Worklist-Driven Coalescing (lines 1040--2092)
 
-This is the core loop. Candidates are extracted from a min-heap ordered by register number (lowest first -- a standard LLVM heuristic that processes defs before uses in reverse postorder).
+This is the core loop. Candidates are extracted from a min-heap ordered by register number (lowest first — a standard LLVM heuristic that processes defs before uses in reverse postorder).
 
 ```c
 function CoalesceWorklistDriven(heap, intervals, hash_map):
@@ -150,15 +150,15 @@ function CoalesceWorklistDriven(heap, intervals, hash_map):
         repeat from top
 ```
 
-The double-buffer swap (lines 2073--2093) alternates between two heaps (`v373` and `v376`). After exhausting one worklist, the pass swaps and retries -- implementing the LLVM-style "iterate until convergence" pattern where an earlier merge may resolve interference that blocked a later merge.
+The double-buffer swap (lines 2073--2093) alternates between two heaps (`v373` and `v376`). After exhausting one worklist, the pass swaps and retries — implementing the LLVM-style "iterate until convergence" pattern where an earlier merge may resolve interference that blocked a later merge.
 
 ### Phase 5: Code Patching (lines 2095--2144)
 
 For each coalesced pair, rewrite instruction operands:
 
-1. `sub_349D6E0` -- look up the merged interval's representative register.
-2. `sub_349FA50` -- find the instruction position.
-3. `sub_2E31040` -- patch the operand's register field.
+1. `sub_349D6E0` — look up the merged interval's representative register.
+2. `sub_349FA50` — find the instruction position.
+3. `sub_2E31040` — patch the operand's register field.
 4. Fix linked-list pointers using the `ptr & 0xFFFFFFFFFFFFFFF8` mask (the low 3 bits encode tags on `MachineOperand` pointers: 0 = normal, 3 = tied operand, 4 = implicit operand).
 
 ### Phase 6: Cleanup (lines 2145--2371)
@@ -167,7 +167,7 @@ Destroy interval trees (`sub_349E8A0`), perform final range rebuild (`sub_34A46B
 
 ## Interference Check (sub_34AA450)
 
-The interference check is the critical decision point. Given two intervals (identified by their register keys), it determines whether merging them would create a conflict -- that is, whether both registers are simultaneously live at any program point.
+The interference check is the critical decision point. Given two intervals (identified by their register keys), it determines whether merging them would create a conflict — that is, whether both registers are simultaneously live at any program point.
 
 ```c
 function CheckInterference(interval_A, interval_B) -> {0 = safe, 1 = interfering}:
@@ -217,7 +217,7 @@ All hash maps use the standard DenseMap open-addressing infrastructure described
 
 Growth policy: `next_power_of_2(2 * old_capacity - 1)`, minimum 64 entries.
 
-Allocator: `sub_C7D670(size, alignment=8)` / `sub_C7D6A0(ptr, size, alignment=8)` -- CICC's aligned malloc/free wrappers.
+Allocator: `sub_C7D670(size, alignment=8)` / `sub_C7D6A0(ptr, size, alignment=8)` — CICC's aligned malloc/free wrappers.
 
 ### Interval Tree (Red-Black BST)
 
@@ -258,7 +258,7 @@ Throughout the coalescing code, `MachineOperand` pointers use low-bit tagging (8
 | Tag (ptr & 7) | Meaning |
 |---|---|
 | 0 | Normal operand |
-| 3 | Tied operand (requires special coalescing -- both operands must map to same register) |
+| 3 | Tied operand (requires special coalescing — both operands must map to same register) |
 | 4 | Implicit operand (flag bit at operand offset +44, bit 3) |
 
 The code consistently masks with `& 0xFFFFFFFFFFFFFFF8` before dereferencing and checks `(ptr & 7) == 3` or `(ptr & 4) != 0` for branching decisions.
@@ -286,11 +286,11 @@ Separate from the two coalescing passes above, CICC includes a CSSA (Conventiona
 | `late-remat-update-threshold` | LLVM | `100` | Batch remat update threshold |
 | `large-interval-size-threshold` | LLVM | `100` | Large interval valno threshold |
 | `large-interval-freq-threshold` | LLVM | `256` | Large interval coalesce limit |
-| `twoaddr-reschedule` | LLVM | -- | Coalesce copies by rescheduling in TwoAddress |
+| `twoaddr-reschedule` | LLVM | — | Coalesce copies by rescheduling in TwoAddress |
 | `copy_limit` | NVPTX | runtime | Max copies to consider in NVPTX pass |
 | `coalesce_limit` | NVPTX | runtime | Max merges before bailout in NVPTX pass |
-| `cssa-coalesce` | NVPTX | -- | PHI operand coalescing |
-| `cssa-verbosity` | NVPTX | -- | CSSA debug verbosity |
+| `cssa-coalesce` | NVPTX | — | PHI operand coalescing |
+| `cssa-verbosity` | NVPTX | — | CSSA debug verbosity |
 | block frequency flag | NVPTX | config | Weight copies by block hotness |
 
 The `copy_limit` and `coalesce_limit` parameters are passed into `sub_34AF4A0` at call time (not static `cl::opt` knobs). Their values come from the pass pipeline configuration and serve as compile-time budget caps to avoid quadratic worst-case behavior on functions with thousands of copies.
@@ -302,7 +302,7 @@ The quality of CICC's coalescing directly affects `ptxas`'s register allocation 
 - **Fewer virtual registers** means a smaller interference graph for `ptxas` to color, reducing its compilation time.
 - **Eliminated copies** reduce instruction count, giving `ptxas`'s scheduler more freedom and fewer false dependencies.
 - **Preserved type invariants** (no cross-class coalescing) ensure `ptxas` never encounters type-inconsistent register usage, which would require additional conversion instructions.
-- **Wide register pair tracking** ensures tensor core instruction patterns remain intact -- `ptxas` expects specific register pair relationships for `mma` and `wmma` instructions.
+- **Wide register pair tracking** ensures tensor core instruction patterns remain intact — `ptxas` expects specific register pair relationships for `mma` and `wmma` instructions.
 
 A pathological case is over-aggressive coalescing that creates very long live ranges spanning many basic blocks. On NVPTX this does not cause spills (there is no physical register file to spill from), but it can increase `ptxas`'s reported register usage, reducing occupancy. The `coalesce_limit` parameter and the large-interval frequency threshold exist partly to avoid this scenario.
 
@@ -310,40 +310,40 @@ A pathological case is over-aggressive coalescing that creates very long live ra
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Main NVPTX coalescing driver | `sub_34AF4A0` | 67KB | -- |
-| Per-instruction coalesce attempt | `sub_34AE060` | 28KB | -- |
-| Pre-coalesce validation (opcode 14/15 check) | `sub_34AB5C0` | 16KB | -- |
-| Post-coalesce update (rewrite def-use chains) | `sub_34AC810` | 19KB | -- |
-| Constrained-copy validation variant | `sub_34AD8B0` | 8.5KB | -- |
-| Interference check | `sub_34AA450` | 11.5KB | -- |
-| Range rebuild (bitvector `v90[12336]`) | `sub_34A46B0` | 13KB | -- |
-| Interval equivalence verify | `sub_34A2770` | 7.3KB | -- |
-| Interval tree insert/rebalance (RB-tree) | `sub_34A0610` | 14.7KB | -- |
-| Register-to-interval hash lookup | `sub_34A3910` | 2.7KB | -- |
-| Build worklist from BB operand scan | `sub_34A3D10` | 5KB | -- |
-| Build worklist from instruction iteration | `sub_34A41A0` | 4.8KB | -- |
-| Block-level coalescing driver | `sub_34BAAF0` | 31.7KB | -- |
-| Live-out analysis + weight computation | `sub_34B7280` | 22KB | -- |
-| Per-register interference build | `sub_34B6620` | 17.7KB | -- |
-| Operand-type classification | `sub_34961A0` | 26.6KB | -- |
-| Register-pair decomposition | `sub_3497B40` | 16.5KB | -- |
-| Opcode -> copy-type mapping (switch) | `sub_3494EA0` | 12.7KB | -- |
-| Build coalesce candidate list | `sub_349AB40` | 24.5KB | -- |
-| Merged-interval representative lookup | `sub_349D6E0` | -- | -- |
-| Instruction position lookup/creation | `sub_349FA50` | 7.1KB | -- |
-| Interval tree destructor (variant A) | `sub_349E330` | 4KB | -- |
-| Interval tree destructor (variant B) | `sub_349E500` | 4KB | -- |
-| Interval tree destructor (variant C) | `sub_349E6D0` | 4KB | -- |
-| Interval tree destructor (variant D) | `sub_349E8A0` | 4KB | -- |
-| Interval info populate from instruction | `sub_349F140` | 4.7KB | -- |
-| Interval structure reset | `sub_349F740` | 4KB | -- |
-| Generic map cleanup (callback `sub_349D600`) | `sub_34A2010` | -- | -- |
-| Finalize coalescing metadata | `sub_34A2530` | -- | -- |
-| Commit merged intervals | `sub_34AA090` | -- | -- |
-| Secondary coalesce commit | `sub_34A9A60` | -- | -- |
-| Register info initializer | `sub_35065A0` | -- | -- |
-| Standard LLVM RegisterCoalescer | `sub_2F71140` | 80KB | -- |
-| RegisterCoalescer::getPassName | `sub_2F60C50` | -- | -- |
+| Main NVPTX coalescing driver | `sub_34AF4A0` | 67KB | — |
+| Per-instruction coalesce attempt | `sub_34AE060` | 28KB | — |
+| Pre-coalesce validation (opcode 14/15 check) | `sub_34AB5C0` | 16KB | — |
+| Post-coalesce update (rewrite def-use chains) | `sub_34AC810` | 19KB | — |
+| Constrained-copy validation variant | `sub_34AD8B0` | 8.5KB | — |
+| Interference check | `sub_34AA450` | 11.5KB | — |
+| Range rebuild (bitvector `v90[12336]`) | `sub_34A46B0` | 13KB | — |
+| Interval equivalence verify | `sub_34A2770` | 7.3KB | — |
+| Interval tree insert/rebalance (RB-tree) | `sub_34A0610` | 14.7KB | — |
+| Register-to-interval hash lookup | `sub_34A3910` | 2.7KB | — |
+| Build worklist from BB operand scan | `sub_34A3D10` | 5KB | — |
+| Build worklist from instruction iteration | `sub_34A41A0` | 4.8KB | — |
+| Block-level coalescing driver | `sub_34BAAF0` | 31.7KB | — |
+| Live-out analysis + weight computation | `sub_34B7280` | 22KB | — |
+| Per-register interference build | `sub_34B6620` | 17.7KB | — |
+| Operand-type classification | `sub_34961A0` | 26.6KB | — |
+| Register-pair decomposition | `sub_3497B40` | 16.5KB | — |
+| Opcode -> copy-type mapping (switch) | `sub_3494EA0` | 12.7KB | — |
+| Build coalesce candidate list | `sub_349AB40` | 24.5KB | — |
+| Merged-interval representative lookup | `sub_349D6E0` | — | — |
+| Instruction position lookup/creation | `sub_349FA50` | 7.1KB | — |
+| Interval tree destructor (variant A) | `sub_349E330` | 4KB | — |
+| Interval tree destructor (variant B) | `sub_349E500` | 4KB | — |
+| Interval tree destructor (variant C) | `sub_349E6D0` | 4KB | — |
+| Interval tree destructor (variant D) | `sub_349E8A0` | 4KB | — |
+| Interval info populate from instruction | `sub_349F140` | 4.7KB | — |
+| Interval structure reset | `sub_349F740` | 4KB | — |
+| Generic map cleanup (callback `sub_349D600`) | `sub_34A2010` | — | — |
+| Finalize coalescing metadata | `sub_34A2530` | — | — |
+| Commit merged intervals | `sub_34AA090` | — | — |
+| Secondary coalesce commit | `sub_34A9A60` | — | — |
+| Register info initializer | `sub_35065A0` | — | — |
+| Standard LLVM RegisterCoalescer | `sub_2F71140` | 80KB | — |
+| RegisterCoalescer::getPassName | `sub_2F60C50` | — | — |
 
 ## Differences from Upstream LLVM
 
@@ -359,7 +359,7 @@ A pathological case is over-aggressive coalescing that creates very long live ra
 
 ## Cross-References
 
-- **[Register Allocation](./register-allocation.md)** -- the greedy allocator that runs after coalescing; shares the register class table and interference hash pattern.
-- **[Instruction Scheduling](./scheduling.md)** -- scheduling runs after RA and benefits from reduced copy count; MRPA pressure tracking is affected by coalescing decisions.
-- **[LLVM Knobs](../config/knobs.md)** -- full knob inventory including all coalescing-related flags.
-- **[Code Generation](../pipeline/codegen.md)** -- pipeline ordering showing where coalescing fits relative to other machine passes.
+- **[Register Allocation](./register-allocation.md)** — the greedy allocator that runs after coalescing; shares the register class table and interference hash pattern.
+- **[Instruction Scheduling](./scheduling.md)** — scheduling runs after RA and benefits from reduced copy count; MRPA pressure tracking is affected by coalescing decisions.
+- **[LLVM Knobs](../config/knobs.md)** — full knob inventory including all coalescing-related flags.
+- **[Code Generation](../pipeline/codegen.md)** — pipeline ordering showing where coalescing fits relative to other machine passes.

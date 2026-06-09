@@ -1,8 +1,8 @@
 # Instruction Selection Hubs
 
-> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas instruction selection documentation, see [ptxas ISel](../../ptxas/codegen/isel.html).
+> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki — see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas instruction selection documentation, see [ptxas ISel](../../ptxas/codegen/isel.html).
 
-The instruction selection (ISel) subsystem within the embedded ptxas backend occupies approximately 3 MB of `.text` across five architecture-specific backends. Each backend is organized around a single "mega-hub" dispatch function -- a monolithic function so large (160--280 KB) that Hex-Rays cannot decompile it. These mega-hubs implement a priority-based linear scan architecture: for every IR instruction to be lowered, the hub calls every pattern matcher in sequence, tracks the highest-priority match, then dispatches to the corresponding emitter. This page documents the complete ISel hub architecture as recovered from nvlink v13.0.88.
+The instruction selection (ISel) subsystem within the embedded ptxas backend occupies approximately 3 MB of `.text` across five architecture-specific backends. Each backend is organized around a single "mega-hub" dispatch function — a monolithic function so large (160--280 KB) that Hex-Rays cannot decompile it. These mega-hubs implement a priority-based linear scan architecture: for every IR instruction to be lowered, the hub calls every pattern matcher in sequence, tracks the highest-priority match, then dispatches to the corresponding emitter. This page documents the complete ISel hub architecture as recovered from nvlink v13.0.88.
 
 ## The Five Mega-Hub Functions
 
@@ -33,7 +33,7 @@ for each pattern_matcher in pattern_table[arch]:
 emitter_table[best_id](ctx, ir_node)
 ```
 
-This is a linear scan -- not a tree-pattern matcher or DAG-based selector. Every pattern is evaluated unconditionally, though each matcher contains an early-out check (`if (*a4 <= my_priority)`) that allows it to skip expensive operand validation when a higher-priority pattern has already been found.
+This is a linear scan — not a tree-pattern matcher or DAG-based selector. Every pattern is evaluated unconditionally, though each matcher contains an early-out check (`if (*a4 <= my_priority)`) that allows it to skip expensive operand validation when a higher-priority pattern has already been found.
 
 ### Pattern Matcher Signature
 
@@ -66,16 +66,16 @@ Each pattern matcher performs a strict sequence of checks. If any check fails, t
    |---|---|---|---|---|
    | 1 | Immediate | `sub_530EA0` | `sub_F16050` | `sub_CDD670` |
    | 2 | Register (GPR) | `sub_530E90` | `sub_F16040` | `sub_CDD600` |
-   | 3 | Symbol/label | `sub_530F00` | `sub_F160B0` | -- |
-   | 4 | Constant | `sub_530EF0` | `sub_F160A0` | -- |
+   | 3 | Symbol/label | `sub_530F00` | `sub_F160B0` | — |
+   | 4 | Constant | `sub_530EF0` | `sub_F160A0` | — |
    | 5 | Condition code | `sub_530EE0` | `sub_F16090` | `sub_CDD680` (const buf) |
-   | 6 | Memory reference | `sub_530EB0` | `sub_F16060` | -- |
-   | 7 | Barrier/sync | `sub_530F50` | `sub_F16100` | -- |
+   | 6 | Memory reference | `sub_530EB0` | `sub_F16060` | — |
+   | 7 | Barrier/sync | `sub_530F50` | `sub_F16100` | — |
    | 9 | Predicate | `sub_530ED0` | `sub_F16080` | `sub_CDD610` |
    | 10 | Address/surface | `sub_530EC0` | `sub_F16070` | `sub_CDD630` (uniform) |
-   | 15 | False predicate | `sub_530F10` | `sub_F160C0` | -- |
+   | 15 | False predicate | `sub_530F10` | `sub_F160C0` | — |
 
-5. **Register class validation.** The register class field at operand offset +4 is read via an identity function (`sub_530E80` / `sub_F16030` / `sub_CDD5F0`). The special value 1023 (`0x3FF`) means "any/wildcard" -- the operand's register class is unconstrained. Concrete register class values observed: 1 (R32/GPR32), 2 (R64/GPR64), 4 (R128/GPR128), 5 (predicate).
+5. **Register class validation.** The register class field at operand offset +4 is read via an identity function (`sub_530E80` / `sub_F16030` / `sub_CDD5F0`). The special value 1023 (`0x3FF`) means "any/wildcard" — the operand's register class is unconstrained. Concrete register class values observed: 1 (R32/GPR32), 2 (R64/GPR64), 4 (R128/GPR128), 5 (predicate).
 
 6. **Data type validation.** The data type field at operand offset +20 is checked. Some patterns use bitvector tricks for type set membership: the masks `0x5555555555555554` and `0x1111111111111111` encode allowed type sets. Special data type value 128 represents `.f64`.
 
@@ -101,7 +101,7 @@ Key attribute IDs and their semantic roles (inferred from usage patterns):
 
 ### SM50-7x: MercExpand Engine (`sub_5B1D80`, 204 KB)
 
-The oldest ISel backend covers Maxwell, Pascal, and Volta architectures (SM50 through SM7x). Unlike the newer backends, this one is organized around the "MercExpand" instruction expansion engine -- confirmed by the string `"After MercExpand"` at `0x5FF15E`.
+The oldest ISel backend covers Maxwell, Pascal, and Volta architectures (SM50 through SM7x). Unlike the newer backends, this one is organized around the "MercExpand" instruction expansion engine — confirmed by the string `"After MercExpand"` at `0x5FF15E`.
 
 **Address layout:**
 
@@ -163,7 +163,7 @@ The Turing (SM75) backend is the largest single-architecture ISel backend in the
 
 | Range | Count | Instruction Class |
 |---|---|---|
-| `0xF1C3F0`--`0xF20D10` | ~20 | Tensor core (HMMA) -- f16/f32/f64, wide registers |
+| `0xF1C3F0`--`0xF20D10` | ~20 | Tensor core (HMMA) — f16/f32/f64, wide registers |
 | `0xF20D10`--`0xF2B2A0` | ~30 | ALU/arithmetic (IADD3, IMAD, shifts, logic) |
 | `0xF307E0`--`0xF36A20` | ~25 | Memory/load-store (LDG, STG, SHFL) |
 | `0xF3C0F0`--`0xF437C0` | ~20 | Conversion/cast (I2I, F2F, MUFU) |
@@ -178,7 +178,7 @@ The Turing (SM75) backend is the largest single-architecture ISel backend in the
 
 **Fallback pattern.** `sub_FBB780` (1,108 bytes) is the lowest-priority pattern: it checks only that operand count is 0, implicit count is 2, and the first implicit operand is a uniform register with class R32. It sets `pattern_id=1, priority=2`. Any other matching pattern overrides it.
 
-**Most complex patterns.** `sub_F77140` and `sub_F77DF0` (each ~8.4 KB) match HMMA variants with 9 implicit operands, checking 10+ attributes and using R128 register classes for tensor core operations. They carry priority 39 -- the highest observed across any backend.
+**Most complex patterns.** `sub_F77140` and `sub_F77DF0` (each ~8.4 KB) match HMMA variants with 9 implicit operands, checking 10+ attributes and using R128 register classes for tensor core operations. They carry priority 39 — the highest observed across any backend.
 
 **Instruction emitters.** The 18 emitters at `0xF10080`--`0xF15A50` follow an 8-phase structure:
 
@@ -191,7 +191,7 @@ The Turing (SM75) backend is the largest single-architecture ISel backend in the
 7. Set instruction class tag at `a1+276` (e.g., `0xE000000004` for load/store)
 8. Write branch target / relocation info
 
-**Post-ISel emit+encode.** The 38 functions at `0xFFFDF0`--`0x100BBF0` handle complex instructions that require immediate bitfield packing. They use `sub_4C28B0(ctx, bit_offset, width, value)` extensively -- packing opcode bits, sub-opcodes, register encoding classes, and modifier fields into 128-bit instruction words. Each function extracts 6--8 modifier fields via `sub_A551C0`--`sub_A55470` and encodes them at precise bit positions.
+**Post-ISel emit+encode.** The 38 functions at `0xFFFDF0`--`0x100BBF0` handle complex instructions that require immediate bitfield packing. They use `sub_4C28B0(ctx, bit_offset, width, value)` extensively — packing opcode bits, sub-opcodes, register encoding classes, and modifier fields into 128-bit instruction words. Each function extracts 6--8 modifier fields via `sub_A551C0`--`sub_A55470` and encodes them at precise bit positions.
 
 ### SM80: Ampere ISel Backend (`sub_D5FD70`, 239 KB)
 
@@ -399,17 +399,17 @@ Functions called from within the ISel subsystem that serve as the universal acce
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) -- full address map and architecture summary
-- [IR Nodes](ir-nodes.md) -- IR node structure and accessor functions
-- [Register Allocation](register-allocation.md) -- post-ISel register allocation pipeline
-- [Scheduling](scheduling.md) -- instruction scheduling after ISel
-- [Architecture Dispatch](arch-dispatch.md) -- how SM version selects which ISel backend to use
-- [SM75 Turing](../targets/sm75-turing.md) -- SM75 ISel backend with 276 pattern matchers
-- [SM80 Ampere](../targets/sm80-ampere.md) -- SM80 ISel backend with 259 pattern matchers
-- [SM89 Ada](../targets/sm89-ada.md) -- SM89/90 shared ISel backend
-- [Mercury Overview](../mercury/overview.md) -- MercExpand mega-hub at `sub_5B1D80`
+- [Embedded ptxas Overview](overview.md) — full address map and architecture summary
+- [IR Nodes](ir-nodes.md) — IR node structure and accessor functions
+- [Register Allocation](register-allocation.md) — post-ISel register allocation pipeline
+- [Scheduling](scheduling.md) — instruction scheduling after ISel
+- [Architecture Dispatch](arch-dispatch.md) — how SM version selects which ISel backend to use
+- [SM75 Turing](../targets/sm75-turing.md) — SM75 ISel backend with 276 pattern matchers
+- [SM80 Ampere](../targets/sm80-ampere.md) — SM80 ISel backend with 259 pattern matchers
+- [SM89 Ada](../targets/sm89-ada.md) — SM89/90 shared ISel backend
+- [Mercury Overview](../mercury/overview.md) — MercExpand mega-hub at `sub_5B1D80`
 
 ### Sibling Wikis
-- [ptxas: Instruction Selection](../../ptxas/codegen/isel.html) -- standalone ptxas ISel (two-phase: PTX-to-Ori + Ori-to-SASS)
-- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) -- Mercury encoder pipeline (phases 113--122)
-- [ptxas: SASS Encoding](../../ptxas/codegen/encoding.html) -- SASS instruction encoding format
+- [ptxas: Instruction Selection](../../ptxas/codegen/isel.html) — standalone ptxas ISel (two-phase: PTX-to-Ori + Ori-to-SASS)
+- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) — Mercury encoder pipeline (phases 113--122)
+- [ptxas: SASS Encoding](../../ptxas/codegen/encoding.html) — SASS instruction encoding format

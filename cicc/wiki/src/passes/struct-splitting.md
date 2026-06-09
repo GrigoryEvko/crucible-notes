@@ -1,6 +1,6 @@
 # Struct/Aggregate Splitting
 
-GPU register files are typed and scalar. An SM has no concept of loading a struct, storing a struct, or passing a struct through a register -- every value that survives past IR lowering must reduce to a set of individually-named scalar registers. LLVM's standard SROA pass handles alloca-based aggregates by promoting them to scalars, but a large class of aggregate operations never touch an alloca: return values, call arguments, PHI nodes carrying struct types, and aggregate load/store patterns from memcpy lowering. NVIDIA's struct-splitting pass operates on these non-alloca aggregate operations at the NVVM IR level, decomposing every struct-typed value into its constituent scalar fields so that downstream register allocation sees only scalar types.
+GPU register files are typed and scalar. An SM has no concept of loading a struct, storing a struct, or passing a struct through a register — every value that survives past IR lowering must reduce to a set of individually-named scalar registers. LLVM's standard SROA pass handles alloca-based aggregates by promoting them to scalars, but a large class of aggregate operations never touch an alloca: return values, call arguments, PHI nodes carrying struct types, and aggregate load/store patterns from memcpy lowering. NVIDIA's struct-splitting pass operates on these non-alloca aggregate operations at the NVVM IR level, decomposing every struct-typed value into its constituent scalar fields so that downstream register allocation sees only scalar types.
 
 The pass exists in two binary instances. The primary implementation at `sub_1C86CA0` (14 KB native; ~1,200 lines decomp, 500+ locals) lives in the aggregate-splitting cluster at `0x1C80000`--`0x1CBFFFF` and operates on NVVM IR using NVIDIA-proprietary type IDs. A second, closely related implementation at `sub_2CCF450` (12 KB native) handles the `lower-aggr-copies` pipeline pass and shares the same string constants (`"splitStruct"`, `"srcptr"`, `"dstptr"`, `"remsrc"`, `"remdst"`, `"split"`, `"vld"`). Both instances produce the same fundamental transformation: aggregate operations become sequences of scalar operations on individual struct elements.
 
@@ -16,8 +16,8 @@ The pass exists in two binary instances. The primary implementation at `sub_1C86
 | Related pass | `lower-struct-args` (parameterized: `opt-byval`) |
 | IR level | NVVM IR (NVIDIA-proprietary type IDs, not LLVM `Type::TypeID`) |
 | Key opcode | 32 (`splitStruct` instruction) |
-| Use replacement | `sub_164D160` (RAUW -- Replace All Uses With) |
-| LLVM upstream | No equivalent -- this is entirely NVIDIA-proprietary |
+| Use replacement | `sub_164D160` (RAUW — Replace All Uses With) |
+| LLVM upstream | No equivalent — this is entirely NVIDIA-proprietary |
 
 ## Algorithm
 
@@ -37,7 +37,7 @@ function decomposeStructType(struct_type, data_layout):
     return element_types
 ```
 
-`sub_1643350` retrieves the `StructLayout` from the `DataLayout`, giving byte offsets and sizes for each field. `sub_159C470` maps each element to its scalar type -- for nested structs, this recurses; for arrays, it yields the element type; for scalars, it returns the type directly.
+`sub_1643350` retrieves the `StructLayout` from the `DataLayout`, giving byte offsets and sizes for each field. `sub_159C470` maps each element to its scalar type — for nested structs, this recurses; for arrays, it yields the element type; for scalars, it returns the type directly.
 
 The element types accumulate in a local array `v505[]` with the count tracked in `v506`. This flattened type list drives all subsequent instruction creation.
 
@@ -94,7 +94,7 @@ The resulting instruction carries the `"split"` name prefix. The alignment compu
 
 ### Step 5: Use Replacement
 
-After creating all scalar operations, `sub_164D160` (RAUW -- Replace All Uses With) replaces every use of the original aggregate operation with the corresponding scalar element extraction:
+After creating all scalar operations, `sub_164D160` (RAUW — Replace All Uses With) replaces every use of the original aggregate operation with the corresponding scalar element extraction:
 
 ```c
 sub_164D160(original_aggregate_inst, split_inst)
@@ -116,9 +116,9 @@ aligned_value = 1 << (alignment_field >> 1) >> 1
 
 Breaking this down:
 
-1. `alignment_field >> 1` -- the alignment is stored in a compressed encoding where the field value is approximately `2 * log2(alignment) + bias`.
-2. `1 << (result)` -- converts back to a power-of-two alignment value.
-3. `>> 1` -- adjusts for the encoding's off-by-one (the encoding stores `2*log2 + 1`, so the final shift corrects it).
+1. `alignment_field >> 1` — the alignment is stored in a compressed encoding where the field value is approximately `2 * log2(alignment) + bias`.
+2. `1 << (result)` — converts back to a power-of-two alignment value.
+3. `>> 1` — adjusts for the encoding's off-by-one (the encoding stores `2*log2 + 1`, so the final shift corrects it).
 
 For example, if `alignment_field = 9`, then `9 >> 1 = 4`, `1 << 4 = 16`, `16 >> 1 = 8`, yielding 8-byte alignment. This encoding is compact and used throughout NVVM's type system to store alignment in a single byte.
 
@@ -224,11 +224,11 @@ The companion pass `lower-struct-args` (pass index 418) handles byval-attributed
 
 | Knob | Default | Description |
 |------|---------|-------------|
-| `devicefn-param-always-local` | -- | Treat parameter space as local in device functions |
+| `devicefn-param-always-local` | — | Treat parameter space as local in device functions |
 | `skiploweraggcopysafechk` | false | Skip safety check in aggregate copy lowering |
-| `large-aggr-store-limit` | -- | Threshold for large aggregate store unrolling |
-| `max-aggr-copy-size` | -- | Maximum aggregate size for full decomposition |
-| `lower-aggr-unrolled-stores-limit` | -- | Limit on unrolled stores per aggregate copy |
+| `large-aggr-store-limit` | — | Threshold for large aggregate store unrolling |
+| `max-aggr-copy-size` | — | Maximum aggregate size for full decomposition |
+| `lower-aggr-unrolled-stores-limit` | — | Limit on unrolled stores per aggregate copy |
 
 ### InstCombine Aggregate Knobs (ctor_086 at `0x49E670`)
 
@@ -328,17 +328,17 @@ __global__ void struct_split_test(const float* in, float* out_val,
 ```
 
 **What to look for in PTX:**
-- The `compute` function should be inlined, but even if it is not, the struct return should be decomposed. Look for the absence of `.local` memory for the `Result` struct -- all three fields (`value`, `index`, `confidence`) should live in individual PTX registers (`%f` for floats, `%r` for int).
-- No `ld.local`/`st.local` pairs for passing the struct between `compute` and the kernel. If the struct survives unsplit, the caller allocates local memory for the return value, the callee stores into it, and the caller loads from it -- a 200+ cycle penalty per field.
+- The `compute` function should be inlined, but even if it is not, the struct return should be decomposed. Look for the absence of `.local` memory for the `Result` struct — all three fields (`value`, `index`, `confidence`) should live in individual PTX registers (`%f` for floats, `%r` for int).
+- No `ld.local`/`st.local` pairs for passing the struct between `compute` and the kernel. If the struct survives unsplit, the caller allocates local memory for the return value, the callee stores into it, and the caller loads from it — a 200+ cycle penalty per field.
 - In the PTX, the three stores to `out_val`, `out_idx`, `out_conf` should use values directly from registers without any intermediate local memory traffic. Look for `st.global.f32` and `st.global.u32` with register operands, not loaded-from-local operands.
 - To see the unsplit case, make `compute` a `__noinline__` function and compile at `-O0`. The struct will be passed through `.param` space with explicit `st.param`/`ld.param` sequences, showing the overhead that struct splitting eliminates.
 
 ## Cross-References
 
-- [SROA](../llvm/sroa.md) -- upstream SROA handles alloca-based aggregates; complements StructSplitting's inter-procedural splitting
-- [Rematerialization](./rematerialization.md) -- struct splitting reduces aggregate live ranges before remat
-- [Memmove Unrolling](./other.md) -- companion pass at `sub_1C82A50` that unrolls memmove/memcpy loops
-- [FP128/I128 Emulation](./other.md) -- companion pass at `sub_1C8C170` in the same binary cluster
-- [Pipeline & Ordering](../llvm/pipeline.md) -- pass ordering in the New PM pipeline
-- [NVIDIA Custom Passes Overview](./index.md) -- master inventory of all NVIDIA passes
-- [Code Generation](../pipeline/codegen.md) -- register allocation that consumes split scalars
+- [SROA](../llvm/sroa.md) — upstream SROA handles alloca-based aggregates; complements StructSplitting's inter-procedural splitting
+- [Rematerialization](./rematerialization.md) — struct splitting reduces aggregate live ranges before remat
+- [Memmove Unrolling](./other.md) — companion pass at `sub_1C82A50` that unrolls memmove/memcpy loops
+- [FP128/I128 Emulation](./other.md) — companion pass at `sub_1C8C170` in the same binary cluster
+- [Pipeline & Ordering](../llvm/pipeline.md) — pass ordering in the New PM pipeline
+- [NVIDIA Custom Passes Overview](./index.md) — master inventory of all NVIDIA passes
+- [Code Generation](../pipeline/codegen.md) — register allocation that consumes split scalars

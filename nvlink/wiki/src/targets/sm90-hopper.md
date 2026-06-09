@@ -1,8 +1,8 @@
 # SM90 Hopper
 
-SM90 (Hopper, H100/H200) is the first Mercury-capable architecture in nvlink v13.0.88 and the last architecture for which SASS remains the default binary format. SM90 shares its backend implementation with SM89 (Ada Lovelace): the two use the same instruction selector mega-hub (`sub_119BF40`, 231 KB), the same ~750 shared instruction encoder templates, the same compilation driver, and the same scheduling pipeline. Although all six dispatch table callback slots have distinct function addresses between sm_89 and sm_90, only the backend init slot (A8) produces different behavior: Hopper uses a shared memory resource limit of `0x8000` (32768) vs Ada's `0x7005` (28677), and Hopper's init includes a `--blocks-are-clusters` conditional that Ada lacks entirely. The remaining five slots are functionally identical duplicates. The `sm_90a` variant uses the same function pointers as base sm_90 in all slots -- the "a" suffix enables architecture-specific features at runtime through the feature flag configurator, not through separate code paths. See [SM89 Ada: Ada vs Hopper Differences](sm89-ada.md#ada-vs-hopper-concrete-binary-differences) for the complete catalog.
+SM90 (Hopper, H100/H200) is the first Mercury-capable architecture in nvlink v13.0.88 and the last architecture for which SASS remains the default binary format. SM90 shares its backend implementation with SM89 (Ada Lovelace): the two use the same instruction selector mega-hub (`sub_119BF40`, 231 KB), the same ~750 shared instruction encoder templates, the same compilation driver, and the same scheduling pipeline. Although all six dispatch table callback slots have distinct function addresses between sm_89 and sm_90, only the backend init slot (A8) produces different behavior: Hopper uses a shared memory resource limit of `0x8000` (32768) vs Ada's `0x7005` (28677), and Hopper's init includes a `--blocks-are-clusters` conditional that Ada lacks entirely. The remaining five slots are functionally identical duplicates. The `sm_90a` variant uses the same function pointers as base sm_90 in all slots — the "a" suffix enables architecture-specific features at runtime through the feature flag configurator, not through separate code paths. See [SM89 Ada: Ada vs Hopper Differences](sm89-ada.md#ada-vs-hopper-concrete-binary-differences) for the complete catalog.
 
-SM90's Mercury significance: the FNLZR (finalizer) pre-link path fires for every architecture with sm > 89 (`dword_2A5F314 > 0x59`), making SM90 the first target subjected to the FNLZR pipeline. However, SM90's default binary kind remains `sass` -- the `capmerc` (Capsule Mercury) default only kicks in at SM100+. The MercExpand engine runs in the backend compiler pipeline for SM90, processing Mercury instruction builtins (the 667 ZREPHEL-encoded templates), but the output ELF is standard SASS rather than capmerc format.
+SM90's Mercury significance: the FNLZR (finalizer) pre-link path fires for every architecture with sm > 89 (`dword_2A5F314 > 0x59`), making SM90 the first target subjected to the FNLZR pipeline. However, SM90's default binary kind remains `sass` — the `capmerc` (Capsule Mercury) default only kicks in at SM100+. The MercExpand engine runs in the backend compiler pipeline for SM90, processing Mercury instruction builtins (the 667 ZREPHEL-encoded templates), but the output ELF is standard SASS rather than capmerc format.
 
 This page documents the SM90-specific instruction codec at `0xA70000`--`0xB80000`, the shared SM89/90 backend driver at `0x1100000`--`0x11EA000`, the Hopper-specific tensor core (HMMA/WMMA) encoding and decoding infrastructure, and SM90's relationship to the Mercury pipeline.
 
@@ -114,8 +114,8 @@ compute_90a->byte[4] = 1;   // suffix_a_flag on virtual profile too
 | Name | `"sm_90"` | `"sm_90a"` | `"compute_90"` | `"compute_90a"` |
 | ISA class | `"Hopper"` | `"(profile_sm_90)->isaClass"` | `"Hopper"` | `"(profile_sm_90)->isaClass"` |
 | `__CUDA_ARCH__` | 900 | 900 | 900 | 900 |
-| LTO define | `-D__CUDA_ARCH__=900` | `-D__CUDA_ARCH__=90a0` | -- | -- |
-| byte[3] (graphics) | 0 | 0 | -- | -- |
+| LTO define | `-D__CUDA_ARCH__=900` | `-D__CUDA_ARCH__=90a0` | — | — |
+| byte[3] (graphics) | 0 | 0 | — | — |
 | byte[4] (suffix_a) | 0 | **1** | 0 | **1** |
 | Is virtual | No | No | Yes | Yes |
 | Forward-compatible | **Yes** | **No** (arch-locked) | Yes | No |
@@ -142,14 +142,14 @@ The detailed callback addresses for sm_89 vs sm_90 vs sm_90a:
 |---|---|---|---|
 | B8 (Pre-compilation) | `sub_15C2D40` | `sub_15C2CE0` | Identical behavior |
 | B0 (Compilation) | `sub_15C2C20` | `sub_15C2B30` | Identical behavior |
-| A8 (Backend init) | `sub_15C3740` | `sub_15C3520` | **Different** -- resource limits and cluster support |
+| A8 (Backend init) | `sub_15C3740` | `sub_15C3520` | **Different** — resource limits and cluster support |
 | A0 (Internal version) | 29 | 30 | Different integer constant |
 | 90 (Perf-stats) | `sub_15C1F90` | `sub_15C1ED0` | Identical behavior |
 | 88 (Resource calc) | `sub_15C2370` | `sub_15C2290` | Identical algorithm |
 
 The `sm_90a` variant is not distinguished at the dispatch-table level. Instead, `sub_1100E50` (the feature flag configurator) tests the parsed SM version number and sets per-feature booleans. For sm_89/90, feature 33 is enabled when the SM internal version equals 29 or 30 and flag 618 (suppress-debug-info) is not set. This corresponds to the HMMA/WMMA tensor core extensions.
 
-## The "a" Suffix -- Architecture-Accelerated
+## The "a" Suffix — Architecture-Accelerated
 
 SM90a is the first architecture to carry the `a` (accelerated) suffix. The meaning, confirmed across all three NVIDIA tools:
 
@@ -165,7 +165,7 @@ Evidence from the binary:
 
 4. **__CUDA_ARCH__ identity**: Both sm_90 and sm_90a define `__CUDA_ARCH__=900`. The distinction is in LTO mode only: sm_90a uses `-D__CUDA_ARCH__=90a0` for LTO compilation, where the `a0` suffix triggers accelerated-mode code paths in the compiler.
 
-In ptxas (standalone), sm_90a appears in the accelerated validation table (`unk_1D161C0`, 7 entries). sm_90 and sm_90a share all 7 dispatch-table handler functions. The `a` suffix does not produce different handler code paths -- it produces different compatibility metadata in the output cubin. The ELF header records whether the binary is forward-compatible (base) or arch-locked (accelerated), and the CUDA driver enforces this at load time.
+In ptxas (standalone), sm_90a appears in the accelerated validation table (`unk_1D161C0`, 7 entries). sm_90 and sm_90a share all 7 dispatch-table handler functions. The `a` suffix does not produce different handler code paths — it produces different compatibility metadata in the output cubin. The ELF header records whether the binary is forward-compatible (base) or arch-locked (accelerated), and the CUDA driver enforces this at load time.
 
 In cicc, the sm_90a variant is the only pre-Blackwell SM that uses PTX version 6; all sm_20 through sm_90 base variants use PTX version 5. The `a` flag is stored in `unk_4D045E4` and read in exactly one location: `sub_6C4D80` line 167, where the check `unk_4D045E8 != 90 || !unk_4D045E4` gates a specific sm_90a-only feature (error code 0xE90 = 3728).
 
@@ -304,9 +304,9 @@ struct operand {             // 32 bytes
 
 Source operands are accessed at base + 32*index, so operand 0 is at offset +0, operand 1 at +32, operand 2 at +64, and so on. The stride field at offset +20 (also found at operand+52, +84, +116, +148 in the full instruction descriptor) is critical for register allocation: a stride of 2 means the instruction requires consecutive register pairs (R0:R1, R2:R3, ...), stride 3 means triples, and stride 4 means quads. The WMMA/HMMA decoders set these extensively.
 
-## Instruction Codec (0xA70000 -- 0xB80000)
+## Instruction Codec (0xA70000 — 0xB80000)
 
-The 1.1 MB region from `0xA70000` to `0xB80000` implements the complete instruction codec for SM90 -- the paired encoder/decoder functions that translate between the high-level IR representation and 128-bit binary machine words. This region contains no register allocation, no scheduling, and no peephole optimization code.
+The 1.1 MB region from `0xA70000` to `0xB80000` implements the complete instruction codec for SM90 — the paired encoder/decoder functions that translate between the high-level IR representation and 128-bit binary machine words. This region contains no register allocation, no scheduling, and no peephole optimization code.
 
 ### Component Breakdown
 
@@ -324,7 +324,7 @@ The 1.1 MB region from `0xA70000` to `0xB80000` implements the complete instruct
 
 `sub_A709F0` (InstrFieldOffset_Query): takes an instruction pointer and a field ID, switches on the opcode class at `*(a1+12)` (covering opcode classes 0x00 through 0x171, approximately 370 instruction classes), and for each valid `(class, field_id)` combination, returns the bit offset within the 128-bit instruction word where that field is encoded. The offset is computed as `sub_A4D370(a1+48, bitfield_index) + base_constant`, where the base constants (e.g., 790, 1278, 1942, 2476) represent bit positions. Returns `0xFFFFFFFF` (-1) when the field does not exist for the given opcode class.
 
-`sub_A7DE70` (InstrFieldPresent_Query): identical switch structure, but every case body returns `sub_A4Dxxx(a1+48, idx) != 0` -- a boolean "does this field have a non-zero value" test. This is the `hasField` companion to `sub_A709F0`'s `getFieldOffset`.
+`sub_A7DE70` (InstrFieldPresent_Query): identical switch structure, but every case body returns `sub_A4Dxxx(a1+48, idx) != 0` — a boolean "does this field have a non-zero value" test. This is the `hasField` companion to `sub_A709F0`'s `getFieldOffset`.
 
 Four bitfield extraction helpers are used by both functions, corresponding to different field widths:
 - `sub_A4D270`: extract narrow bitfield
@@ -345,7 +345,7 @@ Four bitfield extraction helpers are used by both functions, corresponding to di
 
 The type values 1--5 correspond to GPR, predicate, uniform, special register, and constant bank reference (inferred from the dispatch logic and register file size constants at each branch). The `query_mode` parameter (`a3`) selects between two interpretation modes.
 
-### Encoder Functions (0xA87CE0 -- 0xB25D50)
+### Encoder Functions (0xA87CE0 — 0xB25D50)
 
 The ~164 encoder functions follow a uniform pattern:
 
@@ -379,7 +379,7 @@ The encoder clusters are organized by instruction family:
 
 **Example: `sub_B0AA80` (Encode_DMMA_PairedReg, 335 lines)**. The largest encoder in this range handles double-precision MMA with paired register encoding. It contains a 40-entry if-else chain mapping register pairs: `if (result==1 && v59==0)`, `if (result==3 && v59==2)`, up to `(result==79 && v59==78)`. Each branch encodes an even:odd register pair (R0:R1, R2:R3, ..., R78:R79) as a single compact field. A 3-level modifier combination logic (`v48`, `v52`, `v54`) selects cache control bits.
 
-### Decoder Functions (0xACECF0 -- 0xB77B60)
+### Decoder Functions (0xACECF0 — 0xB77B60)
 
 The ~139 decoder functions reverse the encoding process: they extract bit fields from a 128-bit instruction word and populate the IR instruction descriptor. The common decoder helpers are:
 
@@ -461,7 +461,7 @@ The combinatorial explosion in these decoders reflects the number of WMMA varian
 
 Opcode class 297 handles integer MMA variants. Decoders at `0xB30940` (188 lines) and `0xB30FF0` (201 lines) handle the basic variants. The extended MMA decoder at `0xB40C30` (517 lines, the largest single decoder) handles all MMA modifiers including warp group configuration, data format, layout, and an extensive register pairing fixup section.
 
-## WGMMA and TMA -- Hopper-Unique Features
+## WGMMA and TMA — Hopper-Unique Features
 
 Hopper introduces two hardware subsystems that are exposed in nvlink through the Mercury backend and the embedded ptxas:
 
@@ -499,7 +499,7 @@ In nvlink's Mercury backend, TMA operations map to `MERCURY_mbarrier_arrive` (12
 
 ## Thread Block Clusters
 
-Hopper introduces thread-block clusters -- groups of cooperating CTAs that access each other's shared memory (distributed shared memory). This is the feature gated by the `--blocks-are-clusters` flag at offset a2+355 in the SM90 backend init (`sub_15C3520`), absent from SM89's init (`sub_15C3740`).
+Hopper introduces thread-block clusters — groups of cooperating CTAs that access each other's shared memory (distributed shared memory). This is the feature gated by the `--blocks-are-clusters` flag at offset a2+355 in the SM90 backend init (`sub_15C3520`), absent from SM89's init (`sub_15C3740`).
 
 In nvlink, the `EIATTR_BLOCKS_ARE_CLUSTERS` attribute (code 91, `0x5B`) records cluster configuration in the per-kernel `.nv.info` section. The cluster support infrastructure flows through:
 
@@ -510,7 +510,7 @@ In nvlink, the `EIATTR_BLOCKS_ARE_CLUSTERS` attribute (code 91, `0x5B`) records 
 
 In cicc, all cluster functionality is gated at `arch_id >= 90` (`unk_4D045E8 > 89`). Three cluster-related kernel attributes are recognized: `__cluster_dims__`, `__launch_bounds__` 3rd parameter, and `__block_size__` with cluster dimension. On sm_89 and below, these emit warning diagnostics (3687, 3704, 3790).
 
-## Uniform Register Decoders (0xB6B000 -- 0xB7C000)
+## Uniform Register Decoders (0xB6B000 — 0xB7C000)
 
 Fourteen decoders in this range handle uniform-register instructions (UIMAD, UFMA, UIADD, UMOV). These use a distinctive bitmap-based register class membership test: each decoder loads 24 x 128-bit constants (384 bytes of bitmap data) from read-only data and tests register numbers against the bitmap using bit-shift operations:
 
@@ -579,7 +579,7 @@ The following instruction classes have been identified in the SM90 codec through
 | 327 | PCNT | Control flow | Push counter |
 | 368 | BSSY | Synchronization | Barrier set synchronization |
 
-## Shared SM89/90 Backend (0x100C000 -- 0x11EA000)
+## Shared SM89/90 Backend (0x100C000 — 0x11EA000)
 
 The 1.9 MB region at `0x100C000`--`0x11EA000` contains the complete backend for both SM89 and SM90 architectures. It decomposes into five functional layers:
 
@@ -593,16 +593,16 @@ The 1.9 MB region at `0x100C000`--`0x11EA000` contains the complete backend for 
 | `0x119BF40` | ~231 KB | 1 | **ISel mega-hub** (too large for Hex-Rays) |
 | `0x11D4680`--`0x11EA000` | ~90 KB | ~16 | Instruction scheduling + emission |
 
-### Instruction Encoder Templates (0x100C000 -- 0x10FFFFF)
+### Instruction Encoder Templates (0x100C000 — 0x10FFFFF)
 
 Approximately 750 functions, each 4--8.5 KB, implement instruction encoding table initializers. Every function follows the same template:
 
-1. `sub_4C28B0(a1, offset, fieldlen, value)` -- set bitfield parameters (5--8 calls per function).
-2. SSE load from global constant table (`xmmword_1F46xxx`) -- instruction signature.
+1. `sub_4C28B0(a1, offset, fieldlen, value)` — set bitfield parameters (5--8 calls per function).
+2. SSE load from global constant table (`xmmword_1F46xxx`) — instruction signature.
 3. Copy loop: 3 parallel arrays (10 entries each) from read-only data into the instruction descriptor at `a1+24` through `a1+140`.
-4. `sub_4C60F0(a1, a2, slot, offset, type)` -- configure control code slots.
-5. `sub_4C5F90(a1, a2)` -- finalize the descriptor.
-6. `sub_50xxxx` family calls -- set modifier bits (predicate via `sub_50C790`, rounding via `sub_50E300`, FTZ via `sub_50E320`, etc.).
+4. `sub_4C60F0(a1, a2, slot, offset, type)` — configure control code slots.
+5. `sub_4C5F90(a1, a2)` — finalize the descriptor.
+6. `sub_50xxxx` family calls — set modifier bits (predicate via `sub_50C790`, rounding via `sub_50E300`, FTZ via `sub_50E320`, etc.).
 
 Size clusters by instruction complexity:
 
@@ -615,23 +615,23 @@ Size clusters by instruction complexity:
 
 The constant tables reside in `.rodata` at `0x1F460E0`--`0x1F47400`. Each table contains 10 source-register-class entries (40-byte stride), 10 destination-register-class entries, 10 control-code entries, and a 16-byte SSE header with the instruction signature.
 
-### Backend Driver (0x1100000 -- 0x1120000)
+### Backend Driver (0x1100000 — 0x1120000)
 
 The ~30 functions in this range implement the compilation pipeline controller for SM89/90 targets:
 
-**`sub_1112F30` (65,018 bytes, 2,164 lines) -- Main Compilation Driver.** This is the top-level per-module compilation entry point. It reads command-line options (`def-load-cache`, `force-load-cache`, `position-independent-code`), writes PTX headers (`.version`, `.target`, `.entry __cuda_dummy_entry__ { ret; }`), validates SM version compatibility (`--legacy-bar-warp-wide-behavior` requires sm_70+, tensor-memory-access-check is gated by target arch), and dispatches per-function codegen. The function selects codegen callbacks based on mode flags: `sub_110CD20` for compile-only, `sub_110D110` for multi-function, and `sub_110CBA0` / `sub_110D0B0` for standard mode. Multi-threaded compilation is supported via `sub_464AE0` (thread pool) and `sub_464C30`.
+**`sub_1112F30` (65,018 bytes, 2,164 lines) — Main Compilation Driver.** This is the top-level per-module compilation entry point. It reads command-line options (`def-load-cache`, `force-load-cache`, `position-independent-code`), writes PTX headers (`.version`, `.target`, `.entry __cuda_dummy_entry__ { ret; }`), validates SM version compatibility (`--legacy-bar-warp-wide-behavior` requires sm_70+, tensor-memory-access-check is gated by target arch), and dispatches per-function codegen. The function selects codegen callbacks based on mode flags: `sub_110CD20` for compile-only, `sub_110D110` for multi-function, and `sub_110CBA0` / `sub_110D0B0` for standard mode. Multi-threaded compilation is supported via `sub_464AE0` (thread pool) and `sub_464C30`.
 
-**`sub_1116890` (59,847 bytes, 1,998 lines) -- ELF Output and Metadata Generator.** Handles CUBIN output, builds JSON metadata trees (`version`, `metadata`, `type`, `min`, `max`), and integrates with `sub_1CFA200` / `sub_1CFA220` / `sub_1CFA2D0` for JSON object creation. Uses `setjmp`/`longjmp` for error recovery.
+**`sub_1116890` (59,847 bytes, 1,998 lines) — ELF Output and Metadata Generator.** Handles CUBIN output, builds JSON metadata trees (`version`, `metadata`, `type`, `min`, `max`), and integrates with `sub_1CFA200` / `sub_1CFA220` / `sub_1CFA2D0` for JSON object creation. Uses `setjmp`/`longjmp` for error recovery.
 
-**`sub_1104950` (37,578 bytes, 1,208 lines) -- Option Parser.** Registers approximately 60 ptxas options via `sub_42E390`: `warn-on-double-precision-use`, `maxrregcount`, `opt-level`, `fast-compile`, `device-stack-protector`, `sanitize`, `position-independent-code`, `g-tensor-memory-access-check`, `query-controls`, `apply-controls`, and others. Validates option compatibility with target architecture and computes SM architecture family from `dword_1EED2E0` lookup table.
+**`sub_1104950` (37,578 bytes, 1,208 lines) — Option Parser.** Registers approximately 60 ptxas options via `sub_42E390`: `warn-on-double-precision-use`, `maxrregcount`, `opt-level`, `fast-compile`, `device-stack-protector`, `sanitize`, `position-independent-code`, `g-tensor-memory-access-check`, `query-controls`, `apply-controls`, and others. Validates option compatibility with target architecture and computes SM architecture family from `dword_1EED2E0` lookup table.
 
-**`sub_110AA30` (18,774 bytes, 661 lines) -- Per-Function Codegen Init.** Sets up virtual table pointers (5 callback slots at offsets 24, 1544, 1568, 1584, 1600), the `"NVIDIA"` vendor string (offset 1200), and `"ptxocg.0.0"` producer string (offset 64). Magic value `38156003` at offset 48 serves as a tool ID. Feature flags are enabled by SM version: SM >= 14 enables extended features, SM >= 17 enables SM100-specific paths.
+**`sub_110AA30` (18,774 bytes, 661 lines) — Per-Function Codegen Init.** Sets up virtual table pointers (5 callback slots at offsets 24, 1544, 1568, 1584, 1600), the `"NVIDIA"` vendor string (offset 1200), and `"ptxocg.0.0"` producer string (offset 64). Magic value `38156003` at offset 48 serves as a tool ID. Feature flags are enabled by SM version: SM >= 14 enables extended features, SM >= 17 enables SM100-specific paths.
 
-**`sub_1100E50` (13,759 bytes, 451 lines) -- Feature Flag Configurator.** Reads the SM version via `sub_15C3DD0(gpu_name)` and configures approximately 30 boolean feature flags. SM version 29 or 30 (corresponding to sm_89/sm_90) enables feature 33 (tensor core extensions) when debug suppression is not active. Uses `sub_16E3AA0` to set flags in the feature table at `a1+1096`.
+**`sub_1100E50` (13,759 bytes, 451 lines) — Feature Flag Configurator.** Reads the SM version via `sub_15C3DD0(gpu_name)` and configures approximately 30 boolean feature flags. SM version 29 or 30 (corresponding to sm_89/sm_90) enables feature 33 (tensor core extensions) when debug suppression is not active. Uses `sub_16E3AA0` to set flags in the feature table at `a1+1096`.
 
-**`sub_110BC90` (18,111 bytes, 763 lines) -- Register Allocation and Launch Configuration.** Reads thread-block dimensions (`blockDim.x/y/z` from `v9[6..8]`), computes total threads, handles `maxntid` and `minnctapersm` overrides, and performs complex register budget computation with multiple fallback paths. SM version range checks gate architecture-specific features.
+**`sub_110BC90` (18,111 bytes, 763 lines) — Register Allocation and Launch Configuration.** Reads thread-block dimensions (`blockDim.x/y/z` from `v9[6..8]`), computes total threads, handles `maxntid` and `minnctapersm` overrides, and performs complex register budget computation with multiple fallback paths. SM version range checks gate architecture-specific features.
 
-### ISel Pattern Matchers (0x1120000 -- 0x119BF40)
+### ISel Pattern Matchers (0x1120000 — 0x119BF40)
 
 Approximately 160 small functions implement pattern-matching rules for the SM89/90 instruction selector. Each function:
 
@@ -670,7 +670,7 @@ for each pattern_matcher in sm89_90_table:
 emitter_table[best_id](ctx, ir_node)
 ```
 
-### Instruction Scheduling (0x11D4680 -- 0x11EA000)
+### Instruction Scheduling (0x11D4680 — 0x11EA000)
 
 The final 16 functions form a cohesive instruction scheduling and emission subsystem. Five functions exceed 7 KB and share an identical data-structure pattern:
 
@@ -771,18 +771,18 @@ sub_11D6890 (block scheduler)
 ## Cross-References
 
 ### nvlink Internal
-- [SM89 Ada](sm89-ada.md) -- shared SM89/90 backend (complete Ada vs Hopper difference catalog)
-- [Mercury Overview](../mercury/overview.md) -- MercExpand engine, ZREPHEL builtins, Mercury pipeline passes
-- [FNLZR (Finalizer)](../mercury/fnlzr.md) -- `sub_4275C0` front-end and `sub_4748F0` engine; pre-link guard `sm > 89`
-- [Mercury Compiler Passes](../mercury/compiler-passes.md) -- UseMercSemantics/UseMercResources options, per-pass Mercury configuration
-- [Architecture Profiles](arch-profiles.md) -- SM90 profile with capability vectors, `sub_484F50` registration
-- [Compatibility](compatibility.md) -- capability vector comparison for finalization
-- [Embedded ptxas Overview](../ptxas/overview.md) -- SM89/90 backend at `0x100C000`--`0x11EA000` in address map
-- [Instruction Selection Hubs](../ptxas/isel-hubs.md) -- SM89/90 mega-hub `sub_119BF40` (231 KB)
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM90/SM90a vtable registration
-- [ELF nv.info](../elf/nv-info.md) -- EIATTR_BLOCKS_ARE_CLUSTERS (code 91) and Mercury ISA version attributes
-- [SM100 Blackwell](sm100-blackwell.md) -- successor architecture with Mercury as default format
+- [SM89 Ada](sm89-ada.md) — shared SM89/90 backend (complete Ada vs Hopper difference catalog)
+- [Mercury Overview](../mercury/overview.md) — MercExpand engine, ZREPHEL builtins, Mercury pipeline passes
+- [FNLZR (Finalizer)](../mercury/fnlzr.md) — `sub_4275C0` front-end and `sub_4748F0` engine; pre-link guard `sm > 89`
+- [Mercury Compiler Passes](../mercury/compiler-passes.md) — UseMercSemantics/UseMercResources options, per-pass Mercury configuration
+- [Architecture Profiles](arch-profiles.md) — SM90 profile with capability vectors, `sub_484F50` registration
+- [Compatibility](compatibility.md) — capability vector comparison for finalization
+- [Embedded ptxas Overview](../ptxas/overview.md) — SM89/90 backend at `0x100C000`--`0x11EA000` in address map
+- [Instruction Selection Hubs](../ptxas/isel-hubs.md) — SM89/90 mega-hub `sub_119BF40` (231 KB)
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — SM90/SM90a vtable registration
+- [ELF nv.info](../elf/nv-info.md) — EIATTR_BLOCKS_ARE_CLUSTERS (code 91) and Mercury ISA version attributes
+- [SM100 Blackwell](sm100-blackwell.md) — successor architecture with Mercury as default format
 
 ### Sibling Wikis
-- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- standalone ptxas SM90 Hopper target: WGMMA pipeline optimizer (100 KB), TMA codegen (45 KB), cluster directives, setmaxnreg, mbarrier extensions, warp geometry (16 warps / 240 slots)
-- [cicc: SM90 Hopper](../../cicc/targets/sm90-hopper.html) -- cicc compiler SM90 target: cluster builtins, TMA descriptor format (NVVM container tag 401), WGMMA lowering (M-dimension switch), setmaxnreg validation, distributed shared memory qualifiers, atomic cluster scope
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) — standalone ptxas SM90 Hopper target: WGMMA pipeline optimizer (100 KB), TMA codegen (45 KB), cluster directives, setmaxnreg, mbarrier extensions, warp geometry (16 warps / 240 slots)
+- [cicc: SM90 Hopper](../../cicc/targets/sm90-hopper.html) — cicc compiler SM90 target: cluster builtins, TMA descriptor format (NVVM container tag 401), WGMMA lowering (M-dimension switch), setmaxnreg validation, distributed shared memory qualifiers, atomic cluster scope

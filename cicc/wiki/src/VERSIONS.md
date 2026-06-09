@@ -12,7 +12,7 @@ This page documents the exact version identifiers embedded in the cicc v13.0 bin
 | Bitcode producer (emitted) | `"LLVM7.0.1"` | `ctor_154` at `0x4CE640` writes `"7.0.1"` to producer global |
 | EDG frontend | 6.6 | String `"Based on Edison Design Group C/C++ Front End, version 6.6"` |
 | NVVM IR version (user code) | 3.2 | Metadata gate at `sub_157E370`: `major == 3, minor <= 2` |
-| NVVM IR version (libdevice) | 2.0 | `!nvvmir.version = !{i32 2, i32 0}` -- always-compatible sentinel |
+| NVVM IR version (libdevice) | 2.0 | `!nvvmir.version = !{i32 2, i32 0}` — always-compatible sentinel |
 | NVVM container format | 1.x | Header field `version_major = 1`, `version_minor <= 0x41` |
 | NVVM debug info version | 3.2 | Container header `nvvm_debug_major = 3`, `nvvm_debug_minor <= 2` |
 | Embedded libdevice | `libdevice.10.bc` | 455,876 bytes, 352 functions, triple `nvptx64-nvidia-gpulibs` |
@@ -24,7 +24,7 @@ This page documents the exact version identifiers embedded in the cicc v13.0 bin
 
 ## LLVM Version: The Dual Identity
 
-CICC has two LLVM version identities. Internally, it is an LLVM 20.0.0 fork -- all modern instruction opcodes, metadata formats, type encodings, and pass infrastructure from LLVM 20 are present. Externally, the bitcode it emits identifies itself as `"LLVM7.0.1"` in the producer field.
+CICC has two LLVM version identities. Internally, it is an LLVM 20.0.0 fork — all modern instruction opcodes, metadata formats, type encodings, and pass infrastructure from LLVM 20 are present. Externally, the bitcode it emits identifies itself as `"LLVM7.0.1"` in the producer field.
 
 The reason is historical: NVVM IR 2.0 was defined against LLVM 7.0.1. The entire NVVM toolchain ecosystem (libNVVM, nvcc's device pipeline, nvdisasm, third-party NVVM IR consumers) standardized on `"LLVM7.0.1"` as the format identifier. Changing the producer string would require a coordinated update across the entire CUDA toolkit and all downstream consumers.
 
@@ -53,7 +53,7 @@ The NVVM IR version is a metadata tuple `(major, minor)` embedded in every NVVM 
 
 **User code**: the IR generation phase (`sub_9151E0`) emits `!nvvmir.version` with the current version tuple. The version checker at `sub_157E370` enforces `major == 3` and `minor <= 2`, making **3.2** the current maximum accepted version. Modules with `major != 3` or `minor > 2` are rejected with `"Broken module found, compilation aborted!"`.
 
-**Libdevice**: the embedded `libdevice.10.bc` carries `!nvvmir.version = !{i32 2, i32 0}`. The version `(2, 0)` is hard-coded in the version checker (`sub_12BDA30`) as an **always-compatible sentinel** -- it passes the check regardless of the current NVVM IR version. This ensures the embedded math library is compatible with any user module.
+**Libdevice**: the embedded `libdevice.10.bc` carries `!nvvmir.version = !{i32 2, i32 0}`. The version `(2, 0)` is hard-coded in the version checker (`sub_12BDA30`) as an **always-compatible sentinel** — it passes the check regardless of the current NVVM IR version. This ensures the embedded math library is compatible with any user module.
 
 **Container format**: the [NVVM container](./structs/nvvm-container.md) binary header stores version fields separately at offsets 0x06--0x07 (`nvvm_ir_major`, `nvvm_ir_minor`). These track the container-level IR spec version and may differ from the bitcode-level metadata tuple.
 
@@ -73,8 +73,8 @@ The embedded libdevice is `libdevice.10.bc`, a 455,876-byte LLVM bitcode library
 Key properties:
 - **Target triple**: `nvptx64-nvidia-gpulibs`
 - **Function count**: 352 (all `alwaysinline nounwind`)
-- **NVVM IR version**: `(2, 0)` -- always-compatible sentinel
-- **Producer**: `"clang version 3.8.0 (tags/RELEASE_380/final)"` -- the Clang version that originally compiled libdevice (not indicative of cicc's own compiler version)
+- **NVVM IR version**: `(2, 0)` — always-compatible sentinel
+- **Producer**: `"clang version 3.8.0 (tags/RELEASE_380/final)"` — the Clang version that originally compiled libdevice (not indicative of cicc's own compiler version)
 - **NVVMReflect calls**: uses `__nvvm_reflect("__CUDA_FTZ")`, `__nvvm_reflect("__CUDA_ARCH")`, and `__nvvm_reflect("__CUDA_PREC_SQRT")` for runtime specialization
 
 The `libdevice.10.bc` naming convention carries forward from the CUDA 5.0 era. The `10` in the filename originally indicated "compute capability 1.0 and above" (i.e., universal), not a version number.
@@ -144,7 +144,7 @@ This wiki documents cicc v13.0 from CUDA 12.8. When a new CUDA toolkit release s
 - **PTX ISA version**: new SM targets require new PTX versions. sm_100 Blackwell already uses a higher PTX version than sm_90 Hopper.
 - **SM target range**: new GPU architectures add new SM numbers. The sm_75--sm_121 range in v13.0 will expand in future releases.
 
-The **bitcode producer string** (`"LLVM7.0.1"`) is unlikely to change in the near term -- doing so would break backward compatibility with the entire NVVM IR ecosystem. The **libdevice version sentinel** `(2, 0)` is similarly stable because the version checker special-cases it.
+The **bitcode producer string** (`"LLVM7.0.1"`) is unlikely to change in the near term — doing so would break backward compatibility with the entire NVVM IR ecosystem. The **libdevice version sentinel** `(2, 0)` is similarly stable because the version checker special-cases it.
 
 To update this wiki for a new cicc version:
 1. Extract the build string (search for `cuda_XX.Y.rXX.Y/compiler.`).
@@ -156,11 +156,11 @@ To update this wiki for a new cicc version:
 
 ## Cross-References
 
-- [Bitcode Reader/Writer](./infra/bitcode-io.md) -- producer string mechanism, version gate implementation
-- [NVVM Container](./structs/nvvm-container.md) -- container binary format with version header fields
-- [Libdevice Linking](./infra/libdevice-linking.md) -- embedded math library, version sentinel
-- [EDG 6.6 Frontend](./pipeline/edg.md) -- frontend version, GCC/Clang emulation modes
-- [Binary Layout](./binary-layout.md) -- build ID string, ELF properties
-- [Entry Point & CLI](./pipeline/entry.md) -- dual-path dispatch, version string arguments
-- [Environment Variables](./config/env-vars.md) -- `LLVM_OVERRIDE_PRODUCER`, `NVVM_IR_VER_CHK`
-- [Debug Info Verification](./infra/debug-verify.md) -- debug version field (3.2)
+- [Bitcode Reader/Writer](./infra/bitcode-io.md) — producer string mechanism, version gate implementation
+- [NVVM Container](./structs/nvvm-container.md) — container binary format with version header fields
+- [Libdevice Linking](./infra/libdevice-linking.md) — embedded math library, version sentinel
+- [EDG 6.6 Frontend](./pipeline/edg.md) — frontend version, GCC/Clang emulation modes
+- [Binary Layout](./binary-layout.md) — build ID string, ELF properties
+- [Entry Point & CLI](./pipeline/entry.md) — dual-path dispatch, version string arguments
+- [Environment Variables](./config/env-vars.md) — `LLVM_OVERRIDE_PRODUCER`, `NVVM_IR_VER_CHK`
+- [Debug Info Verification](./infra/debug-verify.md) — debug version field (3.2)

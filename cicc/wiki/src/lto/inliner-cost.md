@@ -1,6 +1,6 @@
 # Inliner Cost Model
 
-CICC v13.0 contains four parallel inliner cost models -- an architecturally unusual design that reflects both the historical evolution of NVIDIA's compiler and the fundamental differences between GPU and CPU inlining economics. The NVIDIA custom inliner at `0x1864060` (75 KB, 2135 decompiled lines) uses a 20,000-unit budget that is 89x the upstream LLVM default of 225. Roughly 60% of the custom inliner's code computes type-size comparisons for argument coercion cost, because on GPU the dominant cost of a function call is not instruction count but `.param` address-space marshaling. Alongside the custom model, CICC also links the standard LLVM `InlineCostAnalysis` at `0x30DC7E0` (51 KB), a New Pass Manager CGSCC inliner at `0x2613930` (69 KB) with ML-based advisory support, and an NVPTX target-specific cost modifier at `0x38576C0` (58 KB) that injects a +2000 bonus for GPU intrinsics.
+CICC v13.0 contains four parallel inliner cost models — an architecturally unusual design that reflects both the historical evolution of NVIDIA's compiler and the fundamental differences between GPU and CPU inlining economics. The NVIDIA custom inliner at `0x1864060` (75 KB, 2135 decompiled lines) uses a 20,000-unit budget that is 89x the upstream LLVM default of 225. Roughly 60% of the custom inliner's code computes type-size comparisons for argument coercion cost, because on GPU the dominant cost of a function call is not instruction count but `.param` address-space marshaling. Alongside the custom model, CICC also links the standard LLVM `InlineCostAnalysis` at `0x30DC7E0` (51 KB), a New Pass Manager CGSCC inliner at `0x2613930` (69 KB) with ML-based advisory support, and an NVPTX target-specific cost modifier at `0x38576C0` (58 KB) that injects a +2000 bonus for GPU intrinsics.
 
 | | |
 |---|---|
@@ -13,7 +13,7 @@ CICC v13.0 contains four parallel inliner cost models -- an architecturally unus
 
 ## Why Four Inliner Models
 
-The four models are not truly interchangeable alternatives -- they serve overlapping but distinct roles in the compilation pipeline:
+The four models are not truly interchangeable alternatives — they serve overlapping but distinct roles in the compilation pipeline:
 
 **Model A** is the original NVIDIA inliner, predating the LLVM 14+ New Pass Manager. It operates on NVIDIA's internal NVVM IR node format (not LLVM IR), walks the callee body with bespoke type-size arithmetic, and is the only model that understands `.param`-space argument coercion costs. It runs inside the legacy CGSCC inliner framework via `sub_186CA00` (`Inliner::inlineCallsImpl`). When CICC runs in its default optimization pipeline, this is the model that makes the bulk of inlining decisions.
 
@@ -38,7 +38,7 @@ On NVIDIA GPUs, there is no hardware call stack for registers. The PTX calling c
 5. **Return values** come back through `.param` space via `ld.param` (opcodes 515-516, 568-570 for LoadRetParam / LoadV1/V2/V4).
 6. **Byval arguments** (structs passed by value) copy the entire struct to `.param` space field by field.
 
-Each function call therefore generates O(n) `st.param` + O(n) `ld.param` instructions where n is the number of arguments, plus register save/restore if the callee needs more registers than are available (spills go to local memory, which is device DRAM -- hundreds of cycles). Additionally, call boundaries destroy instruction scheduling freedom, prevent cross-boundary register allocation, and create branch divergence hazards at the call/return sites.
+Each function call therefore generates O(n) `st.param` + O(n) `ld.param` instructions where n is the number of arguments, plus register save/restore if the callee needs more registers than are available (spills go to local memory, which is device DRAM — hundreds of cycles). Additionally, call boundaries destroy instruction scheduling freedom, prevent cross-boundary register allocation, and create branch divergence hazards at the call/return sites.
 
 This is why NVIDIA's default inline budget of 20,000 is not as aggressive as it sounds: inlining a function with 50 instructions but 8 struct arguments might save hundreds of cycles of `.param` marshaling overhead.
 
@@ -128,7 +128,7 @@ This prevents inlining functions where argument materialization would create a q
 
 ### Type-Size Computation Engine
 
-The bulk of `sub_1864060` -- lines 1140 through 2100, approximately 60% of the function -- is a type-size computation engine. This is the single most distinctive feature of the NVIDIA inliner: where LLVM counts instructions, NVIDIA computes byte-level argument coercion costs.
+The bulk of `sub_1864060` — lines 1140 through 2100, approximately 60% of the function — is a type-size computation engine. This is the single most distinctive feature of the NVIDIA inliner: where LLVM counts instructions, NVIDIA computes byte-level argument coercion costs.
 
 The engine walks NVVM IR type nodes and computes byte sizes for each argument at both the callsite (actual argument) and the callee (formal parameter). The type tag dispatch is repeated 8+ times across different contexts:
 
@@ -219,7 +219,7 @@ NVIDIA uses a two-level budget to control inlining granularity:
 
 - `inline-budget` (default 20,000): Per-caller limit. Caps how much code can be inlined into a single function, preventing any one function from becoming unreasonably large.
 - `inline-total-budget`: Module-wide limit. Caps the total amount of inlining across all callers in the compilation unit.
-- `inline-adj-budget1`: A secondary per-caller limit that may be dynamically adjusted based on context -- for example, kernel entry points (`__global__` functions) may receive a higher adjusted budget because they are the outermost scope and benefit most from aggressive inlining.
+- `inline-adj-budget1`: A secondary per-caller limit that may be dynamically adjusted based on context — for example, kernel entry points (`__global__` functions) may receive a higher adjusted budget because they are the outermost scope and benefit most from aggressive inlining.
 
 The threshold adjustment helper at `sub_1868880` (12 KB) modifies thresholds based on calling context through pure arithmetic on cost/threshold values (no string evidence, entirely numeric).
 
@@ -257,7 +257,7 @@ The LLVM model fundamentally counts instructions (at `inline-instr-cost` = 5 uni
 
 ## Model C: New PM CGSCC Inliner
 
-The New Pass Manager inliner at `0x2613930` (69 KB) handles recursive SCC processing and integrates with LLVM's `InlineAdvisor` framework. Its key differentiation is the `function-inline-cost-multiplier` knob that penalizes recursive function inlining -- a scenario the NVIDIA custom inliner (Model A) does not handle.
+The New Pass Manager inliner at `0x2613930` (69 KB) handles recursive SCC processing and integrates with LLVM's `InlineAdvisor` framework. Its key differentiation is the `function-inline-cost-multiplier` knob that penalizes recursive function inlining — a scenario the NVIDIA custom inliner (Model A) does not handle.
 
 The `InlineAdvisor` at `sub_2609820` (57 KB) supports three modes:
 
@@ -290,7 +290,7 @@ The state layout of the cost analyzer object:
 | +120 | Per-instruction cost (lo) | Cost array element (low) |
 | +128 | Per-instruction cost (hi) | Cost array element (high) |
 
-The +2000 bonus for tag 9 opcodes encourages inlining of functions containing specific GPU operations -- likely tensor core instructions, warp-level intrinsics, or other operations that benefit significantly from being visible to the register allocator and instruction scheduler within the caller's scope. The bonus is large enough (equivalent to inlining ~400 regular LLVM instructions at cost 5 each) to override most size-based objections.
+The +2000 bonus for tag 9 opcodes encourages inlining of functions containing specific GPU operations — likely tensor core instructions, warp-level intrinsics, or other operations that benefit significantly from being visible to the register allocator and instruction scheduler within the caller's scope. The bonus is large enough (equivalent to inlining ~400 regular LLVM instructions at cost 5 each) to override most size-based objections.
 
 ## NVIDIA vs. LLVM: Complete Comparison
 
@@ -407,7 +407,7 @@ The 20,000 vs. 225 ratio sounds extreme, but the economics are different:
 
 **GPU call overhead** includes: (1) declaring `.param` variables for every argument, (2) `st.param` for each argument value, (3) `ld.param` in the callee for each argument, (4) register save/restore to local memory (device DRAM, 200-800 cycle latency) if the callee's register demand exceeds what is available, (5) loss of instruction scheduling across the call boundary, (6) branch divergence at call/return. For a function with 8 arguments, the `.param` overhead alone is 16+ memory operations. With register spilling, a single function call can cost 1000+ cycles.
 
-Furthermore, GPU functions tend to be small (typically 10-100 instructions for device helper functions). The NVIDIA cost model does not count instructions at all -- it counts the argument marshaling cost. A function with 200 instructions but 2 scalar arguments is cheap to call; a function with 10 instructions but 8 struct arguments is expensive. The 20,000 budget reflects this: it is not 89x more aggressive in inlining large functions; it is calibrated for a cost model where the per-argument coercion cost dominates rather than instruction count.
+Furthermore, GPU functions tend to be small (typically 10-100 instructions for device helper functions). The NVIDIA cost model does not count instructions at all — it counts the argument marshaling cost. A function with 200 instructions but 2 scalar arguments is cheap to call; a function with 10 instructions but 8 struct arguments is expensive. The 20,000 budget reflects this: it is not 89x more aggressive in inlining large functions; it is calibrated for a cost model where the per-argument coercion cost dominates rather than instruction count.
 
 With `-aggressive-inline` (budget 40,000, i.e., 178x the LLVM default), NVIDIA targets workloads like OptiX where complete flattening is desired but `nv-inline-all` is too blunt (it ignores all cost analysis).
 
@@ -416,7 +416,7 @@ With `-aggressive-inline` (budget 40,000, i.e., 178x the LLVM default), NVIDIA t
 Upstream LLVM's inliner cost model was built for x86/AArch64 where function call overhead is small and code size is the primary inlining constraint. On GPU, every assumption is wrong:
 
 - **Upstream assumes a 225-instruction budget is sufficient.** The default `inline-threshold` of 225 reflects CPU economics where a function call costs 5-20 cycles (register push/pop + branch). On GPU, a single function call with 8 struct arguments generates 16+ `.param`-space memory operations, potential register spills to device DRAM (200-800 cycle latency), loss of cross-boundary scheduling, and branch divergence hazards. NVIDIA's 20,000-unit budget (89x upstream) is calibrated for this reality, not because GPU code is more aggressive about inlining large functions.
-- **Upstream counts instructions as the primary cost metric.** LLVM prices each instruction at 5 units and subtracts savings from constant propagation and dead code elimination. NVIDIA's custom inliner (Model A) does not count instructions at all -- 60% of its 75KB body computes byte-level argument type-size coercion costs, because on GPU the dominant cost of a function call is `.param` address-space marshaling, not instruction count.
+- **Upstream counts instructions as the primary cost metric.** LLVM prices each instruction at 5 units and subtracts savings from constant propagation and dead code elimination. NVIDIA's custom inliner (Model A) does not count instructions at all — 60% of its 75KB body computes byte-level argument type-size coercion costs, because on GPU the dominant cost of a function call is `.param` address-space marshaling, not instruction count.
 - **Upstream has no concept of `.param`-space argument passing cost.** CPU calling conventions pass arguments in registers (nearly free) or via L1-cached stack (3-5 cycles). On GPU, every argument requires explicit `DeclareParam` + `st.param` (caller) + `ld.param` (callee) sequences. A function with 10 instructions but 8 struct arguments is more expensive to call than one with 200 instructions and 2 scalar arguments. Upstream's model gets this exactly backwards.
 - **Upstream uses a single per-callsite budget.** NVIDIA uses a three-level system: per-caller budget (`inline-budget`), module-wide total budget (`inline-total-budget`), and a dynamically adjusted secondary budget (`inline-adj-budget1`) that can give kernel entry points higher limits. This multi-level approach prevents any single caller from bloating while still allowing aggressive inlining where it matters most.
 - **Upstream has no GPU intrinsic awareness.** NVIDIA's Model D applies a +2000 cost bonus for functions containing opcode tag 9 instructions (likely tensor core or warp-level intrinsics), because these operations benefit enormously from being visible to the register allocator and scheduler within the caller's scope. Upstream LLVM has no mechanism to express "this function contains operations that are disproportionately valuable to inline."
@@ -437,8 +437,8 @@ Upstream LLVM's inliner cost model was built for x86/AArch64 where function call
 | `0x185B9F0` | 5 KB | Recursive operand simplification |
 | `0x185CCC0` | 4 KB | Type compatibility check |
 | `0x18612A0` | 65 KB | GlobalOpt integration |
-| `0x1ACF5D0` | -- | Inline analysis state init |
-| `0x1ACF600` | -- | Pre-analysis callee walk |
+| `0x1ACF5D0` | — | Inline analysis state init |
+| `0x1ACF600` | — | Pre-analysis callee walk |
 | `0x30DC7E0` | 51 KB | `InlineCostAnalysis::analyzeCall` (LLVM) |
 | `0x2613930` | 69 KB | New PM CGSCC inliner |
 | `0x2609820` | 57 KB | Inline advisor / ML inliner |

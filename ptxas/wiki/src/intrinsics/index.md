@@ -6,24 +6,24 @@ ptxas maintains two separate intrinsic subsystems that together cover every CUDA
 
 | | |
 |---|---|
-| **Master registration** | `sub_5D1660` (46KB) -- 607 CUDA intrinsics, name-to-integer-ID hash map (608 table slots, ID 0 = null) |
-| **Opcode dispatch** | `sub_5D4190` (41KB) -- ~120 PTX opcodes to codegen handlers + ~400 MMA hash entries |
-| **Body template names** | `sub_5D7430` (161KB) -- 1,079 intrinsic names constructed from .rodata prefixes + type suffixes, stored in hash map at +824 |
-| **Prototype generator** | `sub_5FF700` (354KB) -- switch generating `.weak .func` PTX declarations |
-| **OCG intrinsic table** | `sub_6C9EB0` (13KB) -- `__nv_ptx_builtin_ocg_*` dispatch for SM100+ |
-| **OCG router** | `sub_6CC690` (22KB) -- routes OCG calls to type-specific handlers |
-| **OCG name resolver** | `sub_6C9BC0` -- resolves operation names to internal enums |
+| **Master registration** | `sub_5D1660` (46KB) — 607 CUDA intrinsics, name-to-integer-ID hash map (608 table slots, ID 0 = null) |
+| **Opcode dispatch** | `sub_5D4190` (41KB) — ~120 PTX opcodes to codegen handlers + ~400 MMA hash entries |
+| **Body template names** | `sub_5D7430` (161KB) — 1,079 intrinsic names constructed from .rodata prefixes + type suffixes, stored in hash map at +824 |
+| **Prototype generator** | `sub_5FF700` (354KB) — switch generating `.weak .func` PTX declarations |
+| **OCG intrinsic table** | `sub_6C9EB0` (13KB) — `__nv_ptx_builtin_ocg_*` dispatch for SM100+ |
+| **OCG router** | `sub_6CC690` (22KB) — routes OCG calls to type-specific handlers |
+| **OCG name resolver** | `sub_6C9BC0` — resolves operation names to internal enums |
 | **Hash map create** | `sub_425CA0` (initial capacity 0x80) |
 | **Hash map insert** | `sub_426150(map, name, value)` |
 | **Hash map lookup** | `sub_426D60` |
 
 **Per-Family Deep Dives:**
 
-- [Prototype Emitter (`sub_5FF700`)](prototype-emitter.md) -- 1,080-case dispatch producing the `.weak .func` / `.FORCE_INLINE .func` PTX declarations consumed by every helper-emitting kernel
-- [OCG Intrinsic System](ocg.md) -- SM100+ OCG builtins (44 operations), lowering pipeline, SASS handler map
-- [Math Intrinsics](math.md) -- IEEE math software emulation (div, rcp, sqrt, rem)
-- [Tensor Core Intrinsics](tensor.md) -- WMMA, MMA, WGMMA, tcgen05 lowering
-- [Sync & Warp Intrinsics](sync-warp.md) -- Barriers, vote, shuffle, match, redux
+- [Prototype Emitter (`sub_5FF700`)](prototype-emitter.md) — 1,080-case dispatch producing the `.weak .func` / `.FORCE_INLINE .func` PTX declarations consumed by every helper-emitting kernel
+- [OCG Intrinsic System](ocg.md) — SM100+ OCG builtins (44 operations), lowering pipeline, SASS handler map
+- [Math Intrinsics](math.md) — IEEE math software emulation (div, rcp, sqrt, rem)
+- [Tensor Core Intrinsics](tensor.md) — WMMA, MMA, WGMMA, tcgen05 lowering
+- [Sync & Warp Intrinsics](sync-warp.md) — Barriers, vote, shuffle, match, redux
 
 ## System Overview
 
@@ -83,7 +83,7 @@ Emitted into PTX output as .weak .func declarations
 (linker resolves calls to runtime helper functions)
 ```
 
-## Master Registration -- `sub_5D1660`
+## Master Registration — `sub_5D1660`
 
 This 46KB function is the master catalog. It allocates a 9728-byte table (`memcpy` from `unk_1D4D940`, 0x2600 bytes = 608 x 16B slots), creates a hash map with initial capacity 0x80 via `sub_425CA0`, then calls `sub_426150(hashmap, "name", (char*)ID)` exactly 607 times to register every CUDA runtime helper function with an integer ID (IDs 1--607, contiguous). The hash map is stored at `a1+1064`, the table at `a1+1056`, and the count 608 at `a1+1072` (includes the unused null ID 0 slot).
 
@@ -94,14 +94,14 @@ This 46KB function is the master catalog. It allocates a 9728-byte table (`memcp
 | ID Range | Count | Prefix | Category | SM Floor |
 |---|---|---|---|---|
 | `0x001`--`0x011` | 17 | `__cuda_reduxsync_*` | Redux sync (b32 and/or/xor, f32 max/min/abs/NaN, s32/u32 add/max/min) | sm_70 |
-| `0x012`--`0x018` | 7 | `__cuda_sanitizer_memcheck_*` | Compute-sanitizer hooks (free, generic, global, local, malloc, readmetadata, shared) | -- |
+| `0x012`--`0x018` | 7 | `__cuda_sanitizer_memcheck_*` | Compute-sanitizer hooks (free, generic, global, local, malloc, readmetadata, shared) | — |
 | `0x019`--`0x01F` | 7 | `__cuda_scalar_video_emulation_*` | Video instruction emulation helpers | sm_20 |
 | `0x020`--`0x02A` | 11 | `__cuda_sm10x_*` | Blackwell tcgen05 guardrail traps + create_mask helper | sm_100 |
 | `0x02B`--`0x03C` | 18 | `__cuda_sm1xx_*` | Bulk copy + cp.async.bulk.tensor 1D--5D tile/im2col uni/multicast | sm_100+ |
 | `0x03D`--`0x082` | 70 | `__cuda_sm20_*` | IEEE math: bfe, bfi, div, rcp, sqrt, dsqrt, drsqrt, rem (all rounding modes + slowpaths) | sm_20 |
 | `0x083`--`0x086` | 4 | `__cuda_sm3x_div_*` | Optimized division variants (rn_ftz_f32, rn_noftz_f32 + slowpaths) | sm_30 |
 | `0x087`--`0x088` | 2 | `__cuda_sm62_dp2a/dp4a` | Integer dot product emulation | sm_62 |
-| `0x089`--`0x211` | 393 | `__cuda_sm70_*` | Volta+ intrinsics (barriers, shuffle, vote, match, WMMA -- all shapes, layouts, address spaces) | sm_70 |
+| `0x089`--`0x211` | 393 | `__cuda_sm70_*` | Volta+ intrinsics (barriers, shuffle, vote, match, WMMA — all shapes, layouts, address spaces) | sm_70 |
 | `0x212`--`0x214` | 3 | `__cuda_sm80_*` | Ampere: createpolicy_fractional, createpolicy_fractional_encode, createpolicy_range_encode | sm_80 |
 | `0x215`--`0x21E` | 10 | `__cuda_sm_10x_*` | Blackwell hmma/imma mdata + bit MMA (and/xor m8n8k128/m16n8k128/m16n8k256) | sm_100 |
 | `0x21F`--`0x22C` | 14 | `__cuda_sm_8x_*` | Direct MMA operations (f16/f32 accum, 4 layout combos) + mma_shfl_f16/f32 | sm_80+ |
@@ -120,13 +120,13 @@ The sm_70 block is by far the largest at 393 entries. It covers every Volta-era 
 | `barrier_sync` | 0--15, with/without count | 16 IDs x 2 count variants |
 | `matchsync_all/any_b32/b64` | with predicate variants | 2 match modes x 2 types x pred |
 | `shflsync_bfly/down/idx/up` | with predicate variants | 4 shuffle modes x pred |
-| `votesync_all/any/ballot/uni` | -- | 4 vote modes |
-| `warpsync` | -- | 1 entry |
+| `votesync_all/any/ballot/uni` | — | 4 vote modes |
+| `warpsync` | — | 1 entry |
 | `wmma_*` | m16n16k16, m32n8k16, m8n32k16 | 3 shapes x {load_a, load_b, load_c, store_d, mma} x {row, col} x {f16, f32} x {generic, global, shared} x {satfinite} |
 
 The WMMA entries dominate the count. Each combination of shape (m16n16k16/m32n8k16/m8n32k16), operation (load_a/load_b/load_c/store_d/mma), layout (row/col for each matrix), data type (f16/f32), address space (generic/global/shared), and optional satfinite flag produces a separate intrinsic registration.
 
-## Opcode Dispatch -- `sub_5D4190`
+## Opcode Dispatch — `sub_5D4190`
 
 This 41KB function first calls `sub_5D1660(a1)` to populate the intrinsic ID table, then builds two more hash maps for PTX opcode dispatch.
 
@@ -160,7 +160,7 @@ This 41KB function first calls `sub_5D1660(a1)` to populate the intrinsic ID tab
 
 ~400 entries where the key is a numeric string representation of a hash value (e.g., `"2644314910"`) that encodes a specific MMA shape/type/layout combination. The hash encodes the instruction variant completely: matrix dimensions (m16n8k16, m16n8k32, etc.), data type (f16, bf16, tf32, f32, f64, s8, u8, s4, u4, b1), and layout (row/col combinations). Each entry maps to a codegen handler function pointer. This avoids a multi-dimensional lookup by collapsing the full variant space into a single hash probe.
 
-## Body Template Name Table -- `sub_5D7430`
+## Body Template Name Table — `sub_5D7430`
 
 At 161KB of machine code (0x5D7430--0x5FF700), this is the largest function in the intrinsic infrastructure by code size and the 6th largest function in the entire ptxas binary. IDA failed to decompile it; all analysis comes from raw x86-64 disassembly. The function constructs a third hash map (at context offset +824 / `0x338`) containing 1,079 entries that map dynamically constructed `__cuda_*` intrinsic names to sequential body template IDs (0--1078).
 
@@ -168,9 +168,9 @@ At 161KB of machine code (0x5D7430--0x5FF700), this is the largest function in t
 
 The master registration table (`sub_5D1660`) maps 607 intrinsic names to logical IDs. The body template table (`sub_5D7430`) maps 1,079 variant-specific names to prototype generator case numbers. The 1.78x expansion has one dominant cause: **WMMA template proliferation across GPU generations**.
 
-The 204 logical WMMA entries in `sub_5D1660` cover only the original sm_70 Volta shapes (m16n16k16/m32n8k16/m8n32k16 with f16/f32 types). But the body template table includes all later-generation WMMA variants -- sm7x sub-byte/bit, sm72 integer, sm8x tf32/bf16/f64 -- that were added as hardware evolved. These ~416 extra WMMA templates have no matching entry in the 607 logical ID table; they exist only in the body template hash map and the prototype generator switch.
+The 204 logical WMMA entries in `sub_5D1660` cover only the original sm_70 Volta shapes (m16n16k16/m32n8k16/m8n32k16 with f16/f32 types). But the body template table includes all later-generation WMMA variants — sm7x sub-byte/bit, sm72 integer, sm8x tf32/bf16/f64 — that were added as hardware evolved. These ~416 extra WMMA templates have no matching entry in the 607 logical ID table; they exist only in the body template hash map and the prototype generator switch.
 
-Non-WMMA intrinsics map approximately 1:1 between logical IDs and body templates. The math operations (div, rcp, sqrt) are already fully type-specialized at the logical level -- each rounding-mode/type combination is a separate logical intrinsic.
+Non-WMMA intrinsics map approximately 1:1 between logical IDs and body templates. The math operations (div, rcp, sqrt) are already fully type-specialized at the logical level — each rounding-mode/type combination is a separate logical intrinsic.
 
 Three sources of expansion beyond the 607 logical entries:
 
@@ -181,7 +181,7 @@ Three sources of expansion beyond the 607 logical entries:
 2. **Aligned warp sync variants** (~13 extra templates): `matchsync_aligned`, `votesync_aligned`, `votesync_ballot_groupwise`, `query_activemask`/`query_activemask_groupwise` for cooperative group support
 3. **Additional SM100 specializations** (~8 extra templates): `tcgen05_alloc_two_sm`, extra guardrails check variants, `get_warp_rank`
 
-Conversely, 18 sm1xx bulk copy intrinsics have logical IDs but zero body templates -- they bypass the template/prototype mechanism entirely and are lowered directly to inline PTX by the opcode dispatch handlers (`sub_593210`, `sub_5AB460`).
+Conversely, 18 sm1xx bulk copy intrinsics have logical IDs but zero body templates — they bypass the template/prototype mechanism entirely and are lowered directly to inline PTX by the opcode dispatch handlers (`sub_593210`, `sub_5AB460`).
 
 ### Template Distribution Table
 
@@ -246,7 +246,7 @@ The 533 unique .rodata prefix addresses fan out through multiple suffixes per pr
 "__cuda_sm70_barr"    +    "ier_"     =   "__cuda_sm70_barrier_" (prefix chain)
 ```
 
-Names truncated at the 20-byte buffer limit are still sufficient for hash map lookup -- the full untruncated name appears only inside the prototype string in `sub_5FF700`.
+Names truncated at the 20-byte buffer limit are still sufficient for hash map lookup — the full untruncated name appears only inside the prototype string in `sub_5FF700`.
 
 ### Worked Example: Division (Cases 0--26)
 
@@ -288,7 +288,7 @@ The intrinsic lowering context object holds five hash maps and one flat table:
 | +824 | **body templates** | **`sub_5D7430`** | **intrinsic name -> template ID** | **1,079** |
 | +1056 | descriptor table | `sub_5D1660` | 608 x 16B intrinsic descriptor slots | 608 |
 | +1064 | ID map | `sub_5D1660` | intrinsic name -> logical ID (1-607) | 607 |
-| +1072 | count | `sub_5D1660` | 608 (includes null slot 0) | -- |
+| +1072 | count | `sub_5D1660` | 608 (includes null slot 0) | — |
 
 ## Instruction Property Accessors
 
@@ -296,7 +296,7 @@ All codegen handlers query instruction properties through accessor functions on 
 
 | Accessor | Purpose | Usage Example |
 |---|---|---|
-| `sub_70B6E0` | Check if feature enabled | `sub_70B6E0(obj)` -- boolean feature gate |
+| `sub_70B6E0` | Check if feature enabled | `sub_70B6E0(obj)` — boolean feature gate |
 | `sub_70B780` | Get feature parameter | Numeric feature parameter |
 | `sub_70FA00` | Check instruction capability for SM | `sub_70FA00(*, 23)` = texture, `sub_70FA00(*, 29)` = tcgen05 |
 | `sub_70E940` | Get operand count | Number of operands |
@@ -308,13 +308,13 @@ All codegen handlers query instruction properties through accessor functions on 
 | `sub_709910` | Check sparse mode | Sparse MMA variant flag |
 | `sub_70F650` | Get matrix dimension (M/N) | Matrix size parameter |
 | `sub_70F600` | Get matrix dimension (K) | Alternate dimension parameter |
-| `sub_70CA60` | Get operand type by index | `sub_70CA60(*, 0)` -- type of first operand (21 = specific type, 58 = f32, 59 = f64) |
+| `sub_70CA60` | Get operand type by index | `sub_70CA60(*, 0)` — type of first operand (21 = specific type, 58 = f32, 59 = f64) |
 | `sub_70BA40` | Texture mode query | Texture sampling mode |
 | `sub_70BD50` | Sampler mode query | Texture sampler configuration |
 | `sub_70BB20` | Bulk tensor mode | cp.async.bulk.tensor transfer mode |
 | `sub_70F0A0` | Get sparse metadata | Sparse matrix metadata parameter |
 
-## Prototype Generator -- `sub_5FF700`
+## Prototype Generator — `sub_5FF700`
 
 At 354KB, this is the single largest function in the intrinsic infrastructure and the 2nd largest function in the entire ptxas binary. It takes a body template ID (`a1`, range 0--1079) and an allocator context (`a2`), allocates a buffer via `sub_4DA340(size, a2)`, fills it with a PTX prototype string via `strcpy()`, and returns the result. The output is a complete `.weak .func` or `.FORCE_INLINE .func` PTX declaration that gets emitted into the PTX output stream so the linker can resolve calls to CUDA runtime helper functions.
 
@@ -362,7 +362,7 @@ Two PTX linkage types are emitted, controlling how the linker handles the declar
 | `.weak` | 616 | Overridable by user code; linker uses user version if present | SM20 math, SM70 barriers/sync/WMMA (original Volta), SM80 cache policy, SM8x/9x/10x MMA, redux sync, sanitizer hooks, video emulation, dp2a/dp4a |
 | `.FORCE_INLINE` | 464 | Inlined at every call site; no separate callable function | SM70 aligned vote/match/query_activemask, SM7x sub-byte/bit WMMA, SM72 integer WMMA, SM8x tf32/bf16/f64 WMMA, SM10x tcgen05 alloc/guardrails, SM80 createpolicy_fractional |
 
-The `.weak` linkage supports user-supplied replacements: if the user provides their own implementation of `__cuda_sm20_div_s16`, the linker will use that instead of the built-in runtime version. The `.FORCE_INLINE` directive forces per-call-site specialization -- the later-generation WMMA implementations are more complex and performance-sensitive, making inlining profitable.
+The `.weak` linkage supports user-supplied replacements: if the user provides their own implementation of `__cuda_sm20_div_s16`, the linker will use that instead of the built-in runtime version. The `.FORCE_INLINE` directive forces per-call-site specialization — the later-generation WMMA implementations are more complex and performance-sensitive, making inlining profitable.
 
 A subset of `.weak` prototypes (~410) carry the `.unique` qualifier:
 
@@ -397,20 +397,20 @@ Every emitted prototype follows one of these structural patterns:
 
 Five distinct parameter-passing ABIs appear across the 1,080 prototypes:
 
-**Convention A -- Register-only (`.reg`):** Used by math operations, barriers, warp sync, redux sync, video emulation. Return and input parameters are individual `.reg` declarations with typed names. This is the simplest and most common convention.
+**Convention A — Register-only (`.reg`):** Used by math operations, barriers, warp sync, redux sync, video emulation. Return and input parameters are individual `.reg` declarations with typed names. This is the simplest and most common convention.
 
 ```ptx
 .weak .func (.reg .f32 %fv1) __cuda_sm20_div_rn_f32 (.reg .f32 %fa1, .reg .f32 %fa2) ;
 ```
 
-**Convention B -- Param-array with alignment (`.param .align N .b32 name[K]`):** Used by WMMA load/mma, MMA, Hopper sub-byte MMA, Blackwell MMA. Returns an aligned array of `.b32` elements. Array sizes: `dst[2]`, `dst[3]`, `dst[4]`, `dst[5]`, `dst[8]`, `mma_dst[2]`, `mma_dst[4]`, `mma_dst[8]`, `ret_dst[3]`, `ret_dst[5]`. 326 prototypes use `.align 16`; 1 prototype (`mma_shfl_f16`) uses `.align 8`.
+**Convention B — Param-array with alignment (`.param .align N .b32 name[K]`):** Used by WMMA load/mma, MMA, Hopper sub-byte MMA, Blackwell MMA. Returns an aligned array of `.b32` elements. Array sizes: `dst[2]`, `dst[3]`, `dst[4]`, `dst[5]`, `dst[8]`, `mma_dst[2]`, `mma_dst[4]`, `mma_dst[8]`, `ret_dst[3]`, `ret_dst[5]`. 326 prototypes use `.align 16`; 1 prototype (`mma_shfl_f16`) uses `.align 8`.
 
 ```ptx
 .weak .func (.param .align 16 .b32 d[8]) __cuda_sm70_wmma_m16n16k16_mma_row_col_f32_f32
   (.param .align 16 .b32 a[8], .param .align 16 .b32 b[8], .param .align 16 .b32 c[8]) ;
 ```
 
-**Convention C -- Param-scalar (`.param .b64`):** Used exclusively by the 7 compute-sanitizer hooks. Parameters use fully-qualified names (`__cuda_sanitizer_memcheck_malloc_param_0`).
+**Convention C — Param-scalar (`.param .b64`):** Used exclusively by the 7 compute-sanitizer hooks. Parameters use fully-qualified names (`__cuda_sanitizer_memcheck_malloc_param_0`).
 
 ```ptx
 .weak .func (.param .b64 func_retval0) __cuda_sanitizer_memcheck_malloc
@@ -418,14 +418,14 @@ Five distinct parameter-passing ABIs appear across the 1,080 prototypes:
    .param .b64 __cuda_sanitizer_memcheck_malloc_param_1) ;
 ```
 
-**Convention D -- Void return `()`:** Used by WMMA store_d, tcgen05 guardrail traps, sanitizer_free. ~140 prototypes (45 `.weak` + 95 `.FORCE_INLINE`).
+**Convention D — Void return `()`:** Used by WMMA store_d, tcgen05 guardrail traps, sanitizer_free. ~140 prototypes (45 `.weak` + 95 `.FORCE_INLINE`).
 
 ```ptx
 .weak .func () __cuda_sm70_wmma_m16n16k16_store_d_row_f32
   (.reg .b64 ptr, .reg .b32 ldm, .reg .b32 sreg0, .reg .b32 sreg1, ...) ;
 ```
 
-**Convention E -- Multi-register return (`.FORCE_INLINE` only):** Used by extended WMMA load operations (SM7x/SM72/SM8x). Returns 1--4 registers in the return position (never 8 -- 8-element returns use Convention B's `.param` arrays instead).
+**Convention E — Multi-register return (`.FORCE_INLINE` only):** Used by extended WMMA load operations (SM7x/SM72/SM8x). Returns 1--4 registers in the return position (never 8 — 8-element returns use Convention B's `.param` arrays instead).
 
 ```ptx
 .FORCE_INLINE .func (.reg .b32 dst0, .reg .b32 dst1, .reg .b32 dst2, .reg .b32 dst3)
@@ -529,7 +529,7 @@ The 1,080 cases follow the body template registration order from `sub_5D7430`, r
 
 The four largest codegen handlers together represent ~500KB of code and cover the tensor core instruction families.
 
-### `sub_5C7A50` -- WMMA.MMA Codegen (173KB)
+### `sub_5C7A50` — WMMA.MMA Codegen (173KB)
 
 The largest codegen handler. Generates inline PTX code for `wmma.mma` instructions across all variant combinations.
 
@@ -540,7 +540,7 @@ The largest codegen handler. Generates inline PTX code for `wmma.mma` instructio
 - Satfinite variants for each configuration
 - Address spaces: generic, global, shared
 
-### `sub_5C10A0` -- MMA Codegen (120KB)
+### `sub_5C10A0` — MMA Codegen (120KB)
 
 Handles the newer `mma.sync` API (non-WMMA). Covers the post-Volta PTX MMA instructions.
 
@@ -548,7 +548,7 @@ Handles the newer `mma.sync` API (non-WMMA). Covers the post-Volta PTX MMA instr
 - Types: f16, bf16, tf32, f32, f64, s8, u8, s4, u4, b1
 - Sparse variants for sm_80+ and sm_90+ (structured sparsity 2:4)
 
-### `sub_5BBC30` -- TCGen05.MMA Codegen (90KB)
+### `sub_5BBC30` — TCGen05.MMA Codegen (90KB)
 
 Blackwell 5th-generation tensor core MMA code generation. Handles the `tcgen05.mma` instruction family introduced in sm_100.
 
@@ -558,7 +558,7 @@ Blackwell 5th-generation tensor core MMA code generation. Handles the `tcgen05.m
 - Uses `sub_70F0A0` for sparse metadata parameter extraction
 - Generates code for tcgen05-specific tensor memory addressing
 
-### `sub_5B76D0` -- Division Codegen (64KB)
+### `sub_5B76D0` — Division Codegen (64KB)
 
 Generates inline PTX code for all `div` variants.
 
@@ -568,9 +568,9 @@ Generates inline PTX code for all `div` variants.
 - Checks operand type via `sub_70CA60(*(_QWORD *)(a1+1096), 0) == 21`
 - Emits both fastpath and slowpath (Newton-Raphson) code sequences
 
-## OCG Intrinsic System -- `sub_6C9EB0`
+## OCG Intrinsic System — `sub_6C9EB0`
 
-The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel dispatch mechanism for SM100+ builtin operations. While the classical system at `sub_5D1660` maps CUDA runtime helper names to integer IDs and generates inline PTX, the OCG system maps `__nv_ptx_builtin_ocg_*` function names to type-specific handlers that validate parameters and emit SASS instructions directly -- bypassing PTX entirely. The OCG table contains 44 operations across 9 categories: arithmetic, packed float, vector integer, async copy/TMA, load/store/cache, reduction/fence, tensor core, tensor memory, and synchronization.
+The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel dispatch mechanism for SM100+ builtin operations. While the classical system at `sub_5D1660` maps CUDA runtime helper names to integer IDs and generates inline PTX, the OCG system maps `__nv_ptx_builtin_ocg_*` function names to type-specific handlers that validate parameters and emit SASS instructions directly — bypassing PTX entirely. The OCG table contains 44 operations across 9 categories: arithmetic, packed float, vector integer, async copy/TMA, load/store/cache, reduction/fence, tensor core, tensor memory, and synchronization.
 
 See **[OCG Intrinsic System (44 Operations)](ocg.md)** for the complete builtin name table, handler functions, validation strings, SASS-level handlers, and the full five-stage lowering pipeline with operand buffer layout.
 
@@ -578,13 +578,13 @@ See **[OCG Intrinsic System (44 Operations)](ocg.md)** for the complete builtin 
 
 Each SM generation introduces new intrinsic families while preserving all earlier ones. The per-SM intrinsic table initializer functions (`sub_60AXXX` cluster, registered in Map 3 of the [capability dispatch](../targets/index.md)) control which intrinsics are available on each target.
 
-### sm_20 -- Software IEEE Math (70 entries)
+### sm_20 — Software IEEE Math (70 entries)
 
 The foundation layer. 70 intrinsics providing IEEE-754-compliant software implementations of math operations that either lack hardware support or need exact rounding guarantees. All later SM targets inherit these.
 
-- **Division**: `div_s16`, `div_u64`, `div_rn_f32`, `div_rn_f64_full`, etc. -- all rounding modes (rn/rd/ru/rz) and types (s16/s64/u16/u64/f32/f64)
-- **Reciprocal**: `rcp_rn_f32`, `rcp_rn_f64`, etc. -- all rounding modes
-- **Square root**: `sqrt_rn_f32`, `sqrt_rn_f64`, etc. -- all rounding modes
+- **Division**: `div_s16`, `div_u64`, `div_rn_f32`, `div_rn_f64_full`, etc. — all rounding modes (rn/rd/ru/rz) and types (s16/s64/u16/u64/f32/f64)
+- **Reciprocal**: `rcp_rn_f32`, `rcp_rn_f64`, etc. — all rounding modes
+- **Square root**: `sqrt_rn_f32`, `sqrt_rn_f64`, etc. — all rounding modes
 - **Double-precision sqrt**: `dsqrt_rn`, `dsqrt_rd`, `dsqrt_ru`, `dsqrt_rz`
 - **Double-precision reciprocal sqrt**: `drsqrt_rn`
 - **Bit extract/insert**: `bfe` (bit field extract), `bfi` (bit field insert)
@@ -592,15 +592,15 @@ The foundation layer. 70 intrinsics providing IEEE-754-compliant software implem
 
 Codegen handlers: `sub_5B76D0` (div, 64KB), `sub_5B0CD0` (rcp, 44KB), `sub_5B4040` (sqrt, 49KB).
 
-### sm_3x -- Optimized Division (4 entries)
+### sm_3x — Optimized Division (4 entries)
 
 Four optimized division variants introduced on Kepler to improve throughput on common division patterns.
 
-### sm_62 -- Integer Dot Product (2 entries)
+### sm_62 — Integer Dot Product (2 entries)
 
 `dp2a` and `dp4a` integer dot product intrinsics introduced on Pascal (GP10x). Software emulation of the hardware instructions added in sm_61/sm_62.
 
-### sm_70 -- Volta Warp-Synchronous + WMMA (393 entries)
+### sm_70 — Volta Warp-Synchronous + WMMA (393 entries)
 
 The largest single block. Volta introduced mandatory warp-synchronous programming with explicit sync masks and the first generation of tensor core (WMMA) instructions.
 
@@ -618,28 +618,28 @@ The largest single block. Volta introduced mandatory warp-synchronous programmin
 - Types: f16, f32 (with satfinite optional)
 - Address spaces: generic, global, shared
 
-### sm_80 -- Ampere Cache Policy (3 entries)
+### sm_80 — Ampere Cache Policy (3 entries)
 
 Three `createpolicy` intrinsics for L2 cache management: `createpolicy_fractional`, `createpolicy_fractional_encode`, `createpolicy_range_encode`.
 
-### sm_10x -- Blackwell MMA Metadata + Bit MMA (10 entries)
+### sm_10x — Blackwell MMA Metadata + Bit MMA (10 entries)
 
 10 `hmma_mdata`/`imma_mdata` + bit MMA intrinsics for sm_100: metadata variants at m16n8k16/k32/k64 shapes, and 1-bit AND/XOR MMA at m8n8k128/m16n8k128/m16n8k256.
 
-### sm_8x -- Direct MMA (14 entries)
+### sm_8x — Direct MMA (14 entries)
 
 14 `mma_*` intrinsics for sm_8x: 12 direct MMA operations (f16/f32 accumulator x 4 layout combinations of col/row for A and B) plus `mma_shfl_f16` and `mma_shfl_f32` for register-to-register MMA shuffle.
 
-### sm_9x -- Sub-Byte + Bit MMA (51 entries)
+### sm_9x — Sub-Byte + Bit MMA (51 entries)
 
 51 Hopper-era intrinsics: 3 bit-XOR MMA (m8n8k128/m16n8k128/m16n8k256), 24 dense sub-byte MMA (s4/u4 at m16n8k32/m16n8k64/m8n8k32, with satfinite), 8 sparse m16n8k128, and 16 sparse m16n8k64 (with _0/_1 split variants and satfinite).
 
-### sm_10x (via `__cuda_sm10x_*`) -- Blackwell Tensor Memory + Guardrails (11 entries)
+### sm_10x (via `__cuda_sm10x_*`) — Blackwell Tensor Memory + Guardrails (11 entries)
 
 - 1 `create_mask_from_bit_idx_and_alloc_size_v1` helper
 - 10 `tcgen05_guardrail_trap_*` intrinsics for debug validation of tensor memory operations
 
-### sm_1xx -- Bulk Copy (18 entries)
+### sm_1xx — Bulk Copy (18 entries)
 
 18 bulk copy and `cp.async.bulk.tensor` intrinsics covering 1D through 5D tensor copies with tile and im2col addressing modes, both unicast and multicast variants.
 
@@ -688,9 +688,9 @@ Each SM target has its own intrinsic table initializer function registered in Ma
 
 Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base SM since they represent the same silicon with different feature exposure levels.
 
-## Instruction Description Loader -- `sub_9EE390`
+## Instruction Description Loader — `sub_9EE390`
 
-`sub_9EE390` (3,584 bytes, 0x9EE390--0x9EF190) is the constructor for an instruction description object that feeds the register allocator's pre-coloring pass. Despite the diagnostic string `"IntrinsicDescrFile=%s"`, the function loads *instruction descriptions* broadly -- not just intrinsic operations. It determines which instructions exist for the target SM, what register classes they use, and what scheduling properties apply. The sole caller is `sub_991790` (pre-coloring pass, 12KB).
+`sub_9EE390` (3,584 bytes, 0x9EE390--0x9EF190) is the constructor for an instruction description object that feeds the register allocator's pre-coloring pass. Despite the diagnostic string `"IntrinsicDescrFile=%s"`, the function loads *instruction descriptions* broadly — not just intrinsic operations. It determines which instructions exist for the target SM, what register classes they use, and what scheduling properties apply. The sole caller is `sub_991790` (pre-coloring pass, 12KB).
 
 **Invocation pattern:** The pre-coloring pass checks `context+1936` before calling `sub_9EE390`. If the descriptor for the current SM class already exists, it is reused. This means the expensive initialization happens once per SM architecture per ptxas process lifetime.
 
@@ -724,7 +724,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
    | 6 | sm_70--sm_75 | 216 B | `sub_9CE030` | `off_22BB738` |
    | 7 | sm_80--sm_89 | 232 B | `sub_9CE120` | `off_22B5150` |
    | 8+ | sm_90--sm_121 | 240 B | `sub_9CE190` | `off_22AD230` |
-   | <5 | (reuse existing) | -- | -- | -- |
+   | <5 | (reuse existing) | — | — | — |
 
    Each successor inherits the previous class and extends it with generation-specific instructions. The descriptor is stored at `context+1936` and `this+48`.
 
@@ -739,7 +739,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | +32 | 8 | Scratch area pointer (`context[198]`) |
 | +40 | 1 | Dirty flag (0 = clean) |
 | +48 | 8 | SM-specific instruction set descriptor |
-| +56--136 | -- | Resource descriptors, memory pool, sentinel, sub-allocator |
+| +56--136 | — | Resource descriptors, memory pool, sentinel, sub-allocator |
 
 ## Diagnostic Strings
 
@@ -751,16 +751,16 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `"__cuda_sm20_*"`, `"__cuda_sm70_*"`, etc. | `sub_5D1660` | Intrinsic name patterns in registration |
 | `"__cuda_sanitizer_memcheck_*"` | `sub_5D1660` | Compute-sanitizer integration hooks |
 | `"__cuda_sm10x_tcgen05_guardrail_trap_*"` | `sub_5D1660` | Blackwell debug trap intrinsics |
-| `" IntrinsicDescrFile=%s"` | `sub_9EE390` (0x9EEC9B) | Instruction description loader -- logs external description file path (option 404) |
+| `" IntrinsicDescrFile=%s"` | `sub_9EE390` (0x9EEC9B) | Instruction description loader — logs external description file path (option 404) |
 | `".RELU not allowed with unsigned type"` | `sub_6BEC60` | OCG LDC/S2R handler |
 
 ## Function Map
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_5D1660` | 46KB | Master intrinsic registration -- 607 name-to-ID entries (608 table slots) | 99% |
-| `sub_5D4190` | 41KB | Opcode dispatch -- ~120 named + ~400 MMA hash entries | 99% |
-| `sub_5FF700` | 354KB | Prototype generator -- `.weak .func` PTX declarations | 99% |
+| `sub_5D1660` | 46KB | Master intrinsic registration — 607 name-to-ID entries (608 table slots) | 99% |
+| `sub_5D4190` | 41KB | Opcode dispatch — ~120 named + ~400 MMA hash entries | 99% |
+| `sub_5FF700` | 354KB | Prototype generator — `.weak .func` PTX declarations | 99% |
 | `sub_5C7A50` | 173KB | `wmma.mma` codegen (all shapes/types/layouts) | 98% |
 | `sub_5C10A0` | 120KB | `mma` codegen (mma.sync API, post-Volta) | 98% |
 | `sub_5BBC30` | 90KB | `tcgen05.mma` codegen (Blackwell 5th-gen tensor core) | 98% |
@@ -769,10 +769,10 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `sub_5B4040` | 49KB | `sqrt` codegen (f32/f64, all rounding modes) | 95% |
 | `sub_5AB460` | 45KB | `cp.async.bulk.tensor` codegen (1D--5D, tile/im2col) | 95% |
 | `sub_5B0CD0` | 44KB | `rcp` codegen (f32/f64 reciprocal, all rounding modes) | 95% |
-| `sub_6C9EB0` | 13KB | OCG intrinsic table init -- see [OCG Intrinsic System](ocg.md) for full function map (27 entries) | 95% |
+| `sub_6C9EB0` | 13KB | OCG intrinsic table init — see [OCG Intrinsic System](ocg.md) for full function map (27 entries) | 95% |
 | `sub_6BDE20` | 7KB | Intrinsic operand expansion | 88% |
 | `sub_6BEC60` | 5.8KB | LDC/S2R intrinsic handlers | 90% |
-| `sub_9EE390` | 3.5KB | Instruction description loader -- builds per-SM instruction table for pre-coloring (`"IntrinsicDescrFile=%s"`) | 92% |
+| `sub_9EE390` | 3.5KB | Instruction description loader — builds per-SM instruction table for pre-coloring (`"IntrinsicDescrFile=%s"`) | 92% |
 | `sub_9CDF90` | 156B | SM class 5 instruction set descriptor (200B, vtable `off_23F3B00`) | 85% |
 | `sub_9CE030` | 115B | SM class 6 instruction set descriptor (216B, extends `sub_9CDF90`) | 85% |
 | `sub_9CE120` | 112B | SM class 7 instruction set descriptor (232B, vtable `off_22B5150`) | 85% |
@@ -781,23 +781,23 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 
 ## Cross-References
 
-- [OCG Intrinsic System](ocg.md) -- SM100+ OCG builtin table (44 operations), lowering pipeline, SASS handler map
-- [SM Architecture Map](../targets/index.md) -- Per-SM capability dispatch tables and intrinsic initializer assignments
-- [Math Intrinsics](math.md) -- Detailed coverage of sm_20 IEEE math intrinsic codegen (div, rcp, sqrt, rem)
-- [Tensor Core Intrinsics](tensor.md) -- WMMA, MMA, WGMMA, tcgen05 instruction lowering
-- [Sync & Warp Intrinsics](sync-warp.md) -- Barrier, vote, shuffle, match, redux intrinsics
-- [Newton-Raphson Templates](../codegen/templates.md) -- Software math slowpath sequences used by div/rcp/sqrt
-- [TCGen05 -- 5th Gen Tensor Cores](../targets/tcgen05.md) -- Blackwell tensor core ISA detail
-- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) -- Hash map infrastructure (`sub_425CA0` / `sub_426150` / `sub_426D60`)
-- [Mercury Encoder](../codegen/mercury.md) -- Master SASS encoder `sub_6D9690` (94KB) that encodes validated intrinsics
-- [SASS Instruction Encoding](../codegen/encoding.md) -- Instruction encoding infrastructure
-- [Pipeline Overview](../pipeline/overview.md) -- OCG-time measurement covers intrinsic lowering
+- [OCG Intrinsic System](ocg.md) — SM100+ OCG builtin table (44 operations), lowering pipeline, SASS handler map
+- [SM Architecture Map](../targets/index.md) — Per-SM capability dispatch tables and intrinsic initializer assignments
+- [Math Intrinsics](math.md) — Detailed coverage of sm_20 IEEE math intrinsic codegen (div, rcp, sqrt, rem)
+- [Tensor Core Intrinsics](tensor.md) — WMMA, MMA, WGMMA, tcgen05 instruction lowering
+- [Sync & Warp Intrinsics](sync-warp.md) — Barrier, vote, shuffle, match, redux intrinsics
+- [Newton-Raphson Templates](../codegen/templates.md) — Software math slowpath sequences used by div/rcp/sqrt
+- [TCGen05 — 5th Gen Tensor Cores](../targets/tcgen05.md) — Blackwell tensor core ISA detail
+- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) — Hash map infrastructure (`sub_425CA0` / `sub_426150` / `sub_426D60`)
+- [Mercury Encoder](../codegen/mercury.md) — Master SASS encoder `sub_6D9690` (94KB) that encodes validated intrinsics
+- [SASS Instruction Encoding](../codegen/encoding.md) — Instruction encoding infrastructure
+- [Pipeline Overview](../pipeline/overview.md) — OCG-time measurement covers intrinsic lowering
 
 ## Appendix: Complete Intrinsic Name Catalog (607 Entries)
 
 Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source. IDs are contiguous 1--607 (0x001--0x25F). The suffix after stripping the prefix encodes the operation, data type, rounding mode, address space, and optional modifiers.
 
-### `__cuda_reduxsync_*` -- Redux sync (17 entries, `0x001`--`0x011`, sm_70)
+### `__cuda_reduxsync_*` — Redux sync (17 entries, `0x001`--`0x011`, sm_70)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -819,7 +819,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 16 | `0x010` | `__cuda_reduxsync_u32_max` |
 | 17 | `0x011` | `__cuda_reduxsync_u32_min` |
 
-### `__cuda_sanitizer_memcheck_*` -- Compute-sanitizer hooks (7 entries, `0x012`--`0x018`, --)
+### `__cuda_sanitizer_memcheck_*` — Compute-sanitizer hooks (7 entries, `0x012`--`0x018`, --)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -831,7 +831,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 23 | `0x017` | `__cuda_sanitizer_memcheck_readmetadata` |
 | 24 | `0x018` | `__cuda_sanitizer_memcheck_shared` |
 
-### `__cuda_scalar_video_emulation_*` -- Video emulation (7 entries, `0x019`--`0x01F`, sm_20)
+### `__cuda_scalar_video_emulation_*` — Video emulation (7 entries, `0x019`--`0x01F`, sm_20)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -843,7 +843,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 30 | `0x01E` | `__cuda_scalar_video_emulation_saturate64` |
 | 31 | `0x01F` | `__cuda_scalar_video_emulation_secondOp64` |
 
-### `__cuda_sm10x_*` -- Blackwell tcgen05 guardrails + mask (11 entries, `0x020`--`0x02A`, sm_100)
+### `__cuda_sm10x_*` — Blackwell tcgen05 guardrails + mask (11 entries, `0x020`--`0x02A`, sm_100)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -859,7 +859,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 41 | `0x029` | `__cuda_sm10x_tcgen05_guardrail_trap_unallocated_columns_access` |
 | 42 | `0x02A` | `__cuda_sm10x_tcgen05_guardrail_trap_unallocated_columns_being_dealloced` |
 
-### `__cuda_sm1xx_*` -- Bulk copy + cp.async.bulk.tensor (18 entries, `0x02B`--`0x03C`, sm_100+)
+### `__cuda_sm1xx_*` — Bulk copy + cp.async.bulk.tensor (18 entries, `0x02B`--`0x03C`, sm_100+)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -882,7 +882,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 59 | `0x03B` | `__cuda_sm1xx_cp_async_bulk_tensor_5d_tile_multicast` |
 | 60 | `0x03C` | `__cuda_sm1xx_cp_async_bulk_tensor_5d_tile_unicast` |
 
-### `__cuda_sm20_*` -- IEEE math (70 entries, `0x03D`--`0x082`, sm_20)
+### `__cuda_sm20_*` — IEEE math (70 entries, `0x03D`--`0x082`, sm_20)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -957,7 +957,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 129 | `0x081` | `__cuda_sm20_sqrt_rz_ftz_f32` |
 | 130 | `0x082` | `__cuda_sm20_sqrt_rz_ftz_f32_slowpath` |
 
-### `__cuda_sm3x_*` -- Optimized division (4 entries, `0x083`--`0x086`, sm_30)
+### `__cuda_sm3x_*` — Optimized division (4 entries, `0x083`--`0x086`, sm_30)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -966,14 +966,14 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 133 | `0x085` | `__cuda_sm3x_div_rn_noftz_f32` |
 | 134 | `0x086` | `__cuda_sm3x_div_rn_noftz_f32_slowpath` |
 
-### `__cuda_sm62_*` -- Integer dot product (2 entries, `0x087`--`0x088`, sm_62)
+### `__cuda_sm62_*` — Integer dot product (2 entries, `0x087`--`0x088`, sm_62)
 
 | ID | Hex | Name |
 |---|---|---|
 | 135 | `0x087` | `__cuda_sm62_dp2a` |
 | 136 | `0x088` | `__cuda_sm62_dp4a` |
 
-### `__cuda_sm70_*` -- Volta sync/warp/WMMA (393 entries, `0x089`--`0x211`, sm_70)
+### `__cuda_sm70_*` — Volta sync/warp/WMMA (393 entries, `0x089`--`0x211`, sm_70)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -1371,7 +1371,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 528 | `0x210` | `__cuda_sm70_wmma_m8n32k16_store_d_row_f32_global` |
 | 529 | `0x211` | `__cuda_sm70_wmma_m8n32k16_store_d_row_f32_shared` |
 
-### `__cuda_sm80_*` -- Ampere createpolicy (3 entries, `0x212`--`0x214`, sm_80)
+### `__cuda_sm80_*` — Ampere createpolicy (3 entries, `0x212`--`0x214`, sm_80)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -1379,7 +1379,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 531 | `0x213` | `__cuda_sm80_createpolicy_fractional_encode` |
 | 532 | `0x214` | `__cuda_sm80_createpolicy_range_encode` |
 
-### `__cuda_sm_10x_*` -- Blackwell hmma/imma/bit MMA (10 entries, `0x215`--`0x21E`, sm_100)
+### `__cuda_sm_10x_*` — Blackwell hmma/imma/bit MMA (10 entries, `0x215`--`0x21E`, sm_100)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -1394,7 +1394,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 541 | `0x21D` | `__cuda_sm_10x_mma_bit_internal_xor_m16n8k256` |
 | 542 | `0x21E` | `__cuda_sm_10x_mma_bit_internal_xor_m8n8k128` |
 
-### `__cuda_sm_8x_*` -- Direct MMA + shfl (14 entries, `0x21F`--`0x22C`, sm_80+)
+### `__cuda_sm_8x_*` — Direct MMA + shfl (14 entries, `0x21F`--`0x22C`, sm_80+)
 
 | ID | Hex | Name |
 |---|---|---|
@@ -1413,7 +1413,7 @@ Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source
 | 555 | `0x22B` | `__cuda_sm_8x_mma_shfl_f16` |
 | 556 | `0x22C` | `__cuda_sm_8x_mma_shfl_f32` |
 
-### `__cuda_sm_9x_*` -- Hopper sub-byte/bit MMA (51 entries, `0x22D`--`0x25F`, sm_90)
+### `__cuda_sm_9x_*` — Hopper sub-byte/bit MMA (51 entries, `0x22D`--`0x25F`, sm_90)
 
 | ID | Hex | Name |
 |---|---|---|

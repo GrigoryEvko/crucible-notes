@@ -1,6 +1,6 @@
 # Dead Barrier Elimination
 
-CICC contains three independent passes that eliminate redundant `__syncthreads()` barriers from CUDA kernels. This page documents the lightweight `basic-dbe` pass -- a single-pass, intra-block pattern matcher that removes trivially dead barriers without dataflow analysis. The two heavyweight engines are covered on their own pages: [Dead Synchronization Elimination](./dead-sync-elimination.md) (`sub_2C84BA0`, 96KB, full bidirectional fixed-point dataflow) and [Branch Distribution](./branch-distribution.md) (`sub_1C47810`, 63KB, NVVM-IR-level fixed-point with restart). All three target the same goal -- eliminating barriers that provably do not order any memory hazard -- but at different cost/precision tradeoffs.
+CICC contains three independent passes that eliminate redundant `__syncthreads()` barriers from CUDA kernels. This page documents the lightweight `basic-dbe` pass — a single-pass, intra-block pattern matcher that removes trivially dead barriers without dataflow analysis. The two heavyweight engines are covered on their own pages: [Dead Synchronization Elimination](./dead-sync-elimination.md) (`sub_2C84BA0`, 96KB, full bidirectional fixed-point dataflow) and [Branch Distribution](./branch-distribution.md) (`sub_1C47810`, 63KB, NVVM-IR-level fixed-point with restart). All three target the same goal — eliminating barriers that provably do not order any memory hazard — but at different cost/precision tradeoffs.
 
 ## Key Facts: `basic-dbe`
 
@@ -15,11 +15,11 @@ CICC contains three independent passes that eliminate redundant `__syncthreads()
 | Knob constructor | `ctor_261` (below 5KB, in `0x4F0000`--`0x51FFFF` range) |
 | Enable global | `byte_4FBB6C0` (initialized to 0 in `ctor_261`, set to 1 by pipeline setup) |
 | Binary size | Small (< 5KB compiled) |
-| Upstream equivalent | None -- entirely NVIDIA-proprietary |
+| Upstream equivalent | None — entirely NVIDIA-proprietary |
 
 ## Why a Lightweight Pass Exists
 
-The full dead synchronization elimination engine at `sub_2C84BA0` is 96KB of code implementing bidirectional fixed-point dataflow with complete restart after each removal. That is expensive. For the common cases -- consecutive barriers with no intervening memory operations, barriers at function entry/exit with no shared memory traffic in the block, or barriers immediately followed by another barrier -- the heavyweight engine is overkill.
+The full dead synchronization elimination engine at `sub_2C84BA0` is 96KB of code implementing bidirectional fixed-point dataflow with complete restart after each removal. That is expensive. For the common cases — consecutive barriers with no intervening memory operations, barriers at function entry/exit with no shared memory traffic in the block, or barriers immediately followed by another barrier — the heavyweight engine is overkill.
 
 `basic-dbe` exists as a cheap pre-filter: it handles the trivially dead cases in a single linear scan per function, eliminating the low-hanging fruit before the full engine (if scheduled) performs its expensive inter-block analysis. By removing obvious dead barriers early, `basic-dbe` also reduces the iteration count of the heavyweight pass, since fewer barriers remain for it to analyze.
 
@@ -58,7 +58,7 @@ Two or more `__syncthreads()` calls with no intervening instructions (or only no
 
 #### Pattern 2: Barrier in Empty Block
 
-A basic block whose only non-terminator instructions are barriers and non-memory operations (debug info, metadata). If no instruction in the block reads or writes shared/global memory, every barrier in the block is dead -- there is nothing to order.
+A basic block whose only non-terminator instructions are barriers and non-memory operations (debug info, metadata). If no instruction in the block reads or writes shared/global memory, every barrier in the block is dead — there is nothing to order.
 
 ```llvm
 ; Before basic-dbe:
@@ -122,7 +122,7 @@ function BasicDeadBarrierEliminationPass::run(F):
         return PreservedAnalyses::all()
 ```
 
-The key design choice: `basic-dbe` treats each basic block as an isolated unit. It does **not** look at predecessor or successor blocks. This means it will miss cases where a barrier is dead because all reaching paths lack memory accesses -- those cases require the full inter-block dataflow of `sub_2C84BA0` or `sub_1C47810`.
+The key design choice: `basic-dbe` treats each basic block as an isolated unit. It does **not** look at predecessor or successor blocks. This means it will miss cases where a barrier is dead because all reaching paths lack memory accesses — those cases require the full inter-block dataflow of `sub_2C84BA0` or `sub_1C47810`.
 
 ### Memory Access Classification
 
@@ -171,25 +171,25 @@ The intended execution order:
 |---|---|---|---|
 | `byte_4FBB6C0` | bool (global) | 0 (disabled) | Master enable for `basic-dbe` and `branch-dist` |
 
-No dedicated per-pass knobs (threshold, dump flags, or limits) have been identified for `basic-dbe` itself. The pass is controlled entirely by its enable flag. This is consistent with its role as a lightweight pre-filter -- there is nothing to tune.
+No dedicated per-pass knobs (threshold, dump flags, or limits) have been identified for `basic-dbe` itself. The pass is controlled entirely by its enable flag. This is consistent with its role as a lightweight pre-filter — there is nothing to tune.
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_2342890` line 2212 | -- | New PM registration: maps `"basic-dbe"` to `llvm::BasicDeadBarrierEliminationPass` |
-| -- | `ctor_261` (0x4F range) | -- | Global constructor: initializes `byte_4FBB6C0` to 0, registers `basic-dbe` knob string |
-| -- | `byte_4FBB6C0` | -- | Global enable flag (shared with `branch-dist`) |
-| -- | `sub_2C83D20` | -- | `isSyncBarrier` predicate (shared with full engine) |
-| -- | `sub_2C83AE0` | -- | `classifyMemoryAccess` (shared with full engine) |
-| -- | `sub_CEA1A0` | -- | Barrier intrinsic ID confirmation |
-| -- | `sub_B49E00` | -- | `isSharedMemoryAccess` -- CUDA address space check |
-| -- | `sub_B43D60` | -- | `Instruction::eraseFromParent` -- barrier deletion |
+| — | `sub_2342890` line 2212 | — | New PM registration: maps `"basic-dbe"` to `llvm::BasicDeadBarrierEliminationPass` |
+| — | `ctor_261` (0x4F range) | — | Global constructor: initializes `byte_4FBB6C0` to 0, registers `basic-dbe` knob string |
+| — | `byte_4FBB6C0` | — | Global enable flag (shared with `branch-dist`) |
+| — | `sub_2C83D20` | — | `isSyncBarrier` predicate (shared with full engine) |
+| — | `sub_2C83AE0` | — | `classifyMemoryAccess` (shared with full engine) |
+| — | `sub_CEA1A0` | — | Barrier intrinsic ID confirmation |
+| — | `sub_B49E00` | — | `isSharedMemoryAccess` — CUDA address space check |
+| — | `sub_B43D60` | — | `Instruction::eraseFromParent` — barrier deletion |
 
 ## Cross-References
 
-- [Dead Synchronization Elimination](./dead-sync-elimination.md) -- the full 96KB bidirectional dataflow engine
-- [Branch Distribution](./branch-distribution.md) -- the NVVM-IR-level dead-sync pass (63KB, 13 RB-tree maps)
-- [NVIDIA Custom Passes: Inventory](./index.md) -- registry entry
-- [LLVM Optimizer: Pipeline](../pipeline/optimizer.md) -- pipeline context showing `basic-dbe` at slot 376
-- [GPU Execution Model](../gpu-execution-model.md) -- why `__syncthreads()` exists and when it matters
+- [Dead Synchronization Elimination](./dead-sync-elimination.md) — the full 96KB bidirectional dataflow engine
+- [Branch Distribution](./branch-distribution.md) — the NVVM-IR-level dead-sync pass (63KB, 13 RB-tree maps)
+- [NVIDIA Custom Passes: Inventory](./index.md) — registry entry
+- [LLVM Optimizer: Pipeline](../pipeline/optimizer.md) — pipeline context showing `basic-dbe` at slot 376
+- [GPU Execution Model](../gpu-execution-model.md) — why `__syncthreads()` exists and when it matters

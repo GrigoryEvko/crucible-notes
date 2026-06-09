@@ -12,7 +12,7 @@ This page documents the reverse engineering methodology used to produce every pa
 | Target binary | `cudafe++` from CUDA Toolkit 13.0 | ELF 64-bit, statically linked, stripped, 8,910,936 bytes |
 | IDA database | `cudafe++.i64` | 247 MB analysis state (all function boundaries, xrefs, type info, decompilation caches) |
 
-The binary was loaded into IDA Pro 9.0 with default x86-64 analysis settings. IDA's auto-analysis resolved all code/data boundaries, generated function boundaries for 6,501 functions, and identified 52,489 string literals. The Hex-Rays decompiler was invoked on all 6,501 functions; the IDAPython extraction log reports 6,343 successful decompilations (the remaining 158 failures are exception personality routines, SoftFloat leaf functions, and tiny thunks where Hex-Rays cannot reconstruct a valid C AST). However, due to function-name collisions in the output filenames (multiple `sub_XXXXXX` entries mapping to the same sanitized name after `/` replacement), the actual decompiled output directory contains **6,202 unique `.c` files** -- the number used throughout this wiki.
+The binary was loaded into IDA Pro 9.0 with default x86-64 analysis settings. IDA's auto-analysis resolved all code/data boundaries, generated function boundaries for 6,501 functions, and identified 52,489 string literals. The Hex-Rays decompiler was invoked on all 6,501 functions; the IDAPython extraction log reports 6,343 successful decompilations (the remaining 158 failures are exception personality routines, SoftFloat leaf functions, and tiny thunks where Hex-Rays cannot reconstruct a valid C AST). However, due to function-name collisions in the output filenames (multiple `sub_XXXXXX` entries mapping to the same sanitized name after `/` replacement), the actual decompiled output directory contains **6,202 unique `.c` files** — the number used throughout this wiki.
 
 ## Extraction Script
 
@@ -39,15 +39,15 @@ The script is structured as a `main()` function that calls `idaapi.auto_wait()` 
 
 The 12 passes, in execution order:
 
-1. **`export_all_strings()`** -- Enumerates `idautils.Strings()`, then for each string walks `XrefsTo(string_ea)` to record every function that references it. Each string entry captures the address, string value, string type code, and a list of xref records (`{from_addr, func_name, xref_type}`). This is the foundation for source attribution (see below).
+1. **`export_all_strings()`** — Enumerates `idautils.Strings()`, then for each string walks `XrefsTo(string_ea)` to record every function that references it. Each string entry captures the address, string value, string type code, and a list of xref records (`{from_addr, func_name, xref_type}`). This is the foundation for source attribution (see below).
 
-2. **`export_all_functions()`** -- For each function in `idautils.Functions()`, records start/end address, size, instruction count (via `idc.is_code()` on each head), library flag (`FUNC_LIB`), thunk flag (`FUNC_THUNK`), and builds caller/callee lists. Callers are found via `XrefsTo(func_start)`; callees via `XrefsFrom(head)` filtered to call-type xrefs (`fl_CN` = type 17, `fl_CF` = type 19).
+2. **`export_all_functions()`** — For each function in `idautils.Functions()`, records start/end address, size, instruction count (via `idc.is_code()` on each head), library flag (`FUNC_LIB`), thunk flag (`FUNC_THUNK`), and builds caller/callee lists. Callers are found via `XrefsTo(func_start)`; callees via `XrefsFrom(head)` filtered to call-type xrefs (`fl_CN` = type 17, `fl_CF` = type 19).
 
-3. **`export_imports()`** -- Enumerates all imported modules via `idaapi.get_import_module_qty()` and `idaapi.enum_import_names()`. Records module name, symbol name, address, and ordinal for each of the 142 glibc imports.
+3. **`export_imports()`** — Enumerates all imported modules via `idaapi.get_import_module_qty()` and `idaapi.enum_import_names()`. Records module name, symbol name, address, and ordinal for each of the 142 glibc imports.
 
-4. **`export_segments()`** -- Iterates `idautils.Segments()` to record each ELF section's name, start/end address, size, type code, and permission bits.
+4. **`export_segments()`** — Iterates `idautils.Segments()` to record each ELF section's name, start/end address, size, type code, and permission bits.
 
-5. **`export_xrefs()`** -- Full enumeration of all cross-references from every instruction head in every function. For each xref, records source address, source function, target address, target function (if any), and xref type code. Produces the 1,243,258-record xref table. The six xref type codes in the output:
+5. **`export_xrefs()`** — Full enumeration of all cross-references from every instruction head in every function. For each xref, records source address, source function, target address, target function (if any), and xref type code. Produces the 1,243,258-record xref table. The six xref type codes in the output:
 
    | Type | Code | Count | Meaning |
    |---|---|---|---|
@@ -58,19 +58,19 @@ The 12 passes, in execution order:
    | `fl_CF` | 19 | 189,364 | Code far/ordinary flow |
    | `fl_JN` | 21 | 902,655 | Code near jump (including fall-through) |
 
-6. **`export_comments()`** -- Walks every instruction head in the database via `idautils.Heads()`, extracting both regular comments (`idc.get_cmt(ea, 0)`) and repeatable comments (`idc.get_cmt(ea, 1)`).
+6. **`export_comments()`** — Walks every instruction head in the database via `idautils.Heads()`, extracting both regular comments (`idc.get_cmt(ea, 0)`) and repeatable comments (`idc.get_cmt(ea, 1)`).
 
-7. **`export_names()`** -- Iterates `idautils.Names()` to export all named locations (function names, data labels, IDA auto-generated names).
+7. **`export_names()`** — Iterates `idautils.Names()` to export all named locations (function names, data labels, IDA auto-generated names).
 
-8. **`extract_rodata()`** -- Reads the raw bytes of the `.rodata` segment via `ida_bytes.get_bytes()` and writes them to a binary file. Used for offline string scanning and jump table analysis.
+8. **`extract_rodata()`** — Reads the raw bytes of the `.rodata` segment via `ida_bytes.get_bytes()` and writes them to a binary file. Used for offline string scanning and jump table analysis.
 
-9. **`export_callgraph()`** -- Builds the 67,756-edge call graph by iterating every function and scanning its instruction heads for outgoing call xrefs (`fl_CN`, `fl_CF`). Output in both JSON (array of `{from, from_addr, to, to_addr}` edge records) and Graphviz DOT format (67,759 lines).
+9. **`export_callgraph()`** — Builds the 67,756-edge call graph by iterating every function and scanning its instruction heads for outgoing call xrefs (`fl_CN`, `fl_CF`). Output in both JSON (array of `{from, from_addr, to, to_addr}` edge records) and Graphviz DOT format (67,759 lines).
 
-10. **`export_complete_disassembly()`** -- Per-function disassembly files. For each function, iterates all instruction heads within the function's address range, generating hex byte dumps alongside disassembly text via `idc.generate_disasm_line()`. Each file includes a header with function name, address range, and byte size.
+10. **`export_complete_disassembly()`** — Per-function disassembly files. For each function, iterates all instruction heads within the function's address range, generating hex byte dumps alongside disassembly text via `idc.generate_disasm_line()`. Each file includes a header with function name, address range, and byte size.
 
-11. **`export_function_graphs()`** -- Per-function control flow graphs via `idaapi.FlowChart()`. For each basic block: block ID, start/end address, size, and full instruction listing. Block-to-block edges (fall-through and branch targets) are extracted via `block.succs()`. Output as both JSON (structured blocks + edges) and DOT (for Graphviz visualization).
+11. **`export_function_graphs()`** — Per-function control flow graphs via `idaapi.FlowChart()`. For each basic block: block ID, start/end address, size, and full instruction listing. Block-to-block edges (fall-through and branch targets) are extracted via `block.succs()`. Output as both JSON (structured blocks + edges) and DOT (for Graphviz visualization).
 
-12. **`export_decompilation()`** -- Calls `idaapi.init_hexrays_plugin()` to initialize the Hex-Rays decompiler, then iterates all functions and calls `idaapi.decompile(func_ea)`. On success, the pseudocode string (`str(cfunc)`) is written to a `.c` file with a header comment containing the function name and address. Failures are silently caught via a bare `except Exception` and skipped.
+12. **`export_decompilation()`** — Calls `idaapi.init_hexrays_plugin()` to initialize the Hex-Rays decompiler, then iterates all functions and calls `idaapi.decompile(func_ea)`. On success, the pseudocode string (`str(cfunc)`) is written to a `.c` file with a header comment containing the function name and address. Failures are silently caught via a bare `except Exception` and skipped.
 
 The script is invoked via IDA's headless batch mode or interactive scripting console. It does not call `qexit()` at the end, allowing the IDA database to remain open for further interactive analysis after extraction. Total extraction time is approximately 30-45 minutes on a workstation-class machine, dominated by the 6,501 decompilation calls in pass 12.
 
@@ -92,7 +92,7 @@ sub_403300:         ; assert stub for is_aliasable (attribute.c:10897)
   call sub_4F2930           ; internal_error(__FILE__, __LINE__, __func__)
 ```
 
-Of the 235 stubs, 200 reference `.c` file paths and 35 reference `.h` file paths (inlined assertions from header files). The stubs are sorted approximately by source file name within the stub region -- the linker grouped them from all 52 `.c` compilation units into one contiguous block.
+Of the 235 stubs, 200 reference `.c` file paths and 35 reference `.h` file paths (inlined assertions from header files). The stubs are sorted approximately by source file name within the stub region — the linker grouped them from all 52 `.c` compilation units into one contiguous block.
 
 Beyond the dedicated stubs, 1,904 additional functions contain inline assertion checks: the `lea rdi, <file_path>` instruction appears within the function body at the assertion site, not in a separate stub. These inline assertions provide the same source-file attribution as the stubs.
 
@@ -104,7 +104,7 @@ The attribution chain works in three steps:
 
 2. **Xref tracing.** For each assert stub, follow `XrefsTo()` to find which main-body functions call it. A function at `0x40DFD0` that calls the `attribute.c:5108` stub was compiled from `attribute.c`. This attributes the caller to the source file.
 
-3. **Range extension.** Assert stubs are sparse -- not every function contains an assertion. Once a set of functions in a contiguous address range are attributed to the same source file, the entire range is assigned to that file. This works because the linker places all object code from a single `.c` file contiguously, and the files are arranged roughly alphabetically by filename.
+3. **Range extension.** Assert stubs are sparse — not every function contains an assertion. Once a set of functions in a contiguous address range are attributed to the same source file, the entire range is assigned to that file. This works because the linker places all object code from a single `.c` file contiguously, and the files are arranged roughly alphabetically by filename.
 
 This technique attributed 2,209 functions (34.0% of the binary) to specific source files. The remaining 4,292 functions fall into three categories: C++ runtime code (1,085 functions from libstdc++/glibc, identifiable by address range), PLT/init stubs (283 functions), and unmapped EDG functions (2,924 functions that contain no assertions and cannot be confidently attributed).
 
@@ -124,10 +124,10 @@ Every identification in the raw sweep reports and wiki pages carries one of four
 
 | Level | Tag | Criteria | Example |
 |---|---|---|---|
-| **CONFIRMED** | Direct match | The function's identity is proven by an assertion string that encodes the exact function name, source file, and line number. No ambiguity. | `sub_403300` loads `"is_aliasable"` + `"attribute.c"` + `"10897"` -- it is the assertion stub for `is_aliasable()` in `attribute.c` at line 10897. |
-| **HIGH** | String + callgraph | The function references a distinctive string (error message, format string, keyword literal) AND its position in the call graph is consistent with a single plausible identity. | `sub_459630` references 276 CLI flag strings and is called from `main()` at the position where command-line processing occurs -- identified as `proc_command_line()`. |
-| **MEDIUM** | Pattern + context | The function matches a known EDG pattern (struct layout access, IL node walking, type query) and its address falls within the expected source file range, but no string or assertion directly confirms the identity. | A function at `0x5B3000` accesses the IL node kind field at the expected struct offset and falls within the `il.c` address range -- likely an IL accessor, but the specific function name is inferred. |
-| **LOW** | Address proximity | The function's address falls within a source file's range, but no internal evidence (strings, struct accesses, callees) distinguishes it from neighboring functions. The attribution is based solely on the linker's contiguous placement of object code. | A small leaf function at `0x5B2F80` sits between two `il.c`-attributed functions -- probably from `il.c`, but it could be an inlined header function. |
+| **CONFIRMED** | Direct match | The function's identity is proven by an assertion string that encodes the exact function name, source file, and line number. No ambiguity. | `sub_403300` loads `"is_aliasable"` + `"attribute.c"` + `"10897"` — it is the assertion stub for `is_aliasable()` in `attribute.c` at line 10897. |
+| **HIGH** | String + callgraph | The function references a distinctive string (error message, format string, keyword literal) AND its position in the call graph is consistent with a single plausible identity. | `sub_459630` references 276 CLI flag strings and is called from `main()` at the position where command-line processing occurs — identified as `proc_command_line()`. |
+| **MEDIUM** | Pattern + context | The function matches a known EDG pattern (struct layout access, IL node walking, type query) and its address falls within the expected source file range, but no string or assertion directly confirms the identity. | A function at `0x5B3000` accesses the IL node kind field at the expected struct offset and falls within the `il.c` address range — likely an IL accessor, but the specific function name is inferred. |
+| **LOW** | Address proximity | The function's address falls within a source file's range, but no internal evidence (strings, struct accesses, callees) distinguishes it from neighboring functions. The attribution is based solely on the linker's contiguous placement of object code. | A small leaf function at `0x5B2F80` sits between two `il.c`-attributed functions — probably from `il.c`, but it could be an inlined header function. |
 
 In practice, approximately 34% of functions are CONFIRMED (via assert strings), ~20% are HIGH (via distinctive strings or unique callgraph positions), ~25% are MEDIUM, and ~21% are LOW or unattributed.
 
@@ -137,11 +137,11 @@ The wiki uses a fixed vocabulary drawn from three sources: EDG's internal source
 
 ## Call Graph Analysis
 
-The complete call graph contains **67,756 edges** connecting the 6,501 functions. This graph is the primary tool for understanding system architecture -- which subsystems call which, where the hot paths are, and how NVIDIA's additions integrate with the EDG base.
+The complete call graph contains **67,756 edges** connecting the 6,501 functions. This graph is the primary tool for understanding system architecture — which subsystems call which, where the hot paths are, and how NVIDIA's additions integrate with the EDG base.
 
 ### Hub Identification
 
-Hub functions -- those with exceptionally high in-degree (many callers) or out-degree (many callees) -- reveal the architectural spine of the compiler:
+Hub functions — those with exceptionally high in-degree (many callers) or out-degree (many callees) — reveal the architectural spine of the compiler:
 
 | Hub Type | Function | Description | Degree |
 |---|---|---|---|
@@ -185,7 +185,7 @@ Three string mining techniques are used throughout the analysis:
 
 1. **Error message tracing.** CUDA-specific error messages (e.g., `"calling a __host__ function from a __device__ function is not allowed"`) are grepped from the string table, their xrefs traced to the emitting function, and the emitting function's callers analyzed to understand the validation logic that triggers the error.
 
-2. **Keyword enumeration.** The keyword initialization function (`sub_5863A0`) loads 200+ string constants in sequence. By reading the strings in load order, the complete CUDA keyword vocabulary is recovered -- including internal-only keywords not documented in the CUDA C++ Programming Guide.
+2. **Keyword enumeration.** The keyword initialization function (`sub_5863A0`) loads 200+ string constants in sequence. By reading the strings in load order, the complete CUDA keyword vocabulary is recovered — including internal-only keywords not documented in the CUDA C++ Programming Guide.
 
 3. **Format string analysis.** Format strings in the backend (`cp_gen_be.c`) reveal the exact syntax of `.int.c` output. A string like `"static void __device_stub__%s("` tells us the precise naming convention for device stub wrapper functions.
 
@@ -195,21 +195,21 @@ Hex-Rays produces readable pseudocode for the vast majority of functions, but se
 
 ### Control Flow Artifacts
 
-Hex-Rays occasionally introduces control flow constructs that do not exist in the original source. The most prominent example is the `while(1)` loop in `main()` (`sub_408950`): the decompiler wraps the entire function body in an infinite loop because a `setjmp`-based error recovery mechanism creates a backward edge in the CFG. In reality, `main()` executes linearly and returns -- the `while(1)` is a decompiler artifact, not a real loop.
+Hex-Rays occasionally introduces control flow constructs that do not exist in the original source. The most prominent example is the `while(1)` loop in `main()` (`sub_408950`): the decompiler wraps the entire function body in an infinite loop because a `setjmp`-based error recovery mechanism creates a backward edge in the CFG. In reality, `main()` executes linearly and returns — the `while(1)` is a decompiler artifact, not a real loop.
 
 Similar artifacts appear in functions with complex switch statements (EDG uses computed gotos for performance), where Hex-Rays may produce nested `if-else` chains instead of the flat dispatch table the original code uses.
 
 ### Lost Preprocessor Logic
 
-The original EDG source makes heavy use of preprocessor conditionals (`#if CUDA_SUPPORT`, `#ifdef FRONT_END_CPFE`, etc.). The compiled binary contains only the taken branch -- the preprocessor evaluated all conditions at build time. This means the decompiled code shows the CUDA-enabled configuration only; any host-only or non-CUDA EDG behavior is invisible.
+The original EDG source makes heavy use of preprocessor conditionals (`#if CUDA_SUPPORT`, `#ifdef FRONT_END_CPFE`, etc.). The compiled binary contains only the taken branch — the preprocessor evaluated all conditions at build time. This means the decompiled code shows the CUDA-enabled configuration only; any host-only or non-CUDA EDG behavior is invisible.
 
-Similarly, C macros that wrap common patterns (assertion macros, IL access macros, type query macros) are fully expanded in the binary. The decompiled output shows the expanded form -- a sequence of struct field accesses and conditional jumps -- rather than the concise macro invocation the original source used.
+Similarly, C macros that wrap common patterns (assertion macros, IL access macros, type query macros) are fully expanded in the binary. The decompiled output shows the expanded form — a sequence of struct field accesses and conditional jumps — rather than the concise macro invocation the original source used.
 
 ### Unnamed Variables
 
 The binary is stripped. All local variable names are lost. Hex-Rays assigns synthetic names (`v1`, `v2`, `a1`, `a2`) based on register allocation and stack slot positions. Function parameters are named `a1` through `aN` in declaration order. During analysis, meaningful names are sometimes manually applied in the IDA database, but most decompiled output uses the synthetic names.
 
-Structure field accesses appear as byte-offset expressions (`*((_BYTE *)a1 + 182)`) rather than named fields (`entity->execution_space`). Reconstructing the structure layouts from these offset patterns is a core part of the analysis -- see the [Entity Node Layout](./structs/entity-node.md) page for the most extensively reconstructed structure.
+Structure field accesses appear as byte-offset expressions (`*((_BYTE *)a1 + 182)`) rather than named fields (`entity->execution_space`). Reconstructing the structure layouts from these offset patterns is a core part of the analysis — see the [Entity Node Layout](./structs/entity-node.md) page for the most extensively reconstructed structure.
 
 ### Decompilation Failures
 
@@ -274,7 +274,7 @@ EDG source files:
 **Notes**: Additional observations about behavior, callers, callees
 ```
 
-Every function in the sweep range gets an entry. Functions are documented in address order. The identity field records the inferred function name and source location. The confidence field uses the four-level system defined above. Notes capture anything unusual -- unexpected callers, CUDA-specific behavior, undocumented error codes, or connections to other subsystems.
+Every function in the sweep range gets an entry. Functions are documented in address order. The identity field records the inferred function name and source location. The confidence field uses the four-level system defined above. Notes capture anything unusual — unexpected callers, CUDA-specific behavior, undocumented error codes, or connections to other subsystems.
 
 ## Phase 2: Targeted Deep Dives
 

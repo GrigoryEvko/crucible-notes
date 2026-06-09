@@ -10,10 +10,10 @@ This page documents the internal mechanism of each flag: the global variable it 
 |---|---|---|---|---|---|
 | `--expt-extended-lambda` | `--extended-lambda` | 79\* | `dword_106BF38` | 0 | Enable entire extended lambda wrapper infrastructure |
 | `--expt-relaxed-constexpr` | `--relaxed_constexpr` | 104 | `dword_106BF40` | 0 | Allow constexpr cross-space calls |
-| `-std=c++NN` | `--c++NN` / `set_flag` | -- | `dword_126EF68` | 199711 | Gate C++ standard features |
-| (JIT mode) | `--default-device` | \*\* | -- | 0 | Change unannotated default to `__device__` |
-| `--no-device-int128` | `--no-device-int128` | 52 | -- | 0 | Disable `__int128` in device code |
-| `--no-device-float128` | `--no-device-float128` | 53 | -- | 0 | Disable `__float128`/`_Float128` in device code |
+| `-std=c++NN` | `--c++NN` / `set_flag` | — | `dword_126EF68` | 199711 | Gate C++ standard features |
+| (JIT mode) | `--default-device` | \*\* | — | 0 | Change unannotated default to `__device__` |
+| `--no-device-int128` | `--no-device-int128` | 52 | — | 0 | Disable `__int128` in device code |
+| `--no-device-float128` | `--no-device-float128` | 53 | — | 0 | Disable `__float128`/`_Float128` in device code |
 
 \* The extended-lambda flag is registered as flag 79 (`disable_ext_lambda_cache` is a separate flag at that slot in some reports; the exact case_id for the flag parsed as `extended-lambda` is in the CUDA-specific range 47--89 but the individual case within the grouped 47--53 block is not fully disambiguated). The flag string `"extended-lambda"` is at binary address `0x836410`, referenced from `sub_452010` (init_command_line_flags).
 
@@ -21,7 +21,7 @@ This page documents the internal mechanism of each flag: the global variable it 
 
 ## `--extended-lambda` (dword_106BF38)
 
-This is the single most impactful experimental flag in cudafe++. It enables the entire extended lambda subsystem -- approximately 40 functions in `nv_transforms.c`, 2,100 lines of lambda scanning in `cmd_line.c`, 17 steps of preamble text emission, and per-lambda wrapper generation in the backend. Without it, CUDA lambdas annotated with `__device__` or `__host__ __device__` are rejected outright.
+This is the single most impactful experimental flag in cudafe++. It enables the entire extended lambda subsystem — approximately 40 functions in `nv_transforms.c`, 2,100 lines of lambda scanning in `cmd_line.c`, 17 steps of preamble text emission, and per-lambda wrapper generation in the backend. Without it, CUDA lambdas annotated with `__device__` or `__host__ __device__` are rejected outright.
 
 ### What It Enables
 
@@ -184,7 +184,7 @@ When `dword_106BF40 == 0` and a constexpr function call crosses execution spaces
 | 1 | `__host__ __device__` | constexpr `__device__` | "calling a constexpr \_\_device\_\_ function(%sq1) from a \_\_host\_\_ \_\_device\_\_ function(%sq2) is not allowed. The experimental flag '--expt-relaxed-constexpr' can be used to allow this." |
 | 2 | `__host__` | constexpr `__device__` | "calling a constexpr \_\_device\_\_ function(%sq1) from a \_\_host\_\_ function(%sq2) is not allowed. ..." |
 | 3 | `__host__ __device__` | constexpr `__host__` | "calling a constexpr \_\_host\_\_ function(%sq1) from a \_\_host\_\_ \_\_device\_\_ function(%sq2) is not allowed. ..." |
-| 4 | `__host__ __device__` | constexpr `__host__` | "calling a constexpr \_\_host\_\_ function from a \_\_host\_\_ \_\_device\_\_ function is not allowed. ..." (no entity names -- edge case for unresolved functions) |
+| 4 | `__host__ __device__` | constexpr `__host__` | "calling a constexpr \_\_host\_\_ function from a \_\_host\_\_ \_\_device\_\_ function is not allowed. ..." (no entity names — edge case for unresolved functions) |
 | 5 | `__device__` | constexpr `__host__` | "calling a constexpr \_\_host\_\_ function(%sq1) from a \_\_device\_\_ function(%sq2) is not allowed. ..." |
 | 6 | `__global__` | constexpr `__host__` | "calling a constexpr \_\_host\_\_ function(%sq1) from a \_\_global\_\_ function(%sq2) is not allowed. ..." |
 
@@ -198,7 +198,7 @@ The flag is labeled "experimental" because enabling it can produce silent runtim
 
 2. A `constexpr __host__` function references host-only APIs (file I/O, system calls, host-specific math libraries). With relaxed constexpr, this function can be called from a `__device__` context. If the call is not resolved at compile time (not actually evaluated as a constant expression), the linker or runtime will fail with an obscure error rather than the clear cudafe++ diagnostic.
 
-3. The relaxation applies **globally** -- there is no per-function opt-in. Once enabled, all constexpr cross-space calls are permitted, making it impossible to catch genuinely incorrect calls alongside intentionally relaxed ones.
+3. The relaxation applies **globally** — there is no per-function opt-in. Once enabled, all constexpr cross-space calls are permitted, making it impossible to catch genuinely incorrect calls alongside intentionally relaxed ones.
 
 The related diagnostic tag is `cl_relaxed_constexpr_requires_bool` (at binary address `0x853640`), which indicates there was at some point a stricter validation that the flag's value must be boolean.
 
@@ -288,7 +288,7 @@ When enabled, the execution-space assignment logic modifies `entity+182` to rece
 
 ### JIT Mode Context
 
-JIT mode activates when `--gen_c_file_name` (flag 45) is NOT provided -- there is no host output path, so the host backend never runs. This is the compilation mode used by NVRTC (the CUDA runtime compilation library) and the CUDA Driver API's runtime compilation facilities (`cuModuleLoadData`, `cuLinkAddData`).
+JIT mode activates when `--gen_c_file_name` (flag 45) is NOT provided — there is no host output path, so the host backend never runs. This is the compilation mode used by NVRTC (the CUDA runtime compilation library) and the CUDA Driver API's runtime compilation facilities (`cuModuleLoadData`, `cuLinkAddData`).
 
 Without `--default-device`, five JIT-specific diagnostics warn about unannotated entities:
 
@@ -300,7 +300,7 @@ Without `--default-device`, five JIT-specific diagnostics warn about unannotated
 | `unannotated_static_data_member_in_jit` | Non-const static data member considered host |
 | `host_closure_class_in_jit` | Lambda closure class inferred as `__host__` |
 
-Four of the five messages explicitly suggest `--default-device` as a workaround. The exception is `no_host_in_jit` -- an explicit `__host__` annotation cannot be overridden by a flag and requires a source code change.
+Four of the five messages explicitly suggest `--default-device` as a workaround. The exception is `no_host_in_jit` — an explicit `__host__` annotation cannot be overridden by a flag and requires a source code change.
 
 The `--default-device` flag interacts with the extended lambda system (`dword_106BF38`): when both are active, namespace-scope lambda closure classes infer `__device__` execution space instead of `__host__`, avoiding the `host_closure_class_in_jit` diagnostic.
 
@@ -370,10 +370,10 @@ The experimental flags interact with each other and with version gating:
 
 ## Cross-References
 
-- [config/cli-flags.md](cli-flags.md) -- complete flag catalog and registration protocol
-- [lambda/overview.md](../lambda/overview.md) -- extended lambda pipeline architecture
-- [lambda/preamble-injection.md](../lambda/preamble-injection.md) -- 17-step preamble emission detail
-- [lambda/restrictions.md](../lambda/restrictions.md) -- all 35+ lambda restriction error codes
-- [cuda/cross-space-validation.md](../cuda/cross-space-validation.md) -- cross-space call checking and `dword_106BF40` relaxation
-- [cuda/jit-mode.md](../cuda/jit-mode.md) -- JIT mode, `--default-device` flag, and NVRTC
-- [diagnostics/cuda-errors.md](../diagnostics/cuda-errors.md) -- complete CUDA error catalog
+- [config/cli-flags.md](cli-flags.md) — complete flag catalog and registration protocol
+- [lambda/overview.md](../lambda/overview.md) — extended lambda pipeline architecture
+- [lambda/preamble-injection.md](../lambda/preamble-injection.md) — 17-step preamble emission detail
+- [lambda/restrictions.md](../lambda/restrictions.md) — all 35+ lambda restriction error codes
+- [cuda/cross-space-validation.md](../cuda/cross-space-validation.md) — cross-space call checking and `dword_106BF40` relaxation
+- [cuda/jit-mode.md](../cuda/jit-mode.md) — JIT mode, `--default-device` flag, and NVRTC
+- [diagnostics/cuda-errors.md](../diagnostics/cuda-errors.md) — complete CUDA error catalog

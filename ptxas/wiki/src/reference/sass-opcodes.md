@@ -46,16 +46,16 @@ The 3-level opcode hierarchy within the encoded instruction word is: major (9 bi
 
 ## Duplicate Mnemonic Entries
 
-Five entries in the table share a SASS mnemonic with an earlier index. These are **not** errors in the table -- they are distinct IR opcodes that happen to produce the same assembly mnemonic but with different binary encodings, operand widths, or functional-unit routing. The duplicates fall into two categories:
+Five entries in the table share a SASS mnemonic with an earlier index. These are **not** errors in the table — they are distinct IR opcodes that happen to produce the same assembly mnemonic but with different binary encodings, operand widths, or functional-unit routing. The duplicates fall into two categories:
 
-**Category A -- SM-generation re-introduction.** The same operation is re-implemented for a newer GPU generation with a different SASS major opcode and encoding path, typically because the tensor core or ALU microarchitecture changed:
+**Category A — SM-generation re-introduction.** The same operation is re-implemented for a newer GPU generation with a different SASS major opcode and encoding path, typically because the tensor core or ALU microarchitecture changed:
 
 | Later Index | Earlier Index | Mnemonic | Why re-introduced |
 |-------------|---------------|----------|--------------------|
 | 215 (sm_90) | 180 (sm_82) | DMMA | Hopper warpgroup-aware TC path (enc. cat. 515 vs 434) |
 | 220 (sm_90) | 14 (sm_70) | FMNMX | Hopper adds 5-entry operand sub-mode table (enc. cat. 534 vs 510) |
 
-**Category B -- Operand-width extension.** Blackwell Ultra (sm_104) adds 64-bit operand variants of existing integer ALU instructions. The SASS printer appends a `.64` suffix at render time; the IR name table stores the same base mnemonic for both widths:
+**Category B — Operand-width extension.** Blackwell Ultra (sm_104) adds 64-bit operand variants of existing integer ALU instructions. The SASS printer appends a `.64` suffix at render time; the IR name table stores the same base mnemonic for both widths:
 
 | Later Index | Earlier Index | Mnemonic | What the later index adds |
 |-------------|---------------|----------|---------------------------|
@@ -65,7 +65,7 @@ Five entries in the table share a SASS mnemonic with an earlier index. These are
 
 Binary evidence: in the constructor `sub_7A5D10`, indices 284 and 285 store identical `"VZAZK"` string pointers at adjacent 16-byte slots (`v2+8728` and `v2+8744`). The SASS printer (`sub_7CB560`) maps them to `IMNMX` vs `IMNMX.64` based on operand metadata.
 
-## Base ISA -- sm_70 (Volta) and Later (Indices 0--135)
+## Base ISA — sm_70 (Volta) and Later (Indices 0--135)
 
 These opcodes are available on all SM architectures supported by ptxas v13.0.
 
@@ -163,7 +163,7 @@ These opcodes are available on all SM architectures supported by ptxas v13.0.
 | 31 | `INOFQVSS` | **VABSDIFF** | Vector absolute difference |
 | 32 | `INOFQVSS4` | **VABSDIFF4** | Vector absolute difference, 4-way |
 
-### Memory -- Load/Store
+### Memory — Load/Store
 
 | Idx | ROT13 | Mnemonic | Description |
 |-----|-------|----------|-------------|
@@ -637,7 +637,7 @@ Blackwell Ultra additions. Uniform FP operations, additional integer widths, con
 
 ## Encoding Category Map at `unk_21C0E00`
 
-The 0x508 bytes (1288 bytes) at `unk_21C0E00` are **not** additional opcode names. They are a 322-element `int32` array mapping each opcode index to an **encoding category** number -- a level of indirection between opcode indices and binary encoding format descriptors.
+The 0x508 bytes (1288 bytes) at `unk_21C0E00` are **not** additional opcode names. They are a 322-element `int32` array mapping each opcode index to an **encoding category** number — a level of indirection between opcode indices and binary encoding format descriptors.
 
 ### Binary Evidence
 
@@ -662,7 +662,7 @@ The SASS mnemonic lookup function at `sub_1377C60` reads this map at line 292:
 v84 = *(_DWORD *)(a1 + 4 * v18 + 9336);  // encoding_category_map[opcode_index]
 ```
 
-After matching an input mnemonic string against the ROT13 name table (with inline decoding at lines 264-273), the function reads `encoding_category_map[opcode_index]` and uses the result as a hash key -- combined with a 24-bit architecture discriminator via FNV-1a -- to look up the encoding format descriptor in the hash table at `InstructionInfo+10672`.
+After matching an input mnemonic string against the ROT13 name table (with inline decoding at lines 264-273), the function reads `encoding_category_map[opcode_index]` and uses the result as a hash key — combined with a 24-bit architecture discriminator via FNV-1a — to look up the encoding format descriptor in the hash table at `InstructionInfo+10672`.
 
 This is why duplicate mnemonics (e.g. DMMA at indices 180 and 215, or FMNMX at indices 14 and 220) can have different encoding categories (434 vs 515, 510 vs 534): the category map provides the indirection needed to select different binary encoders for the same mnemonic across architectures. The opcode name table has exactly 322 entries and no more.
 
@@ -700,13 +700,13 @@ From the encoding page analysis, the approximate distribution of 64-bit vs 128-b
 
 **128-bit format (format code 0x2):** All ALU operations (IMAD, IADD3, FFMA, FADD, FMUL, LOP3, ISETP, FSETP, etc.), all memory operations (LDG, STG, LDS, STS, LDL, STL, LD, ST, LDC), all atomics (ATOM, ATOMG, ATOMS, RED), all texture operations (TEX, TLD, TLD4, TMML, TXD, TXQ), all surface operations, tensor core operations (HMMA, IMMA, BMMA, GMMA, etc.), conversion instructions, and most uniform register operations.
 
-**256-bit format (format code 0x8):** IMAD.WIDE variants with 16 constant-bank operand slots. Extremely rare -- only 2 encoder functions use this format.
+**256-bit format (format code 0x8):** IMAD.WIDE variants with 16 constant-bank operand slots. Extremely rare — only 2 encoder functions use this format.
 
 The 64-bit short-form encoders cover 27 opcode classes across 174 encoder functions total. The 128-bit encoders cover the remaining ~75+ opcode classes across 912+ encoder functions.
 
 ## SM100 Encoding Variant Counts
 
-Per-opcode variant counts for the SM100 (Blackwell datacenter) SASS encoder, extracted from the 683 concrete encoding handler functions at `0xED1520`--`0xFA5F10`. Each function encodes one (opcode, operand-form) pair -- e.g., `FFMA reg,reg,reg` vs `FFMA reg,reg,imm` vs `FFMA reg,reg,pred`. The "Enc ID" column is the numeric value written to `*(WORD*)(a2+12)` by each handler, which maps to the SASS binary major opcode through the encoding dispatch megafunctions. The "SASS Mnemonic" column gives the canonical name from the 322-entry ROT13 opcode name table in `InstructionInfo`. Where two encoder IDs map to the same mnemonic (e.g. IADD3 IDs 0+1, LOP3 IDs 4+10), both are listed; the "Combined" column gives the merged count for that instruction.
+Per-opcode variant counts for the SM100 (Blackwell datacenter) SASS encoder, extracted from the 683 concrete encoding handler functions at `0xED1520`--`0xFA5F10`. Each function encodes one (opcode, operand-form) pair — e.g., `FFMA reg,reg,reg` vs `FFMA reg,reg,imm` vs `FFMA reg,reg,pred`. The "Enc ID" column is the numeric value written to `*(WORD*)(a2+12)` by each handler, which maps to the SASS binary major opcode through the encoding dispatch megafunctions. The "SASS Mnemonic" column gives the canonical name from the 322-entry ROT13 opcode name table in `InstructionInfo`. Where two encoder IDs map to the same mnemonic (e.g. IADD3 IDs 0+1, LOP3 IDs 4+10), both are listed; the "Combined" column gives the merged count for that instruction.
 
 Source: sweep report `p1.14-sweep-0xED1000-0xFA6000.txt`, ptxas v13.0.88.
 
@@ -845,9 +845,9 @@ Source: sweep report `p1.14-sweep-0xED1000-0xFA6000.txt`, ptxas v13.0.88.
 | Control/Sync | 29 | 7 |
 | **Total** | **683** | **59** |
 
-The top 5 instructions by variant count -- MOV (78), P2R/R2P (45), HMMA/IMMA (35), IMAD extended (34), HSETP2/DSETP (34) -- account for 226 of 683 encoders (33%). MOV alone accounts for 11.4% of all encoder functions because every possible source type (GPR, uniform reg, immediate, constant bank, predicate, special reg) and every destination type requires a separate encoder with a distinct operand signature and bitfield extraction sequence.
+The top 5 instructions by variant count — MOV (78), P2R/R2P (45), HMMA/IMMA (35), IMAD extended (34), HSETP2/DSETP (34) — account for 226 of 683 encoders (33%). MOV alone accounts for 11.4% of all encoder functions because every possible source type (GPR, uniform reg, immediate, constant bank, predicate, special reg) and every destination type requires a separate encoder with a distinct operand signature and bitfield extraction sequence.
 
-The 21 encoding format descriptors (xmmword groups) cluster into three tiers by usage: heavy (165+141+101 = 407 functions across 3 formats), medium (87+47+36 = 170 across 3 formats), and light (106 functions across 15 formats). The heavy-tier formats (23F1F08, 23F1DF8, 23F29A8) are the simple/compact, primary ALU, and memory/load-store formats respectively -- these three alone cover 60% of all SM100 encoders.
+The 21 encoding format descriptors (xmmword groups) cluster into three tiers by usage: heavy (165+141+101 = 407 functions across 3 formats), medium (87+47+36 = 170 across 3 formats), and light (106 functions across 15 formats). The heavy-tier formats (23F1F08, 23F1DF8, 23F29A8) are the simple/compact, primary ALU, and memory/load-store formats respectively — these three alone cover 60% of all SM100 encoders.
 
 ## Internal Index vs. Numeric Opcode
 
@@ -937,7 +937,7 @@ These mnemonics represent SASS instructions with a 32-bit immediate operand pack
 
 ### Mercury Pseudo-Instructions (321 Entries)
 
-The single largest category. These are **not** real SASS instructions -- they are internal pseudo-instructions representing Mercury IR operations that need mnemonic-string identity for diagnostic and dump output. They follow a rigid naming convention:
+The single largest category. These are **not** real SASS instructions — they are internal pseudo-instructions representing Mercury IR operations that need mnemonic-string identity for diagnostic and dump output. They follow a rigid naming convention:
 
 ```text
 MERCURY_{operation}_{srcs|dests}_{regclass}_{variant_index}
@@ -990,7 +990,7 @@ Mnemonics that appear in the extended table but have no base-name match in the p
 
 Five distinct modifier suffix patterns are used in the extended table's dot-separated SASS mnemonics:
 
-**Pattern 1 -- Sub-operation mode.** The suffix selects a functional sub-operation within a single hardware instruction. `CCTL` has the most variants (7):
+**Pattern 1 — Sub-operation mode.** The suffix selects a functional sub-operation within a single hardware instruction. `CCTL` has the most variants (7):
 
 | Extended Mnemonic | Sub-operation |
 |-------------------|---------------|
@@ -1004,7 +1004,7 @@ Five distinct modifier suffix patterns are used in the extended table's dot-sepa
 
 Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `SYNCS.LD.NON_UNIFORM`, `SYNCS.LD.UNIFORM`, `SYNCS.PHASECHK` (8 variants); and `BPT.DRAIN`, `BPT.PAUSE`.
 
-**Pattern 2 -- Operand width.** The `.64` suffix (with optional `.HI`/`.LO` half-selectors) indicates 64-bit operand mode. Added for sm_104 (Blackwell Ultra):
+**Pattern 2 — Operand width.** The `.64` suffix (with optional `.HI`/`.LO` half-selectors) indicates 64-bit operand mode. Added for sm_104 (Blackwell Ultra):
 
 | Extended Mnemonic | Base Opcode |
 |-------------------|-------------|
@@ -1016,7 +1016,7 @@ Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `
 | `SEL.64`, `SEL.64.HI`, `SEL.64.LO` | `SEL` (idx 292) |
 | `UMOV.64`, `USEL.64`, `UIADD3.64`, `UIMNMX.64`, `UISETP.64` | Uniform 64-bit variants |
 
-**Pattern 3 -- Data access direction.** `IMAD.WIDE` has 5 sub-variants controlling which 32-bit half of the 64-bit accumulator is read or written. These correspond to the 256-bit instruction format (format code 0x8) with 16 constant-bank operand slots:
+**Pattern 3 — Data access direction.** `IMAD.WIDE` has 5 sub-variants controlling which 32-bit half of the 64-bit accumulator is read or written. These correspond to the 256-bit instruction format (format code 0x8) with 16 constant-bank operand slots:
 
 | Extended Mnemonic | Meaning |
 |-------------------|---------|
@@ -1026,7 +1026,7 @@ Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `
 | `IMAD.WIDE.WRITE.DL` / `.DH` | Write result low / high half |
 | `IMAD.HI` | High-half result only |
 
-**Pattern 4 -- Scope qualifier.** Fences, barriers, UTC operations, and synchronization carry scope suffixes:
+**Pattern 4 — Scope qualifier.** Fences, barriers, UTC operations, and synchronization carry scope suffixes:
 
 | Extended Mnemonic | Scope |
 |-------------------|-------|
@@ -1039,7 +1039,7 @@ Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `
 | `USETMAXREG.RELEASE` | Release variant |
 | `USETSHMSZ.FLUSH` | Flush variant |
 
-**Pattern 5 -- Shape and type descriptor.** Tensor core operations carry shape geometry and data type. Brace-delimited alternation syntax indicates a single encoder handling multiple shapes:
+**Pattern 5 — Shape and type descriptor.** Tensor core operations carry shape geometry and data type. Brace-delimited alternation syntax indicates a single encoder handling multiple shapes:
 
 | Extended Mnemonic | Meaning |
 |-------------------|---------|
@@ -1069,7 +1069,7 @@ Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `
 
 ### Complete New SASS Mnemonics by Category
 
-The following 206 SASS mnemonics appear **only** in the extended table -- they have no corresponding entry in the base 322-entry name table. Many represent modifier-suffixed forms of base opcodes; others are entirely new operations.
+The following 206 SASS mnemonics appear **only** in the extended table — they have no corresponding entry in the base 322-entry name table. Many represent modifier-suffixed forms of base opcodes; others are entirely new operations.
 
 **GMMA type-specialized (8):** `BGMMA`, `BGMMA_GSB`, `HGMMA`, `HGMMA_GSB`, `IGMMA`, `IGMMA_GSB`, `QGMMA`, `QGMMA_GSB`
 
@@ -1137,21 +1137,21 @@ After building the tables and hash structure, the constructor:
 
 ## Related Pages
 
-- [Instructions & Opcodes](../ir/instructions.md) -- Ori IR instruction layout, opcode encoding, full ROT13 table
-- [SASS Encoding](../codegen/encoding.md) -- Instruction encoding pipeline, format groups, encoder templates
-- [Instruction Selection](../codegen/isel.md) -- Pattern matching from IR to SASS
-- [SM Architecture Map](../targets/index.md) -- SM version numbering and feature sets
-- [Scheduling](../scheduling/overview.md) -- How opcodes are assigned to functional units
+- [Instructions & Opcodes](../ir/instructions.md) — Ori IR instruction layout, opcode encoding, full ROT13 table
+- [SASS Encoding](../codegen/encoding.md) — Instruction encoding pipeline, format groups, encoder templates
+- [Instruction Selection](../codegen/isel.md) — Pattern matching from IR to SASS
+- [SM Architecture Map](../targets/index.md) — SM version numbering and feature sets
+- [Scheduling](../scheduling/overview.md) — How opcodes are assigned to functional units
 
 ## Key Functions
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
-| `sub_7A5D10` | -- | `InstructionInfo` constructor; initializes the 322-entry ROT13 opcode name table at object offset +0x1058 and the 322-entry encoding category identity map at +0x2478 (vtable `off_233ADC0`) | 0.92 |
-| `sub_BE7390` | -- | Parallel `InstructionInfo` constructor; initializes an identical 322-entry name table | 0.90 |
-| `sub_7CB560` | -- | SASS printer; maps duplicate opcode indices (e.g., 284 vs 285) to distinct mnemonic strings (`IMNMX` vs `IMNMX.64`) based on operand metadata | 0.85 |
+| `sub_7A5D10` | — | `InstructionInfo` constructor; initializes the 322-entry ROT13 opcode name table at object offset +0x1058 and the 322-entry encoding category identity map at +0x2478 (vtable `off_233ADC0`) | 0.92 |
+| `sub_BE7390` | — | Parallel `InstructionInfo` constructor; initializes an identical 322-entry name table | 0.90 |
+| `sub_7CB560` | — | SASS printer; maps duplicate opcode indices (e.g., 284 vs 285) to distinct mnemonic strings (`IMNMX` vs `IMNMX.64`) based on operand metadata | 0.85 |
 | `sub_6575D0` | 49KB | Register-class-to-opcode dispatch; handles DMMA (index 215) shared dispatch with CVTA at cases 0xD6/0xD7 | 0.85 |
-| `sub_7482B0` | -- | Encoding path for ISETP (index 288, sm_104); handles case 0x120 for 64-bit integer set-predicate | 0.80 |
-| `sub_8380A0` | -- | Encoding path for ISETP (index 288, sm_104); second handler for case 0x120 | 0.80 |
+| `sub_7482B0` | — | Encoding path for ISETP (index 288, sm_104); handles case 0x120 for 64-bit integer set-predicate | 0.80 |
+| `sub_8380A0` | — | Encoding path for ISETP (index 288, sm_104); second handler for case 0x120 | 0.80 |
 | `sub_896D50` | 21KB | Extended mnemonic table constructor; builds the 772-entry alphabetically-sorted SASS mnemonic lookup table at object offset +11360, with parallel 772-entry encoding category map from `unk_21D92E0`, plus 3-array hash table for O(1) string lookup during disassembly parsing (vtable `off_21DA9F8`) | 0.90 |
-| `sub_A2B110` | -- | Base class constructor shared by both primary (`sub_7A5D10`) and extended (`sub_896D50`) mnemonic table objects | 0.85 |
+| `sub_A2B110` | — | Base class constructor shared by both primary (`sub_7A5D10`) and extended (`sub_896D50`) mnemonic table objects | 0.85 |

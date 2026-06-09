@@ -62,7 +62,7 @@ The largest math subcategory with 97 entries, covering every combination of sour
 
 ### Double-to-Float (IDs 88--95)
 
-`__nvvm_d2f_{rn,rz,rm,rp}_{ftz,}` -- 4 rounding modes x 2 FTZ variants.
+`__nvvm_d2f_{rn,rz,rm,rp}_{ftz,}` — 4 rounding modes x 2 FTZ variants.
 
 ### Integer/Float Cross-Conversions (IDs 96--177)
 

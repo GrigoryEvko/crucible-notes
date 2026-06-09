@@ -17,7 +17,7 @@ cudafe++ supports five attributes that control CUDA kernel launch parameters: `_
 | Constant value extractor | `sub_461640` (`const_expr_get_value`, 53 lines) |
 | Constant sign checker | `sub_461980` (`const_expr_sign_compare`, 97 lines) |
 | Dependent-type check | `sub_7BE9E0` (`is_dependent_type`) |
-| Entity field | `entity+256` -- pointer to `launch_config_t` (56 bytes, NULL if no launch attrs) |
+| Entity field | `entity+256` — pointer to `launch_config_t` (56 bytes, NULL if no launch attrs) |
 | Entity extended flags | `entity+183` bit 6 (0x40): cluster_dims intent (set by zero-argument `__cluster_dims__`) |
 | Total error codes | 17 distinct diagnostics across all five attributes and post-validation |
 
@@ -110,7 +110,7 @@ The sentinel value `-1` (0xFFFFFFFF as unsigned, -1 as signed) is semantically m
 
 All five attribute handlers share the same two-function pipeline for parsing attribute argument values from EDG's internal 128-bit constant representation.
 
-### sub_461980 -- const_expr_sign_compare
+### sub_461980 — const_expr_sign_compare
 
 Compares a constant expression's value against a 64-bit threshold. Returns `+1` if the expression value is greater, `-1` if less, `0` if equal. The comparison operates on the 128-bit extended-precision value stored at offsets `+152` through `+166` (eight 16-bit words) of the expression node.
 
@@ -154,7 +154,7 @@ The handlers call `const_expr_sign_compare(expr, 0)` to check positivity:
 - `<= 0` means non-positive (used by `__cluster_dims__`, `__block_size__`, `__maxnreg__`, `__local_maxnreg__`)
 - `< 0` means strictly negative (used by `__launch_bounds__` arg 3, where zero is allowed)
 
-### sub_461640 -- const_expr_get_value
+### sub_461640 — const_expr_get_value
 
 Extracts a `uint64_t` value from a constant expression node's 128-bit representation. Sets an overflow flag if the value does not fit in 64 bits (accounting for sign).
 
@@ -336,13 +336,13 @@ process_arg3:
 
 | Arg | Field | Offset | Type | Validation | Description |
 |-----|-------|--------|------|------------|-------------|
-| 1 (required) | `maxThreadsPerBlock` | +0 | int64 | None -- raw copy | Maximum threads per block. Guides register allocation in `ptxas`. |
-| 2 (optional) | `minBlocksPerMultiprocessor` | +8 | int64 | None -- raw copy | Minimum resident blocks per SM. Guides occupancy optimization. |
+| 1 (required) | `maxThreadsPerBlock` | +0 | int64 | None — raw copy | Maximum threads per block. Guides register allocation in `ptxas`. |
+| 2 (optional) | `minBlocksPerMultiprocessor` | +8 | int64 | None — raw copy | Minimum resident blocks per SM. Guides occupancy optimization. |
 | 3 (optional) | `maxBlocksPerCluster` | +16 | int32 | `sign_compare < 0` (3705), overflow (3706) | Maximum blocks per cluster (CUDA 11.8+). |
 
 ### Critical Implementation Details
 
-**First two args bypass the sign/overflow pipeline.** Arguments 1 and 2 are copied directly from the constant expression node's value field as 64-bit quantities. They do not pass through `const_expr_sign_compare` or `const_expr_get_value`. This means negative or excessively large values for `maxThreadsPerBlock` and `minBlocksPerMultiprocessor` are accepted at parse time -- downstream consumers (ptxas) are responsible for rejecting them.
+**First two args bypass the sign/overflow pipeline.** Arguments 1 and 2 are copied directly from the constant expression node's value field as 64-bit quantities. They do not pass through `const_expr_sign_compare` or `const_expr_get_value`. This means negative or excessively large values for `maxThreadsPerBlock` and `minBlocksPerMultiprocessor` are accepted at parse time — downstream consumers (ptxas) are responsible for rejecting them.
 
 **Third argument uses the strict pipeline.** Only argument 3 (`maxBlocksPerCluster`) passes through both `const_expr_sign_compare` and `const_expr_get_value` with the overflow check. This argument was added later (CUDA 11.8 cluster launch) and uses the newer, stricter validation pattern.
 
@@ -433,11 +433,11 @@ entity_t* apply_nv_cluster_dims(attr_node_t* attr, entity_t* entity) {
 
 **Zero-argument form.** When `__cluster_dims__()` is called with no arguments, the handler does not allocate the launch config struct. It sets `entity+183 |= 0x40` (the "cluster_dims intent" flag) and returns. This intent flag is checked during post-validation to detect `__cluster_dims__` on non-`__global__` functions (error 3534) even when no dimensions were specified.
 
-**Conflict check with __block_size__.** Before storing dimensions, the handler checks `lc->flags & 0x02` (bit 1 = `block_size_set`). If `__block_size__` was already applied, error 3791 fires. Crucially, the handler does NOT return early after this error -- it continues to set the flag and attempt to store values. The reverse conflict (applying `__block_size__` after `__cluster_dims__`) is checked in `sub_4109E0` with the same error code, testing `lc->flags & 0x01`.
+**Conflict check with __block_size__.** Before storing dimensions, the handler checks `lc->flags & 0x02` (bit 1 = `block_size_set`). If `__block_size__` was already applied, error 3791 fires. Crucially, the handler does NOT return early after this error — it continues to set the flag and attempt to store values. The reverse conflict (applying `__block_size__` after `__cluster_dims__`) is checked in `sub_4109E0` with the same error code, testing `lc->flags & 0x01`.
 
 **Strict positivity (zero rejected).** All three dimensions use `const_expr_sign_compare(expr, 0) <= 0`, rejecting zero. Error 3685 fires with the attribute name `"__cluster_dims__"` as a format argument. Error 3686 fires for values exceeding `0x7FFFFFFF`.
 
-**Defaults to 1.** Unspecified dimensions default to `1`, not `0`. A cluster dimension of 1 means "no clustering in that dimension" -- the neutral value. The default is written explicitly (`lc->cluster_dim_x = 1`), overwriting the `-1` sentinel from allocation.
+**Defaults to 1.** Unspecified dimensions default to `1`, not `0`. A cluster dimension of 1 means "no clustering in that dimension" — the neutral value. The default is written explicitly (`lc->cluster_dim_x = 1`), overwriting the `-1` sentinel from allocation.
 
 ## __block_size__ (sub_4109E0)
 
@@ -603,11 +603,11 @@ entity_t* apply_nv_local_maxnreg(attr_node_t* attr, entity_t* entity) {
 }
 ```
 
-The `__local_maxnreg__` attribute limits register usage within a specific device function scope rather than at the kernel level. It uses a separate struct field (`+36` vs `+32`) so both can coexist. The post-validator does NOT check `local_maxnreg` for `__global__`-only enforcement -- `__local_maxnreg__` is more permissive than `__maxnreg__` and may appear on `__device__` functions.
+The `__local_maxnreg__` attribute limits register usage within a specific device function scope rather than at the kernel level. It uses a separate struct field (`+36` vs `+32`) so both can coexist. The post-validator does NOT check `local_maxnreg` for `__global__`-only enforcement — `__local_maxnreg__` is more permissive than `__maxnreg__` and may appear on `__device__` functions.
 
 ## Post-Declaration Validation (sub_6BC890)
 
-After all attributes on a declaration have been applied, `nv_validate_cuda_attributes` (`sub_6BC890`, 160 lines, in `nv_transforms.c`) performs cross-attribute consistency checks. This function is called from the declaration processing pipeline and operates on the completed entity node. Multiple errors can be emitted from a single validation pass -- cudafe++ does not short-circuit after the first error.
+After all attributes on a declaration have been applied, `nv_validate_cuda_attributes` (`sub_6BC890`, 160 lines, in `nv_transforms.c`) performs cross-attribute consistency checks. This function is called from the declaration processing pipeline and operates on the completed entity node. Multiple errors can be emitted from a single validation pass — cudafe++ does not short-circuit after the first error.
 
 ```c
 // sub_6BC890 -- nv_validate_cuda_attributes (nv_transforms.c, 160 lines)
@@ -715,15 +715,15 @@ check_global_advisory:
 
 ### Validation Logic Detail
 
-**Error 3534 -- Launch config on non-__global__.** Tests `entity->byte_182 & 0x40` (the `__global__` bit). If clear, any non-default values in the launch config struct trigger error 3534. The error message uses `%s` with the specific attribute name. Notably, the check for `__cluster_dims__` or `__block_size__` tests `lc->cluster_dim_x >= 0` (which is true when any cluster dim handler has run, since they write non-negative values). It also checks the intent flag (`entity->byte_183 & 0x40`) for the zero-argument `__cluster_dims__()` form.
+**Error 3534 — Launch config on non-__global__.** Tests `entity->byte_182 & 0x40` (the `__global__` bit). If clear, any non-default values in the launch config struct trigger error 3534. The error message uses `%s` with the specific attribute name. Notably, the check for `__cluster_dims__` or `__block_size__` tests `lc->cluster_dim_x >= 0` (which is true when any cluster dim handler has run, since they write non-negative values). It also checks the intent flag (`entity->byte_183 & 0x40`) for the zero-argument `__cluster_dims__()` form.
 
-**Error 3707 -- Cluster product exceeds maxBlocksPerCluster.** Computes `cluster_dim_x * cluster_dim_y * cluster_dim_z` using signed 64-bit arithmetic and compares against `maxBlocksPerCluster`. The multiplication uses the actual stored dimension values. The error message names whichever attribute set the cluster dims (`"__block_size__"` if `block_size_x > 0`, otherwise `"__cluster_dims__"`). This is a compile-time consistency check: if the programmer specifies both a cluster shape and a maximum cluster block count, the shape must fit.
+**Error 3707 — Cluster product exceeds maxBlocksPerCluster.** Computes `cluster_dim_x * cluster_dim_y * cluster_dim_z` using signed 64-bit arithmetic and compares against `maxBlocksPerCluster`. The multiplication uses the actual stored dimension values. The error message names whichever attribute set the cluster dims (`"__block_size__"` if `block_size_x > 0`, otherwise `"__cluster_dims__"`). This is a compile-time consistency check: if the programmer specifies both a cluster shape and a maximum cluster block count, the shape must fit.
 
-**Error 3715 -- __maxnreg__ on non-__global__.** Separate from the general 3534 check. While 3534 covers `__launch_bounds__`/`__cluster_dims__`/`__block_size__`, `__maxnreg__` uses its own code because it appears in a different branch of the validation logic.
+**Error 3715 — __maxnreg__ on non-__global__.** Separate from the general 3534 check. While 3534 covers `__launch_bounds__`/`__cluster_dims__`/`__block_size__`, `__maxnreg__` uses its own code because it appears in a different branch of the validation logic.
 
-**Error 3719 -- __launch_bounds__ + __maxnreg__ conflict.** These two attributes provide contradictory register allocation hints: `__launch_bounds__` asks the compiler to choose registers based on occupancy targets; `__maxnreg__` overrides with a hard limit. Detected by `lc->maxThreadsPerBlock != 0 && lc->maxnreg >= 0`.
+**Error 3719 — __launch_bounds__ + __maxnreg__ conflict.** These two attributes provide contradictory register allocation hints: `__launch_bounds__` asks the compiler to choose registers based on occupancy targets; `__maxnreg__` overrides with a hard limit. Detected by `lc->maxThreadsPerBlock != 0 && lc->maxnreg >= 0`.
 
-**Warning 3695 -- Missing __launch_bounds__ advisory.** Severity 4 (informational). Fires when a `__global__` function has no `__launch_bounds__` annotation. Tests both `lc == NULL` (no launch config at all) and `maxThreadsPerBlock == 0 && minBlocksPerMultiprocessor == 0` (struct exists but was allocated by other attrs). Not an error; can be suppressed.
+**Warning 3695 — Missing __launch_bounds__ advisory.** Severity 4 (informational). Fires when a `__global__` function has no `__launch_bounds__` annotation. Tests both `lc == NULL` (no launch config at all) and `maxThreadsPerBlock == 0 && minBlocksPerMultiprocessor == 0` (struct exists but was allocated by other attrs). Not an error; can be suppressed.
 
 ## Error Catalog
 
@@ -731,18 +731,18 @@ check_global_advisory:
 
 | Error | Sev | Attribute | Condition | Sign test | Emit function |
 |-------|-----|-----------|-----------|-----------|---------------|
-| 3535 | 7 | `__launch_bounds__` | `entity+81 & 0x04` (local function) | -- | `sub_4F79D0` |
+| 3535 | 7 | `__launch_bounds__` | `entity+81 & 0x04` (local function) | — | `sub_4F79D0` |
 | 3685 | 7 | `__cluster_dims__` | `sign_compare(expr, 0) <= 0` | `<= 0` (zero rejected) | `sub_4F79D0` |
-| 3686 | 7 | `__cluster_dims__` | `overflow \|\| val > 0x7FFFFFFF` | -- | `sub_4F8200` |
+| 3686 | 7 | `__cluster_dims__` | `overflow \|\| val > 0x7FFFFFFF` | — | `sub_4F8200` |
 | 3705 | 7 | `__launch_bounds__` (arg 3) | `sign_compare(expr, 0) < 0` | `< 0` (zero allowed) | `sub_4F8200` |
-| 3706 | 7 | `__launch_bounds__` (arg 3) | `overflow \|\| val > 0x7FFFFFFF` | -- | `sub_4F8200` |
+| 3706 | 7 | `__launch_bounds__` (arg 3) | `overflow \|\| val > 0x7FFFFFFF` | — | `sub_4F8200` |
 | 3717 | 7 | `__maxnreg__` | `sign_compare(expr, 0) <= 0` | `<= 0` | `sub_4F8200` |
-| 3718 | 7 | `__maxnreg__` | `overflow \|\| val > 0x7FFFFFFF` | -- | `sub_4F8200` |
+| 3718 | 7 | `__maxnreg__` | `overflow \|\| val > 0x7FFFFFFF` | — | `sub_4F8200` |
 | 3786 | 7 | `__local_maxnreg__` | `sign_compare(expr, 0) <= 0` | `<= 0` | `sub_4F8200` |
-| 3787 | 7 | `__local_maxnreg__` | `overflow \|\| val > 0x7FFFFFFF` | -- | `sub_4F8200` |
+| 3787 | 7 | `__local_maxnreg__` | `overflow \|\| val > 0x7FFFFFFF` | — | `sub_4F8200` |
 | 3788 | 7 | `__block_size__` | `sign_compare(expr, 0) <= 0` | `<= 0` | `sub_4F79D0` |
-| 3789 | 7 | `__block_size__` | `overflow \|\| val > 0x7FFFFFFF` | -- | `sub_4F8200` |
-| 3791 | 7 | `__cluster_dims__` / `__block_size__` | `flags & opposite_bit` | -- | `sub_4F8200` |
+| 3789 | 7 | `__block_size__` | `overflow \|\| val > 0x7FFFFFFF` | — | `sub_4F8200` |
+| 3791 | 7 | `__cluster_dims__` / `__block_size__` | `flags & opposite_bit` | — | `sub_4F8200` |
 
 ### Post-Validation Errors
 
@@ -769,9 +769,9 @@ check_global_advisory:
 
 Launch-config attributes have a hybrid emission story. Two paths exist:
 
-**Struct-only path** -- `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__` write into specific offsets of the 56-byte `launch_config_t` at `entity+256`. The original attribute IL node (kind `0x48`) is consumed at application time and no further IL output is produced by cudafe++. cicc reads the struct fields through the merged entity (via the host stub generator's serialization of `entity+256`) and emits the corresponding PTX directives (`.maxntid`, `.maxnreg`, `.maxclusterrank`, `.reqntid`) directly.
+**Struct-only path** — `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__` write into specific offsets of the 56-byte `launch_config_t` at `entity+256`. The original attribute IL node (kind `0x48`) is consumed at application time and no further IL output is produced by cudafe++. cicc reads the struct fields through the merged entity (via the host stub generator's serialization of `entity+256`) and emits the corresponding PTX directives (`.maxntid`, `.maxnreg`, `.maxclusterrank`, `.reqntid`) directly.
 
-**Struct + re-emit path** -- `__launch_bounds__` writes into `launch_config+0/+8/+16` *and* is re-emitted as an IL kind `25` ("function attribute") node into the `.int.c` output via `sub_540560`. The IL output dispatcher in `cp_gen_be.c` shares this branch with `__nv_pure__` (kind `0x6E`):
+**Struct + re-emit path** — `__launch_bounds__` writes into `launch_config+0/+8/+16` *and* is re-emitted as an IL kind `25` ("function attribute") node into the `.int.c` output via `sub_540560`. The IL output dispatcher in `cp_gen_be.c` shares this branch with `__nv_pure__` (kind `0x6E`):
 
 ```c
 // IL output dispatcher (cp_gen_be.c, shared with __nv_pure__)
@@ -784,17 +784,17 @@ case 0x6E:                 // __nv_pure__
 
 This dual-path treatment exists because `__launch_bounds__` is the only launch attribute that affects code generation through *both* a PTX directive (consumed via the struct) and an LLVM function attribute on the kernel symbol (consumed via the textual re-emission). The other four launch attributes only need the PTX directive, so the textual re-emission is skipped.
 
-The launch-config struct itself is never an IL node. It is a flat 56-byte arena allocation owned by the entity and freed when the entity is destroyed. There is no `il_entry_kind` value for "launch config" -- the struct is invisible to the IL display dispatcher (`sub_5F4930`) and the IL walker (`sub_60E4F0` / `sub_610200`).
+The launch-config struct itself is never an IL node. It is a flat 56-byte arena allocation owned by the entity and freed when the entity is destroyed. There is no `il_entry_kind` value for "launch config" — the struct is invisible to the IL display dispatcher (`sub_5F4930`) and the IL walker (`sub_60E4F0` / `sub_610200`).
 
 ## Attribute Interaction Matrix
 
 | | `__launch_bounds__` | `__cluster_dims__` | `__block_size__` | `__maxnreg__` | `__local_maxnreg__` |
 |---|---|---|---|---|---|
-| `__launch_bounds__` | -- | OK | OK | **3719** | OK |
-| `__cluster_dims__` | OK | -- | **3791** | OK | OK |
-| `__block_size__` | OK | **3791** | -- | OK | OK |
-| `__maxnreg__` | **3719** | OK | OK | -- | OK |
-| `__local_maxnreg__` | OK | OK | OK | OK | -- |
+| `__launch_bounds__` | — | OK | OK | **3719** | OK |
+| `__cluster_dims__` | OK | — | **3791** | OK | OK |
+| `__block_size__` | OK | **3791** | — | OK | OK |
+| `__maxnreg__` | **3719** | OK | OK | — | OK |
+| `__local_maxnreg__` | OK | OK | OK | OK | — |
 
 Additional constraints:
 - All attributes except `__local_maxnreg__` require `__global__` execution space (error 3534 / 3715)
@@ -834,8 +834,8 @@ Additional constraints:
 | `sub_461640` | `const_expr_get_value` | 53 | `const_expr.c` |
 | `sub_461980` | `const_expr_sign_compare` | 97 | `const_expr.c` |
 | `sub_7BE9E0` | `is_dependent_type` | 15 | `template.c` |
-| `sub_4F79D0` | `emit_error_with_name` | -- | `error.c` |
-| `sub_4F8200` | `emit_error_basic` | -- | `error.c` |
+| `sub_4F79D0` | `emit_error_with_name` | — | `error.c` |
+| `sub_4F8200` | `emit_error_basic` | — | `error.c` |
 
 ## Global Variables
 
@@ -852,10 +852,10 @@ Additional constraints:
 
 ## Cross-References
 
-- [Attribute System Overview](overview.md) -- dispatch table, attribute node structure, kind enum
-- [__global__ Function Constraints](global-function.md) -- the `__global__` attribute that launch config attributes require
-- [__grid_constant__](grid-constant.md) -- parameter attribute that interacts with kernel parameter checks
-- [Minor Attributes](minor-attributes.md) -- `__nv_register_params__`, `__noinline__`, `__forceinline__`
-- [Entity Node Layout](../structs/entity-node.md) -- full byte map of entity node with `+256` pointer
-- [Execution Spaces](../cuda/execution-spaces.md) -- `byte_182` bitfield layout and `__global__` predicate
-- [Diagnostics Overview](../diagnostics/overview.md) -- error emission functions, severity levels
+- [Attribute System Overview](overview.md) — dispatch table, attribute node structure, kind enum
+- [__global__ Function Constraints](global-function.md) — the `__global__` attribute that launch config attributes require
+- [__grid_constant__](grid-constant.md) — parameter attribute that interacts with kernel parameter checks
+- [Minor Attributes](minor-attributes.md) — `__nv_register_params__`, `__noinline__`, `__forceinline__`
+- [Entity Node Layout](../structs/entity-node.md) — full byte map of entity node with `+256` pointer
+- [Execution Spaces](../cuda/execution-spaces.md) — `byte_182` bitfield layout and `__global__` predicate
+- [Diagnostics Overview](../diagnostics/overview.md) — error emission functions, severity levels

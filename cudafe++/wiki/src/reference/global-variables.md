@@ -6,7 +6,7 @@ The variables cluster into three address regions: `0x106xxxx` (NVIDIA-added conf
 
 ## Compilation Mode and Language Standard
 
-These globals control the fundamental compilation dialect -- C vs C++, which standard version, which vendor extensions are active, and whether the compiler is in CUDA mode.
+These globals control the fundamental compilation dialect — C vs C++, which standard version, which vendor extensions are active, and whether the compiler is in CUDA mode.
 
 | Address | Size | Name | Description |
 |---|---|---|---|
@@ -90,7 +90,7 @@ The diagnostic subsystem uses a set of globals to track error/warning counts, se
 | `byte_1067920` | 1[3795] | `default_severity_table` | Default severity for each error code. |
 | `byte_1067921` | 1[3795] | `current_severity_table` | Current (possibly pragma-modified) severity. |
 | `byte_1067922` | 4[3795] | `per_error_flags` | Per-error tracking: bit 0 = first occurrence, other bits = suppression state. |
-| `off_D481E0` | -- | `label_fill_in_table` | Diagnostic label fill-in table (`{name, cond_index, default_index}` entries). |
+| `off_D481E0` | — | `label_fill_in_table` | Diagnostic label fill-in table (`{name, cond_index, default_index}` entries). |
 | `qword_106B488` | 8 | `message_text_buffer` | Growable message text buffer (initial 0x400 bytes via `sub_6B98A0`). |
 | `qword_106B480` | 8 | `location_prefix_buffer` | Location prefix buffer (initial 0x80 bytes). |
 | `qword_106B478` | 8 | `sarif_json_buffer` | SARIF JSON output buffer (initial 0x400 bytes). |
@@ -214,7 +214,7 @@ The lexer maintains its current token, source position, and preprocessor state i
 | `qword_106B738` | 8 | `pragma_alloc_pool_2` | Pragma allocation pool (secondary). |
 | `qword_106B890` | 8 | `pragma_name_hash_1` | Pragma name hash table. |
 | `qword_106B8A8` | 8 | `pragma_name_hash_2` | Pragma name hash table (secondary). |
-| `off_E6CDE0` | -- | `pragma_id_table` | Pragma ID-to-name mapping table. |
+| `off_E6CDE0` | — | `pragma_id_table` | Pragma ID-to-name mapping table. |
 | `byte_126E558` | 1 | `stdc_cx_limited_range` | `#pragma STDC CX_LIMITED_RANGE` state. Default `3`. |
 | `byte_126E559` | 1 | `stdc_fenv_access` | `#pragma STDC FENV_ACCESS` state. Default `3`. |
 | `byte_126E55A` | 1 | `stdc_fp_contract` | `#pragma STDC FP_CONTRACT` state. Default `3`. |
@@ -439,12 +439,12 @@ Six linked lists track device/constant/kernel entities with internal/external li
 
 | Address | Size | Name | Description |
 |---|---|---|---|
-| `unk_1286780` | -- | `device_external_list` | Device entities with external linkage. |
-| `unk_12867C0` | -- | `device_internal_list` | Device entities with internal linkage. |
-| `unk_1286800` | -- | `constant_external_list` | Constant entities with external linkage. |
-| `unk_1286840` | -- | `constant_internal_list` | Constant entities with internal linkage. |
-| `unk_1286880` | -- | `kernel_external_list` | Kernel entities with external linkage. |
-| `unk_12868C0` | -- | `kernel_internal_list` | Kernel entities with internal linkage. |
+| `unk_1286780` | — | `device_external_list` | Device entities with external linkage. |
+| `unk_12867C0` | — | `device_internal_list` | Device entities with internal linkage. |
+| `unk_1286800` | — | `constant_external_list` | Constant entities with external linkage. |
+| `unk_1286840` | — | `constant_internal_list` | Constant entities with internal linkage. |
+| `unk_1286880` | — | `kernel_external_list` | Kernel entities with external linkage. |
+| `unk_12868C0` | — | `kernel_internal_list` | Kernel entities with internal linkage. |
 
 ## IL Tree Walking
 
@@ -479,7 +479,7 @@ The `walk_tree` subsystem uses global callback pointers for its 5-callback trave
 | `dword_126FA30` | 4 | `is_file_scope_display` | `1` = displaying file-scope region. |
 | `byte_126FA16` | 1 | `display_active` | IL display currently active flag. |
 | `byte_126FA11` | 1 | `pcc_mode_shadow` | PCC compatibility mode shadow for display. |
-| `qword_126FA40` | -- | `display_string_buffer` | Display string buffer (raw literal prefix, etc.). |
+| `qword_126FA40` | — | `display_string_buffer` | Display string buffer (raw literal prefix, etc.). |
 
 ## Constexpr Evaluator
 
@@ -544,7 +544,7 @@ The `walk_tree` subsystem uses global callback pointers for its 5-callback trave
 | `qword_E7FB60` | 8 | `attribute_hash_table` | Attribute name hash table (Robin Hood lookup via `sub_742670`). |
 | `qword_E7F038` | 8 | `attribute_hash_table_2` | Secondary attribute hash table. |
 | `byte_E7FB80` | 204 | `scoped_attr_buffer` | Buffer for scoped attribute name formatting (`"namespace::name"`). |
-| `byte_82C0E0` | -- | `attribute_kind_table` | Attribute kind descriptor table (indexed by attribute kind). |
+| `byte_82C0E0` | — | `attribute_kind_table` | Attribute kind descriptor table (indexed by attribute kind). |
 | `dword_E7F078` | 4 | `attr_init_flag` | Attribute subsystem initialization flag. |
 | `dword_E7F080` | 4 | `attr_flags` | Attribute system flags. |
 | `qword_E7F070` | 8 | `visibility_stack` | Visibility stack linked list. |
@@ -599,7 +599,7 @@ The `walk_tree` subsystem uses global callback pointers for its 5-callback trave
 | `qword_1280748` | 8 | `alloc_tracking_list` | Linked list of allocation tracking records. |
 | `dword_1280728` | 4 | `mmap_mode` | Allocation mode flag. `0` = malloc-based, `1` = mmap-based. Set from `dword_106BF18`. |
 | `dword_1280750` | 4 | `tracking_record_count` | Tracking record count (inline up to 1023, then heap). |
-| `unk_1280760` | -- | `tracking_record_array` | Inline tracking record array. |
+| `unk_1280760` | — | `tracking_record_array` | Inline tracking record array. |
 
 ## IL Copy Remap
 
@@ -629,7 +629,7 @@ The `walk_tree` subsystem uses global callback pointers for its 5-callback trave
 | `byte_E7FF40` | 272 | `flag_was_set_bitmap` | 272-byte bitmap: which CLI flags were explicitly set. |
 | `dword_E7FF14` | 4 | `language_already_set` | Guard against switching language mode after initial set. |
 | `dword_E7FF10` | 4 | `cuda_compat_flag` | CUDA compatibility flag (set based on `dword_126EFAC && qword_126EF98 <= 0x76BF`). |
-| `off_D47CE0` | -- | `set_flag_lookup_table` | Lookup table for `--set_flag` CLI option (name-to-address mapping). |
+| `off_D47CE0` | — | `set_flag_lookup_table` | Lookup table for `--set_flag` CLI option (name-to-address mapping). |
 
 ## EDG Feature Flags (0x106Bxxx-0x106Cxxx Region)
 
@@ -712,19 +712,19 @@ These flags control individual C/C++ language features. Set during CLI processin
 | Address | Size | Name | Description |
 |---|---|---|---|
 | `byte_E6D1B0` | 256 | `signedness_table` | Type-code-to-signedness lookup table. |
-| `byte_E6D1AD` | 1 | `unsigned_int_kind_sentinel` | Must equal `111` (`'o'`) -- sentinel validation. |
+| `byte_E6D1AD` | 1 | `unsigned_int_kind_sentinel` | Must equal `111` (`'o'`) — sentinel validation. |
 | `byte_A668A0` | 256 | `type_kind_properties` | Type kind property table. Bit 1 = callable, bit 4 = aggregate. |
-| `off_E6E020` | -- | `il_entry_kind_names` | IL entry kind name table (last = `"last"`, sentinel = 9999). |
-| `off_E6CD78` | -- | `db_storage_class_names` | Storage class name table (last = `"last"`). |
-| `off_E6D228` | -- | `db_special_function_kinds` | Special function kind name table. |
-| `off_E6CD20` | -- | `db_operator_names` | Operator name table. |
-| `off_E6E060` | -- | `name_linkage_kind_names` | Name linkage kind names. |
-| `off_E6CD88` | -- | `decl_modifier_names` | Declaration modifier names. |
-| `off_E6CF38` | -- | `pragma_ids` | Pragma ID table. |
-| `qword_E6C580` | 8 | `sizeof_il_entry_sentinel` | Must equal `9999` -- sizeof IL entry validation. |
-| `off_E6DD80` | -- | `il_entry_kind_display_names` | IL entry kind display names (indexed by kind byte). |
-| `off_E6E040` | -- | `linkage_kind_display_names` | Linkage kind display names (none/internal/external/C/C++). |
-| `off_E6E140` | -- | `feature_init_table` | Feature initialization table (used with `dword_106BF18`). |
+| `off_E6E020` | — | `il_entry_kind_names` | IL entry kind name table (last = `"last"`, sentinel = 9999). |
+| `off_E6CD78` | — | `db_storage_class_names` | Storage class name table (last = `"last"`). |
+| `off_E6D228` | — | `db_special_function_kinds` | Special function kind name table. |
+| `off_E6CD20` | — | `db_operator_names` | Operator name table. |
+| `off_E6E060` | — | `name_linkage_kind_names` | Name linkage kind names. |
+| `off_E6CD88` | — | `decl_modifier_names` | Declaration modifier names. |
+| `off_E6CF38` | — | `pragma_ids` | Pragma ID table. |
+| `qword_E6C580` | 8 | `sizeof_il_entry_sentinel` | Must equal `9999` — sizeof IL entry validation. |
+| `off_E6DD80` | — | `il_entry_kind_display_names` | IL entry kind display names (indexed by kind byte). |
+| `off_E6E040` | — | `linkage_kind_display_names` | Linkage kind display names (none/internal/external/C/C++). |
+| `off_E6E140` | — | `feature_init_table` | Feature initialization table (used with `dword_106BF18`). |
 
 ## IL Display Tables (Read-Only)
 
@@ -734,13 +734,13 @@ These flags control individual C/C++ language features. Set during CLI processin
 | `off_A6FE40` | 8[22] | `type_kind_names` | Type kind names (22 entries: void, bool, int, float, ...). |
 | `off_A6F760` | 8[4] | `access_specifier_names` | Access specifier names (public/protected/private/none). |
 | `off_A6FE00` | 8[7] | `storage_class_display_names` | Storage class display names (7: none/auto/register/static/extern/mutable/thread_local). |
-| `off_A6F480` | -- | `register_kind_names` | Register kind names. |
-| `off_A6FC00` | -- | `special_kind_names` | Special function kind names (lambda call operator, etc.). |
-| `off_A6FC80` | -- | `opname_kind_names` | Operator name kind names. |
-| `off_A6F640` | -- | `typeref_kind_names` | Typeref kind names. |
-| `off_A6F420` | -- | `based_type_kind_names` | Based type kind names. |
-| `off_A6F3F0` | -- | `class_kind_names` | Class/struct/union kind names. |
-| `off_E6C5A0` | -- | `builtin_op_table` | Builtin operation reference table. |
+| `off_A6F480` | — | `register_kind_names` | Register kind names. |
+| `off_A6FC00` | — | `special_kind_names` | Special function kind names (lambda call operator, etc.). |
+| `off_A6FC80` | — | `opname_kind_names` | Operator name kind names. |
+| `off_A6F640` | — | `typeref_kind_names` | Typeref kind names. |
+| `off_A6F420` | — | `based_type_kind_names` | Based type kind names. |
+| `off_A6F3F0` | — | `class_kind_names` | Class/struct/union kind names. |
+| `off_E6C5A0` | — | `builtin_op_table` | Builtin operation reference table. |
 
 ## PCH and Serialization
 
@@ -801,8 +801,8 @@ These flags control individual C/C++ language features. Set during CLI processin
 | `dword_127FB9C` | 4 | `multibyte_mode` | Multibyte character mode (`>1` = active). |
 | `qword_126E440` | 8[6] | `char_type_widths` | Character type width table (indexed by char kind: 1,2,4 bytes). |
 | `qword_126E580` | 8[11] | `special_type_entries` | Special type entries (11 entries). |
-| `qword_126DE00` | -- | `operator_name_table` | Operator name string table. |
-| `off_E6E0E0` | -- | `predef_macro_mode_names` | Predefined macro mode name table (sentinel = `"last"`). |
+| `qword_126DE00` | — | `operator_name_table` | Operator name string table. |
+| `off_E6E0E0` | — | `predef_macro_mode_names` | Predefined macro mode name table (sentinel = `"last"`). |
 | `qword_126EEA0` | 8 | `predef_macro_state` | Predefined macro initialization state. |
 | `dword_106BBA8` | 4 | `c23_features` | C23 features flag (`#elifdef`/`#elifndef`). |
 | `dword_106C2B0` | 4 | `preproc_feature_flag` | Preprocessor feature flag. |

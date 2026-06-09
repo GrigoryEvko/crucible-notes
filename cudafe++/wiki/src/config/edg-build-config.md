@@ -1,6 +1,6 @@
 # EDG Build Configuration
 
-cudafe++ is built from Edison Design Group (EDG) C/C++ front end source code, version 6.6. At build time, NVIDIA sets approximately 750 compile-time constants that control every aspect of the front end's behavior -- from which backend generates output, to how the IL system operates, to what ABI conventions are followed. These constants are baked into the binary and cannot be changed at runtime. They represent the specific EDG configuration NVIDIA chose for CUDA compilation.
+cudafe++ is built from Edison Design Group (EDG) C/C++ front end source code, version 6.6. At build time, NVIDIA sets approximately 750 compile-time constants that control every aspect of the front end's behavior — from which backend generates output, to how the IL system operates, to what ABI conventions are followed. These constants are baked into the binary and cannot be changed at runtime. They represent the specific EDG configuration NVIDIA chose for CUDA compilation.
 
 The function `dump_configuration` (`sub_44CF30`, 785 lines) prints all 747 constants as C preprocessor `#define` statements when invoked with `--dump_configuration`. Of these, 613 are defined and 134 are explicitly listed as "not defined." The output is written to `qword_126EDF0` (the configuration output stream, typically stderr) in alphabetical order.
 
@@ -22,7 +22,7 @@ The constants fall into seven categories: backend selection, IL system, internal
 
 ## Backend Selection
 
-The EDG front end supports multiple backend code generators. NVIDIA configured cudafe++ for the **C++ code generation backend** (cp_gen_be), which means the front end's output is C++ source code -- not object code, not C, and not a serialized IL file.
+The EDG front end supports multiple backend code generators. NVIDIA configured cudafe++ for the **C++ code generation backend** (cp_gen_be), which means the front end's output is C++ source code — not object code, not C, and not a serialized IL file.
 
 | Constant | Value | Meaning |
 |---|---|---|
@@ -57,7 +57,7 @@ The Intermediate Language (IL) system is the core data structure connecting the 
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `IL_SHOULD_BE_WRITTEN_TO_FILE` | `0` | IL stays in memory -- never written to an IL file |
+| `IL_SHOULD_BE_WRITTEN_TO_FILE` | `0` | IL stays in memory — never written to an IL file |
 | `DO_IL_LOWERING` | `0` | No IL transformation passes before backend |
 | `IL_WALK_NEEDED` | `1` | IL walker infrastructure is compiled in |
 | `IL_VERSION_NUMBER` | `"6.6"` | IL format version, matches EDG version |
@@ -76,7 +76,7 @@ In a standard EDG deployment (like the Comeau C++ compiler or Intel ICC's older 
 3. The cp_gen_be backend reads the IL graph directly and emits C++ source
 4. The arenas are freed
 
-This design means the `IL_FILE_SUFFIX` constant is left undefined -- there is no suffix because there is no file. The constants `LARGE_IL_FILE_SUPPORT`, `USE_TEMPLATE_INFO_FILE`, `TEMPLATE_INFO_FILE_SUFFIX`, `INSTANTIATION_FILE_SUFFIX`, and `EXPORTED_TEMPLATE_FILE_SUFFIX` are all similarly undefined.
+This design means the `IL_FILE_SUFFIX` constant is left undefined — there is no suffix because there is no file. The constants `LARGE_IL_FILE_SUPPORT`, `USE_TEMPLATE_INFO_FILE`, `TEMPLATE_INFO_FILE_SUFFIX`, `INSTANTIATION_FILE_SUFFIX`, and `EXPORTED_TEMPLATE_FILE_SUFFIX` are all similarly undefined.
 
 ### Why DO_IL_LOWERING=0 Matters
 
@@ -115,7 +115,7 @@ Despite no serialization and no lowering, the IL walk infrastructure is compiled
 | `RECORD_RAW_ASM_OPERAND_DESCRIPTIONS` | `1` | Raw asm operand text kept |
 | `KEEP_TEMPLATE_ARG_EXPR_THAT_CAUSES_INSTANTIATION` | `1` | Template argument expressions that trigger instantiation are retained |
 
-With `ALL_TEMPLATE_INFO_IN_IL=1`, template definitions, partial specializations, and instantiation directives live directly in the IL graph. This eliminates the need for a separate template information file (`USE_TEMPLATE_INFO_FILE` is undefined). Combined with `PROTOTYPE_INSTANTIATIONS_IN_IL=1`, the IL retains complete template metadata -- even for function templates that have been declared but not yet instantiated. This is essential for CUDA's device/host separation, where a template might be instantiated in different execution spaces.
+With `ALL_TEMPLATE_INFO_IN_IL=1`, template definitions, partial specializations, and instantiation directives live directly in the IL graph. This eliminates the need for a separate template information file (`USE_TEMPLATE_INFO_FILE` is undefined). Combined with `PROTOTYPE_INSTANTIATIONS_IN_IL=1`, the IL retains complete template metadata — even for function templates that have been declared but not yet instantiated. This is essential for CUDA's device/host separation, where a template might be instantiated in different execution spaces.
 
 ## Internal Checking
 
@@ -178,7 +178,7 @@ The `DEFAULT_EDG_COLORS` constant encodes ANSI SGR (Select Graphic Rendition) co
 | `quote` | `01` | Bold (default color) |
 | `range1` | `32` | Green (non-bold) |
 
-This matches GCC's diagnostic color scheme, which is intentional -- cudafe++ is designed to produce diagnostics that look visually consistent with the host GCC compiler's output.
+This matches GCC's diagnostic color scheme, which is intentional — cudafe++ is designed to produce diagnostics that look visually consistent with the host GCC compiler's output.
 
 ## ABI Configuration
 
@@ -323,7 +323,7 @@ These constants affect what the cp_gen_be backend emits.
 | `GENERATE_SOURCE_SEQUENCE_LISTS` | `1` | Source sequence lists (instantiation ordering) generated |
 | `GENERATE_LINKAGE_SPEC_BLOCKS` | `1` | `extern "C"` blocks preserved in output |
 | `USING_DECLARATIONS_IN_GENERATED_CODE` | `1` | `using` declarations appear in output |
-| `GENERATE_EH_TABLES` | `0` | No EH tables -- host compiler handles exceptions |
+| `GENERATE_EH_TABLES` | `0` | No EH tables — host compiler handles exceptions |
 | `GENERATE_MICROSOFT_IF_EXISTS_ENTRIES` | `0` | No `__if_exists` / `__if_not_exists` output |
 | `SUPPRESS_ARRAY_STATIC_IN_GENERATED_CODE` | `1` | `static` in array parameter declarations suppressed |
 | `GCC_BUILTIN_VARARGS_IN_GENERATED_CODE` | `0` | No GCC `__builtin_va_*` in output |
@@ -331,7 +331,7 @@ These constants affect what the cp_gen_be backend emits.
 | `ADD_BRACES_TO_AVOID_DANGLING_ELSE_IN_GENERATED_C` | `0` | No extra braces for dangling else |
 | `DOING_SOURCE_ANALYSIS` | `1` | Source analysis mode (affects what is preserved) |
 
-The `GENERATE_EH_TABLES=0` is significant. Exception handling tables are not generated because cudafe++ emits source code -- the host compiler is responsible for generating the actual EH tables when it compiles the `.ii` output. Similarly, `GCC_BUILTIN_VARARGS_IN_GENERATED_CODE=0` means the output uses standard `<stdarg.h>` varargs rather than GCC builtins, keeping the output compiler-portable.
+The `GENERATE_EH_TABLES=0` is significant. Exception handling tables are not generated because cudafe++ emits source code — the host compiler is responsible for generating the actual EH tables when it compiles the `.ii` output. Similarly, `GCC_BUILTIN_VARARGS_IN_GENERATED_CODE=0` means the output uses standard `<stdarg.h>` varargs rather than GCC builtins, keeping the output compiler-portable.
 
 ## Template and Instantiation Model
 
@@ -350,7 +350,7 @@ The `GENERATE_EH_TABLES=0` is significant. Exception handling tables are not gen
 | `DEFAULT_MAX_DEPTH_CONSTEXPR_CALL` | `256` | Maximum constexpr recursion depth |
 | `DEFAULT_MAX_COST_CONSTEXPR_CALL` | `2000000` | Maximum constexpr evaluation cost |
 
-The `AUTOMATIC_TEMPLATE_INSTANTIATION=0` and `DEFAULT_INSTANTIATION_MODE=tim_none` disable EDG's automatic template instantiation mechanism. This mechanism (where EDG writes instantiation requests to a file for later processing) is unnecessary because cudafe++ processes each translation unit in a single pass -- templates are instantiated inline as the parser encounters them, and the backend emits the instantiated code directly.
+The `AUTOMATIC_TEMPLATE_INSTANTIATION=0` and `DEFAULT_INSTANTIATION_MODE=tim_none` disable EDG's automatic template instantiation mechanism. This mechanism (where EDG writes instantiation requests to a file for later processing) is unnecessary because cudafe++ processes each translation unit in a single pass — templates are instantiated inline as the parser encounters them, and the backend emits the instantiated code directly.
 
 ## Feature Enablement Constants
 
@@ -431,7 +431,7 @@ These constants control which macros cudafe++ automatically defines for the prep
 | `MACRO_DEFINED_WHEN_IA64_ABI` | `"__EDG_IA64_ABI"` | Always defined (since `IA64_ABI=1`) |
 | `MACRO_DEFINED_WHEN_TYPE_TRAITS_HELPERS_ENABLED` | `"__EDG_TYPE_TRAITS_ENABLED"` | Always defined (since type traits are on) |
 
-These macros allow header files to conditionally compile based on which compiler features are active. They are part of EDG's mechanism for compatibility with GCC's predefined macro surface -- GCC defines `__EXCEPTIONS` when exceptions are on, so cudafe++ does the same.
+These macros allow header files to conditionally compile based on which compiler features are active. They are part of EDG's mechanism for compatibility with GCC's predefined macro surface — GCC defines `__EXCEPTIONS` when exceptions are on, so cudafe++ does the same.
 
 ## Miscellaneous Constants
 
@@ -463,11 +463,11 @@ The legacy configuration section at the bottom of the dump output reports `LEGAC
 
 The build configuration constants and the [runtime CLI flags](cli-flags.md) form a two-layer system:
 
-1. **Build-time constants** (`CHECKING=1`, `BACK_END_IS_CP_GEN_BE=1`, `IL_SHOULD_BE_WRITTEN_TO_FILE=0`) determine what code paths exist in the binary. If `IL_SHOULD_BE_WRITTEN_TO_FILE=0`, the IL serialization code is not compiled in -- no runtime flag can enable it.
+1. **Build-time constants** (`CHECKING=1`, `BACK_END_IS_CP_GEN_BE=1`, `IL_SHOULD_BE_WRITTEN_TO_FILE=0`) determine what code paths exist in the binary. If `IL_SHOULD_BE_WRITTEN_TO_FILE=0`, the IL serialization code is not compiled in — no runtime flag can enable it.
 
 2. **`DEFAULT_*` constants** set initial values for features that can be toggled at runtime. `DEFAULT_EXCEPTIONS_ENABLED=1` means exceptions are on unless `--no_exceptions` is passed. These defaults are loaded by `default_init` (`sub_45EB40`) before command-line parsing.
 
-3. **`*_ENABLING_POSSIBLE` constants** gate whether a feature can be toggled at all. `COROUTINE_ENABLING_POSSIBLE=1` means the `--coroutines` / `--no_coroutines` flag pair is registered. `REFLECTION_ENABLING_POSSIBLE=0` means the reflection flag pair is not even registered -- the feature cannot be turned on.
+3. **`*_ENABLING_POSSIBLE` constants** gate whether a feature can be toggled at all. `COROUTINE_ENABLING_POSSIBLE=1` means the `--coroutines` / `--no_coroutines` flag pair is registered. `REFLECTION_ENABLING_POSSIBLE=0` means the reflection flag pair is not even registered — the feature cannot be turned on.
 
 This layering means the build configuration determines the binary's permanent capabilities, while the CLI flags select among the enabled possibilities.
 

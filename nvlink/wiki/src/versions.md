@@ -47,8 +47,8 @@ The internal build path `0x1D41468` confirms the Perforce depot structure: `/dvs
 
 The binary contains two distinct build timestamps, separated by approximately 3 minutes and 47 seconds:
 
-- **`0x1D33CC8`**: `Wed_Aug_20_01:58:59_PM_PDT_2025` -- the nvlink-specific timestamp, referenced from the option parser and main entry point context.
-- **`0x1D42088`**: `Wed_Aug_20_01:55:12_PM_PDT_2025` -- the embedded ptxas timestamp, located in the architecture profile region.
+- **`0x1D33CC8`**: `Wed_Aug_20_01:58:59_PM_PDT_2025` — the nvlink-specific timestamp, referenced from the option parser and main entry point context.
+- **`0x1D42088`**: `Wed_Aug_20_01:55:12_PM_PDT_2025` — the embedded ptxas timestamp, located in the architecture profile region.
 
 The earlier timestamp belongs to the ptxas component, the later to nvlink itself. This is consistent with a two-stage build: ptxas is compiled first as a static library, then linked into the nvlink binary approximately 4 minutes later.
 
@@ -64,9 +64,9 @@ The `--version-ls` (`--list-version`) option in the embedded ptxas (`sub_1103030
 
 The architecture profile database is initialized by `sub_484F50` (gpu_architecture_profile_database_init), a 54 KB function at `0x484F50`. It registers every supported GPU architecture by creating three profile objects per architecture via `sub_484DB0` (profile_create):
 
-1. **Real profile** (`sm_XX`) -- targets physical GPU hardware, produces SASS binary
-2. **Virtual profile** (`compute_XX`) -- targets a virtual architecture, produces PTX that can be JIT-compiled to any compatible real target
-3. **LTO profile** (`lto_XX`) -- targets link-time optimization IR, compiled to SASS during the LTO pipeline
+1. **Real profile** (`sm_XX`) — targets physical GPU hardware, produces SASS binary
+2. **Virtual profile** (`compute_XX`) — targets a virtual architecture, produces PTX that can be JIT-compiled to any compatible real target
+3. **LTO profile** (`lto_XX`) — targets link-time optimization IR, compiled to SASS during the LTO pipeline
 
 Profiles are stored in a hash map at global `qword_2A5F8D8` for O(1) lookup by name. The initialization is guarded by `byte_2A5F8D0` (init-once pattern). The default minimum architecture is set to sm_80 via `dword_2A5F8CC = 80`.
 
@@ -76,29 +76,29 @@ The table below lists all 22 architecture entries in registration order, extract
 
 | # | SM | `sm_` | `compute_` | `lto_` | `__CUDA_ARCH__` | Family | ISA Class | Variants |
 |---|---|---|---|---|---|---|---|---|
-| 1 | 75 | `sm_75` | `compute_75` | `lto_75` | `750` | Turing | sm_75 | -- |
-| 2 | 80 | `sm_80` | `compute_80` | `lto_80` | `800` | Ampere | sm_80 | -- |
-| 3 | 86 | `sm_86` | `compute_86` | `lto_86` | `860` | Ampere | sm_80 | -- |
-| 4 | 87 | `sm_87` | `compute_87` | `lto_87` | `870` | Ampere | sm_80 | -- |
-| 5 | 88 | `sm_88` | `compute_88` | `lto_88` | `880` | Ampere | sm_80 | -- |
-| 6 | 89 | (dynamic) | `compute_89` | `lto_89` | `890` | Ampere | sm_80 | -- |
+| 1 | 75 | `sm_75` | `compute_75` | `lto_75` | `750` | Turing | sm_75 | — |
+| 2 | 80 | `sm_80` | `compute_80` | `lto_80` | `800` | Ampere | sm_80 | — |
+| 3 | 86 | `sm_86` | `compute_86` | `lto_86` | `860` | Ampere | sm_80 | — |
+| 4 | 87 | `sm_87` | `compute_87` | `lto_87` | `870` | Ampere | sm_80 | — |
+| 5 | 88 | `sm_88` | `compute_88` | `lto_88` | `880` | Ampere | sm_80 | — |
+| 6 | 89 | (dynamic) | `compute_89` | `lto_89` | `890` | Ampere | sm_80 | — |
 | 7 | 90 | `sm_90` | `compute_90` | `lto_90` | `900` | Hopper | sm_90 | `sm_90a` |
-| 8 | 90a | `sm_90a` | `compute_90a` | `lto_90a` | `90a0` | Hopper | sm_90 | -- |
+| 8 | 90a | `sm_90a` | `compute_90a` | `lto_90a` | `90a0` | Hopper | sm_90 | — |
 | 9 | 100 | `sm_100` | `compute_100` | `lto_100` | `1000` | Blackwell | sm_100 | `sm_100a`, `sm_100f` |
-| 10 | 100a | `sm_100a` | `compute_100a` | `lto_100a` | `100a0` | Blackwell | sm_100 | -- |
-| 11 | 100f | `sm_100f` | `compute_100f` | `lto_100f` | `100f0` | Blackwell | sm_100 | -- |
+| 10 | 100a | `sm_100a` | `compute_100a` | `lto_100a` | `100a0` | Blackwell | sm_100 | — |
+| 11 | 100f | `sm_100f` | `compute_100f` | `lto_100f` | `100f0` | Blackwell | sm_100 | — |
 | 12 | 103 | `sm_103` | `compute_103` | `lto_103` | `1030` | Blackwell | sm_103 | `sm_103a`, `sm_103f` |
-| 13 | 103a | `sm_103a` | `compute_103a` | `lto_103a` | `103a0` | Blackwell | sm_103 | -- |
-| 14 | 103f | `sm_103f` | `compute_103f` | `lto_103f` | `103f0` | Blackwell | sm_103 | -- |
+| 13 | 103a | `sm_103a` | `compute_103a` | `lto_103a` | `103a0` | Blackwell | sm_103 | — |
+| 14 | 103f | `sm_103f` | `compute_103f` | `lto_103f` | `103f0` | Blackwell | sm_103 | — |
 | 15 | 110 | `sm_110` | `compute_110` | `lto_110` | `1100` | Blackwell | sm_110 | `sm_110a`, `sm_110f` |
-| 16 | 110a | `sm_110a` | `compute_110a` | `lto_110a` | `110a0` | Blackwell | sm_110 | -- |
-| 17 | 110f | `sm_110f` | `compute_110f` | `lto_110f` | `110f0` | Blackwell | sm_110 | -- |
+| 16 | 110a | `sm_110a` | `compute_110a` | `lto_110a` | `110a0` | Blackwell | sm_110 | — |
+| 17 | 110f | `sm_110f` | `compute_110f` | `lto_110f` | `110f0` | Blackwell | sm_110 | — |
 | 18 | 120 | `sm_120` | `compute_120` | `lto_120` | `1200` | Blackwell | sm_120 | `sm_120a`, `sm_120f` |
-| 19 | 120a | `sm_120a` | `compute_120a` | `lto_120a` | `120a0` | Blackwell | sm_120 | -- |
-| 20 | 120f | `sm_120f` | `compute_120f` | `lto_120f` | `120f0` | Blackwell | sm_120 | -- |
+| 19 | 120a | `sm_120a` | `compute_120a` | `lto_120a` | `120a0` | Blackwell | sm_120 | — |
+| 20 | 120f | `sm_120f` | `compute_120f` | `lto_120f` | `120f0` | Blackwell | sm_120 | — |
 | 21 | 121 | `sm_121` | `compute_121` | `lto_121` | `1210` | Blackwell | sm_121 | `sm_121a`, `sm_121f` |
-| 22 | 121a | `sm_121a` | `compute_121a` | `lto_121a` | `121a0` | Blackwell | sm_121 | -- |
-| -- | 121f | `sm_121f` | `compute_121f` | `lto_121f` | `121f0` | Blackwell | sm_121 | -- |
+| 22 | 121a | `sm_121a` | `compute_121a` | `lto_121a` | `121a0` | Blackwell | sm_121 | — |
+| — | 121f | `sm_121f` | `compute_121f` | `lto_121f` | `121f0` | Blackwell | sm_121 | — |
 
 **Counting note**: The "22 architectures" figure counts the base SM numbers (75, 80, 86, 87, 88, 89, 90, 100, 103, 110, 120, 121) plus the `a` and `f` sub-variants as distinct profile entries. The exact count depends on whether one counts each profile triplet (sm/compute/lto) as one architecture or each sub-variant independently. The profile database contains 66 total profile objects (22 base architectures x 3 profile types, approximately).
 
@@ -136,7 +136,7 @@ The profile table at `0x1D409C8`--`0x1D40F01` contains an explicit `sm_XX` strin
 | `__CUDA_ARCH__` | `0x1D40AB2` | `-D__CUDA_ARCH__=890` |
 | `compute_` | `0x1D40ACA` | `compute_89` |
 | `lto_` | `0x1D40AD5` | `lto_89` |
-| `sm_` | -- | (no literal string) |
+| `sm_` | — | (no literal string) |
 
 The `sm_89` name does appear elsewhere in the binary at `0x1F4DB66` as part of a format string `%s on sm_89`, referenced from `sub_145EFB0` in the instruction selection region. This confirms the architecture exists. The profile initialization code at `sub_484F50` generates the `sm_89` string dynamically via the `sm_%d%c` format string (`0x1D321B7`) or the `sm_%2d%s` format (`0x1D40F01`), rather than storing it as a literal in the profile table.
 
@@ -155,7 +155,7 @@ The profile initialization code contains assertions of the form `(profile_sm_XX)
 | `(profile_sm_120)->isaClass` | `0x1D40DAC` | sm_120a, sm_120f share ISA with sm_120 |
 | `(profile_sm_121)->isaClass` | `0x1D40E5F` | sm_121a, sm_121f share ISA with sm_121 |
 
-"ISA class" determines which instruction encoding tables and instruction selection backend are used. Sub-variants within a family share the same SASS instruction set -- the `a` and `f` variants differ in feature availability and compatibility semantics, not in instruction encoding.
+"ISA class" determines which instruction encoding tables and instruction selection backend are used. Sub-variants within a family share the same SASS instruction set — the `a` and `f` variants differ in feature availability and compatibility semantics, not in instruction encoding.
 
 Note the absence of an `(profile_sm_75)->isaClass` or `(profile_sm_80)->isaClass` assertion. Turing (sm_75) and Ampere (sm_80) have no sub-variants in this binary, so no sharing assertion is needed. The five Ampere sub-architectures (sm_80, sm_86, sm_87, sm_88, sm_89) all share the sm_80 ISA class implicitly through the Ampere family assignment.
 
@@ -163,8 +163,8 @@ Note the absence of an `(profile_sm_75)->isaClass` or `(profile_sm_80)->isaClass
 
 Architectures with SM >= 100 trigger Mercury mode in nvlink. The option parser at `sub_427AE0` checks whether the parsed `--arch` value exceeds 99 and, if so, sets two internal flags:
 
-- `byte_2A5F222 = 1` -- Mercury mode enabled
-- `byte_2A5F225 = 1` -- Related capability flag
+- `byte_2A5F222 = 1` — Mercury mode enabled
+- `byte_2A5F225 = 1` — Related capability flag
 
 Mercury mode changes the output format from traditional cubin (SASS in `.text` sections) to capsule mercury format, routes the output through the FNLZR (Finalizer) post-link binary rewriter at `sub_4275C0`, and enables R_MERCURY relocation types alongside R_CUDA relocations. See [Mercury Overview](mercury/overview.md) for details.
 

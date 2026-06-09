@@ -54,7 +54,7 @@ Phase 2 is gated by `vtable+296` (`supports_bindless()`) and is skipped entirely
 
 ## Function Signatures
 
-### `sub_438DD0` -- `process_bindless_references`
+### `sub_438DD0` — `process_bindless_references`
 
 ```c
 // Address: 0x438DD0
@@ -68,7 +68,7 @@ Phase 2 is gated by `vtable+296` (`supports_bindless()`) and is skipped entirely
 _QWORD* __fastcall process_bindless_references(__int64 a1, _QWORD* a2);
 ```
 
-### `sub_43CDA0` -- `resolve_bindless_type_symbols`
+### `sub_43CDA0` — `resolve_bindless_type_symbols`
 
 ```c
 // Address: 0x43CDA0
@@ -82,7 +82,7 @@ _QWORD* __fastcall process_bindless_references(__int64 a1, _QWORD* a2);
 __int64 __fastcall resolve_bindless_type_symbols(__int64 a1, int a2, unsigned __int8 a3);
 ```
 
-### `sub_438CE0` -- `emit_bindless_relocation`
+### `sub_438CE0` — `emit_bindless_relocation`
 
 ```c
 // Address: 0x438CE0
@@ -101,7 +101,7 @@ __int64 __fastcall emit_bindless_relocation(
     unsigned int a4, int a5, __int64 a6);
 ```
 
-### `sub_4324B0` -- `bindless_target_setup`
+### `sub_4324B0` — `bindless_target_setup`
 
 ```c
 // Address: 0x4324B0
@@ -116,7 +116,7 @@ __int64 __fastcall emit_bindless_relocation(
 __int64 __fastcall bindless_target_setup(__int64 a1, __int64 a2);
 ```
 
-### `sub_433310` -- `descriptor_list_layout`
+### `sub_433310` — `descriptor_list_layout`
 
 ```c
 // Address: 0x433310
@@ -176,7 +176,7 @@ The types span four generations of encoding evolution:
 - **Hopper+** (115): Added for sm90 Hopper architecture.
 - **Mercury** (65539-65540): Range `0x10000+` is the Mercury (sm100+ / Blackwell) relocation namespace, with bindless variants at offsets 3 and 4.
 
-Types that explicitly **do not** trigger bindless processing (skip to `LABEL_19`) despite being numerically adjacent: 26 (`0x1A`), 27 (`0x1B`), 28 (`0x1C`). These correspond to non-bindless relocation types (`R_CUDA_32`, `R_CUDA_64`, and a third type in the same numeric range -- see the [R_CUDA Catalog](../reference/r-cuda-catalog.md) for exact type assignments).
+Types that explicitly **do not** trigger bindless processing (skip to `LABEL_19`) despite being numerically adjacent: 26 (`0x1A`), 27 (`0x1B`), 28 (`0x1C`). These correspond to non-bindless relocation types (`R_CUDA_32`, `R_CUDA_64`, and a third type in the same numeric range — see the [R_CUDA Catalog](../reference/r-cuda-catalog.md) for exact type assignments).
 
 ## Complete Pseudocode: `process_bindless_references` (`sub_438DD0`)
 
@@ -472,7 +472,7 @@ Each `caller_node` in the linked list has this layout:
 
 The propagation loop ORs the bitmask byte into each caller's section entry. This means: if device function `helper()` uses a bindless texture, and kernels `A()` and `B()` both call `helper()`, then both `section_of_A` and `section_of_B` get bit 0 set in the bitmask. This transitive propagation is essential because the per-entry constant bank must be allocated for every kernel that *transitively* reaches a bindless reference, even through multiple levels of function calls.
 
-### The Bindless Handler (LABEL_32) -- Step-by-Step Summary
+### The Bindless Handler (LABEL_32) — Step-by-Step Summary
 
 When a relocation matches a bindless type, the handler executes five steps:
 
@@ -1483,8 +1483,8 @@ Walk the parent descriptor list. For each descriptor, check if it belongs to sec
 |---|---|---|---|---|
 | `tex_shared` | 10 | bitmask[20] & 0x01 = yes | 6 (texture) | texture_count = 1 |
 | `samp_shared` | 11 | bitmask[20] & 0x02 = yes | 7 (sampler) | sampler_count = 1 |
-| `tex_private` | 10 | section mismatch -> skip | -- | -- |
-| `surf_unified` | 12 | section mismatch -> skip | -- | -- |
+| `tex_private` | 10 | section mismatch -> skip | — | — |
+| `surf_unified` | 12 | section mismatch -> skip | — | — |
 
 Emitted relocations for kernel_A:
 - `emit_bindless_relocation(elf, 6, 15, section_20, 0, R1.orig)`
@@ -1494,8 +1494,8 @@ Emitted relocations for kernel_A:
 
 | Descriptor | sym_type | Check | Emit type | Count |
 |---|---|---|---|---|
-| `tex_shared` | 10 | section mismatch -> skip | -- | -- |
-| `samp_shared` | 11 | section mismatch -> skip | -- | -- |
+| `tex_shared` | 10 | section mismatch -> skip | — | — |
+| `samp_shared` | 11 | section mismatch -> skip | — | — |
 | `tex_private` | 10 | bitmask[21] & 0x01 = yes | 6 (texture) | texture_count = 1 |
 | `surf_unified` | 12 | bitmask[21] & 0x03 = yes | 52 (unified surf) | surface_count = 1 |
 
@@ -1505,8 +1505,8 @@ Emitted relocations for kernel_B:
 
 ### Phase I: Resource Limit Checking
 
-For kernel_A: texture_count=1, sampler_count=1, surface_count=0 -- all within limits.
-For kernel_B: texture_count=1, sampler_count=0, surface_count=1 -- all within limits.
+For kernel_A: texture_count=1, sampler_count=1, surface_count=0 — all within limits.
+For kernel_B: texture_count=1, sampler_count=0, surface_count=1 — all within limits.
 
 ### Final Relocation List
 
@@ -1691,7 +1691,7 @@ v84          = v89 == 0 ? 6 : 65547;     // texture reloc type
 
 Since `v89 = 0x80000000` is nonzero, the **non-Mercury** wide-reloc path picks types `65547` and `65548`. This is a subtle point: the hex values `0x1000B` and `0x1000C` (the Mercury bindless relocation types) are used even on non-Mercury Hopper when the wide-reloc flag is set, because Hopper added those types before the Mercury namespace was formalized.
 
-Wait -- re-reading the decompiled code: `v89` stores the result of `elfw[48] & arch_flags_mask`, and the conditional is `v89 == 0 ? 7 : 65548`. On sm_90 without the wide-reloc bit set, the types would be 6 and 7; with the bit set, they are 65547 and 65548. For this worked example, assume the cubin uses the narrower types 6 and 7 (the flag bit is not set). We rewrite `v89 = 0` for the rest of the trace.
+Wait — re-reading the decompiled code: `v89` stores the result of `elfw[48] & arch_flags_mask`, and the conditional is `v89 == 0 ? 7 : 65548`. On sm_90 without the wide-reloc bit set, the types would be 6 and 7; with the bit set, they are 65547 and 65548. For this worked example, assume the cubin uses the narrower types 6 and 7 (the flag bit is not set). We rewrite `v89 = 0` for the rest of the trace.
 
 **Phase B (lines 115-142):** Collect per-entry constant bank sections.
 
@@ -1795,7 +1795,7 @@ bitmask[]:
   [4] = 0x01    ; .text.sample_kernel has a texture reference
 ```
 
-Wait -- the bitmask must be indexed by the **constant bank section** (section 9), not the kernel text section (section 4). Re-reading: line 200 writes `((_BYTE *)s + v34)`, where `v34 = sub_442270(a1, v32)` and `v32 = reloc.rela_section_index`. `sub_442270` returns the resolved section record, and `sh_link` of that record resolves back to... let me re-examine:
+Wait — the bitmask must be indexed by the **constant bank section** (section 9), not the kernel text section (section 4). Re-reading: line 200 writes `((_BYTE *)s + v34)`, where `v34 = sub_442270(a1, v32)` and `v32 = reloc.rela_section_index`. `sub_442270` returns the resolved section record, and `sh_link` of that record resolves back to... let me re-examine:
 
 ```c
 // decompiled/sub_438DD0_0x438dd0.c:193-200
@@ -1873,7 +1873,7 @@ v45 = desc_node
         ; 8 != 4 AND v48 (=8) is nonzero -> GOTO LABEL_64, skip!
 ```
 
-Hmm -- that would prune every descriptor. Let me re-read: the per-entry section's `sh_link` for a `.nv.constant3.sample_kernel` section points at the **entry function symbol** (not the text section). So `section_9.sh_link` actually encodes the function ID (e.g., 3 for `sample_kernel`). And `v48` is the section index of the original `myTex` symbol, which for a texture marked with an unbound `sh_link` is usually 0 (or a specific function ID).
+Hmm — that would prune every descriptor. Let me re-read: the per-entry section's `sh_link` for a `.nv.constant3.sample_kernel` section points at the **entry function symbol** (not the text section). So `section_9.sh_link` actually encodes the function ID (e.g., 3 for `sample_kernel`). And `v48` is the section index of the original `myTex` symbol, which for a texture marked with an unbound `sh_link` is usually 0 (or a specific function ID).
 
 Revising Step 4: `myTex` has `st_shndx = 0` (undefined / pending resolution) because its final location depends on the linker-assigned descriptor slot. So `v48 = 0`, and line 343's guard `v48 && v50 != v48` is false (because `v48 == 0`), so the descriptor proceeds.
 
@@ -1914,7 +1914,7 @@ Line 39: *(v13 + 16) = 0             ; r_addend
 Line 40: *(v13 + 8) = 42 + (6 << 32) ; r_info = (6 << 32) | 42?
 ```
 
-Wait -- line 40 reads `*((_QWORD *)v13 + 1) = v17 + (v7 << 32)`. `v17 = v20 = a2 = 6` (the reloc_type). `v7 = a3 = 42` (the sym_idx). So `r_info = 6 + (42 << 32) = 0x0000002A00000006`. That's `(sym << 32) | type` which matches the standard `r_info` encoding.
+Wait — line 40 reads `*((_QWORD *)v13 + 1) = v17 + (v7 << 32)`. `v17 = v20 = a2 = 6` (the reloc_type). `v7 = a3 = 42` (the sym_idx). So `r_info = 6 + (42 << 32) = 0x0000002A00000006`. That's `(sym << 32) | type` which matches the standard `r_info` encoding.
 
 After `sub_438CE0` returns:
 
@@ -2070,9 +2070,9 @@ For **R1'** (type 115, patches `.text.sample_kernel + 0x30`):
 
 For **R2** (type 6, patches `.nv.constant3.sample_kernel + 0x30`):
 
-Wait -- the `r_offset` for R2 was copied from R1 (which was 0x30). That means R2 points at byte `0x30` within `.text.sample_kernel`, not within the constant bank. This is wrong.
+Wait — the `r_offset` for R2 was copied from R1 (which was 0x30). That means R2 points at byte `0x30` within `.text.sample_kernel`, not within the constant bank. This is wrong.
 
-Re-reading `sub_438CE0` line 36: `*(_QWORD *)v13 = a6;` -- it copies 8 bytes from `original_reloc`. The `a6` argument comes from `sub_438DD0` line 391: `*(_QWORD *)(v46 + 8)`, which is `desc->original_reloc` at offset 8 in the descriptor record. Descriptor records are built by `sub_433310`, which stores a reference to the original **descriptor** data, not the original relocation. So `a6` is actually a pointer to the descriptor's data payload, and the 8 bytes copied are the descriptor's header/metadata, not an `r_offset`.
+Re-reading `sub_438CE0` line 36: `*(_QWORD *)v13 = a6;` — it copies 8 bytes from `original_reloc`. The `a6` argument comes from `sub_438DD0` line 391: `*(_QWORD *)(v46 + 8)`, which is `desc->original_reloc` at offset 8 in the descriptor record. Descriptor records are built by `sub_433310`, which stores a reference to the original **descriptor** data, not the original relocation. So `a6` is actually a pointer to the descriptor's data payload, and the 8 bytes copied are the descriptor's header/metadata, not an `r_offset`.
 
 The `r_offset` for R2 must therefore be encoded differently. Looking at `sub_438CE0` more carefully: the 32-byte record layout is:
 
@@ -2084,7 +2084,7 @@ The `r_offset` for R2 must therefore be encoded differently. Looking at `sub_438
 | 24 | `rela_sec_idx` |
 | 28 | `addend_flag` |
 
-There is no explicit `r_offset` field -- the first 8 bytes at `rec+0` play that role, populated from the descriptor's header. For bindless offset relocations emitted by `sub_438CE0`, the `r_offset` is whatever `desc[1]` (an 8-byte field in the descriptor) contains, which is typically the per-section offset where the descriptor sits. So for the `myTex` descriptor at offset 0 in section 9, R2's `r_offset = 0`.
+There is no explicit `r_offset` field — the first 8 bytes at `rec+0` play that role, populated from the descriptor's header. For bindless offset relocations emitted by `sub_438CE0`, the `r_offset` is whatever `desc[1]` (an 8-byte field in the descriptor) contains, which is typically the per-section offset where the descriptor sits. So for the `myTex` descriptor at offset 0 in section 9, R2's `r_offset = 0`.
 
 Revised R2:
 
@@ -2110,7 +2110,7 @@ ptxas originally emitted SASS similar to the following (addresses are the `.text
 /*0050*/  STG.E [R2], R4
 ```
 
-The `LDC R3, c[0x3][0x0]` instruction at offset 0x30 loads 4 bytes from constant bank 3 at offset 0 (the `st_value` of `$NVLINKBINDLESSOFF_myTex`) into R3. R3 then contains the bindless texture handle -- an opaque 32-bit value that the `TEX.B.LL` (bindless TEX, long-latency) instruction uses as an index into the per-module texture header table.
+The `LDC R3, c[0x3][0x0]` instruction at offset 0x30 loads 4 bytes from constant bank 3 at offset 0 (the `st_value` of `$NVLINKBINDLESSOFF_myTex`) into R3. R3 then contains the bindless texture handle — an opaque 32-bit value that the `TEX.B.LL` (bindless TEX, long-latency) instruction uses as an index into the per-module texture header table.
 
 Before nvlink, the offset field `0x0` in `LDC R3, c[0x3][0x0]` is a placeholder containing the symbol index reference. After `sub_438DD0` rewrites R1' to point at `$NVLINKBINDLESSOFF_myTex` (symbol 42, offset 0), the relocation engine patches the `0x0` in the encoded `LDC` instruction to the actual descriptor offset. Since myTex was laid out at offset 0 in the per-entry bank, the patched instruction is byte-identical to the original:
 
@@ -2279,15 +2279,15 @@ With verbose mode enabled (`elfw+64 bit 1` set, corresponding to `-v` on the com
 
 ## sm_100+ FNLZR-Deferred Path
 
-On Mercury targets (`e_ident[7] == 0x41`, sm >= 100), the bindless pipeline does not change shape -- `sub_438DD0` runs identically, `$NVLINKBINDLESSOFF_<name>` synthetics are created the same way, and the per-entry constant bank is laid out by `sub_4324B0` and `sub_433310` regardless of architecture. What changes is *who applies the final patch*. On pre-Blackwell targets, `sub_469D60` (the relocation engine) consumes the rewritten relocation records during the standard relocate phase and is done. On Blackwell, the same records can be deferred through capmerc emission so that **FNLZR** (`sub_4748F0`) re-applies them post-link, after the OCG backend has re-emitted SASS into the capmerc envelope.
+On Mercury targets (`e_ident[7] == 0x41`, sm >= 100), the bindless pipeline does not change shape — `sub_438DD0` runs identically, `$NVLINKBINDLESSOFF_<name>` synthetics are created the same way, and the per-entry constant bank is laid out by `sub_4324B0` and `sub_433310` regardless of architecture. What changes is *who applies the final patch*. On pre-Blackwell targets, `sub_469D60` (the relocation engine) consumes the rewritten relocation records during the standard relocate phase and is done. On Blackwell, the same records can be deferred through capmerc emission so that **FNLZR** (`sub_4748F0`) re-applies them post-link, after the OCG backend has re-emitted SASS into the capmerc envelope.
 
-This section traces how the same relocation table -- the standard 64-byte descriptors at `off_1D3DBE0` produced by `sub_438DD0` -- is consumed twice on Blackwell: once by nvlink during the relocate phase (eagerly, for any bindless relocs that target sections the OCG backend will *not* re-emit) and once by FNLZR during finalization (lazily, for any bindless relocs that survived into the capmerc payload because their target section was re-emitted).
+This section traces how the same relocation table — the standard 64-byte descriptors at `off_1D3DBE0` produced by `sub_438DD0` — is consumed twice on Blackwell: once by nvlink during the relocate phase (eagerly, for any bindless relocs that target sections the OCG backend will *not* re-emit) and once by FNLZR during finalization (lazily, for any bindless relocs that survived into the capmerc payload because their target section was re-emitted).
 
 ### Why deferral exists on Blackwell
 
 On pre-Mercury targets, `nvlink` writes the final SASS bit-stream directly. There is one chance to patch each instruction: during the relocate phase, before the writer phase serializes the ELF. Bindless relocations are eagerly applied at that point because no downstream consumer rewrites the SASS.
 
-On Mercury, the writer phase emits the bit-stream as a **capmerc capsule** -- a re-emittable form that the FNLZR finalizer (`sub_4748F0`) consumes during post-link to produce real SASS. The instructions inside the capmerc capsule are *not* the final encoding; they are an intermediate form that the embedded OCG backend transforms into the SM-specific final encoding. Patching the capmerc form during the relocate phase is therefore meaningless for any bit-field that the OCG will reschedule, recode, or relocate.
+On Mercury, the writer phase emits the bit-stream as a **capmerc capsule** — a re-emittable form that the FNLZR finalizer (`sub_4748F0`) consumes during post-link to produce real SASS. The instructions inside the capmerc capsule are *not* the final encoding; they are an intermediate form that the embedded OCG backend transforms into the SM-specific final encoding. Patching the capmerc form during the relocate phase is therefore meaningless for any bit-field that the OCG will reschedule, recode, or relocate.
 
 The deferral path solves this by keeping the bindless relocation records alive *through* capmerc emission. They reach FNLZR as part of the `.nv.resolvedrela` or `.rel.*` sections inside the capsule, FNLZR drives the OCG backend to emit the real SASS, and then FNLZR re-applies the same descriptors from the same `off_1D3DBE0` table to patch the final bit-stream.
 
@@ -2350,7 +2350,7 @@ The handoff happens through the same descriptor table. `sub_4748F0` does not hav
 
 ### Which Sections Use Path B
 
-The deferral path is selected per-section, not per-architecture. A Blackwell ELF can contain a mixture: some sections (`.text` with classic SASS) take Path A, others (`.text` with tcgen05 ops, `.nv.constant0.tcgen05_matmul`) take Path B. The selector is the section's classification at writer time -- whether the section is destined for the capmerc capsule or for raw SASS emission.
+The deferral path is selected per-section, not per-architecture. A Blackwell ELF can contain a mixture: some sections (`.text` with classic SASS) take Path A, others (`.text` with tcgen05 ops, `.nv.constant0.tcgen05_matmul`) take Path B. The selector is the section's classification at writer time — whether the section is destined for the capmerc capsule or for raw SASS emission.
 
 The bindless pass does not need to know which path will be taken. It always emits the same relocation records pointing at `$NVLINKBINDLESSOFF_<name>` symbols. The relocate phase later branches based on the target section's classification:
 
@@ -2369,15 +2369,15 @@ This split means that the bindless constant bank itself (`.nv.bindless_index`) i
 
 When `sub_469D60` decides to defer a relocation (Path B), it calls `sub_46ADC0` (the resolved-rela emitter, see [§ Resolved-Rela Emitter](relocation-engine.md#resolved-rela-emitter-sub_46adc0) on the relocation engine page). For a bindless relocation, the emitter writes a record into `.nv.resolvedrela` with three pieces of information:
 
-1. **The original `r_type`** -- preserved verbatim, e.g. `R_CUDA_TEX_BINDLESSOFF13_47` (index 23). FNLZR uses this to re-index `off_1D3DBE0`.
-2. **The new `r_sym`** -- the `$NVLINKBINDLESSOFF_<name>` synthetic symbol's index, *not* the original `$BINDLESS$...` symbol. The bindless pass already rewrote this; the resolved-rela emitter preserves the rewrite.
-3. **The original instruction-field contents** -- extracted via the 12-byte descriptor header at `off_1D3DBE0[23].field_0/+4/+8`. These three uint32 values specify (`present_flag`, `bit_offset`, `bit_width`) triples that tell the emitter which bits of the current instruction encoding to capture. For bindless types (where slot1 and slot2 are typically zero), only the first triple is populated; the captured bits become the resolved-rela record's addend.
+1. **The original `r_type`** — preserved verbatim, e.g. `R_CUDA_TEX_BINDLESSOFF13_47` (index 23). FNLZR uses this to re-index `off_1D3DBE0`.
+2. **The new `r_sym`** — the `$NVLINKBINDLESSOFF_<name>` synthetic symbol's index, *not* the original `$BINDLESS$...` symbol. The bindless pass already rewrote this; the resolved-rela emitter preserves the rewrite.
+3. **The original instruction-field contents** — extracted via the 12-byte descriptor header at `off_1D3DBE0[23].field_0/+4/+8`. These three uint32 values specify (`present_flag`, `bit_offset`, `bit_width`) triples that tell the emitter which bits of the current instruction encoding to capture. For bindless types (where slot1 and slot2 are typically zero), only the first triple is populated; the captured bits become the resolved-rela record's addend.
 
 When FNLZR re-applies, it reverses the process: it reads the addend back, OR's it into the freshly-emitted instruction at the same `bit_offset`/`bit_width` from the descriptor, and is done. The descriptor at `off_1D3DBE0[23]` is byte-identical between the two consumers; the only thing that changes is which SASS bit-stream is being patched.
 
 ### Why Mercury Reuses the CUDA Table, Not Its Own
 
-The Mercury descriptor table at `off_1D3CBE0` exists and is consumed by `sub_469D60` for `R_MERCURY_*` relocations (the parallel namespace at `0x10000 +` offsets). However, the bindless pass `sub_438DD0` emits `R_CUDA_*` relocations even on Mercury targets -- it does **not** translate to `R_MERCURY_*`. This is by design: the bindless constant bank holds the same descriptor layout on every architecture, and the bit positions for `R_CUDA_TEX_BINDLESSOFF13_47` (bit 47 of the SASS word) are identical between Hopper and Blackwell encodings.
+The Mercury descriptor table at `off_1D3CBE0` exists and is consumed by `sub_469D60` for `R_MERCURY_*` relocations (the parallel namespace at `0x10000 +` offsets). However, the bindless pass `sub_438DD0` emits `R_CUDA_*` relocations even on Mercury targets — it does **not** translate to `R_MERCURY_*`. This is by design: the bindless constant bank holds the same descriptor layout on every architecture, and the bit positions for `R_CUDA_TEX_BINDLESSOFF13_47` (bit 47 of the SASS word) are identical between Hopper and Blackwell encodings.
 
 FNLZR therefore indexes the CUDA table `off_1D3DBE0`, *not* `off_1D3CBE0`, when re-applying bindless relocations from the deferred path. The condition in `sub_469D60` line 128 (`if (reloc_type <= 0x10000) ...`) only fires for relocations that nvlink itself emits with the Mercury offset; bindless relocations carry their `R_CUDA_*` type unchanged through capmerc into FNLZR.
 
@@ -2389,16 +2389,16 @@ The FNLZR engine validates the source ELF's capability mask before applying any 
 - A source ELF declaring sm_100 capability that is finalized for sm_103: the capability mask must include sm_103. If yes, the OCG backend re-emits and FNLZR re-applies the same bindless descriptors.
 - A source ELF declaring sm_100 only that is finalized for sm_120: capability mask rejects, FNLZR returns an internal error, and the deferred bindless relocations never get applied. The output ELF is incomplete (still contains the unpatched capmerc capsule).
 
-This is why the bindless pass on Blackwell does not need to know the final target SM tier -- only the source-declared capability mask matters for the descriptor's correctness, and that is validated by FNLZR, not by `sub_438DD0`.
+This is why the bindless pass on Blackwell does not need to know the final target SM tier — only the source-declared capability mask matters for the descriptor's correctness, and that is validated by FNLZR, not by `sub_438DD0`.
 
-> ⚡ **QUIRK -- the bindless pass emits `R_CUDA_*` even on Mercury targets, never `R_MERCURY_*`**
-> The synthetic relocations produced by `sub_438DD0` carry their original `R_CUDA_*` type unchanged, regardless of whether the output ELF is Mercury (`e_ident[7] == 0x41`) or not. There is no `r_type += 0x10000` adjustment in the bindless pass. FNLZR therefore reads these records as ordinary CUDA-table relocations and indexes `off_1D3DBE0` directly -- the Mercury table `off_1D3CBE0` is never touched for bindless. The only place `R_MERCURY_*` types appear for bindless-adjacent data is in the capmerc capsule's own metadata sections, which are FNLZR's internal bookkeeping rather than bindless-pass output.
+> ⚡ **QUIRK — the bindless pass emits `R_CUDA_*` even on Mercury targets, never `R_MERCURY_*`**
+> The synthetic relocations produced by `sub_438DD0` carry their original `R_CUDA_*` type unchanged, regardless of whether the output ELF is Mercury (`e_ident[7] == 0x41`) or not. There is no `r_type += 0x10000` adjustment in the bindless pass. FNLZR therefore reads these records as ordinary CUDA-table relocations and indexes `off_1D3DBE0` directly — the Mercury table `off_1D3CBE0` is never touched for bindless. The only place `R_MERCURY_*` types appear for bindless-adjacent data is in the capmerc capsule's own metadata sections, which are FNLZR's internal bookkeeping rather than bindless-pass output.
 
-> ⚡ **QUIRK -- deferring a bindless reloc requires `.nv.resolvedrela`, even without `--preserve-relocs`**
-> The `--preserve-relocs` flag at `ctx+85` is normally the gate that enables `.nv.resolvedrela` emission. On Mercury, however, the writer phase implicitly enables resolved-rela for any section destined for the capmerc capsule, even when `--preserve-relocs` is off. The user has no command-line control over this -- it is an internal handshake between the writer and FNLZR. The visible consequence is that Mercury cubins always contain `.nv.resolvedrela` sections for their capmerc-bearing `.text` sections, while non-Mercury cubins contain them only when `--preserve-relocs` is explicit. The bindless relocations ride this implicit channel without modification.
+> ⚡ **QUIRK — deferring a bindless reloc requires `.nv.resolvedrela`, even without `--preserve-relocs`**
+> The `--preserve-relocs` flag at `ctx+85` is normally the gate that enables `.nv.resolvedrela` emission. On Mercury, however, the writer phase implicitly enables resolved-rela for any section destined for the capmerc capsule, even when `--preserve-relocs` is off. The user has no command-line control over this — it is an internal handshake between the writer and FNLZR. The visible consequence is that Mercury cubins always contain `.nv.resolvedrela` sections for their capmerc-bearing `.text` sections, while non-Mercury cubins contain them only when `--preserve-relocs` is explicit. The bindless relocations ride this implicit channel without modification.
 
-> ⚡ **QUIRK -- if FNLZR rejects the capability mask, bindless relocations are silently lost**
-> When `sub_4748F0` rejects a capability mismatch and returns early via `sub_467460` ("Internal FNLZR error"), the deferred bindless relocations in `.nv.resolvedrela` are not applied to any SASS, and the partially-finalized ELF still carries the capmerc capsule with stale instruction encoding. The output is not corrupt -- the capsule is still readable -- but it is unusable on the target, because the SASS inside the capsule has placeholder bindless offsets. There is no diagnostic specifically for "bindless deferral failed"; the operator sees only the generic FNLZR internal-error message and must infer from context that bindless was the casualty.
+> ⚡ **QUIRK — if FNLZR rejects the capability mask, bindless relocations are silently lost**
+> When `sub_4748F0` rejects a capability mismatch and returns early via `sub_467460` ("Internal FNLZR error"), the deferred bindless relocations in `.nv.resolvedrela` are not applied to any SASS, and the partially-finalized ELF still carries the capmerc capsule with stale instruction encoding. The output is not corrupt — the capsule is still readable — but it is unusable on the target, because the SASS inside the capsule has placeholder bindless offsets. There is no diagnostic specifically for "bindless deferral failed"; the operator sees only the generic FNLZR internal-error message and must infer from context that bindless was the casualty.
 
 ## Implementation Functions
 
@@ -2422,13 +2422,13 @@ This is why the bindless pass on Blackwell does not need to know the final targe
 
 ## Cross-References
 
-- [R\_CUDA Relocations](r-cuda-relocations.md) -- relocation type catalog including bindless types (R\_CUDA\_TEX\_\*, R\_CUDA\_SURF\_\*)
-- [Relocation Application Engine](relocation-engine.md) -- bit-field patching engine that applies bindless relocations after this pass
-- [Section Merging](section-merging.md) -- merge phase that populates the descriptor lists consumed here
-- [Symbol Resolution](symbol-resolution.md) -- symbol lookup infrastructure used by `find_or_create_symbol`
-- [Data Layout Optimization](data-layout-opt.md) -- constant bank deduplication that runs on the same constant sections
-- [Layout Phase](../pipeline/layout.md) -- parent phase that orchestrates bindless processing (Phase 2)
-- [Relocation Phase](../pipeline/relocate.md) -- downstream phase that applies the rewritten relocations
+- [R\_CUDA Relocations](r-cuda-relocations.md) — relocation type catalog including bindless types (R\_CUDA\_TEX\_\*, R\_CUDA\_SURF\_\*)
+- [Relocation Application Engine](relocation-engine.md) — bit-field patching engine that applies bindless relocations after this pass
+- [Section Merging](section-merging.md) — merge phase that populates the descriptor lists consumed here
+- [Symbol Resolution](symbol-resolution.md) — symbol lookup infrastructure used by `find_or_create_symbol`
+- [Data Layout Optimization](data-layout-opt.md) — constant bank deduplication that runs on the same constant sections
+- [Layout Phase](../pipeline/layout.md) — parent phase that orchestrates bindless processing (Phase 2)
+- [Relocation Phase](../pipeline/relocate.md) — downstream phase that applies the rewritten relocations
 
 ## Confidence Assessment
 

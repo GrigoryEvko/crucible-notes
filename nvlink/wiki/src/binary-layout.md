@@ -4,14 +4,14 @@ This page is the primary orientation map for navigating the nvlink v13.0.88 bina
 
 ## ELF Overview
 
-nvlink is a dynamically linked, fully stripped x86-64 ELF binary. All C++ symbols have been removed. The binary imports only C-level symbols from glibc, pthreads, and libdl -- no `std::`, no `__cxa_`, no vtable symbols are visible in the import table. This confirms that the C++ runtime is statically linked (or that all C++ was compiled with hidden visibility and LTO).
+nvlink is a dynamically linked, fully stripped x86-64 ELF binary. All C++ symbols have been removed. The binary imports only C-level symbols from glibc, pthreads, and libdl — no `std::`, no `__cxa_`, no vtable symbols are visible in the import table. This confirms that the C++ runtime is statically linked (or that all C++ was compiled with hidden visibility and LTO).
 
 | Property | Value |
 |---|---|
 | File size | ~37 MB |
 | Architecture | x86-64, little-endian |
 | Linking | Dynamic (glibc, pthreads, libdl, libm) |
-| Stripped | Yes -- all internal symbols removed |
+| Stripped | Yes — all internal symbols removed |
 | Build ID | `cuda_13.0.r13.0/compiler.36424714_0` |
 | Build date | Wed Aug 20, 2025 |
 | Version | `Cuda compilation tools, release 13.0, V13.0.88` |
@@ -57,7 +57,7 @@ The single most important structural fact about nvlink is its size distribution.
 | Infrastructure | ~0.5 MB | ~2% | ~400 | Memory arenas, option parsing, hash tables, compression |
 | Mercury / FNLZR | ~0.3 MB | ~1% | ~200 | SM100+ capsule mercury post-link transformation |
 
-Approximately **95% of the binary is compiler backend**. Only about **5% is linker logic**. Most functions you encounter during reverse engineering are instruction selection patterns, SASS encoders, or register allocator internals -- not linker code.
+Approximately **95% of the binary is compiler backend**. Only about **5% is linker logic**. Most functions you encounter during reverse engineering are instruction selection patterns, SASS encoders, or register allocator internals — not linker code.
 
 ## Visual Memory Map
 
@@ -112,7 +112,7 @@ The following ASCII diagram shows the complete virtual address layout of nvlink 
                    Total mapped: ~43 MB virtual, ~37 MB on disk
 ```
 
-### .text Section Expanded -- 16 Functional Zones
+### .text Section Expanded — 16 Functional Zones
 
 The 25.2 MB `.text` section decomposes into 16 zones. The diagram uses one line per major zone, with bar width proportional to byte size. The `[====]` bars indicate relative size (1 `=` per ~100 KB).
 
@@ -259,7 +259,7 @@ The following diagram groups the `.text` section by subsystem identity rather th
 
 ### Major Function Clusters
 
-The binary contains several distinct function "clusters" -- groups of 50+ functions with identical structure, generated from the same template or macro expansion.
+The binary contains several distinct function "clusters" — groups of 50+ functions with identical structure, generated from the same template or macro expansion.
 
 | Cluster | Zone(s) | Count | Template Size | Identity |
 |---|---|---|---|---|
@@ -281,11 +281,11 @@ These 10 clusters account for approximately 7,286 functions (18% of the total) b
 | Size Bucket | Count | % | Notes |
 |---|---|---|---|
 | < 100 B | 11,677 | 28.8% | IR node accessors, type predicates, identity functions |
-| 100 B -- 1 KB | 20,601 | 50.8% | ISel pattern matchers, encoding helpers, small utilities |
-| 1 -- 5 KB | 7,957 | 19.6% | Instruction encoders/decoders, operand emitters |
-| 5 -- 20 KB | 262 | 0.65% | Pipeline drivers, complex validators, pass entry points |
-| 20 -- 100 KB | 27 | 0.07% | Main functions, scheduling drivers, mega-dispatchers |
-| 100 -- 280 KB | 8 | 0.02% | ISel mega-hubs, builtin prototype DB (see below) |
+| 100 B — 1 KB | 20,601 | 50.8% | ISel pattern matchers, encoding helpers, small utilities |
+| 1 — 5 KB | 7,957 | 19.6% | Instruction encoders/decoders, operand emitters |
+| 5 — 20 KB | 262 | 0.65% | Pipeline drivers, complex validators, pass entry points |
+| 20 — 100 KB | 27 | 0.07% | Main functions, scheduling drivers, mega-dispatchers |
+| 100 — 280 KB | 8 | 0.02% | ISel mega-hubs, builtin prototype DB (see below) |
 
 ## The Five ISel Mega-Hubs
 
@@ -293,7 +293,7 @@ Five functions exceed 160 KB each. They are the top-level instruction selector d
 
 | Address | Size | Target SM | Subsystem |
 |---|---|---|---|
-| `sub_FBB810` | 280 KB | SM75 (Turing) | ISel dispatch -- calls 276+ pattern matchers |
+| `sub_FBB810` | 280 KB | SM75 (Turing) | ISel dispatch — calls 276+ pattern matchers |
 | `sub_126CA30` | 239 KB | SM50-7x (Maxwell/Pascal/Volta) shared | ISel dispatch for pre-Turing backends |
 | `sub_D5FD70` | 239 KB | SM80 (Ampere) | ISel dispatch for Ampere-class GPUs |
 | `sub_119BF40` | 231 KB | SM89/90 (Ada/Hopper) | ISel dispatch for Ada Lovelace / Hopper |
@@ -307,16 +307,16 @@ Other large functions outside ISel hubs:
 |---|---|---|
 | `sub_15903D0` | 165 KB | CUDA builtin code-template generator (SM variant) |
 | `sub_1638800` | 118 KB | PTX intrinsic lowering dispatch |
-| `sub_146BEC0` | 51 KB | `ptx_load_store_validator` -- memory operation validator |
-| `sub_1487650` | 47 KB | `ptx_statement_processor` -- top-level PTX statement handler |
-| `sub_15B86A0` | 34 KB | `cuda_builtin_prototype_generator` -- 608-case switch on builtin index |
-| `sub_147EF50` | 28 KB | `ptx_instruction_semantic_analyzer` -- master instruction validator |
+| `sub_146BEC0` | 51 KB | `ptx_load_store_validator` — memory operation validator |
+| `sub_1487650` | 47 KB | `ptx_statement_processor` — top-level PTX statement handler |
+| `sub_15B86A0` | 34 KB | `cuda_builtin_prototype_generator` — 608-case switch on builtin index |
+| `sub_147EF50` | 28 KB | `ptx_instruction_semantic_analyzer` — master instruction validator |
 
 ## Complete .text Address Map
 
 The following table maps every region of the `.text` section to its identified subsystem, based on the 20 sweep reports covering `0x400000` through `0x1D32172`. Adjacent regions with identical function are merged where possible.
 
-### Linker Core (0x400000 -- 0x530000, ~1.2 MB)
+### Linker Core (0x400000 — 0x530000, ~1.2 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -328,7 +328,7 @@ The following table maps every region of the `.text` section to its identified s
 | `0x445000`--`0x469D60` | 150 KB | Merge/layout/relocate | ~50 | `merge_elf`, `layout`, relocation engine |
 | `0x469D60`--`0x470000` | 25 KB | Finalize, output | ~20 | Callgraph, dead-code elimination, output write |
 
-### Finalization + Architecture + JIT Pipeline (0x470000 -- 0x530000, ~768 KB)
+### Finalization + Architecture + JIT Pipeline (0x470000 — 0x530000, ~768 KB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -338,19 +338,19 @@ The following table maps every region of the `.text` section to its identified s
 | `0x476FB0`--`0x488530` | 93 KB | Debug info, line tables | ~30 | DWARF-like debug encoding/decoding, file tables |
 | `0x488530`--`0x4BC6F0` | 209 KB | Knobs, archive, nvvm | ~60 | Knobs infrastructure, .a parsing, libNVVM integration layer |
 | `0x4BC6F0`--`0x4C2A60` | 25 KB | LTO + PTX JIT entry | ~10 | `compile_linked_lto_ir`, `ptxas_jit_compile` entry points |
-| `0x4C2A60`--`0x530000` | 843 KB | Encoding infrastructure | ~40 | `setBitfield`, `encodeOperand`, init helpers -- shared by all SM |
+| `0x4C2A60`--`0x530000` | 843 KB | Encoding infrastructure | ~40 | `setBitfield`, `encodeOperand`, init helpers — shared by all SM |
 
-### IR Node Primitives + SM50-7x ISel (0x530000 -- 0x620000, ~960 KB)
+### IR Node Primitives + SM50-7x ISel (0x530000 — 0x620000, ~960 KB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
-| `0x530E80`--`0x530FD0` | <1 KB | **IR node accessors** | 22 | `sub_530FB0` has 31,399 callers -- universal operand accessor |
+| `0x530E80`--`0x530FD0` | <1 KB | **IR node accessors** | 22 | `sub_530FB0` has 31,399 callers — universal operand accessor |
 | `0x530FE0`--`0x5B1AB0` | 523 KB | ISel pattern matchers | 1,293 | SM50-7x backend: 152 target opcodes, 36 priority levels |
 | `0x5B1D80`--`0x5E4470` | 204 KB | MercExpand mega-hub | 1 | MercExpand dispatch + CFG analysis + bitvector ops |
 | `0x5E4470`--`0x600260` | 114 KB | MercExpand engine | ~50 | Node creation, tree walker, register constraint propagation |
 | `0x603F60`--`0x61FA60` | 112 KB | SM50 instruction encoders | 79 | Per-instruction binary encoding functions |
 
-### SM100+ (Blackwell) SASS Encoding (0x620000 -- 0x7A0000, ~1.5 MB)
+### SM100+ (Blackwell) SASS Encoding (0x620000 — 0x7A0000, ~1.5 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -358,16 +358,16 @@ The following table maps every region of the `.text` section to its identified s
 
 Each function encodes one instruction variant into a 128-bit instruction word. Opcode breakdown: major=1 (ALU/Scalar) 37%, major=2 (Vector/Mem/Ctrl) 63%, across 118 instruction families.
 
-### SM100+ Encoding Cont. + Descriptor Table (0x7A0000 -- 0x920000, ~1.5 MB)
+### SM100+ Encoding Cont. + Descriptor Table (0x7A0000 — 0x920000, ~1.5 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
 | `0x7A0000`--`0x84DD70` | 700 KB | SM100+ SASS encoders (tail) | 469 | Continuation of Blackwell encoding table |
-| `0x84DD70`--`0x920000` | 750 KB | **InstrDesc init table** | 670 | Instruction descriptor initializers -- operand types, latencies |
+| `0x84DD70`--`0x920000` | 750 KB | **InstrDesc init table** | 670 | Instruction descriptor initializers — operand types, latencies |
 
 Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descriptor table starts at `0x84DD70`.
 
-### Descriptor Table + Operand Dispatch (0x920000 -- 0xA70000, ~1.3 MB)
+### Descriptor Table + Operand Dispatch (0x920000 — 0xA70000, ~1.3 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -380,7 +380,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0xA65900` | 67 KB | `getOperandField` dispatch | 1 | Giant switch: reads operand fields by opcode class |
 | `0xA67910` | 141 KB | `getDefaultOperandValue` dispatch | 1 | Giant switch: returns default operand values per opcode |
 
-### Instruction Codec -- Multi-Arch (0xA70000 -- 0xCA0000, ~2.2 MB)
+### Instruction Codec — Multi-Arch (0xA70000 — 0xCA0000, ~2.2 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -395,7 +395,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0xC3D540`--`0xC50970` | 83 KB | SM80 decoders | ~15 | HMMA tensor core, SHF, memory decoders |
 | `0xC7EC90`--`0xC9EE60` | 131 KB | **SM86/89 (Ada) codecs** | ~40 | GA10x / AD10x encoders + decoders |
 
-### SM80 (Ampere) ISel Backend (0xCA0000 -- 0xDA0000, ~1 MB)
+### SM80 (Ampere) ISel Backend (0xCA0000 — 0xDA0000, ~1 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -405,7 +405,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0xD5FD70` | 239 KB | **SM80 ISel mega-hub** | 1 | Too large for Hex-Rays |
 | `0xD9A400`--`0xDA0000` | 23 KB | Binary instruction encoding | 17 | Phase 3: final SASS binary packing |
 
-### SM100+ (Blackwell) SASS Codec -- Second Table (0xDA0000 -- 0xF16000, ~1.5 MB)
+### SM100+ (Blackwell) SASS Codec — Second Table (0xDA0000 — 0xF16000, ~1.5 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -414,17 +414,17 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0xE43DC0`--`0xF15A50` | 847 KB | Blackwell decoders | 648 | Mirrors encoder set; handles architecture variants |
 | `0xEFE6C0` | 1 KB | Decoder dispatch | 1 | Routes opcode to specific decoder function |
 
-### SM75 (Turing) ISel Backend (0xF16000 -- 0x100C000, ~984 KB)
+### SM75 (Turing) ISel Backend (0xF16000 — 0x100C000, ~984 KB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
 | `0xF16030`--`0xF160F0` | <1 KB | SM75 operand predicates | 15 | Operand type classifiers (register, immediate, etc.) |
 | `0xF10080`--`0xF15A50` | 22 KB | SM75 instruction emitters | 18 | Phase 2: operand emission for Turing instructions |
-| `0xF16150`--`0xFBB780` | 678 KB | ISel pattern matchers | 276 | SM75 pattern matching -- linear scan architecture |
+| `0xF16150`--`0xFBB780` | 678 KB | ISel pattern matchers | 276 | SM75 pattern matching — linear scan architecture |
 | `0xFBB810` | 280 KB | **SM75 ISel mega-hub** | 1 | Largest function in binary. Too large for Hex-Rays |
 | `0xFFFDF0`--`0x100BBF0` | 48 KB | Post-ISel emit+encode | 38 | Combined match+emit for complex instructions |
 
-### SM89/90 Backend + Shared Encoders (0x100C000 -- 0x11EA000, ~1.9 MB)
+### SM89/90 Backend + Shared Encoders (0x100C000 — 0x11EA000, ~1.9 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -437,7 +437,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0x119BF40` | 231 KB | **SM89/90 ISel mega-hub** | 1 | Too large for Hex-Rays |
 | `0x11D4680`--`0x11EA000` | 90 KB | Scheduler + emission | ~16 | Instruction scheduling, register-pressure tracking |
 
-### PTX Frontend + ISel Helpers (0x11EA000 -- 0x12B0000, ~800 KB)
+### PTX Frontend + ISel Helpers (0x11EA000 — 0x12B0000, ~800 KB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -446,7 +446,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0x12A7000`--`0x12AD000` | 24 KB | PTX type system / operand builders | ~15 | Type constructors, operand IR building |
 | `0x12AF000`--`0x12B0000` | 4 KB | PTX module initializer | 5 | Creates module-level PTX compilation context |
 
-### LTO Compilation Engine (0x12B0000 -- 0x1430000, ~1.5 MB)
+### LTO Compilation Engine (0x12B0000 — 0x1430000, ~1.5 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -456,7 +456,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0x12D5000`--`0x1400000` | 1.2 MB | ISel pattern clones | ~500 | Parametric clones per SM variant (sm_5x through sm_10x) |
 | `0x1400000`--`0x1430000` | 192 KB | LTO pipeline + ELF emit | ~20 | Top-level LTO pipeline, MMA lowering, output |
 
-### PTX Assembler Frontend (0x1430000 -- 0x15C0000, ~1.6 MB)
+### PTX Assembler Frontend (0x1430000 — 0x15C0000, ~1.6 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -468,7 +468,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0x14932E0`--`0x15B86A0` | 700 KB | Instruction handlers + builtins | ~250 | Code-template generators for CUDA builtins |
 | `0x15B86A0` | 345 KB | `cuda_builtin_prototype_generator` | 1 | 608-case switch: sm20 through sm10x builtin prototypes |
 
-### CUDA Compilation Backend (0x15C0000 -- 0x16E0000, ~1.2 MB)
+### CUDA Compilation Backend (0x15C0000 — 0x16E0000, ~1.2 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -480,7 +480,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 | `0x1660000`--`0x169FFFF` | 256 KB | ISel/scheduling + DWARF | ~40 | Instruction scheduling, peephole, debug emission |
 | `0x16A0000`--`0x16DFFFF` | 256 KB | OCG intrinsic lowering | ~80 | `builtin_ocg_*` handlers, tcmma/tensor operations |
 
-### PTX Lexer/Parser + Instruction Scheduler + SASS Tables (0x16E0000 -- 0x1850000, ~1.5 MB)
+### PTX Lexer/Parser + Instruction Scheduler + SASS Tables (0x16E0000 — 0x1850000, ~1.5 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -492,7 +492,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 
 ROT13-encoded SASS mnemonics: `SNQQ`=FADD, `SZHY`=FMUL, `VZNQ`=IMAD, `SRAPR`=FENCE, `ZREPHEL`=MERCURY.
 
-### Backend Compiler Core (0x1850000 -- 0x1A00000, ~1.7 MB)
+### Backend Compiler Core (0x1850000 — 0x1A00000, ~1.7 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -505,7 +505,7 @@ ROT13-encoded SASS mnemonics: `SNQQ`=FADD, `SZHY`=FMUL, `VZNQ`=IMAD, `SRAPR`=FEN
 | `0x19A0000`--`0x19C0000` | 128 KB | PTX metrics/statistics | ~15 | Occupancy estimation, instruction counts, loop analysis |
 | `0x19C0000`--`0x1A00000` | 256 KB | Scheduling/regalloc guidance | ~20 | Guidance output, loop metrics, register validation |
 
-### SASS Backend + ABI + ELF Builder (0x1A00000 -- 0x1B60000, ~1.4 MB)
+### SASS Backend + ABI + ELF Builder (0x1A00000 — 0x1B60000, ~1.4 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -522,7 +522,7 @@ ROT13-encoded SASS mnemonics: `SNQQ`=FADD, `SZHY`=FMUL, `VZNQ`=IMAD, `SRAPR`=FEN
 | `0x1B19750`--`0x1B40000` | 160 KB | Machine scheduling + CFG | ~40 | Basic block management, scheduling |
 | `0x1B40000`--`0x1B60000` | 128 KB | Dependency tracking | ~30 | Scoreboard / dependency graph management |
 
-### Final Segment: ISel + ABI + ELF + Demangler + DWARF (0x1B60000 -- 0x1D32172, ~1.8 MB)
+### Final Segment: ISel + ABI + ELF + Demangler + DWARF (0x1B60000 — 0x1D32172, ~1.8 MB)
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
@@ -534,7 +534,7 @@ ROT13-encoded SASS mnemonics: `SNQQ`=FADD, `SZHY`=FMUL, `VZNQ`=IMAD, `SRAPR`=FEN
 
 ## Import Table
 
-nvlink dynamically imports exactly **156 symbols** from glibc, libpthread, and libdl. There are **zero C++ mangled symbols** in the import table -- the binary is fully stripped with all C++ internals resolved at static link time.
+nvlink dynamically imports exactly **156 symbols** from glibc, libpthread, and libdl. There are **zero C++ mangled symbols** in the import table — the binary is fully stripped with all C++ internals resolved at static link time.
 
 | Type | Count | Examples |
 |---|---|---|
@@ -544,7 +544,7 @@ nvlink dynamically imports exactly **156 symbols** from glibc, libpthread, and l
 | math (libm) | 9 | `sqrt`, `sin`, `cos`, `pow`, `log`, `floor`, `ceil`, `expf` |
 | dl (dynamic loading) | 3 | `dlopen`, `dlsym`, `dlclose` |
 
-The `dlopen`/`dlsym`/`dlclose` imports are used for loading `libnvvm` at runtime during LTO compilation. nvlink does not statically link libnvvm -- it discovers and loads it dynamically via the `--nvvmpath` option.
+The `dlopen`/`dlsym`/`dlclose` imports are used for loading `libnvvm` at runtime during LTO compilation. nvlink does not statically link libnvvm — it discovers and loads it dynamically via the `--nvvmpath` option.
 
 ## .rodata Composition
 

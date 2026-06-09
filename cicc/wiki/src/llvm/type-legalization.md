@@ -4,7 +4,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-Type legalization is the SelectionDAG phase that rewrites every DAG node whose result or operand type is illegal for the target into equivalent sequences of legal-type operations. In upstream LLVM this logic spans four source files (`LegalizeTypes.cpp`, `LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, `LegalizeVectorTypes.cpp`) totaling roughly 16,000 lines. In CICC v13.0, NVIDIA ships all of it as a single 348KB monolithic function -- `sub_20019C0` -- the largest function in the SelectionDAG address range and among the largest in the entire binary. Operation legalization follows in a separate 169KB function (`sub_1FFB890`), and vector split/scalarize dispatchers fan out into an additional 25+ worker functions.
+Type legalization is the SelectionDAG phase that rewrites every DAG node whose result or operand type is illegal for the target into equivalent sequences of legal-type operations. In upstream LLVM this logic spans four source files (`LegalizeTypes.cpp`, `LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, `LegalizeVectorTypes.cpp`) totaling roughly 16,000 lines. In CICC v13.0, NVIDIA ships all of it as a single 348KB monolithic function — `sub_20019C0` — the largest function in the SelectionDAG address range and among the largest in the entire binary. Operation legalization follows in a separate 169KB function (`sub_1FFB890`), and vector split/scalarize dispatchers fan out into an additional 25+ worker functions.
 
 The monolithic structure is either an LTO inlining artifact (all four upstream `.cpp` files collapsed by link-time optimization) or a deliberate choice for branch-prediction locality. The functional behavior is a faithful reproduction of upstream LLVM's `DAGTypeLegalizer`, but the legality tables, legal-type set, and vector legalization rules are heavily NVPTX-specific.
 
@@ -29,7 +29,7 @@ Type legalization runs as the first major SelectionDAG transformation after the 
 
 1. **SelectionDAGBuilder** converts LLVM IR to an initial DAG with potentially illegal types
 2. **DAG Combiner** (`sub_F20C20`) runs initial combines
-3. **DAGTypeLegalizer** (`sub_20019C0`) iterates until all types are legal -- this page
+3. **DAGTypeLegalizer** (`sub_20019C0`) iterates until all types are legal — this page
 4. **LegalizeDAG** (`sub_1FFB890`) legalizes operations on now-legal types
 5. **DAG Combiner** runs again to clean up
 6. **Instruction selection** (`sub_3090F90`) pattern-matches the final legal DAG
@@ -56,12 +56,12 @@ For the complete register class table (vtable addresses, PTX types, encoded IDs,
 
 The critical constraint: `Int32HalfRegs` is the **only** vector register class. It holds exactly 32 bits of packed data. The only legal vector types are those that pack into 32 bits:
 
-- **`v2f16`** -- two `f16` values in one 32-bit register
-- **`v2bf16`** -- two `bf16` values (SM 80+)
-- **`v2i16`** -- two `i16` values in one 32-bit register
-- **`v4i8`** -- four `i8` values in one 32-bit register
+- **`v2f16`** — two `f16` values in one 32-bit register
+- **`v2bf16`** — two `bf16` values (SM 80+)
+- **`v2i16`** — two `i16` values in one 32-bit register
+- **`v4i8`** — four `i8` values in one 32-bit register
 
-Every other vector type (`v4f32`, `v2f32`, `v8i32`, `v4f16`, `v2f64`, etc.) is illegal and must be split, scalarized, or expanded during type legalization. There is no packed `float32` SIMD on NVPTX -- this is a fundamental architectural constraint.
+Every other vector type (`v4f32`, `v2f32`, `v8i32`, `v4f16`, `v2f64`, etc.) is illegal and must be split, scalarized, or expanded during type legalization. There is no packed `float32` SIMD on NVPTX — this is a fundamental architectural constraint.
 
 ### SM-Gated Type Legality
 
@@ -97,13 +97,13 @@ The action byte encodes:
 
 | Value | Action | Meaning |
 |---|---|---|
-| `0` | Legal | Node is natively supported -- return immediately |
+| `0` | Legal | Node is natively supported — return immediately |
 | `1` | Custom | Call `NVPTXTargetLowering::LowerOperation` (vtable slot #164, offset `+1312`) |
 | `2` | Expand | Call LegalizeTypes, then ExpandNode (`sub_1FF6F70`) as fallback |
 | `3` | LibCall | Call ExpandNode directly for library-call substitution |
 | `4` | Promote | Find a larger legal type and rebuild the node at that type |
 
-The legality check uses `(action & 0xFB) == 0` as the "legal" predicate. This means bit 2 is a don't-care -- a node with action byte `0x04` is still treated as legal in certain fast-path checks, which is the standard LLVM encoding where bit 2 flags "custom-but-legal" operations.
+The legality check uses `(action & 0xFB) == 0` as the "legal" predicate. This means bit 2 is a don't-care — a node with action byte `0x04` is still treated as legal in certain fast-path checks, which is the standard LLVM encoding where bit 2 flags "custom-but-legal" operations.
 
 ### Type-Supported Flag Array (offset +120)
 
@@ -271,11 +271,11 @@ The critical observation for NVPTX: `v2f32` is **not** legal (no 64-bit packed f
 
 ## Master Opcode Dispatch (sub_20019C0)
 
-The main body of `sub_20019C0` is a switch on `*(int16_t *)(node + 24)` -- the ISD opcode of the current SDNode. Approximately 50 cases are handled:
+The main body of `sub_20019C0` is a switch on `*(int16_t *)(node + 24)` — the ISD opcode of the current SDNode. Approximately 50 cases are handled:
 
 | Case | ISD Opcode | Action |
 |---|---|---|
-| 10 | `LOAD` | `legalizeLoad` -- type-aware load splitting |
+| 10 | `LOAD` | `legalizeLoad` — type-aware load splitting |
 | 11 | `STORE` | Iterative type demotion loop (see below) |
 | 20--21, 26 | Generic arithmetic | Promote via `sub_1D38BB0` (getConstant) |
 | 27 | `EXTRACT_ELEMENT` | Split + re-extract |
@@ -414,26 +414,26 @@ The operation legalizer also contains an outer switch on the ISD opcode (`v11 = 
 
 Tracing common CUDA types through the full legalization pipeline:
 
-**`float4` (`v4f32`)** -- fully scalarized on every SM:
+**`float4` (`v4f32`)** — fully scalarized on every SM:
 1. SplitVectorResult: `v4f32` -> 2x `v2f32`
 2. ScalarizeVectorResult: `v2f32` -> 2x `f32` (no packed `f32` register class)
 3. Final: 4 independent `f32` scalar operations
 4. PTX: 4 separate `add.f32` / `mul.f32` instructions
 
-**`half2` (`__half2` / `v2f16`)** -- stays packed on SM 70+:
+**`half2` (`__half2` / `v2f16`)** — stays packed on SM 70+:
 1. Legal type, no splitting needed
 2. Final: single `v2f16` packed operation
 3. PTX: `add.f16x2`, `mul.f16x2`, `fma.rn.f16x2`
 
-**`__nv_bfloat162` (`v2bf16`)** -- legal on SM 80+:
+**`__nv_bfloat162` (`v2bf16`)** — legal on SM 80+:
 1. Same as `half2` but with `bf16x2` PTX instructions
 
-**`float2` (`v2f32`)** -- scalarized, not packed:
+**`float2` (`v2f32`)** — scalarized, not packed:
 1. ScalarizeVectorResult: `v2f32` -> 2x `f32`
 2. No 64-bit packed float register class exists
 
 **`v4f16` on SM 70+:**
-1. SplitVectorResult: `v4f16` -> 2x `v2f16` (legal -- stops here)
+1. SplitVectorResult: `v4f16` -> 2x `v2f16` (legal — stops here)
 2. Final: 2x `f16x2` packed operations (2x throughput vs scalarized)
 
 **`v4f16` on SM < 53:**
@@ -491,7 +491,7 @@ Key subroutines called from the type legalizer for constructing replacement DAG 
 
 ## Result Accumulation and Worklist
 
-Results from each legalization step are accumulated into a `SmallVector` of `{SDValue, SDValue}` pairs (node pointer + result index). The vector grows via `sub_16CD150` (`SmallVector::grow()`) when count exceeds capacity. After each pass, new nodes feed back into the worklist for iterative re-legalization until fixpoint -- all types are legal.
+Results from each legalization step are accumulated into a `SmallVector` of `{SDValue, SDValue}` pairs (node pointer + result index). The vector grows via `sub_16CD150` (`SmallVector::grow()`) when count exceeds capacity. After each pass, new nodes feed back into the worklist for iterative re-legalization until fixpoint — all types are legal.
 
 The worklist hash set uses open addressing with hash function `((id >> 9) ^ (id >> 4)) & (size - 1)` and grows at 75% load factor. Dead nodes are marked with sentinel `-2` (tombstone). The DenseMap instances used by the split/scalarize infrastructure use hash `37 * key` with quadratic probing.
 
@@ -501,7 +501,7 @@ The worklist hash set uses open addressing with hash function `((id >> 9) ^ (id 
 |---|---|---|
 | Source organization | 4 files, ~16,000 lines total | 1 monolithic function, 10,739 lines (348KB) |
 | Vector legal types | Target-dependent, often includes `v4f32`, `v2f64` | Only `v2f16`, `v2bf16`, `v2i16`, `v4i8` (32-bit packed) |
-| `v2f32` | Legal on most targets (x86, ARM) | Illegal -- scalarized |
+| `v2f32` | Legal on most targets (x86, ARM) | Illegal — scalarized |
 | Scalable vectors | Actively used (AArch64 SVE) | Encoded in tables but no SM target uses them |
 | `i128` | Expanded on most targets | Legal on SM 70+ (Int128Regs / `.b128` / `%rq`) |
 | NVPTX-specific split handlers | N/A | 4 functions in 0x214xxxx range for packed-type dispatch |
@@ -532,10 +532,10 @@ No CICC-specific legalization knobs beyond the standard LLVM flag were found. Th
 | PerformExpensiveChecks | `sub_2010FB0` | 62KB | Debug verifier for 9 DenseMap categories |
 | SplitVectorResult | `sub_2029C10` | 5KB | Dispatcher for 190 opcode cases |
 | SplitVectorOperand | `sub_202E5A0` | 6KB | Dispatcher for 157 opcode cases |
-| SplitVecRes_BinOp | `sub_20230C0` | -- | Generic binary op split |
+| SplitVecRes_BinOp | `sub_20230C0` | — | Generic binary op split |
 | SplitVecRes_VECTOR_SHUFFLE | `sub_20293A0` | 10KB | Shuffle decomposition |
-| ScalarizeVectorResult | `sub_2036110` | -- | Vector-to-scalar reduction |
-| ScalarizeVectorOperand | `sub_2035F80` | -- | Operand scalarization (80 cases) |
+| ScalarizeVectorResult | `sub_2036110` | — | Vector-to-scalar reduction |
+| ScalarizeVectorOperand | `sub_2035F80` | — | Operand scalarization (80 cases) |
 | WidenVector | `sub_2036AE0` | 31KB | Vector widening (limited NVPTX use) |
 | Operation legalizer | `sub_1FFB890` | 169KB | `LegalizeOp` per-node action dispatch |
 | ExpandNode | `sub_1FF6F70` | 43KB | Full node expansion fallback |
@@ -543,13 +543,13 @@ No CICC-specific legalization knobs beyond the standard LLVM flag were found. Th
 | LegalizeLoadOps | `sub_1FF5310` | 41KB | Store splitting/coalescing |
 | NVPTX split: CONCAT | `sub_2146BB0` | 219B | NVPTX-specific CONCAT_VECTORS split |
 | NVPTX split: SELECT_CC | `sub_2146C90` | 2.7KB | NVPTX-specific SELECT_CC split |
-| NVPTX split: FP_ROUND | `sub_2147770` | -- | NVPTX-specific FP rounding split |
-| NVPTX split: BITCAST | `sub_2147AE0` | -- | NVPTX-specific bitcast split |
+| NVPTX split: FP_ROUND | `sub_2147770` | — | NVPTX-specific FP rounding split |
+| NVPTX split: BITCAST | `sub_2147AE0` | — | NVPTX-specific bitcast split |
 | NVPTXTargetLowering init | `sub_3314670` | 73KB | Populates legality tables |
-| FP conversion split helper | `sub_20B5C20` | -- | Iterative SINT_TO_FP/UINT_TO_FP |
-| Atomic promote helper | `sub_20B7F50` | -- | ATOMIC_LOAD promotion |
-| CAS expansion decision | `sub_20B7E10` | -- | CAS loop vs direct atomic |
-| Gather/scatter alignment | `sub_20BD400` | -- | MGATHER/MSCATTER alignment fixup |
+| FP conversion split helper | `sub_20B5C20` | — | Iterative SINT_TO_FP/UINT_TO_FP |
+| Atomic promote helper | `sub_20B7F50` | — | ATOMIC_LOAD promotion |
+| CAS expansion decision | `sub_20B7E10` | — | CAS loop vs direct atomic |
+| Gather/scatter alignment | `sub_20BD400` | — | MGATHER/MSCATTER alignment fixup |
 
 ## Reimplementation Checklist
 
@@ -562,8 +562,8 @@ No CICC-specific legalization knobs beyond the standard LLVM flag were found. Th
 
 ## Cross-References
 
-- [SelectionDAG & Instruction Selection](./selectiondag.md) -- parent page covering the full SelectionDAG pipeline
-- [NVPTX Target Infrastructure](../infra/nvptx-target.md) -- `NVPTXTargetLowering` constructor and TTI hooks
-- [SM 70--89](../targets/sm70-89.md), [SM 90](../targets/sm90-hopper.md), [SM 100](../targets/sm100-blackwell.md) -- per-SM legal type details
-- [DAG Node](../structs/dag-node.md) -- SDNode layout (opcode at +24, operands at +32, type at +40)
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- DenseMap mechanics used throughout legalization
+- [SelectionDAG & Instruction Selection](./selectiondag.md) — parent page covering the full SelectionDAG pipeline
+- [NVPTX Target Infrastructure](../infra/nvptx-target.md) — `NVPTXTargetLowering` constructor and TTI hooks
+- [SM 70--89](../targets/sm70-89.md), [SM 90](../targets/sm90-hopper.md), [SM 100](../targets/sm100-blackwell.md) — per-SM legal type details
+- [DAG Node](../structs/dag-node.md) — SDNode layout (opcode at +24, operands at +32, type at +40)
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — DenseMap mechanics used throughout legalization

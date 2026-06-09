@@ -7,7 +7,7 @@ Two CLI flags control the feature:
 | Flag | Global (value) | Global (state) | Meaning |
 |---|---|---|---|
 | `-split-compile=N` | `dword_2A5B518` | `dword_2A5F260` | Number of NVVM-level splits. Forwarded to libnvvm as `-split-compile=N`. libnvvm produces N separate PTX chunks from a single compiled IR |
-| `-split-compile-extended=N` | `dword_2A5B514` | -- | Number of threads to use for the ptxas assembly step. When > 1, nvlink spawns a thread pool of N workers to assemble the split PTX chunks in parallel |
+| `-split-compile-extended=N` | `dword_2A5B514` | — | Number of threads to use for the ptxas assembly step. When > 1, nvlink spawns a thread pool of N workers to assemble the split PTX chunks in parallel |
 
 Both values are integers. Neither flag has a short-form alias. When `-split-compile-extended` is not specified, `dword_2A5B514` defaults to 1 (single-threaded).
 
@@ -435,7 +435,7 @@ void split_compile_worker(work_item *item) {
 4. Adds compilation options (`sub_4CE3E0`)
 5. Adds the PTX input data (`sub_4CE070`)
 6. Runs compilation (`sub_4CE8C0`)
-7. Retrieves output via `sub_4CE670` -- checks the output count (`v35`)
+7. Retrieves output via `sub_4CE670` — checks the output count (`v35`)
 8. If count == 1: the PTX was not split, adds architecture-specific options (`-m32`/`-m64`) and re-retrieves via `sub_4BE350`
 9. Copies the compiled binary into arena memory and returns it through the output pointer
 
@@ -482,7 +482,7 @@ pool_t *thread_pool_create(size_t num_threads) {
 }
 ```
 
-All threads are created detached. The priority queue uses `sub_43FC70` as its comparator, which always returns 1 -- this makes the heap behave as a FIFO queue (insertion order preserved since all priorities are "equal").
+All threads are created detached. The priority queue uses `sub_43FC70` as its comparator, which always returns 1 — this makes the heap behave as a FIFO queue (insertion order preserved since all priorities are "equal").
 
 ### thread_pool_submit (`sub_43FF50` at `0x43FF50`)
 
@@ -546,7 +546,7 @@ exit:
 }
 ```
 
-The worker loops indefinitely, sleeping on `task_cond` when no work is available. When the shutdown flag is set, it decrements the thread count and signals `done_cond` before exiting. The completion signal at the end of each task is only fired when both `active_count` and `pending_count` are zero -- this is the condition that `thread_pool_wait` blocks on.
+The worker loops indefinitely, sleeping on `task_cond` when no work is available. When the shutdown flag is set, it decrements the thread count and signals `done_cond` before exiting. The completion signal at the end of each task is only fired when both `active_count` and `pending_count` are zero — this is the condition that `thread_pool_wait` blocks on.
 
 ### thread_pool_wait (`sub_43FFE0` at `0x43FFE0`)
 
@@ -607,12 +607,12 @@ The task queue (`sub_44DC60` / `sub_44DD10` / `sub_44DE20`) is a binary min-heap
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 8 | `array` -- pointer to element pointer array |
-| 8 | 8 | `count` -- number of elements |
-| 16 | 8 | `capacity` -- allocated slots |
-| 24 | 8 | `comparator` -- function pointer for ordering |
+| 0 | 8 | `array` — pointer to element pointer array |
+| 8 | 8 | `count` — number of elements |
+| 16 | 8 | `capacity` — allocated slots |
+| 24 | 8 | `comparator` — function pointer for ordering |
 
-Push (`sub_44DD10`) inserts at the end and sifts up. Pop (`sub_44DE20`) moves the last element to position 0 and sifts down. The comparator `sub_43FC70` always returns 1, so every parent is always "less than or equal" to its children -- the heap degenerates into approximate FIFO behavior. Growth doubles the capacity when full, using `sub_4313A0` (arena realloc).
+Push (`sub_44DD10`) inserts at the end and sifts up. Pop (`sub_44DE20`) moves the last element to position 0 and sifts down. The comparator `sub_43FC70` always returns 1, so every parent is always "less than or equal" to its children — the heap degenerates into approximate FIFO behavior. Growth doubles the capacity when full, using `sub_4313A0` (arena realloc).
 
 ## Error Handling
 
@@ -653,7 +653,7 @@ for (i = 0; i < num_splits; i++) {
 | `0x426570` | `validate_and_add` | ~1,200 B | Validates compiled cubin arch/class, adds to output ELF writer |
 | `0x4275C0` | `mercury_post_link` | ~512 B | Mercury finalizer post-link transform (sm > 89) |
 | `0x431000` | `arena_free` | ~720 B | Returns arena-allocated memory to the memspace free list |
-| `0x4BC6F0` | `libnvvm_compile` | -- | Compiles linked NVVM IR, produces PTX and split metadata |
+| `0x4BC6F0` | `libnvvm_compile` | — | Compiles linked NVVM IR, produces PTX and split metadata |
 
 ## Key Globals
 
@@ -665,8 +665,8 @@ for (i = 0; i < num_splits; i++) {
 
 ## Cross-References
 
-- [LTO Overview](overview.md) -- pipeline context showing where split compilation fits (Step 3: PTX Assembly)
-- [Option Forwarding](option-forwarding.md) -- how `-split-compile` and `-split-compile-extended` are forwarded to cicc
-- [libnvvm Integration](libnvvm-integration.md) -- libnvvm produces the PTX that split compilation parallelizes
-- [Whole vs Partial LTO](whole-vs-partial.md) -- split compilation interacts with partial mode (Path 3 dispatch)
-- [Merge Phase](../pipeline/merge.md) -- per-split cubins are merged via `merge_elf` after assembly
+- [LTO Overview](overview.md) — pipeline context showing where split compilation fits (Step 3: PTX Assembly)
+- [Option Forwarding](option-forwarding.md) — how `-split-compile` and `-split-compile-extended` are forwarded to cicc
+- [libnvvm Integration](libnvvm-integration.md) — libnvvm produces the PTX that split compilation parallelizes
+- [Whole vs Partial LTO](whole-vs-partial.md) — split compilation interacts with partial mode (Path 3 dispatch)
+- [Merge Phase](../pipeline/merge.md) — per-split cubins are merged via `merge_elf` after assembly

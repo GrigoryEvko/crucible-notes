@@ -60,7 +60,7 @@ Users specify the GPU architecture through nvcc:
 nvcc --gpu-architecture=sm_90 source.cu
 ```
 
-nvcc translates this into an internal numeric index and passes it to cudafe++ as `--target=<index>`. The value stored in `dword_126E4A8` is NOT a raw SM number like 90 -- it is an index into EDG's target configuration table. nvcc performs the mapping from user-facing strings (`sm_90`, `compute_80`, etc.) to this index. cudafe++ never sees the `sm_XX` string directly.
+nvcc translates this into an internal numeric index and passes it to cudafe++ as `--target=<index>`. The value stored in `dword_126E4A8` is NOT a raw SM number like 90 — it is an index into EDG's target configuration table. nvcc performs the mapping from user-facing strings (`sm_90`, `compute_80`, etc.) to this index. cudafe++ never sees the `sm_XX` string directly.
 
 The `--target` flag is registered as CLI flag 253 with the internal `case_id` 245 in the flag table:
 
@@ -112,7 +112,7 @@ sub_7525E0:
 
 This stub always returns the invalid sentinel `-1`. The actual architecture code reaches `dword_126E4A8` through the argument value passed by nvcc, not through parsing logic within this function. The function signature in the call site (`sub_7525E0(qword_E7FF28, v23, v20, v30)`) shows that four arguments are passed, but the stub ignores all of them. This means either:
 
-1. The actual parsing is performed by nvcc, which passes the pre-resolved numeric index as the argument string, and `sub_7525E0` simply converts it with `strtol` -- but the link-time optimization eliminated the body because the result was equivalent to the argument itself.
+1. The actual parsing is performed by nvcc, which passes the pre-resolved numeric index as the argument string, and `sub_7525E0` simply converts it with `strtol` — but the link-time optimization eliminated the body because the result was equivalent to the argument itself.
 
 2. The function is a placeholder that was replaced at link time by a different object file that nvcc provides when building the toolchain.
 
@@ -331,7 +331,7 @@ case 90:
 
 Because `sub_7515D0` is called from `sub_7525F0` (which runs during case 245), and case 90 executes before case 245, the `--m32` overrides are applied first but then overwritten by `sub_7515D0`'s LP64 defaults. This means the 32-bit overrides from `--m32` are effective ONLY for the globals that `sub_7515D0` does NOT touch. For the globals that both code paths write (like `qword_126E408`, `dword_126E400`, `byte_126E349`, `byte_126E358`), the `sub_7515D0` LP64 values take precedence. However, `--force-lp64` and `--force-llp64` are no-ops when `--target` is also specified, because `sub_7515D0` overwrites their values too.
 
-In practice, nvcc controls all of these flags coherently -- it does not pass conflicting combinations.
+In practice, nvcc controls all of these flags coherently — it does not pass conflicting combinations.
 
 ### Configuration Validation (sub_7527B0)
 
@@ -520,7 +520,7 @@ if (!dword_106C028) {                    // feature not enabled
 }
 ```
 
-The architecture check for `__nv_register_params__` is separate -- it uses diagnostic tag `register_params_unsupported_arch` (requiring compute_80+), which is evaluated in a different code path from the enable flag check.
+The architecture check for `__nv_register_params__` is separate — it uses diagnostic tag `register_params_unsupported_arch` (requiring compute_80+), which is evaluated in a different code path from the enable flag check.
 
 ### Feature Flag vs Direct Comparison
 
@@ -663,11 +663,11 @@ main (sub_585EE0)
 
 ## Cross-References
 
-- [CLI Flag Inventory](./cli-flags.md) -- `--target` (case 245), `--m32` (case 90), `--force-lp64` (case 65), `--force-llp64` (case 66) flag details
-- [Architecture Feature Gating](../cuda/arch-gating.md) -- SM version thresholds for CUDA features, host compiler version gating, `--db` debug mechanism
-- [EDG Build Configuration](./edg-build-config.md) -- Compile-time constants controlling backend selection and IL configuration
-- [Pipeline Overview](../pipeline/overview.md) -- Where architecture detection fits in the compilation pipeline
-- [CLI Processing](../pipeline/cli.md) -- `proc_command_line` dispatcher and flag table mechanics
-- [Translation Unit Descriptor](../structs/translation-unit.md) -- TU state block containing `dword_126EBF8`
-- [Global Variable Index](../reference/global-variables.md) -- Full address-level documentation of all globals
-- [Minor Attributes](../attributes/minor-attributes.md) -- `__nv_register_params__` attribute handler and `dword_106C028` usage
+- [CLI Flag Inventory](./cli-flags.md) — `--target` (case 245), `--m32` (case 90), `--force-lp64` (case 65), `--force-llp64` (case 66) flag details
+- [Architecture Feature Gating](../cuda/arch-gating.md) — SM version thresholds for CUDA features, host compiler version gating, `--db` debug mechanism
+- [EDG Build Configuration](./edg-build-config.md) — Compile-time constants controlling backend selection and IL configuration
+- [Pipeline Overview](../pipeline/overview.md) — Where architecture detection fits in the compilation pipeline
+- [CLI Processing](../pipeline/cli.md) — `proc_command_line` dispatcher and flag table mechanics
+- [Translation Unit Descriptor](../structs/translation-unit.md) — TU state block containing `dword_126EBF8`
+- [Global Variable Index](../reference/global-variables.md) — Full address-level documentation of all globals
+- [Minor Attributes](../attributes/minor-attributes.md) — `__nv_register_params__` attribute handler and `dword_106C028` usage

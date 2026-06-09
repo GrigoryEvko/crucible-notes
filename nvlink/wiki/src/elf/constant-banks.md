@@ -99,31 +99,31 @@ The table is followed immediately by system function name pointers (vprintf at `
 
 Beyond the 18 numbered banks, nvlink recognizes 7 named specialized banks. These do not use the numeric suffix convention; instead they use a dotted-name suffix after `.nv.constant.`:
 
-### `.nv.constant.entry_params` -- Kernel Parameter Bank
+### `.nv.constant.entry_params` — Kernel Parameter Bank
 
 Holds the kernel launch parameters (the arguments passed to `<<<...>>>` or `cuLaunchKernel`). The CUDA runtime copies kernel arguments into this bank before launch. The nvinfo attribute `EIATTR_PARAM_CBANK` (`0x235`) specifies which constant bank and offset range contain the parameters, and `EIATTR_CBANK_PARAM_SIZE` (`0x185`) records the total parameter size. The compiler references this bank as `sw-kernel-params-bank` internally.
 
-### `.nv.constant.driver` -- Driver-Managed Bank
+### `.nv.constant.driver` — Driver-Managed Bank
 
 Reserved for the CUDA driver to inject runtime constants. The driver uses this bank for values that must be available in constant memory but are not known at compile time (e.g., grid dimensions, device properties). The content is populated by the driver at kernel launch time, not by the linker.
 
-### `.nv.constant.optimizer` -- Compiler-Generated Constants
+### `.nv.constant.optimizer` — Compiler-Generated Constants
 
 Contains constants materialized by the compiler's optimization passes, distinct from user-declared `__constant__` variables. When the OCG (Object Code Generator) back-end promotes immediates to constant memory loads for better encoding or register pressure, the values land here. This bank is the target of the `__ocg_const` symbol resolution at `sub_1625E40` and the `sw-compiler-bank` memory space reference.
 
-### `.nv.constant.user` -- User `__constant__` Variables
+### `.nv.constant.user` — User `__constant__` Variables
 
 The primary bank for user-declared `__constant__` variables in CUDA C++. When a programmer writes `__constant__ float table[256];`, the data is placed in this bank (or in `.nv.constant0`, depending on compilation mode). The distinction between `.nv.constant.user` and `.nv.constant0` depends on whether the compiler uses named-bank or numbered-bank encoding for the user constant space.
 
-### `.nv.constant.pic` -- Position-Independent Code Tables
+### `.nv.constant.pic` — Position-Independent Code Tables
 
 Contains the PIC (Position-Independent Code) jump tables and function pointer tables used in relocatable compilation. When indirect function calls need to be resolved at link time, the linker places the indirect function address tables (`__funcAddrTab_c` and `__funcAddrTab_g`) in this bank via `sub_162C8B0`. These tables enable the device-side function pointer mechanism.
 
-### `.nv.constant.tools_data` -- Profiling/Debugging Tool Data
+### `.nv.constant.tools_data` — Profiling/Debugging Tool Data
 
 Reserved for NVIDIA profiling and debugging tools (Nsight Compute, Nsight Systems, CUDA-MEMCHECK). Tool instrumentation passes inject metadata and configuration data into this bank. The sanitizer instrumentation at `sub_1CAE000` uses related mechanisms for memcheck callbacks.
 
-### `.nv.constant.entry_image_header_indices` -- Image Header Indices
+### `.nv.constant.entry_image_header_indices` — Image Header Indices
 
 Contains per-entry indices into the image header array. This bank maps kernel entry points to their positions in the cubin's image header table, enabling the driver to look up per-kernel metadata (register counts, shared memory sizes, etc.) by entry point index.
 
@@ -136,9 +136,9 @@ Constant bank sections can be either global (shared across all kernels in the li
 ```
 
 Examples:
-- `.nv.constant0.my_kernel` -- bank 0 constants specific to `my_kernel`
-- `.nv.constant2.matmul_f32` -- bank 2 (OCG) constants for `matmul_f32`
-- `.nv.constant3.tex_sample` -- bank 3 (bindless) descriptors for `tex_sample`
+- `.nv.constant0.my_kernel` — bank 0 constants specific to `my_kernel`
+- `.nv.constant2.matmul_f32` — bank 2 (OCG) constants for `matmul_f32`
+- `.nv.constant3.tex_sample` — bank 3 (bindless) descriptors for `tex_sample`
 
 The section name is constructed via `sprintf("%s.%s", bank_name, entry_name)`. The merge function `sub_438640` handles both global and per-entry cases:
 
@@ -215,13 +215,13 @@ The `section_type_delta` parameter passed to the relocation engine is computed a
 section_type_delta = parent_section->sh_type - 0x70000064;
 ```
 
-For constant bank sections, `0x70000064` is `SHT_CUDA_CONSTANT0`, so the delta equals the bank number (0 for `.nv.constant0`, 2 for `.nv.constant2`, etc.). The bank index is not patched by the `R_CUDA_CONST_FIELD*` relocation itself -- it is encoded directly in the instruction by the compiler (the compiler knows the target bank at compile time from the memory space of the referenced variable). The relocation only patches the **offset** portion of the `c[bank][offset]` reference.
+For constant bank sections, `0x70000064` is `SHT_CUDA_CONSTANT0`, so the delta equals the bank number (0 for `.nv.constant0`, 2 for `.nv.constant2`, etc.). The bank index is not patched by the `R_CUDA_CONST_FIELD*` relocation itself — it is encoded directly in the instruction by the compiler (the compiler knows the target bank at compile time from the memory space of the referenced variable). The relocation only patches the **offset** portion of the `c[bank][offset]` reference.
 
 ### Worked Example: R_CUDA_CONST_FIELD19_28
 
 This example traces a constant bank relocation end-to-end, from the source CUDA code through the ELF relocation entry to the patched SASS instruction. `R_CUDA_CONST_FIELD19_28` (standard table index 24) is the most common constant field relocation on pre-Turing and Turing architectures. It writes a 19-bit DWORD offset into bits [28:47) of a 64-bit SASS instruction word.
 
-**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_75 (Turing) -- the relocation layout traced here is identical on the inherited sm_70 Volta encoding, on sm_80 / sm_86 / sm_89 Ampere--Ada, and on sm_90 Hopper (all share the 64-bit instruction word and the 19-bit DWORD-offset field at bit 28); the 21- and 22-bit wide-immediate variants introduced at sm_75 use sibling relocation types (`R_CUDA_CONST_FIELD21_*`, `R_CUDA_CONST_FIELD22_37`) but the same descriptor-table machinery.
+**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_75 (Turing) — the relocation layout traced here is identical on the inherited sm_70 Volta encoding, on sm_80 / sm_86 / sm_89 Ampere--Ada, and on sm_90 Hopper (all share the 64-bit instruction word and the 19-bit DWORD-offset field at bit 28); the 21- and 22-bit wide-immediate variants introduced at sm_75 use sibling relocation types (`R_CUDA_CONST_FIELD21_*`, `R_CUDA_CONST_FIELD22_37`) but the same descriptor-table machinery.
 
 #### Step 0: Source Code and Compilation
 
@@ -290,7 +290,7 @@ The relocation engine (`sub_469D60`) processes the relocation record. It perform
 section_type_delta = 0x70000064 - 0x70000064 = 0  (bank 0)
 ```
 
-This value is passed as parameter `a9` to the application engine but is not used by the `abs_shifted` action -- it would only matter if the descriptor included `sec_type_lo` or `sec_type_hi` actions.
+This value is passed as parameter `a9` to the application engine but is not used by the `abs_shifted` action — it would only matter if the descriptor included `sec_type_lo` or `sec_type_hi` actions.
 
 **3d. Data buffer lookup**: The engine walks the chunk list at the target section's offset `+72` to find the memory buffer containing the instruction at offset `0x080`.
 
@@ -431,7 +431,7 @@ Encoding:    19 bits of 0x40 written at bit position 28
 ISA decode:  c[0][0x40 * 4] = c[0][0x100] (correct)
 ```
 
-For a different bank -- say `.nv.constant2` (OCG, `sh_type = 0x70000066`) -- the only difference is the bank index field (bits [27:23]) which the compiler sets to `0x02`. The `R_CUDA_CONST_FIELD*` relocation logic is identical; it only ever patches the offset field, not the bank field.
+For a different bank — say `.nv.constant2` (OCG, `sh_type = 0x70000066`) — the only difference is the bank index field (bits [27:23]) which the compiler sets to `0x02`. The `R_CUDA_CONST_FIELD*` relocation logic is identical; it only ever patches the offset field, not the bank field.
 
 ## Overlap Merge and Validation
 
@@ -567,21 +567,21 @@ These relocation sections hold the `R_CUDA_CONST_FIELD*` entries that the reloca
 
 **Internal (nvlink wiki):**
 
-- [Section Merging](../linker/section-merging.md) -- Full merge phase mechanics, per-entry section naming
-- [Data Layout Optimization](../linker/data-layout-opt.md) -- OCG constant dedup engine in detail
-- [R\_CUDA Relocations](../linker/r-cuda-relocations.md) -- Complete R\_CUDA\_CONST\_FIELD\* catalog
-- [Bindless Relocations](../linker/bindless-relocations.md) -- Constant bank 3 for bindless descriptors
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- OCG constant section removal
-- [Layout Phase](../pipeline/layout.md) -- Phase 9 constant bank layout orchestration
-- [NVIDIA Section Types](nvidia-sections.md) -- Full CUDA section type catalog including constant bank `sh_type` range
-- [.nv.info Metadata](nv-info.md) -- EIATTR attributes that reference constant banks (EIATTR\_KPARAM\_INFO, EIATTR\_CBANK\_PARAM\_SIZE)
-- [Section Catalog](../reference/section-catalog.md) -- Alphabetical index of all section names including `.nv.constant*` entries
-- [Symbol Resolution](../linker/symbol-resolution.md) -- How `__constant__` symbols are resolved across TUs
+- [Section Merging](../linker/section-merging.md) — Full merge phase mechanics, per-entry section naming
+- [Data Layout Optimization](../linker/data-layout-opt.md) — OCG constant dedup engine in detail
+- [R\_CUDA Relocations](../linker/r-cuda-relocations.md) — Complete R\_CUDA\_CONST\_FIELD\* catalog
+- [Bindless Relocations](../linker/bindless-relocations.md) — Constant bank 3 for bindless descriptors
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — OCG constant section removal
+- [Layout Phase](../pipeline/layout.md) — Phase 9 constant bank layout orchestration
+- [NVIDIA Section Types](nvidia-sections.md) — Full CUDA section type catalog including constant bank `sh_type` range
+- [.nv.info Metadata](nv-info.md) — EIATTR attributes that reference constant banks (EIATTR\_KPARAM\_INFO, EIATTR\_CBANK\_PARAM\_SIZE)
+- [Section Catalog](../reference/section-catalog.md) — Alphabetical index of all section names including `.nv.constant*` entries
+- [Symbol Resolution](../linker/symbol-resolution.md) — How `__constant__` symbols are resolved across TUs
 
 **Sibling wikis:**
 
-- [ptxas: Sections](../../ptxas/output/sections.html) -- How ptxas creates constant bank sections in its output cubins
-- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR constants emitted by ptxas that describe constant bank usage
+- [ptxas: Sections](../../ptxas/output/sections.html) — How ptxas creates constant bank sections in its output cubins
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) — EIATTR constants emitted by ptxas that describe constant bank usage
 
 ## Confidence Assessment
 

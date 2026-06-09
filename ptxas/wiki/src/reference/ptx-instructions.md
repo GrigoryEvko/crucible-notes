@@ -160,7 +160,7 @@ Comparison operators for `setp`/`set`: `.eq .ne .lt .le .gt .ge .lo .ls .hi .hs 
 | `redux.sync` | `.s32 .u32` | `d, a, membermask` | 80+ | 7.0 | Warp reduction with sync |
 | `activemask` | `.b32` | `d` | 70+ | 6.2 | Get active thread mask |
 | `elect` | `.pred` | `p` | 90+ | 8.0 | Elect one leader thread |
-| `elect.one` | -- | `d, {p}` | 90+ | 8.0 | Elect one thread, return success |
+| `elect.one` | — | `d, {p}` | 90+ | 8.0 | Elect one thread, return success |
 
 ## Load, Store, and Memory
 
@@ -176,7 +176,7 @@ Comparison operators for `setp`/`set`: `.eq .ne .lt .le .gt .ge .lo .ls .hi .hs 
 | `prefetch` | `.L1 .L2` | `[a]` | 20+ | 2.0 | Prefetch to cache level |
 | `prefetchu` | `.L1` | `[a]` | 20+ | 2.0 | Prefetch uniform |
 | `isspacep` | `.global .shared .local .const` | `p, a` | 20+ | 2.0 | Test address space |
-| `cvta` | -- | `d, a` | 20+ | 2.0 | Convert address space (generic <-> specific) |
+| `cvta` | — | `d, a` | 20+ | 2.0 | Convert address space (generic <-> specific) |
 | `cvta.to` | `.global .shared .local .const` | `d, a` | 20+ | 2.0 | Convert to specific state space |
 
 Cache qualifiers for `ld`/`st`: `.ca .cg .cs .cv .lu .wb .wt`  
@@ -187,20 +187,20 @@ Eviction policy (PTX 7.4+): `.L2::evict_first .L2::evict_last .L2::evict_normal 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
 | `cp.async` | `.ca .cg` | `[dst], [src], size` | 80+ | 7.0 | Async copy (4/8/16 bytes, global->shared) |
-| `cp.async.commit_group` | -- | -- | 80+ | 7.0 | Commit outstanding async copies |
-| `cp.async.wait_group` | -- | `N` | 80+ | 7.0 | Wait for async copy group completion |
-| `cp.async.wait_all` | -- | -- | 80+ | 7.0 | Wait for all async copies |
-| `cp.async.mbarrier.arrive` | -- | `[mbar]` | 80+ | 7.0 | Arrive at mbarrier on async copy completion |
-| `cp.async.bulk` | -- | `[dst], [src], size` | 90+ | 8.0 | Bulk async copy (TMA) |
-| `cp.async.bulk.tensor` | -- | `[dst], [src], dims...` | 90+ | 8.0 | Tensor async copy (TMA, 1-5D tiles) |
-| `cp.async.bulk.prefetch` | -- | `[src], size` | 90+ | 8.0 | Prefetch via TMA |
-| `cp.async.bulk.prefetch.tensor` | -- | `[src], dims...` | 90+ | 8.0 | Tensor prefetch via TMA |
-| `cp.async.bulk.commit_group` | -- | -- | 90+ | 8.0 | Commit bulk async group |
-| `cp.async.bulk.wait_group` | -- | `N` | 90+ | 8.0 | Wait for bulk group completion |
+| `cp.async.commit_group` | — | — | 80+ | 7.0 | Commit outstanding async copies |
+| `cp.async.wait_group` | — | `N` | 80+ | 7.0 | Wait for async copy group completion |
+| `cp.async.wait_all` | — | — | 80+ | 7.0 | Wait for all async copies |
+| `cp.async.mbarrier.arrive` | — | `[mbar]` | 80+ | 7.0 | Arrive at mbarrier on async copy completion |
+| `cp.async.bulk` | — | `[dst], [src], size` | 90+ | 8.0 | Bulk async copy (TMA) |
+| `cp.async.bulk.tensor` | — | `[dst], [src], dims...` | 90+ | 8.0 | Tensor async copy (TMA, 1-5D tiles) |
+| `cp.async.bulk.prefetch` | — | `[src], size` | 90+ | 8.0 | Prefetch via TMA |
+| `cp.async.bulk.prefetch.tensor` | — | `[src], dims...` | 90+ | 8.0 | Tensor prefetch via TMA |
+| `cp.async.bulk.commit_group` | — | — | 90+ | 8.0 | Commit bulk async group |
+| `cp.async.bulk.wait_group` | — | `N` | 90+ | 8.0 | Wait for bulk group completion |
 | `cp.reduce.async.bulk` | `.add .min .max .and .or .xor .inc .dec` | `[dst], [src], size` | 90+ | 8.0 | Bulk async copy with reduction |
 | `cp.reduce.async.bulk.tensor` | `.add .min .max .and .or .xor .inc .dec` | `[dst], [src], dims...` | 90+ | 8.0 | Tensor async copy with reduction |
 | `st.async` | `.b32 .b64 .b128` | `[a], b` | 90+ | 8.1 | Async store |
-| `st.bulk` | -- | `[a], b, size` | 90+ | 8.0 | Bulk store |
+| `st.bulk` | — | `[a], b, size` | 90+ | 8.0 | Bulk store |
 | `red.async` | `.add .min .max .and .or .xor .inc .dec` | `[a], b` | 90+ | 8.1 | Async reduction |
 
 ### Multimem
@@ -248,7 +248,7 @@ The instruction table builder registers extensive type-pair combinations for `cv
 
 Modifier `.ftz` (flush-to-zero), `.sat` (saturation), `.relu` (ReLU clamp to 0) are recognized. The `.rna` rounding mode (round-to-nearest-away, PTX 8.3+) is registered for `cvt.tf32.f32`.
 
-### `szext` -- Sign/Zero Extend
+### `szext` — Sign/Zero Extend
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
@@ -286,23 +286,23 @@ Surface clamp modes: `.trap .clamp .zero`
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
 | `tensormap.replace` | `.tile .im2col` | `d, [tmap], field, value` | 90+ | 8.0 | Replace tensormap field at runtime |
-| `tensormap.cp_fenceproxy` | -- | `[tmap]` | 90+ | 8.0 | Tensormap copy fence proxy |
+| `tensormap.cp_fenceproxy` | — | `[tmap]` | 90+ | 8.0 | Tensormap copy fence proxy |
 
 ## Control Flow
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `bra` | -- | `target` | all | 1.0 | Branch (unconditional or predicated) |
-| `bra.uni` | -- | `target` | all | 1.0 | Uniform branch (all threads take same direction) |
-| `brx.idx` | -- | `a, [targets]` | 70+ | 6.0 | Indexed branch (jump table) |
-| `call` | -- | `(ret), func, (params)` | 20+ | 2.0 | Function call (with ABI) |
-| `ret` | -- | -- | 20+ | 2.0 | Return from function |
-| `exit` | -- | -- | all | 1.0 | Exit kernel / terminate thread |
-| `trap` | -- | -- | all | 1.0 | Trigger error |
-| `brkpt` | -- | -- | 11+ | 1.0 | Breakpoint (debugger halt) |
-| `pmevent` | -- | `imm` | 20+ | 2.0 | Performance monitor event |
-| `pmevent.mask` | -- | `imm` | 20+ | 3.0 | Performance monitor event with mask |
-| `nanosleep` | -- | `t` | 70+ | 6.3 | Sleep for `t` nanoseconds |
+| `bra` | — | `target` | all | 1.0 | Branch (unconditional or predicated) |
+| `bra.uni` | — | `target` | all | 1.0 | Uniform branch (all threads take same direction) |
+| `brx.idx` | — | `a, [targets]` | 70+ | 6.0 | Indexed branch (jump table) |
+| `call` | — | `(ret), func, (params)` | 20+ | 2.0 | Function call (with ABI) |
+| `ret` | — | — | 20+ | 2.0 | Return from function |
+| `exit` | — | — | all | 1.0 | Exit kernel / terminate thread |
+| `trap` | — | — | all | 1.0 | Trigger error |
+| `brkpt` | — | — | 11+ | 1.0 | Breakpoint (debugger halt) |
+| `pmevent` | — | `imm` | 20+ | 2.0 | Performance monitor event |
+| `pmevent.mask` | — | `imm` | 20+ | 3.0 | Performance monitor event with mask |
+| `nanosleep` | — | `t` | 70+ | 6.3 | Sleep for `t` nanoseconds |
 
 ## Synchronization and Barriers
 
@@ -310,8 +310,8 @@ Surface clamp modes: `.trap .clamp .zero`
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `bar.sync` | -- | `a{, b}` | all | 1.0 | Barrier synchronize (CTA-level) |
-| `bar.arrive` | -- | `a, b` | all | 1.0 | Barrier arrive (non-blocking) |
+| `bar.sync` | — | `a{, b}` | all | 1.0 | Barrier synchronize (CTA-level) |
+| `bar.arrive` | — | `a, b` | all | 1.0 | Barrier arrive (non-blocking) |
 | `bar.red` | `.and .or .popc` | `d, a, {b}, p` | all | 1.0 | Barrier with reduction |
 | `bar.warp` | `.sync` | `membermask` | 70+ | 6.0 | Warp-level barrier |
 
@@ -319,22 +319,22 @@ Surface clamp modes: `.trap .clamp .zero`
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `barrier` | -- | `a{, b}` | 70+ | 6.0 | Named barrier synchronize |
-| `barrier.arrive` | -- | `a, b` | 70+ | 6.0 | Named barrier arrive |
+| `barrier` | — | `a{, b}` | 70+ | 6.0 | Named barrier synchronize |
+| `barrier.arrive` | — | `a, b` | 70+ | 6.0 | Named barrier arrive |
 | `barrier.red` | `.and .or .popc` | `d, a, {b}, p` | 70+ | 6.0 | Named barrier with reduction |
 
 ### CTA-Cluster Barrier (PTX 7.8+)
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `bar.cta` | -- | -- | 90+ | 7.8 | CTA-level barrier sync |
-| `bar.cta.arrive` | -- | -- | 90+ | 7.8 | CTA-level barrier arrive |
+| `bar.cta` | — | — | 90+ | 7.8 | CTA-level barrier sync |
+| `bar.cta.arrive` | — | — | 90+ | 7.8 | CTA-level barrier arrive |
 | `bar.cta.red` | `.and .or .popc` | `d, p` | 90+ | 7.8 | CTA barrier with reduction |
-| `barrier.cta` | -- | -- | 90+ | 7.8 | CTA named barrier sync |
-| `barrier.cta.arrive` | -- | -- | 90+ | 7.8 | CTA named barrier arrive |
+| `barrier.cta` | — | — | 90+ | 7.8 | CTA named barrier sync |
+| `barrier.cta.arrive` | — | — | 90+ | 7.8 | CTA named barrier arrive |
 | `barrier.cta.red` | `.and .or .popc` | `d, p` | 90+ | 7.8 | CTA named barrier with reduction |
-| `barrier.cluster.arrive` | -- | -- | 90+ | 7.8 | Cluster-level barrier arrive |
-| `barrier.cluster.wait` | -- | -- | 90+ | 7.8 | Cluster-level barrier wait |
+| `barrier.cluster.arrive` | — | — | 90+ | 7.8 | Cluster-level barrier arrive |
+| `barrier.cluster.wait` | — | — | 90+ | 7.8 | Cluster-level barrier wait |
 
 ### Asynchronous Barriers (mbarrier)
 
@@ -351,7 +351,7 @@ Surface clamp modes: `.trap .clamp .zero`
 | `mbarrier.pending_count` | `.b64` | `d, state` | 80+ | 7.0 | Get pending arrival count |
 | `mbarrier.complete_tx` | `.shared.b64` | `[mbar], count` | 90+ | 8.0 | Complete transaction at mbarrier |
 | `mbarrier.expect_tx` | `.shared.b64` | `[mbar], count` | 90+ | 8.0 | Set expected transaction count |
-| `mbarrier.tx` | -- | `[mbar], count` | 90+ | 8.0 | Transaction mbarrier arrive |
+| `mbarrier.tx` | — | `[mbar], count` | 90+ | 8.0 | Transaction mbarrier arrive |
 | `mbarrier.arrive.expect_tx` | `.shared.b64` | `state, [mbar], count` | 90+ | 8.0 | Arrive with expected tx count |
 | `mbarrier.arrive_drop.expect_tx` | `.shared.b64` | `state, [mbar], count` | 90+ | 8.0 | Arrive-drop with expected tx count |
 
@@ -359,16 +359,16 @@ Surface clamp modes: `.trap .clamp .zero`
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `membar` | `.cta .gl .sys` | -- | all | 1.0 | Memory barrier (scope) |
-| `membar.proxy` | `.alias` | -- | 75+ | 6.4 | Proxy memory barrier (alias scope) |
-| `fence.proxy` | `.alias .async .async.global .async.shared::cta` | -- | 70+ | 6.0 | Fence proxy (alias/async) |
-| `fence.proxy.tensormap` | -- | `[addr]` | 90+ | 8.0 | Fence tensormap proxy |
+| `membar` | `.cta .gl .sys` | — | all | 1.0 | Memory barrier (scope) |
+| `membar.proxy` | `.alias` | — | 75+ | 6.4 | Proxy memory barrier (alias scope) |
+| `fence.proxy` | `.alias .async .async.global .async.shared::cta` | — | 70+ | 6.0 | Fence proxy (alias/async) |
+| `fence.proxy.tensormap` | — | `[addr]` | 90+ | 8.0 | Fence tensormap proxy |
 
 ### Grid Dependency Control
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `griddepcontrol` | `.launch_dependents .wait` | -- | 90+ | 7.8 | Grid dependency control |
+| `griddepcontrol` | `.launch_dependents .wait` | — | 90+ | 7.8 | Grid dependency control |
 
 ## Atomic and Reduction
 
@@ -409,7 +409,7 @@ MMA type combinations (verified from instruction table builder strings):
 |---|---|---|---|---|---|
 | `F16` | `F16` | `F16` | `F16` | 75+ | Native FP16 |
 | `F32` | `F16` | `F16` | `F32` | 75+ | Mixed-precision |
-| `F32` | `F32` | `F32` | -- | 80+ | TF32 Tensor Core |
+| `F32` | `F32` | `F32` | — | 80+ | TF32 Tensor Core |
 | `F32` | `E16` | `E16` | `F32` | 80+ | BFloat16 |
 | `F32` | `T32` | `T32` | `F32` | 80+ | TF32 path (string: `F32T32T32F32`) |
 | `I32` | `I8` | `I8` | `I32` | 75+ | INT8 |
@@ -432,8 +432,8 @@ Sparse MMA modifiers: `.sp` with metadata selector and sparsity pattern
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
 | `wgmma.mma_async` | `.aligned` | `d, a_desc, b_desc` | 90+ | 7.8 | Warp-group async matrix multiply |
-| `wgmma.fence` | `.aligned` | -- | 90+ | 7.8 | WGMMA fence (ordering) |
-| `wgmma.commit_group` | `.aligned` | -- | 90+ | 7.8 | Commit WGMMA group |
+| `wgmma.fence` | `.aligned` | — | 90+ | 7.8 | WGMMA fence (ordering) |
+| `wgmma.commit_group` | `.aligned` | — | 90+ | 7.8 | Commit WGMMA group |
 | `wgmma.wait_group` | `.aligned` | `N` | 90+ | 7.8 | Wait for WGMMA group completion |
 
 WGMMA operand encoding strings (from instruction table, selection):
@@ -445,19 +445,19 @@ With scale: `hUUhdCP`, `fUUfdCP` (P=pred control for scale)
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `tcgen05.mma` | -- | `d, a_desc, b_desc` | 100+ | 8.6 | 5th-gen tensor core MMA |
-| `tcgen05.mma.ws` | -- | `d, a_desc, b_desc` | 100+ | 8.6 | 5th-gen MMA with warpgroup scale |
-| `tcgen05.ld` | -- | `d, [desc]` | 100+ | 8.6 | TC load from descriptor |
-| `tcgen05.ld.red` | -- | `d, [desc], src` | 100+ | 8.6 | TC load with reduction |
-| `tcgen05.st` | -- | `[desc], src` | 100+ | 8.6 | TC store to descriptor |
-| `tcgen05.cp` | -- | `[desc], [src]` | 100+ | 8.6 | TC copy |
-| `tcgen05.commit` | -- | `[mbar]` | 100+ | 8.6 | TC commit |
-| `tcgen05.shift` | -- | `[desc]` | 100+ | 8.6 | TC shift accumulator |
-| `tcgen05.alloc` | -- | `d, nCols` | 100+ | 8.6 | Allocate TC columns |
-| `tcgen05.dealloc` | -- | `nCols` | 100+ | 8.6 | Deallocate TC columns |
-| `tcgen05.relinquish_alloc_permit` | -- | -- | 100+ | 8.6 | Relinquish TC allocation permit |
-| `tcgen05.fence` | -- | -- | 100+ | 8.6 | TC fence |
-| `tcgen05.wait` | -- | -- | 100+ | 8.6 | TC wait |
+| `tcgen05.mma` | — | `d, a_desc, b_desc` | 100+ | 8.6 | 5th-gen tensor core MMA |
+| `tcgen05.mma.ws` | — | `d, a_desc, b_desc` | 100+ | 8.6 | 5th-gen MMA with warpgroup scale |
+| `tcgen05.ld` | — | `d, [desc]` | 100+ | 8.6 | TC load from descriptor |
+| `tcgen05.ld.red` | — | `d, [desc], src` | 100+ | 8.6 | TC load with reduction |
+| `tcgen05.st` | — | `[desc], src` | 100+ | 8.6 | TC store to descriptor |
+| `tcgen05.cp` | — | `[desc], [src]` | 100+ | 8.6 | TC copy |
+| `tcgen05.commit` | — | `[mbar]` | 100+ | 8.6 | TC commit |
+| `tcgen05.shift` | — | `[desc]` | 100+ | 8.6 | TC shift accumulator |
+| `tcgen05.alloc` | — | `d, nCols` | 100+ | 8.6 | Allocate TC columns |
+| `tcgen05.dealloc` | — | `nCols` | 100+ | 8.6 | Deallocate TC columns |
+| `tcgen05.relinquish_alloc_permit` | — | — | 100+ | 8.6 | Relinquish TC allocation permit |
+| `tcgen05.fence` | — | — | 100+ | 8.6 | TC fence |
+| `tcgen05.wait` | — | — | 100+ | 8.6 | TC wait |
 
 TCGen05 MMA operand encodings (from instruction table):
 `MUUuP`, `MUUMuP`, `MMUuP`, `MMUMuP` (M=matrix, U=desc, u=uniform, P=pred)  
@@ -527,33 +527,33 @@ Saturation: `.sat`
 |---|---|---|---|---|---|
 | `getctarank` | `.shared .global` | `d, a` | 90+ | 7.8 | Get CTA rank in cluster from address |
 | `istypep` | `.texref .samplerref .surfref` | `p, a` | all | 1.0 | Test if variable is a type |
-| `preexit` | -- | -- | all | 1.0 | Pre-exit notification |
-| `stacksave` | -- | `d` | 20+ | 2.0 | Save stack pointer |
-| `stackrestore` | -- | `a` | 20+ | 2.0 | Restore stack pointer |
-| `alloca` | -- | `d, size` | 20+ | 2.0 | Dynamic stack allocation |
-| `clusterlaunchcontrol.try_cancel.async` | -- | `[mbar], d` | 100+ | 8.7 | Cluster launch cancel (async) |
-| `clusterlaunchcontrol.query_cancel` | -- | `d, [mbar]` | 100+ | 8.7 | Query cluster launch cancel status |
+| `preexit` | — | — | all | 1.0 | Pre-exit notification |
+| `stacksave` | — | `d` | 20+ | 2.0 | Save stack pointer |
+| `stackrestore` | — | `a` | 20+ | 2.0 | Restore stack pointer |
+| `alloca` | — | `d, size` | 20+ | 2.0 | Dynamic stack allocation |
+| `clusterlaunchcontrol.try_cancel.async` | — | `[mbar], d` | 100+ | 8.7 | Cluster launch cancel (async) |
+| `clusterlaunchcontrol.query_cancel` | — | `d, [mbar]` | 100+ | 8.7 | Query cluster launch cancel status |
 
 ### Register and Shared Memory Control
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `setmaxnreg.inc` | -- | `N` | 90+ | 7.8 | Increase max register count |
-| `setmaxnreg.dec` | -- | `N` | 90+ | 7.8 | Decrease max register count |
-| `setmaxreg.alloc` | -- | `N` | 100+ | 8.6 | Allocate registers to max |
-| `setmaxreg.dealloc` | -- | `N` | 100+ | 8.6 | Deallocate from max registers |
-| `setmaxreg.try_alloc` | -- | `d, N` | 100+ | 8.6 | Try-allocate registers |
-| `setsmemsize` | -- | `N` | 90+ | 7.8 | Set dynamic shared memory size |
-| `setsmemsize.flush` | -- | `N` | 100+ | 8.6 | Set shared memory size with flush |
-| `getnextworkid` | -- | `d` | 90+ | 8.0 | Get next dynamic work unit ID |
+| `setmaxnreg.inc` | — | `N` | 90+ | 7.8 | Increase max register count |
+| `setmaxnreg.dec` | — | `N` | 90+ | 7.8 | Decrease max register count |
+| `setmaxreg.alloc` | — | `N` | 100+ | 8.6 | Allocate registers to max |
+| `setmaxreg.dealloc` | — | `N` | 100+ | 8.6 | Deallocate from max registers |
+| `setmaxreg.try_alloc` | — | `d, N` | 100+ | 8.6 | Try-allocate registers |
+| `setsmemsize` | — | `N` | 90+ | 7.8 | Set dynamic shared memory size |
+| `setsmemsize.flush` | — | `N` | 100+ | 8.6 | Set shared memory size with flush |
+| `getnextworkid` | — | `d` | 90+ | 8.0 | Get next dynamic work unit ID |
 
 ### Warp-Group Management
 
 | Mnemonic | Type suffixes | Operands | SM | PTX | Description |
 |---|---|---|---|---|---|
-| `_warpgroup.arrive` | -- | -- | 90+ | 7.8 | Warpgroup arrive (internal) |
-| `_warpgroup.wait` | -- | `N` | 90+ | 7.8 | Warpgroup wait |
-| `_warpgroup.commit_batch` | -- | -- | 90+ | 7.8 | Warpgroup commit batch |
+| `_warpgroup.arrive` | — | — | 90+ | 7.8 | Warpgroup arrive (internal) |
+| `_warpgroup.wait` | — | `N` | 90+ | 7.8 | Warpgroup wait |
+| `_warpgroup.commit_batch` | — | — | 90+ | 7.8 | Warpgroup commit batch |
 
 ## Internal Instructions
 
@@ -591,8 +591,8 @@ These underscore-prefixed instructions are not part of the public PTX ISA. They 
 
 | Mnemonic | Type suffixes | Operands | String addr | Table builder xref | Description |
 |---|---|---|---|---|---|
-| `_gen_proto` | -- | (opaque) | `0x1d08903` | `0x48189a` | Generate function prototype; synthesizes call prototypes for indirect / device-runtime calls during ABI resolution |
-| `_jcall` | -- | `target` | `0x1d0890e` | `0x4818df` | Internal jump-call; used inside auto-generated unified-function-stub (UFT) wrappers synthesized by `sub_451680` (`.func .attribute(.unified_func_stub) __cuda_uf_stub_%s() { _jcall %s; }`) |
+| `_gen_proto` | — | (opaque) | `0x1d08903` | `0x48189a` | Generate function prototype; synthesizes call prototypes for indirect / device-runtime calls during ABI resolution |
+| `_jcall` | — | `target` | `0x1d0890e` | `0x4818df` | Internal jump-call; used inside auto-generated unified-function-stub (UFT) wrappers synthesized by `sub_451680` (`.func .attribute(.unified_func_stub) __cuda_uf_stub_%s() { _jcall %s; }`) |
 
 ### Internal Warp
 
@@ -613,7 +613,7 @@ These underscore-prefixed instructions are not part of the public PTX ISA. They 
 |---|---|
 | `sub_46B0C0`--`sub_46B260` | `_ldsm` (3) + `_movm` (3) type-variant handlers |
 | `sub_4668A0`--`sub_469FD0` | `_mma.warpgroup` 135 type-variant handlers |
-| `sub_4AEB60` | `_ldsm` validator (3.7 KB) -- handles `.s8.s4`/`.u8.u4` format rules |
+| `sub_4AEB60` | `_ldsm` validator (3.7 KB) — handles `.s8.s4`/`.u8.u4` format rules |
 | `sub_451680` | `_jcall` UFT stub generator |
 | `sub_4DD860` | `_ldldu` PTX text formatter |
 
@@ -648,9 +648,9 @@ The operand encoding characters are:
 | `E` | 8 | Extended type | `.bf16 .e4m3 .e5m2` |
 | `Q` | 10 | FP8 type | `.e5m2 .e4m3` (fp8) |
 | `R` | 11 | FP4/narrow type | `.e2m1` (fp4) |
-| `M` | -- | Matrix descriptor | Tensor core descriptor |
-| `U` | -- | Uniform descriptor | TMA/TC uniform register |
-| `C` | -- | Carry/accumulator | MMA accumulator control |
+| `M` | — | Matrix descriptor | Tensor core descriptor |
+| `U` | — | Uniform descriptor | TMA/TC uniform register |
+| `C` | — | Carry/accumulator | MMA accumulator control |
 
 When a letter is followed by a digit, that digit constrains the bit-width: `F32` means only `.f32`, `I16` means only `.s16`/`.u16`. The function `sub_1CB0850` registers each valid width into a bitset.
 
@@ -668,7 +668,7 @@ Each registered instruction creates a 368-byte descriptor node via `sub_424070`.
 | +40+ | operand_slots | Per-operand type bitsets (4 slots max, each 8 bytes) |
 | +232 | name_length | Length of the opcode name string |
 
-The two hash tables at offsets 2472 and 2480 in the instruction table provide dual-path lookup -- the first table is the primary lookup; if the opcode is not found, the second table is checked. This two-table scheme separates core instructions from extended/variant instructions.
+The two hash tables at offsets 2472 and 2480 in the instruction table provide dual-path lookup — the first table is the primary lookup; if the opcode is not found, the second table is checked. This two-table scheme separates core instructions from extended/variant instructions.
 
 ### Instruction Count by Category
 
@@ -733,30 +733,30 @@ Instructions introduced in PTX ISA 8.0--8.7 (CUDA 12.0--12.8), verified from SM 
 
 ## Cross-References
 
-- [PTX Parser (Flex + Bison)](../pipeline/ptx-parser.md) -- scanner, parser, instruction table builder details
-- [PTX Directive Handling](../pipeline/ptx-directives.md) -- `.version`, `.target`, `.entry`, etc.
-- [PTX-to-Ori Lowering](../pipeline/ptx-to-ori.md) -- how PTX instructions become Ori IR
-- [Ori IR Instructions](../ir/instructions.md) -- the 431 Ori IR opcodes derived from PTX
-- [Intrinsic Table](../intrinsics/index.md) -- 608 built-in helper functions
-- [SM Architecture Map](../targets/index.md) -- architecture version requirements
-- [SASS Opcode Catalog](./sass-opcodes.md) -- SASS equivalents of PTX instructions
+- [PTX Parser (Flex + Bison)](../pipeline/ptx-parser.md) — scanner, parser, instruction table builder details
+- [PTX Directive Handling](../pipeline/ptx-directives.md) — `.version`, `.target`, `.entry`, etc.
+- [PTX-to-Ori Lowering](../pipeline/ptx-to-ori.md) — how PTX instructions become Ori IR
+- [Ori IR Instructions](../ir/instructions.md) — the 431 Ori IR opcodes derived from PTX
+- [Intrinsic Table](../intrinsics/index.md) — 608 built-in helper functions
+- [SM Architecture Map](../targets/index.md) — architecture version requirements
+- [SASS Opcode Catalog](./sass-opcodes.md) — SASS equivalents of PTX instructions
 
 ## Key Functions
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
 | `sub_46E000` | 93KB | Instruction table builder; runs once during parser init, makes 1,141 calls to `sub_46BED0` to register all PTX instruction descriptors | 0.95 |
-| `sub_46BED0` | -- | Instruction descriptor registrar; called 1,141 times with operand encoding, opcode ID, type flags, SM requirement | 0.95 |
-| `sub_46C690` | -- | Instruction lookup entry point; dispatches to `sub_46C6E0` for name-to-descriptor matching | 0.90 |
+| `sub_46BED0` | — | Instruction descriptor registrar; called 1,141 times with operand encoding, opcode ID, type flags, SM requirement | 0.95 |
+| `sub_46C690` | — | Instruction lookup entry point; dispatches to `sub_46C6E0` for name-to-descriptor matching | 0.90 |
 | `sub_46C6E0` | 6.4KB | Instruction name matcher; resolves PTX mnemonic strings to instruction table descriptors | 0.90 |
 | `sub_5D4190` | 12.9KB | PTX text formatter dispatch; 81-string + 473-entry hash table routing to per-instruction formatters | 0.90 |
-| `sub_489390` | -- | SM version gate; validates minimum SM architecture for each instruction | 0.85 |
-| `sub_489050` | -- | PTX ISA version gate; validates minimum PTX version for each instruction | 0.85 |
-| `sub_4BFED0` | -- | WMMA shape validator; checks legal WMMA shape combinations (`.m16n16k16`, `.m32n8k16`, etc.) | 0.85 |
-| `sub_451680` | -- | UFT stub generator; synthesizes `_jcall` wrappers for unified-function-stub entries | 0.90 |
-| `sub_451730` | -- | Parser initialization; calls `sub_46E000` to build the instruction table | 0.85 |
-| `sub_4DD860` | -- | `_ldldu` PTX text formatter; handles internal unified load-uniform instruction | 0.85 |
+| `sub_489390` | — | SM version gate; validates minimum SM architecture for each instruction | 0.85 |
+| `sub_489050` | — | PTX ISA version gate; validates minimum PTX version for each instruction | 0.85 |
+| `sub_4BFED0` | — | WMMA shape validator; checks legal WMMA shape combinations (`.m16n16k16`, `.m32n8k16`, etc.) | 0.85 |
+| `sub_451680` | — | UFT stub generator; synthesizes `_jcall` wrappers for unified-function-stub entries | 0.90 |
+| `sub_451730` | — | Parser initialization; calls `sub_46E000` to build the instruction table | 0.85 |
+| `sub_4DD860` | — | `_ldldu` PTX text formatter; handles internal unified load-uniform instruction | 0.85 |
 | `sub_4AEB60` | 3.7KB | `_ldsm` validator; validates `.s8.s4`/`.u8.u4` format rules for shared matrix loads | 0.85 |
-| `sub_465030` | -- | MMA type triple registrar; called by 135 `_mma.warpgroup` handlers to register (src, dst, acc) type combinations | 0.85 |
-| `sub_424070` | -- | Instruction descriptor allocator; creates 368-byte descriptor nodes for each registered instruction | 0.85 |
-| `sub_1CB0850` | -- | Width bitset registrar; registers valid bit-widths (e.g., `F32` -> `.f32` only) into per-operand bitsets | 0.80 |
+| `sub_465030` | — | MMA type triple registrar; called by 135 `_mma.warpgroup` handlers to register (src, dst, acc) type combinations | 0.85 |
+| `sub_424070` | — | Instruction descriptor allocator; creates 368-byte descriptor nodes for each registered instruction | 0.85 |
+| `sub_1CB0850` | — | Width bitset registrar; registers valid bit-widths (e.g., `F32` -> `.f32` only) into per-operand bitsets | 0.80 |

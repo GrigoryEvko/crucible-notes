@@ -1,10 +1,10 @@
 # LTO Profile Tags & Architecture Mapping
 
-When nvcc compiles device code with `-dlto` (device link-time optimization), it emits NVVM IR bitcode instead of SASS machine code. This bitcode is tagged with an `lto_` profile name that encodes the target architecture. At link time, nvlink resolves each `lto_` tag to its corresponding `compute_` virtual profile, loads libNVVM, and compiles the IR down to SASS for the real `sm_` target. The `lto_` profile is the bridge between the architecture-independent IR and the architecture-specific code generator -- it determines which IR is compatible with which final target and controls how nvlink routes the compilation.
+When nvcc compiles device code with `-dlto` (device link-time optimization), it emits NVVM IR bitcode instead of SASS machine code. This bitcode is tagged with an `lto_` profile name that encodes the target architecture. At link time, nvlink resolves each `lto_` tag to its corresponding `compute_` virtual profile, loads libNVVM, and compiles the IR down to SASS for the real `sm_` target. The `lto_` profile is the bridge between the architecture-independent IR and the architecture-specific code generator — it determines which IR is compatible with which final target and controls how nvlink routes the compilation.
 
 nvlink v13.0.88 registers 23 `lto_` profile variants in `sub_484F50` (`ArchProfileDB::init`, ~1,330 decompiled lines at `0x484F50`). Each `lto_` profile is created alongside the corresponding `sm_` (real) and `compute_` (virtual) profiles during a one-time initialization guarded by `byte_2A5F8D0`. The full function registers 69 profiles total (23 triplets of sm_/compute_/lto_).
 
-> **Scope note.** This page documents **`lto_` profile tags** -- the architecture identifiers attached to LTO bitcode sections. For the NVVM IR wire format (magic number, header probe, detection logic), see [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md). For the profile struct byte-level layout, see [Architecture Profiles](../targets/arch-profiles.md) and [Architecture Profile Struct](../structs/arch-profile.md). For compatibility checking rules, see [Compatibility Checking](../targets/compatibility.md).
+> **Scope note.** This page documents **`lto_` profile tags** — the architecture identifiers attached to LTO bitcode sections. For the NVVM IR wire format (magic number, header probe, detection logic), see [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md). For the profile struct byte-level layout, see [Architecture Profiles](../targets/arch-profiles.md) and [Architecture Profile Struct](../structs/arch-profile.md). For compatibility checking rules, see [Compatibility Checking](../targets/compatibility.md).
 
 ## NVVM IR Wire Format (Summary)
 
@@ -15,7 +15,7 @@ The NVVM IR bitcode format used by LTO is identified by a 4-byte magic number:
 | Magic | `0x1EE55A01` (little-endian on disk: `01 5A E5 1E`) |
 | Padded variant | 4 zero bytes + `0x1EE55A01` at byte offset 4 (fatbin-wrapped form) |
 | Extensions | `.nvvm`, `.ltoir` (content format identical) |
-| Rejected | `.bc` (raw LLVM bitcode) -- fatal: `"should never see bc files"` |
+| Rejected | `.bc` (raw LLVM bitcode) — fatal: `"should never see bc files"` |
 
 Detection occurs at two layers: the outer `main()` dispatch classifies by file extension, while the inner embedded-ptxas engine (`sub_4CE070`) classifies by content magic. The full detection algorithm, fatbin-variant handling, and registration flow are documented on [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md).
 
@@ -51,27 +51,27 @@ The 23 `lto_` profiles registered in `sub_484F50`, listed in initialization orde
 
 | # | LTO Profile | Compute Profile | `__CUDA_ARCH__` | Family | Variant |
 |---|---|---|---|---|---|
-| 1 | `lto_75` | `compute_75` | 750 | Turing | -- |
-| 2 | `lto_80` | `compute_80` | 800 | Ampere | -- |
-| 3 | `lto_86` | `compute_86` | 860 | Ampere | -- |
-| 4 | `lto_87` | `compute_87` | 870 | Ampere | -- |
-| 5 | `lto_88` | `compute_88` | 880 | Ampere | -- |
-| 6 | `lto_89` | `compute_89` | 890 | Ada | -- |
-| 7 | `lto_90` | `compute_90` | 900 | Hopper | -- |
+| 1 | `lto_75` | `compute_75` | 750 | Turing | — |
+| 2 | `lto_80` | `compute_80` | 800 | Ampere | — |
+| 3 | `lto_86` | `compute_86` | 860 | Ampere | — |
+| 4 | `lto_87` | `compute_87` | 870 | Ampere | — |
+| 5 | `lto_88` | `compute_88` | 880 | Ampere | — |
+| 6 | `lto_89` | `compute_89` | 890 | Ada | — |
+| 7 | `lto_90` | `compute_90` | 900 | Hopper | — |
 | 8 | `lto_90a` | `compute_90a` | 90a0 | Hopper | accelerated |
-| 9 | `lto_100` | `compute_100` | 1000 | Blackwell | -- |
+| 9 | `lto_100` | `compute_100` | 1000 | Blackwell | — |
 | 10 | `lto_100a` | `compute_100a` | 100a0 | Blackwell | accelerated |
 | 11 | `lto_100f` | `compute_100f` | 100f0 | Blackwell | forward-compat |
-| 12 | `lto_110` | `compute_110` | 1100 | Blackwell | -- |
+| 12 | `lto_110` | `compute_110` | 1100 | Blackwell | — |
 | 13 | `lto_110a` | `compute_110a` | 110a0 | Blackwell | accelerated |
 | 14 | `lto_110f` | `compute_110f` | 110f0 | Blackwell | forward-compat |
-| 15 | `lto_103` | `compute_103` | 1030 | Blackwell | -- |
+| 15 | `lto_103` | `compute_103` | 1030 | Blackwell | — |
 | 16 | `lto_103a` | `compute_103a` | 103a0 | Blackwell | accelerated |
 | 17 | `lto_103f` | `compute_103f` | 103f0 | Blackwell | forward-compat |
-| 18 | `lto_120` | `compute_120` | 1200 | Blackwell | -- |
+| 18 | `lto_120` | `compute_120` | 1200 | Blackwell | — |
 | 19 | `lto_120a` | `compute_120a` | 120a0 | Blackwell | accelerated |
 | 20 | `lto_120f` | `compute_120f` | 120f0 | Blackwell | forward-compat |
-| 21 | `lto_121` | `compute_121` | 1210 | Blackwell | -- |
+| 21 | `lto_121` | `compute_121` | 1210 | Blackwell | — |
 | 22 | `lto_121a` | `compute_121a` | 121a0 | Blackwell | accelerated |
 | 23 | `lto_121f` | `compute_121f` | 121f0 | Blackwell | forward-compat |
 
@@ -150,9 +150,9 @@ Key points specific to LTO profile resolution:
 
 2. **Family matching**: Architectures in the same "decade" (integer division by 10 yields the same value) are family-compatible. For example, sm_100 and sm_103 both have `100/10 == 103/10 == 10`.
 
-3. **Architecture -> ASCII curiosity**: The capability bitmask in `sub_470DA0` uses a `switch` on character codes that happen to equal the architecture number in decimal: `100 == 'd'`, `103 == 'g'`, `110 == 'n'`, `121 == 'y'`. This is not coincidence -- the architecture numbers were chosen to align with ASCII values for compact encoding.
+3. **Architecture -> ASCII curiosity**: The capability bitmask in `sub_470DA0` uses a `switch` on character codes that happen to equal the architecture number in decimal: `100 == 'd'`, `103 == 'g'`, `110 == 'n'`, `121 == 'y'`. This is not coincidence — the architecture numbers were chosen to align with ASCII values for compact encoding.
 
-4. **CAN_FINALIZE_DEBUG**: Both compatibility checkers read this environment variable via `getenv()` and parse it with `strtol()`. However, the `strtol` return value is discarded (no variable captures it). The variable likely exists as a breakpoint hook for manual debugging -- it does not override or log compatibility decisions despite what its name might suggest.
+4. **CAN_FINALIZE_DEBUG**: Both compatibility checkers read this environment variable via `getenv()` and parse it with `strtol()`. However, the `strtol` return value is discarded (no variable captures it). The variable likely exists as a breakpoint hook for manual debugging — it does not override or log compatibility decisions despite what its name might suggest.
 
 ### Version-Mismatch Error Strings
 
@@ -204,7 +204,7 @@ After registering sm_100:
 dword_2A5F8C8 = 100;  // Blackwell minimum (Mercury threshold)
 ```
 
-The first value controls the minimum acceptable architecture for general linking. The second marks the Mercury format transition point -- SM >= 100 routes through the capsule-mercury output path.
+The first value controls the minimum acceptable architecture for general linking. The second marks the Mercury format transition point — SM >= 100 routes through the capsule-mercury output path.
 
 ## String Pool Layout
 
@@ -240,19 +240,19 @@ The interleaved lto/sm/compute/`__CUDA_ARCH__` pool spans addresses `0x1D409C8` 
 
 ## Cross-References
 
-- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) -- magic number `0x1EE55A01`, detection logic, registration flow
-- [Architecture Profiles](../targets/arch-profiles.md) -- profile struct layout, full registration sequence, capability vectors
-- [Architecture Profile Struct](../structs/arch-profile.md) -- byte-level struct layout (136 bytes, authoritative)
-- [Compatibility Checking](../targets/compatibility.md) -- `sub_4709E0` / `sub_470DA0` full treatment
-- [SM89 Ada](../targets/sm89-ada.md) -- Ada-specific backend and feature flags
-- [LTO Overview](overview.md) -- high-level LTO pipeline
-- [libNVVM Integration](libnvvm-integration.md) -- the NVVM compilation step
-- [Option Forwarding](option-forwarding.md) -- how compiler flags reach libNVVM
-- [Whole vs Partial LTO](whole-vs-partial.md) -- how `lto_` profile presence/absence drives the whole-vs-partial decision
-- [Finalization Phase](../pipeline/finalize.md) -- the finalization orchestrator
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- how `sub_4CE070` detects NVVM IR in fatbin members
-- [File Type Detection](../input/file-type-detection.md) -- the 56-byte header probe in `main()`
-- [Versions](../versions.md) -- tool identity, complete architecture table
+- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) — magic number `0x1EE55A01`, detection logic, registration flow
+- [Architecture Profiles](../targets/arch-profiles.md) — profile struct layout, full registration sequence, capability vectors
+- [Architecture Profile Struct](../structs/arch-profile.md) — byte-level struct layout (136 bytes, authoritative)
+- [Compatibility Checking](../targets/compatibility.md) — `sub_4709E0` / `sub_470DA0` full treatment
+- [SM89 Ada](../targets/sm89-ada.md) — Ada-specific backend and feature flags
+- [LTO Overview](overview.md) — high-level LTO pipeline
+- [libNVVM Integration](libnvvm-integration.md) — the NVVM compilation step
+- [Option Forwarding](option-forwarding.md) — how compiler flags reach libNVVM
+- [Whole vs Partial LTO](whole-vs-partial.md) — how `lto_` profile presence/absence drives the whole-vs-partial decision
+- [Finalization Phase](../pipeline/finalize.md) — the finalization orchestrator
+- [Fatbin Extraction](../input/fatbin-extraction.md) — how `sub_4CE070` detects NVVM IR in fatbin members
+- [File Type Detection](../input/file-type-detection.md) — the 56-byte header probe in `main()`
+- [Versions](../versions.md) — tool identity, complete architecture table
 
 ## Confidence Assessment
 

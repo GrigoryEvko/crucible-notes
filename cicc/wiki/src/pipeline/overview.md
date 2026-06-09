@@ -96,9 +96,9 @@ The AsmPrinter (`sub_31EC4F0`, 72KB) walks the final `MachineFunction` and emits
 
 ### Side Paths
 
-**OptiX IR** -- When `--emit-optix-ir` is passed, the pipeline replaces LLC with an OPTIXIR stage that serializes the optimized LLVM module for the OptiX ray tracing runtime's continuation-based execution model. See [OptiX IR Generation](./optix-ir.md).
+**OptiX IR** — When `--emit-optix-ir` is passed, the pipeline replaces LLC with an OPTIXIR stage that serializes the optimized LLVM module for the OptiX ray tracing runtime's continuation-based execution model. See [OptiX IR Generation](./optix-ir.md).
 
-**Debug Info** -- Debug metadata flows through all stages: generated in IR-gen, preserved or stripped in the optimizer (5 stripping passes), verified after each pass, and emitted as `.loc`/`.file` PTX directives. See [Debug Info Pipeline](./debug-info-pipeline.md).
+**Debug Info** — Debug metadata flows through all stages: generated in IR-gen, preserved or stripped in the optimizer (5 stripping passes), verified after each pass, and emitted as `.loc`/`.file` PTX directives. See [Debug Info Pipeline](./debug-info-pipeline.md).
 
 ## Internal Pipeline Encoding
 
@@ -115,9 +115,9 @@ The standard CUDA compilation bitmask is `LNK | OPT | LLC` = `0x07`. OptiX mode 
 
 ## Cross-References
 
-- [Binary Layout](../binary-layout.md) -- address ranges for every subsystem
-- [Function Map](../function-map.md) -- master index of recovered function addresses
-- [CLI Flags](../config/cli-flags.md) -- complete flag catalog
-- [Optimization Levels](../config/optimization-levels.md) -- what changes at `-O0`/`-O1`/`-O2`/`-O3`
-- [NVIDIA Custom Passes](../passes/index.md) -- 35 proprietary passes inserted into the LLVM pipeline
-- [NVPTX Target Infrastructure](../infra/nvptx-target.md) -- TargetMachine, TTI, SubtargetFeatures
+- [Binary Layout](../binary-layout.md) — address ranges for every subsystem
+- [Function Map](../function-map.md) — master index of recovered function addresses
+- [CLI Flags](../config/cli-flags.md) — complete flag catalog
+- [Optimization Levels](../config/optimization-levels.md) — what changes at `-O0`/`-O1`/`-O2`/`-O3`
+- [NVIDIA Custom Passes](../passes/index.md) — 35 proprietary passes inserted into the LLVM pipeline
+- [NVPTX Target Infrastructure](../infra/nvptx-target.md) — TargetMachine, TTI, SubtargetFeatures

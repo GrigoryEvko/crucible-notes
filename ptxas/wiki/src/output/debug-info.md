@@ -6,28 +6,28 @@ ptxas generates DWARF-based debug information for cuda-gdb and other GPU debugge
 
 | | |
 |---|---|
-| **DWARF line generator (PTX)** | `sub_45C3A0` (9,041 bytes) -- PTX source line to address mapping |
-| **LEB128 encoder** | `sub_45A870` (5,293 bytes) -- variable-length integer encoding for DWARF |
-| **Debug line table (SASS)** | `sub_866BB0` (3,273 bytes) -- `.debug_line` / `.nv_debug_line_sass` |
-| **Debug top-level entry** | `sub_867880` (100 bytes) -- calls line generator twice (PTX + SASS) |
-| **Reg info SASS emitter** | `sub_8679F0` (225 bytes) -- `.nv_debug_info_reg_sass` |
-| **Reg type emitter** | `sub_867B00` (230 bytes) -- `.nv_debug_info_reg_type` |
-| **Post-RA debug annotator** | `sub_88D870` (2,656 bytes) -- final source line annotation |
-| **DWARF form name table** | `sub_1CBF820` (400 bytes) -- `DW_FORM_*` ID-to-string |
-| **DWARF attribute name table** | `sub_1CBF9B0` (1,600 bytes) -- `DW_AT_*` ID-to-string |
-| **`.debug_abbrev` parser** | `sub_1CC0850` (3,704 bytes) -- abbreviation table handler |
-| **`.debug_info` parser** | `sub_1CC4A40` (5,218 bytes) -- DIE tree walker |
-| **CU header parser** | `sub_1CC5EB0` (2,023 bytes) -- compilation unit headers |
-| **Location expression printer** | `sub_1CC34E0` (3,094 bytes) -- `DW_OP_*` decoder |
-| **DWARF info processor** | `sub_1CC24C0` (3,993 bytes) -- non-dump emission mode |
-| **Debug section classifier** | `sub_1C9D1F0` (2,667 bytes) -- section name to type ID mapper |
-| **Mercury debug classifier** | `sub_1C98C60` (1,755 bytes) -- `.nv.merc.debug_*` classifier |
-| **SASS debug classifier** | `sub_1C99340` -- `.debug_*` standard section classifier |
-| **Debug section type mapper** | `sub_1C998D0` -- maps section name to internal buffer pointer |
-| **DWARF attribute emitter** | `sub_66A0B0` (28 KB) -- emits DWARF attributes during IR lowering |
-| **DWARF debug info builder** | `sub_66F4E0` (59 KB) -- main DWARF debug info section builder |
-| **DWARF line table builder** | `sub_66E250` (33 KB) -- builds `.debug_line` during IR phase |
-| **Debug line number formatter** | `sub_671C00` (11 KB) -- formats line number records |
+| **DWARF line generator (PTX)** | `sub_45C3A0` (9,041 bytes) — PTX source line to address mapping |
+| **LEB128 encoder** | `sub_45A870` (5,293 bytes) — variable-length integer encoding for DWARF |
+| **Debug line table (SASS)** | `sub_866BB0` (3,273 bytes) — `.debug_line` / `.nv_debug_line_sass` |
+| **Debug top-level entry** | `sub_867880` (100 bytes) — calls line generator twice (PTX + SASS) |
+| **Reg info SASS emitter** | `sub_8679F0` (225 bytes) — `.nv_debug_info_reg_sass` |
+| **Reg type emitter** | `sub_867B00` (230 bytes) — `.nv_debug_info_reg_type` |
+| **Post-RA debug annotator** | `sub_88D870` (2,656 bytes) — final source line annotation |
+| **DWARF form name table** | `sub_1CBF820` (400 bytes) — `DW_FORM_*` ID-to-string |
+| **DWARF attribute name table** | `sub_1CBF9B0` (1,600 bytes) — `DW_AT_*` ID-to-string |
+| **`.debug_abbrev` parser** | `sub_1CC0850` (3,704 bytes) — abbreviation table handler |
+| **`.debug_info` parser** | `sub_1CC4A40` (5,218 bytes) — DIE tree walker |
+| **CU header parser** | `sub_1CC5EB0` (2,023 bytes) — compilation unit headers |
+| **Location expression printer** | `sub_1CC34E0` (3,094 bytes) — `DW_OP_*` decoder |
+| **DWARF info processor** | `sub_1CC24C0` (3,993 bytes) — non-dump emission mode |
+| **Debug section classifier** | `sub_1C9D1F0` (2,667 bytes) — section name to type ID mapper |
+| **Mercury debug classifier** | `sub_1C98C60` (1,755 bytes) — `.nv.merc.debug_*` classifier |
+| **SASS debug classifier** | `sub_1C99340` — `.debug_*` standard section classifier |
+| **Debug section type mapper** | `sub_1C998D0` — maps section name to internal buffer pointer |
+| **DWARF attribute emitter** | `sub_66A0B0` (28 KB) — emits DWARF attributes during IR lowering |
+| **DWARF debug info builder** | `sub_66F4E0` (59 KB) — main DWARF debug info section builder |
+| **DWARF line table builder** | `sub_66E250` (33 KB) — builds `.debug_line` during IR phase |
+| **Debug line number formatter** | `sub_671C00` (11 KB) — formats line number records |
 
 ## CLI Flags
 
@@ -39,7 +39,7 @@ Two flags control debug information generation:
 | `--lineinfo` / `-ln` | `lineInfo` in option context | Line tables only: generates `.debug_line` and `.nv_debug_line_sass` without full DWARF DIE trees. Preserves optimization levels. Sufficient for `cuda-memcheck` and profiler source correlation. |
 | `--suppress-debug-info` | suppresses emission | Strips all debug sections from output, even if debug input was provided. |
 
-The cubin entry point `sub_612DE0` reads both `deviceDebug` and `lineInfo` flags and passes them through the ELF output pipeline. The section classifier at `sub_1C9D1F0` checks the byte at context offset +432 (`deviceDebug`) to decide whether to emit `.debug_frame` and `.debug_line` sections -- when this byte is zero (no `-g`), those sections are conditionally suppressed.
+The cubin entry point `sub_612DE0` reads both `deviceDebug` and `lineInfo` flags and passes them through the ELF output pipeline. The section classifier at `sub_1C9D1F0` checks the byte at context offset +432 (`deviceDebug`) to decide whether to emit `.debug_frame` and `.debug_line` sections — when this byte is zero (no `-g`), those sections are conditionally suppressed.
 
 The `--lineinfo` flag is described in the CLI as `"Generate debug line table information"` and is orthogonal to `-g`. When only `--lineinfo` is active, ptxas generates the two line table sections but omits the heavyweight `.debug_info`/`.debug_abbrev`/`.debug_loc` sections. The string `"device-debug or lineinfo"` appears in a validation check that prevents `--extensible-whole-program` from being combined with either debug mode.
 
@@ -183,7 +183,7 @@ debug_line_context (at a1, ~460 bytes):
 
 ### Top-Level Entry
 
-The top-level debug emitter `sub_867880` is minimal -- it calls the line table generator twice:
+The top-level debug emitter `sub_867880` is minimal — it calls the line table generator twice:
 
 ```c
 // sub_867880 -- DebugInfoTopLevel (simplified)
@@ -241,7 +241,7 @@ Emitted by `sub_867B00`. Structurally identical to the reg_sass emitter but oper
 
 The DWARF processing cluster at `0x1CBF`--`0x1CC9` handles both generation and diagnostic dumping of DWARF sections. The code can operate in two modes: a dump mode that prints human-readable representations (for `--dump-debug-info` or internal diagnostics), and an emission mode that processes raw DWARF bytes for the final binary.
 
-### DWARF Form Table -- `sub_1CBF820`
+### DWARF Form Table — `sub_1CBF820`
 
 Maps DWARF form IDs to string names. Supports DWARF 2 forms:
 
@@ -271,7 +271,7 @@ Maps DWARF form IDs to string names. Supports DWARF 2 forms:
 
 The absence of DWARF 4/5 forms (e.g., `DW_FORM_sec_offset`, `DW_FORM_exprloc`, `DW_FORM_flag_present`) indicates ptxas targets **DWARF version 2**, consistent with the pointer size and CU header format observed in `sub_1CC5EB0`.
 
-### DWARF Attribute Table -- `sub_1CBF9B0`
+### DWARF Attribute Table — `sub_1CBF9B0`
 
 Maps DWARF attribute IDs to string names. The function recognizes a comprehensive set of standard attributes. Notable entries include:
 
@@ -285,7 +285,7 @@ Maps DWARF attribute IDs to string names. The function recognizes a comprehensiv
 - **Accessibility**: `DW_AT_accessibility` (50), `DW_AT_external` (63)
 - **C++ support**: `DW_AT_vtable_elem_location` (77), `DW_AT_containing_type` (29)
 
-### `.debug_abbrev` Parser -- `sub_1CC0850`
+### `.debug_abbrev` Parser — `sub_1CC0850`
 
 Parses the abbreviation table that defines the schema for each DIE tag. The dump mode output header is:
 
@@ -300,9 +300,9 @@ Each entry includes:
 - Children indicator: `[has children]` or `[has no children]`
 - Attribute-form pairs
 
-The function includes a safety check: `"unexpectedly too many dwarf attributes for any DW_TAG entry!"` -- a guard against malformed or corrupt abbreviation tables.
+The function includes a safety check: `"unexpectedly too many dwarf attributes for any DW_TAG entry!"` — a guard against malformed or corrupt abbreviation tables.
 
-### `.debug_info` Parser -- `sub_1CC4A40`
+### `.debug_info` Parser — `sub_1CC4A40`
 
 Walks the DIE tree, printing entries with nesting depth indentation:
 
@@ -312,7 +312,7 @@ Walks the DIE tree, printing entries with nesting depth indentation:
 
 Format: `<nesting_depth><byte_offset>: Abbrev Number: <n> (<tag_hex> <tag_name>)`. Null DIEs are printed as `"      (nill)   "`. Attribute values are formatted by `sub_1CC4100` (the attribute value printer) which dispatches on form type.
 
-### Compilation Unit Header -- `sub_1CC5EB0`
+### Compilation Unit Header — `sub_1CC5EB0`
 
 Parses and prints CU headers, and creates the NVIDIA extension `.nv_debug_info_ptx` section:
 
@@ -324,9 +324,9 @@ Parses and prints CU headers, and creates the NVIDIA extension `.nv_debug_info_p
   Pointer Size: %d
 ```
 
-The pointer size field is significant -- it determines the size of `DW_FORM_addr` values and `DW_FORM_ref_addr` references throughout the CU.
+The pointer size field is significant — it determines the size of `DW_FORM_addr` values and `DW_FORM_ref_addr` references throughout the CU.
 
-### Location Expression Decoder -- `sub_1CC34E0`
+### Location Expression Decoder — `sub_1CC34E0`
 
 Decodes DWARF location expressions (`DW_OP_*` operations) used in `DW_AT_location` and related attributes. The supported operations reveal how ptxas encodes GPU variable locations:
 
@@ -343,13 +343,13 @@ Decodes DWARF location expressions (`DW_OP_*` operations) used in `DW_AT_locatio
 | `DW_OP_nop` | `"DW_OP_nop"` | No operation |
 | `DW_OP_stack_value` | `"DW_OP_stack_value"` | Value is on DWARF expression stack, not in memory |
 
-The presence of `DW_OP_xderef` is particularly noteworthy -- this is a DWARF operation rarely used in CPU debuggers but essential for GPU debugging, where variables may reside in different memory spaces (global, shared, local, constant) that require address-space-qualified access.
+The presence of `DW_OP_xderef` is particularly noteworthy — this is a DWARF operation rarely used in CPU debuggers but essential for GPU debugging, where variables may reside in different memory spaces (global, shared, local, constant) that require address-space-qualified access.
 
 ## Debug Section Classification
 
 Three classifier functions map section names to internal type IDs. The type IDs route sections to the correct processing pipeline during ELF assembly.
 
-### SASS Classifier -- `sub_1C99340`
+### SASS Classifier — `sub_1C99340`
 
 Recognizes standard DWARF sections by comparing the section name (obtained via `sub_1CB9E50`) against hardcoded strings. Returns 1 (is-debug-section) for:
 
@@ -364,11 +364,11 @@ Plus the NVIDIA extension:
 .nv_debug_info_reg_sass
 ```
 
-### Mercury Classifier -- `sub_1C98C60`
+### Mercury Classifier — `sub_1C98C60`
 
 The Mercury classifier `sub_1C98C60` checks for the `.nv.merc.` prefix on the same set of debug section names. It uses a `strcmp` chain against 15 Mercury-namespaced section names. This classifier is called from 4 sites, primarily during Capsule Mercury construction when debug sections need to be cloned into the merc namespace.
 
-### Unified Classifier -- `sub_1C9D1F0`
+### Unified Classifier — `sub_1C9D1F0`
 
 The master debug section classifier `sub_1C9D1F0` (2,667 bytes, 13 callees) handles both SASS and Mercury variants. It:
 
@@ -380,7 +380,7 @@ The master debug section classifier `sub_1C9D1F0` (2,667 bytes, 13 callees) hand
 
 The function also checks the `deviceDebug` flag at context offset +432 to suppress `.debug_frame` and `.debug_line` when debug info is not requested. This is the gate that prevents line tables from appearing in release builds.
 
-### Section Type Mapper -- `sub_1C998D0`
+### Section Type Mapper — `sub_1C998D0`
 
 Maps debug section names to internal buffer pointers within the debug context object:
 
@@ -400,7 +400,7 @@ Each internal instruction node in the Ori IR carries debug metadata at offset +2
 
 1. **PTX parsing**: The parser records `.loc` directives and attaches source file/line/column to each instruction as it is lowered from PTX to the Ori IR.
 
-2. **Optimization passes**: Most optimization passes preserve or propagate debug metadata. When instructions are cloned (e.g., loop unrolling), the clone inherits the original's debug info. When instructions are deleted, their debug info is lost -- the debugger will map those addresses to the nearest surviving instruction's source line.
+2. **Optimization passes**: Most optimization passes preserve or propagate debug metadata. When instructions are cloned (e.g., loop unrolling), the clone inherits the original's debug info. When instructions are deleted, their debug info is lost — the debugger will map those addresses to the nearest surviving instruction's source line.
 
 3. **Post-RA annotation** (`sub_88D870`): After register allocation and scheduling, this pass finalizes the source-line-to-SASS-address correspondence. It walks all instructions and records the final mapping that will be encoded into the `.nv_debug_line_sass` section.
 

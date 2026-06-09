@@ -39,7 +39,7 @@ The **fallback** path at LABEL_95 calls `sub_F0C430` for generic simplification.
 
 Each major instruction type is handled by a dedicated visitor function called from the main dispatch. The following table summarizes the recovered visitors with their sizes and key characteristics.
 
-### visitBinaryOperator -- `sub_10D8BB0`
+### visitBinaryOperator — `sub_10D8BB0`
 
 | | |
 |---|---|
@@ -57,12 +57,12 @@ Phases 10--25 cover Add-of-Mul factoring, shift chains, linear expression foldin
 
 Four template-instantiated helpers at `sub_10D2680`--`sub_10D2D70` (2,767 bytes each, identical structure) implement `matchBinOpReduction` parameterized by NVVM intrinsic ID (329, 330, 365, 366) and acceptable opcode range. These detect NVVM horizontal reduction intrinsics (e.g., horizontal add/mul across vector lanes) and simplify them to scalar binary operations.
 
-### visitICmpInst -- `sub_1136650` + `sub_113CA70`
+### visitICmpInst — `sub_1136650` + `sub_113CA70`
 
 | | |
 |---|---|
 | **Comprehensive folder** | `sub_1136650` (`0x1136650`, 22.4 KB binary / 3,697 decomp lines) |
-| **Per-opcode dispatch** | `sub_113CA70` (`0x113CA70`) -- 12 case labels |
+| **Per-opcode dispatch** | `sub_113CA70` (`0x113CA70`) — 12 case labels |
 
 The ICmp folder is the single largest function in InstCombine. It runs before the per-opcode dispatch table and handles 15 major fold categories: all-ones/sign-bit constant folds, Mul-with-constant strength reduction (NUW-gated), nested Mul decomposition, common sub-operand cancellation, NUW/NSW flag-gated predicate conversion, known-nonnegativity folds, ConstantRange intersection, shared sub-operand elimination, Sub sign-bit analysis, min/max pattern recognition, computeKnownBits sign-bit analysis, power-of-2 optimizations, remainder pattern matching, XOR/shift decomposition, and Or/And decomposition with type width folding.
 
@@ -82,18 +82,18 @@ The per-opcode dispatch at `sub_113CA70` routes based on the non-constant operan
 |---|---|---|---|
 | `*` (42) | Mul | `sub_1128290` | 1,178 lines |
 | `,` (44) | Add | `sub_1119FB0` | 413 lines |
-| `.` (46) | Trunc | `sub_1115510` | -- |
-| `0` (48) | SExt | `sub_11164F0` | -- |
-| `1` (49) | ZExt | `sub_1122A30` | -- |
+| `.` (46) | Trunc | `sub_1115510` | — |
+| `0` (48) | SExt | `sub_11164F0` | — |
+| `1` (49) | ZExt | `sub_1122A30` | — |
 | `4` (52) | Select | `sub_1115C10` | 428 lines |
 | `6` (54) | And | `sub_1120680` | 911 lines |
 | `7` (55) | Or | `sub_1126B10` | 786 lines |
 | `8` (56) | Xor | `sub_1126B10` | shared with Or |
 | `9` (57) | Shl | `sub_112C930` | 664 lines |
-| `:` (58) | LShr | `sub_1133500` | -- |
+| `:` (58) | LShr | `sub_1133500` | — |
 | `;` (59) | Sub | `sub_111CED0` + `sub_113BFE0` | 519 lines |
 
-### visitCastInst -- `sub_110CA10`
+### visitCastInst — `sub_110CA10`
 
 | | |
 |---|---|
@@ -102,7 +102,7 @@ The per-opcode dispatch at `sub_113CA70` routes based on the non-constant operan
 
 Handles all cast simplification: same-type identity elimination, bool-to-float chains, integer-to-integer narrowing/widening, FP-to-int special cases, FP narrowing, cast-through-select/PHI, and the major cast-of-cast chain folding. The helper `sub_110B960` implements deep cast chain folding for aggregate types using a worklist with a `DenseMap` for O(1) deduplication, preventing exponential blowup on diamond-shaped use-def graphs. The function is conservative about side effects: `sub_B46500` (isVolatile) is called before every fold.
 
-### visitSelectInst -- `sub_1012FB0`
+### visitSelectInst — `sub_1012FB0`
 
 | | |
 |---|---|
@@ -111,7 +111,7 @@ Handles all cast simplification: same-type identity elimination, bool-to-float c
 
 Implements 18 prioritized select simplifications: constant fold, undef arm elimination, both-same identity, PHI-through-select, KnownBits sign analysis, ConstantRange analysis, full-range analysis, KnownBits cross-validation, ICmpInst arm synthesis, ExtractValue decomposition, implied condition, canonicalization (delegated to `sub_1015760`, 5.3 KB), min/max pattern detection (smin/smax/umin/umax/abs/nabs via four helpers), select-in-comparison chains, PHI-select worklist scan (DenseMap with hash `(ptr >> 9) ^ (ptr >> 4)`), ValueTracking classification, pointer-null folding, and load/trunc delegation.
 
-### visitPHINode -- `sub_1175E90`
+### visitPHINode — `sub_1175E90`
 
 | | |
 |---|---|
@@ -119,7 +119,7 @@ Implements 18 prioritized select simplifications: constant fold, undef arm elimi
 
 Implements 16 PHI optimization strategies tried in sequence: SimplifyInstruction constant fold, foldPHIArgOpIntoPHI (binary/cast with one varying operand), foldPHIArgConstantOp, typed opcode dispatch (GEP via `sub_1172510`, InsertValue, ExtractValue, CmpInst, BinOp/Cast), GEP incoming deduplication with loop back-edge analysis, single-use PHI user check, GEP-of-PHI transform (`sub_1174BB0`, 1,033 lines), phi-cycle escape detection, trivial PHI elimination (all-same non-PHI value), recursive PHI cycle resolution (`sub_116D410`), operand reordering canonicalization, identical-PHI-in-block deduplication, pointer-type struct GEP optimization, all-undef incoming check, and dominator-tree GEP index hoisting using two DenseMaps.
 
-### visitCallInst -- `sub_1162F40`
+### visitCallInst — `sub_1162F40`
 
 | | |
 |---|---|
@@ -127,7 +127,7 @@ Implements 16 PHI optimization strategies tried in sequence: SimplifyInstruction
 
 Processes calls through a 15-step cascade: LibCall simplification (`sub_100A740`), standard intrinsic folding (`sub_F0F270`), return attribute analysis (`sub_F11DB0`), overflow/saturating arithmetic (`sub_115C220`), inline mul-by-constant folding, generic call combining (`sub_115A080`), FMA/fneg/fsub canonicalization (the largest block, requiring all of nnan+ninf+nsz+arcp+reassoc on both call and function), constant-argument intrinsic folding, unary intrinsic constant folding, exp/log pair detection (IDs 325 and 63), sqrt/rsqrt folding (IDs 284, 285), min/max folding (IDs 88, 90), nested intrinsic composition, division-to-reciprocal-multiply, and finally the NVIDIA-specific `sub_115A4C0` which dispatches to the 11.2 KB intrinsic folding table.
 
-### visitLoadInst -- `sub_1152CF0`
+### visitLoadInst — `sub_1152CF0`
 
 | | |
 |---|---|
@@ -138,7 +138,7 @@ Four major paths: constant-address fold (loads from known constant pointers with
 
 ## NVIDIA-Specific Extensions
 
-### NVVM Intrinsic Folding -- `sub_1169C30`
+### NVVM Intrinsic Folding — `sub_1169C30`
 
 This 11.2 KB function (2,268 decomp lines) is the core of NVIDIA's additions to InstCombine. Called from the main visitor when the instruction is an NVIDIA intrinsic, it uses a two-layer dispatch:
 
@@ -146,7 +146,7 @@ This 11.2 KB function (2,268 decomp lines) is the core of NVIDIA's additions to 
 
 | Tag | Char | Fold Type |
 |---|---|---|
-| 42 | `*` | FNeg/negation -- pushes negation through arithmetic via the "Negator" chain |
+| 42 | `*` | FNeg/negation — pushes negation through arithmetic via the "Negator" chain |
 | 55 | `7` | Vector extract from intrinsic result (full-width extract becomes identity) |
 | 56 | `8` | Vector insert into intrinsic result (full-width insert becomes And mask) |
 | 59 | `;` | Multiply-like symmetric intrinsic (folds when one operand is known non-negative) |
@@ -209,9 +209,9 @@ This walks backward through constant-index GEP chains up to `dword_4F901A8` step
 
 ### Ternary/FMA Support
 
-The preamble handles 3-operand instructions (opcodes 238--245) representing fused multiply-add variants. This includes checking whether the third operand is a zero-constant, converting between FMA opcode variants (238 vs. 242), and handling address space mismatches on FMA operand types -- entirely NVIDIA-specific for CUDA's FMA intrinsics.
+The preamble handles 3-operand instructions (opcodes 238--245) representing fused multiply-add variants. This includes checking whether the third operand is a zero-constant, converting between FMA opcode variants (238 vs. 242), and handling address space mismatches on FMA operand types — entirely NVIDIA-specific for CUDA's FMA intrinsics.
 
-## computeKnownBits -- `sub_11A7600`
+## computeKnownBits — `sub_11A7600`
 
 The 27.5 KB `computeKnownBits` implementation (4,156 decomp lines) dispatches on the first byte of the NVVM IR node (the type tag):
 
@@ -236,7 +236,7 @@ The 27.5 KB `computeKnownBits` implementation (4,156 decomp lines) dispatches on
 
 A debug assertion at lines 2204--2212 fires when `computeKnownBits` and `SimplifyDemandedBits` produce inconsistent results, printing both APInt values and calling `abort()`. This invariant check (`known_zero & known_one == 0`, plus consistency with the demanded mask) is compiled in for debug/checked builds.
 
-## SimplifyDemandedBits -- `sub_11AE870`
+## SimplifyDemandedBits — `sub_11AE870`
 
 The wrapper `sub_11AE870` gets the bit-width via `sub_BCB060` (or `sub_AE43A0` for non-integer types), allocates two APInts sized to the width, delegates to `sub_11AE3E0`, and frees any heap-allocated storage. The core implementation at `sub_11AE3E0` (235 lines) calls `computeKnownBits`, then if the instruction was simplified, walks the use-chain and inserts each user into a hash table (open-addressing with quadratic probing, hash = `(ptr >> 9) ^ (ptr >> 4)`) at offset +2064 from the InstCombiner context. This "seen instructions" set prevents infinite recursion during demanded-bits propagation.
 
@@ -247,11 +247,11 @@ The wrapper `sub_11AE870` gets the bit-width via `sub_BCB060` (or `sub_AE43A0` f
 | `dword_4F901A8` | (GEP chain look-through depth) | unknown | GEP handler (case 0x99) |
 | `qword_4F908A8` | `instcombine-negator-max-depth` | -1 | `sub_1169C30` (depth gate) |
 | `qword_4F90988` | `instcombine-negator-enabled` | 1 | ctor_090 |
-| `qword_4F8B4C0` | `instcombine-split-gep-chain` | -- | ctor_068 |
-| `qword_4F8B340` | `instcombine-canonicalize-geps-i8` | -- | ctor_068 |
-| `qword_4F909E0` | `instcombine-max-num-phis` | -- | ctor_091 |
+| `qword_4F8B4C0` | `instcombine-split-gep-chain` | — | ctor_068 |
+| `qword_4F8B340` | `instcombine-canonicalize-geps-i8` | — | ctor_068 |
+| `qword_4F909E0` | `instcombine-max-num-phis` | — | ctor_091 |
 | `qword_4F90120` | `instcombine-guard-widening-window` | 3 | ctor_087 |
-| `qword_4F90528` | (load forwarding search depth) | -- | `sub_1152CF0` |
+| `qword_4F90528` | (load forwarding search depth) | — | `sub_1152CF0` |
 
 ## Key Helper Functions
 

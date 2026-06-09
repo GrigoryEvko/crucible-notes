@@ -6,7 +6,7 @@ This page documents how the reverse engineering of ptxas v13.0.88 was performed.
 
 ## Scope and Scale
 
-PTXAS is a 37.7 MB stripped x86-64 ELF binary with no debug symbols, no DWARF information, and no export table beyond 146 libc/libpthread PLT stubs. Unlike NVIDIA's cicc (which is an LLVM fork), ptxas contains no LLVM code, no EDG frontend, and no third-party optimizer components. Every pass, data structure, and encoding table is proprietary NVIDIA code. This makes the analysis harder than LLVM-derived binaries -- there is no upstream source to compare against.
+PTXAS is a 37.7 MB stripped x86-64 ELF binary with no debug symbols, no DWARF information, and no export table beyond 146 libc/libpthread PLT stubs. Unlike NVIDIA's cicc (which is an LLVM fork), ptxas contains no LLVM code, no EDG frontend, and no third-party optimizer components. Every pass, data structure, and encoding table is proprietary NVIDIA code. This makes the analysis harder than LLVM-derived binaries — there is no upstream source to compare against.
 
 | Metric | Value |
 |---|---|
@@ -21,27 +21,27 @@ PTXAS is a 37.7 MB stripped x86-64 ELF binary with no debug symbols, no DWARF in
 | IDA auto-names recovered | 16,019 |
 | Control flow graphs exported | 80,078 |
 | PLT imports | 146 (libc, libpthread, libm, libgcc) |
-| Functions with 0 static callers | 15,907 (39.6%) -- vtable-dispatched |
+| Functions with 0 static callers | 15,907 (39.6%) — vtable-dispatched |
 | Functions < 100 bytes | 11,532 (28.7%) |
 | Functions > 10 KB | 86 (0.2%) |
 | Named functions (not `sub_*`) | 319 (0.8%) |
 | Internal codenames | OCG (Optimizing Code Generator), Mercury (SASS encoder), Ori (IR) |
 
-The 304 functions that Hex-Rays could not decompile are predominantly PLT stubs, computed-jump trampolines in the Flex DFA scanner, and the four mega-dispatch functions exceeding 200 KB (too large for Hex-Rays to handle within default limits). None are in critical analysis paths -- the dispatch functions are understood from their callee lists and the PLT stubs from their import names.
+The 304 functions that Hex-Rays could not decompile are predominantly PLT stubs, computed-jump trampolines in the Flex DFA scanner, and the four mega-dispatch functions exceeding 200 KB (too large for Hex-Rays to handle within default limits). None are in critical analysis paths — the dispatch functions are understood from their callee lists and the PLT stubs from their import names.
 
 ## Why PTXAS Is Harder Than LLVM-Based Binaries
 
 Reverse engineering cicc (NVIDIA's LLVM-based CUDA compiler) benefits from extensive prior art: LLVM's open-source codebase provides structural templates, pass names are registered in predictable patterns, and `cl::opt` strings directly name their global variables. PTXAS offers none of these advantages:
 
-- **No upstream source.** Every identified function is identified from first principles -- string evidence, callgraph position, structural fingerprinting, or decompiled algorithm analysis. There is no reference implementation to compare against.
+- **No upstream source.** Every identified function is identified from first principles — string evidence, callgraph position, structural fingerprinting, or decompiled algorithm analysis. There is no reference implementation to compare against.
 - **ROT13 obfuscation.** Internal names for tuning knobs and PTX opcode mnemonics are ROT13-encoded in the binary, requiring decoding before they become useful anchors.
 - **Vtable-heavy architecture.** 39.6% of functions have zero static callers because they are dispatched through vtable pointers or function pointer tables. The call graph alone cannot reach them.
 - **Template-generated code.** The SASS backend contains approximately 4,000 encoding handler functions generated from templates, each structurally near-identical. These dominate the function count but carry almost no unique identifying features.
-- **No pass registration infrastructure.** LLVM passes register themselves via `PassInfo` objects with name strings. PTXAS phases are allocated by a factory switch (`sub_C60D30`) and their names are only visible through the `NamedPhases` registry and `AdvancedPhase*` timing strings -- far fewer anchors than LLVM's registration system.
+- **No pass registration infrastructure.** LLVM passes register themselves via `PassInfo` objects with name strings. PTXAS phases are allocated by a factory switch (`sub_C60D30`) and their names are only visible through the `NamedPhases` registry and `AdvancedPhase*` timing strings — far fewer anchors than LLVM's registration system.
 
 ## Toolchain
 
-All analysis was performed with IDA Pro 8.x and the Hex-Rays x86-64 decompiler. The entire effort is static analysis of the binary at rest -- no dynamic analysis (debugging, tracing, instrumentation) was used for function identification. Runtime tools (`ptxas --stat`, `DUMPIR` knob, `--keep`) were used only for validation and cross-referencing.
+All analysis was performed with IDA Pro 8.x and the Hex-Rays x86-64 decompiler. The entire effort is static analysis of the binary at rest — no dynamic analysis (debugging, tracing, instrumentation) was used for function identification. Runtime tools (`ptxas --stat`, `DUMPIR` knob, `--keep`) were used only for validation and cross-referencing.
 
 | Tool | Purpose |
 |---|---|
@@ -75,7 +75,7 @@ After auto-analysis completes:
 
 ### Type Recovery
 
-PTXAS uses no C++ RTTI (no `typeid`, no `dynamic_cast` -- the binary has no `.data.rel.ro` RTTI structures). Type recovery relies on:
+PTXAS uses no C++ RTTI (no `typeid`, no `dynamic_cast` — the binary has no `.data.rel.ro` RTTI structures). Type recovery relies on:
 
 - **Vtable layout analysis.** Each vtable is a contiguous array of function pointers in `.data.rel.ro` (4,256 bytes total). The vtable at `off_22BD5C8` contains 159 entries, one per optimization phase. Each entry points to the phase's constructor function.
 - **Structure offset patterns.** The pool allocator struct has free-list bins at offset +2128 and a mutex at +7128. The thread-local context is a 280-byte struct accessed via `pthread_getspecific`. These offsets were recovered from the decompiled code of `sub_424070` (pool alloc, 3,809 callers) and `sub_4280C0` (TLS accessor, 3,928 callers).
@@ -155,10 +155,10 @@ Each `AdvancedPhase*` string xrefs to exactly one call site, which is a boundary
 
 The central diagnostic emitter `sub_42FBA0` (2,350 callers) prints error messages whose text reveals the calling function's purpose. Examples:
 
-- `"Please use -knob DUMPIR=AllocateRegisters for debugging"` -- identifies the register allocator failure path at `sub_9714E0`
-- `"SM does not support LDCU"` -- identifies SM capability checking in the instruction legalizer
-- `"Invalid knob identifier"`, `"Invalid knob specified (%s)"` -- identifies the knob parsing infrastructure around `sub_79D070`
-- `"fseek() error knobsfile %s"`, `"[knobs]"` -- identifies `ReadKnobsFile` at `sub_79D070`
+- `"Please use -knob DUMPIR=AllocateRegisters for debugging"` — identifies the register allocator failure path at `sub_9714E0`
+- `"SM does not support LDCU"` — identifies SM capability checking in the instruction legalizer
+- `"Invalid knob identifier"`, `"Invalid knob specified (%s)"` — identifies the knob parsing infrastructure around `sub_79D070`
+- `"fseek() error knobsfile %s"`, `"[knobs]"` — identifies `ReadKnobsFile` at `sub_79D070`
 
 ### Source File Path
 
@@ -202,7 +202,7 @@ By following each of the 159 vtable entries to their `execute()` slot, every opt
 
 ### Encoding Handler Vtables
 
-The SASS backend uses vtable dispatch for instruction encoding. Each SASS opcode variant has its own encoding handler function, registered in dispatch tables rather than called directly. This explains why 15,907 functions (39.6%) have zero static callers -- they are reached exclusively through indirect calls via function pointer tables.
+The SASS backend uses vtable dispatch for instruction encoding. Each SASS opcode variant has its own encoding handler function, registered in dispatch tables rather than called directly. This explains why 15,907 functions (39.6%) have zero static callers — they are reached exclusively through indirect calls via function pointer tables.
 
 The encoding handler vtables were identified by their structural uniformity: every handler in the `0xD27000`--`0x1579000` range follows an identical template:
 
@@ -239,7 +239,7 @@ The 548,693-edge call graph, exported from IDA, reveals the binary's module stru
 
 Functions with extreme callee or caller counts serve as structural anchors:
 
-**Top callees (hub functions -- "fan-out" nodes):**
+**Top callees (hub functions — "fan-out" nodes):**
 
 | Address | Name | Size | Callees | Role |
 |---|---|---|---|---|
@@ -249,7 +249,7 @@ Functions with extreme callee or caller counts serve as structural anchors:
 | `sub_18A2CA0` | Peephole dispatch (variant 1) | 231 KB | 12,974 | Peephole optimization for another SM family |
 | `sub_BA9D00` | Bitvector/CFG analysis | 204 KB | 11,335 | Dataflow framework core |
 
-**Top callers (utility functions -- "fan-in" nodes):**
+**Top callers (utility functions — "fan-in" nodes):**
 
 | Address | Name | Size | Callers | Role |
 |---|---|---|---|---|
@@ -348,12 +348,12 @@ The complete IDA database was exported via `analyze_ptxas.py` into 8 JSON artifa
 |---|---|---|---|---|
 | **Functions** | `ptxas_functions.json` | 92 MB | 40,185 | `{addr, end, name, size, insn_count, is_library, is_thunk, callers[], callees[]}` |
 | **Strings** | `ptxas_strings.json` | 4.8 MB | 30,632 | `{addr, value, type, xrefs[{from, func, type}]}` |
-| **Call graph** | `ptxas_callgraph.json` | 64 MB | 548,693 | `{from, from_addr, to, to_addr}` -- one edge per call site |
+| **Call graph** | `ptxas_callgraph.json` | 64 MB | 548,693 | `{from, from_addr, to, to_addr}` — one edge per call site |
 | **Cross-references** | `ptxas_xrefs.json` | 978 MB | 7,427,044 | Complete xref database (code, data, string references) |
-| **Comments** | `ptxas_comments.json` | 5.9 MB | 66,598 | `{addr, type, text}` -- IDA auto-comments and analyst annotations |
-| **Names** | `ptxas_names.json` | 972 KB | 16,019 | `{addr, name}` -- IDA auto-generated and analyst-assigned names |
-| **Imports** | `ptxas_imports.json` | 17 KB | 146 | `{module, name, addr, ordinal}` -- PLT import stubs |
-| **Segments** | `ptxas_segments.json` | 3 KB | 24 | `{name, start, end, size, type, perm}` -- ELF segment map |
+| **Comments** | `ptxas_comments.json` | 5.9 MB | 66,598 | `{addr, type, text}` — IDA auto-comments and analyst annotations |
+| **Names** | `ptxas_names.json` | 972 KB | 16,019 | `{addr, name}` — IDA auto-generated and analyst-assigned names |
+| **Imports** | `ptxas_imports.json` | 17 KB | 146 | `{module, name, addr, ordinal}` — PLT import stubs |
+| **Segments** | `ptxas_segments.json` | 3 KB | 24 | `{name, start, end, size, type, perm}` — ELF segment map |
 
 Total artifact storage: 1.14 GB (dominated by the 978 MB xref database).
 
@@ -363,7 +363,7 @@ Total artifact storage: 1.14 GB (dominated by the 978 MB xref database).
 
 **Strings** (`ptxas_strings.json`): The primary identification tool. Each string's xref list shows which functions reference it. Searching for `"AdvancedPhase"` returns 15 strings, each xref pointing to a pipeline boundary in the PhaseManager. Searching for strings starting with `"Z"` (ROT13 "M" for "Mercury") returns the Mercury subsystem's knob names. The 2,035 hex-encoded default value strings (`"0k..."` / `"0x..."`) are paired 1:1 with knob name strings in the constructors.
 
-**Call graph** (`ptxas_callgraph.json`): The structural backbone. Each edge records a direct call from one function to another. Indirect calls (vtable dispatch, function pointer callbacks) are not captured, which is the primary limitation -- the 15,907 zero-caller functions are almost all vtable-dispatched. The call graph is used for module boundary detection, propagation from known functions, and entry/exit point analysis.
+**Call graph** (`ptxas_callgraph.json`): The structural backbone. Each edge records a direct call from one function to another. Indirect calls (vtable dispatch, function pointer callbacks) are not captured, which is the primary limitation — the 15,907 zero-caller functions are almost all vtable-dispatched. The call graph is used for module boundary detection, propagation from known functions, and entry/exit point analysis.
 
 **Cross-references** (`ptxas_xrefs.json`): The most comprehensive artifact. Contains all code-to-code, code-to-data, and data-to-data references detected by IDA. At 7.4 million entries, it is too large to load into memory on machines with less than 16 GB RAM. Used for deep analysis of specific functions: finding all references to a particular `.rodata` constant, tracing data flow through global variables, and identifying vtable consumers.
 
@@ -373,7 +373,7 @@ Total artifact storage: 1.14 GB (dominated by the 978 MB xref database).
 
 **Imports** (`ptxas_imports.json`): The 146 PLT imports. Key imports include `pthread_*` (13 functions), `malloc`/`free`/`realloc`, `_setjmp`/`longjmp` (used by the error recovery system), `select`/`fcntl` (used by the GNU Make jobserver client), and `clock` (used by the timing infrastructure).
 
-**Segments** (`ptxas_segments.json`): The 24 ELF segments/sections. Used to establish the address space layout and map code/data boundaries. The `.ctors` section (104 bytes, 12 entries) is particularly important -- it lists the static constructors that initialize the ROT13 tables and the knob registry.
+**Segments** (`ptxas_segments.json`): The 24 ELF segments/sections. Used to establish the address space layout and map code/data boundaries. The `.ctors` section (104 bytes, 12 entries) is particularly important — it lists the static constructors that initialize the ROT13 tables and the knob registry.
 
 ## The 30-Region Sweep Approach
 
@@ -381,7 +381,7 @@ The primary analysis was conducted as a systematic address-range sweep of the en
 
 ### Region Partitioning
 
-The `.text` section (`0x403520`--`0x1CE2DE2`, 26.2 MB) was divided into approximately 870 KB regions. The partitioning was not arbitrary -- region boundaries were chosen to align with subsystem boundaries where possible, so that each sweep report covers a coherent functional area.
+The `.text` section (`0x403520`--`0x1CE2DE2`, 26.2 MB) was divided into approximately 870 KB regions. The partitioning was not arbitrary — region boundaries were chosen to align with subsystem boundaries where possible, so that each sweep report covers a coherent functional area.
 
 | Report | Address Range | Size | Functions | Subsystem |
 |---|---|---|---|---|
@@ -451,17 +451,17 @@ SECTION 1: [Subsystem name]
 **Note**: [Additional observations]
 ```
 
-Each function entry records the address, size, decompiled line count, proposed identity, confidence level, evidence citations, and key code excerpts. The reports are raw working notes -- they contain false starts, corrections, and evolving hypotheses that were resolved as more context became available.
+Each function entry records the address, size, decompiled line count, proposed identity, confidence level, evidence citations, and key code excerpts. The reports are raw working notes — they contain false starts, corrections, and evolving hypotheses that were resolved as more context became available.
 
 ### Analysis Ordering
 
 The sweep was not performed in address order. The analysis followed an information-maximizing sequence:
 
-1. **p1.01** (infrastructure + CLI) first -- establishes the allocator, hash map, TLS, and diagnostic patterns that appear throughout the binary.
-2. **p1.11** (PhaseManager) second -- identifies all 159 phases and their vtable entries, providing the skeleton of the optimization pipeline.
-3. **p1.07** (register allocator) and **p1.06** (scheduler) third -- these are the highest-complexity subsystems with the richest string evidence.
-4. **p1.12--p1.15** (SASS encoders) in batch -- once the encoding template was recognized, all encoder regions were swept rapidly with template matching.
-5. **p1.30** (library layer) late -- identifies shared infrastructure (ELF emitter, demangler, thread pool) referenced by earlier regions.
+1. **p1.01** (infrastructure + CLI) first — establishes the allocator, hash map, TLS, and diagnostic patterns that appear throughout the binary.
+2. **p1.11** (PhaseManager) second — identifies all 159 phases and their vtable entries, providing the skeleton of the optimization pipeline.
+3. **p1.07** (register allocator) and **p1.06** (scheduler) third — these are the highest-complexity subsystems with the richest string evidence.
+4. **p1.12--p1.15** (SASS encoders) in batch — once the encoding template was recognized, all encoder regions were swept rapidly with template matching.
+5. **p1.30** (library layer) late — identifies shared infrastructure (ELF emitter, demangler, thread pool) referenced by earlier regions.
 6. Remaining regions filled in by decreasing information density.
 
 ## Cross-Referencing with PTXAS CLI
@@ -533,11 +533,11 @@ To reproduce this analysis from scratch:
 
 5. **Identify anchor functions.** Start with the highest-confidence identifications:
    - `main` at `0x409460` (named in symbol table)
-   - `sub_446240` (real main -- called from `main`, contains timing format strings)
-   - `sub_C60D30` (phase factory -- 159-case switch)
-   - `sub_C62720` (PhaseManager constructor -- references phase vtable table)
-   - `sub_79B240` (GetKnobIndex -- inline ROT13 decoding)
-   - `sub_42FBA0` (diagnostic emitter -- 2,350 callers, severity dispatch)
+   - `sub_446240` (real main — called from `main`, contains timing format strings)
+   - `sub_C60D30` (phase factory — 159-case switch)
+   - `sub_C62720` (PhaseManager constructor — references phase vtable table)
+   - `sub_79B240` (GetKnobIndex — inline ROT13 decoding)
+   - `sub_42FBA0` (diagnostic emitter — 2,350 callers, severity dispatch)
 
 6. **Sweep the address space.** Work through the `.text` section in regions of ~870 KB. For each region:
    - Count functions and decompiled file sizes
@@ -550,13 +550,13 @@ To reproduce this analysis from scratch:
 
 ### Dependencies
 
-The extraction script (`analyze_ptxas.py`) requires IDA Pro 8.x with Hex-Rays decompiler and Python 3.x. No external Python packages are needed -- only the IDA Python API (`idautils`, `idc`, `idaapi`, `ida_bytes`, `ida_funcs`, `ida_segment`, `ida_nalt`, `ida_gdl`, `ida_hexrays`).
+The extraction script (`analyze_ptxas.py`) requires IDA Pro 8.x with Hex-Rays decompiler and Python 3.x. No external Python packages are needed — only the IDA Python API (`idautils`, `idc`, `idaapi`, `ida_bytes`, `ida_funcs`, `ida_segment`, `ida_nalt`, `ida_gdl`, `ida_hexrays`).
 
 Post-export analysis requires only the Python 3.8+ standard library (`json`, `codecs`, `collections`).
 
 ## Debug Infrastructure: bugspec.txt
 
-ptxas contains an internal fault injection framework that deliberately corrupts the Mercury IR to test compiler verification passes. The mechanism is entirely file-driven: if a file named `./bugspec.txt` exists in the current working directory when ptxas runs, the function `sub_A83AC0` reads it and injects controlled mutations into the post-register-allocation instruction stream. No CLI flag activates this -- file presence alone is sufficient. If the file is absent, a diagnostic is printed to stdout (`Cannot open file with bug specification`) and compilation proceeds normally.
+ptxas contains an internal fault injection framework that deliberately corrupts the Mercury IR to test compiler verification passes. The mechanism is entirely file-driven: if a file named `./bugspec.txt` exists in the current working directory when ptxas runs, the function `sub_A83AC0` reads it and injects controlled mutations into the post-register-allocation instruction stream. No CLI flag activates this — file presence alone is sufficient. If the file is absent, a diagnostic is printed to stdout (`Cannot open file with bug specification`) and compilation proceeds normally.
 
 ### File Format
 
@@ -684,7 +684,7 @@ Not everything changes between versions. Understanding what is stable dramatical
 |---|---|---|
 | Algorithm logic | Copy propagation worklist walk, fatpoint pressure computation, MurmurHash3 constants | Algorithms are rarely rewritten between releases |
 | Data structure layouts | Pool allocator bins at +2128, Mercury instruction node at 112 bytes, 16-byte phase objects | Struct layouts change only when fields are added or reordered |
-| Knob names | `MercuryUseActiveThreadCollectiveInsts`, `ScavInlineExpansion`, all 2,000+ ROT13 names | Knob names are API-like -- changing them breaks internal test harnesses |
+| Knob names | `MercuryUseActiveThreadCollectiveInsts`, `ScavInlineExpansion`, all 2,000+ ROT13 names | Knob names are API-like — changing them breaks internal test harnesses |
 | ROT13 encoding | The ROT13 obfuscation layer itself, decoded by `codecs.decode(s, "rot_13")` | Obfuscation scheme has been consistent across observed versions |
 | Phase count and ordering | 159 phases in the OCG pipeline, ordered by the PhaseManager vtable table | Phase count may grow but existing phases retain their relative order |
 | Pipeline stage names | `Parse-time`, `DAGgen-time`, `OCG-time`, `ELF-time`, `DebugInfo-time` | Stage names are embedded in format strings unlikely to change |
@@ -723,7 +723,7 @@ When loading a new ptxas version into IDA:
 
 ### Updating Sweep Reports
 
-The 30-region sweep reports in `ptxas/raw/` are version-locked historical records -- they document the analysis of v13.0.88 and should not be overwritten. For a new version:
+The 30-region sweep reports in `ptxas/raw/` are version-locked historical records — they document the analysis of v13.0.88 and should not be overwritten. For a new version:
 
 1. **Re-run the sweep** with new address ranges derived from the new binary's function list. The region partitioning should follow the same subsystem-aligned strategy: infrastructure first, then PhaseManager, then high-complexity subsystems, then batch encoding handlers.
 
@@ -860,7 +860,7 @@ This section documents every factual error discovered and corrected during the w
 |---|---|---|---|---|
 | 05 | isNoOp()=1 "means it executes unconditionally" | isNoOp()=1 means the dispatch loop SKIPS execute(). Code: `if (!phase->isNoOp()) { phase->execute(ctx); }` | passes/rematerialization.md | P0-05 |
 | 09 | Hot-cold priority: "1 = cold, 0 = hot" | 1 = hot = higher priority, 0 = cold = lower priority. sub_A9CDE0 (hot detector) returns true -> bit 5 set -> higher priority | passes/hot-cold.md | P1-09, P5-06 |
-| 10 | "Fatpoint" implied to be maximum-pressure point | Fatpoint scans for MINIMUM-cost slot. The name refers to the exhaustive (fat) scan evaluating all slots, not to picking the maximum | (verified correct across all pages -- 0 fixes needed) | P1-10, P5-06 |
+| 10 | "Fatpoint" implied to be maximum-pressure point | Fatpoint scans for MINIMUM-cost slot. The name refers to the exhaustive (fat) scan evaluating all slots, not to picking the maximum | (verified correct across all pages — 0 fixes needed) | P1-10, P5-06 |
 
 #### Wrong numeric values
 

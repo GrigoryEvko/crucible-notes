@@ -120,7 +120,7 @@ C++ alternative tokens (ISO 14882 clause 5.5) and C/C++ digraphs. These are regi
 | 66 | `or_eq` | `\|=` | Bitwise OR-assign |
 | 67 | `%:` | `#` | Digraph for hash |
 | 68 | `%:%:` | `##` | Digraph for token paste |
-| 69--76 | (reserved) | -- | Reserved for future alternative tokens |
+| 69--76 | (reserved) | — | Reserved for future alternative tokens |
 
 ### C89 Keywords (77--108)
 
@@ -168,16 +168,16 @@ Gated on the C standard version at `dword_126EF68` (values: 199901 = C99, 201112
 | Kind | Name | Standard | C/C++ Construct |
 |---:|---|---|---|
 | 109 | `inline` | C99 | Inline function hint (already C++ keyword at 154) |
-| 110--118 | (reserved) | -- | -- |
+| 110--118 | (reserved) | — | — |
 | 119 | `restrict` | C99 | Pointer restrict qualifier |
 | 120 | `_Bool` | C99 | Boolean type (C-style) |
 | 121 | `_Complex` | C99 | Complex number type |
 | 122 | `_Imaginary` | C99 | Imaginary number type |
-| 123--125 | (reserved) | -- | -- |
+| 123--125 | (reserved) | — | — |
 | 126 | `char16_t` | C++11/C23 | 16-bit character type |
 | 127 | `char32_t` | C++11/C23 | 32-bit character type |
 | 128 | `char8_t` | C++17/C23 | UTF-8 character type |
-| 129--131 | (reserved) | -- | -- |
+| 129--131 | (reserved) | — | — |
 
 ### MSVC Keywords (132--136)
 
@@ -201,10 +201,10 @@ Gated on C++ mode (`dword_126EFB4 == 2`). Some keywords within this range were a
 | 138 | `true` | C++98 | Boolean literal |
 | 139 | `false` | C++98 | Boolean literal |
 | 140 | `wchar_t` | C++98 | Wide character type |
-| 141--149 | (reserved) | -- | -- |
+| 141--149 | (reserved) | — | — |
 | 142 | `__attribute` | GNU | GCC attribute syntax |
 | 143 | `__builtin_types_compatible_p` | GNU | GCC type compatibility test |
-| 144--149 | (reserved) | -- | -- |
+| 144--149 | (reserved) | — | — |
 | 150 | `catch` | C++98 | Exception handler |
 | 151 | `class` | C++98 | Class definition |
 | 152 | `delete` | C++98 | Deallocation; deleted function (C++11) |
@@ -220,31 +220,31 @@ Gated on C++ mode (`dword_126EFB4 == 2`). Some keywords within this range were a
 | 162 | `throw` | C++98 | Throw expression |
 | 163 | `try` | C++98 | Try block |
 | 164 | `virtual` | C++98 | Virtual function/base |
-| 165 | (reserved) | -- | -- |
+| 165 | (reserved) | — | — |
 | 166 | `const_cast` | C++98 | Const cast expression |
 | 167 | `dynamic_cast` | C++98 | Dynamic cast expression |
-| 168 | (reserved) | -- | -- |
+| 168 | (reserved) | — | — |
 | 169 | `export` | C++98/20 | Export declaration (original C++98, revived for modules in C++20) |
 | 170 | `export` | C++20 | Module export (alternate registration slot) |
-| 171--173 | (reserved) | -- | -- |
+| 171--173 | (reserved) | — | — |
 | 174 | `mutable` | C++98 | Mutable data member |
 | 175 | `namespace` | C++98 | Namespace declaration |
 | 176 | `reinterpret_cast` | C++98 | Reinterpret cast expression |
 | 177 | `static_cast` | C++98 | Static cast expression |
 | 178 | `typeid` | C++98 | Runtime type identification |
 | 179 | `using` | C++98 | Using declaration/directive |
-| 180--182 | (reserved) | -- | -- |
+| 180--182 | (reserved) | — | — |
 | 183 | `typename` | C++98 | Dependent type name |
 | 184 | `static_assert` | C++11 | Static assertion; also `_Static_assert` in C11 |
 | 185 | `decltype` | C++11 | Decltype specifier |
 | 186 | `__auto_type` | GNU | GCC auto type extension |
 | 187 | `__extension__` | GNU | GCC extension marker (suppress warnings) |
-| 188 | (reserved) | -- | -- |
+| 188 | (reserved) | — | — |
 | 189 | `typeof` | C++23/GNU | Type-of expression |
 | 190 | `typeof_unqual` | C++23 | Unqualified type-of expression |
-| 191--193 | (reserved) | -- | -- |
+| 191--193 | (reserved) | — | — |
 | 194 | `thread_local` | C++11 | Thread-local storage; also `_Thread_local` in C11 |
-| 195--199 | (reserved) | -- | -- |
+| 195--199 | (reserved) | — | — |
 
 ### Compiler Internal Tokens (200--206)
 
@@ -262,7 +262,7 @@ These tokens are used internally by the preprocessor and the token cache. They n
 
 ### Type Trait Intrinsics (207--327)
 
-These are compiler intrinsic keywords that implement the C++ type traits (from `<type_traits>`) without requiring template instantiation. They are registered during `keyword_init` with C++ standard version gating -- earlier traits (C++11) are always available in C++ mode, while newer traits (C++20, C++23, C++26) require the corresponding standard version at `dword_126EF68`. Some traits are MSVC-specific (gated on `dword_126EFB0`) or Clang-specific (gated on `qword_126EF90`).
+These are compiler intrinsic keywords that implement the C++ type traits (from `<type_traits>`) without requiring template instantiation. They are registered during `keyword_init` with C++ standard version gating — earlier traits (C++11) are always available in C++ mode, while newer traits (C++20, C++23, C++26) require the corresponding standard version at `dword_126EF68`. Some traits are MSVC-specific (gated on `dword_126EFB0`) or Clang-specific (gated on `qword_126EF90`).
 
 The complete list of type-trait intrinsics, organized alphabetically within each sub-category:
 
@@ -353,7 +353,7 @@ These are not user-facing keywords. They are injected by the EDG frontend into s
 | 280 | `__edg_wchar_type__` | Placeholder for `wchar_t` |
 | 281 | `__edg_throw__` | Throw specification in synthesized declarations |
 | 282 | `__edg_opnd__` | Operand reference in synthesized expressions |
-| 283 | (reserved) | -- |
+| 283 | (reserved) | — |
 
 #### More Type Predicates and Binary Traits (284--327)
 
@@ -434,7 +434,7 @@ These are the newest token kinds, added for extended floating-point types (ISO/I
 | 333 | `_Float64` | TS 18661-3 | 64-bit IEEE 754 float |
 | 334 | `_Float64x` | TS 18661-3 | Extended 64-bit float |
 | 335 | `_Float128` | TS 18661-3 | 128-bit IEEE 754 float |
-| 336--340 | (reserved) | -- | -- |
+| 336--340 | (reserved) | — | — |
 | 341--356 | (recent additions) | C++23/26 | Reserved for MSVC C++/CLI traits (`__is_ref_class`, `__is_value_class`, `__is_interface_class`, `__is_delegate`, `__is_sealed`, `__has_finalizer`, `__has_copy`, `__has_assign`, `__is_simple_value_class`, `__is_ref_array`, `__is_valid_winrt_type`, `__is_win_class`, `__is_win_interface`) and additional future extensions |
 
 ## Token Cache
@@ -464,9 +464,9 @@ Eight discriminator values select the payload interpretation at offset `+40`:
 | macro_def | 2 | Macro definition pointer | 8 | Reference to a macro definition for re-expansion. Dispatched to `sub_5BA500`. |
 | pragma | 3 | Pragma data | varies | Preprocessor pragma deferred for later processing |
 | pp_number | 4 | Number text pointer | 8 | Preprocessing number not yet classified as integer or float |
-| (reserved) | 5 | -- | -- | Not observed in use |
+| (reserved) | 5 | — | — | Not observed in use |
 | string | 6 | String data + encoding byte | varies | String literal with encoding prefix information |
-| (reserved) | 7 | -- | -- | Not observed in use |
+| (reserved) | 7 | — | — | Not observed in use |
 | concatenated_string | 8 | Concatenated string data | varies | Wide or multi-piece concatenated string literal |
 
 ### Cache Management Globals
@@ -672,11 +672,11 @@ When a token is produced by the lexer, the following globals are populated:
 
 ## Cross-References
 
-- [Lexer & Tokenizer](../edg/lexer.md) -- full lexer subsystem documentation, architecture, and function map
-- [Pipeline Overview](../pipeline/overview.md) -- keyword registration during initialization
-- [Entry Point & Initialization](../pipeline/entry.md) -- `keyword_init` in the startup sequence
-- [Global Variable Index](global-variables.md) -- all global addresses referenced here
-- [Template Engine](../edg/template-engine.md) -- template argument scanning and `>>` disambiguation
-- [CUDA Lambda Overview](../lambdas/overview.md) -- NVIDIA type-trait token usage in lambda transforms
-- [Attribute System Overview](../attributes/overview.md) -- CUDA attribute handling at token level
-- [EDG Source File Map](edg-source-map.md) -- `lexical.c` and `fe_init.c` binary layout
+- [Lexer & Tokenizer](../edg/lexer.md) — full lexer subsystem documentation, architecture, and function map
+- [Pipeline Overview](../pipeline/overview.md) — keyword registration during initialization
+- [Entry Point & Initialization](../pipeline/entry.md) — `keyword_init` in the startup sequence
+- [Global Variable Index](global-variables.md) — all global addresses referenced here
+- [Template Engine](../edg/template-engine.md) — template argument scanning and `>>` disambiguation
+- [CUDA Lambda Overview](../lambdas/overview.md) — NVIDIA type-trait token usage in lambda transforms
+- [Attribute System Overview](../attributes/overview.md) — CUDA attribute handling at token level
+- [EDG Source File Map](edg-source-map.md) — `lexical.c` and `fe_init.c` binary layout

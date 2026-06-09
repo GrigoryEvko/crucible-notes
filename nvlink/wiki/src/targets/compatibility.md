@@ -1,6 +1,6 @@
 # Compatibility Checking
 
-nvlink enforces architecture compatibility at three distinct points: during input file validation, during finalization dispatch, and during capability mask evaluation. These three checks form a layered system -- the input validator decides whether a cubin can enter the link, the finalization checker decides whether a finalized object can be re-finalized for a different target, and the capability mask checker gates individual feature support within a finalization context. All three share a common architecture remapping table and a common "same-decade" rule for family grouping.
+nvlink enforces architecture compatibility at three distinct points: during input file validation, during finalization dispatch, and during capability mask evaluation. These three checks form a layered system — the input validator decides whether a cubin can enter the link, the finalization checker decides whether a finalized object can be re-finalized for a different target, and the capability mask checker gates individual feature support within a finalization context. All three share a common architecture remapping table and a common "same-decade" rule for family grouping.
 
 ## Key Functions
 
@@ -97,7 +97,7 @@ SM 101 and SM 110 receive special handling. In the decompiled code, when either 
 
 ### Virtual vs. Native Comparison
 
-When neither record has the `has_suffix` flag set and the record is not `is_native`, the check falls through to `profile_family_match` (`sub_465450`). This function traverses the family linked list stored at `profile+56` in the profile database, checking whether the target profile appears in the source profile's family chain. This handles `compute_XX` to `sm_XX` compatibility -- a `compute_75` target is compatible with any `sm_XX` where XX is in the same family as 75.
+When neither record has the `has_suffix` flag set and the record is not `is_native`, the check falls through to `profile_family_match` (`sub_465450`). This function traverses the family linked list stored at `profile+56` in the profile database, checking whether the target profile appears in the source profile's family chain. This handles `compute_XX` to `sm_XX` compatibility — a `compute_75` target is compatible with any `sm_XX` where XX is in the same family as 75.
 
 ### The `a` Variant: Exact Match
 
@@ -132,14 +132,14 @@ This remapping collapses internal/experimental architecture numbers into their c
 
 | Code | Meaning |
 |---|---|
-| 0 | Compatible -- finalization can proceed |
-| 24 | Null input -- the compatibility record pointer `a1` is NULL |
-| 25 | Version too high -- the record's version field (`a1` word at offset +6) exceeds `0x101` |
-| 26 | Incompatible architecture -- family mismatch or disallowed cross-family link |
-| 27 | Type 4 error -- finalization class 4 incompatibility |
-| 28 | Type 3 error -- finalization class 3 incompatibility |
-| 29 | Type 2 error -- finalization class 2, source >= target in same decade |
-| 30 | Unknown type -- finalization class byte not in range 0--4 |
+| 0 | Compatible — finalization can proceed |
+| 24 | Null input — the compatibility record pointer `a1` is NULL |
+| 25 | Version too high — the record's version field (`a1` word at offset +6) exceeds `0x101` |
+| 26 | Incompatible architecture — family mismatch or disallowed cross-family link |
+| 27 | Type 4 error — finalization class 4 incompatibility |
+| 28 | Type 3 error — finalization class 3 incompatibility |
+| 29 | Type 2 error — finalization class 2, source >= target in same decade |
+| 30 | Unknown type — finalization class byte not in range 0--4 |
 
 ### Finalization Class Dispatch
 
@@ -234,7 +234,7 @@ Both `sub_4709E0` and `sub_470DA0` check for the environment variable `CAN_FINAL
 
 1. **Word size check**: The cubin's ELF class (32-bit vs 64-bit) must match the `--machine` setting (`dword_2A5F30C`, either 32 or 64).
 
-2. **ELF type rejection**: `ET_EXEC` (`e_type == 2`) cubins are rejected unconditionally. These can appear only when a fully-linked nvlink output is fed back in -- they cannot be re-linked. ptxas emits `ET_REL` (1) or the Mercury custom type `0xFF00`; only nvlink itself produces `ET_EXEC` as the final link output.
+2. **ELF type rejection**: `ET_EXEC` (`e_type == 2`) cubins are rejected unconditionally. These can appear only when a fully-linked nvlink output is fed back in — they cannot be re-linked. ptxas emits `ET_REL` (1) or the Mercury custom type `0xFF00`; only nvlink itself produces `ET_EXEC` as the final link output.
 
 3. **ELF class byte check**: For 32-bit links, the ELF class byte at `ehdr+8` must be 7 (legacy CUDA format) or 8 (sm > 72). Other values trigger an error.
 
@@ -275,9 +275,9 @@ A separate cross-version check at address `0x1D39330` enforces that objects usin
 
 ### Mercury / EWP Mode Detection
 
-When the cubin's `e_type` is `0xFF00` (Mercury executable with payload, "EWP"), the global flag `byte_2A5F229` is set. Once set, all subsequent cubins must be from the same toolkit version -- the error `"linking with -ewp objects requires using current toolkit"` fires if the toolkit version of any subsequent input does not match `sub_468560()`.
+When the cubin's `e_type` is `0xFF00` (Mercury executable with payload, "EWP"), the global flag `byte_2A5F229` is set. Once set, all subsequent cubins must be from the same toolkit version — the error `"linking with -ewp objects requires using current toolkit"` fires if the toolkit version of any subsequent input does not match `sub_468560()`.
 
-When `e_type` is not `0xFF00` and `byte_2A5F229` has not been set yet, the return value depends on the error list state -- the function returns true (continue) only if no errors have been recorded.
+When `e_type` is not `0xFF00` and `byte_2A5F229` has not been set yet, the return value depends on the error list state — the function returns true (continue) only if no errors have been recorded.
 
 ## Compatibility Matrix
 
@@ -346,14 +346,14 @@ For general architecture compatibility concepts, see the [ptxas wiki targets](..
 ## Cross-References
 
 ### nvlink Internal
-- [Architecture Profiles](arch-profiles.md) -- the profile database initialization that populates `qword_2A5F8D8`
-- [Cubin Loading](../input/cubin-loading.md) -- the full cubin validation path that calls `sub_4878A0` and `sub_426570`
-- [Finalization Phase](../pipeline/finalize.md) -- the linker finalization phase that triggers `sub_4709E0`
-- [Versions](../versions.md) -- toolkit version numbering, PTX ISA version, and the SM architecture table
-- [Mercury / FNLZR](../mercury/fnlzr.md) -- the post-link finalizer that uses capability mask checks
-- [SM 100--121 Targets](sm100-blackwell.md) -- per-architecture details for the Blackwell family
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- embedded ptxas dispatch tables for per-SM codegen
+- [Architecture Profiles](arch-profiles.md) — the profile database initialization that populates `qword_2A5F8D8`
+- [Cubin Loading](../input/cubin-loading.md) — the full cubin validation path that calls `sub_4878A0` and `sub_426570`
+- [Finalization Phase](../pipeline/finalize.md) — the linker finalization phase that triggers `sub_4709E0`
+- [Versions](../versions.md) — toolkit version numbering, PTX ISA version, and the SM architecture table
+- [Mercury / FNLZR](../mercury/fnlzr.md) — the post-link finalizer that uses capability mask checks
+- [SM 100--121 Targets](sm100-blackwell.md) — per-architecture details for the Blackwell family
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — embedded ptxas dispatch tables for per-SM codegen
 
 ### Sibling Wikis
-- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) -- standalone ptxas target validation and family grouping
-- [cicc: Targets Index](../../cicc/targets/index.html) -- cicc compiler target compatibility definitions
+- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) — standalone ptxas target validation and family grouping
+- [cicc: Targets Index](../../cicc/targets/index.html) — cicc compiler target compatibility definitions

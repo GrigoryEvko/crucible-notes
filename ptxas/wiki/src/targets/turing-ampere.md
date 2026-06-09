@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-SM 75 through SM 88 span two microarchitecture generations that ptxas treats as a contiguous feature band. sm_75 (Turing) is the **default target** for ptxas v13.0.88 -- when `--gpu-name` is omitted, `sub_6784B0` returns `sm_75`. The Ampere targets (sm_80, sm_86, sm_87, sm_88) share generation-7 SASS encoding and add incremental tensor core and async-copy capabilities. sm_89 (Ada Lovelace) is architecturally Ampere-derived internally but is covered in [Ada & Hopper](ada-hopper.md) because it bridges to sm_90 features.
+SM 75 through SM 88 span two microarchitecture generations that ptxas treats as a contiguous feature band. sm_75 (Turing) is the **default target** for ptxas v13.0.88 — when `--gpu-name` is omitted, `sub_6784B0` returns `sm_75`. The Ampere targets (sm_80, sm_86, sm_87, sm_88) share generation-7 SASS encoding and add incremental tensor core and async-copy capabilities. sm_89 (Ada Lovelace) is architecturally Ampere-derived internally but is covered in [Ada & Hopper](ada-hopper.md) because it bridges to sm_90 features.
 
 | | |
 |---|---|
@@ -23,22 +23,22 @@ SM 75 through SM 88 span two microarchitecture generations that ptxas treats as 
 | `sm_80` | GA100 (A100, A30) | Ampere | 800 | 28673 | `0x7001` | 1 (gen 7) |
 | `sm_86` | GA10x (A40, A10, RTX 30xx) | Ampere | 860 | 28674 | `0x7002` | 2 |
 | `sm_87` | GA10B (Jetson Orin) | Ampere | 870 | 28675 | `0x7003` | 3 |
-| `sm_88` | -- (undocumented) | Ampere | 880 | 28676 | `0x7004` | 4 |
+| `sm_88` | — (undocumented) | Ampere | 880 | 28676 | `0x7004` | 4 |
 
 **Codegen factory encoding:** `(isa_generation << 12) | sub_variant`. Turing is generation 6; Ampere is generation 7. The sub-variant distinguishes silicon cut within a generation. sm_75 and Pascal sm_60 share generation 6 (sm_60 = 24576 = `0x6000`), differentiated by sub-variant 0 vs 1.
 
 **sm_88 note:** Registered in ptxas with `CUDA_ARCH=880` and codegen factory 28676, but no public product ships on this SM. It may represent an unreleased Ampere derivative or internal test target.
 
-## SM 82 -- Internal Ampere Target
+## SM 82 — Internal Ampere Target
 
 sm_82 is an undocumented internal Ampere target present in the base validation table (`unk_1D16220`, entry [20]) but **not registered** in the profile constructor `sub_6765E0`. It has no capability dispatch handler, no profile object, and no handler functions in any of the 7 hash maps. It exists in ptxas solely as a validation table entry and as the SASS opcode generation boundary.
 
 | | |
 |---|---|
-| **Validation table entry** | `{82, 6, 2}` -- sm_82, PTX 6.2 |
-| **PTX ISA requirement** | 6.2 (anomalously low -- see below) |
-| **Profile object** | None -- not registered in `sub_6765E0` |
-| **Capability handlers** | None -- not registered in `sub_607DB0` |
+| **Validation table entry** | `{82, 6, 2}` — sm_82, PTX 6.2 |
+| **PTX ISA requirement** | 6.2 (anomalously low — see below) |
+| **Profile object** | None — not registered in `sub_6765E0` |
+| **Capability handlers** | None — not registered in `sub_607DB0` |
 | **SASS opcode role** | `SM82_FIRST` (index 172) through `SM82_LAST` (index 193) |
 
 ### PTX 6.2 Anomaly
@@ -49,10 +49,10 @@ sm_82 requires PTX ISA version 6.2, which is **lower** than both its neighbors:
 |---|---|---|
 | sm_75 | 6.3 | CUDA 10.0 |
 | sm_80 | 7.0 | CUDA 11.0 |
-| **sm_82** | **6.2** | -- |
+| **sm_82** | **6.2** | — |
 | sm_86 | 7.1 | CUDA 11.1 |
 
-PTX 6.2 corresponds to CUDA 10.1 (Turing era). This backward version number strongly suggests sm_82 was created as an early Ampere development target -- a PTX-level placeholder added before the Ampere PTX ISA (7.0) was defined. The validation table entry was never removed, but no profile object was ever created for it.
+PTX 6.2 corresponds to CUDA 10.1 (Turing era). This backward version number strongly suggests sm_82 was created as an early Ampere development target — a PTX-level placeholder added before the Ampere PTX ISA (7.0) was defined. The validation table entry was never removed, but no profile object was ever created for it.
 
 ### SASS Opcode Boundary Role
 
@@ -144,7 +144,7 @@ bool handler_B(int64_t a1, int64_t a2) {
 }
 ```
 
-The `"cpf_optx"` option controls OptiX IR compilation mode. `sub_663C30` is the core codegen-factory-aware driver that delegates to `sub_662920` (ELF section iteration, 26KB) and `sub_7FBB70` (actual compilation pass). The only behavioral difference between Handler A and Handler B: when called as Handler A (arg=0), `sub_663C30` sets `*(a1 + 96) = 1` before processing -- likely a "primary pass" flag.
+The `"cpf_optx"` option controls OptiX IR compilation mode. `sub_663C30` is the core codegen-factory-aware driver that delegates to `sub_662920` (ELF section iteration, 26KB) and `sub_7FBB70` (actual compilation pass). The only behavioral difference between Handler A and Handler B: when called as Handler A (arg=0), `sub_663C30` sets `*(a1 + 96) = 1` before processing — likely a "primary pass" flag.
 
 ### Map 3 (Intrinsic Table Initializer)
 
@@ -301,7 +301,7 @@ Extended MMA shapes and sparse variants for the 2nd/3rd generation tensor core.
 
 ### Intrinsic Gate Mechanism
 
-The per-SM intrinsic table initializer (Map 3 handler) controls which intrinsics are available. sm_75 registers only the sm_70 intrinsic block. sm_80+ additionally registers the sm_80 and sm_8x blocks. The gate is not a runtime check -- it is a registration-time decision: if the intrinsic's handler function is not registered for a given SM, the PTX parser emits an error when it encounters a call to that intrinsic.
+The per-SM intrinsic table initializer (Map 3 handler) controls which intrinsics are available. sm_75 registers only the sm_70 intrinsic block. sm_80+ additionally registers the sm_80 and sm_8x blocks. The gate is not a runtime check — it is a registration-time decision: if the intrinsic's handler function is not registered for a given SM, the PTX parser emits an error when it encounters a call to that intrinsic.
 
 ## Peephole Optimizer Gates
 
@@ -339,7 +339,7 @@ The basic block initializer `sub_6E8EB0` sets architecture-specific flags using 
 | 20480 | 0x5000 | bits 1, 8 | sm_80 encoding space |
 | 20484 | 0x5004 | bits 16, 64 | sm_84 encoding space |
 
-This secondary encoding uses `(gen << 12)` with generation 5 for Ampere in the BB init context. The specific bit flags control opcode descriptor table population -- each BB gets a set of 40+ `(opcode_id, encoding_word)` pairs that define which SASS instructions are legal in that basic block.
+This secondary encoding uses `(gen << 12)` with generation 5 for Ampere in the BB init context. The specific bit flags control opcode descriptor table population — each BB gets a set of 40+ `(opcode_id, encoding_word)` pairs that define which SASS instructions are legal in that basic block.
 
 ## Feature Comparison
 
@@ -348,12 +348,12 @@ This secondary encoding uses `(gen << 12)` with generation 5 for Ampere in the B
 | ISA generation | 6 | 7 | 7 | 7 | 7 |
 | Codegen factory | 24577 | 28673 | 28674 | 28675 | 28676 |
 | WMMA (1st gen TC) | Yes | Yes | Yes | Yes | Yes |
-| MMA bf16/tf32 (2nd gen TC) | -- | Yes | Yes | Yes | Yes |
-| MMA s4/s8/b1 extended | -- | Yes | Yes | Yes | Yes |
-| `createpolicy` (L2 cache) | -- | Yes | Yes | Yes | Yes |
-| `cp.async` (async copy) | -- | Yes | Yes | Yes | Yes |
-| sm_8x MMA intrinsics (39) | -- | Yes | Yes | Yes | Yes |
-| FMA/DFMA peephole combining | -- | -- | Yes | Yes | Yes |
+| MMA bf16/tf32 (2nd gen TC) | — | Yes | Yes | Yes | Yes |
+| MMA s4/s8/b1 extended | — | Yes | Yes | Yes | Yes |
+| `createpolicy` (L2 cache) | — | Yes | Yes | Yes | Yes |
+| `cp.async` (async copy) | — | Yes | Yes | Yes | Yes |
+| sm_8x MMA intrinsics (39) | — | Yes | Yes | Yes | Yes |
+| FMA/DFMA peephole combining | — | — | Yes | Yes | Yes |
 | Scheduler: warps / slots | 7/208 | 7/208 | 7/208 | 7/208 | 7/208 |
 | Sub-arch variant | default | default | 2 | 3 | 4 |
 | Separate HW latency table | Yes | Yes (2) | Yes | Yes | ? |
@@ -361,7 +361,7 @@ This secondary encoding uses `(gen << 12)` with generation 5 for Ampere in the B
 
 ## Hardware Resource Geometry
 
-Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md -- Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
+Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md — Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
 
 | SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
 |---|---|---|---|---|---|---|---|---|---|
@@ -439,11 +439,11 @@ The `>> 12` shift extracts the ISA generation, allowing coarse checks (Turing = 
 
 ## Cross-References
 
-- [SM Architecture Map](index.md) -- Overview of all 23 SM targets and the 3-level profile system
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) -- sm_89 (Ada) shares Ampere codegen factory range but bridges to Hopper features
-- [Blackwell (SM 100--121)](blackwell.md) -- Next-generation targets with codegen factory 36864+
-- [Intrinsic Table (608 Entries)](../intrinsics/index.md) -- Full intrinsic catalog with per-SM generation ranges
-- [SASS Instruction Encoding](../codegen/encoding.md) -- 128-bit encoding format, bitfield packer, opcode hierarchy
-- [Peephole Optimization](../codegen/peephole.md) -- FMA combining and other post-scheduling SASS transforms
-- [3-Phase Scheduler Architecture](../scheduling/overview.md) -- Scheduler infrastructure that consumes HW latency tables
-- [CLI Options](../config/cli-options.md) -- `--gpu-name` parsing, `sm_75` default
+- [SM Architecture Map](index.md) — Overview of all 23 SM targets and the 3-level profile system
+- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — sm_89 (Ada) shares Ampere codegen factory range but bridges to Hopper features
+- [Blackwell (SM 100--121)](blackwell.md) — Next-generation targets with codegen factory 36864+
+- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Full intrinsic catalog with per-SM generation ranges
+- [SASS Instruction Encoding](../codegen/encoding.md) — 128-bit encoding format, bitfield packer, opcode hierarchy
+- [Peephole Optimization](../codegen/peephole.md) — FMA combining and other post-scheduling SASS transforms
+- [3-Phase Scheduler Architecture](../scheduling/overview.md) — Scheduler infrastructure that consumes HW latency tables
+- [CLI Options](../config/cli-options.md) — `--gpu-name` parsing, `sm_75` default

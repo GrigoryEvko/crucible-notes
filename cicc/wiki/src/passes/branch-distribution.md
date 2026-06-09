@@ -98,14 +98,14 @@ When a sync is removed, the pass calls `sub_15F20C0` to delete it from the IR, t
 
 ### Special Cases
 
-Barrier variants that carry data -- `__syncthreads_count`, `__syncthreads_and`, `__syncthreads_or` (intrinsic IDs 3734--3736) -- are explicitly excluded from removal. Their return values encode lane participation information, so they cannot be elided even when no memory hazard exists.
+Barrier variants that carry data — `__syncthreads_count`, `__syncthreads_and`, `__syncthreads_or` (intrinsic IDs 3734--3736) — are explicitly excluded from removal. Their return values encode lane participation information, so they cannot be elided even when no memory hazard exists.
 
 ## Address Space Filtering
 
 The pass only considers memory accesses to shared and global address spaces as relevant for synchronization. The address space check in `sub_1C45690`:
 
-- Address space IDs <= `0x1FF` (511) or in the `0x300` range: considered **local/private** -- do not require synchronization.
-- Address space IDs > 511 and not in the `0x3xx` range: considered **shared/global** -- these are the accesses that justify keeping a barrier.
+- Address space IDs <= `0x1FF` (511) or in the `0x300` range: considered **local/private** — do not require synchronization.
+- Address space IDs > 511 and not in the `0x3xx` range: considered **shared/global** — these are the accesses that justify keeping a barrier.
 
 This distinction is critical: local memory is per-thread and never visible to other threads in the warp, so barriers protecting only local accesses are always dead.
 
@@ -121,7 +121,7 @@ Two predicates classify synchronization-related intrinsics:
 | 3718--3720 | `barrier.sync` / `bar.warp.sync` variants |
 | 3731--3736 | `__syncthreads_count/and/or`, `bar.arrive` |
 
-**`sub_1C30240` (is-fence-intrinsic):** Returns true for IDs 4046 and 4242, which are memory fence/membar intrinsics. These are excluded from the sync test -- they impose memory ordering but are not full barriers that can be elided by this pass.
+**`sub_1C30240` (is-fence-intrinsic):** Returns true for IDs 4046 and 4242, which are memory fence/membar intrinsics. These are excluded from the sync test — they impose memory ordering but are not full barriers that can be elided by this pass.
 
 ## Configuration Knobs
 
@@ -177,22 +177,22 @@ All maps are `std::map`-like red-black trees with 48-byte nodes (left/right/pare
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `0x1C47810` | 2357L | Core algorithm: classify + propagate + remove |
-| -- | `0x1C49D10` | 179L | Pass wrapper: init state, call core, cleanup |
-| -- | `0x1C46330` | 197L | Phase 1: forward/backward instruction scan |
-| -- | `0x1C46620` | 1157L | Phase 2: CFG successor propagation (fixed-point) |
-| -- | `0x1C45690` | 117L | Instruction classifier: determines R/W flags |
-| -- | `0x1C458C0` | 28L | Helper: classify all instructions in a block |
-| -- | `0x1C46280` | 38L | Map insert-or-find (block-level maps) |
-| -- | `0x1C47760` | 37L | Map insert-or-find (instruction-level maps) |
-| -- | `0x1C475C0` | 43L | Map lower_bound lookup |
-| -- | `0x1C47660` | 50L | Map find with hint |
-| -- | `0x1C45B10` | 113L | Map erase operation |
-| -- | `0x1C45C70` | 133L | Tree destructor (recursive free) |
-| -- | `0x1C45940` | 133L | Tree destructor (recursive free, alt type) |
-| -- | `0x1C301F0` | 15L | Is-sync-intrinsic predicate |
-| -- | `0x1C30240` | 13L | Is-fence-intrinsic predicate |
-| -- | `0x563730` | 493L | CLI knob registration (`ctor_525_0`) |
+| — | `0x1C47810` | 2357L | Core algorithm: classify + propagate + remove |
+| — | `0x1C49D10` | 179L | Pass wrapper: init state, call core, cleanup |
+| — | `0x1C46330` | 197L | Phase 1: forward/backward instruction scan |
+| — | `0x1C46620` | 1157L | Phase 2: CFG successor propagation (fixed-point) |
+| — | `0x1C45690` | 117L | Instruction classifier: determines R/W flags |
+| — | `0x1C458C0` | 28L | Helper: classify all instructions in a block |
+| — | `0x1C46280` | 38L | Map insert-or-find (block-level maps) |
+| — | `0x1C47760` | 37L | Map insert-or-find (instruction-level maps) |
+| — | `0x1C475C0` | 43L | Map lower_bound lookup |
+| — | `0x1C47660` | 50L | Map find with hint |
+| — | `0x1C45B10` | 113L | Map erase operation |
+| — | `0x1C45C70` | 133L | Tree destructor (recursive free) |
+| — | `0x1C45940` | 133L | Tree destructor (recursive free, alt type) |
+| — | `0x1C301F0` | 15L | Is-sync-intrinsic predicate |
+| — | `0x1C30240` | 13L | Is-fence-intrinsic predicate |
+| — | `0x563730` | 493L | CLI knob registration (`ctor_525_0`) |
 
 ## Common Pitfalls
 
@@ -210,6 +210,6 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 ## GPU-Specific Motivation
 
-On NVIDIA GPUs, `__syncthreads()` forces all threads in a thread block to reach the barrier before any can proceed. This is one of the most expensive control flow operations in CUDA -- it serializes warp execution and creates a pipeline stall. In practice, CUDA programmers insert barriers conservatively (every shared memory access pattern gets a barrier "just in case"), leading to significant over-synchronization. This pass recovers the performance lost to unnecessary barriers by proving, through static dataflow analysis, that specific barriers protect no actual memory hazard.
+On NVIDIA GPUs, `__syncthreads()` forces all threads in a thread block to reach the barrier before any can proceed. This is one of the most expensive control flow operations in CUDA — it serializes warp execution and creates a pipeline stall. In practice, CUDA programmers insert barriers conservatively (every shared memory access pattern gets a barrier "just in case"), leading to significant over-synchronization. This pass recovers the performance lost to unnecessary barriers by proving, through static dataflow analysis, that specific barriers protect no actual memory hazard.
 
 The `ignore-variance-cond` knob connects to warp divergence analysis: when a branch condition is provably uniform (all lanes take the same path), synchronization across that branch is trivially unnecessary regardless of memory access patterns. This is a common case in well-structured CUDA code where control flow depends on `blockIdx` or compile-time constants.

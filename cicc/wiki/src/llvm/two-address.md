@@ -4,7 +4,7 @@
 >
 > **LLVM version note:** Structurally identical to LLVM 20.0.0 `TwoAddressInstructionPass.cpp`. NVIDIA extensions are limited to deeper `EXTRACT_SUBREG` handling for multi-register results (texture/tensor/warp ops), extended `LiveVariables` maintenance, `OptimizationRemarkEmitter` integration, and the standard `optnone`/fast-compile gate.
 
-The TwoAddressInstruction pass converts three-address `MachineInstr`s into two-address form by inserting `COPY` pseudo-instructions so that tied operand constraints are satisfied before register allocation. In upstream LLVM, many CPU targets have instructions where one source operand must be the same physical register as the destination (x86 `addl %esi, %edi` means `%edi = %edi + %esi`); the pass rewrites `A = B op C` into `A = COPY B; A op= C`. On NVPTX this pass is largely a formality -- PTX instructions are three-address and the virtual register file has no physical-register constraints -- but it still performs essential bookkeeping: eliminating `REG_SEQUENCE` and `INSERT_SUBREG` pseudo-instructions, building copy-equivalence maps for downstream coalescing, and handling the tied operands that arise from multi-result NVPTX intrinsics (texture loads, tensor core operations, warp-level collectives). CICC's binary is structurally identical to stock LLVM, with extended `EXTRACT_SUBREG` handling for multi-register results, deeper `LiveVariables` maintenance, `OptimizationRemarkEmitter` integration, and the standard NVIDIA `optnone`/fast-compile gate.
+The TwoAddressInstruction pass converts three-address `MachineInstr`s into two-address form by inserting `COPY` pseudo-instructions so that tied operand constraints are satisfied before register allocation. In upstream LLVM, many CPU targets have instructions where one source operand must be the same physical register as the destination (x86 `addl %esi, %edi` means `%edi = %edi + %esi`); the pass rewrites `A = B op C` into `A = COPY B; A op= C`. On NVPTX this pass is largely a formality — PTX instructions are three-address and the virtual register file has no physical-register constraints — but it still performs essential bookkeeping: eliminating `REG_SEQUENCE` and `INSERT_SUBREG` pseudo-instructions, building copy-equivalence maps for downstream coalescing, and handling the tied operands that arise from multi-result NVPTX intrinsics (texture loads, tensor core operations, warp-level collectives). CICC's binary is structurally identical to stock LLVM, with extended `EXTRACT_SUBREG` handling for multi-register results, deeper `LiveVariables` maintenance, `OptimizationRemarkEmitter` integration, and the standard NVIDIA `optnone`/fast-compile gate.
 
 | | |
 |---|---|
@@ -14,14 +14,14 @@ The TwoAddressInstruction pass converts three-address `MachineInstr`s into two-a
 | **`runOnMachineFunction`** | `sub_1F53550` (79KB, 2,470 lines) |
 | **`tryInstructionTransform`** | `sub_1F4EF20` (28KB, 1,127 lines) |
 | **`processTiedPairs`** | `sub_1F50270` (63KB, 2,209 lines) |
-| **Cluster address range** | `0x1F4D000` -- `0x1F56000` |
+| **Cluster address range** | `0x1F4D000` — `0x1F56000` |
 | **libNVVM twin** | `sub_F4EA80` (2,455 lines, structurally identical) |
 | **Verification string** | `"After two-address instruction pass"` |
 | **Ordering** | After PHI elimination, before RegisterCoalescer |
 
 ## Why This Pass Exists on NVPTX
 
-PTX is a three-address virtual ISA -- every arithmetic instruction takes separate dst, src0, src1 operands, and the hardware register allocator inside `ptxas` handles physical assignment. On a CPU target like x86, the TwoAddress pass is critical because most ALU instructions destroy one source register. On NVPTX, the pass fires primarily for three categories:
+PTX is a three-address virtual ISA — every arithmetic instruction takes separate dst, src0, src1 operands, and the hardware register allocator inside `ptxas` handles physical assignment. On a CPU target like x86, the TwoAddress pass is critical because most ALU instructions destroy one source register. On NVPTX, the pass fires primarily for three categories:
 
 1. **Pseudo-instruction lowering.** `REG_SEQUENCE`, `INSERT_SUBREG`, and `EXTRACT_SUBREG` are LLVM-internal pseudo-opcodes that must be eliminated before register allocation regardless of target. The TwoAddress pass rewrites `INSERT_SUBREG` into `COPY` and expands `REG_SEQUENCE` into per-subreg copies.
 
@@ -33,7 +33,7 @@ For most ordinary NVPTX arithmetic instructions, `collectTiedOperands` finds not
 
 ## Algorithm
 
-The pass iterates over every `MachineBasicBlock` and every `MachineInstr` within it, maintaining per-block data structures that are cleared at block boundaries. The C-level skeleton below consolidates the four core paths -- `run()` worklist, `tieOperands()` heuristic, commutativity check, and the post-conversion verifier call -- as reconstructed from `sub_1F53550`, `sub_1F4EF20`, and `sub_1F50270`.
+The pass iterates over every `MachineBasicBlock` and every `MachineInstr` within it, maintaining per-block data structures that are cleared at block boundaries. The C-level skeleton below consolidates the four core paths — `run()` worklist, `tieOperands()` heuristic, commutativity check, and the post-conversion verifier call — as reconstructed from `sub_1F53550`, `sub_1F4EF20`, and `sub_1F50270`.
 
 ```c
 /* sub_1F53550: TwoAddressInstructionPass::runOnMachineFunction */
@@ -168,11 +168,11 @@ for each MBB in MF:
             rewrite descriptor to COPY
 ```
 
-> **QUIRK -- Dead 3-address conversion still runs.** `tryInstructionTransform` step 2 calls `TII->convertToThreeAddress()` on every tied instruction, but the NVPTX `TargetInstrInfo` does not override this hook so it always returns `nullptr`. PTX is already a 3-address ISA; nevertheless the call survives because the pass is shared LLVM source. Each tied instruction therefore pays the cost of a virtual dispatch and a null check on a path that cannot succeed.
+> **QUIRK — Dead 3-address conversion still runs.** `tryInstructionTransform` step 2 calls `TII->convertToThreeAddress()` on every tied instruction, but the NVPTX `TargetInstrInfo` does not override this hook so it always returns `nullptr`. PTX is already a 3-address ISA; nevertheless the call survives because the pass is shared LLVM source. Each tied instruction therefore pays the cost of a virtual dispatch and a null check on a path that cannot succeed.
 
-> **QUIRK -- Verifier always runs.** Upstream LLVM gates `MachineFunction::verify("After two-address instruction pass")` on the `-verify-machineinstrs` flag. The CICC binary issues the verifier call unconditionally (`sub_1E926D0` is reached on every `runOnMachineFunction` exit). This catches stale `LiveVariables` state from the deep EXTRACT_SUBREG decomposition early but adds a full machine-function walk to every compilation, including `optnone` builds.
+> **QUIRK — Verifier always runs.** Upstream LLVM gates `MachineFunction::verify("After two-address instruction pass")` on the `-verify-machineinstrs` flag. The CICC binary issues the verifier call unconditionally (`sub_1E926D0` is reached on every `runOnMachineFunction` exit). This catches stale `LiveVariables` state from the deep EXTRACT_SUBREG decomposition early but adds a full machine-function walk to every compilation, including `optnone` builds.
 
-> **QUIRK -- Recursive self-call on unfolded chains.** `sub_1F4EF20` appears in its own xref list (22 cross-references including the self-edge). When load unfolding (step 4) creates a new MachineInstr that itself carries tied operands, the function recurses into the same body to resolve the new tie. On NVPTX this branch is unreachable because no folded loads exist, but the recursion frame and tail call are still emitted, contributing to the 28 KB function size.
+> **QUIRK — Recursive self-call on unfolded chains.** `sub_1F4EF20` appears in its own xref list (22 cross-references including the self-edge). When load unfolding (step 4) creates a new MachineInstr that itself carries tied operands, the function recurses into the same body to resolve the new tie. On NVPTX this branch is unreachable because no folded loads exist, but the recursion frame and tail call are still emitted, contributing to the 28 KB function size.
 
 ### tryInstructionTransform (sub\_1F4EF20)
 
@@ -180,7 +180,7 @@ This is the optimization core. When `OptLevel != None`, it attempts to satisfy a
 
 1. **Commutation.** If swapping operands makes src match dst, commute the instruction via `TII->commuteInstruction()`. On NVPTX, most arithmetic instructions are commutative, so this is the most frequent success path. Upstream uses `isProfitableToCommute()` which walks up to `MaxDataFlowEdge` (default 3) dataflow edges to evaluate benefit.
 
-2. **3-address conversion.** Call `TII->convertToThreeAddress()` to produce a true three-operand form. On NVPTX this is essentially dead code -- PTX instructions are already three-address -- but the infrastructure exists because the pass is shared LLVM code.
+2. **3-address conversion.** Call `TII->convertToThreeAddress()` to produce a true three-operand form. On NVPTX this is essentially dead code — PTX instructions are already three-address — but the infrastructure exists because the pass is shared LLVM code.
 
 3. **Rescheduling.** When `twoaddr-reschedule` is enabled (default `true`), attempt to move the kill of the source register closer to the current instruction (`rescheduleMIBelowKill`) or move the current instruction below the kill (`rescheduleKillAboveMI`). This can eliminate the need for a copy by making the source register die at the tied use.
 
@@ -188,7 +188,7 @@ This is the optimization core. When `OptLevel != None`, it attempts to satisfy a
 
 5. **COPY insertion.** If all optimization attempts fail, fall through to `processTiedPairs` which inserts an explicit `COPY`.
 
-The function calls itself recursively (22 cross-references including a recursive self-call at `sub_1F4EF20`) for transitive constraint resolution -- when unfolding creates a new instruction that itself has tied operands, the resolution recurses.
+The function calls itself recursively (22 cross-references including a recursive self-call at `sub_1F4EF20`) for transitive constraint resolution — when unfolding creates a new instruction that itself has tied operands, the resolution recurses.
 
 ## EXTRACT\_SUBREG Multi-Result Decomposition Algorithm
 
@@ -196,7 +196,7 @@ This is the most substantial NVIDIA extension to the upstream pass. The code liv
 
 ### Why Multi-Result EXTRACT\_SUBREG Exists
 
-When `InstrEmitter::EmitNode` (`sub_2EDDF20`, 872-byte stack frame, self-recursive for multi-result SDNode chains) lowers a multi-result NVPTX intrinsic, it produces a single `MachineInstr` with opcode 14 (`EXTRACT_SUBREG`) carrying N operand pairs -- one per result component. Each pair contains a def register (the extracted component destination) and a use register (the source super-register) plus a subreg index encoding which component to extract. The TwoAddress pass must decompose this single multi-operand pseudo into N separate `COPY` instructions.
+When `InstrEmitter::EmitNode` (`sub_2EDDF20`, 872-byte stack frame, self-recursive for multi-result SDNode chains) lowers a multi-result NVPTX intrinsic, it produces a single `MachineInstr` with opcode 14 (`EXTRACT_SUBREG`) carrying N operand pairs — one per result component. Each pair contains a def register (the extracted component destination) and a use register (the source super-register) plus a subreg index encoding which component to extract. The TwoAddress pass must decompose this single multi-operand pseudo into N separate `COPY` instructions.
 
 The three major producer categories:
 
@@ -385,9 +385,9 @@ If the type size is a power-of-2 and 64 bits or less, it may insert a bitcast to
 ### Stage 2: DAG-Level Tied Resolution (sub\_2079C70)
 
 `SelectionDAGBuilder::visitInlineAsm` (`sub_2079C70`, 83KB) uses:
-- `sub_20B4290`: `hasTiedOperand()` -- checks if tied index is not -1
-- `sub_20B42B0`: `getTiedOperand()` -- returns the tied index
-- `sub_2045250`: `resolveTiedOperand()` -- creates the DAG-level constraint
+- `sub_20B4290`: `hasTiedOperand()` — checks if tied index is not -1
+- `sub_20B42B0`: `getTiedOperand()` — returns the tied index
+- `sub_2045250`: `resolveTiedOperand()` — creates the DAG-level constraint
 
 The error string `"inline asm not supported yet: don't know how to handle tied indirect register inputs"` guards against the unsupported case of tied operands on memory-indirect inline asm operands.
 
@@ -596,7 +596,7 @@ The special-case path at the `isTied(secondary)` check (bit 0 of byte +4) handle
 
 ## NVIDIA Modifications
 
-The pass is structurally stock LLVM -- the libNVVM build at `sub_F4EA80` is byte-for-byte identical in structure, confirming shared source. The NVIDIA delta consists of four additions:
+The pass is structurally stock LLVM — the libNVVM build at `sub_F4EA80` is byte-for-byte identical in structure, confirming shared source. The NVIDIA delta consists of four additions:
 
 1. **Extended EXTRACT_SUBREG handling** (lines 821--994 of the decompilation). Standard LLVM handles single EXTRACT_SUBREG; the NVPTX version handles multi-result instructions with multiple extract chains via stride-2 operand iteration. This is required for texture/surface loads returning `v4f32`, wmma/mma producing multi-register fragments, and similar multi-result NVPTX intrinsics. The earlyTied optimization (checking bits 4 and 6 of operand flags byte +3) is unique to this extension and provides direct coalescing hints for contiguous sub-register sequences.
 
@@ -623,8 +623,8 @@ The `optnone`/fast-compile gate is not a knob per se but has the effect of disab
 |---|---|---|---|
 | Pass registration (name + ID) | `sub_1F4D900` | small | Sets `"Two-Address instruction pass"` and `"twoaddressinstruction"` |
 | Constructor | `sub_1F4D9F0` | small |  |
-| Helper: rescheduleMIBelowKill support | `sub_1F4CC10` | -- | Called by `sub_1F4EF20` |
-| Helper: rescheduleKillAboveMI support | `sub_1F4D060` | -- | Called by `sub_1F4EF20` |
+| Helper: rescheduleMIBelowKill support | `sub_1F4CC10` | — | Called by `sub_1F4EF20` |
+| Helper: rescheduleKillAboveMI support | `sub_1F4D060` | — | Called by `sub_1F4EF20` |
 | `SmallPtrSet::contains(MI*)` | `sub_1F4DD40` | 67 lines | Processed set membership check |
 | `SmallDenseMap::clear()` | `sub_1F4DE20` | 180 lines | TiedOperandMap cleanup, frees heap-allocated pair lists |
 | `DenseMap<int,int>::insert` | `sub_1F4E3A0` | 166 lines | EqClassMap insertion, hash = `37 * key` |
@@ -634,21 +634,21 @@ The `optnone`/fast-compile gate is not a knob per se but has the effect of disab
 | `processTiedPairs` | `sub_1F50270` | 63KB / 2,209 lines | Full pipeline: commute, convert, COPY insertion, LV/LI update |
 | `SmallDenseMap::grow` | `sub_1F53020` | 312 lines | TiedOperandMap rehash, 56-byte entry stride |
 | `runOnMachineFunction` | `sub_1F53550` | 79KB / 2,470 lines | Pass entry point |
-| Helper: find matching superclass | `sub_1F3AD60` | -- | Finds register class for tied physical reg constraints |
-| Helper: implicit tied operands | `sub_1F4C460` | -- | Checks if MI has implicit tied operand pairs |
-| Helper: filter/emit remark | `sub_1F4C640` | -- | ORE filtering for copy-insertion diagnostics |
-| `LiveVariables::createNewVarInfo` | `sub_1DBA290` | -- | Allocates VarInfo for new register |
-| `LiveVariables::initVarInfo` | `sub_1DBB110` | -- | Initializes kill/def lists and alive bitvector |
-| `VarInfo::findKill` | `sub_1DB3C70` | -- | Scans block for register kill point |
-| `VarInfo::addKill` / `removeKill` | `sub_1DB4410` | -- | Updates kill tracking |
-| `VarInfo::addNewBlock` | `sub_1DB8610` | -- | Updates block-level liveness bitvectors |
-| `LiveVariables::HandlePhysRegDef` | `sub_1DBF6C0` | -- | Transfer liveness from old MI to new COPY |
-| `ORE::emit` (copy remark) | `sub_1DCCCA0` | -- | Emits optimization remark for COPY insertion |
-| `ORE::lookup` | `sub_1DCC790` | -- | Looks up remark data for register |
-| `ORE::push` | `sub_1DCBB50` | -- | Pushes remark to output |
-| `ORE::appendToList` | `sub_1DCC370` | -- | Appends remark (bundle-aware) |
-| `MachineFunction::verify` | `sub_1E926D0` | -- | Called with `"After two-address instruction pass"` |
-| `isOptNone` / fast-compile check | `sub_1636880` | -- | Forces `OptLevel = 0` when active |
+| Helper: find matching superclass | `sub_1F3AD60` | — | Finds register class for tied physical reg constraints |
+| Helper: implicit tied operands | `sub_1F4C460` | — | Checks if MI has implicit tied operand pairs |
+| Helper: filter/emit remark | `sub_1F4C640` | — | ORE filtering for copy-insertion diagnostics |
+| `LiveVariables::createNewVarInfo` | `sub_1DBA290` | — | Allocates VarInfo for new register |
+| `LiveVariables::initVarInfo` | `sub_1DBB110` | — | Initializes kill/def lists and alive bitvector |
+| `VarInfo::findKill` | `sub_1DB3C70` | — | Scans block for register kill point |
+| `VarInfo::addKill` / `removeKill` | `sub_1DB4410` | — | Updates kill tracking |
+| `VarInfo::addNewBlock` | `sub_1DB8610` | — | Updates block-level liveness bitvectors |
+| `LiveVariables::HandlePhysRegDef` | `sub_1DBF6C0` | — | Transfer liveness from old MI to new COPY |
+| `ORE::emit` (copy remark) | `sub_1DCCCA0` | — | Emits optimization remark for COPY insertion |
+| `ORE::lookup` | `sub_1DCC790` | — | Looks up remark data for register |
+| `ORE::push` | `sub_1DCBB50` | — | Pushes remark to output |
+| `ORE::appendToList` | `sub_1DCC370` | — | Appends remark (bundle-aware) |
+| `MachineFunction::verify` | `sub_1E926D0` | — | Called with `"After two-address instruction pass"` |
+| `isOptNone` / fast-compile check | `sub_1636880` | — | Forces `OptLevel = 0` when active |
 
 ## Binary Size Note
 
@@ -667,15 +667,15 @@ The 79KB `runOnMachineFunction` plus 63KB `processTiedPairs` plus 28KB `tryInstr
 
 ## Cross-References
 
-- [Register Coalescing](./register-coalescing.md) -- runs immediately after TwoAddress; consumes the SrcEqClassMap/DstEqClassMap built here
-- [Register Allocation](./register-allocation.md) -- the downstream consumer that requires tied operands to be resolved
-- [SelectionDAG](./selectiondag.md) -- produces the EXTRACT_SUBREG/INSERT_SUBREG/REG_SEQUENCE pseudo-instructions that this pass eliminates
-- [Instruction Emitter](./instr-emitter.md) -- `sub_2EDDF20` creates multi-result EXTRACT_SUBREG chains from SDNode output
-- [MMA Code Generation](./mma-codegen.md) -- WMMA/MMA intrinsics producing multi-register results that require decomposition
-- [ISel Patterns](./isel-patterns.md) -- instruction selection creates the tied operand constraints
-- [Instruction Scheduling](./scheduling.md) -- runs before TwoAddress in the pre-RA scheduling slot
-- [Pipeline & Ordering](./pipeline.md) -- full pass ordering context
-- [CLI Flags](../config/cli-flags.md) -- `optnone` and fast-compile mode
-- [LLVM Knobs](../config/knobs.md) -- `twoaddr-reschedule`, `dataflow-edge-limit`
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- DenseMap and SmallDenseMap internals used throughout
-- [Diagnostics](../infra/diagnostics.md) -- OptimizationRemarkEmitter system
+- [Register Coalescing](./register-coalescing.md) — runs immediately after TwoAddress; consumes the SrcEqClassMap/DstEqClassMap built here
+- [Register Allocation](./register-allocation.md) — the downstream consumer that requires tied operands to be resolved
+- [SelectionDAG](./selectiondag.md) — produces the EXTRACT_SUBREG/INSERT_SUBREG/REG_SEQUENCE pseudo-instructions that this pass eliminates
+- [Instruction Emitter](./instr-emitter.md) — `sub_2EDDF20` creates multi-result EXTRACT_SUBREG chains from SDNode output
+- [MMA Code Generation](./mma-codegen.md) — WMMA/MMA intrinsics producing multi-register results that require decomposition
+- [ISel Patterns](./isel-patterns.md) — instruction selection creates the tied operand constraints
+- [Instruction Scheduling](./scheduling.md) — runs before TwoAddress in the pre-RA scheduling slot
+- [Pipeline & Ordering](./pipeline.md) — full pass ordering context
+- [CLI Flags](../config/cli-flags.md) — `optnone` and fast-compile mode
+- [LLVM Knobs](../config/knobs.md) — `twoaddr-reschedule`, `dataflow-edge-limit`
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — DenseMap and SmallDenseMap internals used throughout
+- [Diagnostics](../infra/diagnostics.md) — OptimizationRemarkEmitter system

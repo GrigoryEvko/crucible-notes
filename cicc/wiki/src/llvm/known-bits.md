@@ -2,7 +2,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-NVIDIA's KnownBits and DemandedBits infrastructure in cicc v13.0 diverges from upstream LLVM in three structural ways. First, the two analyses are fused into a single 127 KB function (`sub_11A7600`) that simultaneously computes known-zero/known-one bitmasks and simplifies instructions whose demanded bits allow constant folding or narrowing -- upstream LLVM separates `computeKnownBits` (in ValueTracking) from `SimplifyDemandedBits` (in InstCombine). Second, a dedicated GPU-specific known-bits oracle (`sub_F0C4B0`) provides range constraints for NVIDIA special registers (`%tid`, `%ntid`, `%ctaid`, `%nctaid`, `%warpsize`, `%laneid`) that have no CPU equivalent. Third, an early NVVM pipeline pass (`nvvm-intr-range` at `sub_216F4B0`) attaches `!range` metadata to every special-register read intrinsic, giving downstream analyses the same bounded-range information that CPU targets only get from profile data or programmer assertions. Together these form the primary dataflow backbone for address calculation optimization, type narrowing, and dead-bit elimination in GPU kernels.
+NVIDIA's KnownBits and DemandedBits infrastructure in cicc v13.0 diverges from upstream LLVM in three structural ways. First, the two analyses are fused into a single 127 KB function (`sub_11A7600`) that simultaneously computes known-zero/known-one bitmasks and simplifies instructions whose demanded bits allow constant folding or narrowing — upstream LLVM separates `computeKnownBits` (in ValueTracking) from `SimplifyDemandedBits` (in InstCombine). Second, a dedicated GPU-specific known-bits oracle (`sub_F0C4B0`) provides range constraints for NVIDIA special registers (`%tid`, `%ntid`, `%ctaid`, `%nctaid`, `%warpsize`, `%laneid`) that have no CPU equivalent. Third, an early NVVM pipeline pass (`nvvm-intr-range` at `sub_216F4B0`) attaches `!range` metadata to every special-register read intrinsic, giving downstream analyses the same bounded-range information that CPU targets only get from profile data or programmer assertions. Together these form the primary dataflow backbone for address calculation optimization, type narrowing, and dead-bit elimination in GPU kernels.
 
 | | |
 |---|---|
@@ -379,8 +379,8 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 
 | Function | Address | Size |
 |---|---|---|
-| `computeKnownBitsAndSimplify` -- merged main analysis | `sub_11A7600` | 127 KB |
-| `SimplifyDemandedBitsHelper` -- binary arithmetic subset | `sub_11A1430` | 6.3 KB |
+| `computeKnownBitsAndSimplify` — merged main analysis | `sub_11A7600` | 127 KB |
+| `SimplifyDemandedBitsHelper` — binary arithmetic subset | `sub_11A1430` | 6.3 KB |
 | Per-operand demand propagation trampoline (depth check) | `sub_11AE940` | varies |
 | SimplifyDemandedBits entry wrapper (allocates APInts) | `sub_11AE870` | thin |
 | SimplifyDemandedBits result caching (hash table at IC+2064) | `sub_11AE3E0` | 235 lines |
@@ -396,7 +396,7 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 | Extract return range bounds from range analysis result | `sub_11A1390` | varies |
 | `getPointerAlignmentBits` (alignment-derived known zeros) | `sub_BD5420` | varies |
 | `isDemandedBitsFullyKnown` (demand subset-of known) | `sub_10024C0` | varies |
-| `NVVMIntrRange` pass -- attaches `!range` metadata | `sub_216F4B0` | varies |
+| `NVVMIntrRange` pass — attaches `!range` metadata | `sub_216F4B0` | varies |
 
 ### SelectionDAG-Level Known-Bits
 
@@ -436,7 +436,7 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 
 | Function | Address |
 |---|---|
-| `APInt(width, 0)` -- zero-init constructor (heap for width > 64) | `sub_C43690` |
+| `APInt(width, 0)` — zero-init constructor (heap for width > 64) | `sub_C43690` |
 | `APInt` copy constructor | `sub_C43780` |
 | `APInt::operator&=` | `sub_C43B90` |
 | `APInt::operator\ | `sub_C43BD0` |
@@ -450,7 +450,7 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 | `APInt::countPopulation` | `sub_C44630` |
 | `APInt::isSubsetOf(other)` | `sub_C446F0` |
 | `APInt::reverseBits` / `byteSwap` | `sub_C44AB0` |
-| `ConstantInt::get(type, APInt)` -- creates constant replacement | `sub_AD6220` |
+| `ConstantInt::get(type, APInt)` — creates constant replacement | `sub_AD6220` |
 | `ConstantInt::get(type, value, isSigned)` | `sub_AD64C0` |
 
 ## Differences from Upstream LLVM
@@ -467,8 +467,8 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 
 ## Cross-References
 
-- [InstCombine](instcombine.md) -- The primary consumer of KnownBits analysis; `sub_11AE870` is called from the binary operator visitor's Phase 0
-- [SelectionDAG](selectiondag.md) -- DAG-level known-bits at `sub_33D4EF0` feeds into DAGCombine and instruction selection pattern matching
-- [Loop Strength Reduction](lsr.md) -- LSR interacts with shared-memory known-bits through the `lsr-no-ptr-address-space3` knob that disables LSR for 32-bit shared memory pointers
-- GVN -- `sub_9AC330` (reference computeKnownBits) is also called from GVN to validate value numbering decisions
-- LICM -- Loop-invariant code motion uses known-bits to prove that hoisted expressions are safe (no integer overflow when known-bits constrain the range)
+- [InstCombine](instcombine.md) — The primary consumer of KnownBits analysis; `sub_11AE870` is called from the binary operator visitor's Phase 0
+- [SelectionDAG](selectiondag.md) — DAG-level known-bits at `sub_33D4EF0` feeds into DAGCombine and instruction selection pattern matching
+- [Loop Strength Reduction](lsr.md) — LSR interacts with shared-memory known-bits through the `lsr-no-ptr-address-space3` knob that disables LSR for 32-bit shared memory pointers
+- GVN — `sub_9AC330` (reference computeKnownBits) is also called from GVN to validate value numbering decisions
+- LICM — Loop-invariant code motion uses known-bits to prove that hoisted expressions are safe (no integer overflow when known-bits constrain the range)

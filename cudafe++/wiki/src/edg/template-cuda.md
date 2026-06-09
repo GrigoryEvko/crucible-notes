@@ -1,6 +1,6 @@
 # CUDA Template Restrictions
 
-CUDA's split-compilation model imposes restrictions on C++ templates that have no counterpart in standard C++. When a `__global__` function template is instantiated, cudafe++ generates a host-side stub whose mangled name must exactly match what the device compiler (`cicc`) independently produces. This agreement is only possible if both compilers can derive the complete mangled name from the template's signature and arguments. Types that are invisible to one side -- host-local types, unnamed types, private class members, certain lambda closures -- break this invariant and are therefore rejected. The same constraints apply to variable templates used in device contexts, and additional structural restrictions prevent variadic `__global__` templates from producing ambiguous mangled names. This page documents all 24 CUDA-specific template restriction errors across 8 categories, the implementation functions that enforce them, and the `__NV_name_expr` mechanism that relies on these guarantees.
+CUDA's split-compilation model imposes restrictions on C++ templates that have no counterpart in standard C++. When a `__global__` function template is instantiated, cudafe++ generates a host-side stub whose mangled name must exactly match what the device compiler (`cicc`) independently produces. This agreement is only possible if both compilers can derive the complete mangled name from the template's signature and arguments. Types that are invisible to one side — host-local types, unnamed types, private class members, certain lambda closures — break this invariant and are therefore rejected. The same constraints apply to variable templates used in device contexts, and additional structural restrictions prevent variadic `__global__` templates from producing ambiguous mangled names. This page documents all 24 CUDA-specific template restriction errors across 8 categories, the implementation functions that enforce them, and the `__NV_name_expr` mechanism that relies on these guarantees.
 
 ## Key Facts
 
@@ -26,7 +26,7 @@ The CUDA compilation model splits a single `.cu` source file into two compilatio
 
 2. **Device path**: The same source is compiled by `cicc` into PTX. The device compiler independently instantiates the same templates and produces the device-side function bodies.
 
-At link time, the CUDA runtime matches host stubs to device functions by **mangled name**. Both compilers must produce identical mangled names for every `__global__` template instantiation. This is only possible when all template arguments are types that both compilers can see, name, and mangle identically. A host-only local type, for example, exists only in the host compiler's scope -- `cicc` cannot see it and cannot produce a matching mangled name. The restrictions documented below enforce this invariant.
+At link time, the CUDA runtime matches host stubs to device functions by **mangled name**. Both compilers must produce identical mangled names for every `__global__` template instantiation. This is only possible when all template arguments are types that both compilers can see, name, and mangle identically. A host-only local type, for example, exists only in the host compiler's scope — `cicc` cannot see it and cannot produce a matching mangled name. The restrictions documented below enforce this invariant.
 
 The same logic applies to `__device__`/`__constant__` variable templates, which must also match across the host/device boundary for registration and symbol lookup.
 
@@ -58,7 +58,7 @@ Standard C++ allows multiple parameter packs in a template and does not require 
 
 ### Rationale
 
-The kernel launch wrapper (`<<<grid, block>>>`) must marshal each argument into a contiguous parameter buffer. For a variadic template like `template<typename... Ts> __global__ void kernel(Ts... args)`, the compiler generates the buffer layout at instantiation time. If the pack is not last, or if multiple packs are present, the positional mapping between template parameters and launch arguments becomes ambiguous -- the compiler cannot determine which arguments belong to which pack without full deduction context that may not be available at stub generation time.
+The kernel launch wrapper (`<<<grid, block>>>`) must marshal each argument into a contiguous parameter buffer. For a variadic template like `template<typename... Ts> __global__ void kernel(Ts... args)`, the compiler generates the buffer layout at instantiation time. If the pack is not last, or if multiple packs are present, the positional mapping between template parameters and launch arguments becomes ambiguous — the compiler cannot determine which arguments belong to which pack without full deduction context that may not be available at stub generation time.
 
 ### Example
 
@@ -486,18 +486,18 @@ Category G (`grid_constant_incompat_templ_redecl`) and Category H (`kernel launc
 
 | Address | Identity | Lines | Role |
 |---|---|---|---|
-| `sub_469F80` | `template_arg_is_accessible` | 144 | Primary access checker -- dispatches on arg kind |
+| `sub_469F80` | `template_arg_is_accessible` | 144 | Primary access checker — dispatches on arg kind |
 | `sub_469480` | `cache_access_result_for` | 670 | Hash-cached accessibility analysis |
 | `sub_46A230` | *(walks template arg lists)* | 182 | Iterates entity lookup table for arg lists |
 | `sub_46A5B0` | `arg_before_unnamed_template_param_arg` | 396 | Handles args before unnamed template params |
 | `sub_469F30` | *(scope resolve helper)* | 23 | Resolves scope via `cache_access_result_for` + entity lookup |
-| `sub_46ACC0` | *(scope walk callback)* | -- | Callback passed to IL walker `sub_61FE60` |
-| `sub_467780` | *(access check)* | -- | Checks C++ access control (public/protected/private) |
-| `sub_466F40` | *(output callback)* | -- | Code generation output callback |
-| `sub_5BFC70` | *(pack expansion resolver)* | -- | Resolves pack expansion nodes (kind 3) |
-| `sub_5F9BC0` | *(scope resolver)* | -- | Resolves entity scope chain |
-| `sub_5F9C10` | *(elaborated type resolver)* | -- | Resolves elaborated type specifiers |
-| `sub_7B2260` | *(type equivalence)* | -- | Checks structural type equivalence |
+| `sub_46ACC0` | *(scope walk callback)* | — | Callback passed to IL walker `sub_61FE60` |
+| `sub_467780` | *(access check)* | — | Checks C++ access control (public/protected/private) |
+| `sub_466F40` | *(output callback)* | — | Code generation output callback |
+| `sub_5BFC70` | *(pack expansion resolver)* | — | Resolves pack expansion nodes (kind 3) |
+| `sub_5F9BC0` | *(scope resolver)* | — | Resolves entity scope chain |
+| `sub_5F9C10` | *(elaborated type resolver)* | — | Resolves elaborated type specifiers |
+| `sub_7B2260` | *(type equivalence)* | — | Checks structural type equivalence |
 | `sub_61EC40` | *(init visitor)* | 27 | Initializes IL tree visitor state |
 | `sub_61FE60` | *(walk expression tree)* | 17 | Walks expression tree with callback |
 
@@ -517,12 +517,12 @@ Category G (`grid_constant_incompat_templ_redecl`) and Category H (`kernel launc
 
 ## Cross-References
 
-- [Template Engine](template-engine.md) -- instantiation worklist, fixpoint loop, and the `should_be_instantiated` gate
-- [\_\_global\_\_ Function Attributes](../attributes/global-function.md) -- attribute application and post-validation checks
-- [Kernel Stub Generation](../cuda/kernel-stubs.md) -- host stub emission, `-static-global-template-stub` flag
-- [\_\_grid\_constant\_\_](../attributes/grid-constant.md) -- parameter annotation compatibility in template redeclarations
-- [CUDA Diagnostics](../diagnostics/cuda-errors.md) -- complete error catalog with all 24+ messages
-- [Lambda Device Wrapper](../lambda/device-wrapper.md) -- extended lambda mechanism for closure type template args
-- [Execution Spaces](../cuda/execution-spaces.md) -- host/device/global space model
-- [Backend Pipeline](../pipeline/backend.md) -- initialization of hash tables used by the access checker
-- [Int-C Format](../output/int-c-format.md) -- how the `.int.c` output encodes device symbol registration arrays
+- [Template Engine](template-engine.md) — instantiation worklist, fixpoint loop, and the `should_be_instantiated` gate
+- [\_\_global\_\_ Function Attributes](../attributes/global-function.md) — attribute application and post-validation checks
+- [Kernel Stub Generation](../cuda/kernel-stubs.md) — host stub emission, `-static-global-template-stub` flag
+- [\_\_grid\_constant\_\_](../attributes/grid-constant.md) — parameter annotation compatibility in template redeclarations
+- [CUDA Diagnostics](../diagnostics/cuda-errors.md) — complete error catalog with all 24+ messages
+- [Lambda Device Wrapper](../lambda/device-wrapper.md) — extended lambda mechanism for closure type template args
+- [Execution Spaces](../cuda/execution-spaces.md) — host/device/global space model
+- [Backend Pipeline](../pipeline/backend.md) — initialization of hash tables used by the access checker
+- [Int-C Format](../output/int-c-format.md) — how the `.int.c` output encodes device symbol registration arrays

@@ -1,6 +1,6 @@
 # Tensor Core / MMA Builtins
 
-Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Warp Group MMA (WGMMA) interfaces, spanning IDs 678--770 across four SM generations. Each generation added new data types and matrix shapes, resulting in 91 registered builtins that cover half-precision, integer, binary, double-precision, TF32, BF16, and FP8 matrix operations. SM 100 (Blackwell) adds a fifth generation -- tcgen05 -- documented in [Tensor / MMA Codegen](../llvm/mma-codegen.md).
+Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Warp Group MMA (WGMMA) interfaces, spanning IDs 678--770 across four SM generations. Each generation added new data types and matrix shapes, resulting in 91 registered builtins that cover half-precision, integer, binary, double-precision, TF32, BF16, and FP8 matrix operations. SM 100 (Blackwell) adds a fifth generation — tcgen05 — documented in [Tensor / MMA Codegen](../llvm/mma-codegen.md).
 
 ## Key Facts
 
@@ -21,9 +21,9 @@ Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Wa
 | SM 75 (Turing) | IMMA: INT8/INT4, BMMA: binary | 708--745 | 38 |
 | SM 80 (Ampere) | DMMA: FP64, TF32, BF16 | 746--764 | 19 |
 | SM 90 (Hopper) | WGMMA: warp-group MMA, FP8 | 765--768 | 4 |
-| SM 100 (Blackwell) | tcgen05: MX formats, block-scale, sparsity | (intrinsic path) | -- |
+| SM 100 (Blackwell) | tcgen05: MX formats, block-scale, sparsity | (intrinsic path) | — |
 
-## HMMA -- Half-Precision (IDs 678--707, SM 70+)
+## HMMA — Half-Precision (IDs 678--707, SM 70+)
 
 The original tensor core builtins provide 16-bit floating-point matrix multiply for three tile shapes. Each shape has 10 operations: load A, load B, load C (f16 and f32 accumulators), store C (f16 and f32), and four MMA variants for input/output precision combinations.
 
@@ -48,7 +48,7 @@ Per-shape operations (10 each):
 | `mma_f16f32` | MMA f32->f16 | FP32 accumulator, FP16 output |
 | `mma_f32f32` | MMA f32->f32 | FP32 input and accumulator |
 
-## IMMA -- Integer MMA (IDs 708--739, SM 75+)
+## IMMA — Integer MMA (IDs 708--739, SM 75+)
 
 Integer tensor core operations for INT8 and INT4 data types.
 
@@ -68,7 +68,7 @@ Three shapes (16x16x16, 32x8x16, 8x32x16), each with 8 operations:
 
 Single shape (8x8x32) with the same operation set but `_s4` / `_u4` type suffixes.
 
-## BMMA -- Binary MMA (IDs 740--745, SM 75+)
+## BMMA — Binary MMA (IDs 740--745, SM 75+)
 
 Binary (1-bit) matrix multiply with XOR-POPC and AND-POPC accumulation modes. Single shape: 8x8x128.
 
@@ -85,7 +85,7 @@ Binary (1-bit) matrix multiply with XOR-POPC and AND-POPC accumulation modes. Si
 
 SM 80 (Ampere) added double-precision, TF32, and BF16 tensor operations.
 
-### DMMA -- Double Precision (IDs 746, 751--754)
+### DMMA — Double Precision (IDs 746, 751--754)
 
 | ID | Builtin | Description |
 |---|---|---|
@@ -141,11 +141,11 @@ The number of register-level fragments varies by operation and data type:
 
 The MMA handler (`sub_94E0D0` / `sub_12AC5F0`) processes 5 input operands:
 
-1. **dest_ptr** -- Pointer to output fragment storage
-2. **A_fragment** -- Matrix A input (loaded `v100` times)
-3. **B_fragment** -- Matrix B input (loaded `v95` times)
-4. **C_fragment** -- Accumulator input (loaded `v101` times)
-5. **rowcol** -- Layout operand (validated 0--3 for MMA)
+1. **dest_ptr** — Pointer to output fragment storage
+2. **A_fragment** — Matrix A input (loaded `v100` times)
+3. **B_fragment** — Matrix B input (loaded `v95` times)
+4. **C_fragment** — Accumulator input (loaded `v101` times)
+5. **rowcol** — Layout operand (validated 0--3 for MMA)
 
 An optional **satf** flag (saturation, validated 0--1) is consumed for most intrinsics except ID 8279.
 
@@ -163,7 +163,7 @@ The handler emits the MMA call via `sub_921880` and scatters results back to the
 
 The output fragment count is determined by bit-test: `(0x300C003 >> (intrinsic_id + 127)) & 1` selects 4 vs 8 fragments.
 
-### Architecture Gating -- Exact Thresholds
+### Architecture Gating — Exact Thresholds
 
 The architecture version is stored at `*(target_info + 252)` as a DWORD.
 
@@ -179,7 +179,7 @@ The architecture version is stored at `*(target_info + 252)` as a DWORD.
 
 SM 72 (Xavier) has a unique partial IMMA implementation: only variant 0/1 shapes are supported, with explicit gating that blocks higher variants. This matches hardware reality where Xavier had limited INT8 tensor cores.
 
-## WGMMA -- Warp Group MMA (SM 90+ Hopper)
+## WGMMA — Warp Group MMA (SM 90+ Hopper)
 
 WGMMA operates on an entire warp group (4 warps, 128 threads) rather than a single warp. The system is split across four builtin IDs, 20 auxiliary IDs for fence/store/load operations, and two massive handler blocks totaling ~800 lines of lowering logic.
 
@@ -229,9 +229,9 @@ Decoded entries from local variables v47--v106:
 
 | ID | trans_a | shape | trans_b | a_nregs | b_nregs | A type | B type | C type |
 |---|---|---|---|---|---|---|---|---|
-| 745 | 0 | 1 | 5 | 1 | 1 | i64 | i64 | -- |
+| 745 | 0 | 1 | 5 | 1 | 1 | i64 | i64 | — |
 | 746 | 1 | 0 | 1 | 9 | 9 | i32 | i32 | i32x2 |
-| 747 | 0 | 0 | 25 | 8 | 8 | i16x2 | i16x2 | -- |
+| 747 | 0 | 0 | 25 | 8 | 8 | i16x2 | i16x2 | — |
 | 748 | 0 | 0 | 23 | 7 | 7 | i32x4 | i32x4 | i32x8 |
 | 749 | 0 | 0 | 24 | 7 | 7 | i32x4 | i32x4 | i32x8 |
 | 750 | 0 | 0 | 6 | 7 | 7 | i64 | i32x2 | i32x8 |
@@ -261,11 +261,11 @@ The fence dispatch validates the `rowcol` operand (must be 0--3) and emits a 4-a
 
 | ID | Shape | nregs | Variant | Fragment Type |
 |---|---|---|---|---|
-| 753 | 1 | 9 | 0 | -- |
-| 754 | 1 | 9 | 1 | -- |
+| 753 | 1 | 9 | 0 | — |
+| 754 | 1 | 9 | 1 | — |
 | 755 | 1 | 9 | 2 | i16x2 |
-| 756 | 25 | 8 | 0 | -- |
-| 757 | 25 | 8 | 1 | -- |
+| 756 | 25 | 8 | 0 | — |
+| 757 | 25 | 8 | 1 | — |
 | 758 | 25 | 10 | 2 | i32x8 |
 | 759 | 23 | 7 | 0 | i32x4 |
 | 760 | 23 | 7 | 1 | i32x4 |
@@ -284,7 +284,7 @@ Output packed encoding (`*a4`, 64-bit):
 
 Emits intrinsic 9067 (`llvm.nvvm.wgmma.mma.async`) with 2 type overloads. Arguments: `{constant, B_fragment, rowcol_value, zero_constant}`. Results scattered via `sub_94B940`.
 
-### WGMMA MMA Async Compute -- The 800-Line Handler (IDs 765--768)
+### WGMMA MMA Async Compute — The 800-Line Handler (IDs 765--768)
 
 This is the primary WGMMA lowering path. It lives inline in the mega-switch of `sub_955A70` (NVVM, lines ~2850--3138) and `sub_12B3FD0` (EDG, lines ~2270--3138). The handler implements two completely different intrinsic selection strategies depending on which builtin ID triggered entry.
 
@@ -433,7 +433,7 @@ All constant arguments pass through `sub_620FD0`, which extracts the integer val
 | Constant overflow | `"unexpected constant overflow in __wgmma_mma_async operand"` | Any integer operand overflows extraction (5 occurrences) |
 | N power-of-two | `"N only supported for powers of two"` | `(N & (N - 1)) != 0` and N not in the 33-entry switch |
 | rowcol range (fence) | `"'rowcol' operand can be 0 or 1 only"` | rowcol > 1 for load/store |
-| rowcol range (MMA) | (implicit -- validated 0--3) | rowcol > 3 for MMA operations |
+| rowcol range (MMA) | (implicit — validated 0--3) | rowcol > 3 for MMA operations |
 
 ## WGMMA Support Functions
 
@@ -442,12 +442,12 @@ All constant arguments pass through `sub_620FD0`, which extracts the integer val
 | `sub_953BA0` | 0x953BA0 | `sub_12B1C20` | Fence/commit/wait parameter lookup, builds packed 64-bit encoding |
 | `sub_9547E0` | 0x9547E0 | `sub_12B2E10` | MMA async load parameter lookup, 12-entry red-black tree |
 | `sub_954350` | 0x954350 | `sub_12B27B0` | Store variant parameter lookup |
-| `sub_94B510` | 0x94B510 | -- | Prepare fragment operand for WGMMA call |
+| `sub_94B510` | 0x94B510 | — | Prepare fragment operand for WGMMA call |
 | `sub_94B940` | 0x94B940 | `sub_1280F50` | Scatter MMA results back to fragment outputs |
-| `sub_94B2B0` | 0x94B2B0 | -- | Extract fragment element at index (WMMA shared) |
-| `sub_12A71A0` | 0x12A71A0 | -- | Extract size/dimension from expression type (EDG-only) |
-| `sub_12A6F10` | 0x12A6F10 | -- | Validate constant integer in range (EDG-only) |
-| `sub_620FD0` | 0x620FD0 | -- | Extract constant integer with overflow detection (shared) |
+| `sub_94B2B0` | 0x94B2B0 | — | Extract fragment element at index (WMMA shared) |
+| `sub_12A71A0` | 0x12A71A0 | — | Extract size/dimension from expression type (EDG-only) |
+| `sub_12A6F10` | 0x12A6F10 | — | Validate constant integer in range (EDG-only) |
+| `sub_620FD0` | 0x620FD0 | — | Extract constant integer with overflow detection (shared) |
 
 ## Packed MMA Descriptor Word
 
@@ -565,7 +565,7 @@ Full tcgen05 documentation lives in [Tensor / MMA Codegen](../llvm/mma-codegen.m
 
 | Value | Modifier | Constraint |
 |---|---|---|
-| 1 | `.collector::a::lastuse` | -- |
+| 1 | `.collector::a::lastuse` | — |
 | 2 | `.collector::a::fill` | Cannot combine with `.ashift` |
 | 3 | `.collector::a::use` | Cannot combine with `.ashift` |
 
@@ -613,8 +613,8 @@ The pairs differ only in error reporting (`sub_16BD130` vs `sub_C64ED0`) and ref
 
 ## Cross-References
 
-- [Tensor / MMA Codegen](../llvm/mma-codegen.md) -- backend PTX emission, tcgen05 full detail
-- [NVPTX Opcodes](../reference/nvptx-opcodes.md) -- ISD opcode numbers
-- [SM 90 (Hopper)](../targets/sm90-hopper.md) -- WGMMA architecture context, TMA, cluster
-- [SM 100 (Blackwell)](../targets/sm100-blackwell.md) -- tcgen05 architecture context
-- [Builtin System](./index.md) -- hash table, registration, dispatch architecture
+- [Tensor / MMA Codegen](../llvm/mma-codegen.md) — backend PTX emission, tcgen05 full detail
+- [NVPTX Opcodes](../reference/nvptx-opcodes.md) — ISD opcode numbers
+- [SM 90 (Hopper)](../targets/sm90-hopper.md) — WGMMA architecture context, TMA, cluster
+- [SM 100 (Blackwell)](../targets/sm100-blackwell.md) — tcgen05 architecture context
+- [Builtin System](./index.md) — hash table, registration, dispatch architecture

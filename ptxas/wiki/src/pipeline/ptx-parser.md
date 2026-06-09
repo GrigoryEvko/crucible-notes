@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas front-end parses PTX assembly text into internal IR using a classic two-stage architecture: a Flex-generated DFA scanner (lexer) and a Bison-generated LALR(1) shift-reduce parser. Unlike most compiler front-ends, the parser does **not** construct an AST. Instead, Bison reduction actions directly build IR nodes, populate the instruction table, and emit validation calls -- the parse tree is consumed inline and never materialized as a data structure. A separate macro preprocessor handles `.MACRO`, `.ELSE`/`.ELIF`/`.ENDIF`, and `.INCLUDE` directives at the character level before tokens reach the Flex DFA. The instruction table builder (`sub_46E000`, 93 KB) registers all PTX opcodes with their legal type combinations during parser initialization, and an instruction lookup subsystem classifies operands into 12 categories at parse time.
+The ptxas front-end parses PTX assembly text into internal IR using a classic two-stage architecture: a Flex-generated DFA scanner (lexer) and a Bison-generated LALR(1) shift-reduce parser. Unlike most compiler front-ends, the parser does **not** construct an AST. Instead, Bison reduction actions directly build IR nodes, populate the instruction table, and emit validation calls — the parse tree is consumed inline and never materialized as a data structure. A separate macro preprocessor handles `.MACRO`, `.ELSE`/`.ELIF`/`.ENDIF`, and `.INCLUDE` directives at the character level before tokens reach the Flex DFA. The instruction table builder (`sub_46E000`, 93 KB) registers all PTX opcodes with their legal type combinations during parser initialization, and an instruction lookup subsystem classifies operands into 12 categories at parse time.
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@ The ptxas front-end parses PTX assembly text into internal IR using a classic tw
 | **Scanner prefix** | `ptx` (all Flex symbols: `ptxlex`, `ptxensure_buffer_stack`, etc.) |
 | **Bison parser** | `sub_4CE6B0` (48 KB, spans `0x4CE6B0`--`0x4DA337`) |
 | **Grammar size** | **513 productions** (443 with custom actions + 70 default), **1,099 states**, **193 terminals**, **182 non-terminals** |
-| **LALR tables** | 9 tables at `0x1D121A0`--`0x1D16148` (≈19.9 KB): `yypact`, `yydefact`, `yytable`, `yycheck`, `yypgoto`, `yydefgoto`, `yyr1`, `yyr2`, `yytranslate` -- see [Grammar Parameters](#grammar-parameters) for VA mapping |
+| **LALR tables** | 9 tables at `0x1D121A0`--`0x1D16148` (≈19.9 KB): `yypact`, `yydefact`, `yytable`, `yycheck`, `yypgoto`, `yydefgoto`, `yyr1`, `yyr2`, `yytranslate` — see [Grammar Parameters](#grammar-parameters) for VA mapping |
 | **Instruction table builder** | `sub_46E000` (93 KB, 1,141 calls to `sub_46BED0`) |
 | **Instruction lookup** | `sub_46C690` (entry), `sub_46C6E0` (6.4 KB descriptor matcher) |
 | **Macro preprocessor** | `sub_71F630` (14 KB dispatcher), `sub_71E2B0` (32 KB conditional handler) |
@@ -63,7 +63,7 @@ PTX source text
                             + 20 more validators
 ```
 
-## Flex DFA Scanner -- `sub_720F00`
+## Flex DFA Scanner — `sub_720F00`
 
 The scanner is a standard Flex-generated DFA with the `ptx` prefix (all exported symbols use `ptx` instead of `yy`: `ptxlex`, `ptxensure_buffer_stack`, `ptx_create_buffer`, etc.). At 15.8 KB of core logic (64 KB including inlined buffer management), it is the largest single function in the lexer region. The DFA transition table lives at `off_203C020` and is indexed by `*(DWORD*)(state + 76)` (the current start condition). The main loop structure follows the textbook Flex pattern:
 
@@ -85,14 +85,14 @@ The scanner returns integer token codes to the Bison parser. The value 550 is `Y
 
 ### Token Categories
 
-The ≈552 Flex actions of `ptxlex` emit **163 distinct named terminal codes** in the range `[258..422]`, plus **25 one-character ASCII literals** in `[0x21..0x7E]`, plus the three Bison system tokens `$end (0)`, `error (256)`, and `$undefined (257)` -- a total of **191 concrete terminals**. Bison reserves `YYNTOKENS = 193` internal slots (see [Grammar Parameters](#grammar-parameters)) because two of the 165 external slots Bison allocates between 258 and 422 are **unused in v13.0.88** (gaps at external codes `321` and `398`, confirmed absent from every `return` statement and every attribute-assignment branch in `sub_720F00`). The catalog below was reconstructed by walking the action switch linearly and recording every `(action-case → token-code → attribute-value)` triple from `ptxas/decompiled/sub_720F00_0x720f00.c` lines 389--2412.
+The ≈552 Flex actions of `ptxlex` emit **163 distinct named terminal codes** in the range `[258..422]`, plus **25 one-character ASCII literals** in `[0x21..0x7E]`, plus the three Bison system tokens `$end (0)`, `error (256)`, and `$undefined (257)` — a total of **191 concrete terminals**. Bison reserves `YYNTOKENS = 193` internal slots (see [Grammar Parameters](#grammar-parameters)) because two of the 165 external slots Bison allocates between 258 and 422 are **unused in v13.0.88** (gaps at external codes `321` and `398`, confirmed absent from every `return` statement and every attribute-assignment branch in `sub_720F00`). The catalog below was reconstructed by walking the action switch linearly and recording every `(action-case → token-code → attribute-value)` triple from `ptxas/decompiled/sub_720F00_0x720f00.c` lines 389--2412.
 
 #### Correction to earlier version
 
 Previous revisions of this page stated "162 distinct token types." That figure was produced by counting entries in an incomplete switch-case enumeration and is **wrong in two ways**:
 
 1. The actual number of distinct token codes emitted by the scanner is **163**, not 162. The previously published table only surfaced 9 of the ≈160 category entries.
-2. The Bison reserved-terminal count (`YYNTOKENS`) is **193**, not 162 or 165 -- that constant is derived from `yyr1[1] = 193` (the `$accept` non-terminal, whose symbol number equals `YYNTOKENS` by Bison convention) and cross-verified at decompiled line 2398 of `sub_4CE6B0_0x4ce6b0.c`: `v31 = (unsigned __int16)word_1D15B80[v1136] - 193;`. The three sub-totals decompose as `193 = 165 (external 258..422 slots) + 25 (ASCII literal tokens) + 3 (system: $end, error, $undefined)`.
+2. The Bison reserved-terminal count (`YYNTOKENS`) is **193**, not 162 or 165 — that constant is derived from `yyr1[1] = 193` (the `$accept` non-terminal, whose symbol number equals `YYNTOKENS` by Bison convention) and cross-verified at decompiled line 2398 of `sub_4CE6B0_0x4ce6b0.c`: `v31 = (unsigned __int16)word_1D15B80[v1136] - 193;`. The three sub-totals decompose as `193 = 165 (external 258..422 slots) + 25 (ASCII literal tokens) + 3 (system: $end, error, $undefined)`.
 
 Of the 165 external slots, 2 are dead (`321`, `398`), giving the 163 codes actually reachable from the DFA.
 
@@ -100,37 +100,37 @@ Of the 165 external slots, 2 are dead (`321`, `398`), giving the 163 codes actua
 
 | Action | Returns | Meaning |
 |---|---|---|
-| default | (fatal) | `"fatal flex scanner internal error--no action found"` -- line 2527 |
-| 550 | (loop) | `YY_END_OF_BUFFER` -- refills buffer via `sub_720630` (`yy_get_next_buffer`) / `sub_40439C` -- lines 2416--2484 |
-| 551 | (loop) | `YY_STATE_EOF(<cond>)` -- pops include stack via pointers at lexer+2160 / lexer+2432 -- lines 2485--2525 |
-| 543 | (restart) | Whitespace skip -- rewinds and re-enters DFA -- line 2382 |
-| 544 | (skip) | `/* ... */` comment -- `ptx_scan_string("*/")` -- line 2387 |
-| 545 | (skip) | `// ...` line comment -- `ptx_scan_string("\n")` -- line 2390 |
-| 546 | (action) | Calls `sub_44F480(lexer)` -- internal scanner hook -- line 2395 |
-| 547 | (action) | File-change diagnostic -- calls `sub_1CAFAC0` / `sub_42FBA0(dword_29FA540)` -- line 2397 |
-| 549 | (echo) | `ECHO` -- `fwrite` to output stream (Flex default-rule fall-through) -- line 2413 |
-| 1 | (internal) | `#include` handling -- calls `ptx_scan_string("\n",...)` and `sub_426150` to push the filename onto the include stack -- lines 394--441 |
-| 3 | (dispatch) | `.MACRO` / `.ELSE` / `.ELIF` / `.ENDIF` preprocessor directive -- tail-calls `sub_71F630` -- line 444 |
-| 540 | (action) | `#line N "file"` directive -- parses line number with `strtoul`, filename with `strtok`-like loop, updates `lexer+784` and line counter at `buffer+48` -- lines 2311--2377 |
+| default | (fatal) | `"fatal flex scanner internal error--no action found"` — line 2527 |
+| 550 | (loop) | `YY_END_OF_BUFFER` — refills buffer via `sub_720630` (`yy_get_next_buffer`) / `sub_40439C` — lines 2416--2484 |
+| 551 | (loop) | `YY_STATE_EOF(<cond>)` — pops include stack via pointers at lexer+2160 / lexer+2432 — lines 2485--2525 |
+| 543 | (restart) | Whitespace skip — rewinds and re-enters DFA — line 2382 |
+| 544 | (skip) | `/* ... */` comment — `ptx_scan_string("*/")` — line 2387 |
+| 545 | (skip) | `// ...` line comment — `ptx_scan_string("\n")` — line 2390 |
+| 546 | (action) | Calls `sub_44F480(lexer)` — internal scanner hook — line 2395 |
+| 547 | (action) | File-change diagnostic — calls `sub_1CAFAC0` / `sub_42FBA0(dword_29FA540)` — line 2397 |
+| 549 | (echo) | `ECHO` — `fwrite` to output stream (Flex default-rule fall-through) — line 2413 |
+| 1 | (internal) | `#include` handling — calls `ptx_scan_string("\n",...)` and `sub_426150` to push the filename onto the include stack — lines 394--441 |
+| 3 | (dispatch) | `.MACRO` / `.ELSE` / `.ELIF` / `.ENDIF` preprocessor directive — tail-calls `sub_71F630` — line 444 |
+| 540 | (action) | `#line N "file"` directive — parses line number with `strtoul`, filename with `strtok`-like loop, updates `lexer+784` and line counter at `buffer+48` — lines 2311--2377 |
 
 #### 2. Identifiers, strings, and numeric literals
 
 | Action | Code | Category | Meaning / side effect |
 |---|---|---|---|
-| 528 | **258** | `T_IDENTIFIER` | Bare identifier (opcode-hash miss fall-through). `strcpy` into arena, store pointer in `yylval` -- line 2028 |
-| 529 | **259** | `T_FUNC_IDENT` | Identifier-with-dot-prefix (e.g. special-register-like names). Arena `strcpy` -- line 2040 |
-| 527 | **260** | `T_LABEL_IDENT` | Identifier referenced as branch/label target. Arena `strcpy` -- line 2016 |
-| 539 | **261** | `T_STRING` | `"..."` double-quoted string literal. Copies up to length−2 (strips quotes) -- line 2311. Also returned by helper `sub_720120` (line 28) from cases 287/288 for the typed-string fall-through |
-| 533 | **262** / **263** | `T_INT_OCTAL` | Octal integer literal `0[0-7]+`. On `errno == ERANGE` or negative overflow returns **263** (`T_INT_UNSIGNED_OVERFLOW`) -- lines 2086--2124 |
-| 534 | **262** / **263** | `T_INT_HEX` | Hex literal `0[xX][0-9a-fA-F]+U?` (2-char prefix skip) -- lines 2125--2163 |
-| 535 | **262** / **263** | `T_INT_BIN` | Binary literal `0[bB][01]+U?` -- lines 2164--2202 |
-| 536 | **262** / **263** | `T_INT_DEC` | Decimal literal `[1-9][0-9]*U?` -- lines 2203--2241. The `U` suffix early-exits with **263** (unsigned flavor) at line 2218 |
-| 538 | **315** | `T_CONST_HEX` | Hex immediate in `.const` context (`strtoul` base-16), sets `yylval` to uint -- lines 2287--2296 |
-| 537 | **316** | `T_FLOAT_HEX` | `0[xX]...` float-as-hex form (IEEE bitpattern literal) -- lines 2252--2286 |
-| 530 | **316** | `T_FLOAT_DEC` | `[0-9]+\.[0-9]*([eE][-+]?[0-9]+)?` -- `strtod`, on `errno==ERANGE` calls error -- lines 2052--2061 |
-| 531 | **316** | `T_FLOAT_F32` | Same, with `f`/`F` suffix -- lines 2062--2071 |
-| 532 | **316** | `T_FLOAT_F64` | Same, with `d`/`D`/`lf` suffix -- lines 2072--2085 |
-| 548 | *chr* | `T_CHAR_LITERAL` | The Flex catch-all `.` rule -- returns the character value directly: `return (unsigned int)**(char **)(v4 + 128);` at line 2411. This is the exit point for all 25 ASCII-literal tokens `+ - * / % ! ~ & ^ \| ? : , ; ( ) [ ] { } @ = < >` (subset of printable ASCII actually used as terminals by the grammar). |
+| 528 | **258** | `T_IDENTIFIER` | Bare identifier (opcode-hash miss fall-through). `strcpy` into arena, store pointer in `yylval` — line 2028 |
+| 529 | **259** | `T_FUNC_IDENT` | Identifier-with-dot-prefix (e.g. special-register-like names). Arena `strcpy` — line 2040 |
+| 527 | **260** | `T_LABEL_IDENT` | Identifier referenced as branch/label target. Arena `strcpy` — line 2016 |
+| 539 | **261** | `T_STRING` | `"..."` double-quoted string literal. Copies up to length−2 (strips quotes) — line 2311. Also returned by helper `sub_720120` (line 28) from cases 287/288 for the typed-string fall-through |
+| 533 | **262** / **263** | `T_INT_OCTAL` | Octal integer literal `0[0-7]+`. On `errno == ERANGE` or negative overflow returns **263** (`T_INT_UNSIGNED_OVERFLOW`) — lines 2086--2124 |
+| 534 | **262** / **263** | `T_INT_HEX` | Hex literal `0[xX][0-9a-fA-F]+U?` (2-char prefix skip) — lines 2125--2163 |
+| 535 | **262** / **263** | `T_INT_BIN` | Binary literal `0[bB][01]+U?` — lines 2164--2202 |
+| 536 | **262** / **263** | `T_INT_DEC` | Decimal literal `[1-9][0-9]*U?` — lines 2203--2241. The `U` suffix early-exits with **263** (unsigned flavor) at line 2218 |
+| 538 | **315** | `T_CONST_HEX` | Hex immediate in `.const` context (`strtoul` base-16), sets `yylval` to uint — lines 2287--2296 |
+| 537 | **316** | `T_FLOAT_HEX` | `0[xX]...` float-as-hex form (IEEE bitpattern literal) — lines 2252--2286 |
+| 530 | **316** | `T_FLOAT_DEC` | `[0-9]+\.[0-9]*([eE][-+]?[0-9]+)?` — `strtod`, on `errno==ERANGE` calls error — lines 2052--2061 |
+| 531 | **316** | `T_FLOAT_F32` | Same, with `f`/`F` suffix — lines 2062--2071 |
+| 532 | **316** | `T_FLOAT_F64` | Same, with `d`/`D`/`lf` suffix — lines 2072--2085 |
+| 548 | *chr* | `T_CHAR_LITERAL` | The Flex catch-all `.` rule — returns the character value directly: `return (unsigned int)**(char **)(v4 + 128);` at line 2411. This is the exit point for all 25 ASCII-literal tokens `+ - * / % ! ~ & ^ \| ? : , ; ( ) [ ] { } @ = < >` (subset of printable ASCII actually used as terminals by the grammar). |
 
 #### 3. Structural multi-character punctuators
 
@@ -148,7 +148,7 @@ These have dedicated actions (not the `.` catch-all).
 
 | Action | Code | Token (PTX syntax) |
 |---|---|---|
-| 4 | **339** | `#pragma` (C-style pragma, not `.pragma`) -- copies text after `#pragma` into arena |
+| 4 | **339** | `#pragma` (C-style pragma, not `.pragma`) — copies text after `#pragma` into arena |
 | 5 | **340** | `.version` |
 | 6 | **341** | `.target` |
 | 20 | **342** | `.address_size` |
@@ -196,28 +196,28 @@ Lines 495--548.
 
 | Action | Code | Attribute | Token |
 |---|---|---|---|
-| 53 | **264** | -- | `%tid` |
-| 54 | **265** | -- | `%ntid` |
-| 55 | **266** | -- | `%ctaid` |
-| 56 | **267** | -- | `%nctaid` |
-| 57 | **268** | -- | `%gridid` |
-| 58 | **269** | -- | `%clock` / `%clock64` |
-| 59 | **270** | -- | `%smid` / `%nsmid` / `%warpid` / `%laneid` family |
-| 60 | **318** | -- | `%envreg<N>` |
-| 61 | **317** | -- | `%pm<N>` / performance counter |
-| 66 | **303** | -- | `%WARP_SZ` constant |
-| 67 | **304** | -- | predicate register `%p<N>` family (syntactic) |
-| 68 | **305** | -- | condition-code register `%cc` |
-| 69 | **313** | -- | `%rcast`-style reinterpret register |
-| 70 | **314** | -- | `%dynamic_smem_size` / `%total_smem_size` |
-| 71 | **311** | -- | `%globaltimer` (pair) |
-| 72 | **312** | -- | `%globaltimer_lo` / `_hi` |
-| 73 | **306** | -- | `%lanemask_*` family |
-| 45 | **319** | -- | special-register bracketed form |
-| 62 | **301** | -- | general `%<name>` register reference (arena-allocated identifier) |
-| 63 | **302** | attr = −1 | `%r<N>` / `%rh<N>` -- numbered virtual register (default index) -- line 587 |
-| 64 | **302** | attr = `chr−48` | `%<name>N` -- single-digit suffix variant -- line 590 |
-| 65 | **302** | attr = `chr−38` | `%<name>N` -- alphabetic-suffix variant -- line 593 |
+| 53 | **264** | — | `%tid` |
+| 54 | **265** | — | `%ntid` |
+| 55 | **266** | — | `%ctaid` |
+| 56 | **267** | — | `%nctaid` |
+| 57 | **268** | — | `%gridid` |
+| 58 | **269** | — | `%clock` / `%clock64` |
+| 59 | **270** | — | `%smid` / `%nsmid` / `%warpid` / `%laneid` family |
+| 60 | **318** | — | `%envreg<N>` |
+| 61 | **317** | — | `%pm<N>` / performance counter |
+| 66 | **303** | — | `%WARP_SZ` constant |
+| 67 | **304** | — | predicate register `%p<N>` family (syntactic) |
+| 68 | **305** | — | condition-code register `%cc` |
+| 69 | **313** | — | `%rcast`-style reinterpret register |
+| 70 | **314** | — | `%dynamic_smem_size` / `%total_smem_size` |
+| 71 | **311** | — | `%globaltimer` (pair) |
+| 72 | **312** | — | `%globaltimer_lo` / `_hi` |
+| 73 | **306** | — | `%lanemask_*` family |
+| 45 | **319** | — | special-register bracketed form |
+| 62 | **301** | — | general `%<name>` register reference (arena-allocated identifier) |
+| 63 | **302** | attr = −1 | `%r<N>` / `%rh<N>` — numbered virtual register (default index) — line 587 |
+| 64 | **302** | attr = `chr−48` | `%<name>N` — single-digit suffix variant — line 590 |
+| 65 | **302** | attr = `chr−38` | `%<name>N` — alphabetic-suffix variant — line 593 |
 
 Lines 565--609.
 
@@ -283,7 +283,7 @@ A large family of fence / cache-operator / memory-ordering attributes, each with
 | 124 | **399** | 1 | single-valued keyword |
 | 125--126 | **400** | 1, 2 | 2-way qualifier |
 | 129--133 | **337** | 1..5 | 5-way qualifier (likely cache operator family) |
-| 134--139 | **361** | 2, 3, 5..8 | 6-way qualifier -- almost certainly **memory-order family** (`.acquire`/`.release`/`.acq_rel`/`.relaxed`/`.volatile`/`.weak`) since PTX ISA 7.0+ defines exactly these six modifiers for `.ld`/`.st`/`.atom` |
+| 134--139 | **361** | 2, 3, 5..8 | 6-way qualifier — almost certainly **memory-order family** (`.acquire`/`.release`/`.acq_rel`/`.relaxed`/`.volatile`/`.weak`) since PTX ISA 7.0+ defines exactly these six modifiers for `.ld`/`.st`/`.atom` |
 | 140 | **362** | 1 | memory-scope keyword (likely `.cta` or `.gpu`) |
 | 141 | **363** | 1 | memory-scope keyword (likely `.sys`) |
 | 142--147 | **289** | 1..6 | 6-way qualifier |
@@ -341,8 +341,8 @@ These cases call helper constructors (`sub_44BD30`, `sub_44BE60`, `sub_44C480`, 
 | 261--272 | `sub_44BF70(w,e,m, ...)` | 275 | Floating-point typed constants: `(4,3,N)` = fp8 e4m3, `(5,2,N)` = fp8 e5m2, `(2,1,N)` = fp16, `(2,3,N)` = bf16, `(3,2,N)` = tf32, for N ∈ {1,2,4} |
 | 273--274 | `sub_44C2F0(8, 0, N, ...)` | 275 | fp64 typed constants, vector widths 2/4 |
 | 277--286 | `sub_44BD30(16/32/64)` / `sub_44BE60(32/64)` / `sub_44BB80(8/16/32/64/128)` | 275 | Generic bitfield-typed constants with and without size modifiers |
-| 287, 288 | conditional: `sub_720120` (→ 261) OR `sub_44BB80` (→ 275) | 261 or 275 | If `*(lexer+541)` (string-mode flag) is set, treat as string; otherwise as 8/32-bit typed constant -- lines 1279--1292 |
-| 293 | conditional: `sub_44BB80(64)` (→ 275) OR `yylval = 3` (→ 403) | 275 or 403 | 64-bit typed constant in string-mode, or attribute-value-3 token `403` otherwise -- line 1305 |
+| 287, 288 | conditional: `sub_720120` (→ 261) OR `sub_44BB80` (→ 275) | 261 or 275 | If `*(lexer+541)` (string-mode flag) is set, treat as string; otherwise as 8/32-bit typed constant — lines 1279--1292 |
+| 293 | conditional: `sub_44BB80(64)` (→ 275) OR `yylval = 3` (→ 403) | 275 or 403 | 64-bit typed constant in string-mode, or attribute-value-3 token `403` otherwise — line 1305 |
 | 294 | `sub_44BAA0(...)` | 275 | Single-argument typed constant builder |
 | 247, 248 | *(yylval = 17, 18)* | **404** | `.f16x2` / `.bf16x2` size-class tokens |
 | 254, 255 | *(yylval = 9, 10)* | **404** | `.u64` / `.s64` size-class |
@@ -355,14 +355,14 @@ These cases call helper constructors (`sub_44BD30`, `sub_44BE60`, `sub_44C480`, 
 
 Lines 1139--1906. These are not "token type" entries in the classical sense; they are scanner rules that short-circuit grammar reduction by constructing an IR node inline and passing it up as token **275** (the "generic typed-operand" terminal).
 
-#### 13. Opcode hash -- the 386 family (lines 1324--1853)
+#### 13. Opcode hash — the 386 family (lines 1324--1853)
 
 **Code 386 is returned by 178 distinct scanner actions (cases 295--472)**, each assigning a different attribute value `1..178` to `*yylval`. This is the *opcode identifier* terminal: the scanner matches any recognized instruction mnemonic (`add`, `sub`, `mul`, `mad`, `ld`, `st`, `mov`, `bra`, `call`, `ret`, ...) and returns token **386** with an attribute that indexes into the opcode table built by `sub_46E000`. The two-level mapping is:
 
 - Scanner: `mnemonic-text` → `(386, opcode_id)`
 - Parser: `opcode_tok(id)` → reduces into a generic `instruction` production whose semantic action looks up `opcode_id` in the table built by `sub_46E000` to find legal type combinations.
 
-Attribute values `1..178` cover the full PTX ISA (v13.0.88). Attribute holes (`0`, plus values beyond 178) are not emitted. Case 386 at line 1594 returns `result` instead of the literal `386` -- a compiler oddity from switch-fallthrough optimization (both values are equal in that branch).
+Attribute values `1..178` cover the full PTX ISA (v13.0.88). Attribute holes (`0`, plus values beyond 178) are not emitted. Case 386 at line 1594 returns `result` instead of the literal `386` — a compiler oddity from switch-fallthrough optimization (both values are equal in that branch).
 
 The presence of a single code **386** means the grammar does **not** have one rule per opcode. Instead, there is a single `instruction : opcode_tok operand_list` production and operand legality is checked at reduction time by cross-referencing the instruction descriptor. This is the classic "table-driven assembler" design and is why PTX can add new opcodes without grammar changes as long as the new opcode's operand shape matches an existing descriptor class.
 
@@ -386,22 +386,22 @@ Lines 1855--1897. The 391--396 family is six single-valued keywords, likely `.ma
 
 | Action range | Code | Distinct attrs | Likely category |
 |---|---|---|---|
-| 490--504 | **309** | 1..15 | 15-way qualifier -- WMMA/MMA fragment shape tokens (`.m8n8k4`, `.m16n16k16`, ..., `.m64n64k16`) |
-| 505--515 | **417** | 1..11 | 11-way qualifier -- `cp.async` variants |
+| 490--504 | **309** | 1..15 | 15-way qualifier — WMMA/MMA fragment shape tokens (`.m8n8k4`, `.m16n16k16`, ..., `.m64n64k16`) |
+| 505--515 | **417** | 1..11 | 11-way qualifier — `cp.async` variants |
 | 516 | **418** | 1 | single-value |
 | 517--518 | **419** | 1, 2 | 2-way qualifier |
 | 519--520 | **420** | 1, 2 | 2-way qualifier |
 | 521--522 | **421** | 1, 2 | 2-way qualifier |
 | 523--524 | **422** | 1, 2 | 2-way qualifier |
 
-Lines 1910--2011. The 309 family's 15-way fanout matches the WMMA/MMA shape enumeration size, making it the most likely identification. Cases 490--504 are densely packed with sequential attribute values -- a strong signature of a generated table.
+Lines 1910--2011. The 309 family's 15-way fanout matches the WMMA/MMA shape enumeration size, making it the most likely identification. Cases 490--504 are densely packed with sequential attribute values — a strong signature of a generated table.
 
 #### Coverage statistics
 
 - **549** real Flex actions (numbered 1..549; 550/551 are sentinels)
 - **178** actions emit opcode code **386** (32% of all actions)
 - **163** distinct emitted named codes in `[258..422]`
-- **2** gaps in the external range (`321`, `398`) -- dead slots reserved for future expansion
+- **2** gaps in the external range (`321`, `398`) — dead slots reserved for future expansion
 - **25** ASCII literal codes reachable via the catch-all case 548
 - **3** Bison system tokens (`$end=0`, `error=256`, `$undefined=257`)
 - **Total terminals** (`YYNTOKENS`) = **193**
@@ -440,7 +440,7 @@ Error strings in the buffer system:
 
 Before tokens reach the Flex DFA, a character-level macro preprocessor handles `.MACRO`/`.ENDM`, `.ELSE`/`.ELIF`/`.ENDIF`, and `.INCLUDE` directives. The preprocessor lives at `0x71B000`--`0x720000` (~20 KB) and operates on raw character streams, not tokens. This design is identical to C's preprocessor running before the lexer.
 
-### Preprocessor Dispatch -- `sub_71F630`
+### Preprocessor Dispatch — `sub_71F630`
 
 The top-level dispatcher (14 KB) is called from the Flex scanner's case 3 (directive detection). It examines the directive name and routes to the appropriate handler:
 
@@ -453,15 +453,15 @@ The top-level dispatcher (14 KB) is called from the Flex scanner's case 3 (direc
 
 The dispatcher uses `strstr` for substring matching on directive names and returns token codes (e.g., 364 for end-of-directive).
 
-### Conditional Handler -- `sub_71E2B0`
+### Conditional Handler — `sub_71E2B0`
 
 At 32 KB, this is the largest preprocessor function. It handles `.ELSE`, `.ELIF`, and `.ENDIF` by scanning ahead through the input character stream, counting nesting levels, and skipping entire blocks of PTX text when conditions are false. It calls `sub_4287D0` (the token reader) to evaluate conditional expressions and `sub_428C40` (string compare) for keyword matching. Two nearly-duplicate code blocks handle `.ELSE` and `.ELIF` paths with identical scanning logic but different branch conditions.
 
-### Macro Definition -- `sub_71DCA0`
+### Macro Definition — `sub_71DCA0`
 
 Handles `.MACRO` directives by recording the macro body text. The function is recursive to support nested `.MACRO` definitions. It delegates to `sub_71D710` (macro body scanner, 7.5 KB) and `sub_71D1B0` (macro argument scanner, 6.8 KB). The argument scanner uses `strlen` + `strncmp` for keyword matching against a delimiter string parameter.
 
-### Include Handler -- `sub_71C310`
+### Include Handler — `sub_71C310`
 
 Processes `.INCLUDE` by pushing a new file onto the lexer's input stack. The function is recursive (calls itself 4 times) for nested includes. It manages the include-stack pointers at offsets +2128, +2136, +2160, and +2168 of the **lexer state object** (the 2,528-byte struct pointed to by `parser+1096`), and uses the "pushback character" register at offset +2441 of the same lexer state. String reference: `"ptxset_lineno called with no buffer"`.
 
@@ -469,7 +469,7 @@ Processes `.INCLUDE` by pushing a new file onto the lexer's input stack. The fun
 
 Macro errors are reported through `sub_71BF60` (fatal macro abort) which calls `sub_71BF30` to print `"out of dynamic memory..."` messages, and `sub_71C140` (format error) which calls `sub_42CA60` (error output). Nesting depth is checked by `sub_724CC0` which prints `"macro nesting too deep!"` on overflow.
 
-## Bison LALR(1) Parser -- `sub_4CE6B0`
+## Bison LALR(1) Parser — `sub_4CE6B0`
 
 The parser is a standard Bison-generated LALR(1) shift-reduce parser spanning 48 KB (addresses `0x4CE6B0`--`0x4DA337`). It contains exactly **513 grammar productions** (rules 1--513, plus the implicit `$accept` augmentation) with **443 reduction cases** carrying non-default semantic actions; the remaining 70 rules use Bison's default action (`$$ = $1`, no code emitted). The function calls `ptxlex` (`sub_720F00`) to obtain tokens and uses **nine** LALR tables for state transitions, action lookup, and goto computation:
 
@@ -496,7 +496,7 @@ The following constants were recovered by cross-correlating the five hardcoded s
 | `YYNSTATES` | **1,099** | `yypact` has 1,099 `int16` entries (size `0x1D150C0 - 0x1D146A0 = 0x0A20 = 2,592 B`, last non-zero at byte 2,197; upper bound of `0xA20/2 = 1,296` slots leaves 197 trailing zero-pad bytes). `yydefact` (same index domain) shows exactly 1,099 entries with identical tail. |
 | `YYNTOKENS` | **193** | Extracted directly from decompiled line 2398: `v31 = (unsigned __int16)word_1D15B80[v1136] - 193;` (the `yyr1[rule] - YYNTOKENS` conversion from LHS symbol number to non-terminal index). Cross-verified by `yyr1[1] = 193` (the `$accept` nonterminal's symbol number equals `YYNTOKENS`). Also equals the number of distinct `yytranslate` output values (192 real terminals + undef slot). |
 | `YYNNTS` | **182** | `yydefgoto` and `yypgoto` each have 182 `int16` entries (gap `0x1D150C0 - 0x1D14F40 = 0x180 = 384 B`, last non-zero at byte 363). Independently confirmed: `yyr1` LHS values cover exactly the range `[193..374]` ⇒ `374 - 193 + 1 = 182` distinct non-terminal symbol numbers. Total grammar symbols: `YYNTOKENS + YYNNTS = 375`. |
-| `YYNRULES` | **513** | `yyr1` has 514 `int16` entries (`yyr1[0] = 0` unused, rules 1..513). Gap `0x1D15FA0 - 0x1D15B80 = 0x420 = 1,056 B` ⇒ ≤528 slots; last non-zero at byte 1,027 ⇒ 514 entries. `yyr2` matches: 514 byte-entries, with `yyr2[510..513] = {0,0,0,0}` encoding four epsilon rules (invisible to the "last-non-zero" heuristic). `yydefact` contains values up to 513. **The previous "~512 productions" figure was off by one** -- the switch-case max of 512 (line 7395) is the highest rule number carrying a custom semantic action; rule 513 (`yyr1[513] = 374`, `yyr2[513] = 0`) has a default action and falls through `default: goto LABEL_34;` at line 7398. |
+| `YYNRULES` | **513** | `yyr1` has 514 `int16` entries (`yyr1[0] = 0` unused, rules 1..513). Gap `0x1D15FA0 - 0x1D15B80 = 0x420 = 1,056 B` ⇒ ≤528 slots; last non-zero at byte 1,027 ⇒ 514 entries. `yyr2` matches: 514 byte-entries, with `yyr2[510..513] = {0,0,0,0}` encoding four epsilon rules (invisible to the "last-non-zero" heuristic). `yydefact` contains values up to 513. **The previous "~512 productions" figure was off by one** — the switch-case max of 512 (line 7395) is the highest rule number carrying a custom semantic action; rule 513 (`yyr1[513] = 374`, `yyr2[513] = 0`) has a default action and falls through `default: goto LABEL_34;` at line 7398. |
 | `YYLAST` | **2,268** | Hardcoded as `0x8DC` in the bounds checks at decompiled lines 1376 (`if ( (unsigned int)(v4 + v9) > 0x8DC ) goto LABEL_8;`), 1383, 1427, and 2400. `yycheck` and `yytable` each hold `YYLAST + 1 = 2,269` `int16` entries (last non-zero at byte 4,537 of 4,544 allocated). |
 | `YYFINAL` | **3** | Accept state, used at decompiled line 1434 (`if ( i == 3 ) goto LABEL_1306;`) and again at line 7470 (`if ( i != 3 )`), both branching to cleanup and successful return. |
 | `YYPACT_NINF` | **-921** | Initial `v4 = -921` at line 1347, used as the "no shift action" sentinel for `yypact`. 708 of 1,099 states carry this value (≈64% of states have no shift action and rely solely on `yydefact`). |
@@ -506,7 +506,7 @@ The following constants were recovered by cross-correlating the five hardcoded s
 | `YYEMPTY` | **-2** | Initial `v1128 = -2` at line 1351, with `v1128 == -2` guarding the lookahead-empty path at line 1359. |
 | `YYINITDEPTH` | **200** | Initial stack size: `_WORD src[200]` at line 1340 (the `yyssa` on-stack array) and `v1131 = 200` at line 1352. |
 | `YYMAXDEPTH` | **10,000** | Upper bound on stack doubling: `0x2710 = 10,000` at line 1455 (`v34 = 10000; if ( 2 * v1131 <= 0x2710 ) v34 = 2 * v1131;`). On overflow the parser aborts with `"memory exhausted"` (line 1467). |
-| **Start symbol** | **non-terminal 194** (`nt-index 1`) | `yyr1[1] = 193` encodes `$accept` (rule 1 is always `$accept: start $end`). Rule 2 has `yyr1[2] = 195, yyr2[2] = 0` (a midrule-action auxiliary). Rule 3 -- the first substantive rule -- has `yyr1[3] = 194, yyr2[3] = 2`, making **symbol 194** the grammar's start non-terminal (lowest user-declared non-terminal after `$accept`). |
+| **Start symbol** | **non-terminal 194** (`nt-index 1`) | `yyr1[1] = 193` encodes `$accept` (rule 1 is always `$accept: start $end`). Rule 2 has `yyr1[2] = 195, yyr2[2] = 0` (a midrule-action auxiliary). Rule 3 — the first substantive rule — has `yyr1[3] = 194, yyr2[3] = 2`, making **symbol 194** the grammar's start non-terminal (lowest user-declared non-terminal after `$accept`). |
 | Longest RHS | **15** (at rule 190) | Maximum of the 514-entry `yyr2` byte array. |
 | Epsilon rules | **31** | Count of `yyr2[i] == 0` for `i` in `1..513`. |
 
@@ -583,47 +583,47 @@ The critical architectural decision: Bison reduction actions directly construct 
 4. Links nodes into the instruction stream
 5. Registers symbols in the symbol table (via `sub_426150`, the hash map)
 
-This means the parser is a single-pass translator from PTX text to IR. The trade-off is clear: no AST means no multi-pass source-level analysis, but it eliminates an entire allocation and traversal phase. For an assembler (as opposed to a high-level language compiler), this is the right choice -- PTX is already a linearized instruction stream with no complex scoping or overload resolution that would benefit from an AST.
+This means the parser is a single-pass translator from PTX text to IR. The trade-off is clear: no AST means no multi-pass source-level analysis, but it eliminates an entire allocation and traversal phase. For an assembler (as opposed to a high-level language compiler), this is the right choice — PTX is already a linearized instruction stream with no complex scoping or overload resolution that would benefit from an AST.
 
-### Reduction Actions -- Semantic Processing
+### Reduction Actions — Semantic Processing
 
 The 443 reduction cases in the parser body handle PTX constructs from simple register declarations to complex matrix instruction specifications. Diagnostic strings found in the parser tail (`0x4D5000`--`0x4DA337`) reveal the kinds of semantic checks performed during reduction:
 
 **Directive validation:**
 - `"Defining labels in .section"`
-- `"dwarf data"` -- DWARF section processing
-- `"reqntid"` / `".reqntid directive"` -- required thread count
-- `".minnctapersm directive"` -- min CTAs per SM
-- `".maxnctapersm"` / `".maxnctapersm directive"` -- max CTAs per SM (deprecated)
+- `"dwarf data"` — DWARF section processing
+- `"reqntid"` / `".reqntid directive"` — required thread count
+- `".minnctapersm directive"` — min CTAs per SM
+- `".maxnctapersm"` / `".maxnctapersm directive"` — max CTAs per SM (deprecated)
 - `".maxntid and .reqntid cannot both be specified"`
 - `".maxnctapersm directive deprecated..."`
 - `".minnctapersm is ignored..."`
 
 **Type and operand validation:**
 - `"Vector Type not specified properly"`
-- `".f16x2 packed data-type"` -- half-precision packed type
-- `"matrix shape"` -- matrix instruction dimensions
-- `".scale_vectorsize"` -- vector scaling modifier
+- `".f16x2 packed data-type"` — half-precision packed type
+- `"matrix shape"` — matrix instruction dimensions
+- `".scale_vectorsize"` — vector scaling modifier
 - `"too many layout specifiers"`
 
 **Resource limits:**
 - `"Kernel parameter size larger than 4352 bytes"`
 
 **Architecture gating:**
-- `"sm_50"`, `"sm_20"`, `"sm_53"` -- target architecture checks via `sub_485520(ctx, sm_number)`
+- `"sm_50"`, `"sm_20"`, `"sm_53"` — target architecture checks via `sub_485520(ctx, sm_number)`
 - PTX version checks via `sub_485570(ctx, major, minor)`
 
 **Expression handling:**
-- `"%s+%llu"` / `"%s-%s"` -- label arithmetic in address expressions
-- `"Negative numbers in dwarf section"` -- DWARF data validation
+- `"%s+%llu"` / `"%s-%s"` — label arithmetic in address expressions
+- `"Negative numbers in dwarf section"` — DWARF data validation
 
 **Symbol resolution:**
-- `"unrecognized symbol"` -- lexer/symbol table failure
-- `"syntax error"` -- generic parse error
-- `".extern"` -- external declarations
-- `".noreturn directive"` -- function attributes
-- `"texmode_unified"` / `"texmode_raw"` -- texture mode selection
-- `"cache eviction priority"` / `".level::eviction_priority"` -- cache policy
+- `"unrecognized symbol"` — lexer/symbol table failure
+- `"syntax error"` — generic parse error
+- `".extern"` — external declarations
+- `".noreturn directive"` — function attributes
+- `"texmode_unified"` / `"texmode_raw"` — texture mode selection
+- `"cache eviction priority"` / `".level::eviction_priority"` — cache policy
 
 ### Error Recovery
 
@@ -631,7 +631,7 @@ Parse errors trigger `sub_42FBA0` with `"syntax error"` as the message. The cent
 
 | Severity | Prefix | Tag | Behavior |
 |---|---|---|---|
-| 0 | (suppressed) | -- | Silently ignored |
+| 0 | (suppressed) | — | Silently ignored |
 | 1--2 | `"info    "` | `@I@` | Informational message |
 | 3 | `"warning "` or `"error   "` | `@W@` or `@E@` | Context-dependent; promoted to error by `--Werror` |
 | 4 | `"error*  "` | `@E@` | Non-fatal error |
@@ -640,7 +640,7 @@ Parse errors trigger `sub_42FBA0` with `"syntax error"` as the message. The cent
 
 The diagnostic system reads the source file to display context lines (prefixed with `"# "`), caching file offsets every 10 lines in a hash map for fast random-access seeking.
 
-## Parser Initialization -- `sub_451730`
+## Parser Initialization — `sub_451730`
 
 Parser initialization (14 KB) builds the lexer's symbol table with all built-in PTX names before parsing begins. This function is called from the compilation driver (`sub_446240`) and performs three major tasks:
 
@@ -662,17 +662,17 @@ All PTX special registers are pre-registered in the symbol table with their inte
 
 ### 2. Opcode Table Construction
 
-Calls `sub_46E000` -- the 93 KB instruction table builder -- to register all PTX opcodes with their legal type combinations. See the dedicated section below.
+Calls `sub_46E000` — the 93 KB instruction table builder — to register all PTX opcodes with their legal type combinations. See the dedicated section below.
 
 ### 3. Context State Initialization
 
 Allocates and initializes two objects: the **parser state** (1,128 bytes, `sub_424070(pool, 1128)`) and the **lexer state** (2,528 bytes, `sub_424070(pool, 2528)`). The parser state stores a pointer to the lexer state at offset +1096. The string `"PTX parsing state"` identifies the parser state allocation in memory dumps. The string `"<builtin>"` serves as the filename for built-in declarations. Both objects are zeroed via `memset` before field initialization.
 
-## Instruction Table Builder -- `sub_46E000`
+## Instruction Table Builder — `sub_46E000`
 
-This is the largest single function in the front-end region at 93 KB (`disasm/sub_46E000_0x46e000.asm`, 17,842 lines, 1,464,386 bytes). It is not a normal function body but a massive initialization sequence that calls `sub_46BED0` exactly **1,141 times** -- once per legal PTX instruction variant. Every call registers one `(opcode name, operand encoding, type-suffix code, validator index)` tuple.
+This is the largest single function in the front-end region at 93 KB (`disasm/sub_46E000_0x46e000.asm`, 17,842 lines, 1,464,386 bytes). It is not a normal function body but a massive initialization sequence that calls `sub_46BED0` exactly **1,141 times** — once per legal PTX instruction variant. Every call registers one `(opcode name, operand encoding, type-suffix code, validator index)` tuple.
 
-> **Reconstruction note.** `sub_46E000` is intentionally **not** present in `ptxas/decompiled/` for this build -- at 93 KB of straight-line calls it overflows the hand-decompilation budget. Everything in this section is reconstructed from three orthogonal sources that fully determine the answer: (1) the decompiled registration function `sub_46BED0_0x46bed0.c` (321 lines) which fixes the exact shape of each descriptor, (2) the decompiled matcher prologue `sub_46C6E0_0x46c6e0.c` (first 200 lines read for descriptor-field offsets and the 12-category operand classifier), and (3) the 1,080 `.weak .func` lowering targets in `ptxas/extracted/embedded_ptx_intrinsics.json` (`entry_count: 1080`, categorized as `cuda_other: 549, sm70_intrinsics: 433, sm20_math: 70, redux_sync: 17, sanitizer: 7, sm80_intrinsics: 4`) cross-referenced against the 322 SASS mnemonics in `ptxas/extracted/opcode_master.json` (`opcode_master.count: 322`) and the public PTX ISA 8.x reference. The per-family variant counts below were built by decoding the little-endian imm32 operands of every `mov REG, imm32; ...; call sub_46BED0` call site in `disasm/sub_46E000_0x46e000.asm` and reading the pooled C-string at that RVA from `.rodata`; the sum of per-family counts equals exactly 1,141, matching the static call count observed in the disassembly.
+> **Reconstruction note.** `sub_46E000` is intentionally **not** present in `ptxas/decompiled/` for this build — at 93 KB of straight-line calls it overflows the hand-decompilation budget. Everything in this section is reconstructed from three orthogonal sources that fully determine the answer: (1) the decompiled registration function `sub_46BED0_0x46bed0.c` (321 lines) which fixes the exact shape of each descriptor, (2) the decompiled matcher prologue `sub_46C6E0_0x46c6e0.c` (first 200 lines read for descriptor-field offsets and the 12-category operand classifier), and (3) the 1,080 `.weak .func` lowering targets in `ptxas/extracted/embedded_ptx_intrinsics.json` (`entry_count: 1080`, categorized as `cuda_other: 549, sm70_intrinsics: 433, sm20_math: 70, redux_sync: 17, sanitizer: 7, sm80_intrinsics: 4`) cross-referenced against the 322 SASS mnemonics in `ptxas/extracted/opcode_master.json` (`opcode_master.count: 322`) and the public PTX ISA 8.x reference. The per-family variant counts below were built by decoding the little-endian imm32 operands of every `mov REG, imm32; ...; call sub_46BED0` call site in `disasm/sub_46E000_0x46e000.asm` and reading the pooled C-string at that RVA from `.rodata`; the sum of per-family counts equals exactly 1,141, matching the static call count observed in the disassembly.
 
 ### 368-byte Descriptor Layout
 
@@ -695,7 +695,7 @@ Every registration allocates one descriptor at `sub_46BED0_0x46bed0.c:63` (`v18 
 
 Notes on the layout:
 
-- The `type_class[]` and `width_mask[]` arrays are indexed by `v21`, the running operand-slot counter (initialized to `-1` at line 67 so the first `++v21` writes slot 0). `v21` is bumped either pre-switch (`N`, `O`, `P`, `T`, `E` cases, which use `++v21`) or deferred into `v48` and committed at `LABEL_26` (`F`, `H`, `I`, `B`, `Q`, `R` cases, which allow a `[width|width|...]` group to follow). Both paths write the same logical slot, but the offsets differ in the decompiled source: `v18+v21+9` in the pre-increment path vs `v18+v21+10` in the deferred path -- that is because at the deferred write-site `v21` is still the *previous* operand's index, so the `+10` reaches one slot forward. Either way the class lands at `byte_offset = 36 + 4*slot`.
+- The `type_class[]` and `width_mask[]` arrays are indexed by `v21`, the running operand-slot counter (initialized to `-1` at line 67 so the first `++v21` writes slot 0). `v21` is bumped either pre-switch (`N`, `O`, `P`, `T`, `E` cases, which use `++v21`) or deferred into `v48` and committed at `LABEL_26` (`F`, `H`, `I`, `B`, `Q`, `R` cases, which allow a `[width|width|...]` group to follow). Both paths write the same logical slot, but the offsets differ in the decompiled source: `v18+v21+9` in the pre-increment path vs `v18+v21+10` in the deferred path — that is because at the deferred write-site `v21` is still the *previous* operand's index, so the `+10` reaches one slot forward. Either way the class lands at `byte_offset = 36 + 4*slot`.
 - The `width_mask[]` array holds **pointers** to bitmask objects, not bitmasks themselves. `sub_1CB0790()` allocates an empty mask; `sub_1CB0850(mask, w)` adds bit `w` to it. The matcher tests a candidate operand width against the mask via `sub_1CB06F0`/`sub_1CB0700` (not decompiled here; referenced from `sub_46C6E0`).
 - The `type_subclass[]` / `type_digit[]` split lets one suffix character encode either a symbolic tag (upper- or lowercase letter, 22 distinct values) or a small integer (`0`..`9`). A digit-class slot has `type_subclass[i] = 0` and `type_digit[i] = digit`; the matcher looks at `type_digit[i]` only when `type_subclass[i] == 0`.
 - The 16-slot cap on per-operand arrays is the hard upper bound on operand count for any PTX instruction: no registered opcode has more than 16 operands (the biggest real examples are `_mma.warpgroup` at 12 and `wmma.mma` at 10).
@@ -708,7 +708,7 @@ Each call passes four distinguishing arguments in the System V AMD64 calling con
 | `rsi` | `a2` | Operand **encoding string** (`a2->__size` is iterated byte-by-byte) | Outer `while` loop at lines 54--232 |
 | `rdx` | `a3` | Opcode **name string** (interned) | Stored at `*v18 = a3` (line 72) and used as the hash key at line 318 |
 | `rcx` | `a4` | Type-**suffix** code string (per-operand type-class bits) | `v44 = strlen(a4)`, second loop at lines 234--316 |
-| `r8d` | `a5` | Numeric tag stored at `*((_DWORD *)v18 + 2)` (line 76) -- a per-opcode semantic index | Not processed; just stored |
+| `r8d` | `a5` | Numeric tag stored at `*((_DWORD *)v18 + 2)` (line 76) — a per-opcode semantic index | Not processed; just stored |
 | `xmm0` / `[rsp+00h]` | `a7` | 16-byte "validator vector" (function pointers / flag words), stored via `_mm_loadu_si128` at `*(__m128i *)(v18 + 12)` (line 79) | Opaque payload |
 | `[rsp+08h]` | `a8` | Validator index, stored at `*((_DWORD *)v18 + 7)` (line 78) | Opaque payload |
 
@@ -724,7 +724,7 @@ Concretely, an `add.f32` registration looks like this in the raw disassembly (ad
 0x47302d: e8 9e 8e ff ff   call    sub_46BED0
 ```
 
-The string "F32" is itself a substring of a longer pooled string `"NaN not allowed with W..."` -- IDA represents it as `(offset aNanNotAllowedW+18h)` because ptxas deduplicates its read-only strings aggressively, so a 3-character suffix can be reused across many callers. IDA also truncates long symbol comments: names such as `_tcgen05.guardrails.sp_consistency_across_idesc_mod_scale` appear with `"..."` in the comment, but the full string is recoverable by decoding the little-endian imm32 in the `mov edx, imm32` instruction bytes and reading the null-terminated C-string at that address from `.rodata` (range `0x1CE2E00..0x240BF90`). The catalog below was built by exactly that procedure.
+The string "F32" is itself a substring of a longer pooled string `"NaN not allowed with W..."` — IDA represents it as `(offset aNanNotAllowedW+18h)` because ptxas deduplicates its read-only strings aggressively, so a 3-character suffix can be reused across many callers. IDA also truncates long symbol comments: names such as `_tcgen05.guardrails.sp_consistency_across_idesc_mod_scale` appear with `"..."` in the comment, but the full string is recoverable by decoding the little-endian imm32 in the `mov edx, imm32` instruction bytes and reading the null-terminated C-string at that address from `.rodata` (range `0x1CE2E00..0x240BF90`). The catalog below was built by exactly that procedure.
 
 ### Operand Encoding Alphabet
 
@@ -768,7 +768,7 @@ Encoding-string first-character frequencies observed across all 1,141 registrati
 | `T` | 1   | tf32 tensor (`cvt.tf32.f32`) |
 | `O` | 1   | opaque handle (`istypep` only) |
 
-The remaining 143 of the 1,141 registrations pass an **empty string** for the encoding (`""`). These are the control-flow, barrier, async-bulk, and `tcgen05.mma` opcodes that take no typed-operand sequence -- the encoding is determined entirely by state-space modifiers on the opcode itself, checked by the semantic validator rather than by descriptor-list matching.
+The remaining 143 of the 1,141 registrations pass an **empty string** for the encoding (`""`). These are the control-flow, barrier, async-bulk, and `tcgen05.mma` opcodes that take no typed-operand sequence — the encoding is determined entirely by state-space modifiers on the opcode itself, checked by the semantic validator rather than by descriptor-list matching.
 
 ### Type-Suffix Code String (`a4`)
 
@@ -790,22 +790,22 @@ The second string argument drives the loop at lines 234--316 of `sub_46BED0_0x46
 
 Digit characters (`0`--`9`) write `0` to the class slot and the digit value to `*((_DWORD *)v18 + v27 + 75)` (default case at line 309). Common suffix strings from the catalog:
 
-- `"000"` (49 full-string matches, 877 `'0'` characters in total) -- "three operands, all default type class" (e.g. scalar `add`, `sub`, `min`, `max`)
-- `"0000"` -- four operands all default (e.g. `fma`, `mad`)
-- `"M0"` / `"0M"` -- memory operand paired with a typed register (e.g. `ld`, `st`)
-- `"hhhhdC"`, `"fhhddC"`, `"sddsdC"` -- the MMA per-operand tag sequence (h=half, f=float32, s=int, d=int32 accumulator, C=`.cc` flag)
-- `"0i1"` / `"0i1s"` -- texture sequence (sampler index, texref, coord, optional shadow)
+- `"000"` (49 full-string matches, 877 `'0'` characters in total) — "three operands, all default type class" (e.g. scalar `add`, `sub`, `min`, `max`)
+- `"0000"` — four operands all default (e.g. `fma`, `mad`)
+- `"M0"` / `"0M"` — memory operand paired with a typed register (e.g. `ld`, `st`)
+- `"hhhhdC"`, `"fhhddC"`, `"sddsdC"` — the MMA per-operand tag sequence (h=half, f=float32, s=int, d=int32 accumulator, C=`.cc` flag)
+- `"0i1"` / `"0i1s"` — texture sequence (sampler index, texref, coord, optional shadow)
 
 ### Two Hash Tables: +2472 and +2480
 
 `sub_46E000` populates two separate hash tables on the lexer state object, both allocated by back-to-back `sub_425CA0` calls in the prologue (disasm lines 8--24). The two tables correspond to different **string namespaces**:
 
-- `lexer_state+2472` (offset 0x9A8) -- the **primary** opcode table (128 buckets, `sub_425CA0(sub_427630, sub_4277B0, 0x80)`); every user-visible PTX opcode lives here.
-- `lexer_state+2480` (offset 0x9B0) -- a smaller 16-bucket table (`sub_425CA0(…, 0x10)`) used by the matcher as a secondary probe.
+- `lexer_state+2472` (offset 0x9A8) — the **primary** opcode table (128 buckets, `sub_425CA0(sub_427630, sub_4277B0, 0x80)`); every user-visible PTX opcode lives here.
+- `lexer_state+2480` (offset 0x9B0) — a smaller 16-bucket table (`sub_425CA0(…, 0x10)`) used by the matcher as a secondary probe.
 
 `sub_46BED0` always inserts into `+2472` (line 317: `v29 = *(char**)(a1 + 2472)`). The matcher side (`sub_46C690_0x46c690.c:11`) probes `+2472` first, then falls back to `+2480`; `sub_46C6E0:258` adds a special-case fast path that probes **only** `+2480` when the opcode starts with ASCII `_` (byte value 95). That fast path is used for the 18 `_`-prefixed **compiler-private** pseudo-opcodes (`_mma`, `_mma.warpgroup`, `_ldsm`, `_warpgroup.*`, `_tcgen05.guardrails.*`, `_movm`, `_gen_proto`, `_jcall`, `_match`, `_checkfp.divide`, `_sulea.*`, `_createpolicy.*`, `_ldldu`, `_warpsync`), which are emitted by earlier passes and are not part of the public PTX ISA. The `+2480` table is therefore the **internal-opcodes** index and is populated by code paths inside `sub_46E000` that are *not* visible as `sub_46BED0` calls (they use `sub_425CA0` infrastructure directly); identifying those sites is a follow-up item.
 
-### Registration Function -- `sub_46BED0` Pseudocode
+### Registration Function — `sub_46BED0` Pseudocode
 
 ```c
 // Reimplementation derived from sub_46BED0_0x46bed0.c, lines 4--321.
@@ -904,9 +904,9 @@ commit_digit:
 }
 ```
 
-The hash insert uses `d->name` (the interned opcode pointer, deduped across the entire binary) as the key. Because PTX opcode names are pooled, the string pointer equality *is* the hash key equality -- no `strcmp` is needed on insert or lookup.
+The hash insert uses `d->name` (the interned opcode pointer, deduped across the entire binary) as the key. Because PTX opcode names are pooled, the string pointer equality *is* the hash key equality — no `strcmp` is needed on insert or lookup.
 
-### Catalog -- 1,141 Registrations by PTX Family
+### Catalog — 1,141 Registrations by PTX Family
 
 The tables below give **every** registered opcode, with its variant count and the distinct operand encoding strings it accepts. Methodology: all 1,141 `mov edx, <opcode>; mov esi, <encoding>; mov ecx, <suffix>; ...; call sub_46BED0` call sites were extracted from `disasm/sub_46E000_0x46e000.asm` by decoding the little-endian imm32 in each `mov REG, imm32` instruction's byte stream and reading the null-terminated C-string at that address from `ptxas_rodata.bin`. This bypasses IDA symbol-comment truncation (`"_tcgen05.guardrails.sp_consistency_acro"...`) and substring-reference opacity (`1D07286h` -> inner offset of the pooled string `"F32F16"` -> the 3-byte substring `"F16"`).
 
@@ -927,12 +927,12 @@ Totals by category:
 | Texture / surface (`tex`, `tex.base`, `tex.level`, `tex.grad`, `tld4`, `txq*`, `sust.*`, `sured.*`, `_sulea.*`, `suq`, `suld.b`) | 15 | 222 |
 | Warp-level collectives (`shfl`, `vote`, `redux`, `match`, `activemask`, `elect`, `pmevent*`, `getctarank`, `_warpsync`, `_match`) | 11 | 17 |
 | Cooperative copy / tensor memory (`cp.async*`, `cp.reduce.async*`, `multimem.*`, `clusterlaunchcontrol.*`, `tensormap.*`, `griddepcontrol`) | 21 | 75 |
-| Tensor cores -- MMA / wgmma / wmma / tcgen05 / `_mma.warpgroup` / `_ldsm` / `_tcgen05.guardrails.*` | 37 | **360** |
+| Tensor cores — MMA / wgmma / wmma / tcgen05 / `_mma.warpgroup` / `_ldsm` / `_tcgen05.guardrails.*` | 37 | **360** |
 | Video SIMD (`v*`, `v*2`, `v*4`) | 23 | 31 |
 | Verification / debug (`_checkfp.divide`, `istypep`) | 2 | 2 |
 | **Total** | **252** | **1,141** |
 
-The three dominant families -- **tensor cores (360 = 31.6%)**, **texture (222 = 19.5%)**, and **arithmetic (96 = 8.4%)** -- account for 60% of all registrations. The tensor-core bloat comes almost entirely from `_mma.warpgroup` (135 variants) and the public `_mma`/`mma` families (41+38). Texture bloat is structural: each of `tex`, `tex.base`, `tex.level`, `tex.grad` registers the identical **8-encoding x 6-mode** cross-product = 48 variants, giving 192 before adding `tld4`, `txq`, `sust`, `sured`, `_sulea`, `suq`, `suld.b`.
+The three dominant families — **tensor cores (360 = 31.6%)**, **texture (222 = 19.5%)**, and **arithmetic (96 = 8.4%)** — account for 60% of all registrations. The tensor-core bloat comes almost entirely from `_mma.warpgroup` (135 variants) and the public `_mma`/`mma` families (41+38). Texture bloat is structural: each of `tex`, `tex.base`, `tex.level`, `tex.grad` registers the identical **8-encoding x 6-mode** cross-product = 48 variants, giving 192 before adding `tld4`, `txq`, `sust`, `sured`, `_sulea`, `suq`, `suld.b`.
 
 #### Arithmetic (96 variants / 32 opcodes)
 
@@ -1207,7 +1207,7 @@ The `bar.red`/`barrier.red` fourfold expansion is (`I32` integer arg, `P` predic
 | `txq` | 1 | 1 (`B32`) |
 | `txq.level` | 1 | 1 (`B32`) |
 
-Each of the four `tex*` opcodes registers the **exact same 8 encodings** (`F16F32`, `F16I32`, `F32F32`, `F32I32`, `H32F32`, `H32I32`, `I32F32`, `I32I32`) **six times**, once per texture-mode suffix (`"0i1"`, `"0i1s"`, and four more for 1D / 2D / 3D / cube / array / shadow-array combinations). That is 4 x 8 x 6 = 192 registrations on its own -- 17% of the entire instruction table -- which is why texture is the single largest non-MMA category.
+Each of the four `tex*` opcodes registers the **exact same 8 encodings** (`F16F32`, `F16I32`, `F32F32`, `F32I32`, `H32F32`, `H32I32`, `I32F32`, `I32I32`) **six times**, once per texture-mode suffix (`"0i1"`, `"0i1s"`, and four more for 1D / 2D / 3D / cube / array / shadow-array combinations). That is 4 x 8 x 6 = 192 registrations on its own — 17% of the entire instruction table — which is why texture is the single largest non-MMA category.
 
 #### Warp-level collectives (17 variants / 11 opcodes)
 
@@ -1252,9 +1252,9 @@ Each of the four `tex*` opcodes registers the **exact same 8 encodings** (`F16F3
 | `tensormap.cp_fenceproxy` | 1 | *(empty)* |
 | `tensormap.replace` | 2 | `B[32\|64]` |
 
-`cp.async.bulk.tensor` registers 10 variants (one per tensor map dimensionality x load/store x multicast) without any per-variant type checking -- the 10 come from different suffix strings using the `M` and `C` tags.
+`cp.async.bulk.tensor` registers 10 variants (one per tensor map dimensionality x load/store x multicast) without any per-variant type checking — the 10 come from different suffix strings using the `M` and `C` tags.
 
-#### Tensor cores -- MMA / wgmma / wmma / tcgen05 (360 variants / 37 opcodes)
+#### Tensor cores — MMA / wgmma / wmma / tcgen05 (360 variants / 37 opcodes)
 
 This is the largest single category, accounting for 31.6% of the entire instruction table. `_mma.warpgroup` alone registers **135 variants**, making it the single largest opcode in the binary:
 
@@ -1282,7 +1282,7 @@ This is the largest single category, accounting for 31.6% of the entire instruct
 | `tcgen05.fence` | 1 | 1 | *(empty)* |
 | `tcgen05.ld` | 2 | 1 | `B32` |
 | `tcgen05.ld.red` | 4 | 2 | `F32`, `I32` |
-| **`tcgen05.mma`** | **20** | 1 | *(empty)* -- validation is entirely via suffix strings |
+| **`tcgen05.mma`** | **20** | 1 | *(empty)* — validation is entirely via suffix strings |
 | `tcgen05.mma.ws` | 8 | 1 | *(empty)* |
 | `tcgen05.relinquish_alloc_permit` | 1 | 1 | `B32` |
 | `tcgen05.shift` | 1 | 1 | *(empty)* |
@@ -1323,7 +1323,7 @@ Every video/SIMD opcode has exactly 1 or 2 variants and uses the same `I32I32I32
 | `v*2` (8 opcodes: `vadd2`, `vsub2`, `vavrg2`, `vabsdiff2`, `vmin2`, `vmax2`, `vset2`, `vmad`*) | 1 each | `I32I32I32` |
 | `v*4` (7 opcodes: `vadd4`, `vsub4`, `vavrg4`, `vabsdiff4`, `vmin4`, `vmax4`, `vset4`) | 1 each | `I32I32I32` |
 
-(*`vmad` is technically not a packed form but registers with the same encoding.*) These are the PTX 5.0 video SIMD intrinsics -- effectively thin wrappers around the `.s32`/`.u32` variants of each underlying SASS instruction, so the semantic difference lives entirely in the suffix string (e.g. `"sddsdC"` vs `"uuuddC"`).
+(*`vmad` is technically not a packed form but registers with the same encoding.*) These are the PTX 5.0 video SIMD intrinsics — effectively thin wrappers around the `.s32`/`.u32` variants of each underlying SASS instruction, so the semantic difference lives entirely in the suffix string (e.g. `"sddsdC"` vs `"uuuddC"`).
 
 #### Verification / debug (2 variants / 2 opcodes)
 
@@ -1332,20 +1332,20 @@ Every video/SIMD opcode has exactly 1 or 2 variants and uses the same `I32I32I32
 | `_checkfp.divide` | `F32` | Internal hook used by `div.approx.f32` lowering to insert NaN/divide-by-zero checks |
 | `istypep` | `O` | The only registration with an `O` (opaque-handle) encoding; operand is a `.texref`, `.surfref`, or `.samplerref` symbol |
 
-## Instruction Lookup -- `sub_46C690` and `sub_46C6E0`
+## Instruction Lookup — `sub_46C690` and `sub_46C6E0`
 
 At parse time, when the parser reduces an instruction production, it calls `sub_46C690` to look up the instruction name in the hash table built by `sub_46E000`. The lookup returns a descriptor list, and `sub_46C6E0` (6.4 KB, the descriptor matcher) walks the list to find the variant matching the actual operands present in the source.
 
 `sub_46C690` (lines 4--16 of `sub_46C690_0x46c690.c`) is a trivial wrapper: it probes the two opcode hash tables at lexer-state offsets `+2472` and `+2480` with `sub_426D60` and returns the first nonzero bucket's `*(_DWORD*)(entry+8+8)` (the descriptor head pointer). The real work happens in `sub_46C6E0`, which is called directly from the Bison reduction actions with the raw token list.
 
-### Operand Classification -- 12 Categories
+### Operand Classification — 12 Categories
 
 The descriptor matcher classifies every operand into one of twelve category codes **before** walking the candidate descriptor list. The classifier is the leading loop in `sub_46C6E0` (lines 142--249 of `sub_46C6E0_0x46c6e0.c`): it iterates `a8` times (`a8` = parsed operand count), reads each 8-byte operand-token pointer `v14 = *(_DWORD **)(a6 + 8*i)` (note: the source uses `2 * v13` with `v13` stepped by 4, which is a byte stride of 8), and dispatches on `*v14` (the first DWORD, a **lexer token-kind enum**, distinct from the AST-node 6-bit tag of IR-08). The switch writes two parallel slots of the stack array `v133`:
 
-- `v133[i]` -- the **category code** (0--11), occupying `[0..15]`
-- `v133[i + 16]` -- the operand's **bit width** obtained from `sub_44B390(v14)` (which walks the type token and folds `*= 2/4/8/16/32/64/128` or `*= arraylen` for aggregates)
+- `v133[i]` — the **category code** (0--11), occupying `[0..15]`
+- `v133[i + 16]` — the operand's **bit width** obtained from `sub_44B390(v14)` (which walks the type token and folds `*= 2/4/8/16/32/64/128` or `*= arraylen` for aggregates)
 
-Category 0 is the implicit default (any token that hits the `default: break;` at line 244 leaves `v133[i]` **unwritten**, so it is effectively the sentinel "unclassified"). That produces twelve distinct states numbered 0--11. Every classification is a pure table lookup on `*v14`; no flag bits, no uniform-register `0x6000000` mask, no `(field>>28)&7` test -- those checks live in the *lexer* (where the token kind itself was assigned), not in the matcher. By the time `sub_46C6E0` sees the operand, the distinction between `R5` vs `UR5` vs `%r5` is already baked into the numeric value of `*v14`.
+Category 0 is the implicit default (any token that hits the `default: break;` at line 244 leaves `v133[i]` **unwritten**, so it is effectively the sentinel "unclassified"). That produces twelve distinct states numbered 0--11. Every classification is a pure table lookup on `*v14`; no flag bits, no uniform-register `0x6000000` mask, no `(field>>28)&7` test — those checks live in the *lexer* (where the token kind itself was assigned), not in the matcher. By the time `sub_46C6E0` sees the operand, the distinction between `R5` vs `UR5` vs `%r5` is already baked into the numeric value of `*v14`.
 
 #### The 12 Category Codes
 
@@ -1358,13 +1358,13 @@ Category 0 is the implicit default (any token that hits the `default: break;` at
 | **4** | Small/medium integer or byte register | `0x09..0x0B`, `0x0D`, `0x0F..0x13`, `0x15`, `0x17`, `0x18` (line 173) | Byte/half/word register with signed/unsigned/bit flavor | General register slot; width pulled into `v122`, compared in the `case 0` giant switch |
 | **5** | Type-width / qualifier token | `0x01..0x08` (line 158) | Bare type qualifier (`.s8`..`.b128`, `.pred`) used as a free-standing operand (uncommon; appears in state-space prefixes) | Consumed by `case 0x11` (line 1436) which rejects unless the descriptor bit at `v61+17 & 0x40` permits it |
 | **6** | Predicate register | `0x3C` (line 237) | `%p0`..`%p7` and vote/select predicate operands | Handled by `case 0x14` (line 1453): rejects unless AST kind 15; also the only kind permitted in the `0x170` bit-check fast path of predicate-only instructions (line 411) |
-| **7** | Aggregate / structured constant | `0x40` (line 241) | Composite constant -- initializer list, sub-struct aggregate used by `.param` and texture-array instructions | Width read via `sub_44B390` which recurses through `case 0x42`/`case 0x44` (lines 99--109 of `sub_44B390`) to expand the aggregate |
+| **7** | Aggregate / structured constant | `0x40` (line 241) | Composite constant — initializer list, sub-struct aggregate used by `.param` and texture-array instructions | Width read via `sub_44B390` which recurses through `case 0x42`/`case 0x44` (lines 99--109 of `sub_44B390`) to expand the aggregate |
 | **8** | Constant address-space reference | `0x35`, `0x36` (line 224) | `.const` or `.param` address-space name (`c[0x0]`, `param[0]`) | Appears in memory-op encoding variants; matcher uses descriptor bit `v12+617 & 0x20` (line 324) to pre-filter descriptors that require address-space operands |
 | **9** | Global address-space reference | `0x37` (line 228) | `.global` address operand | Distinct from 8 so that ld/st matchers can accept `.global` without also accepting `.const` |
 | **10** | Typed immediate (integer/bit literal) | `0x19..0x1F`, `0x22`, `0x25..0x30`, `0x33` (line 204) | Integer / hex / binary literal with explicit type suffix | Drives the "immediate allowed" check at `v12+600 & 2` (line 523): if the descriptor forbids immediates, any category-10 operand kills that descriptor via `v13 & 1` at offset 13 |
 | **11** | Typed immediate (float/double literal) | `0x20`, `0x21`, `0x23`, `0x24`, `0x31`, `0x32` (line 213) | Float / double literal (`0f3F800000`, `0d...`) | Same immediate-gate as cat 10, but also participates in the float-type check `v12+611 & 0x30` at line 857 |
 
-The distinction is that the classifier runs *once* per operand in a tight switch, while the matcher then walks a list of candidate descriptors and rejects each one using a series of **descriptor-bit-against-category-code** filters before finally doing a full per-operand check. The 11 explicit categories plus category 0 (default/unclassified) give 12 states, which fits in 4 bits -- but the binary stores them as full `_DWORD`s (`v133` is `_DWORD v133[32]`, line 135) because the compare at line 950 (`if ( v50[9] != v133[0] )`) is a direct int compare against the descriptor's pre-serialized category sequence.
+The distinction is that the classifier runs *once* per operand in a tight switch, while the matcher then walks a list of candidate descriptors and rejects each one using a series of **descriptor-bit-against-category-code** filters before finally doing a full per-operand check. The 11 explicit categories plus category 0 (default/unclassified) give 12 states, which fits in 4 bits — but the binary stores them as full `_DWORD`s (`v133` is `_DWORD v133[32]`, line 135) because the compare at line 950 (`if ( v50[9] != v133[0] )`) is a direct int compare against the descriptor's pre-serialized category sequence.
 
 #### Classifier Pseudocode
 
@@ -1568,7 +1568,7 @@ Descriptor *match_instruction(
 
 #### Ambiguity Resolution
 
-The matcher is **not** a pure "first match wins" scheme. When multiple descriptors survive every filter, disambiguation is by the **SM target code** stored at descriptor byte `+232` (compared against `a7`, the compile target). If `a7 == 0` (target-independent lookup, as during macro expansion), the matcher returns the first surviving descriptor unconditionally (line 994). If more than one descriptor survives **and** more than one has matching `sm_target`, the matcher still returns the first one encountered in list order -- there is no tie-breaking heuristic, so instruction-table registration order (which is deterministic because `sub_46E000` registers in source order) is the silent arbiter. Truly-ambiguous encodings are prevented at table-build time rather than at parse time.
+The matcher is **not** a pure "first match wins" scheme. When multiple descriptors survive every filter, disambiguation is by the **SM target code** stored at descriptor byte `+232` (compared against `a7`, the compile target). If `a7 == 0` (target-independent lookup, as during macro expansion), the matcher returns the first surviving descriptor unconditionally (line 994). If more than one descriptor survives **and** more than one has matching `sm_target`, the matcher still returns the first one encountered in list order — there is no tie-breaking heuristic, so instruction-table registration order (which is deterministic because `sub_46E000` registers in source order) is the silent arbiter. Truly-ambiguous encodings are prevented at table-build time rather than at parse time.
 
 #### Failure Diagnostics
 
@@ -1584,7 +1584,7 @@ The matcher is **not** a pure "first match wins" scheme. When multiple descripto
 
 Each per-phase emitter reports exactly which modifier family cost the match, which is why ptxas produces targeted messages like "`.wide` not valid for this instruction" rather than a generic "operand mismatch".
 
-The classification examines token attributes set by the lexer. The bit tests mentioned in older wiki drafts (`(field >> 28) & 7`, `0x1000000`, `0x6000000`) live in the **lexer** (`sub_44F2A0` and its callees) where the token-kind value is assigned -- the matcher itself only reads the already-encoded token kind at `*v14`.
+The classification examines token attributes set by the lexer. The bit tests mentioned in older wiki drafts (`(field >> 28) & 7`, `0x1000000`, `0x6000000`) live in the **lexer** (`sub_44F2A0` and its callees) where the token-kind value is assigned — the matcher itself only reads the already-encoded token kind at `*v14`.
 
 ## Parser State Object (1,128 bytes)
 
@@ -1742,7 +1742,7 @@ PTX opcode names stored in the binary are ROT13-encoded as an obfuscation measur
 | `QRCONE` | `DEPBAR` | `depbar` |
 | `YQGENZ` | `LDTRAM` | `ldtram` |
 
-The table covers the entire PTX ISA vocabulary -- hundreds of opcodes. A separate ROT13 table in `ctor_005` (`0x40D860`, 80 KB) encodes 2,000+ internal Mercury/OCG tuning knob names (see [Knobs System](../config/knobs.md)).
+The table covers the entire PTX ISA vocabulary — hundreds of opcodes. A separate ROT13 table in `ctor_005` (`0x40D860`, 80 KB) encodes 2,000+ internal Mercury/OCG tuning knob names (see [Knobs System](../config/knobs.md)).
 
 ## Compilation Pipeline Integration
 
@@ -1765,7 +1765,7 @@ The parse phase encompasses the Flex scanner, macro preprocessor, Bison parser, 
 
 ## PTX Text Generation (Reverse Direction)
 
-The inverse of parsing -- converting IR back to PTX text -- lives in `0x4DA340`--`0x5A8E40` (580 formatter functions). Each handles one PTX opcode. A dispatcher at `sub_5D4190` (12.9 KB) routes by opcode name using 81 direct string comparisons plus a 473-entry hash switch. Every formatter follows an identical allocation pattern:
+The inverse of parsing — converting IR back to PTX text — lives in `0x4DA340`--`0x5A8E40` (580 formatter functions). Each handles one PTX opcode. A dispatcher at `sub_5D4190` (12.9 KB) routes by opcode name using 81 direct string comparisons plus a 473-entry hash switch. Every formatter follows an identical allocation pattern:
 
 ```c
 pool = sub_4280C0(ctx)[3];              // Get allocator pool
@@ -1784,11 +1784,11 @@ A monolithic format string table (~1.8 MB) at the `a2` parameter contains pre-as
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_720F00` | 15.8 KB | `ptxlex` -- Flex DFA scanner main | 98% |
-| `sub_4CE6B0` | 48 KB | `ptxparse` -- Bison LALR(1) parser | HIGH |
+| `sub_720F00` | 15.8 KB | `ptxlex` — Flex DFA scanner main | 98% |
+| `sub_4CE6B0` | 48 KB | `ptxparse` — Bison LALR(1) parser | HIGH |
 | `sub_46E000` | 93 KB | Instruction table builder (1,141 opcode registrations) | HIGH |
-| `sub_46BED0` | -- | Per-opcode registration function (called 1,141x) | HIGH |
-| `sub_46C690` | -- | Instruction lookup entry | HIGH |
+| `sub_46BED0` | — | Per-opcode registration function (called 1,141x) | HIGH |
+| `sub_46C690` | — | Instruction lookup entry | HIGH |
 | `sub_46C6E0` | 6.4 KB | Descriptor matcher (12-category operand classifier) | HIGH |
 | `sub_451730` | 14 KB | Parser initialization (allocs 1,128B parser state + 2,528B lexer state) | HIGH |
 | `sub_70FDD0` | 14 B | Lexer version array writer: `*(a1 + 4*a2 + 1984) = a3` | HIGH |
@@ -1822,16 +1822,16 @@ A monolithic format string table (~1.8 MB) at the `a2` parameter contains pre-as
 | `sub_4B2F20` | 52.6 KB | General instruction validator | HIGH |
 | `sub_4C5FB0` | 28.5 KB | Instruction operand validator | HIGH |
 | `sub_4C2FD0` | 12.2 KB | WMMA/MMA validator | HIGH |
-| `sub_485520` | -- | SM architecture check (`sm >= N`) | HIGH |
-| `sub_485570` | -- | PTX version check (`version >= M.N`) | HIGH |
+| `sub_485520` | — | SM architecture check (`sm >= N`) | HIGH |
+| `sub_485570` | — | PTX version check (`version >= M.N`) | HIGH |
 
 ## Cross-References
 
-- [Pipeline Overview](./overview.md) -- where the parser fits in the compilation flow
-- [PTX Directive Handling](./ptx-directives.md) -- detailed directive processing after parsing
-- [PTX-to-Ori Lowering](./ptx-to-ori.md) -- what happens to the IR the parser builds
-- [Knobs System](../config/knobs.md) -- ROT13-encoded knob names from `ctor_005`
-- [Memory Pool Allocator](../infra/memory-pools.md) -- `sub_424070`/`sub_4248B0` pool system
-- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) -- `sub_426150`/`sub_426D60` hash map
-- [PTX Instruction Table](../reference/ptx-instructions.md) -- full opcode catalog
-- [CLI Options](../config/cli-options.md) -- `sub_432A00`/`sub_434320` option handling
+- [Pipeline Overview](./overview.md) — where the parser fits in the compilation flow
+- [PTX Directive Handling](./ptx-directives.md) — detailed directive processing after parsing
+- [PTX-to-Ori Lowering](./ptx-to-ori.md) — what happens to the IR the parser builds
+- [Knobs System](../config/knobs.md) — ROT13-encoded knob names from `ctor_005`
+- [Memory Pool Allocator](../infra/memory-pools.md) — `sub_424070`/`sub_4248B0` pool system
+- [Hash Tables & Bitvectors](../infra/hash-bitvector.md) — `sub_426150`/`sub_426D60` hash map
+- [PTX Instruction Table](../reference/ptx-instructions.md) — full opcode catalog
+- [CLI Options](../config/cli-options.md) — `sub_432A00`/`sub_434320` option handling

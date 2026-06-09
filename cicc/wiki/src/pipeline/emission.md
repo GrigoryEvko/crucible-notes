@@ -19,7 +19,7 @@ PTX assembly output, function headers, stack frames, register declarations, spec
 | **Global variable ordering** | `sub_2157D50` (5.9KB, topological sort with circular dependency detection) |
 | **Bitcode producer** | `"LLVM7.0.1"` (NVVM IR compat marker, despite LLVM 20.0.0) |
 
-## Function Header Emission -- `sub_215A3C0`
+## Function Header Emission — `sub_215A3C0`
 
 Emits a complete PTX function prologue in this exact order:
 
@@ -38,7 +38,7 @@ Emits a complete PTX function prologue in this exact order:
 | (k) | Stack frame + registers | `sub_2158E80` |
 | (l) | DWARF debug info | If enabled |
 
-## Kernel Attributes -- `sub_214DA90`
+## Kernel Attributes — `sub_214DA90`
 
 Reads NVVM metadata and emits performance-tuning directives. Attribute emission order:
 
@@ -47,15 +47,15 @@ Reads NVVM metadata and emits performance-tuning directives. Attribute emission 
 | 1 | `.blocksareclusters` | `nvvm.blocksareclusters` | Fatal if reqntid not set |
 | 2 | `.reqntid X, Y, Z` | `nvvm.reqntid` + `sub_1C2EDB0` | Comma-separated strtol parse |
 | 3 | `.maxntid X, Y, Z` | `sub_1C2EC00` / structured | Unspecified dims default to 1 |
-| 4 | `.minnctapersm N` | `sub_1C2EF70` | -- |
+| 4 | `.minnctapersm N` | `sub_1C2EF70` | — |
 | 5 | `.explicitcluster` | `nvvm.cluster_dim` | SM > 89 only |
 | 6 | `.reqnctapercluster X, Y, Z` | Cluster dim readers | SM > 89 only |
 | 7 | `.maxclusterrank N` | `sub_1C2EF50` | SM > 89 only |
-| 8 | `.maxnreg N` | `sub_1C2EF90` | -- |
+| 8 | `.maxnreg N` | `sub_1C2EF90` | — |
 
 Cluster attributes (5--7) gated by `*(a1+232)->field_1212 > 0x59` (SM > 89, i.e., SM 90+).
 
-## Stack Frame -- `sub_2158E80`
+## Stack Frame — `sub_2158E80`
 
 | Field | Value |
 |---|---|
@@ -77,7 +77,7 @@ Cluster attributes (5--7) gated by `*(a1+232)->field_1212 > 0x59` (SM > 89, i.e.
    ```
    Uses `.b32` in 32-bit mode (checked via `*(a2+8)->field_936`).
 
-3. **Virtual register declarations** -- iterates register map at `*(a1+800)`, deduplicates via hash table at `a1+808`:
+3. **Virtual register declarations** — iterates register map at `*(a1+800)`, deduplicates via hash table at `a1+808`:
    ```ptx
    .reg .pred  %p<5>;
    .reg .b16   %rs<12>;
@@ -91,7 +91,7 @@ Cluster attributes (5--7) gated by `*(a1+232)->field_1212 > 0x59` (SM > 89, i.e.
 
 The complete 9-class register table (vtable addresses, PTX type suffixes, prefixes, encoded IDs, copy opcodes, and coalescing constraints) is in [Register Classes](../reference/register-classes.md#the-nine-register-classes). The encoding scheme (`sub_21583D0`: `class_encoded_id | (register_index & 0x0FFFFFFF)`, fatal `"Bad register class"` on unrecognized vtable) is documented in [Register Encoding Scheme](../reference/register-classes.md#register-encoding-scheme----sub_21583d0).
 
-## Special Registers -- `sub_21E86B0`
+## Special Registers — `sub_21E86B0`
 
 Switch on operand value (ASCII-encoded):
 
@@ -109,10 +109,10 @@ Switch on operand value (ASCII-encoded):
 | `0x2F` | `/` | `%nctaid.x` | Grid dim, X |
 | `0x30` | `0` | `%nctaid.y` | Grid dim, Y |
 | `0x31` | `1` | `%nctaid.z` | Grid dim, Z |
-| `0x5E` | `^` | (dynamic) | Via `sub_3958DA0(0, ...)` -- %warpid/%laneid |
+| `0x5E` | `^` | (dynamic) | Via `sub_3958DA0(0, ...)` — %warpid/%laneid |
 | `0x5F` | `_` | (dynamic) | Via `sub_3958DA0(1, ...)` |
 
-### Cluster Registers -- `sub_21E9060` (SM 90+)
+### Cluster Registers — `sub_21E9060` (SM 90+)
 
 | Value | Register | Description |
 |---|---|---|
@@ -142,13 +142,13 @@ Bit layout:
 
 The scope field emits a prefix before the atomic suffix: scope 0 produces no prefix (implicit `.gpu`), scope 1 emits `".cta"`, scope 2 emits `".sys"`. The complete PTX instruction format is `atom[.scope].op.type`.
 
-### Base Atomics -- `sub_21E5E70`
+### Base Atomics — `sub_21E5E70`
 
 13-operation dispatch table. The switch on `BYTE2(v4)` selects both the operation suffix and its type class:
 
 | Opcode | Suffix | Type Class | PTX Semantics |
 |---|---|---|---|
-| `0x00` | `.exch.b` | bitwise | Exchange -- atomically swap value |
+| `0x00` | `.exch.b` | bitwise | Exchange — atomically swap value |
 | `0x01` | `.add.u` | unsigned | Unsigned integer addition |
 | `0x03` | `.and.b` | bitwise | Bitwise AND |
 | `0x05` | `.or.b` | bitwise | Bitwise OR |
@@ -162,11 +162,11 @@ The scope field emits a prefix before the atomic suffix: scope 0 produces no pre
 | `0x0D` | `.dec.u` | unsigned | Unsigned decrement (wrapping) |
 | `0x0E` | `.cas.b` | bitwise | Compare-and-swap |
 
-Opcodes `0x02` and `0x04` are intentionally absent -- the PTX ISA has no signed atomic add at that slot, and no bitwise operation occupies slot 4. The 13 operations exactly match the PTX `atom` instruction repertoire.
+Opcodes `0x02` and `0x04` are intentionally absent — the PTX ISA has no signed atomic add at that slot, and no bitwise operation occupies slot 4. The 13 operations exactly match the PTX `atom` instruction repertoire.
 
 The type width suffix (`.b32`, `.b64`, `.u32`, `.u64`, `.s32`, `.s64`, `.f32`, `.f64`) is appended separately by the instruction printer after the operation suffix, based on the register class of the destination operand.
 
-### L2 Cache-Hinted Atomics -- `sub_21E6420` (Ampere+)
+### L2 Cache-Hinted Atomics — `sub_21E6420` (Ampere+)
 
 A parallel emission function that inserts `L2::cache_hint` between the operation and type suffix to produce the extended format:
 
@@ -174,7 +174,7 @@ A parallel emission function that inserts `L2::cache_hint` between the operation
 atom[.scope].op.L2::cache_hint.type
 ```
 
-All 13 atomic operations are supported with L2 hints. The hint instructs the GPU L2 cache controller to retain (or evict) the target cache line after the atomic completes -- a data-locality optimization introduced with Ampere (SM 80).
+All 13 atomic operations are supported with L2 hints. The hint instructs the GPU L2 cache controller to retain (or evict) the target cache line after the atomic completes — a data-locality optimization introduced with Ampere (SM 80).
 
 The function uses SSE `xmmword` loads from precomputed string constants at addresses `xmmword_435F590` through `xmmword_435F620` to fast-copy 16-byte prefixes of each suffix string. This avoids per-character string construction: each atomic variant's complete suffix (e.g., `.exch.L2::cache_hint.b` at 22 bytes) is assembled from a 16-byte SSE load of the prefix plus a patched tail. The compiler optimized this into aligned vector moves rather than `memcpy` calls.
 
@@ -212,7 +212,7 @@ void emitAtomicOp(raw_ostream &OS, unsigned operand) {
 
 The L2-hinted variant (`sub_21E6420`) follows identical dispatch logic but emits `.op.L2::cache_hint.type` instead of `.op.type`.
 
-## Memory Barriers -- `sub_21E94F0`
+## Memory Barriers — `sub_21E94F0`
 
 | Value | Instruction | Scope |
 |---|---|---|
@@ -220,9 +220,9 @@ The L2-hinted variant (`sub_21E6420`) follows identical dispatch logic but emits
 | 1 | `membar.cta` | Block |
 | 2 | `membar.sys` | System |
 | 4 | `fence.sc.cluster` | Cluster (SM 90+) |
-| 3 | -- | Fatal: `"Bad membar op"` |
+| 3 | — | Fatal: `"Bad membar op"` |
 
-## Cluster Barriers -- `sub_21E8EA0` (SM 90+)
+## Cluster Barriers — `sub_21E8EA0` (SM 90+)
 
 Encoding: bits[3:0] = operation (0=arrive, 1=wait), bits[7:4] = ordering (0=default, 1=relaxed).
 
@@ -233,7 +233,7 @@ Encoding: bits[3:0] = operation (0=arrive, 1=wait), bits[7:4] = ordering (0=defa
 | `barrier.cluster.wait` | Wait for all CTAs |
 | `barrier.cluster.wait.relaxed` | Relaxed-memory wait |
 
-## GenericToNVVM -- `sub_215DC20` / `sub_215E100`
+## GenericToNVVM — `sub_215DC20` / `sub_215E100`
 
 ### Pass Registration
 
@@ -250,7 +250,7 @@ Registration uses a once-init pattern guarded by `dword_4FD1558`. The 80-byte pa
 
 A new-pass-manager version also exists: `GenericToNVVMPass`, registered at `sub_305ED20` / `sub_305E2C0` with CLI name `"generic-to-nvvm"`.
 
-### Algorithm -- `sub_215E100` (6.7 KB native)
+### Algorithm — `sub_215E100` (6.7 KB native)
 
 The pass body at `sub_215E100` is 36KB because it must rewrite every address-space-dependent use of every affected global. The factory function `sub_215D530` allocates a 320-byte state object containing two DenseMap-like hash tables:
 
@@ -261,18 +261,18 @@ The pass body at `sub_215E100` is 36KB because it must rewrite every address-spa
 
 The algorithm proceeds in three phases:
 
-**Phase 1 -- Clone globals.** Iterate over all `GlobalVariable` objects in the module. For each global in `addrspace(0)` (the LLVM generic address space):
+**Phase 1 — Clone globals.** Iterate over all `GlobalVariable` objects in the module. For each global in `addrspace(0)` (the LLVM generic address space):
 
 1. Create a new `GlobalVariable` in `addrspace(1)` (NVPTX global memory) with identical initializer, linkage, alignment, and section attributes.
 2. Store the old-to-new mapping in `GVMap`.
 
-**Phase 2 -- Rewrite uses.** For each cloned global:
+**Phase 2 — Rewrite uses.** For each cloned global:
 
 1. Create an `addrspacecast` instruction from the new global (`addrspace(1)*`) back to the original pointer type (`addrspace(0)*`). This preserves type compatibility with all existing uses.
 2. Call `RAUW` (replaceAllUsesWith) on the original global, substituting the `addrspacecast` value. All instructions, constant expressions, and metadata references that pointed to the original global now point through the cast.
-3. The `ConstMap` table handles the tricky case of constant expressions that embed a global reference: `ConstantExpr::getAddrSpaceCast`, `ConstantExpr::getGetElementPtr`, and similar must be reconstructed with the new global. This is the bulk of the 36KB function body -- a recursive walk over the constant expression tree, rebuilding each node.
+3. The `ConstMap` table handles the tricky case of constant expressions that embed a global reference: `ConstantExpr::getAddrSpaceCast`, `ConstantExpr::getGetElementPtr`, and similar must be reconstructed with the new global. This is the bulk of the 36KB function body — a recursive walk over the constant expression tree, rebuilding each node.
 
-**Phase 3 -- Erase originals.** Iterate `GVMap` and erase each original global from the module. The cleanup helper `sub_215D780` iterates the map, properly managing LLVM `Value` reference counts during deletion.
+**Phase 3 — Erase originals.** Iterate `GVMap` and erase each original global from the module. The cleanup helper `sub_215D780` iterates the map, properly managing LLVM `Value` reference counts during deletion.
 
 The destructor at `sub_215D1A0` / `sub_215CE20` frees both hash tables and all stored `Value` references.
 
@@ -308,9 +308,9 @@ bool runOnModule(Module &M) {
 }
 ```
 
-**Why this exists.** The CUDA frontend (EDG) generates globals in `addrspace(0)` (LLVM's generic/default address space). The NVPTX backend requires device globals to reside in `addrspace(1)` (GPU global memory) for correct PTX emission. GenericToNVVM bridges this mismatch. Upstream LLVM has an equivalent `NVPTXGenericToNVVM` pass, but cicc's version carries the additional `ConstMap` machinery for handling nested constant expression trees that reference relocated globals -- a case that upstream handles differently through its `GenericToNVVM` + `NVPTXAssignValidGlobalAddresses` split.
+**Why this exists.** The CUDA frontend (EDG) generates globals in `addrspace(0)` (LLVM's generic/default address space). The NVPTX backend requires device globals to reside in `addrspace(1)` (GPU global memory) for correct PTX emission. GenericToNVVM bridges this mismatch. Upstream LLVM has an equivalent `NVPTXGenericToNVVM` pass, but cicc's version carries the additional `ConstMap` machinery for handling nested constant expression trees that reference relocated globals — a case that upstream handles differently through its `GenericToNVVM` + `NVPTXAssignValidGlobalAddresses` split.
 
-## Global Constructor Rejection -- `sub_215ACD0`
+## Global Constructor Rejection — `sub_215ACD0`
 
 ```c
 if (lookup("llvm.global_ctors") && type_tag == ArrayType && count != 0)
@@ -319,9 +319,9 @@ if (lookup("llvm.global_dtors") && type_tag == ArrayType && count != 0)
     fatal("Module has a nontrivial global dtor, which NVPTX does not support.");
 ```
 
-GPU kernels have no "program startup" phase -- no `__crt_init` equivalent. Static initialization with non-trivial constructors is incompatible with the GPU execution model.
+GPU kernels have no "program startup" phase — no `__crt_init` equivalent. Static initialization with non-trivial constructors is incompatible with the GPU execution model.
 
-## Global Variable Emission -- `sub_2156420`
+## Global Variable Emission — `sub_2156420`
 
 ### Overview
 
@@ -384,13 +384,13 @@ fatal("initial value of 'NAME' is not allowed in addrspace(N)");
 
 This diagnostic is emitted via `sub_1C3F040`.
 
-## Global Variable Ordering -- `sub_2157D50` (Topological Sort)
+## Global Variable Ordering — `sub_2157D50` (Topological Sort)
 
 ### Problem
 
 Global variables with initializers can reference other globals. If global `A`'s initializer contains a reference to global `B`, then `B` must be emitted before `A` in the PTX output. Circular dependencies are illegal and must be detected.
 
-### Algorithm -- DFS Topological Sort
+### Algorithm — DFS Topological Sort
 
 `sub_2157D50` (5.9KB) implements a depth-first topological sort over the global use-def chains. The algorithm:
 
@@ -398,7 +398,7 @@ Global variables with initializers can reference other globals. If global `A`'s 
 
 2. **DFS with three-color marking.** Each global is in one of three states:
    - **White** (unvisited): not yet processed.
-   - **Gray** (in progress): currently on the DFS stack -- its subtree is being explored.
+   - **Gray** (in progress): currently on the DFS stack — its subtree is being explored.
    - **Black** (finished): all dependents have been emitted.
 
 3. **Visit procedure.** For each white global, mark it gray and recurse into its dependencies. When all dependencies return, mark it black and push it onto the output ordering (post-order).
@@ -409,7 +409,7 @@ Global variables with initializers can reference other globals. If global `A`'s 
 "Circular dependency found in global variable set"
 ```
 
-This is a hard error -- cicc cannot emit globals with mutual references. The PTX format requires a linear declaration order, and there is no forward-declaration mechanism for global variable initializers.
+This is a hard error — cicc cannot emit globals with mutual references. The PTX format requires a linear declaration order, and there is no forward-declaration mechanism for global variable initializers.
 
 ### Pseudocode
 
@@ -543,7 +543,7 @@ The `disable-bitcode-version-upgrade` cl::opt (registered in `ctor_036`) control
 
 `NVVM_IR_VER_CHK=0` bypasses the NVVM IR version validation at `sub_157E370` and `sub_12BFF60`, which normally enforces `major == 3, minor <= 2` and fatals with `"Broken module found, compilation aborted!"` on mismatch.
 
-## Address Space Operations -- `sub_21E7FE0`
+## Address Space Operations — `sub_21E7FE0`
 
 Multi-purpose helper for cvta, MMA operands, and address space qualifiers:
 
@@ -586,13 +586,13 @@ Multi-purpose helper for cvta, MMA operands, and address space qualifiers:
 
 ## ptxas Interaction
 
-The PTX text emitted by cicc is not executed directly -- it is consumed by `ptxas`, which parses the PTX back into an internal IR, applies its own optimization and scheduling passes (195+ knobs), performs hardware register allocation, and emits SASS machine code. Every formatting decision in emission (register naming with `%r<N>` angle-bracket counts, `.pragma` annotations, kernel attribute placement) must conform to what ptxas's PTX parser expects. The `"LLVM7.0.1"` producer string exists specifically because ptxas gates certain parsing behaviors on the declared producer version. Emission quality directly affects ptxas optimization scope: cleaner PTX with fewer redundant moves gives ptxas more freedom to schedule and allocate efficiently.
+The PTX text emitted by cicc is not executed directly — it is consumed by `ptxas`, which parses the PTX back into an internal IR, applies its own optimization and scheduling passes (195+ knobs), performs hardware register allocation, and emits SASS machine code. Every formatting decision in emission (register naming with `%r<N>` angle-bracket counts, `.pragma` annotations, kernel attribute placement) must conform to what ptxas's PTX parser expects. The `"LLVM7.0.1"` producer string exists specifically because ptxas gates certain parsing behaviors on the declared producer version. Emission quality directly affects ptxas optimization scope: cleaner PTX with fewer redundant moves gives ptxas more freedom to schedule and allocate efficiently.
 
 ## Cross-References
 
-- [OptiX IR](optix-ir.md) -- OptiX IR output format details
-- [Bitcode I/O](../infra/bitcode-io.md) -- Bitcode reader/writer and `"LLVM7.0.1"` producer
-- [Register Classes](../reference/register-classes.md) -- Consolidated register class reference
-- [Address Spaces](../reference/address-spaces.md) -- Consolidated address space reference
-- [AsmPrinter](../infra/asmprinter.md) -- AsmPrinter infrastructure
-- [nvcc Interface](nvcc-interface.md) -- CLI flag routing from nvcc to cicc
+- [OptiX IR](optix-ir.md) — OptiX IR output format details
+- [Bitcode I/O](../infra/bitcode-io.md) — Bitcode reader/writer and `"LLVM7.0.1"` producer
+- [Register Classes](../reference/register-classes.md) — Consolidated register class reference
+- [Address Spaces](../reference/address-spaces.md) — Consolidated address space reference
+- [AsmPrinter](../infra/asmprinter.md) — AsmPrinter infrastructure
+- [nvcc Interface](nvcc-interface.md) — CLI flag routing from nvcc to cicc

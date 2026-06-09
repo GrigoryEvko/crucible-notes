@@ -8,7 +8,7 @@ CUDA defines custom section types in the `SHT_LOPROC`--`SHT_HIPROC` range (`0x70
 
 ### NVIDIA CUDA-Specific Types
 
-The table below lists every `sh_type` value actually passed to `section_create` (`sub_441AC0`). The symbolic constant names (`SHT_CUDA_*`) are synthetic -- NVIDIA does not publish a public header with these identifiers -- but the numeric values are verbatim from the decompiled function bodies.
+The table below lists every `sh_type` value actually passed to `section_create` (`sub_441AC0`). The symbolic constant names (`SHT_CUDA_*`) are synthetic — NVIDIA does not publish a public header with these identifiers — but the numeric values are verbatim from the decompiled function bodies.
 
 | Type constant | Value (hex) | Value (dec) | Section(s) | Creation site |
 |---|---|---|---|---|
@@ -52,9 +52,9 @@ The per-function flag `SHF_INFO_LINK` (`0x40`) is set on `.nv.info.<func>` secti
 
 This section documents each of the five core NVIDIA-specific section types that use custom `sh_type` values in the `0x70000000`--`0x70000004` range. For each section: the exact creation path, the content format, the processing/reading functions, when it is created in the pipeline, and size characteristics.
 
-### .nv.info -- Kernel Metadata (SHT_CUDA_INFO, 0x70000000)
+### .nv.info — Kernel Metadata (SHT_CUDA_INFO, 0x70000000)
 
-The `.nv.info` section is the most important NVIDIA ELF metadata section. It encodes per-kernel resource requirements as TLV (Type-Length-Value) records using the EIATTR (ELF Info ATTRibute) format. Without this metadata, the GPU driver cannot launch a kernel -- it provides register counts, stack sizes, barrier counts, parameter layouts, and dozens of other resource descriptors.
+The `.nv.info` section is the most important NVIDIA ELF metadata section. It encodes per-kernel resource requirements as TLV (Type-Length-Value) records using the EIATTR (ELF Info ATTRibute) format. Without this metadata, the GPU driver cannot launch a kernel — it provides register counts, stack sizes, barrier counts, parameter layouts, and dozens of other resource descriptors.
 
 | Property | Value |
 |---|---|
@@ -74,7 +74,7 @@ The `.nv.info` section is the most important NVIDIA ELF metadata section. It enc
 
 **Creation path.** `sub_4504B0` (at `0x4504B0`) serves as the `.nv.info` section factory. It takes two arguments: the ELF context (`a1`) and a function section index (`a2`). The creation logic branches:
 
-- **Global `.nv.info`** (`a2 == 0`): Calls `sub_4411D0` to look up an existing `.nv.info` section by name. If not found, calls `sub_441AC0(ctx, ".nv.info", 1879048192, 0, shndx, 0, 4, 0)` to create it (line 46). Flags are `0` -- no `SHF_INFO_LINK`.
+- **Global `.nv.info`** (`a2 == 0`): Calls `sub_4411D0` to look up an existing `.nv.info` section by name. If not found, calls `sub_441AC0(ctx, ".nv.info", 1879048192, 0, shndx, 0, 4, 0)` to create it (line 46). Flags are `0` — no `SHF_INFO_LINK`.
 
 - **Per-function `.nv.info.<name>`** (`a2 != 0`): Resolves the function symbol name via `sub_440590` + `sub_440350`, then constructs the per-function section name via `sprintf(buf, "%s.%s", ".nv.info", func_name)`. Calls `sub_441AC0(ctx, buf, 1879048192, 0x40, shndx, func_idx, 4, 0)` (line 63). The `0x40` flag sets `SHF_INFO_LINK`, and the sixth argument (`func_idx`) becomes `sh_info`, linking the section to its owning function. After creation, `sub_4426D0` (line 66) registers the section-to-function association.
 
@@ -103,7 +103,7 @@ The parser logs each record as: `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"`.
 
 **Size characteristics.** A simple kernel's `.nv.info.<name>` section is typically 100--400 bytes. Complex kernels with many parameters, texture bindings, and barrier usage can reach 2--4 KB. The global `.nv.info` section is typically 20--100 bytes per compilation unit.
 
-### .nv.callgraph -- Call Edge Table (SHT_CUDA_CALLGRAPH, 0x70000001)
+### .nv.callgraph — Call Edge Table (SHT_CUDA_CALLGRAPH, 0x70000001)
 
 The `.nv.callgraph` section records caller-callee relationships between device functions. The linker uses this for dead code elimination, stack size propagation, and register count propagation from callees to callers.
 
@@ -156,7 +156,7 @@ The dead code eliminator `sub_44AD40` consumes the call graph to determine reach
 
 **Size characteristics.** Proportional to the number of call edges: 8 bytes per edge plus 32 bytes of sentinels. A module with 100 functions and 200 edges produces approximately 1,632 bytes.
 
-### .nv.prototype -- Launch Prototype Descriptors (SHT_CUDA_PROTOTYPE, 0x70000002)
+### .nv.prototype — Launch Prototype Descriptors (SHT_CUDA_PROTOTYPE, 0x70000002)
 
 The `.nv.prototype` section describes the parameter layout and launch configuration for each `__global__` entry function. The CUDA driver reads this section to validate kernel launch parameters.
 
@@ -184,7 +184,7 @@ Offset  Size  Field
 0x04    4     proto_desc     Prototype descriptor (parameter layout encoding)
 ```
 
-The prototype descriptor is a compact encoding of the kernel's parameter count, sizes, and alignment requirements. It is opaque to the linker -- nvlink copies it verbatim from input to output. The driver decodes it at kernel launch time to validate that the caller provides the correct number and types of arguments.
+The prototype descriptor is a compact encoding of the kernel's parameter count, sizes, and alignment requirements. It is opaque to the linker — nvlink copies it verbatim from input to output. The driver decodes it at kernel launch time to validate that the caller provides the correct number and types of arguments.
 
 **When created.** Built during the finalization phase, after all functions have been merged. Like the callgraph, it requires that the function table is complete.
 
@@ -192,7 +192,7 @@ The prototype descriptor is a compact encoding of the kernel's parameter count, 
 
 **Size characteristics.** 8 bytes per `__global__` entry function. A module with 10 entry kernels produces 80 bytes.
 
-### .nv.resolvedrela -- Preserved Relocations (SHT_CUDA_RESOLVED_RELA, 0x70000003)
+### .nv.resolvedrela — Preserved Relocations (SHT_CUDA_RESOLVED_RELA, 0x70000003)
 
 The `.nv.resolvedrela` section preserves relocations after linking for driver-side patching. It is only created when the `--preserve-relocs` flag is specified (checked via the byte at `a1+85` in the ELF context).
 
@@ -206,7 +206,7 @@ The `.nv.resolvedrela` section preserves relocations after linking for driver-si
 | `sh_addralign` | 12 or 24 (ELF32 vs ELF64) |
 | `sh_flags` | `0x40` (`SHF_INFO_LINK`) |
 
-**Creation path.** `sub_469230` at address `0x469230` is the relocation section creator. It handles three section types (REL, RELA, and resolved-RELA) in a single function. The creation of `.nv.resolvedrela` sections is conditional on `*(_BYTE *)(a1 + 85)` -- the `--preserve-relocs` flag. When active, for each input relocation section, the function:
+**Creation path.** `sub_469230` at address `0x469230` is the relocation section creator. It handles three section types (REL, RELA, and resolved-RELA) in a single function. The creation of `.nv.resolvedrela` sections is conditional on `*(_BYTE *)(a1 + 85)` — the `--preserve-relocs` flag. When active, for each input relocation section, the function:
 
 1. Constructs the resolved relocation section name via `sprintf(buf, "%s%s", ".nv.resolvedrela", original_section_name)`.
 2. Calls `sub_441AC0(ctx, buf, 1879048195, 0x40, shndx, target_sec, entsize, addend_size)` (line 151).
@@ -228,7 +228,7 @@ Elf64_Rela:
 
 **Size characteristics.** Directly proportional to the number of relocations in the linked binary. Each resolved relocation consumes 12 bytes (ELF32) or 24 bytes (ELF64). A kernel with 500 relocations produces ~12 KB.
 
-### .nv.metadata -- Module Metadata (SHT_CUDA_METADATA, 0x70000004)
+### .nv.metadata — Module Metadata (SHT_CUDA_METADATA, 0x70000004)
 
 The `.nv.metadata` section carries module-level metadata, primarily the `__nv_module_id` string that uniquely identifies the compilation unit for CUDA runtime registration.
 
@@ -242,7 +242,7 @@ The `.nv.metadata` section carries module-level metadata, primarily the `__nv_mo
 | `sh_entsize` | 4 |
 | `sh_addralign` | 0 |
 
-**Creation path.** `sub_43D6B0` at address `0x43D6B0` creates the `.nv.metadata` section lazily -- only on first use. It checks if the metadata section index is already cached at `a1+232`:
+**Creation path.** `sub_43D6B0` at address `0x43D6B0` creates the `.nv.metadata` section lazily — only on first use. It checks if the metadata section index is already cached at `a1+232`:
 
 ```c
 if (*(uint32_t *)(ctx + 232) == 0) {
@@ -287,7 +287,7 @@ The `__nv_module_id` string is the compilation unit's unique identifier. During 
 |---|---|---|
 | `.text.<funcname>` | `SHT_PROGBITS` (`0x01`) | Machine code (SASS) for a single kernel or device function. Each function gets its own `.text.<name>` section, unlike host ELF which uses a monolithic `.text`. The function name is the mangled CUDA symbol. For Mercury targets (sm100+), the FNLZR replaces the Mercury instruction stream with final SASS. |
 
-The linker processes `.text` sections during merge by copying them into the output ELF via `elfw_copy_section` (`sub_4411F0`). Dead code elimination (`sub_44AD40`) removes `.text` sections for unreachable functions, printing `"removed un-used section %s (%d)"` for each. The removal cascades to associated sections: `.nv.info.<func>`, `.nv.local.<func>`, `.nv.shared.<func>`, and their `.rela.*` counterparts -- eight distinct removal sites in the decompiled dead-code-elimination function.
+The linker processes `.text` sections during merge by copying them into the output ELF via `elfw_copy_section` (`sub_4411F0`). Dead code elimination (`sub_44AD40`) removes `.text` sections for unreachable functions, printing `"removed un-used section %s (%d)"` for each. The removal cascades to associated sections: `.nv.info.<func>`, `.nv.local.<func>`, `.nv.shared.<func>`, and their `.rela.*` counterparts — eight distinct removal sites in the decompiled dead-code-elimination function.
 
 ## Info and Metadata Sections
 
@@ -295,7 +295,7 @@ These sections carry structured metadata about kernels and the compilation unit.
 
 | Section name | sh_type | Creator | Reader | Description |
 |---|---|---|---|---|
-| `.nv.info` | `0x70000000` | `sub_4504B0:46` | `sub_45E7D0` (merge, inline TLV parse), `sub_451D80` (finalize) | Global EIATTR metadata. Attributes apply to the entire module -- CUDA API version, compatibility flags. |
+| `.nv.info` | `0x70000000` | `sub_4504B0:46` | `sub_45E7D0` (merge, inline TLV parse), `sub_451D80` (finalize) | Global EIATTR metadata. Attributes apply to the entire module — CUDA API version, compatibility flags. |
 | `.nv.info.<funcname>` | `0x70000000` | `sub_4504B0:63` | `sub_45E7D0`, `sub_451D80` | Per-kernel EIATTR metadata: register count, stack sizes, barriers, parameter info. `sh_link` references the owning function symbol. |
 | `.nv.metadata` | `0x70000004` | `sub_43D6B0:31` | `sub_42A680`, `sub_46F0C0` | Module metadata: `__nv_module_id` string for CUDA registration. |
 | `.nv.callgraph` | `0x70000001` | `sub_44D200:102` | `sub_44CA40`, `sub_44AD40` | Call edge table: caller-callee pairs for DCE and stack propagation. |
@@ -312,7 +312,7 @@ Each attribute record in a `.nv.info` section is encoded as a `(format, attribut
 nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d
 ```
 
-The `fmt` field encodes the payload format (EIFMT). The `attr` field is one of the `EIATTR_*` constants. nvlink v13.0.88 recognizes 97 distinct EIATTR constants (codes 0--96) -- see the [NVIDIA Info Attributes](nv-info.md) page for the complete catalog.
+The `fmt` field encodes the payload format (EIFMT). The `attr` field is one of the `EIATTR_*` constants. nvlink v13.0.88 recognizes 97 distinct EIATTR constants (codes 0--96) — see the [NVIDIA Info Attributes](nv-info.md) page for the complete catalog.
 
 ### .nv.compat Attribute Format
 
@@ -321,7 +321,7 @@ The `.nv.compat` section contains compatibility attribute records processed duri
 - `sub_451BA0` (line 64): Creates `.nv.compat` with type `0x70000086` and emits attribute records for the standard compatibility path.
 - `sub_451920` (line 113): Creates `.nv.compat` with type `0x70000086` for the alternate compatibility path.
 
-Both functions share the same error diagnostic: `"unknown .nv.compat attribute (%x) encoutered with value %x."` -- the typo `"encoutered"` is present in the binary at string address `0x1D3B1B8`. The merge function `sub_45E7D0` also validates `.nv.compat` attributes (line 1832) with the slightly different message `"unknown .nv.compat attribute (%x) encoutered."`.
+Both functions share the same error diagnostic: `"unknown .nv.compat attribute (%x) encoutered with value %x."` — the typo `"encoutered"` is present in the binary at string address `0x1D3B1B8`. The merge function `sub_45E7D0` also validates `.nv.compat` attributes (line 1832) with the slightly different message `"unknown .nv.compat attribute (%x) encoutered."`.
 
 #### EICOMPAT_ATTR Kinds
 
@@ -343,7 +343,7 @@ Both functions share the same error diagnostic: `"unknown .nv.compat attribute (
 | `EICOMPAT_ATTR_ERROR_LAST` | Sentinel | Last-slot sentinel marking end of catalog (parallels `EIATTR_ERROR_LAST` at 0x60). |
 
 > ⚡ **QUIRK — EICOMPAT vs EIATTR namespaces**
-> `.nv.compat` and `.nv.info` both carry TLV records but draw kind codes from disjoint namespaces (`EICOMPAT_ATTR_*` vs `EIATTR_*`). A parser keyed only on the EIATTR table will treat valid `.nv.compat` records as `"unknown attribute"` and silently misclassify Mercury target metadata. The two namespaces overlap conceptually for ISA versioning -- `EIATTR_MERCURY_ISA_VERSION` lives in `.nv.info`, while `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION` / `..._PATCH_VERSION` live in `.nv.compat`. Confidence: MED (names are HIGH-confidence from the binary; semantic groupings are inferred from naming).
+> `.nv.compat` and `.nv.info` both carry TLV records but draw kind codes from disjoint namespaces (`EICOMPAT_ATTR_*` vs `EIATTR_*`). A parser keyed only on the EIATTR table will treat valid `.nv.compat` records as `"unknown attribute"` and silently misclassify Mercury target metadata. The two namespaces overlap conceptually for ISA versioning — `EIATTR_MERCURY_ISA_VERSION` lives in `.nv.info`, while `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION` / `..._PATCH_VERSION` live in `.nv.compat`. Confidence: MED (names are HIGH-confidence from the binary; semantic groupings are inferred from naming).
 
 ## Memory Space Sections
 
@@ -495,12 +495,12 @@ These sections support incremental linking through hash-based relocation trackin
 
 | Section name | sh_type | Description |
 |---|---|---|
-| `.nvHRKE` | `SHT_PROGBITS` | Hash Relocation Key External -- external key hash entries. |
-| `.nvHRKI` | `SHT_PROGBITS` | Hash Relocation Key Internal -- internal key hash entries. |
-| `.nvHRCE` | `SHT_PROGBITS` | Hash Relocation Code External -- external code hash entries. |
-| `.nvHRCI` | `SHT_PROGBITS` | Hash Relocation Code Internal -- internal code hash entries. |
-| `.nvHRDE` | `SHT_PROGBITS` | Hash Relocation Data External -- external data hash entries. |
-| `.nvHRDI` | `SHT_PROGBITS` | Hash Relocation Data Internal -- internal data hash entries. |
+| `.nvHRKE` | `SHT_PROGBITS` | Hash Relocation Key External — external key hash entries. |
+| `.nvHRKI` | `SHT_PROGBITS` | Hash Relocation Key Internal — internal key hash entries. |
+| `.nvHRCE` | `SHT_PROGBITS` | Hash Relocation Code External — external code hash entries. |
+| `.nvHRCI` | `SHT_PROGBITS` | Hash Relocation Code Internal — internal code hash entries. |
+| `.nvHRDE` | `SHT_PROGBITS` | Hash Relocation Data External — external data hash entries. |
+| `.nvHRDI` | `SHT_PROGBITS` | Hash Relocation Data Internal — internal data hash entries. |
 
 ## Fatbin Sections (Host ELF)
 
@@ -584,7 +584,7 @@ A section progresses through the following stages in the nvlink pipeline:
 
 3. **Create/Find**: The output section is found by name hash lookup or created by `section_create` (`sub_441AC0`), which allocates a 104-byte section record and registers it in both hash tables (by name at `ctx+296` and by index at `ctx+288`).
 
-4. **Accumulate**: `section_data_copy` (`sub_433760`) appends data contributions to a linked list. No final layout yet -- just a chain of (source_ptr, size, alignment) nodes.
+4. **Accumulate**: `section_data_copy` (`sub_433760`) appends data contributions to a linked list. No final layout yet — just a chain of (source_ptr, size, alignment) nodes.
 
 5. **Layout**: The layout engine (`sub_439830`) calls `section_layout_engine` (`sub_4325A0`) to sort symbols by alignment and assign offsets within each section.
 
@@ -678,44 +678,44 @@ All functions that create, read, or process NVIDIA-specific sections, with addre
 | `build_prototype_section` | `sub_44D9D0` | 63 | Creates and populates `.nv.prototype` |
 | `create_reloc_section` | `sub_469230` | 154 | Creates `.rela.*`, `.rel.*`, and `.nv.resolvedrela*` sections |
 | `create_metadata_section` | `sub_43D6B0` | 85 | Creates `.nv.metadata` section (lazy, cached at ctx+232) |
-| `tokenize_quoted_arg` | `sub_44E590` | -- | Recursive string tokenizer (handles `\`, `[`, `]`, `"` escapes). *Earlier misattribution as `parse_nvinfo_attribute` corrected: this function never touches `.nv.info` -- the actual TLV parser is inline in `sub_45E7D0` (merge) and `sub_451D80` (finalize).* |
+| `tokenize_quoted_arg` | `sub_44E590` | — | Recursive string tokenizer (handles `\`, `[`, `]`, `"` escapes). *Earlier misattribution as `parse_nvinfo_attribute` corrected: this function never touches `.nv.info` — the actual TLV parser is inline in `sub_45E7D0` (merge) and `sub_451D80` (finalize).* |
 | `tokenize_string_list` | `sub_44E8B0` | 223 | String list tokenizer used by command-line / config parsing. *Earlier misattribution as `parse_nvinfo_section` corrected; see [.nv.info Metadata](nv-info.md).* |
 | `compute_entry_properties` | `sub_451D80` | 3,029 | Walks the EIATTR linked list at `elfw+392`, computes per-entry-kernel properties (regcount, barriers, frame size, stack size, externs), and *appends* new EIATTR record nodes via `sub_450B70`/`sub_4644C0`. Does not write TLV bytes itself; the chunk-list payload pointers it sets up are later flushed by `sub_45BF00`. |
-| `reloc_action_dispatcher` | `sub_468760` | -- | Relocation-action engine / instruction-field bitpacker (14,322 bytes). *Earlier wiki revisions misattributed this as "nvinfo_encode"; it is unrelated to EIATTR TLV emission. See [.nv.info Metadata](nv-info.md#tlv-byte-emission) and [Relocation Engine](../linker/relocation-engine.md).* |
+| `reloc_action_dispatcher` | `sub_468760` | — | Relocation-action engine / instruction-field bitpacker (14,322 bytes). *Earlier wiki revisions misattributed this as "nvinfo_encode"; it is unrelated to EIATTR TLV emission. See [.nv.info Metadata](nv-info.md#tlv-byte-emission) and [Relocation Engine](../linker/relocation-engine.md).* |
 | `fixup_callgraph` | `sub_44CA40` | 110 | Remaps symbol indices in `.nv.callgraph` |
 | `fixup_prototype` | `sub_44CBC0` | 54 | Remaps symbol indices in `.nv.prototype` |
 | `emit_resolved_relocations` | `sub_46ADC0` | 406 | Writes resolved relocation entries |
-| `register_module_for_linking` | `sub_42A680` | -- | Reads `.nv.metadata` and extracts `__nv_module_id` |
-| `extract_module_id` | `sub_46F0C0` | -- | Looks up `__nv_module_id` symbol in metadata |
+| `register_module_for_linking` | `sub_42A680` | — | Reads `.nv.metadata` and extracts `__nv_module_id` |
+| `extract_module_id` | `sub_46F0C0` | — | Looks up `__nv_module_id` symbol in metadata |
 | `dead_code_elimination` | `sub_44AD40` | 689 | Consumes `.nv.callgraph`, removes unreachable sections |
-| `merge_elf` | `sub_45E7D0` | -- | Central section classifier (89,156 bytes) |
-| `apply_relocations` | `sub_469D60` | -- | Resolves relocations, creates `.nv.rel.action` at line 913 |
-| `create_compat_section` (path A) | `sub_451BA0` | -- | Creates `.nv.compat` at line 64 |
-| `create_compat_section` (path B) | `sub_451920` | -- | Creates `.nv.compat` at line 113 |
-| `dump_callgraph` | `sub_44CE00` | -- | Prints `"callgraph for sm_%d:"` to stderr |
-| `dump_callgraph_dot` | `sub_44CCF0` | -- | Outputs `"digraph callgraph {"` in DOT format |
+| `merge_elf` | `sub_45E7D0` | — | Central section classifier (89,156 bytes) |
+| `apply_relocations` | `sub_469D60` | — | Resolves relocations, creates `.nv.rel.action` at line 913 |
+| `create_compat_section` (path A) | `sub_451BA0` | — | Creates `.nv.compat` at line 64 |
+| `create_compat_section` (path B) | `sub_451920` | — | Creates `.nv.compat` at line 113 |
+| `dump_callgraph` | `sub_44CE00` | — | Prints `"callgraph for sm_%d:"` to stderr |
+| `dump_callgraph_dot` | `sub_44CCF0` | — | Outputs `"digraph callgraph {"` in DOT format |
 
 ## Cross-References
 
 **Internal (nvlink wiki):**
 
-- [Section Catalog](../reference/section-catalog.md) -- Alphabetical reference catalog of all 109 section entries with `sh_type` hex values
-- [.nv.info Metadata](nv-info.md) -- EIATTR attribute format and the 97 attribute constants carried in `.nv.info` / `.nv.info.<funcname>` sections
-- [Constant Banks](constant-banks.md) -- Deep dive on `.nv.constant*` section numbering, dedup, the name-to-index table at `0x1D3A8E0`, and hardware size limits
-- [Unified Function Tables](uft.md) -- UFT/UDT section management (`.nv.uft`, `.nv.udt`, `.nv.uidx`)
-- [Mercury ELF Sections](../mercury/elf-sections.md) -- The 19 `.nv.merc.*` sections for Mercury targets (sm100+)
-- [Section Merging](../linker/section-merging.md) -- `merge_elf` name-prefix dispatch table that classifies input sections
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- How `.text.*` and associated `.nv.info.*` / `.nv.local.*` sections are removed
-- [Device ELF Format](device-elf-format.md) -- ELF header encoding and how `e_type` / `e_flags` relate to section emission
-- [Linker Scripts](../infra/linker-scripts.md) -- Host-side ELF sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) and the `SECTIONS` template
-- [Program Headers](program-headers.md) -- How sections are classified into PT\_LOAD segments via the internal flags bitmask
-- [R\_CUDA Catalog](../reference/r-cuda-catalog.md) -- Relocation types referencing these sections
+- [Section Catalog](../reference/section-catalog.md) — Alphabetical reference catalog of all 109 section entries with `sh_type` hex values
+- [.nv.info Metadata](nv-info.md) — EIATTR attribute format and the 97 attribute constants carried in `.nv.info` / `.nv.info.<funcname>` sections
+- [Constant Banks](constant-banks.md) — Deep dive on `.nv.constant*` section numbering, dedup, the name-to-index table at `0x1D3A8E0`, and hardware size limits
+- [Unified Function Tables](uft.md) — UFT/UDT section management (`.nv.uft`, `.nv.udt`, `.nv.uidx`)
+- [Mercury ELF Sections](../mercury/elf-sections.md) — The 19 `.nv.merc.*` sections for Mercury targets (sm100+)
+- [Section Merging](../linker/section-merging.md) — `merge_elf` name-prefix dispatch table that classifies input sections
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — How `.text.*` and associated `.nv.info.*` / `.nv.local.*` sections are removed
+- [Device ELF Format](device-elf-format.md) — ELF header encoding and how `e_type` / `e_flags` relate to section emission
+- [Linker Scripts](../infra/linker-scripts.md) — Host-side ELF sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) and the `SECTIONS` template
+- [Program Headers](program-headers.md) — How sections are classified into PT\_LOAD segments via the internal flags bitmask
+- [R\_CUDA Catalog](../reference/r-cuda-catalog.md) — Relocation types referencing these sections
 
 **Sibling wikis:**
 
-- [ptxas: Sections](../../ptxas/output/sections.html) -- Section creation in ptxas: how `.text`, `.nv.info`, `.nv.constant*`, and debug sections are emitted
-- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR attribute codes that populate `.nv.info` sections
-- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- How ptxas generates the NVIDIA debug sections (`.nv_debug_*`)
+- [ptxas: Sections](../../ptxas/output/sections.html) — Section creation in ptxas: how `.text`, `.nv.info`, `.nv.constant*`, and debug sections are emitted
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) — EIATTR attribute codes that populate `.nv.info` sections
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) — How ptxas generates the NVIDIA debug sections (`.nv_debug_*`)
 
 ## Confidence Assessment
 
@@ -724,7 +724,7 @@ All functions that create, read, or process NVIDIA-specific sections, with addre
 | All `sh_type` hex values for NVIDIA-specific sections | HIGH | All 18 spot-checked values match the decompiled `sub_441AC0` call-site arguments (see P081 correction table in section-catalog.md) |
 | `.nv.info` creation at sub_4504B0 lines 46 and 63 | HIGH | Decompiled code shows `sub_441AC0(ctx, ".nv.info", 1879048192, ...)` (line 46) and per-func variant with flags=0x40 (line 63) |
 | `.nv.callgraph` 8-byte record format with sentinels -1/-2/-3/-4 | HIGH | Decompiled sub_44D200 shows exact sentinel values: `v11[1]=-1`, later `-2`, `-3`, `-4` |
-| `.nv.prototype` 8-byte record format {symidx, proto_desc} | HIGH | Decompiled sub_44D9D0 shows `*v18 = *(_DWORD *)v13; *(v18+1) = *(v13+4)` -- two 32-bit fields copied from function table entry |
+| `.nv.prototype` 8-byte record format {symidx, proto_desc} | HIGH | Decompiled sub_44D9D0 shows `*v18 = *(_DWORD *)v13; *(v18+1) = *(v13+4)` — two 32-bit fields copied from function table entry |
 | `.nv.resolvedrela` conditional on preserve-relocs flag at ctx+85 | HIGH | Decompiled sub_469230 shows `if (*(_BYTE *)(a1 + 85))` guard at lines 94, 108, 126, 140 |
 | `.nv.metadata` lazy creation cached at ctx+232 | HIGH | Decompiled sub_43D6B0 shows `if (!*(DWORD*)(a1+232))` guard and cache store `*(DWORD*)(a1+232) = sec_idx` |
 | `__nv_module_id` extraction via sub_46F0C0 | HIGH | Decompiled sub_46F0C0 shows string `"__nv_module_id"` at three call sites |

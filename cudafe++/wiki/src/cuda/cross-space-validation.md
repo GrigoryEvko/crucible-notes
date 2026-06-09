@@ -1,6 +1,6 @@
 # Cross-Space Call Validation
 
-CUDA's execution model partitions code into host (CPU) and device (GPU) worlds. A function in one execution space cannot directly call a function in the other -- a `__host__` function cannot call a `__device__` function, and vice versa. cudafe++ enforces these rules at two points during compilation: at explicit call sites in expressions (`expr.c`) and at symbol reference recording time (`symbol_ref.c`). Together these checks cover both direct function calls and indirect references -- variable accesses, implicit constructor/destructor invocations, and template-instantiated calls. The validation produces 12 distinct calling error messages (6 normal + 6 constexpr-with-suggestion variants), plus 4 variable access errors and 1 device-only function reference error.
+CUDA's execution model partitions code into host (CPU) and device (GPU) worlds. A function in one execution space cannot directly call a function in the other — a `__host__` function cannot call a `__device__` function, and vice versa. cudafe++ enforces these rules at two points during compilation: at explicit call sites in expressions (`expr.c`) and at symbol reference recording time (`symbol_ref.c`). Together these checks cover both direct function calls and indirect references — variable accesses, implicit constructor/destructor invocations, and template-instantiated calls. The validation produces 12 distinct calling error messages (6 normal + 6 constexpr-with-suggestion variants), plus 4 variable access errors and 1 device-only function reference error.
 
 ## Key Facts
 
@@ -76,9 +76,9 @@ bool is_implicitly_hd(int64_t entity) {
 
 This means:
 
-1. **constexpr functions** -- the `+177 & 0x10` bit is set during attribute processing, making them callable from both host and device code without explicit annotation.
-2. **`__forceinline__` functions** -- same bit, allowing cross-space inlining.
-3. **Implicitly-deleted functions** -- defaulted special members (constructors, destructors, assignment operators) that are deleted due to non-copyable members. These get a pass because they will never actually be called.
+1. **constexpr functions** — the `+177 & 0x10` bit is set during attribute processing, making them callable from both host and device code without explicit annotation.
+2. **`__forceinline__` functions** — same bit, allowing cross-space inlining.
+3. **Implicitly-deleted functions** — defaulted special members (constructors, destructors, assignment operators) that are deleted due to non-copyable members. These get a pass because they will never actually be called.
 
 If either the caller or the callee is implicitly HD, the cross-space check returns immediately without error.
 
@@ -100,7 +100,7 @@ error: calling a __host__ function ("make_value") from a __device__ function ("s
        (#3462)
 ```
 
-The check unfolds as: `square`'s entity byte `+182 & 0x30 == 0x20` (device), `make_value`'s is `0x10` (host); neither carries the `+177 & 0x10` implicit-HD bypass, neither matches the deleted-defaulted special case, so the gate fails through and `sub_4F8090` emits 3462 with both entity names. Marking `make_value` `__host__ __device__` would set its `+182` to `0x30` and make the same call legal -- the constexpr/relaxed-constexpr flag at `dword_126EFB0` reaches the same result by promoting `square` through the `+177 & 0x10` bit instead.
+The check unfolds as: `square`'s entity byte `+182 & 0x30 == 0x20` (device), `make_value`'s is `0x10` (host); neither carries the `+177 & 0x10` implicit-HD bypass, neither matches the deleted-defaulted special case, so the gate fails through and `sub_4F8090` emits 3462 with both entity names. Marking `make_value` `__host__ __device__` would set its `+182` to `0x30` and make the same call legal — the constexpr/relaxed-constexpr flag at `dword_126EFB0` reaches the same result by promoting `square` through the `+177 & 0x10` bit instead.
 
 ## Call-Site Validation: sub_505720
 
@@ -119,24 +119,24 @@ char check_cross_execution_space_call(int64_t callee, bool must_callable, uint64
 
 The function follows a multi-stage gate structure. At each gate, an early return can skip the check entirely:
 
-**Gate 1 -- Class scope suppression.** If we are inside a class definition scope (`dword_126C5C8 != -1`) and the current scope has device-scope flags set (`scope_entry[6] & 0x06`), AND we are inside a type node context (`dword_106B670 != -1`, `type_entry[5] & 0x08`), the check is suppressed. This allows member function declarations inside device classes to reference host functions without error -- the actual check happens when the member is instantiated/defined.
+**Gate 1 — Class scope suppression.** If we are inside a class definition scope (`dword_126C5C8 != -1`) and the current scope has device-scope flags set (`scope_entry[6] & 0x06`), AND we are inside a type node context (`dword_106B670 != -1`, `type_entry[5] & 0x08`), the check is suppressed. This allows member function declarations inside device classes to reference host functions without error — the actual check happens when the member is instantiated/defined.
 
-**Gate 2 -- Diagnostic suppression scope.** If the current scope entry has diagnostic-suppression bit 1 of byte `+14` set (`scope_entry[14] & 0x02`), checks are suppressed. This covers SFINAE contexts and `decltype` evaluation.
+**Gate 2 — Diagnostic suppression scope.** If the current scope entry has diagnostic-suppression bit 1 of byte `+14` set (`scope_entry[14] & 0x02`), checks are suppressed. This covers SFINAE contexts and `decltype` evaluation.
 
-**Gate 3 -- Concept/requires context.** If the current context pointer (`qword_106B970`) is non-null and byte `+17` has bit 1 set (strict-mode or concept context), checks are suppressed.
+**Gate 3 — Concept/requires context.** If the current context pointer (`qword_106B970`) is non-null and byte `+17` has bit 1 set (strict-mode or concept context), checks are suppressed.
 
-**Gate 4 -- No enclosing function.** If `dword_126C5D8 == -1` (no enclosing function scope), the caller space defaults to host-only (`v7=0, v8=1`) -- meaning we are at file scope, which is implicitly host.
+**Gate 4 — No enclosing function.** If `dword_126C5D8 == -1` (no enclosing function scope), the caller space defaults to host-only (`v7=0, v8=1`) — meaning we are at file scope, which is implicitly host.
 
-**Gate 5 -- Extract caller space.** The enclosing function entity is retrieved from the scope stack at `qword_126C5E8 + 784 * dword_126C5D8 + 224`. Its execution space is extracted:
-- `v7 = (caller[182] & 0x60) == 0x20` -- caller is host-only
-- `v8 = (caller[182] & 0x30) != 0x20` -- caller is NOT device-only
-- `v5 = (caller[-8] & 0x10) != 0` -- caller has secondary device mark (the `-8` offset reads a flags byte 8 bytes before the entity, in the preceding allocation header)
+**Gate 5 — Extract caller space.** The enclosing function entity is retrieved from the scope stack at `qword_126C5E8 + 784 * dword_126C5D8 + 224`. Its execution space is extracted:
+- `v7 = (caller[182] & 0x60) == 0x20` — caller is host-only
+- `v8 = (caller[182] & 0x30) != 0x20` — caller is NOT device-only
+- `v5 = (caller[-8] & 0x10) != 0` — caller has secondary device mark (the `-8` offset reads a flags byte 8 bytes before the entity, in the preceding allocation header)
 
-**Gate 6 -- Caller implicitly HD.** The caller is tested for implicitly-HD status. If true, return immediately.
+**Gate 6 — Caller implicitly HD.** The caller is tested for implicitly-HD status. If true, return immediately.
 
-**Gate 7 -- Callee implicitly HD.** The callee (parameter `a1`) is tested for implicitly-HD status. If true, return immediately.
+**Gate 7 — Callee implicitly HD.** The callee (parameter `a1`) is tested for implicitly-HD status. If true, return immediately.
 
-**Gate 8 -- No caller entity or secondary device.** If no caller entity exists or the secondary device flag is set, skip to the `__global__` check.
+**Gate 8 — No caller entity or secondary device.** If no caller entity exists or the secondary device flag is set, skip to the `__global__` check.
 
 ### Error Decision Logic
 
@@ -211,7 +211,7 @@ if (must_callable && !callee_is_global) {
 
 ### Error 3462 vs 3463 (Device-from-Host Direction)
 
-The distinction between errors 3462 and 3463 is the `+177 & 0x02` bit on the callee -- whether it has an explicit `__device__` annotation:
+The distinction between errors 3462 and 3463 is the `+177 & 0x02` bit on the callee — whether it has an explicit `__device__` annotation:
 
 - **3462**: `__device__` function called from `__host__` context. The callee has no explicit `__device__` annotation (it was implicitly device-only).
 - **3463**: Same violation, but the callee has explicit `__device__` annotation. The error message includes an additional note about the `__host__ __device__` context.
@@ -242,7 +242,7 @@ Error 3508 is a parameterized error with two string arguments: the context strin
 
 `check_cross_space_call_in_template` performs the same validation but is called during template instantiation rather than initial expression scanning. It has two key differences:
 
-1. **Guard on `dword_126C5C4 == -1`**: only runs when no nested class scope is active. If `dword_126C5C4 != -1`, the entire function is skipped -- template instantiation inside nested class definitions defers cross-space checks.
+1. **Guard on `dword_126C5C4 == -1`**: only runs when no nested class scope is active. If `dword_126C5C4 != -1`, the entire function is skipped — template instantiation inside nested class definitions defers cross-space checks.
 
 2. **Additional scope guards**: checks `scope_entry[4] != 12` (not a namespace scope) and `qword_106B970 + 17 & 0x40 == 0` (not in a concept context). These prevent false positives during dependent name resolution.
 
@@ -299,7 +299,7 @@ The constexpr suggestion variants are selected by the relaxed-constexpr flag sta
 
 ## Variable Access Validation: symbol_ref.c
 
-The `record_symbol_reference_full` functions (`sub_72A650` / `sub_72B510`) enforce cross-space rules at the symbol reference level. This is a different check point than the call-site checker -- it catches variable accesses and implicit function references that are not explicit function calls.
+The `record_symbol_reference_full` functions (`sub_72A650` / `sub_72B510`) enforce cross-space rules at the symbol reference level. This is a different check point than the call-site checker — it catches variable accesses and implicit function references that are not explicit function calls.
 
 ### Reference Kind Bitmask (Parameter a1)
 
@@ -430,8 +430,8 @@ emit_diagnostic(3623, src_loc, name, context);
 ```
 
 Error 3623 has two context strings:
-- `"outside the bodies of device functions"` -- the reference is from file scope or host code
-- `"from a constexpr or consteval __device__ function"` -- the reference is from a constexpr/consteval device function that cannot actually call the target
+- `"outside the bodies of device functions"` — the reference is from file scope or host code
+- `"from a constexpr or consteval __device__ function"` — the reference is from a constexpr/consteval device function that cannot actually call the target
 
 ### The dword_106BFD0 / dword_106BFCC Gate
 
@@ -451,7 +451,7 @@ if (dword_106BFD0 || dword_106BFCC) {
 }
 ```
 
-The scan is skipped when the current routine IS `__device__`-only -- device code referencing other device symbols is always valid. The `dword_106BF40` check further relaxes: if the flag is set AND the routine has explicit `__device__` annotation (`+177 & 0x02`), the scan is also skipped.
+The scan is skipped when the current routine IS `__device__`-only — device code referencing other device symbols is always valid. The `dword_106BF40` check further relaxes: if the flag is set AND the routine has explicit `__device__` annotation (`+177 & 0x02`), the scan is also skipped.
 
 ## Type Hierarchy Walk: sub_41A1F0 / sub_41A3E0
 
@@ -620,9 +620,9 @@ The callback `sub_41B420` is used in the tree walk to check each nested type mem
 
 ## Cross-References
 
-- [Execution Spaces](execution-spaces.md) -- the `+182` byte encoding and attribute handlers
-- [Device/Host Separation](device-host-separation.md) -- how validated code is split into device and host IL
-- [Kernel Stubs](kernel-stubs.md) -- `__global__` function wrapper generation
-- [Entity Node](../structs/entity-node.md) -- byte offsets `+176`, `+177`, `+182`, `+184`
-- [Diagnostics Overview](../diagnostics/overview.md) -- error emission pipeline
-- [Lambda Overview](../lambda/overview.md) -- extended lambda HD annotation validation
+- [Execution Spaces](execution-spaces.md) — the `+182` byte encoding and attribute handlers
+- [Device/Host Separation](device-host-separation.md) — how validated code is split into device and host IL
+- [Kernel Stubs](kernel-stubs.md) — `__global__` function wrapper generation
+- [Entity Node](../structs/entity-node.md) — byte offsets `+176`, `+177`, `+182`, `+184`
+- [Diagnostics Overview](../diagnostics/overview.md) — error emission pipeline
+- [Lambda Overview](../lambda/overview.md) — extended lambda HD annotation validation

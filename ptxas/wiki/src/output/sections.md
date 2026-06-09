@@ -2,21 +2,21 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-A CUDA cubin is a standard ELF container with NVIDIA-proprietary extensions. ptxas v13.0.88 populates it with approximately 4*(N+M) sections minimum for a program with N entry kernels and M device functions. Each section carries a specific kind of data -- SASS instructions, constant bank contents, relocation entries, per-kernel resource metadata (EIATTR), shared memory layout, debug information, or Mercury-encoded streams for deferred finalization. This page catalogs every section type ptxas can emit, the NVIDIA-specific ELF section types used, the section ordering rules, and the complete EIATTR attribute encoding.
+A CUDA cubin is a standard ELF container with NVIDIA-proprietary extensions. ptxas v13.0.88 populates it with approximately 4*(N+M) sections minimum for a program with N entry kernels and M device functions. Each section carries a specific kind of data — SASS instructions, constant bank contents, relocation entries, per-kernel resource metadata (EIATTR), shared memory layout, debug information, or Mercury-encoded streams for deferred finalization. This page catalogs every section type ptxas can emit, the NVIDIA-specific ELF section types used, the section ordering rules, and the complete EIATTR attribute encoding.
 
 | | |
 |---|---|
-| **Section attribute builder** | `sub_60FBF0` (76 KB decompiled -- per-kernel section config + codegen launch) |
+| **Section attribute builder** | `sub_60FBF0` (76 KB decompiled — per-kernel section config + codegen launch) |
 | **Section creator** | `sub_1CB3570` (1,963 B native, 44 call sites) |
 | **Text section creator** | `sub_1CB42D0` (SHF_ALLOC \| SHF_EXECINSTR) |
 | **nvinfo section creator** | `sub_1CC7FB0` (creates `.nv.info` / `.nv.info.<func>`) |
 | **EIATTR record emitter** | `sub_1CC85F0` (emits one TLV record) |
 | **EIATTR builder** | `sub_1CC9800` (14,764 B native / 86 KB decomp, 2,620 lines) |
-| **EIATTR propagator** | `sub_1CC8950` (2,634 B native -- barrier/register propagation) |
+| **EIATTR propagator** | `sub_1CC8950` (2,634 B native — barrier/register propagation) |
 | **.nv.compat handler** | `sub_1CC93A0` (`.nv.compat` attribute processor) |
 | **Call graph builder** | `sub_1CBE1B0` (`.nv.callgraph` section) |
-| **Layout calculator** | `sub_1C9DC60` (5,663 B native -- offset assignment) |
-| **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp -- shared/constant/local addresses) |
+| **Layout calculator** | `sub_1C9DC60` (5,663 B native — offset assignment) |
+| **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp — shared/constant/local addresses) |
 | **SHT_CUDA_INFO** | `0x70000000` (1,879,048,192) |
 | **SHT_CUDA_CALLGRAPH** | `0x70000064` (1,879,048,292) |
 | **.nv.compat section type** | `0x70000086` (1,879,048,326) |
@@ -51,11 +51,11 @@ Created unconditionally by the ELFW constructor (`sub_1CB53A0`). These form the 
 
 | Section | Type | Flags | Purpose |
 |---|---|---|---|
-| (null) | `SHT_NULL` | -- | Required ELF null section (index 0) |
-| `.shstrtab` | `SHT_STRTAB` | -- | Section name string table |
-| `.strtab` | `SHT_STRTAB` | -- | Symbol name string table |
-| `.symtab` | `SHT_SYMTAB` | -- | Symbol table |
-| `.symtab_shndx` | `SHT_SYMTAB_SHNDX` | -- | Extended section indices (when section count > 65,280) |
+| (null) | `SHT_NULL` | — | Required ELF null section (index 0) |
+| `.shstrtab` | `SHT_STRTAB` | — | Section name string table |
+| `.strtab` | `SHT_STRTAB` | — | Symbol name string table |
+| `.symtab` | `SHT_SYMTAB` | — | Symbol table |
+| `.symtab_shndx` | `SHT_SYMTAB_SHNDX` | — | Extended section indices (when section count > 65,280) |
 
 ### NVIDIA Note Sections
 
@@ -63,9 +63,9 @@ Created unconditionally. Carry module-level metadata the CUDA driver reads befor
 
 | Section | Type | Flags | Purpose |
 |---|---|---|---|
-| `.note.nv.tkinfo` | `SHT_NOTE` | -- | Toolkit info: version string, build ID, CLI arguments |
-| `.note.nv.cuinfo` | `SHT_NOTE` | -- | CUDA info: SM version, feature flags |
-| `.note.nv.cuver` | `SHT_NOTE` | -- | CUDA version note |
+| `.note.nv.tkinfo` | `SHT_NOTE` | — | Toolkit info: version string, build ID, CLI arguments |
+| `.note.nv.cuinfo` | `SHT_NOTE` | — | CUDA info: SM version, feature flags |
+| `.note.nv.cuver` | `SHT_NOTE` | — | CUDA version note |
 
 ### Per-Kernel Code Sections
 
@@ -73,8 +73,8 @@ Created by `sub_1CB42D0`, one set per kernel entry and device function:
 
 | Section | Type | Flags | sh_link | Purpose |
 |---|---|---|---|---|
-| `.text.<func>` | `SHT_PROGBITS` | `SHF_ALLOC \| SHF_EXECINSTR` (0x6) | -- | SASS instruction bytes |
-| `.rela.text.<func>` | `SHT_RELA` | -- | `.symtab` index | Relocations for the code section |
+| `.text.<func>` | `SHT_PROGBITS` | `SHF_ALLOC \| SHF_EXECINSTR` (0x6) | — | SASS instruction bytes |
+| `.rela.text.<func>` | `SHT_RELA` | — | `.symtab` index | Relocations for the code section |
 
 The `.rela` companion is auto-created by the section creator when `SHF_EXECINSTR` is set. The assertion `"adding function section after callgraph completed"` fires if a code section is added after call graph analysis.
 
@@ -83,24 +83,24 @@ The `.rela` companion is auto-created by the section creator when `SHF_EXECINSTR
 | Section | Type | Flags | sh_link | Purpose |
 |---|---|---|---|---|
 | `.nv.info.<func>` | `SHT_CUDA_INFO` | `SHF_LINK_ORDER` (0x40) | `.text.<func>` symbol | EIATTR TLV records for this kernel |
-| `.nv.constant0.<func>` | `SHT_PROGBITS` | `SHF_ALLOC` | -- | Constant bank 0: kernel params + literal constants |
-| `.nv.shared.<func>` | `SHT_NOBITS` | `SHF_ALLOC \| SHF_WRITE` | -- | Shared memory layout (size only, no file data) |
-| `.nv.local.<func>` | `SHT_NOBITS` | `SHF_ALLOC \| SHF_WRITE` | -- | Local (spill) memory layout |
+| `.nv.constant0.<func>` | `SHT_PROGBITS` | `SHF_ALLOC` | — | Constant bank 0: kernel params + literal constants |
+| `.nv.shared.<func>` | `SHT_NOBITS` | `SHF_ALLOC \| SHF_WRITE` | — | Shared memory layout (size only, no file data) |
+| `.nv.local.<func>` | `SHT_NOBITS` | `SHF_ALLOC \| SHF_WRITE` | — | Local (spill) memory layout |
 
-The `.nv.info.<func>` section uses `SHF_LINK_ORDER` (flag `0x40`) to declare its association with the function's symbol. The `SHT_CUDA_INFO` type value `0x70000000` is used; note that the nvlink wiki previously documented `0x70000064` for this -- the discrepancy arises because nvlink uses a different constant in its own emitter. Binary evidence from ptxas shows `sub_1CC7FB0` consistently passes `1879048192` (`0x70000000`).
+The `.nv.info.<func>` section uses `SHF_LINK_ORDER` (flag `0x40`) to declare its association with the function's symbol. The `SHT_CUDA_INFO` type value `0x70000000` is used; note that the nvlink wiki previously documented `0x70000064` for this — the discrepancy arises because nvlink uses a different constant in its own emitter. Binary evidence from ptxas shows `sub_1CC7FB0` consistently passes `1879048192` (`0x70000000`).
 
 ### Global Metadata Sections
 
 | Section | Type | Flags | Purpose |
 |---|---|---|---|
-| `.nv.info` | `SHT_CUDA_INFO` | -- | Global EIATTR attributes (sh_link = 0, not per-function) |
-| `.nv.compat` | `SHT_CUDA_COMPAT` | -- | Forward-compatibility attributes (sm version negotiation) |
-| `.nv.metadata` | `SHT_PROGBITS` | -- | Module-level metadata |
-| `.nv.callgraph` | `SHT_CUDA_CALLGRAPH` | -- | Inter-function call edges (relocatable mode, `-c`) |
-| `.nv.prototype` | `SHT_PROGBITS` | -- | Prototype information for cross-module linking |
-| `.nv.rel.action` | `SHT_PROGBITS` | -- | Relocation action table |
-| `.nv.resolvedrela` | `SHT_PROGBITS` | -- | Resolved relocations (post-linking) |
-| `.nv.host` | `SHT_PROGBITS` | -- | Host-side interop data |
+| `.nv.info` | `SHT_CUDA_INFO` | — | Global EIATTR attributes (sh_link = 0, not per-function) |
+| `.nv.compat` | `SHT_CUDA_COMPAT` | — | Forward-compatibility attributes (sm version negotiation) |
+| `.nv.metadata` | `SHT_PROGBITS` | — | Module-level metadata |
+| `.nv.callgraph` | `SHT_CUDA_CALLGRAPH` | — | Inter-function call edges (relocatable mode, `-c`) |
+| `.nv.prototype` | `SHT_PROGBITS` | — | Prototype information for cross-module linking |
+| `.nv.rel.action` | `SHT_PROGBITS` | — | Relocation action table |
+| `.nv.resolvedrela` | `SHT_PROGBITS` | — | Resolved relocations (post-linking) |
+| `.nv.host` | `SHT_PROGBITS` | — | Host-side interop data |
 
 ### Constant Banks
 
@@ -110,7 +110,7 @@ CUDA supports up to 18 numbered constant banks (0--17) plus named constant secti
 |---|---|
 | `.nv.constant0` | Merged constant bank 0 (whole-program mode) |
 | `.nv.constant0.<func>` | Per-function constant bank 0 (kernel params + compiler constants) |
-| `.nv.constant1` -- `.nv.constant17` | User-declared `__constant__` variables |
+| `.nv.constant1` — `.nv.constant17` | User-declared `__constant__` variables |
 | `.nv.constant.entry_params` | Entry point parameter block |
 | `.nv.constant.entry_image_header_indices` | Texture/surface header index table |
 | `.nv.constant.driver` | Driver-injected constants |
@@ -148,7 +148,7 @@ Created when the program declares texture references, surface references, or sam
 | `.nv.unified.texrefDescSize` | Per-texref descriptor size (unified texture+sampler mode) |
 | `.nv.surfrefDescSize` | Per-surfref descriptor size |
 
-The master section allocator `sub_1CABD60` assigns addresses to shared, constant, and local memory sections. The layout calculator skips `.nv.reservedSmem` for the same reason it skips `.nv.constant0` -- its address comes from the shared memory master allocator.
+The master section allocator `sub_1CABD60` assigns addresses to shared, constant, and local memory sections. The layout calculator skips `.nv.reservedSmem` for the same reason it skips `.nv.constant0` — its address comes from the shared memory master allocator.
 
 ### Unified Function/Data Tables
 
@@ -223,7 +223,7 @@ The `.nv.info` / `.nv.info.<func>` split is the primary distinction between glob
 **Global** `.nv.info` (one per cubin):
 - `sh_link = 0` (no associated symbol)
 - Contains module-wide EIATTR records: `EIATTR_CUDA_API_VERSION`, `EIATTR_STATISTICS`, `EIATTR_HAS_PRE_V10_OBJECT`, `EIATTR_MERCURY_ISA_VERSION`
-- Created by `sub_1CC7FB0(elfw, 0)` -- the zero argument selects global mode
+- Created by `sub_1CC7FB0(elfw, 0)` — the zero argument selects global mode
 
 **Per-kernel** `.nv.info.<func>` (one per kernel):
 - Section name: `sprintf(".nv.info.%s", func_name)` (visible in `sub_1CC7FB0`)
@@ -249,7 +249,7 @@ During finalization, sections are sorted into 8 priority buckets that determine 
 | 6 | | `.nv.info`, `.nv.info.<func>` EIATTR metadata sections |
 | 7 | Lowest | `.debug_*`, `.nv.merc.debug_*`, `.nv.merc.nv_debug_*`, `.nv.merc.nv.shared.reserved.*`, generic `.nv.merc.*` |
 
-Within each bucket, sections appear in creation order. Section file offsets are assigned by `sub_1C9DC60` walking the sorted list with alignment padding. The `.debug_line` section receives special alignment padding for DWARF line table requirements. `.nv.constant0.<func>` and `.nv.reservedSmem` are present in the bucket-4 sort order but are skipped during offset assignment -- their file offsets are written by the OCG constant-bank allocator and the shared-memory master allocator (`sub_1CABD60`) respectively.
+Within each bucket, sections appear in creation order. Section file offsets are assigned by `sub_1C9DC60` walking the sorted list with alignment padding. The `.debug_line` section receives special alignment padding for DWARF line table requirements. `.nv.constant0.<func>` and `.nv.reservedSmem` are present in the bucket-4 sort order but are skipped during offset assignment — their file offsets are written by the OCG constant-bank allocator and the shared-memory master allocator (`sub_1CABD60`) respectively.
 
 ### Offset Assignment
 
@@ -270,13 +270,13 @@ for (int i = 0; i < section_count; i++) {
 ```
 
 Three section types are skipped during offset assignment:
-1. **Virtual sections** (flag bit 2 set) -- have no file data, only metadata
-2. **`.nv.constant0`** -- address assigned by the OCG constant bank allocator
-3. **`.nv.reservedSmem`** -- address assigned by the shared memory master allocator `sub_1CABD60`
+1. **Virtual sections** (flag bit 2 set) — have no file data, only metadata
+2. **`.nv.constant0`** — address assigned by the OCG constant bank allocator
+3. **`.nv.reservedSmem`** — address assigned by the shared memory master allocator `sub_1CABD60`
 
 ## EIATTR Encoding
 
-Each `.nv.info` section contains a flat sequence of EIATTR (Entry Information Attribute) records. There is no section header or record count -- the parser walks from byte 0 to `sh_size`, consuming records sequentially. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp) -- one of the three largest functions in the output pipeline.
+Each `.nv.info` section contains a flat sequence of EIATTR (Entry Information Attribute) records. There is no section header or record count — the parser walks from byte 0 to `sh_size`, consuming records sequentially. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp) — one of the three largest functions in the output pipeline.
 
 ### TLV Record Format
 
@@ -298,7 +298,7 @@ Total record size = `4 + ALIGN_UP(size, 4)`. Records are 4-byte aligned.
 | `0x01` | Free | Raw bytes, attribute-specific layout |
 | `0x02` | Value | Single 32-bit value (no symbol index) |
 | `0x03` | Sized | 16-bit value + padding |
-| `0x04` | Indexed | `[sym_index:4][value:4]` -- per-symbol attribute |
+| `0x04` | Indexed | `[sym_index:4][value:4]` — per-symbol attribute |
 
 Format `0x04` (indexed) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to, enabling the linker to remap symbol indices during merge.
 
@@ -331,7 +331,7 @@ while (ptr < end) {
 }
 ```
 
-### EIATTR Record Emitter -- `sub_1CC85F0`
+### EIATTR Record Emitter — `sub_1CC85F0`
 
 The low-level function that writes one EIATTR TLV record. Called from the builder and propagator with parameters:
 
@@ -356,8 +356,8 @@ ptxas v13.0.88 defines 97 EIATTR codes numbered 0 through 96 (plus the `EIATTR_E
 
 | Code | Hex | Name | Fmt | Category |
 |---:|---:|---|---|---|
-| 0 | `0x00` | `EIATTR_ERROR` | -- | Sentinel |
-| 1 | `0x01` | `EIATTR_PAD` | -- | Sentinel |
+| 0 | `0x00` | `EIATTR_ERROR` | — | Sentinel |
+| 1 | `0x01` | `EIATTR_PAD` | — | Sentinel |
 | 2 | `0x02` | `EIATTR_IMAGE_SLOT` | Idx | Texture |
 | 3 | `0x03` | `EIATTR_JUMPTABLE_RELOCS` | Free | Metadata |
 | 4 | `0x04` | `EIATTR_CTAIDZ_USED` | Idx | Metadata |
@@ -442,7 +442,7 @@ ptxas v13.0.88 defines 97 EIATTR codes numbered 0 through 96 (plus the `EIATTR_E
 | 83 | `0x53` | `EIATTR_GEN_ERRBAR_AT_EXIT` | Idx | Blackwell |
 | 84 | `0x54` | `EIATTR_REG_RECONFIG` | Idx | Blackwell |
 | 85 | `0x55` | `EIATTR_ANNOTATIONS` | Free | Metadata |
-| 86 | `0x56` | `EIATTR_UNKNOWN` | -- | Sentinel |
+| 86 | `0x56` | `EIATTR_UNKNOWN` | — | Sentinel |
 | 87 | `0x57` | `EIATTR_STACK_CANARY_TRAP_OFFSETS` | Free | Offsets |
 | 88 | `0x58` | `EIATTR_STUB_FUNCTION_KIND` | Idx | Metadata |
 | 89 | `0x59` | `EIATTR_LOCAL_CTA_ASYNC_STORE_OFFSETS` | Free | Offsets |
@@ -452,7 +452,7 @@ ptxas v13.0.88 defines 97 EIATTR codes numbered 0 through 96 (plus the `EIATTR_E
 | 93 | `0x5D` | `EIATTR_SYSCALLS_FALLBACK` | Free | Metadata |
 | 94 | `0x5E` | `EIATTR_CUDA_REQ` | Free | Metadata |
 | 95 | `0x5F` | `EIATTR_MERCURY_ISA_VERSION` | Sized | Mercury |
-| 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Sentinel |
+| 96 | `0x60` | `EIATTR_ERROR_LAST` | — | Sentinel |
 
 **Fmt** column: Idx = format `0x04` (indexed, per-symbol), Free = format `0x01` (raw bytes), Val = format `0x02` (single 32-bit value), Sized = format `0x03` (16-bit value).
 
@@ -462,26 +462,26 @@ The following codes appear as explicit `case` labels in the `sub_1CC9800` switch
 
 | Code | Hex | Confirmed via |
 |---:|---:|---|
-| 4 | `0x04` | `case 0x4` in builder -- CTAIDZ_USED |
-| 13 | `0x0D` | `case 0xD` -- SYNC_STACK |
-| 15 | `0x0F` | `case 0xF` + `sub_1CC85F0(_, 0xF, ...)` -- EXTERNS |
-| 17 | `0x11` | `case 0x11` -- FRAME_SIZE |
-| 18 | `0x12` | `case 0x12` + `sub_1CC85F0(_, 0x12, ...)` -- MIN_STACK_SIZE |
-| 27 | `0x1B` | `case 0x1B` -- MAXREG_COUNT |
-| 30 | `0x1E` | `case 0x1E` + `sub_1CC85F0(_, 0x1E, ...)` -- CRS_STACK_SIZE |
-| 35 | `0x23` | `case 0x23` -- MAX_STACK_SIZE |
-| 38 | `0x26` | `case 0x26` -- LOAD_CACHE_REQUEST |
-| 47 | `0x2F` | `case 0x2F` + `sub_1CC85F0(_, 0x2F, ...)` -- REGCOUNT |
-| 56 | `0x38` | `case 0x38` -- NUM_MBARRIERS |
-| 59 | `0x3B` | `case 0x3B` + `sub_1CC85F0(_, 0x3B, ...)` -- SAM_REGION_STACK_SIZE |
-| 65 | `0x41` | `case 0x41` -- RESERVED_SMEM_USED |
-| 74 | `0x4A` | `case 0x4A` -- VRC_CTA_INIT_COUNT |
-| 76 | `0x4C` | `case 0x4C` -- NUM_BARRIERS |
-| 79 | `0x4F` | `case 0x4F` + `sub_1CC85F0(_, 0x4F, ...)` -- AT_ENTRY_FRAGMENTS |
-| 80 | `0x50` | `case 0x50` + `sub_1C97840(0x50, ...)` -- SPARSE_MMA_MASK |
-| 81 | `0x51` | `case 0x51` -- TCGEN05_1CTA_USED |
-| 82 | `0x52` | `case 0x52` -- TCGEN05_2CTA_USED |
-| 84 | `0x54` | `case 0x54` -- REG_RECONFIG |
+| 4 | `0x04` | `case 0x4` in builder — CTAIDZ_USED |
+| 13 | `0x0D` | `case 0xD` — SYNC_STACK |
+| 15 | `0x0F` | `case 0xF` + `sub_1CC85F0(_, 0xF, ...)` — EXTERNS |
+| 17 | `0x11` | `case 0x11` — FRAME_SIZE |
+| 18 | `0x12` | `case 0x12` + `sub_1CC85F0(_, 0x12, ...)` — MIN_STACK_SIZE |
+| 27 | `0x1B` | `case 0x1B` — MAXREG_COUNT |
+| 30 | `0x1E` | `case 0x1E` + `sub_1CC85F0(_, 0x1E, ...)` — CRS_STACK_SIZE |
+| 35 | `0x23` | `case 0x23` — MAX_STACK_SIZE |
+| 38 | `0x26` | `case 0x26` — LOAD_CACHE_REQUEST |
+| 47 | `0x2F` | `case 0x2F` + `sub_1CC85F0(_, 0x2F, ...)` — REGCOUNT |
+| 56 | `0x38` | `case 0x38` — NUM_MBARRIERS |
+| 59 | `0x3B` | `case 0x3B` + `sub_1CC85F0(_, 0x3B, ...)` — SAM_REGION_STACK_SIZE |
+| 65 | `0x41` | `case 0x41` — RESERVED_SMEM_USED |
+| 74 | `0x4A` | `case 0x4A` — VRC_CTA_INIT_COUNT |
+| 76 | `0x4C` | `case 0x4C` — NUM_BARRIERS |
+| 79 | `0x4F` | `case 0x4F` + `sub_1CC85F0(_, 0x4F, ...)` — AT_ENTRY_FRAGMENTS |
+| 80 | `0x50` | `case 0x50` + `sub_1C97840(0x50, ...)` — SPARSE_MMA_MASK |
+| 81 | `0x51` | `case 0x51` — TCGEN05_1CTA_USED |
+| 82 | `0x52` | `case 0x52` — TCGEN05_2CTA_USED |
+| 84 | `0x54` | `case 0x54` — REG_RECONFIG |
 
 The builder's first pass uses a switch with cases `0x04`, `0x0D`, `0x0F`, `0x11`, `0x12`, `0x1B`, `0x1E`, `0x23`, `0x26`, `0x2F`, `0x38`, `0x3B`, `0x41`, `0x4A`, `0x4C`, `0x4F`, `0x50`, `0x51`, `0x52`, `0x54` to sort EIATTR records into per-entry arrays. A second pass emits the final records via `sub_1CC85F0` and `sub_1CC86D0`.
 
@@ -522,7 +522,7 @@ for (record in eiattr_list) {
 
 The bitmask `0x800800060000` (seen at line 716) encodes which attribute codes use the simple indexed-resolve path: it selects codes 2, 6, 7, 8, 9, 10, 17, 18, 19, 20, 23, 38, 47, 59, 69.
 
-### Barrier and Register Propagation -- `sub_1CC8950`
+### Barrier and Register Propagation — `sub_1CC8950`
 
 When a device function uses barriers or a high register count, those requirements must propagate upward through the call graph to each entry kernel. The propagator `sub_1CC8950` handles this:
 
@@ -659,7 +659,7 @@ The propagator emits `EIATTR_REGCOUNT` (0x2F) records via `sub_1CC85F0(_, 0x2F, 
 
 ## .nv.compat Section
 
-The `.nv.compat` section (`SHT_CUDA_COMPAT` = `0x70000086`) stores forward-compatibility attributes. Its records use a different format from EIATTR -- each is a small TLV with:
+The `.nv.compat` section (`SHT_CUDA_COMPAT` = `0x70000086`) stores forward-compatibility attributes. Its records use a different format from EIATTR — each is a small TLV with:
 
 ```text
 Offset  Size  Field
@@ -701,7 +701,7 @@ The `sub_1C97840` function takes an EIATTR code and the SM version from the ELFW
 
 The master section allocator `sub_1CABD60` (11,856 B native / 66 KB decomp) performs two major space optimizations during address assignment: **constant value deduplication** within `.nv.constant0` banks, and **shared memory interference-graph coloring** for extern shared variables. Both run before final offset assignment.
 
-### Constant Value Deduplication -- `sub_1CA6890`
+### Constant Value Deduplication — `sub_1CA6890`
 
 When multiple kernels in the same compilation unit use identical constant values, the OCG constant bank can contain duplicates. `sub_1CA6890` (454 lines decompiled) eliminates them by value-matching, reducing `.nv.constant0` section size.
 
@@ -742,24 +742,24 @@ Special cases:
 
 The caller `sub_1CABD60` wraps this in an optimization check: `"optimize OCG constants for %s, old size = %lld"`. If dedup does not reduce the section size, it reverts: `"ocg const optimization didn't help so give up"`.
 
-### Shared Memory Interference Graph -- `sub_1CA92F0`
+### Shared Memory Interference Graph — `sub_1CA92F0`
 
 When a CUDA program declares multiple `extern __shared__` variables used by different kernels, they can potentially share the same memory if no single kernel uses both simultaneously. `sub_1CA92F0` (585 lines decompiled) builds an interference graph and performs greedy graph coloring to pack shared objects into minimum total space.
 
-**Phase 1 -- Build usage sets** (which kernels reference each shared object):
+**Phase 1 — Build usage sets** (which kernels reference each shared object):
 
-For each global shared object, walk all referencing functions. A kernel "uses" a shared object if it directly references it or transitively calls a device function that does (traced via `sub_1CBD800`). Objects used by exactly one kernel are **privatized** -- moved into a per-entry `.nv.shared.<func>` section. Unused objects are removed entirely (symbol flags set to mark deleted).
+For each global shared object, walk all referencing functions. A kernel "uses" a shared object if it directly references it or transitively calls a device function that does (traced via `sub_1CBD800`). Objects used by exactly one kernel are **privatized** — moved into a per-entry `.nv.shared.<func>` section. Unused objects are removed entirely (symbol flags set to mark deleted).
 
 ```text
 "global shared %s only used in entry %d"    -- privatize
 "remove unused global shared %s"             -- delete
 ```
 
-**Phase 2 -- Build interference edges**:
+**Phase 2 — Build interference edges**:
 
-For each pair of remaining shared objects (i, j), test whether their usage sets intersect (via `sub_42E460` set membership). If any kernel uses both, they **interfere** -- they cannot overlap in memory. Edges are stored as linked lists per object.
+For each pair of remaining shared objects (i, j), test whether their usage sets intersect (via `sub_42E460` set membership). If any kernel uses both, they **interfere** — they cannot overlap in memory. Edges are stored as linked lists per object.
 
-**Phase 3 -- Greedy graph coloring**:
+**Phase 3 — Greedy graph coloring**:
 
 Objects are processed in sorted order. For each object:
 
@@ -772,7 +772,7 @@ Objects are processed in sorted order. For each object:
 "  allocate to group %d"    -- color assignment
 ```
 
-**Phase 4 -- Compute group offsets**:
+**Phase 4 — Compute group offsets**:
 
 Groups are laid out sequentially with alignment padding:
 
@@ -801,11 +801,11 @@ Each shared object's final offset is `group_offset[its_color]`. The total extern
 | `sub_1CA6760` | 57 lines | N-byte value dedup helper (12--64 byte constants) |
 | `sub_1CA6650` | 65 lines | Constant data node appender (40-byte node, alignment + append) |
 | `sub_1CA92F0` | 585 lines | Shared memory interference graph + greedy coloring |
-| `sub_1CA91A0` | -- | Per-entry shared section creator (`.nv.shared.<func>`) |
-| `sub_1CA5360` | -- | Shared object comparison function (sort key) |
-| `sub_1CA5A00` | -- | Shared memory data copier (offset overlap check) |
+| `sub_1CA91A0` | — | Per-entry shared section creator (`.nv.shared.<func>`) |
+| `sub_1CA5360` | — | Shared object comparison function (sort key) |
+| `sub_1CA5A00` | — | Shared memory data copier (offset overlap check) |
 
-## Section Attribute Builder -- `sub_60FBF0`
+## Section Attribute Builder — `sub_60FBF0`
 
 The per-kernel section attribute builder `sub_60FBF0` (76 KB decompiled, 2,541 lines, VA `0x60FBF0`) runs once for each kernel entry point and device function. It assembles the full per-function section configuration object (648 bytes), parses compile option overrides, remaps PTX memory space codes to ELF section type IDs, conditionally creates three section types, then invokes the Mercury codegen pipeline (`sub_6F52F0`, DecodePipeline::RunStages).
 
@@ -875,13 +875,13 @@ PTX internal memory space type codes in the `0x10000` range are remapped to comp
 
 Special handling: when the space code is `0x10003` (constant0) and the compilation mode is relocatable (`*(a3+48) == 12`), the descriptor's needs_reloc flag (byte 33) is set to 1, indicating the constant0 section requires special relocation handling during linking.
 
-The value `65596` (`0x1003C`) serves as a threshold -- symbols with `(space_type - 0x1003C) < 2` are counted into the texture/surface allocation arrays.
+The value `65596` (`0x1003C`) serves as a threshold — symbols with `(space_type - 0x1003C) < 2` are counted into the texture/surface allocation arrays.
 
 ### Conditional Section Creation
 
 Three per-kernel sections are conditionally created:
 
-**`.sass_map.<func>`** -- created when `*(a2+232) != 0` (sass_map generation enabled):
+**`.sass_map.<func>`** — created when `*(a2+232) != 0` (sass_map generation enabled):
 
 ```c
 if (context->sass_map_enabled) {                 // a2+232
@@ -895,7 +895,7 @@ if (context->sass_map_enabled) {                 // a2+232
 }
 ```
 
-**`.nv.local.<func>`** -- created when the register spill size (config+112) is non-zero:
+**`.nv.local.<func>`** — created when the register spill size (config+112) is non-zero:
 
 ```c
 if (config->spill_size != 0) {                   // config+112
@@ -908,7 +908,7 @@ if (config->spill_size != 0) {                   // config+112
 
 The spill size at config+112 is set from the sum of the register spill count and frame size when the spill flag is non-zero.
 
-**`.nv.constant<N>.<func>`** -- created when:
+**`.nv.constant<N>.<func>`** — created when:
 1. The compilation mode field equals 2 (`*(a1->target+48) == 2`)
 2. No pre-existing constant section exists (`*(a1+172) == 0`)
 3. The function's symbol list is empty
@@ -965,26 +965,26 @@ All shared state modifications are protected by the mutex at `a2+240`:
 | Address | Size | Purpose |
 |---|---|---|
 | `sub_60FBF0` | ~76 KB (decomp) | Per-kernel section attribute builder (section above) |
-| `sub_1CC9800` | 14,764 B native / 86 KB decomp | EIATTR builder -- master nvinfo section constructor |
-| `sub_1CC8950` | 2,634 B (native) | EIATTR propagator -- barrier/register cross-function propagation |
-| `sub_1CC85F0` | ~200 B (native) | EIATTR record emitter -- writes one TLV record |
+| `sub_1CC9800` | 14,764 B native / 86 KB decomp | EIATTR builder — master nvinfo section constructor |
+| `sub_1CC8950` | 2,634 B (native) | EIATTR propagator — barrier/register cross-function propagation |
+| `sub_1CC85F0` | ~200 B (native) | EIATTR record emitter — writes one TLV record |
 | `sub_1CC86D0` | ~500 B (native) | Per-entry EIATTR emission (MIN_STACK_SIZE, CRS_STACK_SIZE, SAM_REGION_STACK_SIZE) |
 | `sub_1CC7FB0` | ~200 B (native) | .nv.info section creator/finder |
 | `sub_1CC93A0` | ~500 B (native) | .nv.compat attribute processor |
 | `sub_1CB3570` | 1,963 B (native) | Generic section creator (44 call sites) |
-| `sub_1CB42D0` | -- | .text.\<func\> section creator |
+| `sub_1CB42D0` | — | .text.\<func\> section creator |
 | `sub_1C9DC60` | 5,663 B (native) | Section layout calculator (offset assignment) |
 | `sub_1CABD60` | 11,856 B native / 66 KB decomp | Master section allocator (shared/constant/local addresses) |
 | `sub_1CBE1B0` | ~10 KB (decomp) | .nv.callgraph section builder |
-| `sub_1C97840` | -- | Architecture-gated EIATTR check |
+| `sub_1C97840` | — | Architecture-gated EIATTR check |
 | `sub_1CA6890` | 454 lines | Constant bank value deduplication |
 | `sub_1CA92F0` | 585 lines | Shared memory interference graph + coloring |
 
 ## Cross-References
 
-- [Custom ELF Emitter](elf-emitter.md) -- ELFW object, section ordering, ELF header
-- [Relocations & Symbols](relocations.md) -- relocation resolution, UFT/UDT management
-- [Debug Information](debug-info.md) -- DWARF generation and `.debug_*` sections
-- [Mercury Encoder](../codegen/mercury.md) -- Mercury encoding that feeds `.nv.merc.*` sections
-- [Capsule Mercury](../codegen/capmerc.md) -- SM 100+ capsule and `.nv.capmerc` sections
-- [Pipeline Overview](../pipeline/overview.md) -- where section emission fits in the pipeline
+- [Custom ELF Emitter](elf-emitter.md) — ELFW object, section ordering, ELF header
+- [Relocations & Symbols](relocations.md) — relocation resolution, UFT/UDT management
+- [Debug Information](debug-info.md) — DWARF generation and `.debug_*` sections
+- [Mercury Encoder](../codegen/mercury.md) — Mercury encoding that feeds `.nv.merc.*` sections
+- [Capsule Mercury](../codegen/capmerc.md) — SM 100+ capsule and `.nv.capmerc` sections
+- [Pipeline Overview](../pipeline/overview.md) — where section emission fits in the pipeline

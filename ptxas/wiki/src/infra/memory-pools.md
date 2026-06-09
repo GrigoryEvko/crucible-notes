@@ -11,10 +11,10 @@ ptxas replaces `malloc`/`free` with a custom hierarchical pool allocator for the
 | **Reallocator** | `sub_424C50` (488 bytes, 27 callers) |
 | **OOM handler** | `sub_42BDB0` (14 bytes, 3,825 callers) |
 | **TLS context** | `sub_4280C0` (597 bytes, 3,928 callers) |
-| **Stats header** | `sub_423A10` (323 bytes) -- prints "Memory space statistics for ..." banner |
-| **Stats detail** | `sub_425020` (~1,500 bytes) -- full per-pool metrics, recursive into children |
-| **Stats entry** | `sub_425AB0` (80 bytes) -- mutex-wrapped entry point for stats dump |
-| **OCG stats** | `sub_6936B0` (120 bytes) -- OCG mem space fixed-format stats to stderr |
+| **Stats header** | `sub_423A10` (323 bytes) — prints "Memory space statistics for ..." banner |
+| **Stats detail** | `sub_425020` (~1,500 bytes) — full per-pool metrics, recursive into children |
+| **Stats entry** | `sub_425AB0` (80 bytes) — mutex-wrapped entry point for stats dump |
+| **OCG stats** | `sub_6936B0` (120 bytes) — OCG mem space fixed-format stats to stderr |
 | **Pool teardown** | `sub_4234D0` (258 bytes) |
 | **Pool accounting** | `sub_423600` (922 bytes) |
 | **Slab registration** | `sub_423E50` (544 bytes) |
@@ -60,7 +60,7 @@ This gives bins for sizes 16, 24, 32, 40, ... up to 4,992 bytes (the largest mul
 
 Large allocations (above 4,999 bytes) use power-of-2 order free lists. The order is computed by `sub_42BE50`, which returns `floor(log2(size))` by clearing all bits except the highest set bit, then using `_BitScanForward64`. The free list for order `k` is at pool offset `32*(k+2) + 64`. The pool tracks `max_order` at +60 to avoid scanning empty higher-order lists.
 
-## Allocation Algorithm -- `sub_424070`
+## Allocation Algorithm — `sub_424070`
 
 The allocator takes two arguments: a pool pointer (`a1`) and a size (`a2`). When `a1` is NULL, it falls through to the global allocator (`sub_427A10`) which wraps `malloc`. Otherwise, it acquires the pool mutex and dispatches to one of two paths based on the aligned size.
 
@@ -182,7 +182,7 @@ void* pool_alloc(Pool* pool, size_t size) {
 | `88` | Slab descriptor size (large) | Extended with boundary-tag metadata |
 | `64` | Overhead for large slab | Header (32) + footer (32) boundary tags |
 
-## Deallocation Algorithm -- `sub_4248B0`
+## Deallocation Algorithm — `sub_4248B0`
 
 The deallocator takes a single pointer argument. It locates the owning pool through the slab descriptor back-pointer (stored either inline for small blocks, or recoverable from boundary tags for large blocks), then returns the memory to the appropriate free list.
 
@@ -391,7 +391,7 @@ There is also a global mutex at `qword_29FDC08` that protects the global slab co
 4. Unlock pool->mutex
 ```
 
-The locking is strictly ordered (pool mutex first, then global mutex if needed), preventing deadlock between pool operations. There is no lock-free fast path -- every allocation takes the pool mutex.
+The locking is strictly ordered (pool mutex first, then global mutex if needed), preventing deadlock between pool operations. There is no lock-free fast path — every allocation takes the pool mutex.
 
 ## OOM Handling
 
@@ -412,7 +412,7 @@ void* p = pool_alloc(pool, size);
 if (!p) alloc_fail_abort(pool, size);  // sub_42BDB0
 ```
 
-The 3,825 call sites for `sub_42BDB0` exactly mirror the 3,809 callers of `sub_424070` (the difference being realloc and a few indirect call sites). This is an unconditional abort -- there is no graceful degradation or fallback allocation strategy.
+The 3,825 call sites for `sub_42BDB0` exactly mirror the 3,809 callers of `sub_424070` (the difference being realloc and a few indirect call sites). This is an unconditional abort — there is no graceful degradation or fallback allocation strategy.
 
 ### Emergency Reclaim
 
@@ -485,7 +485,7 @@ The leak percentage is computed only when both freeable and freeable-leaked are 
 
 ptxas contains a detailed memory-space statistics subsystem for debugging the pool allocator. The output is gated by a byte flag at context+404 (initialized to 0 in `sub_434320`; not exposed as a user-facing knob). When the flag is non-zero, the compilation driver calls into the statistics printers at two points: after each per-kernel compilation (`sub_436DF0`, `sub_4428E0`) and on error-path exit from the main driver (`sub_446240`).
 
-### Generic Pool Statistics -- `sub_425020`
+### Generic Pool Statistics — `sub_425020`
 
 The entry point is `sub_425AB0`, which acquires the pool mutex, builds a stack-local stats-context struct, and calls `sub_425020`. The stats context is 28 bytes:
 
@@ -537,7 +537,7 @@ Average free list size    : 0
 
 When `recurse_flag` is set, `sub_425020` calls `sub_42D4C0(child_chain, sub_425020, stats_context)` to recursively walk and print statistics for all child pools, incrementing the indentation at each level.
 
-### OCG Memory Space Statistics -- `sub_6936B0`
+### OCG Memory Space Statistics — `sub_6936B0`
 
 The OCG (Optimizing Code Generator) uses a separate fixed-page allocator tracked in a 1048-byte hash-table object with 128 buckets. `sub_6936B0` prints its statistics to stderr via `sub_427540`:
 
@@ -567,7 +567,7 @@ The pool system does not expose an explicit "reset" operation that returns all a
 
 3. **ELF output pool** (`"elfw memory space"`): scoped to the ELF emission phase.
 
-The teardown helper `sub_4234D0` walks the pool's slab chain and returns each slab's memory to the parent pool via `sub_4248B0` (free), then frees the slab descriptors themselves. Because slabs are allocated from the parent pool, this cascades upward -- destroying a child pool returns memory to the parent without touching the system heap.
+The teardown helper `sub_4234D0` walks the pool's slab chain and returns each slab's memory to the parent pool via `sub_4248B0` (free), then frees the slab descriptors themselves. Because slabs are allocated from the parent pool, this cascades upward — destroying a child pool returns memory to the parent without touching the system heap.
 
 ## Allocation Pattern: The 50KB Buffer
 
@@ -608,30 +608,30 @@ The slab tracking map (`qword_29FDBE0`) is a hash map keyed by `address >> 3` th
 
 | Address | Size | Callers | Identity |
 |---|---|---|---|
-| `sub_424070` | 2,098 | 3,809 | `pool_alloc(pool, size)` -- main allocator |
-| `sub_4248B0` | 923 | 1,215 | `pool_free(ptr)` -- main deallocator |
-| `sub_424C50` | 488 | 27 | `pool_realloc(ptr, new_size)` -- alloc+copy+free |
-| `sub_42BDB0` | 14 | 3,825 | `alloc_fail_abort()` -- fatal OOM via longjmp |
-| `sub_4280C0` | 597 | 3,928 | `get_tls_context()` -- per-thread state accessor |
-| `sub_427A10` | -- | -- | `global_alloc(size)` -- malloc wrapper for NULL pool |
-| `sub_427B30` | -- | -- | `global_free(ptr)` -- free wrapper for non-pool memory |
-| `sub_423A10` | 323 | 1 | `pool_stats_header()` -- prints "Memory space statistics for ..." banner |
-| `sub_425020` | ~1,500 | 1 | `pool_stats_detail()` -- full metrics dump, recursive child walk |
-| `sub_425AB0` | 80 | 2 | `pool_stats_entry()` -- mutex-wrapped entry point |
-| `sub_6936B0` | 120 | 2 | `ocg_memspace_stats()` -- OCG allocator stats to stderr |
-| `sub_693630` | 166 | 2 | `ocg_memspace_teardown()` -- free OCG hash-table allocator |
-| `sub_4234D0` | 258 | 1 | `pool_teardown()` -- recursive slab deallocation |
-| `sub_423600` | 922 | 3 | `pool_accounting_init()` -- accounting/hash-set setup |
-| `sub_423E50` | 544 | 2 | `register_slab()` -- slab tracking insertion |
-| `sub_423B60` | -- | -- | `can_grow()` -- checks whether slab expansion is permitted |
-| `sub_423C70` | 480 | 2 | `pool_grow()` -- slab expansion handler |
-| `sub_42BE50` | 64 | -- | `floor_log2(size)` -- clear-to-highest-bit + BSF |
-| `sub_42B990` | -- | -- | `slab_lookup(map, addr>>3)` -- find slab for address |
-| `sub_4258D0` | -- | -- | `create_named_pool(name, flags, init_size)` |
-| `sub_8DADE0` | 48 | -- | `take_snapshot(snap, pool_state)` |
-| `sub_8DAE20` | 16 | -- | `delta_total(snap)` |
-| `sub_8DAE30` | 16 | -- | `delta_freeable(snap)` |
-| `sub_8DAE40` | 32 | -- | `delta_freeable_leaked(snap)` |
-| `sub_8DAE60` | 32 | -- | `pool_consumption(pool_state)` |
+| `sub_424070` | 2,098 | 3,809 | `pool_alloc(pool, size)` — main allocator |
+| `sub_4248B0` | 923 | 1,215 | `pool_free(ptr)` — main deallocator |
+| `sub_424C50` | 488 | 27 | `pool_realloc(ptr, new_size)` — alloc+copy+free |
+| `sub_42BDB0` | 14 | 3,825 | `alloc_fail_abort()` — fatal OOM via longjmp |
+| `sub_4280C0` | 597 | 3,928 | `get_tls_context()` — per-thread state accessor |
+| `sub_427A10` | — | — | `global_alloc(size)` — malloc wrapper for NULL pool |
+| `sub_427B30` | — | — | `global_free(ptr)` — free wrapper for non-pool memory |
+| `sub_423A10` | 323 | 1 | `pool_stats_header()` — prints "Memory space statistics for ..." banner |
+| `sub_425020` | ~1,500 | 1 | `pool_stats_detail()` — full metrics dump, recursive child walk |
+| `sub_425AB0` | 80 | 2 | `pool_stats_entry()` — mutex-wrapped entry point |
+| `sub_6936B0` | 120 | 2 | `ocg_memspace_stats()` — OCG allocator stats to stderr |
+| `sub_693630` | 166 | 2 | `ocg_memspace_teardown()` — free OCG hash-table allocator |
+| `sub_4234D0` | 258 | 1 | `pool_teardown()` — recursive slab deallocation |
+| `sub_423600` | 922 | 3 | `pool_accounting_init()` — accounting/hash-set setup |
+| `sub_423E50` | 544 | 2 | `register_slab()` — slab tracking insertion |
+| `sub_423B60` | — | — | `can_grow()` — checks whether slab expansion is permitted |
+| `sub_423C70` | 480 | 2 | `pool_grow()` — slab expansion handler |
+| `sub_42BE50` | 64 | — | `floor_log2(size)` — clear-to-highest-bit + BSF |
+| `sub_42B990` | — | — | `slab_lookup(map, addr>>3)` — find slab for address |
+| `sub_4258D0` | — | — | `create_named_pool(name, flags, init_size)` |
+| `sub_8DADE0` | 48 | — | `take_snapshot(snap, pool_state)` |
+| `sub_8DAE20` | 16 | — | `delta_total(snap)` |
+| `sub_8DAE30` | 16 | — | `delta_freeable(snap)` |
+| `sub_8DAE40` | 32 | — | `delta_freeable_leaked(snap)` |
+| `sub_8DAE60` | 32 | — | `pool_consumption(pool_state)` |
 | `sub_C62200` | 888 | 1 | Pool consumption reporter (stderr) |
-| `sub_C64310` | 3,168 | -- | Per-phase timing/memory reporter |
+| `sub_C64310` | 3,168 | — | Per-phase timing/memory reporter |

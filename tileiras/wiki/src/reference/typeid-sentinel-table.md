@@ -391,7 +391,7 @@ Selected anchor sentinels from inside the slab, with their op classes:
 | `0x5B8D8F0` | NVVM::MmaSync sibling | 9035 |
 | `0x5B8D8E8` | NVVM::MmaSync sibling | 9036 |
 | `0x5B8D8D8` | NVVM::WgmmaMmaAsyncOp (full) | 0x226A = 8810 |
-| `0x5B8D8D0` | NVVM::WgmmaMmaAsync sibling (operand-walked) | -- |
+| `0x5B8D8D0` | NVVM::WgmmaMmaAsync sibling (operand-walked) | — |
 | `0x5B8D898` | NVVM::LdmatrixOp | 9153-9170 |
 | `0x5B8D7E0` | NVVM::CpAsyncBulkTensorBaseOp | 8919-8966 |
 | `0x5B8D7F8` | NVVM::CpAsyncShared.*.GlobalOp variant | 9259 / 9263 |

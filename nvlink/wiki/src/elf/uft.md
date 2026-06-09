@@ -1,8 +1,8 @@
 # Unified Function Tables
 
-CUDA device code supports indirect function calls (function pointers) and virtual function dispatch on the GPU. The mechanism that makes this work at the linker level is the **Unified Function Table (UFT)** system -- a set of ELF sections that the compiler emits and the linker merges, reorders, and patches so that every indirect call site can jump through a table of known offsets at runtime. A parallel structure called the **Unified Data Table (UDT)** handles indirect data references (unified texture/surface descriptors). Both tables share the same UUID-based identification scheme and index file infrastructure.
+CUDA device code supports indirect function calls (function pointers) and virtual function dispatch on the GPU. The mechanism that makes this work at the linker level is the **Unified Function Table (UFT)** system — a set of ELF sections that the compiler emits and the linker merges, reorders, and patches so that every indirect call site can jump through a table of known offsets at runtime. A parallel structure called the **Unified Data Table (UDT)** handles indirect data references (unified texture/surface descriptors). Both tables share the same UUID-based identification scheme and index file infrastructure.
 
-The UFT system is the device-side equivalent of a PLT/GOT in a host ELF linker: the compiler emits stub functions that jump through a table entry, and the linker fills in the table at link time so each entry points to the real function body. The key difference is that CUDA devices do not support lazy binding -- all entries are resolved statically at link time.
+The UFT system is the device-side equivalent of a PLT/GOT in a host ELF linker: the compiler emits stub functions that jump through a table entry, and the linker fills in the table at link time so each entry points to the real function body. The key difference is that CUDA devices do not support lazy binding — all entries are resolved statically at link time.
 
 > **Source evidence**: All structure layouts, algorithms, and constants in this page are derived from decompiled functions in the nvlink binary (v13.0.88). Field offsets and sizes are confirmed by `sh_entsize` parameters passed to section-creation functions and by pointer arithmetic in the reorder/merge loops.
 
@@ -94,7 +94,7 @@ Finalization Phase (sub_445000)
 Output ELF
 ```
 
-## `.nv.uft` -- Function Jump Table
+## `.nv.uft` — Function Jump Table
 
 The `.nv.uft` section is a flat array of jump slots. Each slot is a fixed-size entry (architecture-dependent) that holds the address of a device function reachable via indirect call. The total section size equals `uftNumEntries * slot_size`.
 
@@ -117,7 +117,7 @@ The linker validates that:
 - The number of jump slots matches the entry count (fatal: `"Number of .nv.uft jump slots != Number of entries in .nv.uft.entry"`). The check computes `section_size / sh_entsize` for both sections and compares them.
 - If a UIDX file is provided, the window size matches the section size (fatal: `"size of uidx window != nv.uft"`)
 
-The relationship between jump slots and entries is 1:1 -- each `.nv.uft.entry` record maps to exactly one jump slot in `.nv.uft`.
+The relationship between jump slots and entries is 1:1 — each `.nv.uft.entry` record maps to exactly one jump slot in `.nv.uft`.
 
 Validation pseudocode from `sub_463F70`:
 
@@ -174,7 +174,7 @@ All eight are created with 64-bit size, STB_GLOBAL binding, and property tag `10
 
 The classifier function `sub_444A20` at `0x444A20` (28 bytes) tests a symbol name against all eight names in a strcmp chain and returns `true` if the name matches any of them. The relocation phase uses this to identify unified synthetic symbols for special handling.
 
-## `.nv.uft.rel` -- Per-Function Relocation Entries
+## `.nv.uft.rel` — Per-Function Relocation Entries
 
 Each device function that contains indirect call sites produces a `.nv.uft.rel` section alongside its `.text.<funcname>` section. This section is emitted by the LTO/ptxas backend function `sub_14075D0` (`ptx_emit_function_body`) during code generation.
 
@@ -200,7 +200,7 @@ if (e_type == ET_EXEC && starts_with(section_name, ".nv.uft.rel")):
 
 All `.nv.uft.rel` sections are created with `sh_type = 0x7000000E` (same as `.nv.uft` itself), `sh_flags = 6`, and the same 128-byte alignment and entry size as the main table. This ensures the relocation section is treated as part of the UFT family by the linker's section-type dispatch.
 
-## `.nv.uft.entry` -- Per-Entry Table
+## `.nv.uft.entry` — Per-Entry Table
 
 The `.nv.uft.entry` section is a structured array where each record identifies one indirect-call target via its 128-bit UUID. The compiler assigns a unique UUID to each device function whose address is taken or which participates in virtual dispatch.
 
@@ -554,9 +554,9 @@ The copy loop uses eight consecutive 128-bit SSE loads/stores (`_mm_loadu_si128`
 
 After finalization, the section's chunk list is cleared (`chunk_list = NULL`, `sh_size = 0`) and replaced with the output buffer via `sub_432B10`. This ensures subsequent phases see the reordered data.
 
-## `.nv.udt` -- Unified Data Table
+## `.nv.udt` — Unified Data Table
 
-The `.nv.udt` section is the data counterpart to `.nv.uft`. It holds entries for indirect data references -- primarily unified texture and surface descriptors. When a kernel accesses a texture or surface through a handle rather than a statically bound slot, the handle indexes into the UDT.
+The `.nv.udt` section is the data counterpart to `.nv.uft`. It holds entries for indirect data references — primarily unified texture and surface descriptors. When a kernel accesses a texture or surface through a handle rather than a statically bound slot, the handle indexes into the UDT.
 
 The structure mirrors the UFT:
 
@@ -574,11 +574,11 @@ The structure mirrors the UFT:
 
 The UDT requires alignment: the trace `"udt size %lld needs aligning\n"` fires when the section size is not properly aligned, and the linker adjusts it before finalization.
 
-The companion section `.nv.udt.entry` contains per-entry records structured identically to `.nv.uft.entry` -- each with a 128-bit UUID, an offset within `.nv.udt`, and a symbol index.
+The companion section `.nv.udt.entry` contains per-entry records structured identically to `.nv.uft.entry` — each with a 128-bit UUID, an offset within `.nv.udt`, and a symbol index.
 
 Validation follows the same pattern: `"missing nv.udt.entry"` for a missing per-entry section, `"size of uidx window != nv.udt"` for UIDX size mismatch.
 
-## `.nv.uidx` -- Index File
+## `.nv.uidx` — Index File
 
 The `.nv.uidx` section provides a pre-defined ordering for UFT and UDT entries. It is loaded from an external file specified via the `--uidx-file` / `-uidx` CLI option (stored in `qword_2A5F208`). The global variable description string is `"Path to uidx file."`.
 
@@ -940,18 +940,18 @@ This register propagation through the UFT is critical for correctness: if a kern
 
 ## Cross-References
 
-- [Layout Phase](../pipeline/layout.md) -- Phase 10 invokes UFT setup
-- [Relocation Phase](../pipeline/relocate.md) -- Unified relocation remapping
-- [R_CUDA Relocations](../linker/r-cuda-relocations.md) -- Full unified type catalog
-- [R_MERCURY Relocations](../mercury/r-mercury-relocations.md) -- Mercury unified type counterparts
-- [Section Merging](../linker/section-merging.md) -- Merge of `.nv.uft.entry` sections
-- [Bindless Relocations](../linker/bindless-relocations.md) -- Analogous system for texture/surface descriptors
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- Interaction with UFT stub reachability
-- [CLI Options](../pipeline/cli-options.md) -- `--uidx-file` option documentation
+- [Layout Phase](../pipeline/layout.md) — Phase 10 invokes UFT setup
+- [Relocation Phase](../pipeline/relocate.md) — Unified relocation remapping
+- [R_CUDA Relocations](../linker/r-cuda-relocations.md) — Full unified type catalog
+- [R_MERCURY Relocations](../mercury/r-mercury-relocations.md) — Mercury unified type counterparts
+- [Section Merging](../linker/section-merging.md) — Merge of `.nv.uft.entry` sections
+- [Bindless Relocations](../linker/bindless-relocations.md) — Analogous system for texture/surface descriptors
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — Interaction with UFT stub reachability
+- [CLI Options](../pipeline/cli-options.md) — `--uidx-file` option documentation
 
 **Sibling wikis (ptxas):**
 
-- [ptxas: Relocations & Symbols](../../ptxas/output/relocations.html) -- R_CUDA_UNIFIED and R_MERCURY_UNIFIED relocation type definitions from the ptxas perspective
+- [ptxas: Relocations & Symbols](../../ptxas/output/relocations.html) — R_CUDA_UNIFIED and R_MERCURY_UNIFIED relocation type definitions from the ptxas perspective
 
 ## Confidence Assessment
 

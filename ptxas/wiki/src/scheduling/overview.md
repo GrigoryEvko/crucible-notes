@@ -4,27 +4,27 @@
 >
 > *Size figures expressed in KB (e.g. "22 KB", "47 KB") refer to the decompiled C source produced by the analysis pipeline, not the native code footprint. The compiled binary sizes are roughly 4--6x smaller; for example `sub_8D0640` is 3953 bytes of x86-64 (839 instructions), `sub_688DD0` is 3643 bytes (785 instructions), and `sub_8C9320` is 10,154 bytes (2,116 instructions). The KB figures are still useful as a relative-importance indicator across functions within this subsystem.*
 
-The ptxas instruction scheduler is a priority list scheduler with a 3-phase architecture. A single top-level orchestrator (`sub_8D0640`, ScheduleInstructions) drives three passes through one unified scheduling engine (`sub_688DD0`), each configured by a mode parameter that selects a different optimization objective: register pressure reduction, ILP/latency hiding, or dynamic batch optimization for tensor warpgroup operations. The scheduler runs twice in the ptxas pipeline -- once before register allocation on virtual registers (pre-scheduling) and once after physical register assignment (post-scheduling).
+The ptxas instruction scheduler is a priority list scheduler with a 3-phase architecture. A single top-level orchestrator (`sub_8D0640`, ScheduleInstructions) drives three passes through one unified scheduling engine (`sub_688DD0`), each configured by a mode parameter that selects a different optimization objective: register pressure reduction, ILP/latency hiding, or dynamic batch optimization for tensor warpgroup operations. The scheduler runs twice in the ptxas pipeline — once before register allocation on virtual registers (pre-scheduling) and once after physical register assignment (post-scheduling).
 
 The scheduler consumes a dependency DAG built over the instruction list and produces a final instruction ordering together with SASS control words encoding stall counts, yield hints, barrier assignments, and scoreboard dependencies. The entire subsystem occupies two principal address ranges: the main scheduler core at `0x893000--0x8FE000` (428 KB of native code, ~115 functions including the orchestrator, engine, priority evaluator, dependency builder, DynBatch context, and per-SM HW profile builders) and a supporting infrastructure block at `0x67F000--0x6A0000` (132 KB; ready-list construction, instruction relink, region-init, and the unified-engine entry-point thunks). The scoreboard/control-word pipeline at `0xA22000--0xA3B000` (post-scheduling phases 114--116) accounts for an additional ~100 KB.
 
 | | |
 |---|---|
-| **Orchestrator** | `sub_8D0640` (22 KB) -- ScheduleInstructions |
-| **Unified engine** | `sub_688DD0` (20 KB) -- mode-parameterized scheduling loop |
-| **Priority function** | `sub_8C9320` (47 KB) -- multi-criteria heuristic |
-| **Ready list builder** | `sub_6820B0` (1.5 KB) -- zero-predecessor scan |
+| **Orchestrator** | `sub_8D0640` (22 KB) — ScheduleInstructions |
+| **Unified engine** | `sub_688DD0` (20 KB) — mode-parameterized scheduling loop |
+| **Priority function** | `sub_8C9320` (47 KB) — multi-criteria heuristic |
+| **Ready list builder** | `sub_6820B0` (1.5 KB) — zero-predecessor scan |
 | **Dependency graph** | `sub_8CF880` (28 KB) + `sub_8D9930` (19 KB) |
-| **Register budget** | `sub_8CEE80` (8.7 KB) -- occupancy-aware computation |
-| **HW latency profiles** | `sub_8E7300`--`sub_8E9DC0` -- per-SM tables |
-| **Opcode table** | `sub_896D50` (90 KB) -- ROT13-encoded SASS mnemonics |
-| **Scheduling arena** | `sub_8E3970` / `sub_8E3A80` -- bump allocator |
+| **Register budget** | `sub_8CEE80` (8.7 KB) — occupancy-aware computation |
+| **HW latency profiles** | `sub_8E7300`--`sub_8E9DC0` — per-SM tables |
+| **Opcode table** | `sub_896D50` (90 KB) — ROT13-encoded SASS mnemonics |
+| **Scheduling arena** | `sub_8E3970` / `sub_8E3A80` — bump allocator |
 | **Key knobs** | 76 `Sched*` knobs; see [Configuration](#scheduling-knobs) |
 | **Enable gate** | `"ScheduleInstructions"` named option at `(a1+8)+1664` |
 
 ## 3-Phase Pipeline
 
-The orchestrator `sub_8D0640` executes the following sequence. All three scheduling phases invoke the same unified engine `sub_688DD0` -- the only difference is the mode byte passed as the second argument.
+The orchestrator `sub_8D0640` executes the following sequence. All three scheduling phases invoke the same unified engine `sub_688DD0` — the only difference is the mode byte passed as the second argument.
 
 ```c
 function ScheduleInstructions(sched):
@@ -143,7 +143,7 @@ function SelectBestInstruction(sched, readyList, ...):
     return target(sched, readyList, ...)
 ```
 
-### Phase 1 -- ReduceReg (mode 1, callback 0x39)
+### Phase 1 — ReduceReg (mode 1, callback 0x39)
 
 Goal: minimize register pressure so the register allocator has headroom. This phase reorders instructions to reduce the maximum number of simultaneously-live virtual registers.
 
@@ -152,7 +152,7 @@ Goal: minimize register pressure so the register allocator has headroom. This ph
 - The mode byte 0x39 resolves through `vtable[7]` to `sub_8DA6A0`, a core vtable method shared across all SM variants, implementing the register-pressure-minimizing priority score.
 - The engine's inner dispatch reads `*(DWORD*)(sched+240) == 1` to enter the ReduceReg path, enabling per-BB knob overrides.
 
-### Phase 2 -- ILP / Latency Hiding (mode 0, callback 0x49)
+### Phase 2 — ILP / Latency Hiding (mode 0, callback 0x49)
 
 Goal: maximize instruction-level parallelism and hide memory latencies by interleaving independent operations.
 
@@ -162,7 +162,7 @@ Goal: maximize instruction-level parallelism and hide memory latencies by interl
 - The mode byte 0x49 resolves through `vtable[9]` to `sub_8E0F90` (pipeline\_A[1]), implementing the latency-oriented priority score. This method is overridable by SM-specific derived vtables.
 - After this phase, `sub_8CF5D0` evaluates dual-issue eligibility and produces a dual-issue benefit score stored at `scheduler+328`.
 
-### Phase 3 -- DynBatch (mode 2, callback 0x41)
+### Phase 3 — DynBatch (mode 2, callback 0x41)
 
 Goal: batch-aware scheduling for GMMA/WGMMA warpgroup tensor operations. Groups tensor instructions into batches that can execute as warpgroup-cooperative operations with minimal pipeline stalls.
 
@@ -183,7 +183,7 @@ Goal: batch-aware scheduling for GMMA/WGMMA warpgroup tensor operations. Groups 
 | +8 | 160 | `QWORD[20]` | 0 | batchWorkArray | Fixed-size working array for batch state tracking; likely holds instruction pointers or batch boundary markers during scheduling |
 | +168 | 8 | `ptr` | alloc'd | perBBArray | Per-BB batch tracking sub-array; `8 * numBBs` bytes, zero-initialized. Each 8-byte entry holds a batch start/end instruction pointer for one basic block |
 | +176 | 4 | `DWORD` | 0 | flags | Status/control flags |
-| +180 | 4 | -- | -- | (padding) | Pad to 184-byte allocation |
+| +180 | 4 | — | — | (padding) | Pad to 184-byte allocation |
 
 The per-BB sub-array size is derived from `*(sched+392)` (maxBBSizeForAlloc), with an overflow check capping the multiplication at `0xFFFFFFFFFFFFFFF` (2^60 - 1) entries.
 
@@ -194,9 +194,9 @@ The bulk of the DynBatch working state lives directly in the scheduler context, 
 | Offset | Size | Type | Init | Name | Purpose |
 |---|---|---|---|---|---|
 | +464 | 4 | `int32` | 0 | batchSlotCount | Number of instructions accumulated in the current batch |
-| +468 | 4 | `int32` | -- | prevBatchSize | Size of previously-completed batch |
+| +468 | 4 | `int32` | — | prevBatchSize | Size of previously-completed batch |
 | +476 | 4 | `int32` | adj | adjustedBatchTarget | Adjusted batch depth target; capped to `min(maxStallCycles, batchTargetCount)`, halved when `2 * maxStall > target` |
-| +480 | 4 | `int32` | -- | lastBatchEndPos | Scheduling position of the last instruction in the current batch |
+| +480 | 4 | `int32` | — | lastBatchEndPos | Scheduling position of the last instruction in the current batch |
 | +488 | 8 | `QWORD` | 0xFFFFFFFF | batchWindow | Batch window start BB offset; sentinel 0xFFFFFFFF means "no batch active" |
 | +492 | 4 | `int32` | 0 | regDelta | Register pressure delta accumulator across batch boundaries |
 | +496 | 4 | `int32` | 0 | maxRegInBatch | Maximum register pressure observed within current batch |
@@ -207,7 +207,7 @@ The bulk of the DynBatch working state lives directly in the scheduler context, 
 | +516 | 4 | `int32` | -1 | batchDepthLimit | Per-batch maximum depth; -1 = unlimited (overwritten from BB analysis) |
 | +520 | 1 | `byte` | 0 | batchOverflow | Set to 1 when batch exceeds register budget + base count |
 | +521 | 1 | `byte` | 0 | batchAbort | Set to 1 when opcode 96 (WGMMA commit) detected with `sched+524` flag |
-| +536+ | var | `ptr[]` | -- | batchSlots | Array of instruction pointers in the current batch; `sched+536 + 8*i` for slot `i` |
+| +536+ | var | `ptr[]` | — | batchSlots | Array of instruction pointers in the current batch; `sched+536 + 8*i` for slot `i` |
 
 The batch target adjustment algorithm in `sub_8C1BA0`:
 ```c
@@ -324,7 +324,7 @@ function ScheduleEngine(sched, mode, arg3, rebuild):
 
 ### SelectBestInstruction Tagged-Pointer Dispatch
 
-The `mode` argument to `sub_688DD0` is not a simple integer -- it is a **tagged pointer** (low bit = 1). The engine uses this encoding to resolve the polymorphic `SelectBestInstruction` call at runtime without an explicit switch statement:
+The `mode` argument to `sub_688DD0` is not a simple integer — it is a **tagged pointer** (low bit = 1). The engine uses this encoding to resolve the polymorphic `SelectBestInstruction` call at runtime without an explicit switch statement:
 
 ```c
 // Decompiled dispatch at lines 477-480 of sub_688DD0:
@@ -338,9 +338,9 @@ The scheduling context stores its vtable pointer at offset +0 (`sched[0] = off_2
 
 | Mode byte | Phase | `mode - 1` | Vtable offset | Index | Slot target (off_21DBC80) |
 |---|---|---|---|---|---|
-| `0x39` (57) | ReduceReg | +56 | `[7]` | core slot 7 | `0x8DA6A0` (`nullsub_261`, 2 B) -- base-class no-op; ReduceReg behaviour is selected by `sched+240==1` inside the priority evaluator |
-| `0x41` (65) | DynBatch | +64 | `[8]` | pipeline_A slot 0 | `0x8E0F18` -- thunk entry inside `sub_8E0DB0` (DynBatch pipeline backend) |
-| `0x49` (73) | ILP/Latency | +72 | `[9]` | pipeline_A slot 1 | `0x8E0F90` -- thunk entry inside `sub_8E0DB0` (ILP pipeline backend) |
+| `0x39` (57) | ReduceReg | +56 | `[7]` | core slot 7 | `0x8DA6A0` (`nullsub_261`, 2 B) — base-class no-op; ReduceReg behaviour is selected by `sched+240==1` inside the priority evaluator |
+| `0x41` (65) | DynBatch | +64 | `[8]` | pipeline_A slot 0 | `0x8E0F18` — thunk entry inside `sub_8E0DB0` (DynBatch pipeline backend) |
+| `0x49` (73) | ILP/Latency | +72 | `[9]` | pipeline_A slot 1 | `0x8E0F90` — thunk entry inside `sub_8E0DB0` (ILP pipeline backend) |
 
 Slots 8 and 9 are interior labels of the shared dispatcher `sub_8E0DB0` (~700 B), not standalone functions; multiple adjacent vtable entries in this table resolve to the same routine, which then branches on the originating slot offset. Slot 7 is a hard nullsub: when ReduceReg fires, the mode-1 path in `sub_8C9320` (via the `sched+240` selector and the `sched+484` ReduceReg flag) carries the entire register-pressure-minimizing heuristic.
 
@@ -497,7 +497,7 @@ function ComputeRegisterBudget(sched):
 
 `sub_8CE520(sched, regLimit, &nopDensity)` measures instruction density in a sliding window to decide whether reducing register pressure improves ILP. Returns weighted real-instruction density; writes NOP density to `nopDensity`; sets `sched.usePressure` (+522) and `sched.minPhysRegs` (+512).
 
-**Seed initialization.** A seed object at `func[223]` (byte offset +1784) configures the curve. Default: `seed.SetBreakpoints(4, 2, 6)` via vtable+16 -- the three arguments are `windowSize`, `minIssueWidth`, `maxIssueWidth`, defining the piecewise linear occupancy-to-issue-width mapping. When `KnobIsSet(750)` is true, calls `seed.ParseString(KnobGetString(750))` via vtable+24 instead -- the `SchedEstimatedLoopIterations` string encodes custom per-loop iteration hints replacing the (4,2,6) defaults. If the function has no loops (`sched[668] == 0`), returns 0.0 with `usePressure = 0`.
+**Seed initialization.** A seed object at `func[223]` (byte offset +1784) configures the curve. Default: `seed.SetBreakpoints(4, 2, 6)` via vtable+16 — the three arguments are `windowSize`, `minIssueWidth`, `maxIssueWidth`, defining the piecewise linear occupancy-to-issue-width mapping. When `KnobIsSet(750)` is true, calls `seed.ParseString(KnobGetString(750))` via vtable+24 instead — the `SchedEstimatedLoopIterations` string encodes custom per-loop iteration hints replacing the (4,2,6) defaults. If the function has no loops (`sched[668] == 0`), returns 0.0 with `usePressure = 0`.
 
 ```c
 function ComputePressureCurve(sched, regLimit):       // sub_8CE520
@@ -629,10 +629,10 @@ The final stall count for an instruction is `max(0, lat - scheduling_distance)` 
 
 | Address | Size | Purpose |
 |---|---|---|
-| `sub_68A690` | 31 KB | BuildDependencies -- def-use chain construction |
-| `sub_6A97B0` | 26 KB | AddDependencyEdges -- register-level edges |
-| `sub_6A2D30` | 11 KB | ChainDependencies -- memory ordering constraints |
-| `sub_6A78F0` | 23 KB | ProcessOperands -- operand dependency extraction |
+| `sub_68A690` | 31 KB | BuildDependencies — def-use chain construction |
+| `sub_6A97B0` | 26 KB | AddDependencyEdges — register-level edges |
+| `sub_6A2D30` | 11 KB | ChainDependencies — memory ordering constraints |
+| `sub_6A78F0` | 23 KB | ProcessOperands — operand dependency extraction |
 
 ## Pre-Scheduling Setup
 
@@ -649,7 +649,7 @@ Key behaviors:
 
 ## Pre-RA Scheduling vs Post-RA Scheduling
 
-The scheduler runs at two distinct points in the ptxas pipeline, separated by register allocation. The two stages share most of the same machinery (Backend A's unified engine `sub_688DD0`, Backend C's RBT orchestrator `sub_1908D90`) but see fundamentally different inputs and enforce different constraint sets. Phase 110 (`PostSchedule`) is documented in full on [Phase 110 -- PostSchedule](post-schedule.md); this section is the cross-stage summary.
+The scheduler runs at two distinct points in the ptxas pipeline, separated by register allocation. The two stages share most of the same machinery (Backend A's unified engine `sub_688DD0`, Backend C's RBT orchestrator `sub_1908D90`) but see fundamentally different inputs and enforce different constraint sets. Phase 110 (`PostSchedule`) is documented in full on [Phase 110 — PostSchedule](post-schedule.md); this section is the cross-stage summary.
 
 | Aspect | Pre-RA scheduling (bin 114) | Post-RA scheduling (wiki phase 110) |
 |---|---|---|
@@ -658,12 +658,12 @@ The scheduler runs at two distinct points in the ptxas pipeline, separated by re
 | **Timing** | Before `AllocateRegisters` (bin 122, SKIP-numbered) | After `ApplyPostRegAllocWars` [wiki 105] and `OptimizeHotCold` [wiki 108--109] |
 | **Register model** | Virtual register IDs, live-range tracker (`sub_69A1A0`, 952 B) | Physical R-regs / UR-regs / P-regs with exact occupancy map |
 | **Primary goal** | Trade ILP against register pressure so RA has headroom | Re-order against real bank conflicts, reuse-cache slots, and spill/reload latency |
-| **Phases active** | All 3 -- ReduceReg (mode 0x39), ILP (0x49), DynBatch (0x41) | Single mode (`mode=0` to Backend C; "post-RA mode" byte to Backend A engine) |
+| **Phases active** | All 3 — ReduceReg (mode 0x39), ILP (0x49), DynBatch (0x41) | Single mode (`mode=0` to Backend C; "post-RA mode" byte to Backend A engine) |
 | **Budget source** | Occupancy model estimate, knob-defaulted target 250/300 | Actual post-RA pressure measured by `RBTPressureCostModel` (`sub_18F3CB0`) |
 | **Engine entry (legacy)** | `sub_8D0640` -> `sub_688DD0` (Backend A 3-phase loop) | `sub_C60640` -> sub-target `vtable[+0x90]` -> `sub_A97600` (`PostSchedulePass::runOnFunction`, 42 KB) |
 | **Engine entry (modern sm\_80+)** | `sub_8D0640` -> `sub_C5FFC0` (`DispatchPreSchedule`) -> `sub_1908D90` (mode 1) | `sub_C60640` -> sub-target `vtable[+0x90]` -> `sub_1908D90` (mode 0); side-channel `sub_C5FFF0` (`DispatchPostSchedule`) reaches the same backend |
-| **Dispatcher pattern** | Direct -- phase calls scheduler; SM gate inside the callee | Sub-target indirect -- `ctx[+0x630] -> [+0x10] -> vtable[+0x90]`; sentinel `nullsub_45` marks "no override" |
-| **SM gate** | All SMs run pre-RA scheduling | `sub_7DDB50(ctx) > 1` -- skipped on sm\_50/52/53, sm\_60/61/62, sm\_70/72/75 (Maxwell--Turing) |
+| **Dispatcher pattern** | Direct — phase calls scheduler; SM gate inside the callee | Sub-target indirect — `ctx[+0x630] -> [+0x10] -> vtable[+0x90]`; sentinel `nullsub_45` marks "no override" |
+| **SM gate** | All SMs run pre-RA scheduling | `sub_7DDB50(ctx) > 1` — skipped on sm\_50/52/53, sm\_60/61/62, sm\_70/72/75 (Maxwell--Turing) |
 | **Output IR** | Re-ordered virtual-reg Ori IR; preliminary scoreboard via `sub_8D7760` | Re-ordered physical-reg Ori IR; final scoreboard deferred to phase 115 (`sub_A36360`) |
 
 ### What Each Stage Can and Cannot See
@@ -672,11 +672,11 @@ The two stages are not just "scheduling twice." Each enforces a constraint class
 
 | Constraint | Pre-RA (bin 114 `ScheduleInstructions`) | Post-RA (wiki 110 `PostSchedule`) |
 |---|---|---|
-| Register-file bank read-port conflicts | Invisible -- no physical bank assignment yet | Enforced by `sub_19043F0` constraint validator (Backend C); at most 2 sources from one bank per issue |
-| Reuse-cache slot occupancy (6-bit hint) | Invisible -- requires physical source register numbers | Encoded into scheduling decisions; pre-RA reuse hints are placeholders |
-| Spill/reload latency hiding | Invisible -- spills/reloads inserted by `AllocateRegisters` (bin 122) don't yet exist | Hoists independent instructions between `STL.W spilled` and `LDL.W spilled` (~30/~20 cycle gap on sm\_80+) |
-| Operand-collector WAW timing (sm\_90+) | Invisible -- depends on physical destination register, not live range | Enforced with at-least-one independent slot between back-to-back writes to same phys reg |
-| Dual-issue pairing (Maxwell only) | Decided here -- `sub_8CF5D0` `CheckDualIssueEligibility` after ILP phase | Not re-decided; sm\_70+ post-RA scheduling does not pair |
+| Register-file bank read-port conflicts | Invisible — no physical bank assignment yet | Enforced by `sub_19043F0` constraint validator (Backend C); at most 2 sources from one bank per issue |
+| Reuse-cache slot occupancy (6-bit hint) | Invisible — requires physical source register numbers | Encoded into scheduling decisions; pre-RA reuse hints are placeholders |
+| Spill/reload latency hiding | Invisible — spills/reloads inserted by `AllocateRegisters` (bin 122) don't yet exist | Hoists independent instructions between `STL.W spilled` and `LDL.W spilled` (~30/~20 cycle gap on sm\_80+) |
+| Operand-collector WAW timing (sm\_90+) | Invisible — depends on physical destination register, not live range | Enforced with at-least-one independent slot between back-to-back writes to same phys reg |
+| Dual-issue pairing (Maxwell only) | Decided here — `sub_8CF5D0` `CheckDualIssueEligibility` after ILP phase | Not re-decided; sm\_70+ post-RA scheduling does not pair |
 | Cross-BB register pressure | Tracked via occupancy estimate | Tracked via `RBTInterBlockScheduling` (`sub_19072F0`, 14 KB) using real liveness |
 | Virtual-register WAR hazards | Resolved by reordering inside ReduceReg/ILP | Already resolved by phase 105 `ApplyPostRegAllocWars` before phase 110 runs |
 | Instruction-distance scoreboards | Preliminary via `sub_8D7760` (41 KB), barrier indices written into operand high words | Recomputed from scratch by phase 115; only the tracking flag bit 23 survives the boundary (see [scoreboards.md](scoreboards.md#barrier-assignment-lifecycle-reconciliation)) |
@@ -788,9 +788,9 @@ function ScheduleWithBacktrack(BB, dag, ready_list):
 
 ### Dual-Issue Scheduler (`sub_8B77C0`, 15 KB)
 
-Pairs compatible instructions into dual-issue slots on the Maxwell family (sm\_50/sm\_52/sm\_53). The gate is `target+1032` bit 7, set only for the Maxwell back-end class -- subsequent architectures (Pascal sm\_60+ onwards) clear this bit and the strategy is never selected. The outer loop walks scheduling slots; the inner loop finds a co-issuable partner via the dependency rule table.
+Pairs compatible instructions into dual-issue slots on the Maxwell family (sm\_50/sm\_52/sm\_53). The gate is `target+1032` bit 7, set only for the Maxwell back-end class — subsequent architectures (Pascal sm\_60+ onwards) clear this bit and the strategy is never selected. The outer loop walks scheduling slots; the inner loop finds a co-issuable partner via the dependency rule table.
 
-`sub_8B77C0` orchestrates the per-slot search; the actual pair-record bookkeeping (rejection set, partner commit, cross-slot dependency flag) lives in `sub_8BDC40` (7.9 KB), which `sub_8B77C0` calls once per candidate. Compatibility predicates `sub_A9CDE0` (`IsHotMemory`) and `sub_A9CF90` (`IsColdMemory`) drive the partner choice -- see [Dual-Issue Rules](latency-model.md#dual-issue-rules) for the memory-space classification and the `pipe_masks_b` pairing matrix.
+`sub_8B77C0` orchestrates the per-slot search; the actual pair-record bookkeeping (rejection set, partner commit, cross-slot dependency flag) lives in `sub_8BDC40` (7.9 KB), which `sub_8B77C0` calls once per candidate. Compatibility predicates `sub_A9CDE0` (`IsHotMemory`) and `sub_A9CF90` (`IsColdMemory`) drive the partner choice — see [Dual-Issue Rules](latency-model.md#dual-issue-rules) for the memory-space classification and the `pipe_masks_b` pairing matrix.
 
 ```c
 function DualIssueSchedule(scheduler, slot_start, slot_end, phase_mask):
@@ -942,7 +942,7 @@ Sub-architecture variants (stored at profile offset +26) are assigned by specifi
 
 ### Representative Per-SM Latency Values
 
-The following table shows representative scheduling latencies extracted from the per-SM dependency rule tables (`per_sm_dependency_rules`). Each row is a scheduling class (unit\_id) corresponding to a key instruction category. Values are the `latency` field -- the scheduler's static cycle cost used for DAG edge weights and stall-count computation. The `tp_inv` column gives the inverse throughput (issue-to-issue delay for back-to-back instructions of the same class); 0 means fully pipelined (one per cycle).
+The following table shows representative scheduling latencies extracted from the per-SM dependency rule tables (`per_sm_dependency_rules`). Each row is a scheduling class (unit\_id) corresponding to a key instruction category. Values are the `latency` field — the scheduler's static cycle cost used for DAG edge weights and stall-count computation. The `tp_inv` column gives the inverse throughput (issue-to-issue delay for back-to-back instructions of the same class); 0 means fully pipelined (one per cycle).
 
 | Instruction class | Sched class | sm\_70 | sm\_80 | sm\_86 | sm\_89 | sm\_90 | sm\_100 | sm\_103 |
 |---|---|---|---|---|---|---|---|---|
@@ -955,19 +955,19 @@ The following table shows representative scheduling latencies extracted from the
 | **Global mem** (LDG/STG) | 22 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 |
 | **Texture** (TEX, TLD) | 28 | 74 / 33 | 72 / 34 | 74 / 33 | 74 / 33 | 74 / 33 | 72 / 34 | 74 / 33 |
 | **SFU** (MUFU: RCP, RSQ) | 52 | 48 / 19 | 13 / 19 | 48 / 19 | 48 / 19 | 48 / 19 | 46 / 19 | 48 / 19 |
-| **Tensor** (HMMA/BMMA) | 13 | -- | -- | -- | -- | -- | 46 / 19 | 46 / 19 |
-| **WGMMA** (warpgroup MMA) | 745 | 65 / 28 | -- | -- | -- | -- | 65 / 28 | 65 / 28 |
+| **Tensor** (HMMA/BMMA) | 13 | — | — | — | — | — | 46 / 19 | 46 / 19 |
+| **WGMMA** (warpgroup MMA) | 745 | 65 / 28 | — | — | — | — | 65 / 28 | 65 / 28 |
 | **DMMA** (FP64 tensor) | 118 | 49 / 19 | 15 / 19 | 14 / 19 | 15 / 19 | 14 / 19 | 15 / 19 | 15 / 19 |
 | **Branch** (BRA, JMP) | 130 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 |
 | **Conversion** (I2F, F2I) | 72 | 31 / 12 | 5 / 9 | 31 / 12 | 31 / 12 | 31 / 12 | 31 / 12 | 31 / 12 |
 | **Uniform ALU** (UIMAD) | 15 | 255 / 35 | 255 / 35 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 |
 
-*Format: latency / tp\_inv. "--" means the class is absent (instruction unsupported on that SM). Latency 255 is the sentinel for "unsupported" -- the scheduler treats it as maximum stall.*
+*Format: latency / tp\_inv. "--" means the class is absent (instruction unsupported on that SM). Latency 255 is the sentinel for "unsupported" — the scheduler treats it as maximum stall.*
 
 Key observations from the extracted data:
 
 - **Integer and FP32 ALU latencies are constant across all architectures** (17 cycles, fully pipelined). The scheduler treats these as single-cycle-issue, short-latency operations.
-- **FP64 latency (42) is ~2.5x FP32 (17)**, with inverse throughput 15 vs 0 -- reflecting the hardware rate limiter on double-precision pipes.
+- **FP64 latency (42) is ~2.5x FP32 (17)**, with inverse throughput 15 vs 0 — reflecting the hardware rate limiter on double-precision pipes.
 - **Memory latencies (28 cycles) are identical for shared and global memory** in the scheduler's static model. The actual L2/DRAM latency is handled dynamically by the scoreboard; the scheduler uses this as a minimum stall estimate.
 - **Texture is the most expensive non-tensor operation** (72--74 cycles), with inverse throughput 33--34 reflecting the deep texture pipeline.
 - **sm\_80 shows anomalous low values for SFU (13) and conversion (5)** compared to other SMs. This is the base sm\_80 profile; the extended sm\_80 profile (`sub_8E7B40`) applies corrections.
@@ -983,29 +983,29 @@ The scheduler reads approximately 76 knobs. The most significant ones (names dec
 
 | Knob ID | Name | Type | Default | Purpose |
 |---|---|---|---|---|
-| 313 | `FenceCode` | when-list | -- | Skip scheduling for specific opcodes (per-instruction WHEN condition) |
-| 314 | `FenceInterference` | when-list | -- | Mark interference fences for specific opcodes |
-| 419 | `LivenessCountRegComp` | int32 | -- | Forward scheduling mode flag (bit 3 in `sched+1376`) |
-| 420 | `LivenessUseHiLo` | int32 | -- | Dual-register hi/lo tracking (bit 4 in `sched+1376`) |
-| 487 | -- | bool | true | Master scheduling/peephole enable |
-| 510 | `OptimizeUniformAtomicMode` | int32 | -- | BB pre-optimization mode for uniform atomics |
-| 595 | `PreserveSchedOrderSame` | when-list | -- | Preserve scheduling order (per-instruction WHEN condition) |
+| 313 | `FenceCode` | when-list | — | Skip scheduling for specific opcodes (per-instruction WHEN condition) |
+| 314 | `FenceInterference` | when-list | — | Mark interference fences for specific opcodes |
+| 419 | `LivenessCountRegComp` | int32 | — | Forward scheduling mode flag (bit 3 in `sched+1376`) |
+| 420 | `LivenessUseHiLo` | int32 | — | Dual-register hi/lo tracking (bit 4 in `sched+1376`) |
+| 487 | — | bool | true | Master scheduling/peephole enable |
+| 510 | `OptimizeUniformAtomicMode` | int32 | — | BB pre-optimization mode for uniform atomics |
+| 595 | `PreserveSchedOrderSame` | when-list | — | Preserve scheduling order (per-instruction WHEN condition) |
 | 740 | `SchedBumpScaleAugmentFactor` | double | 0.045 | Register pressure bump scale augmentation coefficient |
 | 741 | `SchedCountLoadsPerTex` | int32 | 3 | Load count per texture operation (stall threshold) |
-| 742 | `SchedCrossBlock` | int32 | -- | Cross-block scheduling mode |
-| 743 | `SchedCrossBlockInstsToSpeculate` | int32 | -- | Cross-block instruction speculation count |
-| 747 | `SchedCrossBlockTexToSpeculate` | int32 | -- | Cross-block texture speculation count |
-| 750 | `SchedEstimatedLoopIterations` | string | -- | Estimated loop iteration count override |
-| 760 | `SchedMaxRLiveCarefulSlack` | int32 | -- | Reserved register headroom (careful slack for live registers) |
-| 761 | `SchedMaxRLiveOKslack` | int32 | -- | Acceptable live-register slack (batch depth on non-sm_50) |
-| 762 | `SchedMaxRLiveOKslackColdBlocks` | int32 | -- | Extra register slack for cold basic blocks |
-| 763 | `SchedMaxRTarget` | int32 | -- | Maximum register target; 0 disables register budget |
-| 769 | `SchedPrefFurthestDep` | when-list | -- | Per-BB scheduling query: prefer furthest dependency |
+| 742 | `SchedCrossBlock` | int32 | — | Cross-block scheduling mode |
+| 743 | `SchedCrossBlockInstsToSpeculate` | int32 | — | Cross-block instruction speculation count |
+| 747 | `SchedCrossBlockTexToSpeculate` | int32 | — | Cross-block texture speculation count |
+| 750 | `SchedEstimatedLoopIterations` | string | — | Estimated loop iteration count override |
+| 760 | `SchedMaxRLiveCarefulSlack` | int32 | — | Reserved register headroom (careful slack for live registers) |
+| 761 | `SchedMaxRLiveOKslack` | int32 | — | Acceptable live-register slack (batch depth on non-sm_50) |
+| 762 | `SchedMaxRLiveOKslackColdBlocks` | int32 | — | Extra register slack for cold basic blocks |
+| 763 | `SchedMaxRTarget` | int32 | — | Maximum register target; 0 disables register budget |
+| 769 | `SchedPrefFurthestDep` | when-list | — | Per-BB scheduling query: prefer furthest dependency |
 | 770 | `SchedReadAvailTarget` | int32 | 4 | Priority queue depth (read-availability lookahead window) |
 | 776 | `SchedReduceIncLimit` | int32 | ~250 | Forward pass primary register increment limit |
 | 778 | `SchedReduceIncLimitHigh` | int32 | ~300 | Forward pass secondary (high) register increment limit |
-| 805 | `SchedTexBatchTargetSelectRegisterTarget` | int32 | -- | Texture batch register target stall limit (capped at 16) |
-| 806 | `SchedTexBatchTargetSelectSchedulerTarget` | int32 | -- | Texture batch scheduler target stall limit (capped at 16) |
+| 805 | `SchedTexBatchTargetSelectRegisterTarget` | int32 | — | Texture batch register target stall limit (capped at 16) |
+| 806 | `SchedTexBatchTargetSelectSchedulerTarget` | int32 | — | Texture batch scheduler target stall limit (capped at 16) |
 
 Knob names are stored ROT13-encoded in the binary (see [Knobs System](../config/knobs.md) for the obfuscation scheme). Types `when-list` indicate knobs that support per-instruction or per-BB conditional overrides via `WHEN=` syntax.
 
@@ -1288,29 +1288,29 @@ Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-a
 
 | Offset | Size | Type | Init | Name | Purpose |
 |---|---|---|---|---|---|
-| +0 | 8 | `ptr` | -- | `nextInList` | Singly-linked next pointer for the `func+104` metadata chain |
+| +0 | 8 | `ptr` | — | `nextInList` | Singly-linked next pointer for the `func+104` metadata chain |
 | +8 | 4 | `i32` | 0 | `depCount` | Unsatisfied dependency count; decremented as predecessors are scheduled; instruction is ready when this reaches 0 |
-| +12 | 4 | -- | -- | (pad) | Alignment padding |
-| +16 | 8 | `ptr` | -- | `nextReady` | Ready list singly-linked next pointer; threaded by `sub_6820B0` (BuildReadyList) |
+| +12 | 4 | — | — | (pad) | Alignment padding |
+| +16 | 8 | `ptr` | — | `nextReady` | Ready list singly-linked next pointer; threaded by `sub_6820B0` (BuildReadyList) |
 | +24 | 4 | `i32` | seq | `bbSlot` | 1-based position within the BB (assigned sequentially by `sub_8D9930`); used for program-order tiebreaking in priority decisions |
 | +28 | 4 | `i32` | 0 | `latencyCounter` | Remaining latency cycles until the instruction's result is available; reset to 0 when placed on the ready list; updated by `sub_A09530` (UpdateStallCycles) |
-| +32 | 4 | `i32` | -- | `earliestCycle` | Earliest available cycle -- the latest completion time among all producer instructions; stall-free when `earliestCycle >= scheduler+480` (current cycle) |
-| +36 | 4 | -- | -- | (reserved) | Alignment padding or internal use |
+| +32 | 4 | `i32` | — | `earliestCycle` | Earliest available cycle — the latest completion time among all producer instructions; stall-free when `earliestCycle >= scheduler+480` (current cycle) |
+| +36 | 4 | — | — | (reserved) | Alignment padding or internal use |
 | +40 | 4 | `i32` | 0 | `latestDeadline` | Latest deadline cycle for scheduling; secondary tiebreaker in the candidate comparison cascade |
-| +44 | 4 | `i32` | -- | `barrierGroupIndex` | Barrier group assignment; identifies which of the 6 hardware barriers this instruction participates in |
-| +48 | 4 | `i32` | -- | `schedulingFenceCode` | Scheduling fence code from knob 313 (`FenceCode`) / 314 (`FenceInterference`) checks; controls per-instruction scheduling boundaries |
+| +44 | 4 | `i32` | — | `barrierGroupIndex` | Barrier group assignment; identifies which of the 6 hardware barriers this instruction participates in |
+| +48 | 4 | `i32` | — | `schedulingFenceCode` | Scheduling fence code from knob 313 (`FenceCode`) / 314 (`FenceInterference`) checks; controls per-instruction scheduling boundaries |
 | +56 | 8 | `i64` | 0 | `depChainHead` | Dependency chain data; reset to 0 between scheduling passes |
 | +76 | 4 | `i32` | 0 | `schedulingCost` | Per-instruction scheduling cost; accumulated during priority evaluation; reset between passes |
 | +84 | 4 | `i32` | -1 | `schedulingClass` | Scheduling class index assigned by the latency model (`sub_89FBA0`); indexes into per-architecture latency tables; -1 = unclassified (sentinel) |
-| +88 | 4 | `i32` | -- | `maxPredecessorCycle` | Highest cycle value among predecessor instructions; used in the priority pre-scan to compute `max_pred_cycle` |
-| +92 | 4 | `i32` | -- | `maxDependencyCycle` | Highest cycle value along the dependency chain; used to compute `max_dep_cycle` for critical-path analysis |
+| +88 | 4 | `i32` | — | `maxPredecessorCycle` | Highest cycle value among predecessor instructions; used in the priority pre-scan to compute `max_pred_cycle` |
+| +92 | 4 | `i32` | — | `maxDependencyCycle` | Highest cycle value along the dependency chain; used to compute `max_dep_cycle` for critical-path analysis |
 | +104 | 8 | `i64` | 0 | `extendedState` | Extended scheduling state; reset to 0 between scheduling passes |
-| +108 | 1 | `byte` | -- | `flags` | Primary flag byte: bit 0 = barrier-target, bit 1 = has-dependency-set, bit 2 = fence-early (knob 314), bit 3 = fence-late (knob 313), bit 4 = has-register-operand |
-| +111 | 1 | `byte` | -- | `extendedFlags` | Extended flags: bit 7 = uses expensive register file (triggers barrier tracking update in `sub_8C7120`) |
+| +108 | 1 | `byte` | — | `flags` | Primary flag byte: bit 0 = barrier-target, bit 1 = has-dependency-set, bit 2 = fence-early (knob 314), bit 3 = fence-late (knob 313), bit 4 = has-register-operand |
+| +111 | 1 | `byte` | — | `extendedFlags` | Extended flags: bit 7 = uses expensive register file (triggers barrier tracking update in `sub_8C7120`) |
 | +128 | 8 | `ptr` | 0 | `regionChainNext` | Cross-block region chain next pointer; walked by `sub_68B9C0` to iterate BB-representative nodes; separate from the `func+104` chain at +0 |
-| +144 | 4 | `i32` | -- | `schedRegionIndex` | Index into the 72-byte per-block scheduling record array (`scheduler+184`); also used as FNV-1a hash key in the region dedup cache |
-| +164 | 4 | `i32` | -- | `resourceClassIndex` | Index into the 40-byte resource-class record array; `sub_688DD0` uses `src + 40 * index` to look up the 10-element register-delta vector |
-| +236 | 4 | `i32` | -- | `regionOrderWeight` | Region ordering weight for cross-block BB traversal; sentinels `INT_MIN`/`INT_MAX` mark region boundaries |
+| +144 | 4 | `i32` | — | `schedRegionIndex` | Index into the 72-byte per-block scheduling record array (`scheduler+184`); also used as FNV-1a hash key in the region dedup cache |
+| +164 | 4 | `i32` | — | `resourceClassIndex` | Index into the 40-byte resource-class record array; `sub_688DD0` uses `src + 40 * index` to look up the 10-element register-delta vector |
+| +236 | 4 | `i32` | — | `regionOrderWeight` | Region ordering weight for cross-block BB traversal; sentinels `INT_MIN`/`INT_MAX` mark region boundaries |
 
 ### Relationship to the Instruction Object
 
@@ -1366,21 +1366,21 @@ Functions exceeding 16383 instructions (`*(a1+372) > 0x3FFF`) trigger chunk-base
 | Offset | Size | Type | Init | Name | Purpose |
 |---|---|---|---|---|---|
 | +0 | 4 | `i32` | 0 | `crossBlockId` | Non-zero when the BB is active/scheduled; set to the predecessor BB index during cross-block merging. Tested as a boolean gate by 8+ functions before processing a BB. |
-| +4 | 4 | `i32` | 0 | `pressure[0]` | Register pressure snapshot -- R (general-purpose 32-bit registers) |
-| +8 | 4 | `i32` | 0 | `pressure[1]` | Register pressure snapshot -- P (predicate registers) |
-| +12 | 4 | `i32` | 0 | `pressure[2]` | Register pressure snapshot -- UR (uniform registers) |
-| +16 | 4 | `i32` | 0 | `pressure[3]` | Register pressure snapshot -- UP (uniform predicate registers) |
-| +20 | 4 | `i32` | 0 | `pressure[4]` | Register pressure snapshot -- B (barrier registers) |
-| +24 | 4 | `i32` | 0 | `pressure[5]` | Register pressure snapshot -- arch-specific class 0 |
-| +28 | 4 | `i32` | 0 | `pressure[6]` | Register pressure snapshot -- arch-specific class 1 |
-| +32 | 4 | `i32` | 0 | `pressure[7]` | Register pressure snapshot -- arch-specific class 2 |
-| +36 | 4 | `i32` | 0 | `pressure[8]` | Register pressure snapshot -- arch-specific class 3 |
-| +40 | 4 | `i32` | 0 | `pressure[9]` | Register pressure snapshot -- arch-specific class 4 / control total |
-| +44 | 4 | -- | -- | (padding) | Not initialized, not accessed |
+| +4 | 4 | `i32` | 0 | `pressure[0]` | Register pressure snapshot — R (general-purpose 32-bit registers) |
+| +8 | 4 | `i32` | 0 | `pressure[1]` | Register pressure snapshot — P (predicate registers) |
+| +12 | 4 | `i32` | 0 | `pressure[2]` | Register pressure snapshot — UR (uniform registers) |
+| +16 | 4 | `i32` | 0 | `pressure[3]` | Register pressure snapshot — UP (uniform predicate registers) |
+| +20 | 4 | `i32` | 0 | `pressure[4]` | Register pressure snapshot — B (barrier registers) |
+| +24 | 4 | `i32` | 0 | `pressure[5]` | Register pressure snapshot — arch-specific class 0 |
+| +28 | 4 | `i32` | 0 | `pressure[6]` | Register pressure snapshot — arch-specific class 1 |
+| +32 | 4 | `i32` | 0 | `pressure[7]` | Register pressure snapshot — arch-specific class 2 |
+| +36 | 4 | `i32` | 0 | `pressure[8]` | Register pressure snapshot — arch-specific class 3 |
+| +40 | 4 | `i32` | 0 | `pressure[9]` | Register pressure snapshot — arch-specific class 4 / control total |
+| +44 | 4 | — | — | (padding) | Not initialized, not accessed |
 | +48 | 8 | `ptr` | 0 | `regionContext` | Pointer to 136-byte per-region scheduling state allocated by `sub_682F10`. Contains region boundaries, mode flags, and instruction range metadata. |
 | +56 | 8 | `ptr` | 0 | `regionContext2` | Second region context pointer, written via successor-BB index mapping. Dereferenced by `sub_681C00` to check barrier presence (bit 4 of pointed-to byte). |
 | +64 | 1 | `byte` | `& 0x80` | `flags` | Per-BB characteristic flags (see below). Low 7 bits cleared on init; bit 7 preserved. |
-| +65 | 7 | -- | -- | (padding) | Padding to 72-byte stride |
+| +65 | 7 | — | — | (padding) | Padding to 72-byte stride |
 
 ### Pressure Counter Transfer
 
@@ -1695,55 +1695,55 @@ SchedulerContext (~1600 bytes)
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_6820B0` | 1.5 KB | BuildReadyList -- zero-dep instruction scan |
-| `sub_682200` | -- | UnlinkFromReadyList -- remove and update deps |
-| `sub_682490` | 14 KB | RegisterPressureAnalyzer -- per-class deltas |
-| `sub_6833F0` | 10 KB | InitScheduleRegion -- per-BB setup and knob query |
-| `sub_685A10` | 11 KB | InstructionBarrierCheck -- opcode analysis |
-| `sub_687FE0` | 12 KB | ScheduleBlock -- per-BB scheduling entry |
-| `sub_688DD0` | 20 KB | **ScheduleEngine** -- unified 3-mode engine |
-| `sub_68A690` | 31 KB | BuildDependencies -- def-use chain DAG |
-| `sub_68B9C0` | 46 KB | DependencyGraphBuilder -- full DAG construction |
-| `sub_692200` | 18 KB | SchedulingHeuristic -- priority with FP scoring |
-| `sub_695530` | 15 KB | ComputeLatencies -- instruction latency computation |
-| `sub_69B7D0` | 17 KB | TopologicalSort -- valid execution ordering |
-| `sub_69F170` | 12 KB | CriticalPathAnalysis -- DAG critical path |
-| `sub_893100` | 17 KB | ClassifyInstruction -- opcode/operand analysis |
-| `sub_894290` | 27 KB | BuildOperandDependencies -- operand-level edges |
-| `sub_896D50` | 90 KB | InitOpcodeTable -- ROT13 SASS mnemonic table |
-| `sub_89FBA0` | 85 KB | SetOpcodeLatencies -- per-opcode latency table |
-| `sub_8BF890` | 929 B | AllocDynBatchData -- DynBatch context allocation |
-| `sub_8C1BA0` | 6.3 KB | InitDynBatchState -- batch initialization |
-| `sub_8C67A0` | 3.7 KB | ComputeResourceCost -- per-instruction FU cost |
-| `sub_8C7290` | 5.1 KB | GetResourceVector -- SSE-optimized copy |
-| `sub_8C7720` | 20 KB | ReorderInstructions -- red-black tree reordering |
-| `sub_8C9320` | 47 KB | **ComputePriority** -- multi-criteria heuristic |
-| `sub_8CBAD0` | 2.9 KB | PreScheduleSetup -- BB scan, 4095-instr limit |
-| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp -- latency > 19 check |
-| `sub_8CD160` | 9.3 KB | ScheduleBasicBlock -- per-BB ordering loop |
-| `sub_8CD6E0` | 1.3 KB | ReverseSchedule -- reverse post-order BBs |
-| `sub_8CE520` | 12 KB | RegisterBudgetCurve -- piecewise linear model |
-| `sub_8CEE80` | 8.7 KB | **ComputeRegisterBudget** -- occupancy-aware |
+| `sub_6820B0` | 1.5 KB | BuildReadyList — zero-dep instruction scan |
+| `sub_682200` | — | UnlinkFromReadyList — remove and update deps |
+| `sub_682490` | 14 KB | RegisterPressureAnalyzer — per-class deltas |
+| `sub_6833F0` | 10 KB | InitScheduleRegion — per-BB setup and knob query |
+| `sub_685A10` | 11 KB | InstructionBarrierCheck — opcode analysis |
+| `sub_687FE0` | 12 KB | ScheduleBlock — per-BB scheduling entry |
+| `sub_688DD0` | 20 KB | **ScheduleEngine** — unified 3-mode engine |
+| `sub_68A690` | 31 KB | BuildDependencies — def-use chain DAG |
+| `sub_68B9C0` | 46 KB | DependencyGraphBuilder — full DAG construction |
+| `sub_692200` | 18 KB | SchedulingHeuristic — priority with FP scoring |
+| `sub_695530` | 15 KB | ComputeLatencies — instruction latency computation |
+| `sub_69B7D0` | 17 KB | TopologicalSort — valid execution ordering |
+| `sub_69F170` | 12 KB | CriticalPathAnalysis — DAG critical path |
+| `sub_893100` | 17 KB | ClassifyInstruction — opcode/operand analysis |
+| `sub_894290` | 27 KB | BuildOperandDependencies — operand-level edges |
+| `sub_896D50` | 90 KB | InitOpcodeTable — ROT13 SASS mnemonic table |
+| `sub_89FBA0` | 85 KB | SetOpcodeLatencies — per-opcode latency table |
+| `sub_8BF890` | 929 B | AllocDynBatchData — DynBatch context allocation |
+| `sub_8C1BA0` | 6.3 KB | InitDynBatchState — batch initialization |
+| `sub_8C67A0` | 3.7 KB | ComputeResourceCost — per-instruction FU cost |
+| `sub_8C7290` | 5.1 KB | GetResourceVector — SSE-optimized copy |
+| `sub_8C7720` | 20 KB | ReorderInstructions — red-black tree reordering |
+| `sub_8C9320` | 47 KB | **ComputePriority** — multi-criteria heuristic |
+| `sub_8CBAD0` | 2.9 KB | PreScheduleSetup — BB scan, 4095-instr limit |
+| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp — latency > 19 check |
+| `sub_8CD160` | 9.3 KB | ScheduleBasicBlock — per-BB ordering loop |
+| `sub_8CD6E0` | 1.3 KB | ReverseSchedule — reverse post-order BBs |
+| `sub_8CE520` | 12 KB | RegisterBudgetCurve — piecewise linear model |
+| `sub_8CEE80` | 8.7 KB | **ComputeRegisterBudget** — occupancy-aware |
 | `sub_8CF5D0` | 3.5 KB | CheckDualIssueEligibility |
-| `sub_8CF880` | 28 KB | BuildDependencyGraph -- pre-scheduling DAG |
-| `sub_8D0640` | 22 KB | **ScheduleInstructions** -- top-level orchestrator |
-| `sub_8D9930` | 19 KB | BuildDependencyEdges -- RAW/WAR/WAW edges |
-| `sub_8E3970` | ~53 B | ArenaAlloc -- bump allocator |
-| `sub_8E3A80` | ~22 ln | ArenaFreeAll -- release all blocks |
-| `sub_8E4400` | 3.3 KB | InitHWProfile_Warp -- warp dispatch params |
-| `sub_8E5CA0` | 20 KB | MasterHWProfileBuilder -- latency/throughput |
-| `sub_8F1EB0` | 15 KB | EncodeScheduleWords -- SASS control word output |
-| `sub_8F6530` | 13 KB | OutputCompleteSchedule -- final output assembly |
-| `sub_A95DC0` | 35 KB | SchedulingContext::configure -- knob loading |
+| `sub_8CF880` | 28 KB | BuildDependencyGraph — pre-scheduling DAG |
+| `sub_8D0640` | 22 KB | **ScheduleInstructions** — top-level orchestrator |
+| `sub_8D9930` | 19 KB | BuildDependencyEdges — RAW/WAR/WAW edges |
+| `sub_8E3970` | ~53 B | ArenaAlloc — bump allocator |
+| `sub_8E3A80` | ~22 ln | ArenaFreeAll — release all blocks |
+| `sub_8E4400` | 3.3 KB | InitHWProfile_Warp — warp dispatch params |
+| `sub_8E5CA0` | 20 KB | MasterHWProfileBuilder — latency/throughput |
+| `sub_8F1EB0` | 15 KB | EncodeScheduleWords — SASS control word output |
+| `sub_8F6530` | 13 KB | OutputCompleteSchedule — final output assembly |
+| `sub_A95DC0` | 35 KB | SchedulingContext::configure — knob loading |
 | `sub_A97600` | 42 KB | PostSchedulePass::runOnFunction |
-| `sub_A9DDD0` | 11.5 KB | HandleLargeFunction -- chunk-based scheduling |
+| `sub_A9DDD0` | 11.5 KB | HandleLargeFunction — chunk-based scheduling |
 
 ## Cross-References
 
-- [Scheduling Algorithm](algorithm.md) -- priority list scheduling internals, ready list management, backtracking
-- [Latency Model](latency-model.md) -- per-opcode latency tables, functional unit mapping, architecture profiles
-- [Scoreboards & Barriers](scoreboards.md) -- scoreboard encoding, dependency barrier assignment, stall/yield format
-- [Register Allocation](../regalloc/overview.md) -- register allocator that the scheduler interacts with
-- [Phase Manager](../passes/phase-manager.md) -- how ScheduleInstructions fits in the 159-phase pipeline
-- [Knobs](../config/knobs.md) -- the 76 scheduling knobs and the knob query infrastructure
-- [GMMA Pipeline](../passes/gmma-pipeline.md) -- GMMA/WGMMA operations targeted by DynBatch
+- [Scheduling Algorithm](algorithm.md) — priority list scheduling internals, ready list management, backtracking
+- [Latency Model](latency-model.md) — per-opcode latency tables, functional unit mapping, architecture profiles
+- [Scoreboards & Barriers](scoreboards.md) — scoreboard encoding, dependency barrier assignment, stall/yield format
+- [Register Allocation](../regalloc/overview.md) — register allocator that the scheduler interacts with
+- [Phase Manager](../passes/phase-manager.md) — how ScheduleInstructions fits in the 159-phase pipeline
+- [Knobs](../config/knobs.md) — the 76 scheduling knobs and the knob query infrastructure
+- [GMMA Pipeline](../passes/gmma-pipeline.md) — GMMA/WGMMA operations targeted by DynBatch

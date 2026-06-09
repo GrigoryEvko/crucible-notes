@@ -65,7 +65,7 @@ The exported `main()` at `0x4396A0` is a 16-byte thunk that immediately tail-cal
 
 ### Argument Handling and Argv Copy
 
-The function begins with a defensive copy of `argv` into a local buffer. When `8 * argc` fits within 0x800 bytes (argc ≤ 256), the copy lives in `v284[2096]` on the stack. For larger argument lists -- which can occur during complex nvcc invocations with many pass-through flags -- it allocates heap memory via `sub_16CD150`. This copy is necessary because the argument loop modifies pointers (advancing `i` to skip flag values), and the caller's argv must not be disturbed.
+The function begins with a defensive copy of `argv` into a local buffer. When `8 * argc` fits within 0x800 bytes (argc ≤ 256), the copy lives in `v284[2096]` on the stack. For larger argument lists — which can occur during complex nvcc invocations with many pass-through flags — it allocates heap memory via `sub_16CD150`. This copy is necessary because the argument loop modifies pointers (advancing `i` to skip flag values), and the caller's argv must not be disturbed.
 
 ```c
 if (8 * argc > 0x800)
@@ -74,7 +74,7 @@ if (8 * argc > 0x800)
 memcpy(v284, argv, 8 * argc);       // copy all pointers
 ```
 
-After copying, `sub_16C5290` extracts the base program name from `argv[0]` -- stripping directory prefixes -- and stores it in `dest`. This name appears in error messages and verbose output throughout the pipeline.
+After copying, `sub_16C5290` extracts the base program name from `argv[0]` — stripping directory prefixes — and stores it in `dest`. This name appears in error messages and verbose output throughout the pipeline.
 
 ### Key Local Variables
 
@@ -203,7 +203,7 @@ This version string propagates through the entire pipeline, controlling bitcode 
 
 ## Post-Parse Dispatch Logic
 
-After the argument loop terminates, the dispatch logic combines `v253` and `v263` to select the target function. The combined keep-and-verbose flag `v260 = v262 & v259` is also computed -- both wizard-mode flags must be active for intermediate file retention and verbose logging to function simultaneously.
+After the argument loop terminates, the dispatch logic combines `v253` and `v263` to select the target function. The combined keep-and-verbose flag `v260 = v262 & v259` is also computed — both wizard-mode flags must be active for intermediate file retention and verbose logging to function simultaneously.
 
 ### Simple Dispatch (v263 == 0)
 
@@ -314,7 +314,7 @@ The `p3:32:32:32` component enables 32-bit pointers in address space 3 (shared m
 - Creates a 496-byte target info structure via `sub_AE3F70`
 - Iterates global function declarations, marking device functions for compilation via `sub_91CA00`
 - Iterates global variables, processing initializers for device-side storage via `sub_9172F0`
-- Runs LLVM module verification via `sub_B89FE0` -- on failure: `"there was an error in verifying the lgenfe output!"`
+- Runs LLVM module verification via `sub_B89FE0` — on failure: `"there was an error in verifying the lgenfe output!"`
 - Stores the module globally at `unk_4F6D2F8`
 
 ### LibNVVM Pipeline Driver — `sub_905EE0`
@@ -643,7 +643,7 @@ The pipeline orchestrator `sub_12C35D0` maps its internal return codes to these:
 
 ### 37 LLVM Options from `off_4B90FE0`
 
-Phase 2.10 loads a hardcoded table of 37 LLVM option strings from `off_4B90FE0` (296 bytes = 37 pointers). These are static, compiled-in LLVM backend configuration flags that are injected into every compilation unit via `nvvmSetOptionStrings` (ID 0xFEED). The options include target architecture flags (`-march=nvptx64`, `-mcpu=sm_XX`), math precision controls (`-nvptx-f32ftz`, `-nvptx-prec-sqrtf32=`), optimization levels, debug info flags, and NVPTX-specific feature knobs. The sub_12B9AB0 target function calls `sub_1C31130()` -- the LLVM option registration/reset function -- to apply them.
+Phase 2.10 loads a hardcoded table of 37 LLVM option strings from `off_4B90FE0` (296 bytes = 37 pointers). These are static, compiled-in LLVM backend configuration flags that are injected into every compilation unit via `nvvmSetOptionStrings` (ID 0xFEED). The options include target architecture flags (`-march=nvptx64`, `-mcpu=sm_XX`), math precision controls (`-nvptx-f32ftz`, `-nvptx-prec-sqrtf32=`), optimization levels, debug info flags, and NVPTX-specific feature knobs. The sub_12B9AB0 target function calls `sub_1C31130()` — the LLVM option registration/reset function — to apply them.
 
 ### Embedded Libdevice
 
@@ -797,7 +797,7 @@ The OPT stage calls `sub_12E7E70`, which implements a **two-phase optimization p
 
 Between phases, `sub_12D4250` checks **concurrency eligibility**: if the module contains more than one defined function (non-declaration), and the options permit it, Phase II can run with multiple threads. Thread count is determined from `opts[1026]` or falls back to `get_nprocs()`. When concurrency is enabled, `sub_12E7B90` is the concurrent worker entry point.
 
-For single-function modules, the optimizer skips the two-phase protocol entirely and runs a single un-phased call to `sub_12E54A0` -- no phase counter is set, and the optimizer executes both analysis and backend passes in one invocation.
+For single-function modules, the optimizer skips the two-phase protocol entirely and runs a single un-phased call to `sub_12E54A0` — no phase counter is set, and the optimizer executes both analysis and backend passes in one invocation.
 
 ### Data Layout Validation
 
@@ -850,7 +850,7 @@ The `NVVM_IR_VER_CHK` environment variable is checked **multiple times** through
 
 ### jemalloc — The Global Allocator
 
-cicc statically links a **jemalloc 5.3.x** allocator in the address range `0x12FC000`–`0x133FFFF` (767 functions, ~262 KB). This replaces the system `malloc`/`free` entirely — the binary's only memory-related dynamic imports are `mmap`, `munmap`, `madvise`, and `sbrk`. The jemalloc configuration parser (`sub_12FCDB0`, 15.4 KB -- the largest single function in this range) handles the `MALLOC_CONF` environment variable and `/etc/malloc.conf` symlink, supporting dozens of tuning options: `abort`, `cache_oblivious`, `metadata_thp`, `trust_madvise`, `retain`, `dss`, `tcache`, `narenas`, `percpu_arena`, `background_thread`, `san_guard_small`, `san_guard_large`, and more. See [jemalloc Allocator](../infra/jemalloc.md) for the full reference.
+cicc statically links a **jemalloc 5.3.x** allocator in the address range `0x12FC000`–`0x133FFFF` (767 functions, ~262 KB). This replaces the system `malloc`/`free` entirely — the binary's only memory-related dynamic imports are `mmap`, `munmap`, `madvise`, and `sbrk`. The jemalloc configuration parser (`sub_12FCDB0`, 15.4 KB — the largest single function in this range) handles the `MALLOC_CONF` environment variable and `/etc/malloc.conf` symlink, supporting dozens of tuning options: `abort`, `cache_oblivious`, `metadata_thp`, `trust_madvise`, `retain`, `dss`, `tcache`, `narenas`, `percpu_arena`, `background_thread`, `san_guard_small`, `san_guard_large`, and more. See [jemalloc Allocator](../infra/jemalloc.md) for the full reference.
 
 The choice of jemalloc over glibc's allocator is significant for compiler workloads. jemalloc's thread-local caching (`tcache`) and arena-per-CPU design (`percpu_arena`) reduce contention during the concurrent Phase II optimization, where multiple threads may be simultaneously allocating and freeing IR nodes, instruction objects, and analysis results.
 
@@ -865,7 +865,7 @@ The EDG 6.6 frontend uses a custom memory region system configured with `USE_MMA
 - **Symbol tables** (name→declaration mappings)
 - **Type representations** (structural type information)
 
-The mmap-backed regions grow by mapping additional pages on demand, avoiding the fragmentation problems that would occur with individual `malloc` calls for the millions of small, short-lived objects the frontend creates during parsing. Region cleanup happens in bulk when the frontend completes -- all pages for a region are unmapped at once rather than individually freed.
+The mmap-backed regions grow by mapping additional pages on demand, avoiding the fragmentation problems that would occur with individual `malloc` calls for the millions of small, short-lived objects the frontend creates during parsing. Region cleanup happens in bulk when the frontend completes — all pages for a region are unmapped at once rather than individually freed.
 
 The EDG heap allocator cluster at `0x821000`–`0x823FFF` includes tracked allocation (`sub_822B10`/`sub_822B90`) with a 1024-entry inline tracking array (`unk_4F19620`, 1024 * 24 bytes) that overflows to heap when exceeded. The tracking count is maintained in `dword_4F19600`. The finalization function `sub_823310` walks bucket chains to free all tracked allocations.
 
@@ -1072,43 +1072,43 @@ These globals persist across the entire compilation and are accessed from multip
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `main()` thunk → `sub_8F9C90` | `0x4396A0` | 16 B | -- |
-| String deobfuscation (XOR + ROT13) | `0x8F98A0` | ~512 B | -- |
-| Push string to `std::vector<std::string>` | `0x8F9C20` | ~128 B | -- |
-| Real main — CLI parser + dispatcher | `0x8F9C90` | 10,066 B | -- |
-| nvcc→cicc flag translation (red-black tree) | `0x8FE280` | ~4 KB | -- |
-| Path A CLI processing | `0x900130` | 39 KB | -- |
-| Path A orchestrator (simple mode) | `0x902D10` | ~9 KB | -- |
-| LLC stage verbose callback | `0x903730` | ~5 KB | -- |
-| LNK stage verbose callback | `0x903BA0` | ~5 KB | -- |
-| NVVM IR container parser (Path A) | `0x9047E0` | 10 KB | -- |
-| CUDA C++ Front-End (lgenfe stage) | `0x905880` | ~6 KB | -- |
-| lgenfe single-stage wrapper (Path A) | `0x905E50` | ~256 B | -- |
-| LibNVVM pipeline driver (Path A) | `0x905EE0` | 43 KB | -- |
-| Backend SM config + EDG module binding | `0x908850` | 10 KB | -- |
-| Architecture detection (3-column fan-out) | `0x95EB40` | 38 KB | -- |
-| Flag catalog (4 output vectors) | `0x9624D0` | 75 KB | -- |
-| Pipeline option parser (4 stage vectors) | `0x9685E0` | ~8 KB | -- |
-| Path B CLI processing | `0x125FB30` | ~8 KB | -- |
-| Path B entry (simple mode) | `0x1262860` | ~4 KB | -- |
-| Path B LNK verbose callback | `0x1263280` | ~1 KB | -- |
-| Path B OPT verbose callback | `0x12636E0` | ~1 KB | -- |
-| NVVM container parser (Path B) | `0x12642A0` | ~3 KB | -- |
-| Path B pre-compilation setup | `0x1265340` | ~4 KB | -- |
-| lgenfe single-stage wrapper (Path B) | `0x12658E0` | ~256 B | -- |
-| LibNVVM compilation entry (Path B) | `0x1265970` | 48 KB | -- |
-| LibNVVM API dispatch table (25 entries) | `0x12BC0F0` | ~3 KB | -- |
-| Thunk → `sub_12BC8B0` (nvvmCUAddModuleFromBuffer) | `0x12BCB00` | ~64 B | -- |
-| NVVM IR version checker | `0x12BFF60` | ~9 KB | -- |
-| Module linker (LNK stage core) | `0x12C06E0` | 63 KB | -- |
-| 4-stage pipeline orchestrator | `0x12C35D0` | 41 KB | -- |
-| Stage bitmask parser | `0x12D2AA0` | ~4 KB | -- |
-| Concurrency eligibility check | `0x12D4250` | ~2 KB | -- |
-| Two-phase optimizer entry | `0x12E7E70` | ~8 KB | -- |
-| Concurrent worker entry point | `0x12E7B90` | ~4 KB | -- |
-| LLC core (SelectionDAG codegen) | `0x12F5100` | ~12 KB | -- |
-| OptiX IR generator | `0x12F9270` | ~6 KB | -- |
-| Path B context initialization | `0x1602D10` | ~2 KB | -- |
+| `main()` thunk → `sub_8F9C90` | `0x4396A0` | 16 B | — |
+| String deobfuscation (XOR + ROT13) | `0x8F98A0` | ~512 B | — |
+| Push string to `std::vector<std::string>` | `0x8F9C20` | ~128 B | — |
+| Real main — CLI parser + dispatcher | `0x8F9C90` | 10,066 B | — |
+| nvcc→cicc flag translation (red-black tree) | `0x8FE280` | ~4 KB | — |
+| Path A CLI processing | `0x900130` | 39 KB | — |
+| Path A orchestrator (simple mode) | `0x902D10` | ~9 KB | — |
+| LLC stage verbose callback | `0x903730` | ~5 KB | — |
+| LNK stage verbose callback | `0x903BA0` | ~5 KB | — |
+| NVVM IR container parser (Path A) | `0x9047E0` | 10 KB | — |
+| CUDA C++ Front-End (lgenfe stage) | `0x905880` | ~6 KB | — |
+| lgenfe single-stage wrapper (Path A) | `0x905E50` | ~256 B | — |
+| LibNVVM pipeline driver (Path A) | `0x905EE0` | 43 KB | — |
+| Backend SM config + EDG module binding | `0x908850` | 10 KB | — |
+| Architecture detection (3-column fan-out) | `0x95EB40` | 38 KB | — |
+| Flag catalog (4 output vectors) | `0x9624D0` | 75 KB | — |
+| Pipeline option parser (4 stage vectors) | `0x9685E0` | ~8 KB | — |
+| Path B CLI processing | `0x125FB30` | ~8 KB | — |
+| Path B entry (simple mode) | `0x1262860` | ~4 KB | — |
+| Path B LNK verbose callback | `0x1263280` | ~1 KB | — |
+| Path B OPT verbose callback | `0x12636E0` | ~1 KB | — |
+| NVVM container parser (Path B) | `0x12642A0` | ~3 KB | — |
+| Path B pre-compilation setup | `0x1265340` | ~4 KB | — |
+| lgenfe single-stage wrapper (Path B) | `0x12658E0` | ~256 B | — |
+| LibNVVM compilation entry (Path B) | `0x1265970` | 48 KB | — |
+| LibNVVM API dispatch table (25 entries) | `0x12BC0F0` | ~3 KB | — |
+| Thunk → `sub_12BC8B0` (nvvmCUAddModuleFromBuffer) | `0x12BCB00` | ~64 B | — |
+| NVVM IR version checker | `0x12BFF60` | ~9 KB | — |
+| Module linker (LNK stage core) | `0x12C06E0` | 63 KB | — |
+| 4-stage pipeline orchestrator | `0x12C35D0` | 41 KB | — |
+| Stage bitmask parser | `0x12D2AA0` | ~4 KB | — |
+| Concurrency eligibility check | `0x12D4250` | ~2 KB | — |
+| Two-phase optimizer entry | `0x12E7E70` | ~8 KB | — |
+| Concurrent worker entry point | `0x12E7B90` | ~4 KB | — |
+| LLC core (SelectionDAG codegen) | `0x12F5100` | ~12 KB | — |
+| OptiX IR generator | `0x12F9270` | ~6 KB | — |
+| Path B context initialization | `0x1602D10` | ~2 KB | — |
 
 ## Cross-References
 

@@ -66,8 +66,8 @@
 - [Scheduling Algorithm](./scheduling/algorithm.md)
 - [Latency Model & HW Profiles](./scheduling/latency-model.md)
 - [Scoreboards & Dependency Barriers](./scheduling/scoreboards.md)
-- [Phase 110 -- PostSchedule](./scheduling/post-schedule.md)
-- [Legacy Backend A -- `sub_A97600`](./scheduling/legacy-backend-a.md)
+- [Phase 110 — PostSchedule](./scheduling/post-schedule.md)
+- [Legacy Backend A — `sub_A97600`](./scheduling/legacy-backend-a.md)
 
 # SASS Code Generation
 

@@ -3,8 +3,8 @@
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
 The peephole optimization pass in ptxas is the single largest subsystem by code volume
-in the entire binary.  Three monolithic dispatch functions -- totaling approximately
-750 KB of machine code -- implement a brute-force pattern-match-and-rewrite engine
+in the entire binary.  Three monolithic dispatch functions — totaling approximately
+750 KB of machine code — implement a brute-force pattern-match-and-rewrite engine
 that recognizes instruction idioms in the internal IR and replaces them with more
 efficient SASS instruction forms.  Each dispatch function serves a different
 compilation context (generic, SM120-specific, and post-scheduling), but all three
@@ -22,13 +22,13 @@ disassembly, call graphs, and the 3,185 pattern-matcher functions that they invo
 |-------------------|-------------|-------------|-----------------|--------------------:|-------------------:|-------------------:|----------------------:|-----------------|---------|
 | `sub_169B190` | 280 KB | 65,999 | 762 | 249 / 373 | 110 | 2,347 | 245 (cases 0..244) | `sub_B12930` | Generic (all SM) |
 | `sub_143C440` | 233 KB | ~56,241 | 1,087 | 203 / 373 | 85 | 1,971 | 190 (cases 0..189) | `sub_B12940` | SM120-specific |
-| `sub_18A2CA0` | 231 KB | 54,043 | 1,330 | 203 / 373 | 86 | ~1,970 | -- | `sub_B12950` | Third SM target (likely SM103 / SM110 / SM121) |
+| `sub_18A2CA0` | 231 KB | 54,043 | 1,330 | 203 / 373 | 86 | ~1,970 | — | `sub_B12950` | Third SM target (likely SM103 / SM110 / SM121) |
 | `sub_198BCD0` | 233 KB | 54,043 | 1,336 | 203 / 373 | 85 | 1,966 | 190 (cases 0..189) | `sub_B12960` | Post-scheduling |
-| `sub_BA9D00` | 204 KB | 48,053 | 1,327 | 203 / 373 | -- | -- | -- | `sub_B12970` | Fourth SM target (likely SM103 / SM110 / SM121) |
+| `sub_BA9D00` | 204 KB | 48,053 | 1,327 | 203 / 373 | — | — | — | `sub_B12970` | Fourth SM target (likely SM103 / SM110 / SM121) |
 
 All three primary switches dispatch over the same 0..372 opcode space, but the
 **generic dispatcher recognizes 249 distinct opcodes**, while the SM120 and
-post-schedule dispatchers each handle only 203 -- the remaining opcodes fall
+post-schedule dispatchers each handle only 203 — the remaining opcodes fall
 through to the shared default in each pass.  The generic pass also reaches
 **pattern/template ID 244** (its largest secondary table is the 245-case rewrite
 selector at `0x169DC25`), whereas SM120 and post-schedule top out at template
@@ -76,7 +76,7 @@ specific SM ID requires inspecting the call-site that loads the vtable column at
 
 The generic and SM120 dispatchers run before scheduling; the post-scheduling
 dispatcher runs after.  The SM120 dispatcher (`sub_143C440`) appears to be
-architecture-gated -- it is called only when compiling for SM 120 targets
+architecture-gated — it is called only when compiling for SM 120 targets
 (consumer RTX 50-series, enterprise Pro GPUs).
 
 ## Dispatch Architecture
@@ -142,11 +142,11 @@ markRewritten(instr);                      // sub_BA9C30 or sub_BA9CB0
 ```
 
 `sub_BA9CB0` (markRewrittenComplex) applies priority-aware flag logic that
-respects existing rewrites from earlier passes -- it sets bits to `0x8`
+respects existing rewrites from earlier passes — it sets bits to `0x8`
 ("superseded") when a higher-priority rewrite exists.
 
 The symmetry of call frequencies in `sub_143C440` confirms this: `setRewrittenOpcode`
-and `setRewrittenModifier` are each called exactly 1,759 times -- every rewrite
+and `setRewrittenModifier` are each called exactly 1,759 times — every rewrite
 always sets both the opcode and modifier bytes.
 
 ### Rewrite action value space
@@ -204,7 +204,7 @@ The operand mapping count per rewrite varies:
 | 3                |    94 |   5%  |
 | 4--5             |    22 |   1%  |
 
-68% of rewrites use zero operand mappings -- the instruction's existing
+68% of rewrites use zero operand mappings — the instruction's existing
 operands remain in place and only the opcode/modifier bytes change (e.g.,
 folding a redundant modifier or selecting a cheaper encoding).  The remaining
 32% physically remap operand slots, typically collapsing a multi-source
@@ -237,12 +237,12 @@ of a paired-form selector: each logical rewrite has two SASS encoding
 variants (modifier `0x03` = primary form, modifier `0x19` = alternate /
 predicated / extended-immediate form), and the case ID picks which variant
 to emit.  The remaining two cases (IDs 69 and 71) are 200-byte blocks with
-12 `setOperandMapping` calls -- they emit full multi-operand reshapes for
+12 `setOperandMapping` calls — they emit full multi-operand reshapes for
 `new_opcode = 59` and `new_opcode = 62`, the only entries in this table that
 remap operands.
 
 The full inventory of representative rewrite actions (case ID --
-`new_opcode` -- `new_modifier` -- character):
+`new_opcode` — `new_modifier` — character):
 
 | Case | newOp | newMod | #map | Interpretation |
 |----:|------:|------:|----:|---|
@@ -250,13 +250,13 @@ The full inventory of representative rewrite actions (case ID --
 |   2 |   49  |  25   |  0  | Pure encoding-form swap to predicated/extended variant of op 49 |
 |  12 |   10  |   3   |  0  | Identity rewrite of opcode 10 (`SHF`) to primary form |
 |  13 |   13  |  25   |  0  | Paired alternate form of op 13 |
-|  19 |    1  |   3   |  0  | Trivial opcode-1 (2-src ALU) move-elimination -- the most common immediate-fold target |
+|  19 |    1  |   3   |  0  | Trivial opcode-1 (2-src ALU) move-elimination — the most common immediate-fold target |
 |  20 |    2  |   3   |  0  | Opcode-2 (3-src FMA-class) collapse to plain 2-source primary form |
 |  33 |    0  |   3   |  0  | Identity / NOP-fold rewrite (newOp 0 is the canonical drop-instruction marker) |
 |  34 |    3  |   3   |  0  | Opcode-3 (shift/logic) primary-form rewrite |
 |  42--54 | 18--34 | 25   |  0  | Block of 13 contiguous predicate/uniform-register canonicalizations (`SEL`, `MOV`, predicate operands collapsed to mod-25 alternate form) |
 |  60--64 | 60--64 |  3   |  0  | Pure modifier flips for ALU opcodes 60--64 (signed/unsigned or 32/64-bit pair selectors) |
-|  65--68 | 64--69 | 25 / 3 | 0  | Memory-ordering canonicalization: `(.gpu, .acquire)` paired with `(.sys, .release)` -- mod=3 vs mod=25 selects the SASS bit that encodes the scope/order combination |
+|  65--68 | 64--69 | 25 / 3 | 0  | Memory-ordering canonicalization: `(.gpu, .acquire)` paired with `(.sys, .release)` — mod=3 vs mod=25 selects the SASS bit that encodes the scope/order combination |
 |  69 |   59  |  25   | 12  | Full operand reshape for tensor/HMMA-class opcode 59 (12 sequential `setOperandMapping` calls cover dst + 4 sources + accumulator + meta) |
 |  71 |   62  |  25   | 12  | Full operand reshape for paired tensor/HMMA-class opcode 62 (same shape as case 69; the two are the only "wide" rewrites in this table) |
 
@@ -291,7 +291,7 @@ Modifier distribution across the 244 cases:
 | 0x13 |   6 |  2% | FP16x2 / packed-half encoding |
 | 0x17 |   1 | <1% | Singleton high-modifier (likely tensor descriptor form) |
 
-Operand-mapping distribution -- how many slots get physically remapped per
+Operand-mapping distribution — how many slots get physically remapped per
 rewrite:
 
 | #mappings | Cases | Share | Rewrite character |
@@ -305,10 +305,10 @@ rewrite:
 | 6   |   5 |  2% | Six-operand patterns (predicate + FMA + condition) |
 | 7   |   1 | <1% | Single case (template 199): seven-operand rewrite |
 | 8   |   1 | <1% | Single case (template 1): eight-operand wide load/store |
-| 22  |   1 | <1% | Template 241 at `0x16DC5FC` -- 22 operand mappings in a single 337-byte block; this is the full tensor-instruction permutation (8 dst slots + 8 src slots + 6 meta/descriptor slots), the most operand-heavy rewrite in the generic peephole pass |
+| 22  |   1 | <1% | Template 241 at `0x16DC5FC` — 22 operand mappings in a single 337-byte block; this is the full tensor-instruction permutation (8 dst slots + 8 src slots + 6 meta/descriptor slots), the most operand-heavy rewrite in the generic peephole pass |
 
 The 244 unique `new_opcode` values are essentially a 1:1 mapping from
-template ID to a target SASS opcode -- every template ID rewrites to a
+template ID to a target SASS opcode — every template ID rewrites to a
 different opcode.  The opcode space spans 0--234 with no observable
 clustering by template ID (template 241 emits opcode 234; template 1 emits
 opcode 68; template 192 emits opcode 203), confirming that template IDs
@@ -336,54 +336,54 @@ caseID, newOp, newMod)` references.
 | **Tensor / HMMA full reshape** | 4 | 6+ operand mappings, `new_modifier in {0x05, 0x13, 0x17}`, full descriptor slots | 72-action 69 & 71 (12 mappings); 245-template 241 (22 mappings); 245-template 1 (8 mappings) |
 | **Predicated select / conditional move collapse** | ~11 | 4 operand mappings; preserves predicate slot, swaps true/false sources | 245-template cases with #map=4 |
 
-The "modifier-flip canonicalization" bucket dominates both tables -- two
+The "modifier-flip canonicalization" bucket dominates both tables — two
 thirds of all rewrites in the generic pass only change the SASS encoding
 byte without touching operands.  This is consistent with peephole's primary
 role as the final stage that selects the cheapest encoding form for each
 already-correct instruction before emission, rather than performing
 substantive algebraic rewrites (those happen in earlier IR passes).
 
-### QUIRK -- modifier `0x22` is wider than the public PTX modifier space
+### QUIRK — modifier `0x22` is wider than the public PTX modifier space
 
 The 245-template subtable contains 46 rewrites with `new_modifier = 0x22`
 (decimal 34), a value that does not correspond to any documented PTX
 modifier enum.  Cross-referencing with the encoder vtables, modifier 0x22
 appears to select a SASS encoding variant that uses a 64-bit constant slot
-in the descriptor table -- the rewrite preserves operand kind but redirects
+in the descriptor table — the rewrite preserves operand kind but redirects
 the encoder to a wider immediate form.  Modifier values 0x22, 0x19, and
 0x0B together account for 36% of all 245-template rewrites; none of these
 three values appears in either the SM120 or post-schedule 190-case tables,
 which suggests they are generic-pass-only encodings the later passes never
 emit.
 
-### QUIRK -- template 241 is the most expensive single rewrite in ptxas
+### QUIRK — template 241 is the most expensive single rewrite in ptxas
 
 Template ID 241 at `0x16DC5FC` rewrites to `new_opcode = 234, new_modifier =
 3` and performs **22 sequential `setOperandMapping` calls** in a 337-byte
-block -- by far the largest single rewrite block in either dispatcher.
+block — by far the largest single rewrite block in either dispatcher.
 Twenty-two operand mappings is more than the explicit operand slots of any
 ordinary SASS instruction, so the rewrite is necessarily reshaping a
 multi-tile tensor descriptor: 8 source-tile slots, 8 destination-tile slots,
 and 6 metadata slots (layout, swizzle, accumulator type).  This is the
-heaviest single transformation peephole performs, and -- combined with the
+heaviest single transformation peephole performs, and — combined with the
 fact that template ID 244 is the highest ID reached by the generic pass --
 suggests that the topmost 4-5 template IDs (240-244) form a "tensor-shape
 canonicalization" cluster that runs only in the generic pre-schedule
 context.
 
-### QUIRK -- the 72-action table's modifier space is binary
+### QUIRK — the 72-action table's modifier space is binary
 
 Across all 71 active cases of the 72-action table, the `new_modifier` byte
 takes only two values: `0x03` (35 cases) and `0x19` (36 cases).  The pair
 is too tight to be coincidence: cases 12 (op=10,mod=3) and 13 (op=13,mod=25)
 look like a (signed, unsigned) pair; cases 14/15, 16/17, 18/19 follow the
 same alternating rhythm.  The 72-action table is therefore not a generic
-rewrite catalog -- it is a paired-form *selector*: matchers that reach this
+rewrite catalog — it is a paired-form *selector*: matchers that reach this
 table have already decided *which* logical operation to emit and only need
 to pick between two SASS encoding variants.  This binary nature explains
 why the table is identical across all three dispatcher contexts
 (`0x143FB8B` for SM120, `0x16A166C` for generic, `0x198F41B` for post-
-schedule) -- the (primary, alternate) encoding choice is invariant under
+schedule) — the (primary, alternate) encoding choice is invariant under
 architecture and scheduling state.
 
 ## Pattern Matcher Signature
@@ -407,7 +407,7 @@ optimization in the caller), but the meaningful outputs are `*template_id` and
 
 Every matcher performs a deeply-nested chain of checks:
 
-**Step 1 -- Modifier/property checks.**
+**Step 1 — Modifier/property checks.**
 Call `queryModifier(ctx, instr, slot)` (`sub_10AE5C0`) repeatedly.  Each call
 returns an enumerated value for a specific instruction property:
 
@@ -450,22 +450,22 @@ modifier mappings:
 | 0x167 | 359 | operand negation mask | 1957, 1961 | Source-operand sign-flip for FP instructions |
 | 0x178 | 376 | extended property A | 2035 | Extended instruction property (tensor/MMA class) |
 | 0x179 | 377 | extended property B | 2037--2041 | 5-value range; tensor layout variant |
-| 0x18A | 394 | dual-issue / sched hint | -- | Scheduling hint for dual-issue eligibility |
+| 0x18A | 394 | dual-issue / sched hint | — | Scheduling hint for dual-issue eligibility |
 | 0x18D | 397 | encoding validity stamp | 2115 | Post-ISel seal: `0x843` = bits {0,1,6} set in SASS dword 0 |
 | 0x196 | 406 | MMA type A | 2146 | Matrix multiply source type A (FP16/BF16/TF32/INT8) |
-| 0x197 | 407 | MMA type B | -- | Matrix multiply source type B |
-| 0x199 | 409 | MMA accumulator type | -- | Accumulator precision for tensor ops |
+| 0x197 | 407 | MMA type B | — | Matrix multiply source type B |
+| 0x199 | 409 | MMA accumulator type | — | Accumulator precision for tensor ops |
 | 0x19D | 413 | extended qualifier | 2167, 2168 | 2-value discriminator for tensor instruction shape |
 | 0x1A8 | 424 | uniform register hint | 2214--2225 | Bitmask 739; uniform register allocation eligibility |
 | 0x1AD | 429 | extended qualifier B | 2253--2257 | 5-value range; tensor instruction extended modifier |
-| 0x1AE | 430 | warp shuffle mode A | -- | SHFL sub-operation variant |
-| 0x1AF | 431 | warp shuffle mode B | -- | SHFL companion modifier |
+| 0x1AE | 430 | warp shuffle mode A | — | SHFL sub-operation variant |
+| 0x1AF | 431 | warp shuffle mode B | — | SHFL companion modifier |
 | 0x1B2 | 434 | FP composition | 2274 | FP instruction composition (fused vs separate) |
-| 0x1D1 | 465 | codegen control A | -- | Code generation control property |
-| 0x1D2 | 466 | codegen control B | -- | Code generation control property |
+| 0x1D1 | 465 | codegen control A | — | Code generation control property |
+| 0x1D2 | 466 | codegen control B | — | Code generation control property |
 | 0x1E0 | 480 | encoding format class | 2478--2481 | Selects SASS encoding format (3-src vs imm vs reg-reg) |
-| 0x1E4 | 484 | extended modifier C | -- | Blackwell-era extended property |
-| 0x1EC | 492 | extended modifier D | -- | Blackwell-era extended property |
+| 0x1E4 | 484 | extended modifier C | — | Blackwell-era extended property |
+| 0x1EC | 492 | extended modifier D | — | Blackwell-era extended property |
 | 0x216 | 534 | MMA layout descriptor | 2717 | HMMA/DMMA matrix layout and tiling descriptor |
 | 0x253 | 595 | extended field (max) | 2937, 2938 | Highest field ID observed; tensor instruction tag |
 
@@ -476,7 +476,7 @@ word.  The most frequently read slots in the peephole matchers are 0x159
 (rounding, ~400 reads), 0x7E (data type, ~300), 0x88 (sub-op, ~200), and
 0x18D (validity stamp, ~150).
 
-**Step 2 -- Operand count.**
+**Step 2 — Operand count.**
 Check the number of explicit/fixed operands and the total operand slot count:
 
 ```c
@@ -484,7 +484,7 @@ int fixed = getExplicitOperandCount(instr);  // sub_B28F50: returns *(instr+92)
 int total = getTotalOperandSlots(instr);     // sub_B28F40: returns *(instr+40)+1 - *(instr+92)
 ```
 
-**Step 3 -- Operand type and register class validation.**
+**Step 3 — Operand type and register class validation.**
 For each operand slot, retrieve the operand pointer and check its kind:
 
 ```c
@@ -501,7 +501,7 @@ int regclass = getRegisterClass(*(uint32_t*)(op + 4)); // sub_13B9CC0
 if (regclass != 1023 && regclass != 1) return 0;       // 1023 = wildcard
 ```
 
-**Step 4 -- Priority gate.**
+**Step 4 — Priority gate.**
 If all checks pass and the current priority allows it:
 
 ```c
@@ -639,7 +639,7 @@ structure, varying only in the opcode/modifier constants passed to
 
 This strongly suggests compiler-generated code from C++ templates or macros
 that instantiate one matcher function per instruction variant from ISA
-specification tables -- a pattern consistent with NVIDIA's internal build
+specification tables — a pattern consistent with NVIDIA's internal build
 tooling.
 
 ## Size Distribution of Matchers
@@ -687,14 +687,14 @@ Checks 5 modifiers: slot 0xD3 == 1181, slot 0xD2 == 1177, slot 0x0C == 59,
 slot 0xB3 == 772, slot 0xC8 == 1107.  Then validates 1 explicit register operand
 plus 4 additional operands (register, register, immediate, predicate).
 
-### Complex: `sub_1615980` (priority 36, template 25 -- highest observed priority)
+### Complex: `sub_1615980` (priority 36, template 25 — highest observed priority)
 
 Checks 12 modifier slots: 0x05 == 12, 0xDC == 1206, 0x253 in {2937,2938},
 0x126 == 1493, 0xF2 in {1281,1282}, 0x163 == 1943, 0x178 == 2035,
 0x179 in {2037..2041}, 0x1AD in {2253..2257}, 0x7E in {547,548},
 0x19D in {2167,2168}, 0x18D == 2115.  No fixed operands, 7 variable operands,
 each of type 10 (constant memory) with register class 1023 or specific flag
-constraints.  This is the most constrained pattern observed -- likely a fully
+constraints.  This is the most constrained pattern observed — likely a fully
 specified tensor instruction variant.
 
 ### Post-schedule: `sub_1834600` (pattern 17, priority 16)
@@ -722,19 +722,19 @@ int queryModifier(int64_t ctx, int64_t instr, int slot) {
 
 | Function | Size | Semantics | Call frequency |
 |----------|------|-----------|---------------|
-| `sub_B28F30` | 12 B | `getOperand(instr, idx)` -- returns `*(instr+32) + 32*idx` | 31,399 |
-| `sub_B28F40` | 10 B | `getTotalOperandSlots(instr)` -- returns `*(instr+40)+1 - *(instr+92)` | ~2,500 |
-| `sub_B28F50` | 4 B | `getExplicitOperandCount(instr)` -- returns `*(instr+92)` | ~2,100 |
+| `sub_B28F30` | 12 B | `getOperand(instr, idx)` — returns `*(instr+32) + 32*idx` | 31,399 |
+| `sub_B28F40` | 10 B | `getTotalOperandSlots(instr)` — returns `*(instr+40)+1 - *(instr+92)` | ~2,500 |
+| `sub_B28F50` | 4 B | `getExplicitOperandCount(instr)` — returns `*(instr+92)` | ~2,100 |
 
 ### Rewrite helpers
 
 | Function | Semantics | Call frequency in `sub_143C440` |
 |----------|-----------|-------------------------------|
-| `sub_B28F10` | `setRewrittenOpcode(instr, byte)` -- writes `instr[14]` | 1,759 |
-| `sub_B28F20` | `setRewrittenModifier(instr, byte)` -- writes `instr[15]` | 1,759 |
-| `sub_BA9CF0` | `setOperandMapping(instr, slot, val)` -- writes `instr[72+4*slot]` | 993 |
-| `sub_BA9C30` | `markRewrittenSimple(instr)` -- `instr[140] \|= 1` | 1,222 |
-| `sub_BA9CB0` | `markRewrittenComplex(instr)` -- priority-aware flag update | 361 |
+| `sub_B28F10` | `setRewrittenOpcode(instr, byte)` — writes `instr[14]` | 1,759 |
+| `sub_B28F20` | `setRewrittenModifier(instr, byte)` — writes `instr[15]` | 1,759 |
+| `sub_BA9CF0` | `setOperandMapping(instr, slot, val)` — writes `instr[72+4*slot]` | 993 |
+| `sub_BA9C30` | `markRewrittenSimple(instr)` — `instr[140] \|= 1` | 1,222 |
+| `sub_BA9CB0` | `markRewrittenComplex(instr)` — priority-aware flag update | 361 |
 
 The ratio of `markRewrittenSimple` (1,222) to `markRewrittenComplex` (361)
 shows that approximately 77% of rewrites are straightforward replacements,
@@ -798,14 +798,14 @@ functions.  Each encoder packs a 128-bit SASS instruction word using
 | `sub_13B9D10` | small | isConstantBuffer(byte) | HIGH |
 | `sub_13B9D40` | small | isPredicate(byte) | HIGH |
 | `sub_13B9D50` | small | isUniformRegister(byte) | HIGH |
-| `sub_13B9DC0` | small | opcodeIdentity(uint) -- passthrough | CERTAIN |
+| `sub_13B9DC0` | small | opcodeIdentity(uint) — passthrough | CERTAIN |
 | `sub_1909030` | small | opcodePassthrough (post-schedule context) | HIGH |
 
 ## Macro Instruction Expansion (`sub_8127C0`)
 
 Separate from the three pattern-match-and-rewrite mega-dispatchers, ptxas contains
 a dedicated macro instruction expansion pass at `sub_8127C0` (10,720 bytes).  This
-pass resolves register-file constraints for composite instructions -- cases where
+pass resolves register-file constraints for composite instructions — cases where
 source or destination operands span register files or where multi-word results need
 splitting into narrower instruction sequences.
 
@@ -814,7 +814,7 @@ instruction scheduling.
 
 ### Two-phase algorithm
 
-**Phase 1 -- Operand scanning and constraint annotation.**
+**Phase 1 — Operand scanning and constraint annotation.**
 The pass iterates every instruction in the function's linked list (traversing via
 `instr+8`).  For each instruction, it reads the opcode at `instr+72` and dispatches
 through a 15-family if-else cascade.  For each opcode, it calls
@@ -833,7 +833,7 @@ The pass annotates register descriptor entries (indexed via `ctx+88`) at `reg+76
 instructions requiring expansion (linked via `instr+56`).  Registers consumed by
 expansion are marked dead (`reg+64 = 5`).
 
-**Phase 2 -- Instruction rewriting.**
+**Phase 2 — Instruction rewriting.**
 If `v187 == 0` (no expansion needed), phase 2 is skipped.  Otherwise a cleanup
 loop purges the worklist: it reads both operand constraint codes, applies modifier-
 bit adjustments (bits 25-31 can transform -2 to -3/-1), and removes entries where
@@ -931,7 +931,7 @@ and `dword_21D5F60[16]` (constraint -3, width codes 0--15).  `dword_21D6390[]`
 | 290 | `MOV` (sm_104) | Same constraint path as `SHF`/`UIMAD` |
 | bit 12 set | (arch-specific) | Last-operand extraction for architecture-extended instructions |
 
-### `sub_812550` -- `getOperandConstraint`
+### `sub_812550` — `getOperandConstraint`
 
 The single most-called helper (32 call sites), this 40-byte function reads the
 constraint code from the register descriptor for a given operand reference:
@@ -949,7 +949,7 @@ int getOperandConstraint(int64_t ctx, uint32_t *operand_ref) {
 }
 ```
 
-### `sub_812480` -- `validateOperandChain`
+### `sub_812480` — `validateOperandChain`
 
 Recursively walks use-def chains through `HSET2` (130) and `SM73_FIRST` (137)
 instructions to verify that an entire operand chain is compatible with a target
@@ -977,11 +977,11 @@ Default threshold: 7.
 
 ## Cross-References
 
-- [Instruction Selection](./isel.md) -- the isel pass that precedes peephole optimization
-- [SASS Instruction Encoding](./encoding.md) -- the encoder vtable entries that consume peephole output
-- [Newton-Raphson Templates](./templates.md) -- multi-instruction template expansion (DDIV, DRCP, DSQRT) in the same address neighborhood as `sub_169B190`
-- [Scheduling Algorithm](../scheduling/algorithm.md) -- the scheduler that runs between pre- and post-schedule peephole
-- [Blackwell (SM 100--121)](../targets/blackwell.md) -- SM120-specific context for `sub_143C440`
+- [Instruction Selection](./isel.md) — the isel pass that precedes peephole optimization
+- [SASS Instruction Encoding](./encoding.md) — the encoder vtable entries that consume peephole output
+- [Newton-Raphson Templates](./templates.md) — multi-instruction template expansion (DDIV, DRCP, DSQRT) in the same address neighborhood as `sub_169B190`
+- [Scheduling Algorithm](../scheduling/algorithm.md) — the scheduler that runs between pre- and post-schedule peephole
+- [Blackwell (SM 100--121)](../targets/blackwell.md) — SM120-specific context for `sub_143C440`
 
 ## Evidence Index
 

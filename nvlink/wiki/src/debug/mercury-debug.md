@@ -23,7 +23,7 @@ Mercury targets (sm100 and above) carry debug information in a parallel set of `
 
 ## How Mercury Debug Differs from SASS DWARF
 
-Mercury debug information and standard SASS DWARF serve the same purpose -- mapping machine instructions back to source lines and variable locations -- but differ in four fundamental ways:
+Mercury debug information and standard SASS DWARF serve the same purpose — mapping machine instructions back to source lines and variable locations — but differ in four fundamental ways:
 
 ### 1. Address Granularity
 
@@ -56,14 +56,14 @@ Mercury debug sections reference Mercury-internal symbols through the Mercury sy
 
 ### Standard DWARF Mirror Sections (11)
 
-These sections replicate the standard DWARF debug section layout under the `.nv.merc` namespace. Each carries debug information at the Mercury instruction address granularity -- addresses that are not yet final and will change after FNLZR performs opex expansion, instruction scheduling, and register assignment.
+These sections replicate the standard DWARF debug section layout under the `.nv.merc` namespace. Each carries debug information at the Mercury instruction address granularity — addresses that are not yet final and will change after FNLZR performs opex expansion, instruction scheduling, and register assignment.
 
 | Section name | DWARF equivalent | String address | Description |
 |---|---|---|---|
 | `.nv.merc.debug_abbrev` | `.debug_abbrev` | `0x245832A` | Abbreviation tables mapping codes to tag/attribute pairs |
 | `.nv.merc.debug_aranges` | `.debug_aranges` | `0x2458340` | Address range tables for compilation unit lookup |
 | `.nv.merc.debug_frame` | `.debug_frame` | `0x2458357` | Call frame information (CFI) for stack unwinding |
-| `.nv.merc.debug_info` | `.debug_info` | `0x245836C` | Core DWARF information entries (DIEs) -- types, variables, functions |
+| `.nv.merc.debug_info` | `.debug_info` | `0x245836C` | Core DWARF information entries (DIEs) — types, variables, functions |
 | `.nv.merc.debug_line` | `.debug_line` | `0x245841D` | Line number program mapping Mercury addresses to source locations |
 | `.nv.merc.debug_loc` | `.debug_loc` | `0x2458380` | Location lists describing variable storage across PC ranges |
 | `.nv.merc.debug_macinfo` | `.debug_macinfo` | `0x2458393` | Macro information (`#define` / `#undef` records) |
@@ -172,7 +172,7 @@ The companion function at `0x1CED7C0` (`ELF_EmitSASSDebugSections`, 6,757 bytes,
 
 Note the deliberate asymmetry: `sub_1CED0E0` tests `.nv.merc.`-prefixed names (Mercury container sections), while `sub_1CED7C0` tests unprefixed names (standard debug sections). During ELF emission, the ptxas backend uses `sub_1CED7C0` to identify which input debug sections should be re-emitted under the `.nv.merc.` namespace, and uses `sub_1CED0E0` to identify existing Mercury debug sections (e.g., during relocation processing or validation).
 
-The two classifiers do **not** check the `0x10000000` flag identically. `sub_1CED0E0` requires the flag to be set (it is looking for Mercury sections). `sub_1CED7C0` does not check the flag at all -- it operates on sections that may or may not be Mercury-marked, because it needs to identify standard debug sections for Mercury re-emission.
+The two classifiers do **not** check the `0x10000000` flag identically. `sub_1CED0E0` requires the flag to be set (it is looking for Mercury sections). `sub_1CED7C0` does not check the flag at all — it operates on sections that may or may not be Mercury-marked, because it needs to identify standard debug sections for Mercury re-emission.
 
 ## DWARF Emitter Debug Detection: `sub_1672F50`
 
@@ -368,7 +368,7 @@ if (v419[14] && v419[14][4]) {     // relocation entries exist
 }
 ```
 
-`sub_4826F0` (at `0x4826F0`, ~90 lines) builds a binary search tree (BST) that maps original Mercury-address `.debug_line` section offsets to their new positions in the recompiled output. The relocation type `0x10008` (65,544 decimal) is `R_CUDA_ABS32_HI_20` -- the high 20 bits of a 32-bit absolute relocation used for debug section cross-references. The BST lookup patches each relocation entry's offset to reflect the SASS-level address.
+`sub_4826F0` (at `0x4826F0`, ~90 lines) builds a binary search tree (BST) that maps original Mercury-address `.debug_line` section offsets to their new positions in the recompiled output. The relocation type `0x10008` (65,544 decimal) is `R_CUDA_ABS32_HI_20` — the high 20 bits of a 32-bit absolute relocation used for debug section cross-references. The BST lookup patches each relocation entry's offset to reflect the SASS-level address.
 
 ## How `-g` Affects Mercury Debug Output
 
@@ -565,22 +565,22 @@ The Mercury debug section names (`.nv.merc.debug_*`) are straightforward namespa
 
 ### nvlink Wiki
 
-- [FNLZR](../mercury/fnlzr.md) -- the post-link finalizer that consumes Mercury debug sections; Phase 7 (debug serialization) and Phase 9 (self-check) are the primary debug processing phases
-- [Mercury ELF Sections](../mercury/elf-sections.md) -- complete catalog of all 19 `.nv.merc.*` sections including non-debug structural sections
-- [Mercury Overview](../mercury/overview.md) -- what Mercury is and why it exists
-- [Capsule Mercury Format](../mercury/capmerc-format.md) -- self-check mechanism and capmerc pipeline
-- [DWARF Processing](dwarf-processing.md) -- core DWARF parser that feeds Mercury debug emission; processes `.debug_info` through classifier at `sub_12D4370`
-- [NVIDIA Debug Extensions](nvidia-extensions.md) -- non-Mercury `.nv_debug_*` section catalog; the 4 NVIDIA-specific Mercury sections mirror these
-- [Line Table Merging](line-tables.md) -- how `.debug_line` / `.nv_debug_line_sass` are built during LTO; Phase 7a of FNLZR re-serializes these
-- [Debug Options](options.md) -- debug level flags and FNLZR debug section control; documents `byte_2A5F310`, `byte_2A5F222`, and the `-g` / `--generate-line-info` / `--suppress-debug-info` interactions
-- [Merge Phase](../pipeline/merge.md) -- where Mercury sections are skipped during linking, gated by the `0x10000000` flag
-- [Section Merging](../linker/section-merging.md) -- general section merge mechanics and CUDA type catalog
-- [NVIDIA Section Types](../elf/nvidia-sections.md) -- section type constants and the `SHF_CUDA_MERCURY` flag (`0x10000000`)
+- [FNLZR](../mercury/fnlzr.md) — the post-link finalizer that consumes Mercury debug sections; Phase 7 (debug serialization) and Phase 9 (self-check) are the primary debug processing phases
+- [Mercury ELF Sections](../mercury/elf-sections.md) — complete catalog of all 19 `.nv.merc.*` sections including non-debug structural sections
+- [Mercury Overview](../mercury/overview.md) — what Mercury is and why it exists
+- [Capsule Mercury Format](../mercury/capmerc-format.md) — self-check mechanism and capmerc pipeline
+- [DWARF Processing](dwarf-processing.md) — core DWARF parser that feeds Mercury debug emission; processes `.debug_info` through classifier at `sub_12D4370`
+- [NVIDIA Debug Extensions](nvidia-extensions.md) — non-Mercury `.nv_debug_*` section catalog; the 4 NVIDIA-specific Mercury sections mirror these
+- [Line Table Merging](line-tables.md) — how `.debug_line` / `.nv_debug_line_sass` are built during LTO; Phase 7a of FNLZR re-serializes these
+- [Debug Options](options.md) — debug level flags and FNLZR debug section control; documents `byte_2A5F310`, `byte_2A5F222`, and the `-g` / `--generate-line-info` / `--suppress-debug-info` interactions
+- [Merge Phase](../pipeline/merge.md) — where Mercury sections are skipped during linking, gated by the `0x10000000` flag
+- [Section Merging](../linker/section-merging.md) — general section merge mechanics and CUDA type catalog
+- [NVIDIA Section Types](../elf/nvidia-sections.md) — section type constants and the `SHF_CUDA_MERCURY` flag (`0x10000000`)
 
 ### Sibling Wikis
 
-- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- ptxas generates both standard and Mercury-prefixed debug sections; its Mercury debug classifier at `sub_1C98C60` identifies `.nv.merc.debug_*` sections, and the SASS debug classifier at `sub_1C99340` handles unprefixed `.debug_*` sections
-- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) -- cicc's debug metadata generation is upstream of Mercury section creation; the debug info mode (`-g` vs `-generate-line-info`) propagated through nvlink's LTO pipeline determines which Mercury debug sections are populated
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) — ptxas generates both standard and Mercury-prefixed debug sections; its Mercury debug classifier at `sub_1C98C60` identifies `.nv.merc.debug_*` sections, and the SASS debug classifier at `sub_1C99340` handles unprefixed `.debug_*` sections
+- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) — cicc's debug metadata generation is upstream of Mercury section creation; the debug info mode (`-g` vs `-generate-line-info`) propagated through nvlink's LTO pipeline determines which Mercury debug sections are populated
 
 ## Confidence Assessment
 
@@ -589,7 +589,7 @@ The Mercury debug section names (`.nv.merc.debug_*`) are straightforward namespa
 | 15 Mercury debug sections (11 DWARF + 4 NVIDIA) | HIGH | All 15 section name strings confirmed in `nvlink_strings.json` at contiguous addresses `0x245832A`--`0x2458470` |
 | String table cluster at `0x245832A`--`0x2458470` | HIGH | Exact addresses confirmed in strings JSON for all 15 entries |
 | Section classifier `sub_1CED0E0` checks `0x10000000` flag | HIGH | Decompiled: `(*((_QWORD *)a2 + 1) & 0x10000000) == 0` at line 47; first comparison is `.nv.merc.debug_abbrev` at line 60 |
-| SASS debug classifier `sub_1CED7C0` -- 15 unprefixed names, no flag check | HIGH | Decompiled file confirms sequential `memcmp`/`strcmp` chain for unprefixed debug section names; no `0x10000000` check present |
+| SASS debug classifier `sub_1CED7C0` — 15 unprefixed names, no flag check | HIGH | Decompiled file confirms sequential `memcmp`/`strcmp` chain for unprefixed debug section names; no `0x10000000` check present |
 | Section type ranges `1879048198`--`1879048212` and `1879048292`--`1879048318` | HIGH | Decompiled `sub_1CED0E0`: `v4 - 1879048198` range check and `v4 - 1879048292` range check at lines 52--54; bitmask constant `0x5D05` and `_bittest64` with `23813` confirmed |
 | Dual-lookup pattern in `sub_1CF1690` | HIGH | Decompiled: unprefixed `memcmp`/`strcmp` followed by Mercury-prefixed `strcmp` with `sh_flags & 0x10` check at each stage; all 7 pairs confirmed |
 | Relocation context offsets (+72 through +120) | HIGH | Decompiled `sub_1CF1690`: assignments to `a2 + 72`, `a2 + 80`, `a2 + 88`, `a2 + 96`, `a2 + 104`, `a2 + 112`, `a2 + 120` confirmed at LABEL_123/117/121/119/115/127/125 |

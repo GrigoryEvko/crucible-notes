@@ -7,7 +7,7 @@
 | `--diag_suppress=N` | `--diag-suppress=N` | 39 | Suppress diagnostic number N (comma-separated) |
 | `--diag_error=N` | `--diag-error=N` | 42 | Promote diagnostic N to error |
 | `--diag_warning=N` | `--diag-warning=N` | 41 | Demote diagnostic N to warning |
-| `--display_error_number` | -- | 44 | Show `#NNNNN-D` error codes in output |
+| `--display_error_number` | — | 44 | Show `#NNNNN-D` error codes in output |
 | `--target=smXX` | `--gpu-architecture=smXX` | 245 | Set SM architecture target (parsed via `sub_7525E0`) |
 | `--relaxed_constexpr` | `--expt-relaxed-constexpr` | 104 | Allow constexpr cross-space calls |
 | `--extended-lambda` | `--expt-extended-lambda` | 106 | Enable `__device__`/`__host__ __device__` lambdas in host code (`dword_106BF38`) |
@@ -15,21 +15,21 @@
 | `--keep-device-functions` | `--keep-device-functions` | 71 | Do not strip unused device functions |
 | `--no_warnings` | `-w` | 22 | Suppress all warnings |
 | `--promote_warnings` | `-W` | 23 | Promote all warnings to errors |
-| `--error_limit=N` | -- | 32 | Maximum errors before abort (default: unbounded) |
+| `--error_limit=N` | — | 32 | Maximum errors before abort (default: unbounded) |
 | `--force-lp64` | `-m64` | 65 | LP64 data model (pointer=8, long=8) |
-| `--output_mode=sarif` | -- | 274 | SARIF JSON diagnostic output |
+| `--output_mode=sarif` | — | 274 | SARIF JSON diagnostic output |
 | `--debug_mode` | `-G` | 82 | Full debug mode (sets 3 debug globals) |
-| `--device-syntax-only` | -- | 72 | Device-side syntax check without codegen |
-| `--no-device-int128` | -- | 52 | Disable `__int128` on device |
-| `--zero_init_auto_vars` | -- | 81 | Zero-initialize automatic variables |
-| `--fe-inlining` | -- | 54 | Enable frontend inlining |
-| `--gen_c_file_name=path` | -- | 45 | Set output `.int.c` file path |
+| `--device-syntax-only` | — | 72 | Device-side syntax check without codegen |
+| `--no-device-int128` | — | 52 | Disable `__int128` on device |
+| `--zero_init_auto_vars` | — | 81 | Zero-initialize automatic variables |
+| `--fe-inlining` | — | 54 | Enable frontend inlining |
+| `--gen_c_file_name=path` | — | 45 | Set output `.int.c` file path |
 
 These are the flags most commonly passed through `-Xcudafe` for CUDA development. The full inventory of 276 flags follows below.
 
 ---
 
-cudafe++ accepts 276 command-line flags registered in a flat table at `dword_E80060`. The flags are not parsed directly from the binary's argv -- NVIDIA's driver compiler `nvcc` decomposes its own options and invokes cudafe++ with the appropriate low-level flags. Users never run cudafe++ directly; instead, they pass options through `nvcc -Xcudafe <flag>`, which strips the `-Xcudafe` prefix and forwards the remainder as a bare argument to the cudafe++ process.
+cudafe++ accepts 276 command-line flags registered in a flat table at `dword_E80060`. The flags are not parsed directly from the binary's argv — NVIDIA's driver compiler `nvcc` decomposes its own options and invokes cudafe++ with the appropriate low-level flags. Users never run cudafe++ directly; instead, they pass options through `nvcc -Xcudafe <flag>`, which strips the `-Xcudafe` prefix and forwards the remainder as a bare argument to the cudafe++ process.
 
 The flag system is implemented in three functions within `cmd_line.c`:
 
@@ -74,7 +74,7 @@ void register_command_flag(
 );
 ```
 
-Some flags are registered as **paired toggles** -- `--flag` and `--no_flag` share the same `case_id` but set the target global to 1 or 0 respectively. These pairs are registered either by two calls to `register_command_flag` or by inline table population within `init_command_line_flags`.
+Some flags are registered as **paired toggles** — `--flag` and `--no_flag` share the same `case_id` but set the target global to 1 or 0 respectively. These pairs are registered either by two calls to `register_command_flag` or by inline table population within `init_command_line_flags`.
 
 ## Parsing Flow
 
@@ -108,11 +108,11 @@ Certain nvcc flags like `--expt-extended-lambda` and `--expt-relaxed-constexpr` 
 ## Flag Catalog by Category
 
 The 276 flags are grouped below by functional category. Each table lists:
-- **ID** -- the `case_id` used in the dispatch switch
-- **Flag** -- the `--name` as registered (paired flags shown as `name / no_name`)
-- **Short** -- single-character alias (dash required: `-E`, `-C`, etc.)
-- **Arg** -- whether the flag takes a `=<value>` argument
-- **Effect** -- what the flag does internally
+- **ID** — the `case_id` used in the dispatch switch
+- **Flag** — the `--name` as registered (paired flags shown as `name / no_name`)
+- **Short** — single-character alias (dash required: `-E`, `-C`, etc.)
+- **Arg** — whether the flag takes a `=<value>` argument
+- **Effect** — what the flag does internally
 
 ### Core EDG Flags (1--44)
 
@@ -125,19 +125,19 @@ These are standard Edison Design Group frontend options that predate NVIDIA's CU
 | 3 | `no_line_commands` | `-P` | no | Suppress `#line` directives in preprocessor output |
 | 4 | `preprocess` | `-E` | no | Preprocessor-only mode (output to stdout) |
 | 5 | `comments` | `-C` | no | Preserve comments in preprocessor output |
-| 6 | `old_line_commands` | -- | no | Use old-style `# N "file"` line directives |
+| 6 | `old_line_commands` | — | no | Use old-style `# N "file"` line directives |
 | 7 | `old_c` | `-K` | no | K&R C mode (calls `set_c_mode(1)`) |
 | 8 | `dependencies` | `-M` | no | Output `#include` dependency list (preprocessor-only) |
 | 9 | `trace_includes` | `-H` | no | Print each `#include` file as it is opened |
-| 10 | `il_display` | -- | no | Dump intermediate language after parsing |
-| 11 | `anachronisms / no_anachronisms` | -- | no | Allow/disallow anachronistic C++ constructs |
+| 10 | `il_display` | — | no | Dump intermediate language after parsing |
+| 11 | `anachronisms / no_anachronisms` | — | no | Allow/disallow anachronistic C++ constructs |
 | 12 | `cfront_2.1` | `-b` | no | Cfront 2.1 compatibility mode |
-| 13 | `cfront_3.0` | -- | no | Cfront 3.0 compatibility mode |
+| 13 | `cfront_3.0` | — | no | Cfront 3.0 compatibility mode |
 | 14 | `no_code_gen` | `-n` | no | Parse only, skip code generation |
 | 15 | `signed_chars / unsigned_chars` | `-s` | no | Default `char` signedness |
 | 16 | `instantiate` | `-t` | yes | Template instantiation mode: `none`, `all`, `used`, `local` |
 | 17 | `implicit_include / no_implicit_include` | `-B` | no | Enable/disable implicit inclusion of template definitions |
-| 18 | `suppress_vtbl / force_vtbl` | -- | no | Control virtual table emission |
+| 18 | `suppress_vtbl / force_vtbl` | — | no | Control virtual table emission |
 | 19 | `dollar` | `-$` | no | Allow `$` in identifiers |
 | 20 | `timing` | `-#` | no | Print compilation phase timing |
 | 21 | `version` | `-v` | no | Print version banner and continue |
@@ -154,16 +154,16 @@ These are standard Edison Design Group frontend options that predate NVIDIA's CU
 | 32 | `error_limit` | `-e` | yes | Maximum number of errors before abort |
 | 33 | `list` | `-L` | yes | Generate listing file |
 | 34 | `xref` | `-X` | yes | Generate cross-reference file |
-| 35 | `error_output` | -- | yes | Redirect error output to file |
+| 35 | `error_output` | — | yes | Redirect error output to file |
 | 36 | `output` | `-o` | yes | Set output file path |
 | 37 | `db` | `-d` | yes | Load debug database |
-| 38 | `time_limit` | -- | yes | Set compilation time limit |
-| 39 | `diag_suppress` | -- | yes | Suppress diagnostic numbers (comma-separated list) |
-| 40 | `diag_remark` | -- | yes | Demote diagnostics to remark severity |
-| 41 | `diag_warning` | -- | yes | Set diagnostics to warning severity |
-| 42 | `diag_error` | -- | yes | Promote diagnostics to error severity |
-| 43 | `diag_once` | -- | yes | Emit diagnostic only on first occurrence |
-| 44 | `display_error_number / no_display_error_number` | -- | no | Show/hide error code numbers in output |
+| 38 | `time_limit` | — | yes | Set compilation time limit |
+| 39 | `diag_suppress` | — | yes | Suppress diagnostic numbers (comma-separated list) |
+| 40 | `diag_remark` | — | yes | Demote diagnostics to remark severity |
+| 41 | `diag_warning` | — | yes | Set diagnostics to warning severity |
+| 42 | `diag_error` | — | yes | Promote diagnostics to error severity |
+| 43 | `diag_once` | — | yes | Emit diagnostic only on first occurrence |
+| 44 | `display_error_number / no_display_error_number` | — | no | Show/hide error code numbers in output |
 
 ### NVIDIA CUDA-Specific Flags (45--89)
 
@@ -223,32 +223,32 @@ These flags identify the target architecture and host compiler for compatibility
 
 | ID | Flag | Short | Arg | Effect |
 |---|---|---|---|---|
-| 90 | `m32` | -- | no | 32-bit mode: pointer=4, long=4, all types sized for ILP32 |
-| 91 | `m64` | -- | no | 64-bit mode (default on Linux x86-64) |
+| 90 | `m32` | — | no | 32-bit mode: pointer=4, long=4, all types sized for ILP32 |
+| 91 | `m64` | — | no | 64-bit mode (default on Linux x86-64) |
 | 92 | `Version` | `-V` | no | Print version with different copyright format, then `exit(1)` |
-| 93 | `compiler_bindir` | -- | yes | Host compiler binary directory |
-| 94 | `sdk_dir` | -- | yes | SDK directory path |
-| 95 | `pgc++` | -- | no | PGI C++ compiler mode |
-| 96 | `icc` | -- | no | Intel ICC compiler mode |
-| 97 | `icc_version` | -- | yes | Intel ICC version number |
-| 98 | `icx` | -- | no | Intel ICX (oneAPI) compiler mode |
-| 99 | `grco` | -- | no | GRCO compiler mode |
-| 100 | `allow_managed` | -- | no | Allow `__managed__` variable declarations |
-| 101 | `gen_system_templates_from_text` | -- | no | Generate system templates from text |
-| 102 | `no_host_device_initializer_list` | -- | no | Disable HD `initializer_list` support |
-| 103 | `no_host_device_move_forward` | -- | no | Disable HD `std::move`/`std::forward` |
-| 104 | `relaxed_constexpr` | -- | no | Relaxed constexpr rules for device code (`--expt-relaxed-constexpr`) |
-| 105 | `dont_suppress_host_wrappers` | -- | no | Emit host wrapper functions unconditionally |
-| 106 | `arm_cross_compiler` | -- | no | ARM cross-compilation mode |
-| 107 | `target_woa` | -- | no | Windows on ARM target |
-| 108 | `gen_div_approx_no_ftz` | -- | no | Generate approximate division without flush-to-zero |
-| 109 | `gen_div_approx_ftz` | -- | no | Generate approximate division with flush-to-zero |
-| 110 | `shared_address_immutable` | -- | no | Shared memory addresses are immutable |
-| 111 | `uumn` | -- | no | Unnamed union member naming |
+| 93 | `compiler_bindir` | — | yes | Host compiler binary directory |
+| 94 | `sdk_dir` | — | yes | SDK directory path |
+| 95 | `pgc++` | — | no | PGI C++ compiler mode |
+| 96 | `icc` | — | no | Intel ICC compiler mode |
+| 97 | `icc_version` | — | yes | Intel ICC version number |
+| 98 | `icx` | — | no | Intel ICX (oneAPI) compiler mode |
+| 99 | `grco` | — | no | GRCO compiler mode |
+| 100 | `allow_managed` | — | no | Allow `__managed__` variable declarations |
+| 101 | `gen_system_templates_from_text` | — | no | Generate system templates from text |
+| 102 | `no_host_device_initializer_list` | — | no | Disable HD `initializer_list` support |
+| 103 | `no_host_device_move_forward` | — | no | Disable HD `std::move`/`std::forward` |
+| 104 | `relaxed_constexpr` | — | no | Relaxed constexpr rules for device code (`--expt-relaxed-constexpr`) |
+| 105 | `dont_suppress_host_wrappers` | — | no | Emit host wrapper functions unconditionally |
+| 106 | `arm_cross_compiler` | — | no | ARM cross-compilation mode |
+| 107 | `target_woa` | — | no | Windows on ARM target |
+| 108 | `gen_div_approx_no_ftz` | — | no | Generate approximate division without flush-to-zero |
+| 109 | `gen_div_approx_ftz` | — | no | Generate approximate division with flush-to-zero |
+| 110 | `shared_address_immutable` | — | no | Shared memory addresses are immutable |
+| 111 | `uumn` | — | no | Unnamed union member naming |
 
 ### C++ Language Feature Toggle Flags (115--275)
 
-The largest group -- approximately 120 paired boolean toggles that control individual C++ language features. Most are inherited from EDG's configuration surface. Each pair shares a `case_id` and sets a global variable to 1 (`--flag`) or 0 (`--no_flag`).
+The largest group — approximately 120 paired boolean toggles that control individual C++ language features. Most are inherited from EDG's configuration surface. Each pair shares a `case_id` and sets a global variable to 1 (`--flag`) or 0 (`--no_flag`).
 
 #### Precompiled Headers (115--121)
 
@@ -267,53 +267,53 @@ The largest group -- approximately 120 paired boolean toggles that control indiv
 | ID | Flag | Arg | Default |
 |---|---|---|---|
 | 122 | `restrict / no_restrict` | no | on |
-| 123 | `long_lifetime_temps / short_lifetime_temps` | no | -- |
+| 123 | `long_lifetime_temps / short_lifetime_temps` | no | — |
 | 124 | `wchar_t_keyword / no_wchar_t_keyword` | no | on |
-| 125 | `pack_alignment` | yes | -- |
+| 125 | `pack_alignment` | yes | — |
 | 126 | `alternative_tokens / no_alternative_tokens` | no | on |
-| 127 | `svr4 / no_svr4` | no | -- |
-| 128 | `brief_diagnostics / no_brief_diagnostics` | no | -- |
-| 129 | `nonconst_ref_anachronism / no_nonconst_ref_anachronism` | no | -- |
-| 130 | `no_preproc_only` | no | -- |
+| 127 | `svr4 / no_svr4` | no | — |
+| 128 | `brief_diagnostics / no_brief_diagnostics` | no | — |
+| 129 | `nonconst_ref_anachronism / no_nonconst_ref_anachronism` | no | — |
+| 130 | `no_preproc_only` | no | — |
 | 131 | `rtti / no_rtti` | no | on |
-| 132 | `building_runtime` | no | -- |
+| 132 | `building_runtime` | no | — |
 | 133 | `bool / no_bool` | no | on |
-| 134 | `array_new_and_delete / no_array_new_and_delete` | no | -- |
-| 135 | `explicit / no_explicit` | no | -- |
+| 134 | `array_new_and_delete / no_array_new_and_delete` | no | — |
+| 135 | `explicit / no_explicit` | no | — |
 | 136 | `namespaces / no_namespaces` | no | on |
-| 137 | `using_std / no_using_std` | no | -- |
+| 137 | `using_std / no_using_std` | no | — |
 | 138 | `remove_unneeded_entities / no_remove_unneeded_entities` | no | on |
-| 139 | `typename / no_typename` | no | -- |
+| 139 | `typename / no_typename` | no | — |
 | 140 | `implicit_typename / no_implicit_typename` | no | on |
-| 141 | `special_subscript_cost / no_special_subscript_cost` | no | -- |
-| 143 | `old_style_preprocessing` | no | -- |
-| 144 | `old_for_init / new_for_init` | no | -- |
-| 145 | `for_init_diff_warning / no_for_init_diff_warning` | no | -- |
-| 146 | `distinct_template_signatures / no_distinct_template_signatures` | no | -- |
+| 141 | `special_subscript_cost / no_special_subscript_cost` | no | — |
+| 143 | `old_style_preprocessing` | no | — |
+| 144 | `old_for_init / new_for_init` | no | — |
+| 145 | `for_init_diff_warning / no_for_init_diff_warning` | no | — |
+| 146 | `distinct_template_signatures / no_distinct_template_signatures` | no | — |
 | 147 | `guiding_decls / no_guiding_decls` | no | on |
 | 148 | `old_specializations / no_old_specializations` | no | on |
-| 149 | `wrap_diagnostics / no_wrap_diagnostics` | no | -- |
-| 150 | `implicit_extern_c_type_conversion / no_implicit_extern_c_type_conversion` | no | -- |
-| 151 | `long_preserving_rules / no_long_preserving_rules` | no | -- |
-| 152 | `extern_inline / no_extern_inline` | no | -- |
-| 153 | `multibyte_chars / no_multibyte_chars` | no | -- |
+| 149 | `wrap_diagnostics / no_wrap_diagnostics` | no | — |
+| 150 | `implicit_extern_c_type_conversion / no_implicit_extern_c_type_conversion` | no | — |
+| 151 | `long_preserving_rules / no_long_preserving_rules` | no | — |
+| 152 | `extern_inline / no_extern_inline` | no | — |
+| 153 | `multibyte_chars / no_multibyte_chars` | no | — |
 | 154 | `embedded_c++` | no | Embedded C++ mode |
-| 155 | `vla / no_vla` | no | -- |
-| 156 | `enum_overloading / no_enum_overloading` | no | -- |
-| 157 | `nonstd_qualifier_deduction / no_nonstd_qualifier_deduction` | no | -- |
-| 158 | `late_tiebreaker / early_tiebreaker` | no | -- |
-| 159 | `preinclude` | yes | -- |
-| 160 | `preinclude_macros` | yes | -- |
-| 161 | `pending_instantiations` | yes | -- |
+| 155 | `vla / no_vla` | no | — |
+| 156 | `enum_overloading / no_enum_overloading` | no | — |
+| 157 | `nonstd_qualifier_deduction / no_nonstd_qualifier_deduction` | no | — |
+| 158 | `late_tiebreaker / early_tiebreaker` | no | — |
+| 159 | `preinclude` | yes | — |
+| 160 | `preinclude_macros` | yes | — |
+| 161 | `pending_instantiations` | yes | — |
 | 162 | `const_string_literals / no_const_string_literals` | no | on |
 | 163 | `class_name_injection / no_class_name_injection` | no | on |
 | 164 | `arg_dep_lookup / no_arg_dep_lookup` | no | on |
 | 165 | `friend_injection / no_friend_injection` | no | on |
-| 166 | `nonstd_using_decl / no_nonstd_using_decl` | no | -- |
-| 168 | `designators / no_designators` | no | -- |
-| 169 | `extended_designators / no_extended_designators` | no | -- |
-| 170 | `variadic_macros / no_variadic_macros` | no | -- |
-| 171 | `extended_variadic_macros / no_extended_variadic_macros` | no | -- |
+| 166 | `nonstd_using_decl / no_nonstd_using_decl` | no | — |
+| 168 | `designators / no_designators` | no | — |
+| 169 | `extended_designators / no_extended_designators` | no | — |
+| 170 | `variadic_macros / no_variadic_macros` | no | — |
+| 171 | `extended_variadic_macros / no_extended_variadic_macros` | no | — |
 
 #### Include Paths and Module Support (167, 172, 256--265)
 
@@ -336,7 +336,7 @@ The largest group -- approximately 120 paired boolean toggles that control indiv
 
 #### Host Compiler and Language Feature Toggles (182--239)
 
-**Note:** All IDs below are verified against the decompiled `init_command_line_flags` (`sub_452010`). Flags are registered by `sub_451F80` (explicit call) or by inline array population. IDs are not sequential -- gaps exist where flags were removed or repurposed.
+**Note:** All IDs below are verified against the decompiled `init_command_line_flags` (`sub_452010`). Flags are registered by `sub_451F80` (explicit call) or by inline array population. IDs are not sequential — gaps exist where flags were removed or repurposed.
 
 | ID | Flag | Arg | Default |
 |---|---|---|---|
@@ -356,9 +356,9 @@ The largest group -- approximately 120 paired boolean toggles that control indiv
 | 195 | `embedded_c / no_embedded_c` | no | Embedded C mode (not relevant to CUDA) |
 | 196 | `thread_local_storage / no_thread_local_storage` | no | `thread_local` support |
 | 197 | `trigraphs / no_trigraphs` | no | Trigraph processing (default on) |
-| 198 | `nonstd_default_arg_deduction / no_nonstd_default_arg_deduction` | no | -- |
-| 199 | `stdc_zero_in_system_headers / no_stdc_zero_in_system_headers` | no | -- |
-| 200 | `template_typedefs_in_diagnostics / no_template_typedefs_in_diagnostics` | no | -- |
+| 198 | `nonstd_default_arg_deduction / no_nonstd_default_arg_deduction` | no | — |
+| 199 | `stdc_zero_in_system_headers / no_stdc_zero_in_system_headers` | no | — |
+| 200 | `template_typedefs_in_diagnostics / no_template_typedefs_in_diagnostics` | no | — |
 | 202 | `uliterals / no_uliterals` | no | Unicode literals (`u""`, `U""`, `u8""`) |
 | 203 | `type_traits_helpers / no_type_traits_helpers` | no | Intrinsic type traits |
 | 204 | `c++11 / c++0x` | no | C++11 mode (sets `dword_126EF68` to 201103 or 199711) |
@@ -374,28 +374,28 @@ The largest group -- approximately 120 paired boolean toggles that control indiv
 | 215 | `gen_move_operations / no_gen_move_operations` | no | Implicit move constructor/assignment (default on) |
 | 216 | `auto_type / no_auto_type` | no | C++11 `auto` type deduction |
 | 217 | `auto_storage / no_auto_storage` | no | `auto` as storage class (C++03 meaning) |
-| 218 | `nonstd_instantiation_lookup / no_nonstd_instantiation_lookup` | no | -- |
+| 218 | `nonstd_instantiation_lookup / no_nonstd_instantiation_lookup` | no | — |
 | 219 | `nullptr / no_nullptr` | no | `nullptr` keyword |
 | 220 | `gcc89_inlining` | no | GCC 8.9-era inlining behavior |
 | 221 | `nonstd_gnu_keywords / no_nonstd_gnu_keywords` | no | GNU extension keywords |
 | 222 | `default_nocommon_tentative_definitions / default_common_tentative_definitions` | no | Tentative definition linkage |
-| 223 | `no_token_separators_in_pp_output` | no | -- |
+| 223 | `no_token_separators_in_pp_output` | no | — |
 | 224 | `c23_typeof / no_c23_typeof` | no | C23 `typeof` operator |
 | 225 | `c++11_sfinae / no_c++11_sfinae` | no | C++11 SFINAE rules |
 | 226 | `c++11_sfinae_ignore_access / no_c++11_sfinae_ignore_access` | no | Ignore access checks in SFINAE |
 | 227 | `variadic_templates / no_variadic_templates` | no | Parameter packs and pack expansion |
 | 228 | `c++03` | no | C++03 mode (sets `dword_126EF68` to 199711) |
-| 229 | `func_prototype_tags / no_func_prototype_tags` | no | -- |
+| 229 | `func_prototype_tags / no_func_prototype_tags` | no | — |
 | 230 | `implicit_noexcept / no_implicit_noexcept` | no | Implicit `noexcept` on destructors |
 | 231 | `unrestricted_unions / no_unrestricted_unions` | no | Unrestricted unions (C++11) |
 | 232 | `max_depth_constexpr_call` | yes | Maximum `constexpr` recursion depth (default 200) |
 | 233 | `max_cost_constexpr_call` | yes | Maximum `constexpr` evaluation cost (default 256) |
-| 234 | `delegating_constructors / no_delegating_constructors` | no | -- |
-| 235 | `lossy_conversion_warning / no_lossy_conversion_warning` | no | -- |
+| 234 | `delegating_constructors / no_delegating_constructors` | no | — |
+| 235 | `lossy_conversion_warning / no_lossy_conversion_warning` | no | — |
 | 236 | `deprecated_string_conv / no_deprecated_string_conv` | no | Deprecated string literal to `char*` conversion |
 | 237 | `user_defined_literals / no_user_defined_literals` | no | UDL support |
-| 238 | `preserve_lvalues_with_same_type_casts / no_...` | no | -- |
-| 239 | `nonstd_anonymous_unions / no_nonstd_anonymous_unions` | no | -- |
+| 238 | `preserve_lvalues_with_same_type_casts / no_...` | no | — |
+| 239 | `nonstd_anonymous_unions / no_nonstd_anonymous_unions` | no | — |
 
 #### Late C++/Architecture/Output Flags (240--258)
 
@@ -482,21 +482,21 @@ The error number system is documented in [Diagnostic System Overview](../diagnos
 
 After the main parsing loop completes, `proc_command_line` executes a large block of dialect resolution logic that:
 
-1. **Resolves host compiler mode conflicts** -- If both `--gcc` and `--clang` are set, or `--cfront_2.1` is combined with modern modes, the resolution picks one and adjusts feature flags accordingly
-2. **Sets C++ feature flags from `__cplusplus` version** -- Based on the value in `dword_126EF68`:
+1. **Resolves host compiler mode conflicts** — If both `--gcc` and `--clang` are set, or `--cfront_2.1` is combined with modern modes, the resolution picks one and adjusts feature flags accordingly
+2. **Sets C++ feature flags from `__cplusplus` version** — Based on the value in `dword_126EF68`:
    - `199711` (C++98/03): baseline features only
    - `201103` (C++11): enables lambdas, rvalue refs, auto, nullptr, variadic templates, range-based for, delegating constructors, unrestricted unions, user-defined literals
    - `201402` (C++14): adds digit separators, generic lambdas, relaxed constexpr
    - `201703` (C++17): adds aligned new, exception spec in function type, structured bindings
    - `202002` (C++20): adds concepts, modules, coroutines
    - `202302` (C++23): adds latest features
-3. **Applies GCC version thresholds** -- When in GCC compatibility mode, certain features are gated on the GCC version number stored in `qword_126EF98` (default 80100 = GCC 8.1.0). Known thresholds:
+3. **Applies GCC version thresholds** — When in GCC compatibility mode, certain features are gated on the GCC version number stored in `qword_126EF98` (default 80100 = GCC 8.1.0). Known thresholds:
    - `40299` (0x9D6B): GCC 4.2
    - `40599` (0x9E97): GCC 4.5
    - `40699` (0x9EFB): GCC 4.6
    - Higher versions enable progressively more features
-4. **Opens output files** -- Error output, listing file, output file
-5. **Processes the input filename** -- The remaining non-flag argv entry
+4. **Opens output files** — Error output, listing file, output file
+5. **Processes the input filename** — The remaining non-flag argv entry
 
 ### Key Globals After Resolution
 
@@ -515,7 +515,7 @@ After the main parsing loop completes, `proc_command_line` executes a large bloc
 
 ## The set_flag / clear_flag Mechanism
 
-Flag ID 199 (`--set_flag` / `--clear_flag`) provides a raw escape hatch. The argument is a flag name looked up in the `off_D47CE0` table -- an array of `{name, global_address}` pairs. If the name is found, the corresponding global variable is set to the provided integer value (`--set_flag=name=value`) or cleared to 0 (`--clear_flag=name`). This mechanism allows nvcc to toggle internal EDG configuration flags that do not have dedicated CLI flag registrations.
+Flag ID 199 (`--set_flag` / `--clear_flag`) provides a raw escape hatch. The argument is a flag name looked up in the `off_D47CE0` table — an array of `{name, global_address}` pairs. If the name is found, the corresponding global variable is set to the provided integer value (`--set_flag=name=value`) or cleared to 0 (`--clear_flag=name`). This mechanism allows nvcc to toggle internal EDG configuration flags that do not have dedicated CLI flag registrations.
 
 ## Default Values
 
@@ -557,7 +557,7 @@ Before the main parsing loop, `check_conflicting_flags` (`sub_451E80`) verifies 
 
 ## Inline-Registered Flags
 
-`init_command_line_flags` (`sub_452010`) calls the helper `register_command_flag` (`sub_451F80`) 251 times. The remaining 25 flags reach the dispatch switch through a different mechanism: their entries are populated directly into the flag table by inline stores in `sub_452010`, bypassing the helper. The two registration mechanisms produce identical runtime behavior -- both result in valid 40-byte entries in the table at `dword_E80060`. The distinction is purely a source-level artifact, and is invisible from the parser's perspective.
+`init_command_line_flags` (`sub_452010`) calls the helper `register_command_flag` (`sub_451F80`) 251 times. The remaining 25 flags reach the dispatch switch through a different mechanism: their entries are populated directly into the flag table by inline stores in `sub_452010`, bypassing the helper. The two registration mechanisms produce identical runtime behavior — both result in valid 40-byte entries in the table at `dword_E80060`. The distinction is purely a source-level artifact, and is invisible from the parser's perspective.
 
 There are two reasons a flag is registered inline rather than through the helper:
 
@@ -580,7 +580,7 @@ The 25 inline-registered flag names:
 
 The CLI exposes two distinct version-printing flags. They share the substring "version" in their long name but differ in case (`--version` vs. `--Version`), parsing case ID, format of the printed banner, and whether they terminate the process.
 
-### `--version` (ID 21, `-v`) -- continues execution
+### `--version` (ID 21, `-v`) — continues execution
 
 Case 21 in the dispatch switch writes the cudafe++ version banner to `stdout` via the standard print path, then falls through to the next iteration of the argv loop without calling `exit()`. The flag is used by build systems that want to query the compiler version while still receiving any subsequent flags on the same command line.
 
@@ -594,9 +594,9 @@ Based on Edison Design Group C/C++ Front End, version 6.6
 Cuda compilation tools, release 13.0, V13.0.88
 ```
 
-The `YYYY` placeholder is the current compilation year, sourced from a build-time constant. The string `"1988-2018, 2024"` is the EDG copyright span -- the two date ranges in a single Edison Design Group copyright line are an explicit choice by EDG, not a formatting artifact.
+The `YYYY` placeholder is the current compilation year, sourced from a build-time constant. The string `"1988-2018, 2024"` is the EDG copyright span — the two date ranges in a single Edison Design Group copyright line are an explicit choice by EDG, not a formatting artifact.
 
-### `--Version` (ID 92, `-V`) -- emits EDG portion banner then `exit(1)`
+### `--Version` (ID 92, `-V`) — emits EDG portion banner then `exit(1)`
 
 Case 92 in the dispatch switch writes a single EDG-portion copyright line to `stdout`, then calls `exit(1)` immediately. The exit code is the conventional "success but no compilation performed" value used by GNU-style version flags. No further argv processing occurs after case 92.
 
@@ -610,8 +610,8 @@ The `"1988-2016"` date range here is intentionally different from the `"1988-201
 
 ## Cross-References
 
-- [Pipeline Overview](../pipeline/overview.md) -- Stage 2 is `proc_command_line`
-- [Diagnostic System Overview](../diagnostics/overview.md) -- `diag_suppress`/`diag_error` flag handling
-- [Architecture Detection](arch-detection.md) -- `--target` flag and SM version parsing
-- [Experimental Flags](experimental-flags.md) -- `--set_flag`/`--clear_flag` for internal feature gates
-- [EDG 6.6 Overview](../edg/overview.md) -- `cmd_line.c` source file context
+- [Pipeline Overview](../pipeline/overview.md) — Stage 2 is `proc_command_line`
+- [Diagnostic System Overview](../diagnostics/overview.md) — `diag_suppress`/`diag_error` flag handling
+- [Architecture Detection](arch-detection.md) — `--target` flag and SM version parsing
+- [Experimental Flags](experimental-flags.md) — `--set_flag`/`--clear_flag` for internal feature gates
+- [EDG 6.6 Overview](../edg/overview.md) — `cmd_line.c` source file context

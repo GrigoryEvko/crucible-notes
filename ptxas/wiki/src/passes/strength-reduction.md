@@ -2,13 +2,13 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Phase 21 (`OriStrengthReduce`) replaces expensive arithmetic operations with cheaper equivalents in the Ori IR. It runs early in the optimization pipeline -- after loop simplification (phase 18) and live range splitting (phase 19), but before loop unrolling (phase 22) and software pipelining (phase 24). This placement is deliberate: strength reduction benefits from canonicalized loop structure and benefits subsequent loop transformations by simplifying induction variable expressions.
+Phase 21 (`OriStrengthReduce`) replaces expensive arithmetic operations with cheaper equivalents in the Ori IR. It runs early in the optimization pipeline — after loop simplification (phase 18) and live range splitting (phase 19), but before loop unrolling (phase 22) and software pipelining (phase 24). This placement is deliberate: strength reduction benefits from canonicalized loop structure and benefits subsequent loop transformations by simplifying induction variable expressions.
 
 Strength reduction in ptxas is not a single monolithic pass. It is distributed across three layers, each operating at a different abstraction level:
 
-1. **Phase 21 (`OriStrengthReduce`)** -- Ori-level induction variable strength reduction on the use-def graph
-2. **Peephole patterns** -- SASS-level algebraic simplifications in the `MainPeepholeOptimizer` (`sub_83EF00`)
-3. **Division lowering templates** -- Newton-Raphson integer division sequences emitted during instruction selection
+1. **Phase 21 (`OriStrengthReduce`)** — Ori-level induction variable strength reduction on the use-def graph
+2. **Peephole patterns** — SASS-level algebraic simplifications in the `MainPeepholeOptimizer` (`sub_83EF00`)
+3. **Division lowering templates** — Newton-Raphson integer division sequences emitted during instruction selection
 
 | | |
 |---|---|
@@ -18,8 +18,8 @@ Strength reduction in ptxas is not a single monolithic pass. It is distributed a
 | **Pipeline position** | Stage 2 (Early Optimization), between PGO (phase 20) and loop unrolling (phase 22) |
 | **Vtable address** | `off_22BD910` |
 | **`execute()`** | `sub_C5FB30` (wrapper) -> `sub_752E40` (core logic, 359 lines decompiled, ~1.2 KB binary) |
-| **`isNoOp()`** | `sub_C5F3D0` -- returns 0 (always runs) |
-| **`getName()`** | `sub_C5F3C0` -- returns 21 |
+| **`isNoOp()`** | `sub_C5F3D0` — returns 0 (always runs) |
+| **`getName()`** | `sub_C5F3C0` — returns 21 |
 | **Gate knob** | 487 (general optimization enablement) |
 | **Key helpers** | `sub_745A80` (replacement register creator), `sub_91BF30` (virtual register allocator), `sub_A13890` (use-def chain iterator), `sub_9253C0` (instruction deleter) |
 | **Peephole SHR+SHL->BFE** | `sub_81DB30` (matcher: `sub_81D7E0`) |
@@ -28,9 +28,9 @@ Strength reduction in ptxas is not a single monolithic pass. It is distributed a
 
 ## Phase 21: Induction Variable Strength Reduction
 
-### Scope limitation -- opcode 137 only
+### Scope limitation — opcode 137 only
 
-Despite the generic name, Phase 21 touches exactly one Ori IR opcode: **137** (`SM73_FIRST` in the ROT13 naming scheme). Every instruction in the function is visited, but the opcode check `(*(instr+72) & 0xFFFFCFFF) == 137` gates all transformations -- non-137 instructions are skipped entirely. The `& 0xFFFFCFFF` mask zeroes bits 12-13 (modifier field), so variants 137, 137|0x1000, 137|0x2000, and 137|0x3000 all match.
+Despite the generic name, Phase 21 touches exactly one Ori IR opcode: **137** (`SM73_FIRST` in the ROT13 naming scheme). Every instruction in the function is visited, but the opcode check `(*(instr+72) & 0xFFFFCFFF) == 137` gates all transformations — non-137 instructions are skipped entirely. The `& 0xFFFFCFFF` mask zeroes bits 12-13 (modifier field), so variants 137, 137|0x1000, 137|0x2000, and 137|0x3000 all match.
 
 Opcode 137 is the pre-lowered IMAD (integer multiply-accumulate). The `SM73_FIRST` ROT13 label is a generation boundary name; ptxas reuses this slot in the Ori IR for IMAD-like operations before instruction selection lowers them to SASS `IMAD` (opcode 1). The pass therefore performs strength reduction exclusively on integer multiply chains.
 
@@ -38,13 +38,13 @@ Opcode 137 is the pre-lowered IMAD (integer multiply-accumulate). The `SM73_FIRS
 
 The pass executes in two loops within a single call to `sub_752E40`:
 
-**Loop 1 -- Dead multiply elimination and single-use register copy.** Walks the instruction list (`*(context+272)` head). For each opcode-137 instruction:
+**Loop 1 — Dead multiply elimination and single-use register copy.** Walks the instruction list (`*(context+272)` head). For each opcode-137 instruction:
 
-1. If the destination's use chain is empty (`*(def+56) == NULL`) and its source chain head is null, the instruction is dead -- delete via `sub_9253C0`.
+1. If the destination's use chain is empty (`*(def+56) == NULL`) and its source chain head is null, the instruction is dead — delete via `sub_9253C0`.
 2. If the destination's use chain is empty but its source chain head is non-null, convert in place to opcode 130 (`0x82`; internal MOV-like marker) by preserving bits 12-13 and overwriting the base opcode.
-3. Otherwise, iterate source operands from index `(operand_count - 1)` down to 0. For each register operand (type tag 1) whose definition passes all guards -- no special flags (`def+48 & 0x400000022 == 0`), not predicate type (type != 9), single-use, no other def users -- allocate a fresh virtual register via `sub_91BF30` and patch the operand in place (preserve upper 8 bits of the operand DWORD, replace lower 24 bits with new register ID).
+3. Otherwise, iterate source operands from index `(operand_count - 1)` down to 0. For each register operand (type tag 1) whose definition passes all guards — no special flags (`def+48 & 0x400000022 == 0`), not predicate type (type != 9), single-use, no other def users — allocate a fresh virtual register via `sub_91BF30` and patch the operand in place (preserve upper 8 bits of the operand DWORD, replace lower 24 bits with new register ID).
 
-**Loop 2 -- Worklist-driven transitive propagation.** Walks the instruction list a second time. For each source operand that has a non-null use chain pointer:
+**Loop 2 — Worklist-driven transitive propagation.** Walks the instruction list a second time. For each source operand that has a non-null use chain pointer:
 
 1. If the definition already carries flag `0x100` (byte 1 of `def+48`), call `sub_745A80` to create a replacement register and record the mapping at `def+28`.
 2. If not yet flagged, set `0x100`, then conditionally set additional flag bits based on register type: types 2-3 clear bits 3-4 (`& ~0x18`) while others set bits 3-4 plus 8 (`|= 0x118`).
@@ -202,13 +202,13 @@ The emitter creates opcode 102 (a combined shift-and-add operation) with encoded
 
 Integer division and modulo by non-constant values are lowered to multi-instruction sequences during instruction selection. This is not part of phase 21 but is the most visible strength reduction in ptxas output. There is no hardware integer divider on any NVIDIA GPU architecture, so every integer division must be software-emulated.
 
-### 32-bit Division -- `sub_1724A20`
+### 32-bit Division — `sub_1724A20`
 
 **Size:** 28,138 bytes decompiled (957 lines), the largest function in the `0x1723000`--`0x17F8000` ISA description range.
 **Called from:** `sub_1727130` (coordinator B, which allocates 59 virtual registers from `dword_23976E0`).
 **Instruction count:** 55 SASS instructions emitted (verified by counting all 51 `sub_9314F0` + 4 `sub_935130` emission calls in the decompilation).
 
-The algorithm converts the divisor to FP32, uses `MUFU.RCP` for a ~23-bit reciprocal seed, converts back to integer, then refines via iterated `IMAD` multiply-add chains. Four conditional branches (`BRA`, opcode 0x5F) guard correction paths for overflow and edge cases. The sequence operates in two passes -- the first obtains a coarse quotient estimate, the second uses wide multiplies (`IMAD.WIDE`, opcode 0x6F) to compute a precise remainder and correct the quotient.
+The algorithm converts the divisor to FP32, uses `MUFU.RCP` for a ~23-bit reciprocal seed, converts back to integer, then refines via iterated `IMAD` multiply-add chains. Four conditional branches (`BRA`, opcode 0x5F) guard correction paths for overflow and edge cases. The sequence operates in two passes — the first obtains a coarse quotient estimate, the second uses wide multiplies (`IMAD.WIDE`, opcode 0x6F) to compute a precise remainder and correct the quotient.
 
 Complete instruction mix (verified from decompilation, counting each `sub_9314F0`/`sub_935130` call):
 
@@ -236,7 +236,7 @@ Two variants handle 64-bit operands, both dispatched from `sub_1729B50`:
 - **`sub_1728930`** (16,545 bytes, 634 lines): unsigned 64-bit. Emits 41 SASS instructions including `MUFU.RCP` seed, `PRMT` byte-permute for half-extraction, and `IMAD.WIDE` for double-width products.
 - **`sub_1727AC0`** (13,776 bytes, 538 lines): signed 64-bit. Emits 36 instructions: sign extraction via XOR, inlined unsigned core, conditional negate at output.
 
-See [Templates -- Integer Division](../codegen/templates.md#integer-division-lowering) for the full per-phase pseudocode of all three variants.
+See [Templates — Integer Division](../codegen/templates.md#integer-division-lowering) for the full per-phase pseudocode of all three variants.
 
 ### Division by Constant (Granlund-Montgomery)
 
@@ -244,15 +244,15 @@ Division by compile-time constant is handled during the `GeneralOptimize` bundle
 
 ### FP Division Strength Reduction
 
-Floating-point division undergoes a separate strength reduction during instruction selection (not in phase 21). With `-use_fast_math` or the `.approx` PTX modifier, `div.approx.f32 a, b` is lowered to `MUFU.RCP(b)` followed by `FMUL(a, rcp)` -- 2 instructions with ~23-bit precision. Without fast-math, `div.rn.f32` calls an IEEE-compliant libdevice routine (~15 instructions), and `div.rn.f64` expands to the full DDIV Newton-Raphson template (~100+ instructions). See [Math Intrinsics](../intrinsics/math.md#fast-math-vs-ieee-compliant-summary) for the complete precision table.
+Floating-point division undergoes a separate strength reduction during instruction selection (not in phase 21). With `-use_fast_math` or the `.approx` PTX modifier, `div.approx.f32 a, b` is lowered to `MUFU.RCP(b)` followed by `FMUL(a, rcp)` — 2 instructions with ~23-bit precision. Without fast-math, `div.rn.f32` calls an IEEE-compliant libdevice routine (~15 instructions), and `div.rn.f64` expands to the full DDIV Newton-Raphson template (~100+ instructions). See [Math Intrinsics](../intrinsics/math.md#fast-math-vs-ieee-compliant-summary) for the complete precision table.
 
 ## SASS Cost Model
 
 The profitability of strength reduction on NVIDIA GPUs differs from CPUs in several important ways:
 
-**Integer multiply is cheap.** Modern NVIDIA GPUs (sm_70+) have dedicated integer multiply-add (IMAD) functional units. IMAD has the same throughput as IADD on most architectures -- both are single-cycle operations on the integer ALU. This means the classical "replace multiply with shift+add" transformation is often **not profitable** on GPU. ptxas does not aggressively replace multiplies with shift chains the way CPU compilers do.
+**Integer multiply is cheap.** Modern NVIDIA GPUs (sm_70+) have dedicated integer multiply-add (IMAD) functional units. IMAD has the same throughput as IADD on most architectures — both are single-cycle operations on the integer ALU. This means the classical "replace multiply with shift+add" transformation is often **not profitable** on GPU. ptxas does not aggressively replace multiplies with shift chains the way CPU compilers do.
 
-**Integer division is expensive.** There is no hardware integer divider. Division must be lowered to the 55-instruction Newton-Raphson sequence described above. This is why division-by-constant is a high-priority optimization -- replacing 55 instructions with 2-3 is a massive win.
+**Integer division is expensive.** There is no hardware integer divider. Division must be lowered to the 55-instruction Newton-Raphson sequence described above. This is why division-by-constant is a high-priority optimization — replacing 55 instructions with 2-3 is a massive win.
 
 **Shift operations.** SHL and SHR are single-cycle on the integer ALU, same throughput as IADD and IMAD. However, they use a different functional unit slot on some architectures, which can matter for scheduling.
 
@@ -265,16 +265,16 @@ This explains why phase 21's core logic is relatively compact (~1.2 KB binary) c
 ## Pipeline Context
 
 Phase 21 runs after:
-- **Phase 18 (`OriLoopSimplification`)** -- loops are canonicalized with single entry, single back-edge, and preheaders
-- **Phase 19 (`OriSplitLiveRanges`)** -- live ranges are split at loop boundaries
-- **Phase 20 (`PerformPGO`)** -- profile data is applied (block weights inform the cost model)
+- **Phase 18 (`OriLoopSimplification`)** — loops are canonicalized with single entry, single back-edge, and preheaders
+- **Phase 19 (`OriSplitLiveRanges`)** — live ranges are split at loop boundaries
+- **Phase 20 (`PerformPGO`)** — profile data is applied (block weights inform the cost model)
 
 Phase 21 runs before:
-- **Phase 22 (`OriLoopUnrolling`)** -- simplified induction variables enable better unroll decisions
-- **Phase 24 (`OriPipelining`)** -- strength-reduced loops are more amenable to software pipelining
-- **Phase 29 (`GeneralOptimize`)** -- compound pass cleans up any dead code left by strength reduction
+- **Phase 22 (`OriLoopUnrolling`)** — simplified induction variables enable better unroll decisions
+- **Phase 24 (`OriPipelining`)** — strength-reduced loops are more amenable to software pipelining
+- **Phase 29 (`GeneralOptimize`)** — compound pass cleans up any dead code left by strength reduction
 
-The `GeneralOptimize` bundles (phases 13, 29, 37, 46, 58, 65) also perform algebraic simplification that overlaps with strength reduction -- specifically constant folding of multiply-by-power-of-2 to shifts. Phase 21 handles the more complex cases that require use-def chain analysis, while `GeneralOptimize` handles local, single-instruction rewrites.
+The `GeneralOptimize` bundles (phases 13, 29, 37, 46, 58, 65) also perform algebraic simplification that overlaps with strength reduction — specifically constant folding of multiply-by-power-of-2 to shifts. Phase 21 handles the more complex cases that require use-def chain analysis, while `GeneralOptimize` handles local, single-instruction rewrites.
 
 ## Function Map
 
@@ -299,11 +299,11 @@ The `GeneralOptimize` bundles (phases 13, 29, 37, 46, 58, 65) also perform algeb
 
 ## Cross-References
 
-- [Pass Inventory & Ordering](index.md) -- complete 159-phase table showing phase 21's position
-- [GeneralOptimize Bundles](general-optimize.md) -- algebraic simplification sub-passes that complement strength reduction
-- [Loop Passes](loop-passes.md) -- loop canonicalization (phase 18) that enables induction variable analysis
-- [Ori IR Overview](../ir/overview.md) -- instruction format, opcode encoding (ROT13), register model
-- [Peephole Optimization](../codegen/peephole.md) -- `MainPeepholeOptimizer` containing SHR+SHL->BFE patterns
-- [Newton-Raphson Templates](../codegen/templates.md) -- detailed analysis of division lowering sequences
-- [Scheduling](../scheduling/overview.md) -- `sub_7B52B0` scheduling pass called after strength reduction
-- [Knobs System](../config/knobs.md) -- knob 487 controlling optimization enablement
+- [Pass Inventory & Ordering](index.md) — complete 159-phase table showing phase 21's position
+- [GeneralOptimize Bundles](general-optimize.md) — algebraic simplification sub-passes that complement strength reduction
+- [Loop Passes](loop-passes.md) — loop canonicalization (phase 18) that enables induction variable analysis
+- [Ori IR Overview](../ir/overview.md) — instruction format, opcode encoding (ROT13), register model
+- [Peephole Optimization](../codegen/peephole.md) — `MainPeepholeOptimizer` containing SHR+SHL->BFE patterns
+- [Newton-Raphson Templates](../codegen/templates.md) — detailed analysis of division lowering sequences
+- [Scheduling](../scheduling/overview.md) — `sub_7B52B0` scheduling pass called after strength reduction
+- [Knobs System](../config/knobs.md) — knob 487 controlling optimization enablement

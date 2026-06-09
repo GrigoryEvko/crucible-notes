@@ -1,6 +1,6 @@
-# cudafe++ v13.0 -- Reverse Engineering Reference
+# cudafe++ v13.0 — Reverse Engineering Reference
 
-`cudafe++` is NVIDIA's CUDA frontend compiler -- the first stage of the CUDA compilation pipeline. It is built on the Edison Design Group (EDG) C++ Front End v6.6, a commercial compiler frontend licensed by compiler vendors worldwide. NVIDIA ships `cudafe++` as a statically-linked, stripped ELF binary inside every CUDA Toolkit installation. This binary accepts `.cu` source files, parses them as C++ with CUDA extensions, separates device code from host code, and produces two outputs: an EDG Intermediate Language (IL) stream consumed by `cicc` (the NVIDIA PTX code generator), and a transformed `.int.c` host file consumed by the system C++ compiler (gcc, clang, or cl.exe).
+`cudafe++` is NVIDIA's CUDA frontend compiler — the first stage of the CUDA compilation pipeline. It is built on the Edison Design Group (EDG) C++ Front End v6.6, a commercial compiler frontend licensed by compiler vendors worldwide. NVIDIA ships `cudafe++` as a statically-linked, stripped ELF binary inside every CUDA Toolkit installation. This binary accepts `.cu` source files, parses them as C++ with CUDA extensions, separates device code from host code, and produces two outputs: an EDG Intermediate Language (IL) stream consumed by `cicc` (the NVIDIA PTX code generator), and a transformed `.int.c` host file consumed by the system C++ compiler (gcc, clang, or cl.exe).
 
 This wiki documents the complete internals of the `cudafe++` binary from CUDA Toolkit 13.0, reverse-engineered through static analysis (IDA Pro + Hex-Rays decompilation) of all 6,501 functions. The goal is reimplementation-grade documentation: every page should give a senior compiler engineer enough information to build equivalent functionality from scratch.
 
@@ -53,9 +53,9 @@ This wiki documents the complete internals of the `cudafe++` binary from CUDA To
 
 `cudafe++` is a source-to-source compiler. It never generates machine code directly. Its job is to take a single `.cu` translation unit, understand which code is device (`__device__`, `__global__`) and which is host, then:
 
-1. **For the device track:** Emit EDG IL -- a typed, scope-linked intermediate representation containing every declaration, type, expression, and statement. This IL is consumed by `cicc`, which lowers it through LLVM to PTX assembly.
+1. **For the device track:** Emit EDG IL — a typed, scope-linked intermediate representation containing every declaration, type, expression, and statement. This IL is consumed by `cicc`, which lowers it through LLVM to PTX assembly.
 
-2. **For the host track:** Emit a `.int.c` file -- valid C++ source where device function bodies are suppressed inside `#if 0`/`#endif`, `__global__` kernels are replaced by `__wrapper__device_stub_<name>()` forwarding functions, and CUDA runtime registration boilerplate is appended.
+2. **For the host track:** Emit a `.int.c` file — valid C++ source where device function bodies are suppressed inside `#if 0`/`#endif`, `__global__` kernels are replaced by `__wrapper__device_stub_<name>()` forwarding functions, and CUDA runtime registration boilerplate is appended.
 
 The binary runs as a single-threaded, single-pass-per-stage pipeline with 8 stages: pre-init, CLI parsing (276 flags), one-time init (38 subsystem initializers), TU state reset, frontend parse (EDG parser + CUDA extensions), 5-pass IL finalization, backend `.int.c` emission, and exit. See [Pipeline Overview](./pipeline/overview.md) for the full stage diagram.
 
@@ -96,7 +96,7 @@ Every entity node in the EDG IL carries CUDA execution-space information at byte
 | 6 | `0x40` | Device/global flag (set for `__device__` and `__global__` functions) |
 | 7 | `0x80` | `__global__` kernel flag |
 
-This bitfield is checked throughout the pipeline -- in cross-space call validation, device/host code separation, the keep-in-IL predicate, and backend stub generation.
+This bitfield is checked throughout the pipeline — in cross-space call validation, device/host code separation, the keep-in-IL predicate, and backend stub generation.
 
 ### Lambda Wrapper Template Injection (HIGH)
 
@@ -141,9 +141,9 @@ This wiki is organized into 10 sections covering the binary from top-level pipel
 
 ### Overview
 
-- [Function Map](./function-map.md) -- address-to-identity table for all 2,208 mapped functions
-- [Binary Layout](./binary-layout.md) -- segment map, memory regions, address space organization
-- [Methodology](./methodology.md) -- RE tools, approach, confidence scoring, and the [Terminology](./methodology.md#terminology) glossary (IDA anchors, EDG vocabulary, CUDA additions)
+- [Function Map](./function-map.md) — address-to-identity table for all 2,208 mapped functions
+- [Binary Layout](./binary-layout.md) — segment map, memory regions, address space organization
+- [Methodology](./methodology.md) — RE tools, approach, confidence scoring, and the [Terminology](./methodology.md#terminology) glossary (IDA anchors, EDG vocabulary, CUDA additions)
 
 ### [Compilation Pipeline](./pipeline/overview.md)
 
@@ -205,10 +205,10 @@ EDG source file map (52 `.c` + 13 `.h`), global variable index, token kind table
 
 This wiki is derived from:
 
-- **6,202 Hex-Rays decompiled C pseudocode files** -- one per function with recognizable control flow
-- **6,342 x86-64 disassembly files** -- full instruction-level coverage
+- **6,202 Hex-Rays decompiled C pseudocode files** — one per function with recognizable control flow
+- **6,342 x86-64 disassembly files** — full instruction-level coverage
 - **9.5 MB strings database** with cross-references to every function that uses each string
-- **161 MB cross-reference database** -- complete caller/callee and data-reference mappings
+- **161 MB cross-reference database** — complete caller/callee and data-reference mappings
 - **7.7 MB call graph** in JSON and DOT format
 - **6,501 control flow graphs** with basic block boundaries
 - **247 MB IDA Pro database** (.i64)
@@ -221,14 +221,14 @@ The `cudafe++/` directory contains nine `*.md` files that predate this wiki. The
 
 | File | Status | Canonical wiki location |
 |---|---|---|
-| `README.md` | **Keep** -- repository landing page, links into wiki | -- |
-| `wiki_design.md` | **Keep (historical)** -- original MkDocs design sketch, superseded by the mdBook `SUMMARY.md` | [`SUMMARY.md`](./SUMMARY.md) |
-| `ARCHITECTURE_MATRIX.md` | **Migrate or delete** -- SM_30/60/70/90 feature table | [`cuda/arch-gating.md`](./cuda/arch-gating.md), [`config/arch-detection.md`](./config/arch-detection.md) |
-| `COMPILER_FLAGS.md` | **Migrate raw data** -- 515-flag catalog (auto-generated dump) | [`config/cli-flags.md`](./config/cli-flags.md), [`config/edg-build-config.md`](./config/edg-build-config.md) |
-| `CUDA_ATTRIBUTES.md` | **Migrate raw data** -- 29 attributes + 114 `__nv_*` intrinsics | [`attributes/overview.md`](./attributes/overview.md), [`attributes/nv-builtin-intrinsics.md`](./attributes/nv-builtin-intrinsics.md), [`attributes/minor-attributes.md`](./attributes/minor-attributes.md) |
-| `OPTIMIZATION_GUIDE.md` | **Delete (out of scope)** -- developer-facing CUDA tuning guide, not binary analysis | -- |
-| `INTEGRATION_SUMMARY.md` | **Delete** -- changelog for the deleted `wiki/docs/` MkDocs tree (commit 444e4b9a9bc) | -- |
-| `FORMATTING_REPORT.md` | **Delete** -- one-shot script report for the deleted `wiki/docs/` tree | -- |
-| `REVERSE_COMPILATION_ANALYSIS.md` | **Migrate residual content** -- pipeline, lambda, IL, output sections largely covered; "Reverse Compilation Feasibility" and "Alternative Compiler Roadmap" sections are unique | [`pipeline/overview.md`](./pipeline/overview.md), [`il/overview.md`](./il/overview.md), [`lambda/overview.md`](./lambda/overview.md), [`output/int-c-format.md`](./output/int-c-format.md) |
+| `README.md` | **Keep** — repository landing page, links into wiki | — |
+| `wiki_design.md` | **Keep (historical)** — original MkDocs design sketch, superseded by the mdBook `SUMMARY.md` | [`SUMMARY.md`](./SUMMARY.md) |
+| `ARCHITECTURE_MATRIX.md` | **Migrate or delete** — SM_30/60/70/90 feature table | [`cuda/arch-gating.md`](./cuda/arch-gating.md), [`config/arch-detection.md`](./config/arch-detection.md) |
+| `COMPILER_FLAGS.md` | **Migrate raw data** — 515-flag catalog (auto-generated dump) | [`config/cli-flags.md`](./config/cli-flags.md), [`config/edg-build-config.md`](./config/edg-build-config.md) |
+| `CUDA_ATTRIBUTES.md` | **Migrate raw data** — 29 attributes + 114 `__nv_*` intrinsics | [`attributes/overview.md`](./attributes/overview.md), [`attributes/nv-builtin-intrinsics.md`](./attributes/nv-builtin-intrinsics.md), [`attributes/minor-attributes.md`](./attributes/minor-attributes.md) |
+| `OPTIMIZATION_GUIDE.md` | **Delete (out of scope)** — developer-facing CUDA tuning guide, not binary analysis | — |
+| `INTEGRATION_SUMMARY.md` | **Delete** — changelog for the deleted `wiki/docs/` MkDocs tree (commit 444e4b9a9bc) | — |
+| `FORMATTING_REPORT.md` | **Delete** — one-shot script report for the deleted `wiki/docs/` tree | — |
+| `REVERSE_COMPILATION_ANALYSIS.md` | **Migrate residual content** — pipeline, lambda, IL, output sections largely covered; "Reverse Compilation Feasibility" and "Alternative Compiler Roadmap" sections are unique | [`pipeline/overview.md`](./pipeline/overview.md), [`il/overview.md`](./il/overview.md), [`lambda/overview.md`](./lambda/overview.md), [`output/int-c-format.md`](./output/int-c-format.md) |
 
 The README link list above is the migration roadmap. Each non-Keep file carries a banner pointing to its canonical wiki page; full migration and removal is tracked separately.

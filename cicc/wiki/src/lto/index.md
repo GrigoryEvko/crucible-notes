@@ -1,8 +1,8 @@
 # LTO & Module Optimization
 
-CICC v13.0 implements Link-Time Optimization as a five-pass pipeline that exploits the GPU's closed-world compilation model for optimization opportunities unavailable to CPU compilers. In CPU LTO, the linker merges partially-optimized object files and runs a second round of optimization on the combined module. The fundamental constraint is that shared libraries, dynamic loading, and symbol interposition limit what the optimizer can assume about the complete program. On GPU, none of these constraints exist. Every `__device__` function that can execute on the hardware must be statically visible at compile time -- there is no device-side `dlopen`, no `.so` files, no PLT/GOT, no symbol preemption. This closed-world guarantee means the LTO pipeline can inline aggressively across translation units, devirtualize every virtual call site against a complete class hierarchy, and promote or split global variables with full knowledge that no external observer will access the original symbols.
+CICC v13.0 implements Link-Time Optimization as a five-pass pipeline that exploits the GPU's closed-world compilation model for optimization opportunities unavailable to CPU compilers. In CPU LTO, the linker merges partially-optimized object files and runs a second round of optimization on the combined module. The fundamental constraint is that shared libraries, dynamic loading, and symbol interposition limit what the optimizer can assume about the complete program. On GPU, none of these constraints exist. Every `__device__` function that can execute on the hardware must be statically visible at compile time — there is no device-side `dlopen`, no `.so` files, no PLT/GOT, no symbol preemption. This closed-world guarantee means the LTO pipeline can inline aggressively across translation units, devirtualize every virtual call site against a complete class hierarchy, and promote or split global variables with full knowledge that no external observer will access the original symbols.
 
-The LTO pipeline runs after the main LLVM optimizer (tier 0-3 passes) has performed per-module optimization. It is triggered when cicc processes bitcode from separate compilation (`nvcc --device-c` / `-dc` mode), where each `.cu` file compiles to a relocatable device object containing LLVM bitcode in the [NVVM container](../structs/nvvm-container.md). The device linker (`nvlink`) merges these objects and reinvokes cicc in LTO mode, passing the combined bitcode through the LTO pipeline before final PTX emission. In whole-program compilation (the default), the pipeline is still partially active -- GlobalOpt and the inliner run regardless, but the summary-based import machinery is skipped because there is only one module.
+The LTO pipeline runs after the main LLVM optimizer (tier 0-3 passes) has performed per-module optimization. It is triggered when cicc processes bitcode from separate compilation (`nvcc --device-c` / `-dc` mode), where each `.cu` file compiles to a relocatable device object containing LLVM bitcode in the [NVVM container](../structs/nvvm-container.md). The device linker (`nvlink`) merges these objects and reinvokes cicc in LTO mode, passing the combined bitcode through the LTO pipeline before final PTX emission. In whole-program compilation (the default), the pipeline is still partially active — GlobalOpt and the inliner run regardless, but the summary-based import machinery is skipped because there is only one module.
 
 | | |
 |---|---|
@@ -19,9 +19,9 @@ The LTO pipeline runs after the main LLVM optimizer (tier 0-3 passes) has perfor
 
 Three properties of GPU execution make LTO dramatically more valuable than on CPU:
 
-**Function calls are expensive.** Every GPU function call marshals arguments through the [`.param` calling convention](../gpu-execution-model.md#the-param-calling-convention) via `st.param` / `ld.param` instruction sequences. A function with 8 struct arguments can generate hundreds of cycles of marshaling overhead that inlining eliminates entirely. Cross-module inlining -- which requires LTO -- is the primary mechanism for removing this cost for functions defined in separate translation units. See the [inliner cost model](./inliner-cost.md) for the full cost analysis.
+**Function calls are expensive.** Every GPU function call marshals arguments through the [`.param` calling convention](../gpu-execution-model.md#the-param-calling-convention) via `st.param` / `ld.param` instruction sequences. A function with 8 struct arguments can generate hundreds of cycles of marshaling overhead that inlining eliminates entirely. Cross-module inlining — which requires LTO — is the primary mechanism for removing this cost for functions defined in separate translation units. See the [inliner cost model](./inliner-cost.md) for the full cost analysis.
 
-**Register pressure determines performance.** [Occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) is bounded by per-thread register usage, with discrete cliff boundaries. Call boundaries force the backend to save and restore registers across the call site, often spilling to [local memory](../gpu-execution-model.md#memory-hierarchy) (device DRAM, 200-800 cycle latency). LTO enables cross-module inlining, which in turn enables cross-function register allocation -- the single most impactful optimization for GPU code.
+**Register pressure determines performance.** [Occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) is bounded by per-thread register usage, with discrete cliff boundaries. Call boundaries force the backend to save and restore registers across the call site, often spilling to [local memory](../gpu-execution-model.md#memory-hierarchy) (device DRAM, 200-800 cycle latency). LTO enables cross-module inlining, which in turn enables cross-function register allocation — the single most impactful optimization for GPU code.
 
 **Indirect calls are catastrophic.** An indirect call in PTX (`call.uni` through a register) prevents backend inlining, forces full register spills, destroys instruction scheduling freedom, and creates [warp-divergence](../gpu-execution-model.md#divergence) hazards. Whole-program devirtualization, which requires LTO-level visibility of the complete type hierarchy, converts indirect calls to direct calls and enables all downstream optimizations.
 
@@ -93,9 +93,9 @@ The LTO pipeline executes five major passes in a fixed order. Each pass consumes
               → Code generation + PTX emission
 ```
 
-The LTO pipeline entry at `sub_12F5F30` (37.8 KB) orchestrates this sequence and also runs dead kernel elimination -- removing `__global__` functions that are never referenced by host-side kernel launches. This is a GPU-specific optimization: on CPU, the linker preserves all externally-visible entry points, but in GPU LTO the compiler knows the complete set of kernel launch sites from the host code.
+The LTO pipeline entry at `sub_12F5F30` (37.8 KB) orchestrates this sequence and also runs dead kernel elimination — removing `__global__` functions that are never referenced by host-side kernel launches. This is a GPU-specific optimization: on CPU, the linker preserves all externally-visible entry points, but in GPU LTO the compiler knows the complete set of kernel launch sites from the host code.
 
-## LTO Pipeline Entry -- `sub_12F5F30` Algorithm
+## LTO Pipeline Entry — `sub_12F5F30` Algorithm
 
 `sub_12F5F30` (`0x12F5F30`, 37,797 bytes) is the top-level LTO orchestrator. It is called after the CLI parser (`sub_12F7D90`) has resolved the compilation mode bitmask and the LTO argument vector has been populated from the `-Xlto` forwarding meta-flag. The function operates in three distinct modes determined by the mode bitmask in `a13`:
 
@@ -196,7 +196,7 @@ The six `-host-ref-*` flags are the mechanism by which `nvlink` communicates hos
 | `-host-ref-eg` | `__device__` global variable | Explicit (`cudaMemcpyToSymbol` target) |
 | `-host-ref-ig` | `__device__` global variable | Implicit (address taken) |
 
-The `-has-global-host-info` flag signals that `nvlink` has provided complete host reference information. When this flag is absent, `sub_12F5F30` conservatively preserves all externally-visible symbols -- the dead kernel/variable elimination pass is skipped entirely.
+The `-has-global-host-info` flag signals that `nvlink` has provided complete host reference information. When this flag is absent, `sub_12F5F30` conservatively preserves all externally-visible symbols — the dead kernel/variable elimination pass is skipped entirely.
 
 ### Function Map
 
@@ -206,7 +206,7 @@ The `-has-global-host-info` flag signals that `nvlink` has provided complete hos
 | `sub_12F5610` | `0x12F5610` | 7.3 KB | LLVM module linker wrapper (`Linker::linkModules`) |
 | `sub_12F7D90` | `0x12F7D90` | 14.3 KB | CLI argument parser (architecture, opt level, flags) |
 | `sub_12F4060` | `0x12F4060` | 15.7 KB | TargetMachine creation with NVIDIA options |
-| `sub_1C13840` | `0x1C13840` | -- | Global/function iterator used for dead-code sweep |
+| `sub_1C13840` | `0x1C13840` | — | Global/function iterator used for dead-code sweep |
 | `sub_12F1650` | `0x12F1650` | 5.2 KB | Bitcode reader variant A |
 | `sub_12F11C0` | `0x12F11C0` | 5.2 KB | Bitcode reader variant B |
 
@@ -460,7 +460,7 @@ This cycle is orchestrated by `sub_12E1EF0` (51 KB, the top-level concurrent com
 
 ## Separate Compilation and the NVVM Container
 
-When `nvcc --device-c` compiles a `.cu` file, cicc produces an NVVM container with `CompileMode = NVVM_COMPILE_MODE_SEPARATE_ABI` (value 2) and `IRLevel = NVVM_IR_LEVEL_LTO` (value 1). This container wraps partially-optimized LLVM bitcode -- the per-module optimizer has run, but cross-module optimization has not. The bitcode is embedded in the ELF `.nv_fatbin` section of the relocatable object file.
+When `nvcc --device-c` compiles a `.cu` file, cicc produces an NVVM container with `CompileMode = NVVM_COMPILE_MODE_SEPARATE_ABI` (value 2) and `IRLevel = NVVM_IR_LEVEL_LTO` (value 1). This container wraps partially-optimized LLVM bitcode — the per-module optimizer has run, but cross-module optimization has not. The bitcode is embedded in the ELF `.nv_fatbin` section of the relocatable object file.
 
 At link time, `nvlink` extracts the bitcode sections from all input objects, concatenates them, and passes the result back to cicc in LTO mode. cicc deserializes each container, links the bitcode modules via LLVM's `Linker::linkModules`, and then runs the LTO pipeline described above on the merged module. The pipeline sees the complete device program for the first time at this point.
 
@@ -520,10 +520,10 @@ Registered in `ctor_184_0` (`0x4DA920`) and `ctor_029` (`0x489C80`):
 | `import-cold-multiplier` | float | 0.0 | Multiplier for cold callsites (0 = never import cold on CPU) |
 | `dword_4FAB120` | int | -1 | Global import budget; negative = unlimited |
 | `dword_4FAA770` | int | 0 | Current import count (runtime accumulator) |
-| `summary-file` | string | -- | Path to external summary file for ThinLTO |
-| `function-import` | -- | -- | Pipeline registration string (slot 43) |
+| `summary-file` | string | — | Path to external summary file for ThinLTO |
+| `function-import` | — | — | Pipeline registration string (slot 43) |
 | `disable-thinlto-funcattrs` | bool | false | Disable ThinLTO function attribute propagation |
-| `thinlto-workload-def` | string | -- | Workload definition file for priority-guided import |
+| `thinlto-workload-def` | string | — | Workload definition file for priority-guided import |
 
 ### Inliner Knobs
 
@@ -532,13 +532,13 @@ Registered in `ctor_186_0` (`0x4DBEC0`):
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
 | `inline-budget` | int | 20,000 | Per-caller inlining cost budget (NVIDIA custom model) |
-| `inline-total-budget` | int | -- | Global total budget across all callers |
-| `inline-adj-budget1` | int | -- | Adjusted per-caller budget (secondary) |
+| `inline-total-budget` | int | — | Global total budget across all callers |
+| `inline-adj-budget1` | int | — | Adjusted per-caller budget (secondary) |
 | `nv-inline-all` | bool | off | Force inline every function call |
 | `profuseinline` | bool | off | Verbose inlining diagnostic output |
-| `inline-switchctrl` | int | -- | Heuristic tuning for switch statements |
+| `inline-switchctrl` | int | — | Heuristic tuning for switch statements |
 | `inline-threshold` | int | 225 | LLVM standard model threshold (separate from NVIDIA's 20K) |
-| `function-inline-cost-multiplier` | float | -- | New PM: penalty multiplier for recursive functions |
+| `function-inline-cost-multiplier` | float | — | New PM: penalty multiplier for recursive functions |
 
 ### GlobalOpt Knobs
 
@@ -555,18 +555,18 @@ No dedicated `cl::opt` flags. All thresholds are hardcoded:
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
-| `wholeprogramdevirt` | -- | -- | Pipeline registration string (slot 121) |
+| `wholeprogramdevirt` | — | — | Pipeline registration string (slot 121) |
 
 The pass has no NVIDIA-specific tuning knobs. It relies entirely on the completeness of type_test metadata produced by the NVModuleSummary builder.
 
 ## Cross-References
 
-- **[NVModuleSummary Builder](./module-summary.md)** -- 4-level import priority, complexity budget, CUDA attribute tracking
-- **[ThinLTO Function Import](./thinlto-import.md)** -- threshold computation, priority-class multipliers, global budget
-- **[Inliner Cost Model](./inliner-cost.md)** -- four parallel models, `.param` address space cost, ML advisory
-- **[GlobalOpt for GPU](./globalopt.md)** -- address-space-aware SRA, small-constant promotion, malloc elimination
-- **[Whole-Program Devirtualization](./devirtualization.md)** -- closed-world virtual call resolution, type test metadata
-- **[NVVM Container Format](../structs/nvvm-container.md)** -- IRLevel enum, CompileMode, bitcode payload encoding
-- **[LLVM Optimizer](../pipeline/optimizer.md)** -- LTO pipeline entry at `sub_12F5F30`, tier system
-- **[LazyCallGraph & CGSCC](../infra/lazycallgraph.md)** -- call graph infrastructure used by the CGSCC inliner
-- **[Entry Point & CLI](../pipeline/entry.md)** -- flag catalog routing to lto output vector, `-dc` mode
+- **[NVModuleSummary Builder](./module-summary.md)** — 4-level import priority, complexity budget, CUDA attribute tracking
+- **[ThinLTO Function Import](./thinlto-import.md)** — threshold computation, priority-class multipliers, global budget
+- **[Inliner Cost Model](./inliner-cost.md)** — four parallel models, `.param` address space cost, ML advisory
+- **[GlobalOpt for GPU](./globalopt.md)** — address-space-aware SRA, small-constant promotion, malloc elimination
+- **[Whole-Program Devirtualization](./devirtualization.md)** — closed-world virtual call resolution, type test metadata
+- **[NVVM Container Format](../structs/nvvm-container.md)** — IRLevel enum, CompileMode, bitcode payload encoding
+- **[LLVM Optimizer](../pipeline/optimizer.md)** — LTO pipeline entry at `sub_12F5F30`, tier system
+- **[LazyCallGraph & CGSCC](../infra/lazycallgraph.md)** — call graph infrastructure used by the CGSCC inliner
+- **[Entry Point & CLI](../pipeline/entry.md)** — flag catalog routing to lto output vector, `-dc` mode

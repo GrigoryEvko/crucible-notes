@@ -1,6 +1,6 @@
 # SM75 Turing
 
-The SM75 (Turing, compute capability 7.5) instruction selection backend occupies 984 KB at `0xF16000`--`0x100C000` and is the largest single-architecture ISel backend in the nvlink v13.0.88 binary. It contains 1,737 functions organized into four functional layers -- operand predicates, instruction emitters, pattern matchers, and post-ISel emit+encode functions -- plus a 280 KB mega-hub dispatch function (`sub_FBB810`) that is the largest function in the entire binary at 65,999 instructions.
+The SM75 (Turing, compute capability 7.5) instruction selection backend occupies 984 KB at `0xF16000`--`0x100C000` and is the largest single-architecture ISel backend in the nvlink v13.0.88 binary. It contains 1,737 functions organized into four functional layers — operand predicates, instruction emitters, pattern matchers, and post-ISel emit+encode functions — plus a 280 KB mega-hub dispatch function (`sub_FBB810`) that is the largest function in the entire binary at 65,999 instructions.
 
 Turing is architecturally significant as the first SM generation to introduce the Uniform Register File (URF), which manifests throughout this backend as operand kind 10 (`UREG`). The ISel uses a priority-based linear scan: for each IR instruction, all 276 pattern matchers run in sequence, and the highest-priority match wins.
 
@@ -63,15 +63,15 @@ Fifteen trivial inline functions at `0xF16030`--`0xF160F0` classify operand type
 | Address | Function | Test | Operand Kind | Confidence |
 |---|---|---|---|---|
 | `0xF16030` | `sm75_get_regclass_id` | `return a1` | Identity (passthrough) | HIGH |
-| `0xF16040` | `sm75_is_register_operand` | `a1 == 2` | REG -- general register | HIGH |
-| `0xF16050` | `sm75_is_immediate_operand` | `a1 == 1` | IMM -- immediate/literal value | HIGH |
+| `0xF16040` | `sm75_is_register_operand` | `a1 == 2` | REG — general register | HIGH |
+| `0xF16050` | `sm75_is_immediate_operand` | `a1 == 1` | IMM — immediate/literal value | HIGH |
 | `0xF16060` | `sm75_is_memory_operand` | `a1 == 6` | Memory/address operand | MEDIUM |
-| `0xF16070` | `sm75_is_uniform_register` | `a1 == 10` | **UREG -- uniform register (Turing+)** | MEDIUM |
-| `0xF16080` | `sm75_is_predicate_operand` | `a1 == 9` | PRED -- predicate register | MEDIUM |
+| `0xF16070` | `sm75_is_uniform_register` | `a1 == 10` | **UREG — uniform register (Turing+)** | MEDIUM |
+| `0xF16080` | `sm75_is_predicate_operand` | `a1 == 9` | PRED — predicate register | MEDIUM |
 | `0xF16090` | `sm75_is_cbuf_operand` | `a1 == 5` | Constant buffer reference | LOW |
 | `0xF160A0` | `sm75_is_texture_operand` | `a1 == 4` | Texture/sampler reference | LOW |
-| `0xF160B0` | `sm75_is_true_predicate` | `a1 == 3` | PT -- always-true guard | MEDIUM |
-| `0xF160C0` | `sm75_is_false_predicate` | `a1 == 15` | PN -- always-false guard | MEDIUM |
+| `0xF160B0` | `sm75_is_true_predicate` | `a1 == 3` | PT — always-true guard | MEDIUM |
+| `0xF160C0` | `sm75_is_false_predicate` | `a1 == 15` | PN — always-false guard | MEDIUM |
 | `0xF160D0` | `sm75_is_kind_13` | `a1 == 13` | Unknown | LOW |
 | `0xF160E0` | `sm75_is_kind_14` | `a1 == 14` | Unknown | LOW |
 | `0xF160F0` | `sm75_is_kind_16` | `a1 == 16` | Unknown | LOW |
@@ -80,7 +80,7 @@ Fifteen trivial inline functions at `0xF16030`--`0xF160F0` classify operand type
 
 The identity function at `0xF16030` is used as both a register-class accessor (return value compared against 1023/1/2/4/5) and a generic field value passthrough. A second identity function at `0xF16130` has a different type signature in the original source (both compile to identical machine code, but they occupy distinct vtable slots).
 
-The predicate pair `sub_F160B0` / `sub_F160C0` is always called as `sub_F160B0(v) || sub_F160C0(v)` -- accepting either PT (always true, kind 3) or PN (always false, kind 15), matching the SASS convention where a predicate guard can be either polarity.
+The predicate pair `sub_F160B0` / `sub_F160C0` is always called as `sub_F160B0(v) || sub_F160C0(v)` — accepting either PT (always true, kind 3) or PN (always false, kind 15), matching the SASS convention where a predicate guard can be either polarity.
 
 ### Operand Kind Tag Summary
 
@@ -89,9 +89,9 @@ The predicate pair `sub_F160B0` / `sub_F160C0` is always called as `sub_F160B0(v
 | 1 | IMM | Immediate / constant value | `0xF16050` |
 | 2 | REG | General register operand | `0xF16040` |
 | 3 | PT | Predicate true (always-true guard) | `0xF160B0` |
-| 4 | -- | Texture / sampler reference | `0xF160A0` |
-| 5 | -- | Constant buffer reference | `0xF16090` |
-| 6 | -- | Memory / address operand | `0xF16060` |
+| 4 | — | Texture / sampler reference | `0xF160A0` |
+| 5 | — | Constant buffer reference | `0xF16090` |
+| 6 | — | Memory / address operand | `0xF16060` |
 | 9 | PRED | Predicate register operand | `0xF16080` |
 | 10 | **UREG** | **Uniform register (Turing+)** | `0xF16070` |
 | 15 | PN | Predicate false (always-false guard) | `0xF160C0` |
@@ -133,19 +133,19 @@ Phase 8: Write branch target / relocation info to instruction node
 | `0xF10BE0` | 4,857 B | `sm75_emit_alu_2src_uniform` | 18 (int ALU) | 2: gen(rc=10) + pred | `0x7000000001` |
 | `0xF11090` | ~4.8 KB | `sm75_emit_alu_2src_uniform_B` | 18 | 2 | `0x7000000001` |
 | `0xF11540` | ~4.8 KB | `sm75_emit_alu_2src_uniform_C` | 18 | 2 | `0x7000000001` |
-| `0xF119F0` | ~4.8 KB | `sm75_emit_alu_variant_D` | 18 | -- | -- |
-| `0xF11EE0` | ~4.8 KB | `sm75_emit_alu_variant_E` | 18 | -- | -- |
-| `0xF123D0` | ~4.8 KB | `sm75_emit_alu_variant_F` | 18 | -- | -- |
-| `0xF128E0` | ~4.8 KB | `sm75_emit_memop_variant_G` | 126 | -- | -- |
-| `0xF12DF0` | ~4.8 KB | `sm75_emit_memop_variant_H` | 126 | -- | -- |
-| `0xF13310` | ~4.8 KB | `sm75_emit_variant_I` | -- | -- | -- |
-| `0xF13830` | ~4.8 KB | `sm75_emit_variant_J` | -- | -- | -- |
-| `0xF13D50` | ~4.8 KB | `sm75_emit_variant_K` | -- | -- | -- |
-| `0xF14310` | ~4.8 KB | `sm75_emit_variant_L` | -- | -- | -- |
-| `0xF148D0` | ~4.8 KB | `sm75_emit_variant_M` | -- | -- | -- |
-| `0xF14E90` | ~4.8 KB | `sm75_emit_variant_N` | -- | -- | -- |
-| `0xF15470` | ~4.8 KB | `sm75_emit_variant_O` | -- | -- | -- |
-| `0xF15A50` | ~4.8 KB | `sm75_emit_variant_P` | -- | -- | -- |
+| `0xF119F0` | ~4.8 KB | `sm75_emit_alu_variant_D` | 18 | — | — |
+| `0xF11EE0` | ~4.8 KB | `sm75_emit_alu_variant_E` | 18 | — | — |
+| `0xF123D0` | ~4.8 KB | `sm75_emit_alu_variant_F` | 18 | — | — |
+| `0xF128E0` | ~4.8 KB | `sm75_emit_memop_variant_G` | 126 | — | — |
+| `0xF12DF0` | ~4.8 KB | `sm75_emit_memop_variant_H` | 126 | — | — |
+| `0xF13310` | ~4.8 KB | `sm75_emit_variant_I` | — | — | — |
+| `0xF13830` | ~4.8 KB | `sm75_emit_variant_J` | — | — | — |
+| `0xF13D50` | ~4.8 KB | `sm75_emit_variant_K` | — | — | — |
+| `0xF14310` | ~4.8 KB | `sm75_emit_variant_L` | — | — | — |
+| `0xF148D0` | ~4.8 KB | `sm75_emit_variant_M` | — | — | — |
+| `0xF14E90` | ~4.8 KB | `sm75_emit_variant_N` | — | — | — |
+| `0xF15470` | ~4.8 KB | `sm75_emit_variant_O` | — | — | — |
+| `0xF15A50` | ~4.8 KB | `sm75_emit_variant_P` | — | — | — |
 
 ### Opcode Families
 
@@ -182,7 +182,7 @@ char __fastcall sm75_match_XXX(
 
 Each performs a deeply-nested sequence of checks:
 
-1. Check instruction attributes via `sub_A49150(ctx, node, field_id)` -- see [field ID dictionary](#field-id-dictionary) below
+1. Check instruction attributes via `sub_A49150(ctx, node, field_id)` — see [field ID dictionary](#field-id-dictionary) below
 2. Check explicit operand count via `sub_530FD0(node)`
 3. For each explicit operand: validate kind tag and register class
 4. Check implicit operand count via `sub_530FC0(node)`
@@ -203,7 +203,7 @@ The 276 matchers group into 12 functional categories by the instruction families
 | Predicated ops | `0xF4AA30`--`0xF4FB70` | ~10 | ISETP 3-op (209, 19), texture fetch 3-op (218, 19) |
 | Store variants | `0xF58BB0`--`0xF5C120` | ~10 | STG with predicate (10, 19), store predicated variants |
 | Surface / texture | `0xF6DC60`--`0xF71B60` | ~15 | SULD 4-op predicated (5, 19) with side-effect check |
-| Complex HMMA | `0xF76170`--`0xF77DF0` | ~8 | HMMA wide R128 (7, 34), HMMA widest 9-op (8, 39) -- largest matchers |
+| Complex HMMA | `0xF76170`--`0xF77DF0` | ~8 | HMMA wide R128 (7, 34), HMMA widest 9-op (8, 39) — largest matchers |
 | ALU extended | `0xF82CF0`--`0xF96B40` | ~50 | IMAD predicated 6-op (1, 19), IADD/IMUL/SHF/BFE/BFI/LOP3/PRMT |
 | Comparison / SETP | `0xF97CE0`--`0xF9CD30` | ~15 | DSETP 8-op (22, 34), DSETP 9-op+pred (23, 36) |
 | Branch / call | `0xFA0310`--`0xFAA4E0` | ~20 | BRA complex predicated (1, 24), call/return variants |
@@ -213,19 +213,19 @@ The 276 matchers group into 12 functional categories by the instruction families
 
 The most complex matchers target Half-precision Matrix Multiply-Accumulate (HMMA) instructions for Turing's tensor cores. These are the largest individual matcher functions (6--8 KB each) because HMMA has the most operands and encoding options:
 
-**`sub_F77140` -- HMMA widest variant A** (8,408 bytes, 179 lines):
+**`sub_F77140` — HMMA widest variant A** (8,408 bytes, 179 lines):
 - Checks field `0x216 == 2717` (HMMA opcode variant)
 - Additional checks: fields `0xA1 == 700`, `0xA2` in range 702--703
 - 1 explicit operand: register R128
 - 9 implicit operands: R128 x3, predicate, R64, R32, UREG R32, PT/PN check
 - Sets pattern_id=8, priority=39 (maximum observed)
 
-**`sub_F77DF0` -- HMMA widest variant B** (8,401 bytes, 179 lines):
+**`sub_F77DF0` — HMMA widest variant B** (8,401 bytes, 179 lines):
 - Checks field `0x21A == 2729` (different HMMA subtype)
 - Same 9-implicit-operand structure
 - Sets pattern_id=12, priority=39
 
-**`sub_F76DD0` -- HMMA wide operand A** (7,226 bytes, 164 lines):
+**`sub_F76DD0` — HMMA wide operand A** (7,226 bytes, 164 lines):
 - Checks field `0x216 == 2716`
 - 1 explicit R128 + 8 implicit (R128 x3, predicate, R32, UREG x2)
 - Sets pattern_id=7, priority=34
@@ -467,7 +467,7 @@ Field IDs passed to `sub_A49150` to query instruction attributes. These are the 
 
 ## Turing-Specific Design Observations
 
-**Uniform Register File (URF).** SM75 introduced the uniform register file -- scalar registers whose value is identical across all threads in a warp. This eliminates redundant per-lane computation for warp-uniform values. In the ISel backend, UREG (kind 10) appears as a first-class operand type alongside REG (kind 2). Many pattern matchers accept either kind in the same operand slot, reflecting that SASS instructions can take operands from either the general or uniform register file.
+**Uniform Register File (URF).** SM75 introduced the uniform register file — scalar registers whose value is identical across all threads in a warp. This eliminates redundant per-lane computation for warp-uniform values. In the ISel backend, UREG (kind 10) appears as a first-class operand type alongside REG (kind 2). Many pattern matchers accept either kind in the same operand slot, reflecting that SASS instructions can take operands from either the general or uniform register file.
 
 **HMMA complexity.** The tensor core (HMMA) instruction family drives the most complex patterns in this backend. The R128 register class (ID 4) exists specifically for HMMA, representing four consecutive 32-bit registers that hold matrix fragments. The highest-priority matchers (priority 39) are all HMMA variants, and the largest individual matcher functions (8+ KB) target HMMA.
 
@@ -499,14 +499,14 @@ For general SM75 architecture details, see the [ptxas wiki: Turing/Ampere](../..
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas: Architecture Overview](../ptxas/overview.md) -- full address map including SM75 backend position
-- [Instruction Selection Hubs](../ptxas/isel-hubs.md) -- the five mega-hub dispatch functions
-- [IR Nodes](../ptxas/ir-nodes.md) -- IR node structure and accessor functions
-- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM75 vtable registration and callbacks
-- [Architecture Profiles](arch-profiles.md) -- SM75 profile in the linker database
-- [SM80 Ampere](sm80-ampere.md) -- successor ISel backend
+- [Embedded ptxas: Architecture Overview](../ptxas/overview.md) — full address map including SM75 backend position
+- [Instruction Selection Hubs](../ptxas/isel-hubs.md) — the five mega-hub dispatch functions
+- [IR Nodes](../ptxas/ir-nodes.md) — IR node structure and accessor functions
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) — SM75 vtable registration and callbacks
+- [Architecture Profiles](arch-profiles.md) — SM75 profile in the linker database
+- [SM80 Ampere](sm80-ampere.md) — successor ISel backend
 
 ### Sibling Wikis
-- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- standalone ptxas SM75/SM80 target documentation
-- [ptxas: ISel](../../ptxas/codegen/isel.html) -- standalone ptxas instruction selection
-- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc compiler SM75 through SM89 targets
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) — standalone ptxas SM75/SM80 target documentation
+- [ptxas: ISel](../../ptxas/codegen/isel.html) — standalone ptxas instruction selection
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) — cicc compiler SM75 through SM89 targets

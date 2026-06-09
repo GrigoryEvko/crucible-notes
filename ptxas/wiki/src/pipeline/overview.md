@@ -91,7 +91,7 @@ A concrete trace of a single-kernel PTX module compiled for sm_100 at `-O2`:
 
 | Stage | Input | Output | Peak Memory |
 |---|---|---|---|
-| PTX text | -- | 5--50 KB text | 100 KB (file buffer + parser state) |
+| PTX text | — | 5--50 KB text | 100 KB (file buffer + parser state) |
 | AST | Token stream | 200--500 nodes (~40--100 KB) | 200 KB |
 | Ori IR (initial) | AST | 600--1,200 instructions (~100--250 KB) | 500 KB |
 | Ori IR (post-OCG) | 1,200 instr | 1,500--2,500 instr (~300--600 KB) | 2--8 MB (peak during regalloc) |
@@ -128,9 +128,9 @@ ptxas supports two compilation modes for multi-kernel PTX modules:
 
 The compilation driver `sub_446240` iterates over compile units sequentially. For each kernel entry:
 
-1. `sub_43CC70` -- per-entry compilation unit processor, skips `__cuda_dummy_entry__`
-2. `sub_7FBB70` -- per-kernel entry point, prints `"\nFunction name: "` + kernel name
-3. `sub_7FB6C0` -- pipeline orchestrator: builds phases via `sub_C62720`, executes via `sub_C64F70`
+1. `sub_43CC70` — per-entry compilation unit processor, skips `__cuda_dummy_entry__`
+2. `sub_7FBB70` — per-kernel entry point, prints `"\nFunction name: "` + kernel name
+3. `sub_7FB6C0` — pipeline orchestrator: builds phases via `sub_C62720`, executes via `sub_C64F70`
 4. Cleanup: destroys 17 analysis data structures (live ranges, register maps, scheduling state)
 
 Each kernel runs through the entire 159-phase pipeline independently. Cross-kernel state is limited to shared memory layout and the global symbol table.
@@ -162,7 +162,7 @@ struct ThreadLocalContext {  // 280 bytes (0x118), per-thread via pthread_getspe
 };
 ```
 
-Accessed by `sub_4280C0` (3,928 callers -- the single most-called function in the binary). On first call in a new thread, allocates and initializes via `malloc(0x118)` + `memset` + `pthread_cond_init` + `pthread_mutex_init` + `sem_init`. The decompiled code confirms the 280-byte size: `v5 = malloc(0x118u)`, followed by `memset(v5, 0, 0x118u)`, `pthread_cond_init(v5 + 128)`, `pthread_mutex_init(v5 + 176)`, `sem_init(v5 + 216)`. After initialization, the struct is inserted into a global doubly-linked list (offsets +256 and +264 hold prev/next pointers, protected by a global mutex). The `pthread_setspecific(key, v5)` call stores the pointer for subsequent `pthread_getspecific` retrieval.
+Accessed by `sub_4280C0` (3,928 callers — the single most-called function in the binary). On first call in a new thread, allocates and initializes via `malloc(0x118)` + `memset` + `pthread_cond_init` + `pthread_mutex_init` + `sem_init`. The decompiled code confirms the 280-byte size: `v5 = malloc(0x118u)`, followed by `memset(v5, 0, 0x118u)`, `pthread_cond_init(v5 + 128)`, `pthread_mutex_init(v5 + 176)`, `sem_init(v5 + 216)`. After initialization, the struct is inserted into a global doubly-linked list (offsets +256 and +264 hold prev/next pointers, protected by a global mutex). The `pthread_setspecific(key, v5)` call stores the pointer for subsequent `pthread_getspecific` retrieval.
 
 ## Key Function Call Chain
 
@@ -246,8 +246,8 @@ ptxas uses a custom hierarchical pool allocator (`sub_424070` / `sub_4248B0`, th
 
 Additional per-subsystem pools exist:
 
-- `"PTX parsing state"` -- created by `sub_451730`, holds the lexer/parser symbol tables and AST nodes
-- `"elfw memory space"` -- created by `sub_1CB53A0`, holds the ELF world object (672 bytes) and section data
+- `"PTX parsing state"` — created by `sub_451730`, holds the lexer/parser symbol tables and AST nodes
+- `"elfw memory space"` — created by `sub_1CB53A0`, holds the ELF world object (672 bytes) and section data
 
 ### Pool Allocator Internals
 
@@ -291,9 +291,9 @@ The PhaseManager (`sub_C62720`) instantiates phases via a 159-case factory switc
 
 The finalizer `sub_612DE0` (47 KB decomp) assembles the NVIDIA ELF/cubin from the compiled SASS. Section layout (`sub_1CABD60`, 11,856 B native / 66 KB decomp) assigns addresses to shared memory, constant banks (with OCG deduplication), local memory, and reserved shared memory (`.nv.reservedSmem.begin/cap/offset0`). The master ELF emitter `sub_1C9F280` (15,263 B native / 97 KB decomp) constructs headers, section tables, and program headers. Three binary output modes exist:
 
-1. **mercury** -- traditional SASS binary format
-2. **capmerc** -- Capsule Mercury (default on sm_100+), embeds PTX source in `.nv.merc.*` sections
-3. **sass** -- direct SASS output
+1. **mercury** — traditional SASS binary format
+2. **capmerc** — Capsule Mercury (default on sm_100+), embeds PTX source in `.nv.merc.*` sections
+3. **sass** — direct SASS output
 
 See [ELF/Cubin Output](output.md).
 
@@ -303,7 +303,7 @@ DWARF debug information generation: `.debug_info`, `.debug_line`, `.debug_frame`
 
 ## Error Paths and Recovery
 
-ptxas uses `setjmp`/`longjmp` as its sole error recovery mechanism -- there are no C++ exceptions (the binary is compiled as C). Three nested recovery points exist, each catching progressively more localized failures.
+ptxas uses `setjmp`/`longjmp` as its sole error recovery mechanism — there are no C++ exceptions (the binary is compiled as C). Three nested recovery points exist, each catching progressively more localized failures.
 
 ### Recovery Point Hierarchy
 
@@ -337,10 +337,10 @@ Bison error recovery operates through the `error` token in the grammar. When the
 
 ### Phase Failure in PhaseManager
 
-The phase executor `sub_C64F70` runs each phase by calling its vtable `execute()` method. There is no explicit per-phase error check -- phases that detect internal errors call the diagnostic emitter `sub_42FBA0` directly. The error handling cascade:
+The phase executor `sub_C64F70` runs each phase by calling its vtable `execute()` method. There is no explicit per-phase error check — phases that detect internal errors call the diagnostic emitter `sub_42FBA0` directly. The error handling cascade:
 
 1. **Non-fatal phase error (severity 3--5):** The error is printed and the error flag is set in the TLS context. The PhaseManager continues executing subsequent phases. This allows multiple diagnostics to be collected in a single run.
-2. **Fatal phase error (severity 6):** Triggers `longjmp` to Level 2 or Level 3. The current kernel's compilation is aborted. The PhaseManager's loop is unwound non-locally -- no cleanup of intermediate phase state occurs. Resources are reclaimed when the per-kernel memory pool is destroyed.
+2. **Fatal phase error (severity 6):** Triggers `longjmp` to Level 2 or Level 3. The current kernel's compilation is aborted. The PhaseManager's loop is unwound non-locally — no cleanup of intermediate phase state occurs. Resources are reclaimed when the per-kernel memory pool is destroyed.
 3. **OOM during phase execution:** Any allocation failure calls `sub_42BDB0` (3,825 callers), which forwards to `sub_42F590` with a severity-6 descriptor at `unk_29FA530`. This always triggers `longjmp`.
 
 The PhaseManager logs phase transitions using `"Before <phase>"` and `"After <phase>"` string construction (visible in `sub_C64F70`). When `DUMPIR` is set to a phase name, the IR is dumped to a file after that phase completes. This enables bisection of phase failures: `--knob DUMPIR=<phase_name>` isolates which phase corrupted the IR.
@@ -349,9 +349,9 @@ The PhaseManager logs phase transitions using `"Before <phase>"` and `"After <ph
 
 The register allocator has its own retry mechanism that operates *within* the normal pipeline (not via longjmp). The retry driver `sub_971A90` (355 lines) wraps the Fatpoint allocator in a two-phase strategy:
 
-**Phase 1 -- NOSPILL.** Attempt allocation without spilling. If the allocator fits within the register budget, proceed directly to finalization.
+**Phase 1 — NOSPILL.** Attempt allocation without spilling. If the allocator fits within the register budget, proceed directly to finalization.
 
-**Phase 2 -- SPILL retry loop.** If NOSPILL fails:
+**Phase 2 — SPILL retry loop.** If NOSPILL fails:
 1. The spill guidance engine `sub_96D940` (84 KB) computes per-register-class spill candidates
 2. The allocator retries with progressively more aggressive spilling, up to N attempts (controlled by knobs 638/639)
 3. Each attempt prints: `"-CLASS NOSPILL REGALLOC: attemp %d, used %d, target %d"` (note: the typo "attemp" is in the binary)
@@ -367,7 +367,7 @@ Compile the program with a higher register target
 
 This error is emitted by `sub_9714E0` through two paths: with source location (via `sub_895530`, including function name and PTX line number) or without source location (via `sub_7EEFA0`, generic). After this error, `sub_9714E0` returns with `HIBYTE(status)` set, causing the retry driver to clear all register assignments to `-1` and propagate the failure.
 
-A dedicated DUMPIR hook exists: `"Please use -knob DUMPIR=AllocateRegisters for debugging"` -- this string (found at `sub_9714E0`'s error path) directs users to dump the IR state before the allocator runs.
+A dedicated DUMPIR hook exists: `"Please use -knob DUMPIR=AllocateRegisters for debugging"` — this string (found at `sub_9714E0`'s error path) directs users to dump the IR state before the allocator runs.
 
 ### Fatal Error Handler Chain
 
@@ -391,7 +391,7 @@ The complete chain from any error site to process termination:
   [Level 1] sub_446240 -> cleanup global state, exit(non-zero)
 ```
 
-**Resource leak note.** Because `longjmp` bypasses normal stack unwinding, all heap allocations made between the `setjmp` and the fatal error are leaked unless tracked in a pool. This is why ptxas uses pool allocators -- the per-kernel pool can be destroyed wholesale at the Level 2 recovery point, reclaiming all leaked memory without tracking individual allocations.
+**Resource leak note.** Because `longjmp` bypasses normal stack unwinding, all heap allocations made between the `setjmp` and the fatal error are leaked unless tracked in a pool. This is why ptxas uses pool allocators — the per-kernel pool can be destroyed wholesale at the Level 2 recovery point, reclaiming all leaked memory without tracking individual allocations.
 
 ## Architecture Dispatch
 
@@ -399,17 +399,17 @@ An architecture vtable factory at `sub_1CCEEE0` (17KB, 244 callees) constructs a
 
 | Range | Architecture | Generation | Status in v13.0.88 |
 |---|---|---|---|
-| sm_30-39 | Kepler | 1st gen | **Validation only** -- accepted by `bsearch` in `unk_1D16220`, but no codegen factory, no capability dispatch handlers, and no SASS encoders ship for these targets. Compilation fails after parsing. |
-| sm_50-59 | Maxwell | 2nd gen | **Validation only** -- same as Kepler. Present in the base validation table for backward-compatible PTX version/target checking, but no backend support. |
-| sm_60-69 | Pascal | 3rd gen | **Validation only** -- same as above. The codegen factory value 24576 (`6 << 12`) is referenced in comparison thresholds but no Pascal-specific encoder tables exist. |
-| sm_70-73 | Volta | 4th gen | **Validation only** -- sm_70, sm_72, sm_73 are in the base table but have no active capability dispatch handlers in `sub_607DB0`. |
-| sm_75 | Turing | 4th gen | **Active** -- lowest SM with full codegen support (factory 24577). |
-| sm_80-89 | Ampere / Ada | 5th gen | **Active** -- factory 28673. |
-| sm_90 | Hopper | 6th gen | **Active** -- factory 32768. |
-| sm_100-110 | Blackwell | 7th gen | **Active** -- factory 36864. |
-| sm_120-121 | Consumer / DGX Spark | 7th gen (desktop) | **Active** -- factory 36864 (shared with Blackwell datacenter). |
+| sm_30-39 | Kepler | 1st gen | **Validation only** — accepted by `bsearch` in `unk_1D16220`, but no codegen factory, no capability dispatch handlers, and no SASS encoders ship for these targets. Compilation fails after parsing. |
+| sm_50-59 | Maxwell | 2nd gen | **Validation only** — same as Kepler. Present in the base validation table for backward-compatible PTX version/target checking, but no backend support. |
+| sm_60-69 | Pascal | 3rd gen | **Validation only** — same as above. The codegen factory value 24576 (`6 << 12`) is referenced in comparison thresholds but no Pascal-specific encoder tables exist. |
+| sm_70-73 | Volta | 4th gen | **Validation only** — sm_70, sm_72, sm_73 are in the base table but have no active capability dispatch handlers in `sub_607DB0`. |
+| sm_75 | Turing | 4th gen | **Active** — lowest SM with full codegen support (factory 24577). |
+| sm_80-89 | Ampere / Ada | 5th gen | **Active** — factory 28673. |
+| sm_90 | Hopper | 6th gen | **Active** — factory 32768. |
+| sm_100-110 | Blackwell | 7th gen | **Active** — factory 36864. |
+| sm_120-121 | Consumer / DGX Spark | 7th gen (desktop) | **Active** — factory 36864 (shared with Blackwell datacenter). |
 
-The distinction between "validation only" and "active" is critical: the base validation table at `unk_1D16220` contains 32 entries including all legacy SMs back to sm_20, allowing ptxas to parse PTX files that declare `.target sm_30` without immediately rejecting them. However, the capability dispatch initializer `sub_607DB0` only registers handler functions for sm_75 through sm_121 (13 base targets). Attempting to compile code for an unregistered SM produces a fatal error during codegen factory lookup -- the architecture vtable factory `sub_1CCEEE0` cannot construct a backend object for these targets.
+The distinction between "validation only" and "active" is critical: the base validation table at `unk_1D16220` contains 32 entries including all legacy SMs back to sm_20, allowing ptxas to parse PTX files that declare `.target sm_30` without immediately rejecting them. However, the capability dispatch initializer `sub_607DB0` only registers handler functions for sm_75 through sm_121 (13 base targets). Attempting to compile code for an unregistered SM produces a fatal error during codegen factory lookup — the architecture vtable factory `sub_1CCEEE0` cannot construct a backend object for these targets.
 
 The legacy codegen factory values (12288 for sm_30, 16385/20481 for sm_50, 24576 for sm_60) survive as comparison constants in feature-gating checks throughout the backend (e.g., `if (factory_value > 28673)` gates sm_90+ features), but the code paths they would activate no longer exist.
 
@@ -427,23 +427,23 @@ The ROT13 decoding is performed inline during lookup (in `sub_79B240`, `GetKnobI
 
 ## Cross-References
 
-- [Binary Layout](../binary-layout.md) -- address ranges for every subsystem
-- [Function Map](../function-map.md) -- master index of recovered function addresses
-- [CLI Options](../config/cli-options.md) -- complete flag catalog
-- [Knobs System](../config/knobs.md) -- 1,294 internal tuning parameters
-- [Optimization Levels](../config/opt-levels.md) -- what changes at `-O0`/`-O1`/`-O2`/`-O3`
-- [Phase Manager](../passes/phase-manager.md) -- PhaseManager object layout and dispatch
-- [Memory Pool Allocator](../infra/memory-pools.md) -- pool struct layout and allocation algorithm
-- [Thread Pool & Concurrency](../infra/threading.md) -- thread pool struct, task submit, jobserver
+- [Binary Layout](../binary-layout.md) — address ranges for every subsystem
+- [Function Map](../function-map.md) — master index of recovered function addresses
+- [CLI Options](../config/cli-options.md) — complete flag catalog
+- [Knobs System](../config/knobs.md) — 1,294 internal tuning parameters
+- [Optimization Levels](../config/opt-levels.md) — what changes at `-O0`/`-O1`/`-O2`/`-O3`
+- [Phase Manager](../passes/phase-manager.md) — PhaseManager object layout and dispatch
+- [Memory Pool Allocator](../infra/memory-pools.md) — pool struct layout and allocation algorithm
+- [Thread Pool & Concurrency](../infra/threading.md) — thread pool struct, task submit, jobserver
 
 ## Function Map
 
 | Address | Size | Callers | Identity | Confidence |
 |---|---|---|---|---|
-| `0x409460` | 84 B | -- | `main` (entry point) | CERTAIN |
+| `0x409460` | 84 B | — | `main` (entry point) | CERTAIN |
 | `0x446240` | 11 KB | 1 | Top-level compilation driver | HIGH |
 | `0x434320` | 10 KB | 1 | CLI option parser + validator | HIGH |
-| `0x445EB0` | -- | 1 | Target configuration setup | HIGH |
+| `0x445EB0` | — | 1 | Target configuration setup | HIGH |
 | `0x43A400` | 4.7 KB | 1 | SM-specific default configuration | HIGH |
 | `0x43B660` | 3.8 KB | 1 | Register/resource constraint calculator | HIGH |
 | `0x451730` | 14 KB | 1 | Parser init + special register setup | HIGH |
@@ -454,7 +454,7 @@ The ROT13 decoding is performed inline during lookup (in `sub_79B240`, `GetKnobI
 | `0x7FB6C0` | 1.2 KB | 1 | Pipeline orchestrator | CERTAIN |
 | `0xC62720` | 4.7 KB | 1 | PhaseManager constructor | VERY HIGH |
 | `0xC60D30` | 3.6 KB | 1 | Phase factory (159-case switch) | VERY HIGH |
-| `0xC64F70` | -- | 1 | Phase executor | HIGH |
+| `0xC64F70` | — | 1 | Phase executor | HIGH |
 | `0x9F63D0` | 342 B | 1 | NamedPhases executor | VERY HIGH |
 | `0x612DE0` | 47 KB | 1 | Kernel finalizer / ELF builder | HIGH |
 | `0x1C9F280` | 97 KB | 1 | Master ELF emitter | HIGH |

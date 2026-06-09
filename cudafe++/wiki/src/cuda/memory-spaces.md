@@ -1,10 +1,10 @@
 # Memory Spaces
 
-Every CUDA variable that resides in GPU memory belongs to one of four **memory spaces**: `__device__` (global memory), `__shared__` (per-block scratchpad), `__constant__` (read-only broadcast memory), or `__managed__` (unified memory). cudafe++ encodes memory space as a two-byte bitfield at offsets `+148` and `+149` of the variable entity node. These two bytes are the variable-side analog of the execution space byte at `+182` used for functions -- the two systems are complementary but independent.
+Every CUDA variable that resides in GPU memory belongs to one of four **memory spaces**: `__device__` (global memory), `__shared__` (per-block scratchpad), `__constant__` (read-only broadcast memory), or `__managed__` (unified memory). cudafe++ encodes memory space as a two-byte bitfield at offsets `+148` and `+149` of the variable entity node. These two bytes are the variable-side analog of the execution space byte at `+182` used for functions — the two systems are complementary but independent.
 
 The memory space bitfield passes through three processing stages. First, attribute handlers in `attribute.c` set the appropriate bits and enforce mutual exclusion constraints (no `__shared__` + `__constant__`, no `thread_local`, no `grid_constant` conflict). Second, declaration processing in `decls.c` applies additional validation: VLA restrictions for `__shared__`, constexpr and external-linkage restrictions for `__constant__`/`__device__`, and structured binding constraints for all spaces. Third, symbol reference recording in `symbol_ref.c` checks whether host code illegally accesses device-side variables at reference time.
 
-Memory spaces apply exclusively to variables (entity kind 7). `__shared__` and `__constant__` have no function-side meaning -- only `__device__` (kind `'W'`, 87) doubles as a function execution space attribute.
+Memory spaces apply exclusively to variables (entity kind 7). `__shared__` and `__constant__` have no function-side meaning — only `__device__` (kind `'W'`, 87) doubles as a function execution space attribute.
 
 ## Key Facts
 
@@ -64,7 +64,7 @@ Here `(_WORD *)(a2 + 148)` (offset 74 in 16-bit units) is tested against `0x0102
 
 ### Mutual Exclusion
 
-In valid CUDA programs, at most one of `__device__`, `__shared__`, and `__constant__` should be set. However, `__managed__` always implies `__device__` -- the handler sets both `+149` bit 0 and `+148` bit 0. The validation logic permits `__device__ + __managed__` but rejects combinations like `__shared__ + __constant__`.
+In valid CUDA programs, at most one of `__device__`, `__shared__`, and `__constant__` should be set. However, `__managed__` always implies `__device__` — the handler sets both `+149` bit 0 and `+148` bit 0. The validation logic permits `__device__ + __managed__` but rejects combinations like `__shared__ + __constant__`.
 
 The mutual exclusion check appears identically in both `apply_nv_managed_attr` and `apply_nv_device_attr`:
 
@@ -83,7 +83,7 @@ The expression `((v9 & 2) != 0) + ((v9 & 4) != 0) == 2` is true only when **both
 
 ## Attribute Handlers
 
-### apply_nv_managed_attr -- sub_40E0D0
+### apply_nv_managed_attr — sub_40E0D0
 
 The `__managed__` handler is the simplest and most thoroughly documented. It demonstrates the full validation pattern that all memory space handlers share.
 
@@ -139,7 +139,7 @@ if ( (a2[164] & 4) != 0 && (*(WORD*)(a2 + 148) & 0x102) != 0 )
 
 The space-name selection cascade (`__constant__` > `__managed__` > `__shared__` > `__device__` > empty) is used in error messages to show which memory space conflicts with `__grid_constant__`. The cascade tests bits in priority order, matching the most "restrictive" space first.
 
-### apply_nv_device_attr -- sub_40EB80
+### apply_nv_device_attr — sub_40EB80
 
 The `__device__` handler is dual-purpose: it handles **both** variables (`a3 == 7`) and functions (`a3 == 11`).
 
@@ -191,7 +191,7 @@ else
 // (error 3669 for parameters without defaults in device context)
 ```
 
-The function path is documented in [Execution Spaces](./execution-spaces.md) -- here we focus on the variable path.
+The function path is documented in [Execution Spaces](./execution-spaces.md) — here we focus on the variable path.
 
 ### __shared__ and __constant__ Handlers
 
@@ -205,11 +205,11 @@ The `__shared__` and `__constant__` attribute handlers are dispatched through `a
 | Local variable check (3485) | Yes | Yes |
 | `__grid_constant__` conflict (3577) | Yes | Yes |
 
-The `__shared__` and `__constant__` keywords apply **only** to variables (kind 7). Unlike `__device__`, they do not have a function-path branch -- there is no `__shared__` or `__constant__` function execution space.
+The `__shared__` and `__constant__` keywords apply **only** to variables (kind 7). Unlike `__device__`, they do not have a function-path branch — there is no `__shared__` or `__constant__` function execution space.
 
 ## Variable Declaration Processing
 
-### sub_4DEC90 -- variable_declaration
+### sub_4DEC90 — variable_declaration
 
 The top-level declaration processor (`decls.c`) performs additional CUDA-specific validation after attribute handlers have set the memory space bits. This function is 1098 lines and handles both normal variable declarations and static data member definitions.
 
@@ -243,9 +243,9 @@ if ( (v49 & 4) == 0 ) {
 }
 ```
 
-The string `"__device__"` is produced by taking the string `"__host__ __device__"` and advancing by 9 bytes, skipping past `"__host__ "`. This is a binary-level optimization -- the compiler shares string storage between the combined `"__host__ __device__"` literal and the standalone `"__device__"` reference.
+The string `"__device__"` is produced by taking the string `"__host__ __device__"` and advancing by 9 bytes, skipping past `"__host__ "`. This is a binary-level optimization — the compiler shares string storage between the combined `"__host__ __device__"` literal and the standalone `"__device__"` reference.
 
-### sub_4CA6C0 -- decl_variable
+### sub_4CA6C0 — decl_variable
 
 The core variable declaration function (1090 lines, `decls.c:7730`) handles CUDA memory space propagation during symbol table entry creation. Key behaviors:
 
@@ -253,7 +253,7 @@ The core variable declaration function (1090 lines, `decls.c:7730`) handles CUDA
 
 **Scope walk**: Traverses the scope chain (784-byte scope entries at `qword_126C5E8`, indexed by `dword_126C5E4`) upward through class scopes (scope_kind 4) and template scopes (bit `0x20` at scope entry `+9`), until reaching a non-class, non-template scope. This determines whether the variable is at namespace scope, class scope, or block scope.
 
-**Error 3483 -- memory space in non-device function**: When a variable with a device memory space bit (`+148` bit 0 set) is declared inside a function body, and the enclosing routine is NOT device-only (`+182 & 0x30 != 0x20`), the function emits error 3483 with the storage kind and space name:
+**Error 3483 — memory space in non-device function**: When a variable with a device memory space bit (`+148` bit 0 set) is declared inside a function body, and the enclosing routine is NOT device-only (`+182 & 0x30 != 0x20`), the function emits error 3483 with the storage kind and space name:
 
 ```c
 // From sub_4CA6C0, ~line 886-910
@@ -284,7 +284,7 @@ if ((entity->byte_148 & 0x01) && dword_126C5D8 == -1)
 
 **Memory space propagation**: Calls `sub_4C4750` (`set_variable_attributes`) for final attribute propagation, and `sub_4CA480` (`check_variable_redeclaration`) for prior-declaration compatibility.
 
-### sub_4DC200 -- mark_defined_variable
+### sub_4DC200 — mark_defined_variable
 
 Post-declaration validation for device-memory variables with external linkage (26 lines):
 
@@ -310,9 +310,9 @@ void mark_defined_variable(entity_t *a1, int a2) {
 }
 ```
 
-The condition `(a1[148] & 3) == 1` tests that bit 0 (`__device__`) is set AND bit 1 (`__shared__`) is NOT set. This catches `__device__` variables (including `__device__ __constant__` and `__device__ __managed__`, since those have bit 0 set) but excludes `__shared__` variables (which have bit 1 set). The check is NOT about `__constant__` alone -- a pure `__constant__` variable (only bit 2 set, value 0x04) would yield `(0x04 & 3) == 0`, failing the test. The p1.06 report's characterization of error 3648 as "__constant__ with external linkage" is misleading; the actual condition is "device-accessible (non-shared) variable with external linkage."
+The condition `(a1[148] & 3) == 1` tests that bit 0 (`__device__`) is set AND bit 1 (`__shared__`) is NOT set. This catches `__device__` variables (including `__device__ __constant__` and `__device__ __managed__`, since those have bit 0 set) but excludes `__shared__` variables (which have bit 1 set). The check is NOT about `__constant__` alone — a pure `__constant__` variable (only bit 2 set, value 0x04) would yield `(0x04 & 3) == 0`, failing the test. The p1.06 report's characterization of error 3648 as "__constant__ with external linkage" is misleading; the actual condition is "device-accessible (non-shared) variable with external linkage."
 
-### sub_4CC150 -- cuda_variable_fixup
+### sub_4CC150 — cuda_variable_fixup
 
 Called from `variable_declaration` after CUDA constexpr-if detection. This function:
 
@@ -342,7 +342,7 @@ Byte +148:  bit 0 = __device__,  bit 1 = __shared__,  bit 2 = __constant__
 Byte +149:  bit 0 = __managed__
 ```
 
-The p1.06 report's alternative encoding is an analysis error, caused by `mark_defined_variable` (`sub_4DC200`) testing `+148 & 3 == 1` in the context of error 3648. That test checks for `__device__` set (bit 0) without `__shared__` (bit 1) -- not for `__constant__` at bit 0. The error was then characterized as "__constant__ with external linkage" based on the error message text rather than the actual bit test.
+The p1.06 report's alternative encoding is an analysis error, caused by `mark_defined_variable` (`sub_4DC200`) testing `+148 & 3 == 1` in the context of error 3648. That test checks for `__device__` set (bit 0) without `__shared__` (bit 1) — not for `__constant__` at bit 0. The error was then characterized as "__constant__ with external linkage" based on the error message text rather than the actual bit test.
 
 ## Validation Constraints
 
@@ -385,7 +385,7 @@ The `__managed__` keyword requires compute capability >= 3.0. This is verified a
 | Not local | Attribute handler | 3485 | Cannot appear on local variables |
 | No grid_constant | Attribute handler | 3577 | Incompatible with `__grid_constant__` parameter |
 
-Note: Error 3648 (external linkage warning) is emitted by `sub_4DC200` but the condition tests `(byte+148 & 3) == 1`, which checks for `__device__` set without `__shared__` -- not specifically `__constant__`. The check applies to any device-accessible non-shared variable, including `__device__`, `__device__ __constant__`, and `__device__ __managed__`.
+Note: Error 3648 (external linkage warning) is emitted by `sub_4DC200` but the condition tests `(byte+148 & 3) == 1`, which checks for `__device__` set without `__shared__` — not specifically `__constant__`. The check applies to any device-accessible non-shared variable, including `__device__`, `__device__ __constant__`, and `__device__ __managed__`.
 
 ## Cross-Space Variable Access Checking
 
@@ -416,7 +416,7 @@ The `nv_check_device_var_ref_in_host` path (assert string at `symbol_ref.c:2347`
 | 3548 | Variable has `__shared__` or `__constant__` (byte+148 bits 1-2) | Reference to `__shared__` / `__constant__` variable from host code |
 | 3549 | Variable has `__constant__` and reference is in initializer context (ref_kind bit 4) | Initializer referencing device memory variable from host |
 | 3550 | Variable has `__shared__` and reference is a write (ref_kind bit 1) | Write to `__shared__` variable from host code |
-| 3486 | Via `sub_6BCF10` -- complex linkage check (`+176 & 0x200000000002000`, `+166 == 5`, `+168 in [1,4]`) | Illegal device variable reference from host (operator function context) |
+| 3486 | Via `sub_6BCF10` — complex linkage check (`+176 & 0x200000000002000`, `+166 == 5`, `+168 in [1,4]`) | Illegal device variable reference from host (operator function context) |
 
 ### Host Variable Referenced from Device Code
 
@@ -427,8 +427,8 @@ The `nv_check_host_var_ref_in_device` path (assert string at `symbol_ref.c:2390`
 | 3623 | Device-only function referenced outside device context | Use of `__device__`-only function outside the bodies of device functions |
 
 The error 3623 has two context strings:
-- `"outside the bodies of device functions"` -- general case
-- `"from a constexpr or consteval __device__ function"` -- constexpr context
+- `"outside the bodies of device functions"` — general case
+- `"from a constexpr or consteval __device__ function"` — constexpr context
 
 ### Relaxation: dword_106BF40
 
@@ -459,7 +459,7 @@ extern "C" {
 }
 ```
 
-Six global lists (at addresses `unk_1286780` through `unk_12868C0`) accumulate symbols during compilation, one per section type. Note that `__shared__` variables do NOT get host reference arrays -- they have no host-visible address.
+Six global lists (at addresses `unk_1286780` through `unk_12868C0`) accumulate symbols during compilation, one per section type. Note that `__shared__` variables do NOT get host reference arrays — they have no host-visible address.
 
 ## Redeclaration Compatibility
 
@@ -469,7 +469,7 @@ When a variable is redeclared, `decl_variable` (`sub_4CA6C0`) compares the memor
 Error 1306: CUDA memory space mismatch on redeclaration
 ```
 
-The comparison tests byte `+148` of both the existing entity and the new declaration's computed attributes. The CUDA memory space acts as an implicit storage class -- storage class value 5 in the declaration state (offset 269) indicates a CUDA-specific storage class that requires special scope-walking behavior.
+The comparison tests byte `+148` of both the existing entity and the new declaration's computed attributes. The CUDA memory space acts as an implicit storage class — storage class value 5 in the declaration state (offset 269) indicates a CUDA-specific storage class that requires special scope-walking behavior.
 
 ## String Table Usage
 
@@ -568,9 +568,9 @@ The pointer-arithmetic trick for `"__device__"` appears in both `sub_4DEC90` (`v
 
 ## See Also
 
-- [Execution Spaces](./execution-spaces.md) -- function-level `__host__` / `__device__` / `__global__` encoding at entity `+182`
-- [Cross-Space Call Validation](./cross-space-validation.md) -- full cross-space call checking algorithm
-- [Entity Node Layout](../structs/entity-node.md) -- complete entity node offset map
-- [\_\_managed\_\_ Variables](../attributes/managed-variables.md) -- `__managed__` attribute system details
-- [\_\_grid\_constant\_\_](../attributes/grid-constant.md) -- `__grid_constant__` parameter attribute
-- [Host Reference Arrays](../output/host-reference-arrays.md) -- runtime device symbol discovery
+- [Execution Spaces](./execution-spaces.md) — function-level `__host__` / `__device__` / `__global__` encoding at entity `+182`
+- [Cross-Space Call Validation](./cross-space-validation.md) — full cross-space call checking algorithm
+- [Entity Node Layout](../structs/entity-node.md) — complete entity node offset map
+- [\_\_managed\_\_ Variables](../attributes/managed-variables.md) — `__managed__` attribute system details
+- [\_\_grid\_constant\_\_](../attributes/grid-constant.md) — `__grid_constant__` parameter attribute
+- [Host Reference Arrays](../output/host-reference-arrays.md) — runtime device symbol discovery

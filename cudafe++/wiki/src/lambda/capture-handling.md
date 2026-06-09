@@ -1,6 +1,6 @@
 # Capture Handling
 
-C++ lambdas capture variables by creating closure-class fields -- one field per captured entity. For scalars this is straightforward: the closure stores a copy (or reference) of the variable. Arrays present a problem because C++ forbids direct value-capture of C-style arrays. CUDA extended lambdas compound the problem: the wrapper template that carries captures across the host/device boundary needs a uniform way to express every field's type, including multi-dimensional arrays and `const`-qualified variants. cudafe++ solves this with two injected template families: `__nv_lambda_field_type<T>` (a type trait that maps each captured variable's declared type to a storable type) and `__nv_lambda_array_wrapper<T[D1]...[DN]>` (a wrapper struct that holds a deep copy of an N-dimensional array with element-by-element copy in its constructor).
+C++ lambdas capture variables by creating closure-class fields — one field per captured entity. For scalars this is straightforward: the closure stores a copy (or reference) of the variable. Arrays present a problem because C++ forbids direct value-capture of C-style arrays. CUDA extended lambdas compound the problem: the wrapper template that carries captures across the host/device boundary needs a uniform way to express every field's type, including multi-dimensional arrays and `const`-qualified variants. cudafe++ solves this with two injected template families: `__nv_lambda_field_type<T>` (a type trait that maps each captured variable's declared type to a storable type) and `__nv_lambda_array_wrapper<T[D1]...[DN]>` (a wrapper struct that holds a deep copy of an N-dimensional array with element-by-element copy in its constructor).
 
 A separate subsystem handles the backend code generator's emission of capture type declarations and capture value expressions for each lambda. `nv_gen_extended_lambda_capture_types` (`sub_46E640`) walks the capture list and emits `decltype`-based template arguments wrapped in `__nvdl_remove_ref` / `__nvdl_remove_const` / `__nv_lambda_trait_remove_cv`. `sub_46E550` emits the corresponding capture values (variable names, `this`, `*this`, or init-capture expressions).
 
@@ -50,11 +50,11 @@ struct __nv_lambda_field_type<const T [D1][D2][D3]> {
 };
 ```
 
-For 1D arrays (`T[D1]`), no specialization is generated. The primary template handles them -- 1D arrays decay to pointers in standard capture, so this is the identity case. The explicit specializations cover dimensions 2 through 8 (template parameter lists with `D1` through `D2`...`D7` respectively).
+For 1D arrays (`T[D1]`), no specialization is generated. The primary template handles them — 1D arrays decay to pointers in standard capture, so this is the identity case. The explicit specializations cover dimensions 2 through 8 (template parameter lists with `D1` through `D2`...`D7` respectively).
 
 ### Why Ranks 2-8
 
-The loop in `sub_6BC290` runs with counter `v1` from 2 to 8 inclusive (`while (v1 != 9)`). Rank 1 is handled by the primary template. Rank 9+ triggers the `static_assert` in the unspecialized `__nv_lambda_array_wrapper` primary template. This bounds the maximum supported array dimensionality for lambda capture at 7D -- an extremely generous limit (standard CUDA kernels rarely exceed 3D arrays).
+The loop in `sub_6BC290` runs with counter `v1` from 2 to 8 inclusive (`while (v1 != 9)`). Rank 1 is handled by the primary template. Rank 9+ triggers the `static_assert` in the unspecialized `__nv_lambda_array_wrapper` primary template. This bounds the maximum supported array dimensionality for lambda capture at 7D — an extremely generous limit (standard CUDA kernels rarely exceed 3D arrays).
 
 ## __nv_lambda_array_wrapper<T[D1]...[DN]>
 
@@ -112,7 +112,7 @@ struct __nv_lambda_array_wrapper<T [D1][D2][D3][D4]> {
 };
 ```
 
-Note the double-space before `<` in the `for` condition -- this is present in the actual emitted code (visible in the decompiled `sprintf` format string `"for(size_t i%u = 0; i%u  < D%u; ++i%u)"`).
+Note the double-space before `<` in the `for` condition — this is present in the actual emitted code (visible in the decompiled `sprintf` format string `"for(size_t i%u = 0; i%u  < D%u; ++i%u)"`).
 
 ## sub_6BC290: emit_array_capture_helpers
 
@@ -122,7 +122,7 @@ Address `0x6BC290`, 183 decompiled lines, in `nv_transforms.c`. Takes a single a
 
 The function has two major loops, each iterating rank from 2 to 8.
 
-**Loop 1 -- Array wrapper specializations:**
+**Loop 1 — Array wrapper specializations:**
 
 ```python
 for rank = 2 to 8:
@@ -150,7 +150,7 @@ for rank = 2 to 8:
     emit ";\n}\n};\n"
 ```
 
-**Loop 2 -- Field type specializations:**
+**Loop 2 — Field type specializations:**
 
 First emits the primary `__nv_lambda_field_type`:
 ```python
@@ -202,19 +202,19 @@ This function emits the template type arguments that appear in a wrapper struct 
 
 ### Input
 
-Takes `__int64 **a1` -- a pointer to the lambda info structure. The capture list is a linked list starting at `*a1` (offset +0 of the lambda info). Each capture entry is a node with:
+Takes `__int64 **a1` — a pointer to the lambda info structure. The capture list is a linked list starting at `*a1` (offset +0 of the lambda info). Each capture entry is a node with:
 
 | Offset | Size | Field |
 |---|---|---|
 | +0 | 8 | `next` pointer (linked list) |
-| +8 | 8 | `variable_entity` -- pointer to the captured variable's entity node |
-| +24 | 8 | `init_capture_scope` -- scope for init-capture expressions |
-| +32 | 1 | `flags_byte_1` -- bit 0 = init-capture, bit 7 = has braces/parens |
-| +33 | 1 | `flags_byte_2` -- bit 0 = paren-init (vs brace-init) |
+| +8 | 8 | `variable_entity` — pointer to the captured variable's entity node |
+| +24 | 8 | `init_capture_scope` — scope for init-capture expressions |
+| +32 | 1 | `flags_byte_1` — bit 0 = init-capture, bit 7 = has braces/parens |
+| +33 | 1 | `flags_byte_2` — bit 0 = paren-init (vs brace-init) |
 
 The variable entity at offset +8 has:
 - Offset +8: name string (null if `*this` capture)
-- Offset +163: sign bit (bit 7) -- if set, this is a `*this` or `this` capture
+- Offset +163: sign bit (bit 7) — if set, this is a `*this` or `this` capture
 
 ### Algorithm: Three Capture Kinds
 
@@ -243,7 +243,7 @@ Otherwise (traditional `*this`):
 , typename __nvdl_remove_const<typename __nvdl_remove_ref<decltype(*this) > ::type> :: type
 ```
 
-If the lambda is non-const (mutable), `const` is not appended. The mutable check reads `(byte)a1[3] & 2` -- if clear, appends ` const`.
+If the lambda is non-const (mutable), `const` is not appended. The mutable check reads `(byte)a1[3] & 2` — if clear, appends ` const`.
 
 **Case 3: Init-capture** (`i[4] & 1 != 0`)
 
@@ -275,7 +275,7 @@ The character counter `dword_106581C` tracks the column position for line-wrappi
 
 ## Capture Value Emission (sub_46E550)
 
-Address `0x46E550`, 60 decompiled lines, in `cp_gen_be.c`. This function emits the actual values passed to the wrapper constructor -- the runtime expressions that initialize each captured field.
+Address `0x46E550`, 60 decompiled lines, in `cp_gen_be.c`. This function emits the actual values passed to the wrapper constructor — the runtime expressions that initialize each captured field.
 
 ### Algorithm
 
@@ -395,7 +395,7 @@ next_word:
 
 Key differences between the two scans:
 - The device scan skips bit 0 (`if (idx != 0 && ...)`). The zero-capture case is handled by the primary template and its explicit `<Tag>` specialization already emitted as static text.
-- The host-device scan does not skip bit 0 -- zero-capture host-device lambdas (stateless lambdas with `__host__ __device__`) still need wrapper specializations because the host-device wrapper has function-pointer-conversion variants.
+- The host-device scan does not skip bit 0 — zero-capture host-device lambdas (stateless lambdas with `__host__ __device__`) still need wrapper specializations because the host-device wrapper has function-pointer-conversion variants.
 - Each set bit in the host-device bitmap triggers four emitter calls (non-mutable/mutable x HasFuncPtrConv false/true), compared to one call per bit for device lambdas.
 
 ## How Fields Use __nv_lambda_field_type
@@ -468,13 +468,13 @@ __nv_dl_wrapper_t<
 | `sub_6BC290` | `emit_array_capture_helpers` | `nv_transforms.c` | 183 | Emit `__nv_lambda_array_wrapper` (ranks 2-8) and `__nv_lambda_field_type` specializations |
 | `sub_6BCBC0` | `nv_reset_capture_bitmasks` | `nv_transforms.c` | 9 | Zero both 128-byte bitmaps at translation unit start |
 | `sub_6BCBF0` | `nv_record_capture_count` | `nv_transforms.c` | 13 | Set bit N in device or host-device bitmap |
-| `sub_6BCC20` | `nv_emit_lambda_preamble` | `nv_transforms.c` | 244 | Master emitter -- scans bitmaps, calls all sub-emitters |
+| `sub_6BCC20` | `nv_emit_lambda_preamble` | `nv_transforms.c` | 244 | Master emitter — scans bitmaps, calls all sub-emitters |
 | `sub_6BB790` | `emit_device_lambda_wrapper_specialization` | `nv_transforms.c` | 191 | Emit `__nv_dl_wrapper_t<Tag, F1..FN>` for N captures |
 | `sub_46E640` | `nv_gen_extended_lambda_capture_types` | `cp_gen_be.c` | ~400 | Emit `decltype`-based template type args for each capture |
 | `sub_46E550` | (capture value emitter) | `cp_gen_be.c` | ~60 | Emit variable names / `this` / `*this` / init-capture exprs |
-| `sub_46D910` | (expression code generator) | `cp_gen_be.c` | -- | Called by both `sub_46E640` and `sub_46E550` for init-captures |
-| `sub_467E50` | (emit string to output) | `cp_gen_be.c` | -- | String emission helper used by code generator |
-| `sub_467DA0` | (column tracking helper) | `cp_gen_be.c` | -- | Called when `dword_1065818` is set for line-length management |
+| `sub_46D910` | (expression code generator) | `cp_gen_be.c` | — | Called by both `sub_46E640` and `sub_46E550` for init-captures |
+| `sub_467E50` | (emit string to output) | `cp_gen_be.c` | — | String emission helper used by code generator |
+| `sub_467DA0` | (column tracking helper) | `cp_gen_be.c` | — | Called when `dword_1065818` is set for line-length management |
 
 ## Global State
 
@@ -489,8 +489,8 @@ __nv_dl_wrapper_t<
 
 ## Related Pages
 
-- [Extended Lambda Overview](./overview.md) -- end-to-end lambda pipeline and `lambda_info` structure
-- [Device Lambda Wrapper](./device-wrapper.md) -- `__nv_dl_wrapper_t` template anatomy
-- [Host-Device Lambda Wrapper](./host-device-wrapper.md) -- `__nv_hdl_wrapper_t` type-erased design
-- [Preamble Injection](./preamble-injection.md) -- `sub_6BCC20` emission sequence in full detail
-- [Lambda Restrictions](./restrictions.md) -- validation errors for malformed captures
+- [Extended Lambda Overview](./overview.md) — end-to-end lambda pipeline and `lambda_info` structure
+- [Device Lambda Wrapper](./device-wrapper.md) — `__nv_dl_wrapper_t` template anatomy
+- [Host-Device Lambda Wrapper](./host-device-wrapper.md) — `__nv_hdl_wrapper_t` type-erased design
+- [Preamble Injection](./preamble-injection.md) — `sub_6BCC20` emission sequence in full detail
+- [Lambda Restrictions](./restrictions.md) — validation errors for malformed captures

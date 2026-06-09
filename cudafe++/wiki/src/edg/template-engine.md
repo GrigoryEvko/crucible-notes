@@ -2,7 +2,7 @@
 
 The template engine in cudafe++ is EDG 6.6's implementation of C++ template instantiation, argument deduction, partial specialization ordering, and the worklist-driven fixpoint loop that produces all needed template instantiations at translation-unit end. It lives primarily in `templates.c` (160+ functions at `0x7530C0`--`0x794D30`) with supporting cross-TU correspondence logic in `trans_corresp.c` (`0x796E60`--`0x79F9E0`).
 
-Template instantiation in a C++ compiler is fundamentally a deferred operation: the compiler parses template definitions, records their bodies in a declaration cache, and only instantiates when a concrete use forces it. EDG implements this with two pending worklists -- one for class templates, one for function/variable templates -- that accumulate entries during parsing and are drained by a fixpoint loop at the end of each translation unit. This page documents the complete instantiation pipeline from "entity added to worklist" through "instantiated body emitted into IL."
+Template instantiation in a C++ compiler is fundamentally a deferred operation: the compiler parses template definitions, records their bodies in a declaration cache, and only instantiates when a concrete use forces it. EDG implements this with two pending worklists — one for class templates, one for function/variable templates — that accumulate entries during parsing and are drained by a fixpoint loop at the end of each translation unit. This page documents the complete instantiation pipeline from "entity added to worklist" through "instantiated body emitted into IL."
 
 ## Key Facts
 
@@ -140,7 +140,7 @@ Debug tracing output: when `dword_126EFC8` is nonzero, the walker emits `"do_any
 
 ## Decision Gate: should_be_instantiated
 
-`sub_774620` is the critical decision function that determines whether a pending template entity actually requires instantiation. It implements a chain of rejection checks -- an entity must pass all of them to be instantiated.
+`sub_774620` is the critical decision function that determines whether a pending template entity actually requires instantiation. It implements a chain of rejection checks — an entity must pass all of them to be instantiated.
 
 ```c
 int should_be_instantiated(entry_t *a1, int a2) {
@@ -209,7 +209,7 @@ Restore on exit (always, even on error):
     xmmword_106C3B0 = saved_state[3]
 ```
 
-The use of SSE registers for state save/restore is a compiler optimization -- the generated code uses `movaps`/`movups` instructions to save 64 bytes of state in 4 instructions rather than 8 individual `mov` instructions. The data itself is ordinary integer/pointer fields packed into 128-bit quantities by the compiler's register allocator.
+The use of SSE registers for state save/restore is a compiler optimization — the generated code uses `movaps`/`movups` instructions to save 64 bytes of state in 4 instructions rather than 8 individual `mov` instructions. The data itself is ordinary integer/pointer fields packed into 128-bit quantities by the compiler's register allocator.
 
 ### Instantiation Flow
 
@@ -264,7 +264,7 @@ The 255 limit is a safety valve against infinite recursive template instantiatio
 
 ## Class Instantiation: f_instantiate_template_class
 
-`sub_777CE0` (516 lines) instantiates class templates. It is structurally similar to the function instantiation path but saves significantly more state (12 SSE registers vs. 4) because class instantiation involves deeper parser state perturbation -- class bodies contain member declarations, nested types, and member function definitions.
+`sub_777CE0` (516 lines) instantiates class templates. It is structurally similar to the function instantiation path but saves significantly more state (12 SSE registers vs. 4) because class instantiation involves deeper parser state perturbation — class bodies contain member declarations, nested types, and member function definitions.
 
 ### SSE State Save/Restore (12 Registers)
 
@@ -351,7 +351,7 @@ f_instantiate_template_class (sub_777CE0)
 
 ### Per-Type Depth Limit
 
-Unlike function instantiation (which uses a single global counter `qword_12C76E0` with a hard limit of 255), class instantiation uses a per-type counter stored at offset `+56` of the type entry. The limit is still read from `qword_106BD10`. This per-type design prevents one deeply-nested class hierarchy from consuming the entire depth budget -- each class type tracks its own instantiation nesting independently.
+Unlike function instantiation (which uses a single global counter `qword_12C76E0` with a hard limit of 255), class instantiation uses a per-type counter stored at offset `+56` of the type entry. The limit is still read from `qword_106BD10`. This per-type design prevents one deeply-nested class hierarchy from consuming the entire depth budget — each class type tracks its own instantiation nesting independently.
 
 ## Variable Instantiation: instantiate_template_variable
 
@@ -396,7 +396,7 @@ instantiate_template_variable (sub_774C30)
       Special handling via sub_5C9600, copy attributes from prototype
 ```
 
-The declaration state structure is 472 bytes (`0x1D8`), stack-allocated and zero-initialized. This is the same structure used by the main declaration parser -- variable template instantiation reuses the declaration parsing infrastructure with pre-populated fields.
+The declaration state structure is 472 bytes (`0x1D8`), stack-allocated and zero-initialized. This is the same structure used by the main declaration parser — variable template instantiation reuses the declaration parsing infrastructure with pre-populated fields.
 
 ## Pending Counter Management
 
@@ -490,14 +490,14 @@ The deduction subsystem determines template argument values from function call a
 | Address | Identity | Lines | Description |
 |---|---|---|---|
 | `sub_77CEE0` | `matches_template_type` | 788 | Core deduction: matches actual type against template parameter pattern. Implements [temp.deduct]. |
-| `sub_77CA90` | `matches_template_type_for_class_type` | -- | Class-specific variant with additional base class traversal |
-| `sub_77C720` | `matches_template_arg_list` | -- | Matches a sequence of template arguments |
-| `sub_77C510` | `matches_template_template_param` | -- | Matches template template parameters |
-| `sub_77C240` | `template_template_arg_matches_param` | -- | Template template argument compatibility check |
-| `sub_77E9F0` | `matches_template_constant` | -- | Matches non-type template arguments (constant expressions) |
+| `sub_77CA90` | `matches_template_type_for_class_type` | — | Class-specific variant with additional base class traversal |
+| `sub_77C720` | `matches_template_arg_list` | — | Matches a sequence of template arguments |
+| `sub_77C510` | `matches_template_template_param` | — | Matches template template parameters |
+| `sub_77C240` | `template_template_arg_matches_param` | — | Template template argument compatibility check |
+| `sub_77E9F0` | `matches_template_constant` | — | Matches non-type template arguments (constant expressions) |
 | `sub_77E310` | `parameter_is_more_specialized` | 330 | Partial ordering rule: determines which parameter is more specialized |
 | `sub_780FC0` | `all_templ_params_have_values` | 332 | Post-deduction check: verifies all parameters received values |
-| `sub_781660` | `wrapup_template_argument_deduction` | -- | Finalizes deduction, applies default arguments |
+| `sub_781660` | `wrapup_template_argument_deduction` | — | Finalizes deduction, applies default arguments |
 | `sub_781C40` | `matches_partial_specialization` | 316 | Tests actual arguments against a partial specialization |
 
 ## Partial Specialization Ordering
@@ -533,10 +533,10 @@ The declaration side handles parsing `template<...>` prefixes and setting up tem
 | `sub_78D600` | `template_or_specialization_declaration_full` | 2,034 | Unified handler routing to class, function, or variable paths |
 | `sub_764AE0` | `scan_template_declaration` | 412 | Parses the `template<...>` prefix |
 | `sub_779D80` | `scan_template_param_list` | 626 | Parses template parameter lists |
-| `sub_77AAB0` | `scan_lambda_template_param_list` | -- | C++20 lambda template parameter parsing |
+| `sub_77AAB0` | `scan_lambda_template_param_list` | — | C++20 lambda template parameter parsing |
 | `sub_770790` | `make_template_function` | 914 | Creates function template entity |
-| `sub_753870` | `make_template_variable` | -- | Creates variable template entity |
-| `sub_756310` | `set_up_template_decl` | -- | Template declaration state initialization |
+| `sub_753870` | `make_template_variable` | — | Creates variable template entity |
+| `sub_756310` | `set_up_template_decl` | — | Template declaration state initialization |
 
 ## Explicit Instantiation
 
@@ -653,13 +653,13 @@ The correspondence system ensures that when `std::vector<int>` is instantiated i
 | `sub_775E00` | `instantiate_template_function_full` | 95% | 839 | `templates.c:7359` |
 | `sub_777CE0` | `f_instantiate_template_class` | 95% | 516 | `templates.c:5277` |
 | `sub_774C30` | `instantiate_template_variable` | 95% | 751 | `templates.c:7814` |
-| `sub_75D740` | `increment_pending_instantiations` | 95% | -- | `templates.c` |
-| `sub_75D7C0` | `decrement_pending_instantiations` | 95% | -- | `templates.c` |
-| `sub_75D6A0` | `too_many_pending_instantiations` | 95% | -- | `templates.c` |
-| `sub_7574B0` | `f_entity_can_be_instantiated` | 95% | -- | `templates.c:37066` |
-| `sub_756B40` | `f_is_static_or_inline_template_entity` | 95% | -- | `templates.c` |
-| `sub_756840` | `sym_can_be_instantiated` | 95% | -- | `templates.c` |
-| `sub_754A70` | `do_implicit_include_if_needed` | 95% | -- | `templates.c` |
+| `sub_75D740` | `increment_pending_instantiations` | 95% | — | `templates.c` |
+| `sub_75D7C0` | `decrement_pending_instantiations` | 95% | — | `templates.c` |
+| `sub_75D6A0` | `too_many_pending_instantiations` | 95% | — | `templates.c` |
+| `sub_7574B0` | `f_entity_can_be_instantiated` | 95% | — | `templates.c:37066` |
+| `sub_756B40` | `f_is_static_or_inline_template_entity` | 95% | — | `templates.c` |
+| `sub_756840` | `sym_can_be_instantiated` | 95% | — | `templates.c` |
+| `sub_754A70` | `do_implicit_include_if_needed` | 95% | — | `templates.c` |
 | `sub_76D860` | `copy_type_with_substitution` | 95% | 1229 | `templates.c` |
 | `sub_77FDE0` | `copy_template_arg_list_with_substitution` | 95% | 612 | `templates.c` |
 | `sub_793DF0` | `substitute_template_param_list` | 95% | 741 | `templates.c` |
@@ -668,7 +668,7 @@ The correspondence system ensures that when `std::vector<int>` is instantiated i
 | `sub_781C40` | `matches_partial_specialization` | 95% | 316 | `templates.c` |
 | `sub_774470` | `check_partial_specializations` | 95% | 58 | `templates.c` |
 | `sub_773E40` | `add_to_partial_order_candidates_list` | 95% | 306 | `templates.c` |
-| `sub_75D2A0` | `partial_ord` | 95% | -- | `templates.c` |
+| `sub_75D2A0` | `partial_ord` | 95% | — | `templates.c` |
 | `sub_7730D0` | `compare_function_templates` | 95% | 665 | `templates.c` |
 | `sub_786260` | `template_declaration` | 95% | 2487 | `templates.c` |
 | `sub_782690` | `class_template_declaration` | 95% | 2280 | `templates.c` |
@@ -683,27 +683,27 @@ The correspondence system ensures that when `std::vector<int>` is instantiated i
 | `sub_791C70` | `explicit_instantiation` | 95% | 105 | `templates.c:42231` |
 | `sub_7897C0` | `update_instantiation_flags` | 90% | 351 | `templates.c` |
 | `sub_7770E0` | `update_instantiation_required_flag` | 95% | 434 | `templates.c` |
-| `sub_78D0E0` | `find_matching_template_instance` | 95% | -- | `templates.c` |
-| `sub_709DE0` | `set_up_substitution_context` | -- | -- | (likely `templates.c`) |
-| `sub_744F60` | `perform_deferred_access_checks_at_depth` | 95% | -- | `symbol_tbl.c` |
-| `sub_7530C0` | `template_arg_is_dependent` | 95% | -- | `templates.c:8897` |
+| `sub_78D0E0` | `find_matching_template_instance` | 95% | — | `templates.c` |
+| `sub_709DE0` | `set_up_substitution_context` | — | — | (likely `templates.c`) |
+| `sub_744F60` | `perform_deferred_access_checks_at_depth` | 95% | — | `symbol_tbl.c` |
+| `sub_7530C0` | `template_arg_is_dependent` | 95% | — | `templates.c:8897` |
 | `sub_762C80` | `template_arg_list_is_dependent_full` | 95% | 839 | `templates.c` |
 | `sub_75EF10` | `equiv_template_arg_lists` | 95% | 493 | `templates.c` |
 | `sub_7931B0` | `make_template_implicit_deduction_guide` | 95% | 433 | `templates.c` |
 | `sub_794D30` | `ctad` | 95% | 990 | `templates.c` |
-| `sub_796E60` | `canonical_ranking` | 95% | -- | `trans_corresp.c` |
+| `sub_796E60` | `canonical_ranking` | 95% | — | `trans_corresp.c` |
 | `sub_7999C0` | `find_template_correspondence` | 95% | 601 | `trans_corresp.c` |
 | `sub_79C400` | `f_set_trans_unit_corresp` | 95% | 511 | `trans_corresp.c` |
-| `sub_79F1D0` | `update_canonical_entry` | 95% | -- | `trans_corresp.c` |
-| `sub_79F9E0` | `record_instantiation` | 95% | -- | `trans_corresp.c` |
+| `sub_79F1D0` | `update_canonical_entry` | 95% | — | `trans_corresp.c` |
+| `sub_79F9E0` | `record_instantiation` | 95% | — | `trans_corresp.c` |
 
 ## Cross-References
 
-- [EDG 6.6 Overview](overview.md) -- Architecture and NVIDIA modification layers
-- [CUDA Template Restrictions](template-cuda.md) -- CUDA-specific template constraints
-- [Type System](type-system.md) -- Type kinds and class layout referenced during substitution
-- [Keep-in-IL](../il/keep-in-il.md) -- Device code selection interacts with instantiation results
-- [Pipeline Overview](../pipeline/overview.md) -- Where template wrapup fits in the compilation pipeline
-- [Template Instance Record](../structs/template-instance.md) -- Data structure for instantiation entries
-- [Scope Entry](../structs/scope-entry.md) -- 784-byte scope structure used during instantiation
-- [Diagnostics Overview](../diagnostics/overview.md) -- Warning 489/490 for depth limits
+- [EDG 6.6 Overview](overview.md) — Architecture and NVIDIA modification layers
+- [CUDA Template Restrictions](template-cuda.md) — CUDA-specific template constraints
+- [Type System](type-system.md) — Type kinds and class layout referenced during substitution
+- [Keep-in-IL](../il/keep-in-il.md) — Device code selection interacts with instantiation results
+- [Pipeline Overview](../pipeline/overview.md) — Where template wrapup fits in the compilation pipeline
+- [Template Instance Record](../structs/template-instance.md) — Data structure for instantiation entries
+- [Scope Entry](../structs/scope-entry.md) — 784-byte scope structure used during instantiation
+- [Diagnostics Overview](../diagnostics/overview.md) — Warning 489/490 for depth limits

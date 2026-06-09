@@ -1,0 +1,1 @@
+# BirCodeGenLoop (Tensoriser → BIR)

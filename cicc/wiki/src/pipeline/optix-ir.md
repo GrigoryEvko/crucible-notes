@@ -2,7 +2,7 @@
 
 When cicc receives the `--emit-optix-ir` flag, it activates an alternate compilation path that produces **OptiX IR** instead of PTX. OptiX IR is the intermediate representation consumed by NVIDIA's OptiX ray tracing engine, which uses a continuation-based execution model fundamentally different from the standard CUDA kernel launch model. Rather than compiling all the way down to PTX machine code, the OPTIXIR pipeline stage serializes the optimized LLVM module in a form that the OptiX runtime can later JIT-compile, link with ray tracing shaders, and schedule across the RT cores' hardware intersection pipeline.
 
-The OptiX path is the third of four stages in cicc's internal pipeline (`LNK -> OPT -> OPTIXIR -> LLC`), but it is mutually exclusive with LLC in practice: when OptiX mode is active, the pipeline bitmask enables OPTIXIR (`0x40`) and disables certain optimizations that would be incorrect for continuation-based code. The flag also forces the EDG frontend to emit lifetime intrinsics (`--emit-lifetime-intrinsics`, EDG option id 132), which mark the live ranges of local variables -- essential information for the OptiX runtime's continuation frame layout.
+The OptiX path is the third of four stages in cicc's internal pipeline (`LNK -> OPT -> OPTIXIR -> LLC`), but it is mutually exclusive with LLC in practice: when OptiX mode is active, the pipeline bitmask enables OPTIXIR (`0x40`) and disables certain optimizations that would be incorrect for continuation-based code. The flag also forces the EDG frontend to emit lifetime intrinsics (`--emit-lifetime-intrinsics`, EDG option id 132), which mark the live ranges of local variables — essential information for the OptiX runtime's continuation frame layout.
 
 | | |
 |---|---|
@@ -49,8 +49,8 @@ if (a4 == 0xDEED || a4 == 0xABBA) {
 ```
 
 The `0x43` value decomposes to:
-- Bits `[1:0]` = `0x03` -- all standard phases enabled (LNK + LLC)
-- Bit 6 = `0x40` -- OPTIXIR stage enabled
+- Bits `[1:0]` = `0x03` — all standard phases enabled (LNK + LLC)
+- Bit 6 = `0x40` — OPTIXIR stage enabled
 
 ### 3-Column Fan-Out
 
@@ -120,7 +120,7 @@ Like the other three stages, OPTIXIR has a callback slot in the `CompilationStat
 
 In the standalone pipeline entry (`sub_1265970`), the OPTIXIR callback is registered when both verbose and keep-temps modes are active (the logical AND of `-v` and `-keep`, which requires wizard mode). The callback ID is `64222`, registered via `sub_1268040` through `sub_12BC0F0`.
 
-## `sub_12F9270` -- OptiX IR Generator
+## `sub_12F9270` — OptiX IR Generator
 
 | Field | Value |
 |-------|-------|
@@ -131,7 +131,7 @@ In the standalone pipeline entry (`sub_1265970`), the OPTIXIR callback is regist
 
 This function takes the fully optimized LLVM module and serializes it into OptiX IR format. The output goes into the `state+6` output buffer in the `CompilationState`, not into the PTX output buffer at `state+80`. The architecture code and LLVM context are passed through from the pipeline orchestrator's arguments.
 
-The function is relatively small (~6 KB) compared to the LLC stage (`sub_12F5100`, ~12 KB), consistent with it being primarily a serialization step rather than a full code generation pipeline. It does not run SelectionDAG, register allocation, or instruction scheduling -- those are the domain of the LLC stage, which is typically skipped when OptiX mode is active.
+The function is relatively small (~6 KB) compared to the LLC stage (`sub_12F5100`, ~12 KB), consistent with it being primarily a serialization step rather than a full code generation pipeline. It does not run SelectionDAG, register allocation, or instruction scheduling — those are the domain of the LLC stage, which is typically skipped when OptiX mode is active.
 
 ## IR Level and Container Marking
 
@@ -163,7 +163,7 @@ When OptiX mode is active, the flag catalog forces two critical optimizer change
 
 Loop Invariant Code Motion is **completely disabled** when compiling for OptiX. The `do-licm` NVVMPassOption (at a known offset in the 4,512-byte options struct) gates the LICM pass insertion in the pipeline assembler `sub_12E54A0`. When set to 0, the `sub_195E880(0)` LICM pass at position 22 of the Tier 0 pipeline is skipped entirely.
 
-The rationale is that OptiX uses a continuation-based execution model where functions can be suspended and resumed at hardware-defined continuation points (ray-surface intersection, any-hit shader invocation, etc.). LICM hoisting moves computations out of loops and into dominating blocks, which can move them across implicit continuation boundaries. If a hoisted value is live across a continuation point, the OptiX runtime must save it to the continuation frame -- potentially increasing frame size and reducing performance. Worse, the hoisting may move side-effecting operations across points where the program could be suspended, violating the continuation semantics. Disabling LICM avoids these correctness and performance hazards entirely.
+The rationale is that OptiX uses a continuation-based execution model where functions can be suspended and resumed at hardware-defined continuation points (ray-surface intersection, any-hit shader invocation, etc.). LICM hoisting moves computations out of loops and into dominating blocks, which can move them across implicit continuation boundaries. If a hoisted value is live across a continuation point, the OptiX runtime must save it to the continuation frame — potentially increasing frame size and reducing performance. Worse, the hoisting may move side-effecting operations across points where the program could be suspended, violating the continuation semantics. Disabling LICM avoids these correctness and performance hazards entirely.
 
 ### IP-MSP Disabled (`-do-ip-msp=0`)
 
@@ -171,13 +171,13 @@ Interprocedural Memory Space Propagation is also disabled. IP-MSP (`sub_12E6160`
 
 ### Forced Inlining (`nv-inline-all`)
 
-The `nv-inline-all` knob (registered at constructor `ctor_186_0` at `0x4DBEC0` in the NVIDIA custom inliner) bypasses cost analysis entirely and forces inlining of every call. This mode is used for OptiX compilation where the entire call graph must be flattened for the hardware intersection pipeline. The OptiX runtime requires monolithic shader functions because the RT core hardware executes individual ray tracing programs as atomic units -- there is no call stack during hardware intersection traversal.
+The `nv-inline-all` knob (registered at constructor `ctor_186_0` at `0x4DBEC0` in the NVIDIA custom inliner) bypasses cost analysis entirely and forces inlining of every call. This mode is used for OptiX compilation where the entire call graph must be flattened for the hardware intersection pipeline. The OptiX runtime requires monolithic shader functions because the RT core hardware executes individual ray tracing programs as atomic units — there is no call stack during hardware intersection traversal.
 
 From the inliner cost model (`sub_1864060`, 75 KB):
 
 > The `nv-inline-all` knob bypasses cost analysis entirely and forces inlining of every call. This is used for specific compilation modes (e.g., OptiX ray tracing where the entire call graph must be flattened for the hardware intersection pipeline).
 
-The standard `inline-budget` (default 20,000) and `inline-total-budget` are irrelevant when `nv-inline-all` is active -- every call site is inlined unconditionally regardless of cost.
+The standard `inline-budget` (default 20,000) and `inline-total-budget` are irrelevant when `nv-inline-all` is active — every call site is inlined unconditionally regardless of cost.
 
 ## Continuation-Based Execution Model
 
@@ -191,7 +191,7 @@ In OptiX, a ray tracing pipeline consists of multiple **programs** (ray generati
 
 This model has several consequences for compilation:
 
-1. **No cross-function calls during intersection.** The RT core hardware does not support a general call stack. All function calls within a single program must be fully inlined before the OptiX runtime receives the IR -- hence `nv-inline-all`.
+1. **No cross-function calls during intersection.** The RT core hardware does not support a general call stack. All function calls within a single program must be fully inlined before the OptiX runtime receives the IR — hence `nv-inline-all`.
 
 2. **Lifetime intrinsics are critical.** The OptiX runtime uses `llvm.lifetime.start` / `llvm.lifetime.end` markers to determine which local variables are live at each potential continuation point. Variables that are provably dead at a continuation point do not need to be saved to the continuation frame. Without these markers, the runtime must conservatively assume all locals are live, inflating frame sizes and reducing performance.
 
@@ -199,7 +199,7 @@ This model has several consequences for compilation:
 
 4. **Memory space must remain generic.** OptiX IR is JIT-compiled at runtime with knowledge of the full pipeline configuration. Memory space decisions that depend on the pipeline topology (shared memory for hit attributes, global memory for payload) cannot be made at cicc compile time.
 
-5. **The output is IR, not machine code.** Unlike the LLC stage which produces PTX text, the OPTIXIR stage serializes the LLVM module in a form suitable for the OptiX JIT. This is why `sub_12F9270` is only ~6 KB -- it is a serializer, not a code generator.
+5. **The output is IR, not machine code.** Unlike the LLC stage which produces PTX text, the OPTIXIR stage serializes the LLVM module in a form suitable for the OptiX JIT. This is why `sub_12F9270` is only ~6 KB — it is a serializer, not a code generator.
 
 ## Configuration
 
@@ -265,24 +265,24 @@ Note that bit 2 (LLC) is 0 in the `0x43` bitmask, confirming that the LLC stage 
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| OptiX IR generator (core OPTIXIR stage) | `sub_12F9270` | ~6 KB | -- |
-| Pipeline orchestrator (`nvvmCompileProgram` internal) | `sub_12C35D0` | ~41 KB | -- |
-| Bitmask / stage descriptor parser | `sub_12D2AA0` | — | -- |
-| Flag catalog (routes `--emit-optix-ir`) | `sub_9624D0` | ~75 KB | -- |
-| Real main (matches `--emit-optix-ir` at `0x8FAD00`) | `sub_8F9C90` | ~10 KB | -- |
-| OPTIXIR callback registration (callback ID `64222`) | `sub_1268040` | — | -- |
-| Pipeline callback dispatcher | `sub_12BC0F0` | — | -- |
-| Inliner cost model (`nv-inline-all` bypass) | `sub_1864060` | ~75 KB | -- |
-| CGSCC inliner core (`inlineCallsImpl`) | `sub_186CA00` | ~61 KB | -- |
-| Timer start (receives `"OPTIXIR"` phase name) | `sub_16D8B50` | — | -- |
-| Timer close | `sub_16D7950` | — | -- |
-| Pipeline assembler (skips LICM when `do-licm=0`) | `sub_12E54A0` | ~49.8 KB | -- |
+| OptiX IR generator (core OPTIXIR stage) | `sub_12F9270` | ~6 KB | — |
+| Pipeline orchestrator (`nvvmCompileProgram` internal) | `sub_12C35D0` | ~41 KB | — |
+| Bitmask / stage descriptor parser | `sub_12D2AA0` | — | — |
+| Flag catalog (routes `--emit-optix-ir`) | `sub_9624D0` | ~75 KB | — |
+| Real main (matches `--emit-optix-ir` at `0x8FAD00`) | `sub_8F9C90` | ~10 KB | — |
+| OPTIXIR callback registration (callback ID `64222`) | `sub_1268040` | — | — |
+| Pipeline callback dispatcher | `sub_12BC0F0` | — | — |
+| Inliner cost model (`nv-inline-all` bypass) | `sub_1864060` | ~75 KB | — |
+| CGSCC inliner core (`inlineCallsImpl`) | `sub_186CA00` | ~61 KB | — |
+| Timer start (receives `"OPTIXIR"` phase name) | `sub_16D8B50` | — | — |
+| Timer close | `sub_16D7950` | — | — |
+| Pipeline assembler (skips LICM when `do-licm=0`) | `sub_12E54A0` | ~49.8 KB | — |
 
 ## Cross-References
 
-- [Entry Point & CLI](./entry.md) -- `--emit-optix-ir` flag parsing and `v243` variable
-- [LLVM Optimizer](./optimizer.md) -- `do-licm` and `do-ip-msp` NVVMPassOptions, pipeline assembler
-- [NVVM Container Binary Format](../structs/nvvm-container.md) -- `NVVM_IR_LEVEL_OPTIX` (value 2) in IRLevel enum
-- [EDG 6.6 Frontend](./edg.md) -- `--emit-lifetime-intrinsics` (EDG option id 132)
-- [Code Generation](./codegen.md) -- LLC stage that is skipped in OptiX mode
-- [LICM](../llvm/licm-real.md) -- the pass disabled by OptiX mode
+- [Entry Point & CLI](./entry.md) — `--emit-optix-ir` flag parsing and `v243` variable
+- [LLVM Optimizer](./optimizer.md) — `do-licm` and `do-ip-msp` NVVMPassOptions, pipeline assembler
+- [NVVM Container Binary Format](../structs/nvvm-container.md) — `NVVM_IR_LEVEL_OPTIX` (value 2) in IRLevel enum
+- [EDG 6.6 Frontend](./edg.md) — `--emit-lifetime-intrinsics` (EDG option id 132)
+- [Code Generation](./codegen.md) — LLC stage that is skipped in OptiX mode
+- [LICM](../llvm/licm-real.md) — the pass disabled by OptiX mode

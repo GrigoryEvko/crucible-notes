@@ -1,8 +1,8 @@
 # Finalization Phase
 
-The finalization phase is the last major transformation before ELF serialization. After the relocation engine has patched all instruction and data bytes, `sub_445000` (55,681 bytes / 2,047 lines) performs a complete reindexing of the ELF wrapper's internal data structures -- renumbering symbols, renumbering sections, computing final sizes and offsets, sorting sections into canonical ELF order, and writing the ELF header geometry/flag fields. The output `e_type` (`ET_EXEC=2` for the default executable link, `ET_REL=1` under `-r`, `0xFF00` for Mercury) is **not** decided here -- it was set by `elfw_create` (`sub_4438F0`) from `byte_2A5F1E8` at line 391 of `main`, and `sub_445000` only branches on it. The geometry fields actually written by Phase 9 are `e_ehsize`, `e_shentsize`, `e_phentsize`, `e_shoff`, `e_shnum`, `e_shstrndx`, and `e_flags`; `e_type`, `e_machine`, `e_version`, `e_entry`, and `e_phoff` are left untouched. The result is a fully self-consistent device ELF ready to be serialized to bytes by the output phase.
+The finalization phase is the last major transformation before ELF serialization. After the relocation engine has patched all instruction and data bytes, `sub_445000` (55,681 bytes / 2,047 lines) performs a complete reindexing of the ELF wrapper's internal data structures — renumbering symbols, renumbering sections, computing final sizes and offsets, sorting sections into canonical ELF order, and writing the ELF header geometry/flag fields. The output `e_type` (`ET_EXEC=2` for the default executable link, `ET_REL=1` under `-r`, `0xFF00` for Mercury) is **not** decided here — it was set by `elfw_create` (`sub_4438F0`) from `byte_2A5F1E8` at line 391 of `main`, and `sub_445000` only branches on it. The geometry fields actually written by Phase 9 are `e_ehsize`, `e_shentsize`, `e_phentsize`, `e_shoff`, `e_shnum`, `e_shstrndx`, and `e_flags`; `e_type`, `e_machine`, `e_version`, `e_entry`, and `e_phoff` are left untouched. The result is a fully self-consistent device ELF ready to be serialized to bytes by the output phase.
 
-The timing infrastructure brackets this work with `sub_4279C0("finalize")`. For Mercury targets (sm >= 100), a separate FNLZR post-link pass (`sub_4275C0`) runs after serialization rather than inside this function -- the two are architecturally distinct despite the shared "finalize" naming.
+The timing infrastructure brackets this work with `sub_4279C0("finalize")`. For Mercury targets (sm >= 100), a separate FNLZR post-link pass (`sub_4275C0`) runs after serialization rather than inside this function — the two are architecturally distinct despite the shared "finalize" naming.
 
 ## Key Facts
 
@@ -60,7 +60,7 @@ The following is the exact call order within `sub_445000`, with function address
 
 | Step | Address | Function | Description |
 |---|---|---|---|
-| 1 | `0x439640` | `sub_439640` | Shared memory variable rebase (executable `ET_EXEC` only, when `(e_flags & abi_mask) == 0` and `byte elfw+99 != 0`; `abi_mask = 1` for OSABI 0x41, `0x80000000` otherwise -- both test the "not-yet-finalized" bit in the corresponding `e_flags` layout) |
+| 1 | `0x439640` | `sub_439640` | Shared memory variable rebase (executable `ET_EXEC` only, when `(e_flags & abi_mask) == 0` and `byte elfw+99 != 0`; `abi_mask = 1` for OSABI 0x41, `0x80000000` otherwise — both test the "not-yet-finalized" bit in the corresponding `e_flags` layout) |
 | 1b | `0x438BD0` | `sub_438BD0` | Virtual section index remap (Mercury `0xFF00` only) |
 | 2 | `0x44DB00` | `sub_44DB00` | Pre-finalize: root kernel detect, call sub_44C030 |
 | 2a | `0x44C030` | `sub_44C030` | Callgraph closure: alt-call resolution (`-3` name -> address-taken `+4`) + DFS reachability + `$`-prefix validation |
@@ -70,22 +70,22 @@ The following is the exact call order within `sub_445000`, with function address
 | 3a | `0x448C00` | `sub_448C00` | Symbol name hash table re-enumeration |
 | 3b | `0x440060` | `sub_440060` | Symbol reindex callback (sequential index assignment) |
 | 3c | `0x464DD0` | `sub_464DD0` | Positive/negative symbol array reindex via `sub_442520` |
-| 4 | -- | (inline) | Old list destroy + new list install |
+| 4 | — | (inline) | Old list destroy + new list install |
 | 5a | `0x44CA40` | `sub_44CA40` | Callgraph symbol index remap |
 | 5b | `0x44CBC0` | `sub_44CBC0` | Prototype symbol index remap |
-| 5c | `0x451D80` | `sub_451D80` | Entry property computation (97,969 bytes -- largest function) |
+| 5c | `0x451D80` | `sub_451D80` | Entry property computation (97,969 bytes — largest function) |
 | 5d | `0x46ADC0` | `sub_46ADC0` | Resolved relocation emission |
 | 5e | `0x464400` | `sub_464400` | List structure finalization |
-| 6 | -- | (inline) | Section classification into 8 priority buckets |
-| 7 | -- | (inline) | Two-pass counting sort + address assignment |
-| 8 | -- | (inline) | Symbol `st_shndx` patching via section remap array |
-| 9 | -- | (inline) | ELF header geometry (`e_ehsize`, `e_shentsize`, `e_phentsize`, `e_shoff`, `e_shnum`, `e_shstrndx`, `e_flags`); `e_type` is **not** rewritten here -- it was set at `elfw_create` time |
+| 6 | — | (inline) | Section classification into 8 priority buckets |
+| 7 | — | (inline) | Two-pass counting sort + address assignment |
+| 8 | — | (inline) | Symbol `st_shndx` patching via section remap array |
+| 9 | — | (inline) | ELF header geometry (`e_ehsize`, `e_shentsize`, `e_phentsize`, `e_shoff`, `e_shnum`, `e_shstrndx`, `e_flags`); `e_type` is **not** rewritten here — it was set at `elfw_create` time |
 
 ## Phase 1: Pre-finalization Fixups
 
 ### Shared Memory Fixup (Relocatable Mode)
 
-For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` -- the default device-link output), `sub_439640` is called to apply a final shared-memory variable rebase when **all three** conditions hold (lines 342--348 of `sub_445000_0x445000.c`):
+For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` — the default device-link output), `sub_439640` is called to apply a final shared-memory variable rebase when **all three** conditions hold (lines 342--348 of `sub_445000_0x445000.c`):
 
 ```c
 v3 = *(_WORD *)(a1 + 16);                       // e_type at elfw+16
@@ -109,11 +109,11 @@ The three clauses, decoded:
    - **OSABI `0x33` (legacy 32-bit, or non-CUDA OSABI)** → `abi_mask = 0x80000000`. Under that encoding `e_flags = sm_major | (sm_minor << 16) | (reloc_bit << 31)`; bit 31 is the same "not-finalized" reloc bit. The clause again asserts a fully-linked executable.
    - The exact mirror of this dual-mask appears in `sub_45BAA0` / `sub_45C980` (program header emission) and is documented at [program-headers.md](../elf/program-headers.md#mercury-pre-fnlzr-stub-suppression). nvlink uses the same `abi_mask` trick anywhere it must distinguish "real cubin" from "intermediate stub".
 
-3. **`byte elfw+99 != 0`**: this is the `std_smem_mode` byte. `elfw_create` writes it at line 229 of `sub_4438F0_0x4438f0.c` as `((a9 >> 12) ^ 1) & 1`, where `a9` is the `merge_flags` parameter; `merge_flags` bit 12 is sourced from global `byte_2A5F210` -- the `--disable-smem-reservation` option per the [cli-options.md global map](cli-options.md#global-variable-map). The byte is therefore the **complement**: it is **1 when smem reservation is enabled** (standard 16 KB / 48 KB / 64 KB statically-banked smem layout) and **0 when `--disable-smem-reservation` is set** (which routes through a different smem allocator and skips this rebase). See [elf-writer.md offset +99](../structs/elf-writer.md#per-flag-bit-mapping). The closely-named `--enable-extended-smem` is a different CLI option that maps to `byte_2A5F1FD` and feeds bit 25 of `merge_flags`, not bit 12.
+3. **`byte elfw+99 != 0`**: this is the `std_smem_mode` byte. `elfw_create` writes it at line 229 of `sub_4438F0_0x4438f0.c` as `((a9 >> 12) ^ 1) & 1`, where `a9` is the `merge_flags` parameter; `merge_flags` bit 12 is sourced from global `byte_2A5F210` — the `--disable-smem-reservation` option per the [cli-options.md global map](cli-options.md#global-variable-map). The byte is therefore the **complement**: it is **1 when smem reservation is enabled** (standard 16 KB / 48 KB / 64 KB statically-banked smem layout) and **0 when `--disable-smem-reservation` is set** (which routes through a different smem allocator and skips this rebase). See [elf-writer.md offset +99](../structs/elf-writer.md#per-flag-bit-mapping). The closely-named `--enable-extended-smem` is a different CLI option that maps to `byte_2A5F1FD` and feeds bit 25 of `merge_flags`, not bit 12.
 
 In one line: **sub_439640 runs only for fully-linked CUDA executable cubins where smem reservation has not been disabled**. The `ET_REL` branch and the Mercury pre-FNLZR stub branch are both **not** taken here. Earlier wiki revisions stated the gate as just "ET_EXEC + e_flags clear" and labelled byte+99 as `no_debug_info`; both were wrong. A subsequent wave correctly identified the smem semantics but attributed bit 12 to `--enable-extended-smem`; the actual CLI byte at the bit-12 source slot is `byte_2A5F210` (`--disable-smem-reservation`).
 
-The `e_type` value at `elfw+16` is an **input** to `sub_445000` -- it is read at line 340 of the decompiled function, immediately after entry, and gates the first three branches; it was already written into the wrapper by `elfw_create` via the `a1 = (byte_2A5F1E8 == 0) + 1` argument at `main` line 391.
+The `e_type` value at `elfw+16` is an **input** to `sub_445000` — it is read at line 340 of the decompiled function, immediately after entry, and gates the first three branches; it was already written into the wrapper by `elfw_create` via the `a1 = (byte_2A5F1E8 == 0) + 1` argument at `main` line 391.
 
 For Mercury ELF type (`elfw+16 == 0xFF00`), the function handles virtual section index remapping. If the elfw has a non-zero section count at `elfw+248`, it validates the virtual-to-physical section index mapping (`elfw+472` and `elfw+368`) and calls `sub_438BD0` on the target section. The "secidx not virtual" assertion fires if the mapping is inconsistent.
 
@@ -125,7 +125,7 @@ If `byte elfw+81` is not set, `sub_44DB00` (67 lines, 1,473 bytes) is called. Th
 
 2. **Root kernel detection** (for `ET_EXEC` with callgraph enabled at `byte elfw+84`): Iterates all callgraph entries at `elfw+408`, testing each symbol for the entry-point predicate (`bit 0x10` in `byte sym+5` AND `sub_43FB20` returning true). If exactly one root kernel is found, stores its symbol index at `elfw+568`. If multiple root kernels exist, sets `elfw+568 = 0`. With verbose output: `"root_kernel = %d"`.
 
-3. **Calls `sub_44C030`** (10,170 bytes): The callgraph closure pass. This function walks `elfw+408` (the callgraph node array), not the EIATTR record list. It runs three operations: (a) an alt-call resolution loop that matches each `-3` alt_call entry's name-token against every address-taken (`+50 == 1`) node's interned name at `+4` and records the resolved edge via `sub_4644C0` -- see [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1); (b) a DFS over the augmented graph that uses bytes `+48`/`+49` for visited/on-stack tracking, emits `"recursion at function %d"` on back edges, and seeds the entry kernel's transitive-callee set; (c) a sweep of `elfw+392` for `$`-prefixed compiler-emitted name records that must be reachable from the root kernel, validated through a temporary hashset built by `sub_465020`. Diagnostic 0x24 (`sub_450970`) fires for unreachable `$`-references when a single root kernel is known.
+3. **Calls `sub_44C030`** (10,170 bytes): The callgraph closure pass. This function walks `elfw+408` (the callgraph node array), not the EIATTR record list. It runs three operations: (a) an alt-call resolution loop that matches each `-3` alt_call entry's name-token against every address-taken (`+50 == 1`) node's interned name at `+4` and records the resolved edge via `sub_4644C0` — see [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1); (b) a DFS over the augmented graph that uses bytes `+48`/`+49` for visited/on-stack tracking, emits `"recursion at function %d"` on back edges, and seeds the entry kernel's transitive-callee set; (c) a sweep of `elfw+392` for `$`-prefixed compiler-emitted name records that must be reachable from the root kernel, validated through a temporary hashset built by `sub_465020`. Diagnostic 0x24 (`sub_450970`) fires for unreachable `$`-references when a single root kernel is known.
 
 4. **For callgraph-enabled ELFs** (`byte elfw+84`):
    - Calls `sub_44D200` (8,545 bytes) to create the `.nv.callgraph` section (type `0x70000001`, alignment 4, entry size 8) via `sub_441AC0`.
@@ -160,7 +160,7 @@ The first major loop iterates the positive symbol array (`elfw+344`). For each s
 
 1. **Section resolution**: If the symbol's section index is `0xFFFF` (extended index sentinel), the function resolves the actual section through either the extended-section-index list (`elfw+600`) for negative symbol indices, or through the old-to-new symbol mapping tables (`elfw+456` for positive indices, `elfw+464` for negative indices). A "reference to deleted symbol" error fires if the mapping is zero.
 
-2. **Virtual-to-physical section mapping**: If `byte elfw+82` is set (finalized flag -- note this is being set to 1 at the very end of the function), the virtual section index is validated against `elfw+472` and `elfw+368`.
+2. **Virtual-to-physical section mapping**: If `byte elfw+82` is set (finalized flag — note this is being set to 1 at the very end of the function), the virtual section index is validated against `elfw+472` and `elfw+368`.
 
 3. **Binding classification**: The symbol's binding field (`byte sym+5 & 0x3`) determines disposition:
    - **Binding 2 (weak)**: Cleared to binding 0 (local). For relocatable output where `elfw+656` is not set, calls `sub_440350` to check if the symbol should be kept.
@@ -169,9 +169,9 @@ The first major loop iterates the positive symbol array (`elfw+344`). For each s
 
 4. **Deletion vs. retention**: Symbols that survive filtering are appended to a new ordered list (`v364`) via `sub_464C30`. Dead symbols are removed from the section list via `sub_464D10` and freed via `sub_431000`. The old-to-new index mapping is recorded in `elfw+456`.
 
-5. **Extended symbol table**: If the total symbol count exceeds `0xFEFF` (65,279 -- the ELF `SHN_LORESERVE` threshold), a parallel extended-index list (`v83`) is built to hold the overflow section indices.
+5. **Extended symbol table**: If the total symbol count exceeds `0xFEFF` (65,279 — the ELF `SHN_LORESERVE` threshold), a parallel extended-index list (`v83`) is built to hold the overflow section indices.
 
-### Symbol Filtering Loop (Negative Symbol Array -- elfw+352)
+### Symbol Filtering Loop (Negative Symbol Array — elfw+352)
 
 The second major loop processes symbols from the negative symbol array with similar logic but additional checks:
 
@@ -236,8 +236,8 @@ Five callbacks fire in sequence:
 3. **`sub_451D80`** (compute_entry_properties, 97,969 bytes / 3,029 lines): The largest function in the linker. Computes per-kernel-entry properties: register counts, barrier counts, stack sizes, CRS attributes, cache control, max threads, and more. Propagates these through the callgraph to callee functions. This is called here because the final symbol indices must be stable before entry properties can be written into `.nv.info` attributes. See the detailed EIATTR processing section below.
 
 4. **`sub_46ADC0`** (emit_resolved_relocations, 11,515 bytes, 388 lines): The writer-side counterpart of the apply engine. The function walks two linked lists:
-   - **Primary loop at `elfw+376`** -- runs unconditionally. Emits a `.rela.<target>` record (24 bytes RELA for ELF64, 12 bytes REL+addend for ELF32) for every relocation still on the list after the apply phase. Per record: folds the sym-addend symbol value into `r_offset`, runs descriptor-driven bit-field extraction (`sub_468670` against the descriptor header at `off_1D3CBE0` / `off_1D3DBE0` uint32 indices [3-5], [7-9], [11-13]) to recover the in-instruction addend pieces and *accumulates* them into the record's `r_addend` slot at offset +16, remaps the symbol index via `sub_444720`, locates the `.rela`-class output section through `sub_442760` (SHT_RELA=`4`), and appends via `sub_4336B0`.
-   - **Secondary loop at `elfw+384`** -- runs only when `*(uint8_t*)(elfw+85)` (`--preserve-relocs`) is set. Selects records whose parent section is `SHT_PROGBITS` with `SHF_EXECINSTR`, whose symbol type is `0xD` (CUDA-extended texture/surface/bindless) and binding `& 0xE0 == 0x40`. For each, constructs the output name `".nv.resolvedrela" + parent_name`, finds or creates the section via `sub_4411D0`, and emits the same 24 / 12 byte record format via `sub_4336B0`. Bit-field extraction is **not** run for this loop -- the record is emitted with the addend the apply engine left in place.
+   - **Primary loop at `elfw+376`** — runs unconditionally. Emits a `.rela.<target>` record (24 bytes RELA for ELF64, 12 bytes REL+addend for ELF32) for every relocation still on the list after the apply phase. Per record: folds the sym-addend symbol value into `r_offset`, runs descriptor-driven bit-field extraction (`sub_468670` against the descriptor header at `off_1D3CBE0` / `off_1D3DBE0` uint32 indices [3-5], [7-9], [11-13]) to recover the in-instruction addend pieces and *accumulates* them into the record's `r_addend` slot at offset +16, remaps the symbol index via `sub_444720`, locates the `.rela`-class output section through `sub_442760` (SHT_RELA=`4`), and appends via `sub_4336B0`.
+   - **Secondary loop at `elfw+384`** — runs only when `*(uint8_t*)(elfw+85)` (`--preserve-relocs`) is set. Selects records whose parent section is `SHT_PROGBITS` with `SHF_EXECINSTR`, whose symbol type is `0xD` (CUDA-extended texture/surface/bindless) and binding `& 0xE0 == 0x40`. For each, constructs the output name `".nv.resolvedrela" + parent_name`, finds or creates the section via `sub_4411D0`, and emits the same 24 / 12 byte record format via `sub_4336B0`. Bit-field extraction is **not** run for this loop — the record is emitted with the addend the apply engine left in place.
 
    Error strings: `"symbol never allocated"`, `"relocation is past end of offset"`, `"unexpected reloc"`, `"rela section never allocated"`, `"reloc address not found"`.
 
@@ -247,13 +247,13 @@ Five callbacks fire in sequence:
 
 The largest function in the linker operates in five internal phases:
 
-**Phase A -- Symbol index remapping** (lines 800-918): Walks the `.nv.info` attribute list at `elfw+392`. For each EIATTR record, examines the code byte at `record+1`:
+**Phase A — Symbol index remapping** (lines 800-918): Walks the `.nv.info` attribute list at `elfw+392`. For each EIATTR record, examines the code byte at `record+1`:
 
 - **Codes 0x02, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x11, 0x12, 0x13, 0x14, 0x17, 0x23, 0x26, 0x2F, 0x3B, 0x45**: Standard indexed attributes. Remaps the 4-byte symbol index in the payload from old to new via `elfw+456` (positive indices) and `elfw+464` (negative indices). If the mapping returns zero and the code is not 0x45 or 0x17, the record is zeroed out (deleted). For `ET_EXEC` output, an additional check using bitmask `0x800800060000` on codes 0x00-0x2F detects function-scoped attributes referencing deleted sections.
 
 - **Code 0x0F (EIATTR_CALLEE_LIST)**: Multi-symbol remapping. The payload contains `(word+2 >> 2)` symbol indices, each remapped individually.
 
-**Phase B -- Per-entry property collection** (lines 1102-1502): Allocates 15+ per-symbol arrays, each indexed by symbol ordinal (`elfw+416 + 1` entries). The EIATTR code switch dispatches to fill these arrays:
+**Phase B — Per-entry property collection** (lines 1102-1502): Allocates 15+ per-symbol arrays, each indexed by symbol ordinal (`elfw+416 + 1` entries). The EIATTR code switch dispatches to fill these arrays:
 
 | EIATTR Code | Array | Purpose |
 |---|---|---|
@@ -278,7 +278,7 @@ The largest function in the linker operates in five internal phases:
 | `0x52` | `v699` | Version-gated attribute (requires `elfw+200 > 0x81`) |
 | `0x54` | `v705` | Per-entry attribute |
 
-**Phase C -- Callgraph propagation** (lines 1523-1972):
+**Phase C — Callgraph propagation** (lines 1523-1972):
 
 ```c
 sub_44CE00(a1, v731)    // Propagate REGCOUNT through callgraph (if byte a1+96)
@@ -293,9 +293,9 @@ The `sub_450ED0` (propagate_register_counts, 15,956 bytes / 516 lines) has criti
 2. Verbose output: `"Creating new EIATTR_NUM_BARRIERS and moving barcount %d from section flags of %s to nvinfo for entry symbol %s"`.
 3. Clears the barrier bits from the section flags: `section->sh_flags &= 0xF80FFFFF`.
 
-**Phase D -- Callgraph-driven EIATTR generation** (lines 1972+): For each entry symbol with callees (resolved via `sub_44C740`), propagates `EIATTR_CTAIDZ_USED` (0x04), `EIATTR_MAXNTID` (0x41), `EIATTR_NUM_BARRIERS` (0x4C), and version-gated attributes (0x51, 0x52) to callee functions that lack them. Creates new EIATTR records via `sub_450B70`.
+**Phase D — Callgraph-driven EIATTR generation** (lines 1972+): For each entry symbol with callees (resolved via `sub_44C740`), propagates `EIATTR_CTAIDZ_USED` (0x04), `EIATTR_MAXNTID` (0x41), `EIATTR_NUM_BARRIERS` (0x4C), and version-gated attributes (0x51, 0x52) to callee functions that lack them. Creates new EIATTR records via `sub_450B70`.
 
-**Phase E -- UFT section handling** (lines 2271-2293): If `elfw+240` is non-zero, looks up `.nv.uft` via `sub_4411B0` (asserting `"nv.uft not found"` on failure), then creates an EIATTR code-0x50 record referencing the UFT section symbol.
+**Phase E — UFT section handling** (lines 2271-2293): If `elfw+240` is non-zero, looks up `.nv.uft` via `sub_4411B0` (asserting `"nv.uft not found"` on failure), then creates an EIATTR code-0x50 record referencing the UFT section symbol.
 
 ### Resource Summary Computation
 
@@ -318,7 +318,7 @@ The stack size computation follows the callgraph: `sub_450C50` walks each entry'
 
 The `.nv.info` section is populated in two phases:
 
-1. **Pre-finalization callgraph closure** (`sub_44C030`): Resolves `-3` alt_call entries against address-taken nodes by matching name-tokens, runs DFS reachability from each candidate root, and validates that compiler-emitted `$`-prefixed symbols (read off `elfw+392`) are reachable from the chosen root kernel. This pass augments the callgraph in place; the actual binary TLV emission for `.nv.info` happens later when [`sub_445000` walks the EIATTR record list during finalization](../elf/nv-info.md). The earlier wiki revisions attributed TLV serialization to `sub_44C030` -- that was a misreading of the decompilation. See [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1).
+1. **Pre-finalization callgraph closure** (`sub_44C030`): Resolves `-3` alt_call entries against address-taken nodes by matching name-tokens, runs DFS reachability from each candidate root, and validates that compiler-emitted `$`-prefixed symbols (read off `elfw+392`) are reachable from the chosen root kernel. This pass augments the callgraph in place; the actual binary TLV emission for `.nv.info` happens later when [`sub_445000` walks the EIATTR record list during finalization](../elf/nv-info.md). The earlier wiki revisions attributed TLV serialization to `sub_44C030` — that was a misreading of the decompilation. See [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1).
 
 2. **During compute_entry_properties** (`sub_451D80`): New EIATTR records are created via `sub_450B70` for computed properties that did not exist in the input. This includes barrier-count migration from section flags, callgraph-propagated register counts, and inherited MAXNTID/CTAIDZ attributes. These records are appended to the existing `.nv.info` attribute list.
 
@@ -392,7 +392,7 @@ For relocatable ELF type (`ET_REL`, class 1), sections of type `SHT_CUDA_NOINIT`
 
 ### Section Count Overflow
 
-If `e_shnum > 0xFF00` (65,280 -- exceeds `SHN_LORESERVE`), the function enters the ELF extended section numbering path:
+If `e_shnum > 0xFF00` (65,280 — exceeds `SHN_LORESERVE`), the function enters the ELF extended section numbering path:
 
 ```c
 if (e_shnum > 0xFF00) {
@@ -435,7 +435,7 @@ The `e_flags` field in the ELF header (`elfw+48`) is patched with the program he
 
 ## Phase 9: ELF Header Finalization
 
-The final step writes the ELF header geometry fields. Note that `e_type` (`elfw+16`), `e_machine` (`elfw+18`), `e_version` (`elfw+20`), and `e_entry` (`elfw+24`) are **not** rewritten in this phase -- they were initialised by `elfw_create` (`sub_4438F0`) at module construction. The `e_phoff` and `e_phnum` fields are deferred to `sub_45BF00` (output phase) when an `ET_EXEC` program-header table is being emitted; see [ELF Serialization](../elf/serialization.md#preamble-e_phoff-and-e_phnum-computation). Phase 9 writes only:
+The final step writes the ELF header geometry fields. Note that `e_type` (`elfw+16`), `e_machine` (`elfw+18`), `e_version` (`elfw+20`), and `e_entry` (`elfw+24`) are **not** rewritten in this phase — they were initialised by `elfw_create` (`sub_4438F0`) at module construction. The `e_phoff` and `e_phnum` fields are deferred to `sub_45BF00` (output phase) when an `ET_EXEC` program-header table is being emitted; see [ELF Serialization](../elf/serialization.md#preamble-e_phoff-and-e_phnum-computation). Phase 9 writes only:
 
 ### 64-bit ELF (class 2)
 
@@ -480,7 +480,7 @@ The SSE shuffle operation (`_mm_shuffle_ps` with immediate 136 = `0b10001000`) i
 
 ### Finalization Flag
 
-The very last instruction sets `byte elfw+82 = 1`, marking the ELF wrapper as finalized. Subsequent operations (like the output phase) check this flag before allowing modifications. This is the single bit that gates all post-finalization validation -- any function that accesses virtual section indices will assert "secidx not virtual" if this flag is set and the indices are stale.
+The very last instruction sets `byte elfw+82 = 1`, marking the ELF wrapper as finalized. Subsequent operations (like the output phase) check this flag before allowing modifications. This is the single bit that gates all post-finalization validation — any function that accesses virtual section indices will assert "secidx not virtual" if this flag is set and the indices are stale.
 
 ## Relationship to FNLZR (sub_4275C0)
 
@@ -499,7 +499,7 @@ The FNLZR (Finalizer) at `sub_4275C0` (162 lines, 3,989 bytes) is architecturall
 
 The FNLZR has two distinct modes controlled by the `a5` (post_link_flag) parameter:
 
-**Pre-link mode** (`a5 == 0`): Verbose `"FNLZR: Pre-Link Mode"`. Validates architecture flags in the serialized ELF header -- for CUDA ABI (`ELFOSABI` byte at offset+7 == 0x41`), checks bit 2 of `e_flags`; for non-CUDA ABI, checks bits `0x80004000`. Triggers `"Internal error"` on validation failure.
+**Pre-link mode** (`a5 == 0`): Verbose `"FNLZR: Pre-Link Mode"`. Validates architecture flags in the serialized ELF header — for CUDA ABI (`ELFOSABI` byte at offset+7 == 0x41`), checks bit 2 of `e_flags`; for non-CUDA ABI, checks bits `0x80004000`. Triggers `"Internal error"` on validation failure.
 
 **Post-link mode** (`a5 == 1`): Verbose `"FNLZR: Post-Link Mode"`. Checks bit `0x80000000` (non-CUDA) or bit 1 (CUDA ABI) in `e_flags`. If `byte_2A5F222` is set, enables destructive rewriting mode. Otherwise, optimization-only mode.
 
@@ -555,20 +555,20 @@ The per-kernel compilation function invoked from phase 8 of `sub_4748F0`. For ea
 3. **Copies 256-byte architecture profile** (lines 617-632): 16 SSE `_mm_loadu_si128` loads copy the architecture profile from the parent compilation state at `v4` (offset from `a2+248`).
 
 4. **Parses compiler key-value options** (lines 644-807): Iterates `a1+38` (option list), comparing each key against known strings using inline byte-by-byte loops:
-   - `"deviceDebug"` -- sets byte at `v4+24`
-   - `"lineInfo"` -- sets byte at `v4+25`
-   - `"optLevel"` -- parsed via `strtol`, sets optimization level at `v4+108` unless already forced
-   - `"IsCompute"` -- sets compute flag
-   - `"IsPIC"` -- sets position-independent code flag
+   - `"deviceDebug"` — sets byte at `v4+24`
+   - `"lineInfo"` — sets byte at `v4+25`
+   - `"optLevel"` — parsed via `strtol`, sets optimization level at `v4+108` unless already forced
+   - `"IsCompute"` — sets compute flag
+   - `"IsPIC"` — sets position-independent code flag
 
 5. **Tokenizes compiler flags** (lines 835-866): Uses `strtok_r` with space delimiter to split compiler flags from `a1+39`. Each token is validated via `sub_4712A0` and accumulated into a concatenated flag string.
 
 6. **Classifies input sections** (lines 990-1188): Each section entry is assigned a 72-byte descriptor. The section type field (`v70`) is mapped to an internal type code as listed above.
 
 7. **Generates per-kernel output section names** (lines 2220-2316):
-   - `.sass_map<funcname>` -- SASS-to-source mapping section
-   - `.nv.local.<funcname>` -- per-kernel local memory section (if `v517+112` is non-zero)
-   - `.nv.constant<N>.<funcname>` -- per-kernel constant bank section (bank number computed via `sub_1CF72C0(a2, *v40) - 1879048292`, which is `type - 0x70000004`)
+   - `.sass_map<funcname>` — SASS-to-source mapping section
+   - `.nv.local.<funcname>` — per-kernel local memory section (if `v517+112` is non-zero)
+   - `.nv.constant<N>.<funcname>` — per-kernel constant bank section (bank number computed via `sub_1CF72C0(a2, *v40) - 1879048292`, which is `type - 0x70000004`)
 
 8. **Thread-safe string table updates** (lines 2109-2329): Uses `pthread_mutex_lock`/`unlock` on `a2+240` to safely update global string table sizes. Four mutex-protected critical sections handle `.sass_map`, `.nv.local`, and `.nv.constant` section name lengths.
 
@@ -713,14 +713,14 @@ Textures, surfaces, and samplers are only printed if non-zero. The function list
 | `sub_444AD0` | ~1 KB | is_cuda_builtin_name | Tests symbol name against CUDA builtin patterns |
 | `sub_438BB0` | ~0.5 KB | align_up | Aligns an offset to a given power-of-2 boundary |
 | `sub_470DA0` | ~2 KB | off_target_check | Off-target finalization compatibility check |
-| `sub_1CEF5B0` | -- | ocg_compilation_setup | OCG compilation pipeline initialization |
-| `sub_1CF07A0` | -- | section_classify_pass1 | First-pass section classification |
-| `sub_1CF1690` | -- | section_classify_pass2 | Second-pass section processing |
-| `sub_1CEF440` | -- | emission_config | Emission parameter configuration |
-| `sub_1CF2100` | -- | elf_emit | ELF emission (non-debug path) |
-| `sub_1CF72E0` | -- | elf_emit_debug | ELF emission (debug path) |
-| `sub_1CF3720` | -- | elf_write | ELF serialized write (non-debug) |
-| `sub_1CF7F30` | -- | elf_write_debug | ELF serialized write (debug) |
+| `sub_1CEF5B0` | — | ocg_compilation_setup | OCG compilation pipeline initialization |
+| `sub_1CF07A0` | — | section_classify_pass1 | First-pass section classification |
+| `sub_1CF1690` | — | section_classify_pass2 | Second-pass section processing |
+| `sub_1CEF440` | — | emission_config | Emission parameter configuration |
+| `sub_1CF2100` | — | elf_emit | ELF emission (non-debug path) |
+| `sub_1CF72E0` | — | elf_emit_debug | ELF emission (debug path) |
+| `sub_1CF3720` | — | elf_write | ELF serialized write (non-debug) |
+| `sub_1CF7F30` | — | elf_write_debug | ELF serialized write (debug) |
 | `sub_44C7E0` | 308 B | record_frame_size | Stores EIATTR_FRAME_SIZE per entry |
 | `sub_44C7A0` | 298 B | record_min_stack | Stores EIATTR_MIN_STACK per entry |
 | `sub_44C830` | 308 B | record_crs_stack | Stores EIATTR_CRS_STACK_SIZE per entry |
@@ -733,15 +733,15 @@ Textures, surfaces, and samplers are only printed if non-zero. The function list
 
 ## Cross-References
 
-- [Pipeline Overview](overview.md) -- placement of finalization in the full nvlink pipeline
-- [Layout Phase](layout.md) -- the preceding phase that assigns addresses to shared memory, global data, and constant banks; shared memory sizes consumed by verbose stats come from layout
-- [Relocation Phase](relocate.md) -- the preceding phase that patches instruction/data bytes; finalization runs after all relocations are applied
-- [Output Phase](output.md) -- the succeeding phase that serializes the finalized ELF to bytes
-- [Mercury / FNLZR](../mercury/fnlzr.md) -- the separate post-link binary rewriter for sm >= 100; documents `sub_4275C0` dispatcher and `sub_4748F0` engine in full detail
-- [ELF Writer Structure](../structs/elf-writer.md) -- the elfw data structure manipulated by this phase; field offsets referenced throughout (elfw+82 finalize flag, elfw+392 EIATTR list, etc.)
-- [.nv.info Metadata](../elf/nv-info.md) -- TLV record format, EIATTR attribute catalog (97 codes), and the `sub_451D80` dispatch table; finalization is the primary producer of `.nv.info` content
-- [Section Catalog](../reference/section-catalog.md) -- canonical section ordering in CUDA device ELF; the 8-bucket priority classification in Phase 6 produces this ordering
-- [Constant Banks](../elf/constant-banks.md) -- per-kernel constant bank sections (`.nv.constant<N>.<name>`) generated by `sub_471700` during Mercury OCG
+- [Pipeline Overview](overview.md) — placement of finalization in the full nvlink pipeline
+- [Layout Phase](layout.md) — the preceding phase that assigns addresses to shared memory, global data, and constant banks; shared memory sizes consumed by verbose stats come from layout
+- [Relocation Phase](relocate.md) — the preceding phase that patches instruction/data bytes; finalization runs after all relocations are applied
+- [Output Phase](output.md) — the succeeding phase that serializes the finalized ELF to bytes
+- [Mercury / FNLZR](../mercury/fnlzr.md) — the separate post-link binary rewriter for sm >= 100; documents `sub_4275C0` dispatcher and `sub_4748F0` engine in full detail
+- [ELF Writer Structure](../structs/elf-writer.md) — the elfw data structure manipulated by this phase; field offsets referenced throughout (elfw+82 finalize flag, elfw+392 EIATTR list, etc.)
+- [.nv.info Metadata](../elf/nv-info.md) — TLV record format, EIATTR attribute catalog (97 codes), and the `sub_451D80` dispatch table; finalization is the primary producer of `.nv.info` content
+- [Section Catalog](../reference/section-catalog.md) — canonical section ordering in CUDA device ELF; the 8-bucket priority classification in Phase 6 produces this ordering
+- [Constant Banks](../elf/constant-banks.md) — per-kernel constant bank sections (`.nv.constant<N>.<name>`) generated by `sub_471700` during Mercury OCG
 
 ## Confidence Assessment
 

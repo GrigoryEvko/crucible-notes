@@ -1,6 +1,6 @@
 # IL Comparison & Deep Copy
 
-The IL comparison and deep copy engines are two tightly coupled subsystems in EDG's `il.c` that serve template instantiation, constant sharing, and overload resolution. The comparison engine determines structural equivalence between two IL expression trees or constant nodes -- needed when the compiler must decide whether two template arguments are "the same" or whether a constant has already been allocated. The deep copy engine clones expression trees while optionally substituting template parameters for their actual arguments -- the core mechanism behind template instantiation. Both subsystems are recursive tree walkers dispatched by node-kind switches, and both operate on the same IL node layout described in [IL Overview](overview.md).
+The IL comparison and deep copy engines are two tightly coupled subsystems in EDG's `il.c` that serve template instantiation, constant sharing, and overload resolution. The comparison engine determines structural equivalence between two IL expression trees or constant nodes — needed when the compiler must decide whether two template arguments are "the same" or whether a constant has already been allocated. The deep copy engine clones expression trees while optionally substituting template parameters for their actual arguments — the core mechanism behind template instantiation. Both subsystems are recursive tree walkers dispatched by node-kind switches, and both operate on the same IL node layout described in [IL Overview](overview.md).
 
 These two engines share the address range `0x5D0750`--`0x5DFAD0` in the binary (roughly 37KB of compiled code). The comparison engine occupies `0x5D0750`--`0x5D2160`, constant sharing infrastructure sits at `0x5D2170`--`0x5D2D80`, the expression copy engine fills `0x5D2DE0`--`0x5D5550`, and the template parameter substitution dispatcher extends from `0x5DC000`--`0x5DFAD0`.
 
@@ -31,7 +31,7 @@ Three front-end subsystems need structural equality testing on IL trees:
 
 1. **Template argument deduction.** When the compiler deduces template arguments from a function call, it must compare the deduced value against a previously deduced value for the same parameter. Two independently constructed expression trees representing `sizeof(int)` must compare as equal even though they are distinct heap allocations.
 
-2. **Constant sharing.** Identical constants across the translation unit are deduplicated into a single canonical node in file-scope memory. The comparison engine is the hash table's equality predicate -- after two constants hash to the same bucket, `compare_constants` determines whether they are structurally identical.
+2. **Constant sharing.** Identical constants across the translation unit are deduplicated into a single canonical node in file-scope memory. The comparison engine is the hash table's equality predicate — after two constants hash to the same bucket, `compare_constants` determines whether they are structurally identical.
 
 3. **Overload resolution.** When the compiler checks whether two function template specializations have equivalent signatures, it compares their template argument expressions for equivalence.
 
@@ -157,11 +157,11 @@ compare_expressions(expr_a, expr_b, flags) -> bool:
 
 | Bit | Mask | Meaning |
 |---|---|---|
-| 0 | `0x01` | Strict mode -- entity references must be pointer-identical, not just structurally equivalent |
-| 1 | `0x02` | Check constraints -- compare template constraints alongside types |
-| 2 | `0x04` | Allow specialization -- used by the equivalence wrapper (`sub_5D1320`) when comparing for specialization matching |
+| 0 | `0x01` | Strict mode — entity references must be pointer-identical, not just structurally equivalent |
+| 1 | `0x02` | Check constraints — compare template constraints alongside types |
+| 2 | `0x04` | Allow specialization — used by the equivalence wrapper (`sub_5D1320`) when comparing for specialization matching |
 
-**Recursion depth guard.** The global `dword_126F1D0` is incremented on entry and decremented on exit. This counter is not used for depth limiting -- it exists so that diagnostic routines (guarded by `dword_126EFC8`) can print indented traces via `sub_5C4B70` (`dump_expr_tree`).
+**Recursion depth guard.** The global `dword_126F1D0` is incremented on entry and decremented on exit. This counter is not used for depth limiting — it exists so that diagnostic routines (guarded by `dword_126EFC8`) can print indented traces via `sub_5C4B70` (`dump_expr_tree`).
 
 ### compare_constants (sub_5D1350)
 
@@ -442,7 +442,7 @@ After a constant is copied into the shared region, some of its internal pointers
 
 ### Why It Exists
 
-Template instantiation requires cloning expression trees from template definitions while replacing template parameter references with the actual arguments provided at the instantiation site. This is not a simple `memcpy` -- every node in the tree must be visited, its pointers updated to reference the new region's copies, and template parameter nodes must be intercepted and replaced with substituted values. The deep copy engine provides this transformation.
+Template instantiation requires cloning expression trees from template definitions while replacing template parameter references with the actual arguments provided at the instantiation site. This is not a simple `memcpy` — every node in the tree must be visited, its pointers updated to reference the new region's copies, and template parameter nodes must be intercepted and replaced with substituted values. The deep copy engine provides this transformation.
 
 Default argument expansion also uses the copy engine: when a function call omits an argument that has a default, the default's expression tree is cloned from the function declaration into the call site.
 
@@ -556,10 +556,10 @@ i_copy_expr_tree(src_expr, flags, subst_list) -> expr_node*:
 
 | Bit | Mask | Meaning |
 |---|---|---|
-| 4 | `0x10` | `resolve_refs` -- after copying, resolve entity references through the symbol table |
-| 7 | `0x80` | `copy_entities` -- copy entity nodes themselves (not just references to them) |
-| 12 | `0x1000` | `mark_instantiated` -- stamp copied nodes with the instantiation flag |
-| 14 | `0x5000` | `preserve_source_pos` -- carry source-position annotations from source to copy |
+| 4 | `0x10` | `resolve_refs` — after copying, resolve entity references through the symbol table |
+| 7 | `0x80` | `copy_entities` — copy entity nodes themselves (not just references to them) |
+| 12 | `0x1000` | `mark_instantiated` — stamp copied nodes with the instantiation flag |
+| 14 | `0x5000` | `preserve_source_pos` — carry source-position annotations from source to copy |
 
 ### i_copy_list_of_expr_trees (sub_5D38C0)
 
@@ -642,7 +642,7 @@ i_copy_constant_full(src, dest_or_null, flags, subst_list) -> constant*:
 
 ### Public Wrappers
 
-The `i_copy_*` functions are internal -- they take a substitution-list parameter that must be cleaned up after use. Public wrappers handle this lifecycle:
+The `i_copy_*` functions are internal — they take a substitution-list parameter that must be cleaned up after use. Public wrappers handle this lifecycle:
 
 | Wrapper | Address | Internal function | Purpose |
 |---|---|---|---|
@@ -659,7 +659,7 @@ Each wrapper allocates a local substitution list, calls the internal function, t
 
 ### Why It Exists
 
-The deep copy engine (Part 3) performs a mechanical tree clone -- it duplicates structure but does not transform content. Template instantiation requires more: when the copier encounters a node referencing template parameter `T`, it must replace that node with the actual type argument (e.g., `int`). When it encounters `sizeof(T)`, it must evaluate the expression with `T=int` and produce the constant `4`. The template parameter substitution engine is the transformation layer that sits on top of the copy engine, intercepting template-parameter nodes and performing the substitution.
+The deep copy engine (Part 3) performs a mechanical tree clone — it duplicates structure but does not transform content. Template instantiation requires more: when the copier encounters a node referencing template parameter `T`, it must replace that node with the actual type argument (e.g., `int`). When it encounters `sizeof(T)`, it must evaluate the expression with `T=int` and produce the constant `4`. The template parameter substitution engine is the transformation layer that sits on top of the copy engine, intercepting template-parameter nodes and performing the substitution.
 
 ### copy_template_param_expr (sub_5DC000)
 
@@ -775,7 +775,7 @@ copy_template_param_expr(expr, tctx, ...):
             return instantiate_dependent_entity(expr, tctx, ...)
 ```
 
-**Post-substitution type conversions.** The internal helper `do_conversions_on_operands_of_copied_template_expr` (at il.c line 18885) handles arithmetic promotions that must occur after template parameter substitution. For example, `T + U` where `T=int` and `U=double` requires promoting the `int` operand to `double` -- this promotion is not present in the template definition's expression tree because the types are unknown there. The function handles:
+**Post-substitution type conversions.** The internal helper `do_conversions_on_operands_of_copied_template_expr` (at il.c line 18885) handles arithmetic promotions that must occur after template parameter substitution. For example, `T + U` where `T=int` and `U=double` requires promoting the `int` operand to `double` — this promotion is not present in the template definition's expression tree because the types are unknown there. The function handles:
 
 - **Shift operators** (ops 53-54): promote the result type to the promoted LHS type.
 - **Comparison operators** (ops 58-63): compute the common type and apply usual arithmetic conversions.
@@ -955,7 +955,7 @@ Template Instantiation Driver
               +-> fixup_constant_references
 ```
 
-The comparison engine is not called during the copy itself -- it is called only at the end, when the newly constructed constants are passed through `alloc_shareable_constant` for deduplication. This means the copy engine may temporarily create duplicate constants that are later merged by the sharing infrastructure. The design separates concerns: the copy engine focuses on correctness (producing a valid substituted tree), while the sharing engine focuses on efficiency (deduplicating identical results).
+The comparison engine is not called during the copy itself — it is called only at the end, when the newly constructed constants are passed through `alloc_shareable_constant` for deduplication. This means the copy engine may temporarily create duplicate constants that are later merged by the sharing infrastructure. The design separates concerns: the copy engine focuses on correctness (producing a valid substituted tree), while the sharing engine focuses on efficiency (deduplicating identical results).
 
 ---
 
@@ -1006,10 +1006,10 @@ Zeroes ~80 qword globals in the `0x126F680`--`0x126F978` range. These are transi
 | `0x5D4C00` | `copy_lambda_capture` | ~60 | Lambda capture list copy |
 | `0x5D4DB0` | `alloc_constant` | ~150 | Non-shared constant allocation with kind-specific cleanup |
 | `0x5DBAB0` | `intern_string_constant` | ~92 | String literal interning via hash table |
-| `0x5DC000` | `copy_template_param_expr` | 1416 | Template substitution -- expression dispatcher |
-| `0x5DDEB0` | `copy_template_param_type_expr` | 82 | Template substitution -- type expressions |
-| `0x5DE010` | `copy_template_param_expr_list` | 77 | Template substitution -- expression list |
-| `0x5DE1A0` | `copy_template_param_value_expr` | 55 | Template substitution -- single value expr |
-| `0x5DE290` | `copy_template_param_con` | 819 | Template substitution -- constant dispatcher |
-| `0x5DF6A0` | `copy_template_param_con_overload_resolution` | 180 | Template substitution -- overload resolution |
-| `0x5DFAD0` | `copy_template_param_con_with_substitution` | 288 | Template substitution -- top-level entry |
+| `0x5DC000` | `copy_template_param_expr` | 1416 | Template substitution — expression dispatcher |
+| `0x5DDEB0` | `copy_template_param_type_expr` | 82 | Template substitution — type expressions |
+| `0x5DE010` | `copy_template_param_expr_list` | 77 | Template substitution — expression list |
+| `0x5DE1A0` | `copy_template_param_value_expr` | 55 | Template substitution — single value expr |
+| `0x5DE290` | `copy_template_param_con` | 819 | Template substitution — constant dispatcher |
+| `0x5DF6A0` | `copy_template_param_con_overload_resolution` | 180 | Template substitution — overload resolution |
+| `0x5DFAD0` | `copy_template_param_con_with_substitution` | 288 | Template substitution — top-level entry |

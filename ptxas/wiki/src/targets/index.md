@@ -2,13 +2,13 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas validates the `--gpu-name` target against three sorted lookup tables, constructs a profile object with family metadata and a `CUDA_ARCH` macro value, then populates seven parallel dispatch tables that drive capability checks, code generation factory selection, performance modeling, and occupancy calculation throughout the compiler. The default target is `sm_75` (Turing). Every downstream decision -- instruction legality, encoder selection, register file geometry, scheduling latencies -- routes through the profile object built here.
+ptxas validates the `--gpu-name` target against three sorted lookup tables, constructs a profile object with family metadata and a `CUDA_ARCH` macro value, then populates seven parallel dispatch tables that drive capability checks, code generation factory selection, performance modeling, and occupancy calculation throughout the compiler. The default target is `sm_75` (Turing). Every downstream decision — instruction legality, encoder selection, register file geometry, scheduling latencies — routes through the profile object built here.
 
 | | |
 |---|---|
 | **SM validation** | `sub_6765E0` (54KB, profile object construction) |
 | **Capability dispatch** | `sub_607DB0` (14KB, 7 parallel hash maps) |
-| **Default target** | `sub_6784B0` -- returns `sm_75` when `--gpu-name` is omitted |
+| **Default target** | `sub_6784B0` — returns `sm_75` when `--gpu-name` is omitted |
 | **Validation tables** | 3 bsearch arrays: base (32 entries at `unk_1D16220`), `f` (6 entries at `unk_1D16160`), `a` (7 entries at `unk_1D161C0`) |
 | **Per-SM accessors** | `sub_609XXX` cluster (24 functions, ~1.2KB each) |
 | **Per-SM intrinsic init** | `sub_60AXXX` cluster (12 functions, ~1KB each) |
@@ -16,10 +16,10 @@ ptxas validates the `--gpu-name` target against three sorted lookup tables, cons
 
 **Per-SM Deep Dives:**
 
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) -- Baseline feature set, codegen factory 24577/28673
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) -- WGMMA, cluster operations, codegen factory 32768
-- [Blackwell (SM 100--121)](blackwell.md) -- tcgen05, arch/family gating, codegen factory 36864
-- [TCGen05 -- 5th Gen Tensor Cores](tcgen05.md) -- Blackwell tensor core ISA detail
+- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Baseline feature set, codegen factory 24577/28673
+- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — WGMMA, cluster operations, codegen factory 32768
+- [Blackwell (SM 100--121)](blackwell.md) — tcgen05, arch/family gating, codegen factory 36864
+- [TCGen05 — 5th Gen Tensor Cores](tcgen05.md) — Blackwell tensor core ISA detail
 
 ## Complete SM Table
 
@@ -31,7 +31,7 @@ ptxas validates the `--gpu-name` target against three sorted lookup tables, cons
 | `sm_80` | 800 | Ampere | A100 | 28673 | Production | [turing-ampere](turing-ampere.md) |
 | `sm_86` | 860 | Ampere | A40/A10/RTX 30xx | 28674 | Production | [turing-ampere](turing-ampere.md) |
 | `sm_87` | 870 | Ampere | Orin (Jetson) | 28675 | Production | [turing-ampere](turing-ampere.md) |
-| `sm_88` | 880 | Ampere | -- | 28676 | Production | [turing-ampere](turing-ampere.md) |
+| `sm_88` | 880 | Ampere | — | 28676 | Production | [turing-ampere](turing-ampere.md) |
 | `sm_89` | 890 | Ada Lovelace | AD10x (RTX 40xx) / L40S | 28677 | Production | [ada-hopper](ada-hopper.md) |
 | `sm_90` / `sm_90a` | 900 | Hopper | H100 / H200 | 32768 | Production | [ada-hopper](ada-hopper.md) |
 | `sm_100` / `sm_100a` / `sm_100f` | 1000 | Blackwell | B200 (datacenter) | 36864 | Production | [blackwell](blackwell.md) |
@@ -49,7 +49,7 @@ ptxas uses three suffix modes to control forward compatibility. The distinction 
 | Suffix | Meaning | Forward Compatibility | Validation Table |
 |---|---|---|---|
 | (none) | Base feature set | Full forward-compat across generations | `unk_1D16220` (32 entries) |
-| `a` (accelerated) | Architecture-locked, advanced features | **No** forward compat -- locked to specific silicon | `unk_1D161C0` (7 entries) |
+| `a` (accelerated) | Architecture-locked, advanced features | **No** forward compat — locked to specific silicon | `unk_1D161C0` (7 entries) |
 | `f` (feature-reduced) | Same-family forward compat only | Forward-compat within family, not across | `unk_1D16160` (6 entries) |
 
 The base variant (no suffix) produces SASS that runs on the named architecture and all later ones: `sm_80` code runs on sm_86, sm_89, sm_90, sm_100, etc. The `a` suffix locks the binary to exact silicon: `sm_90a` code runs only on H100/H200 hardware and will not execute on Blackwell. The `f` suffix allows forward compatibility within the same family: `sm_100f` code runs on sm_100 and sm_103 (both Blackwell datacenter) but not on sm_120 (different family).
@@ -65,10 +65,10 @@ The base variant (no suffix) produces SASS that runs on the named architecture a
 
 | Base | `a` Variant | `f` Variant | `CUDA_ARCH` (a) | `CUDA_ARCH` (f) |
 |---|---|---|---|---|
-| `sm_90` | `sm_90a` | -- | `90a0` | -- |
+| `sm_90` | `sm_90a` | — | `90a0` | — |
 | `sm_100` | `sm_100a` | `sm_100f` | `100a0` | `100f0` |
 | `sm_103` | `sm_103a` | `sm_103f` | `103a0` | `103f0` |
-| `sm_101` | `sm_101a` | `sm_101f` | -- | -- |
+| `sm_101` | `sm_101a` | `sm_101f` | — | — |
 | `sm_110` | `sm_110a` | `sm_110f` | `110a0` | `110f0` |
 | `sm_120` | `sm_120a` | `sm_120f` | `120a0` | `120f0` |
 | `sm_121` | `sm_121a` | `sm_121f` | `121a0` | `121f0` |
@@ -79,7 +79,7 @@ sm_75 through sm_89 have no `a` or `f` variants. sm_90 has only the `a` variant 
 
 Target name validation uses three sorted arrays searched via `bsearch()`. The CLI parser extracts the SM string from `--gpu-name`, strips any suffix, and searches the appropriate table.
 
-### Base Table -- `unk_1D16220` (32 entries)
+### Base Table — `unk_1D16220` (32 entries)
 
 Contains all valid base SM names without suffix, sorted by numeric SM ID. Includes legacy architectures no longer supported for active compilation but retained for validation, plus two internal/alias entries. Each entry is 12 bytes: `{uint32 sm_id, uint32 ptx_major, uint32 ptx_minor}`. The bsearch comparison (`sub_484B70`) compares the numeric `sm_id` extracted from the `--gpu-name` string via `sscanf`.
 
@@ -100,7 +100,7 @@ sm_100, sm_101, sm_103, sm_110, sm_120, sm_121 // Blackwell (active, PTX 8.6--9.
 
 **sm_101** (PTX 8.6): Original internal designation for Jetson Thor, renamed to sm_110 in a later CUDA release. Both entries coexist in the validation table for backward compatibility with PTX files referencing the old name. `sub_6765E0` registers only sm_110; sm_101 is validation-only.
 
-### Accelerated Table -- `unk_1D161C0` (7 entries)
+### Accelerated Table — `unk_1D161C0` (7 entries)
 
 ```text
 sm_90a, sm_100a, sm_101a, sm_103a, sm_110a, sm_120a, sm_121a
@@ -108,7 +108,7 @@ sm_90a, sm_100a, sm_101a, sm_103a, sm_110a, sm_120a, sm_121a
 
 One Hopper entry, six Blackwell entries. `sm_101a` is the legacy alias for `sm_110a` (Jetson Thor, original internal designation).
 
-### Feature-Reduced Table -- `unk_1D16160` (6 entries)
+### Feature-Reduced Table — `unk_1D16160` (6 entries)
 
 ```text
 sm_100f, sm_101f, sm_103f, sm_110f, sm_120f, sm_121f
@@ -116,7 +116,7 @@ sm_100f, sm_101f, sm_103f, sm_110f, sm_120f, sm_121f
 
 No Hopper entry (sm_90 has no `f` variant). All Blackwell-era. `sm_101f` is the legacy alias for `sm_110f`.
 
-## Architecture Registration -- `sub_6765E0`
+## Architecture Registration — `sub_6765E0`
 
 This 54KB function constructs profile objects for every SM version. Each profile contains:
 
@@ -127,7 +127,7 @@ This 54KB function constructs profile objects for every SM version. Each profile
 | Family name | `"Hopper"` | `"Hopper"` |
 | `CUDA_ARCH` macro | Decimal integer | `900` |
 | LTO name | `"lto_90"` | `"lto_90"` |
-| `isaClass` | Architecture class ID | -- |
+| `isaClass` | Architecture class ID | — |
 
 The function registers each profile into three hash maps indexed by `sm_XX`, `compute_XX`, and `lto_XX` strings. This allows lookup by any of the three naming conventions used in different contexts (CLI, PTX `.target` directive, LTO linking).
 
@@ -141,13 +141,13 @@ The function registers each profile into three hash maps indexed by `sm_XX`, `co
 | sm_90/90a | `"Hopper"` | Single silicon, two feature levels |
 | sm_100/100a/100f | `"Blackwell"` | Datacenter B200 |
 | sm_103/103a/103f | `"Blackwell"` | Blackwell Ultra (GB300) |
-| sm_110/110a/110f | `"Blackwell"` | Jetson Thor -- same family string despite different product |
-| sm_120/120a/120f | `"Blackwell"` | Consumer/enterprise (RTX 50xx) -- different uarch, same string |
+| sm_110/110a/110f | `"Blackwell"` | Jetson Thor — same family string despite different product |
+| sm_120/120a/120f | `"Blackwell"` | Consumer/enterprise (RTX 50xx) — different uarch, same string |
 | sm_121/121a/121f | `"Blackwell"` | DGX Spark |
 
 All sm_100 through sm_121 share the `"Blackwell"` family string internally, even though sm_110 (Jetson Thor) and sm_120 (consumer RTX 50xx) are distinct microarchitectures. The compiler distinguishes them through the capability dispatch tables, not through family name.
 
-## Capability Dispatch -- `sub_607DB0`
+## Capability Dispatch — `sub_607DB0`
 
 The capability dispatch initializer builds 7 parallel hash maps at initialization time, protected by a once-guard (`byte_29FE1D8`). Each map indexes `sm_XX` / `compute_XX` strings to per-architecture values or handler functions. Error recovery uses `setjmp`/`longjmp`.
 
@@ -163,9 +163,9 @@ The capability dispatch initializer builds 7 parallel hash maps at initializatio
 
 ### Handler Function Assignments
 
-Each SM version registers its own handler functions into these maps. Functions within the same suffix group (e.g., sm_100/100a/100f) share **all** handlers -- they are the same silicon with different feature exposure.
+Each SM version registers its own handler functions into these maps. Functions within the same suffix group (e.g., sm_100/100a/100f) share **all** handlers — they are the same silicon with different feature exposure.
 
-**Map 1 -- Handler A (per SM):**
+**Map 1 — Handler A (per SM):**
 
 | SM | Handler A | SM | Handler A |
 |---|---|---|---|
@@ -177,7 +177,7 @@ Each SM version registers its own handler functions into these maps. Functions w
 | sm_89 | `sub_609E10` | | |
 | sm_90 | `sub_609DB0` | | |
 
-**Map 2 -- Handler B (per SM):**
+**Map 2 — Handler B (per SM):**
 
 | SM | Handler B | SM | Handler B |
 |---|---|---|---|
@@ -189,7 +189,7 @@ Each SM version registers its own handler functions into these maps. Functions w
 | sm_89 | `sub_609CF0` | | |
 | sm_90 | `sub_609C00` | | |
 
-**Map 3 -- Intrinsic table initializer (per SM):**
+**Map 3 — Intrinsic table initializer (per SM):**
 
 | SM | Initializer | SM | Initializer |
 |---|---|---|---|
@@ -221,9 +221,9 @@ The profile object stores an encoded architecture identifier at a known offset (
 | Codegen Factory | SM Range | SASS ISA Generation |
 |---|---|---|
 | 24577 | sm_75 | Turing (SM 7.5) |
-| 28673 | sm_80 -- sm_89 | Ampere / Ada (SM 8.x) |
+| 28673 | sm_80 — sm_89 | Ampere / Ada (SM 8.x) |
 | 32768 | sm_90 | Hopper (SM 9.0) |
-| 36864 | sm_100 -- sm_121 | Blackwell (SM 10.x -- 12.x) |
+| 36864 | sm_100 — sm_121 | Blackwell (SM 10.x — 12.x) |
 
 These values appear in feature-gating checks. For example, FMA/DFMA combining in the peephole optimizer checks `profile[+372] > 28673` to require sm_70+ capability. The exact encoding formula is `(isa_generation << 12) | variant`, where the high bits identify the SASS instruction set generation.
 
@@ -254,9 +254,9 @@ ptxas assembles per-SM hardware parameters from three data sources: `sub_8688F0`
 |---|---|---|---|
 | Warp size | 32 threads | `*(a1+1472) = 32` | +1472 |
 | Max registers per thread | 255 | `*(a1+612) = 0xFF0000003F` | +612 |
-| Register file per SM | 65,536 x 32-bit | Derived: `max_warps = 65536 / (regcount * 32)` | -- |
+| Register file per SM | 65,536 x 32-bit | Derived: `max_warps = 65536 / (regcount * 32)` | — |
 | Dependency barriers per warp | 6 | `*(a1+604) = 6` | +604 |
-| Named barriers per CTA | 16 | `barrier_arrive_0` through `barrier_arrive_15` intrinsics | -- |
+| Named barriers per CTA | 16 | `barrier_arrive_0` through `barrier_arrive_15` intrinsics | — |
 | Static shared memory base | 48 KB (49,152 B) | `*(a1+1484) = 49152` | +1484 |
 | Shared memory config base | 1 MB (1,048,576 B) | `*(v6+344) = 0x100000` in all per-SM inits | profile +344 |
 
@@ -294,18 +294,18 @@ Combines binary evidence (sub\_8E4400 scheduling profile, sub\_8688F0 baseline, 
 
 ### Scheduler Partition Geometry (sub\_8E4400 Detail)
 
-The packed DWORD at offset +18 of the warp-level profile encodes scheduler partition counts. The WORD at offset +22 is the dispatch slot count -- a scheduling capacity value distinct from the raw warp count.
+The packed DWORD at offset +18 of the warp-level profile encodes scheduler partition counts. The WORD at offset +22 is the dispatch slot count — a scheduling capacity value distinct from the raw warp count.
 
 | Codegen Factory Range | Packed DWORD | Hex | Partitions | Dispatch Slots | SM Era |
 |---|---|---|---|---|---|
 | <= 20479 | 458,759 | `0x00070007` | 7 | 96 | sm\_50 (Maxwell) |
-| 20480 -- 24575 | 786,444 | `0x000C000C` | 12 | 176 | sm\_60 (Pascal) |
-| 24576 -- 28672 | 851,981 | `0x000D000D` | 13 | 192 | sm\_70 (Volta) |
-| 28673 -- 32767 | 917,518 | `0x000E000E` | 14 | 208 | sm\_75 -- sm\_89 |
-| 32768 -- 36863 | 983,055 | `0x000F000F` | 15 | 224 | sm\_90 (Hopper) |
+| 20480 — 24575 | 786,444 | `0x000C000C` | 12 | 176 | sm\_60 (Pascal) |
+| 24576 — 28672 | 851,981 | `0x000D000D` | 13 | 192 | sm\_70 (Volta) |
+| 28673 — 32767 | 917,518 | `0x000E000E` | 14 | 208 | sm\_75 — sm\_89 |
+| 32768 — 36863 | 983,055 | `0x000F000F` | 15 | 224 | sm\_90 (Hopper) |
 | > 36863 | 1,048,592 | `0x00100010` | 16 | 240 | sm\_100+ (Blackwell) |
 
-The dispatch slot count increases monotonically across generations, reflecting wider scheduling capacity. All sm\_75 through sm\_89 targets (Turing, Ampere, Ada Lovelace) share identical scheduling partition geometry despite their hardware differences -- the differentiation occurs in the per-SM latency tables, not in the partition structure.
+The dispatch slot count increases monotonically across generations, reflecting wider scheduling capacity. All sm\_75 through sm\_89 targets (Turing, Ampere, Ada Lovelace) share identical scheduling partition geometry despite their hardware differences — the differentiation occurs in the per-SM latency tables, not in the partition structure.
 
 ### Shared Memory Configuration Tables
 
@@ -330,10 +330,10 @@ ptxas allocates registers in units determined by the register allocation granula
 
 | SM Generation | Alloc Granularity | a2\[6\]\[1\] | a2\[6\]\[2\] | Notes |
 |---|---|---|---|---|
-| sm\_30 -- sm\_60 | 64 registers / warp | 63 | 1 | Allocates in blocks of 2 regs/thread |
+| sm\_30 — sm\_60 | 64 registers / warp | 63 | 1 | Allocates in blocks of 2 regs/thread |
 | sm\_70+ | 256 registers / warp | 255 | 2 | Allocates in blocks of 8 regs/thread |
 
-The register allocation unit directly affects occupancy. With 256-register granularity on sm\_75+, a kernel using 33 registers effectively consumes 40 (rounded up to the next multiple of 8), which means each warp uses `40 * 32 = 1280` of the 65,536 available registers, allowing up to 51 warps -- but capped by the hardware limit of 32 warps on sm\_75.
+The register allocation unit directly affects occupancy. With 256-register granularity on sm\_75+, a kernel using 33 registers effectively consumes 40 (rounded up to the next multiple of 8), which means each warp uses `40 * 32 = 1280` of the 65,536 available registers, allowing up to 51 warps — but capped by the hardware limit of 32 warps on sm\_75.
 
 The formula the GPU driver uses (from EIATTR\_REGCOUNT documentation):
 
@@ -352,13 +352,13 @@ The raw SM version number stored in profile objects and code object headers uses
 |---|---|---|---|
 | 12288 | sm_30 | `0x70007` | 96 |
 | 20481 | sm_50 | `0xC000C` | 176 |
-| 24576 | sm_60 | -- | -- |
-| 28673 | sm_80 | -- | -- |
+| 24576 | sm_60 | — | — |
+| 28673 | sm_80 | — | — |
 | 36864 | sm_90 | `0x100010` | 240 |
 
 The code object builder (`sub_A465F0` at `0xA465F0`) maps these encoded SM versions to ELF code object version fields and thread-per-CTA limits. The magic number `0x16375564E` is written at offset 0 of every code object header, with the SM version at offset +8.
 
-## Per-SM Capability Accessors -- `sub_609XXX`
+## Per-SM Capability Accessors — `sub_609XXX`
 
 The 24 functions in the `sub_609XXX` cluster (range `0x609280`--`0x609F60`, ~1.2KB each) are the per-SM-version capability accessor functions. They are registered into Maps 1 and 2 of the dispatch tables and return architecture-specific values: register file sizes, feature flags, warp geometry, shared memory limits, and similar hardware parameters.
 
@@ -392,7 +392,7 @@ sm_75 is the default architecture for ptxas v13.0.88, returned by `sub_6784B0` w
 - Base warp-level operations (shfl.sync, vote.sync, match.sync, redux.sync)
 - Named barrier support (bar 0-15 with arrive/red/sync variants)
 
-### Ampere (sm_80 -- sm_88)
+### Ampere (sm_80 — sm_88)
 
 Codegen factory value: 28673. Shared with Ada Lovelace (sm_89).
 
@@ -423,7 +423,7 @@ Codegen factory value: 32768. `sm_90a` is architecture-locked (H100/H200 only).
 
 Codegen factory value: 36864. Both `a` and `f` sub-variants available.
 
-- **tcgen05**: 5th-generation tensor core ISA (alloc, dealloc, ld, st, commit, cp, shift, mma) -- `a`/`f` sub-variants only
+- **tcgen05**: 5th-generation tensor core ISA (alloc, dealloc, ld, st, commit, cp, shift, mma) — `a`/`f` sub-variants only
 - **tcgen05 guardrails**: 8 debug validation functions (phase validity, column allocation, bounds checking)
 - Extended MMA: 10 Blackwell-specific hmma/imma + bit MMA intrinsics (`__cuda_sm_10x_*`)
 - 11 tcgen05 guardrail trap intrinsics (`__cuda_sm10x_tcgen05_guardrail_trap_*`)
@@ -441,8 +441,8 @@ Codegen factory value: 36864 (same as sm_100). Originally sm_101 before rename. 
 
 Codegen factory value: 36864 (same as sm_100). Architecturally a distinct consumer microarchitecture despite sharing the `"Blackwell"` family string.
 
-- **No tcgen05**: The entire tcgen05 ISA is absent on sm_120/121 -- gated by SM version checks
-- Tensor core falls back to HMMA/IMMA/WGMMA inherited from sm_70--sm_90 path
+- **No tcgen05**: The entire tcgen05 ISA is absent on sm_120/121 — gated by SM version checks
+- Tensor core is warp-level `mma.sync` only — HMMA/IMMA (sm_70--sm_89 lineage) plus block-scaled FP4/FP6/FP8 (`kind::f8f6f4`/`mxf4nvf4`). No WGMMA (Hopper sm_90a-only), no tcgen05
 - sm_120 = RTX 50xx consumer / RTX Blackwell Pro (enterprise)
 - sm_121 = DGX Spark
 
@@ -463,7 +463,7 @@ Codegen factory value: 36864 (same as sm_100). Architecturally a distinct consum
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_607DB0` | 14KB | SM capability dispatch -- builds 7 hash maps | 99% |
+| `sub_607DB0` | 14KB | SM capability dispatch — builds 7 hash maps | 99% |
 | `sub_608D70` | 384B | Profile lookup dispatcher | 80% |
 | `sub_608DF0` | ~1KB | sm_120 intrinsic table initializer | 85% |
 | `sub_608F20` | ~1.2KB | sm_103 handler A (capability accessor) | 90% |
@@ -473,7 +473,7 @@ Codegen factory value: 36864 (same as sm_100). Architecturally a distinct consum
 | `sub_60A2E0`--`sub_60AD30` | ~1KB each | 12 per-SM intrinsic table initializers (Map 3) | 85% |
 | `sub_60B040` | 4.5KB | Stress test options (`"stress-maxrregcount"`, etc.) | 85% |
 | `sub_6765E0` | 54KB | SM profile object construction (family, CUDA_ARCH, lto) | 95% |
-| `sub_6784B0` | -- | Default architecture -- returns sm_75 | 99% |
+| `sub_6784B0` | — | Default architecture — returns sm_75 | 99% |
 | `sub_8688F0` | 31 lines | Universal HW profile baseline (warp size, regs, barriers, shmem) | 95% |
 | `sub_8E4400` | 3.3KB | Warp-level HW profile: scheduler partitions, dispatch slots | 95% |
 | `sub_ABF250` | ~600B | Occupancy property table: configurable shmem, reg alloc granularity | 90% |
@@ -482,7 +482,7 @@ Codegen factory value: 36864 (same as sm_100). Architecturally a distinct consum
 
 ## Profile Object Layout (1936 bytes)
 
-Every SM's intrinsic table initializer (Map 3 handler) calls `sub_917990` to allocate a 1,936-byte profile object that carries target-specific parameters throughout the compiler. This is the compilation unit's target descriptor -- the single structure that downstream code reads to answer "what hardware am I compiling for?"
+Every SM's intrinsic table initializer (Map 3 handler) calls `sub_917990` to allocate a 1,936-byte profile object that carries target-specific parameters throughout the compiler. This is the compilation unit's target descriptor — the single structure that downstream code reads to answer "what hardware am I compiling for?"
 
 ### Construction Sequence
 
@@ -493,38 +493,38 @@ Every SM's intrinsic table initializer (Map 3 handler) calls `sub_917990` to all
 4. sub_60AXXX(a1,a2,a3,a4)  per-SM: codegen factory, shmem base, capability flags
 ```
 
-### Key Fields -- Explicitly Initialized
+### Key Fields — Explicitly Initialized
 
 These fields receive non-zero values during construction. Offsets are byte offsets from the profile object base pointer. Type column: D=DWORD(4B), Q=QWORD(8B), O=OWORD(16B), B=BYTE.
 
 | Offset | Type | Default | Set By | Semantic Name | Confidence |
 |---|---|---|---|---|---|
-| +0 | Q | 0 | sub_C1B7A0 | `object_base` -- zeroed, likely vtable/class pointer | 75% |
-| +112 | Q | `0x500000000` | sub_C1B7A0 | `packed_config` -- stores DWORD 5 at +112, DWORD 0 at +116 | 85% |
-| +120 | D | 5 | sub_C1B7A0 | `opt_level_default` -- initial optimization level or block dimension | 85% |
-| +132 | Q | `0xFFFFFFFF` | sub_C1B7A0 | `max_register_limit` -- -1 sentinel = "no limit" | 85% |
-| +340 | D | 1 | sub_C1B7A0 | `enable_flag_A` -- default-enabled capability | 85% |
-| +344 | D | 0x100000 | per-SM init | `shared_memory_config_base` -- 1 MB for all SM 75+ targets | 95% |
-| +348 | D | per-SM | per-SM init | `codegen_factory` -- ISA generation encoding `(gen << 12) \| variant` | 99% |
-| +424 | Q | `0x100000000` | sub_C1B7A0 | `packed_enable` -- stores DWORD 1 at +424, DWORD 0 at +428 | 90% |
-| +428 | D | 0 (cond.) | per-SM init | `conditional_feature_flag` -- sm_90+ only: set to 0 when `*(a2+355)` is true | 85% |
-| +432 | D | computed | per-SM init | `module_base_address` -- `callback() - 0x6FFFFE64` or -1 if disabled | 95% |
-| +588 | D | 0 | sub_917990 | `cleared_field` -- explicitly re-zeroed; used in 10+ consumer functions | 90% |
-| +708 | D | 1 | per-SM init | `enable_flag_D` -- universally set to 1 by all per-SM initializers | 85% |
-| +944 | D | 4 | sub_C1B7A0 | `pipeline_depth` -- possibly barrier count or pipeline stage limit | 85% |
-| +1200 | Q | `"NVIDIA"` | sub_43A400 | `vendor_string_ptr` -- pointer to vendor identification string | 95% |
-| +1208 | Q | (pointer) | sub_43A400 | `associated_data_ptr` -- assigned from callback result | 90% |
-| +1216 | D | 1 | sub_43A400 | `vendor_flag` -- set to 1 during ELF builder initialization | 85% |
-| +1385 | B | 0 (bits) | runtime | `scheduling_feature_flags` -- bitfield, 21+ consumer sites | 99% |
-| +1536 | Q | 1832 | sub_C1B7A0 | `dynamic_region_offset` -- points to tail SSE constant region start | 90% |
-| +1552 | Q | 0 | runtime | `pipeline_progress` -- monotonically increasing counter (values 0--21); scoreboard guards check 16--19 | 95% |
-| +1584 | Q | `nullsub_856` | sub_C1B7A0 | `sm_backend_vtable_ptr` -- THE central polymorphic pointer; initialized to null stub | 99% |
-| +1684 | D | CLI value | per-SM init | `cli_option_value` -- `*(a1+108)` passthrough from compiler driver | 90% |
-| +1840 | D | 1 | per-SM init | `elf_section_data` -- initially 1 (enable), later overwritten with ptr | 85% |
-| +1880 | Q | 1 | per-SM init | `barrier_tracking_ptr` -- initially 1, later pointer to scoreboard data | 95% |
-| +1892 | D | 2 | sub_917990 | `tail_mode_value` -- possibly versioning or encoding mode indicator | 85% |
-| +1912 | D | 0 (cond.) | per-SM init | `conditional_clear` -- cleared when `*(a2+233)` is true (debug mode) | 85% |
-| +1928 | D | 1 | per-SM init | `output_config_value` -- compilation output configuration | 85% |
+| +0 | Q | 0 | sub_C1B7A0 | `object_base` — zeroed, likely vtable/class pointer | 75% |
+| +112 | Q | `0x500000000` | sub_C1B7A0 | `packed_config` — stores DWORD 5 at +112, DWORD 0 at +116 | 85% |
+| +120 | D | 5 | sub_C1B7A0 | `opt_level_default` — initial optimization level or block dimension | 85% |
+| +132 | Q | `0xFFFFFFFF` | sub_C1B7A0 | `max_register_limit` — -1 sentinel = "no limit" | 85% |
+| +340 | D | 1 | sub_C1B7A0 | `enable_flag_A` — default-enabled capability | 85% |
+| +344 | D | 0x100000 | per-SM init | `shared_memory_config_base` — 1 MB for all SM 75+ targets | 95% |
+| +348 | D | per-SM | per-SM init | `codegen_factory` — ISA generation encoding `(gen << 12) \| variant` | 99% |
+| +424 | Q | `0x100000000` | sub_C1B7A0 | `packed_enable` — stores DWORD 1 at +424, DWORD 0 at +428 | 90% |
+| +428 | D | 0 (cond.) | per-SM init | `conditional_feature_flag` — sm_90+ only: set to 0 when `*(a2+355)` is true | 85% |
+| +432 | D | computed | per-SM init | `module_base_address` — `callback() - 0x6FFFFE64` or -1 if disabled | 95% |
+| +588 | D | 0 | sub_917990 | `cleared_field` — explicitly re-zeroed; used in 10+ consumer functions | 90% |
+| +708 | D | 1 | per-SM init | `enable_flag_D` — universally set to 1 by all per-SM initializers | 85% |
+| +944 | D | 4 | sub_C1B7A0 | `pipeline_depth` — possibly barrier count or pipeline stage limit | 85% |
+| +1200 | Q | `"NVIDIA"` | sub_43A400 | `vendor_string_ptr` — pointer to vendor identification string | 95% |
+| +1208 | Q | (pointer) | sub_43A400 | `associated_data_ptr` — assigned from callback result | 90% |
+| +1216 | D | 1 | sub_43A400 | `vendor_flag` — set to 1 during ELF builder initialization | 85% |
+| +1385 | B | 0 (bits) | runtime | `scheduling_feature_flags` — bitfield, 21+ consumer sites | 99% |
+| +1536 | Q | 1832 | sub_C1B7A0 | `dynamic_region_offset` — points to tail SSE constant region start | 90% |
+| +1552 | Q | 0 | runtime | `pipeline_progress` — monotonically increasing counter (values 0--21); scoreboard guards check 16--19 | 95% |
+| +1584 | Q | `nullsub_856` | sub_C1B7A0 | `sm_backend_vtable_ptr` — THE central polymorphic pointer; initialized to null stub | 99% |
+| +1684 | D | CLI value | per-SM init | `cli_option_value` — `*(a1+108)` passthrough from compiler driver | 90% |
+| +1840 | D | 1 | per-SM init | `elf_section_data` — initially 1 (enable), later overwritten with ptr | 85% |
+| +1880 | Q | 1 | per-SM init | `barrier_tracking_ptr` — initially 1, later pointer to scoreboard data | 95% |
+| +1892 | D | 2 | sub_917990 | `tail_mode_value` — possibly versioning or encoding mode indicator | 85% |
+| +1912 | D | 0 (cond.) | per-SM init | `conditional_clear` — cleared when `*(a2+233)` is true (debug mode) | 85% |
+| +1928 | D | 1 | per-SM init | `output_config_value` — compilation output configuration | 85% |
 
 ### SSE Constant Blocks
 
@@ -550,10 +550,10 @@ The byte at offset +1385 is the most heavily accessed bitfield on the profile ob
 | Bit | Mask | Meaning | Evidence |
 |---|---|---|---|
 | 0 | `0x01` | Function has sync barriers | `sub_792CD0` sets/clears; `sub_75F680`, `sub_75F580` check |
-| 1 | `0x02` | (unknown) | -- |
+| 1 | `0x02` | (unknown) | — |
 | 2 | `0x04` | Extended barrier model | `sub_796D60` checks jointly with `+1382 & 0x20` |
 | 3 | `0x08` | Scoreboard tracking enabled | `sub_925670`, `sub_925510`, `sub_9253C0` check jointly with `+1880` and `+1552` |
-| 4 | `0x10` | (unknown) | -- |
+| 4 | `0x10` | (unknown) | — |
 | 5 | `0x20` | Scheduling feature flag | `sub_793220`, `sub_A36360` (scoreboard encoder) check |
 | 6 | `0x40` | Temporary analysis flag | `sub_752E40` sets; `sub_77F0D0` clears |
 | 7 | `0x80` | Preserved across resets | `sub_7F7DC0`: `*(a1+1385) &= 0x80` (all others cleared) |
@@ -571,7 +571,7 @@ All other fields (+344, +432, +588, +708, +1684, +1840, +1880, +1912, +1928) are
 
 ### Critical Distinction: Profile Object vs SM Backend
 
-The profile object (1936 bytes, this layout) is the **compilation unit's target descriptor**, stored somewhere in the compilation context. The pointer at `context+1584` (`sm_backend_vtable_ptr`) points to a **separate polymorphic SM backend object** -- not to another profile object. Fields accessed as `*(*(ctx+1584) + N)` are on the SM backend, not on this profile object.
+The profile object (1936 bytes, this layout) is the **compilation unit's target descriptor**, stored somewhere in the compilation context. The pointer at `context+1584` (`sm_backend_vtable_ptr`) points to a **separate polymorphic SM backend object** — not to another profile object. Fields accessed as `*(*(ctx+1584) + N)` are on the SM backend, not on this profile object.
 
 Commonly accessed SM backend fields (NOT on the 1936-byte profile):
 
@@ -607,14 +607,14 @@ Offset Range   Size    Content
 
 ## Cross-References
 
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) -- Detailed feature flags for sm_75 through sm_89
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) -- WGMMA, cluster operations, sm_90a arch-lock
-- [Blackwell (SM 100--121)](blackwell.md) -- tcgen05, arch-conditional vs family-conditional gating
-- [TCGen05 -- 5th Gen Tensor Cores](tcgen05.md) -- tcgen05 instruction set detail
-- [Intrinsic Table (608 Entries)](../intrinsics/index.md) -- Master intrinsic catalog with per-SM generation ranges
-- [Tensor Core Intrinsics](../intrinsics/tensor.md) -- WMMA/MMA/tcgen05 intrinsic lowering
-- [Latency Model & HW Profiles](../scheduling/latency-model.md) -- Per-SM scheduling parameters
-- [SASS Instruction Encoding](../codegen/encoding.md) -- Codegen factory -> encoder selection
-- [Mercury Encoder](../codegen/mercury.md) -- SM-dependent SASS encoding
-- [CLI Options](../config/cli-options.md) -- `--gpu-name` parsing and default target
-- [Data Structures](../ir/data-structures.md) -- context+1584 polymorphic pointer documentation
+- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Detailed feature flags for sm_75 through sm_89
+- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — WGMMA, cluster operations, sm_90a arch-lock
+- [Blackwell (SM 100--121)](blackwell.md) — tcgen05, arch-conditional vs family-conditional gating
+- [TCGen05 — 5th Gen Tensor Cores](tcgen05.md) — tcgen05 instruction set detail
+- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Master intrinsic catalog with per-SM generation ranges
+- [Tensor Core Intrinsics](../intrinsics/tensor.md) — WMMA/MMA/tcgen05 intrinsic lowering
+- [Latency Model & HW Profiles](../scheduling/latency-model.md) — Per-SM scheduling parameters
+- [SASS Instruction Encoding](../codegen/encoding.md) — Codegen factory -> encoder selection
+- [Mercury Encoder](../codegen/mercury.md) — SM-dependent SASS encoding
+- [CLI Options](../config/cli-options.md) — `--gpu-name` parsing and default target
+- [Data Structures](../ir/data-structures.md) — context+1584 polymorphic pointer documentation

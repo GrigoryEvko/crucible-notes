@@ -71,7 +71,7 @@ __int64 __fastcall sub_7525F0(int a1)
 }
 ```
 
-The guard `(a1 + 1) > 1u` is an unsigned comparison that accepts any value >= 0 and rejects only `-1` (which wraps to 0 when incremented). This is a sanity check -- in production, nvcc always provides a valid SM code.
+The guard `(a1 + 1) > 1u` is an unsigned comparison that accepts any value >= 0 and rejects only `-1` (which wraps to 0 when incremented). This is a sanity check — in production, nvcc always provides a valid SM code.
 
 ### Type Table Initialization (sub_7515D0)
 
@@ -152,31 +152,31 @@ These features are gated by the same `dword_126E4A8` comparison mechanism as the
 
 Architecture gate violations produce three distinct behaviors depending on the feature class:
 
-**Hard errors** -- Compilation halts. Features that fundamentally cannot work on the target architecture:
-- `__managed__` below compute_30 -- No unified memory hardware support
-- `__grid_constant__` below compute_70 -- No hardware constant propagation mechanism
-- `__nv_register_params__` below compute_80 -- Register parameter ABI not available
-- `__wgmma_mma_async` below sm_90a -- No warp-group MMA hardware
-- `alloca()` below compute_52 -- No dynamic stack allocation support on device
-- Virtual base classes below compute_20 -- No vtable support on earliest GPU architectures
+**Hard errors** — Compilation halts. Features that fundamentally cannot work on the target architecture:
+- `__managed__` below compute_30 — No unified memory hardware support
+- `__grid_constant__` below compute_70 — No hardware constant propagation mechanism
+- `__nv_register_params__` below compute_80 — Register parameter ABI not available
+- `__wgmma_mma_async` below sm_90a — No warp-group MMA hardware
+- `alloca()` below compute_52 — No dynamic stack allocation support on device
+- Virtual base classes below compute_20 — No vtable support on earliest GPU architectures
 
-**Fallback warnings** -- Compilation continues with degraded behavior. The compiler generates functionally correct but potentially less performant code:
-- Atomic scope arguments on pre-sm_60 -- Falls back to `membar`-based synchronization
-- Atomic memory order on pre-sm_70 -- Falls back to `membar`-based ordering
-- 64-bit float atomics on pre-sm_60 -- Falls back to CAS loop emulation
+**Fallback warnings** — Compilation continues with degraded behavior. The compiler generates functionally correct but potentially less performant code:
+- Atomic scope arguments on pre-sm_60 — Falls back to `membar`-based synchronization
+- Atomic memory order on pre-sm_70 — Falls back to `membar`-based ordering
+- 64-bit float atomics on pre-sm_60 — Falls back to CAS loop emulation
 
-**Scope demotion warnings** -- Informational diagnostics about automatic scope narrowing:
-- Cluster scope atomics on pre-sm_90 -- Silently demotes to device scope ("Using device scope instead")
+**Scope demotion warnings** — Informational diagnostics about automatic scope narrowing:
+- Cluster scope atomics on pre-sm_90 — Silently demotes to device scope ("Using device scope instead")
 
 ### compute_XX vs sm_XX Naming
 
 Error strings use two naming conventions that reflect CUDA's split between virtual and physical architectures:
 
-- **`compute_XX`** -- Virtual architecture. Checked at PTX generation time. Features gated by `compute_XX` are relevant to the intermediate PTX representation and are independent of the specific GPU die. Examples: `__managed__` (requires unified memory ISA support), `alloca()` (requires dynamic stack frame instructions).
+- **`compute_XX`** — Virtual architecture. Checked at PTX generation time. Features gated by `compute_XX` are relevant to the intermediate PTX representation and are independent of the specific GPU die. Examples: `__managed__` (requires unified memory ISA support), `alloca()` (requires dynamic stack frame instructions).
 
-- **`sm_XX`** -- Physical architecture. Checked at SASS generation time. Features gated by `sm_XX` are tied to specific hardware capabilities of a GPU die. Examples: 128-bit atomics (require specific load/store unit widths), cluster scope (requires the SM 9.0 thread block cluster hardware).
+- **`sm_XX`** — Physical architecture. Checked at SASS generation time. Features gated by `sm_XX` are tied to specific hardware capabilities of a GPU die. Examples: 128-bit atomics (require specific load/store unit widths), cluster scope (requires the SM 9.0 thread block cluster hardware).
 
-In practice, cudafe++ stores a single integer in `dword_126E4A8` and the distinction is purely semantic -- both forms gate against the same numeric value. The value is a compute capability number (e.g., 70 for Volta, 90 for Hopper).
+In practice, cudafe++ stores a single integer in `dword_126E4A8` and the distinction is purely semantic — both forms gate against the same numeric value. The value is a compute capability number (e.g., 70 for Volta, 90 for Hopper).
 
 The **`sm_90a`** suffix (with the `a` accelerator flag) is a special case used exclusively for `__wgmma_mma_async` builtins. This variant requires the Hopper accelerated architecture, which is distinct from the base sm_90. The `a` suffix is encoded in the SM integer value passed to cudafe++ by nvcc.
 
@@ -303,9 +303,9 @@ if (dword_126EFA4 || (dword_126EFA8 && qword_126EF98 > 0xEA5F))
     // Enable feature (Clang always, GCC only 6.0+)
 ```
 
-**3. CUDA compatibility mode.** A special flag `dword_E7FF10` (`cuda_compat_flag`) is set when `dword_126EFAC && qword_126EF98 <= 0x76BF` -- that is, when extended features are enabled but the GCC version is 3.3.99 or below. This activates a legacy compatibility path for very old host compilers that lack modern C++ support.
+**3. CUDA compatibility mode.** A special flag `dword_E7FF10` (`cuda_compat_flag`) is set when `dword_126EFAC && qword_126EF98 <= 0x76BF` — that is, when extended features are enabled but the GCC version is 3.3.99 or below. This activates a legacy compatibility path for very old host compilers that lack modern C++ support.
 
-### The 0xEA5F (59999) Threshold -- The Most Pervasive Gate
+### The 0xEA5F (59999) Threshold — The Most Pervasive Gate
 
 The threshold `0xEA5F` (GCC 6.0) is the most widely used version constant in the binary, appearing in **22 decompiled functions**. It gates the C++14/17 feature set boundary. GCC 6.0 was the first GCC release with full C++14 support and substantial C++17 support.
 
@@ -459,7 +459,7 @@ The `--db_name` flag (case 190) calls a separate function `sub_48AD80` to regist
 
 ### Layer 1: Compile-Time Semantic Checks (cudafe++ Frontend)
 
-These are the primary gates. During semantic analysis, cudafe++ reads `dword_126E4A8` and compares it against threshold constants. Violations emit diagnostic errors through the standard error system (diagnostic IDs in the 3000+ range, displayed as 20000-series via the `+16543` offset formula). These checks are unconditional -- they fire regardless of whether the code would actually execute at runtime.
+These are the primary gates. During semantic analysis, cudafe++ reads `dword_126E4A8` and compares it against threshold constants. Violations emit diagnostic errors through the standard error system (diagnostic IDs in the 3000+ range, displayed as 20000-series via the `+16543` offset formula). These checks are unconditional — they fire regardless of whether the code would actually execute at runtime.
 
 **Enforcement point:** Declaration processing, type checking, attribute application, and CUDA-specific semantic validation passes.
 
@@ -473,15 +473,15 @@ These are the primary gates. During semantic analysis, cudafe++ reads `dword_126
 
 Error strings with architecture names baked into `.rodata` represent the complete set of architecture-dependent diagnostics. These strings are loaded by the diagnostic system and formatted with the current architecture value. The strings serve as the user-visible feedback for Layer 1 checks.
 
-The architecture name in the string (e.g., `"compute_70"`, `"sm_90a"`) is a literal constant, not a formatted parameter -- the compiler does not interpolate the actual target architecture into these messages. This means the error messages always state the **minimum required** architecture, not what the user actually specified. The only exception is the virtual base error which uses `%t` (a type formatter) to include the base class name, not the architecture.
+The architecture name in the string (e.g., `"compute_70"`, `"sm_90a"`) is a literal constant, not a formatted parameter — the compiler does not interpolate the actual target architecture into these messages. This means the error messages always state the **minimum required** architecture, not what the user actually specified. The only exception is the virtual base error which uses `%t` (a type formatter) to include the base class name, not the architecture.
 
 ### Layer 3: Host Compiler Version Gating
 
-This layer does not check GPU architecture at all -- instead, it gates the **output format** of the generated `.int.c` file based on the host C++ compiler's version. The thresholds ensure that GCC/Clang-specific pragmas, attributes, and language constructs in the generated code are compatible with the actual host compiler that will consume the output.
+This layer does not check GPU architecture at all — instead, it gates the **output format** of the generated `.int.c` file based on the host C++ compiler's version. The thresholds ensure that GCC/Clang-specific pragmas, attributes, and language constructs in the generated code are compatible with the actual host compiler that will consume the output.
 
 **Enforcement point:** Backend code generation (`sub_489000` and related functions in `cp_gen_be.c`).
 
-**Impact:** Incorrect host compiler version gating does not cause compilation failure -- it may produce warnings from the host compiler due to unrecognized pragmas, or miss warning suppression directives that would silence spurious diagnostics.
+**Impact:** Incorrect host compiler version gating does not cause compilation failure — it may produce warnings from the host compiler due to unrecognized pragmas, or miss warning suppression directives that would silence spurious diagnostics.
 
 ### Interaction Between Layers
 
@@ -553,12 +553,12 @@ Layers 1 and 2 operate during the frontend phase and can halt compilation. Layer
 
 ## Cross-References
 
-- [CLI Flag Inventory](../config/cli-flags.md) -- `--target`, `--gnu_version`, `--clang_version`, `--db` flag details
-- [Architecture Detection](../config/arch-detection.md) -- `--target` flag and SM version parsing details
-- [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- Complete diagnostic messages for each feature gate
-- [.int.c File Format](../output/int-c-format.md) -- Host compiler pragma emission details
-- [Backend Code Generation](../pipeline/backend.md) -- GCC/Clang version threshold usage in output
-- [Global Variable Index](../reference/global-variables.md) -- Full address-level documentation
-- [Execution Spaces](./execution-spaces.md) -- Execution space bitfield and attribute handlers
-- [\_\_managed\_\_ Variables](../attributes/managed-variables.md) -- Managed variable attribute and SM 30 gate
-- [\_\_grid\_constant\_\_](../attributes/grid-constant.md) -- Grid constant attribute and SM 70 gate
+- [CLI Flag Inventory](../config/cli-flags.md) — `--target`, `--gnu_version`, `--clang_version`, `--db` flag details
+- [Architecture Detection](../config/arch-detection.md) — `--target` flag and SM version parsing details
+- [CUDA Error Catalog](../diagnostics/cuda-errors.md) — Complete diagnostic messages for each feature gate
+- [.int.c File Format](../output/int-c-format.md) — Host compiler pragma emission details
+- [Backend Code Generation](../pipeline/backend.md) — GCC/Clang version threshold usage in output
+- [Global Variable Index](../reference/global-variables.md) — Full address-level documentation
+- [Execution Spaces](./execution-spaces.md) — Execution space bitfield and attribute handlers
+- [\_\_managed\_\_ Variables](../attributes/managed-variables.md) — Managed variable attribute and SM 30 gate
+- [\_\_grid\_constant\_\_](../attributes/grid-constant.md) — Grid constant attribute and SM 70 gate

@@ -16,7 +16,7 @@ The timing and exit subsystem lives in `host_envir.c` and handles three responsi
 
 ## Timing Infrastructure
 
-### capture_time -- `sub_5AF350` (0x5AF350)
+### capture_time — `sub_5AF350` (0x5AF350)
 
 A 48-byte function that samples both CPU time and wall-clock time into a 16-byte timestamp structure.
 
@@ -38,7 +38,7 @@ void capture_time(timestamp_t *out)    // sub_5AF350
 
 The CPU time computation `clock() * 1000.0 / 1000000.0` normalizes the `clock()` return value (microseconds on Linux where `CLOCKS_PER_SEC` = 1000000) to milliseconds, then truncates to integer. This means CPU time resolution is 1 ms.
 
-### report_timing -- `sub_5AF390` (0x5AF390)
+### report_timing — `sub_5AF390` (0x5AF390)
 
 Computes deltas between two timestamps and prints a formatted timing line.
 
@@ -147,11 +147,11 @@ if (dword_106C0A4) {
 }
 ```
 
-Note that the "Total compilation time" region begins before command-line parsing and includes the CLI parsing overhead, all initialization, frontend, backend, and signoff. The "Front end time" region does NOT include CLI parsing or pre-init -- it starts after `fe_one_time_init`.
+Note that the "Total compilation time" region begins before command-line parsing and includes the CLI parsing overhead, all initialization, frontend, backend, and signoff. The "Front end time" region does NOT include CLI parsing or pre-init — it starts after `fe_one_time_init`.
 
-## Compilation Summary -- write_signoff
+## Compilation Summary — write_signoff
 
-### sub_5AEE00 (0x5AEE00) -- write_signoff
+### sub_5AEE00 (0x5AEE00) — write_signoff
 
 This 490-byte function writes the compilation summary trailer to the diagnostic stream. It has two completely separate code paths: SARIF mode and text mode.
 
@@ -268,7 +268,7 @@ void write_text_signoff(void)     // text-mode path of sub_5AEE00
 3 errors (of which 1 was suppressed error) in compilation of "main.cu"
 ```
 
-### sub_589530 (0x589530) -- write_signoff + free_mem_blocks
+### sub_589530 (0x589530) — write_signoff + free_mem_blocks
 
 A thin wrapper (13 bytes) called from `main()`'s exit path. Performs two operations:
 
@@ -294,9 +294,9 @@ Each block deallocation decrements `qword_1280718` (total allocated bytes) and o
 
 ## Exit Handling
 
-### exit_with_status -- `sub_5AF1D0` (0x5AF1D0)
+### exit_with_status — `sub_5AF1D0` (0x5AF1D0)
 
-A 145-byte `__noreturn` function that maps internal compilation status codes to POSIX exit codes. This is the only exit point for normal compilation flow -- every path through `main()` ends here.
+A 145-byte `__noreturn` function that maps internal compilation status codes to POSIX exit codes. This is the only exit point for normal compilation flow — every path through `main()` ends here.
 
 ```c
 // Full annotated decompilation
@@ -341,7 +341,7 @@ __noreturn void exit_with_status(uint8_t status)  // sub_5AF1D0
 | 10 | Errors (variant) | `"Compilation terminated.\n"` | 4 | `exit(4)` |
 | 11 | Internal error / fatal | `"Compilation aborted.\n"` | *(n/a)* | `abort()` |
 
-In SARIF mode (`dword_106BBB8 != 0`), the text messages `"Compilation terminated."` and `"Compilation aborted."` are suppressed. The exit codes remain the same -- the function falls through to the `switch` which dispatches identically.
+In SARIF mode (`dword_106BBB8 != 0`), the text messages `"Compilation terminated."` and `"Compilation aborted."` are suppressed. The exit codes remain the same — the function falls through to the `switch` which dispatches identically.
 
 The `default` case handles status 11 and any unexpected status value by calling `abort()` after flushing the diagnostic stream. This generates a core dump for debugging.
 
@@ -384,7 +384,7 @@ qword_126ED90 == 0  (no errors)
   └── qword_126ED88 == 0  →  exit_code = 3  →  exit(0)  (clean success)
 ```
 
-The variable `qword_126ED88` at `0x126ED88` is initialized to 0 in `sub_4ED530` (declaration_pre_init) and `sub_4ED7C0`. It appears to track whether any notable conditions occurred during compilation that are not errors or warnings -- possibly informational remarks or specific compiler actions taken. When nonzero, the exit code changes from 3 to 5, but both map to `exit(0)`.
+The variable `qword_126ED88` at `0x126ED88` is initialized to 0 in `sub_4ED530` (declaration_pre_init) and `sub_4ED7C0`. It appears to track whether any notable conditions occurred during compilation that are not errors or warnings — possibly informational remarks or specific compiler actions taken. When nonzero, the exit code changes from 3 to 5, but both map to `exit(0)`.
 
 ## Stack Limit Restoration
 
@@ -397,15 +397,15 @@ if (stack_was_raised) {
 }
 ```
 
-The boolean `stack_was_raised` (stored in `rbp`, variable `v4`) is set during startup when `dword_106C064` (the `--modify_stack_limit` flag, default ON) causes `main()` to raise `RLIMIT_STACK` from its soft limit to the hard limit. This restoration is a defensive measure -- it ensures any child processes spawned during cleanup (or signal handlers) inherit a normal stack size.
+The boolean `stack_was_raised` (stored in `rbp`, variable `v4`) is set during startup when `dword_106C064` (the `--modify_stack_limit` flag, default ON) causes `main()` to raise `RLIMIT_STACK` from its soft limit to the hard limit. This restoration is a defensive measure — it ensures any child processes spawned during cleanup (or signal handlers) inherit a normal stack size.
 
 ## Signal-Driven Exit Paths
 
 Three additional paths reach `exit_with_status`:
 
-### SIGINT / SIGTERM Handler -- `handler` (0x5AF2C0)
+### SIGINT / SIGTERM Handler — `handler` (0x5AF2C0)
 
-Registered in `sub_5B1E70` (host_envir_early_init) for signals 2 (SIGINT) and 15 (SIGTERM). The registration is one-shot, guarded by `dword_E6E120` (set to 0 after first call). SIGINT registration is conditional: the code first calls `signal(SIGINT, SIG_IGN)` and checks the return value. If the previous handler was already `SIG_IGN` (meaning the parent process -- typically nvcc -- has set the child to ignore interrupts), it stays ignored. Otherwise, the custom handler is installed. SIGTERM always gets the handler unconditionally.
+Registered in `sub_5B1E70` (host_envir_early_init) for signals 2 (SIGINT) and 15 (SIGTERM). The registration is one-shot, guarded by `dword_E6E120` (set to 0 after first call). SIGINT registration is conditional: the code first calls `signal(SIGINT, SIG_IGN)` and checks the return value. If the previous handler was already `SIG_IGN` (meaning the parent process — typically nvcc — has set the child to ignore interrupts), it stays ignored. Otherwise, the custom handler is installed. SIGTERM always gets the handler unconditionally.
 
 ```c
 __noreturn void handler(void)           // 0x5AF2C0
@@ -415,7 +415,7 @@ __noreturn void handler(void)           // 0x5AF2C0
 }
 ```
 
-### terminate_compilation -- `sub_5AF2B0` (0x5AF2B0)
+### terminate_compilation — `sub_5AF2B0` (0x5AF2B0)
 
 Bridge function: writes signoff then exits.
 
@@ -429,7 +429,7 @@ __noreturn void terminate_compilation(uint8_t status)  // sub_5AF2B0
 
 When called from `handler`, status is 9 (errors), which produces `"Compilation terminated.\n"` followed by `exit(4)`.
 
-### SIGXCPU Handler -- `sub_5AF270` (0x5AF270)
+### SIGXCPU Handler — `sub_5AF270` (0x5AF270)
 
 Registered for signal 24 (SIGXCPU):
 
@@ -461,7 +461,7 @@ The tool metadata identifies the frontend as `"EDG CPFE"` version `"6.6"` from `
 
 The `write_init` function (`sub_5AEDB0`) has the same assertion guard as `write_signoff`: if `dword_106BBB8` is set but not equal to 1, it triggers an assertion at `host_envir.c:2017` (`"write_init"`). Both assertions enforce the invariant that SARIF mode is exactly 0 or 1, never any other value.
 
-## Profiling Init -- `sub_5AF330` (0x5AF330)
+## Profiling Init — `sub_5AF330` (0x5AF330)
 
 A separate but related mechanism. During `sub_585DB0` (`fe_one_time_init`), if `dword_106BD4C` is set, `sub_5AF330` is called:
 
@@ -556,9 +556,9 @@ The full sequence from compilation completion to process termination:
 
 ## Cross-References
 
-- [Pipeline Overview](./overview.md) -- placement of timing/exit in the 8-stage pipeline
-- [Entry Point & Initialization](./entry.md) -- `main()` structure, signal handler registration, stack limit setup
-- [CLI Processing](./cli.md) -- flag 20 (`--timing`) registration and parsing
-- [Backend Code Generation](./backend.md) -- the "Back end time" measurement target
-- [SARIF & Pragma Control](../diagnostics/sarif-pragmas.md) -- SARIF JSON format details
-- [Diagnostic Overview](../diagnostics/overview.md) -- error/warning counting infrastructure
+- [Pipeline Overview](./overview.md) — placement of timing/exit in the 8-stage pipeline
+- [Entry Point & Initialization](./entry.md) — `main()` structure, signal handler registration, stack limit setup
+- [CLI Processing](./cli.md) — flag 20 (`--timing`) registration and parsing
+- [Backend Code Generation](./backend.md) — the "Back end time" measurement target
+- [SARIF & Pragma Control](../diagnostics/sarif-pragmas.md) — SARIF JSON format details
+- [Diagnostic Overview](../diagnostics/overview.md) — error/warning counting infrastructure

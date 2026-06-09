@@ -518,7 +518,7 @@ Within each pair, the odd ID is the "generic" overload that enters the renaming 
 
 ### Name Construction Algorithm (lines 877--996 of sub_6BBC40)
 
-**Step 1 -- Base name.** Copy the EDG source name, then overwrite with the canonical base for the seven fetch-op builtins:
+**Step 1 — Base name.** Copy the EDG source name, then overwrite with the canonical base for the seven fetch-op builtins:
 
 ```text
 v165     Base name
@@ -532,9 +532,9 @@ v165     Base name
 0x6274   "__nv_atomic_fetch_min"
 ```
 
-**Step 2 -- Width suffix.** Append `"_%u"` formatted with the type size in bytes from `*(uint32_t*)(type_node + 128)`. For fetch-op builtins, the size is validated as `(type_size - 4) <= 4`, accepting only 4 and 8 bytes.
+**Step 2 — Width suffix.** Append `"_%u"` formatted with the type size in bytes from `*(uint32_t*)(type_node + 128)`. For fetch-op builtins, the size is validated as `(type_size - 4) <= 4`, accepting only 4 and 8 bytes.
 
-**Step 3 -- Type suffix** (only for add/sub/max/min; lines 960--996). Reads `type_kind = *(uint8_t*)(type_node + 140)`:
+**Step 3 — Type suffix** (only for add/sub/max/min; lines 960--996). Reads `type_kind = *(uint8_t*)(type_node + 140)`:
 
 | type_kind | Meaning | Suffix | Condition |
 |---|---|---|---|
@@ -640,10 +640,10 @@ These opcodes are emitted by the SelectionDAG lowering for native atomic operati
 
 ## Cross-References
 
-- [Builtin System Overview](./index.md) -- hash table infrastructure and ID dispatch
-- [SM 70--89 Feature Gates](../targets/sm70-89.md) -- unk_4D045E8 thresholds
-- [SM 90 Hopper Features](../targets/sm90-hopper.md) -- cluster scope, fence.sc.cluster
-- [SM 100 Blackwell Features](../targets/sm100-blackwell.md) -- f16x4 atomics
-- [PTX Emission](../pipeline/emission.md) -- instruction printer subsystem
-- [NVPTX Opcodes Reference](../reference/nvptx-opcodes.md) -- MachineInstr opcode table
-- [Inline Assembly Codegen](../pipeline/irgen-functions.md#inline-assembly-codegen) -- general inline ASM infrastructure at sub_1292420 (and Path-A duplicate sub_932270)
+- [Builtin System Overview](./index.md) — hash table infrastructure and ID dispatch
+- [SM 70--89 Feature Gates](../targets/sm70-89.md) — unk_4D045E8 thresholds
+- [SM 90 Hopper Features](../targets/sm90-hopper.md) — cluster scope, fence.sc.cluster
+- [SM 100 Blackwell Features](../targets/sm100-blackwell.md) — f16x4 atomics
+- [PTX Emission](../pipeline/emission.md) — instruction printer subsystem
+- [NVPTX Opcodes Reference](../reference/nvptx-opcodes.md) — MachineInstr opcode table
+- [Inline Assembly Codegen](../pipeline/irgen-functions.md#inline-assembly-codegen) — general inline ASM infrastructure at sub_1292420 (and Path-A duplicate sub_932270)

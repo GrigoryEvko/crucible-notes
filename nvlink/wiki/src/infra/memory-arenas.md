@@ -1,6 +1,6 @@
 # Memory Management (Arenas)
 
-nvlink replaces libc `malloc`/`free` with a custom two-tier arena allocator that owns all dynamic memory for the linker's lifetime. The first tier (`arena_alloc` at `sub_4307C0`, 10,704 bytes, ~3,943 callers) is a thread-safe, per-arena allocator that manages memory through size-class free lists for small blocks and page-level doubly-linked lists for large blocks. The second tier (`ocg_memspace_alloc` at `sub_4882A0`, 2,516 bytes) is a segregated-freelist slab allocator with 128 size classes, 8-byte granularity up to 1,016 bytes, and 1 MB overflow pages -- used throughout the embedded ptxas/OCG subsystem. Arenas form a parent-child hierarchy: child arenas can merge their free lists back into a parent on destruction, enabling efficient scoped allocation for per-object or per-phase work.
+nvlink replaces libc `malloc`/`free` with a custom two-tier arena allocator that owns all dynamic memory for the linker's lifetime. The first tier (`arena_alloc` at `sub_4307C0`, 10,704 bytes, ~3,943 callers) is a thread-safe, per-arena allocator that manages memory through size-class free lists for small blocks and page-level doubly-linked lists for large blocks. The second tier (`ocg_memspace_alloc` at `sub_4882A0`, 2,516 bytes) is a segregated-freelist slab allocator with 128 size classes, 8-byte granularity up to 1,016 bytes, and 1 MB overflow pages — used throughout the embedded ptxas/OCG subsystem. Arenas form a parent-child hierarchy: child arenas can merge their free lists back into a parent on destruction, enabling efficient scoped allocation for per-object or per-phase work.
 
 ## Key Functions
 
@@ -14,10 +14,10 @@ nvlink replaces libc `malloc`/`free` with a custom two-tier arena allocator that
 | `sub_426AA0` | `arena_strdup` | ~128 B | Allocate + copy string via arena (strdup equivalent) |
 | `sub_45CAE0` | `arena_context_swap` | ~64 B | Swap current-arena pointer in TLS-like metadata |
 | `sub_44F410` | `arena_get_metadata` | <2 KB | Retrieve per-thread arena metadata (contains current arena pointer) |
-| `sub_45CAC0` | `arena_alloc_fail` | -- | OOM handler: aborts process on allocation failure |
+| `sub_45CAC0` | `arena_alloc_fail` | — | OOM handler: aborts process on allocation failure |
 | `sub_4882A0` | `ocg_memspace_alloc` | 2,516 B | Segregated-freelist slab allocator for OCG objects |
 | `sub_489140` | `ocg_memspace_stats` | 4,368 B | Print OCG memspace allocation statistics |
-| `sub_44ED60` | `mmap_alloc` | -- | Direct `mmap` fallback for null-arena (very large) allocations |
+| `sub_44ED60` | `mmap_alloc` | — | Direct `mmap` fallback for null-arena (very large) allocations |
 
 ## Architecture Overview
 
@@ -150,9 +150,9 @@ Offset  Size  Field
  56       8   offset_to_data   Offset from header start to usable data (=32)
 ```
 
-## arena_alloc (sub_4307C0) -- Core Allocator
+## arena_alloc (sub_4307C0) — Core Allocator
 
-This is the central allocator, called by virtually every function in the binary. It takes `(arena_ptr, size)` and returns an aligned pointer. The function is 10,704 bytes / 433 decompiled lines -- it is recursive (allocates page metadata from itself) and thread-safe via per-arena mutex.
+This is the central allocator, called by virtually every function in the binary. It takes `(arena_ptr, size)` and returns an aligned pointer. The function is 10,704 bytes / 433 decompiled lines — it is recursive (allocates page metadata from itself) and thread-safe via per-arena mutex.
 
 ### Allocation Paths
 
@@ -278,7 +278,7 @@ The `arena_context_swap` (`sub_45CAE0`) call around mutex creation prevents the 
 
 When `byte_2A5BAD0` is non-zero, the allocator operates in a debug tracking mode. In this mode, `arena_alloc` registers every allocation in a hash table (`qword_2A5F370`) keyed by `address >> 3`, and `arena_free` looks up the allocation's metadata from this hash table rather than relying on the in-band metadata alone. This enables leak detection and double-free checking. The hash table is protected by its own global mutex (`qword_2A5F368`).
 
-## arena_free (sub_431000) -- Deallocator
+## arena_free (sub_431000) — Deallocator
 
 Takes `(pointer, unused)` and returns the block to its owning arena's free list.
 
@@ -308,7 +308,7 @@ Takes `(pointer, unused)` and returns the block to its owning arena's free list.
 
 **Large-block return**: the block header at `ptr - 32` is examined. The allocator checks adjacent blocks (forward and backward) for coalescing: if the next block's sentinel is -1 (free), the two regions merge. If the previous block is also free (checked via the doubly-linked page-list), it merges backward. The coalesced region is reinserted into the appropriate page-list bucket.
 
-## arena_destroy (sub_431C70) -- Arena Teardown
+## arena_destroy (sub_431C70) — Arena Teardown
 
 Takes `(arena, merge_flag)`. Sets the closed flag at offset +8 to 1, then proceeds based on `merge_flag`:
 
@@ -324,7 +324,7 @@ Takes `(arena, merge_flag)`. Sets the closed flag at offset +8 to 1, then procee
 3. Frees the arena name string and the control block itself via `arena_free`.
 4. Destroys the mutex via `sub_44F950`.
 
-## arena_create_named (sub_432020) -- Arena Creation
+## arena_create_named (sub_432020) — Arena Creation
 
 Takes `(name_string, parent_arena, page_size_hint)`.
 
@@ -388,7 +388,7 @@ char *arena_strdup(size_t size) {
 }
 ```
 
-This is the most common allocation pattern in nvlink -- virtually every string (symbol names, section names, file paths, error messages) flows through this function.
+This is the most common allocation pattern in nvlink — virtually every string (symbol names, section names, file paths, error messages) flows through this function.
 
 ## arena_context_swap (sub_45CAE0)
 
@@ -426,7 +426,7 @@ Index    Content                  Description
 
 ### Size-Class Table (128 Classes)
 
-The class index is computed as `(requested + 7) >> 3` -- the requested size rounded up to the next 8-byte boundary, divided by 8. Each class `i` serves allocations whose 8-byte-aligned size equals `i * 8` bytes. The table spans classes 0 through 127:
+The class index is computed as `(requested + 7) >> 3` — the requested size rounded up to the next 8-byte boundary, divided by 8. Each class `i` serves allocations whose 8-byte-aligned size equals `i * 8` bytes. The table spans classes 0 through 127:
 
 | Class | Aligned Size (bytes) | Request Range (bytes) | Notes |
 |------:|---------------------:|----------------------:|-------|
@@ -473,7 +473,7 @@ The relationship between fields is: `data_pointer + remaining_size = end_of_usab
 
 The allocator has three paths, tried in order. Path 1 is the fast path (single array lookup). Path 2 is the fallback (linear scan). Path 3 is the slow path (OS page allocation).
 
-**Path 1 -- Size-class direct lookup** (class 0--127, aligned <= 1,016):
+**Path 1 — Size-class direct lookup** (class 0--127, aligned <= 1,016):
 
 ```c
 void *ocg_memspace_alloc(uint64_t *ms, size_t requested) {
@@ -517,7 +517,7 @@ void *ocg_memspace_alloc(uint64_t *ms, size_t requested) {
     }
 ```
 
-**Path 2 -- Overflow list search** (aligned <= 1 MB):
+**Path 2 — Overflow list search** (aligned <= 1 MB):
 
 ```c
     if (aligned <= 0x100000) {                     // 1 MB limit
@@ -565,7 +565,7 @@ void *ocg_memspace_alloc(uint64_t *ms, size_t requested) {
     }
 ```
 
-**Path 3 -- New page allocation**:
+**Path 3 — New page allocation**:
 
 ```c
     //
@@ -637,9 +637,9 @@ The core insight is that chunks are **not permanently bound to a size class**. A
    fails the "aligned < remaining" check, and falls through.
 ```
 
-**Class migration trigger** -- The migration check uses truncating integer division: `new_cls = (uint32_t)(remaining >> 3)`. This means the chunk migrates when `remaining` drops to 1,016 or below. The threshold for each class boundary is exact: a chunk with 1,017 bytes remaining has `new_cls = 127` and lands in `free_list[127]`; a chunk with 1,024 bytes remaining has `new_cls = 128` (> 127) and stays in the overflow list.
+**Class migration trigger** — The migration check uses truncating integer division: `new_cls = (uint32_t)(remaining >> 3)`. This means the chunk migrates when `remaining` drops to 1,016 or below. The threshold for each class boundary is exact: a chunk with 1,017 bytes remaining has `new_cls = 127` and lands in `free_list[127]`; a chunk with 1,024 bytes remaining has `new_cls = 128` (> 127) and stays in the overflow list.
 
-**Asymmetric comparison** -- The size-class path uses strict less-than (`aligned < remaining`), while the overflow path uses less-than-or-equal (`aligned <= remaining`). This means a chunk in class `K` with exactly `K * 8` bytes remaining will **not** serve a request for `K * 8` bytes via the size-class path -- the request falls through to overflow or new-page. This is a deliberate choice: it ensures the size-class fast path always leaves some remainder, guaranteeing that `data_pointer` never overruns the chunk. The overflow path's `<=` comparison handles the exact-fit case, allowing a chunk to be fully consumed there.
+**Asymmetric comparison** — The size-class path uses strict less-than (`aligned < remaining`), while the overflow path uses less-than-or-equal (`aligned <= remaining`). This means a chunk in class `K` with exactly `K * 8` bytes remaining will **not** serve a request for `K * 8` bytes via the size-class path — the request falls through to overflow or new-page. This is a deliberate choice: it ensures the size-class fast path always leaves some remainder, guaranteeing that `data_pointer` never overruns the chunk. The overflow path's `<=` comparison handles the exact-fit case, allowing a chunk to be fully consumed there.
 
 ### 1 MB Page Layout
 
@@ -666,13 +666,13 @@ The call to `arena_alloc(NULL, page_size + 24)` obtains `page_size + 24` bytes v
 
 **No individual free**: the OCG memspace does not support freeing individual allocations. Objects are allocated forward from 1 MB pages and never returned individually. The entire memspace is released when the containing arena is destroyed. This is appropriate for compiler objects that live for the duration of a compilation unit.
 
-**Bump allocation within chunks**: each chunk tracks a `data_pointer` that advances forward. This gives near-zero allocation overhead -- the fast path (size-class hit with sufficient remaining) is a single array index, a comparison, a subtraction, and a pointer advance. No locking is needed because the OCG subsystem runs single-threaded per compilation unit.
+**Bump allocation within chunks**: each chunk tracks a `data_pointer` that advances forward. This gives near-zero allocation overhead — the fast path (size-class hit with sufficient remaining) is a single array index, a comparison, a subtraction, and a pointer advance. No locking is needed because the OCG subsystem runs single-threaded per compilation unit.
 
-**Automatic class migration**: when a chunk's remainder shrinks below the current size class, the chunk is moved to the appropriate smaller bucket. This is a form of **adaptive binning** -- a fresh page starts in overflow, then gradually settles into smaller and smaller class buckets as it fills up. The result is that any size class can scavenge leftover space from pages originally allocated for larger objects.
+**Automatic class migration**: when a chunk's remainder shrinks below the current size class, the chunk is moved to the appropriate smaller bucket. This is a form of **adaptive binning** — a fresh page starts in overflow, then gradually settles into smaller and smaller class buckets as it fills up. The result is that any size class can scavenge leftover space from pages originally allocated for larger objects.
 
 **1 MB pages**: new pages are always 1 MB (`0x100000` = 1,048,576 bytes), allocated via `arena_alloc(NULL, ...)` which goes through the mmap fallback path. For allocations exceeding 1 MB, the page is sized to the exact request with zero remainder. The 1 MB granularity means the allocator obtains at most one page per ~1 million bytes of total allocation, keeping `mmap` syscall overhead negligible.
 
-**Oversized allocations**: requests larger than 1 MB bypass both the size-class and overflow lookups entirely (`v4 > 0x100000` branches directly to page allocation). The resulting chunk has `remaining_size = 0` and is inserted into `free_list[0]` -- the exhausted-chunk sink. This handles the rare case of very large OCG objects (e.g., large constant data blocks) without disrupting the small-object fast path.
+**Oversized allocations**: requests larger than 1 MB bypass both the size-class and overflow lookups entirely (`v4 > 0x100000` branches directly to page allocation). The resulting chunk has `remaining_size = 0` and is inserted into `free_list[0]` — the exhausted-chunk sink. This handles the rare case of very large OCG objects (e.g., large constant data blocks) without disrupting the small-object fast path.
 
 ## Diagnostic Output
 
@@ -751,25 +751,25 @@ When `arena_alloc` cannot satisfy a request, it calls `sub_45CAC0` (`arena_alloc
 An allocation failure occurred; heap memory may be exhausted.
 ```
 
-This handler terminates the process. There is no graceful recovery path -- the linker assumes sufficient virtual memory is available for the linking workload. The emergency page reserve (`dword_2A5F384` / `qword_2A5F390`) provides a single retry opportunity for the null-arena mmap path only.
+This handler terminates the process. There is no graceful recovery path — the linker assumes sufficient virtual memory is available for the linking workload. The emergency page reserve (`dword_2A5F384` / `qword_2A5F390`) provides a single retry opportunity for the null-arena mmap path only.
 
 A separate handler at `sub_4B9E70` handles allocation failures in the OCG/ptxas subsystem with the same message, plus optional compound error reporting (`"Multiple errors:"`).
 
 ## Cross-References
 
-- [Pipeline Overview](../pipeline/overview.md) -- arena creation/destruction in main flow
-- [Entry Point](../pipeline/entry.md) -- arena lifecycle details in main()
-- [Hash Tables](../linker/hash-tables.md) -- LinkerHash used for child-arena tracking and page trees
-- [ELF Parsing](../input/elf-parsing.md) -- per-ELF arenas ("elfw memory space")
-- [Serialization](../elf/serialization.md) -- arena-backed growable buffers
-- **ptxas wiki**: [Memory Pool Allocator](../../ptxas/infra/memory-pools.html) -- same two-tier design (7,136-byte pool object, size-class free lists, large-block page lists, per-pool mutex at offset +7128) shared between nvlink and ptxas; nvlink's `sub_4307C0` is the nvlink-specific build of the same allocator as ptxas's `sub_424070`
+- [Pipeline Overview](../pipeline/overview.md) — arena creation/destruction in main flow
+- [Entry Point](../pipeline/entry.md) — arena lifecycle details in main()
+- [Hash Tables](../linker/hash-tables.md) — LinkerHash used for child-arena tracking and page trees
+- [ELF Parsing](../input/elf-parsing.md) — per-ELF arenas ("elfw memory space")
+- [Serialization](../elf/serialization.md) — arena-backed growable buffers
+- **ptxas wiki**: [Memory Pool Allocator](../../ptxas/infra/memory-pools.html) — same two-tier design (7,136-byte pool object, size-class free lists, large-block page lists, per-pool mutex at offset +7128) shared between nvlink and ptxas; nvlink's `sub_4307C0` is the nvlink-specific build of the same allocator as ptxas's `sub_424070`
 
 ## Confidence Assessment
 
 | Claim | Confidence | Evidence |
 |---|---|---|
 | Two-tier arena design (arena_alloc + OCG memspace) | HIGH | Decompiled `sub_4307C0` (10,704 B) and `sub_4882A0` (2,516 B) both exist and match described signatures |
-| Arena control block is 7,136 bytes | HIGH | `sub_432020` calls `sub_4307C0(arena, 7136)` -- literal 7136 visible in decompiled code |
+| Arena control block is 7,136 bytes | HIGH | `sub_432020` calls `sub_4307C0(arena, 7136)` — literal 7136 visible in decompiled code |
 | Named arenas "nvlink option parser" and "nvlink memory space" | HIGH | Both strings confirmed in `nvlink_strings.json` at `0x1d34123` and `0x1d34138` |
 | "elfw memory space" child arena | HIGH | String confirmed at `0x1d39fa3` in strings JSON |
 | "<anonymous>" fallback name | HIGH | `sub_432020` decompiled code shows `"<anonymous>"` literal when src is NULL; string at `0x1d38688` |

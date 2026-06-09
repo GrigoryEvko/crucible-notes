@@ -97,9 +97,9 @@ The dispatcher uses a two-level dispatch strategy:
 
 1. **Named dispatch** (121 opcodes): Direct string-to-function registration for recent or complex instructions. The opcode name string (e.g., `"wmma.load.a"`, `"tcgen05.mma"`, `"barrier.cta"`) is looked up in a hash map at `a1+808`.
 
-2. **Variant-ID dispatch** (473 entries): Composite 32-bit variant identifiers are used as keys in a second hash map at `a1+816`. The caller computes a variant ID from the instruction's internal representation (Ori opcode, PTX type, modifiers), converts it to a decimal string via `sprintf("%u", variant_id)`, and looks up the corresponding formatter. Keys like `"2644314910"` and `"605425506"` are the decimal encodings of these IDs. This covers the stable ISA core -- arithmetic, logic, loads, stores, branches, conversions -- plus MMA/WMMA shape+type+layout variants.
+2. **Variant-ID dispatch** (473 entries): Composite 32-bit variant identifiers are used as keys in a second hash map at `a1+816`. The caller computes a variant ID from the instruction's internal representation (Ori opcode, PTX type, modifiers), converts it to a decimal string via `sprintf("%u", variant_id)`, and looks up the corresponding formatter. Keys like `"2644314910"` and `"605425506"` are the decimal encodings of these IDs. This covers the stable ISA core — arithmetic, logic, loads, stores, branches, conversions — plus MMA/WMMA shape+type+layout variants.
 
-Both maps use the same MurmurHash3-based hash map infrastructure (`sub_427630` for bucket hashing, `sub_426150` for insert, `sub_426D60` for lookup). The variant-ID keys are structured -- bits 8-15 encode a PTX type discriminator (16 unique values spanning 9--24, corresponding to type codes like `.s32`, `.f32`, `.f64`), and related variants (e.g., same opcode with different types) cluster with small numeric deltas. Pairs differing only in layout produce a fixed hi16 delta of 76, confirming the ID encodes multiple orthogonal fields rather than being a hash of the opcode name string.
+Both maps use the same MurmurHash3-based hash map infrastructure (`sub_427630` for bucket hashing, `sub_426150` for insert, `sub_426D60` for lookup). The variant-ID keys are structured — bits 8-15 encode a PTX type discriminator (16 unique values spanning 9--24, corresponding to type codes like `.s32`, `.f32`, `.f64`), and related variants (e.g., same opcode with different types) cluster with small numeric deltas. Pairs differing only in layout produce a fixed hi16 delta of 76, confirming the ID encodes multiple orthogonal fields rather than being a hash of the opcode name string.
 
 ```text
 Variant ID structure (32-bit, approximate field boundaries):
@@ -215,12 +215,12 @@ All formatters query the instruction object through a uniform set of tiny access
 | `sub_709760` | 127 B | 21 | `get_comparison_op()` |
 | `sub_709FE0` | 11 B | 17 | `get_rounding_mode()` |
 | `sub_70A500` | 13 B | 15 | `get_saturation_mode()` |
-| `sub_70B3F0` | -- | -- | `get_ftz_flag()` |
-| `sub_707530` | -- | -- | `get_precision_string()` |
-| `sub_707C80` | -- | -- | `get_scope_string()` |
-| `sub_7075E0` | -- | -- | `get_layout_string()` |
-| `sub_707BE0` | -- | -- | `get_shape_string()` |
-| `sub_70A810` | -- | -- | `get_scale_string()` |
+| `sub_70B3F0` | — | — | `get_ftz_flag()` |
+| `sub_707530` | — | — | `get_precision_string()` |
+| `sub_707C80` | — | — | `get_scope_string()` |
+| `sub_7075E0` | — | — | `get_layout_string()` |
+| `sub_707BE0` | — | — | `get_shape_string()` |
+| `sub_70A810` | — | — | `get_scale_string()` |
 
 All accessors read from the instruction object at `*(a1+1096)`. The tiny sizes (7--151 bytes for most) indicate these are simple field extractions from the instruction record.
 
@@ -307,7 +307,7 @@ Five formatters additionally use string-based SM comparison via `sub_70FA10`:
 
 ## SASS Disassembly Renderer
 
-The SASS-level renderer at `0x17F8000`--`0x181FFFF` (~160 KB, ~123 virtual entry points) converts binary-encoded SASS instructions into textual SASS assembly. Unlike the PTX formatters (Level 1) which work from the high-level Ori IR via `sprintf` chains, the SASS renderer decodes the binary instruction encoding and drives a builder/visitor object through a structured sequence of `emit_*` calls. The builder's concrete implementation determines the output format -- text for `--out-sass`, comparison data for `--self-check`, or binary encoding verification.
+The SASS-level renderer at `0x17F8000`--`0x181FFFF` (~160 KB, ~123 virtual entry points) converts binary-encoded SASS instructions into textual SASS assembly. Unlike the PTX formatters (Level 1) which work from the high-level Ori IR via `sprintf` chains, the SASS renderer decodes the binary instruction encoding and drives a builder/visitor object through a structured sequence of `emit_*` calls. The builder's concrete implementation determines the output format — text for `--out-sass`, comparison data for `--self-check`, or binary encoding verification.
 
 ### Internal Layers
 
@@ -343,7 +343,7 @@ Every SASS printer receives `(a1, a2)` where `a1` is the printer context (builde
 11. vtable[4160](builder)                      // end_instruction
 ```
 
-The protocol is directly visible in decompiled code. In `sub_1812F60` (16-DWORD immediate printer), the function begins with `vtable[0](builder, 89)` (begin instruction kind 89), calls `vtable[3760]` for sync type, `vtable[3768]` for begin operand list, `sub_9DB7E0` for predicate guard, then loops 16 times calling `vtable[272]` (create integer operand) followed by `vtable[16]` (emit operand) with kind IDs 55 through 70 -- one per DWORD.
+The protocol is directly visible in decompiled code. In `sub_1812F60` (16-DWORD immediate printer), the function begins with `vtable[0](builder, 89)` (begin instruction kind 89), calls `vtable[3760]` for sync type, `vtable[3768]` for begin operand list, `sub_9DB7E0` for predicate guard, then loops 16 times calling `vtable[272]` (create integer operand) followed by `vtable[16]` (emit operand) with kind IDs 55 through 70 — one per DWORD.
 
 In `sub_1810D20` (comparison-mode printer), the function first reads the modifier word from the operand array at `instruction+84`, switches on `(modifier >> 4) & 0xF`, calls `vtable[3528]`/`vtable[3536]` to configure comparison mode and variant, then emits 2--3 operands via the standard `sub_9D12F0` + `vtable[16]` sequence.
 
@@ -547,10 +547,10 @@ Each 8-byte operand slot encodes:
 | 1 | 1 | Absolute value flag (mirrored from word 1 bit 30) |
 | 20 | 1 | Constant pool flag (`0x100000`) |
 | 29 | 1 | Sign extension / signed-folding flag (`0x20000000`) |
-| 30 | 1 | `.ABS` modifier (`0x40000000`) -- absolute value of source |
-| 31 | 1 | `.NEG` modifier (`0x80000000`) -- arithmetic negation of source |
+| 30 | 1 | `.ABS` modifier (`0x40000000`) — absolute value of source |
+| 31 | 1 | `.NEG` modifier (`0x80000000`) — arithmetic negation of source |
 
-The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 test is `v17 < 0` (sign-bit set means negate); bit-30 is `v17 & 0x40000000` (set means absolute value). These two source-operand modifiers are independent of the **branch predicate guard** negation bit, which lives at **bit 24 (`0x1000000`)** of word1 of the predicate-register operand in the guard pair (verified in `sub_137E3A0` line 50, which reads `instr[2*last_idx + 22] & 0x1000000`). The textual printer `sub_70B780` does **not** consult this binary bit -- it reads the `'!'` prefix from the operand-descriptor name string at `+2120`. The two surfaces stay in sync because the passes that negate a guard set both, but downstream code that mutates only one must rebuild the other (see `passes/predication.md`).
+The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 test is `v17 < 0` (sign-bit set means negate); bit-30 is `v17 & 0x40000000` (set means absolute value). These two source-operand modifiers are independent of the **branch predicate guard** negation bit, which lives at **bit 24 (`0x1000000`)** of word1 of the predicate-register operand in the guard pair (verified in `sub_137E3A0` line 50, which reads `instr[2*last_idx + 22] & 0x1000000`). The textual printer `sub_70B780` does **not** consult this binary bit — it reads the `'!'` prefix from the operand-descriptor name string at `+2120`. The two surfaces stay in sync because the passes that negate a guard set both, but downstream code that mutates only one must rebuild the other (see `passes/predication.md`).
 
 ### Global Lookup Tables
 
@@ -658,18 +658,18 @@ The remaining 473 opcode variants (arithmetic, logic, load/store, control flow, 
 |---------|------|---------|----------|
 | `sub_5D4190` | 12.9 KB | 1 | PTX instruction text dispatch + intrinsic registration |
 | `sub_5D1660` | 46 KB | 1 | Intrinsic library registration (608 entries) |
-| `sub_5FF700` | 354 KB | -- | Builtin function declaration emitter (prototype generator) |
+| `sub_5FF700` | 354 KB | — | Builtin function declaration emitter (prototype generator) |
 | `sub_4DA340` | 61 B | 1,080 | Builtin declaration lookup helper |
-| `sub_719D00` | 50 KB | -- | SASS text formatter (self-check output builder) |
-| `sub_720F00` | 64 KB | -- | Flex lexer for SASS text parsing (self-check input) |
+| `sub_719D00` | 50 KB | — | SASS text formatter (self-check output builder) |
+| `sub_720F00` | 64 KB | — | Flex lexer for SASS text parsing (self-check input) |
 | `sub_9D12F0` | 1.4 KB | 289 | Operand encoder (64-byte struct per operand) |
 | `sub_9DB7E0` | 662 B | 19 | Predicate guard printer |
 | `sub_91C840` | 347 B | 232 | Register class discriminator |
 | `sub_9CEB50` | 185 B | 57 | Address space qualifier resolver |
 | `sub_91E860` | 31 B | 214 | Data size accessor |
-| `sub_18189C0` | 45.2 KB | -- | Texture/surface instruction printer (largest SASS printer) |
-| `sub_181B370` | 27.8 KB | -- | Multi-operand instruction printer |
-| `sub_1817C50` | 12.8 KB | -- | Texture header index encoder |
+| `sub_18189C0` | 45.2 KB | — | Texture/surface instruction printer (largest SASS printer) |
+| `sub_181B370` | 27.8 KB | — | Multi-operand instruction printer |
+| `sub_1817C50` | 12.8 KB | — | Texture header index encoder |
 
 ## Instruction Data Flow
 
@@ -711,10 +711,10 @@ The remaining 473 opcode variants (arithmetic, logic, load/store, control flow, 
 
 ## Cross-References
 
-- [Code Generation Overview](./overview.md) -- pipeline context and subsystem map
-- [SASS Instruction Encoding](./encoding.md) -- binary encoding format that this subsystem renders
-- [Mercury Encoder Pipeline](./mercury.md) -- source of instructions for text generation
-- [Capsule Mercury & Finalization](./capmerc.md) -- `--self-check` and `--out-sass` integration
-- [CLI Options](../config/cli-options.md) -- `--verbose`, `--forcetext`, `--out-sass` flags
-- [Knobs System](../config/knobs.md) -- DUMPIR knob triggering phase 129/130
-- [Phase Manager](../passes/phase-manager.md) -- phase 129/130 registration and execution
+- [Code Generation Overview](./overview.md) — pipeline context and subsystem map
+- [SASS Instruction Encoding](./encoding.md) — binary encoding format that this subsystem renders
+- [Mercury Encoder Pipeline](./mercury.md) — source of instructions for text generation
+- [Capsule Mercury & Finalization](./capmerc.md) — `--self-check` and `--out-sass` integration
+- [CLI Options](../config/cli-options.md) — `--verbose`, `--forcetext`, `--out-sass` flags
+- [Knobs System](../config/knobs.md) — DUMPIR knob triggering phase 129/130
+- [Phase Manager](../passes/phase-manager.md) — phase 129/130 registration and execution

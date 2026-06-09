@@ -6,7 +6,7 @@ Binary: `/usr/local/cuda-13.0/bin/nvlink`
 SHA256: see [versions](versions.md)
 Entry point: `0x409800` (`main`)
 
-> **Binary composition**: Approximately **95% of the binary is embedded ptxas compiler backend** (ISel, register allocation, scheduling, instruction encoding). Only about **5% is linker logic** (~1,900 functions in `0x400000`--`0x4C0000`). Of the 40,532 total functions, roughly 38,000 belong to the statically linked ptxas compiler -- these are documented in the [ptxas wiki function-map](https://example.com/ptxas/function-map.md). This page focuses on the ~2,000 linker-specific and infrastructure functions, plus the embedded-ptxas interfaces visible from the linker side.
+> **Binary composition**: Approximately **95% of the binary is embedded ptxas compiler backend** (ISel, register allocation, scheduling, instruction encoding). Only about **5% is linker logic** (~1,900 functions in `0x400000`--`0x4C0000`). Of the 40,532 total functions, roughly 38,000 belong to the statically linked ptxas compiler — these are documented in the [ptxas wiki function-map](https://example.com/ptxas/function-map.md). This page focuses on the ~2,000 linker-specific and infrastructure functions, plus the embedded-ptxas interfaces visible from the linker side.
 >
 > See [Binary Layout](binary-layout.md) for the full address-range breakdown and composition table.
 
@@ -204,7 +204,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 | `0x442CA0` | `sub_442CA0` | elfw_add_symbol | 7.2KB | HIGH | Adds global symbol to ELF wrapper's symbol table. STB_GLOBAL/WEAK/LOCAL binding. |
 | `0x442820` | `sub_442820` | elfw_merge_symbols | 5.4KB | HIGH | Merges unified symbols; handles `__cuda_uf_stub_` and `.nv.uft` stubs. |
 | `0x4489C0` | `sub_4489C0` | hash_table_create | small | HIGH | Creates open-addressing hash table for symbol/option lookup. |
-| `0x449A80` | `sub_449A80` | LinkerHash_lookup | 592 B | HIGH | Lookup by key in the linker's open-addressing hash table; 4-mode dispatch via `(flags>>4)&0xF` (string / context-string / pointer / uint64). Returns value pointer or 0. Hot path of symbol-resolution merge -- probes the global name->index map for every incoming ELF symbol. |
+| `0x449A80` | `sub_449A80` | LinkerHash_lookup | 592 B | HIGH | Lookup by key in the linker's open-addressing hash table; 4-mode dispatch via `(flags>>4)&0xF` (string / context-string / pointer / uint64). Returns value pointer or 0. Hot path of symbol-resolution merge — probes the global name->index map for every incoming ELF symbol. |
 
 > **Details**: [Symbol Resolution](linker/symbol-resolution.md), [Hash Tables](linker/hash-tables.md), [Symbol Resolution Walkthrough](linker/symbol-resolution-walkthrough.md)
 
@@ -255,7 +255,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 | `0x4BC6F0` | `sub_4BC6F0` | **nvvm_compile_and_extract** | 13.6KB | VERY HIGH | Calls libNVVM API: `nvvmCompileProgram`, `nvvmGetCompiledResult`, `nvvmGetProgramLog`, `nvvmDestroyProgram`. References `--force-device-c`. |
 | `0x4BC4A0` | `sub_4BC4A0` | nvvm_api_wrapper_init | 2.5KB | HIGH | Loads `libnvvm.so` via dlopen, resolves `nvvmCreateProgram` and other API symbols via dlsym. |
 | `0x4BD760` | `sub_4BD760` | ptxas_compile_split | ~12KB | HIGH | Split-aware embedded-ptxas entry. Sets arch/options, adds the PTX input, drives the embedded compiler, retrieves output. Target of the split-compile worker `sub_4264B0`; return value is written into work-item offset +36 as an elfLink error code (0..13). |
-| `0x4BD4E0` | `sub_4BD4E0` | ptx_compile_whole_program | small | HIGH | Top-level whole-program PTX compile path -- produces final cubin without splitting. Alternative to the split-compile worker path. |
+| `0x4BD4E0` | `sub_4BD4E0` | ptx_compile_whole_program | small | HIGH | Top-level whole-program PTX compile path — produces final cubin without splitting. Alternative to the split-compile worker path. |
 | `0x4BD240` | `sub_4BD240` | cubin_post_process | small | HIGH | Cubin post-processing after embedded-ptxas compilation. Validates ABI (`-m32` vs `-m64`), invokes the cubin bytecode extractor `sub_4BE350`; surfaces elfLink errors on mismatch. |
 | `0x4BD0A0` | `sub_4BD0A0` | nvvm_compile_driver | small | HIGH | NVVM IR compilation driver. Sequences target arch setup (`sub_4CE2F0`), debug mode (`sub_4CE380`), 64-bit mode (`sub_4CE640`), module addition (`sub_4CE070`), final compile (`sub_4CE8C0`). |
 | `0x426CD0` | `sub_426CD0` | lto_collect_ir_modules | 7.0KB | MEDIUM | Collects IR modules from input list for LTO compilation. Builds the cicc/NVVM option list (array of string pointers). |
@@ -283,7 +283,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 
 ### MercExpand Engine
 
-The "MercExpand" instruction expansion pass -- NVIDIA's custom ISel/lowering for Mercury (sm100+). Confirmed by string "After MercExpand" at `0x5FF15E`.
+The "MercExpand" instruction expansion pass — NVIDIA's custom ISel/lowering for Mercury (sm100+). Confirmed by string "After MercExpand" at `0x5FF15E`.
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
@@ -425,11 +425,11 @@ The fundamental API for accessing IR instruction fields. `sub_530FB0` alone has 
 
 | Address | Decompiled | Proposed Name | Size | Tag | Description |
 |---------|------------|---------------|------|-----|-------------|
-| `0x530FB0` | `sub_530FB0` | IRNode_GetOperand | 16B | -- | `return *(a1+32) + 32 * index` (operand array, 32-byte stride) |
-| `0x530FC0` | `sub_530FC0` | IRNode_GetNumSrcOperands | 16B | -- | `total_ops + 1 - first_src_index` |
-| `0x530FD0` | `sub_530FD0` | IRNode_GetNumDstOperands | 16B | -- | `return *(a1 + 92)` |
-| `0x530E80` | `sub_530E80` | IRNode_GetRegClass | 16B | -- | Identity extract (unsigned int) |
-| `0x530F80` | `sub_530F80` | IRNode_GetDataType | 16B | -- | Identity extract for data type field |
+| `0x530FB0` | `sub_530FB0` | IRNode_GetOperand | 16B | — | `return *(a1+32) + 32 * index` (operand array, 32-byte stride) |
+| `0x530FC0` | `sub_530FC0` | IRNode_GetNumSrcOperands | 16B | — | `total_ops + 1 - first_src_index` |
+| `0x530FD0` | `sub_530FD0` | IRNode_GetNumDstOperands | 16B | — | `return *(a1 + 92)` |
+| `0x530E80` | `sub_530E80` | IRNode_GetRegClass | 16B | — | Identity extract (unsigned int) |
+| `0x530F80` | `sub_530F80` | IRNode_GetDataType | 16B | — | Identity extract for data type field |
 | `0x530E90` | `sub_530E90` | IROperand_IsRegister | 16B | tag=2 | `return type == 2` |
 | `0x530EA0` | `sub_530EA0` | IROperand_IsImmediate | 16B | tag=1 | `return type == 1` |
 | `0x530EB0` | `sub_530EB0` | IROperand_IsMemRef | 16B | tag=6 | `return type == 6` |
@@ -439,8 +439,8 @@ The fundamental API for accessing IR instruction fields. `sub_530FB0` alone has 
 | `0x530EF0` | `sub_530EF0` | IROperand_IsConstant | 16B | tag=4 | `return type == 4` |
 | `0x530F00` | `sub_530F00` | IROperand_IsSymbol | 16B | tag=3 | `return type == 3` |
 | `0x530F50` | `sub_530F50` | IROperand_IsBarrier | 16B | tag=7 | `return type == 7` |
-| `0x530F90` | `sub_530F90` | IRNode_SetFlagA | 16B | -- | `*(a1 + 14) = a2` |
-| `0x530FA0` | `sub_530FA0` | IRNode_SetFlagB | 16B | -- | `*(a1 + 15) = a2` |
+| `0x530F90` | `sub_530F90` | IRNode_SetFlagA | 16B | — | `*(a1 + 14) = a2` |
+| `0x530FA0` | `sub_530FA0` | IRNode_SetFlagB | 16B | — | `*(a1 + 15) = a2` |
 
 > **Details**: [IR Nodes](ptxas/ir-nodes.md)
 
@@ -484,7 +484,7 @@ Four giant switch-case functions that implement the complete operand field encod
 | Address | Range | Count | Confidence | Description |
 |---------|-------|-------|------------|-------------|
 | `0xF16150` | `0xF16150`--`0xFBB780` | 276 | HIGH | SM75 pattern matchers. Same signature. Calls `sub_A49150` for attributes, `sub_530FD0`/`sub_530FB0`/`sub_530FC0` for operand queries. |
-| `0xFBB810` | -- | 280KB | HIGH | **SM75 ISel mega-hub dispatch**. Calls all 276 matchers, selects highest priority, dispatches to corresponding emitter. Too large to decompile. |
+| `0xFBB810` | — | 280KB | HIGH | **SM75 ISel mega-hub dispatch**. Calls all 276 matchers, selects highest priority, dispatches to corresponding emitter. Too large to decompile. |
 
 #### SM80 ISel Hub (Ampere)
 
@@ -545,7 +545,7 @@ Used by register allocation and liveness analysis throughout the backend.
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
-| `0x406DC0` | `sub_406DC0` | peephole_optimizer_main | 6.8KB | MEDIUM | Main driver -- orchestrates multiple optimization passes on instruction buffer. |
+| `0x406DC0` | `sub_406DC0` | peephole_optimizer_main | 6.8KB | MEDIUM | Main driver — orchestrates multiple optimization passes on instruction buffer. |
 | `0x407634` | `sub_407634` | peephole_instruction_combine | 5.3KB | MEDIUM | Combines dependent instruction pairs. 372-byte records, limit 20479. |
 | `0x406377` | `sub_406377` | peephole_pattern_match | 7.4KB | MEDIUM | Matches and transforms instruction patterns. |
 | `0x408594` | `sub_408594` | peephole_scheduler | 6.5KB | LOW | Instruction scheduling within basic blocks. |
@@ -574,7 +574,7 @@ The embedded ptxas backend exposes its own argv-style option surface, separate f
 |---------|------------|---------------|------|------------|-------------|
 | `0x1103030` | `sub_1103030` | ptxas_option_table_build | 29.8KB / 1,249 lines | HIGH | Builds the embedded-ptxas option definition table. Creates a fresh parser via `sub_42DFE0(0)`, registers every option via `sub_42F130` (long name, short name, type, default, help), then invokes `sub_42E5A0` to parse argc/argv. Handles `--trap-into-debugger`, `--tool-name`, `--help`, `--version`. |
 | `0x1104950` | `sub_1104950` | ptxas_option_extract | 37.6KB / 1,208 lines | HIGH | Parses argv against the table from `sub_1103030` and extracts each option via `sub_42E390` into a compiler-state structure at base pointer `a3`. Each option writes to a fixed byte offset; extraction order is strict and includes validation. |
-| `0x1112F30` | `sub_1112F30` | ptxas_compile_driver | 65.0KB / 2,164 lines | HIGH | Embedded-ptxas compilation driver -- the consumer of the option state populated by `sub_1104950`. Top-level orchestrator for PTX-to-SASS within the linker. |
+| `0x1112F30` | `sub_1112F30` | ptxas_compile_driver | 65.0KB / 2,164 lines | HIGH | Embedded-ptxas compilation driver — the consumer of the option state populated by `sub_1104950`. Top-level orchestrator for PTX-to-SASS within the linker. |
 | `0x1100E50` | `sub_1100E50` | ptxas_feature_configurator | 13.8KB / 451 lines | HIGH | Feature flag configurator. Translates the parsed option state into the embedded compiler's internal feature switches before the driver runs. |
 
 > **Details**: [PTX Parsing](ptxas/ptx-parsing.md), [Embedded ptxas Overview](ptxas/overview.md), [ptxas Options](config/ptxas-options.md)

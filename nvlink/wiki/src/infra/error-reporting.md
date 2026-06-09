@@ -29,7 +29,7 @@ nvlink's diagnostic infrastructure routes every warning, error, and fatal messag
 | `sub_44FF90` | `strbuf_append_char` | 304 B | Appends a single character to the buffer |
 | `sub_4500A0` | `strbuf_vsprintf` | 496 B | `vsnprintf` into string buffer (1024-byte stack fast path) |
 | `sub_450280` | `strbuf_sprintf` | 32 B | Variadic wrapper around `strbuf_vsprintf` |
-| `sub_4504A0` | `strbuf_length` | 8 B | Returns `*(qword*)(buf + 8)` -- current buffer length |
+| `sub_4504A0` | `strbuf_length` | 8 B | Returns `*(qword*)(buf + 8)` — current buffer length |
 | `sub_44FD40` | `strbuf_snapshot` | 112 B | Snapshots buffer content without consuming it |
 | `sub_45B7B0` | `channel_write` | 192 B | Multi-mode output: string buffer, FILE*, sprintf, stdout |
 | `destr_function` | `tls_destructor` | 212 B | Pthread key destructor; tears down per-thread state |
@@ -40,7 +40,7 @@ The first DWORD of each diagnostic descriptor (`*a1`) encodes the severity. `dia
 
 | Level | Value | Prefix String | ANSI Token | Output Channel | Effect |
 |---|---|---|---|---|---|
-| Note | 0 | *(none)* | -- | -- | Silent; `diag_emit` returns immediately |
+| Note | 0 | *(none)* | — | — | Silent; `diag_emit` returns immediately |
 | Info | 1 | `""` (empty) | `@I@` | `qword_2A5F8A0[0]` (info) | Informational; suppressed by `--disable-infos` |
 | Info (labeled) | 2 | `"info    "` | `@O@` | `qword_2A5F8A0[0]` (info) | Same as Info but with explicit prefix |
 | Warning | 3 | `"warning "` | `@W@` | `qword_2A5F8A0[1]` (warning) | May be promoted to error by `-Werror`; suppressed by `-w` |
@@ -75,7 +75,7 @@ diag_emit(descriptor, ...):
 
 ### Warning-as-Error Promotion
 
-When `-Werror` is active (`tls_state[50] != 0`), any warning (severity 3) is promoted to severity 5 (hard error). The prefix changes from `"warning "` to `"error   "`. This applies in both `diag_emit` and `diag_format`. The promotion is per-emission, not per-descriptor -- the descriptor itself remains severity 3 so that the same diagnostic can be a warning in one invocation and an error in another.
+When `-Werror` is active (`tls_state[50] != 0`), any warning (severity 3) is promoted to severity 5 (hard error). The prefix changes from `"warning "` to `"error   "`. This applies in both `diag_emit` and `diag_format`. The promotion is per-emission, not per-descriptor — the descriptor itself remains severity 3 so that the same diagnostic can be a warning in one invocation and an error in another.
 
 ## Diagnostic Descriptor Table
 
@@ -181,8 +181,8 @@ The tables below are organized by subsystem. Severity is inferred from `diag_emi
 | `unk_2A5B670` | 6 | 17 | Internal assertion failure; catch-all for "should never happen" | `"Internal error"`, `"cubin not an elf?"`, `"cubin not a device elf?"`, `"fatbin wrong format?"`, `"should never see bc files"`, `"error in LTO callback"`, `"unexpected cpuArch"` |
 | `unk_2A5B6C0` | 3 | 1 | Mercury/finalizer phase returned error for function | `"%s"` (function name) |
 | `unk_2A5B990` | 6 | 230 | Internal invariant violation (by far the most used descriptor) | See full table below |
-| `unk_2A5BAE0` | 6 | 2 | Out-of-memory during TLS state allocation (`sub_44F410`, `sub_44F670`) | -- (format string is the OOM message) |
-| `unk_2A5BB70` | 6 | 5 | Catch-all fatal OOM (`fatal_alloc`); recognized by pointer comparison | -- (bypass formatter, direct stderr) |
+| `unk_2A5BAE0` | 6 | 2 | Out-of-memory during TLS state allocation (`sub_44F410`, `sub_44F670`) | — (format string is the OOM message) |
+| `unk_2A5BB70` | 6 | 5 | Catch-all fatal OOM (`fatal_alloc`); recognized by pointer comparison | — (bypass formatter, direct stderr) |
 
 #### ELF / Section Merging (sub_432870, sub_4325A0--sub_445000)
 
@@ -192,7 +192,7 @@ The tables below are organized by subsystem. Severity is inferred from `diag_emi
 | `unk_2A5B8B0` | 3 | 4 | Duplicate symbol across input files during merge | `"%s"` (symbol name) |
 | `unk_2A5B8C0` | 3 | 2 | Unknown symbol referenced during merge | `"%s"` (symbol name or `"unknown"`) |
 | `unk_2A5B8D0` | 3 | 1 | Undefined external symbol encountered in section scan | `"%s"` (symbol name) |
-| `unk_2A5B8E0` | 3 | 1 | Target arch (sm <= 0x78) does not support feature | -- |
+| `unk_2A5B8E0` | 3 | 1 | Target arch (sm <= 0x78) does not support feature | — |
 | `unk_2A5B8F0` | 3 | 1 | Relocation target mismatch during merge | `"%s"` (symbol) |
 | `unk_2A5B900` | 3 | 1 | ISA\_CLASS attribute exceeds maximum (arch-specific limit, e.g., > 0x7F for sm\_100a) | `%d` (arch), `"%s"` (`"ISA_CLASS"`), `"%s"` (symbol) |
 | `unk_2A5B910` | 3 | 1 | Missing `.nv.compat` section in input ELF | `".nv.compat"` |
@@ -242,7 +242,7 @@ The tables below are organized by subsystem. Severity is inferred from `diag_emi
 
 | Address | Size | Role |
 |---|---|---|
-| `unk_2A5B500` | -- | BSS module base (used as `__dso_handle` argument in `__cxa_atexit` calls) |
+| `unk_2A5B500` | — | BSS module base (used as `__dso_handle` argument in `__cxa_atexit` calls) |
 | `unk_2A5BB80` | 512 B | Warning-suppression bitmap array (one bit per descriptor, used for `--Wno-*` granular suppression) |
 | `unk_2A5BFC0` | 16 B | Error-status object: "empty/null input" returned as `*a4` in file-open helpers |
 | `unk_2A5BFD0` | 16 B | Error-status object: "file read error" returned as `*a4` |
@@ -321,7 +321,7 @@ The sentinel descriptor `unk_2A5BB70` is special: it is the "catch-all fatal" us
    - Queries scheduling priority bounds via `sched_get_priority_max/min(SCHED_RR)`
    - Sets up linked-list head pointers for the thread registry
 
-2. Allocates `0x118` bytes via `malloc` (not the arena allocator -- this is one of the few malloc sites in the binary)
+2. Allocates `0x118` bytes via `malloc` (not the arena allocator — this is one of the few malloc sites in the binary)
 
 3. Zeroes the entire block, then initializes:
    - `pthread_cond_t` at offset 128
@@ -381,7 +381,7 @@ When color output is enabled (`tls_state[51] != 0`), `diag_format` prepends ANSI
 
 Color support is detected by `has_color_support` (`sub_4684A0`), which simply reads the TLS flag. The flag is set during initialization based on whether stderr is a terminal (isatty) and whether `NO_COLOR` or similar environment variables are present.
 
-The `strbuf_append_str` (`sub_44FE60`) function appends these tokens into the output buffer. The actual ANSI escape expansion happens in the output channel layer, not in the formatter itself -- the tokens are literal strings like `"@W@"` that get translated to `"\033[1;33m"` (or similar) at the final write stage.
+The `strbuf_append_str` (`sub_44FE60`) function appends these tokens into the output buffer. The actual ANSI escape expansion happens in the output channel layer, not in the formatter itself — the tokens are literal strings like `"@W@"` that get translated to `"\033[1;33m"` (or similar) at the final write stage.
 
 ## Message Formatting Pipeline
 
@@ -613,7 +613,7 @@ The channel index is determined by the `byte_1D3C728` severity-to-channel mappin
 
 | Severity | `byte_1D3C728[severity]` | Channel |
 |---|---|---|
-| 0 (note) | 0 | -- (never reached) |
+| 0 (note) | 0 | — (never reached) |
 | 1 (info) | 0 | `qword_2A5F8A0[0]` |
 | 2 (info labeled) | 0 | `qword_2A5F8A0[0]` |
 | 3 (warning) | 1 | `qword_2A5F8A0[1]` |
@@ -783,27 +783,27 @@ The fast path in `strbuf_vsprintf` uses a 1024-byte stack buffer. If the formatt
 
 **Internal (nvlink wiki):**
 
-- [Memory Arenas](memory-arenas.md) -- Arena allocator used by string buffer functions (`sub_44FB20`, `sub_4307C0`) for message assembly
-- [Environment Variables](../config/env-vars.md) -- `__NVLINK_STDERR_REDIRECT` and `NVLINK_DEBUG` env vars that affect diagnostic output routing
-- [CLI Flags](../config/cli-flags.md) -- `--disable-warnings`, `-w`, `-Werror`, `--trap-into-debugger` flags that modulate diagnostic severity
-- [elfLink Error Codes](../reference/elflink-errors.md) -- elfLink subsystem error codes (0--13) that route through `diag_emit` for user-visible messages
-- [Thread Pool](thread-pool.md) -- Per-thread TLS state (`sub_44F410`) shared between the thread pool and diagnostic infrastructure
-- [Pipeline Entry](../pipeline/entry.md) -- `main()` error recovery via `setjmp`/`longjmp` that `fatal_exit` and `diag_emit` severity 6 trigger
+- [Memory Arenas](memory-arenas.md) — Arena allocator used by string buffer functions (`sub_44FB20`, `sub_4307C0`) for message assembly
+- [Environment Variables](../config/env-vars.md) — `__NVLINK_STDERR_REDIRECT` and `NVLINK_DEBUG` env vars that affect diagnostic output routing
+- [CLI Flags](../config/cli-flags.md) — `--disable-warnings`, `-w`, `-Werror`, `--trap-into-debugger` flags that modulate diagnostic severity
+- [elfLink Error Codes](../reference/elflink-errors.md) — elfLink subsystem error codes (0--13) that route through `diag_emit` for user-visible messages
+- [Thread Pool](thread-pool.md) — Per-thread TLS state (`sub_44F410`) shared between the thread pool and diagnostic infrastructure
+- [Pipeline Entry](../pipeline/entry.md) — `main()` error recovery via `setjmp`/`longjmp` that `fatal_exit` and `diag_emit` severity 6 trigger
 
 **Sibling wikis:**
 
-- [ptxas: Threading](../../ptxas/infra/threading.html) -- ptxas-side threading infrastructure that shares the TLS pattern
-- [cicc: Diagnostics](../../cicc/infra/diagnostics.html) -- cicc diagnostic subsystem for comparison with nvlink's error reporting architecture
-- [cicc: Knobs](../../cicc/config/knobs.html) -- cicc environment variable controls analogous to nvlink's `NVLINK_DEBUG`
+- [ptxas: Threading](../../ptxas/infra/threading.html) — ptxas-side threading infrastructure that shares the TLS pattern
+- [cicc: Diagnostics](../../cicc/infra/diagnostics.html) — cicc diagnostic subsystem for comparison with nvlink's error reporting architecture
+- [cicc: Knobs](../../cicc/config/knobs.html) — cicc environment variable controls analogous to nvlink's `NVLINK_DEBUG`
 
 ## Confidence Assessment
 
 | Claim | Confidence | Evidence |
 |---|---|---|
-| `diag_emit` at `sub_467460` is the variadic entry point | HIGH | Decompiled `sub_467460` starts with `va_start(arg, a1)` and checks `*(BYTE*)(a1 + 4)` for suppression -- matches descriptor layout |
+| `diag_emit` at `sub_467460` is the variadic entry point | HIGH | Decompiled `sub_467460` starts with `va_start(arg, a1)` and checks `*(BYTE*)(a1 + 4)` for suppression — matches descriptor layout |
 | Severity levels 0-6 with described prefixes | HIGH | Strings `"error   "` at `0x1d3c672` and `"fatal   "` at `0x1d3c690` confirmed in strings JSON; both 8 chars with trailing spaces |
 | `fatal_exit` at `sub_44A440` checks `byte_2A5F358` then abort/exit | HIGH | Decompiled exactly: `if (byte_2A5F358) abort(); sub_44A420(1u);` |
-| Assertion failure format string | HIGH | `sub_458000` decompiled: `"Assertion failure at %s, line %d: "` with `qword_2A5F880` / `dword_2A5F878` -- matches string at `0x1d3b7b0` |
+| Assertion failure format string | HIGH | `sub_458000` decompiled: `"Assertion failure at %s, line %d: "` with `qword_2A5F880` / `dword_2A5F878` — matches string at `0x1d3b7b0` |
 | `--trap-into-debugger` flag at `byte_2A5F358` | HIGH | `sub_44A440` reads `byte_2A5F358`; string `"trap-into-debugger"` at `0x1d3294f`; `"Trap into debugger upon assertion failures"` at `0x1d33c80` |
 | `-Werror` / `-w` / `--disable-infos` CLI options | HIGH | Strings `"Werror"` at `0x1d3261e`, `"disable-warnings"` at `0x1d325f0`, `"disable-infos"` at `0x1d32654` all confirmed |
 | 88 diagnostic descriptors in BSS `0x2A5B530`--`0x2A5BB70` | MEDIUM | Descriptor count derived from systematic xref analysis of `sub_467460` call sites; individual descriptors verified at representative addresses |

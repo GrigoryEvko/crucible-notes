@@ -2,18 +2,18 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas supports five generations of tensor core operations spanning SM 70 through SM 100. The binary contains three major codegen handlers -- `sub_5C7A50` (173KB, WMMA), `sub_5C10A0` (120KB, MMA), and `sub_5BBC30` (90KB, tcgen05.mma) -- plus four WGMMA handlers, eleven tcgen05 instruction handlers, and ~400 numeric MMA hash table entries. Together these constitute ~500KB of code generation logic dedicated to tensor core instructions, making this the single largest functional subsystem in ptxas.
+ptxas supports five generations of tensor core operations spanning SM 70 through SM 100. The binary contains three major codegen handlers — `sub_5C7A50` (173KB, WMMA), `sub_5C10A0` (120KB, MMA), and `sub_5BBC30` (90KB, tcgen05.mma) — plus four WGMMA handlers, eleven tcgen05 instruction handlers, and ~400 numeric MMA hash table entries. Together these constitute ~500KB of code generation logic dedicated to tensor core instructions, making this the single largest functional subsystem in ptxas.
 
 | | |
 |---|---|
-| **WMMA codegen** | `sub_5C7A50` (173KB) -- wmma.mma instruction code generation |
-| **MMA codegen** | `sub_5C10A0` (120KB) -- mma.sync instruction code generation |
-| **TCGen05 MMA codegen** | `sub_5BBC30` (90KB) -- tcgen05.mma instruction code generation |
+| **WMMA codegen** | `sub_5C7A50` (173KB) — wmma.mma instruction code generation |
+| **MMA codegen** | `sub_5C10A0` (120KB) — mma.sync instruction code generation |
+| **TCGen05 MMA codegen** | `sub_5BBC30` (90KB) — tcgen05.mma instruction code generation |
 | **WMMA load/store** | `sub_5A0EA0` (7.8KB), `sub_5A8E40` (9.8KB), `sub_5A6BD0` (8.8KB), `sub_5A2D10` (8.1KB) |
 | **WGMMA handlers** | `sub_50AC70` (1.3KB), `sub_4DA380` (295B), `sub_4DA4B0` (295B), `sub_4DA5E0` (311B) |
 | **MMA validator** | `sub_4C2FD0` (12.2KB), `sub_49BBA0` (11.4KB), `sub_4BFED0` (10.3KB) |
 | **Numeric MMA hash** | ~400 entries at compilation context offset `a1+816` |
-| **Prototype generator** | `sub_5FF700` (354KB) -- generates `.weak .func` PTX declarations |
+| **Prototype generator** | `sub_5FF700` (354KB) — generates `.weak .func` PTX declarations |
 | **SASS MMA encoders** | `sub_6D4350`, `sub_6D7AF0`, `sub_6D5CB0`, `sub_6D69B0` |
 
 ## Tensor Core Generations
@@ -45,7 +45,7 @@ The binary's statistics printer functions (clones at 0x700-byte intervals from `
 | `immaSp8832` | IMMA.SP m8n8k32 | 8x8x(32*2) | Sparse integer (m8 variant) |
 | `immaSp16832` | IMMA.SP m16n8k32 | 16x8x(32*2) | Sparse integer (m16 variant) |
 | `dmma` | DMMA | 8x8x4 | FP64 tensor MMA |
-| `fma64` | FMA64 | -- | FP64 FMA (non-tensor) |
+| `fma64` | FMA64 | — | FP64 FMA (non-tensor) |
 
 Format strings from the binary:
 
@@ -97,7 +97,7 @@ Instruction property accessors used by WMMA codegen:
 
 ### WMMA Shapes and Types
 
-**sm_70 (Volta/Turing) -- 1st generation:**
+**sm_70 (Volta/Turing) — 1st generation:**
 
 | Shape | Data Types | Accumulator | Regs (A) | Regs (B) | Regs (C/D) |
 |---|---|---|---|---|---|
@@ -105,7 +105,7 @@ Instruction property accessors used by WMMA codegen:
 | m32n8k16 | f16 | f16 or f32 | 8 x b32 | 8 x b32 | 4 x b32 (f16) or 8 x b32 (f32) |
 | m8n32k16 | f16 | f16 or f32 | 8 x b32 | 8 x b32 | 4 x b32 (f16) or 8 x b32 (f32) |
 
-**sm_72 (Turing) -- integer WMMA extension:**
+**sm_72 (Turing) — integer WMMA extension:**
 
 | Shape | Data Types | Accumulator | Regs (A) | Regs (B) | Regs (C/D) |
 |---|---|---|---|---|---|
@@ -115,7 +115,7 @@ Instruction property accessors used by WMMA codegen:
 | m8n8k32 | s4, u4 (sub-byte) | s32 | 1 x b32 | 1 x b32 | 2 x b32 |
 | m8n8k128 | b1 (1-bit) | s32 | 1 x b32 | 1 x b32 | 2 x b32 |
 
-**sm_80 (Ampere) -- 2nd generation extensions:**
+**sm_80 (Ampere) — 2nd generation extensions:**
 
 | Shape | Data Types | Accumulator | Notes |
 |---|---|---|---|
@@ -143,8 +143,8 @@ The 39 intrinsics registered under `__cuda_sm_8x_mma_*` cover:
 | `mma_col_col_*` | col x col | same set | same |
 | `mma_row_row_*` | row x row | same set | same |
 | `mma_col_row_*` | col x row | same set | same |
-| `mma_shfl_f16` | -- | shuffle f16 | D: 2 x b32 |
-| `mma_shfl_f32` | -- | shuffle f32 | D: 4 x b32 |
+| `mma_shfl_f16` | — | shuffle f16 | D: 2 x b32 |
+| `mma_shfl_f32` | — | shuffle f32 | D: 4 x b32 |
 
 Prototype examples from the binary:
 
@@ -161,7 +161,7 @@ Prototype examples from the binary:
      .reg .b32 c4, .reg .b32 c5, .reg .b32 c6, .reg .b32 c7);
 ```
 
-Note the `.param .align 16 .b32 mma_dst[N]` return convention -- MMA results are returned through aligned parameter space, not registers, because the warp-cooperative nature of the operation means each thread holds only a fragment.
+Note the `.param .align 16 .b32 mma_dst[N]` return convention — MMA results are returned through aligned parameter space, not registers, because the warp-cooperative nature of the operation means each thread holds only a fragment.
 
 ### MMA Shape Summary Across Generations
 
@@ -182,44 +182,44 @@ Note the `.param .align 16 .b32 mma_dst[N]` return convention -- MMA results are
 
 Three validator functions gate MMA features by SM version:
 
-**`sub_4C2FD0` (12.2KB) -- WMMA/MMA master validator:**
+**`sub_4C2FD0` (12.2KB) — WMMA/MMA master validator:**
 
 Performs three-way version checks:
 - SM 75: base WMMA (f16)
-- SM 80: extended types (BF16, TF32, FP64 -- `"MMA with double types"`)
+- SM 80: extended types (BF16, TF32, FP64 — `"MMA with double types"`)
 - SM 90: WGMMA features
 - FP8: `"mma with FP8 floating point type"` (gated by sm_89+)
 
-**`sub_49BBA0` (11.4KB) -- MMA type/scale validator:**
+**`sub_49BBA0` (11.4KB) — MMA type/scale validator:**
 
 Validates FP8 and block-scale configurations:
-- `"mma with FP8 floating point type"` -- sm_89+ gate
-- `"mma with FP8 floating point type and FP16 accumulation"` -- additional FP16 accum check
-- `"mma with FP8 floating point type and .m16n8k16 shape"` -- shape/type cross-validation
-- `"Sparse mma with block scale"` -- block-scale + sparsity interaction
+- `"mma with FP8 floating point type"` — sm_89+ gate
+- `"mma with FP8 floating point type and FP16 accumulation"` — additional FP16 accum check
+- `"mma with FP8 floating point type and .m16n8k16 shape"` — shape/type cross-validation
+- `"Sparse mma with block scale"` — block-scale + sparsity interaction
 - `.block_scale` modifier validation
 
-**`sub_4BFED0` (10.3KB) -- WMMA shape validator:**
+**`sub_4BFED0` (10.3KB) — WMMA shape validator:**
 
 Validates WMMA-specific shapes and the `.aligned` modifier:
-- `".aligned modifier for wmma"` -- alignment enforcement
+- `".aligned modifier for wmma"` — alignment enforcement
 - SM 75/80 version checks for shape legality
 
-**`sub_490F90` -- Integer MMA validator:**
+**`sub_490F90` — Integer MMA validator:**
 
-Checks integer MMA shape validity: `"Integer MMA with shape "` -- validates m/n/k dimensions against the SM-level capability set.
+Checks integer MMA shape validity: `"Integer MMA with shape "` — validates m/n/k dimensions against the SM-level capability set.
 
-**`sub_494210` (2.3KB) -- Sparse GMMA validator:**
+**`sub_494210` (2.3KB) — Sparse GMMA validator:**
 
-Validates sparse MMA metadata: `"Sparse GMMA with "` -- checks 2:4 sparsity pattern encoding.
+Validates sparse MMA metadata: `"Sparse GMMA with "` — checks 2:4 sparsity pattern encoding.
 
-**`sub_495900` -- WMMA floating-point validator:**
+**`sub_495900` — WMMA floating-point validator:**
 
-Checks: `"'wmma.mma' with floating point type"` -- validates FP type compatibility with the target shape.
+Checks: `"'wmma.mma' with floating point type"` — validates FP type compatibility with the target shape.
 
-**`sub_4428E0` -- FP64 MMA validator:**
+**`sub_4428E0` — FP64 MMA validator:**
 
-Validates: `"mma with .f64 type"` -- gates double-precision MMA on sm_80+.
+Validates: `"mma with .f64 type"` — gates double-precision MMA on sm_80+.
 
 ## sm_90+ Sub-Byte MMA Intrinsics (IDs `0x23A`--`0x25F`)
 
@@ -240,7 +240,7 @@ Hopper introduces 38 sub-byte MMA intrinsics covering s4/u4 sparse operations at
 | m16n8k64 (sparse) | s4xs4, s4xu4, u4xs4, u4xu4 | plain + satfinite, split _0/_1 | 16 |
 | m16n8k128 (sparse) | s4xs4, s4xu4, u4xs4, u4xu4 | plain + satfinite | 8 |
 
-The `_0` and `_1` suffixes on sparse m16n8k64 represent the two halves of a split operation -- the K dimension is decomposed into two steps for the sparsity pattern. The sparse variants take an additional `e` (metadata) operand encoding the 2:4 sparsity pattern.
+The `_0` and `_1` suffixes on sparse m16n8k64 represent the two halves of a split operation — the K dimension is decomposed into two steps for the sparsity pattern. The sparse variants take an additional `e` (metadata) operand encoding the 2:4 sparsity pattern.
 
 **Bit-operations (b1):**
 
@@ -291,7 +291,7 @@ These `mdata` functions compute sparse metadata for Blackwell's 5th-gen tensor c
 
 Blackwell adds the AND reduction mode for 1-bit MMA (sm_90 only had XOR).
 
-## WGMMA -- Warpgroup MMA (SM 90+)
+## WGMMA — Warpgroup MMA (SM 90+)
 
 WGMMA (Warp Group Matrix Multiply-Accumulate) operates at warpgroup granularity (4 warps, 128 threads) and uses an asynchronous pipeline protocol. Four PTX instructions are registered:
 
@@ -322,7 +322,7 @@ Violation of any constraint triggers pipeline serialization via `sub_AE47B0`, wh
 
 ### WGMMA Descriptor Format
 
-The `wgmma.mma_async` handler (`sub_50AC70`, 1,282 bytes) encodes the operation's matrix dimensions, data types, layout, and scale factors into the instruction. The A operand can be either a register operand or a **descriptor** -- a 64-bit value encoding the matrix base address, leading dimension, stride, and swizzle pattern. The B operand is always descriptor-based.
+The `wgmma.mma_async` handler (`sub_50AC70`, 1,282 bytes) encodes the operation's matrix dimensions, data types, layout, and scale factors into the instruction. The A operand can be either a register operand or a **descriptor** — a 64-bit value encoding the matrix base address, leading dimension, stride, and swizzle pattern. The B operand is always descriptor-based.
 
 The descriptor format allows the hardware to fetch matrix data directly from shared memory via the TMA (Tensor Memory Accelerator), bypassing register file involvement for the B matrix operand entirely.
 
@@ -349,23 +349,23 @@ The GMMA pipeline passes (phases 85 and 87) insert three compiler-internal pseud
 
 These are not directly written by the programmer. The compiler inserts them to manage register ownership transfer between the warpgroup's register file and the tensor core's accumulator pipeline.
 
-## TCGen05 -- 5th Generation Tensor Cores (SM 100+)
+## TCGen05 — 5th Generation Tensor Cores (SM 100+)
 
-Blackwell introduces TCGen05 (Tensor Core Generation 5), which operates through **tensor memory** (TMEM) -- a dedicated on-chip memory visible only to the tensor core engine, separate from the register file and shared memory. Eleven PTX instructions are registered:
+Blackwell introduces TCGen05 (Tensor Core Generation 5), which operates through **tensor memory** (TMEM) — a dedicated on-chip memory visible only to the tensor core engine, separate from the register file and shared memory. Eleven PTX instructions are registered:
 
 | PTX Instruction | Handler | Size | Purpose |
 |---|---|---|---|
 | `tcgen05.mma` | `sub_5BBC30` | 90KB | Tensor core MMA from TMEM |
 | `tcgen05.mma.ws` | `sub_58FA20` | 4,604B | Warp-shared MMA variant |
-| `tcgen05.ld` | `sub_574050` | -- | Load data into TMEM |
-| `tcgen05.ld.red` | `sub_578DB0` | -- | Load-reduce into TMEM |
-| `tcgen05.st` | `sub_571FE0` | -- | Store from TMEM |
-| `tcgen05.cp` | `sub_5427F0` | -- | Copy within TMEM |
-| `tcgen05.commit` | `sub_56C190` | -- | Commit pending operations |
-| `tcgen05.shift` | `sub_4F1A90` | -- | Shift TMEM contents |
-| `tcgen05.alloc` | `sub_569180` | -- | Allocate TMEM columns |
-| `tcgen05.dealloc` | `sub_58C7F0` | -- | Deallocate TMEM columns |
-| `tcgen05.relinquish_alloc_permit` | `sub_526370` | -- | Release allocation rights |
+| `tcgen05.ld` | `sub_574050` | — | Load data into TMEM |
+| `tcgen05.ld.red` | `sub_578DB0` | — | Load-reduce into TMEM |
+| `tcgen05.st` | `sub_571FE0` | — | Store from TMEM |
+| `tcgen05.cp` | `sub_5427F0` | — | Copy within TMEM |
+| `tcgen05.commit` | `sub_56C190` | — | Commit pending operations |
+| `tcgen05.shift` | `sub_4F1A90` | — | Shift TMEM contents |
+| `tcgen05.alloc` | `sub_569180` | — | Allocate TMEM columns |
+| `tcgen05.dealloc` | `sub_58C7F0` | — | Deallocate TMEM columns |
+| `tcgen05.relinquish_alloc_permit` | `sub_526370` | — | Release allocation rights |
 
 ### TCGen05 MMA Codegen
 
@@ -392,11 +392,11 @@ At the SASS level, TCGen05 operations are encoded by four specialized Mercury en
 
 The SASS encoder at `sub_6D4350` references the `tcmma` operation namespace and validates block-scale configurations:
 
-- `"tcmma_*_o must be specified with blockscale"` -- output operand requires block-scale modifier
-- `"uri width for tcmma_*_o must be 2"` -- output URI width constraint
-- `"tcmma_*_q with blockscale must have uri width of 2"` -- scale factor operand constraint
-- `"tcmma_*_mxq must be specified with blockscale"` -- MX quantization operand constraint
-- `"For UTCHMMA, #scaleU4 must be 0 in SPA 10.1."` -- SM 100 vs 103 compatibility
+- `"tcmma_*_o must be specified with blockscale"` — output operand requires block-scale modifier
+- `"uri width for tcmma_*_o must be 2"` — output URI width constraint
+- `"tcmma_*_q with blockscale must have uri width of 2"` — scale factor operand constraint
+- `"tcmma_*_mxq must be specified with blockscale"` — MX quantization operand constraint
+- `"For UTCHMMA, #scaleU4 must be 0 in SPA 10.1."` — SM 100 vs 103 compatibility
 
 The string `"UTCHMMA"` (Unified Tensor Core HMMA) and `"tcmma"` (Tensor Core MMA) are the internal SASS-level names for Blackwell's tensor core operations.
 
@@ -455,11 +455,11 @@ Block-scale MMA allows per-block scaling factors for mixed-precision computation
 
 | ID Range | Count | SM | Category | SASS Target |
 |---|---|---|---|---|
-| `0x89`--`0x1FA` (subset) | ~200 | 70+ | `__cuda_sm70_wmma_*` -- WMMA load/store/mma (f16) | HMMA |
-| `0x1FB`--`0x208` | 14 | 80 | `__cuda_sm80_*` -- bf16/tf32/s4/s8/b1 MMA, createpolicy | HMMA, IMMA, DMMA, BMMA |
-| `0x209`--`0x22F` | 39 | 80+ | `__cuda_sm_8x_mma_*` -- direct MMA operations | HMMA, IMMA |
-| `0x230`--`0x239` | 10 | 100 | `__cuda_sm_10x_*` -- hmma/imma mdata + bit MMA | UTCHMMA, UTCIMMA |
-| `0x23A`--`0x25F` | 38 | 90 | `__cuda_sm_9x_mma_sub_byte_internal_*` -- sub-byte sparse | IMMA |
+| `0x89`--`0x1FA` (subset) | ~200 | 70+ | `__cuda_sm70_wmma_*` — WMMA load/store/mma (f16) | HMMA |
+| `0x1FB`--`0x208` | 14 | 80 | `__cuda_sm80_*` — bf16/tf32/s4/s8/b1 MMA, createpolicy | HMMA, IMMA, DMMA, BMMA |
+| `0x209`--`0x22F` | 39 | 80+ | `__cuda_sm_8x_mma_*` — direct MMA operations | HMMA, IMMA |
+| `0x230`--`0x239` | 10 | 100 | `__cuda_sm_10x_*` — hmma/imma mdata + bit MMA | UTCHMMA, UTCIMMA |
+| `0x23A`--`0x25F` | 38 | 90 | `__cuda_sm_9x_mma_sub_byte_internal_*` — sub-byte sparse | IMMA |
 
 ### TCGen05 Intrinsics (Not in Master ID Table)
 
@@ -546,42 +546,42 @@ The cubin output includes tensor-core-specific EIATTR attributes:
 | `0x4DA5E0` | 311B | wgmma.wait_group handler | 99% |
 | `0x58FA20` | 4,604B | tcgen05.mma.ws / tcgen05.shift formatter | 95% |
 | `0x4DA720` | 343B | tcgen05.mma.ws formatter | 90% |
-| `0x569180` | -- | tcgen05.alloc handler | 90% |
-| `0x526370` | -- | tcgen05.relinquish_alloc_permit handler | 90% |
-| `0x58C7F0` | -- | tcgen05.dealloc handler | 90% |
-| `0x574050` | -- | tcgen05.ld handler | 90% |
-| `0x578DB0` | -- | tcgen05.ld.red handler | 90% |
-| `0x571FE0` | -- | tcgen05.st handler | 90% |
-| `0x56C190` | -- | tcgen05.commit handler | 90% |
-| `0x5427F0` | -- | tcgen05.cp handler | 90% |
-| `0x4F1A90` | -- | tcgen05.shift handler | 90% |
+| `0x569180` | — | tcgen05.alloc handler | 90% |
+| `0x526370` | — | tcgen05.relinquish_alloc_permit handler | 90% |
+| `0x58C7F0` | — | tcgen05.dealloc handler | 90% |
+| `0x574050` | — | tcgen05.ld handler | 90% |
+| `0x578DB0` | — | tcgen05.ld.red handler | 90% |
+| `0x571FE0` | — | tcgen05.st handler | 90% |
+| `0x56C190` | — | tcgen05.commit handler | 90% |
+| `0x5427F0` | — | tcgen05.cp handler | 90% |
+| `0x4F1A90` | — | tcgen05.shift handler | 90% |
 | `0x4C2FD0` | 12.2KB | WMMA/MMA master validator (sm_75/80/90) | 90% |
 | `0x49BBA0` | 11.4KB | MMA type/scale validator (FP8, block-scale) | 90% |
 | `0x4BFED0` | 10.3KB | WMMA shape validator | 90% |
-| `0x490F90` | -- | Integer MMA shape validator | 85% |
+| `0x490F90` | — | Integer MMA shape validator | 85% |
 | `0x494210` | 2,276B | Sparse GMMA validator | 85% |
-| `0x495900` | -- | WMMA floating-point type validator | 85% |
-| `0x496570` | -- | FP8 MMA shape validator | 85% |
-| `0x4961F0` | -- | FP8 MMA accumulation validator | 85% |
-| `0x4428E0` | -- | FP64 MMA type validator | 85% |
-| `0x6D4350` | -- | SASS TCGen05 MMA encoder (UTCHMMA/tcmma) | 85% |
-| `0x6D7AF0` | -- | SASS MMA encoder variant | 85% |
-| `0x6D5CB0` | -- | SASS MMA encoder variant | 85% |
-| `0x6D69B0` | -- | SASS MMA encoder variant | 85% |
+| `0x495900` | — | WMMA floating-point type validator | 85% |
+| `0x496570` | — | FP8 MMA shape validator | 85% |
+| `0x4961F0` | — | FP8 MMA accumulation validator | 85% |
+| `0x4428E0` | — | FP64 MMA type validator | 85% |
+| `0x6D4350` | — | SASS TCGen05 MMA encoder (UTCHMMA/tcmma) | 85% |
+| `0x6D7AF0` | — | SASS MMA encoder variant | 85% |
+| `0x6D5CB0` | — | SASS MMA encoder variant | 85% |
+| `0x6D69B0` | — | SASS MMA encoder variant | 85% |
 | `0x50D4B0` | 1,187B | ldmatrix formatter | 90% |
-| `0x4DAEA0` | -- | movmatrix formatter | 90% |
-| `0x4F05D0` | -- | stmatrix formatter | 90% |
+| `0x4DAEA0` | — | movmatrix formatter | 90% |
+| `0x4F05D0` | — | stmatrix formatter | 90% |
 | `0x5D1660` | 46KB | Master intrinsic registration (608 entries) | 99% |
 | `0x5D4190` | 41KB | Opcode dispatch (MMA hash table builder) | 99% |
 | `0x5FF700` | 354KB | Prototype generator (`.weak .func` declarations) | 99% |
 
 ## Cross-References
 
-- [Intrinsic Table Architecture](index.md) -- Master registration, ID ranges, opcode dispatch
-- [GMMA/WGMMA Pipeline](../passes/gmma-pipeline.md) -- Phases 85/87, pipeline constraints, serialization
-- [Ada & Hopper Targets](../targets/ada-hopper.md) -- SM 89/90 feature gates, WGMMA details
-- [Turing & Ampere Targets](../targets/turing-ampere.md) -- SM 75--88 tensor core introduction
-- [Latency Model](../scheduling/latency-model.md) -- HMMA/IMMA/DMMA functional unit scheduling
-- [Register Model](../ir/registers.md) -- reg\_type 6 (tensor/accumulator, allocator class 6)
-- [Mercury Encoder](../codegen/mercury.md) -- SASS encoding of MMA instructions
-- [ELF Output](../output/sections.md) -- EIATTR_SPARSE_MMA_MASK, EIATTR_TCGEN05_*
+- [Intrinsic Table Architecture](index.md) — Master registration, ID ranges, opcode dispatch
+- [GMMA/WGMMA Pipeline](../passes/gmma-pipeline.md) — Phases 85/87, pipeline constraints, serialization
+- [Ada & Hopper Targets](../targets/ada-hopper.md) — SM 89/90 feature gates, WGMMA details
+- [Turing & Ampere Targets](../targets/turing-ampere.md) — SM 75--88 tensor core introduction
+- [Latency Model](../scheduling/latency-model.md) — HMMA/IMMA/DMMA functional unit scheduling
+- [Register Model](../ir/registers.md) — reg\_type 6 (tensor/accumulator, allocator class 6)
+- [Mercury Encoder](../codegen/mercury.md) — SASS encoding of MMA instructions
+- [ELF Output](../output/sections.md) — EIATTR_SPARSE_MMA_MASK, EIATTR_TCGEN05_*

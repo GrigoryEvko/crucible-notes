@@ -2,7 +2,7 @@
 
 Weak symbols are a standard ELF mechanism that allows multiple translation units to define the same function without causing a "multiple definition" error. When the linker encounters duplicate weak definitions, it must choose one and discard the rest. nvlink extends this standard behavior with a CUDA-specific selection policy: rather than picking an arbitrary winner, it compares register pressure and PTX version metadata to select the definition most likely to produce efficient GPU code.
 
-The entire weak symbol resolution logic lives in a single function -- `merge_weak_function` at `sub_45D180` -- which is called during Phase 3 of `merge_elf` (`sub_45E7D0`), before section iteration begins. At 26,816 bytes (~27 KB, 913 decompiled lines), it is the second-largest function in the merge subsystem after `merge_elf` itself.
+The entire weak symbol resolution logic lives in a single function — `merge_weak_function` at `sub_45D180` — which is called during Phase 3 of `merge_elf` (`sub_45E7D0`), before section iteration begins. At 26,816 bytes (~27 KB, 913 decompiled lines), it is the second-largest function in the merge subsystem after `merge_elf` itself.
 
 ## Key Facts
 
@@ -14,7 +14,7 @@ The entire weak symbol resolution logic lives in a single function -- `merge_wea
 | Decompiled lines | 913 |
 | Called by | `sub_45E7D0` (`merge_elf`), Phase 3 symbol pass |
 | Verbose flag | `ctx+64` bit 4 (`-v` verbose flag) |
-| Recursive | Yes -- calls itself to resolve cross-referenced weak section symbols |
+| Recursive | Yes — calls itself to resolve cross-referenced weak section symbols |
 
 ## When Weak Symbols Arise
 
@@ -70,7 +70,7 @@ The extraction process uses a two-tier lookup for each side (incoming and existi
 
 #### Incoming Register Count Extraction
 
-The incoming definition's register count is carried inside the section header record that was copied from the input ELF during Phase 2. Specifically, it sits in the high byte of the fourth 32-bit word of the packed section header copy (the same structure copied as `v254`/`v255`/`n`/`v257` at function entry). In the decompiled code this is `HIBYTE(n[1])`, which corresponds to byte 3 of word 7 in the 10-word section header record -- the register count field that `cicc` / `ptxas` wrote into the `.nv.info` section and that the ELF loader cached into the section header structure.
+The incoming definition's register count is carried inside the section header record that was copied from the input ELF during Phase 2. Specifically, it sits in the high byte of the fourth 32-bit word of the packed section header copy (the same structure copied as `v254`/`v255`/`n`/`v257` at function entry). In the decompiled code this is `HIBYTE(n[1])`, which corresponds to byte 3 of word 7 in the 10-word section header record — the register count field that `cicc` / `ptxas` wrote into the `.nv.info` section and that the ELF loader cached into the section header structure.
 
 If this cached byte is zero (indicating the register count was not populated during the initial section header copy), the function emits a verbose trace and falls back to scanning the raw `.nv.info` section data in the input ELF:
 
@@ -121,7 +121,7 @@ for (uint32_t sec_idx = 0; sec_idx < num_sections; sec_idx++) {
 fatal_error("no such new reg count");
 ```
 
-The non-indexed record skip loop deserves attention: when the format byte is not `0x04`, the code does not parse the size field. Instead it advances by a fixed 4 bytes, effectively treating the entire 4-byte header as a self-contained record. This works because non-indexed formats (`0x01`, `0x02`, `0x03`) that carry payload will have their header consumed in one step, then subsequent 4-byte steps will walk through the payload. It is an optimization that avoids branching on the size field for records the scan does not care about -- slightly wasteful in that it reads payload bytes as if they were headers, but correct because the scan only acts on records where `format == 0x04 && attr_code == 0x2F`.
+The non-indexed record skip loop deserves attention: when the format byte is not `0x04`, the code does not parse the size field. Instead it advances by a fixed 4 bytes, effectively treating the entire 4-byte header as a self-contained record. This works because non-indexed formats (`0x01`, `0x02`, `0x03`) that carry payload will have their header consumed in one step, then subsequent 4-byte steps will walk through the payload. It is an optimization that avoids branching on the size field for records the scan does not care about — slightly wasteful in that it reads payload bytes as if they were headers, but correct because the scan only acts on records where `format == 0x04 && attr_code == 0x2F`.
 
 #### Existing Register Count Extraction
 
@@ -135,7 +135,7 @@ uint64_t callgraph_record = elfw_get_callgraph_entry(ctx, output_section_id);
 uint32_t existing_reg_count = *(uint8_t *)(callgraph_record + 47);
 ```
 
-If this byte is zero (the existing definition's register count was never cached -- possible if the first definition's `.nv.info` was malformed or empty), the function emits a verbose trace and falls back to scanning the output ELF's nvinfo linked list:
+If this byte is zero (the existing definition's register count was never cached — possible if the first definition's `.nv.info` was malformed or empty), the function emits a verbose trace and falls back to scanning the output ELF's nvinfo linked list:
 
 ```text
 Verbose trace: "no original register count found for %s, checking .nv.info"
@@ -167,7 +167,7 @@ if (list_at_end(it))
     fatal_error("no such original reg count");
 ```
 
-The key difference: incoming counts are extracted from raw ELF bytes in the input file; existing counts are extracted from the already-parsed nvinfo linked list in the output context. This asymmetry exists because the incoming definition has not yet been committed to the output -- its `.nv.info` data is still in the input ELF's raw section bytes. The existing definition's data was parsed and appended to the output nvinfo list when the first definition was merged.
+The key difference: incoming counts are extracted from raw ELF bytes in the input file; existing counts are extracted from the already-parsed nvinfo linked list in the output context. This asymmetry exists because the incoming definition has not yet been committed to the output — its `.nv.info` data is still in the input ELF's raw section bytes. The existing definition's data was parsed and appended to the output nvinfo list when the first definition was merged.
 
 #### Register Count Extraction Summary
 
@@ -176,7 +176,7 @@ The key difference: incoming counts are extracted from raw ELF bytes in the inpu
 | Incoming (new) | Section header record, high byte of word 7 | Raw `.nv.info` TLV scan of input ELF sections | Yes: `"no such new reg count"` |
 | Existing (old) | Callgraph record byte +47 in output ELF | Output nvinfo linked list iterator scan | Yes: `"no such original reg count"` |
 
-Both paths are fatal on failure -- if a weak function definition has no register count attribute at all, the linker aborts. This should never happen with well-formed cubins, since `ptxas` always emits EIATTR code 47 for every function.
+Both paths are fatal on failure — if a weak function definition has no register count attribute at all, the linker aborts. This should never happen with well-formed cubins, since `ptxas` always emits EIATTR code 47 for every function.
 
 #### The Comparison
 
@@ -244,7 +244,7 @@ The comparison is strictly greater-than (`>`). If the incoming PTX version is eq
 
 ### Strategy 3: First Definition Wins (Fallback)
 
-If the incoming definition uses more registers than the existing one, or if both register count and PTX version are identical (or incoming PTX is older), the existing definition is kept. No verbose trace is emitted for this case -- the incoming definition is silently discarded, and the `do_replace` flag remains false.
+If the incoming definition uses more registers than the existing one, or if both register count and PTX version are identical (or incoming PTX is older), the existing definition is kept. No verbose trace is emitted for this case — the incoming definition is silently discarded, and the `do_replace` flag remains false.
 
 #### Complete Decision Tree
 
@@ -268,7 +268,7 @@ merge_weak_function(incoming, existing):
 
 ### Basic Replacement (Global-over-Weak)
 
-A separate path handles the case where a `STB_GLOBAL` symbol replaces a `STB_WEAK` symbol. This follows standard ELF semantics -- a strong definition always overrides a weak one, with no comparison:
+A separate path handles the case where a `STB_GLOBAL` symbol replaces a `STB_WEAK` symbol. This follows standard ELF semantics — a strong definition always overrides a weak one, with no comparison:
 
 ```text
 Verbose trace: "replace weak function %s"
@@ -433,11 +433,11 @@ if (packed_flags & 0x80000000000ULL) {
 }
 ```
 
-This ensures that if any definition of a weak function had its address taken, the final resolved symbol retains that property -- critical for the callgraph analysis and dead code elimination that follow the merge phase.
+This ensures that if any definition of a weak function had its address taken, the final resolved symbol retains that property — critical for the callgraph analysis and dead code elimination that follow the merge phase.
 
 ## Interaction with Other Phases
 
-### Merge Phase (Phase 4 -- Section Iteration)
+### Merge Phase (Phase 4 — Section Iteration)
 
 After weak resolution completes, the section iteration pass checks the `weak_processed` array before processing any weak symbol. If `weak_processed[sym_idx]` is set, the symbol is skipped. The merge page documents this as: "If a weak symbol arrives that was already handled, verbose mode prints `weak %s already processed`."
 
@@ -473,7 +473,7 @@ All verbose traces are gated behind `(ctx+64) & 0x10`, which corresponds to the 
 | Address | Name | Role |
 |---|---|---|
 | `sub_45D180` | `merge_weak_function` | Primary weak resolution (this page) |
-| `sub_45E7D0` | `merge_elf` | Caller -- invokes during Phase 3 |
+| `sub_45E7D0` | `merge_elf` | Caller — invokes during Phase 3 |
 | `sub_440590` | `elfw_get_symbol_record` | Retrieves symbol record by output index |
 | `sub_440350` | `elfw_get_section_for_symbol` | Finds section associated with a symbol |
 | `sub_442270` | `elfw_get_callgraph_entry` | Retrieves callgraph/nvinfo record for a symbol |
@@ -499,11 +499,11 @@ All verbose traces are gated behind `(ctx+64) & 0x10`, which corresponds to the 
 
 ## Cross-References
 
-- [Symbol Resolution](symbol-resolution.md) -- symbol storage (positive/negative arrays) and name lookup used by weak resolution
-- [Section Merging](section-merging.md) -- merge phase that invokes `merge_weak_function` during Phase 3
-- [Dead Code Elimination](dead-code-elimination.md) -- runs after merge; removed sections no longer participate in weak resolution
-- [Data Layout Optimization](data-layout-opt.md) -- OCG constant sections cleared during weak replacement feed into constant dedup
-- [Merge Phase](../pipeline/merge.md) -- the parent pipeline phase that calls `merge_elf` and triggers weak resolution
+- [Symbol Resolution](symbol-resolution.md) — symbol storage (positive/negative arrays) and name lookup used by weak resolution
+- [Section Merging](section-merging.md) — merge phase that invokes `merge_weak_function` during Phase 3
+- [Dead Code Elimination](dead-code-elimination.md) — runs after merge; removed sections no longer participate in weak resolution
+- [Data Layout Optimization](data-layout-opt.md) — OCG constant sections cleared during weak replacement feed into constant dedup
+- [Merge Phase](../pipeline/merge.md) — the parent pipeline phase that calls `merge_elf` and triggers weak resolution
 
 ## Confidence Assessment
 

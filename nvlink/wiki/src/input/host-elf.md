@@ -2,26 +2,26 @@
 
 When a CUDA application is compiled with `nvcc`, the host toolchain (gcc, clang, or MSVC) produces `.o`, `.a`, or executable files whose sections contain **both** host CPU code and embedded CUDA device code. Device binaries are deposited into three well-known ELF sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) and an auxiliary module-id table (`__nv_module_id`) so that the CUDA runtime can locate them at program startup via the `__cudaRegisterFatBinary` / `DEFINE_REGISTER_FUNC` glue.
 
-nvlink normally processes only device ELFs (`e_machine == EM_CUDA == 190`). The **host ELF embedding path** is the escape hatch that lets it also accept host relocatable objects: it loads the host ELF, walks its section table for the three known fatbin section names, extracts the `0xBA55ED50` fatbin wrapper from `__nv_relfatbin`, and re-enters the standard fatbin extraction pipeline as if the file had been loaded directly as a `.fatbin`. The host CPU code itself is ignored entirely -- only the embedded device payload is consumed.
+nvlink normally processes only device ELFs (`e_machine == EM_CUDA == 190`). The **host ELF embedding path** is the escape hatch that lets it also accept host relocatable objects: it loads the host ELF, walks its section table for the three known fatbin section names, extracts the `0xBA55ED50` fatbin wrapper from `__nv_relfatbin`, and re-enters the standard fatbin extraction pipeline as if the file had been loaded directly as a `.fatbin`. The host CPU code itself is ignored entirely — only the embedded device payload is consumed.
 
 | | |
 |---|---|
 | **Host ELF loader (thunk)** | `sub_476E80` at `0x476E80` (7 B, jumps to `sub_43DFC0`) |
 | **Host ELF loader (impl)** | `sub_43DFC0` at `0x43DFC0` (344 B) |
 | **Host ELF free thunk** | `sub_476EA0` at `0x476EA0` (7 B, jumps to `sub_43D990` -> `arena_free`) |
-| **Host ELF type classifier** | `sub_43D9B0` at `0x43D9B0` (42 B) -- `e_type == ET_REL` test |
-| **ELF magic predicate** | `sub_43D970` at `0x43D970` (19 B) -- `0x464C457F` test |
-| **ELF class predicate** | `sub_43D9A0` at `0x43D9A0` (18 B) -- `EI_CLASS == 2` test |
-| **Structural validator** | `sub_43DD30` at `0x43DD30` (536 B) -- section bounds sweep |
+| **Host ELF type classifier** | `sub_43D9B0` at `0x43D9B0` (42 B) — `e_type == ET_REL` test |
+| **ELF magic predicate** | `sub_43D970` at `0x43D970` (19 B) — `0x464C457F` test |
+| **ELF class predicate** | `sub_43D9A0` at `0x43D9A0` (18 B) — `EI_CLASS == 2` test |
+| **Structural validator** | `sub_43DD30` at `0x43DD30` (536 B) — section bounds sweep |
 | **Fatbin section scanner** | `sub_476D90` at `0x476D90` (240 B) |
 | **Section-exists predicate** | `sub_476EC0` at `0x476EC0` (71 B) |
 | **Section data accessor** | `sub_476F10` at `0x476F10` (79 B) |
 | **Section size accessor** | `sub_476F60` at `0x476F60` (79 B) |
 | **Elf64 section finder** | `sub_4483B0` at `0x4483B0` (486 B) |
 | **Elf32 section finder** | `sub_46B5D0` at `0x46B5D0` (454 B) |
-| **Module-id section loader** | `sub_46F0C0` at `0x46F0C0` (186 B) -- finds `__nv_module_id` |
-| **Module-id parser** | `sub_4298C0` at `0x4298C0` (476 B) -- `def <name>\0` entries |
-| **Input type reporter** | `sub_4297B0` at `0x4297B0` (263 B) -- emits "no device code in" |
+| **Module-id section loader** | `sub_46F0C0` at `0x46F0C0` (186 B) — finds `__nv_module_id` |
+| **Module-id parser** | `sub_4298C0` at `0x4298C0` (476 B) — `def <name>\0` entries |
+| **Input type reporter** | `sub_4297B0` at `0x4297B0` (263 B) — emits "no device code in" |
 | **Trigger** | Input file is ELF with `e_type == ET_REL` and `e_machine != EM_CUDA` |
 | **Output** | Fatbin data buffer passed to `sub_42AF40` (fatbin extraction) |
 
@@ -29,7 +29,7 @@ nvlink normally processes only device ELFs (`e_machine == EM_CUDA == 190`). The 
 
 In the legacy CUDA Runtime API compilation model, `nvcc` splits each `.cu` source into a device side (compiled to fatbin) and a host side (compiled to a host object). Rather than producing two separate artifacts, `nvcc` instructs the CUDA frontend (`cudafe++`) to generate a C++ wrapper that **embeds** the fatbin as a byte array inside the host object, and generates a constructor-registration shim (`__cuda_register_globals`) that passes that byte array to `__cudaRegisterFatBinary` at program load.
 
-The CUDA toolchain emits this byte array into a dedicated ELF section -- historically `.nvFatBinSegment`, for whole-program fatbins; `__nv_relfatbin`, for relocatable link-time fatbins (`nvcc -dlink`); or `.nv_fatbin`, for alternate embedding modes. When the user later invokes `nvlink` on the host object directly (for example, to re-link device code from a pre-compiled `.o`), nvlink has to recognise that it is looking at a **host** relocatable, reach inside it, and pull the device payload back out. That is what this page documents.
+The CUDA toolchain emits this byte array into a dedicated ELF section — historically `.nvFatBinSegment`, for whole-program fatbins; `__nv_relfatbin`, for relocatable link-time fatbins (`nvcc -dlink`); or `.nv_fatbin`, for alternate embedding modes. When the user later invokes `nvlink` on the host object directly (for example, to re-link device code from a pre-compiled `.o`), nvlink has to recognise that it is looking at a **host** relocatable, reach inside it, and pull the device payload back out. That is what this page documents.
 
 The path is **not** used for normal device-link flows where nvlink receives cubins or fatbins directly from ptxas/cudafe; those hit the cubin/fatbin branches of `main()` long before the host ELF fallback.
 
@@ -130,7 +130,7 @@ nvlink relies on three independent byte tests to separate a host relocatable fro
 | Relocatable | `sub_43D9B0` | `0x10` | `*(uint16_t*)(ehdr + 0x10) == 1` | `e_type == ET_REL` |
 | CUDA device | `main()` inline | `0x12` | `*(uint16_t*)(ehdr + 0x12) == 190` | `e_machine == EM_CUDA (0xBE)` |
 
-`sub_43D9B0` is the key classifier. It is not simply `*(uint16_t*)(buf + 0x10)` -- it first dispatches on the class byte so the read lands at the right offset for Elf32 vs Elf64 (both happen to be 0x10 for `e_type`, but the function is written defensively):
+`sub_43D9B0` is the key classifier. It is not simply `*(uint16_t*)(buf + 0x10)` — it first dispatches on the class byte so the read lands at the right offset for Elf32 vs Elf64 (both happen to be 0x10 for `e_type`, but the function is written defensively):
 
 ```c
 // sub_43D9B0 -- is_host_elf(buf)
@@ -143,7 +143,7 @@ bool is_host_elf(void *buf) {
 }
 ```
 
-Both `sub_448360` (Elf64) and `sub_46B590` (Elf32) are identity accessors returning the buffer pointer unchanged -- they exist so that future class-specific ELF header adjustments (byte-swap, offset skew) could be slotted in without touching every call site. Today they are pure no-ops.
+Both `sub_448360` (Elf64) and `sub_46B590` (Elf32) are identity accessors returning the buffer pointer unchanged — they exist so that future class-specific ELF header adjustments (byte-swap, offset skew) could be slotted in without touching every call site. Today they are pure no-ops.
 
 ### Decision Matrix
 
@@ -151,18 +151,18 @@ Combining the four tests, the dispatch routes as follows:
 
 | ELF magic | `e_type` | `e_machine` | Extension | Handler |
 |---|---|---|---|---|
-| yes | any (`ET_REL`, `ET_EXEC`, `0xFF00`) | `190` (EM_CUDA) | `.o` | **cubin handler** (`sub_476BF0` path) -- `e_type == ET_EXEC` inputs are accepted here and then rejected by `sub_426570` |
+| yes | any (`ET_REL`, `ET_EXEC`, `0xFF00`) | `190` (EM_CUDA) | `.o` | **cubin handler** (`sub_476BF0` path) — `e_type == ET_EXEC` inputs are accepted here and then rejected by `sub_426570` |
 | yes | `ET_REL` (1) | not 190 | `.o` | **host ELF embedding** (this page) |
 | yes | any | any | `.so` | skipped (shared library) |
 | yes | `ET_EXEC` / `ET_DYN` | not 190 | any non-`.o` | falls through to PTX/NVVM probes (all fail) |
 | yes | `ET_REL` (1) | any | no extension | **host ELF embedding** (this page) |
-| no | -- | -- | -- | PTX / NVVM / archive / fatbin |
+| no | — | — | — | PTX / NVVM / archive / fatbin |
 
-The device-cubin vs host-ELF disambiguation hinges on the simultaneous `e_machine == 190` check. A host x86-64 object has `e_machine == 62` (`EM_X86_64`); a CUDA device ELF has the NVIDIA-assigned value `190`. nvlink never attempts to decode x86-64 relocations or process host code -- it only cares about the embedded fatbin sections.
+The device-cubin vs host-ELF disambiguation hinges on the simultaneous `e_machine == 190` check. A host x86-64 object has `e_machine == 62` (`EM_X86_64`); a CUDA device ELF has the NVIDIA-assigned value `190`. nvlink never attempts to decode x86-64 relocations or process host code — it only cares about the embedded fatbin sections.
 
 ## Host ELF Loading: sub_43DFC0
 
-`sub_43DFC0` reads the host ELF from disk and validates it structurally before handing the buffer to the section scanner. It is reachable via the thunk `sub_476E80`. Unlike the device-ELF loader `sub_476BF0`, which treats open/read failures as fatal, the host-ELF loader returns `NULL` silently -- nvlink must be able to probe files that turn out not to be host ELFs without tearing down the whole run.
+`sub_43DFC0` reads the host ELF from disk and validates it structurally before handing the buffer to the section scanner. It is reachable via the thunk `sub_476E80`. Unlike the device-ELF loader `sub_476BF0`, which treats open/read failures as fatal, the host-ELF loader returns `NULL` silently — nvlink must be able to probe files that turn out not to be host ELFs without tearing down the whole run.
 
 ```c
 // sub_43DFC0 -- load_host_elf(filename)
@@ -247,7 +247,7 @@ fail_close:
 
 ## Fatbin Section Scanning: sub_476D90
 
-Once the host ELF is loaded and validated, `sub_476D90` searches it for embedded fatbin data. It probes three section names in a fixed priority order but -- crucially -- only **one** of them actually supplies the data. The other two are presence indicators:
+Once the host ELF is loaded and validated, `sub_476D90` searches it for embedded fatbin data. It probes three section names in a fixed priority order but — crucially — only **one** of them actually supplies the data. The other two are presence indicators:
 
 | Priority | Section name | Naming style | Role |
 |---|---|---|---|
@@ -255,7 +255,7 @@ Once the host ELF is loaded and validated, `sub_476D90` searches it for embedded
 | 2 (payload) | `__nv_relfatbin` | non-dotted, linker-symbol style | Actually extracted; contains `0xBA55ED50` wrapper |
 | 3 (fallback gate) | `.nv_fatbin` | dotted, standard ELF | Alternate indicator if `__nv_relfatbin` is absent |
 
-The fall-through logic: if `.nvFatBinSegment` is missing entirely, the search gives up. If `.nvFatBinSegment` is present but `__nv_relfatbin` is not, the function checks whether `.nv_fatbin` exists -- if yes it still returns `NULL` (nothing to extract) but suppresses the error; if no it emits an error. Only when `__nv_relfatbin` is present does actual extraction happen.
+The fall-through logic: if `.nvFatBinSegment` is missing entirely, the search gives up. If `.nvFatBinSegment` is present but `__nv_relfatbin` is not, the function checks whether `.nv_fatbin` exists — if yes it still returns `NULL` (nothing to extract) but suppresses the error; if no it emits an error. Only when `__nv_relfatbin` is present does actual extraction happen.
 
 ```c
 // sub_476D90 -- search_fatbin_sections(elf_buf, filename)
@@ -311,9 +311,9 @@ error_emit:
 
 The three names correspond to different places in the CUDA compilation pipeline where a fatbin can be embedded:
 
-- **`.nvFatBinSegment`**: The "whole-program" fatbin section. `nvcc` drops it into the host object when compiling a `.cu` file end-to-end. It wraps the fatbin wrapper with a small segment descriptor that the host-side `__cudaRegisterFatBinary` shim references. This section exists in virtually every CUDA-enabled host `.o`; its presence is what distinguishes "a host object produced by nvcc" from "an arbitrary x86-64 host object that happens to be ELF". nvlink uses it only as a gate -- it does **not** actually parse the segment descriptor here (the CUDA runtime does, at program startup).
+- **`.nvFatBinSegment`**: The "whole-program" fatbin section. `nvcc` drops it into the host object when compiling a `.cu` file end-to-end. It wraps the fatbin wrapper with a small segment descriptor that the host-side `__cudaRegisterFatBinary` shim references. This section exists in virtually every CUDA-enabled host `.o`; its presence is what distinguishes "a host object produced by nvcc" from "an arbitrary x86-64 host object that happens to be ELF". nvlink uses it only as a gate — it does **not** actually parse the segment descriptor here (the CUDA runtime does, at program startup).
 
-- **`__nv_relfatbin`**: The "relocatable fatbin" section created during device-link (`nvcc --device-link`, `nvcc -dlink`). This is where the bare `0xBA55ED50` wrapper lives, directly addressable as a section payload. The leading double-underscore and absence of a dot mark it as following linker-symbol naming rather than ELF-section naming -- the section name also serves as a symbol that the generated `DEFINE_REGISTER_FUNC` code references. **This is the only section nvlink actually extracts from.**
+- **`__nv_relfatbin`**: The "relocatable fatbin" section created during device-link (`nvcc --device-link`, `nvcc -dlink`). This is where the bare `0xBA55ED50` wrapper lives, directly addressable as a section payload. The leading double-underscore and absence of a dot mark it as following linker-symbol naming rather than ELF-section naming — the section name also serves as a symbol that the generated `DEFINE_REGISTER_FUNC` code references. **This is the only section nvlink actually extracts from.**
 
 - **`.nv_fatbin`**: An alternate embedding location used in certain compilation modes (for example, when the host object was compiled with a different `-rdc` setting or when a CUDA runtime version emits fatbins via a separate path). Its presence without `__nv_relfatbin` indicates that a different tool produced the embedding; nvlink does not extract from it directly but tolerates its presence.
 
@@ -436,12 +436,12 @@ The three-way split (exists / data pointer / size) exists because the scanner ne
 | Field | Offset (Ehdr) | Offset (Shdr) |
 |---|---|---|
 | `e_shoff` / `sh_offset` | 40 | 24 |
-| `e_shentsize` | 58 | -- |
-| `e_shnum` | 60 | -- |
-| `e_shstrndx` | 62 | -- |
-| `sh_name` | -- | 0 |
-| `sh_type` | -- | 4 |
-| `sh_size` | -- | 32 |
+| `e_shentsize` | 58 | — |
+| `e_shnum` | 60 | — |
+| `e_shstrndx` | 62 | — |
+| `sh_name` | — | 0 |
+| `sh_type` | — | 4 |
+| `sh_size` | — | 32 |
 
 The function handles the `SHN_XINDEX` extension: if `e_shstrndx == 0xFFFF`, the real index lives in the `sh_link` field of section header entry 0. The data accessor `sub_448560` then returns `elf_buf + shdr->sh_offset` (18-byte body).
 
@@ -452,10 +452,10 @@ Structurally identical to `sub_4483B0` but with Elf32 offsets:
 | Field | Offset (Ehdr) | Offset (Shdr) |
 |---|---|---|
 | `e_shoff` / `sh_offset` | 32 | 16 |
-| `e_shentsize` | 46 | -- |
-| `e_shnum` | 48 | -- |
-| `e_shstrndx` | 50 | -- |
-| `sh_size` | -- | 20 |
+| `e_shentsize` | 46 | — |
+| `e_shnum` | 48 | — |
+| `e_shstrndx` | 50 | — |
+| `sh_size` | — | 20 |
 
 The corresponding accessors `sub_46B770` / `sub_46B790` return the 32-bit offset and size fields.
 
@@ -475,7 +475,7 @@ if (fatbin_data) {
 }
 ```
 
-Inside `sub_42AF40` the extracted buffer is indistinguishable from a `.fatbin` loaded directly: wrapper parsing, container iteration, architecture matching, member extraction, and cubin delivery all follow the normal pipeline documented in [Fatbin Extraction](fatbin-extraction.md). The host ELF itself is not referenced again after the memcpy in `sub_476D90`, and its buffer is released by `sub_476EA0` (arena free) immediately after `fatbin_extract` returns -- the lifetime of the host envelope is strictly shorter than that of the cubins extracted from it.
+Inside `sub_42AF40` the extracted buffer is indistinguishable from a `.fatbin` loaded directly: wrapper parsing, container iteration, architecture matching, member extraction, and cubin delivery all follow the normal pipeline documented in [Fatbin Extraction](fatbin-extraction.md). The host ELF itself is not referenced again after the memcpy in `sub_476D90`, and its buffer is released by `sub_476EA0` (arena free) immediately after `fatbin_extract` returns — the lifetime of the host envelope is strictly shorter than that of the cubins extracted from it.
 
 ## CUID and Module-ID Handling
 
@@ -486,7 +486,7 @@ CUDA uses two different identifier mechanisms to bind device code to its host-si
 | **`CUDA_STATIC_CUID`** (CUDA Unique ID) | `cudafe++` emits a per-TU 128-bit identifier into the host C++ wrapper | CUDA Runtime `__cudaRegisterFatBinary` / `__cudaRegisterLinkedBinary` at program startup | **No.** nvlink never references the string `CUDA_STATIC_CUID`; it does not appear anywhere in the v13.0 binary's string table. CUIDs are consumed by the **host** side only. |
 | **`__nv_module_id`** (Module ID table) | `cudafe++` emits an ELF section of `def <name>\0` entries, one per device module | nvlink (`sub_46F0C0` -> `sub_4298C0`) when `--register-link-binaries` is passed | **Yes.** This is what the `extract_module_ids` fallback path loads when no fatbin is present. |
 
-`nvlink_strings.json` confirms that CUID is **not** a nvlink concept: a full scan for `CUID`, `cuid`, or `CUDA_STATIC_CUID` returns zero matches in the v13.0.88 binary. Any documentation that claims nvlink "handles CUIDs" is confusing the toolchain roles -- CUIDs live in the **host** wrapper produced by `cudafe++` and are referenced by the CUDA runtime at load time, not by nvlink at link time. See the [cudafe++ wiki: Host Reference Arrays](../../cudafe++/output/host-reference-arrays.html) for the host side.
+`nvlink_strings.json` confirms that CUID is **not** a nvlink concept: a full scan for `CUID`, `cuid`, or `CUDA_STATIC_CUID` returns zero matches in the v13.0.88 binary. Any documentation that claims nvlink "handles CUIDs" is confusing the toolchain roles — CUIDs live in the **host** wrapper produced by `cudafe++` and are referenced by the CUDA runtime at load time, not by nvlink at link time. See the [cudafe++ wiki: Host Reference Arrays](../../cudafe++/output/host-reference-arrays.html) for the host side.
 
 What nvlink **does** handle is the `__nv_module_id` section. When `--register-link-binaries <path>` is set and the host ELF either has no extractable fatbin (all three section probes fail) or one that has already been consumed, nvlink calls:
 
@@ -552,7 +552,7 @@ Each entry's format is:
  4 B    variable       1 B
 ```
 
-The parser scans forward one entry at a time, advances past the `NUL` terminator after each name, and stops when it reaches `end` (section data + size - 1). Malformed entries (anything that is neither `"def "` nor a `NUL` byte in the separator slot) trigger the diagnostic `"unexpected data in module_ids"` -- literal string 5182 in `nvlink_strings.json`.
+The parser scans forward one entry at a time, advances past the `NUL` terminator after each name, and stops when it reaches `end` (section data + size - 1). Malformed entries (anything that is neither `"def "` nor a `NUL` byte in the separator slot) trigger the diagnostic `"unexpected data in module_ids"` — literal string 5182 in `nvlink_strings.json`.
 
 The collected names end up in the module-id list that `--register-link-binaries` later writes out in the `DEFINE_REGISTER_FUNC(%s)\n` format (strings.json entry 6175), giving the host side a way to locate each re-linked module at runtime without an intermediate fatbin envelope.
 
@@ -579,9 +579,9 @@ On the output side, nvlink can emit a host linker script that teaches `ld` how t
 
 | `dword_2A77DC0` | Meaning |
 |---|---|
-| `0` | Normal mode -- no linker script emitted |
-| `1` | Generate-only mode -- script is the sole output |
-| `2` | Augmented mode -- script is appended to an existing output and test-run through `ld` |
+| `0` | Normal mode — no linker script emitted |
+| `1` | Generate-only mode — script is the sole output |
+| `2` | Augmented mode — script is appended to an existing output and test-run through `ld` |
 
 The script body is a single 130-byte (`0x82`) literal stored as strings.json entry 6233:
 
@@ -613,7 +613,7 @@ All buffers on the host ELF path are arena-allocated:
 | Extension copy | `sub_462620` -> `arena_strdup` | `sub_431000` explicitly | Freed before `load_host_elf` is called |
 | Module-id name | `sub_4298C0` -> `sub_4307C0` | Arena teardown | Persists to the register-link-binaries output phase |
 
-The critical detail is that the fatbin copy is **separately** arena-allocated and outlives the host ELF image. This is why `sub_476D90` performs an explicit `memcpy` instead of returning a pointer into the host ELF buffer -- the host buffer is released immediately after the fatbin pipeline consumes its input, but the pipeline keeps references to the wrapper (and its containers) for much longer.
+The critical detail is that the fatbin copy is **separately** arena-allocated and outlives the host ELF image. This is why `sub_476D90` performs an explicit `memcpy` instead of returning a pointer into the host ELF buffer — the host buffer is released immediately after the fatbin pipeline consumes its input, but the pipeline keeps references to the wrapper (and its containers) for much longer.
 
 ## Confidence Assessment
 
@@ -645,9 +645,9 @@ Overall confidence: **HIGH**. Every function in the host ELF path has been decom
 | `0x476E80` | `load_host_elf` (thunk) | 7 B | `uint64_t (const char *filename)` |
 | `0x43DFC0` | `load_host_elf` (impl) | 344 B | `uint64_t (const char *filename)` |
 | `0x476EA0` | `free_host_elf` (thunk) | 7 B | `int (void *buf, uint64_t size)` |
-| `0x43D970` | `is_elf` | 19 B | `bool (void *buf)` -- magic test |
-| `0x43D9A0` | `is_elf64` | 18 B | `bool (void *buf)` -- class dispatch |
-| `0x43D9B0` | `is_host_elf` | 42 B | `bool (void *buf)` -- `e_type == ET_REL` |
+| `0x43D970` | `is_elf` | 19 B | `bool (void *buf)` — magic test |
+| `0x43D9A0` | `is_elf64` | 18 B | `bool (void *buf)` — class dispatch |
+| `0x43D9B0` | `is_host_elf` | 42 B | `bool (void *buf)` — `e_type == ET_REL` |
 | `0x476EC0` | `section_exists` | 71 B | `bool (void *elf_buf, const char *name)` |
 | `0x476F10` | `get_section_data` | 79 B | `void *(void *elf_buf, const char *name)` |
 | `0x476F60` | `get_section_size` | 79 B | `uint64_t (void *elf_buf, const char *name)` |
@@ -669,29 +669,29 @@ Overall confidence: **HIGH**. Every function in the host ELF path has been decom
 |---|---|---|
 | `0xBA55ED50` | `3126193488` unsigned / `-1168773808` signed | Fatbin wrapper magic |
 | `0x464C457F` | `1179403647` | ELF magic (`"\x7fELF"` as little-endian `uint32_t`) |
-| `190` / `0xBE` | -- | `EM_CUDA` -- CUDA device ELF machine type |
-| `62` / `0x3E` | -- | `EM_X86_64` -- typical host machine type |
-| `1` | -- | `ET_REL` -- relocatable object type |
-| `1` | -- | `ELFDATA2LSB` -- little-endian encoding |
-| `2` | -- | `ELFCLASS64` -- 64-bit ELF |
-| `52` | -- | Minimum accepted file size (Elf32 header size) |
-| `64` | -- | Elf64 header size, `e_shentsize` check in validator |
-| `40` | -- | Elf32 `e_shentsize` check in validator |
+| `190` / `0xBE` | — | `EM_CUDA` — CUDA device ELF machine type |
+| `62` / `0x3E` | — | `EM_X86_64` — typical host machine type |
+| `1` | — | `ET_REL` — relocatable object type |
+| `1` | — | `ELFDATA2LSB` — little-endian encoding |
+| `2` | — | `ELFCLASS64` — 64-bit ELF |
+| `52` | — | Minimum accepted file size (Elf32 header size) |
+| `64` | — | Elf64 header size, `e_shentsize` check in validator |
+| `40` | — | Elf32 `e_shentsize` check in validator |
 | `0x400D` | `16397` | Exempt-section bitmask for `sh_type` range `0x70000007..0x70000015` |
 | `0x82` | `130` | Linker script literal string length |
-| `30672788` | -- | Error descriptor address for "no device code in <file>" |
+| `30672788` | — | Error descriptor address for "no device code in <file>" |
 | `"def "` | `0x20666564` | Module-id entry prefix |
 
 ## See Also
 
-- [File Type Detection](file-type-detection.md) -- how host ELF is identified as a fallback after failing cubin/archive/fatbin checks, including the full extension + magic dispatch tree
-- [Input File Loop](../pipeline/input-loop.md) -- the dispatch logic in `main()` that routes to the host ELF handler
-- [ELF Parsing](elf-parsing.md) -- the Elf32/Elf64 accessor functions (`sub_4483B0`, `sub_46B5D0`, `sub_448560`, `sub_46B770`) used by `sub_476EC0`, `sub_476F10`, and `sub_476F60`
-- [Fatbin Extraction](fatbin-extraction.md) -- the `sub_42AF40` pipeline that consumes the fatbin buffer returned by `sub_476D90`, including wrapper/container format and arch matching
-- [Cubin Loading](cubin-loading.md) -- device cubins extracted from host-ELF-embedded fatbins follow this path once `sub_42AF40` emits them
-- [Archives](archives.md) -- archive members that are themselves host ELFs re-enter this path after being unwrapped
-- [Mode Dispatch](../pipeline/mode-dispatch.md) -- the `--gen-host-linker-script` mode that generates linker scripts for these sections
-- [Output Writing](../pipeline/output.md) -- `--register-link-binaries` output consuming the module-id list built by `sub_4298C0`
-- [Error Reporting](../infra/error-reporting.md) -- the `sub_467460` diagnostic dispatcher and the `30672788` error descriptor
+- [File Type Detection](file-type-detection.md) — how host ELF is identified as a fallback after failing cubin/archive/fatbin checks, including the full extension + magic dispatch tree
+- [Input File Loop](../pipeline/input-loop.md) — the dispatch logic in `main()` that routes to the host ELF handler
+- [ELF Parsing](elf-parsing.md) — the Elf32/Elf64 accessor functions (`sub_4483B0`, `sub_46B5D0`, `sub_448560`, `sub_46B770`) used by `sub_476EC0`, `sub_476F10`, and `sub_476F60`
+- [Fatbin Extraction](fatbin-extraction.md) — the `sub_42AF40` pipeline that consumes the fatbin buffer returned by `sub_476D90`, including wrapper/container format and arch matching
+- [Cubin Loading](cubin-loading.md) — device cubins extracted from host-ELF-embedded fatbins follow this path once `sub_42AF40` emits them
+- [Archives](archives.md) — archive members that are themselves host ELFs re-enter this path after being unwrapped
+- [Mode Dispatch](../pipeline/mode-dispatch.md) — the `--gen-host-linker-script` mode that generates linker scripts for these sections
+- [Output Writing](../pipeline/output.md) — `--register-link-binaries` output consuming the module-id list built by `sub_4298C0`
+- [Error Reporting](../infra/error-reporting.md) — the `sub_467460` diagnostic dispatcher and the `30672788` error descriptor
 
 > For how the CUDA frontend (`cudafe++`) embeds device code into host objects in the first place, see the [cudafe++ wiki: Host Reference Arrays](../../cudafe++/output/host-reference-arrays.html) and its CUDA Unique ID (`CUDA_STATIC_CUID`) page. nvlink does not parse CUIDs directly; they live in the host-side registration shim.

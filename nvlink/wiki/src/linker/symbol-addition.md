@@ -367,7 +367,7 @@ The section index argument (`a6`) is resolved through `sub_440590` to obtain the
 
 The resolution has three tiers in priority order:
 
-1. **Direct**: `st_shndx` is not `0xFFFF` -- return it immediately.
+1. **Direct**: `st_shndx` is not `0xFFFF` — return it immediately.
 2. **Extended store present** (`extended_symbol_store` at `ctx+600` is non-NULL): use `sym_index` sign to select `merged_symbol_array` at `+592` (positive) or `extended_symbol_store` at `+600` (negative), then look up the real section index.
 3. **DCE remap tables present** (`symbol_index_mapping` at `ctx+456` is non-NULL): translate `sym_index` through `+456` (`symbol_index_mapping`, remap source) or `+464` (`neg_symbol_index_mapping`, remap target), then look up via `merged_symbol_array` at `+592`. A zero remap result triggers `"reference to deleted symbol"`.
 
@@ -383,9 +383,9 @@ int existing_idx = hash_map_lookup(ctx->name_map, name);    // sub_449A80
 
 If `existing_idx` is nonzero, the symbol already exists. The function retrieves the existing record via `sub_440590` (following the positive/negative convention) and checks for conflicts:
 
-- **Global-on-global conflict**: If the existing symbol has `binding == STB_GLOBAL` (bit pattern `(st_info >> 4) == 1`) and the new symbol also has `binding == STB_GLOBAL`, the diagnostic `"adding global symbols of same name"` is triggered via `sub_467460`. This is an internal assertion, not a user-facing error -- the multiple-definition user error is handled elsewhere (in `merge_elf`). The decompiled check at line 164 is `*((_BYTE *)v28 + 4) >> 4 == 1`, which reads `st_info` at offset `+4` in the existing record and extracts the binding nibble.
+- **Global-on-global conflict**: If the existing symbol has `binding == STB_GLOBAL` (bit pattern `(st_info >> 4) == 1`) and the new symbol also has `binding == STB_GLOBAL`, the diagnostic `"adding global symbols of same name"` is triggered via `sub_467460`. This is an internal assertion, not a user-facing error — the multiple-definition user error is handled elsewhere (in `merge_elf`). The decompiled check at line 164 is `*((_BYTE *)v28 + 4) >> 4 == 1`, which reads `st_info` at offset `+4` in the existing record and extracts the binding nibble.
 
-- **Local replacing existing**: If `binding == STB_LOCAL` (0), the existing record's `st_name` (dword at `+0`) and `name_str` (qword at `+32`) are copied into the new record. If the existing `name_str` pointer is NULL, the new record is treated as a fresh insertion -- control jumps to the hash map registration path. This handles the case where a previous local symbol was a placeholder without an allocated name string.
+- **Local replacing existing**: If `binding == STB_LOCAL` (0), the existing record's `st_name` (dword at `+0`) and `name_str` (qword at `+32`) are copied into the new record. If the existing `name_str` pointer is NULL, the new record is treated as a fresh insertion — control jumps to the hash map registration path. This handles the case where a previous local symbol was a placeholder without an allocated name string.
 
 - **Weak binding** (`binding == 2`): The new record inherits `st_name` and `name_str` from the existing record and falls through to re-probe the hash map to get the entry pointer for later update.
 
@@ -404,7 +404,7 @@ struct name_entry {
 
 The name string is copied into arena memory (`strcpy` into freshly allocated buffer), and the entry is inserted into the hash map via `sub_448E70(ctx->name_map, name_copy, &entry)`. The name counter at `ctx+304` is incremented (line 201: `++*(_DWORD *)(a1 + 304)`) to track total distinct names registered.
 
-The arena allocation uses the thread-local arena context obtained via `sub_44F410`. The allocator (`sub_4307C0`) uses size-class bucketing -- for the 12-byte entry, this falls into the smallest bucket. If allocation fails (returns NULL), `sub_45CAC0` triggers a fatal OOM error.
+The arena allocation uses the thread-local arena context obtained via `sub_44F410`. The allocator (`sub_4307C0`) uses size-class bucketing — for the 12-byte entry, this falls into the smallest bucket. If allocation fails (returns NULL), `sub_45CAC0` triggers a fatal OOM error.
 
 ### 4. Array Insertion
 
@@ -423,7 +423,7 @@ The encoding at line 215 (`(a3 & 0xF) + 16 * a4`) matches the ELF `st_info` conv
 
 ### 5. Extended Section Index Handling
 
-If the resolved section index exceeds `0xFEFF` (but is not the special `0xFFF2` / `SHN_COMMON` marker), the symbol's `st_shndx` is set to `0xFFFF` and the real index is stored in the resolution arrays at `+592`/`+600`, keyed by the symbol's signed index. The conditional at line 232 (`v17 <= 0xFEFF || v17 == 65522`) shows that `SHN_COMMON` (65522 = `0xFFF2`) bypasses the extended path -- it is stored directly in `st_shndx`.
+If the resolved section index exceeds `0xFEFF` (but is not the special `0xFFF2` / `SHN_COMMON` marker), the symbol's `st_shndx` is set to `0xFFFF` and the real index is stored in the resolution arrays at `+592`/`+600`, keyed by the symbol's signed index. The conditional at line 232 (`v17 <= 0xFEFF || v17 == 65522`) shows that `SHN_COMMON` (65522 = `0xFFF2`) bypasses the extended path — it is stored directly in `st_shndx`.
 
 The arrays are allocated on first use (line 241: `sub_464AE0(0x10000)`) with an initial capacity of 65,536 entries. Both `merged_symbol_array` at `+592` and `extended_symbol_store` at `+600` are created together.
 
@@ -451,7 +451,7 @@ The value at `ctx+624` is initialized by the last step of `elfw_create` via:
 *((_DWORD *)v17 + 156) = sub_42F8B0();   // elfw_create, offset +624
 ```
 
-`sub_42F8B0` is a 7-line constant-return function that unconditionally returns **5**. Because `sub_42F850`'s guard is `<= 4`, the STO\_CUDA\_OBSCURE diagnostic is unreachable in this build of nvlink -- the check always fails regardless of which symbols are added. `STO_CUDA_OBSCURE` would have been a CUDA-specific symbol visibility attribute encoded in the `st_other` field's upper bits, but no call site in the shipped binary can actually trigger the warning. The field at `ctx+624` is retained so that the call signature matches (and perhaps to support a future mode where the constant is replaced with a user-controllable warning level).
+`sub_42F8B0` is a 7-line constant-return function that unconditionally returns **5**. Because `sub_42F850`'s guard is `<= 4`, the STO\_CUDA\_OBSCURE diagnostic is unreachable in this build of nvlink — the check always fails regardless of which symbols are added. `STO_CUDA_OBSCURE` would have been a CUDA-specific symbol visibility attribute encoded in the `st_other` field's upper bits, but no call site in the shipped binary can actually trigger the warning. The field at `ctx+624` is retained so that the call signature matches (and perhaps to support a future mode where the constant is replaced with a user-controllable warning level).
 
 > ⚡ **QUIRK — dead diagnostic, live plumbing**
 > The STO\_CUDA\_OBSCURE path is wired through every symbol addition but can never fire, because the warning-level seed at `ctx+624` is a compile-time constant `5` and the guard is `<= 4`. The binary still pays for the call on every symbol and keeps the diagnostic string in `.rodata`; only the user-visible warning is dead.
@@ -518,7 +518,7 @@ if (new_idx == 0) {
 }
 ```
 
-This error occurs when dead code elimination (`sub_44AD40`) removes a symbol but some other part of the ELF still references it. The fact that the code re-reads the table entry after the fatal call suggests that `sub_467460` may not always abort -- in non-fatal diagnostic mode, execution continues with whatever value the table holds (still zero, meaning the reference is unresolvable).
+This error occurs when dead code elimination (`sub_44AD40`) removes a symbol but some other part of the ELF still references it. The fact that the code re-reads the table entry after the fatal call suggests that `sub_467460` may not always abort — in non-fatal diagnostic mode, execution continues with whatever value the table holds (still zero, meaning the reference is unresolvable).
 
 Common triggers:
 
@@ -544,18 +544,18 @@ struct dyn_array {
 
 | Function | Address | Operation |
 |---|---|---|
-| `sub_464AE0` | `0x464AE0` | **Create** -- allocate header + backing array with given initial capacity, zero-fill |
-| `sub_464BB0` | `0x464BB0` | **Count** -- return `arr->count` (offset +8) |
-| `sub_464C30` | `0x464C30` | **Push** -- append element at `arr->count`, increment count; grow (2x capacity, zero-fill new region) if full |
-| `sub_464D10` | `0x464D10` | **Set** -- write element at arbitrary index; grow if index >= capacity; update count if index >= count |
-| `sub_464DB0` | `0x464DB0` | **Get** -- return `arr->data[index]` if index < count, else NULL |
+| `sub_464AE0` | `0x464AE0` | **Create** — allocate header + backing array with given initial capacity, zero-fill |
+| `sub_464BB0` | `0x464BB0` | **Count** — return `arr->count` (offset +8) |
+| `sub_464C30` | `0x464C30` | **Push** — append element at `arr->count`, increment count; grow (2x capacity, zero-fill new region) if full |
+| `sub_464D10` | `0x464D10` | **Set** — write element at arbitrary index; grow if index >= capacity; update count if index >= count |
+| `sub_464DB0` | `0x464DB0` | **Get** — return `arr->data[index]` if index < count, else NULL |
 
 Growth policy: when capacity is exhausted, double the current capacity. If the doubled value is still too small (e.g., for a set-at-index operation far beyond current capacity), use the required index + 1 instead. New slots are zero-filled via `memset`.
 
 ## Cross-References
 
-- [Symbol Resolution](symbol-resolution.md) -- storage scheme, hashing, and section-index machinery that this insertion path drives
-- [Symbol Resolution Walkthrough](symbol-resolution-walkthrough.md) -- worked example tracing `sub_440BE0` and `sub_442CA0` end-to-end
-- [Extended Symbol Resolution](extended-symbol-resolution.md) -- `sub_4411F0` (the section-symbol fallback consumer of the structures populated here)
-- [Weak Symbol Handling](weak-symbols.md) -- the `sub_442820` merge helper invoked from the function-symbol variant
-- [Dead Code Elimination](dead-code-elimination.md) -- builds the remap tables whose zero entries trigger `"reference to deleted symbol"`
+- [Symbol Resolution](symbol-resolution.md) — storage scheme, hashing, and section-index machinery that this insertion path drives
+- [Symbol Resolution Walkthrough](symbol-resolution-walkthrough.md) — worked example tracing `sub_440BE0` and `sub_442CA0` end-to-end
+- [Extended Symbol Resolution](extended-symbol-resolution.md) — `sub_4411F0` (the section-symbol fallback consumer of the structures populated here)
+- [Weak Symbol Handling](weak-symbols.md) — the `sub_442820` merge helper invoked from the function-symbol variant
+- [Dead Code Elimination](dead-code-elimination.md) — builds the remap tables whose zero entries trigger `"reference to deleted symbol"`

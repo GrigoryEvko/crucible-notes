@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas optimizer is a fixed-order pipeline of 159 compilation phases that transform Ori IR from its initial post-lowering form into scheduled, register-allocated SASS machine code. Unlike LLVM's PassManager -- which uses dependency-driven scheduling and analysis preservation -- ptxas runs every phase unconditionally in a predetermined order, relying on per-phase `isNoOp()` checks to skip inapplicable transformations. This design trades flexibility for predictability: the phase ordering is identical across all compilations, and architecture-specific behavior is injected through 16 "AdvancedPhase" hook points whose vtables are overridden per target.
+The ptxas optimizer is a fixed-order pipeline of 159 compilation phases that transform Ori IR from its initial post-lowering form into scheduled, register-allocated SASS machine code. Unlike LLVM's PassManager — which uses dependency-driven scheduling and analysis preservation — ptxas runs every phase unconditionally in a predetermined order, relying on per-phase `isNoOp()` checks to skip inapplicable transformations. This design trades flexibility for predictability: the phase ordering is identical across all compilations, and architecture-specific behavior is injected through 16 "AdvancedPhase" hook points whose vtables are overridden per target.
 
 Each phase is a polymorphic C++ object exactly 16 bytes in size, allocated from a memory pool by a 159-case factory switch. The PhaseManager constructs all 159 phase objects up front during initialization, stores them in a flat array, and iterates the array in a simple dispatch loop. Per-phase timing and memory consumption are optionally tracked for `--stat=phase-wise` output.
 
@@ -85,7 +85,7 @@ Timing output format (to stderr when `--stat=phase-wise`):
 
 ## Complete Phase Table
 
-### Group 1 -- Initial Setup (phases 0--13)
+### Group 1 — Initial Setup (phases 0--13)
 
 Program validation, recipe application, FP16 promotion, control flow analysis, macro instruction creation.
 
@@ -106,9 +106,9 @@ Program validation, recipe application, FP16 promotion, control flow analysis, m
 | 12 | `OriSanitize` | IR validation |
 | 13 | `GeneralOptimizeEarly` | Bundled early opts |
 
-Phase 0 validates the initial Ori IR for structural correctness. Phase 1 applies NvOptRecipe transformations (controlled by option 391, which allocates a 440-byte sub-manager at `PhaseManager+56`). Phase 2 promotes FP16 operations where profitable. Phases 4 and 7 are architecture hooks that bracket `ConvertUnsupportedOps` -- backends override them to inject target-specific pre/post-legalization logic.
+Phase 0 validates the initial Ori IR for structural correctness. Phase 1 applies NvOptRecipe transformations (controlled by option 391, which allocates a 440-byte sub-manager at `PhaseManager+56`). Phase 2 promotes FP16 operations where profitable. Phases 4 and 7 are architecture hooks that bracket `ConvertUnsupportedOps` — backends override them to inject target-specific pre/post-legalization logic.
 
-### Group 2 -- Early Optimization (phases 14--32)
+### Group 2 — Early Optimization (phases 14--32)
 
 Branch optimization, loop canonicalization, strength reduction, software pipelining, SSA formation.
 
@@ -136,7 +136,7 @@ Branch optimization, loop canonicalization, strength reduction, software pipelin
 
 The `GeneralOptimize*` phases (13, 29, 37, 46, 58, 65) are compound passes that bundle multiple small optimizations (copy propagation, constant folding, algebraic simplification) into a single fixed-point iteration. They appear at multiple pipeline positions to re-clean the IR after major transformations. Liveness/DCE also runs repeatedly (`OriPerformLiveDead` at phases 16, 33, 61, 84) to remove dead code exposed by intervening passes.
 
-### Group 3 -- Mid-Level Optimization (phases 33--52)
+### Group 3 — Mid-Level Optimization (phases 33--52)
 
 GVN-CSE, reassociation, shader constant extraction, CTA expansion, argument enforcement.
 
@@ -165,7 +165,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA expansion, argument enfo
 
 Shader constant extraction (phases 34, 51) identifies uniform values that can be loaded from constant memory rather than recomputed per-thread. `GvnCse` (phase 49) combines global value numbering with common subexpression elimination in a single pass. The `MidExpansion` (phase 45) performs target-dependent lowering of operations that must be expanded before register allocation but after high-level optimizations have had their chance.
 
-### Group 4 -- Late Optimization (phases 53--77)
+### Group 4 — Late Optimization (phases 53--77)
 
 Predication, rematerialization, loop fusion, varying propagation, sync optimization, phi destruction, uniform register conversion.
 
@@ -197,9 +197,9 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 76 | `UpdateAfterOptimize` | IR update pass |
 | 77 | `AdvancedPhaseLateConvUnSup` | Hook (no-op default) |
 
-Predication (phase 63) converts short conditional branches into predicated instruction sequences, eliminating branch divergence. Rematerialization runs twice (phases 54 and 69) -- the early pass targets values that are cheap to recompute, while the late pass handles cases exposed by predication and loop fusion. Phase 73 (`ConvertAllMovPhiToMov`) destroys SSA form by converting phi nodes into move instructions, preparing the IR for register allocation. Phase 74 converts qualifying values to uniform registers (UR), reducing general register pressure.
+Predication (phase 63) converts short conditional branches into predicated instruction sequences, eliminating branch divergence. Rematerialization runs twice (phases 54 and 69) — the early pass targets values that are cheap to recompute, while the late pass handles cases exposed by predication and loop fusion. Phase 73 (`ConvertAllMovPhiToMov`) destroys SSA form by converting phi nodes into move instructions, preparing the IR for register allocation. Phase 74 converts qualifying values to uniform registers (UR), reducing general register pressure.
 
-### Group 5 -- Legalization (phases 78--96)
+### Group 5 — Legalization (phases 78--96)
 
 Late unsupported-op expansion, backward copy propagation, GMMA fixup, register attribute setting, final inspection.
 
@@ -227,7 +227,7 @@ Late unsupported-op expansion, backward copy propagation, GMMA fixup, register a
 
 GMMA (phases 85, 87) handles WGMMA (warp group matrix multiply-accumulate) instruction sequences that require specific register arrangements and ordering constraints. `OriSetRegisterAttr` (phase 90) annotates registers with scheduling attributes (latency class, bank assignment) consumed by the downstream scheduler. `FinalInspectionPass` (phase 94) is a validation gate that catches illegal IR patterns before the irreversible scheduling/RA phases.
 
-### Group 6 -- Pre-Scheduling and Register Allocation (phases 97--103)
+### Group 6 — Pre-Scheduling and Register Allocation (phases 97--103)
 
 Synchronization insertion, WAR fixup, register allocation, 64-bit register handling.
 
@@ -241,9 +241,9 @@ Synchronization insertion, WAR fixup, register allocation, 64-bit register handl
 | 102 | `ReportAfterRegisterAllocation` | Diagnostics |
 | 103 | `Get64bRegComponents` | 64-bit register splitting |
 
-Phase 99 inserts the synchronization instructions (`BAR`, `DEPBAR`, `MEMBAR`) required by the GPU memory model. Phase 100 fixes write-after-read hazards exposed by sync insertion. Register allocation is driven through the hook at phase 101 -- the actual allocator is architecture-specific and invoked from the AdvancedPhase override. Phase 103 splits 64-bit register pairs into their 32-bit components for architectures that require it.
+Phase 99 inserts the synchronization instructions (`BAR`, `DEPBAR`, `MEMBAR`) required by the GPU memory model. Phase 100 fixes write-after-read hazards exposed by sync insertion. Register allocation is driven through the hook at phase 101 — the actual allocator is architecture-specific and invoked from the AdvancedPhase override. Phase 103 splits 64-bit register pairs into their 32-bit components for architectures that require it.
 
-### Group 7 -- Post-RA and Post-Scheduling (phases 104--116)
+### Group 7 — Post-RA and Post-Scheduling (phases 104--116)
 
 Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboards.
 
@@ -265,7 +265,7 @@ Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboards
 
 Hot/cold partitioning (phases 108--109) separates frequently executed blocks from cold paths, improving instruction cache locality. `PlaceBlocksInSourceOrder` (phase 112) determines the final layout of basic blocks in the emitted binary. The scoreboard sub-system has two paths: at `-O1` and above, `AdvancedScoreboardsAndOpexes` (phase 115) performs full dependency analysis to compute the 23-bit control word per instruction (4-bit stall count, 1-bit yield, 3-bit write barrier, 6-bit read barrier mask, 6-bit wait barrier mask, plus reuse flags). At `-O0`, phase 115 is a no-op and `ProcessO0WaitsAndSBs` (phase 116) inserts conservative waits.
 
-### Group 8 -- Mercury Backend (phases 117--122)
+### Group 8 — Mercury Backend (phases 117--122)
 
 SASS instruction encoding, expansion, WAR generation, opex computation, microcode emission.
 
@@ -280,7 +280,7 @@ SASS instruction encoding, expansion, WAR generation, opex computation, microcod
 
 "Mercury" is NVIDIA's internal name for the SASS encoding framework. Phase 117 converts Ori instructions into Mercury's intermediate encoding, then decodes them back to verify round-trip correctness. Phase 118 expands pseudo-instructions into their final SASS sequences. WAR generation runs in two passes (119, 121) because expansion in phase 118 can introduce new write-after-read hazards. Phase 120 generates "opex" (operation extension) annotations. Phase 122 produces the final SASS microcode bytes. The MercConverter infrastructure (`sub_9F1A90`, 35KB) drives the instruction-level legalization using a visitor pattern dispatched through a large opcode switch (`sub_9ED2D0`, 25KB).
 
-### Group 9 -- Post-Mercury (phases 123--131)
+### Group 9 — Post-Mercury (phases 123--131)
 
 Register map, diagnostics, debug output.
 
@@ -298,7 +298,7 @@ Register map, diagnostics, debug output.
 
 `CalcRegisterMap` (phase 124) computes the final physical-to-logical register mapping emitted as EIATTR metadata in the output ELF. `DumpNVuCodeText` and `DumpNVuCodeHex` (phases 129--130) produce the human-readable SASS text and raw hex dumps used by `cuobjdump` and debugging workflows. `DebuggerBreak` (phase 131) is a development-only hook that triggers a breakpoint when a specific phase is reached.
 
-### Group 10 -- Finalization (phases 132--158)
+### Group 10 — Finalization (phases 132--158)
 
 Late merge operations, late unsupported-op expansion, high-pressure live range splitting, architecture-specific fixups.
 
@@ -342,14 +342,14 @@ Sixteen phases serve as conditional extension points. Their `isNoOp()` method re
 | 134 | `AdvancedPhaseAfterMidExpansion` | After mid-expansion |
 | 135 | `AdvancedPhaseLateExpandSyncInstructions` | Late sync expansion |
 
-The pattern is consistent: AdvancedPhase hooks bracket major pipeline stages, allowing backends to insert target-specific transformations without altering the fixed phase ordering. Phase 101 (`AdvancedPhaseAllocReg`) is notable because register allocation itself is entirely driven through this hook -- the base pipeline has no hardcoded allocator.
+The pattern is consistent: AdvancedPhase hooks bracket major pipeline stages, allowing backends to insert target-specific transformations without altering the fixed phase ordering. Phase 101 (`AdvancedPhaseAllocReg`) is notable because register allocation itself is entirely driven through this hook — the base pipeline has no hardcoded allocator.
 
 ### O0 vs O1+ Behavior
 
 At `-O0`, the pipeline skips most optimization phases via their individual `isNoOp()` checks. The critical difference is in scoreboard generation:
 
 - **`-O1` and above**: Phase 115 (`AdvancedScoreboardsAndOpexes`) runs the full dependency analysis using `sub_A36360` (52KB control word encoder) and `sub_A23CF0` (54KB DAG list scheduler heuristic). Phase 116 is a no-op.
-- **`-O0`**: Phase 115 is a no-op. Phase 116 (`ProcessO0WaitsAndSBs`) inserts conservative stall counts and wait barriers -- every instruction gets the maximum stall, and barriers are placed at every potential hazard point. This produces correct but slow code.
+- **`-O0`**: Phase 115 is a no-op. Phase 116 (`ProcessO0WaitsAndSBs`) inserts conservative stall counts and wait barriers — every instruction gets the maximum stall, and barriers are placed at every potential hazard point. This produces correct but slow code.
 
 Individual phases also check the optimization level internally via the compilation context. The scheduling infrastructure (`sub_8D0640`) reads the opt-level via `sub_7DDB50` and selects between forward-pass scheduling (opt-level <= 2, register-pressure-reducing) and reverse-pass scheduling (opt-level > 2, latency-hiding).
 
@@ -399,10 +399,10 @@ The core builder (`sub_9F4040`, 49KB) processes the parsed configuration:
 2. Initializes a 158-entry phase descriptor table (zeroed `0x400` bytes)
 3. Resolves phase names to indices via `sub_C641D0` (case-insensitive binary search)
 4. Recognized manipulation keywords:
-   - **`shuffle`** -- randomize the phase ordering
-   - **`swap1`..`swap6`** -- swap specific phase pairs (for A/B testing)
-   - **`OriPerformLiveDead`** -- override liveness pass placement
-   - **`OriCopyProp`** -- override copy propagation placement
+   - **`shuffle`** — randomize the phase ordering
+   - **`swap1`..`swap6`** — swap specific phase pairs (for A/B testing)
+   - **`OriPerformLiveDead`** — override liveness pass placement
+   - **`OriCopyProp`** — override copy propagation placement
 5. Constructs the final phase index sequence and dispatches via `sub_C64F70`
 
 ### Pass-Disable Integration
@@ -508,12 +508,12 @@ Created when option 391 is set. Contains timing records with 584-byte stride, a 
 
 ## Cross-References
 
-- [Phase Manager Infrastructure](../passes/phase-manager.md) -- detailed PhaseManager internals
-- [Pass Inventory & Ordering](../passes/index.md) -- per-pass documentation index
-- [GeneralOptimize Bundles](../passes/general-optimize.md) -- compound optimization passes
-- [Scheduler Architecture](../scheduling/overview.md) -- scheduling phases 97--116
-- [Mercury Encoder](../codegen/mercury.md) -- Mercury backend phases 117--122
-- [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) -- control word generation
-- [Optimization Levels](../config/opt-levels.md) -- O-level gating details
-- [DUMPIR & NamedPhases](../config/dumpir.md) -- NamedPhases configuration reference
-- [Memory Pool Allocator](../infra/memory-pools.md) -- pool allocator used by phase objects
+- [Phase Manager Infrastructure](../passes/phase-manager.md) — detailed PhaseManager internals
+- [Pass Inventory & Ordering](../passes/index.md) — per-pass documentation index
+- [GeneralOptimize Bundles](../passes/general-optimize.md) — compound optimization passes
+- [Scheduler Architecture](../scheduling/overview.md) — scheduling phases 97--116
+- [Mercury Encoder](../codegen/mercury.md) — Mercury backend phases 117--122
+- [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) — control word generation
+- [Optimization Levels](../config/opt-levels.md) — O-level gating details
+- [DUMPIR & NamedPhases](../config/dumpir.md) — NamedPhases configuration reference
+- [Memory Pool Allocator](../infra/memory-pools.md) — pool allocator used by phase objects

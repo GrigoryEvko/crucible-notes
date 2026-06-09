@@ -32,8 +32,8 @@ The parser object (`sub_42DFE0` return value) is allocated from the `"nvlink opt
 | 16 | 8 | Pointer to default file-list option entry (`"Options"`, name = `" "`); set after registration |
 | 24 | 1 | `numbered` flag (constructor `a1` argument; written as byte) |
 | 25 | 7 | (padding) |
-| 32 | 8 | Chain head -- pointer to first 16-byte wrapper `{next, option_entry*}` in the registered-option linked list; NULL before any registration |
-| 40 | 8 | Tail cursor -- pointer-to-pointer; initialised to `v6 + 4` (i.e. self+32 = `&chain_head`) via the standard `*(parser+40) = parser+32` self-referencing-tail trick, then advanced to each new wrapper's next-slot as options are appended |
+| 32 | 8 | Chain head — pointer to first 16-byte wrapper `{next, option_entry*}` in the registered-option linked list; NULL before any registration |
+| 40 | 8 | Tail cursor — pointer-to-pointer; initialised to `v6 + 4` (i.e. self+32 = `&chain_head`) via the standard `*(parser+40) = parser+32` self-referencing-tail trick, then advanced to each new wrapper's next-slot as options are appended |
 | 48 | 8 | Pointer to the unknown-option fallback entry (`"__internal_unknown_opt"`); set after the second registration call |
 
 The linked list at `+32`/`+40` is the iteration order used by `option_print_help` (`sub_42F560` reads `*(parser+32)` and feeds it to `sub_464700`, which walks a singly-linked list of 16-byte wrappers). The two hash tables at `+0`/`+8` are populated by `sub_42F130` (`option_register`) for O(1) lookup by long or short name during argv parsing.
@@ -593,7 +593,7 @@ The W/R columns report exact write- and read-site counts from the cross-referenc
 
 > **QUIRK (multi-source globals).** `byte_2A5F212` (`ignore-host-info`) has the highest write-fan-in of any option global: it is written from `sub_427AE0` (initial CLI extraction), then forced to 1 by the relocatable-link branch in the same function (lines 351-352), again by `main` when `--kernels-used`/`--variables-used` is set, and by `sub_426AE0` from per-module `.nv_info` data (line 121). Five distinct write sites for what looks like a plain boolean option.
 
-> **QUIRK (CLI flag mutated at runtime).** `byte_2A5F225` (SASS output mode) is written three times: once by the CLI as a true derived flag (sm > 99 -> 1, sm > 89 -> 1 via the unset branch), once by the post-extraction recheck, and a third time by `sub_426570` -- the per-module link iterator can *promote* a non-SASS run to SASS mode mid-link based on module attributes. Same pattern with `byte_2A5F222` (mercury mode) and `byte_2A5F220`/`byte_2A5F221` (companion module-scoped state).
+> **QUIRK (CLI flag mutated at runtime).** `byte_2A5F225` (SASS output mode) is written three times: once by the CLI as a true derived flag (sm > 99 -> 1, sm > 89 -> 1 via the unset branch), once by the post-extraction recheck, and a third time by `sub_426570` — the per-module link iterator can *promote* a non-SASS run to SASS mode mid-link based on module attributes. Same pattern with `byte_2A5F222` (mercury mode) and `byte_2A5F220`/`byte_2A5F221` (companion module-scoped state).
 
 > **QUIRK (CLI flag never read by any consumer).** `byte_2A5F227` (`uumn`, undocumented forward-compat helper) has zero reads outside `sub_427AE0` itself. The flag exists solely so that `sub_427AE0` can pair it with `fdcmpt` (`byte_2A5F228`) for the SM <= 69 fatal-error check; once option parsing finishes, no downstream pass observes it. Several other globals (`byte_2A5F2C3`/`byte_2A5F2C4`/`byte_2A5F2C5`) are likewise read only by the parser, because the diagnostic state is forwarded into `sub_468420`/`sub_468430` and the booleans themselves are dead afterward.
 
@@ -601,7 +601,7 @@ The W/R columns report exact write- and read-site counts from the cross-referenc
 
 Twelve globals in the `0x2A5F1FC`--`0x2A5F330` window are computed by `sub_427AE0` after extracting raw option values, plus the runtime-promotion globals owned by `sub_426570`. Their decision trees are listed below in source order. All line numbers refer to `decompiled/sub_427AE0_0x427ae0.c` unless otherwise noted.
 
-### `byte_2A5F1FC` -- *device-stack-protector-frame-size-threshold was specified*
+### `byte_2A5F1FC` — *device-stack-protector-frame-size-threshold was specified*
 
 ```c
 byte_2A5F1FC = option_was_specified(parser, "device-stack-protector-frame-size-threshold")
@@ -609,7 +609,7 @@ byte_2A5F1FC = option_was_specified(parser, "device-stack-protector-frame-size-t
 
 Pure presence query (`sub_42E580`, line 271). Read by `sub_429BA0` to decide whether to emit the threshold into tkinfo.
 
-### `byte_2A5F1FF` -- *device-stack-protector was specified*
+### `byte_2A5F1FF` — *device-stack-protector was specified*
 
 ```c
 byte_2A5F1FF = option_was_specified(parser, "device-stack-protector")
@@ -617,7 +617,7 @@ byte_2A5F1FF = option_was_specified(parser, "device-stack-protector")
 
 Same pattern as the frame-size flag (line 270). Read by `sub_429BA0` for the tkinfo entry.
 
-### `qword_2A5F200` -- *tkinfo data pointer*
+### `qword_2A5F200` — *tkinfo data pointer*
 
 ```c
 qword_2A5F200 = (int64)option_generate_tkinfo(parser, ...)            // line 497
@@ -625,7 +625,7 @@ qword_2A5F200 = (int64)option_generate_tkinfo(parser, ...)            // line 49
 
 Set by the parser's serializer (`sub_42F640`) at the tail end of `sub_427AE0`. Consumed by `main` when the linker emits the `.nv_info` section.
 
-### `byte_2A5F213` and `byte_2A5F214` -- *use-host-info / host-info active*
+### `byte_2A5F213` and `byte_2A5F214` — *use-host-info / host-info active*
 
 Three-way decision tree at lines 349-364, after extracting `byte_2A5F212` (`ignore-host-info`) and `byte_2A5F213` (`use-host-info`):
 
@@ -649,7 +649,7 @@ elif (!ignore_host_info):                         # line 360 (default branch)
 
 `byte_2A5F214` is the true "host info is active for this link" signal consumed by `sub_426CD0` (LTO compile-driver) and `main`; `byte_2A5F213` retains the literal CLI intent for diagnostics.
 
-### `byte_2A5F222`, `byte_2A5F224`, `byte_2A5F225` -- *SM-derived output mode triple*
+### `byte_2A5F222`, `byte_2A5F224`, `byte_2A5F225` — *SM-derived output mode triple*
 
 Computed at lines 296-326 after `sub_44E3E0(arch_string)` returns the parsed SM number into `dword_2A5F314`:
 
@@ -676,9 +676,9 @@ if (sm <= 0x59):                                  # line 326: SASS requires sm >
     fatal_error("SASS mode requires sm >= 90")
 ```
 
-Note that `byte_2A5F222` can be set *before* this code path executes -- `sub_426570` flips it during per-module loading when it discovers Mercury-class metadata in an input. That is why the `elif (byte_2A5F222)` branch exists.
+Note that `byte_2A5F222` can be set *before* this code path executes — `sub_426570` flips it during per-module loading when it discovers Mercury-class metadata in an input. That is why the `elif (byte_2A5F222)` branch exists.
 
-### `byte_2A5F2C0` and `byte_2A5F2C1` -- *arch capability / output-is-archive*
+### `byte_2A5F2C0` and `byte_2A5F2C1` — *arch capability / output-is-archive*
 
 ```c
 byte_2A5F2C1 = sub_44E490(arch_string)            # line 293: output-is-archive flag
@@ -688,7 +688,7 @@ byte_2A5B52C = sub_44E4D0(arch_string)            # line 294: arch-supported fla
 
 All three are pure functions of the parsed `--arch` string. `byte_2A5F2C1` selects passthrough/archive mode in `dword_2A5B528` (line 367); `byte_2A5F2C0` controls a capability gate consulted by `main` and `sub_42AF40`.
 
-### `byte_2A5F2CD` -- *reserve-null-pointer effective flag*
+### `byte_2A5F2CD` — *reserve-null-pointer effective flag*
 
 ```c
 v15 = 0
@@ -699,7 +699,7 @@ byte_2A5F2CD = v15                                # line 337
 
 The "dont-" form wins outright if specified; reserve-null is only effective when reserve-null is passed *and* dont-reserve-null is not.
 
-### `byte_2A5F286` -- *partial-LTO active*
+### `byte_2A5F286` — *partial-LTO active*
 
 Set inside the LTO validation cascade at line 427 (LABEL_68):
 
@@ -723,7 +723,7 @@ if (link_time_opt):                               # line 371: byte_2A5F288 == 1
 
 `byte_2A5F286` is *only* set to 1 in this single branch. It also has separate writers in `main` (LTO alias propagation) and `sub_42A680` (kernel/variable-keep applier forces partial-LTO when keep lists are present).
 
-### `dword_2A5F314` -- *parsed SM number*
+### `dword_2A5F314` — *parsed SM number*
 
 ```c
 sm = sub_44E3E0(qword_2A5F318, 0, ...)            # line 290: parse "sm_75" -> 75
@@ -732,9 +732,9 @@ if (sm <= 0x13):                                  # line 291: sm <= 19 (deprecat
 dword_2A5F314 = sm                                # line 296
 ```
 
-The single most heavily-consumed derived global (31 read sites) -- it drives almost every architecture-conditional code path in the linker, from profile lookup to relocation type selection to ELF flag construction.
+The single most heavily-consumed derived global (31 read sites) — it drives almost every architecture-conditional code path in the linker, from profile lookup to relocation type selection to ELF flag construction.
 
-### `byte_2A5F220`, `byte_2A5F221`, `byte_2A5F229` -- *runtime-set companion flags*
+### `byte_2A5F220`, `byte_2A5F221`, `byte_2A5F229` — *runtime-set companion flags*
 
 These three live in the option-globals region but are written by `sub_426570` (the per-module link iterator), not by the CLI parser. Their decision trees fire while ingesting each input object:
 
@@ -753,7 +753,7 @@ byte_2A5F221 = 1                                  # marks the first module that 
 
 `byte_2A5F221` and `byte_2A5F229` form a two-stage gate that prevents the iterator from applying a module-derived override more than once. Documented here because they share BSS space and registration semantics with the true CLI globals, even though they are derived from input objects rather than argv.
 
-### `byte_2A5F244`, `byte_2A5F24C`, `dword_2A5F240`..`dword_2A5F274` -- *merge-consistency tracker*
+### `byte_2A5F244`, `byte_2A5F24C`, `dword_2A5F240`..`dword_2A5F274` — *merge-consistency tracker*
 
 Owned by `sub_42AF40` (the merge-consistency tracker called for each input module). Each `dword_2A5F26C/268/264/260/270` field implements the same state machine used to detect cross-module flag disagreement:
 
@@ -784,7 +784,7 @@ The merge tracker reads back into `sub_426CD0` (which feeds it as `--has-global-
 1. **Flags nvlink emits when invoking the embedded ptxas backend.** Constructed in `sub_426CD0` (LTO compile-driver) and consumed inside the embedded ptxas core at `sub_110*`/`sub_111*`. Representative strings:
    - `-link-lto`, `-inline-info`, `-has-global-host-info`, `--device-c`, `--force-device-c` (emitted by `sub_426CD0` based on parsed nvlink globals such as `byte_2A5F244`, `byte_2A5F286`, `byte_2A5F285`)
    - `-generate-line-info`, `--compile-only`, `--extensible-whole-program`, `--fast-compile`, `--device-debug`, `--blocks-are-clusters`, `--assume-extern-functions-do-not-sync`, `--compile-as-tools-patch`, `--legacy-bar-warp-wide-behavior`, `--first-reserved-rreg`, `--no-membermask-overlap`, `--print-potentially-overlapping-membermasks`, `--opportunistic-finalization-lvl`, `--binary-kind`, `--okey`, `--assyscall`, `-forcetext`, `-dump-perf-stats`, `-dump-perf-metrics-file`, `--ptx-length`, `-ptxlen` (all referenced only from ptxas-internal functions in the `0x1104000`-`0x1113000` range)
-2. **Format/diagnostic fragments that look like flags** -- e.g. `-arch=compute_%d`, `-cuda-api-version=%s`, `-split-compile=%d`, `-Ofast-compile=`, `-fma=`, `-ftz=`, `-prec-div=`, `-prec-sqrt=`. These are `sprintf` templates the linker uses to construct ptxas/cicc command lines from parsed option values.
+2. **Format/diagnostic fragments that look like flags** — e.g. `-arch=compute_%d`, `-cuda-api-version=%s`, `-split-compile=%d`, `-Ofast-compile=`, `-fma=`, `-ftz=`, `-prec-div=`, `-prec-sqrt=`. These are `sprintf` templates the linker uses to construct ptxas/cicc command lines from parsed option values.
 
 Users wanting to control any of the group-1 flags must pass them through `--Xptxas` (forwarded to the embedded ptxas) or `--Xnvvm` (forwarded to cicc), not directly to nvlink. The ptxas wiki documents the full ptxas option surface; see [LTO Option Forwarding](../lto/option-forwarding.md) for how forwarding is wired.
 
@@ -811,19 +811,19 @@ After `nvlink_parse_options` returns, the parser object itself is no longer refe
 
 ## Cross-References
 
-- [CLI Flags Reference](../config/cli-flags.md) -- complete alphabetically-sorted quick-reference table of all 68 flags with types, defaults, and visibility
-- [Pipeline Overview](overview.md) -- how parsed flags drive mode dispatch and the 14-phase pipeline
-- [Entry Point & Main](entry.md) -- `main()` calling context for `nvlink_parse_options`
-- [Mode Dispatch](mode-dispatch.md) -- how `dword_2A77DC0` (set during option parsing) selects the code path
-- [ptxas Option Forwarding](../config/ptxas-options.md) -- how `--Xptxas` options are forwarded to the embedded ptxas compiler
-- [LTO Option Forwarding](../lto/option-forwarding.md) -- how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas during LTO
-- [Dead Code Elimination](../linker/dead-code-elimination.md) -- how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE
-- [Debug Options](../debug/options.md) -- detailed semantics of `--debug`, `--suppress-debug-info`, `--edbg`
-- [Environment Variables](../config/env-vars.md) -- environment variables that supplement CLI options (e.g., `LIBRARY_PATH`)
-- [Architecture Profiles](../targets/arch-profiles.md) -- how `--arch` maps to the per-architecture vtable used throughout the pipeline
-- [Compatibility](../targets/compatibility.md) -- cross-architecture matching rules gated by the parsed SM number
-- **cicc wiki**: [CLI Flags](../../cicc/config/cli-flags.html) -- cicc compiler CLI flags. The parser framework (option entry struct, hash table lookup, argv scanning) is shared infrastructure between nvlink, cicc, and ptxas
-- **ptxas wiki**: [CLI Options](../../ptxas/config/cli-options.html) -- ptxas CLI options, using the same shared parser framework
+- [CLI Flags Reference](../config/cli-flags.md) — complete alphabetically-sorted quick-reference table of all 68 flags with types, defaults, and visibility
+- [Pipeline Overview](overview.md) — how parsed flags drive mode dispatch and the 14-phase pipeline
+- [Entry Point & Main](entry.md) — `main()` calling context for `nvlink_parse_options`
+- [Mode Dispatch](mode-dispatch.md) — how `dword_2A77DC0` (set during option parsing) selects the code path
+- [ptxas Option Forwarding](../config/ptxas-options.md) — how `--Xptxas` options are forwarded to the embedded ptxas compiler
+- [LTO Option Forwarding](../lto/option-forwarding.md) — how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas during LTO
+- [Dead Code Elimination](../linker/dead-code-elimination.md) — how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE
+- [Debug Options](../debug/options.md) — detailed semantics of `--debug`, `--suppress-debug-info`, `--edbg`
+- [Environment Variables](../config/env-vars.md) — environment variables that supplement CLI options (e.g., `LIBRARY_PATH`)
+- [Architecture Profiles](../targets/arch-profiles.md) — how `--arch` maps to the per-architecture vtable used throughout the pipeline
+- [Compatibility](../targets/compatibility.md) — cross-architecture matching rules gated by the parsed SM number
+- **cicc wiki**: [CLI Flags](../../cicc/config/cli-flags.html) — cicc compiler CLI flags. The parser framework (option entry struct, hash table lookup, argv scanning) is shared infrastructure between nvlink, cicc, and ptxas
+- **ptxas wiki**: [CLI Options](../../ptxas/config/cli-options.html) — ptxas CLI options, using the same shared parser framework
 
 ## Confidence Assessment
 

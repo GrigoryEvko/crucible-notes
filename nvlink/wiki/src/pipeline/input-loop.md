@@ -1,16 +1,16 @@
 # Input File Loop
 
-After option parsing and library resolution, nvlink enters its central input dispatch loop. This loop iterates a linked list of input file records (rooted at global `qword_2A5F330`), opens each file, reads a 56-byte header probe to classify the file format, extracts the file extension via `sub_462620` (path\_split), and dispatches to one of nine type-specific handlers. The loop is the single point where every input -- cubin, PTX, fatbin, NVVM IR, LTO IR, bitcode, archive, host ELF, or unknown file -- enters the linking pipeline. It lives inside the 58KB `main()` function at `0x409800`, not in a separate subroutine.
+After option parsing and library resolution, nvlink enters its central input dispatch loop. This loop iterates a linked list of input file records (rooted at global `qword_2A5F330`), opens each file, reads a 56-byte header probe to classify the file format, extracts the file extension via `sub_462620` (path\_split), and dispatches to one of nine type-specific handlers. The loop is the single point where every input — cubin, PTX, fatbin, NVVM IR, LTO IR, bitcode, archive, host ELF, or unknown file — enters the linking pipeline. It lives inside the 58KB `main()` function at `0x409800`, not in a separate subroutine.
 
 | | |
 |---|---|
 | **Location** | Inside `main()` at `0x409800`, decompiled lines 595--901 |
-| **Input list root** | `qword_2A5F330` -- head of the input file linked list |
-| **Raw input list** | `qword_2A5F328` -- the unprocessed input file list (before library resolution) |
+| **Input list root** | `qword_2A5F330` — head of the input file linked list |
+| **Raw input list** | `qword_2A5F328` — the unprocessed input file list (before library resolution) |
 | **Header probe size** | 56 bytes (`0x38`), read via `fread(ptr, 1, 0x38, fp)` |
 | **Extension parser** | `sub_462620` (path\_split): splits path into directory, basename, extension |
 | **Timing phase** | `"init"` timer running (started at line 593); the `"read"` timer is not started until after the LTO pass at line 1403 |
-| **Error gate** | `*(_BYTE *)(sub_44F410(v64) + 1)` -- error byte at offset +1 in TLS state; checked after the loop exits |
+| **Error gate** | `*(_BYTE *)(sub_44F410(v64) + 1)` — error byte at offset +1 in TLS state; checked after the loop exits |
 
 ## Complete Pseudocode
 
@@ -404,10 +404,10 @@ The probe is read with `fread(ptr, 1, 0x38, fp)` (line 612). If the file is shor
 
 | v80 value | Behavior |
 |---|---|
-| 0 (and no ferror) | Empty file -- falls through to LABEL\_131 ("ignore input") |
-| 0 (with ferror) | Read error -- `sub_487A90` archive check; fatal if not an archive |
-| 1--55 | Short read -- `sub_487A90` archive check; fatal if not an archive |
-| 56 | Full read -- proceeds to extension parsing at LABEL\_94 |
+| 0 (and no ferror) | Empty file — falls through to LABEL\_131 ("ignore input") |
+| 0 (with ferror) | Read error — `sub_487A90` archive check; fatal if not an archive |
+| 1--55 | Short read — `sub_487A90` archive check; fatal if not an archive |
+| 56 | Full read — proceeds to extension parsing at LABEL\_94 |
 
 ### Magic Number Table
 
@@ -426,7 +426,7 @@ When the extension is `.cubin` or `.o` and the 4-byte magic matches ELF (`0x464C
 
 | `e_machine` value | Meaning | Handler |
 |---|---|---|
-| 190 (`0xBE`) | `EM_CUDA` -- NVIDIA CUDA device ELF | Cubin handler |
+| 190 (`0xBE`) | `EM_CUDA` — NVIDIA CUDA device ELF | Cubin handler |
 | Any other value | Host ELF (x86-64, ARM, etc.) | Host ELF / "ignore input" path |
 
 The constant 190 is NVIDIA's registered ELF machine type for CUDA device code (`EM_CUDA`). The check is at line 654: `*(_WORD *)(sub_448360(ptr) + 18) != 190`. A secondary check at line 799 applies the same test for extensionless `.o` files that fall through to the content-based detection path.
@@ -444,7 +444,7 @@ After the header probe, nvlink calls `sub_462620` to decompose the file path int
 | **Allocation** | Output strings allocated via `sub_4307C0` (arena allocator) |
 | **Extension output** | Stored in local variable `s1` at line 607 |
 
-The extracted extension is the **primary classification signal** -- the dispatch chain tests it first, before any magic-number comparison. Magic is used as a **validation** within each extension branch (e.g., `.cubin` must pass the ELF magic check, `.fatbin` must match `0xBA55ED50`), not as the initial dispatch key.
+The extracted extension is the **primary classification signal** — the dispatch chain tests it first, before any magic-number comparison. Magic is used as a **validation** within each extension branch (e.g., `.cubin` must pass the ELF magic check, `.fatbin` must match `0xBA55ED50`), not as the initial dispatch key.
 
 Extension strings recognized by the dispatch logic:
 
@@ -483,7 +483,7 @@ The SASS cubin path runs the FNLZR (Finalizer) post-link transform via `sub_4275
 | | |
 |---|---|
 | **Detection** | Extension `"ptx"` (three-byte character test at lines 681--690) |
-| **Loader** | `sub_476BF0(v74, 1)` -- load file with null termination |
+| **Loader** | `sub_476BF0(v74, 1)` — load file with null termination |
 | **Handler** | `sub_4BD760` (ptxas JIT compilation) |
 | **Timing** | If `qword_2A5F290`: `sub_45CCD0` (start) -> ptxas -> `sub_45CCE0` (stop) -> `sub_432340` (CSV row) |
 | **Verbose-keep** | If `byte_2A5F29B`: `sub_42A190` writes compiled cubin to disk |
@@ -499,7 +499,7 @@ The `sub_429BA0` call (line 698) serializes the accumulated `-Xptxas` option lis
 |---|---|
 | **Detection** | Extension `"fatbin"` (inline 7-byte memcmp at lines 737--748) |
 | **Validation** | `ptr[0] == -1168773808` (i.e., first 4 bytes == `0xBA55ED50`) |
-| **Loader** | `sub_476BF0(v74, 0)` -- load file in binary mode |
+| **Loader** | `sub_476BF0(v74, 0)` — load file in binary mode |
 | **Handler** | `sub_42AF40` (extract\_and\_process\_fatbin\_member) |
 | **Call signature** | `sub_42AF40(buf, 0, path, elfw, 0, 0, 0, &v353, &v354)` |
 | **Error string** | `"fatbin wrong format?"` |
@@ -514,7 +514,7 @@ When called from the archive path (see section 7), the 5th parameter is `1` (fro
 |---|---|
 | **Detection** | `strcmp(s1, "nvvm") == 0` at line 761 |
 | **Prerequisite** | `byte_2A5F288` (LTO flag) must be set; otherwise fatal: `"should only see nvvm files when -lto"` |
-| **Loader** | `sub_476BF0(v74, 0)` -- binary read |
+| **Loader** | `sub_476BF0(v74, 0)` — binary read |
 | **Handler** | `sub_427A10` (register\_ir\_module) |
 | **Call signature** | `sub_427A10(elfw, buf, size, path)` |
 | **Verbose output** | `"nvlink -lto-add-module %s.nvvm"` (inside sub\_427A10) |
@@ -524,7 +524,7 @@ When called from the archive path (see section 7), the 5th parameter is `1` (fro
 | | |
 |---|---|
 | **Detection** | `strcmp(v84, "ltoir") == 0` at line 761 (same condition as NVVM) |
-| **Handler** | `sub_427A10` -- identical to NVVM IR |
+| **Handler** | `sub_427A10` — identical to NVVM IR |
 | **Behavior** | LTO IR is NVIDIA's name for NVVM IR modules produced by cicc with `-dlto` or `-lto` during separate compilation. The `.ltoir` extension is a convention; the content is NVVM bitcode. |
 
 Both `.nvvm` and `.ltoir` share the same code path (lines 761--778). The `strcmp` checks are ORed together.
@@ -541,14 +541,14 @@ Both `.nvvm` and `.ltoir` share the same code path (lines 761--778). The `strcmp
 
 | | |
 |---|---|
-| **Detection** | `sub_487A90(ptr, 56)` returns true -- content matches `"!<arch>\n"` or `"!<thin>\n"` magic |
+| **Detection** | `sub_487A90(ptr, 56)` returns true — content matches `"!<arch>\n"` or `"!<thin>\n"` magic |
 | **Duplicate check** | Walks `qword_2A5F2F0` (set of already-processed archive paths) via `sub_464A80`/`sub_464A90`/`sub_464AA0`/`sub_464AC0` and `sub_4632F0` (path match) |
 | **cudadevrt deferral** | If `v353 == 0` (no modules registered yet) and `strstr(v74, "cudadevrt")` matches, the archive is skipped (line 854, 895--900) |
-| **Loader** | `sub_476BF0(v74, 0)` -- binary read of entire archive |
+| **Loader** | `sub_476BF0(v74, 0)` — binary read of entire archive |
 | **Open** | `sub_4BDAC0(&v363, v367, v368, v74)` -> `sub_487C20` |
 | **Iterate** | `while(1)`: `sub_4BDAF0(&s1, v363)` -> `sub_487E10`; break when `s1 == NULL` |
-| **Per-member classify** | `sub_4BDB70(ptr, s1, v316)` -- detects fatbin/cubin/host content |
-| **Per-member dispatch** | `sub_42AF40(ptr[0], s1, v316, v55, 1, &v365, &v355, &v353, &v354)` -- note `from_archive = 1` |
+| **Per-member classify** | `sub_4BDB70(ptr, s1, v316)` — detects fatbin/cubin/host content |
+| **Per-member dispatch** | `sub_42AF40(ptr[0], s1, v316, v55, 1, &v365, &v355, &v353, &v354)` — note `from_archive = 1` |
 | **Close** | `sub_4BDB30(v363)` -> `sub_488200` |
 | **Record processed** | `sub_4644C0(v74, &qword_2A5F2F0)` |
 
@@ -558,10 +558,10 @@ Both `.nvvm` and `.ltoir` share the same code path (lines 761--778). The `strcmp
 
 | | |
 |---|---|
-| **Detection (`.so`)** | `s1[0]=='s' && s1[1]=='o' && s1[2]=='\0'` at line 793 -- immediately ignored |
+| **Detection (`.so`)** | `s1[0]=='s' && s1[1]=='o' && s1[2]=='\0'` at line 793 — immediately ignored |
 | **Detection (`.o`)** | Passes `sub_43D9B0` (is\_relocatable\_elf) AND `s1[0]=='o' && s1[1]=='\0'` AND `e_machine == 190` routes to cubin handler. Otherwise routes to host ELF path |
 | **Host ELF loader** | `sub_476E80` (thunk -> `sub_43DFC0`) at `0x476E80` |
-| **Content probe** | `sub_4BDB70(ptr, v194, v74)` -- checks for embedded fatbin sections |
+| **Content probe** | `sub_4BDB70(ptr, v194, v74)` — checks for embedded fatbin sections |
 | **If fatbin found** | `sub_42AF40(v367, v194, v74, v55, 0, 0, 0, &v353, &v354)` |
 | **If pure host** | `sub_4298C0(v194, v74, &v354)` (extract module IDs, only when `qword_2A5F2E0` is set) |
 | **Cleanup** | `sub_476EA0(v194)` (free host ELF buffer) |
@@ -588,7 +588,7 @@ Errors during input processing are handled by the diagnostic infrastructure (`su
 
 3. **elfLink error codes**: Every archive/member operation returns an integer status that is checked by `sub_4297B0` (check\_elflink\_error). Non-zero codes are translated through `dword_1D48A50` and may trigger a fatal diagnostic.
 
-4. **Validation failures**: `sub_426570` (validate\_arch\_and\_merge) returns a boolean. On failure (`return 0`), the cubin is freed via `sub_43D990` at LABEL\_185 and processing continues to the next input. This is a soft failure -- an arch mismatch on one input does not block other inputs from being processed.
+4. **Validation failures**: `sub_426570` (validate\_arch\_and\_merge) returns a boolean. On failure (`return 0`), the cubin is freed via `sub_43D990` at LABEL\_185 and processing continues to the next input. This is a soft failure — an arch mismatch on one input does not block other inputs from being processed.
 
 ## QUIRK: `--whole-archive` Is Not a Flag (It Is the Only Mode)
 
@@ -635,9 +635,9 @@ The verbose flag is `v55[64] & 1` (bit 0 of the elfw flags byte at offset 64). T
 
 | Line | Condition | Output |
 |---|---|---|
-| 606 | `v55[64] & 1` | `"link input %s\n"` -- printed for every input file |
-| 844--845 | `v55[64] & 1` | `"ignore input %s\n"` -- printed when a file is skipped |
-| 941 | `v55[64] & 1` | `"compile linked lto ir:\n"` -- printed at LTO entry after loop |
+| 606 | `v55[64] & 1` | `"link input %s\n"` — printed for every input file |
+| 844--845 | `v55[64] & 1` | `"ignore input %s\n"` — printed when a file is skipped |
+| 941 | `v55[64] & 1` | `"compile linked lto ir:\n"` — printed at LTO entry after loop |
 
 Inside the per-format handlers, additional verbose output is controlled by the same flag:
 - Fatbin extraction (`sub_42AF40`): `"nvlink -extract %s -m%d -arch=%s -o %s"`
@@ -674,7 +674,7 @@ The diagnostic string `"no module_id for %s"` fires when a cubin lacks the expec
 
 ## Fatbin Member Extraction Detail
 
-The fatbin handler `sub_42AF40` (11,143 bytes / 521 lines) is the most complex dispatch path. It deserves special attention because fatbin is the most common nvlink input format in practice -- `nvcc` packages compiled objects into fatbin containers by default.
+The fatbin handler `sub_42AF40` (11,143 bytes / 521 lines) is the most complex dispatch path. It deserves special attention because fatbin is the most common nvlink input format in practice — `nvcc` packages compiled objects into fatbin containers by default.
 
 The internal type field in fatbin member headers maps to:
 
@@ -806,42 +806,42 @@ Additional behaviors:
 | `0x409800` | 57,970 B | `main` | Contains the input loop inline | 595--938 |
 | `0x462620` | 3,579 B | `path_split` | Decomposes file path into dir/base/ext | 634 |
 | `0x462C10` | < 2 KB | path helper | Auxiliary path operation | 567 |
-| `0x462550` | -- | path helper | Secondary path utility | -- |
+| `0x462550` | — | path helper | Secondary path utility | — |
 | `0x43D970` | 19 B | `is_elf` | Checks 4-byte ELF magic `0x7F454C46` | 652, 799 |
 | `0x43D9B0` | 42 B | `is_relocatable_elf` | Tests `e_type == ET_REL` | 795 |
 | `0x43DA40` | 52 B | `is_sass_cubin` | Checks SASS flag in `e_flags` | 656, 726, 824 |
-| `0x43D990` | -- | `arena_free_elf` | Frees cubin buffer | 670 |
+| `0x43D990` | — | `arena_free_elf` | Frees cubin buffer | 670 |
 | `0x43E100` | 232 B | `load_cubin_from_file` | Elf32 file loader | 664, 830 |
-| `0x448360` | -- | `get_elf_header` | Returns pointer to ELF header from probe | 654, 799 |
+| `0x448360` | — | `get_elf_header` | Returns pointer to ELF header from probe | 654, 799 |
 | `0x426570` | 7,427 B | `validate_arch_and_merge` | Validates cubin arch, creates elfw, begins merge | 666, 724, 730, 832 |
 | `0x42AF40` | 11,143 B | `extract_and_process_fatbin` | Fatbin container extraction and per-member dispatch | 758, 809, 871 |
 | `0x42A680` | 11,939 B | `register_module_for_linking` | Post-dispatch module registration | 676 |
-| `0x42A190` | -- | `save_cubin_to_disk` | Writes cubin to file (verbose-keep mode) | 719 |
-| `0x427A10` | -- | `register_ir_module` | Registers NVVM/LTO IR for batch LTO compilation | 777, 924 |
+| `0x42A190` | — | `save_cubin_to_disk` | Writes cubin to file (verbose-keep mode) | 719 |
+| `0x427A10` | — | `register_ir_module` | Registers NVVM/LTO IR for batch LTO compilation | 777, 924 |
 | `0x4275C0` | 3,989 B | `fnlzr_post_link` | FNLZR (Finalizer) entry for Mercury/SASS | 727, 835 |
-| `0x429BA0` | -- | `build_ptxas_argv` | Serializes `-Xptxas` option list | 698 |
-| `0x4BD760` | -- | `ptxas_jit_compile` | Compiles PTX to SASS cubin via embedded ptxas | 699 |
-| `0x4BD0A0` | -- | `fatbin_extract_member` | Extracts individual object from fatbin container | inside sub\_42AF40 |
-| `0x4BD240` | -- | `ptxas_compile_fatbin_variant` | PTX compilation from within fatbin extraction | inside sub\_42AF40 |
+| `0x429BA0` | — | `build_ptxas_argv` | Serializes `-Xptxas` option list | 698 |
+| `0x4BD760` | — | `ptxas_jit_compile` | Compiles PTX to SASS cubin via embedded ptxas | 699 |
+| `0x4BD0A0` | — | `fatbin_extract_member` | Extracts individual object from fatbin container | inside sub\_42AF40 |
+| `0x4BD240` | — | `ptxas_compile_fatbin_variant` | PTX compilation from within fatbin extraction | inside sub\_42AF40 |
 | `0x476BF0` | 384 B | `load_file` | Opens file, reads entire content into arena buffer | 693, 753, 773, 856 |
 | `0x476E80` | 7 B | `load_host_elf` | Thunk -> `sub_43DFC0` | 802 |
 | `0x476EA0` | 7 B | `free_host_elf` | Thunk -> `sub_43D990` (arena\_free) | 821 |
-| `0x487A90` | -- | `is_archive` | Tests `"!<arch>\n"` / `"!<thin>\n"` magic | 629, 789 |
+| `0x487A90` | — | `is_archive` | Tests `"!<arch>\n"` / `"!<thin>\n"` magic | 629, 789 |
 | `0x4BDAC0` | 48 B | `archive_open` | Opens `.a` archive, allocates iterator context | 858 |
 | `0x4BDAF0` | 48 B | `archive_next` | Advances to next member in archive | 862 |
 | `0x4BDB30` | 48 B | `archive_close` | Closes archive, destroys context | 881 |
 | `0x4BDB60` | 8 B | `archive_get_path` | Returns current member's `"archive:member"` path | 866 |
-| `0x4BDB70` | -- | `classify_member` | Content probe for archive/host-ELF members | 803, 867 |
+| `0x4BDB70` | — | `classify_member` | Content probe for archive/host-ELF members | 803, 867 |
 | `0x4298C0` | 476 B | `extract_module_ids` | Parses `"def <name>\0"` entries from host ELF | 816, 877 |
-| `0x4297B0` | -- | `check_elflink_error` | Tests elfLink return code, emits fatal on error | 709, 805, 859, etc. |
-| `0x4644C0` | -- | `list_append` / `set_insert` | Appends node to linked list / set | 885, 938 |
-| `0x464A80` | -- | `set_begin` | Returns iterator to first element of set | 850 |
-| `0x464A90` | -- | `set_is_end` | Tests if iterator is past end | 852 |
-| `0x464AA0` | -- | `set_next` | Advances set iterator | 850 |
-| `0x464AC0` | -- | `set_get_value` | Returns value at current iterator position | 891 |
-| `0x4632F0` | -- | `path_matches` | Compares two file paths | 892 |
+| `0x4297B0` | — | `check_elflink_error` | Tests elfLink return code, emits fatal on error | 709, 805, 859, etc. |
+| `0x4644C0` | — | `list_append` / `set_insert` | Appends node to linked list / set | 885, 938 |
+| `0x464A80` | — | `set_begin` | Returns iterator to first element of set | 850 |
+| `0x464A90` | — | `set_is_end` | Tests if iterator is past end | 852 |
+| `0x464AA0` | — | `set_next` | Advances set iterator | 850 |
+| `0x464AC0` | — | `set_get_value` | Returns value at current iterator position | 891 |
+| `0x4632F0` | — | `path_matches` | Compares two file paths | 892 |
 | `0x431000` | 4.7 KB | `arena_free` | Arena deallocator | 692, 752, 763, 782, 801, 839, 849, 872 |
-| `0x426AA0` | -- | `arena_alloc` | Arena allocator | 925, 934 |
+| `0x426AA0` | — | `arena_alloc` | Arena allocator | 925, 934 |
 | `0x44F410` | ~2 KB | `tls_get_state` | TLS state block (error byte at offset +1) | 909 |
 | `0x467460` | 1,552 B | `diag_emit` | Diagnostic emission entry point | 610, 653, 655, 751, 767, 785, 913 |
 | `0x45CCD0` | 12 B | `timing_start` | Begin profiling timer | 696, 984 |
@@ -872,25 +872,25 @@ Additional behaviors:
 
 ## Cross-References
 
-- [File Type Detection](../input/file-type-detection.md) -- Detailed coverage of the 56-byte probe, magic number classification, and the extension-vs-content dispatch priority
-- [Cubin Loading](../input/cubin-loading.md) -- `sub_43D970` (is\_elf), `sub_43DA40` (is\_sass\_cubin), `sub_43E100` (load\_cubin\_from\_file), `sub_43D9B0` (is\_relocatable)
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- Deep dive into `sub_42AF40` and fatbin container format, member type codes, LZ4 decompression
-- [Archive Processing](../input/archives.md) -- Archive member iteration (`sub_4BDAC0`/`sub_4BDAF0`/`sub_4BDB30`/`sub_4BDB60`), whole-archive semantics, thin archive support
-- [PTX Input & JIT](../input/ptx-input.md) -- The embedded ptxas compilation path via `sub_4BD760`, null-terminated loading, profiling
-- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) -- IR module registration via `sub_427A10` and LTO prerequisites
-- [Host ELF Embedding](../input/host-elf.md) -- Host `.o`/`.so` handling, embedded fatbin detection, module-id extraction via `sub_4298C0`
-- [ELF Parsing](../input/elf-parsing.md) -- Low-level ELF header access functions used by the probe
-- [Entry Point & Main](entry.md) -- The containing `main()` function and overall pipeline structure
-- [Mode Dispatch](mode-dispatch.md) -- How the overall compilation mode affects dispatch behavior
-- [Library Resolution](library-resolution.md) -- How the input list at `qword_2A5F330` is constructed from `-l` flags and search paths
-- [CLI Options](cli-options.md) -- `--verbose`, `--verbose-keep`, `-lto`, `--register-link-binaries` and other flags affecting input processing
-- [Merge Phase](merge.md) -- Where cubin objects go after dispatch; the `v353` module list is the merge input
-- [LTO Overview](../lto/overview.md) -- The batch LTO compilation that consumes registered IR modules after the input loop
-- [Mercury / FNLZR](../mercury/fnlzr.md) -- `sub_4275C0` post-link binary rewriter invoked for SASS cubins on sm > 89
-- [Symbol Resolution](../linker/symbol-resolution.md) -- How input order affects first-definition-wins and weak-vs-strong resolution
-- [Error Reporting](../infra/error-reporting.md) -- `sub_467460` (diag\_emit) and `sub_44F410` (TLS error state)
-- [Timing Infrastructure](../infra/timing.md) -- `sub_45CCD0`/`sub_45CCE0`/`sub_432340` profiling calls during PTX compilation
-- [Memory Arenas](../infra/memory-arenas.md) -- `sub_431000` (arena\_free) and `sub_426AA0`/`sub_4307C0` (arena\_alloc) used throughout
+- [File Type Detection](../input/file-type-detection.md) — Detailed coverage of the 56-byte probe, magic number classification, and the extension-vs-content dispatch priority
+- [Cubin Loading](../input/cubin-loading.md) — `sub_43D970` (is\_elf), `sub_43DA40` (is\_sass\_cubin), `sub_43E100` (load\_cubin\_from\_file), `sub_43D9B0` (is\_relocatable)
+- [Fatbin Extraction](../input/fatbin-extraction.md) — Deep dive into `sub_42AF40` and fatbin container format, member type codes, LZ4 decompression
+- [Archive Processing](../input/archives.md) — Archive member iteration (`sub_4BDAC0`/`sub_4BDAF0`/`sub_4BDB30`/`sub_4BDB60`), whole-archive semantics, thin archive support
+- [PTX Input & JIT](../input/ptx-input.md) — The embedded ptxas compilation path via `sub_4BD760`, null-terminated loading, profiling
+- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) — IR module registration via `sub_427A10` and LTO prerequisites
+- [Host ELF Embedding](../input/host-elf.md) — Host `.o`/`.so` handling, embedded fatbin detection, module-id extraction via `sub_4298C0`
+- [ELF Parsing](../input/elf-parsing.md) — Low-level ELF header access functions used by the probe
+- [Entry Point & Main](entry.md) — The containing `main()` function and overall pipeline structure
+- [Mode Dispatch](mode-dispatch.md) — How the overall compilation mode affects dispatch behavior
+- [Library Resolution](library-resolution.md) — How the input list at `qword_2A5F330` is constructed from `-l` flags and search paths
+- [CLI Options](cli-options.md) — `--verbose`, `--verbose-keep`, `-lto`, `--register-link-binaries` and other flags affecting input processing
+- [Merge Phase](merge.md) — Where cubin objects go after dispatch; the `v353` module list is the merge input
+- [LTO Overview](../lto/overview.md) — The batch LTO compilation that consumes registered IR modules after the input loop
+- [Mercury / FNLZR](../mercury/fnlzr.md) — `sub_4275C0` post-link binary rewriter invoked for SASS cubins on sm > 89
+- [Symbol Resolution](../linker/symbol-resolution.md) — How input order affects first-definition-wins and weak-vs-strong resolution
+- [Error Reporting](../infra/error-reporting.md) — `sub_467460` (diag\_emit) and `sub_44F410` (TLS error state)
+- [Timing Infrastructure](../infra/timing.md) — `sub_45CCD0`/`sub_45CCE0`/`sub_432340` profiling calls during PTX compilation
+- [Memory Arenas](../infra/memory-arenas.md) — `sub_431000` (arena\_free) and `sub_426AA0`/`sub_4307C0` (arena\_alloc) used throughout
 
 > For ptxas pipeline internals (the embedded PTX-to-SASS JIT compiler invoked for `.ptx` inputs via `sub_4BD760`), see the [ptxas wiki](../../ptxas/pipeline/overview.html).
 
@@ -903,18 +903,18 @@ Additional behaviors:
 | Inline extension comparisons for "cubin" (6-byte), "fatbin" (7-byte), "ptx" (3-char) | **HIGH** | Visible as hand-coded memcmp/character-test loops at lines 639--650, 737--748, 681--690 |
 | strcmp for "nvvm" and "ltoir" at line 761 | **HIGH** | `!strcmp(s1, "nvvm") \|\| !strcmp(v84, "ltoir")` directly visible |
 | Linked list node: +0 = next, +8 = path | **HIGH** | `v73[1]` at line 601 (path), `*v73` at line 905 (next) |
-| Whole-archive semantics (unconditional member iteration) | **HIGH** | Lines 860--880: `while(1) { archive_next; if (!s1) break; sub_42AF40(...); }` -- no symbol check |
+| Whole-archive semantics (unconditional member iteration) | **HIGH** | Lines 860--880: `while(1) { archive_next; if (!s1) break; sub_42AF40(...); }` — no symbol check |
 | cudadevrt deferral at lines 854 and 895--900 | **HIGH** | `if (v353 \|\| !strstr(v74, "cudadevrt"))` visible at line 854; `if (!v353) { if (strstr(...)) goto LABEL_131; }` at 895--900 |
 | libcudadevrt IR injection at lines 922--938 | **HIGH** | `sub_427A10(v55, v365, v366, "libcudadevrt")` at 924; 80-byte alloc, `strcpy(v111, "libcudadevrt")`, `sub_4644C0(v108, &v353)` at 925--938 |
 | Error accumulation: error byte at TLS+1, checked at line 909 | **HIGH** | `*(_BYTE *)(sub_44F410(v64) + 1)` at line 909 -> `goto LABEL_271` -> `exit(-1)` at line 1685 |
 | `sub_4297B0` is elfLink error checker | **HIGH** | Called after every archive/member operation with return value and filename; pattern matches error-check-and-emit |
-| Mercury FNLZR condition: sm > 89 at line 721 | **HIGH** | `if ((unsigned int)dword_2A5F314 <= 0x59) goto LABEL_185` -- `0x59` = 89 decimal |
+| Mercury FNLZR condition: sm > 89 at line 721 | **HIGH** | `if ((unsigned int)dword_2A5F314 <= 0x59) goto LABEL_185` — `0x59` = 89 decimal |
 | Archive dedup set at `qword_2A5F2F0` | **HIGH** | `sub_464A80(qword_2A5F2F0)` at line 850, `sub_4644C0(v74, &qword_2A5F2F0)` at 885 |
 | `v55[64] & 1` is verbose flag | **HIGH** | Controls `fprintf(stderr, ...)` at lines 606, 841, 940; matches `--verbose` CLI option |
 | `v55[64] & 0x20` is timing trace flag | **HIGH** | Controls `sub_4279C0` calls at lines 590, 1402, 1425 etc.; documented in timing.md |
 | 80-byte module record for libcudadevrt | **HIGH** | `sub_426AA0(80)` at line 925, followed by 20-dword zeroing loop |
 | `.so` extension silently ignored | **HIGH** | Lines 793: `*s1 != 115 \|\| s1[1] != 111 \|\| s1[2]` (ASCII 's','o',NUL) -> skip |
-| `.bc` always fatal | **HIGH** | Line 785: `sub_467460(&unk_2A5B670, "should never see bc files")` -- unconditional |
+| `.bc` always fatal | **HIGH** | Line 785: `sub_467460(&unk_2A5B670, "should never see bc files")` — unconditional |
 | PTX timing via `qword_2A5F290` | **HIGH** | Lines 695--715: `if (qword_2A5F290) timing_start` / `timing_stop` / `csv_write` |
 | All function addresses in Key Function Map table | **HIGH** | All verified against decompiled/ directory files |
 | Fatbin member type codes (1=PTX, 8=NVVM, 16=mercury) | **MEDIUM** | Structural match from `sub_42AF40` decompiled code; type codes inferred from dispatch branches |

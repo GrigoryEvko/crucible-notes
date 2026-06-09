@@ -188,7 +188,7 @@ A simple switch-based lookup (`sub_1D16C60` at `0x1D16C60`, 80 lines) that maps 
 | 21 | `DW_FORM_ref_udata` | ULEB128 CU-relative reference |
 | 22 | `DW_FORM_indirect` | ULEB128 form code followed by actual value |
 
-This covers all forms defined in DWARF-2 and DWARF-3. Form code 2 (`DW_FORM_block2` gap in the standard) is not handled -- the standard reserves but does not assign it. Unknown form codes produce a diagnostic to stderr:
+This covers all forms defined in DWARF-2 and DWARF-3. Form code 2 (`DW_FORM_block2` gap in the standard) is not handled — the standard reserves but does not assign it. Unknown form codes produce a diagnostic to stderr:
 
 ```text
 Unknown FORM value %d
@@ -256,13 +256,13 @@ The attribute name lookup (`sub_1D16DF0` at `0x1D16DF0`, 330 lines) is a deeply 
 
 | Code (decimal) | Code (hex) | Name | Vendor | Unique Handling |
 |---|---|---|---|---|
-| 8199 | `0x2007` | `DW_AT_MIPS_linkage_name` | MIPS/GCC | Yes -- name priority, pubnames/pubtypes |
-| 8500 | `0x2134` | `DW_AT_GNU_pubnames` | GNU | No -- name lookup only |
-| 9987 | `0x2703` | `DW_AT_NV_general_flags` | NVIDIA | No -- name lookup only |
-| 14848 | `0x3A00` | `DW_AT_PGI_lbase` | PGI | Yes -- DW_OP expression decoding |
-| 14849 | `0x3A01` | `DW_AT_PGI_soffset` | PGI | Yes -- DW_OP expression decoding |
-| 14850 | `0x3A02` | `DW_AT_PGI_lstride` | PGI | Yes -- DW_OP expression decoding |
-| 16383 | `0x3FFF` | `DW_AT_hi_user` | Standard | No -- sentinel value |
+| 8199 | `0x2007` | `DW_AT_MIPS_linkage_name` | MIPS/GCC | Yes — name priority, pubnames/pubtypes |
+| 8500 | `0x2134` | `DW_AT_GNU_pubnames` | GNU | No — name lookup only |
+| 9987 | `0x2703` | `DW_AT_NV_general_flags` | NVIDIA | No — name lookup only |
+| 14848 | `0x3A00` | `DW_AT_PGI_lbase` | PGI | Yes — DW_OP expression decoding |
+| 14849 | `0x3A01` | `DW_AT_PGI_soffset` | PGI | Yes — DW_OP expression decoding |
+| 14850 | `0x3A02` | `DW_AT_PGI_lstride` | PGI | Yes — DW_OP expression decoding |
+| 16383 | `0x3FFF` | `DW_AT_hi_user` | Standard | No — sentinel value |
 
 Unknown attribute codes produce a diagnostic to stderr:
 
@@ -272,13 +272,13 @@ Unknown Attribute value %d
 
 The if/else tree structure in `sub_1D16DF0` (not a compiler-generated switch table) suggests this was hand-written or came from a legacy code generator. The vendor attribute codes fall in the DWARF user-defined ranges: `0x2000`--`0x2FFF` for vendor-specific use (MIPS, GNU, NVIDIA), and `0x3A00`--`0x3FFF` for the upper user range (PGI, sentinel).
 
-### DW_AT_MIPS_linkage_name (0x2007) -- Linkage Name Priority
+### DW_AT_MIPS_linkage_name (0x2007) — Linkage Name Priority
 
 `DW_AT_MIPS_linkage_name` is the most extensively handled vendor attribute in the DWARF subsystem. Originally defined by SGI for the MIPS ABI, it was adopted by GCC and Clang as the de facto standard for encoding the mangled (C++ linkage) name of a symbol before DWARF-4 introduced `DW_AT_linkage_name` (code 0x76). The CUDA toolchain emits it in device ELF objects for mangled kernel names.
 
 nvlink gives `DW_AT_MIPS_linkage_name` **priority over `DW_AT_name`** when extracting the canonical name of a DIE. This affects three functions:
 
-**DIE tree walker (`sub_1D1BE80`)**: When processing `DW_TAG_subprogram` (tag 46), the walker has a special check at the attribute dispatch level. If the current attribute is `DW_AT_name` (3) and the previous attribute stored in the DIE context (offset `+48`) was `DW_AT_MIPS_linkage_name` (8199), the walker **skips** the `DW_AT_name` extraction entirely -- the linkage name already captured is the canonical identifier. Conversely, if the attribute *is* `DW_AT_MIPS_linkage_name`, the walker proceeds directly to the name extraction path. The pseudocode for the relevant check:
+**DIE tree walker (`sub_1D1BE80`)**: When processing `DW_TAG_subprogram` (tag 46), the walker has a special check at the attribute dispatch level. If the current attribute is `DW_AT_name` (3) and the previous attribute stored in the DIE context (offset `+48`) was `DW_AT_MIPS_linkage_name` (8199), the walker **skips** the `DW_AT_name` extraction entirely — the linkage name already captured is the canonical identifier. Conversely, if the attribute *is* `DW_AT_MIPS_linkage_name`, the walker proceeds directly to the name extraction path. The pseudocode for the relevant check:
 
 ```c
 // Inside DIE tree walker, attribute dispatch for DW_TAG_subprogram (46):
@@ -304,11 +304,11 @@ if (attr == DW_AT_MIPS_linkage_name ||
 
 This means: if a DIE has both `DW_AT_name` and `DW_AT_MIPS_linkage_name`, the mangled linkage name always wins. The `DW_AT_name` is only used as a fallback when no linkage name is present. After capturing via `DW_AT_MIPS_linkage_name`, encountering `DW_AT_name` has no effect on the stored name. This guarantees that pubnames/pubtypes entries use the mangled C++ name when available, which matches what host-side linkers and debuggers expect.
 
-### DW_AT_GNU_pubnames (0x2134) -- GCC .debug_gnu_pubnames
+### DW_AT_GNU_pubnames (0x2134) — GCC .debug_gnu_pubnames
 
-`DW_AT_GNU_pubnames` is a boolean attribute added to `DW_TAG_compile_unit` DIEs by GCC when the `.debug_gnu_pubnames` section is present. This is the GCC extension for accelerated name lookup (later standardized as `.debug_names` in DWARF-5). nvlink recognizes the attribute name for display in verbose mode but does **not** perform any special processing on its value -- the attribute is decoded generically through the form value reader like any other boolean or constant. The `.debug_pubnames` section itself is carried through as an opaque blob in the Mercury output (`.nv.merc.debug_pubnames`).
+`DW_AT_GNU_pubnames` is a boolean attribute added to `DW_TAG_compile_unit` DIEs by GCC when the `.debug_gnu_pubnames` section is present. This is the GCC extension for accelerated name lookup (later standardized as `.debug_names` in DWARF-5). nvlink recognizes the attribute name for display in verbose mode but does **not** perform any special processing on its value — the attribute is decoded generically through the form value reader like any other boolean or constant. The `.debug_pubnames` section itself is carried through as an opaque blob in the Mercury output (`.nv.merc.debug_pubnames`).
 
-### DW_AT_NV_general_flags (0x2703) -- NVIDIA GPU Function Properties
+### DW_AT_NV_general_flags (0x2703) — NVIDIA GPU Function Properties
 
 `DW_AT_NV_general_flags` at code 9987 (`0x2703`) is NVIDIA's sole custom DWARF attribute in the vendor extension range. It is used by the CUDA toolchain (cicc/ptxas) to annotate `DW_TAG_subprogram` DIEs with GPU-specific function properties in device ELF `.debug_info` sections.
 
@@ -319,9 +319,9 @@ Despite being the only NVIDIA-proprietary attribute, `DW_AT_NV_general_flags` ha
 - Not referenced by the pubnames or pubtypes emitters
 - Passed through opaquely to the Mercury output
 
-The exact bit layout of the flags value was not determined from decompilation of nvlink alone -- the flags are produced by cicc and consumed by cuda-gdb and other NVIDIA debug tools. The attribute code `0x2703` falls in the `0x2000`--`0x3FFF` user-defined range (specifically in the `0x2700`--`0x27FF` sub-range that appears to be reserved for NVIDIA).
+The exact bit layout of the flags value was not determined from decompilation of nvlink alone — the flags are produced by cicc and consumed by cuda-gdb and other NVIDIA debug tools. The attribute code `0x2703` falls in the `0x2000`--`0x3FFF` user-defined range (specifically in the `0x2700`--`0x27FF` sub-range that appears to be reserved for NVIDIA).
 
-### PGI Extensions (0x3A00--0x3A02) -- Fortran Array Descriptors
+### PGI Extensions (0x3A00--0x3A02) — Fortran Array Descriptors
 
 The three PGI attributes reflect nvlink's lineage from the PGI (Portland Group / NVIDIA HPC SDK) compiler toolchain. They encode Fortran array descriptor components:
 
@@ -344,7 +344,7 @@ if (attr == DW_AT_location       ||   // 2
 }
 ```
 
-This means the PGI array descriptor attributes are treated as first-class location expressions by the DWARF subsystem -- their block values are decoded through the full `DW_OP_*` interpreter (`sub_1D1A920`), producing human-readable location descriptions in verbose mode. This is the same treatment given to standard location attributes like `DW_AT_location` and `DW_AT_data_location`.
+This means the PGI array descriptor attributes are treated as first-class location expressions by the DWARF subsystem — their block values are decoded through the full `DW_OP_*` interpreter (`sub_1D1A920`), producing human-readable location descriptions in verbose mode. This is the same treatment given to standard location attributes like `DW_AT_location` and `DW_AT_data_location`.
 
 ## DW_OP Expression Decoder: sub_1D1A920
 
@@ -433,7 +433,7 @@ int64_t dwarf_read_form_value(
 | `DW_FORM_ref2` (18) | 2 | `sub_1D18B20` | `<%x>` |
 | `DW_FORM_ref4` (19) | 4 | `sub_1D17560` | `<%x>` |
 | `DW_FORM_ref8` (20) | 8 | `sub_1D192F0` | `<%llx>` |
-| `DW_FORM_indirect` (22) | -- | -- | Fatal: `exit(1)` |
+| `DW_FORM_indirect` (22) | — | — | Fatal: `exit(1)` |
 
 For block forms (`DW_FORM_block1`, `DW_FORM_block4`, `DW_FORM_block`), after printing the hex dump the reader also invokes the DW_OP expression decoder (`sub_1D1A920`) to produce a human-readable interpretation. The decoded expression is appended in parentheses: `(%s)`.
 
@@ -570,15 +570,15 @@ The LEB128 codec at `0x1D00000`--`0x1D0FFF0` provides variable-length integer en
 
 The DWARF parser calls two specific ULEB128/SLEB128 decoders for individual values:
 
-- **`sub_1D229C0`** -- ULEB128 decoder. Returns the decoded unsigned value and stores the byte count consumed into an output parameter. Used for abbreviation numbers, form lengths, unsigned data.
-- **`sub_1D22B50`** -- SLEB128 (signed LEB128) decoder. Returns the decoded signed value. Used for `DW_FORM_sdata` and `DW_OP_fbreg`/`DW_OP_breg*` offsets.
-- **`sub_1D1FAD0`** -- Another ULEB128 decoder variant used in the abbreviation parser. Returns the decoded value and stores consumed byte count via a `pthread_mutexattr_t*` parameter (reused struct for alignment).
+- **`sub_1D229C0`** — ULEB128 decoder. Returns the decoded unsigned value and stores the byte count consumed into an output parameter. Used for abbreviation numbers, form lengths, unsigned data.
+- **`sub_1D22B50`** — SLEB128 (signed LEB128) decoder. Returns the decoded signed value. Used for `DW_FORM_sdata` and `DW_OP_fbreg`/`DW_OP_breg*` offsets.
+- **`sub_1D1FAD0`** — Another ULEB128 decoder variant used in the abbreviation parser. Returns the decoded value and stores consumed byte count via a `pthread_mutexattr_t*` parameter (reused struct for alignment).
 
 ### SSE Acceleration
 
 The SSE-accelerated encoders and decoders process 16 bytes at a time using SSE2 SIMD instructions (`_mm_load_si128`, `_mm_shuffle_epi8`, `_mm_and_si128`, `_mm_or_si128`, `_mm_srli_epi64`). They extract continuation bits in parallel across 16 LEB128 bytes, determine group boundaries, and decode/encode all values in a single pass. These are used for bulk operations on large DWARF sections, not for individual value decoding.
 
-The signed SSE decoder (`sub_1D10120`, 9,605 bytes -- the largest function in the LEB128 subsystem) additionally handles sign extension for negative values, which requires detecting the sign bit position within each variable-length group.
+The signed SSE decoder (`sub_1D10120`, 9,605 bytes — the largest function in the LEB128 subsystem) additionally handles sign extension for negative values, which requires detecting the sign bit position within each variable-length group.
 
 ## Helper Functions
 
@@ -602,9 +602,9 @@ The signed SSE decoder (`sub_1D10120`, 9,605 bytes -- the largest function in th
 
 Two functions emit the `.debug_pubnames` and `.debug_pubtypes` lookup sections:
 
-- **`sub_1D18EA0`** (`0x1D18EA0`, 5,152 bytes) -- `.debug_pubnames` emitter. Walks the abbreviation table, and for each DIE with a `DW_AT_name` attribute, emits an entry mapping the name to the DIE offset within `.debug_info`.
+- **`sub_1D18EA0`** (`0x1D18EA0`, 5,152 bytes) — `.debug_pubnames` emitter. Walks the abbreviation table, and for each DIE with a `DW_AT_name` attribute, emits an entry mapping the name to the DIE offset within `.debug_info`.
 
-- **`sub_1D193E0`** (`0x1D193E0`, 6,101 bytes) -- `.debug_pubtypes` emitter. Similar structure but emits entries for type DIEs (those with `DW_TAG_base_type`, `DW_TAG_typedef`, etc.).
+- **`sub_1D193E0`** (`0x1D193E0`, 6,101 bytes) — `.debug_pubtypes` emitter. Similar structure but emits entries for type DIEs (those with `DW_TAG_base_type`, `DW_TAG_typedef`, etc.).
 
 Both follow the DWARF-2/3 pubnames/pubtypes section format: a header with CU offset and CU size, followed by (offset, name) pairs terminated by a zero offset.
 
@@ -622,20 +622,20 @@ These correspond to the three error codes referenced as `dword_2A5F0D0` (null po
 
 **Internal (nvlink wiki):**
 
-- [NVIDIA Debug Extensions](nvidia-extensions.md) -- Six proprietary debug sections (`.nv_debug_*`) processed alongside standard DWARF sections
-- [Line Table Merging](line-tables.md) -- DWARF line program merging during linking, including NVIDIA extended opcodes
-- [Mercury Debug Sections](mercury-debug.md) -- Mercury-format debug sections with `.nv.merc.*` prefix and the Mercury section dispatcher
-- [Debug Options](options.md) -- CLI flags controlling debug section emission (`-g`, `--no-debug`, debug section output matrix)
-- [Mercury ELF Sections](../mercury/elf-sections.md) -- The 11 standard DWARF mirrors under `.nv.merc.*` namespace
-- [Error Reporting](../infra/error-reporting.md) -- `sub_467460` diagnostic handler used by DWARF bounds-check assertions
-- [Section Merging](../linker/section-merging.md) -- How debug sections are classified and routed during `merge_elf`
+- [NVIDIA Debug Extensions](nvidia-extensions.md) — Six proprietary debug sections (`.nv_debug_*`) processed alongside standard DWARF sections
+- [Line Table Merging](line-tables.md) — DWARF line program merging during linking, including NVIDIA extended opcodes
+- [Mercury Debug Sections](mercury-debug.md) — Mercury-format debug sections with `.nv.merc.*` prefix and the Mercury section dispatcher
+- [Debug Options](options.md) — CLI flags controlling debug section emission (`-g`, `--no-debug`, debug section output matrix)
+- [Mercury ELF Sections](../mercury/elf-sections.md) — The 11 standard DWARF mirrors under `.nv.merc.*` namespace
+- [Error Reporting](../infra/error-reporting.md) — `sub_467460` diagnostic handler used by DWARF bounds-check assertions
+- [Section Merging](../linker/section-merging.md) — How debug sections are classified and routed during `merge_elf`
 
 **Sibling wikis:**
 
 The debug information lifecycle spans three toolchain components. For the upstream generation stages:
 
-- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- DWARF line table generation (PTX-level and SASS-level), `.nv_debug_info_reg_sass`/`.nv_debug_info_reg_type` emission, Mercury debug section classifiers, and the `--device-debug`/`--lineinfo` flag semantics within ptxas
-- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) -- Four-stage debug metadata lifecycle from CUDA source through the LLVM optimizer to PTX `.loc`/`.file` directives. Covers the three compilation modes (`-g`, `-generate-line-info`, neither), the five stripping passes, and the NVVM container `DebugInfo` enum (`NONE`/`LINE_INFO`/`DWARF`)
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) — DWARF line table generation (PTX-level and SASS-level), `.nv_debug_info_reg_sass`/`.nv_debug_info_reg_type` emission, Mercury debug section classifiers, and the `--device-debug`/`--lineinfo` flag semantics within ptxas
+- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) — Four-stage debug metadata lifecycle from CUDA source through the LLVM optimizer to PTX `.loc`/`.file` directives. Covers the three compilation modes (`-g`, `-generate-line-info`, neither), the five stripping passes, and the NVVM container `DebugInfo` enum (`NONE`/`LINE_INFO`/`DWARF`)
 
 nvlink's DWARF processing subsystem consumes the output of both upstream stages: cicc produces PTX with `@@DWARF` directives and `.loc`/`.file` metadata, ptxas compiles this to SASS and emits the standard and NVIDIA-proprietary debug sections, and nvlink merges and re-emits these sections during linking.
 
@@ -649,7 +649,7 @@ nvlink's DWARF processing subsystem consumes the output of both upstream stages:
 | CU header size = 11 bytes (DWARF-2/3) | HIGH | Decompiled `sub_1D1D2F0`: `*(_DWORD *)(v14 + 196) = 11` at line 267 |
 | Context offsets +192 through +216 for CU fields | HIGH | Decompiled code stores to +192, +196, +200, +204, +208, +212, +216 exactly as documented |
 | Abbreviation table 2048 bytes initial, 32 bytes per entry | HIGH | Decompiled `sub_1D17C90` exists at exact address; string `"unexpectedly too many dwarf attributes for any DW_TAG entry!"` confirmed in strings at `0x245DD70` |
-| DW_FORM name lookup `sub_1D16C60` -- 22 forms | HIGH | Decompiled file present; string `"Unknown FORM value %d"` at `0x245D5B4` |
+| DW_FORM name lookup `sub_1D16C60` — 22 forms | HIGH | Decompiled file present; string `"Unknown FORM value %d"` at `0x245D5B4` |
 | DW_AT vendor extensions (MIPS, GNU, NV, PGI) | HIGH | All four vendor attribute name strings confirmed: `DW_AT_MIPS_linkage_name` at `0x245DB8A`, `DW_AT_GNU_pubnames` at `0x245DBA2`, `DW_AT_NV_general_flags` at `0x245DBF7`, `DW_AT_PGI_lbase/soffset/lstride` at `0x245DBB5`--`0x245DBD7` |
 | `DW_AT_MIPS_linkage_name` priority over `DW_AT_name` | MEDIUM | String evidence confirms attribute exists; priority logic inferred from decompiled `sub_1D1BE80` (5,218-byte function with attribute dispatch structure consistent with the documented behavior) |
 | DW_OP expression decoder `sub_1D1A920` opcodes | HIGH | All DW_OP format strings confirmed in strings: `DW_OP_addr`, `DW_OP_constu`, `DW_OP_const4u`, `DW_OP_xderef`, `DW_OP_breg%d`, `DW_OP_fbreg`, `DW_OP_deref_size`, `DW_OP_lit%u`, `DW_OP_reg%d`, `DW_OP_stack_value`, `DW_OP_plus_uconst` at addresses `0x245DEE0`--`0x245DFAC` |

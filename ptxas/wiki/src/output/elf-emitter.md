@@ -89,7 +89,7 @@ sub_612DE0 (47KB -- cubin generation entry)
       OUTPUT: .cubin / .o file on disk
 ```
 
-## ELFW Object -- `sub_1CB53A0`
+## ELFW Object — `sub_1CB53A0`
 
 The ELFW constructor allocates and initializes a 672-byte object that serves as the central data structure for the entire ELF construction pipeline. Every section, symbol, and string table lives under this object. The constructor is called exactly once per compilation unit.
 
@@ -138,7 +138,7 @@ The ELFW object stores:
 
 The 672-byte ELFW object divides into 13 regions. Offsets 0--63 overlay a standard ELF header (whose internal layout depends on ELF class). All pointer-sized fields are 8 bytes (the allocator returns 8-byte-aligned memory). The `v17` variable in the decompilation is a `uint64_t*`, so `v17[N]` = byte offset `N * 8`.
 
-#### Region 1 -- ELF Header Embed (bytes 0--63)
+#### Region 1 — ELF Header Embed (bytes 0--63)
 
 The ELF header is stored inline at the start of the ELFW object. Field positions within it vary by class (32-bit vs 64-bit), matching the standard `Elf32_Ehdr` / `Elf64_Ehdr` layout, except that `EI_CLASS` and `EI_OSABI` use non-standard CUDA values.
 
@@ -152,7 +152,7 @@ The ELF header is stored inline at the start of the ELFW object. Field positions
 | 8 | 1B | `e_ident[EI_ABIVERSION]` | Constructor parameter `a3` |
 | 16 | 2B | `e_type` | Constructor parameter `a1` (cast to uint16) |
 | 18 | 2B | `e_machine` | Hardcoded `0x00BE` (EM_CUDA = 190) |
-| 62 | 2B | `e_shstrndx` | `*(_WORD*)(v17 + 31)` -- set to `.shstrtab` section index |
+| 62 | 2B | `e_shstrndx` | `*(_WORD*)(v17 + 31)` — set to `.shstrtab` section index |
 
 For 32-bit class (`EI_CLASS = 1`):
 
@@ -161,26 +161,26 @@ For 32-bit class (`EI_CLASS = 1`):
 | 20 | 4B | `e_version` | `*(_DWORD*)(v17 + 5)` |
 | 28 | 4B | `e_phoff` | `*(_DWORD*)(a1 + 28)` |
 | 32 | 4B | `e_shoff` | `*(_DWORD*)(a1 + 32)` |
-| 36 | 4B | `e_flags` | `*(_DWORD*)(a1 + 36)` -- dumper prints `"flags=%x"` |
-| 44 | 2B | `e_phnum` | `*(uint16*)(a1 + 44)` -- dumper prints `"phnum"` |
-| 48 | 2B | `e_shnum` | `*(uint16*)(a1 + 48)` -- dumper prints `"shnum"` |
+| 36 | 4B | `e_flags` | `*(_DWORD*)(a1 + 36)` — dumper prints `"flags=%x"` |
+| 44 | 2B | `e_phnum` | `*(uint16*)(a1 + 44)` — dumper prints `"phnum"` |
+| 48 | 2B | `e_shnum` | `*(uint16*)(a1 + 48)` — dumper prints `"shnum"` |
 
 For 64-bit class (`EI_CLASS = 2`):
 
 | Offset | Size | Name | Dumper accessor |
 |---|---|---|---|
-| 32 | 8B | `e_phoff` | `*(_QWORD*)(a1 + 32)` -- dumper prints `"phoff=%llx"` |
-| 40 | 8B | `e_shoff` | `*(_QWORD*)(a1 + 40)` -- dumper prints `"shoff=%llx"` |
-| 48 | 4B | `e_flags` | `*(_DWORD*)(a1 + 48)` -- dumper prints `"flags=%x"` |
-| 56 | 2B | `e_phnum` | `*(uint16*)(a1 + 56)` -- dumper prints `"phnum"` |
-| 60 | 2B | `e_shnum` | `*(uint16*)(a1 + 60)` -- dumper prints `"shnum"` |
+| 32 | 8B | `e_phoff` | `*(_QWORD*)(a1 + 32)` — dumper prints `"phoff=%llx"` |
+| 40 | 8B | `e_shoff` | `*(_QWORD*)(a1 + 40)` — dumper prints `"shoff=%llx"` |
+| 48 | 4B | `e_flags` | `*(_DWORD*)(a1 + 48)` — dumper prints `"flags=%x"` |
+| 56 | 2B | `e_phnum` | `*(uint16*)(a1 + 56)` — dumper prints `"phnum"` |
+| 60 | 2B | `e_shnum` | `*(uint16*)(a1 + 60)` — dumper prints `"shnum"` |
 
-#### Region 2 -- Metadata and Flags (bytes 64--107)
+#### Region 2 — Metadata and Flags (bytes 64--107)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 64 | 1B | `debugMode` | `a8` parameter: `deviceDebug` |
-| 68 | 4B | `compilationFlags` | `rawOptions & 0x70000` -- preserved option bits 16--18 |
+| 68 | 4B | `compilationFlags` | `rawOptions & 0x70000` — preserved option bits 16--18 |
 | 72 | 4B | `smVersion` | `a4` parameter: SM architecture number (e.g., 100 for Blackwell) |
 | 76 | 4B | `rawOptions` | Full options bitmask `a9`, possibly OR'd with `0x80000` for relocatable |
 | 80 | 1B | `lineInfoMode` | `a6` parameter: `lineInfo` |
@@ -188,21 +188,21 @@ For 64-bit class (`EI_CLASS = 2`):
 | 83 | 1B | `hasSymbolRemap` | Set to `*(WORD*)(v17 + 42) != 0` |
 | 84 | 1B | `flag_relocatable` | `rawOptions & 1` |
 | 85 | 1B | `flag_executable` | `(rawOptions & 2) != 0` |
-| 86 | 1B | `flag_PIC` | `(rawOptions & 0x200) != 0` -- position-independent code |
+| 86 | 1B | `flag_PIC` | `(rawOptions & 0x200) != 0` — position-independent code |
 | 87 | 1B | `flag_bit2` | `(rawOptions & 4) != 0` |
 | 88 | 1B | `flag_bit3` | `(rawOptions & 8) != 0` |
 | 89 | 1B | `flag_relocOrBit4` | `(rawOptions >> 4) & 1`, forced to 1 if relocatable mode |
 | 90 | 1B | `flag_bit5` | `(rawOptions & 0x20) != 0` |
 | 91 | 1B | `flag_bit14` | `(rawOptions & 0x4000) != 0` |
 | 92 | 1B | `flag_bit6` | `(rawOptions & 0x40) != 0` |
-| 93 | 1B | `flag_byte1_bit0` | `BYTE1(rawOptions) & 1` -- bit 8 of options |
-| 94 | 1B | `flag_archGuard` | `(a5 > 0x45) & (rawOptions >> 7)` -- arch-gated feature |
+| 93 | 1B | `flag_byte1_bit0` | `BYTE1(rawOptions) & 1` — bit 8 of options |
+| 94 | 1B | `flag_archGuard` | `(a5 > 0x45) & (rawOptions >> 7)` — arch-gated feature |
 | 96 | 1B | `flag_bit11` | `(rawOptions & 0x800) != 0` |
-| 99 | 1B | `flag_notBit12` | `((rawOptions >> 12) ^ 1) & 1` -- inverted bit 12 |
+| 99 | 1B | `flag_notBit12` | `((rawOptions >> 12) ^ 1) & 1` — inverted bit 12 |
 | 100 | 1B | `flag_bit13` | `(rawOptions & 0x2000) != 0` |
-| 101 | 1B | `highClass` | `(a9 & 0x8000) != 0` -- selects 64-bit header variant with wider ELF fields |
+| 101 | 1B | `highClass` | `(a9 & 0x8000) != 0` — selects 64-bit header variant with wider ELF fields |
 
-#### Region 3 -- Inline String Tables (bytes 108--171)
+#### Region 3 — Inline String Tables (bytes 108--171)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -211,19 +211,19 @@ For 64-bit class (`EI_CLASS = 2`):
 
 These are 32-byte inline structures (not heap pointers). `sub_1CB0530` initializes them with the given initial capacity (1000 and 2000 bytes respectively). The `.shstrtab` is also referenced by `sub_1CA6650` during `.note.nv.cuinfo` attribute injection.
 
-#### Region 4 -- Section Index Cache (bytes 196--215)
+#### Region 4 — Section Index Cache (bytes 196--215)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
-| 200 | 2B | `strtabSecIdx` | `.strtab` section index -- `*(_WORD*)(v17 + 101) = v54` |
-| 202 | 2B | `symtabSecIdx` | `.symtab` section index -- `*(_WORD*)(v17 + 102) = v56` |
-| 204 | 2B | `xindexSecIdx` | `.symtab_shndx` section index -- `*(_WORD*)(v17 + 103)` |
-| 206 | 2B | `cuinfoSecIdx` | `.note.nv.cuinfo` section index -- `*(_WORD*)(v17 + 104)` |
-| 208 | 2B | `tkinfoSecIdx` | `.note.nv.tkinfo` section index -- `*(_WORD*)(v17 + 105)` |
+| 200 | 2B | `strtabSecIdx` | `.strtab` section index — `*(_WORD*)(v17 + 101) = v54` |
+| 202 | 2B | `symtabSecIdx` | `.symtab` section index — `*(_WORD*)(v17 + 102) = v56` |
+| 204 | 2B | `xindexSecIdx` | `.symtab_shndx` section index — `*(_WORD*)(v17 + 103)` |
+| 206 | 2B | `cuinfoSecIdx` | `.note.nv.cuinfo` section index — `*(_WORD*)(v17 + 104)` |
+| 208 | 2B | `tkinfoSecIdx` | `.note.nv.tkinfo` section index — `*(_WORD*)(v17 + 105)` |
 
 These cached indices avoid repeated linear scans of the section table when cross-referencing sections (e.g., `.symtab`'s `sh_link` must point to `.strtab`).
 
-#### Region 5 -- Sorted Maps and Counters (bytes 288--327)
+#### Region 5 — Sorted Maps and Counters (bytes 288--327)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -233,7 +233,7 @@ These cached indices avoid repeated linear scans of the section table when cross
 | 312 | 8B | `countPair` | Packed `0x100000000` = high DWORD 1, low DWORD 0 |
 | 320 | 4B | `activeFlag` | Set to 1 during initialization |
 
-#### Region 6 -- Section and Symbol Containers (bytes 344--419)
+#### Region 6 — Section and Symbol Containers (bytes 344--419)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -248,7 +248,7 @@ These cached indices avoid repeated linear scans of the section table when cross
 
 `sub_1CD2F90` creates an indexed vector (growable array with count/capacity tracking). `sub_1CD3060` returns the element count; `sub_1CD31F0` returns the element at the current iteration index.
 
-#### Region 7 -- Deletion Remap Tables (bytes 456--479)
+#### Region 7 — Deletion Remap Tables (bytes 456--479)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -258,20 +258,20 @@ These cached indices avoid repeated linear scans of the section table when cross
 
 After dead code elimination deletes sections and symbols, these tables map old indices to new indices. The negative-index variant handles symbols stored with inverted sign conventions (a ptxas-internal encoding for unresolved forward references).
 
-#### Region 8 -- Architecture State (bytes 488--495)
+#### Region 8 — Architecture State (bytes 488--495)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 488 | 8B | `archState` | Architecture descriptor pointer. Initialized via `sub_1CD04F0` (relocatable) or `sub_1CCEEE0` (non-relocatable). Fatal error `"couldn't initialize arch state"` on failure |
 
-#### Region 9 -- Name Sets and Input Tracking (bytes 496--519)
+#### Region 9 — Name Sets and Input Tracking (bytes 496--519)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 496 | 8B | `sectionNameSet` | Sorted set of well-known section name strings. Populated from static table `off_2403A60` (22 entries ending at `dword_2403B70`) |
 | 512 | 8B | `inputFileList` | Indexed vector (cap=8). First entry is a 16-byte descriptor: `{ptr="<input>", arch_version, ...}` |
 
-#### Region 10 -- Hash Maps (bytes 520--567)
+#### Region 10 — Hash Maps (bytes 520--567)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -284,7 +284,7 @@ After dead code elimination deletes sections and symbols, these tables map old i
 
 Six hash maps initialized identically with `sub_42D150(sub_427630, sub_4277B0, 0x10)`. The two function pointers are the hash function and equality comparator. These maps serve section/symbol lookups during the construction pipeline. The specific role of each map (by-name, by-type, etc.) requires tracing callers of the hash map accessors.
 
-#### Region 11 -- Extended Index and Miscellaneous (bytes 576--607)
+#### Region 11 — Extended Index and Miscellaneous (bytes 576--607)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -292,14 +292,14 @@ Six hash maps initialized identically with `sub_42D150(sub_427630, sub_4277B0, 0
 | 592 | 8B | `symtabShndxVec` | `.symtab_shndx` data vector. Dumper: `sub_1CD31F0(*(a1+592))` for SHN_XINDEX resolution |
 | 600 | 8B | `mercSymtabShndx` | `.nv.merc.symtab_shndx` data vector. Dumper: `*(a1+600)` for Mercury SHN_XINDEX |
 
-#### Region 12 -- Memory Pool and Tail (bytes 608--671)
+#### Region 12 — Memory Pool and Tail (bytes 608--671)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 608 | 8B | `memoryPool` | `"elfw memory space"` pool pointer. Only set when `(a9 & 0x400) != 0` |
 | 616 | 8B | `memoryPoolCursor` | Pool allocation cursor |
-| 624 | 4B | `elfFormatVersion` | `sub_1C97990()` return value -- ELF format version from global config |
-| 664 | 8B | `tailSentinel` | `v17[83] = 0` -- zeroed during init, marks end of object |
+| 624 | 4B | `elfFormatVersion` | `sub_1C97990()` return value — ELF format version from global config |
+| 664 | 8B | `tailSentinel` | `v17[83] = 0` — zeroed during init, marks end of object |
 
 #### Visual Layout
 
@@ -350,7 +350,7 @@ The ELF class byte at offset 4 determines 32-bit vs 64-bit output format. ptxas 
 
 Standard ELF uses 1 (ELFCLASS32) and 2 (ELFCLASS64). The non-standard values `'3'` and `'A'` are a CUDA-specific convention that identifies the binary as a cubin rather than a generic ELF. The CUDA driver recognizes these values during cubin loading.
 
-## Section Creator -- `sub_1CB3570`
+## Section Creator — `sub_1CB3570`
 
 The generic section creation function, called from 44 sites throughout the ELF construction pipeline. It accepts the full set of ELF section header parameters and optionally creates a companion relocation section.
 
@@ -388,7 +388,7 @@ int add_section(void* elfw, const char* name, uint32_t type, uint64_t flags,
 
 The assertion `"adding function section after callgraph completed"` fires if a section is added after the call graph analysis phase has already run. This enforces the ordering constraint: all `.text.<funcname>` sections must exist before dead code elimination and call graph construction begin.
 
-## Text Section Creator -- `sub_1CB42D0`
+## Text Section Creator — `sub_1CB42D0`
 
 Creates a per-function code section with the naming convention `.text.<funcname>`:
 
@@ -401,19 +401,19 @@ Creates a per-function code section with the naming convention `.text.<funcname>
 
 Each kernel entry point and each device function gets its own `.text` section. This per-function section layout enables the linker (`nvlink`) to perform function-level dead code elimination and allows the CUDA driver to load individual kernels.
 
-## Symbol Table Builder -- `sub_1CB68D0`
+## Symbol Table Builder — `sub_1CB68D0`
 
 The largest function in the ELFW subsystem at 9,578 bytes (approximately 1,700 decompiled lines). It constructs the `.symtab` section from the internal symbol representation, handling several CUDA-specific concerns.
 
 ### Processing Steps
 
-1. **Iterate internal symbol list** -- walks the ELFW symbol container
-2. **Filter deleted symbols** -- skips entries marked deleted, emits `"reference to deleted symbol"` warning (12 occurrences of this check in the function)
-3. **Handle `__cuda_syscall`** -- special-cases the CUDA syscall dispatcher symbol, which serves as the entry point for device-side system calls (vprintf, malloc, `__assertfail`, etc.)
-4. **Compute symbol values/sizes** -- resolves virtual addresses from section offsets
-5. **Create section symbols** -- ensures every section has a corresponding `STT_SECTION` symbol
-6. **Handle SHN_XINDEX overflow** -- when the section index exceeds `SHN_LORESERVE` (0xFF00 = 65,280), the symbol's `st_shndx` field is set to `SHN_XINDEX` (0xFFFF) and the real index is stored in the `.symtab_shndx` table
-7. **Build `.symtab_shndx`** -- populates the extended section index table for overflow cases
+1. **Iterate internal symbol list** — walks the ELFW symbol container
+2. **Filter deleted symbols** — skips entries marked deleted, emits `"reference to deleted symbol"` warning (12 occurrences of this check in the function)
+3. **Handle `__cuda_syscall`** — special-cases the CUDA syscall dispatcher symbol, which serves as the entry point for device-side system calls (vprintf, malloc, `__assertfail`, etc.)
+4. **Compute symbol values/sizes** — resolves virtual addresses from section offsets
+5. **Create section symbols** — ensures every section has a corresponding `STT_SECTION` symbol
+6. **Handle SHN_XINDEX overflow** — when the section index exceeds `SHN_LORESERVE` (0xFF00 = 65,280), the symbol's `st_shndx` field is set to `SHN_XINDEX` (0xFFFF) and the real index is stored in the `.symtab_shndx` table
+7. **Build `.symtab_shndx`** — populates the extended section index table for overflow cases
 
 ### Error Messages
 
@@ -440,7 +440,7 @@ The `__cuda_syscall` symbol is the dispatcher for device-side system calls. The 
 
 These are compiled as indirect calls through the `__cuda_syscall` dispatch mechanism. The symbol `__cuda_syscall_32f3056bbb` (observed in binary strings) is a hash-mangled variant used for linking.
 
-## Section Layout Calculator -- `sub_1C9DC60`
+## Section Layout Calculator — `sub_1C9DC60`
 
 Computes file offsets and virtual addresses for all sections in the ELF. This is a multi-pass algorithm that respects alignment constraints and handles several special cases.
 
@@ -454,26 +454,26 @@ Computes file offsets and virtual addresses for all sections in the ELF. This is
 
 The layout calculator assigns offsets in section-table order, which itself is determined by the 8-bucket priority sort performed during finalization.
 
-## ELF Finalization -- `sub_1C9F280`
+## ELF Finalization — `sub_1C9F280`
 
 The master ELF emitter at 15,263 binary bytes (97 KB decompiled) is the single largest function in the post-codegen address range. It assembles the complete ELF output from the ELFW internal representation.
 
 ### Execution Flow
 
-1. **Copy ELF header** -- 64 bytes transferred via SSE `loadu` (128-bit unaligned loads) for performance
-2. **Iterate sections** -- uses accessor pair `sub_1CB9FF0` (section count) / `sub_1CB9C40` (get section by index)
-3. **Skip virtual sections** -- sections with `flag & 4` set have no file data (metadata-only)
-4. **Filter `.nv.constant0`** -- detected via `strstr(".nv.constant0")`, handled by separate constant bank logic
-5. **Copy section headers** -- SIMD-width stride memcpy of section header entries
-6. **Patch ELF flags** -- mask `0x7FFFBFFF` clears CUDA-specific flag bits, then sets SM version and relocatable/executable mode
-7. **Emit program headers** -- creates PT_LOAD segments for loadable sections
-8. **Build symbol table** -- delegates to `sub_1CB68D0`
-9. **Resolve section indices** -- handles cross-references between sections
-10. **Embed Mercury capsule** -- if capmerc mode, embeds the `.nv.merc.*` sections
-11. **Process debug sections** -- maps `.debug_info`, `.debug_line`, `.debug_frame` sections
-12. **Error recovery** -- uses `_setjmp` for non-local error exit on fatal corruption
+1. **Copy ELF header** — 64 bytes transferred via SSE `loadu` (128-bit unaligned loads) for performance
+2. **Iterate sections** — uses accessor pair `sub_1CB9FF0` (section count) / `sub_1CB9C40` (get section by index)
+3. **Skip virtual sections** — sections with `flag & 4` set have no file data (metadata-only)
+4. **Filter `.nv.constant0`** — detected via `strstr(".nv.constant0")`, handled by separate constant bank logic
+5. **Copy section headers** — SIMD-width stride memcpy of section header entries
+6. **Patch ELF flags** — mask `0x7FFFBFFF` clears CUDA-specific flag bits, then sets SM version and relocatable/executable mode
+7. **Emit program headers** — creates PT_LOAD segments for loadable sections
+8. **Build symbol table** — delegates to `sub_1CB68D0`
+9. **Resolve section indices** — handles cross-references between sections
+10. **Embed Mercury capsule** — if capmerc mode, embeds the `.nv.merc.*` sections
+11. **Process debug sections** — maps `.debug_info`, `.debug_line`, `.debug_frame` sections
+12. **Error recovery** — uses `_setjmp` for non-local error exit on fatal corruption
 
-### Section Ordering -- 8 Priority Buckets
+### Section Ordering — 8 Priority Buckets
 
 During finalization, sections are sorted into 8 priority buckets that determine their order in the output ELF. The bucket assignment ensures the correct layout for the CUDA driver's section scanner. Lookup proceeds against the well-known section name set seeded from the static table at `off_2403A60` (22 entries, terminator `dword_2403B70`); names that do not match a well-known entry are bucketed by section kind (`sh_type`, `sh_flags`, and the NVIDIA `SHT_LOPROC` type code).
 
@@ -488,7 +488,7 @@ During finalization, sections are sorted into 8 priority buckets that determine 
 | 6 | EIATTR: `.nv.info`, `.nv.info.<funcname>` (`SHT_CUDA_INFO`, type `0x70000000`) |
 | 7 (lowest) | Debug / Mercury: `.debug_info`, `.debug_line`, `.debug_frame`, `.debug_abbrev`, `.debug_aranges`, `.debug_loc`, `.debug_macinfo`, `.debug_pubnames`, `.debug_pubtypes`, `.debug_ranges`, `.debug_str`, `.nv.merc.debug_*`, `.nv.merc.nv_debug_line_sass`, `.nv.merc.nv_debug_info_reg_sass`, `.nv.merc.nv_debug_info_reg_type`, `.nv.merc.nv_debug_ptx_txt`, `.nv.merc.nv.shared.reserved.<func>`, generic `.nv.merc.*` |
 
-Three section names in bucket 4 are sort-ordered alongside data sections but **skipped by the offset-assignment walk** in `sub_1C9DC60`: `.nv.constant0.<func>` (file offset assigned by the OCG constant-bank allocator) and `.nv.reservedSmem` (offset assigned by the shared-memory master allocator `sub_1CABD60`). Virtual sections (`flags & 4`) are likewise skipped -- they carry only metadata.
+Three section names in bucket 4 are sort-ordered alongside data sections but **skipped by the offset-assignment walk** in `sub_1C9DC60`: `.nv.constant0.<func>` (file offset assigned by the OCG constant-bank allocator) and `.nv.reservedSmem` (offset assigned by the shared-memory master allocator `sub_1CABD60`). Virtual sections (`flags & 4`) are likewise skipped — they carry only metadata.
 
 ### Offset Assignment and Alignment
 
@@ -519,19 +519,19 @@ When the total section count exceeds 65,280 (`SHN_LORESERVE` = 0xFF00), standard
 
 This is the standard ELF extension for large section counts, and it is necessary for large CUDA programs with many kernels (each kernel generates at minimum a `.text`, `.rela.text`, `.nv.info`, and `.nv.constant0` section).
 
-## Cubin Generation Entry -- `sub_612DE0`
+## Cubin Generation Entry — `sub_612DE0`
 
 The top-level ELF/cubin generation function at 47 KB. Called from the compilation driver `sub_446240` after all per-kernel OCG passes complete. This function orchestrates the entire output pipeline.
 
 ### Key Behaviors
 
-- **Option parsing** -- reads compilation flags: `deviceDebug`, `lineInfo`, `optLevel`, `IsCompute`, `IsPIC`
-- **Fastpath optimization** -- `"Finalizer fastpath optimization"` string indicates a fast path for cross-target finalization when no complex linking is needed
-- **Version embedding** -- writes `"Cuda compilation tools, release 13.0, V13.0.88"` and build ID `"Build cuda_13.0.r13.0/compiler.36424714_0"` into the cubin
-- **Error recovery** -- establishes its own `setjmp`/`longjmp` frame independent of the top-level driver's
-- **Recursive self-call** -- handles nested finalization for scenarios where the output pipeline must invoke itself (e.g., generating both a primary cubin and an embedded Mercury cubin simultaneously)
+- **Option parsing** — reads compilation flags: `deviceDebug`, `lineInfo`, `optLevel`, `IsCompute`, `IsPIC`
+- **Fastpath optimization** — `"Finalizer fastpath optimization"` string indicates a fast path for cross-target finalization when no complex linking is needed
+- **Version embedding** — writes `"Cuda compilation tools, release 13.0, V13.0.88"` and build ID `"Build cuda_13.0.r13.0/compiler.36424714_0"` into the cubin
+- **Error recovery** — establishes its own `setjmp`/`longjmp` frame independent of the top-level driver's
+- **Recursive self-call** — handles nested finalization for scenarios where the output pipeline must invoke itself (e.g., generating both a primary cubin and an embedded Mercury cubin simultaneously)
 
-## Symbol Fixup -- `sub_1CB2CA0`
+## Symbol Fixup — `sub_1CB2CA0`
 
 Adjusts symbol indices after dead code elimination removes sections from the ELFW. When sections are deleted, all symbol references to those sections become stale and must be renumbered.
 
@@ -546,11 +546,11 @@ For each section in ELFW:
 
 Called from 4 sites, indicating it runs at multiple points during the output pipeline (after dead function elimination, after mercury section cloning, etc.).
 
-## Section Index Remap -- `sub_1C99BB0`
+## Section Index Remap — `sub_1C99BB0`
 
 Handles the `.symtab_shndx` and `.nv.merc.symtab_shndx` extended index tables when section indices change. This is the companion to `sub_1CB2CA0`: while that function fixes symbol `st_shndx` fields, this one fixes the extended index tables that hold the real indices when SHN_XINDEX is in use.
 
-## ELF Structure Dumper -- `sub_1CB91C0`
+## ELF Structure Dumper — `sub_1CB91C0`
 
 Debug-mode function that prints a formatted dump of the ELFW internal state. Triggered by internal debug flags, not by any user-visible CLI option.
 
@@ -571,7 +571,7 @@ symbol <v/r>:
 
 The `<v/r>` suffix indicates virtual (`v`) or real (`r`) mode, corresponding to whether the dump shows the in-memory intermediate state or the final file-ready values. Both 32-bit and 64-bit format strings are present.
 
-## File Serializer -- `sub_1CD13A0`
+## File Serializer — `sub_1CD13A0`
 
 The final step: writes the assembled ELF binary to disk. Called from 2 sites (main cubin and Mercury capsule cubin).
 
@@ -608,20 +608,20 @@ Beyond standard ELF section types, the emitter uses NVIDIA-defined types in the 
 
 | Type Constant | Value | Section |
 |---|---|---|
-| `SHT_CUDA_INFO` | `0x70000000` | `.nv.info`, `.nv.info.*` -- global and per-entry EIATTR attributes |
-| `SHT_CUDA_CALLGRAPH` | `0x70000064` | `.nv.callgraph` -- inter-function call edges (relocatable mode) |
-| `SHT_CUDA_COMPAT` | `0x70000086` | `.nv.compat` -- forward-compatibility attributes |
+| `SHT_CUDA_INFO` | `0x70000000` | `.nv.info`, `.nv.info.*` — global and per-entry EIATTR attributes |
+| `SHT_CUDA_CALLGRAPH` | `0x70000064` | `.nv.callgraph` — inter-function call edges (relocatable mode) |
+| `SHT_CUDA_COMPAT` | `0x70000086` | `.nv.compat` — forward-compatibility attributes |
 
-The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilation as a range-check endpoint for CUDA-specific section types -- `sub_1CB3570` treats the range `0x70000064`--`0x7000007E` plus `0x70000006` as receiving special relocatable-mode handling. The `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`) for the type field.
+The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilation as a range-check endpoint for CUDA-specific section types — `sub_1CB3570` treats the range `0x70000064`--`0x7000007E` plus `0x70000006` as receiving special relocatable-mode handling. The `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`) for the type field.
 
 ## Cross-References
 
-- [Section Catalog & EIATTR](sections.md) -- complete inventory of section types and EIATTR attributes
-- [Relocations & Symbols](relocations.md) -- relocation resolution and UFT/UDT management
-- [Debug Information](debug-info.md) -- DWARF generation and `.debug_*` section handling
-- [Mercury Encoder](../codegen/mercury.md) -- Mercury/capmerc encoding that feeds into the ELF emitter
-- [Pipeline Overview](../pipeline/overview.md) -- where the ELF phase fits in the compilation pipeline
-- [Memory Pool Allocator](../infra/memory-pools.md) -- the `sub_424070` pool allocator used by ELFW
+- [Section Catalog & EIATTR](sections.md) — complete inventory of section types and EIATTR attributes
+- [Relocations & Symbols](relocations.md) — relocation resolution and UFT/UDT management
+- [Debug Information](debug-info.md) — DWARF generation and `.debug_*` section handling
+- [Mercury Encoder](../codegen/mercury.md) — Mercury/capmerc encoding that feeds into the ELF emitter
+- [Pipeline Overview](../pipeline/overview.md) — where the ELF phase fits in the compilation pipeline
+- [Memory Pool Allocator](../infra/memory-pools.md) — the `sub_424070` pool allocator used by ELFW
 
 ## Function Map
 
@@ -629,7 +629,7 @@ The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilat
 |---|---|---|---|---|---|
 | `sub_1CB53A0` | 3,480 B | 13 KB | 1 | 25 | ELFW constructor (672-byte object) |
 | `sub_1CB3570` | 1,963 B | 10 KB | 44 | 13 | Section creator (.rela/.rel auto-create) |
-| `sub_1CB42D0` | -- | -- | -- | -- | .text.\<funcname\> section creator |
+| `sub_1CB42D0` | — | — | — | — | .text.\<funcname\> section creator |
 | `sub_1CB68D0` | 9,578 B | 49 KB | 1 | 36 | Symbol table builder (.symtab) |
 | `sub_1CB2CA0` | 2,038 B | 8 KB | 4 | 11 | Symbol fixup (post-deletion renumbering) |
 | `sub_1C99BB0` | 4,900 B | 25 KB | 1 | 18 | Section index remap (.symtab_shndx) |
@@ -637,6 +637,6 @@ The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilat
 | `sub_1C9F280` | 15,263 B | 97 KB | 1 | 42 | Master ELF emitter (assembles complete output) |
 | `sub_1CB91C0` | 2,668 B | 13 KB | 1 | 5 | ELF structure dumper (debug) |
 | `sub_1CD13A0` | 2,541 B | 11 KB | 2 | 6 | File serializer (final write to disk) |
-| `sub_612DE0` | ~12,000 B | 47 KB | 1 | -- | Cubin generation entry point |
-| `sub_1CB9FF0` | -- | -- | -- | -- | Section count accessor |
-| `sub_1CB9C40` | -- | -- | -- | -- | Get section by index |
+| `sub_612DE0` | ~12,000 B | 47 KB | 1 | — | Cubin generation entry point |
+| `sub_1CB9FF0` | — | — | — | — | Section count accessor |
+| `sub_1CB9C40` | — | — | — | — | Get section by index |

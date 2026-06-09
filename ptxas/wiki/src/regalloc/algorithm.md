@@ -2,18 +2,18 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas register allocator uses a fat-point algorithm with a Chaitin-Briggs-style simplify-select ordering. Before the fat-point scan runs, the ordering function (`sub_93FBE0`) classifies vregs into six membership lists by interference degree, then drains them in simplify order (unconstrained and low-interference first, high-interference last) onto an assignment stack. The core allocator (`sub_957160`) pops this stack, scanning a per-physical-register pressure array for each vreg and picking the slot with the lowest interference count. High-interference vregs deferred during simplify are colored optimistically -- if a slot exists below the discard threshold, assignment succeeds without spilling. This page documents the algorithm in full detail: the six-list ordering (see [overview.md](./overview.md#six-list-classification-sub_93fbe0) for the classification table), pressure array construction, constraint evaluation, register selection, assignment propagation, the retry loop, and the supporting knobs.
+The ptxas register allocator uses a fat-point algorithm with a Chaitin-Briggs-style simplify-select ordering. Before the fat-point scan runs, the ordering function (`sub_93FBE0`) classifies vregs into six membership lists by interference degree, then drains them in simplify order (unconstrained and low-interference first, high-interference last) onto an assignment stack. The core allocator (`sub_957160`) pops this stack, scanning a per-physical-register pressure array for each vreg and picking the slot with the lowest interference count. High-interference vregs deferred during simplify are colored optimistically — if a slot exists below the discard threshold, assignment succeeds without spilling. This page documents the algorithm in full detail: the six-list ordering (see [overview.md](./overview.md#six-list-classification-sub_93fbe0) for the classification table), pressure array construction, constraint evaluation, register selection, assignment propagation, the retry loop, and the supporting knobs.
 
 | | |
 |---|---|
-| **Core allocator** | `sub_957160` (1658 lines) -- fat-point coloring engine |
-| **Occupancy bitvector** | `sub_957020` -- resizes bitvector; `sub_94C9E0` -- marks slot ranges |
-| **Interference builder** | `sub_926A30` (4005 lines) -- constraint solver |
-| **Assignment** | `sub_94FDD0` (155 lines) -- write physical reg, propagate aliases |
-| **Pre-allocation** | `sub_94A020` (331 lines) -- pre-assign high-priority operands |
-| **Retry driver** | `sub_971A90` (355 lines) -- NOSPILL then SPILL retry loop |
-| **Best result recorder** | `sub_93D070` (155 lines) -- compare and keep best attempt |
-| **Entry point** | `sub_9721C0` (1086 lines) -- per-function allocation driver |
+| **Core allocator** | `sub_957160` (1658 lines) — fat-point coloring engine |
+| **Occupancy bitvector** | `sub_957020` — resizes bitvector; `sub_94C9E0` — marks slot ranges |
+| **Interference builder** | `sub_926A30` (4005 lines) — constraint solver |
+| **Assignment** | `sub_94FDD0` (155 lines) — write physical reg, propagate aliases |
+| **Pre-allocation** | `sub_94A020` (331 lines) — pre-assign high-priority operands |
+| **Retry driver** | `sub_971A90` (355 lines) — NOSPILL then SPILL retry loop |
+| **Best result recorder** | `sub_93D070` (155 lines) — compare and keep best attempt |
+| **Entry point** | `sub_9721C0` (1086 lines) — per-function allocation driver |
 
 ## Pressure Array Construction
 
@@ -28,7 +28,7 @@ Both arrays are zeroed using SSE2 vectorized `_mm_store_si128` loops aligned to 
 
 For each virtual register in the allocation worklist (linked list at `alloc+744`), the allocator zeroes the pressure arrays and then walks the VR's constraint list (`vreg+144`). For each constraint, it increments the appropriate pressure array entries at the physical register slots that conflict with the current virtual register. The result is a histogram: `primary[slot]` holds the total interference weight for physical register `slot`, accumulated over all constraints of all previously-assigned virtual registers that conflict with the current one. The full per-VR algorithm is documented in the Pressure Computation Algorithm section below.
 
-The secondary array accumulates a separate cost metric used for tie-breaking. It captures weaker interference signals -- preferences and soft constraints that do not represent hard conflicts but indicate suboptimal placement.
+The secondary array accumulates a separate cost metric used for tie-breaking. It captures weaker interference signals — preferences and soft constraints that do not represent hard conflicts but indicate suboptimal placement.
 
 ### Budget Computation
 
@@ -43,7 +43,7 @@ elif allocation_mode == 3 (CSSA):
 alloc.budget = v231                         // stored at alloc+60
 ```
 
-The hardware limit comes from the target descriptor and reflects the physical register file size for the current class (e.g. 255 for GPRs, 7 for predicates). The `+7` headroom allows the allocator to explore slightly beyond the architectural limit before triggering a hard failure -- this is clamped during assignment by the register budget check in `sub_94FDD0`.
+The hardware limit comes from the target descriptor and reflects the physical register file size for the current class (e.g. 255 for GPRs, 7 for predicates). The `+7` headroom allows the allocator to explore slightly beyond the architectural limit before triggering a hard failure — this is clamped during assignment by the register budget check in `sub_94FDD0`.
 
 The register budget at `alloc+1524` interacts with `--maxrregcount` and `--register-usage-level` (values 0--10). The CLI-specified maximum register count is stored in the compilation context and propagated to the allocator as the hard ceiling. The `register-usage-level` option modulates the target: level 0 means no restriction, level 10 means minimize register usage as aggressively as possible. The per-class register budget stored at `alloc+32*class+884` reflects this interaction.
 
@@ -65,7 +65,7 @@ function mark_occupancy(bitvec, range, alignment):
         bitvec[word_idx] |= mask
 ```
 
-During the fatpoint scan, a set bit means "slot occupied -- skip it." This prevents the allocator from considering slots already committed to other VRs in the current round.
+During the fatpoint scan, a set bit means "slot occupied — skip it." This prevents the allocator from considering slots already committed to other VRs in the current round.
 
 ## Pressure Computation Algorithm
 
@@ -94,8 +94,8 @@ The pair mode is extracted from `(vreg+48 >> 20) & 3`:
 | pair_mode | step_size | Behavior |
 |-----------|-----------|----------|
 | 0 | `stride` | Normal single-width scan |
-| 1 | `stride` | Paired mode -- `is_paired = 1`, scan ceiling doubled |
-| 3 | `2 * stride` | Double-width -- aligned width doubled, step by 2x stride |
+| 1 | `stride` | Paired mode — `is_paired = 1`, scan ceiling doubled |
+| 3 | `2 * stride` | Double-width — aligned width doubled, step by 2x stride |
 
 ### Step 2: Scan Range
 
@@ -178,13 +178,13 @@ Operand type values observed in the decompiled code (cross-referenced with `isel
 | operand_type | Meaning | Generates constraint? |
 |--------------|---------|----------------------|
 | 0 | Unused / padding | No |
-| 1 | Physical register (pre-assigned) | Yes -- exclude-one or exclude-all-but |
-| 2 | Virtual register (def) | Yes -- point interference at def point |
-| 3 | Virtual register (use) | Yes -- point interference at use point |
-| 4 | Immediate value | No -- no register needed |
-| 5 | Fixed/special register | Yes -- hard constraint to specific slot |
+| 1 | Physical register (pre-assigned) | Yes — exclude-one or exclude-all-but |
+| 2 | Virtual register (def) | Yes — point interference at def point |
+| 3 | Virtual register (use) | Yes — point interference at use point |
+| 4 | Immediate value | No — no register needed |
+| 5 | Fixed/special register | Yes — hard constraint to specific slot |
 | 6 | Constant pool reference | No |
-| 7 | Sentinel (end of operand list) | No -- terminates scan |
+| 7 | Sentinel (end of operand list) | No — terminates scan |
 
 #### build_constraints Pseudocode
 
@@ -302,7 +302,7 @@ The `classify_constraint` function (`sub_91A0F0`, ~500 lines) returns one of app
 
 | Opcode(s) | Operand index condition | Returned ctype |
 |-----------|------------------------|----------------|
-| 0x3C, 0x3E, 0x4E, 0x4F (MOV/SHFL) | `i <= 1` and `num_ops > 2` | `(dw_last & (31 << (5*i+13))) >> (5*i+13)` -- packed 5-bit |
+| 0x3C, 0x3E, 0x4E, 0x4F (MOV/SHFL) | `i <= 1` and `num_ops > 2` | `(dw_last & (31 << (5*i+13))) >> (5*i+13)` — packed 5-bit |
 | 0x10 (CALL) | `i == num_ops-4` or `-3` | `(dw_last & 0x400) ? 10 : 12` |
 | 0x3D (IADD3) | `i==0`, src2 non-VR, v25==3 | 12 |
 | 0x3F (ISETP) | `i == 3` | `(dw_last & 8)==0 ? 12 : 11`; `i==0` -> 12; else 6 |
@@ -526,7 +526,7 @@ Key design decisions in the fatpoint scan:
 
 **Two-mode comparison.** On the first pass (`first_pass = true`, iteration 0), the scan uses secondary cost as the sole criterion, ignoring primary. This makes the first attempt pure-affinity-driven: it places VRs at their preferred locations based on copy/phi hints in the secondary array. On subsequent passes, primary cost dominates and secondary breaks ties.
 
-**Immediate zero-cost accept.** When a slot has both `primary == 0` and `secondary == 0` (or just `primary == 0` on first pass), the scan terminates immediately. This means the first zero-interference slot wins -- no further searching. Combined with the priority ordering of VRs, this produces a fast, greedy assignment.
+**Immediate zero-cost accept.** When a slot has both `primary == 0` and `secondary == 0` (or just `primary == 0` on first pass), the scan terminates immediately. This means the first zero-interference slot wins — no further searching. Combined with the priority ordering of VRs, this produces a fast, greedy assignment.
 
 **Bank-conflict avoidance.** The bank mask (`-8` for pair mode 1, `-4` otherwise) partitions the register file into banks. The filter `((slot ^ prev_assignment) & mask) == 0` ensures consecutive assignments land in different banks, reducing bank conflicts in the SASS execution units.
 
@@ -571,15 +571,15 @@ The builder recognizes 15 constraint types. Each constraint type adds interferen
 
 | Type | Name | Pressure effect |
 |------|------|-----------------|
-| 0 | Point interference | Adds weight to specific physical register slots that are live at the same program point as this VR. The most common constraint -- represents a simple "these two VRs cannot share a physical register because both are live at instruction I." |
+| 0 | Point interference | Adds weight to specific physical register slots that are live at the same program point as this VR. The most common constraint — represents a simple "these two VRs cannot share a physical register because both are live at instruction I." |
 | 1 | Exclude-one | Adds weight to exactly one physical register slot, excluding it from consideration. Used when a specific physical register is reserved (e.g. for ABI constraints or hardware requirements). |
 | 2 | Exclude-all-but | Adds weight to all slots *except* one. Forces the VR into a single permitted physical register. Used for fixed-register operands (e.g. `R0` for return values). |
-| 3 | Below-point | Adds interference weight for registers live below (after) the current program point. Captures downward-exposed liveness -- the VR must avoid physical registers that are used by later instructions. |
+| 3 | Below-point | Adds interference weight for registers live below (after) the current program point. Captures downward-exposed liveness — the VR must avoid physical registers that are used by later instructions. |
 | 4 | (reserved) | Not observed in common paths. |
 | 5 | Paired-low | Constrains the VR to an even-numbered physical register. Used for the low half of a 64-bit register pair. The pressure builder increments only even-indexed slots. |
 | 6 | Paired-high | Constrains the VR to an odd-numbered physical register (the slot immediately after its paired-low partner). Increments only odd-indexed slots. |
 | 7 | Aligned-pair | Constrains a pair of VRs to consecutive even/odd physical registers simultaneously. Combines the effects of types 5 and 6. |
-| 8 | Phi-related | Marks interference from CSSA phi instructions (opcode 195). Phi constraints are softer -- they add lower weight because the phi can potentially be eliminated by the coalescing pass. |
+| 8 | Phi-related | Marks interference from CSSA phi instructions (opcode 195). Phi constraints are softer — they add lower weight because the phi can potentially be eliminated by the coalescing pass. |
 | 9 | (reserved) | Not observed in common paths. |
 | 10 | (reserved) | Not observed in common paths. |
 | 11 | Paired-even-parity | Constrains the VR to a physical register whose index has even parity with respect to a bank partition. Used for bank-conflict avoidance on architectures where register bank is determined by `reg_index % N`. |
@@ -683,7 +683,7 @@ function select_register(primary[], secondary[], maxRegs, threshold, pair_mode):
 
 Key design decisions in the selection loop:
 
-**Threshold filtering.** The interference threshold (OCG knob 684, default 50) acts as a congestion cutoff. Any physical register slot with total interference weight above this value is immediately skipped. This prevents the allocator from assigning a VR to a slot that would cause excessive register pressure, even if that slot happens to be the global minimum. The threshold trades a small increase in the number of spills for a significant improvement in allocation quality -- high-interference slots tend to require cascading reassignments.
+**Threshold filtering.** The interference threshold (OCG knob 684, default 50) acts as a congestion cutoff. Any physical register slot with total interference weight above this value is immediately skipped. This prevents the allocator from assigning a VR to a slot that would cause excessive register pressure, even if that slot happens to be the global minimum. The threshold trades a small increase in the number of spills for a significant improvement in allocation quality — high-interference slots tend to require cascading reassignments.
 
 **Alignment stride.** For paired registers (pair mode 1 or 3 in `vreg+48` bits 20--21), the scan steps by 2 instead of 1, ensuring the VR lands on an even-numbered slot. For quad-width registers, the stride is 4. The shift amount comes from the register class descriptor and varies by allocation mode.
 
@@ -728,8 +728,8 @@ vreg.flags |= 0x40000         // needs-spill flag (bit 18)
 ```
 
 When the needs-spill flag is later detected, the allocator calls:
-1. `sub_939BD0` -- spill allocator setup (selects bucket size, alignment, max based on knob 623 and cost threshold at `alloc+776`)
-2. `sub_94F150` -- spill code generation (561 lines, emits spill/reload instructions)
+1. `sub_939BD0` — spill allocator setup (selects bucket size, alignment, max based on knob 623 and cost threshold at `alloc+776`)
+2. `sub_94F150` — spill code generation (561 lines, emits spill/reload instructions)
 
 The spill cost is accumulated:
 ```c
@@ -863,7 +863,7 @@ The **opcode boundary switch** is identical in both functions. Maps masked opcod
 | 279 | FENCE\_T | 6 | Fixed |
 | 297 | UFMUL | `sub_7E3790(insn, 3)` | Per-instruction query |
 | 352 | SEL | `sub_7E3800(insn, 3)` | Per-instruction query |
-| (other) | -- | -1 | No pre-assignment |
+| (other) | — | -1 | No pre-assignment |
 
 | Priority | Meaning |
 |----------|---------|
@@ -1395,7 +1395,7 @@ sub_A8B680 (PostAllocPass::run)
 
 The fast check (`sub_A56790`) performs a lightweight comparison per instruction. It returns true when pre-regalloc and post-regalloc reaching definitions match exactly. Only on failure does the verifier invoke the expensive deep path (`sub_A75CC0`), which:
 
-1. Builds two difference lists -- "Additions" (defs present after but not before) and "Removals" (defs present before but not after).
+1. Builds two difference lists — "Additions" (defs present after but not before) and "Removals" (defs present before but not after).
 2. Classifies each difference as either `BENIGN (explainable)` or `POTENTIAL PROBLEM` by pattern-matching against known-safe transformations: spill-store/refill-load pairs, P2R/R2P predicate packing, bit-spill patterns, and rematerialized instructions.
 3. For each unexplained difference, creates an error record with a category code (1--10), pointers to the offending instructions, and operand type flags.
 
@@ -1406,8 +1406,8 @@ The reporter (`sub_A55D80`) dispatches on the error code at `record+24`:
 | Code | Name | Message | Trigger |
 |------|------|---------|---------|
 | 1 | Spill-refill mismatch | `Failed to find matching spill for refilling load that is involved in this operand computation` | A post-regalloc refill load has no corresponding spill store. The verifier walks the spill-refill chain and cannot find the matching pair. |
-| 2 | Refill reads uninitialized | `This operand was fully defined before register allocation, however refill that is involved in this operand computation reads potentially uninitialized memory` | The refill reads from a stack slot that was never written -- the spill store was optimized away or placed on a non-executing path. |
-| 3 | P2R-R2P pattern failure | `Failed to establish match for P2R-R2P pattern involved in this operand computation` | Predicate-to-register / register-to-predicate instruction pairs used to spill predicate registers through GPRs have a broken chain -- the matching counterpart is missing. |
+| 2 | Refill reads uninitialized | `This operand was fully defined before register allocation, however refill that is involved in this operand computation reads potentially uninitialized memory` | The refill reads from a stack slot that was never written — the spill store was optimized away or placed on a non-executing path. |
+| 3 | P2R-R2P pattern failure | `Failed to establish match for P2R-R2P pattern involved in this operand computation` | Predicate-to-register / register-to-predicate instruction pairs used to spill predicate registers through GPRs have a broken chain — the matching counterpart is missing. |
 | 4 | Bit-spill-refill failure | `Failed to establish match for bit-spill-refill pattern involved in this operand computation` | The bit-packing variant of predicate spilling (multiple predicates packed into GPR bits) failed pattern matching. Same root cause as code 3 but for the packed representation. |
 | 5 | Uninitialized value introduced | `Before register allocation this operand was fully defined, now an uninitialized value can reach it` | Pre-regalloc: all paths to this use had a definition. Post-regalloc: at least one path has no definition. The register holds a stale value from a prior computation. Typically caused by a spill placed on the wrong path or a definition eliminated during allocation. |
 | 6 | Extra defs introduced | `After reg-alloc there are some extra def(s) that participate in this operand computation. They were not used this way before the allocation.` | The post-regalloc definition set is a strict superset of the pre-regalloc set. New definitions were introduced through register reuse or aliasing. When the extra def involves a short/byte type in a wider register, the reporter prints: `Does this def potentially clobber upper bits of a register that is supposed to hold unsigned short or unsigned byte?` and suggests `-knob IgnorePotentialMixedSizeProblems`. |
@@ -1459,7 +1459,7 @@ The verifier tracks two counters reported at the end of the pass:
 | Offset | Counter | Meaning |
 |--------|---------|---------|
 | `verifier+1236` | Total mismatches | Instructions where post-regalloc defs differ from pre-regalloc defs in an unexplained way. |
-| `verifier+1240` | Old mismatches | Subset of total mismatches that represent pre-existing issues -- the pre-regalloc def chain was already empty (no reaching definitions before allocation either). These are not regressions from the current allocation attempt. |
+| `verifier+1240` | Old mismatches | Subset of total mismatches that represent pre-existing issues — the pre-regalloc def chain was already empty (no reaching definitions before allocation either). These are not regressions from the current allocation attempt. |
 
 ### Knob Interactions
 
@@ -1473,18 +1473,18 @@ The verifier tracks two counters reported at the end of the pass:
 
 | Address | Size | Role | Confidence |
 |---------|------|------|---|
-| `sub_A54140` | -- | Def-use chain lookup (hash table query into pre/post maps) | HIGH |
+| `sub_A54140` | — | Def-use chain lookup (hash table query into pre/post maps) | HIGH |
 | `sub_A55D20` | ~100B | Print uninitialized-def warning helper | HIGH |
-| `sub_A55D80` | 1454B | Diagnostic reporter -- 10 error categories, structured output | HIGH |
-| `sub_A56400` | -- | Build additions/removals lists for deep comparison | MEDIUM |
+| `sub_A55D80` | 1454B | Diagnostic reporter — 10 error categories, structured output | HIGH |
+| `sub_A56400` | — | Build additions/removals lists for deep comparison | MEDIUM |
 | `sub_A56560` | 698B | Verify single operand's reaching definitions | HIGH |
 | `sub_A56790` | ~250B | Per-instruction fast check (returns bool pass/fail) | HIGH |
 | `sub_A5B1C0` | 8802B | Full-function def-use chain builder (pre and post regalloc) | HIGH |
 | `sub_A60B60` | 4560B | Pre/post chain comparison engine | HIGH |
-| `sub_A62480` | -- | Reset scratch arrays between operand checks | MEDIUM |
+| `sub_A62480` | — | Reset scratch arrays between operand checks | MEDIUM |
 | `sub_A75220` | 2640B | Compare reaching definitions (builds diff lists) | HIGH |
 | `sub_A75CC0` | 866B | Deep single-instruction verifier (classifies diffs) | HIGH |
-| `sub_A76030` | 770B | MemcheckPass::run -- verification entry point | HIGH |
+| `sub_A76030` | 770B | MemcheckPass::run — verification entry point | HIGH |
 
 ## Occupancy-Aware Budget Model
 
@@ -1511,7 +1511,7 @@ All five knobs use the standard OCG type-check pattern: byte at `knobArray + 72*
 
 ### Piecewise Interpolation Table
 
-After reading the knobs, `sub_947150` queries the target descriptor for the hardware maximum thread count (vtable slot 90, offset +720). This value is clamped to `maxThreads - 1` if a knob override is active. The result becomes `totalThreads` -- the kernel's maximum achievable occupancy.
+After reading the knobs, `sub_947150` queries the target descriptor for the hardware maximum thread count (vtable slot 90, offset +720). This value is clamped to `maxThreads - 1` if a knob override is active. The result becomes `totalThreads` — the kernel's maximum achievable occupancy.
 
 An optional override through the function-object vtable at `context+1584` (vtable slot 118, offset +944) can adjust the architectural register limit. When the override is active, it calls `override_fn(totalThreads, param, 255.0)` and sets the adjusted limit to `255 - result`. When inactive, the limit stays at 255.
 
@@ -1583,7 +1583,7 @@ budget_fraction = (300 - 240) * 0.00292 + 0.3 = 0.475
 spill_threshold = 0.475 * 129 = 61.3
 ```
 
-If more than 61 VRs are pending spill or already allocated, the allocator triggers a spill rather than attempting to fit another register. With fewer registers in play (say 250), the fraction drops to 0.329 and the threshold tightens to 42 -- more aggressive spilling at higher occupancy targets.
+If more than 61 VRs are pending spill or already allocated, the allocator triggers a spill rather than attempting to fit another register. With fewer registers in play (say 250), the fraction drops to 0.329 and the threshold tightens to 42 — more aggressive spilling at higher occupancy targets.
 
 ### Budget Model Field Summary
 
@@ -1642,7 +1642,7 @@ Immediately after building the interpolation tables, `sub_947150` calls `sub_939
 | `sub_9680F0` | 3722 | Per-instruction assignment core loop | HIGH |
 | `sub_96D940` | 2983 | Spill guidance (7-class priority queues) | HIGH |
 | `sub_971A90` | 355 | NOSPILL / SPILL retry driver | HIGH |
-| `sub_9714E0` | -- | Post-allocation finalization | MEDIUM |
+| `sub_9714E0` | — | Post-allocation finalization | MEDIUM |
 | `sub_9721C0` | 1086 | Register allocation entry point | HIGH |
-| `sub_936FD0` | -- | Final fallback allocation | MEDIUM |
-| `sub_9375C0` | -- | VR priority sort | MEDIUM |
+| `sub_936FD0` | — | Final fallback allocation | MEDIUM |
+| `sub_9375C0` | — | VR priority sort | MEDIUM |

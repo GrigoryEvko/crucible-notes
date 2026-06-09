@@ -2,24 +2,24 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Eight phases in the ptxas pipeline transform loops in the Ori IR: one canonicalizer (phase 18), one unroller (phase 22), one software pipeliner (phase 24), four LICM instances (phases 35, 66, 79, 88), and one fusion pass (phase 59). Together they account for the largest category of repeated-pass instances in the pipeline -- the LICM family alone runs four times because intervening transformations (predication, legalization, GMMA fixup) continuously expose new invariants.
+Eight phases in the ptxas pipeline transform loops in the Ori IR: one canonicalizer (phase 18), one unroller (phase 22), one software pipeliner (phase 24), four LICM instances (phases 35, 66, 79, 88), and one fusion pass (phase 59). Together they account for the largest category of repeated-pass instances in the pipeline — the LICM family alone runs four times because intervening transformations (predication, legalization, GMMA fixup) continuously expose new invariants.
 
 ptxas is not built on LLVM. Its loop infrastructure is a custom, non-SSA representation operating directly on the Ori IR's basic-block graph. Loop detection is performed by `AnalyzeControlFlow` (phase 3), which identifies back-edges, computes dominators, and annotates each basic block with a loop nesting depth stored at block offset +144. This nesting depth is the primary loop identity used by all eight passes.
 
 | | |
 |---|---|
-| **OriLoopSimplification** | Phase 18 -- vtable at `off_22BD898` |
-| **OriLoopUnrolling** | Phase 22 -- vtable at `off_22BD938` |
-| **OriPipelining** | Phase 24 -- vtable at `off_22BD988` |
-| **OriHoistInvariantsEarly** | Phase 35 -- vtable at `off_22BDB40` |
-| **OriLoopFusion** | Phase 59 -- vtable at `off_22BDF00` |
-| **OriHoistInvariantsLate** | Phase 66 -- vtable at `off_22BE018` |
-| **OriHoistInvariantsLate2** | Phase 79 -- vtable at `off_22BE220` |
-| **OriHoistInvariantsLate3** | Phase 88 -- vtable at `off_22BE388` |
+| **OriLoopSimplification** | Phase 18 — vtable at `off_22BD898` |
+| **OriLoopUnrolling** | Phase 22 — vtable at `off_22BD938` |
+| **OriPipelining** | Phase 24 — vtable at `off_22BD988` |
+| **OriHoistInvariantsEarly** | Phase 35 — vtable at `off_22BDB40` |
+| **OriLoopFusion** | Phase 59 — vtable at `off_22BDF00` |
+| **OriHoistInvariantsLate** | Phase 66 — vtable at `off_22BE018` |
+| **OriHoistInvariantsLate2** | Phase 79 — vtable at `off_22BE220` |
+| **OriHoistInvariantsLate3** | Phase 88 — vtable at `off_22BE388` |
 | **Phase factory** | `sub_C60D30` cases 18, 22, 24, 35, 59, 66, 79, 88 |
 | **Phase object size** | 16 bytes (standard `{vtable_ptr, allocator_ptr}`) |
-| **IR level** | Ori -- SASS opcodes with virtual registers, pre-RA |
-| **Loop detection** | `AnalyzeControlFlow` (phase 3) -- back-edges, dominators, nesting depth |
+| **IR level** | Ori — SASS opcodes with virtual registers, pre-RA |
+| **Loop detection** | `AnalyzeControlFlow` (phase 3) — back-edges, dominators, nesting depth |
 | **Related passes** | 3 `AnalyzeControlFlow`, 19 `OriSplitLiveRanges`, 21 `OriStrengthReduce`, 108 `OptimizeHotColdInLoop` |
 
 ## Pipeline Placement
@@ -79,7 +79,7 @@ The block iteration order is controlled by a reverse-post-order (RPO) array stor
 
 ---
 
-## Phase 18 -- OriLoopSimplification
+## Phase 18 — OriLoopSimplification
 
 ### Purpose
 
@@ -130,7 +130,7 @@ function LoopSimplification(code_object):
 
 The simplification pass checks the optimization level at offset +896 of the code object. Levels 4 and 5 (`-O4`, `-O5`) enable aggressive loop peeling via `sub_7753F0` before canonicalization. At the default `-O2`, peeling is suppressed to avoid code size growth that could cause instruction cache thrashing.
 
-The `LoopMakeSingleEntry` knob (OCG knob 487) is the master enable. When disabled, only back-edge canonicalization runs -- preheader insertion is skipped. This knob is checked via the standard OCG knob query at offset +152 of the allocator vtable.
+The `LoopMakeSingleEntry` knob (OCG knob 487) is the master enable. When disabled, only back-edge canonicalization runs — preheader insertion is skipped. This knob is checked via the standard OCG knob query at offset +152 of the allocator vtable.
 
 The pass also inspects the convergence flag at offset +1380 (bit 7). When set, it indicates a convergent execution context (e.g., warp-synchronous code), and certain edge-splitting transformations are suppressed to avoid disrupting convergence guarantees.
 
@@ -147,7 +147,7 @@ The pass also inspects the convergence flag at offset +1380 (bit 7). When set, i
 
 ---
 
-## Phase 22 -- OriLoopUnrolling
+## Phase 22 — OriLoopUnrolling
 
 ### Purpose
 
@@ -721,7 +721,7 @@ function RunUnrolling(ctx):
 
 ### Unroll Rejection Table
 
-When a loop cannot be unrolled, `sub_7F5D20` records the reason by indexing a string pointer array at `0x21D1EA0`. The diagnostic strings contain hex codes like `"0x80000001 - Not unrolled: Irregular loop"` -- these hex values are part of the printed message text, not the internal array index. The W023 report originally described a 36-byte structure table at `0x21D1980`; that table belongs to the operand range lookup in the peephole optimizer (`sub_7E39B0`), not the unrolling pass. The actual internal rejection codes are simple integers indexing the string array:
+When a loop cannot be unrolled, `sub_7F5D20` records the reason by indexing a string pointer array at `0x21D1EA0`. The diagnostic strings contain hex codes like `"0x80000001 - Not unrolled: Irregular loop"` — these hex values are part of the printed message text, not the internal array index. The W023 report originally described a 36-byte structure table at `0x21D1980`; that table belongs to the operand range lookup in the peephole optimizer (`sub_7E39B0`), not the unrolling pass. The actual internal rejection codes are simple integers indexing the string array:
 
 | Code | Category | Reason |
 |---|---|---|
@@ -796,7 +796,7 @@ This line appears in eight SM-variant statistics printers (`sub_ABBA50` through 
 
 ---
 
-## Phase 24 -- OriPipelining
+## Phase 24 — OriPipelining
 
 ### Purpose
 
@@ -818,7 +818,7 @@ The two layers cooperate: Phase 24 transforms the loop structure (instruction re
 |---|---|---|---|
 | `sub_926A30` | 22,116 bytes | Per-instruction operand latency annotator and encoding rewriter | HIGH |
 | `sub_91A0F0` | 5,550 bytes | Opcode-to-latency-class classifier (~350 opcodes, 13 distinct classes) | HIGH |
-| `sub_9203A0` | 4,881 bytes | **Constant-folding engine** for FP type conversions (FP32/FP64/FP16/int, IEEE 754 rounding). Previously misidentified as ResMII cost calculator -- see Correction LOOP-11 in Phase 3 and LOOP-12 | LOW |
+| `sub_9203A0` | 4,881 bytes | **Constant-folding engine** for FP type conversions (FP32/FP64/FP16/int, IEEE 754 rounding). Previously misidentified as ResMII cost calculator — see Correction LOOP-11 in Phase 3 and LOOP-12 | LOW |
 | `sub_921820` | 1,592 bytes | Compile-time constant-folding evaluator for math intrinsics | HIGH |
 | `sub_9202D0` | 207 bytes | Two-operand pipeline feasibility check (returns 60=reject, 130=accept) | HIGH |
 | `sub_91E610` | 399 bytes | Register-class-based latency lookup (class 4→26, class 5/2→20) | HIGH |
@@ -827,7 +827,7 @@ The two layers cooperate: Phase 24 transforms the loop structure (instruction re
 | `sub_92C240` | 8,033 bytes | Extended GEMM-loop pipeliner (SM90+ TMA pipeline depth management) | MEDIUM |
 | `sub_8B9390` | 22,841 bytes | Post-RA software pipelining scheduling variant (in scheduler subsystem) | MEDIUM |
 
-**Correction (P1-06):** The original function map listed `sub_926A30` as the "main pipelining engine (modulo scheduling)." Decompilation reveals it is the per-instruction operand latency annotator -- it iterates over each operand of an instruction, calls `sub_91A0F0` to classify the operand's latency class, and rewrites the operand encoding with the latency annotation. The modulo scheduling loop transformation is distributed across the remaining functions, with `sub_9203A0` computing stage costs.
+**Correction (P1-06):** The original function map listed `sub_926A30` as the "main pipelining engine (modulo scheduling)." Decompilation reveals it is the per-instruction operand latency annotator — it iterates over each operand of an instruction, calls `sub_91A0F0` to classify the operand's latency class, and rewrites the operand encoding with the latency annotation. The modulo scheduling loop transformation is distributed across the remaining functions, with `sub_9203A0` computing stage costs.
 
 **Correction (LOOP-12):** `sub_921820` was originally labeled "Prolog/epilog code generator." Decompilation shows it is a **compile-time constant-folding evaluator** for pipelined loop bodies. It dispatches on the Ori opcode of an instruction whose operand is a known constant, evaluates the operation at compile time using the host math library, and replaces the instruction with the resulting immediate. The dispatch covers 12 opcodes:
 
@@ -923,7 +923,7 @@ The DDG that feeds RecMII is constructed during step 3 of the Phase 24 algorithm
 | Edge field | Meaning |
 |---|---|
 | latency | Pipeline latency between producer and consumer, looked up via `sub_91E900` (stall cycle calculator, 32/64-cycle caps by pipe class) |
-| distance | Iteration distance -- 0 for intra-iteration edges, 1+ for loop-carried edges where the def is in iteration *i* and the use is in iteration *i+k* |
+| distance | Iteration distance — 0 for intra-iteration edges, 1+ for loop-carried edges where the def is in iteration *i* and the use is in iteration *i+k* |
 
 Loop-carried edges are detected by matching register definitions against uses whose operand encoding references a register defined in a prior iteration. The Ori IR stores def-use chains in the virtual register descriptor array at `code_object+88`; the pipelining pass walks these chains and marks cross-iteration edges with `distance >= 1`.
 
@@ -931,13 +931,13 @@ Loop-carried edges are detected by matching register definitions against uses wh
 
 Two structural observations constrain the implementation:
 
-1. **Single-block loops only.** Phase 24 operates on single-basic-block loop bodies (the feasibility check at `sub_9202D0` rejects multi-operand forms, and multi-block handling is gated to the unroller via `UnrollMultiBlockLoops`). In a single-block DDG where every instruction executes once per iteration, the only cycles are recurrences -- chains where instruction A feeds B feeds ... feeds A across iteration boundaries. The count of such cycles is bounded by the number of loop-carried edges, typically small (1--4 for register recurrences).
+1. **Single-block loops only.** Phase 24 operates on single-basic-block loop bodies (the feasibility check at `sub_9202D0` rejects multi-operand forms, and multi-block handling is gated to the unroller via `UnrollMultiBlockLoops`). In a single-block DDG where every instruction executes once per iteration, the only cycles are recurrences — chains where instruction A feeds B feeds ... feeds A across iteration boundaries. The count of such cycles is bounded by the number of loop-carried edges, typically small (1--4 for register recurrences).
 
 2. **Implicit via constraint propagation.** The post-RA SoftwarePipeline variant (`sub_8B9390`) tracks `maxDependencyCycle` (+92) and `maxPredecessorCycle` (+88) in the per-instruction 96-byte scheduling record. These fields propagate forward during the modulo scheduling placement loop: when B depends on A with latency L and distance D, the earliest slot for B is `A.scheduled_time + L - D * II`. If no valid placement exists at the current II, II is incremented and the MRT is rebuilt. This means RecMII is effectively computed as the smallest II for which all recurrence constraints are satisfiable, rather than being pre-computed by a separate cycle-enumeration pass.
 
 **ResMII** (resource-constrained): Computed by accumulating per-pipe FP64 instruction costs and dividing by per-pipe issue width. The process uses `sub_91E610` (which wraps `sub_91A0F0`) to classify each instruction's latency class, then maps the class through `vtable+904` (`PipeAssignment`) to obtain a pipe index into the 7-entry resource table at `code_object+16`.
 
-**Correction (LOOP-11):** The function map (line 672) lists `sub_9203A0` as the ResMII cost calculator. Decompilation reveals `sub_9203A0` (4,881 bytes) is a constant-folding engine for FP type conversions (FP32/FP64/FP16/integer with IEEE 754 rounding modes -- see LOOP-12). The ResMII accumulation is performed inline by the pipelining driver that iterates over the loop body, calling `sub_91E610`/`sub_91E900` per instruction and accumulating into a 7-element FP64 cost vector.
+**Correction (LOOP-11):** The function map (line 672) lists `sub_9203A0` as the ResMII cost calculator. Decompilation reveals `sub_9203A0` (4,881 bytes) is a constant-folding engine for FP type conversions (FP32/FP64/FP16/integer with IEEE 754 rounding modes — see LOOP-12). The ResMII accumulation is performed inline by the pipelining driver that iterates over the loop body, calling `sub_91E610`/`sub_91E900` per instruction and accumulating into a 7-element FP64 cost vector.
 
 ```c
 function ComputeResMII(loop_body, code_object):
@@ -987,7 +987,7 @@ ResMII is the ceiling of the maximum ratio `pipe_counts[i] / pipe_width[i]` acro
 
 #### Phase 4: Post-RA Software Pipeline Scheduling (`sub_8B9390`)
 
-**Correction (LOOP-09):** Phases 4 and 5 previously contained textbook IMS (Iterative Modulo Scheduling) pseudocode that did not correspond to any function in the binary. The actual implementation is the post-RA scheduling variant `sub_8B9390` (22,841 bytes), which operates **after** Phase 24 has already determined the initiation interval and assigned instructions to pipeline stages. It does not search for an II -- it receives the stage assignment and performs cycle-level instruction placement using physical registers.
+**Correction (LOOP-09):** Phases 4 and 5 previously contained textbook IMS (Iterative Modulo Scheduling) pseudocode that did not correspond to any function in the binary. The actual implementation is the post-RA scheduling variant `sub_8B9390` (22,841 bytes), which operates **after** Phase 24 has already determined the initiation interval and assigned instructions to pipeline stages. It does not search for an II — it receives the stage assignment and performs cycle-level instruction placement using physical registers.
 
 `sub_8B9390` takes three parameters: the scheduling context (`ctx`), a loop descriptor (`loop_desc`), and a per-stage bitmask (`stage_mask`). The algorithm has three phases:
 
@@ -1073,7 +1073,7 @@ The 7-class register bank partitioning (the cascade of comparisons against `ctx+
 
 ### Instruction Latency Classifier (sub_91A0F0)
 
-The classifier is a 5.5KB, 1372-line switch statement mapping approximately 350 Ori opcodes to 13 distinct latency class values. It takes five parameters: `(opcode, secondary_opcode, operand_array, operand_count, operand_index)` and returns a class ID -- not a cycle count. The scheduler maps class IDs to actual cycle counts via the hardware profile.
+The classifier is a 5.5KB, 1372-line switch statement mapping approximately 350 Ori opcodes to 13 distinct latency class values. It takes five parameters: `(opcode, secondary_opcode, operand_array, operand_count, operand_index)` and returns a class ID — not a cycle count. The scheduler maps class IDs to actual cycle counts via the hardware profile.
 
 #### Latency Class Table
 
@@ -1172,7 +1172,7 @@ The DUMPIR diagnostic output includes `For Dma Loop` and `For Math Loop` section
 
 **Warp divergence.** Pipelined loops assume all threads in a warp execute the same number of iterations. If the trip count is warp-divergent, the prolog/epilog handling must account for early-exit threads. The pass checks the varying analysis (phases 53, 70) to determine divergence.
 
-**Barrier placement.** Pipelined loops containing `BAR.SYNC` or `MEMBAR` instructions are checked by `sub_9202D0` -- if the pipe assignment class for a barrier instruction is <= 3, the instruction is rejected from pipelining. The latency classifier (`sub_91A0F0`) assigns class 12 to barrier operands (opcodes `0x5B`, `0x5C`, `0x137`), but the feasibility check rejects based on pipe class, not latency class.
+**Barrier placement.** Pipelined loops containing `BAR.SYNC` or `MEMBAR` instructions are checked by `sub_9202D0` — if the pipe assignment class for a barrier instruction is <= 3, the instruction is rejected from pipelining. The latency classifier (`sub_91A0F0`) assigns class 12 to barrier operands (opcodes `0x5B`, `0x5C`, `0x137`), but the feasibility check rejects based on pipe class, not latency class.
 
 **Memory pipeline depth.** The `sub_92C240` extended pipeliner for GEMM-like loops manages the hardware memory pipeline on SM90+. It explicitly tracks DMA pipeline depth using 96-byte per-stage descriptors, resizing arrays dynamically when depth exceeds allocation. The stage descriptor at `context+136 + 96*stage` holds bitmask membership, latency counters, and dependency links.
 
@@ -1180,11 +1180,11 @@ The DUMPIR diagnostic output includes `For Dma Loop` and `For Math Loop` section
 
 ---
 
-## Phases 35, 66, 79, 88 -- OriHoistInvariants (LICM)
+## Phases 35, 66, 79, 88 — OriHoistInvariants (LICM)
 
 ### Purpose
 
-Hoists computations that produce the same result on every loop iteration out of the loop body and into the preheader. This reduces the dynamic instruction count proportionally to the trip count. The four instances are not redundant -- each targets invariants created by different intervening transformations.
+Hoists computations that produce the same result on every loop iteration out of the loop body and into the preheader. This reduces the dynamic instruction count proportionally to the trip count. The four instances are not redundant — each targets invariants created by different intervening transformations.
 
 ### Function Map
 
@@ -1208,7 +1208,7 @@ All four instances share the same core implementation:
 | `sub_8FF2D0` | 1,186 bytes | Budget computation + invariant marking + hoist dispatch | HIGH |
 | `sub_8F8BC0` | 257 bytes | Instruction counting: header/body weight via isNoOp | HIGH |
 | `sub_74D720` | 353 bytes | Loop boundary analysis: barrier/jump/predecessor checks | HIGH |
-| `sub_74F500` | -- | Preheader location finder | MEDIUM |
+| `sub_74F500` | — | Preheader location finder | MEDIUM |
 | `sub_7DF3A0` | 88 bytes | Opcode flags table lookup (side-effect classification) | HIGH |
 | `sub_7E0540` | 156 bytes | Observable side-effect checker (memory, call, barrier) | HIGH |
 
@@ -1261,7 +1261,7 @@ if (v7 == 0) {                             // knob says "always"
 
 - **pass_id = 0** (Early): Hoists aggressively and calls `sub_A112C0(code_object, 1)` to re-run sub-analyses afterward. This is the most aggressive pass.
 - **pass_id = 1** (Late): Includes inner-loop-only blocks, but skips the re-analysis call.
-- **pass_id >= 2** (Late2, Late3): Most conservative -- only hoists from blocks where knob 381 returns 0 (always-hoist).
+- **pass_id >= 2** (Late2, Late3): Most conservative — only hoists from blocks where knob 381 returns 0 (always-hoist).
 
 ### Per-Block Knob 381 Policy
 
@@ -1406,7 +1406,7 @@ function MarkInvariants_Forward(context, block_index):
                     reg.use_count += 1                    // count loop-internal uses
 ```
 
-The key insight is that invariance is determined by **definition site**: if every source register was defined outside the loop (or in a block already processed), the instruction is invariant. Immediates and constants are trivially invariant. The check is not purely structural -- it uses the `reg+76` field which gets updated as hoisting proceeds, allowing transitive invariance discovery.
+The key insight is that invariance is determined by **definition site**: if every source register was defined outside the loop (or in a block already processed), the instruction is invariant. Immediates and constants are trivially invariant. The check is not purely structural — it uses the `reg+76` field which gets updated as hoisting proceeds, allowing transitive invariance discovery.
 
 ##### Set-Based Invariance Alternative (knob 934)
 
@@ -1414,7 +1414,7 @@ When `UseNewLoopInvariantRoutineForHoisting` (knob 934, default **false**) is en
 
 **Invariant set data structure.** A BST keyed on `register_id >> 8` (register group). Each 64-byte node stores left/right pointers (`node+0/+8`), group key at `node+24`, and a 256-bit bitmap (4 x u64 at `node+32..+56`). Lookup (`sub_7554F0`): walk by group key, bit-test `node[((id >> 6) & 3) + 4] & (1 << (id & 0x3F))`. Insert (`sub_768AB0`): allocate from freelist at `tree+32+8` or pool at `tree+32+16`, set the bit, balanced-insert via `sub_6A01A0`; duplicate group keys OR into the existing bitmap.
 
-**Phase A -- Fixpoint set construction (`sub_768BF0`):**
+**Phase A — Fixpoint set construction (`sub_768BF0`):**
 
 ```c
 function BuildInvariantSet(co, block_idx, hdr_depth, max_depth, inv_set, filter, regclass):
@@ -1442,29 +1442,29 @@ function BuildInvariantSet(co, block_idx, hdr_depth, max_depth, inv_set, filter,
     while changed                                                 // monotone: only adds
 ```
 
-**Phase B -- Per-instruction classification (`sub_8F7280`):** walks the block once after the set is final. For each register operand, looks up `reg.class_and_id >> 8` in the BST. If the bitmap bit is set: writes `reg.def_block = block_index` (marking invariant). If the bit is clear and the operand is a definition: increments `reg.use_count` (loop-internal use count). On the forward pass (`a3=1`), clears `reg+84` before the lookup; on the backward pass (`a3=0`), preserves it.
+**Phase B — Per-instruction classification (`sub_8F7280`):** walks the block once after the set is final. For each register operand, looks up `reg.class_and_id >> 8` in the BST. If the bitmap bit is set: writes `reg.def_block = block_index` (marking invariant). If the bit is clear and the operand is a definition: increments `reg.use_count` (loop-internal use count). On the forward pass (`a3=1`), clears `reg+84` before the lookup; on the backward pass (`a3=0`), preserves it.
 
-**Why two paths exist.** The default single-pass interleaves invariance detection with destination marking. It misses transitive invariance: if instruction A defines R1 and later instruction B uses R1 to define R2, R2 cannot be marked in the same pass. The default delegates this to Stage 4 (`sub_8F7DD0`). The set-based path solves it directly -- once R1 enters the set, the next fixpoint iteration promotes R2. The cost is memory (64-byte BST nodes per register group) and repeated block scans, hence it remains opt-in behind knob 934.
+**Why two paths exist.** The default single-pass interleaves invariance detection with destination marking. It misses transitive invariance: if instruction A defines R1 and later instruction B uses R1 to define R2, R2 cannot be marked in the same pass. The default delegates this to Stage 4 (`sub_8F7DD0`). The set-based path solves it directly — once R1 enters the set, the next fixpoint iteration promotes R2. The cost is memory (64-byte BST nodes per register group) and repeated block scans, hence it remains opt-in behind knob 934.
 
 #### Stage 3: Backward Non-Invariance Marking (sub_8FEAC0, a3=0)
 
 The backward pass calls the same `sub_8FEAC0` with `a3=0`. Five behavioral divergences from the forward pass produce a complementary analysis that revokes false-positive invariance and builds the use-count vector consumed by Stage 5.
 
-**Divergence 1 -- No operand pre-clear.** The forward pass zeros `reg.use_count` (offset +84) for every register operand before the main scan (lines 177-188 in decompilation: iterates operands 0..N-1 forward, writes 0). The backward pass skips this loop entirely (`a3 && v9 > 0` is false), preserving use-count values accumulated so far.
+**Divergence 1 — No operand pre-clear.** The forward pass zeros `reg.use_count` (offset +84) for every register operand before the main scan (lines 177-188 in decompilation: iterates operands 0..N-1 forward, writes 0). The backward pass skips this loop entirely (`a3 && v9 > 0` is false), preserving use-count values accumulated so far.
 
-**Divergence 2 -- No external-definition marking on source operands.** When a source register's `def_block` does not match `block_index` in single-depth mode, the forward pass writes `reg.use_count = 0` (LABEL_68) to tag the register as loop-external. The backward pass takes the `!a3` branch (line 255-256) and skips to the next operand without modification. In multi-depth mode the forward pass performs a depth-range check and may write both `reg.def_block = block_index` and `reg.use_count = 0`; the backward pass bypasses the multi-depth logic entirely via the same `!a3` guard.
+**Divergence 2 — No external-definition marking on source operands.** When a source register's `def_block` does not match `block_index` in single-depth mode, the forward pass writes `reg.use_count = 0` (LABEL_68) to tag the register as loop-external. The backward pass takes the `!a3` branch (line 255-256) and skips to the next operand without modification. In multi-depth mode the forward pass performs a depth-range check and may write both `reg.def_block = block_index` and `reg.use_count = 0`; the backward pass bypasses the multi-depth logic entirely via the same `!a3` guard.
 
-**Divergence 3 -- Unconditional def_block overwrite on destinations.** Both passes reach the destination-marking region through LABEL_26 (the forced non-invariant path triggered by side-effects, memory overlap, or observable effects). At LABEL_27 the pass sets `v17 = a3`. With a3=0, the unconditional path (LABEL_28, lines 374-396) fires: for every register destination that is not pinned, it writes `reg.def_block = block_index` regardless of the register's current def_block value. The forward pass (a3=1) instead takes the conditional path (LABEL_54, lines 354-372) which writes def_block only when `reg.def_instruction` (offset +56) is null. This unconditional overwrite is the core revocation mechanism -- any destination on a non-invariant instruction gets its def_block stamped to the current block, preventing Stage 4 from treating it as hoistable.
+**Divergence 3 — Unconditional def_block overwrite on destinations.** Both passes reach the destination-marking region through LABEL_26 (the forced non-invariant path triggered by side-effects, memory overlap, or observable effects). At LABEL_27 the pass sets `v17 = a3`. With a3=0, the unconditional path (LABEL_28, lines 374-396) fires: for every register destination that is not pinned, it writes `reg.def_block = block_index` regardless of the register's current def_block value. The forward pass (a3=1) instead takes the conditional path (LABEL_54, lines 354-372) which writes def_block only when `reg.def_instruction` (offset +56) is null. This unconditional overwrite is the core revocation mechanism — any destination on a non-invariant instruction gets its def_block stamped to the current block, preventing Stage 4 from treating it as hoistable.
 
-**Divergence 4 -- use_count increment on non-invariant destinations.** After destination def_block marking, both passes evaluate `!v17` at LABEL_38 (lines 402-417). Since the backward pass enters with `v17 = 0` (from `v17 = a3 = 0`), it always executes the counting loop: for each register destination where `reg.def_block != block_index`, it increments `reg.use_count`. The forward pass enters with `v17 = 1` and skips this loop. This is the sole path that populates use_count for the profitability scorer.
+**Divergence 4 — use_count increment on non-invariant destinations.** After destination def_block marking, both passes evaluate `!v17` at LABEL_38 (lines 402-417). Since the backward pass enters with `v17 = 0` (from `v17 = a3 = 0`), it always executes the counting loop: for each register destination where `reg.def_block != block_index`, it increments `reg.use_count`. The forward pass enters with `v17 = 1` and skips this loop. This is the sole path that populates use_count for the profitability scorer.
 
-**Divergence 5 -- Source-match early exit.** When a source register already has `def_block == block_index` (loop-internal definition found during the operand scan), both passes set `v17 = 0` and break from the operand loop (line 293). The forward pass then re-evaluates the `!a3` condition (false), so it must pass through the full side-effect/memory/observable chain before reaching destination marking. The backward pass (`!a3` is true) falls directly into LABEL_25, reaching the same chain but without the conditional guard -- a minor control-flow simplification since the result is the same.
+**Divergence 5 — Source-match early exit.** When a source register already has `def_block == block_index` (loop-internal definition found during the operand scan), both passes set `v17 = 0` and break from the operand loop (line 293). The forward pass then re-evaluates the `!a3` condition (false), so it must pass through the full side-effect/memory/observable chain before reaching destination marking. The backward pass (`!a3` is true) falls directly into LABEL_25, reaching the same chain but without the conditional guard — a minor control-flow simplification since the result is the same.
 
 The net effect: Stage 2 (forward) optimistically marks registers whose definitions appear outside the current block and clears use-counts to prepare a blank slate. Stage 3 (backward) pessimistically re-stamps `def_block` on any destination belonging to a non-invariant instruction, and builds use-count for every register that survived both passes. Only registers with `def_block != block_index` after both passes are candidates for hoisting.
 
 #### Stage 4: Transitive Invariance Propagation (sub_8F7DD0)
 
-After the two marking passes, `sub_8F7DD0` propagates invariance transitively through the instruction chain. This handles the case where instruction A is invariant and defines register R, and instruction B uses R and is otherwise invariant -- the forward pass may have marked B as non-invariant because R's definition was in the loop, but A (the definer) is itself invariant.
+After the two marking passes, `sub_8F7DD0` propagates invariance transitively through the instruction chain. This handles the case where instruction A is invariant and defines register R, and instruction B uses R and is otherwise invariant — the forward pass may have marked B as non-invariant because R's definition was in the loop, but A (the definer) is itself invariant.
 
 ```c
 function PropagateInvariance(context, block_index):
@@ -1554,9 +1554,9 @@ function IsProfitable(context, block_index, budget, is_hoist_safe):
 
 The profitability check encodes a fundamental GPU tradeoff: hoisting reduces dynamic instruction count (proportional to trip count) but extends live ranges (increasing register pressure and reducing occupancy). The `budget` parameter, which varies by 100x between pass_id 0 and 3, controls how aggressively this tradeoff is resolved.
 
-The denominator distinction is the core difference between the aggressive and conservative LICM passes. Pass_id 0 (Early) divides by the number of instructions actually scanned in the candidate block -- a local, small denominator that makes the score-to-penalty ratio easy to satisfy. Pass_id > 0 (Late, Late2, Late3) divides by a weighted combination of the loop's header and body instruction counts (`body_weight / 3 + header_weight`, precomputed by `sub_8F8BC0`). This global denominator is typically larger, requiring a proportionally higher score to justify hoisting. The `body_weight / 3` term discounts body instructions because they execute every iteration (their cost is amortized), while header instructions execute once per loop entry and thus weigh more heavily in the normalization.
+The denominator distinction is the core difference between the aggressive and conservative LICM passes. Pass_id 0 (Early) divides by the number of instructions actually scanned in the candidate block — a local, small denominator that makes the score-to-penalty ratio easy to satisfy. Pass_id > 0 (Late, Late2, Late3) divides by a weighted combination of the loop's header and body instruction counts (`body_weight / 3 + header_weight`, precomputed by `sub_8F8BC0`). This global denominator is typically larger, requiring a proportionally higher score to justify hoisting. The `body_weight / 3` term discounts body instructions because they execute every iteration (their cost is amortized), while header instructions execute once per loop entry and thus weigh more heavily in the normalization.
 
-An additional behavioral difference: when the candidate block contains no invariant-eligible instructions, pass_id 0 returns false immediately (no vacuous hoisting), while pass_id > 0 falls through to the formula with score = 0 and latency_penalty = 0, yielding true if the denominator is nonzero (vacuous profitability -- no instructions means no penalty).
+An additional behavioral difference: when the candidate block contains no invariant-eligible instructions, pass_id 0 returns false immediately (no vacuous hoisting), while pass_id > 0 falls through to the formula with score = 0 and latency_penalty = 0, yielding true if the denominator is nonzero (vacuous profitability — no instructions means no penalty).
 
 #### Per-Instruction Invariance Test (sub_8F76E0)
 
@@ -1583,7 +1583,7 @@ function IsInvariant(instruction, current_block_index):
     return false
 ```
 
-This is the most-called function in the LICM pipeline. It checks whether an instruction's primary output register was defined outside the current block -- if so, the instruction is considered invariant (already hoisted or defined in a dominating block).
+This is the most-called function in the LICM pipeline. It checks whether an instruction's primary output register was defined outside the current block — if so, the instruction is considered invariant (already hoisted or defined in a dominating block).
 
 ### Side-Effect Blocking Rules
 
@@ -1762,11 +1762,11 @@ function HoistInvariantsCore(context):
 
 **Register pressure vs. occupancy.** Every hoisted instruction extends its live range from the preheader through the entire loop. On GPUs, this directly reduces occupancy. The four LICM passes use increasingly conservative heuristics (controlled by pass_id) to avoid excessive register growth in later pipeline stages where register allocation is imminent.
 
-**Texture instruction hoisting.** Texture fetches (`TEX`, `TLD`, `TLD4`) are high-latency and loop-invariant when their coordinates are loop-invariant. The `HoistTexToInstRatio*` knobs provide thresholds for deciding when to hoist texture instructions -- a tradeoff between reducing loop body latency and increasing preheader register pressure.
+**Texture instruction hoisting.** Texture fetches (`TEX`, `TLD`, `TLD4`) are high-latency and loop-invariant when their coordinates are loop-invariant. The `HoistTexToInstRatio*` knobs provide thresholds for deciding when to hoist texture instructions — a tradeoff between reducing loop body latency and increasing preheader register pressure.
 
 ---
 
-## Phase 59 -- OriLoopFusion
+## Phase 59 — OriLoopFusion
 
 ### Purpose
 
@@ -1790,13 +1790,13 @@ Fuses adjacent loops with compatible bounds and no inter-loop data dependencies 
 | `sub_1385D30` | 23 | **DominanceCheck.** Verifies both candidate loops are well-dominated within budget |
 | `sub_1389130` | 418 | **BuildDefUseSets.** Builds per-register bitmask BSTs for both loop bodies |
 | `sub_13888B0` | 97 | **BuildFusionIV.** Constructs merged induction variable; checks body-size budget |
-| `sub_13906A0` | -- | **NormalizeIVBounds.** Adjusts IV start/end/stride to canonical form |
+| `sub_13906A0` | — | **NormalizeIVBounds.** Adjusts IV start/end/stride to canonical form |
 | `sub_1388AF0` | 181 | **VerifyStructure.** Walks both loops in parallel checking structural correspondence |
 | `sub_1396850` | 605 | **CheckDependencies.** Cross-body def-use conflict detection via bitmask BST |
 | `sub_138F650` | 233 | **PrepareTransform.** Drains work queues, reindexes operands into fused body |
 | `sub_1389940` | 72 | **ApplyFusion.** Rewires instructions: eliminates duplicates, clones unique ops |
 | `sub_138FC20` | 526 | **PostCleanup.** Patches CFG edges, updates block numbering and loop tree |
-| `sub_138A6E0` | -- | **Teardown.** Destroys fusion context and releases analysis memory |
+| `sub_138A6E0` | — | **Teardown.** Destroys fusion context and releases analysis memory |
 
 ### Entry Gate (sub_1397CB0)
 
@@ -1953,20 +1953,20 @@ Several utility functions are shared across the loop passes:
 
 | Function | Address | Size | Purpose |
 |---|---|---|---|
-| `sub_781F80` | `0x781F80` | -- | Rebuild instruction linked list after CFG modification |
-| `sub_789280` | `0x789280` | -- | Recompute loop nesting depths (called when `flags[176] & 2` set) |
-| `sub_773140` | `0x773140` | -- | Recompute register pressure estimates |
+| `sub_781F80` | `0x781F80` | — | Rebuild instruction linked list after CFG modification |
+| `sub_789280` | `0x789280` | — | Recompute loop nesting depths (called when `flags[176] & 2` set) |
+| `sub_773140` | `0x773140` | — | Recompute register pressure estimates |
 | `sub_7E6090` | `0x7E6090` | 2,614 | Create complex multi-operand instruction (used in unroll body duplication) |
-| `sub_7753F0` | `0x7753F0` | -- | Loop peeling setup (splits first/last iterations) |
-| `sub_789BE0` | `0x789BE0` | -- | Back-edge canonicalization |
-| `sub_74D720` | `0x74D720` | -- | Loop boundary analysis (determines header, latch, exit) |
-| `sub_74F500` | `0x74F500` | -- | Find preheader block for a given loop |
-| `sub_9253C0` | `0x9253C0` | -- | Edge splitting / preheader block insertion |
-| `sub_7A1A90` | `0x7A1A90` | -- | OCG knob query (boolean) |
-| `sub_7A1B80` | `0x7A1B80` | -- | OCG knob query (multi-valued) |
-| `sub_799250` | `0x799250` | -- | Named-phase DUMPIR check (string match against phase name) |
-| `sub_A112C0` | `0xA112C0` | -- | Trigger sub-analysis re-run (liveness, CFG refresh) |
-| `sub_BDEA50` | `0xBDEA50` | -- | Back-edge information printer (`bix%d -> backedge's successor BB: %d`) |
+| `sub_7753F0` | `0x7753F0` | — | Loop peeling setup (splits first/last iterations) |
+| `sub_789BE0` | `0x789BE0` | — | Back-edge canonicalization |
+| `sub_74D720` | `0x74D720` | — | Loop boundary analysis (determines header, latch, exit) |
+| `sub_74F500` | `0x74F500` | — | Find preheader block for a given loop |
+| `sub_9253C0` | `0x9253C0` | — | Edge splitting / preheader block insertion |
+| `sub_7A1A90` | `0x7A1A90` | — | OCG knob query (boolean) |
+| `sub_7A1B80` | `0x7A1B80` | — | OCG knob query (multi-valued) |
+| `sub_799250` | `0x799250` | — | Named-phase DUMPIR check (string match against phase name) |
+| `sub_A112C0` | `0xA112C0` | — | Trigger sub-analysis re-run (liveness, CFG refresh) |
+| `sub_BDEA50` | `0xBDEA50` | — | Back-edge information printer (`bix%d -> backedge's successor BB: %d`) |
 
 ---
 
@@ -1974,7 +1974,7 @@ Several utility functions are shared across the loop passes:
 
 | Phase | Name | Relationship |
 |---|---|---|
-| 3 | `AnalyzeControlFlow` | Builds the CFG, identifies loops, computes dominators -- prerequisite for all loop passes |
+| 3 | `AnalyzeControlFlow` | Builds the CFG, identifies loops, computes dominators — prerequisite for all loop passes |
 | 19 | `OriSplitLiveRanges` | Splits live ranges at loop boundaries to reduce register pressure post-simplification |
 | 20 | `PerformPGO` | Applies profile data that informs unrolling and pipelining heuristics |
 | 21 | `OriStrengthReduce` | Reduces induction variable strength before unrolling |
@@ -1988,12 +1988,12 @@ Several utility functions are shared across the loop passes:
 
 ## Cross-References
 
-- [Pass Inventory & Ordering](index.md) -- complete 159-phase table
-- [Strength Reduction](strength-reduction.md) -- phase 21, IV simplification before unrolling
-- [Predication](predication.md) -- phase 63, creates new LICM opportunities for phase 66
-- [GMMA/WGMMA Pipeline](gmma-pipeline.md) -- phases 85, 87, creates LICM opportunities for phase 88
-- [Late Legalization](late-legalization.md) -- phase 78, creates LICM opportunities for phase 79
-- [Hot/Cold Partitioning](hot-cold.md) -- phase 108, loop-interior hot/cold splitting
-- [Liveness Analysis](liveness.md) -- phases 16, 33, 61, 84 -- liveness drives unroll register pressure
-- [Knobs System](../config/knobs.md) -- knob infrastructure, ROT13 encoding
-- [Scheduling Architecture](../scheduling/overview.md) -- pipelined loops interact with the instruction scheduler
+- [Pass Inventory & Ordering](index.md) — complete 159-phase table
+- [Strength Reduction](strength-reduction.md) — phase 21, IV simplification before unrolling
+- [Predication](predication.md) — phase 63, creates new LICM opportunities for phase 66
+- [GMMA/WGMMA Pipeline](gmma-pipeline.md) — phases 85, 87, creates LICM opportunities for phase 88
+- [Late Legalization](late-legalization.md) — phase 78, creates LICM opportunities for phase 79
+- [Hot/Cold Partitioning](hot-cold.md) — phase 108, loop-interior hot/cold splitting
+- [Liveness Analysis](liveness.md) — phases 16, 33, 61, 84 — liveness drives unroll register pressure
+- [Knobs System](../config/knobs.md) — knob infrastructure, ROT13 encoding
+- [Scheduling Architecture](../scheduling/overview.md) — pipelined loops interact with the instruction scheduler

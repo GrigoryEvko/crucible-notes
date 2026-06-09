@@ -2,7 +2,7 @@
 
 nvlink reads exactly eight environment variables via `getenv()` calls. This count has been exhaustively verified: every `getenv` call site in the binary (14 total, across 8 decompiled functions plus the PLT thunk at `0x4034A0`) has been identified and mapped. No additional environment variable reads exist through `secure_getenv`, `environ`, or indirect mechanisms.
 
-Unlike CLI flags, which are parsed centrally by `sub_427AE0`, environment variables are consumed at point of use -- each subsystem calls `getenv()` directly when it needs the value. The variables divide into three categories: search paths that influence file discovery, temporary file placement, and debug/diagnostic controls shared with other CUDA toolchain components through the `generic_knobs_impl.h` infrastructure.
+Unlike CLI flags, which are parsed centrally by `sub_427AE0`, environment variables are consumed at point of use — each subsystem calls `getenv()` directly when it needs the value. The variables divide into three categories: search paths that influence file discovery, temporary file placement, and debug/diagnostic controls shared with other CUDA toolchain components through the `generic_knobs_impl.h` infrastructure.
 
 None of these variables are documented in nvlink's `--help` output. Their existence is inferred from string references in the binary.
 
@@ -23,9 +23,9 @@ None of these variables are documented in nvlink's `--help` output. Their existe
 
 Completeness was verified through three independent methods:
 
-1. **Direct grep** of all decompiled `.c` files for the string `getenv(` -- yields 14 hits across 8 source files (plus the PLT thunk wrapper).
+1. **Direct grep** of all decompiled `.c` files for the string `getenv(` — yields 14 hits across 8 source files (plus the PLT thunk wrapper).
 2. **String table scan** of `nvlink_strings.json` (31,237 entries) for all uppercase strings matching common environment variable patterns (`CUDA_*`, `NV_*`, `LD_*`, `LIBRARY_*`, `TMPDIR`, `PATH`, `HOME`, `MAKEFLAGS`, etc.). Only the 8 documented variables appear as standalone strings.
-3. **Import table check** for `secure_getenv` and `__environ` references -- none found. The only `getenv` entry is the PLT thunk at `0x4034A0`.
+3. **Import table check** for `secure_getenv` and `__environ` references — none found. The only `getenv` entry is the PLT thunk at `0x4034A0`.
 
 The `LIBRARY_PATH` string does not appear in the `.rodata` string table as a separate entry; it is embedded inline at the `getenv` call site in `main`. All other 7 variable names appear as standalone strings in `.rodata`.
 
@@ -72,15 +72,15 @@ This is not used for device library resolution (that role belongs to `LIBRARY_PA
 
 The call chain is:
 
-1. `sub_15C3FD0` -- splits `LD_LIBRARY_PATH` on `:`, creates search context.
-2. `sub_15C41C0` -- for each directory, globs for `libfat*Driver.so` (string at `0x225FCEA`).
-3. `sub_15C41E0` -- for each glob match:
+1. `sub_15C3FD0` — splits `LD_LIBRARY_PATH` on `:`, creates search context.
+2. `sub_15C41C0` — for each directory, globs for `libfat*Driver.so` (string at `0x225FCEA`).
+3. `sub_15C41E0` — for each glob match:
    - Calls `sub_463360` (`dlopen`) to load the `.so`.
    - Calls `dlsym(handle, "fatBinaryDriver")` (string at `0x225FCFB`).
    - Validates the returned pointer: `*v7 == 786782722` (`0x2EE6B382`), a magic number identifying a valid fatbin driver interface.
    - Registers the driver via `sub_4644C0`.
    - Calls `dlclose` after registration.
-4. `sub_15C4090` -- cleanup callback registered via `sub_45CC80`.
+4. `sub_15C4090` — cleanup callback registered via `sub_45CC80`.
 
 The result is cached in global `qword_2A644C8`. The guard at the top (`if (!qword_2A644C8)`) ensures the search happens exactly once per process.
 
@@ -173,7 +173,7 @@ The function probes the generated path with `fopen(..., "r")` to check for file 
 
 After a successful `fopen(..., "w")`, the file handle is tracked in a linked list at `qword_2A5F350` for cleanup at exit (via `sub_465720` to register and `sub_466110` to record). The file is immediately closed after creation. The caller also receives a suffix counter from `_InterlockedExchangeAdd(&dword_2A5F340, 1u)`, which is appended as `-<N>` via `sub_450280("-%d", ...)` at line 174.
 
-If `TMPDIR` is unset, the literal string `"/tmp"` is used -- this is a direct constant assignment, not a fallback through the arena allocator.
+If `TMPDIR` is unset, the literal string `"/tmp"` is used — this is a direct constant assignment, not a fallback through the arena allocator.
 
 **Consumed by:** Every subsystem that needs temporary files (PTX JIT, LTO, split compilation).
 **Global:** `qword_2A5F338` (cached directory), `qword_2A5F348` (current temp path), `dword_2A5F340` (atomic suffix counter).
@@ -238,8 +238,8 @@ These functions implement the Mercury architecture compatibility model:
 - **Decade-family matching:** `arch1/10 == arch2/10` (same decade = compatible)
 - **Capability bitmasks:** sm_100 = 1, sm_110 = 2, sm_103 = 8, sm_121 = 64
 - **Error codes:** 0 = ok, 24 = null input, 25 = version > 0x101, 26 = incompatible, 27-30 = type-specific errors
-- **Version check:** `*(a1 + 6) > 0x101` -- version field at offset 6 (word) must be <= 0x101
-- **Type dispatch:** `dword_1D40660[a1[3]]` -- a lookup table at `0x1D40660` indexed by byte at offset 3 of the input structure
+- **Version check:** `*(a1 + 6) > 0x101` — version field at offset 6 (word) must be <= 0x101
+- **Type dispatch:** `dword_1D40660[a1[3]]` — a lookup table at `0x1D40660` indexed by byte at offset 3 of the input structure
 
 Note that `getenv` is called on every invocation of these functions (no caching). In a typical link, these functions execute once per input object during finalization, so the overhead is negligible.
 
@@ -390,9 +390,9 @@ Note: entries 13-14 are the `strtol` calls that consume the return from entries 
 | `sub_4709E0` | `can_finalize_architecture_check` | 2,609 B | `CAN_FINALIZE_DEBUG` |
 | `sub_470DA0` | `can_finalize_with_capability_mask` | 2,074 B | `CAN_FINALIZE_DEBUG` |
 | `sub_4FDC30` | `knob_dump_to_file` | 14,544 B | `DUMP_KNOBS_TO_FILE` |
-| `sub_11E96E0` | `devcode_cache_init` | -- | `CUDA_DEVCODE_PATH`, `CUDA_DEVCODE_CACHE` |
+| `sub_11E96E0` | `devcode_cache_init` | — | `CUDA_DEVCODE_PATH`, `CUDA_DEVCODE_CACHE` |
 | `sub_15C3FD0` | `find_fatbin_driver_library` | small | `LD_LIBRARY_PATH` |
-| `sub_1764A50` | `knobs_init_context` | -- | `DUMP_KNOBS_TO_FILE` |
+| `sub_1764A50` | `knobs_init_context` | — | `DUMP_KNOBS_TO_FILE` |
 | `sub_1D1E740` | `parse_makeflags_jobserver` | 7,770 B | `MAKEFLAGS` |
 
 ## Global Variables
@@ -412,12 +412,12 @@ Note: entries 13-14 are the `strtol` calls that consume the return from entries 
 
 ## Cross-References
 
-- [Library Resolution](../pipeline/library-resolution.md) -- LIBRARY_PATH search path construction
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- LD_LIBRARY_PATH driver discovery
-- [Split Compilation](../lto/split-compilation.md) -- MAKEFLAGS jobserver integration
-- [Capsule Mercury Format](../mercury/capmerc-format.md) -- CAN_FINALIZE_DEBUG architecture checks
-- [Compatibility](../targets/compatibility.md) -- finalization compatibility model
-- [CLI Flags](cli-flags.md) -- command-line options (the other configuration source)
+- [Library Resolution](../pipeline/library-resolution.md) — LIBRARY_PATH search path construction
+- [Fatbin Extraction](../input/fatbin-extraction.md) — LD_LIBRARY_PATH driver discovery
+- [Split Compilation](../lto/split-compilation.md) — MAKEFLAGS jobserver integration
+- [Capsule Mercury Format](../mercury/capmerc-format.md) — CAN_FINALIZE_DEBUG architecture checks
+- [Compatibility](../targets/compatibility.md) — finalization compatibility model
+- [CLI Flags](cli-flags.md) — command-line options (the other configuration source)
 
 ## Confidence Assessment
 
@@ -437,7 +437,7 @@ Note: entries 13-14 are the `strtol` calls that consume the return from entries 
 
 | Variable | Confidence | Evidence |
 |---|---|---|
-| `LIBRARY_PATH` | HIGH | String NOT in standalone `.rodata` table (absent from `nvlink_strings.json`) -- it is embedded inline as an immediate operand at the `getenv` call site in `main_0x409800.c` line 399 (`getenv("LIBRARY_PATH")`); the C-string constant lives in a literal pool slot adjacent to the `call getenv` instruction |
+| `LIBRARY_PATH` | HIGH | String NOT in standalone `.rodata` table (absent from `nvlink_strings.json`) — it is embedded inline as an immediate operand at the `getenv` call site in `main_0x409800.c` line 399 (`getenv("LIBRARY_PATH")`); the C-string constant lives in a literal pool slot adjacent to the `call getenv` instruction |
 | `LD_LIBRARY_PATH` | HIGH | string at `0x225fcda`; used in `decompiled/sub_15C3FD0_0x15c3fd0.c` line 15 (`getenv("LD_LIBRARY_PATH")`) |
 | `CUDA_DEVCODE_PATH` | HIGH | string at `0x1f1e460`; used in `decompiled/sub_11E96E0_0x11e96e0.c` line 101 (`qword_2A64460 = getenv("CUDA_DEVCODE_PATH")`) |
 | `CUDA_DEVCODE_CACHE` | HIGH | string at `0x1f1e472`; used in `decompiled/sub_11E96E0_0x11e96e0.c` line 102 (`qword_2A64458 = getenv("CUDA_DEVCODE_CACHE")`) |
@@ -446,4 +446,4 @@ Note: entries 13-14 are the `strtol` calls that consume the return from entries 
 | `CAN_FINALIZE_DEBUG` | HIGH | string at `0x1d40080`; used in `decompiled/sub_4709E0_0x4709e0.c` line 18 and `decompiled/sub_470DA0_0x470da0.c` line 16; parsed with `strtol` |
 | `MAKEFLAGS` | HIGH | string at `0x245f2b2`; used in `decompiled/sub_1D1E740_0x1d1e740.c` line 57 (`v1 = getenv("MAKEFLAGS")`); parsed for `--jobserver-auth=` token |
 
-**Shared with ptxas/cicc.** Per the [cicc wiki](../../cicc/config/env-vars.html), nvlink shares `TMPDIR`, `MAKEFLAGS`, and `CAN_FINALIZE_DEBUG` with both cicc and the standalone ptxas. Neither sibling tool reads `LIBRARY_PATH`, `LD_LIBRARY_PATH`, `CUDA_DEVCODE_PATH`, `CUDA_DEVCODE_CACHE`, or `DUMP_KNOBS_TO_FILE` through its own `getenv` calls -- these are nvlink-specific. The embedded ptxas inside nvlink does not make independent `getenv` calls for these variables; it receives values via the compiler-state structure populated by `sub_1104950`.
+**Shared with ptxas/cicc.** Per the [cicc wiki](../../cicc/config/env-vars.html), nvlink shares `TMPDIR`, `MAKEFLAGS`, and `CAN_FINALIZE_DEBUG` with both cicc and the standalone ptxas. Neither sibling tool reads `LIBRARY_PATH`, `LD_LIBRARY_PATH`, `CUDA_DEVCODE_PATH`, `CUDA_DEVCODE_CACHE`, or `DUMP_KNOBS_TO_FILE` through its own `getenv` calls — these are nvlink-specific. The embedded ptxas inside nvlink does not make independent `getenv` calls for these variables; it receives values via the compiler-state structure populated by `sub_1104950`.

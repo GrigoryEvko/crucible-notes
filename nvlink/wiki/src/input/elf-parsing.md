@@ -1,6 +1,6 @@
 # ELF Parsing (Elf32 / Elf64)
 
-nvlink operates directly on in-memory ELF images. Every input cubin -- whether loaded from disk, extracted from a fatbin, or produced by the embedded ptxas -- is a complete ELF file mapped into an arena-allocated buffer. The linker never uses `libelf` or any external ELF library; it implements its own accessor functions that interpret raw header bytes at fixed offsets from the buffer base. There are two parallel sets of accessors: one for Elf64 (the normal case for 64-bit CUDA targets) and one for Elf32 (the legacy path, e.g. the OSABI `0x33` 32-bit device ABI). Both classes are accepted by the disk loaders and the structural validator; the class byte at `e_ident[EI_CLASS]` (offset 4 from the ELF base) selects which accessor family is used rather than gating acceptance. Modern targets (sm\_75 and above as registered in the active profile database) emit Elf64 in practice, but the parser will walk an Elf32 cubin just as readily.
+nvlink operates directly on in-memory ELF images. Every input cubin — whether loaded from disk, extracted from a fatbin, or produced by the embedded ptxas — is a complete ELF file mapped into an arena-allocated buffer. The linker never uses `libelf` or any external ELF library; it implements its own accessor functions that interpret raw header bytes at fixed offsets from the buffer base. There are two parallel sets of accessors: one for Elf64 (the normal case for 64-bit CUDA targets) and one for Elf32 (the legacy path, e.g. the OSABI `0x33` 32-bit device ABI). Both classes are accepted by the disk loaders and the structural validator; the class byte at `e_ident[EI_CLASS]` (offset 4 from the ELF base) selects which accessor family is used rather than gating acceptance. Modern targets (sm\_75 and above as registered in the active profile database) emit Elf64 in practice, but the parser will walk an Elf32 cubin just as readily.
 
 ## Key Facts
 
@@ -13,14 +13,14 @@ nvlink operates directly on in-memory ELF images. Every input cubin -- whether l
 | Elf64 symbol entry size | 24 bytes (hardcoded stride, not read from `sh_entsize`) |
 | Elf32 section header size | 40 bytes (`e_shentsize` at offset 46, checked == 40) |
 | Elf32 program header size | 32 bytes (`e_phentsize` at offset 42, checked == 32) |
-| File loading | `sub_476BF0` -- fopen/fseek/ftell/fread into arena buffer |
-| ELF validation | `sub_43DD30` -- bounds-checks all headers and sections |
-| ELF magic check | `sub_43D970` -- tests `*(uint32_t*)base == 0x464C457F` |
-| ELF class check | `sub_43D9A0` -- tests `e_ident[EI_CLASS] == 2` |
-| REL-type check | `sub_43D9B0` -- tests `e_type == ET_REL (1)` |
+| File loading | `sub_476BF0` — fopen/fseek/ftell/fread into arena buffer |
+| ELF validation | `sub_43DD30` — bounds-checks all headers and sections |
+| ELF magic check | `sub_43D970` — tests `*(uint32_t*)base == 0x464C457F` |
+| ELF class check | `sub_43D9A0` — tests `e_ident[EI_CLASS] == 2` |
+| REL-type check | `sub_43D9B0` — tests `e_type == ET_REL (1)` |
 | Symbol access (Elf64) | `sub_448600` / `sub_4486A0` / `sub_448750` |
 | String access (Elf64) | `sub_448590` (resolves through `e_shstrndx` strtab) |
-| Symbol access (Elf32) | None -- open-coded in callers |
+| Symbol access (Elf32) | None — open-coded in callers |
 
 ## Confidence Tags for Core Claims
 
@@ -37,7 +37,7 @@ nvlink operates directly on in-memory ELF images. Every input cubin -- whether l
 
 ## File Loading: `sub_476BF0`
 
-Before any ELF parsing occurs, the file must be loaded into memory. nvlink reads entire files into contiguous arena-allocated buffers using standard C I/O -- there is no `mmap` usage for ELF inputs.
+Before any ELF parsing occurs, the file must be loaded into memory. nvlink reads entire files into contiguous arena-allocated buffers using standard C I/O — there is no `mmap` usage for ELF inputs.
 
 ```c
 // sub_476BF0 -- read_entire_file(filename, null_terminate)
@@ -67,7 +67,7 @@ QWORD *read_entire_file(const char *filename, char null_terminate)
 }
 ```
 
-The `null_terminate` parameter distinguishes binary inputs (cubins, fatbins) from text inputs (PTX source files). When set, an extra byte is allocated and zeroed at the end. The entire file lives in a single arena allocation, so no explicit `free` is needed -- the arena handles lifetime.
+The `null_terminate` parameter distinguishes binary inputs (cubins, fatbins) from text inputs (PTX source files). When set, an extra byte is allocated and zeroed at the end. The entire file lives in a single arena allocation, so no explicit `free` is needed — the arena handles lifetime.
 
 There is no size limit check. The file size comes from `ftell` and is passed directly to `arena_alloc`. For a 4 GB cubin, this would attempt a 4 GB allocation from the arena, which would fall through to the `mmap` path in the arena allocator (`sub_44ED60`).
 
@@ -104,16 +104,16 @@ All Elf64 accessors live in a tight address cluster at `0x448360`--`0x448730`. T
 | 60 | 2 | `e_shnum` | Number of section headers (0 = extended) |
 | 62 | 2 | `e_shstrndx` | Section name string table index (0xFFFF = extended) |
 
-### `sub_448360` -- `elf64_header`
+### `sub_448360` — `elf64_header`
 
 ```c
 // Returns pointer to the Elf64 header (identity function -- base IS the header)
 void *elf64_header(void *elf_base) { return elf_base; }
 ```
 
-This is a trivial identity function compiled to a single `mov rax, rdi; ret`. It exists as a named abstraction in the source -- a function-pointer table or vtable dispatches through it. The Elf32 counterpart `sub_46B590` is identical.
+This is a trivial identity function compiled to a single `mov rax, rdi; ret`. It exists as a named abstraction in the source — a function-pointer table or vtable dispatches through it. The Elf32 counterpart `sub_46B590` is identical.
 
-### `sub_448370` -- `elf64_section_by_index`
+### `sub_448370` — `elf64_section_by_index`
 
 Returns a pointer to the section header at index `idx`, or NULL if out of bounds.
 
@@ -147,7 +147,7 @@ The function handles two cases:
 
 2. **Extended numbering** (`e_shnum == 0`): Per the ELF specification, when the section count exceeds 0xFFFF, `e_shnum` is set to 0 and the real count is stored in `section[0].sh_size` (a 32-bit field at offset 32 within the first Elf64 section header). The function reads this field from `base + e_shoff + 32`.
 
-### `sub_448730` -- `elf64_section_count`
+### `sub_448730` — `elf64_section_count`
 
 ```c
 // sub_448730 -- elf64_section_count(elf_base)
@@ -170,7 +170,7 @@ uint32_t elf64_section_count(void *elf_base)
 
 Same extended-numbering logic as `elf64_section_by_index`. Returns a `uint32_t` (not `uint16_t`) to support the extended range.
 
-### `sub_4483B0` -- `elf64_section_by_name`
+### `sub_4483B0` — `elf64_section_by_name`
 
 Iterates all section headers, resolving each section's name through the section header string table (`shstrtab`), and returns a pointer to the first section header whose name matches the search string.
 
@@ -232,9 +232,9 @@ Key details:
 
 - **Bounds check on `sh_name`**: The section's `sh_name` field is checked against the string table's `sh_size` before indexing into it. This prevents out-of-bounds reads on malformed ELFs.
 
-- **Linear scan**: The search is O(n) in the number of sections. nvlink does not build a hash table over section names for input ELFs -- this function is called frequently during merge but the section counts in cubins are typically small (tens to low hundreds).
+- **Linear scan**: The search is O(n) in the number of sections. nvlink does not build a hash table over section names for input ELFs — this function is called frequently during merge but the section counts in cubins are typically small (tens to low hundreds).
 
-### `sub_448560` -- `elf64_section_data`
+### `sub_448560` — `elf64_section_data`
 
 ```c
 // sub_448560 -- elf64_section_data(elf_base, section_header_ptr)
@@ -247,9 +247,9 @@ void *elf64_section_data(void *elf_base, void *shdr)
 }
 ```
 
-Returns a pointer to the raw section data within the in-memory ELF image. The section header's `sh_offset` field is an offset from the start of the file (and therefore from the start of the buffer, since the entire file is loaded contiguously). No bounds checking is performed here -- that is handled by the validation function.
+Returns a pointer to the raw section data within the in-memory ELF image. The section header's `sh_offset` field is an offset from the start of the file (and therefore from the start of the buffer, since the entire file is loaded contiguously). No bounds checking is performed here — that is handled by the validation function.
 
-### `sub_448580` -- `elf64_section_size`
+### `sub_448580` — `elf64_section_size`
 
 ```c
 // sub_448580 -- elf64_section_size(elf_base, shdr)
@@ -263,7 +263,7 @@ uint64_t elf64_section_size(void *elf_base, void *shdr)
 
 The first argument `elf_base` is unused (it is retained for symmetry with the `section_data` accessor signature). Returns zero for a null shdr pointer; otherwise returns the raw `sh_size` field. No validation against file extent.
 
-### `sub_4484F0` -- `elf64_section_by_type`
+### `sub_4484F0` — `elf64_section_by_type`
 
 Finds the first section with a matching `sh_type`. This is how `merge_elf` locates `SHT_SYMTAB`, `SHT_STRTAB`, and the `SHT_SYMTAB_SHNDX` section when their indices are not known in advance.
 
@@ -295,11 +295,11 @@ void *elf64_section_by_type(void *elf_base, uint32_t sh_type)
 
 - **O(n) linear scan**. Same performance concern as `section_by_name`, but called even less frequently (once per symtab lookup per input object, not once per section name lookup per input).
 
-- **Hardcoded stride of 64**. The function does not read `e_shentsize` here -- it assumes the validated ELF layout has 64-byte section headers, which is guaranteed by `elf_validate` rejecting anything else upstream.
+- **Hardcoded stride of 64**. The function does not read `e_shentsize` here — it assumes the validated ELF layout has 64-byte section headers, which is guaranteed by `elf_validate` rejecting anything else upstream.
 
 - **Returns the first match**. ELF files can technically contain multiple sections of the same type (multiple `SHT_PROGBITS` are normal; multiple `SHT_SYMTAB` are not). For linker input cubins, `SHT_SYMTAB` and `SHT_SYMTAB_SHNDX` appear at most once.
 
-### `sub_448590` -- `elf64_string_at`
+### `sub_448590` — `elf64_string_at`
 
 Resolves a string by offset through the **section-header string table** referenced by `e_shstrndx`. Despite the name, this function is used for both section name lookups and general-purpose string access where the caller has a 32-bit offset into the shstrtab.
 
@@ -355,7 +355,7 @@ Key details:
 
 - **Pointer-to-offset signature**. The second argument is `uint32_t *`, not `uint32_t`. This is a compact optimization: rather than the caller loading the 32-bit offset and passing it, the caller passes the address of the field directly from the ELF structure and the accessor dereferences it inline. This is visible in the decompiler output as `*a2` being loaded at the point of use. Net saving: one load and register shuffle at each call site.
 
-- **Only supports the shstrtab**. This function only reaches the string table referenced by `e_shstrndx`. It cannot be used to look up strings in an arbitrary strtab such as the one referenced from a symtab's `sh_link`. For symbol names, `sub_4486A0` (below) must be used instead -- it follows the symtab's `sh_link` explicitly rather than going through `e_shstrndx`.
+- **Only supports the shstrtab**. This function only reaches the string table referenced by `e_shstrndx`. It cannot be used to look up strings in an arbitrary strtab such as the one referenced from a symtab's `sh_link`. For symbol names, `sub_4486A0` (below) must be used instead — it follows the symtab's `sh_link` explicitly rather than going through `e_shstrndx`.
 
 - **Bounds checking**. Both the shstrndx-vs-shnum bound and the name-offset-vs-sh_size bound are enforced. A malformed ELF with an out-of-range name offset silently returns NULL, which the caller (typically `merge_elf`) treats as an empty-name condition.
 
@@ -376,9 +376,9 @@ CUDA cubins always carry a `SHT_SYMTAB` with 24-byte Elf64_Sym entries. The link
 | 8 | 8 | `st_value` | Symbol value (address or offset within section) |
 | 16 | 8 | `st_size` | Symbol size in bytes |
 
-Confirmed by the arithmetic in `sub_448750` (reads `st_shndx` at offset 6) and `sub_4486A0` (reads `st_name` at offset 0, strides by 24). nvlink never touches `st_info` or `st_other` through these accessors -- those are read open-coded in the callers (`merge_elf` and `symbol_resolve`).
+Confirmed by the arithmetic in `sub_448750` (reads `st_shndx` at offset 6) and `sub_4486A0` (reads `st_name` at offset 0, strides by 24). nvlink never touches `st_info` or `st_other` through these accessors — those are read open-coded in the callers (`merge_elf` and `symbol_resolve`).
 
-### `sub_448600` -- `elf64_symbol_by_index`
+### `sub_448600` — `elf64_symbol_by_index`
 
 Returns a pointer to the N-th `Elf64_Sym` entry in the file's `SHT_SYMTAB`. Implicitly finds the symtab section by `sh_type`.
 
@@ -431,9 +431,9 @@ Important details:
 
 - **First symtab wins**. ELF permits multiple symbol tables, but CUDA ELFs have at most one `SHT_SYMTAB` (plus optionally a `SHT_DYNSYM`, which is type `11` and ignored here).
 
-### `sub_4486A0` -- `elf64_symbol_name`
+### `sub_4486A0` — `elf64_symbol_name`
 
-Resolves a symbol index to a null-terminated string. Critically, this does **not** use `e_shstrndx` -- it uses the symbol table's own `sh_link` to find the associated string table, which for `SHT_SYMTAB` points to `.strtab` (not `.shstrtab`).
+Resolves a symbol index to a null-terminated string. Critically, this does **not** use `e_shstrndx` — it uses the symbol table's own `sh_link` to find the associated string table, which for `SHT_SYMTAB` points to `.strtab` (not `.shstrtab`).
 
 ```c
 // sub_4486A0 -- elf64_symbol_name(elf_base, symtab_shdr, sym_idx)
@@ -490,7 +490,7 @@ The function takes the **symtab shdr pointer** from the caller (typically obtain
 
 **Difference from `sub_448590`**: `string_at` uses `e_shstrndx` to find the shstrtab; `symbol_name` follows the symtab's `sh_link` to find `.strtab`. These are two different string tables in a typical ELF. A call to `sub_448590` with a `st_name` offset would return the wrong string (the offset would be looked up in the section name table, not the symbol name table).
 
-### `sub_448750` -- `elf64_symbol_shndx` (with SHN_XINDEX support)
+### `sub_448750` — `elf64_symbol_shndx` (with SHN_XINDEX support)
 
 Returns the section index associated with a symbol, transparently handling the `SHN_XINDEX` (extended section index) case where the 16-bit `st_shndx` field is insufficient.
 
@@ -566,7 +566,7 @@ if (!is_elf64(elf_base)) {
 
 This reflects the reality that 32-bit CUDA ELFs are an extreme edge case. CUDA has been 64-bit by default since CUDA 7 (2015), and host-32-bit CUDA was fully removed in CUDA 9. The Elf32 path in nvlink exists only for historical compatibility and is not actively exercised. The lack of symbol accessors means the Elf32 path pays an O(n) section scan per symbol lookup, but since no modern workload hits this code it does not matter.
 
-### Elf32_Sym Layout (16 bytes) -- Field Order Differs From Elf64_Sym
+### Elf32_Sym Layout (16 bytes) — Field Order Differs From Elf64_Sym
 
 `merge_elf`'s open-coded Elf32 symbol walk indexes records at 16-byte stride. The critical trap is that `Elf32_Sym` and `Elf64_Sym` share *field names* but not *field order*: in Elf32, `st_value` and `st_size` sit before `st_info`/`st_other`/`st_shndx`, whereas Elf64 places `st_info`/`st_other`/`st_shndx` immediately after `st_name`.
 
@@ -581,7 +581,7 @@ This reflects the reality that 32-bit CUDA ELFs are an extreme edge case. CUDA h
 
 A reader that hard-codes Elf64 offsets while walking an Elf32 symtab will read the low half of `st_value` as `st_info`/`st_other`/`st_shndx`, silently corrupting symbol type and binding bits. nvlink avoids this only because the Elf32 symbol path is open-coded with explicit 4/8/12-byte loads rather than sharing helpers with the Elf64 family. There is no `Elf32_Sym` accessor cluster to keep the two layouts honest.
 
-> **QUIRK -- 16-byte stride is also hardcoded in the Elf32 path.** Same correctness gap as the Elf64 family: `sh_entsize` from the symtab section header is not consulted when computing the byte offset of the N-th symbol entry; the stride is the literal 16. A non-standard Elf32 with `sh_entsize > 16` would be walked at the wrong cadence.
+> **QUIRK — 16-byte stride is also hardcoded in the Elf32 path.** Same correctness gap as the Elf64 family: `sh_entsize` from the symtab section header is not consulted when computing the byte offset of the N-th symbol entry; the stride is the literal 16. A non-standard Elf32 with `sh_entsize > 16` would be walked at the wrong cadence.
 
 ## Elf32 Accessor Functions
 
@@ -616,11 +616,11 @@ The Elf32 functions mirror the Elf64 family exactly, with adjusted offsets and f
 | 32 | 4 | `sh_addralign` |
 | 36 | 4 | `sh_entsize` |
 
-### `sub_46B590` -- `elf32_header`
+### `sub_46B590` — `elf32_header`
 
 Identity function, same as the Elf64 version. Returns its argument unchanged.
 
-### `sub_46B5A0` -- `elf32_section_by_index`
+### `sub_46B5A0` — `elf32_section_by_index`
 
 ```c
 // sub_46B5A0 -- elf32_section_by_index(elf_base, idx)
@@ -647,7 +647,7 @@ void *elf32_section_by_index(void *elf_base, uint32_t idx)
 
 Structurally identical to the Elf64 version, but `e_shoff` is a 4-byte value at offset 32 (not 8-byte at offset 40), and `section[0].sh_size` is at offset 20 (not 32) within the section header. The stride per section header is 40 bytes instead of 64.
 
-### `sub_46B810` -- `elf32_section_count`
+### `sub_46B810` — `elf32_section_count`
 
 ```c
 // sub_46B810 -- elf32_section_count(elf_base)
@@ -668,11 +668,11 @@ uint32_t elf32_section_count(void *elf_base)
 }
 ```
 
-### `sub_46B5D0` -- `elf32_section_by_name`
+### `sub_46B5D0` — `elf32_section_by_name`
 
 Identical logic to the Elf64 version, with 32-bit field widths. The iteration stride is `+= 10` (10 x 4-byte dwords = 40 bytes per Elf32 section header). The string table's `sh_offset` is at field offset 16 (`v11[4]`, a 4-byte value) and `sh_size` at offset 20 (`v11[5]`). The extended `e_shstrndx` fallback reads `section[0].sh_link` at offset 24 within the first section header.
 
-### `sub_46B700` -- `elf32_section_by_type`
+### `sub_46B700` — `elf32_section_by_type`
 
 ```c
 // sub_46B700 -- elf32_section_by_type(elf_base, sh_type)
@@ -702,7 +702,7 @@ void *elf32_section_by_type(void *elf_base, uint32_t sh_type)
 
 Same logic as the Elf64 variant, but with a 40-byte stride for Elf32 section headers. The merge_elf Elf32 path calls this with `sh_type == 2` (`SHT_SYMTAB`) to find the symbol table before falling back to open-coded access.
 
-### `sub_46B770` -- `elf32_section_data`
+### `sub_46B770` — `elf32_section_data`
 
 ```c
 // sub_46B770 -- elf32_section_data(elf_base, shdr)
@@ -716,7 +716,7 @@ void *elf32_section_data(void *elf_base, void *shdr)
 
 The Elf32 `sh_offset` is a 4-byte field at shdr offset 16, compared to Elf64's 8-byte field at offset 24. The return type is still a `void *` into the in-memory buffer.
 
-### `sub_46B790` -- `elf32_section_size`
+### `sub_46B790` — `elf32_section_size`
 
 ```c
 // sub_46B790 -- elf32_section_size(elf_base, shdr)
@@ -730,7 +730,7 @@ uint32_t elf32_section_size(void *elf_base, void *shdr)
 
 First argument unused. Returns the 4-byte `sh_size` field. Note the return type is 32-bit (`uint32_t`) for Elf32, versus `uint64_t` for the Elf64 counterpart `sub_448580`.
 
-### `sub_46B7A0` -- `elf32_string_at`
+### `sub_46B7A0` — `elf32_string_at`
 
 ```c
 // sub_46B7A0 -- elf32_string_at(elf_base, name_ptr)
@@ -792,7 +792,7 @@ For reference, the full Elf64 section header layout as used by the accessor func
 
 ## ELF Validation: `sub_43DD30`
 
-After loading an ELF into memory, nvlink validates it before processing. The validation function takes the ELF base pointer and the file size, and returns a boolean (1 = valid, 0 = invalid). It rejects the ELF silently on failure -- no error message is emitted from this function; the caller reports the error.
+After loading an ELF into memory, nvlink validates it before processing. The validation function takes the ELF base pointer and the file size, and returns a boolean (1 = valid, 0 = invalid). It rejects the ELF silently on failure — no error message is emitted from this function; the caller reports the error.
 
 ```c
 // sub_43DD30 -- elf_validate(elf_base, file_size)
@@ -986,7 +986,7 @@ A small family of trivial predicate functions exists alongside the accessors. Th
 | `0x43DA00` | `is_lto_elf` | `(e_flags & mask) != 0` | bit 0 of `e_flags` (OSABI=0x41) or bit 31 otherwise |
 | `0x43DA40` | `is_mercury_capable` | `(e_flags & mask) != 0` | bit 1 of `e_flags` (OSABI=0x41) or bit 14 otherwise |
 
-### `sub_43D9B0` -- `is_rel_elf`
+### `sub_43D9B0` — `is_rel_elf`
 
 ```c
 // sub_43D9B0 -- is_rel_elf(elf_base)
@@ -1001,9 +1001,9 @@ bool is_rel_elf(void *elf_base)
 }
 ```
 
-`e_type` lives at offset 16 in both Elf32 and Elf64 headers (because the preceding 16 bytes of `e_ident` are identical). The value `1` is `ET_REL` -- relocatable. Device cubins from `ptxas` are `ET_REL` (value `1`) on legacy targets or the Mercury custom type `0xFF00` on sm >= 100; `ET_EXEC` (value `2`) is the final output type produced by `nvlink` itself and only re-appears as input when a previously linked cubin is fed back in (where `sub_426570` rejects it). This predicate is also used outside the LTO path -- for host vs device disambiguation during the input dispatch -- since both host `.o` files and ptxas-produced cubins are `ET_REL`.
+`e_type` lives at offset 16 in both Elf32 and Elf64 headers (because the preceding 16 bytes of `e_ident` are identical). The value `1` is `ET_REL` — relocatable. Device cubins from `ptxas` are `ET_REL` (value `1`) on legacy targets or the Mercury custom type `0xFF00` on sm >= 100; `ET_EXEC` (value `2`) is the final output type produced by `nvlink` itself and only re-appears as input when a previously linked cubin is fed back in (where `sub_426570` rejects it). This predicate is also used outside the LTO path — for host vs device disambiguation during the input dispatch — since both host `.o` files and ptxas-produced cubins are `ET_REL`.
 
-### `sub_43DA00` -- `is_lto_elf`
+### `sub_43DA00` — `is_lto_elf`
 
 ```c
 // sub_43DA00 -- is_lto_elf(elf_base)
@@ -1023,7 +1023,7 @@ Same dispatch shape as `is_mercury_capable`: for CUDA device OSABI (`0x41`), che
 
 ## Endianness Handling
 
-**nvlink assumes little-endian throughout the entire ELF parser.** The disk-loader entry points (`sub_43E100` for cubins, `sub_43DFC0` for host ELFs) gate on `e_ident[EI_DATA] == 1` (ELFDATA2LSB) and reject big-endian files before they reach the accessor family. Once a buffer has passed that gate -- or has been delivered to the linker by some other path (embedded fatbin payload, in-memory ELF produced by the integrated ptxas) -- nothing else re-checks the byte. The accessors and `sub_43DD30` validator contain no byte-swapping code; every `*(uint16_t *)`, `*(uint32_t *)`, and `*(uint64_t *)` load directly reinterprets the buffer bytes as a host-order integer.
+**nvlink assumes little-endian throughout the entire ELF parser.** The disk-loader entry points (`sub_43E100` for cubins, `sub_43DFC0` for host ELFs) gate on `e_ident[EI_DATA] == 1` (ELFDATA2LSB) and reject big-endian files before they reach the accessor family. Once a buffer has passed that gate — or has been delivered to the linker by some other path (embedded fatbin payload, in-memory ELF produced by the integrated ptxas) — nothing else re-checks the byte. The accessors and `sub_43DD30` validator contain no byte-swapping code; every `*(uint16_t *)`, `*(uint32_t *)`, and `*(uint64_t *)` load directly reinterprets the buffer bytes as a host-order integer.
 
 This is correct for all real-world usage:
 
@@ -1068,7 +1068,7 @@ Extended numbering is used when the section count exceeds 65,535 (`0xFFFF`). CUD
 
 ## Function Address Summary
 
-### Elf64 accessor family (0x448360 -- 0x448750)
+### Elf64 accessor family (0x448360 — 0x448750)
 
 | Address | Recovered name | Description |
 |---|---|---|
@@ -1084,7 +1084,7 @@ Extended numbering is used when the section count exceeds 65,535 (`0xFFFF`). CUD
 | `0x448730` | `elf64_section_count` | Get section count (handles extended) |
 | `0x448750` | `elf64_symbol_shndx` | Resolve `st_shndx` with `SHN_XINDEX` support |
 
-### Elf32 accessor family (0x46B590 -- 0x46B810)
+### Elf32 accessor family (0x46B590 — 0x46B810)
 
 | Address | Recovered name | Description |
 |---|---|---|
@@ -1174,7 +1174,7 @@ The Elf32 path is structurally similar but calls `sub_46Bxxx` equivalents where 
 
 **Linear section name search**. The `section_by_name` functions do a linear scan of all section headers for every lookup. This is called hundreds of times per input cubin during merge (once per section to check for `.nv.info`, `.nv.constant`, `.nv.shared`, etc.). For a typical cubin with 20--50 sections, this is fast enough. For a cubin with 1,000+ sections (possible with heavy template instantiation), this becomes quadratic in the merge phase.
 
-**Parallel Elf32/Elf64 code paths**. The two accessor families are structurally identical but separately maintained. Any bug in one family must be fixed in both. In practice, nvlink's Elf32 path is mostly untested -- all contemporary CUDA toolchains produce Elf64 cubins -- so the Elf32 code has atrophied (e.g., no symbol accessor family exists).
+**Parallel Elf32/Elf64 code paths**. The two accessor families are structurally identical but separately maintained. Any bug in one family must be fixed in both. In practice, nvlink's Elf32 path is mostly untested — all contemporary CUDA toolchains produce Elf64 cubins — so the Elf32 code has atrophied (e.g., no symbol accessor family exists).
 
 **24-byte symbol stride is hardcoded**. The Elf64 symbol accessors (`sub_448600`, `sub_4486A0`) use a hardcoded stride of 24 rather than reading `sh_entsize`. This creates a minor correctness gap for non-standard ELFs but keeps the arithmetic simple and the code shorter.
 
@@ -1184,15 +1184,15 @@ The Elf32 path is structurally similar but calls `sub_46Bxxx` equivalents where 
 
 ## See Also
 
-- [File Type Detection](file-type-detection.md) -- the 56-byte probe and `is_elf` predicate that triggers ELF parsing
-- [Cubin Loading](cubin-loading.md) -- architecture validation after ELF header parsing
-- [Symbol Record](../structs/symbol-record.md) -- the in-memory symbol struct built from Elf64_Sym entries via these accessors
-- [Section Record](../structs/section-record.md) -- the in-memory section struct built from Elf64_Shdr entries via these accessors
-- [Device ELF Format](../elf/device-elf-format.md) -- `e_ident`, `e_type`, `e_machine`, `e_flags` fields in CUDA device ELFs
-- [NVIDIA Sections](../elf/nvidia-sections.md) -- `.nv.*` section types found via the section accessors
-- [Merge Phase](../pipeline/merge.md) -- the 89KB function that calls these ELF accessors per input object
-- [Symbol Resolution](../linker/symbol-resolution.md) -- global symbol table built from results of these accessors
-- [ELF Serialization](../elf/serialization.md) -- the output-side counterpart that writes ELF format
-- [Input File Loop](../pipeline/input-loop.md) -- the dispatch loop that triggers file loading via `sub_476BF0`
-- [Host ELF Embedding](host-elf.md) -- host ELF parsing for embedded fatbin extraction
-- [Memory Arenas](../infra/memory-arenas.md) -- arena allocator backing all ELF buffer allocations
+- [File Type Detection](file-type-detection.md) — the 56-byte probe and `is_elf` predicate that triggers ELF parsing
+- [Cubin Loading](cubin-loading.md) — architecture validation after ELF header parsing
+- [Symbol Record](../structs/symbol-record.md) — the in-memory symbol struct built from Elf64_Sym entries via these accessors
+- [Section Record](../structs/section-record.md) — the in-memory section struct built from Elf64_Shdr entries via these accessors
+- [Device ELF Format](../elf/device-elf-format.md) — `e_ident`, `e_type`, `e_machine`, `e_flags` fields in CUDA device ELFs
+- [NVIDIA Sections](../elf/nvidia-sections.md) — `.nv.*` section types found via the section accessors
+- [Merge Phase](../pipeline/merge.md) — the 89KB function that calls these ELF accessors per input object
+- [Symbol Resolution](../linker/symbol-resolution.md) — global symbol table built from results of these accessors
+- [ELF Serialization](../elf/serialization.md) — the output-side counterpart that writes ELF format
+- [Input File Loop](../pipeline/input-loop.md) — the dispatch loop that triggers file loading via `sub_476BF0`
+- [Host ELF Embedding](host-elf.md) — host ELF parsing for embedded fatbin extraction
+- [Memory Arenas](../infra/memory-arenas.md) — arena allocator backing all ELF buffer allocations

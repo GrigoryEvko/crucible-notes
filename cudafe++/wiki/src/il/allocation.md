@@ -1,6 +1,6 @@
 # IL Allocation
 
-Every IL node in cudafe++ is allocated through a region-based bump allocator implemented in `il_alloc.c` (EDG 6.6 source at `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/il_alloc.c`). The allocator manages 70+ distinct IL entry types across two memory region categories -- file-scope (persistent for the entire translation unit) and per-function-scope (transient, freed after each function body is processed). Free-lists recycle high-churn node types to reduce region pressure. The allocation subsystem occupies address range `0x5E0600`-`0x5EAF00` in the binary, roughly 43KB of compiled code covering 100+ functions.
+Every IL node in cudafe++ is allocated through a region-based bump allocator implemented in `il_alloc.c` (EDG 6.6 source at `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/il_alloc.c`). The allocator manages 70+ distinct IL entry types across two memory region categories — file-scope (persistent for the entire translation unit) and per-function-scope (transient, freed after each function body is processed). Free-lists recycle high-churn node types to reduce region pressure. The allocation subsystem occupies address range `0x5E0600`-`0x5EAF00` in the binary, roughly 43KB of compiled code covering 100+ functions.
 
 ## Key Facts
 
@@ -104,7 +104,7 @@ Region selection uses a simple identity test: when `dword_126EB40 == dword_126EC
 - **File-scope only**: `alloc_in_file_scope_region` (`sub_5E03D0`) always uses `dword_126EC90`
 - **Dual-region**: `alloc_in_region` (`sub_5E02E0`) branches on the identity test
 - **Scratch region**: `alloc_in_scratch_region` (`sub_5E0460`) temporarily sets TU-copy mode, allocates from region 1, and restores state
-- **Same-region-as**: Used by `alloc_class_list_entry` (`sub_5E2410`) and `alloc_based_type_list_member` (`sub_5E29C0`) -- inspects the prefix byte of an existing node to determine which region it lives in, then allocates the new node in that same region
+- **Same-region-as**: Used by `alloc_class_list_entry` (`sub_5E2410`) and `alloc_based_type_list_member` (`sub_5E29C0`) — inspects the prefix byte of an existing node to determine which region it lives in, then allocates the new node in that same region
 
 ### Allocation Protocol
 
@@ -201,7 +201,7 @@ Some allocators preserve bit 7 across free-list recycling (notably `alloc_local_
 
 ## Complete Node Size Table
 
-The stats dump function `sub_5E99D0` prints the allocation table with exact names and per-unit sizes for all 70+ IL entry types. Sizes listed are the allocation unit in bytes -- the values passed to `region_alloc`.
+The stats dump function `sub_5E99D0` prints the allocation table with exact names and per-unit sizes for all 70+ IL entry types. Sizes listed are the allocation unit in bytes — the values passed to `region_alloc`.
 
 ### Primary IL Nodes
 
@@ -353,7 +353,7 @@ Six node types use free-list recycling to avoid allocating fresh memory for high
 | expr_node (72B) | `qword_126E4B0` | +64 | `sub_5E62E0` | (kind set to 36 = `ek_reclaimed`) |
 | constant (184B) | `qword_126E4B8` | +104 | `sub_5E1A80` (`alloc_local_constant`) | `sub_5E1B70` (`free_local_constant`) |
 | param_type (80B) | `qword_126F678` | +0 | `sub_5E1D40` (`alloc_param_type`) | `sub_5E1EB0` (`free_param_type_list`) |
-| source_seq_entry (32B) | scope+328 | -- | `sub_5E8300` | (per-scope recycling) |
+| source_seq_entry (32B) | scope+328 | — | `sub_5E8300` | (per-scope recycling) |
 | object_lifetime (64B) | scope+512 | +56 | `sub_5E7800` | (per-scope recycling) |
 
 ### Expression Node Recycling
@@ -387,7 +387,7 @@ Local constants use a separate free-list (`qword_126E4B8`) with the link at offs
 
 The `duplicate_constant_to_other_region` function (`sub_5E1BB0`) handles the case where a constant must be copied from one region to another. When source and destination are the same region, it works in-place. When they differ, it allocates 184 bytes in the target region, copies contents via `sub_5BA500`, frees the original to the free list, and applies post-copy fixups (`sub_5B9DE0`, `sub_5D39A0`).
 
-## set_type_kind -- Type Kind Dispatch
+## set_type_kind — Type Kind Dispatch
 
 `set_type_kind` (`sub_5E2E80`, confirmed at `il_alloc.c:2334`) writes the type kind byte at offset `+132` of the type node and allocates any required type supplement. It handles 22 type kinds (0x00-0x15):
 
@@ -411,13 +411,13 @@ The `duplicate_constant_to_other_region` function (`sub_5E1BB0`) handles the cas
 | 15 | `tk_vector` | Zeroes fields |
 | 16 | `tk_scalable_vector` | Zeroes fields |
 | 17-21 | Pack/special types | No-op or zeroes |
-| default | -- | `internal_error("set_type_kind: bad type kind")` |
+| default | — | `internal_error("set_type_kind: bad type kind")` |
 
 The class type supplement (208 bytes) is the largest supplement. `init_class_type_supplement_fields` (`sub_5E2D70`) initializes it with defaults: `access=1`, `virtual_function_table_index=-1`, and zeroed member lists. The companion function `init_class_type_supplement` (`sub_5E2C70`) accesses the supplement through the type node's pointer at offset +152.
 
 A combined function `init_type_fields_and_set_kind` (`sub_5E3590`, 317 lines) copies the 96-byte template header and then runs the same switch as `set_type_kind` inline. This is used by `alloc_type` (`sub_5E3D40`) to avoid a separate function call.
 
-## set_expr_node_kind -- Expression Kind Dispatch
+## set_expr_node_kind — Expression Kind Dispatch
 
 `set_expr_node_kind` (`sub_5E5F00`, confirmed at `il_alloc.c:3932`) writes the expression kind byte at offset `+24` and zeroes offset `+8`. It handles 36 expression kinds (0-35):
 
@@ -440,11 +440,11 @@ A combined function `init_type_fields_and_set_kind` (`sub_5E3590`, 317 lines) co
 | 24,26,27,30,31 | Complex operand | 2 qwords |
 | 28 | `enk_fold_expression` | 1 qword + 1 dword |
 | 34 | `enk_const_eval_deferred` | 1 qword + 1 dword |
-| default | -- | `internal_error("set_expr_node_kind: bad kind")` |
+| default | — | `internal_error("set_expr_node_kind: bad kind")` |
 
 The `reinit_expr_node_kind` function (`sub_5E60E0`) performs the same dispatch but additionally resets header fields (flag bits and source position from `qword_126EFB8`) before the kind switch. This is used when an existing expression node is repurposed without reallocation.
 
-## set_statement_kind -- Statement Kind Dispatch
+## set_statement_kind — Statement Kind Dispatch
 
 `set_statement_kind` (`sub_5E6E20`, confirmed at `il_alloc.c:4513`) writes the statement kind byte at offset `+32` and zeroes offset `+40`. It handles 26 statement kinds (0x00-0x19):
 
@@ -470,9 +470,9 @@ The `reinit_expr_node_kind` function (`sub_5E60E0`) performs the same dispatch b
 | 19 | `stmk_try_block` | Allocates 32 bytes |
 | 20 | `stmk_decl` | 1 qword |
 | 21,22 | VLA statements | 1 qword |
-| default | -- | `internal_error("set_statement_kind: bad kind")` |
+| default | — | `internal_error("set_statement_kind: bad kind")` |
 
-## set_constant_kind -- Constant Kind Dispatch
+## set_constant_kind — Constant Kind Dispatch
 
 `set_constant_kind` (`sub_5E0C60`, confirmed at `il_alloc.c:952`) writes the constant kind byte at offset `+148` and initializes the variant-specific union fields. 16 constant kinds (0-15):
 
@@ -494,7 +494,7 @@ The `reinit_expr_node_kind` function (`sub_5E60E0`) performs the same dispatch b
 | 13 | `ck_designator` | Zeroes |
 | 14 | `ck_void` | Zeroes |
 | 15 | `ck_reflection` | Zeroes |
-| default | -- | `internal_error("set_constant_kind: bad kind")` |
+| default | — | `internal_error("set_constant_kind: bad kind")` |
 
 The template parameter constant kind has its own sub-dispatch (`sub_5E0B40`, `il_alloc.c:768`) handling 14 sub-kinds (`tpck_*`), each zeroing variant fields at offsets +160, +168, +176. It validates the parent constant kind is 12 (`ck_template_param`) before proceeding.
 
@@ -611,15 +611,15 @@ Same three-way dispatch but takes an explicit length parameter and uses `strncpy
 
 ## Special Allocation Patterns
 
-### Labels -- Function-Scope Assertion
+### Labels — Function-Scope Assertion
 
-`alloc_label` (`sub_5E5CA0`) asserts that `dword_126EB40 != dword_126EC90` (must be in function scope). Labels cannot exist at file scope -- they are always allocated in a function's region:
+`alloc_label` (`sub_5E5CA0`) asserts that `dword_126EB40 != dword_126EC90` (must be in function scope). Labels cannot exist at file scope — they are always allocated in a function's region:
 
 ```c
 assert(current_region != file_scope_region);   // il_alloc.c:3588
 ```
 
-### Variables -- Kind-Dependent Region
+### Variables — Kind-Dependent Region
 
 `alloc_variable` (`sub_5E4D20`) uses the variable's linkage kind to select the allocation strategy: when `kind > 2` (non-local variables like global, extern, static), it uses the dual-region allocator (`sub_5E02E0`). Otherwise it allocates directly in the file-scope region. This ensures that local variables live in function regions while globals persist in the file-scope region.
 
@@ -627,11 +627,11 @@ assert(current_region != file_scope_region);   // il_alloc.c:3588
 
 `alloc_gnu_supplement_for_routine` (`sub_5E56D0`, `il_alloc.c:3412`) asserts that no supplement already exists (`*(routine+240) == 0`), then allocates a 40-byte supplement and stores the pointer at `routine+240`. This is for GCC-extension attributes on functions (visibility, alias, constructor/destructor priority).
 
-### Pragma -- 43 Kinds
+### Pragma — 43 Kinds
 
 `alloc_pragma` (`sub_5E7570`, `il_alloc.c:4781`) uses the same-region-as pattern (handling null, non-file-scope, scratch, and same-region-as cases) and dispatches a switch covering 43 pragma kinds (0-42). Most kinds are no-op; kinds 19, 21, 26, 28, 29 have small payload fields.
 
-### Scope -- Routine Association
+### Scope — Routine Association
 
 `alloc_scope` (`sub_5E7D80`) validates that if `assoc_routine` (argument a3) is non-null, the scope kind must be 17 (`sck_function`). Violation triggers `internal_error("assoc_routine is non-NULL")` at `il_alloc.c:4946`. After kind dispatch, it zeroes 26 qword fields (offsets 80-280) and sets `*(result+240) = -1` as a sentinel.
 

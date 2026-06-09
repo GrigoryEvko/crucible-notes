@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to nvlink v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-This page documents how the reverse engineering of nvlink v13.0.88 was performed. It serves as both a transparency record -- so readers can assess the confidence of any claim in this wiki -- and as a practical guide for anyone who wants to reproduce or extend the analysis.
+This page documents how the reverse engineering of nvlink v13.0.88 was performed. It serves as both a transparency record — so readers can assess the confidence of any claim in this wiki — and as a practical guide for anyone who wants to reproduce or extend the analysis.
 
 ## Binary Provenance
 
@@ -17,7 +17,7 @@ The analyzed binary is the CUDA device linker shipped with CUDA Toolkit 13.0. It
 | File format | ELF 64-bit LSB executable, x86-64 |
 | Binary size | ~37 MB |
 | Linking | Dynamically linked (libc, libpthread, libm, libgcc_s, libdl, librt) |
-| Strip status | Fully stripped -- no debug symbols, no DWARF, no `.symtab`, no RTTI |
+| Strip status | Fully stripped — no debug symbols, no DWARF, no `.symtab`, no RTTI |
 | Compiler | GCC (detected by IDA from prologue patterns and CRT initialization) |
 | C++ ABI | Itanium (confirmed by the embedded C++ name demangler) |
 
@@ -39,7 +39,7 @@ The binary is a hybrid linker-compiler: roughly half of its 37 MB implements CUD
 | Imported functions (PLT) | 156 |
 | ELF segments | 25 |
 | .rodata size | 7,543,312 bytes (~7.2 MB) |
-| .text coverage (sweep) | 0x400000 -- 0x1D32172 (25.2 MB) |
+| .text coverage (sweep) | 0x400000 — 0x1D32172 (25.2 MB) |
 | Disassembly files exported | 40,376 |
 | Control flow graphs exported | 80,752 (JSON + DOT, two files per function) |
 | Raw sweep report lines | 60,899 |
@@ -52,7 +52,7 @@ The 168 functions that Hex-Rays could not decompile fall into three categories: 
 
 ## Toolchain
 
-All analysis was performed with IDA Pro 9.x and the Hex-Rays x86-64 decompiler. No dynamic analysis (debugging, tracing, instrumentation) was used -- the entire effort is static analysis of the binary at rest.
+All analysis was performed with IDA Pro 9.x and the Hex-Rays x86-64 decompiler. No dynamic analysis (debugging, tracing, instrumentation) was used — the entire effort is static analysis of the binary at rest.
 
 | Tool | Purpose |
 |---|---|
@@ -72,7 +72,7 @@ nvlink is a dynamically-linked ELF with 156 PLT imports but no symbol table beyo
 3. **Auto-analysis time**: approximately 10-20 minutes on a modern machine for the ~37 MB binary.
 4. **Compiler detection**: IDA identifies GCC as the compiler. The binary uses the Itanium C++ ABI (confirmed by the embedded C++ name demangler).
 
-After auto-analysis completes, the `analyze_nvlink.py` extraction script is run to export all artifacts in bulk. No manual function creation or type annotation is required before the export -- the bulk extraction captures the IDA database in its auto-analyzed state.
+After auto-analysis completes, the `analyze_nvlink.py` extraction script is run to export all artifacts in bulk. No manual function creation or type annotation is required before the export — the bulk extraction captures the IDA database in its auto-analyzed state.
 
 ## Extraction Script: `analyze_nvlink.py`
 
@@ -195,26 +195,26 @@ Each agent produced a structured sweep report covering every function above a mi
 
 | Sweep | Address Range | Size | Primary Content |
 |---|---|---|---|
-| p1.01 | 0x400000 -- 0x470000 | 448 KB | Entry point (main), PLT/imports, option parsing, memory arenas |
-| p1.02 | 0x470000 -- 0x530000 | 768 KB | ELF structure management, symbol/section infrastructure |
-| p1.03 | 0x530000 -- 0x620000 | 960 KB | Merge engine, shared memory layout, callgraph DCE |
-| p1.04 | 0x620000 -- 0x7A0000 | 1,536 KB | Relocation engine, data overlap optimization, LTO pipeline |
-| p1.05 | 0x7A0000 -- 0x920000 | 1,536 KB | PTX parser, peephole optimizer, instruction-level transforms |
-| p1.06 | 0x920000 -- 0xA70000 | 1,344 KB | Register allocator, spill code generation |
-| p1.07 | 0xA70000 -- 0xB80000 | 1,088 KB | Instruction scheduler, dependency analysis |
-| p1.08 | 0xB80000 -- 0xCA0000 | 1,152 KB | IR node infrastructure, SSA construction |
-| p1.09 | 0xCA0000 -- 0xDA0000 | 1,024 KB | Architecture dispatch, vtable-driven ISA abstraction |
-| p1.10 | 0xDA0000 -- 0xF16000 | 1,496 KB | SASS instruction encoder/decoder (Blackwell ISA) |
-| p1.11 | 0xF16000 -- 0x100C000 | 984 KB | SASS encoder/decoder continued (Hopper/Ada ISA) |
-| p1.12 | 0x100C000 -- 0x11EA000 | 1,912 KB | SASS encoder/decoder continued (Ampere/Turing ISA) |
-| p1.13 | 0x11EA000 -- 0x12B0000 | 792 KB | Opcode dispatch tables, instruction format tables |
-| p1.14 | 0x12B0000 -- 0x1430000 | 1,536 KB | Instruction selection hub (SelectionDAG-like) |
-| p1.15 | 0x1430000 -- 0x15C0000 | 1,600 KB | Instruction selection continued, legalization |
-| p1.16 | 0x15C0000 -- 0x16E0000 | 1,152 KB | Machine IR passes, peephole, scheduling |
-| p1.17 | 0x16E0000 -- 0x1850000 | 1,472 KB | NV-specific compiler passes, Mercury post-link |
-| p1.18 | 0x1850000 -- 0x1A00000 | 1,728 KB | NV-info propagation, constant bank management |
-| p1.19 | 0x1A00000 -- 0x1B60000 | 1,408 KB | ELF output serialization, compression (LZ4) |
-| p1.20 | 0x1B60000 -- 0x1D32172 | 1,864 KB | ISel lowering, ABI/calling convention, ELF builder, C++ demangler, DWARF generation |
+| p1.01 | 0x400000 — 0x470000 | 448 KB | Entry point (main), PLT/imports, option parsing, memory arenas |
+| p1.02 | 0x470000 — 0x530000 | 768 KB | ELF structure management, symbol/section infrastructure |
+| p1.03 | 0x530000 — 0x620000 | 960 KB | Merge engine, shared memory layout, callgraph DCE |
+| p1.04 | 0x620000 — 0x7A0000 | 1,536 KB | Relocation engine, data overlap optimization, LTO pipeline |
+| p1.05 | 0x7A0000 — 0x920000 | 1,536 KB | PTX parser, peephole optimizer, instruction-level transforms |
+| p1.06 | 0x920000 — 0xA70000 | 1,344 KB | Register allocator, spill code generation |
+| p1.07 | 0xA70000 — 0xB80000 | 1,088 KB | Instruction scheduler, dependency analysis |
+| p1.08 | 0xB80000 — 0xCA0000 | 1,152 KB | IR node infrastructure, SSA construction |
+| p1.09 | 0xCA0000 — 0xDA0000 | 1,024 KB | Architecture dispatch, vtable-driven ISA abstraction |
+| p1.10 | 0xDA0000 — 0xF16000 | 1,496 KB | SASS instruction encoder/decoder (Blackwell ISA) |
+| p1.11 | 0xF16000 — 0x100C000 | 984 KB | SASS encoder/decoder continued (Hopper/Ada ISA) |
+| p1.12 | 0x100C000 — 0x11EA000 | 1,912 KB | SASS encoder/decoder continued (Ampere/Turing ISA) |
+| p1.13 | 0x11EA000 — 0x12B0000 | 792 KB | Opcode dispatch tables, instruction format tables |
+| p1.14 | 0x12B0000 — 0x1430000 | 1,536 KB | Instruction selection hub (SelectionDAG-like) |
+| p1.15 | 0x1430000 — 0x15C0000 | 1,600 KB | Instruction selection continued, legalization |
+| p1.16 | 0x15C0000 — 0x16E0000 | 1,152 KB | Machine IR passes, peephole, scheduling |
+| p1.17 | 0x16E0000 — 0x1850000 | 1,472 KB | NV-specific compiler passes, Mercury post-link |
+| p1.18 | 0x1850000 — 0x1A00000 | 1,728 KB | NV-info propagation, constant bank management |
+| p1.19 | 0x1A00000 — 0x1B60000 | 1,408 KB | ELF output serialization, compression (LZ4) |
+| p1.20 | 0x1B60000 — 0x1D32172 | 1,864 KB | ISel lowering, ABI/calling convention, ELF builder, C++ demangler, DWARF generation |
 
 The 20 sweep reports total 60,899 lines of structured analysis notes. Each report follows a consistent format: executive summary identifying the region's primary subsystem, a subsystem map listing functional groupings, and per-function entries with identity, confidence level, evidence, call relationships, and key strings.
 
@@ -255,7 +255,7 @@ FUNCTION-BY-FUNCTION ANALYSIS
   - Structure: [pattern match description]
 ```
 
-Each function entry records the address, size, proposed identity, confidence level, evidence citations, call relationships, and key observations. The reports are raw working notes -- they contain preliminary hypotheses, corrections, and evolving understanding that was refined as more context became available.
+Each function entry records the address, size, proposed identity, confidence level, evidence citations, call relationships, and key observations. The reports are raw working notes — they contain preliminary hypotheses, corrections, and evolving understanding that was refined as more context became available.
 
 ### Phase 2: Targeted Wiki Page Writing
 
@@ -292,15 +292,15 @@ nvlink is a string-rich binary. Error messages, diagnostic strings, pass names, 
 
 Specific high-value string patterns in nvlink:
 
-- **Error messages with subsystem context**: `"cubin not an elf?"`, `"fatbin wrong format?"`, `"should never see bc files"`, `"error in LTO callback"` -- each anchors a specific code path in the input processing or LTO pipeline.
-- **Phase/timer names**: `"init"`, `"read"`, `"merge"`, `"layout"`, `"relocate"`, `"finalize"`, `"write"`, `"cicc-lto"`, `"ptxas-lto"` -- nine phase names passed to the timing infrastructure, directly identifying the pipeline stages.
+- **Error messages with subsystem context**: `"cubin not an elf?"`, `"fatbin wrong format?"`, `"should never see bc files"`, `"error in LTO callback"` — each anchors a specific code path in the input processing or LTO pipeline.
+- **Phase/timer names**: `"init"`, `"read"`, `"merge"`, `"layout"`, `"relocate"`, `"finalize"`, `"write"`, `"cicc-lto"`, `"ptxas-lto"` — nine phase names passed to the timing infrastructure, directly identifying the pipeline stages.
 - **Format magic numbers**: The fatbin magic `0xBA55ED50` and the ELF machine type `190` (EM_CUDA) appear in validation code, anchoring the input parsers.
-- **ELF section names**: `".nv.constant"`, `".nv.shared"`, `".nv.info"`, `".nv.callgraph"`, `".nvFatBinSegment"` -- each string reference identifies a section builder or parser function.
+- **ELF section names**: `".nv.constant"`, `".nv.shared"`, `".nv.info"`, `".nv.callgraph"`, `".nvFatBinSegment"` — each string reference identifies a section builder or parser function.
 - **Option names and help strings**: The option parser registers CLI flags by name, and each registration call references a string literal that identifies the option.
 
 ### Structural Pattern Recognition (High Confidence)
 
-Many function families in nvlink follow rigid structural templates. The SASS instruction encoder/decoder region (0xDA0000 -- 0x12B0000, approximately 4.5 MB) contains over 2,000 functions that each follow a nearly identical pattern: load a format descriptor from a constant table, set bitfield positions in a 128-bit instruction word, and store operand metadata into a fixed-layout structure. The encoder and decoder populations were identified by template matching against these structural invariants.
+Many function families in nvlink follow rigid structural templates. The SASS instruction encoder/decoder region (0xDA0000 — 0x12B0000, approximately 4.5 MB) contains over 2,000 functions that each follow a nearly identical pattern: load a format descriptor from a constant table, set bitfield positions in a 128-bit instruction word, and store operand metadata into a fixed-layout structure. The encoder and decoder populations were identified by template matching against these structural invariants.
 
 Similarly, the ELF manipulation functions (`elfw_*` family) share a consistent pattern: take a context pointer as first argument, validate section indices against bounds, and manipulate structures whose field offsets match the ELF specification.
 
@@ -336,13 +336,13 @@ Approximately 50% of identified functions carry HIGH confidence, concentrated in
 
 The analysis relies on four primary JSON databases for cross-referencing:
 
-**`nvlink_strings.json`** (31,237 entries) -- Every string in the binary with its address, value, string type, and a list of code locations that reference it. This is the single most important evidence source. Querying "which functions reference a string containing `relocat`" immediately narrows the scope to relocation-related functions.
+**`nvlink_strings.json`** (31,237 entries) — Every string in the binary with its address, value, string type, and a list of code locations that reference it. This is the single most important evidence source. Querying "which functions reference a string containing `relocat`" immediately narrows the scope to relocation-related functions.
 
-**`nvlink_names.json`** (16,650 entries) -- All named locations in the binary. In a stripped binary, most names are IDA auto-generated (`sub_XXXXXX`, `loc_XXXXXX`), but 156 import names from the PLT and a smaller number of IDA-recognized library signatures provide ground truth anchors.
+**`nvlink_names.json`** (16,650 entries) — All named locations in the binary. In a stripped binary, most names are IDA auto-generated (`sub_XXXXXX`, `loc_XXXXXX`), but 156 import names from the PLT and a smaller number of IDA-recognized library signatures provide ground truth anchors.
 
-**`nvlink_callgraph.json`** (552,453 edges) -- The complete static call graph. Each edge records the caller function name/address and callee function name/address. This enables both forward tracing ("what does this function call?") and backward tracing ("who calls this function?"). The graph is also available in Graphviz DOT format for visualization.
+**`nvlink_callgraph.json`** (552,453 edges) — The complete static call graph. Each edge records the caller function name/address and callee function name/address. This enables both forward tracing ("what does this function call?") and backward tracing ("who calls this function?"). The graph is also available in Graphviz DOT format for visualization.
 
-**`nvlink_xrefs.json`** (7,513,413 entries) -- All cross-references (code-to-code, code-to-data, data-to-data) with source address, source function, target address, target function, and type code. This is the most complete relationship database but also the largest and most expensive to query.
+**`nvlink_xrefs.json`** (7,513,413 entries) — All cross-references (code-to-code, code-to-data, data-to-data) with source address, source function, target address, target function, and type code. This is the most complete relationship database but also the largest and most expensive to query.
 
 Supplementary databases include `nvlink_functions.json` (40,532 function metadata records), `nvlink_imports.json` (156 PLT imports), `nvlink_segments.json` (25 ELF segments), and `nvlink_comments.json` (82,893 IDA-generated comments).
 
@@ -362,17 +362,17 @@ Supplementary databases include `nvlink_functions.json` (40,532 function metadat
 
 **Imports** (`nvlink_imports.json`): The 156 PLT imports. Key imports include `pthread_*` (thread pool infrastructure), `malloc`/`free`/`realloc`, `dlopen`/`dlsym` (used by the LTO pipeline to load libnvvm at runtime), `_setjmp`/`longjmp` (error recovery), and `clock`/`gettimeofday` (timing infrastructure).
 
-**Segments** (`nvlink_segments.json`): The 25 ELF segments/sections. Used to establish the address space layout and map code/data boundaries. The `.rodata` section (7.2 MB) is particularly important -- it contains string literals, vtable pointers, jump tables, constant arrays, and SASS instruction encoding tables.
+**Segments** (`nvlink_segments.json`): The 25 ELF segments/sections. Used to establish the address space layout and map code/data boundaries. The `.rodata` section (7.2 MB) is particularly important — it contains string literals, vtable pointers, jump tables, constant arrays, and SASS instruction encoding tables.
 
 ## Kernel-Side Cross-Referencing
 
-For NVLink protocol context -- register definitions, packet formats, topology negotiation, error handling semantics -- the open-source kernel module at `firmware/open-gpu-kernel-modules/` provides an invaluable cross-reference. The kernel-side NVLink driver defines structures and constants that the userspace nvlink binary must interoperate with. Matching constant values, register offsets, and error code enumerations between the stripped binary and the kernel source provides additional identification confidence for nvlink functions that interface with the driver.
+For NVLink protocol context — register definitions, packet formats, topology negotiation, error handling semantics — the open-source kernel module at `firmware/open-gpu-kernel-modules/` provides an invaluable cross-reference. The kernel-side NVLink driver defines structures and constants that the userspace nvlink binary must interoperate with. Matching constant values, register offsets, and error code enumerations between the stripped binary and the kernel source provides additional identification confidence for nvlink functions that interface with the driver.
 
 ## Cross-Referencing with Sibling Binaries
 
 nvlink shares significant code with two other CUDA toolkit binaries analyzed in sibling wikis:
 
-**ptxas** (standalone GPU assembler, [ptxas wiki](../ptxas/index.html)): The embedded ptxas component in nvlink is a statically linked copy of ptxas. Functions in the nvlink address range 0x7A0000 -- 0x1D32172 correspond to ptxas functions covering PTX parsing, instruction selection, register allocation, scheduling, peephole optimization, and SASS encoding. The standalone ptxas wiki provides detailed analysis of these subsystems that directly applies to their nvlink-embedded counterparts. String anchors, structural patterns, and algorithm descriptions from the ptxas wiki were used to accelerate identification of the same functions at different addresses in nvlink.
+**ptxas** (standalone GPU assembler, [ptxas wiki](../ptxas/index.html)): The embedded ptxas component in nvlink is a statically linked copy of ptxas. Functions in the nvlink address range 0x7A0000 — 0x1D32172 correspond to ptxas functions covering PTX parsing, instruction selection, register allocation, scheduling, peephole optimization, and SASS encoding. The standalone ptxas wiki provides detailed analysis of these subsystems that directly applies to their nvlink-embedded counterparts. String anchors, structural patterns, and algorithm descriptions from the ptxas wiki were used to accelerate identification of the same functions at different addresses in nvlink.
 
 **cicc** (CUDA C++ compiler, [cicc wiki](../cicc/index.html)): The LTO pipeline in nvlink dynamically loads `libnvvm.so` (itself a component of cicc) via `dlopen`/`dlsym`. The cicc wiki's analysis of the NVVM optimization pipeline, pass registration patterns, and IR format provides context for understanding the LTO callback interface and the data formats exchanged between nvlink and the loaded compiler library.
 
@@ -386,7 +386,7 @@ This analysis has several inherent limitations:
 
 - **ROT13 obfuscation on internal pass names.** The embedded ptxas applies ROT13 encoding to some internal pass/phase names in its string pool. These have been decoded where identified, but additional obfuscated strings may remain undetected. See [ROT13-Encoded Pass Names](reference/rot13-passes.md) for the decoded catalog.
 
-- **Five mega-functions exceed Hex-Rays limits.** Approximately 5 functions (including `main` at 57,970 bytes and several ISel hub functions exceeding 200 KB) are too large for Hex-Rays to fully decompile in a single pass. For these, analysis was performed on raw disassembly and per-basic-block CFGs, which is slower and lower-confidence than working from pseudocode. The ISel hubs are the most impactful loss -- they contain the pattern-matching dispatch tables that map IR operations to machine instructions for each SM architecture.
+- **Five mega-functions exceed Hex-Rays limits.** Approximately 5 functions (including `main` at 57,970 bytes and several ISel hub functions exceeding 200 KB) are too large for Hex-Rays to fully decompile in a single pass. For these, analysis was performed on raw disassembly and per-basic-block CFGs, which is slower and lower-confidence than working from pseudocode. The ISel hubs are the most impactful loss — they contain the pattern-matching dispatch tables that map IR operations to machine instructions for each SM architecture.
 
 - **Inlined functions are invisible.** Functions that the compiler inlined during the build of nvlink itself have no standalone address and cannot be independently identified. Small utility functions (string comparison, vector operations, hash computations) are likely inlined throughout.
 
@@ -394,7 +394,7 @@ This analysis has several inherent limitations:
 
 - **Proprietary NVIDIA code has no public reference.** The linker core, Mercury format support, NV-info metadata processing, and SASS encoding tables are entirely NVIDIA-proprietary. These are identified purely from string evidence and structural analysis with no upstream source to compare against.
 
-- **Statically linked ptxas obscures module boundaries.** The embedded ptxas is statically linked into nvlink -- there is no shared library boundary, no separate PLT, and no linker symbol table separating the two components. The division between "linker code" and "compiler code" in this wiki is inferred from code structure and string evidence. Functions at the boundary (e.g., the LTO orchestrator that bridges both sides) are documented with their dual roles but the exact module boundary is approximate.
+- **Statically linked ptxas obscures module boundaries.** The embedded ptxas is statically linked into nvlink — there is no shared library boundary, no separate PLT, and no linker symbol table separating the two components. The division between "linker code" and "compiler code" in this wiki is inferred from code structure and string evidence. Functions at the boundary (e.g., the LTO orchestrator that bridges both sides) are documented with their dual roles but the exact module boundary is approximate.
 
 - **Version-specific.** All findings apply to nvlink v13.0.88 (build `cuda_13.0.r13.0/compiler.36424714_0`, CUDA Toolkit 13.0). Addresses, function sizes, and feature sets differ in other CUDA toolkit versions.
 
@@ -416,7 +416,7 @@ To verify any specific finding in this wiki:
 
 5. **Compare encoder/decoder pairs.** In the SASS encoder/decoder region, every encoder function has a mirror decoder. The encoder sets bitfields; the decoder reads them. If an encoder is identified for a specific opcode, the corresponding decoder should exhibit the inverse operation on the same bit positions.
 
-6. **Cross-reference with the ptxas wiki.** For functions in the embedded ptxas region (0x7A0000 -- 0x1D32172), the standalone [ptxas wiki](../ptxas/index.html) documents the same algorithms and data structures at different addresses. Structural agreement between the nvlink-embedded version and the standalone ptxas version increases confidence.
+6. **Cross-reference with the ptxas wiki.** For functions in the embedded ptxas region (0x7A0000 — 0x1D32172), the standalone [ptxas wiki](../ptxas/index.html) documents the same algorithms and data structures at different addresses. Structural agreement between the nvlink-embedded version and the standalone ptxas version increases confidence.
 
 7. **Verify against decompiled files.** For any claimed function behavior, locate the corresponding `.c` file in `decompiled/` (naming convention: `{name}_{hex_addr}.c`). Read the Hex-Rays pseudocode and confirm the described logic matches. For the 168 functions that failed decompilation, check the `.asm` file in `disasm/` instead.
 
@@ -436,13 +436,13 @@ To reproduce this analysis from scratch:
 
 4. **Verify extraction.** Check the log output against the expected counts: 40,532 functions, 31,237 strings, 552,453 call edges, 7,513,413 xrefs, 82,893 comments, 16,650 names.
 
-5. **Sweep the .text section.** Divide the address range 0x400000 -- 0x1D32172 into manageable regions (448 KB to 1.9 MB each). For each region, systematically analyze every function above the size threshold using the decompiled pseudocode, string cross-references, and callgraph context. Record findings in structured sweep reports.
+5. **Sweep the .text section.** Divide the address range 0x400000 — 0x1D32172 into manageable regions (448 KB to 1.9 MB each). For each region, systematically analyze every function above the size threshold using the decompiled pseudocode, string cross-references, and callgraph context. Record findings in structured sweep reports.
 
 6. **Synthesize into wiki pages.** Use the sweep reports as evidence to write per-subsystem documentation. Cross-reference every claim against the JSON databases and cite specific addresses and strings.
 
 ### Dependencies
 
-The extraction script (`analyze_nvlink.py`) requires IDA Pro 9.x with Hex-Rays decompiler and Python 3.x. No external Python packages are needed -- only the IDA Python API (`idautils`, `idc`, `idaapi`, `ida_bytes`, `ida_funcs`, `ida_segment`, `ida_nalt`, `ida_gdl`, `ida_hexrays`).
+The extraction script (`analyze_nvlink.py`) requires IDA Pro 9.x with Hex-Rays decompiler and Python 3.x. No external Python packages are needed — only the IDA Python API (`idautils`, `idc`, `idaapi`, `ida_bytes`, `ida_funcs`, `ida_segment`, `ida_nalt`, `ida_gdl`, `ida_hexrays`).
 
 Post-export analysis requires only the Python 3.8+ standard library (`json`, `collections`, `pathlib`).
 

@@ -1,6 +1,6 @@
 # Declaration Parser
 
-C++ declaration parsing is the most ambiguity-ridden phase of front-end compilation. A statement like `T(x);` is simultaneously a valid function-style cast (expression) and a variable declaration with redundant parentheses. EDG 6.6 in cudafe++ resolves this by splitting the work into two stages: a prescanning/disambiguation phase (`disambig.c`) that probes ahead in the token stream to classify ambiguous constructs, followed by committed parsing across four tightly-coupled source files -- `decl_spec.c` (declaration specifiers), `declarator.c` (declarator syntax), `decls.c` (symbol table insertion and semantic validation), and `decl_inits.c` (initializer processing). CUDA adds a fifth axis of complexity: every declaration may carry execution space attributes (`__device__`, `__host__`, `__global__`) and memory space qualifiers (`__shared__`, `__constant__`, `__managed__`), which are parsed as attribute category 4 and must be separated from standard C++ attributes before semantic analysis.
+C++ declaration parsing is the most ambiguity-ridden phase of front-end compilation. A statement like `T(x);` is simultaneously a valid function-style cast (expression) and a variable declaration with redundant parentheses. EDG 6.6 in cudafe++ resolves this by splitting the work into two stages: a prescanning/disambiguation phase (`disambig.c`) that probes ahead in the token stream to classify ambiguous constructs, followed by committed parsing across four tightly-coupled source files — `decl_spec.c` (declaration specifiers), `declarator.c` (declarator syntax), `decls.c` (symbol table insertion and semantic validation), and `decl_inits.c` (initializer processing). CUDA adds a fifth axis of complexity: every declaration may carry execution space attributes (`__device__`, `__host__`, `__global__`) and memory space qualifiers (`__shared__`, `__constant__`, `__managed__`), which are parsed as attribute category 4 and must be separated from standard C++ attributes before semantic analysis.
 
 The core pipeline processes approximately 22,000 lines of decompiled logic across six major functions, each exceeding 1,000 lines. The design is a classic recursive-descent parser with significant state carried in stack-allocated structures (128-byte `decl_spec` accumulators packed as `__m128i` arrays) and global scope chain state (784-byte entries in the scope table at `qword_126C5E8`).
 
@@ -160,7 +160,7 @@ find_for_loop_separator():
 
 ## Stage 2: Declaration Specifiers (decl_spec.c)
 
-### decl_specifiers (sub_4ACF80) -- The Central Dispatcher
+### decl_specifiers (sub_4ACF80) — The Central Dispatcher
 
 This is the most complex function in the declaration parser: 4,761 decompiled lines, a `while(2)` loop containing a giant switch on token kinds, processing every specifier in a C++ declaration. It handles storage classes, type specifiers, cv-qualifiers, function specifiers, and CUDA attributes, accumulating results into a 128-byte stack structure.
 
@@ -486,9 +486,9 @@ The parser coordinates five specialized sub-parsers:
 | `array_declarator` | `sub_4B6760` | 518 | `[expr]` and `[]` |
 | `function_declarator` | `sub_4B8190` | 3,144 | `(params) cv-quals -> ret noexcept` |
 
-### scan_declarator_attributes (sub_4B3970) -- CUDA Attribute Separation
+### scan_declarator_attributes (sub_4B3970) — CUDA Attribute Separation
 
-This is the critical function that separates CUDA execution space attributes from standard C++ attributes on declarators. In standard C++, attributes apply to the entity being declared. CUDA adds a parallel attribute dimension -- execution space -- that must be routed to a separate storage location.
+This is the critical function that separates CUDA execution space attributes from standard C++ attributes on declarators. In standard C++, attributes apply to the entity being declared. CUDA adds a parallel attribute dimension — execution space — that must be routed to a separate storage location.
 
 The function iterates through the attribute list and sorts each attribute by its category byte at offset `+9`:
 
@@ -688,7 +688,7 @@ decl_variable(decl_specs, decl_state, storage_class, out_entity, out_flags):
     set_variable_attributes(var_entity)     # sub_4C4750
 ```
 
-### variable_declaration (sub_4DEC90, 1,098 lines) -- Top-Level Entry
+### variable_declaration (sub_4DEC90, 1,098 lines) — Top-Level Entry
 
 This is the outermost entry point for processing a variable declaration. It wraps `decl_variable` with CUDA-specific validation, `constexpr`/`constinit` checks, and static data member definition handling.
 
@@ -779,11 +779,11 @@ The largest function in the declaration processing stage. It handles function an
 
 | Parameter | Offset | Description |
 |---|---|---|
-| `a1` | -- | `decl_specifiers` accumulator (`__m128i*`) |
-| `a2` | -- | Declaration state object |
-| `a3` | -- | Function info (offset `+64` = flags, `+80` = prior type) |
-| `a4` | -- | SRK flags bitmask |
-| `a5`--`a8` | -- | Output pointers and context |
+| `a1` | — | `decl_specifiers` accumulator (`__m128i*`) |
+| `a2` | — | Declaration state object |
+| `a3` | — | Function info (offset `+64` = flags, `+80` = prior type) |
+| `a4` | — | SRK flags bitmask |
+| `a5`--`a8` | — | Output pointers and context |
 
 #### SRK Flag Bits
 
@@ -791,10 +791,10 @@ The `a4` parameter carries "scan result kind" flags that describe what was parse
 
 | Bit | Mask | Meaning |
 |---|---|---|
-| 0 | `0x01` | `SRK_DECLARATION` -- forward declaration |
-| 1 | `0x02` | `SRK_DEFINITION` -- has function body |
-| 7 | `0x80` | `SRK_IMPLICIT` -- compiler-generated |
-| 8 | `0x100` | `SRK_CONSTEXPR` -- constexpr function |
+| 0 | `0x01` | `SRK_DECLARATION` — forward declaration |
+| 1 | `0x02` | `SRK_DEFINITION` — has function body |
+| 7 | `0x80` | `SRK_IMPLICIT` — compiler-generated |
+| 8 | `0x100` | `SRK_CONSTEXPR` — constexpr function |
 
 #### Function Entity Layout
 
@@ -1109,7 +1109,7 @@ ctor_inits_for_inheriting_ctor(decl_info):
 
 ### dtor_initializer (sub_4A0EC0, 339 lines)
 
-Builds the destructor initialization (destruction) list for a class. The destruction order is the reverse of construction order -- members are destroyed in reverse declaration order, then base classes in reverse order:
+Builds the destructor initialization (destruction) list for a class. The destruction order is the reverse of construction order — members are destroyed in reverse declaration order, then base classes in reverse order:
 
 ```python
 dtor_initializer(decl_info):
@@ -1304,9 +1304,9 @@ if qword_126EF98 > 0x1116F:    // 70000+ → very recent CUDA
 
 ## Cross-References
 
-- [Lexer](lexer.md) -- token production, `word_126DD58`, `sub_676860` (`get_next_token`)
-- [Template Engine](template-engine.md) -- template scope interaction during declarator parsing
-- [CUDA Template Restrictions](template-cuda.md) -- `__global__` template argument validation, executed after `decl_routine`
-- [Name Mangling](name-mangling.md) -- mangled name generation for declared entities
-- [Overload Resolution](overload-resolution.md) -- overload set construction during `find_linked_symbol`
-- [Constexpr Interpreter](constexpr-interpreter.md) -- invoked during `check_use_of_constexpr` for validation
+- [Lexer](lexer.md) — token production, `word_126DD58`, `sub_676860` (`get_next_token`)
+- [Template Engine](template-engine.md) — template scope interaction during declarator parsing
+- [CUDA Template Restrictions](template-cuda.md) — `__global__` template argument validation, executed after `decl_routine`
+- [Name Mangling](name-mangling.md) — mangled name generation for declared entities
+- [Overload Resolution](overload-resolution.md) — overload set construction during `find_linked_symbol`
+- [Constexpr Interpreter](constexpr-interpreter.md) — invoked during `check_use_of_constexpr` for validation

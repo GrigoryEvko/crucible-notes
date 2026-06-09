@@ -2,13 +2,13 @@
 
 Every associative container in cicc v13.0 is built from the same handful of primitives: a pointer-hash DenseMap/DenseSet with quadratic probing, a wyhash-v4-family string hasher, and a SmallVector with inline buffer optimization. Before this page existed, the same hash table description was duplicated across 30+ wiki pages. This is the single source of truth. If you are reimplementing cicc's data structures, start here.
 
-There are no NVIDIA-specific modifications to the DenseMap hashing or probing logic -- cicc links the LLVM 20.0.0 implementation unmodified. The only NVIDIA-original hash infrastructure is the wyhash-v4 string hasher used for the builtin name table.
+There are no NVIDIA-specific modifications to the DenseMap hashing or probing logic — cicc links the LLVM 20.0.0 implementation unmodified. The only NVIDIA-original hash infrastructure is the wyhash-v4 string hasher used for the builtin name table.
 
 ## DenseMap Layout
 
-Two variants exist, distinguished by bucket stride. Both share the same 28-byte inline header, the same hash function, the same probing sequence, the same sentinel values, and the same growth policy. The header is always embedded directly inside a larger structure (context object, analysis result, pass state) -- never heap-allocated on its own.
+Two variants exist, distinguished by bucket stride. Both share the same 28-byte inline header, the same hash function, the same probing sequence, the same sentinel values, and the same growth policy. The header is always embedded directly inside a larger structure (context object, analysis result, pass state) — never heap-allocated on its own.
 
-### Variant A -- DenseSet (8 bytes/bucket)
+### Variant A — DenseSet (8 bytes/bucket)
 
 | Offset | Size | Type | Field |
 |--------|------|------|-------|
@@ -20,7 +20,7 @@ Two variants exist, distinguished by bucket stride. Both share the same 28-byte 
 
 Bucket array size: `NumBuckets * 8` bytes. Each bucket holds either a valid pointer, an empty sentinel, or a tombstone sentinel.
 
-### Variant B -- DenseMap (16 bytes/bucket)
+### Variant B — DenseMap (16 bytes/bucket)
 
 Same 28-byte header. Each bucket holds a key-value pair at a 16-byte stride:
 
@@ -70,7 +70,7 @@ hash(key) = key * 37
 
 This is LLVM's `DenseMapInfo<unsigned>::getHashValue`. It appears in the instruction emitter (`sub_2E29BA0`), the two-address pass (`sub_1F4E3A0`), the vector legalization tables, and the SelectionDAG instruction selection cost table (`sub_3090F90`). Integer-key maps use a different sentinel pair: `0xFFFFFFFF` (empty) and `0xFFFFFFFE` (tombstone).
 
-## wyhash v4 String Hasher -- `sub_CBF760`
+## wyhash v4 String Hasher — `sub_CBF760`
 
 The NVVM builtin name table uses a separate, NVIDIA-original hash function for string keys. `sub_C92610` is a thin wrapper that tail-calls `sub_CBF760`. The function dispatches on input length into six code paths, each using different constant sets and mixing strategies:
 
@@ -125,7 +125,7 @@ fn wyhash_medium(data: &[u8], len: usize) -> u32 {
 }
 ```
 
-The final return value is always a `uint32` -- the high dword of the 64-bit result XORed with the low dword. Most NVVM builtin names are 8--35 bytes, hitting the optimal 4--8 and 9--16 and 17--128 paths.
+The final return value is always a `uint32` — the high dword of the 64-bit result XORed with the low dword. Most NVVM builtin names are 8--35 bytes, hitting the optimal 4--8 and 9--16 and 17--128 paths.
 
 ## Probing Strategy
 
@@ -167,7 +167,7 @@ Some analysis reports describe the probing as "linear" because the `step` variab
 
 ## Growth Policy
 
-### Load Factor Threshold -- 75%
+### Load Factor Threshold — 75%
 
 After every successful insertion, the map checks whether to grow:
 
@@ -177,7 +177,7 @@ if (4 * (NumItems + 1) >= 3 * NumBuckets)
     new_capacity = 2 * NumBuckets
 ```
 
-### Tombstone Compaction -- 12.5%
+### Tombstone Compaction — 12.5%
 
 If the load factor is acceptable but tombstones have accumulated:
 
@@ -188,7 +188,7 @@ elif (NumBuckets - NumTombstones - NumItems <= NumBuckets >> 3)
     new_capacity = NumBuckets
 ```
 
-### Rehash Procedure -- `sub_C929D0`
+### Rehash Procedure — `sub_C929D0`
 
 1. `calloc(new_capacity + 1, bucket_stride)` for the new array.
 2. Write the end-of-table sentinel at position `new_capacity`.
@@ -223,7 +223,7 @@ The builtin name table also uses a value of `2` as an end-of-table sentinel plac
 
 ### LLVM-Layer Sentinels (large magnitude)
 
-Used by the majority of LLVM pass infrastructure -- SCEV, register coalescing, block placement, SLP vectorizer, StructurizeCFG, machine pipeliner, prolog-epilog, and others:
+Used by the majority of LLVM pass infrastructure — SCEV, register coalescing, block placement, SLP vectorizer, StructurizeCFG, machine pipeliner, prolog-epilog, and others:
 
 | Role | Value | Hex | Decimal |
 |------|-------|-----|---------|
@@ -254,7 +254,7 @@ Used by `DenseMap<unsigned, T>` instances (instruction emitter, two-address pass
 | Debug verify | 0xFFFFFFFFF000 / 0xFFFFFFFFE000 |
 | LazyCallGraph | 0xFFFFFFFFF000 / 0xFFFFFFFFE000 |
 
-The -8/-16 pair appears exclusively in NVVM-layer (NVIDIA-original) code. The -4096/-8192 pair is the standard LLVM `DenseMapInfo<void*>` sentinel set. The difference is cosmetic -- both pairs are safe for the same reasons -- but it reveals code provenance: if you see -8/-16, the code was written or heavily modified by NVIDIA; if you see -4096/-8192, it is stock LLVM.
+The -8/-16 pair appears exclusively in NVVM-layer (NVIDIA-original) code. The -4096/-8192 pair is the standard LLVM `DenseMapInfo<void*>` sentinel set. The difference is cosmetic — both pairs are safe for the same reasons — but it reveals code provenance: if you see -8/-16, the code was written or heavily modified by NVIDIA; if you see -4096/-8192, it is stock LLVM.
 
 ## SmallVector Pattern
 
@@ -279,8 +279,8 @@ When `size == capacity` on insertion, the vector grows.
 
 | Function | Address | Description |
 |----------|---------|-------------|
-| `SmallVector::grow` | `sub_C8D5F0` | Generic growth -- copies elements, used for non-POD types |
-| `SmallVectorBase::grow_pod` | `sub_C8D7D0` | POD-optimized growth -- uses `realloc` when buffer is heap-allocated |
+| `SmallVector::grow` | `sub_C8D5F0` | Generic growth — copies elements, used for non-POD types |
+| `SmallVectorBase::grow_pod` | `sub_C8D7D0` | POD-optimized growth — uses `realloc` when buffer is heap-allocated |
 | `SmallVector::grow` (MIR) | `sub_16CD150` | Second copy in the MachineIR address range, identical logic |
 | `SmallVector::grow` (extended) | `sub_C8E1E0` | Larger variant (11KB), handles edge cases |
 
@@ -313,7 +313,7 @@ Observed across the codebase:
 | 22 | 8 | 176 | Printf argument arrays (stack-allocated) |
 | 8 | 56 | 448 | SROA slice descriptors |
 
-## Builtin Name Table -- Specialized Hash Table
+## Builtin Name Table — Specialized Hash Table
 
 The builtin name table at `context+480` is a specialized variant that does not use the standard DenseMap layout. It stores string entries rather than pointers, includes a parallel hash cache, and uses the wyhash function instead of the pointer hash.
 
@@ -383,8 +383,8 @@ See [Builtins](../builtins/index.md) for the complete 770-entry builtin ID inven
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
-| DenseMap pointer hash | inline | -- | `(ptr >> 9) ^ (ptr >> 4)` -- always inlined |
-| DenseMap integer hash | inline | -- | `key * 37` -- always inlined |
+| DenseMap pointer hash | inline | — | `(ptr >> 9) ^ (ptr >> 4)` — always inlined |
+| DenseMap integer hash | inline | — | `key * 37` — always inlined |
 | wyhash v4 | `sub_CBF760` | ~4 KB | String hash, length-dispatched |
 | wyhash wrapper | `sub_C92610` | tiny | Tail-calls `sub_CBF760` |
 | Builtin insert-or-find | `sub_C92740` | ~2 KB | Quadratic probe with hash cache |
@@ -395,15 +395,15 @@ See [Builtins](../builtins/index.md) for the complete 770-entry builtin ID inven
 | SmallVectorBase::grow_pod | `sub_C8D7D0` | ~5 KB | POD-optimized realloc growth |
 | SmallVector::grow (MIR) | `sub_16CD150` | ~2 KB | Duplicate in MachineIR range |
 | SmallPtrSet::insertOrFind | `sub_C9A3C0` | ~16 KB | Small pointer set with growth |
-| DenseMap grow (LLVM passes) | varies per pass | -- | Each pass has its own inlined or outlined rehash |
+| DenseMap grow (LLVM passes) | varies per pass | — | Each pass has its own inlined or outlined rehash |
 
 ## Cross-References
 
-- [Builtins -- Hash Table and ID Inventory](../builtins/index.md) -- complete 770-entry builtin table with wyhash usage
-- [DenseMap and Symbol Table Structures](../structs/symbol-table.md) -- original page (now a subset of this one, kept for EDG node layout)
-- [NVVM IR Node](../structs/ir-node.md) -- NVVM context object with DenseMap uniquing tables
-- [CSSA](../passes/cssa.md) -- PHI hash map with -4096/-8192 sentinels
-- [Register Coalescing](../llvm/register-coalescing.md) -- integer-key and pointer-key hash map variants
-- [SLP Vectorizer](../llvm/slp-vectorizer.md) -- 32-byte-entry DenseMap with -4096/-8192 sentinels
-- [SCEV](../llvm/scev.md) -- SCEV expression caching with -4096/-8192 sentinels
-- [Instruction Emitter](../llvm/instr-emitter.md) -- integer-key hash with `key * 37`
+- [Builtins — Hash Table and ID Inventory](../builtins/index.md) — complete 770-entry builtin table with wyhash usage
+- [DenseMap and Symbol Table Structures](../structs/symbol-table.md) — original page (now a subset of this one, kept for EDG node layout)
+- [NVVM IR Node](../structs/ir-node.md) — NVVM context object with DenseMap uniquing tables
+- [CSSA](../passes/cssa.md) — PHI hash map with -4096/-8192 sentinels
+- [Register Coalescing](../llvm/register-coalescing.md) — integer-key and pointer-key hash map variants
+- [SLP Vectorizer](../llvm/slp-vectorizer.md) — 32-byte-entry DenseMap with -4096/-8192 sentinels
+- [SCEV](../llvm/scev.md) — SCEV expression caching with -4096/-8192 sentinels
+- [Instruction Emitter](../llvm/instr-emitter.md) — integer-key hash with `key * 37`

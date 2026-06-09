@@ -33,20 +33,20 @@ The NVPTX SelectionDAG backend spans roughly 4MB of code across two address rang
 
 ## Complexity
 
-Let N = number of DAG nodes and E = number of edges (use-def relationships). The SelectionDAG pipeline runs eight sequential phases. SelectionDAGBuilder converts IR instructions to DAG nodes in O(I) where I = LLVM IR instruction count. Each DAG Combiner pass is worklist-driven: O(N) nodes are visited, each matched against pattern rules in O(1) via opcode dispatch; `ReplaceAllUsesWith` is O(U) per node where U = uses. The three combiner passes total O(3 * N * U_avg). Type legalization (`sub_20019C0`, 348KB) iterates until all types are legal -- each iteration processes O(N) nodes, and convergence is guaranteed in O(T) iterations where T = max type-promotion depth (typically 2--3 for GPU types). Operation legalization (`sub_1FFB890`, 137KB) visits each node once: O(N). The action table lookup is O(1) via the 2D array at `TLI + 259 * VT + opcode + 2422`. ISel pattern matching (`sub_3090F90`, 91KB) visits each node once in topological order: O(N). Per-node matching is O(P) where P = number of patterns for that opcode, but NVPTX patterns are organized by opcode-indexed tables making this effectively O(1) for common opcodes. The DAG worklist uses `((addr >> 9) ^ (addr >> 4)) & (cap - 1)` hashing for O(1) amortized membership tests. Overall: O(I + N * U_avg * 3 + N * T + N) which simplifies to O(N * U_avg) in practice. The intrinsic lowering mega-switch (343KB, 200+ IDs) adds O(1) per intrinsic call via the jump table, not O(200).
+Let N = number of DAG nodes and E = number of edges (use-def relationships). The SelectionDAG pipeline runs eight sequential phases. SelectionDAGBuilder converts IR instructions to DAG nodes in O(I) where I = LLVM IR instruction count. Each DAG Combiner pass is worklist-driven: O(N) nodes are visited, each matched against pattern rules in O(1) via opcode dispatch; `ReplaceAllUsesWith` is O(U) per node where U = uses. The three combiner passes total O(3 * N * U_avg). Type legalization (`sub_20019C0`, 348KB) iterates until all types are legal — each iteration processes O(N) nodes, and convergence is guaranteed in O(T) iterations where T = max type-promotion depth (typically 2--3 for GPU types). Operation legalization (`sub_1FFB890`, 137KB) visits each node once: O(N). The action table lookup is O(1) via the 2D array at `TLI + 259 * VT + opcode + 2422`. ISel pattern matching (`sub_3090F90`, 91KB) visits each node once in topological order: O(N). Per-node matching is O(P) where P = number of patterns for that opcode, but NVPTX patterns are organized by opcode-indexed tables making this effectively O(1) for common opcodes. The DAG worklist uses `((addr >> 9) ^ (addr >> 4)) & (cap - 1)` hashing for O(1) amortized membership tests. Overall: O(I + N * U_avg * 3 + N * T + N) which simplifies to O(N * U_avg) in practice. The intrinsic lowering mega-switch (343KB, 200+ IDs) adds O(1) per intrinsic call via the jump table, not O(200).
 
 ## Pipeline Position
 
 The SelectionDAG phases execute in a fixed sequence after SelectionDAGBuilder (`sub_2081F00`) converts LLVM IR into an initial DAG:
 
-1. **SelectionDAGBuilder** -- IR-to-DAG lowering, visitor dispatch at `sub_2065D30`
-2. **DAG Combiner** (`sub_F681E0` / `sub_F20C20`) -- initial algebraic simplification
-3. **DAGTypeLegalizer** (`sub_20019C0`) -- iterates to fixpoint until all types are legal; see [Type Legalization](type-legalization.md)
-4. **DAG Combiner** -- second pass after type legalization
-5. **LegalizeDAG** (`sub_1FCE100` dispatcher, `sub_1FFB890` action engine) -- legalizes operations on legal types
-6. **DAG Combiner** -- third pass after operation legalization
-7. **NVPTXTargetLowering::PerformDAGCombine** (`sub_33C0CA0`) -- NVPTX-specific post-legalize combines
-8. **Instruction Selection** (`sub_3090F90`) -- see [ISel Patterns](isel-patterns.md)
+1. **SelectionDAGBuilder** — IR-to-DAG lowering, visitor dispatch at `sub_2065D30`
+2. **DAG Combiner** (`sub_F681E0` / `sub_F20C20`) — initial algebraic simplification
+3. **DAGTypeLegalizer** (`sub_20019C0`) — iterates to fixpoint until all types are legal; see [Type Legalization](type-legalization.md)
+4. **DAG Combiner** — second pass after type legalization
+5. **LegalizeDAG** (`sub_1FCE100` dispatcher, `sub_1FFB890` action engine) — legalizes operations on legal types
+6. **DAG Combiner** — third pass after operation legalization
+7. **NVPTXTargetLowering::PerformDAGCombine** (`sub_33C0CA0`) — NVPTX-specific post-legalize combines
+8. **Instruction Selection** (`sub_3090F90`) — see [ISel Patterns](isel-patterns.md)
 
 ## Type Legalization
 
@@ -54,10 +54,10 @@ Type legalization (`sub_20019C0`) is the largest single function in the Selectio
 
 The master switch dispatches on approximately 50 ISD opcodes. Type legalization actions follow the standard LLVM model:
 
-- **Promote** -- widen small types to register width (e.g., `i8` to `i32`) via `ANY_EXTEND`/`ZERO_EXTEND`, perform the operation, then `TRUNCATE` the result.
-- **Expand** -- split wide types into halves (e.g., `i128` into two `i64` values) using shift-and-OR sequences.
-- **Soften** -- emulate unsupported FP types through integer libcall sequences.
-- **Scalarize/Split Vector** -- decompose illegal vector types into scalar element operations.
+- **Promote** — widen small types to register width (e.g., `i8` to `i32`) via `ANY_EXTEND`/`ZERO_EXTEND`, perform the operation, then `TRUNCATE` the result.
+- **Expand** — split wide types into halves (e.g., `i128` into two `i64` values) using shift-and-OR sequences.
+- **Soften** — emulate unsupported FP types through integer libcall sequences.
+- **Scalarize/Split Vector** — decompose illegal vector types into scalar element operations.
 
 The legality table lives inside `NVPTXTargetLowering` at offset `+2422`, organized as a 2D array indexed by `259 * VT + opcode`. The 259-byte row stride accommodates LLVM's ~250 generic opcodes plus approximately 10 NVPTX target-specific opcodes. A secondary condition-code action table at offset `+18112` uses 4-bit packed nibbles indexed by `(VT_row + 15 * CC)`.
 
@@ -168,7 +168,7 @@ The operation legalization action engine (`sub_1FFB890`, 137KB) determines *what
 
 | Action | Code | Behavior |
 |---|---|---|
-| Legal | 0 | Return immediately -- node is natively supported |
+| Legal | 0 | Return immediately — node is natively supported |
 | Custom | 1 | Call `NVPTXTargetLowering::LowerOperation` (vtable slot #164, offset `+1312`); if NULL returned, fall through to expand |
 | Expand | 2 | Try `LegalizeTypes`, then `ExpandNode` (`sub_1FF6F70`) as fallback |
 | LibCall | 3 | Call `ExpandNode` directly for libcall substitution |
@@ -225,17 +225,17 @@ Additionally, the function handles load/store lowering (`sub_32D2680`, 81KB comp
 
 `BUILD_VECTOR` (opcode 156) lowering begins by iterating all operands to detect the all-same (splat) case. When all elements are the same value, the lowering produces a single scalar load followed by register-class-appropriate replication. When elements differ, it falls through to a per-element insert chain.
 
-For NVPTX, `BUILD_VECTOR` is significant because PTX has no native vector construction instruction -- vectors are built by storing elements into `.param` space and reloading as a vector type, or through register-pair packing for 2-element vectors.
+For NVPTX, `BUILD_VECTOR` is significant because PTX has no native vector construction instruction — vectors are built by storing elements into `.param` space and reloading as a vector type, or through register-pair packing for 2-element vectors.
 
 ### VECTOR_SHUFFLE Three-Level Lowering
 
 Vector shuffle lowering (lines 2665--3055 of the decompilation) implements a three-level strategy based on the result element count:
 
-**Level 1 -- Single-result shuffle.** When the shuffle produces a single element, the lowering extracts the source element directly via `EXTRACT_VECTOR_ELT` and wraps it in a `BUILD_VECTOR` if needed. This avoids any actual shuffle machinery.
+**Level 1 — Single-result shuffle.** When the shuffle produces a single element, the lowering extracts the source element directly via `EXTRACT_VECTOR_ELT` and wraps it in a `BUILD_VECTOR` if needed. This avoids any actual shuffle machinery.
 
-**Level 2 -- Two-result shuffle.** The handler uses a two-phase identity/extract detection with `BitVector` tracking. Phase A scans the shuffle mask to identify which source elements map to which result positions. Phase B determines whether each result position is an identity (element already in the correct position in one of the source vectors) or requires extraction. Results that are identities are left in place; non-identity elements are extracted and inserted.
+**Level 2 — Two-result shuffle.** The handler uses a two-phase identity/extract detection with `BitVector` tracking. Phase A scans the shuffle mask to identify which source elements map to which result positions. Phase B determines whether each result position is an identity (element already in the correct position in one of the source vectors) or requires extraction. Results that are identities are left in place; non-identity elements are extracted and inserted.
 
-**Level 3 -- General shuffle (3+ results).** Falls back to a `BUILD_VECTOR`-based reconstruction. Each result element is individually extracted from the appropriate source vector using `EXTRACT_VECTOR_ELT`, then all elements are combined via `BUILD_VECTOR`. For certain mask patterns, pairwise shuffle via `sub_32B2430` is attempted first as an optimization.
+**Level 3 — General shuffle (3+ results).** Falls back to a `BUILD_VECTOR`-based reconstruction. Each result element is individually extracted from the appropriate source vector using `EXTRACT_VECTOR_ELT`, then all elements are combined via `BUILD_VECTOR`. For certain mask patterns, pairwise shuffle via `sub_32B2430` is attempted first as an optimization.
 
 ### EXTRACT_VECTOR_ELT Three Sub-Paths
 
@@ -601,10 +601,10 @@ Key aspects of the initialization:
 Upstream LLVM's SelectionDAG framework was designed for CPU ISAs where register classes overlap and share a unified physical register file. The NVPTX target breaks these assumptions at every level:
 
 - **Upstream assumes register classes interfere with each other.** On x86, GR32 is a sub-register of GR64; allocating `eax` constrains `rax`. The interference graph, coalescing, and copy elimination infrastructure all assume overlapping classes. NVPTX has nine completely disjoint classes (`%r`, `%f`, `%fd`, `%p`, etc.) with zero cross-class interference. The DAG's register pressure tracking, copy coalescing hints, and class constraint propagation solve a problem that does not exist on this target.
-- **Upstream assumes function calls are cheap register shuffles.** CPU calling conventions move arguments through registers (`rdi`, `rsi`, etc.) or a stack backed by L1 cache. NVPTX function calls go through the `.param` address space with explicit `DeclareParam`/`st.param`/`ld.param` sequences -- O(n) memory operations per argument. The `LowerCall` function in cicc is 88KB (vs. upstream's few KB) because it must handle four call flavors, monotonic `.param` naming, and `"nvptx-libcall-callee"` metadata for synthesized calls.
+- **Upstream assumes function calls are cheap register shuffles.** CPU calling conventions move arguments through registers (`rdi`, `rsi`, etc.) or a stack backed by L1 cache. NVPTX function calls go through the `.param` address space with explicit `DeclareParam`/`st.param`/`ld.param` sequences — O(n) memory operations per argument. The `LowerCall` function in cicc is 88KB (vs. upstream's few KB) because it must handle four call flavors, monotonic `.param` naming, and `"nvptx-libcall-callee"` metadata for synthesized calls.
 - **Upstream assumes a small set of intrinsics.** Upstream NVPTX intrinsic lowering covers approximately IDs 0-300. CICC's intrinsic mega-switch at `sub_33B0210` (60KB) handles 785 contiguous Intrinsic::ID values 0--0x310, covering cp.async, TMA, WGMMA, and the full SM 90/100 tensor operation set; secondary high-ID dispatch for texture/surface attribute lookup lives in helpers such as `sub_247CB70` (cases up to 15839). The upstream framework's assumption that intrinsic lowering is a small switch case is off by more than 2x even before counting the auxiliary tables.
-- **Upstream assumes vector types are natively supported.** CPU targets have native vector registers (XMM/YMM/ZMM, NEON Q-registers). NVPTX has no native vector registers -- most vector operations are marked Custom or Expand, forcing them through 111KB of custom lowering at `sub_32E3060`. The "legalize then select" pipeline spends most of its time decomposing vectors that never should have been formed.
-- **Upstream assumes known-bits propagation is a small target hook.** Upstream NVPTX's `computeKnownBitsForTargetNode` handles fewer than 20 opcodes. CICC's version at `sub_33D4EF0` (114KB, 112 opcode cases) propagates bits through texture fetches, address space loads, and NVPTX-specific operations -- a 50x expansion that upstream's hook interface was never designed to support cleanly.
+- **Upstream assumes vector types are natively supported.** CPU targets have native vector registers (XMM/YMM/ZMM, NEON Q-registers). NVPTX has no native vector registers — most vector operations are marked Custom or Expand, forcing them through 111KB of custom lowering at `sub_32E3060`. The "legalize then select" pipeline spends most of its time decomposing vectors that never should have been formed.
+- **Upstream assumes known-bits propagation is a small target hook.** Upstream NVPTX's `computeKnownBitsForTargetNode` handles fewer than 20 opcodes. CICC's version at `sub_33D4EF0` (114KB, 112 opcode cases) propagates bits through texture fetches, address space loads, and NVPTX-specific operations — a 50x expansion that upstream's hook interface was never designed to support cleanly.
 
 ## Differences from Upstream LLVM
 
@@ -650,51 +650,51 @@ The following components appear to be stock LLVM with no NVIDIA modifications:
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `SelectionDAGLegalize::LegalizeOp` dispatcher (~100 opcodes) | `sub_1FCE100` | 91KB | -- |
-| `SelectionDAGLegalize` action dispatch (967 cases) | `sub_1FFB890` | 137KB | -- |
-| Legalization worklist management | `sub_1FF5010` |  | -- |
-| `ExpandNode` fallback | `sub_1FF6F70` |  | -- |
-| `DAGCombiner::visitNode` (6-phase per-node combine) | `sub_F20C20` | 64KB | -- |
-| `DAGCombiner::combine` orchestrator (worklist management) | `sub_F681E0` | 65KB | -- |
-| `ReplaceAllUsesWith` (hash: `((id >> 9) ^ (id >> 4))`) | `sub_F162A0` |  | -- |
-| Combine pattern matcher (STORE/BITCAST/CONSTANT) | `sub_F0F270` | 25.5KB | -- |
-| Target-independent opcode-specific combine dispatcher | `sub_100E380` |  | -- |
-| All-constant-operand fold evaluation | `sub_1028510` |  | -- |
-| Vector stride / reassociation combine | `sub_F15980` |  | -- |
-| Generic `computeKnownBits` | `sub_F5A610` | 36.7KB | -- |
-| Extended known-bits (recursive expansion limit) | `sub_F5F040` | 52.4KB | -- |
-| `SelectionDAG::getNode` / CSE hash table | `sub_F4CEE0` | 41.3KB | -- |
-| DAG node builder (operand/result setup) | `sub_F49030` | 38.2KB | -- |
-| Constrained FP intrinsic lowering | `sub_F47010` | 36.4KB | -- |
-| `NVPTXTargetLowering::LowerOperation` dispatcher | `sub_32E3060` | 111KB | -- |
-| LowerOperation secondary dispatch (overflow) | `sub_3377410` | 75KB | -- |
-| NVPTX custom type promotion | `sub_32A1EF0` | 109KB | -- |
-| NVPTX post-legalize DAG combine | `sub_32EC4F0` | 92KB | -- |
-| NVPTX vector operation splitting | `sub_32FE970` | 88KB | -- |
-| NVPTX load/store lowering | `sub_32D2680` | 81KB | -- |
-| NVPTX integer/FP legalization | `sub_32983B0` | 79KB | -- |
-| NVPTX intrinsic lowering (tex/surf) | `sub_32B8A20` | 71KB | -- |
-| NVPTX vector operation lowering | `sub_32A9030` | 55KB | -- |
-| NVPTX addrspacecast / pointer lowering | `sub_32C3760` | 54KB | -- |
-| NVPTX conditional/select lowering | `sub_32BE8D0` | 54KB | -- |
-| NVPTX special register lowering | `sub_32B6540` | 50KB | -- |
-| `NVPTXTargetLowering::PerformDAGCombine` | `sub_33C0CA0` | 62KB | -- |
-| NVPTX DAGCombiner with "COVERED"/"INCLUDED" tracing | `sub_3425710` | 142KB | -- |
-| `NVPTXTargetLowering::LowerCall` | `sub_3040BF0` | 88KB | -- |
-| NVPTX atomic operation lowering | `sub_3048C30` | 86KB | -- |
-| `NVPTXTargetLowering` constructor (action setup) | `sub_3056320` | 45KB | -- |
-| Type legalization table population | `sub_3314670` | 73KB | -- |
-| Intrinsic lowering mega-switch | `sub_33B0210` | 343KB | -- |
-| NVPTX `computeKnownBitsForTargetNode` | `sub_33D4EF0` | 114KB | -- |
-| NVPTX inline asm constraint handler | `sub_338BA40` | 79KB | -- |
-| `SelectionDAGBuilder::visitInlineAsm` | `sub_2079C70` | 83KB | -- |
-| NVPTX `nvvm_texsurf_handle` lowering | `sub_2077400` | 20KB | -- |
-| NVPTX argument passing / type coercion | `sub_2072590` | 38KB | -- |
-| `NVPTXDAGToDAGISel::Select` driver | `sub_3090F90` | 91KB | -- |
-| Address space / memory operation support | `sub_33067C0` | 74KB | -- |
-| Global address lowering | `sub_331F6A0` | 62KB | -- |
-| Formal arguments / return lowering | `sub_3349730` | 82KB | -- |
-| Call lowering (`visitCall` / `LowerCallTo`) | `sub_332FEA0` | 79KB | -- |
+| `SelectionDAGLegalize::LegalizeOp` dispatcher (~100 opcodes) | `sub_1FCE100` | 91KB | — |
+| `SelectionDAGLegalize` action dispatch (967 cases) | `sub_1FFB890` | 137KB | — |
+| Legalization worklist management | `sub_1FF5010` |  | — |
+| `ExpandNode` fallback | `sub_1FF6F70` |  | — |
+| `DAGCombiner::visitNode` (6-phase per-node combine) | `sub_F20C20` | 64KB | — |
+| `DAGCombiner::combine` orchestrator (worklist management) | `sub_F681E0` | 65KB | — |
+| `ReplaceAllUsesWith` (hash: `((id >> 9) ^ (id >> 4))`) | `sub_F162A0` |  | — |
+| Combine pattern matcher (STORE/BITCAST/CONSTANT) | `sub_F0F270` | 25.5KB | — |
+| Target-independent opcode-specific combine dispatcher | `sub_100E380` |  | — |
+| All-constant-operand fold evaluation | `sub_1028510` |  | — |
+| Vector stride / reassociation combine | `sub_F15980` |  | — |
+| Generic `computeKnownBits` | `sub_F5A610` | 36.7KB | — |
+| Extended known-bits (recursive expansion limit) | `sub_F5F040` | 52.4KB | — |
+| `SelectionDAG::getNode` / CSE hash table | `sub_F4CEE0` | 41.3KB | — |
+| DAG node builder (operand/result setup) | `sub_F49030` | 38.2KB | — |
+| Constrained FP intrinsic lowering | `sub_F47010` | 36.4KB | — |
+| `NVPTXTargetLowering::LowerOperation` dispatcher | `sub_32E3060` | 111KB | — |
+| LowerOperation secondary dispatch (overflow) | `sub_3377410` | 75KB | — |
+| NVPTX custom type promotion | `sub_32A1EF0` | 109KB | — |
+| NVPTX post-legalize DAG combine | `sub_32EC4F0` | 92KB | — |
+| NVPTX vector operation splitting | `sub_32FE970` | 88KB | — |
+| NVPTX load/store lowering | `sub_32D2680` | 81KB | — |
+| NVPTX integer/FP legalization | `sub_32983B0` | 79KB | — |
+| NVPTX intrinsic lowering (tex/surf) | `sub_32B8A20` | 71KB | — |
+| NVPTX vector operation lowering | `sub_32A9030` | 55KB | — |
+| NVPTX addrspacecast / pointer lowering | `sub_32C3760` | 54KB | — |
+| NVPTX conditional/select lowering | `sub_32BE8D0` | 54KB | — |
+| NVPTX special register lowering | `sub_32B6540` | 50KB | — |
+| `NVPTXTargetLowering::PerformDAGCombine` | `sub_33C0CA0` | 62KB | — |
+| NVPTX DAGCombiner with "COVERED"/"INCLUDED" tracing | `sub_3425710` | 142KB | — |
+| `NVPTXTargetLowering::LowerCall` | `sub_3040BF0` | 88KB | — |
+| NVPTX atomic operation lowering | `sub_3048C30` | 86KB | — |
+| `NVPTXTargetLowering` constructor (action setup) | `sub_3056320` | 45KB | — |
+| Type legalization table population | `sub_3314670` | 73KB | — |
+| Intrinsic lowering mega-switch | `sub_33B0210` | 343KB | — |
+| NVPTX `computeKnownBitsForTargetNode` | `sub_33D4EF0` | 114KB | — |
+| NVPTX inline asm constraint handler | `sub_338BA40` | 79KB | — |
+| `SelectionDAGBuilder::visitInlineAsm` | `sub_2079C70` | 83KB | — |
+| NVPTX `nvvm_texsurf_handle` lowering | `sub_2077400` | 20KB | — |
+| NVPTX argument passing / type coercion | `sub_2072590` | 38KB | — |
+| `NVPTXDAGToDAGISel::Select` driver | `sub_3090F90` | 91KB | — |
+| Address space / memory operation support | `sub_33067C0` | 74KB | — |
+| Global address lowering | `sub_331F6A0` | 62KB | — |
+| Formal arguments / return lowering | `sub_3349730` | 82KB | — |
+| Call lowering (`visitCall` / `LowerCallTo`) | `sub_332FEA0` | 79KB | — |
 
 ## Reimplementation Checklist
 
@@ -707,13 +707,13 @@ The following components appear to be stock LLVM with no NVIDIA modifications:
 
 ## Cross-References
 
-- [Type Legalization](type-legalization.md) -- detailed 348KB monolith documentation
-- [ISel Pattern Matching](isel-patterns.md) -- instruction selection patterns and matching
-- [Register Allocation](register-allocation.md) -- follows ISel in the pipeline
-- [Address Spaces](../reference/address-spaces.md) -- consolidated AS reference
-- [Register Classes](../reference/register-classes.md) -- NVPTX register class definitions
-- [NVPTX Opcodes](../reference/nvptx-opcodes.md) -- MachineInstr opcode reference
-- [NVPTXTargetMachine](../infra/nvptx-target.md) -- target machine and TTI hooks
-- [Emission](../pipeline/emission.md) -- PTX emission from MachineInstrs
-- [Tensor Core Intrinsics](../builtins/tensor-mma.md) -- WMMA/MMA intrinsic detail
-- [Surface/Texture Intrinsics](../builtins/surface-texture.md) -- tex/surf lowering
+- [Type Legalization](type-legalization.md) — detailed 348KB monolith documentation
+- [ISel Pattern Matching](isel-patterns.md) — instruction selection patterns and matching
+- [Register Allocation](register-allocation.md) — follows ISel in the pipeline
+- [Address Spaces](../reference/address-spaces.md) — consolidated AS reference
+- [Register Classes](../reference/register-classes.md) — NVPTX register class definitions
+- [NVPTX Opcodes](../reference/nvptx-opcodes.md) — MachineInstr opcode reference
+- [NVPTXTargetMachine](../infra/nvptx-target.md) — target machine and TTI hooks
+- [Emission](../pipeline/emission.md) — PTX emission from MachineInstrs
+- [Tensor Core Intrinsics](../builtins/tensor-mma.md) — WMMA/MMA intrinsic detail
+- [Surface/Texture Intrinsics](../builtins/surface-texture.md) — tex/surf lowering

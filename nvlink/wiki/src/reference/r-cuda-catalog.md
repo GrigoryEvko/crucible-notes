@@ -1,6 +1,6 @@
 # R_CUDA Relocation Catalog
 
-Complete reference table of all **117 canonical** R_CUDA relocation type names extracted from nvlink v13.0.88, indexed across **182 total descriptor rows** (117 standard + 65 attribute). The raw `nvlink_strings.json` pool contains 119 R_CUDA string entries -- 117 unique names plus two trailing-whitespace duplicates of `R_CUDA_UNIFIED_8_0` and `R_CUDA_UNIFIED_8_8` (see Confidence Assessment). Types are organized into two descriptor tables: the standard table at `off_1D37600` (117 entries, indices 0--116) and the attribute table at `off_1D371E0` (65 entries, indices 0x10000--0x10040). See [R_CUDA Relocations](../linker/r-cuda-relocations.md) for the relocation engine, descriptor format, action types, and architecture class system.
+Complete reference table of all **117 canonical** R_CUDA relocation type names extracted from nvlink v13.0.88, indexed across **182 total descriptor rows** (117 standard + 65 attribute). The raw `nvlink_strings.json` pool contains 119 R_CUDA string entries — 117 unique names plus two trailing-whitespace duplicates of `R_CUDA_UNIFIED_8_0` and `R_CUDA_UNIFIED_8_8` (see Confidence Assessment). Types are organized into two descriptor tables: the standard table at `off_1D37600` (117 entries, indices 0--116) and the attribute table at `off_1D371E0` (65 entries, indices 0x10000--0x10040). See [R_CUDA Relocations](../linker/r-cuda-relocations.md) for the relocation engine, descriptor format, action types, and architecture class system.
 
 ## Standard Table (off_1D37600)
 
@@ -8,7 +8,7 @@ Complete reference table of all **117 canonical** R_CUDA relocation type names e
 
 | Index | Name | Type | Bit Width | Bit Position |
 |------:|------|----------|----------:|-------------:|
-| 0 | `R_CUDA_NONE` | sentinel | -- | -- |
+| 0 | `R_CUDA_NONE` | sentinel | — | — |
 | 1 | `R_CUDA_32` | data | 32 | 0 |
 | 2 | `R_CUDA_64` | data | 64 | 0 |
 | 3 | `R_CUDA_G32` | global | 32 | 0 |
@@ -124,13 +124,13 @@ Complete reference table of all **117 canonical** R_CUDA relocation type names e
 | 113 | `R_CUDA_UNIFIED32_HI_32` | unified | 16 | 32 |
 | 114 | `R_CUDA_ABS56_16_34` | abs-instr | 56 | 34 |
 | 115 | `R_CUDA_CONST_FIELD22_37` | const | 22 | 37 |
-| 116 | `R_CUDA_NONE_LAST` | sentinel | -- | -- |
+| 116 | `R_CUDA_NONE_LAST` | sentinel | — | — |
 
 ## Attribute Table (off_1D371E0)
 
 65 entries. Attribute relocations apply to `.nv.info.*` metadata sections rather than instruction streams. The encoded `r_type` in ELF is `0x10000 + index` (e.g., attribute index 3 = `r_type` 0x10003). The attribute table reuses a subset of the same type names as the standard table but with different 64-byte descriptors.
 
-The attribute table entries are not individually named in the binary -- they share string pointers with the standard table. The following mapping lists the 65 attribute indices and the standard-table name each one references. Indices not listed here (gaps) use `R_CUDA_NONE`.
+The attribute table entries are not individually named in the binary — they share string pointers with the standard table. The following mapping lists the 65 attribute indices and the standard-table name each one references. Indices not listed here (gaps) use `R_CUDA_NONE`.
 
 | Attr Index | r_type | Shared Name | Type |
 |-----------:|-------:|-------------|----------|
@@ -267,13 +267,13 @@ byte:  30 31 32 33  34 35 36 37  38 39 3A 3B  3C 3D 3E 3F
 | 1 | instruction-stream bit-field patch | 39 | `R_CUDA_ABS24_26`, `R_CUDA_CONST_FIELD19_28`, `R_CUDA_PCREL_IMM24_26`, `R_CUDA_YIELD_OPCODE9_0`, `R_CUDA_UNUSED_CLEAR32` |
 | 2 | descriptor / global / func-desc / unified / instr-replacement | 52 | `R_CUDA_G32`, `R_CUDA_TEX_HEADER_INDEX`, `R_CUDA_FUNC_DESC_32`, `R_CUDA_INSTRUCTION64`, `R_CUDA_UNIFIED` |
 | 4 | data-section byte / word patch | 24 | `R_CUDA_32`, `R_CUDA_64`, `R_CUDA_ABS32_26`, `R_CUDA_8_0..R_CUDA_8_56` |
-| 0xFF00 | poison terminator | 1 | `R_CUDA_NONE_LAST` (idx 116) -- diagonal `0xFF` marker |
+| 0xFF00 | poison terminator | 1 | `R_CUDA_NONE_LAST` (idx 116) — diagonal `0xFF` marker |
 
 This enum is *not* the action selector; it is a coarse classifier consumed by the dispatcher in `sub_4698A0` and `sub_469790` that decides which top-level patch path to take. The fine-grained operation is encoded in `slot0.action`.
 
 ### `action` enum (dword at byte 20)
 
-Twenty-three distinct action codes appear in the standard table. The bitmask test in `sub_469620` line 46 (`_bittest64(0x3FFFE002C6, action)`) gates the symbol-resolution branch on actions `{1, 2, 6, 7, 9, 17, 18, 19, 20, 21, 22, ..., 33, 37}` -- the entries that need late symbol fix-up.
+Twenty-three distinct action codes appear in the standard table. The bitmask test in `sub_469620` line 46 (`_bittest64(0x3FFFE002C6, action)`) gates the symbol-resolution branch on actions `{1, 2, 6, 7, 9, 17, 18, 19, 20, 21, 22, ..., 33, 37}` — the entries that need late symbol fix-up.
 
 | Action | Behavior | Representative entries |
 |------:|---------|------------------------|
@@ -294,7 +294,7 @@ Twenty-three distinct action codes appear in the standard table. The bitmask tes
 | 18 | YIELD opcode rewrite | `R_CUDA_YIELD_OPCODE9_0` |
 | 19 | YIELD-clear-predicate rewrite | `R_CUDA_YIELD_CLEAR_PRED4_87` |
 | 20 | zero-fill (`UNUSED_CLEAR`) | `R_CUDA_UNUSED_CLEAR32`, `R_CUDA_UNUSED_CLEAR64` |
-| 21 (`0x15`) | `piece_cont` -- second piece of a split-field type, pairs with a leading action-9 slot | `R_CUDA_ABS55_16_34`, `R_CUDA_ABS56_16_34` |
+| 21 (`0x15`) | `piece_cont` — second piece of a split-field type, pairs with a leading action-9 slot | `R_CUDA_ABS55_16_34`, `R_CUDA_ABS56_16_34` |
 | 22--29 | 8-bit data patches at byte offsets 0, 8, ..., 56 | `R_CUDA_8_0 .. R_CUDA_8_56` |
 | 30--37 | 8-bit global patches | `R_CUDA_G8_0 .. R_CUDA_G8_56` |
 | 38--45 | 8-bit func-desc patches | `R_CUDA_FUNC_DESC_8_0 .. R_CUDA_FUNC_DESC_8_56` |
@@ -306,8 +306,8 @@ Twenty-three distinct action codes appear in the standard table. The bitmask tes
 
 Of the 117 standard descriptors:
 
-- **108 entries** use slot 0 only -- slot 1 and slot 2 are zero, and only one patch action runs.
-- **8 entries** use slot 0 + slot 1 -- multi-piece encodings split across two bit ranges.
+- **108 entries** use slot 0 only — slot 1 and slot 2 are zero, and only one patch action runs.
+- **8 entries** use slot 0 + slot 1 — multi-piece encodings split across two bit ranges.
 - **1 entry** (`R_CUDA_CONST_FIELD19_28`) uses all three slots: 14 bits at position 28, plus 4 bits at position 42, plus 1 bit at position 26.
 
 The action engine in `sub_468760` iterates `slot0 → slot1 → slot2 → sentinel`, applying each non-zero action in turn. A zero `action` byte in any slot is skipped, not treated as a real type-zero patch.
@@ -318,45 +318,45 @@ The following entries were byte-decoded against `nvlink_rodata.bin` (rodata offs
 
 | Idx | Name | name_ptr | apply_class | slot0 (boff, bwid, act, aux) | slot1 / slot2 |
 |----:|------|---------:|------------:|-----------------------------:|----------------|
-| 0 | `R_CUDA_NONE` | `0x1D35F60` | 0 | (0, 0, 0, 0) | -- |
-| 1 | `R_CUDA_32` | `0x1D35F6C` | 4 | (0, 32, 1, 0) | -- |
-| 4 | `R_CUDA_G64` | `0x1D35F8B` | 2 | (0, 64, 2, 0) | -- |
-| 5 | `R_CUDA_ABS32_26` | `0x1D35F96` | 4 | (26, 32, 1, 0) | -- |
-| 11 | `R_CUDA_ABS32_HI_26` | `0x1D36015` | 4 | (26, 32, 7, **32**) | -- |
+| 0 | `R_CUDA_NONE` | `0x1D35F60` | 0 | (0, 0, 0, 0) | — |
+| 1 | `R_CUDA_32` | `0x1D35F6C` | 4 | (0, 32, 1, 0) | — |
+| 4 | `R_CUDA_G64` | `0x1D35F8B` | 2 | (0, 64, 2, 0) | — |
+| 5 | `R_CUDA_ABS32_26` | `0x1D35F96` | 4 | (26, 32, 1, 0) | — |
+| 11 | `R_CUDA_ABS32_HI_26` | `0x1D36015` | 4 | (26, 32, 7, **32**) | — |
 | 24 | `R_CUDA_CONST_FIELD19_28` | `0x1D36108` | 1 | (28, 14, 9, 0) | slot1=(42, 4, 10, 0); slot2=(26, 1, 11, 0) |
-| 34 | `R_CUDA_FUNC_DESC_32` | `0x1D361E4` | 2 | (0, 32, 15, 0) | -- |
-| 53 | `R_CUDA_INSTRUCTION64` | `0x1D3637E` | 2 | (0, 64, 17, 0) | -- |
-| 67 | `R_CUDA_INSTRUCTION128` | `0x1D364A1` | 2 | (0, 128, 17, 0) | -- |
-| 68 | `R_CUDA_YIELD_OPCODE9_0` | `0x1D364B7` | 1 | (0, 9, 18, 0) | -- |
-| 75 | `R_CUDA_ABS55_16_34` | `0x1D36540` | 2 | (16, 8, 9, 2) | slot1=(34, 47, 21, 10) -- 8 + 47 = 55 bits |
-| 76 | `R_CUDA_8_0` | `0x1D36553` | 4 | (0, 8, 22, 0) | -- |
-| 80 | `R_CUDA_8_32` | `0x1D36581` | 4 | (0, 8, 26, **32**) | -- |
-| 114 | `R_CUDA_ABS56_16_34` | `0x1D367DD` | 2 | (16, 8, 9, 2) | slot1=(34, 48, 21, 10) -- 8 + 48 = 56 bits |
+| 34 | `R_CUDA_FUNC_DESC_32` | `0x1D361E4` | 2 | (0, 32, 15, 0) | — |
+| 53 | `R_CUDA_INSTRUCTION64` | `0x1D3637E` | 2 | (0, 64, 17, 0) | — |
+| 67 | `R_CUDA_INSTRUCTION128` | `0x1D364A1` | 2 | (0, 128, 17, 0) | — |
+| 68 | `R_CUDA_YIELD_OPCODE9_0` | `0x1D364B7` | 1 | (0, 9, 18, 0) | — |
+| 75 | `R_CUDA_ABS55_16_34` | `0x1D36540` | 2 | (16, 8, 9, 2) | slot1=(34, 47, 21, 10) — 8 + 47 = 55 bits |
+| 76 | `R_CUDA_8_0` | `0x1D36553` | 4 | (0, 8, 22, 0) | — |
+| 80 | `R_CUDA_8_32` | `0x1D36581` | 4 | (0, 8, 26, **32**) | — |
+| 114 | `R_CUDA_ABS56_16_34` | `0x1D367DD` | 2 | (16, 8, 9, 2) | slot1=(34, 48, 21, 10) — 8 + 48 = 56 bits |
 | 116 | `R_CUDA_NONE_LAST` | `0xFF` | 0xFF00 | (0, 0xFF0000, 0, 0xFF000000) | slot1=(0, 0, 255, 0); slot2=(0xFF00, 0, 0xFF0000, 0); sentinel=`0xFF000000` |
 
 `bit_offset` and `bit_width` recovered from the descriptors agree byte-for-byte with the values parsed from the type-name suffixes in the standard table above for every entry where the suffix is unambiguous. Where the name encodes a single bit-width (e.g. `R_CUDA_ABS55_16_34`), the descriptor splits it across two slots whose widths sum to the advertised value.
 
-> ⚡ **QUIRK -- diagonal-0xFF terminator on `R_CUDA_NONE_LAST`**
-> The final standard-table entry (idx 116) is not a real descriptor. Its 64 bytes form an 8×8 grid with `0xFF` on the diagonal and zeros elsewhere, so the name pointer reads as `0x00000000_000000FF`, the apply-class as `0xFF00`, and the sentinel slot at byte 60 contains `0xFF000000` -- every parse axis returns garbage. The bounds check at `sub_42F6C0` line 23 (`a1 >= 0x75`) already prevents real dispatch on index 116, so the diagonal pattern functions as a poison page: if anything ever reaches descriptor 116, any field you read will be obviously corrupt. Treat it as a tripwire, not a relocation type.
+> ⚡ **QUIRK — diagonal-0xFF terminator on `R_CUDA_NONE_LAST`**
+> The final standard-table entry (idx 116) is not a real descriptor. Its 64 bytes form an 8×8 grid with `0xFF` on the diagonal and zeros elsewhere, so the name pointer reads as `0x00000000_000000FF`, the apply-class as `0xFF00`, and the sentinel slot at byte 60 contains `0xFF000000` — every parse axis returns garbage. The bounds check at `sub_42F6C0` line 23 (`a1 >= 0x75`) already prevents real dispatch on index 116, so the diagonal pattern functions as a poison page: if anything ever reaches descriptor 116, any field you read will be obviously corrupt. Treat it as a tripwire, not a relocation type.
 
-> ⚡ **QUIRK -- `aux` overload for HI-half addend versus byte offset**
-> The 4-byte `aux` field at byte 24 (slot0) means different things depending on `action`. For action 7 (`*_HI_*` family) it carries the value `0x20` (32 = "shift right by 32 to extract the high half before insertion"). For actions 22..29 / 30..37 / 38..45 / 47..54 (the eight-way 8-bit patch families) it carries the byte offset within the target word -- 0, 8, 16, ... 56 -- exactly mirroring the type-name suffix. The same dword slot therefore encodes either a shift-count constant or a byte-offset constant, with the action enum being the sole disambiguator. Pre-decoding code that treats `aux` as a single semantic field will misread one family or the other.
+> ⚡ **QUIRK — `aux` overload for HI-half addend versus byte offset**
+> The 4-byte `aux` field at byte 24 (slot0) means different things depending on `action`. For action 7 (`*_HI_*` family) it carries the value `0x20` (32 = "shift right by 32 to extract the high half before insertion"). For actions 22..29 / 30..37 / 38..45 / 47..54 (the eight-way 8-bit patch families) it carries the byte offset within the target word — 0, 8, 16, ... 56 — exactly mirroring the type-name suffix. The same dword slot therefore encodes either a shift-count constant or a byte-offset constant, with the action enum being the sole disambiguator. Pre-decoding code that treats `aux` as a single semantic field will misread one family or the other.
 
-> ⚡ **QUIRK -- attribute table reuses payload format unchanged**
-> The 65 attribute descriptors at `off_1D3CBE0` are not a separate format -- they share the exact same 64-byte layout and the same `apply_class` / `action` / slot semantics as the standard table. The attribute bit (`r_type & 0x10000`) only selects which table the engine indexes (`sub_469620` lines 31--38; `sub_42F6C0` line 14: `a1 -= 0x10000`). String pointers in attribute-table records point into the same `.rodata` string pool used by the standard table, which is why the two tables share names by pointer equality. No attribute-specific action codes exist; the only difference is the consumer -- the `.nv.info.*` parser for attribute relocations versus the instruction-stream patcher for standard ones.
+> ⚡ **QUIRK — attribute table reuses payload format unchanged**
+> The 65 attribute descriptors at `off_1D3CBE0` are not a separate format — they share the exact same 64-byte layout and the same `apply_class` / `action` / slot semantics as the standard table. The attribute bit (`r_type & 0x10000`) only selects which table the engine indexes (`sub_469620` lines 31--38; `sub_42F6C0` line 14: `a1 -= 0x10000`). String pointers in attribute-table records point into the same `.rodata` string pool used by the standard table, which is why the two tables share names by pointer equality. No attribute-specific action codes exist; the only difference is the consumer — the `.nv.info.*` parser for attribute relocations versus the instruction-stream patcher for standard ones.
 
 ### Field cross-check against consumer code
 
 - `sub_469620` line 43: `v5 = HIDWORD(v3[8 * idx + 2])` reads QWORD index `8*idx + 2` from `off_1D3DBE0` cast to `_QWORD *`. That is byte offset `64*idx + 16`; `HIDWORD` of that QWORD is bytes 20..23 = `slot0.action`. Bit-tested against `0x3FFFE002C6`.
-- `sub_4698A0` line 37: `*((_DWORD *)&off_1D3DBE0 + 16 * idx + 5)` -- with 4-byte DWORD stride, that is byte offset `64*idx + 20` = `slot0.action`. The check `action - 12 <= 3` selects actions 12, 13, 14, 15 -- exactly the `R_CUDA_FUNC_DESC32_*` family.
-- `sub_469D60` line 309: `*((_DWORD *)v24 + 5) == 16` checks `slot0.action == 16`, i.e. `R_CUDA_PCREL_IMM24_*` -- gating the PC-relative branch-offset path.
+- `sub_4698A0` line 37: `*((_DWORD *)&off_1D3DBE0 + 16 * idx + 5)` — with 4-byte DWORD stride, that is byte offset `64*idx + 20` = `slot0.action`. The check `action - 12 <= 3` selects actions 12, 13, 14, 15 — exactly the `R_CUDA_FUNC_DESC32_*` family.
+- `sub_469D60` line 309: `*((_DWORD *)v24 + 5) == 16` checks `slot0.action == 16`, i.e. `R_CUDA_PCREL_IMM24_*` — gating the PC-relative branch-offset path.
 - `sub_468760` (the application engine): iterates the three 16-byte slots from `desc+12` to `desc+60` using `action += 4` (four DWORDs = 16 bytes per slot), confirming the 16-byte stride between slots and the 4-byte sentinel terminator at byte 60.
 
 
-- [Relocation Application Engine](../linker/relocation-engine.md) -- bit-field patching engine that consumes these descriptors
-- [Bindless Relocations](../linker/bindless-relocations.md) -- resolution pipeline for bindless texture/surface types
-- [R_MERCURY Relocation Catalog](r-mercury-catalog.md) -- parallel catalog for Mercury (sm >= 100) types
-- [Binary Layout](../binary-layout.md) -- addresses of descriptor tables within the nvlink binary
+- [Relocation Application Engine](../linker/relocation-engine.md) — bit-field patching engine that consumes these descriptors
+- [Bindless Relocations](../linker/bindless-relocations.md) — resolution pipeline for bindless texture/surface types
+- [R_MERCURY Relocation Catalog](r-mercury-catalog.md) — parallel catalog for Mercury (sm >= 100) types
+- [Binary Layout](../binary-layout.md) — addresses of descriptor tables within the nvlink binary
 
 ## Confidence Assessment
 
@@ -372,12 +372,12 @@ The following entries were byte-decoded against `nvlink_rodata.bin` (rodata offs
 | `R_CUDA_G64` (idx 4) | HIGH | String at `0x1D35F8B`; reachable via `off_1D37600[4]` in `sub_42F6C0`; descriptor consumed by `sub_469620` (line 27: `v8 = &off_1D3DBE0`) |
 | `R_CUDA_TEX_HEADER_INDEX` (idx 6) | HIGH | String at `0x1D35FA6`; texture-binding path in bindless relocation engine |
 | `R_CUDA_CONST_FIELD19_28` (idx 24) | HIGH | String at `0x1D36108`; 19-bit bitfield encoding at position 28 matches the name suffix |
-| `R_CUDA_FUNC_DESC_32` (idx 34) | HIGH | String at `0x1D361E4`; descriptor table entry consumed by `sub_46ADC0` (line 135: `v90 = &off_1D3DBE0`) -- resolved relocations emitter |
+| `R_CUDA_FUNC_DESC_32` (idx 34) | HIGH | String at `0x1D361E4`; descriptor table entry consumed by `sub_46ADC0` (line 135: `v90 = &off_1D3DBE0`) — resolved relocations emitter |
 | `R_CUDA_PCREL_IMM24_26` (idx 40) | HIGH | String at `0x1D3626B`; PC-relative branch handler in relocation engine |
 | `R_CUDA_INSTRUCTION64` (idx 53) | HIGH | String at `0x1D3637E`; whole-instruction replacement path in `sub_469D60` (line 214: `v152 = &off_1D3DBE0`) |
 | `R_CUDA_BINDLESSOFF14_40` (idx 65) | HIGH | String at `0x1D36471`; bindless-offset handler in texture relocation pipeline |
 | `R_CUDA_YIELD_OPCODE9_0` (idx 68) | HIGH | String at `0x1D364B7`; YIELD-opcode rewrite path in `sub_469D60`; cross-referenced in ptxas wiki (`relocations.md` line 244) |
-| `R_CUDA_NONE_LAST` (idx 116) | HIGH | String at `0x1D36808`; end-of-range sentinel -- bounds `a1 >= 0x75` check in `sub_42F6C0` (line 26) |
+| `R_CUDA_NONE_LAST` (idx 116) | HIGH | String at `0x1D36808`; end-of-range sentinel — bounds `a1 >= 0x75` check in `sub_42F6C0` (line 26) |
 
 **Cross-reference with the [ptxas Relocations](../../ptxas/output/relocations.html) page:** The ten spot-checked names match verbatim against ptxas lines 80, 124, 140, 155, 179, 195, 217, 242, 244, 248. No ordinal drift between ptxas and nvlink for these entries.
 

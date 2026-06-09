@@ -1,12 +1,12 @@
 # Mercury Section Content-Equality Dedup (`sub_4748F0`)
 
-The closest analog in nvlink to a traditional ELF COMDAT group is the **mercury** section family (`.nv.merc.*`). The linker performs content-equality elimination on these sections inside the orchestrator at `0x4748F0` -- an 8,950-byte function (325 basic blocks, 73 callees) that also drives debug-info merging. The check happens late in the merge phase, after symbol resolution but before the final section table is materialised, and operates on the parallel vector layout that the input loop builds for every cubin contributing to the link.
+The closest analog in nvlink to a traditional ELF COMDAT group is the **mercury** section family (`.nv.merc.*`). The linker performs content-equality elimination on these sections inside the orchestrator at `0x4748F0` — an 8,950-byte function (325 basic blocks, 73 callees) that also drives debug-info merging. The check happens late in the merge phase, after symbol resolution but before the final section table is materialised, and operates on the parallel vector layout that the input loop builds for every cubin contributing to the link.
 
 This page documents the algorithm at decompiled lines 1564-1670 in detail: how it walks the parallel vectors, what fields gate acceptance, why the prefix-strip arithmetic uses `+8` instead of the textually obvious `9`, and which `.nv.merc.*` section families participate. The corresponding orientation summary lives in [Section Merging](../linker/section-merging.md#mercury-sections-content-equality-dedup-sub_4748f0); this page is the reimplementation-grade reference.
 
 ## Why Mercury Sections Need COMDAT-Like Semantics
 
-Conventional ELF linkers solve duplicate-debug-info using SHF_GROUP and COMDAT signatures: every `.debug_info` slice from a translation unit is wrapped in a group whose key is the linkonce name; the linker keeps the first key it sees and discards every later group with the same key by signature alone, without comparing payload bytes. Mercury cubins do not emit GROUP sections -- the front-end tooling instead tags duplicate copies with a literal `.nv.merc.` prefix and relies on the linker to perform the equivalent elimination at merge time.
+Conventional ELF linkers solve duplicate-debug-info using SHF_GROUP and COMDAT signatures: every `.debug_info` slice from a translation unit is wrapped in a group whose key is the linkonce name; the linker keeps the first key it sees and discards every later group with the same key by signature alone, without comparing payload bytes. Mercury cubins do not emit GROUP sections — the front-end tooling instead tags duplicate copies with a literal `.nv.merc.` prefix and relies on the linker to perform the equivalent elimination at merge time.
 
 The reason is that Mercury debug data is closely coupled to FNLZR's later code rewrite: a stale `.nv.merc.debug_line` slice that survived a name-based dedup but whose bytes drifted from the kept slice would silently mismap source lines after the finalizer relabels Mercury PCs to SASS PCs. By comparing content rather than names, the dedup engine refuses to fold two slices whose backing bytes diverge even by one relocation entry, sacrificing some output size for an unconditional safety guarantee.
 
@@ -14,7 +14,7 @@ The dedup is therefore conservative on purpose: it is a **content-equality** che
 
 ## Entry Conditions
 
-The dedup block at lines 1564-1670 of `sub_4748F0` runs once per `(reference, candidate)` pairing. The caller -- `sub_4748F0` itself, recursively, at `0x4768FA` -- walks every pair of cubins that contributed mercury sections and invokes the dedup arm with:
+The dedup block at lines 1564-1670 of `sub_4748F0` runs once per `(reference, candidate)` pairing. The caller — `sub_4748F0` itself, recursively, at `0x4768FA` — walks every pair of cubins that contributed mercury sections and invokes the dedup arm with:
 
 | Vector role | Source | Meaning |
 |---|---|---|
@@ -60,7 +60,7 @@ while ( v262 != v264 )
 }
 ```
 
-Each candidate entry is a 16-byte `(data_ptr, size)` pair. The reference is indexed positionally through `sub_464DB0(v272, v268)`, which is a `std::vector::at`-equivalent (returns `*(QWORD*)(*v272 + 8*index)` with a bounds check). Rejection here yields error code `17` -- the byte-level mismatch path.
+Each candidate entry is a 16-byte `(data_ptr, size)` pair. The reference is indexed positionally through `sub_464DB0(v272, v268)`, which is a `std::vector::at`-equivalent (returns `*(QWORD*)(*v272 + 8*index)` with a bounds check). Rejection here yields error code `17` — the byte-level mismatch path.
 
 Notice that the loop only checks data identity in one direction: the reference is read at the same index `v268` as the candidate is walked. There is no cross-check that the reference vector has the same cardinality as the candidate. That requirement is enforced by Stage 2.
 
@@ -106,7 +106,7 @@ LABEL_347:
 }
 ```
 
-`sub_464BB0` returns `*(QWORD*)(a1 + 8)`, the vector's `size()` member. Cardinality mismatch immediately falls through to LABEL_347 with error code `19`. When cardinalities agree, every candidate section must find a name-and-metadata twin in the reference. The twin check is an O(N^2) linear search -- acceptable because the section count per cubin is small (the 19 named `.nv.merc.*` slots plus the `.nv.merc.text.*` container) and the cost is bounded.
+`sub_464BB0` returns `*(QWORD*)(a1 + 8)`, the vector's `size()` member. Cardinality mismatch immediately falls through to LABEL_347 with error code `19`. When cardinalities agree, every candidate section must find a name-and-metadata twin in the reference. The twin check is an O(N^2) linear search — acceptable because the section count per cubin is small (the 19 named `.nv.merc.*` slots plus the `.nv.merc.text.*` container) and the cost is bounded.
 
 The metadata gate is the **quad-tuple `(name, offset_or_size_qword, link_info_qword, addralign_dword)`**. The QWORD at offset +0 of the entry holds a packed offset/size field, the QWORD at +8 holds the packed `sh_link`/`sh_info` pair, and the DWORD at +24 holds `sh_addralign`. Two slices with identical bytes but different alignment requirements are not considered duplicates.
 
@@ -160,7 +160,7 @@ This third walk is the conservative half of the COMDAT analogue: it ensures that
 
 ### Accept Path: `LABEL_229`
 
-LABEL_229 (line 1694) is the cleanup arm. It releases the candidate's scratch vectors via `sub_45B680` on `v402[6]` and `v402[7]`, frees temporary storage via `sub_4746C0(v383)` and `sub_4746C0(v382)`, and returns `v30 = 0` to the caller. The candidate's data blob is *not* copied into the output -- the caller writes `*v330 = (size_t)v402[2]` and `*v329 = (void*)v402[5]` (lines 1444-1445) before invoking the recursive dedup arm, so on a successful match the output already references the reference's blob.
+LABEL_229 (line 1694) is the cleanup arm. It releases the candidate's scratch vectors via `sub_45B680` on `v402[6]` and `v402[7]`, frees temporary storage via `sub_4746C0(v383)` and `sub_4746C0(v382)`, and returns `v30 = 0` to the caller. The candidate's data blob is *not* copied into the output — the caller writes `*v330 = (size_t)v402[2]` and `*v329 = (void*)v402[5]` (lines 1444-1445) before invoking the recursive dedup arm, so on a successful match the output already references the reference's blob.
 
 ## Reject Paths and Error Codes
 
@@ -184,7 +184,7 @@ Every `.nv.merc.*` literal in the binary is consumed by `sub_4748F0` and its pre
 | `.nv.merc.debug_abbrev` | `v402[60]` | DWARF abbreviation tables. Per-CU; deduped when two CUs share an identical abbrev set. |
 | `.nv.merc.debug_aranges` | `v402[60]` | Address-range lookup table. Identical only when two CUs cover the same PC ranges, rare. |
 | `.nv.merc.debug_frame` | `v402[60]` | Call frame information. Frequently identical across template instantiations. |
-| `.nv.merc.debug_info` | `v402[60]` | DIE tree. The most valuable dedup target -- whole-CU duplicates here save the most space. |
+| `.nv.merc.debug_info` | `v402[60]` | DIE tree. The most valuable dedup target — whole-CU duplicates here save the most space. |
 | `.nv.merc.debug_line` | `v402[60]` | Line number program. Coupled to `.nv.merc.rela` for source-path entries. |
 | `.nv.merc.debug_loc` | `v402[60]` | Location lists. Often differs per instantiation; rarely deduped. |
 | `.nv.merc.debug_macinfo` | `v402[60]` | Preprocessor macros. Deduped when two TUs share an identical macro set. |
@@ -192,7 +192,7 @@ Every `.nv.merc.*` literal in the binary is consumed by `sub_4748F0` and its pre
 | `.nv.merc.debug_pubtypes` | `v402[60]` | Public-type accelerator. Deduped under the same conditions as `debug_pubnames`. |
 | `.nv.merc.debug_ranges` | `v402[60]` | Disjoint-range tables for split functions. |
 | `.nv.merc.debug_str` | `v402[60]` | DWARF string pool. Strict byte-equality required; the string-table dedup (`sub_442400`) operates separately on individual entries. |
-| `.nv.merc.nv_debug_line_sass` | `v402[60]` | NVIDIA SASS-level line table -- parallel data structure to `.nv.merc.debug_line` but indexed by SASS PC. |
+| `.nv.merc.nv_debug_line_sass` | `v402[60]` | NVIDIA SASS-level line table — parallel data structure to `.nv.merc.debug_line` but indexed by SASS PC. |
 | `.nv.merc.nv_debug_info_reg_sass` | `v402[60]` | SASS register liveness. |
 | `.nv.merc.nv_debug_info_reg_type` | `v402[60]` | Register type annotations. |
 | `.nv.merc.nv_debug_ptx_txt` | `v402[60]` | Embedded PTX source. |
@@ -201,19 +201,19 @@ Every `.nv.merc.*` literal in the binary is consumed by `sub_4748F0` and its pre
 | `.nv.merc.nv.shared.reserved.*` | `v402[60]` | sm_100+ only. Reserved shared-memory placeholders. The suffix carries the reservation identifier and participates in the `strcmp` after prefix stripping. |
 | `.nv.merc` (container) | `v402[60]` | The top-level Mercury instruction container (`.nv.merc.text.<kernel>`). Almost never deduped because two kernels with identical Mercury bytes are unusual, but the path exists. |
 
-The 19 distinct `.nv.merc.*` literals in the binary's `.rodata` (addresses `0x24582E8`-`0x2458D00`) are exactly the set that this dedup recognises. Adding a new mercury section name without updating the producer helpers would not break the dedup -- the algorithm is name-agnostic, gated only on the `.nv.merc.` prefix -- but the new section would not get a dedicated emitter and would therefore never enter `v402[60]`.
+The 19 distinct `.nv.merc.*` literals in the binary's `.rodata` (addresses `0x24582E8`-`0x2458D00`) are exactly the set that this dedup recognises. Adding a new mercury section name without updating the producer helpers would not break the dedup — the algorithm is name-agnostic, gated only on the `.nv.merc.` prefix — but the new section would not get a dedicated emitter and would therefore never enter `v402[60]`.
 
 ## Verbose Tracing
 
 The dedup is silent on the accept path. On reject, verbose mode (`elfw+64 & 1`) emits no per-section diagnostic from `sub_4748F0` itself; the closest verbose string is `"skip mercury section %i"` emitted by `sub_45E7D0` during the earlier merge-phase skip pass. Diagnostic absence is deliberate: a duplicate-debug-info rejection is not actionable from the user's side, since the producer (cicc / ptxas) controls the byte-level layout.
 
-The fastpath optimization trace `"[Finalizer] fastpath optimization applied for off-target %u -> %u finalization\n"` (string `0x1D40610`, line 1844 of the strings table) is the only verbose emission from this function and is unrelated to dedup -- it fires from a separate FNLZR path inside the same orchestrator.
+The fastpath optimization trace `"[Finalizer] fastpath optimization applied for off-target %u -> %u finalization\n"` (string `0x1D40610`, line 1844 of the strings table) is the only verbose emission from this function and is unrelated to dedup — it fires from a separate FNLZR path inside the same orchestrator.
 
 ## QUIRKs
 
 ### QUIRK Q-MERC-DEDUP-1: Prefix-Strip Uses `+8` Not `+9`
 
-The literal at `0x1D40605` is `.nv.merc.` -- 9 characters including the trailing dot. After `sub_44E3A0(".nv.merc.", name)` returns non-zero (confirming the prefix matches), the code advances the pointer by **8**, not 9:
+The literal at `0x1D40605` is `.nv.merc.` — 9 characters including the trailing dot. After `sub_44E3A0(".nv.merc.", name)` returns non-zero (confirming the prefix matches), the code advances the pointer by **8**, not 9:
 
 ```c
 if ( sub_44E3A0(".nv.merc.", v279) )
@@ -224,7 +224,7 @@ This is not a bug. `sub_44E3A0` is a starts-with helper that walks character-by-
 
 ### QUIRK Q-MERC-DEDUP-2: Cardinality Check Implicit on Stage 1, Explicit on Stages 2 and 3
 
-Stage 1 walks the candidate vector to exhaustion and reads the reference vector positionally with `sub_464DB0(v272, v268)`. If the candidate has more entries than the reference, `sub_464DB0` returns `0` (its bounds-check arm at offset +1 in its decompilation) and `memcmp` is invoked with a null pointer -- which on glibc-Linux dereferences `NULL` for the first byte and segfaults. The function does not survive this case in practice because Stage 2 and Stage 3 explicitly require `sub_464BB0` cardinality equality *before* indexing. Stage 1 therefore relies on an invariant maintained by the caller: the two primary data vectors are always built with the same cardinality from the same input layout. If front-end tooling ever broke that invariant, Stage 1 would crash before reaching the explicit cardinality gate. This is brittle but not exploitable -- the input is always cubin bytes that have passed earlier validation in `sub_1CF07A0` and `sub_1CEF5B0`.
+Stage 1 walks the candidate vector to exhaustion and reads the reference vector positionally with `sub_464DB0(v272, v268)`. If the candidate has more entries than the reference, `sub_464DB0` returns `0` (its bounds-check arm at offset +1 in its decompilation) and `memcmp` is invoked with a null pointer — which on glibc-Linux dereferences `NULL` for the first byte and segfaults. The function does not survive this case in practice because Stage 2 and Stage 3 explicitly require `sub_464BB0` cardinality equality *before* indexing. Stage 1 therefore relies on an invariant maintained by the caller: the two primary data vectors are always built with the same cardinality from the same input layout. If front-end tooling ever broke that invariant, Stage 1 would crash before reaching the explicit cardinality gate. This is brittle but not exploitable — the input is always cubin bytes that have passed earlier validation in `sub_1CF07A0` and `sub_1CEF5B0`.
 
 ### QUIRK Q-MERC-DEDUP-3: Three Separate `memcmp` Stages, No Hash Shortcut
 
@@ -232,8 +232,8 @@ A natural optimisation would be to hash each candidate section once at emit time
 
 ## Cross-References
 
-- [Mercury ELF Sections](elf-sections.md) -- complete catalog of `.nv.merc.*` section types and `sh_flags` encoding.
-- [Mercury Compiler Passes](compiler-passes.md) -- producer side; what fills `v402[60]` and `v402[61]` upstream.
-- [R_MERCURY Relocations](r-mercury-relocations.md) -- relocation entries that Stage 3 cross-checks.
-- [Section Merging](../linker/section-merging.md) -- broader merge phase context, including the constant-dedup and string-table dedup engines.
-- [Mercury Debug Sections](../debug/mercury-debug.md) -- downstream consumers of the deduped output.
+- [Mercury ELF Sections](elf-sections.md) — complete catalog of `.nv.merc.*` section types and `sh_flags` encoding.
+- [Mercury Compiler Passes](compiler-passes.md) — producer side; what fills `v402[60]` and `v402[61]` upstream.
+- [R_MERCURY Relocations](r-mercury-relocations.md) — relocation entries that Stage 3 cross-checks.
+- [Section Merging](../linker/section-merging.md) — broader merge phase context, including the constant-dedup and string-table dedup engines.
+- [Mercury Debug Sections](../debug/mercury-debug.md) — downstream consumers of the deduped output.

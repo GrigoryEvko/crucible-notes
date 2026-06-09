@@ -1,6 +1,6 @@
 # IL Overview
 
-The Intermediate Language (IL) is EDG's central data structure -- a typed, scope-linked graph of every declaration, type, expression, statement, and template in the translation unit. cudafe++ (EDG 6.6) builds the IL during parsing, walks it for CUDA device/host separation, and emits it as the `.int.c` output. The IL never touches disk: `IL_SHOULD_BE_WRITTEN_TO_FILE=0` forces in-memory-only operation. All IL nodes live in a region-based arena allocator, organized into file-scope (region 1) and per-function (region N) memory pools.
+The Intermediate Language (IL) is EDG's central data structure — a typed, scope-linked graph of every declaration, type, expression, statement, and template in the translation unit. cudafe++ (EDG 6.6) builds the IL during parsing, walks it for CUDA device/host separation, and emits it as the `.int.c` output. The IL never touches disk: `IL_SHOULD_BE_WRITTEN_TO_FILE=0` forces in-memory-only operation. All IL nodes live in a region-based arena allocator, organized into file-scope (region 1) and per-function (region N) memory pools.
 
 The IL is versioned as `IL_VERSION_NUMBER="6.6"` and carries the compile-time flag `ALL_TEMPLATE_INFO_IN_IL=1`, meaning template definitions, specializations, and instantiation directives are fully represented in the IL graph rather than deferred to a separate template database.
 
@@ -24,12 +24,12 @@ There are 85 defined entry kind values (0-84). Some are primary node types with 
 
 | Kind | Hex | Name | Bytes | Display | Notes |
 |---|---|---|---|---|---|
-| 0 | 0x00 | `none` | -- | -- | Null/invalid sentinel |
+| 0 | 0x00 | `none` | — | — | Null/invalid sentinel |
 | 1 | 0x01 | `source_file_entry` | 80 | Case 1 | File name, line ranges, include flags |
 | 2 | 0x02 | `constant` | 184 | Case 2 | 16 sub-kinds (ck_*) |
 | 3 | 0x03 | `param_type` | 80 | Case 3 | Parameter type in function signature |
 | 4 | 0x04 | `routine_type_supplement` | 64 | Inline | Embedded in routine type node |
-| 5 | 0x05 | `routine_type_extra` | -- | Inline | Additional routine type data |
+| 5 | 0x05 | `routine_type_extra` | — | Inline | Additional routine type data |
 | 6 | 0x06 | `type` | 176 | Case 6 | 22 sub-kinds (tk_*) |
 | 7 | 0x07 | `variable` | 232 | Case 7 | Variables, parameters, structured bindings |
 | 8 | 0x08 | `field` | 176 | Case 8 | Class/struct/union members |
@@ -38,19 +38,19 @@ There are 85 defined entry kind values (0-84). Some are primary node types with 
 | 11 | 0x0B | `routine` | 288 | Case 0xB | Functions, methods, constructors, destructors |
 | 12 | 0x0C | `label` | 128 | Case 0xC | Goto labels, break/continue targets |
 | 13 | 0x0D | `expr_node` | 72 | Case 0xD | 36 sub-kinds (enk_*) |
-| 14 | 0x0E | (reserved) | -- | Inline | Skipped in display |
-| 15 | 0x0F | (reserved) | -- | Inline | Skipped in display |
+| 14 | 0x0E | (reserved) | — | Inline | Skipped in display |
+| 15 | 0x0F | (reserved) | — | Inline | Skipped in display |
 | 16 | 0x10 | `switch_case_entry` | 56 | Case 0x10 | Case value + range for switch |
 | 17 | 0x11 | `switch_info` | 24 | Case 0x11 | Switch statement descriptor |
 | 18 | 0x12 | `handler` | 40 | Case 0x12 | try/catch handler entry |
 | 19 | 0x13 | `try_supplement` | 32 | Inline | Try block extra info |
-| 20 | 0x14 | `asm_supplement` | -- | Inline | Inline asm statement data |
+| 20 | 0x14 | `asm_supplement` | — | Inline | Inline asm statement data |
 | 21 | 0x15 | `statement` | 80 | Case 0x15 | 26 sub-kinds (stmk_*) |
 | 22 | 0x16 | `object_lifetime` | 64 | Case 0x16 | Destruction ordering |
 | 23 | 0x17 | `scope` | 288 | Case 0x17 | 9 sub-kinds (sck_*) |
 | 24 | 0x18 | `base_class` | 112 | Case 0x18 | Inheritance record |
-| 25 | 0x19 | `string_text` | 1* | -- | Raw string literal bytes |
-| 26 | 0x1A | `other_text` | 1* | -- | Compiler version, misc text |
+| 25 | 0x19 | `string_text` | 1* | — | Raw string literal bytes |
+| 26 | 0x1A | `other_text` | 1* | — | Compiler version, misc text |
 | 27 | 0x1B | `template_parameter` | 136 | Case 0x1B | Template param with supplement |
 | 28 | 0x1C | `namespace` | 128 | Case 0x1C | Namespace declarations |
 | 29 | 0x1D | `using_declaration` | 80 | Case 0x1D | Using declarations/directives |
@@ -58,27 +58,27 @@ There are 85 defined entry kind values (0-84). Some are primary node types with 
 | 31 | 0x1F | `local_static_variable_init` | 40 | Case 0x1F | Static local init records |
 | 32 | 0x20 | `vla_dimension` | 48 | Case 0x20 | Variable-length array bound |
 | 33 | 0x21 | `overriding_virtual_func` | 40 | Case 0x21 | Virtual override info |
-| 34 | 0x22 | (reserved) | -- | Inline | Skipped in display |
+| 34 | 0x22 | (reserved) | — | Inline | Skipped in display |
 | 35 | 0x23 | `derivation_path` | 24 | Case 0x23 | Base-class derivation step |
-| 36 | 0x24 | `base_class_derivation` | 32 | -- | Derivation detail record |
-| 37 | 0x25 | (reserved) | -- | Inline | Skipped in display |
-| 38 | 0x26 | (reserved) | -- | Inline | Skipped in display |
+| 36 | 0x24 | `base_class_derivation` | 32 | — | Derivation detail record |
+| 37 | 0x25 | (reserved) | — | Inline | Skipped in display |
+| 38 | 0x26 | (reserved) | — | Inline | Skipped in display |
 | 39 | 0x27 | `class_info` | 208 | Case 0x27 | Class type supplement |
-| 40 | 0x28 | (reserved) | -- | -- | Skipped in display |
+| 40 | 0x28 | (reserved) | — | — | Skipped in display |
 | 41 | 0x29 | `constructor_init` | 48 | Case 0x29 | Ctor member/base initializer |
 | 42 | 0x2A | `asm_entry` | 152 | Case 0x2A | Inline assembly block |
-| 43 | 0x2B | `asm_operand` | -- | Case 0x2B | Asm constraint + expression |
-| 44 | 0x2C | `asm_clobber` | -- | Case 0x2C | Asm clobber register |
-| 45 | 0x2D | (reserved) | -- | Inline | Skipped in display |
-| 46 | 0x2E | (reserved) | -- | Inline | Skipped in display |
-| 47 | 0x2F | (reserved) | -- | Inline | Skipped in display |
-| 48 | 0x30 | (reserved) | -- | Inline | Skipped in display |
-| 49 | 0x31 | `element_position` | 24 | -- | Designator element position |
+| 43 | 0x2B | `asm_operand` | — | Case 0x2B | Asm constraint + expression |
+| 44 | 0x2C | `asm_clobber` | — | Case 0x2C | Asm clobber register |
+| 45 | 0x2D | (reserved) | — | Inline | Skipped in display |
+| 46 | 0x2E | (reserved) | — | Inline | Skipped in display |
+| 47 | 0x2F | (reserved) | — | Inline | Skipped in display |
+| 48 | 0x30 | (reserved) | — | Inline | Skipped in display |
+| 49 | 0x31 | `element_position` | 24 | — | Designator element position |
 | 50 | 0x32 | `source_sequence_entry` | 32 | Case 0x32 | Declaration ordering |
 | 51 | 0x33 | `full_entity_decl_info` | 56 | Case 0x33 | Full declaration info |
 | 52 | 0x34 | `instantiation_directive` | 40 | Case 0x34 | Explicit instantiation |
 | 53 | 0x35 | `src_seq_sublist` | 24 | Case 0x35 | Source sequence sub-list |
-| 54 | 0x36 | `explicit_instantiation_decl` | -- | Case 0x36 | extern template |
+| 54 | 0x36 | `explicit_instantiation_decl` | — | Case 0x36 | extern template |
 | 55 | 0x37 | `orphaned_entities` | 56 | Case 0x37 | Entities without parent scope |
 | 56 | 0x38 | `hidden_name` | 32 | Case 0x38 | Hidden name entry |
 | 57 | 0x39 | `pragma` | 64 | Case 0x39 | Pragma records (43 kinds) |
@@ -89,26 +89,26 @@ There are 85 defined entry kind values (0-84). Some are primary node types with 
 | 62 | 0x3E | `name_reference` | 40 | Case 0x3E | Name lookup reference |
 | 63 | 0x3F | `name_qualifier` | 40 | Case 0x3F | Qualified name qualifier |
 | 64 | 0x40 | `seq_number_lookup` | 32 | Case 0x40 | Sequence number index |
-| 65 | 0x41 | `local_expr_node_ref` | -- | Case 0x41 | Local expression reference |
+| 65 | 0x41 | `local_expr_node_ref` | — | Case 0x41 | Local expression reference |
 | 66 | 0x42 | `static_assert` | 24 | Case 0x42 | Static assertion |
 | 67 | 0x43 | `linkage_spec` | 32 | Case 0x43 | extern "C"/"C++" block |
 | 68 | 0x44 | `scope_ref` | 32 | Case 0x44 | Scope back-reference |
-| 69 | 0x45 | (reserved) | -- | Inline | Skipped in display |
-| 70 | 0x46 | `lambda` | -- | Case 0x46 | Lambda expression |
-| 71 | 0x47 | `lambda_capture` | -- | Case 0x47 | Lambda capture entry |
+| 69 | 0x45 | (reserved) | — | Inline | Skipped in display |
+| 70 | 0x46 | `lambda` | — | Case 0x46 | Lambda expression |
+| 71 | 0x47 | `lambda_capture` | — | Case 0x47 | Lambda capture entry |
 | 72 | 0x48 | `attribute` | 72 | Case 0x48 | C++11/GNU attribute |
 | 73 | 0x49 | `attribute_argument` | 40 | Case 0x49 | Attribute argument |
 | 74 | 0x4A | `attribute_group` | 8 | Case 0x4A | Attribute group |
-| 75 | 0x4B | (reserved) | -- | Inline | Skipped in display |
-| 76 | 0x4C | (reserved) | -- | Inline | Skipped in display |
-| 77 | 0x4D | (reserved) | -- | Inline | Skipped in display |
-| 78 | 0x4E | (reserved) | -- | Inline | Skipped in display |
-| 79 | 0x4F | `template_info` | -- | Case 0x4F | Template instantiation info |
+| 75 | 0x4B | (reserved) | — | Inline | Skipped in display |
+| 76 | 0x4C | (reserved) | — | Inline | Skipped in display |
+| 77 | 0x4D | (reserved) | — | Inline | Skipped in display |
+| 78 | 0x4E | (reserved) | — | Inline | Skipped in display |
+| 79 | 0x4F | `template_info` | — | Case 0x4F | Template instantiation info |
 | 80 | 0x50 | `subobject_path` | 24 | Case 0x50 | Address constant sub-path |
-| 81 | 0x51 | (reserved) | -- | Inline | Skipped in display |
-| 82 | 0x52 | `module_info` | -- | Case 0x52 | C++20 module metadata |
-| 83 | 0x53 | `module_decl` | -- | Case 0x53 | Module declaration |
-| 84 | 0x54 | `last` | -- | -- | Sentinel for table validation |
+| 81 | 0x51 | (reserved) | — | Inline | Skipped in display |
+| 82 | 0x52 | `module_info` | — | Case 0x52 | C++20 module metadata |
+| 83 | 0x53 | `module_decl` | — | Case 0x53 | Module declaration |
+| 84 | 0x54 | `last` | — | — | Sentinel for table validation |
 
 **Inline entries** (kinds 4, 5, 14, 15, 19, 20, 27, 34, 37, 38, 40, 45-48, 69, 75-78, 81) are displayed as part of their parent node rather than as standalone IL entries. The display dispatcher (`sub_5F4930`) returns immediately for these kinds.
 
@@ -223,7 +223,7 @@ Raw allocation layout (function-scope, 8-byte prefix):
 
 The prefix flags byte is at `ptr - 8` from the returned node pointer (in all modes). The `next_in_list` pointer at `ptr - 16` is the linked list link used by the IL walker to traverse all entries of a given kind (file-scope only). The `translation_unit_copy_address` at `ptr - 24` stores the original address when a node is copied between translation units; it is zeroed in normal mode and absent in TU-copy and function-scope modes.
 
-The keep_in_il test throughout cudafe++ uses `*(signed char*)(entry - 8) < 0` to check bit 7 of the prefix flags byte -- this works because the flags byte is always at offset `-8` from the node pointer regardless of allocation mode.
+The keep_in_il test throughout cudafe++ uses `*(signed char*)(entry - 8) < 0` to check bit 7 of the prefix flags byte — this works because the flags byte is always at offset `-8` from the node pointer regardless of allocation mode.
 
 ### Prefix Flags Byte
 
@@ -249,28 +249,28 @@ The type kind byte lives at offset `+132` in the type node body. 22 values, disp
 
 | Value | Name | Supplement | Size | Notes |
 |---|---|---|---|---|
-| 0 | `tk_error` | -- | -- | Error/placeholder type |
-| 1 | `tk_void` | -- | -- | void |
+| 0 | `tk_error` | — | — | Error/placeholder type |
+| 1 | `tk_void` | — | — | void |
 | 2 | `tk_integer` | integer_type_supplement | 32 | int, char, bool, enum, wchar_t, char8/16/32_t |
-| 3 | `tk_float` | -- | -- | float, double, long double |
-| 4 | `tk_complex` | -- | -- | _Complex float/double/ldouble |
-| 5 | `tk_imaginary` | -- | -- | _Imaginary (C99) |
-| 6 | `tk_pointer` | -- | -- | Pointer, reference, rvalue reference |
+| 3 | `tk_float` | — | — | float, double, long double |
+| 4 | `tk_complex` | — | — | _Complex float/double/ldouble |
+| 5 | `tk_imaginary` | — | — | _Imaginary (C99) |
+| 6 | `tk_pointer` | — | — | Pointer, reference, rvalue reference |
 | 7 | `tk_routine` | routine_type_supplement | 64 | Function type (return + params) |
-| 8 | `tk_array` | -- | -- | Fixed and variable-length arrays |
+| 8 | `tk_array` | — | — | Fixed and variable-length arrays |
 | 9 | `tk_class` | class_type_supplement | 208 | class types |
 | 10 | `tk_struct` | class_type_supplement | 208 | struct types |
 | 11 | `tk_union` | class_type_supplement | 208 | union types |
 | 12 | `tk_typeref` | typeref_type_supplement | 56 | typedef, using, decltype, typeof |
-| 13 | `tk_ptr_to_member` | -- | -- | Pointer-to-member |
+| 13 | `tk_ptr_to_member` | — | — | Pointer-to-member |
 | 14 | `tk_template_param` | templ_param_supplement | 40 | Template type parameter |
-| 15 | `tk_vector` | -- | -- | SIMD vector type |
-| 16 | `tk_scalable_vector` | -- | -- | Scalable vector (SVE) |
-| 17 | `tk_nullptr` | -- | -- | std::nullptr_t |
-| 18 | `tk_mfp8` | -- | -- | 8-bit floating point |
-| 19 | `tk_scalable_vector_count` | -- | -- | Scalable vector predicate |
-| 20 | (auto/decltype_auto) | -- | -- | Placeholder types |
-| 21 | (typeof_unqual/typeof_type) | -- | -- | C23 typeof |
+| 15 | `tk_vector` | — | — | SIMD vector type |
+| 16 | `tk_scalable_vector` | — | — | Scalable vector (SVE) |
+| 17 | `tk_nullptr` | — | — | std::nullptr_t |
+| 18 | `tk_mfp8` | — | — | 8-bit floating point |
+| 19 | `tk_scalable_vector_count` | — | — | Scalable vector predicate |
+| 20 | (auto/decltype_auto) | — | — | Placeholder types |
+| 21 | (typeof_unqual/typeof_type) | — | — | C23 typeof |
 
 The display function references `off_A6FE40` (22 string entries) for type kind names. The typeref sub-kind table at `off_A6F640` has 28 entries covering typedef aliases, decltype expressions, auto, and concept-constrained placeholders.
 
@@ -375,32 +375,32 @@ The statement kind byte lives at offset `+32` in the statement node. 26 values:
 
 | Value | Name | Supplement | Notes |
 |---|---|---|---|
-| 0 | `stmk_expr` | -- | Expression statement |
-| 1 | `stmk_if` | -- | if statement |
+| 0 | `stmk_expr` | — | Expression statement |
+| 1 | `stmk_if` | — | if statement |
 | 2 | `stmk_constexpr_if` | 24 bytes | if constexpr (C++17) |
-| 3 | `stmk_if_consteval` | -- | if consteval (C++23) |
-| 4 | `stmk_if_not_consteval` | -- | if !consteval (C++23) |
-| 5 | `stmk_while` | -- | while loop |
-| 6 | `stmk_goto` | -- | goto statement |
-| 7 | `stmk_label` | -- | Label statement |
-| 8 | `stmk_return` | -- | return statement |
+| 3 | `stmk_if_consteval` | — | if consteval (C++23) |
+| 4 | `stmk_if_not_consteval` | — | if !consteval (C++23) |
+| 5 | `stmk_while` | — | while loop |
+| 6 | `stmk_goto` | — | goto statement |
+| 7 | `stmk_label` | — | Label statement |
+| 8 | `stmk_return` | — | return statement |
 | 9 | `stmk_coroutine` | 128 bytes | C++20 coroutine body (full coroutine descriptor) |
-| 10 | `stmk_coroutine_return` | -- | co_return statement |
+| 10 | `stmk_coroutine_return` | — | co_return statement |
 | 11 | `stmk_block` | 32 bytes | Compound statement / block |
-| 12 | `stmk_end_test_while` | -- | do-while loop |
+| 12 | `stmk_end_test_while` | — | do-while loop |
 | 13 | `stmk_for` | 24 bytes | for loop |
-| 14 | `stmk_range_based_for` | -- | C++11 range-for (iterator, begin, end, incr) |
-| 15 | `stmk_switch_case` | -- | case label |
+| 14 | `stmk_range_based_for` | — | C++11 range-for (iterator, begin, end, incr) |
+| 15 | `stmk_switch_case` | — | case label |
 | 16 | `stmk_switch` | 24 bytes | switch statement |
-| 17 | `stmk_init` | -- | Declaration with initializer |
-| 18 | `stmk_asm` | -- | Inline assembly |
+| 17 | `stmk_init` | — | Declaration with initializer |
+| 18 | `stmk_asm` | — | Inline assembly |
 | 19 | `stmk_try_block` | 32 bytes | try block |
-| 20 | `stmk_decl` | -- | Declaration statement |
-| 21 | `stmk_set_vla_size` | -- | VLA size computation |
-| 22 | `stmk_vla_decl` | -- | VLA declaration |
-| 23 | `stmk_assigned_goto` | -- | GCC computed goto |
-| 24 | `stmk_empty` | -- | Empty statement |
-| 25 | `stmk_stmt_expr_result` | -- | GCC statement expression result |
+| 20 | `stmk_decl` | — | Declaration statement |
+| 21 | `stmk_set_vla_size` | — | VLA size computation |
+| 22 | `stmk_vla_decl` | — | VLA declaration |
+| 23 | `stmk_assigned_goto` | — | GCC computed goto |
+| 24 | `stmk_empty` | — | Empty statement |
+| 25 | `stmk_stmt_expr_result` | — | GCC statement expression result |
 
 The coroutine statement (kind 9) carries the largest supplement at 128 bytes, containing traits, handle, promise, initial/final suspend calls, unhandled_exception call, get_return_object call, new/delete routines, and parameter copies. A preserved typo in the EDG source reads `"paramter_copies"` (missing 'e'), confirming genuine EDG lineage.
 
@@ -484,7 +484,7 @@ Resets ~80 transient globals in the `126F680..126F978` range between template in
 
 ## Constant Sharing
 
-IL constants are deduplicated via a 2,039-bucket hash table at `qword_126F228`. The `alloc_shareable_constant` function (`sub_5D2390`) checks `constant_is_shareable` (`sub_5D2210`) -- which excludes aggregate constants (kind 10), template parameter constants (kind 12), and string literals when string sharing is disabled (`dword_126E1C0`).
+IL constants are deduplicated via a 2,039-bucket hash table at `qword_126F228`. The `alloc_shareable_constant` function (`sub_5D2390`) checks `constant_is_shareable` (`sub_5D2210`) — which excludes aggregate constants (kind 10), template parameter constants (kind 12), and string literals when string sharing is disabled (`dword_126E1C0`).
 
 On a cache hit, the existing constant is relinked to the front of its bucket chain. On a miss, a new 184-byte constant is allocated and inserted. Statistics are tracked: total allocations (`qword_126F208`), comparisons (`qword_126F200`), region hits (`qword_126F218`), global hits (`qword_126F220`), and new buckets (`qword_126F210`).
 
@@ -539,10 +539,10 @@ These extensions are what make cudafe++ the CUDA-aware C++ frontend rather than 
 
 ## Cross-References
 
-- [IL Allocation](./allocation.md) -- Arena allocator details, node sizes, free lists
-- [IL Walking](./walking.md) -- Tree traversal framework with 5 callback slots
-- [keep-in-il](./keep-in-il.md) -- Device code selection via bit 7
-- [IL Display](./display.md) -- Debug dump format and output
-- [IL Comparison & Copy](./comparison-copy.md) -- Expression/constant comparison and deep copy
-- [Device/Host Separation](../cuda/device-host-separation.md) -- CUDA IL marking
-- [Type System](../edg/type-system.md) -- 22 type kinds in detail
+- [IL Allocation](./allocation.md) — Arena allocator details, node sizes, free lists
+- [IL Walking](./walking.md) — Tree traversal framework with 5 callback slots
+- [keep-in-il](./keep-in-il.md) — Device code selection via bit 7
+- [IL Display](./display.md) — Debug dump format and output
+- [IL Comparison & Copy](./comparison-copy.md) — Expression/constant comparison and deep copy
+- [Device/Host Separation](../cuda/device-host-separation.md) — CUDA IL marking
+- [Type System](../edg/type-system.md) — 22 type kinds in detail

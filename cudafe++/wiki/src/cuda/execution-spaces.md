@@ -1,6 +1,6 @@
 # Execution Spaces
 
-Every CUDA function lives in one or more **execution spaces** that govern where the function can run (host CPU, device GPU, or both) and what it can call. cudafe++ encodes execution space as a single-byte bitfield at offset `+182` of the entity (routine) node. This byte is the most frequently tested field in CUDA-specific code paths -- it drives attribute application, redeclaration compatibility, virtual override checking, call-graph validation, IL marking, and code generation selection. Understanding this byte is prerequisite to understanding nearly every CUDA-specific subsystem in cudafe++.
+Every CUDA function lives in one or more **execution spaces** that govern where the function can run (host CPU, device GPU, or both) and what it can call. cudafe++ encodes execution space as a single-byte bitfield at offset `+182` of the entity (routine) node. This byte is the most frequently tested field in CUDA-specific code paths — it drives attribute application, redeclaration compatibility, virtual override checking, call-graph validation, IL marking, and code generation selection. Understanding this byte is prerequisite to understanding nearly every CUDA-specific subsystem in cudafe++.
 
 The three CUDA execution-space keywords (`__host__`, `__device__`, `__global__`) are parsed as EDG attributes with internal kind codes `'V'` (86), `'W'` (87), and `'X'` (88) respectively. The attribute dispatch table in `apply_one_attribute` (`sub_413240`) routes each kind to a dedicated handler that validates constraints and sets the bitfield. Functions without any explicit annotation default to `__host__`.
 
@@ -39,7 +39,7 @@ Byte at entity+182:
 
 ### Combined Patterns
 
-The attribute handlers do not set individual bits -- they OR entire patterns into the byte. Each CUDA keyword produces a characteristic bitmask:
+The attribute handlers do not set individual bits — they OR entire patterns into the byte. Each CUDA keyword produces a characteristic bitmask:
 
 | Keyword | OR mask | Resulting byte | Bit breakdown |
 |---|---|---|---|
@@ -47,7 +47,7 @@ The attribute handlers do not set individual bits -- they OR entire patterns int
 | `__device__` | `0x23` | `0x23` | device_capable + device_explicit + device_annotation |
 | `__host__` | `0x15` | `0x15` | device_capable + host_capable + host_explicit |
 | `__host__ __device__` | `0x23 \| 0x15` | `0x37` | device_capable + device_explicit + host_capable + host_explicit + device_annotation |
-| (no annotation) | none | `0x00` | Implicit `__host__` -- bits remain zero |
+| (no annotation) | none | `0x00` | Implicit `__host__` — bits remain zero |
 
 The `0x80` bit is set unconditionally by the `__global__` handler. After the `|= 0x61` operation (which sets bit 6), the handler reads the byte back and checks `(byte & 0x40) != 0`. Since bit 6 was just set, this is always true, so `|= 0x80` always executes. Despite the field name `hd_combined` in some tooling, the bit functions as a "has __global__ annotation" marker in practice.
 
@@ -139,11 +139,11 @@ The matrix below documents every possible pair of (existing annotation, newly-ap
 
 | Existing \ Applying | `__host__` | `__device__` | `__global__` |
 |---|---|---|---|
-| **(none)** `0x00` | `0x15` -- OK | `0x23` -- OK | `0xE1` -- OK |
-| **`__host__`** `0x15` | `0x15` -- idempotent | `0x37` -- OK (HD) | error 3481 (always: handler checks `byte & 0x10` unconditionally) |
-| **`__device__`** `0x23` | `0x37` -- OK (HD) | `0x23` -- idempotent | error 3481 (relaxed: OK) |
-| **`__global__`** `0xE1` | error 3481 (always) | error 3481 (relaxed: OK) | `0xE1` -- idempotent |
-| **`__host__ __device__`** `0x37` | `0x37` -- idempotent | `0x37` -- idempotent | error 3481 (always: `byte & 0x10` fires) |
+| **(none)** `0x00` | `0x15` — OK | `0x23` — OK | `0xE1` — OK |
+| **`__host__`** `0x15` | `0x15` — idempotent | `0x37` — OK (HD) | error 3481 (always: handler checks `byte & 0x10` unconditionally) |
+| **`__device__`** `0x23` | `0x37` — OK (HD) | `0x23` — idempotent | error 3481 (relaxed: OK) |
+| **`__global__`** `0xE1` | error 3481 (always) | error 3481 (relaxed: OK) | `0xE1` — idempotent |
+| **`__host__ __device__`** `0x37` | `0x37` — idempotent | `0x37` — idempotent | error 3481 (always: `byte & 0x10` fires) |
 
 The `__global__` column always errors when the existing annotation includes `__host__` (bit 4 = `0x10`), because the `__global__` handler's condition `(v5 & 0x10) != 0` is not guarded by the relaxed-mode flag. The `__device__` column errors on existing `__global__` only when relaxed mode is off, because the `__device__` handler guards its check with `!dword_106BFF0`.
 
@@ -284,12 +284,12 @@ The attribute handlers enforce a mutual-exclusion matrix. When a second executio
 
 | Already set | Applying | Result |
 |---|---|---|
-| (none) | `__host__` | `0x15` -- accepted |
-| (none) | `__device__` | `0x23` -- accepted |
-| (none) | `__global__` | `0xE1` -- accepted |
-| `__host__` (0x15) | `__device__` | `0x37` -- accepted (HD) |
-| `__device__` (0x23) | `__host__` | `0x37` -- accepted (HD) |
-| `__host__` (0x15) | `__global__` | error 3481 (always -- `byte & 0x10` is unconditional) |
+| (none) | `__host__` | `0x15` — accepted |
+| (none) | `__device__` | `0x23` — accepted |
+| (none) | `__global__` | `0xE1` — accepted |
+| `__host__` (0x15) | `__device__` | `0x37` — accepted (HD) |
+| `__device__` (0x23) | `__host__` | `0x37` — accepted (HD) |
+| `__host__` (0x15) | `__global__` | error 3481 (always — `byte & 0x10` is unconditional) |
 | `__device__` (0x23) | `__global__` | error 3481 (unless `dword_106BFF0`) |
 | `__global__` (0xE1) | `__host__` | error 3481 (always) |
 | `__global__` (0xE1) | `__device__` | error 3481 (unless `dword_106BFF0`) |
@@ -297,7 +297,7 @@ The attribute handlers enforce a mutual-exclusion matrix. When a second executio
 | `__device__` (0x23) | `__device__` | idempotent OR, no error |
 | `__global__` (0xE1) | `__global__` | idempotent OR, no error |
 
-The relaxed mode flag `dword_106BFF0` suppresses certain conflicts. When set, combinations that would normally produce error 3481 are silently accepted. This flag corresponds to `--expt-relaxed-constexpr` or similar permissive compilation modes. Note that the relaxed flag does NOT affect the `__host__` -> `__global__` or `__global__` -> `__host__` paths -- these always error because the `__global__` handler checks `byte & 0x10` unconditionally, and the `__host__` handler checks `byte & 0x40` unconditionally.
+The relaxed mode flag `dword_106BFF0` suppresses certain conflicts. When set, combinations that would normally produce error 3481 are silently accepted. This flag corresponds to `--expt-relaxed-constexpr` or similar permissive compilation modes. Note that the relaxed flag does NOT affect the `__host__` -> `__global__` or `__global__` -> `__host__` paths — these always error because the `__global__` handler checks `byte & 0x10` unconditionally, and the `__host__` handler checks `byte & 0x40` unconditionally.
 
 ## Virtual Function Override Checking (sub_432280)
 
@@ -461,10 +461,10 @@ A lookup table at `dword_E7C760` stores precomputed bitmasks indexed by executio
 
 ## Cross-References
 
-- [Memory Spaces](../cuda/memory-spaces.md) -- variable-side `__device__`/`__shared__`/`__constant__` at entity+148
-- [Cross-Space Validation](../cuda/cross-space-validation.md) -- call-graph enforcement of execution space rules
-- [Device/Host Separation](../cuda/device-host-separation.md) -- IL marking driven by execution space
-- [Kernel Stubs](../cuda/kernel-stubs.md) -- host-side stub generation for `__global__` functions
-- [Entity Node Layout](../structs/entity-node.md) -- full byte map of the entity structure
-- [Virtual Override Matrix](../reference/virtual-override-matrix.md) -- detailed 6-error mismatch table
-- [JIT Mode](../cuda/jit-mode.md) -- `--default-device` flag that changes implicit execution space
+- [Memory Spaces](../cuda/memory-spaces.md) — variable-side `__device__`/`__shared__`/`__constant__` at entity+148
+- [Cross-Space Validation](../cuda/cross-space-validation.md) — call-graph enforcement of execution space rules
+- [Device/Host Separation](../cuda/device-host-separation.md) — IL marking driven by execution space
+- [Kernel Stubs](../cuda/kernel-stubs.md) — host-side stub generation for `__global__` functions
+- [Entity Node Layout](../structs/entity-node.md) — full byte map of the entity structure
+- [Virtual Override Matrix](../reference/virtual-override-matrix.md) — detailed 6-error mismatch table
+- [JIT Mode](../cuda/jit-mode.md) — `--default-device` flag that changes implicit execution space

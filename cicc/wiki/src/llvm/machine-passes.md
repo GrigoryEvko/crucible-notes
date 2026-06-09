@@ -4,7 +4,7 @@
 >
 > **Upstream source:** Core codegen drivers in `llvm/lib/CodeGen/*.cpp` (LLVM 20.0.0); NVPTX-specific MF passes in `llvm/lib/Target/NVPTX/NVPTX*.cpp`. Pipeline assembly (`addISelPasses`, `addPreRegAlloc`, `addPostRegAlloc`) follows the stock `TargetPassConfig` interface; NVIDIA overrides via `NVPTXPassConfig`.
 
-Machine-level passes in CICC v13.0 operate on `MachineFunction` / `MachineBasicBlock` / `MachineInstr` representations after SelectionDAG instruction selection has converted LLVM IR into target-specific pseudo-instructions. On a conventional CPU target, these passes ultimately produce native machine code; on NVPTX, they produce PTX assembly -- a virtual ISA with unlimited virtual registers and a structured instruction set. This distinction is fundamental: NVPTX's "machine code" still uses virtual registers (`%r0`, `%f1`, `%p3`), and the final PTX text is consumed by `ptxas` which performs the actual register allocation against the hardware register file. The machine-level passes in CICC therefore serve a different purpose than on CPU: they optimize register pressure (to maximize occupancy), structure control flow (PTX requires structured CFG), compute `.local` memory frame layouts, and prepare clean PTX for `ptxas` to finish.
+Machine-level passes in CICC v13.0 operate on `MachineFunction` / `MachineBasicBlock` / `MachineInstr` representations after SelectionDAG instruction selection has converted LLVM IR into target-specific pseudo-instructions. On a conventional CPU target, these passes ultimately produce native machine code; on NVPTX, they produce PTX assembly — a virtual ISA with unlimited virtual registers and a structured instruction set. This distinction is fundamental: NVPTX's "machine code" still uses virtual registers (`%r0`, `%f1`, `%p3`), and the final PTX text is consumed by `ptxas` which performs the actual register allocation against the hardware register file. The machine-level passes in CICC therefore serve a different purpose than on CPU: they optimize register pressure (to maximize occupancy), structure control flow (PTX requires structured CFG), compute `.local` memory frame layouts, and prepare clean PTX for `ptxas` to finish.
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ Machine-level passes in CICC v13.0 operate on `MachineFunction` / `MachineBasicB
 
 In upstream LLVM for x86 or AArch64, the machine pass pipeline assigns physical registers, inserts spill code, schedules instructions for pipeline hazards, and emits relocatable object code. On NVPTX, none of this maps directly:
 
-1. **No physical register file.** PTX registers are virtual. The greedy register allocator in CICC does not assign physical registers -- it tracks register pressure per class and enforces the `-maxreg` limit (default 70) that controls SM occupancy. When the allocator "spills," it moves values to `.local` memory rather than to stack slots addressed by `%rsp`.
+1. **No physical register file.** PTX registers are virtual. The greedy register allocator in CICC does not assign physical registers — it tracks register pressure per class and enforces the `-maxreg` limit (default 70) that controls SM occupancy. When the allocator "spills," it moves values to `.local` memory rather than to stack slots addressed by `%rsp`.
 
 2. **No prolog/epilog in the traditional sense.** There is no call stack with push/pop sequences. `PrologEpilogInserter` in CICC computes `.local` frame offsets for spilled virtual registers and inserts `ld.local`/`st.local` pairs.
 
@@ -98,11 +98,11 @@ Passes marked with ★ are NVIDIA-custom. The exact ordering varies by optimizat
 
 The NVPTX backend configures the machine pass pipeline through three key functions:
 
-**`sub_2166D20` -- addISelPasses()**: Configures passes before instruction selection. Diagnostic string: `"\n\n*** Final LLVM Code input to ISel ***\n"`. Adds: alloca hoisting, ISel DAG printer (conditional), `NVPTXProxyRegErasure`, `NVPTXLowerArgs`, NVPTX-specific ISel.
+**`sub_2166D20` — addISelPasses()**: Configures passes before instruction selection. Diagnostic string: `"\n\n*** Final LLVM Code input to ISel ***\n"`. Adds: alloca hoisting, ISel DAG printer (conditional), `NVPTXProxyRegErasure`, `NVPTXLowerArgs`, NVPTX-specific ISel.
 
-**`sub_2166ED0` -- addPreRegAlloc()**: Configures machine passes before register allocation. Diagnostic strings: `"After Pre-RegAlloc TailDuplicate"`, `"After codegen DCE pass"`, `"After Machine LICM, CSE and Sinking passes"`, `"After codegen peephole optimization pass"`. Adds: TailDuplicate, codegen DCE, Machine LICM + CSE + Sinking (conditional on `byte_4FD1980`, `byte_4FD18A0`, `byte_4FD1A60`), codegen peephole.
+**`sub_2166ED0` — addPreRegAlloc()**: Configures machine passes before register allocation. Diagnostic strings: `"After Pre-RegAlloc TailDuplicate"`, `"After codegen DCE pass"`, `"After Machine LICM, CSE and Sinking passes"`, `"After codegen peephole optimization pass"`. Adds: TailDuplicate, codegen DCE, Machine LICM + CSE + Sinking (conditional on `byte_4FD1980`, `byte_4FD18A0`, `byte_4FD1A60`), codegen peephole.
 
-**`sub_21668D0` -- addPostRegAlloc()**: Configures post-register-allocation passes. Diagnostic strings: `"After Machine Scheduling"`, `"After StackSlotColoring"`. Adds: Machine scheduling (2 modes controlled by `dword_4FD26A0` -- value 1 selects simple scheduling, otherwise full pipeline), Stack slot coloring, `nvptx-mem2reg` (conditional on `byte_4FD25C0`).
+**`sub_21668D0` — addPostRegAlloc()**: Configures post-register-allocation passes. Diagnostic strings: `"After Machine Scheduling"`, `"After StackSlotColoring"`. Adds: Machine scheduling (2 modes controlled by `dword_4FD26A0` — value 1 selects simple scheduling, otherwise full pipeline), Stack slot coloring, `nvptx-mem2reg` (conditional on `byte_4FD25C0`).
 
 ## Machine Pass Inventory
 
@@ -115,7 +115,7 @@ The NVPTX backend configures the machine pass pipeline through three key functio
 | `machine-rpa` | `sub_21EAA00` | Analysis (pre-RA) | Machine Register Pressure Analysis. Provides per-basic-block pressure data consumed by `MachineCSE`, scheduling, and rematerialization. |
 | `extra-machineinstr-printer` | `sub_21E9E80` | Diagnostic | Prints per-function register pressure statistics. Debug-only pass for tuning pressure heuristics. |
 | `nvptx-mem2reg` | `sub_21F9920` | Pre-RA | Machine-level mem2reg: promotes `.local` memory loads/stores back to virtual registers when profitable. Conditional on `byte_4FD25C0` (`nv-disable-mem2reg` inverts). |
-| `ldgxform` | `sub_21F2780` | Pre-RA | Transforms qualifying global memory loads into `ld.global.nc` (LDG -- load through read-only data cache). Splits wide vector loads for hardware constraints. |
+| `ldgxform` | `sub_21F2780` | Pre-RA | Transforms qualifying global memory loads into `ld.global.nc` (LDG — load through read-only data cache). Splits wide vector loads for hardware constraints. |
 | `nvptx-prolog-epilog` | `sub_21DB5F0` | Post-RA | NVPTX-specific PrologEpilog pass. Works alongside or replaces the stock PEI to handle PTX frame semantics where there is no traditional stack pointer. |
 | `nvptx-proxy-reg-erasure` | `sub_21DA810` | Late post-RA | Removes redundant `cvta.to.local` instructions left by address space lowering. |
 | `nvptx-assign-valid-global-names` | `sub_21BCD80` | Pre-emission | Sanitizes symbol names to comply with PTX naming rules (no `@`, `$`, or other characters illegal in PTX identifiers). |
@@ -167,7 +167,7 @@ The NVPTX backend configures the machine pass pipeline through three key functio
 
 ## Per-Pass Algorithm Descriptions
 
-### NVPTXPeephole (`sub_21DB090`) -- PTX-Specific Peephole Optimizer
+### NVPTXPeephole (`sub_21DB090`) — PTX-Specific Peephole Optimizer
 
 Registration: `sub_21DB090` at `0x21DB090`, pass ID `"nvptx-peephole"`. Enabled by default; controlled by `enable-nvvm-peephole`.
 
@@ -213,7 +213,7 @@ fn nvptx_peephole(MF: &mut MachineFunction) -> bool {
 }
 ```
 
-### NVPTXBlockRemat (`sub_217DBF0`) -- Machine-Level Block Rematerialization
+### NVPTXBlockRemat (`sub_217DBF0`) — Machine-Level Block Rematerialization
 
 Registration: `sub_217DBF0` at `0x217DBF0`, pass name `"NVPTX Specific Block Remat"`, pass ID `"nvptx-remat-block"`. Knob constructor at `ctor_361_0` (`0x5108E0`). Main engine: `sub_2186D90` (47KB, ~1742 decompiled lines).
 
@@ -339,7 +339,7 @@ fn nvptx_block_remat(MF: &mut MachineFunction) -> bool {
 
 **Cost model:** `sub_2183E30` computes the clone cost of rematerializing a register. Load instructions cost `nv-remat-block-load-cost` (default 10). Instructions in loops are penalized by `nv-remat-block-loop-cost-factor` (default 20x). Double-wide registers (class size > 32) count as 2 for pressure and have 2x cost.
 
-### Machine Register Pressure Analysis (`sub_21EAA00`) -- MRPA
+### Machine Register Pressure Analysis (`sub_21EAA00`) — MRPA
 
 Registration: `sub_21EAA00` at `0x21EAA00`, pass name `"Register pressure analysis on Machine IRs"`, pass ID `"machine-rpa"`. Main analysis body: `sub_21EEB40` (68KB). Incremental updater: `sub_2E5A4E0` (48KB). Backend variant: `sub_1E00370` (78KB).
 
@@ -387,7 +387,7 @@ fn mrpa_incremental_update(context, bb, instruction_delta) {
 
 **Diagnostic output (`sub_21E9A60`):** The companion pass `extra-machineinstr-printer` at `sub_21E9E80` prints: `"Max Live RRegs: {n}\tPRegs: {m}\nFunction Size: {s}"` for each function, providing per-function register pressure statistics for tuning.
 
-### LDG Transform (`sub_21F2780`) -- Read-Only Data Cache Load Transformation
+### LDG Transform (`sub_21F2780`) — Read-Only Data Cache Load Transformation
 
 Registration: `sub_21F2780` at `0x21F2780`, pass name `"Ldg Transformation"`, pass ID `"ldgxform"`. Transformation body: `sub_21F2C80` (19KB). Vector splitting engine: `sub_21F3A20` (44KB).
 
@@ -430,11 +430,11 @@ fn ldgxform(MF: &mut MachineFunction) -> bool {
 
 The split width depends on `TargetOpt.HasLDG` (stored at target options offset 5, extracted from `p2h-01` analysis). When LDG is available, 128-bit loads (`LDG.128`) are preferred, resulting in `.v4.b32` patterns.
 
-### NVPTXMem2Reg (`sub_21F9920`) -- Machine-Level Mem2Reg
+### NVPTXMem2Reg (`sub_21F9920`) — Machine-Level Mem2Reg
 
 Registration: `sub_21F9920` at `0x21F9920`, pass name `"Mem2Reg on Machine Instructions to remove local stack objects"`, pass ID `"nvptx-mem2reg"`. Main body: `sub_21FA880` (22KB), engine: `sub_21FC920` (33KB). Controlled by `byte_4FD25C0` (inverted by `nv-disable-mem2reg`, default: enabled).
 
-Standard LLVM `mem2reg` operates on LLVM IR `alloca` instructions. This NVIDIA-custom pass operates on `MachineInstr` -- specifically on `ld.local` / `st.local` pairs that access `__local_depot` frame slots. After register allocation, some values that were spilled to `.local` memory can be promoted back to virtual registers if their access pattern is simple enough (single def, multiple uses, no aliasing stores).
+Standard LLVM `mem2reg` operates on LLVM IR `alloca` instructions. This NVIDIA-custom pass operates on `MachineInstr` — specifically on `ld.local` / `st.local` pairs that access `__local_depot` frame slots. After register allocation, some values that were spilled to `.local` memory can be promoted back to virtual registers if their access pattern is simple enough (single def, multiple uses, no aliasing stores).
 
 **Algorithm:**
 
@@ -472,7 +472,7 @@ fn nvptx_machine_mem2reg(MF: &mut MachineFunction) -> bool {
 
 This pass is positioned in `addPostRegAlloc()`, meaning it runs after the greedy register allocator has already assigned slots. It acts as a cleanup: register allocation may have conservatively spilled values that turn out to be unnecessary after coalescing and copy propagation eliminate intermediate uses.
 
-### GenericToNVVM (`sub_215DC20`) -- Address Space Normalization
+### GenericToNVVM (`sub_215DC20`) — Address Space Normalization
 
 Registration: `sub_215DC20` at `0x215DC20`, pass name `"Ensure that the global variables are in the global address space"`, pass ID `"generic-to-nvvm"`. Pass descriptor: 80-byte allocation. Factory: `sub_215D530` (allocates 320-byte state with two 128-bucket DenseMaps). New PM variant: `sub_305ED20`.
 
@@ -510,47 +510,47 @@ fn generic_to_nvvm(M: &mut Module) -> bool {
 }
 ```
 
-### NVPTXProxyRegErasure (`sub_21DA810`) -- Redundant cvta.to.local Removal
+### NVPTXProxyRegErasure (`sub_21DA810`) — Redundant cvta.to.local Removal
 
 Registration: `sub_21DA810` at `0x21DA810`, pass name `"NVPTX optimize redundant cvta.to.local instruction"`.
 
 This late post-RA pass removes `cvta.to.local` instructions that are left over from address space lowering. After frame layout is complete, local memory addresses are known, and `cvta.to.local` (which converts a generic pointer to a `.local` pointer) is redundant when the address is already known to be in `.local` space. The pass is simple: scan for `cvta.to.local` MachineInstrs, verify the source is already a `.local` address, replace uses with the source operand, delete the `cvta`.
 
-### NVPTXAssignValidGlobalNames (`sub_21BCD80`) -- PTX Name Sanitization
+### NVPTXAssignValidGlobalNames (`sub_21BCD80`) — PTX Name Sanitization
 
 Registration: `sub_21BCD80` at `0x21BCD80`, pass name `"Assign valid PTX names to globals"`, pass ID `"nvptx-assign-valid-global-names"`.
 
 PTX has stricter naming rules than LLVM IR. Characters like `@`, `$`, `.` (in certain positions), and Unicode are illegal in PTX identifiers. This pass walks all `GlobalValue`s in the module and replaces illegal characters with safe alternatives (typically `_`). It also handles name demangling artifacts and ensures the final names are unique after sanitization.
 
-### NVPTXImageOptimizer (`sub_21BCF10`) -- Texture/Surface Optimization
+### NVPTXImageOptimizer (`sub_21BCF10`) — Texture/Surface Optimization
 
 Registration: `sub_21BCF10` at `0x21BCF10`, pass name `"NVPTX Image Optimizer"`. Type validation helper: `sub_21DD1A0` (16KB).
 
 This pre-emission pass optimizes texture and surface access patterns. It validates image type consistency for `tex`, `suld`, `sust`, and `suq` operations, emitting errors for mismatches: `"Invalid image type in .tex"`, `"Invalid image type in .suld"`, `"Invalid image type in suq."`, `"Invalid image type in .sust"`. The pass coalesces related texture operations when they access the same texture handle with compatible coordinates and can be merged into wider vector fetches.
 
-### NVPTXReplaceImageHandles (`sub_21DBEA0`) -- Image Handle Lowering
+### NVPTXReplaceImageHandles (`sub_21DBEA0`) — Image Handle Lowering
 
 Registration: `sub_21DBEA0` at `0x21DBEA0`, pass name `"NVPTX Replace Image Handles"`.
 
 Replaces IR-level texture/surface handle references (which are LLVM `Value` pointers to `@texture_handle` globals) with PTX-level `.tex` / `.surf` declarations and integer handle indices. This is a pre-emission pass that bridges the gap between LLVM IR's opaque handle model and PTX's explicit texture declaration model.
 
-### AllocaHoisting (`sub_21BC7D0`) -- Entry Block Alloca Hoisting
+### AllocaHoisting (`sub_21BC7D0`) — Entry Block Alloca Hoisting
 
 Registration: `sub_21BC7D0` at `0x21BC7D0`, pass name `"Hoisting alloca instructions in non-entry blocks to the entry block"`, pass ID `"alloca-hoisting"`. Registration helper: `sub_21BC5A0`.
 
-PTX requires that all local memory declarations be hoisted to the function entry. This pass scans all basic blocks for `alloca` instructions and moves them to the entry block. This enables the frame layout pass (`PrologEpilogInserter`) to assign fixed offsets to all stack objects -- a requirement because PTX emits `.local .align N .b8 __local_depotX[SIZE]` at the function prologue and all local accesses are indexed from this single base.
+PTX requires that all local memory declarations be hoisted to the function entry. This pass scans all basic blocks for `alloca` instructions and moves them to the entry block. This enables the frame layout pass (`PrologEpilogInserter`) to assign fixed offsets to all stack objects — a requirement because PTX emits `.local .align N .b8 __local_depotX[SIZE]` at the function prologue and all local accesses are indexed from this single base.
 
-### ParamOpt (`sub_2203290`) -- Parameter Load Optimization
+### ParamOpt (`sub_2203290`) — Parameter Load Optimization
 
 Registration: `sub_2203290` at `0x2203290`, pass name `"Optimize NVPTX ld.param"`, pass ID `"param-opt"`.
 
 NVPTX-custom pass that optimizes `ld.param` instructions generated during kernel argument passing. When a kernel parameter is loaded multiple times (common when the same argument is used in different basic blocks), this pass eliminates redundant loads by propagating the first load's result to subsequent uses. Related knob: `remat-load-param` ("Support remating const ld.param that are not exposed in NVVM IR").
 
-### NVPTXTruncOpts (`sub_22058E0`) -- i16 Truncation Optimization
+### NVPTXTruncOpts (`sub_22058E0`) — i16 Truncation Optimization
 
 Registration: `sub_22058E0` at `0x22058E0`, pass name `"Optimize redundant ANDb16ri instrunctions"` [sic], pass ID `"nvptx-trunc-opts"`.
 
-When LLVM lowers `trunc i32 to i16` operations, the NVPTX backend emits an `AND.b16` with mask `0xFFFF` to ensure the high bits are zero. In many cases this AND is redundant -- the producing instruction already guarantees a 16-bit result. This pass pattern-matches `ANDb16ri` instructions with the `0xFFFF` immediate and removes them when the source provably fits in 16 bits.
+When LLVM lowers `trunc i32 to i16` operations, the NVPTX backend emits an `AND.b16` with mask `0xFFFF` to ensure the high bits are zero. In many cases this AND is redundant — the producing instruction already guarantees a 16-bit result. This pass pattern-matches `ANDb16ri` instructions with the `0xFFFF` immediate and removes them when the source provably fits in 16 bits.
 
 ### RP-Aware MachineCSE (NVIDIA-Modified `machine-cse`)
 
@@ -566,14 +566,14 @@ Stock LLVM `MachineCSE` eliminates redundant machine instructions by matching in
 
 ### MachinePipeliner (SMS) Detail
 
-The Swing Modulo Scheduler at `sub_3563190` performs software pipelining -- overlapping successive loop iterations to hide latency. It operates on a single loop body at the MachineInstr level:
+The Swing Modulo Scheduler at `sub_3563190` performs software pipelining — overlapping successive loop iterations to hide latency. It operates on a single loop body at the MachineInstr level:
 
 1. **DAG construction**: builds a data dependency graph with `sub_2F97F60`, computes latencies via `sub_3559990`, adds edges via `sub_3542B20`.
 2. **MII computation**: `RecMII` (recurrence-based) via `sub_354CBB0`, `ResMII` (resource-based) via `sub_35449F0`. `MII = max(RecMII, ResMII)`.
 3. **Early exits**: MII == 0 is invalid; MII > `SwpMaxMii` (default 27, `-pipeliner-max-mii`) aborts.
 4. **II search**: starts at MII, tries up to `pipeliner-ii-search-range` (default 10, `qword_503E428`) consecutive II values. First valid schedule wins.
 5. **Schedule construction**: ASAP via `sub_354BFF0`, ALAP via `sub_354BFF0`, topological sort, core SMS node placement via `sub_354C3A0`, then finalization.
-6. **Kernel generation**: Three code generation backends selected by priority -- annotation-only (`pipeliner-annotate-for-testing`), MVE-based (`pipeliner-mve-cg`, default enabled), and experimental peeling (`pipeliner-experimental-cg`).
+6. **Kernel generation**: Three code generation backends selected by priority — annotation-only (`pipeliner-annotate-for-testing`), MVE-based (`pipeliner-mve-cg`, default enabled), and experimental peeling (`pipeliner-experimental-cg`).
 
 The pipeliner stores its schedule context as a 616-byte (`0x268`) structure with four SmallVectors and per-BB data at 256-byte stride. Maximum pipeline stages: `SwpMaxStages` (default 3, `-pipeliner-max-stages`).
 
@@ -596,13 +596,13 @@ The pipeliner stores its schedule context as a 616-byte (`0x268`) structure with
 Priority ordering: (1) deeper instructions first (offset 240 = latency/depth), (2) target priority table at `a1+3944` (16-byte entries: `[start, end, priority, window_width]`), (3) narrower schedule windows first. Latency recomputation via `sub_2F8F5D0` during comparison.
 
 **Error messages:**
-- `"Invalid Minimal Initiation Interval: 0"` -- MII computation returned zero
-- `"Minimal Initiation Interval too large: MII > SwpMaxMii. Refer to -pipeliner-max-mii."` -- loop is too complex
-- `"Unable to find schedule"` -- no valid II found within search range
-- `"No need to pipeline - no overlapped iterations in schedule."` -- `numStages == 0`
-- `"Too many stages in schedule: numStages > SwpMaxStages. Refer to -pipeliner-max-stages."` -- pipeline depth exceeded
+- `"Invalid Minimal Initiation Interval: 0"` — MII computation returned zero
+- `"Minimal Initiation Interval too large: MII > SwpMaxMii. Refer to -pipeliner-max-mii."` — loop is too complex
+- `"Unable to find schedule"` — no valid II found within search range
+- `"No need to pipeline - no overlapped iterations in schedule."` — `numStages == 0`
+- `"Too many stages in schedule: numStages > SwpMaxStages. Refer to -pipeliner-max-stages."` — pipeline depth exceeded
 
-### PrologEpilogInserter (`sub_35B1110`) -- .local Frame Layout
+### PrologEpilogInserter (`sub_35B1110`) — .local Frame Layout
 
 Address: `sub_35B1110` (68KB, 2388 decompiled lines). Stack frame: `0x490` bytes of local state. This is NVIDIA's monolithic PEI for PTX. Unlike a traditional PEI that emits push/pop sequences and adjusts `%rsp`, this one computes `.local` memory frame offsets.
 
@@ -675,7 +675,7 @@ fn assign_frame_offsets(MF: &MachineFunction, frame: &mut FrameInfo) {
 
 The final PTX emission (`sub_2158E80`) uses these offsets to emit: `.local .align N .b8 __local_depotX[SIZE];` at the function prologue, and `ld.local` / `st.local` instructions reference `[%SPL + offset]` where `%SPL` is the local stack pointer register.
 
-### ScheduleDAGMILive (`sub_355F610`) -- Post-RA Instruction Ordering
+### ScheduleDAGMILive (`sub_355F610`) — Post-RA Instruction Ordering
 
 Address: `sub_355F610` (64KB). This is the post-RA machine instruction scheduler, consuming either the pipeliner's output or standalone scheduling regions.
 
@@ -817,52 +817,52 @@ Machine passes depend on a set of analysis passes that compute liveness, dominan
 
 | Address | Size | Function | Role |
 |---|---|---|---|
-| `sub_215DC20` | -- | GenericToNVVM registration | Address space normalization |
+| `sub_215DC20` | — | GenericToNVVM registration | Address space normalization |
 | `sub_215D530` | 320B state | GenericToNVVM factory | Allocates pass state with 2 DenseMaps |
-| `sub_215D780` | -- | GenericToNVVM cleanup | GVMap iteration and Value ref-counting |
+| `sub_215D780` | — | GenericToNVVM cleanup | GVMap iteration and Value ref-counting |
 | `sub_2166D20` | 1.5KB | addISelPasses | Pre-ISel pass configuration |
 | `sub_2166ED0` | 1.6KB | addPreRegAlloc | Pre-RA pass configuration |
 | `sub_21668D0` | 1.2KB | addPostRegAlloc | Post-RA pass configuration |
-| `sub_217D300` | -- | BlockRemat pass name | `"NVPTX Machine Block Level Rematerialization"` |
-| `sub_217DBF0` | -- | BlockRemat registration | `"nvptx-remat-block"` |
+| `sub_217D300` | — | BlockRemat pass name | `"NVPTX Machine Block Level Rematerialization"` |
+| `sub_217DBF0` | — | BlockRemat registration | `"nvptx-remat-block"` |
 | `sub_217E810` | 5.2KB | MULTIDEF detection | Single-def checker with opcode exclusion table |
 | `sub_2181550` | ~3KB | Recursive pullability | Depth-limited chain validation (depth <= 50) |
 | `sub_2181870` | 19KB | Second-chance heuristic | Re-evaluates rejected remat candidates |
-| `sub_2183E30` | -- | Cost evaluator | Computes clone cost for rematerialization |
+| `sub_2183E30` | — | Cost evaluator | Computes clone cost for rematerialization |
 | `sub_2184890` | 12KB | Remat allocation helper | Simulates pressure after remat |
 | `sub_2185250` | 17KB | Liveness propagation | Core instruction cloning/replacement engine |
-| `sub_2186590` | -- | Max-live computation | Per-block pressure scan |
+| `sub_2186590` | — | Max-live computation | Per-block pressure scan |
 | `sub_2186D90` | 47KB | **BlockRemat main engine** | Iterative pull-in algorithm (1742 lines) |
 | `sub_21810D0` | 9.4KB | Instruction replacement | Replaces register uses after remat |
-| `sub_21BC5A0` | -- | AllocaHoisting name | Pass name registration |
-| `sub_21BC7D0` | -- | AllocaHoisting registration | `"alloca-hoisting"` |
-| `sub_21BCD80` | -- | ValidGlobalNames registration | `"nvptx-assign-valid-global-names"` |
-| `sub_21BCF10` | -- | ImageOptimizer registration | `"NVPTX Image Optimizer"` |
-| `sub_21DA810` | -- | ProxyRegErasure | Redundant `cvta.to.local` removal |
-| `sub_21DB090` | -- | NVPTXPeephole registration | `"nvptx-peephole"` |
-| `sub_21DB5F0` | -- | NVPTXPrologEpilog registration | `"NVPTX Prolog Epilog Pass"` |
-| `sub_21DBEA0` | -- | ReplaceImageHandles registration | `"NVPTX Replace Image Handles"` |
+| `sub_21BC5A0` | — | AllocaHoisting name | Pass name registration |
+| `sub_21BC7D0` | — | AllocaHoisting registration | `"alloca-hoisting"` |
+| `sub_21BCD80` | — | ValidGlobalNames registration | `"nvptx-assign-valid-global-names"` |
+| `sub_21BCF10` | — | ImageOptimizer registration | `"NVPTX Image Optimizer"` |
+| `sub_21DA810` | — | ProxyRegErasure | Redundant `cvta.to.local` removal |
+| `sub_21DB090` | — | NVPTXPeephole registration | `"nvptx-peephole"` |
+| `sub_21DB5F0` | — | NVPTXPrologEpilog registration | `"NVPTX Prolog Epilog Pass"` |
+| `sub_21DBEA0` | — | ReplaceImageHandles registration | `"NVPTX Replace Image Handles"` |
 | `sub_21DD1A0` | 16KB | Image type validation | `tex`/`suld`/`sust`/`suq` type checking |
 | `sub_21E9A60` | 4.9KB | RP stats printer | `"Max Live RRegs: "` / `"PRegs: "` |
-| `sub_21E9E80` | -- | ExtraMachineInstrPrinter registration | `"extra-machineinstr-printer"` |
-| `sub_21EAA00` | -- | MRPA registration | `"machine-rpa"` |
+| `sub_21E9E80` | — | ExtraMachineInstrPrinter registration | `"extra-machineinstr-printer"` |
+| `sub_21EAA00` | — | MRPA registration | `"machine-rpa"` |
 | `sub_21EEB40` | 68KB | MRPA full recomputation | Per-BB pressure computation |
-| `sub_21F2780` | -- | LdgXform registration | `"ldgxform"` |
+| `sub_21F2780` | — | LdgXform registration | `"ldgxform"` |
 | `sub_21F2C80` | 19KB | LDG split body | `.ldgsplit` / `.ldgsplitinsert` |
 | `sub_21F3A20` | 44KB | Vector splitting engine | `splitVec` / `vecBitCast` / `extractSplitVec` |
-| `sub_21F9920` | -- | NVPTXMem2Reg registration | `"nvptx-mem2reg"` |
+| `sub_21F9920` | — | NVPTXMem2Reg registration | `"nvptx-mem2reg"` |
 | `sub_21FA880` | 22KB | Mem2Reg body | Machine-level mem2reg driver |
 | `sub_21FC920` | 33KB | Mem2Reg engine | Promotion/replacement logic |
 | `sub_2200150` | 78KB | DAGToDAG ISel main | Hash-table pattern matching (`h = (37*idx) & (size-1)`) |
-| `sub_2203290` | -- | ParamOpt registration | `"param-opt"` |
-| `sub_2204E60` | -- | Redundant move elim | `"Remove redundant moves"` |
-| `sub_22058E0` | -- | TruncOpts registration | `"nvptx-trunc-opts"` |
+| `sub_2203290` | — | ParamOpt registration | `"param-opt"` |
+| `sub_2204E60` | — | Redundant move elim | `"Remove redundant moves"` |
+| `sub_22058E0` | — | TruncOpts registration | `"nvptx-trunc-opts"` |
 | `sub_2E5A4E0` | 48KB | MRPA incremental updater | Incremental RP tracking for MCSE |
 | `sub_1E00370` | 78KB | MRPA backend variant | Alternative RP tracker |
 | `sub_35B1110` | 68KB | PrologEpilogInserter | `.local` frame layout (2388 lines) |
 | `sub_3563190` | 58KB | MachinePipeliner | Swing Modulo Scheduling |
 | `sub_355F610` | 64KB | ScheduleDAGMILive | Post-RA instruction ordering |
-| `sub_3557A10` | -- | SMS instruction selection | Scheduling heuristic |
+| `sub_3557A10` | — | SMS instruction selection | Scheduling heuristic |
 
 ## Global Variable Reference
 
@@ -872,9 +872,9 @@ Machine passes depend on a set of analysis passes that compute liveness, dominan
 | `byte_4FD18A0` | byte | (opt-level) | MachineCSE enable flag |
 | `byte_4FD1A60` | byte | (opt-level) | MachineSink enable flag |
 | `byte_4FD25C0` | byte | (opt-level) | nvptx-mem2reg enable |
-| `byte_4FD2160` | byte | -- | Extra ISel pass enable |
+| `byte_4FD2160` | byte | — | Extra ISel pass enable |
 | `byte_4FD2E80` | byte | off | nv-dump-remat-block |
-| `dword_4FD26A0` | dword | -- | Scheduling mode (1 = simple, else = full) |
+| `dword_4FD26A0` | dword | — | Scheduling mode (1 = simple, else = full) |
 | `dword_4FD3740` | dword | 10 | nv-remat-max-times |
 | `dword_4FD3820` | dword | 14 | nv-remat-block mode bitmask |
 | `dword_4FD33C0` | dword | 70 | nv-remat-default-max-reg (global) |
@@ -884,17 +884,17 @@ Machine passes depend on a set of analysis passes that compute liveness, dominan
 
 ## Cross-References
 
-- [SelectionDAG](./selectiondag.md) -- the ISel pass that produces MachineInstrs consumed by machine passes
-- [Register Allocation](./register-allocation.md) -- pressure-driven greedy allocator with NVPTX register classes
-- [Register Coalescing](./register-coalescing.md) -- NVPTX-custom copy elimination framework
-- [PrologEpilogInserter & Frame Layout](./prolog-epilog.md) -- `.local` memory frame computation
-- [MachineOutliner](./machine-outliner.md) -- suffix-tree-based code size reduction
-- [Block Placement](./block-placement.md) -- profile-guided basic block ordering
-- [Instruction Scheduling](./scheduling.md) -- MRPA, MachinePipeliner, ScheduleDAGMILive
-- [Rematerialization](../passes/rematerialization.md) -- NVIDIA's custom machine-level remat
-- [NVVM Peephole](../passes/nvvm-peephole.md) -- IR-level NVVM peephole (distinct from machine-level `nvptx-peephole`)
-- [AsmPrinter & PTX Emission](../infra/asmprinter.md) -- final pass: MachineInstr to PTX text
-- [Code Generation](../pipeline/codegen.md) -- pipeline overview including ISel and DAG infrastructure
-- [StructurizeCFG](./structurizecfg.md) -- mandatory CFG structurization (runs before ISel, feeds machine passes)
-- [Hash Infrastructure](../infra/hash-infrastructure.md) -- DenseMap hash function `(ptr >> 9) ^ (ptr >> 4)` used throughout MRPA
-- [Register Classes](../reference/register-classes.md) -- NVPTX register class definitions consumed by all machine passes
+- [SelectionDAG](./selectiondag.md) — the ISel pass that produces MachineInstrs consumed by machine passes
+- [Register Allocation](./register-allocation.md) — pressure-driven greedy allocator with NVPTX register classes
+- [Register Coalescing](./register-coalescing.md) — NVPTX-custom copy elimination framework
+- [PrologEpilogInserter & Frame Layout](./prolog-epilog.md) — `.local` memory frame computation
+- [MachineOutliner](./machine-outliner.md) — suffix-tree-based code size reduction
+- [Block Placement](./block-placement.md) — profile-guided basic block ordering
+- [Instruction Scheduling](./scheduling.md) — MRPA, MachinePipeliner, ScheduleDAGMILive
+- [Rematerialization](../passes/rematerialization.md) — NVIDIA's custom machine-level remat
+- [NVVM Peephole](../passes/nvvm-peephole.md) — IR-level NVVM peephole (distinct from machine-level `nvptx-peephole`)
+- [AsmPrinter & PTX Emission](../infra/asmprinter.md) — final pass: MachineInstr to PTX text
+- [Code Generation](../pipeline/codegen.md) — pipeline overview including ISel and DAG infrastructure
+- [StructurizeCFG](./structurizecfg.md) — mandatory CFG structurization (runs before ISel, feeds machine passes)
+- [Hash Infrastructure](../infra/hash-infrastructure.md) — DenseMap hash function `(ptr >> 9) ^ (ptr >> 4)` used throughout MRPA
+- [Register Classes](../reference/register-classes.md) — NVPTX register class definitions consumed by all machine passes

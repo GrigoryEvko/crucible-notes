@@ -154,7 +154,7 @@ The virtual section mapping (`ctx+472`) supports section index indirection used 
 
 ## Data Contribution List
 
-Sections accumulate data through a singly-linked list of 40-byte **data nodes**. Each node records one contribution from one input ELF section fragment. The data is not physically copied during the merge phase -- each node merely records a source pointer and offset. The actual byte copy happens during ELF serialization.
+Sections accumulate data through a singly-linked list of 40-byte **data nodes**. Each node records one contribution from one input ELF section fragment. The data is not physically copied during the merge phase — each node merely records a source pointer and offset. The actual byte copy happens during ELF serialization.
 
 ### Data Node Layout (40 bytes)
 
@@ -169,7 +169,7 @@ Offset  Size  Field         Decompiled     Description
  36       4   (reserved)    --             Tail of the 40-byte payload; not read on any verified path
 ```
 
-The linked-list "next" pointer is **not** in this 40-byte payload. Each list element is wrapped by a separate 16-byte node (allocated by `sub_4644C0`) whose layout is `{ next_ptr at +0, payload_ptr at +8 }`. The wrapper's `+0` is the singly-linked-list link; the wrapper's `+8` is the pointer to this 40-byte data node (or, on the `sub_433870` direct-append path, a pointer to a 48-byte symbol record). The layout engine (`sub_4325A0`) reads the payload's `+32` as a 4-byte signed symbol index, feeds it to `sub_440590`, and writes the placed offset back into both the data-node's `+8` and the symbol record's `+8` -- the dual write-back described above.
+The linked-list "next" pointer is **not** in this 40-byte payload. Each list element is wrapped by a separate 16-byte node (allocated by `sub_4644C0`) whose layout is `{ next_ptr at +0, payload_ptr at +8 }`. The wrapper's `+0` is the singly-linked-list link; the wrapper's `+8` is the pointer to this 40-byte data node (or, on the `sub_433870` direct-append path, a pointer to a 48-byte symbol record). The layout engine (`sub_4325A0`) reads the payload's `+32` as a 4-byte signed symbol index, feeds it to `sub_440590`, and writes the placed offset back into both the data-node's `+8` and the symbol record's `+8` — the dual write-back described above.
 
 ### Data Append Algorithm (`sub_433760`)
 
@@ -225,7 +225,7 @@ else:
     section.data_list_tail = new_tail            // advance tail pointer
 ```
 
-The linked-list approach avoids copying any bytes during the merge phase. For a link with 500 input objects each contributing a fragment to `.nv.constant0`, the section accumulates 500 data nodes totaling 20,000 bytes of metadata -- but the actual constant data stays in the original input buffers until serialization.
+The linked-list approach avoids copying any bytes during the merge phase. For a link with 500 input objects each contributing a fragment to `.nv.constant0`, the section accumulates 500 data nodes totaling 20,000 bytes of metadata — but the actual constant data stays in the original input buffers until serialization.
 
 ## Symbol Record Creation (`sub_440740`)
 
@@ -280,7 +280,7 @@ if (ctx->has_virtual_sections) {
 }
 ```
 
-This bidirectional consistency check catches corruption in the index mapping -- if the forward and reverse maps disagree, the linker halts rather than producing a malformed ELF.
+This bidirectional consistency check catches corruption in the index mapping — if the forward and reverse maps disagree, the linker halts rather than producing a malformed ELF.
 
 ## Section Ordering During Finalization
 
@@ -366,7 +366,7 @@ A section record passes through four distinct phases during its lifetime:
 | **Layout** | Sort data nodes by alignment, assign symbol offsets within the section, compute final `sh_size` | `sub_4325A0` |
 | **Finalize** | Reindex sections via 8-bucket counting sort, assign file offsets, patch all symbol `st_shndx` fields | `sub_445000` |
 
-During creation, the record is immediately accessible by index from the section vector and by name from the hash table. During merge, only the data list and size fields are modified -- the record itself is immutable after creation except for these accumulation fields. During finalization, the section's identity (its index) changes, and the virtualization table provides the mapping between old and new indices.
+During creation, the record is immediately accessible by index from the section vector and by name from the hash table. During merge, only the data list and size fields are modified — the record itself is immutable after creation except for these accumulation fields. During finalization, the section's identity (its index) changes, and the virtualization table provides the mapping between old and new indices.
 
 ## Companion Relocation Sections
 
@@ -426,7 +426,7 @@ Both hash tables (`ctx+288` for symbols, `ctx+296` for sections) use the same in
 
 The hash tables support three key comparison modes, selected by the mode field at `table+84`:
 - **Mode 0**: Custom hash and compare functions via function pointers at `table+0` and `table+8`
-- **Mode 1**: Pointer identity (for interned strings) -- hash is derived from the pointer value
+- **Mode 1**: Pointer identity (for interned strings) — hash is derived from the pointer value
 - **Mode 2**: Integer key comparison
 
 For section names, mode 0 is used with string hash/compare. The hash function produces a 32-bit value that is masked against `table+40` (bucket count mask). Collisions are resolved with open addressing stored in bucket chains at `table+104`.
@@ -466,14 +466,14 @@ For section names, mode 0 is used with string hash/compare. The hash function pr
 
 ## Cross-References
 
-- [Section Merging](../linker/section-merging.md) -- the merge-phase mechanics that drive section creation and data accumulation
-- [ELF Writer (elfw)](elf-writer.md) -- the parent structure that hosts the section vector and hash tables
-- [Finalization Phase](../pipeline/finalize.md) -- the phase that reindexes and sorts sections into final ELF order
-- [ELF Serialization](../elf/serialization.md) -- the output phase that walks data node lists to emit section bytes
-- [Symbol Record](symbol-record.md) -- the companion 48-byte record created alongside each section
-- [NVIDIA Section Types](../elf/nvidia-sections.md) -- catalog of all CUDA-specific `sh_type` values
-- [Device ELF Format](../elf/device-elf-format.md) -- the overall ELF structure that section records describe
-- [Hash Tables](../linker/hash-tables.md) -- the hash table infrastructure used for section and symbol name lookup
+- [Section Merging](../linker/section-merging.md) — the merge-phase mechanics that drive section creation and data accumulation
+- [ELF Writer (elfw)](elf-writer.md) — the parent structure that hosts the section vector and hash tables
+- [Finalization Phase](../pipeline/finalize.md) — the phase that reindexes and sorts sections into final ELF order
+- [ELF Serialization](../elf/serialization.md) — the output phase that walks data node lists to emit section bytes
+- [Symbol Record](symbol-record.md) — the companion 48-byte record created alongside each section
+- [NVIDIA Section Types](../elf/nvidia-sections.md) — catalog of all CUDA-specific `sh_type` values
+- [Device ELF Format](../elf/device-elf-format.md) — the overall ELF structure that section records describe
+- [Hash Tables](../linker/hash-tables.md) — the hash table infrastructure used for section and symbol name lookup
 
 ## Confidence Assessment
 
@@ -522,7 +522,7 @@ Each claim below was verified against decompiled functions (`sub_441AC0`, `sub_4
 | `secidx not virtual` fatal error | HIGH | String found at line 12185 in `nvlink_strings.json`; exact call in `sub_441AC0`/`sub_442270` |
 | `tail data node not found` fatal error | HIGH | String found at line 9729 in `nvlink_strings.json`; fires when `v9[10] == 0` in `sub_433760` |
 | Arch vtable virtual calls at offsets 296/304/312 | HIGH | `(*(__int64 (**)(void))(*(_QWORD *)(a1 + 488) + 296LL))()` verified exactly |
-| Constant-range relocation creation gate (0x70000064 -- 0x7000007E) | HIGH | `(unsigned int)(a3 - 1879048292) <= 0x1A` where `1879048292 = 0x70000064` and `+ 0x1A = 0x7000007E` |
+| Constant-range relocation creation gate (0x70000064 — 0x7000007E) | HIGH | `(unsigned int)(a3 - 1879048292) <= 0x1A` where `1879048292 = 0x70000064` and `+ 0x1A = 0x7000007E` |
 | SHT_CUDA_CONSTANT (0x70000006) as alternate relocation type | HIGH | `|| a3 == 1879048198` where `1879048198 = 0x70000006` (generic constant base type, NOT SHT_CUDA_COMPAT which is 0x70000086) |
 | RELA vs REL gate via byte at `elfw+89` | HIGH | `if (*(_BYTE *)(a1 + 89)) sprintf(v91, ".rela%s", a2);` |
 | `.rela<name>` and `.rel<name>` companion names | HIGH | Exact `sprintf` format strings |

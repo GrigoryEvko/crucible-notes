@@ -1,13 +1,13 @@
 # MemorySSA Builder for GPU
 
-MemorySSA constructs a sparse SSA form over memory operations, giving every instruction that reads or writes memory a position in a use-def chain that tracks the flow of memory state through a function. In upstream LLVM, MemorySSA already delivers significant speedups over the older `MemoryDependenceResults` analysis by avoiding per-query linear scans. In cicc v13.0, the payoff is amplified because the underlying alias analysis pipeline includes NVVM AA, which returns `NoAlias` for any cross-address-space pointer pair. A store to shared memory (`addrspace(3)`) and a load from global memory (`addrspace(1)`) will never produce a dependency edge in the MemorySSA graph, yielding a dramatically sparser representation than would be possible on a flat-memory architecture. Every pass that consumes MemorySSA -- LICM, EarlyCSE, DSE, GVN, SimpleLoopUnswitch -- benefits from this precision without containing any GPU-specific logic itself.
+MemorySSA constructs a sparse SSA form over memory operations, giving every instruction that reads or writes memory a position in a use-def chain that tracks the flow of memory state through a function. In upstream LLVM, MemorySSA already delivers significant speedups over the older `MemoryDependenceResults` analysis by avoiding per-query linear scans. In cicc v13.0, the payoff is amplified because the underlying alias analysis pipeline includes NVVM AA, which returns `NoAlias` for any cross-address-space pointer pair. A store to shared memory (`addrspace(3)`) and a load from global memory (`addrspace(1)`) will never produce a dependency edge in the MemorySSA graph, yielding a dramatically sparser representation than would be possible on a flat-memory architecture. Every pass that consumes MemorySSA — LICM, EarlyCSE, DSE, GVN, SimpleLoopUnswitch — benefits from this precision without containing any GPU-specific logic itself.
 
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Builder entry wrapper | `sub_1A6CAD0` (48 bytes -- skipFunction guard + tail call) |
+| Builder entry wrapper | `sub_1A6CAD0` (48 bytes — skipFunction guard + tail call) |
 | Builder core function | `sub_1A6A260` (10,344 bytes) |
 | MemoryAccess allocator | `sub_1A69110` (1,245 bytes) |
 | Pass registration string | `"memoryssa"` (analysis #179 in pipeline parser) |
@@ -24,11 +24,11 @@ MemorySSA constructs a sparse SSA form over memory operations, giving every inst
 
 MemorySSA represents memory state with three node types, all stored in 64-byte heap-allocated objects:
 
-**MemoryDef** (kind=2) -- Created for every instruction that may write memory: stores, calls with side effects, atomics, `memcpy`/`memmove` intrinsics. Each MemoryDef takes the previous memory state as its operand and produces a new version of memory state.
+**MemoryDef** (kind=2) — Created for every instruction that may write memory: stores, calls with side effects, atomics, `memcpy`/`memmove` intrinsics. Each MemoryDef takes the previous memory state as its operand and produces a new version of memory state.
 
-**MemoryUse** (kind=1) -- Created for every instruction that reads memory but does not modify it: loads, calls to readonly/readnone functions. A MemoryUse points to the MemoryDef (or MemoryPhi) that represents the most recent memory state it depends on.
+**MemoryUse** (kind=1) — Created for every instruction that reads memory but does not modify it: loads, calls to readonly/readnone functions. A MemoryUse points to the MemoryDef (or MemoryPhi) that represents the most recent memory state it depends on.
 
-**MemoryPhi** (kind=3) -- Inserted at control flow join points where predecessors have different reaching memory definitions, exactly like an SSA phi node for scalar values. A MemoryPhi merges the memory states from each predecessor into a single version.
+**MemoryPhi** (kind=3) — Inserted at control flow join points where predecessors have different reaching memory definitions, exactly like an SSA phi node for scalar values. A MemoryPhi merges the memory states from each predecessor into a single version.
 
 All three types share a common layout:
 
@@ -45,24 +45,24 @@ All three types share a common layout:
 | +0x30 | 8 | current reaching definition (MemoryAccess*) |
 | +0x38 | 8 | associated BasicBlock* (or null) |
 
-The sentinel value `1` stored in the reaching-definition field (`+0x30`) represents `LiveOnEntry` -- the implicit MemoryDef that dominates the entire function and represents the initial state of memory at function entry.
+The sentinel value `1` stored in the reaching-definition field (`+0x30`) represents `LiveOnEntry` — the implicit MemoryDef that dominates the entire function and represents the initial state of memory at function entry.
 
 
 ## Construction Algorithm
 
 The builder at `sub_1A6A260` follows the standard LLVM MemorySSA construction algorithm, implemented as a dominator-tree DFS rename pass. The implementation is split into eight phases.
 
-### Phase 1 -- Prerequisite Retrieval (0x1A6A260 - 0x1A6A3A0)
+### Phase 1 — Prerequisite Retrieval (0x1A6A260 - 0x1A6A3A0)
 
 The builder queries the analysis manager for three required results via a vtable-tagged vector. Each registered analysis is identified by a unique tag pointer:
 
-1. `unk_4F9D3C0` -> calls virtual method `[rax+0x68]` -> `sub_14A4050` -- retrieves `AAResults`, stored at `[this+0xB8]`
+1. `unk_4F9D3C0` -> calls virtual method `[rax+0x68]` -> `sub_14A4050` — retrieves `AAResults`, stored at `[this+0xB8]`
 2. `unk_4F9E06C` -> retrieves DominatorTree result, stored at `[this+0xA8]` (offset +0xA0 within the wrapper)
 3. `unk_4F9A488` -> retrieves LoopInfo, stored at `[this+0xB0]`
 
 If any tag is not found in the registered analysis vector, control jumps to terminal handlers at 0x1A6CAAF-0x1A6CABE (assertion / unreachable).
 
-### Phase 2 -- Worklist Initialization (0x1A6A3A0 - 0x1A6A6B0)
+### Phase 2 — Worklist Initialization (0x1A6A3A0 - 0x1A6A6B0)
 
 The builder allocates a 1,016-byte stack frame and initializes four layers of SmallVector-based renaming stacks:
 
@@ -73,7 +73,7 @@ The builder allocates a 1,016-byte stack frame and initializes four layers of Sm
 
 Each layer is initialized by `sub_16CCEE0` (SmallVector move-assign). Temporary intermediate buffers are freed before the main walk begins.
 
-### Phase 3 -- Dominator Tree Walk (0x1A6A88C - 0x1A6B070)
+### Phase 3 — Dominator Tree Walk (0x1A6A88C - 0x1A6B070)
 
 The main loop visits each basic block in DFS order over the dominator tree. For every instruction, the builder reads the opcode byte at `[instruction-8]` and classifies it:
 
@@ -117,16 +117,16 @@ switch (opcode_tag) {
 
 When the computed access size differs from the store size (`[rax+8] >> 8`), the builder routes through `sub_1A69690` to create a partial-store MemoryDef, capturing the precise overlap region.
 
-### Phase 4 -- Call and Intrinsic Classification
+### Phase 4 — Call and Intrinsic Classification
 
 Call instructions (opcode 0x0B) are dispatched through `sub_1A69C30` (call-instruction MemoryDef handler), which classifies intrinsics by ID:
 
-- **ID 0x0F** (lifetime.start) and **ID 0x17** (lifetime.end) -- no memory effect, skipped
-- **ID 0x27** -- `memcpy`/`memmove`-like intrinsics, create MemoryDef
-- **ID 0x2F** -- atomic intrinsics (checks `[rdx-0x30]` for ordering)
-- **ID 0x33** -- NVIDIA-specific intrinsics (surface/texture operations, NVVM builtins)
+- **ID 0x0F** (lifetime.start) and **ID 0x17** (lifetime.end) — no memory effect, skipped
+- **ID 0x27** — `memcpy`/`memmove`-like intrinsics, create MemoryDef
+- **ID 0x2F** — atomic intrinsics (checks `[rdx-0x30]` for ordering)
+- **ID 0x33** — NVIDIA-specific intrinsics (surface/texture operations, NVVM builtins)
 
-### Phase 5 -- MemoryAccess Allocation (sub_1A69110)
+### Phase 5 — MemoryAccess Allocation (sub_1A69110)
 
 The core allocator creates all three node types. Parameters:
 
@@ -143,9 +143,9 @@ Each allocation calls `sub_22077B0` (BumpPtrAllocator::Allocate) for 0x40 bytes,
 
 For kind==1, `sub_16A57B0` (countLeadingZeros) determines whether the access is a full or partial def. For kind==3 (MemoryPhi), the operand list is populated by iterating predecessor blocks through `sub_146F1B0` (AA-driven reaching-definition lookup).
 
-### Phase 6 -- Trivial Phi Optimization (0x1A6B280 - 0x1A6B9BD)
+### Phase 6 — Trivial Phi Optimization (0x1A6B280 - 0x1A6B9BD)
 
-After the DFS walk, the builder post-processes all MemoryPhi nodes. Any MemoryPhi whose operands all resolve to the same MemoryDef is trivial -- it can be replaced with that single reaching definition. The loop at 0x1A6B9DE iterates the result vector `[this+0xD8..this+0xE0]`:
+After the DFS walk, the builder post-processes all MemoryPhi nodes. Any MemoryPhi whose operands all resolve to the same MemoryDef is trivial — it can be replaced with that single reaching definition. The loop at 0x1A6B9DE iterates the result vector `[this+0xD8..this+0xE0]`:
 
 ```cpp
 for (auto *Phi : result_vector) {
@@ -165,7 +165,7 @@ This cleanup is critical for GPU code. Because NVVM AA proves so many memory ope
 
 The MemorySSA builder itself contains no explicit GPU logic. The GPU awareness comes entirely through the AA pipeline at `[this+0xB8]`, which chains BasicAA -> TBAA -> ScopedNoAliasAA -> NVVM AA. The critical interaction points are:
 
-**Cross-address-space independence.** When `sub_146F1B0` queries the AA for a `(store to addrspace(3), load from addrspace(1))` pair, NVVM AA returns `NoAlias` before BasicAA or TBAA are even consulted. The MemorySSA builder then skips creating a dependency edge. This means a MemoryUse for a global load will not depend on a MemoryDef for a shared store -- they exist in parallel chains.
+**Cross-address-space independence.** When `sub_146F1B0` queries the AA for a `(store to addrspace(3), load from addrspace(1))` pair, NVVM AA returns `NoAlias` before BasicAA or TBAA are even consulted. The MemorySSA builder then skips creating a dependency edge. This means a MemoryUse for a global load will not depend on a MemoryDef for a shared store — they exist in parallel chains.
 
 **Partial-alias precision.** The builder at 0x1A6AFB3 creates MemoryDefs even for partial overlaps, then calls `sub_1A69690` to register the precise overlap region. Standard LLVM would conservatively treat partial alias as MayAlias and create a full dependency. cicc's more aggressive approach uses the partial overlap information downstream for finer-grained DSE and LICM decisions.
 
@@ -185,7 +185,7 @@ __global__ void kernel(float *out, float *in) {
 }
 ```
 
-On a flat-memory machine, the MemorySSA graph would have a single linear chain: every memory operation depends on the previous one. With NVVM AA feeding MemorySSA, the graph splits into two parallel chains -- one for shared memory and one for global memory -- connected only at the `__syncthreads()` barrier (which is modeled as a MemoryDef that clobbers all address spaces).
+On a flat-memory machine, the MemorySSA graph would have a single linear chain: every memory operation depends on the previous one. With NVVM AA feeding MemorySSA, the graph splits into two parallel chains — one for shared memory and one for global memory — connected only at the `__syncthreads()` barrier (which is modeled as a MemoryDef that clobbers all address spaces).
 
 
 ## The MemorySSA Walker
@@ -212,7 +212,7 @@ Five major passes consume MemorySSA in cicc:
 | Pass | How it uses MemorySSA |
 |------|----------------------|
 | **LICM** | Queries the walker to determine whether a load inside a loop is clobbered by any store in the loop body. If no clobber is found, the load is hoisted. NVVM AA makes shared-memory loads trivially hoistable past global stores. |
-| **EarlyCSE** (`early-cse-memssa` variant, `sub_27783D0`) | Uses MemorySSA to find redundant loads -- two loads from the same location with no intervening clobber are CSE'd. The MemorySSA variant avoids the O(n^2) scanning of the non-MSSA EarlyCSE. |
+| **EarlyCSE** (`early-cse-memssa` variant, `sub_27783D0`) | Uses MemorySSA to find redundant loads — two loads from the same location with no intervening clobber are CSE'd. The MemorySSA variant avoids the O(n^2) scanning of the non-MSSA EarlyCSE. |
 | **DSE** | Walks the MemorySSA graph backwards from a store to find earlier stores to the same location with no intervening loads. Dead stores are eliminated. DSE has its own extensive set of MemorySSA walk limits (see knobs below). |
 | **GVN** | Can optionally use MemorySSA instead of MemoryDependenceResults (controlled by `enable-gvn-memoryssa`). When enabled, GVN uses the walker for load-value forwarding and PRE. |
 | **SimpleLoopUnswitch** | Queries MemorySSA to determine whether a condition inside a loop depends on memory modified in the loop. The `simple-loop-unswitch-memoryssa-threshold` knob controls the walk limit. |
@@ -255,25 +255,25 @@ Five major passes consume MemorySSA in cicc:
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Pass entry wrapper (skipFunction guard + tail call to builder) | `sub_1A6CAD0` | 48 | -- |
-| MemorySSA builder core (DFS rename walk) | `sub_1A6A260` | 10,344 | -- |
-| MemoryAccess node allocator (Def/Use/Phi) | `sub_1A69110` | 1,245 | -- |
-| MemoryDef creation dispatcher (routes to `sub_1A69110`) | `sub_1A695F0` | -- | -- |
-| Store-instruction MemoryDef handler (partial store support) | `sub_1A69690` | 754 | -- |
-| MemoryPhi operand insertion handler (bidirectional edge setup) | `sub_1A69990` | 664 | -- |
-| Call-instruction handler (intrinsic classification) | `sub_1A69C30` | -- | -- |
-| `MemorySSA::getMemoryAccess` or walker lookup | `sub_1643330` | -- | -- |
-| `MemoryAccess::getDefiningAccess` | `sub_1643D30` | -- | -- |
-| `MemoryLocation::get` or `getForDest` | `sub_1644900` | -- | -- |
-| `Value::replaceAllUsesWith` (def substitution during trivial phi removal) | `sub_164B780` | -- | -- |
-| `MemoryAccess::~MemoryAccess` (destructor) | `sub_164BEC0` | -- | -- |
-| `MemoryAccess::eraseFromParent` | `sub_1AEB370` | -- | -- |
-| `BumpPtrAllocator::Allocate` (64-byte node allocation) | `sub_22077B0` | -- | -- |
-| AA query: getModRefInfo / reaching-def resolution | `sub_146F1B0` | -- | -- |
-| AA query: may-alias check (two-pointer comparison) | `sub_145CF80` | -- | -- |
-| AA query: isNoAlias / clobber check | `sub_1487400` | -- | -- |
-| DominatorTree DFS order computation | `sub_13B8390` | -- | -- |
-| skipFunction guard (checks `isDeclaration`) | `sub_1636880` | -- | -- |
+| Pass entry wrapper (skipFunction guard + tail call to builder) | `sub_1A6CAD0` | 48 | — |
+| MemorySSA builder core (DFS rename walk) | `sub_1A6A260` | 10,344 | — |
+| MemoryAccess node allocator (Def/Use/Phi) | `sub_1A69110` | 1,245 | — |
+| MemoryDef creation dispatcher (routes to `sub_1A69110`) | `sub_1A695F0` | — | — |
+| Store-instruction MemoryDef handler (partial store support) | `sub_1A69690` | 754 | — |
+| MemoryPhi operand insertion handler (bidirectional edge setup) | `sub_1A69990` | 664 | — |
+| Call-instruction handler (intrinsic classification) | `sub_1A69C30` | — | — |
+| `MemorySSA::getMemoryAccess` or walker lookup | `sub_1643330` | — | — |
+| `MemoryAccess::getDefiningAccess` | `sub_1643D30` | — | — |
+| `MemoryLocation::get` or `getForDest` | `sub_1644900` | — | — |
+| `Value::replaceAllUsesWith` (def substitution during trivial phi removal) | `sub_164B780` | — | — |
+| `MemoryAccess::~MemoryAccess` (destructor) | `sub_164BEC0` | — | — |
+| `MemoryAccess::eraseFromParent` | `sub_1AEB370` | — | — |
+| `BumpPtrAllocator::Allocate` (64-byte node allocation) | `sub_22077B0` | — | — |
+| AA query: getModRefInfo / reaching-def resolution | `sub_146F1B0` | — | — |
+| AA query: may-alias check (two-pointer comparison) | `sub_145CF80` | — | — |
+| AA query: isNoAlias / clobber check | `sub_1487400` | — | — |
+| DominatorTree DFS order computation | `sub_13B8390` | — | — |
+| skipFunction guard (checks `isDeclaration`) | `sub_1636880` | — | — |
 
 
 ## Diagnostic Strings
@@ -304,8 +304,8 @@ Diagnostic strings recovered from `p2-J04-memoryssa.txt` and the pipeline parser
 
 ## Cross-References
 
-- [Alias Analysis & NVVM AA](./alias-analysis.md) -- the AA pipeline that feeds MemorySSA with GPU-aware NoAlias results
-- [LICM](../llvm/licm-real.md) -- primary consumer; NVVM AA-enhanced MemorySSA enables aggressive hoisting of shared-memory loads past global stores
-- [DSE](../llvm/dse.md) -- walks MemorySSA backwards to find dead stores; extensive set of MemorySSA-specific knobs
-- [GVN](../llvm/gvn.md) -- optional MemorySSA backend via `enable-gvn-memoryssa`
-- [EarlyCSE](../llvm/early-cse.md) -- EarlyCSE's `memssa` variant uses MemorySSA for redundant load elimination
+- [Alias Analysis & NVVM AA](./alias-analysis.md) — the AA pipeline that feeds MemorySSA with GPU-aware NoAlias results
+- [LICM](../llvm/licm-real.md) — primary consumer; NVVM AA-enhanced MemorySSA enables aggressive hoisting of shared-memory loads past global stores
+- [DSE](../llvm/dse.md) — walks MemorySSA backwards to find dead stores; extensive set of MemorySSA-specific knobs
+- [GVN](../llvm/gvn.md) — optional MemorySSA backend via `enable-gvn-memoryssa`
+- [EarlyCSE](../llvm/early-cse.md) — EarlyCSE's `memssa` variant uses MemorySSA for redundant load elimination

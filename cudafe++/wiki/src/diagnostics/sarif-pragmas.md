@@ -1,6 +1,6 @@
 # SARIF Output & Pragma Diagnostic Control
 
-cudafe++ supports two diagnostic output formats -- traditional text (default) and SARIF v2.1.0 JSON -- controlled by the `--output_mode` flag (flag index 274, stored in `dword_106BBB8`). Alongside the output format, the pragma diagnostic system allows per-error severity overrides at arbitrary source positions through `#pragma nv_diag_*` directives, which record a stack of severity modifications binary-searched at emission time. A companion colorization subsystem adds ANSI escape sequences to text-mode output, governed by environment variables and terminal detection. This page covers the internals of all three subsystems.
+cudafe++ supports two diagnostic output formats — traditional text (default) and SARIF v2.1.0 JSON — controlled by the `--output_mode` flag (flag index 274, stored in `dword_106BBB8`). Alongside the output format, the pragma diagnostic system allows per-error severity overrides at arbitrary source positions through `#pragma nv_diag_*` directives, which record a stack of severity modifications binary-searched at emission time. A companion colorization subsystem adds ANSI escape sequences to text-mode output, governed by environment variables and terminal detection. This page covers the internals of all three subsystems.
 
 For the diagnostic pipeline architecture, severity levels, and error message formatting, see [Diagnostic Overview](./overview.md). For the CUDA error catalog and tag-name suppression, see [CUDA Errors](./cuda-errors.md). For the unified registry, lifecycle, and dispatch table that hosts `nv_diag_*` alongside every other `#pragma` and preprocessor directive, see [The Pragma Engine](../edg/pragma-engine.md).
 
@@ -26,7 +26,7 @@ When `dword_106BBB8 == 1`, three changes take effect globally:
 2. `check_severity` (`sub_4F1330`) routes each diagnostic through the SARIF JSON builder instead of `construct_text_message`
 3. `write_signoff` (`sub_5AEE00`) emits `]}]}\n` instead of the error/warning summary line
 
-All other pipeline behavior -- severity computation, pragma overrides, error counting, exit codes -- is identical in both modes. Exit codes in SARIF mode skip the text messages (`"Compilation terminated."`, `"Compilation aborted."`) but use the same numeric values (0, 2, 4, 11).
+All other pipeline behavior — severity computation, pragma overrides, error counting, exit codes — is identical in both modes. Exit codes in SARIF mode skip the text messages (`"Compilation terminated."`, `"Compilation aborted."`) but use the same numeric values (0, 2, 4, 11).
 
 ### SARIF Header (`sub_5AEDB0`)
 
@@ -50,7 +50,7 @@ All other pipeline behavior -- severity computation, pragma overrides, error cou
     "results": [
 ```
 
-The version strings (`"6.6"`) are hardcoded in the binary via two `%s` format arguments that both resolve to the static string `"6.6"`. The `runs` array is opened but not closed -- each diagnostic result is appended as the compilation proceeds, and the array is closed by `write_signoff`.
+The version strings (`"6.6"`) are hardcoded in the binary via two `%s` format arguments that both resolve to the static string `"6.6"`. The `runs` array is opened but not closed — each diagnostic result is appended as the compilation proceeds, and the array is closed by `write_signoff`.
 
 An assertion guards the mode value: if `dword_106BBB8` is neither 0 nor 1, the function fires `sub_4F2930` with `"write_init"` at `host_envir.c:2017`.
 
@@ -104,7 +104,7 @@ sub_4F2930(..., "write_sarif_level",
     "determine_severity_code: bad severity", 0);
 ```
 
-Notes (severity 2) and command-line diagnostics (severity 6, 10) never reach the SARIF level mapper -- notes are suppressed below the minimum severity gate, and command-line diagnostics bypass the SARIF path entirely.
+Notes (severity 2) and command-line diagnostics (severity 6, 10) never reach the SARIF level mapper — notes are suppressed below the minimum severity gate, and command-line diagnostics bypass the SARIF path entirely.
 
 #### Message Object (`sub_4EF8A0`)
 
@@ -116,7 +116,7 @@ The message text is produced by `write_sarif_message_json` (`sub_4EF8A0`), which
 4. JSON-escapes the message: iterates each character, prepending `\` before any `"` (0x22) or `\` (0x5C) character
 5. Appends `"}` to close the message object
 
-The escaping is minimal -- only double-quote and backslash are escaped. Control characters (newlines, tabs) are not escaped, relying on the fact that EDG error messages do not contain embedded newlines.
+The escaping is minimal — only double-quote and backslash are escaped. Control characters (newlines, tabs) are not escaped, relying on the fact that EDG error messages do not contain embedded newlines.
 
 #### Physical Location (`sub_4ECB10`)
 
@@ -164,7 +164,7 @@ if (record->sub_diagnostic_head) {
 }
 ```
 
-Each related location has its own `message` object and an optional `physicalLocation`. The comma is placed **after** the closing brace of each entry except the first, yielding `[{...}{...},{...},...]` -- this is a bug in the JSON generation that produces malformed output when there are three or more related locations, since the first separator comma is missing.
+Each related location has its own `message` object and an optional `physicalLocation`. The comma is placed **after** the closing brace of each entry except the first, yielding `[{...}{...},{...},...]` — this is a bug in the JSON generation that produces malformed output when there are three or more related locations, since the first separator comma is missing.
 
 ### SARIF Footer (`sub_5AEE00`)
 
@@ -334,7 +334,7 @@ qword_10658F8 = 0;  // scratch: will hold the best-match pointer
 result = bsearch(&search_key, stack_base, entry_count, 24, comparator);
 ```
 
-The comparator `sub_4ECD20` compares position cookies first, then columns. It has a side effect: whenever the comparison result is `>= 0` (the search key is at or after the candidate), it stores the candidate pointer in `qword_10658F8`. This means after `bsearch` completes, `qword_10658F8` holds the rightmost entry that is at or before the search key -- the "floor" entry.
+The comparator `sub_4ECD20` compares position cookies first, then columns. It has a side effect: whenever the comparison result is `>= 0` (the search key is at or after the candidate), it stores the candidate pointer in `qword_10658F8`. This means after `bsearch` completes, `qword_10658F8` holds the rightmost entry that is at or before the search key — the "floor" entry.
 
 **Backward walk phase:**
 

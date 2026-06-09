@@ -94,7 +94,7 @@ When `--split-compile 0` is specified, the pool constructor receives the return 
 
 ## Thread-Local Storage (TLS)
 
-The TLS system is the foundation of ptxas's concurrency model. Every thread -- main and workers alike -- gets its own 280-byte context struct, accessed through the single most-called function in the binary: `sub_4280C0` (3,928 call sites).
+The TLS system is the foundation of ptxas's concurrency model. Every thread — main and workers alike — gets its own 280-byte context struct, accessed through the single most-called function in the binary: `sub_4280C0` (3,928 call sites).
 
 ### Initialization: `ctor_001` (`0x4094C0`)
 
@@ -156,20 +156,20 @@ The full byte-level layout, verified against the constructor (`sub_4280C0`), des
 
 | Offset | Size | Type | Purpose | Accessor |
 |---|---|---|---|---|
-| 0 | 1 | `byte` | `has_warning_or_error` flag -- set to 1 when severity > 2 | `sub_42F590` (direct write) |
-| 1 | 1 | `byte` | `has_fatal_error` flag -- set to 1 when severity > 4 | `sub_42F590` (direct write) |
-| 2 | 6 | -- | _padding_ (zeroed by `memset`) | -- |
+| 0 | 1 | `byte` | `has_warning_or_error` flag — set to 1 when severity > 2 | `sub_42F590` (direct write) |
+| 1 | 1 | `byte` | `has_fatal_error` flag — set to 1 when severity > 4 | `sub_42F590` (direct write) |
+| 2 | 6 | — | _padding_ (zeroed by `memset`) | — |
 | 8 | 8 | `jmp_buf*` | Error recovery longjmp target (installed by `sub_431ED0` before `_setjmp`) | `sub_431ED0` (save/restore) |
-| 16 | 8 | `void*` | Error descriptor pointer -- set to the faulting error descriptor on `longjmp` | `sub_42F590` (write on fatal), `sub_431ED0` (propagate on re-throw) |
+| 16 | 8 | `void*` | Error descriptor pointer — set to the faulting error descriptor on `longjmp` | `sub_42F590` (write on fatal), `sub_431ED0` (propagate on re-throw) |
 | 24 | 8 | `void*` | Per-thread memory pool pointer (used by `sub_424070`) | `sub_42BDD0` (swap), `sub_4287D0` (read) |
-| 32 | 8 | `char*` | Program name string (e.g. `"ptxas"`) -- prepended to diagnostic messages | `sub_430590` (set), `sub_430570` (get) |
-| 40 | 8 | `char*` | Diagnostic suffix string -- appended to message body when non-NULL | `sub_42F590` (read, format as `" %s"`) |
-| 48 | 1 | `byte` | Info suppression flag -- suppresses severity-2 (info) messages | `sub_42F590` (check) |
-| 49 | 1 | `byte` | Diagnostic suppression flag -- suppresses severity-3 (warning) messages | `sub_430560` (set) |
-| 50 | 1 | `byte` | Werror promotion flag (`--Werror`) -- promotes warnings to errors | `sub_430550` (set) |
-| 51 | 1 | `byte` | Machine-readable annotation flag -- adds `@E@`/`@W@`/`@O@`/`@I@` severity tags | `sub_4305A0` (get) |
-| 52 | 1 | `byte` | Multi-line continuation flag -- suppresses `". "` prefix on wrapped lines | `sub_4305C0` (set) |
-| 53 | 75 | -- | _padding_ (zeroed by `memset`) | -- |
+| 32 | 8 | `char*` | Program name string (e.g. `"ptxas"`) — prepended to diagnostic messages | `sub_430590` (set), `sub_430570` (get) |
+| 40 | 8 | `char*` | Diagnostic suffix string — appended to message body when non-NULL | `sub_42F590` (read, format as `" %s"`) |
+| 48 | 1 | `byte` | Info suppression flag — suppresses severity-2 (info) messages | `sub_42F590` (check) |
+| 49 | 1 | `byte` | Diagnostic suppression flag — suppresses severity-3 (warning) messages | `sub_430560` (set) |
+| 50 | 1 | `byte` | Werror promotion flag (`--Werror`) — promotes warnings to errors | `sub_430550` (set) |
+| 51 | 1 | `byte` | Machine-readable annotation flag — adds `@E@`/`@W@`/`@O@`/`@I@` severity tags | `sub_4305A0` (get) |
+| 52 | 1 | `byte` | Multi-line continuation flag — suppresses `". "` prefix on wrapped lines | `sub_4305C0` (set) |
+| 53 | 75 | — | _padding_ (zeroed by `memset`) | — |
 | 128 | 48 | `pthread_cond_t` | Per-thread condition variable | constructor: `pthread_cond_init` |
 | 176 | 40 | `pthread_mutex_t` | Per-thread mutex | constructor: `pthread_mutex_init` |
 | 216 | 32 | `sem_t` | Semaphore for cross-thread signaling | constructor: `sem_init(0, 0)` |
@@ -177,7 +177,7 @@ The full byte-level layout, verified against the constructor (`sub_4280C0`), des
 | 256 | 8 | `void*` | Linked list `prev` pointer (global TLS chain) | constructor (qword[32]) |
 | 264 | 8 | `void*` | Linked list `next` pointer (global TLS chain) | constructor (qword[33]) |
 | 272 | 1 | `byte` | Destroyed flag (prevents double-destroy) | `destr_function` (set to 1) |
-| 273 | 7 | -- | _padding_ (zeroed by `memset`) | -- |
+| 273 | 7 | — | _padding_ (zeroed by `memset`) | — |
 
 The fields fall into seven functional groups:
 
@@ -185,7 +185,7 @@ The fields fall into seven functional groups:
 
 **Error recovery (offsets 8--16).** A `setjmp`/`longjmp` mechanism for non-local error exits. `sub_431ED0` saves the current `jmp_buf*` and error byte flags, installs a fresh `jmp_buf`, then enters the compiler. On a fatal diagnostic, `sub_42F590` stores the error descriptor at offset +16 and calls `longjmp` to the target at offset +8. If no `jmp_buf` is installed, the handler calls `sub_4275E0` (abort).
 
-**Per-thread allocator (offset 24).** The most performance-critical field. The pool allocator `sub_424070` reads this pointer on every allocation (accessed as `sub_4280C0()[3]`). When non-NULL, allocations go to the calling thread's own slab without any locking. `sub_42BDD0` provides an atomic swap primitive that replaces the pool pointer and returns the old value -- used during pool migration at compilation boundaries. This is used pervasively: 3,928 call sites to `sub_4280C0` are predominantly pool allocator calls that need the current thread's arena.
+**Per-thread allocator (offset 24).** The most performance-critical field. The pool allocator `sub_424070` reads this pointer on every allocation (accessed as `sub_4280C0()[3]`). When non-NULL, allocations go to the calling thread's own slab without any locking. `sub_42BDD0` provides an atomic swap primitive that replaces the pool pointer and returns the old value — used during pool migration at compilation boundaries. This is used pervasively: 3,928 call sites to `sub_4280C0` are predominantly pool allocator calls that need the current thread's arena.
 
 **Diagnostic context (offsets 32, 40).** The program name at +32 (e.g. `"ptxas"`) is prepended to all diagnostic messages. The suffix at +40 is appended after the message body. Both are set per-thread to support library mode where multiple tool names coexist in the same process.
 
@@ -284,11 +284,11 @@ ThreadPool *sub_1CB18B0(size_t nmemb) {
 }
 ```
 
-Workers are detached immediately after creation. This means the pool does not use `pthread_join` for cleanup -- instead, it relies on the `cond_done` / `max_threads` countdown protocol in `sub_1CB1970`.
+Workers are detached immediately after creation. This means the pool does not use `pthread_join` for cleanup — instead, it relies on the `cond_done` / `max_threads` countdown protocol in `sub_1CB1970`.
 
 ### Work Queue: Priority Heap
 
-The work queue at pool offset +8 is not a simple linked list -- it is a binary min-heap (priority queue) backed by a dynamically-resized array.
+The work queue at pool offset +8 is not a simple linked list — it is a binary min-heap (priority queue) backed by a dynamically-resized array.
 
 **Heap structure (32 bytes):**
 
@@ -299,7 +299,7 @@ The work queue at pool offset +8 is not a simple linked list -- it is a binary m
 | 16 | 8 | `int64` | Allocated capacity |
 | 24 | 8 | `fn_ptr` | Comparator function |
 
-**Constructor** (`sub_1CBEC10`): Allocates the heap struct from the pool allocator, sets the comparator to `sub_1CB1770` (which always returns 1, making the heap behave as a FIFO -- every parent "beats" every child, so new elements sink to the end).
+**Constructor** (`sub_1CBEC10`): Allocates the heap struct from the pool allocator, sets the comparator to `sub_1CB1770` (which always returns 1, making the heap behave as a FIFO — every parent "beats" every child, so new elements sink to the end).
 
 **Enqueue** (`sub_1CBECC0`): Standard heap push with sift-up. Appends element, then bubbles up through parent comparisons. Auto-grows the backing array (doubles capacity) when full via `sub_424C50` (realloc equivalent).
 
@@ -475,7 +475,7 @@ Each task runs `sub_436DF0`, which performs the per-kernel backend pipeline:
 1. Set thread-local program name via `sub_430590`
 2. Acquire jobserver token (if `--jobserver` active): `sub_1CC6EC0()`
 3. Record start time
-4. `sub_432500` -- run the full DAGgen+OCG pipeline
+4. `sub_432500` — run the full DAGgen+OCG pipeline
 5. Record end time, write to timing array at `a1->timing[112 * cu_index]`
 6. Update peak wall-clock counter (under lock via `sub_607D70` / `sub_607D90`)
 7. Release jobserver token: `sub_1CC7040()`
@@ -583,15 +583,15 @@ void sub_1CC7300(JobserverObject *obj) {
 
 | Protocol | `--jobserver-auth=` value | Detection | fd Setup |
 |---|---|---|---|
-| FIFO | `fifo:/path/to/fifo` | Prefix match on `fifo:` | `open(path, O_RDWR\|O_NONBLOCK)` -- single fd for both read and write |
-| Pipe | `R,W` (e.g. `3,4`) | Comma-separated integers after auth= | `dup()` each fd + `fcntl(F_SETFD, FD_CLOEXEC)` -- prevents fd leak to children |
+| FIFO | `fifo:/path/to/fifo` | Prefix match on `fifo:` | `open(path, O_RDWR\|O_NONBLOCK)` — single fd for both read and write |
+| Pipe | `R,W` (e.g. `3,4`) | Comma-separated integers after auth= | `dup()` each fd + `fcntl(F_SETFD, FD_CLOEXEC)` — prevents fd leak to children |
 
 ### Object Construction: `sub_1CC7AF0`
 
 After `sub_1CC7300` succeeds (state == 0), the constructor continues:
 
-1. Creates an **internal wakeup pipe** via `pipe()` -- fds stored at +196/+200
-2. Spawns the **reader thread** (`sub_1CC6720`) -- passed as a `std::thread` functor via `off_2406838`
+1. Creates an **internal wakeup pipe** via `pipe()` — fds stored at +196/+200
+2. Spawns the **reader thread** (`sub_1CC6720`) — passed as a `std::thread` functor via `off_2406838`
 3. Pre-allocates the **token buffer** vector to hold `thread_count` bytes
 
 If state is 5 or 6 (no MAKEFLAGS, no auth string), the caller (`sub_4428E0`) emits: `"GNU Jobserver support requested, but no compatible jobserver found. Ignoring '--jobserver'"` and proceeds without throttling.
@@ -745,7 +745,7 @@ Called after `sub_1CB1AE0` (wait-all) and `sub_1CB1970` (pool destroy) complete:
 
 1. Set shutdown flag (+205) via `_InterlockedCompareExchange8`
 2. Lock inner mutex, signal condvar (wake reader thread), unlock
-3. Write 1 byte to internal pipe write end (+200) -- unblocks `select()` in reader thread
+3. Write 1 byte to internal pipe write end (+200) — unblocks `select()` in reader thread
 4. Join reader thread
 5. Lock inner mutex, drain all buffered tokens by writing each byte back to write_fd
 6. Unlock inner mutex
@@ -755,7 +755,7 @@ Called after `sub_1CB1AE0` (wait-all) and `sub_1CB1970` (pool destroy) complete:
 
 ### State Machine
 
-All state transitions use `_InterlockedCompareExchange(state, new_value, 0)` -- only the first error sticks; subsequent errors are silently dropped.
+All state transitions use `_InterlockedCompareExchange(state, new_value, 0)` — only the first error sticks; subsequent errors are silently dropped.
 
 | State | Meaning | Set by |
 |---|---|---|
@@ -829,26 +829,26 @@ sub_607D90(6);    // release lock 6
 
 | Address | Size | Callers | Identity |
 |---|---|---|---|
-| `0x4094C0` | 204 B | 0 | `ctor_001` -- TLS key + global mutex init (`.init_array`) |
-| `0x427F10` | 376 B | 0 | `destr_function` -- TLS destructor (via `pthread_key_create`) |
+| `0x4094C0` | 204 B | 0 | `ctor_001` — TLS key + global mutex init (`.init_array`) |
+| `0x427F10` | 376 B | 0 | `destr_function` — TLS destructor (via `pthread_key_create`) |
 | `0x4280C0` | 597 B | 3,928 | TLS context accessor (280-byte struct, lazy alloc) |
-| `0x428600` | 27 B | -- | Mutex destroy + free wrapper |
-| `0x428620` | 62 B | -- | Recursive mutex init factory |
-| `0x428670` | 6 B | -- | `pthread_mutex_destroy` PLT thunk |
-| `0x428680` | 6 B | -- | `pthread_mutex_lock` PLT thunk |
-| `0x428690` | 6 B | -- | `pthread_mutex_unlock` PLT thunk |
-| `0x4286A0` | 163 B | -- | Global mutex lazy-init + lock |
+| `0x428600` | 27 B | — | Mutex destroy + free wrapper |
+| `0x428620` | 62 B | — | Recursive mutex init factory |
+| `0x428670` | 6 B | — | `pthread_mutex_destroy` PLT thunk |
+| `0x428680` | 6 B | — | `pthread_mutex_lock` PLT thunk |
+| `0x428690` | 6 B | — | `pthread_mutex_unlock` PLT thunk |
+| `0x4286A0` | 163 B | — | Global mutex lazy-init + lock |
 | `0x1CB1770` | 8 B | 1 | Priority comparator (always returns 1 = FIFO) |
-| `0x1CB1780` | 202 B | 0 | `start_routine` -- worker thread main loop |
-| `0x1CB1890` | 11 B | -- | CPU count via `sysconf(_SC_NPROCESSORS_CONF)` |
-| `0x1CB18B0` | 159 B | -- | Thread pool constructor (184-byte struct) |
-| `0x1CB1970` | 168 B | -- | Thread pool graceful destroy |
-| `0x1CB1A50` | 90 B | -- | Task submit (24-byte task node, heap push, broadcast) |
-| `0x1CB1AE0` | 109 B | -- | Wait-all (block until pending=0, active=0) |
-| `0x1CBEBF0` | -- | 1 | Heap drain (free all queued elements) |
-| `0x1CBEC10` | -- | 1 | Priority heap constructor (32-byte struct) |
-| `0x1CBECC0` | -- | -- | Priority heap push (sift-up) |
-| `0x1CBEDD0` | -- | -- | Priority heap pop (sift-down) |
+| `0x1CB1780` | 202 B | 0 | `start_routine` — worker thread main loop |
+| `0x1CB1890` | 11 B | — | CPU count via `sysconf(_SC_NPROCESSORS_CONF)` |
+| `0x1CB18B0` | 159 B | — | Thread pool constructor (184-byte struct) |
+| `0x1CB1970` | 168 B | — | Thread pool graceful destroy |
+| `0x1CB1A50` | 90 B | — | Task submit (24-byte task node, heap push, broadcast) |
+| `0x1CB1AE0` | 109 B | — | Wait-all (block until pending=0, active=0) |
+| `0x1CBEBF0` | — | 1 | Heap drain (free all queued elements) |
+| `0x1CBEC10` | — | 1 | Priority heap constructor (32-byte struct) |
+| `0x1CBECC0` | — | — | Priority heap push (sift-up) |
+| `0x1CBEDD0` | — | — | Priority heap pop (sift-down) |
 | `0x1CC6720` | ~700 B | 1 | Jobserver reader thread (`select` loop, pushes tokens to buffer) |
 | `0x1CC6C20` | ~300 B | 1 | Jobserver destroy (drain tokens, close fds, free 296-byte object) |
 | `0x1CC6EC0` | 384 B | 1 | Jobserver token acquire (consume implicit or wait for pipe token) |
@@ -858,8 +858,8 @@ sub_607D90(6);    // release lock 6
 
 ## Cross-References
 
-- [Entry Point & CLI](../pipeline/entry.md) -- `ctor_001` TLS init, `sub_446240` serial vs parallel dispatch
-- [CLI Options](../config/cli-options.md) -- `--split-compile`, `--allow-expensive-optimizations`, `--jobserver`
-- [Memory Pool Allocator](memory-pools.md) -- per-thread arena via TLS offset +24, global pool mutex at +7128
-- [Pipeline Overview](../pipeline/overview.md) -- per-kernel compilation phases run as pool tasks
-- [Code Generation Overview](../pipeline/codegen.md) -- `sub_436DF0` per-kernel worker, timing lock 6
+- [Entry Point & CLI](../pipeline/entry.md) — `ctor_001` TLS init, `sub_446240` serial vs parallel dispatch
+- [CLI Options](../config/cli-options.md) — `--split-compile`, `--allow-expensive-optimizations`, `--jobserver`
+- [Memory Pool Allocator](memory-pools.md) — per-thread arena via TLS offset +24, global pool mutex at +7128
+- [Pipeline Overview](../pipeline/overview.md) — per-kernel compilation phases run as pool tasks
+- [Code Generation Overview](../pipeline/codegen.md) — `sub_436DF0` per-kernel worker, timing lock 6

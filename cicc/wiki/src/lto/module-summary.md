@@ -1,6 +1,6 @@
 # NVModuleSummary Builder
 
-CICC replaces LLVM's `ModuleSummaryAnalysis` with a custom `NVModuleSummary` subsystem that extends the `ModuleSummaryIndex` with GPU-specific information. The builder at `sub_D7D4E0` (74 KB, 2571 decompiled lines) walks every global value in a module, constructs per-function summaries with CUDA-aware call graph edges, assigns four-level import priorities using a custom priority table, tracks function complexity on a profile-guided budget, and records CUDA-specific attributes such as address-space linkage, kernel-vs-device classification, and device memory reference patterns. The summary is the data source for all downstream ThinLTO decisions -- the [ThinLTO importer](./thinlto-import.md) reads these summaries to decide which functions to pull across module boundaries, and the [inliner cost model](./inliner-cost.md) consumes the complexity budget to calibrate cross-module inline thresholds.
+CICC replaces LLVM's `ModuleSummaryAnalysis` with a custom `NVModuleSummary` subsystem that extends the `ModuleSummaryIndex` with GPU-specific information. The builder at `sub_D7D4E0` (74 KB, 2571 decompiled lines) walks every global value in a module, constructs per-function summaries with CUDA-aware call graph edges, assigns four-level import priorities using a custom priority table, tracks function complexity on a profile-guided budget, and records CUDA-specific attributes such as address-space linkage, kernel-vs-device classification, and device memory reference patterns. The summary is the data source for all downstream ThinLTO decisions — the [ThinLTO importer](./thinlto-import.md) reads these summaries to decide which functions to pull across module boundaries, and the [inliner cost model](./inliner-cost.md) consumes the complexity budget to calibrate cross-module inline thresholds.
 
 Upstream LLVM's `computeFunctionSummary` (in `ModuleSummaryAnalysis.cpp`) counts instructions, builds call graph edges from `CallBase` operands, collects reference edges by walking instruction operands, and records type test / devirtualization metadata. It produces a `FunctionSummary` with a flat instruction count and a call edge list annotated with `CalleeInfo::HotnessType` (Unknown/Cold/None/Hot). NVIDIA's replacement does all of this, then adds: a 4-level import priority classification per function, a 28-bit profile-scaled complexity budget, CUDA address-space tracking (filtering out device-memory-only declarations from import candidacy), kernel identification via first-instruction opcode probing, six separate CUDA-specific accumulator structures for device call context, and a two-phase declaration re-walk that merges forward-declared and defined symbol tables for ThinLTO.
 
@@ -26,7 +26,7 @@ Upstream LLVM's `FunctionSummary` stores instruction count, call edges with hotn
 | Address-taken flag | `*entry & 0x8` | 1 bit | Set if `sub_B49220(GV)` returns true (function has its address taken) |
 | Complexity budget | `*entry >> 4` | 28 bits | Profile-scaled importance, max 0xFFFFFFF (268,435,455) |
 | Kernel bit | `flags & (1 << 9)` | 1 bit | Set if first instruction opcode is 36 (kernel entry point) |
-| Has-unwind-info | `flags & (1 << 0)` | 1 bit | `sub_B2DCC0(func)` -- has personality function |
+| Has-unwind-info | `flags & (1 << 0)` | 1 bit | `sub_B2DCC0(func)` — has personality function |
 | Not-inline | `flags & (1 << 1)` | 1 bit | Function marked noinline |
 | Read-none | `flags & (1 << 2)` | 1 bit | Attribute #34 readnone |
 | No-unwind | `flags & (1 << 3)` | 1 bit | Attribute #22 nounwind |
@@ -117,7 +117,7 @@ The 28-bit budget is consumed downstream by ThinLTO to decide how much inlining 
 
 Call graph edge records are 136 bytes each (stride 136 in the edge vector) and contain source name, target name, and edge attributes. Type-metadata edges are 72 bytes each.
 
-**4. CUDA address-space filtering.** When the CUDA-mode flag (`a6`) is set and a declaration has address space 25 in its type chain, the function sets the device-reference flag (`v327`). Functions whose type resolves to address space 25 are excluded from import candidacy -- device-memory-only declarations cannot be cross-module imported in ThinLTO. The check:
+**4. CUDA address-space filtering.** When the CUDA-mode flag (`a6`) is set and a declaration has address space 25 in its type chain, the function sets the device-reference flag (`v327`). Functions whose type resolves to address space 25 are excluded from import candidacy — device-memory-only declarations cannot be cross-module imported in ThinLTO. The check:
 
 ```c
 if (cuda_mode && is_declaration(func)) {
@@ -142,7 +142,7 @@ Address space 25 appears to be an internal NVVM encoding for device-side linkage
 | `v436` | +4 | Kernel launch edges |
 | `a5` | +5 | Additional context (passed from caller) |
 
-These six vectors capture the GPU-specific dependency information that upstream LLVM's summary has no concept of. The ThinLTO importer uses this to make GPU-aware import decisions -- for example, a function that references shared memory in another module must also import the shared memory declaration.
+These six vectors capture the GPU-specific dependency information that upstream LLVM's summary has no concept of. The ThinLTO importer uses this to make GPU-aware import decisions — for example, a function that references shared memory in another module must also import the shared memory declaration.
 
 ### Phase 2: ThinLTO Declaration Re-Walk (lines 1673--1911)
 
@@ -152,7 +152,7 @@ When `thinlto_mode` (parameter `a8`) is true, the builder performs a second pass
 
 **Step 2.** Re-walk global variable declarations through a separate dedup mechanism using `sub_C8CA60` for hash-based deduplication.
 
-**Step 3.** Merge the secondary (forward-declared) and primary (defined) hash tables. On collision -- the same symbol appears as both declared and defined -- `sub_D76140` removes the entry from the defined table and `sub_D7AF10` re-inserts into the merged table with updated visibility. This merge ensures that the summary captures cross-module edges even for symbols that are only forward-declared in the current module.
+**Step 3.** Merge the secondary (forward-declared) and primary (defined) hash tables. On collision — the same symbol appears as both declared and defined — `sub_D76140` removes the entry from the defined table and `sub_D7AF10` re-inserts into the merged table with updated visibility. This merge ensures that the summary captures cross-module edges even for symbols that are only forward-declared in the current module.
 
 The two-phase design is necessary because CUDA compilation units frequently contain forward declarations of device functions defined in other translation units. Without this re-walk, the summary would miss the cross-module edges for these declarations, and ThinLTO would fail to import them.
 
@@ -182,7 +182,7 @@ v143 = has_unwind_info               // bit 0
      | (is_kernel << 9);             // bit 9
 ```
 
-The kernel detection walks to the function's first instruction via offset 24, verifies the opcode is in range 30--40 (basic block terminators), and checks specifically for opcode 36, which encodes a kernel entry point. This is how the summary distinguishes `__global__` kernel functions from `__device__` helper functions without relying on metadata -- it inspects the compiled IR structure directly.
+The kernel detection walks to the function's first instruction via offset 24, verifies the opcode is in range 30--40 (basic block terminators), and checks specifically for opcode 36, which encodes a kernel entry point. This is how the summary distinguishes `__global__` kernel functions from `__device__` helper functions without relying on metadata — it inspects the compiled IR structure directly.
 
 **Summary record packing.** All collected data is packed into the final `FunctionSummary` via `sub_D77220`, which takes 14 arguments:
 
@@ -215,7 +215,7 @@ The summary is serialized into bitcode by `sub_1535340` (writeModuleSummary, 26 
 
 On the reading side, `sub_150B5F0` (parseModuleSummaryIndex, 63 KB) and `sub_9EBD80` (parseGlobalSummaryBlock, 82 KB) deserialize the summary from bitcode back into the in-memory `ModuleSummaryIndex`. These parsers handle GUID hashes, function/alias/global summaries, and module paths.
 
-The bitcode writer at `sub_1538EC0` writes the producer string as `"LLVM7.0.1"` despite CICC being built on LLVM 20.0.0 internally -- this is the NVVM IR compatibility layer. The summary blocks are embedded in this bitcode stream alongside the IR, so the NVVM container format (see [NVVM Container](../structs/nvvm-container.md)) carries both the IR and its summary in a single bitcode file.
+The bitcode writer at `sub_1538EC0` writes the producer string as `"LLVM7.0.1"` despite CICC being built on LLVM 20.0.0 internally — this is the NVVM IR compatibility layer. The summary blocks are embedded in this bitcode stream alongside the IR, so the NVVM container format (see [NVVM Container](../structs/nvvm-container.md)) carries both the IR and its summary in a single bitcode file.
 
 ## Import Priority System
 
@@ -292,60 +292,60 @@ The most architecturally significant difference is the priority system. Upstream
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `NVModuleSummary::buildModuleSummary()` -- main builder | `0xD7D4E0` | 74 KB | -- |
-| `NVModuleSummary::runOnModule()` -- LTO driver | `0xD81040` | 56 KB | -- |
-| `NVModuleSummary::analyzeFunction()` | `0xD741C0` | 19 KB | -- |
-| `NVModuleSummary::processGlobalRef()` | `0xD6FF50` | 47 KB | -- |
-| `NVModuleSummary::collectGlobalInfo()` | `0xD6A180` | 21 KB | -- |
-| `NVModuleSummary::analyzeCallGraph()` | `0xD6EA70` | 19 KB | -- |
-| `NVModuleSummary::visitInstruction()` | `0xD7B190` | 9 KB | -- |
-| Alias processing helper | `0xD738B0` | 11 KB | -- |
-| `NVModuleSummary::computeImportCost()` | `0xD72D40` | 9 KB | -- |
-| `NVModuleSummary::resolveReferences()` | `0xD64DE0` | 16 KB | -- |
-| `NVModuleSummary::getTypeMetadata()` | `0xD669C0` | 11 KB | -- |
-| `NVModuleSummary::processTypeId()` | `0xD640E0` | 12 KB | -- |
-| `NVModuleSummary::computeVisibility()` | `0xD63080` | 11 KB | -- |
-| Summary serialization helper (recursive) | `0xD60CE0` | 15 KB | -- |
-| Summary serialization helper | `0xD61E90` | 10 KB | -- |
-| `NVModuleSummary::packFunctionSummary()` -- 14-arg final packer | `0xD77220` | -- | -- |
-| `NVModuleSummary::addInlineSummary()` -- CUDA context collector | `0xD7CF70` | -- | -- |
-| `NVModuleSummary::addEdge()` | `0xD76530` | -- | -- |
-| `NVModuleSummary::addRef()` | `0xD768F0` | -- | -- |
-| `NVModuleSummary::addSpecialGlobal()` (llvm.used etc.) | `0xD76CA0` | -- | -- |
-| `NVModuleSummary::addTypeRef()` | `0xD76D40` | -- | -- |
-| `NVModuleSummary::computeNextPrime()` -- hash table sizing | `0xD76FC0` | -- | -- |
-| `NVModuleSummary::getModuleHash()` | `0xD771D0` | -- | -- |
-| `NVModuleSummary::destroyEdgeList()` | `0xD77880` | -- | -- |
-| `NVModuleSummary::destroyRefList()` | `0xD786F0` | -- | -- |
-| `NVModuleSummary::compareImportPriority()` | `0xD788E0` | -- | -- |
-| `NVModuleSummary::computeSymbolHash()` | `0xD789D0` | -- | -- |
-| `NVModuleSummary::resizeTable()` | `0xD78B00` | -- | -- |
-| `NVModuleSummary::normalizeImportPriority()` | `0xD78C90` | -- | -- |
-| `NVModuleSummary::addCallEdge()` | `0xD793D0` | -- | -- |
-| Rehash/resize (next power-of-2, min 64) | `0xD79200` | -- | -- |
-| `NVModuleSummary::copyTable()` | `0xD7A410` | -- | -- |
-| `NVModuleSummary::mergeSymbols()` | `0xD7A690` | -- | -- |
-| `NVModuleSummary::computeFinalOrder()` | `0xD7AC80` | -- | -- |
-| `NVModuleSummary::getOrInsertSummary()` | `0xD7BAA0` | -- | -- |
-| `NVModuleSummary::visitGlobalValue()` | `0xD7BD50` | -- | -- |
-| `NVModuleSummary::getImportKind()` | `0xD84370` | -- | -- |
-| `NVModuleSummary::isImported()` | `0xD84440` | -- | -- |
-| `NVModuleSummary::isImportCandidate()` | `0xD84450` | -- | -- |
-| `NVModuleSummary::processInliningDecisions()` | `0xD8B020` | 21 KB | -- |
-| `NVModuleSummary::computeInlineBenefit()` | `0xD8C2B0` | 8 KB | -- |
-| `NVModuleSummary::buildCalleeList()` | `0xD8D9B0` | 9 KB | -- |
-| `NVModuleSummary::cloneModuleSummary()` | `0xD8E7E0` | 32 KB | -- |
-| GUID lookup/creation (namespace-aware) | `0x9CA390` | -- | -- |
-| Get attribute group by kind from GlobalValue | `0xB91C10` | -- | -- |
-| `ProfileSummaryInfo::getProfileCount()` | `0xFDD860` | -- | -- |
-| `ProfileSummaryInfo::getHotThreshold()` | `0xFDC4B0` | -- | -- |
-| `writeModuleSummary()` -- bitcode serializer | `0x1535340` | 26 KB | -- |
-| `parseModuleSummaryIndex()` -- bitcode deserializer | `0x150B5F0` | 63 KB | -- |
+| `NVModuleSummary::buildModuleSummary()` — main builder | `0xD7D4E0` | 74 KB | — |
+| `NVModuleSummary::runOnModule()` — LTO driver | `0xD81040` | 56 KB | — |
+| `NVModuleSummary::analyzeFunction()` | `0xD741C0` | 19 KB | — |
+| `NVModuleSummary::processGlobalRef()` | `0xD6FF50` | 47 KB | — |
+| `NVModuleSummary::collectGlobalInfo()` | `0xD6A180` | 21 KB | — |
+| `NVModuleSummary::analyzeCallGraph()` | `0xD6EA70` | 19 KB | — |
+| `NVModuleSummary::visitInstruction()` | `0xD7B190` | 9 KB | — |
+| Alias processing helper | `0xD738B0` | 11 KB | — |
+| `NVModuleSummary::computeImportCost()` | `0xD72D40` | 9 KB | — |
+| `NVModuleSummary::resolveReferences()` | `0xD64DE0` | 16 KB | — |
+| `NVModuleSummary::getTypeMetadata()` | `0xD669C0` | 11 KB | — |
+| `NVModuleSummary::processTypeId()` | `0xD640E0` | 12 KB | — |
+| `NVModuleSummary::computeVisibility()` | `0xD63080` | 11 KB | — |
+| Summary serialization helper (recursive) | `0xD60CE0` | 15 KB | — |
+| Summary serialization helper | `0xD61E90` | 10 KB | — |
+| `NVModuleSummary::packFunctionSummary()` — 14-arg final packer | `0xD77220` | — | — |
+| `NVModuleSummary::addInlineSummary()` — CUDA context collector | `0xD7CF70` | — | — |
+| `NVModuleSummary::addEdge()` | `0xD76530` | — | — |
+| `NVModuleSummary::addRef()` | `0xD768F0` | — | — |
+| `NVModuleSummary::addSpecialGlobal()` (llvm.used etc.) | `0xD76CA0` | — | — |
+| `NVModuleSummary::addTypeRef()` | `0xD76D40` | — | — |
+| `NVModuleSummary::computeNextPrime()` — hash table sizing | `0xD76FC0` | — | — |
+| `NVModuleSummary::getModuleHash()` | `0xD771D0` | — | — |
+| `NVModuleSummary::destroyEdgeList()` | `0xD77880` | — | — |
+| `NVModuleSummary::destroyRefList()` | `0xD786F0` | — | — |
+| `NVModuleSummary::compareImportPriority()` | `0xD788E0` | — | — |
+| `NVModuleSummary::computeSymbolHash()` | `0xD789D0` | — | — |
+| `NVModuleSummary::resizeTable()` | `0xD78B00` | — | — |
+| `NVModuleSummary::normalizeImportPriority()` | `0xD78C90` | — | — |
+| `NVModuleSummary::addCallEdge()` | `0xD793D0` | — | — |
+| Rehash/resize (next power-of-2, min 64) | `0xD79200` | — | — |
+| `NVModuleSummary::copyTable()` | `0xD7A410` | — | — |
+| `NVModuleSummary::mergeSymbols()` | `0xD7A690` | — | — |
+| `NVModuleSummary::computeFinalOrder()` | `0xD7AC80` | — | — |
+| `NVModuleSummary::getOrInsertSummary()` | `0xD7BAA0` | — | — |
+| `NVModuleSummary::visitGlobalValue()` | `0xD7BD50` | — | — |
+| `NVModuleSummary::getImportKind()` | `0xD84370` | — | — |
+| `NVModuleSummary::isImported()` | `0xD84440` | — | — |
+| `NVModuleSummary::isImportCandidate()` | `0xD84450` | — | — |
+| `NVModuleSummary::processInliningDecisions()` | `0xD8B020` | 21 KB | — |
+| `NVModuleSummary::computeInlineBenefit()` | `0xD8C2B0` | 8 KB | — |
+| `NVModuleSummary::buildCalleeList()` | `0xD8D9B0` | 9 KB | — |
+| `NVModuleSummary::cloneModuleSummary()` | `0xD8E7E0` | 32 KB | — |
+| GUID lookup/creation (namespace-aware) | `0x9CA390` | — | — |
+| Get attribute group by kind from GlobalValue | `0xB91C10` | — | — |
+| `ProfileSummaryInfo::getProfileCount()` | `0xFDD860` | — | — |
+| `ProfileSummaryInfo::getHotThreshold()` | `0xFDC4B0` | — | — |
+| `writeModuleSummary()` — bitcode serializer | `0x1535340` | 26 KB | — |
+| `parseModuleSummaryIndex()` — bitcode deserializer | `0x150B5F0` | 63 KB | — |
 
 ## Cross-References
 
-- [Inliner Cost Model](./inliner-cost.md) -- consumes complexity budget for cross-module inline decisions
-- [ThinLTO Function Import](./thinlto-import.md) -- reads summaries, applies threshold multipliers per priority level
-- [NVVM Container Format](../structs/nvvm-container.md) -- the bitcode container that carries serialized summaries
-- [GlobalOpt](./globalopt.md) -- uses summary visibility information for global optimization
-- [WholeProgramDevirtualization](./devirtualization.md) -- consumes type test GUIDs from the summary
+- [Inliner Cost Model](./inliner-cost.md) — consumes complexity budget for cross-module inline decisions
+- [ThinLTO Function Import](./thinlto-import.md) — reads summaries, applies threshold multipliers per priority level
+- [NVVM Container Format](../structs/nvvm-container.md) — the bitcode container that carries serialized summaries
+- [GlobalOpt](./globalopt.md) — uses summary visibility information for global optimization
+- [WholeProgramDevirtualization](./devirtualization.md) — consumes type test GUIDs from the summary

@@ -16,7 +16,7 @@ The remainder of this page documents what the function actually does, why it exi
 | | |
 |---|---|
 | **Symbol** | `sub_A97600` |
-| **Address range** | `0xA97600` -- `0xA99464` (7,780 bytes) |
+| **Address range** | `0xA97600` — `0xA99464` (7,780 bytes) |
 | **Basic blocks** | 425 |
 | **Callees** | 18 distinct functions, 52 call edges (`sub_7E36C0`, `sub_7E3640`, `sub_7E3790`, `sub_7E3800`, `sub_7E40E0`, `sub_7E3EF0`, `sub_693CA0`, `sub_80B620`, `sub_8963B0`, `sub_91E610`, `sub_A97540`, ...) |
 | **Direct callers** | 0 |
@@ -167,7 +167,7 @@ The two designs are functionally equivalent on the opcodes both support. The swi
 
 ## Position relative to PostSchedule (phase 110)
 
-[Phase 110 -- PostSchedule](./post-schedule.md) is a 51-byte dispatcher that indirects through `(target->subtarget)->vtable[+0x90]`. The body's only purpose is to call into the sub-target's `postSchedule` virtual. That `+0x90` slot, **not** the `+0x5F0` slot on which `sub_A97600` lives, is the post-RA scheduling hook. The two slots are unrelated:
+[Phase 110 — PostSchedule](./post-schedule.md) is a 51-byte dispatcher that indirects through `(target->subtarget)->vtable[+0x90]`. The body's only purpose is to call into the sub-target's `postSchedule` virtual. That `+0x90` slot, **not** the `+0x5F0` slot on which `sub_A97600` lives, is the post-RA scheduling hook. The two slots are unrelated:
 
 * `+0x90` (slot 18 on the **sub-target** vtable): post-RA scheduling driver. Installs `nullsub_45` on the legacy six targets (PostSchedule no-op), or `sub_1908D90` (Backend C) on sm_80+.
 * `+0x5F0` (slot 190 on the **primary target** vtable): per-operand source-slot-count query. Installs `sub_A97600` on the legacy six targets, or per-opcode-table-driven equivalents on sm_80+.
@@ -185,15 +185,15 @@ Every caller of `(target_vtable + 1520)` is a function whose body needs to know,
 
 All four clients treat the return value as load-bearing for correctness, not just performance: an operand wrongly classified as a register source would induce false RAW edges and serialise the schedule; an operand wrongly classified as non-register would let the scheduler issue back-to-back read-port-conflicting instructions, producing a wall-clock stall the encoder cannot express in the control word. The function is therefore in the small set of legacy-target methods that ptxas refuses to no-op even when other parts of the target stack are disabled.
 
-## QUIRK -- 7.8 KB of code, zero direct callers
+## QUIRK — 7.8 KB of code, zero direct callers
 
 `sub_A97600` is **only** reachable through `(target->vtable + 1520)`. The IDA xref database returns no incoming direct calls — every entry is the function's own intra-body branches. This is normal for a virtual method, but the size makes the function feel like it should have direct entry points. It does not. A reimplementer hunting for callers must walk *every* user of `(target_vtable + 1520)`: at least 18 functions in the decompiled corpus call through this slot (sub_7E4150, sub_7E8200, sub_7EAD70, sub_7F5D50, sub_806F80, sub_887F00, sub_92EF10, sub_93A030, sub_93A0D0, sub_93BA60, sub_9511E0, sub_967000, sub_967860, sub_973550, sub_A90D60, sub_A94B80, sub_122AD60, ...). Searching for the symbol name yields nothing. Searching for the literal `0xA97600` in the rodata yields only the six vtable installs.
 
-## QUIRK -- the case-`0x32` xmmword scratch buffer
+## QUIRK — the case-`0x32` xmmword scratch buffer
 
 Inside `case 0x32u` (the tex-sampler operand-class case) the body materialises three xmmword-sized constants from `.rodata:xmmword_21B2EC0` plus three immediate `_QWORD` literals (`433471489971520000LL`, `0xE0A0804000B07LL`, magic `336595972`) into an 80-byte stack scratch buffer `v229[80]`. The constants encode the operand-slot windows for the four sampler-coordinate combinations indexed by `(opcode32 >> 2) & 3`. The scratch buffer is **written three times** during the case (the constants are re-materialised before each lookup). This is a Hex-Rays artefact: the underlying assembly issues a single `movdqa` plus three `mov [rsp+...]`s and reuses the buffer; the decompiler renders each access as a fresh store because the buffer is unfreed in between. A reimplementer should not infer that the constants change between accesses — they do not. The pattern is "fetch 16-byte coordinate-class table into stack, index by sampler-mode, return slot-window width".
 
-## QUIRK -- vtable+1024 / vtable+1056 / vtable+1288 / vtable+1480 self-callbacks
+## QUIRK — vtable+1024 / vtable+1056 / vtable+1288 / vtable+1480 self-callbacks
 
 The `default:` arm of the switch (lines 1180--1364 of the decompilation) calls back into the **same target's** other vtable slots — vtable+1024, +1056, +1288, +1480 — to ask sub-queries like "does this target support 64-bit address mode?" and "does this target classify opcode 6 as a memory access?". The reason is that the `default` arm has to handle every opcode the seven explicit cases do not, and the precise answer depends on per-target capabilities. Rather than encoding all of those capabilities in a per-target operand-class table, the legacy implementation re-uses the target's other introspection hooks. The cost is that an unfamiliar reader watching a debugger step through the `default` arm sees the same target's `this` pointer bouncing through four different vtable slots before producing a final answer. This is the third-party indirection load that the modern table-driven replacement eliminated.
 
@@ -201,17 +201,17 @@ The `default:` arm of the switch (lines 1180--1364 of the decompilation) calls b
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_A97600` | 7,780 B | `LegacyTarget::getOperandSrcSlotCount(this, instr, operand_idx)` -- vtable slot +0x5F0 on six legacy SM-target classes | HIGH |
-| `sub_A97540` | 180 B | `LegacyTarget::isOperandInBaseWindow(this, operand_idx)` -- helper used only by `sub_A97600`'s case `0x4D` arm | HIGH |
-| `sub_A90D60` | 1,120 B | `LegacyTarget::isOperandEligibleAsPredecessor(this, instr, operand_idx, flag)` -- sibling at vtable slot +0x5E8 (slot 189) on the same six vtables | HIGH |
+| `sub_A97600` | 7,780 B | `LegacyTarget::getOperandSrcSlotCount(this, instr, operand_idx)` — vtable slot +0x5F0 on six legacy SM-target classes | HIGH |
+| `sub_A97540` | 180 B | `LegacyTarget::isOperandInBaseWindow(this, operand_idx)` — helper used only by `sub_A97600`'s case `0x4D` arm | HIGH |
+| `sub_A90D60` | 1,120 B | `LegacyTarget::isOperandEligibleAsPredecessor(this, instr, operand_idx, flag)` — sibling at vtable slot +0x5E8 (slot 189) on the same six vtables | HIGH |
 | `sub_7E36C0` / `sub_7E3640` / `sub_7E3790` / `sub_7E3800` / `sub_7E40E0` | 76--204 B | Per-operand-class range helpers (operand-window start/end resolvers) | HIGH |
-| `sub_91E610` | 399 B | `getOperandTypeCode(instr, operand_idx)` -- shared helper used by 100+ functions | HIGH |
+| `sub_91E610` | 399 B | `getOperandTypeCode(instr, operand_idx)` — shared helper used by 100+ functions | HIGH |
 | `nullsub_45` (`0x680190`) | 2 B | The post-RA-no-op sentinel — **unrelated** to `sub_A97600`, lives on the sub-target vtable +0x90, not the primary target vtable +0x5F0 | CERTAIN |
 
 ## Cross-References
 
-* [Scheduling Algorithm](./algorithm.md) -- the Backend A / B / C taxonomy. `sub_A97600` is not a scheduler; the scheduler queries it.
-* [Phase 110 -- PostSchedule](./post-schedule.md) -- supersedes the misclassification of `sub_A97600` in that page's function map.
-* [Latency Model](./latency-model.md) -- the per-operand latency model that multiplies `sub_A97600`'s return value into per-source register-port costs.
-* [SASS Encoding Function-Pointer Dispatch Tables](../codegen/encoding-tables.md#per-sm-tier-encoder-index-tables--0x22a5aa0-family) -- the modern (sm_80+) table-driven replacement.
-* [Pipeline Phase Table](../passes/index.md) -- shows the full 159-phase pipeline that this query is consulted from.
+* [Scheduling Algorithm](./algorithm.md) — the Backend A / B / C taxonomy. `sub_A97600` is not a scheduler; the scheduler queries it.
+* [Phase 110 — PostSchedule](./post-schedule.md) — supersedes the misclassification of `sub_A97600` in that page's function map.
+* [Latency Model](./latency-model.md) — the per-operand latency model that multiplies `sub_A97600`'s return value into per-source register-port costs.
+* [SASS Encoding Function-Pointer Dispatch Tables](../codegen/encoding-tables.md#per-sm-tier-encoder-index-tables--0x22a5aa0-family) — the modern (sm_80+) table-driven replacement.
+* [Pipeline Phase Table](../passes/index.md) — shows the full 159-phase pipeline that this query is consulted from.

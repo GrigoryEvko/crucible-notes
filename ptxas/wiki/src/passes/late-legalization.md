@@ -28,7 +28,7 @@ The six passes form a progressive legalization strategy:
 | 45 | `MidExpansion` | After early/mid optimization (stage 3) | Target-dependent expansion after loop unrolling, strength reduction, and GVN have run |
 | 55 | `LateExpansion` | After high-level optimizations (stage 4) | Expansion of ops that optimization passes should see in unexpanded form |
 | 78 | `LateExpansionUnsupportedOps` | After all optimization (stage 5) | Catches remaining unsupported ops after predication, rematerialization, and uniform conversion |
-| 93 | `LateExpansionUnsupportedOps2` | After GMMA/attr passes (stage 5) | Second catch -- handles ops exposed by GMMA propagation, GMMA fixup, and register attribute setting |
+| 93 | `LateExpansionUnsupportedOps2` | After GMMA/attr passes (stage 5) | Second catch — handles ops exposed by GMMA propagation, GMMA fixup, and register attribute setting |
 | 137 | `LateExpansionUnsupportedOpsMid` | After late merge (binary index 93) | Final catch after `LateMergeEquivalentConditionalFlow` (binary 91) and before `ExpandJmxComputation` (binary 94); executes after both conditional flow merge passes, not between them |
 
 ## Architecture Backend Dispatch
@@ -39,8 +39,8 @@ None of the six passes contain legalization logic directly. Each is a thin dispa
 
 | Context Offset | Used By | Role |
 |---|---|---|
-| `context+0x640` | ConvertUnsupportedOps, LateExpansion | Outer backend -- wraps an inner object at `+0x10`, provides two-level dispatch |
-| `context+0x630` | MidExpansion, LateExpansionUnsupportedOps, LateExpansionUnsupportedOps2, LateExpansionUnsupportedOpsMid, SetAfterLegalization | SM backend -- single-level dispatch through vtable |
+| `context+0x640` | ConvertUnsupportedOps, LateExpansion | Outer backend — wraps an inner object at `+0x10`, provides two-level dispatch |
+| `context+0x630` | MidExpansion, LateExpansionUnsupportedOps, LateExpansionUnsupportedOps2, LateExpansionUnsupportedOpsMid, SetAfterLegalization | SM backend — single-level dispatch through vtable |
 
 The two-level dispatch through `context+0x640` allows the outer backend to override the entire legalization strategy (by replacing vtable slot 0), while the inner object provides the SM-specific implementation when the outer backend delegates. This separation exists because ConvertUnsupportedOps and LateExpansion may need to coordinate with higher-level compilation modes (e.g., library compilation, OptiX IR) that wrap the SM backend.
 
@@ -60,14 +60,14 @@ The outer backend at `context+0x640` dispatches:
 
 | Vtable Offset | Decimal | Called By |
 |---|---|---|
-| `+0x00` | 0 | ConvertUnsupportedOps (type check -- compared against `sub_661280`) |
+| `+0x00` | 0 | ConvertUnsupportedOps (type check — compared against `sub_661280`) |
 | `+0x78` | 120 | ConvertUnsupportedOps (delegated to inner object) |
-| `+0x58` | 88 | LateExpansion (type check -- compared against `sub_6612E0`) |
+| `+0x58` | 88 | LateExpansion (type check — compared against `sub_6612E0`) |
 | inner `+0xE0` | 224 | LateExpansion (delegated to inner object) |
 
 ## Pass Details
 
-### Phase 5 -- ConvertUnsupportedOps
+### Phase 5 — ConvertUnsupportedOps
 
 ```text
 Factory index:  5
@@ -79,7 +79,7 @@ Knob gate:      499 (checked via sub_7DDB50)
 Pipeline:       Bracketed by AdvancedPhaseBeforeConvUnSup (4) and AdvancedPhaseAfterConvUnSup (7)
 ```
 
-This is the earliest legalization pass, running at phase 5 before any optimization. It converts operations that are clearly illegal on the target SM into equivalent sequences. The pass always runs (isNoOp = false) and is unconditional -- every compilation executes it.
+This is the earliest legalization pass, running at phase 5 before any optimization. It converts operations that are clearly illegal on the target SM into equivalent sequences. The pass always runs (isNoOp = false) and is unconditional — every compilation executes it.
 
 **Two-level dispatch mechanism.** The execute function (`sub_C60A20`, 40 bytes) implements a two-level dispatch through the outer backend at `context+0x640`:
 
@@ -103,11 +103,11 @@ The outer backend at `ctx+0x640` wraps the SM backend at `ctx+0x630`. In the def
 | `sub_662220` | `off_21C0C68` | sm_89 (Ada) | 1992B |
 | `sub_662220` | `off_21D6860` | sm_90+ (Hopper/Blackwell) | 1992B |
 
-**Library-mode and OptiX-mode overrides.** When ptxas operates as a library (invoked via the `nvptxcompiler` API) or compiles OptiX IR (controlled by the `"cpf_optx"` option), the compilation context constructor replaces the outer backend's vtable slot 0 with a custom handler. This intercepts ConvertUnsupportedOps before it reaches the SM backend, allowing the host tool to suppress certain legalizations (e.g., keeping operations in a form the host runtime can handle) or inject additional ones (e.g., OptiX-specific address space lowering). When the override is installed, the comparison against `sub_661280` fails and the override is called directly -- the inner SM backend vtable at `+0x78` is never reached unless the override explicitly delegates to it.
+**Library-mode and OptiX-mode overrides.** When ptxas operates as a library (invoked via the `nvptxcompiler` API) or compiles OptiX IR (controlled by the `"cpf_optx"` option), the compilation context constructor replaces the outer backend's vtable slot 0 with a custom handler. This intercepts ConvertUnsupportedOps before it reaches the SM backend, allowing the host tool to suppress certain legalizations (e.g., keeping operations in a form the host runtime can handle) or inject additional ones (e.g., OptiX-specific address space lowering). When the override is installed, the comparison against `sub_661280` fails and the override is called directly — the inner SM backend vtable at `+0x78` is never reached unless the override explicitly delegates to it.
 
 **Flag effect.** After execution, the secondary vtable method at offset `[40]` (`sub_C5F5D0`) sets bit 0 of `context+1378`, signaling to downstream passes that early legalization has completed. Passes like `OriCreateMacroInsts` (phase 8) check this flag to know whether certain patterns have already been lowered.
 
-**What gets legalized early.** Operations that cannot survive optimization in their original form. The legality decision is driven by a 60,416-entry lookup table at VA `0x22FEE00` (241,664 bytes). Each entry pair encodes `(op_key, action)` where `op_key` packs the Ori opcode and type/modifier bits into a 16-bit value, and `action` is either a function pointer to the expansion handler (values in the `0x118xxxx` range) or the flag `0x08000000` meaning "unconditionally illegal, requires special validation." Of the 60,416 entries, 19,086 (31.6%) are nonzero -- the rest represent operations that are legal on all targets without conversion. Concrete categories:
+**What gets legalized early.** Operations that cannot survive optimization in their original form. The legality decision is driven by a 60,416-entry lookup table at VA `0x22FEE00` (241,664 bytes). Each entry pair encodes `(op_key, action)` where `op_key` packs the Ori opcode and type/modifier bits into a 16-bit value, and `action` is either a function pointer to the expansion handler (values in the `0x118xxxx` range) or the flag `0x08000000` meaning "unconditionally illegal, requires special validation." Of the 60,416 entries, 19,086 (31.6%) are nonzero — the rest represent operations that are legal on all targets without conversion. Concrete categories:
 
 - **Integer division/remainder** (`div.s64`, `rem.u64`, `div.s16`, `rem.u16`): no single-instruction SASS encoding on any SM. Always expanded via `__cuda_sm20_div_*` / `__cuda_sm20_rem_*` library functions.
 - **FP64 atomics** (`atom.add.f64`): native hardware only on sm_60+; expanded on sm_50.
@@ -117,7 +117,7 @@ The outer backend at `ctx+0x640` wraps the SM backend at `ctx+0x630`. In the def
 - **Pre-Volta barrier ops**: `barrier.arrive`, `barrier.red.*` with explicit barrier ID and thread count require emulation via the 393 `__cuda_sm70_barrier_*` library functions on sm_50/sm_60.
 - **TCGen05 guardrails** (sm_100+): bounds check, alignment, and allocation granularity traps inserted as `__cuda_sm10x_tcgen05_guardrail_trap_*` calls.
 
-### Phase 45 -- MidExpansion
+### Phase 45 — MidExpansion
 
 ```text
 Factory index:  51
@@ -141,11 +141,11 @@ jmp     vtable[0xB0]                 // tail call offset +0xB0 (176)
 
 There is no default-check-and-unwrap pattern here. The SM backend provides the handler directly, and no override mechanism exists for library or OptiX mode. The implementation varies by SM generation, because each SM backend constructor installs a different vtable (see the SM Backend table under Phase 5 above), and each vtable has a different function pointer at offset `+0xB0`. On older architectures (sm_50/sm_60) the handler at `+0xB0` is typically a no-op or near-trivial, since most operations needing mid-pipeline expansion did not exist pre-Volta. The slot becomes substantive on sm_70+ where barrier-adjacent operations, cache-policy creation (`__cuda_sm80_*` library functions on sm_80+), and async copy lowering require mid-pipeline treatment.
 
-**Why this pipeline position.** MidExpansion must follow ExpandMbarrier (phase 42) because barrier pseudo-instructions must be lowered before any further legalization touches the same basic blocks. It must precede GvnCse (phase 49) and OriReassociateAndCommon (phase 50) because the expanded sequences benefit from value numbering and reassociation -- expanding earlier would expose these sequences to fewer optimization passes.
+**Why this pipeline position.** MidExpansion must follow ExpandMbarrier (phase 42) because barrier pseudo-instructions must be lowered before any further legalization touches the same basic blocks. It must precede GvnCse (phase 49) and OriReassociateAndCommon (phase 50) because the expanded sequences benefit from value numbering and reassociation — expanding earlier would expose these sequences to fewer optimization passes.
 
 **Pipeline progress marker.** The `context+1552 = 3` write is performed by `AdvancedPhaseAfterMidExpansion` (wiki phase 134, binary index 52), a Type C gate phase that executes the secondary vtable method `sub_C5EF80` immediately after MidExpansion returns. This is not inside MidExpansion::execute itself. Downstream passes read this value: `sub_752CF0` checks `*(ctx+1552) <= 3` and `sub_A11060` checks `*(ctx+1552) > 4` to gate cross-block rematerialization second-pass behavior.
 
-### Phase 55 -- LateExpansion
+### Phase 55 — LateExpansion
 
 ```text
 Factory index:  63
@@ -163,9 +163,9 @@ LateExpansion is the primary post-optimization legalization pass. It runs after 
 
 **What gets expanded here:** This is the pass where most math library calls are introduced. Operations like `div.rn.f64`, `sqrt.rn.f32`, `rcp.rd.f64` that were kept as single Ori instructions through optimization are now replaced with Newton-Raphson sequences or calls to the 607-function libdevice library. The SM20 library functions (division, square root, reciprocal, bit-field extract/insert) and SM70 functions (WMMA matrix operations, barrier reductions) are the primary candidates.
 
-**Optimization interaction.** GeneralOptimizeLate (phase 58) runs immediately after, cleaning up the expanded sequences with copy propagation, constant folding, and dead code elimination. This is why expansion happens here rather than later -- the expanded code benefits from one more optimization round.
+**Optimization interaction.** GeneralOptimizeLate (phase 58) runs immediately after, cleaning up the expanded sequences with copy propagation, constant folding, and dead code elimination. This is why expansion happens here rather than later — the expanded code benefits from one more optimization round.
 
-### Phase 78 -- LateExpansionUnsupportedOps
+### Phase 78 — LateExpansionUnsupportedOps
 
 ```text
 Factory index:  90
@@ -180,14 +180,14 @@ The first of three "late unsupported ops" catches. It runs after all optimizatio
 
 **Gating.** This pass has the most complex gating of the six. In addition to the standard knob 499 check (via `sub_7DDB50`), it also checks bit 2 of `context+1414`. If the bit is clear, the pass is skipped even though isNoOp returns false. This allows the backend to dynamically disable the pass when no unsupported ops were detected during earlier compilation phases.
 
-**Implementation -- iterative expand-check-repeat loop.** The SM backend vtable at `+0x178` dispatches to `sub_7917F0` (400 bytes), which is the same convergence driver used by OriBranchOpt (phase 15). The function executes three phases:
+**Implementation — iterative expand-check-repeat loop.** The SM backend vtable at `+0x178` dispatches to `sub_7917F0` (400 bytes), which is the same convergence driver used by OriBranchOpt (phase 15). The function executes three phases:
 
 *Prerequisite gate chain.* Four conditions must all pass before any work begins:
 
-1. `context+1382` bit 2 must be set (CFG validity flag -- cleared when the CFG is invalidated by an earlier pass, set by CFG rebuild).
-2. Knob 214 must be **clear**. The capability dispatch at `context+1664` vtable+72 is compared against the default `sub_6614A0`; if default, the function reads the fast-path flag at `backend_inner+15408` directly, otherwise calls with argument 214. Knob 214 is a disable switch -- when set, the entire pass is skipped.
+1. `context+1382` bit 2 must be set (CFG validity flag — cleared when the CFG is invalidated by an earlier pass, set by CFG rebuild).
+2. Knob 214 must be **clear**. The capability dispatch at `context+1664` vtable+72 is compared against the default `sub_6614A0`; if default, the function reads the fast-path flag at `backend_inner+15408` directly, otherwise calls with argument 214. Knob 214 is a disable switch — when set, the entire pass is skipped.
 3. Knob 487 must be **set** (general optimization enablement). Checked via capability dispatch vtable+152 with the same default-vs-override pattern, argument 487.
-4. The function table pointer at `*(context+0) + 1056` must be null (first-time initialization guard). If nonzero, the setup phase is skipped -- the pass was already initialized by a prior invocation (phase 15 shares this infrastructure).
+4. The function table pointer at `*(context+0) + 1056` must be null (first-time initialization guard). If nonzero, the setup phase is skipped — the pass was already initialized by a prior invocation (phase 15 shares this infrastructure).
 
 *Setup (one-time initialization).* When the function table is null, four setup calls execute in sequence:
 
@@ -220,15 +220,15 @@ if any_changed:
     sub_785E20(ctx, 0)                             // post-pass CFG rebuild
 ```
 
-The inner loop is the convergence mechanism. `sub_753600` (1351 bytes) attempts to match a transformable pattern in the current block's terminator and its successors. When it succeeds, `sub_753B50` (598 bytes) applies the CFG rewrite -- cloning instructions, redirecting edges, and updating block successor lists via `sub_931920`, `sub_932E80`, `sub_749090`, `sub_749290`, `sub_91E310`, and `sub_9253C0`. After rewriting, control returns to `sub_753600` on the same block, catching cascading opportunities: expanding one pattern may leave a redundant unconditional branch or expose a new pattern in the rewritten block.
+The inner loop is the convergence mechanism. `sub_753600` (1351 bytes) attempts to match a transformable pattern in the current block's terminator and its successors. When it succeeds, `sub_753B50` (598 bytes) applies the CFG rewrite — cloning instructions, redirecting edges, and updating block successor lists via `sub_931920`, `sub_932E80`, `sub_749090`, `sub_749290`, `sub_91E310`, and `sub_9253C0`. After rewriting, control returns to `sub_753600` on the same block, catching cascading opportunities: expanding one pattern may leave a redundant unconditional branch or expose a new pattern in the rewritten block.
 
-**Knob 464 as convergence gate.** Knob 464 (`MergeEquivalentConditionalFlowBudget`, type `OKT_BDGT`) is checked on every iteration of the inner loop. When disabled, each block gets at most one match-and-rewrite -- no convergence. When enabled (the default), the loop runs until `sub_753600` returns zero, meaning no further patterns exist. There is no explicit iteration cap: convergence relies on each rewrite strictly reducing the pattern count in the block. In practice, cascading depth rarely exceeds 2-3 levels for typical PTX code.
+**Knob 464 as convergence gate.** Knob 464 (`MergeEquivalentConditionalFlowBudget`, type `OKT_BDGT`) is checked on every iteration of the inner loop. When disabled, each block gets at most one match-and-rewrite — no convergence. When enabled (the default), the loop runs until `sub_753600` returns zero, meaning no further patterns exist. There is no explicit iteration cap: convergence relies on each rewrite strictly reducing the pattern count in the block. In practice, cascading depth rarely exceeds 2-3 levels for typical PTX code.
 
 **Post-pass CFG rebuild.** The `any_changed` flag (register `r12` in the binary, variable `v4` in the decompile) latches to true on the first successful match and is never reset. If any block was rewritten, `sub_785E20(ctx, 0)` runs after all blocks are processed, recomputing RPO order, predecessor lists, and dominance information for subsequent passes.
 
-**Shared infrastructure with OriBranchOpt.** Phase 78 and phase 15 call the identical `sub_7917F0` function. The behavioral difference comes from the SM backend vtable: phase 15 is dispatched through a different call site (not via `+0x178`), but both land in the same code. The setup functions, pattern matcher, and rewriter are shared -- only the gating conditions (context+1414 bit 2 for phase 78, vs. always-on for phase 15) differ.
+**Shared infrastructure with OriBranchOpt.** Phase 78 and phase 15 call the identical `sub_7917F0` function. The behavioral difference comes from the SM backend vtable: phase 15 is dispatched through a different call site (not via `+0x178`), but both land in the same code. The setup functions, pattern matcher, and rewriter are shared — only the gating conditions (context+1414 bit 2 for phase 78, vs. always-on for phase 15) differ.
 
-### Phase 93 -- LateExpansionUnsupportedOps2
+### Phase 93 — LateExpansionUnsupportedOps2
 
 ```text
 Factory index:  109
@@ -259,12 +259,12 @@ jmp  inner_vtable[+0xC10](inner)      // step 2: operand legalization (offset 30
 
 **Two-step default path.** When no override is installed at vtable slot 12, the default `sub_661310` splits the work into two sequential calls on the inner object:
 
-1. **Instruction expansion** (inner vtable `+0x118` / 280) -- scans for Ori instructions that the GMMA/register-attribute passes introduced and that lack direct SASS encodings. Replaces them with equivalent legal sequences, following the same per-instruction dispatch pattern as Phase 78 but restricted to the newly-introduced operations.
-2. **Operand legalization** (inner vtable `+0xC10` / 3088) -- ensures every operand of the newly-expanded instructions is in a hardware-encodable form: correct register class, immediate width, or absent-operand sentinel. This is the same operand materializer infrastructure as `sub_13AF3D0` (the 164-case dispatcher), invoked on the subset of instructions that Phase 93 touched.
+1. **Instruction expansion** (inner vtable `+0x118` / 280) — scans for Ori instructions that the GMMA/register-attribute passes introduced and that lack direct SASS encodings. Replaces them with equivalent legal sequences, following the same per-instruction dispatch pattern as Phase 78 but restricted to the newly-introduced operations.
+2. **Operand legalization** (inner vtable `+0xC10` / 3088) — ensures every operand of the newly-expanded instructions is in a hardware-encodable form: correct register class, immediate width, or absent-operand sentinel. This is the same operand materializer infrastructure as `sub_13AF3D0` (the 164-case dispatcher), invoked on the subset of instructions that Phase 93 touched.
 
 Architectures that override slot 12 with a custom function replace both steps with a single unified handler. This is the path taken by newer SM backends (sm_90+) where the post-GMMA legalization rules are complex enough to warrant a monolithic implementation rather than the generic two-step split.
 
-### Phase 137 -- LateExpansionUnsupportedOpsMid
+### Phase 137 — LateExpansionUnsupportedOpsMid
 
 ```text
 Factory index:  93
@@ -277,7 +277,7 @@ Pipeline:       After LateMergeEquivalentConditionalFlow (136), before OriSplitH
 
 The final legalization catch, positioned between the two conditional flow merge passes (133, 136) and the last-resort live range splitter (138). The merge passes can combine basic blocks in ways that create new instruction sequences containing unsupported operations.
 
-**Conditional execution.** Unlike the other five legalization passes, this one has a soft no-op mechanism built into the execute thunk itself (`sub_C607E0`, 30 bytes). The thunk reads vtable slot `+0x180` (384), loads the function pointer, and compares it against `nullsub_183` (`sub_7D6D50` -- a 2-byte `rep ret`). If the pointer matches the default, the thunk returns immediately via `rep ret` without entering the handler. If the backend has installed a non-default function pointer, the thunk calls it.
+**Conditional execution.** Unlike the other five legalization passes, this one has a soft no-op mechanism built into the execute thunk itself (`sub_C607E0`, 30 bytes). The thunk reads vtable slot `+0x180` (384), loads the function pointer, and compares it against `nullsub_183` (`sub_7D6D50` — a 2-byte `rep ret`). If the pointer matches the default, the thunk returns immediately via `rep ret` without entering the handler. If the backend has installed a non-default function pointer, the thunk calls it.
 
 **SM target activation.** The default vtable at `ctx+0x630` has `nullsub_183` in slot `+0x180`, so the pass is a no-op on all architectures that do not override it. In practice, only Hopper (sm_90, sm_90a) and all Blackwell targets (sm_100, sm_103, sm_110, sm_120, sm_121) install a non-default handler. Pre-Hopper architectures (sm_50 through sm_89) retain the nullsub default and skip Phase 137 entirely.
 
@@ -285,7 +285,7 @@ The final legalization catch, positioned between the two conditional flow merge 
 
 ## Supporting Passes
 
-### Phase 95 -- SetAfterLegalization
+### Phase 95 — SetAfterLegalization
 
 ```text
 Factory index:  111
@@ -297,7 +297,7 @@ Pipeline:       After FinalInspectionPass (94), before ReportBeforeScheduling (9
 
 Not a legalization pass per se. It marks the compilation context as post-legalization by calling the SM backend's vtable at offset `+0x108` (264). This sets the `legalization_complete` flag that downstream passes (scheduling, register allocation, encoding) check to assert that no unsupported operations remain. The pass is gated by optimization level: `sub_7DDB50` returns the current optimization level, and the dispatch only fires at `-O2` and above.
 
-### Phase 132 -- UpdateAfterConvertUnsupportedOps
+### Phase 132 — UpdateAfterConvertUnsupportedOps
 
 ```text
 Factory index:  8
@@ -311,15 +311,15 @@ A placeholder update pass that rebuilds IR metadata after late unsupported-op co
 
 ## Libdevice Function Library
 
-The legalization passes replace unsupported operations with calls to a library of 607 predefined helper functions plus 473 force-inlined templates, for a combined pool of 1,080 `__cuda_*` entries embedded in the ptxas binary. These are not external libraries -- they are PTX function bodies compiled into the binary image and linked into the output at need.
+The legalization passes replace unsupported operations with calls to a library of 607 predefined helper functions plus 473 force-inlined templates, for a combined pool of 1,080 `__cuda_*` entries embedded in the ptxas binary. These are not external libraries — they are PTX function bodies compiled into the binary image and linked into the output at need.
 
 The two tiers serve different purposes. The 607 `.weak .func` entries are call targets: legalization replaces an unsupported Ori instruction with a `CALL` to the named function, and the function body is emitted once per compilation unit. The 473 `.FORCE_INLINE` entries are templates whose bodies are spliced directly into the caller's instruction stream, avoiding call overhead for performance-critical sequences (WMMA load/store variants, warp shuffle/vote, MMA shuffle helpers).
 
-**Tier 1 -- Call targets (`sub_5D1660`, 607 registrations).** Copies a 9,728-byte pre-built table from `unk_1D4D940` (608 x 16B slots, ID 0 = null sentinel), creates a hash map at `context+1064`, and registers 607 names with contiguous IDs `0x01`--`0x25F`.
+**Tier 1 — Call targets (`sub_5D1660`, 607 registrations).** Copies a 9,728-byte pre-built table from `unk_1D4D940` (608 x 16B slots, ID 0 = null sentinel), creates a hash map at `context+1064`, and registers 607 names with contiguous IDs `0x01`--`0x25F`.
 
-**Tier 2 -- Inline templates (`sub_5D7430`, 473 registrations).** Builds a second hash map at `context+824` with 1,079 entries (607 tier-1 names re-registered plus 473 additional WMMA/MMA generation-specific variants). The extra 473 entries cover sm72 integer WMMA (114), sm7x sub-byte/bit WMMA (229), sm8x tf32/bf16/f64 WMMA (80), additional sm70 inline helpers (40), sm10x tcgen05 inline variants (9), and one sm80 inline entry.
+**Tier 2 — Inline templates (`sub_5D7430`, 473 registrations).** Builds a second hash map at `context+824` with 1,079 entries (607 tier-1 names re-registered plus 473 additional WMMA/MMA generation-specific variants). The extra 473 entries cover sm72 integer WMMA (114), sm7x sub-byte/bit WMMA (229), sm8x tf32/bf16/f64 WMMA (80), additional sm70 inline helpers (40), sm10x tcgen05 inline variants (9), and one sm80 inline entry.
 
-### Library Function Categories (Tier 1 -- 607 Call Targets)
+### Library Function Categories (Tier 1 — 607 Call Targets)
 
 | SM Prefix | Count | ID Range | Operations |
 |---|---|---|---|
@@ -351,10 +351,10 @@ The per-SM legalization rules are encoded in a 241,664-byte static table at `0x2
 
 | Value Class | Bit Pattern | Meaning | Count |
 |---|---|---|---|
-| Zero | `0x00000000` | Operation is natively supported -- no legalization needed | 41,330 |
-| Small descriptor | `< 0x10000` | Packed recipe: `(expansion_class << 8) \| sub_variant` -- selects an inline expansion sequence | 9,721 |
+| Zero | `0x00000000` | Operation is natively supported — no legalization needed | 41,330 |
+| Small descriptor | `< 0x10000` | Packed recipe: `(expansion_class << 8) \| sub_variant` — selects an inline expansion sequence | 9,721 |
 | Code pointer | `>= 0x10000`, no flag | Address of an expansion handler function in `.text` (7,037 unique targets) | 9,053 |
-| Illegal flag | `0x08000000` | Operation is illegal on this SM with no available expansion -- assembler must error | 259 |
+| Illegal flag | `0x08000000` | Operation is illegal on this SM with no available expansion — assembler must error | 259 |
 
 Of the 236 operations, 233 have at least one non-zero SM entry (3 are universally legal). Only 4 operations require legalization on all 128 SM configurations; the remaining 229 are partially SM-dependent. The `0x08000000` illegal-flag entries concentrate in just 4 SM rows, corresponding to SM configurations with restricted instruction sets (debug/validation targets).
 
@@ -374,7 +374,7 @@ The core design principle: what is "unsupported" depends entirely on the target 
 
 **Bulk tensor copy (Blackwell).** The `cp.async.bulk.tensor` family on sm_100+ (Blackwell) supports 1D through 5D tile and im2col access patterns, with unicast and multicast variants. These 18 `__cuda_sm1xx_cp_async_bulk_tensor_*` functions provide the expansion for targets where hardware support is partial or absent.
 
-**TCGen05 guardrails (Blackwell).** The 5th-generation tensor core operations (sm_100+) include runtime guardrail traps -- bounds checking, alignment validation, allocation granularity checks -- implemented as `__cuda_sm10x_tcgen05_guardrail_trap_*` functions inserted during legalization.
+**TCGen05 guardrails (Blackwell).** The 5th-generation tensor core operations (sm_100+) include runtime guardrail traps — bounds checking, alignment validation, allocation granularity checks — implemented as `__cuda_sm10x_tcgen05_guardrail_trap_*` functions inserted during legalization.
 
 ## Context Fields
 
@@ -387,14 +387,14 @@ The legalization passes interact with several fields on the compilation context:
 | `+1378` | `byte` | Bit 0: ConvertUnsupportedOps has run |
 | `+1382` | `byte` | Bit 2: prerequisite flag for LateExpansionUnsupportedOps |
 | `+1414` | `byte` | Bit 2: enable flag for LateExpansionUnsupportedOps |
-| `+1552` | `int32` | Pipeline progress counter -- written by multiple passes across legalization, optimization, and post-RA stages (see value table below) |
+| `+1552` | `int32` | Pipeline progress counter — written by multiple passes across legalization, optimization, and post-RA stages (see value table below) |
 | `+1664` | `void*` | Capability dispatch object (knob/option queries) |
 
 The pipeline progress counter at `context+1552` provides a monotonically increasing value that downstream passes can check to determine which pipeline stages have completed. Despite being documented previously as a "legalization stage counter," it is written by passes outside the legalization family (rematerialization, backward copy propagation, architecture-specific peephole, post-RA finalization):
 
 | Value | Writer | Phase | Function |
 |---|---|---|---|
-| 0 | Context constructor | -- | `sub_7F7DC0` |
+| 0 | Context constructor | — | `sub_7F7DC0` |
 | 3 | MidExpansion | 45 | `sub_C5EF80` |
 | 4 | OriDoRematEarly | 54 | `sub_C5EF30` |
 | 7 | LateExpansion | 55 | `sub_6612E0` |
@@ -443,20 +443,20 @@ Phase 138:   OriSplitHighPressureLiveRanges
 | `sub_7917F0` | ~400B | LateExpansionUnsupportedOps core implementation |
 | `sub_9059B0` | ~500B | LateExpansion core implementation (with expansion loop) |
 | `sub_5D1660` | ~46KB | Libdevice function table initializer (607 call targets + null sentinel = 608 slots) |
-| `sub_785E20` | -- | Expansion setup (function table initialization) |
-| `sub_781F80` | -- | Expansion setup (mode configuration) |
-| `sub_7E6090` | -- | Instruction expansion driver |
-| `sub_7E6AD0` | -- | Instruction expansion driver (secondary) |
-| `sub_753600` | -- | Per-instruction legalization check |
-| `sub_753B50` | -- | Retry/convergence loop for iterative expansion |
-| `sub_13AF3D0` | 26,795B | Operand legalization dispatcher -- 164-case switch on opcode, called from `sub_A29220` |
-| `sub_13A6280` | 1,289B | General operand materializer -- ensures operand is in legal register (called 83x) |
-| `sub_13A6AE0` | ~250B | Special-class operand materializer -- handles condition code and predicate classes |
-| `sub_13A7410` | ~50B | Try-inline-then-materialize wrapper -- checks `sub_822750` before falling back |
-| `sub_13A6F90` | ~40B | Arch-immediate materializer -- like `sub_13A7410` without pre-check |
-| `sub_13A45E0` | -- | Predicate operand materializer |
-| `sub_13A75D0` | -- | Uniform register conversion (class 6 to class 3) |
-| `sub_A29220` | -- | Pass driver that calls `sub_13AF3D0` per instruction |
+| `sub_785E20` | — | Expansion setup (function table initialization) |
+| `sub_781F80` | — | Expansion setup (mode configuration) |
+| `sub_7E6090` | — | Instruction expansion driver |
+| `sub_7E6AD0` | — | Instruction expansion driver (secondary) |
+| `sub_753600` | — | Per-instruction legalization check |
+| `sub_753B50` | — | Retry/convergence loop for iterative expansion |
+| `sub_13AF3D0` | 26,795B | Operand legalization dispatcher — 164-case switch on opcode, called from `sub_A29220` |
+| `sub_13A6280` | 1,289B | General operand materializer — ensures operand is in legal register (called 83x) |
+| `sub_13A6AE0` | ~250B | Special-class operand materializer — handles condition code and predicate classes |
+| `sub_13A7410` | ~50B | Try-inline-then-materialize wrapper — checks `sub_822750` before falling back |
+| `sub_13A6F90` | ~40B | Arch-immediate materializer — like `sub_13A7410` without pre-check |
+| `sub_13A45E0` | — | Predicate operand materializer |
+| `sub_13A75D0` | — | Uniform register conversion (class 6 to class 3) |
+| `sub_A29220` | — | Pass driver that calls `sub_13AF3D0` per instruction |
 | `sub_13ADB90` | 3,353B | Extended operand legalization variant (arch-specific override, vtable-dispatched) |
 
 ## Operand Legalization Dispatcher
@@ -471,7 +471,7 @@ Before the switch, a pre-pass handles predicated instructions. If bit 12 of the 
 
 The switch routes to seven categories of legalization logic, totalling 164 case labels over 100 distinct opcodes. The complete dispatch map follows.
 
-**Category A -- Direct operand materialization (73 cases).** Each case calls `sub_13A6280` (general materializer) and/or `sub_13A7410` (try-inline-first) on a fixed set of operand slots. The slot indices are hardcoded per opcode. The most common patterns:
+**Category A — Direct operand materialization (73 cases).** Each case calls `sub_13A6280` (general materializer) and/or `sub_13A7410` (try-inline-first) on a fixed set of operand slots. The slot indices are hardcoded per opcode. The most common patterns:
 
 | Pattern | Cases (representative) | Operand recipe |
 |---|---|---|
@@ -484,9 +484,9 @@ The switch routes to seven categories of legalization logic, totalling 164 case 
 
 Case 6 additionally checks whether src1 is in uniform register class 6 and calls `sub_13A75D0` (uniform-to-GPR conversion) before materialization. Cases 2/3/4/5/7 compute a variable operand count from the instruction modifier word (slots at offsets 16/24) before dispatching to a shared suffix at `LABEL_125` / `LABEL_119`.
 
-**Category B -- Variable-length operand scanning (5 cases).** Case 16 (store) scans up to 15 operand slots, testing each against the `0x70000000` sentinel to find where active operands end. After materializing each source, it delegates the address operand range to `vtable+2328` (or `vtable+2600` if the vtable slot is the default `sub_13A6110`). Cases 109, 284, 288, 329 use similar counted loops: case 109 walks operand slots backward using a callee-descriptor bitmap; case 284 loops `operand_count - 4` times calling `sub_13A6AE0`; case 288 loops `(modifier & 7) + 1` times; case 329 reads the destination count from the modifier word then delegates the tail to `vtable+2328`.
+**Category B — Variable-length operand scanning (5 cases).** Case 16 (store) scans up to 15 operand slots, testing each against the `0x70000000` sentinel to find where active operands end. After materializing each source, it delegates the address operand range to `vtable+2328` (or `vtable+2600` if the vtable slot is the default `sub_13A6110`). Cases 109, 284, 288, 329 use similar counted loops: case 109 walks operand slots backward using a callee-descriptor bitmap; case 284 loops `operand_count - 4` times calling `sub_13A6AE0`; case 288 loops `(modifier & 7) + 1` times; case 329 reads the destination count from the modifier word then delegates the tail to `vtable+2328`.
 
-**Category C -- Architecture-specific vtable delegation (24 cases).**
+**Category C — Architecture-specific vtable delegation (24 cases).**
 
 | Vtable slot | Cases | Likely instruction class |
 |---|---|---|
@@ -508,13 +508,13 @@ Case 6 additionally checks whether src1 is in uniform register class 6 and calls
 | `+2896` | 280-281 (prefix) | Bulk-copy modifier pre-hook |
 | `+3168` | 288 (suffix) | Store-to-address-space override |
 
-**Category D -- Opcode rewriting (3 cases).** Case 137 rewrites the opcode field: to `0x82` (130, CMOV) when the type is FP and the modifier has destination flags, or to `0x109` (265, MOV-from-special-register) when the source is in register class 4 (special). Case 137 also attempts FP16 immediate folding: if the source is a 16-bit immediate fitting the SASS encoding width (10-bit or 7-bit mantissa), it emits an `FMOV_TINY` (opcode `0x10E` = 270) instruction instead. Cases 36 and 32 also rewrite: case 36 may convert to opcode `0x29` (41, PRMT) when source is in class 4/5; case 32 may convert opcode to `0x0B`/`0x0C` (11/12) based on FP type width.
+**Category D — Opcode rewriting (3 cases).** Case 137 rewrites the opcode field: to `0x82` (130, CMOV) when the type is FP and the modifier has destination flags, or to `0x109` (265, MOV-from-special-register) when the source is in register class 4 (special). Case 137 also attempts FP16 immediate folding: if the source is a 16-bit immediate fitting the SASS encoding width (10-bit or 7-bit mantissa), it emits an `FMOV_TINY` (opcode `0x10E` = 270) instruction instead. Cases 36 and 32 also rewrite: case 36 may convert to opcode `0x29` (41, PRMT) when source is in class 4/5; case 32 may convert opcode to `0x0B`/`0x0C` (11/12) based on FP type width.
 
-**Category E -- Conditional materialization (15 cases).** These inspect the modifier word, data type, or register class before deciding which operands to legalize. Case 43 checks `(modifier >> 4) & 0xF` and `modifier & 0xF` to select between materializing slot 1 only, slot 2 only, or both. Case 118 reads `modifier & 3`: value 0 means materialize slot 1; value 1 means slots 1+2. Cases 88/89 compute variable slot indices from signed operand values (shifted by `>> 31`) to handle packed-pair FP operations. Case 29/95/96/190 check whether the last operand is in register class 6 (uniform), 9, 4, or 5 before choosing between `sub_13A6AE0` (special-class) and `sub_13A6280` (general).
+**Category E — Conditional materialization (15 cases).** These inspect the modifier word, data type, or register class before deciding which operands to legalize. Case 43 checks `(modifier >> 4) & 0xF` and `modifier & 0xF` to select between materializing slot 1 only, slot 2 only, or both. Case 118 reads `modifier & 3`: value 0 means materialize slot 1; value 1 means slots 1+2. Cases 88/89 compute variable slot indices from signed operand values (shifted by `>> 31`) to handle packed-pair FP operations. Case 29/95/96/190 check whether the last operand is in register class 6 (uniform), 9, 4, or 5 before choosing between `sub_13A6AE0` (special-class) and `sub_13A6280` (general).
 
-**Category F -- Complex multi-phase legalization (8 cases).** Cases 223/228/234/238 (load/store with addressing modes) compute a source-count from the modifier word (`(modifier >> 19) & 0xF + (modifier >> 4) & 3`), materialize that many sources in a counted loop, then dispatch the address portion to `vtable+2840`/`vtable+2848` depending on the address-space type code (4 or 5). Case 280-281 iterates over source-pair operands in steps of 2, calling `vtable+2704` per pair, then performs a suffix that reorders source/address operands and adjusts modifier bit-fields for the encoding. Case 125 and 211 have similarly deep logic with intermediate register-class queries and possible instruction splitting.
+**Category F — Complex multi-phase legalization (8 cases).** Cases 223/228/234/238 (load/store with addressing modes) compute a source-count from the modifier word (`(modifier >> 19) & 0xF + (modifier >> 4) & 3`), materialize that many sources in a counted loop, then dispatch the address portion to `vtable+2840`/`vtable+2848` depending on the address-space type code (4 or 5). Case 280-281 iterates over source-pair operands in steps of 2, calling `vtable+2704` per pair, then performs a suffix that reorders source/address operands and adjusts modifier bit-fields for the encoding. Case 125 and 211 have similarly deep logic with intermediate register-class queries and possible instruction splitting.
 
-**Category G -- Passthrough / no-op (22 cases + default).** Cases 24, 34, 209, 213, 214 jump directly to the exit. Cases 38, 59, 106, 180, 182, 192, 194, 215, 221 exit unless `SM_version > 0x4FFF` (SM80+), in which case they materialize slot 1. Cases 44, 45, 135, 161 always materialize slot 1 (so are Category A in practice but share the same `LABEL_325` target). The `default` case exits immediately.
+**Category G — Passthrough / no-op (22 cases + default).** Cases 24, 34, 209, 213, 214 jump directly to the exit. Cases 38, 59, 106, 180, 182, 192, 194, 215, 221 exit unless `SM_version > 0x4FFF` (SM80+), in which case they materialize slot 1. Cases 44, 45, 135, 161 always materialize slot 1 (so are Category A in practice but share the same `LABEL_325` target). The `default` case exits immediately.
 
 ### The 0x70000000 Null-Operand Sentinel
 
@@ -527,7 +527,7 @@ Each operand occupies an 8-byte slot in the instruction. The lower 4 bytes encod
 | `[31]` | Negate | 1=operand is negated |
 | `+7` (byte) | Flags | Bit 0: uniform/constant bank reference |
 
-The sentinel value `0x70000000` encodes type 7 ("null") with zero payload and no negation. It marks operand slots that are architecturally absent -- optional predicate guards not specified, trailing source operands of variable-width instructions, or unused operand positions in instructions with fewer sources than the maximum slot count.
+The sentinel value `0x70000000` encodes type 7 ("null") with zero payload and no negation. It marks operand slots that are architecturally absent — optional predicate guards not specified, trailing source operands of variable-width instructions, or unused operand positions in instructions with fewer sources than the maximum slot count.
 
 The dispatcher tests for the sentinel with:
 
@@ -538,7 +538,7 @@ if ( ((*((_DWORD *)instr + offset) ^ 0x70000000) & 0x70000000) != 0 )
 
 The XOR produces zero in bits `[30:28]` only when they are exactly `0b111` (type 7). The AND isolates those bits. If the result is zero, the operand is null and legalization is skipped. If non-zero, the operand is present and must be processed.
 
-The function contains **59 references** to `0x70000000`. The heaviest user is case 16 (store), which chains 14 successive sentinel tests (at instruction offsets `+84` through `+196`) to determine the store's vector width -- effectively implementing `for each slot: if sentinel, stop; else legalize`.
+The function contains **59 references** to `0x70000000`. The heaviest user is case 16 (store), which chains 14 successive sentinel tests (at instruction offsets `+84` through `+196`) to determine the store's vector width — effectively implementing `for each slot: if sentinel, stop; else legalize`.
 
 ### Operand Materialization Helpers
 
@@ -557,7 +557,7 @@ The dispatcher calls six helper functions depending on the operand class:
 
 The general materializer at `sub_13A6280` (1,289 bytes) implements this decision tree for a single operand:
 
-1. **Uniform register early exit.** If the operand is a register (type 1) in class 6 (uniform), return immediately -- uniform registers are always legal in the encoding.
+1. **Uniform register early exit.** If the operand is a register (type 1) in class 6 (uniform), return immediately — uniform registers are always legal in the encoding.
 
 2. **Inline immediate check.** If the operand is an immediate (type 2/3), call `sub_7DBC80` to test whether the value fits in the instruction's immediate field. If it fits and passes the floating-point validity check (`vtable+1504`) and architecture encoding check (`vtable+3248`), keep the immediate as-is.
 
@@ -624,14 +624,14 @@ SASS per-instruction encoders (522 functions)
 
 ## Cross-References
 
-- [Pass Inventory & Ordering](index.md) -- Complete 159-phase table with legalization passes highlighted
-- [Phase Manager Infrastructure](phase-manager.md) -- Phase factory, vtable layout, dispatch loop
-- [SM Architecture Map](../targets/index.md) -- Per-SM capability tables driving legalization decisions
-- [GeneralOptimize Bundles](general-optimize.md) -- Cleanup passes that run after expansion (phases 46, 58)
-- [GMMA/WGMMA Pipeline](gmma-pipeline.md) -- Phases 85, 87 that create work for LateExpansionUnsupportedOps2
-- [Synchronization & Barriers](sync-barriers.md) -- Barrier expansion (phase 42) that feeds MidExpansion
-- [Mercury Encoder](../codegen/mercury.md) -- Post-legalization encoding (must see only legal ops)
-- [Optimization Levels](../config/opt-levels.md) -- SetAfterLegalization gating by -O level
-- [Knobs System](../config/knobs.md) -- Knobs 214, 464, 487, 499 controlling legalization
-- [SASS Encoding Format](../codegen/encoding.md) -- Per-instruction SASS encoders that consume legalized operands
-- [Instruction Representation](../ir/instructions.md) -- Ori IR operand layout (8-byte slots, type/payload encoding)
+- [Pass Inventory & Ordering](index.md) — Complete 159-phase table with legalization passes highlighted
+- [Phase Manager Infrastructure](phase-manager.md) — Phase factory, vtable layout, dispatch loop
+- [SM Architecture Map](../targets/index.md) — Per-SM capability tables driving legalization decisions
+- [GeneralOptimize Bundles](general-optimize.md) — Cleanup passes that run after expansion (phases 46, 58)
+- [GMMA/WGMMA Pipeline](gmma-pipeline.md) — Phases 85, 87 that create work for LateExpansionUnsupportedOps2
+- [Synchronization & Barriers](sync-barriers.md) — Barrier expansion (phase 42) that feeds MidExpansion
+- [Mercury Encoder](../codegen/mercury.md) — Post-legalization encoding (must see only legal ops)
+- [Optimization Levels](../config/opt-levels.md) — SetAfterLegalization gating by -O level
+- [Knobs System](../config/knobs.md) — Knobs 214, 464, 487, 499 controlling legalization
+- [SASS Encoding Format](../codegen/encoding.md) — Per-instruction SASS encoders that consume legalized operands
+- [Instruction Representation](../ir/instructions.md) — Ori IR operand layout (8-byte slots, type/payload encoding)

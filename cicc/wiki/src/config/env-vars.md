@@ -42,7 +42,7 @@ char* deobfuscate(const uint8_t* ciphertext, uintptr_t base, size_t length) {
 }
 ```
 
-**Key constant**: The multiplier `-109` (signed, i.e. `0xFFFFFF93`) and the XOR mask `0xC5` together form a position-dependent key stream. The ROT13 phase is applied *after* the XOR, meaning the plaintext must survive two transformations. This is a weak cipher by design -- it only needs to defeat `strings(1)` scanning, not serious cryptanalysis.
+**Key constant**: The multiplier `-109` (signed, i.e. `0xFFFFFF93`) and the XOR mask `0xC5` together form a position-dependent key stream. The ROT13 phase is applied *after* the XOR, meaning the plaintext must survive two transformations. This is a weak cipher by design — it only needs to defeat `strings(1)` scanning, not serious cryptanalysis.
 
 ### Obfuscated String Table in .rodata
 
@@ -78,7 +78,7 @@ The `0x811C9DC5` constant is the FNV-1a 32-bit offset basis. The resulting 4-cha
 |----------|-------|
 | Checked in | `sub_8F9C90` (real main) at `0x8F9C90`, specifically `0x8F9D36` |
 | Expected value | `"553282"` (magic number = `0x87142`) |
-| Effect | Sets `byte_4F6D280 = 1` -- unlocks developer/wizard mode |
+| Effect | Sets `byte_4F6D280 = 1` — unlocks developer/wizard mode |
 
 **Mechanism**: The value is parsed via `strtol(v, 0, 10)` and compared against the integer 553282. Any other value is silently ignored.
 
@@ -88,7 +88,7 @@ The `0x811C9DC5` constant is the FNV-1a 32-bit offset basis. The resulting 4-cha
 - `-dryrun` flag enables verbose as a side effect (`v259 = byte_4F6D280`)
 - `-lnk` and `-opt` modes set `v262 = byte_4F6D280` (keep temps)
 
-Without wizard mode, `-v` and `-keep` are *no-ops* -- the flags are parsed but have no effect because they set their variables to `byte_4F6D280` which is 0.
+Without wizard mode, `-v` and `-keep` are *no-ops* — the flags are parsed but have no effect because they set their variables to `byte_4F6D280` which is 0.
 
 ### NVVM\_IR\_VER\_CHK
 
@@ -129,7 +129,7 @@ The env var is checked **multiple times** per invocation: before IR version vali
 |----------|-------|
 | Checked in | `ctor_104` at `0x4A5810` (global constructor) |
 | Expected value | Any non-NULL value |
-| Effect | Sets `byte_4F92D70 = 1` -- disables thread-safe libnvvm API usage |
+| Effect | Sets `byte_4F92D70 = 1` — disables thread-safe libnvvm API usage |
 
 Safety valve for environments where concurrent libnvvm compilation causes issues. Any non-NULL value triggers single-threaded API behavior. See [Concurrent Compilation](../infra/concurrent-compilation.md).
 
@@ -149,8 +149,8 @@ The dispatch variable `v253` starts at 2 (default). When `v253` is still 2 at po
 1. `sub_8F98A0` decrypts the env var name from `byte_3C23A9F[-15..0]`.
 2. Calls `getenv(decrypted_name)`.
 3. Compares the result against two decrypted reference strings:
-   - `"nvvm70"` (from `byte_3C23A82`): sets `v253 = 0` (Path B -- NVVM/bitcode pipeline via `sub_1262860` or `sub_1265970`)
-   - `"nvvm-latest"` (from `byte_3C23A7B`): sets `v253 = 1` (Path A -- PTX pipeline via `sub_902D10` or `sub_905EE0`)
+   - `"nvvm70"` (from `byte_3C23A82`): sets `v253 = 0` (Path B — NVVM/bitcode pipeline via `sub_1262860` or `sub_1265970`)
+   - `"nvvm-latest"` (from `byte_3C23A7B`): sets `v253 = 1` (Path A — PTX pipeline via `sub_902D10` or `sub_905EE0`)
 4. If neither matches: uses `(arch > 99)` as the tiebreaker, with further modulation by `-nvc` and `-optixir` flags.
 
 For multi-stage modes (`v263 >= 3`), the resolved path also determines which pipeline flag string is appended:
@@ -264,7 +264,7 @@ When detected, cicc integrates with the jobserver to limit concurrent compilatio
 
 ### MALLOC\_CONF
 
-Checked in `sub_12FCDB0` (jemalloc `malloc_conf_init`, 15.4 KB -- the largest function in its range). One of five configuration sources for the bundled jemalloc allocator. Expected: jemalloc config string such as `"narenas:2,dirty_decay_ms:0"`.
+Checked in `sub_12FCDB0` (jemalloc `malloc_conf_init`, 15.4 KB — the largest function in its range). One of five configuration sources for the bundled jemalloc allocator. Expected: jemalloc config string such as `"narenas:2,dirty_decay_ms:0"`.
 
 ## Dynamic / Generic Access
 
@@ -334,11 +334,11 @@ Several `getenv("bar")` calls appear in `ctor_106`, `ctor_107`, `ctor_376`, `cto
 
 ## Cross-References
 
-- [CLI Flags](./cli-flags.md) -- flag-to-pipeline routing, `-v`/`-keep` wizard mode dependency
-- [Knobs](./knobs.md) -- internal configuration knobs (separate from env vars)
-- [Pipeline Entry](../pipeline/entry.md) -- `sub_8F9C90` real main, v253 dispatch logic
-- [Bitcode I/O](../infra/bitcode-io.md) -- LLVM_OVERRIDE_PRODUCER / dual producer mechanism
-- [Concurrent Compilation](../infra/concurrent-compilation.md) -- LIBNVVM_DISABLE_CONCURRENT_API
-- [Libdevice Linking](../infra/libdevice-linking.md) -- NVVM_IR_VER_CHK bypass for libdevice
-- [Debug Verify](../infra/debug-verify.md) -- CAN_FINALIZE_DEBUG, NVVM_IR_VER_CHK interaction
-- [NVVM Container](../structs/nvvm-container.md) -- NvvmIRVersion/NvvmDebugVersion in container header
+- [CLI Flags](./cli-flags.md) — flag-to-pipeline routing, `-v`/`-keep` wizard mode dependency
+- [Knobs](./knobs.md) — internal configuration knobs (separate from env vars)
+- [Pipeline Entry](../pipeline/entry.md) — `sub_8F9C90` real main, v253 dispatch logic
+- [Bitcode I/O](../infra/bitcode-io.md) — LLVM_OVERRIDE_PRODUCER / dual producer mechanism
+- [Concurrent Compilation](../infra/concurrent-compilation.md) — LIBNVVM_DISABLE_CONCURRENT_API
+- [Libdevice Linking](../infra/libdevice-linking.md) — NVVM_IR_VER_CHK bypass for libdevice
+- [Debug Verify](../infra/debug-verify.md) — CAN_FINALIZE_DEBUG, NVVM_IR_VER_CHK interaction
+- [NVVM Container](../structs/nvvm-container.md) — NvvmIRVersion/NvvmDebugVersion in container header

@@ -379,7 +379,7 @@ Offset  Size  Field
  20      4    padding
 ```
 
-Bucket index is computed as: `hash % bucket_count`. The use of modulus (not bitmask) is notable -- the bucket count is not required to be a power of two, although in practice the 4x rehash growth produces powers of two from the initial size of 8.
+Bucket index is computed as: `hash % bucket_count`. The use of modulus (not bitmask) is notable — the bucket count is not required to be a power of two, although in practice the 4x rehash growth produces powers of two from the initial size of 8.
 
 ### Node Layout: uint64\_t Key Variant
 
@@ -562,8 +562,8 @@ The FNV hash tables serve the instruction descriptor subsystem within the embedd
 
 ## Cross-References
 
-- [Symbol Resolution](symbol-resolution.md) -- primary consumer of the linker hash table (name-to-symbol map at elfw+288)
-- [Section Merging](section-merging.md) -- section name-to-index hash table at elfw+296
-- [Data Layout Optimization](data-layout-opt.md) -- 32-bit and 64-bit value dedup hash tables for constant bank optimization
-- [Dead Code Elimination](dead-code-elimination.md) -- liveness set operations use the same hash infrastructure
-- [Bindless Relocations](bindless-relocations.md) -- symbol lookup via `find_or_create_symbol` backed by the hash table
+- [Symbol Resolution](symbol-resolution.md) — primary consumer of the linker hash table (name-to-symbol map at elfw+288)
+- [Section Merging](section-merging.md) — section name-to-index hash table at elfw+296
+- [Data Layout Optimization](data-layout-opt.md) — 32-bit and 64-bit value dedup hash tables for constant bank optimization
+- [Dead Code Elimination](dead-code-elimination.md) — liveness set operations use the same hash infrastructure
+- [Bindless Relocations](bindless-relocations.md) — symbol lookup via `find_or_create_symbol` backed by the hash table

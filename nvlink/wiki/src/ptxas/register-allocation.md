@@ -1,20 +1,20 @@
 # Register Allocation
 
-> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas register allocator, see [ptxas Register Allocation overview](../../ptxas/regalloc/overview.html), [algorithm](../../ptxas/regalloc/algorithm.html), and [spilling](../../ptxas/regalloc/spilling.html).
+> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki — see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas register allocator, see [ptxas Register Allocation overview](../../ptxas/regalloc/overview.html), [algorithm](../../ptxas/regalloc/algorithm.html), and [spilling](../../ptxas/regalloc/spilling.html).
 
-The register allocation subsystem in nvlink's embedded ptxas backend occupies approximately 400 KB of code across two primary address ranges: `0x189C000`--`0x18FC000` (core regalloc, ~120 functions) and `0x18FC000`--`0x191A000` (setmaxnreg/CTA-reconfig, ~55 functions). An additional ~120 verification functions at `0x196C000`--`0x1A00000` validate allocation correctness post-hoc. Together these form the largest single pass in the compiler backend -- the top-level driver alone (`AllocateRegisters_main_driver` at `0x18988D0`) is 71 KB, and the per-instruction encoding function at `0x18AE2D0` is 155 KB, the largest function in the entire 1.7 MB backend core region.
+The register allocation subsystem in nvlink's embedded ptxas backend occupies approximately 400 KB of code across two primary address ranges: `0x189C000`--`0x18FC000` (core regalloc, ~120 functions) and `0x18FC000`--`0x191A000` (setmaxnreg/CTA-reconfig, ~55 functions). An additional ~120 verification functions at `0x196C000`--`0x1A00000` validate allocation correctness post-hoc. Together these form the largest single pass in the compiler backend — the top-level driver alone (`AllocateRegisters_main_driver` at `0x18988D0`) is 71 KB, and the per-instruction encoding function at `0x18AE2D0` is 155 KB, the largest function in the entire 1.7 MB backend core region.
 
-Register allocation follows a graph-coloring model with iterative spilling, operating across three distinct register classes simultaneously: general-purpose R-registers (R0--R255), uniform UR-registers (UR0--UR63, SM75+), and predicate registers (P0--P6). The allocator supports two alternative spill targets -- local memory (lmem, the traditional spill slot) and shared memory (smem, an NVIDIA-proprietary optimization controlled by a ROT13-obfuscated knob). For Blackwell and later architectures (SM100+), the system integrates with the `setmaxnreg` CTA register reconfiguration infrastructure that enables dynamic register budget adjustment within a kernel.
+Register allocation follows a graph-coloring model with iterative spilling, operating across three distinct register classes simultaneously: general-purpose R-registers (R0--R255), uniform UR-registers (UR0--UR63, SM75+), and predicate registers (P0--P6). The allocator supports two alternative spill targets — local memory (lmem, the traditional spill slot) and shared memory (smem, an NVIDIA-proprietary optimization controlled by a ROT13-obfuscated knob). For Blackwell and later architectures (SM100+), the system integrates with the `setmaxnreg` CTA register reconfiguration infrastructure that enables dynamic register budget adjustment within a kernel.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
 | Main driver | `sub_18988D0` (`AllocateRegisters_main_driver`) at `0x18988D0` (70,715 bytes / 2,408 lines) |
-| Per-instruction encoder | `sub_18AE2D0` at `0x18AE2D0` (155,321 bytes / 4,005 lines) -- largest function in region |
+| Per-instruction encoder | `sub_18AE2D0` at `0x18AE2D0` (155,321 bytes / 4,005 lines) — largest function in region |
 | Full pipeline | `sub_18E54B0` (`AllocateRegisters_full_pipeline`) at `0x18E54B0` (75,131 bytes / 2,738 lines) |
 | Graph coloring core | `sub_189C3E0` at `0x189C3E0` (47,807 bytes / 1,734 lines, self-recursive) |
-| Operand field encoder | `sub_189F300` at `0x189F300` (37,728 bytes / 1,680 lines) -- 250-case switch encoding operand attributes into packed bitfields |
+| Operand field encoder | `sub_189F300` at `0x189F300` (37,728 bytes / 1,680 lines) — 250-case switch encoding operand attributes into packed bitfields |
 | No-spill pass | `sub_18B3AE0` at `0x18B3AE0` (45,720 bytes / 1,525 lines) |
 | SMEM spill driver | `sub_18C8790` at `0x18C8790` (20,336 bytes / 764 lines) |
 | Budget negotiation | `sub_18E3530` at `0x18E3530` (32,949 bytes / 1,250 lines, self-recursive) |
@@ -82,23 +82,23 @@ The register allocation pipeline proceeds through eight stages. Each stage may i
 
 ## Graph Coloring Core
 
-The graph coloring allocator at `sub_189C3E0` (48 KB, 1,734 lines) implements a Chaitin-Briggs-style interference-graph coloring algorithm. It is self-recursive -- the function calls itself during splitting and re-coloring attempts. The call chain:
+The graph coloring allocator at `sub_189C3E0` (48 KB, 1,734 lines) implements a Chaitin-Briggs-style interference-graph coloring algorithm. It is self-recursive — the function calls itself during splitting and re-coloring attempts. The call chain:
 
-1. **Live range computation** (`sub_18A0DB0`, 13.5 KB) -- iterates basic blocks building per-register live intervals using an iterative dataflow analysis. Each virtual register receives a live range spanning from its definition point to its last use.
+1. **Live range computation** (`sub_18A0DB0`, 13.5 KB) — iterates basic blocks building per-register live intervals using an iterative dataflow analysis. Each virtual register receives a live range spanning from its definition point to its last use.
 
-2. **Interference graph construction** (`sub_189E600`, 11.5 KB) -- for each pair of simultaneously-live virtual registers, adds an interference edge. The interference graph is represented as a bitmatrix or adjacency list (not directly visible from decompilation, but the 4 vtable calls suggest an abstract graph interface).
+2. **Interference graph construction** (`sub_189E600`, 11.5 KB) — for each pair of simultaneously-live virtual registers, adds an interference edge. The interference graph is represented as a bitmatrix or adjacency list (not directly visible from decompilation, but the 4 vtable calls suggest an abstract graph interface).
 
-3. **Coloring** -- the recursive core assigns physical registers (colors) to virtual registers while respecting interference edges. When coloring fails, it selects a spill candidate based on the spill cost computation.
+3. **Coloring** — the recursive core assigns physical registers (colors) to virtual registers while respecting interference edges. When coloring fails, it selects a spill candidate based on the spill cost computation.
 
-4. **Operand field encoding** (`sub_189F300`, 38 KB) -- encodes per-operand properties into packed bitfields via a 250-case switch on operand attribute IDs (91--341). Each case sets specific bits in a packed `int[3]` descriptor. Despite the wiki name "spill cost computation" in the Key Facts table, this function is structurally an operand attribute encoder, not a cost computation. The actual spill weight computation lives in `sub_18C5470` and `sub_18C5B30` (see [Spilling and No-Spill Regalloc](#spilling-and-no-spill-regalloc)).
+4. **Operand field encoding** (`sub_189F300`, 38 KB) — encodes per-operand properties into packed bitfields via a 250-case switch on operand attribute IDs (91--341). Each case sets specific bits in a packed `int[3]` descriptor. Despite the wiki name "spill cost computation" in the Key Facts table, this function is structurally an operand attribute encoder, not a cost computation. The actual spill weight computation lives in `sub_18C5470` and `sub_18C5B30` (see [Spilling and No-Spill Regalloc](#spilling-and-no-spill-regalloc)).
 
-5. **Coalescing** (`sub_189BE00`, 7.5 KB) -- attempts to merge virtual registers connected by copy instructions into a single physical register, eliminating the copy. Pre-coloring coalescing (aggressive) and post-coloring coalescing (conservative) paths are both present.
+5. **Coalescing** (`sub_189BE00`, 7.5 KB) — attempts to merge virtual registers connected by copy instructions into a single physical register, eliminating the copy. Pre-coloring coalescing (aggressive) and post-coloring coalescing (conservative) paths are both present.
 
-6. **Live range splitting** (`sub_18A6860`, 7.7 KB) -- splits long live ranges into smaller segments that may be independently colorable, reducing interference.
+6. **Live range splitting** (`sub_18A6860`, 7.7 KB) — splits long live ranges into smaller segments that may be independently colorable, reducing interference.
 
 ### Reconstructed Pseudocode: Graph Coloring Core (`sub_189C3E0`)
 
-The following pseudocode is reconstructed from the 1,734-line decompiled function. The function operates as a single-pass instruction-stream walker that simultaneously builds a register-to-physical-register map, attempts coalescing, and detects coloring failures. [Confidence: medium -- control flow is clear, but some field semantics are inferred from offsets.]
+The following pseudocode is reconstructed from the 1,734-line decompiled function. The function operates as a single-pass instruction-stream walker that simultaneously builds a register-to-physical-register map, attempts coalescing, and detects coloring failures. [Confidence: medium — control flow is clear, but some field semantics are inferred from offsets.]
 
 ```c
 function graph_coloring_core(alloc_state) -> bool:
@@ -713,7 +713,7 @@ The allocator supports two distinct modes: a "no-spill" attempt that tries to fi
 
 ### No-Spill Pass
 
-`AllocateRegisters_nospill_pass` at `sub_18B3AE0` (46 KB, 1,525 lines) attempts allocation without introducing any spill code. String references include `"Smem spilling..."` and `"Register allocation failed..."`, indicating that this pass reports its success or failure. The no-spill result is reported via `regalloc_nospill_report` at `sub_18F9330` (9.3 KB), which emits `"NOSPILL REGALLOC: attemp"` (sic -- the truncated string is verbatim from the binary).
+`AllocateRegisters_nospill_pass` at `sub_18B3AE0` (46 KB, 1,525 lines) attempts allocation without introducing any spill code. String references include `"Smem spilling..."` and `"Register allocation failed..."`, indicating that this pass reports its success or failure. The no-spill result is reported via `regalloc_nospill_report` at `sub_18F9330` (9.3 KB), which emits `"NOSPILL REGALLOC: attemp"` (sic — the truncated string is verbatim from the binary).
 
 The no-spill pass is attempted first as an optimistic strategy. If it succeeds, the function uses the minimum possible register count with zero spill overhead. If it fails, the full spilling pipeline takes over.
 
@@ -733,21 +733,21 @@ The full spilling pipeline involves several interconnected functions:
 
 The spilling flow:
 
-1. **Candidate selection** -- `regalloc_compute_spill_weights_per_block` (`0x18C5470`) and `regalloc_compute_spill_benefit` (`0x18C5B30`) evaluate each virtual register as a spill candidate. Registers with long live ranges, low use frequency, and placement outside inner loops are preferred.
+1. **Candidate selection** — `regalloc_compute_spill_weights_per_block` (`0x18C5470`) and `regalloc_compute_spill_benefit` (`0x18C5B30`) evaluate each virtual register as a spill candidate. Registers with long live ranges, low use frequency, and placement outside inner loops are preferred.
 
-2. **Spill code generation** -- `regalloc_insert_spill_code` (`0x18AD450`) inserts STL (store-local) instructions at each definition of the spilled register, and `regalloc_emit_spill_load` (`0x18BC670`) inserts LDL (load-local) instructions before each use. Spill stores and loads target local memory (stack frame).
+2. **Spill code generation** — `regalloc_insert_spill_code` (`0x18AD450`) inserts STL (store-local) instructions at each definition of the spilled register, and `regalloc_emit_spill_load` (`0x18BC670`) inserts LDL (load-local) instructions before each use. Spill stores and loads target local memory (stack frame).
 
-3. **Spill slot assignment** -- `regalloc_compute_spill_slot` (`0x18A6E40`) assigns frame offsets for spilled registers. `regalloc_compute_spill_offset` (`0x18ADE70`) computes the final byte offset within the stack frame.
+3. **Spill slot assignment** — `regalloc_compute_spill_slot` (`0x18A6E40`) assigns frame offsets for spilled registers. `regalloc_compute_spill_offset` (`0x18ADE70`) computes the final byte offset within the stack frame.
 
-4. **Iteration** -- if the allocation still fails after spilling (the register budget is exceeded even with spill code), the loop tries again with additional candidates. The iterative nature is reflected in the self-recursive call in `AllocateRegisters_iterative_spill`.
+4. **Iteration** — if the allocation still fails after spilling (the register budget is exceeded even with spill code), the loop tries again with additional candidates. The iterative nature is reflected in the self-recursive call in `AllocateRegisters_iterative_spill`.
 
-5. **Spill optimization** -- `regalloc_optimize_spill_code` (`0x18CCB10`, 9 KB) and `regalloc_coalesce_spill_stores` (`0x18CD130`) clean up redundant spill/refill sequences after the iterative loop converges.
+5. **Spill optimization** — `regalloc_optimize_spill_code` (`0x18CCB10`, 9 KB) and `regalloc_coalesce_spill_stores` (`0x18CD130`) clean up redundant spill/refill sequences after the iterative loop converges.
 
 On failure, the allocator emits: `"Register allocation failed with register count of '%d'..."`.
 
 ### Rematerialization
 
-`regalloc_handle_rematerialization` at `0x18BE000` (4.9 KB) identifies instructions that can be cheaply recomputed rather than spilled. Constant loads, address computations, and other low-cost operations are marked as rematerializable -- the allocator regenerates them at each use site instead of inserting a spill/refill pair. This is verified post-hoc by the rematerialization verification pass (see [Post-Allocation Verification](#post-allocation-verification)).
+`regalloc_handle_rematerialization` at `0x18BE000` (4.9 KB) identifies instructions that can be cheaply recomputed rather than spilled. Constant loads, address computations, and other low-cost operations are marked as rematerializable — the allocator regenerates them at each use site instead of inserting a spill/refill pair. This is verified post-hoc by the rematerialization verification pass (see [Post-Allocation Verification](#post-allocation-verification)).
 
 ## SMEM Spilling
 
@@ -795,12 +795,12 @@ The reserved SMEM region is referenced by the symbol `__nv_reservedSMEM_offset_0
 
 When SMEM spilling is eligible:
 
-1. `regalloc_smem_compute_base_address` -- computes the base address within shared memory for spill slots, after all user-declared `__shared__` variables
-2. `regalloc_smem_compute_slot_size` -- determines the size of each spill slot (typically 4 bytes per 32-bit register)
-3. `regalloc_smem_allocate_slot` -- assigns SMEM offsets to spilled registers
-4. `regalloc_smem_spill_transform` -- rewrites STL/LDL spill instructions to STS/LDS (shared-memory store/load)
-5. `regalloc_smem_insert_barriers` -- inserts memory barriers (LDGDEPBAR or similar) to ensure SMEM writes are visible before subsequent reads
-6. `regalloc_smem_fixup_addressing` -- adjusts addressing modes for SMEM spill slots
+1. `regalloc_smem_compute_base_address` — computes the base address within shared memory for spill slots, after all user-declared `__shared__` variables
+2. `regalloc_smem_compute_slot_size` — determines the size of each spill slot (typically 4 bytes per 32-bit register)
+3. `regalloc_smem_allocate_slot` — assigns SMEM offsets to spilled registers
+4. `regalloc_smem_spill_transform` — rewrites STL/LDL spill instructions to STS/LDS (shared-memory store/load)
+5. `regalloc_smem_insert_barriers` — inserts memory barriers (LDGDEPBAR or similar) to ensure SMEM writes are visible before subsequent reads
+6. `regalloc_smem_fixup_addressing` — adjusts addressing modes for SMEM spill slots
 
 ## ABI Call Register Pressure Analysis
 
@@ -863,9 +863,9 @@ The setmaxnreg subsystem spans `0x18FB000`--`0x191A000` (~55 functions):
 
 The CTA reconfig system validates pragma annotations placed in PTX source code. `CTA_reconfig_validate_pragmas` (`0x1906DE0`) checks for:
 
-- `"Conflicting CTA Reconfig pragmas..."` -- multiple incompatible pragmas on the same function
-- `"Found an 'alloc' pragma after 'dealloc'"` -- incorrect ordering
-- `"Found a 'dealloc' pragma after 'alloc'"` -- incorrect ordering
+- `"Conflicting CTA Reconfig pragmas..."` — multiple incompatible pragmas on the same function
+- `"Found an 'alloc' pragma after 'dealloc'"` — incorrect ordering
+- `"Found a 'dealloc' pragma after 'alloc'"` — incorrect ordering
 
 Pragmas must follow a strict alloc-before-dealloc ordering within a function's control flow.
 
@@ -883,9 +883,9 @@ when the entry register count cannot be statically determined (e.g., due to indi
 
 Several functions emit the actual SASS `SETMAXNREG` instructions:
 
-- `setmaxnreg_emit_alloc_instruction` (`0x18FF510`) -- emits `setmaxnreg.alloc`/`.inc`
-- `setmaxnreg_emit_dealloc_instruction` (`0x18FFA80`) -- emits `setmaxnreg.dealloc`/`.release`/`.dec`
-- `setmaxnreg_emit_reconfig_code` (`0x1902670`) -- emits surrounding reconfig glue
+- `setmaxnreg_emit_alloc_instruction` (`0x18FF510`) — emits `setmaxnreg.alloc`/`.inc`
+- `setmaxnreg_emit_dealloc_instruction` (`0x18FFA80`) — emits `setmaxnreg.dealloc`/`.release`/`.dec`
+- `setmaxnreg_emit_reconfig_code` (`0x1902670`) — emits surrounding reconfig glue
 
 The register count in `setmaxnreg.dec` instructions is validated:
 
@@ -930,7 +930,7 @@ The NVIDIA GPU register file is divided into three distinct classes, each alloca
 - **Allocation**: The primary target of graph coloring; most of the 120 regalloc functions handle R-regs
 - **Special registers**: R255 = RZ (zero register, hardcoded)
 - **Pair constraints**: `regalloc_handle_register_pairs` (`0x18C3300`) and `register_pair_allocator` (`0x1ABBCC0`) enforce even-register alignment for 64-bit pairs
-- **Bank conflicts**: `register_bank_conflict_resolver` (`0x1ABA8E0`) resolves bank conflicts -- the register file is organized into banks (configurable, typically 4 or 8), and simultaneous reads from the same bank cause stalls
+- **Bank conflicts**: `register_bank_conflict_resolver` (`0x1ABA8E0`) resolves bank conflicts — the register file is organized into banks (configurable, typically 4 or 8), and simultaneous reads from the same bank cause stalls
 
 ### UR-Registers (Uniform)
 
@@ -958,12 +958,12 @@ The NVIDIA GPU register file is divided into three distinct classes, each alloca
 
 The budget negotiation system determines the final register count per function, balancing multiple competing constraints:
 
-1. **`--maxrregcount`** -- user-specified maximum register count (CLI option)
-2. **`__launch_bounds__`** -- PTX-level annotation specifying (maxThreadsPerBlock, minBlocksPerMultiprocessor)
-3. **`setmaxnreg` pragmas** -- Blackwell+ dynamic register budget
-4. **ABI requirements** -- minimum registers needed for calling convention
-5. **Occupancy targets** -- higher register counts reduce occupancy
-6. **Spill cost** -- lower register counts increase spill overhead
+1. **`--maxrregcount`** — user-specified maximum register count (CLI option)
+2. **`__launch_bounds__`** — PTX-level annotation specifying (maxThreadsPerBlock, minBlocksPerMultiprocessor)
+3. **`setmaxnreg` pragmas** — Blackwell+ dynamic register budget
+4. **ABI requirements** — minimum registers needed for calling convention
+5. **Occupancy targets** — higher register counts reduce occupancy
+6. **Spill cost** — lower register counts increase spill overhead
 
 `AllocateRegisters_negotiate_budget` at `0x18E3530` (33 KB, self-recursive) runs the negotiation loop:
 
@@ -983,9 +983,9 @@ Launch bounds set a hard floor on occupancy, which translates to a hard ceiling 
 
 After allocation, every instruction in the function must be rewritten to replace virtual registers with physical register numbers. Two massive functions handle this:
 
-- **`AllocateRegisters_per_instruction_encode`** (`0x18AE2D0`, 155 KB, 4,005 lines, 61 callees, 18 vtable calls) -- processes each instruction individually, substituting virtual-to-physical register mappings into operand fields. Handles special cases: tied operands, implicit definitions, constant operands, register pairs, and CTA-reconfig pragmas.
+- **`AllocateRegisters_per_instruction_encode`** (`0x18AE2D0`, 155 KB, 4,005 lines, 61 callees, 18 vtable calls) — processes each instruction individually, substituting virtual-to-physical register mappings into operand fields. Handles special cases: tied operands, implicit definitions, constant operands, register pairs, and CTA-reconfig pragmas.
 
-- **`AllocateRegisters_encode_all_instructions`** (`0x18EF990`, 108 KB, 3,724 lines, 78 callees) -- the second-largest function in the region. Iterates all functions and all basic blocks, calling the per-instruction encoder. Handles error recovery: on `"Internal compiler error."`, attempts fallback encoding. References setmaxnreg and no-spill diagnostics.
+- **`AllocateRegisters_encode_all_instructions`** (`0x18EF990`, 108 KB, 3,724 lines, 78 callees) — the second-largest function in the region. Iterates all functions and all basic blocks, calling the per-instruction encoder. Handles error recovery: on `"Internal compiler error."`, attempts fallback encoding. References setmaxnreg and no-spill diagnostics.
 
 Supporting functions:
 
@@ -1019,21 +1019,21 @@ The post-allocation verification system at `0x19D0000`--`0x1A00000` is one of th
 
 The verifier works by computing reaching definitions before and after register allocation, then comparing them. Any mismatch indicates a potential bug:
 
-1. **Reaching-definition snapshot** -- before register allocation, the verifier records which definitions reach each use point.
-2. **Post-allocation comparison** -- after allocation, it recomputes reaching definitions on the physical-register code and compares against the pre-allocation snapshot.
+1. **Reaching-definition snapshot** — before register allocation, the verifier records which definitions reach each use point.
+2. **Post-allocation comparison** — after allocation, it recomputes reaching definitions on the physical-register code and compares against the pre-allocation snapshot.
 3. **Mismatch classification**:
-   - **`"BENIGN (explainable)"`** -- the mismatch is explained by a known transformation (spill/refill, rematerialization, P2R/R2P predicate packing)
-   - **`"POTENTIAL PROBLEM"`** -- the mismatch cannot be explained and may indicate a compiler bug
-   - **`"TOTAL MISMATCH"`** -- complete failure to match any definitions
+   - **`"BENIGN (explainable)"`** — the mismatch is explained by a known transformation (spill/refill, rematerialization, P2R/R2P predicate packing)
+   - **`"POTENTIAL PROBLEM"`** — the mismatch cannot be explained and may indicate a compiler bug
+   - **`"TOTAL MISMATCH"`** — complete failure to match any definitions
 
 ### Specific Pattern Checks
 
 The verifier checks several specific correctness patterns:
 
-- **Bit-spill-refill** (`0x19DDC90`) -- validates that spill stores are correctly paired with refill loads: `"Failed to establish match for bit-spill-refill pattern..."`
-- **P2R-R2P** (`0x19DE150`) -- validates predicate packing/unpacking correctness: `"Failed to establish match for P2R-R2P pattern..."`
-- **Upper-bit clobbering** (`0x19DE510`) -- checks that 32-bit writes to a register do not inadvertently clobber the upper 32 bits when the register is used as part of a 64-bit pair: `"Some instruction(s) are destroying the base of..."`
-- **Rematerialization** (`0x19DBE60`) -- verifies that rematerialized values match the original computation: `"REMATERIALIZATION PROBLEM. New Instruction..."`
+- **Bit-spill-refill** (`0x19DDC90`) — validates that spill stores are correctly paired with refill loads: `"Failed to establish match for bit-spill-refill pattern..."`
+- **P2R-R2P** (`0x19DE150`) — validates predicate packing/unpacking correctness: `"Failed to establish match for P2R-R2P pattern..."`
+- **Upper-bit clobbering** (`0x19DE510`) — checks that 32-bit writes to a register do not inadvertently clobber the upper 32 bits when the register is used as part of a 64-bit pair: `"Some instruction(s) are destroying the base of..."`
+- **Rematerialization** (`0x19DBE60`) — verifies that rematerialized values match the original computation: `"REMATERIALIZATION PROBLEM. New Instruction..."`
 
 ### Debug Knob
 
@@ -1067,11 +1067,11 @@ After register allocation and codegen complete, the resource usage reporter at `
 | Compile time | `"Compile time = %.3f ms"` | Per-function compilation time |
 
 The resource counts are retrieved via dedicated accessor functions:
-- `sub_43CAA0` -- register count
-- `sub_43CBC0` -- barrier count
-- `sub_43CD80` -- stack size
-- `sub_43C680` -- shared memory size
-- `sub_43C780` -- local memory size
+- `sub_43CAA0` — register count
+- `sub_43CBC0` — barrier count
+- `sub_43CD80` — stack size
+- `sub_43C680` — shared memory size
+- `sub_43C780` — local memory size
 
 ### Extended Metrics Header
 
@@ -1125,7 +1125,7 @@ The complete register allocation subsystem, listed by pipeline stage:
 | `0x189BE00` | 7.5 KB | `regalloc_try_coalesce` |
 | `0x189C3E0` | 48 KB | `regalloc_graph_coloring_core` (self-recursive) |
 | `0x189E600` | 11.5 KB | `regalloc_build_interference_graph` |
-| `0x189F300` | 38 KB | `regalloc_operand_field_encoder` -- 250-case operand attribute packer |
+| `0x189F300` | 38 KB | `regalloc_operand_field_encoder` — 250-case operand attribute packer |
 | `0x18A0DB0` | 13.5 KB | `regalloc_compute_live_ranges` |
 | `0x18A1990` | 30 KB | `regalloc_compute_operand_encoding` (self-recursive) |
 | `0x18A65E0` | 3 KB | `regalloc_assign_physical_register` |
@@ -1196,13 +1196,13 @@ The complete register allocation subsystem, listed by pipeline stage:
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) -- regalloc at `0x189C000`--`0x18FC000` in address map
-- [Scheduling](scheduling.md) -- runs after register allocation
-- [ISel Hubs](isel-hubs.md) -- runs before register allocation
-- [IR Nodes](ir-nodes.md) -- IR register fields modified by the allocator
+- [Embedded ptxas Overview](overview.md) — regalloc at `0x189C000`--`0x18FC000` in address map
+- [Scheduling](scheduling.md) — runs after register allocation
+- [ISel Hubs](isel-hubs.md) — runs before register allocation
+- [IR Nodes](ir-nodes.md) — IR register fields modified by the allocator
 
 ### Sibling Wikis
-- [ptxas: Register Allocation Overview](../../ptxas/regalloc/overview.html) -- standalone ptxas register allocation
-- [ptxas: Algorithm](../../ptxas/regalloc/algorithm.html) -- graph-coloring algorithm details
-- [ptxas: Spilling](../../ptxas/regalloc/spilling.html) -- spill code generation
-- [ptxas: ABI](../../ptxas/regalloc/abi.html) -- calling convention and register partitioning
+- [ptxas: Register Allocation Overview](../../ptxas/regalloc/overview.html) — standalone ptxas register allocation
+- [ptxas: Algorithm](../../ptxas/regalloc/algorithm.html) — graph-coloring algorithm details
+- [ptxas: Spilling](../../ptxas/regalloc/spilling.html) — spill code generation
+- [ptxas: ABI](../../ptxas/regalloc/abi.html) — calling convention and register partitioning

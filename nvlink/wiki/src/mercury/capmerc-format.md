@@ -11,7 +11,7 @@ The name "Capsule Mercury" comes from the encapsulation metaphor: Mercury-format
 | CLI selection | `--binary-kind=capmerc` (default for sm100+) |
 | Other valid kinds | `mercury` (legacy), `sass` (flat SASS) |
 | Option parser | `sub_4AC380` at `0x4AC380` (9,967 bytes, 429 lines) |
-| ELF type | `0xFF00` (`ET_LOPROC` -- processor-specific, distinct from `ET_EXEC=2`) |
+| ELF type | `0xFF00` (`ET_LOPROC` — processor-specific, distinct from `ET_EXEC=2`) |
 | Default output name | `capmerc.cubin` (vs `sass.cubin` for SASS kind) |
 | Activation flag | `byte_2A5F222 = 1` when arch > sm\_99 |
 | capmerc-specific flag | `byte_2A5F225 = 1` |
@@ -50,15 +50,15 @@ A traditional cubin (SASS kind) is a fully resolved ELF: every `.text.*` section
 
 A capmerc binary defers the final instruction encoding step. Instead of storing finalized SASS, each function's `.text.*` section is accompanied by a set of `.nv.merc.*` sections that carry:
 
-1. **Mercury intermediate code** -- instruction streams in Mercury's scheduling-friendly representation, where instructions carry symbolic operand references and control-flow metadata rather than fully resolved bit-level encodings.
+1. **Mercury intermediate code** — instruction streams in Mercury's scheduling-friendly representation, where instructions carry symbolic operand references and control-flow metadata rather than fully resolved bit-level encodings.
 
-2. **Mercury relocations** -- `R_MERCURY_*` relocation types (see [R\_MERCURY Relocations](r-mercury-relocations.md)) that the driver's finalizer resolves at load time. These are distinct from `R_CUDA_*` relocations and use a dedicated relocation table (`.nv.merc.rela`).
+2. **Mercury relocations** — `R_MERCURY_*` relocation types (see [R\_MERCURY Relocations](r-mercury-relocations.md)) that the driver's finalizer resolves at load time. These are distinct from `R_CUDA_*` relocations and use a dedicated relocation table (`.nv.merc.rela`).
 
-3. **Mercury debug sections** -- DWARF-like debug data under the `.nv.merc.*` namespace, including line tables, abbreviation tables, and register-level debug info.
+3. **Mercury debug sections** — DWARF-like debug data under the `.nv.merc.*` namespace, including line tables, abbreviation tables, and register-level debug info.
 
-4. **Mercury ISA metadata** -- `EIATTR_MERCURY_ISA_VERSION` and `EIATTR_MERCURY_FINALIZER_OPTIONS` attributes that tell the driver which Mercury ISA version the code targets and what finalizer options were used at compile time.
+4. **Mercury ISA metadata** — `EIATTR_MERCURY_ISA_VERSION` and `EIATTR_MERCURY_FINALIZER_OPTIONS` attributes that tell the driver which Mercury ISA version the code targets and what finalizer options were used at compile time.
 
-5. **Compatibility attributes** -- `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION`, `EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION`, and `EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE` for driver-side version matching.
+5. **Compatibility attributes** — `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION`, `EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION`, and `EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE` for driver-side version matching.
 
 The deferred encoding enables the driver to:
 
@@ -82,7 +82,7 @@ The deferred encoding enables the driver to:
 
 ## Mercury Sections (`.nv.merc.*`)
 
-The inner Mercury payload is distributed across multiple ELF sections with the `.nv.merc` prefix. These sections are created by the compiler backend (ptxas/cicc) and preserved through linking by nvlink's merge phase. During merge (`sub_45E7D0`), Mercury sections are identified and either copied or skipped depending on the linking mode -- the string `"skip mercury section %i"` appears when a Mercury section is not relevant to the current merge pass.
+The inner Mercury payload is distributed across multiple ELF sections with the `.nv.merc` prefix. These sections are created by the compiler backend (ptxas/cicc) and preserved through linking by nvlink's merge phase. During merge (`sub_45E7D0`), Mercury sections are identified and either copied or skipped depending on the linking mode — the string `"skip mercury section %i"` appears when a Mercury section is not relevant to the current merge pass.
 
 All `.nv.merc.*` sections carry the **SHF\_NV\_MERC** flag: bit 28 of `sh_flags` (`0x10000000`). This NVIDIA extension flag serves two purposes: (1) fast O(1) rejection of non-merc sections during classification, and (2) namespace separation during section index remapping (`sub_1C99BB0`). The finalizer uses this flag to identify which sections require relocation patching during off-target finalization.
 
@@ -116,9 +116,9 @@ The Mercury code sections use a naming convention of `.nv.merc.` followed by a f
 
 Mercury section names are constructed by two helper functions:
 
-- `sub_1CEC4C0` -- generic name constructor. Prepends `".nv.merc"` to the original section name: `sprintf(buf, "%s%s", ".nv.merc", original_name)`. Allocates `strlen(name) + 9` bytes (8 for prefix + NUL).
+- `sub_1CEC4C0` — generic name constructor. Prepends `".nv.merc"` to the original section name: `sprintf(buf, "%s%s", ".nv.merc", original_name)`. Allocates `strlen(name) + 9` bytes (8 for prefix + NUL).
 
-- `sub_1CEC660` -- constant bank name constructor. Maps `.nv.constant*` sections to Mercury equivalents with bank-type suffixes. Extracts the bank character from offset 12 of the section name, computes the bank type as `char + 0x70000034` (SHT\_LOPROC+52), then matches against six known bank types:
+- `sub_1CEC660` — constant bank name constructor. Maps `.nv.constant*` sections to Mercury equivalents with bank-type suffixes. Extracts the bank character from offset 12 of the section name, computes the bank type as `char + 0x70000034` (SHT\_LOPROC+52), then matches against six known bank types:
 
 | Bank type | Suffix | vtable offset |
 |---|---|---|
@@ -131,9 +131,9 @@ Mercury section names are constructed by two helper functions:
 
 The composite name is built by `sub_1CEC570`: e.g., `".nv.merc" + ".nv.constant" + ".user" + bank_name`.
 
-Relocation section names are constructed in `sub_1CF72E0` as: `sprintf(buf, "%s%s%s", ".nv.merc", ".rela", name+8)` -- the +8 strips the `".nv.merc"` prefix so that `".nv.merc.debug_info"` becomes `".nv.merc.rela.debug_info"`.
+Relocation section names are constructed in `sub_1CF72E0` as: `sprintf(buf, "%s%s%s", ".nv.merc", ".rela", name+8)` — the +8 strips the `".nv.merc"` prefix so that `".nv.merc.debug_info"` becomes `".nv.merc.rela.debug_info"`.
 
-### Section Classifier -- `sub_1CED0E0`
+### Section Classifier — `sub_1CED0E0`
 
 The 9,262-byte classifier at `0x1CED0E0` identifies `.nv.merc.*` sections using a two-stage guard-then-waterfall algorithm identical to the ptxas classifier at `sub_1C98C60` (see [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) for the full algorithm description).
 
@@ -191,7 +191,7 @@ Instead of writing directly to a file, the Mercury path:
 2. Allocates a contiguous memory buffer from the arena.
 3. Calls `sub_45C950` which uses the mode-4 (memcpy) polymorphic writer to serialize the complete ELF into the buffer.
 
-This produces an `"in-memory-ELF-image"` -- the string used as the FNLZR input identifier.
+This produces an `"in-memory-ELF-image"` — the string used as the FNLZR input identifier.
 
 ### Step 3: FNLZR Post-Link Transform (sub\_4275C0 -> sub\_4748F0)
 
@@ -201,7 +201,7 @@ The FNLZR (Finalizer) operates on the serialized ELF byte buffer. `sub_4275C0` i
    - `byte_2A5F222` (Mercury mode)
    - `byte_2A5F225` (capmerc mode, controls config word at offset +24: value 4 or 5)
    - `byte_2A5F310` (shared flag)
-   - TODO: identify true byte for `capmerc.secondary_flag` -- previous wiki revisions cited `byte_2A5F210`, but `byte_2A5F210` is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12) and has no documented capmerc/Mercury use
+   - TODO: identify true byte for `capmerc.secondary_flag` — previous wiki revisions cited `byte_2A5F210`, but `byte_2A5F210` is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12) and has no documented capmerc/Mercury use
    - `byte_2A5F224`, `byte_2A5F223` (additional binary properties)
    - `byte_2A5F2A9` (mode selector)
 
@@ -249,15 +249,15 @@ After FNLZR returns, `main()` writes the transformed buffer to the output file v
 
 During ELF output serialization (`sub_1CEE030`), Mercury sections are emitted in five passes:
 
-1. **Data sections** -- `.nv.merc.*` memory-space clones (constant banks, shared, local, global). Written with `sh_type = 0x7000000C` (SHT\_LOPROC+12) and `sh_flags = 0x10000000` (SHF\_NV\_MERC). Section headers are copied via SSE-optimized `_mm_loadu_si128` operations.
+1. **Data sections** — `.nv.merc.*` memory-space clones (constant banks, shared, local, global). Written with `sh_type = 0x7000000C` (SHT\_LOPROC+12) and `sh_flags = 0x10000000` (SHF\_NV\_MERC). Section headers are copied via SSE-optimized `_mm_loadu_si128` operations.
 
-2. **Debug sections** -- `.nv.merc.debug_*` and `.nv.merc.nv_debug_*`. Written with `sh_type = 0x7000000D` (SHT\_LOPROC+13) and `sh_flags = 0x10000000`. Output offset is aligned to each section's `sh_addralign` value.
+2. **Debug sections** — `.nv.merc.debug_*` and `.nv.merc.nv_debug_*`. Written with `sh_type = 0x7000000D` (SHT\_LOPROC+13) and `sh_flags = 0x10000000`. Output offset is aligned to each section's `sh_addralign` value.
 
-3. **Relocation sections** -- `.nv.merc.rela*`. Written with `sh_type = 0x70000064` (SHT\_LOPROC+100) in Mercury mode or `1` (SHT\_PROGBITS) in some variants. `sh_flags = 0x42`.
+3. **Relocation sections** — `.nv.merc.rela*`. Written with `sh_type = 0x70000064` (SHT\_LOPROC+100) in Mercury mode or `1` (SHT\_PROGBITS) in some variants. `sh_flags = 0x42`.
 
-4. **Remaining sections** -- any additional Mercury sections from the 280-entry section list.
+4. **Remaining sections** — any additional Mercury sections from the 280-entry section list.
 
-5. **Extended section index** -- `.nv.merc.symtab_shndx` (sh\_type = 18, SHT\_SYMTAB\_SHNDX). Created only when section indices exceed `0xFF00`. When a symbol references a section with index > `0xFF00`, the symbol table entry stores `0xFFFF` and the actual index is recorded in this extended section index table.
+5. **Extended section index** — `.nv.merc.symtab_shndx` (sh\_type = 18, SHT\_SYMTAB\_SHNDX). Created only when section indices exceed `0xFF00`. When a symbol references a section with index > `0xFF00`, the symbol table entry stores `0xFFFF` and the actual index is recorded in this extended section index table.
 
 ### Output Filename
 
@@ -324,7 +324,7 @@ The finalization compatibility checking functions (`sub_4709E0`, `sub_470DA0`) d
 
 | Return | Meaning |
 |---|---|
-| 0 | Compatible -- finalization allowed |
+| 0 | Compatible — finalization allowed |
 | 24 | NULL architecture profile (`a1 == NULL`) |
 | 25 | ISA version too high (`> 0x101`) |
 | 26 | Incompatible finalization class (general) |
@@ -363,7 +363,7 @@ The reconstitution itself is performed by `sub_5207A0` (18,673 bytes, 784 lines)
 
 ## Mercury Uplift
 
-The error string `"Invalid elf provided for mercury uplift."` reveals a conversion mechanism called "mercury uplift" -- the process of converting a traditional SASS cubin into a capmerc binary. When an input cubin is detected as SASS-only (fatbin member type is default cubin rather than 16), the linker can "uplift" it by wrapping the SASS content in Mercury sections. This operation validates that the input ELF is structurally sound before attempting the conversion.
+The error string `"Invalid elf provided for mercury uplift."` reveals a conversion mechanism called "mercury uplift" — the process of converting a traditional SASS cubin into a capmerc binary. When an input cubin is detected as SASS-only (fatbin member type is default cubin rather than 16), the linker can "uplift" it by wrapping the SASS content in Mercury sections. This operation validates that the input ELF is structurally sound before attempting the conversion.
 
 The `MercGenerateSassUCode` string at `0x2443D02` names the internal pass that generates Mercury microcode from SASS input, forming the core of the uplift pipeline. The companion target-fixup stage `PostFixForMercTargets` (string at `0x2443C44`, master-table entry at `0x24443C0`) runs as the first Mercury-specific phase after register allocation; uplift relies on it to apply Mercury-only instruction rewrites before SASS UCode emission. See [Mercury Compiler Passes](compiler-passes.md) for the full phase table.
 
@@ -399,7 +399,7 @@ The FNLZR finalization orchestrator (`sub_471700`, 78,516 bytes) is the largest 
 
 ## JIT Finalization Path
 
-A separate JIT finalization entry exists at `sub_52DD50` (781 bytes; `0x52DD50`..`0x52E05C`), the JIT-specific wrapper that owns all five `FNLZR: ... JIT` diagnostic strings (verified xrefs at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, `0x52E049`). `sub_52DD50` delegates to the same `sub_4748F0` engine used by the AOT path. The byte-adjacent function `sub_52E060` (11,802 bytes; starts at `0x52E060`, immediately after `sub_52DD50` ends at `0x52E05C`) is **not** part of the finalizer -- it is the embedded nvJIT API option parser (the entry point installed at `qword_2A77DD0` by `sub_4FFC30` and dispatched by `sub_4BE350`/`sub_4BDB90`; see [PTX Input Handling](../input/ptx-input.md)). Its decompilation contains no `FNLZR`/JIT/ptxas-internal strings; instead it owns `"nvJIT API"`, `"JIT API Command Line Options"`, `"in-memory-ELF-image"`, and the toolchain version banner, plus a 23-entry option-handler dispatch table at `0x1df8ce0..0x1df8d90` whose every slot lands back inside itself. The 23 paired `_setjmp` buffers are per-option longjmp targets for option-parse failure (not C++ exception machinery). The `sub_52DD50` wrapper handles the CUDA driver's JIT finalization path with its own logging:
+A separate JIT finalization entry exists at `sub_52DD50` (781 bytes; `0x52DD50`..`0x52E05C`), the JIT-specific wrapper that owns all five `FNLZR: ... JIT` diagnostic strings (verified xrefs at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, `0x52E049`). `sub_52DD50` delegates to the same `sub_4748F0` engine used by the AOT path. The byte-adjacent function `sub_52E060` (11,802 bytes; starts at `0x52E060`, immediately after `sub_52DD50` ends at `0x52E05C`) is **not** part of the finalizer — it is the embedded nvJIT API option parser (the entry point installed at `qword_2A77DD0` by `sub_4FFC30` and dispatched by `sub_4BE350`/`sub_4BDB90`; see [PTX Input Handling](../input/ptx-input.md)). Its decompilation contains no `FNLZR`/JIT/ptxas-internal strings; instead it owns `"nvJIT API"`, `"JIT API Command Line Options"`, `"in-memory-ELF-image"`, and the toolchain version banner, plus a 23-entry option-handler dispatch table at `0x1df8ce0..0x1df8d90` whose every slot lands back inside itself. The 23 paired `_setjmp` buffers are per-option longjmp targets for option-parse failure (not C++ exception machinery). The `sub_52DD50` wrapper handles the CUDA driver's JIT finalization path with its own logging:
 
 ```text
 FNLZR: JIT Path
@@ -444,7 +444,7 @@ The JIT wrapper shares the underlying finalization orchestrator (`sub_471700`) w
 | `sub_470DA0` | 2,074 B | can_finalize_with_capability_mask | Capability bitmask check |
 | `sub_5207A0` | 18,673 B | capmerc_reconstitute_sass | SASS reconstitution from Mercury |
 | `sub_52DD50` | 781 B | finalizer_jit_entry | JIT-path wrapper (owns all `FNLZR: ... JIT` strings); delegates to `sub_4748F0` |
-| `sub_52E060` | 11,802 B | nvjit_api_option_parser | Embedded nvJIT API option parser -- byte-adjacent to `sub_52DD50` but unrelated to finalization; installed at `qword_2A77DD0` by `sub_4FFC30` (documented in [PTX Input Handling](../input/ptx-input.md)) |
+| `sub_52E060` | 11,802 B | nvjit_api_option_parser | Embedded nvJIT API option parser — byte-adjacent to `sub_52DD50` but unrelated to finalization; installed at `qword_2A77DD0` by `sub_4FFC30` (documented in [PTX Input Handling](../input/ptx-input.md)) |
 | `sub_45C950` | ~1 KB | write_elf_to_memory | Serialize ELF to buffer (Mercury path) |
 | `sub_45C980` | ~1 KB | compute_elf_size | Compute serialized ELF byte count |
 | `sub_45BF00` | 13,258 B | serialize_elf | Core ELF serialization engine |
@@ -476,19 +476,19 @@ The JIT wrapper shares the underlying finalization orchestrator (`sub_471700`) w
 ## Cross-References
 
 ### nvlink Internal
-- [R\_MERCURY Relocations](r-mercury-relocations.md) -- full catalog of Mercury relocation types
-- [Mercury ELF Sections](elf-sections.md) -- detailed `.nv.merc.*` section layout
-- [FNLZR Post-Link](fnlzr.md) -- FNLZR binary rewriter internals
-- [Mercury Overview](overview.md) -- high-level Mercury architecture
-- [Finalization Phase](../pipeline/finalize.md) -- ELF finalization including 0xFF00 type handling
-- [Output Phase](../pipeline/output.md) -- Mercury output path details
-- [Architecture Profiles](../targets/arch-profiles.md) -- SM100+ architecture database
-- [Fatbin Extraction](../input/fatbin-extraction.md) -- fatbin member type 16 handling
-- [CLI Options](../pipeline/cli-options.md) -- `--binary-kind` and related flags
+- [R\_MERCURY Relocations](r-mercury-relocations.md) — full catalog of Mercury relocation types
+- [Mercury ELF Sections](elf-sections.md) — detailed `.nv.merc.*` section layout
+- [FNLZR Post-Link](fnlzr.md) — FNLZR binary rewriter internals
+- [Mercury Overview](overview.md) — high-level Mercury architecture
+- [Finalization Phase](../pipeline/finalize.md) — ELF finalization including 0xFF00 type handling
+- [Output Phase](../pipeline/output.md) — Mercury output path details
+- [Architecture Profiles](../targets/arch-profiles.md) — SM100+ architecture database
+- [Fatbin Extraction](../input/fatbin-extraction.md) — fatbin member type 16 handling
+- [CLI Options](../pipeline/cli-options.md) — `--binary-kind` and related flags
 
 ### Sibling Wikis
-- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc format (Mercury section binary layouts, 328-byte capsule descriptor layout, sh\_type map, classifier algorithm with `0x5D05` bitmask, marker stream TLV format, rela entry format, sub-byte relocation design, finalization levels)
-- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encode/decode pipeline (phases 113--122)
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) — standalone ptxas capmerc format (Mercury section binary layouts, 328-byte capsule descriptor layout, sh\_type map, classifier algorithm with `0x5D05` bitmask, marker stream TLV format, rela entry format, sub-byte relocation design, finalization levels)
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) — standalone ptxas Mercury encode/decode pipeline (phases 113--122)
 
 ## Confidence Assessment
 
