@@ -3,11 +3,12 @@
 (function () {
   var CSS =
     '#ai-disclaimer-bar{position:-webkit-sticky;position:sticky;' +
-    'top:var(--menu-bar-height,50px);z-index:99;box-sizing:border-box;width:100%;' +
-    'margin:0;padding:5px 14px;background:#b05a55;color:#f4e8d0;' +
-    'font-size:0.72rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;' +
-    'text-align:center;line-height:1.35;border-bottom:1px solid rgba(0,0,0,0.20);' +
-    'box-shadow:0 1px 3px rgba(0,0,0,0.12);}' +
+    'top:var(--menu-bar-height,50px);z-index:99;box-sizing:border-box;' +
+    'max-width:var(--content-max-width,750px);margin:0 auto;' +
+    'padding:8px 18px;background:#b05a55;color:#f4e8d0;' +
+    'font-size:1.75rem;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;' +
+    'text-align:center;line-height:1.4;border:1px solid rgba(0,0,0,0.20);border-top:none;' +
+    'border-radius:0 0 6px 6px;box-shadow:0 2px 4px rgba(0,0,0,0.14);}' +
     '@media print{#ai-disclaimer-bar{position:static;}}';
   var TEXT = "AI-GENERATED REVERSE-ENGINEERING NOTES — AUTHOR’S PERSONAL REFERENCE ONLY. " +
              "EVERYTHING HERE IS A BEST-GUESS RECONSTRUCTION, NOT A RELIABLE SOURCE.";
