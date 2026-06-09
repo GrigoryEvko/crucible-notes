@@ -8,6 +8,7 @@ src = "src"
 [output.html]
 default-theme = "navy"
 additional-js = ["ai-disclaimer.js"]
+additional-css = ["custom.css"]
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
 edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuron-platform/wiki/{path}"

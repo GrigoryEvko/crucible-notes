@@ -12,14 +12,7 @@
     '@media print{#ai-disclaimer-bar{position:static;}}' +
     // shrink the disclaimer bar on narrow screens so it doesn't eat the viewport
     '@media (max-width:800px){#ai-disclaimer-bar{font-size:1.15rem;padding:5px 10px;' +
-    'letter-spacing:0;line-height:1.3;}}' +
-    // let tables wrap and shrink on narrow screens instead of forcing horizontal scroll
-    '@media (max-width:800px){' +
-    '.content main table{font-size:1.05rem;line-height:1.35;}' +
-    '.content main table th,.content main table td{padding:0.3em 0.45em;' +
-    'overflow-wrap:anywhere;word-break:break-word;}' +
-    '.content main table code,.content main table tt{white-space:normal;' +
-    'overflow-wrap:anywhere;word-break:break-word;}}';
+    'letter-spacing:0;line-height:1.3;}}';
   var TEXT = "AI-GENERATED REVERSE-ENGINEERING NOTES — AUTHOR’S PERSONAL REFERENCE ONLY. " +
              "EVERYTHING HERE IS A BEST-GUESS RECONSTRUCTION, NOT A RELIABLE SOURCE.";
   function build() {

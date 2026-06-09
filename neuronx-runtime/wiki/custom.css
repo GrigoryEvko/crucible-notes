@@ -1,0 +1,11 @@
+/* Site-specific style overrides for this wiki. */
+/* ── Responsive tables (mobile) ───────────────────────────────
+   Let table cells and inline code wrap and shrink on narrow screens instead of
+   forcing horizontal scroll on every table. */
+@media (max-width: 800px) {
+    .content main table { font-size: 1.05rem; line-height: 1.35; }
+    .content main table th,
+    .content main table td { padding: 0.3em 0.45em; overflow-wrap: anywhere; word-break: break-word; }
+    .content main table code,
+    .content main table tt { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+}
