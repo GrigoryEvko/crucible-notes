@@ -174,11 +174,11 @@ The inline cache (4 slots of 16 bytes at `+0x18`) is a small-buffer optimization
 | 6 | MulExpr | N-ary: delinearize each factor, rebuild with `getMulExpr` |
 | 7 | UDivExpr | Delinearize both operands, rebuild with `getUDivExpr` |
 | 8 | AddRecExpr | N-ary with wrap flag preservation; critical path |
-| 9--13 | SMax/UMax/SMin/UMin/SeqUMin | N-ary: delinearize operands, rebuild |
+| 9–13 | SMax/UMax/SMin/UMin/SeqUMin | N-ary: delinearize operands, rebuild |
 | 14 | PtrToIntExpr | Recurse into pointer, rebuild |
 | 15 | GEP | Primary dimension discovery entry point |
 
-**The N-ary pattern.** Cases 5, 6, 8--13 share a common template:
+**The N-ary pattern.** Cases 5, 6, 8–13 share a common template:
 
 ```c
 SmallVector<const SCEV*, 2> NewOps;  // inline capacity 2

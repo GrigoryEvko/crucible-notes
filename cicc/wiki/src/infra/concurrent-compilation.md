@@ -345,7 +345,7 @@ After all worker threads complete (`sub_16D4EC0` joins the thread pool):
 2. **Error check**: If any per-function callback reported an error, the compilation fails
 3. **Normal mode** (opt_level >= 0): Appends a null byte to the output buffer (bitcode stream terminator)
 4. **Split-compile mode** (opt_level < 0): Re-reads each function's bitcode via `sub_153BF40`, links all per-function modules via `sub_12F5610` (the LLVM module linker), and restores linkage attributes from the `v362` hash table. Specifically:
-   - Linkage values 7--8: set only low 6 bits (external linkage types)
+   - Linkage values 7–8: set only low 6 bits (external linkage types)
    - Other values: set low 4 bits, then check `(value & 0x30) != 0` for visibility bits
    - Sets `byte+33 |= 0x40` (dso_local flag)
 

@@ -215,7 +215,7 @@ After register allocation, ptxas knows the physical GPU registers assigned to ea
 
 ### `.nv_debug_info_reg_sass`
 
-Emitted by `sub_8679F0`. Records which physical registers (R0--R255, P0--P7, UR0--UR63) hold which source variables at each SASS instruction address. The data is accumulated during code generation into a linked list of buffer chunks at debug context offsets +408/+416/+424. At emission time, the chunks are concatenated into a contiguous buffer and written as an ELF section:
+Emitted by `sub_8679F0`. Records which physical registers (R0–R255, P0–P7, UR0–UR63) hold which source variables at each SASS instruction address. The data is accumulated during code generation into a linked list of buffer chunks at debug context offsets +408/+416/+424. At emission time, the chunks are concatenated into a contiguous buffer and written as an ELF section:
 
 ```c
 // sub_8679F0 -- simplified
@@ -336,7 +336,7 @@ Decodes DWARF location expressions (`DW_OP_*` operations) used in `DW_AT_locatio
 | `DW_OP_const4u` | `"DW_OP_const4u: %d"` | 4-byte unsigned constant |
 | `DW_OP_xderef` | `"DW_OP_xderef"` | Cross-address-space dereference (GPU memory spaces) |
 | `DW_OP_plus_uconst` | `"DW_OP_plus_uconst: %llu"` | Add unsigned constant to stack top |
-| `DW_OP_lit0`--`DW_OP_lit31` | `"DW_OP_lit%u"` | Push literal 0--31 |
+| `DW_OP_lit0`--`DW_OP_lit31` | `"DW_OP_lit%u"` | Push literal 0–31 |
 | `DW_OP_reg0`--`DW_OP_reg31` | `"DW_OP_reg%d"` | Variable in register N |
 | `DW_OP_breg0`--`DW_OP_breg31` | `"DW_OP_breg%d %lld"` | Register N + signed offset |
 | `DW_OP_fbreg` | `"DW_OP_fbreg: %lld"` | Frame base + signed offset (stack variables) |
@@ -412,7 +412,7 @@ The PTX-level line generator `sub_45C3A0` uses the label `$LDWend` as an end-of-
 
 ptxas generates **DWARF version 2** debug information. Evidence:
 
-- The form table (`sub_1CBF820`) covers exactly forms 1--22, which is the DWARF 2 form set. No DWARF 3+ forms (`DW_FORM_sec_offset` = 0x17, `DW_FORM_exprloc` = 0x18) are present.
+- The form table (`sub_1CBF820`) covers exactly forms 1–22, which is the DWARF 2 form set. No DWARF 3+ forms (`DW_FORM_sec_offset` = 0x17, `DW_FORM_exprloc` = 0x18) are present.
 - The CU header parser (`sub_1CC5EB0`) prints `"Version: %d"` as a field, consistent with the 11-byte DWARF 2 CU header format.
 - The attribute table includes DWARF 2 attributes only.
 

@@ -232,7 +232,7 @@ The following diagram groups the `.text` section by subsystem identity rather th
                                            █ = embedded ptxas compiler
 ```
 
-> **Cross-reference**: The embedded ptxas backend in nvlink is a subset of the standalone ptxas v13.0.88 binary (37.7 MB, 40,185 functions). The standalone [ptxas wiki](../ptxas/binary-layout.html) documents the same three-subsystem decomposition (PTX Frontend / Ori Optimizer / SASS Backend) in full detail. The ISel mega-hubs, encoding tables, and register allocator within nvlink correspond to the SASS Backend subsystem of standalone ptxas, while the PTX assembler frontend in nvlink zones 13--14 maps to ptxas's PTX Frontend subsystem. The standalone ptxas includes additional optimization passes (the "Ori Optimizer" at 5.8 MB) that are absent from nvlink's embedded copy, since nvlink relies on libnvvm for IR optimization during LTO.
+> **Cross-reference**: The embedded ptxas backend in nvlink is a subset of the standalone ptxas v13.0.88 binary (37.7 MB, 40,185 functions). The standalone [ptxas wiki](../ptxas/binary-layout.html) documents the same three-subsystem decomposition (PTX Frontend / Ori Optimizer / SASS Backend) in full detail. The ISel mega-hubs, encoding tables, and register allocator within nvlink correspond to the SASS Backend subsystem of standalone ptxas, while the PTX assembler frontend in nvlink zones 13–14 maps to ptxas's PTX Frontend subsystem. The standalone ptxas includes additional optimization passes (the "Ori Optimizer" at 5.8 MB) that are absent from nvlink's embedded copy, since nvlink relies on libnvvm for IR optimization during LTO.
 
 ### Per-Zone Statistics
 
@@ -263,16 +263,16 @@ The binary contains several distinct function "clusters" — groups of 50+ funct
 
 | Cluster | Zone(s) | Count | Template Size | Identity |
 |---|---|---|---|---|
-| SM100+ SASS encoders | 4, 5 | 1,537 | 4--9 KB each | `sub_4C28B0`-based bitfield insertion, 128-bit instructions |
-| SM100+ SASS decoders | 10 | 648 | 3--8 KB each | Mirror of encoder set, binary-to-IR translation |
-| InstrDesc initializers | 5, 6 | 1,613 | 1--3 KB each | Operand count/type/constraint/latency metadata |
-| SM50-7x ISel patterns | 3 | 1,293 | 1--3 KB each | `(ctx, node, &pattern_id, &priority)` template |
-| SM80 ISel patterns | 9 | 259 | 1--3 KB each | Same template, Ampere-specific opcodes |
-| SM75 ISel patterns | 11 | 276 | 1--3 KB each | Same template, Turing-specific opcodes |
-| SM89/90 ISel patterns | 12 | ~160 | 1--3 KB each | Same template, Ada/Hopper-specific opcodes |
-| ISel parametric clones | 13 | ~500 | 1--2 KB each | Per-SM-variant copies of shared patterns |
-| Shared encoders | 12 | ~750 | 1--2 KB each | Template-instantiated SASS encoding table entries |
-| Builtin code-template gen | 14 | ~250 | 3--5 KB each | CUDA builtin lowering functions |
+| SM100+ SASS encoders | 4, 5 | 1,537 | 4–9 KB each | `sub_4C28B0`-based bitfield insertion, 128-bit instructions |
+| SM100+ SASS decoders | 10 | 648 | 3–8 KB each | Mirror of encoder set, binary-to-IR translation |
+| InstrDesc initializers | 5, 6 | 1,613 | 1–3 KB each | Operand count/type/constraint/latency metadata |
+| SM50-7x ISel patterns | 3 | 1,293 | 1–3 KB each | `(ctx, node, &pattern_id, &priority)` template |
+| SM80 ISel patterns | 9 | 259 | 1–3 KB each | Same template, Ampere-specific opcodes |
+| SM75 ISel patterns | 11 | 276 | 1–3 KB each | Same template, Turing-specific opcodes |
+| SM89/90 ISel patterns | 12 | ~160 | 1–3 KB each | Same template, Ada/Hopper-specific opcodes |
+| ISel parametric clones | 13 | ~500 | 1–2 KB each | Per-SM-variant copies of shared patterns |
+| Shared encoders | 12 | ~750 | 1–2 KB each | Template-instantiated SASS encoding table entries |
+| Builtin code-template gen | 14 | ~250 | 3–5 KB each | CUDA builtin lowering functions |
 
 These 10 clusters account for approximately 7,286 functions (18% of the total) but consume roughly 15 MB of `.text` (60% of code bytes). Template-generated code dominates the binary.
 
@@ -371,7 +371,7 @@ Combined encoding table: `0x620000`--`0x84DD70` (1,537 encoders). Combined descr
 
 | Range | Size | Subsystem | Functions | Key Finding |
 |---|---|---|---|---|
-| `0x920240`--`0xA48290` | 1.1 MB | InstrDesc init table (cont.) | 943 | Covers opcode IDs 15--365+; most common: 18 (IMAD), 56 (FFMA) |
+| `0x920240`--`0xA48290` | 1.1 MB | InstrDesc init table (cont.) | 943 | Covers opcode IDs 15–365+; most common: 18 (IMAD), 56 (FFMA) |
 | `0xA49010`--`0xA4AB10` | 4 KB | NVInst accessors | ~30 | IR instruction class hierarchy, `sub_A49150` (30,768 callers) |
 | `0xA4AB10` | 11 KB | NVInst constructor | 1 | Allocates and initializes instruction IR node |
 | `0xA4B5E0`--`0xA4C7C0` | 5 KB | FNV-1a hash tables | 4 | Instruction lookup by hash |
@@ -573,7 +573,7 @@ The 99 KB `.bss` section (`0x2A5F180`--`0x2A77DD8`) stores runtime state:
 
 2. **Pattern recognition**: Functions in the range `0x530FE0`--`0x5B1AB0`, `0x11EA000`--`0x126C000`, and `0xCE2000`--`0xD5FD70` are ISel pattern matchers. They all follow the identical `(ctx, node, &pattern_id, &priority)` signature with nested attribute checks.
 
-3. **Encoding tables**: The massive contiguous blocks at `0x620000`--`0x84DD70` and `0xDA0000`--`0xF15A50` are instruction encoder/decoder tables. Each function is 4--9 KB, follows a rigid template, and differs only in opcode constants and operand layouts. Analyzing one is sufficient to understand all of them.
+3. **Encoding tables**: The massive contiguous blocks at `0x620000`--`0x84DD70` and `0xDA0000`--`0xF15A50` are instruction encoder/decoder tables. Each function is 4–9 KB, follows a rigid template, and differs only in opcode constants and operand layouts. Analyzing one is sufficient to understand all of them.
 
 4. **Four operand dispatch switches**: `sub_A5B6B0` (27 KB), `sub_A62220` (14 KB), `sub_A65900` (8 KB), `sub_A67910` (36 KB) are the operand read/write dispatch functions. They map `(opcode_class, field_id)` to specific field accessors. If you see a call to `sub_A49150`, it routes through these.
 

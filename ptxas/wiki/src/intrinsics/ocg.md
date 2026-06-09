@@ -149,7 +149,7 @@ The `ldtm`/`sttm` format strings encode the tensor memory data layout:
 
 ## Handler Functions
 
-The OCG handler cluster at `0x6C0000`--`0x6CC000` contains ~25--30 specialized handler/validator functions. Each validates parameters, types, sub-operations, and memory domains before delegating to the SASS encoding engine.
+The OCG handler cluster at `0x6C0000`--`0x6CC000` contains ~25–30 specialized handler/validator functions. Each validates parameters, types, sub-operations, and memory domains before delegating to the SASS encoding engine.
 
 | Address | Size | Handler | Confidence |
 |---|---|---|---|
@@ -161,7 +161,7 @@ The OCG handler cluster at `0x6C0000`--`0x6CC000` contains ~25--30 specialized h
 | `sub_6C4DA0` | 15KB | Load/store (scope, memory order, domain validation) | 85% |
 | `sub_6C5A40` | 8KB | Cache control (CCTL: shallow/deep, iv/ivall, ldc/ldcu) | 85% |
 | `sub_6C60B0` | 7KB | Distributed shared memory (selfcast/broadcast) | 80% |
-| `sub_6C8100` | 9KB | cp.async.tensor / TMA (1--5D, multicast, tile/im2col) | 85% |
+| `sub_6C8100` | 9KB | cp.async.tensor / TMA (1–5D, multicast, tile/im2col) | 85% |
 | `sub_6C9BC0` | — | Name resolver (operation name -> internal enum) | 80% |
 | `sub_6CC690` | 22KB | Router (dispatches to type-specific handlers via vtable) | 80% |
 
@@ -318,10 +318,10 @@ sub_6D9690 (master SASS encoder, 94KB)
 
 | Slot | Content |
 |---|---|
-| 0--3 | Reserved (zero) |
+| 0–3 | Reserved (zero) |
 | 4 | Barrier register (`0x90000000 \| reg`) |
-| 5--7 | Extra source operands (from instruction node) |
-| 8--10 | Primary operands (from `sub_6CAFD0` decode) |
+| 5–7 | Extra source operands (from instruction node) |
+| 8–10 | Primary operands (from `sub_6CAFD0` decode) |
 | 11 | Secondary operand (LDC, conditional loads) |
 | 12 | Predicate thread operand |
 | 13 | Scope / memory-order (from `sub_6CAF50`) |
@@ -329,8 +329,8 @@ sub_6D9690 (master SASS encoder, 94KB)
 | 15 | Memory fence operand |
 | 16 | Uniform / extended operand (from `sub_6CAE80`) |
 | 17 | Memory ordering constant / barrier tracking |
-| 19--21 | Source address (bulk/tensor ops) |
-| 22--24 | Destination address (bulk/tensor ops) |
+| 19–21 | Source address (bulk/tensor ops) |
+| 22–24 | Destination address (bulk/tensor ops) |
 | 25 | Extra predicate (opcode 187 only) |
 | 26 | Control word 0: `0x60000000 \| modifier_bits` |
 | 27 | Control word 1: `0x60000000 \| ordering \| flags` |

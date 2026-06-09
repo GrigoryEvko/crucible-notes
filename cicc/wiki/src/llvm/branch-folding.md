@@ -263,7 +263,7 @@ The following registers have bit 9 (`0x200`) set in the property table and will 
 | Block ID | `%ctaid.x`, `%ctaid.y`, `%ctaid.z` | `sub_21E86B0` (opcodes `0x2C`--`0x2E`) | 3 |
 | Grid dimensions | `%nctaid.x`, `%nctaid.y`, `%nctaid.z` | `sub_21E86B0` (opcodes `0x2F`--`0x31`) | 3 |
 | Warp/lane ID | `%warpid`, `%laneid` | `sub_21E86B0` (opcodes `0x5E`--`0x5F`, via `sub_3958DA0`) | 2 |
-| Cluster registers (SM 90+) | `%cluster_ctarank`, `%cluster_nctarank`, `%cluster_ctaid.{x,y,z}`, `%cluster_nctaid.{x,y,z}`, `%clusterid.{x,y,z}`, `%nclusterid.{x,y,z}`, `%is_explicit_cluster` | `sub_21E9060` (values 0--14) | 15 |
+| Cluster registers (SM 90+) | `%cluster_ctarank`, `%cluster_nctarank`, `%cluster_ctaid.{x,y,z}`, `%cluster_nctaid.{x,y,z}`, `%clusterid.{x,y,z}`, `%nclusterid.{x,y,z}`, `%is_explicit_cluster` | `sub_21E9060` (values 0–14) | 15 |
 | Stack pointer | `%SP`, `%SPL` | inline in frame setup | 2 |
 | Environment regs | `ENVREG0`--`ENVREG31` | internal (not emitted to PTX) | 32 |
 
@@ -328,9 +328,9 @@ However, there is one subtle interaction: if `A` and `B` are the two sides of a 
 
 ### Code Size vs. Instruction Cache
 
-On GPU, the primary motivation for tail merging is code size reduction, which translates directly to reduced instruction cache pressure. NVIDIA GPUs have small instruction caches per SM partition (32--128 KB depending on architecture generation). Tail merging reduces the number of unique instructions the I-cache must hold.
+On GPU, the primary motivation for tail merging is code size reduction, which translates directly to reduced instruction cache pressure. NVIDIA GPUs have small instruction caches per SM partition (32–128 KB depending on architecture generation). Tail merging reduces the number of unique instructions the I-cache must hold.
 
-The `tail-merge-size` default of 3 reflects the GPU's branch cost: one `bra` instruction to redirect flow to `CommonTail`, plus one additional instruction if the predecessor's terminator needs rewriting. With a minimum tail length of 3, the merge always saves at least one instruction's worth of I-cache footprint. On a GPU where each instruction occupies 8--16 bytes (PTX instructions vary in encoding width, but `ptxas` expands them to fixed-width SASS), a 3-instruction merge saves 24--48 bytes of I-cache per merge site.
+The `tail-merge-size` default of 3 reflects the GPU's branch cost: one `bra` instruction to redirect flow to `CommonTail`, plus one additional instruction if the predecessor's terminator needs rewriting. With a minimum tail length of 3, the merge always saves at least one instruction's worth of I-cache footprint. On a GPU where each instruction occupies 8–16 bytes (PTX instructions vary in encoding width, but `ptxas` expands them to fixed-width SASS), a 3-instruction merge saves 24–48 bytes of I-cache per merge site.
 
 The `tail-merge-threshold` of 150 is generous compared to upstream LLVM's default (also 150 in upstream, but upstream disables the entire mechanism for GPU targets). In practice, GPU kernels rarely have blocks with 150+ predecessors — the threshold exists primarily to prevent pathological compile times on machine-generated code with massive switch tables.
 
@@ -403,7 +403,7 @@ The `tail-merge-size` of 3 is the break-even point: creating a new shared block 
 | `HashEndOfMBB` | `sub_2F26260` | — | Tail hash computation; hashes last non-debug non-terminator instruction |
 | `isBranchFoldable` | `sub_2F31250` | — | Checks if operand represents a foldable branch target |
 | Merge candidate map lookup | `sub_2F33020` | — | Hash table lookup in `MergePotentials` DenseMap |
-| `TryTailMergeBlocks` | `sub_2E2B9F0` | — | Attempts merge across candidate set; calls Gates 1--4 |
+| `TryTailMergeBlocks` | `sub_2E2B9F0` | — | Attempts merge across candidate set; calls Gates 1–4 |
 | `AnalyzeBranch` | `sub_2E09D00` | — | NVPTXInstrInfo branch analysis: type, targets, conditions |
 | `RemoveBranch` | `sub_2E0C3B0` | — | Removes terminator branch instructions from MBB |
 | `InsertBranch` | `sub_2E0F080` | — | Inserts new branch instruction to redirect flow |

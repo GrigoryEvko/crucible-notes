@@ -304,7 +304,7 @@ NVIDIA GPUs use a hardware scoreboard mechanism to track instruction dependencie
 
 The SM target configuration at `0x1A83FB0` sets the maximum scoreboard count:
 
-- **SM70--SM89**: up to 63 scoreboard entries (offset `+616`).
+- **SM70–SM89**: up to 63 scoreboard entries (offset `+616`).
 - **SM100+** (Blackwell): up to 255 scoreboard entries (offset `+616`).
 
 Each scoreboard entry tracks one in-flight instruction and its expected completion cycle. The `DEPBAR` instruction in SASS encodes which barriers to wait on, and the control word's stall count encodes how many additional cycles to stall before issuing the next instruction.
@@ -392,7 +392,7 @@ The scheduling and register allocation passes form a feedback loop. The key inte
 
 The following pseudocode is reconstructed from the decompiled binary. Addresses are given for cross-reference with the decompiled sources.
 
-### Initialization: DAG Setup and Instruction Classification (`sub_1864ED0`, lines 128--338)
+### Initialization: DAG Setup and Instruction Classification (`sub_1864ED0`, lines 128–338)
 
 Before the scheduling loop runs, the list-scheduler core performs per-basic-block initialization. Each instruction in the block is assigned a scheduling record, classified, and linked into the dependency DAG.
 
@@ -476,7 +476,7 @@ function list_scheduler_init(sched_ctx):
         inst_index++
 ```
 
-### DAG Construction and Critical-Path Computation (`sub_1864ED0`, lines 340--683)
+### DAG Construction and Critical-Path Computation (`sub_1864ED0`, lines 340–683)
 
 After initialization, the scheduler computes scheduling heights (critical path from each instruction to the block exit), builds predecessor/successor bitsets, and propagates dependency weights.
 
@@ -1171,7 +1171,7 @@ function pressure_aware_priority(sched_ctx, instruction, reg_info):
 ## Cross-References
 
 ### nvlink Internal
-- [Embedded ptxas Overview](overview.md) — scheduling in the 48-pass pipeline (passes 23--38)
+- [Embedded ptxas Overview](overview.md) — scheduling in the 48-pass pipeline (passes 23–38)
 - [Register Allocation](register-allocation.md) — runs before the tepid scheduler
 - [ISel Hubs](isel-hubs.md) — runs before scheduling
 - [Peephole](peephole.md) — peephole passes at `0x1866FA0` interleaved with scheduling

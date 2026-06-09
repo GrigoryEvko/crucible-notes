@@ -469,8 +469,8 @@ The pool reporter (`sub_C62200`) prints to stderr:
 ```
 
 Size formatting follows the same thresholds used throughout ptxas:
-- 0--1023 bytes: raw integer with `B` suffix
-- 1,024--10,485,760 bytes: `%.3lf KB`
+- 0–1023 bytes: raw integer with `B` suffix
+- 1,024–10,485,760 bytes: `%.3lf KB`
 - Above 10 MB: `%.3lf MB`
 
 The per-phase reporter (`sub_C64310`) prints one line per phase:

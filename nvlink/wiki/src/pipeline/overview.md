@@ -41,11 +41,11 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   | else                         |
   |   mode 1 --> HOST SCRIPT ----+----------> write linker script
   |   mode 2 --> AUGMENTED  -----+----------> ld --verbose + write
-  +------------------------------+            (skips Phases 4--12)
+  +------------------------------+            (skips Phases 4–12)
               |
               | (device-link path only)
               v
-  PHASE 4   LIBRARY RESOLVE          main() lines 387--424
+  PHASE 4   LIBRARY RESOLVE          main() lines 387–424
   +------------------------------+
   | library_search_create()      |  sub_4622D0
   | add -L paths from            |  sub_462500
@@ -57,7 +57,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   +------------------------------+
               |
               v
-  PHASE 5   CONTEXT CREATE           main() lines 428--593
+  PHASE 5   CONTEXT CREATE           main() lines 428–593
   +------------------------------+
   | cuda_api_version = sub_468560|
   | elfw = elfw_create(          |  sub_4438F0 (14,821 B)
@@ -72,7 +72,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   +------------------------------+
               |
               v
-  PHASE 6   CONFIG                   main() lines 497--593
+  PHASE 6   CONFIG                   main() lines 497–593
   +------------------------------+
   | Mercury mode: elfw[104] = 2  |  if byte_2A5F222
   | SM>72: sub_451920(elfw,9,..) |  ELF class 8 setup
@@ -93,7 +93,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   +------------------------------+
               |
               v
-  PHASE 7   INPUT FILE LOOP          main() lines 595--1741
+  PHASE 7   INPUT FILE LOOP          main() lines 595–1741
   +------------------------------+     +-----------------------------+
   | for each file in             |     |  COMPILER DETOUR: PTX JIT  |
   |   qword_2A5F330:             |     | +-------------------------+|
@@ -129,7 +129,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   +------------------------------+
               |
               v
-  PHASE 8   LTO (if -lto)            main() lines 910--1367
+  PHASE 8   LTO (if -lto)            main() lines 910–1367
   +..................................+
   : 8a. Validate option conflicts    :  -lineinfo, -maxrregcount,
   :     -ftz, -prec-div, etc.        :  -prec-sqrt, -fmad, -split
@@ -165,7 +165,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   +..................................+
               |
               v
-  PHASE 9   MERGE                     main() lines 1402--1607
+  PHASE 9   MERGE                     main() lines 1402–1607
   +------------------------------+
   | trace("read")                |  sub_4279C0
   | reverse module list          |  sub_4649E0
@@ -260,7 +260,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
               |  +-- sm < 100? (legacy ELF output) ------+
               |  |
               v  v
-  PHASE 13  WRITE                     main() lines 1448--1491
+  PHASE 13  WRITE                     main() lines 1448–1491
   +------------------------------+
   | fopen(filename, "wb")        |
   |                              |
@@ -283,7 +283,7 @@ The diagram below shows all 14 phases for the full device-link path (mode 3), in
   +------------------------------+
               |
               v
-  PHASE 14  CLEANUP                   main() lines 1672--1688
+  PHASE 14  CLEANUP                   main() lines 1672–1688
   +------------------------------+
   | free module list             |  sub_464520
   | timer_cleanup(&v356)         |  sub_43D8E0
@@ -308,21 +308,21 @@ Every phase maps to a specific address range in `main()`. The "Entry function" c
 
 | # | Phase | Entry function | Address | Decompiled line | Size | Timing tag | What it does | Key sub-functions | Skip conditions |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | Init | `arena_create_named` | `0x432020` | 377--381 | 2,161 B | `"init"` (shared) | Creates two named memory arenas ("nvlink option parser" and "nvlink memory space") and initializes the timing system | `sub_43D8C0` (timer init), `sub_45CAE0` (arena snapshot) | Never skipped |
+| 1 | Init | `arena_create_named` | `0x432020` | 377–381 | 2,161 B | `"init"` (shared) | Creates two named memory arenas ("nvlink option parser" and "nvlink memory space") and initializes the timing system | `sub_43D8C0` (timer init), `sub_45CAE0` (arena snapshot) | Never skipped |
 | 2 | CLI parse | `nvlink_parse_options` | `0x427AE0` | 384 | 30,272 B | `"init"` (shared) | Parses 68 command-line options into ~80 global variables controlling all subsequent phases | — | Never skipped |
 | 3 | Mode dispatch | inline in `main()` | `0x409800` | 385 | — | `"init"` (shared) | Checks `dword_2A77DC0`: values 1/2 branch to host linker script paths; value 0 (or >= 3) falls through to device link | — | Never skipped (but gates all subsequent phases) |
-| 4 | Library resolve | `path_search_library` | `0x462870` | 387--424 | 4,905 B | `"init"` (shared) | Searches `-L` paths and `$LIBRARY_PATH` to resolve `-l` library flags into file paths, appends to input file list | `sub_4622D0` (create search ctx), `sub_462500` (add path), `sub_44EC40` (parse colon-separated) | Skipped in modes 1 and 2 |
-| 5 | Context create | `elfw_create` | `0x4438F0` | 485--496 | 14,821 B | `"init"` (shared) | Creates the output ELF wrapper (`elfw`) with initial sections (.shstrtab, .strtab, .symtab, .note.nv.cuinfo, .note.nv.tkinfo) and "elfw memory space" arena | `sub_468560` (CUDA API version), `sub_451920` / `sub_444710` (ELF class setup) | Skipped in modes 1 and 2 |
-| 6 | Config | inline in `main()` + callees | `0x409800` | 497--593 | varies | `"init"` | Configures Mercury mode, loads libdevice (LTO), sets stack canary, loads used-symbol lists, UIDX file, host info ELF, writes version string; emits `"init"` timing trace | `sub_4BC470` (libdevice), `sub_4389F0` (stack canary), `sub_43F360` / `sub_43F950` (used symbols), `sub_443730` (version) | Skipped in modes 1 and 2 |
-| 7 | Input file loop | per-type dispatch | `0x409800` | 595--1741 | varies | `"read"` | Iterates input file list; reads 56-byte header; dispatches by file type (cubin/ptx/fatbin/nvvm/ltoir/bc/archive); registers modules; runs PTX JIT and FNLZR pre-link as needed | `sub_4BD760` (ptxas JIT), `sub_42AF40` (fatbin, 11,143 B), `sub_426570` (arch validate, 7,427 B), `sub_42A680` (register module, 11,939 B), `sub_4275C0` (FNLZR), `sub_427A10` (LTO add) | Always runs in mode 0/3; mode 2 runs it for module IDs only |
-| 8 | LTO | `lto_collect_ir` / `lto_compile` | `0x426CD0` / `0x4BC6F0` | 910--1367 | 7,040 B / varies | `"cicc-lto"` / `"ptxas-lto"` | Collects IR modules, compiles via libnvvm (IR->PTX), assembles via ptxas (PTX->cubin), optionally using split-compile thread pool; removes libcudadevrt if whole-program | `sub_4BD4E0` (whole-program ptxas), `sub_4BD760` (single-module ptxas), `sub_43FDB0` (thread pool create), `sub_4264B0` (split worker), `sub_43FF50`/`sub_43FFE0`/`sub_43FE70` (pool ops) | Only if `byte_2A5F288` (-lto) is set |
-| 9 | Merge | `merge_elf` | `0x45E7D0` | 1402--1607 | 89,156 B | `"merge"` | Reverses module list; optionally runs DCE; iterates modules and calls `merge_elf` for each (copies sections, resolves symbols, merges metadata); handles cudadevrt skip | `sub_45D180` (weak resolution, 26,816 B), `sub_44AD40` (DCE, 22,503 B), `sub_426AE0` (DCE wrapper, 2,178 B), `sub_4448C0` (device refs check) | Skipped in modes 1 and 2 |
+| 4 | Library resolve | `path_search_library` | `0x462870` | 387–424 | 4,905 B | `"init"` (shared) | Searches `-L` paths and `$LIBRARY_PATH` to resolve `-l` library flags into file paths, appends to input file list | `sub_4622D0` (create search ctx), `sub_462500` (add path), `sub_44EC40` (parse colon-separated) | Skipped in modes 1 and 2 |
+| 5 | Context create | `elfw_create` | `0x4438F0` | 485–496 | 14,821 B | `"init"` (shared) | Creates the output ELF wrapper (`elfw`) with initial sections (.shstrtab, .strtab, .symtab, .note.nv.cuinfo, .note.nv.tkinfo) and "elfw memory space" arena | `sub_468560` (CUDA API version), `sub_451920` / `sub_444710` (ELF class setup) | Skipped in modes 1 and 2 |
+| 6 | Config | inline in `main()` + callees | `0x409800` | 497–593 | varies | `"init"` | Configures Mercury mode, loads libdevice (LTO), sets stack canary, loads used-symbol lists, UIDX file, host info ELF, writes version string; emits `"init"` timing trace | `sub_4BC470` (libdevice), `sub_4389F0` (stack canary), `sub_43F360` / `sub_43F950` (used symbols), `sub_443730` (version) | Skipped in modes 1 and 2 |
+| 7 | Input file loop | per-type dispatch | `0x409800` | 595–1741 | varies | `"read"` | Iterates input file list; reads 56-byte header; dispatches by file type (cubin/ptx/fatbin/nvvm/ltoir/bc/archive); registers modules; runs PTX JIT and FNLZR pre-link as needed | `sub_4BD760` (ptxas JIT), `sub_42AF40` (fatbin, 11,143 B), `sub_426570` (arch validate, 7,427 B), `sub_42A680` (register module, 11,939 B), `sub_4275C0` (FNLZR), `sub_427A10` (LTO add) | Always runs in mode 0/3; mode 2 runs it for module IDs only |
+| 8 | LTO | `lto_collect_ir` / `lto_compile` | `0x426CD0` / `0x4BC6F0` | 910–1367 | 7,040 B / varies | `"cicc-lto"` / `"ptxas-lto"` | Collects IR modules, compiles via libnvvm (IR->PTX), assembles via ptxas (PTX->cubin), optionally using split-compile thread pool; removes libcudadevrt if whole-program | `sub_4BD4E0` (whole-program ptxas), `sub_4BD760` (single-module ptxas), `sub_43FDB0` (thread pool create), `sub_4264B0` (split worker), `sub_43FF50`/`sub_43FFE0`/`sub_43FE70` (pool ops) | Only if `byte_2A5F288` (-lto) is set |
+| 9 | Merge | `merge_elf` | `0x45E7D0` | 1402–1607 | 89,156 B | `"merge"` | Reverses module list; optionally runs DCE; iterates modules and calls `merge_elf` for each (copies sections, resolves symbols, merges metadata); handles cudadevrt skip | `sub_45D180` (weak resolution, 26,816 B), `sub_44AD40` (DCE, 22,503 B), `sub_426AE0` (DCE wrapper, 2,178 B), `sub_4448C0` (device refs check) | Skipped in modes 1 and 2 |
 | 10 | Layout | `shared_memory_layout` | `0x439830` | 1429 | 65,776 B | `"layout"` | Computes shared memory offsets per entry, propagates register/barrier counts through callgraph, deduplicates constants, sorts and lays out sections, processes bindless textures | `sub_451D80` (entry properties, 97,969 B), `sub_450ED0` (reg/bar propagate, 15,956 B), `sub_432B10` (data overlap, 11,683 B), `sub_4339A0` (const dedup, 13,199 B), `sub_465720` (section layout, 15,579 B), `sub_438DD0` (bindless, 12,779 B) | Skipped in modes 1 and 2 |
 | 11 | Relocate | `apply_relocations` | `0x469D60` | 1432 | 26,578 B | `"relocate"` | Patches all R_CUDA and R_MERCURY relocations in section data bytes, sets up and reorders UFT/UDT unified function/data tables, emits resolved relocation entries | `sub_463F70` (UFT/UDT setup, 3,978 B), `sub_4637B0` (UFT reorder, 10,141 B), `sub_46ADC0` (resolved rela emission, 11,515 B) | Skipped in modes 1 and 2 |
 | 12 | Finalize | `finalize_elf` | `0x445000` | 1436 | 55,681 B | `"finalize"` | Reindexes symbols and sections, computes final sizes and offsets, sorts sections into canonical ELF order, writes ELF header geometry/flag fields (not `e_type` — that was set by `elfw_create`), builds callgraph section | `sub_44D200` (callgraph build, 8,545 B), `sub_439640` (shared mem fixup, executable `ET_EXEC` branch only), `sub_44DB00` (metadata creation), `sub_438BD0` (virtual section remap, Mercury `0xFF00` branch only) | Skipped in modes 1 and 2 |
-| 12.5 | Mercury FNLZR | `post_link_transform` | `0x4275C0` | 1454--1482 | 3,989 B | (within `"finalize"`) | Serializes the finalized ELF to a buffer, then runs the FNLZR finalizer with `post_link=1` to convert SASS cubin into capsule mercury format | `sub_45C980` (calc size), `sub_4307C0` (alloc), `sub_45C950` (write to buffer) | Only if `byte_2A5F222` (Mercury, sm >= 100) |
-| 13 | Write | `elfw_write_to_file` / `fwrite` | `0x45C920` / `0x45BF00` | 1448--1671 | 13,258 B | `"write"` | Writes the output ELF (or Mercury capsule) to disk; optionally writes register-link-binaries C header and callgraph .dot file | `sub_45BF00` (serialize ELF, 13,258 B), `sub_44CCF0` (dot output, 1,196 B) | Output type varies by mode (ELF/script/C source) |
-| 14 | Cleanup | `arena_destroy` / `elfw_destroy` | `0x431C70` / `0x4475B0` | 1672--1688 | 3,564 B / 3,023 B | — | Frees module list, destroys timer, cleans temp files, destroys option parser and memory space arenas, destroys elfw; exits with 0 or -1 | `sub_464520` (free list), `sub_43D8E0` (timer), `sub_468470` (temp files), `sub_431770` (arena stats dump) | Never skipped |
+| 12.5 | Mercury FNLZR | `post_link_transform` | `0x4275C0` | 1454–1482 | 3,989 B | (within `"finalize"`) | Serializes the finalized ELF to a buffer, then runs the FNLZR finalizer with `post_link=1` to convert SASS cubin into capsule mercury format | `sub_45C980` (calc size), `sub_4307C0` (alloc), `sub_45C950` (write to buffer) | Only if `byte_2A5F222` (Mercury, sm >= 100) |
+| 13 | Write | `elfw_write_to_file` / `fwrite` | `0x45C920` / `0x45BF00` | 1448–1671 | 13,258 B | `"write"` | Writes the output ELF (or Mercury capsule) to disk; optionally writes register-link-binaries C header and callgraph .dot file | `sub_45BF00` (serialize ELF, 13,258 B), `sub_44CCF0` (dot output, 1,196 B) | Output type varies by mode (ELF/script/C source) |
+| 14 | Cleanup | `arena_destroy` / `elfw_destroy` | `0x431C70` / `0x4475B0` | 1672–1688 | 3,564 B / 3,023 B | — | Frees module list, destroys timer, cleans temp files, destroys option parser and memory space arenas, destroys elfw; exits with 0 or -1 | `sub_464520` (free list), `sub_43D8E0` (timer), `sub_468470` (temp files), `sub_431770` (arena stats dump) | Never skipped |
 
 ### Five Largest Functions in the Pipeline
 
@@ -348,7 +348,7 @@ nvlink has a built-in timing system activated by an internal timing file path (g
 
 | Tag | Emitted at line | Pipeline phases covered |
 |---|---|---|
-| `"init"` | 593 | Phases 1--6: arena creation, option parsing, library resolution, context setup, config |
+| `"init"` | 593 | Phases 1–6: arena creation, option parsing, library resolution, context setup, config |
 | `"read"` | 1403 | Phase 7 + 8 + 9: input file loop, PTX JIT, LTO compilation, merge loop |
 | `"cicc-lto"` | 1100 | Phase 8 (IR compile): NVVM IR to PTX compilation via libnvvm |
 | `"ptxas-lto"` | 1286 | Phase 8 (assembly): PTX to SASS assembly via embedded ptxas |
@@ -402,7 +402,7 @@ SECTIONS
 ```
 
 Key characteristics:
-- Phases 4--12 are skipped entirely
+- Phases 4–12 are skipped entirely
 - No merge, no relocation, no ELF output
 - Output is a text linker script, not a binary
 - Writes to output file (or stdout if no `-o`)
@@ -428,7 +428,7 @@ ld -T output_file 2>&1 | grep 'no input files' > /dev/null  # validation
 ```
 
 Key characteristics:
-- Phases 4--12 are skipped entirely
+- Phases 4–12 are skipped entirely
 - Invokes host `gcc` and `ld` via shell pipelines
 - Falls back to mode 1 if validation fails
 - More complex but produces a complete linker script
@@ -647,14 +647,14 @@ When `-lto` is active, Phase 8 expands into a multi-step sub-pipeline that invol
 Phase 8 LTO sub-pipeline
 =========================
 
-8a. Validate LTO options       lines 945--982
+8a. Validate LTO options       lines 945–982
         |                      Check for incompatible flags:
         |                        -lineinfo (if mode==3)
         |                        -maxrregcount (mode conflicts)
         |                        -ftz, -prec-div, -prec-sqrt
         |                        -fmad, -split-compile
         |
-8b. NVVM callback (if -vkeep) lines 985--1008
+8b. NVVM callback (if -vkeep) lines 985–1008
         |                      dlsym("__nvvmHandle") from libnvvm
         |                      handle(0xBEEF) -> callback_fn
         |                      callback_fn(ctx, sub_4299E0, 0, 0xF00D)
@@ -686,7 +686,7 @@ Phase 8 LTO sub-pipeline
                                 Each thread: PTX -> cubin
                                 Tag: "ptxas-lto"
         |
-8f. Post-LTO fixup             lines 1290--1367
+8f. Post-LTO fixup             lines 1290–1367
         |                      If whole-program & all inputs had IR:
         |                        remove libcudadevrt from module list
         |                        "LTO on everything so remove
@@ -793,7 +793,7 @@ Phase      Device link   Host script    Augmented     Cond. in
 14 Clean   YES           YES            YES            always
 ```
 
-In device-link mode (mode 0), all 14 phases execute with Phase 8 and 12.5 conditional. In host-linker-script mode (mode 1), only Phases 1--3, 13 (script generation), and 14 execute. In augmented mode (mode 2), Phases 1--3, 7 (partial — for module ID extraction), 13 (C source generation and script), and 14 execute.
+In device-link mode (mode 0), all 14 phases execute with Phase 8 and 12.5 conditional. In host-linker-script mode (mode 1), only Phases 1–3, 13 (script generation), and 14 execute. In augmented mode (mode 2), Phases 1–3, 7 (partial — for module ID extraction), 13 (C source generation and script), and 14 execute.
 
 ### Conditional Phase Details
 

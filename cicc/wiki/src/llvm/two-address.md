@@ -192,7 +192,7 @@ The function calls itself recursively (22 cross-references including a recursive
 
 ## EXTRACT\_SUBREG Multi-Result Decomposition Algorithm
 
-This is the most substantial NVIDIA extension to the upstream pass. The code lives at lines 821--994 of `sub_1F53550` (decompilation line numbers from the 2,470-line function body). Standard LLVM handles single-result `EXTRACT_SUBREG`; the NVPTX version handles multi-result instructions where the `InstrEmitter` has produced a single `EXTRACT_SUBREG` pseudo with multiple operand pairs representing all extracted components.
+This is the most substantial NVIDIA extension to the upstream pass. The code lives at lines 821–994 of `sub_1F53550` (decompilation line numbers from the 2,470-line function body). Standard LLVM handles single-result `EXTRACT_SUBREG`; the NVPTX version handles multi-result instructions where the `InstrEmitter` has produced a single `EXTRACT_SUBREG` pseudo with multiple operand pairs representing all extracted components.
 
 ### Why Multi-Result EXTRACT\_SUBREG Exists
 
@@ -202,12 +202,12 @@ The three major producer categories:
 
 | Producer | Handler | ID range | Typical result width |
 |---|---|---|---|
-| Texture/surface loads | `sub_33A4350` | 50 IDs (0x5D--0x8D) | v4f32, v2f64, v4i32 |
-| WMMA / MMA operations | `sub_33A64B0` | 95 IDs (0xA4--0xA8, 0x194--0x1EC) | 2--8 register fragments |
+| Texture/surface loads | `sub_33A4350` | 50 IDs (0x5D–0x8D) | v4f32, v2f64, v4i32 |
+| WMMA / MMA operations | `sub_33A64B0` | 95 IDs (0xA4–0xA8, 0x194–0x1EC) | 2–8 register fragments |
 | Multi-element surface ops | case 0xA2 | single | loop over elements |
-| MMA sm90+ (wgmma) | `sub_33AC8F0` | 0x183--0x191 | 8--16 register fragments |
-| TMA operations | `sub_33AD3D0` | 0x179--0x17C | varies |
-| Async copy | `sub_33ADA20` | 0x17F--0x182 | 2 results (data + token) |
+| MMA sm90+ (wgmma) | `sub_33AC8F0` | 0x183–0x191 | 8–16 register fragments |
+| TMA operations | `sub_33AD3D0` | 0x179–0x17C | varies |
+| Async copy | `sub_33ADA20` | 0x17F–0x182 | 2 results (data + token) |
 
 The DAG-level builders that produce multi-result nodes are `sub_3411BE0` (multi-result DAG node), `sub_33FC220` (multi-result variadic node), and `sub_33F7800` (multi-result alternate form). The type list is built by `sub_1D25C30` (`SelectionDAG::getVTList` for multi-result).
 
@@ -218,7 +218,7 @@ Each `MachineOperand` occupies 40 bytes in memory (stride 40 per operand in the 
 | Offset within operand | Size | Field |
 |---|---|---|
 | +0 | `byte` | Flags byte 0: bit 0 = isDef |
-| +2 | `word` | Flags word: bits 4--11 = subreg class index, bits 8--19 = subreg index |
+| +2 | `word` | Flags word: bits 4–11 = subreg class index, bits 8–19 = subreg index |
 | +3 | `byte` | Flags byte 3: bit 4 = isTied, bit 6 = earlyTied |
 | +4 | `byte` | Flags byte 4: bit 0 = isTied flag (secondary) |
 | +8 | `int64` | Register number (virtual reg > 0, physical reg < 0) |
@@ -356,17 +356,17 @@ The EXTRACT_SUBREG decomposition path fires for all NVPTX operations that produc
 
 The texture bulk handler `sub_33A4350` covers 50 intrinsic IDs (0x5D through 0x8D). A `tex.1d.v4.f32` intrinsic produces an SDNode with value type list `{f32, f32, f32, f32, chain}` via `sub_1D25C30` (`getVTList`). InstrEmitter converts this into a single MachineInstr with 8 operands (4 def/use pairs), which TwoAddress decomposes into 4 COPYs.
 
-Surface read/write handlers at `sub_33A3180` (IDs 0x8E--0x90) and the scatter/gather handler at case 0xA2 follow the same pattern with variable result widths.
+Surface read/write handlers at `sub_33A3180` (IDs 0x8E–0x90) and the scatter/gather handler at case 0xA2 follow the same pattern with variable result widths.
 
 ### WMMA and MMA Operations
 
-The mega-handler `sub_33A64B0` services 95 intrinsic IDs covering all wmma/mma variants across sm70+. A `wmma.mma.sync` on sm70 with fp16 accumulation produces 8 f16x2 fragments; on sm80 with tf32 it produces 4 f32 fragments. The sm90+ wgmma handler at `sub_33AC8F0` (IDs 0x183--0x191) can produce up to 16 register fragments for large matrix shapes.
+The mega-handler `sub_33A64B0` services 95 intrinsic IDs covering all wmma/mma variants across sm70+. A `wmma.mma.sync` on sm70 with fp16 accumulation produces 8 f16x2 fragments; on sm80 with tf32 it produces 4 f32 fragments. The sm90+ wgmma handler at `sub_33AC8F0` (IDs 0x183–0x191) can produce up to 16 register fragments for large matrix shapes.
 
 Each fragment becomes one operand pair in the EXTRACT_SUBREG pseudo. The TwoAddress pass decomposes a 16-fragment wgmma result into 16 individual COPYs, each with full LiveVariables update. This is the most expensive decomposition path in the entire pass.
 
 ### TMA and Async Copy
 
-TMA bulk operations (`sub_33AD3D0`, IDs 0x179--0x17C) and async copy operations (`sub_33ADA20`, IDs 0x17F--0x182) produce 2-result nodes (data + completion token). These are simpler decompositions with only 2 COPY instructions.
+TMA bulk operations (`sub_33AD3D0`, IDs 0x179–0x17C) and async copy operations (`sub_33ADA20`, IDs 0x17F–0x182) produce 2-result nodes (data + completion token). These are simpler decompositions with only 2 COPY instructions.
 
 ## Inline Assembly Tied Operands
 
@@ -479,7 +479,7 @@ processTiedPairs(MI, tiedPairs, distance):
         // of the current class and the class required by the tied operand
 ```
 
-### INSERT\_SUBREG Rewrite (lines 2386--2396)
+### INSERT\_SUBREG Rewrite (lines 2386–2396)
 
 After all tied pairs are processed for an `INSERT_SUBREG` instruction (opcode 8), the pass converts it into a plain `COPY`:
 
@@ -559,7 +559,7 @@ Entry stride: 56 bytes. Hash function: `37 * key`, linear probing, load factor 3
 | +552..+576 | `DenseMap` | SrcEqClassMap |
 | +584..+608 | `DenseMap` | DstEqClassMap |
 
-## Tied Operand Scanning (Lines 1183--1413)
+## Tied Operand Scanning (Lines 1183–1413)
 
 The `collectTiedOperands` logic iterates all operands of an instruction checking for tied constraints. The inner loop (at STEP 7 in the raw analysis) contains a special-case direct resolution path:
 
@@ -598,11 +598,11 @@ The special-case path at the `isTied(secondary)` check (bit 0 of byte +4) handle
 
 The pass is structurally stock LLVM — the libNVVM build at `sub_F4EA80` is byte-for-byte identical in structure, confirming shared source. The NVIDIA delta consists of four additions:
 
-1. **Extended EXTRACT_SUBREG handling** (lines 821--994 of the decompilation). Standard LLVM handles single EXTRACT_SUBREG; the NVPTX version handles multi-result instructions with multiple extract chains via stride-2 operand iteration. This is required for texture/surface loads returning `v4f32`, wmma/mma producing multi-register fragments, and similar multi-result NVPTX intrinsics. The earlyTied optimization (checking bits 4 and 6 of operand flags byte +3) is unique to this extension and provides direct coalescing hints for contiguous sub-register sequences.
+1. **Extended EXTRACT_SUBREG handling** (lines 821–994 of the decompilation). Standard LLVM handles single EXTRACT_SUBREG; the NVPTX version handles multi-result instructions with multiple extract chains via stride-2 operand iteration. This is required for texture/surface loads returning `v4f32`, wmma/mma producing multi-register fragments, and similar multi-result NVPTX intrinsics. The earlyTied optimization (checking bits 4 and 6 of operand flags byte +3) is unique to this extension and provides direct coalescing hints for contiguous sub-register sequences.
 
-2. **Deeper LiveVariables maintenance** (lines 1791--2064). When a COPY is inserted, the pass creates new `VarInfo` entries (`sub_1DBA290`), initializes them (`sub_1DBB110`), updates kill info (`sub_1DB3C70` / `sub_1DB4410`), and maintains block-level liveness (`sub_1DB8610`). This six-function chain executes per COPY, not per instruction. For a 16-fragment wgmma result, this produces 96 function calls for liveness maintenance alone.
+2. **Deeper LiveVariables maintenance** (lines 1791–2064). When a COPY is inserted, the pass creates new `VarInfo` entries (`sub_1DBA290`), initializes them (`sub_1DBB110`), updates kill info (`sub_1DB3C70` / `sub_1DB4410`), and maintains block-level liveness (`sub_1DB8610`). This six-function chain executes per COPY, not per instruction. For a 16-fragment wgmma result, this produces 96 function calls for liveness maintenance alone.
 
-3. **OptimizationRemarkEmitter integration** (lines 2207--2258). The pass reports cases where tied-operand constraints forced extra COPY insertions, providing performance diagnostic information. This is absent in upstream LLVM's TwoAddress pass. The ORE pointer is stored at pass object offset +272 and acquired via analysis lookup of `unk_4FC4534`. The five-function chain (`sub_1DCCCA0` through `sub_1DCC370`) handles remark creation, filtering, and bundle-aware emission.
+3. **OptimizationRemarkEmitter integration** (lines 2207–2258). The pass reports cases where tied-operand constraints forced extra COPY insertions, providing performance diagnostic information. This is absent in upstream LLVM's TwoAddress pass. The ORE pointer is stored at pass object offset +272 and acquired via analysis lookup of `unk_4FC4534`. The five-function chain (`sub_1DCCCA0` through `sub_1DCC370`) handles remark creation, filtering, and bundle-aware emission.
 
 4. **optnone/fast-compile gate** (`sub_1636880`). When the function has `optnone` or when NVIDIA's fast-compile mode is active, the effective optimization level is forced to 0. This disables commutation, 3-address conversion, and rescheduling attempts in `tryInstructionTransform` (which returns `false` immediately when `OptLevel == None`), making the pass a pure COPY-insertion pass with no optimization.
 

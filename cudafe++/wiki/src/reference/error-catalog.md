@@ -1,10 +1,10 @@
 # CUDA Error Catalog
 
-cudafe++ reserves internal error indices 3457--3794 (338 slots) for CUDA-specific diagnostics. These are displayed to users as numbers 20000--20337 using the formula `display = internal + 16543`. Of the 338 slots, approximately 210 carry unique message templates; the remainder are reserved or share templates with parametric fill-ins. Every CUDA error can be controlled by its numeric code or diagnostic tag name via `--diag_suppress`, `--diag_warning`, `--diag_error`, or the `#pragma nv_diagnostic` system.
+cudafe++ reserves internal error indices 3457–3794 (338 slots) for CUDA-specific diagnostics. These are displayed to users as numbers 20000–20337 using the formula `display = internal + 16543`. Of the 338 slots, approximately 210 carry unique message templates; the remainder are reserved or share templates with parametric fill-ins. Every CUDA error can be controlled by its numeric code or diagnostic tag name via `--diag_suppress`, `--diag_warning`, `--diag_error`, or the `#pragma nv_diagnostic` system.
 
 This page is a flat lookup table. For the diagnostic pipeline architecture (severity stack, pragma scoping, SARIF output), see [Diagnostic Overview](../diagnostics/overview.md). For narrative discussion of each category with implementation details, see [CUDA Errors](../diagnostics/cuda-errors.md).
 
-**Scope note.** This catalog enumerates the **CUDA-extension namespace** (~248 documented tags spanning internal codes 3457--3794, plus 6 pragma-action tags listed for completeness). The full cudafe++ binary defines roughly **859 snake_case diagnostic tags** across all of EDG 6.6's C++ frontend; the remaining ~605 tags govern standard C++ diagnostics (templates, constexpr evaluation, modules, attributes, type mismatches, overload ambiguity, etc.) inherited from EDG and shared with the wider EDG ecosystem. Those tags use the original error-code range 0--3456 and are accepted by `--diag_suppress` / `#pragma nv_diag_suppress` identically to CUDA tags but are not enumerated here. See [EDG Diagnostic Namespace](#edg-diagnostic-namespace-outside-this-catalog) at the bottom of this page for a category-prefix breakdown. Confidence: **HIGH** for the 859 total (counted directly from `cudafe_strings.json`), **MED** for the 248 / 605 split (prefix-based bucketing).
+**Scope note.** This catalog enumerates the **CUDA-extension namespace** (~248 documented tags spanning internal codes 3457–3794, plus 6 pragma-action tags listed for completeness). The full cudafe++ binary defines roughly **859 snake_case diagnostic tags** across all of EDG 6.6's C++ frontend; the remaining ~605 tags govern standard C++ diagnostics (templates, constexpr evaluation, modules, attributes, type mismatches, overload ambiguity, etc.) inherited from EDG and shared with the wider EDG ecosystem. Those tags use the original error-code range 0–3456 and are accepted by `--diag_suppress` / `#pragma nv_diag_suppress` identically to CUDA tags but are not enumerated here. See [EDG Diagnostic Namespace](#edg-diagnostic-namespace-outside-this-catalog) at the bottom of this page for a category-prefix breakdown. Confidence: **HIGH** for the 859 total (counted directly from `cudafe_strings.json`), **MED** for the 248 / 605 split (prefix-based bucketing).
 
 ## Numbering and Display Format
 
@@ -1016,7 +1016,7 @@ All 286 CUDA-specific diagnostic tag names extracted from the cudafe++ binary, o
 
 ## Cross-Reference: EDG Error Codes Used for CUDA
 
-The following standard EDG error codes (0--3456) are repurposed or frequently triggered by CUDA-specific validation. These display with their original number (not the 20000-D series).
+The following standard EDG error codes (0–3456) are repurposed or frequently triggered by CUDA-specific validation. These display with their original number (not the 20000-D series).
 
 | Internal # | Display # | Context |
 |---|---|---|
@@ -1114,7 +1114,7 @@ Quick reference for minimum architecture required by various CUDA features.
 
 ## EDG Diagnostic Namespace (outside this catalog)
 
-Beyond the 286 CUDA-extension tags above, the cudafe++ binary embeds approximately **573 additional snake_case diagnostic tags** belonging to EDG 6.6's standard C++ frontend. They share the same suppression machinery — `--diag_suppress=<tag>`, `#pragma nv_diag_suppress <tag>`, numeric `#pragma nv_diag_suppress <N>` for codes 0--3456 — but live in the original error-code range and are emitted without the `20000-D` renumbering.
+Beyond the 286 CUDA-extension tags above, the cudafe++ binary embeds approximately **573 additional snake_case diagnostic tags** belonging to EDG 6.6's standard C++ frontend. They share the same suppression machinery — `--diag_suppress=<tag>`, `#pragma nv_diag_suppress <tag>`, numeric `#pragma nv_diag_suppress <N>` for codes 0–3456 — but live in the original error-code range and are emitted without the `20000-D` renumbering.
 
 The table below summarizes the top category prefixes harvested from the binary's string table. Counts are tag totals per prefix; the *role* column describes what the prefix governs.
 

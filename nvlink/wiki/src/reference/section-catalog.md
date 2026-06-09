@@ -69,7 +69,7 @@ String in binary: `.nv.local.` (prefix; function name appended at runtime).
 
 String in binary: `.nv.shared.` (prefix; function name appended at runtime).
 
-## Constant Memory (Banks 0--17)
+## Constant Memory (Banks 0–17)
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
@@ -322,7 +322,7 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 
 | Binary string | Catalog entry | Notes |
 |---|---|---|
-| `.debug_` | #67--77 | Prefix matcher for all DWARF sections |
+| `.debug_` | #67–77 | Prefix matcher for all DWARF sections |
 | `.debug_str+` | — | Internal variant for merged debug string pools |
 | `.merc.tmp` | #85 | Appears as `.nv.merc.tmp` after prefix construction |
 | `.note.nv.cuinfo` | #59 | — |
@@ -330,7 +330,7 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 | `.note.nv.tkinfo` | #61 | — |
 | `.nv.callgraph` | #2 | — |
 | `.nv.compat` | #3 | — |
-| `.nv.constant` | #25--42 | Generic prefix (no bank digit) for `strncmp` matching |
+| `.nv.constant` | #25–42 | Generic prefix (no bank digit) for `strncmp` matching |
 | `.nv.constant.driver` | #43 | — |
 | `.nv.constant.entry_image_header_indices` | #44 | — |
 | `.nv.constant.entry_params` | #45 | — |
@@ -411,7 +411,7 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 | `.nvHRKE` | #82 | — |
 | `.nvHRKI` | #83 | — |
 | `.nv_debug.shared` | #62 | — |
-| `.nv_debug_` | #62--66 | Prefix matcher for NVIDIA debug sections |
+| `.nv_debug_` | #62–66 | Prefix matcher for NVIDIA debug sections |
 | `.nv_debug_info_ptx` | #63 | — |
 | `.nv_debug_info_reg_sass` | #64 | — |
 | `.nv_debug_info_reg_type` | #65 | — |

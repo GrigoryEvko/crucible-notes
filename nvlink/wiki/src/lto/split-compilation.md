@@ -203,7 +203,7 @@ for (i = 0; i < num_splits; i++) {
 }
 ```
 
-Key observations from the decompiled main at line 1224--1248:
+Key observations from the decompiled main at line 1224–1248:
 - The `addr64` flag at offset 20 is the *inverse* of `byte_2A5F2C0` (the `v85 = byte_2A5F2C0 == 0` pattern).
 - The `debug` flag at offset 22 is the *inverse* of `byte_2A5F310` (same negation pattern).
 - The `options` pointer at offset 24 is shared across all work items. It points to a single option string built by `sub_429BA0`. This is safe because workers only read it.
@@ -275,7 +275,7 @@ void split_compile_worker(work_item *item) {
 }
 ```
 
-The return value of `sub_4BD760` is an elfLink error code (0--13), written directly into offset 36 of the work item. This is the only field the worker writes; all other fields are read-only inputs.
+The return value of `sub_4BD760` is an elfLink error code (0–13), written directly into offset 36 of the work item. This is the only field the worker writes; all other fields are read-only inputs.
 
 Inside `sub_4BD760`, the compilation proceeds through the embedded ptxas API:
 
@@ -347,7 +347,7 @@ The error check at step 1 (`sub_4297B0`) handles three cases:
 - Code 7 (`ELFLINK_NVVM_ERROR`): emits a fatal diagnostic unless `byte_2A5F298` is set (cudadevrt tolerance mode) or the source contains "cudadevrt"
 - All other non-zero codes: translates via `sub_4BC270` to a human-readable string and emits a fatal diagnostic
 
-Steps 3--5 run serially in the main thread. The `validate_and_add` function (`sub_426570`) performs architecture verification: it checks the compiled cubin's ELF headers against the target SM, validates the machine class (32/64-bit), and verifies format compatibility. The Mercury post-link step (`sub_4275C0`) is only invoked for sm > 89 (Blackwell and later) and transforms the cubin for the Mercury execution model.
+Steps 3–5 run serially in the main thread. The `validate_and_add` function (`sub_426570`) performs architecture verification: it checks the compiled cubin's ELF headers against the target SM, validates the machine class (32/64-bit), and verifies format compatibility. The Mercury post-link step (`sub_4275C0`) is only invoked for sm > 89 (Blackwell and later) and transforms the cubin for the Mercury execution model.
 
 ### Lifecycle Diagram
 

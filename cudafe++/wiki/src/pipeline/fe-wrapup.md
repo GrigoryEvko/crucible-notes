@@ -184,10 +184,10 @@ The keep-in-IL bit is bit 7 (0x80) of the byte at `(entity_pointer - 8)`. Testin
 
    | Global range | Tags | Count |
    |---|---|---|
-   | `qword_126E610` — `qword_126E770` | 1--23 | 23 lists |
-   | `qword_126E7B0` — `qword_126E7E0` | 27--30 | 4 lists |
-   | `qword_126E810` — `qword_126E8A0` | 33--42 | 10 lists |
-   | `qword_126E8E0` — `qword_126E900` | 46--48 | 3 lists |
+   | `qword_126E610` — `qword_126E770` | 1–23 | 23 lists |
+   | `qword_126E7B0` — `qword_126E7E0` | 27–30 | 4 lists |
+   | `qword_126E810` — `qword_126E8A0` | 33–42 | 10 lists |
+   | `qword_126E8E0` — `qword_126E900` | 46–48 | 3 lists |
    | `qword_126E9B0`, `qword_126E9D0`, `qword_126E9E0`, `qword_126E9F0` | 59, 61, 62, 63 | 4 lists |
    | `qword_126EA80` | 72 | 1 list |
 

@@ -2,18 +2,18 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The SASS code generation subsystem converts optimized Ori IR into executable GPU machine code. It is the largest subsystem in ptxas by every metric: approximately 12,000 functions, 9 MB of binary code, and nine functions so large that Hex-Rays cannot decompile them. The pipeline spans phases 112--158 of the 159-phase PhaseManager and comprises seven interlinked subsystems — instruction selection, SASS binary encoding, peephole optimization, the Mercury encoding pipeline, Newton-Raphson math templates, SASS text generation, and ELF output packaging. Every subsystem dispatches through per-SM-family tables, so the same high-level flow produces correct output for targets from Kepler (sm_30) through Blackwell Ultra (sm_121).
+The SASS code generation subsystem converts optimized Ori IR into executable GPU machine code. It is the largest subsystem in ptxas by every metric: approximately 12,000 functions, 9 MB of binary code, and nine functions so large that Hex-Rays cannot decompile them. The pipeline spans phases 112–158 of the 159-phase PhaseManager and comprises seven interlinked subsystems — instruction selection, SASS binary encoding, peephole optimization, the Mercury encoding pipeline, Newton-Raphson math templates, SASS text generation, and ELF output packaging. Every subsystem dispatches through per-SM-family tables, so the same high-level flow produces correct output for targets from Kepler (sm_30) through Blackwell Ultra (sm_121).
 
 | | |
 |---|---|
-| **Pipeline phases** | 112--158 (code generation spans the final third of the pipeline) |
+| **Pipeline phases** | 112–158 (code generation spans the final third of the pipeline) |
 | **Total functions** | ~12,000 (ISel, encoding, peephole, Mercury, formatters, ELF) |
 | **Total binary size** | ~9 MB of machine code |
 | **Non-decompilable functions** | 9 (3 peephole + 6 encoding megadispatchers) |
 | **Core primitive** | `sub_7B9B80` — bitfield insert (216 bytes, 18,347 callers) |
 | **Architecture selector** | `*(int*)(config+372) >> 12` — SM generation ID |
 | **Largest function** | `sub_169B190` — generic peephole dispatcher (280 KB) |
-| **Output modes** | `mercury` (SM 75--99), `capmerc` (SM 100+), `sass` (explicit) |
+| **Output modes** | `mercury` (SM 75–99), `capmerc` (SM 100+), `sass` (explicit) |
 | **CLI option** | `--binary-kind mercury,capmerc,sass` |
 
 ## Pipeline
@@ -60,7 +60,7 @@ The SASS code generation subsystem converts optimized Ori IR into executable GPU
 
 ## Phase-to-Subsystem Map
 
-The code generation pipeline occupies phases 112--158. This table maps each phase to its subsystem and documents the six-stage Mercury core that is the dominant path for SM 75+ targets.
+The code generation pipeline occupies phases 112–158. This table maps each phase to its subsystem and documents the six-stage Mercury core that is the dominant path for SM 75+ targets.
 
 | Phase | Name | Subsystem | Detail page |
 |---|---|---|---|
@@ -91,19 +91,19 @@ The code generation pipeline occupies phases 112--158. This table maps each phas
 | 136 | `LateMergeEquivalentConditionalFlow` | Late cleanup | — |
 | 137 | `LateExpansionUnsupportedOpsMid` | Late lowering | — |
 | 138 | `OriSplitHighPressureLiveRanges` | Late regalloc fixup | — |
-| 139--158 | *(architecture-specific)* | Arch backends | [phase-manager.md](../passes/phase-manager.md) |
+| 139–158 | *(architecture-specific)* | Arch backends | [phase-manager.md](../passes/phase-manager.md) |
 
 Subsystem grouping summary:
 
 | Subsystem | Phases | Key property |
 |---|---|---|
 | Block layout | 112 | Restores source-order block placement |
-| Scoreboard / sync | 113--116 | Pre-Mercury texture and dependency bar fixups |
-| Mercury core | 117--122 | Six-stage encode-expand-WAR-opex-WAR-emit pipeline |
-| Post-Mercury bookkeeping | 123--128 | Register maps, data structure refresh |
-| SASS output + debug | 129--131 | Text/hex dumps and debugger hook |
-| Late cleanup | 132--138 | Conditional merging, late lowering, live-range splits |
-| Arch-specific | 139--158 | 20 backend-overridable phases (no-op by default) |
+| Scoreboard / sync | 113–116 | Pre-Mercury texture and dependency bar fixups |
+| Mercury core | 117–122 | Six-stage encode-expand-WAR-opex-WAR-emit pipeline |
+| Post-Mercury bookkeeping | 123–128 | Register maps, data structure refresh |
+| SASS output + debug | 129–131 | Text/hex dumps and debugger hook |
+| Late cleanup | 132–138 | Conditional merging, late lowering, live-range splits |
+| Arch-specific | 139–158 | 20 backend-overridable phases (no-op by default) |
 
 ## Scale
 
@@ -156,13 +156,13 @@ All three use identical architecture: a 373-case primary switch on the 16-bit op
 
 ## Mercury Pipeline
 
-Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It occupies phases 113--122 and forms a six-stage sub-pipeline. Three output modes are controlled by `--binary-kind`: `mercury` (SM 75--99), `capmerc` (SM 100+, with embedded PTX source and relocation metadata), and `sass` (explicit direct SASS output). The master encoder `sub_6D9690` (94 KB) is the largest backend function, with the orchestrator `sub_6F52F0` (23 KB, 18 parameters) driving the full stage sequence.
+Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It occupies phases 113–122 and forms a six-stage sub-pipeline. Three output modes are controlled by `--binary-kind`: `mercury` (SM 75–99), `capmerc` (SM 100+, with embedded PTX source and relocation metadata), and `sass` (explicit direct SASS output). The master encoder `sub_6D9690` (94 KB) is the largest backend function, with the orchestrator `sub_6F52F0` (23 KB, 18 parameters) driving the full stage sequence.
 
 See [Mercury Encoder Pipeline](./mercury.md) for the six-stage architecture, key function table, and output mode details. See [Capsule Mercury & Finalization](./capmerc.md) for the SM 100+ variant.
 
 ## Newton-Raphson Templates
 
-Double-precision operations lacking dedicated hardware (DDIV, DRCP, DSQRT, DRSQRT) are lowered into multi-instruction SASS sequences implementing Newton-Raphson iterative refinement. The template system at `0x1700000`--`0x1722D60` comprises 36 functions organized in a two-level hierarchy: a top-level handler per operation delegates to a coordinator that allocates up to 298 virtual registers and chains 5--7 sub-expander functions. The register-count dispatcher `sub_1704070` selects between full inline, partial inline, and template-based expansion paths based on register file pressure (thresholds: 20,479 / 16,383).
+Double-precision operations lacking dedicated hardware (DDIV, DRCP, DSQRT, DRSQRT) are lowered into multi-instruction SASS sequences implementing Newton-Raphson iterative refinement. The template system at `0x1700000`--`0x1722D60` comprises 36 functions organized in a two-level hierarchy: a top-level handler per operation delegates to a coordinator that allocates up to 298 virtual registers and chains 5–7 sub-expander functions. The register-count dispatcher `sub_1704070` selects between full inline, partial inline, and template-based expansion paths based on register file pressure (thresholds: 20,479 / 16,383).
 
 See [Newton-Raphson Templates](./templates.md) for the complete template hierarchy, register-count dispatch logic, and sub-expander details.
 
@@ -198,8 +198,8 @@ Complete dispatch table (43 slots, all sub-operations resolved from binary):
 | 9 | 2360 | `red_async` | release; shared, global; gpu, sys, mmio; v2, v4; u32, s32, u64; add, min, max, inc, dec, and, or, xor | RED.ASYNC |
 | 10 | 2608 | `cp_async_bulk` | mbarrier, counted, shared, global, multicast, sequenced, bytemask | UBLKCP |
 | 11 | 2856 | `cp_red_async_bulk` | mbarrier, counted, shared, global; u32, s32, u64, s64, f16, f32, f32ftz, f64, bf16; add..xor, inc, dec | UBLKCP.RED |
-| 12 | 3104 | `cp_async_tensor` | mbarrier, shared, global; 1d--5d, im2col, multicast | UTMAKCP |
-| 13 | 3352 | `cp_async_prefetch_tensor` | global; 1d--5d, im2col | UTMAPF |
+| 12 | 3104 | `cp_async_tensor` | mbarrier, shared, global; 1d–5d, im2col, multicast | UTMAKCP |
+| 13 | 3352 | `cp_async_prefetch_tensor` | global; 1d–5d, im2col | UTMAPF |
 | 14 | 3600 | `fence_view_async` | all, global, shared, dshared, tensor | FENCE.VIEW.ASYNC |
 | 15 | 3848 | `viadd` | 32, f16x2 | VIADD |
 | 16 | 4096 | `viaddmax` | s32, u32, s16x2, u16x2, relu | VIADDMNMX |
@@ -219,7 +219,7 @@ Complete dispatch table (43 slots, all sub-operations resolved from binary):
 | 30 | 7568 | `fmin3` | ftz, nan | FMNMX3 |
 | 31 | 7816 | `tcbar` | cta1, cta2, a1t0, a0tx, flush, multicast, b32, mmareadshma | TCBAR |
 | 32 | 8064 | `tccp` | 128dp256bit, 4dp256bit, 128dp128bit, 2x64dp128bitlw02lw13, 2x64dp128bitlw01lw23, 4x32dp128bit, u4x16p64, u6x16p32; cta1, cta2; b32, b64 | TCCP |
-| 33 | 8312 | `tcmma` | gdesc, tmem; h, i, q, o, mxq; cta1, cta2; ashift, scale, lutb; areuse, akeep, breuse, bkeep; ws; buffer0--buffer3; 2x, 4x, blockscale, impl; b32, b64, u32 | TCMMA |
+| 33 | 8312 | `tcmma` | gdesc, tmem; h, i, q, o, mxq; cta1, cta2; ashift, scale, lutb; areuse, akeep, breuse, bkeep; ws; buffer0–buffer3; 2x, 4x, blockscale, impl; b32, b64, u32 | TCMMA |
 | 34 | 8560 | `tcshift` | cta1, cta2, b32 | TCSHIFT |
 | 35 | 8808 | `virtcount` | u32 | scoreboard |
 | 36 | 9056 | `tcatomsws` | and, or, findandset, align, cas; cta1, cta2; b32, b64 | TCATOM.SWS |
@@ -227,8 +227,8 @@ Complete dispatch table (43 slots, all sub-operations resolved from binary):
 | 38 | 9552 | `tcstsws` | cta1, cta2; b32, b64 | TCST.SWS |
 | 39 | 9800 | `memclear` | b32, b64 | MEMCLEAR |
 | 40 | 10048 | `acqshminit` | *(none)* | shmem init barrier |
-| 41 | 10296 | `ldtm` | 16dp128bit..32dp32bit; x1--x128; pack16bit, fused, stat; nan, max, maxabs, min, minabs; u32, s32, f32, b32; sparsify, u2, spfactor2to4 | LDTM |
-| 42 | 10544 | `sttm` | 16dp128bit..32dp32bit; x1--x128; expand16bit, fused; b32 | STTM |
+| 41 | 10296 | `ldtm` | 16dp128bit..32dp32bit; x1–x128; pack16bit, fused, stat; nan, max, maxabs, min, minabs; u32, s32, f32, b32; sparsify, u2, spfactor2to4 | LDTM |
+| 42 | 10544 | `sttm` | 16dp128bit..32dp32bit; x1–x128; expand16bit, fused; b32 | STTM |
 
 Handler functions that consume this table:
 
@@ -263,7 +263,7 @@ When legalization requires instruction splitting, `sub_ACF4D0` creates new instr
 
 ## WGMMA Pipeline (SM 90+)
 
-The WGMMA (Warp Group Matrix Multiply-Accumulate) pipeline optimizer at `0xACE000`--`0xAE6000` manages asynchronous tensor core execution for Hopper and later. It automatically inserts `warpgroup.arrive` and `warpgroup.wait` fences to ensure correct register handoff. The warning emitter (`sub_ACE480`) issues `"Potential Performance Loss"` advisories (codes 7509--7511) when pipelining fails due to extern calls, insufficient registers, or ill-formed pipeline stages.
+The WGMMA (Warp Group Matrix Multiply-Accumulate) pipeline optimizer at `0xACE000`--`0xAE6000` manages asynchronous tensor core execution for Hopper and later. It automatically inserts `warpgroup.arrive` and `warpgroup.wait` fences to ensure correct register handoff. The warning emitter (`sub_ACE480`) issues `"Potential Performance Loss"` advisories (codes 7509–7511) when pipelining fails due to extern calls, insufficient registers, or ill-formed pipeline stages.
 
 See [WGMMA Pipeline Optimizer](../passes/gmma-pipeline.md) for the full call tree, register pressure estimator, and serialization warning details.
 
@@ -273,13 +273,13 @@ Every code generation subsystem dispatches through architecture-specific tables.
 
 | `config+372 >> 12` | Generation | SM versions |
 |---|---|---|
-| 3 | Kepler | sm_30--sm_37 |
-| 5 | Maxwell | sm_50--sm_53 |
-| 6 | Pascal | sm_60--sm_62 |
-| 7 | Volta / Turing | sm_70--sm_75 |
-| 8 | Ampere | sm_80--sm_89 |
-| 9 | Hopper | sm_90--sm_90a |
-| 10+ | Blackwell | sm_100--sm_121 |
+| 3 | Kepler | sm_30–sm_37 |
+| 5 | Maxwell | sm_50–sm_53 |
+| 6 | Pascal | sm_60–sm_62 |
+| 7 | Volta / Turing | sm_70–sm_75 |
+| 8 | Ampere | sm_80–sm_89 |
+| 9 | Hopper | sm_90–sm_90a |
+| 10+ | Blackwell | sm_100–sm_121 |
 
 Architecture-specific dispatch points across the codegen pipeline:
 

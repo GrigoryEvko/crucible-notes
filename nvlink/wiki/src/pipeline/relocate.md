@@ -346,7 +346,7 @@ This section walks three representative relocations through `sub_469D60` and `su
 2. **`R_CUDA_FUNC_DESC_32`** — a 32-bit data patch into a function descriptor slot.
 3. **`R_CUDA_CONST_FIELD19_20`** — a 19-bit instruction bit-field write with an implicit `>> 2` (byte offset to DWORD offset).
 
-All three examples assume a pre-Mercury target (any of sm_75 / sm_80 / sm_86--89 / sm_90; the descriptor table is identical across these tiers and the original sm_70 Volta layout it inherits from), so the descriptor table selected by `sub_469D60` is `off_1D3DBE0` (the CUDA table), and the relocation types are used as direct indices (no `0x10000` normalization). Each entry in the 64-byte CUDA descriptor table is laid out as `[12 bytes header | action[0] 16 bytes | action[1] 16 bytes | action[2] 16 bytes | 4 bytes sentinel]`, with the action iteration bounded by `v100 = (unsigned int *)(v12 + 60)` at line 132 of `sub_468760`.
+All three examples assume a pre-Mercury target (any of sm_75 / sm_80 / sm_86–89 / sm_90; the descriptor table is identical across these tiers and the original sm_70 Volta layout it inherits from), so the descriptor table selected by `sub_469D60` is `off_1D3DBE0` (the CUDA table), and the relocation types are used as direct indices (no `0x10000` normalization). Each entry in the 64-byte CUDA descriptor table is laid out as `[12 bytes header | action[0] 16 bytes | action[1] 16 bytes | action[2] 16 bytes | 4 bytes sentinel]`, with the action iteration bounded by `v100 = (unsigned int *)(v12 + 60)` at line 132 of `sub_468760`.
 
 ### Example 1: R_CUDA_ABS32_LO_20 (index 33)
 
@@ -414,7 +414,7 @@ Offset  Bytes          action field              Value
 +44 ... 00 ...         action[2] / action[3]     END / zero
 ```
 
-Only one real action: `action[0]` is code `6` (`ABS_LO`). The engine routes to the `case 6u, 0x37u` branch of `sub_468760` (lines 173--211 of the decompiled function).
+Only one real action: `action[0]` is code `6` (`ABS_LO`). The engine routes to the `case 6u, 0x37u` branch of `sub_468760` (lines 173–211 of the decompiled function).
 
 **e. Before/after hex dump.**
 
@@ -518,7 +518,7 @@ Offset  Bytes          action field              Value
 +32 ... 00 ...         action[2] / action[3]     END / zero
 ```
 
-Action code `1` routes to the `case 1u, 0x12u, 0x2Eu` branch (lines 140--172 of `sub_468760`).
+Action code `1` routes to the `case 1u, 0x12u, 0x2Eu` branch (lines 140–172 of `sub_468760`).
 
 **e. Before/after hex dump.**
 
@@ -541,7 +541,7 @@ v15 += 4;
 sub_4685B0(a4, v10, 0, 32);        // write 0x2340 into bits [0:32)
 ```
 
-The bit-field writer (`sub_4685B0`, lines 35--37):
+The bit-field writer (`sub_4685B0`, lines 35–37):
 
 ```c
 // bit_offset=0, bit_width=32, value=0x2340
@@ -564,7 +564,7 @@ AFTER:   40 23 00 00  00 00 00 00          // 32-bit descriptor 0x00002340 (litt
          low 32 bits = kernel_launch_helper's function descriptor
 ```
 
-Only the first 4 bytes are affected. Bytes 4--7 are the high half of the 64-bit word the engine operates on; they are untouched because the mask is exactly `0xFFFFFFFF` in the low half. If another `R_CUDA_FUNC_DESC_32` patch were to land at byte offset `0x0124`, it would write to the high half of the same 64-bit word without disturbing the low half.
+Only the first 4 bytes are affected. Bytes 4–7 are the high half of the 64-bit word the engine operates on; they are untouched because the mask is exactly `0xFFFFFFFF` in the low half. If another `R_CUDA_FUNC_DESC_32` patch were to land at byte offset `0x0124`, it would write to the high half of the same 64-bit word without disturbing the low half.
 
 ### Example 3: R_CUDA_CONST_FIELD19_20 (index 42)
 
@@ -635,7 +635,7 @@ Offset  Bytes          action field              Value
 +32 ... 00 ...         action[2] / action[3]     END / zero
 ```
 
-Action code `9` routes to the `case 9u` branch (lines 301--337 of `sub_468760`).
+Action code `9` routes to the `case 9u` branch (lines 301–337 of `sub_468760`).
 
 **e. Before/after hex dump.**
 
@@ -877,7 +877,7 @@ All traces are gated by `(ctx->verbose_flags & 4) != 0` (bit 2 of the debug flag
 | Bit-field patching mechanism (64-bit read-modify-write) | **HIGH** | Shift-and-mask operations visible in `sub_468760` and helpers `sub_4685B0`/`sub_468670` |
 | `sub_4685B0` (bitfield_write) and `sub_468670` (bitfield_extract) | **HIGH** | Both files exist in `decompiled/` |
 | Preserve-relocs path appends to list at `ctx+384` | **MEDIUM** | Offset inferred from decompiled pointer arithmetic; list-append call visible |
-| Relocation vtable architecture ranges (sm 30--39 Kepler, etc.) | **MEDIUM** | Architecture dispatch visible in `sub_459640`; specific SM ranges are editorial grouping |
+| Relocation vtable architecture ranges (sm 30–39 Kepler, etc.) | **MEDIUM** | Architecture dispatch visible in `sub_459640`; specific SM ranges are editorial grouping |
 | All 18 function addresses in the function map table | **HIGH** | All verified to exist in `decompiled/` directory |
 | 10-step resolution algorithm | **MEDIUM** | Step boundaries are editorial grouping of the decompiled control flow; individual steps verified |
 | Relocation record struct (32 bytes, two `__m128i`) | **HIGH** | `__m128i` type visible in decompiled variable declarations; `_mm_loadu_si128` confirms 128-bit loading |

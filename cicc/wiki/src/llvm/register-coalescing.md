@@ -2,7 +2,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-Register coalescing in CICC v13.0 eliminates redundant copy instructions by merging the live ranges of their source and destination virtual registers. NVPTX's unlimited virtual register model (PTX has no fixed physical register file) changes the purpose of coalescing compared to CPU targets: rather than reducing physical register pressure to avoid spills, the goal is strictly copy elimination — fewer `mov` instructions in the emitted PTX, which in turn gives `ptxas` a cleaner input with fewer live-range constraints to resolve during its own physical allocation. CICC runs two coalescing passes in sequence: the standard LLVM `RegisterCoalescer` at `sub_2F71140` (which handles generic `COPY` pseudo-instructions) and a separate NVPTX-specific coalescer rooted at `sub_34AF4A0` (which handles NVPTX copy instruction families in the opcode 440--503 range that the generic pass does not recognize). This page documents both, with emphasis on the NVPTX-specific pass where the bulk of the proprietary logic resides.
+Register coalescing in CICC v13.0 eliminates redundant copy instructions by merging the live ranges of their source and destination virtual registers. NVPTX's unlimited virtual register model (PTX has no fixed physical register file) changes the purpose of coalescing compared to CPU targets: rather than reducing physical register pressure to avoid spills, the goal is strictly copy elimination — fewer `mov` instructions in the emitted PTX, which in turn gives `ptxas` a cleaner input with fewer live-range constraints to resolve during its own physical allocation. CICC runs two coalescing passes in sequence: the standard LLVM `RegisterCoalescer` at `sub_2F71140` (which handles generic `COPY` pseudo-instructions) and a separate NVPTX-specific coalescer rooted at `sub_34AF4A0` (which handles NVPTX copy instruction families in the opcode 440–503 range that the generic pass does not recognize). This page documents both, with emphasis on the NVPTX-specific pass where the bulk of the proprietary logic resides.
 
 | | |
 |---|---|
@@ -49,7 +49,7 @@ The key LLVM knobs that apply to this instance:
 | `large-interval-size-threshold` | `100` | Intervals with more valnos than this are "large" |
 | `large-interval-freq-threshold` | `256` | Stop coalescing a large interval after this many joins |
 
-The standard pass operates on `COPY` pseudo-instructions only. It does not understand NVPTX-specific move instruction families (opcodes 440--503), which is why the NVPTX-specific pass exists.
+The standard pass operates on `COPY` pseudo-instructions only. It does not understand NVPTX-specific move instruction families (opcodes 440–503), which is why the NVPTX-specific pass exists.
 
 ## NVPTX-Specific Coalescer (sub_34AF4A0)
 
@@ -57,10 +57,10 @@ The proprietary coalescer at `sub_34AF4A0` runs after the standard `RegisterCoal
 
 ### Opcode Classification
 
-The function `sub_3494EA0` contains a giant switch statement mapping NVPTX instruction opcodes (range 1--0x12) to copy families in the 440--503 opcode range. Each family represents a distinct copy semantic:
+The function `sub_3494EA0` contains a giant switch statement mapping NVPTX instruction opcodes (range 1–0x12) to copy families in the 440–503 opcode range. Each family represents a distinct copy semantic:
 
-- **Opcodes 440--443**: Type-preserving moves within a single register class (i32-to-i32, f32-to-f32, etc.). These map from internal opcodes 12, 13, 15 in the operand-type classification table.
-- **Opcodes 444--503**: Cross-class moves, paired/wide register moves (128-bit pairs for tensor core paths), and ABI-related `.param` copies.
+- **Opcodes 440–443**: Type-preserving moves within a single register class (i32-to-i32, f32-to-f32, etc.). These map from internal opcodes 12, 13, 15 in the operand-type classification table.
+- **Opcodes 444–503**: Cross-class moves, paired/wide register moves (128-bit pairs for tensor core paths), and ABI-related `.param` copies.
 
 The return value is an `__m128i` pair encoding both the copy semantics and the register class constraints, which subsequent stages use to decide whether coalescing is legal.
 
@@ -92,11 +92,11 @@ NVPTX has a flat register file with no sub-register structure in the CPU sense. 
 
 The NVPTX coalescer follows the standard LLVM pattern of worklist-driven interval joining but uses proprietary data structures throughout.
 
-### Phase 1: Initialization (lines 494--617)
+### Phase 1: Initialization (lines 494–617)
 
 Load `TargetInstrInfo`, `TargetRegisterInfo`, and `TargetSubtargetInfo` from the `MachineFunction` vtables. Initialize approximately 15 open-addressing hash maps, 2 min-heaps, 3 interval trees (red-black BSTs), and 2 linked lists. The stack frame is approximately 4.5KB. Walk all basic blocks, filter virtual-register operands via `sub_2DADC00` (the `isVirtualRegister` check), and collect copy instructions into the worklist hash.
 
-### Phase 2: Block-Level Scanning (lines 618--857)
+### Phase 2: Block-Level Scanning (lines 618–857)
 
 For each basic block, walk instructions and identify NVPTX copy instructions (opcode field at instruction offset +68 equals 14 or 15). For each copy:
 
@@ -106,11 +106,11 @@ For each basic block, walk instructions and identify NVPTX copy instructions (op
 
 Track live-through registers per block using bitvectors.
 
-### Phase 3: Interference Graph Construction (lines 858--998)
+### Phase 3: Interference Graph Construction (lines 858–998)
 
 Build the interval tree via `sub_2DACB60` and `sub_C8CD80`. Cross-compare forward and backward interval lists via `sub_2E564A0`. Flatten into indexed format via `sub_2E507D0`. The result is a set of live intervals indexed by register number, stored in a red-black BST where each node is 448 bytes (`0x1C0`).
 
-### Phase 4: Worklist-Driven Coalescing (lines 1040--2092)
+### Phase 4: Worklist-Driven Coalescing (lines 1040–2092)
 
 This is the core loop. Candidates are extracted from a min-heap ordered by register number (lowest first — a standard LLVM heuristic that processes defs before uses in reverse postorder).
 
@@ -150,9 +150,9 @@ function CoalesceWorklistDriven(heap, intervals, hash_map):
         repeat from top
 ```
 
-The double-buffer swap (lines 2073--2093) alternates between two heaps (`v373` and `v376`). After exhausting one worklist, the pass swaps and retries — implementing the LLVM-style "iterate until convergence" pattern where an earlier merge may resolve interference that blocked a later merge.
+The double-buffer swap (lines 2073–2093) alternates between two heaps (`v373` and `v376`). After exhausting one worklist, the pass swaps and retries — implementing the LLVM-style "iterate until convergence" pattern where an earlier merge may resolve interference that blocked a later merge.
 
-### Phase 5: Code Patching (lines 2095--2144)
+### Phase 5: Code Patching (lines 2095–2144)
 
 For each coalesced pair, rewrite instruction operands:
 
@@ -161,7 +161,7 @@ For each coalesced pair, rewrite instruction operands:
 3. `sub_2E31040` — patch the operand's register field.
 4. Fix linked-list pointers using the `ptr & 0xFFFFFFFFFFFFFFF8` mask (the low 3 bits encode tags on `MachineOperand` pointers: 0 = normal, 3 = tied operand, 4 = implicit operand).
 
-### Phase 6: Cleanup (lines 2145--2371)
+### Phase 6: Cleanup (lines 2145–2371)
 
 Destroy interval trees (`sub_349E8A0`), perform final range rebuild (`sub_34A46B0`), finalize coalescing metadata (`sub_34A2530`), commit merged intervals (`sub_34AA090`), and deallocate all hash maps, heaps, and trees (16+ `free` calls).
 
@@ -247,7 +247,7 @@ Built by `sub_349AB40` for each potential coalescing opportunity:
 | +16 | 128 | Sub-operand array (SBO, 4 entries x 32 bytes) |
 | +64 | 112 | Type-constraint array (SBO, 2 entries x 56 bytes) |
 | +192 | 32 | Debug name (SBO string) |
-| +224 | 4 | Opcode classification (1--6: copy, subreg, extract, ...) |
+| +224 | 4 | Opcode classification (1–6: copy, subreg, extract, ...) |
 | +232 | 4 | Copy source register |
 | +240 | 2 | Priority (default: 1) |
 
@@ -350,7 +350,7 @@ A pathological case is over-aggressive coalescing that creates very long live ra
 | Aspect | Upstream LLVM | CICC v13.0 |
 |--------|---------------|------------|
 | **Number of passes** | Single `RegisterCoalescer` pass handling `COPY` pseudo-instructions | Two passes in sequence: stock LLVM `RegisterCoalescer` (`sub_2F71140`) + NVPTX-specific coalescer (`sub_34AF4A0`) |
-| **Opcode coverage** | Handles only `TargetOpcode::COPY` (generic copy pseudo) | NVPTX pass handles NVPTX copy instruction families in opcode range 440--503 that the generic pass does not recognize |
+| **Opcode coverage** | Handles only `TargetOpcode::COPY` (generic copy pseudo) | NVPTX pass handles NVPTX copy instruction families in opcode range 440–503 that the generic pass does not recognize |
 | **Coalescing goal** | Reduce physical register pressure to prevent spills | Strictly copy elimination (PTX has unlimited virtual registers); goal is fewer `mov` instructions in emitted PTX and smaller interference graphs for `ptxas` |
 | **Interference check** | Standard `LiveIntervals` query | Custom interference check (`sub_34AA450`, 11.5 KB) with interval tree (red-black BST at `sub_34A0610`) for NVPTX register classes |
 | **Block-level coalescing** | Part of the unified worklist | Separate block-level coalescing pass (`sub_34BAAF0`, 31.7 KB) processes copies within each block before cross-block coalescing |

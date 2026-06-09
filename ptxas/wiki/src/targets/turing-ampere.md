@@ -1,4 +1,4 @@
-# Turing & Ampere (SM 75--88)
+# Turing & Ampere (SM 75–88)
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
@@ -7,11 +7,11 @@ SM 75 through SM 88 span two microarchitecture generations that ptxas treats as 
 | | |
 |---|---|
 | **SM targets** | sm_75, sm_80, sm_86, sm_87, sm_88 (+ sm_82 validation-only) |
-| **Codegen factory range** | 24577--28676 |
+| **Codegen factory range** | 24577–28676 |
 | **ISA generation** | 6 (Turing), 7 (Ampere) |
 | **Encoding format** | 128-bit per-instruction control word |
 | **Scheduler profile** | 7 warps, 208 dispatch slots |
-| **Family strings** | `"Turing"` (sm_75), `"Ampere"` (sm_80--88) |
+| **Family strings** | `"Turing"` (sm_75), `"Ampere"` (sm_80–88) |
 | **Sub-variants** | None (no `a` or `f` suffixes) |
 | **Profile object size** | 1,936 bytes (allocated by `sub_917990`) |
 
@@ -63,7 +63,7 @@ SM82_FIRST  = index 172   (first Ampere-era SASS opcode)
 SM82_LAST   = index 193   (last opcode in the sm_82 range)
 ```
 
-These 22 opcode slots (indices 172--193) cover the core Ampere SASS additions:
+These 22 opcode slots (indices 172–193) cover the core Ampere SASS additions:
 
 | Opcodes | Category |
 |---|---|
@@ -109,12 +109,12 @@ The `sub_917990` base constructor sets the default codegen factory to `0x2000` (
 | +348 | 0x2000 | Codegen factory (overridden) |
 | +588 | 0 | Cleared |
 | +1892 | 2 | Mode/config value |
-| +1832--1848 | xmmword | SSE-loaded constant block |
-| +1908--1924 | xmmword | SSE-loaded constant block |
+| +1832–1848 | xmmword | SSE-loaded constant block |
+| +1908–1924 | xmmword | SSE-loaded constant block |
 
 ## Handler Dispatch
 
-ptxas registers per-SM handler functions into 7 parallel hash maps via `sub_607DB0`. For sm_75--88, all handlers are thin wrappers around shared codegen infrastructure.
+ptxas registers per-SM handler functions into 7 parallel hash maps via `sub_607DB0`. For sm_75–88, all handlers are thin wrappers around shared codegen infrastructure.
 
 ### Map 1 (Handler A) and Map 2 (Handler B)
 
@@ -156,7 +156,7 @@ The `"cpf_optx"` option controls OptiX IR compilation mode. `sub_663C30` is the 
 | sm_87 | `sub_60AD30` | Factory 28675 |
 | sm_88 | `sub_60AB30` | Factory 28676 |
 
-### Maps 6--7 (Performance / Occupancy)
+### Maps 6–7 (Performance / Occupancy)
 
 | Map | sm_75 Handler | Purpose |
 |---|---|---|
@@ -174,11 +174,11 @@ These handlers return per-SM occupancy parameters used by the driver API's occup
 | <= 20479 | 4 | 96 | Kepler (sm_30) |
 | <= 24575 | 6 | 176 | Pascal (sm_60) |
 | <= 28672 | 7 | 192 | Volta (sm_70) |
-| **<= 32767** | **7** | **208** | **Turing / Ampere (sm_75--88)** |
+| **<= 32767** | **7** | **208** | **Turing / Ampere (sm_75–88)** |
 | <= 36863 | 8 | 224 | Hopper (sm_90) |
 | > 36863 | 16 | 240 | Blackwell (sm_100+) |
 
-All SM 75--88 targets fall into the 7-warp / 208-slot bucket. After the warp count, a secondary switch maps specific codegen factory values to **sub-architecture variants** (stored at `a1+26`):
+All SM 75–88 targets fall into the 7-warp / 208-slot bucket. After the warp count, a secondary switch maps specific codegen factory values to **sub-architecture variants** (stored at `a1+26`):
 
 | Codegen Factory | Variant | SM |
 |---|---|---|
@@ -188,7 +188,7 @@ All SM 75--88 targets fall into the 7-warp / 208-slot bucket. After the warp cou
 | **28676**, 36868 | 4 | **sm_88**, sm_110 |
 | 28677, 36869 | 5 | sm_89, sm_121 |
 
-sm_75 (24577) and sm_80 (28673) are absent from the variant table and fall through to the default variant (0 or 1). This means sm_75 and sm_80 use the baseline latency model, while sm_86--88 get tuned sub-architecture parameters.
+sm_75 (24577) and sm_80 (28673) are absent from the variant table and fall through to the default variant (0 or 1). This means sm_75 and sm_80 use the baseline latency model, while sm_86–88 get tuned sub-architecture parameters.
 
 ## HW Latency Tables
 
@@ -209,7 +209,7 @@ No separate table entry was found for sm_88 in the sweep data. It may share sm_8
 
 ## SASS Instruction Encoding
 
-SM 75--88 all use the **128-bit per-instruction encoding format** introduced with Turing. This replaced the Volta/Pascal scheme where scheduling control was packed into a separate 64-bit control header shared by 3 instructions.
+SM 75–88 all use the **128-bit per-instruction encoding format** introduced with Turing. This replaced the Volta/Pascal scheme where scheduling control was packed into a separate 64-bit control header shared by 3 instructions.
 
 ### Control Word Layout
 
@@ -241,34 +241,34 @@ The 3-level opcode hierarchy (major/minor/subop) allows up to 102 major opcodes 
 
 ## Scoreboard / Dependency Barriers
 
-SM 75--88 provide **6 hardware dependency barriers** per warp. The scoreboard tracker is managed by `sub_8E4920` (BuildScoreboardEntries, 6.9KB) and encoded by `sub_A36360`.
+SM 75–88 provide **6 hardware dependency barriers** per warp. The scoreboard tracker is managed by `sub_8E4920` (BuildScoreboardEntries, 6.9KB) and encoded by `sub_A36360`.
 
 | Resource | Width | Range | Notes |
 |---|---|---|---|
-| Write barrier index | 3 bits | 0--5 active, 6--7 reserved | Assigns instruction to a barrier |
+| Write barrier index | 3 bits | 0–5 active, 6–7 reserved | Assigns instruction to a barrier |
 | Read barrier mask | 6 bits | 1 bit per barrier | Indicates which barriers to check before read |
 | Wait barrier mask | 6 bits | 1 bit per barrier | Indicates which barriers to wait on |
 
 The scoreboard tracker allocates 952 bytes per function when bit 4 of the flag byte at offset `+1385` is set. An additional 856-byte bitset is allocated when bit 8 is also set (for barrier register tracking in writeback mode).
 
-The scoreboard infrastructure is shared across all SM 75--88 targets. The barrier count (6) is constant for this entire range. sm_90 (Hopper) potentially increases this, and sm_100+ (Blackwell) changes the barrier model further.
+The scoreboard infrastructure is shared across all SM 75–88 targets. The barrier count (6) is constant for this entire range. sm_90 (Hopper) potentially increases this, and sm_100+ (Blackwell) changes the barrier model further.
 
 ## Intrinsic Table
 
 Intrinsic availability is cumulative. Each generation adds to the previous.
 
-### sm_75 Baseline (IDs 0x89--0x1FA, 370 intrinsics)
+### sm_75 Baseline (IDs 0x89–0x1FA, 370 intrinsics)
 
 sm_75 inherits the full sm_70 (Volta) intrinsic set labeled `__cuda_sm70_*`:
 
 | Category | Intrinsics | PTX Operations |
 |---|---|---|
-| Named barriers | barrier_arrive/red/sync (0--15) | `bar.arrive`, `bar.red.{and,or,popc}`, `bar.sync` |
+| Named barriers | barrier_arrive/red/sync (0–15) | `bar.arrive`, `bar.red.{and,or,popc}`, `bar.sync` |
 | Warp shuffle | shflsync_bfly/down/idx/up | `shfl.sync.{bfly,down,idx,up}` |
 | Warp vote | votesync_all/any/ballot/uni | `vote.sync.{all,any,ballot,uni}` |
 | Warp match | matchsync_all/any_b32/b64 | `match.sync.{all,any}.b{32,64}` |
 | Warp sync | warpsync | `bar.warp.sync` |
-| Redux | reduxsync_* (IDs 0x01--0x11) | `redux.sync.{and,or,xor,min,max,add}` |
+| Redux | reduxsync_* (IDs 0x01–0x11) | `redux.sync.{and,or,xor,min,max,add}` |
 | WMMA | m16n16k16, m32n8k16, m8n32k16 | `wmma.{load,store,mma}` |
 
 WMMA intrinsics cover all combinations of:
@@ -278,11 +278,11 @@ WMMA intrinsics cover all combinations of:
 - Types: f16, f32, with/without satfinite
 - Address spaces: generic, global, shared
 
-### sm_80 Additions (IDs 0x1FB--0x22F, 53 intrinsics)
+### sm_80 Additions (IDs 0x1FB–0x22F, 53 intrinsics)
 
 sm_80 adds two intrinsic groups:
 
-**14 `__cuda_sm80_*` intrinsics (IDs 0x1FB--0x208):**
+**14 `__cuda_sm80_*` intrinsics (IDs 0x1FB–0x208):**
 
 | Intrinsic | PTX Operation | Notes |
 |---|---|---|
@@ -295,7 +295,7 @@ sm_80 adds two intrinsic groups:
 | mma_s8_* | `mma.sync` with `.s8` | INT8 tensor core MMA |
 | mma_b1_* | `mma.sync` with `.b1` | Binary tensor core MMA |
 
-**39 `__cuda_sm_8x_mma_*` intrinsics (IDs 0x209--0x22F):**
+**39 `__cuda_sm_8x_mma_*` intrinsics (IDs 0x209–0x22F):**
 
 Extended MMA shapes and sparse variants for the 2nd/3rd generation tensor core.
 
@@ -380,7 +380,7 @@ Per-SM hardware resource limits used by ptxas for register allocation, occupancy
 - **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD).
 - **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`.
 
-All Turing/Ampere targets share the 7-partition / 208-slot scheduling geometry. The major resource difference is sm\_80 (A100 datacenter) with 2,048 max threads and 64 warps vs. the consumer/embedded parts (sm\_86--88) with 1,536 max threads and 48 warps. sm\_75 (Turing) is the most constrained with 1,024 max threads and 32 warps.
+All Turing/Ampere targets share the 7-partition / 208-slot scheduling geometry. The major resource difference is sm\_80 (A100 datacenter) with 2,048 max threads and 64 warps vs. the consumer/embedded parts (sm\_86–88) with 1,536 max threads and 48 warps. sm\_75 (Turing) is the most constrained with 1,024 max threads and 32 warps.
 
 ## Codegen Factory Gating Patterns
 
@@ -440,8 +440,8 @@ The `>> 12` shift extracts the ISA generation, allowing coarse checks (Turing = 
 ## Cross-References
 
 - [SM Architecture Map](index.md) — Overview of all 23 SM targets and the 3-level profile system
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — sm_89 (Ada) shares Ampere codegen factory range but bridges to Hopper features
-- [Blackwell (SM 100--121)](blackwell.md) — Next-generation targets with codegen factory 36864+
+- [Ada & Hopper (SM 89–90a)](ada-hopper.md) — sm_89 (Ada) shares Ampere codegen factory range but bridges to Hopper features
+- [Blackwell (SM 100–121)](blackwell.md) — Next-generation targets with codegen factory 36864+
 - [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Full intrinsic catalog with per-SM generation ranges
 - [SASS Instruction Encoding](../codegen/encoding.md) — 128-bit encoding format, bitfield packer, opcode hierarchy
 - [Peephole Optimization](../codegen/peephole.md) — FMA combining and other post-scheduling SASS transforms

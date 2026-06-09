@@ -62,7 +62,7 @@ Check 3 (must be on `__global__` parameter) executes in `nv_validate_cuda_attrib
 
 ### Phase 3: Redeclaration/Template Merging
 
-Checks 5--8 (consistency across redeclarations, template redeclarations, specializations, and explicit instantiations) execute during the declaration merging passes in `class_decl.c`, `decls.c`, and `template.c`. These passes compare the `entity+164` bit 2 flag on corresponding parameters of the old and new declarations.
+Checks 5–8 (consistency across redeclarations, template redeclarations, specializations, and explicit instantiations) execute during the declaration merging passes in `class_decl.c`, `decls.c`, and `template.c`. These passes compare the `entity+164` bit 2 flag on corresponding parameters of the old and new declarations.
 
 ## Validation Check 1: const-Qualified Type
 
@@ -206,7 +206,7 @@ If the user compiles with `-arch=compute_60` or lower and uses `__grid_constant_
 
 The architecture value reaches cudafe++ through nvcc, which translates user-facing flags like `--gpu-architecture=sm_70` into the internal numeric code and passes it via the `--target` flag. Inside cudafe++, `sub_7525E0` (a 6-byte stub returning `-1`) nominally parses this value, but the actual number is injected by nvcc into the argument string. See [Architecture Feature Gating](../cuda/arch-gating.md) for the full data flow.
 
-## Validation Checks 5--8: Redeclaration Consistency
+## Validation Checks 5–8: Redeclaration Consistency
 
 The four redeclaration consistency checks share the same algorithmic structure but apply to different declaration contexts. They all enforce the invariant that `__grid_constant__` annotations must match between declarations: if the first declaration annotates a parameter with `__grid_constant__`, every subsequent declaration (redeclaration, template redeclaration, specialization, explicit instantiation) must also annotate the corresponding parameter, and vice versa.
 
@@ -391,7 +391,7 @@ Three distinct locations in entity/type/parameter nodes carry `__grid_constant__
 
 Set during attribute application when a parameter is declared `__grid_constant__`. This is the "declaration-side" flag that records the programmer's intent. Used by:
 - Memory space conflict check (error 3577) in `apply_nv_managed_attr` and `apply_nv_device_attr`
-- Redeclaration consistency checks (checks 5--8)
+- Redeclaration consistency checks (checks 5–8)
 
 ### type+133 bit 5 (0x20): Type-Level Flag
 
@@ -422,7 +422,7 @@ The three flags serve different purposes: the entity flag records the declaratio
 
 Unlike the execution- and memory-space attributes, `__grid_constant__` is **not** a pure entity-bit collapse. The parse-time attribute IL node (kind `0x48`, byte `+8 = '_'` for `__grid_constant__` is *not* assigned — the attribute lacks a dedicated CUDA kind byte and arrives through the generic GNU/scoped path) deposits state into three locations simultaneously:
 
-1. `entity+164` bit 2 — declaration-side flag, read by redeclaration consistency checks (5--8).
+1. `entity+164` bit 2 — declaration-side flag, read by redeclaration consistency checks (5–8).
 2. `type+133` bit 5 — type-level flag, read by `sub_7A6B60` from the `__global__` apply handler to suppress error 3669.
 3. `param+32` bit 1 — parameter-side flag, read by `nv_validate_cuda_attributes` (`sub_6BC890`) to detect non-`__global__` use (error 3702).
 
@@ -502,7 +502,7 @@ The attribute name lookup function (`sub_40A250`) strips leading and trailing do
 | `grid_constant_incompat_specialization` | — | `incompatible __grid_constant__ annotation for parameter %s in function specialization (see previous declaration %p)` | Specialization |
 | `grid_constant_incompat_instantiation_directive` | — | `incompatible __grid_constant__ annotation for parameter %s in instantiation directive (see previous declaration %p)` | Instantiation |
 
-Error codes for checks 1, 2, 4--8 are not individually mapped in the decompiled code available for this analysis. Error 3702 (check 3) is confirmed from the post-validation function `sub_6BC890`. Error 3577 (memory space conflict) is confirmed from `sub_40E0D0` and `sub_40EB80`.
+Error codes for checks 1, 2, 4–8 are not individually mapped in the decompiled code available for this analysis. Error 3702 (check 3) is confirmed from the post-validation function `sub_6BC890`. Error 3577 (memory space conflict) is confirmed from `sub_40E0D0` and `sub_40EB80`.
 
 ## Function Map
 

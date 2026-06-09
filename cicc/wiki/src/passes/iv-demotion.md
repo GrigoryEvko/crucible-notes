@@ -27,7 +27,7 @@ The `remat-iv` knob controls five demotion aggressiveness levels:
 | Level | Behavior | Gate in binary |
 |---|---|---|
 | 0 | Disabled — IV demotion entirely skipped | `dword_4FBFB40 == 0` |
-| 1--2 | Basic IV demotion. Only simple induction variables with constant step and all uses in the same loop body. | Default path |
+| 1–2 | Basic IV demotion. Only simple induction variables with constant step and all uses in the same loop body. | Default path |
 | 3 | Extended IV demotion. Enables demotion of IVs whose uses extend to loop-exit comparisons and address computations outside the innermost loop. | line 1380: `if (dword > 3)` |
 | 4 | Full demotion (default). Includes complex patterns: IVs used in GEP chains, IVs with multiple PHI consumers, and IVs that feed into both narrow and wide downstream computations. | line 1546: `if (dword <= 4)` |
 | 5+ | Aggressive mode. Relaxes safety margins on range proofs, allowing demotion when the range check is tight (no headroom). |  |

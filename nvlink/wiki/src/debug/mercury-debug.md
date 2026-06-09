@@ -299,7 +299,7 @@ The `.nv.merc` container section (the Mercury code itself, string at `0x2458305`
 
 ## FNLZR Debug Serialization: Phase 7
 
-Phase 7 of the FNLZR pipeline (lines 1294--1372 of `sub_4748F0` at `0x4748F0`) handles post-compilation serialization of debug information. It is embedded within Phase 6 of the 10-phase FNLZR pipeline and operates on the compilation output structures built by the ptxas backend.
+Phase 7 of the FNLZR pipeline (lines 1294–1372 of `sub_4748F0` at `0x4748F0`) handles post-compilation serialization of debug information. It is embedded within Phase 6 of the 10-phase FNLZR pipeline and operates on the compilation output structures built by the ptxas backend.
 
 ### Phase 7a: `.debug_line` Serialization
 
@@ -419,7 +419,7 @@ Three architecture-derived flags control Mercury debug emission:
 | SASS mode | `byte_2A5F225` | sm > 89 | Forces SASS output; enables `.nv_debug_line_sass` and `.nv_debug_info_reg_sass` with `-g` |
 | Mercury mode | `byte_2A5F222` | sm > 99 | All debug sections get `.nv.merc.` prefix; unlocks 5 additional sections |
 
-The five sections unlocked by Mercury mode that are absent in SASS-only mode (sm90--sm99) are `.nv.merc.debug_aranges`, `.nv.merc.debug_ranges`, `.nv.merc.debug_macinfo`, `.nv.merc.debug_pubnames`, and `.nv.merc.debug_pubtypes`.
+The five sections unlocked by Mercury mode that are absent in SASS-only mode (sm90–sm99) are `.nv.merc.debug_aranges`, `.nv.merc.debug_ranges`, `.nv.merc.debug_macinfo`, `.nv.merc.debug_pubnames`, and `.nv.merc.debug_pubtypes`.
 
 ## Self-Check Validation
 
@@ -433,11 +433,11 @@ The `--self-check` CLI flag triggers a round-trip validation where the linker re
 
 ### Self-Check Debug Verification Algorithm
 
-The self-check (Phase 9 of FNLZR, lines 1493--1729 of `sub_4748F0`) performs a recursive invocation of the FNLZR engine itself. The reconstituted SASS is produced by calling `sub_4748F0` again with the output from Phase 6 as input. The debug section comparison proceeds in two stages:
+The self-check (Phase 9 of FNLZR, lines 1493–1729 of `sub_4748F0`) performs a recursive invocation of the FNLZR engine itself. The reconstituted SASS is produced by calling `sub_4748F0` again with the output from Phase 6 as input. The debug section comparison proceeds in two stages:
 
 **Stage 1: Section count match** (line 1639). The number of sections in `v419[60]` (the original debug section list) must equal the number of sections in the reconstituted output's debug section list (at `v348 + 24`). If the counts differ, error code 19 is set.
 
-**Stage 2: Per-section content match** (lines 1641--1677). For each section in the original list:
+**Stage 2: Per-section content match** (lines 1641–1677). For each section in the original list:
 1. The section name is extracted and the `.nv.merc.` prefix is stripped (offset +8) if present.
 2. The same stripping is applied to the reconstituted section.
 3. The stripped names are compared with `strcmp`. If they match, the section sizes and content are compared byte-by-byte.
@@ -445,7 +445,7 @@ The self-check (Phase 9 of FNLZR, lines 1493--1729 of `sub_4748F0`) performs a r
 
 The prefix stripping uses `sub_44E3A0` (starts-with predicate) with the 9-byte string `".nv.merc."` at `0x1D40605`. The stripping advances the pointer by 8 bytes (not 9), producing a result that retains the leading dot (e.g., `".nv.merc.debug_info"` + 8 = `".debug_info"`). This is correct because the `.nv.merc.` prefix is 9 characters including the trailing dot, but the stripped name must retain its own leading dot.
 
-**Stage 3: Relocation section match** (lines 1679--1729). A parallel comparison loop runs for the relocation sections stored in `v419[61]`, using identical prefix stripping and byte comparison. The same error codes apply.
+**Stage 3: Relocation section match** (lines 1679–1729). A parallel comparison loop runs for the relocation sections stored in `v419[61]`, using identical prefix stripping and byte comparison. The same error codes apply.
 
 When any self-check fails, the detailed error message is emitted:
 
@@ -525,7 +525,7 @@ ELF_WriteCompleteObject (sub_1CF3720, 15.3 KB)
 
 4. **FNLZR post-link transformation** (`sub_4748F0` -> `sub_471700`): The finalizer reads the Mercury container, strips the `".nv.merc."` prefix from section names (offset +8), and dispatches each debug section through the finalization rewrite. Phase 7 of the FNLZR serializes `.debug_line` and `.debug_frame` through three helper functions (`sub_477480`, `sub_4783C0`, `sub_477510`), then remaps `.debug_line` relocation offsets through a BST built by `sub_4826F0`. The BST maps Mercury-address offsets to SASS-address offsets, updating relocation type `0x10008` (`R_CUDA_ABS32_HI_20`) entries that reference `.debug_line` symbols.
 
-5. **Self-check** (optional, `--self-check`): Phase 9 recursively invokes `sub_4748F0` on the finalized output, strips `.nv.merc.` prefixes from both the original and reconstituted section names, and compares section contents byte-by-byte. Debug sections are checked in a dedicated loop (lines 1641--1677) with error code 19 on mismatch. Failure triggers the `"Self check for capsule mercury debug section failed"` error with a reference to internal Jira `MERCSW-125`.
+5. **Self-check** (optional, `--self-check`): Phase 9 recursively invokes `sub_4748F0` on the finalized output, strips `.nv.merc.` prefixes from both the original and reconstituted section names, and compares section contents byte-by-byte. Debug sections are checked in a dedicated loop (lines 1641–1677) with error code 19 on mismatch. Failure triggers the `"Self check for capsule mercury debug section failed"` error with a reference to internal Jira `MERCSW-125`.
 
 6. **Final output**: The rewritten cubin contains SASS `.text` instead of `.nv.merc` code. If the output format is capmerc (default for sm100+), the Mercury container is preserved alongside SASS for JIT re-finalization by the CUDA driver. The capmerc output includes both `.nv.merc.debug_*` sections (for driver JIT) and standard `.debug_*` sections (for tools).
 
@@ -590,7 +590,7 @@ The Mercury debug section names (`.nv.merc.debug_*`) are straightforward namespa
 | String table cluster at `0x245832A`--`0x2458470` | HIGH | Exact addresses confirmed in strings JSON for all 15 entries |
 | Section classifier `sub_1CED0E0` checks `0x10000000` flag | HIGH | Decompiled: `(*((_QWORD *)a2 + 1) & 0x10000000) == 0` at line 47; first comparison is `.nv.merc.debug_abbrev` at line 60 |
 | SASS debug classifier `sub_1CED7C0` — 15 unprefixed names, no flag check | HIGH | Decompiled file confirms sequential `memcmp`/`strcmp` chain for unprefixed debug section names; no `0x10000000` check present |
-| Section type ranges `1879048198`--`1879048212` and `1879048292`--`1879048318` | HIGH | Decompiled `sub_1CED0E0`: `v4 - 1879048198` range check and `v4 - 1879048292` range check at lines 52--54; bitmask constant `0x5D05` and `_bittest64` with `23813` confirmed |
+| Section type ranges `1879048198`--`1879048212` and `1879048292`--`1879048318` | HIGH | Decompiled `sub_1CED0E0`: `v4 - 1879048198` range check and `v4 - 1879048292` range check at lines 52–54; bitmask constant `0x5D05` and `_bittest64` with `23813` confirmed |
 | Dual-lookup pattern in `sub_1CF1690` | HIGH | Decompiled: unprefixed `memcmp`/`strcmp` followed by Mercury-prefixed `strcmp` with `sh_flags & 0x10` check at each stage; all 7 pairs confirmed |
 | Relocation context offsets (+72 through +120) | HIGH | Decompiled `sub_1CF1690`: assignments to `a2 + 72`, `a2 + 80`, `a2 + 88`, `a2 + 96`, `a2 + 104`, `a2 + 112`, `a2 + 120` confirmed at LABEL_123/117/121/119/115/127/125 |
 | Self-check error strings at `0x2458F38`/`0x2458F70`/`0x2458FA8` | HIGH | All three strings confirmed in `nvlink_strings.json` with xrefs from error table |
@@ -599,7 +599,7 @@ The Mercury debug section names (`.nv.merc.debug_*`) are straightforward namespa
 | Prefix strip uses offset 8 (not 9) | HIGH | Decompiled `sub_4748F0` line 1649: `v304 += 8`; line 1664: `v309 += 8`; line 1690: `v330 += 8`; line 1706: `v335 = s2 + 8`. All four instances confirmed |
 | `merge_elf` skip: `"skip mercury section %i"` verbose message at `0x1D3BCB7` | HIGH | String confirmed; decompiled `sub_45E7D0` lines 1583 and 1711 reference the flag check at `0x10000000` |
 | Mercury flag `0x10000000` in `sh_flags` (bit 28) | HIGH | Decompiled `sub_1CED0E0` checks `& 0x10000000`; decompiled `sub_1CF1690` checks `(*(_BYTE *)(v9 + 11) & 0x10)` (same flag, byte-level access); decompiled `sub_45E7D0` checks `(v140 & 0x10000000)` |
-| Phase 7 debug serialization (lines 1294--1372) | HIGH | Functions `sub_477480`, `sub_4783C0`, `sub_477510` all confirmed at stated addresses; mode 0/1 dispatch confirmed; `+1` size adjustment confirmed |
+| Phase 7 debug serialization (lines 1294–1372) | HIGH | Functions `sub_477480`, `sub_4783C0`, `sub_477510` all confirmed at stated addresses; mode 0/1 dispatch confirmed; `+1` size adjustment confirmed |
 | Phase 7c BST for `.debug_line` remapping via `sub_4826F0` | HIGH | Decompiled `sub_4826F0` builds BST structure; relocation type `0x10008` confirmed in `sub_4748F0` line 1326; `.debug_line` 12-byte `memcmp` at line 1331 |
 | Self-check error codes 17, 18, 19 | HIGH | Decompiled `sub_4748F0`: code 17 at line 1631, code 18 at lines 1698/1723, code 19 at line 1728 |
 | DWARF emitter at `sub_1672F50` uses `.nv_debug_` / `.debug_` prefixes | HIGH | Xrefs confirmed: `0x226B814` (`.nv_debug_`) referenced from `sub_1672F50` at `0x1673F58`; `0x226B81F` (`.debug_`) from `0x1673F69` |

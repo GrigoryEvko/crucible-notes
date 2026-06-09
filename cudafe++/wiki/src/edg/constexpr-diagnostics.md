@@ -19,7 +19,7 @@ emit_constexpr_diagnostic(
 
 The tag identifier is then routed through the diagnostic engine to:
 
-1. Look up the canonical numeric error code (codes in the 2691, 2700, 2701, 2707, 2708, 2721, 2725--3312 range used by the interpreter — see [Constexpr Interpreter / Error Codes](constexpr-interpreter.md#error-codes)).
+1. Look up the canonical numeric error code (codes in the 2691, 2700, 2701, 2707, 2708, 2721, 2725–3312 range used by the interpreter — see [Constexpr Interpreter / Error Codes](constexpr-interpreter.md#error-codes)).
 2. Resolve the message template (single source of truth — there is no localized fork, EDG uses one English template per tag).
 3. Substitute formatted operands (object identity, type name, array bounds, allocation chain entries).
 4. Optionally chain a stack-trace dump using the `constexpr_called_from*` and `constexpr_begin_report*` framing tags.

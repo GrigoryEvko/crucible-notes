@@ -98,7 +98,7 @@ When a sync is removed, the pass calls `sub_15F20C0` to delete it from the IR, t
 
 ### Special Cases
 
-Barrier variants that carry data — `__syncthreads_count`, `__syncthreads_and`, `__syncthreads_or` (intrinsic IDs 3734--3736) — are explicitly excluded from removal. Their return values encode lane participation information, so they cannot be elided even when no memory hazard exists.
+Barrier variants that carry data — `__syncthreads_count`, `__syncthreads_and`, `__syncthreads_or` (intrinsic IDs 3734–3736) — are explicitly excluded from removal. Their return values encode lane participation information, so they cannot be elided even when no memory hazard exists.
 
 ## Address Space Filtering
 
@@ -118,8 +118,8 @@ Two predicates classify synchronization-related intrinsics:
 | ID | Likely Mapping |
 |---|---|
 | 34 | `llvm.nvvm.barrier0` (basic `__syncthreads`) |
-| 3718--3720 | `barrier.sync` / `bar.warp.sync` variants |
-| 3731--3736 | `__syncthreads_count/and/or`, `bar.arrive` |
+| 3718–3720 | `barrier.sync` / `bar.warp.sync` variants |
+| 3731–3736 | `__syncthreads_count/and/or`, `bar.arrive` |
 
 **`sub_1C30240` (is-fence-intrinsic):** Returns true for IDs 4046 and 4242, which are memory fence/membar intrinsics. These are excluded from the sync test — they impose memory ordering but are not full barriers that can be elided by this pass.
 
@@ -200,7 +200,7 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 **1. Using address-level tracking instead of boolean per-category flags.** The pass tracks four boolean flags per block (reads_above, writes_above, reads_below, writes_below) for shared/global memory, not specific addresses. A reimplementation that attempts to track precise addresses ("smem[0] is only written above, smem[1] is only read below") will appear to find more dead barriers but is fundamentally unsound for GPU execution. Different threads access different addresses through the same pointer expression (`smem[tid]` vs `smem[tid-1]`), making address-based alias analysis across threads impossible at compile time. The boolean-per-category approach is the correct conservative abstraction.
 
-**2. Not excluding `__syncthreads_count/and/or` (IDs 3734--3736) from removal.** These barrier variants return a value that encodes lane participation information (`__syncthreads_count` returns the number of threads that passed a non-zero predicate). Even when no memory hazard exists across the barrier, the return value carries data that the program depends on. A reimplementation that removes these barriers based solely on memory analysis will break programs that use the return value for algorithmic purposes (e.g., warp-level voting patterns, early-exit counting).
+**2. Not excluding `__syncthreads_count/and/or` (IDs 3734–3736) from removal.** These barrier variants return a value that encodes lane participation information (`__syncthreads_count` returns the number of threads that passed a non-zero predicate). Even when no memory hazard exists across the barrier, the return value carries data that the program depends on. A reimplementation that removes these barriers based solely on memory analysis will break programs that use the return value for algorithmic purposes (e.g., warp-level voting patterns, early-exit counting).
 
 **3. Treating the `ignore-call-safety` default as conservative.** The default for `ignore-call-safety` is `true` (aggressive): function calls are assumed not to access shared/global memory. This is correct for typical CUDA helper functions that operate on registers and local memory, but a reimplementation that uses `false` as the default will retain nearly all barriers in code that calls device functions, defeating the optimization. Conversely, a reimplementation that uses `true` but does not also check the callee's `isSharedMemoryAccess` attribute when available will miss cases where a called function does access shared memory through a pointer argument.
 

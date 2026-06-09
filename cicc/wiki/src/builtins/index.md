@@ -1,6 +1,6 @@
 # NVVM Builtin Table Structure
 
-770 builtins mapped to integer IDs (1--770) in a wyhash open-addressing hash table. Dual tables exist: pre-optimization (`sub_90AEE0`) and post-optimization (`sub_126A910`), both with identical content but separate address spaces.
+770 builtins mapped to integer IDs (1–770) in a wyhash open-addressing hash table. Dual tables exist: pre-optimization (`sub_90AEE0`) and post-optimization (`sub_126A910`), both with identical content but separate address spaces.
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Hash table insert** | `sub_90ADD0` -> `sub_C92610` -> `sub_C92740` |
 | **Hash table find** | `sub_C92860` (find-only, quadratic probing) |
 | **Rehash** | `sub_C929D0` (75% load factor trigger) |
-| **Total builtins** | 770 (IDs 1--770) |
+| **Total builtins** | 770 (IDs 1–770) |
 | **Storage** | Open-addressing at `context+480` (20-byte header) |
 
 ## Architecture

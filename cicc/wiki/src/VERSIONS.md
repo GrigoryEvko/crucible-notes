@@ -55,7 +55,7 @@ The NVVM IR version is a metadata tuple `(major, minor)` embedded in every NVVM 
 
 **Libdevice**: the embedded `libdevice.10.bc` carries `!nvvmir.version = !{i32 2, i32 0}`. The version `(2, 0)` is hard-coded in the version checker (`sub_12BDA30`) as an **always-compatible sentinel** — it passes the check regardless of the current NVVM IR version. This ensures the embedded math library is compatible with any user module.
 
-**Container format**: the [NVVM container](./structs/nvvm-container.md) binary header stores version fields separately at offsets 0x06--0x07 (`nvvm_ir_major`, `nvvm_ir_minor`). These track the container-level IR spec version and may differ from the bitcode-level metadata tuple.
+**Container format**: the [NVVM container](./structs/nvvm-container.md) binary header stores version fields separately at offsets 0x06–0x07 (`nvvm_ir_major`, `nvvm_ir_minor`). These track the container-level IR spec version and may differ from the bitcode-level metadata tuple.
 
 **Bypass**: setting `NVVM_IR_VER_CHK=0` in the environment disables version validation entirely, allowing any version tuple to pass.
 
@@ -142,7 +142,7 @@ This wiki documents cicc v13.0 from CUDA 12.8. When a new CUDA toolkit release s
 - **EDG version**: EDG releases track independently of LLVM. A bump from 6.6 to a later version would affect C++ standard support, keyword handling, and the frontend error catalog.
 - **NVVM IR version minor**: the minor field (currently 2 in the `major == 3` series) may increment to accommodate new metadata kinds or intrinsic conventions without breaking the major version.
 - **PTX ISA version**: new SM targets require new PTX versions. sm_100 Blackwell already uses a higher PTX version than sm_90 Hopper.
-- **SM target range**: new GPU architectures add new SM numbers. The sm_75--sm_121 range in v13.0 will expand in future releases.
+- **SM target range**: new GPU architectures add new SM numbers. The sm_75–sm_121 range in v13.0 will expand in future releases.
 
 The **bitcode producer string** (`"LLVM7.0.1"`) is unlikely to change in the near term — doing so would break backward compatibility with the entire NVVM IR ecosystem. The **libdevice version sentinel** `(2, 0)` is similarly stable because the version checker special-cases it.
 

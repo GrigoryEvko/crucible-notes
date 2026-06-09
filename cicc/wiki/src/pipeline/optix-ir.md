@@ -77,7 +77,7 @@ The pipeline orchestrator `sub_12C35D0` (41 KB, the `nvvmCompileProgram` interna
 | OPTIXIR | `(&v197, &v202)` | Bit 6 (`0x40`) |
 | LLC | `(&v198, &v203)` | Bit 2 (`0x04`) |
 
-The OPTIXIR stage executes at lines 1093--1150 of the decompiled orchestrator, after OPT and before LLC:
+The OPTIXIR stage executes at lines 1093–1150 of the decompiled orchestrator, after OPT and before LLC:
 
 ```c
 // STAGE 3 -- OPTIXIR

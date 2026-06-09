@@ -181,19 +181,19 @@ The full byte-level layout, verified against the constructor (`sub_4280C0`), des
 
 The fields fall into seven functional groups:
 
-**Error state (offsets 0--1).** Two byte flags set by the diagnostic reporter `sub_42F590`. Byte 0 records whether any error-or-above diagnostic was emitted; byte 1 records fatal errors specifically. The compilation driver reads these after each kernel compilation to determine the process exit code.
+**Error state (offsets 0–1).** Two byte flags set by the diagnostic reporter `sub_42F590`. Byte 0 records whether any error-or-above diagnostic was emitted; byte 1 records fatal errors specifically. The compilation driver reads these after each kernel compilation to determine the process exit code.
 
-**Error recovery (offsets 8--16).** A `setjmp`/`longjmp` mechanism for non-local error exits. `sub_431ED0` saves the current `jmp_buf*` and error byte flags, installs a fresh `jmp_buf`, then enters the compiler. On a fatal diagnostic, `sub_42F590` stores the error descriptor at offset +16 and calls `longjmp` to the target at offset +8. If no `jmp_buf` is installed, the handler calls `sub_4275E0` (abort).
+**Error recovery (offsets 8–16).** A `setjmp`/`longjmp` mechanism for non-local error exits. `sub_431ED0` saves the current `jmp_buf*` and error byte flags, installs a fresh `jmp_buf`, then enters the compiler. On a fatal diagnostic, `sub_42F590` stores the error descriptor at offset +16 and calls `longjmp` to the target at offset +8. If no `jmp_buf` is installed, the handler calls `sub_4275E0` (abort).
 
 **Per-thread allocator (offset 24).** The most performance-critical field. The pool allocator `sub_424070` reads this pointer on every allocation (accessed as `sub_4280C0()[3]`). When non-NULL, allocations go to the calling thread's own slab without any locking. `sub_42BDD0` provides an atomic swap primitive that replaces the pool pointer and returns the old value — used during pool migration at compilation boundaries. This is used pervasively: 3,928 call sites to `sub_4280C0` are predominantly pool allocator calls that need the current thread's arena.
 
 **Diagnostic context (offsets 32, 40).** The program name at +32 (e.g. `"ptxas"`) is prepended to all diagnostic messages. The suffix at +40 is appended after the message body. Both are set per-thread to support library mode where multiple tool names coexist in the same process.
 
-**Diagnostic flags (offsets 48--52).** Five single-byte flags controlling diagnostic formatting and filtering. The info suppression flag (+48) silences informational messages. The diagnostic suppression flag (+49) silences warnings entirely. The Werror flag (+50) promotes warnings to errors. The annotation flag (+51) enables machine-readable severity tags (`@E@`, `@W@`, `@O@`, `@I@`). The continuation flag (+52) enables multi-line continuation mode where wrapped lines omit the `". "` prefix.
+**Diagnostic flags (offsets 48–52).** Five single-byte flags controlling diagnostic formatting and filtering. The info suppression flag (+48) silences informational messages. The diagnostic suppression flag (+49) silences warnings entirely. The Werror flag (+50) promotes warnings to errors. The annotation flag (+51) enables machine-readable severity tags (`@E@`, `@W@`, `@O@`, `@I@`). The continuation flag (+52) enables multi-line continuation mode where wrapped lines omit the `". "` prefix.
 
-**Synchronization primitives (offsets 128--248).** The condvar, mutex, and semaphore are used by the thread pool for task coordination and cross-thread signaling. The saved semaphore pointer at +248 is set by the pool when assigning work to a thread; on thread exit, the destructor calls `sem_post` on it to notify the pool's shutdown logic.
+**Synchronization primitives (offsets 128–248).** The condvar, mutex, and semaphore are used by the thread pool for task coordination and cross-thread signaling. The saved semaphore pointer at +248 is set by the pool when assigning work to a thread; on thread exit, the destructor calls `sem_post` on it to notify the pool's shutdown logic.
 
-**Global linked list (offsets 256--272).** A doubly-linked list threading through all live TLS contexts, protected by the global mutex at `0x29FE0xx`. Used by the atexit handler to enumerate and destroy all contexts. The destroyed flag at +272 prevents double-destroy when contexts move to the free list for recycling.
+**Global linked list (offsets 256–272).** A doubly-linked list threading through all live TLS contexts, protected by the global mutex at `0x29FE0xx`. Used by the atexit handler to enumerate and destroy all contexts. The destroyed flag at +272 prevents double-destroy when contexts move to the free list for recycling.
 
 ### TLS Destructor: `destr_function` (`0x427F10`)
 
@@ -488,7 +488,7 @@ Each worker thread operates on an isolated copy of compilation state:
 | Resource | Isolation Mechanism |
 |---|---|
 | Memory pool | Per-thread pool pointer at TLS offset +24. Each thread's allocations go to a separate arena, eliminating heap contention. |
-| Error state | Per-thread flags at TLS offsets 0--1 (error bytes), 8 (longjmp target), 16 (error descriptor), 48--52 (diagnostic control). Each thread tracks its own errors independently. |
+| Error state | Per-thread flags at TLS offsets 0–1 (error bytes), 8 (longjmp target), 16 (error descriptor), 48–52 (diagnostic control). Each thread tracks its own errors independently. |
 | Hash maps | Deep-copied from the master compilation context before task submission. Workers never share mutable lookup tables. |
 | Config vectors | Snapshot of 15 configuration vectors into a 360-byte per-task buffer. Workers read their own copy. |
 | Timing data | Per-kernel slots in a pre-allocated timing array (112 bytes per kernel). Each worker writes only to its own kernel's slot. |

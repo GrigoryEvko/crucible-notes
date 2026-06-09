@@ -548,7 +548,7 @@ Restore on exit (always, even on error path):
 
 The save is conditional on the current token kind (`word_126DD58`). If the token kind is between 2 and 8 inclusive (meaning the parser is mid-expression or mid-declaration when the class instantiation is triggered), the full save executes:
 
-**Primary state block** (always saved when token is 2--8): 11 SSE registers from `xmmword_126DC60`--`xmmword_126DD00`, covering 176 bytes of declaration parser state, plus `qword_126DD10` (8 bytes).
+**Primary state block** (always saved when token is 2–8): 11 SSE registers from `xmmword_126DC60`--`xmmword_126DD00`, covering 176 bytes of declaration parser state, plus `qword_126DD10` (8 bytes).
 
 ```text
 Save:
@@ -583,15 +583,15 @@ Save:
     saved_dc50 = qword_126DC50      // additional scalar
 ```
 
-The conditional save is a performance optimization: when the parser is in a simple context (token kind outside 2--8), the class instantiation only needs to save the 4 SSE registers from `xmmword_106C380`--`xmmword_106C3B0` (same as function instantiation). The full 23-register save is only needed when a class instantiation is triggered mid-parse (e.g., during elaborated type specifier resolution or SFINAE evaluation).
+The conditional save is a performance optimization: when the parser is in a simple context (token kind outside 2–8), the class instantiation only needs to save the 4 SSE registers from `xmmword_106C380`--`xmmword_106C3B0` (same as function instantiation). The full 23-register save is only needed when a class instantiation is triggered mid-parse (e.g., during elaborated type specifier resolution or SFINAE evaluation).
 
 ### Summary of State Save Areas
 
 | Instantiation Kind | Condition | SSE Registers | Bytes Saved | Address Range |
 |---|---|---|---|---|
 | Function | Always | 4 | 64 | `0x106C380`--`0x106C3B0` |
-| Class (minimal) | token not 2--8 | 4 | 64 | `0x106C380`--`0x106C3B0` |
-| Class (mid-declaration) | token 2--8 | 4 + 11 | 64 + 184 | `0x106C380`--`0x106C3B0` + `0x126DC60`--`0x126DD10` |
+| Class (minimal) | token not 2–8 | 4 | 64 | `0x106C380`--`0x106C3B0` |
+| Class (mid-declaration) | token 2–8 | 4 + 11 | 64 + 184 | `0x106C380`--`0x106C3B0` + `0x126DC60`--`0x126DD10` |
 | Class (mid-class-body) | token == 8 | 4 + 11 + 12 | 64 + 184 + 200 | All three ranges |
 
 ## The update_instantiation_required_flag Function

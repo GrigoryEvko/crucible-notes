@@ -79,14 +79,14 @@ The NVVM builtin name table uses a separate, NVIDIA-original hash function for s
 | Length | Strategy | Constants |
 |--------|----------|-----------|
 | 0 | Return constant | `0x2D06800538D394C2` |
-| 1--3 | 3-byte read + XOR + multiply | seed `0x87275A9B`, mul `0xC2B2AE3D27D4EB4F`, avalanche `0x165667B19E3779F9` |
-| 4--8 | 2x uint32 + combine + rotate | XOR `0xC73AB174C5ECD5A2`, mul `0x9FB21C651E98DF25` |
-| 9--16 | 2x uint64 + 128-bit multiply | XOR `0x6782737BEA4239B9` / `0xAF56BC3B0996523A`, avalanche `0x165667919E3779F9` |
-| 17--128 | Paired 16B reads from both ends | Per-pair constants, 128-bit multiplies, length mixed with `0x61C8864E7A143579` |
-| 129--240 | Extended mixing | Delegates to `sub_CBF370` |
+| 1–3 | 3-byte read + XOR + multiply | seed `0x87275A9B`, mul `0xC2B2AE3D27D4EB4F`, avalanche `0x165667B19E3779F9` |
+| 4–8 | 2x uint32 + combine + rotate | XOR `0xC73AB174C5ECD5A2`, mul `0x9FB21C651E98DF25` |
+| 9–16 | 2x uint64 + 128-bit multiply | XOR `0x6782737BEA4239B9` / `0xAF56BC3B0996523A`, avalanche `0x165667919E3779F9` |
+| 17–128 | Paired 16B reads from both ends | Per-pair constants, 128-bit multiplies, length mixed with `0x61C8864E7A143579` |
+| 129–240 | Extended mixing | Delegates to `sub_CBF370` |
 | 240+ | Bulk processing | Delegates to `sub_CBF100` |
 
-### Pseudocode (length 1--3, the most common case for short builtins)
+### Pseudocode (length 1–3, the most common case for short builtins)
 
 ```rust
 fn wyhash_short(data: &[u8], len: usize) -> u32 {
@@ -102,7 +102,7 @@ fn wyhash_short(data: &[u8], len: usize) -> u32 {
 }
 ```
 
-### Pseudocode (length 17--128, covering most `__nvvm_*` names)
+### Pseudocode (length 17–128, covering most `__nvvm_*` names)
 
 ```rust
 fn wyhash_medium(data: &[u8], len: usize) -> u32 {
@@ -125,7 +125,7 @@ fn wyhash_medium(data: &[u8], len: usize) -> u32 {
 }
 ```
 
-The final return value is always a `uint32` — the high dword of the 64-bit result XORed with the low dword. Most NVVM builtin names are 8--35 bytes, hitting the optimal 4--8 and 9--16 and 17--128 paths.
+The final return value is always a `uint32` — the high dword of the 64-bit result XORed with the low dword. Most NVVM builtin names are 8–35 bytes, hitting the optimal 4–8 and 9–16 and 17–128 paths.
 
 ## Probing Strategy
 
@@ -350,7 +350,7 @@ See [Builtins](../builtins/index.md) for the complete 770-entry builtin ID inven
 
 ### Subsystems Using DenseMap (pointer hash, -8/-16 sentinels)
 
-- **NVVM IR uniquing** (`sub_162D4F0`): 8+ DenseMap instances in the NVVM context object, one per opcode range (0x04--0x1F). Tables at fixed qword-indexed offsets, spaced 32 bytes apart.
+- **NVVM IR uniquing** (`sub_162D4F0`): 8+ DenseMap instances in the NVVM context object, one per opcode range (0x04–0x1F). Tables at fixed qword-indexed offsets, spaced 32 bytes apart.
 - **SelectionDAG builder** (`sub_163D530`): Three maps at context offsets +120, +152, +184. Map A and B are 16-byte-stride (key-value), Set C is 8-byte-stride (keys only).
 - **Per-node analysis structures**: Embedded DenseSet at +72 within analysis objects created during DAG construction.
 - **Memory space optimization** (`sub_1C6A6C0`): DenseMap-style tables for address space tracking.

@@ -4,7 +4,7 @@
 
 After all per-kernel SASS encoding completes, ptxas enters the ELF output phase — the final stage of the compilation pipeline. This phase transforms the accumulated per-kernel SASS bytes, relocation metadata, constant bank data, shared memory layouts, and debug information into a complete NVIDIA CUBIN file. The CUBIN is a standard ELF container with NVIDIA-proprietary extensions: machine type `EM_CUDA` (`0xBE`), non-standard ELF class bytes, CUDA-specific section types, and a rich per-entry metadata system called EIATTR. The output pipeline is a custom implementation with no libelf dependency — ptxas constructs every byte of the ELF from scratch, including headers, section tables, symbol tables, string tables, relocations, and program headers.
 
-The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy default), **Mercury** (SM 75--99 default), and **Capsule Mercury** (SM 100+ default, supporting deferred finalization). All three produce a valid CUBIN ELF; the difference is whether the `.text` sections contain final SASS bytes or Mercury-encoded streams that a downstream finalizer resolves at link or load time.
+The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy default), **Mercury** (SM 75–99 default), and **Capsule Mercury** (SM 100+ default, supporting deferred finalization). All three produce a valid CUBIN ELF; the difference is whether the `.text` sections contain final SASS bytes or Mercury-encoded streams that a downstream finalizer resolves at link or load time.
 
 | | |
 |---|---|
@@ -167,12 +167,12 @@ Additional per-kernel sections are generated as needed:
 
 ### Constant Banks
 
-CUDA supports up to 18 numbered constant banks (0--17) plus 6 named banks:
+CUDA supports up to 18 numbered constant banks (0–17) plus 6 named banks:
 
 | Bank | Name | Purpose |
 |---|---|---|
 | 0 | `.nv.constant0` | Kernel parameters + compiler constants (per-entry) |
-| 1--17 | `.nv.constant1`--`.nv.constant17` | User-declared `__constant__` variables |
+| 1–17 | `.nv.constant1`--`.nv.constant17` | User-declared `__constant__` variables |
 | — | `.nv.constant.entry_params` | Entry point parameter block |
 | — | `.nv.constant.entry_image_header_indices` | Texture/surface header index table |
 | — | `.nv.constant.driver` | Driver-injected constants |
@@ -235,7 +235,7 @@ ptxas v13.0.88 defines 98 EIATTR codes. The critical ones that every cubin emitt
 | EIATTR | Purpose | Encoding |
 |---|---|---|
 | `EIATTR_REGCOUNT` | Register count for this kernel | 4-byte LE integer |
-| `EIATTR_NUM_BARRIERS` | Hardware barrier count (0--16) | 4-byte LE integer |
+| `EIATTR_NUM_BARRIERS` | Hardware barrier count (0–16) | 4-byte LE integer |
 | `EIATTR_FRAME_SIZE` | Per-thread stack frame size in bytes | 4-byte LE integer |
 | `EIATTR_MIN_STACK_SIZE` | Minimum call stack size | 4-byte LE integer |
 | `EIATTR_MAX_STACK_SIZE` | Maximum call stack size (recursive) | 4-byte LE integer |
@@ -517,6 +517,6 @@ This is standard ELF overflow handling, and it is production-critical — `sub_1
 - [Relocations & Symbols](../output/relocations.md) — relocation resolution, UFT/UDT management, symbol table details
 - [Debug Information](../output/debug-info.md) — DWARF generation and `.debug_*` section handling
 - [Capsule Mercury & Finalization](../codegen/capmerc.md) — capmerc packaging format, off-target finalization, self-check
-- [Mercury Encoder](../codegen/mercury.md) — Mercury instruction encoding (phases 117--122) that feeds the ELF emitter
+- [Mercury Encoder](../codegen/mercury.md) — Mercury instruction encoding (phases 117–122) that feeds the ELF emitter
 - [SASS Code Generation](codegen.md) — the upstream per-kernel compilation that produces SASS bytes
 - [Pipeline Overview](overview.md) — where the ELF phase fits in the full PTX-to-SASS flow

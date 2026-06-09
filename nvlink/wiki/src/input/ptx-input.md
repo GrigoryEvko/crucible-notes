@@ -421,7 +421,7 @@ int ptxas_compile_engine(container *ctx, void **output, size_t *output_size) {
     // and several function pointers          at slots 2..4 (argv hooks)
     // v71[0] = (_, ptr_to_-arch)
     // v72    = ptx_src                       (the PTX text itself)
-    // v71[1] = (_, ptr_to_--input-as-string)
+    // v71[1] = (_, ptr_to_–input-as-string)
     void *argv[32] = { /* slots 0..4 from off_1D48AE8/off_1D48AF0 and ptx_src */ };
     int argc = 5;
 

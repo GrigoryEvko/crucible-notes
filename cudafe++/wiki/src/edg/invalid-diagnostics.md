@@ -29,7 +29,7 @@ emit_diagnostic(
 
 The tag identifier is then routed through the message-table to:
 
-1. Resolve the canonical numeric error code (the `invalid_*` family spans codes in the 21--29 range for parse errors, 290--370 for Microsoft attribute checks, 1530--1810 for template-engine checks, and 3120--3290 for the CUDA atomic extensions).
+1. Resolve the canonical numeric error code (the `invalid_*` family spans codes in the 21–29 range for parse errors, 290–370 for Microsoft attribute checks, 1530–1810 for template-engine checks, and 3120–3290 for the CUDA atomic extensions).
 2. Look up the localized message template.
 3. Format operands.
 4. Possibly chain framing tags (declaration context, attribute context) so the rendered diagnostic includes a "in declaration of X" prefix.

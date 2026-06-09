@@ -136,9 +136,9 @@ The ELFW object stores:
 
 ### ELFW Object Layout (672 bytes)
 
-The 672-byte ELFW object divides into 13 regions. Offsets 0--63 overlay a standard ELF header (whose internal layout depends on ELF class). All pointer-sized fields are 8 bytes (the allocator returns 8-byte-aligned memory). The `v17` variable in the decompilation is a `uint64_t*`, so `v17[N]` = byte offset `N * 8`.
+The 672-byte ELFW object divides into 13 regions. Offsets 0–63 overlay a standard ELF header (whose internal layout depends on ELF class). All pointer-sized fields are 8 bytes (the allocator returns 8-byte-aligned memory). The `v17` variable in the decompilation is a `uint64_t*`, so `v17[N]` = byte offset `N * 8`.
 
-#### Region 1 — ELF Header Embed (bytes 0--63)
+#### Region 1 — ELF Header Embed (bytes 0–63)
 
 The ELF header is stored inline at the start of the ELFW object. Field positions within it vary by class (32-bit vs 64-bit), matching the standard `Elf32_Ehdr` / `Elf64_Ehdr` layout, except that `EI_CLASS` and `EI_OSABI` use non-standard CUDA values.
 
@@ -175,12 +175,12 @@ For 64-bit class (`EI_CLASS = 2`):
 | 56 | 2B | `e_phnum` | `*(uint16*)(a1 + 56)` — dumper prints `"phnum"` |
 | 60 | 2B | `e_shnum` | `*(uint16*)(a1 + 60)` — dumper prints `"shnum"` |
 
-#### Region 2 — Metadata and Flags (bytes 64--107)
+#### Region 2 — Metadata and Flags (bytes 64–107)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 64 | 1B | `debugMode` | `a8` parameter: `deviceDebug` |
-| 68 | 4B | `compilationFlags` | `rawOptions & 0x70000` — preserved option bits 16--18 |
+| 68 | 4B | `compilationFlags` | `rawOptions & 0x70000` — preserved option bits 16–18 |
 | 72 | 4B | `smVersion` | `a4` parameter: SM architecture number (e.g., 100 for Blackwell) |
 | 76 | 4B | `rawOptions` | Full options bitmask `a9`, possibly OR'd with `0x80000` for relocatable |
 | 80 | 1B | `lineInfoMode` | `a6` parameter: `lineInfo` |
@@ -202,7 +202,7 @@ For 64-bit class (`EI_CLASS = 2`):
 | 100 | 1B | `flag_bit13` | `(rawOptions & 0x2000) != 0` |
 | 101 | 1B | `highClass` | `(a9 & 0x8000) != 0` — selects 64-bit header variant with wider ELF fields |
 
-#### Region 3 — Inline String Tables (bytes 108--171)
+#### Region 3 — Inline String Tables (bytes 108–171)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -211,7 +211,7 @@ For 64-bit class (`EI_CLASS = 2`):
 
 These are 32-byte inline structures (not heap pointers). `sub_1CB0530` initializes them with the given initial capacity (1000 and 2000 bytes respectively). The `.shstrtab` is also referenced by `sub_1CA6650` during `.note.nv.cuinfo` attribute injection.
 
-#### Region 4 — Section Index Cache (bytes 196--215)
+#### Region 4 — Section Index Cache (bytes 196–215)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -223,7 +223,7 @@ These are 32-byte inline structures (not heap pointers). `sub_1CB0530` initializ
 
 These cached indices avoid repeated linear scans of the section table when cross-referencing sections (e.g., `.symtab`'s `sh_link` must point to `.strtab`).
 
-#### Region 5 — Sorted Maps and Counters (bytes 288--327)
+#### Region 5 — Sorted Maps and Counters (bytes 288–327)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -233,7 +233,7 @@ These cached indices avoid repeated linear scans of the section table when cross
 | 312 | 8B | `countPair` | Packed `0x100000000` = high DWORD 1, low DWORD 0 |
 | 320 | 4B | `activeFlag` | Set to 1 during initialization |
 
-#### Region 6 — Section and Symbol Containers (bytes 344--419)
+#### Region 6 — Section and Symbol Containers (bytes 344–419)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -248,7 +248,7 @@ These cached indices avoid repeated linear scans of the section table when cross
 
 `sub_1CD2F90` creates an indexed vector (growable array with count/capacity tracking). `sub_1CD3060` returns the element count; `sub_1CD31F0` returns the element at the current iteration index.
 
-#### Region 7 — Deletion Remap Tables (bytes 456--479)
+#### Region 7 — Deletion Remap Tables (bytes 456–479)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -258,20 +258,20 @@ These cached indices avoid repeated linear scans of the section table when cross
 
 After dead code elimination deletes sections and symbols, these tables map old indices to new indices. The negative-index variant handles symbols stored with inverted sign conventions (a ptxas-internal encoding for unresolved forward references).
 
-#### Region 8 — Architecture State (bytes 488--495)
+#### Region 8 — Architecture State (bytes 488–495)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 488 | 8B | `archState` | Architecture descriptor pointer. Initialized via `sub_1CD04F0` (relocatable) or `sub_1CCEEE0` (non-relocatable). Fatal error `"couldn't initialize arch state"` on failure |
 
-#### Region 9 — Name Sets and Input Tracking (bytes 496--519)
+#### Region 9 — Name Sets and Input Tracking (bytes 496–519)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
 | 496 | 8B | `sectionNameSet` | Sorted set of well-known section name strings. Populated from static table `off_2403A60` (22 entries ending at `dword_2403B70`) |
 | 512 | 8B | `inputFileList` | Indexed vector (cap=8). First entry is a 16-byte descriptor: `{ptr="<input>", arch_version, ...}` |
 
-#### Region 10 — Hash Maps (bytes 520--567)
+#### Region 10 — Hash Maps (bytes 520–567)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -284,7 +284,7 @@ After dead code elimination deletes sections and symbols, these tables map old i
 
 Six hash maps initialized identically with `sub_42D150(sub_427630, sub_4277B0, 0x10)`. The two function pointers are the hash function and equality comparator. These maps serve section/symbol lookups during the construction pipeline. The specific role of each map (by-name, by-type, etc.) requires tracing callers of the hash map accessors.
 
-#### Region 11 — Extended Index and Miscellaneous (bytes 576--607)
+#### Region 11 — Extended Index and Miscellaneous (bytes 576–607)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|
@@ -292,7 +292,7 @@ Six hash maps initialized identically with `sub_42D150(sub_427630, sub_4277B0, 0
 | 592 | 8B | `symtabShndxVec` | `.symtab_shndx` data vector. Dumper: `sub_1CD31F0(*(a1+592))` for SHN_XINDEX resolution |
 | 600 | 8B | `mercSymtabShndx` | `.nv.merc.symtab_shndx` data vector. Dumper: `*(a1+600)` for Mercury SHN_XINDEX |
 
-#### Region 12 — Memory Pool and Tail (bytes 608--671)
+#### Region 12 — Memory Pool and Tail (bytes 608–671)
 
 | Offset | Size | Name | Purpose |
 |---|---|---|---|

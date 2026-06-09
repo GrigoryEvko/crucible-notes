@@ -427,7 +427,7 @@ Register file type values at descriptor +64:
 | 10 | Extended register pair (64-bit) |
 | 11 | Extended register quad (128-bit) |
 
-The register class name table at `off_21D2400` maps `reg_type` enum values to string names. The stat collector (`sub_A60B60`, 24KB) enumerates ~25 register sub-classes including R, P, B, UR, UP, UB, Tensor/Acc, SRZ, PT, RZ, and others. The allocator processes classes 0--6 (matching reg\_type values 0--6); barrier registers (reg\_type 9) are handled separately.
+The register class name table at `off_21D2400` maps `reg_type` enum values to string names. The stat collector (`sub_A60B60`, 24KB) enumerates ~25 register sub-classes including R, P, B, UR, UP, UB, Tensor/Acc, SRZ, PT, RZ, and others. The allocator processes classes 0–6 (matching reg\_type values 0–6); barrier registers (reg\_type 9) are handled separately.
 
 ## Partial SSA
 
@@ -637,7 +637,7 @@ Memory operands carry a space type enum, resolved by `sub_91C840` which maps the
 | 7 | `.local` | 2 | Local memory |
 | 8 | (gap) | — | Unmapped |
 | 9 | `.local` (variant) | 2 | Same as 7, alternate encoding |
-| 10--11 | (gap) | — | Unmapped |
+| 10–11 | (gap) | — | Unmapped |
 | 12 | `.param` | 4 | Parameter memory |
 | 13 | Generic (unqualified) | 0 | Generic address space |
 | 14 | `.tex` | 8 | Texture memory |
@@ -651,7 +651,7 @@ Memory operands carry a space type enum, resolved by `sub_91C840` which maps the
 | 22 | `.const` (extended, alt) | 5 | Constant, alternate extended |
 | 23 | `.surf` / tensor (ext) | 18 | Surface/tensor extended (sm_90+) |
 
-Case 18 (`0x12`) uses a sub-switch on the opcode value at `a2[1]` to further classify: opcodes 7, 43, 45, 53 map to category 6 (global-like); opcode 111 and opcodes in the 183--199 range map to category 5 (constant-like); opcodes 54 and 189 map to category 9 (special).
+Case 18 (`0x12`) uses a sub-switch on the opcode value at `a2[1]` to further classify: opcodes 7, 43, 45, 53 map to category 6 (global-like); opcode 111 and opcodes in the 183–199 range map to category 5 (constant-like); opcodes 54 and 189 map to category 9 (special).
 
 The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) consumes the internal category to partition instructions for scheduling. Hot memory operations (global loads/stores, certain atomics — category 11) have long latencies and benefit from aggressive scheduling; cold operations (constant loads — category 3) have shorter latencies and are treated more conservatively.
 
@@ -682,7 +682,7 @@ The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) consumes the internal
 | `sub_BE7390` | — | `InstructionInfo` constructor; initializes 322-entry ROT13 opcode name table at object offset +4184 | 0.90 |
 | `sub_9F1A90` | 35KB | MercConverter pass; transforms PTX-derived opcodes into SM-specific SASS opcodes | 0.92 |
 | `sub_9ED2D0` | 25KB | Opcode switch inside MercConverter; dispatches per-opcode legalization | 0.90 |
-| `sub_91C840` | — | Memory space classifier; maps PTX-level space identifiers (0--23) to internal category numbers | 0.98 |
+| `sub_91C840` | — | Memory space classifier; maps PTX-level space identifiers (0–23) to internal category numbers | 0.98 |
 | `sub_A9CDE0` | — | Hot/cold memory classifier (hot path); partitions instructions by memory category for scheduling | 0.85 |
 | `sub_A9CF90` | — | Hot/cold memory classifier (cold path); complement of `sub_A9CDE0` | 0.85 |
 | `sub_A60B60` | 24KB | Register stat collector; enumerates ~25 register sub-classes (R, P, B, UR, UP, UB, Tensor/Acc, etc.) | 0.85 |

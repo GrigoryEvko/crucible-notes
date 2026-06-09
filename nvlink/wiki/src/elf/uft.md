@@ -32,8 +32,8 @@ The UFT system is the device-side equivalent of a PLT/GOT in a host ELF linker: 
 | Table end symbol | `__UFT_END` / `__UDT_END` |
 | CUDA relocation types | `R_CUDA_UNIFIED` (12 variants: base, `_32`, `_8_0` through `_8_56`, `32_HI_32`, `32_LO_32`) |
 | Mercury relocation types | `R_MERCURY_UNIFIED` (14 variants: base, `_32`, `_8_0` through `_8_56`, `32_HI`, `32_LO`) |
-| Relocation type range (CUDA) | Types 102--113 |
-| Relocation type range (Mercury) | Types 65586--65599 (0x10032--0x1003F) |
+| Relocation type range (CUDA) | Types 102–113 |
+| Relocation type range (Mercury) | Types 65586–65599 (0x10032–0x1003F) |
 
 ## Background: Indirect Calls on CUDA GPUs
 
@@ -695,7 +695,7 @@ If unified symbols are detected but no UIDX file was specified, the linker warns
 
 The relocation phase (`sub_469D60`) handles UFT-related relocations through a dedicated remapping path. Unified relocation types are a distinct family within both the CUDA and Mercury relocation type systems:
 
-### CUDA Unified Relocation Types (102--113)
+### CUDA Unified Relocation Types (102–113)
 
 | Type | Name | Bit pattern |
 |---|---|---|
@@ -712,7 +712,7 @@ The relocation phase (`sub_469D60`) handles UFT-related relocations through a de
 | 112 | `R_CUDA_UNIFIED32_HI_32` | High 32 bits of 64-bit address |
 | 113 | `R_CUDA_UNIFIED32_LO_32` | Low 32 bits of 64-bit address |
 
-### Mercury Unified Relocation Types (0x10032--0x1003F)
+### Mercury Unified Relocation Types (0x10032–0x1003F)
 
 | Type | Name |
 |---|---|
@@ -773,7 +773,7 @@ if (sym_name matches any of: __UFT_OFFSET, __UFT_CANONICAL, __UDT_OFFSET,
 
 The check for `__UFT_OFFSET` is performed by a 13-character `memcmp` loop (visible in the decompiled code at offset `0x46A860`), followed by similar checks for each of the remaining seven names. The trace `"ignore reloc on UFT_OFFSET\n"` fires specifically when an `__UFT_OFFSET` relocation is encountered in the secondary pass (after the UIDX-based reorder has already resolved the actual constant-memory offset).
 
-**Step 4: Mercury extended mapping.** For Mercury relocations (types >= 0x10000), a parallel remapping table handles `R_MERCURY_UNIFIED` variants. The Mercury types occupy the range 0x10032--0x1003F and are remapped to their base `R_MERCURY_*` equivalents through a separate dispatch table at `off_1D3CBE0`.
+**Step 4: Mercury extended mapping.** For Mercury relocations (types >= 0x10000), a parallel remapping table handles `R_MERCURY_UNIFIED` variants. The Mercury types occupy the range 0x10032–0x1003F and are remapped to their base `R_MERCURY_*` equivalents through a separate dispatch table at `off_1D3CBE0`.
 
 In relocatable link mode (`-r`), the unified relocation remapping converts all 12 (CUDA) or 14 (Mercury) unified types to their equivalent base types before writing the output `.rela` sections. This allows downstream link steps to process them as ordinary relocations.
 
@@ -885,7 +885,7 @@ The UUID hash map construction, slot assignment, and Mercury interleaving are de
 
 ## Relationship to `compute_entry_properties`
 
-The function `sub_451D80` (`compute_entry_properties`, the largest function in the 0x400000--0x470000 region at ~98KB) interacts with the UFT system during the property computation phase:
+The function `sub_451D80` (`compute_entry_properties`, the largest function in the 0x400000–0x470000 region at ~98KB) interacts with the UFT system during the property computation phase:
 
 1. It locates the `.nv.uft` section. If not found, it reports `"nv.uft not found"` and skips UFT processing.
 2. For each kernel entry point, it checks whether the entry uses indirect calls by examining the callgraph for UFT stub symbols.
@@ -931,7 +931,7 @@ This register propagation through the UFT is critical for correctness: if a kern
 | `0x469230` | ~600 B | `create_relocation_section` | Creates `.rela`/`.rel` sections; handles `.nv.uft.rel` name redirect for `ET_REL` |
 | `0x451D80` | 97,969 B | `compute_entry_properties` | Validates UFT, propagates register counts through indirect callees |
 | `0x45CF00` | ~500 B | `merge_uft_entries_from_obj` | Processes `.nv.uft.entry` from one input object during merge phase |
-| `0x469D60` | 26,578 B | `apply_relocations` | Processes unified relocations, remaps types 102--113 / 0x10032--0x1003F |
+| `0x469D60` | 26,578 B | `apply_relocations` | Processes unified relocations, remaps types 102–113 / 0x10032–0x1003F |
 | `0x12AF8A0` | ~200 B | `generate_ptx_uft_stub` | Synthesizes PTX stub source `.func .attribute(.unified_func_stub) ...` and compiles it |
 | `0x14075D0` | 13,679 B | `ptx_emit_function_body` | Emits `.nv.uft.rel` sections during code generation |
 | `0x161C810` | ~1,200 B | `ptxas_reloc_type_map` | Maps ptxas internal reloc codes to `R_CUDA_*` / `R_MERCURY_*` type numbers |

@@ -2,7 +2,7 @@
 
 > **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki — see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas instruction selection documentation, see [ptxas ISel](../../ptxas/codegen/isel.html).
 
-The instruction selection (ISel) subsystem within the embedded ptxas backend occupies approximately 3 MB of `.text` across five architecture-specific backends. Each backend is organized around a single "mega-hub" dispatch function — a monolithic function so large (160--280 KB) that Hex-Rays cannot decompile it. These mega-hubs implement a priority-based linear scan architecture: for every IR instruction to be lowered, the hub calls every pattern matcher in sequence, tracks the highest-priority match, then dispatches to the corresponding emitter. This page documents the complete ISel hub architecture as recovered from nvlink v13.0.88.
+The instruction selection (ISel) subsystem within the embedded ptxas backend occupies approximately 3 MB of `.text` across five architecture-specific backends. Each backend is organized around a single "mega-hub" dispatch function — a monolithic function so large (160–280 KB) that Hex-Rays cannot decompile it. These mega-hubs implement a priority-based linear scan architecture: for every IR instruction to be lowered, the hub calls every pattern matcher in sequence, tracks the highest-priority match, then dispatches to the corresponding emitter. This page documents the complete ISel hub architecture as recovered from nvlink v13.0.88.
 
 ## The Five Mega-Hub Functions
 
@@ -54,7 +54,7 @@ The function returns nonzero if the pattern matches. On match, it writes the pat
 
 Each pattern matcher performs a strict sequence of checks. If any check fails, the function returns 0 immediately. The full check sequence:
 
-1. **Attribute queries.** Call `sub_A49150(ctx, node, attribute_id)` to read instruction attributes. Each pattern checks 2--12 attributes against expected constant values. Attribute IDs are small integers (5, 69, 118, 144, 161, 162, 190, 200, 201, 211, 220, 228, 229, 247, 248, 268, 269, 287, 302, 304, 312, 338, 348, 385, 391, 394, 397, 480, etc.). Attribute 5 typically encodes the instruction class; attribute 480 the instruction format identifier.
+1. **Attribute queries.** Call `sub_A49150(ctx, node, attribute_id)` to read instruction attributes. Each pattern checks 2–12 attributes against expected constant values. Attribute IDs are small integers (5, 69, 118, 144, 161, 162, 190, 200, 201, 211, 220, 228, 229, 247, 248, 268, 269, 287, 302, 304, 312, 338, 348, 385, 391, 394, 397, 480, etc.). Attribute 5 typically encodes the instruction class; attribute 480 the instruction format identifier.
 
 2. **Operand count check.** Call `sub_530FD0(node)` to get the destination (explicit) operand count and `sub_530FC0(node)` to get the source (implicit) operand count. Each pattern expects specific counts.
 
@@ -90,7 +90,7 @@ Key attribute IDs and their semantic roles (inferred from usage patterns):
 | Attribute ID | Semantic Role | Typical Values |
 |---|---|---|
 | 5 | Instruction class | 12 = memory operation |
-| 69 | Subclass modifier | 317--318 (texture format) |
+| 69 | Subclass modifier | 317–318 (texture format) |
 | 118 | Control flow tag | 519 (return/exit) |
 | 190 | MOV identifier | 815 |
 | 200 | Special handling flag | 1107 (triggers MercExpand MOV path) |
@@ -116,7 +116,7 @@ The oldest ISel backend covers Maxwell, Pascal, and Volta architectures (SM50 th
 
 - 1,293 auto-generated pattern matching functions
 - 152 distinct target opcodes (machine instruction types)
-- 36 distinct priority levels (range 1--39)
+- 36 distinct priority levels (range 1–39)
 - Most-matched opcode: opcode 1 (123 patterns), opcode 2 (100 patterns)
 - Most common priority: 11 (used by 136 patterns)
 
@@ -170,7 +170,7 @@ The Turing (SM75) backend is the largest single-architecture ISel backend in the
 | `0xF4AA30`--`0xF4FB70` | ~15 | Predicated operations (ISETP, texture fetch) |
 | `0xF58BB0`--`0xF5C120` | ~10 | Store with predication |
 | `0xF6DC60`--`0xF71B60` | ~15 | Surface/texture operations |
-| `0xF76170`--`0xF77DF0` | 8 | Complex HMMA (largest matchers, 6--8 KB each) |
+| `0xF76170`--`0xF77DF0` | 8 | Complex HMMA (largest matchers, 6–8 KB each) |
 | `0xF82CF0`--`0xF96B40` | ~50 | ALU patterns (IMAD, LEA, SHF, BFE, BFI, LOP3, PRMT) |
 | `0xF97CE0`--`0xF9CD30` | ~15 | Comparison/SETP (DSETP, FSETP, ISETP) |
 | `0xFA0310`--`0xFAA4E0` | ~20 | Branch/call/return (BRA, CALL, RET) |
@@ -191,7 +191,7 @@ The Turing (SM75) backend is the largest single-architecture ISel backend in the
 7. Set instruction class tag at `a1+276` (e.g., `0xE000000004` for load/store)
 8. Write branch target / relocation info
 
-**Post-ISel emit+encode.** The 38 functions at `0xFFFDF0`--`0x100BBF0` handle complex instructions that require immediate bitfield packing. They use `sub_4C28B0(ctx, bit_offset, width, value)` extensively — packing opcode bits, sub-opcodes, register encoding classes, and modifier fields into 128-bit instruction words. Each function extracts 6--8 modifier fields via `sub_A551C0`--`sub_A55470` and encodes them at precise bit positions.
+**Post-ISel emit+encode.** The 38 functions at `0xFFFDF0`--`0x100BBF0` handle complex instructions that require immediate bitfield packing. They use `sub_4C28B0(ctx, bit_offset, width, value)` extensively — packing opcode bits, sub-opcodes, register encoding classes, and modifier fields into 128-bit instruction words. Each function extracts 6–8 modifier fields via `sub_A551C0`--`sub_A55470` and encodes them at precise bit positions.
 
 ### SM80: Ampere ISel Backend (`sub_D5FD70`, 239 KB)
 
@@ -296,11 +296,11 @@ This ISel hub serves the shared PTX-level instruction selector, covering the ins
 | `sub_11E9D10` | Predicate register |
 | `sub_11E9D20` | Uniform predicate |
 
-Attribute queries use hex-format slot IDs: `0x1E0` (major opcode), `0x18F` (sub-opcode), `0x240` (address mode), `0x247` (texture class), etc. Pattern IDs range 1--57+, with priority values from 10 to 36.
+Attribute queries use hex-format slot IDs: `0x1E0` (major opcode), `0x18F` (sub-opcode), `0x240` (address mode), `0x247` (texture class), etc. Pattern IDs range 1–57+, with priority values from 10 to 36.
 
 **Instruction categories identified from attribute patterns:**
 
-- FMA variants (opcode `0x1E0`=2480, sub-op 2121): patterns 4--13 at priority 15
+- FMA variants (opcode `0x1E0`=2480, sub-op 2121): patterns 4–13 at priority 15
 - Atomic CAS (attr 5=12, `0xDC`=1206, `0x240`=2872): pattern 12 at priority 24
 - Load from parameter space (complex multi-attribute): pattern 4 at priority 29
 - Texture unified (attr `0x247`=2892): pattern 57 at priority 17
@@ -314,7 +314,7 @@ The SM89/90 backend shares its mega-hub region with the main ptxas compilation d
 
 | Range | Size | Contents |
 |---|---|---|
-| `0x100C000`--`0x10FFFFF` | 1.0 MB | ~750 shared instruction encoders (4--8.5 KB each) |
+| `0x100C000`--`0x10FFFFF` | 1.0 MB | ~750 shared instruction encoders (4–8.5 KB each) |
 | `0x1100000`--`0x1120000` | 128 KB | Backend driver (option parser, codegen init, ELF output) |
 | `0x1120000`--`0x119BF40` | 496 KB | ~160 ISel pattern matchers |
 | `0x119BF40`--`0x11D4680` | 231 KB | SM89/90 ISel mega-hub (not decompilable) |
@@ -335,13 +335,13 @@ The priority system ensures that more specific patterns always defeat less speci
 
 | Priority Range | Specificity | Typical Pattern Characteristics |
 |---|---|---|
-| 1--4 | Lowest / fallback | 0--2 attribute checks, minimal operand validation |
-| 8--11 | Low | 2--4 attribute checks, basic operand count match |
-| 13--15 | Medium | 2--4 attributes + operand type + register class checks |
-| 17--19 | Standard | 5+ attributes + full operand validation + register class constraints |
-| 24--29 | High | Complex addressing modes, memory operations with many constraints |
-| 33--36 | Very high | Multi-attribute + multi-operand + register file + data type + special flags |
-| 37--39 | Maximum | Surface/texture operations or tensor core with maximal specificity |
+| 1–4 | Lowest / fallback | 0–2 attribute checks, minimal operand validation |
+| 8–11 | Low | 2–4 attribute checks, basic operand count match |
+| 13–15 | Medium | 2–4 attributes + operand type + register class checks |
+| 17–19 | Standard | 5+ attributes + full operand validation + register class constraints |
+| 24–29 | High | Complex addressing modes, memory operations with many constraints |
+| 33–36 | Very high | Multi-attribute + multi-operand + register file + data type + special flags |
+| 37–39 | Maximum | Surface/texture operations or tensor core with maximal specificity |
 
 The highest observed priority is 39, used by HMMA tensor core patterns with 9+ operands and 10+ attribute checks (SM75 patterns `sub_F77140` and `sub_F77DF0`). The lowest observed priority is 2, used by fallback patterns that match when no instruction-specific pattern applies.
 
@@ -357,9 +357,9 @@ After the linear scan selects the best-matching pattern, the mega-hub dispatches
 |---|---|---|
 | +8 | 16B | Register class descriptor (from `.rodata`) |
 | +12 | 2B | Instruction opcode number |
-| +24--140 | 10x4B x3 | Operand register numbers, types, flags (10 slots) |
+| +24–140 | 10x4B x3 | Operand register numbers, types, flags (10 slots) |
 | +144 | 4B | Explicit operand count |
-| +148--160 | 4x4B | Relocation type and bit offset pairs |
+| +148–160 | 4x4B | Relocation type and bit offset pairs |
 | +276 | 8B | Instruction class tag |
 | +544 | 8B | Encoding word 0 (64-bit bitfield) |
 | +552 | 8B | Encoding word 1 (64-bit bitfield) |
@@ -372,7 +372,7 @@ After the linear scan selects the best-matching pattern, the mega-hub dispatches
 
 The five mega-hub functions range from 204 KB to 280 KB. Hex-Rays fails on them for several reasons:
 
-1. **Function call count.** Each hub calls 160--1,293 pattern matchers. The resulting call graph and stack analysis exceeds Hex-Rays' internal working set limits.
+1. **Function call count.** Each hub calls 160–1,293 pattern matchers. The resulting call graph and stack analysis exceeds Hex-Rays' internal working set limits.
 
 2. **Linear control flow depth.** The hub is essentially a 200+ element sequential `if` chain with no early termination (every pattern must be tried). This produces an extremely deep control flow graph that the microcode optimizer cannot simplify.
 
@@ -411,5 +411,5 @@ Functions called from within the ISel subsystem that serve as the universal acce
 
 ### Sibling Wikis
 - [ptxas: Instruction Selection](../../ptxas/codegen/isel.html) — standalone ptxas ISel (two-phase: PTX-to-Ori + Ori-to-SASS)
-- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) — Mercury encoder pipeline (phases 113--122)
+- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) — Mercury encoder pipeline (phases 113–122)
 - [ptxas: SASS Encoding](../../ptxas/codegen/encoding.html) — SASS instruction encoding format

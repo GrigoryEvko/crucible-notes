@@ -103,7 +103,7 @@ The `main` function (`0x409460`, 84 bytes) is a thin wrapper: it stores `argv[0]
 
 PTXAS exposes three layers of configuration:
 
-**CLI Options** (~100 flags) — Registered in `sub_432A00` and parsed by `sub_434320`. Key options include `--gpu-name` (target SM), `--maxrregcount` (register limit), `--opt-level` (0--4), `--verbose`, `--warn-on-spills`, `--warn-on-local-memory-usage`, `--fast-compile`, `--fdevice-time-trace` (Chrome trace JSON output), `--compile-as-tools-patch` (sanitizer mode), and `--extensible-whole-program`. Help is printed by `sub_403588` which calls `sub_1C97640` to enumerate all registered options.
+**CLI Options** (~100 flags) — Registered in `sub_432A00` and parsed by `sub_434320`. Key options include `--gpu-name` (target SM), `--maxrregcount` (register limit), `--opt-level` (0–4), `--verbose`, `--warn-on-spills`, `--warn-on-local-memory-usage`, `--fast-compile`, `--fdevice-time-trace` (Chrome trace JSON output), `--compile-as-tools-patch` (sanitizer mode), and `--extensible-whole-program`. Help is printed by `sub_403588` which calls `sub_1C97640` to enumerate all registered options.
 
 **Internal Knobs** (1,294 ROT13-encoded entries) — A separate configuration system implemented in `generic_knobs_impl.h` (source path recovered: `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h`). The knob table is populated by two massive static constructors: `ctor_005` at `0x40D860` (80 KB, ~2,000 general OCG knobs) and `ctor_007` at `0x421290` (8 KB, 98 Mercury scheduler knobs). All knob names are ROT13-obfuscated in the binary. Examples after decoding: `MercuryUseActiveThreadCollectiveInsts`, `MercuryTrackMultiReadsWarLatency`, `MercuryPresumeXblockWaitBeneficial`, `ScavInlineExpansion`, `ScavDisableSpilling`. Knobs are read from environment variables and knob files via `ReadKnobsFile` (`sub_79D070`) which parses `[knobs]`-header INI files. Lookup is performed by `GetKnobIndex` (`sub_79B240`) with inline ROT13 decoding and case-insensitive comparison. See [Knobs System](./config/knobs.md).
 
@@ -173,9 +173,9 @@ The wiki is organized around the compilation pipeline. Every page is written at 
 
 **GPU Architecture Targets**
 - [SM Architecture Map](./targets/index.md) — SM feature gates from sm\_75 through sm\_121f.
-- [Turing & Ampere (SM 75--88)](./targets/turing-ampere.md) — Feature delta between generations.
-- [Ada & Hopper (SM 89--90a)](./targets/ada-hopper.md) — Async copy, TMA, distributed shared memory.
-- [Blackwell (SM 100--121)](./targets/blackwell.md) — TCGen05, fifth-gen tensor cores, new SM variants.
+- [Turing & Ampere (SM 75–88)](./targets/turing-ampere.md) — Feature delta between generations.
+- [Ada & Hopper (SM 89–90a)](./targets/ada-hopper.md) — Async copy, TMA, distributed shared memory.
+- [Blackwell (SM 100–121)](./targets/blackwell.md) — TCGen05, fifth-gen tensor cores, new SM variants.
 - [TCGen05 — 5th Gen Tensor Cores](./targets/tcgen05.md) — Blackwell tensor core instruction set.
 
 **CUDA Intrinsics**

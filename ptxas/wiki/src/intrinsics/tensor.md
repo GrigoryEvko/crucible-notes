@@ -83,7 +83,7 @@ The WMMA (Warp Matrix Multiply-Accumulate) API is the oldest tensor core interfa
 | `wmma.store.d` | `sub_5A2D10` | 8,074B | Store result fragment D |
 | `wmma.mma` | `sub_5C7A50` | 173KB | Matrix multiply-accumulate |
 
-All five handlers allocate a 50,000-byte code generation buffer. The load/store handlers are ~8--10KB each and cover the combinatorial product of shape, layout, data type, and address space. The `wmma.mma` handler at 173KB is the largest single codegen handler in ptxas.
+All five handlers allocate a 50,000-byte code generation buffer. The load/store handlers are ~8–10KB each and cover the combinatorial product of shape, layout, data type, and address space. The `wmma.mma` handler at 173KB is the largest single codegen handler in ptxas.
 
 Instruction property accessors used by WMMA codegen:
 
@@ -580,7 +580,7 @@ The cubin output includes tensor-core-specific EIATTR attributes:
 - [Intrinsic Table Architecture](index.md) — Master registration, ID ranges, opcode dispatch
 - [GMMA/WGMMA Pipeline](../passes/gmma-pipeline.md) — Phases 85/87, pipeline constraints, serialization
 - [Ada & Hopper Targets](../targets/ada-hopper.md) — SM 89/90 feature gates, WGMMA details
-- [Turing & Ampere Targets](../targets/turing-ampere.md) — SM 75--88 tensor core introduction
+- [Turing & Ampere Targets](../targets/turing-ampere.md) — SM 75–88 tensor core introduction
 - [Latency Model](../scheduling/latency-model.md) — HMMA/IMMA/DMMA functional unit scheduling
 - [Register Model](../ir/registers.md) — reg\_type 6 (tensor/accumulator, allocator class 6)
 - [Mercury Encoder](../codegen/mercury.md) — SASS encoding of MMA instructions

@@ -384,7 +384,7 @@ After transformation, `sub_931920` splits blocks and updates the instruction lis
 
 Dominance information is computed as a byproduct of the RPO/backedge analysis in `sub_BDFB10` (24KB, `CFG::buildRPOAndIdom`). The algorithm is the Cooper-Harvey-Kennedy (CHK) immediate-dominator algorithm, not bitvector-based iterative dataflow. Evidence from the decompilation:
 
-1. **`sub_BDFB10` allocates two parallel arrays** at CodeObject offsets +720 (`rpo_order[]`) and +744 (`idom[]`), both sized to `num_blocks + 1`, with grow-by-1.5x reallocation (lines 146--260 of the decompiled output).
+1. **`sub_BDFB10` allocates two parallel arrays** at CodeObject offsets +720 (`rpo_order[]`) and +744 (`idom[]`), both sized to `num_blocks + 1`, with grow-by-1.5x reallocation (lines 146–260 of the decompiled output).
 
 2. **DFS-based RPO** is computed first by calling either `sub_BDE6C0` (recursive DFS) or `sub_BDE150` (iterative DFS with explicit stack). The choice is gated by a knob query at CodeObject vtable slot +72 with argument 7.
 

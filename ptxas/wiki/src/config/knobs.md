@@ -261,7 +261,7 @@ Types 11 and 12 are aliases: type 11 shares the exact handler with type 8 (both 
 
 ### ParseKnobValue Dispatch Algorithm
 
-`ParseKnobValue` (`sub_79F540`, source lines 435--551 of `generic_knobs_impl.h`) implements a two-phase dispatch. The first switch pre-initializes compound types; the second switch parses the value string.
+`ParseKnobValue` (`sub_79F540`, source lines 435–551 of `generic_knobs_impl.h`) implements a two-phase dispatch. The first switch pre-initializes compound types; the second switch parses the value string.
 
 **Phase 1 — Pre-initialization (compound types only):**
 
@@ -399,7 +399,7 @@ RegAllocBudget=5000
 WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200
 ```
 
-`ReadKnobsFile` (`sub_79D070`, source lines 1060--1090 of `generic_knobs_impl.h`) processes the file:
+`ReadKnobsFile` (`sub_79D070`, source lines 1060–1090 of `generic_knobs_impl.h`) processes the file:
 
 ```text
 1. fopen(path, "r")                               line ~1060
@@ -618,7 +618,7 @@ Selected knobs referenced by address in the binary:
 | 956 | (shader hint) | — | `sub_79C210` | Shader hint knob (offset 68832) |
 | 957 | (shader hint) | — | `sub_79C210` | Shader hint linked list (offset 68904) |
 
-### Register Allocation Knobs (87 knobs, indices 613--699)
+### Register Allocation Knobs (87 knobs, indices 613–699)
 
 The register allocator is the most heavily parameterized subsystem in ptxas. Its 87 knobs span indices 613 through 699 in the OCG knob table, registered in `ctor_005` at addresses `0x4197F0`--`0x41B2E0`. The knobs cluster into seven functional sub-categories. All names decoded from ROT13 strings at `0x21B9730`--`0x21BA6C0`.
 
@@ -735,7 +735,7 @@ The target selection phase determines how many physical registers to aim for —
 | 698 | `RegTgtSelWithSMemSpillHeur` | INT | Heuristic mode when shared-memory spilling is active |
 | 699 | `RegUsageLevel` | INT | Register usage reporting level |
 
-The four "Slack" knobs (688--691) fine-tune lower register limits for specific architectural features that have minimum register requirements: MMA (matrix multiply), TCGEN (tensor core generation), SPARSIFY (structured sparsity), DECOMPRESS (decompression).
+The four "Slack" knobs (688–691) fine-tune lower register limits for specific architectural features that have minimum register requirements: MMA (matrix multiply), TCGEN (tensor core generation), SPARSIFY (structured sparsity), DECOMPRESS (decompression).
 
 #### G. General Allocation Control (12 knobs)
 
@@ -767,9 +767,9 @@ The four "Slack" knobs (688--691) fine-tune lower register limits for specific a
 | 684 | `RegAllocThresholdForDiscardConflicts` | INT | Interference count above which conflicts are discarded (default 50) |
 | 686 | `RegAttrReuseVectorBudget` | BDGT | Budget for register-attribute vector reuse optimization |
 
-### Scheduling Knobs (89 knobs, indices 229--978)
+### Scheduling Knobs (89 knobs, indices 229–978)
 
-The instruction scheduler is the second most heavily parameterized subsystem after register allocation. Its 89 knobs span two contiguous blocks (indices 738--811 for the core `Sched*` set, and 569--574 for the `PostSched*` set) plus 11 scattered entries for scheduling-adjacent features. All names decoded from ROT13 strings at `0x21B6CB0`--`0x21BE100`, registered in `ctor_005` at code addresses `0x411FF0`--`0x420A00`.
+The instruction scheduler is the second most heavily parameterized subsystem after register allocation. Its 89 knobs span two contiguous blocks (indices 738–811 for the core `Sched*` set, and 569–574 for the `PostSched*` set) plus 11 scattered entries for scheduling-adjacent features. All names decoded from ROT13 strings at `0x21B6CB0`--`0x21BE100`, registered in `ctor_005` at code addresses `0x411FF0`--`0x420A00`.
 
 The knobs control every aspect of the list scheduler: how latencies are modeled, which functional units are treated as busy, how aggressively cross-block motion is attempted, and how register pressure feedback loops interact with the priority function. Three Blackwell-era `SchedResBusy*` knobs (QMMA at 964, OMMA at 977, MXQMMA at 978) sit outside the main block because they were appended in a later toolkit version for new MMA unit types.
 
@@ -805,7 +805,7 @@ Two knobs accept string values instead of integers: `SchedResBusyOp` and `SchedR
 | 977 | `SchedResBusyOMMA` | INT | Octal MMA unit (Blackwell) |
 | 978 | `SchedResBusyMXQMMA` | INT | MX-quantized MMA unit (Blackwell) |
 
-The five HMMA variants (790--793) correspond to different tensor core shapes: `HMMA16` for 16-wide half-precision, `HMMA1688` for the 16x8x8 tile used on Volta/Turing, `HMMA16816` for the 16x8x16 tile used on Ampere+, and `HMMA32` for 32-wide half-precision operations. IMMA (794) handles integer tensor operations (INT8/INT4).
+The five HMMA variants (790–793) correspond to different tensor core shapes: `HMMA16` for 16-wide half-precision, `HMMA1688` for the 16x8x8 tile used on Volta/Turing, `HMMA16816` for the 16x8x16 tile used on Ampere+, and `HMMA32` for 32-wide half-precision operations. IMMA (794) handles integer tensor operations (INT8/INT4).
 
 #### B. Latency Overrides (12 knobs)
 
@@ -1121,8 +1121,8 @@ Rematerialization knobs control the three dedicated remat pipeline phases (Phase
 
 The 35 knobs split into two contiguous blocks in the descriptor table plus one outlier:
 
-- **Remat\*** (27 knobs, indices 702--728): Late rematerialization (Phase 69) and shared cost model
-- **SinkRemat\*** (8 knobs, indices 824--831): Early sink+remat (Phase 28)
+- **Remat\*** (27 knobs, indices 702–728): Late rematerialization (Phase 69) and shared cost model
+- **SinkRemat\*** (8 knobs, indices 824–831): Early sink+remat (Phase 28)
 
 #### A. Remat Enable/Disable (5 knobs)
 
@@ -1193,7 +1193,7 @@ These knobs control where rematerialized instructions are placed relative to the
 
 BDGT-typed knobs carry a primary value and a secondary counter. The budget is decremented as each remat decision is committed. When exhausted (secondary reaches zero), the pass stops processing further candidates. This provides a deterministic cap on compile-time cost.
 
-#### G. SinkRemat (Phase 28) Knobs (8 knobs, indices 824--831)
+#### G. SinkRemat (Phase 28) Knobs (8 knobs, indices 824–831)
 
 | Index | Name | Type | Purpose |
 |---|---|---|---|
@@ -1214,7 +1214,7 @@ Phase 28's SinkRemat pass (entry: `sub_913A30`, core: `sub_A0F020`) sinks instru
 |---|---|---|---|
 | 475 | `MovWeightForRemat` | DBL | MOV instruction weight in remat profitability scoring |
 
-This knob sits in the general MOV-weight family (indices 474--476) rather than the Remat block. It tunes how MOV instructions contribute to the scheduling cost model's remat profitability calculation. When the remat candidate is a MOV chain, this weight determines the per-MOV cost used to decide whether rematerialization beats keeping the value live.
+This knob sits in the general MOV-weight family (indices 474–476) rather than the Remat block. It tunes how MOV instructions contribute to the scheduling cost model's remat profitability calculation. When the remat candidate is a MOV chain, this weight determines the per-MOV cost used to decide whether rematerialization beats keeping the value live.
 
 ## Recovered Knobs Not Yet Documented
 

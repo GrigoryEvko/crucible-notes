@@ -12,7 +12,7 @@ ptxas v13.0.88 defines 97 EIATTR codes, numbered 0 through 96 (`0x00`--`0x60`). 
 | **Section name (global)** | `.nv.info` |
 | **Section name (per-function)** | `.nv.info.<function_name>` |
 | **Record format** | Type-Length-Value (TLV), 4-byte aligned |
-| **Known attribute count** | 97 codes: 0--96 (v13.0.88) |
+| **Known attribute count** | 97 codes: 0–96 (v13.0.88) |
 | **Name table VA** | `0x23FDC20` (97 entries x 16 bytes = 1,552 bytes) |
 | **EIATTR builder function** | `sub_1CC9800` (14,764 B native / 86 KB decomp — third largest in output range) |
 | **Barrier/register propagator** | `sub_1CC8950` (2,634 bytes, propagates counts across call graph) |
@@ -29,7 +29,7 @@ Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV records. 
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      Format byte (determines payload structure)
-0x01    1     attr_code   EIATTR type code (0x00--0x60)
+0x01    1     attr_code   EIATTR type code (0x00–0x60)
 0x02    2     size        Payload size in bytes (little-endian uint16)
 0x04    var   payload     Attribute-specific data (size bytes)
 ```
@@ -236,7 +236,7 @@ Each entry in the pointer table carries an 8-byte metadata word alongside the st
 | 3 | Introduced in CUDA ~9.0 era (Turing) |
 | 5 | Introduced in CUDA ~11.0+ era (Ampere and later) |
 
-Codes 0--42 all carry `meta=1` (legacy). The boundary at code 43 (`EIATTR_WMMA_USED`) marks the Volta-era expansion. Codes 46+ carry `meta_lo=5`, indicating the major expansion that happened with Ampere and continued through Blackwell.
+Codes 0–42 all carry `meta=1` (legacy). The boundary at code 43 (`EIATTR_WMMA_USED`) marks the Volta-era expansion. Codes 46+ carry `meta_lo=5`, indicating the major expansion that happened with Ampere and continued through Blackwell.
 
 ## Attribute Categories
 
@@ -406,20 +406,20 @@ Hardware errata requiring instruction-level patching by the driver. Each WAR att
 | 86 | `0x56` | `EIATTR_UNKNOWN` | — | Unknown attribute placeholder. |
 | 96 | `0x60` | `EIATTR_ERROR_LAST` | — | Upper bound sentinel for the enum range. Code 96 is never emitted; it serves as a bound check (`if (attr_code > 0x2F)` at line 760 of the builder). |
 
-## Payload Format Reference (Codes 0--32)
+## Payload Format Reference (Codes 0–32)
 
 Per-attribute wire-format documentation derived from `sub_1CC9800` (master EIATTR builder), `sub_1CC86D0` (per-entry stack emitter), `sub_1CC8950` (barrier/register propagator), and `sub_1CC85F0` (TLV record emitter). Payload layouts describe the bytes that follow the 4-byte TLV header.
 
 For Indexed-format (`0x04`) attributes the first 4 payload bytes are always a u32 symbol index. The remaining bytes (if any) carry the value. For Sized-format (`0x03`) attributes the value is encoded directly in the 16-bit size field of the TLV header — there are no additional payload bytes.
 
-### Sentinel Codes (0--1)
+### Sentinel Codes (0–1)
 
 | Code | Hex | Name | Payload |
 |---:|---:|---|---|
 | 0 | `0x00` | `EIATTR_ERROR` | None. Never emitted. |
 | 1 | `0x01` | `EIATTR_PAD` | None. Padding, ignored by parser. |
 
-### Texture and Image Binding (2, 6--9, 14, 19--22)
+### Texture and Image Binding (2, 6–9, 14, 19–22)
 
 All Indexed attributes in this group share the same 8-byte payload layout: `[sym_index:4][value:4]`. The builder's first switch (line 722) routes all of these through the same symbol-index resolution path.
 
@@ -477,7 +477,7 @@ Offset  Size  Field
 
 The builder creates this record with two different format bytes depending on context: `0x04` (Indexed) via the TLV emitter, or `0x01` (Free) via inline construction (magic `0x0401`). Both encode the same semantic: flag-only, no value.
 
-### Resource Allocation (5, 16--18, 25, 27, 30)
+### Resource Allocation (5, 16–18, 25, 27, 30)
 
 **Codes 5, 16, 17, 18** — Indexed, 8-byte payload `[sym_index:4][value:4]`:
 
@@ -499,12 +499,12 @@ TLV header: [fmt=0x03][code=0x19][param_bank_size:2]
 Total record: 4 bytes (header only)
 ```
 
-**Code 27 (`0x1B`) — `EIATTR_MAXREG_COUNT`**: Sized format (`0x03`). Value encoded in the low byte of the 16-bit size field (range 0--255). Per-compilation-unit hint, not per-function. Set by `--maxrregcount` CLI flag or `.maxnreg` PTX directive.
+**Code 27 (`0x1B`) — `EIATTR_MAXREG_COUNT`**: Sized format (`0x03`). Value encoded in the low byte of the 16-bit size field (range 0–255). Per-compilation-unit hint, not per-function. Set by `--maxrregcount` CLI flag or `.maxnreg` PTX directive.
 
 ```text
 TLV header: [fmt=0x03][code=0x1B][maxreg:2]
 Total record: 4 bytes (header only)
-Effective range: low byte only (0--255), high byte 0
+Effective range: low byte only (0–255), high byte 0
 ```
 
 Binary evidence: second switch case `0x1B` (line 1094) reads `*(u8*)(v150+2)` — the low byte of the size field — as the register count value.
@@ -520,7 +520,7 @@ Offset  Size  Field
 
 Total record: 12 bytes (4 header + 8 payload). Diagnostic `"conflicting crs_stack attribute"` fires when two records target the same function.
 
-### Parameter Bank Layout (10--12, 23--24)
+### Parameter Bank Layout (10–12, 23–24)
 
 **Code 10 (`0x0A`) — `EIATTR_PARAM_CBANK`**: Indexed format, packed value.
 
@@ -548,7 +548,7 @@ Payload: u32[] packed entries, one per parameter
 Size:    N * 4 bytes
 ```
 
-**Code 23 (`0x17`) — `EIATTR_KPARAM_INFO`**: Free format, complex per-parameter descriptors. This is the only attribute in codes 0--32 with a multi-field sub-record structure.
+**Code 23 (`0x17`) — `EIATTR_KPARAM_INFO`**: Free format, complex per-parameter descriptors. This is the only attribute in codes 0–32 with a multi-field sub-record structure.
 
 ```text
 Payload: repeating 12-byte per-parameter entries:
@@ -581,7 +581,7 @@ Binary evidence: case `0x0D` (line 1038) reads `*(u16**)(v150+8)` as a pointer t
 
 ### External Symbol References (15)
 
-**Code 15 (`0x0F`) — `EIATTR_EXTERNS`**: Free format, most complex processing of any attribute in the 0--32 range.
+**Code 15 (`0x0F`) — `EIATTR_EXTERNS`**: Free format, most complex processing of any attribute in the 0–32 range.
 
 ```text
 Payload: u32[] symbol table indices
@@ -598,7 +598,7 @@ The builder handles EXTERNS in both switches:
 
 **Code 26 (`0x1A`) — `EIATTR_QUERY_NUMATTRIB`**: Indexed, `[sym_index:4][num_attributes:4]`.
 
-### Instruction Offset Tables (28--29)
+### Instruction Offset Tables (28–29)
 
 Both attributes are Free format carrying arrays of u32 byte offsets into the `.text` section.
 
@@ -618,7 +618,7 @@ Size:    N * 4 bytes
 
 At line 2001, code 29 triggers CNP (CUDA Nested Parallelism) wrapper generation. The symbol index from the record is added to the CNP wrapper list, driving emission of `NEED_CNP_WRAPPER` (code 31) and `NEED_CNP_PATCH` (code 32) records.
 
-### CUDA Nested Parallelism Flags (31--32)
+### CUDA Nested Parallelism Flags (31–32)
 
 Both are Indexed-format flag attributes with no value payload. They are always emitted as a pair.
 
@@ -642,7 +642,7 @@ Offset  Size  Field
 
 SM-version gated: `sub_1C97840(0x20, sm_version)`. Builder constructs with internal format `0x01` (magic `0x2001` = 8193). Emitted for every function in the CNP call tree.
 
-### Payload Format Summary (Codes 0--32)
+### Payload Format Summary (Codes 0–32)
 
 | Code | Name | Wire Fmt | Payload size | Payload layout |
 |---:|---|---:|---:|---|
@@ -680,11 +680,11 @@ SM-version gated: `sub_1C97840(0x20, sm_version)`. Builder constructs with inter
 | 31 | `NEED_CNP_WRAPPER` | `0x04` | 4 | `[sym:4]` flag-only |
 | 32 | `NEED_CNP_PATCH` | `0x04` | 4 | `[sym:4]` flag-only |
 
-## Payload Format Reference (Codes 33--64)
+## Payload Format Reference (Codes 33–64)
 
-Continuation of the per-attribute wire-format documentation. Same sources and conventions as the 0--32 section above.
+Continuation of the per-attribute wire-format documentation. Same sources and conventions as the 0–32 section above.
 
-### Metadata Flags (33--34, 36, 43)
+### Metadata Flags (33–34, 36, 43)
 
 **Code 33 (`0x21`) — `EIATTR_EXPLICIT_CACHING`**: Indexed format, flag-only. Signals the kernel uses explicit cache control directives (`ld.ca`, `ld.cg`, etc.). SM-gated via `sub_1C97840(0x21, sm_version)`.
 
@@ -730,7 +730,7 @@ Offset  Size  Field
 
 No special builder logic.
 
-### Resource Allocation (35, 47, 50, 55--56, 59)
+### Resource Allocation (35, 47, 50, 55–56, 59)
 
 **Code 35 (`0x23`) — `EIATTR_MAX_STACK_SIZE`**: Indexed format, 4-byte value. Maximum per-thread stack size for recursive call chains, computed via call-graph propagation in `sub_1CC8950`.
 
@@ -785,7 +785,7 @@ Total record: 4 bytes (header only)
 
 Binary evidence: magic `0x3803` (14339) at lines 1664 and 2446. The mbarrier count is stored in the 16-bit size field: `*((_WORD *)v511 + 1) = v651` (line 1669). SM-gated via `sub_1C97840(0x38, sm_version)` at lines 1654 and 2436.
 
-Accumulative semantics: the builder sums mbarrier counts from callees during call-graph propagation (second switch case `0x38` at line 1183, falling through to LABEL\_331). If any callee reports `-1` (unknown), the sum stays `-1` (lines 1255--1256). The emission loop at lines 2407--2454 propagates the count to all entry points that call the function.
+Accumulative semantics: the builder sums mbarrier counts from callees during call-graph propagation (second switch case `0x38` at line 1183, falling through to LABEL\_331). If any callee reports `-1` (unknown), the sum stays `-1` (lines 1255–1256). The emission loop at lines 2407–2454 propagates the count to all entry points that call the function.
 
 **Code 59 (`0x3B`) — `EIATTR_SAM_REGION_STACK_SIZE`**: Indexed format, 8-byte payload. SAM (Streaming Asynchronous Memory) region stack size.
 
@@ -821,9 +821,9 @@ Payload:    [flags:4]
 Total record: 8 bytes
 ```
 
-Binary evidence: top-level gating at line 686--688 checks three conditions: link mode (`v609 == 2`), toolkit version (`> 0x63`), and SM compatibility (`sub_1C97840(0x2C, sm_version)`). The magic `0x2C01` at line 709 constructs the record with internal format byte 0x01, which the emitter translates to Value format (0x02) for the wire encoding since the record is global scope. This is the only Value-format attribute in the 33--64 range.
+Binary evidence: top-level gating at line 686–688 checks three conditions: link mode (`v609 == 2`), toolkit version (`> 0x63`), and SM compatibility (`sub_1C97840(0x2C, sm_version)`). The magic `0x2C01` at line 709 constructs the record with internal format byte 0x01, which the emitter translates to Value format (0x02) for the wire encoding since the record is global scope. This is the only Value-format attribute in the 33–64 range.
 
-### Instruction Offset Tables (37, 39--40, 45--46, 48--49, 52, 57--58)
+### Instruction Offset Tables (37, 39–40, 45–46, 48–49, 52, 57–58)
 
 All attributes in this group use Free format (`0x01`) carrying variable-length arrays of u32 byte offsets into the kernel's `.text` section. None have explicit switch cases in the builder — they pass through the default path. The payload layout for all is identical:
 
@@ -851,7 +851,7 @@ Payload: structured register-map entries (not flat u32[] offsets)
 Size:    variable
 ```
 
-### Software Workarounds (42, 48, 53--54)
+### Software Workarounds (42, 48, 53–54)
 
 All use Free format (`0x01`) with u32 offset arrays. The driver patches the instructions at the listed byte offsets during kernel load.
 
@@ -864,7 +864,7 @@ All use Free format (`0x01`) with u32 offset arrays. The driver patches the inst
 
 `SW_WAR` (`0x36`) is a generic container — unlike the numbered WAR attributes, its payload format may include sub-type discriminators, though the builder treats it as a flat pass-through.
 
-### Cluster and Cooperative Launch (41, 61--63)
+### Cluster and Cooperative Launch (41, 61–63)
 
 **Code 41 (`0x29`) — `EIATTR_COOP_GROUP_MASK_REGIDS`**: Indexed, 4-byte value.
 
@@ -925,7 +925,7 @@ Payload: structured register-map data
 Size:    variable
 ```
 
-### Payload Format Summary (Codes 33--64)
+### Payload Format Summary (Codes 33–64)
 
 | Code | Name | Wire Fmt | Payload size | Payload layout |
 |---:|---|---:|---:|---|
@@ -962,11 +962,11 @@ Size:    variable
 | 63 | `MAX_CLUSTER_RANK` | `0x04` | 8 | `[sym:4][max_rank:4]` |
 | 64 | `INSTR_REG_MAP` | `0x01` | var | structured register map |
 
-## Payload Format Reference (Codes 65--96)
+## Payload Format Reference (Codes 65–96)
 
-Continuation of the per-attribute wire-format documentation. Same sources and conventions as the 0--64 sections above. Codes 65--96 represent the newest EIATTR additions (Ampere through Blackwell era). All require SM-version gating via `sub_1C97840` before emission. Many have dedicated switch cases in the master builder for call-graph propagation.
+Continuation of the per-attribute wire-format documentation. Same sources and conventions as the 0–64 sections above. Codes 65–96 represent the newest EIATTR additions (Ampere through Blackwell era). All require SM-version gating via `sub_1C97840` before emission. Many have dedicated switch cases in the master builder for call-graph propagation.
 
-### Shared Memory (65--66)
+### Shared Memory (65–66)
 
 **Code 65 (`0x41`) — `EIATTR_RESERVED_SMEM_USED`**: Indexed format, flag-only. Signals the kernel uses reserved shared memory. SM-gated via `sub_1C97840(0x41, sm_version)`.
 
@@ -977,7 +977,7 @@ Offset  Size  Field
 (no value -- flag only, presence is the signal)
 ```
 
-Binary evidence: magic `0x4101` (16641) at lines 1511 and 2219 of `sub_1CC9800`. The builder tracks this attribute in the `v615[]` per-entry array and propagates it to callee entry points during the second pass (lines 2186--2229). When an entry point does not already have this record, the builder creates one using `sub_1CC7FB0` for symbol resolution.
+Binary evidence: magic `0x4101` (16641) at lines 1511 and 2219 of `sub_1CC9800`. The builder tracks this attribute in the `v615[]` per-entry array and propagates it to callee entry points during the second pass (lines 2186–2229). When an entry point does not already have this record, the builder creates one using `sub_1CC7FB0` for symbol resolution.
 
 **Code 66 (`0x42`) — `EIATTR_RESERVED_SMEM_0_SIZE`**: Indexed format, 4-byte value. Size of reserved shared memory partition 0 in bytes.
 
@@ -999,7 +999,7 @@ Payload: opaque byte array
 Size:    variable
 ```
 
-### Instruction Offset Tables (68, 70--71, 87, 89)
+### Instruction Offset Tables (68, 70–71, 87, 89)
 
 All attributes in this group use Free format (`0x01`) carrying variable-length arrays of u32 byte offsets into the kernel's `.text` section.
 
@@ -1043,7 +1043,7 @@ Binary evidence: `sub_7FD2B0` at line 116 calls `sub_1CC85F0(a3, 69, 12, v16, a4
 
 First-switch handling: code 69 (`0x45`) appears in the first switch at line 737 alongside texture and resource codes, meaning KPARAM_INFO_V2 records undergo symbol-index resolution during the first pass.
 
-### Graphics-Specific (72--74)
+### Graphics-Specific (72–74)
 
 **Code 72 (`0x48`) — `EIATTR_GRAPHICS_GLOBAL_CBANK`**: Indexed format, 4-byte value. Global constant bank descriptor for graphics shaders.
 
@@ -1071,7 +1071,7 @@ Payload:    [sym_index:4]
 Total record: 8 bytes
 ```
 
-Binary evidence: magic 18946 at lines 1532 and 2344. The maximum-across-callees logic at lines 1214--1215: `if (v675 < *(v150+2)) v328 = *(v150+2); v675 = v328`. The final value is written back at line 1538: `*((_BYTE *)v196 + 2) = v675`. The `v617[]` per-entry array tracks this attribute for propagation. SM-gated via `sub_1C97840(0x4A, sm_version)`.
+Binary evidence: magic 18946 at lines 1532 and 2344. The maximum-across-callees logic at lines 1214–1215: `if (v675 < *(v150+2)) v328 = *(v150+2); v675 = v328`. The final value is written back at line 1538: `*((_BYTE *)v196 + 2) = v675`. The `v617[]` per-entry array tracks this attribute for propagation. SM-gated via `sub_1C97840(0x4A, sm_version)`.
 
 ### Tools Patching (75)
 
@@ -1088,7 +1088,7 @@ No explicit switch case — passes through the default path.
 
 ### Barrier Count (76)
 
-**Code 76 (`0x4C`) — `EIATTR_NUM_BARRIERS`**: Constructed with internal format byte `0x02` (magic `0x4C02` = 19458), with the barrier count stored in the TLV size field. This is one of the most complex attributes in the 65--96 range, with two distinct code paths.
+**Code 76 (`0x4C`) — `EIATTR_NUM_BARRIERS`**: Constructed with internal format byte `0x02` (magic `0x4C02` = 19458), with the barrier count stored in the TLV size field. This is one of the most complex attributes in the 65–96 range, with two distinct code paths.
 
 ```text
 TLV header: [fmt=0x02][code=0x4C][bar_count:2]
@@ -1100,7 +1100,7 @@ Total record: 8 bytes
 
 - **Per-SM tracking mode** (when `*(a1+101)` is set, line 1223): reads barrier count from the size field byte. Takes the maximum across all callees: `if (n < *(v150+2)) v323 = *(v150+2); n = v323`. The `v628[]` per-entry array tracks records. SM-gated via `sub_1C97840(0x4C, sm_version)`.
 
-- **Accumulative mode** (when `*(a1+101)` is clear, falls through to `LABEL_331`): sums barrier counts from callees with -1 sentinel handling (lines 1251--1257): `v298 = v297 + v651; if (v297 == -1) v298 = -1`. The sentinel `-1` means "unknown count" and poisons the sum.
+- **Accumulative mode** (when `*(a1+101)` is clear, falls through to `LABEL_331`): sums barrier counts from callees with -1 sentinel handling (lines 1251–1257): `v298 = v297 + v651; if (v297 == -1) v298 = -1`. The sentinel `-1` means "unknown count" and poisons the sum.
 
 Propagation in `sub_1CC8950`: the barrier/register propagator (2,634 bytes) also creates `NUM_BARRIERS` records during barrier count migration from section flags to `.nv.info` records.
 
@@ -1130,7 +1130,7 @@ No explicit switch case — passes through the default path. Internal profiler d
 
 ### Fragment Descriptors at Entry (79)
 
-**Code 79 (`0x4F`) — `EIATTR_AT_ENTRY_FRAGEMENTS`**: Free format. The most complex handler in the 65--96 range. Carries fragment offset arrays that describe function entry point fragments. Note: "FRAGEMENTS" is a typo preserved in the binary; corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`.
+**Code 79 (`0x4F`) — `EIATTR_AT_ENTRY_FRAGEMENTS`**: Free format. The most complex handler in the 65–96 range. Carries fragment offset arrays that describe function entry point fragments. Note: "FRAGEMENTS" is a typo preserved in the binary; corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`.
 
 ```text
 Payload: u32[] fragment offsets
@@ -1140,11 +1140,11 @@ Size:    N * 4 bytes
 Binary evidence: emitted via `sub_1CC85F0(a1, 0x4F, 4*count, buf, sym)` at lines 1774 and 2539. The builder uses a set data structure (`v644`) to collect fragment offsets from callees, then merges and deduplicates them:
 
 1. Line 1749: collects total fragment count from `v644` set.
-2. Lines 1762--1772: iterates set entries, extracting each offset via `sub_42F060`.
+2. Lines 1762–1772: iterates set entries, extracting each offset via `sub_42F060`.
 3. Line 1774: emits the merged offset array.
-4. Lines 2460--2548: callee propagation loop. For each callee, if an existing entry has fragments, the builder extends the array and deduplicates offsets. If no existing entry, creates a new record.
+4. Lines 2460–2548: callee propagation loop. For each callee, if an existing entry has fragments, the builder extends the array and deduplicates offsets. If no existing entry, creates a new record.
 
-The deduplication logic (lines 2503--2525) does an O(N*M) scan: for each new offset, checks all existing offsets for duplicates before appending.
+The deduplication logic (lines 2503–2525) does an O(N*M) scan: for each new offset, checks all existing offsets for duplicates before appending.
 
 Cross-function ownership: when `*(a1+568) != srca` (the current entry's symbol differs from the fragment source), the code byte is zeroed (line 1290: `*(_BYTE *)(v150+1)=0`), suppressing the record for non-owning functions.
 
@@ -1159,9 +1159,9 @@ Total record: 4 bytes (header only)
 
 Binary evidence: magic `0x5003` (20483) at lines 2085 and 1433. The mask value is stored in the TLV size field. During propagation, the builder OR's mask bits from all callees (line 1407: `v158 |= *(_WORD *)(v162 + 2)`). New entry-point records are initialized with bit 15 set (line 1436: `*((_WORD *)v598 + 1) = 0x8000`; line 1438: `v158 |= 0x8000u`). The `v632[]` per-entry array tracks records.
 
-The `.nv.uft` section emission (lines 2068--2090) also creates SPARSE_MMA_MASK records, gated on `*(a1+240)` (UFT presence flag).
+The `.nv.uft` section emission (lines 2068–2090) also creates SPARSE_MMA_MASK records, gated on `*(a1+240)` (UFT presence flag).
 
-### Tensor Core Gen05 (81--82)
+### Tensor Core Gen05 (81–82)
 
 These two codes are mutually exclusive. The builder enforces that a function cannot use both 1-CTA and 2-CTA tensor core modes simultaneously.
 
@@ -1187,7 +1187,7 @@ Offset  Size  Field
 
 Binary evidence: magic `0x5201` (20993) at lines 1582 and 2300. Tracked in `v610[]` per-entry array. The `v674` flag indicates any tcgen05\_2CTA record was seen.
 
-**Mutual exclusion enforcement**: during callee propagation (lines 2264--2266 and 2304--2307), if a function already has a TCGEN05\_1CTA record and the builder attempts to add a TCGEN05\_2CTA record (or vice versa), `sub_42F590` fires a diagnostic warning with the function name. This catches conflicting tensor core mode usage across the call graph.
+**Mutual exclusion enforcement**: during callee propagation (lines 2264–2266 and 2304–2307), if a function already has a TCGEN05\_1CTA record and the builder attempts to add a TCGEN05\_2CTA record (or vice versa), `sub_42F590` fires a diagnostic warning with the function name. This catches conflicting tensor core mode usage across the call graph.
 
 ### Error Barrier at Exit (83)
 
@@ -1213,7 +1213,7 @@ Offset  Size  Field
 0x02    1     reconfig_value    (in TLV size field lo byte, optional)
 ```
 
-Binary evidence: magic `0x5401` (21505) at lines 1637 and 2395. Tracked in `v616[]` per-entry array with the `v666` flag. During callee propagation (lines 2364--2405), if a callee has a reconfig value (`ii = *(v230+2)`), it is written into the target record's size field byte: `*(_BYTE *)(v417 + 2) = ii` (line 2403). The value propagates from callee to entry point.
+Binary evidence: magic `0x5401` (21505) at lines 1637 and 2395. Tracked in `v616[]` per-entry array with the `v666` flag. During callee propagation (lines 2364–2405), if a callee has a reconfig value (`ii = *(v230+2)`), it is written into the target record's size field byte: `*(_BYTE *)(v417 + 2) = ii` (line 2403). The value propagates from callee to entry point.
 
 ### Annotations (85)
 
@@ -1229,8 +1229,8 @@ Size:    sum of all sub-record sizes
 ```
 
 Binary evidence from `sub_60C580`:
-- Line 47: type 2 records copy `key` (4 bytes) + `len` (4 bytes) + `len` bytes of data (line 51--53: `memcpy(v17+3, v7+3, v22)`). Alignment: `(len + 11) & ~3` + 4 (line 55).
-- Line 63: type 3 records copy `len` (4 bytes) + `len` bytes (line 66--67: `memcpy(v17+2, v7+2, v26)`). Alignment: `(len + 7) & ~3` + 4 (line 68).
+- Line 47: type 2 records copy `key` (4 bytes) + `len` (4 bytes) + `len` bytes of data (line 51–53: `memcpy(v17+3, v7+3, v22)`). Alignment: `(len + 11) & ~3` + 4 (line 55).
+- Line 63: type 3 records copy `len` (4 bytes) + `len` bytes (line 66–67: `memcpy(v17+2, v7+2, v26)`). Alignment: `(len + 7) & ~3` + 4 (line 68).
 - Line 71: type 1 records are 8 bytes (`v19 = 8; v17[1] = v7[1]`).
 - Line 79: type 0 (default) records are 4 bytes.
 
@@ -1272,7 +1272,7 @@ Payload: sequence of key-value entries followed by a hash:
 Size:    sum of all entries + hash
 ```
 
-Binary evidence: `sub_462220` at line 656 calls `sub_1CC85F0(v7, 90, v234, v225, *a5)`. Lines 640--647 show the key-value pair packing: `strlen` of key and value, packed as u16 lengths, followed by `strcpy` of both strings. The hash is computed at line 653 via `sub_4305D0(0x123456, ...)`.
+Binary evidence: `sub_462220` at line 656 calls `sub_1CC85F0(v7, 90, v234, v225, *a5)`. Lines 640–647 show the key-value pair packing: `strlen` of key and value, packed as u16 lengths, followed by `strcpy` of both strings. The hash is computed at line 653 via `sub_4305D0(0x123456, ...)`.
 
 ### Cluster Configuration (91)
 
@@ -1335,7 +1335,7 @@ Total record: 4 bytes (header only)
 
 **Code 96 (`0x60`) — `EIATTR_ERROR_LAST`**: Never emitted. Upper bound sentinel for the enum range. Used for bound checks in the builder: `if (attr_code > 0x2F)` at line 760.
 
-### Payload Format Summary (Codes 65--96)
+### Payload Format Summary (Codes 65–96)
 
 | Code | Name | Wire Fmt | Payload size | Payload layout |
 |---:|---|---:|---:|---|
@@ -1382,7 +1382,7 @@ Before per-entry attribute emission begins, `sub_1CC8950` (2,634 bytes, called o
 
 1. **Register count propagation**: Walks the call graph DFS, finding the maximum register count among all callees. The verbose trace `"regcount %d for %s propagated to entry %s"` logs this.
 
-2. **Barrier count creation**: When a kernel's section flags contain a barrier count (bits 20--26 of `section_header + 8`) but no `EIATTR_NUM_BARRIERS` record exists, creates one and clears the section flag bits:
+2. **Barrier count creation**: When a kernel's section flags contain a barrier count (bits 20–26 of `section_header + 8`) but no `EIATTR_NUM_BARRIERS` record exists, creates one and clears the section flag bits:
 
 ```text
 Creating new EIATTR_NUM_BARRIERS and moving barcount %d

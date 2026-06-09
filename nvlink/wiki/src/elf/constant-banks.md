@@ -1,6 +1,6 @@
 # Constant Banks (.nv.constant)
 
-CUDA GPU architectures provide a hierarchy of constant memory banks accessible through dedicated hardware. In the CUDA device ELF format, each constant bank is represented as a distinct section with a naming convention rooted in the `.nv.constant` prefix. The nvlink device linker manages 18 numbered banks (0--17), plus 7 named specialized banks, each serving a distinct role in the GPU execution model. This page covers the bank numbering scheme, ELF section type encoding, per-kernel section splitting, specialized bank assignments, the name-to-index mapping table, the constant deduplication and optimization pipeline, relocation resolution, and the hardware size limits that constrain constant bank usage.
+CUDA GPU architectures provide a hierarchy of constant memory banks accessible through dedicated hardware. In the CUDA device ELF format, each constant bank is represented as a distinct section with a naming convention rooted in the `.nv.constant` prefix. The nvlink device linker manages 18 numbered banks (0–17), plus 7 named specialized banks, each serving a distinct role in the GPU execution model. This page covers the bank numbering scheme, ELF section type encoding, per-kernel section splitting, specialized bank assignments, the name-to-index mapping table, the constant deduplication and optimization pipeline, relocation resolution, and the hardware size limits that constrain constant bank usage.
 
 | | |
 |---|---|
@@ -221,7 +221,7 @@ For constant bank sections, `0x70000064` is `SHT_CUDA_CONSTANT0`, so the delta e
 
 This example traces a constant bank relocation end-to-end, from the source CUDA code through the ELF relocation entry to the patched SASS instruction. `R_CUDA_CONST_FIELD19_28` (standard table index 24) is the most common constant field relocation on pre-Turing and Turing architectures. It writes a 19-bit DWORD offset into bits [28:47) of a 64-bit SASS instruction word.
 
-**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_75 (Turing) — the relocation layout traced here is identical on the inherited sm_70 Volta encoding, on sm_80 / sm_86 / sm_89 Ampere--Ada, and on sm_90 Hopper (all share the 64-bit instruction word and the 19-bit DWORD-offset field at bit 28); the 21- and 22-bit wide-immediate variants introduced at sm_75 use sibling relocation types (`R_CUDA_CONST_FIELD21_*`, `R_CUDA_CONST_FIELD22_37`) but the same descriptor-table machinery.
+**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_75 (Turing) — the relocation layout traced here is identical on the inherited sm_70 Volta encoding, on sm_80 / sm_86 / sm_89 Ampere–Ada, and on sm_90 Hopper (all share the 64-bit instruction word and the 19-bit DWORD-offset field at bit 28); the 21- and 22-bit wide-immediate variants introduced at sm_75 use sibling relocation types (`R_CUDA_CONST_FIELD21_*`, `R_CUDA_CONST_FIELD22_37`) but the same descriptor-table machinery.
 
 #### Step 0: Source Code and Compilation
 
@@ -469,7 +469,7 @@ Triggered automatically when any OCG constant section exceeds `max_constant_bank
 2. For each OCG constant section with data, deduplicate by value:
    - 4-byte constants: hash table lookup (256 buckets, shift-xor hash)
    - 8-byte constants: hash table lookup (256 buckets, modular hash)
-   - 12--64 byte constants: linked-list walk with `memcmp`
+   - 12–64 byte constants: linked-list walk with `memcmp`
 3. Rewrite relocations that target deduplicated constants: `"optimize ocg constant reloc offset from %lld to %lld"`.
 4. If the optimized size fits within the bank limit, replace all OCG section contents.
 5. If optimization does not help: `"ocg const optimization didn't help so give up"`.
@@ -500,9 +500,9 @@ Each constant bank has a hardware-imposed maximum size that varies by architectu
 
 | Architecture | Typical bank 0 limit | Notes |
 |---|---|---|
-| sm_30--sm_70 | 64 KB | Fixed hardware limit |
+| sm_30–sm_70 | 64 KB | Fixed hardware limit |
 | sm_75 (Turing) | 64 KB | Wider relocation fields (21/22-bit) |
-| sm_80--sm_90 | 64 KB | Same hardware limit, better encoding |
+| sm_80–sm_90 | 64 KB | Same hardware limit, better encoding |
 | sm_100+ (Mercury) | 64 KB | Constant bank handling deferred to FNLZR |
 
 When the merged constant bank exceeds its limit and optimization fails to shrink it below the threshold, the linker emits a diagnostic. The `--no-opt` flag disables all constant optimization, falling back to simple linear layout. The `--optimize-data-layout` flag forces optimization even when sections are within the limit.

@@ -283,9 +283,9 @@ The return value encodes the failure reason in the low 32 bits and a function id
 
 ### Primary Fixup: sub_ADEB40
 
-This 7,077-byte function is the heart of the GMMA pipeline. It takes the pass object (`a1`) and returns a packed 64-bit result: low 4 bits encode a serialization reason (0 = success, 1--10 = warning case from the table below), high 32 bits encode the function ID for diagnostic reporting. The algorithm has six sequential phases.
+This 7,077-byte function is the heart of the GMMA pipeline. It takes the pass object (`a1`) and returns a packed 64-bit result: low 4 bits encode a serialization reason (0 = success, 1–10 = warning case from the table below), high 32 bits encode the function ID for diagnostic reporting. The algorithm has six sequential phases.
 
-#### Phase 1: Initialization (decompiled lines 251--287)
+#### Phase 1: Initialization (decompiled lines 251–287)
 
 Allocates two dynamic arrays, each with sentinel index `0xFFFFFFFF` (`-1`):
 - **Wait list** (`v224`/`v225`, write cursor `v226`): collects `warpgroup.wait` injection points.
@@ -297,7 +297,7 @@ Constructs two RB-tree-backed bitvector sets via `sub_661750` + `sub_768AB0`:
 
 Each tree node holds 4 x 64-bit words keyed by `reg_id >> 8` (register bank), giving 256 bits per node. Clears `field_56` (byte at `instr+56`) of every node in the code object's operand linked list at `codeObj+104`, resetting back-pointers from prior passes.
 
-#### Phase 2: Global accumulator collection (lines 290--336)
+#### Phase 2: Global accumulator collection (lines 290–336)
 
 Walks the entire function's instruction list from `codeObj+272` to the sentinel at `codeObj->field_35 + 8`. For each `wgmma.mma_async` (opcode 309 after masking `& 0xFFFFCFFF`):
 
@@ -308,13 +308,13 @@ Walks the entire function's instruction list from `codeObj+272` to the sentinel 
    - **`sub_896530` true** (role 4, sparse metadata): collects if this is a sparse GMMA variant.
    - **Descriptor mismatch** (role 3): collects if the operand is not a predicate-true constant (`(operand ^ 0x70000000) & 0x70000000 != 0`).
 
-#### Phase 3: Per-sequence stage walk (lines 337--1233)
+#### Phase 3: Per-sequence stage walk (lines 337–1233)
 
 Reads the sequence table at `codeObj->field_99`. If the table count is zero, skips directly to phase 5. Otherwise iterates each 4-byte entry (index into the BB array). For each sequence:
 
 **3a. Resolve sequence extent.** Loads the start BB from `bbArray[seqTable[entry_index]]`. Follows the BB's first instruction's first register operand through `codeObj->field_37` (block index array) to find the containing region pointer `v205`. Resolves the end sentinel `v210`: if the terminal instruction is opcode 97 (`STG` in the 322-entry ROT13 SASS name table; used here as the Ori-IR control-flow boundary marker — the actual SASS `BRA` is opcode 67), follows its target field at `instr+24`; otherwise follows the fall-through successor chain.
 
-**3b. Per-BB instruction walk.** The inner `do`/`while` loop (line 384--1112) walks each instruction in the current BB via `instr = *(QWORD*)(instr+8)`. Per-BB state variables:
+**3b. Per-BB instruction walk.** The inner `do`/`while` loop (line 384–1112) walks each instruction in the current BB via `instr = *(QWORD*)(instr+8)`. Per-BB state variables:
 
 - `v36` (arrive anchor): pointer to the `warpgroup.arrive` pseudo-op for this stage, or null if none yet.
 - `v38` (pending commit): last instruction before a `commit_batch` boundary; used to mark bit 2 on its last accumulator operand.
@@ -330,23 +330,23 @@ Per-instruction dispatch on `opcode & 0xFFFFCFFF`:
 - **323** (`commit_batch`): if `v38` is non-null, marks its last accumulator operand with bit 2. Resets `v38 = 0`, records `v207 = instr`. If the commit's last source operand has flag bits `& 3` nonzero, sets `v218 = 1`; otherwise sets `v36 = instr` (commit becomes the new arrive anchor).
 - **Other opcodes**: scans operands backward from last to find register-type-6 (accumulator class, `vreg+64 == 6`). For each, probes `v238`; on hit, checks `v218` and the target descriptor (`byte at ctx+208+72+26064 == 1` and `dword at +26072 != 0`): if both true, creates a `warpgroup.wait` via `sub_ACBF80` and pushes to the wait list. If `v36` is non-null, iterates its accumulator operands via `sub_ACC0A0` and probes the conflict set `v242` (via `sub_7554F0`); any conflict clears `v36`. Also increments per-register use counts at `a1[90]` via `sub_923B30`.
 
-**Three conflict checks for opcode 309** (lines 898--1029). After inserting the WGMMA into the hash table:
+**Three conflict checks for opcode 309** (lines 898–1029). After inserting the WGMMA into the hash table:
 
 1. **Source A/B** (roles 1 and 2, `sub_7E3EF0(instr, 1/2)`): for each register-type operand, follows `vreg->field_56` (the WGMMA back-pointer). If it exists, belongs to the same accumulator group (`def->field_24 == v36[6]`), and has a later sequence index (`def->field_52 > v36[13]`), a non-WGMMA instruction is defining a WGMMA input mid-stage: sets `v206 = 5`.
 2. **Sparse metadata** (role 4, gated by `sub_896530`): same check as role 1/2, sets `v206 = 5`.
 3. **Descriptor** (role 3, `sub_7E3EF0(instr, 3)`): follows the back-pointer, checks same group + later index, then verifies the defining instruction's opcode (masked `& 0xFFFFCFFF`) is NOT 309 — a non-WGMMA defining a descriptor mid-stage sets `v206 = 7`.
 
-#### Phase 4: Post-BB boundary handling (lines 1113--1233)
+#### Phase 4: Post-BB boundary handling (lines 1113–1233)
 
-After exhausting a BB's instruction list: if `v38` is pending, marks its last accumulator operand with bit 2. If any WGMMA was seen (`v207 != 0`), updates the sequence table's per-sequence extent record via `sub_75FE80`/`sub_75FE60` (dominance-aware BB range merge using `codeObj->field_64`). Checks the successor BB's first instruction: if opcode 188 (`nop`/`wgmma.fence`) with a register-type-6 first operand whose low 2 bits encode fence flavor 1--3, injects a `warpgroup.wait`. Also injects a wait if the BB has the accumulator-propagation flag (`bb+280 bit 0`) and the successor starts with opcodes 93/94 (`sync` variants) followed by opcode 54 (`warpgroup.depbar`). Advances to the next BB by following branch/fall-through to `v210`.
+After exhausting a BB's instruction list: if `v38` is pending, marks its last accumulator operand with bit 2. If any WGMMA was seen (`v207 != 0`), updates the sequence table's per-sequence extent record via `sub_75FE80`/`sub_75FE60` (dominance-aware BB range merge using `codeObj->field_64`). Checks the successor BB's first instruction: if opcode 188 (`nop`/`wgmma.fence`) with a register-type-6 first operand whose low 2 bits encode fence flavor 1–3, injects a `warpgroup.wait`. Also injects a wait if the BB has the accumulator-propagation flag (`bb+280 bit 0`) and the successor starts with opcodes 93/94 (`sync` variants) followed by opcode 54 (`warpgroup.depbar`). Advances to the next BB by following branch/fall-through to `v210`.
 
-#### Phase 5: Arrive/wait emission with diagnostics (lines 1242--1377)
+#### Phase 5: Arrive/wait emission with diagnostics (lines 1242–1377)
 
 Iterates the arrive list (`v228[0..v229]`). For each entry, checks the knob gate at `*(DWORD*)(pass+140)` (arrive knob). If nonzero, calls `sub_ACBCA0` to verify the arrive against the per-accumulator hash table at `pass+69`. If verification fails (`v237 == 0`), the arrive is unnecessary — deletes it via `sub_9253C0(codeObj, instr, 1)`. Otherwise resolves the function name from BB info at `bb+200`, and if the instruction's BB has the compiler-generated flag (`bb+282 bit 3`), emits advisory `0x1D5F` (7519). If the flag is clear, sets `v206 = 10` (divergent-path arrive warning).
 
 Same pattern for the wait list (`v225[0..v226]`): knob gate at `*(DWORD*)(pass+150)`, hash table at `pass+74`, advisory `0x1D5D` (7517), divergent-path sets `v206 = 9` (only if `v206` is still 0).
 
-#### Phase 6: Finalization (lines 1379--1388)
+#### Phase 6: Finalization (lines 1379–1388)
 
 Calls `sub_ADD8A0` (1,349 bytes) to rebuild WGMMA sequence metadata after all injections. Destroys the four temporary structures (two RB-tree sets via `sub_758B20`, two dynamic arrays via `sub_7578B0`). Returns `(v208 << 32) | (v206 & 0xF)`.
 
@@ -359,11 +359,11 @@ Complete state table extracted from `sub_ADEB40`:
 | `v206` | Warning | Meaning | Where set |
 |--------|---------|---------|-----------|
 | 0 | — | No error; pipeline is well-formed | Initial value |
-| 1 | `0x1D55` | Extern/opaque callee (BB with no instructions) or function call (opcode 236) within pipeline stage; also set when `vreg+216 >= 0` and the callee is marked clobbering (`byte at callee_bb+57 != 0`) | Lines 448--477 |
-| 2 | `0x1D56` | Accumulator bitvector conflict while pipeline is already active from a preceding call boundary; conflict-bit lookup in the balanced BST (`bitmap[bank+4] >> bit & 1`) returns 1 for an arrive/wait register | Lines 420--430 |
-| 5 | `0x1D59` | Non-WGMMA instruction defines WGMMA input register mid-stage; operand position 1/2/4 checked — write in same BB (`def+24 == v36[6]`) and after the WGMMA (`def+52 > v36[13]`) | Lines 984--990 |
-| 7 | `0x1D5B` | Non-WGMMA instruction defines accumulator register mid-stage; operand position 3 checked — defining opcode (masked `& 0xFFFFCFFF`) is not 309 | Lines 1024--1028 |
-| 9 | `0x1D5F` | Warpgroup.wait injection in non-suppressed divergent block; set during wait-list finalization when `sub_ACBCA0` passes but `bb+282 bit 3` is clear | Lines 1365--1368 |
+| 1 | `0x1D55` | Extern/opaque callee (BB with no instructions) or function call (opcode 236) within pipeline stage; also set when `vreg+216 >= 0` and the callee is marked clobbering (`byte at callee_bb+57 != 0`) | Lines 448–477 |
+| 2 | `0x1D56` | Accumulator bitvector conflict while pipeline is already active from a preceding call boundary; conflict-bit lookup in the balanced BST (`bitmap[bank+4] >> bit & 1`) returns 1 for an arrive/wait register | Lines 420–430 |
+| 5 | `0x1D59` | Non-WGMMA instruction defines WGMMA input register mid-stage; operand position 1/2/4 checked — write in same BB (`def+24 == v36[6]`) and after the WGMMA (`def+52 > v36[13]`) | Lines 984–990 |
+| 7 | `0x1D5B` | Non-WGMMA instruction defines accumulator register mid-stage; operand position 3 checked — defining opcode (masked `& 0xFFFFCFFF`) is not 309 | Lines 1024–1028 |
+| 9 | `0x1D5F` | Warpgroup.wait injection in non-suppressed divergent block; set during wait-list finalization when `sub_ACBCA0` passes but `bb+282 bit 3` is clear | Lines 1365–1368 |
 | 10 | `0x1D60` | Warpgroup.arrive injection in non-suppressed divergent block; set during arrive-list finalization under same divergence check | Line 1302 |
 
 **Transition rules during the main instruction walk:**
@@ -401,9 +401,9 @@ for each instruction in pipeline-stage walk:
 
 **Function call mid-pipeline.** Opcode 236 immediately resets the accumulator tracker and sets `v206 = 1` (first-error-wins). The function_id is captured from the sequence descriptor (`v209[50]`). If the callee is known non-clobbering (via the `callee_bb+57` check), tracking resets without setting the error.
 
-**Multi-sequence iteration.** The outer loop (lines 350--1240) iterates the sequence table at `context->field_99`. Each entry is an independent WGMMA sequence. `v206` persists across sequences: if the first sequence sets an error, subsequent sequences are still walked (injection points are collected) but the error code is locked.
+**Multi-sequence iteration.** The outer loop (lines 350–1240) iterates the sequence table at `context->field_99`. Each entry is an independent WGMMA sequence. `v206` persists across sequences: if the first sequence sets an error, subsequent sequences are still walked (injection points are collected) but the error code is locked.
 
-**Divergent-path states (9, 10).** These are set exclusively during the finalization loops (lines 1242--1377), not during the main walk. When the compiler needs to inject `warpgroup.arrive` or `warpgroup.wait` but the injection point is in a divergent block and `sub_ACBCA0` does not suppress it, the pass records the error. These states can overwrite a surviving `v206 == 0`, which is the only exception to first-error-wins.
+**Divergent-path states (9, 10).** These are set exclusively during the finalization loops (lines 1242–1377), not during the main walk. When the compiler needs to inject `warpgroup.arrive` or `warpgroup.wait` but the injection point is in a divergent block and `sub_ACBCA0` does not suppress it, the pass records the error. These states can overwrite a surviving `v206 == 0`, which is the only exception to first-error-wins.
 
 ### Register Conflict Detection
 
@@ -417,7 +417,7 @@ is_conflict = (node->bitmap[bank_offset + 4] >> bit_index) & 1;
 
 ## Serialization Warnings
 
-When the pipeline cannot be formed correctly, `sub_ACE480` (1,908 bytes) emits one of 10 distinct performance warnings. The function receives a packed 64-bit error code: the low 4 bits select the warning case (1--10) and the high 32 bits identify the function that triggered the failure. The function name is resolved via a vtable callback: `context->field_0->vtable[18]->method_1(context->field_0->vtable[18], function_id)`.
+When the pipeline cannot be formed correctly, `sub_ACE480` (1,908 bytes) emits one of 10 distinct performance warnings. The function receives a packed 64-bit error code: the low 4 bits select the warning case (1–10) and the high 32 bits identify the function that triggered the failure. The function name is resolved via a vtable callback: `context->field_0->vtable[18]->method_1(context->field_0->vtable[18], function_id)`.
 
 ### Warning Emission Mechanism
 
@@ -473,13 +473,13 @@ wgmma.commit_group;
 wgmma.wait_group;
 ```
 
-**Fix.** Mark the callee as `__forceinline__` so the compiler can see its register usage. Move non-inlineable function calls outside the fence--wait region. Restructure the kernel so that no opaque calls occur between `wgmma.fence` and `wgmma.wait_group`.
+**Fix.** Mark the callee as `__forceinline__` so the compiler can see its register usage. Move non-inlineable function calls outside the fence–wait region. Restructure the kernel so that no opaque calls occur between `wgmma.fence` and `wgmma.wait_group`.
 
 #### Case 2 (`0x1D56`): Pipeline crosses function call boundary
 
 **Trigger.** The bitvector conflict check finds a non-WGMMA instruction's register operand colliding with the active accumulator bitvector, at a point where the pipeline already has active state from a preceding call-boundary violation. Specifically, the register is looked up in the balanced binary tree (`node->bitmap[bank_offset + 4] >> bit_index`) and if the conflict bit is set while `v206` was already zero, it is promoted to case 2.
 
-**Detection code.** In `sub_ADEB40` lines 418--426: after the accumulator bitvector lookup returns a match, `v206` is set to 2 (the first conflict after a call boundary was detected).
+**Detection code.** In `sub_ADEB40` lines 418–426: after the accumulator bitvector lookup returns a match, `v206` is set to 2 (the first conflict after a call boundary was detected).
 
 **Code pattern that causes it:**
 ```cuda
@@ -491,7 +491,7 @@ wgmma.commit_group; // in function_B or after return
 wgmma.wait_group;
 ```
 
-**Fix.** Keep the entire fence--mma--commit--wait sequence within a single function. Do not split WGMMA pipeline stages across function boundaries.
+**Fix.** Keep the entire fence–mma–commit–wait sequence within a single function. Do not split WGMMA pipeline stages across function boundaries.
 
 #### Case 3 (`0x1D57`): Insufficient register resources for pipeline
 
@@ -537,8 +537,8 @@ __global__ void kernel(...) {
 
 **Trigger.** Two paths:
 
-1. In `sub_ADEB40` (lines 960--990): for each non-WGMMA instruction within a pipeline stage, operand position 4 (WGMMA input operands) is checked. If a non-WGMMA instruction writes to a register that a WGMMA uses as matrix A or B input, and the write is in the same basic block (`v84+24 == v36[6]`) and after the WGMMA (`v84+52 > v36[13]`), the conflict is flagged.
-2. In `sub_AE17C0` (lines 384--386): `sub_AE0D20()` validates the pipeline's input register sets against arrive/wait annotations. Failure at either the arrive set (offset +69) or wait set (offset +74) returns code 5.
+1. In `sub_ADEB40` (lines 960–990): for each non-WGMMA instruction within a pipeline stage, operand position 4 (WGMMA input operands) is checked. If a non-WGMMA instruction writes to a register that a WGMMA uses as matrix A or B input, and the write is in the same basic block (`v84+24 == v36[6]`) and after the WGMMA (`v84+52 > v36[13]`), the conflict is flagged.
+2. In `sub_AE17C0` (lines 384–386): `sub_AE0D20()` validates the pipeline's input register sets against arrive/wait annotations. Failure at either the arrive set (offset +69) or wait set (offset +74) returns code 5.
 
 **Code pattern that causes it:**
 ```cuda
@@ -557,8 +557,8 @@ wgmma.wait_group;
 
 **Trigger.** Detected only by `sub_AE17C0` (late consistency check), at two points:
 
-1. Lines 707--741: for each WGMMA instruction, operand 0 (accumulator) is examined via `sub_AD4BE0`/`sub_ACBB60`. If the accumulator data set is non-empty (`!sub_ACC3A0`), a non-WGMMA instruction reads from an in-flight accumulator register.
-2. Lines 870--885: same check in a per-basic-block iteration context.
+1. Lines 707–741: for each WGMMA instruction, operand 0 (accumulator) is examined via `sub_AD4BE0`/`sub_ACBB60`. If the accumulator data set is non-empty (`!sub_ACC3A0`), a non-WGMMA instruction reads from an in-flight accumulator register.
+2. Lines 870–885: same check in a per-basic-block iteration context.
 
 **Code pattern that causes it:**
 ```cuda
@@ -575,9 +575,9 @@ wgmma.wait_group;
 
 **Trigger.** Three paths:
 
-1. In `sub_ADEB40` (lines 994--1028): for each non-WGMMA instruction, operand position 3 is checked. If the operand is a register (not immediate, tag != `0x70000000`), and it belongs to the same basic block and pipeline stage, and the defining instruction's opcode (after masking) is not 309 (wgmma.mma_async), the conflict is flagged.
-2. In `sub_AE17C0` (lines 684--703): `sub_AD4CC0` checks WGMMA accumulator operands against the conflict set. If a match is found and the set is non-empty, code 7 is returned.
-3. In `sub_AE17C0` (lines 1296--1302): a catch-all at the end of the late validation walk.
+1. In `sub_ADEB40` (lines 994–1028): for each non-WGMMA instruction, operand position 3 is checked. If the operand is a register (not immediate, tag != `0x70000000`), and it belongs to the same basic block and pipeline stage, and the defining instruction's opcode (after masking) is not 309 (wgmma.mma_async), the conflict is flagged.
+2. In `sub_AE17C0` (lines 684–703): `sub_AD4CC0` checks WGMMA accumulator operands against the conflict set. If a match is found and the set is non-empty, code 7 is returned.
+3. In `sub_AE17C0` (lines 1296–1302): a catch-all at the end of the late validation walk.
 
 **Code pattern that causes it:**
 ```cuda
@@ -608,7 +608,7 @@ wgmma.wait_group;              // wait on all paths -- mismatch
 
 #### Case 9 (`0x1D5E`): WG.DP in divergent path
 
-**Trigger.** During the finalization pass in `sub_ADEB40` (lines 1308--1370), the compiler iterates over `warpgroup.wait` injection points. For each injection, it checks the basic block's convergence flag at `bb_info + 282` bit 3. If bit 3 is NOT set (block is divergent) and `v206` was previously zero, `v206` is set to 9 with the function ID from the basic block at offset +200.
+**Trigger.** During the finalization pass in `sub_ADEB40` (lines 1308–1370), the compiler iterates over `warpgroup.wait` injection points. For each injection, it checks the basic block's convergence flag at `bb_info + 282` bit 3. If bit 3 is NOT set (block is divergent) and `v206` was previously zero, `v206` is set to 9 with the function ID from the basic block at offset +200.
 
 WG.DP = `WARPGROUP.DEPBAR` (dependency barrier), the SASS-level instruction that implements `warpgroup.wait`.
 
@@ -623,11 +623,11 @@ if (threadIdx.x < 64) {        // warp-divergent condition
 wgmma.wait_group;
 ```
 
-**Fix.** Ensure WGMMA pipeline stages execute in uniform (non-divergent) control flow. Move conditional logic outside the fence--wait region. Use predication instead of branching for minor variations within a stage.
+**Fix.** Ensure WGMMA pipeline stages execute in uniform (non-divergent) control flow. Move conditional logic outside the fence–wait region. Use predication instead of branching for minor variations within a stage.
 
 #### Case 10 (`0x1D60`): WG.AR in divergent path
 
-**Trigger.** During the finalization pass in `sub_ADEB40` (lines 1242--1306), the compiler iterates over `warpgroup.arrive` injection points. When the compiler needs to inject a `warpgroup.arrive` (to start a new pipeline stage after a conflict) but the injection point is in a divergent basic block, `v206` is set to 10. This occurs at line 1302 when a knob-gated diagnostic check at `sub_ACBCA0` indicates the injection is not suppressed but the block divergence prevents safe insertion.
+**Trigger.** During the finalization pass in `sub_ADEB40` (lines 1242–1306), the compiler iterates over `warpgroup.arrive` injection points. When the compiler needs to inject a `warpgroup.arrive` (to start a new pipeline stage after a conflict) but the injection point is in a divergent basic block, `v206` is set to 10. This occurs at line 1302 when a knob-gated diagnostic check at `sub_ACBCA0` indicates the injection is not suppressed but the block divergence prevents safe insertion.
 
 WG.AR = `WARPGROUP.ARRIVE` (arrival barrier), the SASS-level instruction that synchronizes warpgroup warps before entering a pipeline stage.
 
@@ -712,11 +712,11 @@ In rebuild mode (`a2=1`), the function replaces the secondary pipeline table ent
 
 The largest validator (7,538 bytes). Called after metadata finalization. Performs three checks:
 
-1. **Input register validation** (lines 383--387): calls `sub_AE0D20` twice — once on the arrive annotation set (`a1+69`, offset +69 from context) and once on the wait annotation set (`a1+74`). `sub_AE0D20` verifies that every register in the pipeline's declared input set has a matching annotation. If either call returns false, error code 5 is returned (non-WGMMA defines input registers).
+1. **Input register validation** (lines 383–387): calls `sub_AE0D20` twice — once on the arrive annotation set (`a1+69`, offset +69 from context) and once on the wait annotation set (`a1+74`). `sub_AE0D20` verifies that every register in the pipeline's declared input set has a matching annotation. If either call returns false, error code 5 is returned (non-WGMMA defines input registers).
 
-2. **Per-block instruction walk** (lines 537--660): iterates the WGMMA stage list at `*(ctx->field_792)`. For each stage entry, resolves the basic block range from `bb_start = reg_desc[instr.field_8+84] & 0xFFFFFF` through `bb_end` via the ordering array at `ctx+512`. Walks every instruction in the range, assigning sequence numbers at `instr+52`. For WGMMA opcodes (309 or 323 after masking), the instruction pointer is recorded into two arrays indexed by `instr+24` (basic block index): `v228[]` records the last WGMMA seen, `v231[]` records the first. Stage group IDs at `instr+264` matching `bb.field_144 == ctx->field_99[stage_id*4]` trigger insertion into the conflict register set via `sub_98CF00`. Commit-batch instructions (opcode `0x143` after `& 0xFFFFCFFF`) whose accumulator operand has `(flags & 3) == 2` and `(flags & 0x3C) == 0` are recorded via `sub_758060`.
+2. **Per-block instruction walk** (lines 537–660): iterates the WGMMA stage list at `*(ctx->field_792)`. For each stage entry, resolves the basic block range from `bb_start = reg_desc[instr.field_8+84] & 0xFFFFFF` through `bb_end` via the ordering array at `ctx+512`. Walks every instruction in the range, assigning sequence numbers at `instr+52`. For WGMMA opcodes (309 or 323 after masking), the instruction pointer is recorded into two arrays indexed by `instr+24` (basic block index): `v228[]` records the last WGMMA seen, `v231[]` records the first. Stage group IDs at `instr+264` matching `bb.field_144 == ctx->field_99[stage_id*4]` trigger insertion into the conflict register set via `sub_98CF00`. Commit-batch instructions (opcode `0x143` after `& 0xFFFFCFFF`) whose accumulator operand has `(flags & 3) == 2` and `(flags & 0x3C) == 0` are recorded via `sub_758060`.
 
-3. **WGMMA accumulator conflict scan** (lines 662--912): iterates all instructions in basic-block linked-list order. For each `wgmma.mma_async` (opcode 309 masked): checks accumulator source operands via `sub_AD4CC0`/`sub_ACC800`; if the result set is non-empty (`!sub_ACC3A0`), returns error code 7 (non-WGMMA defines accumulators). Checks accumulator destination operands via `sub_AD4BE0`/`sub_ACBB60`; if non-empty, returns error code 6 (non-WGMMA reads accumulators). For `_warpgroup.commit_batch` (opcode 323): checks commit-source operands, and if a knob-gated diagnostic (`sub_ACBCA0`) indicates a conflict in the per-stage register set, walks the conflict set via `sub_ACC110` and `sub_ACC8B0` to verify every conflicting register, returning error code 6 if any accumulator conflict persists.
+3. **WGMMA accumulator conflict scan** (lines 662–912): iterates all instructions in basic-block linked-list order. For each `wgmma.mma_async` (opcode 309 masked): checks accumulator source operands via `sub_AD4CC0`/`sub_ACC800`; if the result set is non-empty (`!sub_ACC3A0`), returns error code 7 (non-WGMMA defines accumulators). Checks accumulator destination operands via `sub_AD4BE0`/`sub_ACBB60`; if non-empty, returns error code 6 (non-WGMMA reads accumulators). For `_warpgroup.commit_batch` (opcode 323): checks commit-source operands, and if a knob-gated diagnostic (`sub_ACBCA0`) indicates a conflict in the per-stage register set, walks the conflict set via `sub_ACC110` and `sub_ACC8B0` to verify every conflicting register, returning error code 6 if any accumulator conflict persists.
 
 ## Interaction with Register Allocation
 
@@ -730,7 +730,7 @@ Phase 85 produces three artifacts consumed by the register allocator:
 
 2. **Sequence table at `context->field_99`.** Located at offset 792 from the compilation context base. An array of 4-byte entries (count in the first word), each indexing into the function table at `context->field_46`. The allocator's per-class iteration (`sub_9721C0`) reads this table to determine which functions contain WGMMA sequences and therefore have class-6 VRs requiring allocation.
 
-3. **Inserted arrive/wait instructions.** Phase 87 injects `_warpgroup.arrive` (opcode 323) and `_warpgroup.wait` (opcode 271 masked) instructions that create artificial definition and use points for accumulator VRs. The standard liveness analysis at phase 101 entry treats these as ordinary def/use sites, extending the live ranges of class-6 VRs across the fence--wait interval. This is the primary mechanism by which WGMMA accumulator occupancy is communicated to the allocator — the arrive/wait placement directly determines how many accumulator registers are simultaneously live at each program point.
+3. **Inserted arrive/wait instructions.** Phase 87 injects `_warpgroup.arrive` (opcode 323) and `_warpgroup.wait` (opcode 271 masked) instructions that create artificial definition and use points for accumulator VRs. The standard liveness analysis at phase 101 entry treats these as ordinary def/use sites, extending the live ranges of class-6 VRs across the fence–wait interval. This is the primary mechanism by which WGMMA accumulator occupancy is communicated to the allocator — the arrive/wait placement directly determines how many accumulator registers are simultaneously live at each program point.
 
 ### Allocator-side class-6 handling
 

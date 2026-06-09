@@ -344,14 +344,14 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 | +16 | ptr | Pass ID pointer (`&unk_4FBF0F4`) |
 | +24 | int32 | Mode (default=3, from `sink-into-texture`) |
 | +28 | int32 | Sink limit (default=20, from `sink-limit`) |
-| +32--48 | ptr[3] | Worklist data (head, tail, size) |
+| +32–48 | ptr[3] | Worklist data (head, tail, size) |
 | +56 | ptr | DominatorTree* (set during runOnFunction) |
 | +64 | ptr | List head 1 (self-referential sentinel) |
-| +72--80 | ptr[2] | List next/prev 1 |
+| +72–80 | ptr[2] | List next/prev 1 |
 | +96 | int64 | Counter (sink count for current iteration) |
 | +104 | ptr | LoopInfo* (set during runOnFunction) |
 | +112 | ptr | List head 2 (self-referential sentinel) |
-| +120--128 | ptr[2] | List next/prev 2 |
+| +120–128 | ptr[2] | List next/prev 2 |
 | +144 | int64 | Data field |
 | +152 | byte | Changed flag (for fixpoint termination) |
 
@@ -370,7 +370,7 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 | Outside-only pattern | No | Level == 3 |
 | Debug dump | Standard LLVM debug | `dump-sink2` knob |
 | Cost model | Boolean (profitable or not) | Float thresholds in New PM |
-| Pipeline occurrences | 1 | 3--4 (multi-run strategy) |
+| Pipeline occurrences | 1 | 3–4 (multi-run strategy) |
 | Fast-compile variant | Same pass | Dedicated fast=1 mode |
 
 ## Diagnostic Strings

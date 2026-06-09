@@ -512,7 +512,7 @@ The constructor (`sub_A3B080`) takes two arguments: `a1` (the Code Object to ini
 | +99 | `u32` | `ur_count` | Uniform register (UR) count |
 | +102 | `u32` | `r_alloc` | R-register allocated count |
 | +112 | `u128` | `reg_defaults_2` | Loaded from `xmmword_21EFAE0` |
-| +128--175 | `u128[3]` | (zeroed) | SSE zero-stores |
+| +128–175 | `u128[3]` | (zeroed) | SSE zero-stores |
 | +152 | `ptr` | `sym_table` | Symbol/constant lookup array |
 | +159 | `u32` | `r_reserved` | R-register reserved count |
 | +176 | `ptr` | (zeroed) | |
@@ -531,7 +531,7 @@ The constructor (`sub_A3B080`) takes two arguments: `a1` (the Code Object to ini
 | +296 | `ptr` | `bb_array` | `BasicBlock**` — dense array of pointers to heap BB objects (8-byte stride). Indexed `*(ctx+296) + 8*bix` in `sub_781F80:339`, `sub_78B430:107`, `sub_1908D90:21`. |
 | +304 | `u32` | `bb_index` | Current basic block count (iteration bound: `for (i=0; i<=ctx[+304]; i++)`) |
 | +312 | `ptr` | `options` | `OptionsManager*` for knob queries |
-| +320--359 | `u128[3]` | (zeroed) | |
+| +320–359 | `u128[3]` | (zeroed) | |
 | +335 | `u32` | `instr_hi` | Instruction count upper bound |
 | +336 | `u32` | `tex_inst_count` | Texture instruction count (stats emitter) |
 | +338 | `u32` | `fp16_vect_inst` | FP16 vectorized instruction count |
@@ -542,7 +542,7 @@ The constructor (`sub_A3B080`) takes two arguments: `a1` (the Code Object to ini
 | +368 | `u32` | `sub_block_flags` | |
 | +372 | `u32` | `instr_total` | Total instruction count (triggers chunked scheduling at > 0x3FFF) |
 | +376 | `u32` | (zeroed) | |
-| +384--416 | `ptr[5]` | (zeroed) | |
+| +384–416 | `ptr[5]` | (zeroed) | |
 | +424 | `u32` | (zeroed) | |
 | +432 | `ptr` | (zeroed) | |
 | +440 | `u32` | (zeroed) | |
@@ -1159,7 +1159,7 @@ Data payloads are 16-byte aligned: `cursor += (size + 15) & ~0xF`.
 
 The serializer emits up to 56 unique section types across three tag ranges.
 
-**Base types (0x01--0x58):**
+**Base types (0x01–0x58):**
 
 | Tag | Hex | Content | Evidence |
 |-----|-----|---------|----------|
@@ -1190,17 +1190,17 @@ The serializer emits up to 56 unique section types across three tag ranges.
 | 85 | 0x55 | Register geometry record (banks, warps, lanes) | From ctx+1600, writes bank/warp/lane counts |
 | 88 | 0x58 | Extended scheduling annotations | Conditional on `*(a1+1088) > 0` |
 
-**Extended types (0x1208--0x1221):** Emitted only when `*(char*)(ctx+1412) < 0`, which enables the full post-register-allocation diagnostic mode. These 16 types carry per-register-class live range and operand definition data:
+**Extended types (0x1208–0x1221):** Emitted only when `*(char*)(ctx+1412) < 0`, which enables the full post-register-allocation diagnostic mode. These 16 types carry per-register-class live range and operand definition data:
 
 | Tag | Hex | Content |
 |-----|-----|---------|
 | 4616 | 0x1208 | Extended operand class 0 |
-| 4617--4623 | 0x1209--0x120F | Extended operand classes 1--7 |
+| 4617–4623 | 0x1209–0x120F | Extended operand classes 1–7 |
 | 4624 | 0x1210 | Block-level operand summary |
 | 4625 | 0x1211 | Live-in vector (12 bytes/element, count at `*(a1+668)`) |
 | 4626 | 0x1212 | Live-out vector (12 bytes/element) |
 | 4627 | 0x1213 | Extended operand class 8 |
-| 4628--4629 | 0x1214--0x1215 | Extended operand classes 9--10 |
+| 4628–4629 | 0x1214–0x1215 | Extended operand classes 9–10 |
 | 4630 | 0x1216 | Memory space descriptor (SM arch > 0x4FFF) |
 | 4631 | 0x1217 | Extended scheduling flag (SM arch > 0x4FFF) |
 | 4632 | 0x1218 | Instruction hash (ctx+1386 bit 3) |

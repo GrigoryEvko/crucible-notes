@@ -49,11 +49,11 @@ The priority mechanism ensures specific patterns override general ones. Higher v
 
 | Priority Range | Meaning | Example |
 |---|---|---|
-| 2--4 | Fallback/default patterns (minimal constraints) | `sub_FBB780` (pattern 1, priority 2): matches any instruction with 0 explicit ops and 2 implicit uniform-register ops |
-| 7--10 | Simple patterns (few attribute checks) | NOP/barrier variants, basic shifts |
-| 14--19 | Standard patterns (moderate constraints) | IADD3, I2I, MUFU, ISETP, texture fetch, surface load |
-| 22--24 | Complex patterns (many attribute + operand checks) | Memory indexed 3-op, branch with predication |
-| 33--36 | Very specific patterns (maximum constraints) | SHFL/VOTE with 8 mixed operands, STG with 7 uniform-reg operands |
+| 2–4 | Fallback/default patterns (minimal constraints) | `sub_FBB780` (pattern 1, priority 2): matches any instruction with 0 explicit ops and 2 implicit uniform-register ops |
+| 7–10 | Simple patterns (few attribute checks) | NOP/barrier variants, basic shifts |
+| 14–19 | Standard patterns (moderate constraints) | IADD3, I2I, MUFU, ISETP, texture fetch, surface load |
+| 22–24 | Complex patterns (many attribute + operand checks) | Memory indexed 3-op, branch with predication |
+| 33–36 | Very specific patterns (maximum constraints) | SHFL/VOTE with 8 mixed operands, STG with 7 uniform-reg operands |
 | 39 | Most specific (HMMA widest variants) | `sub_F77140` (9 implicit operands, R128 tensor core ops) |
 
 ## Operand Predicates
@@ -211,11 +211,11 @@ The 276 matchers group into 12 functional categories by the instruction families
 
 ### Complex HMMA Matchers (Largest)
 
-The most complex matchers target Half-precision Matrix Multiply-Accumulate (HMMA) instructions for Turing's tensor cores. These are the largest individual matcher functions (6--8 KB each) because HMMA has the most operands and encoding options:
+The most complex matchers target Half-precision Matrix Multiply-Accumulate (HMMA) instructions for Turing's tensor cores. These are the largest individual matcher functions (6–8 KB each) because HMMA has the most operands and encoding options:
 
 **`sub_F77140` — HMMA widest variant A** (8,408 bytes, 179 lines):
 - Checks field `0x216 == 2717` (HMMA opcode variant)
-- Additional checks: fields `0xA1 == 700`, `0xA2` in range 702--703
+- Additional checks: fields `0xA1 == 700`, `0xA2` in range 702–703
 - 1 explicit operand: register R128
 - 9 implicit operands: R128 x3, predicate, R64, R32, UREG R32, PT/PN check
 - Sets pattern_id=8, priority=39 (maximum observed)
@@ -293,7 +293,7 @@ Offset  Size   Field
 +8      16     XMM register class descriptor (SSE-loaded from rodata)
 +12     2      Instruction opcode number (18, 104, or 126)
 +16     4      Base bit position for predicate encoding
-+24     40     Operand register numbers: 10 x 4-byte slots (indices 0--9)
++24     40     Operand register numbers: 10 x 4-byte slots (indices 0–9)
 +64     40     Operand types / constraints: 10 x 4-byte slots
 +104    40     Operand flags: 10 x 4-byte slots (0=def, 1-5=use, -1=unused)
 +144    4      Explicit operand count
@@ -378,92 +378,92 @@ Field IDs passed to `sub_A49150` to query instruction attributes. These are the 
 | Field ID | Hex | Semantic Name | Known Values |
 |---|---|---|---|
 | 5 | `0x05` | Instruction major class | 12 = memory/special |
-| 28 | `0x1C` | Branch/jump type subfield | 123--124 |
+| 28 | `0x1C` | Branch/jump type subfield | 123–124 |
 | 46 | `0x2E` | Integer comparison mode | 213 |
-| 59 | `0x3B` | Warp operation mode | 273--274 |
-| 88 | `0x58` | Data type / precision code | 406--408 |
-| 89 | `0x59` | Store type | 410--416 |
-| 91 | `0x5B` | Address space qualifier | 425--427 |
-| 92 | `0x5C` | Memory ordering | 429--430 |
+| 59 | `0x3B` | Warp operation mode | 273–274 |
+| 88 | `0x58` | Data type / precision code | 406–408 |
+| 89 | `0x59` | Store type | 410–416 |
+| 91 | `0x5B` | Address space qualifier | 425–427 |
+| 92 | `0x5C` | Memory ordering | 429–430 |
 | 105 | `0x69` | ALU function select | 477 |
-| 116 | `0x74` | Texture/surface function | 512--513 |
+| 116 | `0x74` | Texture/surface function | 512–513 |
 | 123 | `0x7B` | Special function unit selector | 536 = texture/surface |
-| 126 | `0x7E` | Cache coherence / eviction policy | 547--548 |
-| 136 | `0x88` | Source negate/absolute modifier | 598--599 |
+| 126 | `0x7E` | Cache coherence / eviction policy | 547–548 |
+| 136 | `0x88` | Source negate/absolute modifier | 598–599 |
 | 161 | `0xA1` | HMMA input precision A | 700 |
-| 162 | `0xA2` | HMMA input precision B | 702--703 |
+| 162 | `0xA2` | HMMA input precision B | 702–703 |
 | 190 | `0xBE` | NOP/barrier subtype | 815 |
 | 201 | `0xC9` | Control flow subtype | 1109 |
-| 203 | `0xCB` | Integer multiply mode | 1113--1119 |
-| 207 | `0xCF` | Integer multiply variant | 1150--1158 |
+| 203 | `0xCB` | Integer multiply mode | 1113–1119 |
+| 207 | `0xCF` | Integer multiply variant | 1150–1158 |
 | 211 | `0xD3` | Conversion subtype | 1182 |
 | 220 | `0xDC` | Load/store address mode | 1206 |
 | 226 | `0xE2` | Matrix layout | 1229 |
 | 229 | `0xE5` | Special instruction code | 1238 |
-| 242 | `0xF2` | Addressing mode detail | 1281--1282 |
+| 242 | `0xF2` | Addressing mode detail | 1281–1282 |
 | 253 | `0xFD` | MUFU function select | 1321 |
 | 254 | `0xFE` | I2I conversion mode | 1324 |
-| 255 | `0xFF` | Texture fetch type | 1327--1328 |
+| 255 | `0xFF` | Texture fetch type | 1327–1328 |
 | 265 | `0x109` | Texture opcode variant | 1363/1366 |
-| 281 | `0x119` | Warp shuffle type | 1435--1440 |
-| 285 | `0x11D` | Warp shuffle mode | 1454--1457 |
+| 281 | `0x119` | Warp shuffle type | 1435–1440 |
+| 285 | `0x11D` | Warp shuffle mode | 1454–1457 |
 | 287 | `0x11F` | Special indexed operation | 1464 |
 | 294 | `0x126` | Memory bank selector | 1493 |
 | 295 | `0x127` | Surface load type | 1495 |
 | 302 | `0x12E` | Set-predicate class | 1525 |
-| 329 | `0x149` | Integer addressing mode | 1833--1837 |
-| 338 | `0x152` | Source predication mode A | 1871/1873--1874 |
+| 329 | `0x149` | Integer addressing mode | 1833–1837 |
+| 338 | `0x152` | Source predication mode A | 1871/1873–1874 |
 | 339 | `0x153` | HMMA accumulator type | 1877 |
-| 341 | `0x155` | Source predication mode B | 1881--1882 |
-| 345 | `0x159` | Memory scope / synchronization | 1899--1903 |
-| 348 | `0x15C` | Execution model qualifier | 1912--1915 |
+| 341 | `0x155` | Source predication mode B | 1881–1882 |
+| 345 | `0x159` | Memory scope / synchronization | 1899–1903 |
+| 348 | `0x15C` | Execution model qualifier | 1912–1915 |
 | 355 | `0x163` | Data size / vector width | 1943/1947 |
 | 356 | `0x164` | Texture data type | 1949 |
 | 359 | `0x167` | Surface data type | 1960 |
 | 376 | `0x178` | Memory persistence | 2035 |
-| 377 | `0x179` | Memory eviction priority | 2037--2041 |
+| 377 | `0x179` | Memory eviction priority | 2037–2041 |
 | 379 | `0x17B` | Branch condition type | 2046 |
-| 380 | `0x17C` | Branch target type A | 2048--2049 |
-| 381 | `0x17D` | Branch target type B | 2052--2053 |
-| 382 | `0x17E` | Branch modifier | 2055--2060 |
-| 394 | `0x18A` | Convert source type | 2107--2108 |
+| 380 | `0x17C` | Branch target type A | 2048–2049 |
+| 381 | `0x17D` | Branch target type B | 2052–2053 |
+| 382 | `0x17E` | Branch modifier | 2055–2060 |
+| 394 | `0x18A` | Convert source type | 2107–2108 |
 | 397 | `0x18D` | Destination predication | 2115 |
 | 399 | `0x18F` | HMMA sub-operation | 2121 |
-| 404 | `0x194` | Comparison extension | 2140--2141 |
+| 404 | `0x194` | Comparison extension | 2140–2141 |
 | 406 | `0x196` | HMMA configuration | 2146 |
-| 407 | `0x197` | Comparison precision | 2148--2151 |
+| 407 | `0x197` | Comparison precision | 2148–2151 |
 | 409 | `0x199` | Set-predicate comparison | 2155 |
-| 413 | `0x19D` | Memory segment | 2167--2168 |
+| 413 | `0x19D` | Memory segment | 2167–2168 |
 | 423 | `0x1A7` | Source data type | bitmask test |
 | 424 | `0x1A8` | Function lookup | bitmask test (739) |
-| 429 | `0x1AD` | Memory ordering qualifier | 2253--2257 |
-| 430 | `0x1AE` | Source A comparison | 2259--2260 |
-| 431 | `0x1AF` | Source A comparison ext | 2262--2263 |
-| 465 | `0x1D1` | Source B comparison | 2420--2421 |
-| 466 | `0x1D2` | Source B comparison ext | 2423--2424 |
-| 468 | `0x1D4` | HMMA step select | 2429--2430 |
+| 429 | `0x1AD` | Memory ordering qualifier | 2253–2257 |
+| 430 | `0x1AE` | Source A comparison | 2259–2260 |
+| 431 | `0x1AF` | Source A comparison ext | 2262–2263 |
+| 465 | `0x1D1` | Source B comparison | 2420–2421 |
+| 466 | `0x1D2` | Source B comparison ext | 2423–2424 |
+| 468 | `0x1D4` | HMMA step select | 2429–2430 |
 | 480 | `0x1E0` | Matrix multiply type | 2480/2482/2485 |
 | 484 | `0x1E4` | Set-predicate subclass | 2502 |
-| 492 | `0x1EC` | Comparison boolean combine | 2524--2525 |
-| 494 | `0x1EE` | Branch target form | 2529--2530 |
+| 492 | `0x1EC` | Comparison boolean combine | 2524–2525 |
+| 494 | `0x1EE` | Branch target form | 2529–2530 |
 | 505 | `0x1F9` | HMMA operand layout A | 2569 |
 | 506 | `0x1FA` | HMMA operand layout B | 2571 |
-| 508 | `0x1FC` | Shift/funnel type | 2576--2577 |
-| 524 | `0x20C` | Branch distance | 2678--2679 |
-| 534 | `0x216` | HMMA opcode variant A | 2716--2717 |
-| 535 | `0x217` | HMMA source C layout | 2719--2720 |
-| 536 | `0x218` | HMMA source D layout | 2722--2723 |
+| 508 | `0x1FC` | Shift/funnel type | 2576–2577 |
+| 524 | `0x20C` | Branch distance | 2678–2679 |
+| 534 | `0x216` | HMMA opcode variant A | 2716–2717 |
+| 535 | `0x217` | HMMA source C layout | 2719–2720 |
+| 536 | `0x218` | HMMA source D layout | 2722–2723 |
 | 538 | `0x21A` | HMMA opcode variant B | 2729 |
-| 539 | `0x21B` | HMMA mode X | 2731--2736 |
-| 540 | `0x21C` | HMMA mode Y | 2738--2743 |
-| 547 | `0x223` | HMMA step A | 2767--2768 |
+| 539 | `0x21B` | HMMA mode X | 2731–2736 |
+| 540 | `0x21C` | HMMA mode Y | 2738–2743 |
+| 547 | `0x223` | HMMA step A | 2767–2768 |
 | 548 | `0x224` | HMMA step B | 2770 |
 | 549 | `0x225` | HMMA step C | 2772 |
-| 569 | `0x239` | Integer set-predicate type | 2850--2851 |
+| 569 | `0x239` | Integer set-predicate type | 2850–2851 |
 | 575 | `0x23F` | Memory base addressing | 2870 |
 | 576 | `0x240` | Memory indexed addressing | 2872 |
 | 583 | `0x247` | Conversion class | 2892 |
-| 595 | `0x253` | Store qualifier | 2937--2938 |
+| 595 | `0x253` | Store qualifier | 2937–2938 |
 
 ## Turing-Specific Design Observations
 

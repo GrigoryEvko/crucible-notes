@@ -121,7 +121,7 @@ The extension comparisons are open-coded single-byte loads: `*s1 == 's' && s1[1]
 
 ## Host ELF Detection: x86-64 Host vs Pure Device ELF
 
-nvlink relies on three independent byte tests to separate a host relocatable from a device cubin, all implemented in 18--42-byte predicate functions so they can be inlined cheaply at the `main()` dispatch:
+nvlink relies on three independent byte tests to separate a host relocatable from a device cubin, all implemented in 18–42-byte predicate functions so they can be inlined cheaply at the `main()` dispatch:
 
 | Predicate | Function | Byte offset | Test | Meaning |
 |---|---|---|---|---|

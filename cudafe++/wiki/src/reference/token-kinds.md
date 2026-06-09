@@ -2,13 +2,13 @@
 
 Every token produced by cudafe++'s lexer carries a 16-bit token kind stored in the global `word_126DD58`. There are exactly 357 token kinds, numbered 0 through 356, with names indexed from a read-only string pointer table at `off_E6D240` in the `.rodata` segment. A parallel 357-entry byte array at `byte_E6C0E0` maps each token kind to an operator-name index, used by the `initialize_opname_kinds` routine (`sub_588BB0`) to populate the operator name display table at `qword_126DE00`. A boolean stop-token table at `qword_126DB48 + 8` (357 entries) marks which token kinds are valid synchronization points for error recovery in `skip_to_token` (`sub_6887C0`).
 
-Token kind assignment follows a block scheme established by the EDG 6.6 frontend: operators and punctuation occupy the lowest range, followed by alternative tokens (C++ digraphs and named operators), C89 keywords, C99/C11 extensions, MSVC keywords, core C++ keywords, compiler internals, type-trait intrinsics, and finally the newest C++23/26 and extended-type additions at the top. CUDA-specific additions from NVIDIA occupy three dedicated slots (328--330) within the type-trait block, plus additional entries in the extended range. This ordering reflects the historical accretion of the C and C++ standards: each new standard appended its keywords at the end rather than filling gaps.
+Token kind assignment follows a block scheme established by the EDG 6.6 frontend: operators and punctuation occupy the lowest range, followed by alternative tokens (C++ digraphs and named operators), C89 keywords, C99/C11 extensions, MSVC keywords, core C++ keywords, compiler internals, type-trait intrinsics, and finally the newest C++23/26 and extended-type additions at the top. CUDA-specific additions from NVIDIA occupy three dedicated slots (328–330) within the type-trait block, plus additional entries in the extended range. This ordering reflects the historical accretion of the C and C++ standards: each new standard appended its keywords at the end rather than filling gaps.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Total token kinds | 357 (indices 0--356) |
+| Total token kinds | 357 (indices 0–356) |
 | Name table | `off_E6D240` (357 string pointers in `.rodata`) |
 | Operator-to-name map | `byte_E6C0E0` (357-byte index array) |
 | Operator name display table | `qword_126DE00` (48 string pointers, populated by `sub_588BB0`) |
@@ -24,21 +24,21 @@ Token kind assignment follows a block scheme established by the EDG 6.6 frontend
 | Range | Count | Category | Description |
 |---|---|---|---|
 | 0 | 1 | Special | End-of-file / no-token sentinel |
-| 1--31 | 31 | Operators and punctuation | Core operators (`+`, `-`, `*`, etc.) and delimiters (`(`, `)`, `{`, `}`, `;`) |
-| 32--51 | 20 | Operators (continued) | Compound and remaining operators (`<<`, `>>`, `->`, `::`, `...`, `<=>`) |
-| 52--76 | 25 | Alternative tokens / digraphs | C++ named operators (`and`, `or`, `not`) and digraphs (`<%`, `%>`, `<:`, `:>`) |
-| 77--108 | 32 | C89 keywords | All keywords from ANSI C89/ISO C90 |
-| 109--131 | 23 | C99/C11 keywords | `restrict`, `_Bool`, `_Complex`, `_Imaginary`, character types |
-| 132--136 | 5 | MSVC keywords | `__declspec`, `__int8`--`__int64` |
-| 137--199 | 63 | C++ keywords | Core C++ keywords plus C++11/14/17/20/23 additions |
-| 200--206 | 7 | Compiler internal | Preprocessor and internal token kinds |
-| 207--327 | 121 | Type trait intrinsics | `__is_xxx` / `__has_xxx` compiler intrinsic keywords |
-| 328--330 | 3 | NVIDIA CUDA type traits | NVIDIA-specific lambda type-trait intrinsics |
-| 331--356 | 26 | Extended types / recent additions | `_Float32`--`_Float128`, C++23/26 features, scalable vector types |
+| 1–31 | 31 | Operators and punctuation | Core operators (`+`, `-`, `*`, etc.) and delimiters (`(`, `)`, `{`, `}`, `;`) |
+| 32–51 | 20 | Operators (continued) | Compound and remaining operators (`<<`, `>>`, `->`, `::`, `...`, `<=>`) |
+| 52–76 | 25 | Alternative tokens / digraphs | C++ named operators (`and`, `or`, `not`) and digraphs (`<%`, `%>`, `<:`, `:>`) |
+| 77–108 | 32 | C89 keywords | All keywords from ANSI C89/ISO C90 |
+| 109–131 | 23 | C99/C11 keywords | `restrict`, `_Bool`, `_Complex`, `_Imaginary`, character types |
+| 132–136 | 5 | MSVC keywords | `__declspec`, `__int8`--`__int64` |
+| 137–199 | 63 | C++ keywords | Core C++ keywords plus C++11/14/17/20/23 additions |
+| 200–206 | 7 | Compiler internal | Preprocessor and internal token kinds |
+| 207–327 | 121 | Type trait intrinsics | `__is_xxx` / `__has_xxx` compiler intrinsic keywords |
+| 328–330 | 3 | NVIDIA CUDA type traits | NVIDIA-specific lambda type-trait intrinsics |
+| 331–356 | 26 | Extended types / recent additions | `_Float32`--`_Float128`, C++23/26 features, scalable vector types |
 
 ## Complete Token Table
 
-### Operators and Punctuation (0--51)
+### Operators and Punctuation (0–51)
 
 These tokens are produced directly by the character-level scanner `sub_679800` (`scan_token`). Multi-character operators are resolved by dedicated scanning functions in the `0x67ABB0`--`0x67BAB0` range.
 
@@ -97,7 +97,7 @@ These tokens are produced directly by the character-level scanner `sub_679800` (
 | 50 | `\|=` | OR-assign | Also `xor` alt-token for `^` |
 | 51 | `::` | Scope resolution | Also `bitor` alt-token for `\|` |
 
-### Alternative Tokens and Digraphs (52--76)
+### Alternative Tokens and Digraphs (52–76)
 
 C++ alternative tokens (ISO 14882 clause 5.5) and C/C++ digraphs. These are registered during `keyword_init` (`sub_5863A0`) via `sub_749600` when in C++ mode (`dword_126EFB4 == 2`).
 
@@ -120,9 +120,9 @@ C++ alternative tokens (ISO 14882 clause 5.5) and C/C++ digraphs. These are regi
 | 66 | `or_eq` | `\|=` | Bitwise OR-assign |
 | 67 | `%:` | `#` | Digraph for hash |
 | 68 | `%:%:` | `##` | Digraph for token paste |
-| 69--76 | (reserved) | — | Reserved for future alternative tokens |
+| 69–76 | (reserved) | — | Reserved for future alternative tokens |
 
-### C89 Keywords (77--108)
+### C89 Keywords (77–108)
 
 Always registered unconditionally. These form the base keyword set present in every compilation mode.
 
@@ -161,25 +161,25 @@ Always registered unconditionally. These form the base keyword set present in ev
 | 107 | `volatile` | Volatile qualifier |
 | 108 | `while` | While loop |
 
-### C99/C11/C23 Keywords (109--131)
+### C99/C11/C23 Keywords (109–131)
 
 Gated on the C standard version at `dword_126EF68` (values: 199901 = C99, 201112 = C11, 202311 = C23).
 
 | Kind | Name | Standard | C/C++ Construct |
 |---:|---|---|---|
 | 109 | `inline` | C99 | Inline function hint (already C++ keyword at 154) |
-| 110--118 | (reserved) | — | — |
+| 110–118 | (reserved) | — | — |
 | 119 | `restrict` | C99 | Pointer restrict qualifier |
 | 120 | `_Bool` | C99 | Boolean type (C-style) |
 | 121 | `_Complex` | C99 | Complex number type |
 | 122 | `_Imaginary` | C99 | Imaginary number type |
-| 123--125 | (reserved) | — | — |
+| 123–125 | (reserved) | — | — |
 | 126 | `char16_t` | C++11/C23 | 16-bit character type |
 | 127 | `char32_t` | C++11/C23 | 32-bit character type |
 | 128 | `char8_t` | C++17/C23 | UTF-8 character type |
-| 129--131 | (reserved) | — | — |
+| 129–131 | (reserved) | — | — |
 
-### MSVC Keywords (132--136)
+### MSVC Keywords (132–136)
 
 Gated on `dword_126EFB0` (Microsoft extensions enabled, language mode 2/MSVC).
 
@@ -191,7 +191,7 @@ Gated on `dword_126EFB0` (Microsoft extensions enabled, language mode 2/MSVC).
 | 135 | `__int32` | 32-bit integer type |
 | 136 | `__int64` | 64-bit integer type |
 
-### C++ Core Keywords (137--199)
+### C++ Core Keywords (137–199)
 
 Gated on C++ mode (`dword_126EFB4 == 2`). Some keywords within this range were added in C++11 through C++23 and have additional standard-version gates.
 
@@ -201,10 +201,10 @@ Gated on C++ mode (`dword_126EFB4 == 2`). Some keywords within this range were a
 | 138 | `true` | C++98 | Boolean literal |
 | 139 | `false` | C++98 | Boolean literal |
 | 140 | `wchar_t` | C++98 | Wide character type |
-| 141--149 | (reserved) | — | — |
+| 141–149 | (reserved) | — | — |
 | 142 | `__attribute` | GNU | GCC attribute syntax |
 | 143 | `__builtin_types_compatible_p` | GNU | GCC type compatibility test |
-| 144--149 | (reserved) | — | — |
+| 144–149 | (reserved) | — | — |
 | 150 | `catch` | C++98 | Exception handler |
 | 151 | `class` | C++98 | Class definition |
 | 152 | `delete` | C++98 | Deallocation; deleted function (C++11) |
@@ -226,14 +226,14 @@ Gated on C++ mode (`dword_126EFB4 == 2`). Some keywords within this range were a
 | 168 | (reserved) | — | — |
 | 169 | `export` | C++98/20 | Export declaration (original C++98, revived for modules in C++20) |
 | 170 | `export` | C++20 | Module export (alternate registration slot) |
-| 171--173 | (reserved) | — | — |
+| 171–173 | (reserved) | — | — |
 | 174 | `mutable` | C++98 | Mutable data member |
 | 175 | `namespace` | C++98 | Namespace declaration |
 | 176 | `reinterpret_cast` | C++98 | Reinterpret cast expression |
 | 177 | `static_cast` | C++98 | Static cast expression |
 | 178 | `typeid` | C++98 | Runtime type identification |
 | 179 | `using` | C++98 | Using declaration/directive |
-| 180--182 | (reserved) | — | — |
+| 180–182 | (reserved) | — | — |
 | 183 | `typename` | C++98 | Dependent type name |
 | 184 | `static_assert` | C++11 | Static assertion; also `_Static_assert` in C11 |
 | 185 | `decltype` | C++11 | Decltype specifier |
@@ -242,11 +242,11 @@ Gated on C++ mode (`dword_126EFB4 == 2`). Some keywords within this range were a
 | 188 | (reserved) | — | — |
 | 189 | `typeof` | C++23/GNU | Type-of expression |
 | 190 | `typeof_unqual` | C++23 | Unqualified type-of expression |
-| 191--193 | (reserved) | — | — |
+| 191–193 | (reserved) | — | — |
 | 194 | `thread_local` | C++11 | Thread-local storage; also `_Thread_local` in C11 |
-| 195--199 | (reserved) | — | — |
+| 195–199 | (reserved) | — | — |
 
-### Compiler Internal Tokens (200--206)
+### Compiler Internal Tokens (200–206)
 
 These tokens are used internally by the preprocessor and the token cache. They never appear in user-visible diagnostics.
 
@@ -260,7 +260,7 @@ These tokens are used internally by the preprocessor and the token cache. They n
 | 205 | `<pragma>` | Pragma token (deferred for later processing) |
 | 206 | `<end-of-directive>` | End of preprocessor directive |
 
-### Type Trait Intrinsics (207--327)
+### Type Trait Intrinsics (207–327)
 
 These are compiler intrinsic keywords that implement the C++ type traits (from `<type_traits>`) without requiring template instantiation. They are registered during `keyword_init` with C++ standard version gating — earlier traits (C++11) are always available in C++ mode, while newer traits (C++20, C++23, C++26) require the corresponding standard version at `dword_126EF68`. Some traits are MSVC-specific (gated on `dword_126EFB0`) or Clang-specific (gated on `qword_126EF90`).
 
@@ -336,7 +336,7 @@ The complete list of type-trait intrinsics, organized alphabetically within each
 | 270 | `__is_member_object_pointer` | C++11 | Type is a pointer to data member |
 | 271 | `__builtin_addressof` | GNU | Address-of without operator overload |
 
-#### EDG Internal Keywords (272--283)
+#### EDG Internal Keywords (272–283)
 
 These are not user-facing keywords. They are injected by the EDG frontend into synthesized declarations for built-in types, throw specifications, and vector types.
 
@@ -355,7 +355,7 @@ These are not user-facing keywords. They are injected by the EDG frontend into s
 | 282 | `__edg_opnd__` | Operand reference in synthesized expressions |
 | 283 | (reserved) | — |
 
-#### More Type Predicates and Binary Traits (284--327)
+#### More Type Predicates and Binary Traits (284–327)
 
 | Kind | Name | Standard | Tests Whether... |
 |---:|---|---|---|
@@ -404,7 +404,7 @@ These are not user-facing keywords. They are injected by the EDG frontend into s
 | 326 | `__is_pointer_interconvertible_with_class` | C++20 | Member pointer is interconvertible with class pointer |
 | 327 | `__is_trivially_relocatable` | C++26 | Type can be trivially relocated |
 
-### NVIDIA CUDA Type Traits (328--330)
+### NVIDIA CUDA Type Traits (328–330)
 
 Three NVIDIA-specific type-trait intrinsics occupy dedicated token kinds. These are registered during `keyword_init` when GPU mode is active (`dword_106C2C0 != 0`) and participate in the same token classification pipeline as all other type traits. They are used internally by the CUDA frontend to detect extended lambda closure types during device/host separation.
 
@@ -423,7 +423,7 @@ When extended lambdas are disabled, these traits are predefined as macros expand
 #define __nv_is_extended_device_lambda_with_preserved_return_type(X) false
 ```
 
-### Extended Types and Recent Additions (331--356)
+### Extended Types and Recent Additions (331–356)
 
 These are the newest token kinds, added for extended floating-point types (ISO/IEC TS 18661-3) and recent C++23/26 features.
 
@@ -434,12 +434,12 @@ These are the newest token kinds, added for extended floating-point types (ISO/I
 | 333 | `_Float64` | TS 18661-3 | 64-bit IEEE 754 float |
 | 334 | `_Float64x` | TS 18661-3 | Extended 64-bit float |
 | 335 | `_Float128` | TS 18661-3 | 128-bit IEEE 754 float |
-| 336--340 | (reserved) | — | — |
-| 341--356 | (recent additions) | C++23/26 | Reserved for MSVC C++/CLI traits (`__is_ref_class`, `__is_value_class`, `__is_interface_class`, `__is_delegate`, `__is_sealed`, `__has_finalizer`, `__has_copy`, `__has_assign`, `__is_simple_value_class`, `__is_ref_array`, `__is_valid_winrt_type`, `__is_win_class`, `__is_win_interface`) and additional future extensions |
+| 336–340 | (reserved) | — | — |
+| 341–356 | (recent additions) | C++23/26 | Reserved for MSVC C++/CLI traits (`__is_ref_class`, `__is_value_class`, `__is_interface_class`, `__is_delegate`, `__is_sealed`, `__has_finalizer`, `__has_copy`, `__has_assign`, `__is_simple_value_class`, `__is_ref_array`, `__is_valid_winrt_type`, `__is_win_class`, `__is_win_interface`) and additional future extensions |
 
 ## Token Cache
 
-The token cache provides lookahead, backtracking, and macro-expansion replay for C++ parsing. Tokens are stored in a linked list of cache entries, each 80--112 bytes depending on payload.
+The token cache provides lookahead, backtracking, and macro-expansion replay for C++ parsing. Tokens are stored in a linked list of cache entries, each 80–112 bytes depending on payload.
 
 ### Cache Entry Layout
 
@@ -447,12 +447,12 @@ The token cache provides lookahead, backtracking, and macro-expansion replay for
 |---|---|---|---|
 | `+0` | 8 | `next` | Next entry in linked list |
 | `+8` | 8 | `source_position` | Encoded file/line/column |
-| `+16` | 2 | `token_code` | Token kind (0--356) |
+| `+16` | 2 | `token_code` | Token kind (0–356) |
 | `+18` | 1 | `cache_entry_kind` | Payload discriminator (see table below) |
 | `+20` | 4 | `flags` | Token classification flags |
 | `+24` | 4 | `extra_flags` | Additional flags |
 | `+32` | 8 | `extra_data` | Context-dependent data |
-| `+40`.. | varies | `payload` | Kind-specific data (40--72 bytes) |
+| `+40`.. | varies | `payload` | Kind-specific data (40–72 bytes) |
 
 ### Cache Entry Kinds
 
@@ -660,7 +660,7 @@ When a token is produced by the lexer, the following globals are populated:
 
 | Address | Name | Type | Description |
 |---|---|---|---|
-| `word_126DD58` | `current_token_code` | WORD | 16-bit token kind (0--356) |
+| `word_126DD58` | `current_token_code` | WORD | 16-bit token kind (0–356) |
 | `qword_126DD38` | `current_source_position` | QWORD | Encoded file/line/column |
 | `qword_126DD48` | `token_text_ptr` | QWORD | Pointer to identifier/literal text |
 | `src` | `token_start_position` | char* | Start of token in input buffer |

@@ -692,7 +692,7 @@ Based on the 1,141 registration calls and the 431 decoded Ori IR opcodes (from `
 
 ## PTX 8.x New Instructions
 
-Instructions introduced in PTX ISA 8.0--8.7 (CUDA 12.0--12.8), verified from SM architecture gates and PTX version checks in the ptxas v13.0.88 binary:
+Instructions introduced in PTX ISA 8.0–8.7 (CUDA 12.0–12.8), verified from SM architecture gates and PTX version checks in the ptxas v13.0.88 binary:
 
 | PTX | Instruction | SM | Description |
 |---|---|---|---|

@@ -9,7 +9,7 @@ Four passes in the ptxas pipeline collectively manage the conversion of general-
 | **Phases** | 11, 27, 74, 86 |
 | **Phase names** | `ReplaceUniformsWithImm`, `AnalyzeUniformsForSpeculation`, `ConvertToUniformReg`, `InsertPseudoUseDefForConvUR` |
 | **Target** | sm_75+ (Turing and later) — no-op on earlier architectures |
-| **Register file** | UR: UR0--UR62 usable, UR63 = URZ (zero register); UP: UP0--UP6, UP7 = UPT |
+| **Register file** | UR: UR0–UR62 usable, UR63 = URZ (zero register); UP: UP0–UP6, UP7 = UPT |
 | **Hardware limit** | 63 uniform GPRs, 7 uniform predicates per thread |
 | **Code Object field** | `+99` = UR count; `+856` = UR liveness bitvector |
 | **Context flags** | `+1368` bit 1 = has-uniform; `+1376` bit 4 = UR tracking enabled; `+1378` bit 3 = has-UR-regs |
@@ -273,7 +273,7 @@ The `OriPropagateVarying` passes (phases 53 and 70) propagate divergence informa
 
 ### Algorithm
 
-Both passes execute the same forward dataflow procedure. The analysis is an **iterative fixed-point loop**, not a single forward pass. Although the Ori IR is in partial-SSA form (phases 23--73) where intra-procedural def-use ordering is trivially satisfied by forward program order, inter-procedural divergence propagation requires re-iteration: when a function called on a divergent path is newly marked varying, the varying status must propagate through that callee's register definitions, which may in turn affect other call sites. The loop terminates when no register's varying status changes during a complete iteration.
+Both passes execute the same forward dataflow procedure. The analysis is an **iterative fixed-point loop**, not a single forward pass. Although the Ori IR is in partial-SSA form (phases 23–73) where intra-procedural def-use ordering is trivially satisfied by forward program order, inter-procedural divergence propagation requires re-iteration: when a function called on a divergent path is newly marked varying, the varying status must propagate through that callee's register definitions, which may in turn affect other call sites. The loop terminates when no register's varying status changes during a complete iteration.
 
 Binary analysis of `sub_90E620` (1,919 bytes, called from `sub_90EDA0`) confirms this structure. The function contains an outer `do { ... } while (worklist)` loop driven by a bitvector of pending registers. Within the loop body, `sub_90C180` (2,093 bytes) propagates varying status to each register and returns a non-zero changed flag when the status was updated. When changes are detected and the affected register belongs to a callee function (checked via the call-graph edge list at `codeobj+128`), `sub_90E3F0` resolves the callee's divergence through FNV-1a hash lookups on the function-local state at offsets `+288`/`+328`. If the callee function itself was newly marked varying (comparing the callee's function record against the changed record), the loop restarts from the beginning via `goto LABEL_24`, re-processing all pending registers with the updated information.
 
@@ -328,7 +328,7 @@ Registers that remain with bit 2 clear after convergence are proven uniform and 
 
 1. **Base-address tracking (opcode 97 / STG).** `sub_892F50` records the address register of the store into the pass-local state. Subsequent atomics targeting the same address inherit this base, enabling the uniformity check without a full reaching-definition analysis.
 
-2. **Atomic candidate match (opcodes 228, 16 after mask).** `sub_893100` (12 KB) performs the eligibility test. It rejects the instruction if: (a) the operand type is not a supported memory width (type 12 = 32-bit, types 9--11 = 64/128-bit; type 6 = scope-qualified is accepted only when `codeobj+1397` bit 5 is set), (b) the address operand carries the varying flag (bit 3 of `vreg+48`), or (c) a CAS-ordered operand is present (bit 20 of the last operand word). After passing these filters, the function extracts the **reduction operation type** from operand bits `[8:4]` (for opcode 16) or `[8:5]` (for opcode 228) and dispatches through a switch:
+2. **Atomic candidate match (opcodes 228, 16 after mask).** `sub_893100` (12 KB) performs the eligibility test. It rejects the instruction if: (a) the operand type is not a supported memory width (type 12 = 32-bit, types 9–11 = 64/128-bit; type 6 = scope-qualified is accepted only when `codeobj+1397` bit 5 is set), (b) the address operand carries the varying flag (bit 3 of `vreg+48`), or (c) a CAS-ordered operand is present (bit 20 of the last operand word). After passing these filters, the function extracts the **reduction operation type** from operand bits `[8:4]` (for opcode 16) or `[8:5]` (for opcode 228) and dispatches through a switch:
 
 | Case | Op   | Replacement strategy |
 |------|------|----------------------|
@@ -339,7 +339,7 @@ Registers that remain with bit 2 clear after convergence are proven uniform and 
 | 8    | OR   | Bitwise warp-reduce |
 | 9    | XOR  | Bitwise warp-reduce |
 
-For ADD with a uniform address on sm_80+ (`codeobj+1398` bit 2 and `ctx+1045` bit 1 both set, operand types 11--12), `sub_892420` emits `ATOM.UNIFORM` directly. Otherwise the general path in `sub_88FC40`/`sub_890C90` constructs an ELECT + REDUX + conditional-ATOM sequence: elect one lane, perform a warp-level REDUX to combine the per-thread values, then execute a single ATOM from the elected lane and broadcast the result.
+For ADD with a uniform address on sm_80+ (`codeobj+1398` bit 2 and `ctx+1045` bit 1 both set, operand types 11–12), `sub_892420` emits `ATOM.UNIFORM` directly. Otherwise the general path in `sub_88FC40`/`sub_890C90` constructs an ELECT + REDUX + conditional-ATOM sequence: elect one lane, perform a warp-level REDUX to combine the per-thread values, then execute a single ATOM from the elected lane and broadcast the result.
 
 3. **All other opcodes** are skipped.
 
@@ -381,9 +381,9 @@ This fires on pre-sm_75 targets where the UR file does not exist, or when a CLI 
 | SM range | UR support | UR ALU instructions | Uniform FP |
 |---|---|---|---|
 | sm_30 — sm_72 | None | None | None |
-| sm_75 — sm_89 | UR0--UR62, UP0--UP6 | UIADD3, UIMAD, ULOP3, UISETP, UMOV, UPRMT, USGXT, UPOPC, UBREV | None |
-| sm_90 — sm_90a | UR0--UR62, UP0--UP6 | Full integer uniform ALU | None (LDCU requires `-forcetext -sso`) |
-| sm_100+ | UR0--UR62, UP0--UP6 | Full integer + FP uniform ALU | UFADD, UFFMA, UFSEL, UFSETP, UVIADDR |
+| sm_75 — sm_89 | UR0–UR62, UP0–UP6 | UIADD3, UIMAD, ULOP3, UISETP, UMOV, UPRMT, USGXT, UPOPC, UBREV | None |
+| sm_90 — sm_90a | UR0–UR62, UP0–UP6 | Full integer uniform ALU | None (LDCU requires `-forcetext -sso`) |
+| sm_100+ | UR0–UR62, UP0–UP6 | Full integer + FP uniform ALU | UFADD, UFFMA, UFSEL, UFSETP, UVIADDR |
 
 The `LDCU` (Load Constant Uniform) instruction is gated by architecture capability. The validation at `sub_B28400` (345 bytes) checks:
 

@@ -1,8 +1,8 @@
 # Surface and Texture Builtins
 
-Surface and texture builtins form the largest contiguous block in the builtin table, with 165 surface store entries (IDs 474--638) plus a generic texture/surface handler (ID 647). CUDA separates texture reads (which go through a unified handler) from surface writes (which have dedicated per-format builtins). This asymmetry reflects the hardware: texture reads use a programmable texture pipeline, while surface stores map directly to typed `sust` (surface store) instructions.
+Surface and texture builtins form the largest contiguous block in the builtin table, with 165 surface store entries (IDs 474–638) plus a generic texture/surface handler (ID 647). CUDA separates texture reads (which go through a unified handler) from surface writes (which have dedicated per-format builtins). This asymmetry reflects the hardware: texture reads use a programmable texture pipeline, while surface stores map directly to typed `sust` (surface store) instructions.
 
-## Surface Store Builtins (IDs 474--638)
+## Surface Store Builtins (IDs 474–638)
 
 The 165 `sust` (surface store) builtins encode the dimensionality, data type, and out-of-bounds behavior directly in the builtin name. They follow the pattern:
 
@@ -40,9 +40,9 @@ __nvvm_sust_b_{dim}_{type}_{oob_mode}
 
 | Mode | ID Range | Behavior |
 |---|---|---|
-| `clamp` | 474--528 | Clamp coordinates to valid range |
-| `trap` | 529--583 | Trigger hardware trap on OOB access |
-| `zero` | 584--638 | Write zero for OOB coordinates |
+| `clamp` | 474–528 | Clamp coordinates to valid range |
+| `trap` | 529–583 | Trigger hardware trap on OOB access |
+| `zero` | 584–638 | Write zero for OOB coordinates |
 
 The total 5 x 11 x 3 = 165 entries are registered as a contiguous block. IDA shows SSE `xmmword` constant loads for the long common prefix strings (`__nvvm_sust_b_2d_array_*`), which is the compiler's optimization of string literal initialization during registration.
 
@@ -226,13 +226,13 @@ The central intrinsic lowering function dispatches on LLVM intrinsic IDs via a g
 
 | Intrinsic ID Range | Handler | Category |
 |---|---|---|
-| `0x5D`--`0x8D` (93--141) | `sub_33A4350` | Texture fetch bulk handler (50 IDs) |
-| `0x8E`--`0x90` (142--144) | `sub_33A3180` | Surface read/write handler (3 IDs) |
+| `0x5D`--`0x8D` (93–141) | `sub_33A4350` | Texture fetch bulk handler (50 IDs) |
+| `0x8E`--`0x90` (142–144) | `sub_33A3180` | Surface read/write handler (3 IDs) |
 | `0x91` (145) | Inline | Complex texture sample with LOD/bias |
-| `0x92`--`0x98` (146--152) | Various | Surface store variants |
-| `0x9C`--`0x9D` (156--157) | `sub_33AEC60` | Surface atomics |
-| `0x9E`--`0x9F` (158--159) | `sub_33AFBA0` / `sub_340EC60` | Surface special ops |
-| `0xA0`--`0xA2` (160--162) | Various | Surface/texture helpers |
+| `0x92`--`0x98` (146–152) | Various | Surface store variants |
+| `0x9C`--`0x9D` (156–157) | `sub_33AEC60` | Surface atomics |
+| `0x9E`--`0x9F` (158–159) | `sub_33AFBA0` / `sub_340EC60` | Surface special ops |
+| `0xA0`--`0xA2` (160–162) | Various | Surface/texture helpers |
 | `0x2952` (10578) | Inline | `nvvm_texsurf_handle` binding |
 | `0x254D`+ (9549+) | `sub_34B8FD0` | Unified texture sample core |
 
@@ -332,7 +332,7 @@ This validation occurs during instruction emission, catching type mismatches tha
 
 ## Surface Store Lowering Details
 
-Surface store builtins in the 474--638 range are handled by the main dispatch switch with a block of consecutive cases. Each case:
+Surface store builtins in the 474–638 range are handled by the main dispatch switch with a block of consecutive cases. Each case:
 
 1. Extracts the surface handle, coordinate(s), and data value(s) from the argument list
 2. The number of coordinate arguments varies by dimensionality (1D: 1, 2D: 2, 3D: 3, arrays: +1 for layer index)
@@ -380,7 +380,7 @@ Surface and texture operations are available on all SM architectures. However, t
 
 - **All SM**: Basic texture fetch, surface read/write with clamp/trap/zero modes
 - **SM 30+**: Unified texture mode via `__nv_tex_surf_handler` generic dispatch; `v2637=true` path in DAG lowering
-- **SM 90+ (Hopper)**: Tensor memory accelerator (TMA) operations provide an alternative high-throughput path for bulk data movement, partially overlapping with texture/surface functionality but handled through separate builtins (IDs 411--412)
+- **SM 90+ (Hopper)**: Tensor memory accelerator (TMA) operations provide an alternative high-throughput path for bulk data movement, partially overlapping with texture/surface functionality but handled through separate builtins (IDs 411–412)
 
 The 165 surface store builtins are registered unconditionally regardless of target SM. Architecture gating occurs at the PTX emission layer, not during builtin registration or lowering. The complex texture sample path (`intrinsic 0x91`) has an explicit SM feature gate via `sub_33CC4A0` that selects alternate instruction encodings for older architectures, with `sub_33A1E80` as the fallback for unsupported targets.
 
@@ -389,14 +389,14 @@ The 165 surface store builtins are registered unconditionally regardless of targ
 | Function | Address | Size | Role |
 |---|---|---|---|
 | NVVM builtin lowering dispatch | `sub_955A70` | — | Main switch; case `0x287` handles `__nv_tex_surf_handler` |
-| Texture/surface sample handler | `sub_954F10` | — | Red-black tree dispatch for IDs 302--309, 338--345, 395--402 |
+| Texture/surface sample handler | `sub_954F10` | — | Red-black tree dispatch for IDs 302–309, 338–345, 395–402 |
 | EDG keyword handler | `sub_72BA30` | — | Parses `__nv_tex_surf_handle_t` built-in type (keyword 277) |
-| NVPTX intrinsic lowering | `sub_33B0210` | — | 343KB central dispatch; tex IDs 0x5D--0x8D, surf IDs 0x8E--0x90 |
+| NVPTX intrinsic lowering | `sub_33B0210` | — | 343KB central dispatch; tex IDs 0x5D–0x8D, surf IDs 0x8E–0x90 |
 | Texture fetch bulk handler | `sub_33A4350` | — | 50 consecutive intrinsic IDs for all tex1D/2D/3D/array variants |
 | Surface read/write handler | `sub_33A3180` | — | 3 intrinsic IDs for surf1D/2D/3D read |
 | Tex/surf sample DAG node builder | `sub_33EB1C0` | — | Creates memory-typed NVPTXISD sample nodes (opcode 47) |
 | Sampler state DAG node builder | `sub_3409320` | — | Creates sampler state binding nodes |
-| Surface atomics handler | `sub_33AEC60` | — | Intrinsic IDs 0x9C--0x9D |
+| Surface atomics handler | `sub_33AEC60` | — | Intrinsic IDs 0x9C–0x9D |
 | Surface special handler | `sub_33AFBA0` | — | Intrinsic ID 0x9E |
 | Texture/surface ISel | `sub_306A930` | — | 52KB instruction selection for tex/suld/sust patterns |
 | Image type validator | `sub_21DD1A0` | — | 16KB; validates `.tex`/`.suld`/`.sust`/`suq.` image types |

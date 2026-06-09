@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Complete reference table of all SASS opcode mnemonics known to ptxas v13.0.88. Extracted from the ROT13-encoded opcode name table in the `InstructionInfo` constructor (`sub_7A5D10`, vtable `off_233ADC0`). The table stores exactly 322 named entries (indices 0--321) at object offset +0x1058, with each entry occupying 16 bytes (8-byte string pointer + 8-byte length). A parallel constructor `sub_BE7390` initializes an identical table. Immediately after the name table, a 322-element identity-mapped index array (0x508 bytes of 4-byte integers 0..321) is bulk-copied from `unk_21C0E00` to object offset +0x2478; this is a separate data structure (encoding category map), not additional opcode names.
+Complete reference table of all SASS opcode mnemonics known to ptxas v13.0.88. Extracted from the ROT13-encoded opcode name table in the `InstructionInfo` constructor (`sub_7A5D10`, vtable `off_233ADC0`). The table stores exactly 322 named entries (indices 0–321) at object offset +0x1058, with each entry occupying 16 bytes (8-byte string pointer + 8-byte length). A parallel constructor `sub_BE7390` initializes an identical table. Immediately after the name table, a 322-element identity-mapped index array (0x508 bytes of 4-byte integers 0..321) is bulk-copied from `unk_21C0E00` to object offset +0x2478; this is a separate data structure (encoding category map), not additional opcode names.
 
 All SASS mnemonic strings in the ptxas binary are ROT13-obfuscated. The cleartext names shown here are the result of applying ROT13 decoding to the stored strings.
 
@@ -12,25 +12,25 @@ Opcodes are partitioned by SM generation through explicit boundary markers embed
 
 | Index | Marker | Range |
 |-------|--------|-------|
-| 0--135 | Base ISA | sm_70 (Volta) and all later architectures |
+| 0–135 | Base ISA | sm_70 (Volta) and all later architectures |
 | 136 | `SM70_LAST` | End of sm_70 range |
-| 137--171 | sm_73+ | Volta extensions (uniform registers, tensor shapes) |
+| 137–171 | sm_73+ | Volta extensions (uniform registers, tensor shapes) |
 | 171 | `SM73_LAST` | End of sm_73 range |
-| 172--193 | sm_82+ | Ampere additions (MMA shapes, gather, REDUX) |
+| 172–193 | sm_82+ | Ampere additions (MMA shapes, gather, REDUX) |
 | 193 | `SM82_LAST` | End of sm_82 range |
-| 194--199 | sm_86+ | Ampere+ additions (conversion packed, SUQUERY) |
+| 194–199 | sm_86+ | Ampere+ additions (conversion packed, SUQUERY) |
 | 199 | `SM86_LAST` | End of sm_86 range |
-| 200--205 | sm_89+ | Ada Lovelace additions (QMMA shapes) |
+| 200–205 | sm_89+ | Ada Lovelace additions (QMMA shapes) |
 | 205 | `SM89_LAST` | End of sm_89 range |
-| 206--252 | sm_90+ | Hopper additions (GMMA, CGA barriers, fences, TMA) |
+| 206–252 | sm_90+ | Hopper additions (GMMA, CGA barriers, fences, TMA) |
 | 252 | `SM90_LAST` | End of sm_90 range |
-| 253--280 | sm_100+ | Blackwell datacenter additions (UTC, QFMA4, MEMSET) |
+| 253–280 | sm_100+ | Blackwell datacenter additions (UTC, QFMA4, MEMSET) |
 | 280 | `SM100_LAST` | End of sm_100 range |
-| 281--320 | sm_104+ | Blackwell Ultra additions (uniform FP, new conversions) |
+| 281–320 | sm_104+ | Blackwell Ultra additions (uniform FP, new conversions) |
 | 320 | `SM104_LAST` | End of sm_104 range |
 | 321 | `LAST` | Sentinel (end of table) |
 
-Each SM generation only adds opcodes; no base opcodes are removed. The Ori IR uses the 12-bit index into this table as the base opcode field (instruction offset +72, lower 12 bits). Bits 12--13 of the opcode word encode sub-operation modifiers (`.HI`, `.WIDE`, etc.) and are stripped by the `0xFFFFCFFF` mask to recover the base index.
+Each SM generation only adds opcodes; no base opcodes are removed. The Ori IR uses the 12-bit index into this table as the base opcode field (instruction offset +72, lower 12 bits). Bits 12–13 of the opcode word encode sub-operation modifiers (`.HI`, `.WIDE`, etc.) and are stripped by the `0xFFFFCFFF` mask to recover the base index.
 
 ## Encoding Format Summary
 
@@ -65,7 +65,7 @@ Five entries in the table share a SASS mnemonic with an earlier index. These are
 
 Binary evidence: in the constructor `sub_7A5D10`, indices 284 and 285 store identical `"VZAZK"` string pointers at adjacent 16-byte slots (`v2+8728` and `v2+8744`). The SASS printer (`sub_7CB560`) maps them to `IMNMX` vs `IMNMX.64` based on operand metadata.
 
-## Base ISA — sm_70 (Volta) and Later (Indices 0--135)
+## Base ISA — sm_70 (Volta) and Later (Indices 0–135)
 
 These opcodes are available on all SM architectures supported by ptxas v13.0.
 
@@ -85,7 +85,7 @@ These opcodes are available on all SM architectures supported by ptxas v13.0.
 | 10 | `FUS` | **SHF** | Funnel shift (concatenate two regs, shift) |
 | 33 | `VQC` | **IDP** | Integer dot product (4-element) |
 | 34 | `VQR` | **IDE** | Integer dot expand |
-| 37 | `VZAZK` | **IMNMX** | Integer min/max (32-bit only; re-introduced at indices 284--285 for sm_104 with 32/64-bit split) |
+| 37 | `VZAZK` | **IMNMX** | Integer min/max (32-bit only; re-introduced at indices 284–285 for sm_104 with 32/64-bit split) |
 | 38 | `CBCP` | **POPC** | Population count (count set bits) |
 | 39 | `SYB` | **FLO** | Find leading one (bit scan) |
 | 53 | `OERI` | **BREV** | Bit reverse |
@@ -290,13 +290,13 @@ These opcodes are available on all SM architectures supported by ptxas v13.0.
 | 133 | `UZZN_32` | **HMMA_32** | FP16 matrix multiply-accumulate, 32-wide |
 | 134 | `VZZN` | **IMMA** | Integer matrix multiply-accumulate |
 
-## sm_73 Extensions (Indices 137--171)
+## sm_73 Extensions (Indices 137–171)
 
 Volta+ additions. Primarily introduces uniform register variants and additional tensor core shapes.
 
 ### Uniform Register Operations
 
-Uniform registers (UR0--UR63) hold values shared across the warp, enabling scalar execution of warp-uniform computations.
+Uniform registers (UR0–UR63) hold values shared across the warp, enabling scalar execution of warp-uniform computations.
 
 | Idx | ROT13 | Mnemonic | Description |
 |-----|-------|----------|-------------|
@@ -339,7 +339,7 @@ Uniform registers (UR0--UR63) hold values shared across the warp, enabling scala
 | 169 | `F2HE` | **S2UR** | Special register to uniform register |
 | 170 | `OEKH` | **BRXU** | Branch indirect, uniform target |
 
-## sm_82 Extensions (Indices 172--193)
+## sm_82 Extensions (Indices 172–193)
 
 Ampere additions. New MMA shapes, gather/scatter metadata, and reduction variants.
 
@@ -366,7 +366,7 @@ Ampere additions. New MMA shapes, gather/scatter metadata, and reduction variant
 | 191 | `YQTFGF` | **LDGSTS** | Load-global, store-to-shared (async copy) |
 | 192 | `ERQHK` | **REDUX** | Warp-wide reduction (uniform result) |
 
-## sm_86 Extensions (Indices 194--199)
+## sm_86 Extensions (Indices 194–199)
 
 Ampere+ (GA106/GA107) additions.
 
@@ -377,7 +377,7 @@ Ampere+ (GA106/GA107) additions.
 | 197 | `V2SC` | **I2FP** | Integer to float, packed |
 | 198 | `FHDHREL` | **SUQUERY** | Surface query (dimensions, format) |
 
-## sm_89 Extensions (Indices 200--205)
+## sm_89 Extensions (Indices 200–205)
 
 Ada Lovelace additions. Quarter-precision MMA shapes for FP8/INT4.
 
@@ -388,7 +388,7 @@ Ada Lovelace additions. Quarter-precision MMA shapes for FP8/INT4.
 | 203 | `DZZN_FC_16832` | **QMMA_SP_16832** | Quarter-precision sparse MMA, 16x8x32 |
 | 204 | `DZZN_FC_12864` | **QMMA_SP_12864** | Quarter-precision sparse MMA, 128x64 |
 
-## sm_90 Extensions (Indices 206--252)
+## sm_90 Extensions (Indices 206–252)
 
 Hopper additions. Major expansion: CGA (Cooperative Grid Array) barriers, fences, GMMA (Group MMA), TMA (Tensor Memory Accelerator), and collective operations.
 
@@ -487,7 +487,7 @@ Hopper additions. Major expansion: CGA (Cooperative Grid Array) barriers, fences
 | 250 | `IVZAZK3` | **VIMNMX3** | Vector integer three-input min/max |
 | 251 | `JNECTEBHC` | **WARPGROUP** | Warpgroup collective operation |
 
-## sm_100 Extensions (Indices 253--280)
+## sm_100 Extensions (Indices 253–280)
 
 Blackwell datacenter additions. UTC (Unified Tensor Core) operations, quad-precision FP, FP32x2 packed operations, and tensor core swizzle load/store.
 
@@ -547,7 +547,7 @@ Blackwell datacenter additions. UTC (Unified Tensor Core) operations, quad-preci
 | 278 | `FGGZ` | **STTM** | Store via tensor memory |
 | 279 | `SRAPR_G` | **FENCE_T** | Fence, tensor scope |
 
-## sm_104 Extensions (Indices 281--320)
+## sm_104 Extensions (Indices 281–320)
 
 Blackwell Ultra additions. Uniform FP operations, additional integer widths, conversion variants, MMA shape extensions, and MKQ sparse variants.
 
@@ -875,7 +875,7 @@ A second, much larger mnemonic table is constructed by `sub_896D50` (21KB, vtabl
 
 | Property | Primary (`sub_7A5D10`) | Extended (`sub_896D50`) |
 |----------|------------------------|-------------------------|
-| Entry count | 322 (indices 0--321) | 773 (indices 0--772) |
+| Entry count | 322 (indices 0–321) | 773 (indices 0–772) |
 | Effective mnemonics | 306 (excl. 16 boundary markers) | 772 (excl. NONE sentinel) |
 | Entry size | 16 bytes (8B ptr + 8B len) | 16 bytes (8B ptr + 8B len) |
 | Object offset | +0x1058 (+4184) | +0x2C60 (+11360) |
@@ -944,9 +944,9 @@ MERCURY_{operation}_{srcs|dests}_{regclass}_{variant_index}
 ```
 
 Register class codes in the mnemonic:
-- `r` = GPR (R0--R255)
-- `ur` = Uniform register (UR0--UR63)
-- `p` = Predicate register (P0--P6)
+- `r` = GPR (R0–R255)
+- `ur` = Uniform register (UR0–UR63)
+- `p` = Predicate register (P0–P6)
 - `simm` = Signed immediate
 - `uimm` = Unsigned immediate
 - `r2` / `ur2` = Register pair

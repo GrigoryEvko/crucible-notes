@@ -112,7 +112,7 @@ The analysis is a forward Kleene iteration on a complete lattice and is guarante
 
 3. **Initialization at bottom.** LiveIn^0(B) = LiveOut^0(B) = empty-set for all B. Since empty-set subset-eq F_B(empty-set) for any B, the iterates form an ascending chain.
 
-4. **Termination.** Each iteration either adds at least one bit to some set (strictly ascending) or detects no change and halts. Since h(L) = |V| and there are |Blocks| sets, the maximum number of iterations is bounded by |V| * |Blocks|. In practice, RPO traversal ensures convergence in d+2 iterations where d is the loop nesting depth — typically 2--3 passes for acyclic code, confirmed by the `changed` boolean collapsing to false within 2 full RPO sweeps on straight-line CFGs.
+4. **Termination.** Each iteration either adds at least one bit to some set (strictly ascending) or detects no change and halts. Since h(L) = |V| and there are |Blocks| sets, the maximum number of iterations is bounded by |V| * |Blocks|. In practice, RPO traversal ensures convergence in d+2 iterations where d is the loop nesting depth — typically 2–3 passes for acyclic code, confirmed by the `changed` boolean collapsing to false within 2 full RPO sweeps on straight-line CFGs.
 
 ## BitVector Implementation
 
@@ -213,7 +213,7 @@ The P2R (predicate-to-register) and R2P (register-to-predicate) instructions cre
 
 ### Barrier Register Exclusion from GEN/KILL
 
-Barrier registers (`reg_type = 9`, covering B0--B15 and UB0--UB15) are excluded from the standard liveness GEN/KILL computation. The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG. This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups — they do not carry data values that participate in the liveness lattice. The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
+Barrier registers (`reg_type = 9`, covering B0–B15 and UB0–UB15) are excluded from the standard liveness GEN/KILL computation. The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG. This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups — they do not carry data values that participate in the liveness lattice. The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
 
 ## Phase 10: EarlyOriSimpleLiveDead
 
@@ -471,7 +471,7 @@ A traditional graph-coloring allocator (Chaitin-Briggs) builds an explicit inter
 |---|---|---|
 | Representation | Adjacency matrix/list (N^2 edges) | Per-VR linked list of 24-byte constraint nodes |
 | Cost model | Binary (interfere / don't) | Weighted (integer cost per constraint) |
-| Pair/alignment | Separate pre-coloring pass | Inline constraint types 5--7, 11--14 |
+| Pair/alignment | Separate pre-coloring pass | Inline constraint types 5–7, 11–14 |
 | Long-range preference | Coalescing heuristic | Type 15 (range) writes to secondary array as tie-breaker |
 | Relaxation | Spill-and-retry | Per-iteration soft-constraint skip threshold (OCG knob) |
 | Complexity | O(N^2) build + O(N) simplify | O(N * C) per VR, C = constraint count |
@@ -480,7 +480,7 @@ The term "fat point" refers to the pressure histogram: each physical register sl
 
 #### The 15 Constraint Types
 
-Each constraint node stores a type (0--15), a target VR/physical register index, and an integer weight. The type determines which histogram slots receive that weight during the pressure walk:
+Each constraint node stores a type (0–15), a target VR/physical register index, and an integer weight. The type determines which histogram slots receive that weight during the pressure walk:
 
 | Type | Name | Effect on histogram |
 |------|------|---------------------|

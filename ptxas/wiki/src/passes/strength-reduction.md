@@ -228,7 +228,7 @@ Complete instruction mix (verified from decompilation, counting each `sub_9314F0
 | LOP | 0x93 | 1 | Logic op (carry merge) |
 | **Total** | | **55** | |
 
-Key constants allocated via `sub_91D160`: 23 (mantissa shift), 255 (exponent mask), 127 (IEEE 754 bias), 254 (double-bias overflow guard), 0, 1, -1 (correction), 32 (word-width shift), 0x80000000 (sign bit), 0x7FFFFF (mantissa mask), 0x800000 (implicit-one bit). The temporary register pool spans indices 90--150 of the parameter array (`a7[]`), providing 61 dedicated scratch registers. Branch targets reference label arrays at `a10[21]`--`a10[28]`.
+Key constants allocated via `sub_91D160`: 23 (mantissa shift), 255 (exponent mask), 127 (IEEE 754 bias), 254 (double-bias overflow guard), 0, 1, -1 (correction), 32 (word-width shift), 0x80000000 (sign bit), 0x7FFFFF (mantissa mask), 0x800000 (implicit-one bit). The temporary register pool spans indices 90–150 of the parameter array (`a7[]`), providing 61 dedicated scratch registers. Branch targets reference label arrays at `a10[21]`--`a10[28]`.
 
 ### 64-bit Division
 
@@ -240,7 +240,7 @@ See [Templates — Integer Division](../codegen/templates.md#integer-division-lo
 
 ### Division by Constant (Granlund-Montgomery)
 
-Division by compile-time constant is handled during the `GeneralOptimize` bundle passes (not by the Newton-Raphson templates). The Granlund-Montgomery algorithm computes a "magic number" `M` and shift amount `s` at compile time such that for all unsigned `x`: `x / C == MULHI(x, M) >> s`. The magic number satisfies `M = ceil(2^(32+s) / C)`, chosen so the high 32 bits of `x * M` yield the exact quotient after the right-shift. For signed division, an additional add-and-shift fixup handles the off-by-one from truncation toward zero. The output is 2--3 SASS instructions (`IMAD.HI` + `SHR`, sometimes with an intermediate `IADD`) instead of 55.
+Division by compile-time constant is handled during the `GeneralOptimize` bundle passes (not by the Newton-Raphson templates). The Granlund-Montgomery algorithm computes a "magic number" `M` and shift amount `s` at compile time such that for all unsigned `x`: `x / C == MULHI(x, M) >> s`. The magic number satisfies `M = ceil(2^(32+s) / C)`, chosen so the high 32 bits of `x * M` yield the exact quotient after the right-shift. For signed division, an additional add-and-shift fixup handles the off-by-one from truncation toward zero. The output is 2–3 SASS instructions (`IMAD.HI` + `SHR`, sometimes with an intermediate `IADD`) instead of 55.
 
 ### FP Division Strength Reduction
 

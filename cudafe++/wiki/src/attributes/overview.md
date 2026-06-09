@@ -27,7 +27,7 @@ Every attribute node carries a **kind byte** at offset `+8`. For standard C++/GN
 | 108 | 0x6C | `'l'` | `__block_size__` | Launch config | `sub_4109E0` |
 | 110 | 0x6E | `'n'` | `__nv_pure__` | Optimization | (internal) |
 
-The kind values are not contiguous. Kinds 86--95 form a dense block for the original CUDA attributes. Kinds 102, 107, 108, and 110 were added later (managed memory in CUDA 6.0, cluster dimensions in CUDA 11.8, block size and nv_pure more recently), occupying gaps in the ASCII range.
+The kind values are not contiguous. Kinds 86–95 form a dense block for the original CUDA attributes. Kinds 102, 107, 108, and 110 were added later (managed memory in CUDA 6.0, cluster dimensions in CUDA 11.8, block size and nv_pure more recently), occupying gaps in the ASCII range.
 
 ### Reserved Kind Slots
 

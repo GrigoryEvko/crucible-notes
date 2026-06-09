@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The NVIDIA GPU hardware uses a software-managed scoreboard system for instruction-level hazard tracking. Unlike CPUs that detect dependencies in hardware, NVIDIA's warp schedulers rely on per-instruction metadata — encoded in a **control word** — to determine when an instruction's operands are available, when a warp should yield, and which dependency barriers to set or wait on. ptxas generates this metadata in three pipeline phases (114--116) that together produce the final scoreboard annotations embedded in the SASS binary.
+The NVIDIA GPU hardware uses a software-managed scoreboard system for instruction-level hazard tracking. Unlike CPUs that detect dependencies in hardware, NVIDIA's warp schedulers rely on per-instruction metadata — encoded in a **control word** — to determine when an instruction's operands are available, when a warp should yield, and which dependency barriers to set or wait on. ptxas generates this metadata in three pipeline phases (114–116) that together produce the final scoreboard annotations embedded in the SASS binary.
 
 | | |
 |---|---|
@@ -27,12 +27,12 @@ The internal representation uses wider fields than the final SASS encoding to al
 
 | Field | Bits | Range | Description |
 |-------|------|-------|-------------|
-| Stall count | 4 | 0--15 | Minimum cycles to wait before issuing this instruction |
-| Yield flag | 1 | 0--1 | Hint to warp scheduler: yield execution to another warp |
-| Write barrier index | 3 | 0--5 | Which barrier register this instruction's result writes to |
-| Read barrier mask | 6 | 0--63 | Bitmask of barriers this instruction must wait for (reads) |
-| Wait barrier mask | 6 | 0--63 | Bitmask of barriers this instruction clears upon completion |
-| Reuse flags | 6 | 0--63 | Per-source-operand register reuse cache hints |
+| Stall count | 4 | 0–15 | Minimum cycles to wait before issuing this instruction |
+| Yield flag | 1 | 0–1 | Hint to warp scheduler: yield execution to another warp |
+| Write barrier index | 3 | 0–5 | Which barrier register this instruction's result writes to |
+| Read barrier mask | 6 | 0–63 | Bitmask of barriers this instruction must wait for (reads) |
+| Wait barrier mask | 6 | 0–63 | Bitmask of barriers this instruction clears upon completion |
+| Reuse flags | 6 | 0–63 | Per-source-operand register reuse cache hints |
 
 Total: 26 bits of scheduling metadata per instruction in the internal representation.
 
@@ -48,9 +48,9 @@ In the final SASS binary, the control word is packed into 23 bits per instructio
   └─────────┴─────────┴─────────┴──────────────────┘
 
 Per-slot 23-bit layout (sm_70+):
-  bits [3:0]    Stall count (4 bits, values 0--15)
+  bits [3:0]    Stall count (4 bits, values 0–15)
   bit  [4]      Yield flag (1 bit)
-  bits [7:5]    Write barrier index (3 bits, values 0--5; 7 = none)
+  bits [7:5]    Write barrier index (3 bits, values 0–5; 7 = none)
   bits [13:8]   Read barrier mask (6 bits, one-hot per barrier)
   bits [19:14]  Wait barrier mask (6 bits, one-hot per barrier)
   bits [22:20]  Reserved / extended flags (3 bits)
@@ -88,18 +88,18 @@ The stall count and dependency barriers serve complementary purposes:
 
 | Mechanism | Latency Range | Use Case |
 |-----------|---------------|----------|
-| **Stall count** (4 bits) | 0--15 cycles | Short-latency operations: ALU (4--6 cycles), shared memory (20--30 cycles when stall is sufficient) |
-| **Dependency barriers** | Arbitrary | Long-latency operations: global memory (200--800 cycles), texture (200--400 cycles), where stall count is insufficient |
+| **Stall count** (4 bits) | 0–15 cycles | Short-latency operations: ALU (4–6 cycles), shared memory (20–30 cycles when stall is sufficient) |
+| **Dependency barriers** | Arbitrary | Long-latency operations: global memory (200–800 cycles), texture (200–400 cycles), where stall count is insufficient |
 
 For operations with latency <= 15 cycles, the stall count alone suffices. For longer latencies, a dependency barrier must be used because 4 bits cannot encode delays beyond 15 cycles. The yield flag provides an additional hint: when set, it tells the warp scheduler that this warp is about to stall and should be descheduled in favor of another ready warp.
 
 ## Phase 114: FixUpTexDepBarAndSync
 
-Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), correcting barrier state that the instruction scheduler (phases 97--110) left inconsistent with texture pipeline requirements. The dispatch is doubly-indirect through a scheduling/scoreboard subsystem object owned by the architecture backend (`arch_backend+16 -> vtable slot 14`). See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarandsync) for the full algorithm, per-SM scoreboard configuration table, and dispatch pseudocode.
+Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), correcting barrier state that the instruction scheduler (phases 97–110) left inconsistent with texture pipeline requirements. The dispatch is doubly-indirect through a scheduling/scoreboard subsystem object owned by the architecture backend (`arch_backend+16 -> vtable slot 14`). See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarandsync) for the full algorithm, per-SM scoreboard configuration table, and dispatch pseudocode.
 
 ### Summary
 
-Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200--400+ cycles, exceeding the 4-bit stall-count range. Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings. The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass. The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
+Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200–400+ cycles, exceeding the 4-bit stall-count range. Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings. The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass. The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
 
 ## Phase 115: AdvancedScoreboardsAndOpexes
 
@@ -118,9 +118,9 @@ The phase entry point dispatches through the architecture backend vtable to `sub
 - Opcode 4 with operand types (7, 6): Specific ALU patterns with predicate operands — dual operand processing via `sub_A220A0`
 - Opcode 111 with operand types (7, 7, 6): Triple-source patterns — processed via triple `sub_A220A0` calls
 - Opcodes 120, 121: GMMA/tensor operations — processed via `sub_A220A0` + `sub_A22B40` with variable operand counts
-- Opcodes 126--128: Complex operations with architecture-specific operand counts (2--4 source operands)
+- Opcodes 126–128: Complex operations with architecture-specific operand counts (2–4 source operands)
 - Opcodes 195, 270, 280, 281: Memory operations with specific addressing modes
-- Opcodes 350, 351: Extended operations with operand subtype 11--12
+- Opcodes 350, 351: Extended operations with operand subtype 11–12
 
 **Fall-through to slow path** (full DAG scheduler):
 - All other opcodes
@@ -140,7 +140,7 @@ The scheduler:
 2. **Walks the def-use chain**: For each source operand, traces back to the defining instruction. Determines the dependency distance (in instructions and cycles) from each producer to the current consumer.
 
 3. **Assigns barrier or stall**: Based on the dependency distance and the producer's latency:
-   - If the producer's latency fits within the stall count range (0--15), assigns a stall count
+   - If the producer's latency fits within the stall count range (0–15), assigns a stall count
    - If the latency exceeds 15 cycles, allocates a dependency barrier from the pool of 6
    - If all 6 barriers are in use, finds the oldest barrier, inserts a wait for it, and recycles it
 
@@ -308,7 +308,7 @@ The master switch at the entry of `sub_A36360` routes instructions by opcode cla
 
 | Opcode Class | Handler | Description |
 |---|---|---|
-| 2, 3, 5, 7 | Inline (LABEL_18 path) | Standard ALU/memory with full barrier analysis. Checks operand subtype 9--10 and architecture feature at `*(sm_backend+1037) & 0x20`. Calls `sub_A32C70` for operand analysis, then `sub_A31040` for field encoding. |
+| 2, 3, 5, 7 | Inline (LABEL_18 path) | Standard ALU/memory with full barrier analysis. Checks operand subtype 9–10 and architecture feature at `*(sm_backend+1037) & 0x20`. Calls `sub_A32C70` for operand analysis, then `sub_A31040` for field encoding. |
 | 6 | `sub_A34B70` | Wait barrier mask encoding for specific memory operations |
 | 10, 149, 151, 290 | Inline (large block) | Extended operations with special barrier handling. Calls `sub_A32A20` for multi-operand setup, then processes register-type checks at offset +64 (type==5 triggers additional barrier logic). |
 | All others | Per-field encoder chain | Default path through the six encoder functions |
@@ -520,7 +520,7 @@ The 35 slots are organized as barrier state / stall counter pairs for each regis
 | +120 | 15 | Arch-specific class 7 stall counter |
 | +128 | 16 | Arch-specific class 8 barrier state |
 | +136 | 17 | Arch-specific class 8 stall counter |
-| +144--+272 | 18--34 | Additional scoreboard tracking counters (17 slots) |
+| +144--+272 | 18–34 | Additional scoreboard tracking counters (17 slots) |
 
 Total: 35 slots x 8 bytes = 280 bytes.
 
@@ -549,7 +549,7 @@ Total: 112 bytes.
 
 ### Region 3: Barrier Tracking Records (offsets +392 to +951)
 
-14 identical 40-byte records, each tracking one dependency barrier register. The first 6 records correspond to the 6 hardware dependency barriers per warp. Records 6--12 are extended/spare slots for overflow or future barrier model expansion (sm_100+). Record 13 uses a different initialization path (`sub_6996C0` instead of `sub_69A120`), suggesting it serves as a sentinel or special-purpose record.
+14 identical 40-byte records, each tracking one dependency barrier register. The first 6 records correspond to the 6 hardware dependency barriers per warp. Records 6–12 are extended/spare slots for overflow or future barrier model expansion (sm_100+). Record 13 uses a different initialization path (`sub_6996C0` instead of `sub_69A120`), suggesting it serves as a sentinel or special-purpose record.
 
 Per-record layout (40 bytes):
 
@@ -598,7 +598,7 @@ ScoreboardObject (952 bytes)
 +--------+--------+--------+--------+--------+--------+--------+--------+
 |+32 slot4 (UR)   |+40 slot5 (UR)   |+48 slot6 (UP)   |+56 slot7 (UP)   |
 +--------+--------+--------+--------+--------+--------+--------+--------+
-|+64 slot8 (B)    |+72 slot9 (B)    |+80..+272 slots 10--34             |
+|+64 slot8 (B)    |+72 slot9 (B)    |+80..+272 slots 10–34             |
 +--------+--------+--------+--------+--------+--------+--------+--------+
 |+280 allocRef    |+288 sentinel    |+296 listHead    |+304 fwdLink     |
 +--------+--------+--------+--------+--------+--------+--------+--------+
@@ -630,7 +630,7 @@ The 14 barrier records provide 6 slots for the hardware barrier registers plus 8
 
 The scoreboard object is a passive state store; three scheduling-time operations query and mutate it. All three are called from the control word encoder chain (`sub_A356A0` / `sub_A342E0` / `sub_A34B70`) during Phase 115.
 
-**Counter slot usage.** Slots 0--17 are organized as `(barrier_state, stall_counter)` pairs for each of the 9 register classes (R, P, UR, UP, B, plus 4 arch-specific). The barrier\_state half tracks which hardware barrier index, if any, is currently live for that register class. The stall\_counter half accumulates the minimum stall cycles computed from dependency distances. Slots 18--34 are auxiliary scoreboard counters used by the linked-list node (Region 2) and the 14 barrier records (Region 3) as shared refcounted storage for cross-context state propagation.
+**Counter slot usage.** Slots 0–17 are organized as `(barrier_state, stall_counter)` pairs for each of the 9 register classes (R, P, UR, UP, B, plus 4 arch-specific). The barrier\_state half tracks which hardware barrier index, if any, is currently live for that register class. The stall\_counter half accumulates the minimum stall cycles computed from dependency distances. Slots 18–34 are auxiliary scoreboard counters used by the linked-list node (Region 2) and the 14 barrier records (Region 3) as shared refcounted storage for cross-context state propagation.
 
 ```c
 // Called from sub_A342E0 (EncodeWriteBarrierIndex) when a long-latency
@@ -804,7 +804,7 @@ The yield threshold itself (the `> 3` comparison) does not vary by architecture 
 
 ## Mercury Opex Path (Phase 120)
 
-In addition to the Ori IR scoreboard passes (phases 114--116), the Mercury backend has its own scoreboard generation pass: **MercGenerateOpex** (phase 120, `sub_703480` / `sub_6FFDC0`).
+In addition to the Ori IR scoreboard passes (phases 114–116), the Mercury backend has its own scoreboard generation pass: **MercGenerateOpex** (phase 120, `sub_703480` / `sub_6FFDC0`).
 
 This pass runs after Mercury encode/decode (phase 117) and instruction expansion (phase 118), operating on the Mercury intermediate representation rather than Ori IR. It generates:
 - DEPBAR instructions for explicit barrier management
@@ -813,13 +813,13 @@ This pass runs after Mercury encode/decode (phase 117) and instruction expansion
 - Synchronization barriers for cross-warp dependencies
 
 The Mercury opex pass and the Ori scoreboard passes serve different purposes:
-- **Phases 114--116** generate scoreboard metadata at the Ori IR level, before Mercury encoding
+- **Phases 114–116** generate scoreboard metadata at the Ori IR level, before Mercury encoding
 - **Phase 120** generates additional scoreboard metadata for instructions introduced during Mercury expansion (pseudo-instruction expansion, WAR hazard insertion)
 - The WAR pass must run twice (phases 119 and 121) because opex introduces new instructions that create additional write-after-read hazards
 
 ## Scheduling Output Encoding
 
-After the control word fields are computed, the scheduling output pipeline (0x8F1EB0--0x8FDD60, ~57 KB) encodes them into the final SASS binary format.
+After the control word fields are computed, the scheduling output pipeline (0x8F1EB0–0x8FDD60, ~57 KB) encodes them into the final SASS binary format.
 
 ### Encoding Pipeline
 
@@ -851,9 +851,9 @@ The tree is used by the verification pass to check that barrier assignments are 
 
 ### Verification
 
-Seven verification functions (0x8F7610--0x8F8CB0) validate the generated schedule:
-1. Stall count bounds (0--15)
-2. Barrier index validity (0--5 or 7=none)
+Seven verification functions (0x8F7610–0x8F8CB0) validate the generated schedule:
+1. Stall count bounds (0–15)
+2. Barrier index validity (0–5 or 7=none)
 3. Wait mask consistency (only wait on barriers that have been set)
 4. Scoreboard dependency completeness (every long-latency producer has a barrier)
 5. Control word format correctness
@@ -877,7 +877,7 @@ The two control word generators (`sub_A36360` for final emission, `sub_8D7760` f
 
 Pre-scheduling (`sub_8D7760`) and post-scheduling (`sub_A36360` / `sub_A23CF0`) run on opposite sides of register allocation. Pre-scheduling operates on virtual registers with estimated latencies; post-scheduling sees physical registers with final instruction distances. Because register allocation may insert spill/reload instructions, reorder operands, or coalesce registers, the physical distances between a producer and its consumers can differ from the virtual-register estimates. The reconciliation protocol ensures the final control word reflects the true physical distances rather than the stale pre-scheduling guesses.
 
-**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots. For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25--29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23). The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete). These annotations travel through register allocation unchanged — the allocator preserves the operand descriptor high bits and the tracking flag.
+**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots. For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25–29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23). The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete). These annotations travel through register allocation unchanged — the allocator preserves the operand descriptor high bits and the tracking flag.
 
 **Post-scheduling re-evaluation.** When `sub_A36360` processes each instruction in final order, it does not blindly copy pre-scheduling barrier indices. Instead, it runs a full three-step reconciliation:
 
@@ -990,6 +990,6 @@ The `sub_A2D340` (32 KB) function writes these fields through a large if/else ca
 - [Latency Model](latency-model.md) — per-opcode latency tables used by stall count computation
 - [Mercury Encoder](../codegen/mercury.md) — Mercury pipeline including MercGenerateOpex (phase 120)
 - [SASS Encoding](../codegen/encoding.md) — instruction encoding format including control word bit layout
-- [Phase Manager](../passes/phase-manager.md) — how phases 114--116 fit in the 159-phase pipeline
+- [Phase Manager](../passes/phase-manager.md) — how phases 114–116 fit in the 159-phase pipeline
 - [Sync & Barriers](../passes/sync-barriers.md) — software synchronization barriers (distinct from dependency barriers)
 - [Knobs](../config/knobs.md) — scheduling knobs 741 (stall threshold), 805/806 (stall caps)

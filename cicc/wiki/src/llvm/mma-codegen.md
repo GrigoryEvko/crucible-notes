@@ -121,7 +121,7 @@ The string builder uses an optimized emission pattern: short constant strings ar
 
 When the output buffer has sufficient remaining capacity, the builder writes directly via `DWORD`/`WORD`/`BYTE` stores. On buffer overflow, it falls back to `sub_16E7EE0` (slow-path string append).
 
-## HMMA / IMMA / BMMA Lowering (SM 70--89)
+## HMMA / IMMA / BMMA Lowering (SM 70–89)
 
 The pre-Hopper MMA families share a common architecture: a three-table builtin-to-intrinsic lookup, per-family handler functions for load/store/MMA, and a consistent operand processing pattern.
 
@@ -129,9 +129,9 @@ The pre-Hopper MMA families share a common architecture: a three-table builtin-t
 
 | Table | Address | ID Range | Description |
 |---|---|---|---|
-| `dword_3F14840` | Entries 0--29 | 678--707 | HMMA (FP16, first-gen) |
-| `dword_3F147E0` | Entries 0--23 | 708--731 | IMMA (INT8) |
-| `dword_3F147A0` | Entries 0--12 | 732--744 | BMMA (binary) / INT4 |
+| `dword_3F14840` | Entries 0–29 | 678–707 | HMMA (FP16, first-gen) |
+| `dword_3F147E0` | Entries 0–23 | 708–731 | IMMA (INT8) |
+| `dword_3F147A0` | Entries 0–12 | 732–744 | BMMA (binary) / INT4 |
 
 Each table maps `(builtin_id - base)` to an LLVM intrinsic ID. The first table additionally sets a `v43=1` flag indicating "first generation WMMA", which affects fragment size determination.
 
@@ -212,9 +212,9 @@ Fragment size (the number of register-width elements per warp fragment) is compu
 
 | Intrinsic IDs | Fragment Count |
 |---|---|
-| 0x22B3--0x22B6, 0x22CF | 2 |
-| 0x22BB--0x22BC, 0x22C5--0x22C6 | 4 |
-| 0x22BD--0x22BE, 0x22C3--0x22C4, 0x22CB--0x22CE | 1 |
+| 0x22B3–0x22B6, 0x22CF | 2 |
+| 0x22BB–0x22BC, 0x22C5–0x22C6 | 4 |
+| 0x22BD–0x22BE, 0x22C3–0x22C4, 0x22CB–0x22CE | 1 |
 | 0x22B7, 0x22BF, 0x22C7 | 8 |
 
 **BMMA:** Always 2 fragments, with `v101=2`, `v95=1`, `v100=1`.
@@ -227,7 +227,7 @@ The WMMA multiply-accumulate handler processes five input operands:
 2. `v7` — A matrix fragment pointer
 3. `v93` — B matrix fragment pointer
 4. `v92` — C accumulator fragment pointer
-5. `v8` — `rowcol` operand (validated range: 0--3 for MMA)
+5. `v8` — `rowcol` operand (validated range: 0–3 for MMA)
 6. `v9` — `satf` flag (validated: 0 or 1; skipped for intrinsic 8279)
 
 Fragment counts for the MMA operation itself:
@@ -235,9 +235,9 @@ Fragment counts for the MMA operation itself:
 | Family | v95 (A frags) | v100 (B frags) | v101 (C frags) | v103 (D frags) |
 |---|---|---|---|---|
 | BMMA | 1 | 1 | 2 | 2 |
-| IMMA 0x22C0--0x22C1 | 1 | 4 | 8 | 8 |
-| IMMA 0x22B8--0x22B9 | 2 | 2 | 8 | 8 |
-| IMMA 0x22C8--0x22C9 | 4 | 1 | 8 | 8 |
+| IMMA 0x22C0–0x22C1 | 1 | 4 | 8 | 8 |
+| IMMA 0x22B8–0x22B9 | 2 | 2 | 8 | 8 |
+| IMMA 0x22C8–0x22C9 | 4 | 1 | 8 | 8 |
 | WMMA (default) | 8 | 8 | varies | 4 or 8 |
 
 For first-gen WMMA, `v103` (D fragment count) is determined by a bit test:
@@ -265,8 +265,8 @@ MMA load/store operations resolve the target memory address space through `sub_2
 
 | Opcode Range | Condition | Address Space |
 |---|---|---|
-| 185--237 | Bit test against 0x3FFFFD00000003 | varies |
-| 44--45 | Bit 1 of byte at offset +26 | varies |
+| 185–237 | Bit test against 0x3FFFFD00000003 | varies |
+| 44–45 | Bit 1 of byte at offset +26 | varies |
 | >= 659 | unconditional | accepted |
 | default | | generic (0) |
 
@@ -274,9 +274,9 @@ Return values: 0=generic, 1=global, 2=shared, 3=local, 4=constant, 5=special, 40
 
 ## SelectionDAG Path (sub_33B0210 / sub_33A64B0)
 
-In the SelectionDAG intrinsic lowering mega-switch (`sub_33B0210`), 95 consecutive case labels (IDs 0xA4--0xA8 and 0x194--0x1EC, corresponding to LLVM intrinsic IDs 164--168 and 404--492) all dispatch to a single helper: `sub_33A64B0`.
+In the SelectionDAG intrinsic lowering mega-switch (`sub_33B0210`), 95 consecutive case labels (IDs 0xA4–0xA8 and 0x194–0x1EC, corresponding to LLVM intrinsic IDs 164–168 and 404–492) all dispatch to a single helper: `sub_33A64B0`.
 
-This function handles every WMMA/MMA SelectionDAG intrinsic for SM 70--89:
+This function handles every WMMA/MMA SelectionDAG intrinsic for SM 70–89:
 - `wmma.load.a` / `wmma.load.b` / `wmma.load.c`
 - `wmma.store.d`
 - `wmma.mma` for all shape/type combinations
@@ -286,7 +286,7 @@ The SelectionDAG path constructs NVPTXISD target-specific DAG nodes that are lat
 
 ## WGMMA — Warp Group MMA (SM 90 Hopper)
 
-WGMMA operates on a warp group (4 warps, 128 threads) instead of a single warp. Four builtin IDs (765--768) expand to over 150 LLVM intrinsic variants through compile-time dimension and type dispatch.
+WGMMA operates on a warp group (4 warps, 128 threads) instead of a single warp. Four builtin IDs (765–768) expand to over 150 LLVM intrinsic variants through compile-time dimension and type dispatch.
 
 ### Builtin-to-Intrinsic Expansion
 
@@ -297,7 +297,7 @@ WGMMA operates on a warp group (4 warps, 128 threads) instead of a single warp. 
 | 767 (0x2FF) | `__wgmma_mma_async_tf32` | Reduced operand set |
 | 768 (0x300) | `__wgmma_mma_async_f8` | Minimal (2 scale operands only) |
 
-The lowering handler (in `sub_955A70`, cases 0x2FD--0x300, ~800 lines) extracts 7 levels of chained operands:
+The lowering handler (in `sub_955A70`, cases 0x2FD–0x300, ~800 lines) extracts 7 levels of chained operands:
 
 ```text
 v263 -- M dimension (constant)
@@ -311,7 +311,7 @@ v540 -- element type info
 
 ### Dimension-to-Intrinsic Mapping
 
-The N dimension (extracted via `sub_620FD0` as a constant integer) maps to one of 144 LLVM intrinsic IDs spanning 10654--10779. The mapping forms a dense table with stride 4 per N step:
+The N dimension (extracted via `sub_620FD0` as a constant integer) maps to one of 144 LLVM intrinsic IDs spanning 10654–10779. The mapping forms a dense table with stride 4 per N step:
 
 | N | Integer-type Intrinsic | Float-type Intrinsic |
 |---|---|---|
@@ -336,7 +336,7 @@ If N is not a power of two: `(N & (N - 1)) != 0` triggers:
 
 ### WGMMA 5-Dimensional Intrinsic Grid
 
-The full WGMMA intrinsic table (`sub_12B2E10`) uses a 144-entry grid spanning IDs 5304--5447:
+The full WGMMA intrinsic table (`sub_12B2E10`) uses a 144-entry grid spanning IDs 5304–5447:
 
 | Dimension | Values | Count |
 |---|---|---|
@@ -344,7 +344,7 @@ The full WGMMA intrinsic table (`sub_12B2E10`) uses a 144-entry grid spanning ID
 | B_shared | false, true | 2 |
 | is_s64 | false, true | 2 |
 | A_scale/negate | combo | varies |
-| case variant | 0x2FD--0x300 | 4 |
+| case variant | 0x2FD–0x300 | 4 |
 
 Each WGMMA call packs mode bits into a single integer:
 
@@ -407,9 +407,9 @@ A second red-black tree at `ctx+656` holds 12 entries for MMA async load paramet
 
 | IDs | Operation | Intrinsic | Handler |
 |---|---|---|---|
-| 745--750 | fence_aligned | 9062 (3 type overloads) | `sub_953BA0` -> `sub_94B510` x3 -> `sub_94B940` |
-| 751--752 | store | 9145 (2 type overloads) | `sub_954350` |
-| 753--764 | mma_async load | 9067 (2 type overloads) | `sub_9547E0` |
+| 745–750 | fence_aligned | 9062 (3 type overloads) | `sub_953BA0` -> `sub_94B510` x3 -> `sub_94B940` |
+| 751–752 | store | 9145 (2 type overloads) | `sub_954350` |
+| 753–764 | mma_async load | 9067 (2 type overloads) | `sub_9547E0` |
 
 The fence operations pack A/B/C fragment operands via `sub_94B510` and scatter results via `sub_94B940` with name hint `"mmafrag"`.
 
@@ -441,7 +441,7 @@ All handled by `sub_30462A0`:
 | tcgen05.alloc | 10080 | 4765 | basic allocation |
 | tcgen05.alloc (multicast) | 10083 | 4770/4771 | 32-bit flag variant |
 | tcgen05.dealloc | 10140 | 4827 | 4 operands |
-| tcgen05.commit | 10090 | 4772--4777 | multicast mask variants |
+| tcgen05.commit | 10090 | 4772–4777 | multicast mask variants |
 | tcgen05.fence | 10143 | 4830 | 2 operands |
 | tcgen05.wait | 10351 | 5020 | 2 operands |
 | tcgen05.relinquish.alloc | 10311 | 4941 | 2 operands |
@@ -504,7 +504,7 @@ Cannot use `collector::a::use` or `collector::a::fill` with ashift.
 
 ### tcgen05.mma ISD Opcode Selection (sub_36E9630)
 
-The intrinsic lowering handler (`sub_304E6C0`) maps 10 shape cases (intrinsic opcodes 10299--10308) to ISD opcodes 4905--4940:
+The intrinsic lowering handler (`sub_304E6C0`) maps 10 shape cases (intrinsic opcodes 10299–10308) to ISD opcodes 4905–4940:
 
 | Case | Shape Class | Base ISD | +scaleD | +sparsity | +ws | +scaleInputAccum |
 |---|---|---|---|---|---|---|
@@ -519,7 +519,7 @@ The intrinsic lowering handler (`sub_304E6C0`) maps 10 shape cases (intrinsic op
 | 10307 | Block-scale medium v2 | 4929 | 4930 | 4931/4932 | — | — |
 | 10308 | Block-scale large | 4933 | 4934 | 4935/4936 | — | — |
 
-Operand count varies by variant: small shapes take 5--6 base operands plus optional sparsity operand; medium shapes take 6 base plus optional scale factor; large shapes iterate over additional operands spanning offsets 440--600 (or 440--760 on sm_103 extended variants).
+Operand count varies by variant: small shapes take 5–6 base operands plus optional sparsity operand; medium shapes take 6 base plus optional scale factor; large shapes iterate over additional operands spanning offsets 440–600 (or 440–760 on sm_103 extended variants).
 
 ### tcgen05.mma Validation Errors
 
@@ -529,7 +529,7 @@ The full set of compile-time validation errors (emitted via `sub_C64ED0`):
 |---|---|
 | `"INT8 type is supported only on arch-conditional variants."` | kind==i8 on family-conditional SM100 |
 | `"MXF4 and MXF4NVF4 types with Sparsity are supported only on arch-conditional variants."` | (type+7)%8 > 5 AND sparsity set, on family-conditional |
-| `"Explicit scale vector size is supported only on arch-conditional variants."` | scale_vec_size 1--3 on family-conditional |
+| `"Explicit scale vector size is supported only on arch-conditional variants."` | scale_vec_size 1–3 on family-conditional |
 | `"Scale input accumulator can only be used with f16 and tf32 types"` | bit 4 set but kind not f16 or tf32 |
 | `"Scale input accumulator is not supported on this architecture."` | scaleInputAccum on sm_100a or sm_103a |
 | `"Block scale is not supported for f16, tf32, f8f6f4 and i8 types"` | block_scale with incompatible type |
@@ -648,8 +648,8 @@ Key intrinsic IDs used in the MMA code generation pipeline:
 | 9062 | `llvm.nvvm.wgmma.fence.aligned` | WGMMA fence (3 type overloads) |
 | 9067 | `llvm.nvvm.wgmma.mma.async` | WGMMA MMA async (2 type overloads) |
 | 9145 | `llvm.nvvm.wgmma.store` | WGMMA store |
-| 10654--10779 | `llvm.nvvm.wgmma.mma.async.*` | Per-dimension WGMMA variants (144 entries) |
-| 5304--5447 | (WGMMA grid) | 5-dimensional intrinsic grid for WGMMA |
+| 10654–10779 | `llvm.nvvm.wgmma.mma.async.*` | Per-dimension WGMMA variants (144 entries) |
+| 5304–5447 | (WGMMA grid) | 5-dimensional intrinsic grid for WGMMA |
 
 ## Error Handling
 

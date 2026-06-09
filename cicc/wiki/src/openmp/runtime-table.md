@@ -1,8 +1,8 @@
 # OpenMP Runtime Declaration Table
 
-cicc embeds a 194-entry table of OpenMP runtime function declarations at `sub_312CF50` (0x312CF50, 117 KB decompiled). This single function is the authoritative source for every `__kmpc_*`, `omp_*`, and `__tgt_*` device-runtime call the compiler can emit into NVPTX IR. It defines the complete ABI contract between compiler-generated GPU code and the OpenMP device runtime library (libomptarget / libomp). The function takes an integer case index (0--193), constructs the corresponding `FunctionType`, checks whether the symbol already exists in the module via `Module::getNamedValue`, and if absent, creates a `Function::Create` with `ExternalLinkage`. The result is registered into a context-local array so that any later codegen pass can reference a runtime function by its numeric index without reconstructing the type.
+cicc embeds a 194-entry table of OpenMP runtime function declarations at `sub_312CF50` (0x312CF50, 117 KB decompiled). This single function is the authoritative source for every `__kmpc_*`, `omp_*`, and `__tgt_*` device-runtime call the compiler can emit into NVPTX IR. It defines the complete ABI contract between compiler-generated GPU code and the OpenMP device runtime library (libomptarget / libomp). The function takes an integer case index (0–193), constructs the corresponding `FunctionType`, checks whether the symbol already exists in the module via `Module::getNamedValue`, and if absent, creates a `Function::Create` with `ExternalLinkage`. The result is registered into a context-local array so that any later codegen pass can reference a runtime function by its numeric index without reconstructing the type.
 
-Upstream LLVM defines the same runtime function set declaratively in `llvm/include/llvm/Frontend/OpenMP/OMPKinds.def` using the `__OMP_RTL` macro, which the `OMPIRBuilder` expands at construction time. cicc's table is a procedural equivalent: a giant `switch(a3)` with 194 cases that does exactly what `OMPKinds.def` + `OMPIRBuilder::initialize()` do, but compiled into the binary rather than generated from a `.def` file. The ordering of cases 0--193 matches the upstream `OMPRTL_` enum one-to-one, confirming that cicc v13.0 tracks LLVM 18.x's OpenMP runtime interface.
+Upstream LLVM defines the same runtime function set declaratively in `llvm/include/llvm/Frontend/OpenMP/OMPKinds.def` using the `__OMP_RTL` macro, which the `OMPIRBuilder` expands at construction time. cicc's table is a procedural equivalent: a giant `switch(a3)` with 194 cases that does exactly what `OMPKinds.def` + `OMPIRBuilder::initialize()` do, but compiled into the binary rather than generated from a `.def` file. The ordering of cases 0–193 matches the upstream `OMPRTL_` enum one-to-one, confirming that cicc v13.0 tracks LLVM 18.x's OpenMP runtime interface.
 
 ## Key Facts
 
@@ -10,7 +10,7 @@ Upstream LLVM defines the same runtime function set declaratively in `llvm/inclu
 |---|---|
 | Entry point | `sub_312CF50` @ `0x312CF50` |
 | Decompiled size | 117 KB |
-| Total entries | 194 (indices 0--193) |
+| Total entries | 194 (indices 0–193) |
 | Sentinel | index 193 = `__last` (void function, marks table end) |
 | Varargs entries | 2: index 7 (`__kmpc_fork_call`), index 118 (`__kmpc_fork_teams`) |
 | Linkage for all entries | `ExternalLinkage` (encoded as 0x103 = 259) |
@@ -96,7 +96,7 @@ Once a declaration is obtained, `sub_921880` (create runtime library call instru
 
 All 194 entries, organized by functional category. The "Index" column is the `switch` case in `sub_312CF50` and the slot in the context's runtime function array. Signatures use LLVM IR type syntax. The "Call Generation" column describes how and when cicc emits each call.
 
-### Standard OpenMP Runtime (0--13)
+### Standard OpenMP Runtime (0–13)
 
 | Index | Function | Signature | Purpose | Call Generation |
 |---|---|---|---|---|
@@ -117,7 +117,7 @@ All 194 entries, organized by functional category. The "Index" column is the `sw
 
 Index 7 (`__kmpc_fork_call`) and index 118 (`__kmpc_fork_teams`) are the only two varargs entries. Both receive special post-processing: `sub_B994D0` sets function attribute #26 (likely the `convergent` attribute or a varargs-related marker), checked via `sub_B91C10`. This prevents the optimizer from incorrectly splitting, duplicating, or removing these calls.
 
-### Hardware Query (14--16)
+### Hardware Query (14–16)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -127,7 +127,7 @@ Index 7 (`__kmpc_fork_call`) and index 118 (`__kmpc_fork_teams`) are the only tw
 
 These three functions have no parameters — they are direct wrappers around PTX special registers (`%nctaid.x`, `%ntid.x`, and a compile-time constant 32).
 
-### OMP Standard Library API (17--45)
+### OMP Standard Library API (17–45)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -163,14 +163,14 @@ These three functions have no parameters — they are direct wrappers around PTX
 
 These are the user-facing OpenMP API functions. On GPU, most return compile-time constants or trivial register reads. The Attributor-based OpenMP driver (`sub_269F530`) can fold many of these to constants when the execution mode and team configuration are statically known — for example, `omp_get_num_threads` folds to the `blockDim.x` launch parameter.
 
-### Begin/End (53--54)
+### Begin/End (53–54)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
 | 53 | `__kmpc_begin` | `void(ident_t*, i32)` | Library initialization (rarely used on GPU) |
 | 54 | `__kmpc_end` | `void(ident_t*)` | Library shutdown |
 
-### Master/Masked Constructs (46--49)
+### Master/Masked Constructs (46–49)
 
 | Index | Function | Signature | Purpose | Call Generation |
 |---|---|---|---|---|
@@ -179,7 +179,7 @@ These are the user-facing OpenMP API functions. On GPU, most return compile-time
 | 48 | `__kmpc_masked` | `i32(ident_t*, i32, i32)` | Enter masked region (OMP 5.1) | Third param is the filter ID (which specific thread executes). Replaces `master` in OMP 5.1 |
 | 49 | `__kmpc_end_masked` | `void(ident_t*, i32)` | Exit masked region | Called at end of masked block |
 
-### Critical Sections (50--52)
+### Critical Sections (50–52)
 
 | Index | Function | Signature | Purpose | Call Generation |
 |---|---|---|---|---|
@@ -189,7 +189,7 @@ These are the user-facing OpenMP API functions. On GPU, most return compile-time
 
 On GPU, critical sections use atomic operations on global memory. The `kmp_critical_name` type is `[8 x i32]` (32 bytes), used as an atomic lock variable. The `_with_hint` variant accepts a contention hint that the GPU runtime maps to different atomic strategies.
 
-### Reduction (55--58)
+### Reduction (55–58)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -198,28 +198,28 @@ On GPU, critical sections use atomic operations on global memory. The `kmp_criti
 | 57 | `__kmpc_end_reduce` | `void(ident_t*, i32, kmp_critical*)` | End reduction (blocking) |
 | 58 | `__kmpc_end_reduce_nowait` | `void(ident_t*, i32, kmp_critical*)` | End reduction (non-blocking) |
 
-These are the standard reduction protocol entries. On GPU, the compiler typically prefers the NVIDIA-specific shuffle-based reductions (indices 176--178) which are significantly faster.
+These are the standard reduction protocol entries. On GPU, the compiler typically prefers the NVIDIA-specific shuffle-based reductions (indices 176–178) which are significantly faster.
 
-### Static Loop Scheduling (61--70)
+### Static Loop Scheduling (61–70)
 
 | Index | Function | Signature |
 |---|---|---|
-| 61--64 | `__kmpc_for_static_init_{4,4u,8,8u}` | `void(ident_t*, i32, i32, i32*, {i32,i64}*, {i32,i64}*, {i32,i64}*, {i32,i64}*, {i32,i64}, {i32,i64})` |
+| 61–64 | `__kmpc_for_static_init_{4,4u,8,8u}` | `void(ident_t*, i32, i32, i32*, {i32,i64}*, {i32,i64}*, {i32,i64}*, {i32,i64}*, {i32,i64}, {i32,i64})` |
 | 65 | `__kmpc_for_static_fini` | `void(ident_t*, i32)` |
-| 66--69 | `__kmpc_distribute_static_init_{4,4u,8,8u}` | Same 9-param shape as 61--64 |
+| 66–69 | `__kmpc_distribute_static_init_{4,4u,8,8u}` | Same 9-param shape as 61–64 |
 | 70 | `__kmpc_distribute_static_fini` | `void(ident_t*, i32)` |
 
 The `_4` / `_4u` / `_8` / `_8u` suffixes indicate signed-32, unsigned-32, signed-64, unsigned-64 loop variable types respectively. All `static_init` functions take 9 parameters: location, thread ID, schedule type, pointer to is-last flag, pointers to lower/upper/stride/incr bounds, and chunk size.
 
-### Dynamic Dispatch (71--87)
+### Dynamic Dispatch (71–87)
 
-Indices 71--74 handle `distribute` + dynamic dispatch initialization. Indices 75--82 handle standard `dispatch_init` and `dispatch_next` for the four integer widths. Indices 83--87 are dispatch finalization. Total: 17 entries covering the full dynamic loop scheduling interface.
+Indices 71–74 handle `distribute` + dynamic dispatch initialization. Indices 75–82 handle standard `dispatch_init` and `dispatch_next` for the four integer widths. Indices 83–87 are dispatch finalization. Total: 17 entries covering the full dynamic loop scheduling interface.
 
-### Team Static & Combined Distribute-For (88--95)
+### Team Static & Combined Distribute-For (88–95)
 
-Indices 88--91 (`__kmpc_team_static_init_{4,4u,8,8u}`) handle team-level static work distribution. Indices 92--95 (`__kmpc_dist_for_static_init_{4,4u,8,8u}`) are the combined `distribute parallel for` static init, taking 10 parameters (the extra parameter is the `distribute` upper bound pointer).
+Indices 88–91 (`__kmpc_team_static_init_{4,4u,8,8u}`) handle team-level static work distribution. Indices 92–95 (`__kmpc_dist_for_static_init_{4,4u,8,8u}`) are the combined `distribute parallel for` static init, taking 10 parameters (the extra parameter is the `distribute` upper bound pointer).
 
-### Tasking (98--116)
+### Tasking (98–116)
 
 19 entries covering the full OpenMP tasking interface:
 
@@ -247,7 +247,7 @@ Indices 88--91 (`__kmpc_team_static_init_{4,4u,8,8u}`) handle team-level static 
 
 Index 106 (`__kmpc_taskloop_5`) and index 116 (`__kmpc_omp_taskwait_deps_51`) are OMP 5.1 additions with an extra modifier parameter compared to their predecessors.
 
-### Teams and Cancellation (117--121)
+### Teams and Cancellation (117–121)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -257,7 +257,7 @@ Index 106 (`__kmpc_taskloop_5`) and index 116 (`__kmpc_omp_taskwait_deps_51`) ar
 | 120 | `__kmpc_push_num_teams_51` | `void(ident_t*, i32, i32, i32, i32)` | Set team count (OMP 5.1, 5 params) |
 | 121 | `__kmpc_set_thread_limit` | `void(ident_t*, i32, i32)` | Set per-team thread limit |
 
-### Copyprivate and Threadprivate (122--124)
+### Copyprivate and Threadprivate (122–124)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -265,7 +265,7 @@ Index 106 (`__kmpc_taskloop_5`) and index 116 (`__kmpc_omp_taskwait_deps_51`) ar
 | 123 | `__kmpc_threadprivate_cached` | `i8*(ident_t*, i32, i8*, i64, i8***)` | Get/allocate threadprivate variable data. 5 params |
 | 124 | `__kmpc_threadprivate_register` | `void(ident_t*, i8*, kmpc_ctor, void*, void*)` | Register threadprivate with ctor, copy-ctor, dtor callbacks |
 
-### Doacross Synchronization (125--128)
+### Doacross Synchronization (125–128)
 
 Cross-iteration dependencies for `#pragma omp ordered depend(source/sink)`.
 
@@ -276,7 +276,7 @@ Cross-iteration dependencies for `#pragma omp ordered depend(source/sink)`.
 | 127 | `__kmpc_doacross_wait` | `void(ident_t*, i32, i64*)` | Wait (sink): wait for iteration to complete |
 | 128 | `__kmpc_doacross_fini` | `void(ident_t*, i32)` | Finalize doacross tracking |
 
-### Memory Allocators (129--136)
+### Memory Allocators (129–136)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -289,7 +289,7 @@ Cross-iteration dependencies for `#pragma omp ordered depend(source/sink)`.
 | 135 | `__kmpc_init_allocator` | `i8*(i32, i32, i8*, i8*)` | Init OpenMP allocator. Params: gtid, memspace, num_traits, traits |
 | 136 | `__kmpc_destroy_allocator` | `void(i32, i8*)` | Destroy allocator |
 
-### Target Offloading (137--153)
+### Target Offloading (137–153)
 
 18 entries implementing the host-side target offloading protocol. These are primarily used when cicc compiles host code that launches GPU kernels, not within device code itself:
 
@@ -319,7 +319,7 @@ Cross-iteration dependencies for `#pragma omp ordered depend(source/sink)`.
 |---|---|---|---|
 | 154 | `__kmpc_task_allow_completion_event` | `i8*(ident_t*, i32, i8*)` | Allow completion event for detached tasks (OMP 5.0) |
 
-### GPU Kernel Lifecycle (155--158)
+### GPU Kernel Lifecycle (155–158)
 
 These are the most important entries for device-side GPU OpenMP code.
 
@@ -332,19 +332,19 @@ These are the most important entries for device-side GPU OpenMP code.
 
 `__kmpc_target_init` is the first runtime call in every GPU OpenMP kernel. In Generic mode, it returns -1 for worker threads (which should enter the polling loop) and 0 for the master thread. In SPMD mode, it returns 0 for all threads. The `KernelEnvironmentTy` struct carries the `ConfigurationEnvironmentTy` which encodes the execution mode, team sizes, and runtime configuration.
 
-### New-Style Static Loops, OMP 5.1+ (159--170)
+### New-Style Static Loops, OMP 5.1+ (159–170)
 
 12 entries implementing the callback-based loop interface introduced in OpenMP 5.1:
 
 | Index | Function | Signature |
 |---|---|---|
-| 159--162 | `__kmpc_for_static_loop_{4,4u,8,8u}` | `void(ident_t*, i8*, i8*, {i32,i64}, {i32,i64}, {i32,i64})` |
-| 163--166 | `__kmpc_distribute_static_loop_{4,4u,8,8u}` | `void(ident_t*, i8*, i8*, {i32,i64}, {i32,i64})` |
-| 167--170 | `__kmpc_distribute_for_static_loop_{4,4u,8,8u}` | `void(ident_t*, i8*, i8*, {i32,i64}, {i32,i64}, {i32,i64}, {i32,i64})` |
+| 159–162 | `__kmpc_for_static_loop_{4,4u,8,8u}` | `void(ident_t*, i8*, i8*, {i32,i64}, {i32,i64}, {i32,i64})` |
+| 163–166 | `__kmpc_distribute_static_loop_{4,4u,8,8u}` | `void(ident_t*, i8*, i8*, {i32,i64}, {i32,i64})` |
+| 167–170 | `__kmpc_distribute_for_static_loop_{4,4u,8,8u}` | `void(ident_t*, i8*, i8*, {i32,i64}, {i32,i64}, {i32,i64}, {i32,i64})` |
 
 Unlike the old-style `_init`/`_fini` pairs, these new-style loops take function pointer callbacks (`i8*` for the loop body and data pointer) and handle initialization + execution + finalization in a single call.
 
-### Legacy Kernel-Mode Parallel (171--174)
+### Legacy Kernel-Mode Parallel (171–174)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -355,7 +355,7 @@ Unlike the old-style `_init`/`_fini` pairs, these new-style loops take function 
 
 These are the Generic-mode worker-side functions. `__kmpc_kernel_parallel` returns `true` when the master thread has dispatched work via `__kmpc_kernel_prepare_parallel`, writing the outlined function pointer into the output parameter.
 
-### Warp-Level Primitives (175, 179, 189--190)
+### Warp-Level Primitives (175, 179, 189–190)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -366,7 +366,7 @@ These are the Generic-mode worker-side functions. `__kmpc_kernel_parallel` retur
 
 The shuffle functions take `(value, lane_offset, warp_size)` and implement butterfly-pattern data exchange for intra-warp reductions. These compile down to PTX `shfl.sync` instructions.
 
-### NVIDIA Device Reduction (176--178)
+### NVIDIA Device Reduction (176–178)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -378,7 +378,7 @@ These are the GPU-specific reduction entries — the single most important perfo
 
 The teams reduction (index 177) adds four `ListGlobalFctPtr` callbacks for managing global memory buffers across CTAs, plus an extra size parameter. This is the most complex runtime call in the entire table, with 11 parameters.
 
-### Shared Memory Management (180--184)
+### Shared Memory Management (180–184)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -390,7 +390,7 @@ The teams reduction (index 177) adds four `ListGlobalFctPtr` callbacks for manag
 
 `__kmpc_alloc_shared` / `__kmpc_free_shared` are heavily used in the SPMD transformation's guarded output mechanism: values computed by the master thread that are needed by all threads are stored into dynamically-allocated shared memory, synchronized via barrier, then loaded by all threads.
 
-### SPMD Mode Detection (185--188)
+### SPMD Mode Detection (185–188)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -401,7 +401,7 @@ The teams reduction (index 177) adds four `ListGlobalFctPtr` callbacks for manag
 
 The two barrier variants reflect the fundamental mode difference. `__kmpc_barrier_simple_spmd` compiles to a single `bar.sync` instruction. `__kmpc_barrier_simple_generic` involves polling a shared-memory flag because workers are in a state-machine loop that must check for new work after each barrier.
 
-### Profiling (191--192) and Sentinel (193)
+### Profiling (191–192) and Sentinel (193)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
@@ -466,7 +466,7 @@ Key differences from upstream:
 
 4. **Attribute handling.** Upstream `OMPKinds.def` includes extensive attribute sets (`GetterAttrs`, `SetterAttrs`, etc.) that annotate runtime functions with `nounwind`, `nosync`, `nofree`, `willreturn`, and memory effect attributes for optimization. cicc applies only attribute #26 to the two varargs functions and otherwise relies on the OpenMPOpt pass to infer attributes.
 
-5. **The `__tgt_interop_*` entries** (indices 132--134) in cicc take a slightly different parameter list than upstream: cicc includes an extra `i32` parameter at the end that upstream encodes differently, reflecting a minor ABI divergence in the interop interface.
+5. **The `__tgt_interop_*` entries** (indices 132–134) in cicc take a slightly different parameter list than upstream: cicc includes an extra `i32` parameter at the end that upstream encodes differently, reflecting a minor ABI divergence in the interop interface.
 
 ## Configuration Knobs
 
@@ -605,23 +605,23 @@ When a call instruction references a function not in this set, the SPMD transfor
 
 | Category | Count | Indices |
 |---|---|---|
-| Thread hierarchy and hardware query | 20 | 0--6, 14--16, 17--45 |
-| Work sharing / loop scheduling | 48 | 61--95, 159--170 |
-| Tasking | 19 | 98--116, 154 |
-| Synchronization | 12 | 0, 2, 4, 50--52, 59--60, 96--97, 187--188, 190 |
-| Target offloading / data mapping | 18 | 137--153 |
-| GPU execution mode | 10 | 155--158, 171--174, 185--186 |
-| Warp primitives | 4 | 175, 179, 189--190 |
-| NVIDIA device reduction | 3 | 176--178 |
-| Shared memory management | 5 | 180--184 |
-| Memory allocators | 8 | 129--136 |
-| Copyprivate / threadprivate | 3 | 122--124 |
-| Doacross synchronization | 4 | 125--128 |
-| Teams / cancellation | 5 | 117--121 |
-| Master / masked | 4 | 46--49 |
-| Reduction (standard) | 4 | 55--58 |
-| Begin / end | 2 | 53--54 |
-| Profiling | 2 | 191--192 |
+| Thread hierarchy and hardware query | 20 | 0–6, 14–16, 17–45 |
+| Work sharing / loop scheduling | 48 | 61–95, 159–170 |
+| Tasking | 19 | 98–116, 154 |
+| Synchronization | 12 | 0, 2, 4, 50–52, 59–60, 96–97, 187–188, 190 |
+| Target offloading / data mapping | 18 | 137–153 |
+| GPU execution mode | 10 | 155–158, 171–174, 185–186 |
+| Warp primitives | 4 | 175, 179, 189–190 |
+| NVIDIA device reduction | 3 | 176–178 |
+| Shared memory management | 5 | 180–184 |
+| Memory allocators | 8 | 129–136 |
+| Copyprivate / threadprivate | 3 | 122–124 |
+| Doacross synchronization | 4 | 125–128 |
+| Teams / cancellation | 5 | 117–121 |
+| Master / masked | 4 | 46–49 |
+| Reduction (standard) | 4 | 55–58 |
+| Begin / end | 2 | 53–54 |
+| Profiling | 2 | 191–192 |
 | Sentinel | 1 | 193 |
 | **Total** | **194** | |
 

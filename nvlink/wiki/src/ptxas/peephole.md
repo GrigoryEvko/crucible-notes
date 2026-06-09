@@ -1,6 +1,6 @@
 # Peephole Optimization
 
-> **Note**: This page documents the peephole optimization subsystem inside the embedded ptxas copy in nvlink v13.0.88 — specifically the early SASS-level cluster at `0x406377`, the ORI named-phase pass pipeline inside MercConverter, and the late `OptimizeNaNOrZero`/`TexNodep` passes. The standalone ptxas binary uses three monolithic 233--280 KB peephole mega-dispatchers (generic, SM120, post-schedule) at completely different addresses; for that architecture see [ptxas Peephole Optimization](../../ptxas/codegen/peephole.html).
+> **Note**: This page documents the peephole optimization subsystem inside the embedded ptxas copy in nvlink v13.0.88 — specifically the early SASS-level cluster at `0x406377`, the ORI named-phase pass pipeline inside MercConverter, and the late `OptimizeNaNOrZero`/`TexNodep` passes. The standalone ptxas binary uses three monolithic 233–280 KB peephole mega-dispatchers (generic, SM120, post-schedule) at completely different addresses; for that architecture see [ptxas Peephole Optimization](../../ptxas/codegen/peephole.html).
 
 The nvlink embedded ptxas backend applies peephole optimizations at three distinct points in the compilation pipeline: (1) an early SASS-level peephole pass in the linker finalization path (`0x406377`--`0x4094FD`), operating on already-encoded instruction buffers; (2) the ORI (Operand Rewriting Infrastructure) pass pipeline embedded within the MercConverter instruction lowering phase (`0x1916000`--`0x1960000`), which runs swap, copy-propagation, dead-code elimination, and liveness passes on the machine-level IR; and (3) late peephole passes integrated into the scheduling and verification phases, including `OptimizeNaNOrZero` (`0x1866FA0`) and the `TexNodep` texture node peephole (`0x19938E0`). Together these three layers constitute approximately 350 KB of peephole-related code across ~50 functions.
 
@@ -135,18 +135,18 @@ The 14 named phases are not independent pass implementations. They are **configu
 
 | Phase Name | Type | Parameter Semantics |
 |---|---|---|
-| `swap1` | Repeat count (0--256) | Number of iterations for operand swap class 1 |
-| `swap2` | Repeat count (0--256) | Number of iterations for operand swap class 2 |
-| `swap3` | Repeat count (0--256) | Number of iterations for operand swap class 3 |
-| `swap4` | Repeat count (0--256) | Number of iterations for operand swap class 4 |
-| `swap5` | Repeat count (0--256) | Number of iterations for operand swap class 5 |
-| `swap6` | Repeat count (0--256) | Number of iterations for operand swap class 6 |
-| `cpy1` | Repeat count (0--256) | Iterations for copy propagation round 1 |
-| `cpy2` | Repeat count (0--256) | Iterations for copy propagation round 2 |
-| `cpy3` | Repeat count (0--256) | Iterations for copy propagation round 3 |
-| `dce1` | Repeat count (0--256) | Iterations for dead code elimination round 1 |
-| `dce2` | Repeat count (0--256) | Iterations for dead code elimination round 2 |
-| `dce3` | Repeat count (0--256) | Iterations for dead code elimination round 3 |
+| `swap1` | Repeat count (0–256) | Number of iterations for operand swap class 1 |
+| `swap2` | Repeat count (0–256) | Number of iterations for operand swap class 2 |
+| `swap3` | Repeat count (0–256) | Number of iterations for operand swap class 3 |
+| `swap4` | Repeat count (0–256) | Number of iterations for operand swap class 4 |
+| `swap5` | Repeat count (0–256) | Number of iterations for operand swap class 5 |
+| `swap6` | Repeat count (0–256) | Number of iterations for operand swap class 6 |
+| `cpy1` | Repeat count (0–256) | Iterations for copy propagation round 1 |
+| `cpy2` | Repeat count (0–256) | Iterations for copy propagation round 2 |
+| `cpy3` | Repeat count (0–256) | Iterations for copy propagation round 3 |
+| `dce1` | Repeat count (0–256) | Iterations for dead code elimination round 1 |
+| `dce2` | Repeat count (0–256) | Iterations for dead code elimination round 2 |
+| `dce3` | Repeat count (0–256) | Iterations for dead code elimination round 3 |
 | `OriPerformLiveDead` | Injected opcode | Liveness analysis (inserted before DCE rounds) |
 | `OriCopyProp` | Injected opcode | Global copy propagation (inserted before copy rounds) |
 
@@ -154,8 +154,8 @@ Additionally, two meta-parameters control the overall pipeline:
 
 | Parameter | Type | Effect |
 |---|---|---|
-| `shuffle` | Repeat count (0--256) | Number of random pass-order permutations to apply |
-| `reps` | Repeat count (0--256) | Number of times to repeat the entire pass sequence |
+| `shuffle` | Repeat count (0–256) | Number of random pass-order permutations to apply |
+| `reps` | Repeat count (0–256) | Number of times to repeat the entire pass sequence |
 | `NamedPhases` | Mode flag | Enables the configurable `p0`, `p1`, ... phase slot system |
 
 ### Sequence Construction Algorithm
@@ -281,7 +281,7 @@ The pass objects live in a table indexed by opcode ID. Each pass object has a st
 
 #### swap1 through swap6 — Operand Canonicalization
 
-The swap phases do not each target a distinct class of commutativity. Instead, the `swap1`--`swap6` names are **iteration count parameters** that control how many adjacent-element swaps to apply at different offsets within the pass ordering. The decompiled shuffle loop (lines 1693--1729 of `sub_197A120`) shows six swap pairs per iteration:
+The swap phases do not each target a distinct class of commutativity. Instead, the `swap1`--`swap6` names are **iteration count parameters** that control how many adjacent-element swaps to apply at different offsets within the pass ordering. The decompiled shuffle loop (lines 1693–1729 of `sub_197A120`) shows six swap pairs per iteration:
 
 ```c
 for (int r = 0; r < reps; r++) {
@@ -311,7 +311,7 @@ Round 2 (dce2):  OriPerformLiveDead -> [base passes] -> DCE scan
 Round 3 (dce3):  OriPerformLiveDead -> [base passes] -> DCE scan
 ```
 
-The injection logic (lines 1549--1565 of `sub_197A120`) checks whether the current base-pass index matches any of `dce1_n`, `dce2_n`, or `dce3_n`, and if so, prepends an `OriPerformLiveDead` opcode. This ensures liveness information is recomputed before each DCE round.
+The injection logic (lines 1549–1565 of `sub_197A120`) checks whether the current base-pass index matches any of `dce1_n`, `dce2_n`, or `dce3_n`, and if so, prepends an `OriPerformLiveDead` opcode. This ensures liveness information is recomputed before each DCE round.
 
 The DCE pass itself iterates over all instructions in the function. For each instruction with a destination register, it checks whether the register appears in the live-out set of the basic block (computed by `OriPerformLiveDead`). If the destination is dead and the instruction has no side effects (no memory writes, no control flow), the instruction is removed and its source operands' use counts are decremented. This may create new dead definitions, which is why multiple DCE rounds are beneficial.
 
@@ -340,7 +340,7 @@ Round 2 (cpy2):  OriCopyProp -> [base passes] -> copy forward
 Round 3 (cpy3):  OriCopyProp -> [base passes] -> copy forward
 ```
 
-The injection logic (lines 1645--1649) checks whether the current index matches any of `cpy1_n`, `cpy2_n`, or `cpy3_n`, and if so, inserts an `OriCopyProp` opcode.
+The injection logic (lines 1645–1649) checks whether the current index matches any of `cpy1_n`, `cpy2_n`, or `cpy3_n`, and if so, inserts an `OriCopyProp` opcode.
 
 The copy propagation engine `sub_19756C0` (1,008 lines) is the largest individual pass implementation. It operates on NVIDIA's machine-level IR linked-list structure:
 
@@ -396,7 +396,7 @@ The opcode is resolved via `sub_1AEDF30(table, "OriCopyProp")` (line 1648). The 
 `sub_1977B70` (35 KB, 1,341 lines) is the per-instruction pass merger. It is called from `sub_1979420` (the per-instruction ORI entry point) and performs instruction-level lowering. For each IR instruction:
 
 1. Reads the instruction opcode from field +72 (with mask `& 0xFFFFCFFF`)
-2. For opcode 0x61 (97 decimal = `MOV`): calls `sub_19733B0` for operand rewriting, then performs FNV-1a hash lookup (the characteristic `16777619 * (... ^ 0x811C9DC5)` hash at lines 269--271) into a pattern table to find multi-instruction rewrite rules
+2. For opcode 0x61 (97 decimal = `MOV`): calls `sub_19733B0` for operand rewriting, then performs FNV-1a hash lookup (the characteristic `16777619 * (... ^ 0x811C9DC5)` hash at lines 269–271) into a pattern table to find multi-instruction rewrite rules
 3. For other opcodes: dispatches through the instruction emitter `sub_1976C60` with operand descriptors, or directly encodes via `sub_18B8D90` (the SASS instruction builder)
 
 The FNV-1a hash is used for pattern matching in a hash table at offset +752 in the context structure. This enables O(1) lookup of multi-instruction rewrite patterns by instruction hash.
@@ -458,7 +458,7 @@ Each handler function receives the ORI context (`a1`) and the instruction node (
 
 ### ORI Default Pass Ordering
 
-When no custom options are provided, the ORI pipeline uses the default opcode sequence compiled into the binary at `0x2445D60`. This sequence, returned by `sub_1AEAA80`, encodes the default pass ordering as an array of opcode IDs. The `sub_197A120` default path (lines 1776--1785) simply copies this array:
+When no custom options are provided, the ORI pipeline uses the default opcode sequence compiled into the binary at `0x2445D60`. This sequence, returned by `sub_1AEAA80`, encodes the default pass ordering as an array of opcode IDs. The `sub_197A120` default path (lines 1776–1785) simply copies this array:
 
 ```c
 // Default path: no custom options
@@ -506,11 +506,11 @@ word = (operand_count << 13) & 0x1FE000
      | 0x60000000;  // ORI instruction marker
 ```
 
-**Confidence: HIGH** — the encoding formula is directly visible in `sub_1977AA0` line 34--38.
+**Confidence: HIGH** — the encoding formula is directly visible in `sub_1977AA0` line 34–38.
 
 ### ORI Diff Detection
 
-After the pass sequence executes, `sub_197A120` performs a diff between the original opcode array and the modified one (lines 1787--1826). It computes a popcount of the XOR between old and new entries to detect how many passes actually modified the IR:
+After the pass sequence executes, `sub_197A120` performs a diff between the original opcode array and the modified one (lines 1787–1826). It computes a popcount of the XOR between old and new entries to detect how many passes actually modified the IR:
 
 ```c
 int changes = 0;

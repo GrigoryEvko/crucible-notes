@@ -24,7 +24,7 @@ Unlike GCC's libcpp or Clang's `Lex`, EDG's preprocessor is not a separate phase
 | STDC pragma processor | `process_stdc_pragmas` (`sub_6FBCD0`, 223 lines) |
 | GCC pragma processor | `process_gnu_pragmas` (`sub_6FC1F0`, 1,775 bytes, 91 basic blocks) |
 | Directive jump table | `0xA88440` (24 entries × 8 bytes) |
-| Directive ID encoding | 0--22 (22 = unknown) |
+| Directive ID encoding | 0–22 (22 = unknown) |
 | If-stack head | `qword_12C6F98` (frame array), `qword_106B6D8` (depth) |
 | Stack growth threshold | `qword_12C6F90` (capacity, grows by 30 entries) |
 | Frame size | 12 bytes (8 = saved source position, 4 = flags) |
@@ -225,7 +225,7 @@ When the stack hits capacity (`qword_106B6D8 + 1 == qword_12C6F90`), `sub_6B76D0
 
 `perform_if` evaluates the condition argument that arrives as parameter `a1` (1 = `#ifdef`/`#if`, 0 = `#ifndef`). It calls `sub_6FA000` if `__VA_ARGS__` or `__VA_OPT__` appear in the expression (these can legally appear inside `#if defined(__VA_ARGS__)` checks inside macro replacement lists), and either pushes a frame with the condition's truth value or, if false, immediately calls `skip_to_endif`.
 
-> ⚡ **QUIRK — the if-stack grows in fixed 30-entry chunks, not by doubling.** Every realloc allocates exactly 30 additional frames (360 bytes). For a translation unit with deeply nested conditionals — say, `boost::preprocessor` macro expansions — this causes O(N) reallocations rather than O(log N). The cost is not visible in normal compilation because typical TUs never exceed 10--20 nested `#if`s, but pathological generated code can trigger thousands of realloc syscalls. This is also why `qword_12C6F90` starts at 30, not at 1 or 8: EDG pre-pays the first chunk in `sub_6FE130` (`preproc_pool_init`).
+> ⚡ **QUIRK — the if-stack grows in fixed 30-entry chunks, not by doubling.** Every realloc allocates exactly 30 additional frames (360 bytes). For a translation unit with deeply nested conditionals — say, `boost::preprocessor` macro expansions — this causes O(N) reallocations rather than O(log N). The cost is not visible in normal compilation because typical TUs never exceed 10–20 nested `#if`s, but pathological generated code can trigger thousands of realloc syscalls. This is also why `qword_12C6F90` starts at 30, not at 1 or 8: EDG pre-pays the first chunk in `sub_6FE130` (`preproc_pool_init`).
 
 ## `#include` Processing
 

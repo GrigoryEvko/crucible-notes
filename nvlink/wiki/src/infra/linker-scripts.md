@@ -532,7 +532,7 @@ The `lcs-aug` mode is available for cases where `nvcc` wants only the CUDA fragm
 
 - [CLI Flags](../config/cli-flags.md) — `-ghls` / `--gen-host-linker-script` option and its `lcs-aug` / `lcs-abs` argument values
 - [Environment Variables](../config/env-vars.md) — `--host-ccbin` setting that determines the host compiler used for script generation
-- [Pipeline Entry](../pipeline/entry.md) — `main()` lines 1743--1936 where the linker script generation logic resides
+- [Pipeline Entry](../pipeline/entry.md) — `main()` lines 1743–1936 where the linker script generation logic resides
 - [Output Phase](../pipeline/output.md) — "Host Linker Script Output" sub-section documents this path from the pipeline's perspective (Mode 2 is one of the non-ELF output routes)
 - [NVIDIA Section Types](../elf/nvidia-sections.md) — Fatbin sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) referenced in the SECTIONS template
 - [Host ELF Input](../input/host-elf.md) — Host ELF processing that validates the presence of the three CUDA sections

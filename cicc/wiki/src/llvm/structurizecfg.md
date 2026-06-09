@@ -563,7 +563,7 @@ sub_35CC920(pass, function):
 
 ### Flow Block Insertion Detail: insertFlowBlocks
 
-This function (inlined within the Phase 2/Phase 3 loops of `sub_35CC920`, approximately decompiled lines 980--2027) performs the actual CFG transformation for a single region.
+This function (inlined within the Phase 2/Phase 3 loops of `sub_35CC920`, approximately decompiled lines 980–2027) performs the actual CFG transformation for a single region.
 
 ```c
 insertFlowBlocks(pass, head, tail, function):

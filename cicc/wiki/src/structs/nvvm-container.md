@@ -124,7 +124,7 @@ Terminator:
 
 All multi-byte fields are little-endian. The sentinel value `0xFFFF` in the value slot signals that a full 32-bit value follows. This means the maximum encodable 16-bit value is `0xFFFE` (65534); values of exactly `0xFFFF` or larger require the extended form.
 
-The serializer (`sub_CD17A0`, called 121 times from `NvvmContainer_serialize`) writes each tag/value pair using this scheme. The deserializer enters a switch loop over tags 1--402, decoding each value and writing it to the appropriate offset in the deserialized container struct.
+The serializer (`sub_CD17A0`, called 121 times from `NvvmContainer_serialize`) writes each tag/value pair using this scheme. The deserializer enters a switch loop over tags 1–402, decoding each value and writing it to the appropriate offset in the deserialized container struct.
 
 ### Delta Encoding Strategy
 
@@ -144,7 +144,7 @@ Blob entries do not carry explicit length fields in the tag/value stream. The de
 
 144 distinct tag IDs organized into six ranges. The "Offset" column refers to the byte position within the deserialized 440-byte Options struct.
 
-### Range 1--39: Core Scalar Options
+### Range 1–39: Core Scalar Options
 
 | Tag | Type | Name | Options Offset | Notes |
 |-----|------|------|----------------|-------|
@@ -210,7 +210,7 @@ The write path in `NvvmContainer_serialize` (`0xCDD2D0`) compresses the LLVM bit
 
 The compression subsystem lives outside the main container cluster at addresses `0x16886D0`--`0x16887A0`, in the utility library region of the binary.
 
-### Range 101--173: Extended Target Options
+### Range 101–173: Extended Target Options
 
 These tags configure per-kernel and target-specific hardware parameters. Most map into a sub-structure accessed through the Options struct. The "Byte.Bit" column indicates the packed bitfield location within the target options sub-structure.
 
@@ -236,7 +236,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 118 | bit | `Bit7_68` | byte 68, bit 7 | Target capability flag (bit 6 skipped) |
 | 119 | bit | `EnableCoalesce` | byte 69, bit 0 | Enable memory coalescing optimization |
 | 120 | bit | `EnableVectorize` | byte 69, bit 2 | Enable auto-vectorization |
-| 121 | 2-bit | `CompactionMode` | byte 69, bits 3--4 | Thread compaction strategy (0--3) |
+| 121 | 2-bit | `CompactionMode` | byte 69, bits 3–4 | Thread compaction strategy (0–3) |
 | 122 | int32 | `StackFrameSize` | offset 96 | Stack frame size in bytes |
 | 123 | int32 | `StackAlignment` | offset 100 | Stack alignment requirement |
 | 124 | int32 | `ParamSpaceSize` | offset 104 | Parameter space size |
@@ -246,7 +246,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 128 | int32 | `MinGridSize` | offset 248 | Minimum grid size for occupancy |
 | 129 | int32 | `MaxGridDimX` | offset 252 | Maximum X-dimension grid size |
 | 130 | int32 | `SharedMemPerBlock` | offset 264 | Shared memory per block |
-| 131 | 2-bit | `WarpScheduleMode` | byte 70, bits 0--1 | Warp scheduling strategy |
+| 131 | 2-bit | `WarpScheduleMode` | byte 70, bits 0–1 | Warp scheduling strategy |
 | 132 | bit | `EnablePrefetch` | byte 70, bit 2 | Enable memory prefetch instructions |
 | 133 | bit | `Bit4_70` | byte 70, bit 4 | Target capability flag |
 | 134 | bit | `Bit5_70` | byte 70, bit 5 | Target capability flag |
@@ -263,7 +263,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 145 | bit | `Bit0_71` | byte 71, bit 0 | Target capability flag |
 | 146 | int32 | `ConstBankSize` | offset 256 | Constant bank total size |
 | 147 | int32 | `ShMemBankStride` | offset 152 | Shared memory bank stride |
-| 148 | 2-bit | `ScheduleMode2` | byte 71, bits 4--5 | Secondary scheduling mode |
+| 148 | 2-bit | `ScheduleMode2` | byte 71, bits 4–5 | Secondary scheduling mode |
 | 149 | bit | `Bit6_71` | byte 71, bit 6 | Target capability flag |
 | 150 | bit | `Bit7_71` | byte 71, bit 7 | Target capability flag |
 | 151 | int32 | `LocalMemAlignment` | offset 112 | Local memory alignment |
@@ -290,7 +290,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 172 | bit | `Bit3_70` | byte 70, bit 3 | Target capability flag |
 | 173 | bool | `HasTCGen05` | offset 290 | Target supports TCGen05 (SM 100+) |
 
-### Range 201--218: Blob Data Tags
+### Range 201–218: Blob Data Tags
 
 | Tag | Size | Name | Description |
 |-----|------|------|-------------|
@@ -313,7 +313,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 217 | var | `AuxString3` | Null-terminated auxiliary string |
 | 218 | var | `AuxByteArray` | 4-byte length prefix + raw bytes |
 
-### Range 301--309: Extended Int32 Fields
+### Range 301–309: Extended Int32 Fields
 
 | Tag | Type | Name | Options Offset | Notes |
 |-----|------|------|----------------|-------|
@@ -327,7 +327,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 308 | int32 | `ExtOpt.Field368` | +368 | Extended option |
 | 309 | int32 | `ExtOpt.Field372` | +372 | Extended option |
 
-### Range 351--353: Extended Int64 Blob References
+### Range 351–353: Extended Int64 Blob References
 
 | Tag | Size | Name | Options Offset |
 |-----|------|------|----------------|
@@ -335,7 +335,7 @@ These tags configure per-kernel and target-specific hardware parameters. Most ma
 | 352 | 8 B | `ExtOpt.QWord384` | +384 |
 | 353 | 8 B | `ExtOpt.QWord392` | +392 |
 
-### Range 401--402: Structured Blob Data
+### Range 401–402: Structured Blob Data
 
 These tags are conditionally parsed based on the value of tag 301 (`ExtOpt.Field344`):
 
@@ -625,7 +625,7 @@ The `HW_SM_10_4 = 1200` mapping is notable: SM 10.4 in the HW enum space corresp
 
 The fast-math configuration occupies two bytes at Options offset +200 and +201, with an additional int32 at +204. Each bit independently controls one floating-point relaxation.
 
-### Byte +200 (tags 8--15)
+### Byte +200 (tags 8–15)
 
 ```text
   Bit 7   Bit 6   Bit 5   Bit 4   Bit 3   Bit 2   Bit 1   Bit 0
@@ -636,7 +636,7 @@ The fast-math configuration occupies two bytes at Options offset +200 and +201, 
   tag 15  tag 14  tag 13  tag 12  tag 11  tag 10  tag 9   tag 8
 ```
 
-### Byte +201 (tags 16--17, 26, 31, 33)
+### Byte +201 (tags 16–17, 26, 31, 33)
 
 ```text
   Bit 7   Bit 6   Bit 5   Bit 4   Bit 3   Bit 2   Bit 1   Bit 0
@@ -686,7 +686,7 @@ The `Divide` field is serialized as a nested enum element in XML; in the binary 
 
 ## Memory Window Configuration
 
-Memory windows define how the compiler maps address spaces to hardware memory banks. Three window types are serialized as blobs via tags 201--203, parsed by `NvvmOptions_parse_cbank_config` (`0xCCE4B0`) and `NvvmOptions_parse_memory_windows` (`0xCCE100`).
+Memory windows define how the compiler maps address spaces to hardware memory banks. Three window types are serialized as blobs via tags 201–203, parsed by `NvvmOptions_parse_cbank_config` (`0xCCE4B0`) and `NvvmOptions_parse_memory_windows` (`0xCCE100`).
 
 ### MemoryWindow Type Enum
 
@@ -902,7 +902,7 @@ The container serves as the inter-stage transport format within the cicc compila
 
 Both paths deserialize the container at phase 1, then translate Options into per-stage compiler flags:
 
-- `SmMajor` / `SmMinor` from tags 1--2 become `-mcpu=sm_XX`
+- `SmMajor` / `SmMinor` from tags 1–2 become `-mcpu=sm_XX`
 - `FastMath.Ftz` from tag 13 becomes `-nvptx-f32ftz`
 - `FastMath.Fmad` from tag 15 becomes the IEEE mode flag
 - `OptLevel` becomes `-nvptx-opt-level=N`
@@ -944,13 +944,13 @@ These knobs are distinct from the NVVMPassOptions system (see [NVVMPassOptions](
 
 | Range | Count | Description |
 |-------|-------|-------------|
-| 1--39 | 38 | Core scalar options (SM version, fast-math, unroll, flags) |
+| 1–39 | 38 | Core scalar options (SM version, fast-math, unroll, flags) |
 | 99 | 1 | Compression metadata |
-| 101--173 | 73 | Extended target options (hardware capabilities, memory config) |
-| 201--218 | 18 | Blob data (memory windows, resource tables, strings) |
-| 301--309 | 9 | Extended int32 fields (cluster config, extended options) |
-| 351--353 | 3 | Extended int64 blob references |
-| 401--402 | 2 | Structured conditional blobs (TMA / TCGen05) |
+| 101–173 | 73 | Extended target options (hardware capabilities, memory config) |
+| 201–218 | 18 | Blob data (memory windows, resource tables, strings) |
+| 301–309 | 9 | Extended int32 fields (cluster config, extended options) |
+| 351–353 | 3 | Extended int64 blob references |
+| 401–402 | 2 | Structured conditional blobs (TMA / TCGen05) |
 | **Total** | **144** | **Distinct tag IDs across 6 ranges** |
 
 The deserializer switch statement has 103 unique case labels — the remaining 41 tags share code paths with other tags (e.g., all single-bit tags in a byte share a case that reads the bit position from a secondary table).

@@ -471,19 +471,19 @@ Type IDs 9, 12, 14, 17, 20, 22, 57 are absent from the enum — either reserved 
 
 The type ID groupings inferred from the classification order and the modifier suffix strings:
 
-- **IDs 1--8**: Base MMA types (standard precision combinations — the 8 fundamental `tcgen05.mma` configurations)
-- **IDs 10--16**: Extended base types with non-standard precision or accumulator widths
-- **IDs 18--24**: Extended type A variants (wider accumulator or non-standard rounding)
-- **IDs 25--29**: Blockscale variants (`_blockscale` modifier — block-level scaling for MX formats)
-- **IDs 30--33**: Quantized MMA types (`tcmma_*_q` / `tcmma_*_mxq` internal names)
-- **IDs 34--37**: Mixed-precision variants (asymmetric A/B input types)
-- **IDs 38--41**: FP8/FP6/FP4 narrow-type variants (e4m3, e5m2, e3m2, e2m3, e2m1 combinations)
-- **IDs 42--43**: Sparse MMA variants (structured sparsity — 2:4 or 4:8 patterns)
-- **IDs 44--46**: Ashift variants (`_ashift` modifier — arithmetic shift on matrix A)
-- **IDs 47--48**: Fused variants (`_fused` modifier — fused accumulation)
-- **IDs 49--51**: Pack/Expand variants (`_pack16bit`, `_expand16bit` modifiers)
-- **IDs 52--56**: MXQ (Mixed-precision Quantized) types (`_blockscale` + quantization)
-- **IDs 58--59**: Maxabs/Minabs variants (`_maxabs`, `_minabs` reduction modifiers)
+- **IDs 1–8**: Base MMA types (standard precision combinations — the 8 fundamental `tcgen05.mma` configurations)
+- **IDs 10–16**: Extended base types with non-standard precision or accumulator widths
+- **IDs 18–24**: Extended type A variants (wider accumulator or non-standard rounding)
+- **IDs 25–29**: Blockscale variants (`_blockscale` modifier — block-level scaling for MX formats)
+- **IDs 30–33**: Quantized MMA types (`tcmma_*_q` / `tcmma_*_mxq` internal names)
+- **IDs 34–37**: Mixed-precision variants (asymmetric A/B input types)
+- **IDs 38–41**: FP8/FP6/FP4 narrow-type variants (e4m3, e5m2, e3m2, e2m3, e2m1 combinations)
+- **IDs 42–43**: Sparse MMA variants (structured sparsity — 2:4 or 4:8 patterns)
+- **IDs 44–46**: Ashift variants (`_ashift` modifier — arithmetic shift on matrix A)
+- **IDs 47–48**: Fused variants (`_fused` modifier — fused accumulation)
+- **IDs 49–51**: Pack/Expand variants (`_pack16bit`, `_expand16bit` modifiers)
+- **IDs 52–56**: MXQ (Mixed-precision Quantized) types (`_blockscale` + quantization)
+- **IDs 58–59**: Maxabs/Minabs variants (`_maxabs`, `_minabs` reduction modifiers)
 - **ID 55**: Extended sparse variant
 - **ID 60**: Extended sparse variant (last in chain)
 
@@ -491,7 +491,7 @@ The type ID groupings inferred from the classification order and the modifier su
 
 `sub_16E1DB0` (10,365 bytes, 325 lines) generates inline PTX boundary-checking code that validates tensor memory accesses before `tcgen05.mma` execution. This is a compiler-inserted safety mechanism — the guardrails are weak functions that can be overridden at link time.
 
-**Symbol selection** (line 67--73): The function selects one of two guardrail symbol prefixes based on the instruction opcode at offset 776:
+**Symbol selection** (line 67–73): The function selects one of two guardrail symbol prefixes based on the instruction opcode at offset 776:
 
 | Opcode | Symbol Prefix |
 |---|---|
@@ -500,7 +500,7 @@ The type ID groupings inferred from the classification order and the modifier su
 
 Both prefixes get `nCols` appended to form the final guardrail variable name (e.g., `__cuda__sm10x_tcgen05_guardrails_in_physical_bounds_nCols`).
 
-**nCols computation** (line 82--318): The number of columns accessed by the MMA instruction is computed via a multi-level dispatch. The first dispatch key is `BYTE2(v63) & 0x1C` — a 3-bit field extracted from the instruction descriptor at offset 632:
+**nCols computation** (line 82–318): The number of columns accessed by the MMA instruction is computed via a multi-level dispatch. The first dispatch key is `BYTE2(v63) & 0x1C` — a 3-bit field extracted from the instruction descriptor at offset 632:
 
 | Field Value | nCols Computation |
 |---|---|
@@ -510,7 +510,7 @@ Both prefixes get `nCols` appended to form the final guardrail variable name (e.
 | `0x1C` (28) | Register: copies from operand at offset 656 via `mov.u32 %s, %s` |
 | other | Falls through to instruction-opcode-based dispatch |
 
-**Instruction-opcode nCols table** (lines 103--128): When none of the above field values match, the byte at offset 620 (`v4`, signed char interpreted as instruction opcode) determines nCols:
+**Instruction-opcode nCols table** (lines 103–128): When none of the above field values match, the byte at offset 620 (`v4`, signed char interpreted as instruction opcode) determines nCols:
 
 | Opcode (signed) | Opcode (unsigned) | nCols Base | nCols (with scale) | Interpretation |
 |---|---|---|---|---|
@@ -527,9 +527,9 @@ Both prefixes get `nCols` appended to form the final guardrail variable name (e.
 
 The nCols value is modified by two flags in the instruction descriptor at offset 624 (`v62.m128i_i8[8]`):
 - `& 0x03` (CTA group flag): If nonzero, the base nCols is doubled (nCols = nCols_wide instead of nCols_narrow)
-- `& 0x78` (scale factor flag): If nonzero, nCols is multiplied by `sub_12AB660(v5)` where `v5 = (byte >> 3) & 0xF` is a 4-bit index into the scale lookup table at `dword_1F24300` (values indexed 0--7)
+- `& 0x78` (scale factor flag): If nonzero, nCols is multiplied by `sub_12AB660(v5)` where `v5 = (byte >> 3) & 0xF` is a 4-bit index into the scale lookup table at `dword_1F24300` (values indexed 0–7)
 
-**Dynamic descriptor dispatch** (field value `0x14`, lines 158--318): When the field value is 0x14, a secondary 3-bit dispatch on `*(a1+634) >> 5` selects one of 6 nCols computation strategies:
+**Dynamic descriptor dispatch** (field value `0x14`, lines 158–318): When the field value is 0x14, a secondary 3-bit dispatch on `*(a1+634) >> 5` selects one of 6 nCols computation strategies:
 
 | Case | PTX Emitted | Semantics |
 |---|---|---|

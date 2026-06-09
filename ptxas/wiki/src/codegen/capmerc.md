@@ -6,7 +6,7 @@ Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded ins
 
 | | |
 |---|---|
-| **Output modes** | `mercury` (SM 75--99 default), `capmerc` (SM 100+ default), `sass` (explicit only) |
+| **Output modes** | `mercury` (SM 75–99 default), `capmerc` (SM 100+ default), `sass` (explicit only) |
 | **CLI parser** | `sub_703AB0` (10KB, ParsePtxasOptions) |
 | **Auto-enable** | SM arch > 99 sets `*(context + offset+81) = 1` |
 | **Mercury mode flag** | `*(DWORD*)(context+385) == 2` (shared with Mercury) |
@@ -43,7 +43,7 @@ if (sm_version > 99) {
 }
 ```
 
-The Mercury mode flag `*(DWORD*)(context+385) == 2` is shared between Mercury and capmerc — both use the identical Mercury encoder pipeline (phases 117--122). The capmerc distinction is purely at the ELF emission level: capmerc wraps the phase-122 SASS output in a capsule descriptor with relocation metadata instead of emitting it directly as a `.text` section.
+The Mercury mode flag `*(DWORD*)(context+385) == 2` is shared between Mercury and capmerc — both use the identical Mercury encoder pipeline (phases 117–122). The capmerc distinction is purely at the ELF emission level: capmerc wraps the phase-122 SASS output in a capsule descriptor with relocation metadata instead of emitting it directly as a `.text` section.
 
 ## Capsule Mercury ELF Structure
 
@@ -521,7 +521,7 @@ resolve_relocations(elfw):
                     sym.st_size, section.sh_type - 0x70000064)
 ```
 
-The sub-byte `R_MERCURY_8_N` types (ordinals 4--11) use patch mode 6 in `sub_1CD34E0`, which extracts byte `N/8` from the computed value and writes it to the target offset without touching adjacent bytes. This avoids a read-modify-write on the full QWORD — the descriptor's `bit_start` field encodes the byte position (0, 8, 16, ... 56) and `bit_width` is always 8.
+The sub-byte `R_MERCURY_8_N` types (ordinals 4–11) use patch mode 6 in `sub_1CD34E0`, which extracts byte `N/8` from the computed value and writes it to the target offset without touching adjacent bytes. This avoids a read-modify-write on the full QWORD — the descriptor's `bit_start` field encodes the byte position (0, 8, 16, ... 56) and `bit_width` is always 8.
 
 ## Mercury Section Binary Layouts
 
@@ -810,13 +810,13 @@ The `CAN_FINALIZE_DEBUG` environment variable enables verbose tracing of the dec
 
 ### Kernel finalizer fastpath (`sub_612DE0`)
 
-When the check passes, the finalizer patches the capsule in-place rather than re-running phases 117--122. On success ptxas emits:
+When the check passes, the finalizer patches the capsule in-place rather than re-running phases 117–122. On success ptxas emits:
 
 ```text
 "[Finalizer] fastpath optimization applied for off-target %u -> %u finalization"
 ```
 
-The 5-step fastpath sequence (lines 830--879 of the decompilation):
+The 5-step fastpath sequence (lines 830–879 of the decompilation):
 
 ```c
 fn finalizer_fastpath(capsule_buf, source_sm, target_sm, out_ptr, out_size):
@@ -852,7 +852,7 @@ If the fastpath fires, execution jumps directly to `LABEL_20` (cleanup epilogue)
 
 ## Pipeline Integration
 
-Capmerc does not modify the Mercury encoder pipeline (phases 113--122). The instruction encoding, pseudo-instruction expansion, WAR hazard resolution, operation expansion (opex), and SASS microcode emission all execute identically regardless of output mode. The divergence happens after phase 122 completes:
+Capmerc does not modify the Mercury encoder pipeline (phases 113–122). The instruction encoding, pseudo-instruction expansion, WAR hazard resolution, operation expansion (opex), and SASS microcode emission all execute identically regardless of output mode. The divergence happens after phase 122 completes:
 
 | Mode | Post-Pipeline Behavior |
 |---|---|
@@ -916,7 +916,7 @@ void EmitELF(context) {
 
 ## Cross-References
 
-- [Mercury Encoder Pipeline](./mercury.md) — phases 113--122, the upstream encoding that capmerc wraps
+- [Mercury Encoder Pipeline](./mercury.md) — phases 113–122, the upstream encoding that capmerc wraps
 - [SASS Instruction Encoding](./encoding.md) — bit-level encoding format and 1280-bit instruction buffer
 - [Code Generation Overview](./overview.md) — high-level codegen pipeline context
 - [Knobs System](../config/knobs.md) — knob infrastructure that KNOBS embedding serializes

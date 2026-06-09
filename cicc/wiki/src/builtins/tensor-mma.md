@@ -1,14 +1,14 @@
 # Tensor Core / MMA Builtins
 
-Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Warp Group MMA (WGMMA) interfaces, spanning IDs 678--770 across four SM generations. Each generation added new data types and matrix shapes, resulting in 91 registered builtins that cover half-precision, integer, binary, double-precision, TF32, BF16, and FP8 matrix operations. SM 100 (Blackwell) adds a fifth generation — tcgen05 — documented in [Tensor / MMA Codegen](../llvm/mma-codegen.md).
+Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Warp Group MMA (WGMMA) interfaces, spanning IDs 678–770 across four SM generations. Each generation added new data types and matrix shapes, resulting in 91 registered builtins that cover half-precision, integer, binary, double-precision, TF32, BF16, and FP8 matrix operations. SM 100 (Blackwell) adds a fifth generation — tcgen05 — documented in [Tensor / MMA Codegen](../llvm/mma-codegen.md).
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Builtin IDs | 678--770 (93 entries) |
-| WGMMA handler (IDs 753--768) | ~800 lines in `sub_12B3FD0` / `sub_955A70` |
-| LLVM intrinsic range (WGMMA) | 5304--5447 (144-entry 5-D grid) plus 10654--10779 (N-dimension table) |
+| Builtin IDs | 678–770 (93 entries) |
+| WGMMA handler (IDs 753–768) | ~800 lines in `sub_12B3FD0` / `sub_955A70` |
+| LLVM intrinsic range (WGMMA) | 5304–5447 (144-entry 5-D grid) plus 10654–10779 (N-dimension table) |
 | NVVM lowering | `sub_955A70` (24 KB native), `sub_12B3FD0` (22 KB native) |
 | Backend emission | `sub_21E74C0` (PTX builder), `sub_36E9630` (tcgen05 ISD selection) |
 | SM gates | SM 70+ HMMA, SM 72+ IMMA, SM 75+ BMMA, SM 80+ DMMA/TF32/BF16, SM 90+ WGMMA |
@@ -17,21 +17,21 @@ Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Wa
 
 | SM Generation | Feature | ID Range | Count |
 |---|---|---|---|
-| SM 70 (Volta) | HMMA: FP16 tensor core | 678--707 | 30 |
-| SM 75 (Turing) | IMMA: INT8/INT4, BMMA: binary | 708--745 | 38 |
-| SM 80 (Ampere) | DMMA: FP64, TF32, BF16 | 746--764 | 19 |
-| SM 90 (Hopper) | WGMMA: warp-group MMA, FP8 | 765--768 | 4 |
+| SM 70 (Volta) | HMMA: FP16 tensor core | 678–707 | 30 |
+| SM 75 (Turing) | IMMA: INT8/INT4, BMMA: binary | 708–745 | 38 |
+| SM 80 (Ampere) | DMMA: FP64, TF32, BF16 | 746–764 | 19 |
+| SM 90 (Hopper) | WGMMA: warp-group MMA, FP8 | 765–768 | 4 |
 | SM 100 (Blackwell) | tcgen05: MX formats, block-scale, sparsity | (intrinsic path) | — |
 
-## HMMA — Half-Precision (IDs 678--707, SM 70+)
+## HMMA — Half-Precision (IDs 678–707, SM 70+)
 
 The original tensor core builtins provide 16-bit floating-point matrix multiply for three tile shapes. Each shape has 10 operations: load A, load B, load C (f16 and f32 accumulators), store C (f16 and f32), and four MMA variants for input/output precision combinations.
 
 | ID Range | Shape | Builtin Prefix |
 |---|---|---|
-| 678--687 | 16x16x16 | `__hmma_m16n16k16_*` |
-| 688--697 | 32x8x16 | `__hmma_m32n8k16_*` |
-| 698--707 | 8x32x16 | `__hmma_m8n32k16_*` |
+| 678–687 | 16x16x16 | `__hmma_m16n16k16_*` |
+| 688–697 | 32x8x16 | `__hmma_m32n8k16_*` |
+| 698–707 | 8x32x16 | `__hmma_m8n32k16_*` |
 
 Per-shape operations (10 each):
 
@@ -48,11 +48,11 @@ Per-shape operations (10 each):
 | `mma_f16f32` | MMA f32->f16 | FP32 accumulator, FP16 output |
 | `mma_f32f32` | MMA f32->f32 | FP32 input and accumulator |
 
-## IMMA — Integer MMA (IDs 708--739, SM 75+)
+## IMMA — Integer MMA (IDs 708–739, SM 75+)
 
 Integer tensor core operations for INT8 and INT4 data types.
 
-### INT8 (IDs 708--731)
+### INT8 (IDs 708–731)
 
 Three shapes (16x16x16, 32x8x16, 8x32x16), each with 8 operations:
 
@@ -64,11 +64,11 @@ Three shapes (16x16x16, 32x8x16, 8x32x16), each with 8 operations:
 | `st_c_i32` | Store result (INT32) |
 | `mma_s8` / `mma_u8` | INT8 MMA (signed/unsigned) |
 
-### INT4 (IDs 732--739)
+### INT4 (IDs 732–739)
 
 Single shape (8x8x32) with the same operation set but `_s4` / `_u4` type suffixes.
 
-## BMMA — Binary MMA (IDs 740--745, SM 75+)
+## BMMA — Binary MMA (IDs 740–745, SM 75+)
 
 Binary (1-bit) matrix multiply with XOR-POPC and AND-POPC accumulation modes. Single shape: 8x8x128.
 
@@ -81,33 +81,33 @@ Binary (1-bit) matrix multiply with XOR-POPC and AND-POPC accumulation modes. Si
 | 744 | `__bmma_m8n8k128_mma_xor_popc_b1` | Binary MMA (XOR + popcount) |
 | 745 | `__bmma_m8n8k128_mma_and_popc_b1` | Binary MMA (AND + popcount) |
 
-## Extended Tensor Core (IDs 746--764, SM 80+)
+## Extended Tensor Core (IDs 746–764, SM 80+)
 
 SM 80 (Ampere) added double-precision, TF32, and BF16 tensor operations.
 
-### DMMA — Double Precision (IDs 746, 751--754)
+### DMMA — Double Precision (IDs 746, 751–754)
 
 | ID | Builtin | Description |
 |---|---|---|
 | 746 | `__dmma_m8n8k4_mma_f64` | FP64 MMA |
 | 751 | `__dmma_m8n8k4_st_c_f64` | Store FP64 result |
-| 752--754 | `__dmma_m8n8k4_{ld_a,ld_b,ld_c}` | Load fragments |
+| 752–754 | `__dmma_m8n8k4_{ld_a,ld_b,ld_c}` | Load fragments |
 
-### TF32 (IDs 747, 755--757)
+### TF32 (IDs 747, 755–757)
 
 | ID | Builtin | Description |
 |---|---|---|
 | 747 | `__mma_tf32_m16n16k8_mma_f32` | TF32 MMA producing FP32 |
-| 755--757 | `__mma_tf32_m16n16k8_{ld_a,ld_b,ld_c}` | Load fragments |
+| 755–757 | `__mma_tf32_m16n16k8_{ld_a,ld_b,ld_c}` | Load fragments |
 
-### BF16 (IDs 748--750, 758--764)
+### BF16 (IDs 748–750, 758–764)
 
 | ID | Builtin | Description |
 |---|---|---|
 | 748 | `__mma_bf16_m16n16k16_mma_f32` | BF16 16x16x16 MMA |
 | 749 | `__mma_bf16_m32n8k16_mma_f32` | BF16 32x8x16 MMA |
 | 750 | `__mma_bf16_m8n32k16_mma_f32` | BF16 8x32x16 MMA |
-| 758--764 | `__mma_bf16_m*_{ld_a,ld_b}` | Load fragments for each shape |
+| 758–764 | `__mma_bf16_m*_{ld_a,ld_b}` | Load fragments for each shape |
 
 ## WMMA Lowering Details
 
@@ -117,11 +117,11 @@ WMMA builtins use a three-table structure for mapping builtin IDs to LLVM intrin
 
 | Table | Address (NVVM) | ID Range | Description |
 |---|---|---|---|
-| `dword_3F14840` | Entries 0--29 | 678--707 | HMMA (first-generation, FP16) |
-| `dword_3F147E0` | Entries 0--23 | 708--731 | IMMA (INT8) |
-| `dword_3F147A0` | Entries 0--12 | 732--744 | BMMA (binary) / INT4 |
+| `dword_3F14840` | Entries 0–29 | 678–707 | HMMA (first-generation, FP16) |
+| `dword_3F147E0` | Entries 0–23 | 708–731 | IMMA (INT8) |
+| `dword_3F147A0` | Entries 0–12 | 732–744 | BMMA (binary) / INT4 |
 
-The EDG-side parallel tables live at `dword_42810C0` (678--709), `dword_4281060` (708--731), `dword_4281020` (732--744), addressed from `sub_12AC1A0`.
+The EDG-side parallel tables live at `dword_42810C0` (678–709), `dword_4281060` (708–731), `dword_4281020` (732–744), addressed from `sub_12AC1A0`.
 
 ### Fragment Size Determination
 
@@ -134,7 +134,7 @@ The number of register-level fragments varies by operation and data type:
 | IMMA, intrinsic 8914/8280 | 2 | INT8 ld_a compact |
 | BMMA | 2 | Binary operations |
 | IMMA intrinsic 0x22BB/0x22BC/0x22C5/0x22C6 | 4 | INT4 load A/B |
-| IMMA intrinsic 0x22BD/0x22BE/0x22C3/0x22C4/0x22CB--0x22CE | 1 | Sub-byte single-element |
+| IMMA intrinsic 0x22BD/0x22BE/0x22C3/0x22C4/0x22CB–0x22CE | 1 | Sub-byte single-element |
 | IMMA intrinsic 0x22B7/0x22BF/0x22C7 | 8 | INT8 full-width |
 
 ### MMA Codegen Flow
@@ -145,9 +145,9 @@ The MMA handler (`sub_94E0D0` / `sub_12AC5F0`) processes 5 input operands:
 2. **A_fragment** — Matrix A input (loaded `v100` times)
 3. **B_fragment** — Matrix B input (loaded `v95` times)
 4. **C_fragment** — Accumulator input (loaded `v101` times)
-5. **rowcol** — Layout operand (validated 0--3 for MMA)
+5. **rowcol** — Layout operand (validated 0–3 for MMA)
 
-An optional **satf** flag (saturation, validated 0--1) is consumed for most intrinsics except ID 8279.
+An optional **satf** flag (saturation, validated 0–1) is consumed for most intrinsics except ID 8279.
 
 The handler emits the MMA call via `sub_921880` and scatters results back to the destination fragment through `v103` iterations of element-wise stores.
 
@@ -196,23 +196,23 @@ Four builtins are registered in `sub_90AEE0` (NVVM) and `sub_126A910` (EDG):
 
 ### WGMMA ID Space Overview
 
-The full WGMMA ID range spans 745--770, subdivided into four functional groups:
+The full WGMMA ID range spans 745–770, subdivided into four functional groups:
 
 | ID Range | Function | Handler |
 |---|---|---|
-| 745--750 (0x2E9--0x2EE) | Fence / commit / wait | `sub_12B1C20` / `sub_953BA0` |
-| 751--752 (0x2EF--0x2F0) | Store | `sub_12B27B0` / `sub_954350` |
-| 753--764 (0x2F1--0x2FC) | MMA async load (12 variants) | inline / `sub_9547E0` |
-| 765--768 (0x2FD--0x300) | MMA async compute (4 type builtins) | inline ~800 lines / `sub_12B2E10` |
-| 769--770 (0x301--0x302) | Warp-group barrier | inline IR via `sub_127FC40` |
+| 745–750 (0x2E9–0x2EE) | Fence / commit / wait | `sub_12B1C20` / `sub_953BA0` |
+| 751–752 (0x2EF–0x2F0) | Store | `sub_12B27B0` / `sub_954350` |
+| 753–764 (0x2F1–0x2FC) | MMA async load (12 variants) | inline / `sub_9547E0` |
+| 765–768 (0x2FD–0x300) | MMA async compute (4 type builtins) | inline ~800 lines / `sub_12B2E10` |
+| 769–770 (0x301–0x302) | Warp-group barrier | inline IR via `sub_127FC40` |
 
-### WGMMA Fence / Commit / Wait (IDs 745--750)
+### WGMMA Fence / Commit / Wait (IDs 745–750)
 
 `sub_953BA0` (NVVM) / `sub_12B1C20` (EDG) builds a red-black tree on first call with 7 entries keyed by builtin ID. Each entry packs:
 
 ```c
 struct wgmma_fence_entry {
-    uint32_t id;           // builtin ID (745--751)
+    uint32_t id;           // builtin ID (745–751)
     uint32_t trans_a;      // transpose A flag
     uint32_t shape;        // shape code (0 or 1)
     uint32_t trans_b;      // transpose B flag
@@ -225,7 +225,7 @@ struct wgmma_fence_entry {
 };
 ```
 
-Decoded entries from local variables v47--v106:
+Decoded entries from local variables v47–v106:
 
 | ID | trans_a | shape | trans_b | a_nregs | b_nregs | A type | B type | C type |
 |---|---|---|---|---|---|---|---|---|
@@ -249,13 +249,13 @@ Output packed encoding (`*a4`, 64-bit):
 | [25] | rowcol bit 1 | `(rowcol & 2) == 0 ? 0x2000000 : 0x1000000` |
 | [27:26] | rowcol bit 0 | `((rowcol & 1) + 1) << 26` |
 
-The fence dispatch validates the `rowcol` operand (must be 0--3) and emits a 4-argument call to intrinsic 9062 (`llvm.nvvm.wgmma.fence.aligned`) with 3 type overloads. Fragment operands are prepared via `sub_94B510`.
+The fence dispatch validates the `rowcol` operand (must be 0–3) and emits a 4-argument call to intrinsic 9062 (`llvm.nvvm.wgmma.fence.aligned`) with 3 type overloads. Fragment operands are prepared via `sub_94B510`.
 
-### WGMMA Store (IDs 751--752)
+### WGMMA Store (IDs 751–752)
 
 `sub_954350` / `sub_12B27B0` builds a separate parameter lookup tree. Store operations validate `rowcol` (0 or 1) and emit a 5-argument call using intrinsic 9145 (`llvm.nvvm.wgmma.store`) with 2 type overloads. Operands: `{constant, B_fragment, descriptor, rowcol, zero}`.
 
-### WGMMA MMA Async Load (IDs 753--764)
+### WGMMA MMA Async Load (IDs 753–764)
 
 `sub_9547E0` (NVVM) / `sub_12B2E10` (EDG) builds a 12-entry red-black tree at `ctx+656`:
 
@@ -284,9 +284,9 @@ Output packed encoding (`*a4`, 64-bit):
 
 Emits intrinsic 9067 (`llvm.nvvm.wgmma.mma.async`) with 2 type overloads. Arguments: `{constant, B_fragment, rowcol_value, zero_constant}`. Results scattered via `sub_94B940`.
 
-### WGMMA MMA Async Compute — The 800-Line Handler (IDs 765--768)
+### WGMMA MMA Async Compute — The 800-Line Handler (IDs 765–768)
 
-This is the primary WGMMA lowering path. It lives inline in the mega-switch of `sub_955A70` (NVVM, lines ~2850--3138) and `sub_12B3FD0` (EDG, lines ~2270--3138). The handler implements two completely different intrinsic selection strategies depending on which builtin ID triggered entry.
+This is the primary WGMMA lowering path. It lives inline in the mega-switch of `sub_955A70` (NVVM, lines ~2850–3138) and `sub_12B3FD0` (EDG, lines ~2270–3138). The handler implements two completely different intrinsic selection strategies depending on which builtin ID triggered entry.
 
 #### Argument Extraction
 
@@ -320,9 +320,9 @@ This check is applied 5 times: once for N dimension, once for each scale factor,
 | 767 (0x2FF) | `_tf32` | Rearranged arguments, fewer config bits |
 | 768 (0x300) | `_f8` | Simplest form, 2 matrix descriptors + config |
 
-#### Strategy 1: N-Dimension Dispatch (IDs 765--768, inner path)
+#### Strategy 1: N-Dimension Dispatch (IDs 765–768, inner path)
 
-When the element type is checked and the first argument yields an N dimension, the handler enters a 33-entry switch mapping N values to LLVM intrinsic IDs in the range 10654--10779:
+When the element type is checked and the first argument yields an N dimension, the handler enters a 33-entry switch mapping N values to LLVM intrinsic IDs in the range 10654–10779:
 
 | N | Integer-type Intrinsic | Float-type Intrinsic |
 |---|---|---|
@@ -370,9 +370,9 @@ if ((N & (N - 1)) != 0)
 
 This is applied when the N value does not match any case in the 33-entry switch. The N values 8, 16, 32, 64, 128, 256 are powers of two; the intermediate values (24, 40, 48, ..., 248) are non-power-of-two multiples of 8 that are still valid WGMMA dimensions.
 
-#### Strategy 2: 5-Dimensional Intrinsic Grid (IDs 753--764 path, shared)
+#### Strategy 2: 5-Dimensional Intrinsic Grid (IDs 753–764 path, shared)
 
-For the full WGMMA async variants (handled through `sub_12B2E10`), the handler selects from a 144-entry intrinsic table spanning IDs 5304--5447, organized as a 5-dimensional grid:
+For the full WGMMA async variants (handled through `sub_12B2E10`), the handler selects from a 144-entry intrinsic table spanning IDs 5304–5447, organized as a 5-dimensional grid:
 
 | Dimension | Values | Description |
 |---|---|---|
@@ -390,7 +390,7 @@ Base addresses and stride:
 | 64 | ~5328 | 24 |
 | 32 | ~5352 | 24 |
 | 16 | ~5376 | 24 |
-| overflow | ~5400--5447 | remaining |
+| overflow | ~5400–5447 | remaining |
 
 Size-based opcode selection (for f16, ID 765):
 
@@ -433,7 +433,7 @@ All constant arguments pass through `sub_620FD0`, which extracts the integer val
 | Constant overflow | `"unexpected constant overflow in __wgmma_mma_async operand"` | Any integer operand overflows extraction (5 occurrences) |
 | N power-of-two | `"N only supported for powers of two"` | `(N & (N - 1)) != 0` and N not in the 33-entry switch |
 | rowcol range (fence) | `"'rowcol' operand can be 0 or 1 only"` | rowcol > 1 for load/store |
-| rowcol range (MMA) | (implicit — validated 0--3) | rowcol > 3 for MMA operations |
+| rowcol range (MMA) | (implicit — validated 0–3) | rowcol > 3 for MMA operations |
 
 ## WGMMA Support Functions
 
@@ -463,12 +463,12 @@ v22 = *(QWORD *)(*(QWORD *)(a1 + 16) + 16 * a2 + 8)
 | [2:1] | Matrix ID | `"mid"` | 0=a, 1=b, 2=c, 3=d |
 | [7:4] | Binary opcode | `"opc"` | 0=default, 1=`.and.popc`, 2=`.xor.popc` |
 | [2:0] | Rounding mode | `"rnd"` | 0=none, 1=`.rn`, 2=`.rm`, 3=`.rp`, 4=`.rz` |
-| [15:8] | A element type | `"aty"` | Type enum 1--11 |
-| [23:16] | B element type | `"bty"` | Type enum 1--11 |
+| [15:8] | A element type | `"aty"` | Type enum 1–11 |
+| [23:16] | B element type | `"bty"` | Type enum 1–11 |
 | [25:24] | A layout | `"al"` | 0=row, nonzero=col |
 | [27:26] | B layout | `"bl"` | 0=row, nonzero=col |
 | [28] | Saturation | `"satf"` | 1=`.satfinite` |
-| [39:32] | Shape enum | `"shape"` | 0x01--0x19, 18 entries |
+| [39:32] | Shape enum | `"shape"` | 0x01–0x19, 18 entries |
 
 ### Shape Enum
 
@@ -588,9 +588,9 @@ Note the asymmetry: `scaleD`/`transA`/`transB` emit boolean `"0"`/`"1"` strings,
 | 9062 | `llvm.nvvm.wgmma.fence.aligned` | WGMMA fence (3 type overloads) |
 | 9067 | `llvm.nvvm.wgmma.mma.async` | WGMMA MMA async load (2 type overloads) |
 | 9145 | `llvm.nvvm.wgmma.store` | WGMMA store (2 type overloads) |
-| 10654--10779 | `llvm.nvvm.wgmma.mma.async.*` | Per-N-dimension variants (126 entries, even=int, odd=float) |
-| 5304--5447 | (WGMMA 5-D grid) | Per-N x shared x type x scale x variant (144 entries) |
-| 4905--4940 | (tcgen05 ISD opcodes) | tcgen05.mma variants (36 opcodes via 10-way shape switch) |
+| 10654–10779 | `llvm.nvvm.wgmma.mma.async.*` | Per-N-dimension variants (126 entries, even=int, odd=float) |
+| 5304–5447 | (WGMMA 5-D grid) | Per-N x shared x type x scale x variant (144 entries) |
+| 4905–4940 | (tcgen05 ISD opcodes) | tcgen05.mma variants (36 opcodes via 10-way shape switch) |
 
 ## NVPTX Backend Duplicate Functions
 

@@ -130,7 +130,7 @@ for (int kind = 1; kind <= 72; kind++) {
 }
 ```
 
-The iteration order mirrors `walk_file_scope_il` (sub_60E4F0), processing kinds 1 through 72 with some gaps (kinds 24--26, 31--32, 43--45, 49--58, 60, 64--71 are skipped because those lists are empty or handled differently).
+The iteration order mirrors `walk_file_scope_il` (sub_60E4F0), processing kinds 1 through 72 with some gaps (kinds 24–26, 31–32, 43–45, 49–58, 60, 64–71 are skipped because those lists are empty or handled differently).
 
 ### Using-Declaration Fixup
 
@@ -154,7 +154,7 @@ For each scope region (iterated via `entry + 264`), it walks the using-declarati
 | `6` | Type alias (typedef) | Special: if typedef of a class/struct with `has_definition` flag, and the underlying class is marked, mark the typedef too |
 | `66` | Using-everything | Force-mark unconditionally, set `changed = 1` |
 
-The typedef case (kind 6) deserves attention. When a typedef aliases a marked class, the typedef entry gets marked so that device code can reference the class through its alias name. The check verifies `entry + 132 == 12` (typedef type kind), the underlying type is a class/struct/union (kinds 9--11), and the `has_definition` flag (`entry + 161, bit 2`) is set.
+The typedef case (kind 6) deserves attention. When a typedef aliases a marked class, the typedef entry gets marked so that device code can reference the class through its alias name. The check verifies `entry + 132 == 12` (typedef type kind), the underlying type is a class/struct/union (kinds 9–11), and the `has_definition` flag (`entry + 161, bit 2`) is set.
 
 ## Recursive Worker: walk_tree_and_set_keep_in_il (sub_6115E0)
 

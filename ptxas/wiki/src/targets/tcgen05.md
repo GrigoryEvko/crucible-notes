@@ -11,7 +11,7 @@ TCGen05 is the Blackwell-generation tensor core instruction family introduced wi
 | **Capability check** | `sub_70FA00(*, 29)` — returns true for tcgen05-capable targets |
 | **PTX instructions** | 13: alloc, dealloc, relinquish_alloc_permit, ld, ld.red, st, commit, cp, shift, fence, wait, mma, mma.ws |
 | **Guardrail instructions** | 8: is_phase_valid, are_columns_allocated, is_current_warp_valid_owner, in_physical_bounds, allocation_granularity, datapath_alignment, sp_consistency_across_idesc_mod, check_sparse_usage |
-| **SASS opcode range** | Opcodes 122--139 (TMEM operations), 213--221 (TCGEN05_MMA/FENCE, TMEM extended), 342--372 (TCGEN05 control) |
+| **SASS opcode range** | Opcodes 122–139 (TMEM operations), 213–221 (TCGEN05_MMA/FENCE, TMEM extended), 342–372 (TCGEN05 control) |
 | **Codegen factory** | 36864 (9 << 12) — shared across all Blackwell targets |
 | **MMA codegen** | `sub_5BBC30` (90KB) |
 | **PTX validator** | `sub_4C5FB0` (28KB — shared MMA/WMMA/tcgen05 validator) |
@@ -206,33 +206,33 @@ TCGen05 supports structured sparsity through the sparsity metadata TMEM address 
 
 TCGen05 SASS instructions span three opcode regions in the SM 100 SASS ISA. The encoding information comes from the latency model tables (`sub_8E8A90` for sm_100) and the master instruction encoder (`sub_6D9690`, 94KB).
 
-#### TMEM Operations (Opcodes 122--139)
+#### TMEM Operations (Opcodes 122–139)
 
 | Opcode | Variants | Category | Encoding Class | Operands |
 |---|---|---|---|---|
 | 122 | 2 | TMEM_OP / new ISA | F1F08, F1C60 | 3-op, reg10 |
-| 123 | 6 | TMEM_LD (tensor mem load) | F1F08, F1DF8 | 2--3 op |
-| 125 | 6 | TMEM_ST (tensor mem store) | F1F08, F1DF8 | 2--3 op |
-| 127 | 9 | TMEM_ALLOC / FENCE | F1F08..F29A8 | 3--6 op |
+| 123 | 6 | TMEM_LD (tensor mem load) | F1F08, F1DF8 | 2–3 op |
+| 125 | 6 | TMEM_ST (tensor mem store) | F1F08, F1DF8 | 2–3 op |
+| 127 | 9 | TMEM_ALLOC / FENCE | F1F08..F29A8 | 3–6 op |
 | 129 | 3 | TMEM extended | F1F08 | 2 op |
-| 130 | 26 | EXTENDED_MOV / TMEM_MVA | F1F08..F2678 | 2--9 op |
-| 131 | 3 | EXTENDED_ALU / UTMA | F21B0 | 4--5 op |
+| 130 | 26 | EXTENDED_MOV / TMEM_MVA | F1F08..F2678 | 2–9 op |
+| 131 | 3 | EXTENDED_ALU / UTMA | F21B0 | 4–5 op |
 | 133 | 1 | UTMA variant | F21B0 | 4 op |
-| 139 | 4 | TCGEN05 operations | F21B0, F2568 | 4--8 op |
+| 139 | 4 | TCGEN05 operations | F21B0, F2568 | 4–8 op |
 
-#### TCGEN05 MMA/FENCE (Opcodes 213--221)
+#### TCGEN05 MMA/FENCE (Opcodes 213–221)
 
 | Opcode | Variants | Category | Encoding Class | Operands |
 |---|---|---|---|---|
-| 213 | 6 | TCGEN05_MMA | F2678 | 5--7 op |
-| 216 | 2 | TCGEN05_FENCE | F2678 | 3--4 op |
-| 219 | 6 | TMEM_LD extended | F1C60..F2810 | 3--7 op |
+| 213 | 6 | TCGEN05_MMA | F2678 | 5–7 op |
+| 216 | 2 | TCGEN05_FENCE | F2678 | 3–4 op |
+| 219 | 6 | TMEM_LD extended | F1C60..F2810 | 3–7 op |
 | 220 | 1 | TMEM_ST extended | F1C60 | 3 op |
 | 221 | 1 | TMEM_PREFETCH | F1C60 | 3 op |
 | 255 | 1 | SETSTMEMADDR | F1F08 | 1 op |
-| 269 | 4 | TMEM_ALLOC_FENCE ext | F2018, F1DF8 | 2--3 op |
+| 269 | 4 | TMEM_ALLOC_FENCE ext | F2018, F1DF8 | 2–3 op |
 
-#### TCGEN05 Control (Opcodes 342--372)
+#### TCGEN05 Control (Opcodes 342–372)
 
 28 encoding variants across 10 opcodes. These are the primary tensor core pipeline control instructions:
 
@@ -240,10 +240,10 @@ TCGen05 SASS instructions span three opcode regions in the SM 100 SASS ISA. The 
 |---|---|---|---|---|
 | 342 | 1 | TCGEN05 ctrl A | F1F08 | 0 op (scheduling marker) |
 | 343 | 1 | TCGEN05 ctrl B | F1F08 | 0 op (scheduling marker) |
-| 344 | 14 | TCGEN05 execute | F1F08..F3008 | 2--7 op |
-| 346 | 4 | TCGEN05 commit | F1F08, F2018 | 2--3 op |
+| 344 | 14 | TCGEN05 execute | F1F08..F3008 | 2–7 op |
+| 346 | 4 | TCGEN05 commit | F1F08, F2018 | 2–3 op |
 | 349 | 1 | TCGEN05 sync | F1D70 | 0 op |
-| 359 | 3 | TCGEN05 alloc | F1D70, F1F08 | 0--2 op |
+| 359 | 3 | TCGEN05 alloc | F1D70, F1F08 | 0–2 op |
 | 369 | 1 | TCGEN05 dealloc | F1F08 | 0 op |
 | 370 | 1 | TCGEN05 release A | F1D70 | 0 op |
 | 371 | 1 | TCGEN05 release B | F1D70 | 0 op |
@@ -370,7 +370,7 @@ TCGen05 is complemented by asynchronous bulk copy operations for loading data in
 
 | Operation | Codegen Handler | Size |
 |---|---|---|
-| `cp.async.bulk.tensor` (1D--5D, tile/im2col, unicast/multicast) | `sub_5AB460` | 45KB |
+| `cp.async.bulk.tensor` (1D–5D, tile/im2col, unicast/multicast) | `sub_5AB460` | 45KB |
 | `cp.async.bulk` | `sub_593210` | — |
 | `cp.async.mbarrier.arrive` | `sub_4DC180` | — |
 
@@ -487,7 +487,7 @@ The master instruction encoder (`sub_6D9690`, 94KB) handles the final binary enc
 | `sub_58C7F0` | 4,282 B | tcgen05.relinquish_alloc_permit / tcgen05.dealloc formatter | HIGH |
 | `sub_58FA20` | 4,604 B | tcgen05.shift + tcgen05.mma formatter | HIGH |
 | `sub_593210` | — | cp.async.bulk codegen | HIGH |
-| `sub_5AB460` | 45KB | cp.async.bulk.tensor codegen (1D--5D) | HIGH |
+| `sub_5AB460` | 45KB | cp.async.bulk.tensor codegen (1D–5D) | HIGH |
 | `sub_5BBC30` | 90KB | tcgen05.mma codegen (main) | HIGH |
 | `sub_6D69B0` | 12KB | TCGen05 MMA validator (encoding zone) | MED |
 | `sub_6D7AF0` | 19KB | TCGen05 MMA handler (encoding zone) | HIGH |
@@ -503,10 +503,10 @@ The master instruction encoder (`sub_6D9690`, 94KB) handles the final binary enc
 
 ## Cross-References
 
-- [Blackwell (SM 100--121)](blackwell.md) — Target-level architecture gating, codegen factory 36864
+- [Blackwell (SM 100–121)](blackwell.md) — Target-level architecture gating, codegen factory 36864
 - [SM Architecture Map](index.md) — Complete SM table, capability dispatch infrastructure
 - [GMMA/WGMMA Pipeline](../passes/gmma-pipeline.md) — Predecessor tensor core pipeline (sm_90), same warpgroup execution model
-- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — IDs 0x20--0x3C (tcgen05 guardrails + bulk copy)
+- [Intrinsic Table (608 Entries)](../intrinsics/index.md) — IDs 0x20–0x3C (tcgen05 guardrails + bulk copy)
 - [Tensor Core Intrinsics](../intrinsics/tensor.md) — WMMA/MMA/tcgen05 intrinsic lowering detail
 - [Late Expansion & Legalization](../passes/late-legalization.md) — tcgen05 guardrail insertion during late expansion
 - [SASS Instruction Encoding](../codegen/encoding.md) — Mercury encoder, opcode tables

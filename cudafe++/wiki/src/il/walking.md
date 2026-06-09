@@ -16,7 +16,7 @@ The framework follows a strict separation of traversal and action. The walker kn
 | Routine-scope walker | `sub_610200` (`walk_routine_scope_il`), 108 lines |
 | Hash table reset | `sub_603B30` (`clear_walk_hash_table`), 23 lines |
 | Anonymous union lookup | `sub_603FE0` (`find_parent_var_of_anon_union_type`), 127 lines |
-| Entry kinds covered | 85 (switch cases 0--84) |
+| Entry kinds covered | 85 (switch cases 0–84) |
 | Recursive self-calls | ~330 (in `walk_entry_and_subtree`) |
 | Callback slots | 5 global function pointers |
 
@@ -178,7 +178,7 @@ for (entry = qword_126EBA0; entry; entry = entry->next) {
 
 Kind 55 entries are orphaned entities — declarations that lost their parent scope (e.g., after template instantiation cleanup). They are stored in a separate linked list headed at `qword_126EBA0`.
 
-**Phase 5: Global entry-kind lists (kinds 1--72)**
+**Phase 5: Global entry-kind lists (kinds 1–72)**
 
 The bulk of the walk iterates 45 global linked lists, one per entry kind. Each list head is stored at a fixed address in the `0x126E610`--`0x126EA80` range, with 16-byte spacing. The complete walk order, verified from the decompiled `sub_60E4F0`:
 

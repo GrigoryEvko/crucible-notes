@@ -173,7 +173,7 @@ if (existing != NULL && val != 0) {
 }
 ```
 
-### Large-Value Deduplication (12--64 Bytes)
+### Large-Value Deduplication (12–64 Bytes)
 
 For values of sizes 12, 16, 20, 24, 32, 48, and 64 bytes, the function delegates to `sub_433870` (`dedup_memcmp`, 216 bytes at `0x433870`). Each size class has its own singly-linked list (parameters `a6` through `a12`). The function signature, reconstructed from the decompiled output:
 

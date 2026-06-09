@@ -13,7 +13,7 @@
 | **Core driver** | `sub_1381CD0` (206 bytes) |
 | **Main loop** | `sub_1381010` (3,249 bytes) |
 | **Total code** | ~17 KB across 19 functions in `0x137D8B0`--`0x13829F0` |
-| **SSA window** | Yes — runs at phase 63, within the partial-SSA window (phases 23--73) |
+| **SSA window** | Yes — runs at phase 63, within the partial-SSA window (phases 23–73) |
 | **Pipeline position** | After `OriRemoveRedundantMultiDefMov` (62), before `LateOriCommoning` (64) |
 | **Gating** | Disabled when bit 5 of `context+1376` flags is set; can be disabled via `PTXAS_DISABLED_PASSES` containing `"Predication"` |
 | **Knob controls** | Knob 487 (enable/limit gate), knob 577 (per-region enable), knob 579 (texture-bearing region gate), knob 582 (block-level cold-region query), knob 260 (extra-latency penalty check) |
@@ -659,7 +659,7 @@ if (category <= 0xB && ((1LL << category) & 0x90E) != 0)
 | Bit | Category | PTX Space | In `0x90E`? | Role in predication |
 |---|---|---|---|---|
 | 0 | 0 | Generic (unqualified) | No | Unresolved address space — cannot be classified, excluded |
-| 1 | 1 | `.shared` | **Yes** | CTA-scope scratchpad; always mapped for executing CTA; 20--30 cycle latency |
+| 1 | 1 | `.shared` | **Yes** | CTA-scope scratchpad; always mapped for executing CTA; 20–30 cycle latency |
 | 2 | 2 | `.local` | **Yes** | Thread-private stack/frame; always mapped; backed by L1/L2 |
 | 3 | 3 | `.const` | **Yes** | Constant bank (`c[bank][offset]`); loaded by driver before launch; always mapped |
 | 4 | 4 | `.param` | No | Kernel parameter memory; typically constant-folded or register-promoted by earlier passes |
@@ -671,7 +671,7 @@ if (category <= 0xB && ((1LL << category) & 0x90E) != 0)
 | 10 | — | (unused) | No | No memory space maps to category 10 |
 | 11 | 11 | `.global` | **Yes** | DRAM-backed global memory; highest latency (300+ cycles) |
 
-Categories 12--18 (code/function, uniform, register file, surface, surface/tensor extended) all exceed the `<= 0xB` range check and are excluded from the bitmask test automatically.
+Categories 12–18 (code/function, uniform, register file, surface, surface/tensor extended) all exceed the `<= 0xB` range check and are excluded from the bitmask test automatically.
 
 ### What the Bitmask Selects
 
@@ -761,7 +761,7 @@ The `context+1392` bit 0 flag set by `sub_137EE50` persists through these passes
 
 ## SASS Predicate Model
 
-NVIDIA SASS provides 7 usable predicate registers (P0--P6) plus the hardwired always-true register PT. Every instruction in the SASS ISA can optionally carry a predicate guard:
+NVIDIA SASS provides 7 usable predicate registers (P0–P6) plus the hardwired always-true register PT. Every instruction in the SASS ISA can optionally carry a predicate guard:
 
 ```asm
 @P0  IADD3 R0, R1, R2, RZ    // executes only if P0 is true
@@ -776,7 +776,7 @@ ISETP.GT.AND P0, PT, R1, R2, PT   // P0 = (R1 > R2) AND PT
 FSETP.LT.AND P1, P2, R3, R4, PT   // P1 = (R3 < R4), P2 = !(R3 < R4)
 ```
 
-Uniform predicates (UP0--UP6, UPT) are the warp-uniform variant available on sm_75+. When all threads in a warp have the same predicate value, using UP instead of P avoids consuming a per-thread predicate register and enables the hardware to skip the entire instruction rather than masking per-thread.
+Uniform predicates (UP0–UP6, UPT) are the warp-uniform variant available on sm_75+. When all threads in a warp have the same predicate value, using UP instead of P avoids consuming a per-thread predicate register and enables the hardware to skip the entire instruction rather than masking per-thread.
 
 In the Ori IR, the predicate **guard** is appended as a pair of operands: the **register operand** (word0 type tag 1, `0x10000000 | reg_index`; word1 carries the negation flag at bit 24 / `0x1000000`) followed by the **control word** (word0 type tag 6, `0x60000000 | reg_index`; word1 zero). The "type field 5" used elsewhere in the operand-class taxonomy refers to constant-pool indirect, not predicates. The predicate-register **encoder** at the SASS-binary level (`sub_7BC5C0`, 416 bytes, see [Encoding](../codegen/encoding.md#predicate-encoder--sub_7bc5c0)) emits two contiguous bitfields: a 1-bit presence/range flag and a 5-bit predicate value where bits [2:0] select P0..P6/PT and the upper two bits encode the file (P vs UP) and the `.NOT` polarity, so the **same** negation signal travels through three independent surfaces (Ori operand word1 bit 24, textual `!` in the descriptor name at `+2120`, and the SASS-binary 5-bit field's polarity bit).
 

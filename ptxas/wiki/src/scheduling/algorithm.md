@@ -340,7 +340,7 @@ fn RegToHWUnits(scheduler, count):
         return count                           // 1:1 passthrough
 ```
 
-Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) is set on sm\_70+ targets, where the hardware allocates registers in 8-register blocks (256 registers/warp). When set, the scheduler internally tracks pressure in 4-register half-units, so `RegToHWUnits` doubles to produce full 8-register hardware units. On sm\_30--sm\_60, registers allocate in 2-register blocks (64 registers/warp) and the scheduler tracks in native units, so the function is an identity.
+Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) is set on sm\_70+ targets, where the hardware allocates registers in 8-register blocks (256 registers/warp). When set, the scheduler internally tracks pressure in 4-register half-units, so `RegToHWUnits` doubles to produce full 8-register hardware units. On sm\_30–sm\_60, registers allocate in 2-register blocks (64 registers/warp) and the scheduler tracks in native units, so the function is an identity.
 
 | SM Generation | HW Alloc Granularity | Bit 3 | Multiplier | Effect |
 |---|---|---|---|---|
@@ -429,18 +429,18 @@ When pressure_overflow = 1, the candidate wins the comparison regardless of othe
 | 2 — Address | `scheduler[56]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1045 |
 | 3 — UGP | `scheduler[60]` | `sm_backend[624]` | `current + delta >= limit` | Read from target descriptor at runtime |
 
-Note the asymmetry: classes 0--2 use strict greater-than (`>`), while class 3 uses greater-than-or-equal (`>=`). In the decompiled source, the class 3 check is `v81 = (target_desc[624] < delta + current)` at line 1086 — strict less-than from the limit's perspective, which is `>=` from the sum's perspective. This means UGP overflow triggers one count sooner than the other classes relative to their limits.
+Note the asymmetry: classes 0–2 use strict greater-than (`>`), while class 3 uses greater-than-or-equal (`>=`). In the decompiled source, the class 3 check is `v81 = (target_desc[624] < delta + current)` at line 1086 — strict less-than from the limit's perspective, which is `>=` from the sum's perspective. This means UGP overflow triggers one count sooner than the other classes relative to their limits.
 
 **`sm_backend[624]` values by architecture.** The UGP limit is a field on the SM backend object, accessed via `*(*(context+1584) + 624)`. Its value tracks the architectural uniform register file size:
 
 | Architecture | SM | `sm_backend[624]` | UR file | Notes |
 |---|---|---|---|---|
-| Volta | sm_70--sm_73 | 0 | absent | No UR hardware; UGP class check is vacuous |
-| Turing | sm_75 | 63 | UR0--UR62 | First architecture with dedicated UR file |
-| Ampere | sm_80--sm_87 | 63 | UR0--UR62 | Same UR geometry as Turing |
-| Ada | sm_89 | 63 | UR0--UR62 | Same UR geometry |
-| Hopper | sm_90 | 63 | UR0--UR62 | Same UR geometry |
-| Blackwell | sm_100+ | 63 | UR0--UR62 | Same UR geometry |
+| Volta | sm_70–sm_73 | 0 | absent | No UR hardware; UGP class check is vacuous |
+| Turing | sm_75 | 63 | UR0–UR62 | First architecture with dedicated UR file |
+| Ampere | sm_80–sm_87 | 63 | UR0–UR62 | Same UR geometry as Turing |
+| Ada | sm_89 | 63 | UR0–UR62 | Same UR geometry |
+| Hopper | sm_90 | 63 | UR0–UR62 | Same UR geometry |
+| Blackwell | sm_100+ | 63 | UR0–UR62 | Same UR geometry |
 
 All sm_75+ architectures share a 63-entry UR file (UR63 = URZ, the zero register). On pre-Turing targets, `sm_backend[624]` is 0, making the `>= 0` comparison always true for any nonzero UGP delta — but this is moot because no UGP registers are allocated on those targets, so `ugp_delta` is always 0.
 
@@ -709,7 +709,7 @@ The function returns the best instruction pointer and writes the second-best to 
 
 #### Slot Manager Object Layout
 
-The slot manager is a polymorphic C++ object at `scheduler+16`. It tracks scheduling-cycle budgets so the priority function can detect when issuing an instruction would exceed the per-BB throughput limit. Binary evidence: `sub_8C9320` lines 911--945, 1113, 1119, 1789, 1832--1848; `sub_688DD0` lines 631--638.
+The slot manager is a polymorphic C++ object at `scheduler+16`. It tracks scheduling-cycle budgets so the priority function can detect when issuing an instruction would exceed the per-BB throughput limit. Binary evidence: `sub_8C9320` lines 911–945, 1113, 1119, 1789, 1832–1848; `sub_688DD0` lines 631–638.
 
 | Offset | Size | Name | Purpose |
 |--------|------|------|---------|
@@ -731,7 +731,7 @@ Three vtable slots drive the slot manager:
 
 The contention value feeds into two budget checks: (1) spill-mode critical-path test `cycleStride + contention + cycleCursor <= cycleLimit` (line 1119), and (2) second-best spill-exit comparison at line 1789. A third guard at line 1113 checks `cycleCursor + 100 >= minReadyCycle` to suppress non-barrier candidates when the cursor is near the earliest ready cycle.
 
-During the scheduling loop (`sub_688DD0` line 637--638), each non-BB-boundary instruction triggers `sub_682490(scheduler, instr, prev, 1)`. That function walks register operands, matches source/destination conflicts against the live-register bitmask, and returns a register-port-conflict cost written to `metadata+28`. This becomes `best_cost` (`v233`) that gates the slot manager advance.
+During the scheduling loop (`sub_688DD0` line 637–638), each non-BB-boundary instruction triggers `sub_682490(scheduler, instr, prev, 1)`. That function walks register operands, matches source/destination conflicts against the live-register bitmask, and returns a register-port-conflict cost written to `metadata+28`. This becomes `best_cost` (`v233`) that gates the slot manager advance.
 
 ## Dependency DAG Construction
 
@@ -766,9 +766,9 @@ Operand analysis is performed by `sub_894290` (27 KB), which processes 16-bit op
 
 | Bits | Field |
 |---|---|
-| 12--15 | Register class |
-| 8--11 | Bank number |
-| 0--7 | Dependency type |
+| 12–15 | Register class |
+| 8–11 | Bank number |
+| 0–7 | Dependency type |
 
 Memory dependencies are conservative: all stores are ordered before subsequent loads to the same memory space. The scheduler does not perform alias analysis — it relies on the memory space classification from `sub_693BC0` to determine whether two operations might conflict.
 
@@ -826,7 +826,7 @@ The `SBPruning` knob (DAG knobs region, ROT13-encoded) enables or disables this 
 
 ### Supplementary Dependency Builders
 
-These functions handle specific aspects of dependency construction in the 0x6A0000--0x6B0000 range:
+These functions handle specific aspects of dependency construction in the 0x6A0000–0x6B0000 range:
 
 | Address | Size | Purpose |
 |---|---|---|
@@ -874,8 +874,8 @@ Each per-BB resource slot occupies 84 bytes (21 DWORDs) stored at `*(scheduler+6
 
 | Offset | Size | Content |
 |---|---|---|
-| 0--36 | 10 x int32 | Current resource usage per functional unit |
-| 40--76 | 10 x int32 | Resource pressure delta (change since last step) |
+| 0–36 | 10 x int32 | Current resource usage per functional unit |
+| 40–76 | 10 x int32 | Resource pressure delta (change since last step) |
 | 80 | int32 | BB-entered flag and auxiliary bits |
 
 ### Functional Unit Pipes
@@ -983,9 +983,9 @@ For each instruction in the scheduled order:
 
 | Field | Computation | Range |
 |---|---|---|
-| Stall count | Distance in cycles to the nearest dependent consumer | 0--15 (capped by knob 805, max 16) |
+| Stall count | Distance in cycles to the nearest dependent consumer | 0–15 (capped by knob 805, max 16) |
 | Yield hint | Warp scheduling hint — should the HW scheduler switch to another warp? | 0 or 1 |
-| Barrier assignment | Which of the 6 available barriers this instruction writes/waits on | 0--5, or none |
+| Barrier assignment | Which of the 6 available barriers this instruction writes/waits on | 0–5, or none |
 | Scoreboard deps | Read/write dependency tracking for the hardware scoreboard | Bitmask |
 
 ### Per-Architecture Barrier Model
@@ -1007,7 +1007,7 @@ Per-SM parameters from [`per_sm_scoreboard_configs.json`](../../../extracted/per
 | sm_100 | Blackwell | 6 | 75 | 6 | 430 | 39 | 56 |
 | sm_103 | Blackwell | 6 | 46 | 1 | 430 | 39 | 56 |
 
-All architectures share 6 HW barriers and raw max stall of 39 (capped to 15 by the 4-bit field or knob 805). Yield threshold is arch-dependent (typically 4 on sm_80+). The key differentiator is the scoreboard config table: sm_80--90a use 31--32 single-triplet entries (`{scoreboard_id, threshold, mask}`), while sm_100 uses 75 entries with up to 6 triplets, reflecting Blackwell's richer scoreboard hierarchy.
+All architectures share 6 HW barriers and raw max stall of 39 (capped to 15 by the 4-bit field or knob 805). Yield threshold is arch-dependent (typically 4 on sm_80+). The key differentiator is the scoreboard config table: sm_80–90a use 31–32 single-triplet entries (`{scoreboard_id, threshold, mask}`), while sm_100 uses 75 entries with up to 6 triplets, reflecting Blackwell's richer scoreboard hierarchy.
 
 ### Dispatch Pseudocode for `sub_8D7760`
 
@@ -1065,7 +1065,7 @@ This function accesses the Ori instruction's opcode at `instr+72`, plus SchedNod
 
 ## Specialized Scheduling Strategies
 
-The region 0x89C550--0x8BE320 contains 17+ specialized scheduling strategies. These are selected based on code characteristics (loop structure, tensor operations, function size) and optimization level. Each strategy implements a variation of the core list scheduling algorithm with different heuristics or search strategies.
+The region 0x89C550–0x8BE320 contains 17+ specialized scheduling strategies. These are selected based on code characteristics (loop structure, tensor operations, function size) and optimization level. Each strategy implements a variation of the core list scheduling algorithm with different heuristics or search strategies.
 
 | Address | Size | Strategy | Description |
 |---|---|---|---|
@@ -1177,11 +1177,11 @@ Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-
 
 ## Per-SM Scheduling Backends
 
-Everything documented above describes the **main scheduler** (Backend A), which covers approximately 436 KB at 0x680000--0x8FE000. ptxas contains two additional complete scheduling implementations activated for newer SM architectures. The three backends coexist in the binary; SM-version-gated dispatch selects which combination runs.
+Everything documented above describes the **main scheduler** (Backend A), which covers approximately 436 KB at 0x680000–0x8FE000. ptxas contains two additional complete scheduling implementations activated for newer SM architectures. The three backends coexist in the binary; SM-version-gated dispatch selects which combination runs.
 
 ### Architecture Dispatch
 
-The function `sub_7DDB50` reads an SM architecture index from `context+2104` and returns it as an integer. Four dispatch stubs in the 0xC5FE00--0xC61000 range use this value to select the scheduling backend:
+The function `sub_7DDB50` reads an SM architecture index from `context+2104` and returns it as an integer. Four dispatch stubs in the 0xC5FE00–0xC61000 range use this value to select the scheduling backend:
 
 | Dispatch Stub | Condition | Backend Selected | Pipeline Stage |
 |---|---|---|---|
@@ -1208,7 +1208,7 @@ Backend B is a forward-then-backward scheduling pass with continuous floating-po
 | **Preparation** | `sub_123E0D0` — instruction characterization |
 | **Post-fixup** | `sub_A112C0` — scheduling result finalization |
 | **Priority structure** | BST with FNV-1a hash tracking |
-| **Code region** | 0x1225000--0x1240000 (132 functions, 111 KB) |
+| **Code region** | 0x1225000–0x1240000 (132 functions, 111 KB) |
 
 #### Float Weighting System
 
@@ -1324,7 +1324,7 @@ Backend C is a complete reimplementation of the list scheduling algorithm using 
 | **RBT reset** | `sub_18F7EC0` — tree cleanup |
 | **Score computation** | `sub_18FDAF0` — double-precision weighted score |
 | **Hash table** | `sub_1906510` (14 KB) — FNV-1a instruction ID lookup |
-| **Code region** | 0x18CD000--0x190FFFF (392 functions, 275 KB) |
+| **Code region** | 0x18CD000–0x190FFFF (392 functions, 275 KB) |
 
 #### Red-Black Tree Priority Queue
 
@@ -1563,7 +1563,7 @@ This propagation allows scheduling decisions in callee functions to influence ca
 
 | Feature | Backend A (Main) | Backend B (SM89/90 Codec) | Backend C (RBT List) |
 |---|---|---|---|
-| Address range | 0x680000--0x8FE000 | 0x1225000--0x1240000 | 0x18CD000--0x190FFFF |
+| Address range | 0x680000–0x8FE000 | 0x1225000–0x1240000 | 0x18CD000–0x190FFFF |
 | Code size | ~436 KB | ~111 KB | ~275 KB |
 | SM gate | `SmVersion <= 1` | `SmVersion >= 2` | `SmVersion >= 2` |
 | Pipeline stage | Pre + post scheduling | Codec/ISel scheduling | Pre + post scheduling |
@@ -1573,7 +1573,7 @@ This propagation allows scheduling decisions in callee functions to influence ca
 | Insertion complexity | O(N) per instruction | O(log N) | O(log N) |
 | Scheduling passes | 3 (ReduceReg / ILP / DynBatch) | 2 (Forward / Backward) | 2 (Pre / Post) |
 | Pressure tracking | Bitvector + popcount | Float slope per register | Bitmap + scalar cost model |
-| Weight configuration | Knobs 769--805 (integer) | Options 7200/7560 (double) | Vtable dispatch |
+| Weight configuration | Knobs 769–805 (integer) | Options 7200/7560 (double) | Vtable dispatch |
 | Score type | Integer (packed bits) | Double (weighted sum) | Double (accumulated) |
 | Solution search | Greedy (single pass) | Forward + backward | Evaluate + commit |
 | Cross-function awareness | None | None | Recursive cost propagation |
@@ -1787,7 +1787,7 @@ Both emitter families read from the same ~1400-byte statistics object. The objec
 | 18 | int32 | `LNonSpillB` | Long non-spill byte count |
 | 19 | int32 | `LNonRefillB` | Long non-refill byte count |
 | 20 | int32 | `NonSpillSize` | Non-spill allocation size |
-| 26 | float | `Occupancy` | Occupancy ratio (0.0--1.0) |
+| 26 | float | `Occupancy` | Occupancy ratio (0.0–1.0) |
 | 27 | int32 | `numDivergentBranches` | Estimated divergent branch count |
 | 28 | int32 | `attributeMemUsage` | Attribute memory usage in bytes |
 | 29 | int32 | `programSize` | Program binary size in bytes |

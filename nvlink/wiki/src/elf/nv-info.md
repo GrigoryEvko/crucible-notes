@@ -12,7 +12,7 @@ nvlink both reads and writes `.nv.info` sections. During the merge phase it pars
 | Section name (global) | `.nv.info` |
 | Section name (per-function) | `.nv.info.<function_name>` |
 | Record format | Type-Length-Value (TLV), 4-byte aligned |
-| Known attribute count | 97 EIATTR codes: 0--96 (v13.0.88) |
+| Known attribute count | 97 EIATTR codes: 0–96 (v13.0.88) |
 | Attribute validation | `sub_42F760`: rejects codes > `0x60` (96) as `"unknown attribute"` |
 | Section creation | `sub_4504B0` (global: line 46, per-function: line 63) |
 | Record node creation (indexed) | `sub_450B70` (`create_eiattr_indexed_record`) |
@@ -67,7 +67,7 @@ nvlink stores parsed TLV records as 16-byte linked-list nodes in an arena-alloca
 ```text
 Offset  Size  Field
 ------  ----  -----
-0x00    1     format       Format byte (0x01--0x04)
+0x00    1     format       Format byte (0x01–0x04)
 0x01    1     attr_code    EIATTR type code
 0x02    2     size         Payload size in bytes
 0x04    4     secidx       Output section index (from sub_4504B0)
@@ -95,7 +95,7 @@ Format `0x01` (free) carries variable-length data. The `size` field gives the by
 
 ### Parsing Pseudocode
 
-From the decompiled merge path in `sub_45E7D0` (lines 1900--2052):
+From the decompiled merge path in `sub_45E7D0` (lines 1900–2052):
 
 ```c
 uint8_t *ptr = section_data;
@@ -475,7 +475,7 @@ Format: 0x01 (Free)
 Payload: array of uint32 fragment type descriptors
 ```
 
-During merge, each 4-byte entry is analyzed for fragment types: values 4--5 indicate type 1, values 6--7 indicate type 2. The detected fragment type is stored at `elfw+664`. If conflicting fragment types are found across inputs, an error is emitted. During finalization, EXTERNS-style record creation via `sub_450B70(elfw, 0x4F, size, payload, root_sym, ...)`.
+During merge, each 4-byte entry is analyzed for fragment types: values 4–5 indicate type 1, values 6–7 indicate type 2. The detected fragment type is stored at `elfw+664`. If conflicting fragment types are found across inputs, an error is emitted. During finalization, EXTERNS-style record creation via `sub_450B70(elfw, 0x4F, size, payload, root_sym, ...)`.
 
 ### EIATTR_RESERVED_SMEM_USED (0x41) — Reserved Shared Memory
 
@@ -733,7 +733,7 @@ The rationale: when a weak function is replaced, the replacement's resource desc
 
 `compute_entry_properties` (`sub_451D80`, 97,969 bytes — the largest function in the linker) runs during the finalization phase. It operates on all nv.info records and computes derived properties for each kernel entry point:
 
-**4a. Symbol index fixup**: For indexed records with codes 2, 6--10, 17--20, 23, 35, 38, 47, 59, 69 (the same set as in merge remapping), the function re-resolves symbol indices through the positive/negative symbol mapping tables (`elfw+456`/`elfw+464`). If a symbol was deleted but the record still references it, `attr_code` is set to 0 (suppressed).
+**4a. Symbol index fixup**: For indexed records with codes 2, 6–10, 17–20, 23, 35, 38, 47, 59, 69 (the same set as in merge remapping), the function re-resolves symbol indices through the positive/negative symbol mapping tables (`elfw+456`/`elfw+464`). If a symbol was deleted but the record still references it, `attr_code` is set to 0 (suppressed).
 
 **4b. Register count propagation** (`sub_450ED0`): Walks the callgraph and propagates the maximum register count from callees to each entry kernel.
 
@@ -781,7 +781,7 @@ The emission pipeline has three layers:
 
 **Layer 1: SM dispatch** (`sub_15C0CE0`). A singleton initialization function registers per-SM callback tables for 12 architecture families (sm_75 through sm_121). Each SM gets an nv.info emitter callback looked up through map A8 via `sub_15C3DB0`. The callback creates a ~1,936-byte codegen state with architecture-specific constants at offsets 344 and 348 (compute capability encoding).
 
-**Layer 2: Master emitters** (4 functions, 78--55 KB each). These are the top-level attribute-lowering functions that read compilation state and dispatch to per-attribute-type handlers:
+**Layer 2: Master emitters** (4 functions, 78–55 KB each). These are the top-level attribute-lowering functions that read compilation state and dispatch to per-attribute-type handlers:
 
 | Address | Size | Identity | Specialty |
 |---|---|---|---|
@@ -792,7 +792,7 @@ The emission pipeline has three layers:
 
 The master emitters use an FNV-1a hash table (offset basis `0x811C9DC5`, prime 16,777,619) at `object+488` for O(1) function-ID-to-attribute lookup using 24-byte entries.
 
-**Layer 3: Per-attribute handlers** (~190 functions at `0x15CF070`--`0x160FFFF`). Each function is 4--8 KB and handles exactly one EIATTR type. They follow a uniform template:
+**Layer 3: Per-attribute handlers** (~190 functions at `0x15CF070`--`0x160FFFF`). Each function is 4–8 KB and handles exactly one EIATTR type. They follow a uniform template:
 
 ```text
 1. Read attribute descriptor pointer from a2
@@ -891,7 +891,7 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` also exists at `0x245E8D9`, sugg
 | Name table metadata: [min_version:4, usage_policy:4] | HIGH | `sub_42F760` tests metadata[0] > toolkit_version and dispatches on metadata[1] (0=warn, 1=error, 2=drop) |
 | TLV format: [format:1][attr:1][size:2][payload:var] | HIGH | Confirmed by diagnostic format string `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"` and merge parser at sub_45E7D0:1900 |
 | Internal node: [fmt:1][attr:1][size:2][secidx:4][payload_ptr:8] | HIGH | Confirmed by sub_4508F0 which sets all fields, and sub_4478F0 which prints them |
-| Format bytes 0x01--0x04 meaning | HIGH | Verified in merge parser: format==4 triggers payload copy + remap; format!=4 skips payload |
+| Format bytes 0x01–0x04 meaning | HIGH | Verified in merge parser: format==4 triggers payload copy + remap; format!=4 skips payload |
 | Weak symbol bitmask 0x800800020000 = bits 17,35,47 | HIGH | Verified: `_bittest64(&0x800800020000, n)` matches FRAME_SIZE(17), MAX_STACK_SIZE(35), REGCOUNT(47) |
 | Merge per-attribute remap switch cases | HIGH | Cases 2,6,7,8,9,10,15,17,18,19,20,23,35,38,47,55,59,69,79 verified in sub_45E7D0:1917-1997 |
 | sub_4504B0 creates .nv.info sections | HIGH | Decompiled: global path at line 46 (sh_flags=0), per-function at line 63 (sh_flags=0x40) |

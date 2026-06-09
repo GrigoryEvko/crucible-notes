@@ -65,7 +65,7 @@ The DWARF line program state machine is allocated by `sub_12D1990` as a 464-byte
 | +78 | 1 | `line_base` | Line base for special opcode computation |
 | +79 | 1 | `line_range` | Line range for special opcode computation |
 | +80 | 1 | `opcode_base` | Opcode base (10 for DWARF standard) |
-| +82--90 | 9 | `std_opcode_lengths` | Standard opcode operand count table |
+| +82–90 | 9 | `std_opcode_lengths` | Standard opcode operand count table |
 | +96 | 8 | `directory_buffer` | Pointer to 8,000-byte directory table buffer |
 | +104 | 4 | `directory_capacity` | Directory buffer capacity |
 | +108 | 4 | `directory_size` | Bytes written to directory buffer |
@@ -75,7 +75,7 @@ The DWARF line program state machine is allocated by `sub_12D1990` as a 464-byte
 | +128 | 8 | `program_buffer` | Pointer to 256,000-byte assembled output |
 | +136 | 8 | `program_size` | Bytes written to program buffer |
 | +160 | 1 | `is_64bit` | DWARF64 mode flag (affects address encoding) |
-| +176--200 | — | `file_entry_array` | Pointer + count for internal file records |
+| +176–200 | — | `file_entry_array` | Pointer + count for internal file records |
 | +208 | 8 | `total_program_length` | Total length of encoded program data |
 
 The four buffers use a doubling growth strategy: when a write would exceed capacity, a new buffer at 2x the current size is allocated, the old data is copied, and the old buffer is freed via `sub_431000`.
@@ -488,7 +488,7 @@ The `context_id` operand is a zero-based index into the per-CU inline context ta
 
 The `func_offset` operand is the byte offset of the inlined function within the compilation unit. For inlined functions whose source file name follows NVIDIA's `"filename.cu+12345"` convention, this offset is parsed from the `+`-delimited suffix via `sscanf("%llu")`.
 
-**Emission logic in sub_12D04E0** (lines 668--766 of the decompiled source):
+**Emission logic in sub_12D04E0** (lines 668–766 of the decompiled source):
 
 ```c
 // When context map is present and context changes
@@ -511,7 +511,7 @@ if (context_map && context_map[entry_index].context != state->current_context) {
 }
 ```
 
-The linker-side emitter (`sub_480570` at lines 289--355) uses an identical encoding but sources the context index from a lookup table at `a2 + 72` and the function offset from `v7[2].m128i_u32[2]`. The diagnostic strings for encoding failures are `"when generating LEB128 number for setting context"` and `"when generating LEB128 number for setting function Offset"`.
+The linker-side emitter (`sub_480570` at lines 289–355) uses an identical encoding but sources the context index from a lookup table at `a2 + 72` and the function offset from `v7[2].m128i_u32[2]`. The diagnostic strings for encoding failures are `"when generating LEB128 number for setting context"` and `"when generating LEB128 number for setting function Offset"`.
 
 **State machine effect:** Updates the internal `current_context` register (`state[32]`) and `current_func_offset` register (`state[33]`). Does not emit a matrix row.
 
@@ -530,7 +530,7 @@ Bytes 3..: is_stmt_val (ULEB128 — 0 = not a statement, 1 = statement)
 
 The `is_stmt_val` operand is the low bit of the entry's flags field (`entry->flags & 1`). In practice, the encoded ULEB128 is always a single byte (0 or 1), so the total extended opcode sequence is 4 bytes: `{0x00, 0x02, 0x92, 0x00}` or `{0x00, 0x02, 0x92, 0x01}`.
 
-**Emission logic in sub_12D04E0** (lines 504--563 of the decompiled source):
+**Emission logic in sub_12D04E0** (lines 504–563 of the decompiled source):
 
 ```c
 // When has_is_stmt flag is set and is_stmt value differs from state
@@ -615,9 +615,9 @@ The complete set of standard DWARF opcodes emitted by nvlink:
 | `DW_LNS_set_basic_block` | 7 | 0 | Set basic_block flag (declared in header, not emitted) |
 | `DW_LNS_const_add_pc` | 8 | 0 | Advance address by `(255 - opcode_base) / line_range` (declared, not emitted) |
 | `DW_LNS_fixed_advance_pc` | 9 | 1 (uhalf) | Advance address by fixed 16-bit value (declared, not emitted) |
-| Special opcodes | 10--255 | 0 | Compact line + address advance, emit row |
+| Special opcodes | 10–255 | 0 | Compact line + address advance, emit row |
 
-In practice, the encoder only emits opcodes 1--4 and special opcodes 10--255. Opcodes 5--9 are declared in the standard opcode lengths table (required by the DWARF header format) but never generated. The `DW_LNS_negate_stmt` toggle (opcode 6) is superseded by the `DW_LNE_NV_set_stmt` (0x92) extended opcode for explicit value setting.
+In practice, the encoder only emits opcodes 1–4 and special opcodes 10–255. Opcodes 5–9 are declared in the standard opcode lengths table (required by the DWARF header format) but never generated. The `DW_LNS_negate_stmt` toggle (opcode 6) is superseded by the `DW_LNE_NV_set_stmt` (0x92) extended opcode for explicit value setting.
 
 ### Standard Opcode Lengths Table
 

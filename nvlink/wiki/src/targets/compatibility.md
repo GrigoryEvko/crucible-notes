@@ -8,7 +8,7 @@ nvlink enforces architecture compatibility at three distinct points: during inpu
 |---|---|---|---|
 | `sub_4878A0` | `arch_string_match` | 328 B | Core compatibility checker: parses two arch strings, compares profiles |
 | `sub_4876A0` | `arch_compat_check` | 2,115 B | Companion checker: virtual-vs-native and `a`-variant exact-match logic |
-| `sub_4709E0` | `can_finalize_arch_check` | 2,609 B | Finalization compatibility: 5-level dispatch table, error codes 0/24--30 |
+| `sub_4709E0` | `can_finalize_arch_check` | 2,609 B | Finalization compatibility: 5-level dispatch table, error codes 0/24–30 |
 | `sub_470DA0` | `can_finalize_capability_mask` | 2,074 B | Capability bitmask compatibility within a finalization context |
 | `sub_426570` | `validate_arch_and_add` | 7,427 B | Input file validation: arch match, toolkit version constraints, mode selection |
 | `sub_486FF0` | `arch_parse_name_to_number` | 2,665 B | Parses `sm_%d%c` / `compute_%d%c` / `sass_%d%c` into structured record |
@@ -139,11 +139,11 @@ This remapping collapses internal/experimental architecture numbers into their c
 | 27 | Type 4 error — finalization class 4 incompatibility |
 | 28 | Type 3 error — finalization class 3 incompatibility |
 | 29 | Type 2 error — finalization class 2, source >= target in same decade |
-| 30 | Unknown type — finalization class byte not in range 0--4 |
+| 30 | Unknown type — finalization class byte not in range 0–4 |
 
 ### Finalization Class Dispatch
 
-The byte at `a1[3]` encodes the "finalization class" (0--4). This byte indexes into the dispatch table at `dword_1D40660`, which returns one of 5 compatibility levels:
+The byte at `a1[3]` encodes the "finalization class" (0–4). This byte indexes into the dispatch table at `dword_1D40660`, which returns one of 5 compatibility levels:
 
 | `a1[3]` | `dword_1D40660[a1[3]]` | Compatibility Level | Semantics |
 |---|---|---|---|
@@ -157,7 +157,7 @@ The `a1[4]` byte is the "variant flag" (corresponding to the `a` suffix). When t
 
 - **Level 0**: The variant flag is incompatible, returns 26.
 - **Level 1**: The variant flag is incompatible with same-decade matching, returns 26.
-- **Levels 2--3**: Variant flag permitted only if level >= 2, returns 0 if so, else returns 26 (`0x1A`).
+- **Levels 2–3**: Variant flag permitted only if level >= 2, returns 0 if so, else returns 26 (`0x1A`).
 
 ### SM 110 Special Handling
 
@@ -351,7 +351,7 @@ For general architecture compatibility concepts, see the [ptxas wiki targets](..
 - [Finalization Phase](../pipeline/finalize.md) — the linker finalization phase that triggers `sub_4709E0`
 - [Versions](../versions.md) — toolkit version numbering, PTX ISA version, and the SM architecture table
 - [Mercury / FNLZR](../mercury/fnlzr.md) — the post-link finalizer that uses capability mask checks
-- [SM 100--121 Targets](sm100-blackwell.md) — per-architecture details for the Blackwell family
+- [SM 100–121 Targets](sm100-blackwell.md) — per-architecture details for the Blackwell family
 - [Architecture Dispatch](../ptxas/arch-dispatch.md) — embedded ptxas dispatch tables for per-SM codegen
 
 ### Sibling Wikis

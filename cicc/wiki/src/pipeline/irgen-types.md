@@ -115,21 +115,21 @@ The core dispatcher `sub_918E50` (2,400 bytes) reads the type-kind byte at `edg_
 
 | Kind Byte | Value | Handler | Description |
 |---|---|---|---|
-| `0x00`--`0x10` | 0--16 | Primitive dispatch | `void`, `bool`, `char`, `int`, `float`, `double`, etc. |
+| `0x00`--`0x10` | 0–16 | Primitive dispatch | `void`, `bool`, `char`, `int`, `float`, `double`, etc. |
 | `0x11` | 17 | Void special | Void type with swap handling in comparator |
 | `0x05` | 5 | `sub_5FFE90` | Qualified type (`const`/`volatile`/`restrict`) --- carries address-space info |
 | `0x0D` | 13 | Enum path | Enum type bridging C/C++ enum constants to LLVM integers |
 | `0x0E` | 14 | Function path | Function type with parameter chain traversal |
 | `0x1A` | 26 | `sub_915850` | Array type (subscript form with enumeration base) |
 | `0x1B` | 27 | Inline handler | Compound type (struct/union/class) --- multi-child with dedup hash |
-| `0x32`--`0x33` | 50--51 | Union variants | Union type (two internal representations) |
+| `0x32`--`0x33` | 50–51 | Union variants | Union type (two internal representations) |
 | `0x36` | 54 | `sub_918C40` | Typedef / using declaration --- chains through EDG resolution |
 | `0x37` | 55 | Using variant | Using declaration variant |
-| `0x4B`--`0x4C` | 75--76 | Pointer/ref | Pointer and reference types --- carry qualifier words for address spaces |
+| `0x4B`--`0x4C` | 75–76 | Pointer/ref | Pointer and reference types --- carry qualifier words for address spaces |
 | `0x4D` | 77 | Member pointer | Pointer-to-member type |
 | `0x4E` | 78 | `sub_914070` | Dependent/nested type --- requires scope resolution |
 
-For types with kind > 23 that are not special-cased, a default handler applies a bitmask test: `0x100000100003FF >> (kind - 25)`. If the low bit is set, the type requires scope tracking (kinds 25--34 selectively, plus kinds 57 and 73). The handler then looks up any existing LLVM type for this EDG type via the scope table, and if the mapping has changed, triggers a replacement plus metadata propagation.
+For types with kind > 23 that are not special-cased, a default handler applies a bitmask test: `0x100000100003FF >> (kind - 25)`. If the low bit is set, the type requires scope tracking (kinds 25–34 selectively, plus kinds 57 and 73). The handler then looks up any existing LLVM type for this EDG type via the scope table, and if the mapping has changed, triggers a replacement plus metadata propagation.
 
 ### Compound Type (Struct/Class) Translation
 
@@ -236,7 +236,7 @@ Template specialization support is entirely optional and gated behind configurat
 
 ### Primitive Type Translation Table
 
-The dispatcher `sub_918E50` handles kinds `0x00`--`0x10` (values 0--16) as primitive/scalar types. These map directly from EDG internal type representation to LLVM IR types. The correspondence between the three type-tag namespaces used across cicc is:
+The dispatcher `sub_918E50` handles kinds `0x00`--`0x10` (values 0–16) as primitive/scalar types. These map directly from EDG internal type representation to LLVM IR types. The correspondence between the three type-tag namespaces used across cicc is:
 
 | EDG Type Kind | EDG Printer `type_kind` | Cast Codegen Tag (`*(type+8)`) | LLVM IR Type | Width |
 |---|---|---|---|---|
@@ -256,7 +256,7 @@ The dispatcher `sub_918E50` handles kinds `0x00`--`0x10` (values 0--16) as primi
 | `0x0F` | `0x0F` vector | 16 | `<N x elem>` | N * elem |
 | `0x10` | `0x10` scalable vector | 16 | `<vscale x N x elem>` | runtime |
 
-The integer type (EDG kind `0x02`) carries its bit-width in the upper bytes of the type word. The cast codegen subsystem (`sub_128A450`) classifies types by the tag byte at `*(type+8)`: tags 1--6 are floating-point (see next section), tag 11 is integer, tag 15 is pointer, and tag 16 is vector/aggregate. The key dispatch idiom `(tag - 1) > 5u` tests "is NOT a float"; `(tag & 0xFD) != 0xB` tests "is NOT integer-like".
+The integer type (EDG kind `0x02`) carries its bit-width in the upper bytes of the type word. The cast codegen subsystem (`sub_128A450`) classifies types by the tag byte at `*(type+8)`: tags 1–6 are floating-point (see next section), tag 11 is integer, tag 15 is pointer, and tag 16 is vector/aggregate. The key dispatch idiom `(tag - 1) > 5u` tests "is NOT a float"; `(tag & 0xFD) != 0xB` tests "is NOT integer-like".
 
 ### Floating-Point Type Encoding
 
@@ -291,7 +291,7 @@ On the LLVM side, the `__mfp8` type maps to `i8` storage with metadata annotatio
 
 ### CUDA FP8/FP6/FP4 Extended Type Keywords
 
-CUDA 12.x+ introduces narrow floating-point types for transformer inference and tensor core operations. The EDG parser (`sub_691320`) recognizes these as token values 236 and 339--354, all resolved through `sub_6911B0` (CUDA type-token resolver):
+CUDA 12.x+ introduces narrow floating-point types for transformer inference and tensor core operations. The EDG parser (`sub_691320`) recognizes these as token values 236 and 339–354, all resolved through `sub_6911B0` (CUDA type-token resolver):
 
 | Token | Keyword | Format | Width | Packed Variant | SM Requirement |
 |---|---|---|---|---|---|
@@ -344,7 +344,7 @@ CUDA memory-space qualifiers propagate through the EDG type system via a 15-bit 
 
 The function `sub_5A3140` creates the appropriately address-space-qualified LLVM pointer type given the qualifier output from `sub_5FFE90`. The helper `sub_911CB0` combines address space information with the type kind to produce a unique scope-table index: it computes `(type_kind - 24)` as a base and combines it with the qualifier to produce a monotonic key.
 
-**EDG frontend encoding** (from `sub_691320` parser, tokens 133--136, and `sub_667B60`):
+**EDG frontend encoding** (from `sub_691320` parser, tokens 133–136, and `sub_667B60`):
 
 | Parser Token | CUDA Keyword | `v305` Value | EDG `memory_space_code` | Target AS |
 |---|---|---|---|---|
@@ -392,7 +392,7 @@ The critical architectural insight: `v2f32` is NOT legal on NVPTX (no 64-bit pac
 SM-version gating affects which types are legal at which pipeline stage:
 
 - **SM < 53**: No legal vector types; `v2f16` must be scalarized, and scalar `f16` is promoted to `f32`.
-- **SM 53--69**: Scalar `f16` is legal; `v2f16` is legal for load/store but packed arithmetic may be `Custom` or `Expand`.
+- **SM 53–69**: Scalar `f16` is legal; `v2f16` is legal for load/store but packed arithmetic may be `Custom` or `Expand`.
 - **SM 70+**: `v2f16` fully legal with packed arithmetic. `i128` scalar register class added.
 - **SM 80+**: `v2bf16` added as legal vector type.
 - **SM 100+**: Additional packed FP types for `cvt_packfloat` --- `e2m1x2`, `e2m3x2`, `e3m2x2`, `ue8m0x2`.
@@ -434,10 +434,10 @@ After IR generation, types enter the SelectionDAG type system where they are enc
 | 8 | `f16` / `bf16` | 16 |
 | 9 | `f32` | 32 |
 | 10 | `f64` | 64 |
-| 14--55 | fixed-width vector types | vector of above |
-| 56--109 | scalable vector types | scalable vector of above |
+| 14–55 | fixed-width vector types | vector of above |
+| 56–109 | scalable vector types | scalable vector of above |
 
-The bitwidth-to-SimpleVT conversion pattern appears 11 times in the 348KB `DAGTypeLegalizer::run` monolith (`sub_20019C0`), and the vector-to-scalar-element switch table (cases 14--109 mapping back to scalar VT 2--10) appears 6 times. This redundancy is an artifact of the monolithic inlining --- upstream LLVM factors these into per-category files (`LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, etc.).
+The bitwidth-to-SimpleVT conversion pattern appears 11 times in the 348KB `DAGTypeLegalizer::run` monolith (`sub_20019C0`), and the vector-to-scalar-element switch table (cases 14–109 mapping back to scalar VT 2–10) appears 6 times. This redundancy is an artifact of the monolithic inlining --- upstream LLVM factors these into per-category files (`LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, etc.).
 
 ## Global Variable Code Generation
 
@@ -774,7 +774,7 @@ The NVPTX backend (`sub_21E86B0`) maps internal register encodings (single-byte 
 | `0x30` | `0` | `%nctaid.y` |
 | `0x31` | `1` | `%nctaid.z` |
 
-Codes `0x5E` (`^`) and `0x5F` (`_`) are delegated to `sub_3958DA0` for cluster and warp-level registers. Any unhandled code triggers a fatal `"Unhandled special register"` error. Register names are written via optimized `memcpy` of 6--9 bytes directly to the output stream.
+Codes `0x5E` (`^`) and `0x5F` (`_`) are delegated to `sub_3958DA0` for cluster and warp-level registers. Any unhandled code triggers a fatal `"Unhandled special register"` error. Register names are written via optimized `memcpy` of 6–9 bytes directly to the output stream.
 
 ### ISel Lowering
 

@@ -76,7 +76,7 @@ Before entering the parameter loop, a helper (`sub_938130`) checks whether the f
 
 For each parameter, the ABI variant field at `TypeInfo+12` selects one of four lowering paths:
 
-**Variant 0/1 — Indirect/Aggregate Pass.** The parameter arrives as a pointer to caller-allocated memory. If the type is an aggregate (struct/union/class/array — type kinds 8--11 checked by the aggregate-type predicate at `sub_91B770`), the prolog creates a local alloca named `<param>.addr`, stores the incoming argument into it, and registers the alloca in the declaration map via the parameter-decl registrar (`sub_9446C0`). If the type is a scalar, it goes directly to the registrar without an intermediate alloca.
+**Variant 0/1 — Indirect/Aggregate Pass.** The parameter arrives as a pointer to caller-allocated memory. If the type is an aggregate (struct/union/class/array — type kinds 8–11 checked by the aggregate-type predicate at `sub_91B770`), the prolog creates a local alloca named `<param>.addr`, stores the incoming argument into it, and registers the alloca in the declaration map via the parameter-decl registrar (`sub_9446C0`). If the type is a scalar, it goes directly to the registrar without an intermediate alloca.
 
 **Variant 2 — Direct Pass (most common).** The parameter is passed by value in a register or register pair. Two sub-paths exist:
 
@@ -291,7 +291,7 @@ The parser iterates the EDG operand linked list, building a comma-separated LLVM
 
 **Input operands:**
 - Same tag-to-letter mapping.
-- Tags 10--19 are prohibited: `"tied input/output operands not supported!"` (GCC-style matching-digit constraints are not implemented).
+- Tags 10–19 are prohibited: `"tied input/output operands not supported!"` (GCC-style matching-digit constraints are not implemented).
 - Tag 23 (the `C` constraint on inputs) creates an `undef` value — the constant's value was already inlined into the template string during Phase 1.
 
 Special tag handling:
@@ -371,27 +371,27 @@ The function extracts the callee from the call expression, validates the builtin
 
 ### Per-Category Dispatch
 
-**Atomics and synchronization** (IDs 0xB5--0xCC, 181--204). Atomic operations delegate to `sub_12A7DA0`; fences and barriers to `sub_12AB550`. Cases 0xBA--0xBC map directly to LLVM intrinsic 6 (likely `llvm.nvvm.atomic.*`) with type-overloaded arguments. Case 0xCB is SM-gated: on SM <= 63 it emits an inline constant; on SM >= 70 it emits intrinsic 3769.
+**Atomics and synchronization** (IDs 0xB5–0xCC, 181–204). Atomic operations delegate to `sub_12A7DA0`; fences and barriers to `sub_12AB550`. Cases 0xBA–0xBC map directly to LLVM intrinsic 6 (likely `llvm.nvvm.atomic.*`) with type-overloaded arguments. Case 0xCB is SM-gated: on SM <= 63 it emits an inline constant; on SM >= 70 it emits intrinsic 3769.
 
-**Warp shuffle** (IDs 0x15F--0x166, 351--358). All eight variants delegate to `sub_12ABB90` parameterized by shuffle mode (0=idx, 1=up, 2=down, 3=butterfly) and sync flag (0=legacy, 1=`__shfl_sync_*`). The clamp flag distinguishes butterfly from other modes.
+**Warp shuffle** (IDs 0x15F–0x166, 351–358). All eight variants delegate to `sub_12ABB90` parameterized by shuffle mode (0=idx, 1=up, 2=down, 3=butterfly) and sync flag (0=legacy, 1=`__shfl_sync_*`). The clamp flag distinguishes butterfly from other modes.
 
-**Warp vote/ballot** (IDs 0x12E--0x135, 0x152--0x159, 0x18B--0x192). Three groups of 8 IDs each, all delegating to `sub_12B3540` with the builtin ID as a discriminator. This covers `__ballot_sync`, `__all_sync`, `__any_sync` across integer/float/predicate operand types.
+**Warp vote/ballot** (IDs 0x12E–0x135, 0x152–0x159, 0x18B–0x192). Three groups of 8 IDs each, all delegating to `sub_12B3540` with the builtin ID as a discriminator. This covers `__ballot_sync`, `__all_sync`, `__any_sync` across integer/float/predicate operand types.
 
-**Surface and texture operations** (IDs 0xCF--0x113, 0x287--0x2A5, 207--275 + 647--677). The largest category at ~95 IDs (38%). Organized into pairs using two sub-handlers: `sub_12ADE80(ctx, intrinsic_base, surface_type, variant, args)` for individual load/store operations, and `sub_12AA9B0(ctx, surface_type, expr)` for combined operations. Surface types are encoded as integers (0=generic, 1=1D, 5=2D, 7=3D, 8=cubemap, 10=1D array, 11=2D array, 14=buffer). Intrinsic bases 3701/3702 are primary read/write; 3698/3699 are 2D-array variants.
+**Surface and texture operations** (IDs 0xCF–0x113, 0x287–0x2A5, 207–275 + 647–677). The largest category at ~95 IDs (38%). Organized into pairs using two sub-handlers: `sub_12ADE80(ctx, intrinsic_base, surface_type, variant, args)` for individual load/store operations, and `sub_12AA9B0(ctx, surface_type, expr)` for combined operations. Surface types are encoded as integers (0=generic, 1=1D, 5=2D, 7=3D, 8=cubemap, 10=1D array, 11=2D array, 14=buffer). Intrinsic bases 3701/3702 are primary read/write; 3698/3699 are 2D-array variants.
 
-The texture handler (case 0x287) is the most complex single case at ~230 lines. It walks the AST to extract the texture name string and return element type, constructs an intrinsic name as `"<texname>_<typename>"` using a type-name resolution switch (mapping integer subtypes 0--10 to strings like `"uchar"`, `"int"`, `"ulonglong"`), and emits the call. A global flag (`dword_4F06B98`) controls whether plain `char` maps to `uchar` or `schar`.
+The texture handler (case 0x287) is the most complex single case at ~230 lines. It walks the AST to extract the texture name string and return element type, constructs an intrinsic name as `"<texname>_<typename>"` using a type-name resolution switch (mapping integer subtypes 0–10 to strings like `"uchar"`, `"int"`, `"ulonglong"`), and emits the call. A global flag (`dword_4F06B98`) controls whether plain `char` maps to `uchar` or `schar`.
 
-**Tensor core / WMMA** (IDs 0x16E--0x1D9, 0x2A6--0x2E8, 366--473 + 678--744). The second-largest category at ~85 IDs (34%). Three sub-handlers partition the work: `sub_12AC1A0` handles `wmma::mma_sync` with bias/scale flags `(has_bias, has_scale)` encoding four accumulator modes; `sub_12AC5F0` handles `store_matrix_sync`; `sub_12ACA80` handles `load_matrix_sync`. IDs group into triplets by matrix shape: m16n16k16, m32n8k16, m8n32k16, m16n16k8 (TF32), bf16, and fp8 (SM 89+) families.
+**Tensor core / WMMA** (IDs 0x16E–0x1D9, 0x2A6–0x2E8, 366–473 + 678–744). The second-largest category at ~85 IDs (34%). Three sub-handlers partition the work: `sub_12AC1A0` handles `wmma::mma_sync` with bias/scale flags `(has_bias, has_scale)` encoding four accumulator modes; `sub_12AC5F0` handles `store_matrix_sync`; `sub_12ACA80` handles `load_matrix_sync`. IDs group into triplets by matrix shape: m16n16k16, m32n8k16, m8n32k16, m16n16k8 (TF32), bf16, and fp8 (SM 89+) families.
 
-**WGMMA** (IDs 0x2E9--0x302, 745--770). SM 90+ warpgroup MMA operations. Cases 0x2E9--0x2EE handle fence/commit/wait. Cases 0x2F1--0x2FC implement `__wgmma_mma_async` through a massive ~800-line handler that selects from a 144-entry intrinsic table spanning IDs 5304--5447. The table is indexed by a 5-dimensional grid: N-size (16/32/64/128), B-operand source (shared vs register), element type (s64 vs other), scale/negate flags, and case variant. Mode bits are packed into a single integer: `bit0=accumulate | bit1=transpose | bit2=negate-C | bit4=negate-A`.
+**WGMMA** (IDs 0x2E9–0x302, 745–770). SM 90+ warpgroup MMA operations. Cases 0x2E9–0x2EE handle fence/commit/wait. Cases 0x2F1–0x2FC implement `__wgmma_mma_async` through a massive ~800-line handler that selects from a 144-entry intrinsic table spanning IDs 5304–5447. The table is indexed by a 5-dimensional grid: N-size (16/32/64/128), B-operand source (shared vs register), element type (s64 vs other), scale/negate flags, and case variant. Mode bits are packed into a single integer: `bit0=accumulate | bit1=transpose | bit2=negate-C | bit4=negate-A`.
 
-**Memory copy** (IDs 0x199, 0x291--0x299, 409 + 657--665). Memcpy variants encode alignment directly in the builtin ID: ID 658 = align 2, ID 659 = align 4, ID 660 = align 8, ID 661 = align 16. The actual emission delegates to `sub_12897A0`. Memset operations (IDs 410, 663, 665) delegate to `sub_12A6DF0`.
+**Memory copy** (IDs 0x199, 0x291–0x299, 409 + 657–665). Memcpy variants encode alignment directly in the builtin ID: ID 658 = align 2, ID 659 = align 4, ID 660 = align 8, ID 661 = align 16. The actual emission delegates to `sub_12897A0`. Memset operations (IDs 410, 663, 665) delegate to `sub_12A6DF0`.
 
-**TMA bulk operations** (IDs 0x19B--0x1A0, 411--416). Cases 0x19B and 0x19C are the largest individual handlers (~300 and ~450 lines respectively) for SM 90+ tensor memory access bulk copy/scatter operations. They build operand vectors iteratively and select from intrinsic tables indexed by element count (IDs 4218--4223 for stores, 4244--4250 for loads).
+**TMA bulk operations** (IDs 0x19B–0x1A0, 411–416). Cases 0x19B and 0x19C are the largest individual handlers (~300 and ~450 lines respectively) for SM 90+ tensor memory access bulk copy/scatter operations. They build operand vectors iteratively and select from intrinsic tables indexed by element count (IDs 4218–4223 for stores, 4244–4250 for loads).
 
 ### LLVM Intrinsic Fallback Path
 
-When the builtin ID is 0, the default path (lines 3154--3407) looks up the LLVM intrinsic by name via `sub_15E2770`. If the intrinsic is type-overloaded, argument types are used to resolve the declaration. Each argument is lowered via `sub_128F980`, with type-mismatch bitcasts (opcode 47) and vector zexts (opcode 33) inserted as needed. Struct-return intrinsics are handled by iterating the return struct's fields with `extractvalue`.
+When the builtin ID is 0, the default path (lines 3154–3407) looks up the LLVM intrinsic by name via `sub_15E2770`. If the intrinsic is type-overloaded, argument types are used to resolve the declaration. Each argument is lowered via `sub_128F980`, with type-mismatch bitcasts (opcode 47) and vector zexts (opcode 33) inserted as needed. Struct-return intrinsics are handled by iterating the return struct's fields with `extractvalue`.
 
 
 ## Function Attributes
@@ -453,7 +453,7 @@ For a `__global__` kernel with grid_constant parameters and register preservatio
 | Attribute | Meaning | Backend Effect |
 |---|---|---|
 | `grid_constant` | Kernel parameter is immutable across the grid | Place in constant memory; optimize loads |
-| `preserve_n_data` | N data registers must be preserved across calls | Register allocator reserves R0--RN |
+| `preserve_n_data` | N data registers must be preserved across calls | Register allocator reserves R0–RN |
 | `preserve_n_control` | N predicate registers to preserve | Prologue/epilogue saves predicates |
 | `preserve_n_after` | N registers preserved after a call (callee-save count) | Adjusts spill/restore boundaries |
 | `full_custom_abi` | Function bypasses standard CUDA calling convention | Parameter passing determined by explicit annotations |
@@ -470,7 +470,7 @@ For a `__global__` kernel with grid_constant parameters and register preservatio
 | `sub_921D70` | Temp-alloca creator | Alloca creation with alignment, inserted at allocapt |
 | `sub_921B80` | Low-level alloca emitter | Builds the AllocaInst IR node |
 | `sub_938130` | sret-return predicate | Checks ABI kind == 2 |
-| `sub_91B770` | Aggregate-type predicate | Type kinds 8--11 (struct/union/class/array) |
+| `sub_91B770` | Aggregate-type predicate | Type kinds 8–11 (struct/union/class/array) |
 | `sub_93CB50` | Call-expression emitter | Full call instruction emission (1,293 lines) |
 | `sub_9378E0` | ABI classifier | Return + parameter ABI classification |
 | `sub_939F40` | Printf-to-vprintf expansion | GPU vprintf lowering for printf calls |

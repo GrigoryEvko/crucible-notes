@@ -387,16 +387,16 @@ int64_t GeneralOptimizeLate2(int64_t phase, int64_t ctx) {
 
 #### Per-SM Vtable Resolution (Binary-Verified)
 
-The SM backend vtable is set during `sub_662920` construction, which switches on `codegen_factory >> 12` (ISA generation). Each generation's SM backend object stores a vtable pointer as its first field; the phase dispatchers index into this vtable at the slot offsets above. The constructor switch has cases 3--9; cases 8 and 9 both call `sub_662220` (which sets vtable `off_21F9158`), but case 9 then overwrites the vtable to `off_21D6860`. There is no case 10+, so all Blackwell targets (sm_100/103/110/120/121) fall into gen 9. Slot contents extracted from the binary:
+The SM backend vtable is set during `sub_662920` construction, which switches on `codegen_factory >> 12` (ISA generation). Each generation's SM backend object stores a vtable pointer as its first field; the phase dispatchers index into this vtable at the slot offsets above. The constructor switch has cases 3–9; cases 8 and 9 both call `sub_662220` (which sets vtable `off_21F9158`), but case 9 then overwrites the vtable to `off_21D6860`. There is no case 10+, so all Blackwell targets (sm_100/103/110/120/121) fall into gen 9. Slot contents extracted from the binary:
 
 | SM Target | Gen | SM Backend Vtable | Slot 56 (Phase 46) | Slot 49 (Phase 65) |
 |---|---|---|---|---|
-| sm_60--62 (Pascal) | 5 | `off_22B2A58` | `nullsub_191` (0x7D6DD0) — **no-op** | `sub_8322E0` |
-| sm_70--73 (Volta) | 6 | `off_21D82B0` | `sub_8692E0` | `sub_8322E0` |
+| sm_60–62 (Pascal) | 5 | `off_22B2A58` | `nullsub_191` (0x7D6DD0) — **no-op** | `sub_8322E0` |
+| sm_70–73 (Volta) | 6 | `off_21D82B0` | `sub_8692E0` | `sub_8322E0` |
 | sm_75 (Turing) | 7 | `off_229D418` | `sub_8692E0` | `sub_8322E0` |
-| sm_80--88 (Ampere) | 8 | `off_21F9158` | `sub_8692E0` | `sub_8322E0` |
-| sm_89--90 (Ada/Hopper) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
-| sm_100--121 (Blackwell) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
+| sm_80–88 (Ampere) | 8 | `off_21F9158` | `sub_8692E0` | `sub_8322E0` |
+| sm_89–90 (Ada/Hopper) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
+| sm_100–121 (Blackwell) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
 
 Phase 65 resolves to the same handler (`sub_8322E0`) on every target — the architecture variation is only in Phase 46. Pascal is the sole generation where Phase 46 hits the no-op sentinel; Volta and later (including all Blackwell variants) dispatch to `sub_8692E0`.
 
@@ -414,7 +414,7 @@ The gate at `backend+1042` bit 2 provides a per-compilation-unit disable. The tw
 
 1. **Gate cascade.** Checks option 729 (via vtable[72] fast-path), then `ctx+1417` bit 0, then `sub_7DC070` (has shared-memory stores), then option 487 (general optimization enabled), then `a1[203]` for a per-compilation-unit kill-switch.
 2. **Use-def rebuild.** Calls `sub_7E6090(ctx, 0, 0, 0, 0)` to reconstruct use-def chains.
-3. **Classification pass.** Walks the instruction list tracking per-register state in a 4096-entry array (`0x1000` bytes). For each STL (opcode 183) or STS (opcode 288) instruction whose destination references a state-space-5 (constant bank) symbol, classifies the target register into: state 0 = unseen, 1 = single-def pending verification, 2 = multi-def (ineligible), 3 = single-def value matches a prior load (redundant store). The register-class lookup at `*(*(ctx) + 520) + 12 * reg_class_index` determines store profitability using a 5-level cost model (class values 0--4, where class 4 forces skip).
+3. **Classification pass.** Walks the instruction list tracking per-register state in a 4096-entry array (`0x1000` bytes). For each STL (opcode 183) or STS (opcode 288) instruction whose destination references a state-space-5 (constant bank) symbol, classifies the target register into: state 0 = unseen, 1 = single-def pending verification, 2 = multi-def (ineligible), 3 = single-def value matches a prior load (redundant store). The register-class lookup at `*(*(ctx) + 520) + 12 * reg_class_index` determines store profitability using a 5-level cost model (class values 0–4, where class 4 forces skip).
 4. **Deletion pass.** A second walk over the instruction list calls `sub_9253C0(ctx, instr, 1)` to unlink and delete each store whose register state reached 3. `sub_9253C0` updates the block sentinel pointers, clears `ctx+1382` bit 6 (optimization-complete flag), and optionally invokes scheduling fixup at `sub_9251E0` if the scheduling DAG at `ctx+1136` is live.
 
 ## Sub-Pass Decomposition
@@ -631,9 +631,9 @@ function copy_prop_forward(ctx):
 
 | Opcode | IR Meaning | Role in Copy Prop | Evidence |
 |--------|-----------|-------------------|---------|
-| 97 | Definition anchor / label marker (`STG` in the ROT13 name table; used here as a definition anchor, not an actual store-global instruction) | Updates the current definition tracking context (`v11`). Its operand `instr+84 & 0xFFFFFF` is an index into the BB array at `ctx+296`, retrieving the BasicBlock descriptor for the definition point. All subsequent propagation decisions for opcodes 18 and 124 reference this context. | `sub_908EB0` lines 74--78: `v11 = *(*(a1+296) + 8 * (*(v9+84) & 0xFFFFFF))` |
-| 18 | `FSETP`/`ISETP` (set predicate) | A predicate-setting comparison instruction. Copy propagation treats it as a "predicated copy" target: when source operands have type 2 or 3 (predicate/uniform register) and pass `sub_91D150` register constraint checks, the destination predicate can be folded into consumers. Marked with `0x400` when the architecture supports it. | `sub_908EB0` lines 84--96, `sub_8F2E50` lines 19--61 |
-| 124 | Conditional select (phi-like) | A two-source selection instruction controlled by a predicate. Copy propagation attempts to simplify it to a direct assignment when one source is a constant or when structural analysis shows the predicate is trivially true/false. Marked with `0x100` or type-converted via `(operand & 0xFFFFFDF0) \| 0x201`. | `sub_908EB0` lines 82--198, `sub_8F2E50` lines 42--51 |
+| 97 | Definition anchor / label marker (`STG` in the ROT13 name table; used here as a definition anchor, not an actual store-global instruction) | Updates the current definition tracking context (`v11`). Its operand `instr+84 & 0xFFFFFF` is an index into the BB array at `ctx+296`, retrieving the BasicBlock descriptor for the definition point. All subsequent propagation decisions for opcodes 18 and 124 reference this context. | `sub_908EB0` lines 74–78: `v11 = *(*(a1+296) + 8 * (*(v9+84) & 0xFFFFFF))` |
+| 18 | `FSETP`/`ISETP` (set predicate) | A predicate-setting comparison instruction. Copy propagation treats it as a "predicated copy" target: when source operands have type 2 or 3 (predicate/uniform register) and pass `sub_91D150` register constraint checks, the destination predicate can be folded into consumers. Marked with `0x400` when the architecture supports it. | `sub_908EB0` lines 84–96, `sub_8F2E50` lines 19–61 |
+| 124 | Conditional select (phi-like) | A two-source selection instruction controlled by a predicate. Copy propagation attempts to simplify it to a direct assignment when one source is a constant or when structural analysis shows the predicate is trivially true/false. Marked with `0x100` or type-converted via `(operand & 0xFFFFFDF0) \| 0x201`. | `sub_908EB0` lines 82–198, `sub_8F2E50` lines 42–51 |
 
 #### Flag Bit Semantics
 
@@ -797,10 +797,10 @@ The function `sub_91D150` is a trivial lookup into a per-register constraint arr
 
 | ORI Opcode | Operation | Foldable? | Conditions | Evidence |
 |---|---|---|---|---|
-| 18 | Predicated copy | Yes | Source operand types must be 2 (predicate) or 3 (uniform); operand type nibble must be 0; no `0x400` flag; both source registers pass `sub_91D150` constraint check | `sub_8F2E50` lines 17--61 |
-| 124 | Conditional select | Yes | Dest type 1 (integer) or 2 (float); no modifier bits (`& 0x70 == 0`); not already propagated (`& 0x100 == 0`); SM-version-dependent constraint check | `sub_8F2E50` lines 42--51 |
-| 97 | Register-to-register move | Propagated, not folded | Dest register replaced by source in all uses (copy propagation); no type/SM checks | `sub_908EB0` lines 75--79 |
-| 98 | Local load (LDL) | Cost-exempt fold target | In phase 37 only; target symbol looked up from constant bank; foldable if symbol is in constant bank | `sub_90FBA0` lines 261--270 |
+| 18 | Predicated copy | Yes | Source operand types must be 2 (predicate) or 3 (uniform); operand type nibble must be 0; no `0x400` flag; both source registers pass `sub_91D150` constraint check | `sub_8F2E50` lines 17–61 |
+| 124 | Conditional select | Yes | Dest type 1 (integer) or 2 (float); no modifier bits (`& 0x70 == 0`); not already propagated (`& 0x100 == 0`); SM-version-dependent constraint check | `sub_8F2E50` lines 42–51 |
+| 97 | Register-to-register move | Propagated, not folded | Dest register replaced by source in all uses (copy propagation); no type/SM checks | `sub_908EB0` lines 75–79 |
+| 98 | Local load (LDL) | Cost-exempt fold target | In phase 37 only; target symbol looked up from constant bank; foldable if symbol is in constant bank | `sub_90FBA0` lines 261–270 |
 | 130 | HSET2 (packed FP16x2 compare) | Cost-exempt | Phase 37 bitmask: opcode in {130,133,134,137} bypasses fold cost penalty | `sub_90FBA0` bitmask `0x99` |
 | 133 | (SM-range-dependent ALU) | Cost-exempt | Same bitmask as 130 | `sub_90FBA0` |
 | 134 | (SM-range-dependent ALU) | Cost-exempt | Same bitmask as 130 | `sub_90FBA0` |
@@ -824,7 +824,7 @@ The threshold divides two immediate-encoding regimes:
 | SM range | Encoded value | Fold rule | Rationale |
 |---|---|---|---|
 | <= 20479 | Legacy encoding | Integer (type 1) and float (type 2) constants in conditional selects fold unconditionally | Legacy architectures use fixed-width immediate slots with no sign/width constraints |
-| > 20479 | Extended encoding | Same types fold only if `(dest & 0x1C00) == 0` — constraint bits at operand positions 10--12 must all be zero | Extended architectures introduced variable-width immediate encoding with sign-extension rules; bits 10--12 encode width/signedness constraints that prevent certain constants from being represented as immediates |
+| > 20479 | Extended encoding | Same types fold only if `(dest & 0x1C00) == 0` — constraint bits at operand positions 10–12 must all be zero | Extended architectures introduced variable-width immediate encoding with sign-extension rules; bits 10–12 encode width/signedness constraints that prevent certain constants from being represented as immediates |
 
 The encoded value at `comp_unit+372` uses the formula `(generation << 12) | variant`. Known values: 12288 = sm_30 (gen 3), 16385 = sm_50 (gen 4), 20481 = sm_50a (gen 5), 24576 = sm_60 (gen 6), 28672 = sm_70 (gen 7), 32768 = sm_90 (gen 8), 36864 = sm_100 (gen 9). The threshold 20479 = `(5 << 12) - 1` = `0x4FFF` falls exactly at the generation 4/5 boundary: all generation-4 values (Kepler/Maxwell) are at or below 20479, while the first generation-5 value (20481) exceeds it. This aligns with the introduction of extended immediate encoding formats in Pascal (sm_60, gen 6) and its predecessors in the gen-5 range.
 
@@ -861,7 +861,7 @@ if (tier == 0) {
 
 The tier value at `ctx+1379 & 7` distinguishes:
 - **0** = aggressive fold (unconditional fast path, no predicate analysis)
-- **1--7** = conservative fold (requires `sub_8F29C0` predicate analysis and potentially `sub_908A60` two-pass simplification)
+- **1–7** = conservative fold (requires `sub_8F29C0` predicate analysis and potentially `sub_908A60` two-pass simplification)
 
 The actual constant value is not computed during GeneralOptimize. The fold marks operands with flag bits (`0x100`, `0x200`, `0x400`, byte-1 `|= 1`) that downstream passes consume: the apply-changes function `sub_753B50` rewrites instruction lists, and the peephole/codegen passes emit the actual immediates.
 
@@ -890,7 +890,7 @@ The predicate analysis helper `sub_8F29C0` (11 lines) performs three sequential 
 
 `sub_90FBA0` (the main loop for `GeneralOptimizeMid`) integrates fold decisions into a cost-weighted convergence model rather than a simple boolean. Key elements:
 
-**Opcode classification** (lines 226--228 of the decompiled output): a bitmask `0x99` applied to the range 130--137 classifies opcodes as cost-exempt. The expression `~(0x99 >> ((uint8_t)opcode + 126)) & v15` clears `v15` (the cost flag) for opcodes where the corresponding bit in `0x99` is set. Combined with the range check for 272--273:
+**Opcode classification** (lines 226–228 of the decompiled output): a bitmask `0x99` applied to the range 130–137 classifies opcodes as cost-exempt. The expression `~(0x99 >> ((uint8_t)opcode + 126)) & v15` clears `v15` (the cost flag) for opcodes where the corresponding bit in `0x99` is set. Combined with the range check for 272–273:
 
 | Cost-exempt opcodes | Bitmask bit | Interpretation |
 |---|---|---|
@@ -961,9 +961,9 @@ The threshold **20479** = `(5 << 12) - 1` = `0x4FFF`. This is the largest value 
 
 The fold-eligibility impact:
 
-- **SM <= 20479** (generation 4 and below — Kepler, Maxwell): Integer and float immediates in conditional-select instructions (opcode 124) fold unconditionally. The hardware uses fixed-width immediate slots with no sign/width constraints at operand bit positions 10--12.
+- **SM <= 20479** (generation 4 and below — Kepler, Maxwell): Integer and float immediates in conditional-select instructions (opcode 124) fold unconditionally. The hardware uses fixed-width immediate slots with no sign/width constraints at operand bit positions 10–12.
 
-- **SM > 20479** (generation 5+ — Pascal and all newer): The operand's constraint bits at positions 10--12 (mask `0x1C00`) must all be zero for folding to proceed. These bits encode hardware constraints introduced with extended immediate formats:
+- **SM > 20479** (generation 5+ — Pascal and all newer): The operand's constraint bits at positions 10–12 (mask `0x1C00`) must all be zero for folding to proceed. These bits encode hardware constraints introduced with extended immediate formats:
   - Bit 10: immediate width constraint (narrow vs wide encoding)
   - Bit 11: sign-extension requirement
   - Bit 12: bank-relative vs absolute encoding
@@ -1406,7 +1406,7 @@ The option 464 check is called after each successful iteration (when `changed ==
 
 Variant B (phases 37 and 58) does **not** use option 464 for iteration control. Phase 37 uses the cost-based threshold described above. Phase 58 makes a single pass over the block list via `sub_8F6FA0`, which does not loop — each block is visited exactly once, with the 6-slot circular buffer providing limited lookback within the walk.
 
-In practice, most basic blocks converge in 1--3 iterations. A block that generates new optimization opportunities typically does so because copy propagation exposes a constant, which enables constant folding, which creates a dead instruction. The second iteration catches any cascading effects, and the third confirms convergence. Blocks requiring more than 3 iterations are rare and typically involve chains of dependent copies or nested predicate simplifications.
+In practice, most basic blocks converge in 1–3 iterations. A block that generates new optimization opportunities typically does so because copy propagation exposes a constant, which enables constant folding, which creates a dead instruction. The second iteration catches any cascading effects, and the third confirms convergence. Blocks requiring more than 3 iterations are rare and typically involve chains of dependent copies or nested predicate simplifications.
 
 ## The Apply-Changes Function: `sub_753B50`
 

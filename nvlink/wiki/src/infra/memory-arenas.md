@@ -431,18 +431,18 @@ The class index is computed as `(requested + 7) >> 3` — the requested size rou
 | Class | Aligned Size (bytes) | Request Range (bytes) | Notes |
 |------:|---------------------:|----------------------:|-------|
 | 0 | 0 | 0 | Sink for exhausted chunks (0 remaining) |
-| 1 | 8 | 1--8 | Minimum useful allocation |
-| 2 | 16 | 9--16 | — |
-| 3 | 24 | 17--24 | Matches chunk header size |
-| 4 | 32 | 25--32 | — |
-| 5 | 40 | 33--40 | — |
+| 1 | 8 | 1–8 | Minimum useful allocation |
+| 2 | 16 | 9–16 | — |
+| 3 | 24 | 17–24 | Matches chunk header size |
+| 4 | 32 | 25–32 | — |
+| 5 | 40 | 33–40 | — |
 | ... | ... | ... | Each class covers an 8-byte range |
-| 16 | 128 | 121--128 | — |
-| 32 | 256 | 249--256 | — |
-| 64 | 512 | 505--512 | — |
-| 96 | 768 | 761--768 | — |
-| 126 | 1,008 | 1,001--1,008 | — |
-| 127 | 1,016 | 1,009--1,016 | Largest size class |
+| 16 | 128 | 121–128 | — |
+| 32 | 256 | 249–256 | — |
+| 64 | 512 | 505–512 | — |
+| 96 | 768 | 761–768 | — |
+| 126 | 1,008 | 1,001–1,008 | — |
+| 127 | 1,016 | 1,009–1,016 | Largest size class |
 
 **Class index formula** (verified from decompiled code at `0x4882A0`):
 
@@ -473,7 +473,7 @@ The relationship between fields is: `data_pointer + remaining_size = end_of_usab
 
 The allocator has three paths, tried in order. Path 1 is the fast path (single array lookup). Path 2 is the fallback (linear scan). Path 3 is the slow path (OS page allocation).
 
-**Path 1 — Size-class direct lookup** (class 0--127, aligned <= 1,016):
+**Path 1 — Size-class direct lookup** (class 0–127, aligned <= 1,016):
 
 ```c
 void *ocg_memspace_alloc(uint64_t *ms, size_t requested) {

@@ -348,13 +348,13 @@ The switch in `decl_specifiers` handles the following token kinds:
 | 99 | `static` | Storage class |
 | 103 | `typedef` | Storage class |
 | 119 | `register` | Storage class |
-| 80--108 | C type keywords | Type specifiers |
+| 80–108 | C type keywords | Type specifiers |
 | 142 | `__attribute__` | GNU attribute |
 | 151 | `class` | Class specifier |
 | 183 | `typename` | Typename specifier |
 | 185 | `decltype` | Decltype specifier |
 | 189 | `typeof` | GNU typeof |
-| 263--266 | cv-qualifiers | `const`, `volatile`, `restrict`, `__restrict` |
+| 263–266 | cv-qualifiers | `const`, `volatile`, `restrict`, `__restrict` |
 
 ### process_storage_class_specifier (sub_4A31A0)
 
@@ -1213,7 +1213,7 @@ if qword_126EF98 > 0x1116F:    // 70000+ → very recent CUDA
 
 ## Function Map
 
-### decl_spec.c (0x4A1BF0--0x4B37F0)
+### decl_spec.c (0x4A1BF0–0x4B37F0)
 
 | Address | Identity | Lines | Description |
 |---|---|---|---|
@@ -1242,7 +1242,7 @@ if qword_126EF98 > 0x1116F:    // 70000+ → very recent CUDA
 | `sub_4ACF80` | `decl_specifiers` | 4,761 | **Central specifier dispatcher** |
 | `sub_4B37F0` | `decl_spec_one_time_init` | 40 | Module initialization |
 
-### declarator.c (0x4B3920--0x4C00A0)
+### declarator.c (0x4B3920–0x4C00A0)
 
 | Address | Identity | Lines | Description |
 |---|---|---|---|
@@ -1261,7 +1261,7 @@ if qword_126EF98 > 0x1116F:    // 70000+ → very recent CUDA
 | `sub_4BC950` | `r_declarator` | 2,578 | Recursive descent declarator |
 | `sub_4C00A0` | `scan_lambda_declarator` | 414 | Lambda declarator |
 
-### decls.c (0x4C0840--0x4F0000)
+### decls.c (0x4C0840–0x4F0000)
 
 | Address | Identity | Lines | Description |
 |---|---|---|---|
@@ -1283,7 +1283,7 @@ if qword_126EF98 > 0x1116F:    // 70000+ → very recent CUDA
 | `sub_4DD710` | `check_trailing_return_type` | 80 | Auto type deduction check |
 | `sub_4DEC90` | `variable_declaration` | 1,098 | **Top-level variable entry** |
 
-### disambig.c (0x4E9E70--0x4EC690)
+### disambig.c (0x4E9E70–0x4EC690)
 
 | Address | Identity | Lines | Description |
 |---|---|---|---|
@@ -1292,7 +1292,7 @@ if qword_126EF98 > 0x1116F:    // 70000+ → very recent CUDA
 | `sub_4EB270` | `prescan_declarator` | 200 | Prescan declarator tokens |
 | `sub_4EC690` | `find_for_loop_separator` | 100 | Find `;` in for-init |
 
-### decl_inits.c (0x4A0310--0x4A1BE0)
+### decl_inits.c (0x4A0310–0x4A1BE0)
 
 | Address | Identity | Lines | Description |
 |---|---|---|---|

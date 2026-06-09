@@ -47,7 +47,7 @@ The incremental update is the core algorithm. Rather than performing a full O(n)
 ```c
 function mrpa_incremental_update(context, basicBlock):
     // Phase 1: Build worklist via DFS
-    visited = DenseSet()                        // v292--v295
+    visited = DenseSet()                        // v292–v295
     worklist = []
     dfs_push(worklist, basicBlock, visited)     // standard DFS seed
 
@@ -91,7 +91,7 @@ function mrpa_incremental_update(context, basicBlock):
             context.rename_count_success++      // *((_DWORD*)v254 + 16)
 ```
 
-The key insight is that steps 5--7 form a speculative rename-then-validate loop: MRPA tentatively renames a virtual register, checks whether the rename reduces pressure below the class limit, and rolls back if it does not. The rename counts at `*((_DWORD*)v254 + 16)` (success) and `*((_DWORD*)v254 + 17)` (failure) provide a diagnostic ratio of how often speculative renames succeed.
+The key insight is that steps 5–7 form a speculative rename-then-validate loop: MRPA tentatively renames a virtual register, checks whether the rename reduces pressure below the class limit, and rolls back if it does not. The rename counts at `*((_DWORD*)v254 + 16)` (success) and `*((_DWORD*)v254 + 17)` (failure) provide a diagnostic ratio of how often speculative renames succeed.
 
 ### Register Liveness Queries
 
@@ -116,13 +116,13 @@ Code motion feasibility (`sub_1DF7A80`) validates whether an instruction can be 
 2. Validate against the allocation bitmask at allocator offset `+38`.
 3. Walk an instruction window bounded by offset `+296` (configurable window size).
 4. Count conflicting operands within the window.
-5. Track affected registers in an rb-tree set (offsets 56--88) with node structure `[left(16), right(24), value(32)]`.
+5. Track affected registers in an rb-tree set (offsets 56–88) with node structure `[left(16), right(24), value(32)]`.
 
 An instruction is movable only if the conflicting operand count within the window is zero and the allocation bitmask permits the move.
 
 ### MRPA Verification
 
-A debug-only verification path checks incremental update correctness against full recomputation. The trigger path in `sub_2E5A4E0` (decompiled lines 1702--1708):
+A debug-only verification path checks incremental update correctness against full recomputation. The trigger path in `sub_2E5A4E0` (decompiled lines 1702–1708):
 
 ```c
 if ( *(_BYTE *)(v7 + 40)               // [1] context enable flag -- always ON during MCSE
@@ -145,7 +145,7 @@ All four conditions must hold simultaneously:
 
 When all conditions hold, the error `"Incorrect RP info from incremental MRPA update"` fires via `sub_C64ED0` (LLVM's `report_fatal_error`). The `print-verify` knob controls whether detailed per-register-class mismatch data is printed.
 
-The backend variant (`sub_1E00370`, decompiled lines 2416--2420) uses `byte_4FC6020` as its guard flag, calls `sub_1DFF720` for verification, and falls back to `byte_4FC62C0` (a cached result) if verification is disabled.
+The backend variant (`sub_1E00370`, decompiled lines 2416–2420) uses `byte_4FC6020` as its guard flag, calls `sub_1DFF720` for verification, and falls back to `byte_4FC62C0` (a cached result) if verification is disabled.
 
 | Knob | Default | Description |
 |---|---|---|
@@ -393,7 +393,7 @@ Data structures:
 
 - **SUnit** (Scheduling Unit): 88 bytes per instruction, consistent across both the pipeliner and `ScheduleDAGMILive`.
 - **Instruction-to-node hash map**: 632-byte entries per instruction. The unusually large entry size suggests extensive caching of per-instruction metadata (RP deltas, latency info, dependency edges) to avoid recomputation.
-- **RP tracking structure**: 112 bytes, with per-register-class pressure arrays at offsets 32--48 (current) and 56--72 (limits).
+- **RP tracking structure**: 112 bytes, with per-register-class pressure arrays at offsets 32–48 (current) and 56–72 (limits).
 
 The scheduling flow:
 

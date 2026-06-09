@@ -316,7 +316,7 @@ Thread-block barriers synchronize all threads within a CTA (Cooperative Thread A
 | `barrier.cta.arrive N` | `BAR.ARV` | PTX 8.0 cluster-aware CTA arrive |
 | `barrier.cta.red N` | `BAR.RED` | PTX 8.0 cluster-aware CTA reduction |
 
-The hardware provides 16 named barriers (indices 0--15). The `EIATTR_NUM_BARRIERS` metadata records the maximum barrier index used per kernel, which the driver uses to partition the convergence barrier file at launch.
+The hardware provides 16 named barriers (indices 0–15). The `EIATTR_NUM_BARRIERS` metadata records the maximum barrier index used per kernel, which the driver uses to partition the convergence barrier file at launch.
 
 ### Codegen Handler Details — `sub_524FB0`
 
@@ -494,7 +494,7 @@ ptxas classifies mbarrier operations through `sub_A94440` (MBarrierDetector, 412
 | 11 | `EXPECT_TX` | Set expected transaction byte count |
 | 12 | `COMPLETE_TX` | Mark transaction bytes as complete |
 
-The "trivial" mbarrier operations (types 0--8) are handled inline; "non-trivial" operations (types 9--12, including `EXPECT_TX` and the extended `TRY_WAIT` variants) require more complex lowering.
+The "trivial" mbarrier operations (types 0–8) are handled inline; "non-trivial" operations (types 9–12, including `EXPECT_TX` and the extended `TRY_WAIT` variants) require more complex lowering.
 
 ### Mbarrier Symbol Naming
 

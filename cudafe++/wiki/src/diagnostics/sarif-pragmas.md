@@ -72,7 +72,7 @@ Each diagnostic emitted through `check_severity` (`sub_4F1330`) produces one JSO
 
 #### Rule ID Format
 
-The rule ID is always `"EC"` followed by the **internal** error code (0--3794), not the display code:
+The rule ID is always `"EC"` followed by the **internal** error code (0–3794), not the display code:
 
 ```c
 sub_6B9CD0(sarif_buf, "\"ruleId\":", 9);
@@ -179,7 +179,7 @@ if (dword_106BBB8 == 1) {
 
 This closes: `results` array (`]`), the run object (`}`), the `runs` array (`]`), and the top-level object (`}`), followed by a newline.
 
-In text mode, `write_signoff` instead prints the error/warning summary (e.g., `"3 errors, 2 warnings detected in file.cu"`), using message-table lookups via `sub_4F2D60` with IDs 1742--1748 and 3234--3235 for pluralization.
+In text mode, `write_signoff` instead prints the error/warning summary (e.g., `"3 errors, 2 warnings detected in file.cu"`), using message-table lookups via `sub_4F2D60` with IDs 1742–1748 and 3234–3235 for pluralization.
 
 ### Complete SARIF Output Example
 
@@ -202,7 +202,7 @@ cudafe++ processes `#pragma nv_diag_*` directives through the preprocessor, whic
 | 35 | `#pragma nv_diag_default` | Restore from `byte_1067920[4 * error_code]` | `default` |
 | 36 | `#pragma nv_diag_push` / `pop` | Scope boundary marker | push/pop |
 
-Note the gap: action code 34 is not used. Actions 30--33 modify severity, 35 restores the compile-time default, and 36 provides push/pop scoping to allow localized overrides.
+Note the gap: action code 34 is not used. Actions 30–33 modify severity, 35 restores the compile-time default, and 36 provides push/pop scoping to allow localized overrides.
 
 The pragmas accept either a numeric error code or a diagnostic tag name:
 
@@ -227,7 +227,7 @@ Each 24-byte stack entry has the following layout:
 |---|---|---|---|
 | 0 | 4 | `position_cookie` | Source position (sequence number) |
 | 4 | 2 | `column` | Column number within the line |
-| 8 | 1 | `action_code` | Pragma action (30--36) |
+| 8 | 1 | `action_code` | Pragma action (30–36) |
 | 9 | 1 | `flags` | Bit 0: is push/pop with saved index |
 | 16 | 8 | `error_code` or `saved_index` | Target error code, or -1/saved push index for scope markers |
 
@@ -482,7 +482,7 @@ For each category, the parser:
 1. Uses `strstr()` to find the category name in the spec string
 2. Checks that the character after the name is `=`
 3. Extracts the value up to the next `:` (or end of string)
-4. Validates that the value contains only digits (0x30--0x39) and semicolons (0x3B)
+4. Validates that the value contains only digits (0x30–0x39) and semicolons (0x3B)
 5. Stores the pointer and length in `qword_126ECC0[2*code]` and `qword_126ECC8[2*code]`
 6. If validation fails (non-digit, non-semicolon character), nullifies the entry
 
@@ -513,7 +513,7 @@ void emit_colorization_escape(buffer *buf, uint8_t category_code) {
 }
 ```
 
-**`sub_4F3E50` (`add_colorization_characters`):** Used during word-wrapped output to emit full ANSI escape sequences. For category 1 (reset), it writes `ESC [ 0 m`. For categories 2--7, it writes `ESC [` followed by the parsed ANSI codes from `qword_126ECC0`, followed by `m`.
+**`sub_4F3E50` (`add_colorization_characters`):** Used during word-wrapped output to emit full ANSI escape sequences. For category 1 (reset), it writes `ESC [ 0 m`. For categories 2–7, it writes `ESC [` followed by the parsed ANSI codes from `qword_126ECC0`, followed by `m`.
 
 ```c
 void add_colorization_characters(uint8_t category) {

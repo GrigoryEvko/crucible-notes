@@ -159,7 +159,7 @@ Every other case follows the same six-step template — read the opcode flag wor
 
 ## Why a 7.8-KB switch and not a dispatch table
 
-Modern SM tiers (sm_80--sm_120) answer the same query through the per-opcode tables documented in [codegen/encoding-tables.md](../codegen/encoding-tables.md). The replacement is one `lea r10, [rip + table]; jmp [r10 + 8*opcode_category]` indirected through one of the 444-slot percase tables in the `0x22A5AA0` family — at most 470 cache-warm pointer chases, no per-case decision tree.
+Modern SM tiers (sm_80–sm_120) answer the same query through the per-opcode tables documented in [codegen/encoding-tables.md](../codegen/encoding-tables.md). The replacement is one `lea r10, [rip + table]; jmp [r10 + 8*opcode_category]` indirected through one of the 444-slot percase tables in the `0x22A5AA0` family — at most 470 cache-warm pointer chases, no per-case decision tree.
 
 The legacy switch is a 425-block decision tree because the legacy targets predate the table-driven encoder family. The pre-sm_80 encoding-tables (`0x22A5AA0` and its cohort) have 93 nullsub holes for opcodes that did not exist in those architectures. Without a way to express "this opcode does not exist on this target" cleanly in the table, the original implementer fell back on a hand-written switch with explicit per-opcode operand accounting. The switch fans out into 425 BBs because every case has its own per-operand-index logic (read the type bits, decide whether to extend a vector window, branch on whether the operand is the destination or a source, ...).
 
@@ -195,7 +195,7 @@ Inside `case 0x32u` (the tex-sampler operand-class case) the body materialises t
 
 ## QUIRK — vtable+1024 / vtable+1056 / vtable+1288 / vtable+1480 self-callbacks
 
-The `default:` arm of the switch (lines 1180--1364 of the decompilation) calls back into the **same target's** other vtable slots — vtable+1024, +1056, +1288, +1480 — to ask sub-queries like "does this target support 64-bit address mode?" and "does this target classify opcode 6 as a memory access?". The reason is that the `default` arm has to handle every opcode the seven explicit cases do not, and the precise answer depends on per-target capabilities. Rather than encoding all of those capabilities in a per-target operand-class table, the legacy implementation re-uses the target's other introspection hooks. The cost is that an unfamiliar reader watching a debugger step through the `default` arm sees the same target's `this` pointer bouncing through four different vtable slots before producing a final answer. This is the third-party indirection load that the modern table-driven replacement eliminated.
+The `default:` arm of the switch (lines 1180–1364 of the decompilation) calls back into the **same target's** other vtable slots — vtable+1024, +1056, +1288, +1480 — to ask sub-queries like "does this target support 64-bit address mode?" and "does this target classify opcode 6 as a memory access?". The reason is that the `default` arm has to handle every opcode the seven explicit cases do not, and the precise answer depends on per-target capabilities. Rather than encoding all of those capabilities in a per-target operand-class table, the legacy implementation re-uses the target's other introspection hooks. The cost is that an unfamiliar reader watching a debugger step through the `default` arm sees the same target's `this` pointer bouncing through four different vtable slots before producing a final answer. This is the third-party indirection load that the modern table-driven replacement eliminated.
 
 ## Function Map
 
@@ -204,7 +204,7 @@ The `default:` arm of the switch (lines 1180--1364 of the decompilation) calls b
 | `sub_A97600` | 7,780 B | `LegacyTarget::getOperandSrcSlotCount(this, instr, operand_idx)` — vtable slot +0x5F0 on six legacy SM-target classes | HIGH |
 | `sub_A97540` | 180 B | `LegacyTarget::isOperandInBaseWindow(this, operand_idx)` — helper used only by `sub_A97600`'s case `0x4D` arm | HIGH |
 | `sub_A90D60` | 1,120 B | `LegacyTarget::isOperandEligibleAsPredecessor(this, instr, operand_idx, flag)` — sibling at vtable slot +0x5E8 (slot 189) on the same six vtables | HIGH |
-| `sub_7E36C0` / `sub_7E3640` / `sub_7E3790` / `sub_7E3800` / `sub_7E40E0` | 76--204 B | Per-operand-class range helpers (operand-window start/end resolvers) | HIGH |
+| `sub_7E36C0` / `sub_7E3640` / `sub_7E3790` / `sub_7E3800` / `sub_7E40E0` | 76–204 B | Per-operand-class range helpers (operand-window start/end resolvers) | HIGH |
 | `sub_91E610` | 399 B | `getOperandTypeCode(instr, operand_idx)` — shared helper used by 100+ functions | HIGH |
 | `nullsub_45` (`0x680190`) | 2 B | The post-RA-no-op sentinel — **unrelated** to `sub_A97600`, lives on the sub-target vtable +0x90, not the primary target vtable +0x5F0 | CERTAIN |
 

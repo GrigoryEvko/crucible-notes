@@ -79,7 +79,7 @@ Contains 9 C++ global constructor functions (`ctor_001` through `ctor_009`) regi
 | `ctor_008` | `0x409090` | Locale once-flags (set 4) | 12 flags at `12D6DE8..12D6E40` |
 | `ctor_009` | `0x409150` | Stream buffer destructors | `__cxa_atexit` for `basic_streambuf<char>` and `basic_streambuf<wchar_t>` |
 
-Constructors 4--9 belong to statically-linked libstdc++. Only constructors 1--3 initialize EDG/NVIDIA state.
+Constructors 4–9 belong to statically-linked libstdc++. Only constructors 1–3 initialize EDG/NVIDIA state.
 
 ### EDG Main Body (0x409350 — 0x7DF400, 3.61 MB)
 
@@ -138,7 +138,7 @@ The `.rodata` section at `0x829740` — `0xAA3FA3` holds all constant data: stri
 
 ### Error Message Table (off_88FAA0)
 
-The EDG diagnostic system's message template table. An array of 3,795 `const char*` pointers, indexed by error code 0--3794:
+The EDG diagnostic system's message template table. An array of 3,795 `const char*` pointers, indexed by error code 0–3794:
 
 ```text
 off_88FAA0[0]    = ""                           // error 0: unused
@@ -151,7 +151,7 @@ Each pointer references a NUL-terminated format string elsewhere in `.rodata` co
 
 ### IL Entry Kind Name Table (off_E6DD80)
 
-Maps the 85 `entry_kind` enum values (0--84) to human-readable strings. Used by the IL display subsystem (`il_to_str.c`) for debug output:
+Maps the 85 `entry_kind` enum values (0–84) to human-readable strings. Used by the IL display subsystem (`il_to_str.c`) for debug output:
 
 ```text
 off_E6DD80[0]  = "scope"

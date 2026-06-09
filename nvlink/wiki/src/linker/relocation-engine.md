@@ -627,7 +627,7 @@ The iteration logic:
 
 Most CUDA relocation types use only action[0] with action[1].action\_type == 0 (END). Multi-action types include certain 128-bit instruction relocations and the section-type encoding pairs.
 
-### Actions 0x16--0x36: Table-Driven Masked Shift
+### Actions 0x16–0x36: Table-Driven Masked Shift
 
 These 16 action codes share a single code path that uses two SSE-loaded lookup tables:
 
@@ -650,7 +650,7 @@ The 16 action codes map to table indices as follows:
 | 0x16 — 0x1D | 22 — 29 | 0 — 7 |
 | 0x2F — 0x36 | 47 — 54 | 25 — 32 |
 
-The gap between indices 8 and 24 corresponds to the action codes 0x1E through 0x2E. Action code 0x2E is handled by the ABS\_FULL case, and codes 0x1E through 0x2D fall to the default error path. The mask table has 8 `uint64_t` entries (indices 0--7) covering the first group; the second group (indices 25--32) accesses into the same 64-byte memory region at a higher offset, reading from the pre-loaded SSE vectors.
+The gap between indices 8 and 24 corresponds to the action codes 0x1E through 0x2E. Action code 0x2E is handled by the ABS\_FULL case, and codes 0x1E through 0x2D fall to the default error path. The mask table has 8 `uint64_t` entries (indices 0–7) covering the first group; the second group (indices 25–32) accesses into the same 64-byte memory region at a higher offset, reading from the pre-loaded SSE vectors.
 
 This table-driven approach eliminates the need for 16 separate switch cases, each with a hardcoded mask and shift. It supports extraction of arbitrary byte lanes, half-words, and sub-fields from the relocation value — for example, extracting bits [16:24) of a 64-bit address and placing them into an 8-bit instruction field.
 
@@ -838,7 +838,7 @@ This two-step approach ensures that only the lower `W` bits of `value` are place
 
 ## .nv.rel.action Section Emission
 
-At the end of `sub_469D60` (lines 884--985 in the decompiled output), after all relocations have been applied, the function generates a `.nv.rel.action` section for non-Mercury relocatable links (`link_type == 2`). This section encodes the relocation descriptor actions in a compact format that downstream tools can use to re-apply relocations.
+At the end of `sub_469D60` (lines 884–985 in the decompiled output), after all relocations have been applied, the function generates a `.nv.rel.action` section for non-Mercury relocatable links (`link_type == 2`). This section encodes the relocation descriptor actions in a compact format that downstream tools can use to re-apply relocations.
 
 The emission logic:
 
@@ -1057,4 +1057,4 @@ All traces are gated by `(ctx->verbose_flags & 4) != 0` (bit 2 of the debug flag
 | Preserve-relocs list at `ctx+384` | **MEDIUM** | Decompiled `sub_469D60` line 454: `sub_4644C0((__int64)v5, (pthread_mutexattr_t *)(v2 + 384))` |
 | Resolved-rela emitter dual-list processing (ctx+376, ctx+384) | **MEDIUM** | Inferred from `sub_46ADC0` decompiled analysis; offsets consistent with linker context |
 | Action type names (ABS\_FULL, ABS\_LO, etc.) | **MEDIUM** | Names are editorial labels based on observed behavior; the binary does not contain symbolic names for action codes |
-| `.nv.rel.action` compact format (8 bytes per type) | **MEDIUM** | Reconstructed from decompiled `sub_469D60` lines 913--979; field assignments inferred from pointer arithmetic |
+| `.nv.rel.action` compact format (8 bytes per type) | **MEDIUM** | Reconstructed from decompiled `sub_469D60` lines 913–979; field assignments inferred from pointer arithmetic |

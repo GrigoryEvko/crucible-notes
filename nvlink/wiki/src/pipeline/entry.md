@@ -31,7 +31,7 @@ void __fastcall __noreturn main(unsigned int argc, char **argv, char **envp);
 
 ## Phase-by-Phase Walkthrough
 
-### Phase 0: Initialization (lines 373--425)
+### Phase 0: Initialization (lines 373–425)
 
 ```text
 arena_create("nvlink option parser")     --> v338
@@ -45,7 +45,7 @@ nvlink_parse_options(argc, argv)         // sub_427AE0
 
 Two named memory arenas are created. The "option parser" arena holds all option-related allocations and is destroyed at cleanup. The "memory space" arena holds all linker working data. `sub_45CAE0` takes a snapshot of the arena state, enabling later rollback or statistics.
 
-After option parsing, if `dword_2A77DC0` indicates device-link mode (value 0 or > 2), the function proceeds to library resolution (lines 386--424). It creates a library search context via `sub_4622D0`, adds explicit `-L` paths from `qword_2A5F300`, reads `$LIBRARY_PATH` from the environment, and resolves all `-l` library references via `sub_462870` (path search). Resolved library paths are appended to the input file list `qword_2A5F330`.
+After option parsing, if `dword_2A77DC0` indicates device-link mode (value 0 or > 2), the function proceeds to library resolution (lines 386–424). It creates a library search context via `sub_4622D0`, adds explicit `-L` paths from `qword_2A5F300`, reads `$LIBRARY_PATH` from the environment, and resolves all `-l` library references via `sub_462870` (path search). Resolved library paths are appended to the input file list `qword_2A5F330`.
 
 ### Mode Dispatch (line 385)
 
@@ -63,7 +63,7 @@ else
 - **1**: Write a minimal host linker script containing `.nvFatBinSegment`, `__nv_relfatbin`, and `.nv_fatbin` section directives. No device linking occurs.
 - **2**: Generate a host linker script by running `ld --verbose` to extract the default script, then appending the NVIDIA sections. Uses `collect2` detection via shell pipeline.
 
-### Phase 1: ELF Writer Creation (lines 426--593)
+### Phase 1: ELF Writer Creation (lines 426–593)
 
 A secondary gate at line 426 checks `qword_2A5F1D0`. When non-NULL (set by `--gen-host-linker-script` with explicit object inputs), execution skips device linking entirely and falls through to the host linker script path at line 1742. When NULL (normal case), execution enters `LABEL_24`.
 
@@ -103,20 +103,20 @@ The `merge_flags` bitfield `v44` is assembled from multiple option flags:
 | 20 | `byte_2A5F222` | mercury mode (also forces relocatable path) |
 | 25 | `byte_2A5F1FD` | enable-extended-smem. Per [cli-options.md](cli-options.md#linking-behavior-options), `byte_2A5F1FD` is the CLI byte for `--enable-extended-smem`; the `fdcmpt` flag lives at `byte_2A5F228`. Earlier wiki revisions labelled this row `fdcmpt`, which conflicted with the cli-options global map. |
 
-Bit attribution is recovered from `main_0x409800.c` lines 338--389 — the consecutive `if (cli_byte) v41 |= bit;` assembly. Earlier wiki revisions reused a stale table that swapped the bit-1/bit-2/bit-4 trio (preserve-relocs / reserve-null / force-rela) and conflated bit 5/6/14 (no-opt / suppress-stack-warn / optimize-data-layout); the wrong mappings propagated through `structs/elf-writer.md`, `structs/linker-context.md`, and `linker/data-layout-opt.md` and have been corrected.
+Bit attribution is recovered from `main_0x409800.c` lines 338–389 — the consecutive `if (cli_byte) v41 |= bit;` assembly. Earlier wiki revisions reused a stale table that swapped the bit-1/bit-2/bit-4 trio (preserve-relocs / reserve-null / force-rela) and conflated bit 5/6/14 (no-opt / suppress-stack-warn / optimize-data-layout); the wrong mappings propagated through `structs/elf-writer.md`, `structs/linker-context.md`, and `linker/data-layout-opt.md` and have been corrected.
 
 After ELF creation, Mercury mode sets `elfw[104] = 2`; non-Mercury sets it to 0 or 1 based on `byte_2A5F225`. Additional setup:
 
 - **nvvmpath/libdevice loading** (line 513): If `byte_2A5F288` (LTO enabled), loads `libdevice` from `qword_2A5F278 + "/lib64"` via `sub_4BC470`.
 - **Stack canary setup** (line 526): If `dword_2A5F2C8`, calls `sub_4389F0` for device stack protector initialization.
 - **maxrregcount** (line 528): Propagates the per-arch register limit.
-- **kernels-used / variables-used** (lines 535--538): Calls `sub_43F360` / `sub_43F950` to load the used-symbol lists.
+- **kernels-used / variables-used** (lines 535–538): Calls `sub_43F360` / `sub_43F950` to load the used-symbol lists.
 - **UIDX file** (line 541): If `qword_2A5F208` is set, loads the unified index file via `sub_476BF0`.
 - **Host info ELF** (line 551): If `qword_2A5F1F0` is set, loads the host info ELF.
 - **Mercury version info** (line 560): For SM > 72, writes version string `"Cuda compilation tools, release 13.0, V13.0.88"` and build string into the ELF.
 - **Timing trace** (line 592): If verbose timing is enabled (`v55[64] & 0x20`), emits `"init"` trace point.
 
-### Phase 2: Input File Loop (lines 595--1741)
+### Phase 2: Input File Loop (lines 595–1741)
 
 The core input processing loop iterates the linked list `qword_2A5F330`:
 
@@ -136,7 +136,7 @@ while (1) {
 
 For each input, 56 bytes are read and the file type is determined by extension (stored in `s1` after `sub_462620` splits the path):
 
-#### cubin (lines 639--677)
+#### cubin (lines 639–677)
 
 ```c
 if s1 == "cubin":
@@ -156,7 +156,7 @@ if s1 == "cubin":
 
 `sub_426570` (`elfw_validate_arch_and_merge`) validates that the cubin matches the target architecture. `sub_4275C0` (`post_link_transform` / FNLZR) runs the Mercury finalizer for SM >= 90.
 
-#### PTX (lines 679--736)
+#### PTX (lines 679–736)
 
 ```c
 if s1 == "ptx":
@@ -181,7 +181,7 @@ if s1 == "ptx":
 
 PTX inputs trigger the embedded ptxas backend (`sub_4BD760`). The compiled cubin is then treated identically to a cubin input for merge purposes.
 
-#### fatbin (lines 737--759)
+#### fatbin (lines 737–759)
 
 ```c
 if s1 == "fatbin":
@@ -192,7 +192,7 @@ if s1 == "fatbin":
 
 Fatbin processing is delegated to `sub_42AF40`, which iterates archive members and recursively processes each (cubin, PTX, NVVM IR, or capsule mercury).
 
-#### NVVM IR / LTO IR (lines 761--778)
+#### NVVM IR / LTO IR (lines 761–778)
 
 ```c
 if s1 == "nvvm" or s1 == "ltoir":
@@ -203,7 +203,7 @@ if s1 == "nvvm" or s1 == "ltoir":
 
 NVVM and LTO IR inputs are only accepted when `-lto` is active. They are registered for later LTO compilation.
 
-#### bc (Bitcode) (lines 780--787)
+#### bc (Bitcode) (lines 780–787)
 
 ```c
 if s1 == "bc":
@@ -212,7 +212,7 @@ if s1 == "bc":
 
 Raw LLVM bitcode is explicitly rejected.
 
-#### Archives (.a) (lines 849--901)
+#### Archives (.a) (lines 849–901)
 
 ```c
 if s1 is an archive:
@@ -229,11 +229,11 @@ Archives are iterated member-by-member. Each member is processed through `sub_42
 
 Special handling: if no `cudadevrt` object has been seen yet (`v353 == NULL`) and the archive path contains `"cudadevrt"`, the archive is silently ignored (deferred until LTO determines whether it is needed).
 
-#### Host ELF / Shared Object (lines 789--847)
+#### Host ELF / Shared Object (lines 789–847)
 
 Files with extension `"so"` or unrecognized ELF files that are not device ELFs are silently ignored with a verbose message: `"ignore input %s"`.
 
-### Phase 3: LTO Compilation (lines 910--1367)
+### Phase 3: LTO Compilation (lines 910–1367)
 
 After the input loop, if LTO is enabled (`byte_2A5F288`) and IR modules were collected:
 
@@ -288,11 +288,11 @@ for i in 0..module_count:
 
 After LTO compilation, `libcudadevrt` handling: if whole-program LTO consumed all inputs, the `cudadevrt` archive is removed from the module list (line 1349): `"LTO on everything so remove libcudadevrt from list"`.
 
-### Phase 4: Register-Link-Binaries List Maintenance (lines 1371--1401)
+### Phase 4: Register-Link-Binaries List Maintenance (lines 1371–1401)
 
 If `--register-link-binaries` is set (`qword_2A5F2E0`), module-ID records from the per-input registration (`sub_42A680`) are matched against the module list `v353`. Matching entries are removed from `v353` to avoid double-registration. The remaining entries are freed.
 
-### Phase 5: Merge Loop (lines 1402--1607)
+### Phase 5: Merge Loop (lines 1402–1607)
 
 After all inputs are processed and LTO compilation is complete:
 
@@ -326,7 +326,7 @@ for each module in v353:
 
 The merge loop calls `sub_45E7D0` (`merge_elf`, 89,156 bytes) for each input cubin. This is the core linking operation that merges sections, resolves symbols, and combines relocations.
 
-### Phase 6: Layout / Relocate / Finalize / Write (lines 1424--1491)
+### Phase 6: Layout / Relocate / Finalize / Write (lines 1424–1491)
 
 After all inputs are merged:
 
@@ -376,7 +376,7 @@ The four pipeline stages execute sequentially with timing trace points between t
 
 For Mercury targets (SM >= 100), the serialized ELF is passed through `sub_4275C0` (the FNLZR finalizer) as a post-link transform before writing to disk. This converts the SASS cubin into the capsule mercury format.
 
-### Phase 7: Cleanup and Exit (lines 1609--1688)
+### Phase 7: Cleanup and Exit (lines 1609–1688)
 
 ```c
 // Cleanup module list
@@ -415,7 +415,7 @@ if has_errors: exit(-1)
 else:          exit(0)
 ```
 
-### Host Linker Script Path (lines 1742--1935)
+### Host Linker Script Path (lines 1742–1935)
 
 When `dword_2A77DC0` is 1 or 2, main skips device linking entirely:
 
@@ -518,11 +518,11 @@ main(argc, argv, envp):
 
 For architectures with SM >= 100 (Blackwell and later), nvlink invokes the FNLZR (Finalizer) via `sub_4275C0` at up to three points:
 
-1. **Per-input cubin** (lines 726--727): After validating and adding a cubin input, if `sm > 0x59` and `byte_2A5F225` is set, the cubin is transformed before the second merge pass.
+1. **Per-input cubin** (lines 726–727): After validating and adding a cubin input, if `sm > 0x59` and `byte_2A5F225` is set, the cubin is transformed before the second merge pass.
 
-2. **Per-LTO output** (lines 1267--1269, 1309--1313): Each cubin produced by LTO split compilation is finalized before merging.
+2. **Per-LTO output** (lines 1267–1269, 1309–1313): Each cubin produced by LTO split compilation is finalized before merging.
 
-3. **Final output** (lines 1481--1482): After the complete ELF is serialized to a buffer, the entire output is passed through FNLZR with `post_link=1` flag. This is the final Mercury transform that converts SASS cubin into capsule mercury format.
+3. **Final output** (lines 1481–1482): After the complete ELF is serialized to a buffer, the entire output is passed through FNLZR with `post_link=1` flag. This is the final Mercury transform that converts SASS cubin into capsule mercury format.
 
 The FNLZR prints diagnostic messages when verbose: `"FNLZR: Input ELF: %s"`, `"FNLZR: Post-Link Mode"`, `"FNLZR: Pre-Link Mode"`, `"FNLZR: Starting %s"`.
 
@@ -555,7 +555,7 @@ When `dword_2A5F308 & 0x20` is set (verbose timing), `sub_4279C0` records timest
 
 | Address | Recovered name | Size | Called from line | Role |
 |---|---|---|---|---|
-| `0x432020` | `arena_create_named` | 2,161 B | 377--378 | Create named memory arena |
+| `0x432020` | `arena_create_named` | 2,161 B | 377–378 | Create named memory arena |
 | `0x43D8C0` | `timer_init` | ~1 KB | 381 | Initialize timing context |
 | `0x45CAE0` | `arena_snapshot` | ~1 KB | 379, 383, 425, 1681 | Snapshot/restore arena state |
 | `0x427AE0` | `nvlink_parse_options` | 30,272 B | 384 | Parse all CLI options |
@@ -652,15 +652,15 @@ When `dword_2A5F308 & 0x20` is set (verbose timing), `sub_4279C0` records timest
 |-------|-----------|----------|
 | `main()` at `0x409800`, 57,970 bytes, 1,936 lines | **HIGH** | Verified: `decompiled/main_0x409800.c` has exactly 1,936 lines |
 | `__noreturn` with `exit(0)` / `exit(-1)` | **HIGH** | Both exit paths visible in `main_0x409800.c` at lines 1683 and 1935 |
-| Arena creation strings `"nvlink option parser"` / `"nvlink memory space"` | **HIGH** | Exact strings found at lines 377--378 of `main_0x409800.c` |
+| Arena creation strings `"nvlink option parser"` / `"nvlink memory space"` | **HIGH** | Exact strings found at lines 377–378 of `main_0x409800.c` |
 | `dword_2A77DC0` mode selector (0/1/2) | **HIGH** | Variable referenced throughout `main_0x409800.c`; dispatch at line 385 and 1830 |
-| Phase-by-phase line number references (Phase 0 lines 373--425, etc.) | **HIGH** | Cross-verified against `main_0x409800.c` during P031 task |
+| Phase-by-phase line number references (Phase 0 lines 373–425, etc.) | **HIGH** | Cross-verified against `main_0x409800.c` during P031 task |
 | 56-byte header read for file classification | **HIGH** | `fread(header, 1, 56, file)` pattern visible in main |
 | Cubin: `"cubin not an elf?"` / `"cubin not a device elf?"` strings | **HIGH** | Found at lines 653 and 655 of `main_0x409800.c` |
 | PTX: `sub_4BD760` ptxas compilation | **HIGH** | `decompiled/sub_4BD760_0x4bd760.c` exists |
 | Fatbin: `"fatbin wrong format?"` at `0x42AF40` | **HIGH** | String at line 751 of main; `sub_42AF40_0x42AF40.c` exists |
 | NVVM IR: `"should only see nvvm files when -lto"` | **HIGH** | Found at line 767 of `main_0x409800.c` |
-| BC: `"should never see bc files"` | **HIGH** | Found at lines 784--785 of `main_0x409800.c` |
+| BC: `"should never see bc files"` | **HIGH** | Found at lines 784–785 of `main_0x409800.c` |
 | LTO: `"LTO on everything so remove libcudadevrt from list"` | **HIGH** | Found at line 1350 of `main_0x409800.c` |
 | Split-compile thread pool via `sub_43FDB0` | **HIGH** | `decompiled/sub_43FDB0_0x43fdb0.c` exists |
 | `merge_elf` at `0x45E7D0`, 89,156 bytes | **HIGH** | `decompiled/sub_45E7D0_0x45e7d0.c` exists with 2,838 lines |
@@ -669,6 +669,6 @@ When `dword_2A5F308 & 0x20` is set (verbose timing), `sub_4279C0` records timest
 | `DEFINE_REGISTER_FUNC` output | **HIGH** | Found at lines 1646 and 1648 of `main_0x409800.c` |
 | Host linker script `SECTIONS` block | **HIGH** | Found at lines 1838, 1898, 1926 of `main_0x409800.c` with `.nvFatBinSegment` |
 | All 60+ function addresses in the call summary table | **HIGH** | All verified to exist as files in `decompiled/` directory |
-| `merge_flags` bitfield assembly (bits 0--25) | **MEDIUM** | Structural match from decompiled code; individual bit positions inferred from flag variable ordering |
-| Phase numbering (0--7 vs overview's 1--14) | **MEDIUM** | This page uses a different numbering than overview.md; both are internally consistent but numbering is editorial choice |
+| `merge_flags` bitfield assembly (bits 0–25) | **MEDIUM** | Structural match from decompiled code; individual bit positions inferred from flag variable ordering |
+| Phase numbering (0–7 vs overview's 1–14) | **MEDIUM** | This page uses a different numbering than overview.md; both are internally consistent but numbering is editorial choice |
 | `elfw` field offsets (+8, +16, +48, +64, +104) | **MEDIUM** | Consistent across multiple pages; individual offsets inferred from decompiled pointer arithmetic |

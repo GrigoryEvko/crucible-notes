@@ -309,13 +309,13 @@ The master switch in `scan_expr_full` covers approximately 120 distinct token ca
 | 4, 5, 6, 181, 182 | String literal (narrow, wide, UTF-8/16/32) | `scan_string_literal` (`sub_5632C0`) |
 | 7 | Postfix string context | `sub_563580` |
 | 8 | Literal operator call | `make_func_operand_for_literal_operator_call` (`sub_4FFFB0`) |
-| 18, 80--136, 165, 180, 183 | Type keywords in expression context | `scan_type_returning_type_trait_operator` / `scan_identifier` |
+| 18, 80–136, 165, 180, 183 | Type keywords in expression context | `scan_type_returning_type_trait_operator` / `scan_identifier` |
 | 25 | `__extension__` | `scan_expr_splicer` (`sub_52FD70`) or `scan_statement_expression` (`sub_4F9F20`) |
 | 27 | `(` | `scan_cast_or_expr` (`sub_544290`) — disambiguates cast/group/fold/stmt-expr |
 | 31, 32 | `++` / `--` (prefix) | `scan_prefix_incr_decr` (`sub_516080`) |
 | 33 | `&` (address-of) | `scan_ampersand_operator` (`sub_516720`) |
 | 34 | `*` (indirection) | `scan_indirection_operator` (`sub_517270`) |
-| 35--38 | `+` `-` `~` `!` (unary) | `scan_arith_prefix_operator` (`sub_517680`) |
+| 35–38 | `+` `-` `~` `!` (unary) | `scan_arith_prefix_operator` (`sub_517680`) |
 | 50 | `__builtin_expect` | `bound_function_in_cast` (`sub_503F70`) |
 | 77 | `[` (lambda) | `scan_lambda_expression` (`sub_5BBA60`) |
 | 99, 284 | `sizeof` | `scan_sizeof_operator` (`sub_517BD0`) |
@@ -330,7 +330,7 @@ The master switch in `scan_expr_full` covers approximately 120 distinct token ca
 | 123 | `char` literal | `scan_utf_char_literal` (`sub_5659D0`) |
 | 124 | `wchar_t` literal | `scan_wchar_literal` (`sub_5658D0`) |
 | 125 | UTF character literal | `scan_wide_char_literal` (`sub_565950`) |
-| 138--141 | `__FUNCTION__`/`__PRETTY_FUNCTION__`/`__func__` | `setup_function_name_literal` (`sub_50AC80`) |
+| 138–141 | `__FUNCTION__`/`__PRETTY_FUNCTION__`/`__func__` | `setup_function_name_literal` (`sub_50AC80`) |
 | 143 | `__builtin_types_compatible_p` | `scan_builtin_operation_args_list` (`sub_534920`) |
 | 144, 145 | `__real__` / `__imag__` | `scan_complex_projection` (`sub_51D210`) |
 | 146 | `typeid` (execution-space variant) | `scan_typeid_operator` (`sub_535370`) |
@@ -346,13 +346,13 @@ The master switch in `scan_expr_full` covers approximately 120 distinct token ca
 | 185 | `decltype` | `scan_decltype_operator` (`sub_52A3B0`) |
 | 188 | `wchar_t` literal (alt) | `sub_5BCDE0` |
 | 189 | `typeof` | `scan_typeof_operator` (`sub_52B540`) |
-| 195--206 | Unary type traits | `scan_unary_type_trait_helper` (`sub_51A690`) |
-| 207--292 | Binary type traits | `scan_binary_type_trait_helper` (`sub_51B650`) |
+| 195–206 | Unary type traits | `scan_unary_type_trait_helper` (`sub_51A690`) |
+| 207–292 | Binary type traits | `scan_binary_type_trait_helper` (`sub_51B650`) |
 | 225, 226 | `__is_invocable` / `__is_nothrow_invocable` | `dispatch_call_like_builtin` (`sub_535080`) |
-| 227--235 | Builtin operations | `sub_535080` / `sub_51BC10` / `sub_51B0C0` |
+| 227–235 | Builtin operations | `sub_535080` / `sub_51BC10` / `sub_51B0C0` |
 | 237 | `__builtin_constant_p` | `sub_5BC7E0` |
 | 243 | `noexcept` (operator) | `scan_noexcept_operator` (`sub_51D910`) |
-| 251--256 | Builtin atomic operations | `check_operand_is_pointer` (`sub_5338B0`/`sub_533B80`) |
+| 251–256 | Builtin atomic operations | `check_operand_is_pointer` (`sub_5338B0`/`sub_533B80`) |
 | 257, 258 | Fold expression tokens | `scan_builtin_shuffle` (`sub_53E480`) |
 | 259 | `__builtin_convertvector` | `scan_builtin_convertvector` (`sub_521950`) |
 | 261 | `__builtin_complex` | `scan_builtin_complex` (`sub_521DB0`) |
@@ -719,8 +719,8 @@ The bit encoding at entity offset `+182`:
 
 | Bits | Mask | Meaning |
 |---|---|---|
-| 4--5 | `& 0x30` | `__device__` flag: `0x20` = device-only |
-| 5--6 | `& 0x60` | `__host__` flag: `0x20` = host-only |
+| 4–5 | `& 0x30` | `__device__` flag: `0x20` = device-only |
+| 5–6 | `& 0x60` | `__host__` flag: `0x20` = host-only |
 | 6 | `& 0x40` | `__global__` flag |
 
 Error codes issued:
@@ -914,7 +914,7 @@ The function calls `sub_6EF7A0` (overload resolution) to look up `begin()` and `
 
 | Address | Name | Type | Description |
 |---|---|---|---|
-| `word_126DD58` | `current_token_code` | WORD | Current token kind (0--356) |
+| `word_126DD58` | `current_token_code` | WORD | Current token kind (0–356) |
 | `qword_126DD38` | `current_source_position` | QWORD | Encoded file/line/column |
 | `qword_106B970` | `current_scope` | QWORD | Expression context stack pointer |
 | `qword_106B968` | `pending_expression` | QWORD | Pending expression accumulator |

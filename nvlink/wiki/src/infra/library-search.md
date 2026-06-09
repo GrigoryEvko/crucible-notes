@@ -400,7 +400,7 @@ while (node) {
 
 The path construction is performed inline using the string builder (`sub_44FB20`), appending directory characters while stripping trailing slashes, adding a `/` separator, then appending the filename via `sub_44FE60`.
 
-**Stage 4 — Path decomposition fallback.** If `try_split` is true and no match was found in stages 1--3, the function decomposes the filename using `path_split` into directory, basename, and extension. It then reconstructs the filename from the components and recursively calls itself with `try_split=0` and the reconstructed path. This handles cases where the path structure encodes search semantics (not used for standard `-l` resolution).
+**Stage 4 — Path decomposition fallback.** If `try_split` is true and no match was found in stages 1–3, the function decomposes the filename using `path_split` into directory, basename, and extension. It then reconstructs the filename from the components and recursively calls itself with `try_split=0` and the reconstructed path. This handles cases where the path structure encodes search semantics (not used for standard `-l` resolution).
 
 ### Two-Pass Search Strategy
 
@@ -635,11 +635,11 @@ Every string allocation in the search subsystem goes through the arena allocator
 | `LIBRARY_PATH` environment variable used for search path | HIGH | Decompiled main line 399: `getenv("LIBRARY_PATH")`; the string is at `0x225fcdd` (offset +3 within `"LD_LIBRARY_PATH\0"` at `0x225fcda` — standard string tail-sharing). `LD_LIBRARY_PATH` is referenced only by `sub_15C3FD0` (embedded ld-linux), not nvlink code |
 | String tokenizer at `sub_44EC40` (576 B) with `sub_44E8B0` (4,780 B) | HIGH | Both decompiled files exist with matching sizes; `sub_44EC40` calls `sub_44E8B0` in a loop |
 | Tail-pointer linked list idiom | HIGH | Confirmed by `sub_4622D0` decompiled code: `result[1] = result` is the self-referencing tail initialization |
-| Two-pass search strategy (stat-only then archive validation) | HIGH | Confirmed in main lines 404--408: Pass 1 (`callback=NULL`), Pass 2 (`callback=sub_42A2D0`); both passes use same `lib<name>.a` filename |
+| Two-pass search strategy (stat-only then archive validation) | HIGH | Confirmed in main lines 404–408: Pass 1 (`callback=NULL`), Pass 2 (`callback=sub_42A2D0`); both passes use same `lib<name>.a` filename |
 | Main always searches for `.a` (never `.so`) | HIGH | Both `sub_429AA0` calls in main pass only one argument; default `a2=0` produces `.a` suffix. No caller passes `a2=1` |
 | `--cpu-arch` option string | HIGH | String `"cpu-arch"` at `0x1d326cd` in strings JSON |
 | libnvvm.so loaded from `<nvvmpath>/lib64/libnvvm.so` | HIGH | `sub_4BC470` calls `sub_5F5AC0(path, "libnvvm.so", 0)`; main builds `path = nvvmpath + "/lib64"` |
-| `--nvvmpath` required when `-lto` is used | HIGH | Decompiled `sub_427AE0` line 1143--1150: fatal error if `qword_2A5F278` is NULL when `byte_2A5F288` is set |
+| `--nvvmpath` required when `-lto` is used | HIGH | Decompiled `sub_427AE0` line 1143–1150: fatal error if `qword_2A5F278` is NULL when `byte_2A5F288` is set |
 | Duplicate path check before appending to input list | HIGH | Main line 412: `sub_4646A0(qword_2A5F330, v189, sub_44E180)` — linear list search with comparator |
 | `sub_4297B0` is `archive_status_report`, not `process_member` | HIGH | Decompiled `sub_4297B0`: checks status codes 0/7/4/other and emits diagnostics; no member processing logic |
 | Unreferenced error strings ("Skipping incompatible", "Library file not found") | LOW | Strings at `0x1d34ab8`, `0x1d34bf0`, `0x1d34c18` have zero IDA xrefs; may be table-driven or dead code |

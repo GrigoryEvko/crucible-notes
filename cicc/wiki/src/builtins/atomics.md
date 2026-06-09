@@ -1,6 +1,6 @@
 # Atomic Operations Builtins
 
-Atomic builtins constitute the largest and most complex category in the NVVM builtin system, spanning over 130 IDs across two distinct subsystems: the legacy NVVM intrinsic atomics (IDs 207--275, 370--379) and the C++11-model atomics (IDs 366, 417--473). Both families converge in the lowering layer at `sub_12AE930` (EDG) / `sub_9502D0` (NVVM), a 1495-line handler that generates inline PTX assembly with explicit memory ordering and scope annotations.
+Atomic builtins constitute the largest and most complex category in the NVVM builtin system, spanning over 130 IDs across two distinct subsystems: the legacy NVVM intrinsic atomics (IDs 207–275, 370–379) and the C++11-model atomics (IDs 366, 417–473). Both families converge in the lowering layer at `sub_12AE930` (EDG) / `sub_9502D0` (NVVM), a 1495-line handler that generates inline PTX assembly with explicit memory ordering and scope annotations.
 
 ## Two Atomic Subsystems
 
@@ -8,36 +8,36 @@ The compiler maintains two parallel atomic APIs that reflect CUDA's historical e
 
 Both subsystems lower to identical PTX instructions. The distinction matters only during the EDG frontend phase, where `sub_6BBC40` generates the mangled `__nv_atomic_*` names from C++ source, and the NVVM lowering layer `sub_12B3FD0` dispatches them by ID.
 
-## Legacy NVVM Atomics (IDs 207--275)
+## Legacy NVVM Atomics (IDs 207–275)
 
 These 69 builtins encode the operation, scope, and type directly in the name. The lowering dispatches through `sub_12AA9B0` for exchange-style operations and `sub_12ADE80` for load/store/fetch operations. Each operation exists in three scope variants: default (device), `_cta_` (block), and `_sys_` (system).
 
 | ID Range | Operation | Builtin Pattern | PTX Mnemonic |
 |---|---|---|---|
-| 207--218 | Add | `__nvvm_atom_{,cta_,sys_}add_gen_{i,ll,f,d}` | `atom.add` |
-| 219--227 | Exchange | `__nvvm_atom_{,cta_,sys_}xchg_gen_{i,ll,128}` | `atom.exch` |
-| 228--251 | Min/Max | `__nvvm_atom_{,cta_,sys_}{min,max}_gen_{i,ll,ui,ull}` | `atom.min` / `atom.max` |
-| 252--257 | Inc/Dec | `__nvvm_atom_{,cta_,sys_}{inc,dec}_gen_ui` | `atom.inc` / `atom.dec` |
-| 258--275 | Bitwise | `__nvvm_atom_{,cta_,sys_}{and,or,xor}_gen_{i,ll}` | `atom.and` / `atom.or` / `atom.xor` |
+| 207–218 | Add | `__nvvm_atom_{,cta_,sys_}add_gen_{i,ll,f,d}` | `atom.add` |
+| 219–227 | Exchange | `__nvvm_atom_{,cta_,sys_}xchg_gen_{i,ll,128}` | `atom.exch` |
+| 228–251 | Min/Max | `__nvvm_atom_{,cta_,sys_}{min,max}_gen_{i,ll,ui,ull}` | `atom.min` / `atom.max` |
+| 252–257 | Inc/Dec | `__nvvm_atom_{,cta_,sys_}{inc,dec}_gen_ui` | `atom.inc` / `atom.dec` |
+| 258–275 | Bitwise | `__nvvm_atom_{,cta_,sys_}{and,or,xor}_gen_{i,ll}` | `atom.and` / `atom.or` / `atom.xor` |
 
-### Legacy CAS (IDs 370--379)
+### Legacy CAS (IDs 370–379)
 
 Compare-and-swap builtins include 128-bit variants for SM 70+ targets. The handler `sub_12AA280` builds an `AtomicCmpXchg` IR node with acquire ordering on both success and failure paths and weak exchange semantics.
 
 | ID Range | Operation | Builtin Pattern |
 |---|---|---|
-| 370--379 | CAS | `__nvvm_atom_{,cta_,sys_}cas_gen_{i,ll,us,128}` |
+| 370–379 | CAS | `__nvvm_atom_{,cta_,sys_}cas_gen_{i,ll,us,128}` |
 
-### Half-Precision Atomics (IDs 459--468)
+### Half-Precision Atomics (IDs 459–468)
 
 Added for SM 90+ (Hopper), these support `f16x2` and `f16x4` packed atomic adds:
 
 | ID Range | Operation | Builtin Pattern | SM Gate |
 |---|---|---|---|
-| 459--461 | f16x2 add | `__nvvm_atom_{,cta_,sys_}add_gen_f2` | SM 90+ |
-| 466--468 | f16x4 add | `__nvvm_atom_{,cta_,sys_}add_gen_f4` | SM 100+ (Blackwell) |
+| 459–461 | f16x2 add | `__nvvm_atom_{,cta_,sys_}add_gen_f2` | SM 90+ |
+| 466–468 | f16x4 add | `__nvvm_atom_{,cta_,sys_}add_gen_f4` | SM 100+ (Blackwell) |
 
-## C++11 Atomics (IDs 366, 417--473)
+## C++11 Atomics (IDs 366, 417–473)
 
 These 57 builtins implement the CUDA C++ atomic model with explicit memory ordering and scope parameters. The EDG frontend generator at `sub_6BBC40` constructs the mangled names using a `__nv_atomic_fetch_{op}_{width}_{type}` pattern, where width is the byte count (1, 2, 4, 8, or 16) and the type suffix is `_u` (unsigned), `_s` (signed), or `_f` (float).
 
@@ -45,35 +45,35 @@ These 57 builtins implement the CUDA C++ atomic model with explicit memory order
 
 `__nv_atomic_thread_fence` emits either a volatile fence (SM <= 69) or an explicit `fence.{ordering}.{scope};` PTX instruction (SM 70+). Ordering and scope are extracted from constant operand parameters at compile time.
 
-### Load/Store (IDs 417--428)
+### Load/Store (IDs 417–428)
 
 | ID | Builtin | Width | PTX |
 |---|---|---|---|
 | 417 | `__nv_atomic_load` | generic | `ld.{ordering}.{scope}.{type}` |
-| 418--422 | `__nv_atomic_load_{1,2,4,8,16}` | 1--16 bytes | same |
+| 418–422 | `__nv_atomic_load_{1,2,4,8,16}` | 1–16 bytes | same |
 | 423 | `__nv_atomic_store` | generic | `st.{ordering}.{scope}.{type}` |
-| 424--428 | `__nv_atomic_store_{1,2,4,8,16}` | 1--16 bytes | same |
+| 424–428 | `__nv_atomic_store_{1,2,4,8,16}` | 1–16 bytes | same |
 
-### Fetch-Op (IDs 429--458)
+### Fetch-Op (IDs 429–458)
 
 Arithmetic and bitwise fetch operations are registered with width and type suffixes. Bitwise operations (and, or, xor) omit the type suffix since signedness is irrelevant for bitwise logic.
 
 | ID Range | Operation | Builtin Pattern |
 |---|---|---|
-| 429--434 | fetch_add | `__nv_atomic_fetch_add_{4,8}_{u,s,f}` |
-| 435--440 | fetch_sub | `__nv_atomic_fetch_sub_{4,8}_{u,s,f}` |
-| 441--446 | fetch_and/or/xor | `__nv_atomic_fetch_{and,or,xor}_{4,8}` |
-| 447--452 | fetch_max | `__nv_atomic_fetch_max_{4,8}_{u,s,f}` |
-| 453--458 | fetch_min | `__nv_atomic_fetch_min_{4,8}_{u,s,f}` |
+| 429–434 | fetch_add | `__nv_atomic_fetch_add_{4,8}_{u,s,f}` |
+| 435–440 | fetch_sub | `__nv_atomic_fetch_sub_{4,8}_{u,s,f}` |
+| 441–446 | fetch_and/or/xor | `__nv_atomic_fetch_{and,or,xor}_{4,8}` |
+| 447–452 | fetch_max | `__nv_atomic_fetch_max_{4,8}_{u,s,f}` |
+| 453–458 | fetch_min | `__nv_atomic_fetch_min_{4,8}_{u,s,f}` |
 
 For `fetch_sub` with floating-point types (IDs 437, 440), the lowering negates the operand and emits `atom.add` rather than a dedicated subtraction instruction.
 
-### Exchange and CAS (IDs 462--473)
+### Exchange and CAS (IDs 462–473)
 
 | ID Range | Operation | Builtin Pattern |
 |---|---|---|
-| 462--465 | Exchange | `__nv_atomic_exchange{,_4,_8,_16}` |
-| 469--473 | CAS | `__nv_atomic_compare_exchange{,_2,_4,_8,_16}` |
+| 462–465 | Exchange | `__nv_atomic_exchange{,_4,_8,_16}` |
+| 469–473 | CAS | `__nv_atomic_compare_exchange{,_2,_4,_8,_16}` |
 
 ## PTX Inline Assembly Generation
 
@@ -128,13 +128,13 @@ switch (builtin_id) {
 }
 ```
 
-For IDs 435--440 (`fetch_sub`), the handler does not emit `atom.sub` (which does not exist in PTX). Instead, for integer types it negates the operand and emits `atom.add`; for float types it negates via `fneg` and emits `atom.add.f`.
+For IDs 435–440 (`fetch_sub`), the handler does not emit `atom.sub` (which does not exist in PTX). Instead, for integer types it negates the operand and emits `atom.add`; for float types it negates via `fneg` and emits `atom.add.f`.
 
 For thread fence (ID 366), the handler branches to `sub_12AE0E0` (volatile fence, pre-SM 70) or `sub_12AE4B0` (explicit fence, SM 70+) and returns immediately, bypassing the rest of the atomic pipeline.
 
 #### Phase 3: Memory Ordering Resolution
 
-The ordering parameter is extracted from the first constant operand of the C++11 atomic call via `sub_620EE0`. The value (0--5) maps to a PTX qualifier string:
+The ordering parameter is extracted from the first constant operand of the C++11 atomic call via `sub_620EE0`. The value (0–5) maps to a PTX qualifier string:
 
 | Value | C++ Ordering | PTX Qualifier | Applies To |
 |---|---|---|---|
@@ -147,13 +147,13 @@ The ordering parameter is extracted from the first constant operand of the C++11
 
 Sequential consistency (value 5) is *downgraded*: loads get `acquire`, stores get `release`, and RMW operations get `acq_rel`. True `seq_cst` semantics are achieved by inserting explicit fences around the operation (see "Fence Insertion for Seq_Cst" below).
 
-**Store-specific validation.** For store builtins (IDs 423--428), only ordering values 0, 3, and 5 are legal. Any other value triggers `fatal("unexpected memory order.")`. Value 5 is treated as `relaxed` for the store instruction itself, with the seq_cst fence handling the ordering guarantee externally.
+**Store-specific validation.** For store builtins (IDs 423–428), only ordering values 0, 3, and 5 are legal. Any other value triggers `fatal("unexpected memory order.")`. Value 5 is treated as `relaxed` for the store instruction itself, with the seq_cst fence handling the ordering guarantee externally.
 
-**Load-specific validation.** For load builtins (IDs 417--422), values 3 (release) and 4 (acq_rel) are illegal and trigger the same fatal error.
+**Load-specific validation.** For load builtins (IDs 417–422), values 3 (release) and 4 (acq_rel) are illegal and trigger the same fatal error.
 
 #### Phase 4: Scope Resolution
 
-The scope parameter is extracted from the second constant operand via `sub_620EE0`. The value (0--4) maps to a PTX scope qualifier:
+The scope parameter is extracted from the second constant operand via `sub_620EE0`. The value (0–4) maps to a PTX scope qualifier:
 
 ```c
 switch (scope_value) {
@@ -283,7 +283,7 @@ The scope string follows the same rules as atomics. The assembled string is emit
 
 ### Memory Ordering Encoding
 
-The ordering parameter (values 0--5) maps to PTX qualifiers:
+The ordering parameter (values 0–5) maps to PTX qualifiers:
 
 | Value | Ordering | Used For |
 |---|---|---|
@@ -295,7 +295,7 @@ The ordering parameter (values 0--5) maps to PTX qualifiers:
 
 ### Scope Encoding
 
-The scope parameter (values 0--4) maps to PTX scope qualifiers:
+The scope parameter (values 0–4) maps to PTX scope qualifiers:
 
 | Value | Scope | PTX | SM Requirement |
 |---|---|---|---|
@@ -485,15 +485,15 @@ Both membar and fence are emitted as inline PTX assembly (not LLVM IR fence inst
 | SM Threshold | Effect |
 |---|---|
 | SM <= 59 | Diagnostic `0xEB6` warning for certain atomic patterns |
-| SM 60--69 | Diagnostic `0xEB2` (3762) for specific atomic patterns |
+| SM 60–69 | Diagnostic `0xEB2` (3762) for specific atomic patterns |
 | SM <= 69 | Volatile mode; 128-bit atomics not supported (diagnostic `0xEB4`) |
 | SM 70+ | Explicit ordering/scope in PTX output |
 | SM <= 89 | Scope value 2 silently falls back from `cluster` to `gpu` |
 | SM <= 89 | Half-precision (2-byte FP) atomics not supported |
 | SM 90+ (Hopper) | Cluster scope (`.cluster`) becomes available |
-| SM 90+ | `f16x2` packed atomic add (IDs 459--461) |
+| SM 90+ | `f16x2` packed atomic add (IDs 459–461) |
 | SM 90+ | `fence.sc.cluster` becomes available |
-| SM 100+ (Blackwell datacenter) | `f16x4` packed atomic add (IDs 466--468) |
+| SM 100+ (Blackwell datacenter) | `f16x4` packed atomic add (IDs 466–468) |
 
 ## EDG Frontend Name Construction
 
@@ -516,7 +516,7 @@ The EDG atomic builtin generator `sub_6BBC40` (address `0x6BBC40`, 1251 lines) c
 
 Within each pair, the odd ID is the "generic" overload that enters the renaming path; the even ID has its base name string set explicitly via `strcpy`.
 
-### Name Construction Algorithm (lines 877--996 of sub_6BBC40)
+### Name Construction Algorithm (lines 877–996 of sub_6BBC40)
 
 **Step 1 — Base name.** Copy the EDG source name, then overwrite with the canonical base for the seven fetch-op builtins:
 
@@ -534,7 +534,7 @@ v165     Base name
 
 **Step 2 — Width suffix.** Append `"_%u"` formatted with the type size in bytes from `*(uint32_t*)(type_node + 128)`. For fetch-op builtins, the size is validated as `(type_size - 4) <= 4`, accepting only 4 and 8 bytes.
 
-**Step 3 — Type suffix** (only for add/sub/max/min; lines 960--996). Reads `type_kind = *(uint8_t*)(type_node + 140)`:
+**Step 3 — Type suffix** (only for add/sub/max/min; lines 960–996). Reads `type_kind = *(uint8_t*)(type_node + 140)`:
 
 | type_kind | Meaning | Suffix | Condition |
 |---|---|---|---|
@@ -575,7 +575,7 @@ For load/store/exchange/compare_exchange, only the width suffix is appended; no 
 | 3756 | `0xEAC` | CAS parameter type mismatch |
 | 3757 | `0xEAD` | Exchange parameter type mismatch |
 | 3759 | `0xEAF` | Float return not supported below SM 90 |
-| 3762 | `0xEB2` | SM 60--69 atomic variant diagnostic |
+| 3762 | `0xEB2` | SM 60–69 atomic variant diagnostic |
 | 3763 | `0xEB3` | Return type on store (SM <= 89) |
 | 3764 | `0xEB4` | 128-bit store/load not supported on this SM |
 | 3765 | `0xEB5` | 16-bit store not supported on SM <= 69 |
@@ -600,9 +600,9 @@ At the SelectionDAG / MachineInstr level, atomic operations map to NVPTX-specifi
 | MachineInstr Opcode | PTX Operation |
 |---|---|
 | 149 | `ATOMIC_LOAD` |
-| 294--297 | `atom.add` (f32 / f64 / i32 / i64) |
-| 302--305 | `atom.min` (s32 / s64 / u32 / u64) |
-| 314--317 | `atom.max` (s32 / s64 / u32 / u64) |
+| 294–297 | `atom.add` (f32 / f64 / i32 / i64) |
+| 302–305 | `atom.min` (s32 / s64 / u32 / u64) |
+| 314–317 | `atom.max` (s32 / s64 / u32 / u64) |
 | 462 | `atom.cas` (generic) |
 
 These opcodes are emitted by the SelectionDAG lowering for native atomic operations that survive the AtomicExpandPass without expansion.
@@ -641,7 +641,7 @@ These opcodes are emitted by the SelectionDAG lowering for native atomic operati
 ## Cross-References
 
 - [Builtin System Overview](./index.md) — hash table infrastructure and ID dispatch
-- [SM 70--89 Feature Gates](../targets/sm70-89.md) — unk_4D045E8 thresholds
+- [SM 70–89 Feature Gates](../targets/sm70-89.md) — unk_4D045E8 thresholds
 - [SM 90 Hopper Features](../targets/sm90-hopper.md) — cluster scope, fence.sc.cluster
 - [SM 100 Blackwell Features](../targets/sm100-blackwell.md) — f16x4 atomics
 - [PTX Emission](../pipeline/emission.md) — instruction printer subsystem

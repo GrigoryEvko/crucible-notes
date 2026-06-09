@@ -8,7 +8,7 @@ ptxas implements hot/cold partitioning across three dedicated phases that mark c
 |---|---|
 | **Phases** | 41 (`MarkAdditionalColdBlocks`), 108 (`OptimizeHotColdInLoop`), 109 (`OptimizeHotColdFlow`) |
 | **Category** | Analysis (41), Optimization (108, 109) |
-| **Pipeline positions** | Phase 41: mid-optimization (after `DoVirtualCTAExpansion`); Phases 108--109: post-regalloc, after `OriRemoveNopCode` (107) and before `PostSchedule` (110) |
+| **Pipeline positions** | Phase 41: mid-optimization (after `DoVirtualCTAExpansion`); Phases 108–109: post-regalloc, after `OriRemoveNopCode` (107) and before `PostSchedule` (110) |
 | **Vtable addresses** | `off_22BDC30` (41), `off_22BE6A8` (108), `off_22BE6D0` (109) |
 | **Instruction classifiers** | `sub_A9CDE0` (isHotMemoryOp, 380B), `sub_A9CF90` (isColdMemoryOp, 367B) |
 | **Block layout consumer** | Phase 112: `PlaceBlocksInSourceOrder` (`sub_A92C50`) |
@@ -23,7 +23,7 @@ On a CPU, the primary goal is to keep the hot path in L1 icache lines and push c
 
 On a GPU, three factors make hot/cold partitioning more impactful:
 
-1. **Instruction cache pressure.** GPU SMs have small instruction caches (typically 32--128 KB shared across all warps on the SM). With dozens of warps in flight, each executing the same kernel, icache misses stall the entire SM. Moving cold code (error paths, rare branches) away from hot loops reduces the working set that must remain cached.
+1. **Instruction cache pressure.** GPU SMs have small instruction caches (typically 32–128 KB shared across all warps on the SM). With dozens of warps in flight, each executing the same kernel, icache misses stall the entire SM. Moving cold code (error paths, rare branches) away from hot loops reduces the working set that must remain cached.
 
 2. **Warp scheduling.** The warp scheduler selects ready warps from a pool. If cold-path instructions are interleaved with hot-path instructions in the binary layout, warps executing the cold path occupy instruction fetch bandwidth that could serve warps on the hot path. Physical separation means the fetch unit can service hot warps without cache line conflicts from cold code.
 
@@ -64,7 +64,7 @@ Phase 112: PlaceBlocksInSourceOrder    (final block layout)
 The key architectural decision is that phase 41 runs at the Ori IR level (before scheduling and register allocation), while phases 108 and 109 run post-scheduling on the nearly-final SASS representation. Phase 108 handles loop-interior reordering (MAC-loop residue separation) and phase 109 handles function-wide if/else pattern reordering. Both dispatch to SM-backend virtual methods, so their concrete behavior is architecture-specific. This two-stage design is necessary because:
 
 - Cold-block annotations must be available early for predication decisions (phase 63) and scheduling priority (the 8-bit priority encoder).
-- Block reordering (phases 108--109, delegated to SM-backend methods) can only happen after scheduling has assigned stall counts and dependency barriers, since moving blocks changes instruction fetch distances and potentially invalidates scoreboard computations.
+- Block reordering (phases 108–109, delegated to SM-backend methods) can only happen after scheduling has assigned stall counts and dependency barriers, since moving blocks changes instruction fetch distances and potentially invalidates scoreboard computations.
 
 ## Phase 41: MarkAdditionalColdBlocks
 
@@ -131,7 +131,7 @@ The cold annotation is stored in the BasicBlock flags field at offset +28 of the
 | Consumer | Phase | Usage |
 |----------|-------|-------|
 | `OriDoPredication` | 63 | Knob 582: skips if-conversion of cold regions (divergence penalty acceptable in cold code) |
-| Scheduling priority | 97--101 | Bit 5 of 8-bit priority: hot instructions get higher scheduling priority (1 = hot, 0 = cold) |
+| Scheduling priority | 97–101 | Bit 5 of 8-bit priority: hot instructions get higher scheduling priority (1 = hot, 0 = cold) |
 | `OptimizeHotColdInLoop` | 108 | Reads cold flags to classify MAC vs residue blocks within loops |
 | `OptimizeHotColdFlow` | 109 | Reads cold flags for per-pattern if/else hot/cold reordering |
 | `PlaceBlocksInSourceOrder` | 112 | Final block ordering uses cold annotations |
@@ -190,9 +190,9 @@ The memory space type is resolved by `sub_91C840` from register file metadata at
 |-----------|-------------|----------|----------------------|
 | 4 | Shared memory | Depends on variant | Low latency (~20 cycles), variant-dependent |
 | 5 | Constant memory | Cold | Cached, low latency (~4 cycles via constant cache) |
-| 6 | Global memory | Hot | High latency (~200--800 cycles), benefits from early issue |
+| 6 | Global memory | Hot | High latency (~200–800 cycles), benefits from early issue |
 
-The shared memory case splits on a 3-bit subfield at operand bits 19--21: variant 1 is hot (bank-conflicted or special access pattern), variant 2 is cold (standard access).
+The shared memory case splits on a 3-bit subfield at operand bits 19–21: variant 1 is hot (bank-conflicted or special access pattern), variant 2 is cold (standard access).
 
 For atomic operations (opcodes 91/92 = ATOM/RED), the hot/cold split is on the addressing mode: specific atomics targeting global memory in reduction mode are hot; others are cold.
 
@@ -362,11 +362,11 @@ The predication pass queries knob 582 to determine whether a branch region lies 
 
 - The cold path is rarely executed, so the branch divergence penalty is amortized.
 - Predication would execute both paths unconditionally, wasting functional units on cold-path instructions.
-- Keeping the branch allows the cold path to be physically separated by phases 108--109.
+- Keeping the branch allows the cold path to be physically separated by phases 108–109.
 
 ### PlaceBlocksInSourceOrder (Phase 112)
 
-Phase 112 is the final block layout pass. `sub_A92C50` consumes hot/cold annotations and the reordering decisions from phases 108--109 to emit the physical block order. The algorithm centers on an FNV-1a hash map that tracks placed blocks, preventing duplicates when successor chains converge.
+Phase 112 is the final block layout pass. `sub_A92C50` consumes hot/cold annotations and the reordering decisions from phases 108–109 to emit the physical block order. The algorithm centers on an FNV-1a hash map that tracks placed blocks, preventing duplicates when successor chains converge.
 
 **Code Object fields consumed:**
 
@@ -463,7 +463,7 @@ All three vtables follow the standard 5-entry layout (entry order confirmed by d
 | Memory space codes (4=shared, 5=constant, 6=global) | HIGH | Confirmed across multiple consumers |
 | Scheduling priority bit 5 = hot/cold | HIGH | Decompiled priority function at `sub_8C9320` |
 | Phase 41 runs before scheduling | VERY HIGH | Factory index and pipeline ordering table |
-| Phases 108--109 run post-regalloc, between `OriRemoveNopCode` (107) and `PostSchedule` (110) | VERY HIGH | Pipeline ordering table, position after `OriRemoveNopCode` and before `PostSchedule` |
+| Phases 108–109 run post-regalloc, between `OriRemoveNopCode` (107) and `PostSchedule` (110) | VERY HIGH | Pipeline ordering table, position after `OriRemoveNopCode` and before `PostSchedule` |
 | Knob 582 cold-region query in predication | HIGH | Decompiled predication pass at `sub_1381010` |
 | Block layout consumer at phase 112 | HIGH | `sub_A92C50` identified via string xref to `PlaceBlocksInSourceOrder` |
 | Cold-block flag in BB+28 | MEDIUM | Inferred from consumer patterns; exact bit position unconfirmed |

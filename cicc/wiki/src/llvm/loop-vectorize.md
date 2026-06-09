@@ -22,7 +22,7 @@ NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the s
 | Scalable vectors | Always disabled — `sub_DFE610` returns `false` for NVPTX |
 | Register bit width (TTI) | 32 bits fixed (`TypeSize::getFixed(32)` in upstream `NVPTXTTIImpl`) |
 | Pass name string | `"vectorize-loops"` at 0x439F095 |
-| Address cluster | 0x2AA0000--0x2C20000 (loop vectorizer + VPlan infrastructure) |
+| Address cluster | 0x2AA0000–0x2C20000 (loop vectorizer + VPlan infrastructure) |
 
 ## Why Vectorize on GPU
 
@@ -378,6 +378,6 @@ Loop vectorization is a Tier 1 pass, meaning it runs at O1 and above but not in 
 | **Scalable vectors** | Supported (SVE, RISC-V V) | Always disabled — `sub_DFE610` returns `false` for NVPTX; only fixed-width VF=2/4 |
 | **Register bit width (TTI)** | Target-dependent (128/256/512 for x86) | Fixed 32 bits (`TypeSize::getFixed(32)`) reflecting PTX's 32-bit register model |
 | **VF selection cost model** | SIMD-width-driven: higher VF fills wider vector registers | Occupancy-bounded: VF must not increase register pressure past warp occupancy cliffs; VF=4 is typically the maximum |
-| **Interleave count** | Profile-guided or port-pressure-based (2--8 typical) | Capped by TTI scheduling info at `TTI+56`; conservative due to register pressure cost per interleaved iteration |
+| **Interleave count** | Profile-guided or port-pressure-based (2–8 typical) | Capped by TTI scheduling info at `TTI+56`; conservative due to register pressure cost per interleaved iteration |
 | **Early-exit vectorization** | Experimental (behind flag) | Present, gated by `byte_500CDA8` (`-enable-early-exit-vectorization`) |
 | **Convergent call handling** | Standard legality rejection | Additional barrier-aware legality: convergent intrinsics (`__syncthreads`, warp shuffles) block vectorization of the containing loop body |

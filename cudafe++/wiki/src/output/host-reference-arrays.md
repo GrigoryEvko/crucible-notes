@@ -10,7 +10,7 @@ The arrays are emitted at the very end of the `.int.c` file, after the `#undef _
 |---|---|
 | Emission function | `sub_6BCF80` (`nv_emit_host_reference_array`, 79 lines) |
 | EDG source file | `nv_transforms.c` |
-| Caller | `sub_489000` (`process_file_scope_entities`, lines 713--721) |
+| Caller | `sub_489000` (`process_file_scope_entities`, lines 713–721) |
 | Guard condition | `dword_106BFD0 \|\| dword_106BFCC` (device or constant registration enabled) |
 | Emit callback | `sub_467E50` (primary string emitter to output stream) |
 | Registration function | `sub_6BE300` (`nv_get_full_nv_static_prefix`, 370 lines, `nv_transforms.c:2164`) |
@@ -43,7 +43,7 @@ Note that `__shared__` variables are **not** included — they have no host-visi
 
 ### Invocation from the Backend
 
-The backend entry point `sub_489000` (`process_file_scope_entities`) calls `sub_6BCF80` six times at the very end of `.int.c` generation (decompiled lines 713--721). The calls are guarded by two flags: `dword_106BFD0` (device registration mode) and `dword_106BFCC` (constant registration mode). If neither is set, no arrays are emitted.
+The backend entry point `sub_489000` (`process_file_scope_entities`) calls `sub_6BCF80` six times at the very end of `.int.c` generation (decompiled lines 713–721). The calls are guarded by two flags: `dword_106BFD0` (device registration mode) and `dword_106BFCC` (constant registration mode). If neither is set, no arrays are emitted.
 
 ```c
 // sub_489000 trailer, decompiled lines 713-721
@@ -407,7 +407,7 @@ Note how `c_table` (declared `static __constant__`) appears in the internal-link
 
 ## Cross-References
 
-- [.int.c File Format](./int-c-format.md) — complete file structure showing where host reference arrays sit (sections 13--14)
+- [.int.c File Format](./int-c-format.md) — complete file structure showing where host reference arrays sit (sections 13–14)
 - [CUDA Runtime Boilerplate](./cuda-runtime.md) — managed memory initialization that references registered symbols
 - [Module ID & Registration](./module-id.md) — CRC32 hash computation used in internal-linkage prefixes
 - [RDC Mode](../cuda/rdc-mode.md) — how the internal/external split interacts with separate compilation

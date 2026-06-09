@@ -23,7 +23,7 @@ The following table reconciles field accesses across `sub_F20C20` (DAG combiner 
 | Offset | Size | Type | Field | Evidence |
 |--------|------|------|-------|----------|
 | +0 | 8B | `SDNode*` | `chain_next` / first operand value | D03: `*(qword*)(N+0)` used as first operand in single-operand patterns |
-| +4 | 4B | `uint32_t` | `NumOperands_packed` | D03: `*(dword*)(N+4) & 0x7FFFFFF` = NumOperands (low 27 bits); bits 27--30 = flags; bit 30 (0x40 in byte +7) = hasChainOps |
+| +4 | 4B | `uint32_t` | `NumOperands_packed` | D03: `*(dword*)(N+4) & 0x7FFFFFF` = NumOperands (low 27 bits); bits 27–30 = flags; bit 30 (0x40 in byte +7) = hasChainOps |
 | +7 | 1B | `uint8_t` | `node_flags_byte` | D03: bit 4 = hasDebugLoc; bit 6 = hasChainPtr (operand list at `N-8`) |
 | +8 | 8B | `SDVTList*` | `VTList` / ValueType pointer | D03: `*(qword*)(N+8)` = result value type descriptor; D05: read for MVT extraction |
 | +16 | 8B | `SDUse*` | `UseList` | D03: head of use-def chain (doubly-linked list) |
@@ -304,13 +304,13 @@ NVPTX target-specific ISD opcodes begin at `ISD::BUILTIN_OP_END` = 0x1DC9 (confi
 | 152 | `SELECT_CC` | Ternary select on condition code |
 | 154 | `SQRT_RN` | Sqrt, round to nearest |
 | 189 | `MoveParam` | Read thread index / special register |
-| 193--196 | `MIN/MAX` | Integer min/max variants |
+| 193–196 | `MIN/MAX` | Integer min/max variants |
 | 197 | `CTPOP` | Population count |
-| 198--204 | `ConstPool*` | Constant pool variants by size |
+| 198–204 | `ConstPool*` | Constant pool variants by size |
 | 208 | `CMPXCHG` | Compare-and-exchange atomic |
 | 230 | `DeclareLocal` | Declare local `.param` / address of param |
-| 233--234 | `AddrSpaceCast` | Bidirectional address space cast pair |
-| 287--290 | `Barrier/Fence` | Memory barrier/fence variants |
+| 233–234 | `AddrSpaceCast` | Bidirectional address space cast pair |
+| 287–290 | `Barrier/Fence` | Memory barrier/fence variants |
 | 310 | `Annotation` | Annotation metadata node |
 | 321 | `StackRestore` | Restore stack pointer |
 | 322 | `StackAlloc` | Dynamic stack allocation |
@@ -323,9 +323,9 @@ NVPTX target-specific ISD opcodes begin at `ISD::BUILTIN_OP_END` = 0x1DC9 (confi
 
 | Opcode Range | Operation | Widths |
 |--------------|-----------|--------|
-| 294--297 | `atom.add` | f32/f64/i32/i64 |
-| 302--305 | `atom.min` | s32/s64/u32/u64 |
-| 314--317 | `atom.max` | s32/s64/u32/u64 |
+| 294–297 | `atom.add` | f32/f64/i32/i64 |
+| 302–305 | `atom.min` | s32/s64/u32/u64 |
+| 314–317 | `atom.max` | s32/s64/u32/u64 |
 | 462 | `atom.cas` | generic |
 
 ## DAG Legalization Flow
@@ -367,7 +367,7 @@ Actions dispatch through a five-way switch:
 Custom lowering invokes `NVPTXTargetLowering::LowerOperation()` (`sub_32E3060`, 111KB) through the vtable. This is where all NVPTX-specific operation lowering happens: `BUILD_VECTOR` splat detection, `VECTOR_SHUFFLE` three-level lowering, `EXTRACT_VECTOR_ELT` three-path dispatch, and the `.param`-space calling convention.
 
 Additional action tables:
-- Second table at `TLI + opcode + 2681` — for BSWAP/CTLZ/CTTZ/BITREVERSE (opcodes 43--45, 199)
+- Second table at `TLI + opcode + 2681` — for BSWAP/CTLZ/CTTZ/BITREVERSE (opcodes 43–45, 199)
 - Third table at `TLI + opcode + 3976` — for FSINCOS (opcode 211)
 - Fourth table at `TLI + 18112` — packed nibble format for FP_TO_SINT/FP_TO_UINT/SELECT_CC, indexed by `(VT_id >> 3) + 15 * condcode_type`
 
@@ -425,7 +425,7 @@ This matches the LLVM `ilist` intrusive linked list pattern where the list hook 
 | NVIDIA DAGCombiner | 142KB `sub_3425710` with `"COVERED"`/`"INCLUDED"` internal tracing | No equivalent; target combines via `PerformDAGCombine` hook only |
 | computeKnownBits | 114KB `sub_33D4EF0`, covers 112+ ISD opcodes including NVPTX target nodes | ~30 opcodes in generic `computeKnownBits`, target extends via hook |
 | Inline asm | 162KB total (`sub_2079C70` + `sub_338BA40`) | ~200 lines per target |
-| Intrinsic lowering | 60KB / 785-case switch (Intrinsic::ID 0--0x310) covering 200+ NVPTX intrinsics | ~300 standard intrinsic IDs |
+| Intrinsic lowering | 60KB / 785-case switch (Intrinsic::ID 0–0x310) covering 200+ NVPTX intrinsics | ~300 standard intrinsic IDs |
 | Address spaces | AS 101 (param alt), AS 7 (`.param`), CTA/GPU/SYS scope atomics | No AS 101; no scope atomics |
 | Libcall metadata | `"nvptx-libcall-callee"` metadata for custom libcall routing | Not present |
 | Legal vector types | Only v2f16, v2bf16, v2i16, v4i8 (packed into 32-bit registers) | Varies by target; typically much wider vectors |

@@ -488,7 +488,7 @@ The JIT wrapper shares the underlying finalization orchestrator (`sub_471700`) w
 
 ### Sibling Wikis
 - [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) — standalone ptxas capmerc format (Mercury section binary layouts, 328-byte capsule descriptor layout, sh\_type map, classifier algorithm with `0x5D05` bitmask, marker stream TLV format, rela entry format, sub-byte relocation design, finalization levels)
-- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) — standalone ptxas Mercury encode/decode pipeline (phases 113--122)
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) — standalone ptxas Mercury encode/decode pipeline (phases 113–122)
 
 ## Confidence Assessment
 
@@ -506,7 +506,7 @@ The JIT wrapper shares the underlying finalization orchestrator (`sub_471700`) w
 | Fatbin member type 16 = capmerc | **MEDIUM** | Inferred from decompiled `sub_42AF40` fatbin extraction logic. No direct string evidence for the numeric value 16. |
 | Self-check validates text/debug/relocation independently | **HIGH** | Three distinct error strings verified at `0x2458F38`, `0x2458F70`, `0x2458FA8`. MERCSW-125 reference at `0x1F44288`. |
 | `--self-check`, `--out-sass`, `--fastpath-off` CLI options | **HIGH** | All option strings verified in `nvlink_strings.json`. Help text strings confirmed. |
-| Opportunistic finalization levels 0--4 | **MEDIUM** | `EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION` verified at `0x245EED8`. Parser accepts 0--4 (rejects > 4). Level 4 semantics undocumented. Levels 0--3 semantics partially inferred from code paths. |
+| Opportunistic finalization levels 0–4 | **MEDIUM** | `EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION` verified at `0x245EED8`. Parser accepts 0–4 (rejects > 4). Level 4 semantics undocumented. Levels 0–3 semantics partially inferred from code paths. |
 | Decade-family matching (`arch1/10 == arch2/10`) | **HIGH** | Integer division comparison verified in decompiled `sub_4709E0`. |
 | Version ceiling `> 0x101` returns error 25 | **HIGH** | Verified from decompiled `sub_4748F0` Phase 2. |
 | `"Failed to create finalizer thread"` at `0x2458EC0` | **HIGH** | Verified in `nvlink_strings.json`. Confirms thread-based finalization. |
@@ -519,7 +519,7 @@ The JIT wrapper shares the underlying finalization orchestrator (`sub_471700`) w
 | SHF\_NV\_MERC = `0x10000000` (bit 28 of sh\_flags) | **HIGH** | Verified in 10+ decompiled locations: `sub_45E7D0` line 1583 (`v140 & 0x10000000`), `sub_1CED0E0` line 47 (`*((_QWORD *)a2 + 1) & 0x10000000`), `sub_1CEE030` line 322/370 (`0x10000000` written to sh\_flags). |
 | Bitmask `0x5D05` for sh\_type classification | **HIGH** | Constant `23813` (`0x5D05`) verified in `sub_1CED0E0`, `sub_1CED7C0`, `sub_1CEF5B0`, and `sub_1CF1690`. Same bitmask used by ptxas classifier. |
 | Section name constructors `sub_1CEC4C0`, `sub_1CEC660` | **HIGH** | Decompiled files verified. `sub_1CEC4C0` line 31: `sprintf(v10, "%s%s", ".nv.merc", v15)`. `sub_1CEC660` line 52: `sub_1CEC570(".nv.merc", ...)`. |
-| Architecture compatibility return codes 0/24--30 | **HIGH** | All return paths verified in decompiled `sub_4709E0` (149 lines). Error code 25 at line 50-52, 26 at line 57, 28 at line 132, 29 at line 92, 30 at line 102/130. |
+| Architecture compatibility return codes 0/24–30 | **HIGH** | All return paths verified in decompiled `sub_4709E0` (149 lines). Error code 25 at line 50-52, 26 at line 57, 28 at line 132, 29 at line 92, 30 at line 102/130. |
 | FNLZR config struct 160-byte layout | **HIGH** | Decompiled `sub_4275C0` line 88: `memset(&v28[1], 0, 0x98)` (152 bytes + 8 for v28[0] = 160 total). All field assignments verified at lines 89-121. |
 | Emission sh\_types `0x7000000C` and `0x7000000D` | **HIGH** | Verified in `sub_1CEE030` line 318: `v15->m128i_i32[1] = 1879048204` (= `0x7000000C`) and line 364: `*(_DWORD *)(v33 + 4) = 1879048205` (= `0x7000000D`). |
 | `.nv.merc.rela` name construction (`name+8` stripping) | **HIGH** | Verified in `sub_1CF72E0` line 358: `sprintf(buf, "%s%s%s", ".nv.merc", ".rela", (const char *)(v60 + 8))`. |

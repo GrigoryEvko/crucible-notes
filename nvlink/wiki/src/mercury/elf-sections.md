@@ -346,7 +346,7 @@ By deferring these sections, the linker avoids creating index mappings, translat
 
 The complete object writer at `0x1CF3720` (99 KB, ~3200 decompiled lines) is the top-level function that produces a finished ELF cubin. It orchestrates the entire output pipeline, including Mercury section creation.
 
-### Phase 1: ELF Header Copy (lines 692--701)
+### Phase 1: ELF Header Copy (lines 692–701)
 
 The function begins by copying the 64-byte `Elf64_Ehdr` from the internal representation to the output buffer using four 16-byte SSE loads:
 
@@ -359,7 +359,7 @@ output[3] = load_128(elf_header[3]);   // e_shoff(high), e_flags, e_ehsize, e_ph
 dest += 64;
 ```
 
-### Phase 2: Section Header Table Pre-copy (lines 708--747)
+### Phase 2: Section Header Table Pre-copy (lines 708–747)
 
 Before building the full section table, the function copies section headers from input to output, skipping sections that will be rebuilt. It iterates all input sections and filters out:
 
@@ -370,7 +370,7 @@ Before building the full section table, the function copies section headers from
 
 For Mercury mode (flag at `ctx+432`), a special fixup applies: if a section header has the `0x10` flag in byte 11 (the internal Mercury marker) and `sh_type != 0x70000016`, the `sh_name` field is incremented by 8 to account for the `.nv.merc` prefix in the output string table.
 
-### Phase 3: ELF Header Flags (lines 748--798)
+### Phase 3: ELF Header Flags (lines 748–798)
 
 The `e_flags` field in the output ELF header is constructed from the input header's flags, the architecture identifier, and the Mercury mode flags. Key logic:
 
@@ -387,11 +387,11 @@ After all per-section data has been written, the function calls `ELF_BuildSectio
 error = ELF_BuildSectionTable(&output_buf, section_count, start_section, is_executable, ctx);
 ```
 
-### Phase 5: Program Headers (lines 2788--2813)
+### Phase 5: Program Headers (lines 2788–2813)
 
 For executable cubins (`e_type == 2`), program headers are emitted as 56-byte `Elf64_Phdr` entries. The program header entry size is stored at `elf_header+54` (the `e_phentsize` field). Program headers are serialized by iterating the program header array and copying each 56-byte entry.
 
-### Phase 6: Relocation Application (lines 2880--3110)
+### Phase 6: Relocation Application (lines 2880–3110)
 
 The relocation engine applies fixups to the output buffer. For each relocation, it looks up the relocation descriptor from a table at `qword_2A77D10` (a 64-byte-per-entry dispatch table indexed by relocation type). The descriptor specifies up to three cascading fixup operations, each with a shift/mask operation and a bit width (32 or 64). Mercury-specific relocations (`R_MERCURY_*`) use types in the `0x10000`..`0x1003F` range, dispatched through the table at `off_2459160`. Standard CUDA relocations use types `0`..`0x73`, dispatched through `off_245A160`.
 
@@ -529,7 +529,7 @@ When `ELF_BuildSectionTable` builds the output section table, it maintains an in
 2. New sections are inserted (Mercury wrapper sections, function groups)
 3. The output section order differs from the input order
 
-The remapping is applied in a final fixup pass (lines 793--813 in `sub_1CEE030`):
+The remapping is applied in a final fixup pass (lines 793–813 in `sub_1CEE030`):
 
 ```c
 for (j = 0; j < remap_array_size; j++) {
@@ -595,7 +595,7 @@ int32 fields[16]:
   [11] op3_width
 ```
 
-Type 1 writes the resolved value directly. Type 19 writes zero. Types 22--29 apply a bitmask from the `xmmword_1D3F8E0` SSE constant table, shift right by the amount from `xmmword_1D3F920`, and write the result.
+Type 1 writes the resolved value directly. Type 19 writes zero. Types 22–29 apply a bitmask from the `xmmword_1D3F8E0` SSE constant table, shift right by the amount from `xmmword_1D3F920`, and write the result.
 
 ## Capsule Mercury Sections Beyond `.nv.merc.*`
 

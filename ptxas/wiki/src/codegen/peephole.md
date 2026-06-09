@@ -13,7 +13,7 @@ pattern matchers; the highest-priority match wins; the winning rewrite modifies 
 instruction in-place.
 
 None of the five mega-dispatchers can be decompiled by Hex-Rays due to their
-extreme size (204--280 KB each).  All analysis in this page derives from
+extreme size (204–280 KB each).  All analysis in this page derives from
 disassembly, call graphs, and the 3,185 pattern-matcher functions that they invoke.
 
 ## Scale Summary
@@ -36,7 +36,7 @@ ID 189 (190-case tables at `0x144503C` and `0x199488C` respectively).  This is
 the deepest structural asymmetry between the three passes: the generic peephole
 both observes more opcode classes and rewrites them into a wider template
 namespace.  All three share an identical 72-case rewrite-action table (at
-`0x143FB8B`, `0x16A166C`, `0x198F41B`) plus 50--52-case secondary tables that
+`0x143FB8B`, `0x16A166C`, `0x198F41B`) plus 50–52-case secondary tables that
 gate medium-frequency rewrites.
 
 All five entry trampolines (`sub_B12930`, `sub_B12940`, `sub_B12950`, `sub_B12960`,
@@ -115,13 +115,13 @@ Within each primary case, the dispatcher:
    template ID selects the rewrite action.
 
 The secondary switches are embedded inside the giant function.  `sub_143C440`
-contains 85 secondary jump tables (sizes 6--190 cases) totaling 1,598 secondary
+contains 85 secondary jump tables (sizes 6–190 cases) totaling 1,598 secondary
 cases (1,971 including the primary 373-case opcode switch); `sub_169B190`
 contains **110** secondaries totaling 1,974 secondary cases (2,347 with the
 primary), and `sub_198BCD0` mirrors SM120 with 85 secondaries and 1,593
 secondary cases (1,966 with the primary).  In every dispatcher the largest two
 secondary tables are the template-rewrite selector (190 or 245 cases) and the
-72-case action subtable; the remaining tables are 6--52-case per-opcode
+72-case action subtable; the remaining tables are 6–52-case per-opcode
 priority gates.
 
 ### Rewrite action
@@ -152,7 +152,7 @@ always sets both the opcode and modifier bytes.
 ### Rewrite action value space
 
 The 1,759 rewrite actions in `sub_143C440` use 392 distinct `(new_opcode, new_modifier)`
-pairs.  `new_opcode` is a small ordinal (0--193, with a gap at 100--159);
+pairs.  `new_opcode` is a small ordinal (0–193, with a gap at 100–159);
 `new_modifier` selects the encoding variant.  Top pairs by frequency:
 
 | new_opcode | new_modifier | count | likely SASS semantics                 |
@@ -202,7 +202,7 @@ The operand mapping count per rewrite varies:
 | 1                |   181 |  10%  |
 | 2                |   269 |  15%  |
 | 3                |    94 |   5%  |
-| 4--5             |    22 |   1%  |
+| 4–5             |    22 |   1%  |
 
 68% of rewrites use zero operand mappings — the instruction's existing
 operands remain in place and only the opcode/modifier bytes change (e.g.,
@@ -228,7 +228,7 @@ recovered without running the compiler.
 ### 72-case action subtable at `0x16A166C`
 
 The first 60 cases form a tightly packed band at `0x16B8FF6`--`0x16B98CC`
-(consecutive +39-byte blocks); the remaining 11 cases (60--71) sit slightly
+(consecutive +39-byte blocks); the remaining 11 cases (60–71) sit slightly
 earlier at `0x16B8A53`--`0x16B6283`.  Despite spanning 72 entries the table
 uses only **two distinct `new_modifier` values**: `0x03` and `0x19` (decimal
 3 and 25), partitioning the table into two halves of 35 and 36 cases (and
@@ -246,7 +246,7 @@ The full inventory of representative rewrite actions (case ID --
 
 | Case | newOp | newMod | #map | Interpretation |
 |----:|------:|------:|----:|---|
-|   1 |   46  |   3   |  1  | Single-mapping ALU swap (the only +60-byte block among cases 1--60; the lone operand remap probably swaps source order to satisfy commutativity canonicalization) |
+|   1 |   46  |   3   |  1  | Single-mapping ALU swap (the only +60-byte block among cases 1–60; the lone operand remap probably swaps source order to satisfy commutativity canonicalization) |
 |   2 |   49  |  25   |  0  | Pure encoding-form swap to predicated/extended variant of op 49 |
 |  12 |   10  |   3   |  0  | Identity rewrite of opcode 10 (`SHF`) to primary form |
 |  13 |   13  |  25   |  0  | Paired alternate form of op 13 |
@@ -254,9 +254,9 @@ The full inventory of representative rewrite actions (case ID --
 |  20 |    2  |   3   |  0  | Opcode-2 (3-src FMA-class) collapse to plain 2-source primary form |
 |  33 |    0  |   3   |  0  | Identity / NOP-fold rewrite (newOp 0 is the canonical drop-instruction marker) |
 |  34 |    3  |   3   |  0  | Opcode-3 (shift/logic) primary-form rewrite |
-|  42--54 | 18--34 | 25   |  0  | Block of 13 contiguous predicate/uniform-register canonicalizations (`SEL`, `MOV`, predicate operands collapsed to mod-25 alternate form) |
-|  60--64 | 60--64 |  3   |  0  | Pure modifier flips for ALU opcodes 60--64 (signed/unsigned or 32/64-bit pair selectors) |
-|  65--68 | 64--69 | 25 / 3 | 0  | Memory-ordering canonicalization: `(.gpu, .acquire)` paired with `(.sys, .release)` — mod=3 vs mod=25 selects the SASS bit that encodes the scope/order combination |
+|  42–54 | 18–34 | 25   |  0  | Block of 13 contiguous predicate/uniform-register canonicalizations (`SEL`, `MOV`, predicate operands collapsed to mod-25 alternate form) |
+|  60–64 | 60–64 |  3   |  0  | Pure modifier flips for ALU opcodes 60–64 (signed/unsigned or 32/64-bit pair selectors) |
+|  65–68 | 64–69 | 25 / 3 | 0  | Memory-ordering canonicalization: `(.gpu, .acquire)` paired with `(.sys, .release)` — mod=3 vs mod=25 selects the SASS bit that encodes the scope/order combination |
 |  69 |   59  |  25   | 12  | Full operand reshape for tensor/HMMA-class opcode 59 (12 sequential `setOperandMapping` calls cover dst + 4 sources + accumulator + meta) |
 |  71 |   62  |  25   | 12  | Full operand reshape for paired tensor/HMMA-class opcode 62 (same shape as case 69; the two are the only "wide" rewrites in this table) |
 
@@ -309,7 +309,7 @@ rewrite:
 
 The 244 unique `new_opcode` values are essentially a 1:1 mapping from
 template ID to a target SASS opcode — every template ID rewrites to a
-different opcode.  The opcode space spans 0--234 with no observable
+different opcode.  The opcode space spans 0–234 with no observable
 clustering by template ID (template 241 emits opcode 234; template 1 emits
 opcode 68; template 192 emits opcode 203), confirming that template IDs
 are assigned by pattern-matcher priority order, not by target opcode.
@@ -429,7 +429,7 @@ modifier mappings:
 | 0x05 |   5 | Ori opcode ID | 12 | Internal opcode number (e.g., 12 = tensor-class) |
 | 0x7B | 123 | operation class | 536 | Major instruction family tag |
 | 0x7E | 126 | data type qualifier | 547, 548 | 547 = `.f32`, 548 = `.f64`; range check `- 547 <= 1` |
-| 0x88 | 136 | sub-operation modifier | 406--408, 598, 599 | Instruction sub-variant (e.g., ADD vs FADD vs FMUL) |
+| 0x88 | 136 | sub-operation modifier | 406–408, 598, 599 | Instruction sub-variant (e.g., ADD vs FADD vs FMUL) |
 | 0x90 | 144 | FP precision class | 628, 629 | Range `- 628 <= 1`; selects FP16 vs FP32 operand path |
 | 0xA1 | 161 | addressing mode variant | 700 | Memory addressing mode (register-indirect vs offset) |
 | 0xBE | 190 | operation subtype | 815 | Zero-operand instruction subtype (NOP/barrier class) |
@@ -438,32 +438,32 @@ modifier mappings:
 | 0xDC | 220 | encoding property (type) | 1206 | 1206 = `.f32` encoding tag for SASS bitfield selection |
 | 0xF2 | 242 | width / size qualifier | 1281, 1282 | 1281 = 32-bit, 1282 = 64-bit operand width |
 | 0x101 | 257 | async copy routing | 1332 | Async memory operation routing value |
-| 0x119 | 281 | address space qualifier | 1435--1440 | `.global` / `.shared` / `.local` / `.const` (6 spaces) |
+| 0x119 | 281 | address space qualifier | 1435–1440 | `.global` / `.shared` / `.local` / `.const` (6 spaces) |
 | 0x126 | 294 | constraint field | 1493 | Encoding constraint check |
 | 0x127 | 295 | extended constraint | 1499 | Secondary encoding constraint |
 | 0x142 | 322 | instruction form | 1800 | Instruction encoding form class |
 | 0x152 | 338 | operand layout tag | 1871, 1873, 1874 | Source/dest operand slot arrangement variant |
 | 0x155 | 341 | source modifier | 1881, 1882 | Range `- 1881 <= 1`; source operand modifier (abs/neg) |
-| 0x159 | 345 | rounding mode selector | 1899--1903 | 1900 = `.rn`, 1901 = `.rz`, 1902 = `.rm`, 1903 = `.rp` |
+| 0x159 | 345 | rounding mode selector | 1899–1903 | 1900 = `.rn`, 1901 = `.rz`, 1902 = `.rm`, 1903 = `.rp` |
 | 0x15C | 348 | precision qualifier | 1912, 1915 | FP precision tag (`.tf32`, `.bf16`, etc.) |
 | 0x163 | 355 | extended property (rnd) | 1943 | 1943 = `.rn` extended rounding mode confirmation |
 | 0x167 | 359 | operand negation mask | 1957, 1961 | Source-operand sign-flip for FP instructions |
 | 0x178 | 376 | extended property A | 2035 | Extended instruction property (tensor/MMA class) |
-| 0x179 | 377 | extended property B | 2037--2041 | 5-value range; tensor layout variant |
+| 0x179 | 377 | extended property B | 2037–2041 | 5-value range; tensor layout variant |
 | 0x18A | 394 | dual-issue / sched hint | — | Scheduling hint for dual-issue eligibility |
 | 0x18D | 397 | encoding validity stamp | 2115 | Post-ISel seal: `0x843` = bits {0,1,6} set in SASS dword 0 |
 | 0x196 | 406 | MMA type A | 2146 | Matrix multiply source type A (FP16/BF16/TF32/INT8) |
 | 0x197 | 407 | MMA type B | — | Matrix multiply source type B |
 | 0x199 | 409 | MMA accumulator type | — | Accumulator precision for tensor ops |
 | 0x19D | 413 | extended qualifier | 2167, 2168 | 2-value discriminator for tensor instruction shape |
-| 0x1A8 | 424 | uniform register hint | 2214--2225 | Bitmask 739; uniform register allocation eligibility |
-| 0x1AD | 429 | extended qualifier B | 2253--2257 | 5-value range; tensor instruction extended modifier |
+| 0x1A8 | 424 | uniform register hint | 2214–2225 | Bitmask 739; uniform register allocation eligibility |
+| 0x1AD | 429 | extended qualifier B | 2253–2257 | 5-value range; tensor instruction extended modifier |
 | 0x1AE | 430 | warp shuffle mode A | — | SHFL sub-operation variant |
 | 0x1AF | 431 | warp shuffle mode B | — | SHFL companion modifier |
 | 0x1B2 | 434 | FP composition | 2274 | FP instruction composition (fused vs separate) |
 | 0x1D1 | 465 | codegen control A | — | Code generation control property |
 | 0x1D2 | 466 | codegen control B | — | Code generation control property |
-| 0x1E0 | 480 | encoding format class | 2478--2481 | Selects SASS encoding format (3-src vs imm vs reg-reg) |
+| 0x1E0 | 480 | encoding format class | 2478–2481 | Selects SASS encoding format (3-src vs imm vs reg-reg) |
 | 0x1E4 | 484 | extended modifier C | — | Blackwell-era extended property |
 | 0x1EC | 492 | extended modifier D | — | Blackwell-era extended property |
 | 0x216 | 534 | MMA layout descriptor | 2717 | HMMA/DMMA matrix layout and tiling descriptor |
@@ -575,11 +575,11 @@ and/or more profitable transformation.
 
 | Priority range | Description | Example |
 |---------------|-------------|---------|
-| 1--2 | Trivial matches (simple mov, basic arithmetic) | Single-operand passthrough |
-| 5--11 | Common 2--3 operand combining patterns | Standard FMA combines |
-| 14--20 | Complex 4-operand patterns with constraints | Multi-source ALU combines |
-| 22--31 | Highly specific multi-operand patterns | Wide register + predicated ops |
-| 33--36 | Maximum specificity (8--9 operands + all modifiers) | Full tensor instruction forms |
+| 1–2 | Trivial matches (simple mov, basic arithmetic) | Single-operand passthrough |
+| 5–11 | Common 2–3 operand combining patterns | Standard FMA combines |
+| 14–20 | Complex 4-operand patterns with constraints | Multi-source ALU combines |
+| 22–31 | Highly specific multi-operand patterns | Wide register + predicated ops |
+| 33–36 | Maximum specificity (8–9 operands + all modifiers) | Full tensor instruction forms |
 
 Pattern IDs occupy disjoint ranges per dispatcher: the generic pass reaches
 template ID **244** (245-case rewrite table at `0x169DC25`), while SM120 and
@@ -615,7 +615,7 @@ Each operand is a 32-byte record at `base + 32 * index`:
 
 ## Code Duplication
 
-The pattern matchers exhibit extreme structural duplication.  Groups of 2--10
+The pattern matchers exhibit extreme structural duplication.  Groups of 2–10
 functions are near-identical clones differing only in numeric constants (the
 specific opcode/modifier values they check, the template ID they assign, and
 the priority level).
@@ -648,20 +648,20 @@ tooling.
 
 | Size range | Count | Description |
 |-----------|-------|-------------|
-| < 200 B | 37 | Simple 1--2 modifier checks |
-| 200--400 B | 520 | Typical 4--8 modifier checks |
-| 400--600 B | 455 | 6--12 modifier checks + operand validation |
-| 600--800 B | 66 | Complex multi-operand patterns |
+| < 200 B | 37 | Simple 1–2 modifier checks |
+| 200–400 B | 520 | Typical 4–8 modifier checks |
+| 400–600 B | 455 | 6–12 modifier checks + operand validation |
+| 600–800 B | 66 | Complex multi-operand patterns |
 | > 800 B | 9 | Deepest nesting, most constrained patterns |
 
 ### Generic matchers (762 functions, ~310 KB)
 
 | Size range | Count | Description |
 |-----------|-------|-------------|
-| ~2,200 B | most common | 2--4 instruction field checks |
+| ~2,200 B | most common | 2–4 instruction field checks |
 | ~2,800 B | moderate | Patterns with operand constraints |
-| ~3,500--4,000 B | fewer | Complex multi-operand patterns |
-| ~5,500--8,500 B | rare | 12+ modifier checks, 8--9 operands |
+| ~3,500–4,000 B | fewer | Complex multi-operand patterns |
+| ~5,500–8,500 B | rare | 12+ modifier checks, 8–9 operands |
 
 ### Post-schedule matchers (~1,336 functions)
 
@@ -905,8 +905,8 @@ for each instr on expansion_worklist (linked via instr+56):
     pen[1] = 0
 ```
 
-Register-file mapping uses `dword_21D5EE0[26]` (constraint -2, width codes 0--25)
-and `dword_21D5F60[16]` (constraint -3, width codes 0--15).  `dword_21D6390[]`
+Register-file mapping uses `dword_21D5EE0[26]` (constraint -2, width codes 0–25)
+and `dword_21D5F60[16]` (constraint -3, width codes 0–15).  `dword_21D6390[]`
 (indexed by `(operand >> 9) & 0xF`) selects the barrier variant for QMMA_16832.
 
 ### Opcodes handled
@@ -981,23 +981,23 @@ Default threshold: 7.
 - [SASS Instruction Encoding](./encoding.md) — the encoder vtable entries that consume peephole output
 - [Newton-Raphson Templates](./templates.md) — multi-instruction template expansion (DDIV, DRCP, DSQRT) in the same address neighborhood as `sub_169B190`
 - [Scheduling Algorithm](../scheduling/algorithm.md) — the scheduler that runs between pre- and post-schedule peephole
-- [Blackwell (SM 100--121)](../targets/blackwell.md) — SM120-specific context for `sub_143C440`
+- [Blackwell (SM 100–121)](../targets/blackwell.md) — SM120-specific context for `sub_143C440`
 
 ## Evidence Index
 
 | Claim | Source |
 |-------|--------|
-| `sub_143C440` structure, 1,087 matchers, 373-case switch | `p1.20-sweep-0x13CF000-0x14A4000.txt` lines 1--486 |
-| SM120 encoder zone (123 functions, 180 KB) | `p1.20` lines 269--329 |
-| `sub_169B190` structure, 762 matchers, 280 KB | `p1.22` lines 1--460, `p1.23` lines 1--588 |
-| Generic operand discriminators (`sub_15F59C0` family) | `p1.22` lines 181--201 |
-| Clone clusters in generic matchers | `p1.23` lines 156--174 |
-| Post-schedule discriminators (`sub_1820170` family) | `p1.25` lines 271--289 |
-| `sub_198BCD0` structure, 1,336 callees, 373-case switch | `p1.26` lines 355--398 |
-| Post-schedule 5,282-byte clone group | `p1.26` lines 401--424 |
-| Rewrite helper call frequencies | `p1.20` lines 216--227, `p1.23` lines 228--237 |
-| Priority 36 as highest observed | `p1.22` lines 316--327 |
-| Instruction node layout | `p1.20` lines 406--420, `p1.22` lines 367--409 |
+| `sub_143C440` structure, 1,087 matchers, 373-case switch | `p1.20-sweep-0x13CF000-0x14A4000.txt` lines 1–486 |
+| SM120 encoder zone (123 functions, 180 KB) | `p1.20` lines 269–329 |
+| `sub_169B190` structure, 762 matchers, 280 KB | `p1.22` lines 1–460, `p1.23` lines 1–588 |
+| Generic operand discriminators (`sub_15F59C0` family) | `p1.22` lines 181–201 |
+| Clone clusters in generic matchers | `p1.23` lines 156–174 |
+| Post-schedule discriminators (`sub_1820170` family) | `p1.25` lines 271–289 |
+| `sub_198BCD0` structure, 1,336 callees, 373-case switch | `p1.26` lines 355–398 |
+| Post-schedule 5,282-byte clone group | `p1.26` lines 401–424 |
+| Rewrite helper call frequencies | `p1.20` lines 216–227, `p1.23` lines 228–237 |
+| Priority 36 as highest observed | `p1.22` lines 316–327 |
+| Instruction node layout | `p1.20` lines 406–420, `p1.22` lines 367–409 |
 | Secondary switch inventory per dispatcher (85 / 110 / 85; template caps 244 vs 189) | `ptxas_switches.json` filtered by `func_addr` |
 | Primary 373-case opcode coverage (249 vs 203 distinct targets) | `ptxas_switches.json`, switches at `0x143C478`, `0x169B1C8`, `0x198BD08` |
 | 245-template subtable rewrites, (newOp, newMod, #map) triples | Direct disassembly of blocks at `0x16DC2AF`--`0x16DFF...`; cases enumerated in `ptxas_switches.json` switch at `0x169DC25`; immediate decoding via `mov $imm32,%esi` opcode scan |

@@ -136,7 +136,7 @@ The dispatch logic selects between the `__nv_fp128_to_*` / `__nv_*_to_fp128` fam
 
 ## FP128 Comparison Predicates
 
-The `fcmp` instruction (opcode `0x4C`) is dispatched by extracting the comparison predicate from bits 0--14 of the halfword at instruction offset `+18`. Each LLVM `fcmp` predicate maps to a dedicated runtime function.
+The `fcmp` instruction (opcode `0x4C`) is dispatched by extracting the comparison predicate from bits 0–14 of the halfword at instruction offset `+18`. Each LLVM `fcmp` predicate maps to a dedicated runtime function.
 
 ### Ordered Comparisons (7 functions)
 
@@ -198,7 +198,7 @@ Four internal helper functions perform the actual call construction. Each create
 |---|---|---|---|
 | `sub_1C8A5C0` | `0x1C8A5C0` | Binary `fp128` arithmetic (add/sub/mul/div/rem) | 14 |
 | `sub_1C8BD70` | `0x1C8BD70` | Binary `i128` division (udiv/idiv/urem/irem) | 12 |
-| `sub_1C8ADC0` | `0x1C8ADC0` | FP128 conversions (to/from all integer widths, to/from float/double) | 18--21 (varies) |
+| `sub_1C8ADC0` | `0x1C8ADC0` | FP128 conversions (to/from all integer widths, to/from float/double) | 18–21 (varies) |
 | `sub_1C8BF90` | `0x1C8BF90` | I128-to/from-float/double conversions | 20 |
 
 The "name length" column refers to the string length passed to the call construction routine. This is a fixed constant in each helper, not computed at runtime, which means the function name strings are embedded as literals in the binary (confirmed by string sweep at `0x1C8C170`).

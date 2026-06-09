@@ -61,7 +61,7 @@ The two flag bits at `vreg+48` encode spill state:
 | 14 | `0x4000` | Already spilled — prevents the same vreg from being spilled again |
 | 18 | `0x40000` | Needs spill — triggers spill codegen on the next `sub_94FDD0` call |
 
-Register consumption (`sub_939CE0`, 23 lines) accounts for paired registers. For double-width registers (pair mode 3 at `vreg+48` bits 20--21), it returns `assignment + 1`, consuming two physical slots.
+Register consumption (`sub_939CE0`, 23 lines) accounts for paired registers. For double-width registers (pair mode 3 at `vreg+48` bits 20–21), it returns `assignment + 1`, consuming two physical slots.
 
 ## Spill Retry Loop
 
@@ -131,7 +131,7 @@ The function contains 7 near-identical code blocks, one per register class (R, P
 
 The guidance engine allocates a single 11,112-byte working structure from the arena (vtable `+24`). The structure is organized into five regions.
 
-**Region 0 — Header and core pointers (bytes 0--271)**
+**Region 0 — Header and core pointers (bytes 0–271)**
 
 | Byte offset | QWORD idx | Type | Init | Field |
 |-------------|-----------|------|------|-------|
@@ -158,33 +158,33 @@ The guidance engine allocates a single 11,112-byte working structure from the ar
 | 248 | [31] | QWORD | 0 | Free list head |
 | 256 | [32] | QWORD | 0 | Free list count |
 
-**Region 1 — Bitmask arrays (bytes 272--1327)**
+**Region 1 — Bitmask arrays (bytes 272–1327)**
 
 Two 508-byte bitmask arrays (127 DWORDs each), separated by single-byte sentinels:
 
 | Byte range | Content |
 |------------|---------|
 | 284 | Sentinel byte (set to `0x80` after zeroing) |
-| 288--795 | Bitmask array 0: 127 DWORDs for live range set intersection |
+| 288–795 | Bitmask array 0: 127 DWORDs for live range set intersection |
 | 808 | Sentinel byte (set to `0x80` after zeroing) |
-| 812--1319 | Bitmask array 1: 127 DWORDs for second class pair |
+| 812–1319 | Bitmask array 1: 127 DWORDs for second class pair |
 
 Each bitmask array is zeroed via an SSE2 vectorized loop (16 bytes per iteration, `0x1F` iterations). The `0x80` sentinel byte at the start of each array marks initialization completion.
 
-**Region 2 — Priority queue table blocks (bytes 1328--2063)**
+**Region 2 — Priority queue table blocks (bytes 1328–2063)**
 
 Five embedded priority queue tables, each containing an entry count (QWORD) followed by an array of 6 queue entries (24 bytes each):
 
 | QWORD idx | Byte offset | Content |
 |-----------|-------------|---------|
 | [166] | 1328 | Queue block 1 entry count (incremented by 7 per pass) |
-| [167]--[184] | 1336--1479 | Queue block 1: 6 entries x 24 bytes |
+| [167]--[184] | 1336–1479 | Queue block 1: 6 entries x 24 bytes |
 | [188] | 1504 | Queue block 2 entry count |
-| [189]--[206] | 1512--1655 | Queue block 2: 6 entries x 24 bytes |
+| [189]--[206] | 1512–1655 | Queue block 2: 6 entries x 24 bytes |
 | [210] | 1680 | Queue block 3 entry count |
-| [211]--[228] | 1688--1831 | Queue block 3: 6 entries x 24 bytes |
+| [211]--[228] | 1688–1831 | Queue block 3: 6 entries x 24 bytes |
 | [232] | 1856 | Queue block 4 entry count |
-| [233]--[250] | 1864--2007 | Queue block 4: 6 entries x 24 bytes |
+| [233]--[250] | 1864–2007 | Queue block 4: 6 entries x 24 bytes |
 | [256] | 2048 | Queue block 5 (overflow) count |
 
 Each 24-byte queue entry has this layout:
@@ -198,11 +198,11 @@ Each 24-byte queue entry has this layout:
 
 Queue entries are built by `sub_8BE190` and sorted by `sub_7553C0`. Candidates are inserted via `sub_9370A0` (with tie-breaking) and removed via `sub_9365A0` (bit-clear in bitvector).
 
-**Region 3 — Candidate node management (bytes ~2064--10591)**
+**Region 3 — Candidate node management (bytes ~2064–10591)**
 
 The largest region (~8,528 bytes). Contains working storage for spill candidate evaluation across all 7 register classes. This region is zeroed during initialization and populated during the instruction walk phase by `sub_93BF50` (candidate evaluation), `sub_936610` (candidate insertion with cost), `sub_9680F0` (cost propagation), and `sub_93A1F0` (interference counting). The exact internal sub-layout varies by register class and virtual register count.
 
-**Region 4 — Linked list, accumulators, and tail (bytes 10592--11111)**
+**Region 4 — Linked list, accumulators, and tail (bytes 10592–11111)**
 
 | Byte offset | QWORD idx | Type | Init | Field |
 |-------------|-----------|------|------|-------|
@@ -222,7 +222,7 @@ The largest region (~8,528 bytes). Contains working storage for spill candidate 
 | 10728 | BYTE | byte | 0 | Walk active flag |
 | 10736 | [1342] | QWORD | 0 | Spill cost accumulator 0 |
 | 10744 | [1343] | QWORD | 0 | Spill cost accumulator 1 |
-| 10752--10824 | [1344]--[1353] | QWORD | 0 | Additional cost/range counters (10 slots) |
+| 10752–10824 | [1344]--[1353] | QWORD | 0 | Additional cost/range counters (10 slots) |
 | 10840 | [1355] | QWORD | 0 | Interference counter |
 | 10872 | DWORD | int | 0 | Class mask |
 | 10888 | [1361] | QWORD | 0 | Result register count |
@@ -377,9 +377,9 @@ Single-pass bitvector drain: if `max_index < 0` return (empty). Otherwise reset 
 
 #### Candidate insertion (`sub_9370A0`) and removal (`sub_9365A0`)
 
-Insertion is gated on the VR pair/width field `vreg+48` bits 20--21:
+Insertion is gated on the VR pair/width field `vreg+48` bits 20–21:
 
-| Bits 20--21 | Width | Insertion behavior |
+| Bits 20–21 | Width | Insertion behavior |
 |-------------|-------|--------------------|
 | 0 | single | Set bit `vreg+68` in class bitvector |
 | 1 | pair | No insertion (pairs not independently spillable) |
@@ -473,7 +473,7 @@ After initial cost computation, `sub_999AA0` (162 lines) walks the interference 
 
 ### Max-pressure query (sub\_99A0B0)
 
-`sub_99A0B0` (224 lines) computes the peak number of simultaneously live defs across all blocks spanned by a live range. It walks instructions in program order within each spanned block, counting def operands whose register class matches the target class. Special register IDs 41--44 (PT, P0--P3) are excluded. The peak is stored at `alloc.peak_defs` (DWORD at offset `402*4`) and is used to gauge whether spilling a particular vreg would meaningfully relieve pressure.
+`sub_99A0B0` (224 lines) computes the peak number of simultaneously live defs across all blocks spanned by a live range. It walks instructions in program order within each spanned block, counting def operands whose register class matches the target class. Special register IDs 41–44 (PT, P0–P3) are excluded. The peak is stored at `alloc.peak_defs` (DWORD at offset `402*4`) and is used to gauge whether spilling a particular vreg would meaningfully relieve pressure.
 
 ### Best-result comparison (sub\_93D070)
 
@@ -577,7 +577,7 @@ The backup array encodes each VR's physical register assignment as `2*phys_reg +
 | `sub_999AA0` | 162 lines | Zero-cost pruning | Removes cost-0 vregs from interference graph; recycles to free list |
 | `sub_999D10` | 102 lines | Phi/copy aggregation | For opcode 96 (phi), aggregates cost across coalesced operand chains |
 | `sub_999F00` | 100 lines | Per-block cost array | Grows 12B-per-block array; copies `{block_id, store_cost, load_cost}` tuples |
-| `sub_99A0B0` | 224 lines | Max-pressure query | Peak simultaneous defs per live range span (excludes regs 41--44) |
+| `sub_99A0B0` | 224 lines | Max-pressure query | Peak simultaneous defs per live range span (excludes regs 41–44) |
 | `sub_9A8270` | ~580 lines | Live range spill driver | 14 KB; drains worklists, checks bitvector membership, commits per-range spills |
 
 #### Has-constrained check (`sub_9998A0`)
@@ -918,7 +918,7 @@ The function selects between a **fast path** and a **full path** based on three 
 | ABI mode | `ctx+1368` bit 2 | clear |
 | Extended flag | `ctx+1380` bit 6 | clear |
 
-If any condition fails, the full path runs. The fast path handles 1--4 uniform/accumulator registers with a single linear instruction walk (decompiled lines 1715--1862). The full path builds an explicit cost model and candidate list.
+If any condition fails, the full path runs. The fast path handles 1–4 uniform/accumulator registers with a single linear instruction walk (decompiled lines 1715–1862). The full path builds an explicit cost model and candidate list.
 
 ### Per-CTA SMEM pool partitioning
 

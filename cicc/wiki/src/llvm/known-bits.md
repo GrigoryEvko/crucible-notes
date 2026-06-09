@@ -33,10 +33,10 @@ The following ranges apply to every NVVM intrinsic that reads a PTX special regi
 
 | Register | PTX | NVVM Intrinsic ID Range | Value Range | i32 Known Zero (upper bits) |
 |---|---|---|---|---|
-| `%tid.x/y/z` | `%tid.x` | 350--352 | `[0, maxntid-1]` | bits `[ceil(log2(maxntid)), 31]` |
-| `%ntid.x/y/z` | `%ntid.x` | 353--355 | `[1, 1024]` | bits `[11, 31]` (at most 1024) |
-| `%ctaid.x/y/z` | `%ctaid.x` | 356--358 | `[0, gridDim-1]` | bits `[ceil(log2(gridDim)), 31]` |
-| `%nctaid.x/y/z` | `%nctaid.x` | 359--361 | `[1, 2^31-1]` | bit 31 (always non-negative) |
+| `%tid.x/y/z` | `%tid.x` | 350–352 | `[0, maxntid-1]` | bits `[ceil(log2(maxntid)), 31]` |
+| `%ntid.x/y/z` | `%ntid.x` | 353–355 | `[1, 1024]` | bits `[11, 31]` (at most 1024) |
+| `%ctaid.x/y/z` | `%ctaid.x` | 356–358 | `[0, gridDim-1]` | bits `[ceil(log2(gridDim)), 31]` |
+| `%nctaid.x/y/z` | `%nctaid.x` | 359–361 | `[1, 2^31-1]` | bit 31 (always non-negative) |
 | `%warpsize` | `%WARP_SZ` | ~370 | `{32}` (constant) | bits `[0,4]` = `00000`, bit 5 = 1, bits `[6,31]` = 0 |
 | `%laneid` | `%laneid` | ~371 | `[0, 31]` | bits `[5, 31]` |
 | `%warpid` | `%warpid` | ~372 | `[0, maxWarpsPerSM-1]` | SM-dependent upper bits |
@@ -44,7 +44,7 @@ The following ranges apply to every NVVM intrinsic that reads a PTX special regi
 | `%nsmid` | `%nsmid` | ~376 | `[1, numSMs]` | architecture-dependent |
 | `%gridid` | `%gridid` | ~378 | `[0, 2^32-1]` | none (full range) |
 | `%clock` | `%clock` | ~380 | `[0, 2^32-1]` | none |
-| `%lanemask_eq/lt/le/gt/ge` | `%lanemask_*` | ~382--386 | `[0, 2^32-1]` | none |
+| `%lanemask_eq/lt/le/gt/ge` | `%lanemask_*` | ~382–386 | `[0, 2^32-1]` | none |
 
 When `__launch_bounds__(maxThreadsPerBlock, minBlocksPerMP)` is present on a kernel, `nvvm-intr-range` tightens the `%tid` ranges to `[0, maxThreadsPerBlock-1]` and `%ntid` to `[1, maxThreadsPerBlock]`. Similarly, `nvvm.reqntid` metadata (from `__launch_bounds__` with exact dimensions or `reqntid` pragmas) can constrain each dimension independently to an exact value.
 
@@ -70,7 +70,7 @@ The `__launch_bounds__` attribute, `__maxnreg__` pragma, and `nvvm.reqntid` / `n
 
 1. **nvvm-intr-range pass** (`sub_216F4B0`): Runs early in the pipeline. Reads kernel metadata (`nvvm.reqntid`, `nvvm.maxntid`) via `sub_93AE30`. Attaches `!range` metadata to every `llvm.nvvm.read.ptx.sreg.*` intrinsic call. The metadata format is `!{i32 lo, i32 hi}` where `hi` is exclusive.
 
-2. **computeKnownBitsFromRangeMetadata** (`sub_11A68C0`): Called during standard `computeKnownBits` traversal. Reads `!range` metadata from any value and derives known-zero/known-one masks. For a range `[0, 1024)`, this yields `knownZero = 0xFFFFFC00` (bits 10--31 known zero).
+2. **computeKnownBitsFromRangeMetadata** (`sub_11A68C0`): Called during standard `computeKnownBits` traversal. Reads `!range` metadata from any value and derives known-zero/known-one masks. For a range `[0, 1024)`, this yields `knownZero = 0xFFFFFC00` (bits 10–31 known zero).
 
 3. **Intrinsic return range analysis** (`sub_10CA790` + `sub_11A1390`): A separate path used when the merged `computeKnownBits+SimplifyDemandedBits` processes ZExt/SExt of intrinsic calls. Computes `[lo, hi]` bounds for the intrinsic's return value and checks whether the extension can be eliminated because the return range fits within the demanded bits.
 
@@ -265,9 +265,9 @@ This is the heart of the analysis: backward-propagated demand meets forward-prop
 
 The following simplifications are GPU-specific and do not have CPU equivalents:
 
-**Mul to Shl for threadIdx arithmetic** (lines 714--861): When both operands of a multiply originate from intrinsic calls with known power-of-2 returns (e.g., `threadIdx.x * blockDim.x` where blockDim is a power-of-2 from `__launch_bounds__`), the multiply is replaced with a left shift. The pattern matcher checks `sub_BCAC40` (hasOneUse) and `sub_10A0620` (createShl replacement).
+**Mul to Shl for threadIdx arithmetic** (lines 714–861): When both operands of a multiply originate from intrinsic calls with known power-of-2 returns (e.g., `threadIdx.x * blockDim.x` where blockDim is a power-of-2 from `__launch_bounds__`), the multiply is replaced with a left shift. The pattern matcher checks `sub_BCAC40` (hasOneUse) and `sub_10A0620` (createShl replacement).
 
-**Bswap + BFE fusion** (lines 3959--4007): Detects a byte-swap feeding into a bit-field extract and replaces with a direct byte read at the swapped offset. Common in endianness conversion code for shared memory operations.
+**Bswap + BFE fusion** (lines 3959–4007): Detects a byte-swap feeding into a bit-field extract and replaces with a direct byte read at the swapped offset. Common in endianness conversion code for shared memory operations.
 
 **ZExt/SExt elimination via intrinsic return range** (sub_10CA790 path): When a ZExt or SExt extends the result of an NVVM intrinsic call, and the intrinsic's annotated return range fits entirely within the demanded bits, the extension is eliminated. This fires frequently for `threadIdx.x` reads extended to i64 for address calculations.
 
@@ -283,7 +283,7 @@ For NVPTX-specific DAG opcodes (above `ISD::BUILTIN_OP_END` = 499), the function
 
 | Opcode Range | NVPTX DAG Node | Known-Bits Behavior |
 |---|---|---|
-| 0x152--0x161 (338--353) | TEX, SULD, surface ops | Result width known: bits above element size set to zero |
+| 0x152–0x161 (338–353) | TEX, SULD, surface ops | Result width known: bits above element size set to zero |
 | 0x12A (298) | LoadV2, LoadParam | Extension mode from flags byte bits[2:3]: zext/sext/none |
 | 0x16A, 0x16C (362, 364) | StoreParam, StoreRetval | When flags bits[2:3] == 0b11: element type width known |
 | 0x175 (373) | ConstantPool | Uses ConstantRange::fromKnownBits intersection |
@@ -294,7 +294,7 @@ The DAG-level analysis uses the same recursion depth cap of 6 (`a6 > 5` returns 
 
 ### Texture/Surface Fetch Result Width
 
-Cases 0x152--0x161 encode the known bit-width of texture and surface fetch results. For an 8-bit texture fetch zero-extended to i32, the analysis sets bits [8, 31] as known-zero in the result. This enables downstream shift and mask elimination in texture sampling code.
+Cases 0x152–0x161 encode the known bit-width of texture and surface fetch results. For an 8-bit texture fetch zero-extended to i32, the analysis sets bits [8, 31] as known-zero in the result. This enables downstream shift and mask elimination in texture sampling code.
 
 ## KnownBits Data Structure Layout
 

@@ -4,7 +4,7 @@
 
 PTX directives — `.version`, `.target`, `.entry`, `.func`, `.global`, `.shared`, `.local`, `.const`, `.reg`, `.param`, `.weak`, `.common`, `.extern`, `.visible`, `.alias`, `.pragma` — are parsed and semantically validated by the Bison reduction actions embedded in the 48 KB parser function `sub_4CE6B0`. Unlike instructions which pass through opcode table lookup (`sub_46E000`) and per-instruction semantic validators, directives are handled entirely within the Bison reduction switch: each grammar production's action block reads values from the parser value stack, validates them against the current PTX version and target architecture, and writes the results into the 1,200-byte parser state object or its child compile-unit state (`CU_state`). No intermediate AST is constructed; directives take effect immediately during parsing.
 
-The state object maintains 18 linked lists (9 head/tail pairs at offsets 368--512) that track symbols per state space, a string-keyed hash map (offset 208) for target feature flags, and a scope chain (offset 984) rooted at offset 968 for nested function declarations. Two version-gating functions — `sub_489050` (PTX ISA version) and `sub_489390` (SM architecture) — guard every directive that was introduced after the baseline ISA.
+The state object maintains 18 linked lists (9 head/tail pairs at offsets 368–512) that track symbols per state space, a string-keyed hash map (offset 208) for target feature flags, and a scope chain (offset 984) rooted at offset 968 for nested function declarations. Two version-gating functions — `sub_489050` (PTX ISA version) and `sub_489390` (SM architecture) — guard every directive that was introduced after the baseline ISA.
 
 | | |
 |---|---|
@@ -355,7 +355,7 @@ This 4,937-byte function validates variable declarations across all state spaces
 
 ### State-Space Linked Lists — 18 Lists at `state+368`
 
-The parser maintains 18 linked list heads (9 head/tail pairs) at state offsets 368--512 to track declared symbols per state space:
+The parser maintains 18 linked list heads (9 head/tail pairs) at state offsets 368–512 to track declared symbols per state space:
 
 ```text
 Offset    Pair   State Space
@@ -413,7 +413,7 @@ sub_489050(state, 3, 1, ".weak directive", location);  // PTX >= 3.1
 sub_489050(state, 5, 0, ".common directive", location);  // PTX >= 5.0
 ```
 
-### Linkage Qualifiers — Cases 78--81
+### Linkage Qualifiers — Cases 78–81
 
 These set `CU+81` (declaration linkage type) within function prototype production contexts:
 
@@ -481,7 +481,7 @@ for (node = list_begin(pragma_list); !list_end(node); node = list_next(node)) {
 | 6 | `sub_457CB0(arch, 10)` | min constraint | `sub_4567E0` + `sub_403D2F` | `CU+184` |
 | 7 | `sub_457CB0(arch, 18)` | deprecated | Warning via `dword_29FA6C0` | — |
 | 8 | `sub_457CC0(arch, 1)` | deprecated | Warning via `dword_29FA6C0` | — |
-| 9--11 | `sub_457C60/CA0/C70` | unsupported | Warning via `dword_29FA7F0` | — |
+| 9–11 | `sub_457C60/CA0/C70` | unsupported | Warning via `dword_29FA7F0` | — |
 | 12 | `sub_457D30/D50` | unsupported | Warning via `dword_29FA7F0` | — |
 | 13 | `sub_457CB0(arch, 22)` | function-level | Appends to func or module pragma list | `func->80->80` or `state+272` |
 
@@ -566,8 +566,8 @@ The parser state object (`v1127` / `a1` in `sub_4CE6B0`) is approximately 1,200 
 | 219 | byte | CLI `texmode_independent` flag |
 | 220 | byte | CLI `texmode_raw` flag |
 | 272 | ptr | Module pragma list head |
-| 368--512 | ptr[18] | State-space linked list heads |
-| 656--800 | bytes | Per-section tracking data (144 bytes) |
+| 368–512 | ptr[18] | State-space linked list heads |
+| 656–800 | bytes | Per-section tracking data (144 bytes) |
 | 832 | byte | Lenient mode flag |
 | 834 | word | Debug mode flags |
 | 856 | int32 | Debug hash base |
@@ -590,7 +590,7 @@ The parser state object (`v1127` / `a1` in `sub_4CE6B0`) is approximately 1,200 
 | `sub_489050` | 115 B | PTX ISA version gate | ~30 directive cases |
 | `sub_489390` | 85 B | SM architecture version gate | ~15 directive cases |
 | `sub_497C00` | 2,992 B | Function/entry declaration handler | cases 82, 97 |
-| `sub_4A0CD0` | 4,937 B | Variable/symbol declaration validator | cases 58--68 |
+| `sub_4A0CD0` | 4,937 B | Variable/symbol declaration validator | cases 58–68 |
 | `sub_4A02A0` | 2,607 B | Initializer/constant expression validator | `sub_4A0CD0` |
 | `sub_4B1080` | ~700 B | Per-target handler (SM + texmode) | cases 5, 38 |
 | `sub_4036D9` | 437 B | Parameter list compatibility check | case 41 (`.alias`) |

@@ -1,8 +1,8 @@
 # Barrier and Synchronization Builtins
 
-Barrier builtins handle thread synchronization, memory fencing, and cluster-level coordination. They span IDs 1--5 (core barriers), 8--20 (cluster and barrier extensions), and several scattered IDs for memory barriers and fences. The lowering layer emits either LLVM intrinsic calls or inline PTX assembly, depending on whether the operation has a direct LLVM IR equivalent.
+Barrier builtins handle thread synchronization, memory fencing, and cluster-level coordination. They span IDs 1–5 (core barriers), 8–20 (cluster and barrier extensions), and several scattered IDs for memory barriers and fences. The lowering layer emits either LLVM intrinsic calls or inline PTX assembly, depending on whether the operation has a direct LLVM IR equivalent.
 
-## Core Barriers (IDs 1--5)
+## Core Barriers (IDs 1–5)
 
 The most fundamental synchronization primitives in CUDA map to the lowest builtin IDs.
 
@@ -14,9 +14,9 @@ The most fundamental synchronization primitives in CUDA map to the lowest builti
 | 4 | `__nvvm_membar_gl` | `membar.gl` | Device-scope memory fence |
 | 5 | `__nvvm_membar_sys` | `membar.sys` | System-scope memory fence |
 
-The core `__syncthreads` (ID 1) lowers to the LLVM intrinsic `llvm.nvvm.barrier0` (intrinsic ID 8259). Memory barriers at IDs 3--5 are lowered via inline IR generation: the handler builds a barrier store node through `sub_128B420` / `sub_92C9E0` and inserts it into the current basic block.
+The core `__syncthreads` (ID 1) lowers to the LLVM intrinsic `llvm.nvvm.barrier0` (intrinsic ID 8259). Memory barriers at IDs 3–5 are lowered via inline IR generation: the handler builds a barrier store node through `sub_128B420` / `sub_92C9E0` and inserts it into the current basic block.
 
-## Barrier Extensions (IDs 15--20)
+## Barrier Extensions (IDs 15–20)
 
 These builtins extend the basic barrier with predicate reduction and explicit warp/block synchronization.
 
@@ -29,15 +29,15 @@ These builtins extend the basic barrier with predicate reduction and explicit wa
 | 19 | `__nvvm_barrier_sync` | `llvm.nvvm.barrier.sync.cnt` (9296) | Named barrier sync with count |
 | 20 | `__nvvm_bar_warp_sync` | `llvm.nvvm.bar.warp.sync` (8258) | Warp-level barrier |
 
-The reduction barriers (IDs 15--17) are dispatched through `sub_12AB550` / `sub_94C360`. The handler looks up intrinsic 3767 (EDG) or the corresponding entry from `dword_3F14778[]` (NVVM) and emits a function call via `sub_1285290` / `sub_921880`. ID 16 sets flag=1 (AND) and ID 17 sets flag=16|0 (OR); the population count variant uses the default flag.
+The reduction barriers (IDs 15–17) are dispatched through `sub_12AB550` / `sub_94C360`. The handler looks up intrinsic 3767 (EDG) or the corresponding entry from `dword_3F14778[]` (NVVM) and emits a function call via `sub_1285290` / `sub_921880`. ID 16 sets flag=1 (AND) and ID 17 sets flag=16|0 (OR); the population count variant uses the default flag.
 
-Barriers with explicit count (IDs 205--206, `__nvvm_bar_sync_all_cnt` and `__nvvm_barrier_sync_cnt`) follow the same pattern with additional count arguments.
+Barriers with explicit count (IDs 205–206, `__nvvm_bar_sync_all_cnt` and `__nvvm_barrier_sync_cnt`) follow the same pattern with additional count arguments.
 
-## Cluster Operations (IDs 8--14, SM 90+)
+## Cluster Operations (IDs 8–14, SM 90+)
 
 Thread block cluster operations were introduced with SM 90 (Hopper). These builtins query cluster geometry and perform inter-block synchronization within a cluster.
 
-### Cluster Geometry Queries (IDs 8--10, 405--408)
+### Cluster Geometry Queries (IDs 8–10, 405–408)
 
 | ID | Builtin | Handler | Description |
 |---|---|---|---|
@@ -49,7 +49,7 @@ Thread block cluster operations were introduced with SM 90 (Hopper). These built
 | 407 | `__nv_clusterGridDimInClusters_impl` | — | Grid dimension in cluster units |
 | 408 | `__nv_clusterIdx_impl` | — | Cluster index |
 
-### Cluster Barriers (IDs 11--14)
+### Cluster Barriers (IDs 11–14)
 
 | ID | Builtin | Intrinsic ID | Description |
 |---|---|---|---|
@@ -60,7 +60,7 @@ Thread block cluster operations were introduced with SM 90 (Hopper). These built
 
 The cluster fence at ID 14 emits intrinsic `llvm.nvvm.cp.async.commit.group` (EDG intrinsic 4159, NVVM intrinsic 9052) with a flag constant of 4, encoding the thread-fence semantic.
 
-### Cluster Shared Memory (IDs 202--203, 365)
+### Cluster Shared Memory (IDs 202–203, 365)
 
 | ID | Builtin | Description |
 |---|---|---|
@@ -98,7 +98,7 @@ Generates `fence.{ordering}.{scope};` for SM 70+ targets:
 
 Both fence handlers use `sub_B41A60` to create the inline assembly call and `sub_921880` to emit it into the instruction stream.
 
-## Async Memory Copy Barriers (IDs 367--369)
+## Async Memory Copy Barriers (IDs 367–369)
 
 The `cp.async` instructions for asynchronous shared-to-global memory copies include implicit barrier semantics:
 

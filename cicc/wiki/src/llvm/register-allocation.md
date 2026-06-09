@@ -41,7 +41,7 @@ The classes are completely disjoint — there is no cross-class interference. Ea
 
 The core allocation algorithm (`sub_2F49070`, 82KB, 2,314 decompiled lines) follows LLVM's standard `RAGreedy::selectOrSplit` structure with NVPTX-specific adaptations for pressure-driven allocation. The following pseudocode is reconstructed from the decompiled binary and covers the key phases visible in the new-pass-manager instance.
 
-### Initialization (lines 381--484)
+### Initialization (lines 381–484)
 
 ```text
 fn selectOrSplit(this: &mut RAGreedyState, VirtReg: &LiveInterval) -> PhysReg {
@@ -72,11 +72,11 @@ fn selectOrSplit(this: &mut RAGreedyState, VirtReg: &LiveInterval) -> PhysReg {
     ...
 ```
 
-The `RegUnitStates` array is the central per-unit bookkeeping structure for the entire allocation of a single virtual register. Each 4-byte slot tracks whether that register unit is free, already interfering with the current live range, or reserved by the target. The array is zeroed at the start of every `selectOrSplit` invocation and released at cleanup (lines 2192--2313).
+The `RegUnitStates` array is the central per-unit bookkeeping structure for the entire allocation of a single virtual register. Each 4-byte slot tracks whether that register unit is free, already interfering with the current live range, or reserved by the target. The array is zeroed at the start of every `selectOrSplit` invocation and released at cleanup (lines 2192–2313).
 
 The interference cache at `this+648` is distinct from LLVM's standard `InterferenceCache` (allocated at `0x2C0` bytes via `sub_2FB0E40` during driver setup). This per-invocation cache is a lightweight open-addressing map used to deduplicate interference queries within a single `selectOrSplit` call. The hash function `37 * reg` is a small Knuth-style multiplicative hash chosen for speed over distribution quality — adequate because register numbers are small consecutive integers.
 
-### Operand Scanning (lines 690--1468)
+### Operand Scanning (lines 690–1468)
 
 The function walks every `MachineOperand` attached to the live range's segment list. Operands are stored in a flat array with a **40-byte stride** per entry. The type byte at offset `+0` of each operand classifies it:
 
@@ -107,7 +107,7 @@ For each operand:
 
 The 40-byte operand stride is wider than upstream LLVM's `MachineOperand` (typically 32 bytes) because CICC embeds an additional 8-byte field for NVPTX-specific metadata (likely the register class tag and a flags word). The scanning loop at line 690 uses `v321` (`needsRecoloringFlag`) and `v323` (`hasPhysicalAssignment`) as accumulator flags that gate later phases: if no virtual registers need work, the function returns early.
 
-### Interference Processing via sub_2F43DC0 (lines 714--955)
+### Interference Processing via sub_2F43DC0 (lines 714–955)
 
 After operand scanning, the allocator calls `sub_2F43DC0` (scanInterference) to populate the interference cache:
 
@@ -147,7 +147,7 @@ Additional helper functions participate in this phase:
 
 The tryLastChanceRecoloring path (`sub_2F46530`) is the most expensive fallback. It recursively attempts to reassign conflicting registers, up to `lcr-max-depth` levels deep and considering at most `lcr-max-interf` conflicting live ranges at each level. The `exhaustive-register-search` flag bypasses both cutoffs, trading compile time for allocation quality.
 
-### Copy Coalescing Hints — Kinds 20 and 21 (lines 1060--1163)
+### Copy Coalescing Hints — Kinds 20 and 21 (lines 1060–1163)
 
 During operand scanning, the allocator identifies COPY-like instructions by checking the **operand kind** field. Two kind values trigger coalescing hint recording:
 
@@ -170,7 +170,7 @@ Kind 20 represents a simple register-to-register COPY where the source and desti
 
 This is standard LLVM coalescing hint infrastructure, but on NVPTX it interacts with the complete class separation: hints only apply within a single register class, since cross-class coalescing is impossible.
 
-### Virtual Register Assignment (lines 1005--1368)
+### Virtual Register Assignment (lines 1005–1368)
 
 After interference processing and copy hint collection, the function enters the main assignment loop:
 
@@ -193,7 +193,7 @@ After interference processing and copy hint collection, the function enters the 
 
 The live-through bitvector at `this+736` is the key data structure for this phase. A set bit indicates that the register unit is live from the beginning to the end of the current region, making it the hardest case for the allocator because there is no gap in which to insert a split point. These live-through ranges go directly to last-chance recoloring.
 
-### Cleanup (lines 2192--2313)
+### Cleanup (lines 2192–2313)
 
 The function releases the `RegUnitStates` array, clears the interference cache, frees the live-through bitvector, and returns 1 on success (physical register assigned) or 0 on failure (must spill).
 
@@ -412,7 +412,7 @@ The allocation order exists but all registers are occupied/interfering. This fir
 "inline assembly requires more registers than available"
 ```
 
-Special handling for inline asm operands (kind values 1--2 at offset `+68`). Inline assembly can specify explicit register constraints that consume all available registers in a class, leaving nothing for surrounding code.
+Special handling for inline asm operands (kind values 1–2 at offset `+68`). Inline assembly can specify explicit register constraints that consume all available registers in a class, leaving nothing for surrounding code.
 
 ### FailedRegAlloc Flag
 
@@ -581,7 +581,7 @@ Diagnostic strings recovered from the register allocation binary region (`p2c.5-
 3. **Greedy selectOrSplit with NVPTX adaptations.** Implement the core allocation loop: per-unit RegUnitStates array (free/interfering/reserved), interference cache with `37 * reg` hash, 40-byte-stride operand scanning, copy coalescing hints (kinds 20/21), and live-through bitvector for detecting worst-case live ranges.
 4. **Live range splitting with SplitKit.** Implement `splitAroundRegion` (93KB equivalent): identify split points at block boundaries and within blocks, create sub-ranges with new virtual registers, insert copies at split points, and update the interference cache.
 5. **Eviction and last-chance recoloring.** Implement `tryEviction` (compare spill weights to decide whether evicting a conflicting VReg is cheaper) and `tryLastChanceRecoloring` (recursive reassignment bounded by `lcr-max-depth=5` and `lcr-max-interf=8`).
-6. **Occupancy-aware spill cost computation.** Weight spill costs by occupancy impact: spills to local memory (device DRAM, 200--800 cycle latency) must account for the GPU-specific penalty, and the register ceiling must respect occupancy cliff boundaries.
+6. **Occupancy-aware spill cost computation.** Weight spill costs by occupancy impact: spills to local memory (device DRAM, 200–800 cycle latency) must account for the GPU-specific penalty, and the register ceiling must respect occupancy cliff boundaries.
 7. **Dual pass manager instances.** Register the allocator for both legacy and new pass managers, ensuring both instances share the same NVPTX-specific hooks (custom rematerialization interaction, pressure-driven priority queues, `maxreg` enforcement).
 
 ## Architectural Uniqueness

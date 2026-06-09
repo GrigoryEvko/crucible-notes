@@ -1,6 +1,6 @@
 # Lambda Restrictions
 
-Extended lambdas are CUDA's most constraint-heavy feature. Before a lambda can be wrapped in `__nv_dl_wrapper_t` or `__nv_hdl_wrapper_t` for device transfer, cudafe++ must verify that the closure type is serializable: no reference captures (device memory cannot hold host-side pointers), no function-local types in the public interface (device compiler has no access to them), no unnamed parent classes (the wrapper tag requires a mangleable name), and dozens of other structural invariants. The restriction checker runs as Phase 4 of `scan_lambda` (`sub_447930`, lines 626--866 of the 2113-line function) and continues through per-capture validation in `make_field_for_lambda_capture` (`sub_42EE00`) and recursive type walks in `sub_41A3E0` / `sub_41A1F0`. Together, these functions enforce 39 distinct diagnostic tags covering 35+ error categories and approximately 45 unique error code call sites.
+Extended lambdas are CUDA's most constraint-heavy feature. Before a lambda can be wrapped in `__nv_dl_wrapper_t` or `__nv_hdl_wrapper_t` for device transfer, cudafe++ must verify that the closure type is serializable: no reference captures (device memory cannot hold host-side pointers), no function-local types in the public interface (device compiler has no access to them), no unnamed parent classes (the wrapper tag requires a mangleable name), and dozens of other structural invariants. The restriction checker runs as Phase 4 of `scan_lambda` (`sub_447930`, lines 626–866 of the 2113-line function) and continues through per-capture validation in `make_field_for_lambda_capture` (`sub_42EE00`) and recursive type walks in `sub_41A3E0` / `sub_41A1F0`. Together, these functions enforce 39 distinct diagnostic tags covering 35+ error categories and approximately 45 unique error code call sites.
 
 All restrictions apply only when `dword_106BF38` (`--extended-lambda` / `--expt-extended-lambda`) is set and the lambda has an explicit `__device__` or `__host__ __device__` annotation. Standard C++ lambdas and lambdas defined inside `__device__` / `__global__` function bodies are exempt.
 
@@ -14,7 +14,7 @@ All restrictions apply only when `dword_106BF38` (`--extended-lambda` / `--expt-
 | Array/element checker | `sub_41A1F0` (`walk_type_for_hd_violations`, 81 lines) |
 | Type walk callback | `sub_41B420` (33 lines, issues errors 3603/3604/3606/3607/3610/3611) |
 | Diagnostic tag count | 39 unique tags for extended lambda errors |
-| Error code range | 3592--3635, 3689--3691 |
+| Error code range | 3592–3635, 3689–3691 |
 | Error severity | All severity 7 (error), except 3612 (warning) and 3590 (error) |
 | Enable flag | `dword_106BF38` (`--extended-lambda`) |
 | OptiX gate | `dword_106BDD8` && `dword_106B670` (triggers 3689) |
@@ -25,16 +25,16 @@ The tables below list every restriction enforced by the extended lambda validato
 
 ### Category 1: Capture Restrictions
 
-These checks run in two phases. The per-lambda checks (3593, 3595) occur in `scan_lambda` Phase 4 and in `sub_4F9F20` (capture count finalization). The per-capture checks (3596--3599, 3616) run inside `make_field_for_lambda_capture` (`sub_42EE00`), which calls `sub_41A1F0` for array dimension and constructibility analysis.
+These checks run in two phases. The per-lambda checks (3593, 3595) occur in `scan_lambda` Phase 4 and in `sub_4F9F20` (capture count finalization). The per-capture checks (3596–3599, 3616) run inside `make_field_for_lambda_capture` (`sub_42EE00`), which calls `sub_41A1F0` for array dimension and constructibility analysis.
 
 | Error | Tag | Restriction | Enforcement Location |
 |---|---|---|---|
 | 3593 | `extended_lambda_reference_capture` | Reference capture (`[&]` or `[&x]`) is prohibited. Device memory cannot hold host-side references. Fires when `capture_default == &` and `capture_mode == &` on the same lambda (byte+24 bits 4 and 5 both set). | `sub_447930` Phase 4, line ~825 |
-| 3595 | `extended_lambda_too_many_captures` | Maximum 1023 captures. The bitmap system uses 1024 bits (128 bytes) per wrapper type; bit 0 is reserved for the zero-capture primary template, so the usable range is 1--1023. Capture count `> 0x3FE` triggers this error. | `sub_4F9F20` line ~616 |
+| 3595 | `extended_lambda_too_many_captures` | Maximum 1023 captures. The bitmap system uses 1024 bits (128 bytes) per wrapper type; bit 0 is reserved for the zero-capture primary template, so the usable range is 1–1023. Capture count `> 0x3FE` triggers this error. | `sub_4F9F20` line ~616 |
 | 3596 | `extended_lambda_init_capture_array` | Init-captures with array type are not supported. The init-capture's type node is checked for kind 3 (array type) with element kind 1 and sub-kind 21. | `sub_42EE00` line ~508 |
-| 3597 | `extended_lambda_array_capture_rank` | Arrays with more than 7 dimensions cannot be captured. The walker `sub_41A1F0` counts array nesting depth via `sub_7A8370` (is_array_type) and `sub_7A9310` (get_element_type). If depth > 7, error fires. The limit matches the generated `__nv_lambda_array_wrapper` specializations (dims 2--8, plus dim 1 as identity). | `sub_41A1F0` lines ~29, ~54 |
+| 3597 | `extended_lambda_array_capture_rank` | Arrays with more than 7 dimensions cannot be captured. The walker `sub_41A1F0` counts array nesting depth via `sub_7A8370` (is_array_type) and `sub_7A9310` (get_element_type). If depth > 7, error fires. The limit matches the generated `__nv_lambda_array_wrapper` specializations (dims 2–8, plus dim 1 as identity). | `sub_41A1F0` lines ~29, ~54 |
 | 3598 | `extended_lambda_array_capture_default_constructible` | Array element type must be default-constructible on the host. After unwinding CV-qualifiers (kind 12 loop), calls `sub_550E50(30, element_type, 0)` to check default-constructibility. Failure emits this error. | `sub_41A1F0` line ~40 |
-| 3599 | `extended_lambda_array_capture_assignable` | Array element type must be copy-assignable on the host. Calls `sub_5BD540` to get the assignment operator, then `sub_510860(60, ...)` to verify it is callable. Failure emits this error. | `sub_41A1F0` lines ~42--44 |
+| 3599 | `extended_lambda_array_capture_assignable` | Array element type must be copy-assignable on the host. Calls `sub_5BD540` to get the assignment operator, then `sub_510860(60, ...)` to verify it is callable. Failure emits this error. | `sub_41A1F0` lines ~42–44 |
 | 3616 | `extended_lambda_pack_capture` | Cannot capture an element of a parameter pack. After calling `sub_41A1F0` for type validation, `sub_7A8C00` checks whether the capture type involves a pack expansion; if so, this error fires. | `sub_42EE00` line ~517 |
 | 3610 | `extended_lambda_init_capture_initlist` | Init-captures with `std::initializer_list` type are prohibited. The type walk callback `sub_41B420` checks kind and class identity. | `sub_41B420` / `sub_4907A0` |
 | 3602 | `extended_lambda_capture_in_constexpr_if` | An extended lambda cannot first-capture a variable inside a `constexpr if` branch. The capture must be visible outside the discarded branch. | `sub_447930` Phase 6 |
@@ -151,7 +151,7 @@ The parent function's template parameter list must satisfy naming and variadic c
 
 ### Phase 4 of scan_lambda: Per-Lambda Validation
 
-After parsing the capture list and annotations (Phases 1--3), `scan_lambda` enters the extended lambda validation block. This block is guarded by `dword_106BF38` (extended lambda mode) and the annotation bits at `lambda_info + 25`. The validation proceeds as:
+After parsing the capture list and annotations (Phases 1–3), `scan_lambda` enters the extended lambda validation block. This block is guarded by `dword_106BF38` (extended lambda mode) and the annotation bits at `lambda_info + 25`. The validation proceeds as:
 
 ```text
 sub_447930 (scan_lambda), Phase 4 entry:
@@ -345,7 +345,7 @@ The capture count limit of 1023 derives from the bitmap architecture. Each wrapp
 result[capture_count >> 6] |= 1LL << capture_count;
 ```
 
-Bit 0 is never emitted as a wrapper specialization (the zero-capture case uses the primary template). Bits 1--1023 map to generated partial specializations. The error check at capture count > 0x3FE (1022) fires before the bitmap set operation, so the effective maximum is 1023 captures. Attempting 1024 or more would overflow the 64-bit word boundary calculation, though in practice the error prevents this.
+Bit 0 is never emitted as a wrapper specialization (the zero-capture case uses the primary template). Bits 1–1023 map to generated partial specializations. The error check at capture count > 0x3FE (1022) fires before the bitmap set operation, so the effective maximum is 1023 captures. Attempting 1024 or more would overflow the 64-bit word boundary calculation, though in practice the error prevents this.
 
 ## Operator() Annotation Derivation
 

@@ -33,7 +33,7 @@ PTX source text
     |  SM version gates, PTX version gates, operand type checks
     |  Relaxed mode bypass (sub_12B3090)
     v
-[6] Code Template Generators (~250 functions, 3--50KB each)
+[6] Code Template Generators (~250 functions, 3–50KB each)
     |  50KB temp buffer, sprintf-based PTX emission
     v
 [7] Expression Printer (sub_12B33A0, 9KB)
@@ -370,10 +370,10 @@ Stored at `*(context+816)`. Maps 32-bit hash keys (stored as decimal string keys
 
 | Size Range | Count | Pct |
 |---|---|---|
-| 500--999 bytes | 170 | 35.9% |
-| 1,000--1,999 bytes | 296 | 62.6% |
-| 2,000--4,999 bytes | 6 | 1.3% |
-| 5,000--9,999 bytes | 1 | 0.2% |
+| 500–999 bytes | 170 | 35.9% |
+| 1,000–1,999 bytes | 296 | 62.6% |
+| 2,000–4,999 bytes | 6 | 1.3% |
+| 5,000–9,999 bytes | 1 | 0.2% |
 
 **Address distribution.** Hash handlers cluster in the `0x1490000`--`0x1520000` range (92% of entries), while named handlers dominate `0x1520000`--`0x1580000`. This reflects a compilation unit boundary: the hash handlers are generated from table-driven templates, while the named handlers are handwritten for semantically complex instructions.
 
@@ -693,7 +693,7 @@ Registers 608 CUDA runtime builtin function names into a hash table for the inst
 
 **Data structure.** Creates a hash table via `sub_4489C0` with capacity `0x80`. Allocates a 9,728-byte builtin data array from `unk_1F8E0C0`. Stores: `*(context+1056)` = data array, `*(context+1064)` = hash table, `*(context+1072)` = 608 (entry count).
 
-Each builtin is registered with a sequential index (1--608) mapping the name to an index used by `sub_15B86A0` (the 345KB prototype generator) to produce the corresponding `.weak .func (...) __cuda_smXX_foo (...) ;` declaration.
+Each builtin is registered with a sequential index (1–608) mapping the name to an index used by `sub_15B86A0` (the 345KB prototype generator) to produce the corresponding `.weak .func (...) __cuda_smXX_foo (...) ;` declaration.
 
 **Builtin families** (608 total, organized by SM generation and functional category):
 
@@ -886,7 +886,7 @@ A cluster of functions in the `0x16E0A70`--`0x16E3AB0` range generates PTX inlin
 
 ### sub_16E0A70 — tcgen05_instruction_type_classifier (17,302 bytes, 322 lines)
 
-Chains approximately 50 type-check predicates (`sub_12B5670`--`sub_12B5950`) against an instruction object at `*(a1+8)`. Returns an integer type ID (1--54) corresponding to specific tcgen05 MMA variants. Type IDs 1--8 map to base types, 18--29 to extended variants. Modifiers include `_expand16bit`, `_pack16bit`, `_maxabs`, `_minabs`, `_fused`, `_blockscale`, `_ashift`.
+Chains approximately 50 type-check predicates (`sub_12B5670`--`sub_12B5950`) against an instruction object at `*(a1+8)`. Returns an integer type ID (1–54) corresponding to specific tcgen05 MMA variants. Type IDs 1–8 map to base types, 18–29 to extended variants. Modifiers include `_expand16bit`, `_pack16bit`, `_maxabs`, `_minabs`, `_fused`, `_blockscale`, `_ashift`.
 
 ### sub_16E1DB0 — tcgen05_guardrails_codegen (10,365 bytes, 325 lines)
 
@@ -908,7 +908,7 @@ Initializes the PTX ISA version-to-feature mapping table. The entire body is SIM
 
 ### sub_12AA190 — ptx_get_cvt_opcode (6,332 bytes, 171 lines)
 
-Resolves conversion instruction opcodes from source/destination type pairs. Takes `(src_type, dst_type, rounding_mode, context)`. Returns PTX opcode enum values (25--59). Examples:
+Resolves conversion instruction opcodes from source/destination type pairs. Takes `(src_type, dst_type, rounding_mode, context)`. Returns PTX opcode enum values (25–59). Examples:
 
 - `src=8, dst=7` -> opcode 53 or 55 (f16 to f32 or similar)
 - `src=2, dst=3` -> opcode 29 (s32 to s64)
@@ -916,7 +916,7 @@ Resolves conversion instruction opcodes from source/destination type pairs. Take
 
 Calls `sub_12A72D0` to validate that the conversion is legal. Calls `sub_16E08F0`/`sub_16E60D0` for illegal conversion warnings.
 
-### sub_12AA9C0 / sub_12AAD20 — ptx_canonicalize_opcode (5,110--6,944 bytes)
+### sub_12AA9C0 / sub_12AAD20 — ptx_canonicalize_opcode (5,110–6,944 bytes)
 
 Opcode renumbering for stable serialization or cross-version compatibility. Maps old opcode IDs to canonical form via a giant if-else chain. Most values map to themselves, but some are reordered: `33->31`, `32->30`, `49->50`, `50->49`, `53->58`, `54->59`, `55->57`, `56->54`, `57->55`, `58->53`, `59->56`.
 

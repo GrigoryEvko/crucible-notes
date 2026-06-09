@@ -274,7 +274,7 @@ The frame variable is named `"__coro_frame"` and the type is `".coro_frame_ty"`.
 The frame type builder at `sub_3169200` (10 KB native) constructs the `StructType` using these rules:
 
 1. The two function pointers (`__resume_fn`, `__destroy_fn`) always occupy the first 16 bytes
-2. `__coro_index` occupies bytes 16--19 (i32)
+2. `__coro_index` occupies bytes 16–19 (i32)
 3. Remaining spill slots are sorted by alignment (largest first) to minimize padding
 4. The promise alloca (if present) is placed at a known offset so `llvm.coro.promise` can compute it
 5. Total frame size and alignment are recorded for the split remark
@@ -394,7 +394,7 @@ Standard LLVM coroutines allocate the frame on the heap via `operator new` (or a
 
 **Serialized allocation.** Device `malloc` implementation uses a global free list protected by atomics. Within a warp, threads attempting simultaneous allocation serialize on this atomic. Across warps on the same SM, L2 cache line bouncing on the free-list head pointer creates further contention. Under heavy allocation pressure (hundreds of concurrent warps), the effective throughput of device `malloc` can drop to single-digit allocations per microsecond — three orders of magnitude slower than a register read.
 
-**Fragmentation under concurrency.** Thousands of threads allocating and freeing small frames (64--512 bytes) rapidly fragment the device heap. The device allocator does not perform compaction. Once fragmented, even a heap with sufficient total free space may fail individual allocations, causing `malloc` to return `nullptr` and triggering coroutine allocation failure paths (if the user provided `get_return_object_on_allocation_failure`) or program termination.
+**Fragmentation under concurrency.** Thousands of threads allocating and freeing small frames (64–512 bytes) rapidly fragment the device heap. The device allocator does not perform compaction. Once fragmented, even a heap with sufficient total free space may fail individual allocations, causing `malloc` to return `nullptr` and triggering coroutine allocation failure paths (if the user provided `get_return_object_on_allocation_failure`) or program termination.
 
 **Memory latency hierarchy.** The cost difference between frame locations is dramatic:
 
@@ -406,7 +406,7 @@ Standard LLVM coroutines allocate the frame on the heap via `operator new` (or a
 | Global memory (device heap) | ~400-800 cycles | ~1 TB/s | Default without CoroElide |
 | Device malloc overhead | ~2000+ cycles | N/A | Free-list atomic contention |
 
-The combined overhead of malloc latency + global memory access latency makes un-elided coroutines 50--100x slower than elided ones on GPU. This is the fundamental reason CoroElide is the most performance-critical coroutine optimization for GPU targets.
+The combined overhead of malloc latency + global memory access latency makes un-elided coroutines 50–100x slower than elided ones on GPU. This is the fundamental reason CoroElide is the most performance-critical coroutine optimization for GPU targets.
 
 ### CoroElide: The GPU Escape Analysis
 

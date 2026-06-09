@@ -58,7 +58,7 @@ Now the PHI's operands occupy distinct virtual registers. During later register 
 
 ## Algorithm
 
-`sub_3720740` is organized as five distinct phases driven off a pass-state struct (the `Function`-level `a1` argument plus the `PassState` at `a1[1]`). The phase-1 latch byte at `[PassState+0x70]` lets the driver re-enter the pass without redoing block numbering: if the latch is set, only phases 2--5 run again on the updated CFG.
+`sub_3720740` is organized as five distinct phases driven off a pass-state struct (the `Function`-level `a1` argument plus the `PassState` at `a1[1]`). The phase-1 latch byte at `[PassState+0x70]` lets the driver re-enter the pass without redoing block numbering: if the latch is set, only phases 2–5 run again on the updated CFG.
 
 The five phases below correspond to the four major loop nests in the decompiler output (`0x3720740`--`0x37208BB` numbering, `0x37208C0`--`0x3720A28` PHI map, `0x3720A2F`--`0x3720A88` propagation + cleanup, with the copy-insertion block at `0x3720B40`--`0x3720E18` invoked from inside the PHI map walk).
 

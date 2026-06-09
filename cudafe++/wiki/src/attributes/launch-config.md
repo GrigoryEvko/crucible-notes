@@ -33,7 +33,7 @@ Each CUDA attribute carries a kind byte at `attr_node+8`. The five launch config
 | 107 | 0x6B | `'k'` | `__cluster_dims__` | `sub_4115F0` |
 | 108 | 0x6C | `'l'` | `__block_size__` | `sub_4109E0` |
 
-Kinds 92--94 are part of the original dense block (86--95). Kinds 107 and 108 were added later for cluster/Hopper-era features, occupying gaps in the ASCII range.
+Kinds 92–94 are part of the original dense block (86–95). Kinds 107 and 108 were added later for cluster/Hopper-era features, occupying gaps in the ASCII range.
 
 ## Launch Configuration Struct Layout
 

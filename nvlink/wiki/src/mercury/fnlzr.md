@@ -128,7 +128,7 @@ The function is enormous (48,730 bytes) with over 330 local variables. It operat
 
 The 10 phases execute sequentially within a single function body. The decompiled code is 1,830 lines with over 330 local variables. The following pseudocode reconstructs each phase from `sub_4748F0_0x4748f0.c`.
 
-#### Phase 1: Environment Setup (lines 426--493)
+#### Phase 1: Environment Setup (lines 426–493)
 
 Establishes the error recovery context and parses any injected compiler options.
 
@@ -182,9 +182,9 @@ Key data structures initialized here:
 | `v341` | rbp-0x680 | 8 bytes (pointer) | Saved arena metadata pointer for error handler chain |
 | `v343` | rbp-0x670 | 8 bytes | Previous longjmp target (restored on exit) |
 
-The `_setjmp` / `longjmp` pattern is the only error recovery mechanism. Every early-exit path in phases 2--9 restores `v341` before jumping to the cleanup at `LABEL_20`.
+The `_setjmp` / `longjmp` pattern is the only error recovery mechanism. Every early-exit path in phases 2–9 restores `v341` before jumping to the cleanup at `LABEL_20`.
 
-#### Phase 2: Architecture Validation (lines 500--720)
+#### Phase 2: Architecture Validation (lines 500–720)
 
 Four sequential checks gate entry to the compilation pipeline. Any failure short-circuits to cleanup.
 
@@ -259,7 +259,7 @@ The ELF type byte at `hdr + 7` distinguishes three cases:
 
 Any other value at `hdr + 8` (the secondary type byte) that is not 7 or 0 causes error 7 ("unknown ELF type").
 
-#### Phase 3: Fastpath Optimization (lines 830--880)
+#### Phase 3: Fastpath Optimization (lines 830–880)
 
 Skips the full compilation pipeline when the source and target architectures are binary-compatible.
 
@@ -324,9 +324,9 @@ The function also applies architecture remapping before the bitmask test:
 | 130 | 107 | sm_103 family (internal code 130) maps to sm_100 base (107) |
 | 101 | 110 | sm_101 maps to sm_110 family |
 
-There is an additional special-case bypass at `LABEL_202` (lines 623--636): when the target is sm_121, the source subtype is 2, and the opt-level is not 5 (debug), and the source arch field matches 120 — the engine copies the ELF verbatim without even calling `sub_470DA0`. This handles the sm_120-to-sm_121 uplift case where the binaries are known to be identical.
+There is an additional special-case bypass at `LABEL_202` (lines 623–636): when the target is sm_121, the source subtype is 2, and the opt-level is not 5 (debug), and the source arch field matches 120 — the engine copies the ELF verbatim without even calling `sub_470DA0`. This handles the sm_120-to-sm_121 uplift case where the binaries are known to be identical.
 
-#### Phase 4: Compilation Unit Initialization (lines 722--987)
+#### Phase 4: Compilation Unit Initialization (lines 722–987)
 
 Constructs the 256-byte architecture profile descriptor and the 656-byte compilation unit (CU) object that drives the embedded ptxas backend.
 
@@ -458,7 +458,7 @@ The complete CU descriptor layout:
 | +96..607 | 512 | compilation state | 64 qwords, zero-initialized |
 | +608..655 | 48 | tail metadata | 6 qwords, zero-initialized |
 
-#### Phase 5: Input Section Processing (lines 987--1065)
+#### Phase 5: Input Section Processing (lines 987–1065)
 
 Two separate concerns: tkinfo scanning to detect prior linking, and the two-pass section emission loop.
 
@@ -522,7 +522,7 @@ The tkinfo scanning loop is precise about note format validation. Each note entr
 
 The two-pass section loop processes the same section list (`v75`). Pass 1 (`sub_1CF07A0`, ELF_EmitSymbolTable — 25,255 bytes) builds the symbol table from input sections. Pass 2 (`sub_1CF1690`, ELF_EmitRelocationTable — 16,049 bytes) processes relocation entries. The three section lists (`v75`, `v419[0]`, `v419[1]`) are created from the same section count (`sub_448730`) but accumulate different section categories during processing — symbols, data sections, and relocations respectively.
 
-#### Phase 6: Compilation and ELF Emission (lines 1057--1492)
+#### Phase 6: Compilation and ELF Emission (lines 1057–1492)
 
 The most complex phase. It initializes the compilation pipeline, handles debug info input, creates address mapping structures, dispatches to the appropriate ELF writer, and allocates the output buffer.
 
@@ -680,7 +680,7 @@ The relocatable-vs-complete dispatch is determined by `*(byte*)(v350 + 186)` —
 
 The output allocation at step 6r allocates from the "Final memory space" arena created in Phase 2. This arena's lifetime extends beyond the FNLZR engine return — the caller (`sub_4275C0`) owns the output buffer.
 
-#### Phase 7: Debug Info Serialization (lines 1294--1372)
+#### Phase 7: Debug Info Serialization (lines 1294–1372)
 
 Post-compilation processing of `.debug_line` and `.debug_frame` sections.
 
@@ -737,7 +737,7 @@ The BST (binary search tree) at step 7c maps original `.debug_line` section offs
 
 The `+1` adjustment on the serialized size at steps 7a and 7b (`*(dword*)(result + 16) + 1`) accounts for the NUL terminator byte that the serializer does not include in its reported size.
 
-#### Phase 8: Tkinfo Note Emission (lines 1373--1406)
+#### Phase 8: Tkinfo Note Emission (lines 1373–1406)
 
 Constructs the `.note.nv.tkinfo` metadata section for the output ELF.
 
@@ -795,7 +795,7 @@ The tkinfo note is a structured NOTE section with type 2000. The string table is
 | 3 | `"Build cuda_13.0.r13.0/compiler.36424714_0"` | Build identifier |
 | 4 | Caller annotation | From `a22` parameter |
 
-#### Phase 9: Self-Check Verification (lines 1488--1744)
+#### Phase 9: Self-Check Verification (lines 1488–1744)
 
 When the `--self-check` flag is active (`HIBYTE(a20)` set), the engine implements a two-mode verification system: the initial call performs recompilation and comparison; the recursive call performs the actual comparison.
 
@@ -855,7 +855,7 @@ When the `--self-check` flag is active (`HIBYTE(a20)` set), the engine implement
 
 **Mode B: Recursive call** (`self_check_data != NULL`):
 
-The recursive call enters the same Phase 1--6 pipeline but with `self_check_data` pointing to the section tracking lists from Mode A. After Phase 6 completes, it performs a three-part comparison instead of returning:
+The recursive call enters the same Phase 1–6 pipeline but with `self_check_data` pointing to the section tracking lists from Mode A. After Phase 6 completes, it performs a three-part comparison instead of returning:
 
 ```c
     # 9f. Section content comparison.
@@ -924,7 +924,7 @@ The self-check error codes are intentionally terse:
 | 18 | Relocation tables | Relocation count or content mismatch |
 | 19 | Symbol sections | Section count, name, data, size, or flags mismatch |
 
-#### Phase 10: Cleanup (lines 1746--1830)
+#### Phase 10: Cleanup (lines 1746–1830)
 
 Ordered resource release, with two distinct paths depending on whether the function reached the successful output stage (LABEL_229) or hit an error (LABEL_20).
 
@@ -1002,7 +1002,7 @@ The input file `tcgen05_matmul.cubin` is 18,432 bytes on disk, loaded into memor
 | `e_ident[7]` | +7 | `0x41` | Mercury ELF class marker (`'A'`) |
 | `e_ident[8]` | +8 | `0x08` | Mercury cubin variant |
 | `e_type` | +16 | `0xFF00` | Mercury subtype (pre-finalized) |
-| `e_flags` | +48 | `0x00640003` | `arch=100` in bits 8--15, bit 0 set (needs finalization), bit 1 set (has SASS stub) |
+| `e_flags` | +48 | `0x00640003` | `arch=100` in bits 8–15, bit 0 set (needs finalization), bit 1 set (has SASS stub) |
 | `e_flags[49]` | +49 | `0x0064` | Source architecture (sm_100) |
 
 The Mercury profile at `.nv.merc.profile` contains a version word of `0x100` (1.0) and a capability bitmask of `0x0001` (sm_100 only). The input contains:
@@ -1033,7 +1033,7 @@ config:
   ... other config slots zero ...
 ```
 
-#### Phase 0: Entry and Argument Unpack (lines 426--447)
+#### Phase 0: Entry and Argument Unpack (lines 426–447)
 
 The function prolog saves `a1` into `HIDWORD(v342)` (line 426), copies the ELF pointer into `src` (line 427, `src = a2`), and stores the output pointers (`v346 = a3`, `v347 = a4`). The three cleanup tracking flags are zeroed:
 
@@ -1053,7 +1053,7 @@ v343 = *((qword*)v25 + 1)  // previous longjmp target
 *((qword*)v25 + 1) = env   // redirect longjmp to our local jmp_buf
 ```
 
-#### Phase 1: Environment Setup and Options Parsing (lines 448--498)
+#### Phase 1: Environment Setup and Options Parsing (lines 448–498)
 
 The `_setjmp(env)` at line 448 establishes the error trap. On the forward pass it returns 0 so execution continues at line 456.
 
@@ -1064,7 +1064,7 @@ v406 = &a8          // config pointer into stack frame
 si128 = xmmword_1D40750   // SSE constant for arch profile lookup
 ```
 
-Since `option_string` is `NULL`, the entire block at lines 472--493 is skipped. The `a8` config parameter is checked at line 494: since `(dword)a8 == 0` is false (opt-level 4 is stored in low dword), `v33 = a8 = 4` and `HIDWORD(v342) = 4`.
+Since `option_string` is `NULL`, the entire block at lines 472–493 is skipped. The `a8` config parameter is checked at line 494: since `(dword)a8 == 0` is false (opt-level 4 is stored in low dword), `v33 = a8 = 4` and `HIDWORD(v342) = 4`.
 
 Wait — re-reading line 496: the check is `if (!(_DWORD)a8) v33 = HIDWORD(v342)`. Since `a8 = 0x0000000400000000`, the low dword is 0, so this branch is taken: `v33 = HIDWORD(v342) = 100` (the target arch). This is the "default config arch to caller arch" step. The target_arch field of config (stored in a8's low dword) is replaced with 100.
 
@@ -1075,9 +1075,9 @@ v34 = 1
 if (!BYTE4(a10)) v34 = BYTE5(a10)  // v34 stays 1 because BYTE4(a10) = 1
 ```
 
-#### Phase 2: Architecture Validation (lines 500--723)
+#### Phase 2: Architecture Validation (lines 500–723)
 
-**2a. Zero the module context** (lines 501--504):
+**2a. Zero the module context** (lines 501–504):
 
 ```text
 v379 = 0                           // reloc_ctx handle
@@ -1092,7 +1092,7 @@ v419[4] = src                       // elf_data pointer
 v35 = sub_43D9A0(src)   // returns 1 -- this IS a valid device ELF
 ```
 
-**2c. Read ELF header fields** (lines 527--529):
+**2c. Read ELF header fields** (lines 527–529):
 
 ```text
 v42 = v419[4]              = 0x7f8a40000000
@@ -1100,7 +1100,7 @@ v43 = sub_448360(src)      = 0x7f8a40000040  (points to the class+type+flags blo
 v44 = *(dword*)(v43 + 48)  = 0x00640003      (e_flags)
 ```
 
-**2d. Finalization-needed check** (lines 530--562):
+**2d. Finalization-needed check** (lines 530–562):
 
 ```text
 *(byte*)(v43 + 7) == 65        // YES: Mercury ELF class marker 0x41
@@ -1108,7 +1108,7 @@ v44 = *(dword*)(v43 + 48)  = 0x00640003      (e_flags)
   goto LABEL_42                 // skip the ineligibility return path
 ```
 
-**2e. Subtype validation** (lines 564--566):
+**2e. Subtype validation** (lines 564–566):
 
 ```text
 v67 = (*(word*)(v43+16) != 0xFF00) && (*(word*)(v43+16) - 1 > 1u)
@@ -1117,7 +1117,7 @@ v67 = (*(word*)(v43+16) != 0xFF00) && (*(word*)(v43+16) - 1 > 1u)
   -> pass (Mercury 0xFF00 subtype accepted)
 ```
 
-**2f. Create "Final memory space" arena** (lines 567--572):
+**2f. Create "Final memory space" arena** (lines 567–572):
 
 ```text
 v352 = 1                                         // arena flag set -- cleanup required
@@ -1127,7 +1127,7 @@ v351 = v68                                        // memory space root handle
 v386 = v68
 ```
 
-**2g. Set capmerc flag in module context** (lines 573--577):
+**2g. Set capmerc flag in module context** (lines 573–577):
 
 ```text
 v69 = 0x4000
@@ -1136,7 +1136,7 @@ if ((v69 & v44 /* = 3 */) != 0)             // 2 & 3 = 2, non-zero
   LOBYTE(v419[54]) = 1                       // capmerc transform flag ON
 ```
 
-**2h. Extract architecture profile** (lines 578--580):
+**2h. Extract architecture profile** (lines 578–580):
 
 ```text
 v71 = sub_43E610(v419[4], &v387)   // v71 = v356 = 1 (profile found)
@@ -1145,9 +1145,9 @@ v71 = sub_43E610(v419[4], &v387)   // v71 = v356 = 1 (profile found)
                                     // v389 = capability mask at offset +2
 ```
 
-**2i. Version ceiling check** (lines 581--599): `v388 = 0x100 < 0x101` — check passes.
+**2i. Version ceiling check** (lines 581–599): `v388 = 0x100 < 0x101` — check passes.
 
-**2j. Fastpath-eligible branch** (lines 601--654): This is a Mercury ELF (`v72 == 65`), `v71 && v389` are true, so line 601 takes the `if` branch. Line 603 checks `v72 != 65` — false, so we fall into `LABEL_79`:
+**2j. Fastpath-eligible branch** (lines 601–654): This is a Mercury ELF (`v72 == 65`), `v71 && v389` are true, so line 601 takes the `if` branch. Line 603 checks `v72 != 65` — false, so we fall into `LABEL_79`:
 
 ```text
 LABEL_79:
@@ -1179,7 +1179,7 @@ v388     = 0x100 (Mercury version 1.0)
 v389     = 0x0001 (capability mask: sm_100 bit)
 ```
 
-#### Phase 3: Fastpath Optimization Check (lines 820--881)
+#### Phase 3: Fastpath Optimization Check (lines 820–881)
 
 This phase is visited *after* Phase 4's first two allocations, but logically it is the "skip the pipeline" branch. At line 821:
 
@@ -1190,7 +1190,7 @@ if (!v209 && !v348)         // v348 = a5 = NULL, so skip_fastpath=false
   # enter the fastpath attempt block
 ```
 
-Source architecture extraction (line 836--839):
+Source architecture extraction (line 836–839):
 
 ```text
 v241 = *(dword*)(v43 + 48) = 0x00640003
@@ -1198,7 +1198,7 @@ if (*(byte*)(v43+7) == 65):
   v112 = (v241 >> 8) & 0xFFFF = 0x6400 >> 8 = 0x64 = 100  // Mercury
 ```
 
-Invert flag (lines 833--835):
+Invert flag (lines 833–835):
 
 ```text
 v239 = 0
@@ -1217,7 +1217,7 @@ Because target == source (100 == 100) and the capability mask at `v387+16` conta
 
 The decompiled code at line 844 takes the `if (v242)` branch only when fastpath applies. In our walkthrough, `v242 = 0`, so we fall through to Phase 4 proper at line 882.
 
-**(Alternative fastpath outcome)** If the source had been sm_100 but the ELF came from a ptxas cross-compile targeting sm_103 and we were finalizing for sm_100 — and sm_100 was a subset of the declared capability mask — then `v242 = 1` would trigger the fastpath at lines 845--880:
+**(Alternative fastpath outcome)** If the source had been sm_100 but the ELF came from a ptxas cross-compile targeting sm_103 and we were finalizing for sm_100 — and sm_100 was a subset of the declared capability mask — then `v242 = 1` would trigger the fastpath at lines 845–880:
 
 ```text
 # 3e. Copy input ELF verbatim
@@ -1241,9 +1241,9 @@ goto LABEL_20    // skip to cleanup
 
 In our example, this branch does NOT trigger, so we proceed to Phase 4.
 
-#### Phase 4: Compilation Unit Initialization (lines 882--988)
+#### Phase 4: Compilation Unit Initialization (lines 882–988)
 
-**4a. Build section lists** (lines 724--733, executed earlier at LABEL_55):
+**4a. Build section lists** (lines 724–733, executed earlier at LABEL_55):
 
 ```text
 v74 = sub_448730(elf_data) = 11     // section count
@@ -1258,7 +1258,7 @@ v419[6] = sub_45AC50(100)   // SM100 instruction encoder
 v419[7] = sub_459640(100)   // SM100 instruction decoder
 ```
 
-**4b. Store mode flags** (lines 735--739):
+**4b. Store mode flags** (lines 735–739):
 
 ```text
 BYTE1(v419[58]) = v34 = 1          // PIC mode enabled
@@ -1276,7 +1276,7 @@ v30 = sub_1CEF5B0(v75, &v379, v419)   // ELF_ProcessRelocations
 
 This walks the input ELF's `.rel.*` sections and populates `v75` with section entries plus fills `v379` with a relocation context. Our input has `.rel.nv.constant0.tcgen05_matmul` with 2 entries, so `v379` becomes a non-NULL handle carrying those two `R_CUDA_ABS32_LO_20` records. `v30 = 0` on success.
 
-**4d. Allocate 256-byte profile descriptor** (lines 758--774):
+**4d. Allocate 256-byte profile descriptor** (lines 758–774):
 
 ```text
 v94 = *((qword*)sub_44F410(v75, &v379) + 3)   // arena from module context
@@ -1284,7 +1284,7 @@ v350 = sub_4307C0(v94, 256)                    // allocate 256 bytes
 v353 = 1                                        // profile alloc flag set
 ```
 
-**4e. Allocate memory space object** (lines 776--779):
+**4e. Allocate memory space object** (lines 776–779):
 
 ```text
 v102 = sub_488470()   // v102 = 0x7f8a44000000 (fresh memspace)
@@ -1293,7 +1293,7 @@ v383 = v102
 if (!v102) return 11  // allocation failure -- our case: v102 != NULL
 ```
 
-**4f. Allocate 656-byte CU descriptor** (lines 785--829):
+**4f. Allocate 656-byte CU descriptor** (lines 785–829):
 
 ```text
 v103 = sub_4B6F40(656, v102)   // v103 = 0x7f8a44001000 (CU address)
@@ -1312,7 +1312,7 @@ v103 = sub_4B6F40(656, v102)   // v103 = 0x7f8a44001000 (CU address)
 *(qword*)(v350 + 88) = v103            // profile[11] = CU pointer
 ```
 
-**4g. Populate CU target/source arch** (lines 911--917):
+**4g. Populate CU target/source arch** (lines 911–917):
 
 ```text
 *((dword*)v350 + 2) = HIDWORD(v342) = 100   // target arch at +8
@@ -1322,7 +1322,7 @@ if (*(byte*)(v43+7) == 65):  // Mercury
 *((dword*)v350 + 3) = 100    // source arch at +12
 ```
 
-**4h. ELF subtype branch** (lines 918--932): `*(word*)(v43+16) = 0xFF00 != 1`, so this is NOT a relocatable object — take the `else` branch:
+**4h. ELF subtype branch** (lines 918–932): `*(word*)(v43+16) = 0xFF00 != 1`, so this is NOT a relocatable object — take the `else` branch:
 
 ```text
 *((byte*)v350 + 191) = 1              // complete object flag
@@ -1330,7 +1330,7 @@ if (*(byte*)(v43+7) == 65):  // Mercury
 *((dword*)v350 + 5)  = a10 = 0         // opt level
 ```
 
-**4i. Config field population** (lines 933--964):
+**4i. Config field population** (lines 933–964):
 
 ```text
 *((word*)v350 + 12)  = WORD2(a10) = 0         // line_info_word
@@ -1352,9 +1352,9 @@ v350[20] = a23 = 0
 v350[19] = a24 = 0
 ```
 
-**4j. Self-check tracker** (lines 965--979): `v124 = BYTE5(a20) = 0` — skipped.
+**4j. Self-check tracker** (lines 965–979): `v124 = BYTE5(a20) = 0` — skipped.
 
-**4k. Set Mercury profile flag** (lines 980--988):
+**4k. Set Mercury profile flag** (lines 980–988):
 
 ```text
 if (*((dword*)v350 + 3) > 99u && v114)   // 100 > 99, profile valid
@@ -1379,9 +1379,9 @@ v350 + 191 = 1                // complete object
 v350 + 248 = 1                // mercury profile valid
 ```
 
-#### Phase 5: Input Section Processing (lines 989--1056)
+#### Phase 5: Input Section Processing (lines 989–1056)
 
-**5a. Scan `.note.nv.tkinfo`** (lines 989--1028):
+**5a. Scan `.note.nv.tkinfo`** (lines 989–1028):
 
 ```text
 v132 = v419[4] = 0x7f8a40000000
@@ -1409,7 +1409,7 @@ note[0]:
 
 Since neither "nvlink" nor "nvJIT API" stamped this cubin, `v67` remains at its previous value of `v35 = 1` (the device_elf_valid flag). Wait — re-reading line 1026: `v67 = v35` only when the walk exits via LABEL_134 without finding a match. So `v67 = 1` here, but this is the default-false case because the scan completed without a "break" hit.
 
-Actually, the logic is inverted: the tool name check sets a "break" that jumps out of the walk. If no tool note matched, the walk falls through the loop back-edge. Re-reading lines 1017--1019: the strcmp result being equal causes `break`, which exits the walking loop, and then `v67 = 1` is set. If there's no match, `v134 += v140 + 24` advances to next note, and the inner loop check at 1022 terminates because `v135 <= v134` -> `goto LABEL_134`. At LABEL_134, `v67 = v35 = 1` is assigned at line 1026 *before* the label. Wait — line 1026 is executed only in the fall-through path from the `while(1)` loop's natural exit. The default-initialized value of `v67` at line 989 is... actually `v67` was set to `false` earlier at line 564 as part of the subtype check, then reassigned as an accumulator. Let me trust the code: since neither "nvlink" nor "nvJIT API" match, the break doesn't trigger, the walk exits, and `v67 = v35 = 1` at line 1026.
+Actually, the logic is inverted: the tool name check sets a "break" that jumps out of the walk. If no tool note matched, the walk falls through the loop back-edge. Re-reading lines 1017–1019: the strcmp result being equal causes `break`, which exits the walking loop, and then `v67 = 1` is set. If there's no match, `v134 += v140 + 24` advances to next note, and the inner loop check at 1022 terminates because `v135 <= v134` -> `goto LABEL_134`. At LABEL_134, `v67 = v35 = 1` is assigned at line 1026 *before* the label. Wait — line 1026 is executed only in the fall-through path from the `while(1)` loop's natural exit. The default-initialized value of `v67` at line 989 is... actually `v67` was set to `false` earlier at line 564 as part of the subtype check, then reassigned as an accumulator. Let me trust the code: since neither "nvlink" nor "nvJIT API" match, the break doesn't trigger, the walk exits, and `v67 = v35 = 1` at line 1026.
 
 Wait — that's wrong semantically. The break-on-match sets `v67 = 1` (already_linked = true). If no match, `v67` stays false. Looking again at the assembly pattern, `v67` is being used as a counter value fed into `LOBYTE(v419[66])` at line 1028. For our input, the cubin was stamped by `cicc` (the frontend), not `nvlink` or `nvJIT API`, so `v67` should end up false.
 
@@ -1417,7 +1417,7 @@ Wait — that's wrong semantically. The break-on-match sets `v67 = 1` (already_l
 LOBYTE(v419[66]) = 0   // already_linked = false
 ```
 
-**5b. Symbol table emission** (lines 1029--1032, 1782--1789):
+**5b. Symbol table emission** (lines 1029–1032, 1782–1789):
 
 Actually the control flow is inverted: the for-loop at line 1029 starts with `i = 0` and the terminating branch is at line 1031 when `i >= sub_464BB0(v75)`. Inside the loop body at line 1782, it calls `sub_1CF07A0` on each section:
 
@@ -1431,7 +1431,7 @@ for (i = 0; i < sub_464BB0(v75); ++i):
 
 Our input has 11 sections populated into `v75` during Phase 4a. Pass 1 processes each one. For the `.symtab` section, `sub_1CF07A0` builds the symbol table entries in the working memspace; for `.nv.merc.*` sections it classifies them into the module context's section categorization arrays. Result: 4 symbols processed, no error.
 
-**5c. Relocation table emission** (lines 1033--1055):
+**5c. Relocation table emission** (lines 1033–1055):
 
 ```text
 for (j = 0; j < sub_464BB0(v75); ++j):
@@ -1443,9 +1443,9 @@ for (j = 0; j < sub_464BB0(v75); ++j):
 
 The 2 relocations in `.rel.nv.constant0.tcgen05_matmul` are processed. No error.
 
-#### Phase 6: Compilation and ELF Emission (lines 1057--1492)
+#### Phase 6: Compilation and ELF Emission (lines 1057–1492)
 
-**6a. Initialize compilation pipeline** (lines 1057--1065):
+**6a. Initialize compilation pipeline** (lines 1057–1065):
 
 ```text
 v147 = v350
@@ -1463,9 +1463,9 @@ v400[0] = 0; v400[32] = 0
 3. Schedule instructions across the 4-issue SM100 pipelines
 4. Emit final SASS bytes into the CU's code buffer (allocated lazily at `cu+24`)
 
-**6b. Relocation context bypass** (lines 1066--1071): `a19 = 0` (no output relocation context), so this block is skipped.
+**6b. Relocation context bypass** (lines 1066–1071): `a19 = 0` (no output relocation context), so this block is skipped.
 
-**6c. Debug info input extraction** (lines 1072--1079):
+**6c. Debug info input extraction** (lines 1072–1079):
 
 ```text
 v357 = v419[10]   // = NULL (no .debug_line in our input)
@@ -1475,9 +1475,9 @@ v152 = (v419[10] != 0) = false
 v153 = (v419[11] != 0) = false
 ```
 
-**6d--6h. Debug info paths**: all skipped because `v357`, `v358`, `v360` are NULL.
+**6d–6h. Debug info paths**: all skipped because `v357`, `v358`, `v360` are NULL.
 
-**6f. Create 104-byte debug output context** (lines 1132--1152): This is allocated unconditionally:
+**6f. Create 104-byte debug output context** (lines 1132–1152): This is allocated unconditionally:
 
 ```text
 v175 = vtable_call(v350[11], 16, 104)   // alloc 104 bytes
@@ -1497,11 +1497,11 @@ v175[11] = 0
 v175[12] = 0xFFFFFFFF
 ```
 
-Lines 1153--1194 skipped (no debug sections to process).
+Lines 1153–1194 skipped (no debug sections to process).
 
 **6i. Set debug-present flag** (line 1197): `*((byte*)v350 + 25) |= 0` — unchanged.
 
-**6j. Create 80-byte output tracking context** (lines 1199--1226):
+**6j. Create 80-byte output tracking context** (lines 1199–1226):
 
 ```text
 v184 = vtable_call(v350[11], 16, 80)   // 80 bytes
@@ -1519,9 +1519,9 @@ v350[9] = v184             // profile[9] = output tracker
 v188[22] = 0
 ```
 
-**6k. Relocation context propagation** (lines 1227--1234): `a19 = 0`, skipped.
+**6k. Relocation context propagation** (lines 1227–1234): `a19 = 0`, skipped.
 
-**6l. Function index processing** (lines 1235--1256): `v379 != NULL` (we have the reloc_ctx from Phase 4c), so:
+**6l. Function index processing** (lines 1235–1256): `v379 != NULL` (we have the reloc_ctx from Phase 4c), so:
 
 ```text
 v190 = v419[0]   // auxiliary list A (function indices)
@@ -1545,7 +1545,7 @@ for (k = 0; k < sub_464BB0(v190); ++k):
 
 It also populates `v384` (the additional compilation context), so `v385` may be set.
 
-**6m. Invert function index bitmask** (lines 1262--1273):
+**6m. Invert function index bitmask** (lines 1262–1273):
 
 ```text
 if (LOWORD(v419[64])) {   // function count = 1
@@ -1559,9 +1559,9 @@ if (LOWORD(v419[64])) {   // function count = 1
 }
 ```
 
-For our single kernel, one dword is inverted. `v419[63]` was allocated at lines 888--901 (8 bytes via vtable call).
+For our single kernel, one dword is inverted. `v419[63]` was allocated at lines 888–901 (8 bytes via vtable call).
 
-**6n, 6o. Debug info finalize** (lines 1274--1292): `v360 = NULL`, `v367 = false`, both skipped.
+**6n, 6o. Debug info finalize** (lines 1274–1292): `v360 = NULL`, `v367 = false`, both skipped.
 
 **6p. Destroy compilation mutex** (line 1293):
 
@@ -1569,17 +1569,17 @@ For our single kernel, one dword is inverted. `v419[63]` was allocated at lines 
 pthread_mutex_destroy(v419[30])
 ```
 
-**Phase 7 (embedded, lines 1294--1315)**: Debug line/frame serialization — both `v357` and `v358` are NULL, skipped entirely.
+**Phase 7 (embedded, lines 1294–1315)**: Debug line/frame serialization — both `v357` and `v358` are NULL, skipped entirely.
 
-**Phase 7c (embedded, lines 1316--1372)**: Debug address remapping — `v419[14]` is NULL (no `.debug_info` relocations in our input), skipped.
+**Phase 7c (embedded, lines 1316–1372)**: Debug address remapping — `v419[14]` is NULL (no `.debug_info` relocations in our input), skipped.
 
-**Phase 8 (embedded, lines 1373--1406)**: Tkinfo emission. Check at line 1373: `BYTE3(v419[54]) && LOBYTE(v419[58])`. `BYTE3(v419[54])` is the `--verbose-tkinfo` flag, unset in our config — skipped.
+**Phase 8 (embedded, lines 1373–1406)**: Tkinfo emission. Check at line 1373: `BYTE3(v419[54]) && LOBYTE(v419[58])`. `BYTE3(v419[54])` is the `--verbose-tkinfo` flag, unset in our config — skipped.
 
 **Continuing Phase 6...**
 
-**6q. Relocation-context output path** (lines 1407--1428): `a19 = 0`, skipped, fall through to the ELF writer dispatch.
+**6q. Relocation-context output path** (lines 1407–1428): `a19 = 0`, skipped, fall through to the ELF writer dispatch.
 
-**6q. Dispatch to ELF writer** (lines 1430--1459):
+**6q. Dispatch to ELF writer** (lines 1430–1459):
 
 ```text
 v256 = sub_448730(elf_data) = 11             // section count
@@ -1614,7 +1614,7 @@ else
 
 So `v419[2] = 4096`.
 
-**6r. Allocate output buffer** (lines 1460--1467):
+**6r. Allocate output buffer** (lines 1460–1467):
 
 ```text
 v269 = v419[2] = 4096
@@ -1624,7 +1624,7 @@ memset(v274, 0, 4096)
 v419[5] = v274   // output buffer in module context
 ```
 
-**6r (continued). Write the ELF** (lines 1468--1472):
+**6r (continued). Write the ELF** (lines 1468–1472):
 
 ```text
 if (*((byte*)v350 + 186) /* = 0 */)
@@ -1635,13 +1635,13 @@ else
 
 `sub_1CF3720` walks `v419[52]` (output section list) and `v419[5]` (output buffer), emitting:
 
-1. ELF header at offset 0 (`e_ident[7] = 0x41`, `e_flags = 0x006400FF` with bit 0 CLEARED now — finalization complete, bits 5--7 set to mark SASS present)
+1. ELF header at offset 0 (`e_ident[7] = 0x41`, `e_flags = 0x006400FF` with bit 0 CLEARED now — finalization complete, bits 5–7 set to mark SASS present)
 2. Section contents at their computed offsets
 3. Section header table at the tail
 
 For each `.nv.merc.*.tcgen05_matmul` section in the input, it emits the corresponding `.text.tcgen05_matmul` / `.nv.info.tcgen05_matmul` / etc. output sections (dropping the `.nv.merc.` prefix). The 2048-byte Mercury IR input is replaced with ~1920 bytes of finalized sm_100 SASS generated by the OCG backend.
 
-**6s. Store final output pointer and size** (lines 1488--1492):
+**6s. Store final output pointer and size** (lines 1488–1492):
 
 ```text
 v277 = HIBYTE(a20) = 0   // self-check flag
@@ -1650,7 +1650,7 @@ v278 = v346               // caller's output buf pointer
 *v278 = v419[5]           // hand off output buffer
 ```
 
-#### Phase 7: Debug Info Serialization (lines 1294--1372)
+#### Phase 7: Debug Info Serialization (lines 1294–1372)
 
 Already visited as embedded logic inside Phase 6. In our example, the entire debug path is bypassed because the input cubin has no `.debug_line` or `.debug_frame` sections. Had they been present, the serializer would:
 
@@ -1659,7 +1659,7 @@ Already visited as embedded logic inside Phase 6. In our example, the entire deb
 3. Call `sub_477510(v175, 0)` to extract the output bytes
 4. Walk `v419[14]` relocations and remap `.debug_line` offsets through the BST built by `sub_4826F0`
 
-#### Phase 8: Tkinfo Note Emission (lines 1373--1406)
+#### Phase 8: Tkinfo Note Emission (lines 1373–1406)
 
 Also bypassed in our example because `BYTE3(v419[54]) = 0` (`--verbose-tkinfo` not passed). In a `--verbose-tkinfo` run, the phase would:
 
@@ -1670,34 +1670,34 @@ Also bypassed in our example because `BYTE3(v419[54]) = 0` (`--verbose-tkinfo` n
 5. Append `"Build cuda_13.0.r13.0/compiler.36424714_0"`
 6. Append the caller annotation string (`a22`)
 
-#### Phase 9: Self-Check Verification (lines 1488--1744)
+#### Phase 9: Self-Check Verification (lines 1488–1744)
 
 Check at line 1493: `v277 = HIBYTE(a20) = 0`, so the entire self-check block is skipped. The engine proceeds directly to LABEL_229 at line 1746.
 
 Had `--self-check` been passed, the flow would be:
 
-1. Copy 152 bytes of config into `v417` (line 1497--1507)
+1. Copy 152 bytes of config into `v417` (line 1497–1507)
 2. Clear `v417[96]`, `v417[22]`, `v417[73]` (disable nested self-check + output reloc)
 3. Recursively call `sub_4748F0` with the just-produced output buffer as the new input and `&v396` as `self_check_data`
 4. On return, compare sections / relocations / symbols against the tracked lists
 
-#### Phase 10: Cleanup (lines 1746--1829)
+#### Phase 10: Cleanup (lines 1746–1829)
 
-**10a. Destroy encoder/decoder tables** (lines 1747--1748):
+**10a. Destroy encoder/decoder tables** (lines 1747–1748):
 
 ```text
 sub_45B680(&v419[6], v27)   // SM100 encoder destroyed
 sub_45B680(&v419[7], v27)   // SM100 decoder destroyed
 ```
 
-**10b. Free debug scratch buffers** (lines 1749--1750):
+**10b. Free debug scratch buffers** (lines 1749–1750):
 
 ```text
 sub_4746C0(v400)   // frame hash scratch
 sub_4746C0(v399)   // line hash scratch
 ```
 
-**10c. Free option/config dynamic memory** (lines 1751--1754):
+**10c. Free option/config dynamic memory** (lines 1751–1754):
 
 ```text
 if (*((qword*)&v404 + 1))   // = NULL
@@ -1708,7 +1708,7 @@ if ((qword)v416)             // = NULL (no options string parsed)
 
 Both pointers are NULL, so nothing freed.
 
-**10d. Drain deferred-free list** (lines 1755--1761):
+**10d. Drain deferred-free list** (lines 1755–1761):
 
 ```text
 while (true):
@@ -1719,7 +1719,7 @@ while (true):
 
 Empty list in our case, loop exits immediately.
 
-**10e. Restore error handler** (lines 1762--1773):
+**10e. Restore error handler** (lines 1762–1773):
 
 ```text
 v209 = (v354 == 0)              // saved_byte0 was 0
@@ -1736,7 +1736,7 @@ v30 = 0                          // success return code
 v341[1] = v35
 ```
 
-**10f. Destroy compilation contexts** (lines 1774--1822):
+**10f. Destroy compilation contexts** (lines 1774–1822):
 
 ```text
 LABEL_3:

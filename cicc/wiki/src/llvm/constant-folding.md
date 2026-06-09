@@ -54,7 +54,7 @@ The top-level dispatch is on operand count:
 
 ## Foldable Intrinsics Master Table
 
-### Standard LLVM Intrinsic IDs (0--211)
+### Standard LLVM Intrinsic IDs (0–211)
 
 These are dispatched via a jump table at `jpt_14D91F0` in the eligibility checker. The evaluator handles them via cascading opcode comparisons.
 
@@ -88,7 +88,7 @@ These are dispatched via a jump table at `jpt_14D91F0` in the eligibility checke
 | 147 | `0x93` | `llvm.tan` | Trig |
 | 187 | `0xBB` | `llvm.sqrt` | Root |
 | 188 | `0xBC` | `llvm.trunc` | Rounding |
-| 189--211 | `0xBD`--`0xD3` | Integer ops (umax, sadd.with.overflow, etc.) | Integer |
+| 189–211 | `0xBD`--`0xD3` | Integer ops (umax, sadd.with.overflow, etc.) | Integer |
 
 ### NVVM-Specific Intrinsic IDs (>211)
 
@@ -96,36 +96,36 @@ These are dispatched via cascading range checks with bitmask tests in the eligib
 
 | ID Range | Hex | Intrinsic | Category |
 |----------|-----|-----------|----------|
-| 3637--3639 | `0xE35`--`0xE37` | `nvvm.bitcast.*` / `nvvm.move.*` | Bitwise |
+| 3637–3639 | `0xE35`--`0xE37` | `nvvm.bitcast.*` / `nvvm.move.*` | Bitwise |
 | 3660 | `0xE4C` | `nvvm.ptr.gen.to.*` | Pointer |
-| 3764--3765 | `0xEB4`--`0xEB5` | `nvvm.ceil.f` / `nvvm.ceil.d` | Rounding |
-| 3778--3779 | `0xEC2`--`0xEC3` | `nvvm.ctlz.i` / `nvvm.ctlz.ll` | Bitwise |
+| 3764–3765 | `0xEB4`--`0xEB5` | `nvvm.ceil.f` / `nvvm.ceil.d` | Rounding |
+| 3778–3779 | `0xEC2`--`0xEC3` | `nvvm.ctlz.i` / `nvvm.ctlz.ll` | Bitwise |
 | 3787 | `0xECB` | `nvvm.cos.approx.ftz.f` | Trig |
 | 3811 | `0xEE3` | `nvvm.div.*` / `nvvm.fabs` variant | Arith |
-| 3870--3871 | `0xF1E`--`0xF1F` | `nvvm.exp2.approx.ftz.f` / `.d` | Exponential |
-| 3911--3912 | `0xF47`--`0xF48` | `nvvm.fabs.f` / `.d` | Absolute |
-| 3924--3925 | `0xF54`--`0xF55` | `nvvm.floor.f` / `.d` | Rounding |
+| 3870–3871 | `0xF1E`--`0xF1F` | `nvvm.exp2.approx.ftz.f` / `.d` | Exponential |
+| 3911–3912 | `0xF47`--`0xF48` | `nvvm.fabs.f` / `.d` | Absolute |
+| 3924–3925 | `0xF54`--`0xF55` | `nvvm.floor.f` / `.d` | Rounding |
 | 3944 | `0xF68` | `nvvm.log.approx.ftz.f` | Logarithmic |
 | 3946 | `0xF6A` | `nvvm.log2.approx.ftz.f` | Logarithmic |
 | 3948 | `0xF6C` | `nvvm.log10.approx.ftz.f` | Logarithmic |
 | 3950 | `0xF6E` | `nvvm.rcp.approx.ftz.d` | Reciprocal |
 | 3952 | `0xF70` | `nvvm.rsqrt.approx.ftz.f` | Root |
 | 3954 | `0xF72` | `nvvm.sqrt.f` / `.approx.ftz.f` | Root |
-| 4072--4074 | `0xFE8`--`0xFEA` | `nvvm.sin`/`cos.approx.ftz` variants | Trig |
-| 4114--4115 | `0x1012`--`0x1013` | `nvvm.max.i` / `.ui` | MinMax |
-| 4118--4119 | `0x1016`--`0x1017` | `nvvm.min.i` / `.ui` | MinMax |
-| 4167--4168 | `0x1047`--`0x1048` | `nvvm.max.ll` / `.ull` | MinMax |
-| 4170--4172 | `0x104A`--`0x104C` | `nvvm.min.ll` / `.ull` | MinMax |
-| 4230--4231 | `0x1086`--`0x1087` | `nvvm.mul.hi.*` | Multiply |
+| 4072–4074 | `0xFE8`--`0xFEA` | `nvvm.sin`/`cos.approx.ftz` variants | Trig |
+| 4114–4115 | `0x1012`--`0x1013` | `nvvm.max.i` / `.ui` | MinMax |
+| 4118–4119 | `0x1016`--`0x1017` | `nvvm.min.i` / `.ui` | MinMax |
+| 4167–4168 | `0x1047`--`0x1048` | `nvvm.max.ll` / `.ull` | MinMax |
+| 4170–4172 | `0x104A`--`0x104C` | `nvvm.min.ll` / `.ull` | MinMax |
+| 4230–4231 | `0x1086`--`0x1087` | `nvvm.mul.hi.*` | Multiply |
 | 4413 | `0x113D` | `nvvm.sin.approx.ftz.f` | Trig |
 | 4475, 4478 | `0x117B`, `0x117E` | `nvvm.sqrt.f` / `.rn.d` | Root |
-| 4483--4484 | `0x1183`--`0x1184` | `nvvm.sqrt.approx.f` / `.ftz.f` | Root |
+| 4483–4484 | `0x1183`--`0x1184` | `nvvm.sqrt.approx.f` / `.ftz.f` | Root |
 | 5293 | `0x14AD` | `nvvm.f2i` / `nvvm.d2i` | Conversion |
 | 5300 | `0x14B4` | `nvvm.i2f` / `nvvm.i2d` | Conversion |
-| 7297--7298 | `0x1C81`--`0x1C82` | `nvvm.fmax.f` / `.d` | MinMax |
-| 7301--7302 | `0x1C85`--`0x1C86` | `nvvm.fmin.f` / `.d` | MinMax |
-| 7334--7335 | `0x1CA6`--`0x1CA7` | `nvvm.fmax.ftz.f` / `.ftz.nan.f` | MinMax |
-| 7339--7340 | `0x1CAB`--`0x1CAC` | `nvvm.fmin.ftz.f` / `.ftz.nan.f` | MinMax |
+| 7297–7298 | `0x1C81`--`0x1C82` | `nvvm.fmax.f` / `.d` | MinMax |
+| 7301–7302 | `0x1C85`--`0x1C86` | `nvvm.fmin.f` / `.d` | MinMax |
+| 7334–7335 | `0x1CA6`--`0x1CA7` | `nvvm.fmax.ftz.f` / `.ftz.nan.f` | MinMax |
+| 7339–7340 | `0x1CAB`--`0x1CAC` | `nvvm.fmin.ftz.f` / `.ftz.nan.f` | MinMax |
 
 ### Name-Based Foldable Functions (Case 0 Fallthrough)
 

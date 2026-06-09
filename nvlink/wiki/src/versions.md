@@ -111,7 +111,7 @@ The profile table groups architectures into four named families, stored as liter
 | **Turing** | `0x1D409DC` | sm_75 | Pre-Ampere, minimum supported arch |
 | **Ampere** | `0x1D40A0F` | sm_80, sm_86, sm_87, sm_88, sm_89 | GA100 / GA10x / AD10x |
 | **Hopper** | `0x1D40AF0` | sm_90, sm_90a | GH100, cluster launch, WGMMA |
-| **Blackwell** | `0x1D40B6E` | sm_100--sm_121 (all sub-variants) | Mercury ISA, capsule output |
+| **Blackwell** | `0x1D40B6E` | sm_100–sm_121 (all sub-variants) | Mercury ISA, capsule output |
 
 Note that sm_89 (Ada Lovelace / AD102-AD104) is classified under the "Ampere" family in nvlink's profile database, not in a separate "Ada" family. The binary contains no "Ada" or "Lovelace" family name string. From the linker's perspective, sm_89 shares the Ampere ISA class and encoding tables, despite being a distinct physical GPU generation. Similarly, sm_103 through sm_121 are all classified as "Blackwell" regardless of their physical deployment (Blackwell Ultra, Jetson Thor, consumer RTX 50-series, DGX Spark).
 
@@ -176,7 +176,7 @@ The architecture name parser at `sub_486FF0` and the format strings `sm_%2d%s` /
 SM Arch ('%s') must be >= 20
 ```
 
-This error string at `0x1D34F8E` is emitted when the parsed SM number is below 20. Architectures sm_10 through sm_19 (compute capabilities 1.0--1.3) are syntactically recognized but immediately rejected.
+This error string at `0x1D34F8E` is emitted when the parsed SM number is below 20. Architectures sm_10 through sm_19 (compute capabilities 1.0–1.3) are syntactically recognized but immediately rejected.
 
 Architectures between sm_20 and sm_72 are parseable and do not trigger the `>= 20` error, but they are not present in the profile database initialized by `sub_484F50`. Attempting to use them produces architecture-not-found errors during profile lookup. The following legacy architecture names appear in the binary's string pool (in the embedded ptxas component) but have no corresponding profile entries:
 

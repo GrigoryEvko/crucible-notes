@@ -51,7 +51,7 @@ options[opt_count] = '\0';
 process_fill_in(diagnostic_record, spec_letter, options, fill_in_index);
 ```
 
-The maximum of 29 option characters is enforced by an assertion. In practice, specifiers use 0--3 option characters.
+The maximum of 29 option characters is enforced by an assertion. In practice, specifiers use 0–3 option characters.
 
 ## Fill-In Kinds
 
@@ -92,7 +92,7 @@ Each fill-in entry is a 40-byte node allocated from a pool (`qword_106B490`) or 
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
-| 0 | 4 | `kind` | Fill-in kind (0--7, from specifier letter mapping) |
+| 0 | 4 | `kind` | Fill-in kind (0–7, from specifier letter mapping) |
 | 4 | 1 | `used_flag` | Set to 1 when consumed during expansion |
 | 5 | 3 | (padding) | — |
 | 8 | 8 | `next` | Next fill-in in linked list |
@@ -176,7 +176,7 @@ When a template string must reference multiple fill-ins of the same kind, a trai
 | `%sq1` | First string fill-in, quoted |
 | `%sq2` | Second string fill-in, quoted |
 
-The index is a single digit 0--9. Index 0 behaves identically to index 1 (the counter is pre-decremented before comparison). In practice, most templates use indices 1 and 2; a few use up to 3.
+The index is a single digit 0–9. Index 0 behaves identically to index 1 (the counter is pre-decremented before comparison). In practice, most templates use indices 1 and 2; a few use up to 3.
 
 **Real template example** (CUDA cross-space call, error 3499):
 
@@ -203,7 +203,7 @@ Multiple `q` characters are permitted syntactically (the parser loops over all o
 
 ### Entity Name Options (`%n`)
 
-The `%n` specifier accepts a rich set of option suffixes that control how an entity is rendered. Options are processed left-to-right, setting flags on the fill-in entry's flag bytes (offsets 28--34):
+The `%n` specifier accepts a rich set of option suffixes that control how an entity is rendered. Options are processed left-to-right, setting flags on the fill-in entry's flag bytes (offsets 28–34):
 
 | Option | Flag Byte | Effect |
 |---|---|---|
@@ -314,7 +314,7 @@ Renders a template parameter by looking up the parameter entity through `sub_5B9
 
 When processing `%n` specifiers, `process_fill_in` reads the entity kind byte at offset 80 of the entity node and dispatches to kind-specific rendering logic. The function first resolves through projection indirection: if `entity_kind == 16` (typedef), it follows the pointer at `entity->info_ptr->pointed_to`; if `entity_kind == 24` (resolved namespace alias), it follows `entity->info_ptr`.
 
-The dispatch handles 25 entity kind values (0--24, with gaps at 14/15/16/24 handled as special cases):
+The dispatch handles 25 entity kind values (0–24, with gaps at 14/15/16/24 handled as special cases):
 
 | Entity Kind | Value | Kind Label String | Index in `off_88FAA0` | Rendering Logic |
 |---|---|---|---|---|
@@ -322,8 +322,8 @@ The dispatch handles 25 entity kind values (0--24, with gaps at 14/15/16/24 hand
 | concept | 1 | (from table) | 1462 | Simple: write kind label + quoted name |
 | constant template parameter | 2 | `"constant"` or `"nontype"` | — | Check template parameter subkind: type_kind 14 with subkind 2 = `"nontype"`, else `"constant"` |
 | template parameter | 3 | (from table) | 1464 or 1465 | Check whether the template parameter is a type parameter (type_kind != 14) → index 1465, else 1464 |
-| class | 4 | (from table, CUDA-aware) | 1466--1468 | CUDA mode: `1467` or `1468` (class vs struct); non-CUDA: `1466` |
-| struct | 5 | (same as class) | 1466--1468 | Same dispatch as class, differentiated by `v46 != 5` |
+| class | 4 | (from table, CUDA-aware) | 1466–1468 | CUDA mode: `1467` or `1468` (class vs struct); non-CUDA: `1466` |
+| struct | 5 | (same as class) | 1466–1468 | Same dispatch as class, differentiated by `v46 != 5` |
 | enum | 6 | (from table) | 1472 | Simple: write kind label + quoted name |
 | variable | 7 | `"variable"` or `"handler parameter"` | 1474 or 1475 | Check handler-parameter flag (offset 163, bit 0x40). If set: `"handler parameter"` (index 1474). If variable is a structured binding (offset 162, bit 1): use index 2937. Otherwise: `"variable"` (index 1475) with optional template context |
 | field | 8 | `"field"` or `"member"` | 1480 or 1481 | CUDA C++ mode: `"member"` (index 1480); C mode: `"field"` (index 1481) |
@@ -337,14 +337,14 @@ The dispatch handles 25 entity kind values (0--24, with gaps at 14/15/16/24 hand
 | typedef | 16 | — | — | Assertion: `"form_symbol_summary: projection of projection kind"` (error.c:2020). Should have been resolved before dispatch |
 | using declaration | 17 | (from table) | 1479 | Simple: write kind label + quoted name |
 | parameter | 18 | `"parameter"` | 1473 | Simple: write `"parameter"` + quoted name with type info |
-| class (anonymous/unnamed) | 19 | (from table) | 1469--1471 or 1889 | Multiple sub-cases: anonymous class bit 0x40 → index 1469; class-template with bit 0x02 → index 1470; deduction_guide bit → index 1889; else index 1471 |
+| class (anonymous/unnamed) | 19 | (from table) | 1469–1471 or 1889 | Multiple sub-cases: anonymous class bit 0x40 → index 1469; class-template with bit 0x02 → index 1470; deduction_guide bit → index 1889; else index 1471 |
 | function template | 20 | `"function template"` | 1485 (lambda) or kind label | Lambda function (offset 189, bit 0x20): index 1485 with scope entity. Otherwise: `"function template"` with type and parameter info |
 | variable template | 21 | (from table) | 2750 | Simple: write kind label + quoted name |
 | alias template | 22 | (from table) | 3050 | Simple: write kind label + quoted name |
 | concept template | 23 | (from table) | 1482 | Simple: write kind label + quoted name |
 | resolved namespace alias | 24 | — | — | Assertion: `"form_symbol_summary: projection of projection kind"` (same as kind 16). Should have been resolved |
 
-Any entity kind value outside 0--24 (excluding the gaps that trigger assertions) hits the default case: `"form_symbol_summary: unsupported symbol kind"` (error.c:2023).
+Any entity kind value outside 0–24 (excluding the gaps that trigger assertions) hits the default case: `"form_symbol_summary: unsupported symbol kind"` (error.c:2023).
 
 ### Entity Rendering Pipeline
 

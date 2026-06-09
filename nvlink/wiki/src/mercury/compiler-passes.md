@@ -71,7 +71,7 @@ Pass 22 (`AdvancedSBCrossBlockMercuryAssume`) is registered separately from the 
 
 [V] The `ctor_007` registration block is not separately decompiled (the address range `0x412790`--`0x426260` falls in the gap between `ctor_006` at `0x412790` and `ctor_008` at `0x426260`). However, the internal structure is derived from verified measurements:
 
-- **Record size**: 80 bytes (0x50) per pass. All 21 Mercury-block registrations (passes 1--21) have exactly 0x50-byte spacing between consecutive registration addresses, confirmed by computing `0x426080 - 0x426030 = 0x50`, `0x426030 - 0x425FE0 = 0x50`, etc., uniformly across all 21 entries.
+- **Record size**: 80 bytes (0x50) per pass. All 21 Mercury-block registrations (passes 1–21) have exactly 0x50-byte spacing between consecutive registration addresses, confirmed by computing `0x426080 - 0x426030 = 0x50`, `0x426030 - 0x425FE0 = 0x50`, etc., uniformly across all 21 entries.
 - **String references per record**: Exactly 2 xrefs per record — one for the ROT13 name string and one for the ROT13 hex offset string. Both are type=1 data references (confirmed from `nvlink_strings.json`).
 - **Name string xref offset within record**: The name string xref address is the first byte of the record (e.g., pass 21 at `0x425A40`, pass 20 at `0x425A90`).
 - **Hex offset string xref offset within record**: The hex offset string xref is 0x33 bytes into the record (e.g., pass 21: name at `0x425A40`, hex at `0x425A73`; difference = 0x33).
@@ -234,7 +234,7 @@ main() / sub_42AF40() / sub_52DD50()
 
 [V] The `sub_4748F0` engine calls `sub_471700` at line 1247 of the decompiled source (confirmed from `sub_4748F0_0x4748f0.c`). The call passes the module context `v419[]`, which carries the Mercury profile descriptor (set at `v419[65]` when source arch > 99 in Phase 4) and the compilation unit descriptor (set at `v419[32]` in Phase 6a). The Mercury passes are only executed when `byte_2A5F222` (Mercury mode flag, set when sm > 99) is active.
 
-[V] The `sub_471700` function (2,541 decompiled lines, address `0x471700`) initializes a 656-byte compilation unit descriptor at line 562 (vtable at `off_1D49C58`), copies the 256-byte architecture profile at lines 611--632, and then iterates over the function index sections, dispatching each function through the master phase table. The Mercury pipeline stages are entries in this table and execute for each function body when the Mercury mode flag is active.
+[V] The `sub_471700` function (2,541 decompiled lines, address `0x471700`) initializes a 656-byte compilation unit descriptor at line 562 (vtable at `off_1D49C58`), copies the 256-byte architecture profile at lines 611–632, and then iterates over the function index sections, dispatching each function through the master phase table. The Mercury pipeline stages are entries in this table and execute for each function body when the Mercury mode flag is active.
 
 ## MercExpand Engine
 
@@ -438,7 +438,7 @@ Pass behavior descriptions marked **[V]** are derived from sources 1 and 2. Desc
 - [ROT13 Passes Reference](../reference/rot13-passes.md) — full catalog of all 30,349 ROT13-encoded strings
 
 ### Sibling Wikis
-- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) — standalone ptxas Mercury encoder (phases 113--122 in ptxas numbering) with ptxas-native function addresses. The stage names and ordering are identical: MercEncodeAndDecode, MercExpandInstructions, MercGenerateWARs1, MercGenerateOpex, MercGenerateWARs2, MercGenerateSassUCode. Key ptxas addresses: orchestrator `sub_6F52F0` (23KB), master encoder `sub_6D9690` (94KB), expansion `sub_C3CC60` (26KB), WAR generator `sub_6FBC20` (7.4KB), SASS emitter `sub_6E4110` (24KB).
+- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) — standalone ptxas Mercury encoder (phases 113–122 in ptxas numbering) with ptxas-native function addresses. The stage names and ordering are identical: MercEncodeAndDecode, MercExpandInstructions, MercGenerateWARs1, MercGenerateOpex, MercGenerateWARs2, MercGenerateSassUCode. Key ptxas addresses: orchestrator `sub_6F52F0` (23KB), master encoder `sub_6D9690` (94KB), expansion `sub_C3CC60` (26KB), WAR generator `sub_6FBC20` (7.4KB), SASS emitter `sub_6E4110` (24KB).
 - [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) — standalone ptxas capmerc output and finalization pipeline.
 
 **MercExpand sub-handlers**: ptxas wiki documents expansion sub-handlers at different addresses: `sub_C37A10` (16KB, expandInstruction), `sub_C39B40` (10KB, expandMemoryOp), `sub_C3A460` (6KB, expandAtomicOp), `sub_C3B560` (8KB, expandTexture), `sub_C3BCD0` (19KB, expandControlFlow). These correspond to the nvlink embedded copies documented in this page.
@@ -465,7 +465,7 @@ Pass behavior descriptions marked **[V]** are derived from sources 1 and 2. Desc
 | MercWARs entry `sub_4A47F0` prints `"After MercWARs"` | **HIGH** | String at `0x1D41C60` verified. Xref to `0x4A480A` confirmed. |
 | MercOpex entry `sub_4ABB70` prints `"After MercOpex"` | **HIGH** | String at `0x1D41C6F` verified. Xref to `0x4ABC3E` confirmed. |
 | MercOpex expander `sub_4A8690` (66KB / 2602 lines, largest Mercury function) | **HIGH** | Function exists at stated address. Size from function bounds. Line count from decompiler. |
-| MercConverter named phases: shuffle, swap1--6, dce1--3, cpy1--3, OriPerformLiveDead, OriCopyProp | **HIGH** | All phase name strings verified with xrefs to `sub_197A120` (ORI named-phase manager). |
+| MercConverter named phases: shuffle, swap1–6, dce1–3, cpy1–3, OriPerformLiveDead, OriCopyProp | **HIGH** | All phase name strings verified with xrefs to `sub_197A120` (ORI named-phase manager). |
 | MercConverter instruction converter `sub_1919030` (92KB) refs `"CONVERTING"` | **HIGH** | Function exists. String `"CONVERTING"` verified with xref to this function. `"Internal compiler error."` also confirmed. |
 | `UseMercSemantics` at `0x23F34F0` and `UseMercResources` at `0x23F3510` | **HIGH** | Both ROT13 strings verified at exact addresses. Each has 1 xref to `ctor_007`. |
 | `DumpMercOpCounts` at `0x1D4AB40` (ROT13 `QhzcZrepBcPbhagf`) | **HIGH** | ROT13 string verified at stated address. Located in `ctor_004` (xref from `0x410F30`). |
@@ -474,7 +474,7 @@ Pass behavior descriptions marked **[V]** are derived from sources 1 and 2. Desc
 | Pass behavior descriptions marked [N] (inferred from decoded names) | **MEDIUM** | Names are extremely descriptive and self-documenting. Corroborated by related infrastructure (e.g., `MercuryTrackMultiReadsWarLatency` corroborated by `MercGenerateWARs1`/`MercGenerateWARs2` stages). Exact implementation details may differ from inferred behavior. |
 | Default values (enabled/disabled by default) | **MEDIUM** | Inferred from naming conventions ("Force", "Disable", "Dump" = off by default). Not directly verified from ctor_007 body (not decompiled). |
 | `byte_2A5F222` set when sm > 99 (Mercury mode activation) | **HIGH** | Verified from decompiled initialization code. Multiple functions check this global. |
-| 28 `AdvancedSB*` scoreboard options | **MEDIUM** | Count from enumeration of AdvancedSB-prefixed ROT13 strings. Individual option names and offsets verified but total count may differ by 1--2 due to boundary definition of the option group. |
+| 28 `AdvancedSB*` scoreboard options | **MEDIUM** | Count from enumeration of AdvancedSB-prefixed ROT13 strings. Individual option names and offsets verified but total count may differ by 1–2 due to boundary definition of the option group. |
 | FNLZR invokes `sub_471700` at `sub_4748F0` line 1247 | **HIGH** | Direct observation from decompiled `sub_4748F0_0x4748f0.c` file. Call instruction at stated line. |
 | `sub_471700` is 2,541 decompiled lines | **HIGH** | Line count from decompiled file `sub_471700_0x471700.c`. |
 | String pool layout (alternating hex offset + name strings) | **HIGH** | All 42 string addresses verified to be contiguous in `0x23F2AF5`--`0x23F2E9C` region. Address ordering confirmed from `nvlink_strings.json`. |

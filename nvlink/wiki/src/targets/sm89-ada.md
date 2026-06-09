@@ -179,7 +179,7 @@ None of these conditions distinguish sm_89 from sm_90 specifically — they both
 | Dispatch table code | All 6 slots unique addresses | All 6 slots unique addresses |
 | Dispatch table behavior | 5 of 6 functionally identical to sm_90 | 5 of 6 functionally identical to sm_89 |
 
-## Instruction Encoder Templates (0x100C000--0x10FFFFF)
+## Instruction Encoder Templates (0x100C000–0x10FFFFF)
 
 The 750 functions in this region are template-instantiated instruction encoding initializers. Each function initializes one SASS instruction variant — a specific opcode with a specific operand pattern. All share an identical structure:
 
@@ -199,10 +199,10 @@ The only differences between functions are the constant table address (`xmmword_
 
 | Size Range | Instruction Class | Example |
 |---|---|---|
-| 4,700--6,200 bytes | Simple (moves, branches, simple math) | Basic register-register operations |
-| 7,400--7,700 bytes | Standard 3-source ALU | Most arithmetic/logic instructions |
-| 7,800--8,100 bytes | ALU + extra modifiers | Rounding mode, saturate, FTZ |
-| 8,300--8,500 bytes | Complex (texture, surface, atomics) | Memory + modifier combinations |
+| 4,700–6,200 bytes | Simple (moves, branches, simple math) | Basic register-register operations |
+| 7,400–7,700 bytes | Standard 3-source ALU | Most arithmetic/logic instructions |
+| 7,800–8,100 bytes | ALU + extra modifiers | Rounding mode, saturate, FTZ |
+| 8,300–8,500 bytes | Complex (texture, surface, atomics) | Memory + modifier combinations |
 
 ### Encoder Sub-Ranges by Opcode Type
 
@@ -251,7 +251,7 @@ The `sub_50xxxx` family configures instruction modifiers:
 | `sub_50E340` | FP denormal mode |
 | `sub_50E380` | Combined rounding + FTZ |
 
-## Backend Driver (0x1100000--0x1120000)
+## Backend Driver (0x1100000–0x1120000)
 
 This region contains 30 functions totaling 468 KB that implement the SM89/90 compilation pipeline from option parsing through codegen to ELF output.
 
@@ -283,7 +283,7 @@ Registers the complete embedded ptxas option set through a series of `sub_42E390
 
 **Optimization options:** `opt-level`, `fast-compile`, `no-fastreg`, `disable-optimizer-constants`, `dont-merge-basicblocks`, `noFwdPrg`, `limit-fold-fp`, `optimize-float-atomics`, `sw4936628`.
 
-**Register/resource options:** `maxrregcount`, `device-function-maxrregcount`, `register-usage-level` (validated range 0--10), `minnctapersm`, `maxntid`, `override-directive-values`.
+**Register/resource options:** `maxrregcount`, `device-function-maxrregcount`, `register-usage-level` (validated range 0–10), `minnctapersm`, `maxntid`, `override-directive-values`.
 
 **Debug options:** `device-debug`, `sp-bounds-check`, `device-stack-protector`, `device-stack-protector-frame-size-threshold`, `sanitize`, `lineinfo`.
 
@@ -297,7 +297,7 @@ Registers the complete embedded ptxas option set through a series of `sub_42E390
 
 **Feature gating options:** `legacy-bar-warp-wide-behavior`, `assume-extern-functions-do-not-sync`, `disable-fast-video-emulation`, `g-tensor-memory-access-check`, `gno-tensor-memory-access-check`.
 
-The parser validates option compatibility: `--nv-host` is incompatible with both `--extensible-whole-program` and `--compile-only`. Register-usage-level is bounds-checked to the range 0--10.
+The parser validates option compatibility: `--nv-host` is incompatible with both `--extensible-whole-program` and `--compile-only`. Register-usage-level is bounds-checked to the range 0–10.
 
 ### Option Definition Table Builder: sub_1103030 (30 KB, 1249 lines)
 
@@ -320,7 +320,7 @@ SM version-conditional feature enablement:
 - SM >= 14 (sm_89 equivalent): enables feature v14
 - SM >= 11 (sm_75 equivalent): enables features v16, v17
 - SM >= 17 (sm_100 equivalent): enables feature v19
-- SM 9--10: special load-cache behavior
+- SM 9–10: special load-cache behavior
 
 Configures optimization levels (`v5[133]` maps to 1/2/4), maxregcount, minnctapersm thresholds, register classes, scheduling slots, and opens output files.
 
@@ -330,7 +330,7 @@ Called after per-function codegen completes. Runs three low-level encoding passe
 
 ### Register Allocation and Launch Config: sub_110BC90 (18 KB, 763 lines)
 
-Reads thread-block dimensions (`blockDim.x/y/z` from function node offsets 6--8), computes total threads as the product, and handles `maxntid`/`minnctapersm` overrides from both function-level directives and command-line options. Implements a complex register budget computation with multiple fallback paths based on SM version, optimization level, and launch configuration. Warns via `sub_467460` about `.local_maxnreg` on device functions in `--compile-only` mode.
+Reads thread-block dimensions (`blockDim.x/y/z` from function node offsets 6–8), computes total threads as the product, and handles `maxntid`/`minnctapersm` overrides from both function-level directives and command-line options. Implements a complex register budget computation with multiple fallback paths based on SM version, optimization level, and launch configuration. Warns via `sub_467460` about `.local_maxnreg` on device functions in `--compile-only` mode.
 
 ### Feature Flag Configurator: sub_1100E50 (14 KB, 451 lines)
 
@@ -375,9 +375,9 @@ Two helper functions support the symbol resolver:
 
 Processes individual function declarations. Distinguishes entry points vs. device functions vs. external declarations. Checks for CUDA builtins via `sub_4447B0`. Manages forward declarations (`v4+184` = "has body" flag). Integrates with the sanitizer via `"threadsteer"` and `"__cuda_sanitizer"` prefix checks. Tracks call graph edges by adding to `a2[56]` sets.
 
-## Instruction Selection (0x1120000--0x11D4680)
+## Instruction Selection (0x1120000–0x11D4680)
 
-### ISel Pattern Matchers (0x1120000--0x119BF40, ~160 functions)
+### ISel Pattern Matchers (0x1120000–0x119BF40, ~160 functions)
 
 Each pattern matcher is a predicate function with the signature:
 
@@ -438,7 +438,7 @@ emitter_table[best_id](ctx, ir_node)  // emit selected instruction
 
 For trivial cases (register-register moves, simple immediates), the mega-hub contains inline pattern matching rather than dispatching to external helpers. The 226 KB size is consistent with covering the full SM89/90 SASS instruction set (~2,000+ instruction variants).
 
-## Instruction Scheduling (0x11D4680--0x11EA000)
+## Instruction Scheduling (0x11D4680–0x11EA000)
 
 The final 16 functions form a cohesive list-scheduling subsystem for SASS instruction ordering. Five functions exceed 7 KB and share an identical data structure pattern.
 
@@ -476,7 +476,7 @@ Overflow entries use a hash-table with linked-list chaining. The hash function i
 | `sub_11D4AF0` | 11 KB | Scheduling state update. Modifies scheduling state after instruction reordering. Two hash-table traversals with rehashing |
 | `sub_11D52B0` | 9 KB | Scheduling state query. Checks for magic value 711 in `entry[1]`, possibly a phase-completion marker or specific opcode state |
 
-The remaining 11 smaller functions (3--5 KB) at `0x11D7000`--`0x11EA000` are scheduling utilities: operand analysis, latency queries, resource conflict detection, instruction reordering, and a null stub (`nullsub_192` at `0x11D7250`).
+The remaining 11 smaller functions (3–5 KB) at `0x11D7000`--`0x11EA000` are scheduling utilities: operand analysis, latency queries, resource conflict detection, instruction reordering, and a null stub (`nullsub_192` at `0x11D7250`).
 
 This is a classic list-scheduling implementation handling:
 
@@ -491,7 +491,7 @@ Two alternative codegen orchestrators handle different compilation modes:
 
 ### Whole-Program Mode: sub_1109180 (13 KB, 387 lines)
 
-Used when `--extensible-whole-program` is active. Iterates the function list building an ordered worklist. Creates 72-byte per-function register summaries. Tracks function attributes (has-local, has-surface, has-texture) via OR-accumulation of feature flags at offsets 36--63. Checks SM version (`v5+376 > 26`) for feature gating. Calls `sub_12AE300` to get the number of register classes and `sub_465020` to allocate per-class arrays.
+Used when `--extensible-whole-program` is active. Iterates the function list building an ordered worklist. Creates 72-byte per-function register summaries. Tracks function attributes (has-local, has-surface, has-texture) via OR-accumulation of feature flags at offsets 36–63. Checks SM version (`v5+376 > 26`) for feature gating. Calls `sub_12AE300` to get the number of register classes and `sub_465020` to allocate per-class arrays.
 
 ### Multi-Function Mode: sub_1107F10 (9 KB, 251 lines)
 

@@ -218,7 +218,7 @@ The pipeline assembler constructs the complete LLVM pass pipeline, inserting pas
 |---|---|---|
 | Module split-range helper | `sub_12D3E60` |  |
 | Pass factory: creates NVIDIA custom pass | `sub_12D4560` | 325 B |
-| **NVVMPassOptions initializer** — populates 221 pass option slots in 4,512-byte struct (slot block at offsets 16--4479, 32-byte zero sentinel at 4480--4511) | `sub_12D6300` | 125 KB |
+| **NVVMPassOptions initializer** — populates 221 pass option slots in 4,512-byte struct (slot block at offsets 16–4479, 32-byte zero sentinel at 4480–4511) | `sub_12D6300` | 125 KB |
 | **AddPass** — hash-table-based pass insertion into pipeline | `sub_12DE0B0` | 3.5 KB |
 | **Tier 0** sub-pipeline builder (full optimization, ~40 passes) | `sub_12DE330` | 4.8 KB |
 | **Tier 1/2/3** sub-pipeline builder (phase-conditional, tier-gated) | `sub_12DE8F0` |  |

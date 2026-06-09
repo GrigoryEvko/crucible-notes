@@ -18,7 +18,7 @@ The lexer does not use generated tables from tools like flex. Instead, every cha
 | Keyword registration | `sub_5863A0` (`keyword_init`, in `fe_init.c`, 200+ keywords) |
 | Universal char scanner | `sub_6711E0` (`scan_universal_character`, 278 lines) |
 | Template arg scanner | `sub_67DC90` (`scan_template_argument_list`, 1,078 lines) |
-| Token cache entry size | 80--112 bytes (8 cache entry kinds) |
+| Token cache entry size | 80–112 bytes (8 cache entry kinds) |
 | Scope entry size | 784 bytes (at `qword_126C5E8`) |
 | GPU mode gate | `dword_106C2C0` |
 | Current token global | `word_126DD58` |
@@ -55,15 +55,15 @@ Token codes are assigned in blocks:
 
 | Range | Category | Examples |
 |---|---|---|
-| 1--51 | Operators and punctuation | `+`, `-`, `*`, `/`, `(`, `)`, `{`, `}`, `::`, `->` |
-| 52--76 | Alternative tokens / digraphs | `and`, `or`, `not`, `<%`, `%>`, `<:`, `:>` |
-| 77--108 | C89 keywords | `auto`(77), `break`(78), `case`(79), `char`(80), `while`(108) |
-| 109--131 | C99/C11 keywords | `restrict`(119), `_Bool`(120), `_Complex`(121), `_Imaginary`(122) |
-| 132--136 | MSVC keywords | `__declspec`(132), `__int8`(133), `__int16`(134), `__int32`(135), `__int64`(136) |
-| 137--199 | C++ keywords | `catch`(150), `class`(151), `template`(160), `decltype`(185), `typeof`(189) |
-| 200--206 | Compiler internal | Internal token kinds for the preprocessor |
-| 207--330 | Type traits | `__is_class`(207), `__has_trivial_copy`, ..., NVIDIA-specific traits at 328--330 |
-| 331--356 | Extended types / recent additions | `_Float32`(331)--`_Float128`(335), C++23/26 features |
+| 1–51 | Operators and punctuation | `+`, `-`, `*`, `/`, `(`, `)`, `{`, `}`, `::`, `->` |
+| 52–76 | Alternative tokens / digraphs | `and`, `or`, `not`, `<%`, `%>`, `<:`, `:>` |
+| 77–108 | C89 keywords | `auto`(77), `break`(78), `case`(79), `char`(80), `while`(108) |
+| 109–131 | C99/C11 keywords | `restrict`(119), `_Bool`(120), `_Complex`(121), `_Imaginary`(122) |
+| 132–136 | MSVC keywords | `__declspec`(132), `__int8`(133), `__int16`(134), `__int32`(135), `__int64`(136) |
+| 137–199 | C++ keywords | `catch`(150), `class`(151), `template`(160), `decltype`(185), `typeof`(189) |
+| 200–206 | Compiler internal | Internal token kinds for the preprocessor |
+| 207–330 | Type traits | `__is_class`(207), `__has_trivial_copy`, ..., NVIDIA-specific traits at 328–330 |
+| 331–356 | Extended types / recent additions | `_Float32`(331)--`_Float128`(335), C++23/26 features |
 
 ### CUDA-Specific Token Kinds
 
@@ -83,7 +83,7 @@ When a token is produced, the following globals are populated:
 
 | Address | Name | Type | Description |
 |---|---|---|---|
-| `word_126DD58` | `current_token_code` | WORD | 16-bit token kind (0--356) |
+| `word_126DD58` | `current_token_code` | WORD | 16-bit token kind (0–356) |
 | `qword_126DD38` | `current_source_position` | QWORD | Encoded file/line/column |
 | `qword_126DD48` | `token_text_ptr` | QWORD | Pointer to identifier/literal text |
 | `src` | `token_start_position` | char* | Start of token in input buffer |
@@ -99,13 +99,13 @@ The 64-byte identifier lookup result is written into four SSE registers (`xmmwor
 
 The token cache provides the lookahead, backtracking, and macro-expansion replay capabilities required by C++ parsing. Tokens are stored in a linked list of cache entries that can be consumed, rewound, and re-scanned.
 
-### Cache Entry Layout (80--112 bytes)
+### Cache Entry Layout (80–112 bytes)
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
 | `+0` | 8 | `next` | Next entry in cache linked list |
 | `+8` | 8 | `source_position` | Encoded source location |
-| `+16` | 2 | `token_code` | Token kind (0--356) |
+| `+16` | 2 | `token_code` | Token kind (0–356) |
 | `+18` | 1 | `cache_entry_kind` | Discriminator for payload type (see below) |
 | `+20` | 4 | `flags` | Token flags |
 | `+24` | 4 | `extra_flags` | Additional flags |
@@ -692,7 +692,7 @@ The scanner:
 5. Uses the scope system to classify identifiers within template arguments
 6. Disambiguates `>>` as either right-shift or double template close
 
-The entity kind checks at offsets `+80` (values 19--22) identify template entities for recursive template-id scanning.
+The entity kind checks at offsets `+80` (values 19–22) identify template entities for recursive template-id scanning.
 
 ## Preprocessor Integration
 

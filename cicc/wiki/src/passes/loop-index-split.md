@@ -1,6 +1,6 @@
 # Loop Index Split
 
-`loop-index-split` is a loop transformation pass that splits or peels loops when a condition inside the loop body depends on the loop induction variable. The pass was originally part of upstream LLVM 2.x (circa 2008--2009) but was removed around LLVM 3.0 due to correctness concerns and limited applicability. NVIDIA revived and heavily modified it for CUDA workloads, where loops with index-dependent conditionals are extremely common — boundary handling in stencil computations, tile edge processing, and index-based predication are pervasive GPU kernel patterns. The NVIDIA version is substantially more sophisticated than the original, implementing three distinct transformation modes with full SCEV-based analysis.
+`loop-index-split` is a loop transformation pass that splits or peels loops when a condition inside the loop body depends on the loop induction variable. The pass was originally part of upstream LLVM 2.x (circa 2008–2009) but was removed around LLVM 3.0 due to correctness concerns and limited applicability. NVIDIA revived and heavily modified it for CUDA workloads, where loops with index-dependent conditionals are extremely common — boundary handling in stencil computations, tile edge processing, and index-based predication are pervasive GPU kernel patterns. The NVIDIA version is substantially more sophisticated than the original, implementing three distinct transformation modes with full SCEV-based analysis.
 
 By eliminating index-dependent branches from loop bodies, the pass reduces warp divergence on NVIDIA GPUs. When threads in a warp take different paths through a branch, the GPU must serialize both paths (predicated execution or divergent branch), wasting throughput. Splitting the loop so that each resulting loop has a uniform body eliminates this divergence entirely within the split regions, restoring full SIMT efficiency.
 
@@ -100,10 +100,10 @@ The main driver (`sub_2CC5900`, 11 KB native) proceeds as follows:
 3. **Find the induction variable and exit condition** from the loop's back-edge.
 4. **Scan the loop body** for `ICmp` or `Select` instructions that compare the IV against a loop-invariant value.
 5. **Validate the comparison** uses constant integer bounds (checked via `APInt` extraction at multiple points).
-6. **Safety checks** (lines 760--830 of `sub_2CC5900`):
+6. **Safety checks** (lines 760–830 of `sub_2CC5900`):
    - Iterate all loop BBs, checking each instruction:
      - Opcode 85 (Call): reject if callee may have side effects
-     - Opcodes 34--85: checked against bitmask `0x8000000000041` for safe operations
+     - Opcodes 34–85: checked against bitmask `0x8000000000041` for safe operations
      - Store instructions: checked for non-interference with the split
    - No volatile loads permitted
    - No memory operations that prevent reordering
@@ -169,7 +169,7 @@ SCEV is the critical dependency: it provides induction variable identification, 
 | Offset (QWORDs) | Content |
 |---|---|
 | 0 | Vtable / loop pointer |
-| 1--3 | Sub-loop tracking |
+| 1–3 | Sub-loop tracking |
 | 4 | Sinkable instruction count |
 | 5 | Exit condition block |
 | 6 | Split condition (`ICmp`/`FCmp` instruction) |
@@ -177,9 +177,9 @@ SCEV is the critical dependency: it provides induction variable identification, 
 | 8 | Loop bound (upper) |
 | 9 | Split instruction |
 | 10 | Instruction counter / worklist |
-| 11--13 | `DenseSet` for tracking visited blocks |
+| 11–13 | `DenseSet` for tracking visited blocks |
 | 14 | Iteration counter |
-| 18--24 | Computed values (preheader, header, latch, exitBB, etc.) |
+| 18–24 | Computed values (preheader, header, latch, exitBB, etc.) |
 | 25 | SCEV analysis result pointer |
 | 26 | New loop blocks array (for split range) |
 

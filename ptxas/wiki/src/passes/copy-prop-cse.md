@@ -11,7 +11,7 @@ The four dedicated phases run at specific pipeline positions chosen to exploit o
 | **Phases covered** | 49 (GvnCse), 50 (OriReassociateAndCommon), 64 (LateOriCommoning), 83 (OriBackCopyPropagate) |
 | **Forward copy prop** | `OriCopyProp` sub-pass inside each GeneralOptimize bundle (phases 13, 29, 37, 46, 58, 65) |
 | **Related knobs** | 22 knobs controlling budgets, modes, and enable/disable flags |
-| **Pipeline position** | Mid-optimization (49--50), post-predication (64), pre-regalloc legalization (83) |
+| **Pipeline position** | Mid-optimization (49–50), post-predication (64), pre-regalloc legalization (83) |
 | **Prerequisite passes** | AnalyzeControlFlow (3), GeneralOptimizeMid2 (46), EnforceArgumentRestrictions (48) |
 | **Downstream consumers** | ExtractShaderConstsFinal (51), OriDoPredication (63), register allocation (101) |
 
@@ -987,9 +987,9 @@ If the walk were forward, only `R2 = R1` would be processed first (renaming `R1 
 
 ### Why Phase 83 Runs So Late
 
-Phase 83 is positioned at pipeline slot 83 out of 158, immediately before the register attribute computation sequence (phases 84--95). This late position serves three purposes:
+Phase 83 is positioned at pipeline slot 83 out of 158, immediately before the register attribute computation sequence (phases 84–95). This late position serves three purposes:
 
-1. **Catches late-created copies.** Phases 66--81 include late optimizations (LICM, texture movement, rematerialization, late arch-specific peepholes) that frequently insert new MOV instructions. Backward copy propagation after these passes cleans up the residual chains that forward propagation (which last ran in phase 65) cannot see.
+1. **Catches late-created copies.** Phases 66–81 include late optimizations (LICM, texture movement, rematerialization, late arch-specific peepholes) that frequently insert new MOV instructions. Backward copy propagation after these passes cleans up the residual chains that forward propagation (which last ran in phase 65) cannot see.
 
 2. **Reduces register pressure for allocation.** Every eliminated MOV is one fewer live range the register allocator (phase 101) must handle. By running just before the liveness/DCE pass (phase 84, `OriPerformLiveDeadFourth`), backward copy propagation minimizes the input to register allocation.
 
@@ -1035,7 +1035,7 @@ The two propagation directions are complementary and handle different structural
 | Runs | 6 times (phases 13,29,37,46,58,65) | Once (phase 83) |
 | Default | Always enabled | Disabled (arch-gated) |
 | Risk | Low (original def unchanged) | Higher (modifies defs) |
-| Catches | Most copies from expansion and lowering | Residual chains from late passes (66--81) |
+| Catches | Most copies from expansion and lowering | Residual chains from late passes (66–81) |
 
 ### Controlling Knobs
 

@@ -26,13 +26,13 @@ This page documents that branch: the conditions under which the dispatcher runs,
 1. The walker is rescanning an expression operand owned by an entity that survived attribute application. Attributes whose handlers freed their IL node (`__host__`, `__device__`, `__global__`, `__shared__`, `__constant__`, `__managed__`, `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__`, `__nv_register_params__`, `__forceinline__`, the `__noinline__` variants, `__inline_hint__`) cannot reach this path.
 2. The operand's expression-kind byte (read at `*(_BYTE *)(v12 + 40)` in the dispatch frame, where `v12 = *a1` is the operand pointer) matches one of the two attribute kinds: `0x5C` or `0x6E`.
 3. The walker has reached `case 1` of the outer switch on `*(v12 + 24)`, which selects "operator-form" operands. Identifier-form (`case 0`), literal-form, and dependent-name forms route elsewhere.
-4. The outer caller has not pre-suppressed the operand via `qword_126ED90 && sub_760FA0(...)`. That gate (lines 180--186 of `sub_5565E0`) drops the operand entirely when the substitution context indicates the surrounding template parameter was substituted away.
+4. The outer caller has not pre-suppressed the operand via `qword_126ED90 && sub_760FA0(...)`. That gate (lines 180–186 of `sub_5565E0`) drops the operand entirely when the substitution context indicates the surrounding template parameter was substituted away.
 
 The dispatcher does not check the `+8` kind byte of the original attribute node directly. It reads the operand-kind byte at `+40`, which `apply_one_attribute` (`sub_413240`) seeds with the original CUDA kind value for the two attributes that need re-emission. For every other CUDA attribute, the apply handler either does not allocate an operand wrapper at all (entity-bit-only attributes) or seeds `+40` with a different kind that routes to a different `case` in the dispatch.
 
 ## The Shared `case 0x5C / case 0x6E` Branch
 
-From `sub_5565E0`, decompiled lines 566--572 (verbatim, modulo variable renaming):
+From `sub_5565E0`, decompiled lines 566–572 (verbatim, modulo variable renaming):
 
 ```c
 case 0x5C:   // '\\' = __launch_bounds__ original attribute kind
@@ -73,7 +73,7 @@ Once entered with a kind-25 operand, `sub_540560` follows a fixed sequence:
 3. `sub_573B70` extracts the underlying expression list into local scratch buffers (`v69[40]` and `v70[23]` in the IDA decompilation).
 4. Context flags from `qword_106B970+16` and `+19` choose one of four token codes for the emission (58, 60, 529, or fall-through to the default 2,184). These are token IDs in `word_126DD58` — they select the spelling that the writer emits for the attribute marker before the argument list.
 5. `sub_511D40` (the 15.5 KB IL token writer) consumes the prepared operand and serializes it to the active output stream. The flag word `0x4000` passed as the fourth argument tells the writer to render the operand as a function-attribute clause rather than as a postfix subscript — the same node shape, different surface syntax.
-6. After the writer returns, a check at lines 180--185 of the decompilation:
+6. After the writer returns, a check at lines 180–185 of the decompilation:
 
    ```c
    v33 = word_126DD58;

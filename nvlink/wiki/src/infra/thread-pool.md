@@ -111,7 +111,7 @@ int thread_pool_submit(pool_t *pool, void (*func)(void *), void *arg) {
 }
 ```
 
-`pthread_cond_broadcast` is used rather than `pthread_cond_signal`, waking all waiting workers even though only one task was submitted. This is a conservative choice that avoids potential missed-wakeup scenarios at the cost of thundering-herd wakeups. In practice the pool is small (typically 4--16 threads) and all tasks are submitted in a tight loop, so the broadcast overhead is negligible.
+`pthread_cond_broadcast` is used rather than `pthread_cond_signal`, waking all waiting workers even though only one task was submitted. This is a conservative choice that avoids potential missed-wakeup scenarios at the cost of thundering-herd wakeups. In practice the pool is small (typically 4–16 threads) and all tasks are submitted in a tight loop, so the broadcast overhead is negligible.
 
 ### worker_main (`start_routine` at `0x43FC80`)
 
@@ -631,7 +631,7 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 
 - [Split Compilation](../lto/split-compilation.md) — The LTO split-compile pipeline, including work item layout and the `split_compile_worker` function
 - [LTO Overview](../lto/overview.md) — High-level LTO pipeline diagram showing where multi-threaded PTX-to-SASS assembly fits
-- [Pipeline Entry](../pipeline/entry.md) — `main()` thread pool lifecycle at lines ~1208--1286 of the decompiled output
+- [Pipeline Entry](../pipeline/entry.md) — `main()` thread pool lifecycle at lines ~1208–1286 of the decompiled output
 - [Memory Arenas](memory-arenas.md) — Arena allocator thread safety: the queue uses arena allocation while task nodes use `malloc`/`free`
 - [Error Reporting](error-reporting.md) — Per-thread TLS diagnostic state (`sub_44F410`) that the thread pool workers inherit
 - [CLI Flags](../config/cli-flags.md) — `-split-compile-extended=N` option controlling thread count

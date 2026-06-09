@@ -137,10 +137,10 @@ The 13 headers fall into three distinct patterns:
 - `float_type.h` (63 funcs in 52 KB at `0x7D1C90`--`0x7DEB90`, all within `floating.c`)
 - `walk_entry.h` (51 funcs in 90 KB at `0x604170`--`0x618660`, all within `il_walk.c`)
 - `modules.h` (5 funcs in 5 KB at `0x7C1100`--`0x7C2560`, all within `modules.c`)
-- `decls.h`, `lexical.h`, `overload.h`, `symbol_tbl.h` (1--2 funcs each, single site)
+- `decls.h`, `lexical.h`, `overload.h`, `symbol_tbl.h` (1–2 funcs each, single site)
 - `mem_manage.h` (4 funcs, single site in `error.c`)
 
-**Moderately scattered headers** — functions appear in 2--3 `.c` files:
+**Moderately scattered headers** — functions appear in 2–3 `.c` files:
 - `il.h` (5 funcs across `expr.c`, `il.c`, `il_to_str.c`)
 - `scope_stk.h` (4 funcs across `expr.c`, `exprutil.c`)
 - `nv_transforms.h` (3 funcs across `class_decl.c`, `cp_gen_be.c`, `src_seq.c`)
@@ -224,7 +224,7 @@ The largest unmapped gap within EDG code proper is the IL display region at `0x5
 
 ## Alphabetical Layout Observation
 
-Source files are laid out in the binary in near-alphabetical order by filename, a consequence of the build system compiling `.c` files in directory-listing order and the linker processing them sequentially. The sequence is strictly alphabetical from `attribute.c` through `types.c` (rows 1--50).
+Source files are laid out in the binary in near-alphabetical order by filename, a consequence of the build system compiling `.c` files in directory-listing order and the linker processing them sequentially. The sequence is strictly alphabetical from `attribute.c` through `types.c` (rows 1–50).
 
 Two files break this pattern:
 

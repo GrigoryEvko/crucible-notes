@@ -1,4 +1,4 @@
-# Ada Lovelace & Hopper (SM 89--90a)
+# Ada Lovelace & Hopper (SM 89–90a)
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
@@ -52,9 +52,9 @@ The intrinsic table initializer for sm_89 (`sub_60A810`) enables 39 additional M
 
 | Intrinsic ID Range | Count | Category |
 |---|---|---|
-| 0x209--0x22F | 39 | `__cuda_sm_8x_mma_*` — extended MMA shapes and types |
+| 0x209–0x22F | 39 | `__cuda_sm_8x_mma_*` — extended MMA shapes and types |
 
-These intrinsics cover FP8 MMA operations, block-scale MMA, and additional type combinations beyond what sm_80--88 support. The MMA validator at `sub_49BBA0` checks for `"mma with FP8 floating point type"` and validates against the target SM version.
+These intrinsics cover FP8 MMA operations, block-scale MMA, and additional type combinations beyond what sm_80–88 support. The MMA validator at `sub_49BBA0` checks for `"mma with FP8 floating point type"` and validates against the target SM version.
 
 ### Ada Scheduling Profile
 
@@ -109,7 +109,7 @@ The intrinsic initializer for sm_90 (`sub_60A5F0`) enables 38 sub-byte MMA intri
 
 | Intrinsic ID Range | Count | Category |
 |---|---|---|
-| 0x23A--0x25F | 38 | `__cuda_sm_9x_mma_sub_byte_internal_*` |
+| 0x23A–0x25F | 38 | `__cuda_sm_9x_mma_sub_byte_internal_*` |
 
 These cover sparse sub-byte MMA operations: s4/u4 sparse variants for m16n8k32, m16n8k64, and m16n8k128 shapes. These are Hopper-specific and do not appear in the Ada (sm_89) intrinsic table.
 
@@ -132,7 +132,7 @@ The formatters are the smallest named formatters in ptxas (295 bytes), reflectin
 
 ### GMMA Pipeline Pass Infrastructure
 
-The WGMMA pipeline optimizer is the largest single-architecture compiler subsystem in ptxas, spanning approximately 100KB of code across 15+ functions in the range 0xACE000--0xAE6000. It is active only for SM 90+ targets.
+The WGMMA pipeline optimizer is the largest single-architecture compiler subsystem in ptxas, spanning approximately 100KB of code across 15+ functions in the range 0xACE000–0xAE6000. It is active only for SM 90+ targets.
 
 **Call chain:**
 
@@ -161,7 +161,7 @@ Diagnostic messages emitted by the compiler:
 
 ### WGMMA Serialization Warnings
 
-When the compiler cannot pipeline WGMMA operations, `sub_ACE480` (22.7KB, 98% confidence) emits detailed performance advisories using codes 0x1D55--0x1D57 (7509--7511 decimal). Nine distinct serialization reasons are enumerated:
+When the compiler cannot pipeline WGMMA operations, `sub_ACE480` (22.7KB, 98% confidence) emits detailed performance advisories using codes 0x1D55–0x1D57 (7509–7511 decimal). Nine distinct serialization reasons are enumerated:
 
 | Reason Code | Diagnostic Message |
 |---|---|
@@ -305,7 +305,7 @@ Hopper extends the async copy pipeline introduced in Ampere with mbarrier (memor
 | `MBarrierDetector::resolveMBarrierBaseName` | `sub_A9A920` | Extracts base name from symbol |
 | `MBarrierEmitter::rewriteMBarrierOperand` | `sub_AA33C0` | Constructs `"%%mbarrier_%s_%s"` |
 
-The mbarrier type classifier returns an enumeration of 0--12 for different operation kinds, covering arrive, arrive_drop, expect_tx, and their counted variants.
+The mbarrier type classifier returns an enumeration of 0–12 for different operation kinds, covering arrive, arrive_drop, expect_tx, and their counted variants.
 
 ## Warpgroup Attribute Management
 
@@ -444,8 +444,8 @@ Eight architecture-variant statistics printers (clones at 0x700-byte intervals f
 ## Cross-References
 
 - [SM Architecture Map](index.md) — Validation tables, codegen factory values, suffix semantics
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Ampere baseline that Ada inherits
-- [Blackwell (SM 100--121)](blackwell.md) — Next-generation features (tcgen05, expanded `a`/`f` variants)
+- [Turing & Ampere (SM 75–88)](turing-ampere.md) — Ampere baseline that Ada inherits
+- [Blackwell (SM 100–121)](blackwell.md) — Next-generation features (tcgen05, expanded `a`/`f` variants)
 - [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Full intrinsic catalog with sm_8x and sm_9x ranges
 - [Pass Inventory](../passes/index.md) — GMMA/WGMMA pipeline pass placement in 159-phase schedule
 - [Scheduling Overview](../scheduling/overview.md) — HW latency table architecture

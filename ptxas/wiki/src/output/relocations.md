@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas defines two parallel relocation type systems for CUBIN ELF files: **R_CUDA_\*** (117 types, ordinals 0--116) for SASS-encoded cubins targeting SM 30--90a, and **R_MERCURY_\*** (65 types, ordinals 0--64) for Mercury-encoded cubins targeting SM 100+ (Blackwell and later). Both systems use standard `Elf64_Rela` relocation entries in `.rela.text.<funcname>` sections, with a custom resolution algorithm that handles alias redirection, dead function filtering, UFT/UDT pseudo-relocations, PC-relative branch validation, and sub-byte instruction patching. The symbol table (`.symtab`) follows standard ELF `Elf64_Sym` format with CUDA-specific symbol types and an extended section index mechanism (`.symtab_shndx`) for programs exceeding 65,280 sections.
+ptxas defines two parallel relocation type systems for CUBIN ELF files: **R_CUDA_\*** (117 types, ordinals 0–116) for SASS-encoded cubins targeting SM 30–90a, and **R_MERCURY_\*** (65 types, ordinals 0–64) for Mercury-encoded cubins targeting SM 100+ (Blackwell and later). Both systems use standard `Elf64_Rela` relocation entries in `.rela.text.<funcname>` sections, with a custom resolution algorithm that handles alias redirection, dead function filtering, UFT/UDT pseudo-relocations, PC-relative branch validation, and sub-byte instruction patching. The symbol table (`.symtab`) follows standard ELF `Elf64_Sym` format with CUDA-specific symbol types and an extended section index mechanism (`.symtab_shndx`) for programs exceeding 65,280 sections.
 
 | | |
 |---|---|
@@ -73,7 +73,7 @@ The `patch_mode` field at offset +24 drives the bit-field patching logic in `sub
 | 6, 0x37 | Split low-word patching (handles cross-qword boundaries) | LO types, sub-byte 8_N types |
 | 7, 0x38 | Split high-word patching (uses HIDWORD of value) | HI types |
 
-When `flags_hi` (at descriptor offset +28) is in the range 12--15, the relocation creator calls `sub_1CBD0D0` to register the relocation's target section in the call graph. This triggers call graph edge creation for function descriptors and branch targets.
+When `flags_hi` (at descriptor offset +28) is in the range 12–15, the relocation creator calls `sub_1CBD0D0` to register the relocation's target section in the call graph. This triggers call graph edge creation for function descriptors and branch targets.
 
 ## R_CUDA_\* Relocation Types
 
@@ -184,9 +184,9 @@ Constant field relocations patch `.nv.constant0.<func>` bank offsets into load c
 | 61 | `R_CUDA_FUNC_DESC32_32` | 32-bit function descriptor at bit 32 |
 | 62 | `R_CUDA_FUNC_DESC32_LO_32` | Low 32 of descriptor at bit 32 |
 | 63 | `R_CUDA_FUNC_DESC32_HI_32` | High 32 of descriptor at bit 32 |
-| 92--99 | `R_CUDA_FUNC_DESC_8_0` — `R_CUDA_FUNC_DESC_8_56` | Sub-byte function descriptor patches |
+| 92–99 | `R_CUDA_FUNC_DESC_8_0` — `R_CUDA_FUNC_DESC_8_56` | Sub-byte function descriptor patches |
 
-Function descriptors are used for indirect calls through function pointers. The descriptor contains the target function's entry point address and is loaded by the GPU's indirect call mechanism. The sub-byte `FUNC_DESC_8_*` variants patch individual bytes of the descriptor into instruction encoding slots, used in wide instruction formats where the descriptor address is spread across multiple fields. When the relocation creator detects a `flags_hi` value of 12--15 in the descriptor table entry, it calls `sub_1CBD0D0` to register the call edge in the call graph.
+Function descriptors are used for indirect calls through function pointers. The descriptor contains the target function's entry point address and is loaded by the GPU's indirect call mechanism. The sub-byte `FUNC_DESC_8_*` variants patch individual bytes of the descriptor into instruction encoding slots, used in wide instruction formats where the descriptor address is spread across multiple fields. When the relocation creator detects a `flags_hi` value of 12–15 in the descriptor table entry, it calls `sub_1CBD0D0` to register the call edge in the call graph.
 
 ### Texture, Sampler, and Surface Relocations
 
@@ -228,7 +228,7 @@ Bindless texture/surface relocations are handled by `sub_1CAB300`, which creates
 
 | Ordinal | Name | Purpose |
 |---|---|---|
-| 76--83 | `R_CUDA_8_0` — `R_CUDA_8_56` | Patch byte 0--7 of 64-bit instruction |
+| 76–83 | `R_CUDA_8_0` — `R_CUDA_8_56` | Patch byte 0–7 of 64-bit instruction |
 
 These relocations patch a single byte at a specific 8-bit-aligned position within a 64-bit instruction word. They are used when the resolved value must be inserted into a non-standard bit position that does not align with the instruction encoding's immediate field boundaries.
 
@@ -263,7 +263,7 @@ The `R_CUDA_UNUSED_CLEAR*` types zero out instruction fields that are unused in 
 |---|---|---|
 | 102 | `R_CUDA_UNIFIED` | Unified address (generic pointer) |
 | 103 | `R_CUDA_UNIFIED_32` | 32-bit unified address |
-| 104--111 | `R_CUDA_UNIFIED_8_0` — `R_CUDA_UNIFIED_8_56` | Unified address sub-byte patches |
+| 104–111 | `R_CUDA_UNIFIED_8_0` — `R_CUDA_UNIFIED_8_56` | Unified address sub-byte patches |
 | 112 | `R_CUDA_UNIFIED32_LO_32` | Low 32 of unified at bit 32 |
 | 113 | `R_CUDA_UNIFIED32_HI_32` | High 32 of unified at bit 32 |
 
@@ -730,7 +730,7 @@ Position-independent code mode (`IsPIC` flag) changes the relocation encoding. T
 
 The reference to "CUDA Dynamic Parallelism" (CDP, also spelled "cnp" internally for *CUDA Nested Parallelism*) is preserved as a static 34-entry pointer array at virtual address `0x2403A60` in the `.rodata` segment. Each entry is an 8-byte little-endian pointer to a NUL-terminated symbol name elsewhere in `.rodata`. The array is bracketed by an 8-byte NUL gap at `0x2403A58` and terminated at `0x2403B70` by zero padding followed by the unrelated string `" ERROR "`. When ptxas emits a cubin that calls into the device runtime, these are the symbol names it writes into the `.symtab` as `STB_GLOBAL`/`STT_NOTYPE` undefined references for the CUDA driver's runtime linker to resolve against `libcudadevrt`.
 
-Entries 0--4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever PTX uses `vprintf`, `malloc`, `free`, `vfprintf`, or `assert`. Entries 5--28 are the device-side launch/sync/event/query API. Entries 29--33 are the CUDA Graphs device-launch additions (this group's name strings live in a separate string pool starting at `0x24038C6`, distinct from the `0x21F4F62`-based pool used by entries 0--28; see the "VA" column below). The terminator dword at `0x2403B70` is `0x00000000` and is what the runtime symbol resolver tests against to know it has reached the end of the table.
+Entries 0–4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever PTX uses `vprintf`, `malloc`, `free`, `vfprintf`, or `assert`. Entries 5–28 are the device-side launch/sync/event/query API. Entries 29–33 are the CUDA Graphs device-launch additions (this group's name strings live in a separate string pool starting at `0x24038C6`, distinct from the `0x21F4F62`-based pool used by entries 0–28; see the "VA" column below). The terminator dword at `0x2403B70` is `0x00000000` and is what the runtime symbol resolver tests against to know it has reached the end of the table.
 
 | # | Entry VA | Points to | Symbol name | Notes |
 |---:|---|---|---|---|
@@ -770,9 +770,9 @@ Entries 0--4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever 
 | 33 | `0x2403B68` | `0x2403960` | `cudaGraphKernelNodeUpdatesApply` | — |
 | — | `0x2403B70` | `0x00000000` | *terminator* | dword zero |
 
-QUIRK: the symbol names use the legacy `cnp` prefix (CUDA Nested Parallelism, the project's original 2011-era codename) rather than the public-facing `cudaDevice*` names exposed in `cuda_device_runtime_api.h`. The driver-side `libcudadevrt` exports both spellings as aliases. Mixing a relocatable object emitted by an older ptxas (which only references `cnp*`) with a newer one (which adds the `cudaGraph*` entries 29--33) therefore still links cleanly, since the alias map covers backwards compatibility — but the reverse, feeding a `cudaGraph*` reference into a pre-Graphs driver, fails at runtime symbol resolution with `CUDA_ERROR_INVALID_PTX`.
+QUIRK: the symbol names use the legacy `cnp` prefix (CUDA Nested Parallelism, the project's original 2011-era codename) rather than the public-facing `cudaDevice*` names exposed in `cuda_device_runtime_api.h`. The driver-side `libcudadevrt` exports both spellings as aliases. Mixing a relocatable object emitted by an older ptxas (which only references `cnp*`) with a newer one (which adds the `cudaGraph*` entries 29–33) therefore still links cleanly, since the alias map covers backwards compatibility — but the reverse, feeding a `cudaGraph*` reference into a pre-Graphs driver, fails at runtime symbol resolution with `CUDA_ERROR_INVALID_PTX`.
 
-QUIRK: entries 29--33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0--28 (`0x21F4F62` and up). The two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent. The terminator dword is plain `0x00000000`, not a sentinel pointer — the resolver's loop reads a qword and stops when the low 8 bytes are zero, which means a hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32--63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would. ASLR loads ptxas above 4 GB, so the constraint holds in practice.
+QUIRK: entries 29–33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0–28 (`0x21F4F62` and up). The two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent. The terminator dword is plain `0x00000000`, not a sentinel pointer — the resolver's loop reads a qword and stops when the low 8 bytes are zero, which means a hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32–63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would. ASLR loads ptxas above 4 GB, so the constraint holds in practice.
 
 ## Cross-References
 

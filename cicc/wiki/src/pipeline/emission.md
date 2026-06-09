@@ -53,7 +53,7 @@ Reads NVVM metadata and emits performance-tuning directives. Attribute emission 
 | 7 | `.maxclusterrank N` | `sub_1C2EF50` | SM > 89 only |
 | 8 | `.maxnreg N` | `sub_1C2EF90` | — |
 
-Cluster attributes (5--7) gated by `*(a1+232)->field_1212 > 0x59` (SM > 89, i.e., SM 90+).
+Cluster attributes (5–7) gated by `*(a1+232)->field_1212 > 0x59` (SM > 89, i.e., SM 90+).
 
 ## Stack Frame — `sub_2158E80`
 
@@ -119,10 +119,10 @@ Switch on operand value (ASCII-encoded):
 | 0 | `%is_explicit_cluster` | Explicit cluster flag |
 | 1 | `%cluster_ctarank` | CTA rank within cluster |
 | 2 | `%cluster_nctarank` | CTAs in cluster |
-| 3--5 | `%cluster_nctaid.{x,y,z}` | Cluster grid dimensions |
-| 6--8 | `%cluster_ctaid.{x,y,z}` | CTA ID within cluster |
-| 9--11 | `%nclusterid.{x,y,z}` | Number of clusters |
-| 12--14 | `%clusterid.{x,y,z}` | Cluster ID |
+| 3–5 | `%cluster_nctaid.{x,y,z}` | Cluster grid dimensions |
+| 6–8 | `%cluster_ctaid.{x,y,z}` | CTA ID within cluster |
+| 9–11 | `%nclusterid.{x,y,z}` | Number of clusters |
+| 12–14 | `%clusterid.{x,y,z}` | Cluster ID |
 
 Fatal: `"Unhandled cluster info operand"` on invalid value.
 
@@ -456,7 +456,7 @@ Sampler reference globals can have structured initializers that reference other 
 
 ## Output Mode Selection
 
-Compilation output mode is controlled by a bitmask in the `a13` mode flags parameter, passed through the pipeline from the CLI flag parser (`sub_95C880`). The low bits encode the output format, while bits 8--9 encode the address width (32/64-bit).
+Compilation output mode is controlled by a bitmask in the `a13` mode flags parameter, passed through the pipeline from the CLI flag parser (`sub_95C880`). The low bits encode the output format, while bits 8–9 encode the address width (32/64-bit).
 
 ### Mode Flag Bitmask
 
@@ -552,9 +552,9 @@ Multi-purpose helper for cvta, MMA operands, and address space qualifiers:
 | `"addsp"` | 0=generic, 1=.global, 3=.shared, 4+=.local | cvta address space suffix |
 | `"ab"` | 0="a", 1="b" | cvta direction |
 | `"rowcol"` | 0="row", 1="col" | MMA layout |
-| `"mmarowcol"` | 0--3 | "row.row"/"row.col"/"col.row"/"col.col" |
+| `"mmarowcol"` | 0–3 | "row.row"/"row.col"/"col.row"/"col.col" |
 | `"satf"` | 0=(none), 1=".satfinite" | MMA saturation |
-| `"abtype"` | 0--6 | "u8"/"s8"/"u4"/"s4"/"b1"/"bf16"/"tf32" |
+| `"abtype"` | 0–6 | "u8"/"s8"/"u4"/"s4"/"b1"/"bf16"/"tf32" |
 | `"trans"` | 0=(none), 1=".trans" | WGMMA transpose |
 
 ## Architecture-Gated Features

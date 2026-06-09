@@ -46,7 +46,7 @@ The dispatcher is the only entry point for statement lowering. All control flow 
 
 Kinds 0 and 25 share the same handler. The split likely distinguishes C expression-statements from GNU statement-expressions or a similar EDG internal distinction. Any unrecognized kind triggers `fatal("unsupported statement type")`.
 
-Gaps in the numbering (3, 4, 9, 10, 14, 19, 21--23) either correspond to statement types handled entirely in the EDG frontend (lowered before codegen sees them) or are reserved for future use.
+Gaps in the numbering (3, 4, 9, 10, 14, 19, 21–23) either correspond to statement types handled entirely in the EDG frontend (lowered before codegen sees them) or are reserved for future use.
 
 The IL-18 handler `sub_932270` is the statement-path (Path A) duplicate of the inline-asm-to-LLVM `InlineAsm` translator; the near-identical Path B variant lives at `sub_1292420`. Both implement the same 7-phase template parser, constraint table, and operand binding logic with different diagnostic function pointers. See [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen) for the full pipeline.
 
@@ -592,7 +592,7 @@ Reconstructed from usage patterns across all statement handlers:
 | +0 | 4 | Source location: line number |
 | +4 | 2 | Source location: column number |
 | +16 | 8 | `nextStmt` — linked list pointer |
-| +40 | 1 | `stmtKind` — enum value (0--25 observed) |
+| +40 | 1 | `stmtKind` — enum value (0–25 observed) |
 | +41 | 1 | Flags (bit 0x10 = likely, bit 0x20 = unlikely) |
 | +48 | 8 | `exprPayload` / condition expression pointer |
 | +64 | 8 | Pragma annotation (NULL or `"unroll N"` string) |

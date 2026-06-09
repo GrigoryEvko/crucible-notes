@@ -6,7 +6,7 @@ The IR node subsystem is the central data structure layer of the embedded ptxas 
 
 ## Key Functions
 
-### IR Node Primitives (0x530E80--0x530FD0)
+### IR Node Primitives (0x530E80–0x530FD0)
 
 Twenty-two leaf functions at the bottom of the call graph. Most are single-instruction predicates or field extractors.
 
@@ -35,7 +35,7 @@ Twenty-two leaf functions at the bottom of the call graph. Most are single-instr
 | `sub_530FC0` | `IRNode_GetNumSrcOperands` | 16 B | many | Returns `*(a1+40) + 1 - *(a1+92)` |
 | `sub_530FD0` | `IRNode_GetNumDstOperands` | 16 B | many | Returns `*(a1+92)` |
 
-### NVInst Accessor Methods (0xA49010--0xA49F80)
+### NVInst Accessor Methods (0xA49010–0xA49F80)
 
 Higher-level accessors on the instruction object. These operate on the full NVInst structure (not the minimal IR node used by ISel patterns).
 
@@ -60,7 +60,7 @@ Higher-level accessors on the instruction object. These operate on the full NVIn
 | `sub_A49B50` | `NVInst::analyzeInstructionFlags` | 672 B | many | Sets classification bits in flags at offset +1136 |
 | `sub_A49DF0` | `NVInst::decodeAndAnalyze` | 96 B | many | Decode via vtable then call `analyzeInstructionFlags` |
 
-### Giant Operand Dispatch Switches (0xA5B6B0--0xA67910)
+### Giant Operand Dispatch Switches (0xA5B6B0–0xA67910)
 
 Four massive switch-on-opcode functions that implement per-instruction read/write of operand fields. Each switch has hundreds of cases (one per opcode ID), and each case contains a nested switch on field ID.
 
@@ -155,7 +155,7 @@ The type tag encoding is identical across all supported architectures. Three set
 
 | Arch Group | Base Address | Tag Checks |
 |---|---|---|
-| Generic (ISel core) | `sub_530E90`--`sub_530F70` | All 15 tag predicates (types 1--11, 13--16) |
+| Generic (ISel core) | `sub_530E90`--`sub_530F70` | All 15 tag predicates (types 1–11, 13–16) |
 | SM75 (Turing) | `sub_F16040`--`sub_F160F0` | Identical tag values; same predicate logic |
 | SM80 (Ampere) | `sub_CDD5F0`+ | Identical tag values (only `GetRegClass` clone present) |
 | SM86 (Ada) | `sub_11E9CA0`--`sub_11E9CF0` | Identical tag values; 7 predicates cloned |
@@ -271,9 +271,9 @@ The constructor at `sub_A4AB10` follows this sequence:
 
 1. Store the allocator pointer at slot 0.
 2. Allocate 8+ ref-counted list objects for: instruction list, basic block list, operand list, use-def chains, modifier lists, register mappings. Each allocation calls a release helper (`sub_A4A050`--`sub_A4A3D0`) for exception safety.
-3. Store architecture/format IDs at offsets 200--208.
-4. Copy the name string via `strlen` + `memcpy` into offsets 240--271.
-5. Copy the mnemonic string into offsets 272--319.
+3. Store architecture/format IDs at offsets 200–208.
+4. Copy the name string via `strlen` + `memcpy` into offsets 240–271.
+5. Copy the mnemonic string into offsets 272–319.
 6. Allocate additional ref-counted lists for output operands, input operands, predicate operands, scheduling dependencies, and memory dependencies.
 7. Call `sub_52DAB0(arch_id)` to obtain the ISA-specific vtable.
 8. Store the vtable at offset 400 and call `vtable[7]` for ISA-specific initialization.
@@ -384,17 +384,17 @@ uint32_t NVInst_getOperandField(void *this, NVInst *inst, uint32_t field_id) {
 
 The two-phase lookup (existence check then value extraction) means every field access performs two opcode switch dispatches. This is the cost of supporting a fully generic instruction representation that must handle 365+ distinct opcodes with varying operand schemas.
 
-## Instruction Descriptor Init Table (0x920240--0xA48290)
+## Instruction Descriptor Init Table (0x920240–0xA48290)
 
 943 template-instantiated functions, each initializing one instruction variant's descriptor. Every function follows this template:
 
-1. **Opcode assignment**: `*(desc+12) = opcode_id` (range: 15--365+).
+1. **Opcode assignment**: `*(desc+12) = opcode_id` (range: 15–365+).
 2. **Register class descriptor**: Load 16-byte mask from `.rodata` via SSE into `*(inst+8)`.
 3. **Operand format tables**: Three parallel arrays of 10 DWORDs each:
    - `inst+24..+60`: operand register class IDs
    - `inst+64..+100`: operand constraint IDs
    - `inst+104..+140`: operand modifier IDs
-4. **Operand count**: `*(inst+144) = N` (range: 1--16).
+4. **Operand count**: `*(inst+144) = N` (range: 1–16).
 5. **Per-operand init calls**: N calls to type-specific initializers:
 
 | Initializer | Operand type |
@@ -429,7 +429,7 @@ The most common opcodes, indicating which instruction families have the most enc
 | 27 | 24 | (control flow) |
 | 41 | 23 | (ALU variant) |
 
-Function size correlates directly with operand count: 2--4 operand instructions produce ~4 KB functions, 3--6 operands produce ~5 KB, 6--10 operands produce ~6 KB, and the most complex instructions (10--16 operands, e.g., LDG wide-register variants) produce ~7 KB functions.
+Function size correlates directly with operand count: 2–4 operand instructions produce ~4 KB functions, 3–6 operands produce ~5 KB, 6–10 operands produce ~6 KB, and the most complex instructions (10–16 operands, e.g., LDG wide-register variants) produce ~7 KB functions.
 
 ## FNV-1a Hash Table Infrastructure
 
@@ -475,7 +475,7 @@ The NVInst object provides a set of classification methods that other passes que
 |---|---|---|
 | `sub_A49350` | `isCompactEncoding` | `*(inst+208) <= 0x3FFF` |
 | `sub_A49360` | `isValidOpcode` | `(opcode - 122) <= 0xFF84` (not in invalid range) |
-| `sub_A495B0` | `isMemoryBarrier` | Opcode 182 or bitmask `0x1140D` for opcodes 242--258 |
+| `sub_A495B0` | `isMemoryBarrier` | Opcode 182 or bitmask `0x1140D` for opcodes 242–258 |
 | `sub_A495E0` | `hasFlags` | `(flags & 1) \|\| (flags & 0xE)` at offset +132 |
 | `sub_A496C0` | `isNOP` | No flags, not opcode 120, last operand type == 1, value == 31 + field 14 == 53 |
 | `sub_A49720` | `isPredicated` | Last operand slot type == 9 (predicate) |

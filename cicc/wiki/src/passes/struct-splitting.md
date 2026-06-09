@@ -134,7 +134,7 @@ The bitwise AND with the negation of the element alignment selects the largest p
 
 ## NVVM Type ID System
 
-The pass operates on NVVM's proprietary type ID system, not LLVM's `Type::TypeID`. The size classification logic (decompiled lines 997--1030) reveals the mapping:
+The pass operates on NVVM's proprietary type ID system, not LLVM's `Type::TypeID`. The size classification logic (decompiled lines 997–1030) reveals the mapping:
 
 | NVVM Type ID | Type | Bit Width |
 |:---:|---|---|

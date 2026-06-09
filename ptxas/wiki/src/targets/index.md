@@ -16,9 +16,9 @@ ptxas validates the `--gpu-name` target against three sorted lookup tables, cons
 
 **Per-SM Deep Dives:**
 
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Baseline feature set, codegen factory 24577/28673
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — WGMMA, cluster operations, codegen factory 32768
-- [Blackwell (SM 100--121)](blackwell.md) — tcgen05, arch/family gating, codegen factory 36864
+- [Turing & Ampere (SM 75–88)](turing-ampere.md) — Baseline feature set, codegen factory 24577/28673
+- [Ada & Hopper (SM 89–90a)](ada-hopper.md) — WGMMA, cluster operations, codegen factory 32768
+- [Blackwell (SM 100–121)](blackwell.md) — tcgen05, arch/family gating, codegen factory 36864
 - [TCGen05 — 5th Gen Tensor Cores](tcgen05.md) — Blackwell tensor core ISA detail
 
 ## Complete SM Table
@@ -84,19 +84,19 @@ Target name validation uses three sorted arrays searched via `bsearch()`. The CL
 Contains all valid base SM names without suffix, sorted by numeric SM ID. Includes legacy architectures no longer supported for active compilation but retained for validation, plus two internal/alias entries. Each entry is 12 bytes: `{uint32 sm_id, uint32 ptx_major, uint32 ptx_minor}`. The bsearch comparison (`sub_484B70`) compares the numeric `sm_id` extracted from the `--gpu-name` string via `sscanf`.
 
 ```text
-sm_10, sm_11, sm_12, sm_13,                    // Tesla (legacy, PTX 1.0--1.2)
+sm_10, sm_11, sm_12, sm_13,                    // Tesla (legacy, PTX 1.0–1.2)
 sm_20, sm_21,                                  // Fermi (legacy, PTX 2.0)
-sm_30, sm_32, sm_35, sm_37,                    // Kepler (legacy, PTX 3.0--4.1)
-sm_50, sm_52, sm_53,                           // Maxwell (legacy, PTX 4.0--4.2)
+sm_30, sm_32, sm_35, sm_37,                    // Kepler (legacy, PTX 3.0–4.1)
+sm_50, sm_52, sm_53,                           // Maxwell (legacy, PTX 4.0–4.2)
 sm_60, sm_61, sm_62,                           // Pascal (legacy, PTX 5.0)
-sm_70, sm_72,                                  // Volta (legacy, PTX 6.0--6.1)
+sm_70, sm_72,                                  // Volta (legacy, PTX 6.0–6.1)
 sm_75,                                         // Turing (active, PTX 6.3)
-sm_80, sm_82, sm_86, sm_87, sm_88, sm_89,      // Ampere/Ada (active, PTX 6.2--7.8)
+sm_80, sm_82, sm_86, sm_87, sm_88, sm_89,      // Ampere/Ada (active, PTX 6.2–7.8)
 sm_90,                                         // Hopper (active, PTX 7.8)
-sm_100, sm_101, sm_103, sm_110, sm_120, sm_121 // Blackwell (active, PTX 8.6--9.0)
+sm_100, sm_101, sm_103, sm_110, sm_120, sm_121 // Blackwell (active, PTX 8.6–9.0)
 ```
 
-**sm_82** (PTX 6.2): Undocumented internal Ampere target. Not registered in `sub_6765E0` (no profile object). Serves as the SASS opcode generation boundary (`SM82_FIRST`/`SM82_LAST`, opcode indices 172--193). The anomalously low PTX version requirement (6.2 vs sm_80's 7.0) suggests it was an early development target added before PTX ISA versioning was finalized.
+**sm_82** (PTX 6.2): Undocumented internal Ampere target. Not registered in `sub_6765E0` (no profile object). Serves as the SASS opcode generation boundary (`SM82_FIRST`/`SM82_LAST`, opcode indices 172–193). The anomalously low PTX version requirement (6.2 vs sm_80's 7.0) suggests it was an early development target added before PTX ISA versioning was finalized.
 
 **sm_101** (PTX 8.6): Original internal designation for Jetson Thor, renamed to sm_110 in a later CUDA release. Both entries coexist in the validation table for backward compatibility with PTX files referencing the old name. `sub_6765E0` registers only sm_110; sm_101 is validation-only.
 
@@ -442,7 +442,7 @@ Codegen factory value: 36864 (same as sm_100). Originally sm_101 before rename. 
 Codegen factory value: 36864 (same as sm_100). Architecturally a distinct consumer microarchitecture despite sharing the `"Blackwell"` family string.
 
 - **No tcgen05**: The entire tcgen05 ISA is absent on sm_120/121 — gated by SM version checks
-- Tensor core is warp-level `mma.sync` only — HMMA/IMMA (sm_70--sm_89 lineage) plus block-scaled FP4/FP6/FP8 (`kind::f8f6f4`/`mxf4nvf4`). No WGMMA (Hopper sm_90a-only), no tcgen05
+- Tensor core is warp-level `mma.sync` only — HMMA/IMMA (sm_70–sm_89 lineage) plus block-scaled FP4/FP6/FP8 (`kind::f8f6f4`/`mxf4nvf4`). No WGMMA (Hopper sm_90a-only), no tcgen05
 - sm_120 = RTX 50xx consumer / RTX Blackwell Pro (enterprise)
 - sm_121 = DGX Spark
 
@@ -517,7 +517,7 @@ These fields receive non-zero values during construction. Offsets are byte offse
 | +1216 | D | 1 | sub_43A400 | `vendor_flag` — set to 1 during ELF builder initialization | 85% |
 | +1385 | B | 0 (bits) | runtime | `scheduling_feature_flags` — bitfield, 21+ consumer sites | 99% |
 | +1536 | Q | 1832 | sub_C1B7A0 | `dynamic_region_offset` — points to tail SSE constant region start | 90% |
-| +1552 | Q | 0 | runtime | `pipeline_progress` — monotonically increasing counter (values 0--21); scoreboard guards check 16--19 | 95% |
+| +1552 | Q | 0 | runtime | `pipeline_progress` — monotonically increasing counter (values 0–21); scoreboard guards check 16–19 | 95% |
 | +1584 | Q | `nullsub_856` | sub_C1B7A0 | `sm_backend_vtable_ptr` — THE central polymorphic pointer; initialized to null stub | 99% |
 | +1684 | D | CLI value | per-SM init | `cli_option_value` — `*(a1+108)` passthrough from compiler driver | 90% |
 | +1840 | D | 1 | per-SM init | `elf_section_data` — initially 1 (enable), later overwritten with ptr | 85% |
@@ -562,9 +562,9 @@ The byte at offset +1385 is the most heavily accessed bitfield on the profile ob
 
 All 12 per-SM initializers (one per SM family) are structurally identical. Only two fields differ between families.
 
-| Field | sm_75--sm_88 | sm_89 | sm_90 | sm_100--sm_121 |
+| Field | sm_75–sm_88 | sm_89 | sm_90 | sm_100–sm_121 |
 |---|---|---|---|---|
-| +348 `codegen_factory` | 24577--28676 | 28677 | 0x8000 (32768) | 36864--36869 |
+| +348 `codegen_factory` | 24577–28676 | 28677 | 0x8000 (32768) | 36864–36869 |
 | +428 `conditional_feature_flag` | not written | not written | written (if `*(a2+355)`) | written (if `*(a2+355)`) |
 
 All other fields (+344, +432, +588, +708, +1684, +1840, +1880, +1912, +1928) are set identically across all SM families.
@@ -607,9 +607,9 @@ Offset Range   Size    Content
 
 ## Cross-References
 
-- [Turing & Ampere (SM 75--88)](turing-ampere.md) — Detailed feature flags for sm_75 through sm_89
-- [Ada & Hopper (SM 89--90a)](ada-hopper.md) — WGMMA, cluster operations, sm_90a arch-lock
-- [Blackwell (SM 100--121)](blackwell.md) — tcgen05, arch-conditional vs family-conditional gating
+- [Turing & Ampere (SM 75–88)](turing-ampere.md) — Detailed feature flags for sm_75 through sm_89
+- [Ada & Hopper (SM 89–90a)](ada-hopper.md) — WGMMA, cluster operations, sm_90a arch-lock
+- [Blackwell (SM 100–121)](blackwell.md) — tcgen05, arch-conditional vs family-conditional gating
 - [TCGen05 — 5th Gen Tensor Cores](tcgen05.md) — tcgen05 instruction set detail
 - [Intrinsic Table (608 Entries)](../intrinsics/index.md) — Master intrinsic catalog with per-SM generation ranges
 - [Tensor Core Intrinsics](../intrinsics/tensor.md) — WMMA/MMA/tcgen05 intrinsic lowering

@@ -764,7 +764,7 @@ CUDA introduces an additional dimension to overload resolution: **execution spac
 
 The CUDA execution space interaction with overload resolution happens at two levels:
 
-**Level 1: Post-resolution validation (expr.c).** After overload resolution selects the best viable function, `check_cross_execution_space_call` (`sub_505720`, 4KB) validates that the selected function is callable from the current execution context. If the call is illegal (e.g., calling a `__device__`-only function from `__host__` code), error 3462--3465 is emitted. This check runs AFTER overload resolution, not during candidate filtering.
+**Level 1: Post-resolution validation (expr.c).** After overload resolution selects the best viable function, `check_cross_execution_space_call` (`sub_505720`, 4KB) validates that the selected function is callable from the current execution context. If the call is illegal (e.g., calling a `__device__`-only function from `__host__` code), error 3462–3465 is emitted. This check runs AFTER overload resolution, not during candidate filtering.
 
 **Level 2: Overload-internal CUDA awareness (overload.c).** Within overload.c itself, the CUDA extensions flag `byte_126E349` gates CUDA-specific behavior in several functions:
 

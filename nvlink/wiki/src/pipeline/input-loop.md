@@ -4,7 +4,7 @@ After option parsing and library resolution, nvlink enters its central input dis
 
 | | |
 |---|---|
-| **Location** | Inside `main()` at `0x409800`, decompiled lines 595--901 |
+| **Location** | Inside `main()` at `0x409800`, decompiled lines 595–901 |
 | **Input list root** | `qword_2A5F330` — head of the input file linked list |
 | **Raw input list** | `qword_2A5F328` — the unprocessed input file list (before library resolution) |
 | **Header probe size** | 56 bytes (`0x38`), read via `fread(ptr, 1, 0x38, fp)` |
@@ -14,7 +14,7 @@ After option parsing and library resolution, nvlink enters its central input dis
 
 ## Complete Pseudocode
 
-The following pseudocode is a faithful reconstruction from `main_0x409800.c` lines 595--938, preserving all control flow, every branch, and every function call. Variable names match the decompilation where possible; comments explain the logic.
+The following pseudocode is a faithful reconstruction from `main_0x409800.c` lines 595–938, preserving all control flow, every branch, and every function call. Variable names match the decompilation where possible; comments explain the logic.
 
 ```c
 // ============================================================
@@ -371,7 +371,7 @@ LABEL_135:
 
 2. **Extension check comes before magic number check**. The decompiled code calls `sub_462620` (path\_split) to extract the extension, then compares the extension string against known values (`"cubin"`, `"ptx"`, `"fatbin"`, `"nvvm"`, `"ltoir"`, `"bc"`) before falling through to content-based detection (`sub_487A90` for archive magic, `sub_43D9B0` for relocatable ELF). The magic number probe in `ptr` is a secondary signal, not the primary dispatch key.
 
-3. **Extension comparison is hand-inlined**. The `"cubin"` and `"fatbin"` comparisons are 6/7-byte inline memcmp loops (visible at lines 639--650 and 737--748). The `"ptx"` check is three individual character tests (lines 681--690). Only `"nvvm"` and `"ltoir"` use `strcmp`.
+3. **Extension comparison is hand-inlined**. The `"cubin"` and `"fatbin"` comparisons are 6/7-byte inline memcmp loops (visible at lines 639–650 and 737–748). The `"ptx"` check is three individual character tests (lines 681–690). Only `"nvvm"` and `"ltoir"` use `strcmp`.
 
 4. **Dispatch is a linear if-else chain, not a switch**. The order is: cubin -> ptx -> fatbin -> nvvm/ltoir -> bc -> archive-probe -> host-ELF/ignore.
 
@@ -406,7 +406,7 @@ The probe is read with `fread(ptr, 1, 0x38, fp)` (line 612). If the file is shor
 |---|---|
 | 0 (and no ferror) | Empty file — falls through to LABEL\_131 ("ignore input") |
 | 0 (with ferror) | Read error — `sub_487A90` archive check; fatal if not an archive |
-| 1--55 | Short read — `sub_487A90` archive check; fatal if not an archive |
+| 1–55 | Short read — `sub_487A90` archive check; fatal if not an archive |
 | 56 | Full read — proceeds to extension parsing at LABEL\_94 |
 
 ### Magic Number Table
@@ -450,16 +450,16 @@ Extension strings recognized by the dispatch logic:
 
 | Extension | Format | Magic validation | Decompiled line |
 |---|---|---|---|
-| `.cubin` | CUDA device ELF | `0x464C457F` + `e_machine == 190` | 639--677 |
-| `.ptx` | PTX assembly | None (extension is sufficient) | 679--735 |
-| `.fatbin` | Fatbin container | `0xBA55ED50` (signed `-1168773808`) | 737--759 |
-| `.nvvm` | NVVM IR | None (extension + `-lto` gate) | 761--778 |
-| `.ltoir` | LTO IR | None (extension + `-lto` gate) | 761--778 |
-| `.bc` | LLVM bitcode | None (always fatal) | 780--786 |
+| `.cubin` | CUDA device ELF | `0x464C457F` + `e_machine == 190` | 639–677 |
+| `.ptx` | PTX assembly | None (extension is sufficient) | 679–735 |
+| `.fatbin` | Fatbin container | `0xBA55ED50` (signed `-1168773808`) | 737–759 |
+| `.nvvm` | NVVM IR | None (extension + `-lto` gate) | 761–778 |
+| `.ltoir` | LTO IR | None (extension + `-lto` gate) | 761–778 |
+| `.bc` | LLVM bitcode | None (always fatal) | 780–786 |
 | `.so` | Shared object (host) | None (always ignored) | 793 |
 | `.o` | Object file | `0x464C457F` + `e_machine` check | 799 |
-| `.a` | Static archive | `"!<arch>\n"` or `"!<thin>\n"` via `sub_487A90` | 789, 849--901 |
-| _(none)_ | Falls through | Content-based via `sub_487A90`, `sub_43D9B0` | 788--847 |
+| `.a` | Static archive | `"!<arch>\n"` or `"!<thin>\n"` via `sub_487A90` | 789, 849–901 |
+| _(none)_ | Falls through | Content-based via `sub_487A90`, `sub_43D9B0` | 788–847 |
 
 ## Complete Dispatch Table
 
@@ -469,7 +469,7 @@ The dispatch logic inside main combines the file extension, the magic number pro
 
 | | |
 |---|---|
-| **Detection** | Extension `"cubin"` (inline 6-byte memcmp at lines 639--650) |
+| **Detection** | Extension `"cubin"` (inline 6-byte memcmp at lines 639–650) |
 | **Validation** | `sub_43D970` (is\_elf) verifies `0x7F454C46` magic; `e_machine == 190` at offset +18 |
 | **SASS path** | `sub_43DA40` (is\_sass\_cubin) checks SASS flag in `e_flags` |
 | **SASS handler** | `sub_43E100` (load\_cubin\_from\_file) -> `sub_426570` (validate\_arch\_and\_merge) -> `sub_4275C0` (fnlzr\_post\_link) -> `sub_426570` again -> `sub_42A680` (register\_module) |
@@ -482,7 +482,7 @@ The SASS cubin path runs the FNLZR (Finalizer) post-link transform via `sub_4275
 
 | | |
 |---|---|
-| **Detection** | Extension `"ptx"` (three-byte character test at lines 681--690) |
+| **Detection** | Extension `"ptx"` (three-byte character test at lines 681–690) |
 | **Loader** | `sub_476BF0(v74, 1)` — load file with null termination |
 | **Handler** | `sub_4BD760` (ptxas JIT compilation) |
 | **Timing** | If `qword_2A5F290`: `sub_45CCD0` (start) -> ptxas -> `sub_45CCE0` (stop) -> `sub_432340` (CSV row) |
@@ -497,7 +497,7 @@ The `sub_429BA0` call (line 698) serializes the accumulated `-Xptxas` option lis
 
 | | |
 |---|---|
-| **Detection** | Extension `"fatbin"` (inline 7-byte memcmp at lines 737--748) |
+| **Detection** | Extension `"fatbin"` (inline 7-byte memcmp at lines 737–748) |
 | **Validation** | `ptr[0] == -1168773808` (i.e., first 4 bytes == `0xBA55ED50`) |
 | **Loader** | `sub_476BF0(v74, 0)` — load file in binary mode |
 | **Handler** | `sub_42AF40` (extract\_and\_process\_fatbin\_member) |
@@ -527,7 +527,7 @@ When called from the archive path (see section 7), the 5th parameter is `1` (fro
 | **Handler** | `sub_427A10` — identical to NVVM IR |
 | **Behavior** | LTO IR is NVIDIA's name for NVVM IR modules produced by cicc with `-dlto` or `-lto` during separate compilation. The `.ltoir` extension is a convention; the content is NVVM bitcode. |
 
-Both `.nvvm` and `.ltoir` share the same code path (lines 761--778). The `strcmp` checks are ORed together.
+Both `.nvvm` and `.ltoir` share the same code path (lines 761–778). The `strcmp` checks are ORed together.
 
 ### 6. LLVM Bitcode (`.bc` extension)
 
@@ -543,7 +543,7 @@ Both `.nvvm` and `.ltoir` share the same code path (lines 761--778). The `strcmp
 |---|---|
 | **Detection** | `sub_487A90(ptr, 56)` returns true — content matches `"!<arch>\n"` or `"!<thin>\n"` magic |
 | **Duplicate check** | Walks `qword_2A5F2F0` (set of already-processed archive paths) via `sub_464A80`/`sub_464A90`/`sub_464AA0`/`sub_464AC0` and `sub_4632F0` (path match) |
-| **cudadevrt deferral** | If `v353 == 0` (no modules registered yet) and `strstr(v74, "cudadevrt")` matches, the archive is skipped (line 854, 895--900) |
+| **cudadevrt deferral** | If `v353 == 0` (no modules registered yet) and `strstr(v74, "cudadevrt")` matches, the archive is skipped (line 854, 895–900) |
 | **Loader** | `sub_476BF0(v74, 0)` — binary read of entire archive |
 | **Open** | `sub_4BDAC0(&v363, v367, v368, v74)` -> `sub_487C20` |
 | **Iterate** | `while(1)`: `sub_4BDAF0(&s1, v363)` -> `sub_487E10`; break when `s1 == NULL` |
@@ -552,7 +552,7 @@ Both `.nvvm` and `.ltoir` share the same code path (lines 761--778). The `strcmp
 | **Close** | `sub_4BDB30(v363)` -> `sub_488200` |
 | **Record processed** | `sub_4644C0(v74, &qword_2A5F2F0)` |
 
-**Whole-archive semantics**: nvlink processes **every member** of every archive unconditionally. There is no symbol-directed extraction. The `while(1)` loop at lines 860--880 iterates until `s1 == NULL` (no more members), calling `sub_42AF40` on each one. This is equivalent to GNU ld's `--whole-archive` behavior, and it is the **only** behavior nvlink implements. There is no `--whole-archive` / `--no-whole-archive` flag because the behavior is always on.
+**Whole-archive semantics**: nvlink processes **every member** of every archive unconditionally. There is no symbol-directed extraction. The `while(1)` loop at lines 860–880 iterates until `s1 == NULL` (no more members), calling `sub_42AF40` on each one. This is equivalent to GNU ld's `--whole-archive` behavior, and it is the **only** behavior nvlink implements. There is no `--whole-archive` / `--no-whole-archive` flag because the behavior is always on.
 
 ### 8. Host ELF (`.o` / `.so` / extensionless)
 
@@ -574,7 +574,7 @@ Host `.o` objects with `e_machine == 190` are treated as device cubins, not host
 | | |
 |---|---|
 | **Detection** | No extension match, `sub_487A90` returns false (not archive), `sub_43D9B0` returns false (not relocatable ELF) |
-| **Handler** | LABEL\_131 (lines 840--847) |
+| **Handler** | LABEL\_131 (lines 840–847) |
 | **Behavior** | If verbose: `fprintf(stderr, "ignore input %s\n", v74)`. File is skipped. |
 | **Not fatal** | nvlink tolerates unknown files on the command line |
 
@@ -600,11 +600,11 @@ nvlink does not implement `--whole-archive` as a command-line option because who
 
 The only conditional archive behavior is **cudadevrt deferral** (see below).
 
-## The libcudadevrt Deferred Injection (Lines 922--938)
+## The libcudadevrt Deferred Injection (Lines 922–938)
 
 When nvlink encounters an archive containing `"cudadevrt"` in its path, and LTO mode is active, the archive member iteration path in `sub_42AF40` captures the libcudadevrt IR buffer into `v365`/`v366` instead of registering it immediately. This deferral has a specific reason: libcudadevrt's IR must be compiled together with user IR during the LTO batch, not separately.
 
-After the input loop exits and LTO is confirmed active (`byte_2A5F288 != 0`), lines 922--938 execute:
+After the input loop exits and LTO is confirmed active (`byte_2A5F288 != 0`), lines 922–938 execute:
 
 ```c
 if (v365) {
@@ -627,7 +627,7 @@ This ensures:
 2. A placeholder module record is created with the name `"libcudadevrt"` so the merge phase knows this module exists
 3. The module-id from the archive extraction (`v355`) is preserved for `--register-link-binaries` output
 
-The cudadevrt deferral also has a front gate: at lines 854 and 895--900, if no device modules have been registered yet (`v353 == 0`) and the archive path contains `"cudadevrt"`, the archive is skipped entirely via `goto LABEL_131`. This prevents loading cudadevrt when there is no user device code to link against.
+The cudadevrt deferral also has a front gate: at lines 854 and 895–900, if no device modules have been registered yet (`v353 == 0`) and the archive path contains `"cudadevrt"`, the archive is skipped entirely via `goto LABEL_131`. This prevents loading cudadevrt when there is no user device code to link against.
 
 ## Verbose Output During Input Processing
 
@@ -636,7 +636,7 @@ The verbose flag is `v55[64] & 1` (bit 0 of the elfw flags byte at offset 64). T
 | Line | Condition | Output |
 |---|---|---|
 | 606 | `v55[64] & 1` | `"link input %s\n"` — printed for every input file |
-| 844--845 | `v55[64] & 1` | `"ignore input %s\n"` — printed when a file is skipped |
+| 844–845 | `v55[64] & 1` | `"ignore input %s\n"` — printed when a file is skipped |
 | 941 | `v55[64] & 1` | `"compile linked lto ir:\n"` — printed at LTO entry after loop |
 
 Inside the per-format handlers, additional verbose output is controlled by the same flag:
@@ -644,7 +644,7 @@ Inside the per-format handlers, additional verbose output is controlled by the s
 - NVVM IR registration (`sub_427A10`): `"nvlink -lto-add-module %s.nvvm"`
 - PTX compilation: profiling timer start/stop if `qword_2A5F290` is set
 
-The timing trace flag is `v55[64] & 0x20` (bit 5). When set (via `--verbose 0x20` or equivalent), it triggers `sub_4279C0` (phase\_timer) calls at phase boundaries (lines 590--593 for `"init"`). The input loop itself does not emit timing trace markers; the next timing marker after `"init"` is `"cicc-lto"` at line 1100.
+The timing trace flag is `v55[64] & 0x20` (bit 5). When set (via `--verbose 0x20` or equivalent), it triggers `sub_4279C0` (phase\_timer) calls at phase boundaries (lines 590–593 for `"init"`). The input loop itself does not emit timing trace markers; the next timing marker after `"init"` is `"cicc-lto"` at line 1100.
 
 ## How Input Order Affects Symbol Resolution
 
@@ -660,7 +660,7 @@ Input order matters in three ways:
 
 ## Post-Dispatch: Module Registration
 
-After type-specific processing produces a cubin (either directly or via compilation), nvlink registers the resulting module via `sub_42A680` (register\_module\_for\_linking) at LABEL\_182 (line 674--677). This function:
+After type-specific processing produces a cubin (either directly or via compilation), nvlink registers the resulting module via `sub_42A680` (register\_module\_for\_linking) at LABEL\_182 (line 674–677). This function:
 
 1. Allocates an 80-byte module record
 2. Extracts the module\_id from the cubin's ELF metadata via `sub_46F0C0`
@@ -732,7 +732,7 @@ Additional behaviors:
                |  |       |  |    |
               yes no     yes no   |
                |  |       |  |    |
-            +--v--v--+ +--v--v-+  |
+            +--v–v--+ +--v–v-+  |
             |FNLZR + | |direct |  |
             |re-valid| |merge  |  |
             +--------+ +------+  |
@@ -803,7 +803,7 @@ Additional behaviors:
 
 | Address | Size | Identity | Role in input loop | Decompiled line(s) |
 |---|---|---|---|---|
-| `0x409800` | 57,970 B | `main` | Contains the input loop inline | 595--938 |
+| `0x409800` | 57,970 B | `main` | Contains the input loop inline | 595–938 |
 | `0x462620` | 3,579 B | `path_split` | Decomposes file path into dir/base/ext | 634 |
 | `0x462C10` | < 2 KB | path helper | Auxiliary path operation | 567 |
 | `0x462550` | — | path helper | Secondary path utility | — |
@@ -898,14 +898,14 @@ Additional behaviors:
 
 | Claim | Confidence | Evidence |
 |-------|-----------|----------|
-| Input loop location: `main()` at `0x409800`, lines 595--901 | **HIGH** | Direct decompiled source read; loop entry at line 595 (`v73 = qword_2A5F330`), loop body 598--901, exit at LABEL\_135 |
-| Extension-first dispatch (not magic-first) | **HIGH** | Decompiled lines 639--786 test extension strings before the `sub_487A90` archive content check at line 789 |
-| Inline extension comparisons for "cubin" (6-byte), "fatbin" (7-byte), "ptx" (3-char) | **HIGH** | Visible as hand-coded memcmp/character-test loops at lines 639--650, 737--748, 681--690 |
+| Input loop location: `main()` at `0x409800`, lines 595–901 | **HIGH** | Direct decompiled source read; loop entry at line 595 (`v73 = qword_2A5F330`), loop body 598–901, exit at LABEL\_135 |
+| Extension-first dispatch (not magic-first) | **HIGH** | Decompiled lines 639–786 test extension strings before the `sub_487A90` archive content check at line 789 |
+| Inline extension comparisons for "cubin" (6-byte), "fatbin" (7-byte), "ptx" (3-char) | **HIGH** | Visible as hand-coded memcmp/character-test loops at lines 639–650, 737–748, 681–690 |
 | strcmp for "nvvm" and "ltoir" at line 761 | **HIGH** | `!strcmp(s1, "nvvm") \|\| !strcmp(v84, "ltoir")` directly visible |
 | Linked list node: +0 = next, +8 = path | **HIGH** | `v73[1]` at line 601 (path), `*v73` at line 905 (next) |
-| Whole-archive semantics (unconditional member iteration) | **HIGH** | Lines 860--880: `while(1) { archive_next; if (!s1) break; sub_42AF40(...); }` — no symbol check |
-| cudadevrt deferral at lines 854 and 895--900 | **HIGH** | `if (v353 \|\| !strstr(v74, "cudadevrt"))` visible at line 854; `if (!v353) { if (strstr(...)) goto LABEL_131; }` at 895--900 |
-| libcudadevrt IR injection at lines 922--938 | **HIGH** | `sub_427A10(v55, v365, v366, "libcudadevrt")` at 924; 80-byte alloc, `strcpy(v111, "libcudadevrt")`, `sub_4644C0(v108, &v353)` at 925--938 |
+| Whole-archive semantics (unconditional member iteration) | **HIGH** | Lines 860–880: `while(1) { archive_next; if (!s1) break; sub_42AF40(...); }` — no symbol check |
+| cudadevrt deferral at lines 854 and 895–900 | **HIGH** | `if (v353 \|\| !strstr(v74, "cudadevrt"))` visible at line 854; `if (!v353) { if (strstr(...)) goto LABEL_131; }` at 895–900 |
+| libcudadevrt IR injection at lines 922–938 | **HIGH** | `sub_427A10(v55, v365, v366, "libcudadevrt")` at 924; 80-byte alloc, `strcpy(v111, "libcudadevrt")`, `sub_4644C0(v108, &v353)` at 925–938 |
 | Error accumulation: error byte at TLS+1, checked at line 909 | **HIGH** | `*(_BYTE *)(sub_44F410(v64) + 1)` at line 909 -> `goto LABEL_271` -> `exit(-1)` at line 1685 |
 | `sub_4297B0` is elfLink error checker | **HIGH** | Called after every archive/member operation with return value and filename; pattern matches error-check-and-emit |
 | Mercury FNLZR condition: sm > 89 at line 721 | **HIGH** | `if ((unsigned int)dword_2A5F314 <= 0x59) goto LABEL_185` — `0x59` = 89 decimal |
@@ -915,7 +915,7 @@ Additional behaviors:
 | 80-byte module record for libcudadevrt | **HIGH** | `sub_426AA0(80)` at line 925, followed by 20-dword zeroing loop |
 | `.so` extension silently ignored | **HIGH** | Lines 793: `*s1 != 115 \|\| s1[1] != 111 \|\| s1[2]` (ASCII 's','o',NUL) -> skip |
 | `.bc` always fatal | **HIGH** | Line 785: `sub_467460(&unk_2A5B670, "should never see bc files")` — unconditional |
-| PTX timing via `qword_2A5F290` | **HIGH** | Lines 695--715: `if (qword_2A5F290) timing_start` / `timing_stop` / `csv_write` |
+| PTX timing via `qword_2A5F290` | **HIGH** | Lines 695–715: `if (qword_2A5F290) timing_start` / `timing_stop` / `csv_write` |
 | All function addresses in Key Function Map table | **HIGH** | All verified against decompiled/ directory files |
 | Fatbin member type codes (1=PTX, 8=NVVM, 16=mercury) | **MEDIUM** | Structural match from `sub_42AF40` decompiled code; type codes inferred from dispatch branches |
 | `sub_4BDB70` as content classifier for archive members | **MEDIUM** | Called at lines 803 and 867 between member extraction and `sub_42AF40`; exact internal logic not fully traced |

@@ -429,7 +429,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 
 ## Optimizer Pipeline Assembly
 
-Functions discovered during wiki writing (W101--W241). These assemble the LLVM optimization pipeline from NVVMPassOptions slots.
+Functions discovered during wiki writing (W101–W241). These assemble the LLVM optimization pipeline from NVVMPassOptions slots.
 
 ### Pipeline Builders
 
@@ -459,7 +459,7 @@ Each factory creates a pass instance; referenced from `sub_12E54A0`, `sub_12DE33
 | FunctionAttrs factory (infers readonly, nounwind, etc.) | `0x1841180` | — | HIGH |
 | LICM factory (parameter 0 = standard mode) | `0x195E880` | — | HIGH |
 | LoopVectorize/SLP factory (7 params: width, thresholds) | `0x19B73C0` | — | HIGH |
-| CGSCC standard pipeline factory (InlinerWrapper, 1--5 iterations) | `0x1A62BF0` | — | HIGH |
+| CGSCC standard pipeline factory (InlinerWrapper, 1–5 iterations) | `0x1A62BF0` | — | HIGH |
 | PrintModulePass factory (debug dump, params: level, verbose) | `0x17060B0` | — | HIGH |
 | JumpThreading / CVP factory (parameter: threshold) | `0x198DF00` | — | HIGH |
 | EarlyCSE factory | `0x196A2B0` | — | HIGH |

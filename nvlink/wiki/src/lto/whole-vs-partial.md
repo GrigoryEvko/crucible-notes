@@ -13,19 +13,19 @@ When nvlink performs link-time optimization, it must decide between two fundamen
 | **NVVM compile wrapper** | `sub_4BC6F0` (`nvvm_compile_and_extract`) at `0x4BC6F0` |
 | **Module registrar** | `sub_42A680` (`register_module`) at `0x42A680` |
 | **Option parser (flag extraction + conflict check)** | `sub_427AE0` at `0x427AE0` |
-| **Main dispatch (whole/partial branch)** | `main` at `0x409800`, lines 1155--1202 |
+| **Main dispatch (whole/partial branch)** | `main` at `0x409800`, lines 1155–1202 |
 
 ## Confidence Tags for Core Claims
 
 | Claim | Confidence | Evidence |
 |---|---|---|
-| `byte_2A5F286` at `0x2A5F286` is the whole-vs-partial decision flag | HIGH | Single-byte global; toggled by both `sub_427AE0` line 1209 and `sub_42A680` line 487; consumed by `main` lines 1155--1202 dispatch |
-| `byte_2A5F284` = `--force-whole-lto`, `byte_2A5F285` = `--force-partial-lto` | HIGH | Direct `option_get_value` registrations in `sub_427AE0` lines 981--982 with the literal option strings |
+| `byte_2A5F286` at `0x2A5F286` is the whole-vs-partial decision flag | HIGH | Single-byte global; toggled by both `sub_427AE0` line 1209 and `sub_42A680` line 487; consumed by `main` lines 1155–1202 dispatch |
+| `byte_2A5F284` = `--force-whole-lto`, `byte_2A5F285` = `--force-partial-lto` | HIGH | Direct `option_get_value` registrations in `sub_427AE0` lines 981–982 with the literal option strings |
 | `byte_2A5F288` = `--link-time-opt` (master LTO enable) | HIGH | Same `option_get_value` pattern; help text `"force doing whole program LTO when -dlto"` adjacent |
-| `--force-whole-lto` silently loses to non-cudadevrt native cubin | HIGH | `sub_42A680` lines 485--493 set `byte_2A5F285=1` for any non-cudadevrt native input; `main` line 1070 guard `!byte_2A5F285` then fails |
+| `--force-whole-lto` silently loses to non-cudadevrt native cubin | HIGH | `sub_42A680` lines 485–493 set `byte_2A5F285=1` for any non-cudadevrt native input; `main` line 1070 guard `!byte_2A5F285` then fails |
 | cudadevrt exception checked via `strstr(filename, "cudadevrt")` | HIGH | Direct `strstr` call visible in decompiled `sub_42A680` with literal substring |
-| `nvvmCompileProgram` return value 100 selects whole-program | MEDIUM | Branch in `sub_4BC6F0` lines 393--410: `==100` writes `*a5=0`, `==0` writes `*a5=1`; specific code values inferred from comparison constants |
-| Conflict diagnostic `-force-partial-lto vs -force-whole-lto` | HIGH | Exact format string referenced at `sub_427AE0` line 1194--1202 |
+| `nvvmCompileProgram` return value 100 selects whole-program | MEDIUM | Branch in `sub_4BC6F0` lines 393–410: `==100` writes `*a5=0`, `==0` writes `*a5=1`; specific code values inferred from comparison constants |
+| Conflict diagnostic `-force-partial-lto vs -force-whole-lto` | HIGH | Exact format string referenced at `sub_427AE0` line 1194–1202 |
 
 ## Mode Decision Matrix
 
@@ -34,19 +34,19 @@ The following matrix captures every documented path from user input and flag sta
 | # | CLI flags | Input composition | Parse-time result | Runtime decision | Effective mode | Source |
 |---|-----------|-------------------|-------------------|------------------|----------------|--------|
 | 1 | no `-lto` | any | `byte_2A5F286=0` (unused) | — | **No LTO** (pipeline skipped) | `sub_427AE0` does not enter the `byte_2A5F288` branch |
-| 2 | `-lto --force-partial-lto --force-whole-lto` | any | **Error** — mutual conflict | — | — | `sub_427AE0` line 1194--1202 emits `-force-partial-lto vs -force-whole-lto` conflict |
-| 3 | `--force-partial-lto` **without** `-dlto`/`-lto` | any | **Error** — requires `-dlto` | — | — | `sub_427AE0` line 1231--1232 |
-| 4 | `--force-whole-lto` **without** `-dlto`/`-lto` | any | **Error** — requires `-dlto` | — | — | `sub_427AE0` line 1233--1234 |
-| 5 | `-lto -r` (`--relocatable-link`) | any | `byte_2A5F285=1` forced | register\_module + dispatch pick partial | **Partial** (forced) | `sub_427AE0` line 1151--1153: `if (byte_2A5F1E8) byte_2A5F285 = 1;` |
+| 2 | `-lto --force-partial-lto --force-whole-lto` | any | **Error** — mutual conflict | — | — | `sub_427AE0` line 1194–1202 emits `-force-partial-lto vs -force-whole-lto` conflict |
+| 3 | `--force-partial-lto` **without** `-dlto`/`-lto` | any | **Error** — requires `-dlto` | — | — | `sub_427AE0` line 1231–1232 |
+| 4 | `--force-whole-lto` **without** `-dlto`/`-lto` | any | **Error** — requires `-dlto` | — | — | `sub_427AE0` line 1233–1234 |
+| 5 | `-lto -r` (`--relocatable-link`) | any | `byte_2A5F285=1` forced | register\_module + dispatch pick partial | **Partial** (forced) | `sub_427AE0` line 1151–1153: `if (byte_2A5F1E8) byte_2A5F285 = 1;` |
 | 6 | `-lto --force-partial-lto` | any | `byte_2A5F285=1`, flows to `LABEL_71` | `byte_2A5F286=1` at parse time | **Partial** (explicit) | `sub_427AE0` line 1209 sets `byte_2A5F286 = 1` |
-| 7 | `-lto --force-whole-lto` | all inputs have LTO IR | `byte_2A5F284=1`, `byte_2A5F285=0` | nvvmCompileProgram returns 100 -> `byte_2A5F286=0`; also main line 1074 override | **Whole** (redundant force) | `sub_4BC6F0` line 393--395 and `main` line 1073--1074 |
-| 8 | `-lto --force-whole-lto` | some inputs are **native cubins**, all of them `libcudadevrt` | `byte_2A5F284=1`, `byte_2A5F285` unchanged; `register_module` sets `byte_2A5F286=1` but not `byte_2A5F285` (cudadevrt exception) | main line 1070 test `!byte_2A5F285 && dword_2A5B514==1` succeeds -> `byte_2A5F286=0` forced | **Whole** (override wins; cudadevrt is stripped) | `main` line 1073--1074, then line 1346--1366 removes cudadevrt |
-| 9 | `-lto --force-whole-lto` | some inputs are **native cubins**, at least one is NOT `libcudadevrt` | `byte_2A5F284=1`; `register_module` sets both `byte_2A5F286=1` and `byte_2A5F285=1` + warning | main line 1070 test `!byte_2A5F285` fails -> override skipped | **Partial** (force-whole silently ineffective) | `sub_42A680` line 485--493; `main` line 1070 guard fails |
-| 10 | `-lto` only, no force flags | all inputs have LTO IR | defaults: `byte_2A5F286=0` | `sub_4BC6F0` -> nvvmCompileProgram returns 100 -> `*a5=0` | **Whole** (auto) | `sub_4BC6F0` line 393--395 |
-| 11 | `-lto` only, no force flags | all inputs have LTO IR, but nvvm splits the IR into multiple modules | defaults: `byte_2A5F286=0` | `sub_4BC6F0` -> nvvmCompileProgram returns 0 -> `*a5=1` | **Partial** (nvvm decided to split) | `sub_4BC6F0` line 405--410 |
-| 12 | `-lto` only | some inputs are native cubins, all of them `libcudadevrt` | defaults | `register_module` sets `byte_2A5F286=1`, `byte_2A5F285` stays 0, no warning | **Partial** (cudadevrt-only silent) | `sub_42A680` line 485--488 |
-| 13 | `-lto` only | some inputs are native cubins, at least one not `libcudadevrt` | defaults | `register_module` sets `byte_2A5F286=1` and `byte_2A5F285=1`, emits warning | **Partial** (auto with warning) | `sub_42A680` line 485--493 |
-| 14 | `-lto --emit-ptx --force-partial-lto` | any | `byte_2A5F286=1`, enters `LABEL_66` (split-compat check) | — | **Partial** (with split-compile compatibility validation) | `sub_427AE0` line 1206--1225 |
+| 7 | `-lto --force-whole-lto` | all inputs have LTO IR | `byte_2A5F284=1`, `byte_2A5F285=0` | nvvmCompileProgram returns 100 -> `byte_2A5F286=0`; also main line 1074 override | **Whole** (redundant force) | `sub_4BC6F0` line 393–395 and `main` line 1073–1074 |
+| 8 | `-lto --force-whole-lto` | some inputs are **native cubins**, all of them `libcudadevrt` | `byte_2A5F284=1`, `byte_2A5F285` unchanged; `register_module` sets `byte_2A5F286=1` but not `byte_2A5F285` (cudadevrt exception) | main line 1070 test `!byte_2A5F285 && dword_2A5B514==1` succeeds -> `byte_2A5F286=0` forced | **Whole** (override wins; cudadevrt is stripped) | `main` line 1073–1074, then line 1346–1366 removes cudadevrt |
+| 9 | `-lto --force-whole-lto` | some inputs are **native cubins**, at least one is NOT `libcudadevrt` | `byte_2A5F284=1`; `register_module` sets both `byte_2A5F286=1` and `byte_2A5F285=1` + warning | main line 1070 test `!byte_2A5F285` fails -> override skipped | **Partial** (force-whole silently ineffective) | `sub_42A680` line 485–493; `main` line 1070 guard fails |
+| 10 | `-lto` only, no force flags | all inputs have LTO IR | defaults: `byte_2A5F286=0` | `sub_4BC6F0` -> nvvmCompileProgram returns 100 -> `*a5=0` | **Whole** (auto) | `sub_4BC6F0` line 393–395 |
+| 11 | `-lto` only, no force flags | all inputs have LTO IR, but nvvm splits the IR into multiple modules | defaults: `byte_2A5F286=0` | `sub_4BC6F0` -> nvvmCompileProgram returns 0 -> `*a5=1` | **Partial** (nvvm decided to split) | `sub_4BC6F0` line 405–410 |
+| 12 | `-lto` only | some inputs are native cubins, all of them `libcudadevrt` | defaults | `register_module` sets `byte_2A5F286=1`, `byte_2A5F285` stays 0, no warning | **Partial** (cudadevrt-only silent) | `sub_42A680` line 485–488 |
+| 13 | `-lto` only | some inputs are native cubins, at least one not `libcudadevrt` | defaults | `register_module` sets `byte_2A5F286=1` and `byte_2A5F285=1`, emits warning | **Partial** (auto with warning) | `sub_42A680` line 485–493 |
+| 14 | `-lto --emit-ptx --force-partial-lto` | any | `byte_2A5F286=1`, enters `LABEL_66` (split-compat check) | — | **Partial** (with split-compile compatibility validation) | `sub_427AE0` line 1206–1225 |
 
 ### Simplified User-Facing Matrix
 
@@ -57,7 +57,7 @@ The original task-requested matrix, after collapsing the runtime details:
 | All inputs are LTO IR, no force flags | **Whole** | All functions eligible; `nvvmCompileProgram` returns 100, `byte_2A5F286=0` |
 | Some inputs are SASS cubins (not cudadevrt) | **Partial** (auto) | Cannot re-optimize SASS; `register_module` sets `byte_2A5F286=1` + warning |
 | `--force-partial-lto` | **Partial** | Forced by user at parse time (`sub_427AE0` line 1209) |
-| `-r` / `--relocatable-link` + `-lto` | **Partial** | Relocatable link implies `--force-partial-lto` (`sub_427AE0` line 1151--1153) |
+| `-r` / `--relocatable-link` + `-lto` | **Partial** | Relocatable link implies `--force-partial-lto` (`sub_427AE0` line 1151–1153) |
 | `--force-whole-lto`, all non-LTO inputs are cudadevrt | **Whole** | Override fires, cudadevrt stripped from module list |
 | `--force-whole-lto`, non-cudadevrt native cubin present | **Partial** (silently) | `register_module` sets `byte_2A5F285`, which blocks the main-line-1074 override |
 | `--force-partial-lto` + `--force-whole-lto` | **Error** | Mutual conflict |
@@ -68,7 +68,7 @@ The non-obvious case is row 9 / the last silent-fallback row: **`--force-whole-l
 
 | Flag | Short | Type | Global | Behavior |
 |---|---|---|---|---|
-| `--link-time-opt` | `-lto` | bool | `byte_2A5F288` | Master LTO enable. Required for any mode decision to be meaningful. Implied by `--dlto` (`sub_427AE0` line 1075--1076) |
+| `--link-time-opt` | `-lto` | bool | `byte_2A5F288` | Master LTO enable. Required for any mode decision to be meaningful. Implied by `--dlto` (`sub_427AE0` line 1075–1076) |
 | `--dlto` | — | bool | `byte_2A5F287` | Distributed LTO mode. Sets `byte_2A5F288` as a side effect at line 1076 |
 | `--force-whole-lto` | — | bool (hidden) | `byte_2A5F284` | Requests whole-program mode. Help text: `"force doing whole program LTO when -dlto"`. Only effective if `!byte_2A5F285` (see row 8 vs row 9 above) |
 | `--force-partial-lto` | — | bool (hidden) | `byte_2A5F285` | Requests partial/relocatable mode. Help text: `"force doing partial LTO when -dlto"`. Also auto-set by `register_module` and by `-r` |
@@ -79,7 +79,7 @@ The non-obvious case is row 9 / the last silent-fallback row: **`--force-whole-l
 
 **Visibility flag.** Both `--force-whole-lto` and `--force-partial-lto` are registered with flag value 4 (hidden from `--help`). They exist primarily for CUDA-toolchain internal use and debug workflows. The public expectation is that `nvcc` selects the correct mode automatically based on the object mix it produces.
 
-**Parse-time flag extraction** (`sub_427AE0` lines 979--982):
+**Parse-time flag extraction** (`sub_427AE0` lines 979–982):
 
 ```c
 sub_42E390(parser, "link-time-opt",     &byte_2A5F288, 1);
@@ -97,11 +97,11 @@ sub_42E390(parser, "force-whole-lto",   &byte_2A5F284, 1);
 3. **Input registration** (`sub_42A680`): when a non-LTO object is encountered during the input loop, the flag is set to 1.
 4. **NVVM compilation** (`sub_4BC6F0`): the flag is passed by pointer as parameter `a5`. The nvvm return code can modify it.
 5. **Post-NVVM override** (main, line 1073): if `--force-whole-lto` (`byte_2A5F284`) is active *and* `byte_2A5F285` is still 0, the flag is forcibly cleared to 0.
-6. **Dispatch** (main, lines 1155--1202): the flag's value determines which compilation backend is invoked.
+6. **Dispatch** (main, lines 1155–1202): the flag's value determines which compilation backend is invoked.
 
 ## Automatic Detection in register_module
 
-The most common way `byte_2A5F286` gets set is through `sub_42A680` (`register_module`), called for every input object during the input file loop. The relevant logic at lines 481--496:
+The most common way `byte_2A5F286` gets set is through `sub_42A680` (`register_module`), called for every input object during the input file loop. The relevant logic at lines 481–496:
 
 ```c
 // Inside sub_42A680 (register_module)
@@ -153,7 +153,7 @@ option_get_value(parser, "force-whole-lto",   &byte_2A5F284, 1);  // line 982
 
 Option parsing validates flag combinations with several checks:
 
-**1. Mutual exclusion of force flags** (lines 1194--1204): If both `--force-partial-lto` and `--force-whole-lto` are specified together with `-dlto`, nvlink emits an error via `sub_467460` with the `unk_2A5B650` severity (conflict error):
+**1. Mutual exclusion of force flags** (lines 1194–1204): If both `--force-partial-lto` and `--force-whole-lto` are specified together with `-dlto`, nvlink emits an error via `sub_467460` with the `unk_2A5B650` severity (conflict error):
 
 ```c
 if (byte_2A5F285) {               // --force-partial-lto is set
@@ -163,7 +163,7 @@ if (byte_2A5F285) {               // --force-partial-lto is set
 }
 ```
 
-**2. Requires -dlto** (lines 1231--1234): Both `--force-partial-lto` and `--force-whole-lto` require `-dlto` mode. Without it, each triggers a separate error:
+**2. Requires -dlto** (lines 1231–1234): Both `--force-partial-lto` and `--force-whole-lto` require `-dlto` mode. Without it, each triggers a separate error:
 
 ```c
 if (!byte_2A5F287) {              // no -dlto
@@ -174,7 +174,7 @@ if (!byte_2A5F287) {              // no -dlto
 }
 ```
 
-**3. Relocatable link implies partial** (line 1151--1153): When `--relocatable-link` / `-r` (`byte_2A5F1E8`) is active with LTO, partial mode is forced unconditionally:
+**3. Relocatable link implies partial** (line 1151–1153): When `--relocatable-link` / `-r` (`byte_2A5F1E8`) is active with LTO, partial mode is forced unconditionally:
 
 ```c
 if (byte_2A5F288) {               // -lto active
@@ -184,7 +184,7 @@ if (byte_2A5F288) {               // -lto active
 }
 ```
 
-**4. --force-partial-lto with -emit-ptx** (lines 1206--1225): If `--force-partial-lto` is active (or is about to be set), and `--emit-ptx` is also active, the code takes the `LABEL_66` path which validates split-compile compatibility: `-split-compile-extended` must be 1, otherwise a warning is emitted and `dword_2A5B514` is demoted to 1 (its previous value is migrated to `dword_2A5B518`).
+**4. --force-partial-lto with -emit-ptx** (lines 1206–1225): If `--force-partial-lto` is active (or is about to be set), and `--emit-ptx` is also active, the code takes the `LABEL_66` path which validates split-compile compatibility: `-split-compile-extended` must be 1, otherwise a warning is emitted and `dword_2A5B514` is demoted to 1 (its previous value is migrated to `dword_2A5B518`).
 
 ### Option Validation Summary
 
@@ -292,7 +292,7 @@ if (!byte_2A5F286) {
 
 `sub_4BD4E0` is the whole-program ptxas backend. It creates a compilation context (`sub_4CDD60`), configures the target architecture, sets 64-bit mode, feeds the PTX, compiles, and extracts the resulting cubin. The whole-program path produces a single, fully-linked cubin that is written directly to the output file. Since all symbols are resolved, no further ELF merging is needed.
 
-After whole-program compilation, if the output had cudadevrt in the module list (lines 1337--1366), it is removed:
+After whole-program compilation, if the output had cudadevrt in the module list (lines 1337–1366), it is removed:
 
 ```c
 if (!byte_2A5F286) {   // whole-program: all code was LTO'd
@@ -344,7 +344,7 @@ if (byte_2A5F286) {
 }
 ```
 
-`sub_4BD760` is the relocatable ptxas backend. Unlike `sub_4BD4E0`, it passes additional flags that tell the embedded ptxas to produce a relocatable object (`.o`) rather than a fully-linked cubin. The key difference is the use of `setjmp`/`longjmp` for error recovery — if compilation fails, the function can recover gracefully (lines 114--152 of `sub_4BD760`).
+`sub_4BD760` is the relocatable ptxas backend. Unlike `sub_4BD4E0`, it passes additional flags that tell the embedded ptxas to produce a relocatable object (`.o`) rather than a fully-linked cubin. The key difference is the use of `setjmp`/`longjmp` for error recovery — if compilation fails, the function can recover gracefully (lines 114–152 of `sub_4BD760`).
 
 In partial mode, the compiled cubin is a relocatable ELF that must be merged into the output alongside the non-LTO objects. The merge happens through `sub_45E7D0` (merge\_elf), the same 89KB function used for all input cubins.
 
@@ -425,7 +425,7 @@ if (byte_2A5F285) {
 
 When `byte_2A5F286` is 1, the `--device-c` flag tells the nvvm compiler to produce relocatable output that preserves external symbol references rather than resolving them. When `byte_2A5F285` is also set, the stronger `--force-device-c` flag is added.
 
-Additionally, the Xnvvm option deduplication in `sub_426CD0` (lines 226--236) strips `--device-c` and `--force-device-c` from user-provided `-Xnvvm` options if the corresponding flags are already set, preventing duplicate conflicting flags from reaching the nvvm compiler.
+Additionally, the Xnvvm option deduplication in `sub_426CD0` (lines 226–236) strips `--device-c` and `--force-device-c` from user-provided `-Xnvvm` options if the corresponding flags are already set, preventing duplicate conflicting flags from reaching the nvvm compiler.
 
 ## Dead Code Elimination Interaction
 
@@ -438,7 +438,7 @@ if (byte_2A5F214 && (!byte_2A5F288 || byte_2A5F285))
 
 Dead code elimination runs at merge time only when: (a) marking is enabled (`byte_2A5F214`), AND (b) either LTO is not active OR partial LTO is in effect. In whole-program LTO mode, the nvvm compiler itself handles dead code elimination internally, so running it again at link time would be redundant. In partial mode, the non-LTO objects still need traditional DCE.
 
-Similarly, in `sub_426CD0` (lines 184--196), if marking is enabled and partial mode (`byte_2A5F285`) is NOT set, the function runs `sub_426AE0` (dead-code eliminate) on the IR modules before sending them to nvvm, and appends `-has-global-host-info` if host info is available. This pre-LTO DCE trims the IR before compilation.
+Similarly, in `sub_426CD0` (lines 184–196), if marking is enabled and partial mode (`byte_2A5F285`) is NOT set, the function runs `sub_426AE0` (dead-code eliminate) on the IR modules before sending them to nvvm, and appends `-has-global-host-info` if host info is available. This pre-LTO DCE trims the IR before compilation.
 
 ## Complete Decision Flowchart
 
@@ -528,7 +528,7 @@ Final dispatch (main lines 1155-1202)
 | `0x4BD760` | `ptxas_compile` | ~3 KB | Relocatable PTX-to-cubin compilation with `setjmp` crash isolation |
 | `0x4264B0` | `split_compile_worker` | ~2 KB | Thread pool worker for multi-module partial compile |
 | `0x427AE0` | `nvlink_parse_options` | 30,272 B | Conflict detection for force flags; sets `byte_2A5F286 = 1` at line 1209 under `--force-partial-lto` |
-| `0x409800` | `main` | large | Lines 1070--1074 implement post-nvvm `--force-whole-lto` override; lines 1155--1202 dispatch to whole/partial backends |
+| `0x409800` | `main` | large | Lines 1070–1074 implement post-nvvm `--force-whole-lto` override; lines 1155–1202 dispatch to whole/partial backends |
 | `0x467460` | `error_emit` | ~2 KB | Emits conflict/warning diagnostics |
 | `0x4BD1F0` | `lto_add_module` | ~800 B | Registers a single IR module (distinct from `register_module`) |
 

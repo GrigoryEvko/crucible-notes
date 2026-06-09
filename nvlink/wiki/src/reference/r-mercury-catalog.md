@@ -161,7 +161,7 @@ Resolves a reference to a function descriptor entry for indirect calls, virtual 
 | 22 | `R_MERCURY_8_48` | 6 | `byte_6(S + A)` |
 | 23 | `R_MERCURY_8_56` | 7 | `byte_7(S + A)` |
 
-Patch a single byte within a 64-bit data word. The suffix denotes the bit offset (byte 0 = bits 0--7, byte 7 = bits 56--63). Used for descriptor tables, attribute sections, and data structures requiring individual byte resolution. Direct equivalents of `R_CUDA_8_0` through `R_CUDA_8_56`.
+Patch a single byte within a 64-bit data word. The suffix denotes the bit offset (byte 0 = bits 0–7, byte 7 = bits 56–63). Used for descriptor tables, attribute sections, and data structures requiring individual byte resolution. Direct equivalents of `R_CUDA_8_0` through `R_CUDA_8_56`.
 
 ### Group 9: Global Byte-Level (8 types)
 
@@ -202,7 +202,7 @@ Byte-level function descriptor address patching. Mirrors the `R_MERCURY_FUNC_DES
 | 60 | `R_MERCURY_ABS_PROG_REL32` | 32 | `\|S + A - PC\|` |
 | 61 | `R_MERCURY_ABS_PROG_REL64` | 64 | `\|S + A - PC\|` |
 
-Hybrid absolute/PC-relative relocations computing an unsigned distance rather than a signed offset. Used for instruction encodings that require a non-negative displacement. The `_LO`/`_HI` split (indices 40--41) and the full-width variants (indices 60--61) appear at non-contiguous positions in the table, suggesting the split variants were defined first and full-width types were appended later.
+Hybrid absolute/PC-relative relocations computing an unsigned distance rather than a signed offset. Used for instruction encodings that require a non-negative displacement. The `_LO`/`_HI` split (indices 40–41) and the full-width variants (indices 60–61) appear at non-contiguous positions in the table, suggesting the split variants were defined first and full-width types were appended later.
 
 No R_CUDA equivalent exists. This is an entirely Mercury-specific category.
 
@@ -240,7 +240,7 @@ Byte-level PC-relative patching for data tables (jump tables, exception tables) 
 
 Relocations for the Unified Descriptor Table (UDT) and Unified Function Table (UFT), used for CUDA Dynamic Parallelism and indirect function calls. `R_MERCURY_UNIFIED` (index 50) is a generic marker resolved to type 0 (no-op) before the relocation engine runs, because the unified table manager computes final offsets earlier in the pipeline.
 
-The `UNIFIED32_LO`/`UNIFIED32_HI` pair (indices 62--63) is non-contiguous with the main unified block (50--59), placed after the `ABS_PROG_REL` types. Direct semantic equivalents of the R_CUDA `UNIFIED*` family.
+The `UNIFIED32_LO`/`UNIFIED32_HI` pair (indices 62–63) is non-contiguous with the main unified block (50–59), placed after the `ABS_PROG_REL` types. Direct semantic equivalents of the R_CUDA `UNIFIED*` family.
 
 ## Category Summary
 
@@ -248,17 +248,17 @@ The `UNIFIED32_LO`/`UNIFIED32_HI` pair (indices 62--63) is non-contiguous with t
 |----------|---------|------:|-------------|-------------|
 | Sentinel | 0, 64 | 2 | — | No-op / bounds marker |
 | Global address | 1 | 1 | `S + A` | 64-bit global memory addresses |
-| Absolute data | 2--6 | 5 | `S + A` (full / lo / hi) | Data section and immediate addresses |
-| PC-relative | 7--10 | 4 | `(S + A) - PC` (full / lo / hi) | Branch / call targets |
-| Texture / sampler / surface | 11--13 | 3 | Header index lookup | Bindable resource references |
+| Absolute data | 2–6 | 5 | `S + A` (full / lo / hi) | Data section and immediate addresses |
+| PC-relative | 7–10 | 4 | `(S + A) - PC` (full / lo / hi) | Branch / call targets |
+| Texture / sampler / surface | 11–13 | 3 | Header index lookup | Bindable resource references |
 | Clear | 14 | 1 | Write zeros | Unused field cleanup |
 | Function descriptor | 15 | 1 | `S + A` | Indirect call targets |
-| Byte-level | 16--23 | 8 | `byte_n(S + A)` | Byte-granular data patching |
-| Global byte-level | 24--31 | 8 | `byte_n(S + A)` | Global address byte patching |
-| Func desc byte-level | 32--39 | 8 | `byte_n(S + A)` | Descriptor byte patching |
-| Abs PC-relative | 40--41, 60--61 | 4 | `\|S + A - PC\|` (lo / hi / 32 / 64) | Unsigned distance fields |
-| PC-relative byte-level | 42--49 | 8 | `byte_n((S + A) - PC)` | PC-relative byte patching |
-| Unified table | 50--59, 62--63 | 12 | `S + A` (generic / 32 / byte / lo / hi) | UDT/UFT table references |
+| Byte-level | 16–23 | 8 | `byte_n(S + A)` | Byte-granular data patching |
+| Global byte-level | 24–31 | 8 | `byte_n(S + A)` | Global address byte patching |
+| Func desc byte-level | 32–39 | 8 | `byte_n(S + A)` | Descriptor byte patching |
+| Abs PC-relative | 40–41, 60–61 | 4 | `\|S + A - PC\|` (lo / hi / 32 / 64) | Unsigned distance fields |
+| PC-relative byte-level | 42–49 | 8 | `byte_n((S + A) - PC)` | PC-relative byte patching |
+| Unified table | 50–59, 62–63 | 12 | `S + A` (generic / 32 / byte / lo / hi) | UDT/UFT table references |
 | **Total** | — | **65** | — | — |
 
 ## R_CUDA Equivalence Summary
@@ -297,8 +297,8 @@ Of the 65 Mercury types, 50 have a direct R_CUDA semantic equivalent and 15 are 
 | `R_MERCURY_ABS_PROG_REL64` | 61 | Absolute PC-relative |
 
 The Mercury-specific types break into three families:
-1. **PC-relative extensions** (indices 7, 9--10, 42--49): 64-bit PC-relative, split 32-bit PC-relative, and a full byte-level PC-relative set. R_CUDA has only 24-bit immediate PC-relative (`R_CUDA_PCREL_IMM24_23`, `R_CUDA_PCREL_IMM24_26`).
-2. **Absolute PC-relative** (indices 40--41, 60--61): Unsigned distance computation (`|S + A - PC|`). No R_CUDA counterpart.
+1. **PC-relative extensions** (indices 7, 9–10, 42–49): 64-bit PC-relative, split 32-bit PC-relative, and a full byte-level PC-relative set. R_CUDA has only 24-bit immediate PC-relative (`R_CUDA_PCREL_IMM24_23`, `R_CUDA_PCREL_IMM24_26`).
+2. **Absolute PC-relative** (indices 40–41, 60–61): Unsigned distance computation (`|S + A - PC|`). No R_CUDA counterpart.
 3. **Naming simplification** (not counted above): Where R_CUDA encodes the bit-position in the type name (e.g., `R_CUDA_ABS32_20`, `R_CUDA_ABS32_23`, `R_CUDA_ABS32_26`, `R_CUDA_ABS32_32` — four types for the same semantic), Mercury uses a single position-independent type (e.g., `R_MERCURY_ABS32`). The bit-field position is encoded in the 64-byte descriptor, not the type name. This collapses 25 CUDA `ABS*_<bitpos>` instruction types into 5 Mercury `ABS*` types.
 
 ## R_CUDA Categories Absent from R_MERCURY

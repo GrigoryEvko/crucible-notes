@@ -60,7 +60,7 @@ The section is passed through as opaque data — there is no dedicated writer or
 
 PTX-level debug information encoded in a DWARF-like compilation unit format. Unlike the opaque passthrough sections, this section is actively parsed by the DWARF subsystem at `sub_1D1D2F0`. The parser processes `.nv_debug_info_ptx` through the same compilation unit loop as `.debug_info`, reading DWARF headers (length, version, abbreviation offset, pointer size) and dispatching to `sub_1D1BE80` for attribute processing.
 
-At `sub_1D1D2F0` line 348--362, the parser checks:
+At `sub_1D1D2F0` line 348–362, the parser checks:
 ```c
 if (memcmp(section_name, ".debug_info", 12) == 0)
     goto process_cu;
@@ -159,7 +159,7 @@ Note on scope: the six sections catalogued below are the **complete set** of NVI
 | Binary layout | DWARF-2/3 compilation unit header + DIE tree: 4-byte `unit_length`, 2-byte `version`, 4-byte `debug_abbrev_offset` (indexes into `.debug_abbrev`), 1-byte `address_size`, followed by a tree of Debugging Information Entries encoded via the referenced abbreviation table. Identical encoding to `.debug_info` — only the semantic content (PTX-scoped rather than source-scoped) differs |
 | Record granularity | DWARF compilation unit header (11 bytes for DWARF-3) followed by a DIE tree terminated by a null DIE |
 | Producer | ptxas debug info emitter — emitted only when the PTX input included `.file`/`.loc` directives and debug mode is enabled. One CU per input PTX compilation unit |
-| Consumer | nvlink DWARF CU parser `sub_1D1D2F0` at `0x1D1D2F0`. The parser dispatches on section name at decompiled line 348 (`memcmp(a4, ".debug_info", 0xCu) == 0`) and line 352--361 (12-byte unrolled comparison against `".nv_debug_info_ptx"`, length 19). Both branches fall into `LABEL_63` which invokes `sub_1D1BE80` for DIE processing. This is the **only** NVIDIA debug section that nvlink actively *parses* (rather than concatenates or passes through) |
+| Consumer | nvlink DWARF CU parser `sub_1D1D2F0` at `0x1D1D2F0`. The parser dispatches on section name at decompiled line 348 (`memcmp(a4, ".debug_info", 0xCu) == 0`) and line 352–361 (12-byte unrolled comparison against `".nv_debug_info_ptx"`, length 19). Both branches fall into `LABEL_63` which invokes `sub_1D1BE80` for DIE processing. This is the **only** NVIDIA debug section that nvlink actively *parses* (rather than concatenates or passes through) |
 | CU header processing | `sub_1D1D2F0` reads the 4-byte unit length at offset `+192`/`+200`, the 2-byte version at `+204`, the 4-byte abbreviation offset at `+212`, the 1-byte pointer size at `+208`, and stores the CU base pointer at context `+168`. The abbreviation offset is matched against a cached abbreviation table list at context `+128` (each entry is 32 bytes) to locate the appropriate abbreviation decoder |
 | Concatenation writer | None — parsed content is folded into the output's standard debug sections during DIE emission |
 | Mercury variant | None — this section is consumed during linking. No `.nv.merc.nv_debug_info_ptx` string exists in `nvlink_strings.json` |
@@ -181,7 +181,7 @@ Note on scope: the six sections catalogued below are the **complete set** of NVI
 | Mercury variant | None — no `.nv.merc.nv_debug.shared` string exists |
 | DWARF relationship | Orthogonal. No DWARF form value references this section. It is a pure metadata marker that is filtered out during link |
 | String table | `.nv_debug.shared` at `0x1D38995`, with three xrefs: `sub_4377B0` (`0x437946`), `sub_437BB0` (`0x437D76`), `sub_1CECBB0` (`0x1CECC3E`) |
-| Filtering evidence | Decompiled `sub_1CECBB0` line 72: `if (!strcmp((const char *)sub_448590(v7, (unsigned int *)v6), ".nv_debug.shared")) return 0;`. The `return 0` path bypasses both the debug-section path (line 114--124) and the generic content path |
+| Filtering evidence | Decompiled `sub_1CECBB0` line 72: `if (!strcmp((const char *)sub_448590(v7, (unsigned int *)v6), ".nv_debug.shared")) return 0;`. The `return 0` path bypasses both the debug-section path (line 114–124) and the generic content path |
 
 ### Summary Matrix
 

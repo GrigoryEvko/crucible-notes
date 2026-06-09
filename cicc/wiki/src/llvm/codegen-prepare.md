@@ -16,9 +16,9 @@ Both passes operate at the LLVM IR level, immediately before SelectionDAG constr
 | Pass name (NVIDIA) | SCEV-CGP (no formal New PM pass name found in binary) |
 | Binary range (v12.x) | `0x1D60000`--`0x1D7FFFF` (helpers + main transforms) |
 | Binary range (v13.0) | `0x2D75700`--`0x2D88660` (Cluster 6 in `0x2D` sweep) |
-| Address sinking | `sub_1D73760` / `sub_2D75700` (65--72 KB), string `"sunkaddr"` |
-| PHI sinking | `sub_1D706F0` / `sub_2D784F0` (64--68 KB), string `"sunk_phi"` |
-| Block splitting | `sub_1D7AA30` / `sub_2D88660` (54--74 KB), strings `".unlikely"`, `".cond.split"` |
+| Address sinking | `sub_1D73760` / `sub_2D75700` (65–72 KB), string `"sunkaddr"` |
+| PHI sinking | `sub_1D706F0` / `sub_2D784F0` (64–68 KB), string `"sunk_phi"` |
+| Block splitting | `sub_1D7AA30` / `sub_2D88660` (54–74 KB), strings `".unlikely"`, `".cond.split"` |
 | Main transform | `sub_2D80050` (54 KB) — orchestrates address mode lowering |
 | SCEV-CGP knob ctor | `ctor_263_0` at `0x4F36F0` (9.9 KB, 44 option strings) |
 | CGP knob ctor | `ctor_288_0` at `0x4FA950` (8.6 KB, 44 option strings) |
@@ -303,7 +303,7 @@ NVIDIA's solution is pragmatic: keep SCEV-CGP off, let LSR handle SCEV-level opt
 | — | `sub_2D6DEE0` | — | Address mode matching |
 | — | `sub_2D69E90` | — | Cleanup/init |
 
-### Helper Range (0x1D60000--0x1D6FFFF)
+### Helper Range (0x1D60000–0x1D6FFFF)
 
 This 64 KB sub-range contains CodeGenPrepare helper functions. The sweep identifies it as `"CodeGenPrepare helpers"` but no individual functions are called out with string evidence. These likely include address mode computation utilities, operand analysis, and GEP canonicalization.
 

@@ -114,7 +114,7 @@ Tables below use these markers:
 
 | Long Name | Short Name | Type | Default | Description |
 |---|---|---|---|---|
-| `--opt-level` | `-O` | int | `3` | Optimization level (0--4) |
+| `--opt-level` | `-O` | int | `3` | Optimization level (0–4) |
 | `--output-file` | `-o` | file | `elf.o` | Output file name and location |
 | `--gpu-name` | `-arch` | enum | `sm_75` | Target GPU architecture (`sm_XX`, `compute_XX`, `lto_XX`) |
 | `--compile-only` | `-c` | bool | false | Generate relocatable object |
@@ -158,7 +158,7 @@ Tables below use these markers:
 | `--minnctapersm` | `-minnctapersm` | int | — | Min CTAs per SM; ignored if `-maxrregcount` is set |
 | `--maxntid` | `-maxntid` | list | — | Max thread-block dimensions; ignored if `-maxrregcount` is set |
 | `--device-function-maxrregcount` | `-func-maxrregcount` | int/enum | (unlimited) | Max registers for device functions (with `-c`); overrides `--maxrregcount` for non-entry functions |
-| `--register-usage-level` | `-regUsageLevel` | int | `5` | Register-usage optimization aggressiveness (0--10); BETA |
+| `--register-usage-level` | `-regUsageLevel` | int | `5` | Register-usage optimization aggressiveness (0–10); BETA |
 | `--override-directive-values` | `-override-directive-values` | bool | false | CLI values override PTX directives for `minnctapersm`, `maxntid`, `maxrregcount` |
 | `--first-reserved-rreg` **(internal)** | — | int | — | First reserved register number (tools integration) |
 | `--reg-fatpoint` **(internal)** | — | string | — | Fatpoint register allocation mode selector |
@@ -235,7 +235,7 @@ Hardware and software bug workarounds tied to internal NVIDIA bug-tracking IDs. 
 |---|---|---|---|---|---|
 | `--sw2614554` **(internal)** | — | bool | false | all | Thread-safety workaround; incompatible with `--split-compile`. When set, forces single-threaded compilation — validator emits `"'--sw2614554' ignored because of '--split-compile'"` and disables split-compile. Addresses a race condition in the parallel optimizer. |
 | `--sw2837879` **(internal)** | — | bool | false | all | Backend codegen workaround. No architecture gating or validator logic; consumed directly in DAG/OCG pipeline phases. Specific behavioral effect not traced beyond registration. |
-| `--sw1729687` **(internal)** | — | bool | false | sm_50--sm_53 | Maxwell-era hardware errata workaround. Validator checks `(arch_ordinal - 14) > 2` and clears the flag with a warning on any architecture beyond sm_53. Activates an alternate codegen path on Maxwell GPUs. |
+| `--sw1729687` **(internal)** | — | bool | false | sm_50–sm_53 | Maxwell-era hardware errata workaround. Validator checks `(arch_ordinal - 14) > 2` and clears the flag with a warning on any architecture beyond sm_53. Activates an alternate codegen path on Maxwell GPUs. |
 | `--sw200428197` **(internal)** | — | bool | false | sm_80+ | Sanitizer-compatible ABI workaround. Forces scratch register reservation for CUDA sanitizer instrumentation state and applies ABI-minimum register counts. Consumed in function/ABI setup (`sub_43F400`, `sub_441780`) alongside `--compile-as-tools-patch`. Validator clears it with `"-arch=X ignored because of --sw200428197"` on sm_75 and earlier. |
 | `--sw200387803` **(internal)** | — | bool | false | deprecated | Retired workaround. Setting it triggers a deprecation advisory (`dword_29FBDB0`) but no behavioral change — the underlying fix has been permanently integrated. |
 | `--sw200764156` **(internal)** | — | bool | **true** | sm_90 only | Hopper-specific hardware errata. Default is `true` (unique among all `sw*` flags). Help text reads `"Enable/Disable sw200764156"`, confirming it is a toggle that can be turned off. On any architecture other than sm_90, the user-set value is discarded: `"option -arch=X ignored because of --sw200764156"`. |

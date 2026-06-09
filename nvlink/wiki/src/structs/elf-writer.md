@@ -52,7 +52,7 @@ The merge_flags bitmask (`a9`) is the primary behavioral control. Individual bit
 
 The layout below is derived from the decompiled constructor (`sub_4438F0`), destructor (`sub_4475B0`), serializer (`sub_45BF00`), and debug dump function (`sub_4478F0`). Offsets are in bytes; `qword[N]` notation references the decompiled `v17[N]` 8-byte array indexing.
 
-#### ELF Header Region (offsets 0--63)
+#### ELF Header Region (offsets 0–63)
 
 The first bytes overlay the standard ELF header. The constructor writes the magic number and identification bytes directly:
 
@@ -69,7 +69,7 @@ The remaining header fields (`e_type`, `e_machine`, `e_version`, `e_entry`, `e_p
 
 For the full header encoding, see [Device ELF Format — ELF Identification](../elf/device-elf-format.md).
 
-#### Metadata and Flags (offsets 64--103)
+#### Metadata and Flags (offsets 64–103)
 
 | Offset | Size | Field | Set From | Description |
 |--------|------|-------|----------|-------------|
@@ -95,7 +95,7 @@ For the full header encoding, see [Device ELF Format — ELF Identification](../
 | +100 | 1 | `flag_bit13` | `(a9 & 0x2000) != 0` | merge_flags bit 13 (no confirmed CLI source observed in `main`'s bit assembly). |
 | +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Bit 15 of merge_flags, set when `byte_2A5F224` (sm > 72 detector) is true. Used by the constructor as the device-ELF gate: triggers OSABI 0x41, allocates tkinfo/cuinfo note buffers, calls `sub_45AC50` for the arch vtable. *(Note: also overwritten at byte word-offset +202 as `symtab_section_idx`; the BYTE at +101 and the WORD at +202 are separate fields — WORD index 101 = bytes 202..203.)* |
 
-#### Dynamic Array Regions (offsets 108--172)
+#### Dynamic Array Regions (offsets 108–172)
 
 The constructor initializes two dynamic arrays at offsets `+108` and `+140` using `sub_43E490`:
 
@@ -106,14 +106,14 @@ The constructor initializes two dynamic arrays at offsets `+108` and `+140` usin
 
 These are only allocated when `is_device_elf` is true (OSABI 0x41 path). Each is a 24-byte NVIDIA note header containing the padded name string `"NVIDIA Corp"` and a 12-byte note descriptor. They are **not** dynamic arrays with capacities.
 
-#### String Table Pointers (offsets 216--228)
+#### String Table Pointers (offsets 216–228)
 
 | Offset | qword | Description |
 |--------|-------|-------------|
 | +216 | `v17[27]` | Reserved / link pointer, set to 0 |
 | +228 | — | Reserved, set to 0 |
 
-#### Hash Tables (offsets 288--303)
+#### Hash Tables (offsets 288–303)
 
 | Offset | qword | Description |
 |--------|-------|-------------|
@@ -122,7 +122,7 @@ These are only allocated when `is_device_elf` is true (OSABI 0x41 path). Each is
 
 Both are created via `sub_4489C0` with hash/compare functions `sub_44E000` / `sub_44E180` and an initial capacity of 512 buckets. The symbol name hash at +288 is read by `sub_440BE0` (add-symbol-with-data) for symbol name lookup; the section name hash at +296 is read by `sub_441AC0` (add-reloc-section) for section name lookup. They provide O(1) lookup during the merge phase.
 
-#### Section/Symbol Counters and Pointers (offsets 304--376)
+#### Section/Symbol Counters and Pointers (offsets 304–376)
 
 | Offset | qword | Type | Description |
 |--------|-------|------|-------------|
@@ -140,7 +140,7 @@ Both are created via `sub_4489C0` with hash/compare functions `sub_44E000` / `su
 
 Three sorted arrays at +344, +352, and +360 are created via `sub_464AE0` with element sizes of 64, 64, and 64 bytes respectively. The constructor creates a 104-byte null section record (section index 0, `SHN_UNDEF`) and appends it to the section array at `+360`, and a 48-byte null symbol entry appended to both the positive symbol array at `+344` and the negative symbol array at `+352`. The dispatcher `sub_440590` uses `a2 < 0` to select between +352 (negative indices) and +344 (positive indices).
 
-#### Symbol Management (offsets 376--464)
+#### Symbol Management (offsets 376–464)
 
 | Offset | qword | Description |
 |--------|-------|-------------|
@@ -153,7 +153,7 @@ Three sorted arrays at +344, +352, and +360 are created via `sub_464AE0` with el
 
 The architecture vtable is a 632-byte function pointer table created by `sub_45AC50` (Mercury targets, when `mercury_flag` is true) or `sub_459640` (non-Mercury targets). If neither returns a valid vtable, the constructor calls `fatal_error("couldn't initialize arch state")`.
 
-#### Arch State and Named Section Indices (offsets 488--512)
+#### Arch State and Named Section Indices (offsets 488–512)
 
 | Offset | Description |
 |--------|-------------|
@@ -168,7 +168,7 @@ The architecture vtable is a 632-byte function pointer table created by `sub_45A
 
 These indices are written during construction after the initial sections are created. They enable fast O(1) access to the mandatory sections without hash table lookups.
 
-#### Ordered Lists for ELF Segments (offsets 520--560)
+#### Ordered Lists for ELF Segments (offsets 520–560)
 
 | Offset | qword | Description |
 |--------|-------|-------------|
@@ -181,13 +181,13 @@ These indices are written during construction after the initial sections are cre
 
 Six ordered lists created via `sub_465020` with hash/compare functions and element size 16. These manage ELF segment assignments — the six lists correspond to different segment categories (text, data, rodata, bss, etc.) used during the layout phase.
 
-#### Hash Table for Section Resolution (offsets 576--584)
+#### Hash Table for Section Resolution (offsets 576–584)
 
 | Offset | qword | Description |
 |--------|-------|-------------|
 | +576 | `v17[72]` | Section resolution hash table (created via `sub_4489C0` with `sub_44E120`/`sub_44E130` comparators, 8 buckets) |
 
-#### Merge State (offsets 592--624)
+#### Merge State (offsets 592–624)
 
 | Offset | qword | Description |
 |--------|-------|-------------|
@@ -198,7 +198,7 @@ Six ordered lists created via `sub_465020` with hash/compare functions and eleme
 
 When bit `0x400` of merge_flags is set, the constructor creates a dedicated `"elfw memory space"` arena with 4096-byte pages via `sub_432020`. This arena is stored at +608/+616 and used exclusively for this elfw instance. The destructor checks offset +608 and destroys this private arena if present; otherwise it tears down the sub-structures individually.
 
-#### Construction Finalization (offsets 624--672)
+#### Construction Finalization (offsets 624–672)
 
 | Offset | Description |
 |--------|-------------|
@@ -520,7 +520,7 @@ The producer-side derivation of `+99` (constructor `sub_4438F0_0x4438f0.c:229`) 
 
 - [ELF Serialization](../elf/serialization.md) — The serialization engine (`sub_45BF00`) that walks the elfw struct and emits bytes through the writer
 - [Program Headers](../elf/program-headers.md) — Program header construction (`sub_45BAA0`) using section classification from the elfw
-- [Device ELF Format](../elf/device-elf-format.md) — ELF header encoding at elfw offsets 0--63, `e_flags` semantics, and OSABI values
+- [Device ELF Format](../elf/device-elf-format.md) — ELF header encoding at elfw offsets 0–63, `e_flags` semantics, and OSABI values
 - [Output Writing](../pipeline/output.md) — Pipeline dispatch between `write_elf_to_file` (mode 3) and `write_elf_to_memory` (mode 4)
 - [Mercury FNLZR](../mercury/fnlzr.md) — Mercury path: serialize to memory buffer via `compute_elf_size` + mode 4, then pass to FNLZR
 - [Relocation Engine](../linker/relocation-engine.md) — Architecture vtable at elfw+488 dispatches relocation application
@@ -549,7 +549,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | Constructor at `0x4438F0`, 14,821 bytes | HIGH | File `sub_4438F0_0x4438f0.c` exists, 600 decompiled lines |
 | Destructor at `0x4475B0`, 3,023 bytes | HIGH | File `sub_4475B0_0x4475b0.c` exists, 133 lines, dual-path teardown |
 
-### ELF Header (offsets 0--63)
+### ELF Header (offsets 0–63)
 
 | Claim | Confidence | Evidence |
 |---|---|---|
@@ -563,7 +563,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `e_version` / API version at offset 20 | HIGH | `*((_DWORD *)v17 + 5) = a7` on line 223 |
 | `e_flags` at offset 48 | HIGH | `*((_DWORD *)v17 + 12) = 0/1/4` on lines 140/156/163; `sub_444710`: `*(_DWORD *)(a1 + 48) \|= a2` (dword 12 = byte 48) |
 
-### Metadata and Flags (offsets 64--103)
+### Metadata and Flags (offsets 64–103)
 
 | Claim | Confidence | Evidence |
 |---|---|---|
@@ -589,7 +589,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `flag_bit13` at offset 100 = `(v20 & 0x2000) != 0` (bit 13) | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write at line 177/221) |
 | `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
 
-### Note Headers and Section Index Cache (offsets 108--210)
+### Note Headers and Section Index Cache (offsets 108–210)
 
 | Claim | Confidence | Evidence |
 |---|---|---|
@@ -605,7 +605,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | Cuinfo idx at word 104 (byte 208) | HIGH | `*((_WORD *)v17 + 104) = v91` on line 538 after `.note.nv.cuinfo` creation |
 | Tkinfo idx at word 105 (byte 210) | HIGH | `*((_WORD *)v17 + 105) = sub_440350(v17, v82, ...)` on line 531 after `.note.nv.tkinfo` creation |
 
-### Hash Tables and Sorted Arrays (offsets 288--576)
+### Hash Tables and Sorted Arrays (offsets 288–576)
 
 | Claim | Confidence | Evidence |
 |---|---|---|
@@ -621,7 +621,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | Six sorted arrays at +520--+560 (16-element each) | HIGH | `v17[65..70] = sub_465020(sub_44E000, sub_44E180, 16)` six times on lines 266-271 |
 | `sub_44E120`/`sub_44E130` hash at +576 (v17[72], 8 buckets) | HIGH | `v17[72] = sub_4489C0(sub_44E120, sub_44E130, 8)` on line 596 |
 
-### Pointer Fields (offsets 456--624)
+### Pointer Fields (offsets 456–624)
 
 | Claim | Confidence | Evidence |
 |---|---|---|

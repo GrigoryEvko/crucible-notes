@@ -352,8 +352,8 @@ The `.nv.merc.debug_aranges`, `.nv.merc.debug_ranges`, `.nv.merc.debug_macinfo`,
 | `-lineinfo` only (sm <= 89) | 1 (`.debug_line`) | 0 | 0 | 1 |
 | `-lineinfo` only (sm > 89) | 1 (`.debug_line`) | 1 (`.nv_debug_line_sass`) | 0 | 2 |
 | `-g` (sm <= 72) | 6 | 2 (`ptx_txt`, `reg_type`) | 0 | 8 |
-| `-g` (sm 73--89) | 6 | 2 (`ptx_txt`, `reg_type`) | 0 | 8 |
-| `-g` (sm 90--99) | 6 | 4 (`line_sass`, `reg_sass`, `ptx_txt`, `reg_type`) | 0 | 10 |
+| `-g` (sm 73–89) | 6 | 2 (`ptx_txt`, `reg_type`) | 0 | 8 |
+| `-g` (sm 90–99) | 6 | 4 (`line_sass`, `reg_sass`, `ptx_txt`, `reg_type`) | 0 | 10 |
 | `-g` (sm > 99, Mercury) | 6 | 4 | 15 | 25 |
 | `-g` + `--suppress-debug-info` | 0 | 0 | 0 | 0 |
 
@@ -535,7 +535,7 @@ Recognizes the same 15 sections with `.nv.merc.` prefix. Additionally checks for
 | `0x2A5F30C` | `dword_2A5F30C` | 4 | `--machine` | Machine width (32 or 64, gates `byte_2A5F224`) |
 | `0x2A5F308` | `dword_2A5F308` | 4 | `--edbg` | Internal ELF debug output level |
 | `0x2A5F24C` | `byte_2A5F24C` | 1 | `--generate-line-info` consensus | Line info value (0 or 1) |
-| `0x2A5F248` | `dword_2A5F248` | 4 | `--generate-line-info` consensus | Consensus state (0--3) |
+| `0x2A5F248` | `dword_2A5F248` | 4 | `--generate-line-info` consensus | Consensus state (0–3) |
 | `0x2A5F244` | `byte_2A5F244` | 1 | `-inline-info` consensus | Inline info value (0 or 1) |
 | `0x2A5F226` | `byte_2A5F226` | 1 | `--suppress-debug-info` | Suppress debug output |
 | `0x2A5F225` | `byte_2A5F225` | 1 | Derived (sm > 89) | SASS mode / full debug flag |

@@ -141,7 +141,7 @@ When `main` calls this, a3/a4/a5 are all zero — standalone mode. When nvcc loa
 - **a4 (extra_opt_count)**: Number of additional option strings injected by nvcc beyond what appears on the command line.
 - **a5 (extra_opts)**: Array of those extra option strings.
 
-Additionally, callback function pointers at offsets 37--39 of the 1,352-byte options block (byte offsets ~296, ~304, ~312) allow the host process to receive progress notifications and diagnostic messages in-process rather than through stderr.
+Additionally, callback function pointers at offsets 37–39 of the 1,352-byte options block (byte offsets ~296, ~304, ~312) allow the host process to receive progress notifications and diagnostic messages in-process rather than through stderr.
 
 ### Error Recovery with setjmp/longjmp
 
@@ -163,12 +163,12 @@ The master options block lives on the stack and accumulates all compilation stat
 
 | Offset Range | Purpose |
 |---|---|
-| 0--63 | Input/output file paths, PTX version, target SM |
-| 64--127 | Optimization level, debug flags, cache modes |
-| 128--255 | Register limits, occupancy constraints |
-| 256--295 | Warning/error control flags |
-| 296--319 | Library-mode callback function pointers (offsets 37--39) |
-| 320--1351 | Per-pass configuration, knob overrides, feature flags |
+| 0–63 | Input/output file paths, PTX version, target SM |
+| 64–127 | Optimization level, debug flags, cache modes |
+| 128–255 | Register limits, occupancy constraints |
+| 256–295 | Warning/error control flags |
+| 296–319 | Library-mode callback function pointers (offsets 37–39) |
+| 320–1351 | Per-pass configuration, knob overrides, feature flags |
 
 ### Compilation Loop
 

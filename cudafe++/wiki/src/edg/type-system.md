@@ -34,7 +34,7 @@ Every type in the IL is a 176-byte node allocated by `alloc_type` (`sub_5E3D40`)
 | `+112` | 8 | `qualified_chain` | Head of MRU linked list of cv-qualified variants |
 | `+120` | 4 | `size_info` | Type size in target units (for constexpr value computation) |
 | `+128` | 4 | `alignment` | Type alignment |
-| `+132` | 1 | `type_kind` | Discriminant byte: 0--21 (22 values) |
+| `+132` | 1 | `type_kind` | Discriminant byte: 0–21 (22 values) |
 | `+133` | 1 | `type_flags_1` | Bit 5 = is_dependent |
 | `+134` | 1 | `elaboration_flags` | Low 2 bits = elaboration specifier kind |
 | `+136` | 1 | `type_flags_3` | Bit 2 = bitfield flag, bit 5 = unqualified strip flag |
@@ -89,7 +89,7 @@ The integer subkind value (at byte `+145` of the parent type node) encodes:
 
 | Value | Type Category |
 |---|---|
-| 1--10 | Standard integer types (`bool` through `unsigned long long`) |
+| 1–10 | Standard integer types (`bool` through `unsigned long long`) |
 | 11 | `_BitInt` / extended integer |
 | 12 | `__int128` / extended |
 
@@ -180,7 +180,7 @@ A natural question: why does EDG have 130 individual query functions instead of 
 
 2. **Binary stability.** If EDG adds a new type kind or renumbers existing ones, only `types.c` needs recompilation. All callers are insulated.
 
-3. **Fast-path optimization.** Each leaf function is tiny (10--30 bytes of machine code), fits in a single cache line, and branches on at most 2--3 constants. The branch predictor handles these trivially.
+3. **Fast-path optimization.** Each leaf function is tiny (10–30 bytes of machine code), fits in a single cache line, and branches on at most 2–3 constants. The branch predictor handles these trivially.
 
 4. **Semantic naming.** `is_arithmetic_type()` is self-documenting where `kind >= 2 && kind <= 5` is not. This matters in a 2.5M-line codebase.
 
@@ -431,7 +431,7 @@ The same MRU pattern appears in `ptr_to_member_type_full` (`sub_5DB220`), which 
 | 0 | `0x01` | `const` |
 | 1 | `0x02` | `volatile` |
 | 2 | `0x04` | `__restrict` |
-| 3--6 | `0x78` | Address space qualifier (CUDA/OpenCL) |
+| 3–6 | `0x78` | Address space qualifier (CUDA/OpenCL) |
 
 The 7-bit mask (`& 0x7F`) at offset `+161` of a typeref node encodes the full cv-qualification. `get_cv_qualifiers` (`sub_7A9E70`, 319 callers) accumulates these bits by chasing the typedef chain:
 
@@ -671,7 +671,7 @@ Every type-related allocation increments a per-kind counter. `print_trans_unit_s
 
 ### Address Space Qualifiers
 
-CUDA's `__shared__`, `__constant__`, and `__device__` memory spaces are represented as address-space qualifiers in the cv-qualifier bitmask (bits 3--6 at `+161`). The attribute kind values `{1, 6, 11, 12}` (bitmask `0x1842`) are checked in `compare_attribute_specifiers` (`sub_7A5E10`) to detect incompatible address-space qualified typedefs.
+CUDA's `__shared__`, `__constant__`, and `__device__` memory spaces are represented as address-space qualifiers in the cv-qualifier bitmask (bits 3–6 at `+161`). The attribute kind values `{1, 6, 11, 12}` (bitmask `0x1842`) are checked in `compare_attribute_specifiers` (`sub_7A5E10`) to detect incompatible address-space qualified typedefs.
 
 ### Feature Usage Tracking
 

@@ -555,7 +555,7 @@ Two knobs for the New Pass Manager CGSCC inliner at `0x2613930`. See [Inliner Co
 
 ## Knob System 2: NVVMPassOptions
 
-221 pass option slots initialized by `sub_12D6300` (27 KB native). Each slot is accessed by integer index (1--221) and stored in a 4,512-byte struct (slot block at offsets 16--4479, 32-byte zero sentinel at 4480--4511).
+221 pass option slots initialized by `sub_12D6300` (27 KB native). Each slot is accessed by integer index (1–221) and stored in a 4,512-byte struct (slot block at offsets 16–4479, 32-byte zero sentinel at 4480–4511).
 
 ### Access Functions
 

@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The `--opt-level` (`-O`) flag controls how aggressively ptxas optimizes during the 159-phase pipeline. The option is parsed into a 32-bit integer at options block offset `+148` by `sub_434320` (line 216: `sub_1C96470(v10, "opt-level", a3 + 148, 4)`). The default value is **3**. The documented range is 0--4, but the internal NvOpt recipe system supports levels 0--5, and the scheduler and rematerialization passes distinguish level 5 from lower values.
+The `--opt-level` (`-O`) flag controls how aggressively ptxas optimizes during the 159-phase pipeline. The option is parsed into a 32-bit integer at options block offset `+148` by `sub_434320` (line 216: `sub_1C96470(v10, "opt-level", a3 + 148, 4)`). The default value is **3**. The documented range is 0–4, but the internal NvOpt recipe system supports levels 0–5, and the scheduler and rematerialization passes distinguish level 5 from lower values.
 
 The optimization level propagates through the compilation context and is read by individual passes via `sub_7DDB50` (232 bytes at `0x7DDB50`), which combines the opt-level check with a knob 499 guard. Passes that call `sub_7DDB50` receive the opt-level value (stored at compilation context offset `+2104`) only if knob 499 is enabled; otherwise, the function returns 1 (effectively clamping the level to O1 behavior).
 
@@ -11,13 +11,13 @@ The optimization level propagates through the compilation context and is read by
 | **CLI option** | `--opt-level` / `-O` |
 | **Options block offset** | `+148` (int32) |
 | **Default** | 3 |
-| **Documented range** | 0--4 |
-| **Internal range** | 0--5 (NvOpt levels) |
+| **Documented range** | 0–4 |
+| **Internal range** | 0–5 (NvOpt levels) |
 | **Accessor** | `sub_7DDB50` (0x7DDB50, 232 bytes) |
 | **Knob guard** | 499 (if disabled, accessor returns 1) |
 | **Parse location** | `sub_434320` line 216 |
 | **Debug override** | `sub_431A40` forces level to 0 when `-g` is set |
-| **Ofast-compile override** | `sub_434320` lines 635--679 |
+| **Ofast-compile override** | `sub_434320` lines 635–679 |
 
 ## Level Summary
 
@@ -37,7 +37,7 @@ The option parser (`sub_434320`) and debug handler (`sub_431A40`) modify several
 | Offset | Field | O0 | O1 | O2+ | Source |
 |---|---|---|---|---|---|
 | `+148` | `opt_level` | 0 | 1 | 2, 3, 4 | Direct from `-O` |
-| `+160` | `register_usage_level` | Forced to 5 if set with `-O0` (warning issued) | 5 (default) | 5 (default) | `sub_434320` line 359--363 |
+| `+160` | `register_usage_level` | Forced to 5 if set with `-O0` (warning issued) | 5 (default) | 5 (default) | `sub_434320` line 359–363 |
 | `+235` | `cloning_disabled` | 0 (disabled) | per-CLI | per-CLI | `sub_434320` line 776 |
 | `+288` | `device_debug` | (from `-g`) | (from `-g`) | (from `-g`) | CLI only |
 | `+292` | `sp_bounds_check` | **1** (auto-enabled) | per-CLI | per-CLI | `sub_434320` line 775 |
@@ -105,7 +105,7 @@ The `--Ofast-compile` (`-Ofc`) option provides a compile-time vs code-quality tr
 | `mid` | **1** | **disabled** | (no change) | (no change) | Disables cloning when no split-compile |
 | `max` | **0** | **disabled** | (no change) | (no change) | Most aggressive compile-time reduction |
 
-From `sub_434320` lines 635--679:
+From `sub_434320` lines 635–679:
 ```c
 if (ofast_compile == "max") {
     if (was_set("cloning") && !no_cloning)
@@ -185,7 +185,7 @@ The following table lists every phase where the optimization level has been conf
 |---|---|---|---|---|
 | 14 | `DoSwitchOptFirst` | > 0 | Branch/switch optimization enabled | `isNoOp` returns true at O0 |
 | 15 | `OriBranchOpt` | > 0 | Branch folding enabled | `isNoOp` returns true at O0 |
-| 18 | `OriLoopSimplification` | 4--5 | Aggressive loop peeling enabled at O4+ | `sub_78B430` checks opt_level |
+| 18 | `OriLoopSimplification` | 4–5 | Aggressive loop peeling enabled at O4+ | `sub_78B430` checks opt_level |
 | 22 | `OriLoopUnrolling` | > 1 | Loop unrolling requires at least O2 | Execute guard via `sub_7DDB50` |
 | 24 | `OriPipelining` | > 1 | Software pipelining requires at least O2 | Execute guard |
 | 26 | `OriRemoveRedundantBarriers` | > 1 | Barrier optimization at O2+ | Gating: `opt_level > 1` |
@@ -278,7 +278,7 @@ The scheduling infrastructure (`sub_8D0640`) selects scheduling direction based 
 | `opt_level <= 2` | Forward-pass | Register-pressure-reducing: prioritizes freeing registers |
 | `opt_level > 2` | Reverse-pass | Latency-hiding: prioritizes ILP and memory latency overlap |
 
-At the default O3, the scheduler uses the reverse-pass strategy, which hides memory latencies at the cost of potentially higher register pressure. At O1--O2, the forward-pass strategy minimizes peak register usage.
+At the default O3, the scheduler uses the reverse-pass strategy, which hides memory latencies at the cost of potentially higher register pressure. At O1–O2, the forward-pass strategy minimizes peak register usage.
 
 The direction selection happens in `PreScheduleSetup` (`sub_8CBAD0`), called from the scheduling orchestrator with the boolean `opt_level > 2`:
 ```c
@@ -291,7 +291,7 @@ Additionally, the `ScheduleInstructionsReduceReg` phase (mode 0x39) is enabled b
 
 The register allocator itself (fat-point greedy at `sub_957160`) does not directly branch on the optimization level. However, the opt-level affects register allocation indirectly through:
 
-1. **`--register-usage-level`** (offset `+160`, range 0--10, default 5): At O0 with `-g`, this is forced to 5 regardless of user setting. The value modulates the per-class register budget at `alloc + 32*class + 884`.
+1. **`--register-usage-level`** (offset `+160`, range 0–10, default 5): At O0 with `-g`, this is forced to 5 regardless of user setting. The value modulates the per-class register budget at `alloc + 32*class + 884`.
 
 2. **`allow-expensive-optimizations`** (offset `+408`): Defaults to `true` when `opt_level > 1`. When true, the allocator and related passes are permitted to spend more compile time on better solutions (e.g., more spill-retry iterations, more aggressive coalescing).
 
@@ -304,11 +304,11 @@ The NvOpt recipe system (Phase 1: `ApplyNvOptRecipes`, option 391) provides an a
 | NvOpt level | Behavior |
 |---|---|
 | 0 | Minimal optimization (fast-compile path, many phases set to `isNoOp()`) |
-| 1--2 | Standard optimization |
-| 3--4 | Aggressive optimization (loop unrolling, speculative hoisting enabled) |
+| 1–2 | Standard optimization |
+| 3–4 | Aggressive optimization (loop unrolling, speculative hoisting enabled) |
 | 5 | Maximum optimization (may significantly increase compile time) |
 
-The NvOpt level is validated in `sub_C173E0` via the string `"Invalid nvopt level : %d."`, confirming the range 0--5. Recipe data lives at `NvOptRecipe+312` with per-phase records at stride 584 bytes.
+The NvOpt level is validated in `sub_C173E0` via the string `"Invalid nvopt level : %d."`, confirming the range 0–5. Recipe data lives at `NvOptRecipe+312` with per-phase records at stride 584 bytes.
 
 The NvOpt level is distinct from the `-O` CLI level. The `-O` level controls which phases run at all (via `isNoOp()` and `sub_7DDB50` guards); the NvOpt level controls how aggressively the phases that do run behave (via recipe parameters).
 
@@ -420,15 +420,15 @@ jle    return                  ; skip if opt_level <= 1
 
 | Address | Size | Role | Confidence |
 |---------|------|------|------------|
-| `sub_434320` | — | CLI option parser; parses `--opt-level` at line 216, handles `--Ofast-compile` at lines 635--679, sets `allow-expensive-optimizations` default at line 768 | 0.95 |
+| `sub_434320` | — | CLI option parser; parses `--opt-level` at line 216, handles `--Ofast-compile` at lines 635–679, sets `allow-expensive-optimizations` default at line 768 | 0.95 |
 | `sub_431A40` | — | Debug mode override; forces opt-level to 0, disables cloning, resets register-usage-level when `-g` is active | 0.95 |
 | `sub_7DDB50` | 232B | Opt-level accessor; returns `ctx+2104` opt-level if knob 499 is enabled, otherwise returns 1 (O1 fallback). Called by 20+ passes as the runtime opt-level gate | 0.95 |
 | `sub_1C96470` | — | Generic CLI argument reader; called by `sub_434320` to read `--opt-level` into options block offset `+148` | 0.85 |
 | `sub_67EB60` | — | Fast-path knob query vtable function; identified inside `sub_7DDB50` for knob 499 check | 0.80 |
 | `sub_6614A0` | — | Knob state direct-read function; used by `sub_7DDB50` to read knob 499 via direct field access at offset 35928 | 0.80 |
 | `sub_78B430` | — | `OriLoopSimplification` execute function; checks opt_level for aggressive loop peeling (O4+) | 0.85 |
-| `sub_913A30` | — | `SinkRemat` core (phase 28); two-tier opt-level guard: skips at O0--O1, limited at O2--O4, full cutlass mode at O5 | 0.90 |
-| `sub_8D0640` | — | Scheduling infrastructure; selects forward (O1--O2) vs reverse (O3+) scheduling direction | 0.85 |
+| `sub_913A30` | — | `SinkRemat` core (phase 28); two-tier opt-level guard: skips at O0–O1, limited at O2–O4, full cutlass mode at O5 | 0.90 |
+| `sub_8D0640` | — | Scheduling infrastructure; selects forward (O1–O2) vs reverse (O3+) scheduling direction | 0.85 |
 | `sub_8CBAD0` | — | `PreScheduleSetup`; called with `opt_level > 2` boolean to configure scheduling direction | 0.85 |
 | `sub_957160` | — | Fat-point greedy register allocator; does not directly branch on opt-level but is affected indirectly | 0.90 |
 | `sub_A36360` | 52KB | Master scoreboard control word generator (phase 115, O1+ path) | 0.90 |

@@ -43,7 +43,7 @@ Concrete examples of the format ptxas produces:
 
 ### Control Word Format
 
-For architectures with explicit scheduling control (SM 50--SM 70), the control word is printed in a dedicated line before each group of three instructions:
+For architectures with explicit scheduling control (SM 50–SM 70), the control word is printed in a dedicated line before each group of three instructions:
 
 ```asm
       /* 0x001c4400fe2007f6 */
@@ -56,9 +56,9 @@ The 64-bit control word encodes scheduling data for three instructions:
 
 | Field | Bits | Description |
 |-------|------|-------------|
-| Stall count | 4 bits per instruction | Minimum cycles to wait before issue (0--15) |
+| Stall count | 4 bits per instruction | Minimum cycles to wait before issue (0–15) |
 | Yield hint | 1 bit per instruction | Suggest warp scheduler switch |
-| Write barrier | 3 bits per instruction | Dependency barrier index (0--5, 7 = none) |
+| Write barrier | 3 bits per instruction | Dependency barrier index (0–5, 7 = none) |
 | Read barrier | 3 bits per instruction | Read dependency barrier mask |
 | Wait barrier mask | 6 bits per instruction | Which barriers to wait on before issue |
 
@@ -99,7 +99,7 @@ The dispatcher uses a two-level dispatch strategy:
 
 2. **Variant-ID dispatch** (473 entries): Composite 32-bit variant identifiers are used as keys in a second hash map at `a1+816`. The caller computes a variant ID from the instruction's internal representation (Ori opcode, PTX type, modifiers), converts it to a decimal string via `sprintf("%u", variant_id)`, and looks up the corresponding formatter. Keys like `"2644314910"` and `"605425506"` are the decimal encodings of these IDs. This covers the stable ISA core — arithmetic, logic, loads, stores, branches, conversions — plus MMA/WMMA shape+type+layout variants.
 
-Both maps use the same MurmurHash3-based hash map infrastructure (`sub_427630` for bucket hashing, `sub_426150` for insert, `sub_426D60` for lookup). The variant-ID keys are structured — bits 8-15 encode a PTX type discriminator (16 unique values spanning 9--24, corresponding to type codes like `.s32`, `.f32`, `.f64`), and related variants (e.g., same opcode with different types) cluster with small numeric deltas. Pairs differing only in layout produce a fixed hi16 delta of 76, confirming the ID encodes multiple orthogonal fields rather than being a hash of the opcode name string.
+Both maps use the same MurmurHash3-based hash map infrastructure (`sub_427630` for bucket hashing, `sub_426150` for insert, `sub_426D60` for lookup). The variant-ID keys are structured — bits 8-15 encode a PTX type discriminator (16 unique values spanning 9–24, corresponding to type codes like `.s32`, `.f32`, `.f64`), and related variants (e.g., same opcode with different types) cluster with small numeric deltas. Pairs differing only in layout produce a fixed hi16 delta of 76, confirming the ID encodes multiple orthogonal fields rather than being a hash of the opcode name string.
 
 ```text
 Variant ID structure (32-bit, approximate field boundaries):
@@ -222,7 +222,7 @@ All formatters query the instruction object through a uniform set of tiny access
 | `sub_707BE0` | — | — | `get_shape_string()` |
 | `sub_70A810` | — | — | `get_scale_string()` |
 
-All accessors read from the instruction object at `*(a1+1096)`. The tiny sizes (7--151 bytes for most) indicate these are simple field extractions from the instruction record.
+All accessors read from the instruction object at `*(a1+1096)`. The tiny sizes (7–151 bytes for most) indicate these are simple field extractions from the instruction record.
 
 ## Memory Allocation
 
@@ -270,7 +270,7 @@ Register operands are resolved from the instruction's operand array. The formatt
 | Constant buffer | `c[bank][offset]` | `c[0x0][0x168]` |
 | Special | `SR_*` | `SR_CTAID.X`, `SR_TID.X` |
 
-For the SASS disassembly renderer, the register class discriminator `sub_91C840` (347 bytes, 232 callers) maps internal type codes 1--0x17 to output class IDs 0--18, covering integer registers, float registers, double registers, predicate registers, condition registers, texture/surface references, and uniform registers.
+For the SASS disassembly renderer, the register class discriminator `sub_91C840` (347 bytes, 232 callers) maps internal type codes 1–0x17 to output class IDs 0–18, covering integer registers, float registers, double registers, predicate registers, condition registers, texture/surface references, and uniform registers.
 
 The operand encoder `sub_9D12F0` (1,423 bytes, 289 callers) is the core serializer for SASS-level printing. It takes an instruction and operand index, resolves whether the operand is a register, immediate, or memory reference, handles constant buffer lookups, and fills a 64-byte (4x `__m128i`) encoding structure that the builder/visitor consumes.
 
@@ -345,7 +345,7 @@ Every SASS printer receives `(a1, a2)` where `a1` is the printer context (builde
 
 The protocol is directly visible in decompiled code. In `sub_1812F60` (16-DWORD immediate printer), the function begins with `vtable[0](builder, 89)` (begin instruction kind 89), calls `vtable[3760]` for sync type, `vtable[3768]` for begin operand list, `sub_9DB7E0` for predicate guard, then loops 16 times calling `vtable[272]` (create integer operand) followed by `vtable[16]` (emit operand) with kind IDs 55 through 70 — one per DWORD.
 
-In `sub_1810D20` (comparison-mode printer), the function first reads the modifier word from the operand array at `instruction+84`, switches on `(modifier >> 4) & 0xF`, calls `vtable[3528]`/`vtable[3536]` to configure comparison mode and variant, then emits 2--3 operands via the standard `sub_9D12F0` + `vtable[16]` sequence.
+In `sub_1810D20` (comparison-mode printer), the function first reads the modifier word from the operand array at `instruction+84`, switches on `(modifier >> 4) & 0xF`, calls `vtable[3528]`/`vtable[3536]` to configure comparison mode and variant, then emits 2–3 operands via the standard `sub_9D12F0` + `vtable[16]` sequence.
 
 ### Builder/Visitor Vtable
 
@@ -465,10 +465,10 @@ Printer functions for each format class:
 | Function | Size | Format class | Evidence |
 |----------|------|-------------|----------|
 | `sub_1810D20` | 8.8 KB | Comparison-mode | Switches on `(modifier >> 4) & 0xF`: case 4 emits comparison with two variants, case 6 emits single-variant. Calls `vtable[3528]`/`vtable[3536]` for comparison config |
-| `sub_18111F0` | 11.6 KB | Wide-operand | 8 sequential `sub_9D12F0` calls with indices 0--7 |
+| `sub_18111F0` | 11.6 KB | Wide-operand | 8 sequential `sub_9D12F0` calls with indices 0–7 |
 | `sub_1811E20` | 11.6 KB | Wide + special | Both `sub_9D12F0` and `sub_9CF740` calls |
 | `sub_1812890` | 10.5 KB | Register + constant | `sub_9CF8A0` for constant folding |
-| `sub_1812F60` | 15.3 KB | 16-DWORD immediate | `sub_7E4CF0` iterator, 16x `vtable[272]` + `vtable[16]` with kind IDs 55--70 |
+| `sub_1812F60` | 15.3 KB | 16-DWORD immediate | `sub_7E4CF0` iterator, 16x `vtable[272]` + `vtable[16]` with kind IDs 55–70 |
 | `sub_18141C0` | 6.5 KB | Per-operand comparison | Dispatch entry from `sub_1820000` |
 | `sub_1814660` | 7.1 KB | Load/store | `sub_C49400` + `sub_9CEB50` for address space |
 | `sub_1814B10` | 17.6 KB | Load/store + predicated | `sub_C49400`, `sub_91E860`, `sub_91C840`, `sub_9CEB50` |
@@ -531,7 +531,7 @@ The binary instruction object (`a2`) used by all SASS printers:
 | +32 | 8 | Operand metadata pointer |
 | +40 | 1 | Half-precision flag |
 | +48 | 8 | Operand modifier context |
-| +72 | 4 | Opcode (bits 12--13 are variant flags, masked via `&0xCFFF`) |
+| +72 | 4 | Opcode (bits 12–13 are variant flags, masked via `&0xCFFF`) |
 | +76 | 4 | Format class (subtract 11 for `dword_23B39E0[]` indexing) |
 | +80 | 4 | Operand count |
 | +84+ | 8*N | Operand array (N operands, 8 bytes each) |
@@ -540,9 +540,9 @@ Each 8-byte operand slot encodes:
 
 | Bits | Word | Field |
 |------|------|-------|
-| 28--30 | 0 | Operand type tag: 1=register, 4=address, 5=constant buffer, 7=special |
-| 0--23 | 0 | Register/constant index |
-| 24--27 | 0 | Modifier flags |
+| 28–30 | 0 | Operand type tag: 1=register, 4=address, 5=constant buffer, 7=special |
+| 0–23 | 0 | Register/constant index |
+| 24–27 | 0 | Modifier flags |
 | 0 | 1 | Negate flag (mirrored from word 1 bit 31) |
 | 1 | 1 | Absolute value flag (mirrored from word 1 bit 30) |
 | 20 | 1 | Constant pool flag (`0x100000`) |
@@ -618,11 +618,11 @@ Function size directly correlates with PTX instruction complexity:
 | Tier | Size range | Count | Description |
 |------|-----------|-------|-------------|
 | Tiny | < 500 B | 13 | Simple 2-operand (wgmma.fence: 295 B) |
-| Small | 500--1,000 B | 191 | Standard 3--4 operand (copysign: 794 B) |
-| Medium | 1,000--2,000 B | 319 | Instructions with modifiers (bfind: 1,130 B) |
-| Large | 2,000--4,000 B | 36 | Arch-conditional paths (membar: 2,788 B) |
-| Very large | 4,000--6,000 B | 20 | Complex multi-form (tex.grad: 5,636 B) |
-| Monster | 6,000--10,000 B | 2 | WMMA matrix loads (wmma.load.b: 9,757 B) |
+| Small | 500–1,000 B | 191 | Standard 3–4 operand (copysign: 794 B) |
+| Medium | 1,000–2,000 B | 319 | Instructions with modifiers (bfind: 1,130 B) |
+| Large | 2,000–4,000 B | 36 | Arch-conditional paths (membar: 2,788 B) |
+| Very large | 4,000–6,000 B | 20 | Complex multi-form (tex.grad: 5,636 B) |
+| Monster | 6,000–10,000 B | 2 | WMMA matrix loads (wmma.load.b: 9,757 B) |
 
 The WMMA load/store formatters account for 34,423 bytes (4% of the total range), reflecting the combinatorial explosion of matrix shapes, data types, layouts, and architectures.
 

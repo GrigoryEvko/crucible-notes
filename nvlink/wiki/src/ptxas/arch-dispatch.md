@@ -363,7 +363,7 @@ int64_t opcode_dispatch(int64_t ctx, int64_t unused, int64_t ir_node) {
 }
 ```
 
-The primary switch covers opcode classes 0 through 0x174 (372 classes). Many classes have a secondary switch on the sub-opcode byte at `ir_node + 14`, which can range from 0 to 0x56 in the most complex cases (opcode class 0x12, the memory/load-store family). The return values are SASS encoding IDs in the range 0--772, where 772 serves as the sentinel "unsupported opcode" value. There are approximately 200 distinct encoding IDs returned.
+The primary switch covers opcode classes 0 through 0x174 (372 classes). Many classes have a secondary switch on the sub-opcode byte at `ir_node + 14`, which can range from 0 to 0x56 in the most complex cases (opcode class 0x12, the memory/load-store family). The return values are SASS encoding IDs in the range 0–772, where 772 serves as the sentinel "unsupported opcode" value. There are approximately 200 distinct encoding IDs returned.
 
 ## Teardown
 

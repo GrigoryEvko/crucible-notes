@@ -10,8 +10,8 @@ The types are organized into two global descriptor tables baked into the nvlink 
 |---|---|
 | Machine type | `EM_CUDA` (190) |
 | Total unique type names | 119 |
-| Standard relocation table | `off_1D37600` (117 entries, index 0--116) |
-| Attribute relocation table | `off_1D371E0` (65 entries, index 0--64) |
+| Standard relocation table | `off_1D37600` (117 entries, index 0–116) |
+| Attribute relocation table | `off_1D371E0` (65 entries, index 0–64) |
 | Attribute type offset | `0x10000` (attribute type = standard type + 65536) |
 | Descriptor size | 64 bytes per type (12-byte header + 3 actions x 16 bytes + 4-byte sentinel) |
 | Validation function | `sub_42F6C0` at `0x42F6C0` |
@@ -79,14 +79,14 @@ The function at `sub_42F8C0` maps an SM version number to an architecture class 
 ```c
 int reloc_arch_class(int sm_version) {
     if (sm_version == 0)   return 0;   // invalid / unset
-    if (sm_version <= 70)  return 1;   // Kepler through Volta (sm_30--sm_70)
+    if (sm_version <= 70)  return 1;   // Kepler through Volta (sm_30–sm_70)
     if (sm_version <= 72)  return 2;   // Volta extended (sm_72)
-    if (sm_version >= 76)  return 5;   // Ampere+ (sm_80--sm_90+)
+    if (sm_version >= 76)  return 5;   // Ampere+ (sm_80–sm_90+)
     return 3;                           // Turing (sm_75)
 }
 ```
 
-Each descriptor entry stores a minimum architecture class. The validation function compares the entry's class against the target to ensure the relocation type is supported on the architecture being linked. The five class names are stored in a string pointer array at `off_1D371A0` (indexed 0--4), used in error/warning messages.
+Each descriptor entry stores a minimum architecture class. The validation function compares the entry's class against the target to ensure the relocation type is supported on the architecture being linked. The five class names are stored in a string pointer array at `off_1D371A0` (indexed 0–4), used in error/warning messages.
 
 The maximum valid relocation index varies by architecture class. The function `sub_42F690` scans backward from index 115 (the last non-special standard type) through the descriptor table, returning the first index whose architecture class is not 5 (the highest). This determines which types are valid for a given target.
 
@@ -691,7 +691,7 @@ Relocations for the Unified Descriptor Table (UDT) and Unified Function Table (U
 | 105 | `R_CUDA_UNIFIED_8_48` | 8 | Unified byte at offset 48 |
 | 106 | `R_CUDA_UNIFIED_8_56` | 8 | Unified byte at offset 56 |
 
-During the relocation phase, unified relocations (types 102--113 in the internal remapping) are translated to their base equivalents. Relocations targeting synthetic symbols (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) are resolved to type 0 (no-op) because the unified table manager has already computed the final offsets.
+During the relocation phase, unified relocations (types 102–113 in the internal remapping) are translated to their base equivalents. Relocations targeting synthetic symbols (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) are resolved to type 0 (no-op) because the unified table manager has already computed the final offsets.
 
 ### Instruction-Level Relocations (R_CUDA_INSTRUCTION*)
 
@@ -738,13 +738,13 @@ The vtable is populated based on the target SM range:
 
 | SM Range | Architecture | Notes |
 |---|---|---|
-| 30--39 | Kepler | Shared "legacy" handler set |
-| 50--59 | Maxwell | Adds additional instruction-field handlers |
-| 60--69 | Pascal | Adds 60+ series handlers, wider field support |
-| 70--72, 73--79 | Volta/Turing | New instruction format, `result[33]`/`result[34]` populated |
-| 80--88, 89 | Ampere/Ada | Adds bindless handlers, new field variants |
-| 90--99 | Hopper | Major differences in slots 10/11/28/50--53, new desc types |
-| 100--103, 110--121 | Mercury (Blackwell+) | Distinct handler for slot 13, new constant field sizes |
+| 30–39 | Kepler | Shared "legacy" handler set |
+| 50–59 | Maxwell | Adds additional instruction-field handlers |
+| 60–69 | Pascal | Adds 60+ series handlers, wider field support |
+| 70–72, 73–79 | Volta/Turing | New instruction format, `result[33]`/`result[34]` populated |
+| 80–88, 89 | Ampere/Ada | Adds bindless handlers, new field variants |
+| 90–99 | Hopper | Major differences in slots 10/11/28/50–53, new desc types |
+| 100–103, 110–121 | Mercury (Blackwell+) | Distinct handler for slot 13, new constant field sizes |
 
 The vtable is allocated via `sub_4307C0` (arena allocator) and the first 78 slots are populated. Slots that are not explicitly set remain NULL (zero), and the relocation engine skips NULL handlers. This is how unsupported relocation types are detected at runtime — a NULL vtable entry for a required type triggers an error.
 

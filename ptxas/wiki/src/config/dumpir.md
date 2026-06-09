@@ -312,7 +312,7 @@ The `[Occupancy]` line's typo "trancedental" (missing 's') is present in the bin
 | `LowLmemSpillSize` | Low local-memory spill total |
 | `FrameLmemSpillSize` | Frame-level local-memory spill total |
 | `LNonSpillB` / `LNonRefillB` | Local-memory non-spill traffic bytes |
-| `Occupancy` | Estimated warp occupancy (0.0--1.0) |
+| `Occupancy` | Estimated warp occupancy (0.0–1.0) |
 | `numDivergentBranches` | Estimated divergent branch count |
 | `attributeMemUsage` | Attribute memory usage (shader inputs) |
 | `programSize` | Total program size in bytes |
@@ -369,7 +369,7 @@ The memory format reuses the suffix from `"PeakMemoryUsage = %.3lf KB"` (at `0x1
 The static phase name table at `off_22BD0C0` contains 145 entries: 1 sentinel ("All Phases Summary") plus 144 phase names. After sorting by `sub_C63FA0`, the binary search in `sub_C641D0` provides O(log n) lookup — approximately 8 comparisons for 145 entries.
 
 The 144 non-sentinel entries include:
-- **139 base pipeline phases** (indices 0--138) with fixed names
+- **139 base pipeline phases** (indices 0–138) with fixed names
 - **5 arch-specific phase aliases** that map to indices >= 139:
   - `LateEnforceArgumentRestrictions`
   - `UpdateAfterScheduleInstructions`

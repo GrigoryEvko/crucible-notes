@@ -129,7 +129,7 @@ The tables below are organized by subsystem. Severity is inferred from `diag_emi
 | `unk_2A5B6B0` | 3 | 1 | ELF class mismatch (e.g., ELFCLASS32 vs ELFCLASS64) | `"%s"` (file), `%d` (class), `%d` (expected) |
 | `unk_2A5B6E0` | 3 | 1 | Arch requires split-compile but was disabled; forces mode | `%d` (arch) |
 
-#### CLI Option Parsing (sub_427AE0, sub_429BA0, sub_42BC30--sub_42DBC0)
+#### CLI Option Parsing (sub_427AE0, sub_429BA0, sub_42BC30–sub_42DBC0)
 
 | Address | Sev | Sites | Usage Context | Example Message |
 |---|---|---|---|---|
@@ -153,7 +153,7 @@ The tables below are organized by subsystem. Severity is inferred from `diag_emi
 | `unk_2A5B760` | 3 | 1 | Implicit arch selection when explicit arch given | `"%s"` (arch string) |
 | `unk_2A5B770` | 3 | 1 | No output path specified | `"%s"` (context) |
 
-#### Option Value Parsing (sub_42BC30--sub_42DBC0)
+#### Option Value Parsing (sub_42BC30–sub_42DBC0)
 
 | Address | Sev | Sites | Usage Context | Example Message |
 |---|---|---|---|---|
@@ -184,7 +184,7 @@ The tables below are organized by subsystem. Severity is inferred from `diag_emi
 | `unk_2A5BAE0` | 6 | 2 | Out-of-memory during TLS state allocation (`sub_44F410`, `sub_44F670`) | — (format string is the OOM message) |
 | `unk_2A5BB70` | 6 | 5 | Catch-all fatal OOM (`fatal_alloc`); recognized by pointer comparison | — (bypass formatter, direct stderr) |
 
-#### ELF / Section Merging (sub_432870, sub_4325A0--sub_445000)
+#### ELF / Section Merging (sub_432870, sub_4325A0–sub_445000)
 
 | Address | Sev | Sites | Usage Context | Example Message |
 |---|---|---|---|---|
@@ -786,7 +786,7 @@ The fast path in `strbuf_vsprintf` uses a 1024-byte stack buffer. If the formatt
 - [Memory Arenas](memory-arenas.md) — Arena allocator used by string buffer functions (`sub_44FB20`, `sub_4307C0`) for message assembly
 - [Environment Variables](../config/env-vars.md) — `__NVLINK_STDERR_REDIRECT` and `NVLINK_DEBUG` env vars that affect diagnostic output routing
 - [CLI Flags](../config/cli-flags.md) — `--disable-warnings`, `-w`, `-Werror`, `--trap-into-debugger` flags that modulate diagnostic severity
-- [elfLink Error Codes](../reference/elflink-errors.md) — elfLink subsystem error codes (0--13) that route through `diag_emit` for user-visible messages
+- [elfLink Error Codes](../reference/elflink-errors.md) — elfLink subsystem error codes (0–13) that route through `diag_emit` for user-visible messages
 - [Thread Pool](thread-pool.md) — Per-thread TLS state (`sub_44F410`) shared between the thread pool and diagnostic infrastructure
 - [Pipeline Entry](../pipeline/entry.md) — `main()` error recovery via `setjmp`/`longjmp` that `fatal_exit` and `diag_emit` severity 6 trigger
 

@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Phase 110 (`PostSchedule`) is the post-register-allocation re-scheduling pass. Where `ScheduleInstructions` (`sub_8D0640`, bin 114 — a SKIP-numbered worker invoked by the wiki-97 gate `AdvancedPhasePreSched`) runs **pre-RA** on virtual registers and is responsible for ILP/pressure trade-offs, phase 110 runs **after** register allocation, after the post-RA WAR fixup (phase 105 `ApplyPostRegAllocWars`), and after the hot/cold layout passes (108--109), to re-order the now-physical instruction stream against the actual hardware latency/throughput model that requires concrete register numbers, banks, and reuse cache slots to be known.
+Phase 110 (`PostSchedule`) is the post-register-allocation re-scheduling pass. Where `ScheduleInstructions` (`sub_8D0640`, bin 114 — a SKIP-numbered worker invoked by the wiki-97 gate `AdvancedPhasePreSched`) runs **pre-RA** on virtual registers and is responsible for ILP/pressure trade-offs, phase 110 runs **after** register allocation, after the post-RA WAR fixup (phase 105 `ApplyPostRegAllocWars`), and after the hot/cold layout passes (108–109), to re-order the now-physical instruction stream against the actual hardware latency/throughput model that requires concrete register numbers, banks, and reuse cache slots to be known.
 
 The phase is implemented as a thin Type-A-shaped dispatcher whose body is 51 bytes (16 x86-64 instructions, 4 basic blocks) and which performs no scheduling work directly. Instead it routes through the **sub-target's** vtable at slot `+0x90` to the SM-family-specific post-scheduling backend — either Backend A's `PostSchedulePass::runOnFunction` (`sub_A97600`, 42 KB) on the legacy path or, for Ampere and later (sm_80+), one of the modern backends that have a native post-scheduling entry point. PostSchedule is the **only** caller in the binary of the sentinel `nullsub_45` at `0x680190`; that sentinel is the marker the dispatcher uses to recognise a sub-target that does not install a post-scheduling override and therefore wants the phase to be a no-op.
 
@@ -15,7 +15,7 @@ The phase is implemented as a thin Type-A-shaped dispatcher whose body is 51 byt
 | **`getIndex()`** | `sub_C5E3C0` — returns `133` |
 | **`isNoOp()`** | `sub_C5E3D0` — returns `0` (active) |
 | **O-level gate** | active at `-O1` and above; at `-O0` the entire `ctx+0x630 -> [+0x10] -> vtable[+0x90]` chain still indirects, but every release sub-target installs the no-op `nullsub_45` there for `-O0` |
-| **SM gate (inside body)** | `sub_7DDB50(ctx) > 1` — skipped on sm_50--sm_75 (Maxwell/Pascal/Volta/Turing); active on sm_80+ |
+| **SM gate (inside body)** | `sub_7DDB50(ctx) > 1` — skipped on sm_50–sm_75 (Maxwell/Pascal/Volta/Turing); active on sm_80+ |
 | **Sub-target dispatch slot** | sub-target `vtable[+0x90]` (slot 18) |
 | **Sentinel** | `nullsub_45` at `0x680190` — 2-byte `repz ret`, used only here |
 | **Static name table entry** | `off_22BD0C0[133]` — string `"PostSchedule"` at `.rodata:0x22BCD47` |
@@ -45,7 +45,7 @@ Phase 110 sits in the **post-RA cleanup band** between physical-register livenes
 | 115 | 138 | `AdvancedScoreboardsAndOpexes` | Full control-word generation (`sub_A36360` + `sub_A23CF0`) at `-O1+` |
 | 116 | 139 | `ProcessO0WaitsAndSBs` | Conservative scoreboard insertion at `-O0` |
 
-The five-phase chain 110--114 is the **finalisation window** for the scheduled instruction stream. Each phase has a narrow, target-dispatched responsibility:
+The five-phase chain 110–114 is the **finalisation window** for the scheduled instruction stream. Each phase has a narrow, target-dispatched responsibility:
 
 1. **Phase 110** re-runs the schedule against physical resources (this page).
 2. **Phase 111** is a pure pipeline-progress beacon — it transforms no IR.
@@ -94,7 +94,7 @@ The four observed installers for this slot are:
 
 | Slot +0x90 install | Sub-target family | Post-schedule behaviour |
 |---|---|---|
-| `nullsub_45` at `0x680190` | sm_50, sm_52, sm_53, sm_60, sm_61, sm_62, sm_70, sm_72, sm_75 | No-op: phase 110 returns immediately. SM-version gate at the top of `sub_C60640` already excludes most of these, but the sentinel covers any remaining cases where `GetSmVersionIndex` returns 0--1 for a sub-target still constructed with the default vtable. (The pre-sm_80 legacy targets have **no** post-RA scheduling at all — they also do not install a real `postSchedule` here. The function `sub_A97600` at the same six target classes' vtable+0x5F0 is the per-operand source-slot-count query, not a post-RA scheduler — see [Legacy Backend A](./legacy-backend-a.md).) |
+| `nullsub_45` at `0x680190` | sm_50, sm_52, sm_53, sm_60, sm_61, sm_62, sm_70, sm_72, sm_75 | No-op: phase 110 returns immediately. SM-version gate at the top of `sub_C60640` already excludes most of these, but the sentinel covers any remaining cases where `GetSmVersionIndex` returns 0–1 for a sub-target still constructed with the default vtable. (The pre-sm_80 legacy targets have **no** post-RA scheduling at all — they also do not install a real `postSchedule` here. The function `sub_A97600` at the same six target classes' vtable+0x5F0 is the per-operand source-slot-count query, not a post-RA scheduler — see [Legacy Backend A](./legacy-backend-a.md).) |
 | Backend C entry (`sub_1908D90`, `RBTScheduleOrchestrator`, mode 0 = post-schedule) | sm_80, sm_86, sm_87, sm_89, sm_90, sm_90a, sm_100, sm_103, sm_120, sm_121 (default modern path) | RB-tree list scheduler in post-schedule mode. Walks the per-BB code list, builds a 3-key red-black priority tree (`sub_18FD370` / `sub_18FCDA0`), and emits a re-ordered instruction stream with full register-pressure cost-model awareness. Equivalent dispatch from outside the phase pipeline is `sub_C5FFF0` (`DispatchPostSchedule`), which is **not** what phase 110 calls — the phase calls the same backend through the sub-target vtable, not through the side-channel dispatcher. |
 | `sub_19D1AF0`-style sm_100/sm_120 specialisation | Blackwell, Blackwell-Ultra, sm_120 (consumer RTX 50**) | Sub-target-specific post-schedule that calls the Backend C orchestrator but with extra tensor-pipeline (TCGEN05) post-fixup before scoreboard generation. The +0x90 slot indirects through a further per-instruction vtable to apply Blackwell warpgroup re-grouping after the schedule is final. |
 
@@ -138,23 +138,23 @@ This matters when interpreting the dispatch table at `off_22BEA90`: the table it
 
 The motivation is **per-SM-variant specialisation without per-SM-family vtable duplication**. The target object for, e.g., "Ampere" is shared between sm_80, sm_86, sm_87, sm_89; only the sub-target differs. Putting the post-schedule hook on the sub-target lets each sub-target install a different `postSchedule` without forcing each SM-variant to clone the full ~50-slot target vtable.
 
-## QUIRK — Skipped Entirely on sm_50--sm_75
+## QUIRK — Skipped Entirely on sm_50–sm_75
 
 The SM-version gate `sub_7DDB50(ctx) > 1` means PostSchedule does **nothing** on Maxwell (sm_50/sm_52/sm_53), Pascal (sm_60/sm_61/sm_62), Volta (sm_70/sm_72), and Turing (sm_75). For those architectures the schedule from the pre-RA scheduler (bin 114 `ScheduleInstructions`) is the final schedule, modulo only the WAR-fixup in phase 105 and the texture-barrier work in phase 114.
 
-This is consistent with the per-SM-backend dispatch documented in `scheduling/algorithm.md`: Backends B (SM89/90 codec) and C (RBT list) replace Backend A's three-phase scheduling on sm_80+, and only those backends have a meaningful post-scheduling step. On pre-sm_80 architectures the pre-RA scheduler is the only scheduler that runs, the dependency-graph re-build in PostSchedule would expose nothing the pre-RA pass missed, and the cost of re-scheduling 30--50% of the function would not pay for itself. The gate is hard-coded in the execute body rather than being a knob, and there is no `-knob SchedulePost*` option to override it.
+This is consistent with the per-SM-backend dispatch documented in `scheduling/algorithm.md`: Backends B (SM89/90 codec) and C (RBT list) replace Backend A's three-phase scheduling on sm_80+, and only those backends have a meaningful post-scheduling step. On pre-sm_80 architectures the pre-RA scheduler is the only scheduler that runs, the dependency-graph re-build in PostSchedule would expose nothing the pre-RA pass missed, and the cost of re-scheduling 30–50% of the function would not pay for itself. The gate is hard-coded in the execute body rather than being a knob, and there is no `-knob SchedulePost*` option to override it.
 
 The wiki number column "O-level" for phase 110 reads `> 0` (active at `-O1`+), but the SM gate is a separate orthogonal filter — a `-O2 sm_50` compilation still skips PostSchedule, and a `-O0 sm_90` compilation still enters the body but every release sub-target's slot `+0x90` is `nullsub_45` at `-O0` (no override is installed).
 
 ## Interaction with Register Allocation
 
-The pipeline order `RA (102) -> ApplyPostRegAllocWars (105) -> HotCold (108--109) -> PostSchedule (110)` is not accidental. Each step in that chain produces an invariant that PostSchedule needs:
+The pipeline order `RA (102) -> ApplyPostRegAllocWars (105) -> HotCold (108–109) -> PostSchedule (110)` is not accidental. Each step in that chain produces an invariant that PostSchedule needs:
 
 1. **After phase 102 (`AllocateRegisters`)** every Ori IR instruction has its source and destination operands rewritten from virtual register IDs to physical register numbers (R-regs, UR-regs, and predicate registers). Spill/reload instructions have been materialised. The register-pressure tracker that pre-RA scheduling consulted (`sub_69A1A0`, 952 B context) is replaced by an exact register-occupancy map.
 
 2. **After phase 105 (`ApplyPostRegAllocWars`)** the WAR (write-after-read) hazards introduced by RA's coalescing decisions have been resolved either by inserting extra NOPs or by reordering producer/consumer pairs. PostSchedule sees a stream in which physical-register WAR constraints are already legal — it does not need to insert WAR stalls, only re-order independent instructions.
 
-3. **After phases 108--109 (`OptimizeHotColdInLoop`, `OptimizeHotColdFlow`)** cold blocks have been hoisted out of the loop nest and the function-level layout has been split into hot and cold regions. PostSchedule sees a CFG where each region has uniform expected execution frequency; its priority function can apply the same `RBTPressureCostModel` weights uniformly within a region.
+3. **After phases 108–109 (`OptimizeHotColdInLoop`, `OptimizeHotColdFlow`)** cold blocks have been hoisted out of the loop nest and the function-level layout has been split into hot and cold regions. PostSchedule sees a CFG where each region has uniform expected execution frequency; its priority function can apply the same `RBTPressureCostModel` weights uniformly within a region.
 
 4. **Inside phase 110** Backend C (`sub_1908D90` -> `sub_1906090` -> `sub_1902B70`) builds a fresh per-block dependency DAG using `sub_19081F0` (17 KB), keyed on physical-register IDs rather than live ranges. It then runs the RB-tree list scheduler with `sub_18FDAF0` (double-precision weighted score) as the priority function, using `sub_18F3CB0` (16 KB pressure cost model) to track real bank pressure.
 

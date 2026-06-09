@@ -93,7 +93,7 @@ Every codegen function traverses EDG IL nodes — linked structures that represe
 | Offset | Field | Description |
 |---|---|---|
 | +0 | Type pointer | EDG type node (dereference for type info) |
-| +18 | Qualifier word | 16-bit: bits 0--14 = qualifier ID, bit 15 = negation |
+| +18 | Qualifier word | 16-bit: bits 0–14 = qualifier ID, bit 15 = negation |
 | +24 | Kind byte | Top-level expression category (1=operation, 2=literal, 3=member, 0x11=call, 0x14=decl-ref) |
 | +25 | Flags byte | Bit 2 = assignment context (write-only) |
 | +36 | Source location | Passed to debug info attachment |
@@ -104,10 +104,10 @@ Every codegen function traverses EDG IL nodes — linked structures that represe
 
 | Offset | Field | Description |
 |---|---|---|
-| +8 | Type classification byte | 1--6 = float types, 11 = integer, 15 = pointer, 16 = vector |
+| +8 | Type classification byte | 1–6 = float types, 11 = integer, 15 = pointer, 16 = vector |
 | +128 | Byte size | Element count for arrays, byte size for scalars |
 | +136 | Element size | Size in bits for non-typedef types |
-| +140 | Type tag | 1=void, 8--11=aggregate (struct/union/class/array), 12=typedef alias, 16=__int128 |
+| +140 | Type tag | 1=void, 8–11=aggregate (struct/union/class/array), 12=typedef alias, 16=__int128 |
 | +144 | Flags | Bit 2 = is_bitfield, bit 3 = signed |
 | +160 | Inner type / next | Followed when tag==12 (typedef stripping) |
 | +176 | Element count | For array types |
@@ -162,8 +162,8 @@ The central task of this layer is mapping CUDA-specific semantics to LLVM IR con
 | `__global__` function | `define void @kern() #0` + `!{ptr @kern, !"kernel", i32 1}` in `nvvm.annotations` | `sub_93AE30` |
 | `__launch_bounds__(N, M)` | `!{!"nvvm.maxntid", !"N,1,1"}` + `!{!"nvvm.minctasm", !"M"}` | same |
 | `__cluster_dims__(x,y,z)` | `!{!"nvvm.cluster_dim", !"x,y,z"}` + `!{!"nvvm.blocksareclusters"}` | same |
-| `__syncthreads()` | Builtin ID dispatch -> `llvm.nvvm.barrier0` | `sub_12B3FD0` (cases 0xB5--0xCC) |
-| `atomicAdd(ptr, val)` | Builtin dispatch -> `atomicrmw add` or `llvm.nvvm.atomic.*` | same (cases 0xBA--0xCC) |
+| `__syncthreads()` | Builtin ID dispatch -> `llvm.nvvm.barrier0` | `sub_12B3FD0` (cases 0xB5–0xCC) |
+| `atomicAdd(ptr, val)` | Builtin dispatch -> `atomicrmw add` or `llvm.nvvm.atomic.*` | same (cases 0xBA–0xCC) |
 | `printf(fmt, ...)` | Rewritten to `vprintf(fmt, packed_buf)` | `sub_12992B0` (printf-to-vprintf lowering) |
 | `__asm__("ptx" : ...)` | `call void asm sideeffect "ptx", "=r,..."(...)` | `sub_1292420` (inline-asm emitter) |
 | Texture/surface ops | `call @llvm.nvvm.tex.*` / `@llvm.nvvm.suld.*` | `sub_12ADE80`, `sub_12AA9B0` |

@@ -390,21 +390,21 @@ The mode flag dispatch at Phase 6 selects one of four codegen pathways. The choi
 
 ### The 48-Pass Codegen Pipeline (`sub_1655A60`)
 
-The per-function codegen entry point `sub_1655A60` runs a 48-pass pipeline (passes 0--47). Each pass is enable-gated by the SM dispatch vtable at `a1[3757]` (registered by `sub_15C0CE0`); enable flags occupy `a1[160..207]`. The pass numbering, vtable offsets, and binary slot allocation are the nvlink-embedded copy's own and do not match the standalone ptxas pass numbering (~159 phases) — for the corresponding standalone passes see [ptxas: Passes Index](../../ptxas/passes/index.html), [ptxas: Instruction Selection](../../ptxas/codegen/isel.html), and [ptxas: Scheduling Algorithm](../../ptxas/scheduling/algorithm.html).
+The per-function codegen entry point `sub_1655A60` runs a 48-pass pipeline (passes 0–47). Each pass is enable-gated by the SM dispatch vtable at `a1[3757]` (registered by `sub_15C0CE0`); enable flags occupy `a1[160..207]`. The pass numbering, vtable offsets, and binary slot allocation are the nvlink-embedded copy's own and do not match the standalone ptxas pass numbering (~159 phases) — for the corresponding standalone passes see [ptxas: Passes Index](../../ptxas/passes/index.html), [ptxas: Instruction Selection](../../ptxas/codegen/isel.html), and [ptxas: Scheduling Algorithm](../../ptxas/scheduling/algorithm.html).
 
 | Pass(es) | Role | Gating |
 |---|---|---|
 | 0 | Zero placeholder | always off |
 | 1 | Initial IR canonicalization | unconditional |
 | 2 | Instruction count estimation | vtable+120 |
-| 3--20 | SM-gated optimization passes (architecture-specific opt) | vtable+72 capability query per pass |
+| 3–20 | SM-gated optimization passes (architecture-specific opt) | vtable+72 capability query per pass |
 | 21 | Address-width-dependent setup | gated on `addr_width` |
 | 22 | Register class initialization | unconditional for SM >= sm_50 |
-| 23--38 | Core backend: ISel mega-hub dispatch, regalloc (graph coloring + spilling), `ScheduleInstructions`, peephole, SASS encoding | universally enabled for SM >= sm_50 |
+| 23–38 | Core backend: ISel mega-hub dispatch, regalloc (graph coloring + spilling), `ScheduleInstructions`, peephole, SASS encoding | universally enabled for SM >= sm_50 |
 | 39 | Initial ABI frame setup | unconditional |
-| 40--42 | Final lowering passes | unconditional |
+| 40–42 | Final lowering passes | unconditional |
 | 43 | Peephole cleanup | unconditional |
-| 44--45 | Reserved | always off |
+| 44–45 | Reserved | always off |
 | 46 | Binary encoding query | vtable+488 |
 | 47 | Final verification + pass-count teardown | unconditional |
 

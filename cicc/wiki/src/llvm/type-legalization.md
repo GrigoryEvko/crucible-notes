@@ -70,7 +70,7 @@ The legal type set changes with the SM version. The constructor at `sub_3314670`
 | SM Range | Legal Types Added | Legalization Change |
 |---|---|---|
 | SM < 53 | (base: `i1`, `i16`, `i32`, `i64`, `f32`, `f64`) | `f16` ops promoted to `f32`; no legal vectors |
-| SM 53--69 | Scalar `f16` | `v2f16` legal for ld/st but packed arithmetic is Custom/Expand |
+| SM 53–69 | Scalar `f16` | `v2f16` legal for ld/st but packed arithmetic is Custom/Expand |
 | SM 70+ | `v2f16` packed arithmetic, `i128` | `f16x2` PTX instructions (`add.f16x2`, `mul.f16x2`, `fma.rn.f16x2`) |
 | SM 80+ | `v2bf16` | `bf16x2` PTX instructions |
 | SM 100+ | `e2m1x2` (FP4), `e2m3x2` (FP6), `e3m2x2` (FP6), `ue8m0x2` | Additional packed narrow FP types for tensor core feeders |
@@ -89,8 +89,8 @@ action = *(uint8_t *)(TLI + 259 * VT + opcode + 2422)
 
 Where:
 - **TLI** = pointer to `NVPTXTargetLowering` object (loaded from `this->TLI` at `a1[1]`)
-- **VT** = `SimpleVT` enum value (1--10 for scalar types, 14--109 for vector types)
-- **opcode** = ISD opcode (0--258), capped at `0x102` by a guard check
+- **VT** = `SimpleVT` enum value (1–10 for scalar types, 14–109 for vector types)
+- **opcode** = ISD opcode (0–258), capped at `0x102` by a guard check
 - **259** = row stride (256 generic opcodes + 3 metadata bytes per VT row)
 
 The action byte encodes:
@@ -150,8 +150,8 @@ Types throughout the legalizer are encoded as a single byte, the `SimpleVT` enum
 | 1 | `i1` | 8 | `f16` |
 | 2 | `i2` (rare) | 9 | `f32` |
 | 3 | `i8` | 10 | `f64` |
-| 4 | `i16` | 14--55 | fixed-width vectors |
-| 5 | `i32` | 56--109 | scalable vectors |
+| 4 | `i16` | 14–55 | fixed-width vectors |
+| 5 | `i32` | 56–109 | scalable vectors |
 | 6 | `i64` | | |
 
 The bitwidth-to-SimpleVT conversion pattern appears as a recurring code fragment at least 11 times in `sub_20019C0`:
@@ -169,27 +169,27 @@ else if (bits > 32) { VT = 6;  // i64 tentative
 }
 ```
 
-The vector type range 14--109 maps to scalar element types through a ~100-case switch block that also appears six times in the function body:
+The vector type range 14–109 maps to scalar element types through a ~100-case switch block that also appears six times in the function body:
 
 | MVT Range | Scalar Element | Description |
 |---|---|---|
-| 14--23 | `i2` (VT 2) | Fixed-width `v2i2`..`v1024i2` |
-| 24--32 | `i8` (VT 3) | Fixed-width `v2i8`..`v256i8` |
-| 33--40 | `i16` (VT 4) | Fixed-width `v2i16`..`v64i16` |
-| 41--48 | `i32` (VT 5) | Fixed-width `v2i32`..`v64i32` |
-| 49--54 | `i64` (VT 6) | Fixed-width `v2i64`..`v32i64` |
+| 14–23 | `i2` (VT 2) | Fixed-width `v2i2`..`v1024i2` |
+| 24–32 | `i8` (VT 3) | Fixed-width `v2i8`..`v256i8` |
+| 33–40 | `i16` (VT 4) | Fixed-width `v2i16`..`v64i16` |
+| 41–48 | `i32` (VT 5) | Fixed-width `v2i32`..`v64i32` |
+| 49–54 | `i64` (VT 6) | Fixed-width `v2i64`..`v32i64` |
 | 55 | `i128` (VT 7) | Fixed-width `v2i128` |
-| 56--61 | `i2` (VT 2) | Scalable `nxv2i2`..`nxv64i2` |
-| 62--67 | `i8` (VT 3) | Scalable `nxv2i8`..`nxv64i8` |
-| 68--73 | `i16` (VT 4) | Scalable `nxv2i16`..`nxv64i16` |
-| 74--79 | `i32` (VT 5) | Scalable `nxv2i32`..`nxv64i32` |
-| 80--85 | `i64` (VT 6) | Scalable `nxv2i64`..`nxv64i64` |
-| 86--88 | `f16` (VT 8) | Scalable `nxv2f16`..`nxv8f16` |
-| 89--93 | `f32` (VT 9) | Scalable `nxv2f32`..`nxv32f32` |
-| 94--97 | `f64` (VT 10) | Scalable `nxv2f64`..`nxv16f64` |
-| 98--100 | `f16` (VT 8) | Fixed-width `v2f16`..`v8f16` (additional) |
-| 101--105 | `f32` (VT 9) | Fixed-width `v2f32`..`v32f32` (additional) |
-| 106--109 | `f64` (VT 10) | Fixed-width `v2f64`..`v16f64` (additional) |
+| 56–61 | `i2` (VT 2) | Scalable `nxv2i2`..`nxv64i2` |
+| 62–67 | `i8` (VT 3) | Scalable `nxv2i8`..`nxv64i8` |
+| 68–73 | `i16` (VT 4) | Scalable `nxv2i16`..`nxv64i16` |
+| 74–79 | `i32` (VT 5) | Scalable `nxv2i32`..`nxv64i32` |
+| 80–85 | `i64` (VT 6) | Scalable `nxv2i64`..`nxv64i64` |
+| 86–88 | `f16` (VT 8) | Scalable `nxv2f16`..`nxv8f16` |
+| 89–93 | `f32` (VT 9) | Scalable `nxv2f32`..`nxv32f32` |
+| 94–97 | `f64` (VT 10) | Scalable `nxv2f64`..`nxv16f64` |
+| 98–100 | `f16` (VT 8) | Fixed-width `v2f16`..`v8f16` (additional) |
+| 101–105 | `f32` (VT 9) | Fixed-width `v2f32`..`v32f32` (additional) |
+| 106–109 | `f64` (VT 10) | Fixed-width `v2f64`..`v16f64` (additional) |
 
 This switch implements `getVectorElementType()` on the decompiled SimpleVT enum. Its six-fold repetition in the monolith accounts for a significant fraction of the function's 348KB size.
 
@@ -236,7 +236,7 @@ result = DAG.getNode(BUILD_PAIR, DL, i128, lo_r, hi_r)
 
 For CTLZ (case 53), expansion builds an all-ones mask, AND chain, and shift sequence. For SINT_TO_FP/UINT_TO_FP (cases 59/60), the helper `sub_20B5C20` performs iterative two-way splitting: it finds the half-type, builds the pair, and recursively legalizes each half.
 
-The `ExpandIntegerResult` handler at `sub_201BB90` (75KB, 632 case labels) is itself a major function that dispatches expansion for specific opcodes including STORE (case 77), shifts (81--93), and atomics.
+The `ExpandIntegerResult` handler at `sub_201BB90` (75KB, 632 case labels) is itself a major function that dispatches expansion for specific opcodes including STORE (case 77), shifts (81–93), and atomics.
 
 ### Soften (Float-to-Integer Emulation)
 
@@ -277,7 +277,7 @@ The main body of `sub_20019C0` is a switch on `*(int16_t *)(node + 24)` — the 
 |---|---|---|
 | 10 | `LOAD` | `legalizeLoad` — type-aware load splitting |
 | 11 | `STORE` | Iterative type demotion loop (see below) |
-| 20--21, 26 | Generic arithmetic | Promote via `sub_1D38BB0` (getConstant) |
+| 20–21, 26 | Generic arithmetic | Promote via `sub_1D38BB0` (getConstant) |
 | 27 | `EXTRACT_ELEMENT` | Split + re-extract |
 | 29 | `BUILD_PAIR` | Promote to `i32` |
 | 48 | `BITCAST` | Promote or expand depending on `isSimple()` |
@@ -286,24 +286,24 @@ The main body of `sub_20019C0` is a switch on `*(int16_t *)(node + 24)` — the 
 | 51 | `CONCAT_VECTORS` | Iterate operands, copy each to result list |
 | 53 | `CTLZ` / `CTPOP` | Expand via mask-then-shift (AND=120, ADD=52) |
 | 54 | `ATOMIC_CMP_SWAP` | Full promote path: check legality table, fallback to libcall |
-| 55--56 | `SIGN_EXTEND_INREG` / `SMIN` | Legality check via `TLI + 259*VT + opcode + 2422` |
-| 57--58 | `FP_TO_SINT` / `FP_TO_UINT` | Chain of promote + expand nodes |
-| 59--60 | `SINT_TO_FP` / `UINT_TO_FP` | Iterative split via `sub_20B5C20` |
+| 55–56 | `SIGN_EXTEND_INREG` / `SMIN` | Legality check via `TLI + 259*VT + opcode + 2422` |
+| 57–58 | `FP_TO_SINT` / `FP_TO_UINT` | Chain of promote + expand nodes |
+| 59–60 | `SINT_TO_FP` / `UINT_TO_FP` | Iterative split via `sub_20B5C20` |
 | 70, 72 | `FMINNUM` / `FMAXNUM` | BUILD_PAIR (opcode 0x89) reassembly |
-| 74--75 | `FADD` / `FMUL` | Promote to wider FP type |
+| 74–75 | `FADD` / `FMUL` | Promote to wider FP type |
 | 77 | `FMA` | Extend operands, FMA at wider type, round back |
 | 105 | `BUILD_VECTOR` | Delegate to `sub_1FEC5F0` |
 | 106 | `EXTRACT_VECTOR_ELT` | Check vector element count, dispatch |
 | 108 | `MGATHER` / `MSCATTER` | Load/store with alignment fixup via `sub_20BD400` |
 | 110 | `VSELECT` | Element-by-element type demotion loop |
-| 112--113 | `SETCC` | Legality check with swapped-direction fallback |
-| 114--117 | `VECREDUCE_*` | Opcode lookup in `dword_42FEAE0`, chain to VECREDUCE |
-| 122--124 | `SHL` / `SRL` / `SRA` | Iterative width expansion |
-| 125--126 | `ROTL` / `ROTR` | 4-way split: shift + mask + OR |
+| 112–113 | `SETCC` | Legality check with swapped-direction fallback |
+| 114–117 | `VECREDUCE_*` | Opcode lookup in `dword_42FEAE0`, chain to VECREDUCE |
+| 122–124 | `SHL` / `SRL` / `SRA` | Iterative width expansion |
+| 125–126 | `ROTL` / `ROTR` | 4-way split: shift + mask + OR |
 | 136 | `BR_CC` | Uses CC action table at offset `+18112` |
 | 152 | `ATOMIC_LOAD_*` | Delegate to `sub_20B7F50` (atomic promote) |
 | 153 | `ATOMIC_CMP_SWAP_WITH_SUCCESS` | Full CAS expansion with APInt mask |
-| 199--200 | `INTRINSIC_W_CHAIN` / `INTRINSIC_WO_CHAIN` | TLI+112 check, intrinsic lowering dispatch |
+| 199–200 | `INTRINSIC_W_CHAIN` / `INTRINSIC_WO_CHAIN` | TLI+112 check, intrinsic lowering dispatch |
 | 211 | `UNDEF` | Replicate zero-constant to fill operand count |
 | 243 | `TOKEN_FACTOR` | Duplicate single operand to all slots |
 
@@ -333,24 +333,24 @@ Atomic operations receive extensive legalization because PTX has limited atomic 
 
 ### SplitVectorResult (sub_2029C10)
 
-This thin dispatcher reads the opcode from `*(uint16_t *)(node + 0x18)`, subtracts base `0x30` (48), and dispatches across 190 cases (opcodes 48--237) to SplitVecRes_XXX workers. Key handler categories:
+This thin dispatcher reads the opcode from `*(uint16_t *)(node + 0x18)`, subtracts base `0x30` (48), and dispatches across 190 cases (opcodes 48–237) to SplitVecRes_XXX workers. Key handler categories:
 
 | Handler | Cases | Description |
 |---|---|---|
-| `sub_20230C0` | FADD--FREM, SHL/SRA/SRL, int arith | Generic binary op split: split both inputs, apply op to each half |
+| `sub_20230C0` | FADD–FREM, SHL/SRA/SRL, int arith | Generic binary op split: split both inputs, apply op to each half |
 | `sub_2028A10` | CONCAT, INSERT_ELT, load/store variants | Unary/multi-input split with reassembly |
-| `sub_2025910` | Strict FP (cases 81--98) | Strict FP split with exception chain propagation |
+| `sub_2025910` | Strict FP (cases 81–98) | Strict FP split with exception chain propagation |
 | `sub_2023B70` | BUILD_VECTOR (case 104) | Split BUILD_VECTOR into two half-width constructs |
 | `sub_2023F80` | CONCAT inner (case 107) | Trivial: return two operands as Lo and Hi |
 | `sub_20293A0` | VECTOR_SHUFFLE (case 110, 10KB) | Decompose shuffle into sub-shuffles on half-width vectors |
 | `sub_20251A0` | VSELECT, EXTRACT_ELT | Split condition mask along with operands |
-| `sub_2025380` | Extending loads (cases 149--151) | Split load into two half-width loads |
+| `sub_2025380` | Extending loads (cases 149–151) | Split load into two half-width loads |
 
 Four handlers in the `0x214xxxx` range are NVPTX-specific split workers not present in upstream:
 
 | Handler | Opcode | NVPTX-Specific Behavior |
 |---|---|---|
-| `sub_2146BB0` | CONCAT_VECTORS | Checks VT range 0x0E--0x6D for packed-type dispatch |
+| `sub_2146BB0` | CONCAT_VECTORS | Checks VT range 0x0E–0x6D for packed-type dispatch |
 | `sub_2146C90` | SELECT_CC / BR_CC (2.7KB) | Multi-operand split with per-operand type classification |
 | `sub_2147770` | FP_ROUND-like | NVPTX-specific FP rounding split |
 | `sub_2147AE0` | BITCAST | NVPTX-specific bitcast split for packed registers |
@@ -361,7 +361,7 @@ Fatal error on unhandled opcode: `"Do not know how to split the result of this o
 
 ### SplitVectorOperand (sub_202E5A0)
 
-Same dispatch pattern as `SplitVectorResult` but for operand-side legalization. Base opcode `0x65` (101), range 157 (opcodes 101--258). Notable inline handling for `FP_EXTEND`/`FP_ROUND` (cases 146--147, 152--153) that compares source and destination type sizes to choose the correct split strategy:
+Same dispatch pattern as `SplitVectorResult` but for operand-side legalization. Base opcode `0x65` (101), range 157 (opcodes 101–258). Notable inline handling for `FP_EXTEND`/`FP_ROUND` (cases 146–147, 152–153) that compares source and destination type sizes to choose the correct split strategy:
 
 ```c
 // Inline in SplitVectorOperand, cases 146-147
@@ -408,7 +408,7 @@ The dispatch:
 
 When Custom lowering returns NULL, the framework falls through to expansion. When it returns a different node, `ReplaceAllUsesWith` splices the replacement into the DAG and marks the old node dead (tombstone value `-2` in the worklist hash set).
 
-The operation legalizer also contains an outer switch on the ISD opcode (`v11 = *(uint16_t *)(node + 24)`) for opcode-specific handling before the table lookup. Shift/rotate opcodes (81--98) are remapped to internal opcode numbers before the table lookup (e.g., case 81 maps to internal opcode 76, case 82 to 77). The opcode-specific dispatch covers approximately 30 opcode groups.
+The operation legalizer also contains an outer switch on the ISD opcode (`v11 = *(uint16_t *)(node + 24)`) for opcode-specific handling before the table lookup. Shift/rotate opcodes (81–98) are remapped to internal opcode numbers before the table lookup (e.g., case 81 maps to internal opcode 76, case 82 to 77). The opcode-specific dispatch covers approximately 30 opcode groups.
 
 ## How CUDA Vector Types Get Legalized
 
@@ -558,12 +558,12 @@ No CICC-specific legalization knobs beyond the standard LLVM flag were found. Th
 3. **Four legalization actions.** Implement Promote (widen via ANY_EXTEND/ZERO_EXTEND, operate, TRUNCATE), Expand (split via shift-and-OR for integers, libcall for floats), Soften (integer emulation of unsupported FP types), and Scalarize/Split-Vector (decompose illegal vectors into scalar or half-width vector operations).
 4. **Iterative fixpoint loop.** Run the type legalizer worklist until every node in the DAG has only legal result and operand types, since each pass may create new nodes with illegal types (e.g., splitting a vector creates half-width vectors that may themselves require further splitting).
 5. **Vector legalization for NVPTX.** Handle the critical constraint that Int32HalfRegs is the only vector class (32 bits total): scalarize all vectors wider than 32 bits (v4f32, v2f32, v8i32, etc.) while keeping v2f16/v2bf16/v2i16/v4i8 legal. Implement the SplitVectorResult/SplitVectorOperand/ScalarizeVector dispatchers with their 190+/157+/~100 case switches.
-6. **SimpleVT type encoding.** Implement the bitwidth-to-SimpleVT conversion (11 instances in NVIDIA's monolith) and the ~100-case vector-element-type switch (6 instances) mapping MVT ranges 14--109 to their scalar element types.
+6. **SimpleVT type encoding.** Implement the bitwidth-to-SimpleVT conversion (11 instances in NVIDIA's monolith) and the ~100-case vector-element-type switch (6 instances) mapping MVT ranges 14–109 to their scalar element types.
 
 ## Cross-References
 
 - [SelectionDAG & Instruction Selection](./selectiondag.md) — parent page covering the full SelectionDAG pipeline
 - [NVPTX Target Infrastructure](../infra/nvptx-target.md) — `NVPTXTargetLowering` constructor and TTI hooks
-- [SM 70--89](../targets/sm70-89.md), [SM 90](../targets/sm90-hopper.md), [SM 100](../targets/sm100-blackwell.md) — per-SM legal type details
+- [SM 70–89](../targets/sm70-89.md), [SM 90](../targets/sm90-hopper.md), [SM 100](../targets/sm100-blackwell.md) — per-SM legal type details
 - [DAG Node](../structs/dag-node.md) — SDNode layout (opcode at +24, operands at +32, type at +40)
 - [Hash Infrastructure](../infra/hash-infrastructure.md) — DenseMap mechanics used throughout legalization

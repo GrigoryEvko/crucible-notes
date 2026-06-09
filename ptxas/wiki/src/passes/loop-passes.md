@@ -931,7 +931,7 @@ Loop-carried edges are detected by matching register definitions against uses wh
 
 Two structural observations constrain the implementation:
 
-1. **Single-block loops only.** Phase 24 operates on single-basic-block loop bodies (the feasibility check at `sub_9202D0` rejects multi-operand forms, and multi-block handling is gated to the unroller via `UnrollMultiBlockLoops`). In a single-block DDG where every instruction executes once per iteration, the only cycles are recurrences — chains where instruction A feeds B feeds ... feeds A across iteration boundaries. The count of such cycles is bounded by the number of loop-carried edges, typically small (1--4 for register recurrences).
+1. **Single-block loops only.** Phase 24 operates on single-basic-block loop bodies (the feasibility check at `sub_9202D0` rejects multi-operand forms, and multi-block handling is gated to the unroller via `UnrollMultiBlockLoops`). In a single-block DDG where every instruction executes once per iteration, the only cycles are recurrences — chains where instruction A feeds B feeds ... feeds A across iteration boundaries. The count of such cycles is bounded by the number of loop-carried edges, typically small (1–4 for register recurrences).
 
 2. **Implicit via constraint propagation.** The post-RA SoftwarePipeline variant (`sub_8B9390`) tracks `maxDependencyCycle` (+92) and `maxPredecessorCycle` (+88) in the per-instruction 96-byte scheduling record. These fields propagate forward during the modulo scheduling placement loop: when B depends on A with latency L and distance D, the earliest slot for B is `A.scheduled_time + L - D * II`. If no valid placement exists at the current II, II is incremented and the MRT is rebuilt. This means RecMII is effectively computed as the smallest II for which all recurrence constraints are satisfiable, rather than being pre-computed by a separate cycle-enumeration pass.
 
@@ -1098,12 +1098,12 @@ The classifier is a 5.5KB, 1372-line switch statement mapping approximately 350 
 | Opcode range | Category | Latency behavior |
 |---|---|---|
 | `0x03`--`0x24` | Integer ALU | Mostly passthrough default; `0x23` always returns 10 |
-| `0x3C`, `0x3E`, `0x4E`, `0x4F` | Memory (load/store) | Returns field from `operand_array[4]` bits for operands 0--1 |
+| `0x3C`, `0x3E`, `0x4E`, `0x4F` | Memory (load/store) | Returns field from `operand_array[4]` bits for operands 0–1 |
 | `0x46`, `0xF3`--`0x106` | Texture | Returns 6 normally; 10 for MIO-dependent with extended flag check |
 | `0x49`, `0x4A`, `0x51`, `0x143`, `0x15E` | Atomic/reduce | Always returns 12 |
 | `0x55`--`0x6F` | Floating-point | Complex per-operand logic; `0x55` uses lookup table `dword_21E1340` |
 | `0x5B`, `0x5C`, `0x137` | Barriers/sync | Returns 12 for operand 1, else default |
-| `0xB7`, `0x120` | WGMMA setup | Per-operand latency (10--20) based on accumulator flags |
+| `0xB7`, `0x120` | WGMMA setup | Per-operand latency (10–20) based on accumulator flags |
 | `0x135` | HMMA/IMMA | Calls `sub_7E39B0`/`sub_7E3A70`/`sub_7E3BA0`/`sub_7E3C30` for matrix latency |
 | `0x13D`, `0x13E` | Extended FP | Accumulator-flag-dependent returns (10 or 12) |
 

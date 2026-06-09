@@ -2,16 +2,16 @@
 
 The cudafe++ diagnostic system is a 7-stage pipeline rooted in EDG 6.6's `error.c`. It manages 3,795 error message templates, 9 severity levels, per-error suppression tracking, `#pragma` diagnostic overrides, and two output formats (text and SARIF JSON). The most-connected function in the entire binary — `sub_4F2930` (assertion handler) with 5,185 call sites — feeds into this system, making error handling the single largest cross-cutting concern in cudafe++.
 
-Each of the 3,795 numeric codes also carries a **snake_case diagnostic tag** accepted by `--diag_suppress` and `#pragma nv_diag_*`. The binary's string table holds approximately **859 such tags**: ~254 in the CUDA extension range (codes 3457--3794, displayed as 20000--20337) and ~605 in the EDG base range (codes 0--3456, displayed unchanged). The CUDA-extension tags are enumerated in [CUDA Errors](./cuda-errors.md) and the [Error Message Catalog](../reference/error-catalog.md); the EDG base namespace is summarized by category prefix at the bottom of the [reference catalog](../reference/error-catalog.md#edg-diagnostic-namespace-outside-this-catalog).
+Each of the 3,795 numeric codes also carries a **snake_case diagnostic tag** accepted by `--diag_suppress` and `#pragma nv_diag_*`. The binary's string table holds approximately **859 such tags**: ~254 in the CUDA extension range (codes 3457–3794, displayed as 20000–20337) and ~605 in the EDG base range (codes 0–3456, displayed unchanged). The CUDA-extension tags are enumerated in [CUDA Errors](./cuda-errors.md) and the [Error Message Catalog](../reference/error-catalog.md); the EDG base namespace is summarized by category prefix at the bottom of the [reference catalog](../reference/error-catalog.md#edg-diagnostic-namespace-outside-this-catalog).
 
 ## Error Table
 
-The error message template table lives at `off_88FAA0`: an array of 3,795 `const char*` pointers indexed by error code (0--3794).
+The error message template table lives at `off_88FAA0`: an array of 3,795 `const char*` pointers indexed by error code (0–3794).
 
 | Range | Count | Origin | Display Format |
 |---|---|---|---|
-| 0--3456 | 3,457 | Standard EDG 6.6 | `#N-D` |
-| 3457--3794 | 338 | NVIDIA CUDA extensions | `#(N+16543)-D` (20000--20337-D series) |
+| 0–3456 | 3,457 | Standard EDG 6.6 | `#N-D` |
+| 3457–3794 | 338 | NVIDIA CUDA extensions | `#(N+16543)-D` (20000–20337-D series) |
 
 The renumbering logic in `construct_text_message` (`sub_4EF9D0`):
 
@@ -533,8 +533,8 @@ Each diagnostic record is approximately 200 bytes, allocated by `sub_4EC940`:
 | 160 | 8 | `display_file_name` | Display-formatted file path |
 | 168 | 4 | `column_number` | Column number |
 | 172 | 4 | `caret_info` | Caret position data |
-| 176 | 4 | `error_code` | Error code (0--3794) |
-| 180 | 1 | `severity` | Severity level (2--11) |
+| 176 | 4 | `error_code` | Error code (0–3794) |
+| 180 | 1 | `severity` | Severity level (2–11) |
 | 184 | 8 | `fill_in_list_head` | First fill-in entry |
 | 192 | 8 | `fill_in_list_tail` | Last fill-in entry |
 
@@ -544,7 +544,7 @@ Each fill-in entry is 40 bytes, allocated from a free-list pool (`qword_106B490`
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
-| 0 | 4 | `kind` | Fill-in kind (0--7, mapped from format specifier letter) |
+| 0 | 4 | `kind` | Fill-in kind (0–7, mapped from format specifier letter) |
 | 4 | 1 | `used_flag` | Set to 1 when consumed during formatting |
 | 8 | 8 | `next` | Next fill-in in linked list |
 | 16 | 8+ | `payload` | Union: qword for most kinds; int+int for kind 4 (entity name) |

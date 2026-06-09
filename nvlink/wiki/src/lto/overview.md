@@ -519,7 +519,7 @@ The following diagram traces the LTO pipeline from the first IR input to the fin
 
 When multiple NVVM IR modules are linked, each module carries its own embedded compilation options (extracted from the `-inline-info`, `-ftz=`, `-prec_div=`, etc. strings baked into the IR by cicc at compile time). nvlink must reconcile these per-module options into a single consistent set before passing them to libnvvm. This reconciliation uses a 5-state finite automaton, applied independently to each of 8 tracked options.
 
-The state machine is implemented in `sub_42AF40` at `0x42AF40` and runs once per IR module during the input loop (Phase 7). Each option has a pair of globals: a **state** variable (type `int`, one of states 0--4) and a **value** variable (the actual option value, either `int` or `int` count).
+The state machine is implemented in `sub_42AF40` at `0x42AF40` and runs once per IR module during the input loop (Phase 7). Each option has a pair of globals: a **state** variable (type `int`, one of states 0–4) and a **value** variable (the actual option value, either `int` or `int` count).
 
 ### State Definitions
 
@@ -549,7 +549,7 @@ Current State     Input HAS(v)              Input ABSENT
 
 ### Terminal States and Diagnostic Action
 
-After all modules have been processed (post-input-loop, `main` lines 945--982), nvlink checks each option's final state:
+After all modules have been processed (post-input-loop, `main` lines 945–982), nvlink checks each option's final state:
 
 | Final State | Action |
 |---|---|
@@ -586,7 +586,7 @@ When the input loop finds IR for libcudadevrt specifically (`v365` in main, line
 
 ### Stripping Phase
 
-After whole-program LTO compilation succeeds (main lines 1346--1366), if the LTO compiled everything (`byte_2A5F288 && !byte_2A5F286`), nvlink strips libcudadevrt from the module list entirely:
+After whole-program LTO compilation succeeds (main lines 1346–1366), if the LTO compiled everything (`byte_2A5F288 && !byte_2A5F286`), nvlink strips libcudadevrt from the module list entirely:
 
 ```text
 fwrite("LTO on everything so remove libcudadevrt from list\n")
@@ -844,7 +844,7 @@ For architectures SM 90 and above (Hopper, Blackwell, and beyond), the SASS outp
 
 | Address | Size | Name | Role |
 |---|---|---|---|
-| `0x409800` | 57,970 B | `main` | Top-level orchestrator. LTO pipeline occupies lines 920--1370 |
+| `0x409800` | 57,970 B | `main` | Top-level orchestrator. LTO pipeline occupies lines 920–1370 |
 | `0x42AF40` | ~4,500 B | `process_input_object` | Processes each input: calls nvvm_api_init, adds IR module, runs option consensus state machine |
 | `0x427A10` | ~200 B | `lto_add_module` | Wrapper: validates `-lto` flag, calls `nvvm_api_wrapper_init` + `nvvmAddModule`, counts modules |
 | `0x42A680` | ~2,000 B | `register_module` | Creates 80-byte module node, sets partial-LTO flag if non-IR cubin found (with cudadevrt exception) |
@@ -940,13 +940,13 @@ The embedded ptxas backend within nvlink spans approximately `0x530000` to `0x1D
 | `0x12D5000`--`0x1400000` | 11 MB | ISel pattern matchers (parametric clones per SM variant) |
 | `0x1400000`--`0x1430000` | 192 KB | Top-level LTO pipeline, ELF emission, MMA lowering |
 
-ISel patterns are instantiated 4--5 times for different architecture targets:
+ISel patterns are instantiated 4–5 times for different architecture targets:
 - Base (sm_5x): `0x12BA000`--`0x12D0000`
 - sm_8x clone: `0x13D6B10`--`0x13DED20`
 - sm_9x clone: `0x13EC1E0`--`0x13FE860`
 - sm_10x clone: `0x140AFE0`--`0x1418220`
 
-Each clone set contains 50--60 functions implementing identical lowering logic specialized for the target's instruction set.
+Each clone set contains 50–60 functions implementing identical lowering logic specialized for the target's instruction set.
 
 ## Related Pages
 

@@ -60,7 +60,7 @@ The uniquing function `sub_162D4F0` performs a byte-level switch on `*(_BYTE *)a
 
 The opcodes fall into two categories: "simple" opcodes that use sub-function tables at fixed stride, and "complex" opcodes that use dedicated DenseMap instances at individually-known offsets.
 
-**Simple opcodes (0x04--0x15)** — These 18 opcodes share a uniform dispatch pattern. Each routes to a sub-function table at a fixed byte offset within the context object, spaced 32 bytes apart:
+**Simple opcodes (0x04–0x15)** — These 18 opcodes share a uniform dispatch pattern. Each routes to a sub-function table at a fixed byte offset within the context object, spaced 32 bytes apart:
 
 | Opcode | Context Byte Offset | Semantic Category |
 |--------|-------------------|-------------------|
@@ -85,7 +85,7 @@ The opcodes fall into two categories: "simple" opcodes that use sub-function tab
 
 Each sub-function table entry at these offsets is a 32-byte structure containing the callback address and metadata for hash-table probing.
 
-**Complex opcodes (0x16--0x22)** — These opcodes each own a full DenseMap within the context object. Each DenseMap occupies 4 qwords at the indicated base, plus associated dword counters:
+**Complex opcodes (0x16–0x22)** — These opcodes each own a full DenseMap within the context object. Each DenseMap occupies 4 qwords at the indicated base, plus associated dword counters:
 
 | Opcode | QWord Base | Byte Offset | DenseMap Dwords | Identified Semantic |
 |--------|-----------|-------------|-----------------|---------------------|
@@ -147,8 +147,8 @@ NVIDIA uses LLVM's standard instruction opcode numbering with minor adjustments.
 | 0x21 | 33 | `indirectbr` | "indirectbr" unsupported |
 | 0x22 | 34 | `call` (variant) | Validates callee type signature |
 | 0x23 | 35 | `resume` (verifier) | "resume" unsupported |
-| 0x23--0x34 | 35--52 | Binary ops (add/sub/mul/div/rem/shift/logic) | — |
-| 0x35--0x38 | 53--56 | Casts (trunc/zext/sext/fpcast) | — |
+| 0x23–0x34 | 35–52 | Binary ops (add/sub/mul/div/rem/shift/logic) | — |
+| 0x35–0x38 | 53–56 | Casts (trunc/zext/sext/fpcast) | — |
 | 0x3C | 60 | `alloca` | Alignment and address-space checks |
 | 0x3D | 61 | `load` | Atomic loads rejected; tensor memory AS rejected |
 | 0x3E | 62 | `store` | Atomic stores rejected; tensor memory AS rejected |
@@ -160,7 +160,7 @@ NVIDIA uses LLVM's standard instruction opcode numbering with minor adjustments.
 | 0x58 | 88 | `alloca` (inalloca) | Same as 0x18 |
 | 0x5F | 95 | `landingpad` | "landingpad" unsupported |
 
-The binary opcodes in the 0x23--0x34 range follow LLVM's `BinaryOperator` numbering:
+The binary opcodes in the 0x23–0x34 range follow LLVM's `BinaryOperator` numbering:
 
 | Opcode | Hex | Operation | IRBuilder Helper |
 |--------|-----|-----------|-----------------|
@@ -195,18 +195,18 @@ The InstCombine mega-visitor `sub_10EE7A0` (60 KB native; 9,258 lines decomp, am
 | 0x15 | Invoke |
 | 0x1A | Unreachable |
 | 0x3F | FNeg |
-| 0x41--0x43 | Add, FAdd, Sub |
+| 0x41–0x43 | Add, FAdd, Sub |
 | 0x99 | GetElementPtr |
 | 0xAA | Trunc |
-| 0xAC--0xAE | ZExt, SExt, FPToUI |
-| 0xB4--0xB5 | PtrToInt, IntToPtr |
-| 0xCF--0xD2 | ICmp, FCmp, PHI, Call |
-| 0xE3--0xEB | VAArg, ExtractElement, InsertElement, ShuffleVector, ExtractValue, InsertValue |
+| 0xAC–0xAE | ZExt, SExt, FPToUI |
+| 0xB4–0xB5 | PtrToInt, IntToPtr |
+| 0xCF–0xD2 | ICmp, FCmp, PHI, Call |
+| 0xE3–0xEB | VAArg, ExtractElement, InsertElement, ShuffleVector, ExtractValue, InsertValue |
 | 0x11A | Fence |
 | 0x11D | AtomicCmpXchg |
 | 0x125 | AtomicRMW |
-| 0x134--0x174 | FPTrunc, FPExt, UIToFP, Alloca, Load, Store, FMul, UDiv, SDiv, ... |
-| 0x17D--0x192 | BitCast, Freeze, LandingPad, CatchSwitch, CatchRet, CallBr, ... |
+| 0x134–0x174 | FPTrunc, FPExt, UIToFP, Alloca, Load, Store, FMul, UDiv, SDiv, ... |
+| 0x17D–0x192 | BitCast, Freeze, LandingPad, CatchSwitch, CatchRet, CallBr, ... |
 | 0x2551, 0x255F, 0x254D | NVIDIA custom intrinsic operations |
 
 The NVIDIA custom opcodes (0x2551, 0x255F, 0x254D) are in a range far above standard LLVM and handle CUDA-specific operations (texture, surface, or warp-level ops encoded as custom IR nodes) that have no upstream LLVM equivalent.
@@ -299,7 +299,7 @@ The context object's hash tables also serve as uniquing tables for type nodes. T
 | 17 | MDTuple / metadata node | Metadata tuple |
 | 37 | Comparison instruction | ICmp / FCmp predicate |
 
-The type tag at +16 is used by InstCombine (`sub_1743DA0`) and many other passes to quickly classify nodes without reading the full opcode. The observed range is 5--75, considerably denser than standard LLVM's Value subclass IDs.
+The type tag at +16 is used by InstCombine (`sub_1743DA0`) and many other passes to quickly classify nodes without reading the full opcode. The observed range is 5–75, considerably denser than standard LLVM's Value subclass IDs.
 
 ## Instruction Creation Helpers
 

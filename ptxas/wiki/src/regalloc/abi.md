@@ -10,7 +10,7 @@ The ptxas ABI engine implements the NVIDIA GPU calling convention for device-sid
 | **Per-pass lowering** | `sub_19DC4B0` (6459 bytes) — 3-pass instruction transform driver |
 | **Opcode-level dispatch** | `sub_19CFC30` — routes 11 opcodes to ABI handlers |
 | **Parameter allocator** | `sub_19CA730` (2277 bytes) — 2048-bit free-list bitmap allocator |
-| **Return address validator** | `sub_19CDFF0` (7.5 KB) — 12 diagnostic strings, warnings 7001--7009 |
+| **Return address validator** | `sub_19CDFF0` (7.5 KB) — 12 diagnostic strings, warnings 7001–7009 |
 | **Return address setup** | `sub_19D1720` (4.8 KB) — validates and assigns return address registers |
 | **Register transfer lowering** | `sub_19CC1A0` (3873 bytes) — generates MOV/STS/LDS/PRMT sequences |
 | **gb10b WAR** | `sub_19D9E00` + `sub_19DA2A0` — `__nv_reservedSMEM_gb10b_war_var` |
@@ -19,7 +19,7 @@ The ptxas ABI engine implements the NVIDIA GPU calling convention for device-sid
 
 ## Reserved Registers
 
-Registers R0--R3 are reserved by the ABI and cannot be used for general allocation. The allocator enforces this with the diagnostic `"Registers 0-3 are reserved by ABI and cannot be used for %s"`. These four registers serve fixed ABI roles (stack pointer, thread parameters, etc.) and are excluded from both parameter passing and general register allocation.
+Registers R0–R3 are reserved by the ABI and cannot be used for general allocation. The allocator enforces this with the diagnostic `"Registers 0-3 are reserved by ABI and cannot be used for %s"`. These four registers serve fixed ABI roles (stack pointer, thread parameters, etc.) and are excluded from both parameter passing and general register allocation.
 
 The reservation is unconditional across all SM generations. Any `.maxreg` directive or ABI specification that attempts to assign these registers to parameter or return roles triggers a diagnostic.
 
@@ -35,11 +35,11 @@ generation = *(int*)(sm_target + 372) >> 12
 |------------------|------------|---------------------|
 | 3 | sm\_35, sm\_37 | Kepler ABI: no uniform registers, no convergent boundaries |
 | 4 | sm\_50, sm\_52, sm\_53 | Maxwell ABI: 16-register minimum, label fixups, coroutine insertion |
-| 5 | sm\_60--sm\_89 | Pascal through Ada ABI: 24-register minimum, cooperative launch support |
+| 5 | sm\_60–sm\_89 | Pascal through Ada ABI: 24-register minimum, cooperative launch support |
 | 9 | sm\_90, sm\_90a | Hopper ABI: 24-register minimum, uniform return address support |
 | >9 | sm\_100+ | Blackwell ABI: no minimum enforced (skips check), extended register reservation |
 
-The minimum register count varies by generation. For generations 3--4 (sm\_35 through sm\_53), the ABI requires at least 16 registers per function. For generations 5--9 (sm\_60 through sm\_90a), the minimum is 24. Generations below 3 and above 9 skip the minimum check entirely. Violating these minimums emits warning 7016: `"regcount %d specified below abi_minimum of %d"`. The `abi_minimum` value is computed as `(generation - 5) < 5 ? 24 : 16`.
+The minimum register count varies by generation. For generations 3–4 (sm\_35 through sm\_53), the ABI requires at least 16 registers per function. For generations 5–9 (sm\_60 through sm\_90a), the minimum is 24. Generations below 3 and above 9 skip the minimum check entirely. Violating these minimums emits warning 7016: `"regcount %d specified below abi_minimum of %d"`. The `abi_minimum` value is computed as `(generation - 5) < 5 ? 24 : 16`.
 
 ## Master ABI Setup: sub\_19D1AF0
 
@@ -94,7 +94,7 @@ function abi_master_setup(func, sm_target, abi_spec):
 
 ## Parameter Passing
 
-Parameters are passed in consecutive R registers starting from a configurable base register. The ABI tracks `"number of registers used for parameter passing"` and `"first parameter register"` as per-function properties. The parameter register range begins after the reserved registers (R0--R3) and the return address register.
+Parameters are passed in consecutive R registers starting from a configurable base register. The ABI tracks `"number of registers used for parameter passing"` and `"first parameter register"` as per-function properties. The parameter register range begins after the reserved registers (R0–R3) and the return address register.
 
 ### Parameter Register Allocator: sub\_19CA730
 
@@ -649,9 +649,9 @@ The ABI handles three register file types, each with distinct allocation rules:
 
 | Type | `v7` value | File | Range | SM requirement |
 |------|------------|------|-------|----------------|
-| GPR | 2 | General-purpose | R0--R255 | All architectures |
-| Uniform | 3 | Uniform GPR | UR0--UR63 | sm\_75+ |
-| Predicate | 5 | Predicate | P0--P7 | All architectures |
+| GPR | 2 | General-purpose | R0–R255 | All architectures |
+| Uniform | 3 | Uniform GPR | UR0–UR63 | sm\_75+ |
+| Predicate | 5 | Predicate | P0–P7 | All architectures |
 
 Uniform registers (type 3) are only available on sm\_75 and later. Attempting to use a uniform register for the return address on an older SM triggers warning 7009.
 
@@ -700,7 +700,7 @@ The top-level per-function ABI state, passed as `a1` to `sub_19D1AF0`, `sub_19CA
 | `+4472` | 4 | `int` | `param_alloc_count` | Number of registers allocated for parameter passing |
 | `+4480` | 16+ | `bitvec` | `retval_alloc_bitmap` | Bitvector tracking which physical registers have been assigned to return values |
 | `+4496` | 4 | `int` | `retval_alloc_count` | Number of registers allocated for return values |
-| `+4528` | 144 | `bitvec[6]` | `per_class_reservation` | Per-register-class ABI reservation bitmaps; 6 entries (classes 1--6), 24 bytes each; the loop in `sub_19D1AF0` iterates `v148` from 1 to 6, incrementing the pointer by 3 qwords per iteration |
+| `+4528` | 144 | `bitvec[6]` | `per_class_reservation` | Per-register-class ABI reservation bitmaps; 6 entries (classes 1–6), 24 bytes each; the loop in `sub_19D1AF0` iterates `v148` from 1 to 6, incrementing the pointer by 3 qwords per iteration |
 
 The `param_alloc_bitmap` and `retval_alloc_bitmap` are used after parameter/return allocation to compute the effective register file occupancy. The master setup reads the highest set bit in each (`sub_BDDCB0`) to determine `func_ctx+361` (total register demand) and compares against `func_ctx+367` (register file limit).
 
@@ -786,7 +786,7 @@ The vtable call at `+896` takes a 32-byte query structure initialized to `{hi=-1
 
 ## ABI Validation Diagnostics
 
-The ABI engine emits 15 distinct warning codes (7001--7017) from six functions. Two codes are unused in this binary version (7007, 7018). All codes share the contiguous hex ID range `0x1B59`--`0x1B69` and are emitted through two parallel paths: `sub_7EEFA0` (standalone diagnostic buffer) and `sub_895530` (context-attached diagnostic using the compilation context at `*(func+48)`).
+The ABI engine emits 15 distinct warning codes (7001–7017) from six functions. Two codes are unused in this binary version (7007, 7018). All codes share the contiguous hex ID range `0x1B59`--`0x1B69` and are emitted through two parallel paths: `sub_7EEFA0` (standalone diagnostic buffer) and `sub_895530` (context-attached diagnostic using the compilation context at `*(func+48)`).
 
 ### Complete Warning Catalog
 

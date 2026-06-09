@@ -4,7 +4,7 @@
 
 Four phases in the ptxas pipeline transform branch and switch-statement control flow in the Ori IR. Two phases optimize switch statements (phases 14 and 30), one performs general branch simplification (phase 15), and one flattens nested conditional branches (phase 38). Together they reduce branch count, eliminate unreachable code, and prepare the CFG for downstream passes like predication (phase 63), liveness analysis (phase 16), and loop canonicalization (phase 18).
 
-These phases operate on the Ori IR before register allocation and scheduling. At this pipeline stage, branch instructions use the Ori `OEN` opcode (SASS `BRA`), conditional execution is controlled by predicate registers (P0--P6, PT), and the CFG is a hash-map-based structure with FNV-1a-keyed successor/predecessor edges.
+These phases operate on the Ori IR before register allocation and scheduling. At this pipeline stage, branch instructions use the Ori `OEN` opcode (SASS `BRA`), conditional execution is controlled by predicate registers (P0–P6, PT), and the CFG is a hash-map-based structure with FNV-1a-keyed successor/predecessor edges.
 
 | | |
 |---|---|
@@ -79,7 +79,7 @@ Phase 14 is a **no-op on Kepler and Maxwell** — those legacy architectures rel
 |---|---|---|
 | 22 (CALL) | Complex control flow | `sub_7E40E0` result |
 | 50 (BSSY) | Sync-stack push | Lookup from `xmmword_21B2EC0` table |
-| 51 (CAL), 110--111 (BRK/CONT), 289 | Simple control flow | 3 |
+| 51 (CAL), 110–111 (BRK/CONT), 289 | Simple control flow | 3 |
 | 77 (BRA) | Branch | `sub_7E36C0` (5-field distance metric) |
 | 83 (RET) | Return | `sub_7E3640` result |
 | 112 (BRX) | Indexed branch | 4 |
@@ -122,7 +122,7 @@ The recognizer collects:
 - The **branch targets** (one per case, plus the default target)
 - The **case count** N
 
-#### Scanner Tolerance (`sub_77CF40`, lines 234--411)
+#### Scanner Tolerance (`sub_77CF40`, lines 234–411)
 
 The pattern recognizer is not a rigid ISETP+BRA pair matcher. It walks the instruction linked list from the block head at `code_object+280` and tolerates several forms of non-ideal input. The scanning loop in `sub_77CF40` (4698 bytes) processes each instruction through a three-stage filter:
 
@@ -130,19 +130,19 @@ The pattern recognizer is not a rigid ISETP+BRA pair matcher. It walks the instr
 
 **Stage 2 — Chain-terminating opcodes.** When parameter `a3` is set (second-pass mode), the scanner reads the first instruction of the successor block (`*(*(block+8))+72`). If that unmasked opcode is 159 (sm_73+ control), 32 (`VABSDIFF4`), or 271 (warpgroup arrive/wait), the chain terminates with a `found_chain` flag set. These mark block boundaries that cannot be part of a switch cascade — convergence points, GMMA synchronization, or SIMT barriers.
 
-**Stage 3 — Accepted comparison opcodes.** Instructions surviving stages 1--2 are collected into the case set. The block number (field +144) is recorded, and the masked opcode determines acceptance:
+**Stage 3 — Accepted comparison opcodes.** Instructions surviving stages 1–2 are collected into the case set. The block number (field +144) is recorded, and the masked opcode determines acceptance:
 
 | Masked opcode | SASS mnemonic | Acceptance condition |
 |---------------|---------------|----------------------|
 | 96 | `LDG` | Unconditional — any `LDG` in the chain is accepted |
-| 190 | (sm_82+ extended) | `sub_745D80`: operand type bits 28--30 == 6, value 1--3 |
-| 31 | `VABSDIFF` | Last source operand type bits 5--7 == 2 (immediate constant) |
+| 190 | (sm_82+ extended) | `sub_745D80`: operand type bits 28–30 == 6, value 1–3 |
+| 31 | `VABSDIFF` | Last source operand type bits 5–7 == 2 (immediate constant) |
 | (other) | — | Falls through to operand scan without immediate acceptance |
 
 **Operand backward scan.** After collection, the inner loop walks the operand array from index `operand_count - 1` down to 0 (operands at `instr + 8*idx + 84`). Two helpers classify each operand:
 
 - `sub_7DEB50` (14B): returns true when the register descriptor's class == 16 (predicate register). Identifies which predicate each comparison writes.
-- `sub_7DEAD0` (19B): returns true for a constant-zero predicate definition — class 16, sub-type bits 10--12 == 4, value == 0. Identifies the PT (always-true) guard operand.
+- `sub_7DEAD0` (19B): returns true for a constant-zero predicate definition — class 16, sub-type bits 10–12 == 4, value == 0. Identifies the PT (always-true) guard operand.
 
 The scan terminates on a negative operand word (sentinel) or operand exhaustion.
 
@@ -475,9 +475,9 @@ The pass runs after `GeneralOptimizeMid` (phase 37), which provides fresh consta
 
 **Stage 1 — Liveness-driven operand simplification.** Iterates blocks in reverse RPO via the priority array at `ctx+792`. For each block, calls `sub_A06A60` with callback `sub_A08250`. The callback scans each instruction's operand array and replaces dead-in operands (not in the live-in bitset at `ctx+832`) with the tombstone value `0xF0000000`. A flag at `ctx+1368` bit 4 enables a two-pass strategy: the first pass is aggressive (`v63=1`), and if it makes no changes, the second pass runs conservatively (`v63=0`). This stage does not combine branches — it prunes operands to expose merging opportunities.
 
-**Stage 2 — Block-pair merging.** Iterates blocks in reverse RPO again, calling `sub_A06A60` with callback `sub_A07DA0`. This callback examines operand liveness within each instruction: for each source operand referencing a virtual register (type tag 1, extracted as `(operand >> 28) & 7 == 1`), if the register index is not in the range 41--44 (the dedicated predicate registers P0--P3, checked as `(operand & 0xFFFFFF) - 41 <= 3`) and the operand is dead-in, it marks the live bit via `sub_BDBC70`. This builds the kill set used by Stage 3.
+**Stage 2 — Block-pair merging.** Iterates blocks in reverse RPO again, calling `sub_A06A60` with callback `sub_A07DA0`. This callback examines operand liveness within each instruction: for each source operand referencing a virtual register (type tag 1, extracted as `(operand >> 28) & 7 == 1`), if the register index is not in the range 41–44 (the dedicated predicate registers P0–P3, checked as `(operand & 0xFFFFFF) - 41 <= 3`) and the operand is dead-in, it marks the live bit via `sub_BDBC70`. This builds the kill set used by Stage 3.
 
-**Stage 3 — Nested branch combination.** This is the core transformation. It scans basic blocks (at `ctx+296`) looking for a conditional branch (opcode 95 after masking bits 12--13) whose taken target leads to another conditional branch. When it finds such a chain, it walks backward through the intermediate instructions checking each one with `sub_A07940` for combinability, then splices the two branches into one using `sub_91E070`.
+**Stage 3 — Nested branch combination.** This is the core transformation. It scans basic blocks (at `ctx+296`) looking for a conditional branch (opcode 95 after masking bits 12–13) whose taken target leads to another conditional branch. When it finds such a chain, it walks backward through the intermediate instructions checking each one with `sub_A07940` for combinability, then splices the two branches into one using `sub_91E070`.
 
 ### Maximum Nesting Depth
 
@@ -573,7 +573,7 @@ Branch optimization directly reduces the number of `BSSY`/`BSYNC` pairs needed:
 
 ### Reconvergence Stack Depth
 
-The hardware branch sync stack has finite depth (varies by architecture, typically 16--32 entries on sm_75+). Deeply nested branches can overflow the stack, causing hardware serialization or requiring the compiler to restructure control flow. Branch optimization reduces sync-stack pressure by flattening nesting.
+The hardware branch sync stack has finite depth (varies by architecture, typically 16–32 entries on sm_75+). Deeply nested branches can overflow the stack, causing hardware serialization or requiring the compiler to restructure control flow. Branch optimization reduces sync-stack pressure by flattening nesting.
 
 ### Uniform Branches
 

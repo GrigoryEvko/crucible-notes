@@ -318,7 +318,7 @@ Fields displayed by `display_source_corresp`:
 | `constant` | `__constant__` memory space |
 | `device` | `__device__` memory space |
 
-**Boolean flags** (approximately 50 flags spanning bytes 144--208):
+**Boolean flags** (approximately 50 flags spanning bytes 144–208):
 
 `is_weak`, `is_weakref`, `is_gnu_alias`, `has_gnu_used_attribute`, `has_gnu_abi_tag_attribute`, `is_not_common`, `is_common`, `has_internal_linkage_attribute`, `asm_name_is_valid`, `used`, `address_taken`, `is_parameter`, `is_parameter_pack`, `is_pack_element`, `is_enhanced_for_iterator`, `initializer_in_class`, `constant_valued`, `is_thread_local`, `extends_lifetime`, `is_template_param_object`, `compiler_generated`, `is_in_class_specialization`, `is_handler_param`, `is_this_parameter`, `referenced_non_locally`, `modified_within_try_block`, `is_template_variable`, `is_prototype_instantiation`, `is_nonreal`, `is_specialized`, `specialized_with_old_syntax`, `explicit_instantiation`, `class_explicitly_instantiated`, `explicit_do_not_instantiate`, `param_value_has_been_changed`, `param_used_more_than_once`, `is_anonymous_parent_object`, `is_member_constant`, `is_constexpr`, `declared_constinit`, `is_inline`, `suppress_inline_definition`, `superseded_external`, `has_variably_modified_type`, `is_vla`, `is_compound_literal`, `has_explicit_initializer`, `has_parenthesized_initializer`, `has_direct_braced_initializer`, `has_flexible_array_initializer`, `declared_with_auto_type_specifier`, `declared_with_decltype_auto`, `declared_with_class_template_placeholder`
 
@@ -364,7 +364,7 @@ Fields displayed by `display_source_corresp`:
 
 `fp_contract`, `fenv_access`, `cx_limited_range` — pragma state values from `off_A6F460` (4 entries).
 
-**Boolean flags** (approximately 60 flags spanning bytes 176--191):
+**Boolean flags** (approximately 60 flags spanning bytes 176–191):
 
 `address_taken`, `is_virtual`, `overrides_base_member`, `pure_virtual`, `final`, `override`, `covariant_return_virtual_override`, `is_inline`, `is_declared_constexpr`, `is_constexpr`, `is_constexpr_intrinsic`, `compiler_generated`, `defined`, `called`, `is_explicit_constructor`, `is_explicit_conversion_function`, `is_trivial_default_constructor`, `is_trivial_copy_function`, `is_trivial_destructor`, `is_initializer_list_ctor`, `is_delegating_ctor`, `is_inheriting_ctor`, `assignment_to_this_done`, `is_prototype_instantiation`, `is_template_function`, `is_specialized`, `specialized_with_old_syntax`, `explicit_instantiation`, `class_explicitly_instantiated`, `explicit_do_not_instantiate`, `has_nodiscard_attribute`, `never_throws`, `is_in_class_specialization`, `never_inline`, `is_pure`, `is_initialization_routine`, `is_finalization_routine`, `is_weak`, `is_weakref`, `is_gnu_alias`, `is_ifunc`, `has_gnu_used_attribute`, `has_gnu_abi_tag_attribute`, `in_gnu_abi_tag_namespace`, `allocates_memory`, `no_instrument_function`, `no_check_memory_usage`, `always_inline`, `gnu_c89_inline`, `implicit_alias`, `has_internal_linkage_attribute`, `contains_try_block`, `contains_local_class_type`, `superseded_external`, `defined_in_friend_decl`, `contains_statement_expression`, `inline_in_class_definition`, `is_lambda_body`, `is_defaulted`, `is_deleted`, `contains_local_static_variable`, `is_raw_literal_operator`, `is_tls_init_routine`, `has_deducible_return_type`, `has_deduced_return_type`, `contains_generic_lambda`, `is_coroutine`, `is_top_level_in_mem_region`, `friend_defined_in_instantiation`, `is_ineligible`, `definition_needed`, `defined_outside_of_parent`, `trailing_requires_clause`
 
@@ -773,7 +773,7 @@ Out-of-range values produce `"**BAD <KIND>**"` sentinel strings, which serve as 
 | `qword_126EB90` | `scope_table` | pointer array | Region index to scope entry mapping |
 | `qword_126EEE0` | `source_file_name` | string ptr | Name of the source file being compiled |
 
-## Helper Functions (0x5F8000--0x6039E0)
+## Helper Functions (0x5F8000–0x6039E0)
 
 The display subsystem includes approximately 50 additional helper functions in the address range beyond the main dispatchers:
 

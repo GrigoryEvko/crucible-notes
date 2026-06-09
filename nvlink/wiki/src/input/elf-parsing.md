@@ -917,7 +917,7 @@ The validation skips bounds-checking for section types that have no file-residen
 | `0x70000008` | 1 | bit 1 = 0 | No | — |
 | `0x70000009` | 2 | bit 2 of `0x400D` = 1 | Yes | `SHT_CUDA_LOCAL` |
 | `0x7000000A` | 3 | bit 3 of `0x400D` = 1 | Yes | `SHT_CUDA_SHARED` |
-| `0x7000000B`--`0x70000013` | 4--12 | 0 | No | — |
+| `0x7000000B`--`0x70000013` | 4–12 | 0 | No | — |
 | `0x70000014` | 13 | bit 13 = 0 | No | — |
 | `0x70000015` | 14 | bit 14 of `0x400D` = 1 | Yes | `SHT_CUDA_SHARED_RESERVED` |
 
@@ -1172,7 +1172,7 @@ The Elf32 path is structurally similar but calls `sub_46Bxxx` equivalents where 
 
 **Validation is conservative**. The validation function rejects any ELF where any section's data extent exceeds the file size. It does not attempt to repair or truncate. The caller (`main()`) reports the error and aborts with `"cubin not an elf?"` or similar.
 
-**Linear section name search**. The `section_by_name` functions do a linear scan of all section headers for every lookup. This is called hundreds of times per input cubin during merge (once per section to check for `.nv.info`, `.nv.constant`, `.nv.shared`, etc.). For a typical cubin with 20--50 sections, this is fast enough. For a cubin with 1,000+ sections (possible with heavy template instantiation), this becomes quadratic in the merge phase.
+**Linear section name search**. The `section_by_name` functions do a linear scan of all section headers for every lookup. This is called hundreds of times per input cubin during merge (once per section to check for `.nv.info`, `.nv.constant`, `.nv.shared`, etc.). For a typical cubin with 20–50 sections, this is fast enough. For a cubin with 1,000+ sections (possible with heavy template instantiation), this becomes quadratic in the merge phase.
 
 **Parallel Elf32/Elf64 code paths**. The two accessor families are structurally identical but separately maintained. Any bug in one family must be fixed in both. In practice, nvlink's Elf32 path is mostly untested — all contemporary CUDA toolchains produce Elf64 cubins — so the Elf32 code has atrophied (e.g., no symbol accessor family exists).
 

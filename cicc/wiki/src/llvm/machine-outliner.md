@@ -4,7 +4,7 @@
 >
 > **Upstream source:** `llvm/lib/CodeGen/MachineOutliner.cpp`, `llvm/lib/CodeGen/TargetInstrInfo.cpp` (LLVM 20.0.0). NVPTX target hooks: `llvm/lib/Target/NVPTX/NVPTXInstrInfo.cpp`.
 
-The MachineOutliner in CICC v13.0 is the stock LLVM `MachineOutliner` pass, compiled into the binary at two address ranges: a candidate-finder at `sub_3539E80` and a core outlining engine at `sub_3537010`, totaling approximately 136KB of combined code. A second instance at `sub_1E3D600` (62KB) appears in the MIR infrastructure region (0x1E20000--0x1E3FFFF) containing the same diagnostic strings ("NotOutliningCheaper", "OutliningBenefit", etc.) and `[MEDIUM confidence]` likely represents the `runOnModule` entry point that delegates to the two primary functions. The `runOnModule` identification is based on the function's address being in the MIR infrastructure region and its diagnostic string overlap with the primary outliner; it could alternatively be a separate pass-manager wrapper or a legacy code path. The pass extracts repeated MachineInstr sequences across all functions in a module, factors them into shared `OUTLINED_FUNCTION_*` stubs, and replaces the original sequences with calls. On GPU targets this is significant because code size directly affects the L1 instruction cache (L0/L1i) footprint per SM, and every instruction that survives into PTX also contributes to `ptxas` compilation time and register pressure during its own allocation pass.
+The MachineOutliner in CICC v13.0 is the stock LLVM `MachineOutliner` pass, compiled into the binary at two address ranges: a candidate-finder at `sub_3539E80` and a core outlining engine at `sub_3537010`, totaling approximately 136KB of combined code. A second instance at `sub_1E3D600` (62KB) appears in the MIR infrastructure region (0x1E20000–0x1E3FFFF) containing the same diagnostic strings ("NotOutliningCheaper", "OutliningBenefit", etc.) and `[MEDIUM confidence]` likely represents the `runOnModule` entry point that delegates to the two primary functions. The `runOnModule` identification is based on the function's address being in the MIR infrastructure region and its diagnostic string overlap with the primary outliner; it could alternatively be a separate pass-manager wrapper or a legacy code path. The pass extracts repeated MachineInstr sequences across all functions in a module, factors them into shared `OUTLINED_FUNCTION_*` stubs, and replaces the original sequences with calls. On GPU targets this is significant because code size directly affects the L1 instruction cache (L0/L1i) footprint per SM, and every instruction that survives into PTX also contributes to `ptxas` compilation time and register pressure during its own allocation pass.
 
 CICC ships the pass as part of its standard LLVM codegen infrastructure, controlled by the `enable-machine-outliner` TargetPassConfig knob (tri-state: `disable`, `enable`, `guaranteed beneficial`). The binary does **not** override the upstream default — meaning the outliner's activation depends on whether the NVPTX backend's `TargetPassConfig::addMachineOutliner()` enables it. The presence of full outliner infrastructure (pass registration at `sub_35320A0`, ~136KB of outliner code, the benefit-threshold knob, and the `"nooutline"` function-attribute check) confirms the pass is callable. The critical question is whether NVIDIA's default pipeline activates it. The evidence is ambiguous but leans toward **conditionally enabled**: the `TargetPassConfig` enum includes "guaranteed beneficial" mode, and the NVPTX-specific calling convention 95 (assigned to outlined functions when no special CC is required) would serve no purpose if the pass were dead code.
 
@@ -149,7 +149,7 @@ CICC defines calling convention 95 (0x5F) as an NVPTX-specific calling conventio
 
 ### CC Assignment Algorithm
 
-The CC assignment happens in Phase 5 of `sub_3537010` (lines 838--877 of the decompilation), after the outlined MachineFunction is created and before its body is populated. The algorithm:
+The CC assignment happens in Phase 5 of `sub_3537010` (lines 838–877 of the decompilation), after the outlined MachineFunction is created and before its body is populated. The algorithm:
 
 ```rust
 fn assign_outlined_cc(candidate_group, outlined_fn):
@@ -182,7 +182,7 @@ fn assign_outlined_cc(candidate_group, outlined_fn):
 | 71 | 0x47 | `.entry` | Primary CUDA kernel CC (`isKernel` returns true when `linkage == 0x47`) |
 | 95 | 0x5F | `.func` | **NVPTX outlined-function CC** — internal, never a kernel |
 
-CC 95 functions are emitted as `.func` by the AsmPrinter (`sub_215A3C0`). The `.entry` vs `.func` branch at line 30--33 of the PTX header emission calls `sub_1C2F070` (`isKernelFunction`), which checks whether the CC is one of the kernel CCs (42, 43, 71) or the `nvvm.kernel` metadata flag. CC 95 fails all kernel tests, so the function is always emitted as `.func`.
+CC 95 functions are emitted as `.func` by the AsmPrinter (`sub_215A3C0`). The `.entry` vs `.func` branch at line 30–33 of the PTX header emission calls `sub_1C2F070` (`isKernelFunction`), which checks whether the CC is one of the kernel CCs (42, 43, 71) or the `nvvm.kernel` metadata flag. CC 95 fails all kernel tests, so the function is always emitted as `.func`.
 
 ### What CC 95 Communicates
 
@@ -196,7 +196,7 @@ The CC carries three semantic signals:
 
 ### Callee-Saved Register Mask Interaction
 
-When `max_cc > 0` (the non-default path), `sub_A77AA0` creates a callee-saved register mask for the outlined function. This mask determines which registers the outlined function must preserve across its body. For CC 95 (the `max_cc == 0` path), no callee-saved mask is created. Instead, the call-site rewriting logic at Phase 11 of `sub_3537010` (lines 1469--1968) builds explicit `implicit-def` (flag `0x30000000`) and `implicit-use` (flag `0x20000000`) operands on the call instruction using the RB-tree-based register classifier at `sub_3536E40`. This makes the register interface fully explicit rather than relying on a convention-defined preserved set.
+When `max_cc > 0` (the non-default path), `sub_A77AA0` creates a callee-saved register mask for the outlined function. This mask determines which registers the outlined function must preserve across its body. For CC 95 (the `max_cc == 0` path), no callee-saved mask is created. Instead, the call-site rewriting logic at Phase 11 of `sub_3537010` (lines 1469–1968) builds explicit `implicit-def` (flag `0x30000000`) and `implicit-use` (flag `0x20000000`) operands on the call instruction using the RB-tree-based register classifier at `sub_3536E40`. This makes the register interface fully explicit rather than relying on a convention-defined preserved set.
 
 ## launch_bounds Interaction and Cross-Kernel Outlining
 

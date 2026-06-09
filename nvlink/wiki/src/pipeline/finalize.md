@@ -85,7 +85,7 @@ The following is the exact call order within `sub_445000`, with function address
 
 ### Shared Memory Fixup (Relocatable Mode)
 
-For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` — the default device-link output), `sub_439640` is called to apply a final shared-memory variable rebase when **all three** conditions hold (lines 342--348 of `sub_445000_0x445000.c`):
+For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` — the default device-link output), `sub_439640` is called to apply a final shared-memory variable rebase when **all three** conditions hold (lines 342–348 of `sub_445000_0x445000.c`):
 
 ```c
 v3 = *(_WORD *)(a1 + 16);                       // e_type at elfw+16

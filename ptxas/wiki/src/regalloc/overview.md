@@ -38,7 +38,7 @@ A secondary live-range-based infrastructure (98 functions at `0x994000`--`0x9A10
 | **Spill codegen** | `sub_94F150` (561 lines) — emit spill/reload instructions |
 | **Pre-coloring** | `sub_991790` (2677 lines) — full-function pre-assignment |
 | **Address range** | `0x8FE000` — `0x9D3000` (~860 KB, ~950 functions) |
-| **Knobs** | 87 OCG knobs (`RegAlloc*` / `RegTgt*` / `RegUsageLevel`, indices 613--699) |
+| **Knobs** | 87 OCG knobs (`RegAlloc*` / `RegTgt*` / `RegUsageLevel`, indices 613–699) |
 
 ## Pipeline Position
 
@@ -63,29 +63,29 @@ The register allocator runs in the late pipeline, after all optimization passes 
 
 ## Register Classes
 
-The allocator processes 7 register classes. Class 0 (unified) is skipped in the normal per-class loop; it is used for cross-class constraint propagation. Classes 1--6 are allocated independently in order:
+The allocator processes 7 register classes. Class 0 (unified) is skipped in the normal per-class loop; it is used for cross-class constraint propagation. Classes 1–6 are allocated independently in order:
 
 | ID | Name | Width | Arch cap | Effective budget source | Description |
 |----|------|-------|----------|--------------------------|-------------|
 | 0 | — | — | — | — | Unified / cross-class (skipped in main loop) |
-| 1 | R | 32-bit | 255 | `min(maxrregcount, .maxnreg, occupancy-derived)` | General-purpose registers (R0--R254) |
+| 1 | R | 32-bit | 255 | `min(maxrregcount, .maxnreg, occupancy-derived)` | General-purpose registers (R0–R254) |
 | 2 | R (alt) | 32-bit | 255 | mirror of class 1 | GPR variant (RZ sentinel, stat-collector alternate) |
-| 3 | UR | 32-bit | 63 | fixed by arch profile | Uniform general-purpose registers (UR0--UR62) |
+| 3 | UR | 32-bit | 63 | fixed by arch profile | Uniform general-purpose registers (UR0–UR62) |
 | 4 | UR (ext) | 32-bit | 63 | mirror of class 3 | Uniform GPR variant (extended uniform) |
-| 5 | P / UP | 1-bit | 7 | fixed by arch profile | Predicate registers (P0--P6, UP0--UP6) |
+| 5 | P / UP | 1-bit | 7 | fixed by arch profile | Predicate registers (P0–P6, UP0–UP6) |
 | 6 | Tensor/Acc | 32-bit | per-arch | profile vtable | Tensor/accumulator registers (MMA/WGMMA) |
 
-The arch cap is the architectural ceiling reported as `regfile_params[3]`. The effective budget written into `RegClassDesc.max_regs` (`alloc+884+32*class_id`) is the minimum of the CLI/PTX inputs and the occupancy-derived budget from `evaluate_budget_fraction()` (see below). Classes 3--5 are not exposed to `--maxrregcount`; their budget equals the architectural cap.
+The arch cap is the architectural ceiling reported as `regfile_params[3]`. The effective budget written into `RegClassDesc.max_regs` (`alloc+884+32*class_id`) is the minimum of the CLI/PTX inputs and the occupancy-derived budget from `evaluate_budget_fraction()` (see below). Classes 3–5 are not exposed to `--maxrregcount`; their budget equals the architectural cap.
 
 Barrier registers (B, UB) have `reg_type = 9`, which is above the `<= 6` allocator cutoff and are handled by a separate mechanism.
 
 Special registers that are always skipped during allocation:
-- Indices 41--44: `PT`, `P0`--`P3` (architectural predicates)
+- Indices 41–44: `PT`, `P0`--`P3` (architectural predicates)
 - Index 39: special register
 
 The class ID is the `reg_type` value at `vreg+64`. The allocator distribution loop in `sub_9721C0` reads this field directly and uses it as the bucket index.
 
-Pair modes (`vreg+48`, bits 20--21): `0` = single, `1` = lo-half of pair, `3` = double-width (consumes two physical slots).
+Pair modes (`vreg+48`, bits 20–21): `0` = single, `1` = lo-half of pair, `3` = double-width (consumes two physical slots).
 
 ## Entry Point: sub\_9721C0
 
@@ -125,7 +125,7 @@ function regalloc_entry(alloc_state, compilation_ctx):
         record_register_counts(compilation_ctx)
 ```
 
-The entry point calls `sub_789280` when a pre-allocation fixup bit (flag bit 2) is set, handles live-through-call register counting at lines 343--352, and sets up rematerialization lists at `alloc_state[161..175]`.
+The entry point calls `sub_789280` when a pre-allocation fixup bit (flag bit 2) is set, handles live-through-call register counting at lines 343–352, and sets up rematerialization lists at `alloc_state[161..175]`.
 
 ## Per-Class Driver: sub\_971A90
 
@@ -271,7 +271,7 @@ Register consumption computation (`sub_939CE0`, 23 lines) accounts for paired re
 
 ## Constraint System
 
-The fat-point interference builder (`sub_926A30`, 4005 lines) processes 15+ constraint types extracted from instruction operand descriptors. Each operand encodes: bits 28--30 = operand type, bits 0--23 = register index.
+The fat-point interference builder (`sub_926A30`, 4005 lines) processes 15+ constraint types extracted from instruction operand descriptors. Each operand encodes: bits 28–30 = operand type, bits 0–23 = register index.
 
 | Type | Name | Description |
 |------|------|-------------|
@@ -285,7 +285,7 @@ The fat-point interference builder (`sub_926A30`, 4005 lines) processes 15+ cons
 | 7 | Range | Interference over an interval of program points |
 | 8 | Phi-related | CSSA phi instruction (opcode 195) constraint |
 | 9 | Barrier | Barrier register class constraint |
-| 10--15 | Extended | Additional constraint variants |
+| 10–15 | Extended | Additional constraint variants |
 
 The builder uses FNV-1a hashing (seed `0x811C9DC5`, prime `16777619`) for hash-table lookups into the pre-allocation candidate table. It contains SSE2-vectorized inner loops for bulk interference weight accumulation and dispatches through 7+ vtable entries for OCG knob queries.
 
@@ -315,7 +315,7 @@ Spill setup (`sub_939BD0`, 65 lines) selects configuration based on `RegAllocEst
 
 The retry driver `sub_9714E0` (290 lines) triggers `sub_96D940` on each failed allocation attempt with a decremented register target (`alloc+1560 = target - 1`). The guidance engine builds the 11,112-byte structure, then the result is consumed in two phases depending on whether the current register class uses a "fast-path" mode (byte at `ctx + 32*class_id + 893`).
 
-**Phase A — Instruction walk and candidate insertion** (lines 1663--2757 of `sub_96D940`): walks the instruction list (`ctx+280`) and for each instruction with register operands calls `sub_9680F0` (per-instruction assignment) and `sub_9365A0` (candidate removal) to populate the per-class priority queues in the stack-local 7-entry array (`v514[3 * class_id]`).
+**Phase A — Instruction walk and candidate insertion** (lines 1663–2757 of `sub_96D940`): walks the instruction list (`ctx+280`) and for each instruction with register operands calls `sub_9680F0` (per-instruction assignment) and `sub_9365A0` (candidate removal) to populate the per-class priority queues in the stack-local 7-entry array (`v514[3 * class_id]`).
 
 **Phase B — Guidance extraction** (`sub_93C0B0`, 582 lines): after the walk completes, the allocator reads the guidance output and marks VRs for spilling on the next attempt.
 
@@ -957,12 +957,12 @@ Arena-allocated hash tables for pre-assigned registers. Each table is a 3-QWORD 
 
 ### Per-Class Bitvector Sets (+448 — +695)
 
-An array of 6 bitvector set entries (one per allocatable register class, classes 1--6). Each entry is 40 bytes: a linked-list header `{head, data, tail, count}` (32 bytes) plus an arena node pointer (8 bytes). The arena nodes carry incrementing class tags (4, 6, 8, 10, 12, 14). The constructor loop starts at `+456` and increments by 40 until `+656`.
+An array of 6 bitvector set entries (one per allocatable register class, classes 1–6). Each entry is 40 bytes: a linked-list header `{head, data, tail, count}` (32 bytes) plus an arena node pointer (8 bytes). The arena nodes carry incrementing class tags (4, 6, 8, 10, 12, 14). The constructor loop starts at `+456` and increments by 40 until `+656`.
 
 | Offset | Size | Type | Init | Field |
 |--------|------|------|------|-------|
 | +448 | 8 | QWORD | 0 -> 6 | Bitvector set count (incremented in init loop) |
-| +456 | 240 | array | — | 6 x BitvectorSet (40B each): classes 1--6 |
+| +456 | 240 | array | — | 6 x BitvectorSet (40B each): classes 1–6 |
 | +696 | 24 | — | 0 | Remat candidate list: {base, data, tail} |
 | +720 | 4 | DWORD | 0 | Remat candidate list: count |
 | +728 | 8 | ptr | alloc(24) | Remat candidate arena node (class tag = 2) |
@@ -994,7 +994,7 @@ An array of 6 bitvector set entries (one per allocatable register class, classes
 
 ### Per-Class Register File Descriptors (+880 — +1103)
 
-An array of 7 register class descriptors (one per class 0--6), each 32 bytes. Indexed as `alloc + 880 + 32 * class_id`. The per-class driver (`sub_971A90`) accesses max\_regs as `a1[32 * class_id + 884]` and base\_offset as `a1[32 * class_id + 880]`.
+An array of 7 register class descriptors (one per class 0–6), each 32 bytes. Indexed as `alloc + 880 + 32 * class_id`. The per-class driver (`sub_971A90`) accesses max\_regs as `a1[32 * class_id + 884]` and base\_offset as `a1[32 * class_id + 880]`.
 
 **RegClassDesc (32 bytes):**
 
@@ -1198,16 +1198,16 @@ needs_spill = (pair_penalty + demanded + live_count)
 
 | Label | VA | Granularity mask | Half regfile | Reg cap | Max warps / SM |
 |-------|----|-------------------|--------------|---------|----------------|
-| sm53--sm62 regfile | `0x229C440` | — | 128 | 65536 / 256 | 255 cap |
-| sm60--sm70 max warps | `0x229C430` | — | — | — | 32 / 32 / 64 / 32 |
-| sm35--sm37 max warps | `0x229C450` | — | — | — | 32 / 32 / 48 / 16 |
-| sm3x--sm5x max warps | `0x229C460` | — | — | — | 32 / 32 / 48 / 24 |
+| sm53–sm62 regfile | `0x229C440` | — | 128 | 65536 / 256 | 255 cap |
+| sm60–sm70 max warps | `0x229C430` | — | — | — | 32 / 32 / 64 / 32 |
+| sm35–sm37 max warps | `0x229C450` | — | — | — | 32 / 32 / 48 / 16 |
+| sm3x–sm5x max warps | `0x229C460` | — | — | — | 32 / 32 / 48 / 24 |
 | sm70+ granularity | `0x229C470` | 80 | — | — | per-warp offset 16 |
 | sm90 regfile | `0x229C400` | — | 128 | 32768 / 256 | 255 cap |
 | sm90 granularity | `0x229C410` | 63 | — | — | per-warp offset 16 |
 | barrier / CTA limits | `0x229C420` | — | — | — | 4 barriers, 2048 threads, 8 CTAs, 2 reserved |
 
-The half-regfile value (128 for sm90, 256 for sm53--sm62) is `total_regs / 256` rounded for the per-warp slice. The 255 GPR cap in field [3] is the architectural ceiling reported via the `Used %d registers` diagnostic and the upper bound enforced after `--maxrregcount` clamping.
+The half-regfile value (128 for sm90, 256 for sm53–sm62) is `total_regs / 256` rounded for the per-warp slice. The 255 GPR cap in field [3] is the architectural ceiling reported via the `Used %d registers` diagnostic and the upper bound enforced after `--maxrregcount` clamping.
 
 **Occupancy formula** (`sub_A99FE0`, 7 instructions). The maximum warp occupancy for a given register count is:
 
@@ -1280,14 +1280,14 @@ The patch-code path (`--compile-as-tools-patch`) forces the budget to the ABI mi
 | 11 | `0x800` | Coalesced target |
 | 14 | `0x4000` | Spill marker |
 | 18 | `0x40000` | Needs-spill flag |
-| 20--21 | — | Pair mode (0=single, 1=lo-half, 3=double-width) |
+| 20–21 | — | Pair mode (0=single, 1=lo-half, 3=double-width) |
 | 22 | `0x400000` | Constrained to architecture limit |
 | 23 | `0x800000` | Hi-half of pair |
 | 27 | `0x8000000` | Special handling flag |
 
 ## Key Knobs
 
-87 OCG knobs (indices 613--699) control register allocation heuristics. The complete catalog with sub-category grouping is in [Knobs System — Register Allocation Knobs](../config/knobs.md#register-allocation-knobs-87-knobs-indices-613699). The most important ones:
+87 OCG knobs (indices 613–699) control register allocation heuristics. The complete catalog with sub-category grouping is in [Knobs System — Register Allocation Knobs](../config/knobs.md#register-allocation-knobs-87-knobs-indices-613699). The most important ones:
 
 | Knob | Name | Type | Role |
 |------|------|------|------|

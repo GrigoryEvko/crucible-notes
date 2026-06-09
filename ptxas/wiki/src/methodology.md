@@ -229,7 +229,7 @@ The `PeepholeOptimizer` class at `0x7A5D10` has a reconstructed vtable with 7 vi
 | 5 | `ComplexPatterns` | Multi-instruction pattern pass |
 | 6 | `SchedulingAwarePatterns` | Schedule-preserving pattern pass |
 
-The three peephole dispatch mega-functions (`sub_143C440` at 233 KB, `sub_18A2CA0` at 231 KB, `sub_198BCD0` at 239 KB) each serve a different SM generation family and call 1,100--1,336 pattern matcher functions. These dispatchers were identified by their enormous callee counts and their position in the pipeline after instruction encoding.
+The three peephole dispatch mega-functions (`sub_143C440` at 233 KB, `sub_18A2CA0` at 231 KB, `sub_198BCD0` at 239 KB) each serve a different SM generation family and call 1,100–1,336 pattern matcher functions. These dispatchers were identified by their enormous callee counts and their position in the pipeline after instruction encoding.
 
 ## Callgraph Analysis
 
@@ -460,7 +460,7 @@ The sweep was not performed in address order. The analysis followed an informati
 1. **p1.01** (infrastructure + CLI) first — establishes the allocator, hash map, TLS, and diagnostic patterns that appear throughout the binary.
 2. **p1.11** (PhaseManager) second — identifies all 159 phases and their vtable entries, providing the skeleton of the optimization pipeline.
 3. **p1.07** (register allocator) and **p1.06** (scheduler) third — these are the highest-complexity subsystems with the richest string evidence.
-4. **p1.12--p1.15** (SASS encoders) in batch — once the encoding template was recognized, all encoder regions were swept rapidly with template matching.
+4. **p1.12–p1.15** (SASS encoders) in batch — once the encoding template was recognized, all encoder regions were swept rapidly with template matching.
 5. **p1.30** (library layer) late — identifies shared infrastructure (ELF emitter, demangler, thread pool) referenced by earlier regions.
 6. Remaining regions filled in by decreasing information density.
 
@@ -495,7 +495,7 @@ The internal `DUMPIR` knob (accessed via `-knob DUMPIR=<phase_name>`) dumps the 
 - `swap1` through `swap6` (swap elimination phases)
 - `shuffle` (instruction scheduling)
 
-The DUMPIR output format reveals the IR structure: basic block headers, instruction opcodes, register names (R0--R255, UR0--UR63, P0--P7, UP0--UP7), and operand encodings. This runtime output was used to validate the IR format reconstructed from static analysis.
+The DUMPIR output format reveals the IR structure: basic block headers, instruction opcodes, register names (R0–R255, UR0–UR63, P0–P7, UP0–UP7), and operand encodings. This runtime output was used to validate the IR format reconstructed from static analysis.
 
 ### `--keep` Flag
 
@@ -509,7 +509,7 @@ Every function identification in this wiki carries one of three confidence level
 |---|---|---|
 | **CERTAIN** | Identity is certain | Direct string evidence naming the function, or the function is a PLT import with a known name |
 | **HIGH** | Strong identification (>90%) | Multiple corroborating indicators: string xrefs, callgraph position, structural fingerprint, decompiled algorithm match |
-| **MEDIUM** | Probable identification (70--90%) | Single indicator (vtable position, size fingerprint, callgraph context) or inferred from surrounding identified functions |
+| **MEDIUM** | Probable identification (70–90%) | Single indicator (vtable position, size fingerprint, callgraph context) or inferred from surrounding identified functions |
 
 The distribution across the ~200 key identified functions in the [Function Map](./function-map.md):
 
@@ -581,7 +581,7 @@ Example: `3,2,1,0 0 1` injects 3 register bugs, 2 predicate bugs, 1 offset bug, 
 
 ### Bug Kind String Table
 
-Each injected fault record carries a kind code (1--10) mapped to a string table at `0x21F0500`:
+Each injected fault record carries a kind code (1–10) mapped to a string table at `0x21F0500`:
 
 | Kind | String | Meaning |
 |---|---|---|
@@ -602,7 +602,7 @@ The injection proceeds in four phases:
 
 **1. Candidate collection.** The function walks the Mercury IR instruction linked list (from `context[0]+272`). For each instruction, it checks which bug categories are active and whether the instruction qualifies:
 
-- **Register bugs (field0):** Scans operands for type-tag 1 (register) with register class 6 (general) or 3 (predicate), excluding opcodes 41--44. Eligible instructions are collected into a candidate list.
+- **Register bugs (field0):** Scans operands for type-tag 1 (register) with register class 6 (general) or 3 (predicate), excluding opcodes 41–44. Eligible instructions are collected into a candidate list.
 - **Predicate bugs (field1):** Checks flag byte at instruction+73 for bit 0x10 (predicated). Eligible instructions are collected separately.
 - **Offset/spill bugs (field2):** Calls `sub_A56DE0` / `sub_A56CE0` against the register allocator state (`context[133]`) to identify spill/refill instructions.
 - **Remat bugs (field3):** Queries the rematerialization hash table (`context+21` via `sub_A54200`) for instructions with remat entries.
@@ -624,7 +624,7 @@ Created a bug at index I : kind K inst # ID [OFF] in operand OP correct val V re
 
 | Offset | Size | Field |
 |---|---|---|
-| +0 | 4 | Kind (1--10) |
+| +0 | 4 | Kind (1–10) |
 | +8 | 8 | Pointer to Mercury instruction node |
 | +16 | 4 | Operand index within instruction |
 | +20 | 4 | Original operand value |
@@ -815,7 +815,7 @@ When updating to a new version, preserve the existing artifacts for v13.0.88 (re
 
 - **Template-generated code is indistinguishable.** The ~4,000 SASS encoding handlers are generated from internal templates. Without the template source, mapping individual handlers to specific opcodes requires tracing the dispatch table entries, which has only been done for select handlers.
 
-- **Mega-functions are partially opaque.** The four functions exceeding 200 KB (`sub_169B190` at 280 KB, `sub_143C440` at 233 KB, `sub_198BCD0` at 239 KB, `sub_18A2CA0` at 231 KB) could not be decompiled by Hex-Rays. Their behavior is understood from their callee lists (13,000--15,870 callees each) and their position in the pipeline, but the internal dispatch logic is known only at the disassembly level.
+- **Mega-functions are partially opaque.** The four functions exceeding 200 KB (`sub_169B190` at 280 KB, `sub_143C440` at 233 KB, `sub_198BCD0` at 239 KB, `sub_18A2CA0` at 231 KB) could not be decompiled by Hex-Rays. Their behavior is understood from their callee lists (13,000–15,870 callees each) and their position in the pipeline, but the internal dispatch logic is known only at the disassembly level.
 
 - **ROT13 decoding is necessary but not sufficient.** Decoding the 2,000+ knob names reveals the *existence* of tuning parameters but not their *semantics*. A knob named `MercuryPresumeXblockWaitBeneficial` can be decoded from ROT13, but understanding what "xblock wait beneficial" means requires analyzing the code paths that read the knob.
 

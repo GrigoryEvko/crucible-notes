@@ -9,7 +9,7 @@ This wiki documents the internal architecture of **nvlink v13.0.88**, NVIDIA's C
 | **Functions** | 40,532 total, 552K call edges |
 | **Strings** | 31K extracted |
 | **Tool identity** | `NVIDIA (R) Cuda linker` |
-| **Copyright** | 2005--2025 NVIDIA Corporation |
+| **Copyright** | 2005–2025 NVIDIA Corporation |
 | **Supported SM** | 22 architectures: sm\_75 (Turing) through sm\_121 (Blackwell) |
 | **Input formats** | cubin, PTX, fatbin, NVVM IR / LTO IR, archives (.a), host ELF (.o/.so) |
 | **Output formats** | CUDA device ELF (cubin), capsule mercury (SM100+), host linker scripts |
@@ -142,8 +142,8 @@ The linker's internal state revolves around a few central structures:
 |---|---|---|
 | `0x400000`--`0x470000` | 448 KB | main(), CLI options, memory arenas, ELF core, merge, layout, relocation, output |
 | `0x470000`--`0x530000` | 768 KB | Architecture profiles, finalization, debug info, archive parsing, knobs, Mercury/capsule dispatch |
-| `0x530000`--`0x620000` | 960 KB | IR node primitives, SM50--7x ISel backend, MercExpand engine |
-| `0x620000`--`0x920000` | 3 MB | SASS instruction binary encoders (1000+ functions, 4--9 KB each) |
+| `0x530000`--`0x620000` | 960 KB | IR node primitives, SM50–7x ISel backend, MercExpand engine |
+| `0x620000`--`0x920000` | 3 MB | SASS instruction binary encoders (1000+ functions, 4–9 KB each) |
 | `0x920000`--`0xA70000` | 1.3 MB | Instruction descriptor initialization tables |
 | `0xA70000`--`0xCA0000` | 2 MB | Instruction codec: encoding + decoding infrastructure |
 | `0xCA0000`--`0xDA0000` | 1 MB | SM80 (Ampere) instruction selection / encoding backend |
@@ -248,7 +248,7 @@ Architecture profiles, compatibility logic, and per-generation feature details.
 - [Architecture Profiles](targets/arch-profiles.md) — Profile database structure, per-SM feature flags, capability masks.
 - [Compatibility Checking](targets/compatibility.md) — Cross-architecture linking rules, family matching, version validation.
 - [SM75 Turing](targets/sm75-turing.md) — Minimum supported architecture, Turing-specific encoding.
-- [SM80--88 Ampere](targets/sm80-ampere.md) — Ampere backend, GA100/GA10x variants.
+- [SM80–88 Ampere](targets/sm80-ampere.md) — Ampere backend, GA100/GA10x variants.
 - [SM89 Ada](targets/sm89-ada.md) — Ada Lovelace specifics, shared backend with SM90.
 - [SM90 Hopper](targets/sm90-hopper.md) — Cluster launch, WGMMA, TMA, asynchronous barriers.
 - [SM100 Blackwell](targets/sm100-blackwell.md) — Mercury output, FNLZR integration, new MMA shapes.
@@ -389,11 +389,11 @@ Goal: understand how nvlink supports 22 SM architectures (sm\_75 through sm\_121
 6. **[SM100 Blackwell](targets/sm100-blackwell.md)** — The Mercury transition: new output format, FNLZR integration, new MMA shapes.
 7. **[SM103 / SM110 / SM120 / SM121](targets/sm103-121.md)** — Blackwell Ultra, Jetson Thor, consumer RTX 50-series, DGX Spark. How newer architectures derive from SM100.
 8. **[Embedded ptxas Overview](ptxas/overview.md)** — The ~24MB embedded compiler backend: subsystem decomposition and relationship to standalone ptxas.
-9. **[Instruction Selection Hubs](ptxas/isel-hubs.md)** — The five ISel mega-functions (160--280KB each) and how they dispatch per SM variant.
+9. **[Instruction Selection Hubs](ptxas/isel-hubs.md)** — The five ISel mega-functions (160–280KB each) and how they dispatch per SM variant.
 
 Optional extensions:
 
-- **[SM80--88 Ampere](targets/sm80-ampere.md)** and **[SM89 Ada](targets/sm89-ada.md)** — Per-generation feature details.
+- **[SM80–88 Ampere](targets/sm80-ampere.md)** and **[SM89 Ada](targets/sm89-ada.md)** — Per-generation feature details.
 - **[Peephole Optimization](ptxas/peephole.md)** — Post-RA peephole patterns that vary by architecture.
 - **[R\_CUDA Relocation Catalog](reference/r-cuda-catalog.md)** — Architecture-dependent relocation types.
 

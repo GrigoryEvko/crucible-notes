@@ -34,7 +34,7 @@ The table below lists every `sh_type` value actually passed to `section_create` 
 
 **Value gaps:** Identifiers `0x70000005`, `0x7000000C`, `0x7000000D`, `0x7000000F`, `0x70000010`, `0x70000013` are not used in any observed `sub_441AC0` call site. The generic constant placeholder `0x70000006` appears in the range check `(sh_type - 0x70000064) <= 0x1A` at `sub_441AC0:190` but no section is ever created with that type as its final value. `.nv.compat` and `.nv.host` jump to the `0x70000086`--`0x70000087` block; the reason for this 109-value gap is not clear from the binary.
 
-The constant bank type for bank N is `0x70000064 + N`. The bank number is parsed from the section name suffix by `strtol(name + 12, NULL, 10)`, so `.nv.constant0` maps to `0x70000064` and `.nv.constant17` to `0x70000075`. The range check `(sh_type - 0x70000064) <= 0x1A` accepts up to 27 possible bank types (0x70000064 through 0x7000007E), though only 18 (banks 0--17) have corresponding name strings in the binary.
+The constant bank type for bank N is `0x70000064 + N`. The bank number is parsed from the section name suffix by `strtol(name + 12, NULL, 10)`, so `.nv.constant0` maps to `0x70000064` and `.nv.constant17` to `0x70000075`. The range check `(sh_type - 0x70000064) <= 0x1A` accepts up to 27 possible bank types (0x70000064 through 0x7000007E), though only 18 (banks 0–17) have corresponding name strings in the binary.
 
 ### Section Flags
 
@@ -70,7 +70,7 @@ The `.nv.info` section is the most important NVIDIA ELF metadata section. It enc
 | `sh_addralign` | 0 |
 | `sh_flags` | `0x00` (global) or `0x40` (`SHF_INFO_LINK`, per-function) |
 | Record format | TLV: `[format:1][attr_code:1][size:2][payload:var]`, 4-byte aligned |
-| Known attribute count | 97 EIATTR codes (0--96) in nvlink v13.0.88 |
+| Known attribute count | 97 EIATTR codes (0–96) in nvlink v13.0.88 |
 
 **Creation path.** `sub_4504B0` (at `0x4504B0`) serves as the `.nv.info` section factory. It takes two arguments: the ELF context (`a1`) and a function section index (`a2`). The creation logic branches:
 
@@ -84,7 +84,7 @@ The `.nv.info` section is the most important NVIDIA ELF metadata section. It enc
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      EIFMT byte (0x01=free, 0x02=value, 0x03=sized, 0x04=indexed)
-0x01    1     attr_code   EIATTR type code (0x00--0x60)
+0x01    1     attr_code   EIATTR type code (0x00–0x60)
 0x02    2     size        Payload size in bytes (little-endian u16)
 0x04    var   payload     Attribute data (padded to 4-byte alignment)
 ```
@@ -101,7 +101,7 @@ Format `0x04` (indexed) is the most common: it carries `[sym_index:4][value:4]` 
 
 The parser logs each record as: `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"`.
 
-**Size characteristics.** A simple kernel's `.nv.info.<name>` section is typically 100--400 bytes. Complex kernels with many parameters, texture bindings, and barrier usage can reach 2--4 KB. The global `.nv.info` section is typically 20--100 bytes per compilation unit.
+**Size characteristics.** A simple kernel's `.nv.info.<name>` section is typically 100–400 bytes. Complex kernels with many parameters, texture bindings, and barrier usage can reach 2–4 KB. The global `.nv.info` section is typically 20–100 bytes per compilation unit.
 
 ### .nv.callgraph — Call Edge Table (SHT_CUDA_CALLGRAPH, 0x70000001)
 
@@ -277,7 +277,7 @@ The `__nv_module_id` string is the compilation unit's unique identifier. During 
 - Incremental linking (identifying which modules need relinking)
 - Debug information (mapping device functions to source compilation units)
 
-**Size characteristics.** Small and fixed: 12 bytes per module ID record, plus the raw data contributed by each input object's `.nv.metadata` section. Typically 50--200 bytes per compilation unit.
+**Size characteristics.** Small and fixed: 12 bytes per module ID record, plus the raw data contributed by each input object's `.nv.metadata` section. Typically 50–200 bytes per compilation unit.
 
 ---
 
@@ -312,7 +312,7 @@ Each attribute record in a `.nv.info` section is encoded as a `(format, attribut
 nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d
 ```
 
-The `fmt` field encodes the payload format (EIFMT). The `attr` field is one of the `EIATTR_*` constants. nvlink v13.0.88 recognizes 97 distinct EIATTR constants (codes 0--96) — see the [NVIDIA Info Attributes](nv-info.md) page for the complete catalog.
+The `fmt` field encodes the payload format (EIFMT). The `attr` field is one of the `EIATTR_*` constants. nvlink v13.0.88 recognizes 97 distinct EIATTR constants (codes 0–96) — see the [NVIDIA Info Attributes](nv-info.md) page for the complete catalog.
 
 ### .nv.compat Attribute Format
 
@@ -399,7 +399,7 @@ The `--disable-smem-reservation` flag prevents the linker from generating reserv
 
 ## Constant Memory Sections
 
-CUDA provides 18 constant memory banks (0--17), each mapped to a hardware constant cache slot accessible via the `LDC` (load constant) instruction.
+CUDA provides 18 constant memory banks (0–17), each mapped to a hardware constant cache slot accessible via the `LDC` (load constant) instruction.
 
 ### Numbered Banks
 
@@ -600,7 +600,7 @@ A section progresses through the following stages in the nvlink pipeline:
 |---|---|
 | Merge (Phase 5) | `.nv.info`, `.nv.info.<func>`, `.nv.metadata`, `.nv.compat`, `.nv.global`, `.nv.global.init`, `.nv.local.<func>`, `.nv.shared.<func>`, `.nv.constant*`, `.nv.host`, `.nv.udt`, `.nv.rel.action`, `.rela.*`, `.nv.resolvedrela*` |
 | Layout (Phase 9) | `.nv.reservedSmem*`, `.nv.global` (additional via `sub_439830:494`) |
-| Finalize (Phase 11--12) | `.nv.callgraph`, `.nv.prototype`, `.nv.uft`, `.nv.uft.entry`, `.nv.udt.entry`, `.note.nv.cuinfo`, `.note.nv.cuver`, `.note.nv.tkinfo` |
+| Finalize (Phase 11–12) | `.nv.callgraph`, `.nv.prototype`, `.nv.uft`, `.nv.uft.entry`, `.nv.udt.entry`, `.note.nv.cuinfo`, `.note.nv.cuver`, `.note.nv.tkinfo` |
 
 ## Quick Reference: All Section Names
 

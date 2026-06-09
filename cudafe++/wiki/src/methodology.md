@@ -224,7 +224,7 @@ The 140 true decompilation failures are concentrated in the C++ runtime region (
 
 ## Phase 1: Address-Range Sweeps
 
-The first phase of analysis consists of **20 address-range sweeps** that collectively cover the entire `.text` section from `0x403000` to `0x82A000`. Each sweep examines a contiguous address range of 128--256 KB, documenting every function within that range.
+The first phase of analysis consists of **20 address-range sweeps** that collectively cover the entire `.text` section from `0x403000` to `0x82A000`. Each sweep examines a contiguous address range of 128–256 KB, documenting every function within that range.
 
 ### Sweep Index
 
@@ -240,7 +240,7 @@ The first phase of analysis consists of **20 address-range sweeps** that collect
 | P1.08 | `0x530000`--`0x560000` | 192 KB | `expr.c`, `exprutil.c` | Expression utilities, operator overloads |
 | P1.09 | `0x560000`--`0x598000` | 224 KB | `exprutil.c`, `extasm.c`, `fe_init.c`, `fe_wrapup.c` | Initialization chain, 5-pass wrapup |
 | P1.10 | `0x598000`--`0x5C8000` | 192 KB | `float_pt.c`, `folding.c`, `func_def.c`, `host_envir.c` | Constant folding, timing infrastructure |
-| P1.11a--f | `0x5C8000`--`0x5F8000` | 192 KB | `il.c`, `il_alloc.c` | IL node creation, arena allocator |
+| P1.11a–f | `0x5C8000`--`0x5F8000` | 192 KB | `il.c`, `il_alloc.c` | IL node creation, arena allocator |
 | P1.12 | `0x5F8000`--`0x628000` | 192 KB | `il_to_str.c`, `il_walk.c`, `interpret.c` | IL display, tree walking, constexpr |
 | P1.13 | `0x628000`--`0x668000` | 256 KB | `interpret.c`, `layout.c`, `lexical.c` | Constexpr interpreter, struct layout, lexer |
 | P1.14 | `0x668000`--`0x6A8000` | 256 KB | `lexical.c`, `literals.c`, `lookup.c`, `lower_name.c` | Name lookup, name mangling |

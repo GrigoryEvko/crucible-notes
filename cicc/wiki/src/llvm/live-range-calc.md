@@ -143,7 +143,7 @@ The iteration continues until no bitvector word changes across a complete pass o
 #### Detailed dataflow pseudocode
 
 ```rust
-// Phase 5 reconstructed from sub_2FC4FC0 at 0x2FC5656--0x2FC5CC6
+// Phase 5 reconstructed from sub_2FC4FC0 at 0x2FC5656–0x2FC5CC6
 //
 // State:
 //   segment_table[]    -- hash table, stride 0x128, keyed by block ID

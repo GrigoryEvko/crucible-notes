@@ -72,13 +72,13 @@ The pipeline name strings recognized by the `nvopt<>` dispatch table are:
 
 | Pipeline Name | CLI Source | Pass Count |
 |---|---|---|
-| `nvopt<O0>` | (no -O flag, no -Ofc) | ~5--8 |
+| `nvopt<O0>` | (no -O flag, no -Ofc) | ~5–8 |
 | `nvopt<O1>` | `-O1` | ~35 |
 | `nvopt<O2>` | `-O2` | ~35+ |
 | `nvopt<O3>` | `-O3` | ~35+ |
-| `nvopt<Ofcmax>` | `-Ofast-compile=max` / `-Ofc=max` | ~12--15 |
-| `nvopt<Ofcmid>` | `-Ofast-compile=mid` / `-Ofc=mid` | ~25--30 |
-| `nvopt<Ofcmin>` | `-Ofast-compile=min` / `-Ofc=min` | ~30--35 |
+| `nvopt<Ofcmax>` | `-Ofast-compile=max` / `-Ofc=max` | ~12–15 |
+| `nvopt<Ofcmid>` | `-Ofast-compile=mid` / `-Ofc=mid` | ~25–30 |
+| `nvopt<Ofcmin>` | `-Ofast-compile=min` / `-Ofc=min` | ~30–35 |
 
 Key addresses for pipeline name dispatch: `sub_226C400` selects the pipeline name string, which is passed to `sub_2277440` (pipeline text parser). The `nvopt` prefix is registered in `sub_225D540` (new PM) and `sub_12C35D0` (legacy PM), both calling into a pipeline builder class at vtable `unk_4A08350`.
 
@@ -113,9 +113,9 @@ The following tables list every pass in exact registration order within `sub_234
 
 ### Module Passes (131)
 
-Registration lines 599--1153 in `sub_2342890`. The first 121 entries are standard LLVM; the final 12 are NVIDIA custom passes registered at lines 1096--1153.
+Registration lines 599–1153 in `sub_2342890`. The first 121 entries are standard LLVM; the final 12 are NVIDIA custom passes registered at lines 1096–1153.
 
-#### Standard LLVM Module Passes (entries 19--131)
+#### Standard LLVM Module Passes (entries 19–131)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -223,7 +223,7 @@ Registration lines 599--1153 in `sub_2342890`. The first 121 entries are standar
 | 120 | `view-callgraph` | `CallGraphViewerPass` |
 | 121 | `wholeprogramdevirt` | `WholeProgramDevirtPass` |
 
-#### NVIDIA Module Passes (entries 122--131)
+#### NVIDIA Module Passes (entries 122–131)
 
 | # | Pass Name | LLVM Class | Reg. Line | Purpose |
 |---|---|---|---|---|
@@ -238,7 +238,7 @@ Registration lines 599--1153 in `sub_2342890`. The first 121 entries are standar
 | 130 | **`printf-lowering`** | `PrintfLoweringPass` | 1134 | Lowers printf to vprintf ABI |
 | 131 | **`select-kernels`** | `SelectKernelsPass` | 1139 | Selects kernels for compilation |
 
-#### Parameterized Module Passes (entries 132--145)
+#### Parameterized Module Passes (entries 132–145)
 
 | # | Pass Name | Class | Parameters |
 |---|---|---|---|
@@ -257,7 +257,7 @@ Registration lines 599--1153 in `sub_2342890`. The first 121 entries are standar
 | 144 | **`lower-ops`** | `LowerOpsPass` | `enable-optimization` |
 | 145 | **`set-global-array-alignment`** | `SetGlobalArrayAlignmentPass` | `modify-shared-mem;skip-shared-mem;modify-global-mem;skip-global-mem` |
 
-### CGSCC Analyses and Passes (entries 146--158)
+### CGSCC Analyses and Passes (entries 146–158)
 
 | # | Pass Name | LLVM Class | Level |
 |---|---|---|---|
@@ -275,9 +275,9 @@ Registration lines 599--1153 in `sub_2342890`. The first 121 entries are standar
 | 157 | `function-attrs` | `PostOrderFunctionAttrsPass` | Param: `skip-non-recursive-function-attrs` |
 | 158 | `inline` | `InlinerPass` | Param: `only-mandatory` |
 
-### Function Analyses (entries 159--201)
+### Function Analyses (entries 159–201)
 
-Registration lines 1208--1415 in `sub_2342890`.
+Registration lines 1208–1415 in `sub_2342890`.
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -320,7 +320,7 @@ Registration lines 1208--1415 in `sub_2342890`.
 | 195 | **`rpa`** | `RegisterPressureAnalysis` |
 | 196 | **`merge-sets`** | `MergeSetsAnalysis` |
 
-#### Function AA Analyses (entries 197--201)
+#### Function AA Analyses (entries 197–201)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -330,11 +330,11 @@ Registration lines 1208--1415 in `sub_2342890`.
 | 200 | `scoped-noalias-aa` | `ScopedNoAliasAA` |
 | 201 | `tbaa` | `TypeBasedAA` |
 
-### Function Passes (entries 202--419)
+### Function Passes (entries 202–419)
 
-Registration lines 1420--2319 in `sub_2342890`. The first 173 entries (202--374) are standard LLVM; entries 376--392 are NVIDIA-specific; entries 393--419 are parameterized passes (both standard and NVIDIA).
+Registration lines 1420–2319 in `sub_2342890`. The first 173 entries (202–374) are standard LLVM; entries 376–392 are NVIDIA-specific; entries 393–419 are parameterized passes (both standard and NVIDIA).
 
-#### Standard LLVM Function Passes (entries 202--375)
+#### Standard LLVM Function Passes (entries 202–375)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -434,7 +434,7 @@ Registration lines 1420--2319 in `sub_2342890`. The first 173 entries (202--374)
 | 295 | `pgo-memop-opt` | `PGOMemOPSizeOpt` |
 | 296 | `place-safepoints` | `PlaceSafepointsPass` |
 | 297 | `print` | `PrintFunctionPass` |
-| 298--338 | `print<access-info>` ... `print-predicateinfo` | (41 printer passes) |
+| 298–338 | `print<access-info>` ... `print-predicateinfo` | (41 printer passes) |
 | 339 | `reassociate` | `ReassociatePass` |
 | 340 | `redundant-dbg-inst-elim` | `RedundantDbgInstEliminationPass` |
 | 341 | `reg2mem` | `RegToMemPass` |
@@ -458,13 +458,13 @@ Registration lines 1420--2319 in `sub_2342890`. The first 173 entries (202--374)
 | 359 | `unify-loop-exits` | `UnifyLoopExitsPass` |
 | 360 | `vector-combine` | `VectorCombinePass` |
 | 361 | `verify` | via `sub_2342870` |
-| 362--368 | `verify<cycles>` ... `verify<scalar-evolution>` | (7 verifiers) |
-| 369--374 | `view-cfg` ... `view-post-dom-only` | (6 viewers) |
+| 362–368 | `verify<cycles>` ... `verify<scalar-evolution>` | (7 verifiers) |
+| 369–374 | `view-cfg` ... `view-post-dom-only` | (6 viewers) |
 | 375 | `wasm-eh-prepare` | `WasmEHPreparePass` |
 
-#### NVIDIA Function Passes (entries 376--392)
+#### NVIDIA Function Passes (entries 376–392)
 
-Registered at lines 2212--2292 of `sub_2342890`.
+Registered at lines 2212–2292 of `sub_2342890`.
 
 | # | Pass Name | LLVM Class | Reg. Line | Purpose |
 |---|---|---|---|---|
@@ -486,7 +486,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 391 | **`d2ir-scalarizer`** | `ScalarizerPass` (NVIDIA alias) | 2287 | NVIDIA-branded scalarization |
 | 392 | **`sink<rp-aware>`** | `SinkingPass` (variant) | 2292 | Register-pressure-aware sinking |
 
-#### Parameterized Function Passes (entries 393--419)
+#### Parameterized Function Passes (entries 393–419)
 
 | # | Pass Name | Class | Parameters |
 |---|---|---|---|
@@ -518,7 +518,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 418 | **`lower-struct-args`** | `LowerStructArgsPass` | `opt-byval` |
 | 419 | **`process-restrict`** | `ProcessRestrictPass` | `propagate-only` |
 
-### LoopNest Passes (entries 420--423)
+### LoopNest Passes (entries 420–423)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -527,7 +527,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 422 | `loop-unroll-and-jam` | `LoopUnrollAndJamPass` |
 | 423 | `no-op-loopnest` | `NoOpLoopNestPass` |
 
-### Loop Analyses (entries 424--428)
+### Loop Analyses (entries 424–428)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -537,7 +537,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 427 | `pass-instrumentation` | via `sub_2342830` |
 | 428 | `should-run-extra-simple-loop-unswitch` | `ShouldRunExtraSimpleLoopUnswitch` |
 
-### Loop Passes (entries 429--455)
+### Loop Passes (entries 429–455)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -560,10 +560,10 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 445 | `loop-versioning-licm` | `LoopVersioningLICMPass` |
 | 446 | `no-op-loop` | `NoOpLoopPass` |
 | 447 | `print` | `PrintLoopPass` |
-| 448--450 | `print<ddg>`, `print<iv-users>`, `print<loop-cache-cost>`, `print<loopnest>` | (printers) |
+| 448–450 | `print<ddg>`, `print<iv-users>`, `print<loop-cache-cost>`, `print<loopnest>` | (printers) |
 | 451 | **`loop-index-split`** | `LoopIndexSplitPass` | NVIDIA |
 
-#### Parameterized Loop Passes (entries 452--455)
+#### Parameterized Loop Passes (entries 452–455)
 
 | # | Pass Name | Class | Parameters |
 |---|---|---|---|
@@ -572,7 +572,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 454 | `loop-rotate` | `LoopRotatePass` | `no-header-duplication;header-duplication;...` |
 | 455 | `simple-loop-unswitch` | `SimpleLoopUnswitchPass` | `nontrivial;no-nontrivial;trivial;no-trivial` |
 
-### Machine Function Analyses (entries 456--475)
+### Machine Function Analyses (entries 456–475)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -597,7 +597,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 474 | `spill-code-placement` | `SpillPlacementAnalysis` |
 | 475 | `virtregmap` | `VirtRegMapAnalysis` |
 
-### Machine Function Passes (entries 476--526)
+### Machine Function Passes (entries 476–526)
 
 | # | Pass Name | LLVM Class |
 |---|---|---|
@@ -623,7 +623,7 @@ Registered at lines 2212--2292 of `sub_2342890`.
 | 495 | `postmisched` | `PostMachineSchedulerPass` |
 | 496 | `post-ra-pseudos` | `ExpandPostRAPseudosPass` |
 | 497 | `print` | `PrintMIRPass` |
-| 498--510 | `print<livedebugvars>` ... `print<virtregmap>` | (13 MF printers) |
+| 498–510 | `print<livedebugvars>` ... `print<virtregmap>` | (13 MF printers) |
 | 511 | `reg-usage-collector` | `RegUsageInfoCollectorPass` |
 | 512 | `reg-usage-propagation` | `RegUsageInfoPropagationPass` |
 | 513 | `register-coalescer` | `RegisterCoalescerPass` |
@@ -868,15 +868,15 @@ The pass sequence is significantly longer than Tier 0 and varies by tier. The fo
 
 | Pipeline | Sub-pipeline called | lsa-opt | mem-space-opt | Approx. passes |
 |---|---|---|---|---|
-| `nvopt<O0>` | (minimal, `sub_1C8A4D0(0)` only) | off | off | ~5--8 |
-| `nvopt<Ofcmax>` | Sinking2 + common tail only | forced 0 | forced 0 | ~12--15 |
-| `nvopt<Ofcmid>` | mid-level pipeline | normal | enabled | ~25--30 |
-| `nvopt<Ofcmin>` | close to full pipeline | normal | enabled | ~30--35 |
+| `nvopt<O0>` | (minimal, `sub_1C8A4D0(0)` only) | off | off | ~5–8 |
+| `nvopt<Ofcmax>` | Sinking2 + common tail only | forced 0 | forced 0 | ~12–15 |
+| `nvopt<Ofcmid>` | mid-level pipeline | normal | enabled | ~25–30 |
+| `nvopt<Ofcmin>` | close to full pipeline | normal | enabled | ~30–35 |
 | `nvopt<O1>` | `sub_12DE330` (Tier 0) | normal | enabled | ~35 |
 | `nvopt<O2>` | `sub_12DE330` + Tier 1/2 | normal | enabled | ~35+ |
 | `nvopt<O3>` | `sub_12DE330` + Tier 1/2/3 | normal | enabled | ~35+ |
 
-O1/O2/O3 all route through the same `sub_12DE330` (Tier 0). The difference manifests through the tiered pass inserter `sub_12DE8F0`: O1 only fires Tier 1, O2 fires Tiers 1--2, O3 fires all three tiers. Within the tiers, passes additionally vary by: loop unroll factor (parameter to `sub_1833EB0`), vectorizer width (parameters to `sub_19B73C0`), CGSCC iteration count (first parameter to `sub_1A62BF0`), and the SM-architecture-dependent late passes gated by `opts[3328]`.
+O1/O2/O3 all route through the same `sub_12DE330` (Tier 0). The difference manifests through the tiered pass inserter `sub_12DE8F0`: O1 only fires Tier 1, O2 fires Tiers 1–2, O3 fires all three tiers. Within the tiers, passes additionally vary by: loop unroll factor (parameter to `sub_1833EB0`), vectorizer width (parameters to `sub_19B73C0`), CGSCC iteration count (first parameter to `sub_1A62BF0`), and the SM-architecture-dependent late passes gated by `opts[3328]`.
 
 **Ofcmax critical behavior**: when fast-compile level == 2 (max), the libnvvm pipeline builder **forces** `-lsa-opt=0` and `-memory-space-opt=0` even if the user explicitly enables them. This is confirmed in both `sub_9624D0` (line 1358) and `sub_12CC750` (line 2025).
 

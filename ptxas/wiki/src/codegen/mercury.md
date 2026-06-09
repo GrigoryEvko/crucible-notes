@@ -2,11 +2,11 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It is not a direct binary encoding of SASS — it is a separate representation that contains pseudo-instructions, lacks dependency barriers, and requires multiple transformation passes before it becomes executable GPU code. The Mercury pipeline occupies phases 113--122 of the 159-phase PhaseManager, forming a six-stage sub-pipeline: encode/decode verification, pseudo-instruction expansion, two WAR-hazard passes (one before and one after operation expansion), scoreboard/latency generation ("opex"), and final SASS microcode emission. All recent GPU architectures (SM 75+) use Mercury as the encoding backend; SM 100+ (Blackwell) defaults to "Capsule Mercury" (`capmerc`), a variant that embeds additional metadata for relocatable patching.
+Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It is not a direct binary encoding of SASS — it is a separate representation that contains pseudo-instructions, lacks dependency barriers, and requires multiple transformation passes before it becomes executable GPU code. The Mercury pipeline occupies phases 113–122 of the 159-phase PhaseManager, forming a six-stage sub-pipeline: encode/decode verification, pseudo-instruction expansion, two WAR-hazard passes (one before and one after operation expansion), scoreboard/latency generation ("opex"), and final SASS microcode emission. All recent GPU architectures (SM 75+) use Mercury as the encoding backend; SM 100+ (Blackwell) defaults to "Capsule Mercury" (`capmerc`), a variant that embeds additional metadata for relocatable patching.
 
 | | |
 |---|---|
-| **Pipeline phases** | 113--122 (8 active phases within Mercury sub-pipeline) |
+| **Pipeline phases** | 113–122 (8 active phases within Mercury sub-pipeline) |
 | **Core orchestrator** | `sub_6F52F0` (23KB, RunStages — 18 parameters) |
 | **Master encoder** | `sub_6D9690` (94KB, EncodeInstruction — largest backend function) |
 | **Opex body** | `sub_6FFDC0` (66KB, EmitInstructions — scoreboard generation) |
@@ -80,7 +80,7 @@ The ptxas CLI (`sub_703AB0`) accepts `--binary-kind` with three values:
 
 | Mode | CLI value | Default for | Description |
 |---|---|---|---|
-| Mercury | `mercury` | SM 75--99 | Traditional Mercury intermediate encoding |
+| Mercury | `mercury` | SM 75–99 | Traditional Mercury intermediate encoding |
 | Capsule Mercury | `capmerc` | SM 100+ (Blackwell) | Mercury + embedded PTX source + relocation metadata |
 | Raw SASS | `sass` | (explicit only) | Direct SASS binary output |
 
@@ -240,7 +240,7 @@ The orchestrator `sub_6F52F0` passes the entire pipeline state (18 parameters) t
 
 ### Master Encoder — `sub_6D9690` (94KB)
 
-The central SASS instruction encoding function and the single largest function in the ptxas backend. It reads the instruction type from `*(int*)(instruction+8)`, initializes the encoding base constant `0x2000000000LL`, calls `sub_C00BF0` for the opcode table index, then dispatches through a 119-case `switch` covering Ori instruction types 61--544. Unhandled types hit the `default` branch and return 0 (failure). The epilog at `LABEL_3` frees the dynamic word buffer if it grew beyond the 264-byte inline array.
+The central SASS instruction encoding function and the single largest function in the ptxas backend. It reads the instruction type from `*(int*)(instruction+8)`, initializes the encoding base constant `0x2000000000LL`, calls `sub_C00BF0` for the opcode table index, then dispatches through a 119-case `switch` covering Ori instruction types 61–544. Unhandled types hit the `default` branch and return 0 (failure). The epilog at `LABEL_3` frees the dynamic word buffer if it grew beyond the 264-byte inline array.
 
 #### Operand Word Type Prefix — bits `[31:28]`
 
@@ -267,7 +267,7 @@ The switch groups by instruction category. Cases sharing a body are listed toget
 | 207 | (extended) | Multi-record loop encoding | 239 | Predicate + 2 sources; emits `v452` records in a loop |
 | 221 | (extended) | Conditional branch variant | 107 (via `sub_934630`) | Two sub-paths: mode 1 = operand + 2 words, mode 2 = 1 word |
 | 416, 417 | WMMA.load_c (global/shared) | MMA load C | vtable(type) | dst + 1 source + optional `0x60000000` + modifier |
-| 418--420, 431, 434, 436, 445--448 | WMMA.mma variants (10 cases) | MMA compute | vtable(type) | dst + 2 sources + 4 control words; vtable dispatch for format ID |
+| 418–420, 431, 434, 436, 445–448 | WMMA.mma variants (10 cases) | MMA compute | vtable(type) | dst + 2 sources + 4 control words; vtable dispatch for format ID |
 | 423 | WMMA.mma (col_col_f32_f16_sat) | MMA 2-source | 20 | dst + 2 operands + control; multi-record if `v452 > 0` |
 | 424 | WMMA.mma (col_col_f32_f32) | MMA 3-source | 21 | dst + 3 operands + control; multi-record |
 | 425 | WMMA.mma (col_col_f32_f32_sat) | MMA passthrough | variable | dst + 1 source; format from `v284` |
@@ -284,23 +284,23 @@ The switch groups by instruction category. Cases sharing a body are listed toget
 | 460 | WMMA.store_d (row_f32_global) | WMMA store conditional | 31 (via `sub_934630`) | Conditional on `instr+17` sign bit; multi-record emit |
 | 461 | WMMA.store_d (row_f32_shared) | MMA 4-op + conditional | 211 | dst + 3 sources + up to 1 extra source; multi-record |
 | 462 | WMMA.load_a (col) | MMA load | 81 | Predicate + 1 source + control |
-| 463--465 | WMMA.load (global/col_global/a_row) | MMA load variants | 58, 69, 34 | dst + 1--2 sources + control word |
+| 463–465 | WMMA.load (global/col_global/a_row) | MMA load variants | 58, 69, 34 | dst + 1–2 sources + control word |
 | 467 | WMMA.load (a_row_global) | MMA load + modifier | 138 (or 145/146) | dst + 2 sources + data-type-dependent format |
 | 468 | WMMA.load (a_row_shared) | MMA load + loop | 119 | dst + 3 sources + loop emit for `v452` records |
 | 469 | (extended MMA) | MMA control-flow | 51 | dst + 3 sources + control with data-type comparison |
 | 470 | (vtable SR) | Special-register encode | 203 | vtable dispatch for SR index; `0x90000000` prefix |
 | 471 | (data-typed) | Typed ALU | 202 | Data-type via `sub_7D6860`; dst + 3 sources + modifier |
-| 472--474 | (extended) | Simple control word | 253, 252, 250 | dst + 1--2 sources + control |
+| 472–474 | (extended) | Simple control word | 253, 252, 250 | dst + 1–2 sources + control |
 | 475 | (extended) | Complex multi-source | 242 / 156 | dst + 3 sources + extended modifier; architecture flag gate |
 | 476 | (extended) | Conditional 2-path | 287 / 210 | Branches on `instr+16` bit 0: 2-source or predicate-encode path |
-| 477--480 | (extended simple) | 1-word instructions | — | Control word only; minimal encoding |
-| 482--490 | (extended range) | Mixed formats | variable | Cases 482--488: 1-source + control; 489--490: simple control |
+| 477–480 | (extended simple) | 1-word instructions | — | Control word only; minimal encoding |
+| 482–490 | (extended range) | Mixed formats | variable | Cases 482–488: 1-source + control; 489–490: simple control |
 | 491 | (extended) | MMA multi-record | 174 | dst + 3 sources + complex multi-record with 14 goto-label state machine |
 | 492 | (extended) | 2-source + flag | 24 | dst + 2 sources + 1-bit flag control |
 | 493 | (extended) | 2-source + flag | 209 | Same pattern as 492, different format |
-| 494--499 | (delegated) | Specialized handlers | — | Each delegates to a unique sub-function (`sub_6D1F30`, `sub_6CE200`, `sub_6CE040`, `sub_6CED80`, `sub_6CF270`, `sub_6CF180`) |
+| 494–499 | (delegated) | Specialized handlers | — | Each delegates to a unique sub-function (`sub_6D1F30`, `sub_6CE200`, `sub_6CE040`, `sub_6CED80`, `sub_6CF270`, `sub_6CF180`) |
 | 500 | (extended) | Multi-mode ALU | 186 | 2 sources + sub-switch on `(modifier>>1)&7` (6 data-type modes) |
-| 501--504 | (extended simple) | Minimal | — | 1 source or control-only |
+| 501–504 | (extended simple) | Minimal | — | 1 source or control-only |
 | 505 | (extended) | 2-source | 35 | dst + 2 sources + control |
 | 506 | (extended) | Delegated | — | Calls `sub_6D1B90` |
 | 507, 508 | (extended) | Identical format | 226 | Simple 1-word encoding |
@@ -316,14 +316,14 @@ The switch groups by instruction category. Cases sharing a body are listed toget
 | 519 | (extended) | TCGen05 fence | 298 (secondary) | Zero-operand `sub_934630` |
 | 520 | (extended) | TCGen05 ctrl | 313 (secondary) | Zero-operand `sub_934630` |
 | 521 | (extended) | TCGen05 commit | 277 (secondary) | 1-word `sub_934630` |
-| 522--527 | (extended simple) | Minimal / paired | — | Control-only; 526+527 share body |
+| 522–527 | (extended simple) | Minimal / paired | — | Control-only; 526+527 share body |
 | 528 | (extended) | TCGen05 op | 305 | Simple 1-word |
 | 529 | (extended) | TCGen05 op | 306 | 2 sources |
 | 530 | (extended) | TCGen05 op | 304 | 2 sources |
 | 531, 532 | (extended simple) | Minimal | — | Control-only |
 | 533 | (extended) | TCGen05 multi | 322 (secondary) | 3-way mode switch; each emits 2-word `sub_934630` |
 | 534 | (extended) | TCGen05 wide | 320 (secondary) | 4-word `sub_934630` |
-| 535--537 | (extended simple) | Minimal | — | Control-only |
+| 535–537 | (extended simple) | Minimal | — | Control-only |
 | 538, 539 | (extended) | Barrier ops | 293, 294 | 1 source + control |
 | 540 | (extended) | Barrier/sync | 218 | Simple 1-word |
 | 541 | (extended) | Barrier variant | 296 | 2 sources |
@@ -375,7 +375,7 @@ void init_format_XYZ(void *a1) {
 }
 ```
 
-Function sizes are remarkably uniform (1000--1600 bytes), reflecting mechanical code generation — roughly 10 functions per ISA opcode group, covering all SASS formats for SM 100+.
+Function sizes are remarkably uniform (1000–1600 bytes), reflecting mechanical code generation — roughly 10 functions per ISA opcode group, covering all SASS formats for SM 100+.
 
 ## Stage 2: MercExpandInstructions — Pseudo-Instruction Expansion
 
@@ -406,11 +406,11 @@ This handler processes general pseudo-instructions. It reads the operand record 
 |---|---|---|---|
 | 0 | +16 (`emitArg`) | Emit 2-operand word: mode=10, val=`[6]`, aux=`[7]` | `instr[6..7]` |
 | 1 | +16 (`emitArg`) | Emit 2-operand word: mode=10, val=`[5]`, aux=`[7]` | `instr[5,7]` |
-| 2--6, 8--9, 0xB--0x11, 0x1B--0x21, 0x2C--0x33 | +128 (`setValue`) | Set slot value to `instr[7]`; internal state machine (11 sub-cases on record byte 0: states 0--5,7--8 = direct store; 6,9 = linked-list flush; 0xA = conditional release) | `instr[7]` |
-| 7, 0xA, 0x12, 0x22--0x24, 0x27--0x2A | +112 (`getValue`) | Read current slot value; same 11-state machine, then set record byte to state 4 | (read-only) |
+| 2–6, 8–9, 0xB–0x11, 0x1B–0x21, 0x2C–0x33 | +128 (`setValue`) | Set slot value to `instr[7]`; internal state machine (11 sub-cases on record byte 0: states 0–5,7–8 = direct store; 6,9 = linked-list flush; 0xA = conditional release) | `instr[7]` |
+| 7, 0xA, 0x12, 0x22–0x24, 0x27–0x2A | +112 (`getValue`) | Read current slot value; same 11-state machine, then set record byte to state 4 | (read-only) |
 | 0x17 | +128 (`setValue`) | Set slot value to `instr[7]`, then propagate side flag: if `a4[0]==-1` set it to `instr[11]`, else if mismatch set `instr+132 \|= 0x1000` | `instr[7,11]` |
-| 0x18--0x1A | +72/+120/+128 | Conditional max: if `isAllocated(slot)` and `getValue(slot) < instr[7]`, update to `instr[7]`; same 11-state machine on setValue | `instr[7]` |
-| 0x25--0x26 | +24 (`pushWord`) | Triple push: `pushWord(slot, 5, instr[10])`, `pushWord(slot, 5, instr[9])`, `pushWord(slot, 5, instr[7])` | `instr[7,9,10]` |
+| 0x18–0x1A | +72/+120/+128 | Conditional max: if `isAllocated(slot)` and `getValue(slot) < instr[7]`, update to `instr[7]`; same 11-state machine on setValue | `instr[7]` |
+| 0x25–0x26 | +24 (`pushWord`) | Triple push: `pushWord(slot, 5, instr[10])`, `pushWord(slot, 5, instr[9])`, `pushWord(slot, 5, instr[7])` | `instr[7,9,10]` |
 | 0x2B | +24 (`pushWord`) | Single push: `pushWord(slot, 12, instr[5])` | `instr[5]` |
 
 Overflow to `def_C37B2E` (at `0xC38180`, 13KB) handles complex cases that create new instruction nodes rather than modifying slot state.
@@ -480,7 +480,7 @@ void GenerateWARs(context) {
 
 The detector uses a three-stage opcode filter to classify each instruction.
 
-**Stage 1 — first bitmask `0x100000400001` (opcodes 34--78).** The range check `(opcode - 34) > 0x2C` admits opcodes 34--78. Within that window the 45-bit bitmask selects three opcodes for architecture-specific vetting via vtable +968 / +1008:
+**Stage 1 — first bitmask `0x100000400001` (opcodes 34–78).** The range check `(opcode - 34) > 0x2C` admits opcodes 34–78. Within that window the 45-bit bitmask selects three opcodes for architecture-specific vetting via vtable +968 / +1008:
 
 | Bit | Opcode | Mnemonic | Meaning |
 |-----|--------|----------|---------|
@@ -488,9 +488,9 @@ The detector uses a three-stage opcode filter to classify each instruction.
 | 22  | 56     | BMOV     | Vtable-gated |
 | 44  | 78     | RTT      | Vtable-gated |
 
-All 42 other opcodes in 34--78 (I2I, I2IP, IMNMX, POPC, FLO, FCHK, IPA, MUFU, F2F, F2F_X, F2I, F2I_X, I2F, I2F_X, FRND, FRND_X, AL2P, AL2P_INDEXED, BREV, BMOV_B, BMOV_R, S2R, B2R, R2B, LEPC, BAR, BAR_INDEXED, SETCTAID, SETLMEMBASE, GETLMEMBASE, DEPBAR, BRA, BRX, JMP, JMX, CALL, RET, BSSY, BREAK, BPT, KILL, EXIT) have their bitmask bit clear and proceed directly to stage 2.
+All 42 other opcodes in 34–78 (I2I, I2IP, IMNMX, POPC, FLO, FCHK, IPA, MUFU, F2F, F2F_X, F2I, F2I_X, I2F, I2F_X, FRND, FRND_X, AL2P, AL2P_INDEXED, BREV, BMOV_B, BMOV_R, S2R, B2R, R2B, LEPC, BAR, BAR_INDEXED, SETCTAID, SETLMEMBASE, GETLMEMBASE, DEPBAR, BRA, BRX, JMP, JMX, CALL, RET, BSSY, BREAK, BPT, KILL, EXIT) have their bitmask bit clear and proceed directly to stage 2.
 
-**Stage 2 — second bitmask `0x800200000100001` (opcodes 71--130) plus opcode 235.** An explicit equality test marks opcode 235 (UBLKRED) as never-hazardous. The range check `(opcode - 71) > 0x3B` admits opcodes 71--130. Within that window the 60-bit bitmask flags four opcodes as unconditionally non-hazardous:
+**Stage 2 — second bitmask `0x800200000100001` (opcodes 71–130) plus opcode 235.** An explicit equality test marks opcode 235 (UBLKRED) as never-hazardous. The range check `(opcode - 71) > 0x3B` admits opcodes 71–130. Within that window the 60-bit bitmask flags four opcodes as unconditionally non-hazardous:
 
 | Bit | Opcode | Mnemonic | Rationale |
 |-----|--------|----------|-----------|
@@ -764,13 +764,13 @@ Architecture selection reads `*(int*)(config + 372) >> 12` to determine the SM g
 
 | SM generation | `config+372 >> 12` | SM versions |
 |---|---|---|
-| Kepler | 3 | sm_30--sm_37 |
-| Maxwell | 5 | sm_50--sm_53 |
-| Pascal | 6 | sm_60--sm_62 |
-| Volta/Turing | 7 | sm_70--sm_75 |
-| Ampere | 8 | sm_80--sm_89 |
-| Hopper | 9 | sm_90--sm_90a |
-| Blackwell | (10+) | sm_100--sm_121 |
+| Kepler | 3 | sm_30–sm_37 |
+| Maxwell | 5 | sm_50–sm_53 |
+| Pascal | 6 | sm_60–sm_62 |
+| Volta/Turing | 7 | sm_70–sm_75 |
+| Ampere | 8 | sm_80–sm_89 |
+| Hopper | 9 | sm_90–sm_90a |
+| Blackwell | (10+) | sm_100–sm_121 |
 
 The encoder state initializer `sub_6E8EB0` (64KB) sets architecture-specific flags and populates the opcode descriptor table (40+ entries mapping internal opcode IDs to encoding words). For SM 80 (`0x5000`) it sets bits 1 and 8; for SM 84 (`0x5004`) it sets bits 16 and 64.
 
@@ -787,8 +787,8 @@ The vtable is accessed as `**ptr` where `ptr = *(compilation_state + 1584)` or `
 
 | Slot | Offset | Refs | Signature | Purpose |
 |---|---|---|---|---|
-| 113 | +904 | 48 | `(self, opcode) -> int` | Get scheduling class for opcode (returns pipe index 0--7). Called by every latency, stall, and scoreboard computation. Also called with no args for default class. |
-| 79 | +632 | 15 | `(self[, opcode, ...]) -> int` | Get register-file width for type. 0--5 args depending on context (spill cost, operand width, encoding bit-count). Bitmask `0x1008E0E` in `sub_A9BD00` gates translation to arch default. |
+| 113 | +904 | 48 | `(self, opcode) -> int` | Get scheduling class for opcode (returns pipe index 0–7). Called by every latency, stall, and scoreboard computation. Also called with no args for default class. |
+| 79 | +632 | 15 | `(self[, opcode, ...]) -> int` | Get register-file width for type. 0–5 args depending on context (spill cost, operand width, encoding bit-count). Bitmask `0x1008E0E` in `sub_A9BD00` gates translation to arch default. |
 | 86 | +688 | 4 | `(self, context) -> ptr` | Create architecture-specific scheduling annotation record |
 | 78 | +624 | 1 | `(self, type) -> int` | Get operand bit-width for negative type codes |
 | 5 | +40 | 1 | `(self, sched_class) -> int` | Get register bank count for scheduling class |
@@ -901,7 +901,7 @@ Offset  Size    Field
 
 ## Mercury Instruction Node Layout
 
-The Mercury pipeline (phases 117--122) operates on its own instruction representation, distinct from the 296-byte Ori IR instruction node documented in [Instructions & Opcodes](../ir/instructions.md). The master encoder `sub_6D9690` (phase 117) reads Ori IR nodes and produces Mercury instruction nodes; all subsequent phases — expansion, WAR resolution, opex, and SASS emission — operate exclusively on Mercury nodes.
+The Mercury pipeline (phases 117–122) operates on its own instruction representation, distinct from the 296-byte Ori IR instruction node documented in [Instructions & Opcodes](../ir/instructions.md). The master encoder `sub_6D9690` (phase 117) reads Ori IR nodes and produces Mercury instruction nodes; all subsequent phases — expansion, WAR resolution, opex, and SASS emission — operate exclusively on Mercury nodes.
 
 ### Allocation
 
@@ -997,7 +997,7 @@ The Mercury node is distinct from the Ori IR instruction node:
 | Operand model | Packed array at +84 | Encoded data at +48..+120 |
 | Scheduling | Pointer at +40 | Pointer at +128 (60-byte record) |
 | List linkage | +0 / +8 (prev/next) | +0 / +8 (next/prev) |
-| Pipeline phases | 1--116 | 117--122 |
+| Pipeline phases | 1–116 | 117–122 |
 
 Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6D9690` and produces Mercury nodes. All subsequent Mercury pipeline phases operate on Mercury nodes exclusively.
 
@@ -1087,12 +1087,12 @@ Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6
 
 ## Mercury Knob Cluster — DAG Table Reference
 
-The Mercury encoder is gated by a 21-knob cluster registered as a contiguous block inside `ctor_005` (0x420A50--0x4210E0) into the DAG knob table indexed by `sub_6F0820` (`GetKnobIndex`, 99 total entries). Names are stored ROT13-obfuscated in `.rodata` at `0x21B6900`--`0x21B6CA0`; the runtime decodes them on demand for `-knob NAME=VALUE` CLI parsing and `DUMP_KNOBS_TO_FILE` diagnostic output. Indices are determined by registration order within the DAG table — the 21 Mercury knobs do not occupy a fixed numeric range across ptxas builds, but they are always registered as one alphabetical run, so their relative ordering is stable.
+The Mercury encoder is gated by a 21-knob cluster registered as a contiguous block inside `ctor_005` (0x420A50–0x4210E0) into the DAG knob table indexed by `sub_6F0820` (`GetKnobIndex`, 99 total entries). Names are stored ROT13-obfuscated in `.rodata` at `0x21B6900`--`0x21B6CA0`; the runtime decodes them on demand for `-knob NAME=VALUE` CLI parsing and `DUMP_KNOBS_TO_FILE` diagnostic output. Indices are determined by registration order within the DAG table — the 21 Mercury knobs do not occupy a fixed numeric range across ptxas builds, but they are always registered as one alphabetical run, so their relative ordering is stable.
 
 | | |
 |---|---|
 | **Table** | DAG knob array (99 entries x 64-byte descriptor) |
-| **Registrar** | `ctor_005` (0x40D860, 80KB) — Mercury cluster at 0x420A50--0x4210E0 |
+| **Registrar** | `ctor_005` (0x40D860, 80KB) — Mercury cluster at 0x420A50–0x4210E0 |
 | **GetKnobIndex** | `sub_6F0820` (name -> index lookup, init-time only) |
 | **GetKnobIntValue** | `sub_7A1B80` (returns `*(int32*)(state + 72*idx + 8)`) |
 | **GetKnobBoolValue** | `sub_7A1CC0` (returns `IsKnobSet && type == 4`) |
@@ -1135,7 +1135,7 @@ Confidence column reflects only the **name** (string-anchored, decoded from ROT1
 The DAG knob descriptor (64 bytes) stores a default value, a type tag (INT/BOOL/STR/etc.), and a presence byte. None of the 21 Mercury knobs has its default encoded as a separate `.rodata` string, which means defaults are immediate constants baked into `ctor_005`. Without symbol-grade recovery of the descriptor inits, defaults are LOW confidence; circumstantial evidence (the knobs ride alongside conservative-by-default pass enablement) suggests:
 
 - `MercuryEncodeDecode`, `MercuryGenSassUCode` — default ON (these are core stages; turning them off would break the pipeline). Confidence: HIGH.
-- `MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryInsertAssumes` — default ON for SM 100+, default OFF or downgraded for SM 75--99 (the cross-block / backedge dep-bar machinery is a Blackwell-era addition). Confidence: MED.
+- `MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryInsertAssumes` — default ON for SM 100+, default OFF or downgraded for SM 75–99 (the cross-block / backedge dep-bar machinery is a Blackwell-era addition). Confidence: MED.
 - `MercuryConverterStats`, `MercuryDumpInstsAsBinary`, `MercuryEncodeNewWorkerFiles` — default OFF (diagnostic / dev knobs). Confidence: MED.
 - `MercuryForceISAClass`, `MercuryForceUnknownTcgen05Attr` — default OFF (Force* knobs override the auto-selected class only when set). Confidence: HIGH (Force* convention).
 - `MercuryPresumeXblockWaitBeneficial`, `MercuryTrackMultiReadsWarLatency`, `MercuryTepidAwareSb` — default OFF (heuristic-bias knobs; the production pipeline ships with the safer cost-analyzed path). Confidence: LOW.
@@ -1182,7 +1182,7 @@ The MercConverter sweeps (phase 5 and phase 141) consume `MercuryConverterStats`
 > ⚡ **QUIRK — the cluster lives in DAG, not OCG**
 > ptxas hosts two independent knob tables: OCG (1,195 entries, indexed by `sub_79B240`) and DAG (99 entries, indexed by `sub_6F0820`). The Mercury knobs are entirely in DAG. This matters because the two tables have separate `-knob` parsers and separate `KNOBS` env var processors — a `-knob MercuryInsertXblockWait=1` is parsed by the DAG path (`sub_6F7360`), never reaches OCG, and a typo silently misses the OCG table without any "unknown knob" warning. Cross-table contamination is also impossible: the DAG and OCG tables share no indices.
 
-> ⚡ **QUIRK — sm_75--sm_99 ignores most of the cluster**
+> ⚡ **QUIRK — sm_75–sm_99 ignores most of the cluster**
 > The cross-block / backedge / Xblock-wait family (`MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryPresumeXblockWaitBeneficial`, `MercuryDepStagePreferNonLiveinPSB`) only takes effect when `*(BYTE*)(profile+1398) & 0x20` is set, i.e. on SM targets whose capability word (`profile+1413`) advertises Mercury or Capsule-Mercury capability. Setting these knobs on Turing/Ampere/Hopper compiles silently no-ops; the WAR / Opex bodies guard on the same capability bit before consulting the knob value. The cluster is effectively a Blackwell-onwards control surface despite being available on all targets at the CLI level.
 
 ### Inferred Value Types

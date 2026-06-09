@@ -43,7 +43,7 @@ The per-entry summary record in the primary hash table is 16 bytes. The lower 32
 
 The builder executes in three phases within `sub_D7D4E0`. The LTO driver `sub_D81040` calls the builder after reading module flags (`EnableSplitLTOUnit`, `UnifiedLTO`, `ThinLTO`) and iterating all functions via a callback iterator.
 
-### Phase 1: Global Value Walk (lines 559--1671)
+### Phase 1: Global Value Walk (lines 559–1671)
 
 The module's global value list is a linked list rooted at `Module+72` (the `GlobalList` field). The sentinel node is at `Module+72` itself; the first real element is at `Module+80`.
 
@@ -144,7 +144,7 @@ Address space 25 appears to be an internal NVVM encoding for device-side linkage
 
 These six vectors capture the GPU-specific dependency information that upstream LLVM's summary has no concept of. The ThinLTO importer uses this to make GPU-aware import decisions — for example, a function that references shared memory in another module must also import the shared memory declaration.
 
-### Phase 2: ThinLTO Declaration Re-Walk (lines 1673--1911)
+### Phase 2: ThinLTO Declaration Re-Walk (lines 1673–1911)
 
 When `thinlto_mode` (parameter `a8`) is true, the builder performs a second pass over forward-declared symbols:
 
@@ -156,7 +156,7 @@ When `thinlto_mode` (parameter `a8`) is true, the builder performs a second pass
 
 The two-phase design is necessary because CUDA compilation units frequently contain forward declarations of device functions defined in other translation units. Without this re-walk, the summary would miss the cross-module edges for these declarations, and ThinLTO would fail to import them.
 
-### Phase 3: Finalize and Emit (lines 1912--2569)
+### Phase 3: Finalize and Emit (lines 1912–2569)
 
 **Module-level flag assembly.** After processing all globals, the builder computes two flag words:
 
@@ -182,7 +182,7 @@ v143 = has_unwind_info               // bit 0
      | (is_kernel << 9);             // bit 9
 ```
 
-The kernel detection walks to the function's first instruction via offset 24, verifies the opcode is in range 30--40 (basic block terminators), and checks specifically for opcode 36, which encodes a kernel entry point. This is how the summary distinguishes `__global__` kernel functions from `__device__` helper functions without relying on metadata — it inspects the compiled IR structure directly.
+The kernel detection walks to the function's first instruction via offset 24, verifies the opcode is in range 30–40 (basic block terminators), and checks specifically for opcode 36, which encodes a kernel entry point. This is how the summary distinguishes `__global__` kernel functions from `__device__` helper functions without relying on metadata — it inspects the compiled IR structure directly.
 
 **Summary record packing.** All collected data is packed into the final `FunctionSummary` via `sub_D77220`, which takes 14 arguments:
 
@@ -228,7 +228,7 @@ The 4-level priority system is the primary extension over upstream LLVM's binary
 | 2 | `0b010` | Standard | Threshold multiplied by default multiplier (`dword_4FAB040`) |
 | 3 | `0b011` | Force-import | Threshold multiplied by hot multiplier (`dword_4FAAE80`) |
 
-The importer at `sub_1853180` converts the integer base threshold to float, multiplies by the per-priority-level constant, converts back to integer, and compares against the function's cost from the summary (stored at offset `0x40` in the summary entry). A fourth multiplier (`dword_4FAADA0`) handles "critical" priority (priority class 4 in the importer's switch), though the summary builder only produces levels 0--3.
+The importer at `sub_1853180` converts the integer base threshold to float, multiplies by the per-priority-level constant, converts back to integer, and compares against the function's cost from the summary (stored at offset `0x40` in the summary entry). A fourth multiplier (`dword_4FAADA0`) handles "critical" priority (priority class 4 in the importer's switch), though the summary builder only produces levels 0–3.
 
 For comdat/linkonce symbols discovered during Phase 3, a special minimum priority applies:
 
@@ -275,7 +275,7 @@ The `dword_4F87C60` override is the most impactful knob. Setting it to 1 makes e
 | Aspect | Upstream LLVM | CICC NVModuleSummary |
 |--------|--------------|---------------------|
 | Entry point | `computeFunctionSummary()` | `sub_D7D4E0` (2571 lines vs ~400) |
-| Priority levels | Binary (importable or not) | 4 levels (0--3) with float multipliers |
+| Priority levels | Binary (importable or not) | 4 levels (0–3) with float multipliers |
 | Complexity metric | Flat instruction count | 28-bit profile-scaled budget |
 | Call edge annotation | `CalleeInfo::HotnessType` (4 values) | 136-byte records with full type metadata |
 | Address space awareness | None | Filters device-only (AS 25) from import |

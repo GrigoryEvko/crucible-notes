@@ -144,7 +144,7 @@ Safety valve for environments where concurrent libnvvm compilation causes issues
 
 **How it controls compilation path selection in `sub_8F9C90`**:
 
-The dispatch variable `v253` starts at 2 (default). When `v253` is still 2 at post-parse time (lines 1590--1692):
+The dispatch variable `v253` starts at 2 (default). When `v253` is still 2 at post-parse time (lines 1590–1692):
 
 1. `sub_8F98A0` decrypts the env var name from `byte_3C23A9F[-15..0]`.
 2. Calls `getenv(decrypted_name)`.

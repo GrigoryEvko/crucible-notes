@@ -103,7 +103,7 @@ The iteration budget formula `4 * numInstructions * maxBlockSize` is an NVIDIA a
 The pattern matcher is called once per SDNode. It reads the node's opcode at `*(node + 24)` and dispatches through a multi-level decision tree:
 
 1. **Quick-reject filter.** If the node is already selected (machine opcode bit set in flags), return immediately.
-2. **NVPTX-specific hand-written patterns.** Calls `sub_347A8D0` for NVPTX custom opcodes (`NVPTXISD::*`, values at or above `ISD::BUILTIN_OP_END` — reconstructed as 499 from the `sub_33D4EF0` cutover, see [NVPTXISD Opcodes](nvptxisd-opcodes.md#how-opcode-names-reach-the-binary)). This handles the 460 enumerated target nodes — texture/surface fetches (372 opcodes, dispatched into `sub_306A930`), MMA instructions, atomic operations, `.param`-space loads/stores, branch-index tables (`Brx*`), funnel shifts, and the call-frame pseudos in MachineInstr opcode range 505--573.
+2. **NVPTX-specific hand-written patterns.** Calls `sub_347A8D0` for NVPTX custom opcodes (`NVPTXISD::*`, values at or above `ISD::BUILTIN_OP_END` — reconstructed as 499 from the `sub_33D4EF0` cutover, see [NVPTXISD Opcodes](nvptxisd-opcodes.md#how-opcode-names-reach-the-binary)). This handles the 460 enumerated target nodes — texture/surface fetches (372 opcodes, dispatched into `sub_306A930`), MMA instructions, atomic operations, `.param`-space loads/stores, branch-index tables (`Brx*`), funnel shifts, and the call-frame pseudos in MachineInstr opcode range 505–573.
 3. **TableGen auto-generated matcher.** Calls `sub_348D3E0` (`SelectCode`) for standard ISD opcodes. This function is mechanically generated from the `.td` pattern files in the NVPTX backend and contains a massive switch table mapping DAG patterns to MachineInstr opcodes.
 4. **Complex pattern matching.** For load/store addressing modes, calls `sub_30811D0` (77KB) and `sub_30783B0` (39KB), which match `base + offset`, `base + scaled_index`, and address-space-qualified patterns.
 5. **Fallback.** If no pattern matches, the node is marked as "failed ISel" and the driver may retry after DAG combining.
@@ -253,9 +253,9 @@ Atomic instruction selection generates `atom.{scope}.{op}.{type}` instructions. 
 | Operation | PTX mnemonic | MachineInstr opcode range (reconstructed) |
 |---|---|---|
 | Compare-and-swap | `atom.cas` | ~462 |
-| Add (int) | `atom.add` | 294--297 |
-| Min (signed) | `atom.min` | 302--305 |
-| Max (signed) | `atom.max` | 314--317 |
+| Add (int) | `atom.add` | 294–297 |
+| Min (signed) | `atom.min` | 302–305 |
+| Max (signed) | `atom.max` | 314–317 |
 | Exchange | `atom.exch` | (via generic path) |
 | AND/OR/XOR | `atom.and` / `atom.or` / `atom.xor` | (via generic path) |
 
@@ -327,7 +327,7 @@ Note that cicc does **not** use FastISel for GPU code generation. The `fast-isel
 - [NVPTXISD Opcodes](./nvptxisd-opcodes.md) — authoritative catalog of all 460 `NVPTXISD::*` target nodes recovered from the binary, grouped by family (texture/surface 372, load 18, store 17, call/frame 29, math 10, funnel-shift 4, brx 3, misc 7)
 - [Pattern Database / Constraint Table](../structs/pattern-db.md) — the per-instruction operand constraint table at `word_3F3E6C0`
 - [DAG Node Layout](../structs/dag-node.md) — SDNode structure definition
-- [NVPTX Machine Opcode Reference](../reference/nvptx-opcodes.md) — the MachineInstr opcodes that NVPTXISD nodes lower into, including the 505--573 call-ABI pseudo range
+- [NVPTX Machine Opcode Reference](../reference/nvptx-opcodes.md) — the MachineInstr opcodes that NVPTXISD nodes lower into, including the 505–573 call-ABI pseudo range
 - [NVPTX Target Infrastructure](../infra/nvptx-target.md) — target machine, subtarget features, and register classes
 - [Hash Infrastructure](../infra/hash-infrastructure.md) — the `key * 37` integer hash used throughout cicc
 - [Tensor / MMA Builtins](../builtins/tensor-mma.md) — intrinsic lowering for MMA operations that feed into ISel

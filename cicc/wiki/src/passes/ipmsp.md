@@ -2,7 +2,7 @@
 
 The IPMSP pass resolves generic (address space 0) pointer arguments to concrete NVIDIA address spaces by analyzing call sites across the entire module. When all callers of a function agree that a pointer argument points to a specific memory space (global, shared, local, constant), the pass either specializes the function in place or clones it with narrowed pointer types. This enables downstream passes to emit space-specific load/store instructions (e.g., `ld.shared` instead of generic `ld`) and eliminates `addrspacecast` overhead.
 
-Disabling this pass (`-disable-MemorySpaceOptPass`) causes 2--20x performance regressions on real workloads. The pass is automatically disabled in OptiX IR mode (`--emit-optix-ir` routes `-do-ip-msp=0`).
+Disabling this pass (`-disable-MemorySpaceOptPass`) causes 2–20x performance regressions on real workloads. The pass is automatically disabled in OptiX IR mode (`--emit-optix-ir` routes `-do-ip-msp=0`).
 
 | | |
 |---|---|
@@ -530,12 +530,12 @@ The 608-byte stack-allocated context for `sub_2CE8530` contains:
 
 | Offset range | Content |
 |---|---|
-| 0--23 | Result vector (pointer, size, capacity) |
-| 24--47 | Loads vector (indirect pointer sources) |
-| 48--71 | GEPs vector (getelementptr chains) |
-| 72--95 | Calls vector (call instructions returning pointers) |
-| 96--127 | Worklist for PHI traversal |
-| 128--607 | Visited bitset, callee tracking, metadata |
+| 0–23 | Result vector (pointer, size, capacity) |
+| 24–47 | Loads vector (indirect pointer sources) |
+| 48–71 | GEPs vector (getelementptr chains) |
+| 72–95 | Calls vector (call instructions returning pointers) |
+| 96–127 | Worklist for PHI traversal |
+| 128–607 | Visited bitset, callee tracking, metadata |
 
 ## Sentinel Values
 

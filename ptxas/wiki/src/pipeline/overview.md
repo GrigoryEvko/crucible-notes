@@ -69,34 +69,34 @@ Side paths:
 
 A concrete trace of a single-kernel PTX module compiled for sm_100 at `-O2`:
 
-**1. PTX text arrives** (~2--200 KB). Either read from a `.ptx` file or received in-memory via `--input-as-string` from nvcc. The driver `sub_446240` establishes a `setjmp` recovery point, parses CLI options into the 1,352-byte options block, and allocates the `"Top level ptxas memory pool"`.
+**1. PTX text arrives** (~2–200 KB). Either read from a `.ptx` file or received in-memory via `--input-as-string` from nvcc. The driver `sub_446240` establishes a `setjmp` recovery point, parses CLI options into the 1,352-byte options block, and allocates the `"Top level ptxas memory pool"`.
 
-**2. Lexer + Parser** (`sub_451730`). A Flex-generated scanner tokenizes the PTX text into a token stream. Tokens flow into a Bison-generated LALR parser that builds an AST. The opcode dispatch table (`sub_46E000`, 93 KB, 1,168 callees) routes each instruction mnemonic through ROT13 decoding, type resolution, and 30+ per-instruction semantic validators. For a 5 KB PTX kernel, the parser typically produces ~200--500 AST nodes with ~50 virtual register declarations. The `"PTX parsing state"` pool holds all AST memory.
+**2. Lexer + Parser** (`sub_451730`). A Flex-generated scanner tokenizes the PTX text into a token stream. Tokens flow into a Bison-generated LALR parser that builds an AST. The opcode dispatch table (`sub_46E000`, 93 KB, 1,168 callees) routes each instruction mnemonic through ROT13 decoding, type resolution, and 30+ per-instruction semantic validators. For a 5 KB PTX kernel, the parser typically produces ~200–500 AST nodes with ~50 virtual register declarations. The `"PTX parsing state"` pool holds all AST memory.
 
 **3. Directive processing and CompileUnitSetup.** `.version`/`.target` directives configure the SM profile via `sub_6765E0` (54 KB profile constructor). `.entry`/`.func` directives establish the kernel boundary. `.reg`/`.shared`/`.const` directives declare resources. `sub_43B660` computes the physical register budget from `.maxnreg`, `--maxrregcount`, and `.maxntid` constraints. The 1,936-byte profile object is now populated with codegen factory value (36864 for sm_100), scheduling parameters, and capability flags.
 
-**4. PTX-to-Ori lowering (DAGgen).** `sub_6273E0` (44 KB) converts each AST instruction into an Ori IR node: a basic block with virtual registers, control flow edges, and memory space annotations. Special registers (`%ntid`, `%laneid`, `%smid`) map to internal IDs. Address computation uses a 6-bit operand type encoding. A 500-instruction PTX kernel typically produces ~600--1,200 Ori instructions (expansion from pseudo-ops, address calculations, and predicate materialization). The `"Permanent OCG memory pool"` is created here to hold all IR state.
+**4. PTX-to-Ori lowering (DAGgen).** `sub_6273E0` (44 KB) converts each AST instruction into an Ori IR node: a basic block with virtual registers, control flow edges, and memory space annotations. Special registers (`%ntid`, `%laneid`, `%smid`) map to internal IDs. Address computation uses a 6-bit operand type encoding. A 500-instruction PTX kernel typically produces ~600–1,200 Ori instructions (expansion from pseudo-ops, address calculations, and predicate materialization). The `"Permanent OCG memory pool"` is created here to hold all IR state.
 
-**5. 159-phase OCG pipeline** (`sub_C62720` constructs, `sub_C64F70` executes). Each phase is a 16-byte polymorphic object with `execute()`, `isNoOp()`, and `getName()` vtable methods. The PhaseManager iterates the phase table at `0x22BEEA0`, skipping any phase whose `isNoOp()` returns true. At `-O2`, roughly 80--100 of the 159 phases are active. Typical expansion factors: the initial 1,000 Ori instructions may grow to 1,200--1,500 after unrolling and intrinsic expansion, then shrink to 800--1,000 after CSE/DCE, then re-expand to 1,500--2,500 after register allocation spill/fill insertion. The PhaseManager logs `"Before <phase>"` / `"After <phase>"` strings (visible in the `sub_C64F70` decompile) for DUMPIR.
+**5. 159-phase OCG pipeline** (`sub_C62720` constructs, `sub_C64F70` executes). Each phase is a 16-byte polymorphic object with `execute()`, `isNoOp()`, and `getName()` vtable methods. The PhaseManager iterates the phase table at `0x22BEEA0`, skipping any phase whose `isNoOp()` returns true. At `-O2`, roughly 80–100 of the 159 phases are active. Typical expansion factors: the initial 1,000 Ori instructions may grow to 1,200–1,500 after unrolling and intrinsic expansion, then shrink to 800–1,000 after CSE/DCE, then re-expand to 1,500–2,500 after register allocation spill/fill insertion. The PhaseManager logs `"Before <phase>"` / `"After <phase>"` strings (visible in the `sub_C64F70` decompile) for DUMPIR.
 
 **6. Register allocation** (phase 101, `sub_971A90`). The Fatpoint algorithm attempts NOSPILL allocation first. If pressure exceeds the register budget, the spill guidance engine (`sub_96D940`, 84 KB) computes spill candidates across 7 register classes, and the retry loop makes up to N attempts (knob 638/639) with progressively more aggressive spilling. Physical register assignments are committed; spill/fill instructions are inserted into the Ori IR.
 
-**7. Instruction scheduling** (phases 97, 106, 111). Three scheduling passes assign dependency barriers and reorder instructions for pipeline throughput. The scoreboard generator tracks 6 dependency barriers per warp. For a 1,500-instruction kernel, scheduling typically produces a ~2,000--3,000-entry instruction stream after barrier insertion and NOP padding.
+**7. Instruction scheduling** (phases 97, 106, 111). Three scheduling passes assign dependency barriers and reorder instructions for pipeline throughput. The scoreboard generator tracks 6 dependency barriers per warp. For a 1,500-instruction kernel, scheduling typically produces a ~2,000–3,000-entry instruction stream after barrier insertion and NOP padding.
 
-**8. SASS encoding** (phases 113--122). Each Ori instruction is lowered to a 128-bit SASS binary instruction via the 530-handler vtable dispatch. The 1,280-bit (160-byte) encoding workspace at `instruction+544` is filled by `sub_7B9B80` (bitfield insert, 18,347 callers). A 2,000-instruction kernel produces ~32 KB of raw SASS binary. On sm_100+, Capsule Mercury (capmerc) is the default format, embedding PTX source alongside the SASS.
+**8. SASS encoding** (phases 113–122). Each Ori instruction is lowered to a 128-bit SASS binary instruction via the 530-handler vtable dispatch. The 1,280-bit (160-byte) encoding workspace at `instruction+544` is filled by `sub_7B9B80` (bitfield insert, 18,347 callers). A 2,000-instruction kernel produces ~32 KB of raw SASS binary. On sm_100+, Capsule Mercury (capmerc) is the default format, embedding PTX source alongside the SASS.
 
-**9. ELF/cubin emission** (`sub_612DE0`, 47 KB decomp). The finalizer assembles the cubin: `.text.FUNCNAME` (SASS binary), `.nv.info.FUNCNAME` (EIATTR attributes), `.nv.shared.FUNCNAME` (shared memory layout), `.nv.constant0.FUNCNAME` (constant bank), plus global sections (`.shstrtab`, `.strtab`, `.symtab`). Section layout (`sub_1CABD60`, 11,856 B native / 66 KB decomp) assigns addresses; the master ELF emitter (`sub_1C9F280`, 15,263 B native / 97 KB decomp) writes headers, section tables, and program headers. A single-kernel cubin for a medium-complexity kernel is typically 40--120 KB.
+**9. ELF/cubin emission** (`sub_612DE0`, 47 KB decomp). The finalizer assembles the cubin: `.text.FUNCNAME` (SASS binary), `.nv.info.FUNCNAME` (EIATTR attributes), `.nv.shared.FUNCNAME` (shared memory layout), `.nv.constant0.FUNCNAME` (constant bank), plus global sections (`.shstrtab`, `.strtab`, `.symtab`). Section layout (`sub_1CABD60`, 11,856 B native / 66 KB decomp) assigns addresses; the master ELF emitter (`sub_1C9F280`, 15,263 B native / 97 KB decomp) writes headers, section tables, and program headers. A single-kernel cubin for a medium-complexity kernel is typically 40–120 KB.
 
 **Approximate data sizes at each stage (medium kernel, sm_100, -O2):**
 
 | Stage | Input | Output | Peak Memory |
 |---|---|---|---|
-| PTX text | — | 5--50 KB text | 100 KB (file buffer + parser state) |
-| AST | Token stream | 200--500 nodes (~40--100 KB) | 200 KB |
-| Ori IR (initial) | AST | 600--1,200 instructions (~100--250 KB) | 500 KB |
-| Ori IR (post-OCG) | 1,200 instr | 1,500--2,500 instr (~300--600 KB) | 2--8 MB (peak during regalloc) |
-| SASS binary | Scheduled IR | 32--128 KB | 1 MB |
-| Cubin (ELF) | SASS + metadata | 40--120 KB | 2 MB |
+| PTX text | — | 5–50 KB text | 100 KB (file buffer + parser state) |
+| AST | Token stream | 200–500 nodes (~40–100 KB) | 200 KB |
+| Ori IR (initial) | AST | 600–1,200 instructions (~100–250 KB) | 500 KB |
+| Ori IR (post-OCG) | 1,200 instr | 1,500–2,500 instr (~300–600 KB) | 2–8 MB (peak during regalloc) |
+| SASS binary | Scheduled IR | 32–128 KB | 1 MB |
+| Cubin (ELF) | SASS + metadata | 40–120 KB | 2 MB |
 
 ## Timed Phases
 
@@ -260,7 +260,7 @@ The allocator at `sub_424070` implements a dual-path design:
 
 ## Pipeline Stage Breakdown
 
-> **Terminology note.** The 6 stages below (Parse, CompileUnitSetup, DAGgen, OCG, ELF, DebugInfo) correspond to the 6 **timed phases** measured by `--compiler-stats`. They cover the entire program lifecycle. The OCG stage (Stage 4 here) is itself subdivided into 10 internal stages in the [Pass Inventory](../passes/index.md), numbered OCG-Stage 1--10. To avoid confusion, cross-references use "timed phase" for the 6 whole-program stages and "OCG stage" for the 10 optimizer sub-stages.
+> **Terminology note.** The 6 stages below (Parse, CompileUnitSetup, DAGgen, OCG, ELF, DebugInfo) correspond to the 6 **timed phases** measured by `--compiler-stats`. They cover the entire program lifecycle. The OCG stage (Stage 4 here) is itself subdivided into 10 internal stages in the [Pass Inventory](../passes/index.md), numbered OCG-Stage 1–10. To avoid confusion, cross-references use "timed phase" for the 6 whole-program stages and "OCG stage" for the 10 optimizer sub-stages.
 
 ### Stage 1: Parse (Parse-time)
 
@@ -330,7 +330,7 @@ sub_446240 (top-level driver)
 
 Parse errors in `sub_451730` (the Flex/Bison parser) invoke `sub_42FBA0` with the message `"syntax error"`:
 
-- **Severity 4--5 (non-fatal error):** The error is printed with file:line location, and the parser attempts to continue via Bison's error recovery rules. Multiple non-fatal parse errors can accumulate. After parsing completes, if the error count > 0, the compilation is aborted before entering the OCG pipeline.
+- **Severity 4–5 (non-fatal error):** The error is printed with file:line location, and the parser attempts to continue via Bison's error recovery rules. Multiple non-fatal parse errors can accumulate. After parsing completes, if the error count > 0, the compilation is aborted before entering the OCG pipeline.
 - **Severity 6 (fatal):** Triggers `longjmp` to the Level 1 handler immediately. The parser state pool is leaked (accepted trade-off since the process is about to exit).
 
 Bison error recovery operates through the `error` token in the grammar. When the parser encounters a token that matches no production, it discards tokens until it finds one that allows the `error` production to reduce, then resumes parsing. This provides reasonable error recovery for common mistakes (missing semicolons, misspelled opcodes) but can cascade badly for structural errors (mismatched braces, corrupt PTX).
@@ -339,7 +339,7 @@ Bison error recovery operates through the `error` token in the grammar. When the
 
 The phase executor `sub_C64F70` runs each phase by calling its vtable `execute()` method. There is no explicit per-phase error check — phases that detect internal errors call the diagnostic emitter `sub_42FBA0` directly. The error handling cascade:
 
-1. **Non-fatal phase error (severity 3--5):** The error is printed and the error flag is set in the TLS context. The PhaseManager continues executing subsequent phases. This allows multiple diagnostics to be collected in a single run.
+1. **Non-fatal phase error (severity 3–5):** The error is printed and the error flag is set in the TLS context. The PhaseManager continues executing subsequent phases. This allows multiple diagnostics to be collected in a single run.
 2. **Fatal phase error (severity 6):** Triggers `longjmp` to Level 2 or Level 3. The current kernel's compilation is aborted. The PhaseManager's loop is unwound non-locally — no cleanup of intermediate phase state occurs. Resources are reclaimed when the per-kernel memory pool is destroyed.
 3. **OOM during phase execution:** Any allocation failure calls `sub_42BDB0` (3,825 callers), which forwards to `sub_42F590` with a severity-6 descriptor at `unk_29FA530`. This always triggers `longjmp`.
 

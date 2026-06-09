@@ -1376,14 +1376,14 @@ The function reads the PTX opcode from `*(*(ptx_node+32)+8)` and dispatches thro
 | 124, 125 | **cvta / isspacep** | inline | Address space conversion; creates CVTA opcode 538/539 on SM > 0x1A |
 | 130 | instruction fusion | inline | Fuses instruction if operand count is not 3 or 4 |
 | 165 | (delegated) | `sub_65BF40` | — |
-| 175--178 | **texture addr_mode** | inline | Resolves `.addr_mode_0/1/2` attributes from texture descriptor |
+| 175–178 | **texture addr_mode** | inline | Resolves `.addr_mode_0/1/2` attributes from texture descriptor |
 | 179 | atomic address mode | inline | Classifies atomic op type, creates SEL + ATOM sequence |
 | 180 | (delegated) | `sub_65CE90` | — |
 | 181, 182 | (delegated) | `sub_64FF20` | — |
 | 183 | conditional atomic | inline | State space 0x20: rewrites to opcode 71 with mask 0xFF01010101 |
-| 184--190 | surface/texture lowering | inline | Handles SULD/SUST/SURED (opcodes 449-456); SM-dependent operand resolution |
+| 184–190 | surface/texture lowering | inline | Handles SULD/SUST/SURED (opcodes 449-456); SM-dependent operand resolution |
 | 197, 198 | call site lowering | inline | Same-module vs cross-module call dispatch |
-| 201--204, 208--211 | wide load/store | inline | `.v2`/`.v4` multi-element operations with IADD3 offset computation |
+| 201–204, 208–211 | wide load/store | inline | `.v2`/`.v4` multi-element operations with IADD3 offset computation |
 | 206, 207, 212, 213 | 3-op wide load/store | inline | 3-operand variants of wide memory operations |
 | 221, 222 | TMA operations | inline | Sets field 197 with value 365/366 |
 
@@ -1393,7 +1393,7 @@ ptxas handles four distinct addressing mode categories during instruction loweri
 
 #### 1. Texture Addressing Modes (per-dimension)
 
-Cases 175--178 resolve `.addr_mode_0`, `.addr_mode_1`, `.addr_mode_2` attributes from texture descriptors. These are the PTX `txq` query targets.
+Cases 175–178 resolve `.addr_mode_0`, `.addr_mode_1`, `.addr_mode_2` attributes from texture descriptors. These are the PTX `txq` query targets.
 
 The function walks the texture descriptor's attribute linked list at `*(descriptor+16)+24`, comparing each attribute name string:
 
@@ -1426,13 +1426,13 @@ Converts flat/generic pointers to specific memory space pointers. The address sp
 
 For generic space on older architectures (SM <= 0x1A with feature flag via `sub_61AF90`), a simpler single-instruction path is used. On newer architectures, a multi-instruction sequence extracts the space tag from the upper address bits.
 
-#### 3. Address Space Conversion (cases 124--125, cvta/isspacep)
+#### 3. Address Space Conversion (cases 124–125, cvta/isspacep)
 
 The `cvta` (Convert Address) and `isspacep` (Is Space Predicate) instructions convert between generic and specific address spaces. For global space (type 8) on SM > 0x1A, the handler creates CVTA with opcode 538 (isspacep) or 539 (cvta) and sets register class 7 with width 4 or 16 bytes.
 
 #### 4. Memory Addressing Modes (implicit)
 
-Memory addressing modes for load/store/atomic instructions are not enumerated as named constants. Instead, they emerge from the operand construction patterns in cases 19--23, 34--35, 81--84, 104, 201--213:
+Memory addressing modes for load/store/atomic instructions are not enumerated as named constants. Instead, they emerge from the operand construction patterns in cases 19–23, 34–35, 81–84, 104, 201–213:
 
 | Pattern | PTX syntax | Ori representation |
 |---|---|---|
@@ -1468,7 +1468,7 @@ Memory addressing modes for load/store/atomic instructions are not enumerated as
 | `sub_7DDCA0` | 0.2KB | `Observer::notify` | Walk observer chain and notify |
 | `sub_9253C0` | 0.5KB | `Instruction::remove` | Remove instruction from linked list (634 callers) |
 | `sub_925510` | 0.5KB | `Instruction::insertBefore` | Insert instruction before another (13 callers) |
-| `sub_917A60` | 6.8KB | `packRegClassField` | Bitfield packer keyed on field-ID 91--340; per-field LUT remap then OR into `desc[1]`/`desc[2]`. Not an opcode→regclass table — see `ir/registers.md` (221 callers) |
+| `sub_917A60` | 6.8KB | `packRegClassField` | Bitfield packer keyed on field-ID 91–340; per-field LUT remap then OR into `desc[1]`/`desc[2]`. Not an opcode→regclass table — see `ir/registers.md` (221 callers) |
 | `sub_91A0F0` | 5.6KB | `InstrInfo::resolveRegClass` | Resolve operand register class with constraints |
 | `sub_9314F0` | 0.4KB | `RegClass::query` | Register class query (1,547 callers) |
 | `sub_738E20` | 10KB | `InstrDescTable::init` | Base instruction descriptor table constructor |

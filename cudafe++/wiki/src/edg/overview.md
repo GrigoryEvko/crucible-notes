@@ -214,7 +214,7 @@ Three EDG source files contain direct calls into `nv_transforms.h` functions, ma
 
 **`cp_gen_be.c`** — The backend code generator. When it encounters a type named `__nv_lambda_preheader_injection` during source sequence walking, it calls `nv_emit_lambda_preamble` (`sub_6BCC20`) to inject the entire `__nv_*` template library. It also calls NVIDIA functions for host reference array emission, managed variable boilerplate, and device stub generation.
 
-**`class_decl.c`** — The class/struct declaration processor. The `scan_lambda` function (`sub_447930`, 2113 lines) detects `__host__`/`__device__` annotations on lambda expressions, validates CUDA-specific constraints (35+ error codes in range 3592--3690), and records capture counts in the bitmaps via `nv_record_capture_count`.
+**`class_decl.c`** — The class/struct declaration processor. The `scan_lambda` function (`sub_447930`, 2113 lines) detects `__host__`/`__device__` annotations on lambda expressions, validates CUDA-specific constraints (35+ error codes in range 3592–3690), and records capture counts in the bitmaps via `nv_record_capture_count`.
 
 **`statements.c`** — The statement parser. Calls NVIDIA transform functions for statement-level CUDA validation, such as checking that `__syncthreads()` is not called in divergent control flow within `__global__` functions.
 

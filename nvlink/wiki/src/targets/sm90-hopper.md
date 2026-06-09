@@ -36,7 +36,7 @@ For SM90, `sass` is the default. The mercury and capmerc modes are available but
 
 ### Profile Registration in sub_484F50
 
-The profile registration function `sub_484F50` (53,974 bytes) creates three profile objects per SM target via `sub_484DB0`. The SM90 registration at lines 512--602 of the decompiled source constructs:
+The profile registration function `sub_484F50` (53,974 bytes) creates three profile objects per SM target via `sub_484DB0`. The SM90 registration at lines 512–602 of the decompiled source constructs:
 
 ```c
 // Base sm_90 profile (line 512)
@@ -69,7 +69,7 @@ lto_90 = sub_484DB0(
 );
 ```
 
-The sm_90a variant (lines 555--602):
+The sm_90a variant (lines 555–602):
 
 ```c
 // Accelerated sm_90a profile
@@ -159,9 +159,9 @@ Evidence from the binary:
 
 1. **Profile byte[4]**: Set to 1 for sm_90a (decompiled line 592: `v64->m128i_i8[4] = 1`). Not set for sm_90 base. This byte propagates through the ELF output pipeline and marks the cubin as arch-locked.
 
-2. **Capability vector inheritance**: sm_90a copies capability vectors from sm_90 via `_mm_loadu_si128` (lines 595--599) rather than loading independent vectors from rodata. The suffix variant inherits the base's capabilities exactly.
+2. **Capability vector inheritance**: sm_90a copies capability vectors from sm_90 via `_mm_loadu_si128` (lines 595–599) rather than loading independent vectors from rodata. The suffix variant inherits the base's capabilities exactly.
 
-3. **Compatibility list linking**: Lines 600--603 cross-link sm_90a into sm_90's compatibility lists. The `a` variant is linked bidirectionally with the base, but only within the sm_90 family. It is never linked to sm_100 or later families.
+3. **Compatibility list linking**: Lines 600–603 cross-link sm_90a into sm_90's compatibility lists. The `a` variant is linked bidirectionally with the base, but only within the sm_90 family. It is never linked to sm_100 or later families.
 
 4. **__CUDA_ARCH__ identity**: Both sm_90 and sm_90a define `__CUDA_ARCH__=900`. The distinction is in LTO mode only: sm_90a uses `-D__CUDA_ARCH__=90a0` for LTO compilation, where the `a0` suffix triggers accelerated-mode code paths in the compiler.
 
@@ -280,9 +280,9 @@ SM90 uses the same register sentinel scheme as SM80+:
 
 | Field | Width | Valid Range | Sentinel | Internal Mapping |
 |---|---|---|---|---|
-| GPR (general purpose) | 8 bits | 0--254 | 255 | Maps to 1023 (= RZ, zero register) |
-| Predicate register | 5 bits | 0--6 | 7 | Maps to 31 (= PT, true predicate) |
-| Uniform register | 8 bits | 0--62 | 63 | Maps to URZ |
+| GPR (general purpose) | 8 bits | 0–254 | 255 | Maps to 1023 (= RZ, zero register) |
+| Predicate register | 5 bits | 0–6 | 7 | Maps to 31 (= PT, true predicate) |
+| Uniform register | 8 bits | 0–62 | 63 | Maps to URZ |
 
 The encoding helper `sub_A50D10(arch, value)` packs a register number into the destination field. `sub_A50CF0(arch, value)` encodes the bank select bit. `sub_A50CD0(arch, value)` encodes a flag bit (negate or absolute-value modifier). The sentinel value 1023 at operand offsets +36, +68, +100, or +132 in the operand array triggers substitution from the architecture context at `a1+8` / `a1+12`, which provides architecture-specific default register values.
 
@@ -343,7 +343,7 @@ Four bitfield extraction helpers are used by both functions, corresponding to di
 | 4, 5, 6, 7, 8 | Specific incompatibility type |
 | 10, 12 | Required conversion |
 
-The type values 1--5 correspond to GPR, predicate, uniform, special register, and constant bank reference (inferred from the dispatch logic and register file size constants at each branch). The `query_mode` parameter (`a3`) selects between two interpretation modes.
+The type values 1–5 correspond to GPR, predicate, uniform, special register, and constant bank reference (inferred from the dispatch logic and register file size constants at each branch). The `query_mode` parameter (`a3`) selects between two interpretation modes.
 
 ### Encoder Functions (0xA87CE0 — 0xB25D50)
 
@@ -359,10 +359,10 @@ Size distribution of encoders:
 
 | Line Count | Typical Instructions | Operand Count |
 |---|---|---|
-| 106--114 | Simple ALU, shifts, moves | 2--3 source operands |
-| 118--136 | FP operations with rounding | 3--4 operands + modifiers |
-| 143--170 | FMA, MAD, predicated ops | 5--7 operands |
-| 216--335 | DMMA, paired-register ops | 6+ operands + pairing logic |
+| 106–114 | Simple ALU, shifts, moves | 2–3 source operands |
+| 118–136 | FP operations with rounding | 3–4 operands + modifiers |
+| 143–170 | FMA, MAD, predicated ops | 5–7 operands |
+| 216–335 | DMMA, paired-register ops | 6+ operands + pairing logic |
 
 The encoder clusters are organized by instruction family:
 
@@ -419,7 +419,7 @@ Modifier decoder functions configure instruction modifiers:
 | `0xB3A000`--`0xB40000` | ~15 | DFMA / DSET / HMMA_Large (class 295, 297) |
 | `0xB40000`--`0xB4B000` | ~25 | SFU / TEX / TLD4 decoders |
 | `0xB4C000`--`0xB54000` | ~22 | Miscellaneous ALU decoders |
-| `0xB53000`--`0xB63000` | 3 | **WMMA monster decoders** (class 296, 2490--2842 lines each) |
+| `0xB53000`--`0xB63000` | 3 | **WMMA monster decoders** (class 296, 2490–2842 lines each) |
 | `0xB6B000`--`0xB7C000` | ~18 | Uniform register decoders (UIMAD, UFMA, UMOV) |
 
 ## Hopper Tensor Core Support (HMMA/WMMA)
@@ -428,7 +428,7 @@ The SM90 codec dedicates substantial code to tensor core instruction encoding an
 
 ### HMMA (Hopper Matrix Multiply-Accumulate)
 
-`sub_ACECF0` (128 lines) decodes the HMMA instruction (opcode class 35). It sets format bytes `*(_BYTE*)(a2+14) = 18` and `*(_BYTE*)(a2+15) = 19`, then calls MMA-specific modifier decoders (`sub_50F2B0`, `sub_50F2D0`, `sub_50C630`, `sub_50F570`, `sub_50F550`). The instruction has 6 register operands (operands 0--5), with operand class 10 indicating shared memory / matrix register type. Post-decode fixups set `operand[n].reg+1` for paired register allocation constraints. Opcodes 2038--2041 trigger variant-specific register dependency fixups.
+`sub_ACECF0` (128 lines) decodes the HMMA instruction (opcode class 35). It sets format bytes `*(_BYTE*)(a2+14) = 18` and `*(_BYTE*)(a2+15) = 19`, then calls MMA-specific modifier decoders (`sub_50F2B0`, `sub_50F2D0`, `sub_50C630`, `sub_50F570`, `sub_50F550`). The instruction has 6 register operands (operands 0–5), with operand class 10 indicating shared memory / matrix register type. Post-decode fixups set `operand[n].reg+1` for paired register allocation constraints. Opcodes 2038–2041 trigger variant-specific register dependency fixups.
 
 ### WMMA (Warp Matrix Multiply-Accumulate)
 
@@ -453,7 +453,7 @@ if (sub_A58D30() == X &&    // instruction variant
 }
 ```
 
-The five query functions retrieve the instruction variant, data type, precision mode, matrix layout, and accumulation mode respectively. When a combination matches, the stride field at operand offset +116 is set to 2, 3, or 4, constraining the register allocator to assign consecutive register pairs, triples, or quads. Referenced opcode variants include 2129--2134, 2532--2534, 2669, 2681--2683, and 2840--2841.
+The five query functions retrieve the instruction variant, data type, precision mode, matrix layout, and accumulation mode respectively. When a combination matches, the stride field at operand offset +116 is set to 2, 3, or 4, constraining the register allocator to assign consecutive register pairs, triples, or quads. Referenced opcode variants include 2129–2134, 2532–2534, 2669, 2681–2683, and 2840–2841.
 
 The combinatorial explosion in these decoders reflects the number of WMMA variants in the Hopper ISA: every combination of data type (FP16, BF16, TF32, FP64, INT8, INT4), matrix layout (row-major, column-major), precision (full, reduced), and accumulation mode generates a distinct register pairing constraint.
 
@@ -476,7 +476,7 @@ WGMMA operates on warpgroups (4 consecutive warps) rather than single warps, and
 | `wgmma.commit_group` | `sub_4DA4B0` | 311B |
 | `wgmma.wait_group` | `sub_4DA5E0` | 1066B |
 
-In cicc, four WGMMA builtins are registered (`sub_90AEE0`, lines 2941--2944):
+In cicc, four WGMMA builtins are registered (`sub_90AEE0`, lines 2941–2944):
 
 | Builtin | ID | Accumulator Type |
 |---|---|---|
@@ -493,7 +493,7 @@ The WGMMA pipeline optimizer in standalone ptxas spans ~100 KB across 15+ functi
 
 TMA provides hardware-accelerated bulk data movement between global and shared memory. In standalone ptxas, the `cp.async.bulk.tensor` codegen handler (`sub_5AB460`, 45 KB) is one of the largest single-instruction handlers, supporting 1D through 5D tensors in tile and im2col modes with unicast/multicast variants.
 
-In cicc, TMA is exposed through `cp.async.bulk.tensor` intrinsics spanning 16+ tile/im2col combinations from 1D to 5D (intrinsic opcodes 8324--8331, 9213--9226), plus unstructured bulk copies (`cp.async.bulk.global.to.shared.cluster`, opcode 8315). The CpAsyncBulkTensor G2S lowering at `sub_36EC510` (27 KB, 1185 lines) gates features by architecture: SM90 unlocks tile mode (1D--5D) and Im2Col mode (3D--5D); SM100+ adds 2CTA mode, Im2Col_W, and Im2Col_W128.
+In cicc, TMA is exposed through `cp.async.bulk.tensor` intrinsics spanning 16+ tile/im2col combinations from 1D to 5D (intrinsic opcodes 8324–8331, 9213–9226), plus unstructured bulk copies (`cp.async.bulk.global.to.shared.cluster`, opcode 8315). The CpAsyncBulkTensor G2S lowering at `sub_36EC510` (27 KB, 1185 lines) gates features by architecture: SM90 unlocks tile mode (1D–5D) and Im2Col mode (3D–5D); SM100+ adds 2CTA mode, Im2Col_W, and Im2Col_W128.
 
 In nvlink's Mercury backend, TMA operations map to `MERCURY_mbarrier_arrive` (124 templates) and fence instructions (`MERCURY_fence_mbarriers`, 32 templates) for the asynchronous synchronization protocol.
 
@@ -506,7 +506,7 @@ In nvlink, the `EIATTR_BLOCKS_ARE_CLUSTERS` attribute (code 91, `0x5B`) records 
 1. **PTX directives**: `.blocksareclusters`, `.explicitcluster`, `.reqnctapercluster X,Y,Z`, `.maxclusterrank N`
 2. **Special registers**: `%clusterid`, `%nclusterid`, `%cluster_ctaid`, `%cluster_nctaid`, `%cluster_ctarank`, `%cluster_nctarank`, `%is_explicit_cluster`, `%aggr_smem_size`
 3. **Distributed shared memory**: `.shared::cta` (CTA-local) vs `.shared::cluster` (cross-CTA within cluster)
-4. **Atomic cluster scope**: `atom.*.cluster` operations for intra-cluster synchronization (scope value 2 resolves to `"cluster"` on sm_90+, vs `"gpu"` on sm_70--89)
+4. **Atomic cluster scope**: `atom.*.cluster` operations for intra-cluster synchronization (scope value 2 resolves to `"cluster"` on sm_90+, vs `"gpu"` on sm_70–89)
 
 In cicc, all cluster functionality is gated at `arch_id >= 90` (`unk_4D045E8 > 89`). Three cluster-related kernel attributes are recognized: `__cluster_dims__`, `__launch_bounds__` 3rd parameter, and `__block_size__` with cluster dimension. On sm_89 and below, these emit warning diagnostics (3687, 3704, 3790).
 
@@ -531,10 +531,10 @@ Functions `sub_403941` and `sub_4038C0` implement the bitmap membership test on 
 
 | Opcode Class | Mnemonic | Decoders | Line Range |
 |---|---|---|---|
-| 211 | UIMAD | `sub_B6B0F0`, `sub_B6B9F0`, `sub_B6C310` | 229--248 |
-| 230 | UFMA | `sub_B6CC70`, `sub_B6EE10`, `sub_B71020`, `sub_B75640`--`sub_B77B60` | 324--389 |
-| 285 | UIADD | `sub_B6D790`, `sub_B6E2D0`, `sub_B6F960`, `sub_B704C0`, `sub_B71B70` | 324--331 |
-| 34 | UMOV | `sub_B726D0`, `sub_B732A0`, `sub_B73E70`, `sub_B74A50` | 320--326 |
+| 211 | UIMAD | `sub_B6B0F0`, `sub_B6B9F0`, `sub_B6C310` | 229–248 |
+| 230 | UFMA | `sub_B6CC70`, `sub_B6EE10`, `sub_B71020`, `sub_B75640`--`sub_B77B60` | 324–389 |
+| 285 | UIADD | `sub_B6D790`, `sub_B6E2D0`, `sub_B6F960`, `sub_B704C0`, `sub_B71B70` | 324–331 |
+| 34 | UMOV | `sub_B726D0`, `sub_B732A0`, `sub_B73E70`, `sub_B74A50` | 320–326 |
 
 ## Instruction Class Reference
 
@@ -595,9 +595,9 @@ The 1.9 MB region at `0x100C000`--`0x11EA000` contains the complete backend for 
 
 ### Instruction Encoder Templates (0x100C000 — 0x10FFFFF)
 
-Approximately 750 functions, each 4--8.5 KB, implement instruction encoding table initializers. Every function follows the same template:
+Approximately 750 functions, each 4–8.5 KB, implement instruction encoding table initializers. Every function follows the same template:
 
-1. `sub_4C28B0(a1, offset, fieldlen, value)` — set bitfield parameters (5--8 calls per function).
+1. `sub_4C28B0(a1, offset, fieldlen, value)` — set bitfield parameters (5–8 calls per function).
 2. SSE load from global constant table (`xmmword_1F46xxx`) — instruction signature.
 3. Copy loop: 3 parallel arrays (10 entries each) from read-only data into the instruction descriptor at `a1+24` through `a1+140`.
 4. `sub_4C60F0(a1, a2, slot, offset, type)` — configure control code slots.
@@ -608,10 +608,10 @@ Size clusters by instruction complexity:
 
 | Size Range | Instruction Type | Count |
 |---|---|---|
-| 4,700--6,200 bytes | Simple (moves, branches, simple math) | ~100 |
-| 7,400--7,700 bytes | Standard 3-source ALU | ~400 |
-| 7,800--8,100 bytes | ALU with extra modifiers (rounding, saturate) | ~150 |
-| 8,300--8,500 bytes | Complex (texture, surface, atomics) | ~100 |
+| 4,700–6,200 bytes | Simple (moves, branches, simple math) | ~100 |
+| 7,400–7,700 bytes | Standard 3-source ALU | ~400 |
+| 7,800–8,100 bytes | ALU with extra modifiers (rounding, saturate) | ~150 |
+| 8,300–8,500 bytes | Complex (texture, surface, atomics) | ~100 |
 
 The constant tables reside in `.rodata` at `0x1F460E0`--`0x1F47400`. Each table contains 10 source-register-class entries (40-byte stride), 10 destination-register-class entries, 10 control-code entries, and a 16-byte SSE header with the instruction signature.
 
@@ -744,7 +744,7 @@ sub_11D6890 (block scheduler)
 | `__CUDA_ARCH__=900` for both sm_90 and sm_90a | CONFIRMED | Decompiled `sub_484F50` lines 518, 561: both use `"-D__CUDA_ARCH__=900"` |
 | sm_90a LTO define is `"-D__CUDA_ARCH__=90a0"` | CONFIRMED | Decompiled line 583: `"-D__CUDA_ARCH__=90a0"` |
 | sm_90a byte[4] = 1 (suffix_a_flag) | CONFIRMED | Decompiled line 592: `v64->m128i_i8[4] = 1` |
-| sm_90a capability vectors copied from sm_90 | CONFIRMED | Decompiled lines 595--599: `_mm_loadu_si128(v56 + 5/6/7)` copies from sm_90 |
+| sm_90a capability vectors copied from sm_90 | CONFIRMED | Decompiled lines 595–599: `_mm_loadu_si128(v56 + 5/6/7)` copies from sm_90 |
 | sm_90 Vector 1 = `xmmword_1D40F40` (same as sm_80) | CONFIRMED | Decompiled line 550: `v63 = _mm_load_si128(&v212)` where v212 was set at line 328 to `xmmword_1D40F40` |
 | sm_89 Vector 1 = `xmmword_1D40F60` (different) | CONFIRMED | Decompiled line 499: sm_89 block loads `xmmword_1D40F60` |
 | FNLZR pre-link guard: sm > 89 | CONFIRMED | From `sub_4275C0`: `dword_2A5F314 > 0x59`; documented in mercury/fnlzr.md line 14 |
@@ -757,7 +757,7 @@ sub_11D6890 (block scheduler)
 | `sub_A709F0` field offset query (54 KB, 6,491 lines) | HIGH | Largest function in codec region; address consistent |
 | `sub_A7DE70` field presence query (50 KB, 6,240 lines) | HIGH | Companion to `sub_A709F0` |
 | 164 per-opcode encoders, 139 decoders | HIGH | Counts from systematic sweep of address ranges |
-| WMMA monster decoders at `0xB53000`--`0xB63000` (2,490--2,842 lines each) | HIGH | Three largest functions in codec; opcode class 296 |
+| WMMA monster decoders at `0xB53000`--`0xB63000` (2,490–2,842 lines each) | HIGH | Three largest functions in codec; opcode class 296 |
 | Register sentinels: 255=RZ, 7=PT, 63=URZ | HIGH | Consistent with SASS encoding convention across SM80+ |
 | 128-bit instruction words at `*(a1+40)` | HIGH | Decompiled codec functions use two 64-bit writes at consistent offsets |
 | Instruction class reference table (37 identified classes) | HIGH | Opcode IDs from decoder analysis; class numbers from `*(a2+12)` |

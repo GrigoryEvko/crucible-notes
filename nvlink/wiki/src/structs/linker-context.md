@@ -25,9 +25,9 @@ This page documents the internal layout of the 672-byte structure at reimplement
 
 ## Structure Layout (672 bytes)
 
-The structure combines three functional regions: an embedded ELF header template (bytes 0--101), configuration/buffer space (bytes 102--287), and the linker's mutable state (bytes 288--671). All offsets are from the base of the 672-byte allocation, expressed as byte offsets. Array element notations like `ctx[36]` refer to 8-byte QWORD indexing (`ctx + 36 * 8 = ctx + 288`).
+The structure combines three functional regions: an embedded ELF header template (bytes 0–101), configuration/buffer space (bytes 102–287), and the linker's mutable state (bytes 288–671). All offsets are from the base of the 672-byte allocation, expressed as byte offsets. Array element notations like `ctx[36]` refer to 8-byte QWORD indexing (`ctx + 36 * 8 = ctx + 288`).
 
-### Region 1: ELF Header Template (offsets 0--101)
+### Region 1: ELF Header Template (offsets 0–101)
 
 These fields are written directly into the output ELF during serialization.
 
@@ -54,7 +54,7 @@ Offset  Size  QWORD  Field                   Description
  83      1           has_shstrtab            Non-zero if shstrtab section index was stored
 ```
 
-### Region 2: Configuration Flags and Buffers (offsets 84--287)
+### Region 2: Configuration Flags and Buffers (offsets 84–287)
 
 Individual boolean flags are decomposed from `merge_flags` during construction. These single-byte flags govern behavior throughout the pipeline without requiring repeated bitmask checks.
 
@@ -114,7 +114,7 @@ Offset  Size  Field                Description
 228      8    reloc_tracking        Relocation processing state (zeroed during init)
 ```
 
-### Region 3: Linker Mutable State (offsets 288--671)
+### Region 3: Linker Mutable State (offsets 288–671)
 
 This is the core of the linker context. All section, symbol, and relocation data is accessed through these fields.
 
@@ -275,7 +275,7 @@ Writes `\x7fELF` magic, class byte, data encoding (LSB), version, OSABI (0x41 fo
 
 **Step 4 — Merge-flags decomposition**:
 
-Extracts the 17 individual boolean flags into bytes 84--100. Forces `is_relocatable = 1` if `a10` is set or if `merge_flags & 0x180000` is nonzero, setting `merge_flags |= 0x80000`.
+Extracts the 17 individual boolean flags into bytes 84–100. Forces `is_relocatable = 1` if `a10` is set or if `merge_flags & 0x180000` is nonzero, setting `merge_flags |= 0x80000`.
 
 **Step 5 — Architecture state initialization**:
 
@@ -291,7 +291,7 @@ Creates nine sorted arrays via `sub_465020` (six with 16-element initial capacit
 
 | Field | Offset | QWORD | Initial capacity | Contents |
 |---|---|---|---|---|
-| `sorted_array_0..5` | 520--560 | [65]--[70] | 16 | Section management (six arrays for different section categories) |
+| `sorted_array_0..5` | 520–560 | [65]--[70] | 16 | Section management (six arrays for different section categories) |
 | `pos_symbol_array` | 344 | [43] | 64 | Positive-index symbols |
 | `neg_symbol_array` | 352 | [44] | 64 | Negative-index symbols |
 | `section_array` | 360 | [45] | 64 | Section data records |
@@ -356,7 +356,7 @@ When no private arena exists, each sub-structure must be freed individually. The
 1. **Index mapping tables** (offsets 456, 464, 472): Free with `arena_free`
 2. **Hash tables** (offsets 288, 296): Walk entries via `sub_448C00` calling `sub_440080` (symbol record destructor), then destroy hash tables via `sub_448A40`
 3. **Reloc tracking pointers** (offsets 336, 328): Free via `arena_free`
-4. **Sorted arrays** at offsets 520--560: Free each via `sub_466E00` with destructor `sub_45CAD0`
+4. **Sorted arrays** at offsets 520–560: Free each via `sub_466E00` with destructor `sub_45CAD0`
 5. **Relocation lists** (offsets 376, 384, 392): Destroy via `sub_464550`
 6. **Positive symbols** (offset 344): Iterate all entries starting at index 0, free each record, then destroy the array via `sub_464B90`
 7. **Negative symbols** (offset 352): Iterate entries starting at index 1 (skipping sentinel), free each record, destroy array
@@ -436,7 +436,7 @@ During merge, the function:
 
 ### Phase 13: Relocation
 
-`sub_469D60` reads relocations from the relocation lists (offsets 376--392), resolves symbol addresses through the mapping tables (offsets 456--464), and applies relocation patches to section data. The `arch_vtable` at offset 488 provides architecture-specific relocation handlers.
+`sub_469D60` reads relocations from the relocation lists (offsets 376–392), resolves symbol addresses through the mapping tables (offsets 456–464), and applies relocation patches to section data. The `arch_vtable` at offset 488 provides architecture-specific relocation handlers.
 
 ### Phase 14: Finalization
 
@@ -444,7 +444,7 @@ During merge, the function:
 
 ### Phase 15: Serialization
 
-`sub_45BF00` reads the ELF header template (offsets 0--62), iterates all sections in `ctx->section_array`, and serializes the complete ELF to a byte buffer. The buffer is then written to disk via `sub_45C920` (file) or returned to a caller via `sub_45C950` (memory).
+`sub_45BF00` reads the ELF header template (offsets 0–62), iterates all sections in `ctx->section_array`, and serializes the complete ELF to a byte buffer. The buffer is then written to disk via `sub_45C920` (file) or returned to a caller via `sub_45C950` (memory).
 
 ### Phase 16: Destruction
 
@@ -478,13 +478,13 @@ The vtable is dispatched on SM version during creation:
 
 | SM range | Handler set | Notes |
 |---|---|---|
-| 30--39 | Kepler handlers | Legacy |
-| 50--59 | Maxwell handlers | — |
-| 60--69 | Pascal handlers | — |
-| 70--74 | Volta handlers | — |
-| 75--79 | Turing handlers | — |
-| 80--89 | Ampere/Ada handlers | — |
-| 90--99 | Hopper handlers | — |
+| 30–39 | Kepler handlers | Legacy |
+| 50–59 | Maxwell handlers | — |
+| 60–69 | Pascal handlers | — |
+| 70–74 | Volta handlers | — |
+| 75–79 | Turing handlers | — |
+| 80–89 | Ampere/Ada handlers | — |
+| 90–99 | Hopper handlers | — |
 | 100+ | Mercury (Blackwell+) handlers | New relocation types |
 
 The vtable is called through the context during relocation:
@@ -563,7 +563,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | ~~`cuinfo_buffer` at offset 140~~ (labeling error) | LOW | `sub_43E490(v17 + 140, 2000)` initializes a second ELF note header (type=2000). The 1000/2000 values are NVIDIA note TYPE identifiers, not capacities. Which of 108/140 is tkinfo vs cuinfo is ambiguous from the constructor alone |
 | Two 24-byte NVIDIA note headers at +108 and +140 | HIGH | `sub_43E490` sets namesz=12, descsz∈{8,24,0}, type=a2, and `strcpy` "NVIDIA Corp" at +12 of each |
 | `shstrtab_section_idx` at offset 62 | HIGH | `*((_WORD *)v17 + 31) = v53` on line 368 (word 31 = byte 62) |
-| Section indices at 200--210 (tkinfo/symtab/strtab/etc) | LOW | **DOCUMENTED ERROR in wiki body**: Page currently claims `tkinfo` at 200, `symtab_section_idx` at 202, `symtab_shndx` at 204, `strtab` at 206, `cuinfo` at 208, `cuinfo_note` at 210. Decompiled constructor proves otherwise: word 101 (byte 202) = strtab idx [line 427]; word 102 (byte 204) = symtab idx [line 494]; word 103 (byte 206) = symtab_shndx idx [line 522/573]; word 104 (byte 208) = cuinfo idx [line 538]; word 105 (byte 210) = tkinfo idx [line 531]. Byte 200 (word 100) is the api version cache `a7` [lines 177, 221], not a section index. Page body needs correction. |
+| Section indices at 200–210 (tkinfo/symtab/strtab/etc) | LOW | **DOCUMENTED ERROR in wiki body**: Page currently claims `tkinfo` at 200, `symtab_section_idx` at 202, `symtab_shndx` at 204, `strtab` at 206, `cuinfo` at 208, `cuinfo_note` at 210. Decompiled constructor proves otherwise: word 101 (byte 202) = strtab idx [line 427]; word 102 (byte 204) = symtab idx [line 494]; word 103 (byte 206) = symtab_shndx idx [line 522/573]; word 104 (byte 208) = cuinfo idx [line 538]; word 105 (byte 210) = tkinfo idx [line 531]. Byte 200 (word 100) is the api version cache `a7` [lines 177, 221], not a section index. Page body needs correction. |
 | `strtab_section_idx` at offset 202 (word 101) | HIGH | `*((_WORD *)v17 + 101) = v58` on line 427 after `.strtab` creation |
 | `symtab_section_idx` at offset 204 (word 102) | HIGH | `*((_WORD *)v17 + 102) = v63` on line 494 after `.symtab` creation; also read in `sub_441AC0` as link field |
 | `symtab_shndx_idx` at offset 206 (word 103) | HIGH | `*((_WORD *)v17 + 103) = v68/v78` on lines 522/573 after `.symtab_shndx` creation |
@@ -592,7 +592,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `arch_vtable` at offset 488 | HIGH | Constructor line 189: `v17[61] = sub_459640(v25)` or line 229: `v17[61] = sub_45AC50(v25)`; destructor `sub_45B680(a1 + 61)` on line 130 |
 | `entry_hash` at offset 496 | HIGH | Constructor lines 588-589: `v71 = sub_4489C0(sub_44E000, sub_44E180, 32); v17[62] = v71`; destructor `sub_448A40(a1[62])` on line 126; `sub_443500` reads `a1 + 496` for syscall lookup |
 | Input file records at offset 512 (qword 64) | HIGH | `v17[64] = sub_464AE0(8)` on line 297; `v44 = sub_4307C0(..., 16)`; `*v44 = "<input>"` on line 307; `*((_DWORD *)v44 + 2) = v24` sm_minor on line 308 |
-| Six sorted arrays at offsets 520--560 (qwords 65--70) | HIGH | `v17[65..70] = sub_465020(sub_44E000, sub_44E180, 16)` six times on lines 266-271 |
+| Six sorted arrays at offsets 520–560 (qwords 65–70) | HIGH | `v17[65..70] = sub_465020(sub_44E000, sub_44E180, 16)` six times on lines 266-271 |
 | `reloc_type_hash` at offset 576 (qword 72) | HIGH | `v17[72] = sub_4489C0(sub_44E120, sub_44E130, 8)` on line 596; destructor `sub_448A40(a1[72])` on line 127 |
 | `merged_symbol_array` at offset 592 (qword 74) | HIGH | `sub_443260` line 78: `sub_464DB0(*(_QWORD *)(a1 + 592), v24)`; destructor `v13 = a1[74]; if (v13) sub_464B90(v13)` on line 84-86; also read in `sub_443500` line 79 |
 | `extended_symbol_store` at offset 600 (qword 75) | HIGH | `sub_443260` line 37: `v23 = *(_QWORD *)(a1 + 600)`; destructor `v14 = a1[75]; if (v14) sub_464B90(v14)` on line 87-89 |
@@ -600,7 +600,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `private_arena_handle` at offset 616 (qword 77) | HIGH | Constructor `v17[77] = v118` on line 257; destructor `sub_45CAE0(a1[77], a2)` on line 31 |
 | ~~`option_parser_result` at offset 624~~ (labeling error) | LOW | `*((_DWORD *)v17 + 156) = sub_42F8B0()` on line 597 (dword 156 = byte 624). But `sub_42F8B0` is a 1-line function that returns the **literal constant 5** — not an option parser result. Correct label is "arch class = 5" (matches elf-writer.md wiki). The value is set once to 5 and never changed. |
 | `end_marker` at offset 664 (qword 83) | HIGH | `v17[83] = 0` on line 134 (early clear before memset) |
-| Boolean flag CLI names (offsets 84--100) | MEDIUM | Bit extractions and offsets verified against constructor lines 237-260. Semantic CLI names (e.g., `--reserve-null`, `--disable-smem-reservation`) cannot be confirmed from `sub_4438F0` alone and require tracing through the option parser |
+| Boolean flag CLI names (offsets 84–100) | MEDIUM | Bit extractions and offsets verified against constructor lines 237-260. Semantic CLI names (e.g., `--reserve-null`, `--disable-smem-reservation`) cannot be confirmed from `sub_4438F0` alone and require tracing through the option parser |
 | `symbol_name_hash` uses 512 buckets | HIGH | Constructor line 261: third param to `sub_4489C0` is 512 |
 | `section_name_hash` uses 512 buckets | HIGH | Constructor line 262: third param to `sub_4489C0` is 512 |
 | `entry_hash` uses 32 buckets | HIGH | Constructor line 588: third param to `sub_4489C0` is 32 |

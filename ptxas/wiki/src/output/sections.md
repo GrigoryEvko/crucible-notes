@@ -104,7 +104,7 @@ The `.nv.info.<func>` section uses `SHF_LINK_ORDER` (flag `0x40`) to declare its
 
 ### Constant Banks
 
-CUDA supports up to 18 numbered constant banks (0--17) plus named constant sections:
+CUDA supports up to 18 numbered constant banks (0–17) plus named constant sections:
 
 | Section | Purpose |
 |---|---|
@@ -487,7 +487,7 @@ The builder's first pass uses a switch with cases `0x04`, `0x0D`, `0x0F`, `0x11`
 
 ### Symbol Index Resolution Pass
 
-Before the main builder runs, the EIATTR builder performs a symbol index resolution pass (lines 700--884 in the decompiled builder). This pass walks all pre-existing EIATTR records and resolves symbol indices through the linker's mapping tables:
+Before the main builder runs, the EIATTR builder performs a symbol index resolution pass (lines 700–884 in the decompiled builder). This pass walks all pre-existing EIATTR records and resolves symbol indices through the linker's mapping tables:
 
 ```c
 // Simplified from sub_1CC9800 lines ~716-824
@@ -550,7 +550,7 @@ The propagator emits `EIATTR_REGCOUNT` (0x2F) records via `sub_1CC85F0(_, 0x2F, 
 | `0x23` | MAX_STACK_SIZE | Maximum call stack (recursive) |
 | `0x1E` | CRS_STACK_SIZE | Call-Return-Sync stack |
 | `0x3B` | SAM_REGION_STACK_SIZE | SAM (Streaming Async Memory) region stack |
-| `0x4C` | NUM_BARRIERS | Named barrier count (0--16) |
+| `0x4C` | NUM_BARRIERS | Named barrier count (0–16) |
 | `0x38` | NUM_MBARRIERS | Memory barrier (mbarrier) object count |
 | `0x1B` | MAXREG_COUNT | Register count hint (`--maxrregcount` / `.maxnreg`) |
 
@@ -669,7 +669,7 @@ Offset  Size  Field
 0x02    1     value
 ```
 
-The `sub_1CC93A0` handler processes these with a switch over compat codes 2--6:
+The `sub_1CC93A0` handler processes these with a switch over compat codes 2–6:
 
 | Code | Behavior |
 |---|---|
@@ -798,7 +798,7 @@ Each shared object's final offset is `group_offset[its_color]`. The total extern
 | Address | Size | Purpose |
 |---|---|---|
 | `sub_1CA6890` | 454 lines | Constant value deduplication (32/64-bit hash, N-byte memcmp) |
-| `sub_1CA6760` | 57 lines | N-byte value dedup helper (12--64 byte constants) |
+| `sub_1CA6760` | 57 lines | N-byte value dedup helper (12–64 byte constants) |
 | `sub_1CA6650` | 65 lines | Constant data node appender (40-byte node, alignment + append) |
 | `sub_1CA92F0` | 585 lines | Shared memory interference graph + greedy coloring |
 | `sub_1CA91A0` | — | Per-entry shared section creator (`.nv.shared.<func>`) |

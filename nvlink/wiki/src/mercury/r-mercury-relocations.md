@@ -9,7 +9,7 @@ Mercury relocations are structurally simpler than their R_CUDA counterparts. Whe
 | Property | Value |
 |---|---|
 | Machine type | `EM_CUDA` (190) with ELF class byte `0x41` (`'A'`) |
-| Total unique type names | 65 (indices 0--64) |
+| Total unique type names | 65 (indices 0–64) |
 | ELF type encoding | Table index + `0x10000` |
 | Mercury name table | `off_1D371E0` (65 entries, pointers at string addresses `0x1D35A17`--`0x1D35F4C`) |
 | Mercury descriptor table | `off_1D3CBE0` (65 entries, 64 bytes each = 4,160 bytes) |
@@ -28,7 +28,7 @@ Mercury relocations are structurally simpler than their R_CUDA counterparts. Whe
 
 ## ELF Type Encoding and Dispatch
 
-When the linker loads a relocation entry from a capmerc ELF file, the `r_info` type field contains the Mercury type index plus `0x10000`. The dispatch logic in the relocation phase function (`sub_469D60`) detects this offset and routes to the Mercury descriptor table. The code from the decompiled `sub_469D60` at lines 188--215 shows the exact branching:
+When the linker loads a relocation entry from a capmerc ELF file, the `r_info` type field contains the Mercury type index plus `0x10000`. The dispatch logic in the relocation phase function (`sub_469D60`) detects this offset and routes to the Mercury descriptor table. The code from the decompiled `sub_469D60` at lines 188–215 shows the exact branching:
 
 ```c
 // sub_469D60 at 0x469D60 -- relocation phase dispatcher
@@ -159,7 +159,7 @@ PC-relative relocations compute `(S + A) - PC`, where `PC` is the address of the
 
 The 64-bit variant (`PROG_REL64`) supports the full address space. The 32-bit variant limits branch distances to +/- 2 GB, sufficient for all practical kernel sizes. The `_LO`/`_HI` split variants handle cases where the PC-relative offset must be encoded in two separate instruction fields.
 
-In the application engine, PC-relative relocations use action type `0x10` (pc_rel), which computes `(int32_t)(S + A) - section_offset`. The relocation phase function (`sub_469D60`) validates at line 409--410 that PC-relative branch targets reside in the same section:
+In the application engine, PC-relative relocations use action type `0x10` (pc_rel), which computes `(int32_t)(S + A) - section_offset`. The relocation phase function (`sub_469D60`) validates at line 409–410 that PC-relative branch targets reside in the same section:
 
 ```c
 if (descriptor[5] == 16 && rela_entry.section_idx != target_section_idx)
@@ -256,7 +256,7 @@ Direct equivalents of `R_CUDA_FUNC_DESC_8_0` through `R_CUDA_FUNC_DESC_8_56`.
 
 These are hybrid relocations that combine absolute and PC-relative semantics. The computation is `|S + A - PC|` or a variant that uses the absolute value of the PC-relative offset, used in instruction encodings that require an unsigned distance rather than a signed offset.
 
-The `_LO`/`_HI` split variants (indices 40--41) appear earlier in the table than the full-width variants (indices 60--61), suggesting they were added in an earlier revision and the full-width types were appended later.
+The `_LO`/`_HI` split variants (indices 40–41) appear earlier in the table than the full-width variants (indices 60–61), suggesting they were added in an earlier revision and the full-width types were appended later.
 
 No direct R_CUDA equivalent exists for these types. They appear to be Mercury-specific additions for the 128-bit instruction format's distance-based addressing modes.
 
@@ -296,7 +296,7 @@ No direct R_CUDA equivalent exists. These are Mercury-specific additions for use
 
 Unified table relocations handle references to the Unified Descriptor Table (UDT) and Unified Function Table (UFT). These tables are used for CUDA Dynamic Parallelism and indirect function calls.
 
-`R_MERCURY_UNIFIED` (index 50) is a generic marker type, not a data-patching relocation. During the relocation phase, unified relocations targeting synthetic symbols (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) are resolved to type 0 (no-op) because the unified table manager computes final offsets before the relocation engine runs. The code in `sub_469D60` lines 377--395 explicitly checks for the `__UFT_OFFSET` symbol by string comparison and emits a debug trace when matched:
+`R_MERCURY_UNIFIED` (index 50) is a generic marker type, not a data-patching relocation. During the relocation phase, unified relocations targeting synthetic symbols (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) are resolved to type 0 (no-op) because the unified table manager computes final offsets before the relocation engine runs. The code in `sub_469D60` lines 377–395 explicitly checks for the `__UFT_OFFSET` symbol by string comparison and emits a debug trace when matched:
 
 ```c
 // Check if symbol name is "__UFT_OFFSET" (13-byte comparison)
@@ -308,7 +308,7 @@ if (strncmp(symbol_name, "__UFT_OFFSET", 13) == 0) {
 }
 ```
 
-The `UNIFIED32_LO` and `UNIFIED32_HI` types (indices 62--63) appear after the `ABS_PROG_REL` types in the table rather than adjacent to the other unified types (50--59). This suggests they were added in a later revision.
+The `UNIFIED32_LO` and `UNIFIED32_HI` types (indices 62–63) appear after the `ABS_PROG_REL` types in the table rather than adjacent to the other unified types (50–59). This suggests they were added in a later revision.
 
 Two additional trailing-space variants (`"R_MERCURY_UNIFIED_8_0 "` and `"R_MERCURY_UNIFIED_8_8 "`) appear at separate string addresses (`0x1D3CB71` and `0x1D3CB88`) in the Mercury descriptor table region. These are duplicate name strings used by the descriptor table entries themselves, distinct from the primary name table entries (which lack the trailing space). The trailing space is a formatting artifact in the binary's `.rodata`, not a distinct relocation type.
 
@@ -486,7 +486,7 @@ The relocation phase (`sub_469D60`) contains Mercury-specific dead-code and YIEL
    rela_entry.type = 0;   // convert to R_MERCURY_NONE
    ```
 
-2. **YIELD instruction conversion**: Relocation types 68--69 (`0x10044`--`0x10045`, which map to R_CUDA YIELD types when using Mercury indexing) trigger special handling. When the forward-progress requirement flag (`context + 94`) is set, the linker ignores the YIELD-to-NOP conversion relocation:
+2. **YIELD instruction conversion**: Relocation types 68–69 (`0x10044`--`0x10045`, which map to R_CUDA YIELD types when using Mercury indexing) trigger special handling. When the forward-progress requirement flag (`context + 94`) is set, the linker ignores the YIELD-to-NOP conversion relocation:
    ```c
    fwrite("Ignoring the reloc to convert YIELD to NOP due to forward progress requirement.\n",
           1, 0x50, stderr);
@@ -548,15 +548,15 @@ The following table maps each R_MERCURY type to its closest R_CUDA equivalent. M
 | `R_MERCURY_SURF_HEADER_INDEX` | 13 | `R_CUDA_SURF_HEADER_INDEX` | Identical semantics |
 | `R_MERCURY_UNUSED_CLEAR64` | 14 | `R_CUDA_UNUSED_CLEAR64` | Identical semantics |
 | `R_MERCURY_FUNC_DESC_64` | 15 | `R_CUDA_FUNC_DESC_64` | Identical semantics |
-| `R_MERCURY_8_*` | 16--23 | `R_CUDA_8_*` | Identical semantics |
-| `R_MERCURY_G8_*` | 24--31 | `R_CUDA_G8_*` | Identical semantics |
-| `R_MERCURY_FUNC_DESC_8_*` | 32--39 | `R_CUDA_FUNC_DESC_8_*` | Identical semantics |
+| `R_MERCURY_8_*` | 16–23 | `R_CUDA_8_*` | Identical semantics |
+| `R_MERCURY_G8_*` | 24–31 | `R_CUDA_G8_*` | Identical semantics |
+| `R_MERCURY_FUNC_DESC_8_*` | 32–39 | `R_CUDA_FUNC_DESC_8_*` | Identical semantics |
 | `R_MERCURY_ABS_PROG_REL32_LO` | 40 | — | Mercury-specific |
 | `R_MERCURY_ABS_PROG_REL32_HI` | 41 | — | Mercury-specific |
-| `R_MERCURY_PROG_REL8_*` | 42--49 | — | Mercury-specific (no CUDA byte-level PC-rel) |
+| `R_MERCURY_PROG_REL8_*` | 42–49 | — | Mercury-specific (no CUDA byte-level PC-rel) |
 | `R_MERCURY_UNIFIED` | 50 | `R_CUDA_UNIFIED` | Identical semantics |
 | `R_MERCURY_UNIFIED_32` | 51 | `R_CUDA_UNIFIED_32` | Identical semantics |
-| `R_MERCURY_UNIFIED_8_*` | 52--59 | `R_CUDA_UNIFIED_8_*` | Identical semantics |
+| `R_MERCURY_UNIFIED_8_*` | 52–59 | `R_CUDA_UNIFIED_8_*` | Identical semantics |
 | `R_MERCURY_ABS_PROG_REL32` | 60 | — | Mercury-specific |
 | `R_MERCURY_ABS_PROG_REL64` | 61 | — | Mercury-specific |
 | `R_MERCURY_UNIFIED32_LO` | 62 | `R_CUDA_UNIFIED32_LO_32` | CUDA includes bit-position |
@@ -622,9 +622,9 @@ Based on the type semantics and their positions in the table, the following relo
 
 | Relocation | Typical Use | Frequency |
 |---|---|---|
-| `R_MERCURY_8_0` through `8_56` (16--23) | Patching individual bytes in constant bank initializers | High — one per byte of initialized pointer |
-| `R_MERCURY_G8_0` through `G8_56` (24--31) | Global address bytes in descriptor tables | Medium |
-| `R_MERCURY_FUNC_DESC_8_0` through `8_56` (32--39) | Function pointer bytes in vtable-like structures | Low |
+| `R_MERCURY_8_0` through `8_56` (16–23) | Patching individual bytes in constant bank initializers | High — one per byte of initialized pointer |
+| `R_MERCURY_G8_0` through `G8_56` (24–31) | Global address bytes in descriptor tables | Medium |
+| `R_MERCURY_FUNC_DESC_8_0` through `8_56` (32–39) | Function pointer bytes in vtable-like structures | Low |
 | `R_MERCURY_ABS64` (2) | Full 64-bit address in data section | Medium |
 | `R_MERCURY_UNUSED_CLEAR64` (14) | Zeroing unused descriptor entries after merge | Medium |
 
@@ -632,7 +632,7 @@ Based on the type semantics and their positions in the table, the following relo
 
 | Relocation | Typical Use | Frequency |
 |---|---|---|
-| `R_MERCURY_UNIFIED_8_0` through `8_56` (52--59) | UFT/UDT table entries for dynamic parallelism | Low — only with CDP |
+| `R_MERCURY_UNIFIED_8_0` through `8_56` (52–59) | UFT/UDT table entries for dynamic parallelism | Low — only with CDP |
 | `R_MERCURY_UNIFIED_32` (51) | 32-bit UFT/UDT offset | Low |
 | `R_MERCURY_UNIFIED` (50) | Marker resolved to NONE before application | Low |
 
@@ -683,7 +683,7 @@ Each relocation uses a masked_shift action:
 
 Mercury attribute relocations use the same `0x10000` offset mechanism within the attribute relocation table at `off_1D371E0`. When the relocation engine encounters a type >= `0x10000` in an attribute section (`.nv.info.*`), it subtracts `0x10000` and indexes into this table.
 
-The attribute table has 65 entries (indices 0--64), validated with the limit check `type_index >= 0x41` in `sub_42F6C0`. The validation function at `sub_42F760` handles attribute-specific compatibility with a three-way dispatch:
+The attribute table has 65 entries (indices 0–64), validated with the limit check `type_index >= 0x41` in `sub_42F6C0`. The validation function at `sub_42F760` handles attribute-specific compatibility with a three-way dispatch:
 
 ```c
 // sub_42F760 at 0x42F760 -- attribute validation
@@ -722,18 +722,18 @@ These attributes are not relocation types but are processed alongside relocation
 |---|---|---|---|---|
 | Sentinel | 0, 64 | 2 | — | `0x00` (end) |
 | Global data | 1 | 1 | `S + A` | `0x01` (abs_full) |
-| Absolute data | 2--6 | 5 | `S + A` (full/lo/hi) | `0x01`, `0x06`, `0x07` |
-| PC-relative | 7--10 | 4 | `(S + A) - PC` (full/lo/hi) | `0x10` (pc_rel), `0x37`, `0x38` |
-| Texture/sampler/surface | 11--13 | 3 | Header index lookup | `0x01` with index computation |
+| Absolute data | 2–6 | 5 | `S + A` (full/lo/hi) | `0x01`, `0x06`, `0x07` |
+| PC-relative | 7–10 | 4 | `(S + A) - PC` (full/lo/hi) | `0x10` (pc_rel), `0x37`, `0x38` |
+| Texture/sampler/surface | 11–13 | 3 | Header index lookup | `0x01` with index computation |
 | Clear | 14 | 1 | Write zeros | `0x13`/`0x14` (clear) |
 | Function descriptor | 15 | 1 | `S + A` | `0x01` (abs_full) |
-| Byte-level | 16--23 | 8 | `byte_n(S + A)` | `0x16`--`0x1D` (masked_shift) |
-| Global byte-level | 24--31 | 8 | `byte_n(S + A)` | `0x16`--`0x1D` (masked_shift) |
-| Func desc byte-level | 32--39 | 8 | `byte_n(S + A)` | `0x16`--`0x1D` (masked_shift) |
-| Abs PC-relative (split) | 40--41 | 2 | `\|S + A - PC\|` lo/hi | `0x37`, `0x38` |
-| PC-relative byte-level | 42--49 | 8 | `byte_n((S + A) - PC)` | `0x2F`--`0x36` (masked_shift) |
-| Unified table | 50--59, 62--63 | 12 | `S + A` (full/lo/hi/byte) | `0x12`, `0x2E`, `0x06`, `0x07` |
-| Abs PC-relative (full) | 60--61 | 2 | `\|S + A - PC\|` (32/64) | `0x01` with abs computation |
+| Byte-level | 16–23 | 8 | `byte_n(S + A)` | `0x16`--`0x1D` (masked_shift) |
+| Global byte-level | 24–31 | 8 | `byte_n(S + A)` | `0x16`--`0x1D` (masked_shift) |
+| Func desc byte-level | 32–39 | 8 | `byte_n(S + A)` | `0x16`--`0x1D` (masked_shift) |
+| Abs PC-relative (split) | 40–41 | 2 | `\|S + A - PC\|` lo/hi | `0x37`, `0x38` |
+| PC-relative byte-level | 42–49 | 8 | `byte_n((S + A) - PC)` | `0x2F`--`0x36` (masked_shift) |
+| Unified table | 50–59, 62–63 | 12 | `S + A` (full/lo/hi/byte) | `0x12`, `0x2E`, `0x06`, `0x07` |
+| Abs PC-relative (full) | 60–61 | 2 | `\|S + A - PC\|` (32/64) | `0x01` with abs computation |
 | **Total** | — | **65** | — | — |
 
 ## Function Addresses
@@ -757,31 +757,31 @@ These attributes are not relocation types but are processed alongside relocation
 
 | Claim | Rating | Evidence |
 |---|---|---|
-| 65 unique R_MERCURY type names (indices 0--64) | **HIGH** | 71 R_MERCURY strings in `nvlink_strings.json` (65 unique names + 2 trailing-space duplicates + 4 EIATTR/EICOMPAT attributes). Exact count verified by string scan. |
+| 65 unique R_MERCURY type names (indices 0–64) | **HIGH** | 71 R_MERCURY strings in `nvlink_strings.json` (65 unique names + 2 trailing-space duplicates + 4 EIATTR/EICOMPAT attributes). Exact count verified by string scan. |
 | Name table at `off_1D371E0` (65 entries, addr range `0x1D35A17`--`0x1D35F4C`) | **HIGH** | All 65 type name strings verified at addresses within stated range. Xref from `R_MERCURY_NONE` at `0x1D35A17` confirms `0x1D371E0` is a pointer into this table. |
 | Descriptor table at `off_1D3CBE0` (65 entries, 64 bytes each = 4,160 bytes) | **HIGH** | Table address `off_1D3CBE0` verified from decompiled `sub_469D60` (line 202: `v152 = &off_1D3CBE0`) and `sub_469B50` (line 76: `v35 = &off_1D3CBE0`). 64-byte entry size confirmed from `type_index << 6` indexing in `sub_468760`. |
-| ELF type encoding: table index + `0x10000` | **HIGH** | Verified from decompiled `sub_469D60` at lines 197--203: `v148 = v9 - 0x10000` with guard `v8 <= 0x10000` producing `fatal("unexpected reloc")`. |
+| ELF type encoding: table index + `0x10000` | **HIGH** | Verified from decompiled `sub_469D60` at lines 197–203: `v148 = v9 - 0x10000` with guard `v8 <= 0x10000` producing `fatal("unexpected reloc")`. |
 | ELF class byte `0x41` ('A') distinguishes Mercury from CUDA | **HIGH** | Verified from decompiled `sub_469D60` (line 190: `*(_BYTE *)(v2 + 7) != 65`), `sub_469B50` (line 40: `*(_BYTE *)(a1 + 7) == 65`), and `sub_4275C0` (line 40: `*(_BYTE *)(v14 + 7) != 65`). |
 | Application engine `sub_468760` shared with R_CUDA | **HIGH** | Decompiled file `sub_468760_0x468760.c` (14,322 bytes). Called from `sub_469D60` line 414 with both `off_1D3CBE0` (Mercury) and `off_1D3DBE0` (CUDA) tables. |
-| Relocation phase dispatcher `sub_469D60` performs table selection | **HIGH** | Decompiled code explicitly shows Mercury path (lines 196--208) selecting `off_1D3CBE0` and subtracting `0x10000`, vs CUDA path (lines 212--214) selecting `off_1D3DBE0`. |
-| Record builder `sub_469B50` validates and creates reloc entries | **HIGH** | Decompiled code at lines 40--76 shows ELF class check, `sub_42F6C0` call, Mercury index normalization (`v9 - 0x10000`), and descriptor table action-type inspection. |
+| Relocation phase dispatcher `sub_469D60` performs table selection | **HIGH** | Decompiled code explicitly shows Mercury path (lines 196–208) selecting `off_1D3CBE0` and subtracting `0x10000`, vs CUDA path (lines 212–214) selecting `off_1D3DBE0`. |
+| Record builder `sub_469B50` validates and creates reloc entries | **HIGH** | Decompiled code at lines 40–76 shows ELF class check, `sub_42F6C0` call, Mercury index normalization (`v9 - 0x10000`), and descriptor table action-type inspection. |
 | Descriptor format: 12-byte header + 3x 16-byte actions + 4-byte sentinel | **HIGH** | 64-byte entry size verified from `<< 6` shift in `sub_468760`. Action pointer starts at `+12` (line 130: `v15 = (v12 + 12)`) and sentinel at `+60` (line 132: `v100 = (v12 + 60)`). Three action slots of 4 x uint32 = 16 bytes each confirmed by `v15 += 4` increment per action. |
-| Action type dispatch (0x00, 0x01, 0x06, 0x07, 0x10, 0x13, 0x16--0x1D, etc.) | **HIGH** | All action type codes verified from the switch statement in `sub_468760` (lines 137--580). Case labels match the documented table exactly. |
+| Action type dispatch (0x00, 0x01, 0x06, 0x07, 0x10, 0x13, 0x16–0x1D, etc.) | **HIGH** | All action type codes verified from the switch statement in `sub_468760` (lines 137–580). Case labels match the documented table exactly. |
 | R_MERCURY vs R_CUDA comparison table | **HIGH** | Type-by-type comparison verified from both name tables in `nvlink_strings.json`. Semantic equivalence claims based on identical descriptor action patterns for matching types. |
 | Categories omitted from R_MERCURY (25 instruction-specific, CONST_FIELD, bindless, etc.) | **HIGH** | Absence verified by complete enumeration of all 65 R_MERCURY names. No `R_MERCURY_CONST_FIELD`, `R_MERCURY_BINDLESS`, `R_MERCURY_INSTRUCTION64/128`, etc. exist in the string table. |
 | Mercury-specific types: PROG_REL64, PROG_REL32_LO/HI, PROG_REL8_*, ABS_PROG_REL* | **HIGH** | All type names verified in `nvlink_strings.json`. No corresponding `R_CUDA_PROG_REL64`, `R_CUDA_PROG_REL8_*`, or `R_CUDA_ABS_PROG_REL*` exist. |
 | Trailing-space variants at `0x1D3CB71` and `0x1D3CB88` | **HIGH** | Two strings with trailing spaces verified in string table at exact addresses. Located within the descriptor table region (between `off_1D3CBE0` and `off_1D3DBE0`). |
-| UFT_OFFSET symbol string comparison at sub_469D60 lines 377--395 | **HIGH** | Decompiled code shows 13-byte `strncmp` against `"__UFT_OFFSET"` with debug trace `"ignore reloc on UFT_OFFSET\n"`. |
-| PC-relative same-section validation at sub_469D60 line 409--410 | **HIGH** | Decompiled code: `descriptor[5] == 16` (action_type pc_rel) triggers `"PC relative branch address should be in the same section"`. |
+| UFT_OFFSET symbol string comparison at sub_469D60 lines 377–395 | **HIGH** | Decompiled code shows 13-byte `strncmp` against `"__UFT_OFFSET"` with debug trace `"ignore reloc on UFT_OFFSET\n"`. |
+| PC-relative same-section validation at sub_469D60 line 409–410 | **HIGH** | Decompiled code: `descriptor[5] == 16` (action_type pc_rel) triggers `"PC relative branch address should be in the same section"`. |
 | Dead-function reloc elimination trace | **HIGH** | Decompiled code at sub_469D60 line 349: `fprintf(stderr, "ignore reloc on dead func %s\n", ...)`. |
-| YIELD conversion suppression for forward-progress | **HIGH** | Decompiled code at sub_469D60 lines 495--504: checks `context + 94` flag, emits 80-byte YIELD message. |
+| YIELD conversion suppression for forward-progress | **HIGH** | Decompiled code at sub_469D60 lines 495–504: checks `context + 94` flag, emits 80-byte YIELD message. |
 | Self-check strings at `0x2458F38`--`0x2458FE8` | **HIGH** | All 4 self-check strings verified at exact addresses in `nvlink_strings.json` with xrefs to `0x24590A0`--`0x24590B8` pointer array. |
 | Third name table copy at `0x2459160` | **HIGH** | R_MERCURY_NONE xref list includes `0x2459160` alongside `0x1D371E0` and `0x1D3CBE0`. Located in capmerc uplift code region. |
 | MERCSW-125 Jira reference | **HIGH** | String at `0x1F44288` contains full text including `"Jira confluence page 'MERCSW-125'"`. |
 | Attribute validation function `sub_42F760` three-way dispatch | **HIGH** | Decompiled code shows `dword_1D37D68[4 * a1 + 1]` value 0=warning, 1=error, 2=ignore, with guard `a1 > 0x60`. |
 | `sub_4AC380` capmerc option registration | **HIGH** | Decompiled code shows `sub_42F130` calls registering `--self-check`, `--binary-kind`, `--cap-merc`, `--out-sass`, `--compile-as-at-entry-patch`, `--opportunistic-finalization-lvl`. |
-| `R_MERCURY_UNIFIED32_LO/HI` added later than main unified block | **LOW** | Inferred from non-contiguous index placement (indices 62--63 vs 50--59). No version history available to confirm chronology. |
-| `R_MERCURY_ABS_PROG_REL32_LO/HI` added before full-width variants | **LOW** | Same reasoning: non-contiguous indices (40--41 vs 60--61). Chronological ordering is speculative. |
+| `R_MERCURY_UNIFIED32_LO/HI` added later than main unified block | **LOW** | Inferred from non-contiguous index placement (indices 62–63 vs 50–59). No version history available to confirm chronology. |
+| `R_MERCURY_ABS_PROG_REL32_LO/HI` added before full-width variants | **LOW** | Same reasoning: non-contiguous indices (40–41 vs 60–61). Chronological ordering is speculative. |
 | Action types not used by Mercury (`0x08`, `0x0A`, `0x0B`) | **MEDIUM** | Inferred from the absence of CONST_FIELD and symbol-size relocation types in R_MERCURY. Not verified by exhaustive descriptor table dumping. |
 
 ## Cross-References

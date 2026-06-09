@@ -1,6 +1,6 @@
 # elfLink Error Codes and Linker Diagnostic Catalog
 
-The elfLink subsystem is nvlink's internal library for loading, compiling, and linking device code modules. It wraps libnvvm for NVVM IR compilation, manages cubin/fatbinary extraction, and interfaces with the linker library (`libnvvm.so`). When any of these operations fail, elfLink returns an integer error code in the range 0--13. The function `sub_4BC270` at `0x4BC270` translates these codes into human-readable strings via a lookup table at `off_1D489E0`.
+The elfLink subsystem is nvlink's internal library for loading, compiling, and linking device code modules. It wraps libnvvm for NVVM IR compilation, manages cubin/fatbinary extraction, and interfaces with the linker library (`libnvvm.so`). When any of these operations fail, elfLink returns an integer error code in the range 0–13. The function `sub_4BC270` at `0x4BC270` translates these codes into human-readable strings via a lookup table at `off_1D489E0`.
 
 Beyond the elfLink subsystem's 14 return codes, nvlink emits over 100 distinct user-facing diagnostic messages through the `diag_emit` (`sub_467460`) pipeline. This page catalogs every error string, maps each to its source function and triggering conditions, and provides user-facing fix suggestions.
 
@@ -560,8 +560,8 @@ All error-related strings confirmed in `nvlink_strings.json`, organized by addre
 **Internal (nvlink wiki):**
 
 - [Error Reporting](../infra/error-reporting.md) — `diag_emit` (`sub_467460`) diagnostic pipeline with the complete 88-descriptor catalog and 40+ internal assertion messages
-- [LTO Overview](../lto/overview.md) — LTO pipeline context where elfLink codes 5--7 arise from NVVM IR compilation
-- [libnvvm Integration](../lto/libnvvm-integration.md) — `dlsym`/`dlopen` lifecycle for `libnvvm.so` loading (codes 10--11)
+- [LTO Overview](../lto/overview.md) — LTO pipeline context where elfLink codes 5–7 arise from NVVM IR compilation
+- [libnvvm Integration](../lto/libnvvm-integration.md) — `dlsym`/`dlopen` lifecycle for `libnvvm.so` loading (codes 10–11)
 - [Split Compilation](../lto/split-compilation.md) — LTO split-compile path where elfLink errors propagate from parallel PTX-to-SASS workers
 - [Fatbin Extraction](../input/fatbin-extraction.md) — Fatbinary parsing path where code 3 (fatbin error) originates
 - [Cubin Loading](../input/cubin-loading.md) — Input cubin validation where codes 8 (not relocatable) and 9 (not compatible) originate

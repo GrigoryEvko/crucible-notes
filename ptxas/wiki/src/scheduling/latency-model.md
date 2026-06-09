@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas instruction scheduler uses a static hardware performance model to estimate instruction latencies, functional unit occupancy, and pipeline conflicts. The model is architecture-parameterized: a family of 15+ profile-builder functions at 0x8E7300--0x8E9DC0 construct per-SM latency/throughput tables consumed by the scheduling engine. A separate 85 KB function (`sub_89FBA0`, SetOpcodeLatencies) assigns per-opcode scheduling classes that index into these tables. The combination produces a cost model that drives stall-count computation, priority scoring, and dual-issue pairing decisions.
+The ptxas instruction scheduler uses a static hardware performance model to estimate instruction latencies, functional unit occupancy, and pipeline conflicts. The model is architecture-parameterized: a family of 15+ profile-builder functions at 0x8E7300–0x8E9DC0 construct per-SM latency/throughput tables consumed by the scheduling engine. A separate 85 KB function (`sub_89FBA0`, SetOpcodeLatencies) assigns per-opcode scheduling classes that index into these tables. The combination produces a cost model that drives stall-count computation, priority scoring, and dual-issue pairing decisions.
 
 | | |
 |---|---|
@@ -53,7 +53,7 @@ Layer 3: Runtime Query
 
 ### Scheduling Descriptor Layout
 
-Each instruction carries a scheduling descriptor at offsets 196--200 within the 296-byte Ori instruction object (not the SchedNode). The descriptor is a packed bit-field:
+Each instruction carries a scheduling descriptor at offsets 196–200 within the 296-byte Ori instruction object (not the SchedNode). The descriptor is a packed bit-field:
 
 ```text
 Descriptor at a3+196 (DWORD, 32 bits):
@@ -183,7 +183,7 @@ The switch statement maps Ori opcodes to scheduling class IDs stored at `*(v8+4)
 | 282 | 0x11A | IMMA | 121 | — | Sub-class 0x40, pipe B |
 | 321 | 0x141 | WGMMA | 745 | 0xF1 | Warpgroup MMA |
 | 322 | 0x142 | WGMMA (v3) | 744 | 0xF0 | Others fall to class 203 |
-| 323 | 0x143 | BGMMA/QMMA | 765--767 | 0xFB | 3-way operand split |
+| 323 | 0x143 | BGMMA/QMMA | 765–767 | 0xFB | 3-way operand split |
 | 324 | 0x144 | Tensor fence | 600 | 0xE6 | — |
 | 325 | 0x145 | HMMA/BMMA | 759 | 0xF8 | Sub-class 0x40, pipe flag 0x0C |
 | 327 | 0x147 | DP tensor | 757/761 | 0xF6/0xFA | Wide: 761; narrow: 757 |
@@ -197,7 +197,7 @@ The switch statement maps Ori opcodes to scheduling class IDs stored at `*(v8+4)
 | 318 | 0x13E | ACQBULK | 749 | 0xF4 | Bulk copy |
 | 319 | 0x13F | RELBULK | 748 | 0xF3 | Bulk release |
 
-The scheduling class IDs span a wide range (0--772+). Classes below 256 correspond to legacy instruction categories present since Volta; higher classes (526--769) represent newer types added for Ampere, Hopper, and Blackwell. Class 772 is a sentinel that triggers a fallback to the dynamic cost model via `sub_A2D340`.
+The scheduling class IDs span a wide range (0–772+). Classes below 256 correspond to legacy instruction categories present since Volta; higher classes (526–769) represent newer types added for Ampere, Hopper, and Blackwell. Class 772 is a sentinel that triggers a fallback to the dynamic cost model via `sub_A2D340`.
 
 ### Latency Index Encoding
 
@@ -207,7 +207,7 @@ The low 9 bits of the descriptor at `a3+196` encode a latency index that maps di
 latency_index = *(WORD*)(a3+196) & 0x1FF
 ```
 
-Observed latency index values and their instruction classes. The table below covers both common instructions (low indices, where the index equals the scheduling class ID) and the tensor/collective range (0xE6--0xFB, assigned via explicit latency-index overrides in `sub_89FBA0`). The "model latency" column gives the scheduling cost from `per_sm_dependency_rules`; the "throughput^-1" column is the minimum issue interval between successive instructions of the same class on a single SM sub-partition.
+Observed latency index values and their instruction classes. The table below covers both common instructions (low indices, where the index equals the scheduling class ID) and the tensor/collective range (0xE6–0xFB, assigned via explicit latency-index overrides in `sub_89FBA0`). The "model latency" column gives the scheduling cost from `per_sm_dependency_rules`; the "throughput^-1" column is the minimum issue interval between successive instructions of the same class on a single SM sub-partition.
 
 **Common instruction classes (index = scheduling class ID):**
 
@@ -220,14 +220,14 @@ Observed latency index values and their instruction classes. The table below cov
 | 10 | DFMA | FP64 conversion/misc | 42 / 42 / 42 | 15 | F2F, I2F (64-bit) |
 | 11 | ALU | Predicate move (true) | 17 / 17 / 17 | 0 | MOV (predicate) |
 | 15 | LSU | Global memory (default) | 255 / 22 / 22 | 35 / 2 / 2 | LDG, STG |
-| 16--19 | LSU | Global load variants | 21--23 / 20--23 / 21--56 | 19 | LDG.E, LDG.128 |
+| 16–19 | LSU | Global load variants | 21–23 / 20–23 / 21–56 | 19 | LDG.E, LDG.128 |
 | 20 | ALU | Shared memory simple | 28 / 28 / 28 | 5 | LDS, STS |
 | 21 | LSU | Constant memory | 22 / 22 / 22 | 2 | LDC |
 | 35 | XU | Extended unit (fallback) | 52 / 52 / 52 | 21 | PRMT, BFE, BFI |
 | 52 | LSU | Integer compare (narrow) | 13 / 48 / 46 | 19 | ISETP (narrow path) |
-| 56--59 | SFU | Special function unit | 45--47 / 47 / 41--45 | 19 | MUFU (RCP, RSQ, SIN, COS) |
-| 60--61 | LSU | Shared memory atomic | 13--48 / 48 / 46 | 19 | ATOMS, REDS |
-| 66--67 | DFMA | FP64 multiply/FMA | 72 / 48--74 / 72 | 34 / 19--33 / 34 | DFMA, DMUL |
+| 56–59 | SFU | Special function unit | 45–47 / 47 / 41–45 | 19 | MUFU (RCP, RSQ, SIN, COS) |
+| 60–61 | LSU | Shared memory atomic | 13–48 / 48 / 46 | 19 | ATOMS, REDS |
+| 66–67 | DFMA | FP64 multiply/FMA | 72 / 48–74 / 72 | 34 / 19–33 / 34 | DFMA, DMUL |
 | 72 | ALU | Integer ALU (standard) | 5 / 31 / 31 | 9 / 12 / 12 | IADD3, IMAD (standard) |
 | 118 | MMA | Double-precision MMA | 15 / 14 / 15 | 19 | DMMA |
 | 130 | BRA | Control flow (branch) | 22 / 22 / 22 | 2 | BRA, JMP, EXIT |
@@ -255,9 +255,9 @@ Observed latency index values and their instruction classes. The table below cov
 | 0xF6 | 246 | 757 | 22 | DP tensor (narrow) |
 | 0xF8 | 248 | 759 | 22 | Tensor core (HMMA/BMMA) |
 | 0xFA | 250 | 761 | 22 | DP tensor (wide) |
-| 0xFB | 251 | 765--767 | 52 | BGMMA/QMMA |
+| 0xFB | 251 | 765–767 | 52 | BGMMA/QMMA |
 
-For common instruction classes, the latency index stored at `a3+196` equals the scheduling class ID directly — no remapping is needed. Only the tensor/collective classes (0xE6--0xFB) use explicit latency-index overrides that differ from their scheduling class ID. The model latency value of 17 for ALU classes with throughput 0 corresponds to the lowest-latency fully-pipelined path (4-cycle register-to-register, encoded as cost 17 in the scheduling cost product). Classes with model latency 22 and throughput 2 represent the "default" short-latency profile used for most single-cycle pipe instructions. The jump from 42--52 to 65--72 marks the boundary between standard functional units and long-latency tensor/FP64 operations that require scoreboard barriers.
+For common instruction classes, the latency index stored at `a3+196` equals the scheduling class ID directly — no remapping is needed. Only the tensor/collective classes (0xE6–0xFB) use explicit latency-index overrides that differ from their scheduling class ID. The model latency value of 17 for ALU classes with throughput 0 corresponds to the lowest-latency fully-pipelined path (4-cycle register-to-register, encoded as cost 17 in the scheduling cost product). Classes with model latency 22 and throughput 2 represent the "default" short-latency profile used for most single-cycle pipe instructions. The jump from 42–52 to 65–72 marks the boundary between standard functional units and long-latency tensor/FP64 operations that require scoreboard barriers.
 
 ## Functional Unit Categories
 
@@ -349,7 +349,7 @@ Each SM-specific function populates entries in the 96-byte-per-record output arr
 
 ### 96-Byte Schedule Record Format
 
-Each record in the HW table occupies 96 bytes (6 x 16-byte XMM slots). Records are stored in a growable array at `*(context+56)` with count at `*(context+64)` and capacity at `*(context+68)`. The array grows by 1.5x when full. Records are copied using three `_mm_loadu_si128` operations (offsets 0, 16, 32) plus manual field-by-field copy for offsets 48--95; the string at +48 is reference-cloned via `sub_714160` when the string-backed flag is set.
+Each record in the HW table occupies 96 bytes (6 x 16-byte XMM slots). Records are stored in a growable array at `*(context+56)` with count at `*(context+64)` and capacity at `*(context+68)`. The array grows by 1.5x when full. Records are copied using three `_mm_loadu_si128` operations (offsets 0, 16, 32) plus manual field-by-field copy for offsets 48–95; the string at +48 is reference-cloned via `sub_714160` when the string-backed flag is set.
 
 ```text
 Offset  Size   Field               Content
@@ -424,9 +424,9 @@ Offset  Bytes                       Field           Decoded
 ------  -----                       -----           -------
  0..1   02 00                       unit_id         2 (predicate ops, flag-clear)
  2..3   00 00                       reserved        0
- 4..11  03 03 FF FF FF FF FF FF     pipe_masks_a    pipes 0+1 active; pipes 2--7 = 0xFF (unused)
+ 4..11  03 03 FF FF FF FF FF FF     pipe_masks_a    pipes 0+1 active; pipes 2–7 = 0xFF (unused)
 12..19  00 00 FF FF FF FF 00 00     pipe_masks_b    pipes 0+1 not dual-issue eligible;
-                                                    pipes 2--5 = 0xFF (N/A); pipes 6--7 = 0
+                                                    pipes 2–5 = 0xFF (N/A); pipes 6–7 = 0
 20..31  00 04 00 01 00 07 03 02     sched_params    [0]=0: no special flag
         01 02 03 00                                 [1]=4: throughput class (1/4 rate)
                                                     [2]=0: no read hazard override
@@ -441,7 +441,7 @@ Offset  Bytes                       Field           Decoded
                                                     [11]=0: reserved
 ```
 
-The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set). Pipes 2--7 carry `0xFF` = "not applicable." The `pipe_masks_b` zero entries for pipes 0--1 indicate this class is **not** eligible for dual-issue pairing on those pipes. `sched_params[5]=7` sets the maximum number of stall cycles the scheduler will model before it gives up and inserts a barrier.
+The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set). Pipes 2–7 carry `0xFF` = "not applicable." The `pipe_masks_b` zero entries for pipes 0–1 indicate this class is **not** eligible for dual-issue pairing on those pipes. `sched_params[5]=7` sets the maximum number of stall cycles the scheduler will model before it gives up and inserts a barrier.
 
 **40-byte dependency rule** (from `sm_80` table, entry 0, matching unit\_id 2):
 
@@ -637,10 +637,10 @@ The "short" supplementary tables (sub\_8E8CB0 for sm\_100, sub\_8E8F60 for sm\_1
 | SM ID range | Warps per SM | Dispatch slots | Architecture era |
 |---|---|---|---|
 | <= 20479 | 4 | 96 | sm\_50 (Maxwell) |
-| 20480--24575 | 6 | 176 | sm\_60 (Pascal) |
-| 24576--28672 | 7 | 192 | sm\_70 (Volta) |
-| 28673--32767 | 7 | 208 | sm\_75 (Turing) |
-| 32768--36863 | 8 | 224 | sm\_80 (Ampere) |
+| 20480–24575 | 6 | 176 | sm\_60 (Pascal) |
+| 24576–28672 | 7 | 192 | sm\_70 (Volta) |
+| 28673–32767 | 7 | 208 | sm\_75 (Turing) |
+| 32768–36863 | 8 | 224 | sm\_80 (Ampere) |
 | > 36863 | 16 | 240 | sm\_90+ (Hopper, Blackwell) |
 
 The packed DWORD at offset +18 encodes (warps, sub-warp-count) as a 32-bit value. For example, `983055` (0x000F000F) = 15 warps in the low half and 15 in the high half, while `1048592` (0x00100010) = 16 warps for sm\_90+.
@@ -680,7 +680,7 @@ The scheduling mode parameter (a3) selects the pipeline width stored at offset +
 | 11 | 10 | Deca-issue |
 | default | 2 | Dual-issue |
 
-These values model the effective issue width for different scheduling contexts. The tensor core modes (4--11) reflect warpgroup-level cooperative execution where multiple warp slots issue tensor instructions simultaneously.
+These values model the effective issue width for different scheduling contexts. The tensor core modes (4–11) reflect warpgroup-level cooperative execution where multiple warp slots issue tensor instructions simultaneously.
 
 ## Memory Space Classification (sub\_693BC0)
 
@@ -688,13 +688,13 @@ These values model the effective issue width for different scheduling contexts. 
 
 | Return value | Memory space | Typical latency range |
 |---|---|---|
-| 1 | Generic (resolved at runtime) | 20--200+ cycles |
-| 2 | Local memory (per-thread stack) | 20--200 cycles |
-| 3 | Shared memory | 20--30 cycles |
-| 4 | Constant memory (cached) | 4--8 cycles |
-| 7 | Constant bank (indexed) | 4--8 cycles |
-| 11 | Surface memory | 200--500 cycles |
-| 16 | Global memory (DRAM) | 200--500 cycles |
+| 1 | Generic (resolved at runtime) | 20–200+ cycles |
+| 2 | Local memory (per-thread stack) | 20–200 cycles |
+| 3 | Shared memory | 20–30 cycles |
+| 4 | Constant memory (cached) | 4–8 cycles |
+| 7 | Constant bank (indexed) | 4–8 cycles |
+| 11 | Surface memory | 200–500 cycles |
+| 16 | Global memory (DRAM) | 200–500 cycles |
 
 The scheduler uses these values in the priority function (`sub_8C9320`) to distinguish "hot" (long-latency) memory operations from "cold" (short-latency) ones. Functions `sub_A9CDE0` classifies hot (global/texture) memory and `sub_A9CF90` classifies cold (constant/shared) memory.
 
@@ -800,7 +800,7 @@ Adds the instruction's previously computed pressure `a1[2071]` into the running 
 
 For each source operand, the function:
 1. Checks operand type: `((operand >> 28) & 7) == 1` means register operand.
-2. Skips operands with values 41--44 (special sentinel registers).
+2. Skips operands with values 41–44 (special sentinel registers).
 3. Looks up the register descriptor via `*(a1+88) + 8 * (operand & 0xFFFFFF)`.
 4. Checks if register class `*(descriptor+64)` is <= 6 (physical register file).
 5. Calls `sub_A08910` to get the register's latency and count:
@@ -843,9 +843,9 @@ The post-scheduling analysis pass (`sub_73B360`, MacLoopSchedulingAnalytics, 28.
 
 | Category | String identifier | Stat function | Typical latency |
 |---|---|---|---|
-| Shared memory loads | `"LDS latency hiding"` | `sub_73A1D0` | 20--30 cycles |
-| Global memory loads | `"LDG latency hiding"` | `sub_73A7F0` | 200--500 cycles |
-| Extended 64-bit ops | `"Xu64 latency hiding"` | `sub_73ADF0` | 15--30 cycles |
+| Shared memory loads | `"LDS latency hiding"` | `sub_73A1D0` | 20–30 cycles |
+| Global memory loads | `"LDG latency hiding"` | `sub_73A7F0` | 200–500 cycles |
+| Extended 64-bit ops | `"Xu64 latency hiding"` | `sub_73ADF0` | 15–30 cycles |
 | Anti-dependencies | `"Antidep latency hiding"` | (inline) | varies |
 
 Each category reports: **Num** (count of operations), **Min** (minimum hidden cycles), **Max** (maximum hidden cycles), **Avg** (average hidden cycles). The pass also tracks MAC instruction utilization (`"MacInsts"`, `"MacReuses"`, `"TepidMacUtil"`) and resource busy time (`"LsuResBusy"`, `"Time"`, `"TepidTime"`).
@@ -908,7 +908,7 @@ The `pipe_masks_b` field in the HW latency table encodes which pipe classes a sc
 | Control (pipe 6) | any | NO | Branch/sync not dual-issuable |
 | any | same pipe | NO | Same-pipe conflict |
 
-The 337 scheduling classes with non-zero `pipe_masks_b` in `sm_7x_shared` use values 1--35 as a per-class pairing affinity code. The `dual_issue_flags` field at record offset +22 is populated from `pipe_masks_b[0:2]` during 96-byte record construction.
+The 337 scheduling classes with non-zero `pipe_masks_b` in `sm_7x_shared` use values 1–35 as a per-class pairing affinity code. The `dual_issue_flags` field at record offset +22 is populated from `pipe_masks_b[0:2]` during 96-byte record construction.
 
 ### Pairing Decision Pseudocode
 
@@ -1016,10 +1016,10 @@ The encoding function `sub_8F4140` packs the complete control word:
 
 | Field | Encoder | Bits | Range |
 |---|---|---|---|
-| Stall count | `sub_8F3130` | 4 | 1--16 cycles |
+| Stall count | `sub_8F3130` | 4 | 1–16 cycles |
 | Yield hint | `sub_8F3650` | 1 | 0/1 |
-| Read barrier | `sub_8F31F0` | 6 | 0--5 (barrier ID) |
-| Write barrier | `sub_8F31F0` | 6 | 0--5 (barrier ID) |
+| Read barrier | `sub_8F31F0` | 6 | 0–5 (barrier ID) |
+| Write barrier | `sub_8F31F0` | 6 | 0–5 (barrier ID) |
 | Scoreboard wait | `sub_8F3860` | 6 | barrier wait mask |
 | Reuse flags | (separate) | 4 | register reuse hints |
 
@@ -1110,7 +1110,7 @@ The Cutlass flag activates an iterative sink+remat path in Phase 28. When `ctx+1
 
 ### Join Point: scheduling\_class + pipe\_class --> Final Control Word
 
-The two classification systems operate at different pipeline stages and converge in the control word encoder. `sub_89FBA0` runs during IR-level scheduling to assign a `scheduling_class` (integer stored at `SchedNode+4`, range 2--772+). `sub_13710B0` runs during SASS encoding to assign a `pipe_class` (9-bit value in `*(WORD*)(a3+196) & 0x1FF`, range 0x00--0x141). On Blackwell (sm\_10x), `sub_7C4950` dispatches to `sub_89FBA0` for opcodes it handles natively and falls back to `sub_13710B0` for others, meaning some opcodes get both classifications while others get only `pipe_class`.
+The two classification systems operate at different pipeline stages and converge in the control word encoder. `sub_89FBA0` runs during IR-level scheduling to assign a `scheduling_class` (integer stored at `SchedNode+4`, range 2–772+). `sub_13710B0` runs during SASS encoding to assign a `pipe_class` (9-bit value in `*(WORD*)(a3+196) & 0x1FF`, range 0x00–0x141). On Blackwell (sm\_10x), `sub_7C4950` dispatches to `sub_89FBA0` for opcodes it handles natively and falls back to `sub_13710B0` for others, meaning some opcodes get both classifications while others get only `pipe_class`.
 
 The two values are consumed at different points in the stall/barrier computation pipeline:
 
@@ -1149,7 +1149,7 @@ The critical asymmetry: `scheduling_class` controls *how long* to wait (latency 
 
 ## Execution Pipe Assignment (sub\_13710B0)
 
-`sub_13710B0` (7.1 KB, 1,088 lines decompiled) is the SASS-backend execution pipe class assigner. It runs in the SASS encoding pipeline (address range 0x1370--0x139F) *after* instruction selection, register allocation, and the main scheduling pass are complete. Where `sub_89FBA0` assigns IR-level scheduling class IDs (2--772+) consumed by the priority and stall-computation passes, `sub_13710B0` writes SASS-level pipe class IDs (0x00--0x141) that control control-word encoding: stall counts, barrier assignments, and dual-issue pairing in the final binary.
+`sub_13710B0` (7.1 KB, 1,088 lines decompiled) is the SASS-backend execution pipe class assigner. It runs in the SASS encoding pipeline (address range 0x1370–0x139F) *after* instruction selection, register allocation, and the main scheduling pass are complete. Where `sub_89FBA0` assigns IR-level scheduling class IDs (2–772+) consumed by the priority and stall-computation passes, `sub_13710B0` writes SASS-level pipe class IDs (0x00–0x141) that control control-word encoding: stall counts, barrier assignments, and dual-issue pairing in the final binary.
 
 ### Descriptor Initialization
 
@@ -1167,7 +1167,7 @@ Then it switches on `*(a2+72) & 0xFFFFCFFF` (the Ori opcode with modifier bits m
 
 ### Pipe Mask Encoding
 
-Bits 15--19 of `*(DWORD*)(a3+196)` select the execution pipe:
+Bits 15–19 of `*(DWORD*)(a3+196)` select the execution pipe:
 
 | Value | Pipe | Functional units | Resource vector indices |
 |---|---|---|---|
@@ -1178,7 +1178,7 @@ Bits 15--19 of `*(DWORD*)(a3+196)` select the execution pipe:
 
 ### Sub-Class Encoding
 
-Bits 4--7 of `*(WORD*)(a3+198)` encode the sub-class within the pipe:
+Bits 4–7 of `*(WORD*)(a3+198)` encode the sub-class within the pipe:
 
 | Value | Sub-class | Instruction category |
 |---|---|---|
@@ -1189,7 +1189,7 @@ Bits 4--7 of `*(WORD*)(a3+198)` encode the sub-class within the pipe:
 
 ### Pipe Flags Encoding
 
-Bits 1--5 of `*(BYTE*)(a3+199)` encode sub-unit affinity:
+Bits 1–5 of `*(BYTE*)(a3+199)` encode sub-unit affinity:
 
 | Value | Meaning |
 |---|---|
@@ -1208,10 +1208,10 @@ The complete switch covers 80+ Ori opcodes. Representative mappings:
 | Ori opcode | Pipe class | Pipe | Sub-class | SASS instruction | Decision logic |
 |---|---|---|---|---|---|
 | 1 | 0x08 | — | 0x10 | IMAD | Always |
-| 2--7 (wide) | 0x03 | B (0x10000) | 0x30 | IMAD\_WIDE, IADD3, etc. | `sub_7D6780` = true |
-| 2--7 (wide, v6=6) | 0x03 | C (0x18000) | 0x40 | LOP3 (wide, FP64) | Opcode 6, wide |
-| 2--7 (narrow) | 0x0C | A (0x08000) | — | IMAD, IADD3, etc. | Narrow, type != 19 |
-| 2--7 (narrow, t=19) | 0x7B | — | — | IMAD (BF16/FP8 type) | Type 19 path |
+| 2–7 (wide) | 0x03 | B (0x10000) | 0x30 | IMAD\_WIDE, IADD3, etc. | `sub_7D6780` = true |
+| 2–7 (wide, v6=6) | 0x03 | C (0x18000) | 0x40 | LOP3 (wide, FP64) | Opcode 6, wide |
+| 2–7 (narrow) | 0x0C | A (0x08000) | — | IMAD, IADD3, etc. | Narrow, type != 19 |
+| 2–7 (narrow, t=19) | 0x7B | — | — | IMAD (BF16/FP8 type) | Type 19 path |
 | 8 (flag clear) | 0x33 | — | — | IABS (no guard) | Operand flag bit 0 |
 | 8 (flag set) | 0x34 | — | — | IABS (guarded) | Operand flag bit 0 |
 | 0x10 (flagged) | 0x68 | — | — | ATOM (flagged) | Operand bit 2 |
@@ -1227,15 +1227,15 @@ The complete switch covers 80+ Ori opcodes. Representative mappings:
 | 0x24 (wide) | 0x14 | B (0x10000) | 0x30 | PRMT (FP width) | `sub_7D6780` = true |
 | 0x24 (narrow) | 0x11 | B (0x10000) | 0x30 | PRMT (integer) | `sub_7D6780` = false |
 | 0x33 | 0x21 | A (0x08000) | 0x20 | IDP | Always; flags 0x06 |
-| 0x3C (mem ops) | 0x2B--0x32 | — | — | STG variants | 6-way split on flags |
-| 0x3E (mem ops) | 0x2D--0x2E | — | — | LDL variants | Flag / no-flag split |
+| 0x3C (mem ops) | 0x2B–0x32 | — | — | STG variants | 6-way split on flags |
+| 0x3E (mem ops) | 0x2D–0x2E | — | — | LDL variants | Flag / no-flag split |
 | 0x42 | 0x5D | — | — | MUFU (SFU) | Always |
-| 0x4D | 0x84--0x85 | B (0x10000) | 0x40 | WGMMA-class | Extended tensor fields |
-| 0x4E (mem ops) | 0x2F--0x30 | — | — | LD (generic) | Flag / no-flag split |
+| 0x4D | 0x84–0x85 | B (0x10000) | 0x40 | WGMMA-class | Extended tensor fields |
+| 0x4E (mem ops) | 0x2F–0x30 | — | — | LD (generic) | Flag / no-flag split |
 | 0x66 | 0x09 | B (0x10000) | 0x30 | DEPBAR | Always; flags 0x08 |
 | 0x82 / 130 (ext) | 0x17 | — | — | NANOTRAP (extended); `HSET2` in ROT13 | `sub_A9AB10` = true |
 | 0x82 / 130 (ctrl) | 0x13 | all (0xF8000) | 0x10 | NANOTRAP (control); `HSET2` in ROT13 | vtable+640 |
-| 0xC9--0xCA (wide) | 0x07 | A (0x08000) | — | DFMA, DADD (wide) | `sub_7D6780` = true |
+| 0xC9–0xCA (wide) | 0x07 | A (0x08000) | — | DFMA, DADD (wide) | `sub_7D6780` = true |
 | 0xD1 | 0x05 | A (0x08000) | 0x20 | DFMA | Always |
 | 0xD2 | 0x0A | A (0x08000) | 0x30 | DFMA variant | Sub-class 0x30, flag 0x04 |
 | 0xF0 | 0x0F | A (0x08000) | — | F2F | Flags 0x04 |
@@ -1278,14 +1278,14 @@ This fine-grained split allows the SASS encoder to select different stall counts
 
 ### Type-19 Special Path
 
-When `sub_7D6780` returns false (not wide) and `*(a2+76) == 19`, several instruction groups receive distinct pipe classes in the 0x7A--0x7D range:
+When `sub_7D6780` returns false (not wide) and `*(a2+76) == 19`, several instruction groups receive distinct pipe classes in the 0x7A–0x7D range:
 
 | Ori opcode group | Standard class | Type-19 class | Likely type |
 |---|---|---|---|
-| 2--7 (narrow) | 0x0C | 0x7B | BF16 / FP8 |
-| 0x6E--0x72 (narrow) | 0x0B | 0x7A | BF16 / FP8 |
-| 0x8B--0x8C (narrow) | 0x0D | 0x7C | BF16 / FP8 |
-| 0xC9--0xCA | 0x10/0x12 | 0x7D | BF16 / FP8 |
+| 2–7 (narrow) | 0x0C | 0x7B | BF16 / FP8 |
+| 0x6E–0x72 (narrow) | 0x0B | 0x7A | BF16 / FP8 |
+| 0x8B–0x8C (narrow) | 0x0D | 0x7C | BF16 / FP8 |
+| 0xC9–0xCA | 0x10/0x12 | 0x7D | BF16 / FP8 |
 
 Type 19 likely corresponds to BF16 or FP8, which require different pipeline routing than standard FP16/FP32/FP64 types on Hopper and Blackwell architectures.
 

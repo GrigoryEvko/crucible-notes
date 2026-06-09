@@ -73,7 +73,7 @@ ptxas implements two distinct precision tiers for every math operation, selected
 
 ### Approximate (`.approx`)
 
-A single MUFU instruction. This is the default for `sin.approx.f32`, `cos.approx.f32`, `ex2.approx.f32`, `lg2.approx.f32`, `rcp.approx.f32`, and `rsqrt.approx.f32`. The MUFU hardware provides approximately 22--23 bits of mantissa precision in a single instruction dispatch on the SFU pipe.
+A single MUFU instruction. This is the default for `sin.approx.f32`, `cos.approx.f32`, `ex2.approx.f32`, `lg2.approx.f32`, `rcp.approx.f32`, and `rsqrt.approx.f32`. The MUFU hardware provides approximately 22–23 bits of mantissa precision in a single instruction dispatch on the SFU pipe.
 
 **PTX to SASS mapping (approximate):**
 
@@ -321,7 +321,7 @@ Algorithm for `a / b`:
 5. Compute `a * (1/b)` using the refined reciprocal
 6. Apply IEEE 754 rounding, handle overflow/underflow/NaN
 
-The complete DDIV template emits ~100--120 SASS instructions across 3 named code sections (`__ori_template_DDIV1`, `__ori_template_DDIV2`, `__ori_template_DDIV3`), using 298 virtual registers. Three register-pressure variants are available:
+The complete DDIV template emits ~100–120 SASS instructions across 3 named code sections (`__ori_template_DDIV1`, `__ori_template_DDIV2`, `__ori_template_DDIV3`), using 298 virtual registers. Three register-pressure variants are available:
 
 | Register Limit | Handler | Strategy |
 |---|---|---|
@@ -383,7 +383,7 @@ The correction steps (at most 2) are needed because MUFU.RCP is accurate to with
 For FP32 operations, the codegen handler selects between:
 
 1. **Single MUFU** — for `.approx` modifier. One instruction, ~23-bit precision.
-2. **MUFU + correction** — for `.rn`/`.rd`/`.ru`/`.rz` with FTZ. MUFU seed plus 1--2 FMA correction steps, inline.
+2. **MUFU + correction** — for `.rn`/`.rd`/`.ru`/`.rz` with FTZ. MUFU seed plus 1–2 FMA correction steps, inline.
 3. **Helper function call** — for directed rounding modes (RD/RU/RZ) without FTZ, or when denormal handling is required (slowpath variants). Calls to `__cuda_sm20_*` or `__cuda_sm3x_*` functions.
 
 ### Flush-to-Zero (FTZ)
@@ -483,7 +483,7 @@ The scheduler (`sub_815820`) places MUFU instructions to maximize overlap with A
 | PTX Operation | Fast-Math (`-use_fast_math`) | IEEE-Compliant |
 |---|---|---|
 | `div.f32` | `MUFU.RCP` + `FMUL` (2 instr) | `__cuda_sm20_div_rn_f32` call (~15 instr) |
-| `div.f64` | N/A (no FP64 fast-math) | DDIV template (~100--120 instr) |
+| `div.f64` | N/A (no FP64 fast-math) | DDIV template (~100–120 instr) |
 | `rcp.f32` | `MUFU.RCP` (1 instr) | `__cuda_sm20_rcp_rn_f32` call (~10 instr) |
 | `rcp.f64` | N/A | DRCP template (~90 instr) |
 | `sqrt.f32` | `MUFU.RSQ` + `FMUL` (2 instr) | `__cuda_sm20_sqrt_rn_f32` call (~12 instr) |

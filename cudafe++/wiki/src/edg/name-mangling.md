@@ -90,7 +90,7 @@ Four operators are context-sensitive — their mangled code depends on whether t
 | 45 | `v23min` | vendor `min` | 46 | `v23max` | vendor `max` |
 | 47 | `aw` | `co_await` (C++20) | | | |
 
-Kinds 3, 4, 8, 10, 15, 18--23, 25, 28--29, 35--36, 38--39 return pointers to `.rodata` string constants (`unk_A7C560` etc.) that encode the remaining standard operators (`dv`, `eo`, `aS`, `pL`, `mI`, `mL`, `dV`, `eO`, `aa`, `oo`, `mm`, `cm`).
+Kinds 3, 4, 8, 10, 15, 18–23, 25, 28–29, 35–36, 38–39 return pointers to `.rodata` string constants (`unk_A7C560` etc.) that encode the remaining standard operators (`dv`, `eo`, `aS`, `pL`, `mI`, `mL`, `dV`, `eO`, `aa`, `oo`, `mm`, `cm`).
 
 Note kinds 45 and 46: these are vendor-extended operators using the `v<length><name>` Itanium ABI encoding. `v23min` and `v23max` are NVIDIA/CUDA-specific min/max operators with a length prefix of `23` — this encodes the string `"min"` (3 chars) and `"max"` (3 chars) as vendor-qualified identifiers.
 
@@ -290,9 +290,9 @@ The function dispatches on the type node's kind byte at offset `+132`:
    - Subkind 4: `svbool` variants (predicate vectors)
    - Subkind 9: `svcount` variants
 3. **Kind 18 (mfloat8)**: `mfloat8x` types for ML inference.
-4. **Kind 2 (plain vector)**: Dispatches on element type byte at offset `+144`, handling 8 element widths (cases 1--8).
+4. **Kind 2 (plain vector)**: Dispatches on element type byte at offset `+144`, handling 8 element widths (cases 1–8).
 
-Each type category has 4 mangling variants selected by the `a2` parameter (values 1--4), corresponding to different vector widths or tuple sizes (e.g., `svint8_t`, `svint8x2_t`, `svint8x3_t`, `svint8x4_t`). The actual mangled strings are stored in `.rodata` pointer tables (`off_A7E950` through `off_A7EA18`).
+Each type category has 4 mangling variants selected by the `a2` parameter (values 1–4), corresponding to different vector widths or tuple sizes (e.g., `svint8_t`, `svint8x2_t`, `svint8x3_t`, `svint8x4_t`). The actual mangled strings are stored in `.rodata` pointer tables (`off_A7E950` through `off_A7EA18`).
 
 There is also special handling for `svboolx4_t` via `sub_7A7220`, which detects the specific boolean-tuple-of-4 predicate type and returns a dedicated mangling string.
 
@@ -534,7 +534,7 @@ These are emitted by `sub_6BCF80` (`nv_emit_host_reference_array`) as weak `exte
 
 ## Related Mangling Infrastructure
 
-### Type Mangling Subsystem (0x7C3000--0x7D0E00)
+### Type Mangling Subsystem (0x7C3000–0x7D0E00)
 
 A separate type mangling subsystem exists in the `0x7C3000`--`0x7D0E00` range, used for diagnostic output and type encoding (distinct from the `lower_name.c` mangling used for symbol generation). Key functions:
 

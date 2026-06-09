@@ -372,7 +372,7 @@ The `.lnk.bc` file is useful for verifying which libdevice functions survived li
 3. **Target triple and IR version validation.** Enforce `nvptx64-` prefix on all module triples. Implement the NVVM IR version checker that reads `nvvmir.version` metadata (2-element or 4-element tuples), special-cases version `{2,0}` as always-compatible (the libdevice sentinel), and checks debug IR version compatibility for `{3, <=2}`.
 4. **Multi-module linking pipeline.** Implement the six-phase linker: (A) module iteration with bitcode validation, (B) triple validation, (C) IR version check, (D) single-module fast path, (E) multi-module user linking with primary module selection and triple/data-layout propagation, (F) builtin linking with `OverrideFromSrc` semantics.
 5. **Symbol size matching.** Walk all global symbols in the linked module, compute type sizes recursively (handling half/float/double/pointer/integer/struct/array/vector types), and verify that declarations and definitions agree on type sizes using a binary search tree keyed by symbol name.
-6. **Constant folding integration.** Implement the fold eligibility checker for libdevice functions with three dispatch mechanisms (LLVM intrinsic ID switch for IDs 0--211, NVVM intrinsic ID ranges for IDs >211, name-based matching for C library names), gated by the convergent attribute check to prevent folding warp-synchronous functions.
+6. **Constant folding integration.** Implement the fold eligibility checker for libdevice functions with three dispatch mechanisms (LLVM intrinsic ID switch for IDs 0–211, NVVM intrinsic ID ranges for IDs >211, name-based matching for C library names), gated by the convergent attribute check to prevent folding warp-synchronous functions.
 
 ## Cross-References
 

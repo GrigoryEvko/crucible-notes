@@ -21,7 +21,7 @@ NVIDIA's InstCombine in CICC v13.0 is substantially larger than upstream LLVM's.
 
 The main visitor `sub_10EE7A0` receives an NVVM IR node pointer (`__m128i* a2`) and attempts to simplify it. A persistent local `v1612` aliases the instruction being visited. The function has four structural regions:
 
-**Preamble** (lines ~1760--2000) performs pre-dispatch checks: validating call-site attributes (opcode 41 for bitwise-assert), handling ternary FMA instructions (opcodes 238--245), checking for constant-foldable select patterns, canonicalizing operand ordering (constant to RHS), and running SimplifyDemandedBits via `sub_11A3F30` on the result type.
+**Preamble** (lines ~1760–2000) performs pre-dispatch checks: validating call-site attributes (opcode 41 for bitwise-assert), handling ternary FMA instructions (opcodes 238–245), checking for constant-foldable select patterns, canonicalizing operand ordering (constant to RHS), and running SimplifyDemandedBits via `sub_11A3F30` on the result type.
 
 **Opcode dispatch** reads the NVVM opcode via `sub_987FE0` (getOpcode) and uses a three-level switch:
 
@@ -51,9 +51,9 @@ This is the second-largest visitor. It implements approximately 25 cascading sim
 
 Phase 0 runs quick exits: pattern-matched constant fold (`sub_101E960`), `SimplifyBinOp` (`sub_F29CA0`), algebraic identities (`sub_F0F270`), NSW/NUW simplification (`sub_F11DB0`), and critically the **NVIDIA-specific intrinsic handler** `sub_11AE870` which runs before any standard LLVM folds.
 
-Phases 1--9 handle associative/commutative factoring, cross-operand Mul-of-Add matching, delegated simplification, overflow detection, and multiply-shift strength reduction. Phase 5 detects multiply-by-power-of-2 and converts to shift; `sub_10BA120` builds the full strength reduction for patterns like `x * (2^n + 1)` into `(x << n) + x`.
+Phases 1–9 handle associative/commutative factoring, cross-operand Mul-of-Add matching, delegated simplification, overflow detection, and multiply-shift strength reduction. Phase 5 detects multiply-by-power-of-2 and converts to shift; `sub_10BA120` builds the full strength reduction for patterns like `x * (2^n + 1)` into `(x << n) + x`.
 
-Phases 10--25 cover Add-of-Mul factoring, shift chains, linear expression folding, subtraction of multiplied constants, demanded-bits masking, reciprocal elimination, overflow intrinsic decomposition, and division/remainder folding. The division constant folder uses `sub_C46BD0` (APInt::udiv), `sub_C499A0` (APInt::urem), `sub_C45F70` (APInt::sdiv), and `sub_C49AB0` (APInt::srem).
+Phases 10–25 cover Add-of-Mul factoring, shift chains, linear expression folding, subtraction of multiplied constants, demanded-bits masking, reciprocal elimination, overflow intrinsic decomposition, and division/remainder folding. The division constant folder uses `sub_C46BD0` (APInt::udiv), `sub_C499A0` (APInt::urem), `sub_C45F70` (APInt::sdiv), and `sub_C49AB0` (APInt::srem).
 
 Four template-instantiated helpers at `sub_10D2680`--`sub_10D2D70` (2,767 bytes each, identical structure) implement `matchBinOpReduction` parameterized by NVVM intrinsic ID (329, 330, 365, 366) and acceptable opcode range. These detect NVVM horizontal reduction intrinsics (e.g., horizontal add/mul across vector lanes) and simplify them to scalar binary operations.
 
@@ -185,7 +185,7 @@ When the filter passes, the shared epilogue calls `sub_F207A0(v6, v1612->m128i_i
 
 ### Separate Storage Assume Bundles
 
-At lines 6557--6567 of the main visitor, the code iterates over operand bundles on `llvm.assume` calls (opcode `0x0B`). For each bundle with a tag of exactly 16 bytes matching `"separate_storage"` (verified by `memcmp`), it calls `sub_10EA360` on both bundle operands. This implements NVIDIA's `separate_storage` alias analysis hint, allowing InstCombine to exploit non-aliasing assumptions for pairs of pointers declared to reside in separate memory spaces.
+At lines 6557–6567 of the main visitor, the code iterates over operand bundles on `llvm.assume` calls (opcode `0x0B`). For each bundle with a tag of exactly 16 bytes matching `"separate_storage"` (verified by `memcmp`), it calls `sub_10EA360` on both bundle operands. This implements NVIDIA's `separate_storage` alias analysis hint, allowing InstCombine to exploit non-aliasing assumptions for pairs of pointers declared to reside in separate memory spaces.
 
 ### Expanded GEP Handling
 
@@ -209,7 +209,7 @@ This walks backward through constant-index GEP chains up to `dword_4F901A8` step
 
 ### Ternary/FMA Support
 
-The preamble handles 3-operand instructions (opcodes 238--245) representing fused multiply-add variants. This includes checking whether the third operand is a zero-constant, converting between FMA opcode variants (238 vs. 242), and handling address space mismatches on FMA operand types — entirely NVIDIA-specific for CUDA's FMA intrinsics.
+The preamble handles 3-operand instructions (opcodes 238–245) representing fused multiply-add variants. This includes checking whether the third operand is a zero-constant, converting between FMA opcode variants (238 vs. 242), and handling address space mismatches on FMA operand types — entirely NVIDIA-specific for CUDA's FMA intrinsics.
 
 ## computeKnownBits — `sub_11A7600`
 
@@ -234,7 +234,7 @@ The 27.5 KB `computeKnownBits` implementation (4,156 decomp lines) dispatches on
 | 85 | `U` | CallInst (sub-dispatch: `0x0F`=abs, `0x42`=ctpop, `0x01`=bitreverse) |
 | 86 | `V` | LoadInst |
 
-A debug assertion at lines 2204--2212 fires when `computeKnownBits` and `SimplifyDemandedBits` produce inconsistent results, printing both APInt values and calling `abort()`. This invariant check (`known_zero & known_one == 0`, plus consistency with the demanded mask) is compiled in for debug/checked builds.
+A debug assertion at lines 2204–2212 fires when `computeKnownBits` and `SimplifyDemandedBits` produce inconsistent results, printing both APInt values and calling `abort()`. This invariant check (`known_zero & known_one == 0`, plus consistency with the demanded mask) is compiled in for debug/checked builds.
 
 ## SimplifyDemandedBits — `sub_11AE870`
 
@@ -286,7 +286,7 @@ Diagnostic strings recovered from the InstCombine binary region. InstCombine use
 |--------|--------|----------|---------|
 | `"computeKnownBits(): "` | `sub_904010` in `sub_11A7600` line ~2204 | Assertion | Debug build: `computeKnownBits` and `SimplifyDemandedBits` produce inconsistent results (prints both APInt values, then calls `abort()`) |
 | `"SimplifyDemandedBits(): "` | `sub_904010` in `sub_11A7600` line ~2212 | Assertion | Debug build: paired with `computeKnownBits()` inconsistency diagnostic above |
-| `"separate_storage"` | Main visitor lines 6557--6567 | Bundle tag | Matched via `memcmp` (16 bytes) on `llvm.assume` operand bundles; not a user-visible diagnostic |
+| `"separate_storage"` | Main visitor lines 6557–6567 | Bundle tag | Matched via `memcmp` (16 bytes) on `llvm.assume` operand bundles; not a user-visible diagnostic |
 | `"instcombine-negator-max-depth"` | `ctor_090` at `0x4F908A8` | Knob | Knob registration (default -1, unlimited) |
 | `"instcombine-negator-enabled"` | `ctor_090` at `0x4F90988` | Knob | Knob registration (default 1, enabled) |
 | `"instcombine-split-gep-chain"` | `ctor_068` at `0x4F8B4C0` | Knob | Knob registration |
@@ -332,7 +332,7 @@ InstCombine is the most frequently scheduled pass in the CICC pipeline. Each ins
 | **NVVM intrinsic folding** | No NVVM-specific intrinsic canonicalization | Dedicated 11.2 KB function (`sub_1169C30`, 2,268 decomp lines) with two-layer dispatch for negation, vector extract/insert, FMA, tensor, dot product, and 15+ fold types |
 | **High-opcode DCE** | Not present | Three NVIDIA proprietary intrinsic IDs (9549, 9553, 9567) with constant-argument dead-code elimination |
 | **`separate_storage` bundles** | No `separate_storage` operand bundle handling | Iterates `llvm.assume` bundles, extracting `"separate_storage"` hints for alias-based optimization |
-| **Ternary FMA opcodes** | Standard `llvm.fma` / `llvm.fmuladd` folding | Extended preamble handles opcodes 238--245 for CUDA FMA variants with address-space mismatch handling |
+| **Ternary FMA opcodes** | Standard `llvm.fma` / `llvm.fmuladd` folding | Extended preamble handles opcodes 238–245 for CUDA FMA variants with address-space mismatch handling |
 | **GEP chain look-through** | Single-level GEP simplification | Depth-limited chain walk (`dword_4F901A8` steps) backward through constant-index GEP chains to find CallInst base pointers |
 | **Horizontal reduction** | Standard intrinsic-based reduction fold | Four template-instantiated `matchBinOpReduction` helpers for NVVM horizontal reduction intrinsics (IDs 329, 330, 365, 366) |
 | **KnownBits integration** | Separate `computeKnownBits` in ValueTracking | Fused 27.5 KB `computeKnownBits` + `SimplifyDemandedBits` (4,156 decomp lines) with GPU special-register range oracle |

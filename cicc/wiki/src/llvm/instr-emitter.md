@@ -137,7 +137,7 @@ bool RegisterClass::contains(unsigned Reg) {
 The triple vtable dispatch pattern is the emitter's most distinctive NVIDIA modification. After inserting a MachineInstr for a target-specific opcode, the emitter checks three separate vtable slots to determine whether the instruction requires custom expansion:
 
 **Vtable slot 0xB8: `EmitInstrWithCustomInserter`**
-Default stub: `sub_2ED11C0` (returns false). When the NVPTX target overrides this for a given opcode, the custom inserter replaces the pseudo MachineInstr with an expanded sequence. Approximately 15--20 NVPTX pseudo-instructions use this path:
+Default stub: `sub_2ED11C0` (returns false). When the NVPTX target overrides this for a given opcode, the custom inserter replaces the pseudo MachineInstr with an expanded sequence. Approximately 15–20 NVPTX pseudo-instructions use this path:
 - Texture load operations (`tex.1d`, `tex.2d`, `tex.3d`) — these expand into address register setup, sampler state configuration, and the actual texture fetch instruction.
 - Surface operations (`sust`, `suld`) — surface load/store instructions that need coordinate clamping and format conversion.
 - Warp-level intrinsics (`shfl`, `vote`, `match`) — instructions that require lane mask setup and predicate register manipulation.
@@ -174,7 +174,7 @@ The flow collects `UsedRegs` by scanning:
 
 ## NVIDIA Extended Flag: Bit 36 (`0x1000000000`)
 
-Standard LLVM MachineInstr flags occupy bits 0--31 of the flags word (is_def, is_implicit, is_dead, is_kill, is_undef, is_early_clobber, etc.). CICC extends this to a 64-bit flags field and reserves bit 36 (`0x1000000000`) for an NVIDIA-specific purpose. The flag is queried via `sub_2E88A90` (`hasProperty`) with argument `rsi = 0x1000000000, edx = operand_index`.
+Standard LLVM MachineInstr flags occupy bits 0–31 of the flags word (is_def, is_implicit, is_dead, is_kill, is_undef, is_early_clobber, etc.). CICC extends this to a 64-bit flags field and reserves bit 36 (`0x1000000000`) for an NVIDIA-specific purpose. The flag is queried via `sub_2E88A90` (`hasProperty`) with argument `rsi = 0x1000000000, edx = operand_index`.
 
 ### Where Bit 36 Is Checked
 
@@ -291,7 +291,7 @@ After the main emission loop completes, a dedicated cleanup pass (Phase 12 in th
 
 ### Dead Copy Elimination Algorithm
 
-The algorithm walks the emitted result record array (0x28-byte stride, accumulated during Phases 4--11) and classifies each record for deletion or preservation.
+The algorithm walks the emitted result record array (0x28-byte stride, accumulated during Phases 4–11) and classifies each record for deletion or preservation.
 
 ```c
 DeadCopyElimination(InstrEmitter *self, ResultRecord *records, int count):
@@ -391,7 +391,7 @@ MIs added to `InstrEmitter+0x4A0` via `sub_2ED56A0` are not deleted immediately.
 
 ### Why NVPTX Needs Aggressive Dead Copy Elimination
 
-NVPTX kernel signatures routinely have 20--60 parameters, each lowered through a CopyFromReg from a fixed physical register. The SelectionDAG legalizer creates CopyFromReg SDNodes for each parameter load, but many parameters are only used in a subset of the kernel's basic blocks. Without immediate dead copy elimination, a kernel with 50 parameters would carry 50 COPY MachineInstrs at function entry, most of which are dead in any given block. The standard LLVM `DeadMachineInstrElimination` pass would eventually clean these up, but doing so immediately during emission:
+NVPTX kernel signatures routinely have 20–60 parameters, each lowered through a CopyFromReg from a fixed physical register. The SelectionDAG legalizer creates CopyFromReg SDNodes for each parameter load, but many parameters are only used in a subset of the kernel's basic blocks. Without immediate dead copy elimination, a kernel with 50 parameters would carry 50 COPY MachineInstrs at function entry, most of which are dead in any given block. The standard LLVM `DeadMachineInstrElimination` pass would eventually clean these up, but doing so immediately during emission:
 
 1. Reduces the MachineBasicBlock size that subsequent passes (register allocation, scheduling) must process.
 2. Avoids creating unnecessary VReg-to-PhysReg interference entries in the register allocator.
@@ -440,7 +440,7 @@ During the dead copy scan (Phase 12, offset `0x2EE08A0`--`0x2EE08BA`), the emitt
 | Custom inserter check | Single vtable call to `EmitInstrWithCustomInserter` | Triple vtable dispatch (0xB8, 0x348, 0x160) |
 | Extended MI flags | Standard LLVM flag set (32 bits) | Bit 36 (`0x1000000000`) for NVPTX-specific semantics |
 | Dead copy elimination | Post-emission pass in ScheduleDAGSDNodes | Inlined aggressive cleanup within EmitNode |
-| Stack frame | ~300--400 bytes typical | 872 bytes (multiple inline SmallVectors and hash tables) |
+| Stack frame | ~300–400 bytes typical | 872 bytes (multiple inline SmallVectors and hash tables) |
 | Self-recursion | Not self-recursive | Self-recursive for multi-result SDNode chains |
 | Inline fold detection | Not present at this stage | Opcode-1/2 fold bit check during dead copy scan |
 | Glue chain secondary walk | Not present | Cascading dead copy detection through glue predecessors |
@@ -450,7 +450,7 @@ During the dead copy scan (Phase 12, offset `0x2EE08A0`--`0x2EE08BA`), the emitt
 - Main emission loop: O(N) in the number of scheduled SDNodes.
 - Hash table lookups: O(1) amortized with rehashing at 3/4 load.
 - Dead copy elimination: O(C * U) where C = copies emitted, U = average uses per register.
-- Glue chain traversal: O(G) per node where G = glue chain length (typically 1--5).
+- Glue chain traversal: O(G) per node where G = glue chain length (typically 1–5).
 - Memory: O(N) for the three hash tables + O(R) for result records.
 
 ## Function Map

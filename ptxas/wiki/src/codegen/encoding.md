@@ -266,7 +266,7 @@ The 128-bit group (format code 2) encodes long-form SASS instructions (ALU, load
 
 ### Format Descriptor Architecture
 
-Each format group is defined by a 128-bit xmmword constant stored in rodata at addresses 0x23F1xxx--0x23F2xxx. This descriptor is loaded via SSE into the encoding context at `a1+8`:
+Each format group is defined by a 128-bit xmmword constant stored in rodata at addresses 0x23F1xxx–0x23F2xxx. This descriptor is loaded via SSE into the encoding context at `a1+8`:
 
 ```c
 *(__m128i *)(a1 + 8) = _mm_loadu_si128(&xmmword_23F29A8);
@@ -276,7 +276,7 @@ Each format group is defined by a 128-bit xmmword constant stored in rodata at a
 
 | DWORD | Context Offset | Source Half | Observed Values | Semantic Role |
 |---|---|---|---|---|
-| **DW0** | `a1+8` | `xmmword_lo[31:0]` | 1--16 | **Format class ID** — indexes the format dispatch table. Determines the opcode-header layout used by the architecture-specific mega-selector. Values 1--5 appear in 64-bit formats; 4--16 in 128-bit formats (DW0=4,5 are shared). |
+| **DW0** | `a1+8` | `xmmword_lo[31:0]` | 1–16 | **Format class ID** — indexes the format dispatch table. Determines the opcode-header layout used by the architecture-specific mega-selector. Values 1–5 appear in 64-bit formats; 4–16 in 128-bit formats (DW0=4,5 are shared). |
 | **DW1** | `a1+12` | `xmmword_lo[63:32]` | 2 (constant) | **Slot array stride** — the slot-array DWORD pitch in the rodata block. Always 2 across all 38 descriptors, meaning each rodata array follows at a fixed 10-DWORD offset. Not read by any observed encoder function; consumed only during the `memcpy`-like array copy. |
 | **DW2** | `a1+16` | `xmmword_hi[31:0]` | 4 (constant) | **Opcode header width** in units of 8 bits. `sub_7B9D60` computes `8 * *(DWORD*)(a1+16)` = 32 to locate the guard/predicate insertion point at bit 32. `sub_7BD260` derives operand-type extraction at bits `8*DW2+1` (33) and `8*DW2+3` (35). All 38 descriptors use DW2=4, fixing the opcode header at 32 bits. |
 | **DW3** | `a1+20` | `xmmword_hi[63:32]` | 6 (constant) | **Operand region offset** in units of 8 bits. `sub_7B9F00` uses `8 * a3` with `a3` derived from this field to position the first operand slot at bit 48 in multi-slot formats. All 38 descriptors use DW3=6, placing the operand region at bit 48. |
@@ -347,8 +347,8 @@ Key properties:
 - Handles cross-QWORD-boundary fields: a 9-bit opcode starting at bit 59 writes 5 bits to QWORD 0 and 4 bits to QWORD 1.
 - `neg_base + chunk_end` simplifies to `pos - bit_offset` — the number of value bits already consumed by earlier chunks. Clamped to 0 for the first overlapping chunk (where `pos <= bit_offset`).
 - Loop terminates at bit position 1280 (20 QWORDs), hard ceiling.
-- For typical field widths (1--9 bits), only 1--2 iterations touch the OR path; the rest hit the skip.
-- Called 8--12 times per encoder function (average ~10).
+- For typical field widths (1–9 bits), only 1–2 iterations touch the OR path; the rest hit the skip.
+- Called 8–12 times per encoder function (average ~10).
 - The 256-bit format encoders call it with wider fields (up to 32 bits for data values).
 - Buffer offset 0x220 confirmed in disassembly: `mov r15, [r14+220h]` / `mov [r14+220h], rax`.
 
@@ -361,9 +361,9 @@ The most populous format group. Handles the bread-and-butter ALU and memory inst
 | **Descriptor** | `xmmword_23F1DF8` |
 | **Format ID** | 0x03 (bits[25:31]) |
 | **Slot arrays** | `dword_23F1E08`, `dword_23F1E30`, `dword_23F1E40` |
-| **Operand slots** | 2--7 per instruction |
+| **Operand slots** | 2–7 per instruction |
 | **Typical pattern** | 3 reg + 1 imm + 1 pred (5 slots) |
-| **Modifier fields** | 4--8 per instruction |
+| **Modifier fields** | 4–8 per instruction |
 
 Opcode classes (29): 0x08, 0x0B, 0x0F, 0x10, 0x16, 0x17, 0x19, 0x1A, 0x1B, 0x20, 0x22, 0x25, 0x28, 0x2A, 0x2B, 0x30, 0x32, 0x34, 0x35, 0x36, 0x37, 0x38, 0x3B, 0x41, 0x45, 0x4A, 0x4B, 0x5B, 0x67.
 
@@ -376,20 +376,20 @@ Second most common. Used for instructions with rich modifier fields or unusual o
 | **Descriptor** | `xmmword_23F29A8` |
 | **Format ID** | 0x19 (bits[25:31]) |
 | **Slot arrays** | `dword_23F29B8`, `dword_23F29E0`, `dword_23F2A08` |
-| **Operand slots** | 3--6 per instruction |
-| **Modifier fields** | 5--8 per instruction |
+| **Operand slots** | 3–6 per instruction |
+| **Modifier fields** | 5–8 per instruction |
 
 Opcode classes (8): 0x0F, 0x10, 0x1A, 0x1B, 0x22, 0x38, 0x4D, 0x5E. Notable concentration: opcode 0x1B has 41 variants in this format alone (tensor/MMA family); opcode 0x5E has 26 variants. The load/store family (0x38) uses this format for 7 of its 16 variants — the ones with extended addressing modes.
 
 ### 128-bit Format 0x0A — Multi-Source ALU (99 encoders)
 
-Designed for instructions with 4--7 source operands. Heavily weighted toward rich ALU operations.
+Designed for instructions with 4–7 source operands. Heavily weighted toward rich ALU operations.
 
 | Property | Value |
 |---|---|
 | **Descriptor** | `xmmword_23F21B0` |
 | **Format ID** | 0x0A (bits[25:31]) |
-| **Operand slots** | 4--7 per instruction |
+| **Operand slots** | 4–7 per instruction |
 | **Typical pattern** | 4 reg + 1 imm + 1 pred |
 
 Opcode classes (10): 0x10, 0x16, 0x17, 0x20, 0x25, 0x28, 0x2A, 0x45, 0x4B, 0x67. Opcode 0x2A dominates with 30 variants; opcode 0x25 has 18.
@@ -403,8 +403,8 @@ Contains the most complex encoders in the binary. Opcode 0x5A variant 0x02 (`sub
 | **Descriptor** | `xmmword_23F2678` |
 | **Format ID** | 0x13 (bits[25:31]) |
 | **Slot arrays** | `dword_23F2688`, `dword_23F26B0`, `dword_23F26D8` |
-| **Operand slots** | 4--7 per instruction |
-| **Modifier fields** | 8--18 per instruction |
+| **Operand slots** | 4–7 per instruction |
+| **Modifier fields** | 8–18 per instruction |
 
 Opcode classes (7): 0x10, 0x16, 0x17, 0x1A, 0x41, 0x5A, 0x67.
 
@@ -429,16 +429,16 @@ Widest opcode coverage of any single format. Covers 27 distinct opcode classes w
 | Property | Value |
 |---|---|
 | **Descriptor** | `xmmword_23F1F08` |
-| **Operand slots** | 0--3 per instruction |
+| **Operand slots** | 0–3 per instruction |
 | **Register offsets** | 0x40, 0x50, 0x60, 0x70 |
 
-Opcode classes (27): 0x00--0x09, 0x0A--0x0F, 0x10, 0x11, 0x12, 0x14, 0x16, 0x1B, 0x1C, 0x20, 0x21, 0x23, 0x25. Many of these are NOP/control, simple moves, and compact branches.
+Opcode classes (27): 0x00–0x09, 0x0A–0x0F, 0x10, 0x11, 0x12, 0x14, 0x16, 0x1B, 0x1C, 0x20, 0x21, 0x23, 0x25. Many of these are NOP/control, simple moves, and compact branches.
 
 ### 64-bit Format B (`xmmword_23F1D70`) — Short-Form 4-Operand (41 encoders)
 
 Bimodal operand count: either 0 operands (control instructions) or 4 operands (compact arithmetic with all-register sources).
 
-Opcode classes: 0x00--0x09, 0x10, 0x12, 0x14--0x1E, 0x26, 0x28, 0x2A.
+Opcode classes: 0x00–0x09, 0x10, 0x12, 0x14–0x1E, 0x26, 0x28, 0x2A.
 
 ### 64-bit Formats C, D, E — Specialized Short Forms (20 encoders combined)
 
@@ -474,7 +474,7 @@ The 256-bit format (format code 8) is used by exactly 2 encoders for IMAD.WIDE (
 
 ## Dispatch Tables — The Six Megafunctions
 
-Six switch-dispatch megafunctions in the 0x10C0B20--0x10E32E0 range form the central routing logic of the instruction codec. All six switch on the opcode category at `*(WORD*)(a1+12)` with up to 370 cases (0x0 through 0x171), each containing sub-switches on field ID:
+Six switch-dispatch megafunctions in the 0x10C0B20–0x10E32E0 range form the central routing logic of the instruction codec. All six switch on the opcode category at `*(WORD*)(a1+12)` with up to 370 cases (0x0 through 0x171), each containing sub-switches on field ID:
 
 | Function | Size | Decompiled Lines | Callers | Purpose |
 |---|---|---|---|---|
@@ -487,9 +487,9 @@ Six switch-dispatch megafunctions in the 0x10C0B20--0x10E32E0 range form the cen
 
 ### Routing structure
 
-All four instruction-level dispatchers (setField, getFieldOffset, hasField, setFieldDefault) share identical structure: a primary `switch(*(WORD*)(a1+12))` on the opcode category (0x0--0x171, 370 slots), where each live case contains a sub-switch on field ID `a2`. Of these 370 slots, 248 are live and 122 are dead (returning `0xFFFFFFFF`, `false`, or silently returning).
+All four instruction-level dispatchers (setField, getFieldOffset, hasField, setFieldDefault) share identical structure: a primary `switch(*(WORD*)(a1+12))` on the opcode category (0x0–0x171, 370 slots), where each live case contains a sub-switch on field ID `a2`. Of these 370 slots, 248 are live and 122 are dead (returning `0xFFFFFFFF`, `false`, or silently returning).
 
-The two operand-level dispatchers (getOperandFieldOffset, setOperandField) use the same primary switch but extend to category 0x174 (373 slots, 278 with handlers). They add an `a2` (operand index) parameter and access per-operand records at `*(QWORD*)(a1+32) + 32*operand_index + 24`, sub-switching on field ID `a3` over the range 1--30.
+The two operand-level dispatchers (getOperandFieldOffset, setOperandField) use the same primary switch but extend to category 0x174 (373 slots, 278 with handlers). They add an `a2` (operand index) parameter and access per-operand records at `*(QWORD*)(a1+32) + 32*operand_index + 24`, sub-switching on field ID `a3` over the range 1–30.
 
 ### setField shared write paths
 
@@ -527,21 +527,21 @@ Field count per category varies dramatically (median: 5, max: 47):
 | 0x68 | 35 | Surface (SULD/SUST) |
 | 0x59 | 34 | Texture (TLD4 variants) |
 
-Categories 0x0--0xA are minimal (1--4 fields), handling pseudo-ops or simple control flow.
+Categories 0x0–0xA are minimal (1–4 fields), handling pseudo-ops or simple control flow.
 
 ### Dead-case bitmask (122 categories)
 
 The 122 dead categories are identical across getFieldOffset, hasField, and setFieldDefault. setField uses `default: return` instead of an explicit dead-case block. The dead cases cluster in two dense zones:
 
-- **Mid-range 0x8C--0xBA:** 28 of 47 slots dead (60%) — reserved or arch-specific categories not active in the analyzed binary.
-- **High range 0x12E--0x16F:** 44 of 66 slots dead (67%) — Blackwell/sm_100+ categories not yet populated.
+- **Mid-range 0x8C–0xBA:** 28 of 47 slots dead (60%) — reserved or arch-specific categories not active in the analyzed binary.
+- **High range 0x12E–0x16F:** 44 of 66 slots dead (67%) — Blackwell/sm_100+ categories not yet populated.
 - **Sparse isolates below 0x80:** only 7 dead (0x3, 0x11, 0x24, 0x26, 0x2D, 0x75, 0x78).
 
 The operand-level dispatchers have no explicit dead-case block; unknown categories fall through to `default: return 0xFFFFFFFF`.
 
 ## Bitfield Accessor Library
 
-The 0x10B0000--0x10BF2C0 range contains 2,095 machine-generated bitfield read/write primitives for the 192-bit packed instruction format. These are the building blocks that the six megafunctions call:
+The 0x10B0000–0x10BF2C0 range contains 2,095 machine-generated bitfield read/write primitives for the 192-bit packed instruction format. These are the building blocks that the six megafunctions call:
 
 - 1,661 functions under 200 bytes: pure getters/setters for individual fields
 - 412 functions between 200-500 bytes: multi-field accessors
@@ -612,7 +612,7 @@ int modifier_encode_bool(int64_t ctx, int ir_val) {
 // 1 when true, -1 (0xFFFFFFFF unsigned) when false -- same semantics.
 ```
 
-**Variant B — table lookup** (used by `sub_10B4650`, `sub_10B47F0`, `sub_10B2F00`, `sub_10B2F20`, `sub_10B5580`, `sub_10B6220`; covers ~1,800 call sites). Indexes into one of 40 lookup arrays in the `modifier_value_tables` region (0x22FCD20--0x22FD580, 2144 bytes total):
+**Variant B — table lookup** (used by `sub_10B4650`, `sub_10B47F0`, `sub_10B2F00`, `sub_10B2F20`, `sub_10B5580`, `sub_10B6220`; covers ~1,800 call sites). Indexes into one of 40 lookup arrays in the `modifier_value_tables` region (0x22FCD20–0x22FD580, 2144 bytes total):
 
 ```c
 // Reconstructed from sub_10B4650 (base=1899, table=identity_5 @ 0x22FD480, N=5),
@@ -636,7 +636,7 @@ Modifier fields per instruction range from 0 (simple control instructions) to 18
 
 ## Physical Register Encoding
 
-The SASS instruction encoder uses a two-stage pipeline to convert abstract virtual registers into hardware register fields in the final instruction word. The first stage (Ori encoding, described above in "Register Operand Encoder") packs register type and number into operand slots within the 1280-bit encoding buffer. The second stage (SASS emission) maps the compiler's abstract `(register_class, sub_index)` pair into an 8-bit hardware register number and writes it into the final 128-bit instruction word. This second stage is implemented by the register-class encoding tables at address range 0x1B4C000--0x1B76000 (Zone A of the emission backend).
+The SASS instruction encoder uses a two-stage pipeline to convert abstract virtual registers into hardware register fields in the final instruction word. The first stage (Ori encoding, described above in "Register Operand Encoder") packs register type and number into operand slots within the 1280-bit encoding buffer. The second stage (SASS emission) maps the compiler's abstract `(register_class, sub_index)` pair into an 8-bit hardware register number and writes it into the final 128-bit instruction word. This second stage is implemented by the register-class encoding tables at address range 0x1B4C000–0x1B76000 (Zone A of the emission backend).
 
 ### Class-to-Hardware Formula
 
@@ -646,7 +646,7 @@ The SASS instruction encoder uses a two-stage pipeline to convert abstract virtu
 hardware_reg = register_class * 32 + sub_index
 ```
 
-The function takes two integer arguments `(a1, a2)` where `a1` is the register class (0--5) and `a2` is the sub-register index within that class. It is compiled as a deeply nested if-chain covering all 156 valid `(class, index)` combinations. The decompiler output is 495 lines of cascading conditionals, but every return value satisfies the formula `a1 * 32 + a2` exactly:
+The function takes two integer arguments `(a1, a2)` where `a1` is the register class (0–5) and `a2` is the sub-register index within that class. It is compiled as a deeply nested if-chain covering all 156 valid `(class, index)` combinations. The decompiler output is 495 lines of cascading conditionals, but every return value satisfies the formula `a1 * 32 + a2` exactly:
 
 ```c
 // sub_1B6B250 -- reconstructed from decompiled lookup table
@@ -672,18 +672,18 @@ __int64 encode_register_guarded(__int64 ctx, int reg_class, int sub_index) {
 
 ### Per-Class Hardware Number Ranges
 
-Each class occupies a 32-number stride in the hardware register namespace. Within each stride, indices 1--15 and 17--27 are populated (26 registers per class). Index 0 maps to the no-register sentinel via the guard wrapper. Index 16 is absent from the lookup table — a gap in every class.
+Each class occupies a 32-number stride in the hardware register namespace. Within each stride, indices 1–15 and 17–27 are populated (26 registers per class). Index 0 maps to the no-register sentinel via the guard wrapper. Index 16 is absent from the lookup table — a gap in every class.
 
 | Class | a1 | Hardware Range | Populated Indices | Gap | Likely Register File |
 |-------|---:|---------------|-------------------|-----|---------------------|
-| 0 | 0 | 0--27 | 1--15, 17--27 | 16 | R (GPR primary) |
-| 1 | 1 | 32--59 | 1--15, 17--27 | 48 | R (GPR secondary) |
-| 2 | 2 | 64--91 | 1--15, 17--27 | 80 | P (predicate) |
-| 3 | 3 | 96--123 | 1--15, 17--27 | 112 | UR (uniform GPR) |
-| 4 | 4 | 128--155 | 1--15, 17--27 | 144 | UR (uniform ext) |
-| 5 | 5 | 160--187 | 1--15, 17--27 | 176 | P/UP (uniform pred) |
+| 0 | 0 | 0–27 | 1–15, 17–27 | 16 | R (GPR primary) |
+| 1 | 1 | 32–59 | 1–15, 17–27 | 48 | R (GPR secondary) |
+| 2 | 2 | 64–91 | 1–15, 17–27 | 80 | P (predicate) |
+| 3 | 3 | 96–123 | 1–15, 17–27 | 112 | UR (uniform GPR) |
+| 4 | 4 | 128–155 | 1–15, 17–27 | 144 | UR (uniform ext) |
+| 5 | 5 | 160–187 | 1–15, 17–27 | 176 | P/UP (uniform pred) |
 
-Hardware numbers 28--31 (and the corresponding padding in each class) are unused, providing alignment to 32-register boundaries. The maximum hardware register number produced by the table is 187 (class 5, index 27). The 8-bit encoding field can represent 0--255, so values 188--255 are reserved.
+Hardware numbers 28–31 (and the corresponding padding in each class) are unused, providing alignment to 32-register boundaries. The maximum hardware register number produced by the table is 187 (class 5, index 27). The 8-bit encoding field can represent 0–255, so values 188–255 are reserved.
 
 #### Why Index 16 Is Excluded
 
@@ -700,7 +700,7 @@ Index 0 is consumed by the no-register sentinel (the guard wrapper `sub_1B73060`
 
 The parallel with architectural zero registers reinforces this interpretation. In the NVIDIA register file, hardware register 0 is RZ (read-zero, write-discard) for GPRs and PT (always-true) for predicates. Slot 16 is the analogous reserved position at the top of each half-bank — it is not exposed as a named architectural register but the hardware treats it as a bank-select boundary that cannot hold allocatable state.
 
-Concrete evidence: the 6 excluded hardware numbers are 16, 48, 80, 112, 144, and 176. In binary these are `0b0_10000`, `0b01_10000`, `0b10_10000`, `0b11_10000`, `0b100_10000`, `0b101_10000` — every one has bits [4:0] = `10000` and bits [7:5] identifying the class. The encoder never produces any of these values, and the guard wrapper ensures that `(0,0)` also returns 0 (the RZ sentinel) rather than entering the table. The combined effect: indices 0 and 16 in each class are reserved, indices 28--31 are unused padding, and the 26 allocatable slots per class are 1--15 and 17--27.
+Concrete evidence: the 6 excluded hardware numbers are 16, 48, 80, 112, 144, and 176. In binary these are `0b0_10000`, `0b01_10000`, `0b10_10000`, `0b11_10000`, `0b100_10000`, `0b101_10000` — every one has bits [4:0] = `10000` and bits [7:5] identifying the class. The encoder never produces any of these values, and the guard wrapper ensures that `(0,0)` also returns 0 (the RZ sentinel) rather than entering the table. The combined effect: indices 0 and 16 in each class are reserved, indices 28–31 are unused padding, and the 26 allocatable slots per class are 1–15 and 17–27.
 
 ### Split Bitfield Writer
 
@@ -754,7 +754,7 @@ __int64 encode_register_with_modifiers(
 
 When all modifier flags are zero (`a3 | a4 | a5 == 0`), the function returns the same value as `sub_1B6B250` — the base `class * 32 + index` result. When modifiers are present, the function continues into extended encoding logic that packs modifier bits alongside the register number. The guard wrapper `sub_1B748C0` (35 bytes, 104 callers) provides the same no-register short-circuit for the extended variant.
 
-Additional encoding variants for different operand positions include `sub_1B6D590`, `sub_1B70640`, `sub_1B71AD0`, `sub_1B748F0`, and `sub_1B76100` (5264--6106 bytes each, 2--49 callers each). All share the same nested-if structural pattern and operate on the same class/index domain.
+Additional encoding variants for different operand positions include `sub_1B6D590`, `sub_1B70640`, `sub_1B71AD0`, `sub_1B748F0`, and `sub_1B76100` (5264–6106 bytes each, 2–49 callers each). All share the same nested-if structural pattern and operate on the same class/index domain.
 
 ### Encoding Pipeline Summary
 
@@ -799,11 +799,11 @@ Virtual Register (vreg+64 = reg_type, vreg+68 = physical_reg)
 
 ## Decoder Functions
 
-97 decoder functions in the 0xEB3040--0xED0FE0 range reverse the encoding: they extract operand information from packed SASS bitfields back into Ori IR representation. The codec dispatcher `sub_EB3040` performs binary search on the instruction type word (`*(a2+12)`, `*(a2+14)`, `*(a2+15)`) against a two-level table at `off_22E6380`, then tail-calls the matching encoder stub (encoder stubs handle both encode and decode directions). For instruction types 120/121 (0x78/0x79), it falls through to the generic codec `sub_7BFAE0`.
+97 decoder functions in the 0xEB3040–0xED0FE0 range reverse the encoding: they extract operand information from packed SASS bitfields back into Ori IR representation. The codec dispatcher `sub_EB3040` performs binary search on the instruction type word (`*(a2+12)`, `*(a2+14)`, `*(a2+15)`) against a two-level table at `off_22E6380`, then tail-calls the matching encoder stub (encoder stubs handle both encode and decode directions). For instruction types 120/121 (0x78/0x79), it falls through to the generic codec `sub_7BFAE0`.
 
 ### Dispatch Table `off_22E6380`
 
-The table spans 0x22E6380--0x22E67C0 (1,088 bytes). It is a flat array of 68 entries, one per instruction type word (0--67), each 16 bytes:
+The table spans 0x22E6380–0x22E67C0 (1,088 bytes). It is a flat array of 68 entries, one per instruction type word (0–67), each 16 bytes:
 
 ```c
 struct TopEntry {       // 16 bytes
@@ -819,7 +819,7 @@ struct SubEntry {       // 24 bytes
     uint8_t  key0;      // *(a2+14) -- primary search key (opcode variant)
     uint8_t  key1;      // *(a2+15) -- secondary match key (format class)
     uint8_t  pad[6];
-    void    *func;      // direct pointer to encoder stub (0xC6xxxx--0xE2xxxx range)
+    void    *func;      // direct pointer to encoder stub (0xC6xxxx–0xE2xxxx range)
     uint64_t reserved;  // always 0 (vtable adjust slot, unused)
 };
 ```
@@ -856,7 +856,7 @@ Top-level contents (instruction type to subtable size and encoder address range)
 | 27 | 48 | `D6B030`--`D7CC30` | 67 | 5 | `C7C1A0`--`C7D740` |
 | 32 | 36 | `D4F0B0`--`D5B8D0` | | | |
 
-Single-entry types (2, 3, 5, 9, 17, 36, 45, 46, 58, 63, 64) each map one `(key0,key1)` pair to one encoder stub. Types 19, 20, 24, 28, 30, 33, 38, 49, 60--62 have 2--3 entries each.
+Single-entry types (2, 3, 5, 9, 17, 36, 45, 46, 58, 63, 64) each map one `(key0,key1)` pair to one encoder stub. Types 19, 20, 24, 28, 30, 33, 38, 49, 60–62 have 2–3 entries each.
 
 The `key1` byte encodes the operand format class. The 19 distinct `key1` values observed, with their frequencies across all 893 entries: 0x02(67), 0x03(207), 0x05(188), 0x06(21), 0x07(40), 0x09(2), 0x0a(138), 0x0b(16), 0x0d(10), 0x13(57), 0x17(1), 0x19(90), 0x1a(5), 0x21(2), 0x22(37), 0x23(9), 0x26(1), 0x27(1). Format classes 0x03 and 0x05 together cover 44% of all entries.
 
@@ -895,7 +895,7 @@ Decoder operand count distribution: 6 two-operand, 18 three-operand, 22 four-ope
 
 ## Opcode ID Extractors
 
-Over 100 small functions in the 0x10BF000--0x10C0C00 range serve as opcode discriminators. Each maps an IR instruction node to an opcode ID by reading fields from the operand table. The most-used extractors:
+Over 100 small functions in the 0x10BF000–0x10C0C00 range serve as opcode discriminators. Each maps an IR instruction node to an opcode ID by reading fields from the operand table. The most-used extractors:
 
 | Function | Encoder Users | Major Opcode Family |
 |---|---|---|
@@ -917,23 +917,23 @@ The encoding system is replicated per SM target. Each SM architecture has its ow
 
 | Range | Functions | Layer |
 |---|---|---|
-| 0xD27000--0xDFC000 | 592 | Encoder stubs (p1.12) |
-| 0xDFC000--0xEB2AE0 | 494 | Encoder stubs continuation (p1.13) |
-| 0xEB3040--0xED0FE0 | 97 | Decoder functions (p1.13) |
-| 0x107B1E0--0x10AD700 | 641 | Encoder stubs continuation (p1.16) |
-| 0x10ADD30--0x10AFF80 | 78 | Instruction lifecycle & scheduling |
-| 0x10B0000--0x10BF2C0 | 2,095 | Bitfield accessor library (p1.16) |
-| 0x10C0B20--0x10E32E0 | 184 | Dispatch table megafunctions (p1.16) |
-| 0x10EE900--0x1134160 | ~400 | Binary encoders: IR fields to bits (p1.16) |
-| 0x1134160--0x114F380 | ~132 | High-level encode path (p1.16) |
+| 0xD27000–0xDFC000 | 592 | Encoder stubs (p1.12) |
+| 0xDFC000–0xEB2AE0 | 494 | Encoder stubs continuation (p1.13) |
+| 0xEB3040–0xED0FE0 | 97 | Decoder functions (p1.13) |
+| 0x107B1E0–0x10AD700 | 641 | Encoder stubs continuation (p1.16) |
+| 0x10ADD30–0x10AFF80 | 78 | Instruction lifecycle & scheduling |
+| 0x10B0000–0x10BF2C0 | 2,095 | Bitfield accessor library (p1.16) |
+| 0x10C0B20–0x10E32E0 | 184 | Dispatch table megafunctions (p1.16) |
+| 0x10EE900–0x1134160 | ~400 | Binary encoders: IR fields to bits (p1.16) |
+| 0x1134160–0x114F380 | ~132 | High-level encode path (p1.16) |
 
 The total SM100 codec spans roughly 2.5 MB of binary code across approximately 4,700 functions (including the shared bitfield accessor library).
 
-Other SM targets (SM75 Turing, SM80 Ampere, SM86 Ada, SM89 Lovelace, SM90a Hopper, SM103 Blackwell Ultra, SM120 consumer Blackwell) have parallel encoder populations in the p1.14, p1.15, p1.17--p1.22 address ranges, each with matched xmmword constants for their architecture-specific instruction set.
+Other SM targets (SM75 Turing, SM80 Ampere, SM86 Ada, SM89 Lovelace, SM90a Hopper, SM103 Blackwell Ultra, SM120 consumer Blackwell) have parallel encoder populations in the p1.14, p1.15, p1.17–p1.22 address ranges, each with matched xmmword constants for their architecture-specific instruction set.
 
 ## Per-SM Instruction Format Descriptors
 
-316 instruction format descriptor functions at 0x1732170--0x17A9B70 form the shared, architecture-neutral instruction pattern database. Unlike the per-SM encoder stubs (replicated per architecture at separate address ranges), these descriptors are a single set of functions that describe every SASS opcode variant's encoding geometry: bitfield layout, operand slot configuration, and modifier schema. They are invoked exclusively through virtual dispatch (zero static callers) from the ISel passes (`sub_A4BC60`, `sub_A4D3F0`) via the FNV-1a hash-based instruction matcher at `sub_1731440`.
+316 instruction format descriptor functions at 0x1732170–0x17A9B70 form the shared, architecture-neutral instruction pattern database. Unlike the per-SM encoder stubs (replicated per architecture at separate address ranges), these descriptors are a single set of functions that describe every SASS opcode variant's encoding geometry: bitfield layout, operand slot configuration, and modifier schema. They are invoked exclusively through virtual dispatch (zero static callers) from the ISel passes (`sub_A4BC60`, `sub_A4D3F0`) via the FNV-1a hash-based instruction matcher at `sub_1731440`.
 
 ### Descriptor Template
 
@@ -958,7 +958,7 @@ sub_7B9B80(a1, 0x19, 7, FORMAT_ID);     // bits[25:31]   7-bit format ID
 *(DWORD*)(a1 + 424) = VAL2;
 
 // Phase 4: Operand count + standard encoding tail
-*(DWORD*)(a1 + 144) = NUM_OPERANDS;       // 0--7
+*(DWORD*)(a1 + 144) = NUM_OPERANDS;       // 0–7
 sub_7B9D30(a1);                            // clear constant buffer table
 sub_7B9D60(a1, a2, 0);                     // encode reuse + guard predicate
 // Then: opcode extraction, register encoding, modifier field packing
@@ -987,20 +987,20 @@ The Tier 2 modifier groups correspond to GPU architecture generations. The mappi
 
 | Modifier Address | Probable SM Range | ISA Family | Confidence |
 |---|---|---|---|
-| `0x202A280`--`0x202A2B0` | sm_50--sm_75 | Maxwell / Pascal / Volta / Turing | MEDIUM |
-| `0x22F1B30`--`0x22F1B50` | sm_80--sm_86 | Ampere / Ada | MEDIUM |
-| `0x22F1BA0`--`0x22F1BB0` | sm_89--sm_90a | Lovelace / Hopper | MEDIUM |
+| `0x202A280`--`0x202A2B0` | sm_50–sm_75 | Maxwell / Pascal / Volta / Turing | MEDIUM |
+| `0x22F1B30`--`0x22F1B50` | sm_80–sm_86 | Ampere / Ada | MEDIUM |
+| `0x22F1BA0`--`0x22F1BB0` | sm_89–sm_90a | Lovelace / Hopper | MEDIUM |
 | `0x22F1AA0`--`0x22F1AE0` | sm_100+ | Blackwell datacenter | MEDIUM |
 | `0x22F1C20`--`0x22F1C30` | sm_103 / sm_120 | Blackwell Ultra / consumer | LOW |
 | `0x23B2DE0` | Cross-arch | Specialized / rare instructions | LOW |
 
-The progression from `0x202A` to `0x22F1` to `0x23B2` in rodata address space mirrors the SM generation ordering. Group A (Maxwell--Turing) is the most populous, consistent with the longest-supported ISA family. Groups E and F have the fewest functions, consistent with the newest architectures that introduce fewer format changes.
+The progression from `0x202A` to `0x22F1` to `0x23B2` in rodata address space mirrors the SM generation ordering. Group A (Maxwell–Turing) is the most populous, consistent with the longest-supported ISA family. Groups E and F have the fewest functions, consistent with the newest architectures that introduce fewer format changes.
 
 ### Cross-SM Dispatch Table Comparison
 
 Five per-SM handler dispatch tables at `0x22E7AD0`--`0x23B99D0` (72,000 bytes each, 24 bytes per entry) map `(format_id << 8) | minor_opcode` dispatch keys to encoder stub handler addresses. The tables share a common core of 492 opcodes while differing in total population, handler multiplicity, and per-opcode encoder routing.
 
-| Property | SM50--7x | SM75 | SM80--8x | SM86--89 | SM100 |
+| Property | SM50–7x | SM75 | SM80–8x | SM86–89 | SM100 |
 |---|---|---|---|---|---|
 | Dispatch table VA | `0x22E7AD0` | `0x2348FB0` | `0x238C9B0` | `0x23A8090` | `0x236E160` |
 | Total entries | 1,484 | 1,613 | 1,896 | 1,641 | 1,808 |
@@ -1010,22 +1010,22 @@ Five per-SM handler dispatch tables at `0x22E7AD0`--`0x23B99D0` (72,000 bytes ea
 | Max entry multiplicity | 37 | 41 | 55 | 42 | 40 |
 | Handler VA range | `0xC69`--`0xEB2` | `0xC69`--`0x1C0B` | `0xC69`--`0x180B` | `0xC69`--`0x18F0` | `0xC69`--`0x1C07` |
 
-**Opcode set evolution.** SM75, SM80--8x, and SM86--89 all share an identical 535-opcode set: the SM50 baseline plus 41 additions minus 18 removals. SM100 (Blackwell) diverges substantially with 100 new exclusive opcodes spanning 13 format IDs (heaviest in format_id 3 with 16 new opcodes, format_id 5 with 15, and format_id 7 with 13). The 17 SM50-only opcodes cluster in format IDs 17 (7 opcodes), 37 (7 opcodes), 31 (2), and 36 (1) — all absent from every later generation.
+**Opcode set evolution.** SM75, SM80–8x, and SM86–89 all share an identical 535-opcode set: the SM50 baseline plus 41 additions minus 18 removals. SM100 (Blackwell) diverges substantially with 100 new exclusive opcodes spanning 13 format IDs (heaviest in format_id 3 with 16 new opcodes, format_id 5 with 15, and format_id 7 with 13). The 17 SM50-only opcodes cluster in format IDs 17 (7 opcodes), 37 (7 opcodes), 31 (2), and 36 (1) — all absent from every later generation.
 
-**Handler routing divergence.** Among the 492 common opcodes, only 236 (48%) route to identical handler sets across all five tables. The remaining 256 (52%) have at least one SM generation providing extra encoder stubs, typically architecture-specific variants for the same logical instruction. SM80--8x is the most divergent with 175 opcodes carrying extra handlers (consistent with its highest entry count of 1,896 and max multiplicity of 55). All tables share a common handler base address at `0xC693D0`, with SM-specific encoder stubs extending into disjoint address ranges: SM50 at `0xC69`--`0xEB2`, SM75/80/86 adding stubs in `0x174`--`0x18F`, and SM100 adding a block at `0x144`--`0x150`.
+**Handler routing divergence.** Among the 492 common opcodes, only 236 (48%) route to identical handler sets across all five tables. The remaining 256 (52%) have at least one SM generation providing extra encoder stubs, typically architecture-specific variants for the same logical instruction. SM80–8x is the most divergent with 175 opcodes carrying extra handlers (consistent with its highest entry count of 1,896 and max multiplicity of 55). All tables share a common handler base address at `0xC693D0`, with SM-specific encoder stubs extending into disjoint address ranges: SM50 at `0xC69`--`0xEB2`, SM75/80/86 adding stubs in `0x174`--`0x18F`, and SM100 adding a block at `0x144`--`0x150`.
 
 **Format ID presence/absence across generations:**
 
-| Format ID | SM50--7x | SM75+ | SM100 | Notes |
+| Format ID | SM50–7x | SM75+ | SM100 | Notes |
 |---|---|---|---|---|
-| 17 | 23 entries | 0 | 0 | Removed after Maxwell--Volta |
-| 31 | 2 entries | 0 | 0 | Removed after Maxwell--Volta |
-| 36 | 1 entry | 0 | 0 | Removed after Maxwell--Volta |
-| 37 | 13 entries | 2--4 | 0 | Shrinking; gone in Blackwell |
+| 17 | 23 entries | 0 | 0 | Removed after Maxwell–Volta |
+| 31 | 2 entries | 0 | 0 | Removed after Maxwell–Volta |
+| 36 | 1 entry | 0 | 0 | Removed after Maxwell–Volta |
+| 37 | 13 entries | 2–4 | 0 | Shrinking; gone in Blackwell |
 | 27 | 0 | 0 | 1 entry | Blackwell-only |
 | 32 | 0 | 0 | 1 entry | Blackwell-only |
 
-The largest cross-generation entry count swings occur in format IDs 3 (284 to 379, +33%), 5 (322 to 449 peak at SM80, +39%), and 25 (199 to 295 peak at SM80, +48%), reflecting expanding ALU and load/store encoding variant coverage. SM80--8x consistently peaks across nearly all format IDs, suggesting Ampere carries the broadest per-opcode variant coverage (more encoding paths per logical instruction) despite sharing the same 535-opcode ISA as SM75 and SM86.
+The largest cross-generation entry count swings occur in format IDs 3 (284 to 379, +33%), 5 (322 to 449 peak at SM80, +39%), and 25 (199 to 295 peak at SM80, +48%), reflecting expanding ALU and load/store encoding variant coverage. SM80–8x consistently peaks across nearly all format IDs, suggesting Ampere carries the broadest per-opcode variant coverage (more encoding paths per logical instruction) despite sharing the same 535-opcode ISA as SM75 and SM86.
 
 ### Format Code Distribution
 
@@ -1045,7 +1045,7 @@ The format descriptor writes these fields into the Encoding Context object. All 
 | `+24`--`+60` | 40B | Phase 2 (bulk copy) | Operand slot sizes (10 DWORDs) |
 | `+64`--`+100` | 40B | Phase 2 (bulk copy) | Operand slot types (10 DWORDs) |
 | `+104`--`+140` | 40B | Phase 2 (bulk copy) | Operand slot flags (10 DWORDs) |
-| `+144` | 4B | Phase 4 | Operand count (0--7) |
+| `+144` | 4B | Phase 4 | Operand count (0–7) |
 | `+404` | 16B | Phase 3 (Tier 2 xmmword) | Architecture modifier table |
 | `+420` | 4B | Phase 3 (scalar) | Architecture modifier field 1 |
 | `+424` | 4B | Phase 3 (scalar) | Architecture modifier field 2 |
@@ -1058,7 +1058,7 @@ The format descriptors bridge ISel pattern matching and per-SM encoding:
 ISel Pattern Matcher (sub_1731440, FNV-1a hash on *(a2+12))
   |
   v  (virtual dispatch via vtable)
-Format Descriptor (one of 316 at 0x1732170--0x17A9B70)
+Format Descriptor (one of 316 at 0x1732170–0x17A9B70)
   Writes: a1+0..a1+144   (format layout + operand geometry)
   Writes: a1+404..a1+424  (architecture modifier table)
   |
@@ -1092,7 +1092,7 @@ Per-SM Encoder Stub (e.g. 0xD27xxx for SM100)
 | Minor opcode | 0x12 | Variant with modifier 0x13 |
 | Format ID | 0x13 | Tensor/extended ALU (23F2678) |
 | Tier 1 | `xmmword_23F2678` | Extended ALU, 7 opcode classes |
-| Tier 2 | `xmmword_202A280` | Group A (Maxwell--Turing) |
+| Tier 2 | `xmmword_202A280` | Group A (Maxwell–Turing) |
 | Dual-dest | Yes | `0x84` field present, set to 0 |
 
 **`sub_1732E90` — 128-bit extended complex:**
@@ -1205,8 +1205,8 @@ is `ctx.xmmword[1]` at `a1+12` and `slot_sizes[i]` is at `a1+24+4*i`.
 |---|---|---|
 | 0x38 | 16 | LDG, STG, LDS, STS |
 | 0x60 | 2 | Extended load |
-| 0x70--0x72 | 9 | Load groups A/B/C |
-| 0xA4--0xA6 | 12 | Load/store with addressing modes |
+| 0x70–0x72 | 9 | Load groups A/B/C |
+| 0xA4–0xA6 | 12 | Load/store with addressing modes |
 | 0xAD | 9 | Memory extended |
 | 0x1E | 4 | ATOM, ATOMS |
 | 0x99, 0xA2 | 2 | Extended atomics |
@@ -1226,8 +1226,8 @@ is `ctx.xmmword[1]` at `a1+12` and `slot_sizes[i]` is at `a1+24+4*i`.
 | Major | Variants | Likely SASS Mnemonics |
 |---|---|---|
 | 0x3A | 1 | Float operation |
-| 0x3E--0x40 | 4 | FFMA, FFMA variants |
-| 0x43--0x44 | 2 | Float MUL/MAD |
+| 0x3E–0x40 | 4 | FFMA, FFMA variants |
+| 0x43–0x44 | 2 | Float MUL/MAD |
 | 0x4A | 4 | FADD, FMUL, FFMA forms |
 | 0x49 | 6 | HFMA2, HADD2, HMUL2 |
 | 0x5C | 6 | HFMA2 variants |
@@ -1237,10 +1237,10 @@ is `ctx.xmmword[1]` at `a1+12` and `slot_sizes[i]` is at `a1+24+4*i`.
 
 | Major | Variants | Likely SASS Mnemonics |
 |---|---|---|
-| 0xA8--0xA9 | 16 | Tensor core A/B (WGMMA, HMMA) |
-| 0xAB--0xAC | 12 | Tensor core C/D |
-| 0xAE--0xB0 | 30 | Tensor core E/F/G |
-| 0xB1--0xB3 | 15 | Tensor core H/I/J |
+| 0xA8–0xA9 | 16 | Tensor core A/B (WGMMA, HMMA) |
+| 0xAB–0xAC | 12 | Tensor core C/D |
+| 0xAE–0xB0 | 30 | Tensor core E/F/G |
+| 0xB1–0xB3 | 15 | Tensor core H/I/J |
 | 0xDF | 14 | WGMMA dispatch (main family) |
 | 0x12 | 4 | Matrix operations |
 | 0x54 | 6 | Extended matrix |
@@ -1292,10 +1292,10 @@ The instruction unlink-and-recycle functions (`sub_10ADF90`, `sub_10AE190`) remo
 
 The full encoding pipeline operates in three layers, from high-level IR to binary output:
 
-**Layer 1: High-level encode (0x1134160--0x114F380, ~132 functions)**
+**Layer 1: High-level encode (0x1134160–0x114F380, ~132 functions)**
 Populates full IR records before low-level packing. Uses `sub_9B3C20(a1, a2, slot, type, mode, width, reg_id)` for register operands and `sub_9B3D60` for immediates. Handles 255->1023 sentinel translation for "don't care" register values. Sets opcode/modifier fields via `sub_AFA910`/`sub_AFA930`. Applies conditional fixups: e.g., if `opcode==2038 && subopcode==2257`, sets `operand_slot+84 = 5`.
 
-**Layer 2: Binary encoders (0x10EE900--0x1134160, ~400 functions)**
+**Layer 2: Binary encoders (0x10EE900–0x1134160, ~400 functions)**
 Reads operand fields from IR via `sub_10BDxxx` extractors, transforms through `sub_10Bxxx` lookup tables, and packs results into the 128-bit output word at `*(QWORD*)(a1+40)`:
 
 ```c
@@ -1355,7 +1355,7 @@ Register pair encoder (`sub_112CDA0`): maps even/odd register pairs to a 6-bit i
 // Fallback: if no pair matches, pair_index = 0 (R0/R1 encoding)
 ```
 
-**Layer 3: Template encoder stubs (0xD27000--0xEB2AE0, ~1,086 functions)**
+**Layer 3: Template encoder stubs (0xD27000–0xEB2AE0, ~1,086 functions)**
 The lowest-level stubs that directly write the encoding buffer via `sub_7B9B80`. These are the functions described by the encoder template above.
 
 ## Variant/Sub-opcode Distribution
@@ -1371,13 +1371,13 @@ The variant field (bits[17:24], 8 bits) has a distribution that peaks at variant
 | 0x04 | 20 | 0x0C | 14 |
 | **0x05** | **128** | 0x0D | 9 |
 | 0x06 | 30 | 0x0E | 11 |
-| 0x07 | 10 | 0x0F--0x2F | decreasing |
+| 0x07 | 10 | 0x0F–0x2F | decreasing |
 
 Maximum observed variant value is 0x2F (47), giving up to 48 sub-operations per major opcode.
 
 ## SASS Emission Backend
 
-The final stage of the encoding pipeline operates at the instruction-word level: 11 per-instruction-form bitfield packers at addresses 0x1B79940--0x1B9C220 take a pre-decoded instruction descriptor and pack all fields into a 128-bit SASS instruction word. These functions sit at Level 2 of a 4-level emission hierarchy:
+The final stage of the encoding pipeline operates at the instruction-word level: 11 per-instruction-form bitfield packers at addresses 0x1B79940–0x1B9C220 take a pre-decoded instruction descriptor and pack all fields into a 128-bit SASS instruction word. These functions sit at Level 2 of a 4-level emission hierarchy:
 
 ```text
 Level 0: SM-target dispatch    (0xC4DF70, 0xC53330, 0xC54090, 0xC59610, 0xC5ABE0, 0xC5B5C0)
@@ -1457,7 +1457,7 @@ The opcode bases cluster into three families by high nibble:
 
 ### Phase 2: Combinator — 3-Axis Predicate Encoding into result[3]
 
-After the prologue, all 11 functions execute a ~1900-line decision tree that is structurally identical except for one parameter: the **high-slot prefix** used when axis2=1 for axis1 values 17--27. The combinator reads three integer values from the input struct and produces a single 32-bit mask that is ORed into `result[3]`.
+After the prologue, all 11 functions execute a ~1900-line decision tree that is structurally identical except for one parameter: the **high-slot prefix** used when axis2=1 for axis1 values 17–27. The combinator reads three integer values from the input struct and produces a single 32-bit mask that is ORed into `result[3]`.
 
 The three axes are:
 - **axis0** = `a1[0]`: instruction class selector, values 0..5 (6 values)
@@ -1552,7 +1552,7 @@ The decision tree structure is identical across all 11 functions; only the `hi_p
 
 ## SM89/90 Codec Layer
 
-SM89 (Ada Lovelace) and SM90 (Hopper) share a pre-encoding instruction reordering layer absent from SM100 (Blackwell). This layer sits above the three-layer encoding pipeline: it manipulates Mercury IR instruction lists to optimize instruction interleaving before the encoding stubs pack bitfields. The entire cluster spans addresses 0x1226E80--0x1233D70, roughly 261 KB of compiled code across 18 functions.
+SM89 (Ada Lovelace) and SM90 (Hopper) share a pre-encoding instruction reordering layer absent from SM100 (Blackwell). This layer sits above the three-layer encoding pipeline: it manipulates Mercury IR instruction lists to optimize instruction interleaving before the encoding stubs pack bitfields. The entire cluster spans addresses 0x1226E80–0x1233D70, roughly 261 KB of compiled code across 18 functions.
 
 ### Call Chain
 
@@ -1582,7 +1582,7 @@ The orchestrator `sub_1233D70` is called only when optimization level exceeds 2 
 | General ALU | 4 | type 4 (IADD, FFMA, ...) | Interleaved between memory ops |
 | Uncategorized | 3 | other / missing info | Treated as general |
 
-The classifier is `sub_1228670` (30 lines), which reads the instruction scheduling class via `sub_7E2FE0` and returns 0--4. A companion predicate `sub_1228EF0` (38 lines) returns 0 for types 9, 5, and 12 (the "special" categories), 1 for everything else.
+The classifier is `sub_1228670` (30 lines), which reads the instruction scheduling class via `sub_7E2FE0` and returns 0–4. A companion predicate `sub_1228EF0` (38 lines) returns 0 for types 9, 5, and 12 (the "special" categories), 1 for everything else.
 
 After classification, Pass A performs register-class-aware instruction motion: it uses `sub_91BF30` (register class builder), `sub_91E390` (class query), and `sub_91E610` (class intersection) to verify that moving an instruction does not violate register-class constraints. Instructions that pass the check have their operand flags updated at `+48` (bit 0x40 = "moved" marker) and `+96` (copy-chain tracking).
 
@@ -1620,7 +1620,7 @@ Knob-derived flags control reordering aggressiveness:
 - Knob at target offset +7488: enable general reordering
 - All reordering disabled when `*(ctx+1584)+372 == 12288` (specific regalloc config)
 
-**Floating-point cost heuristic.** The orchestrator (`sub_1233D70`, lines 178--225) computes four weight parameters from the target descriptor and passes them to Pass B as doubles. The base weights are hardcoded; two knob-controlled overrides can replace them:
+**Floating-point cost heuristic.** The orchestrator (`sub_1233D70`, lines 178–225) computes four weight parameters from the target descriptor and passes them to Pass B as doubles. The base weights are hardcoded; two knob-controlled overrides can replace them:
 
 ```c
 // Orchestrator weight setup (sub_1233D70):
@@ -1682,7 +1682,7 @@ Pass B also maintains a red-black tree structure for the emission schedule, with
 | Register class validation | sub_91BF30/sub_91E390 per-move check | Per-instruction class check at encoding time |
 | Binary encoder calls | None — IR-level manipulation only | sub_7B9B80 (18,347 callers) |
 
-The SM89/90 pair operates entirely at the Mercury IR level and produces no packed instruction bits. It rewrites the instruction linked lists in each basic block to optimize scheduling, after which the standard encoding pipeline (Layers 1--3) runs on the reordered sequence. SM100 Blackwell does not need this layer because its scheduling infrastructure (documented in scheduling/algorithm.md) already integrates instruction ordering into the scheduling pass itself.
+The SM89/90 pair operates entirely at the Mercury IR level and produces no packed instruction bits. It rewrites the instruction linked lists in each basic block to optimize scheduling, after which the standard encoding pipeline (Layers 1–3) runs on the reordered sequence. SM100 Blackwell does not need this layer because its scheduling infrastructure (documented in scheduling/algorithm.md) already integrates instruction ordering into the scheduling pass itself.
 
 ### SM89/90 Codec Function Map
 
@@ -1694,7 +1694,7 @@ The SM89/90 pair operates entirely at the Mercury IR level and produces no packe
 | `sub_122AA30` | ~3 KB | 186 | **local_reorder** — within-block instruction interleaving | HIGH |
 | `sub_1227D90` | ~9 KB | 522 | **instruction_reinsert** — unlink + reinsert at new position | HIGH |
 | `sub_122F1E0` | ~6 KB | 330 | **scheduling_heuristic** — RB-tree lookup/delete for cost-driven emission order | HIGH |
-| `sub_1228670` | ~0.5 KB | 30 | **instruction_classify** — 5-category classifier (returns 0--4) | CERTAIN |
+| `sub_1228670` | ~0.5 KB | 30 | **instruction_classify** — 5-category classifier (returns 0–4) | CERTAIN |
 | `sub_1228EF0` | ~0.5 KB | 38 | **is_special** — predicate: types 9/5/12 return false | CERTAIN |
 | `sub_1226E80` | ~0.3 KB | 22 | **list_prepend** — insert instruction at list head | CERTAIN |
 | `sub_1226EB0` | ~5 KB | 274 | **instruction_finalize** — post-reorder operand fixup | HIGH |

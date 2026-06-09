@@ -114,7 +114,7 @@ The 276 flags are grouped below by functional category. Each table lists:
 - **Arg** — whether the flag takes a `=<value>` argument
 - **Effect** — what the flag does internally
 
-### Core EDG Flags (1--44)
+### Core EDG Flags (1–44)
 
 These are standard Edison Design Group frontend options that predate NVIDIA's CUDA modifications.
 
@@ -165,7 +165,7 @@ These are standard Edison Design Group frontend options that predate NVIDIA's CU
 | 43 | `diag_once` | — | yes | Emit diagnostic only on first occurrence |
 | 44 | `display_error_number / no_display_error_number` | — | no | Show/hide error code numbers in output |
 
-### NVIDIA CUDA-Specific Flags (45--89)
+### NVIDIA CUDA-Specific Flags (45–89)
 
 These flags are NVIDIA additions absent from stock EDG. They control CUDA compilation modes, device code generation, and host/device interaction.
 
@@ -217,7 +217,7 @@ These flags are NVIDIA additions absent from stock EDG. They control CUDA compil
 | 88 | `tile_bc_file_name` | yes | Tile bitcode file path |
 | 89 | `tile-only` | no | Tile-only compilation mode |
 
-### Architecture and Host Compiler Flags (90--114)
+### Architecture and Host Compiler Flags (90–114)
 
 These flags identify the target architecture and host compiler for compatibility emulation.
 
@@ -246,11 +246,11 @@ These flags identify the target architecture and host compiler for compatibility
 | 110 | `shared_address_immutable` | — | no | Shared memory addresses are immutable |
 | 111 | `uumn` | — | no | Unnamed union member naming |
 
-### C++ Language Feature Toggle Flags (115--275)
+### C++ Language Feature Toggle Flags (115–275)
 
 The largest group — approximately 120 paired boolean toggles that control individual C++ language features. Most are inherited from EDG's configuration surface. Each pair shares a `case_id` and sets a global variable to 1 (`--flag`) or 0 (`--no_flag`).
 
-#### Precompiled Headers (115--121)
+#### Precompiled Headers (115–121)
 
 | ID | Flag | Arg | Effect |
 |---|---|---|---|
@@ -262,7 +262,7 @@ The largest group — approximately 120 paired boolean toggles that control indi
 | 120 | `pch_verbose / no_pch_verbose` | no | Verbose PCH output |
 | 121 | `pch_dir` | yes | PCH file directory |
 
-#### Core C++ Feature Toggles (122--170)
+#### Core C++ Feature Toggles (122–170)
 
 | ID | Flag | Arg | Default |
 |---|---|---|---|
@@ -315,7 +315,7 @@ The largest group — approximately 120 paired boolean toggles that control indi
 | 170 | `variadic_macros / no_variadic_macros` | no | — |
 | 171 | `extended_variadic_macros / no_extended_variadic_macros` | no | — |
 
-#### Include Paths and Module Support (167, 172, 256--265)
+#### Include Paths and Module Support (167, 172, 256–265)
 
 **Note:** These flags use non-contiguous IDs because `sys_include` and `incl_suffixes` are registered early, while the C++20 module flags use a separate ID range (256+).
 
@@ -334,7 +334,7 @@ The largest group — approximately 120 paired boolean toggles that control indi
 | 264 | `modules / no_modules` | no | Enable/disable C++20 modules |
 | 265 | `module_import_diagnostics / no_module_import_diagnostics` | no | Module import diagnostic messages |
 
-#### Host Compiler and Language Feature Toggles (182--239)
+#### Host Compiler and Language Feature Toggles (182–239)
 
 **Note:** All IDs below are verified against the decompiled `init_command_line_flags` (`sub_452010`). Flags are registered by `sub_451F80` (explicit call) or by inline array population. IDs are not sequential — gaps exist where flags were removed or repurposed.
 
@@ -397,7 +397,7 @@ The largest group — approximately 120 paired boolean toggles that control indi
 | 238 | `preserve_lvalues_with_same_type_casts / no_...` | no | — |
 | 239 | `nonstd_anonymous_unions / no_nonstd_anonymous_unions` | no | — |
 
-#### Late C++/Architecture/Output Flags (240--258)
+#### Late C++/Architecture/Output Flags (240–258)
 
 | ID | Flag | Arg | Effect |
 |---|---|---|---|
@@ -466,7 +466,7 @@ When a C++ standard is selected, the post-parsing dialect resolution logic autom
 
 ## Diagnostic Control Flags
 
-The five `diag_*` flags (IDs 39--43) accept comma-separated lists of diagnostic numbers. The parser strips whitespace, splits on commas, and calls `sub_4ED400(number, severity, 1)` for each number:
+The five `diag_*` flags (IDs 39–43) accept comma-separated lists of diagnostic numbers. The parser strips whitespace, splits on commas, and calls `sub_4ED400(number, severity, 1)` for each number:
 
 ```bash
 --diag_suppress=1234,5678       # suppress errors 1234 and 5678

@@ -16,7 +16,7 @@ The new-PM driver at `sub_226C400` selects a pipeline name string based on boole
 | qw[131..132] | fc="mid" | `nvopt<Ofcmid>` |
 | qw[131..132] | fc="min" | `nvopt<Ofcmin>` |
 
-Selection logic in `sub_226C400` (lines 828--874):
+Selection logic in `sub_226C400` (lines 828–874):
 
 ```text
 if (O1_flag)       -> "nvopt<O1>"
@@ -56,10 +56,10 @@ When level=1, the flag is forwarded to the optimizer phase as a pass argument an
 
 | Pipeline | Approx Passes | LSA-Opt | MemSpaceOpt | Compile Speed |
 |----------|--------------|---------|-------------|---------------|
-| `nvopt<O0>` | 5--8 | off | off | Fastest (no opt) |
-| `nvopt<Ofcmax>` | 12--15 | forced 0 | forced 0 | Fast |
-| `nvopt<Ofcmid>` | 25--30 | normal | enabled | Medium |
-| `nvopt<Ofcmin>` | 30--35 | normal | enabled | Slower |
+| `nvopt<O0>` | 5–8 | off | off | Fastest (no opt) |
+| `nvopt<Ofcmax>` | 12–15 | forced 0 | forced 0 | Fast |
+| `nvopt<Ofcmid>` | 25–30 | normal | enabled | Medium |
+| `nvopt<Ofcmin>` | 30–35 | normal | enabled | Slower |
 | `nvopt<O1>` | ~40 + tier-1 | normal | enabled | Normal |
 | `nvopt<O2>` | ~40 + tier-1/2 | normal | enabled | Normal |
 | `nvopt<O3>` | ~40 + tier-1/2/3 | normal | enabled | Slowest |
@@ -86,7 +86,7 @@ The tier control fields in the NVVMPassOptions struct at 4512 bytes:
 | 4224 | bool | Tier 0 enable (any O-level) |
 | 4228 | int | Tier 0 phase threshold |
 
-The assembler loop in `sub_12E54A0` (lines 481--553) iterates over the plugin/external pass list at `opts[4488]`. Each entry has a phase_id; when the phase_id exceeds a tier's threshold, that tier fires:
+The assembler loop in `sub_12E54A0` (lines 481–553) iterates over the plugin/external pass list at `opts[4488]`. Each entry has a phase_id; when the phase_id exceeds a tier's threshold, that tier fires:
 
 ```text
 for each entry in opts[4488..4496]:
@@ -367,7 +367,7 @@ Ofcmax bypasses the full pipeline entirely. It forces two optimizer flags:
 - `-lsa-opt=0` (disables LSA optimization)
 - `-memory-space-opt=0` (disables MemorySpaceOpt pass)
 
-This forcing happens in BOTH `sub_9624D0` (line 1358--1361) and `sub_12CC750` (line 2025--2079). The condition is:
+This forcing happens in BOTH `sub_9624D0` (line 1358–1361) and `sub_12CC750` (line 2025–2079). The condition is:
 
 ```text
 if (!compare(lsa_opt_flag, "0") || fc_level == 2):
@@ -392,7 +392,7 @@ The minimal pass sequence:
 
 ## Ofcmid Pipeline (Medium)
 
-Ofcmid runs ~25--30 passes without forcing LSA or MemorySpaceOpt off. The pass sequence from `sub_12E54A0` (lines 814--861):
+Ofcmid runs ~25–30 passes without forcing LSA or MemorySpaceOpt off. The pass sequence from `sub_12E54A0` (lines 814–861):
 
 | # | Factory | Pass | Guard |
 |---|---------|------|-------|
@@ -437,7 +437,7 @@ Ofcmin does NOT force `-lsa-opt=0` or `-memory-space-opt=0`. Like Ofcmid, it sti
 
 ## Post-Optimization Common Tail
 
-Regardless of pipeline tier, `sub_12E54A0` always appends at `LABEL_84` (lines 640--653):
+Regardless of pipeline tier, `sub_12E54A0` always appends at `LABEL_84` (lines 640–653):
 
 | # | Factory | Pass | Guard |
 |---|---------|------|-------|
@@ -450,7 +450,7 @@ Regardless of pipeline tier, `sub_12E54A0` always appends at `LABEL_84` (lines 6
 
 ## Always-Added Analysis Passes
 
-Before any optimization, the pipeline assembler inserts (lines 396--420):
+Before any optimization, the pipeline assembler inserts (lines 396–420):
 
 | # | Factory | Pass |
 |---|---------|------|
@@ -540,7 +540,7 @@ The passes gated by NVVMPassOptions boolean flags (opts struct at 4512 bytes). S
 
 ## Codegen Optimization Level Propagation
 
-The `-optO` and `-llcO` flags propagate the optimization level to the backend code generator. In `sub_12E54A0` (lines 1451--1460):
+The `-optO` and `-llcO` flags propagate the optimization level to the backend code generator. In `sub_12E54A0` (lines 1451–1460):
 
 ```text
 if (lsa_opt == "0" && some_flag == "1"):

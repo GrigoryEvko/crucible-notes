@@ -162,7 +162,7 @@ Unlike the other two wrappers, this function does **not** use `setjmp`/`longjmp`
 
 ### Symbol Resolution
 
-The function begins by resolving eight symbols from `libnvvm.so` via `dlsym`, then dispatching `__nvvmHandle` twice for a total of ten function pointers. Every resolution must succeed or the function returns 10 immediately. The exact resolution order matches the decompiled code at lines 164--198:
+The function begins by resolving eight symbols from `libnvvm.so` via `dlsym`, then dispatching `__nvvmHandle` twice for a total of ten function pointers. Every resolution must succeed or the function returns 10 immediately. The exact resolution order matches the decompiled code at lines 164–198:
 
 ```c
 // Eight dlsym calls, in order (lines 164-196 of decompiled sub_4BC6F0)
@@ -634,7 +634,7 @@ option_array = {
 }
 ```
 
-If the link had used `nvcc -dlto -dc` (relocatable mode), `sub_427AE0` would set `elfw[97] = 1` and `--Xnvvm="--force-device-c"` would be added to the user options. The option scanner in `sub_4BC6F0` lines 213--235 would match `"--force-device-c"` (17-byte strncmp on line 219, comparing to the string literal at the loop start), set `v25 = 1`, and compute `v30 = (~v25) & 1 = 0` — which suppresses host-reference option appending. The final vector would look like:
+If the link had used `nvcc -dlto -dc` (relocatable mode), `sub_427AE0` would set `elfw[97] = 1` and `--Xnvvm="--force-device-c"` would be added to the user options. The option scanner in `sub_4BC6F0` lines 213–235 would match `"--force-device-c"` (17-byte strncmp on line 219, comparing to the string literal at the loop start), set `v25 = 1`, and compute `v30 = (~v25) & 1 = 0` — which suppresses host-reference option appending. The final vector would look like:
 
 ```text
 option_count = 2
@@ -721,6 +721,6 @@ The filename suffix (`.bc` vs `.ptx`) is determined by the internal tempfile nam
 ### Sibling Wiki
 
 - **cicc wiki**: [LTO & Module Optimization](../../cicc/lto/index.html) — the compiler-side LTO pipeline inside libnvvm. Documents the five-pass IR optimization (GlobalOpt, inliner, devirtualization, ThinLTO import) that runs when `nvvmCompileProgram` is called (step 8 in the worked example above). The LTO entry point is `sub_12F5F30` at `0x12F5F30` in the cicc binary
-- **cicc wiki**: [Module Summary](../../cicc/lto/module-summary.html) — `NVModuleSummary` builder (`sub_D7D4E0` at `0xD7D4E0`) used by ThinLTO import decisions inside libnvvm. Runs between `__nvvmHandle(0x2080)` module addition (steps 3--4) and `nvvmCompileProgram` (step 6 of the worked example)
+- **cicc wiki**: [Module Summary](../../cicc/lto/module-summary.html) — `NVModuleSummary` builder (`sub_D7D4E0` at `0xD7D4E0`) used by ThinLTO import decisions inside libnvvm. Runs between `__nvvmHandle(0x2080)` module addition (steps 3–4) and `nvvmCompileProgram` (step 6 of the worked example)
 - **cicc wiki**: [Inliner Cost Model](../../cicc/lto/inliner-cost.html) — the cost analysis that determines which cross-module inlining decisions happen inside libnvvm after all modules are added
 - **cicc wiki**: [PTX Emission](../../cicc/pipeline/emission.html) — the back-end that produces the PTX string returned via `nvvmGetCompiledResult` in step 11 of the worked example

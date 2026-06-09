@@ -2,7 +2,7 @@
 
 Warp-level builtins provide lane-to-lane communication within a 32-thread warp. They cover four major categories: shuffle (data exchange between lanes), vote (predicate aggregation), match (value matching across lanes), and redux (warp-wide reductions). The shuffle operations also serve as the lowering target for the WMMA fragment load/store operations described in the [tensor core page](tensor-mma.md).
 
-## Shuffle Operations (IDs 413--416)
+## Shuffle Operations (IDs 413–416)
 
 The `__shfl_sync` family enables direct register-to-register communication between warp lanes. Four shuffle modes exist, each registered as a `_sync` variant:
 
@@ -19,9 +19,9 @@ All shuffle builtins route through `sub_12B3540` (EDG) / `sub_954F10` (NVVM), th
 
 | ID Range | Group | Description |
 |---|---|---|
-| 302--309 | Legacy `__shfl` | Non-sync variants (4 modes x 2 types: i32/f32) |
-| 338--345 | `__shfl_sync` | Sync variants with mask (4 modes x 2 types) |
-| 395--402 | `__shfl_*_sync` | Newer SM interface (4 modes x 2 types) |
+| 302–309 | Legacy `__shfl` | Non-sync variants (4 modes x 2 types: i32/f32) |
+| 338–345 | `__shfl_sync` | Sync variants with mask (4 modes x 2 types) |
+| 395–402 | `__shfl_*_sync` | Newer SM interface (4 modes x 2 types) |
 
 Within each group of 8, the layout is:
 
@@ -34,7 +34,7 @@ Within each group of 8, the layout is:
 
 The handler builds the argument list (mask, value, delta/lane, width), looks up the target intrinsic by shuffle mode and data type from its red-black tree map, and emits a function call.
 
-## Vote Operations (IDs 351--358)
+## Vote Operations (IDs 351–358)
 
 Warp vote builtins aggregate a boolean predicate across all participating lanes. Both legacy (non-sync) and sync variants are registered.
 
@@ -61,7 +61,7 @@ The `vote_op` encoding: 0 = all, 1 = any, 2 = uni, 3 = ballot.
 
 When `is_sync=1`, an extra mask argument is consumed from the call arguments. For non-sync variants, the handler looks up intrinsic 5301 (`llvm.nvvm.vote`). For sync variants, it generates an inline predicate pattern. The ballot variant (vote_op=3) sets `is_ballot=1`, which changes the return type from `i1` (predicate) to `i32` (bitmask).
 
-## Match Operations (IDs 361--364)
+## Match Operations (IDs 361–364)
 
 Match builtins find lanes with equal values and return a bitmask of matching lanes. Available in 32-bit and 64-bit variants with two matching modes.
 
@@ -74,7 +74,7 @@ Match builtins find lanes with equal values and return a bitmask of matching lan
 
 The handler `sub_12AD230` (EDG) dispatches on two opcodes: `0x1011` for any-match and `0x100F` for all-match. The NVVM-side handler `sub_94F430` uses intrinsic pairs `0x2017` / `0x2018` with mode variants 0, 1, 2 to encode the width and match type.
 
-## Warp Redux (IDs 413--416 range, via `sub_12ADD20`)
+## Warp Redux (IDs 413–416 range, via `sub_12ADD20`)
 
 Warp-wide reduction operations perform arithmetic reductions across all active lanes in a single instruction. These are dispatched through `sub_12ADD20` (EDG) / `sub_94F250` (NVVM).
 
@@ -93,7 +93,7 @@ The active mask and per-lane mask builtins are handled through `sub_12ADB00` (ED
 
 These builtins return the set of currently active lanes (`__activemask()`) or per-lane positional masks (`__lanemask_lt()`, `__lanemask_le()`, `__lanemask_eq()`, `__lanemask_ge()`, `__lanemask_gt()`). They compile to PTX special register reads (`%lanemask_*`).
 
-## Predicate-Register Conversion (IDs 411--412)
+## Predicate-Register Conversion (IDs 411–412)
 
 Two builtins convert between predicate registers and general-purpose registers:
 
@@ -110,7 +110,7 @@ Warp-adjacent utility builtins handled through `sub_12AD230` / `sub_94ED50`:
 
 | ID Range | Operation | Description |
 |---|---|---|
-| 367--369 | `__nv_memcpy_async_shared_global_{4,8,16}_impl` | Asynchronous copy (cp.async) |
+| 367–369 | `__nv_memcpy_async_shared_global_{4,8,16}_impl` | Asynchronous copy (cp.async) |
 
 These builtins combine data movement with implicit synchronization and are lowered through `sub_12AB730` / `sub_94C5F0`, which builds the `cp.async` PTX instruction with the specified transfer size (4, 8, or 16 bytes).
 

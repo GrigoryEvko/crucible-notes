@@ -251,7 +251,7 @@ Goal: understand what cicc does at each optimization level, which passes are the
 
 Start with the tuning infrastructure:
 
-1. **[Optimization Levels](./config/optimization-levels.md)** — The four standard levels (O0--O3) and three fast-compile tiers (Ofcmin/Ofcmid/Ofcmax). This page shows the exact pass pipeline diff between levels, including which passes are added, removed, or reparameterized at each step.
+1. **[Optimization Levels](./config/optimization-levels.md)** — The four standard levels (O0–O3) and three fast-compile tiers (Ofcmin/Ofcmid/Ofcmax). This page shows the exact pass pipeline diff between levels, including which passes are added, removed, or reparameterized at each step.
 2. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 221-slot per-pass configuration system. This is the primary tuning mechanism. The page documents every slot's type (boolean/integer/string), its default value, and which pass reads it.
 3. **[CLI Flags](./config/cli-flags.md)** — The flag-to-pipeline routing tables. Locate flags that control pass thresholds (`--inline-threshold=`, `--unroll-count=`, etc.) and pass enable/disable toggles.
 4. **[LLVM Knobs](./config/knobs.md)** — The ~1,689 `cl::opt` flags with their defaults, types, and controlling constructors.

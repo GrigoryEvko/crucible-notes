@@ -156,7 +156,7 @@ These functions appear in 10+ wiki pages — they are the universal building blo
 | `0x9714E0` | `regalloc_failure_reporter` | 6 | 1 | "Register allocation failed..." |
 | `0x926A30` | `interference_graph_builder` | 9 | 7 | 22 KB, SSE bitvectors |
 | `0x92C240` | `liveness_bitvector_ops` | 5 | 87 | Set/clear/query with aliasing |
-| `0x917A60` | `packRegClassField` | 4 | 221 | Bitfield packer keyed on field-ID (range 91--340): switch dispatches per-field LUT remaps or equality tests, then OR-merges the result into `desc[1]`/`desc[2]`. Companion to `sub_A2FF00`; not an opcode→regclass mapping table |
+| `0x917A60` | `packRegClassField` | 4 | 221 | Bitfield packer keyed on field-ID (range 91–340): switch dispatches per-field LUT remaps or equality tests, then OR-merges the result into `desc[1]`/`desc[2]`. Companion to `sub_A2FF00`; not an opcode→regclass mapping table |
 | `0x910840` | `ConvertMemoryToRegisterOrUniform` | 5 | 1 | Pass driver |
 
 > **Details**: [RegAlloc Overview](regalloc/overview.md), [RegAlloc Algorithm](regalloc/algorithm.md), [Spilling](regalloc/spilling.md), [ABI](regalloc/abi.md)

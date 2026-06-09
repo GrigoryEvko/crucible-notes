@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Instruction selection in ptxas is a two-phase process that converts PTX virtual ISA operations into concrete SASS machine opcodes. Unlike LLVM, which uses a single SelectionDAG or GlobalISel framework, ptxas distributes instruction selection across two distinct pipeline stages separated by the entire optimization pipeline: **Phase 1** converts PTX opcodes to Ori IR opcodes during initial lowering (phase 5, `ConvertUnsupportedOps`), and **Phase 2** converts Ori IR to final SASS binary forms during code generation (phases 112--122, ISel driver + Mercury encoder). The two phases serve fundamentally different purposes: Phase 1 legalizes the IR so the optimizer can reason about it, while Phase 2 selects the optimal machine encoding for the target architecture after register allocation and scheduling are complete.
+Instruction selection in ptxas is a two-phase process that converts PTX virtual ISA operations into concrete SASS machine opcodes. Unlike LLVM, which uses a single SelectionDAG or GlobalISel framework, ptxas distributes instruction selection across two distinct pipeline stages separated by the entire optimization pipeline: **Phase 1** converts PTX opcodes to Ori IR opcodes during initial lowering (phase 5, `ConvertUnsupportedOps`), and **Phase 2** converts Ori IR to final SASS binary forms during code generation (phases 112–122, ISel driver + Mercury encoder). The two phases serve fundamentally different purposes: Phase 1 legalizes the IR so the optimizer can reason about it, while Phase 2 selects the optimal machine encoding for the target architecture after register allocation and scheduling are complete.
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@ Instruction selection in ptxas is a two-phase process that converts PTX virtual 
 | **Arch dispatch tables** | 5 thunks at `sub_B128E0`--`sub_B12920` (13 bytes each -> shared 15 KB handler) |
 | **Mercury master encoder** | `sub_6D9690` (94 KB, instruction type switch) |
 | **MercExpand** | `sub_C3CC60` (26 KB, pseudo-instruction expansion) |
-| **SM120 pattern coordinator** | `sub_13AF3D0` (137 KB, 130-case switch, opcodes 2--352) |
+| **SM120 pattern coordinator** | `sub_13AF3D0` (137 KB, 130-case switch, opcodes 2–352) |
 | **Opcode variant selectors** | `sub_B0BE00` (19 KB, class 194), `sub_B0AA70` (5 KB, class 306) |
 
 ## Architecture
@@ -90,7 +90,7 @@ The conversion is not a simple table lookup. Many PTX operations have no 1:1 SAS
 
 ### MercConverter Dispatch — `sub_9ED2D0` (25 KB)
 
-The central dispatch function of Phase 1. Despite the sweep's initial identification as `PhaseRunner::executePhaseSequence`, the decompiled code reveals a classic opcode switch: it reads `*(instr+72)`, masks byte 1 with `0xCF` (stripping modifier bits 4--5), and dispatches to per-category handler functions. The switch covers approximately 120 distinct case values (opcode indices 1--352) routing to roughly 60 handler functions plus vtable-dispatched methods for architecture-extensible operations.
+The central dispatch function of Phase 1. Despite the sweep's initial identification as `PhaseRunner::executePhaseSequence`, the decompiled code reveals a classic opcode switch: it reads `*(instr+72)`, masks byte 1 with `0xCF` (stripping modifier bits 4–5), and dispatches to per-category handler functions. The switch covers approximately 120 distinct case values (opcode indices 1–352) routing to roughly 60 handler functions plus vtable-dispatched methods for architecture-extensible operations.
 
 ```c
 // sub_9ED2D0 -- simplified dispatch logic
@@ -134,7 +134,7 @@ void MercConverter_Dispatch(context, instruction) {
 
 ### MercConverter Opcode Dispatch Table
 
-The complete switch covers opcodes 1--352. Cases route to three dispatch mechanisms: direct function calls (for common PTX categories), vtable-indirect calls (for architecture-extensible operations), and the `emit_noop` fallback for unrecognized opcodes. Below is the reconstructed routing table from the decompiled `sub_9ED2D0`.
+The complete switch covers opcodes 1–352. Cases route to three dispatch mechanisms: direct function calls (for common PTX categories), vtable-indirect calls (for architecture-extensible operations), and the `emit_noop` fallback for unrecognized opcodes. Below is the reconstructed routing table from the decompiled `sub_9ED2D0`.
 
 **Direct handler dispatch (35 handlers):**
 
@@ -245,11 +245,11 @@ The complete switch covers opcodes 1--352. Cases route to three dispatch mechani
 | 223, 238 | `vtable[41]` (+328) | Paired operations |
 | 228 | `vtable[42]` (+336) | Specific class |
 | 243 | `vtable[43]` (+344) | Specific class |
-| 245--253, 257 | `vtable[67--77]` (+536--+624) | SM 100+ operations |
+| 245–253, 257 | `vtable[67–77]` (+536--+624) | SM 100+ operations |
 | 265, 266 | `vtable[93]` (+744) | Paired operations |
 | 270 | `vtable[77]` (+616) | Specific class |
 | 277 | `vtable[65]` or `vtable[11]` (+520/+88) | Operand-type dependent |
-| 279--351 | various high vtable offsets | SM 100+ / Blackwell operations |
+| 279–351 | various high vtable offsets | SM 100+ / Blackwell operations |
 
 The vtable mechanism allows architecture backends to override conversion behavior without modifying the core dispatch. The vtable factory at `sub_1CCEEE0` (17 KB, 244 callees) selects which overrides are active based on the SM version.
 
@@ -307,7 +307,7 @@ The type qualifier disappears from the instruction syntax during conversion. It 
 
 The MercConverter gates operations by SM version through the architecture vtable. An instruction available natively on one SM may require a multi-instruction lowering sequence on another:
 
-- **64-bit integer arithmetic** on SM 50--75 (no native 64-bit ALU): splits into 32-bit hi/lo pairs
+- **64-bit integer arithmetic** on SM 50–75 (no native 64-bit ALU): splits into 32-bit hi/lo pairs
 - **FP16 operations** on pre-SM 53 targets: promoted to FP32 (handled by Phase 2 `PromoteFP16`)
 - **`bfe`/`bfi` variants**: some bit-field extract/insert modes not supported on all targets
 - **Tensor core intrinsics**: SM 70 has HMMA v1, SM 75 has HMMA v2, SM 80+ has HMMA v3/DMMA, SM 100 has TCGen05
@@ -344,7 +344,7 @@ The two builder variants (`sub_B1FA20` and `sub_B20E00`) are structurally near-i
 
 ### ISel Mega-Selector — `sub_C0EB10` (185 KB)
 
-The single largest function in the Phase 2 ISel range: 185 KB decompiled, 6,016 lines, 719+ local variables. It performs the final Ori-IR-to-SASS opcode and operand encoding for 169 distinct instruction types (SASS opcode indices 7--221). While the ~801 DAG pattern matchers handle template-based ISel through a priority contest, the mega-selector handles complex instructions that require procedural, multi-step encoding logic — instructions where the operand marshalling depends on runtime state (calling conventions, symbol resolution, address space aliasing).
+The single largest function in the Phase 2 ISel range: 185 KB decompiled, 6,016 lines, 719+ local variables. It performs the final Ori-IR-to-SASS opcode and operand encoding for 169 distinct instruction types (SASS opcode indices 7–221). While the ~801 DAG pattern matchers handle template-based ISel through a priority contest, the mega-selector handles complex instructions that require procedural, multi-step encoding logic — instructions where the operand marshalling depends on runtime state (calling conventions, symbol resolution, address space aliasing).
 
 #### Dual-Switch SM-Generation Dispatch
 
@@ -407,9 +407,9 @@ The dual-switch pattern is a code-generation artifact: the compiler emitted two 
 |---|---|---|---|
 | `vtable[2]` | +16 | `sub_BFEBF0` | Opcode-to-encoding-index translator. SM-specific override remaps opcodes to different encoding slots. Fallback: `word_22B4B60[]` static table. |
 | `vtable[12]` | +96 | `sub_BFEAA0` | Pre-dispatch capability check. Returns boolean that sets `ctx[256]` encoding flag. |
-| `vtable[3]` | +24 | `sub_BFEA30` | Extension opcode handler for opcodes outside the 169-case set (barrier/sync 61--63/221, opcodes > 0x199, SM 100+ extensions). |
+| `vtable[3]` | +24 | `sub_BFEA30` | Extension opcode handler for opcodes outside the 169-case set (barrier/sync 61–63/221, opcodes > 0x199, SM 100+ extensions). |
 
-The `word_22B4B60` static table is a `uint16[222]` array indexed by SASS opcode (0--0xDD = 221). Each entry is a SASS encoding slot index used to select a format descriptor from the encoder tables. Of the 222 entries: 117 carry a non-zero encoding slot, 95 are zero (opcode uses no static encoding or is handled purely by case logic), and 10 carry the sentinel value **355** (opcode requires SM-specific vtable override and has no default encoding). SM-specific vtable overrides can remap any entry, enabling per-architecture instruction variants without modifying the mega-selector logic.
+The `word_22B4B60` static table is a `uint16[222]` array indexed by SASS opcode (0–0xDD = 221). Each entry is a SASS encoding slot index used to select a format descriptor from the encoder tables. Of the 222 entries: 117 carry a non-zero encoding slot, 95 are zero (opcode uses no static encoding or is handled purely by case logic), and 10 carry the sentinel value **355** (opcode requires SM-specific vtable override and has no default encoding). SM-specific vtable overrides can remap any entry, enabling per-architecture instruction variants without modifying the mega-selector logic.
 
 **Complete `word_22B4B60` dump** (117 non-zero non-sentinel entries, sorted by opcode):
 
@@ -500,9 +500,9 @@ The 169 distinct opcode cases (338 total case labels across both switches) group
 | Intrinsics | 71, 74, 75 | Loop-based operand emission | Hardware intrinsics |
 | Tensor core | 84, 88, 91, 92 | Wide-operand encoding (case 92 = 354 lines) | HMMA, DMMA, IMMA, TCGen05 |
 | Predication ext | 94, 95 | Predicate-dependent path selection | Extended predication |
-| Memory extended | 99--130 (19 opcodes) | `sub_C0B2C0` or `sub_BFFD60` + encoding lookup | Extended memory ops |
-| Warp intrinsics | 131--189 (50+ opcodes) | Mixed handlers, vtable[198]+632 dispatch | SHFL, VOTE, MATCH, REDUX |
-| Async/bulk | 192--218 (15 opcodes) | `sub_C0B2C0` / individual handlers | TMA, async copy, bulk ops |
+| Memory extended | 99–130 (19 opcodes) | `sub_C0B2C0` or `sub_BFFD60` + encoding lookup | Extended memory ops |
+| Warp intrinsics | 131–189 (50+ opcodes) | Mixed handlers, vtable[198]+632 dispatch | SHFL, VOTE, MATCH, REDUX |
+| Async/bulk | 192–218 (15 opcodes) | `sub_C0B2C0` / individual handlers | TMA, async copy, bulk ops |
 
 The largest case handlers:
 - Cases 141/142: ~503 lines (warp shuffle/vote extended operations)
@@ -539,7 +539,7 @@ buf[2] = 0x60000003;  // modifier: count=3
 BuildOperandRecord(&result, ctx, 0x5F, 1, 3, buf);
 ```
 
-**3. Multi-operand ALU — cases 102/106/114/122--124/127 (ATOM, DFMA, DADD, DMUL, ...)**
+**3. Multi-operand ALU — cases 102/106/114/122–124/127 (ATOM, DFMA, DADD, DMUL, ...)**
 
 ```c
 int n_dst = MarshalDstOperands(isel_ctx, ctx, instr, buf);     // sub_BFFD60
@@ -739,15 +739,15 @@ The `priority` parameter is read-then-conditionally-written: the matcher checks 
 
 #### Match-Score Priority System
 
-The priority values range from 2 (least specific) to 34 (most specific), with the distribution heavily concentrated in the 8--19 range. The priority correlates directly with pattern specificity: matchers with more constraints (more `sub_10AE5C0` checks, more operand type checks, tighter register class requirements) assign higher priority values.
+The priority values range from 2 (least specific) to 34 (most specific), with the distribution heavily concentrated in the 8–19 range. The priority correlates directly with pattern specificity: matchers with more constraints (more `sub_10AE5C0` checks, more operand type checks, tighter register class requirements) assign higher priority values.
 
 | Priority range | Count | Interpretation |
 |---|---|---|
-| 2--5 | 31 | Fallback / generic patterns (few constraints) |
-| 6--10 | 253 | Common patterns (3--6 constraints) |
-| 11--15 | 293 | Standard patterns (5--8 constraints) |
-| 16--20 | 168 | Specific patterns (6--10 constraints) |
-| 21--34 | 56 | Highly specific patterns (8--12+ constraints) |
+| 2–5 | 31 | Fallback / generic patterns (few constraints) |
+| 6–10 | 253 | Common patterns (3–6 constraints) |
+| 11–15 | 293 | Standard patterns (5–8 constraints) |
+| 16–20 | 168 | Specific patterns (6–10 constraints) |
+| 21–34 | 56 | Highly specific patterns (8–12+ constraints) |
 
 Template IDs range from 1 to 152. Multiple matchers can target the same template ID at different priority levels, forming a specificity ladder: a generic matcher might match `FADD` at priority 8 while a specialized matcher matches `FADD.FTZ.SAT` with specific register classes at priority 17. Both write the same template ID but the specialized matcher wins when its constraints are satisfied.
 
@@ -808,17 +808,17 @@ The 1884 dispatch table entries partition into **144 non-sentinel groups** separ
 | Group size | Count | Example instruction classes |
 |---|---|---|
 | 1 | 27 | Single-encoding (NOP, EXIT, BAR) |
-| 2--5 | 37 | Simple ALU (IADD, IMUL) |
-| 6--10 | 44 | Common FP (FADD, FMUL, FSETP) |
-| 11--25 | 16 | Complex LD/ST (LDG, STG, ATOM) |
-| 26--50 | 11 | Wide-encoding (HMMA, conversion) |
-| 51--152 | 9 | Max fan-out (opcode 0x135 arith) |
+| 2–5 | 37 | Simple ALU (IADD, IMUL) |
+| 6–10 | 44 | Common FP (FADD, FMUL, FSETP) |
+| 11–25 | 16 | Complex LD/ST (LDG, STG, ATOM) |
+| 26–50 | 11 | Wide-encoding (HMMA, conversion) |
+| 51–152 | 9 | Max fan-out (opcode 0x135 arith) |
 
 The matchers have no static callers — they appear exclusively through indirect function pointer invocation via this vtable, which is why cross-reference tools report them as "no callers in function DB."
 
 #### DAG Node Property Accessor — `sub_10AE5C0`
 
-The field reader is the most-called function in the matcher range (typically 2--12 calls per matcher, so 3,000--8,000 total invocations across all 801 matchers):
+The field reader is the most-called function in the matcher range (typically 2–12 calls per matcher, so 3,000–8,000 total invocations across all 801 matchers):
 
 ```c
 // sub_10AE5C0 -- Read instruction property by field_id
@@ -830,7 +830,7 @@ int64_t DAGNode_ReadField(int64_t ctx, int64_t node, uint32_t field_id) {
 }
 ```
 
-The `field_id` values form a large flat namespace (observed range: 5--595). These are **not** byte offsets into the instruction record; they are logical property identifiers resolved through a descriptor table. The backing store (managed by `sub_10E32E0` / `sub_10D5E60`) implements a sparse property bag that maps field IDs to integer values.
+The `field_id` values form a large flat namespace (observed range: 5–595). These are **not** byte offsets into the instruction record; they are logical property identifiers resolved through a descriptor table. The backing store (managed by `sub_10E32E0` / `sub_10D5E60`) implements a sparse property bag that maps field IDs to integer values.
 
 The companion write functions follow the same field-ID namespace:
 
@@ -846,7 +846,7 @@ Semantic mapping of the 43 most frequently referenced field IDs, ranked by total
 
 | Field | Hex | W | R | Semantic name | Evidence / observed values |
 |---|---|---|---|---|---|
-| 345 | 0x159 | — | 417 | **rounding mode selector** | Most-read field.  Guard value 1900 in 135 matchers; 1901--1903 select alternatives.  Drives field 300 (1900->1513, 1901/02->1515, 1903->1516). |
+| 345 | 0x159 | — | 417 | **rounding mode selector** | Most-read field.  Guard value 1900 in 135 matchers; 1901–1903 select alternatives.  Drives field 300 (1900->1513, 1901/02->1515, 1903->1516). |
 | 300 | 0x12C | 302 | — | **rounding mode encoding** | Highest write count.  Values: 1513 (RN), 1515 (RZ/RM), 1516 (RP).  Always paired with field 301. |
 | 301 | 0x12D | 222 | — | **FTZ / rounding qualifier** | Values: 1521 (default/FTZ), 1520 (non-FTZ).  Co-occurs with field 300 in every rounding-sensitive matcher. |
 | 480 | 0x1E0 | 163 | — | **encoding format class** | Value 2481 dominant (126 writes); also 2480, 2478.  Selects top-level SASS encoding format (3-source vs immediate). |
@@ -861,18 +861,18 @@ Semantic mapping of the 43 most frequently referenced field IDs, ranked by total
 | 270 | 0x10E | 101 | — | **accumulation mode** | Single value 1385.  Controls FMA-style accumulation (fused vs non-fused). |
 | 88  | 0x058 | 90 | 2 | **sub-operation modifier** | Value 408 dominant.  Selects instruction sub-variant (e.g., ADD vs FADD within same opcode). |
 | 359 | 0x167 | 90 | — | **operand negation mask** | Single value 1957.  Encodes source-operand sign-flip for FP instructions. |
-| 283 | 0x11B | — | 80 | **source type A** | Guard values 1446--1449.  Read with field 284 to encode source type for HMMA and similar. |
+| 283 | 0x11B | — | 80 | **source type A** | Guard values 1446–1449.  Read with field 284 to encode source type for HMMA and similar. |
 | 284 | 0x11C | — | 80 | **source type B** | Guard values 1451, 1452.  Paired with 283 (e.g., {1449,1452} -> FP16xFP16). |
-| 210 | 0x0D2 | 65 | — | **memory scope** | Values 1175--1177.  CTA / GPU / SYS scope for ld/st/atom. |
+| 210 | 0x0D2 | 65 | — | **memory scope** | Values 1175–1177.  CTA / GPU / SYS scope for ld/st/atom. |
 | 234 | 0x0EA | 60 | — | **cache control modifier** | Single value 1258.  Encodes cache hints (L1 bypass, etc.). |
 | 33  | 0x021 | 47 | — | **data width specifier** | Values 147, 148.  Selects 32-bit vs 64-bit operation width. |
 | 22  | 0x016 | 47 | — | **integer sign qualifier** | Values 99 (unsigned), 101 (signed). |
-| 154 | 0x09A | 41 | — | **texture/surface sampler** | Values 664--669 (6 variants).  Selects among texture access modes. |
+| 154 | 0x09A | 41 | — | **texture/surface sampler** | Values 664–669 (6 variants).  Selects among texture access modes. |
 | 209 | 0x0D1 | 40 | — | **memory ordering** | Single value 1172.  Sets acquire/release semantics. |
 | 89  | 0x059 | — | 36 | **operand class guard** | Read-only pre-condition filter; matchers exit early if absent or wrong. |
-| 500 | 0x1F4 | 36 | — | **extended modifier A** | Values 2547--2549.  Blackwell (sm_100+) matchers only. |
+| 500 | 0x1F4 | 36 | — | **extended modifier A** | Values 2547–2549.  Blackwell (sm_100+) matchers only. |
 | 330 | 0x14A | — | 32 | **precision / type tag** | Read-then-copied: propagates data-type attribute from source to output node. |
-| 208 | 0x0D0 | 30 | — | **atomic operation type** | Values 1163--1167 (ADD, MIN, MAX, CAS, EXCH). |
+| 208 | 0x0D0 | 30 | — | **atomic operation type** | Values 1163–1167 (ADD, MIN, MAX, CAS, EXCH). |
 | 327 | 0x147 | — | 30 | **register format descriptor A** | Read-only register class constraint.  Always checked with field 328. |
 | 328 | 0x148 | — | 30 | **register format descriptor B** | Read-only companion to field 327. |
 | 281 | 0x119 | 30 | — | **address space qualifier** | Single value 1436.  GLOBAL/SHARED/LOCAL address space tag. |
@@ -890,7 +890,7 @@ Semantic mapping of the 43 most frequently referenced field IDs, ranked by total
 | 326 | 0x146 | 2 | — | **SASS major opcode** | Value 1810 (0x712).  Written once at node creation; identifies top-level SASS instruction class. |
 | 5   | 0x005 | 2 | — | **Ori opcode ID** | Value 12 (0x0C).  Copies internal Ori opcode number into the encoding descriptor. |
 
-The value namespace is disjoint from the field-ID namespace — each field's values are drawn from a global enumeration (~2,850 entries, max value 2829).  For any given field only 1--6 distinct values are ever written.  The encoding bitfield lookup table at VA `0x23F2E00` (4,096 entries, 98% fill) maps value IDs to concrete bit positions and masks in the SASS instruction word.
+The value namespace is disjoint from the field-ID namespace — each field's values are drawn from a global enumeration (~2,850 entries, max value 2829).  For any given field only 1–6 distinct values are ever written.  The encoding bitfield lookup table at VA `0x23F2E00` (4,096 entries, 98% fill) maps value IDs to concrete bit positions and masks in the SASS instruction word.
 
 **Field 397 / value 2115 deep analysis.**  Contrary to the initial hypothesis that 397 acts as a pre-ISel validity guard, decompilation shows it is *write-only*: lowering functions stamp `field[397] = 2115` onto newly created nodes, and the encoder `sub_1C4F470` ORs the literal `0x843` into instruction-word dword 0.  `0x843 = 0b100_0100_0011`: bit 0 = opcode valid, bit 1 = encoding template assigned, bit 6 = ISel generation stamp.  This is a post-ISel seal confirming the instruction passed pattern matching and has a valid binary encoding template.
 
@@ -1083,7 +1083,7 @@ The simplest matchers skip operand validation entirely and rely solely on opcode
 
 ### SM120 Pattern Coordinator — `sub_13AF3D0` (137 KB)
 
-The largest ISel function in the binary (137 KB, 4,225 lines, 570+ locals). It is an architecture-specific operand-emission coordinator that runs in Phase 2 as a **parallel backend** to the mega-selector `sub_C0EB10`. The two do not call each other — they are mutually exclusive implementations of the same ISel protocol, selected per-SM by the vtable in the ISel driver. The mega-selector covers opcodes 7--221 for the default backend; the coordinator covers opcodes 2--352 for the SM120 (consumer RTX 50xx / enterprise Pro) backend.
+The largest ISel function in the binary (137 KB, 4,225 lines, 570+ locals). It is an architecture-specific operand-emission coordinator that runs in Phase 2 as a **parallel backend** to the mega-selector `sub_C0EB10`. The two do not call each other — they are mutually exclusive implementations of the same ISel protocol, selected per-SM by the vtable in the ISel driver. The mega-selector covers opcodes 7–221 for the default backend; the coordinator covers opcodes 2–352 for the SM120 (consumer RTX 50xx / enterprise Pro) backend.
 
 #### Position in the ISel Pipeline
 
@@ -1180,7 +1180,7 @@ The 130 distinct case labels (spanning 82 distinct handler blocks) cover the ful
 | 139, 140, 141, 143 | `sub_13A4DA0` for commutative operand selection | Commutative ALU |
 | 183 | Extended memory with register-class-6 check | Wide memory |
 | 201, 202, 204 | vtable+2328 delegation | Async / bulk operations |
-| 270, 279, 282, 285, 325--328 | Goto LABEL_53 (barrier/sync shared handler) | Extended memory / warp |
+| 270, 279, 282, 285, 325–328 | Goto LABEL_53 (barrier/sync shared handler) | Extended memory / warp |
 | 280, 281 | vtable+2896 with `nullsub_239` check, then LABEL_53 | Sync instructions |
 | 329 | Variable-count operand loop + vtable+2328 | Variable-width encoding |
 
@@ -1268,7 +1268,7 @@ Five 13-byte thunks each set an SM-family selector in `esi` and tail-jump to a s
 
 | Thunk | Address | `esi` value | SM family (inferred) |
 |---|---|---|---|
-| `sub_B12920` | `0xB12920` | `0x4000` | Turing / Ampere (sm_75--86) |
+| `sub_B12920` | `0xB12920` | `0x4000` | Turing / Ampere (sm_75–86) |
 | `sub_B12910` | `0xB12910` | `0x5000` | Ada (sm_89) |
 | `sub_B12900` | `0xB12900` | `0x5001` | Hopper (sm_90) |
 | `sub_B128F0` | `0xB128F0` | `0x5003` | Blackwell datacenter (sm_100/103) |
@@ -1281,36 +1281,36 @@ Each thunk is identical in structure (`mov esi, <imm32>; mov rdi, rdx; jmp loc_1
 | Case | Sub-switch? | Slot index / range | Notes |
 |---|---|---|---|
 | 0 | yes, `*(a3+14)` | 197, 526, 691, 697, 772 | 5 sub-variants by data width |
-| 1 | yes | 21, 647, 772 | Narrow (<=2) vs wide (3--4) vs invalid |
+| 1 | yes | 21, 647, 772 | Narrow (<=2) vs wide (3–4) vs invalid |
 | 2 | — | 636 | Single slot |
 | 3 | — | 22 | Single slot |
 | 4 | yes | 25, 26, 179, 180, 772 | Even/odd sub-field pairs |
 | 5 | — | 27 | Single slot |
 | 6 | yes | 28, 646, 772 | Same narrow/wide pattern as case 1 |
 | 7 | yes | 29, 30, 181, 182, 772 | 4-way by sub-field |
-| 8--0xA | — | 31, 32, 33 | Three consecutive single-slot cases |
-| 0xB | yes, 15 sub-cases | 526, 527, 549, 571, 572, 697--699, 704, 764 | Texture/surface types |
+| 8–0xA | — | 31, 32, 33 | Three consecutive single-slot cases |
+| 0xB | yes, 15 sub-cases | 526, 527, 549, 571, 572, 697–699, 704, 764 | Texture/surface types |
 | 0xC | yes, 56 sub-cases | 52, 72, 73, 82, 103, 132, 140, 557, 666, 668, 683, 684, 752, 758 | Memory load/store variants |
 | 0xD | yes, 52 sub-cases | 55, 79, 80, 84, 85, 106, 107, 558, 667, 669 | Conversion operations |
 | 0xE | yes, 37 sub-cases | 34, 42, 638, 639, 643, 744, 746, 748 | Predicate/comparison ops |
 | 0xF | yes, 41 sub-cases | 60, 86, 90, 91, 121, 148, 149, 166, 568, 672, 685 | FP math variants |
 | 0x10 | yes, 67 sub-cases | 61, 98, 124, 175, 176, 556, 676, 688, 689, 703 | Integer math variants |
 | 0x11 | — | 65 | Single slot (MOV/CVT) |
-| 0x12 | yes, 249 sub-cases | 66--71, 94, 95, 104, 125--129, 662--665, 673, 678--681 | Largest: ALU permutations |
+| 0x12 | yes, 249 sub-cases | 66–71, 94, 95, 104, 125–129, 662–665, 673, 678–681 | Largest: ALU permutations |
 | 0x13 | — | 685 | Single slot |
 | 0x14 | — | 75 | Single slot |
 | 0x15 | yes | 87, 670, 772 | Narrow/wide pattern |
-| 0x16--0x17 | yes, identical | 88, 120, 671, 753, 760 | Duplicated: shift variants |
+| 0x16–0x17 | yes, identical | 88, 120, 671, 753, 760 | Duplicated: shift variants |
 | 0x18 | — | 8 | Single slot |
 | 0x19 | yes, 17 sub-cases | 96, 586, 587, 674, 707, 708 | Shared memory ops |
 | 0x1A | yes, 16 sub-cases | 97, 123, 675, 762 | Extended shared memory |
-| 0x1B | yes, 113 sub-cases | 595, 612, 613, 615, 619--621, 715, 718, 719, 721, 723 | Tensor/MMA (sparse sub-field) |
+| 0x1B | yes, 113 sub-cases | 595, 612, 613, 615, 619–621, 715, 718, 719, 721, 723 | Tensor/MMA (sparse sub-field) |
 | 0x1C | yes | 130, 682, 772 | Narrow/wide pattern |
 | 0x1D | yes, 14 sub-cases | 140, 683, 684 | Memory fence variants |
-| 0x1E--0x1F | — | 143, 144 | Two single-slot cases |
-| 0x20 | yes, 40 sub-cases | 147--149, 685 | FP extended variants |
+| 0x1E–0x1F | — | 143, 144 | Two single-slot cases |
+| 0x20 | yes, 40 sub-cases | 147–149, 685 | FP extended variants |
 | 0x21 | — | 709 | Single slot |
-| 0x22 | yes, 46 sub-cases | 184--187, 190--192, 690 | Warp intrinsic variants |
+| 0x22 | yes, 46 sub-cases | 184–187, 190–192, 690 | Warp intrinsic variants |
 | 0x23 | yes, 58 sub-cases | 5, 188, 190, 637, 640, 745, 747, 749, 750 | Async/bulk ops |
 
 Total unique encoding slots referenced across all cases: ~120 distinct values out of a 772-entry namespace. The four `0x50xx` thunks share all JUMPOUT targets with `sub_B128E0`, confirming the shared handler selects per-SM slot variants internally based on the `esi` family code rather than at the thunk level.
@@ -1332,13 +1332,13 @@ case 254 -> sub_10AE590(ctx, inst, 194, 1080)
 case 255 -> sub_10AE590(ctx, inst, 194, 1081)
 ```
 
-Closed-form mapping: **`slot_index = 826 + a2`** for `a2` in `[1, 255]`; slot 826 is the fallback for any value outside that range (including 0 and values > 255). The 256 encoding slots (826--1081) are contiguous within the ISel dispatch table at `0x22AD9D0`, occupying pointer entries `[826]` through `[1081]` of the 1884-entry `isel_dispatch_tables` array. This is the largest single opcode family in the table — opcode class 194 alone accounts for 13.6% of all ISel dispatch entries.
+Closed-form mapping: **`slot_index = 826 + a2`** for `a2` in `[1, 255]`; slot 826 is the fallback for any value outside that range (including 0 and values > 255). The 256 encoding slots (826–1081) are contiguous within the ISel dispatch table at `0x22AD9D0`, occupying pointer entries `[826]` through `[1081]` of the 1884-entry `isel_dispatch_tables` array. This is the largest single opcode family in the table — opcode class 194 alone accounts for 13.6% of all ISel dispatch entries.
 
 The perfect linearity (no gaps, no reordering, no secondary switch) distinguishes this selector from `sub_B0AA70` (class 306) which uses sparse non-sequential case indices. The identity mapping `case K -> slot 826+K` means the switch is logically a bounds-checked offset addition — the compiler emitted it as a jump table.
 
 **`sub_B0AA70`** (5 KB) — opcode class 306:
 - Same pattern but with opcode class 306
-- Variants numbered 1680--1726 with non-sequential case indices (2, 3, 8, 9, 14, 15, 20, 21, 26, 27, 30, 31, 36, 37, 40, 41, ...)
+- Variants numbered 1680–1726 with non-sequential case indices (2, 3, 8, 9, 14, 15, 20, 21, 26, 27, 30, 31, 36, 37, 40, 41, ...)
 - The alternating-pair pattern at stride 6 suggests type-width combinations (e.g., F32/pair, F64/pair, S32/pair, ...)
 
 ### Instruction Modifier Dispatchers
@@ -1350,7 +1350,7 @@ Two modifier-application functions run after the main ISel selection to set type
 | Stage | Bitfield extract | Field ID | Switch mapping |
 |-------|-----------------|----------|----------------|
 | Register width | `(a7 >> 3) & 0x3` | 19 | 0/1 -> 71, 2 -> 72, 3 -> 73 (type 13: <=1 -> 71, else 72/73) |
-| Modifier type | `BYTE1(a7) & 0x1F` | 8 | 1 -> 31, 2 -> 33, 3 -> 34, 4 -> 32, 5 -> 35; 6--13 -> skip |
+| Modifier type | `BYTE1(a7) & 0x1F` | 8 | 1 -> 31, 2 -> 33, 3 -> 34, 4 -> 32, 5 -> 35; 6–13 -> skip |
 | Saturation | `BYTE4(a7) >> 3` | 16 / 3 | 1 -> 62 (type 18: fld 16; else fld 3 val 13), 2 -> 63 (type 18: fld 16; else fld 3 val 14), 3 -> 65, 4 -> 64 |
 | Rounding (hi) | `(HIDWORD(a7) >> 14) & 0x1F` | 3 | 1 -> 13, 2 -> 14 |
 | Saturate flag | `a8 & 0x10` | 20 | set -> 76, clear -> 75 |
@@ -1384,8 +1384,8 @@ Extended stages for types 12/13/15 (load/store/atomic) and type 18 at geometry:
 | LD/ST qualifier | `BYTE1(a7) >> 5` | 26 | 1 -> 99, 2 -> 100, 3 -> 101 |
 | Address mode | `BYTE2(a7) & 7` | 29 | 1 -> 116, 2 -> 117 |
 | Memory ordering | `BYTE4(a7) >> 3` (non-tex) | 24 | 1 -> 87, 2 -> 88 |
-| Reg size | `(v15 + 26) & 0x1F` | 25 | 0--7 -> 90--97 |
-| Type size | `(v51 + 26) & 0x1F` | 25 | 0--7 -> 90--97 (same table) |
+| Reg size | `(v15 + 26) & 0x1F` | 25 | 0–7 -> 90–97 |
+| Type size | `(v51 + 26) & 0x1F` | 25 | 0–7 -> 90–97 (same table) |
 | Geometry (non-tex) | `(v17 + 13) & 0xF` | 27 | 0 -> 107, 1 -> 106, 2 -> 105, 3 -> 104, 4 -> 103 |
 | Tex/surf dim (type 18) | `v17` | 28 | 0 -> 108, 1 -> 109, 2 -> 110, 3 -> 111, 4 -> 112, 5 -> 113, 6 -> 114 |
 
@@ -1527,7 +1527,7 @@ int64_t get_property(int64_t a1, unsigned int a2) {
 }
 ```
 
-Each function maps a small integer index to an encoding constant, answering questions like "what is the register class for operand N of this instruction?" The 0xAF0000--0xB00000 sub-range has 1,269 functions (all under 200 bytes), while 0xB00000--0xB10000 has 1,466 with slightly more complex logic (13 exceeding 1 KB).
+Each function maps a small integer index to an encoding constant, answering questions like "what is the register class for operand N of this instruction?" The 0xAF0000–0xB00000 sub-range has 1,269 functions (all under 200 bytes), while 0xB00000–0xB10000 has 1,466 with slightly more complex logic (13 exceeding 1 KB).
 
 ## Comparison with LLVM ISel
 
@@ -1540,7 +1540,7 @@ Each function maps a small integer index to an encoding constant, answering ques
 | **Intermediate form** | MachineInstr (already selected) | Ori IR (SASS opcodes after phase 5, not yet encoded) |
 | **Encoding** | MCInst emission (separate pass) | Integrated: ISel + Mercury encode in same pipeline |
 | **Expansion** | Pseudo-instruction expansion in AsmPrinter | MercExpand (phase 118, post-ISel) |
-| **Optimization post-ISel** | MachineFunction passes | Phases 14--111 (full optimizer runs between Phase 1 and Phase 2) |
+| **Optimization post-ISel** | MachineFunction passes | Phases 14–111 (full optimizer runs between Phase 1 and Phase 2) |
 
 The key architectural difference: LLVM performs instruction selection once, then optimization happens on already-selected machine instructions. ptxas selects SASS opcodes early (phase 5) so the optimizer can reason about SASS-level semantics, then performs a second selection/encoding pass after optimization is complete. This two-phase design gives the optimizer accurate cost models (it sees real SASS opcodes, not abstract PTX operations) at the cost of architectural complexity.
 
@@ -1578,7 +1578,7 @@ The key architectural difference: LLVM performs instruction selection once, then
 | `sub_B13E10` | 6 KB | Basic modifier dispatcher (21 callees) | HIGH |
 | `sub_B0AA70` | 5 KB | Opcode variant selector (class 306) | HIGH |
 | `sub_9DA5C0` | 2 KB | Opcode class 1 handler | MEDIUM |
-| `sub_13AF3D0` | 137 KB | SM120 ISel pattern coordinator (130-case switch, 83x `sub_13A6280`, opcodes 2--352) | HIGH |
+| `sub_13AF3D0` | 137 KB | SM120 ISel pattern coordinator (130-case switch, 83x `sub_13A6280`, opcodes 2–352) | HIGH |
 | `sub_A29220` | ~17 KB | SM120 instruction iterator (calls `sub_13AF3D0` per instruction) | HIGH |
 | `sub_13A6280` | ~10 KB | Operand emitter (type-tag dispatch, register class 6 fast-path) | HIGH |
 | `sub_13A4DA0` | ~7 KB | Commutative operand position selector (4-entry pattern table) | HIGH |
@@ -1601,7 +1601,7 @@ The key architectural difference: LLVM performs instruction selection once, then
 | `sub_B28E40` | tiny | isValidReg operand predicate (`tag == 10`) | VERY HIGH |
 | `sub_B28E80` | tiny | isPredicate operand predicate (`tag == 3`) | VERY HIGH |
 | `sub_B28E90` | tiny | isUniformReg operand predicate (`tag == 15`) | VERY HIGH |
-| `sub_B28F60`--`sub_B74C60` | ~1.3 MB | ~801 DAG pattern matchers (priority 2--34, template 1--152) | HIGH |
+| `sub_B28F60`--`sub_B74C60` | ~1.3 MB | ~801 DAG pattern matchers (priority 2–34, template 1–152) | HIGH |
 | `sub_C01840` | — | Mega-selector source operand marshaller (52 calls from mega-selector) | HIGH |
 | `sub_C01F50` | — | Mega-selector destination operand marshaller | HIGH |
 | `sub_C00EA0` | — | Single operand extractor (returns tagged operand word) | HIGH |

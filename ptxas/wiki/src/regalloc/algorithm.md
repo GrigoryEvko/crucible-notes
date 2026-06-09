@@ -45,7 +45,7 @@ alloc.budget = v231                         // stored at alloc+60
 
 The hardware limit comes from the target descriptor and reflects the physical register file size for the current class (e.g. 255 for GPRs, 7 for predicates). The `+7` headroom allows the allocator to explore slightly beyond the architectural limit before triggering a hard failure — this is clamped during assignment by the register budget check in `sub_94FDD0`.
 
-The register budget at `alloc+1524` interacts with `--maxrregcount` and `--register-usage-level` (values 0--10). The CLI-specified maximum register count is stored in the compilation context and propagated to the allocator as the hard ceiling. The `register-usage-level` option modulates the target: level 0 means no restriction, level 10 means minimize register usage as aggressively as possible. The per-class register budget stored at `alloc+32*class+884` reflects this interaction.
+The register budget at `alloc+1524` interacts with `--maxrregcount` and `--register-usage-level` (values 0–10). The CLI-specified maximum register count is stored in the compilation context and propagated to the allocator as the hard ceiling. The `register-usage-level` option modulates the target: level 0 means no restriction, level 10 means minimize register usage as aggressively as possible. The per-class register budget stored at `alloc+32*class+884` reflects this interaction.
 
 ### Occupancy Bitvector
 
@@ -69,7 +69,7 @@ During the fatpoint scan, a set bit means "slot occupied — skip it." This prev
 
 ## Pressure Computation Algorithm
 
-The per-VR pressure computation is the core of the fat-point allocator. For each unassigned virtual register, the allocator builds a fresh pressure histogram, selects the minimum-cost physical register slot, and commits the assignment. The algorithm has seven steps, all executed inside the main loop of `sub_957160` (lines 493--1590 of the decompiled output).
+The per-VR pressure computation is the core of the fat-point allocator. For each unassigned virtual register, the allocator builds a fresh pressure histogram, selects the minimum-cost physical register slot, and commits the assignment. The algorithm has seven steps, all executed inside the main loop of `sub_957160` (lines 493–1590 of the decompiled output).
 
 ### Step 1: VR Geometry
 
@@ -151,16 +151,16 @@ Each operand in the Ori IR is an 8-byte (two-DWORD) value. The low DWORD encodes
 ```text
 Low DWORD (operand[0]):
   bits 31       sign/direction flag (1 = negated or descending)
-  bits 28--30   operand_type (3 bits, 0--7)
-  bits 24--27   modifier / pair extension (bit 24 = pair half selector)
-  bits  0--23   reg_id (24-bit virtual register index)
+  bits 28–30   operand_type (3 bits, 0–7)
+  bits 24–27   modifier / pair extension (bit 24 = pair half selector)
+  bits  0–23   reg_id (24-bit virtual register index)
 
 High DWORD (operand[1]):
   bits 29       NOT modifier flag
   bits 26       high-half selector (for 16-bit packed access)
   bits 25       low-half selector
-  bits 22--24   shift/subfield control
-  bits  0--21   constraint flags / immediate tag
+  bits 22–24   shift/subfield control
+  bits  0–21   constraint flags / immediate tag
 ```
 
 The extraction idiom recurring throughout `sub_926A30`:
@@ -188,11 +188,11 @@ Operand type values observed in the decompiled code (cross-referenced with `isel
 
 #### build_constraints Pseudocode
 
-The full constraint builder is `sub_926A30` (4005 lines). Lines 521--803 implement a per-instruction operand normalization pre-pass; lines 803--1058 perform opcode-specific rewriting (merged pairs, constant materialization, dead-operand elimination); constraint extraction proper begins at line 1058. The pseudocode below covers the core three-phase structure.
+The full constraint builder is `sub_926A30` (4005 lines). Lines 521–803 implement a per-instruction operand normalization pre-pass; lines 803–1058 perform opcode-specific rewriting (merged pairs, constant materialization, dead-operand elimination); constraint extraction proper begins at line 1058. The pseudocode below covers the core three-phase structure.
 
 ```c
 function build_constraints(ctx, opcode, isel_desc, num_ops, operands):
-    // ---- Phase 0: operand normalization (lines 521--803) ----
+    // ---- Phase 0: operand normalization (lines 521–803) ----
     // Strip the 0x1000 flag: base_opcode = opcode & 0xFFFFCFFF
     // For base_opcode in {0x3E, 0x4E} or isel_desc == 20:
     //   set needs_rewrite = true
@@ -313,7 +313,7 @@ The `classify_constraint` function (`sub_91A0F0`, ~500 lines) returns one of app
 | 0x33 (I2I) | `i in {1,2}` | `(dw_aux & (1<<i))>>i != 1 ? 12 : 11` |
 | default | any | passthrough = isel_desc |
 
-The constraint type IDs 0--15 assigned above correspond to the 15 types documented in the [Constraint Types](#constraint-types) section below. The `isel_operand_constraints.json` records (39 records at `0x22B8E00`, 256-byte stride) define per-opcode constraint profiles: each record's `type_ids` array lists which of the 26 unique operand type IDs (0--25) are valid for that instruction class. The `register_class_constraints.json` records (72 records per SM generation at `0x21FDC00`, 64-byte stride) map each constraint index to `(class_id, sub_a, sub_b)` triplets that route constraints to the correct register class allocator.
+The constraint type IDs 0–15 assigned above correspond to the 15 types documented in the [Constraint Types](#constraint-types) section below. The `isel_operand_constraints.json` records (39 records at `0x22B8E00`, 256-byte stride) define per-opcode constraint profiles: each record's `type_ids` array lists which of the 26 unique operand type IDs (0–25) are valid for that instruction class. The `register_class_constraints.json` records (72 records per SM generation at `0x21FDC00`, 64-byte stride) map each constraint index to `(class_id, sub_a, sub_b)` triplets that route constraints to the correct register class allocator.
 
 ### Step 4: Constraint Walk
 
@@ -322,7 +322,7 @@ The allocator iterates the constraint list at `vreg+144`. For VRs with alias cha
 | Offset | Type | Field |
 |--------|------|-------|
 | +0 | pointer | Next constraint (linked list) |
-| +8 | int32 | Constraint type (0--15) |
+| +8 | int32 | Constraint type (0–15) |
 | +12 | int32 | Target VR index or physical register |
 | +16 | int32 | Weight (interference cost) |
 | +20 | uint8 | Soft flag (skip in later iterations) |
@@ -433,7 +433,7 @@ Type 15 (range) is the only constraint type that writes to the secondary array. 
 
 Three inner loops use SSE2 intrinsics:
 
-1. **Type 0 (point) with large width:** `_mm_add_epi32` adds the broadcast weight to 4 primary slots per iteration. Alignment pre-loop handles the first 1--3 slots to reach 16-byte alignment.
+1. **Type 0 (point) with large width:** `_mm_add_epi32` adds the broadcast weight to 4 primary slots per iteration. Alignment pre-loop handles the first 1–3 slots to reach 16-byte alignment.
 
 2. **Type 15 (range) secondary accumulation:** `_mm_shuffle_epi32(_mm_cvtsi32_si128(weight), 0)` broadcasts the weight to all 4 lanes. The vectorized loop processes 4 secondary slots per iteration with `_mm_add_epi32(_mm_load_si128(...), broadcast)`.
 
@@ -546,7 +546,7 @@ The cumulative pressure counter at `alloc+788` tracks the total interference wei
 
 ### End-of-Round Result
 
-After all VRs are processed, the allocator computes the result (lines 1594--1641):
+After all VRs are processed, the allocator computes the result (lines 1594–1641):
 
 ```c
 peak_usage = alloc+1580                          // max physical register used
@@ -565,7 +565,7 @@ The return value feeds into the retry driver's comparison: `target >= result` me
 
 ## Constraint Types
 
-The fat-point interference builder (`sub_926A30`, 4005 lines) processes constraints attached to each virtual register. Constraints are extracted from instruction operand descriptors encoded as 32-bit values: bits 28--30 encode the operand type, bits 0--23 encode the register index, bit 24 is the pair extension bit, and bit 31 is a sign/direction flag.
+The fat-point interference builder (`sub_926A30`, 4005 lines) processes constraints attached to each virtual register. Constraints are extracted from instruction operand descriptors encoded as 32-bit values: bits 28–30 encode the operand type, bits 0–23 encode the register index, bit 24 is the pair extension bit, and bit 31 is a sign/direction flag.
 
 The builder recognizes 15 constraint types. Each constraint type adds interference weight to specific physical register slots in the pressure arrays:
 
@@ -598,7 +598,7 @@ Each virtual register carries a constraint list at `vreg+144`. The list is a lin
 - Target VR or physical register index
 - Weight (integer, typically 1 for hard constraints, lower for soft)
 - Program point or interval (for types 0, 3, 15)
-- Pair/alignment specification (for types 5--7, 11--14)
+- Pair/alignment specification (for types 5–7, 11–14)
 
 The interference builder iterates this list for every VR being assigned, accumulating weights into the pressure arrays. The total cost of assignment to slot `S` is the sum of all constraint weights that map to `S`.
 
@@ -621,7 +621,7 @@ Constraint types 0 (point interference) and 3 (below-point) reference program po
 
 #### Pair/Alignment Extraction
 
-The pair alignment mode is encoded in two places: bits 26--27 of the operand descriptor dword\[0\], and bits 20--21 of the VR flags at `vreg+48`. The per-operand field is checked first by `sub_91A0F0` to determine the constraint type:
+The pair alignment mode is encoded in two places: bits 26–27 of the operand descriptor dword\[0\], and bits 20–21 of the VR flags at `vreg+48`. The per-operand field is checked first by `sub_91A0F0` to determine the constraint type:
 
 ```c
 function compute_constraint_type(opcode, operand_desc, operand_index):
@@ -638,7 +638,7 @@ function compute_constraint_type(opcode, operand_desc, operand_index):
         return opcode_dispatch_table(opcode, operand_index)
 ```
 
-The pair_align field in the operand descriptor (bits 26--27 of dword\[0\]) encodes:
+The pair_align field in the operand descriptor (bits 26–27 of dword\[0\]) encodes:
 
 | pair_align | Meaning | Constraint type returned |
 |------------|---------|------------------------|
@@ -647,7 +647,7 @@ The pair_align field in the operand descriptor (bits 26--27 of dword\[0\]) encod
 | 2 | High half of pair | 26 (paired-high/both) |
 | 3 | Both halves | 26 (paired-both) |
 
-This feeds constraint types 5--7 (paired-low, paired-high, aligned-pair) during pressure accumulation. The bit-24 flag (`0x1000000`) in the descriptor marks a merged pair operand created when `sub_926A30` folds an address-type operand (type 5) with the adjacent register operand (type 1), setting `desc = (desc & 0x8F000000) | 0x10000000 | next_desc & 0xFFFFFF`. The VR-level pair_mode at `(vreg+48 >> 20) & 3` controls the physical register scan stride independently (documented in Step 1 above).
+This feeds constraint types 5–7 (paired-low, paired-high, aligned-pair) during pressure accumulation. The bit-24 flag (`0x1000000`) in the descriptor marks a merged pair operand created when `sub_926A30` folds an address-type operand (type 5) with the adjacent register operand (type 1), setting `desc = (desc & 0x8F000000) | 0x10000000 | next_desc & 0xFFFFFF`. The VR-level pair_mode at `(vreg+48 >> 20) & 3` controls the physical register scan stride independently (documented in Step 1 above).
 
 ## Register Selection
 
@@ -685,7 +685,7 @@ Key design decisions in the selection loop:
 
 **Threshold filtering.** The interference threshold (OCG knob 684, default 50) acts as a congestion cutoff. Any physical register slot with total interference weight above this value is immediately skipped. This prevents the allocator from assigning a VR to a slot that would cause excessive register pressure, even if that slot happens to be the global minimum. The threshold trades a small increase in the number of spills for a significant improvement in allocation quality — high-interference slots tend to require cascading reassignments.
 
-**Alignment stride.** For paired registers (pair mode 1 or 3 in `vreg+48` bits 20--21), the scan steps by 2 instead of 1, ensuring the VR lands on an even-numbered slot. For quad-width registers, the stride is 4. The shift amount comes from the register class descriptor and varies by allocation mode.
+**Alignment stride.** For paired registers (pair mode 1 or 3 in `vreg+48` bits 20–21), the scan steps by 2 instead of 1, ensuring the VR lands on an even-numbered slot. For quad-width registers, the stride is 4. The shift amount comes from the register class descriptor and varies by allocation mode.
 
 **Two-level tie-breaking.** When two candidates have equal primary cost, the secondary array breaks the tie. This provides a smooth gradient for the allocator to follow when the primary interference picture is flat. The secondary array typically captures weaker signals like register preference hints, pre-allocation suggestions, and copy-related affinities.
 
@@ -818,7 +818,7 @@ tail_checks:
         link_prealloc_pair(alloc, vreg[op[0]], vreg[op[4]], dir=1)
 ```
 
-`find_dest_operand` (`sub_938350`) scans operands left-to-right for the first type-1 register whose `vreg->reg_class` is 3 (UR) or 6 (Tensor/Acc), skipping pair-extension operands (bit 24 clear). Returns index or -1. `try_pair_preassign` (`sub_9498C0`) verifies both operands are type-1 registers outside 41--44, same `reg_class` matching `alloc+1504`, compares pair widths via `(vreg->flags >> 20) & 3`, and calls `link_prealloc_pair` (`sub_9496B0`) with direction 0/1/2 (wider-to-narrower / narrower-to-wider / equal).
+`find_dest_operand` (`sub_938350`) scans operands left-to-right for the first type-1 register whose `vreg->reg_class` is 3 (UR) or 6 (Tensor/Acc), skipping pair-extension operands (bit 24 clear). Returns index or -1. `try_pair_preassign` (`sub_9498C0`) verifies both operands are type-1 registers outside 41–44, same `reg_class` matching `alloc+1504`, compares pair widths via `(vreg->flags >> 20) & 3`, and calls `link_prealloc_pair` (`sub_9496B0`) with direction 0/1/2 (wider-to-narrower / narrower-to-wider / equal).
 
 ### Per-Operand Pre-Assigner: sub\_93ECB0
 
@@ -856,7 +856,7 @@ The **opcode boundary switch** is identical in both functions. Maps masked opcod
 |---------------|------|----------|--------|
 | 22 | R2P | `sub_7E40E0(insn, 3)` | Per-instruction query |
 | 50 | ATOM | `LUT[5 * ((last_op >> 2) & 3)]` | Packed table at `xmmword_21B2EC0` |
-| 51, 110--111, 113--114, 289 | AL2P..SUATOM, UISETP | 3 | Fixed |
+| 51, 110–111, 113–114, 289 | AL2P..SUATOM, UISETP | 3 | Fixed |
 | 77 | EXIT | `sub_7E36C0(2, ...)` | Modifier-dependent |
 | 83 | TEX | `sub_7E3640(insn, 3)` | Texture descriptor query |
 | 112 | SULD | 4 | Fixed |
@@ -898,7 +898,7 @@ sub_93D070(&best, class, iteration,         // record best result
            result, pressure, alloc, cost)
 ```
 
-The NOSPILL loop runs up to `v102` attempts. Retry mode selection (from `sub_971A90` lines 199--240):
+The NOSPILL loop runs up to `v102` attempts. Retry mode selection (from `sub_971A90` lines 199–240):
 
 | Condition | v102 (max attempts) | Behavior |
 |-----------|---------------------|----------|
@@ -1056,20 +1056,20 @@ for class_id in 1..6:
         sub_8E3A80(alloc+2)                 // arena cleanup between attempts
 ```
 
-Classes 1--6 are initialized via the target descriptor vtable at offset `+896`. The vtable call `vtable[896](alloc_state, class_id)` populates per-class register file descriptors at `alloc[114..156]` (four 8-byte entries per class). The class IDs correspond to `reg_type` values (1 = R, 2 = R alt, 3 = UR, 4 = UR ext, 5 = P/UP, 6 = Tensor/Acc). Barrier registers (`reg_type = 9`) are above the `<= 6` cutoff and handled separately.
+Classes 1–6 are initialized via the target descriptor vtable at offset `+896`. The vtable call `vtable[896](alloc_state, class_id)` populates per-class register file descriptors at `alloc[114..156]` (four 8-byte entries per class). The class IDs correspond to `reg_type` values (1 = R, 2 = R alt, 3 = UR, 4 = UR ext, 5 = P/UP, 6 = Tensor/Acc). Barrier registers (`reg_type = 9`) are above the `<= 6` cutoff and handled separately.
 
 | Class ID | Name | Width | HW Limit | Description |
 |----------|------|-------|----------|-------------|
-| 1 | R | 32-bit | 255 | General-purpose registers (R0--R254) |
+| 1 | R | 32-bit | 255 | General-purpose registers (R0–R254) |
 | 2 | R (alt) | 32-bit | 255 | GPR variant (RZ sentinel, stat collector alternate) |
-| 3 | UR | 32-bit | 63 | Uniform general-purpose registers (UR0--UR62) |
+| 3 | UR | 32-bit | 63 | Uniform general-purpose registers (UR0–UR62) |
 | 4 | UR (ext) | 32-bit | 63 | Uniform GPR variant (triggers flag update at +1369 in constructor) |
-| 5 | P / UP | 1-bit | 7 | Predicate registers (P0--P6, UP0--UP6) |
+| 5 | P / UP | 1-bit | 7 | Predicate registers (P0–P6, UP0–UP6) |
 | 6 | Tensor/Acc | 32-bit | varies | Tensor/accumulator registers for MMA/WGMMA operations |
 
 Class 0 (unified/cross-class) is skipped in the main loop. It is used for cross-class constraint propagation during the interference building phase. Classes 3 (UR) and 6 (Tensor/Acc) have early-out conditions: if `alloc+348 == 2` (class 3) or `alloc+332 == 2` (class 6), allocation is skipped because no VRs of that class exist. Barrier registers (B, UB) have `reg_type = 9`, which is above the `<= 6` allocator cutoff and are handled by a separate mechanism outside the 7-class system.
 
-Before the per-class loop, virtual registers are distributed into class-specific linked lists (lines 520--549 of `sub_9721C0`):
+Before the per-class loop, virtual registers are distributed into class-specific linked lists (lines 520–549 of `sub_9721C0`):
 
 ```c
 for each vreg in function_vreg_list:       // from ctx+104
@@ -1237,7 +1237,7 @@ function sub_926A30(ctx, opcode, op_category, operand_count, operands, flags, ..
 
 The builder queries multiple OCG knobs via vtable dispatches at offsets +72, +120, +152, +224, +256, +272, and +320. These knobs modulate constraint weights and enable/disable specific constraint categories (e.g. bank-conflict-aware constraints are gated by knob 641).
 
-Special register IDs 41--44 (PT, P0--P3) and 39 are always skipped. The skip predicate (`sub_9446D0`, 29 lines) additionally checks for CSSA phi instructions (opcode 195 with type 9 = barrier) and performs hash-table lookups in the exclusion set at `alloc+360`.
+Special register IDs 41–44 (PT, P0–P3) and 39 are always skipped. The skip predicate (`sub_9446D0`, 29 lines) additionally checks for CSSA phi instructions (opcode 195 with type 9 = barrier) and performs hash-table lookups in the exclusion set at `alloc+360`.
 
 ## Best Result Recorder: sub\_93D070
 
@@ -1267,7 +1267,7 @@ The per-instruction assignment core loop (3722 lines, the largest function in pa
 
 ### Initialization
 
-The function begins by computing the register pair stride from the register class descriptor. The `pair_mode` field at `reg_class+48` bits 20--21 selects the stride:
+The function begins by computing the register pair stride from the register class descriptor. The `pair_mode` field at `reg_class+48` bits 20–21 selects the stride:
 
 | pair\_mode | stride | operand divisor | pair width |
 |-----------|--------|-----------------|------------|
@@ -1279,7 +1279,7 @@ The function then builds the **assigned** bitvector (`alloc+1342..1345`, 256 bit
 
 ### Operand Pre-Scan and Bank Conflict Detection
 
-Before entering the main loop, the function scans operands of the block's header instruction in reverse order (last to first). For each operand of type 1 (register) whose physical index is not 41--44 (architectural predicates):
+Before entering the main loop, the function scans operands of the block's header instruction in reverse order (last to first). For each operand of type 1 (register) whose physical index is not 41–44 (architectural predicates):
 
 ```c
 for operand_idx = num_operands-1 downto 0:
@@ -1397,7 +1397,7 @@ The fast check (`sub_A56790`) performs a lightweight comparison per instruction.
 
 1. Builds two difference lists — "Additions" (defs present after but not before) and "Removals" (defs present before but not after).
 2. Classifies each difference as either `BENIGN (explainable)` or `POTENTIAL PROBLEM` by pattern-matching against known-safe transformations: spill-store/refill-load pairs, P2R/R2P predicate packing, bit-spill patterns, and rematerialized instructions.
-3. For each unexplained difference, creates an error record with a category code (1--10), pointers to the offending instructions, and operand type flags.
+3. For each unexplained difference, creates an error record with a category code (1–10), pointers to the offending instructions, and operand type flags.
 
 ### Error Categories
 

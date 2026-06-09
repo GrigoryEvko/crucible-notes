@@ -52,7 +52,7 @@ Each loop record is 1984 bytes. Each use record within a loop is 96 bytes. The l
 
 ## The 7-Phase Formula Solver Pipeline
 
-### Phase 1: Initial Use Setup (lines 471--537)
+### Phase 1: Initial Use Setup (lines 471–537)
 
 The solver iterates all loop use-groups and, within each, all individual uses. For each 96-byte use record, it:
 
@@ -63,7 +63,7 @@ The solver iterates all loop use-groups and, within each, all individual uses. F
 
 The output of Phase 1 is a set of initial formula candidates, one per (use, scaled register) pair, covering the basic addressing modes.
 
-### Phase 2: Expression Folding with Unfolded Offsets (lines 548--662)
+### Phase 2: Expression Folding with Unfolded Offsets (lines 548–662)
 
 This phase targets uses where `base == NULL` (pure IV uses, no base pointer). It performs two sub-passes:
 
@@ -71,7 +71,7 @@ This phase targets uses where `base == NULL` (pure IV uses, no base pointer). It
 
 **Sub-pass B (factor loop bounds into formula):** Builds an iterator set from the loop's start bound (`+712`) and end bound (`+720`), then calls `sub_19A2820` per (scaled register, iterator bound) pair. This generates formulae that factor common strides out of the loop bounds. For example, if the loop runs `i = 0..N` and a use computes `4*i + base`, this phase can factor out the stride 4 and produce a formula with a single-step IV.
 
-### Phase 3: Stride Factor Expansion (lines 662--862)
+### Phase 3: Stride Factor Expansion (lines 662–862)
 
 Runs only for loops where the use type is 3 (immediate-only addressing). This is the phase that explores alternative stride factors from the stride factor table (`a1+192`).
 
@@ -92,7 +92,7 @@ For each use:
 
 The overflow guards in this phase are critical. The multiplication overflow check (`v94 * v455 / v94 == v455`) prevents generating formulae whose stride values cannot be represented in 64-bit arithmetic, which would silently produce wrong results.
 
-### Phase 4: Chain-Based Formula Generation (lines 872--1082)
+### Phase 4: Chain-Based Formula Generation (lines 872–1082)
 
 For each use, the solver attempts chain-based strength reduction: building formulae where one IV feeds the next use through a simple increment rather than a full recomputation.
 
@@ -105,7 +105,7 @@ Key logic:
 - Operands are rewritten via `sub_145CF80` (SCEV multiply by stride factor).
 - The flag at loop record `+728` controls address-space-aware chain construction. When set, chains respect address space constraints — critical for shared memory (see the `disable-lsr-for-sharedmem32-ptr` knob section).
 
-### Phase 5: Reuse Chain Matching (lines 1093--1256)
+### Phase 5: Reuse Chain Matching (lines 1093–1256)
 
 For uses where `base == NULL`, the solver attempts to match existing IV chains for reuse rather than creating new ones.
 
@@ -119,7 +119,7 @@ For uses where `base == NULL`, the solver attempts to match existing IV chains f
 
 This is where the `lsr-check-rp` and `lsr-rp-limit` knobs have direct effect. The `sub_19955B0` function compares projected register pressure against the configured ceiling and returns false if the formula would exceed it.
 
-### Phase 6: Formula-to-Use Hash Table Construction (lines 1260--1940)
+### Phase 6: Formula-to-Use Hash Table Construction (lines 1260–1940)
 
 The most complex phase. It builds two hash tables and uses them to identify which formulae serve multiple uses (shared IV expressions).
 
@@ -150,7 +150,7 @@ The phase then:
 
 The use-count bitmap uses a compact inline representation: if `(value & 1)`, the high bits encode `max_reg_id` and the remaining bits form the bitmap directly; otherwise, the value is a pointer to a heap-allocated `BitVector` (size at `+16`, data at `+0`). The popcount check at line 1927 (`popcount != 1`) filters out expressions used by only one use — they cannot benefit from strength reduction.
 
-### Phase 7: Final Formula Selection and Commitment (lines 2042--2686)
+### Phase 7: Final Formula Selection and Commitment (lines 2042–2686)
 
 After hash table cleanup, the solver iterates the candidate triples `(register_id, distance, scev_use)` and performs the final selection:
 
@@ -329,7 +329,7 @@ The NVIDIA overlay does not replace everything. It reuses:
 
 ### What NVIDIA Replaces
 
-- **Formula generation** (Phases 1--5): entirely custom, with address-space awareness, stride factor expansion, and reuse chain matching with RP validation.
+- **Formula generation** (Phases 1–5): entirely custom, with address-space awareness, stride factor expansion, and reuse chain matching with RP validation.
 - **Formula-to-use mapping** (Phase 6): custom hash tables replacing LLVM's `DenseSet`-based uniquification with a design optimized for linked-list traversal and median-cost computation.
 - **Final selection** (Phase 7): custom selection with width-fit checks, sign-extension validation, and cross-IV replacement — none of which exist in upstream LLVM.
 
@@ -406,7 +406,7 @@ For reimplementation reference, the critical helpers and their roles:
 
 7. **The use-count bitmap has two representations.** Inline (when `value & 1`) and heap-allocated. The inline form is fast but limited to small register ID ranges. The heap form uses a `BitVector` with the size at `+16`. Both must be supported.
 
-8. **Phase ordering is strict.** The 7 phases must run in order. Later phases depend on candidates generated by earlier ones, and the hash tables in Phase 6 assume all candidates have been generated by Phases 1--5.
+8. **Phase ordering is strict.** The 7 phases must run in order. Later phases depend on candidates generated by earlier ones, and the hash tables in Phase 6 assume all candidates have been generated by Phases 1–5.
 
 ## Differences from Upstream LLVM
 
@@ -418,4 +418,4 @@ For reimplementation reference, the critical helpers and their roles:
 | **Knob count** | ~5 knobs for cost tuning | 11 knobs for fine-grained GPU-specific control (`lsr-no-ptr-address-space3`, stride limits, formula depth, etc.) |
 | **Algorithm structure** | Monolithic formula generator + greedy selector | 7-phase formula solver pipeline: candidate generation, stride-based filtering, use-group analysis, formula selection, commit, rewrite |
 | **State object** | Modest state for formula tracking | 32,160-byte state object with embedded register pressure tracker, formula hash table, and per-use-group formula arrays |
-| **Typed register cost** | All registers weigh the same | 64-bit IVs cost two 32-bit register slots; emulated on sm_3x--5x; native on sm_70+ but still double the pressure |
+| **Typed register cost** | All registers weigh the same | 64-bit IVs cost two 32-bit register slots; emulated on sm_3x–5x; native on sm_70+ but still double the pressure |

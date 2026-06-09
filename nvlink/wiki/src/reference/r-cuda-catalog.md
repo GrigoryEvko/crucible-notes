@@ -1,6 +1,6 @@
 # R_CUDA Relocation Catalog
 
-Complete reference table of all **117 canonical** R_CUDA relocation type names extracted from nvlink v13.0.88, indexed across **182 total descriptor rows** (117 standard + 65 attribute). The raw `nvlink_strings.json` pool contains 119 R_CUDA string entries — 117 unique names plus two trailing-whitespace duplicates of `R_CUDA_UNIFIED_8_0` and `R_CUDA_UNIFIED_8_8` (see Confidence Assessment). Types are organized into two descriptor tables: the standard table at `off_1D37600` (117 entries, indices 0--116) and the attribute table at `off_1D371E0` (65 entries, indices 0x10000--0x10040). See [R_CUDA Relocations](../linker/r-cuda-relocations.md) for the relocation engine, descriptor format, action types, and architecture class system.
+Complete reference table of all **117 canonical** R_CUDA relocation type names extracted from nvlink v13.0.88, indexed across **182 total descriptor rows** (117 standard + 65 attribute). The raw `nvlink_strings.json` pool contains 119 R_CUDA string entries — 117 unique names plus two trailing-whitespace duplicates of `R_CUDA_UNIFIED_8_0` and `R_CUDA_UNIFIED_8_8` (see Confidence Assessment). Types are organized into two descriptor tables: the standard table at `off_1D37600` (117 entries, indices 0–116) and the attribute table at `off_1D371E0` (65 entries, indices 0x10000–0x10040). See [R_CUDA Relocations](../linker/r-cuda-relocations.md) for the relocation engine, descriptor format, action types, and architecture class system.
 
 ## Standard Table (off_1D37600)
 
@@ -225,7 +225,7 @@ The attribute table entries are not individually named in the binary — they sh
 
 ## Descriptor Byte Layout
 
-The 117 standard and 65 attribute descriptors are stored as 64-byte fixed records in `.rodata`. Both the standard table at `off_1D3DBE0` and the attribute table at `off_1D3CBE0` share the same layout; the relocation engine picks one or the other from the `r_type & 0x10000` attribute bit (see `sub_469620` lines 26--38). This section provides the byte-for-byte decode that confirms the three-action-slot model described in [R_CUDA Relocations § Descriptor Format](../linker/r-cuda-relocations.md#descriptor-format).
+The 117 standard and 65 attribute descriptors are stored as 64-byte fixed records in `.rodata`. Both the standard table at `off_1D3DBE0` and the attribute table at `off_1D3CBE0` share the same layout; the relocation engine picks one or the other from the `r_type & 0x10000` attribute bit (see `sub_469620` lines 26–38). This section provides the byte-for-byte decode that confirms the three-action-slot model described in [R_CUDA Relocations § Descriptor Format](../linker/r-cuda-relocations.md#descriptor-format).
 
 ### Verified byte layout
 
@@ -281,13 +281,13 @@ Twenty-three distinct action codes appear in the standard table. The bitmask tes
 | 1 | absolute address into `(bit_offset, bit_width)` | `R_CUDA_32`, `R_CUDA_ABS32_26`, `R_CUDA_ABS20_44` |
 | 2 | global-segment address | `R_CUDA_G32`, `R_CUDA_G64` |
 | 3 | texture/sampler header index | `R_CUDA_TEX_HEADER_INDEX`, `R_CUDA_SAMP_HEADER_INDEX_0` |
-| 4--5 | surface descriptor (HW-only / HW+SW) | `R_CUDA_SURF_HW_DESC`, `R_CUDA_SURF_HW_SW_DESC` |
+| 4–5 | surface descriptor (HW-only / HW+SW) | `R_CUDA_SURF_HW_DESC`, `R_CUDA_SURF_HW_SW_DESC` |
 | 6 | low 16 bits of 32-bit absolute | `R_CUDA_ABS32_LO_26`, `R_CUDA_32_LO` |
 | 7 | high 16 bits of 32-bit absolute (`aux = 0x20`) | `R_CUDA_ABS32_HI_26`, `R_CUDA_32_HI` |
 | 8 | texture/sampler/surface slot | `R_CUDA_TEX_SLOT`, `R_CUDA_TEX_SLOT9_49` |
 | 9 | `SHIFTED_2` (`(S + A) >> 2`); reused as the leading slot for split-field bindless / constant-bank / wide-immediate types (`R_CUDA_TEX_BINDLESSOFF13_32`, `R_CUDA_CONST_FIELD19_28`, `R_CUDA_ABS55_16_34`). See [R_CUDA Relocations § Action Types](../linker/r-cuda-relocations.md#action-types) for the engine semantics. | `R_CUDA_TEX_BINDLESSOFF13_32`, `R_CUDA_CONST_FIELD19_28` |
 | 10, 11 | continuation pieces of a split-field reference | seen only in slot1/slot2 of `R_CUDA_CONST_FIELD*` |
-| 12--14 | function-descriptor 32-bit (full / LO / HI) | `R_CUDA_FUNC_DESC32_23`, `..._LO_23`, `..._HI_23` |
+| 12–14 | function-descriptor 32-bit (full / LO / HI) | `R_CUDA_FUNC_DESC32_23`, `..._LO_23`, `..._HI_23` |
 | 15 | function-descriptor 32/64 raw | `R_CUDA_FUNC_DESC_32`, `R_CUDA_FUNC_DESC_64` |
 | 16 | PC-relative branch offset | `R_CUDA_PCREL_IMM24_26`, `R_CUDA_PCREL_IMM24_23` |
 | 17 | whole-instruction replacement | `R_CUDA_INSTRUCTION64`, `R_CUDA_INSTRUCTION128` |
@@ -295,12 +295,12 @@ Twenty-three distinct action codes appear in the standard table. The bitmask tes
 | 19 | YIELD-clear-predicate rewrite | `R_CUDA_YIELD_CLEAR_PRED4_87` |
 | 20 | zero-fill (`UNUSED_CLEAR`) | `R_CUDA_UNUSED_CLEAR32`, `R_CUDA_UNUSED_CLEAR64` |
 | 21 (`0x15`) | `piece_cont` — second piece of a split-field type, pairs with a leading action-9 slot | `R_CUDA_ABS55_16_34`, `R_CUDA_ABS56_16_34` |
-| 22--29 | 8-bit data patches at byte offsets 0, 8, ..., 56 | `R_CUDA_8_0 .. R_CUDA_8_56` |
-| 30--37 | 8-bit global patches | `R_CUDA_G8_0 .. R_CUDA_G8_56` |
-| 38--45 | 8-bit func-desc patches | `R_CUDA_FUNC_DESC_8_0 .. R_CUDA_FUNC_DESC_8_56` |
+| 22–29 | 8-bit data patches at byte offsets 0, 8, ..., 56 | `R_CUDA_8_0 .. R_CUDA_8_56` |
+| 30–37 | 8-bit global patches | `R_CUDA_G8_0 .. R_CUDA_G8_56` |
+| 38–45 | 8-bit func-desc patches | `R_CUDA_FUNC_DESC_8_0 .. R_CUDA_FUNC_DESC_8_56` |
 | 46 | unified descriptor full | `R_CUDA_UNIFIED`, `R_CUDA_UNIFIED_32` |
-| 47--54 | unified 8-bit patches | `R_CUDA_UNIFIED_8_0 .. R_CUDA_UNIFIED_8_56` |
-| 55--56 | unified-32 LO / HI 16-bit pieces | `R_CUDA_UNIFIED32_LO_32`, `R_CUDA_UNIFIED32_HI_32` |
+| 47–54 | unified 8-bit patches | `R_CUDA_UNIFIED_8_0 .. R_CUDA_UNIFIED_8_56` |
+| 55–56 | unified-32 LO / HI 16-bit pieces | `R_CUDA_UNIFIED32_LO_32`, `R_CUDA_UNIFIED32_HI_32` |
 
 ### Slot usage statistics
 
@@ -343,7 +343,7 @@ The following entries were byte-decoded against `nvlink_rodata.bin` (rodata offs
 > The 4-byte `aux` field at byte 24 (slot0) means different things depending on `action`. For action 7 (`*_HI_*` family) it carries the value `0x20` (32 = "shift right by 32 to extract the high half before insertion"). For actions 22..29 / 30..37 / 38..45 / 47..54 (the eight-way 8-bit patch families) it carries the byte offset within the target word — 0, 8, 16, ... 56 — exactly mirroring the type-name suffix. The same dword slot therefore encodes either a shift-count constant or a byte-offset constant, with the action enum being the sole disambiguator. Pre-decoding code that treats `aux` as a single semantic field will misread one family or the other.
 
 > ⚡ **QUIRK — attribute table reuses payload format unchanged**
-> The 65 attribute descriptors at `off_1D3CBE0` are not a separate format — they share the exact same 64-byte layout and the same `apply_class` / `action` / slot semantics as the standard table. The attribute bit (`r_type & 0x10000`) only selects which table the engine indexes (`sub_469620` lines 31--38; `sub_42F6C0` line 14: `a1 -= 0x10000`). String pointers in attribute-table records point into the same `.rodata` string pool used by the standard table, which is why the two tables share names by pointer equality. No attribute-specific action codes exist; the only difference is the consumer — the `.nv.info.*` parser for attribute relocations versus the instruction-stream patcher for standard ones.
+> The 65 attribute descriptors at `off_1D3CBE0` are not a separate format — they share the exact same 64-byte layout and the same `apply_class` / `action` / slot semantics as the standard table. The attribute bit (`r_type & 0x10000`) only selects which table the engine indexes (`sub_469620` lines 31–38; `sub_42F6C0` line 14: `a1 -= 0x10000`). String pointers in attribute-table records point into the same `.rodata` string pool used by the standard table, which is why the two tables share names by pointer equality. No attribute-specific action codes exist; the only difference is the consumer — the `.nv.info.*` parser for attribute relocations versus the instruction-stream patcher for standard ones.
 
 ### Field cross-check against consumer code
 
@@ -395,4 +395,4 @@ The following entries were byte-decoded against `nvlink_rodata.bin` (rodata offs
 | Action-code bit-field interpretation | HIGH | The 64-byte descriptor layout (`name_ptr`, `kind`, `shift`, `width`, `action`, `extra[10]`) was byte-decoded for all 117 entries from `nvlink_rodata.bin` at rodata offset `0xBA40`. The `action` dword position (bytes 20..23) is confirmed by three independent consumer accesses: `sub_4698A0` line 37 (`...+ 16*idx + 5` DWORD = byte 20), `sub_469620` line 43 (`HIDWORD(v3[8*idx+2])` = byte 20), and `sub_469D60` line 309 (`*((_DWORD *)v24 + 5) == 16` gating the PC-rel path). |
 | Descriptor `kind` field (byte 8 dword) | HIGH | Distribution across the 117 entries is fully accounted for: kind=0 (sentinel, 1), kind=1 (instr bit-fields, 39), kind=2 (descriptors/globals/instr-replace, 52), kind=4 (data/byte, 24), kind=0xFF00 (poison sentinel, 1). |
 | Split-field `extra[]` continuations | MEDIUM | The piece-count + `(shift_n, width_n, ...)` interpretation matches every observed entry: `R_CUDA_ABS55_16_34` (8 + 47 = 55), `R_CUDA_CONST_FIELD19_28` (14 + 4 + 1 = 19), `R_CUDA_ABS56_16_34` (8 + 48 = 56). The exact role of the per-piece trailing dwords (values 10, 11, 21) is not yet decoded but they appear constant across same-class entries. |
-| Attribute table shared 64-byte format | HIGH | `sub_469620` lines 26--38 select between `off_1D3DBE0` and `off_1D3CBE0` purely by the `r_type & 0x10000` bit. The attribute table follows the same 64-byte stride and the same field-by-field layout. |
+| Attribute table shared 64-byte format | HIGH | `sub_469620` lines 26–38 select between `off_1D3DBE0` and `off_1D3CBE0` purely by the `r_type & 0x10000` bit. The attribute table follows the same 64-byte stride and the same field-by-field layout. |

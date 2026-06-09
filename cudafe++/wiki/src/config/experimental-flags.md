@@ -15,9 +15,9 @@ This page documents the internal mechanism of each flag: the global variable it 
 | `--no-device-int128` | `--no-device-int128` | 52 | — | 0 | Disable `__int128` in device code |
 | `--no-device-float128` | `--no-device-float128` | 53 | — | 0 | Disable `__float128`/`_Float128` in device code |
 
-\* The extended-lambda flag is registered as flag 79 (`disable_ext_lambda_cache` is a separate flag at that slot in some reports; the exact case_id for the flag parsed as `extended-lambda` is in the CUDA-specific range 47--89 but the individual case within the grouped 47--53 block is not fully disambiguated). The flag string `"extended-lambda"` is at binary address `0x836410`, referenced from `sub_452010` (init_command_line_flags).
+\* The extended-lambda flag is registered as flag 79 (`disable_ext_lambda_cache` is a separate flag at that slot in some reports; the exact case_id for the flag parsed as `extended-lambda` is in the CUDA-specific range 47–89 but the individual case within the grouped 47–53 block is not fully disambiguated). The flag string `"extended-lambda"` is at binary address `0x836410`, referenced from `sub_452010` (init_command_line_flags).
 
-\*\* The `--default-device` flag is not in the standard numbered flag catalog (1--275). It is registered through one of the 7 inline-registered paired flags or the `set_flag`/`clear_flag` table (`off_D47CE0`). Its string literal appears in four JIT error messages in the binary.
+\*\* The `--default-device` flag is not in the standard numbered flag catalog (1–275). It is registered through one of the 7 inline-registered paired flags or the `set_flag`/`clear_flag` table (`off_D47CE0`). Its string literal appears in four JIT error messages in the binary.
 
 ## `--extended-lambda` (dword_106BF38)
 
@@ -51,7 +51,7 @@ The master emitter (`sub_6BCC20`) produces the complete lambda wrapper infrastru
 |---|---|---|
 | 1 | `__NV_LAMBDA_WRAPPER_HELPER`, `__nvdl_remove_ref`, `__nvdl_remove_const` | Utility macros and type traits |
 | 2 | `__nv_dl_tag` | Device lambda tag type |
-| 3 | Array capture helpers (dim 2--8) | N-dimensional array forwarding via `sub_6BC290` |
+| 3 | Array capture helpers (dim 2–8) | N-dimensional array forwarding via `sub_6BC290` |
 | 4 | Primary `__nv_dl_wrapper_t` + zero-capture specialization | Device lambda wrapper template |
 | 5 | `__nv_dl_trailing_return_tag` + zero-capture specialization | Trailing return type support |
 | 6 | Device bitmap scan | One `sub_6BB790` call per set bit in `unk_1286980` |
@@ -108,9 +108,9 @@ These definitions ensure that code using the detection macros compiles without e
 
 Enabling `--extended-lambda` has measurable compile-time impact:
 
-- **Fixed overhead**: ~10 KB of injected template text (steps 1--5, 7--8, 10--17) emitted for every translation unit, regardless of how many lambdas appear
+- **Fixed overhead**: ~10 KB of injected template text (steps 1–5, 7–8, 10–17) emitted for every translation unit, regardless of how many lambdas appear
 - **Variable per capture count**: ~0.8 KB per distinct device lambda capture count, ~6 KB per distinct HD capture count (the HD path emits 4 specializations per bit: const non-mutable, const mutable, non-const non-mutable, non-const mutable)
-- **Typical TU with 3--5 distinct capture counts**: 30--50 KB of additional `.int.c` text
+- **Typical TU with 3–5 distinct capture counts**: 30–50 KB of additional `.int.c` text
 - **Template instantiation load**: The wrapper templates use deep SFINAE patterns; the host compiler (gcc/clang/MSVC) must instantiate these for every extended lambda in the TU
 - **Lambda scanning**: The 2,113-line `scan_lambda` function performs full restriction validation on every lambda expression, adding O(N) per-lambda overhead
 
@@ -118,7 +118,7 @@ The cost is proportional to the number of distinct capture counts, not the total
 
 ### Related Error Codes
 
-All 35+ extended lambda error codes (3590--3691) are documented in [lambda/restrictions.md](../lambda/restrictions.md). Key errors specific to the flag gate:
+All 35+ extended lambda error codes (3590–3691) are documented in [lambda/restrictions.md](../lambda/restrictions.md). Key errors specific to the flag gate:
 
 | Error | Display | Tag | Condition |
 |---|---|---|---|
@@ -323,7 +323,7 @@ Both are registered in `sub_452010` as no-argument mode flags in the CUDA-specif
 
 The EDG frontend supports `__int128` (keyword ID 239 in the builtin keyword table) and `_Float128` (keyword ID 335) as extended types. In device code, these types may not be supported by all GPU architectures or may have different semantics than on the host.
 
-The flags belong to the grouped CUDA boolean flags (cases 47--53 in `proc_command_line`), alongside `host-stub-linkage-explicit`, `static-host-stub`, `device-hidden-visibility`, `no-hidden-visibility-on-unnamed-ns`, and `no-multiline-debug`.
+The flags belong to the grouped CUDA boolean flags (cases 47–53 in `proc_command_line`), alongside `host-stub-linkage-explicit`, `static-host-stub`, `device-hidden-visibility`, `no-hidden-visibility-on-unnamed-ns`, and `no-multiline-debug`.
 
 Type feature tracking uses `byte_12C7AFC` as a usage flags byte: bit 0 tracks specific integer subtypes (kinds 11, 12), bit 2 tracks `float128`/`bfloat16` usage. The `dword_106C070` global serves as the float128 feature flag, and `dword_106C06C` controls bfloat16.
 

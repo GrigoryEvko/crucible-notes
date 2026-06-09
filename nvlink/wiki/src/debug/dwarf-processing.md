@@ -198,7 +198,7 @@ Unknown FORM value %d
 
 The attribute name lookup (`sub_1D16DF0` at `0x1D16DF0`, 330 lines) is a deeply nested if/else tree (not a switch) that maps DWARF attribute codes to string names. It covers the full DWARF-2/3 standard attribute set plus several vendor extensions.
 
-### Standard Attributes (Codes 1--90)
+### Standard Attributes (Codes 1–90)
 
 | Code | Name | Code | Name |
 |---|---|---|---|
@@ -234,7 +234,7 @@ The attribute name lookup (`sub_1D16DF0` at `0x1D16DF0`, 330 lines) is a deeply 
 | 42 | `DW_AT_return_addr` | 77 | `DW_AT_virtuality` |
 | 44 | `DW_AT_start_scope` | 78 | `DW_AT_vtable_elem_location` |
 
-### DWARF-3 Attributes (Codes 79--91)
+### DWARF-3 Attributes (Codes 79–91)
 
 | Code | Name |
 |---|---|
@@ -321,7 +321,7 @@ Despite being the only NVIDIA-proprietary attribute, `DW_AT_NV_general_flags` ha
 
 The exact bit layout of the flags value was not determined from decompilation of nvlink alone — the flags are produced by cicc and consumed by cuda-gdb and other NVIDIA debug tools. The attribute code `0x2703` falls in the `0x2000`--`0x3FFF` user-defined range (specifically in the `0x2700`--`0x27FF` sub-range that appears to be reserved for NVIDIA).
 
-### PGI Extensions (0x3A00--0x3A02) — Fortran Array Descriptors
+### PGI Extensions (0x3A00–0x3A02) — Fortran Array Descriptors
 
 The three PGI attributes reflect nvlink's lineage from the PGI (Portland Group / NVIDIA HPC SDK) compiler toolchain. They encode Fortran array descriptor components:
 
@@ -375,9 +375,9 @@ uint64_t dwarf_decode_dw_op(
 | `0x18` | `DW_OP_xderef` | Extended dereference |
 | `0x22` | `DW_OP_plus` | Addition |
 | `0x23` | `DW_OP_plus_uconst` | Add ULEB128 constant |
-| `0x30`--`0x4F` | `DW_OP_lit0`--`DW_OP_lit31` | Push literal 0--31 (opcode minus `0x30`) |
-| `0x50`--`0x6F` | `DW_OP_reg0`--`DW_OP_reg31` | Name register 0--31 (opcode minus `0x50`) |
-| `0x70`--`0x8F` | `DW_OP_breg0`--`DW_OP_breg31` | Register 0--31 plus signed LEB128 offset |
+| `0x30`--`0x4F` | `DW_OP_lit0`--`DW_OP_lit31` | Push literal 0–31 (opcode minus `0x30`) |
+| `0x50`--`0x6F` | `DW_OP_reg0`--`DW_OP_reg31` | Name register 0–31 (opcode minus `0x50`) |
+| `0x70`--`0x8F` | `DW_OP_breg0`--`DW_OP_breg31` | Register 0–31 plus signed LEB128 offset |
 | `0x90` | `DW_OP_regx` | ULEB128 register number |
 | `0x91` | `DW_OP_fbreg` | Frame base plus signed LEB128 offset |
 | `0x92` | `DW_OP_bregx` | ULEB128 register + signed LEB128 offset |
@@ -437,7 +437,7 @@ int64_t dwarf_read_form_value(
 
 For block forms (`DW_FORM_block1`, `DW_FORM_block4`, `DW_FORM_block`), after printing the hex dump the reader also invokes the DW_OP expression decoder (`sub_1D1A920`) to produce a human-readable interpretation. The decoded expression is appended in parentheses: `(%s)`.
 
-The `DW_FORM_block1` reader has an additional dispatch based on the attribute code: for location-related attributes (`DW_AT_location` = 2, `DW_AT_data_member_location` = 56, `DW_AT_stride_size` = 46, `DW_AT_address_class` = 51, and PGI attributes 14848--14850), it invokes `sub_1D1A920` with the block contents. For `DW_AT_data_member_location` specifically, it passes the data through a different slice path to handle the member offset encoding.
+The `DW_FORM_block1` reader has an additional dispatch based on the attribute code: for location-related attributes (`DW_AT_location` = 2, `DW_AT_data_member_location` = 56, `DW_AT_stride_size` = 46, `DW_AT_address_class` = 51, and PGI attributes 14848–14850), it invokes `sub_1D1A920` with the block contents. For `DW_AT_data_member_location` specifically, it passes the data through a different slice path to handle the member offset encoding.
 
 Encountering `DW_FORM_indirect` triggers a fatal error with `exit(1)` and the message:
 
@@ -654,9 +654,9 @@ nvlink's DWARF processing subsystem consumes the output of both upstream stages:
 | `DW_AT_MIPS_linkage_name` priority over `DW_AT_name` | MEDIUM | String evidence confirms attribute exists; priority logic inferred from decompiled `sub_1D1BE80` (5,218-byte function with attribute dispatch structure consistent with the documented behavior) |
 | DW_OP expression decoder `sub_1D1A920` opcodes | HIGH | All DW_OP format strings confirmed in strings: `DW_OP_addr`, `DW_OP_constu`, `DW_OP_const4u`, `DW_OP_xderef`, `DW_OP_breg%d`, `DW_OP_fbreg`, `DW_OP_deref_size`, `DW_OP_lit%u`, `DW_OP_reg%d`, `DW_OP_stack_value`, `DW_OP_plus_uconst` at addresses `0x245DEE0`--`0x245DFAC` |
 | `.nv_debug_info_ptx` processed by CU parser | HIGH | String `.nv_debug_info_ptx` at `0x245E6D4` with xref into `sub_1D1D2F0` |
-| Section type classifier `sub_12D4370` assigns IDs 1--6 | HIGH | Decompiled file present at exact address |
+| Section type classifier `sub_12D4370` assigns IDs 1–6 | HIGH | Decompiled file present at exact address |
 | Bounds checking pattern with three error codes | HIGH | Decompiled `sub_1D1D2F0` calls `sub_467460(dword_2A5F0D0)`, `sub_467460(dword_2A5F0B0)`, `sub_467460(dword_2A5F0A0)` exactly as documented |
-| LEB128 codec subsystem with SSE acceleration | MEDIUM | Function addresses confirmed in decompiled/; SSE claim based on function sizes (50--70 KB) which are consistent with SIMD loop unrolling, but individual SSE instructions not verified in decompiled output |
+| LEB128 codec subsystem with SSE acceleration | MEDIUM | Function addresses confirmed in decompiled/; SSE claim based on function sizes (50–70 KB) which are consistent with SIMD loop unrolling, but individual SSE instructions not verified in decompiled output |
 | DWARF versions 2 and 3 only (no 4 or 5) | HIGH | String `"Dwarf version %d is not supported"` at `0x1DFC8C8` confirms version validation; DWARF-4/5 forms (`DW_FORM_sec_offset`, `DW_FORM_exprloc`) absent from form table |
 | `DW_FORM_indirect` triggers `exit(1)` | MEDIUM | String `"Warning: we should not get here! - DW_FORM_indirect"` not found in strings search, but the decompiled `sub_1D1B540` would need full reading to confirm; claim is plausible given the function's error handling pattern |
 | Verbose mode printing format strings | HIGH | Format strings `"Compilation Unit @ offset 0x%zx:"` at `0x245E6E8`, `"Abbrev Offset:    %d"` at `0x245E6A4`, `"Contents of the .debug_abbrev section:"` at `0x245DD48` all confirmed |

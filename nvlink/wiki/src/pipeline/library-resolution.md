@@ -34,7 +34,7 @@ Four command-line flags control library resolution directly, and two additional 
 | | `--cpu-arch` | `qword_2A5F2A0` | string | Host CPU architecture for archive member validation (e.g., `X86_64`, `AARCH64`) |
 | | `--keep-system-libraries` | `byte_2A5F2C2` | bool | When set, prevents `libcudadevrt` from being removed during LTO post-processing |
 
-Both `library` and `library-path` are registered with multiplicity 2 (multi-value) in `sub_427AE0` at lines 148--174, so repeated `-l`/`-L` flags accumulate into separate linked lists. The short forms `-l` and `-L` are aliases for `--library` and `--library-path` respectively. The help text for `-l` reads: `"Specify libraries to be used in the linking stage. The libraries are searched for on the library search paths that have been specified using option '-L'"`.
+Both `library` and `library-path` are registered with multiplicity 2 (multi-value) in `sub_427AE0` at lines 148–174, so repeated `-l`/`-L` flags accumulate into separate linked lists. The short forms `-l` and `-L` are aliases for `--library` and `--library-path` respectively. The help text for `-l` reads: `"Specify libraries to be used in the linking stage. The libraries are searched for on the library search paths that have been specified using option '-L'"`.
 
 ### Registration Details (from sub\_427AE0)
 
@@ -65,7 +65,7 @@ sub_42E390(parser, "library-path", &qword_2A5F300, 8);    // line 951
 
 ## When Library Resolution Runs
 
-The library resolution block in `main` occupies lines 385--424 of `main_0x409800.c`. It is guarded by:
+The library resolution block in `main` occupies lines 385–424 of `main_0x409800.c`. It is guarded by:
 
 ```c
 if ((unsigned int)(dword_2A77DC0 - 1) > 1) {
@@ -619,7 +619,7 @@ When LTO is active (`byte_2A5F288`), library resolution still runs identically �
 
 | Claim | Confidence | Evidence |
 |-------|-----------|----------|
-| Library resolution block spans main lines 385--424 | **HIGH** | Direct decompiled code reading; guard condition and `sub_4622D0`/`sub_462320` brackets confirmed |
+| Library resolution block spans main lines 385–424 | **HIGH** | Direct decompiled code reading; guard condition and `sub_4622D0`/`sub_462320` brackets confirmed |
 | `-l` registered as `"library"` with short form `"l"`, mult=2, flags=16 | **HIGH** | `sub_427AE0` line 148: `sub_42F130(parser, "library", "l", 2, 2, 16, ...)` |
 | `-L` registered as `"library-path"` with short form `"L"`, mult=2, flags=16 | **HIGH** | `sub_427AE0` line 162: `sub_42F130(parser, "library-path", "L", 2, 2, 16, ...)` |
 | Extracted to `qword_2A5F2F8` and `qword_2A5F300` respectively | **HIGH** | `sub_427AE0` lines 950-951: `sub_42E390(parser, "library", &qword_2A5F2F8, 8)` and `sub_42E390(parser, "library-path", &qword_2A5F300, 8)` |

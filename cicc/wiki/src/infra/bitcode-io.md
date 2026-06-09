@@ -68,7 +68,7 @@ Error strings: `"Invalid calling convention ID"`, `"Invalid function comdat ID"`
 
 The function body parser is the largest single reader function. The standalone copy `sub_9F2A40` is 185 KB (5,706 decompiled lines) with 174 error string references. The primary copy `sub_151B070` is 123 KB. Both decode the same `FUNCTION_BLOCK` records:
 
-- **57 FUNC_CODE instruction record types** (switch cases 1--65), covering every LLVM IR opcode: `INST_BINOP`, `INST_CAST`, `INST_GEP`, `INST_SELECT`, `INST_CMP`, `INST_RET`, `INST_BR`, `INST_SWITCH`, `INST_INVOKE`, `INST_CALL` (opcode 85), `INST_UNREACHABLE`, `INST_PHI`, `INST_ALLOCA`, `INST_LOAD`, `INST_STORE`, `INST_ATOMICRMW`, `INST_CMPXCHG`, `INST_FENCE`, `INST_EXTRACTVAL`, `INST_INSERTVAL`, `INST_LANDINGPAD`, `INST_RESUME`, `INST_CLEANUPPAD`, `INST_CATCHPAD`, `INST_CATCHSWITCH`, `INST_CALLBR`, `INST_FREEZE`, and others.
+- **57 FUNC_CODE instruction record types** (switch cases 1–65), covering every LLVM IR opcode: `INST_BINOP`, `INST_CAST`, `INST_GEP`, `INST_SELECT`, `INST_CMP`, `INST_RET`, `INST_BR`, `INST_SWITCH`, `INST_INVOKE`, `INST_CALL` (opcode 85), `INST_UNREACHABLE`, `INST_PHI`, `INST_ALLOCA`, `INST_LOAD`, `INST_STORE`, `INST_ATOMICRMW`, `INST_CMPXCHG`, `INST_FENCE`, `INST_EXTRACTVAL`, `INST_INSERTVAL`, `INST_LANDINGPAD`, `INST_RESUME`, `INST_CLEANUPPAD`, `INST_CATCHPAD`, `INST_CATCHSWITCH`, `INST_CALLBR`, `INST_FREEZE`, and others.
 - **4 nested sub-blocks**: constants (`0xB`), metadata (`0xE`), use-list order (`0x10`), operand bundles (`0x12`).
 - **53 unique error strings** including: `"Alignment value is too large"`, `"Invalid record"`, `"Invalid record: Unsupported version of DISubrange"`, `"METADATA_NAME not followed by METADATA_NAMED_NODE"`.
 

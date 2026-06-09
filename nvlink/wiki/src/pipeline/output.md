@@ -439,7 +439,7 @@ Two additional error conditions exist in `sub_45BF00`:
 | Claim | Confidence | Evidence |
 |-------|-----------|----------|
 | `sub_45BF00` (serialize_elf), 13,258 B, 532 lines | **HIGH** | `stat -c%s` = 13,258; `wc -l` = 532 |
-| `sub_45B6D0` (elf_write polymorphic writer), 5 modes | **HIGH** | Decompiled switch-case at `sub_45B6D0` shows exactly modes 0--4 with matching semantics |
+| `sub_45B6D0` (elf_write polymorphic writer), 5 modes | **HIGH** | Decompiled switch-case at `sub_45B6D0` shows exactly modes 0–4 with matching semantics |
 | `sub_45BAA0` (program header emitter), 5,657 B, 228 lines | **HIGH** | `stat -c%s` = 5,657; `wc -l` = 228 |
 | `sub_45C920` (write_elf_to_file) | **HIGH** | `decompiled/sub_45C920_0x45c920.c` exists |
 | `sub_45C950` (write_elf_to_memory) | **HIGH** | `decompiled/sub_45C950_0x45c950.c` exists |

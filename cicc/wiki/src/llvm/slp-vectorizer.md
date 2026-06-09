@@ -112,7 +112,7 @@ PTX supports vector types up to `.v4` for most data types, but the actual hardwa
 - **v4**: Supported for `.b8`, `.b16`, `.b32`, `.f16`, `.f32`. NOT supported for `.b64`/`.f64`.
 - **v8/v16**: Not supported in PTX at all. CPU-style AVX-width vectorization is never legal.
 
-The SLP vectorizer's VF selection logic at `sub_2BD1C50` lines 1354--1578 computes:
+The SLP vectorizer's VF selection logic at `sub_2BD1C50` lines 1354–1578 computes:
 
 ```c
 // VF selection pseudocode (from decompiled sub_2BD1C50)

@@ -8,7 +8,7 @@ The struct is populated by a single 27 KB native function (`sub_12D6300`, ~4,786
 |---|---|
 | **Initializer** | `sub_12D6300` (27 KB native; 4,786 lines decomp) |
 | **Struct size** | 4,512 bytes (`sub_22077B0(4512)`) |
-| **Slot count** | 221 (1-based index: 1--221) |
+| **Slot count** | 221 (1-based index: 1–221) |
 | **Slot types** | 5: STRING (24B), BOOL_COMPACT (16B), BOOL_INLINE (16B), INTEGER (16B), STRING_PTR (28B) |
 | **Type breakdown** | 114 string + 83 bool compact + 17 bool inline + 6 integer + 1 string pointer |
 | **Registry lookup** | `sub_12D6170` (hash table at registry+120) |
@@ -106,7 +106,7 @@ struct StringPtrOption {    // 28 bytes, slot 181 only
 
 ## Pair Organization Pattern
 
-The 221 slots follow a predominantly paired layout. Slots 1--6 are six standalone STRING options (likely the global compilation parameters: ftz, prec-div, prec-sqrt, fmad, opt-level, sm-arch). Starting at slot 7, slots are organized in `(EVEN, ODD)` pairs:
+The 221 slots follow a predominantly paired layout. Slots 1–6 are six standalone STRING options (likely the global compilation parameters: ftz, prec-div, prec-sqrt, fmad, opt-level, sm-arch). Starting at slot 7, slots are organized in `(EVEN, ODD)` pairs:
 
 - **Even slot N**: STRING option — the pass's parameter value or name
 - **Odd slot N+1**: BOOLEAN or INTEGER option — the enable/disable toggle
@@ -117,10 +117,10 @@ Exceptions to the pair pattern:
 
 | Region | Anomaly |
 |---|---|
-| Slots 160--162 | Three consecutive STRING slots with a single boolean at 163 |
-| Slots 191--193 | Slot 191 STRING, then two consecutive booleans at 192--193 |
+| Slots 160–162 | Three consecutive STRING slots with a single boolean at 163 |
+| Slots 191–193 | Slot 191 STRING, then two consecutive booleans at 192–193 |
 | Slot 181 | STRING_PTR type instead of normal STRING |
-| Slots 196--207 | Alternating STRING + INTEGER instead of STRING + BOOL |
+| Slots 196–207 | Alternating STRING + INTEGER instead of STRING + BOOL |
 
 ## Helper Functions
 
@@ -155,7 +155,7 @@ sub_12D6240(registry, option_index, default_string):
     Return: packed(bool_value:8, flags:32) in low 40 bits
 ```
 
-The packing convention is significant: the boolean value occupies the low 8 bits and the flags occupy bits 8--39. Callers unpack with `(result & 0xFF)` for the boolean and `(result >> 8)` for the flags.
+The packing convention is significant: the boolean value occupies the low 8 bits and the flags occupy bits 8–39. Callers unpack with `(result & 0xFF)` for the boolean and `(result >> 8)` for the flags.
 
 ### `sub_1691920` — pass-definition table getter
 

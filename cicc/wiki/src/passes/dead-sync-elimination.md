@@ -65,7 +65,7 @@ The element size gate (`> 0x1FF` bits, i.e., > 511 bits) filters out trivially s
 
 ### Phase 3: Bidirectional Fixed-Point Dataflow
 
-**Complexity.** Let B = number of basic blocks, S = number of barrier instructions, and I = total instructions across all blocks. Phase 1 (barrier identification) is O(S). Phase 2 (access classification) is O(I). The dataflow fixed-point iterates until no boolean in the 4 * B * 2 lattice positions flips from 0 to 1; since the lattice has height 1, convergence is bounded by O(B) iterations, each costing O(B + I) for the forward and backward scans, giving O(B * (B + I)) per convergence cycle. Phase 4 (elimination decision) is O(S). Phase 5 restarts the entire analysis from Phase 3 on each removal, yielding a worst-case total of O(S * B * (B + I)). In practice, CUDA kernels have B < 100, S < 20, and convergence in 2--3 iterations, so the pass behaves as near-linear in typical use. The red-black tree maps contribute O(log B) per insert/lookup, but this is dominated by the iteration cost.
+**Complexity.** Let B = number of basic blocks, S = number of barrier instructions, and I = total instructions across all blocks. Phase 1 (barrier identification) is O(S). Phase 2 (access classification) is O(I). The dataflow fixed-point iterates until no boolean in the 4 * B * 2 lattice positions flips from 0 to 1; since the lattice has height 1, convergence is bounded by O(B) iterations, each costing O(B + I) for the forward and backward scans, giving O(B * (B + I)) per convergence cycle. Phase 4 (elimination decision) is O(S). Phase 5 restarts the entire analysis from Phase 3 on each removal, yielding a worst-case total of O(S * B * (B + I)). In practice, CUDA kernels have B < 100, S < 20, and convergence in 2–3 iterations, so the pass behaves as near-linear in typical use. The red-black tree maps contribute O(log B) per insert/lookup, but this is dominated by the iteration cost.
 
 This is the core of the pass and accounts for the majority of its 96KB size. The algorithm maintains **eight red-black tree maps** organized into forward and backward analysis sets, plus **four bridge maps** for the final elimination decision.
 
@@ -140,7 +140,7 @@ The `sub_2C84640` helper is the per-BB analysis workhorse. It takes a direction 
 - **direction=1 (forward)**: scans from block entry toward the first barrier, accumulating ReadAbove/WriteAbove. Propagates read/write information from successor blocks.
 - **direction=0 (backward)**: scans from block exit toward the last barrier, accumulating ReadBelow/WriteBelow. Propagates information from predecessor blocks.
 
-The convergence check compares the entire map contents (all four categories for every BB) against their values from the previous iteration. If any single boolean flipped from 0 to 1, the changed flag is set. Since the analysis is monotone (booleans can only transition from 0 to 1, never back), convergence is guaranteed in at most O(|BB|) iterations, though in practice it converges in 2--3 iterations for typical CUDA kernels.
+The convergence check compares the entire map contents (all four categories for every BB) against their values from the previous iteration. If any single boolean flipped from 0 to 1, the changed flag is set. Since the analysis is monotone (booleans can only transition from 0 to 1, never back), convergence is guaranteed in at most O(|BB|) iterations, though in practice it converges in 2–3 iterations for typical CUDA kernels.
 
 ### Phase 4: Elimination Decision
 
@@ -193,7 +193,7 @@ bool decideEliminations(DSEState *state, Function *F) {
 }
 ```
 
-#### Special Case: Intrinsic IDs 8260--8262
+#### Special Case: Intrinsic IDs 8260–8262
 
 For call instructions (opcode 85) where the callee's intrinsic ID satisfies `(ID - 8260) <= 2` (i.e., IDs 8260, 8261, or 8262), the pass applies an additional test via `sub_BD3660` (`hasOneUse`). If the barrier-like intrinsic has only a single use, it is considered removable even if the standard dataflow check would keep it. These IDs likely correspond to specialized barrier variants (`__syncthreads_count`, `__syncthreads_and`, `__syncthreads_or`) where the return value is used as data. When the return value has only one use, the compiler can reason that the data-carrying aspect is trivially handled and the barrier itself may still be dead from a memory ordering perspective.
 
@@ -247,7 +247,7 @@ The analysis is a classic monotone dataflow problem on a Boolean lattice:
 - **Direction**: Bidirectional (forward pass propagates from successors, backward pass propagates from predecessors).
 - **Convergence**: Guaranteed because the lattice has height 1 (a value can only change from 0 to 1, never back). The fixed point is reached when no additional propagation changes any value.
 
-In the worst case, each iteration may set one new bit, and there are 4 * |BB| bits per direction, so convergence takes at most 4 * |BB| iterations per direction. In practice, CUDA kernels have shallow CFGs and the iteration converges in 2--3 rounds.
+In the worst case, each iteration may set one new bit, and there are 4 * |BB| bits per direction, so convergence takes at most 4 * |BB| iterations per direction. In practice, CUDA kernels have shallow CFGs and the iteration converges in 2–3 rounds.
 
 ## Cascading Restart Logic
 
@@ -259,9 +259,9 @@ B0 -- barrier_1 -- B1 -- barrier_2 -- B2 -- barrier_3 -- B3
 
 If `barrier_2` is removed first, blocks B1 and B2 merge into a single region. If B1 contained only writes and B2 contained only reads, `barrier_1` was previously justified by the WAR hazard between B0's writes and B1's reads. But after merging, B1+B2 now contains both reads and writes, and `barrier_3` might become dead if B3 has no memory accesses. This cascading effect requires full re-analysis.
 
-**Worst-case complexity**: O(N_barriers * N_BBs * convergence_iterations), where convergence_iterations is bounded by 4 * |BB| but is typically 2--3. For a kernel with B barriers removed in sequence, the total work is O(B * F * C) where F is the per-iteration cost of the dataflow and C is the convergence bound.
+**Worst-case complexity**: O(N_barriers * N_BBs * convergence_iterations), where convergence_iterations is bounded by 4 * |BB| but is typically 2–3. For a kernel with B barriers removed in sequence, the total work is O(B * F * C) where F is the per-iteration cost of the dataflow and C is the convergence bound.
 
-In practice, CUDA kernels rarely have more than 10--20 barriers, and cascading removals are uncommon (typically 0--3 restarts), so the theoretical quadratic cost is not a bottleneck.
+In practice, CUDA kernels rarely have more than 10–20 barriers, and cascading removals are uncommon (typically 0–3 restarts), so the theoretical quadratic cost is not a bottleneck.
 
 ## Relationship to `basic-dbe` and `branch-dist`
 
@@ -282,7 +282,7 @@ CICC contains three passes that eliminate dead synchronization barriers. They di
 
 `branch-dist` performs full CFG propagation with 13 red-black tree maps and restart-on-removal, but it uses NVVM IR opcodes (0x36/0x37/0x3A/0x3B/0x4E) rather than the generic LLVM IR opcodes (61/62/65/66/85) used by the full engine. It also has its own address space filtering logic and 10 configurable knobs.
 
-The full dead synchronization elimination engine (`sub_2C84BA0`) is the most aggressive of the three. It uses the LLVM IR opcode set, applies the element-size gate for loads/stores, and handles the special intrinsic IDs 8260--8262. It runs separately from the New PM function pass pipeline, invoked from module-level callers `sub_2C88020` and `sub_2C883F0`.
+The full dead synchronization elimination engine (`sub_2C84BA0`) is the most aggressive of the three. It uses the LLVM IR opcode set, applies the element-size gate for loads/stores, and handles the special intrinsic IDs 8260–8262. It runs separately from the New PM function pass pipeline, invoked from module-level callers `sub_2C88020` and `sub_2C883F0`.
 
 ## Configuration
 
@@ -324,7 +324,7 @@ The numeric values are the boolean (0/1) access flags for each category. When th
 | — | `sub_2C84080` | small | Map lookup / convergence check helper |
 | — | `sub_2C83F20` | small | Map initialization / clear helper |
 | — | `sub_2C83D50` | small | Map destructor / cleanup |
-| — | `sub_BD3660` | small | `hasOneUse` — used for intrinsic IDs 8260--8262 special case |
+| — | `sub_BD3660` | small | `hasOneUse` — used for intrinsic IDs 8260–8262 special case |
 | — | `sub_CEA1A0` | small | Barrier intrinsic ID confirmation |
 | — | `sub_B49E00` | small | `isSharedMemoryAccess` — CUDA address space check |
 | — | `sub_B43D60` | small | `Instruction::eraseFromParent` — barrier deletion |
@@ -350,7 +350,7 @@ These are mistakes a reimplementor is likely to make when building an equivalent
 
 **3. Incorrectly classifying call instructions as non-memory-accessing.** The access classifier (`sub_2C83AE0`) must recursively analyze callees to determine if they access shared/global memory. A reimplementation that conservatively marks all calls as read+write will be correct but will retain too many barriers (poor optimization). Conversely, one that ignores calls entirely will remove barriers protecting memory accesses hidden inside called functions. The correct behavior checks the `isSharedMemoryAccess` predicate on the callee and falls back to read+write if the callee is opaque.
 
-**4. Treating `__syncthreads_count/and/or` (IDs 8260--8262) the same as plain `__syncthreads`.** These barrier variants return a value (lane participation count/and/or). Even when the barrier is dead from a memory-ordering perspective, the return value may be used as data by the program. The pass applies a special `hasOneUse` check for these IDs. A reimplementation that blindly removes them when the dataflow says "no hazard" will break programs that depend on the return value for algorithmic purposes.
+**4. Treating `__syncthreads_count/and/or` (IDs 8260–8262) the same as plain `__syncthreads`.** These barrier variants return a value (lane participation count/and/or). Even when the barrier is dead from a memory-ordering perspective, the return value may be used as data by the program. The pass applies a special `hasOneUse` check for these IDs. A reimplementation that blindly removes them when the dataflow says "no hazard" will break programs that depend on the return value for algorithmic purposes.
 
 **5. Applying the element-size gate too aggressively.** The pass filters out loads/stores of types narrower than 512 bits (`> 0x1FF`), assuming they are register-promoted scalars. A reimplementation that raises this threshold (e.g., to 1024 bits) will miss legitimate memory operations that should keep a barrier alive. Conversely, lowering it to 0 will make the analysis overly conservative, retaining dead barriers for trivial register operations.
 
@@ -386,7 +386,7 @@ __global__ void dead_sync_test(float* out, int n) {
 2. **Memory access classifier.** Classify every non-barrier instruction as read/write/both/neither based on opcode (store=0x3D, load=0x3E, atomic=0x41, cmpxchg=0x42, call=0x55), with the element-size gate (>511 bits) for loads/stores and recursive analysis for call instructions including shared-memory-access checks.
 3. **Bidirectional fixed-point dataflow.** Maintain eight red-black tree maps (forward ReadAbove/WriteAbove/ReadBelow/WriteBelow per BB, backward same) populated by scanning each BB in both directions, propagating from successors (forward) and predecessors (backward), iterating until no boolean flips from 0 to 1.
 4. **Bridge map construction.** After dataflow convergence, populate four bridge maps keyed by barrier instruction pointer, representing the combined read/write access sets crossing each specific barrier boundary.
-5. **Elimination decision logic.** A barrier is dead if: (ReadAbove==0 AND WriteAbove==0), OR (ReadBelow==0 AND WriteBelow==0), OR (ReadAbove==0 AND WriteBelow==0), OR (WriteAbove==0 AND ReadBelow==0). Handle the special case for intrinsic IDs 8260--8262 (`__syncthreads_count/and/or`) where single-use return values allow additional removal.
+5. **Elimination decision logic.** A barrier is dead if: (ReadAbove==0 AND WriteAbove==0), OR (ReadBelow==0 AND WriteBelow==0), OR (ReadAbove==0 AND WriteBelow==0), OR (WriteAbove==0 AND ReadBelow==0). Handle the special case for intrinsic IDs 8260–8262 (`__syncthreads_count/and/or`) where single-use return values allow additional removal.
 6. **Complete restart after removal.** After each barrier deletion, restart the entire dataflow analysis from scratch to handle cascading redundancies where removing one barrier makes adjacent barriers dead.
 
 ## Cross-References

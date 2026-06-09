@@ -85,7 +85,7 @@ Emitted into PTX output as .weak .func declarations
 
 ## Master Registration — `sub_5D1660`
 
-This 46KB function is the master catalog. It allocates a 9728-byte table (`memcpy` from `unk_1D4D940`, 0x2600 bytes = 608 x 16B slots), creates a hash map with initial capacity 0x80 via `sub_425CA0`, then calls `sub_426150(hashmap, "name", (char*)ID)` exactly 607 times to register every CUDA runtime helper function with an integer ID (IDs 1--607, contiguous). The hash map is stored at `a1+1064`, the table at `a1+1056`, and the count 608 at `a1+1072` (includes the unused null ID 0 slot).
+This 46KB function is the master catalog. It allocates a 9728-byte table (`memcpy` from `unk_1D4D940`, 0x2600 bytes = 608 x 16B slots), creates a hash map with initial capacity 0x80 via `sub_425CA0`, then calls `sub_426150(hashmap, "name", (char*)ID)` exactly 607 times to register every CUDA runtime helper function with an integer ID (IDs 1–607, contiguous). The hash map is stored at `a1+1064`, the table at `a1+1056`, and the count 608 at `a1+1072` (includes the unused null ID 0 slot).
 
 ### Complete ID Allocation
 
@@ -97,7 +97,7 @@ This 46KB function is the master catalog. It allocates a 9728-byte table (`memcp
 | `0x012`--`0x018` | 7 | `__cuda_sanitizer_memcheck_*` | Compute-sanitizer hooks (free, generic, global, local, malloc, readmetadata, shared) | — |
 | `0x019`--`0x01F` | 7 | `__cuda_scalar_video_emulation_*` | Video instruction emulation helpers | sm_20 |
 | `0x020`--`0x02A` | 11 | `__cuda_sm10x_*` | Blackwell tcgen05 guardrail traps + create_mask helper | sm_100 |
-| `0x02B`--`0x03C` | 18 | `__cuda_sm1xx_*` | Bulk copy + cp.async.bulk.tensor 1D--5D tile/im2col uni/multicast | sm_100+ |
+| `0x02B`--`0x03C` | 18 | `__cuda_sm1xx_*` | Bulk copy + cp.async.bulk.tensor 1D–5D tile/im2col uni/multicast | sm_100+ |
 | `0x03D`--`0x082` | 70 | `__cuda_sm20_*` | IEEE math: bfe, bfi, div, rcp, sqrt, dsqrt, drsqrt, rem (all rounding modes + slowpaths) | sm_20 |
 | `0x083`--`0x086` | 4 | `__cuda_sm3x_div_*` | Optimized division variants (rn_ftz_f32, rn_noftz_f32 + slowpaths) | sm_30 |
 | `0x087`--`0x088` | 2 | `__cuda_sm62_dp2a/dp4a` | Integer dot product emulation | sm_62 |
@@ -115,9 +115,9 @@ The sm_70 block is by far the largest at 393 entries. It covers every Volta-era 
 
 | Sub-Category | Examples | Combinatorial Source |
 |---|---|---|
-| `barrier_arrive` | 0--15, with/without count | 16 barrier IDs x 2 count variants |
-| `barrier_red_and/or/popc` | 0--15, with/without count | 3 reduction ops x 16 IDs x 2 count |
-| `barrier_sync` | 0--15, with/without count | 16 IDs x 2 count variants |
+| `barrier_arrive` | 0–15, with/without count | 16 barrier IDs x 2 count variants |
+| `barrier_red_and/or/popc` | 0–15, with/without count | 3 reduction ops x 16 IDs x 2 count |
+| `barrier_sync` | 0–15, with/without count | 16 IDs x 2 count variants |
 | `matchsync_all/any_b32/b64` | with predicate variants | 2 match modes x 2 types x pred |
 | `shflsync_bfly/down/idx/up` | with predicate variants | 4 shuffle modes x pred |
 | `votesync_all/any/ballot/uni` | — | 4 vote modes |
@@ -162,7 +162,7 @@ This 41KB function first calls `sub_5D1660(a1)` to populate the intrinsic ID tab
 
 ## Body Template Name Table — `sub_5D7430`
 
-At 161KB of machine code (0x5D7430--0x5FF700), this is the largest function in the intrinsic infrastructure by code size and the 6th largest function in the entire ptxas binary. IDA failed to decompile it; all analysis comes from raw x86-64 disassembly. The function constructs a third hash map (at context offset +824 / `0x338`) containing 1,079 entries that map dynamically constructed `__cuda_*` intrinsic names to sequential body template IDs (0--1078).
+At 161KB of machine code (0x5D7430–0x5FF700), this is the largest function in the intrinsic infrastructure by code size and the 6th largest function in the entire ptxas binary. IDA failed to decompile it; all analysis comes from raw x86-64 disassembly. The function constructs a third hash map (at context offset +824 / `0x338`) containing 1,079 entries that map dynamically constructed `__cuda_*` intrinsic names to sequential body template IDs (0–1078).
 
 ### Why 1,079 Body Templates for 607 Logical Intrinsics
 
@@ -248,7 +248,7 @@ The 533 unique .rodata prefix addresses fan out through multiple suffixes per pr
 
 Names truncated at the 20-byte buffer limit are still sufficient for hash map lookup — the full untruncated name appears only inside the prototype string in `sub_5FF700`.
 
-### Worked Example: Division (Cases 0--26)
+### Worked Example: Division (Cases 0–26)
 
 The `__cuda_sm20_div` operation illustrates the template-to-prototype mapping. Division has 19 logical IDs and 19 body templates (1:1 ratio) because each type/rounding/precision variant is already a separate logical intrinsic. The suffix encodes the type specialization:
 
@@ -264,13 +264,13 @@ The `__cuda_sm20_div` operation illustrates the template-to-prototype mapping. D
 | 22 | `__cuda_sm20_div_ru_f64_v2` | `ru_f` | `(.reg .f64 %fdv1) ... (.reg .f64 %fda1, .reg .f64 %fda2)` |
 | 25 | `__cuda_sm20_div_rn_f64_full` | `rn_f` | `(.reg .f64 %fdv1) ... (.reg .f64 %fda1, .reg .f64 %fda2)` |
 
-Cases 2--3 (rem s16/u16), 6--7 (rem s64/u64) are interleaved between the division entries. Cases 8, 13 are `_slowpath` variants that implement Newton-Raphson refinement fallbacks. Cases 18--21 are the sm3x-optimized division variants with the same suffix scheme. Note: s16/u16 division uses `.s32`/`.u32` register types because PTX has no 16-bit register class; the 16-bit operation is performed by 32-bit hardware with appropriate sign/zero extension.
+Cases 2–3 (rem s16/u16), 6–7 (rem s64/u64) are interleaved between the division entries. Cases 8, 13 are `_slowpath` variants that implement Newton-Raphson refinement fallbacks. Cases 18–21 are the sm3x-optimized division variants with the same suffix scheme. Note: s16/u16 division uses `.s32`/`.u32` register types because PTX has no 16-bit register class; the 16-bit operation is performed by 32-bit hardware with appropriate sign/zero extension.
 
 ### Statistics
 
 | Metric | Value |
 |---|---|
-| Machine code size | 164,560 bytes (0x5D7430--0x5FF700) |
+| Machine code size | 164,560 bytes (0x5D7430–0x5FF700) |
 | `sub_426150` calls | 1,079 |
 | Unique .rodata prefix addresses | 533 |
 | Hash map destination | context+824 (0x338) |
@@ -316,16 +316,16 @@ All codegen handlers query instruction properties through accessor functions on 
 
 ## Prototype Generator — `sub_5FF700`
 
-At 354KB, this is the single largest function in the intrinsic infrastructure and the 2nd largest function in the entire ptxas binary. It takes a body template ID (`a1`, range 0--1079) and an allocator context (`a2`), allocates a buffer via `sub_4DA340(size, a2)`, fills it with a PTX prototype string via `strcpy()`, and returns the result. The output is a complete `.weak .func` or `.FORCE_INLINE .func` PTX declaration that gets emitted into the PTX output stream so the linker can resolve calls to CUDA runtime helper functions.
+At 354KB, this is the single largest function in the intrinsic infrastructure and the 2nd largest function in the entire ptxas binary. It takes a body template ID (`a1`, range 0–1079) and an allocator context (`a2`), allocates a buffer via `sub_4DA340(size, a2)`, fills it with a PTX prototype string via `strcpy()`, and returns the result. The output is a complete `.weak .func` or `.FORCE_INLINE .func` PTX declaration that gets emitted into the PTX output stream so the linker can resolve calls to CUDA runtime helper functions.
 
-The function is a single `switch(a1)` with 1,080 case labels (0--1079) plus a default case that returns an empty string `""`. Each case allocates an exact-sized buffer (72--1,200 bytes), copies a hardcoded PTX prototype string into it, and returns the pointer.
+The function is a single `switch(a1)` with 1,080 case labels (0–1079) plus a default case that returns an empty string `""`. Each case allocates an exact-sized buffer (72–1,200 bytes), copies a hardcoded PTX prototype string into it, and returns the pointer.
 
 ### Prototype Generator Architecture
 
 ```text
 sub_5FF700(template_id, allocator)
   │
-  │  switch(template_id)     ← 1,080 cases, 0--1079
+  │  switch(template_id)     ← 1,080 cases, 0–1079
   │
   ├── case N:
   │     buf = sub_4DA340(byte_count, allocator)    ← allocate exact-fit buffer
@@ -351,7 +351,7 @@ sub_5FF700(template_id, allocator)
 | `qmemcpy()` with QWORD bookend stores | 45 | Prototype too long for IDA to reproduce as literal | 1,200 bytes |
 | Indirect variable assignment + copy | ~130 | IDA SSA split (subset of strcpy) | ~120 bytes |
 
-The `qmemcpy` cases are the 45 WMMA `mma` operations with the largest parameter lists (3--4 fragment matrices of 8 elements each). IDA stores the first and last 8 bytes as inline immediates (`0x662E206B6165772E` = `".weak .f"`, trailer varies per case) and bulk-copies the middle from `.rodata`. The prototype content is structurally identical to the `strcpy` cases.
+The `qmemcpy` cases are the 45 WMMA `mma` operations with the largest parameter lists (3–4 fragment matrices of 8 elements each). IDA stores the first and last 8 bytes as inline immediates (`0x662E206B6165772E` = `".weak .f"`, trailer varies per case) and bulk-copies the middle from `.rodata`. The prototype content is structurally identical to the `strcpy` cases.
 
 ### Linkage Directives
 
@@ -425,7 +425,7 @@ Five distinct parameter-passing ABIs appear across the 1,080 prototypes:
   (.reg .b64 ptr, .reg .b32 ldm, .reg .b32 sreg0, .reg .b32 sreg1, ...) ;
 ```
 
-**Convention E — Multi-register return (`.FORCE_INLINE` only):** Used by extended WMMA load operations (SM7x/SM72/SM8x). Returns 1--4 registers in the return position (never 8 — 8-element returns use Convention B's `.param` arrays instead).
+**Convention E — Multi-register return (`.FORCE_INLINE` only):** Used by extended WMMA load operations (SM7x/SM72/SM8x). Returns 1–4 registers in the return position (never 8 — 8-element returns use Convention B's `.param` arrays instead).
 
 ```ptx
 .FORCE_INLINE .func (.reg .b32 dst0, .reg .b32 dst1, .reg .b32 dst2, .reg .b32 dst3)
@@ -447,7 +447,7 @@ Eight PTX register types appear across the prototypes:
 | `.reg .pred` | ~10 | Predicate (vote output, matchsync predicate out) |
 | `.reg .s32` | ~6 | Signed 32-bit (SM20 div/rem s16 return values only) |
 
-Note: `.b32` is used instead of `.s32`/`.u32`/`.f32` for operations where the type interpretation is determined by the instruction rather than the register declaration (WMMA fragments, MMA accumulators, barrier IDs). The `.s32` type appears only in the 4 oldest SM20 div/rem_s16/u16 prototypes (cases 0--3).
+Note: `.b32` is used instead of `.s32`/`.u32`/`.f32` for operations where the type interpretation is determined by the instruction rather than the register declaration (WMMA fragments, MMA accumulators, barrier IDs). The `.s32` type appears only in the 4 oldest SM20 div/rem_s16/u16 prototypes (cases 0–3).
 
 ### Register Naming Convention
 
@@ -487,7 +487,7 @@ The prototype register names encode the data type and role:
 | Most common sizes | 132 (37x), 182 (31x), 192 (30x), 125 (29x), 118 (28x) |
 | Total allocations | 1,080 |
 
-The 45 `qmemcpy` cases have the largest buffers: 386--1,200 bytes. These are WMMA `mma` operations whose prototypes enumerate all 3--4 fragment matrices (a, b, c, d) with 4--8 elements each, producing prototype strings that exceed 900 bytes.
+The 45 `qmemcpy` cases have the largest buffers: 386–1,200 bytes. These are WMMA `mma` operations whose prototypes enumerate all 3–4 fragment matrices (a, b, c, d) with 4–8 elements each, producing prototype strings that exceed 900 bytes.
 
 ### Case Range Layout
 
@@ -495,10 +495,10 @@ The 1,080 cases follow the body template registration order from `sub_5D7430`, r
 
 | Case Range | Count | Category | Linkage |
 |---|---|---|---|
-| 0--69 | 70 | SM20 IEEE math (div, rem, rcp, sqrt, bfe, bfi, dsqrt, drsqrt) | `.weak` |
-| 70--73 | 4 | SM3x optimized division (rn_ftz/noftz f32 + slowpaths) | `.weak` |
-| 74--75 | 2 | SM62 dp2a/dp4a | `.weak` |
-| 76--92 | 17 | Redux sync (b32/s32/u32/f32 add/max/min/xor/and/or/abs/NaN) | `.weak .unique` |
+| 0–69 | 70 | SM20 IEEE math (div, rem, rcp, sqrt, bfe, bfi, dsqrt, drsqrt) | `.weak` |
+| 70–73 | 4 | SM3x optimized division (rn_ftz/noftz f32 + slowpaths) | `.weak` |
+| 74–75 | 2 | SM62 dp2a/dp4a | `.weak` |
+| 76–92 | 17 | Redux sync (b32/s32/u32/f32 add/max/min/xor/and/or/abs/NaN) | `.weak .unique` |
 | 93--~274 | ~182 | SM70 barriers (sync/arrive/red, 16 IDs x with/without count) | `.weak .unique` |
 | ~275--~302 | ~28 | SM70 vote, shuffle, match (bfly/down/idx/up, all/any/b32/b64) | `.weak .unique` / `.FORCE_INLINE` |
 | ~303--~665 | ~363 | SM70 WMMA load/store (m16n16k16, m32n8k16, m8n32k16, all types/spaces) | `.weak .unique` |
@@ -508,13 +508,13 @@ The 1,080 cases follow the body template registration order from `sub_5D7430`, r
 | ~1049--~1055 | ~7 | SM10x tcgen05 guardrail traps | `.weak` |
 | ~1056--~1060 | ~5 | SM8x direct MMA (mma_shfl, row/col f16/f32 combos) | `.weak` |
 | ~1061--~1072 | ~12 | SM10x tcgen05 alloc/guardrails check functions + get_warp_rank + create_mask | `.FORCE_INLINE` / `.weak` |
-| 1073--1079 | 7 | Compute-sanitizer hooks (readmetadata, generic, global, local, shared, malloc, free) | `.weak` |
+| 1073–1079 | 7 | Compute-sanitizer hooks (readmetadata, generic, global, local, shared, malloc, free) | `.weak` |
 
 ### Statistics
 
 | Metric | Value |
 |---|---|
-| Machine code size | 362,496 bytes (0x5FF700--0x658B00) |
+| Machine code size | 362,496 bytes (0x5FF700–0x658B00) |
 | Decompiled lines | 9,414 |
 | Switch cases | 1,080 (case 0 through case 1079 + default) |
 | Local variables declared | ~716 (IDA SSA artifacts) |
@@ -605,7 +605,7 @@ Four optimized division variants introduced on Kepler to improve throughput on c
 The largest single block. Volta introduced mandatory warp-synchronous programming with explicit sync masks and the first generation of tensor core (WMMA) instructions.
 
 **Synchronization primitives:**
-- `barrier_arrive` / `barrier_sync` / `barrier_red` (0--15, with/without count)
+- `barrier_arrive` / `barrier_sync` / `barrier_red` (0–15, with/without count)
 - `matchsync_all/any_b32/b64` with predicate variants
 - `shflsync_bfly/down/idx/up` with predicate variants
 - `votesync_all/any/ballot/uni`
@@ -690,13 +690,13 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 
 ## Instruction Description Loader — `sub_9EE390`
 
-`sub_9EE390` (3,584 bytes, 0x9EE390--0x9EF190) is the constructor for an instruction description object that feeds the register allocator's pre-coloring pass. Despite the diagnostic string `"IntrinsicDescrFile=%s"`, the function loads *instruction descriptions* broadly — not just intrinsic operations. It determines which instructions exist for the target SM, what register classes they use, and what scheduling properties apply. The sole caller is `sub_991790` (pre-coloring pass, 12KB).
+`sub_9EE390` (3,584 bytes, 0x9EE390–0x9EF190) is the constructor for an instruction description object that feeds the register allocator's pre-coloring pass. Despite the diagnostic string `"IntrinsicDescrFile=%s"`, the function loads *instruction descriptions* broadly — not just intrinsic operations. It determines which instructions exist for the target SM, what register classes they use, and what scheduling properties apply. The sole caller is `sub_991790` (pre-coloring pass, 12KB).
 
 **Invocation pattern:** The pre-coloring pass checks `context+1936` before calling `sub_9EE390`. If the descriptor for the current SM class already exists, it is reused. This means the expensive initialization happens once per SM architecture per ptxas process lifetime.
 
 ### Initialization Sequence
 
-1. **Extract target properties.** Read the target descriptor from `context+1584`. Compute the SM architecture class: `v111 = target_descriptor[+372] >> 12`. Read resource descriptors from option interface slots 41--44.
+1. **Extract target properties.** Read the target descriptor from `context+1584`. Compute the SM architecture class: `v111 = target_descriptor[+372] >> 12`. Read resource descriptors from option interface slots 41–44.
 
 2. **Check option 404 (IntrinsicDescrFile).** Query the option interface at `context[208]`. If option 404 is set, extract the file path and log `" IntrinsicDescrFile=%s"`. This CI-internal mechanism supplies an external description file that overrides or extends the built-in instruction table. When absent, the built-in database is used.
 
@@ -710,7 +710,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
    | 4 | 2 | 192-bit |
    | 5+ | 3 | extended (default) |
 
-4. **Determine SM generation class.** Read `context+12` (sm_version_id), subtract 1, index into `dword_21E5C80`. The table is an identity mapping (1--11), one entry per SM generation.
+4. **Determine SM generation class.** Read `context+12` (sm_version_id), subtract 1, index into `dword_21E5C80`. The table is an identity mapping (1–11), one entry per SM generation.
 
 5. **Construct instruction table (648 bytes).** Call `sub_10AFF80` with 32 parameters including memory pool, register count, format class, description file path, architecture descriptor (16 bytes from `context+1888`), SM generation class, instruction count limits, and context flags. Follow with `sub_10B1A90` (init pass 2) and `sub_10AEF10` (finalization).
 
@@ -720,10 +720,10 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 
    | v111 | SM range (inferred) | Alloc size | Constructor | Vtable |
    |---|---|---|---|---|
-   | 5 | sm_50--sm_62 | 200 B | `sub_9CDF90` | `off_23F3B00` |
-   | 6 | sm_70--sm_75 | 216 B | `sub_9CE030` | `off_22BB738` |
-   | 7 | sm_80--sm_89 | 232 B | `sub_9CE120` | `off_22B5150` |
-   | 8+ | sm_90--sm_121 | 240 B | `sub_9CE190` | `off_22AD230` |
+   | 5 | sm_50–sm_62 | 200 B | `sub_9CDF90` | `off_23F3B00` |
+   | 6 | sm_70–sm_75 | 216 B | `sub_9CE030` | `off_22BB738` |
+   | 7 | sm_80–sm_89 | 232 B | `sub_9CE120` | `off_22B5150` |
+   | 8+ | sm_90–sm_121 | 240 B | `sub_9CE190` | `off_22AD230` |
    | <5 | (reuse existing) | — | — | — |
 
    Each successor inherits the previous class and extends it with generation-specific instructions. The descriptor is stored at `context+1936` and `this+48`.
@@ -739,7 +739,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | +32 | 8 | Scratch area pointer (`context[198]`) |
 | +40 | 1 | Dirty flag (0 = clean) |
 | +48 | 8 | SM-specific instruction set descriptor |
-| +56--136 | — | Resource descriptors, memory pool, sentinel, sub-allocator |
+| +56–136 | — | Resource descriptors, memory pool, sentinel, sub-allocator |
 
 ## Diagnostic Strings
 
@@ -767,7 +767,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `sub_5B76D0` | 64KB | `div` codegen (integer + FP, all rounding modes) | 95% |
 | `sub_5ADDC0` | 50KB | `tex.grad` codegen (1D/2D/3D gradient textures) | 95% |
 | `sub_5B4040` | 49KB | `sqrt` codegen (f32/f64, all rounding modes) | 95% |
-| `sub_5AB460` | 45KB | `cp.async.bulk.tensor` codegen (1D--5D, tile/im2col) | 95% |
+| `sub_5AB460` | 45KB | `cp.async.bulk.tensor` codegen (1D–5D, tile/im2col) | 95% |
 | `sub_5B0CD0` | 44KB | `rcp` codegen (f32/f64 reciprocal, all rounding modes) | 95% |
 | `sub_6C9EB0` | 13KB | OCG intrinsic table init — see [OCG Intrinsic System](ocg.md) for full function map (27 entries) | 95% |
 | `sub_6BDE20` | 7KB | Intrinsic operand expansion | 88% |
@@ -795,7 +795,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 
 ## Appendix: Complete Intrinsic Name Catalog (607 Entries)
 
-Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source. IDs are contiguous 1--607 (0x001--0x25F). The suffix after stripping the prefix encodes the operation, data type, rounding mode, address space, and optional modifiers.
+Every intrinsic registered by `sub_5D1660`, extracted from the decompiled source. IDs are contiguous 1–607 (0x001–0x25F). The suffix after stripping the prefix encodes the operation, data type, rounding mode, address space, and optional modifiers.
 
 ### `__cuda_reduxsync_*` — Redux sync (17 entries, `0x001`--`0x011`, sm_70)
 

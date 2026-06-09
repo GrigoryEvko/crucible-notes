@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-NVIDIA GPUs lack hardware integer dividers and native FP64 arithmetic units on the SFU. When ptxas encounters PTX operations such as `div.s32`, `div.u64`, `rcp.f64`, `sqrt.f64`, or `rsqrt.f64`, it expands them into multi-instruction SASS sequences that synthesize the result from simpler hardware primitives. These expansions are the **math templates** — pre-built instruction sequence generators that emit 20--100+ SASS instructions per PTX operation, using the MUFU (Multi-Function Unit) for initial approximations and Newton-Raphson iterations for refinement.
+NVIDIA GPUs lack hardware integer dividers and native FP64 arithmetic units on the SFU. When ptxas encounters PTX operations such as `div.s32`, `div.u64`, `rcp.f64`, `sqrt.f64`, or `rsqrt.f64`, it expands them into multi-instruction SASS sequences that synthesize the result from simpler hardware primitives. These expansions are the **math templates** — pre-built instruction sequence generators that emit 20–100+ SASS instructions per PTX operation, using the MUFU (Multi-Function Unit) for initial approximations and Newton-Raphson iterations for refinement.
 
 The template subsystem lives at `0x1700000`--`0x172A090` in the ptxas binary: 36 functions occupying ~180 KB. It is invoked during instruction selection by the master lowering dispatcher `sub_AED3C0` whenever the selected instruction requires multi-instruction expansion.
 
@@ -197,7 +197,7 @@ The DDIV template produces three code sections. The pseudocode below is reconstr
     MOV.LO   dst_lo, v[result_lo]
 ```
 
-The DDIV template emits ~100--120 SASS instructions across 6 sub-expanders, using 298 virtual registers. The two `DFMA` instructions (opcode 0x122) in Part 2 are the mathematical core — each implements one Newton-Raphson step that doubles precision from the ~23-bit MUFU.RCP seed to ~46 bits (iteration 1) then to the 52+3 guard bits needed for IEEE-correct rounding. The `DMUL` instructions (opcode 0x8B) with the constant `0x4350000000000000` (2^54) perform the final scaled multiply of `a * (1/b)` at extended precision.
+The DDIV template emits ~100–120 SASS instructions across 6 sub-expanders, using 298 virtual registers. The two `DFMA` instructions (opcode 0x122) in Part 2 are the mathematical core — each implements one Newton-Raphson step that doubles precision from the ~23-bit MUFU.RCP seed to ~46 bits (iteration 1) then to the 52+3 guard bits needed for IEEE-correct rounding. The `DMUL` instructions (opcode 0x8B) with the constant `0x4350000000000000` (2^54) perform the final scaled multiply of `a * (1/b)` at extended precision.
 
 ### SASS Instruction Sequence (sub_1705820)
 
@@ -218,7 +218,7 @@ The DDIV Part 2 sub-expander (`sub_1705820`, 7,545 bytes, 1,057 lines decompiled
 | FP32 hi/lo | 0x86/0x85 | 4+4 | Move FP32 halves of FP64 register pair |
 | **Total** | | **~63** | Per sub-expander (Part 2 of 6) |
 
-The complete DDIV template across all 6 sub-expanders emits approximately 100--120 SASS instructions, using 298 virtual registers.
+The complete DDIV template across all 6 sub-expanders emits approximately 100–120 SASS instructions, using 298 virtual registers.
 
 ### Register Pressure Variants
 
@@ -246,11 +246,11 @@ The DRCP/DSQRT handler (`sub_1718D60`) shares the same lazy-init and template-ca
 | Part 6 | `sub_1717470` | Final multiply `x * rsqrt(x)` to get `sqrt(x)`, exception handling |
 | (shared) | `sub_1701140` | Template scaffolding helper (called by all coordinators) |
 
-Both paths share the same coordinator and register pool (289 vregs from `dword_2398940`). The coordinator selects the DRCP path (Parts 1--4) or DSQRT path (Parts 5--6, then shared Parts 2--4) based on the original PTX operation being lowered.
+Both paths share the same coordinator and register pool (289 vregs from `dword_2398940`). The coordinator selects the DRCP path (Parts 1–4) or DSQRT path (Parts 5–6, then shared Parts 2–4) based on the original PTX operation being lowered.
 
 ### DRCP/DSQRT SASS Pseudocode
 
-**DRCP** (Parts 1--4) mirrors DDIV's N-R core but outputs the reciprocal directly. Part 1 (`sub_170ED40`) has identical seed extraction (PRMT 0x15, LOP3.LUT 0x14, ISETP 0xC9, SHR 0x19, BRA 0x5F for denormal/inf/NaN guards). Part 2 (`sub_1710280`) emits the same MUFU.RCP + two-DFMA iteration pattern:
+**DRCP** (Parts 1–4) mirrors DDIV's N-R core but outputs the reciprocal directly. Part 1 (`sub_170ED40`) has identical seed extraction (PRMT 0x15, LOP3.LUT 0x14, ISETP 0xC9, SHR 0x19, BRA 0x5F for denormal/inf/NaN guards). Part 2 (`sub_1710280`) emits the same MUFU.RCP + two-DFMA iteration pattern:
 
 ```asm
     MUFU.RCP x0, float32(b)       ; 0x3C: ~23-bit seed
@@ -262,7 +262,7 @@ Both paths share the same coordinator and register pool (289 vregs from `dword_2
     DMUL     result, x2, scale     ; 0x8B: normalize exponent
 ```
 
-**DSQRT** (Parts 5--6) computes `sqrt(a) = a * rsqrt(a)` using integer-mantissa Goldschmidt iteration instead of DFMA. The `DNEG` instruction (opcode 0xB4, unique to sqrt/rsqrt paths) negates the input for residual computation:
+**DSQRT** (Parts 5–6) computes `sqrt(a) = a * rsqrt(a)` using integer-mantissa Goldschmidt iteration instead of DFMA. The `DNEG` instruction (opcode 0xB4, unique to sqrt/rsqrt paths) negates the input for residual computation:
 
 ```asm
     DNEG     neg_a, a              ; 0xB4: -a for residual
@@ -330,7 +330,7 @@ Reconstructed from `sub_1719080` (Part 1) and `sub_171A260` (Part 2). DRSQRT out
     ; Parts 3-4: second iteration y2 = y1*(3-a*y1^2)/2, then rounding
 ```
 
-The DRSQRT template emits 65 instructions across Parts 1--2. `IMAD` (0x6E) chains dominate: the integer mantissa multiply approach avoids `DFMA` (~30-cycle latency) in favor of `IMAD` (~4-cycle). `DNEG` (0xB4) and `SSY` (0xBC) are unique to the rsqrt paths; `SSY` sets a convergence point for the special-case branches in Part 5.
+The DRSQRT template emits 65 instructions across Parts 1–2. `IMAD` (0x6E) chains dominate: the integer mantissa multiply approach avoids `DFMA` (~30-cycle latency) in favor of `IMAD` (~4-cycle). `DNEG` (0xB4) and `SSY` (0xBC) are unique to the rsqrt paths; `SSY` sets a convergence point for the special-case branches in Part 5.
 
 **Coordinator B** (`sub_1727130`): allocates only 59 virtual registers from `dword_23976E0` and dispatches to the integer division sub-expanders (`sub_1724A20` for 32-bit, `sub_1728930` for 64-bit unsigned, `sub_1727AC0` for 64-bit signed). This path handles the integer division/modulo lowering via `sub_1729B50`.
 
@@ -343,7 +343,7 @@ Integer division and modulo by variable (non-constant) values are expanded into 
 **Size:** 28,138 bytes decompiled (957 lines), the largest function in the `0x1723000`--`0x17F8000` range.
 **Called from:** `sub_1727130` (coordinator B).
 **Virtual registers:** 59 (allocated by coordinator B from `dword_23976E0`).
-**Temporary pool:** indices 90--126 of the parameter array, providing 37 dedicated scratch registers.
+**Temporary pool:** indices 90–126 of the parameter array, providing 37 dedicated scratch registers.
 
 Algorithm for unsigned 32-bit `a / b`:
 
@@ -358,7 +358,7 @@ Step 7:  if (r_est >= b) q_est++; r_est -= b  ; correction iteration 2
 Step 8:  result  = q_est                       ; (or r_est for modulo)
 ```
 
-The correction steps (6--7) are implemented with `ISETP` (opcode 0xC9) for comparison and `BRA` (opcode 0x5F) for conditional execution. In the worst case, two correction iterations suffice because the MUFU.RCP approximation is accurate to within 2 ULP of the true reciprocal.
+The correction steps (6–7) are implemented with `ISETP` (opcode 0xC9) for comparison and `BRA` (opcode 0x5F) for conditional execution. In the worst case, two correction iterations suffice because the MUFU.RCP approximation is accurate to within 2 ULP of the true reciprocal.
 
 Key constants allocated via `sub_91D160`:
 
@@ -395,7 +395,7 @@ Two variants handle 64-bit operands, both called sequentially from `sub_1729B50`
 #### Unsigned 64-bit — `sub_1728930`
 
 **Size:** 16,545 bytes decompiled (634 lines). Emits 41 SASS instructions (including 4 branches).
-**Temporary pool:** indices 29--58 of the parameter array, providing 30 dedicated scratch registers.
+**Temporary pool:** indices 29–58 of the parameter array, providing 30 dedicated scratch registers.
 
 Algorithm for unsigned 64-bit `{a_hi, a_lo} / {b_hi, b_lo}`:
 
@@ -524,7 +524,7 @@ Together, `sub_1727AC0` (36) + `sub_1728930` (41) = 77 SASS instructions across 
 
 ### Division by Constant
 
-Division by compile-time constant is handled separately during the `GeneralOptimize` bundle passes (not by these templates). The classic Granlund-Montgomery magic-number technique converts `x / C` to `MULHI(x, magic) >> shift`, producing 2--3 instructions instead of ~50. See [Strength Reduction](../passes/strength-reduction.md) for details.
+Division by compile-time constant is handled separately during the `GeneralOptimize` bundle passes (not by these templates). The classic Granlund-Montgomery magic-number technique converts `x / C` to `MULHI(x, magic) >> shift`, producing 2–3 instructions instead of ~50. See [Strength Reduction](../passes/strength-reduction.md) for details.
 
 ## MUFU: The Hardware Approximation Engine
 
@@ -568,7 +568,7 @@ The sub-expanders construct SASS instructions using a family of emission functio
 
 | Function | Size | Signature | Role |
 |---|---|---|---|
-| `sub_9314F0` | 403 bytes | `(scratch, ctx, opcode, type, operand_count, operands, xmm, fp)` | Standard SASS instruction emission (2--5 operands) |
+| `sub_9314F0` | 403 bytes | `(scratch, ctx, opcode, type, operand_count, operands, xmm, fp)` | Standard SASS instruction emission (2–5 operands) |
 | `sub_934630` | 1,213 bytes | `(scratch, ctx, opcode, type, ?, ?, xmm, fp, operand_buf, count)` | Extended emission for control flow and >4 operands |
 | `sub_935130` | 390 bytes | `(scratch, ctx, opcode, count, label_buf, label_count, ...)` | Branch emission with label resolution |
 | `sub_9352C0` | (variant) | `(scratch, ctx, opcode, type, operands, count, ..., extra_buf, ...)` | Wide emission with extra operand buffer (used for MUFU) |
@@ -650,7 +650,7 @@ The two inputs:
 
 | Field | Offset | Meaning |
 |---|---|---|
-| `compilation_strategy` | `ctx + 896` | Internal strategy selector (values 0--5). Value 5 = recompilation trial: ptxas is re-lowering the function after a failed register allocation attempt. |
+| `compilation_strategy` | `ctx + 896` | Internal strategy selector (values 0–5). Value 5 = recompilation trial: ptxas is re-lowering the function after a failed register allocation attempt. |
 | `compilation_flags_byte` | `ctx + 1412` | Bit 7 (sign bit): when set, marks the function for forced-inline expansion (e.g. device-debug mode, or a prior pass determined inlining is cheaper). The expression `(~flags >> 7)` yields 1 when bit 7 is clear (template-call allowed), 0 when set (forced inline). |
 
 The pre-scheduling pass `sub_7753F0` applies the same logic with an additional gate:
@@ -682,8 +682,8 @@ else
 ```
 
 The thresholds (20,479 and 16,383) correspond to register file sizes across GPU generations:
-- sm_50--sm_61 (Maxwell/Pascal): 65,536 registers per SM -> 20,479 threshold met at occupancy < 3 blocks
-- sm_70--sm_89 (Volta through Ada): 65,536 registers -> same thresholds
+- sm_50–sm_61 (Maxwell/Pascal): 65,536 registers per SM -> 20,479 threshold met at occupancy < 3 blocks
+- sm_70–sm_89 (Volta through Ada): 65,536 registers -> same thresholds
 - sm_100+ (Blackwell): 65,536 registers -> same, but wider warp execution changes the pressure calculus
 
 ### Hardware Capability Flag

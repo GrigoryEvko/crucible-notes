@@ -34,7 +34,7 @@ This is semantically equivalent to GCC's `__attribute__((pure))` and LLVM's `rea
 
 ### Binary Encoding
 
-In the attribute kind enum, `__nv_pure__` has kind value 110 (0x6E, ASCII `'n'`). This is the highest kind value in the CUDA attribute range, added later than the original dense block (86--95).
+In the attribute kind enum, `__nv_pure__` has kind value 110 (0x6E, ASCII `'n'`). This is the highest kind value in the CUDA attribute range, added later than the original dense block (86–95).
 
 The `attribute_display_name` switch (`sub_40A310`) maps it:
 
@@ -87,7 +87,7 @@ The string table contains exactly one reference to `__nv_pure__` at address `0x8
 
 `__nv_register_params__` tells cicc to pass kernel parameters in **registers** instead of through **constant memory**. By default, CUDA kernel parameters are loaded via `ld.param` instructions, which access a dedicated constant memory bank visible to the kernel launch mechanism. This works well when parameter counts are large (the constant memory bank is 4 KB per kernel), but for small parameter counts, passing values directly in registers avoids the latency of the constant memory load path.
 
-Register parameter passing eliminates the constant-bank load latency (typically 4--8 cycles on modern architectures) and removes potential bank conflicts when multiple warps read the same parameters. The trade-off is that it consumes registers from the limited register file, which can reduce occupancy if the kernel already uses many registers.
+Register parameter passing eliminates the constant-bank load latency (typically 4–8 cycles on modern architectures) and removes potential bank conflicts when multiple warps read the same parameters. The trade-off is that it consumes registers from the limited register file, which can reduce occupancy if the kernel already uses many registers.
 
 ### Requirements
 
@@ -254,7 +254,7 @@ The attribute is registered through the same startup mechanism as `__nv_register
 
 `__forceinline__` and `__noinline__` are mutually exclusive. The diagnostic system includes 2 messages for inline hint conflicts (identified in the W053 error report). When both are applied to the same function, the compiler emits a diagnostic. However, `__inline_hint__` can coexist with either, as it is merely a suggestion that the other directives override.
 
-The mutual exclusion is enforced through the constraint checker in `apply_one_attribute` (`sub_413240`) and through post-validation checks. The constraint string for the `'r'` (routine/function) constraint class includes property codes `m` (for member/constexpr) and `v` (for virtual), with `+` and `-` qualifiers controlling whether the attribute is allowed or forbidden. Error codes 1835--1843 and 1858--1871 cover the various conflict scenarios.
+The mutual exclusion is enforced through the constraint checker in `apply_one_attribute` (`sub_413240`) and through post-validation checks. The constraint string for the `'r'` (routine/function) constraint class includes property codes `m` (for member/constexpr) and `v` (for virtual), with `+` and `-` qualifiers controlling whether the attribute is allowed or forbidden. Error codes 1835–1843 and 1858–1871 cover the various conflict scenarios.
 
 ### IL Output
 
@@ -296,7 +296,7 @@ This is consistent with the attribute being consumed downstream by cicc or anoth
 
 ### Purpose
 
-`__tile_builtin__` is another **internal** attribute in the CUDA kind enum, with kind value 95 (0x5F, ASCII `'_'`). Its kind value is the last in the original dense block (86--95).
+`__tile_builtin__` is another **internal** attribute in the CUDA kind enum, with kind value 95 (0x5F, ASCII `'_'`). Its kind value is the last in the original dense block (86–95).
 
 The name suggests this attribute marks functions that are **tile-level builtins** — compiler intrinsics that implement tile-based operations. These would be functions like `cooperative_groups::tiled_partition::shfl()`, `cooperative_groups::tiled_partition::ballot()`, or TMA copy intrinsics, which are compiled by cudafe++ as ordinary function calls but need special handling by cicc for efficient code generation.
 

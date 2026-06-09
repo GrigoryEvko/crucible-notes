@@ -66,7 +66,7 @@ The vtable provides the interface contract:
 | Vtable offset | Method | Signature |
 |---|---|---|
 | `+0` | `execute` | `void execute(phase*, compilation_context*)` |
-| `+8` | `getIndex` | `int getIndex(phase*)` — returns the factory/table index (0--158) |
+| `+8` | `getIndex` | `int getIndex(phase*)` — returns the factory/table index (0–158) |
 | `+16` | `isNoOp` | `bool isNoOp(phase*)` — returns 0 for active phases, 1 for gates skipped by default |
 | `+24` | *(NULL)* | Unused — NULL in all 159 vtable instances |
 | `+32` | *(NULL)* | Unused — NULL in all 159 vtable instances |
@@ -301,8 +301,8 @@ The reporter computes three memory deltas from snapshot pairs:
 | Freeable Leaked | `sub_8DAE40` | Freeable memory not actually released |
 
 Size formatting thresholds:
-- 0--1023: raw bytes (suffix `B`)
-- 1024--10,485,760: kilobytes with 3 decimal places (suffix `KB`)
+- 0–1023: raw bytes (suffix `B`)
+- 1024–10,485,760: kilobytes with 3 decimal places (suffix `KB`)
 - above 10 MB: megabytes with 3 decimal places (suffix `MB`)
 
 After all phases complete, the loop prints an "All Phases Summary" line using the same reporter, then calls `sub_C62200` to print the pool consumption total:
@@ -327,7 +327,7 @@ Records are stored in a growable array at `compilation_unit+1560`. Growth uses a
 
 ## NvOptRecipe Sub-Manager (440 bytes)
 
-When option 391 is enabled, the constructor creates a 440-byte NvOptRecipe sub-manager at `PhaseManager+56`. This object provides the runtime for "AdvancedPhase" hooks — the 16 phases that are no-ops by default but can be activated for architecture-specific or optimization-level-specific processing. The NvOpt level (0--5) controls per-phase aggressiveness independently of the `-O` CLI level: `-O` gates which phases run at all, while the NvOpt level controls how aggressively active phases behave.
+When option 391 is enabled, the constructor creates a 440-byte NvOptRecipe sub-manager at `PhaseManager+56`. This object provides the runtime for "AdvancedPhase" hooks — the 16 phases that are no-ops by default but can be activated for architecture-specific or optimization-level-specific processing. The NvOpt level (0–5) controls per-phase aggressiveness independently of the `-O` CLI level: `-O` gates which phases run at all, while the NvOpt level controls how aggressively active phases behave.
 
 ### Object Layout
 
@@ -400,7 +400,7 @@ Records are iterated backward during cleanup (`base + 584 * (count + 1) - 584` d
 
 ### Construction Sequence
 
-The constructor (`sub_C62720`, lines 356--850 in decompilation) performs these steps:
+The constructor (`sub_C62720`, lines 356–850 in decompilation) performs these steps:
 
 1. **Check option 391** — fast path: `*(config_obj[9] + 28152) != 0`; slow path: virtual call with argument `391`. If disabled, skip entirely.
 
@@ -453,7 +453,7 @@ if (nvopt_level > 5) {
 }
 ```
 
-Valid levels are 0--5. The level is consumed as a bitmask `1 << nvopt_level`, passed to a vtable call that dispatches on a recipe configuration byte at target descriptor offset `35280` (8-case switch: cases 0--5, 7). This byte controls which recipe application mode is used for the target architecture.
+Valid levels are 0–5. The level is consumed as a bitmask `1 << nvopt_level`, passed to a vtable call that dispatches on a recipe configuration byte at target descriptor offset `35280` (8-case switch: cases 0–5, 7). This byte controls which recipe application mode is used for the target architecture.
 
 ### Shared State in Library Mode
 
@@ -485,7 +485,7 @@ The `shared_list` at `+432` enables recipe state persistence across compilation 
 The 440-byte sub-manager described above is the *runtime container*; the actual string-driven phase reordering lives in a separate 9,093-byte function called from the alternate compilation entry. Two top-level entry points exist:
 
 ```c
-// sub_7FB6C0 (compilation driver) at line 38--47
+// sub_7FB6C0 (compilation driver) at line 38–47
 v3 = phase_manager_options(...);
 v4 = (v3 == sub_6614A0) ? (config[9][21456] != 0)   // fast path: type tag of option 298
                         : v3(phase_mgr, 298);        // slow path: virtual call
@@ -519,7 +519,7 @@ __int64 sub_9F63D0(__int64 cu) {
 
 ### Recipe String Grammar
 
-The recipe string is consumed by the generic key/value tokenizer `sub_798B60` ("NamedPhases::ParsePhaseList") at lines 442--477:
+The recipe string is consumed by the generic key/value tokenizer `sub_798B60` ("NamedPhases::ParsePhaseList") at lines 442–477:
 
 ```c
 // sub_798B60 token loop -- comma-only separator
@@ -724,7 +724,7 @@ If the recipe contains keys for multiple modes simultaneously, the parser uses t
 2. `pNNN` — if no `NamedPhases` and any `p<digits>` key is present
 3. `shuffle` — only checked if neither of the above matched; entry condition is the literal string `shuffle` AND the string `reps` with a non-zero value
 
-DCE and CopyProp injection (`dce1..3`, `cpy1..3`) are **only honored in shuffle mode**; they are read inside the shuffle-mode branch (lines 1486--1666) and have no effect on `NamedPhases` or `pNNN` modes.
+DCE and CopyProp injection (`dce1..3`, `cpy1..3`) are **only honored in shuffle mode**; they are read inside the shuffle-mode branch (lines 1486–1666) and have no effect on `NamedPhases` or `pNNN` modes.
 
 ### Recipe Applier Constants
 
@@ -763,9 +763,9 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 
 ## Complete Phase Table
 
-> **Stage numbering.** The 7 groups below are a coarse summary of the 159-phase OCG pipeline. The authoritative fine-grained grouping is the 10-stage scheme in the [Pass Inventory](../passes/index.md) (OCG-Stage 1--10). The 7-group table here collapses several of those stages for brevity; phase boundaries differ slightly. When citing a stage by number, prefer the Pass Inventory's 10-stage numbering.
+> **Stage numbering.** The 7 groups below are a coarse summary of the 159-phase OCG pipeline. The authoritative fine-grained grouping is the 10-stage scheme in the [Pass Inventory](../passes/index.md) (OCG-Stage 1–10). The 7-group table here collapses several of those stages for brevity; phase boundaries differ slightly. When citing a stage by number, prefer the Pass Inventory's 10-stage numbering.
 
-### Group 1: Initial Setup (phases 0--12)
+### Group 1: Initial Setup (phases 0–12)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -783,7 +783,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 11 | `ReplaceUniformsWithImm` | Replace uniform register loads with immediates |
 | 12 | `OriSanitize` | IR consistency checks |
 
-### Group 2: Early Optimization (phases 13--36)
+### Group 2: Early Optimization (phases 13–36)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -812,7 +812,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 35 | `OriHoistInvariantsEarly` | Early loop-invariant hoisting |
 | 36 | `EmitPSI` | Emit program state information |
 
-### Group 3: Mid-Level Optimization (phases 37--58)
+### Group 3: Mid-Level Optimization (phases 37–58)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -839,7 +839,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 57 | `RemoveASTToDefaultValues` | Remove AST nodes set to default values |
 | 58 | `GeneralOptimizeLate` | Late GeneralOptimize |
 
-### Group 4: Late Optimization (phases 59--95)
+### Group 4: Late Optimization (phases 59–95)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -881,7 +881,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 94 | `FinalInspectionPass` | Final IR validity checks |
 | 95 | `SetAfterLegalization` | Mark legalization complete |
 
-### Group 5: Scheduling and Register Allocation (phases 96--105)
+### Group 5: Scheduling and Register Allocation (phases 96–105)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -896,7 +896,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 104 | `AdvancedPhasePostExpansion` | **Hook** — before post-RA expansion worker (phase 127) |
 | 105 | `ApplyPostRegAllocWars` | Apply post-regalloc write-after-read fixes |
 
-### Group 6: Post-Schedule and Code Generation (phases 106--131)
+### Group 6: Post-Schedule and Code Generation (phases 106–131)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -927,7 +927,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 130 | `DumpNVuCodeHex` | Dump NV microcode as hex (debug) |
 | 131 | `DebuggerBreak` | Debugger breakpoint (debug) |
 
-### Group 7: Late Cleanup (phases 132--158)
+### Group 7: Late Cleanup (phases 132–158)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -959,7 +959,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 157 | `DebuggerBreak` | **`nullsub_627`** — debug-only breakpoint marker |
 | 158 | `NOP` | **`nullsub_626`** — terminal sentinel anchoring the 159-phase dispatch loop |
 
-All 20 phases in the 139--158 range have names in the static table at `off_22BD0C0` (159 entries total, not 139). Name resolution goes through each phase's `getIndex()` virtual method (vtable+8) returning the phase index as a constant (`mov eax, 0x8b..0x9e; ret`), which the dispatch loop (`sub_C64F70`) uses as the lookup key into the name table. The earlier claim that these phases had names "returned by a `getName()` virtual method" was incorrect.
+All 20 phases in the 139–158 range have names in the static table at `off_22BD0C0` (159 entries total, not 139). Name resolution goes through each phase's `getIndex()` virtual method (vtable+8) returning the phase index as a constant (`mov eax, 0x8b..0x9e; ret`), which the dispatch loop (`sub_C64F70`) uses as the lookup key into the name table. The earlier claim that these phases had names "returned by a `getName()` virtual method" was incorrect.
 
 Of the 20 phases, **five** have `nullsub` execute bodies in release ptxas (150, 151, 154, 157, 158), **two** (155, 156) have non-trivial gate cascades but resolve to nullsub tail-call targets, and **four** set `isNoOp() = 1` to suppress the diagnostic frame around their call (150, 151, 152, 154). `isNoOp = 1` does **not** skip the execute call — it only suppresses the `"Before <phase>"` / `"After <phase>"` diagnostic prints, and `sub_C64F70:86` `goto LABEL_4` still falls through to the execute dispatch. See [Optimization Pipeline Stage 10](index.md#stage-10----late-cleanup--late-pipeline-phases-132--158) for the full per-phase algorithm breakdown with execute addresses, pseudocode, and gate conditions.
 
@@ -988,7 +988,7 @@ The 16 AdvancedPhase entries are insertion points for architecture-specific or o
 
 ## Mercury Encoding Sub-Pipeline
 
-Phases 113--122 form a self-contained sub-pipeline that transforms the optimized, register-allocated Ori IR into final SASS machine code via the Mercury encoding format:
+Phases 113–122 form a self-contained sub-pipeline that transforms the optimized, register-allocated Ori IR into final SASS machine code via the Mercury encoding format:
 
 ```text
 PostFixForMercTargets (113)
@@ -1045,7 +1045,7 @@ PostFixForMercTargets (113)
 - [GeneralOptimize Bundles](./general-optimize.md) — phases 13, 29, 37, 46, 58, 65
 - [Synchronization & Barriers](./sync-barriers.md) — phases 26, 71, 72, 99, 100
 - [Liveness Analysis](./liveness.md) — phases 10, 16, 33, 61, 84
-- [Mercury Encoder](../codegen/mercury.md) — phases 113--122
+- [Mercury Encoder](../codegen/mercury.md) — phases 113–122
 - [Memory Pool Allocator](../infra/memory-pools.md) — pool allocation infrastructure used by PhaseManager
 - [Optimization Levels](../config/opt-levels.md) — how opt level controls phase behavior
 - [DUMPIR & NamedPhases](../config/dumpir.md) — phase name resolution for debug output

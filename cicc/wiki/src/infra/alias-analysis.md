@@ -159,7 +159,7 @@ The `!noalias.addrspace` metadata (kind 42, registered in `sub_B6EEA0`) is a sep
 
 ## The ProcessRestrict Propagation Algorithm
 
-`ProcessRestrictPass` is NVIDIA's interprocedural restrict propagation pass, registered as pipeline entry 419 with class name `ProcessRestrictPass`. It runs as a function pass but has interprocedural effects: it reads the `noalias` attribute from kernel entry points and propagates equivalent information to callees by attaching `!noalias` and `!alias.scope` metadata to memory instructions. The knobs controlling its behavior are grouped in `ctor_534` (address range 0x560000--0x5CFFFF), alongside `allow-restrict-in-struct` and `apply-multi-level-restrict`, and independently in `ctor_270` (address range 0x4F0000--0x51FFFF) alongside `process-restrict`.
+`ProcessRestrictPass` is NVIDIA's interprocedural restrict propagation pass, registered as pipeline entry 419 with class name `ProcessRestrictPass`. It runs as a function pass but has interprocedural effects: it reads the `noalias` attribute from kernel entry points and propagates equivalent information to callees by attaching `!noalias` and `!alias.scope` metadata to memory instructions. The knobs controlling its behavior are grouped in `ctor_534` (address range 0x560000–0x5CFFFF), alongside `allow-restrict-in-struct` and `apply-multi-level-restrict`, and independently in `ctor_270` (address range 0x4F0000–0x51FFFF) alongside `process-restrict`.
 
 ### Activation and Flag Routing
 
@@ -352,7 +352,7 @@ Any provider returning `NoAlias` short-circuits the chain — subsequent provide
 
 Two additional entry points handle call-site interactions:
 
-**`sub_134F0E0` — `AAResults::getModRefInfo(CallBase, MemoryLocation)`.** Returns a `ModRefInfo` encoding that combines Mod/Ref bits with MustAlias information (8 values, 0--7). This is used by DSE and LICM to determine whether a call can read or write a specific memory location.
+**`sub_134F0E0` — `AAResults::getModRefInfo(CallBase, MemoryLocation)`.** Returns a `ModRefInfo` encoding that combines Mod/Ref bits with MustAlias information (8 values, 0–7). This is used by DSE and LICM to determine whether a call can read or write a specific memory location.
 
 **`sub_134F530` — `AAResults::getModRefInfo(CallBase, CallBase)`.** Same encoding but for two call sites. Used by MemorySSA to build dependencies between calls.
 

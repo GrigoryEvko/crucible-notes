@@ -124,7 +124,7 @@ Before the main loop, `check_conflicting_flags` (`sub_451E80`, 15 lines) validat
 
 After a flag is matched, its `case_id` indexes into a giant switch statement occupying the bulk of `proc_command_line`. The following sections document the most important cases grouped by function.
 
-### Preprocessor Control (Cases 3--9)
+### Preprocessor Control (Cases 3–9)
 
 | Case | Flag | Global(s) | Behavior |
 |---|---|---|---|
@@ -135,7 +135,7 @@ After a flag is matched, its `case_id` indexes into a giant switch statement occ
 | 8 | `dependencies` | *(multiple)* | Dependencies output mode (preprocessor-only + dependency emission) |
 | 9 | `trace_includes` | *(flag bitmap)* | Print each `#include` as it is opened |
 
-### Compilation Mode (Cases 14, 20--26)
+### Compilation Mode (Cases 14, 20–26)
 
 | Case | Flag | Global | Behavior |
 |---|---|---|---|
@@ -148,9 +148,9 @@ After a flag is matched, its `case_id` indexes into a giant switch statement occ
 | 25 | `c` | calls `sub_44C4F0(0)` | Force C language mode (overrides default C++ if currently in C++ mode) |
 | 26 | `c++` | calls `sub_44C4F0(2)` | Force C++ language mode |
 
-### Diagnostic Control (Cases 39--44)
+### Diagnostic Control (Cases 39–44)
 
-Cases 39--43 (`diag_suppress`, `diag_remark`, `diag_warning`, `diag_error`, `diag_once`) share the same value-parsing logic:
+Cases 39–43 (`diag_suppress`, `diag_remark`, `diag_warning`, `diag_error`, `diag_once`) share the same value-parsing logic:
 
 ```text
 1. Read the value string (after '=')
@@ -170,7 +170,7 @@ The severity values map to:
 
 Case 44 (`display_error_number` / `no_display_error_number`) toggles whether error codes appear in diagnostic messages.
 
-### CUDA-Specific Flags (Cases 45--89)
+### CUDA-Specific Flags (Cases 45–89)
 
 #### Output File Paths
 
@@ -182,7 +182,7 @@ Case 44 (`display_error_number` / `no_display_error_number`) toggles whether err
 | 87 | `module_id_file_name` | *(has_arg global)* | Module ID file path |
 | 88 | `tile_bc_file_name` | *(has_arg global)* | Tile bitcode file path |
 
-#### Data Model (Cases 65--66, 90--91)
+#### Data Model (Cases 65–66, 90–91)
 
 | Case | Flag | Behavior |
 |---|---|---|
@@ -220,7 +220,7 @@ The `instantiate` flag takes a string value and sets `dword_106C094`:
 | `"used"` | 2 | Instantiate only used templates |
 | `"local"` | 3 | Local instantiation only |
 
-### Include and Macro Arguments (Cases 29--31)
+### Include and Macro Arguments (Cases 29–31)
 
 Cases 29 (`include_directory` / `-I`) and 167 (`sys_include`) append entries to linked lists via `sub_4595D0`:
 
@@ -235,7 +235,7 @@ A special case: `-I-` (the literal string `"-"`) sets a flag for stdin include m
 
 Case 30 (`define_macro` / `-D`) builds a linked list of macro definitions via `sub_4595D0`. Case 31 (`undefine_macro` / `-U`) allocates the same 24-byte node but marks the `int_field` as 1 to indicate undefine.
 
-### Language Standard Selection (Cases 228, 240--252)
+### Language Standard Selection (Cases 228, 240–252)
 
 These cases set `dword_126EF68` — the internal value of `__cplusplus` or `__STDC_VERSION__`:
 
@@ -263,7 +263,7 @@ case 245:  // --target=<sm_arch>
 
 `sub_7525E0` parses the SM architecture string (e.g., `"sm_90"`, `"sm_100"`) and returns the internal architecture code stored in `dword_126E4A8`. This value gates which CUDA features are available during compilation (see [Architecture Feature Gating](../cuda/arch-gating.md)).
 
-### Host Compiler Compatibility (Cases 182--188)
+### Host Compiler Compatibility (Cases 182–188)
 
 | Case | Flag | Globals | Behavior |
 |---|---|---|---|
@@ -320,7 +320,7 @@ The last non-flag argv element is the input filename, stored in `qword_126EEE0`.
 
 ### Memory Region Initialization
 
-Eleven memory regions (numbered 1--11) are initialized with default configurations. These correspond to CUDA memory spaces (global, shared, constant, local, texture, etc.) and are used by the frontend to track address space qualifiers.
+Eleven memory regions (numbered 1–11) are initialized with default configurations. These correspond to CUDA memory spaces (global, shared, constant, local, texture, etc.) and are used by the frontend to track address space qualifiers.
 
 ### GCC/Clang Feature Resolution
 
@@ -418,7 +418,7 @@ Users can override these defaults with explicit `--diag_error=111` (or similar) 
 | `dword_126EFB0` | `0x126EFB0` | int32 | Case 182 | GNU extensions enabled |
 | `dword_106C064` | `0x106C064` | int32 | Case 55 | Modify stack limit (default 1) |
 | `dword_126E4A8` | `0x126E4A8` | int32 | Case 245 | Target SM architecture code |
-| `dword_106C094` | `0x106C094` | int32 | Case 16 | Template instantiation mode (0--3) |
+| `dword_106C094` | `0x106C094` | int32 | Case 16 | Template instantiation mode (0–3) |
 | `byte_126ED69` | `0x126ED69` | int8 | Cases 22/24 | Diagnostic severity threshold |
 | `byte_126ED68` | `0x126ED68` | int8 | Case 23 | Warning promotion threshold |
 | `qword_106BF20` | `0x106BF20` | char* | Case 45 | Output `.int.c` file path |

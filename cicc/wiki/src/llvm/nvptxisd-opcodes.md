@@ -43,7 +43,7 @@ Yields exactly 460 lines.
 
 ## Call / Frame / Param Family (29 opcodes)
 
-These opcodes implement the PTX `.param`-space calling convention. They are emitted exclusively by `NVPTXTargetLowering::LowerCall` (`sub_3040BF0`, 88KB) and `LowerFormalArguments`/`LowerReturn`, then matched 1:1 in ISel to pseudo MachineInstrs in the **505--573 opcode range** documented in [NVPTX Machine Opcodes](../reference/nvptx-opcodes.md#call-abi-family-505573). Every CUDA device function call expands into a sequence built from these nodes; see the [SelectionDAG Call Sequence DAG Structure](selectiondag.md#call-sequence-dag-structure) for the canonical shape.
+These opcodes implement the PTX `.param`-space calling convention. They are emitted exclusively by `NVPTXTargetLowering::LowerCall` (`sub_3040BF0`, 88KB) and `LowerFormalArguments`/`LowerReturn`, then matched 1:1 in ISel to pseudo MachineInstrs in the **505–573 opcode range** documented in [NVPTX Machine Opcodes](../reference/nvptx-opcodes.md#call-abi-family-505573). Every CUDA device function call expands into a sequence built from these nodes; see the [SelectionDAG Call Sequence DAG Structure](selectiondag.md#call-sequence-dag-structure) for the canonical shape.
 
 | NVPTXISD name | Role | Notes |
 |---|---|---|
@@ -194,7 +194,7 @@ The matcher in `sub_3090F90` recognizes the `LoadV4` node, checks its memory ope
 
 ## Store Family (17 opcodes)
 
-Mirror of the load family, with the addition of `StoreParam`/`StoreRetval` for the call ABI. Produced by `sub_32D2680` and `sub_3040BF0` (the latter for the param/retval variants), matched in ISel to opcodes **571--573** for the generic stores and to dedicated MachineInstr pseudos for the param/retval forms.
+Mirror of the load family, with the addition of `StoreParam`/`StoreRetval` for the call ABI. Produced by `sub_32D2680` and `sub_3040BF0` (the latter for the param/retval variants), matched in ISel to opcodes **571–573** for the generic stores and to dedicated MachineInstr pseudos for the param/retval forms.
 
 | NVPTXISD name | Maps to PTX | Notes |
 |---|---|---|
@@ -740,7 +740,7 @@ This is why the master switch never directly emits type suffixes: every case bod
 - [SelectionDAG: BUILD_VECTOR Lowering](selectiondag.md#build_vector-lowering) — how `NVPTXISD::BUILD_VECTOR` is matched.
 - [ISel Pattern Matching](isel-patterns.md) — where these opcodes are consumed and translated to MachineInstrs.
 - [Type Legalization](type-legalization.md) — runs before LowerOperation and prepares operand types.
-- [NVPTX Machine Opcodes](../reference/nvptx-opcodes.md) — the post-ISel MachineInstr opcodes (440--573 for call ABI, etc.) that these NVPTXISD nodes lower to.
+- [NVPTX Machine Opcodes](../reference/nvptx-opcodes.md) — the post-ISel MachineInstr opcodes (440–573 for call ABI, etc.) that these NVPTXISD nodes lower to.
 - [NVPTX Machine Opcodes: Call ABI Family](../reference/nvptx-opcodes.md#call-abi-family-505573) — numeric mapping for the call/param family.
 - [Tensor / MMA Codegen](mma-codegen.md) — WMMA/MMA lowering (no NVPTXISD entries for MMA — they go directly to MachineInstr opcodes).
 - [Tex/Surface Builtins](../builtins/surface-texture.md) — builtin entry points that feed the Tex/Suld families.

@@ -42,7 +42,7 @@ The NVVM peephole pass handles transformations that require knowledge of NVVM's 
 
 The IR-level peephole (`sub_1CEF8F0`) is invoked from the legacy pipeline assembler (`sub_12E54A0`) in all three language-specific code paths. Its companion `sub_215D9D0` always follows immediately.
 
-**Path A — "ptx" language** (lines 580--638 in `sub_12E54A0`):
+**Path A — "ptx" language** (lines 580–638 in `sub_12E54A0`):
 
 ```text
 sub_1CEF8F0()    NVVMPeephole
@@ -54,7 +54,7 @@ sub_18DEFF0()    DCE
 ...
 ```
 
-**Path B — "mid" language** (Ofcmid, lines 814--1075):
+**Path B — "mid" language** (Ofcmid, lines 814–1075):
 
 ```text
 sub_184CD60()    ConstantMerge / GlobalDCE
@@ -69,7 +69,7 @@ sub_1C6E800()    GVN / LICM
 ...
 ```
 
-**Path C — default/general** (O2/O3, lines 1077--1371):
+**Path C — default/general** (O2/O3, lines 1077–1371):
 
 ```text
 sub_1A62BF0(4)   LLVM standard pipeline #4

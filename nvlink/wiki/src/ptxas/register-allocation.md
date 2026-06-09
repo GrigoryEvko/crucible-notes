@@ -4,7 +4,7 @@
 
 The register allocation subsystem in nvlink's embedded ptxas backend occupies approximately 400 KB of code across two primary address ranges: `0x189C000`--`0x18FC000` (core regalloc, ~120 functions) and `0x18FC000`--`0x191A000` (setmaxnreg/CTA-reconfig, ~55 functions). An additional ~120 verification functions at `0x196C000`--`0x1A00000` validate allocation correctness post-hoc. Together these form the largest single pass in the compiler backend — the top-level driver alone (`AllocateRegisters_main_driver` at `0x18988D0`) is 71 KB, and the per-instruction encoding function at `0x18AE2D0` is 155 KB, the largest function in the entire 1.7 MB backend core region.
 
-Register allocation follows a graph-coloring model with iterative spilling, operating across three distinct register classes simultaneously: general-purpose R-registers (R0--R255), uniform UR-registers (UR0--UR63, SM75+), and predicate registers (P0--P6). The allocator supports two alternative spill targets — local memory (lmem, the traditional spill slot) and shared memory (smem, an NVIDIA-proprietary optimization controlled by a ROT13-obfuscated knob). For Blackwell and later architectures (SM100+), the system integrates with the `setmaxnreg` CTA register reconfiguration infrastructure that enables dynamic register budget adjustment within a kernel.
+Register allocation follows a graph-coloring model with iterative spilling, operating across three distinct register classes simultaneously: general-purpose R-registers (R0–R255), uniform UR-registers (UR0–UR63, SM75+), and predicate registers (P0–P6). The allocator supports two alternative spill targets — local memory (lmem, the traditional spill slot) and shared memory (smem, an NVIDIA-proprietary optimization controlled by a ROT13-obfuscated knob). For Blackwell and later architectures (SM100+), the system integrates with the `setmaxnreg` CTA register reconfiguration infrastructure that enables dynamic register budget adjustment within a kernel.
 
 ## Key Facts
 
@@ -90,7 +90,7 @@ The graph coloring allocator at `sub_189C3E0` (48 KB, 1,734 lines) implements a 
 
 3. **Coloring** — the recursive core assigns physical registers (colors) to virtual registers while respecting interference edges. When coloring fails, it selects a spill candidate based on the spill cost computation.
 
-4. **Operand field encoding** (`sub_189F300`, 38 KB) — encodes per-operand properties into packed bitfields via a 250-case switch on operand attribute IDs (91--341). Each case sets specific bits in a packed `int[3]` descriptor. Despite the wiki name "spill cost computation" in the Key Facts table, this function is structurally an operand attribute encoder, not a cost computation. The actual spill weight computation lives in `sub_18C5470` and `sub_18C5B30` (see [Spilling and No-Spill Regalloc](#spilling-and-no-spill-regalloc)).
+4. **Operand field encoding** (`sub_189F300`, 38 KB) — encodes per-operand properties into packed bitfields via a 250-case switch on operand attribute IDs (91–341). Each case sets specific bits in a packed `int[3]` descriptor. Despite the wiki name "spill cost computation" in the Key Facts table, this function is structurally an operand attribute encoder, not a cost computation. The actual spill weight computation lives in `sub_18C5470` and `sub_18C5B30` (see [Spilling and No-Spill Regalloc](#spilling-and-no-spill-regalloc)).
 
 5. **Coalescing** (`sub_189BE00`, 7.5 KB) — attempts to merge virtual registers connected by copy instructions into a single physical register, eliminating the copy. Pre-coloring coalescing (aggressive) and post-coloring coalescing (conservative) paths are both present.
 
@@ -113,7 +113,7 @@ function graph_coloring_core(alloc_state) -> bool:
         return false                                // trivial function, nothing to color
 
     knob_reader = func_ir.knob_table                // vtable at offset +1664
-    // Read 5 configuration knobs via vtable dispatch (knob IDs 308--312):
+    // Read 5 configuration knobs via vtable dispatch (knob IDs 308–312):
     //   knob 309: enable_paired_allocation (writes config+32)
     //   knob 308: enable_split_allocation  (writes config+33)
     //   knob 311: max_coloring_iterations  (writes config+36, default from config)
@@ -924,7 +924,7 @@ The NVIDIA GPU register file is divided into three distinct classes, each alloca
 
 ### R-Registers (General-Purpose)
 
-- **Range**: R0--R255 (SM75+: up to 255 general registers per thread)
+- **Range**: R0–R255 (SM75+: up to 255 general registers per thread)
 - **Width**: 32 bits each; 64-bit values use even-odd pairs (e.g., R4:R5)
 - **Usage**: ALU operands, memory addresses, intermediate values
 - **Allocation**: The primary target of graph coloring; most of the 120 regalloc functions handle R-regs
@@ -934,7 +934,7 @@ The NVIDIA GPU register file is divided into three distinct classes, each alloca
 
 ### UR-Registers (Uniform)
 
-- **Range**: UR0--UR63 (SM75+ Turing and later)
+- **Range**: UR0–UR63 (SM75+ Turing and later)
 - **Width**: 32 bits each
 - **Usage**: Values that are uniform across all threads in a warp (e.g., loop bounds, base addresses). Reading a UR-reg does not consume an R-reg read port
 - **Allocation**: `uniform_register_allocator` (`0x1AB93C0`, 13 KB) handles UR-reg allocation separately from R-regs
@@ -943,7 +943,7 @@ The NVIDIA GPU register file is divided into three distinct classes, each alloca
 
 ### Predicate Registers (P)
 
-- **Range**: P0--P6 (7 predicate registers per thread)
+- **Range**: P0–P6 (7 predicate registers per thread)
 - **Width**: 1 bit each (boolean)
 - **Usage**: Conditional execution (predicated instructions), branch conditions
 - **Allocation**: `regalloc_handle_predicate_registers` (`0x18B67B0`, 6 KB)
@@ -1057,7 +1057,7 @@ After register allocation and codegen complete, the resource usage reporter at `
 | Registers | `"Used %d registers"` | Physical R-registers allocated |
 | Barriers | `", used %d barriers"` | Hardware barriers consumed |
 | Global memory | `"%lld bytes gmem"` | Global memory accessed |
-| Constant memory | `", %lld bytes cmem[%d]"` | Per-bank constant memory (18 banks, indices 0--17) |
+| Constant memory | `", %lld bytes cmem[%d]"` | Per-bank constant memory (18 banks, indices 0–17) |
 | Shared memory | `", %lld bytes smem"` | Shared memory allocated (including spill if SMEM spilling active) |
 | Local memory | `", %lld bytes lmem"` | Stack frame size (spill slots + local variables) |
 | Stack size | `", %d bytes cumulative stack size"` | Cumulative stack including callees (verbose mode) |
@@ -1114,7 +1114,7 @@ This includes the final register count, whether spilling occurred, the spill str
 
 The complete register allocation subsystem, listed by pipeline stage:
 
-### Core Regalloc (0x189C000--0x18FC000)
+### Core Regalloc (0x189C000–0x18FC000)
 
 | Address | Size | Function |
 |---|---|---|
@@ -1150,7 +1150,7 @@ The complete register allocation subsystem, listed by pipeline stage:
 | `0x18F51E0` | 84 KB | `AllocateRegisters_full_with_spill_retry` |
 | `0x18F9A60` | 30 KB | `AllocateRegisters_final_reporting` |
 
-### setmaxnreg / CTA Reconfig (0x18FC000--0x191A000)
+### setmaxnreg / CTA Reconfig (0x18FC000–0x191A000)
 
 | Address | Size | Function |
 |---|---|---|
@@ -1167,7 +1167,7 @@ The complete register allocation subsystem, listed by pipeline stage:
 | `0x1912A00` | 33 KB | `setmaxnreg_top_level_driver` |
 | `0x19149A0` | 19 KB | `setmaxnreg_full_transform` |
 
-### Second-Pass Regalloc (0x1AAA960--0x1AD5B00, from p1.19)
+### Second-Pass Regalloc (0x1AAA960–0x1AD5B00, from p1.19)
 
 | Address | Size | Function |
 |---|---|---|
@@ -1179,7 +1179,7 @@ The complete register allocation subsystem, listed by pipeline stage:
 | `0x1AB93C0` | 13 KB | `uniform_register_allocator` |
 | `0x1ABC360` | 23 KB | `register_liveness_analysis` |
 
-### Verification (0x19D0000--0x1A00000)
+### Verification (0x19D0000–0x1A00000)
 
 | Address | Size | Function |
 |---|---|---|

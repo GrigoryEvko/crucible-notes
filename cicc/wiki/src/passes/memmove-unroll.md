@@ -76,7 +76,7 @@ The ICMP instruction is created via `sub_12AA0C0` with opcode `0x22` (34 decimal
 
 When the copy size is statically known and satisfies `size <= dword_4FBD560` (the compile-time unroll threshold), the pass generates fully unrolled element-by-element copies with no loop overhead.
 
-**Reverse copy** (decompiled lines 606--690):
+**Reverse copy** (decompiled lines 606–690):
 
 ```llvm
 ; Fully unrolled reverse copy, count elements
@@ -88,7 +88,7 @@ store i8 %val.N, ptr %dst.gep.N, align A            ; sub_15F9650 (InitStoreInst
 ; ... repeated for each index from count-1 down to 0
 ```
 
-**Forward copy** (decompiled lines 1036--1123):
+**Forward copy** (decompiled lines 1036–1123):
 
 ```llvm
 ; Fully unrolled forward copy, count elements

@@ -28,7 +28,7 @@ Rematerialization trades instruction count for register pressure reduction. Inst
 3. The live range of the result is long enough to actually cause register pressure
 4. The instruction has no side effects (no memory writes, no barrier interactions)
 
-On GPUs, the cost-benefit tradeoff is skewed much further toward remat than on CPUs. A single spill/refill pair (STL + LDL) costs 20--100 cycles of local memory latency, while a rematerialized IADD costs 1 cycle. More importantly, the spill itself consumes a register for the address computation, potentially cascading into more spills.
+On GPUs, the cost-benefit tradeoff is skewed much further toward remat than on CPUs. A single spill/refill pair (STL + LDL) costs 20–100 cycles of local memory latency, while a rematerialized IADD costs 1 cycle. More importantly, the spill itself consumes a register for the address computation, potentially cascading into more spills.
 
 ## Pipeline Position
 
@@ -398,7 +398,7 @@ if (masked - 22) <= 0x3D:             // unsigned: masked in [22, 83]
 eligible = result | (masked == 297) | (masked == 352)
 ```
 
-The `& 0xFFFFCFFF` mask strips bits 12--13, collapsing instruction variants (e.g. `.WIDE`, `.X`) to their base opcode before testing. The range guard `(masked - 22) <= 0x3D` is an unsigned comparison that rejects values below 22 (which wrap to large unsigned) and above 83 (83 - 22 = 61 = 0x3D). For the shift itself, `LOBYTE(raw_opcode)` is used — safe because all in-range opcodes fit in a single byte and the variant bits sit above bit 11, outside the low byte.
+The `& 0xFFFFCFFF` mask strips bits 12–13, collapsing instruction variants (e.g. `.WIDE`, `.X`) to their base opcode before testing. The range guard `(masked - 22) <= 0x3D` is an unsigned comparison that rejects values below 22 (which wrap to large unsigned) and above 83 (83 - 22 = 61 = 0x3D). For the shift itself, `LOBYTE(raw_opcode)` is used — safe because all in-range opcodes fit in a single byte and the variant bits sit above bit 11, outside the low byte.
 
 **Bitmask bit decomposition** (`0x2080000010000001` = `0b0010_0000_1000_0000_0000_0000_0000_0001_0000_0000_0000_0000_0000_0000_0000_0001`):
 
@@ -665,7 +665,7 @@ function classify_operand_latency(ctx, instr, op_idx):        // sub_91E610
                               operands, operand_count, op_idx)
 ```
 
-**Threshold 3 rationale.** `PipeAssignment` maps latency classes to pipe indices 0--8. The `cost <= 3` threshold partitions instructions into two categories:
+**Threshold 3 rationale.** `PipeAssignment` maps latency classes to pipe indices 0–8. The `cost <= 3` threshold partitions instructions into two categories:
 
 | Pipe cost | Pipe | Latency classes | Decision |
 |---|---|---|---|
@@ -730,8 +730,8 @@ The QWORD-indexed range `alloc[161]..alloc[175]` (byte offsets +1288 through +14
 
 | QWORD index | Byte offset | Role |
 |-------------|-------------|------|
-| 161--168 | +1288--+1344 | **List A** (coalesce/remat): sentinel, prev, next, data, count, end, tag=2, arena |
-| 169--175 | +1352--+1400 | **List B** (secondary): sentinel, prev, next, data, tail, end, tag=2, arena |
+| 161–168 | +1288--+1344 | **List A** (coalesce/remat): sentinel, prev, next, data, count, end, tag=2, arena |
+| 169–175 | +1352--+1400 | **List B** (secondary): sentinel, prev, next, data, tail, end, tag=2, arena |
 
 Each list entry is a 24-byte node `{next_ptr, tail_ptr, count_and_flags}` allocated from the arena at the list's last slot. During each splitting round, the engine drains List B (`alloc[175]`) into the freelist at `alloc[179]` via `sub_69DD70`, then copies the saved best-state from `alloc[85..86]` back into `alloc[175..179]` (a 128-bit `movdqu` restore), and zeroes `alloc[170..172]` plus the candidate counter at `DWORD[346]`. This drain-restore cycle ensures that only the best split's candidate set survives into the next iteration, while prior speculative nodes are returned to the arena.
 

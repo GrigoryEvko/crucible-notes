@@ -25,7 +25,7 @@ The 16-byte ELF identification array carries both standard ELF metadata and NVID
 
 | Offset | Field | Device ELF (64-bit) | Device ELF (32-bit) | Notes |
 |---|---|---|---|---|
-| 0--3 | `EI_MAG` | `7F 45 4C 46` | `7F 45 4C 46` | Standard ELF magic |
+| 0–3 | `EI_MAG` | `7F 45 4C 46` | `7F 45 4C 46` | Standard ELF magic |
 | 4 | `EI_CLASS` | `02` (ELFCLASS64) | `01` (ELFCLASS32) | Set from `a2` parameter: `(a2 != 0) + 1` |
 | 5 | `EI_DATA` | `01` (little-endian) | `01` (little-endian) | Hardcoded via `*(_WORD *)(v17 + 5) = 257` (0x0101) |
 | 6 | `EI_VERSION` | `01` (EV_CURRENT) | `01` (EV_CURRENT) | Upper byte of the 0x0101 word |
@@ -176,7 +176,7 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 | `0x2000` (bit 13) | byte 100 | `flag_bit13` — no confirmed CLI source observed in `main`'s bit assembly |
 | `0x4000` (bit 14) | byte 91 | `optimize_data_layout` — `--optimize-data-layout` (`byte_2A5F2A8`) |
 | `0x8000` (bit 15) | byte 101 | `is_device_elf` — triggers OSABI 0x41 path; sourced from `byte_2A5F224` (sm > 72 detector) |
-| `0x70000` (bits 16--18) | dword at offset 68 | `link_mode` / cached `e_flags` (stored as `a9 & 0x70000`) |
+| `0x70000` (bits 16–18) | dword at offset 68 | `link_mode` / cached `e_flags` (stored as `a9 & 0x70000`) |
 | `0x80000` (bit 19) | dword at offset 76 | `relocatable_link` — forced on when `a10` is set or `a9 & 0x180000` (mercury / forced-relocatable path) |
 | `0x100000` (bit 20) | — | `mercury_forced_relocatable` — `byte_2A5F222` (mercury mode); also forces relocatable path |
 | `0x2000000` (bit 25) | — | `--enable-extended-smem` (`byte_2A5F1FD`) — distinct CLI option from the bit-12 `--disable-smem-reservation`; raw in `elfw+76` only, no decomposed byte |
@@ -191,7 +191,7 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 |---|---|---|---|
 | 0 | 4 | `elf_magic` | `0x464C457F` — the `\x7fELF` magic, stored in native byte order |
 | 4 | 1 | `ei_class` | `(is_64bit != 0) + 1` — `1` for Elf32, `2` for Elf64 |
-| 5--6 | 2 | `ei_data_version` | `0x0101` — ELFDATA2LSB + EV_CURRENT |
+| 5–6 | 2 | `ei_data_version` | `0x0101` — ELFDATA2LSB + EV_CURRENT |
 | 7 | 1 | `ei_osabi` | `0x41` (device) or `0x33` (32-bit) |
 | 8 | 1 | `ei_abiversion` | `a3` parameter |
 | 16 | 2 | `e_type` | ELF type (1, 2, or 0xFF00) |
@@ -205,12 +205,12 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 | 76 | 4 | `merge_flags` | Full `a9` parameter (or `a9 \| 0x80000` if relocatable) |
 | 80 | 1 | `debug_flag` | `a6` parameter |
 | 83 | 1 | `has_shstrtab` | `1` if section[42] (shstrndx stored) != 0 |
-| 84--100 | 17 | `flag_booleans` | Individual boolean flags extracted from merge_flags |
+| 84–100 | 17 | `flag_booleans` | Individual boolean flags extracted from merge_flags |
 | 101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` |
 | 108 | 32 | `tkinfo_buffer` | Initialized via `sub_43E490(offset, 1000)` |
 | 140 | 32 | `cuinfo_buffer` | Initialized via `sub_43E490(offset, 2000)` |
 | 192 | 8 | `string_buffer` | Program header name buffer (set in `sub_443730`) |
-| 200--210 | varies | `phdr_offsets` | Program header string offsets |
+| 200–210 | varies | `phdr_offsets` | Program header string offsets |
 | 288 | 8 | `section_hash_pos` | Hash table for section lookup by name (positive indices) |
 | 296 | 8 | `section_hash_neg` | Hash table for section lookup (negative indices) |
 | 304 | 4 | `shstrtab_count` | Count of section name string table entries |
@@ -221,12 +221,12 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 | 352 | 8 | `neg_sections` | Sorted-array of sections (negative index) |
 | 360 | 8 | `section_data` | Array of section data records |
 | 368 | 8 | `section_order` | Array mapping virtual indices to physical |
-| 376--408 | varies | `sym_tables` | Symbol table management structures |
+| 376–408 | varies | `sym_tables` | Symbol table management structures |
 | 480 | 8 | `file_list` | Linked list of input file names |
 | 488 | 8 | `arch_state` | Pointer to architecture-specific state (from `sub_45AC50`/`sub_459640`) |
 | 496 | 8 | `entry_hash` | Hash table for entry-point symbols |
 | 512 | 8 | `input_files` | Input file tracking for verbose output |
-| 520--576 | varies | `sorted_arrays` | Six sorted-arrays for section/symbol management |
+| 520–576 | varies | `sorted_arrays` | Six sorted-arrays for section/symbol management |
 | 608 | 8 | `arena_ptr` | Owning memory arena (if `a9 & 0x400`) |
 | 616 | 8 | `arena_handle` | Arena handle from `sub_45CAE0` |
 | 624 | 4 | `option_flags` | Option parser result from `sub_42F8B0()` |
@@ -258,7 +258,7 @@ elfw_create(
 
 3. **ELF header setup**: Writes magic bytes, class, data encoding, OSABI, ABI version, machine type.
 
-4. **Flag decomposition**: Extracts individual boolean flags from `a9` into the flag bytes at offsets 84--100.
+4. **Flag decomposition**: Extracts individual boolean flags from `a9` into the flag bytes at offsets 84–100.
 
 5. **Architecture state**: Calls `sub_45AC50` (for relocatable) or `sub_459640` (for executable) to initialize architecture-specific state. Fatal error "couldn't initialize arch state" if this fails.
 
