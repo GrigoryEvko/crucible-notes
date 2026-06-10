@@ -2,14 +2,14 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas instruction scheduler uses a static hardware performance model to estimate instruction latencies, functional unit occupancy, and pipeline conflicts. The model is architecture-parameterized: a family of 15+ profile-builder functions at 0x8E7300–0x8E9DC0 construct per-SM latency/throughput tables consumed by the scheduling engine. A separate 85 KB function (`sub_89FBA0`, SetOpcodeLatencies) assigns per-opcode scheduling classes that index into these tables. The combination produces a cost model that drives stall-count computation, priority scoring, and dual-issue pairing decisions.
+The ptxas instruction scheduler uses a static hardware performance model to estimate instruction latencies, functional unit occupancy, and pipeline conflicts. The model is architecture-parameterized: a static per-class descriptor table in `.rodata` (at `0x2297C00`) seeds it, and a family of table-construction helpers at `0x8E7300`–`0x8E9DC0` (generic grow-and-copy record appenders, fed per-architecture class data by their callers) assemble the runtime tables consumed by the scheduling engine. A separate 85 KB function (`sub_89FBA0`, SetOpcodeLatencies) assigns per-opcode scheduling classes that index into these tables. The combination produces a cost model that drives stall-count computation, priority scoring, and dual-issue pairing decisions.
 
 | | |
 |---|---|
 | **Per-opcode classifier** | `sub_89FBA0` (85 KB) — assigns scheduling class per Ori opcode |
 | **HW profile builder** | `sub_8E5CA0` (20 KB) — assembles scheduling control word tables |
 | **Warp profile** | `sub_8E4400` (3.3 KB) — maps SM ID to warp/dispatch parameters |
-| **SM-specific tables** | `sub_8E7300`--`sub_8E97B0` — 15 architecture-specific builders |
+| **Table-construction helpers** | `sub_8E7300`--`sub_8E97B0` — generic record appenders (caller supplies per-arch data) |
 | **Latency query** | `sub_693BC0` (22 lines) — memory space classification |
 | **Long-latency check** | `sub_8CCF80` (2.3 KB) — returns true if latency > 19 |
 | **Resource model** | `sub_A08A00` (345 lines) — per-instruction FU cost computation |
@@ -401,7 +401,7 @@ Records are polymorphic — the type code at offset +0 selects the interpretatio
 | 1 | — | `sub_8E5CA0` | Root container (wraps entire HW table) |
 | 23 | — | `sub_8E6B40` | Standard scheduling entry (latency + throughput + dual-issue) |
 | 33 | `'!'` | `sub_8E5740` | Category header (begins a named section with string list) |
-| 44 | `','` | `sub_8E8480` et al. | SM-specific table entry (per-architecture class data) |
+| 44 | `','` | `sub_8E8480` (generic appender) | Class-data table entry — caller supplies the per-architecture content |
 | 45 | `'-'` | `sub_8E5CA0` | Barrier section header (links 128-byte barrier table) |
 | 49 | `'1'` | `sub_8E5530` | Dimension entries (contains 12-byte sub-records) |
 | 53 | `'5'` | `sub_8E7110` | Scoreboard entry (dependency tracking, data\_size=36) |
@@ -417,31 +417,33 @@ Records are polymorphic — the type code at offset +0 selects the interpretatio
 
 Scheduling class 2 (predicate operations with flag clear — PSETP, PLOP3) provides a clean example because it uses the simplest record type (23, standard entry) and its pipe assignment is unambiguous. Below we decode both the 72-byte HW latency table entry from `sm_8x_shared` and its matching 40-byte dependency rule from the `sm_80` table.
 
-**72-byte HW latency entry** (at `0x2297C00 + 0 * 72 = 0x2297C00`):
+**72-byte class descriptor** (at `0x2297C00 + 0 * 72 = 0x2297C00`). The exact on-disk
+layout — verified by extracting all 256 records from `ptxas_rodata.bin` — is a DWORD
+class id, a DWORD pad, two 8-byte pipe-mask vectors, then twelve DWORD params (total
+`4 + 4 + 8 + 8 + 12·4 = 72`):
 
 ```text
 Offset  Bytes                       Field           Decoded
 ------  -----                       -----           -------
- 0..1   02 00                       unit_id         2 (predicate ops, flag-clear)
- 2..3   00 00                       reserved        0
- 4..11  03 03 FF FF FF FF FF FF     pipe_masks_a    pipes 0+1 active; pipes 2–7 = 0xFF (unused)
-12..19  00 00 FF FF FF FF 00 00     pipe_masks_b    pipes 0+1 not dual-issue eligible;
-                                                    pipes 2–5 = 0xFF (N/A); pipes 6–7 = 0
-20..31  00 04 00 01 00 07 03 02     sched_params    [0]=0: no special flag
-        01 02 03 00                                 [1]=4: throughput class (1/4 rate)
-                                                    [2]=0: no read hazard override
-                                                    [3]=1: write-after-read gap = 1
-                                                    [4]=0: no scoreboard class
-                                                    [5]=7: max stall cycles
-                                                    [6]=3: barrier class
-                                                    [7]=2: barrier stall weight
-                                                    [8]=1: minimum issue distance
-                                                    [9]=2: pipe contention group
-                                                    [10]=3: resource class
-                                                    [11]=0: reserved
+ 0..3   02 00 00 00                 class_id        2 (predicate ops, flag-clear)
+ 4..7   00 00 00 00                 reserved        0
+ 8..15  03 03 FF FF FF FF FF FF     pipe_masks_a    pipes 0+1 = 0x03 eligible; pipes 2–7 = 0xFF (N/A)
+16..23  00 00 FF FF FF FF 00 00     pipe_masks_b    dual-issue eligibility vector
+24..71  12 x DWORD                  sched_params    p0=0   (flags)
+                                                    p1=4   throughput class (1/4 rate)
+                                                    p2=0
+                                                    p3=1
+                                                    p4=0
+                                                    p5=7   max stall cycles
+                                                    p6=3
+                                                    p7=2   class id (self-reference, == +0)
+                                                    p8=1
+                                                    p9=2
+                                                    p10=3
+                                                    p11=0
 ```
 
-The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set). Pipes 2–7 carry `0xFF` = "not applicable." The `pipe_masks_b` zero entries for pipes 0–1 indicate this class is **not** eligible for dual-issue pairing on those pipes. `sched_params[5]=7` sets the maximum number of stall cycles the scheduler will model before it gives up and inserts a barrier.
+The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set); pipes 2–7 carry `0xFF` = "not applicable." `pipe_masks_b` is the dual-issue eligibility vector. Of the twelve params, only three are named with confidence across the whole 256-entry table: **p1** is the throughput class (observed values `{0,1,2,4,132}`), **p5** is the max-stall cycle count (`{0..7}`, dominated by 3 and 7), and **p7** is the class id repeated as a self-reference (it equals `class_id` at +0 for every record). The remaining params are emitted as observed columns; their exact semantics are not asserted. The full 256-class dump (id 2..771) is in the local archive at `decoded/ptxas-scheduling/sched_class_table.txt`.
 
 **40-byte dependency rule** (from `sm_80` table, entry 0, matching unit\_id 2):
 
@@ -536,7 +538,71 @@ The complete path from "I have an instruction" to "its latency in cycles on this
 //   is_long_latency = (resolve_latency(instr, sched_ctx) > 19)
 ```
 
-The pointer chain in Step 2 (`sched_ctx+8` -> `+1584` -> `+56`) is the same indirection used by `sub_8CCF80` at its opening line: `v3 = *(*(*(a1+8) + 1584))`. The 96-byte record stride in Step 3 matches the `96LL * v15` expression in `sub_8E7300` line 98 (`v17 = (__m128i *)(v13 + 96LL * v15)`). The per-opcode table at oracle+744 in Step 4 is a 322-entry DWORD array (one slot per Ori opcode), populated during profile construction.
+The pointer chain in Step 2 (`sched_ctx+8` -> `+1584` -> `+56`) is the same indirection used by `sub_8CCF80` at its opening line: `v3 = *(*(*(a1+8) + 1584))`. The 96-byte record stride in Step 3 matches the `96LL * v15` expression in `sub_8E7300` line 98 (`v17 = (__m128i *)(v13 + 96LL * v15)`). The per-opcode table at oracle+744 in Step 4 is a 355-entry DWORD array (one slot per Ori opcode), populated during profile construction by the oracle constructor described next.
+
+#### The Per-Opcode Scalar Latency Oracle (`sub_738E20`)
+
+The `oracle+744` array that Step 4 reads is not a static table — it is filled at
+construction time by the per-SM-family oracle constructor. `sub_738E20` is the
+constructor for the **sm\_9x / Blackwell** family (its object is 4184 bytes). The
+final loop of the constructor walks Ori opcodes `0..354` and writes each opcode's
+latency into `*(this + 4*opcode + 744)`. The assignment is a plain `switch` on the
+opcode id, transcribed verbatim from the decompiled body — this is the actual
+latency model ptxas's own OCG scheduler consults:
+
+```c
+// sub_738E20 tail loop — fills the oracle+744 latency array, opcode 0..354.
+// prop = *(config+776)  is the per-opcode property byte vector.
+for (int op = 0; op < 355; ++op) {
+    uint8_t p = prop[op];
+    int lat;
+    switch (op) {
+        case 16:                                          lat = 300; break; // long global-memory
+        case 17: case 42: case 53: case 55:
+        case 91: case 183: case 195:                      lat = 24;  break; // SFU / slow-MIO
+        case 38: case 60: case 61: case 63: case 68:
+        case 78: case 79: case 106: case 162: case 180:
+        case 182: case 192: case 194: case 199:
+        case 215: case 221:                               lat = 13;  break; // medium / control / MIO
+        case 88: case 89:                                 lat = 30;  break; // shared / atomic
+        case 223: case 228:                               lat = 300; break; // long memory
+        default:
+            lat = (p & 0x40) ? oracle->default_mem        // = 300 (oracle+92 seed)
+                             : 6;                          // default ALU baseline
+    }
+    oracle->lat[op] = lat;                                // this + 4*op + 744
+    if (p & 0x02)                                          // decoupled / scoreboard-tracked
+        oracle->scoreboard[op] = 5;                       // this + 4*op + 2212
+}
+```
+
+The model collapses to **five bands**:
+
+| Cycles | Band | Opcode ids (index into `oracle+744`) |
+|---|---|---|
+| 6   | default ALU (non-memory) | every opcode not listed below, property bit `0x40` clear |
+| 13  | medium / control / MIO | 38, 60, 61, 63, 68, 78, 79, 106, 162, 180, 182, 192, 194, 199, 215, 221 |
+| 24  | SFU / slow-MIO | 17, 42, 53, 55, 91, 183, 195 |
+| 30  | shared / atomic | 88, 89 |
+| 300 | long global-memory miss | 16, 223, 228, and any opcode with property bit `0x40` set |
+
+The default seed at `oracle+92` is loaded from `xmmword_2029FE0 = {300,0,0,0}`, so an
+unclassified *memory* opcode falls through to 300 cycles. Two of these bands are
+architecturally-stable fixed points: the **6-cycle ALU baseline** (FXU
+register-to-register, unchanged Volta→Hopper) and the **300-cycle global-memory miss**
+(the unresolved-space scoreboard wait). The 13 / 24 / 30 bands are ptxas-internal OCG
+scalars and need not equal any single hazard-matrix cell.
+
+This scalar form is *all* that ships. ptxas does **not** carry the dense
+producer×consumer hazard matrix (the per-pipe RAW/WAW/WAR cycle tables): that richer
+model is a build-time scheduling DSL compiled into native code, so the byte-level
+matrices appear in no shipped binary. What is recoverable — and faithful to how ptxas
+actually schedules — is exactly this five-band scalar oracle plus the 256-class
+descriptor table at `0x2297C00`. The opcode→mnemonic naming must be resolved through
+the [Ori opcode table](../ir/instructions.md): the index space here is the Ori opcode
+id (`*(instr+72) & 0xFFFFCFFF`), **not** the SASS scheduling-class id (2..771) used by
+the descriptor table. The extracted oracle is archived locally at
+`decoded/ptxas-scheduling/scalar_latency_oracle.txt`.
 
 #### Sub-Record Formats in the Growable Buffer (+80)
 
@@ -570,9 +636,10 @@ Sub-record layout (12 bytes):
   +8   DWORD   node_child        BST node child pointer (low 32 bits of node+24)
 ```
 
-**Type 44 (',') — SM-specific class descriptor (16 bytes + packed bitmasks):**
+**Type 44 (',') — class descriptor (16 bytes + packed bitmasks):**
 
-Created by `sub_8E8480` and other SM-specific builders, followed by a call to `sub_8E3AD0` which appends packed bitmask DWORDs:
+Created by the generic appender `sub_8E8480` (and siblings) from caller-supplied class
+data, followed by a call to `sub_8E3AD0` which appends packed bitmask DWORDs:
 
 ```text
 Initial 16-byte descriptor:
@@ -602,31 +669,32 @@ Followed by bitmask DWORDs (4 bytes each, one per 8 scheduling classes):
 
 After all records are appended, the function computes the total serialized size (with 16-byte alignment padding per data block), allocates the output buffer, and writes a 32-byte header per record into the linear output at `context+104`.
 
-### Architecture Dispatch Table
+### Table-Construction Helpers (`sub_8E7300`–`sub_8E97B0`)
 
-| Address | SM | Architecture | Table size | Notes |
-|---|---|---|---|---|
-| `sub_8E7300` | sm\_70 | Volta | 3.3 KB | First Turing-era table format |
-| `sub_8E7540` | sm\_72 | Xavier | 2.9 KB | Automotive Volta variant |
-| `sub_8E7720` | sm\_75 | Turing | 3.5 KB | Added TensorFloat-32 |
-| `sub_8E7940` | sm\_80 (base) | Ampere base | 2.9 KB | Shared base for sm\_80/86/87 |
-| `sub_8E7B40` | sm\_80 | Ampere | 3.3 KB | Full Ampere with async copy |
-| `sub_8E7D80` | sm\_86 | GA10x | 4.4 KB | Consumer Ampere |
-| `sub_8E8070` | sm\_87 | Orin | 3.5 KB | Automotive Ampere |
-| `sub_8E8280` | sm\_89 | Ada Lovelace | 3.1 KB | Added FP8 tensor ops |
-| `sub_8E8480` | sm\_90 | Hopper | 5.2 KB | DPX, WGMMA, TMA |
-| `sub_8E8780` | sm\_90a | Hopper accel. | 4.6 KB | WGMMA async extensions |
-| `sub_8E8A90` | sm\_100 | Blackwell DC | 3.0 KB | 5th-gen tensor, TCGEN05 |
-| `sub_8E8CB0` | sm\_100 (short) | Blackwell DC | 949 B | Supplementary table |
-| `sub_8E8DB0` | sm\_103 | Blackwell Ultra | 1.7 KB | GB300 extensions |
-| `sub_8E8F60` | sm\_103 (short) | Blackwell Ultra | 618 B | Supplementary table |
-| `sub_8E9000` | sm\_120 | RTX 50xx | 2.9 KB | Consumer Blackwell |
-| `sub_8E92E0` | sm\_120 (ext) | RTX 50xx | 5.5 KB | Extended consumer table |
-| `sub_8E97B0` | universal | Fallback | 8.8 KB | Default for unknown SM |
+The cluster of functions at `0x8E7300`–`0x8E97B0` is the table-construction family
+invoked during scheduler init. An earlier draft of this page labelled each address
+with a specific SM (`sub_8E7720` = "sm\_75 builder, 3.5 KB", `sub_8E8480` = "sm\_90
+builder, 5.2 KB", …). **That per-SM attribution and the table-size column were an
+inference and do not hold up against the decompiles.** Reading the two that were
+spot-checked:
 
-sm\_90 (Hopper) has the second-largest combined table (5.2 + 4.6 KB including sm\_90a) reflecting the complexity of WGMMA, DPX, and TMA scheduling. sm\_120 extended (5.5 KB) is the single largest individual table, accommodating the consumer Blackwell feature set.
+- `sub_8E7720` and `sub_8E8480` are **generic grow-and-copy record appenders**, not
+  per-architecture builders. Each reads the growable array's `{base, count, capacity}`
+  triple (`a1+56 / +64 / +68`), grows it by 1.5× when full (`count + ((count+1)>>1)`),
+  copies the existing 96-byte records (three `_mm_loadu_si128` loads each, cloning the
+  `+48` string field via `sub_714160`), and appends one new record. The only thing that
+  differs is the record *type code* and the data the **caller** supplies: `sub_8E7720`
+  stamps type `16` and copies the caller's `int`-pair (`a2[0]`, `a2[1]`); `sub_8E8480`
+  stamps the `','` type-44 marker and `class_flags = 2`. Neither contains any SM
+  constant, latency value, or intrinsic table size.
 
-The "short" supplementary tables (sub\_8E8CB0 for sm\_100, sub\_8E8F60 for sm\_103) add entries for architecture-specific instructions not covered by the base table — typically new tensor core variants and collective operations.
+So these addresses are best understood as **shared append primitives** parameterized
+entirely by their callers; the per-SM table sizes previously listed were derived from
+inference, not from the function bodies, and have been removed. The actual
+per-architecture content enters through the *callers* of these helpers (which pass the
+SM-specific class data) and through the static base table at `0x2297C00` documented
+above. Recovering a verified address-to-SM map would require tracing each caller's data
+argument — that work is not yet done, and the page no longer claims it.
 
 ## Warp-Level Hardware Profile (sub\_8E4400)
 
@@ -1324,23 +1392,23 @@ Type 19 likely corresponds to BF16 or FP8, which require different pipeline rout
 | `sub_8E6D40` | 2.9 KB | EmitBarrierEntry — barrier/sync entry | HIGH |
 | `sub_8E6F20` | 2.9 KB | EmitWaitEntry — wait dependency entry | HIGH |
 | `sub_8E7110` | 2.9 KB | EmitScoreboardEntry — scoreboard entry | HIGH |
-| `sub_8E7300` | 3.3 KB | HWTable\_sm70 — Volta latency table | CERTAIN |
-| `sub_8E7540` | 2.9 KB | HWTable\_sm72 — Xavier latency table | CERTAIN |
-| `sub_8E7720` | 3.5 KB | HWTable\_sm75 — Turing latency table | CERTAIN |
-| `sub_8E7940` | 2.9 KB | HWTable\_sm80\_base — Ampere base table | CERTAIN |
-| `sub_8E7B40` | 3.3 KB | HWTable\_sm80 — Ampere full table | CERTAIN |
-| `sub_8E7D80` | 4.4 KB | HWTable\_sm86 — GA10x table | CERTAIN |
-| `sub_8E8070` | 3.5 KB | HWTable\_sm87 — Orin table | CERTAIN |
-| `sub_8E8280` | 3.1 KB | HWTable\_sm89 — Ada Lovelace table | CERTAIN |
-| `sub_8E8480` | 5.2 KB | HWTable\_sm90 — Hopper table | CERTAIN |
-| `sub_8E8780` | 4.6 KB | HWTable\_sm90a — Hopper accelerated table | CERTAIN |
-| `sub_8E8A90` | 3.0 KB | HWTable\_sm100 — Blackwell DC table | CERTAIN |
-| `sub_8E8CB0` | 949 B | HWTable\_sm100\_short — Blackwell supplementary | CERTAIN |
-| `sub_8E8DB0` | 1.7 KB | HWTable\_sm103 — Blackwell Ultra table | CERTAIN |
-| `sub_8E8F60` | 618 B | HWTable\_sm103\_short — BU supplementary | CERTAIN |
-| `sub_8E9000` | 2.9 KB | HWTable\_sm120 — RTX 50xx table | CERTAIN |
-| `sub_8E92E0` | 5.5 KB | HWTable\_sm120\_ext — RTX 50xx extended | CERTAIN |
-| `sub_8E97B0` | 8.8 KB | HWTable\_universal — fallback table | CERTAIN |
+| `sub_8E7300` | 3.3 KB | Table-construction appender helper (caller-fed class data) | LOW |
+| `sub_8E7540` | 2.9 KB | Table-construction appender helper | LOW |
+| `sub_8E7720` | 3.5 KB | Generic grow-and-copy record appender (type 16) — **verified** | HIGH |
+| `sub_8E7940` | 2.9 KB | Table-construction appender helper | LOW |
+| `sub_8E7B40` | 3.3 KB | Table-construction appender helper | LOW |
+| `sub_8E7D80` | 4.4 KB | Table-construction appender helper | LOW |
+| `sub_8E8070` | 3.5 KB | Table-construction appender helper | LOW |
+| `sub_8E8280` | 3.1 KB | Table-construction appender helper | LOW |
+| `sub_8E8480` | 5.2 KB | Generic grow-and-copy record appender (type 44 `','`) — **verified** | HIGH |
+| `sub_8E8780` | 4.6 KB | Table-construction appender helper | LOW |
+| `sub_8E8A90` | 3.0 KB | Table-construction appender helper | LOW |
+| `sub_8E8CB0` | 949 B | Table-construction appender helper (short) | LOW |
+| `sub_8E8DB0` | 1.7 KB | Table-construction appender helper | LOW |
+| `sub_8E8F60` | 618 B | Table-construction appender helper (short) | LOW |
+| `sub_8E9000` | 2.9 KB | Table-construction appender helper | LOW |
+| `sub_8E92E0` | 5.5 KB | Table-construction appender helper | LOW |
+| `sub_8E97B0` | 8.8 KB | Table-construction appender helper (fallback path) | LOW |
 | `sub_8E9DC0` | 4.8 KB | EmitLatencyEntry — HW table entry helper | HIGH |
 | `sub_8EFA10` | 18 KB | EmitScheduleReport — statistics output | HIGH |
 | `sub_8F0CD0` | 24 B | MapFUClassID — (opcode, name) to class | HIGH |
