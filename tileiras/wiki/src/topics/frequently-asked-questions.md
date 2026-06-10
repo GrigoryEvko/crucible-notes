@@ -251,7 +251,7 @@ publicly-distributed CUDA 13.1 tileiras binary.
 
 ### How can I contribute?
 
-The wiki source lives at github.com/GrigoryEvko/nvopen-tools under
+The wiki source lives at github.com/GrigoryEvko/crucible-notes under
 `tileiras/wiki/`. Issues and pull requests are welcome. Corrections that
 challenge a specific claim are most useful when they cite either a
 reproducible behavior of the binary or a binary offset.

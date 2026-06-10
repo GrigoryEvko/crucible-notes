@@ -54,7 +54,7 @@ on-disk blob — no live snapshot required.
 
 The full mechanics, pool contents, and the toolchain-wide cipher map are
 documented on the ptxas side:
-[ptxas: String-Pool Encryption](https://gh.evko.io/nvopen-tools/ptxas/reference/string-pool-cipher.html).
+[ptxas: String-Pool Encryption](https://gh.evko.io/crucible-notes/ptxas/reference/string-pool-cipher.html).
 
 ## Cross-References
 

@@ -81,7 +81,7 @@ schemes; ptxas, nvlink, and nvdisasm use a stronger LCG ⊕ S-box ⊕ feedback
 stream cipher on the data that would actually enable reimplementation (the
 PTX→SASS lowering recipes and the SASS binary encoding). The full cipher map is
 on the ptxas side:
-[ptxas: String-Pool Encryption](https://gh.evko.io/nvopen-tools/ptxas/reference/string-pool-cipher.html).
+[ptxas: String-Pool Encryption](https://gh.evko.io/crucible-notes/ptxas/reference/string-pool-cipher.html).
 
 ## Cross-References
 

@@ -22,7 +22,7 @@ import random
 from statistics import mean, stdev
 
 # Paths
-CICC_DIR = Path("/home/grigory/nvopen-tools/cicc")
+CICC_DIR = Path("/home/grigory/crucible-notes/cicc")
 CALLGRAPH_FILE = CICC_DIR / "databases" / "cicc_callgraph.json"
 ANALYSES_DIR = CICC_DIR / "foundation" / "analyses"
 OUTPUT_DIR = ANALYSES_DIR
@@ -109,7 +109,7 @@ class CallgraphValidator:
 
         # Load real module classification from function_to_module_map
         try:
-            module_map_file = Path("/home/grigory/nvopen-tools/cicc/foundation/taxonomy/modules/function_to_module_map.json")
+            module_map_file = Path("/home/grigory/crucible-notes/cicc/foundation/taxonomy/modules/function_to_module_map.json")
             if module_map_file.exists():
                 print(f"Loading module classification from {module_map_file}...")
                 with open(module_map_file, "r") as f:

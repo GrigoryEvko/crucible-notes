@@ -107,9 +107,9 @@ cheaper position-dependent XOR.
 | Binary | Concealed data | Scheme |
 |---|---|---|
 | **ptxas** | PTX-macro pool | LCG ⊕ S-box ⊕ feedback, key `0x5389A4F8` |
-| **nvlink** | same PTX-macro pool (content-identical) | same cipher/key — see [nvlink: String-Pool Encryption](https://gh.evko.io/nvopen-tools/nvlink/reference/string-pool-cipher.html) |
+| **nvlink** | same PTX-macro pool (content-identical) | same cipher/key — see [nvlink: String-Pool Encryption](https://gh.evko.io/crucible-notes/nvlink/reference/string-pool-cipher.html) |
 | **nvdisasm** | per-arch SASS ISA description tables (~68 MB plaintext) | same stream cipher (per-arch key) wrapping an LZ4 block |
-| **cicc** | LLVM/Clang name tables + PTX mnemonics | position-XOR `plain[i] = cipher[i] ^ ((3·i) & 0xFF)` — see [cicc: Encrypted Data Tables](https://gh.evko.io/nvopen-tools/cicc/reference/encrypted-data-tables.html) |
+| **cicc** | LLVM/Clang name tables + PTX mnemonics | position-XOR `plain[i] = cipher[i] ^ ((3·i) & 0xFF)` — see [cicc: Encrypted Data Tables](https://gh.evko.io/crucible-notes/cicc/reference/encrypted-data-tables.html) |
 
 The protection effort tracks reimplementation value: the strong stream cipher
 guards exactly the two assets NVIDIA has never published — the PTX→SASS lowering

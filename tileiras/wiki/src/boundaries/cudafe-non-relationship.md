@@ -25,7 +25,7 @@ cudafe++ is the CUDA C++ source-to-source translator. It accepts a `.cu` transla
 
 ## Redirect
 
-This wiki documents tileiras only. For cudafe++ documentation — its EDG frontend internals, the 5-pass IL finalization, the 85-entry-kind IL graph, the `.int.c` emission format, the CUDA execution-space bitfield, lambda wrapper template injection, the 276-flag CLI surface, and the 3,795-entry diagnostic table — see the separate cudafe++ wiki at `nvopen-tools/cudafe++/wiki/`.
+This wiki documents tileiras only. For cudafe++ documentation — its EDG frontend internals, the 5-pass IL finalization, the 85-entry-kind IL graph, the `.int.c` emission format, the CUDA execution-space bitfield, lambda wrapper template injection, the 276-flag CLI surface, and the 3,795-entry diagnostic table — see the separate cudafe++ wiki at `crucible-notes/cudafe++/wiki/`.
 
 ## Boundary table
 

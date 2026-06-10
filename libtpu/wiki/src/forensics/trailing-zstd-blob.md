@@ -232,7 +232,7 @@ The hardware-constants bundle one might expect such a blob to decompress into is
 
 - Per-codename hardware constants and the `chip_parts` binarypb bundle are covered under [`targets/chip-parts-binarypb.md`](../targets/chip-parts-binarypb.md) and [`targets/per-codename-hw-constants.md`](../targets/per-codename-hw-constants.md). They are not zstd-compressed and not gated on any blob recovery.
 
-> **NOTE —** the generalizable lesson for the rest of the corpus: any binary that statically links libzstd (several do across nvopen-tools) will produce the same false-positive carve wherever a `ZSTD_writeFrameHeader` / `ZSTD_compressEnd_*` / `ZSTD_*FrameHeader*` function builds a frame via a `mov` immediate. Treat a zstd magic hit whose anchor resolves inside `.text` as a code immediate until a stored frame is proven by a containing *data* section and a valid (window-log ≤ 31, block-size ≤ 128 KiB) header.
+> **NOTE —** the generalizable lesson for the rest of the corpus: any binary that statically links libzstd (several do across crucible-notes) will produce the same false-positive carve wherever a `ZSTD_writeFrameHeader` / `ZSTD_compressEnd_*` / `ZSTD_*FrameHeader*` function builds a frame via a `mov` immediate. Treat a zstd magic hit whose anchor resolves inside `.text` as a code immediate until a stored frame is proven by a containing *data* section and a valid (window-log ≤ 31, block-size ≤ 128 KiB) header.
 
 ---
 
