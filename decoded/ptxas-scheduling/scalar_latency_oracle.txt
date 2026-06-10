@@ -1,0 +1,36 @@
+ptxas per-Ori-opcode scalar latency oracle  —  binary-derived (CUDA 13.0.88)
+============================================================================
+Constructor : sub_738E20  (sm_9x / Blackwell oracle subclass, object size 4184)
+Query       : sub_8BF3A0  ->  *(oracle + 4*opcode + 744)
+Default seed: oracle+92 = xmmword_2029FE0 = {300,0,0,0}
+Loop        : opcode index 0..354 (355 slots), switch on the Ori opcode id.
+
+This is the flattened scalar latency model ptxas's own OCG scheduler consults.
+It is NOT a producer x consumer hazard matrix — that richer form is a build-time
+DSL that is compiled away and ships in no binary. The bands below are transcribed
+verbatim from the decompiled switch body.
+
+band  cycles  meaning                         Ori opcode ids (index into oracle+744)
+----  ------  ------------------------------  ---------------------------------------
+  A     300   long global-memory miss         16, 223, 228
+  B      24   SFU / slow-MIO                   17, 42, 53, 55, 91, 183, 195
+  C      13   medium / control / MIO          38, 60, 61, 63, 68, 78, 79, 106,
+                                               162, 180, 182, 192, 194, 199, 215, 221
+  D      30   shared / atomic                  88, 89
+  -       6   default ALU (non-memory)         every other opcode with property bit 0x40 clear
+  -     300   default memory                   every other opcode with property bit 0x40 set
+
+Side table:
+  oracle+2212[opcode] = 5  when the opcode's property byte (config+776) bit 0x02
+  (decoupled / scoreboard-tracked) is set — the scoreboard wait seed.
+
+Anchor cross-checks (architecturally stable, Volta -> Hopper):
+  - default ALU baseline = 6   (FXU register-to-register)
+  - long memory miss     = 300 (unresolved-space global load)
+These two anchors are the load-bearing fixed points; the 13 / 24 / 30 bands are
+ptxas-internal OCG scalars and need not equal any single matrix cell.
+
+Naming note: the index space is the Ori opcode id (the value ptxas masks out of
+instr+72 as *(instr+72) & 0xFFFFCFFF), NOT the SASS scheduling class. Mnemonics
+should be resolved only via the Ori opcode table; do not conflate these ids with
+the per-class scheduling ids (2..771) in sched_class_table.txt.

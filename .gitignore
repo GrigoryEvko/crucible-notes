@@ -134,5 +134,11 @@ some_docs/
 /cudafe++/cudafe++
 /tileiras/tileiras
 
-# Deciphered/decoded blobs (local reference archive — large, not for publication)
-/decoded/
+# decoded/ — publish only our decoder tools + extracted facts. NVIDIA's verbatim
+# data tables (macro pools, SASS-ISA grammar, name pools) and third-party material
+# stay local: 1201(f) covers decrypting/studying, not redistributing NVIDIA's
+# copyrighted expression.
+/decoded/*
+!/decoded/MANIFEST.md
+!/decoded/tools
+!/decoded/ptxas-scheduling
