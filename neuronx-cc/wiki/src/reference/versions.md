@@ -14,7 +14,7 @@ Reverse-engineering claims are only as good as their version pin. Every address,
 | **Version string** | `2.24.5133.0+58f8de22` |
 | **Wheels analyzed** | `cp310-cp310`, `cp311-cp311`, `cp312-cp312` (manylinux x86_64) |
 | **Local-version tag** | `58f8de22` — the source-revision identifier carried as the PEP 440 local segment |
-| **Primary tool image** | the ~230 MB multi-call ELF (`hlo-opt` / `hlo2penguin` / `hlo-neff-wrapper` / `snapshot-unpack` / `xla_infergoldens`) |
+| **Standalone tool ELFs** | five distinct ~230 MB statically-linked tools (`hlo-opt`, `hlo2penguin`, `hlo-neff-wrapper`, `snapshot-unpack`, `xla_infergoldens`) — separate binaries, each hardlinked across the three wheels |
 | **Primary backend library** | `libwalrus.so`, 64,973,024 bytes (cp310/cp311); 64,968,928 bytes (cp312) |
 
 ### Decoding `2.24.5133.0+58f8de22`
@@ -29,7 +29,20 @@ Reverse-engineering claims are only as good as their version pin. Every address,
 
 Three wheels ship, one per CPython ABI. The book draws addresses from the **cp310** artifacts unless a page says otherwise. That is safe because the split is along a clean line:
 
-- **The C++ tool ELFs and `starfish/lib/*.so` are Python-version-independent.** They contain no CPython API and are byte-identical across the three wheels — in the extracted tree the five big tools appear as **hardlinks** (link-count 3), one inode shared by cp310/cp311/cp312. `libwalrus.so` is identical between cp310 and cp311 and differs from cp312 by ~4 KB (a build-stamp-level delta, not a logic change). So any finding read from `libwalrus.so`, `libBIR.so`, the simulators, or the tool ELFs holds for all three wheels.
+- **The C++ binaries are Python-version-independent in their logic, but parity across the three wheels is not uniform — and the distinction matters for citing addresses.** The standalone **tool ELFs** in `bin/` *are* byte-identical across wheels: each is a single inode hardlinked into all three wheel directories (link-count 3), so a finding read from a tool holds verbatim for cp310/cp311/cp312. The **shared libraries** in `lib/` are *not* hardlinked and *not* byte-identical across wheels: `libwalrus.so` is the same *size* on cp310 and cp311 (64,973,024 bytes) but a different SHA-256 (`75cf23f5…` vs `49c63f9e…`), and cp312 is 4,096 bytes smaller (64,968,928). Same size with different bytes on cp310/cp311 indicates a per-wheel build stamp rather than a logic change, but a page must not claim a bit-identity it has not shown. Therefore: addresses on these pages are read from **cp310**; they carry to cp311 only after a per-symbol spot-check, and must be re-confirmed against cp312, where even the size differs.
+
+### Per-binary build identifiers (cp310)
+
+The GNU `NT_GNU_BUILD_ID` is the unambiguous per-binary anchor — independent of the package version label and distinct per wheel where the binary is rebuilt.
+
+| Binary (cp310) | GNU build-id |
+|---|---|
+| `libwalrus.so` | `92b4d331a42d7e80bb839e03218d2b9b0c23c346` |
+| `libBIR.so` | `a9b1ea38c47e579178b179fd445aa8edd593f206` |
+| `libBIRSimulator.so` | `f1c6885f176c0d3c5d3a804b0f0b714ae7814ea6` |
+| `hlo-opt` (tool) | `93dd8bd9bd4c697b` (8-byte) |
+
+The shared-library build-ids differ on cp311/cp312 (the SHA differs); the consolidated cross-wheel build-id table is [Appendix 14.8](../appendix/build-id-table.md) *(planned)*.
 - **The Cython `*.cpython-3xx-*.so` modules are per-ABI.** They embed the CPython C-API for their version and therefore differ in size and layout across cp310/311/312 (e.g. `KernelBuilder` is 14.6 MB on cp310 vs 17.3 MB on cp311). The *logic* is the same Cython source compiled three ways; the symbol and string evidence a page cites from one ABI is present in the others, but a raw offset is ABI-specific. Pages that cite Cython-module offsets state the ABI.
 
 > **QUIRK —** the size ordering of the Cython modules is not monotone in Python version (cp311's `KernelBuilder` is larger than cp312's). This reflects compiler/codegen differences between the CPython toolchains used to build each wheel, not a difference in the compiler's behavior. Treat module size as an artifact property, not a feature signal.

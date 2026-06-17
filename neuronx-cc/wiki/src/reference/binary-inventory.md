@@ -10,7 +10,7 @@ The package root is `neuronxcc/`. Three sub-trees matter: `starfish/` (the C++ c
 
 ## The standalone tool ELFs
 
-These live in `neuronxcc/starfish/bin/` and are forked by the driver as subprocesses. The five largest are **hardlinks to multi-call binaries** — one ~230 MB image whose behavior is selected by `argv[0]`, which is why their sizes are nearly identical and their link counts exceed one.
+These live in `neuronxcc/starfish/bin/` and are forked by the driver as subprocesses. The five largest are **five distinct ~230 MB statically-linked ELFs**, each with its own `main` — *not* one multi-call image. This is verifiable: they have distinct inodes and differing sizes (229–234 MB). They are similar in size because each statically links the same bulk of XLA / MLIR / LLVM. Each tool's link-count of 3 is **cross-wheel** sharing — the file is hardlinked into the cp310, cp311, and cp312 wheel directories — so a given tool is byte-identical across the three wheels, but the five tools are not copies of one another.
 
 | Tool | Size | Role | Documented in |
 |---|---|---|---|
@@ -78,5 +78,5 @@ The Penguin middle-end and the NKI frontend ship as per-Python-version Cython ex
 ## Cross-References
 
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — which of these binaries runs at each stage.
-- [Build & Version Provenance](versions.md) — the multi-call hardlink finding and the cp310/311/312 parity argument.
+- [Build & Version Provenance](versions.md) — the cross-wheel hardlink finding and the cp310/311/312 parity argument.
 - [Symbol & Offset Index](../appendix/symbol-index.md) — per-binary symbol/address lookups *(planned)*.

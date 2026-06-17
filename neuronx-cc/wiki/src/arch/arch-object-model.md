@@ -1,6 +1,6 @@
 # The arch Object Model
 
-> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310/cp311/cp312 wheels, byte-identical). `libwalrus.so` BuildID `92b4d331…`; `libBIR.so` BuildID `a9b1ea38…`. For both, `.text`/`.rodata` VMA equals file offset (`libwalrus` `.text` @ `0x62d660`, `.rodata` @ `0x1c72000`; `libBIR` `.text` @ `0x1820c0`, `.rodata` @ `0x708000`). Other wheels differ; treat every address as version-pinned.*
+> *All symbols and addresses on this page are read from the **cp310** wheel of `neuronx_cc` 2.24.5133.0+58f8de22. `libwalrus.so` BuildID `92b4d331…`; `libBIR.so` BuildID `a9b1ea38…`. The C++ libraries are rebuilt per wheel (cp310 and cp311 share a size but not a SHA; cp312 differs in size), so re-confirm addresses against cp311/cp312 — see [Version Provenance](../reference/versions.md). For both binaries, `.text`/`.rodata` VMA equals file offset (`libwalrus` `.text` @ `0x62d660`, `.rodata` @ `0x1c72000`; `libBIR` `.text` @ `0x1820c0`, `.rodata` @ `0x708000`). Treat every address as version-pinned.*
 
 ## Abstract
 
