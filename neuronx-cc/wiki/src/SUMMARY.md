@@ -98,6 +98,7 @@
 - [CollectivePermute → AllGather Lowering](hlo-opt/collectivepermute-to-allgather.md)
 - [Looped-Einsum → Collective-Matmul Fusion](hlo-opt/looped-einsum-collective-matmul.md)
 - [Integer All-Reduce & Scalar-Reduce Decomposition](hlo-opt/int-scalar-reduce-decomposition.md)
+- [Boundary Markers & Layer-Cut Analysis](hlo-opt/boundary-markers-layer-cut.md)
 - [While-Loop Collective Code-Motion](hlo-opt/whileloop-collective-codemotion.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
