@@ -33,6 +33,9 @@
 
 # Part 2 — The Tonga ISA
 
+- [TENSOR1D / 2D / 3D Descriptors — the 4+4N Rule](isa/tensor-descriptors.md)
+- [ADDR4 — the 32-Bit Address Word](isa/addr4.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
