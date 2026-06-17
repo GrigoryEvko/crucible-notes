@@ -190,17 +190,19 @@ function nr_wait_for_reset_completion_v2(nd):              // v2/neuron_dhal_v2.
 |---|---|---|---|
 | `nr_get_tpb_reset_map` | `:118-136` | build TPB(bits 0..7) + TopSP(bits 8..) reset bitmap from `nc_map`; hi-word unused | HIGH |
 | `nr_initiate_reset_v2` | `:143-157` | real path: build map, hand to FW (no local MMIO) | HIGH |
-| `nr_initiate_reset_v2_qemu` | `:159-176` | qemu: `writel(1, bar0+0x30657010)` doorbell, then FW call | HIGH |
+| `nr_initiate_reset_v2_qemu` | `:159-176` | qemu: `writel(1, bar0+0x30647010)` doorbell, then FW call | HIGH |
 | `nr_initiate_reset_v2_emu` | `:178-181` | tail-call `nr_initiate_reset_v2` (identical to real) | HIGH |
 | `nr_wait_for_reset_completion_v2` | `:188-208` | poll `bar0+0x30fa0808`, mask `0x8`, `100ms*i` backoff, 5 tries | HIGH |
-| `nr_wait_for_reset_completion_v2_qemu` | `:210-230` | poll `bar0+0x30657010` via `readl`, `msleep(2000)`/iter | HIGH |
+| `nr_wait_for_reset_completion_v2_qemu` | `:210-230` | poll `bar0+0x30647010` via `readl`, `msleep(2000)`/iter | HIGH |
 | `nr_post_reset_config_v2` | `:242-246` | set `nd->supports_hbm_7200 = 0`, return 0 | HIGH |
 | `nr_initiate_reset_via_fw` | `neuron_reset.c:381` | BAR0 trigger + poll (boundary, [reset](reset.md)) | HIGH |
 | `fw_io_read_csr_array_v2` | `:696` | readless CSR read used by the wait loop | HIGH |
 
 ### Considerations
 
-The wait loop's backoff is `100 ms × i` with `i` running `0..4`, so the first iteration sleeps **zero** (`i=0`) and the worst case is `0+100+200+300+400 = 1000 ms` of sleep across 5 reads — far below the `initiate_max_wait_time` of 120 s, which bounds the *initiate* FW handshake in [reset](reset.md), not this wait. On the emulator the platform branch multiplies `retry_count` by 1000 (`:1480`) so the wait tolerates 5000 reads; the qemu wait variant replaces the FW_STATUS read with a `readl` of the qemu doorbell at `bar0+0x30657010` and a flat `msleep(2000)` per iteration.
+The wait loop's backoff is `100 ms × i` with `i` running `0..4`, so the first iteration sleeps **zero** (`i=0`) and the worst case is `0+100+200+300+400 = 1000 ms` of sleep across 5 reads — far below the `initiate_max_wait_time` of 120 s, which bounds the *initiate* FW handshake in [reset](reset.md), not this wait. On the emulator the platform branch multiplies `retry_count` by 1000 (`:1480`) so the wait tolerates 5000 reads; the qemu wait variant replaces the FW_STATUS read with a `readl` of the qemu doorbell at `bar0+0x30647010` and a flat `msleep(2000)` per iteration.
+
+> **CORRECTION —** an earlier draft of this page gave the qemu reset doorbell as `bar0+0x30657010`; the correct address is `bar0+0x30647010`. It is built as `V2_PCIE_BAR0_APB_OFFSET (0x30000000) + V2_APB_SENG_0_RESERVED1_RELBASE (0x647000) + 0x10` (`neuron_dhal_v2.c:164,216`; `address_map.h:85,188`) → `0x30647010`. The earlier value was high by `0x10000`.
 
 > **GOTCHA —** the wait loop's local is named `reset_in_progress` but is assigned the `DEVICE_READY` masked bit, and the loop returns success on `if (!reset_in_progress)` (`:201-203`). Read literally: it returns 0 when the CSR read **succeeds** and the `DEVICE_READY (0x8)` bit is **clear**. The variable name inverts the FW-status semantic — "device ready" reads as the *reset-done* condition, expressed here as the ready bit being clear at this poll site. The behavior is unambiguous from the code; only the name is confusing. A reimplementation should preserve the literal logic (`success ⇔ read_ok && !(status & 0x8)`), not the variable's English. *(MEDIUM on the human interpretation only; the code path is HIGH.)*
 
