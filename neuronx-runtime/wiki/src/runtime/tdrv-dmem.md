@@ -1,7 +1,9 @@
 # TDRV: Device-Memory Allocator (dmem)
 
-> *All addresses, offsets, sizes, and enum values on this page apply to `libnrt.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (real file `libnrt.so.2.31.24.0`, SONAME `libnrt.so.1`, build-id `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, git `0b044f4ce`). The ELF is **not** stripped and carries DWARF; `.text`/`.rodata` VMA == file offset, so every `0x2…` is an analysis VMA; `.data`/`.bss` are not (`.data` delta `0x400000`). Provenance strings `/opt/workspace/KaenaRuntime/tdrv/dma_memory.c` and `/opt/workspace/KaenaRuntime/tdrv/dma_memory_logger.c` root every function. Other versions will differ.*
+> *All addresses, offsets, sizes, and enum values on this page apply to `libnrt.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (real file `libnrt.so.2.31.24.0`, SONAME `libnrt.so.1`, build-id `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, git `0b044f4ce`). The ELF is **not** stripped and carries DWARF; all four `PT_LOAD` segments are identity-mapped, so `.text`, `.rodata`, **and `.data` are VMA == file offset** (every `0x2…` is an analysis VMA; `.bss` is `NOBITS`). Provenance strings `/opt/workspace/KaenaRuntime/tdrv/dma_memory.c` and `/opt/workspace/KaenaRuntime/tdrv/dma_memory_logger.c` root every function. Other versions will differ.*
 > *Evidence grade: **Confirmed (byte-anchored)** — struct layouts from the IDA `structures.json`, all four `dma_mem_*` enums from `enums.json`, alloc/free/copy logic from x86-64 disassembly, ioctl numbers read from the NDL leaf bodies, call edges from the IDA call graph. · Part IV — TDRV Runtime · [back to index](../index.md)*
+>
+> **CORRECTION —** an earlier revision of the line above claimed a `0x400000` `.data`/`.bss` VMA↔file-offset delta. That is **wrong** for `libnrt.so`. `readelf -lW` shows the RW `LOAD` segment as `LOAD 0xbeeaa0 ... 0xbeeaa0 ... RW` (Offset == VirtAddr, delta **zero**); `.data` sits at `Address 0xc07e00 / Off c07e00`. The `0x400000` delta belongs to a *different* binary (the libtpu / Kaena-profiler image), not libnrt — read `.data` globals at their VMA directly.
 
 ## Abstract
 

@@ -1,6 +1,8 @@
 # Overview and Heavy-Frame Census
 
-> **Binary:** `extracted/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libnrt.so` → `libnrt.so.1` → `libnrt.so.2.31.24.0` · **Version** `2.31.24.0-0b044f4ce` (`.nrt_brazil_version` @`0xad41f0` = `"2.31.24.0"`) · **BuildID[sha1]** `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e` · ELF64 LSB DYN x86-64, SONAME `libnrt.so.1` · **122,956,336 bytes** on disk (~117 MiB) · **NOT stripped** — `.symtab` (25,112 syms) + full DWARF v4 present. `.text`/`.rodata` have VMA == file offset; `.data`/`.bss` do **not** (delta `0x400000`).
+> **Binary:** `extracted/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libnrt.so` → `libnrt.so.1` → `libnrt.so.2.31.24.0` · **Version** `2.31.24.0-0b044f4ce` (`.nrt_brazil_version` @`0xad41f0` = `"2.31.24.0"`) · **BuildID[sha1]** `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e` · ELF64 LSB DYN x86-64, SONAME `libnrt.so.1` · **122,956,336 bytes** on disk (~117 MiB) · **NOT stripped** — `.symtab` (25,112 syms) + full DWARF v4 present. All four `PT_LOAD` segments are identity-mapped (`p_offset == p_vaddr`), so **every** PROGBITS section — `.text`, `.rodata`, **and `.data`** — has VMA == file offset; `.bss` is `SHT_NOBITS` and has no file content.
+>
+> **CORRECTION —** earlier revisions of this page (and `runtime/*` siblings) claimed `.data`/`.bss` differ from their VMA by a `0x400000` delta. That is **wrong** for `libnrt.so`. `readelf -lW libnrt.so.2.31.24.0` shows the RW `LOAD` segment at `Offset 0xbeeaa0 == VirtAddr 0xbeeaa0` (delta **zero**), and `readelf -SW` shows `.data` at `Address 0xc07e00 / Off 0xc07e00` — identical. The `0x400000` delta is a fact about a *different* binary (the libtpu / Kaena-profiler image), not libnrt. Read `.data`-resident globals at their VMA directly.
 >
 > **Part II — Binary Anatomy & Forensics** / Section map · **Evidence grade:** byte-anchored (counts cross-checked `nm`/`readelf`/`objdump` vs IDA `*_functions.json`/`*_frames.json`/`*_callgraph.json` sidecars) · [back to index](../index.md)
 
@@ -273,7 +275,7 @@ This overview is the index for Part II. Each sibling page takes one forensic axi
 
 | Page | Covers | Key anchors |
 |---|---|---|
-| [ELF Anatomy](elf-anatomy.md) | Section table, segment layout, the `.text`/`.rodata` VMA==offset vs `.data`/`.bss` `0x400000` delta, DWARF presence | `readelf -S`/`-l`/`-n`; build-id `8bb57aba…` |
+| [ELF Anatomy](elf-anatomy.md) | Section table, segment layout (all four `PT_LOAD` identity-mapped, so `.data` is also VMA==offset — no `0x400000` delta), DWARF presence | `readelf -S`/`-l`/`-n`; build-id `8bb57aba…` |
 | [Vendored-Library SBOM](vendored-sbom.md) | The 14-row version-pinned SBOM; protobuf 24-vs-26 and Rust 1.89-vs-1.91 conflict resolutions | `GOOGLE_PROTOBUF_VERSION 5026001`, `/rustc/ed61e7d7e…`, `VerifyVersion` @`0x6fb690` |
 | [Static-Init Pipeline](static-init.md) | The 77-entry `.init_array` order, which globals each ctor touches, what is lazy vs eager | `.init_array` @`0xbf2b08`; ctors #10–#29 first-party |
 | [Globals and Singletons Atlas](globals-atlas.md) | The first-party control plane: `kaena_khal`, `tdrv_arch_ops`, `nrt_config`, `ngc`, `vcores`, `async_sr_ctxs`, `ucode_func_symbols` | `kaena_khal` @`0xcaeb80`; `nrt_config` @`0xc5c480` |
@@ -296,7 +298,7 @@ This overview is the index for Part II. Each sibling page takes one forensic axi
 
 ## Cross-References
 
-- [ELF Anatomy](elf-anatomy.md) — section/segment table, DWARF presence, the `.data`/`.bss` offset delta
+- [ELF Anatomy](elf-anatomy.md) — section/segment table, DWARF presence, and proof that all `PT_LOAD` segments are identity-mapped (`.data` is VMA==offset — no `0x400000` delta)
 - [Vendored-Library SBOM](vendored-sbom.md) — version pins for the 41.3% vendored byte mass; protobuf/Rust conflict resolutions
 - [Static-Init Pipeline](static-init.md) — the 77-ctor `.init_array` order and lazy-vs-eager global init
 - [Globals and Singletons Atlas](globals-atlas.md) — the first-party singleton control plane (`kaena_khal`, `nrt_config`, …)
