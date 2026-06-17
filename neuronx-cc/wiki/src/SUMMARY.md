@@ -136,6 +136,7 @@
 
 # Part 5 — Penguin IR & Middle-End
 
+- [Penguin IR Node Model — the SSA Def-Use Graph](penguin/ir-node-model.md)
 - [Penguin Axis / Loop-Axis Model](penguin/axis-loop-model.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
