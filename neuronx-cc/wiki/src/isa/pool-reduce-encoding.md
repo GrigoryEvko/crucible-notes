@@ -349,6 +349,6 @@ GEN: bundle #1 (reg_load `0x68`) base `%r14`; bundle #2 (pool_buffer_load `0x67`
 
 - [1.09 — The Pool Engine](../arch/pool-engine.md) — the engine model: op→datapath→opcode routing, the window-as-reciprocal-fold, the free-axis-vs-cross-lane fork (this page is its bit-level companion).
 - [2.1 — The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the Family-C bundle shape and the `+0x20..+0x2F` control-band convention.
-- [2.9 — PE Matmul Encoding](pe-matmul-encoding.md) — the sibling Family-A encoding page; same lifecycle, same `setupHeader`/`assignAccess`/ISA-check skeleton.
+- [2.10 — PE Matmul Encoding](pe-matmul-encoding.md) — the sibling Family-A encoding page; same lifecycle, same `setupHeader`/`assignAccess`/ISA-check skeleton.
 - [2.4 — TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md) — the `+0x0C`/`+0x2C` operand descriptor interiors rendered by `assignAccess<TENSOR4D>`.
 - Part 7 (`../bir/`) — codegen TensorReduce (I07): the front-end pass that fixes `reduce_op`/`axis`/`negate` long before this encoder reads them.

@@ -6,7 +6,7 @@
 
 This page is the byte-for-byte field map of the **DVE search / match / compaction primitives** — the top-k, argmax, match-and-strike, and nonzero-compaction ops the Vector engine ([1.11 DVE engine](../arch/dve-engine.md)) emits onto the wire. They are the silicon back-ends of the NKI top-k / index / select intrinsics ([6.7.12](../nki/topk-primitives.md)): **Max8** (running top-8), **FindIndex8** (argmax indices), **MatchReplace8** / **MaxIndexAndMatchReplace** (strike the matched values to a sentinel, optionally with index out), and **NonzeroWithCount** (sparse/MoE compaction). Two helper micro-ops — **MatchValueLoad** and **LoadMaskSelect** — have validators and wire structs but no standalone visitor; they are *co-issued* as the first half of a larger op, exactly the idiom the Gather family uses ([2.12 pool/reduce](pool-reduce-encoding.md), `pool_buffer_load`+`reg_load`).
 
-Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, `pxor`+`movups`-zeroed in full (so any byte the encoder does not write is a hard `0x00`), header-stamped by `setupHeader` (vtable slot 9), field-filled, ISA-checked by `runISACheck` (`@0x12095A0`), and `fwrite(buf, 1, 0x40, findBin(I))`-ed. The control band is **Family-C** ([2.5 the bundle](instruction-bundle.md)): `+0x20` in-dtype, `+0x21` out-dtype, `+0x22` lane (= `numElementsPerPartition` of src), source access pattern at `+0x0C` / `+0x10`, dest at `+0x2C` / `+0x30` — identical to the BatchNorm family ([2.11](batchnorm-encoding.md)), because Max8 *shares* its wire struct (`NEURON_ISA_TPB_S4D2_BN_STRUCT`) with BatchNormStats.
+Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, `pxor`+`movups`-zeroed in full (so any byte the encoder does not write is a hard `0x00`), header-stamped by `setupHeader` (vtable slot 9), field-filled, ISA-checked by `runISACheck` (`@0x12095A0`), and `fwrite(buf, 1, 0x40, findBin(I))`-ed. The control band is **Family-C** ([2.1 the bundle](instruction-bundle.md)): `+0x20` in-dtype, `+0x21` out-dtype, `+0x22` lane (= `numElementsPerPartition` of src), source access pattern at `+0x0C` / `+0x10`, dest at `+0x2C` / `+0x30` — identical to the BatchNorm family ([2.11](batchnorm-encoding.md)), because Max8 *shares* its wire struct (`NEURON_ISA_TPB_S4D2_BN_STRUCT`) with BatchNormStats.
 
 The bar for this page: a reader can **byte-encode any DVE search/match instruction by hand**, knowing for each control byte its offset, width, semantic, value source, the recovered `s_<op>_*` / `d4_mr_*` / `d2_bn_*` struct-field name, and the disassembly store-site that pins it. Every field row carries a confidence tag (CONFIRMED = exact store/cmp disassembled byte-exact; STRONG = validator/LUT/helper xref cross-checked; INFERRED = zero-init implied, no direct store; SPECULATIVE). No field name is fabricated — every name on this page is a literal string recovered from the `libwalrus.so` `.rodata` predicate-name tables.
 
@@ -30,7 +30,7 @@ The bar for this page: a reader can **byte-encode any DVE search/match instructi
  byte +0x02..+0x03  reserved = 0x0000
 ```
 
-The header is stamped by a `call *0x48(%rax)` to `setupHeader`, which copies the opcode byte from a seed the encoder writes onto the stack (e.g. Max8 `movb $0x6c,-0x6e2(%rbp)` `@0x12732aa`). CONFIRMED — the same vtable-slot-9 idiom as [2.9](pe-matmul-encoding.md).
+The header is stamped by a `call *0x48(%rax)` to `setupHeader`, which copies the opcode byte from a seed the encoder writes onto the stack (e.g. Max8 `movb $0x6c,-0x6e2(%rbp)` `@0x12732aa`). CONFIRMED — the same vtable-slot-9 idiom as [2.10](pe-matmul-encoding.md).
 
 > **GOTCHA — `0x6D` (MatchValueLoad) is *not* "MaxIndex".** The argmax/index BIR op is `bir::InstMaxIndex` (IT89), whose CoreV2 encoder `visitInstMaxIndex` emits opcode `0x6E` (FindIndex8) and *co-issues* a `0x6D` (MatchValueLoad) helper bundle ahead of it. There is no standalone "MaxIndex" wire opcode; "MaxIndex" is the BIR/IT-89 name, **FindIndex8 (`0x6E`) is its wire op**, and `0x6D` MatchValueLoad is a separate locate-pass micro-op. Pinned by `dbg_is_valid_find_index8` `cmp $0x6e` (`@0x1306793`), `dbg_is_valid_match_value_load` `cmp $0x6d` (`@0x12bbdbe`).
 
@@ -262,9 +262,9 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 ## Cross-References
 
 - [1.11 — The DVE Engine](../arch/dve-engine.md) — the table-driven engine model (`EngineType::DVE` = 5, `→ "Vector"`); this page is its bit-level companion for the search/match opcodes.
-- [2.5 — The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the Family-C bundle shape and the `+0x20..+0x2F` control-band convention shared by all five Max-family encoders.
+- [2.1 — The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the Family-C bundle shape and the `+0x20..+0x2F` control-band convention shared by all five Max-family encoders.
 - [2.11 — BatchNorm-Family Encoding](batchnorm-encoding.md) — the `NEURON_ISA_TPB_S4D2_BN_STRUCT` Max8 *shares*; the `d2_bn_*` field names originate there.
-- [2.9 — PE Matmul Encoding](pe-matmul-encoding.md) — the sibling encoding page; same `setupHeader` / `assignAccess` / `runISACheck` / `fwrite 0x40` lifecycle.
+- [2.10 — PE Matmul Encoding](pe-matmul-encoding.md) — the sibling encoding page; same `setupHeader` / `assignAccess` / `runISACheck` / `fwrite 0x40` lifecycle.
 - [2.12 — Pool / TensorReduce / Reciprocal / Iota Encoding](pool-reduce-encoding.md) — the co-issued-micro-op idiom (`Gather → {pool_buffer_load, reg_load}`) that MatchValueLoad / LoadMaskSelect follow.
 - [2.17 — DVE Datamove Encoding](dve-datamove-encoding.md) *(planned)* — the StreamTranspose sibling that hosts the `0x69` LoadMaskSelect sub-bundle.
 - Part 7 (`../bir/`) — codegen of the same ops (the max-index / match-replace producers that write the `imm_value@inst+0xF0` sentinel this encoder reads into bundle `+0x28`).

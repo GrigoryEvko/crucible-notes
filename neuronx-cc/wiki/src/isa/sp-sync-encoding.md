@@ -28,7 +28,7 @@ Every bundle is a `std::array<unsigned char, 64>`: zero-filled (so any byte the 
 
 ## At a glance — the shared 64-byte skeleton
 
-Every control bundle shares the standard TPB header ([2.5 the bundle](instruction-bundle.md)): byte `+0x00` is the opcode, byte `+0x01` is the constant `0x10` = `inst_word_len` (16 dwords = 64 bytes), bytes `+0x02..+0x03` are reserved. Read little-endian, `bundle[0:2]` is `(0x10<<8) | opcode` — which is why each op appears both as "opcode `0xA0`" and "word `0x10A0`".
+Every control bundle shares the standard TPB header ([2.1 the bundle](instruction-bundle.md)): byte `+0x00` is the opcode, byte `+0x01` is the constant `0x10` = `inst_word_len` (16 dwords = 64 bytes), bytes `+0x02..+0x03` are reserved. Read little-endian, `bundle[0:2]` is `(0x10<<8) | opcode` — which is why each op appears both as "opcode `0xA0`" and "word `0x10A0`".
 
 ```
  byte +0x00  opcode        (low byte of the opcode word)
@@ -411,7 +411,7 @@ The idx strings are `"instr.events.wait_idx"` (`@0x1c849bc`) and `"instr.events.
 
 > **CORRECTION (this page) — `CoreBarrier` (`0xD8`) is CoreV3-only.** It has no CoreV2 emitter. The "`0xD5` composite" is `AllEngineBarrier` (the all-*engine* same-core fence), a different op (§6a vs §6d). CONFIRMED.
 
-> **CORRECTION ([1.12 the SP engine](../arch/sp-engine.md)) — the cross-reference to this page uses a stale filename.** 1.12 links ISA 2.20 as `../isa/sp-control-encoding.md`; this page is `isa/sp-sync-encoding.md`. The 1.12 link target should be updated to match. (1.12's *content* — `comp_op@+0xF0`, `on_true@+0xF8`, `on_false@+0x100`, the fused single-issue compare-and-branch, `comp_op` 13-value enum, the `0xA9` shared-opcode fact — agrees with this page byte-for-byte; only the filename in the link differs.)
+> **CORRECTION ([1.12 the SP engine](../arch/sp-engine.md)) — a stale cross-reference to this page was repaired during Part-2 reconciliation.** 1.12 previously linked ISA 2.20 as `../isa/sp-control-encoding.md` (a non-existent file); the real page is `isa/sp-sync-encoding.md`, and both occurrences in `arch/sp-engine.md` have been corrected to point here. (1.12's *content* — `comp_op@+0xF0`, `on_true@+0xF8`, `on_false@+0x100`, the fused single-issue compare-and-branch, `comp_op` 13-value enum, the `0xA9` shared-opcode fact — agrees with this page byte-for-byte; only the filename in the link differed.)
 
 No offset discrepancy was found against [1.14](../arch/execution-sync-model.md) or [1.12](../arch/sp-engine.md): every comparator (`0x01/0x04/0x05/0x85/0x07`), every subtype (`0x11/0x13/0x14/0x15/0x17/0x19`), the `CTRL_BR` BIR offsets (`+0xF0/+0xF8/+0x100`), and the shared `+0x04..+0x08` predicate lane re-checked clean.
 
@@ -435,7 +435,7 @@ No offset discrepancy was found against [1.14](../arch/execution-sync-model.md) 
 - [1.14 The Execution Sync Model](../arch/execution-sync-model.md) — the 256-entry semaphore bank, the 64-byte sync record, the comparator/subtype sets this page encodes; the runtime-side lane mapping.
 - [1.12 The SP Engine](../arch/sp-engine.md) — the functional model: the fused single-issue compare-and-branch, the next-BB-slot PC mechanism, what the sequencer does with these bundles.
 - [2.19 SP Register-Lane Encoding](sp-register-encoding.md) — the sibling SP-band page: register-move / TensorLoad-Save encodings (the data-carrying SP ops). *(planned)*
-- [2.5 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the shared header (`opcode`, `inst_word_len`, reserved) every bundle on this page starts with.
-- [2.15 PE Matmul Encoding](pe-matmul-encoding.md) — the CoreV2/V3/V4 generator dispatch and `setupHeader` convention shared with these control ops.
+- [2.1 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the shared header (`opcode`, `inst_word_len`, reserved) every bundle on this page starts with.
+- [2.10 PE Matmul Encoding](pe-matmul-encoding.md) — the CoreV2/V3/V4 generator dispatch and `setupHeader` convention shared with these control ops.
 - [walrus Part 8 — `lower_control` / `lower_branch`](../walrus/register-allocation.md) — the passes (H35/H38) that mint the fence `Drain`, explode structured loops into a counter `RegisterAlu` + flat `CmpBranch`, and re-home branches onto SP before codegen.
 - [BIR Part 7 — Sim Sequencer](../bir/sim-sequencer.md) — the barrier-expansion (I11) and the simulator bodies that byte-confirm the `CTRL_BR` struct offsets.

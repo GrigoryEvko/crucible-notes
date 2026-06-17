@@ -8,14 +8,14 @@ A Tonga compute instruction names its operands with **access-pattern descriptors
 
 The headline is that **`MEM_PATTERN` and `TENSOR` are the same bytes**. The on-wire layout is byte-identical, the packer is literally the same function, and the `ADDR4` start word is identical. There is **no PSUM-specific field added to the descriptor struct** — no bank field, no zero-region field, no accumulate field. The DST-vs-SRC distinction is entirely a matter of **role**, expressed in the binary in three non-byte places: the C++ wire-struct **type name**, a codegen **dispatcher assert** ("union but is missing field" for DST vs "static tensor pattern but has indirect field" for SRC), and the **validator role-flag args** (`WR=1/PSUM=1/SBUF=0` for a PSUM dst vs `WR=0/PSUM=0/SBUF=1` for an SBUF src — the *same* validator body, opposite flags).
 
-The PSUM-specific information a matmul needs is **split**. The destination *bank* rides in the high bits of the `ADDR4` start word (the address lands in the PSUM window; see [2.2](addr4.md)). The *zero / accumulate / drain* control rides on **sibling bundle bytes** of the 64-byte compute instruction — `accumulate` at bundle `+0x2B`, `psum_zero_region` at `+0x2F`, dst dtype at `+0x28` — *not* on the descriptor. The descriptor at `INST_UNION +0x30` says **where** (bank + strides + nums); the `+0x2B`/`+0x2F` bytes say **how** (zero / accumulate / drain).
+The PSUM-specific information a matmul needs is **split**. The destination *bank* rides in the high bits of the `ADDR4` start word (the address lands in the PSUM window; see [2.2](addr4.md)). The *zero / accumulate / drain* control rides on **sibling bundle bytes** of the 64-byte compute instruction — `accumulate` at bundle `+0x2B`, `psum_zero_region` at `+0x2F`, and the dst dtype at a **per-generation** offset (dense matmul `+0x23`, MX matmul `+0x28`; see the CORRECTION in §6) — *not* on the descriptor. The descriptor at `INST_UNION +0x30` says **where** (bank + strides + nums); the `+0x2B`/`+0x2F` bytes say **how** (zero / accumulate / drain).
 
 For reimplementation the contract is:
 
 - The 4+4N geometry (identical to [2.3](tensor-descriptors.md)) and the rodata asserts that pin slot size.
 - The three-layer DST/SRC fork: wire-type, dispatcher assert, validator flags — none of which touch the bytes.
 - The matmul PSUM-dst validator `mm_dst_mem3d_valid_nc_v4`: address **required** in the PSUM window, dst dtype accepted iff 2-byte (`{4,5,6,7}` = bf16) or 4-byte (`{8,9,10,11}` = fp32), all three num words `≠ 0`.
-- The `INST_UNION` offset map: ifmap src at `+0x10`, PSUM dst `MEM_PATTERN3D` at `+0x30`, dst dtype byte at `+0x28` — siblings of the `+0x2B`/`+0x2F` accumulate/zero-region bytes.
+- The `INST_UNION` offset map: ifmap src at `+0x10`, PSUM dst `MEM_PATTERN3D` at `+0x30`, dst dtype byte at `+0x23` (dense, CoreV2/V3) or `+0x28` (MX, CoreV4) — siblings of the `+0x2B`/`+0x2F` accumulate/zero-region bytes. The `is_valid_matmul_regular` decode quoted on this page is the **CoreV4** validator, which reads the dst dtype at `union+0x28`; the dense CoreV2 path reads it at `union+0x23` (§6 CORRECTION).
 
 ## At a glance
 
@@ -31,8 +31,8 @@ For reimplementation the contract is:
 | **Consumer** | `is_valid_matmul_regular` @ `0x14b5c60` ; `is_valid_smx1d3_mm` @ `0x1501ac0` |
 | **DST/SRC fork** | wire-type name · dispatcher assert (`0x1d71d18` vs `0x1d71dc8`) · validator flags `WR/PSUM/SBUF` |
 | **PSUM window** | `(addr29 − 0x2000000) ≤ 0x3FFFFF` (4 MiB @ 32 MiB); region bits 25..28 = `0x1E000000` |
-| **PSUM split** | bank → `ADDR4` hi bits · accumulate → bundle `+0x2B` · zero-region → `+0x2F` · dst dtype → `+0x28` |
-| **INST_UNION map** | ifmap src `+0x10` · PSUM dst `MEM_PATTERN3D` `+0x30` · dst dtype byte `+0x28` |
+| **PSUM split** | bank → `ADDR4` hi bits · accumulate → bundle `+0x2B` · zero-region → `+0x2F` · dst dtype → `+0x23` dense / `+0x28` MX (per-gen, §6) |
+| **INST_UNION map** | ifmap src `+0x10` · PSUM dst `MEM_PATTERN3D` `+0x30` · dst dtype byte `+0x23` (dense CoreV2/V3) / `+0x28` (MX CoreV4) |
 | **Evidence** | full `objdump -M intel` disasm of the v4 validator/dispatcher bodies + `nm -DC` symtab |
 
 ---
@@ -183,7 +183,7 @@ The zero/accumulate/drain control lives in **separate PE-instruction bundle byte
 |---|---|---|
 | `+0x2B` | `accumulate` byte | bit0 `START` (zero-bank), bit1 `STOP` (drain), bit2 `ACCUMULATE` (add) |
 | `+0x2F` | `psum_zero_region` | `ceil(log2 bankspan)` — pow-2 window ≤ 16 banks (inst `+0x118`) |
-| `+0x28` | PSUM-dst dtype | LUT[BIR Dtype]; selects the dst validator path (§5.3) |
+| `+0x23` / `+0x28` | PSUM-dst dtype | LUT[BIR Dtype]; selects the dst validator path (§5.3). **Per-generation**: dense matmul (op `0x02`, CoreV2/V3) at `+0x23`; MX matmul (op `0x100A`, CoreV4) at `+0x28`. See §6 CORRECTION. |
 
 The first matmul of an accumulation group sets `START` (zeroes the bank on write), the last sets `STOP` (drains/reads out), interior ones set `ACCUMULATE`. These bits are set **upstream** (the accumulate-group legalizer: `set_psum_accumulate_flag` @ `0x16e1410`, `set_psum_zero_region` @ `0x16daff0`) and read by codegen (`generateMatMulAccumulateFlag` @ `0x1428630` → bundle `+0x2B`; the MX path copies raw `inst+0xF0 → +0x2B`, `inst+0x118 → +0x2F`). The wire bit-OR is byte-exact:
 
@@ -269,13 +269,15 @@ The DST-specific semantics, versus the general `mem3d_valid` (§5.1):
 
 ### 5.3 Who picks `mm_dst` vs the plain dst path — `is_valid_matmul_regular`
 
-The 64-byte `INST_UNION` arrives by value at `[rsp+0x130]` (`= union+0`). The consumer decodes the slots and validates each by role:
+The decode below is `core_v4::is_valid_matmul_regular @0x14b5c60` (the **CoreV4/MX** validator — symbol confirmed in `nm -DC`). The 64-byte `INST_UNION` arrives by value at `[rsp+0x130]` (`= union+0`). The consumer decodes the slots and validates each by role:
 
 ```text
 [rsp+0x140] = union+0x10  → moving/ifmap SRC slot
 [rsp+0x160] = union+0x30  → PSUM-DST MEM_PATTERN3D slot       (cached → [rsp+0xe0])
-byte[rsp+0x158] = union+0x28 → PSUM-DST DTYPE byte            (cached → [rsp+0x12])
+byte[rsp+0x158] = union+0x28 → PSUM-DST DTYPE byte (CoreV4/MX) (cached → [rsp+0x12])
 ```
+
+> **NOTE — `+0x28` is the CoreV4/MX dst-dtype offset; dense CoreV2/V3 uses `+0x23`.** The validator decoded here is `core_v4::is_valid_matmul_regular`, which reads the dst dtype at `union+0x28` — matching the CoreV4 `generateMatmultMx` encoder (`mov [r13+0x28],al @0x143eded`). The **dense** CoreV2 path is a different struct generation: `core_v2::is_valid_matmul_regular @0x12de340` reads the dst dtype at `union+0x23` (`movzx ...,[rsp+0xe3]`), matching `generateMatMul`'s `mov [r15+0x23],al @0x1248882`. Both `==6` → the bf16 `nc` path. The offset is per-generation, not universal (§6 CORRECTION, [2.10](pe-matmul-encoding.md)).
 
 | Check | Call | @ |
 |---|---|---|
@@ -305,12 +307,15 @@ The matmul compute bundle is a 64-byte `INST_UNION`. The DST `MEM_PATTERN3D` is 
 | `+0x00` | *(bundle header / opcode)* | — | instruction word | CONFIRMED |
 | `+0x10` | **ifmap (moving) SRC** | `TENSOR3D` (16 B) | read, SBUF-resident | CONFIRMED |
 | `+0x14` | ifmap dtype | byte | SRC dtype | CONFIRMED |
-| `+0x28` | **PSUM-DST dtype** | byte | selects dst validator (`==6` → `nc` path) | CONFIRMED |
+| `+0x23` | **PSUM-DST dtype (dense)** | byte | dense matmul op `0x02`, CoreV2/V3; selects dst validator (`==6` → `nc` path) | CONFIRMED |
+| `+0x28` | **PSUM-DST dtype (MX)** | byte | MX matmul op `0x100A`, CoreV4; selects dst validator (`==6` → `nc` path) | CONFIRMED |
 | `+0x2B` | **accumulate** | byte | b0 START / b1 STOP / b2 ACCUMULATE | CONFIRMED |
 | `+0x2F` | **psum_zero_region** | byte | `ceil(log2 bankspan)`, pow-2 ≤16 banks | CONFIRMED |
 | `+0x30` | **PSUM-DST descriptor** | `MEM_PATTERN3D` (16 B) | write, PSUM-resident; bank in `ADDR4` hi | CONFIRMED |
 
-The dst descriptor (`+0x30`) and the accumulate/zero-region/dtype bytes (`+0x28`/`+0x2B`/`+0x2F`) are **siblings** in the bundle — together they fully describe the PSUM write: the descriptor the *address pattern* (incl. bank), the sibling bytes the *accumulate contract* (incl. dtype). (CONFIRMED — `is_valid_matmul_regular` slot decode `0x14b5cdb`/`0x14b5d9a`/`0x14b5db3` + PE-ISA cross-ref.)
+The dst descriptor (`+0x30`) and the accumulate/zero-region/dtype bytes (dst-dtype `+0x23`-dense/`+0x28`-MX, `+0x2B`, `+0x2F`) are **siblings** in the bundle — together they fully describe the PSUM write: the descriptor the *address pattern* (incl. bank), the sibling bytes the *accumulate contract* (incl. dtype). (CONFIRMED — `core_v4::is_valid_matmul_regular` slot decode `0x14b5cdb`/`0x14b5d9a`/`0x14b5db3` + PE-ISA cross-ref.)
+
+> **CORRECTION — the matmul dst-dtype offset is PER-GENERATION, not a fixed `+0x28`.** Earlier revisions of this page stated the matmul PSUM-dst dtype byte is at `INST_UNION +0x28` throughout. Binary re-disassembly this pass shows that is the **CoreV4 MX** offset only. The **dense** matmul (op `0x02`, CoreV2/V3) writes the dst dtype at `+0x23` (`generateMatMul`: `mov [r15+0x23],al @0x1248882`; no `+0x28` store exists in the dense encoder — that byte is pxor-zero) and reads it back at `union+0x23` (`core_v2::is_valid_matmul_regular`: `[rsp+0xe3]`). The **MX** matmul (op `0x100A`, CoreV4) writes/reads it at `+0x28` (`generateMatmultMx @0x143eded`; `core_v4::is_valid_matmul_regular`: `[rsp+0x158]`). The `is_valid_matmul_regular` decode quoted in §5.3 is the CoreV4 validator, so its `union+0x28` reading is correct for the MX struct; do **not** generalize it to the dense bundle. Both offsets feed `==6` → the bf16 `nc` path. [2.10 §Matmul CORRECTION CONFIRMED.]
 
 > **NOTE — the moving SRC at `+0x10` is a `TENSOR3D`, the dst at `+0x30` is a `MEM_PATTERN3D`.** This is the operand-role convention made concrete: `getArgument(i)` (a read) → `assignAccess<TENSORnD>`; `getOutput(0)` (a write) → `assignAccess<MEM_PATTERN_nD>`. The union tag tells the verifier which member is present; the member's *type* routes it to the read-role or write-role validators.
 
@@ -360,10 +365,10 @@ Every offset the shared packer (`assignStaticPattern<TENSOR3D>`) writes matches 
 
 - `MEM_PATTERN2D/3D/4D` = byte-identical to `TENSOR2D/3D/4D` (12/16/20 B; shared "must have K bytes" asserts; no separate packer symbol; same vtbl slots `+0x28`/`+0x30`).
 - `mem3d_valid` / `mem2d_valid` / `mem4d_valid` full byte decode.
-- `mm_dst_mem3d_valid_nc_v4`: matmul PSUM-dst validator; addr **required** in PSUM window; dst dtype `{4..11}` (bf16 OR fp32); 3 nums `≠0`; reached when dst dtype byte (`union+0x28`) `== 6`.
+- `mm_dst_mem3d_valid_nc_v4`: matmul PSUM-dst validator; addr **required** in PSUM window; dst dtype `{4..11}` (bf16 OR fp32); 3 nums `≠0`; reached when the dst dtype byte `== 6` (read at `union+0x28` by the CoreV4/MX validator; the dense CoreV2 validator reads `union+0x23` — §6 CORRECTION).
 - DST role fork: dispatcher assert (`"union but is missing field"`, `0x1d71d18`), validator flags (`WR=1/PSUM=1/SBUF=0` dst vs `WR=0/PSUM=0/SBUF=1` src), forced fp32 dtype on dst.
-- PSUM bank in `ADDR4` hi bits; accumulate `+0x2B` / zero-region `+0x2F` / dst dtype `+0x28` are sibling bundle bytes, NOT descriptor fields.
-- `INST_UNION` map: src `+0x10`, dst `MEM_PATTERN3D` `+0x30`, dst dtype byte `+0x28`.
+- PSUM bank in `ADDR4` hi bits; accumulate `+0x2B` / zero-region `+0x2F` / dst dtype (`+0x23` dense, `+0x28` MX — per-generation, §6) are sibling bundle bytes, NOT descriptor fields.
+- `INST_UNION` map: src `+0x10`, dst `MEM_PATTERN3D` `+0x30`, dst dtype byte `+0x23` (dense CoreV2/V3) / `+0x28` (MX CoreV4).
 - Encoder↔decoder byte agreement (2D/3D/4D, both ways).
 
 **STRONG (INFERRED):**
@@ -391,7 +396,7 @@ Every offset the shared packer (`assignStaticPattern<TENSOR3D>`) writes matches 
 
 - [2.3 TENSOR Descriptors](tensor-descriptors.md) — the SRC twin: same 4+4N bytes, same packer; this page is the DST role of that struct.
 - [2.2 ADDR4](addr4.md) — the @+0 start word; the PSUM-window test `(addr − 0x2000000) ≤ 0x3FFFFF`, region bits `0x1E000000`, and the `RegId < 0x40` register-mode form.
-- [2.9 NEURON_ISA_TPB INST_UNION](neuron-isa-tpb-capstone.md) — the 64-byte compute-bundle header; the DST descriptor sits at union member `+0x30`, dtype at `+0x28`, accumulate at `+0x2B`, zero-region at `+0x2F`.
+- [2.9 NEURON_ISA_TPB INST_UNION](neuron-isa-tpb-capstone.md) — the 64-byte compute-bundle header; the DST descriptor sits at union member `+0x30`, dst dtype at `+0x23` (dense) / `+0x28` (MX), accumulate at `+0x2B`, zero-region at `+0x2F`.
 - [1.05 SBUF / PSUM Bank Geometry](../arch/sbuf-psum-geometry.md) — the 2048-B PSUM banks this DST role addresses, and the 4 MiB PSUM window at 32 MiB.
 - [PE Engine](../arch/pe-engine.md) — the matmul that produces the canonical PSUM dst: the moving ifmap (`+0x10`), the PSUM accumulator (`+0x30`), and the two-pass fp32 / accumulate-group machinery.
 - [Frontend Pipeline](../front/pipeline.md) — where the access patterns that become these descriptors are built and normalized before codegen.

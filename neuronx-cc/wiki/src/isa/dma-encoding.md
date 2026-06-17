@@ -19,7 +19,7 @@ The bar for this page: a reader can **byte-encode any DMA instruction and its de
 
 ## At a glance
 
-The whole family shares the 4-byte header skeleton of [2.05 the bundle](instruction-bundle.md) (`opcode` / `inst_word_len=0x10` / reserved), then a sync header at `+0x04..+0x0B`, then the op-specific body. Ten opcodes, all CoreV2 ISA immediates (= the census-map keys):
+The whole family shares the 4-byte header skeleton of [2.1 the bundle](instruction-bundle.md) (`opcode` / `inst_word_len=0x10` / reserved), then a sync header at `+0x04..+0x0B`, then the op-specific body. Ten opcodes, all CoreV2 ISA immediates (= the census-map keys):
 
 | Op | dec | Encoder (libwalrus) | Wire struct | Body summary |
 |---|---|---|---|---|
@@ -57,7 +57,7 @@ Mode-byte modifiers (OR'd in): `| 0x04` = 2-physical-register DGE; `| 0x40` = mo
 1172123:  mov   BYTE [rsi+1], 0x10   ; inst_word_len = 16 dwords = 64 bytes
 ```
 
-So the 16-bit word at `bundle[0:2]` is little-endian `(0x10<<8) | opcode`: `0x10D4` (DIRECT2D), `0x10C1` (Trigger), `0x10CF`/`0x10C2` (queue ops). CONFIRMED — `setupHeader` disassembled; the `inst_word_len` constant store is hard-pinned across the entire TPB ISA ([2.05](instruction-bundle.md)).
+So the 16-bit word at `bundle[0:2]` is little-endian `(0x10<<8) | opcode`: `0x10D4` (DIRECT2D), `0x10C1` (Trigger), `0x10CF`/`0x10C2` (queue ops). CONFIRMED — `setupHeader` disassembled; the `inst_word_len` constant store is hard-pinned across the entire TPB ISA ([2.1](instruction-bundle.md)).
 
 > **NOTE — there is no DMA opcode that *means* "dynamic".** Static-vs-DGE is resolved at **two** independent levels: the **address mode byte** inside `ADDR8` (16 physical = static; 32/40 = DGE) and the **descriptor opcode** (`0xD4` 2-D record vs `0xDA` bound/idx record). A DMA can be `0xD4` with a `0x20`-mode immediate ADDR8 (immediate-addressed but still a plain 2-D copy), so neither level alone classifies the instruction — see [The static-vs-DGE distinction](#the-static-vs-dge-distinction).
 
@@ -452,9 +452,9 @@ Flip it to a HW-DGE register-addressed copy and: the opcode becomes `0xDA`, the 
 
 ## Cross-References
 
-- [2.05 The 64-Byte Instruction Bundle](instruction-bundle.md) — the shared header skeleton and `inst_word_len=0x10`.
+- [2.1 The 64-Byte Instruction Bundle](instruction-bundle.md) — the shared header skeleton and `inst_word_len=0x10`.
 - [2.07 Indirect-Gather Descriptors](indirect-descriptors.md) — the INDIRECT16B / 20B / MXINDIRECT16B descriptors the IndirectLoad/Save (`0xC4`/`0xD6`) carry.
-- [2.15 PE Matmul Encoding](pe-matmul-encoding.md) — the sibling ~L field-table page; same lifecycle, `setupHeader` and `CodeGenMode` arms.
+- [2.10 PE Matmul Encoding](pe-matmul-encoding.md) — the sibling ~L field-table page; same lifecycle, `setupHeader` and `CodeGenMode` arms.
 - [1.05 SBUF/PSUM Geometry](../arch/sbuf-psum-geometry.md) — the on-chip side of every DMA.
 - [1.06 DRAM & HBM Geometry](../arch/dram-hbm-geometry.md) — the off-chip side; the HBM TensorIndirect restriction `assign64bitAddr` asserts.
 - [Part 8 — `lower_dma` / DGE](../walrus/) — where the `DMAQueue → BasicBlock` map is populated and the DGEType decides SW vs HW descriptor generation (H37/H33).

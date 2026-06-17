@@ -32,7 +32,7 @@ gen2  (u64):  row  = V & 0x7F ;  slow_idx = V >> 7
 gen3/4 (u32): fast = V & 0xFF ;  slow_row = V >> 8        # slow == 0 → fast-only op
 ```
 
-The opcode counts mirror [1.11](../arch/dve-engine.md)'s 46→52→59 roster growth exactly: gen2 `default` `ops[]` = 46 (the blob adds slot 0 + four gen2-only residents → 51 nonzero); gen3 = 52 (+idle = 53); gen4 = 59 (+idle = 60). CONFIRMED.
+The opcode counts mirror [1.11](../arch/dve-engine.md)'s 46→52→59 roster growth exactly: gen2 `default` `ops[]` = 46 (the blob adds slot 0 + four residents `{147,240,241,242}` → 51 nonzero; of those, 147/240 are promoted into the gen3/4 roster and 241/242 are gen2-only — §7); gen3 = 52 (+idle = 53); gen4 = 59 (+idle = 60). CONFIRMED.
 
 `default_opcode_table.bin` hashes (sha256, cp310):
 
@@ -68,7 +68,7 @@ gen3: |ops|=52 |nonzero|=53   nonzero−ops = {0}                   ops−nonzer
 gen4: |ops|=59 |nonzero|=60   nonzero−ops = {0}                   ops−nonzero = {}
 ```
 
-gen2's four extra nonzero slots `{147,240,241,242}` are the gen2-only *residents* (§7); gen3/gen4 carry none, so their nonzero set is exactly `ops[] + idle`. If the blob were header+offset, the nonzero positions would not coincide with the raw opcode integers — they do, to the byte.
+gen2's four extra nonzero slots `{147,240,241,242}` are *residents* — nonzero but absent from the 46-op gen2 roster (§7). At gen3/gen4, 147 and 240 are **promoted into the `ops[]` roster** (so they are rostered there, not residents) while 241/242 are zeroed; gen3/gen4 therefore carry no residents and their nonzero set is exactly `ops[] + idle` (§7 CORRECTION, [2.28](dve-engine-migration.md)). If the blob were header+offset, the nonzero positions would not coincide with the raw opcode integers — they do, to the byte.
 
 **(c) Stride proof by byte address (gen3 `default`).** Opcode 65 (`TensorTensorArithOp`) must live at `65·4 = 260 = 0x104`:
 
@@ -267,7 +267,14 @@ gen4 slot-0 = 0x600   (all 3 sets)     fast 0, slow 6
 
 CONFIRMED this turn. In gen2, slot-0's descriptor `0x180` is byte-identical to op159 `EngineNop` — the NOP op literally points at the reset program; gen3 dropped `EngineNop`, so `0x600` has no named twin there.
 
-**gen2-only residents `{147, 240, 241, 242}`.** Beyond its 46-op JSON roster, gen2's `opcode_table` carries four fixed nonzero entries in *every* gen2 set: 147 = `0x102` (`TransposeTensorScalarArithOp`, promoted to the gen3 `default` roster), 240 = `0x369` (`ExtendedInst`, also promoted at gen3), and 241 = `0x074` / 242 = `0x077` (gen2-only; names INFERRED — extended-op helper candidates). gen3 and gen4 carry **zero** residents (their nonzero set equals `ops[]`+idle). CONFIRMED that the entries exist and are gen2-only; the 241/242 names are INFERRED.
+**gen2 residents `{147, 240, 241, 242}` — two promoted, two gen2-only.** Beyond its 46-op JSON roster, gen2's `opcode_table` carries four fixed nonzero entries: 147 = `0x102` (`TransposeTensorScalarArithOp`), 240 = `0x369` (`ExtendedInst`), 241 = `0x074`, 242 = `0x077`. These four split into two classes at gen3:
+
+- **147 and 240 are PROMOTED into the gen3/gen4 JSON `ops[]` roster** — on gen3 slot 147 = `0x0410` and slot 240 = `0x0C68`, both **roster members**, not residents (gen4: 147 = `0x0420`, 240 = `0x0C6F`). So on gen3/gen4 they are ordinary rostered ops, and the gen3/gen4 nonzero set = `ops[]` + idle for them.
+- **Only 241 and 242 are gen2-decode-table-only** — `0x074` (control row 116) / `0x077` (control row 119); gen3/gen4 **zero** these slots (`0x00000000`). They are decode-resident on gen2 but never compiler-emittable on any gen, and become real compiler ops on **other engines** at gen3 (241 = `DmaGatherTranspose` on DMA/gather, 242 = `NonzeroWithCount` on Pool). The slot values `0x074`/`0x077` are control **rows** 116/119, not opcodes.
+
+CONFIRMED that all four entries exist on gen2; the engine-migration reconcile and the 241/242 names are resolved in [2.28](dve-engine-migration.md).
+
+> **CORRECTION (refined by [2.28](dve-engine-migration.md)) — not all four are "gen2-only", and gen3/4 do not carry "zero residents" for all four.** An earlier reading of this section called `{147, 240, 241, 242}` all "gen2-only residents" and said gen3/gen4 carry zero residents. Binary re-check ([2.28 §2](dve-engine-migration.md), `struct.unpack` of each gen's blob): **147 and 240 are PROMOTED into the gen3/gen4 `ops[]` roster** (they are rostered ops there, not residents); only **241 and 242** are gen2-decode-table-only (zeroed on gen3/gen4). The "gen2-only for all four" and "gen3/4 zero residents" sub-claims are corrected here; the residents exist exactly as found, but their gen3/4 fate differs by op. The 241/242 names — earlier marked INFERRED ("extended-op helper candidates") and read as opcode `0x74` — are resolved in [2.28](dve-engine-migration.md): `0xF1`=`DmaGatherTranspose`, `0xF2`=`NonzeroWithCount`, and `0x074` is the slot **value** (control row 116), not opcode `0x74`. CONFIRMED.
 
 > **GOTCHA — opcode_table rows ≠ the wire bundle word `0x10NN`.** Two different "opcode→number" structures share the opcode integer as a hinge but are otherwise unrelated. The 16-bit **bundle header word** `0x10NN` (`NN` = opcode byte, `0x10` = `inst_word_len` for the 64-byte bundle; [PE matmul page](pe-matmul-encoding.md) `setupHeader`) is what the compiler **emits** into each instruction. The `opcode_table` entry is a **control-row selector** the on-device sequencer uses to **decode** a received opcode. J27's word low byte equals the `opcode_table` index, but its high byte (`0x10`, a length) has no bearing on the fast/slow rows. The opcode integer is the hinge; encode and decode are different layers. The 0xF1/0xF2 residency reconciliation is [2.28 DVE engine migration](dve-engine-migration.md) *(planned)*.
 

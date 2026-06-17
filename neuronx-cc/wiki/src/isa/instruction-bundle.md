@@ -153,12 +153,12 @@ The 60 bytes after the header word are an op-specific union. The table below is 
 | `+0x20` | INPUT dtype (wire tag) · **control-band base** (Fam A/C) | `visitInst` | A/C; **(Fam B)** in0 slot lives here | CONFIRMED |
 | `+0x21` | OUTPUT dtype · matmul perf-sel (0/2/3) | `visitInst` | A/C | CONFIRMED |
 | `+0x22` | scalar base/partition · misc | `visitInst` | TensorScalar, Activation | CONFIRMED |
-| `+0x23` | perf-opt / format / `act_tbl_sel` | `visitInst` | matmul, LoadActFuncSet | STRONG |
+| `+0x23` | perf-opt / format / `act_tbl_sel` · **DENSE matmul DST DTYPE** (op `0x02`, CoreV2/V3) | `visitInst` | dense matmul PSUM-dst dtype, LoadActFuncSet | CONFIRMED |
 | `+0x24` | op0 ALU wire · ROW group (matmul) · Pool func | `visitInst` | TS op0; Pool {Max=1, Avg=2}; PE row | CONFIRMED |
 | `+0x25` | op1 ALU wire · COL group (matmul) · Pool mode=3 | `visitInst` | TS op1; PE col | CONFIRMED |
 | `+0x26` | reverse-combo · `wtbase`/`num_rows` (matmul) | `visitInst` | TS reverse; PE | STRONG |
 | `+0x27` | `num_active_cols` (matmul) · scalar AP | `visitInst` | PE ncols | STRONG |
-| `+0x28` | **DST DTYPE** (matmul/MX) · fill imm dword (Memset) | `visitInst` | PSUM-dst dtype; Memset fill | CONFIRMED |
+| `+0x28` | **MX matmul DST DTYPE** (op `0x100A`, CoreV4) · fill imm dword (Memset) | `visitInst` | MX PSUM-dst dtype; Memset fill | CONFIRMED |
 | `+0x2B` | **ACCUMULATE** byte {b0 START / b1 STOP / b2 ACCUMULATE} | `visitInst` (set upstream) | matmul/MX PSUM ops | CONFIRMED |
 | `+0x2C` | **(Family C)** OUT TENSOR4D slot START (20 B → `+0x2C..+0x3F`) | `assignAccess<4D>` | Copy/Pool/Reduce/BN out; Memset (1D); PE grp | CONFIRMED |
 | `+0x2F` | `psum_zero_region` (matmul/MX) | `visitInst` | PE | CONFIRMED |
@@ -190,8 +190,9 @@ Two TENSOR3D slots with the control band *between* them at `+0x20..+0x2F`. The c
 ; CoreV2GenImpl::generateMatMul  @ 0x1248650   (r15 = &bundle)
  1248c35:  lea rsi, [r15+0x10]   ; call assignAccess<TENSOR3D>   <- MOVING/ifmap (SBUF)
  1248c3e:  lea rsi, [r15+0x30]   ; call assignAccess<TENSOR3D>   <- PSUM destination
-;  control band +0x20 ifmap-dtype / +0x21 perf-sel / +0x23 perf-opt /
-;  +0x24 row-grp / +0x25 col-grp / +0x28 dst-dtype / +0x2B accumulate / +0x2F zero-region
+;  control band +0x20 ifmap-dtype / +0x21 perf-sel / +0x23 dense-dst-dtype /
+;  +0x24 row-grp / +0x25 col-grp / +0x28 MX-dst-dtype / +0x2B accumulate / +0x2F zero-region
+;  (dst-dtype is per-generation: dense op 0x02 -> +0x23; MX op 0x100A -> +0x28; see 2.10)
 ```
 
 `src @+0x10` ends at `0x20`; `dst @+0x30` ends at `0x40`. The `+0x20..+0x2F` gap is exactly one missing 16-B slot, filled by the control band.
