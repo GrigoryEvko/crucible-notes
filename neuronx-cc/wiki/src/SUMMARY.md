@@ -140,6 +140,7 @@
 - [Penguin Axis / Loop-Axis Model](penguin/axis-loop-model.md)
 - [Penguin AffineExpr Algebra over pelican::Expr](penguin/affine-expr-algebra.md)
 - [Penguin Tensor / Buffer Node & Memory-Space Placement](penguin/tensor-buffer-node.md)
+- [Penguin Dependency Model — DependencyEdge & EdgeKind](penguin/dependency-model.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
