@@ -303,7 +303,7 @@ A few reimplementation notes the matcher hides:
 
 > **GOTCHA —** the V4 matcher has a likely length-mismatch bug. `v4/neuron_dhal_v4.c:164` bounds a `strncmp` of `NEURON_TRN3PDS0_INSTANCE_NAME` (`"trn3-dev0.48xlarge"`) with `sizeof(NEURON_TRN3PDS_INSTANCE_NAME)` (`"trn3s.48xlarge"`) — two different-length macros. The shorter bound means `"trn3-dev0.…"` is compared only on its first ~15 chars; verify whether `trn3-dev0` is correctly classified as PDS before relying on it. **(MEDIUM** — flagged, not fixed.**)**
 
-> **NOTE —** `narch_get_instance_type_name` caps the read at 64 bytes (`neuron_arch.c:78`) but every caller passes a `buf[128]` (`v3:243`, `v4:159`). Longer product names truncate silently. Separately, its error check tests `!file_size` (`:79`) — only a *zero-length* read is an error — so a *negative* return from `kernel_read_file_from_path` is not caught here. Both are edge-case-robustness gaps, not detection bugs.
+> **NOTE —** `narch_get_instance_type_name` caps the read at 64 bytes (`neuron_arch.c:78`) but every caller passes a `buf[128]` (`v3:243`, `v4:159`). Longer product names truncate silently. Separately, its error check tests `!len` (`:79`) — `len` is the read's return value, `file_size` is a separate `ssize_t` out-param (`:69`) — so only a *zero-length* read is an error, and a *negative* return from `kernel_read_file_from_path` is not caught here. Both are edge-case-robustness gaps, not detection bugs.
 
 ---
 

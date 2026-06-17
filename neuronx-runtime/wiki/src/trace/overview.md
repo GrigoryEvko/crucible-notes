@@ -1,7 +1,9 @@
 # Profiling, Trace & Telemetry — Section Map
 
-> *All addresses, offsets, and symbols on this page apply to `libnrt.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (build-id `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, soname `libnrt.so.2`, NTFF package `KaenaProfilerFormat-2.31.0.0`). The ELF is **not** stripped; full `.symtab` + DWARF are present, and `.text`/`.rodata` VMA equals file offset. The Rust producer is statically linked from `rustc 1.91.1` (sysroot tag `/rustc/ed61e7d7e242494fb7057f2657300d9e77bb4fcb/`, confirmed in `.rodata`). Other versions will differ.*
+> *All addresses, offsets, and symbols on this page apply to `libnrt.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (build-id `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, soname `libnrt.so.1`, NTFF package `KaenaProfilerFormat-2.31.0.0`). The ELF is **not** stripped; full `.symtab` + DWARF are present, and `.text`/`.rodata` VMA equals file offset. The Rust producer is statically linked from `rustc 1.91.1` (sysroot tag `/rustc/ed61e7d7e242494fb7057f2657300d9e77bb4fcb/`, confirmed in `.rodata`). Other versions will differ.*
 > *Evidence grade: **Confirmed (byte-anchored)** — every producer entry point is pinned to a `.symtab` symbol + `.text` address; the three-producer split, the convergence on NTFF, and the divergent metrics plane are cross-checked against the `nm`/`functions.json`/`callgraph.json` exports and the consolidated trace facets (`P1-F-TRACE`, `P1-L-PROF-01`, `P2-W2-RUST-SYSTRACE`). · Part XIII — Profiling, Trace & Telemetry · [back to index](../index.md)*
+
+> **CORRECTION —** an earlier revision gave the soname as `libnrt.so.2`. The ELF `DT_SONAME` is `libnrt.so.1` (`readelf -dW libnrt.so` → `0x…0e (SONAME) Library soname: [libnrt.so.1]`; the shared object is installed as `libnrt.so → libnrt.so.1 → libnrt.so.2.31.24.0`, so `.2.31.24.0` is the *version triple*, not the ABI soname).
 
 ## Abstract
 

@@ -1,6 +1,6 @@
 # Virtual Rings (vring) and Packet Builders
 
-> *Userspace addresses apply to `libnrt.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (build-id `8bb57aba…`, SONAME `libnrt.so.1`, ELF64, **not stripped**, DWARF present; `.text` VMA == file offset, so every `0x31…` is an analysis VMA). All 24 vring functions resolve via DWARF (`addr2line`, `comp_dir = /opt/workspace/KaenaRuntime`) to a single TU, `tdrv/vring.c`; all are `local` (`t`) symbols, not exported NRT API.*
+> *Userspace addresses apply to `libnrt.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (build-id `8bb57aba…`, SONAME `libnrt.so.1`, ELF64, **not stripped**, DWARF present; `.text` VMA == file offset, so every `0x31…` is an analysis VMA). All 33 `vring_`-prefixed functions resolve via DWARF (`addr2line`, `comp_dir = /opt/workspace/KaenaRuntime`) to a single TU, `tdrv/vring.c`; all are `local` (`t`) symbols, not exported NRT API.*
 > *Evidence grade: **Confirmed (DWARF-anchored)** — function addresses, line numbers, struct offsets and packing constants are nm/structures-DB verified; the 16-byte element's bitfields are owned by [The 16-Byte Descriptor](descriptor-format.md) and are not re-derived here. Other versions will differ. · Part VIII — DMA & Descriptor Engine · [back to index](../index.md)*
 
 ## Abstract
