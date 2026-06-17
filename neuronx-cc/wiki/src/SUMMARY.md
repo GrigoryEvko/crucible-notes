@@ -82,6 +82,7 @@
 - [Snapshot / Decomposed Input Format](frontend/snapshot-input-format.md)
 - [NeuronLogger — the C++ Logging Singleton & Boost.Log Sinks](frontend/neuronlogger.md)
 - [Python Logging Façade & Log-Level Mapping](frontend/python-logging-facade.md)
+- [Diagnostic & Error-Code Catalog — Four Systems](frontend/diagnostic-error-catalog.md)
 - [Optional Client/Daemon IPC Server](frontend/client-daemon-ipc.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
