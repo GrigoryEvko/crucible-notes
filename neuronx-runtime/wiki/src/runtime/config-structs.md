@@ -15,7 +15,7 @@ This is a **reference catalogue**, so it takes the deliberate style-guide except
 ## Reimplementation Contract
 
 - **Two distinct structs, not one.** `nrt_config_t` (656 B, static singleton) and `nrt_global_config_t` (296 B, heap, published via `ngc`) are *separate* aggregates with *independent* layouts. `nrt_gconf()` returns the **296 B `ngc`**, never the static singleton. Do not merge them.
-- **The exact sizes are load-bearing for the allocation.** The 296 B size is the literal `calloc(0x128, 1)` argument at the parser's allocation site; the 656 B size is the `nm` span between `nrt_config @0xc5c480` and the next `.bss` symbol `cached_info @0xc5c710` (`0x290`). A reimplementation that mis-sizes either struct will mis-place every field past the error.
+- **The exact sizes are critical to the allocation.** The 296 B size is the literal `calloc(0x128, 1)` argument at the parser's allocation site; the 656 B size is the `nm` span between `nrt_config @0xc5c480` and the next `.bss` symbol `cached_info @0xc5c710` (`0x290`). A reimplementation that mis-sizes either struct will mis-place every field past the error.
 - **The lifecycle.** The static singleton is default-constructed at load (file-scope ctor `_GLOBAL__sub_I_nrt_config.cpp @0x74920`, which only zeroes the `std::vector`/`std::map` members and registers `~nrt_config` via `__cxa_atexit`); the heap struct is allocated, filled, and published inside `nrt_config_parse_init_config @0x8a1d0`, then freed by `nrt_config_free @0x82680` (`free(ngc); ngc=0;`).
 - **The DWARF offsets are authoritative.** Earlier scan passes (SCAN-01, NX-023) recorded several wrong offsets and a wrong one-struct model; every such value is corrected in place below against the DWARF truth.
 
