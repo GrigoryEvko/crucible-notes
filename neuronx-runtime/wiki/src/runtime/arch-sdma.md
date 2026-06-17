@@ -9,14 +9,14 @@ This page owns the **per-arch SDMA engine band** of the KaenaHal device layer �
 
 The band's organizing principle is **arch dispatch over one CSR geometry**. Almost every accessor begins with `al_hal_tpb_get_arch_type()` (`@0x44bca0`, reading the global `hal_target` enum, asserts `!= INVALID` and `< NUM=5`) and then branches on `2 → SUNDA / 3 → CAYMAN / 4 → MARIANA` to pick a per-arch register stride, base offset, or feature gate. A second dispatch mechanism rides the same band: the *embedded-semaphore* and *m2m-queue* helpers do not branch inline — they tail-call through the global `kaena_khal` vtable (`.bss @0xCAEB80`), whose SDMA slots (`+0x510…+0x568` for `khal_sdma`, `+0x6F0/+0x6F8` for `khal_udma`) are filled at init by `kaena_khal_register_funcs_v{2,3,4}` (`@0x468740`/`@0x46ED70`/`@0x4622E0`). The al_sdma m2s/m2m descriptor builders sit at the bottom of this stack: leaf bit-packers (`al_sdma_m2s_build_*_meta_ctrl` / `_descriptor`, `0x451690`–`0x451e40`) that the per-arch combo path funnels into, and arch-dispatch trampolines (`aws_hal_sdma_*`, `0x451e90`–`0x4520f0`) that route embedded-semaphore writes into the matching `*_mariana` impl.
 
-The per-arch story divides three ways. A first class of features is **arch-invariant**: the per-queue notification CSR strides (24-byte, bases `0x200`/`0x208`/`0x20c`/`0x214`) and the m2s descriptor opcode words are the same on all three. A second class is a **two-vs-one split**: the TDMA fabric-trigger CSR stride is 48 bytes on SUNDA/CAYMAN but 52 bytes on MARIANA; the UDMA-M2S prefetch and Xtensa-XT-local register writes are gated `arch_type > 2` (CAYMAN+MARIANA only) and silently no-op on SUNDA. A third class is **MARIANA-only**: the entire Q7 pooling-ucode loader, the retired RDM path (three `0xFFFFFFFF` stubs), the CCE stochastic-rounding seed registers, the FP8 data-converter defaults, the UDMA QoS gate, the B0 silicon-feature enablement, and the 32-region embedded-semaphore facility whose AXI base carries the `+0x800000000000` two-die-mesh high bit (`0x802701800`). These divergences, the descriptor build, and the CSR matrix are §1–§5.
+The per-arch story divides three ways. A first class of features is **arch-invariant**: the per-queue notification CSR strides (24-byte, bases `0x200`/`0x208`/`0x20c`/`0x214`) and the m2s descriptor opcode words are the same on all three. A second class is a **two-vs-one split**: the TDMA fabric-trigger CSR stride is 48 bytes on SUNDA/CAYMAN but 52 bytes on MARIANA; the UDMA-M2S prefetch and Xtensa-XT-local register writes are gated `arch_type > 2` (CAYMAN+MARIANA only) and silently no-op on SUNDA. A third class is **MARIANA-only**: the entire Q7 pooling-ucode loader, the retired RDM path (three `0xFFFFFFFF` stubs), the CCE stochastic-rounding seed registers, the FP8 data-converter defaults, the UDMA QoS gate, the B0 silicon-feature enablement, and the 32-region embedded-semaphore facility whose AXI base carries the `+0x800000000` (bit-35) device-full/rebase prefix (`0x802701800 = 0x2701800 | 0x800000000`; bit 47 is **not** set). These divergences, the descriptor build, and the CSR matrix are §1–§5.
 
 For reimplementation, the contract is:
 
 - **The arch-dispatch CSR matrix** — for each SDMA CSR family (per-queue notification, fabric-trigger AXI/APB, M2S prefetch, CC-queue, XT-local, embedded-sem), the field base, the per-arch stride, the index bound, and which generation gates the feature off. The leaf computes `base + arch_stride*idx + field_off` and bottoms into `al_reg_write32`/`al_reg_read32`.
 - **The CAYMAN M2M transpose builder** — the dtype-size LUT, the eight 32-MiB SBUF base windows, the partition/offset bit-pack into the to-descriptor, and the `EINVAL` rejection of any non-SBUF destination. CAYMAN-only.
 - **The al_sdma m2s descriptor build + meta_ctrl handoff** — how `al_sdma_m2s_build_<op>_descriptor` packs word0..word3, calls the matching `_meta_ctrl` encoder (whose op-word encoding is owned by [meta-ctrl-overlays](../dma/meta-ctrl-overlays.md)), and `al_copy_descriptor`s 16 bytes into the ring slot.
-- **The MARIANA-only band** — the Q7 pooling-ucode loader, the seed/FP8/QoS/B0 CSR programs, the 32-region embedded-semaphore model (8 TPB + 16 TopSP populated, the mesh-high-bit AXI base), and the S2M embedded-sem descriptor field-pack.
+- **The MARIANA-only band** — the Q7 pooling-ucode loader, the seed/FP8/QoS/B0 CSR programs, the 32-region embedded-semaphore model (8 TPB + 16 TopSP populated, the bit-35 rebase AXI base `0x802701800`), and the S2M embedded-sem descriptor field-pack.
 
 | | |
 |---|---|
@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **arch-dispatch trampolines** | `aws_hal_sdma_{init_embedded_sem,embedded_sem_csr_index,_wr_address,_read_address,read_dma_csrs,s2m_set_embedded_sem_fields}` `@0x451e90`–`0x4520f0` (→ `kaena_khal` `+0x528…+0x550`) |
 | **MARIANA SDMA band** | `.text 0x464ab0..0x465656` (`aws_hal_mariana_sdma_*` + Q7/RDM stubs + seed/FP8/QoS/B0) |
 | **MARIANA registrar** | `kaena_khal_register_funcs_v4 @0x4622e0` installs 17 of the 24 MARIANA SDMA leaves into `kaena_khal.khal_arch` |
-| **Mesh AXI base** | `0x802701800` = `0x2701800 \| 0x800000000000` (two-die-mesh high bit; `aws_hal_mariana_sdma_embedded_sem_csr_index @0x465490`) |
+| **Rebase AXI base** | `0x802701800` = `0x2701800 \| 0x800000000` (bit-35 device-full/rebase prefix, **not** the bit-47 mesh marker; `aws_hal_mariana_sdma_embedded_sem_csr_index @0x465490`) |
 | **CCE user offset** | `0x2000` (`aws_hal_get_sdma_cce_user_offset_mariana @0x477450`); SUNDA/CAYMAN return `0` (feature absent — [arch-csr-offsets §3](arch-csr-offsets.md)) |
 | **dtype-size LUT** | `data_type_sizes` `.rodata @0x9e30e0`/`@0x9e7ea0`/`@0x9e86e0`: `{0,8,1,1,2,2,2,2,4,4,4,4,8,1,1,1}` (idx 0 & >15 rejected) |
 
@@ -255,7 +255,9 @@ function build_transpose_descriptor(out ring_slot, a2, dtype, dims, shape_idx, e
 
 ### Purpose
 
-The MARIANA (Trn3-mesh / arch 4) SDMA band carries six capabilities absent on the earlier generations: the Q7 pooling-engine ucode loader, the retired RDM path, the CCE stochastic-rounding seed registers, the FP8 data-converter defaults, the UDMA QoS gate, the B0 silicon-feature enablement, and the 32-region embedded-semaphore facility used for collective/mesh notification. Seventeen of these 24 leaves install into the v4 `khal_arch` ops vtable via `kaena_khal_register_funcs_v4` (`@0x4622e0`); the other seven (seed write/read, FP8 defaults + the two value builders, UDMA QoS, B0 enable) are reached directly from `tdrv_init` / `insert_set_fp8_conv_config` / `set_collectives_dma_queues_props`. The mesh marker is concrete: `aws_hal_mariana_sdma_embedded_sem_csr_index` (`@0x465490`) calls `aws_hal_stpb_get_axi_offset(reg, 0x802701800)`, and `0x802701800 = 0x2701800 | 0x800000000000` — the two-die-mesh high bit on the AXI base.
+The MARIANA (Trn3-mesh / arch 4) SDMA band carries six capabilities absent on the earlier generations: the Q7 pooling-engine ucode loader, the retired RDM path, the CCE stochastic-rounding seed registers, the FP8 data-converter defaults, the UDMA QoS gate, the B0 silicon-feature enablement, and the 32-region embedded-semaphore facility used for collective/mesh notification. Seventeen of these 24 leaves install into the v4 `khal_arch` ops vtable via `kaena_khal_register_funcs_v4` (`@0x4622e0`); the other seven (seed write/read, FP8 defaults + the two value builders, UDMA QoS, B0 enable) are reached directly from `tdrv_init` / `insert_set_fp8_conv_config` / `set_collectives_dma_queues_props`. The rebase prefix is concrete: `aws_hal_mariana_sdma_embedded_sem_csr_index` (`@0x465490`) loads `movabs $0x802701800,%rsi` and calls `aws_hal_stpb_get_axi_offset(reg, 0x802701800)`, and `0x802701800 = 0x2701800 | 0x800000000` — the bit-35 device-full/rebase prefix on the AXI base. This is **not** the bit-47 two-die-mesh marker (`0x800000000000`): `0x802701800 & 0x800000000000 == 0`, and `0x2701800 | 0x800000000000` would be `0x800002701800`, a different value.
+
+> **CORRECTION —** an earlier revision of this page (and the §"Per-Arch Divergences" Mesh-AXI-base row) decomposed the embedded-semaphore AXI base as `0x802701800 = 0x2701800 | 0x800000000000`, calling the high bit the "two-die-mesh high bit." That arithmetic is **false**: `0x2701800 | 0x800000000000 = 0x800002701800 ≠ 0x802701800`. Re-verified against `objdump -d @0x465490` (build-id `8bb57aba…`), the instruction is `movabs $0x802701800,%rsi`, and the correct decomposition is `0x802701800 = 0x2701800 | 0x800000000` — bit **35**, the device-full/rebase prefix the `aws_hal_stpb_get_axi_offset` switch getters subtract, not the bit-47 mesh marker (`0x802701800 & 0x800000000000 == 0`). The bit-47 mesh high bit (`0x800000000000`) is a separate fact about the SBUF/TPB base *tables* (tiles 4..7), documented in [arch-csr-offsets §Considerations](arch-csr-offsets.md); the SDMA embedded-sem base is bit-35, not bit-47.
 
 ### Algorithm
 
@@ -280,9 +282,9 @@ function embedded_sem_wr_address(ctx, index, addr):
     aws_reg_write_embedded_semaphore_update_lo(csr, index, LODWORD(addr))
     aws_reg_write_embedded_semaphore_update_hi(csr, index, HIDWORD(addr))
 
-// aws_hal_mariana_sdma_embedded_sem_csr_index — 0x465490  (reverse lookup; the MESH marker)
+// aws_hal_mariana_sdma_embedded_sem_csr_index — 0x465490  (reverse lookup; bit-35 rebase base)
 function embedded_sem_csr_index(ctx):
-    axi = aws_hal_stpb_get_axi_offset(ctx, 0x802701800)  // 0x2701800 | mesh-high-bit
+    axi = aws_hal_stpb_get_axi_offset(ctx, 0x802701800)  // 0x2701800 | 0x800000000 (bit-35 rebase)
     for i in 0..7:  if axi == tpb_evt_sem_inc_base(i):    return i          // → region 0..7
     for i in 0..15: if axi == top_sp_evt_sem_inc_base(i): return 8 + i      // → region 8..23
     return -1                                            // not an evt-sem base
@@ -310,7 +312,7 @@ The MARIANA SDMA leaves, with their v4 vtable slot (`vt+N` = byte offset into th
 | `aws_hal_mariana_sdma_enable_b0_features` | `0x465210` | `arch==4`-gated B0 RMW (`+0x40F00/0x40F04/0x3B460/0x3A120/0x42300`) | — | HIGH |
 | `aws_hal_mariana_sdma_init_embedded_sem` | `0x465330` | 8 TPB + 16 TopSP evt-sem region init | `+0x528` | HIGH |
 | `aws_hal_mariana_sdma_embedded_sem_{wr,read}_address` | `0x4653a0` / `0x465400` | per-region lo/hi address write/read (`index<32`) | `+0x538/+0x540` | HIGH |
-| `aws_hal_mariana_sdma_embedded_sem_csr_index` | `0x465490` | reverse lookup via mesh AXI base `0x802701800` | `+0x530` | HIGH |
+| `aws_hal_mariana_sdma_embedded_sem_csr_index` | `0x465490` | reverse lookup via bit-35 rebase AXI base `0x802701800` | `+0x530` | HIGH |
 | `aws_hal_mariana_sdma_read_dma_csrs` | `0x465460` | dump all 32 region addresses to caller array | `+0x548` | HIGH |
 | `aws_hal_mariana_sdma_s2m_set_embedded_sem_fields` | `0x465500` | pack `al_embedded_sem_t` into S2M desc bytes; set `desc[+3] \|= 0x80` | `+0x550` | HIGH |
 | `aws_sdma_get_cce_params_mariana` | `0x465580` | `*size=0x2000; *param=2048` | `+0x510` | CERTAIN |
@@ -407,7 +409,7 @@ mariana_sdma_base  .rodata @0x9df220 — u64[128], per-engine SDMA base, stride 
 | `al_sdma_m2m_validate_op` (`0x452770`) | the central per-op validator the packet builders gate on before this band's descriptor build |
 | `al_mla_udma_m2m_build_packet_mariana` (`unk_CAF200`, v4 `@0x463460`) | the final UDMA build the descriptor feeds; the per-arch wire-emit |
 | `kaena_khal_register_funcs_v4` (`0x4622e0`) | installs 17 MARIANA SDMA leaves into `kaena_khal.khal_arch`; the slot wiring §1/§4 dispatch through |
-| `aws_hal_stpb_get_axi_offset` (`0x458e00`) | applies the `+0x800000000000` mesh high bit (`0x802701800`) the MARIANA embedded-sem reverse-lookup keys on |
+| `aws_hal_stpb_get_axi_offset` (`0x458e00`) | resolves the bit-35 rebase AXI base `0x802701800` (`= 0x2701800 \| 0x800000000`, **not** the bit-47 mesh marker) the MARIANA embedded-sem reverse-lookup keys on |
 | `aws_hal_get_sdma_cce_user_offset_mariana` (`0x477450`) | returns the `0x2000` CCE-user aperture the seed/FP8 registers sit above (SUNDA/CAYMAN return `0`) |
 
 ## Cross-References

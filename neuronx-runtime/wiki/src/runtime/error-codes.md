@@ -8,7 +8,7 @@
 
 Neuron has no single error code. A failure is described differently at six layers as it climbs from silicon to the public API, and `NRT_STATUS` — the 32-bit return enum of every `nrt_*` entry point — is only the top of that stack. Below it sit a firmware mailbox status byte (`FW_IO_SUCCESS/FAIL/UNKNOWN_COMMAND`), a hardware TPB error-notification taxonomy drained from the `NQ_TYPE_ERROR` ring, a libnrt-internal `INFER_ERROR_SUBTYPE` classification of those notifications, the kernel's persistent per-NeuronCore `NDS_*_COUNTER` mirror (surfaced as named sysfs attributes), and the CloudWatch metric ids the kernel posts to firmware. The relationship is **containment**: a `FW_IO` mailbox error is one input to the runtime's status decision; an `NQ_TYPE_ERROR` entry is decoded into an `INFER_ERROR_SUBTYPE`, which collapses into one of the execution-band `NRT_STATUS` codes; and every code that reaches a NeuronCore counter is bridged into the kernel datastore by two runtime functions. This page is the authoritative reference every error path cites — it owns the **full `NRT_STATUS` value space** and the layered model that produces it.
 
-The enum is **sparse and band-partitioned** by subsystem, not contiguous: `0..15` is the general/lifecycle core, `101` is a `2.31+` exec-unit code, `1002..1006` is per-inference execution, `1100` is a collectives-pending sentinel, and `1200..1206` is the hardware-execution subcategory (HBM/SRAM UE, DMA abort, NQ overflow, network-proxy). Each band exists because a different subsystem returns into it, and the gaps (`8`, `12`, `16..100`, `102..1001`, `1007..1099`, `1101..1199`) are deliberate partitioning, never missing codes. Two functions in `libnrt` consume the whole space and a reimplementer must reproduce both: `nrt_get_status_as_str @0xb95c0` maps a code to its **bare identifier** string (`"NRT_*"`, default `"UNKNOWN"` — *not* the bracketed troubleshoot message, which lives only in `libneuronpjrt`), and `nrt_get_status_priority @0xb9790` ranks a code `1..4` so that when several errors race the runtime surfaces the most severe. The master table below carries every code with its string, priority, and origin layer; the band sections explain what each range means; the layer diagram and the `get_status_priority` pseudocode close the page.
+The enum is **sparse and band-partitioned** by subsystem, not contiguous: `0..15` is the general/lifecycle core, `101` is a `2.31+` exec-unit code, `1002..1006` is per-inference execution, `1100` is a collectives-pending sentinel, and `1200..1206` is the hardware-execution subcategory (HBM/SRAM UE, DMA abort, NQ overflow, network-proxy). Each band exists because a different subsystem returns into it, and the gaps (`8`, `12`, `16..100`, `102..1001`, `1007..1099`, `1101..1199`) are deliberate partitioning, never missing codes. Two functions in `libnrt` consume the whole space and a reimplementer must reproduce both: `nrt_get_status_as_str @0xb95c0` maps a code to its **bare identifier** string (`"NRT_*"`, default `"UNKNOWN"` — *not* the bracketed troubleshoot message, which lives only in `libneuronpjrt`), and `nrt_get_status_priority @0xb9790` ranks a code `0..3` so that when several errors race the runtime surfaces the most severe. The master table below carries every code with its string, priority, and origin layer; the band sections explain what each range means; the layer diagram and the `get_status_priority` pseudocode close the page.
 
 ## The Six Layers
 
@@ -29,7 +29,7 @@ The error model is six numbering spaces, each authoritative at its own boundary,
 
 ## The Master NRT_STATUS Table
 
-Reference-catalogue table (style-guide exception to the 40-row limit — this is the body of the page). **Value** and **Name** are `DW_AT_const_value` / `DW_AT_name` from the DWARF enum `@<d6ed>`. **String** is the literal `nrt_get_status_as_str @0xb95c0` returns; codes whose `.rodata` token offset is pinned carry it inline, the rest return the bare `"NRT_*"` identifier from the same pool (`0x83edbd..0x83fa20`); any code outside the jump-table bands returns `"UNKNOWN"` (`@0x83edbd`). **Priority** is the `1..4` rank `nrt_get_status_priority @0xb9790` assigns (4 = most severe; see [the pseudocode](#the-priority-classifier-get_status_priority)). **Origin layer** is the subsystem that returns the code. **Conf** is HIGH unless the code is a `2.31+` addition absent from the cross-checking pjrt switch.
+Reference-catalogue table (style-guide exception to the 40-row limit — this is the body of the page). **Value** and **Name** are `DW_AT_const_value` / `DW_AT_name` from the DWARF enum `@<d6ed>`. **String** is the literal `nrt_get_status_as_str @0xb95c0` returns; codes whose `.rodata` token offset is pinned carry it inline, the rest return the bare `"NRT_*"` identifier from the same pool (`0x83edbd..0x83fa20`); any code outside the jump-table bands returns `"UNKNOWN"` (`@0x83edbd`). **Priority** is the `0..3` rank `nrt_get_status_priority @0xb9790` assigns (3 = most severe; see [the pseudocode](#the-priority-classifier-get_status_priority)). **Origin layer** is the subsystem that returns the code. **Conf** is HIGH unless the code is a `2.31+` addition absent from the cross-checking pjrt switch.
 
 | Value | Name | String (`nrt_get_status_as_str`) | Priority | Origin layer | Conf |
 |---|---|---|---|---|---|
@@ -38,8 +38,8 @@ Reference-catalogue table (style-guide exception to the 40-row limit — this is
 | `2` | `NRT_INVALID` | `NRT_INVALID` (`@0x83edc5`) | 1 | General — invalid input parameter(s) | HIGH |
 | `3` | `NRT_INVALID_HANDLE` | `NRT_INVALID_HANDLE` (`@0x83edd1`) | 1 | General — invalid handle to API | HIGH |
 | `4` | `NRT_RESOURCE` | `NRT_RESOURCE` (`@0x83ede4`) | 1 | MemoryAlloc — insufficient device (HBM) memory | HIGH |
-| `5` | `NRT_TIMEOUT` | `NRT_TIMEOUT` | 1 | Timeout — exceeded max execution time | HIGH |
-| `6` | `NRT_HW_ERROR` | `NRT_HW_ERROR` | 3 | Hardware — NeuronCore/component HW failure | HIGH |
+| `5` | `NRT_TIMEOUT` | `NRT_TIMEOUT` | 2 | Timeout — exceeded max execution time | HIGH |
+| `6` | `NRT_HW_ERROR` | `NRT_HW_ERROR` | 2 | Hardware — NeuronCore/component HW failure | HIGH |
 | `7` | `NRT_QUEUE_FULL` | `NRT_QUEUE_FULL` | 1 | QueueMgmt — exec input queue at capacity | HIGH |
 | `9` | `NRT_LOAD_NOT_ENOUGH_NC` | `NRT_LOAD_NOT_ENOUGH_NC` | 1 | ModelLoading — not enough NeuronCores for NEFF | HIGH |
 | `10` | `NRT_UNSUPPORTED_NEFF_VERSION` | `NRT_UNSUPPORTED_NEFF_VERSION` | 1 | ModelLoading — NEFF from unsupported compiler | HIGH |
@@ -47,19 +47,19 @@ Reference-catalogue table (style-guide exception to the 40-row limit — this is
 | `13` | `NRT_UNINITIALIZED` | `NRT_UNINITIALIZED` | 1 | RuntimeState — API before `nrt_init` / after `nrt_close` | HIGH |
 | `14` | `NRT_CLOSED` | `NRT_CLOSED` | 1 | RuntimeState — API after `nrt_close` | HIGH |
 | `15` | `NRT_QUEUE_EMPTY` | `NRT_QUEUE_EMPTY` | 1 | QueueMgmt — dequeue with no pending data | HIGH |
-| `101` | `NRT_EXEC_UNIT_UNRECOVERABLE` | `NRT_EXEC_UNIT_UNRECOVERABLE` | 4 | Exec-unit — TPB exec-unit unrecoverable | MED `2.31+` |
+| `101` | `NRT_EXEC_UNIT_UNRECOVERABLE` | `NRT_EXEC_UNIT_UNRECOVERABLE` | 1 | Exec-unit — TPB exec-unit unrecoverable | MED `2.31+` |
 | `1002` | `NRT_EXEC_BAD_INPUT` | `NRT_EXEC_BAD_INPUT` | 1 | Execution — bad input tensor name/shape/dtype | HIGH |
 | `1003` | `NRT_EXEC_COMPLETED_WITH_NUM_ERR` | `NRT_EXEC_COMPLETED_WITH_NUM_ERR` (`@0x7d54a8`) | 1 | Execution — completed, NaN/Inf in output (L2/L3) | HIGH |
-| `1004` | `NRT_EXEC_COMPLETED_WITH_ERR` | `NRT_EXEC_COMPLETED_WITH_ERR` | 1 | Execution — completed w/ logical/physical error (L2/L3) | HIGH |
+| `1004` | `NRT_EXEC_COMPLETED_WITH_ERR` | `NRT_EXEC_COMPLETED_WITH_ERR` | 3 | Execution — completed w/ logical/physical error (L2/L3) | HIGH |
 | `1005` | `NRT_EXEC_NC_BUSY` | `NRT_EXEC_NC_BUSY` | 1 | Execution — NeuronCore locked by another process | HIGH |
 | `1006` | `NRT_EXEC_OOB` | `NRT_EXEC_OOB` | 1 | Execution — indirect copy / embedding-update OOB | HIGH |
 | `1100` | `NRT_COLL_PENDING` | `NRT_COLL_PENDING` (`@0x83eefb`) | 1 | Collectives — collective op pending completion | HIGH |
-| `1200` | `NRT_EXEC_HW_ERR_COLLECTIVES` | `NRT_EXEC_HW_ERR_COLLECTIVES` (`@0x83ef0c`) | 2 | Collectives — stuck (missing notifications) | HIGH |
-| `1201` | `NRT_EXEC_HW_ERR_HBM_UE` | `NRT_EXEC_HW_ERR_HBM_UE` (`@0x83ef28`) | 2 | Hardware — HBM unrepairable uncorrectable error | HIGH |
-| `1202` | `NRT_EXEC_HW_ERR_NC_UE` | `NRT_EXEC_HW_ERR_NC_UE` | 2 | Hardware — NC on-chip SRAM parity (UE) | HIGH |
-| `1203` | `NRT_EXEC_HW_ERR_DMA_ABORT` | `NRT_EXEC_HW_ERR_DMA_ABORT` (`@0x83ef55`) | 2 | Hardware — DMA engine unrecoverable error | HIGH |
+| `1200` | `NRT_EXEC_HW_ERR_COLLECTIVES` | `NRT_EXEC_HW_ERR_COLLECTIVES` (`@0x83ef0c`) | 3 | Collectives — stuck (missing notifications) | HIGH |
+| `1201` | `NRT_EXEC_HW_ERR_HBM_UE` | `NRT_EXEC_HW_ERR_HBM_UE` (`@0x83ef28`) | 3 | Hardware — HBM unrepairable uncorrectable error | HIGH |
+| `1202` | `NRT_EXEC_HW_ERR_NC_UE` | `NRT_EXEC_HW_ERR_NC_UE` | 3 | Hardware — NC on-chip SRAM parity (UE) | HIGH |
+| `1203` | `NRT_EXEC_HW_ERR_DMA_ABORT` | `NRT_EXEC_HW_ERR_DMA_ABORT` (`@0x83ef55`) | 3 | Hardware — DMA engine unrecoverable error | HIGH |
 | `1204` | `NRT_EXEC_SW_NQ_OVERFLOW` | `NRT_EXEC_SW_NQ_OVERFLOW` (`@0x83ef6f`) | 2 | Execution — SW notification-queue overflow | HIGH |
-| `1205` | `NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE` | `NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE` (`@0x7d54c8`) | 2 | Hardware — HBM repairable uncorrectable error | HIGH |
+| `1205` | `NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE` | `NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE` (`@0x7d54c8`) | 3 | Hardware — HBM repairable uncorrectable error | HIGH |
 | `1206` | `NRT_NETWORK_PROXY_FAILURE` | `NRT_NETWORK_PROXY_FAILURE` | 2 | Network-proxy failure | MED `2.31+` |
 
 > **QUIRK — the string is the identifier, not the message.** `nrt_get_status_as_str @0xb95c0` returns the bare `"NRT_*"` token (or `"UNKNOWN"`), *never* the human-facing `[Category]: [NRT_*] status_code=N … troubleshoot URL` message. That formatted message is built only by `NrtErrMsg` in `libneuronpjrt @0x8496440`, and the short reworded labels by `nrt_status_to_message @0x19b5d0` in `libtorchneuron` — both outside this binary. The proof that `libnrt` does not format the message: the `/nrt-troubleshoot.html#nrt-troubleshooting` URL appears in `libnrt`'s strings **exactly once** (`strings | rg -c = 1`). A reimplementer must not expect `libnrt` to produce a user message; it produces a symbol.
@@ -78,7 +78,7 @@ The classic return space every `nrt_*` API can produce. `0` is success; `1..3` a
 
 ### `101` — Exec-Unit Unrecoverable
 
-A single `2.31+` code, `NRT_EXEC_UNIT_UNRECOVERABLE`, sitting alone in the `100..199` exec-unit band. It is the unrecoverable end-state of a TPB execution unit and carries the **highest** priority (`4`), so it dominates any racing status. It has no pjrt message and no NeuronCore counter; it is a terminal signal that the exec unit cannot continue. The `nrt_get_status_priority` early-out gate (`cmp $0x65` = 101) special-cases it (MED confidence on band semantics — the value is DWARF-certain, the "unrecoverable" meaning is from the symbol).
+A single `2.31+` code, `NRT_EXEC_UNIT_UNRECOVERABLE`, sitting alone in the `100..199` exec-unit band. It is the unrecoverable end-state of a TPB execution unit. It has no pjrt message and no NeuronCore counter; it is a terminal signal that the exec unit cannot continue. `nrt_get_status_priority` does **not** special-case `101`: it falls into the band's catch-all and is ranked `1`, like any unbanded code (MED confidence on band semantics — the value is DWARF-certain, the "unrecoverable" meaning is from the symbol).
 
 ### `1002..1006` — Per-Inference Execution
 
@@ -90,7 +90,7 @@ A lone sentinel, `NRT_COLL_PENDING`, in the `1100..1199` collectives band. It is
 
 ### `1200..1206` — Hardware-Execution Subcategories
 
-The hardware-execution band, the finest-grained failure space, returned when the L2/L3 decode determines the completion error was a specific silicon fault rather than a generic one. `1200` is a stuck collective (missing notifications); `1201`/`1205` split HBM uncorrectable errors into unrepairable vs repairable; `1202` is NeuronCore on-chip SRAM parity; `1203` is a DMA-engine abort; `1204` is a software notification-queue overflow (the consumer fell behind the `NQ_TYPE_ERROR` producer); `1206` is a `2.31+` network-proxy failure. Every `1200`-band code carries priority `2`, above the generic `1` but below `NRT_HW_ERROR(6)`=3 and `101`=4. This band is the 1:1 source of the kernel's extended NeuronCore counters (`NDS_EXT_NC_COUNTER_*`, ids 31..40).
+The hardware-execution band, the finest-grained failure space, returned when the L2/L3 decode determines the completion error was a specific silicon fault rather than a generic one. `1200` is a stuck collective (missing notifications); `1201`/`1205` split HBM uncorrectable errors into unrepairable vs repairable; `1202` is NeuronCore on-chip SRAM parity; `1203` is a DMA-engine abort; `1204` is a software notification-queue overflow (the consumer fell behind the `NQ_TYPE_ERROR` producer); `1206` is a `2.31+` network-proxy failure. The `1200`-band priorities are **not** uniform: the four hardware faults `1200`/`1201`/`1202`/`1203` and the repairable-HBM `1205` rank `3` (the same terminal rank as the generic `NRT_EXEC_COMPLETED_WITH_ERR(1004)`), while the software/transient cases `1204` (NQ overflow) and `1206` (network-proxy) rank `2`. Concretely `nrt_get_status_priority` returns `3` for `{1200,1201,1202,1203,1205}` and `2` for `{1204,1206}` (see [the pseudocode](#the-priority-classifier-get_status_priority)). This band is the 1:1 source of the kernel's extended NeuronCore counters (`NDS_EXT_NC_COUNTER_*`, ids 31..40).
 
 ---
 
@@ -159,41 +159,44 @@ The kernel's `NDS_EXT_NC_COUNTER` enum (`share/neuron_driver_shared.h:365-378`, 
 
 ## The Priority Classifier (`get_status_priority`)
 
-`nrt_get_status_priority @0xb9790` (TU `nrt/nrt_status_priority.cpp`) ranks a status `1..4` so the runtime can pick the most important code when an operation produces several. It is **not** a string map — it is a severity classifier keyed on the same range bands as `nrt_get_status_as_str`. A reimplementer reproduces it verbatim to get the "which error wins" decision right.
+`nrt_get_status_priority @0xb9790` (TU `nrt/nrt_status_priority.cpp`) ranks a status `0..3` so the runtime can pick the most important code when an operation produces several. It is **not** a string map — it is a severity classifier keyed on a handful of value compares. A reimplementer reproduces it verbatim to get the "which error wins" decision right.
+
+> **CORRECTION (F-PRIO) — the prior priority model was fabricated; it is not in the binary.** An earlier revision of this page described a `cmp $0x65` (=101) early-out returning rank `4`, an `NRT_HW_ERROR(6)`→`3` lift, and a uniform `1200`-band rank `2`. **None of those exist in `nrt_get_status_priority @0xb9790`.** Re-disassembled (`objdump -d --start-address=0xb9790 --stop-address=0xb9800` against build-id `8bb57aba…`) the function has **no** `cmp $0x65` and **no** `mov $0x4`; it returns only `0/1/2/3`. The real control flow is a fixed sequence of value gates: `cmp $0x3ec; je→ret 3` (1004 is terminal); a low-band `sub $5; cmp $2; setb; add 1` (so `s∈{5,6}` → `2`, every other low code → `1`); `cmp $0x4b5; je→ret 3` (1205); `cmp $0x4b4; je→ret 2` (1204); `cmp $0x4b0; sbb; and $0xfe; add 3` (so `1200..1203` → `3`, `1204` already handled → would be `2`); and a tail `cmp $0x4b6; sete; add 1` (1206 → `2`, anything past → `1`). The verbatim model:
 
 ```c
 // Models nrt_get_status_priority @0xb9790 — nrt/nrt_status_priority.cpp.
-// Returns a severity rank: higher wins when statuses race. 0 = success, 4 = terminal.
-// Range gates are the decoded jump-table compares (0x3ec=1004, 0x4af=1199, 0x4b0..0x4b4=1200..1204).
+// Returns a severity rank 0..3: higher wins when statuses race. 0 = success.
+// Decoded from the value gates at 0xb9790 (build-id 8bb57aba…).
 int nrt_get_status_priority(NRT_STATUS s):
-    if s == NRT_SUCCESS:                          // 0 — no error
-        return 0
+    if s == NRT_EXEC_COMPLETED_WITH_ERR:          // 0x3ec = 1004 → terminal
+        return 3
+    if s <= NRT_EXEC_COMPLETED_WITH_ERR:          // s <= 1004 (low band)
+        if s == NRT_SUCCESS:                      // 0 — no error
+            return 0
+        // sub 5; cmp 2 (unsigned); setb; add 1  →  s in {5,6} → 2, else → 1
+        if s == NRT_TIMEOUT or s == NRT_HW_ERROR: // 5, 6
+            return 2
+        return 1                                  // every other 1..15, 101, 1002..1003
 
-    // --- highest: terminal exec-unit failure (2.31+) -------------------------
-    if s == NRT_EXEC_UNIT_UNRECOVERABLE:          // 101 (cmp $0x65) — early-out gate
-        return 4                                  // dominates every other status
+    // --- s > 1004 -----------------------------------------------------------
+    if s == NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE:    // 0x4b5 = 1205 → terminal
+        return 3
+    if s > NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE:     // s > 1205
+        // cmp 0x4b6 (1206); sete; add 1
+        if s == NRT_NETWORK_PROXY_FAILURE:        // 1206
+            return 2
+        return 1                                  // any code past 1206 → generic
 
-    // --- general / lifecycle / execution core: lowest non-zero rank ----------
-    if s <= NRT_EXEC_COMPLETED_WITH_ERR:          // s <= 0x3ec (1004); covers 1..15, 1002..1004
-        if s == NRT_HW_ERROR:                     // 6 — hardware fault, lifted above generic
-            return 3
-        return 1                                  // all other general/exec codes
-
-    // --- per-inference tail (1005, 1006) and collectives-pending -------------
-    if s <= NRT_COLL_PENDING:                      // s <= 0x44c (1100); 1005, 1006, 1100
-        return 1                                   // contention / OOB / pending → generic rank
-
-    // --- hardware-execution subcategory band: elevated rank ------------------
-    if s <= NRT_EXEC_HW_ERR_REPAIRABLE_HBM_UE:     // s <= 0x4b5 (1205); 1200..1205
-        return 2                                   // HBM/SRAM UE, DMA abort, NQ overflow, collectives-stuck
-
-    if s == NRT_NETWORK_PROXY_FAILURE:             // 1206 (2.31+)
+    // --- 1004 < s < 1205 ----------------------------------------------------
+    if s == NRT_EXEC_SW_NQ_OVERFLOW:              // 0x4b4 = 1204
         return 2
-
-    return 1                                       // any unbanded code → generic
+    // cmp 0x4b0 (1200); sbb; and 0xfe; add 3  →  s >= 1200 → 3, else (1005,1006,1100) → 1
+    if s >= NRT_EXEC_HW_ERR_COLLECTIVES:          // s >= 1200 → 1200..1203
+        return 3
+    return 1                                       // 1005, 1006, 1100 → generic
 ```
 
-> **QUIRK — the rank is not monotonic in the numeric value.** `NRT_HW_ERROR(6)` ranks `3`, above the `1200`-band hardware codes which rank `2`, even though they are numerically larger and more specific. The reason is severity, not specificity: a bare `NRT_HW_ERROR` means the runtime could not even attribute the fault to a subcategory, so it is treated as *more* alarming than a precisely-decoded HBM-repairable error. And `NRT_EXEC_UNIT_UNRECOVERABLE(101)`, numerically the smallest of the "exec" codes, ranks `4` — the highest of all. A reimplementer that ranks by numeric value will surface the wrong status when an unrecoverable unit error races a generic one.
+> **QUIRK — the rank is not monotonic in the numeric value.** A precisely-decoded hardware fault outranks a vaguer one: `NRT_EXEC_COMPLETED_WITH_ERR(1004)` and the `{1200,1201,1202,1203,1205}` silicon faults all rank `3` (terminal), while the larger-valued `NRT_EXEC_SW_NQ_OVERFLOW(1204)` and `NRT_NETWORK_PROXY_FAILURE(1206)` rank only `2` — so `1004` (numerically smaller) outranks `1206`. Likewise `NRT_TIMEOUT(5)`/`NRT_HW_ERROR(6)` rank `2`, above their lifecycle neighbours which rank `1`. A reimplementer that ranks by numeric value will surface the wrong status when, for example, a `1004` races a `1206`.
 
 > **NOTE — priority is for racing statuses, not for display.** This rank is consumed when multiple errors arrive for one operation (e.g. several NeuronCores each return a status); the runtime keeps the highest-priority one. It has no bearing on the string or the pjrt message. A reimplementer wiring only the single-status return path does not need it; one aggregating multi-core or multi-inference results does, and must reproduce the bands exactly.
 

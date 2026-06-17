@@ -329,16 +329,19 @@ ib_create_one_block / ib_add_inference_wait_v2 / hw_exec_queue_add_exec_request_
 // Builds a 0x10A4-opcode instruction; emits it via add_ins(chunk, offset, &instr).
 function add_ev_<op>(chunk, offset, event_id):
     instr = zeroed 48-byte buffer
-    instr.opcode   = 0x10A4            // 4260 — the sync-event instruction opcode (all three ops)
-    instr.field@10 = 1                 // dword at payload+10 = 1 (common to all three)
+    instr.opcode16 = 0x10A4            // 4260 — a 16-bit value at bytes 0-1 (mov %ax,(%rsp));
+                                       // bytes 2-3 are zeroed (movups), NOT part of the opcode
+    instr.field@12 = 1                 // dword at byte 12 (0xc) = 1 (movl $1,0xc; common to all three)
     switch <op>:
-      wait:  instr.byte@2 = 7;  instr.byte@3 = event_id     // sub-op 7,  id at payload byte 3
-      set:   instr.byte@4 = 17; instr.byte@5 = event_id     // sub-op 17, id at payload byte 5
-      clr:   instr.byte@4 = 18; instr.byte@5 = event_id     // sub-op 18, id at payload byte 5
+      wait:  instr.byte@4 = 7;  instr.byte@5 = event_id     // sub-op 7,  id at payload byte 5
+      set:   instr.byte@6 = 17; instr.byte@7 = event_id     // sub-op 17, id at payload byte 7
+      clr:   instr.byte@6 = 18; instr.byte@7 = event_id     // sub-op 18, id at payload byte 7
     return add_ins(chunk, offset, &instr)                   // append; returns new chunk offset
 ```
 
-> **QUIRK —** the three ops do **not** share a byte layout: `wait` places its sub-op (7) and id at payload bytes 2/3, while `set` (17) and `clr` (18) place theirs at bytes 4/5. The `event_id` argument is the resolved semaphore id from a `tdrv_sync_get_<EVENT>` accessor (a `uint8`, never `0xFF` — that value is `TDRV_SYNC_EVENT_UNSUPPORTED` and is asserted against at the accessor). A reimplementer who uses one byte layout for all three ops mis-encodes two of them; the opcode (`0x10A4`) and the `payload+10 = 1` field are the only parts in common.
+> **CORRECTION —** an earlier revision placed these bytes two too low: it described the opcode `0x10A4` as a 4-byte field and put `wait` at bytes 2/3, `set`/`clr` at bytes 4/5, with the common dword at `payload+10`. Re-verified against `objdump -d` of `add_ev_wait@0x273c50` / `add_ev_set@0x273c00` / `add_ev_clr@0x273ca0` (build-id `8bb57aba…`): the opcode is a **16-bit** store (`mov $0x10a4,%eax; mov %ax,(%rsp)`) occupying bytes 0-1 only — bytes 2-3 are zeroed by a `movups`, so the sub-op/id never land there. The true offsets are `wait{sub-op@4, id@5}` (`movb $0x7,0x4`; `mov %dl,0x5`), `set{sub-op@6, id@7}` (`movb $0x11,0x6`; `mov %dl,0x7`), `clr{sub-op@6, id@7}` (`movb $0x12,0x6`; `mov %dl,0x7`), and the common dword is `movl $0x1,0xc` → byte **12 (0xc)**. The opcode (`0x10A4`), the sub-op values (7/17/18), and the field value (1) were correct; only the byte offsets were wrong.
+
+> **QUIRK —** the three ops do **not** share a byte layout: `wait` places its sub-op (7) and id at payload bytes 4/5, while `set` (17) and `clr` (18) place theirs at bytes 6/7. The `event_id` argument is the resolved semaphore id from a `tdrv_sync_get_<EVENT>` accessor (a `uint8`, never `0xFF` — that value is `TDRV_SYNC_EVENT_UNSUPPORTED` and is asserted against at the accessor). A reimplementer who uses one byte layout for all three ops mis-encodes two of them; the opcode (`0x10A4`) and the `byte@12 = 1` field are the only parts in common.
 
 ### Algorithm — per-arch event-address resolution
 
@@ -387,9 +390,9 @@ function get_evt_accel_addr(set):                          // slot 33 @+264; arg
 | `tdrv_add_ev_wait` | `0x30a470` | guarded dispatch → `tdrv_arch_ops.add_ev_wait` (slot 56) | HIGH |
 | `tdrv_add_ev_set` | `0x30a4e0` | guarded dispatch → slot 57 | HIGH |
 | `tdrv_add_ev_clr` | `0x30a550` | guarded dispatch → slot 58 | HIGH |
-| `add_ev_wait` | `0x273c50` | emit opcode `0x10A4`, sub-op 7, id@byte3 (arch-agnostic) | HIGH |
-| `add_ev_set` | `0x273c00` | emit opcode `0x10A4`, sub-op 17, id@byte5 | HIGH |
-| `add_ev_clr` | `0x273ca0` | emit opcode `0x10A4`, sub-op 18, id@byte5 | HIGH |
+| `add_ev_wait` | `0x273c50` | emit opcode `0x10A4`, sub-op 7 @byte4, id@byte5 (arch-agnostic) | HIGH |
+| `add_ev_set` | `0x273c00` | emit opcode `0x10A4`, sub-op 17 @byte6, id@byte7 | HIGH |
+| `add_ev_clr` | `0x273ca0` | emit opcode `0x10A4`, sub-op 18 @byte6, id@byte7 | HIGH |
 | `tdrv_arch_get_evt_addr` | `0x309f50` | guarded dispatch → per-arch `get_evt_addr` (slot 34) | HIGH |
 | `tdrv_arch_get_evt_addr_sunda` | `0x30b1b0` | `axi(tpb, 4·id + 0x2700000)` | HIGH |
 | `tdrv_arch_get_evt_addr_cayman` | `0x30c190` | `axi(tpb, 4·id + 0x802700000)` | HIGH |
