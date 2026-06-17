@@ -80,6 +80,7 @@
 - [Framework Bindings — JAX, PyTorch-XLA & Custom-Call Targets](frontend/framework-bindings.md)
 - [StaticIOTranspose & the io_transpose JSON Schema](frontend/static-io-transpose.md)
 - [Snapshot / Decomposed Input Format](frontend/snapshot-input-format.md)
+- [NeuronLogger — the C++ Logging Singleton & Boost.Log Sinks](frontend/neuronlogger.md)
 - [Python Logging Façade & Log-Level Mapping](frontend/python-logging-facade.md)
 - [Optional Client/Daemon IPC Server](frontend/client-daemon-ipc.md)
 
