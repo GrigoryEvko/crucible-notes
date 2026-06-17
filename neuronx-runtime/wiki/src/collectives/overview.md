@@ -14,7 +14,7 @@ The central dispatch is `enc_post_operation @0x11f790` (`enc.cc`, 21 KB): per po
 For reimplementation, the map-level contract is:
 
 - **The two layers and their hand-off** — the host composer produces an algorithm-family schedule object (`enc_alg_metaring` for ring, `enc_alg_mesh` for mesh, …); the `encd` driver lowers that into `spad_ctrl` / `cc_op_entry` + `vring` SDMA descriptors. The hand-off is the `encd_*` boundary.
-- **The two algorithm axes, never conflated** — the host `enc_alg_type` (12 values; picks the composer) is *not* the 4-bit device `enc_pattern_t` (RING=0 / MESH=1 / INVALID=2) that ends up in the wire descriptor. The composer collapses 12 host algorithms onto a binary device pattern.
+- **The two algorithm axes, never conflated** — the host `enc_alg_type` (11 valid (0..10) + INVALID=11 sentinel; picks the composer) is *not* the 4-bit device `enc_pattern_t` (RING=0 / MESH=1 / INVALID=2) that ends up in the wire descriptor. The composer collapses the 11 valid host algorithms onto a binary device pattern.
 - **The dispatch shape** — `enc_post_operation`'s `enc_can_post_*` battery → a fixed alg precedence → the 13-case `enc_op_type` jump table → the family composer → the `encd` emit.
 
 | | |
@@ -23,7 +23,7 @@ For reimplementation, the map-level contract is:
 | **Op-dispatch jump table** | switch @`0x12038a`, 13 cases, default `0x1213c0` (`switches.json`) |
 | **Build-time family selector** | `enc_init_comm @0x135d60` → `enc_cc_algorithm_allowed @0x108d30` (per-`enc_alg_type` gate) |
 | **Algorithm roster** | `enc_get_algorithm_name @0xfef30` — 11-case switch (`enc_alg_type` 0..10) |
-| **Host alg axis** | `enc_alg_type` — 12 values (`RING=0 … INVALID=11`) |
+| **Host alg axis** | `enc_alg_type` — 11 valid (`RING=0 … BW_OPT_MESH=10`), `INVALID=11` sentinel |
 | **Device pattern axis** | `enc_pattern_t` — `RING=0`, `MESH=1`, `INVALID=2` (the `cc_op_entry.algo_type` field) |
 | **Op family** | `enc_op_type` — 13 valid (`ALLGATHER=0 … ALLTOALL_V=12`), `OP_N=13` |
 | **Device emitter** | `encd` (`tdrv/encd.c`) → `create_spad_ctrl_entry @0x232cd0`, `vring_pack_descs @0x312590` |
@@ -61,7 +61,7 @@ The `encd` driver is the lowering target. The composer's step/event generators d
 
 A third `encd` output is the per-channel TopSP configuration (`prep_metaring_topsp_config @0x2331d0` for ring channels, the mesh analog for mesh), which binds the channel's SP engine, semaphores, and ring state before the op stream runs. These three encd outputs are detailed across [encd: Device-Side Descriptor Emitter](encd-overview.md), [encd: DMA Descriptor and devmem Floor](encd-dma-devmem.md), and [encd: Semaphore and TopSP Bring-Up](encd-sema-topsp.md).
 
-> **GOTCHA —** the two layers carry **two different algorithm enumerations**, and conflating them mis-sizes the wire descriptor. The composer dispatches on the 12-value host `enc_alg_type` (Ring / Hier / Mesh / Kangaring / RDH / …); the emitter packs only the **4-bit** device `enc_pattern_t` (`RING=0`, `MESH=1`, `INVALID=2`) into `cc_op_entry.algo_type`. A reimplementation that tries to pack `enc_alg_type` (which reaches 11) into the 4-bit field will overflow it. The composer is where 12 host algorithms collapse to the binary device pattern. See [The cc_op_entry On-Device ISA §4](cc-op-isa.md) for the two-axis split.
+> **GOTCHA —** the two layers carry **two different algorithm enumerations**, and conflating them mis-sizes the wire descriptor. The composer dispatches on the host `enc_alg_type` (11 valid (0..10) + INVALID=11 sentinel: Ring / Hier / Mesh / Kangaring / RDH / …); the emitter packs only the **4-bit** device `enc_pattern_t` (`RING=0`, `MESH=1`, `INVALID=2`) into `cc_op_entry.algo_type`. A reimplementation that tries to pack `enc_alg_type` (whose sentinel reaches 11) into the 4-bit field will overflow it. The composer is where the 11 valid host algorithms collapse to the binary device pattern. See [The cc_op_entry On-Device ISA §4](cc-op-isa.md) for the two-axis split.
 
 ### 1.3 Shared substrate: the replica-group topology
 
@@ -191,7 +191,7 @@ The terminal artifact of every collective compile is the `cc_op_entry` stream th
 
 This is the membrane between the host compile documented here and the device execution documented elsewhere. The byte-exact `cc_op_entry` bit-field, the union overlay, and the emit↔consume agreement are fully derived in [The cc_op_entry On-Device ISA](cc-op-isa.md); the `cc_op` stream merge/validate step (`enc_validate_and_merge_ccops @0x132b80`, run before scheduling) and the channel descriptor whose `abs_id` drives the `channel_list` bitmap are [encd: Device-Side Descriptor Emitter](encd-overview.md) and [The 148-Byte Ring Channel Descriptor](channel-descriptor.md).
 
-> **NOTE —** the `cc_op_entry.algo_type` is **binary** (ring vs mesh) even though the host resolved one of 12 `enc_alg_type` values. Hierarchical and RDH do not get their own device pattern — they decompose into ring and mesh phases, each phase emitting `cc_op_entry`s with `algo_type ∈ {RING, MESH}`. The phase structure is the composer's; the device only ever sees the binary pattern per op.
+> **NOTE —** the `cc_op_entry.algo_type` is **binary** (ring vs mesh) even though the host resolved one of the 11 valid (0..10) `enc_alg_type` values. Hierarchical and RDH do not get their own device pattern — they decompose into ring and mesh phases, each phase emitting `cc_op_entry`s with `algo_type ∈ {RING, MESH}`. The phase structure is the composer's; the device only ever sees the binary pattern per op.
 
 ---
 
@@ -200,7 +200,7 @@ This is the membrane between the host compile documented here and the device exe
 > Substrate split, end-to-end flow, the 13-case op dispatch, and the algorithm roster were cross-checked against the IDA artifacts of `libnrt.so` 2.31.24.0:
 > - `enc_post_operation @0x11f790`: the op-dispatch switch @`0x12038a` (13 cases, default `0x1213c0`) and the teardown switch @`0x1242ef` (13 cases, default `0x124943`) are both present in `switches.json`; the alg-precedence cascade (HIER > INTRA_RDH > MESH > KANGARING > SINGLE_CYCLE_RING > INTER_RDH > RING) is read from the decompile (lines 762–791) with the `"alg == ENC_ALG_MESH"` assert at `enc.cc:0xE4F`.
 > - `enc_get_algorithm_name @0xfef30`: 11-case switch (values 0..10, default `0xfefd0`), targets and `.rodata` name strings confirmed.
-> - Enums `enc_op_type` (13), `enc_alg_type` (12), `enc_pattern_t` (RING=0/MESH=1/INVALID=2), `metaring_type` (5) are verbatim from `enums.json`.
+> - Enums `enc_op_type` (13), `enc_alg_type` (11 valid (0..10) + INVALID=11 sentinel), `enc_pattern_t` (RING=0/MESH=1/INVALID=2), `metaring_type` (5) are verbatim from `enums.json`.
 > - Emit symbols `create_spad_ctrl_entry @0x232cd0`, `encd_dma_mark_end @0x237200`, `vring_pack_descs @0x312590`, `vring_dump_to_pring_descriptors_padded @0x311f10`, `dma_ring_create_prings_from_vring @0x22e310`, `prep_metaring_topsp_config @0x2331d0` resolved in `function_addresses.json`; vring/spad strings (`"failed to write vring descriptors to pring"`, `"vrings[%d] is null"`) confirmed in `strings.json`.
 >
 > **[MED]** The mapping of each `enc_alg_type` to a device `enc_pattern_t` in §3.1 is inferred from the composer-to-pattern correspondence (ring families → RING, mesh families → MESH, RDH/HIER decompose into both phases), not from a single switch. The binary-ness of `cc_op_entry.algo_type` and `enc_pattern_t = {RING=0, MESH=1, INVALID=2}` are HIGH (enum + both binaries); which numeric pattern a *given* phase emits is owned by the composer-phase pages, not pinned op-by-op here.

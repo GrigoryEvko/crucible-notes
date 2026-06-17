@@ -226,7 +226,7 @@ IDA recovered the enum directly:
 
 > **CORRECTION (CCOP-2) —** an earlier note guessed `RING = 1 / MESH = 2` (from a sibling cell) and read the packer's `algo_type<<8` constant-1 path as "RING = 1". The recovered `enc_pattern_t` enum is **`RING = 0, MESH = 1, INVALID = 2`**. The field is 4 bits and the device select is binary ring-vs-mesh; the numeric values are now pinned from the enum, not inferred. The `<<8` constants in the packer are data-driven by the ring/mesh discovery branches, not a fixed "RING" tag.
 
-### `enc_alg_type` — the host composer axis (separate, 12 values)
+### `enc_alg_type` — the host composer axis (separate, 11 valid (0..10) + INVALID=11 sentinel)
 
 The host runtime picks a *composer/scheduler* from a wider algorithm enum, and `enc_get_algorithm_name` (`@0xfef30`) names it. This axis is **not** a `cc_op_entry` field — it selects which composer builds the ccop stream, after which each op carries only the 4-bit device `algo_type`. Verbatim from the recovered switch and the `.rodata` string block at `0x840d11` (`"Ring\0Hier\0Bw Optimal Mesh\0Kangaring\0Single Step Mesh\0UltraServer Mesh\0Invalid\0"`):
 
@@ -247,7 +247,7 @@ The host runtime picks a *composer/scheduler* from a wider algorithm enum, and `
 
 A third, topology axis — `metaring_type` — derives from `enc_alg_type` via `enc_get_metaring_type` (`@0xfc860`): `RING = 0` for alg ≤ 3 except `KANGARING (3) → KANGARING (1)`, `SINGLE_CYCLE_RING (4) → SINGLE_CYCLE_RING (2)`, `INTER_RDH (7) → RDH (3)`; anything else asserts `meta_ring_type < INVALID_METARING`. Recorded for context; not a `cc_op_entry` field. (HIGH)
 
-> **GOTCHA —** three enums, three roles. `algo_type` (device, `enc_pattern_t`, RING/MESH) is the **only** one in the wire descriptor. `enc_alg_type` (host, 12-wide) picks the composer. `metaring_type` (topology) is a derived label. A reimplementer who packs the 12-wide `enc_alg_type` into the 4-bit `algo_type` field will overflow it and mis-select the device union. The descriptor only ever carries the binary device pattern.
+> **GOTCHA —** three enums, three roles. `algo_type` (device, `enc_pattern_t`, RING/MESH) is the **only** one in the wire descriptor. `enc_alg_type` (host, 11 valid (0..10) + INVALID=11 sentinel) picks the composer. `metaring_type` (topology) is a derived label. A reimplementer who packs the host `enc_alg_type` into the 4-bit `algo_type` field will overflow it and mis-select the device union. The descriptor only ever carries the binary device pattern.
 
 ### `algo_sub_type` (3-bit) and reserved bits
 
