@@ -70,6 +70,7 @@
 - [CompileCommand Pipeline & the Canonical Job Order](frontend/compilecommand-pipeline.md)
 - [JobRegistry & the Sub-Tool Process Model](frontend/job-registry.md)
 - [CompileCommand Flag Catalog — the 147-Flag Surface](frontend/flag-catalog.md)
+- [Frontend Precision-Flag Marshalling](frontend/precision-flag-marshalling.md)
 - [The Opt-Level Planes — -O0..-O3 and the Three Hidden Dials](frontend/opt-level-planes.md)
 - [hlo2penguin Entry & the Native cl::opt Surface](frontend/hlo2penguin-entry.md)
 - [Flag Visibility Taxonomy (ArgKind)](frontend/flag-visibility-argkind.md)
@@ -78,6 +79,7 @@
 - [Environment-Variable Catalog & the NEURON_CC_FLAGS Boundary](frontend/env-var-catalog.md)
 - [Framework Bindings — JAX, PyTorch-XLA & Custom-Call Targets](frontend/framework-bindings.md)
 - [StaticIOTranspose & the io_transpose JSON Schema](frontend/static-io-transpose.md)
+- [Snapshot / Decomposed Input Format](frontend/snapshot-input-format.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
