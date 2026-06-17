@@ -130,6 +130,7 @@
 - [Neuron Dialect Registry & Extension Ops](hlo-opt/neuron-dialect-registry.md)
 - [CanonicalizeForTensorizer Rewriters](hlo-opt/canonicalize-for-tensorizer.md)
 - [TensorizerLegalizationPass](hlo-opt/tensorizer-legalization.md)
+- [MhloToPythonPrinter — Penguin Emission Driver & Elementwise Emitters](hlo-opt/mhlo-to-python-printer-driver.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
