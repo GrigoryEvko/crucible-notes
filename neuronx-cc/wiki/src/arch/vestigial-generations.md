@@ -1,248 +1,196 @@
-# Vestigial Generations: CoreV1 (Inferentia) & CoreV5
+# Vestigial Generations — CoreV1 (Inferentia) & CoreV5
 
-> *All symbols and addresses on this page are read from the **cp310** wheel of `neuronx_cc` 2.24.5133.0+58f8de22. `libwalrus.so` BuildID `92b4d331…`; `libBIR.so` BuildID `a9b1ea38…`. The C++ libraries are rebuilt per wheel (cp310/cp311 share a size but not a SHA; cp312 differs), so re-confirm addresses against cp311/cp312 — see [Version Provenance](../reference/versions.md). For both binaries, `.text`/`.rodata` VMA equals file offset. Treat every address as version-pinned.*
+> *All symbols and addresses on this page are read from the **cp310** wheel of `neuronx_cc` 2.24.5133.0+58f8de22 (`libwalrus.so` and `libBIR.so`); cp310/cp311/cp312 carry the same strings and the same dispatch, so re-confirm only if a page says otherwise — see [Version Provenance](../reference/versions.md). For both binaries `.text`/`.rodata` VMA equals file offset. Treat every address as version-pinned.*
 
 ## Abstract
 
-The arch model carries five generations but the backend codegen accepts only three. This page pins that gap precisely, so a reimplementer never mistakes a modelled-but-dead generation for a supported target. Two of the five `ArchLevel` ordinals — **10** (CoreV1 / Inferentia / Tonga / gen1) and **50** (CoreV5 / gen5) — are *vestigial*: both are recognized enum values, both appear in the codename string-mapper, and neither is a reachable target of `Codegen::codegen`. The decisive fact is a single switch in `libwalrus.so`: `Codegen::codegen` (@ `0x11d2cc1`) dispatches on `cmp $0x14` / `cmp $0x1e` / `cmp $0x28` (=20/30/40 = CoreV2/V3/V4) and falls through *everything else* to `boost::throw_exception(std::out_of_range)` (@ `0x73a12c`). There is no `cmp $0xa` (10) and no `cmp $0x32` (50). **The codegen floor is arch 20.**
+The arch model carries five generations on its ordinal ladder — `10/20/30/40/50` = Inferentia / Sunda / gen3 / CoreV4 / CoreV5 ([`bir::ArchLevel2string` @ `libBIR 0x479490`](arch-object-model.md)) — but only **three** are live codegen targets. The backend `Codegen::codegen` arch-select switch (`libwalrus 0x11d2c50`) dispatches on exactly `20/30/40` and throws on anything else; there is no `CoreV1Gen`/`CoreV5Gen` class, vtable, or RTTI; and there is no `core_v1::`/`core_v5::` ISA encoder namespace. A reader scanning the ladder must not mistake a *modelled* generation for a *supported* one. This page documents which constructors, RTTI tables, dispatch arms, and opcode tables include versus omit each generation, so the codegen floor — **arch 20 (gen2/Sunda)** — is unambiguous.
 
-But the two vestigial generations are not symmetric, and conflating them is the trap this page closes. **CoreV1 is fully *modelled* but has no codegen**: `libwalrus` carries a complete `Inferentia{Act,Dve,Pe,Pool,Psumbuf,Statebuf,Board,Core,Device}` hardware-engine hierarchy plus the static `_inferentia_arch_model` singleton — structurally parallel to Sunda(gen2)/Cayman(gen3)/CoreV4(gen4) — and a *live* analysis-pass branch (`AntiDependencyAnalyzer::getPSUMPartitionRange`, gated `cmpl $0x13`=19) that still enforces Inferentia's partition-0 PSUM rule at arch ≤ 19. What it lacks is a `CoreV1GenImpl` backend class. **CoreV5 is the opposite — a pure forward-declaration stub**: a reserved enum ordinal (50, with *no* `Board`, so `getArchModel` asserts "Unknown architecture"), six `core_v5` strings that are all dormant `</>= ArchLevel::core_v5` feature-gates plus one CLI token, and one `CoreV5` DMA placeholder string. CoreV5 has zero hardware-engine classes, zero ISA tables, zero codegen. So "vestigial" means two different things: **CoreV1 = modelled-but-deprecated; CoreV5 = reserved-but-unbuilt.**
+The two dead generations are **not symmetric**, and that asymmetry is the page's central finding. **CoreV1 (arch 10)** is *fully-modelled but deprecated*: it has a complete `Inferentia` hardware-model engine hierarchy (`InferentiaAct/Dve/Pe/Pool/Psumbuf/Statebuf` + `Inferentia` `Board/Core/Device` + the `_inferentia_arch_model` singleton), a live analysis-pass code path that still fires for it, and a Cython mid-end target package (`penguin/targets/tonga/`) — everything *except* a `walrus` backend `GenImpl`. **CoreV5 (arch 50)** is a *pure forward-declaration stub*: a reserved enum ordinal with no `Board` (`getArchModel` asserts `"Unknown architecture"`), zero hardware-engine classes, zero ISA tables, and nothing executable — only a scatter of dormant `< ArchLevel::core_v5` / `>= ArchLevel::core_v5` feature gates and one CLI token. CoreV1 = modelled-but-deprecated; CoreV5 = reserved-but-unbuilt.
 
-For reimplementation, the contract is: drive codegen off the three live arches (20/30/40); model the gen1 *analysis* floor at arch 10 if you want byte-parity with the Inferentia PSUM rule; and treat every `core_v5` branch as a dormant feature flag that fires uniformly off for all current arches.
+The "deprecated/stub" *status* is a **structural inference**, and this page is explicit about that. No string says "CoreV1 is deprecated" or "CoreV5 is unimplemented"; the verdict is read off the *presence and absence pattern* — which constructors run, which RTTI typeinfos exist, which dispatch arms compare which constants, which opcode tables are emitted. Each finding below is tagged with the include/omit evidence and its confidence; the bare presence/absence facts are CONFIRMED, and the word "vestigial" is the INFERRED label placed over them.
+
+For a reader of this page the contract is:
+
+- **The codegen floor** — `Codegen::codegen` accepts `20/30/40` only; both `10` and `50` fall through to a throw.
+- **The two asymmetric absences** — CoreV1 has a full HW model + analysis path + mid-end target but no `GenImpl`; CoreV5 has *nothing* but reserved gates and an ordinal.
+- **The evidence pattern** — per generation, the exact set of ctors / RTTI / dispatch arms / opcode tables that include versus omit it, so a reimplementer keys their target list off `{20,30,40}` and treats `{10,50}` as analysis-only / reserved.
 
 | | |
 |---|---|
-| **Codegen floor (arch)** | `20` (CoreV2) — `Codegen::codegen` switch @ `libwalrus 0x11d2cc1` |
-| **Analysis floor (arch)** | `10` (CoreV1/Tonga) — `getPSUMPartitionRange` gate `cmpl $0x13`(=19) @ `0x8c175b` |
-| **Live codegen GenImpls** | `{CoreV2GenImpl, CoreV3GenImpl, CoreV4GenImpl}` only (nm + RTTI) |
-| **CoreV1 (arch 10)** | HW model PRESENT (`Inferentia*` + `_inferentia_arch_model`); codegen ABSENT |
-| **CoreV5 (arch 50)** | pure stub: enum ordinal + ~7 dormant gates + 1 CLI token; nothing executable |
-| **String census (libwalrus)** | `core_v5`×6 · `CoreV5`×1 · `CoreV1`×1 · `core_v1`×0 (cp310/311/312 invariant) |
-| **getArchModel assert (libBIR)** | `__assert_fail("0 && \"Unknown architecture\"")` @ `0x479093` — gen5 has no `Board` |
+| **Codegen arch-select** | `Codegen::codegen(bir::Module&)` @ `0x11d2c50`; switch @ `0x11d2cc1` — `cmp $0x14/0x1e/0x28`; else throw |
+| **Live codegen targets** | arch **20** (CoreV2/Sunda) · **30** (CoreV3/gen3) · **40** (CoreV4) |
+| **Analysis-only floor** | arch **10** (CoreV1/Inferentia) — gated `cmp $0x13` (=19) in `getPSUMPartitionRange` |
+| **Reserved stub** | arch **50** (CoreV5) — no `Board`, `getArchModel` asserts `"Unknown architecture"` |
+| **GenImpl RTTI set** | `_ZTI…CoreV{2,3,4}GenImpl` only; **no** `CoreV1GenImpl`/`CoreV5GenImpl` |
+| **Opcode-name tables** | `core_v2` @ `0x127aea0` · `core_v3` @ `0x1369a40` · `core_v4` @ `0x143fd80` — no `core_v1`/`core_v5` |
+| **Gen1 HW model** | `Inferentia{Act,Dve,Pe,Pool,Psumbuf,Statebuf,Board,Core,Device}` + `_inferentia_arch_model` — PRESENT |
+| **Gen5 HW model** | none — no `CoreV5*`/`Gen5*` engine class, no `_core_v5_arch_model` |
+| **Generation predicate** | `is_core_v3_or_newer` (libBIR) only — no `is_core_v1`/`is_core_v5` |
+| **String census (libwalrus)** | `core_v5` ×6 · `CoreV5` ×1 · `CoreV1` ×1 · `core_v1` ×0 |
 
 ---
 
-## The codegen floor is arch 20
+## The codegen floor
 
 ### Purpose
 
-The single fact every other claim hangs from: which `ArchLevel` ordinals reach a `Generator`. If an arch ordinal does not match an arm of the `Codegen::codegen` switch, no `CoreV*Gen` is instantiated for it and compilation throws. This is the proof that arch 10 and arch 50 are not codegen targets.
+There is exactly one place that decides "given a module's `ArchLevel`, which `Gen` backend runs": the `Codegen::codegen` arch-select switch. Whatever set of constants that switch compares against *is* the set of supported codegen targets — everything else throws before a single instruction is emitted. This is the test that demotes CoreV1 and CoreV5 from "on the ordinal ladder" to "not a codegen target."
 
-### The arch-select switch
+### Entry Point
 
-`Codegen::codegen(bir::Module&)` (`_ZN9neuronxcc7backend7Codegen7codegenERN3bir6ModuleE`) loads the module's `ArchLevel` into `%ebp` and runs a three-arm equality ladder. Disassembled verbatim at `libwalrus 0x11d2cc1`:
-
-```asm
-; Codegen::codegen arch-select  (libwalrus 0x11d2cc1)
-11d2cc1:  83 fd 14        cmp    $0x14,%ebp          ; arch == 20 (CoreV2)?
-11d2cc4:  0f 84 ce06..    je     11d3398             ;   → CoreV2Gen path
-11d2cca:  83 fd 1e        cmp    $0x1e,%ebp          ; arch == 30 (CoreV3)?
-11d2ccd:  0f 84 7d01..    je     11d2e50             ;   → CoreV3Gen path
-11d2cd3:  83 fd 28        cmp    $0x28,%ebp          ; arch == 40 (CoreV4)?
-11d2cd6:  0f 85 5074..    jne    73a12c              ;   else → boost::throw_exception
-                                                     ;          <std::out_of_range>
-11d2d10:  e8 ..           call   62b170              ; CoreV4Gen::CoreV4Gen(...)  (the 40 arm)
+```text
+Codegen::codegen(bir::Module&)        ── libwalrus 0x11d2c50
+  └─ arch-select @ 0x11d2cc1          ── cmp %ebp against ArchLevel ordinal
+       ├─ cmp $0x14 → CoreV2Gen ctor   (0x11d3398 — CoreV2GenC2)   arch 20
+       ├─ cmp $0x1e → CoreV3Gen ctor   (0x11d2e50 — CoreV3GenC2)   arch 30
+       ├─ cmp $0x28 → CoreV4Gen ctor                                arch 40
+       └─ else      → build message via bir::ArchLevel2string, throw
 ```
 
-The C shape:
+### Algorithm
+
+The switch is a three-arm `cmp/je` chain over the `ArchLevel` ordinal held in `%ebp`. Only `20`, `30`, and `40` have arms; `10` (CoreV1) and `50` (CoreV5) — like any unknown value — fall through to the throw. Confirmed at `0x11d2cc1`:
 
 ```c
-// Codegen::codegen arch-select  (libwalrus 0x11d2c50, switch @0x11d2cc1)
-void Codegen::codegen(bir::Module &m) {
-    int arch = m.archLevel;                  // %ebp
-    if (arch == 0x14) { /* CoreV2Gen */  }   // 20  CONFIRMED je 11d3398
-    else if (arch == 0x1e) { /* CoreV3Gen */ } // 30 CONFIRMED je 11d2e50
-    else if (arch == 0x28) { /* CoreV4Gen */ } // 40 CONFIRMED call 62b170
-    else
-        boost::throw_exception(std::out_of_range(...)); // 0x73a12c — arch 10 AND 50 land here
-}
+// Codegen::codegen(bir::Module&)        libwalrus 0x11d2c50
+function codegen(Module *m):
+    int arch = m->archLevel;                    // %ebp
+    if (arch == 0x14) return run_CoreV2Gen(m);  // 0x11d2cc1  cmp $0x14 ; arch 20
+    if (arch == 0x1e) return run_CoreV3Gen(m);  // 0x11d2cca  cmp $0x1e ; arch 30
+    if (arch == 0x28) return run_CoreV4Gen(m);  // 0x11d2cd3  cmp $0x28 ; arch 40
+    // no arm for 0x0a (10/CoreV1), no arm for 0x32 (50/CoreV5)
+    string msg = "..." + ArchLevel2string(arch);    // bir::ArchLevel2string
+    throw std::runtime_error(msg);                  // __cxa_allocate_exception(0x10)
 ```
 
-There is no `cmp $0xa` (10 / CoreV1) and no `cmp $0x32` (50 / CoreV5) anywhere in the ladder. Both vestigial ordinals hit the `out_of_range` throw. The `40` arm is the one that calls a `Gen` ctor inline here (`CoreV4Gen::CoreV4Gen` @ `0x62b170`); the `20`/`30` arms branch to their own constructor sites.
-
-> **NOTE — the analysis floor is lower than the codegen floor.** `ArchLevel2string` (`libBIR 0x479490`) *does* carry a `cmp $0xa` arm (=10) and a `cmp $0x32` arm (=50) — confirmed `cmp $0xa,%esi` @ `0x47949c` and `cmp $0x32,%esi` @ `0x4794d5`. So arch 10 and arch 50 are real, named enum ordinals; they are simply absent from the *codegen* switch. The codegen floor (20) and the enum floor (10) differ by layer — a distinction that is the whole subject of [§CoreV1](#corev1-arch-10--fully-modelled-but-deprecated).
+> **CORRECTION (D-M15) —** the fall-through throw is a **`std::runtime_error`** carrying an `ArchLevel2string`-derived message (`__cxa_allocate_exception(0x10u)` in the decompiled body), **not** `boost::throw_exception(std::out_of_range)` as an earlier reading recorded. The *switch restriction* — `20/30/40` only, everything else throws — is unchanged and CONFIRMED; only the exception type is corrected. A reimplementer's dispatcher should reject arch `10`/`50` with a hard error, not silently codegen them.
 
 ### Function Map
 
 | Symbol | Binary | Address | Role | Confidence |
 |---|---|---|---|---|
-| `Codegen::codegen(bir::Module&)` | libwalrus | `0x11d2c50` (switch @ `0x11d2cc1`) | Arch → `Generator` dispatch; floor = 20 | CONFIRMED |
-| `boost::throw_exception<std::out_of_range>` | libwalrus | `0x73a12c` | Fall-through for arch ∉ {20,30,40} | CONFIRMED |
-| `CoreV4Gen::CoreV4Gen(...)` | libwalrus | `0x62b170` | The arch-40 ctor called inline | CONFIRMED |
-| `ArchLevel2string(int)` | libBIR | `0x479490` | Names all five ordinals incl. 10 & 50 | CONFIRMED |
+| `Codegen::codegen(bir::Module&)` | libwalrus | `0x11d2c50` | Arch-select dispatch into the `Gen` backends | CONFIRMED |
+| arch-select chain | libwalrus | `0x11d2cc1` | `cmp $0x14/$0x1e/$0x28`, else throw | CONFIRMED |
+| `bir::ArchLevel2string` | libBIR | `0x479490` | Ordinal→codename; `10/20/30/40/50` → `inferentia/sunda/gen3/core_v4/core_v5` | CONFIRMED |
 
-The mirror selection path in the verifier is the same three-arch world: the `birverifier` codegen variant is `std::variant<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` — the *type list itself* excludes `CoreV1Gen` and `CoreV5Gen`. Same three arches, same exclusion, independently. [STRONG — variant type-list]
+### Considerations
 
----
-
-## The codegen class census: {V2, V3, V4} only
-
-### Purpose
-
-The switch proves arch 10/50 are unreachable; the symbol table proves there is no class to reach even if the switch grew an arm. A `CoreV*GenImpl` class would carry a vtable and an RTTI `typeinfo` object. Their presence/absence is a clean binary test.
-
-### Evidence
-
-`nm -DC libwalrus.so` yields exactly three `CoreV*GenImpl` symbols and three matching `typeinfo` objects:
-
-```text
-# GenImpl class set (nm -DC libwalrus.so | rg 'CoreV[0-9]GenImpl')
-neuronxcc::backend::CoreV2GenImpl
-neuronxcc::backend::CoreV3GenImpl
-neuronxcc::backend::CoreV4GenImpl
-
-# RTTI typeinfo objects (the D-J22 V4▸V3▸V2 single-inheritance ladder)
-0x03d95310 V typeinfo for neuronxcc::backend::CoreV2GenImpl
-0x03d95928 V typeinfo for neuronxcc::backend::CoreV3GenImpl
-0x03d95c88 V typeinfo for neuronxcc::backend::CoreV4GenImpl
-```
-
-There is **no** `CoreV1GenImpl`, `CoreV5GenImpl`, `InferentiaGen`, or `TongaGen` symbol, vtable, or `typeinfo` — `nm` returns zero hits for all of them. Absence of RTTI is absence of a codegen class.
-
-| Generation | `ArchLevel` | `CoreV*GenImpl` class | RTTI `typeinfo` | Codegen target | Confidence |
-|---|---|---|---|---|---|
-| CoreV1 (Inferentia/Tonga) | 10 | — absent | — absent | **no** | CONFIRMED |
-| CoreV2 (Sunda) | 20 | present | `0x03d95310` | yes | CONFIRMED |
-| CoreV3 (Cayman) | 30 | present | `0x03d95928` | yes | CONFIRMED |
-| CoreV4 | 40 | present | `0x03d95c88` | yes | CONFIRMED |
-| CoreV5 | 50 | — absent | — absent | **no** | CONFIRMED |
-
-The ISA opcode-name tables agree exactly. The `enum_variant_string_opcode(int, char*, int)` family — the opcode→mnemonic table per generation — exists for `core_v2` (@ `0x127aea0`), `core_v3` (@ `0x1369a40`), and `core_v4` (@ `0x143fd80`) **only**; there is no `core_v1::` or `core_v5::` ISA namespace in the dynamic symbol table at all. [CONFIRMED — nm -DC]
+The Verifier's mirror path corroborates the same three-arch world from a second construction. The instruction-visitor init builds a `std::variant<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` — the variant *type list itself* excludes `CoreV1Gen`/`CoreV5Gen` (read from the mangled gen-vtable symbol). Two independent selectors (the `codegen` switch and the variant type list) name the same set `{20,30,40}`; the exclusion of `10` and `50` is therefore not an accident of one switch but a property of the backend's whole type universe. (STRONG — the variant type list is symbol-confirmed; the per-arm body wiring was not re-disassembled here.)
 
 ---
 
-## CoreV1 (arch 10) — fully modelled but deprecated
+## CoreV1 (Inferentia / Tonga / gen1 / arch 10) — modelled but deprecated
 
 ### Purpose
 
-CoreV1 is the trap: prior reports that called CoreV1's "hardware constants absent" are wrong. The gen1 hardware model is present and complete. What is absent is codegen. This section separates the three layers — HW model (present), analysis rule (live), codegen (absent) — so a reader knows which CoreV1 facilities a reimplementer can ignore and which still run.
+CoreV1 is the case a reader is most likely to misjudge, because its absence is *partial*. The codename "Inferentia" carries a complete hardware model and a live analysis rule — so symbol-grepping for "Inferentia" returns a rich, healthy-looking class family. The thing that is missing is narrow and specific: the `walrus` backend `GenImpl`. This section pins exactly what is present and what is absent, so the "no codegen, but fully modelled" status is read off evidence rather than assumed from the codename's prominence.
 
-> **CORRECTION — CoreV1 hardware constants are NOT absent.** An earlier reading stated that CoreV1 and CoreV5 are symmetric "1 string each" vestigials with their hardware constants gone. That is false for CoreV1. `libwalrus` carries the full `Inferentia*` engine-class hierarchy and the `_inferentia_arch_model` singleton (`0x3e05800`, `.bss`). CoreV1 is a fully-modelled legacy generation; only its *codegen* `GenImpl` is missing. The two vestigial gens are asymmetric.
-
-### The hardware model is present
-
-`nm -DC libwalrus.so` shows the complete gen1 engine hierarchy — every class that Sunda/Cayman/CoreV4 carry has an `Inferentia` peer:
+### What is present
 
 ```text
-# Inferentia HW engine classes (nm -DC | rg 'Inferentia(Act|Dve|Pe|Pool|Psumbuf|Statebuf|Board|Core|Device)')
-InferentiaAct   InferentiaDve   InferentiaPe   InferentiaPool   InferentiaPsumbuf
-InferentiaStatebuf   InferentiaBoard   InferentiaCore   InferentiaDevice
-
-# the static singleton (.bss)
-0x3e05800 B _inferentia_arch_model       # parallel to _sunda/_cayman/_core_v4_arch_model
+Inferentia HW model (libwalrus)          ── the Board→Device→Core→engine tree
+  ├─ InferentiaBoard / InferentiaDevice / InferentiaCore
+  ├─ InferentiaPe / InferentiaPool / InferentiaAct
+  ├─ InferentiaDve / InferentiaPsumbuf / InferentiaStatebuf
+  └─ _inferentia_arch_model              ── static singleton (the gen1 Board)
+Live analysis path (libwalrus)
+  └─ AntiDependencyAnalyzer::getPSUMPartitionRange  0x8c1700  ── gates on arch ≤ 19
+Mid-end target (Cython)
+  └─ penguin/targets/tonga/              ── CodeGenFlow / ISAMapper / Dataflow / APIndex / passes
+PWP profile column
+  └─ tonga_id                            ── legacy gen1 opcode-id remap
 ```
 
-The `InferentiaCore` ctor (`0x1734720`) is a peer of `SundaCore`/`CaymanCore`/`CoreV4Core` and fills the same `Board → Device → Core → engine` tree documented in [The Arch Object Model](arch-object-model.md). Its divergent immediates encode the half-width nature of gen1 (Statebuf full-width 128 partitions, but Psumbuf 64 partitions, PE cols 64, Pool/Act `numChannels` 64) — geometry, not codegen. So the arch *geometry* floor is 10: `getArchModel("inferentia"|"tonga"|"inf1")` returns a real `Board`.
+- **Full gen1 HW model — PRESENT.** `InferentiaAct/Dve/Pe/Pool/Psumbuf/Statebuf` and `Inferentia` `Board/Core/Device` engine classes exist, with the static `_inferentia_arch_model` singleton — structurally parallel to `Sunda`(gen2)/`Cayman`(gen3)/`CoreV4`(gen4). RTTI typeinfo exists for the `InferentiaPe/Act/Dve/Pool` engine classes. This is the scheduler/latency architectural-profile model (the `Board → Device → Core → engine` tree documented in [the arch object model](arch-object-model.md)), and gen1 is a first-class member of it. [CONFIRMED — `functions`/`strings`/`rtti` census + the `InferentiaCore` ctor @ `0x1734720`]
+- **A live analysis rule — PRESENT.** `AntiDependencyAnalyzer::getPSUMPartitionRange` (`0x8c1700`) branches on `cmp dword [r12+0xAC],0x13` (=19) at `0x8c175b`: `arch > 19` takes the Sunda `%32`-aligned PSUM path, `arch ≤ 19` takes the CoreV1 partition-0 path. The `arch ≤ 19` arm is exactly the gen1 (arch 10) code path, and it ends in the assert `"0 == lowerPartition && \"CoreV1 PSUM accesses must start at partition 0\""` — paired with its gen2 sibling `"0 == lowerPartition % 32 && \"Sunda PSUM accesses must start at a %32 partition\""`. So CoreV1 still has *executable* compiler behavior; it is the analysis-layer floor. [CONFIRMED — disasm gate + both assert strings]
+- **A mid-end target package — PRESENT.** `penguin/targets/tonga/` ships as a full Cython package (`CodeGenFlow`, `ISAMapper`, `Dataflow`, `DFNLayout`, `APIndex`, and a `tonga__passes__*` family). The legacy gen1 front/mid-end target is richer than CoreV5's nothing, but it is a self-contained codename target, **not** a `walrus`-backend `CoreV1GenImpl`. [CONFIRMED — Cython module tree]
+- **A PWP profile column — PRESENT.** Per-function PWP profiles carry a `tonga_id` column (the legacy Tonga opcode-id remap; `tonga_id=0` = unsupported-on-Tonga). And `InstTongaReduceMacroSymbolic` is a BIR *instruction* opcode (`lower_TongaReduceMacroSymbolic @ 0x11b42e0`) — a codename appearing in an op name, not a CoreV1 codegen class. [CONFIRMED]
 
-### A live analysis-pass branch (arch ≤ 19)
+### What is absent
 
-CoreV1 still executes in the dependency-analysis layer. `AntiDependencyAnalyzer::getPSUMPartitionRange(PhysicalAccessPattern const&)` branches on the arch level to choose the PSUM partition-alignment rule, and the gen1 arm is reachable for any arch ≤ 19:
+- **No `CoreV1GenImpl` / `InferentiaGen` / `TongaGen` codegen class.** The `rtti` census carries `_ZTI/_ZTS/_ZTV` for `CoreV2GenImpl`, `CoreV3GenImpl`, `CoreV4GenImpl` only; zero `CoreV1GenImpl` hits. Absence of RTTI = no codegen class. [CONFIRMED — `rtti.json`]
+- **No `core_v1::` ISA encoder namespace** anywhere in the dynamic symbol table. [CONFIRMED]
+- **No `core_v1::enum_variant_string_opcode` opcode-name table.** The opcode→name family is `core_v2` @ `0x127aea0` / `core_v3` @ `0x1369a40` / `core_v4` @ `0x143fd80` only. [CONFIRMED — disasm function entries]
+- **No `cmp $0x0a` (arch 10) arm in `Codegen::codegen`** — gen1 modules hit the throw (§ The codegen floor). [CONFIRMED]
+- **`CoreV1` appears as a string exactly once**, and only as the capitalized PSUM assert literal; there is no lowercase `core_v1` namespace/string. [CONFIRMED — census `CoreV1`=1, `core_v1`=0]
 
-```asm
-; AntiDependencyAnalyzer::getPSUMPartitionRange  (libwalrus, gate @0x8c175b)
-8c175b:  cmpl   $0x13,0xac(%r12)     ; arch <= 19 ?  (0x13 = 19)
-8c1764:  jle    8c17a0               ;   → CoreV1 %64 / partition-0 path
-...
-8c17a0:  add    $0x3f,%eax           ; round up to 64  (CoreV1 64-partition granule)
-8c17a3:  and    $0xffffffc0,%eax     ; mask to %64
-8c17a6:  test   %ebp,%ebp            ; lowerPartition == 0 ?
-8c17a8:  jne    8c183e               ;   else → assert "CoreV1 PSUM accesses must start at partition 0"
-```
+### Verdict (CoreV1)
 
-The assert literal `0 == lowerPartition && "CoreV1 PSUM accesses must start at partition 0"` (`.rodata 0x1ca0610`) is the sole `CoreV1` string in the binary, and it is a *live* assert: arch > 19 takes the gen2 Sunda `%32`-align sibling path; arch ≤ 19 takes this CoreV1 `%64` / partition-0 path. So `cmpl $0x13`(=19) is the documented gen2 lower bound, and the ≤ 19 arm is exactly the Inferentia/Tonga/gen1 (arch = 10) code path. [CONFIRMED — gate + string-pair decoded]
+A fully-modelled but deprecated gen1: HW model + analysis rules + mid-end target PRESENT; `walrus` codegen ABSENT and unreachable. The **codegen** floor is arch **20** (gen2); the floor that still has executable **analysis** behavior is arch **10** (Tonga, gated `cmp $0x13`=19). The two floors differ by layer. [INFERRED — the "deprecated" label is placed over the CONFIRMED presence/absence pattern; no string declares deprecation.]
 
-### What CoreV1 does NOT have
+---
 
-| Facility | CoreV1 status | Evidence | Confidence |
+## CoreV5 (gen5 / arch 50) — a forward-declaration stub
+
+### Purpose
+
+CoreV5 is the opposite failure mode: a reader might expect parity with CoreV1 ("the other vestigial gen") and look for a gen5 HW model. There is none. CoreV5 exists *only* as a reserved ordinal and a set of dormant feature gates that fire "off" for every current arch. This section pins the stub's full surface so a reimplementer knows the entire gen5 footprint is scaffolding, with nothing behind it.
+
+### What is reserved (and nothing more)
+
+The whole CoreV5 surface is six `core_v5` strings, one `CoreV5` string, and one CLI flag slot — every one of them a gate, an assert, or a token, never an executable encoder.
+
+| Anchor | Form | Consumer / role | Confidence |
 |---|---|---|---|
-| `CoreV1GenImpl` codegen class | ABSENT | nm: zero hits | CONFIRMED |
-| `core_v1::enum_variant_string_opcode` ISA table | ABSENT | only core_v2/v3/v4 tables | CONFIRMED |
-| `core_v1::` ISA wire-encoder namespace | ABSENT | no `core_v1::` dynsym | CONFIRMED |
-| `Inferentia*` HW engine model | PRESENT | nm: full 9-class hierarchy | CONFIRMED |
-| `_inferentia_arch_model` singleton | PRESENT | `0x3e05800` `.bss` | CONFIRMED |
-| Live `getPSUMPartitionRange` arch≤19 branch | PRESENT (live) | gate `cmpl $0x13` @ `0x8c175b` | CONFIRMED |
+| `< ArchLevel::core_v5` (`lower_act.cpp:313`) | forward gate | lowering-time engine-type selector (`LowerPWP`) | CONFIRMED |
+| `ModuleArchLevel < ArchLevel::core_v5` (`CoreV2GenImpl.cpp:1572`) | forward gate | module-level arch guard | CONFIRMED |
+| `BatchNormGradAccumulate not supported in core_v5` | forward gate | `CoreV2GenImpl::visitInstBNGradients` @ `0x1241b10`; `cmp …+0x258,$0x31` (=49) @ `0x1242149` | CONFIRMED |
+| `ActivationReadAccumulator not supported in core_v5` | forward gate | `CoreV2GenImpl::visitInstActivation` | CONFIRMED |
+| `…getArchLevel() >= ArchLevel::core_v5` + `"only core v5+ has special semaphore for HW DGE"` | reserved capability | semaphore-allocation path (`AllocSemaphores::run` @ `0x627730`) | STRONG |
+| `CoreV5 cannot support DGE with compute op yet` | placeholder guard | `CoreV2GenImpl::generateDynamicDMA` @ `0x1276b10` | CONFIRMED |
+| `core_v5` | CLI token | `walrus_driver` optlevel/arch-name parser roster `{inferentia, sunda, gen3, core_v5}` | CONFIRMED |
+| `RMW-alignment-target-arch` enum slot `gen5` | reserved flag value | CLI flag roster `{tonga, sunda, gen3, core4, gen5}` | CONFIRMED |
 
-> **VERDICT (CoreV1) — INFERRED-structural.** "Deprecated" is a structural inference: the binary shows a complete HW model and a live analysis rule but no codegen `GenImpl` and no ISA encoder. There is no string that *says* "deprecated"; the status is read from the shape (modelled + analysis-live, codegen-dead). The codegen floor is arch 20; the lowest arch with executable *analysis* behavior is arch 10.
+> **NOTE —** the four `< ArchLevel::core_v5` gates compile to a `cmp …,$0x31` (=49) followed by a `jle`-style branch — i.e. "this feature is disabled until gen5." With current arches `20/30/40` all `≤ 49`, every one of these gates fires the *disabled* arm. The one `>= ArchLevel::core_v5` gate (the HW-DGE special semaphore) is the mirror: a capability reserved *for* gen5, never taken today. The compiler authors left feature-flag scaffolding but no implementation behind it.
 
----
+### What is absent
 
-## CoreV5 (arch 50) — a pure forward-declaration stub
+- **No `CoreV5GenImpl` class, vtable, or RTTI.** Zero hits in the `rtti` census; the only `CoreV5` symbol-table hits are the assert string itself, not a class. [CONFIRMED]
+- **No `core_v5::` ISA namespace, no `enum_variant_string_opcode`, no HW engine class** — no `Gen5*`/`CoreV5*` `Act/Dve/Pe/Pool`, no `_core_v5_arch_model` singleton. [CONFIRMED]
+- **No `Board` for arch 50.** `getArchModel` (`libwalrus 0x17344c0` / `libBIR 0x478f90`) compares the codename against `{tonga, inferentia, inf1, sunda, trainium, trn1, inf2, cayman, gen3, core_v4}` and falls through to `__assert_fail("0 && \"Unknown architecture\"")` — `core_v5` is **not** in the alias set, so there is no instantiable gen5 device. [CONFIRMED — disasm string compares, both binaries]
+- **No `is_core_v5_or_newer` predicate.** `is_core_v3_or_newer` (libBIR) is the only generation predicate; there is no `is_core_v1`/`is_core_v5`. [CONFIRMED]
 
-### Purpose
+### What a future CoreV5GenImpl would need
 
-CoreV5 is the other extreme: a reserved enum ordinal with no hardware model, no ISA, no codegen — only dormant feature-gates and one CLI token. This section enumerates every `core_v5` / `CoreV5` byte in the binary and shows each is a forward reference, never an executable encoder, so a reader knows gen5 is scaffolding, not a target.
+The gen5 surface is *pre-wired* as a set of dormant branches; a real gen5 would flip them and fill the holes. This is the reserved scaffolding, read off the gate inventory: [INFERRED from the absence pattern]
 
-### No Board: getArchModel asserts on gen5
+1. An `ArchLevel 50` arm added to the `Codegen::codegen` switch (today it throws).
+2. A `CoreV5Gen`→`CoreV5GenImpl` class extending `CoreV4GenImpl` (continuing the `CoreV4 ▸ CoreV3 ▸ CoreV2GenImpl` single-inheritance ladder confirmed in the `_ZTI` `__si` chain), patching only the slots that change at gen5.
+3. A `core_v5::enum_variant_string_opcode` table + `core_v5::` ISA wire structs.
+4. `CoreV5`/`Gen5` HW engine classes + a `_core_v5_arch_model` `Board` for `getArchModel`, removing the `"Unknown architecture"` assert.
+5. Flipping the reserved gates: enable `BatchNormGradAccumulate` / `ActivationReadAccumulator` (today `< core_v5`), wire the HW-DGE special semaphore (today `>= core_v5`), and resolve the `generateDynamicDMA` `"CoreV5 cannot support DGE with compute op yet"` placeholder.
 
-`getArchModel` (the codename→`Board` dispatch, `libBIR 0x478f90`) is a linear chain of `std::string::compare` calls over the device-alias roster, terminating in `__assert_fail` for any unrecognized name. The roster decodes straight from `.rodata` (`0x70c6f4`, null-token):
+### Verdict (CoreV5)
 
-```text
-# libBIR .rodata 0x70c6f4 — device-alias roster (null-separated)
-tonga · inf1 · sunda · trainium · trn1 · inf2 · cayman · gen3 · core_v4 · 0 && "Unknown architecture" · core_v5
-```
-
-Critically, `core_v5` sits **after** the `0 && "Unknown architecture"` assert literal — it has **no** `compare` arm and **no** `Board`. `getArchModel("core_v5")` falls through ten `compare` calls to `__assert_fail` @ `0x479093`. There is no instantiable gen5 device. [CONFIRMED — roster decode + assert xref]
-
-### The seven gen5 anchors are all forward gates
-
-The six `core_v5` strings plus the one `CoreV5` string are exhaustively accounted for, and not one is an encoder:
-
-| # | String (`.rodata`) | Role | Gate shape | Confidence |
-|---|---|---|---|---|
-| 1 | `…getArchLevel() >= ArchLevel::core_v5` (`0x1d43e18`) + `only core v5+ has special semaphore for HW DGE` (`0x1d43e20`) | `AllocSemaphores::run` capability reserved FOR gen5 | `>=` | CONFIRMED |
-| 2 | `ArchLevl < ArchLevel::core_v5 ? …Activation : …DVE` (`0x1d4f8c8`) | `lower_act` engine-type selector, "below gen5" | `<` | CONFIRMED |
-| 3 | `ModuleArchLevel < ArchLevel::core_v5` (`0x1d69508`) | CoreV2GenImpl module-level guard | `<` | CONFIRMED |
-| 4 | `BatchNormGradAccumulate not supported in core_v5` (`0x1d69530`) | `CoreV2GenImpl::visitInstBNGradients` forward-gate | `<` (`cmpl $0x31`=49) | CONFIRMED |
-| 5 | `ActivationReadAccumulator not supported in core_v5` (`0x1d6aaab`) | `lower_act` companion forward-gate | `<` | CONFIRMED |
-| 6 | `core_v5` (`0x1dca083`) | `walrus_driver` CLI optlevel/arch-name token | (parser) | CONFIRMED |
-| 7 | `CoreV5 cannot support DGE with compute op yet` (`0x1d6d300`) | `CoreV2GenImpl::generateDynamicDMA` gen2-DMA placeholder | (guard) | CONFIRMED |
-
-Anchor 4 is the proof these gates are *dormant*: `CoreV2GenImpl::visitInstBNGradients` compiles `< ArchLevel::core_v5` to a `cmpl $0x31,0x258(%r12)` / `jg` pair (`0x31` = 49), so the BatchNormGradAccumulate path is *gated off* for every current arch (20/30/40, all ≤ 49) and would only flip on at arch ≥ 50:
-
-```asm
-; CoreV2GenImpl::visitInstBNGradients forward-gate  (libwalrus 0x1242149)
-1242149:  cmpl   $0x31,0x258(%r12)    ; arch > 49 ?  (0x31 = 49 = highest pre-gen5)
-1242152:  jg     1242534              ;   → BNGradAccumulate path (never taken on 20/30/40)
-```
-
-One further reserved slot lives in the CLI: the `RMW-alignment-target-arch` flag enumerates `tonga, sunda, gen3, core4, gen5` (verbatim help text: *"Any arch including and beyond set value will have RMW alignment triggered. Availe value tonga, sunda,gen3,core4,gen5"* — the `Availe` typo is in the binary). `gen5` is an accepted flag value with no codegen behind it — a reserved option slot. [CONFIRMED — null-token decode]
-
-### What CoreV5 does NOT have
-
-| Facility | CoreV5 status | Evidence | Confidence |
-|---|---|---|---|
-| `CoreV5GenImpl` codegen class / vtable / RTTI | ABSENT | nm: zero hits | CONFIRMED |
-| `core_v5::enum_variant_string_opcode` ISA table | ABSENT | only core_v2/v3/v4 | CONFIRMED |
-| `Gen5*` / `CoreV5*` HW engine classes | ABSENT | nm: zero hits | CONFIRMED |
-| `_core_v5_arch_model` singleton | ABSENT | only 4 `*_arch_model` in `.bss` | CONFIRMED |
-| `Board` in `getArchModel` | ABSENT | falls to `__assert_fail` @ `0x479093` | CONFIRMED |
-| `is_core_v5_or_newer` predicate | ABSENT | no symbol; see note below | STRONG |
-
-> **CORRECTION — `is_core_v3_or_newer` is an assert-message substring, not a recovered symbol.** It is tempting to cite `is_core_v3_or_newer` as the only generation predicate. It is **not** an exported function symbol in either binary; it survives only as text inside an assert literal (`is_core_v3_or_newer || (dtype == Dtype::float32)`). There is correspondingly no `is_core_v1`/`is_core_v5` *string* either. The accurate claim is: the binary contains exactly one generation-predicate name, as an assert message, and it is the v3 one. [STRONG — string census; the symbol-level claim is demoted to INFERRED]
-
-> **VERDICT (CoreV5) — INFERRED-structural.** "Forward-declaration stub" is a structural inference from the shape: a reserved ordinal (50, no `Board`), ~7 dormant arch gates, one CLI token, one RMW-flag slot — and nothing executable. The gen5 surface is pre-wired as a set of dormant `arch >=/< 50` branches; the authors left feature-flag scaffolding but no implementation. A future `CoreV5GenImpl` would need to extend the CoreV4▸CoreV3▸CoreV2 single-inheritance ladder, add a `core_v5::` ISA table, build a gen5 `Board` (removing the assert), and flip the reserved gates. [INFERRED from the gate inventory]
+A pure forward-declaration stub: a reserved ordinal (50, no `Board`, asserts `"Unknown architecture"`), the gates above, one CLI token, one RMW-flag slot — and nothing executable. [INFERRED — the "stub" label sits over the CONFIRMED total absence of any gen5 HW class / ISA / codegen.]
 
 ---
 
-## Putting it together: the live-vs-vestigial table
+## The include/omit matrix
 
-The orientation summary. Every row is the binary status of one generation across the three layers that matter — does it have a `Board` (geometry), does it run analysis code, is it a codegen target.
+The structural test in one grid. A generation is a live codegen target iff it appears in the `Codegen::codegen` switch, the `GenImpl` RTTI set, and the opcode-name tables. CoreV1 and CoreV5 each fail that test, but for opposite reasons — read down their columns.
 
-| Gen | `ArchLevel` | Codename(s) | `Board` / geometry | Live analysis branch | Codegen `GenImpl` | Class of vestigial | Confidence |
-|---|---|---|---|---|---|---|---|
-| 1 | 10 | inferentia / tonga / inf1 | PRESENT (`_inferentia_arch_model`) | PRESENT (`getPSUMPartitionRange` ≤19) | ABSENT | modelled-but-deprecated | CONFIRMED (status row INFERRED-structural) |
-| 2 | 20 | sunda / trainium / trn1 / inf2 | PRESENT | live (floor) | `CoreV2GenImpl` | **live target** | CONFIRMED |
-| 3 | 30 | cayman / gen3 | PRESENT | live | `CoreV3GenImpl` | **live target** | CONFIRMED |
-| 4 | 40 | core_v4 | PRESENT | live | `CoreV4GenImpl` | **live target** | CONFIRMED |
-| 5 | 50 | core_v5 / gen5 | ABSENT (asserts) | ABSENT | ABSENT | reserved-but-unbuilt | CONFIRMED (status row INFERRED-structural) |
+| Evidence axis | gen1 / arch 10 | gen2 / arch 20 | gen3 / arch 30 | gen4 / arch 40 | gen5 / arch 50 | Source |
+|---|---|---|---|---|---|---|
+| `ArchLevel` ordinal | 10 | 20 | 30 | 40 | 50 | `ArchLevel2string` @ `0x479490` |
+| `getArchModel` `Board` | yes (`_inferentia_arch_model`) | yes | yes | yes | **no → assert** | `getArchModel` @ `0x17344c0` |
+| HW engine classes | **`Inferentia*` (full)** | `Sunda*` | `Cayman*` | `CoreV4*` | **none** | ctor + rtti census |
+| `Codegen::codegen` arm | **no** | `cmp $0x14` | `cmp $0x1e` | `cmp $0x28` | **no** | `0x11d2cc1` |
+| `*GenImpl` RTTI | **no** | `CoreV2GenImpl` | `CoreV3GenImpl` | `CoreV4GenImpl` | **no** | `rtti.json` |
+| `core_vN::enum_variant_string_opcode` | **no** | `0x127aea0` | `0x1369a40` | `0x143fd80` | **no** | disasm entries |
+| Live analysis path | **yes (`≤19` PSUM rule)** | yes | yes | yes | **no** | `getPSUMPartitionRange` @ `0x8c1700` |
+| Mid-end target pkg | **`targets/tonga/`** | yes | yes | yes | **no** | Cython module tree |
+| Generation predicate | (none) | (none) | `is_core_v3_or_newer` | (covered by ≥v3) | **no** | libBIR `functions.json` |
+| **Status** | **modelled, deprecated** | live | live | live | **reserved stub** | INFERRED |
 
-> **GOTCHA — three different "floors."** The codegen floor is **20** (the lowest arch `Codegen::codegen` will instantiate a `Gen` for). The analysis floor is **10** (the lowest arch with an executable behavioral branch — the CoreV1 PSUM rule). The enum floor is **10** as well (`ArchLevel2string` names ordinal 10). The reserved ceiling is **50** (named in the enum, gated for in dormant branches, but with no `Board` and no codegen). A reimplementer who only implements the codegen floor (20) is correct for codegen; one who wants byte-parity with the dependency analyzer must also model the arch-10 PSUM branch.
+> **QUIRK —** the two dead columns are mirror images. CoreV1 is full *everywhere except* the four codegen rows (switch arm, `GenImpl` RTTI, opcode table, ISA namespace); CoreV5 is empty *everywhere except* the reserved-gate rows. A reimplementer who keys their target list off "has an `ArchLevel` ordinal" will wrongly admit both; off "has a `Codegen::codegen` arm and a `*GenImpl` RTTI" will correctly admit only `{20,30,40}`.
 
 ---
 
 ## Cross-References
 
-- [The Arch Object Model](arch-object-model.md) — `getArchModel → Board/Device/Core`, the `Inferentia*` ctors, and the four `*_arch_model` singletons whose count (4, not 5) is the CoreV5 evidence here.
-- [Codename Taxonomy](codename-taxonomy.md) — the codename↔generation↔CoreVN↔device bijection; this page cites the in-binary device-alias roster (`tonga/inf1/…/core_v4`, then `core_v5`) as the table behind that mapping.
-- [Per-Generation Hardware-Constant Matrix](hardware-constant-matrix.md) — the per-arch immediates, including the gen1 half-width Inferentia values that prove CoreV1's HW model is real, not a stub.
-- [Methodology & the Confidence Model](../methodology.md) — why a recovered assert literal and a byte-pinned `cmp` constant are both binary evidence, and why a "deprecated/stub" status is an INFERRED-structural conclusion rather than a CONFIRMED string.
+- [The arch Object Model](arch-object-model.md) — `getArchModel` → `Board/Device/Core`, the per-arch ctors (`InferentiaCore` is the gen1 HW model this page calls "present"), and the `"Unknown architecture"` assert that gen5 falls through to. (1.01)
+- [Codename Taxonomy](codename-taxonomy.md) — the full codename ↔ `ArchLevel` ↔ marketed-device decode (`tonga`/`inf1`/`inferentia` = arch 10; `core_v5`/`gen5` = arch 50). (1.02)
+- [Per-Generation Hardware-Constant Matrix](hardware-constant-matrix.md) — the gen1 (Inferentia) half-width constant set that the present-but-deprecated CoreV1 HW model carries, and why gen5 has no column. (1.04)
+- [Methodology & the Confidence Model](../methodology.md) — the four-tier ladder; why a "deprecated/stub" *status* is tagged INFERRED while its underlying presence/absence facts are CONFIRMED.
