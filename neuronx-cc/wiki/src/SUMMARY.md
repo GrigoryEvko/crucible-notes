@@ -47,6 +47,7 @@
 - [Pool / TensorReduce / Reciprocal / Iota Encoding](isa/pool-reduce-encoding.md)
 - [Activation Encoding](isa/activation-encoding.md)
 - [TensorScalar / Cumulative / ScalarTensorTensor / Exp Encoding](isa/tensorscalar-encoding.md)
+- [DVE Datamove / Misc Encoding — Shuffle / Transpose / Gather / Dropout / IndirectCopy / RangeSelect](isa/dve-datamove-encoding.md)
 - [TensorTensor / Copy / Cast / Select / Memset / MoveShape Encoding](isa/tensortensor-encoding.md)
 - [DVE Search & Datamove Encoding — Max8 / FindIndex8 / MatchReplace / Nonzero](isa/dve-search-encoding.md)
 - [RNG-Family Encoding](isa/rng-encoding.md)
