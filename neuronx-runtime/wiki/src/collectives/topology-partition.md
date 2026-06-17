@@ -62,7 +62,9 @@ Each `std::unordered_map<uint,uint>` is the libstdc++14 `_Hashtable` (56 B: `_M_
 | `disjoint_set<uint,true>::~disjoint_set()` (D1==D2) | `0x13c250` | 231 B | frees `rank` then `representative` map (reverse decl order) | HIGH |
 | `_Map_base<uint,pair<uint const,uint>,…,true>::operator[]` | `0x140320` | — | the `representative`/`rank` map accessor; `find_set`'s only callee | HIGH |
 
-> **CORRECTION (TOPO-2) — `find_set`'s map accessor is `@0x140320`, not the seed-cited `0x1419e0`/`0x141cd0`.** An earlier scaffold attributed `find_set`'s `operator[]` to `0x1419e0`/`0x141cd0`; those serve unrelated `mesh_group_types` and `int→…` maps. The first `operator[]` call inside `find_set` is at `@0x141ddd` (`call …ixERS2_`), whose reloc target is `0x140320`, and every one of `find_set`'s seventeen `operator[]` calls resolves there. Confidence **HIGH** (disasm reloc + callgraph callee list).
+> **CORRECTION (TOPO-2) — `find_set`'s map accessor is `@0x140320`, not the seed-cited `0x1419e0`/`0x141cd0`.** An earlier scaffold attributed `find_set`'s `operator[]` to `0x1419e0`/`0x141cd0`; those serve unrelated `mesh_group_types` and `int→…` maps. The first `operator[]` call inside `find_set` is at `@0x141ddd` (`call …ixERS2_`), whose reloc target is `0x140320`, and every one of `find_set`'s sixteen `operator[]` calls resolves there. Confidence **HIGH** (disasm reloc + callgraph callee list).
+>
+> **CORRECTION (TOPO-3) — `find_set` has SIXTEEN `operator[]` calls, not seventeen.** An earlier draft counted "seventeen". Disassembly of `find_set` `@0x141dc0` (body `0x141dc0`–`0x141f0f`) has exactly sixteen `call 0x140320` (`operator[]`) sites — at `141ddd, 141df0, 141e1b, 141e2e, 141e43, 141e56, 141e66, 141e74, 141e82, 141e90, 141eab, 141ebe, 141ece, 141ee6, 141ef4, 141f02` — plus one self-recursive `call 0x141dc0` at `@0x141ed8` (which is **not** an `operator[]`). The off-by-one came from counting the self-recursive tail call as a seventeenth accessor. Confidence **HIGH** (disasm site enumeration).
 
 ---
 
@@ -74,7 +76,7 @@ Each `std::unordered_map<uint,uint>` is the libstdc++14 `_Hashtable` (56 B: `_M_
 
 ### Algorithm
 
-The decompile at `@0x141dc0` reads four parent-lookups in a nest: read `parent[x]`; if it equals `x`, `x` is the root, return. Otherwise descend one level, comparing `parent[p]` against `parent[parent[p]]` to test whether `p` is already a root. Four such levels are inlined; a fifth (a chain deeper than four) falls through to `call find_set(parent)` at `@0x141ed8`. On the way back out, each visited node is rewritten to the discovered root — the write-back path compression. The seventeen `operator[]` calls in the body are the read/write halves of these four levels plus the final return read.
+The decompile at `@0x141dc0` reads four parent-lookups in a nest: read `parent[x]`; if it equals `x`, `x` is the root, return. Otherwise descend one level, comparing `parent[p]` against `parent[parent[p]]` to test whether `p` is already a root. Four such levels are inlined; a fifth (a chain deeper than four) falls through to `call find_set(parent)` at `@0x141ed8`. On the way back out, each visited node is rewritten to the discovered root — the write-back path compression. The sixteen `operator[]` calls in the body are the read/write halves of these four levels plus the final return read (the self-recursive tail at `@0x141ed8` is a `call find_set`, not an `operator[]` — see CORRECTION TOPO-3).
 
 ```c
 // disjoint_set<uint,true>::find_set @0x141dc0
@@ -125,7 +127,7 @@ function find_set(this, x):                         // 0x141dc0
 |---|---|---|---|---|
 | `find_set` (self-recursion) | call `@0x141ed8` | — | the depth-≥5 tail: `call find_set(rep[p4])` | HIGH |
 | `find_set` (first `operator[]`) | call `@0x141ddd` → `0x140320` | — | `rep[x]` — the depth-0 root test | HIGH |
-| `_Map_base::operator[]` | `0x140320` | — | the parent-map accessor (17 call sites in `find_set`) | HIGH |
+| `_Map_base::operator[]` | `0x140320` | — | the parent-map accessor (16 call sites in `find_set`; see CORRECTION TOPO-3) | HIGH |
 
 ---
 

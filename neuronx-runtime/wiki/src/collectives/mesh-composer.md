@@ -96,7 +96,7 @@ function alg_mesh_build_subtypes(mesh):                            // 0x133cd0
         if ci->rank_n % MESH_INF2_MIN_GROUP_SIZE == 0:            // == 6
             assert(ci->node_n == 1);                              // "ci->node_n == 1"
             mesh->mesh_type = ENC_ALG_GROUPED_MESH;               // (1) — inline grouped builder
-            return build_grouped_mesh(mesh);                      // union-find over peer rids
+            return build_grouped_mesh(mesh);                      // rank_n % 6 grouping done by alg_mesh_build_subtypes' own arithmetic, not union-find (see topology-partition TOPO-1)
       default:
         return NRT_INVALID;   // "Mesh algo untested with %d ranks on this instance type"
 ```
@@ -378,8 +378,10 @@ The full-mesh builder of §2–§3 is the flat-topology composer. When the topol
 | `alg_mesh_init` (`@0x135990`) | the MESH constructor that drives this composer; builds device neighbors + 20 channels |
 | `enc_cc_algorithm_allowed` (`@0x108d30`) | admits the mesh family in `enc_init_comm`, selecting the mesh path over ring |
 | `enc_mesh_primitive` (`@0x1a9da0` ctor) | consumes the `mesh_subtype[].events[]` this composer builds and emits `cc_op` streams |
-| `disjoint_set` / `connected_components` (`@0x141dc0` / `@0x142fb0`) | union-find over peer rids for the `ENC_ALG_GROUPED_MESH` inline builder ([Topology Partitioning](topology-partition.md)) |
+| `disjoint_set` / `connected_components` (`@0x141dc0` / `@0x142fb0`) | the `src_target_pairs` point-to-point / all-to-all-v replica-group partitioner; its **sole** consumer is `enc_parse_src_target_pairs` (`@0x130620`), **not** the grouped-mesh builder ([Topology Partitioning](topology-partition.md)) |
 | `encd_init_mesh_event` | the device-side DMA + semaphore emit each event bottoms out into ([encd Overview](encd-overview.md)) |
+
+> **CORRECTION —** earlier revisions of this page attributed the `disjoint_set` / `connected_components` union-find (`@0x141dc0` / `@0x142fb0` / ctor `@0x144400`) to the `ENC_ALG_GROUPED_MESH` inline builder. That is wrong: `alg_mesh_build_full_mesh` `@0x125fb0` and `alg_mesh_build_subtypes` `@0x133cd0` make **zero** calls to those functions (the band-based caller heuristic mis-attributed the libstdc++14 STL leaves that share the `0x14xxxx` address band). The partitioner's **sole** consumer is `enc_parse_src_target_pairs` `@0x130620` (`get_connected` callers `@0x130b6f`/`@0x130bb4`, ctor caller `@0x130af0`) — it derives the `src_target_pairs` point-to-point / all-to-all-v replica groups. The grouped-mesh `rank_n % 6` grouping is `alg_mesh_build_subtypes`' own arithmetic, not union-find. See [Topology Partitioning — CORRECTION TOPO-1](topology-partition.md).
 
 ## Cross-References
 
@@ -387,5 +389,5 @@ The full-mesh builder of §2–§3 is the flat-topology composer. When the topol
 - [Hierarchical and RDH Composition](hierarchical-rdh.md) — shares the `alg_mesh_initializer_pd`; owns the pod RDH/RH/RD step builders and the 2-step pod-mesh proxy this page only names
 - [encd: Device-Side Descriptor Emitter](encd-overview.md) — owns `encd_init_mesh_event` (the per-event DMA + semaphore wiring) and the `encd_alg_init_mesh_resources` neighbor build; this page stops at the call shape
 - [The 148-Byte Ring Channel Descriptor](channel-descriptor.md) — the `enc_channel` (`enc_alg_mesh.channel @+1048`) the mesh path configures via `configure_net_connectors`; `enc_pattern_t = {RING=0, MESH=1, INVALID=2}`
-- [Topology Partitioning (Union-Find)](topology-partition.md) — the `disjoint_set` / `connected_components` grouping the `ENC_ALG_GROUPED_MESH` path uses to coalesce ranks into groups of 6
+- [Topology Partitioning (Union-Find)](topology-partition.md) — the `disjoint_set` / `connected_components` partitioner whose **sole** consumer is `enc_parse_src_target_pairs` (`src_target_pairs` replica-group derivation); it is **not** used by the grouped-mesh path, whose `rank_n % 6` grouping is `alg_mesh_build_subtypes`' own arithmetic (see CORRECTION TOPO-1)
 - [back to index](../index.md)
