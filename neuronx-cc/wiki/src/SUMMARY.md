@@ -38,6 +38,7 @@
 - [MEM_PATTERN2D / 3D — the DST/PSUM Role](isa/mempattern-2d-3d.md)
 - [TENSOR4D / MEM_PATTERN4D — the Spill Descriptor](isa/tensor4d-mempattern4d.md)
 - [The 64-Byte Instruction Bundle & Header Skeleton](isa/instruction-bundle.md)
+- [Indirect-Gather Descriptors — INDIRECT16B / 20B / MXINDIRECT16B](isa/indirect-descriptors.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
