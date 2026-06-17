@@ -21,6 +21,7 @@
 - [SBUF / PSUM Bank Geometry](arch/sbuf-psum-geometry.md)
 - [The multi-core (LNC) memory model](arch/lnc-memory-model.md)
 - [PE Engine — the Systolic Matmul Array](arch/pe-engine.md)
+- [Pool Engine — Windowed Pooling and the Reduce Leg](arch/pool-engine.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
