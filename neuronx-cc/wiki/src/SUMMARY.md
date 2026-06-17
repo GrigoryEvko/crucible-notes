@@ -27,6 +27,7 @@
 - [Activation Engine — Datapath and the LUT-Load Mechanism](arch/activation-engine.md)
 - [Pool Engine — Windowed Pooling and the Reduce Leg](arch/pool-engine.md)
 - [DVE Engine — Microcode-Table Architecture](arch/dve-engine.md)
+- [GPSIMD Engine — the Pool-Alias Cross-Core SB2SB Mover](arch/gpsimd-engine.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
