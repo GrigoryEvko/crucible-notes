@@ -1,9 +1,12 @@
 [book]
 title = "neuronx-cc Internals — AWS Neuron Compiler Reference"
 authors = ["nvopen-tools contributors"]
-description = "Reverse-engineering reference for the AWS Neuron compiler stack: hlo2penguin, walrus (libwalrus.so), BIR (libBIR.so), NKI Python frontend, and the Tonga/Sunda/Cayman/CoreV4 backend code generators."
+description = "Reverse-engineering reference for the AWS Neuron compiler stack (neuronx_cc 2.24): the hlo-opt / hlo2penguin MLIR front half, the Penguin middle-end, the NKI Python kernel language, libBIR / the BIR backend IR, the libwalrus backend (scheduling, allocation, codegen, linking), and the Tonga/Sunda/Cayman/CoreV4 per-engine ISA. Reconstructed from static analysis of the cp310/311/312 wheels."
 language = "en"
 src = "src"
+
+[build]
+create-missing = false
 
 [output.html]
 default-theme = "navy"
@@ -16,7 +19,8 @@ edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuro
 [output.html.search]
 enable = true
 limit-results = 30
+use-hierarchical-heading = true
 
 [output.html.fold]
 enable = true
-level = 2
+level = 1

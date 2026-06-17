@@ -1,71 +1,48 @@
-# neuronx-cc Internals — AWS Neuron Compiler
+# neuronx-cc Internals
 
-> **Status**: scaffolding · **Source packages**: `neuronx_cc-2.24.5133.0` (cp310/cp311/cp312 wheels) + stubs · **Cross-stack orientation**: [`neuron-platform/wiki/`](../../neuron-platform/wiki/)
+> *A reverse-engineering reference for `neuronx_cc` **2.24.5133.0+58f8de22** (the AWS Neuron compiler), reconstructed from static analysis of the cp310/cp311/cp312 wheels. Every address, offset, and symbol on these pages is pinned to that build.*
 
 ## What this wiki is
 
-The AWS Neuron compiler. Takes XLA HLO (from JAX or PyTorch-XLA via libneuronpjrt) or pure-Python NKI kernels, and emits **NEFF** (Neuron Executable File Format) binaries that the runtime (`libnrt.so`) loads onto NeuronCore devices.
+`neuronx_cc` is the ahead-of-time compiler that turns a machine-learning graph into a **NEFF** — the executable container the Neuron runtime (`libnrt.so`) loads onto Trainium / Inferentia NeuronCore devices. Its two front doors are XLA **HLO** (emitted by PyTorch-XLA or JAX through `libneuronpjrt`) and **NKI**, a Python kernel DSL that traces directly to the backend IR.
 
-## Compile pipeline at a glance
+This book is the specification a competent systems engineer would need to **reimplement** that compiler. It documents the whole descent — HLO/StableHLO optimization, the `hlo2penguin` MLIR front half, the Penguin middle-end, NKI tracing and lowering, the BIR backend IR, the `libwalrus` backend (scheduling, register/memory allocation, per-engine code generation, multi-core linking), and the on-disk NEFF format — anchored at every step to the binary evidence that supports it.
 
-```
-User Python (PyTorch / JAX / NKI / pure-Python kernel)
-            │
-            ▼
-    XLA HLO  (HloModule protobuf)
-            │
-            ▼
-    MHLO / StableHLO / CHLO   (MLIR dialects)
-            │
-            │  hlo2penguin (227 MB binary)
-            │  - CanonicalizeForTensorizer
-            │  - TensorizerLegalizationPass
-            │  - NeuronOpFusion / NeuronInstCombine
-            │  - PenguinizeFunctions
-            ▼
-    Penguin Python IR  (.py emission)
-            │
-            │  walrus_driver + libwalrus.so
-            │  60+ register_generator_* passes
-            │  - Inlining (BIR / NKI kernels)
-            │  - Memory analysis + coloring allocators
-            │  - DMA pipeline + LNC barriercheck
-            │  - Scheduling + lower_dma
-            ▼
-    BIR  (Backend IR, bir::Module*)
-            │
-            │  Backend (per-target codegen)
-            │  TongaISel / SundaISel / Cayman / CoreV4Gen
-            ▼
-    Per-Engine ISA (PE / ACT / DVE / SP / POOL)
-            │
-            │  Kelper → NeffWrapper (hlo-neff-wrapper)
-            ▼
-    NEFF on disk
-```
+Everything here derives from static analysis alone: demangled symbols, decompiled function bodies, `pybind11` and Cython string pools, embedded assert messages, and recovered `__FILE__` source paths inside the shipped binaries. There is no access to source. Where a claim is inferred rather than directly observed, it is labelled; see [Methodology & the Confidence Model](methodology.md).
 
-## Codename surface
+## Start here
 
-| Compiler axis | Names | Hardware target |
+1. **[The Compile Pipeline at a Glance](front/pipeline.md)** — the IR descent from framework graph to NEFF, with the binary that owns each stage.
+2. **[Binary Inventory & the .so Map](reference/binary-inventory.md)** — the tool ELFs, the eight `starfish/lib` shared objects, and the Cython module galaxy.
+3. **[Methodology & the Confidence Model](methodology.md)** — what "binary-derived" means here, the four-tier confidence ladder, and what is provably *not* recoverable.
+4. **[Glossary & Naming Conventions](glossary.md)** — NEFF, BIR, Penguin, KLR, walrus, pelican, the engines, the codenames.
+
+## How the book is organized
+
+The reference is fifteen parts. Part 0 (this apparatus) orients; Parts 1–14 descend the pipeline and then bottom out in cross-cutting references.
+
+| Part | Subject | Directory |
 |---|---|---|
-| `xla::hilo::*` cost-model | Tonga / Sunda / Cayman / Mariana | Per silicon (4 chronological generations) |
-| `libwalrus.so` codegen | CoreV2Gen / CoreV3Gen / CoreV4Gen | Per ISA generation |
-| NKI Python `Target` | Cayman / Tonga / Sunda / CoreV4 | User-facing target argument |
+| 0 | Reference apparatus — pipeline, methodology, inventory, glossary | — |
+| 1 | Hardware & engine model (the arch object model, the six engines, LNC) | `arch/` |
+| 2 | The Tonga ISA — the 64-byte bundle, access-pattern descriptors, per-engine encodings | `isa/` |
+| 3 | Frontend, driver, flags & diagnostics | `frontend/` |
+| 4 | `hlo-opt` + `hlo2penguin` — HLO/MLIR optimization and Penguin emission | `hlo-opt/` |
+| 5 | Penguin IR & the middle-end (layout, tiling, fusion, scheduling, ISL glue) | `penguin/` |
+| 6 | NKI — the Python kernel DSL, tracing, lowering, and the production kernel library | `nki/` |
+| 7 | BIR, `libBIR`, the JSON wire format, `pelican::Expr`, and the simulator | `bir/` |
+| 8 | The `libwalrus` backend — passes, allocators, schedulers, codegen, linker, verifiers, perf model | `walrus/` |
+| 9 | Numeric semantics — dtypes, the cast engine, MX microscaling | `numerics/` |
+| 10 | Activation & the piecewise-polynomial (PWP) function tables | `activation/` |
+| 11 | Custom ops & the GPSIMD Xtensa CPUs | `customop/` |
+| 12 | The NEFF container & packaging | `formats/` |
+| 13 | Distribution, collectives & SPMD partitioning | `distribution/` |
+| 14 | Appendices — opcode/dtype/error/symbol reference tables | `appendix/` |
 
-See [arch/codename-decoder.md](arch/codename-decoder.md) for the full mapping (gated on cross-stack resolution).
-
-## Where to start
-
-1. **[Compiler Pipeline Overview](arch/overview.md)** — the IR descent diagram with binary anchors
-2. **[BIR Instruction Hierarchy](bir/inst-hierarchy.md)** — the 110 opcodes that every walrus pass operates on
-3. **[Walrus Pass Inventory](walrus/pass-inventory.md)** — 60+ passes grouped by phase
-4. **[NKI nl.* Language Surface](nki/nl-language-surface.md)** — the 97 user-visible Python ops
-5. **[NKI nisa.* ISA Surface](nki/nisa-isa-surface.md)** — the 41 hardware-near intrinsics
-6. **[NEFF File Format](formats/neff.md)** — the compile-output binary artifact (1024B header + gzip-pax-tar)
-7. **[BIR JSON Schema](formats/bir-json.md)** — the inter-process wire format with `bir_roundtrip`
+> **NOTE —** pages land part-by-part. The navigation sidebar lists what is written; the full ~355-page plan is tracked separately, one task per page. A section that is not yet linked is planned, not missing.
 
 ## Companion wikis
 
-- [`neuronx-runtime/wiki/`](../../neuronx-runtime/wiki/) — the runtime side that consumes NEFFs
-- [`neuron-jax-stack/wiki/`](../../neuron-jax-stack/wiki/) — libneuronpjrt → neuronx-cc subprocess contract
-- [`neuronx-misc/wiki/`](../../neuronx-misc/wiki/) — torch_neuronx / jax_neuronx framework bindings that drive compilation
+- [`neuronx-runtime/wiki/`](../../neuronx-runtime/wiki/) — the runtime that loads and executes NEFFs.
+- [`neuron-jax-stack/wiki/`](../../neuron-jax-stack/wiki/) — the `libneuronpjrt` → `neuronx_cc` subprocess contract.
+- [`neuronx-misc/wiki/`](../../neuronx-misc/wiki/) — `torch_neuronx` / `jax_neuronx` framework bindings that drive compilation.

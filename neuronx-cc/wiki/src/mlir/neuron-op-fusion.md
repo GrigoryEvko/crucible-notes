@@ -1,1 +1,0 @@
-# NeuronOpFusion (dot+logistic, elementwise)

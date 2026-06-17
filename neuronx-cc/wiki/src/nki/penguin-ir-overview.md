@@ -1,1 +1,0 @@
-# Penguin IR Overview

@@ -1,1 +1,0 @@
-# BIR JSON Wire Format
