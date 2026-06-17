@@ -1,6 +1,6 @@
 # DMA Rings and H2T Queues
 
-> *All `file:line` citations on this page are into the GPL-2.0 C source of **aws-neuronx-dkms 2.27.4.0** (`usr/src/aws-neuronx-2.27.4.0/`). The core file is `neuron_ring.c` (873 lines) and `neuron_ring.h` (461 lines), read verbatim. Boundary structs are cited at their own definition site (`udma/udma.h`, `share/neuron_driver_shared.h`, `neuron_device.h`, the `v2`/`v3` DHAL). The driver also ships as a stripped `.ko`, but the GPL C is authoritative — every offset below is a struct field, not a recovered binary offset.*
+> *All `file:line` citations on this page are into the GPL-2.0 C source of **aws-neuronx-dkms 2.27.4.0** (`usr/src/aws-neuronx-2.27.4.0/`). The core file is `neuron_ring.c` (872 lines) and `neuron_ring.h` (461 lines), read verbatim. Boundary structs are cited at their own definition site (`udma/udma.h`, `share/neuron_driver_shared.h`, `neuron_device.h`, the `v2`/`v3` DHAL). The driver also ships as a stripped `.ko`, but the GPL C is authoritative — every offset below is a struct field, not a recovered binary offset.*
 > *Evidence grade: **Confirmed (source-anchored)** — full C source, no decompilation. · Part III — Kernel Driver · [back to index](../index.md)*
 
 ## Abstract
@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Source** | `neuron_ring.c` (873 lines), `neuron_ring.h` (461 lines), aws-neuronx-dkms 2.27.4.0, GPL-2.0 |
+| **Source** | `neuron_ring.c` (872 lines), `neuron_ring.h` (461 lines), aws-neuronx-dkms 2.27.4.0, GPL-2.0 |
 | **Nesting** | `nd->ndma_engine[132]` → `eng->queues[16]` → `queue->ring_info` (`neuron_ring.h:185–192 / 178–183 / 156–176`) |
 | **Engine count** | `NUM_DMA_ENG_PER_DEVICE = 132` (`neuron_ring.h:13`) — "for v2 2 nc with each 16" |
 | **Queues per engine** | `DMA_MAX_Q_MAX = DMA_MAX_Q_V4 = 16` (`udma/udma.h:12–13`) |

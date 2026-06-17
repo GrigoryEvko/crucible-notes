@@ -1,6 +1,6 @@
 # Notification Queue Engine
 
-> *All `file:line` citations on this page are into the GPL-2.0 C source of **aws-neuronx-dkms 2.27.4.0** (`usr/src/aws-neuronx-2.27.4.0/`). The arch-neutral engine is `neuron_nq.c` (149 lines) / `neuron_nq.h` (93 lines); the per-generation geometry is `v2/notific.{c,h}` (126 / 53 lines) and `v3/notific.{c,h}` (133 / 66 lines); the register-programming DHAL methods are in `v2/neuron_dhal_v2.c` and `v3/neuron_dhal_v3.c`, all read verbatim. Boundary structs are cited at their definition site (`share/neuron_driver_shared.h`, `neuron_core.h`, `neuron_device.h`, `neuron_dhal.h`). The driver also ships as a stripped `.ko`, but the GPL C is authoritative — every offset below is a `#define` or a struct field, not a recovered binary offset.*
+> *All `file:line` citations on this page are into the GPL-2.0 C source of **aws-neuronx-dkms 2.27.4.0** (`usr/src/aws-neuronx-2.27.4.0/`). The arch-neutral engine is `neuron_nq.c` (149 lines) / `neuron_nq.h` (93 lines); the per-generation geometry is `v2/notific.{c,h}` (125 / 52 lines) and `v3/notific.{c,h}` (132 / 65 lines); the register-programming DHAL methods are in `v2/neuron_dhal_v2.c` and `v3/neuron_dhal_v3.c`, all read verbatim. Boundary structs are cited at their definition site (`share/neuron_driver_shared.h`, `neuron_core.h`, `neuron_device.h`, `neuron_dhal.h`). The driver also ships as a stripped `.ko`, but the GPL C is authoritative — every offset below is a `#define` or a struct field, not a recovered binary offset.*
 > *Evidence grade: **Confirmed (source-anchored)** — full C source, no decompilation. · Part III — Kernel Driver · [back to index](../index.md)*
 
 ## Abstract
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Public NeuronCore entry** | `nnq_init` (`neuron_nq.c:72`) |
 | **Public TopSP entry** | `ndhal->ndhal_topsp.ts_nq_init` → `ts_nq_init_v{2,3}` (`v2/neuron_dhal_v2.c:308`, `v3/neuron_dhal_v3.c:491`) |
 | **Register block** | `NOTIFIC_NQ_SIZE = 0x28`; LO `+0x100`, HI `+0x104`, F_SIZE `+0x108`, HEAD `+0x10c` (`neuron_nq.h:13-53`) |
-| **NQ-id formula** | `(nq_type * MAX_NQ_QUEUES) + engine_index` (`v2/neuron_dhal_v2.c:415`, `v3/neuron_dhal_v3.c:597`) |
+| **NQ-id formula** | `(nq_type * MAX_NQ_QUEUES) + engine_index` (`v2/neuron_dhal_v2.c:412`, `v3/neuron_dhal_v3.c:595`) |
 | **NQ type count** | `MAX_NQ_TYPE = 6` (`neuron_core.h:86`); V3 ships 5 (`V3_MAX_NQ_TYPE`, drops THROTTLE) |
 | **Handle store** | `nd->nq_mc[MAX_NC_PER_DEVICE][MAX_NQ_SUPPORTED]`, `nd->ts_nq_mc[...]` (`neuron_device.h:91,93`) |
 | **IOCTL callers** | `NOTIFICATIONS_INIT_V1/_V2/_WITH_REALLOC_V2` (`neuron_cdev.c:1996/2014/2045`) |
@@ -102,7 +102,7 @@ Before any register is touched, the engine maps a caller's `(nc_id, engine_index
 
 ### The id formula and the handle store
 
-The linear id is `nq_id = nq_type * MAX_NQ_QUEUES + engine_index`, computed in the DHAL `nnq_get_nqid` method (`v2/neuron_dhal_v2.c:415`, `v3/neuron_dhal_v3.c:597`). With `MAX_NQ_QUEUES = 16`, type scales by 16 and engine occupies the low 4 bits; the inverse is `nq_type = nq_instance / 16`, `engine = nq_instance % 16`.
+The linear id is `nq_id = nq_type * MAX_NQ_QUEUES + engine_index`, computed in the DHAL `nnq_get_nqid` method (`v2/neuron_dhal_v2.c:412`, `v3/neuron_dhal_v3.c:595`). With `MAX_NQ_QUEUES = 16`, type scales by 16 and engine occupies the low 4 bits; the inverse is `nq_type = nq_instance / 16`, `engine = nq_instance % 16`.
 
 Sizing constants pin the array bounds (`neuron_core.h:86-89`):
 
@@ -261,7 +261,7 @@ Two facts a reimplementer must preserve. First, for `NQ_TYPE_TRACE_DMA` the engi
 |---|---|---|---|
 | `nnq_set_hwaddr_v2` | `v2/neuron_dhal_v2.c:427` | Resolve geometry + write HI/LO/F_SIZE for a NeuronCore NQ | CERTAIN |
 | `nnq_set_hwaddr_v3` | `v3/neuron_dhal_v3.c:610` | Same, V3 geometry | CERTAIN |
-| `nnq_get_nqid_v2` / `_v3` | `v2:413` / `v3:595` | `(nq_type * MAX_NQ_QUEUES) + index` | CERTAIN |
+| `nnq_get_nqid_v2` / `_v3` | `v2:412` / `v3:595` | `(nq_type * MAX_NQ_QUEUES) + index` | CERTAIN |
 | `notific_get_relative_offset_v{2,3}` | `v2/notific.h:31`, `v3/notific.h:31` | Per-NC NOTIFIC BAR0 offset | CERTAIN |
 | `notific_get_relative_offset_sdma_v{2,3}` | `v2/notific.c:28`, `v3/notific.c:26` | Per-SDMA-engine NOTIFIC BAR0 offset | CERTAIN |
 | `notific_write_nq_*` | `neuron_nq.h:19/32/45` | `reg_write32` into the 0x28 block | CERTAIN |
