@@ -90,6 +90,7 @@
 
 - [The hlo-opt Pass Registry (the --passes Table)](hlo-opt/pass-registry.md)
 - [Collectives → Custom-Call Forward Conversion](hlo-opt/collectives-to-customcall.md)
+- [Collective Stream-ID & Channel-ID Family](hlo-opt/collective-stream-channel-id.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
