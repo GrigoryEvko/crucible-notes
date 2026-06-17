@@ -42,6 +42,7 @@
 - [MXMEM_PATTERN1D — MX Data + E8M0 Scale](isa/mxmem-pattern1d.md)
 - [Access-Pattern Encoder Dispatch](isa/ap-encoder-dispatch.md)
 - [PE Matmul Encoding — Dense / Sparse / MX & Quantize](isa/pe-matmul-encoding.md)
+- [BatchNorm-Family Encoding](isa/batchnorm-encoding.md)
 - [Pool / TensorReduce / Reciprocal / Iota Encoding](isa/pool-reduce-encoding.md)
 - [Activation Encoding](isa/activation-encoding.md)
 
