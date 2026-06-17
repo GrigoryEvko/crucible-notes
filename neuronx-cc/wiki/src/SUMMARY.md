@@ -86,6 +86,10 @@
 - [Diagnostic & Error-Code Catalog — Four Systems](frontend/diagnostic-error-catalog.md)
 - [Optional Client/Daemon IPC Server](frontend/client-daemon-ipc.md)
 
+# Part 4 — hlo-opt + hlo2penguin
+
+- [Collectives → Custom-Call Forward Conversion](hlo-opt/collectives-to-customcall.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
