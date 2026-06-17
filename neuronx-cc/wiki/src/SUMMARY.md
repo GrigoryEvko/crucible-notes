@@ -12,6 +12,13 @@
 - [Build & Version Provenance](reference/versions.md)
 - [Glossary & Naming Conventions](glossary.md)
 
+# Part 1 — Hardware & Engine Model
+
+- [The Arch Object Model (getArchModel → Board/Device/Core)](arch/arch-object-model.md)
+- [Per-Generation Hardware-Constant Matrix](arch/hardware-constant-matrix.md)
+- [SBUF / PSUM Bank Geometry](arch/sbuf-psum-geometry.md)
+- [PE Engine — the Systolic Matmul Array](arch/pe-engine.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
