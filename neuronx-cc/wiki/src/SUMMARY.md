@@ -52,9 +52,11 @@
 - [DVE Search & Datamove Encoding — Max8 / FindIndex8 / MatchReplace / Nonzero](isa/dve-search-encoding.md)
 - [RNG-Family Encoding](isa/rng-encoding.md)
 - [SP Sync / Branch / Control Encoding](isa/sp-sync-encoding.md)
+- [SP Register-Lane + TensorLoad/Save Encoding](isa/sp-register-encoding.md)
 - [DMA-Family Encoding & Descriptors](isa/dma-encoding.md)
 - [The ISA Datamodel Reflection Layer](isa/isa-reflection-layer.md)
 - [Collective / GPSIMD / CustomOp Encoding](isa/collective-customop-encoding.md)
+- [DVE On-Device Microcode: opcode_table](isa/dve-opcode-table.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
