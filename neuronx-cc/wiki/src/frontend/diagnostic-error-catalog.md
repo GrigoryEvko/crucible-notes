@@ -345,7 +345,7 @@ Driver wrappers (CONFIRMED strings): `"LLVM compilation error: "`, `"LLVM ERROR:
 
 ### Ad-hoc numbered codes (NOT `NCC_`)
 
-`StaticIOTranspose` (Cython, separate from the native bins) emits its own `n001/n002/n003` numbered diagnostics on the modular io_transpose path: `n001` = ≥2 modular files without `--netlist`; `n002` = duplicate/forbidden transpose; `n003` = reshape size mismatch. These are distinct from the `NCC_IIOT/IHNW` codes in `hlo-neff-wrapper` (which check the same conditions but render as `NCC_` tokens). See [§3 static-io-transpose](static-io-transpose.md).
+`StaticIOTranspose` (Cython, separate from the native bins) emits its own `n001/n002/n003` numbered diagnostics on the modular io_transpose path: `n001` = ≥2 modular files without `--netlist`; `n002` = duplicate/forbidden transpose; `n003` = reshape size mismatch. These are distinct from the `NCC_IIOT/IHNW` codes in `hlo-neff-wrapper` (which check the same conditions but render as `NCC_` tokens). See [§3.15 static-io-transpose](static-io-transpose.md).
 
 Backend validation also emits free-form (non-`NCC_`) diagnostics: `"Data race detected:"` from `libBIRRacecheck.so` (`racecheck::RaceChecker`). The `neuronxcc::backend::ErrorType` LLVM `cl::opt` enum (`abort` / `error` / `ignore` / `strict`, STRONG) is a knob that escalates/suppresses backend validation failures — a *control*, not a code.
 
@@ -412,5 +412,5 @@ The catalog is **ABI-independent**: the cp310/cp311/cp312 wheels carry the ident
 - [NeuronLogger](neuronlogger.md) — §3.18, the `USER`/`OFF`/`TRACE` level overlay these systems log through
 - [Python Logging Facade](python-logging-facade.md) — §3.19, the stdlib-`logging` bridge wiring in `logging/__init__.so`
 - [Command Dispatcher & Subcommand Model](command-dispatcher.md) — §3.1, the subprocess/exit-code plumbing behind the F-codes
-- [StaticIOTranspose & the io_transpose JSON Schema](static-io-transpose.md) — §3, source of the `n001/n002/n003` codes and the `IIOT` overlap
+- [StaticIOTranspose & the io_transpose JSON Schema](static-io-transpose.md) — §3.15, source of the `n001/n002/n003` codes and the `IIOT` overlap
 - Part-14 Error Appendix *(planned)* — the full 2556-row `(category,index)→(cause,resolution)` dump

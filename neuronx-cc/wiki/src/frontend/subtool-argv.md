@@ -241,7 +241,7 @@ To prevent a reimplementer from inventing machinery that does not exist (all CON
 
 - **No response-file / `@file` mechanism.** No `fromfile_prefix_chars`, no `'@'` handling, in any driver `.so`. Sub-tool argv is built entirely from the `Namespace`.
 - **No config-file reader.** No `.cfg` / `.ini` / `.json` / `configparser` path feeds argv.
-- **No `getenv` in the argv path.** Environment-supplied flags (`NEURON_CC_FLAGS`) are *prepended to `sys.argv` outside the wheel* by the framework integration, then parsed as ordinary argv — they are not read inside `shellCommand` or the collectors. See [NEURON_CC_FLAGS Prepend](neuron-cc-flags.md).
+- **No `getenv` in the argv path.** Environment-supplied flags (`NEURON_CC_FLAGS`) are *prepended to `sys.argv` outside the wheel* by the framework integration, then parsed as ordinary argv — they are not read inside `shellCommand` or the collectors. See [Env-Var Catalog](env-var-catalog.md).
 - **No unified `Options.to_argv()`.** Re-stated for emphasis: argv is built per-Job by the collectors from the `Namespace`, not serialized from one options object.
 
 ---
@@ -261,4 +261,4 @@ To prevent a reimplementer from inventing machinery that does not exist (all CON
 
 - [CompileCommand Pipeline](compilecommand-pipeline.md) — 3.3, `buildPipeline` selection logic and the argparse registry that supplies the Namespace + defaults
 - [Job Registry](job-registry.md) — 3.4, the `Job` model, `executableLocation` resolution, and `expose_stderr` / `propagate_exit` defaults per registered job
-- [NEURON_CC_FLAGS Prepend](neuron-cc-flags.md) — 3.11, how environment flags reach `sys.argv` before any collector runs
+- [Environment-Variable Catalog & the NEURON_CC_FLAGS Boundary](env-var-catalog.md) — 3.11, how environment flags reach `sys.argv` before any collector runs

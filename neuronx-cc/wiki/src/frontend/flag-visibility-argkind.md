@@ -288,4 +288,4 @@ The five strongest claims on this page, re-checked against the binary:
 
 - [Flag Catalog](flag-catalog.md) — 3.8, the per-flag N–Z catalog whose `Vis {PUB/HID/INT/EARG}` column this taxonomy defines
 - [The Two-Parser Architecture](two-parser-architecture.md) — 3.2, the driver vs Penguin parser split; the `_ArgumentRegistry` record and the three-member `ArgKind` subset this page corrects upward to five
-- [Sub-Tool argv Construction & Replay](subtool-argv.md) — 3.3, where the `job` column of each registry record is consumed
+- [Sub-Tool argv Construction & Replay](subtool-argv.md) — 3.5, where the `job` column of each registry record is consumed

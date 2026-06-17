@@ -12,7 +12,7 @@ A reimplementer who assumes a single global options table will get this wrong tw
 
 For reimplementation, the contract is:
 
-- **The driver lane** — `InterceptingArgumentParser` (an `argparse.ArgumentParser` subclass), the `_AddArgumentCallInterceptor` group proxy, and the `_ArgumentRegistry` with its 4-field record `(argument, kind, job, default)` keyed by context, plus `ArgKind ∈ {PUBLIC, HIDDEN, INTERNAL}`.
+- **The driver lane** — `InterceptingArgumentParser` (an `argparse.ArgumentParser` subclass), the `_AddArgumentCallInterceptor` group proxy, and the `_ArgumentRegistry` with its 4-field record `(argument, kind, job, default)` keyed by context, plus `ArgKind` (whose `.rodata` member set is `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}` — the three fully-wired tiers plus the experimental `EARG`/help-suppressed `Harg`; see [3.9](flag-visibility-argkind.md)).
 - **The backend lane** — the `CommandLineParser` singleton (lazy `getOrCreateInstance`), the `CLOption` wrapper, the `clOpt{String,Integer,Float,Bool}` factories and `addBoolOption`'s `no-`/`trim_prefix` negation, and `parseOptions`/`parseKnownOptions` over a whitespace-split string.
 - **Why there is no unified `Options` object** — the two parsers have disjoint storage, disjoint resolution, and no serialization path between them; the only thing they share is the `argparse` base + the `--no-`/negation idiom, which each implements independently.
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **Driver-lane module** | `neuronxcc/driver/Arguments…so` (823,192 B) |
 | **Driver-lane parser** | `InterceptingArgumentParser(argparse.ArgumentParser)` |
 | **Driver registry** | `_ArgumentRegistry.arguments_by_context` (`OrderedDict`); record = `argument,kind,job,default,` |
-| **Driver flag kinds** | `ArgKind.{PUBLIC, HIDDEN, INTERNAL}` |
+| **Driver flag kinds** | `ArgKind.{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}` (3 fully-wired + EARG/Harg; see [3.9](flag-visibility-argkind.md)) |
 | **Backend-lane module** | `neuronxcc/starfish/penguin/Options…so` (554,136 B) |
 | **Backend-lane parser** | `CommandLineParser` (singleton; wraps `argparse.ArgumentParser(conflict_handler='resolve')`) |
 | **Backend option model** | `CLOption` + `clOpt{String,Integer,Float,Bool}` / `addOption` / `addBoolOption` |
@@ -64,7 +64,9 @@ All symbols are local (`l F .text`) in `Arguments…so` — present, not strippe
 | `_AddArgumentCallInterceptor.add_mutually_exclusive_group` | `0x13a10` | nested mutex-group proxy | CERTAIN |
 | `_AddArgumentCallInterceptor.set_context` | `0xe760` | context-thread for group-added flags | CERTAIN |
 
-`ArgKind` is an `enum.Enum` with members `PUBLIC`, `HIDDEN`, `INTERNAL` — all three appear as interned string constants (`__pyx_k_INTERNAL`, `__pyx_n_s_ArgKind`, plus bare `PUBLIC`/`HIDDEN`/`INTERNAL`). [CONFIRMED]
+`ArgKind` is an `enum.Enum` whose three fully-wired members `PUBLIC`, `HIDDEN`, `INTERNAL` appear as interned *name* constants (`__pyx_n_s_*`, plus `__pyx_k_INTERNAL`, `__pyx_n_s_ArgKind`). [CONFIRMED]
+
+> **CORRECTION —** the `.rodata` string pool carries **two more** member tokens beyond these three: `EARG` (interned as the unicode *value* `__pyx_n_u_EARG`, HIGH) and `Harg` (a bare string, LOW). The full member set is `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}`; this lane only references the first three as live enum identifiers, but the experimental `EARG` (help-suppressed, listed by `--help-hidden`) and the help-suppressed `Harg` are also members. See [3.9 Flag Visibility Taxonomy](flag-visibility-argkind.md), which is authoritative on the five-member enum.
 
 ### Algorithm
 

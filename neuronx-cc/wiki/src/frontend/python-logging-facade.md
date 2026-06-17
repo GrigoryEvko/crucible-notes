@@ -205,7 +205,7 @@ CommandDriver.run (Cython)                       CompileCommand.runPipeline
 
 The driver flips an internal `print_dots` flag and rewrites its in-memory `verbose` attribute to `logging.USER`. Independently, `setup_console_logging` **re-detects** 35 to set its own `print_dots` and suppress stdout — a defensive duplicate of the same convention on the consumer side. (CONFIRMED — `setup_console_logging`/`setup_logfile_logging`/`print_dots`/`to_numeric_level` strings in `CommandDriver.…so`; the exact `--verbose`/internal-flag path that emits the literal 35 is MEDIUM — G1.)
 
-> **NOTE —** the CLI's `to_numeric_level` (in `Daemon.py` and the Cython `CommandDriver.__init__.to_numeric_level`) maps `0→WARNING(30)`, `1→INFO(20)`, `2→DEBUG(10)`, a bare digit passes through, and a name resolves via `getattr(logging, NAME.upper())` so `--verbose user → USER(60)`. The bare 35 sentinel is *not* one of these outputs; it enters from an internal/interactive path before `CommandDriver.run`'s compare. See [3.20](diagnostics.md) for the full CLI verbosity surface.
+> **NOTE —** the CLI's `to_numeric_level` (in `Daemon.py` and the Cython `CommandDriver.__init__.to_numeric_level`) maps `0→WARNING(30)`, `1→INFO(20)`, `2→DEBUG(10)`, a bare digit passes through, and a name resolves via `getattr(logging, NAME.upper())` so `--verbose user → USER(60)`. The bare 35 sentinel is *not* one of these outputs; it enters from an internal/interactive path before `CommandDriver.run`'s compare. See [3.20](diagnostic-error-catalog.md) for the full CLI verbosity surface.
 
 ---
 
@@ -256,4 +256,4 @@ Three formats (`logging.py:21-23`): `user_logging_format='%(asctime)s %(message)
 ## Cross-References
 
 - [NeuronLogger (C++ logger)](neuronlogger.md) — 3.18, the native Boost.Log stack; owns the 0..70 scale, the `MergedSink` STDOUT/STDERR router, the truncating logfile flush, and the `NeuronLogger` 0..7 compact index
-- [Diagnostics](diagnostics.md) — 3.20, the CLI `--verbose`/`--log-level` argparse surfaces and `to_numeric_level` that feed integers into this façade
+- [Diagnostic & Error-Code Catalog](diagnostic-error-catalog.md) — 3.20, the CLI `--verbose`/`--log-level` argparse surfaces and `to_numeric_level` that feed integers into this façade

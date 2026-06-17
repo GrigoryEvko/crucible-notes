@@ -446,5 +446,5 @@ Five strongest claims, re-checked against the binary:
 - [CompileCommand Pipeline & the Canonical Job Order](compilecommand-pipeline.md) — the driver that emits the `WalrusDriver` Job and the `--walrus-passes` it forwards
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — `WalrusDriver` is one Job, not a chain; where this CLI sits in the process pipeline
 - [Part 8 — The libwalrus Backend](../walrus/) — the 150 passes, allocators, schedulers, and the optlevel pipeline builders this CLI selects
-- [Opt-Levels](../frontend/opt-levels.md) — `--optlevel`/`--allocator`/`--smt-allocation` and the pipelines they choose (3.10)
+- [Opt-Level Planes](opt-level-planes.md) — `--optlevel`/`--allocator`/`--smt-allocation` and the pipelines they choose (3.10)
 - [Part 14 — Pass Catalog](../catalog/) — per-pass `register_generator_<name>__` addresses and algorithms

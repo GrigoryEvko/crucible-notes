@@ -4,7 +4,7 @@
 
 ## Abstract
 
-A surprising amount of folklore surrounds the Neuron compiler's environment surface, almost all of it centred on one variable — `NEURON_CC_FLAGS`. The single most important fact this page establishes is **negative**: the in-wheel compiler driver (`CommandDriver` → `Arguments` → `CompileCommand`) **never reads `NEURON_CC_FLAGS`**. There is no `getenv("NEURON_CC_FLAGS")`, no `os.environ["NEURON_CC_FLAGS"]`, anywhere in the driver. The variable is a **framework-side convention**: the XLA-Neuron PJRT plugin / `torch-neuronx` wrapper (which live *outside* this wheel) read it, token-split it, and **prepend** the resulting tokens to the `neuronx-cc compile …` argv before exec. By the time the driver's argparser sees them, they are ordinary command-line flags — identical to the flags catalogued in [3.6 (`flag-catalog`)](flag-catalog.md). The only place the wheel itself honours the variable is the NKI `BaremetalKernel._compile` subprocess path, which re-forwards it when it shells out to a child compiler for on-device benchmarking.
+A surprising amount of folklore surrounds the Neuron compiler's environment surface, almost all of it centred on one variable — `NEURON_CC_FLAGS`. The single most important fact this page establishes is **negative**: the in-wheel compiler driver (`CommandDriver` → `Arguments` → `CompileCommand`) **never reads `NEURON_CC_FLAGS`**. There is no `getenv("NEURON_CC_FLAGS")`, no `os.environ["NEURON_CC_FLAGS"]`, anywhere in the driver. The variable is a **framework-side convention**: the XLA-Neuron PJRT plugin / `torch-neuronx` wrapper (which live *outside* this wheel) read it, token-split it, and **prepend** the resulting tokens to the `neuronx-cc compile …` argv before exec. By the time the driver's argparser sees them, they are ordinary command-line flags — identical to the flags catalogued in [3.8 (`flag-catalog`)](flag-catalog.md). The only place the wheel itself honours the variable is the NKI `BaremetalKernel._compile` subprocess path, which re-forwards it when it shells out to a child compiler for on-device benchmarking.
 
 Everything else partitions cleanly along a **compiler-vs-runtime boundary**. A small set of `NEURON_*` variables genuinely steer in-wheel codegen — the NKI target/internal gates, the `libwalrus` scratchpad sizing knob, and a cluster of `getenv()`-read feature knobs inside the native `hlo-opt` HLO passes (`NEURON_REMAT_*`, `NEURON_COLLECTIVE_*`, `NEURON_DISABLE_*`). A second set, all prefixed `NEURON_RT_*`, belongs to the Neuron **runtime** (`libnrt`, out-of-wheel); the compiler touches them only through its runtime-*client* layer (the `kra/` package and the `Autotuner`) when it actually runs a NEFF on hardware for profiling/benchmarking. They do not affect an offline, hardware-less compile. Finally, `TF_CPP_*` / `XLA_*` are read inside the statically-linked TF/XLA dependency, not by neuronx-cc logic.
 
@@ -117,7 +117,7 @@ os.environ["NEURON_FRAMEWORK_DEBUG"] = "1"
 os.environ["NEURON_CC_FLAGS"] = " --disable-dge "   # leading/trailing spaces tolerated; split discards them
 ```
 
-The value is a free-form flag fragment whose tokens map 1:1 onto the [3.6 flag catalogue](flag-catalog.md) (`--disable-dge`, `--target=`, `--auto-cast`, `-O2`, …). The relationship is purely textual: `NEURON_CC_FLAGS` is the **source string**, the driver's argparser is the **sink**, and there is no in-driver merge step — the merge is a string prepend performed by the caller.
+The value is a free-form flag fragment whose tokens map 1:1 onto the [3.8 flag catalogue](flag-catalog.md) (`--disable-dge`, `--target=`, `--auto-cast`, `-O2`, …). The relationship is purely textual: `NEURON_CC_FLAGS` is the **source string**, the driver's argparser is the **sink**, and there is no in-driver merge step — the merge is a string prepend performed by the caller.
 
 ---
 
@@ -350,5 +350,5 @@ The five strongest claims, re-challenged against the binary:
 
 - [3.2 The Two-Parser Architecture](two-parser-architecture.md) — why the driver has no config/response file and where defaults live
 - [3.3 Sub-Tool argv Construction & Replay](subtool-argv.md) — how `NEURON_CC_FLAGS` tokens, once argv, flow to each Job's sub-tool command line
-- [3.6 CompileCommand Flag Catalog](flag-catalog.md) — the `--flag` sink that `NEURON_CC_FLAGS` tokens land in
-- [3.10 walrus_driver Backend CLI](walrus-driver-cli.md) — where `NEURON_SCRATCHPAD_PAGE_SIZE` is honoured
+- [3.8 CompileCommand Flag Catalog](flag-catalog.md) — the `--flag` sink that `NEURON_CC_FLAGS` tokens land in
+- [3.7 walrus_driver Backend CLI](walrus-driver-cli.md) — where `NEURON_SCRATCHPAD_PAGE_SIZE` is honoured

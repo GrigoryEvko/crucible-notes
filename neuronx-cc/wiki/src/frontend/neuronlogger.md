@@ -354,5 +354,5 @@ Duplicate attempts to setup file logging.
 ## Cross-References
 
 - [Python logging façade](python-logging-facade.md) — the `neuronxlogger` Python side that drives the Boost.Log `logging::Logger`, with the matching TRACE/USER/OFF mapping
-- [Error catalog](error-catalog.md) — diagnostic codes emitted at the `ERROR`/`FATAL` severities
+- [Diagnostic & Error-Code Catalog](diagnostic-error-catalog.md) — 3.20, diagnostic codes emitted at the `ERROR`/`FATAL` severities
 - [The neuronx-cc Command Dispatcher & Subcommand Model](command-dispatcher.md) — the per-process model under which each tool instantiates its own logger

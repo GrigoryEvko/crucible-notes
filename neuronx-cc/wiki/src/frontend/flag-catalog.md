@@ -6,7 +6,7 @@
 
 This page is the **complete user-facing option reference** for the `neuronx-cc compile` subcommand: every `--flag` the parser recognizes, with its argument type, default value, visibility class, and a concise (byte-verbatim where present) help string, in **one master catalog table**. It is the authoritative grammar — a reader who wants to know "does `--X` exist, what does it take, and will `--help` show it" should be able to answer that here without touching the binary.
 
-The flag surface is registered in exactly one Cython function — `CompileCommand.__init__` (`__pyx_pw_..._CompileCommand_1__init__` @ file-off `0x36290`, ~30 564 decompiled lines, 717 `add_argument`/`--` references) — and its pipeline effects are assembled in `CompileCommand.buildPipeline` (`0x619d0`, ~16 616 lines), which constructs the `tensorizer_options` string and the Job list. Every `add_argument` call is intercepted by `_AddArgumentCallInterceptor` (in `driver/Arguments.cpython-310-...so`) and recorded in `_ArgumentRegistry` keyed by an **ArgKind** (`PUBLIC`/`INTERNAL`/`HIDDEN`/`EARG`/`Harg`); that ArgKind decides which `--help*` surface a flag appears on (see [3.9](flag-visibility-argkind.md) for the registry mechanics, [3.2](two-parser.md) for the two-parser architecture).
+The flag surface is registered in exactly one Cython function — `CompileCommand.__init__` (`__pyx_pw_..._CompileCommand_1__init__` @ file-off `0x36290`, ~30 564 decompiled lines, 717 `add_argument`/`--` references) — and its pipeline effects are assembled in `CompileCommand.buildPipeline` (`0x619d0`, ~16 616 lines), which constructs the `tensorizer_options` string and the Job list. Every `add_argument` call is intercepted by `_AddArgumentCallInterceptor` (in `driver/Arguments.cpython-310-...so`) and recorded in `_ArgumentRegistry` keyed by an **ArgKind** (`PUBLIC`/`INTERNAL`/`HIDDEN`/`EARG`/`Harg`); that ArgKind decides which `--help*` surface a flag appears on (see [3.9](flag-visibility-argkind.md) for the registry mechanics, [3.2](two-parser-architecture.md) for the two-parser architecture).
 
 The exact literal set was re-derived for this page by extracting every `.rodata` string beginning `--` from the binary's string table: **147 distinct `--` literals (CONFIRMED — `jq -r '.[].value' …_strings.json | rg '^--' | sort -u | wc -l` ⇒ 147)**. That is the "147-flag surface." Note what the count *includes*: a handful of flags appear twice — once as the bare flag and once as a defaulted `=value` form (e.g. `--internal-dma-qos-class-count` and `--internal-dma-qos-class-count=`) — and four `--no-*` negation companions are separate literals. So **147 ≠ 147 user-distinct features**; the *base-name* count (`=value`/`--no-`/short companions folded into their parent) is **~140**. Both numbers are reported, and the table below collapses the duplicate `=value` literals into one row while keeping the `--no-*` companions visible.
 
@@ -58,7 +58,7 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 |---|---|---|---|---|---|
 | `--allocator <value>` | enum(coloring, linear_scan) | `coloring` | HID | (no help) — selects walrus register/memory allocator; bad value raises *"Unsupported allocator= %s"* `[0x88c30]` | S |
 | `--arch <value>` | enum(inf1,inf2,trn1,trn1n,trn2,trn2n,trn3,sunda) | (from `--target`) | PUB | *"Target MLA architecture"* `[0x88c50]` — sets NeuronCore generation; gates LNC default (`arch!="sunda" or lnc==1` `[0x871a0]`) | C |
-| `--auto-cast <cast mode>` | enum(none, matmult, all) | `matmult` | PUB | *"Automatically cast FP32 operators to a lower-precision type for increased performance. (Default: %(default)s)"* `[0x866e0]`; → fp32-cast policy in `tensorizer_options` ([3.14](precision-flags.md)) | C |
+| `--auto-cast <cast mode>` | enum(none, matmult, all) | `matmult` | PUB | *"Automatically cast FP32 operators to a lower-precision type for increased performance. (Default: %(default)s)"* `[0x866e0]`; → fp32-cast policy in `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
 | `--auto-cast-type <data-type>` | enum(fp16, bf16, tf32) | `bf16` | PUB | *"When auto-cast mode is enabled, set the lower-precision data type to which the selected FP32 operations are cast. (Default: %(default)s)"* `[0x85280]` (fp8e4/fp32r reachable only via `--fast-math` macros) | C |
 | `--auto-compare-mismatch` | bool | False | HID | (no help) — golden-compare debug toggle; feeds `XLAInferGoldens` numerical-compare path | S |
 | `--cc-pipeline-tiling-factor=2` | int(`=N`) | `2` | HID | (no help; literal carries default `=2` `[0x88550]`) — collective-compute pipeline tiling factor | S |
@@ -87,7 +87,7 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 | `--expand-batch-norm-training-and-grad` | bool | False | HID | (no help) `[0x87e80]` — as above plus the gradient computation | S |
 | `--experimental-convolution-kernel-match` | bool/str | False | HID(EARG) | (no help) `[0x86c80]` — experimental conv kernel-matching | S |
 | `--experimental-unsafe-fp8e4m3fn-as-fp8e4m3` | bool | False | HID(EARG) | *"Convert fp8e4m3fn types to fp8e4m3"* `[0x864a0]` — unsafe; internal twin `--internal-experimental-unsafe-fp8e4m3fn-as-fp8e4m3` | C |
-| `--fast-math <cast-method>` | enum/list (macro set) | `fp32-cast-matmult` | PUB | *"Controls how the compiler makes tradeoffs between performance and accuracy for fp32 operations. (Default: %(default)s)"* `[0x87380]` — master precision/relayout knob; macro set → `tensorizer_options` ([3.14](precision-flags.md)) | C |
+| `--fast-math <cast-method>` | enum/list (macro set) | `fp32-cast-matmult` | PUB | *"Controls how the compiler makes tradeoffs between performance and accuracy for fp32 operations. (Default: %(default)s)"* `[0x87380]` — master precision/relayout knob; macro set → `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
 | `--fork` | bool/int | False/0 | HID | (no help) — run compilation in a forked worker model (distinct from `--enable-internal-fork-backend`, which forks only the backend) | I |
 | `--framework <value>` | enum (XLA) | `XLA` (auto: *"XLA detected"* `[0x89e58]`) | PUB | *"Framework used to generate training model."* `[0x85d80]` — selects input-graph frontend (`XLAInterface`); HLO vs other ingest | C |
 
@@ -194,7 +194,7 @@ These flags acquire `ArgKind.INTERNAL` **automatically** because their dest star
 | `--internal-num-semaphores-per-dma-queue <N>` | int | (per-target) | *"Number of semaphores allocated to a DMA queue"* `[0x85960]` | C |
 | `--internal-relaxed-order` *(via `--enable-internal-relaxed-order`)* | bool | False | (no help) — relaxed instruction ordering (see enable-internal family) | S |
 | `--internal-suppress-error` | bool/str | (off) | (no help) `[0x88b10]` — suppresses a named error (triage) | S |
-| `--internal-tensorizer-opt-level <N>` | int | (tracks `--optlevel`) | (no help) `[0x88060]` — overrides tensorizer opt level independent of `-O` ([3.10](opt-levels.md)) | S |
+| `--internal-tensorizer-opt-level <N>` | int | (tracks `--optlevel`) | (no help) `[0x88060]` — overrides tensorizer opt level independent of `-O` ([3.10](opt-level-planes.md)) | S |
 | `--internal-upcast-all-to-FP32` | bool | False | *"Upcast all ops to FP32"* `[0x88e50]` — internal twin of `--upcast-all-to-fp32` | C |
 
 ## The `--enable-internal-*` family (feature toggles; INTERNAL)
@@ -271,7 +271,7 @@ A flag's help surface is decided by its **ArgKind**, set once at `add_argument` 
 --pipeline/--state stages : Frontend | WalrusDriver | Backend | BIRSim  (+ BirCodeGenLoop)
 ```
 
-> **CORRECTION — `--optlevel` accepts only 0–3, default 2.** The choice tokens are exactly the Cython string-table entries `"0"`,`"1"`,`"2"`,`"3"` (`string_tab[1..4]`); **there are no `-O4`..`-O9` constants** (verified: no bare `4`..`9` choice tokens in `.rodata`). The help text names only `-O1`/`-O2`/`-O3`. `-O` is the short alias (`string_tab[111] = ("-O", &__pyx_kp_u_O)`); `-O0/-O1/-O2/-O3` are its argparse short spellings. `-O3` can silently degrade to `-O2` behaviour: BP (~15279–15288) has a guard that, when `-O3` preconditions are unmet, `SetAttr optlevel="2"` and `layer_unroll_factor=0`. Deep level→knob map: [3.10 — opt-levels](opt-levels.md).
+> **CORRECTION — `--optlevel` accepts only 0–3, default 2.** The choice tokens are exactly the Cython string-table entries `"0"`,`"1"`,`"2"`,`"3"` (`string_tab[1..4]`); **there are no `-O4`..`-O9` constants** (verified: no bare `4`..`9` choice tokens in `.rodata`). The help text names only `-O1`/`-O2`/`-O3`. `-O` is the short alias (`string_tab[111] = ("-O", &__pyx_kp_u_O)`); `-O0/-O1/-O2/-O3` are its argparse short spellings. `-O3` can silently degrade to `-O2` behaviour: BP (~15279–15288) has a guard that, when `-O3` preconditions are unmet, `SetAttr optlevel="2"` and `layer_unroll_factor=0`. Deep level→knob map: [3.10 — opt-level planes](opt-level-planes.md).
 
 ---
 
@@ -288,8 +288,8 @@ Each cross-checked against `CompileCommand.cpython-310-…so` (string table `…
 ## Cross-references
 
 - [3.9 — flag visibility & ArgKind](flag-visibility-argkind.md) — the `_ArgumentRegistry`, `ArgKind` enum, `--help`/`--help-hidden`/`--help-hidden-list` mechanics, the `"internal-"`-prefix rule.
-- [3.10 — optimization levels](opt-levels.md) — deep `-O0..-O3` → per-pass / `--walrus-passes` knob mapping and the `-O3→-O2` fallback.
-- [3.14 — precision flags](precision-flags.md) — `--fast-math` / `--auto-cast` / `--auto-cast-type` macro *semantics* (this page lists only the choice surface).
-- [3.2 — the two-parser frontend](two-parser.md) — `InterceptingArgumentParser` vs the second parser and how the surface is split.
-- [3.1 — the compile pipeline](../front/pipeline.md) — how `buildPipeline` turns these flags into the Job list / `tensorizer_options`.
+- [3.10 — optimization levels](opt-level-planes.md) — deep `-O0..-O3` → per-pass / `--walrus-passes` knob mapping and the `-O3→-O2` fallback.
+- [3.14 — precision flags](precision-flag-marshalling.md) — `--fast-math` / `--auto-cast` / `--auto-cast-type` macro *semantics* (this page lists only the choice surface).
+- [3.2 — the two-parser frontend](two-parser-architecture.md) — `InterceptingArgumentParser` vs the second parser and how the surface is split.
+- [0.2 — the compile pipeline](../front/pipeline.md) — how `buildPipeline` turns these flags into the Job list / `tensorizer_options`.
 - Part 14 flag appendix — the consolidated cross-tool flag index (walrus_driver `cl::opt` flags are a *distinct* surface).

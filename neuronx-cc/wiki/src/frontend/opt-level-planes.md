@@ -32,7 +32,7 @@ The confusion is structural, not accidental, and a reimplementer must internaliz
 
 So "the opt level" is never a single quantity. The rest of this page treats each plane as its own object with its own value space, then shows the (deliberately loose) coupling.
 
-> **GOTCHA — `-O` changes no top-level jobs.** Unlike a classic compiler where `-O0` strips passes from a flat list, the user `-O` here is read in only three places and flips at most two flags. The pipeline *shape* (which Jobs run) is set by `collectFrontendPipeline` / `collectWalrusPipeline` / `collectBackendPipeline` and the `enable_internal_*` toggles — see [3.4](compilecommand-pipeline.md). `-O` perturbs that shape only indirectly.
+> **GOTCHA — `-O` changes no top-level jobs.** Unlike a classic compiler where `-O0` strips passes from a flat list, the user `-O` here is read in only three places and flips at most two flags. The pipeline *shape* (which Jobs run) is set by `collectFrontendPipeline` / `collectWalrusPipeline` / `collectBackendPipeline` and the `enable_internal_*` toggles — see [3.3](compilecommand-pipeline.md). `-O` perturbs that shape only indirectly.
 
 ---
 
@@ -377,5 +377,5 @@ To reproduce this build's opt-level behavior, a reimplementer must honor all of:
 
 - [3.7 — walrus driver CLI](walrus-driver-cli.md) — the backend `cl::opt` surface, including `--smt-allocation`.
 - [3.8 — CompileCommand flag catalog](flag-catalog.md) — the full `--optlevel` / `--internal-tensorizer-opt-level` registration.
-- [3.4 — CompileCommand pipeline & job order](compilecommand-pipeline.md) — why `-O` does not add or remove top-level jobs.
+- [3.3 — CompileCommand pipeline & job order](compilecommand-pipeline.md) — why `-O` does not add or remove top-level jobs.
 - [Part 8 — the walrus backend](../walrus/) — the integer opt-level dispatcher and allocator selection in full.
