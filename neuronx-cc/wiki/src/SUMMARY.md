@@ -98,8 +98,10 @@
 - [CollectivePermute → AllGather Lowering](hlo-opt/collectivepermute-to-allgather.md)
 - [Looped-Einsum → Collective-Matmul Fusion](hlo-opt/looped-einsum-collective-matmul.md)
 - [Integer All-Reduce & Scalar-Reduce Decomposition](hlo-opt/int-scalar-reduce-decomposition.md)
+- [While-Loop Unroll & All-Gather Trip-Count Rewrite](hlo-opt/whileloop-unroll-tripcount.md)
 - [Boundary Markers & Layer-Cut Analysis](hlo-opt/boundary-markers-layer-cut.md)
 - [While-Loop Collective Code-Motion](hlo-opt/whileloop-collective-codemotion.md)
+- [CC-Op Decompose & Legalize Family](hlo-opt/ccops-decompose-legalize.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
