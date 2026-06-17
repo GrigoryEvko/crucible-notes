@@ -30,10 +30,12 @@ Every BN bundle is a `std::array<unsigned char, 64>`: `emplace_back` into the en
 | **Engine** | Pool — read-only `EngineInfo` at `Inst+0x90` for the per-engine census; **not** chosen by the encoder (STRONG) |
 | **Bundle size** | exactly 64 bytes (`std::array<u8,64>` + `fwrite(…,0x40,…)`) — CONFIRMED |
 | **Header** | `+0x00` opcode, `+0x01` `inst_word_len`=`0x10`, `+0x02..03` reserved=0 — CONFIRMED |
-| **Slot family** | Family C (`BNStats`/`Aggregate`, 4D-in `+0x0C` / 2D-out `+0x30`); Family B (`Gradients`/data, 3×3D `+0x10`/`+0x20`/`+0x30`) — CONFIRMED |
+| **Slot family** | Family C (`BNStats`/`Aggregate`, 4D-in at the `+0x0C` low anchor; **2D-out at the `+0x30` *high* anchor — the A/B 3D-out slot, NOT the Family-C `+0x2C` 4D-out anchor**, see note); Family B (`Gradients`/data, 3×3D `+0x10`/`+0x20`/`+0x30`) — CONFIRMED |
 | **dtype LUT** | `sub_120E650` → `byte_1DF5760` (BIR dtype ordinal → ISA wire tag) — STRONG |
 | **IMM_SRC encoder** | `sub_12051E0` (`setupImmediate<NEURON_ISA_TPB_IMM_SRC>`) — `Mean` / split-coeff scalar imm — CONFIRMED (call site) |
 | **CodeGenMode** | `1` GENERATE (wire), `2` RUN_ISA_CHECKS (stack scratch, same layout), `0` COLLECT_OPCODES (census) — CONFIRMED all 5 bodies |
+
+> **CORRECTION — BNStats is a Family-C op whose *output anchor is an exception*.** `BNStats`/`Aggregate` are Family-C instructions (input rides the Family-C low anchor `+0x0C` as a `TENSOR4D`), but their narrow 2-D Welford output does **not** land at the canonical Family-C destination anchor `+0x2C` (the 20-byte 4D-out slot). It lands at **`+0x30`** — the *high* anchor that Families A and B use for their 3D output ([2.1 the bundle](instruction-bundle.md), Family A dst `+0x30`). This is the documented **mixed-width** case: the anchor *position* is fixed but the descriptor *width* is per-operand, and a `TENSOR2D` stat pattern is written to the `+0x30` high slot (`lea 0x30(%r13)` + `assignAccess<TENSOR2D>` `@0x123adf6`), not the `+0x2C` 4D slot. So an earlier shorthand reading "Family-C ⇒ dest `+0x30`" conflates two anchors: Family-C's real dest anchor is `+0x2C`; BNStats deliberately uses the `+0x30` A/B anchor because its output is 2-D, not 4-D. The per-op field maps below pin `+0x30` directly.
 
 ---
 

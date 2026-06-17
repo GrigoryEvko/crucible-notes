@@ -193,7 +193,8 @@ RegisterAlu 64-byte bundle (r12 in the encoder) — opcode 0xA8
 | `+0x14` | 1 | dst reg-lo | `getLocation->getRegId(0)` | `mov %al,0x14(%r12)` @ `0x12436d8` | CONFIRMED |
 | `+0x15` | 1 | dst reg id (hi) | `getOutput<RegAcc>->getRegId` | `mov %al,0x15(%r12)` @ `0x12436b6` | CONFIRMED |
 | `+0x18` | 4/8 | immediate | `operand_mode==1`: i32 / i64 | `mov %eax/%rax,0x18(%r12)` @ `0x12441bb`/`0x124415f` | CONFIRMED |
-| `+0x43` | 1 | `rl_al_reserved_z` (hi/mix) | read-back via `movsbl 0x43(%r12)` | `@0x12446c8` | INFERRED |
+
+> **CORRECTION — the `+0x43` `rl_al_reserved_z` row is dropped (not a wire byte).** An earlier draft carried a `+0x43` row sourced from `movsbl 0x43(%r12)` `@0x12446c8`. Offset `0x43` is **67 bytes** — past the end of the 64-byte (`0x00..0x3F`) bundle this op emits, so it cannot be a wire field of the `RegisterAlu` bundle. The `movsbl` is a read of a struct member *after* the bundle (`r12` is the bundle base, but `+0x43` lands in the enclosing encoder/scratch object, e.g. a flag the ISA-check arm reads back), not a store into the wire. No `rl_al_reserved_z` (or any `rl_al_reserved*`) string exists in the analysed binary to anchor a field name either. The row had no recoverable field meaning and described an out-of-bundle byte, so it is removed rather than left vacuous; if a genuine reserved/guard byte exists inside `+0x00..+0x3F` it was not pinned this pass (open gap).
 
 > **NOTE — register-slot ambiguity (Hex-Rays failed).** The op byte (`+0x0C`), the operand-mode bit (`+0x0E`), and the immediate slot (`+0x18`) are CONFIRMED. The exact *role* of each register byte in `+0x10..+0x15` (which is `dst` vs `src0` vs `src1`) is partly ambiguous from the disasm alone: the `getOutput<>` reads feed `+0x0F`/`+0x15` (dst dtype + dst hi) and the `getArgument<>` reads feed `+0x11`/`+0x13` (srcs). The cross-checked sim/dumper view in [1.12 §2.2](../arch/sp-engine.md) resolves this as `dst@+0x10`, `src1@+0x11`, `src2@+0x12`, 3rd operand `+0x13`, with `+0x14`/`+0x15` the 64-bit dst reg-pair (lo/hi). The bundle-offset family (`+0x0C`/`+0x0E`/`+0x10`…) is the *wire* offset; the BIR `op` key at `InstRegisterAlu+0xF0` is the *struct* offset — do not confuse the two.
 
@@ -338,7 +339,7 @@ The opcode and the IMM-path `var_id`/`var_offset` are the only deltas on top of 
 
 **STRONG** (LUT/symbol cross-checked, body not byte-re-derived here): the 30-arm `_ALU_OP` wire LUT (§3.1, consistent with [1.12](../arch/sp-engine.md)); the RegisterAlu dtype bytes at `+0x0D`/`+0x0F`.
 
-**INFERRED**: the `+0x01..+0x03` reserved header bytes (zero-init); the RegisterAlu register-slot *roles* in `+0x10..+0x15` (resolved against the sim/dumper view in [1.12 §2.2](../arch/sp-engine.md)); the `+0x43` read-back byte; the `acc`/`reduce_cmd` accumulate bundle bytes beyond the 32-bit non-accumulate path.
+**INFERRED**: the `+0x01..+0x03` reserved header bytes (zero-init); the RegisterAlu register-slot *roles* in `+0x10..+0x15` (resolved against the sim/dumper view in [1.12 §2.2](../arch/sp-engine.md)); the `acc`/`reduce_cmd` accumulate bundle bytes beyond the 32-bit non-accumulate path. (The former `+0x43` "read-back byte" is dropped — it is an out-of-bundle offset, see the CORRECTION in §3.2.)
 
 ---
 

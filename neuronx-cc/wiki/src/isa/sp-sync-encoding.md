@@ -434,7 +434,7 @@ No offset discrepancy was found against [1.14](../arch/execution-sync-model.md) 
 
 - [1.14 The Execution Sync Model](../arch/execution-sync-model.md) — the 256-entry semaphore bank, the 64-byte sync record, the comparator/subtype sets this page encodes; the runtime-side lane mapping.
 - [1.12 The SP Engine](../arch/sp-engine.md) — the functional model: the fused single-issue compare-and-branch, the next-BB-slot PC mechanism, what the sequencer does with these bundles.
-- [2.19 SP Register-Lane Encoding](sp-register-encoding.md) — the sibling SP-band page: register-move / TensorLoad-Save encodings (the data-carrying SP ops). *(planned)*
+- [2.19 SP Register-Lane Encoding](sp-register-encoding.md) — the sibling SP-band page: register-move / TensorLoad-Save encodings (the data-carrying SP ops).
 - [2.1 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the shared header (`opcode`, `inst_word_len`, reserved) every bundle on this page starts with.
 - [2.10 PE Matmul Encoding](pe-matmul-encoding.md) — the CoreV2/V3/V4 generator dispatch and `setupHeader` convention shared with these control ops.
 - [walrus Part 8 — `lower_control` / `lower_branch`](../walrus/register-allocation.md) — the passes (H35/H38) that mint the fence `Drain`, explode structured loops into a counter `RegisterAlu` + flat `CmpBranch`, and re-home branches onto SP before codegen.

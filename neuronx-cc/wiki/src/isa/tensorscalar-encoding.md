@@ -21,7 +21,7 @@ The whole family shares the 64-byte bundle skeleton — header `0x00..0x03`, the
 | `0x74` | TensorScalarAddr | `CoreV2GenImpl::generateTensorScalarAddr` `@0x1240970` | DVE (5) | `S2D2_TS_AS_STRUCT` |
 | `0x9A`/`0xE6` | TensorScalarCache (Reduce/Cumulative/Scan) | `CoreV2GenImpl::visitInstTensorScalarCache` `@0x125db00` | DVE (5) | `S3D3_TS_STRUCT` |
 | `0x30` | Exponential | `CoreV4GenImpl::visitInstExponential` `@0x1439d30` | DVE (5) | `S3D3_TS_STRUCT` |
-| `0x92` | TensorScalarAffineSelect | `CoreV2GenImpl::visitInstTensorScalarAffineSelect` `@0x124f2f0` | DVE (5) | (own band — see [2.x]) |
+| `0x92` | TensorScalarAffineSelect | (see OPEN note below) | DVE (5) | wire map not recovered |
 
 **Header skeleton (all opcodes), from `setupHeader` (`@0x1172120` V2, `@0x143f440` V4):**
 
@@ -32,6 +32,8 @@ The whole family shares the 64-byte bundle skeleton — header `0x00..0x03`, the
 ```
 
 The 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian — `0x1043` (plain TS), `0x10E6` (cumulative), `0x1030` (Exp). The CoreV4 Exponential path inlines the word store (`mov $0x1030,%r8d @0x1439eb0`) instead of calling the virtual `setupHeader`; the wire result is identical.
+
+> **OPEN — `0x92` TensorScalarAffineSelect: wire byte-map not recovered.** This row previously pointed at a `[2.x]` placeholder with no body coverage and a `visitInstTensorScalarAffineSelect` byte-emitter that is **not present** in the analysed binary set. The op is real — it carries a BIR class (`bir::InstTensorScalarAffineSelect`, with `Gen3Hwm`/`CoreV4Hwm`/`TrainiumHwm::getLatency*` cost-model overloads) and is produced by the generated codegen `BirCodeGenLoopGen::codegenAffSelTensorScalarOp` / `AffSelTensorScalarOpGen`. From those codegen symbols its **logical** operand set is recoverable: `idx_partition_ap`, `idx_free_ap`, `index_expr` (an `AffineExpr`), `fill_value`, `cmp_mode` (the predicate/compare op), and `dtype` — i.e. it selects between a tensor-scalar result and a `fill_value` per an affine index predicate. But the codegen resolves the opcode **symbolically** (`Opcode.TensorScalarAffineSelect`) and appends a BIR instruction; the layer that packs the 64-byte wire bundle (the per-byte offsets, the opcode seed, the `NEURON_ISA_TPB_*_STRUCT` shape) is not in any decompiled artifact this pass. The byte-level field map is therefore left as an open gap rather than fabricated. It very likely reuses the `S3D3_TS`/`S2D2`-family layout the rest of this page maps, but that is not byte-confirmed here.
 
 > **NOTE — one struct, N ops.** `S3D3_TS_STRUCT` is the shared 64-byte layout for **three** distinct KLR operations: plain TensorScalar, TensorScalarCacheCumulative/Reduce, and Exponential. This is not an inference — it is confirmed three independent ways in the binary: (a) the Exponential CoreV4 emitter instantiates `setupSyncWait<…core_v4::NEURON_ISA_TPB_S3D3_TS_STRUCT>` (symbol present); (b) the `exponential_info` pybind module string is `ISAInstructionInfo for s3d3_ts_struct - Exponential`; (c) the `tensor_scalar_cumulative_info` string is `…s3d3_ts_struct - TensorScalarCacheCumulative`. The opcode and which control bytes are live discriminate the three datapaths on one layout. A reimplementer who builds three separate wire formats here is wrong: build one, switch on opcode + mode fields.
 

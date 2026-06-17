@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This page is the byte-for-byte field map of the **DVE search / match / compaction primitives** — the top-k, argmax, match-and-strike, and nonzero-compaction ops the Vector engine ([1.11 DVE engine](../arch/dve-engine.md)) emits onto the wire. They are the silicon back-ends of the NKI top-k / index / select intrinsics ([6.7.12](../nki/topk-primitives.md)): **Max8** (running top-8), **FindIndex8** (argmax indices), **MatchReplace8** / **MaxIndexAndMatchReplace** (strike the matched values to a sentinel, optionally with index out), and **NonzeroWithCount** (sparse/MoE compaction). Two helper micro-ops — **MatchValueLoad** and **LoadMaskSelect** — have validators and wire structs but no standalone visitor; they are *co-issued* as the first half of a larger op, exactly the idiom the Gather family uses ([2.12 pool/reduce](pool-reduce-encoding.md), `pool_buffer_load`+`reg_load`).
+This page is the byte-for-byte field map of the **DVE search / match / compaction primitives** — the top-k, argmax, match-and-strike, and nonzero-compaction ops the Vector engine ([1.11 DVE engine](../arch/dve-engine.md)) emits onto the wire. They are the silicon back-ends of the NKI top-k / index / select intrinsics ([6.7.12](../nki/topk-primitives.md)): **Max8** (running top-8), **FindIndex8** (argmax indices), **MatchReplace8** / **MaxIndexAndMatchReplace** (strike the matched values to a sentinel, optionally with index out), and **NonzeroWithCount** (sparse/MoE compaction). Two helper micro-ops — **MatchValueLoad** (`0x6D`) and the **`0x69` stream_shuffle** datamove half — have validators and wire structs but no standalone visitor; they are *co-issued* as a half of a larger op, exactly the idiom the Gather family uses (the `{pool_buffer_load 0x67, reg_load 0x68}` pair mapped in [2.12 pool/reduce](pool-reduce-encoding.md) and [2.17 DVE datamove](dve-datamove-encoding.md)).
 
 Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, `pxor`+`movups`-zeroed in full (so any byte the encoder does not write is a hard `0x00`), header-stamped by `setupHeader` (vtable slot 9), field-filled, ISA-checked by `runISACheck` (`@0x12095A0`), and `fwrite(buf, 1, 0x40, findBin(I))`-ed. The control band is **Family-C** ([2.1 the bundle](instruction-bundle.md)): `+0x20` in-dtype, `+0x21` out-dtype, `+0x22` lane (= `numElementsPerPartition` of src), source access pattern at `+0x0C` / `+0x10`, dest at `+0x2C` / `+0x30` — identical to the BatchNorm family ([2.11](batchnorm-encoding.md)), because Max8 *shares* its wire struct (`NEURON_ISA_TPB_S4D2_BN_STRUCT`) with BatchNormStats.
 
@@ -19,7 +19,7 @@ The bar for this page: a reader can **byte-encode any DVE search/match instructi
 | `0x6E` FindIndex8 | `InstMaxIndex` (IT89) | `CoreV2GenImpl::visitInstMaxIndex` `@0x1254650` | DVE (5) | `…_S4D2_BN_STRUCT` (`s_find_index8_*`) | data src `TENSOR4D` @`+0x0C`, idx dst `TENSOR2D` @`+0x30` |
 | `0x6F` MatchReplace8 | `InstMatchReplace` (IT90) | `CoreV2GenImpl::generateInstMatchReplaceWithOptionalMaxIndex(…, false)` `@0x1244ab0` | DVE (5) | `…_D4_MR_STRUCT` (`s_match_replace8_*` / `d4_mr_*`) | data src `TENSOR4D` @`+0x0C`, sentinel @`+0x28`, replaced dst `TENSOR4D` @`+0x2C` |
 | `0x6F`+idx MaxIndexAndMatchReplace | `InstMaxIndexAndMatchReplace` (IT91) | `…WithOptionalMaxIndex(…, true)` `@0x1244ab0` + `CoreV3GenImpl::visitInstMaxIndexAndMatchReplace` `@0x135b670` | DVE (5) | `D4_MR` + gen3 index bundle | as IT90 + index output |
-| `0x69` LoadMaskSelect | *(co-issued helper)* | — *(emitted inside `visitInstStreamTranspose` `@0x1266df0`)* | DVE (5) datamove | `s_load_mask_select_opcode` | 32-byte lane-select mask @`+0x20..+0x3F` |
+| `0x69` stream_shuffle | *(co-issued helper; `InstStreamShuffle`)* | — *(emitted inside `visitInstStreamShuffle @0x123b460` / `visitInstStreamTranspose @0x1266df0`)* | DVE (5) datamove | (stream_shuffle; see [2.17](dve-datamove-encoding.md)) | 32-byte lane immediate @`+0x20..+0x3F` |
 | `0xF2` NonzeroWithCount | `InstNonzeroWithCount` (IT104) | `CoreV3GenImpl::visitInstNonzeroWithCount` `@0x1355a30` **(gen3+ only)** | Pool | `…_S3D3_NONZERO_WITH_COUNT_STRUCT` (`s_nonzero_with_count_*`) | data src `TENSOR3D` @`+0x10`, idxOff/padVal i32 @`+0x20`/`+0x28`, out `TENSOR3D` @`+0x2C` |
 
 **Header skeleton (all opcodes), from `setupHeader` (vtable slot 9):**
@@ -174,36 +174,40 @@ The real encoder is `generateInstMatchReplaceWithOptionalMaxIndex(InstMatchRepla
 
 **Emit:** `runISACheck` `@0x1246ab5`; `fwrite` `@0x1246ad5`; census `++map<0x6F>` `@0x1246af2`.
 
-**With-max-index (IT91):** when `bool=true`, a setup at `0x1246c9f` binds the extra index output before joining the *same* field-store block at `0x1246a39` — so the `+0x28` sentinel and the `+0x0C`/`+0x2C` AP band are emitted **byte-identically** to IT90; the index output rides as an additional bound output. CoreV3's `visitInstMaxIndexAndMatchReplace` then adds the gen3 index bundle. The sentinel-at-`+0x28` = the `imm_value@inst+0xF0` is shared between IT90 and IT91 (the BIR `sameInst{90,91}` float-compares the imm at `+0xF0`). NKI surface: `nc_match_replace8` (IT90) / `nc_match_replace_indices8` (IT91).
+**With-max-index (IT91):** when `bool=true`, a setup at `0x1246c9f` binds the extra index output before joining the *same* field-store block at `0x1246a39` — so the `+0x28` sentinel and the `+0x0C`/`+0x2C` AP band are emitted **byte-identically** to IT90; the index output rides as an additional bound output. CoreV3's `visitInstMaxIndexAndMatchReplace @0x135b670` then adds a separate gen3 index bundle. The sentinel-at-`+0x28` = the `imm_value@inst+0xF0` is shared between IT90 and IT91 (the BIR `sameInst{90,91}` float-compares the imm at `+0xF0`). NKI surface: `nc_match_replace8` (IT90) / `nc_match_replace_indices8` (IT91).
+
+> **OPEN — the gen3 IT91 index bundle has no recovered field map.** The `MatchReplace8 0x6F` bundle of IT91 is byte-identical to IT90 (mapped above); what IT91 adds is a *second*, gen3-specific bundle for the argmax-index output, emitted by `CoreV3GenImpl::visitInstMaxIndexAndMatchReplace @0x135b670`. Its wire layout is **not recovered**: the binary exposes the BIR class `bir::InstMaxIndexAndMatchReplace` and its codegen (`codegenMaxIndexAndMatchReplace`, generated module `MaxIndexAndMatchReplaceGen`), but **no** index-output field-name strings (`s_max_index*`, `match_replace_indices`, an `s_*` index struct) exist in the analysed artifacts, and the gen3 emitter body that packs the index bundle's per-byte offsets was not disassembled this pass. The index bundle is named but deliberately left un-byte-mapped rather than fabricated; recovering its `{opcode, idx-dtype, index dst AP}` field map is an open gap for a follow-up pass that disassembles `@0x135b670`.
 
 > **NOTE — the `−1` sentinel convention.** Two distinct `−1`-typed sentinels live in this family, and only one is a *bundle field*: (1) **MatchReplace's replace value** at bundle `+0x28` is a real fp32 immediate (`= −inf`/min-value in a TopK fold), sourced from `inst+0xF0` — CONFIRMED as a wire field. (2) The **FindIndex8 / NonzeroWithCount `−1` index/pad value** for "no match" / "empty slot" is the integer `−1` (`0xFFFFFFFF`). For NonzeroWithCount it *is* a wire field — `paddingVal` at `+0x28` (see below). For FindIndex8 the `-1` index preset is a **simulator init only**, not a FindIndex8 bundle byte. Do not lay a `-1` into the FindIndex8 dst pattern; do lay it into the MatchReplace `+0x28` (as the encoded fp32) and the NonzeroWithCount `paddingVal` `+0x28` (as the int32 `−1`).
 
 ---
 
-## LoadMaskSelect — opcode `0x69`, the mask-driven select-load datamove
+## `0x69` stream_shuffle — the mask-driven select-load datamove half
 
-LoadMaskSelect (`0x69`) has **no** `visitInstLoadMaskSelect` — it is one of the bundles that **StreamTranspose** (opcode `0x6B`) decomposes into. `CoreV2GenImpl::visitInstStreamTranspose @0x1266df0` emits a `0x69` LoadMaskSelect bundle (COLLECT seed `movl $0x69,-0x160(%rbp)` `@0x1267459`; GENERATE setupHeader `movb $0x69` `@0x12680d7`) as part of the transpose datamove — the same co-issued-datamove idiom as the Gather family. Validator `core_v2::dbg_is_valid_load_mask_select @0x1286290` (`cmp $0x69` `@0x12864e9`).
+> **CORRECTION — opcode `0x69` is `stream_shuffle`, not "LoadMaskSelect".** An earlier draft of this page named the `0x69` bundle *LoadMaskSelect* (with invented `s_load_mask_select_opcode` / `dbg_is_valid_load_mask_select` symbols). The binary does **not** carry any `load_mask_select` / `LoadMaskSelect` / `s_load_mask_select` string anywhere — the only BIR op behind opcode `0x69` is **`bir::InstStreamShuffle`** (mangled `_ZN3bir17InstStreamShuffleC1E…`, codegen `codegenStreamShuffleInst`, cost-model `get_stream_shuffle_latency`). The `0x69` bundle is the **shuffle half** of the StreamShuffle / StreamTranspose lowering, and its canonical, fully-transcribed field map (the 32-byte `immediate.uint8[32]` lane immediate, the `partition_count|0x20` passthrough sentinel, the `Mask.size()==32` assert) lives on its owning page [2.17 DVE datamove encoding](dve-datamove-encoding.md) (`§0x69 stream_shuffle half`, generator `CoreV2GenImpl::visitInstStreamShuffle @0x123b460`). What follows is the same bundle described from the StreamTranspose decomposition site; treat `stream_shuffle` as the name and 2.17 as the field-map authority.
 
-**Key structure — a 32-byte lane-select mask at `+0x20..+0x3F` (NOT a dtype band).** Unlike the Max/Match family, LoadMaskSelect's control band is a 32-byte per-lane bit-mask built in-line with SSE from a single scalar width (`%ebx`, the transpose select count):
+The `0x69` (`stream_shuffle`) bundle has **no** standalone `visitInst` of its own — it is one of the bundles that **StreamTranspose** (opcode `0x6B`) and **StreamShuffle** decompose into. `CoreV2GenImpl::visitInstStreamTranspose @0x1266df0` emits a `0x69` bundle (COLLECT seed `movl $0x69,-0x160(%rbp)` `@0x1267459`; GENERATE setupHeader `movb $0x69` `@0x12680d7`) as part of the transpose datamove; `CoreV2GenImpl::visitInstStreamShuffle @0x123b460` emits the same `0x69` half — the co-issued-datamove idiom the Gather family also uses. The pair is covered by `dbg_is_valid_stream_shuffle @0x13281a0` (which validates the `{0x6A/0x6B, 0x69}` pair); there is no separate `dbg_is_valid_load_mask_select` symbol.
+
+**Key structure — a 32-byte lane immediate at `+0x20..+0x3F` (NOT a dtype band).** Unlike the Max/Match family, the `stream_shuffle` control band is a 32-byte per-lane immediate built in-line with SSE from a single scalar width (`%ebx`, the transpose select count). It is the same `immediate.uint8[32]` lane map that [2.17](dve-datamove-encoding.md) maps byte-for-byte:
 
 - scalar `%ebx` → `movd %ebx,%xmm0; punpcklqdq` broadcast (`@0x12680f4`);
 - 16 lane-index constant vectors (`.rodata 0x1dd66d0..0x1dd67c0`) are `pcmpgtq`-compared against the broadcast width, `pandn`/`packusdw`/`packuswb`-folded to bytes, then `paddb`×5 packs the per-lane select bits;
 - first 16-byte half → `movups %xmm1,0x20(%r8)` (`@0x126828b`); second half → `movups %xmm0,0x30(%r8)` (`@0x126838a`).
 
-The validator reads bundle bytes one-by-one across `+0x20..+0x3F` (`movzbl 0x332N(%rsp)` `@0x12862d9..0x1286399`), confirming the whole region is the select mask.
+The validator reads bundle bytes one-by-one across `+0x20..+0x3F` (`movzbl 0x332N(%rsp)` `@0x12862d9..0x1286399`), confirming the whole region is the lane immediate.
 
 | Off | W | Field | Name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x69` | `s_load_mask_select_opcode` | setupHeader | hdr | CONFIRMED |
+| `+0x00` | 1 | opcode = `0x69` | (`stream_shuffle`) | setupHeader | hdr | CONFIRMED |
 | `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
 | `+0x04` | .. | sem / sync region | events | `setupSync` helper (`0x1231240`) | — | STRONG |
-| `+0x20..+0x2F` | 16 | select-mask low half | `load_mask_select` mask[0] | `movups %xmm1,0x20(%r8)` (per-lane bits from width `%ebx`) | `0x126828b` | CONFIRMED |
-| `+0x30..+0x3F` | 16 | select-mask high half | `load_mask_select` mask[1] | `movups %xmm0,0x30(%r8)` | `0x126838a` | CONFIRMED |
+| `+0x20..+0x2F` | 16 | lane immediate low half | `immediate.uint8[0:16]` | `movups %xmm1,0x20(%r8)` (per-lane bits from width `%ebx`) | `0x126828b` | CONFIRMED |
+| `+0x30..+0x3F` | 16 | lane immediate high half | `immediate.uint8[16:32]` | `movups %xmm0,0x30(%r8)` | `0x126838a` | CONFIRMED |
 | `+0x08..+0x1F` | — | load source descriptor / sync | — | zero where unused | — | INFERRED |
 
 **Emit:** `runISACheck` `sub_12095A0` `@0x1268396`; `fwrite` `@0x12683be`.
 
-**Semantics (STRONG):** the 32-byte mask is the per-lane enable bitmap (up to 256 lane bits) for which lanes/partitions the streaming transpose load writes; the SSE builder turns the transpose width into the contiguous enable run. It is a datamove op — no in/out dtype, no AP step/num pattern in `+0x20..+0x3F` (those bytes ARE the mask). The `0x69` ISA micro-op is distinct from any BIR `InstLoadMaskSelect` surface name; here it is purely the bundle StreamTranspose lowers to (no `klr::LoadMaskSelect` node exists).
+**Semantics (STRONG):** the 32-byte immediate is the per-lane select/enable map for which lanes/partitions the streaming shuffle/transpose writes; the SSE builder turns the transpose width into the contiguous enable run. It is a datamove op — no in/out dtype, no AP step/num pattern in `+0x20..+0x3F` (those bytes ARE the immediate). The `0x69` ISA micro-op has no standalone BIR surface name of its own; it is purely the `stream_shuffle` bundle that `InstStreamShuffle` / `InstStreamTranspose` lower to (no `LoadMaskSelect` node exists in the binary). Field-map authority: [2.17](dve-datamove-encoding.md).
 
 ---
 
@@ -234,7 +238,7 @@ The sparse / MoE-routing **compaction** op. Wire struct `NEURON_ISA_TPB_S3D3_NON
 
 **Semantics:** output `[idx1, idx2, …, −1, −1, …, count]` int32 — nonzero-element indices packed front (each `+ indexOffset`), tail padded with `paddingVal` (`−1`), total nonzero count last. The slot-count metadata (`container_nonzero_cardinality` / `count_element_co*`) rides the output 3-D pattern dims; `s_valid_nonzero_with_count_dtype` is the dtype-pair legality predicate. **Engine: Pool** (not DVE). The op is lowered to real CoreV3/V4 hardware bundles even though the BIR simulator stubs it.
 
-> **CORRECTION — opcode roster.** Earlier drafts that listed "MaxIndex / FindIndex8 = `0x6D` / `0x6E`" are wrong: `0x6D` is **MatchValueLoad** (a separate co-issued micro-op) and FindIndex8 is `0x6E`. The correct ordinals, re-pinned by the `cmp` in each `dbg_is_valid_*` validator, are: Max8 `0x6C`, MatchValueLoad `0x6D`, FindIndex8 `0x6E`, MatchReplace8 `0x6F`, LoadMaskSelect `0x69`, NonzeroWithCount `0xF2`.
+> **CORRECTION — opcode roster.** Earlier drafts that listed "MaxIndex / FindIndex8 = `0x6D` / `0x6E`" are wrong: `0x6D` is **MatchValueLoad** (a separate co-issued micro-op) and FindIndex8 is `0x6E`. The correct ordinals, re-pinned by the `cmp` in each `dbg_is_valid_*` validator, are: Max8 `0x6C`, MatchValueLoad `0x6D`, FindIndex8 `0x6E`, MatchReplace8 `0x6F`, `stream_shuffle` `0x69` (see [2.17](dve-datamove-encoding.md)), NonzeroWithCount `0xF2`.
 
 ---
 
@@ -245,19 +249,19 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 ## Confidence ledger
 
 **CONFIRMED** (direct store/cmp/seed disassembled byte-exact this task):
-- Opcodes pinned by validator `cmp`: Max8 `0x6C` (`@0x13047fb`), MatchValueLoad `0x6D` (`@0x12bbdbe`), FindIndex8 `0x6E` (`@0x1306793`), MatchReplace8 `0x6F` (`@0x1316ca2`), LoadMaskSelect `0x69` (`@0x12864e9`), NonzeroWithCount `0xF2` (`@0x13d8f05`).
+- Opcodes pinned by validator `cmp`: Max8 `0x6C` (`@0x13047fb`), MatchValueLoad `0x6D` (`@0x12bbdbe`), FindIndex8 `0x6E` (`@0x1306793`), MatchReplace8 `0x6F` (`@0x1316ca2`), `stream_shuffle` `0x69` (covered by `dbg_is_valid_stream_shuffle @0x13281a0`; field map in [2.17](dve-datamove-encoding.md)), NonzeroWithCount `0xF2` (`@0x13d8f05`).
 - Encoder/thunk addresses: `visitInstMax @0x1273120`, `visitInstMaxIndex @0x1254650`, `visitInstMatchReplace @0x1247020` (`xor %edx,%edx; jmp 0x61eff0`), `generateInstMatchReplaceWithOptionalMaxIndex @0x1244ab0`, `visitInstNonzeroWithCount @0x1355a30`, `visitInstMaxIndexAndMatchReplace @0x135b670` (`mov $0x1,%edx; call`), `visitInstStreamTranspose @0x1266df0` — all from `nm -DC`.
 - Max8 field stores `+0x20/+0x21/+0x22` (`@0x12754d0/ed/f1`), `+0x36/+0x3a`, dst `cmp $0x8` (`@0x12733a9`), src bounds `cmpl $0x7`/`$0x4000` (`@0x12733b2/bf`); COLLECT `movl $0x6c` (`@0x1273221`).
 - MaxIndex co-issue order `movl $0x6d` (`@0x12546d3`) then `movl $0x6e` (`@0x1254732`); FindIndex8 `+0x20/+0x21/+0x22` (`@0x1257d8f/ac/b0`).
 - MatchReplace8 `+0x20/+0x21/+0x22` (`@0x1246a49/67/72`), sentinel `lea 0x28(%r15)` (`@0x1246a5c`).
-- LoadMaskSelect seed `movl $0x69` (`@0x1267459`); mask `movups %xmm1,0x20(%r8)` (`@0x126828b`) / `movups %xmm0,0x30(%r8)` (`@0x126838a`).
+- `stream_shuffle` (`0x69`) seed `movl $0x69` (`@0x1267459`); lane immediate `movups %xmm1,0x20(%r8)` (`@0x126828b`) / `movups %xmm0,0x30(%r8)` (`@0x126838a`).
 - NonzeroWithCount `+0xc/+0xd/+0xe/+0xf` (`@0x1355bd8/be9/c88/bf2`), `+0x20` idxOff (`@0x1355c1b`), `+0x24` reserved (`@0x1355c2c`), `+0x28` padVal (`@0x1355c53`).
 
-**STRONG** (validator / rodata-name xref): wire-struct field names `s_max8_*`, `s_find_index8_dst_element_cnt`, `s_match_value_load_opcode`, `s_match_replace8_opcode`, `s_load_mask_select_opcode`, `s_nonzero_with_count_opcode`, `d2_bn_ge8_src_element_cnt`, `d2_bn_zero_count`, `d4_mr_reserved_zero`, `d4_mr_le16k_src_*`, `d4_mr_same_src_dt`, `match_replace_dtype`, `d3_nonzero_with_count_reserved_z`, `container_nonzero_cardinality`, `count_element_co*`, `s_valid_nonzero_with_count_dtype` — all recovered as literal strings from `libwalrus.so` `.rodata`; the struct tags `NEURON_ISA_TPB_S4D2_BN_STRUCT` / `…_D4_MR_STRUCT` / `S4D4_MR` / `…_S3D3_NONZERO_WITH_COUNT_STRUCT` likewise. The sem/sync `+0x04` regions and `assignAccess` interiors are N-strand common code.
+**STRONG** (validator / rodata-name xref): wire-struct field names `s_max8_*`, `s_find_index8_dst_element_cnt`, `s_match_value_load_opcode`, `s_match_replace8_opcode`, `s_nonzero_with_count_opcode`, `d2_bn_ge8_src_element_cnt`, `d2_bn_zero_count`, `d4_mr_reserved_zero`, `d4_mr_le16k_src_*`, `d4_mr_same_src_dt`, `match_replace_dtype`, `d3_nonzero_with_count_reserved_z`, `container_nonzero_cardinality`, `count_element_co*`, `s_valid_nonzero_with_count_dtype` — all recovered as literal strings from `libwalrus.so` `.rodata`; the struct tags `NEURON_ISA_TPB_S4D2_BN_STRUCT` / `…_D4_MR_STRUCT` / `S4D4_MR` / `…_S3D3_NONZERO_WITH_COUNT_STRUCT` likewise. The sem/sync `+0x04` regions and `assignAccess` interiors are N-strand common code.
 
-**INFERRED** (zero-init only): reserved-zero pad bytes (`d2_bn_reserved_z`, `d4_mr_*` guards, NonzeroWithCount `+0x24`); the FindIndex8 `−1` index preset (simulator init, not a bundle field); LoadMaskSelect `+0x08..+0x1F` load-source descriptor.
+**INFERRED** (zero-init only): reserved-zero pad bytes (`d2_bn_reserved_z`, `d4_mr_*` guards, NonzeroWithCount `+0x24`); the FindIndex8 `−1` index preset (simulator init, not a bundle field); `stream_shuffle` (`0x69`) `+0x08..+0x1F` sync/descriptor region.
 
-**OPEN / cross-ref:** the exact bit-width / packing of `container_nonzero_cardinality` + `count_element_co*` within the output `TENSOR3D` descriptor (they ride the dst AP dims — [2.4 TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md)); the full StreamTranspose decomposition (which other bundles co-issue with the `0x69`) — see [2.17 DVE datamove encoding](dve-datamove-encoding.md) *(planned)*; CoreV4 Max-family bodies (reuse CoreV2; dtype-LUT delta only).
+**OPEN / cross-ref:** the exact bit-width / packing of `container_nonzero_cardinality` + `count_element_co*` within the output `TENSOR3D` descriptor (they ride the dst AP dims — [2.4 TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md)); the full StreamTranspose decomposition (which other bundles co-issue with the `0x69`) — see [2.17 DVE datamove encoding](dve-datamove-encoding.md); CoreV4 Max-family bodies (reuse CoreV2; dtype-LUT delta only).
 
 ## Cross-References
 
@@ -265,7 +269,7 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 - [2.1 — The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the Family-C bundle shape and the `+0x20..+0x2F` control-band convention shared by all five Max-family encoders.
 - [2.11 — BatchNorm-Family Encoding](batchnorm-encoding.md) — the `NEURON_ISA_TPB_S4D2_BN_STRUCT` Max8 *shares*; the `d2_bn_*` field names originate there.
 - [2.10 — PE Matmul Encoding](pe-matmul-encoding.md) — the sibling encoding page; same `setupHeader` / `assignAccess` / `runISACheck` / `fwrite 0x40` lifecycle.
-- [2.12 — Pool / TensorReduce / Reciprocal / Iota Encoding](pool-reduce-encoding.md) — the co-issued-micro-op idiom (`Gather → {pool_buffer_load, reg_load}`) that MatchValueLoad / LoadMaskSelect follow.
-- [2.17 — DVE Datamove Encoding](dve-datamove-encoding.md) *(planned)* — the StreamTranspose sibling that hosts the `0x69` LoadMaskSelect sub-bundle.
+- [2.12 — Pool / TensorReduce / Reciprocal / Iota Encoding](pool-reduce-encoding.md) — the co-issued-micro-op idiom and the `Gather → {pool_buffer_load 0x67, reg_load 0x68}` pair (the `0x67` half's field map) that MatchValueLoad / the `0x69` stream_shuffle half follow.
+- [2.17 — DVE Datamove Encoding](dve-datamove-encoding.md) — the StreamShuffle / StreamTranspose sibling that owns the `0x69` stream_shuffle sub-bundle's field map, and the `0x68 reg_load` half of the Gather pair.
 - Part 7 (`../bir/`) — codegen of the same ops (the max-index / match-replace producers that write the `imm_value@inst+0xF0` sentinel this encoder reads into bundle `+0x28`).
 - Part 6 (`../nki/`) — the NKI top-k / index / select primitives (`nc_match_replace8` / `nc_match_replace_indices8`) these bundles back.
