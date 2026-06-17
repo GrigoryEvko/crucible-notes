@@ -94,6 +94,7 @@
 - [Collective Stream-ID & Channel-ID Family](hlo-opt/collective-stream-channel-id.md)
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](hlo-opt/collective-combiners.md)
 - [AllReduce→ReduceScatter & DynamicSlice Rewrites](hlo-opt/allreduce-dynslice-rewrites.md)
+- [CollectivePermute → AllGather Lowering](hlo-opt/collectivepermute-to-allgather.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
