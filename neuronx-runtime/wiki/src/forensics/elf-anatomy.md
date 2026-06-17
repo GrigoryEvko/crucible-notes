@@ -14,8 +14,8 @@ The page is organized as five structural units, each a table plus its rationale:
 
 For reimplementation, the contract this page establishes is:
 
-- **The identity-map invariant** — VMA == file offset for `.text`/`.rodata`/`.data`/`.data.rel.ro`/`.got` (every `LOAD` segment), so any `0x…` analysis address reads the same bytes whether interpreted as a VMA or a file offset. `.bss` is NOBITS (no file bytes). This is the load-bearing fact for every other page's addresses.
-- **The export ABI graph** — 149 versioned exports across exactly two real nodes (`NRT_2.0.0`, `NRT_3.0.0`), the latter parented on the former, so a reimplementation's version script must reproduce *which* symbol lands in *which* node.
+- **The identity-map invariant** — VMA == file offset for `.text`/`.rodata`/`.data`/`.data.rel.ro`/`.got` (every `LOAD` segment), so any `0x…` analysis address reads the same bytes whether interpreted as a VMA or a file offset. `.bss` is NOBITS (no file bytes). This is the foundational fact every other page's addresses rest on.
+- **The export ABI graph** — **145** `GLOBAL` exports (137 in `NRT_2.0.0` + 8 in `NRT_3.0.0`), zero `WEAK`, across exactly two real nodes (`NRT_2.0.0`, `NRT_3.0.0`), the latter parented on the former, so a reimplementation's version script must reproduce *which* symbol lands in *which* node. (A raw `@@NRT_2.0.0` grep returns 141 — 137 GLOBAL + 4 LOCAL `std::string` instantiations — so the raw all-binding total is 149; the *export* surface is 145, see §2.)
 - **The dynamic linkage floor** — the 9 `DT_NEEDED` libraries and the symbol-version *needs* (`GLIBC_2.28`, `GLIBCXX_3.4.22`, `CXXABI_1.3.11`, `GCC_4.2.0`) that set the minimum runtime a host must provide.
 - **The relocation model** — classic lazy-bind PLT (441 `JUMP_SLOT`), 7,295 `RELATIVE` (PIE base-relative), 250 `GLOB_DAT`, 357 absolute `R_X86_64_64`, 11 TLS `DTPMOD64`; **no IFUNC/IRELATIVE**.
 
@@ -27,7 +27,7 @@ For reimplementation, the contract this page establishes is:
 | **BuildID[sha1]** | `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e` (`.note.gnu.build-id` @`0x270`) |
 | **SONAME / RUNPATH** | `libnrt.so.1` · `/opt/aws/neuron/lib` |
 | **`.text` size** | `0x790b19` = 7,932,697 B @VMA/off `0x3dbc0` |
-| **Symbol-version nodes** | BASE `libnrt.so.1`, `NRT_2.0.0` (141 exports), `NRT_3.0.0` (8 exports, parent `NRT_2.0.0`) |
+| **Symbol-version nodes** | BASE `libnrt.so.1`, `NRT_2.0.0` (137 GLOBAL exports + 4 LOCAL `std::` instantiations), `NRT_3.0.0` (8 GLOBAL, parent `NRT_2.0.0`) — **145** GLOBAL export total |
 | **`DT_NEEDED`** | 9 — `libgcc_s`/`libutil`/`librt`/`libpthread`/`libdl`/`libstdc++`/`libm`/`libc`/`ld-linux` |
 | **Relocations** | 7,295 RELATIVE · 441 JUMP_SLOT · 357 R_X86_64_64 · 250 GLOB_DAT · 11 DTPMOD64 |
 | **Toolchains** (`.comment`) | GCC 14.2.1, GCC 7.3.1, GCC 8.5.0, clang 21.1.0-rc2, rustc 1.91.1 |
@@ -88,8 +88,8 @@ The export ABI is governed by a **3-entry `.gnu.version_d` graph** (`readelf -V`
 | Node | Index | Flags / Parent | Exports | What lands here | Conf |
 |---|---|---|---|---|---|
 | `libnrt.so.1` | 1 | `BASE` | 0 | the SONAME filename node — names the library, defines no symbol | CERTAIN |
-| `NRT_2.0.0` | 2 | none | **141** | the bulk public C API (`nrt_*`) + 4 LOCAL `std::` template instantiations versioned into v2 | CERTAIN |
-| `NRT_3.0.0` | 3 | parent `NRT_2.0.0` | **8** | the async `nrta_*` v3 surface only | CERTAIN |
+| `NRT_2.0.0` | 2 | none | **137** GLOBAL (+4 LOCAL) | the bulk public C API (`nrt_*`); the 4 LOCAL are `std::string` template instantiations the version script swept in (count them and the raw `@@NRT_2.0.0` total is 141) | CERTAIN |
+| `NRT_3.0.0` | 3 | parent `NRT_2.0.0` | **8** GLOBAL | the async `nrta_*` v3 surface only | CERTAIN |
 
 The 8 `NRT_3.0.0` exports are exactly the async ("`nrta_`") schedule/transfer API — `readelf -W --dyn-syms | grep '@@NRT_3.0.0'`:
 
@@ -100,9 +100,13 @@ nrta_is_completed      @0x7c720 ( 599 B)   nrta_tensor_copy       @0x7df10 (1315
 nrta_tensor_read       @0x7e440 (1315 B)   nrta_tensor_write      @0x7bb00 ( 639 B)
 ```
 
-A representative slice of the 141 `@@NRT_2.0.0` GLOBAL exports — the public façade consumers link against — `nrt_async_sendrecv_*`, `nrt_all_gather`, `nrt_barrier`, `nrt_build_global_comm`, `nrt_cc_global_comm_init`, `nrt_close`, `nrt_allocate_tensor_set`, … (full list = the export surface owned by the ABI-equivalence pages).
+A representative slice of the 137 `@@NRT_2.0.0` GLOBAL exports — the public façade consumers link against — `nrt_async_sendrecv_*`, `nrt_all_gather`, `nrt_barrier`, `nrt_build_global_comm`, `nrt_cc_global_comm_init`, `nrt_close`, `nrt_allocate_tensor_set`, … (full list = the export surface owned by the ABI-equivalence pages).
 
-> **QUIRK — four `LOCAL` `std::` instantiations carry a public version node.** `readelf --dyn-syms` shows entries like `_ZNSt…@@NRT_2.0.0` with binding `LOCAL` (@`0xc6a60`, `0xc6dc0`, `0xc6a90`, `0xc6bd0`). A symbol that is both `LOCAL` and version-tagged is unusual: the version script's global pattern swept these template bodies into the `NRT_2.0.0` node even though they are not part of the intended API. They are harmless (LOCAL = not externally bindable) but inflate a naive "count of `@@NRT_2.0.0` entries" from 141 to 145; the **149 figure** is the GLOBAL/WEAK export total (141 + 8). Ground any export-count claim on `GLOBAL|WEAK`, not on a raw `@@NRT_2.0.0` grep.
+> **CORRECTION (export-count arithmetic, overturned) — the prior "149 = 141 + 8 GLOBAL exports" was inverted; the GLOBAL export total is 145.** `readelf --dyn-syms` resolves the versioned definitions as: `@@NRT_2.0.0` = **141** all-binding = **137 GLOBAL + 4 LOCAL** (zero WEAK); `@@NRT_3.0.0` = **8 GLOBAL** (zero WEAK). The 4 LOCAL are `std::string` template bodies the version script's global pattern swept in — `basic_string::_M_dispose` (@`0xc6a60`), `_M_replace` (@`0xc6dc0`), `_M_assign` (@`0xc6a90`), `_M_mutate` (@`0xc6bd0`) — version-tagged yet `LOCAL`, so not externally bindable and not part of the intended API. Therefore:
+> - **GLOBAL/WEAK export surface = 145** (137 + 8; zero WEAK) — *this* is the ABI export count a port reproduces.
+> - **Raw all-binding `@@NRT_*` total = 149** (141 + 8) — inflated by the 4 LOCAL; a naive `@@NRT_2.0.0|@@NRT_3.0.0` grep returns this.
+>
+> Ground any export-count claim on `GLOBAL|WEAK` binding, never on a raw `@@NRT_*` grep.
 
 > **NOTE — the version graph is the ABI contract a port must reproduce.** Putting the async `nrta_*` calls behind `NRT_3.0.0` (parent `NRT_2.0.0`) lets the runtime add the async surface without breaking a binary linked only against v2: the parent edge means `NRT_3.0.0` is a strict superset. A reimplementation's linker version script must place the same 8 `nrta_*` symbols in v3 and everything else in v2, or symbol resolution against an existing client breaks. The graph is emitted from `.gnu.version_d` (`VERDEF` @`0xa238`) and indexed per-symbol by `.gnu.version` (`VERSYM` @`0x9c38`).
 

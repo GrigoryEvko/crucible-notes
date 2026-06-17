@@ -1,6 +1,6 @@
 # Overview and Heavy-Frame Census
 
-> **Binary:** `extracted/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libnrt.so` → `libnrt.so.1` → `libnrt.so.2.31.24.0` · **Version** `2.31.24.0-0b044f4ce` (`.nrt_brazil_version` @`0xad41f0` = `"2.31.24.0"`) · **BuildID[sha1]** `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e` · ELF64 LSB DYN x86-64, SONAME `libnrt.so.1` · **122,956,336 bytes** on disk (~117 MiB) · **NOT stripped** — `.symtab` (25,112 syms) + full DWARF v4 present. All four `PT_LOAD` segments are identity-mapped (`p_offset == p_vaddr`), so **every** PROGBITS section — `.text`, `.rodata`, **and `.data`** — has VMA == file offset; `.bss` is `SHT_NOBITS` and has no file content.
+> **Binary:** `extracted/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libnrt.so` → `libnrt.so.1` → `libnrt.so.2.31.24.0` · **Version** `2.31.24.0-0b044f4ce` (`.nrt_brazil_version` @`0xad41f0` = `"2.31.24.0"`) · **BuildID[sha1]** `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e` · ELF64 LSB DYN x86-64, SONAME `libnrt.so.1` · **122,956,336 bytes** on disk (~117 MiB) · **NOT stripped** — `.symtab` 25,623 entries (`readelf -SW`: Size `0x96228` / entsize `0x18`; `nm --defined-only` = 24,500 defined) + full DWARF v4 present. All four `PT_LOAD` segments are identity-mapped (`p_offset == p_vaddr`), so **every** PROGBITS section — `.text`, `.rodata`, **and `.data`** — has VMA == file offset; `.bss` is `SHT_NOBITS` and has no file content.
 >
 > **CORRECTION —** earlier revisions of this page (and `runtime/*` siblings) claimed `.data`/`.bss` differ from their VMA by a `0x400000` delta. That is **wrong** for `libnrt.so`. `readelf -lW libnrt.so.2.31.24.0` shows the RW `LOAD` segment at `Offset 0xbeeaa0 == VirtAddr 0xbeeaa0` (delta **zero**), and `readelf -SW` shows `.data` at `Address 0xc07e00 / Off 0xc07e00` — identical. The `0x400000` delta is a fact about a *different* binary (the libtpu / Kaena-profiler image), not libnrt. Read `.data`-resident globals at their VMA directly.
 >
@@ -10,7 +10,7 @@
 
 This page is the **orientation map for reading `libnrt.so` as an artifact**. The runtime ships as a single 117 MiB shared object that statically vendors every heavy dependency it touches: `objdump -p` lists `DT_NEEDED` only for `libgcc_s`/`libutil`/`librt`/`libpthread`/`libdl`/`libstdc++`/`libm`/`libc`/`ld-linux` — there is **no** NEEDED entry for protobuf, Abseil, simdjson, zlib, or the Rust runtime, so all of those live inside this `.text`. Reading it is the familiar exercise of opening a large stripped-but-here-*unstripped* C++/Rust monolith: most of the byte mass is mechanical (vendored OSS object code and compiler-generated glue you must recognize and skip), and a minority is the first-party `KaenaRuntime` logic that the rest of this Part dissects.
 
-The job of this page is to draw that line quantitatively. DWARF exposes **331 compile units**: **203 first-party `KaenaRuntime` TUs (4,407 defined functions)** built from the single source root `/opt/workspace/KaenaRuntime/`, plus **122 vendored/third-party TUs (4,384 functions)** — Abseil, the Rust `std`/`core`/`alloc` crates, the `KaenaProfilerFormat` protobuf, Libarchive, simdjson, `KaenaDriverLib`, zlib. Those 8,791 DWARF subprograms-with-`low_pc` are the *named* code; IDA recovers **17,372 functions** total, the balance being PLT thunks, `.cold` split fragments, and outlined trampolines that carry no DWARF subprogram of their own. By byte budget the heavy mass splits roughly **41.3% vendored / 58.7% first-party** (3,148,991 B / 4,469,317 B over the 7,618,308-byte `.text`).
+The job of this page is to draw that line quantitatively. DWARF exposes **331 compile units**: **203 first-party `KaenaRuntime` TUs (4,407 defined functions)** built from the single source root `/opt/workspace/KaenaRuntime/`, plus **122 vendored/third-party TUs (4,384 functions)** — Abseil, the Rust `std`/`core`/`alloc` crates, the `KaenaProfilerFormat` protobuf, Libarchive, simdjson, `KaenaDriverLib`, zlib. Those 8,791 DWARF subprograms-with-`low_pc` are the *named* code; IDA recovers **17,372 functions** total, the balance being PLT thunks, `.cold` split fragments, and outlined trampolines that carry no DWARF subprogram of their own. By byte budget the heavy mass splits roughly **41.3% vendored / 58.7% first-party** (3,148,991 B / 4,469,317 B over the 7,618,308-byte *summed function extent* from IDA `functions.json` — which is 96.0% of the `0x790b19` = 7,932,697-byte ELF `.text` section; the ~4% balance is inter-function padding and `.text`-resident data the function records do not span).
 
 The page then quantifies the four "heavy" axes — byte size, stack-frame size, in-degree, fan-out — to point a reimplementer at where the work concentrates. The runtime's weight is **not** in its small public C API (`nrt-api proper` is ~0.20 MB / 341 fns); it is in **ISA instruction validation** (~1.42 MB / 369 fns, the largest single first-party region), **collective-algorithm composition** (~1.06 MB / 1,129 fns), and **NEFF parsing** (few but enormous per-function). Each deep region is a sibling page in this Part or in the subsystem Parts; this overview links them and does not duplicate their derivations.
 
@@ -22,12 +22,12 @@ For reimplementation, the contract this page establishes is:
 
 | | |
 |---|---|
-| **On-disk size / `.text` size** | 122,956,336 B (~117 MiB) / 7,618,308 B |
+| **On-disk size / `.text` section** | 122,956,336 B (~117 MiB) / `.text` = `0x790b19` = 7,932,697 B (`readelf -SW`) — of which 7,618,308 B is the summed extent of IDA-recovered function bodies (96.0%) |
 | **DWARF compile units** | 331 (203 first-party + 122 vendored + builtins) |
 | **DWARF subprograms (`low_pc`)** | 8,791 (4,407 first-party + 4,384 vendored) |
 | **IDA-recovered functions** | 17,372 (balance = PLT/thunk/`.cold`/outlined) |
 | **First-party / vendored byte split** | 4,469,317 B (58.7%) / 3,148,991 B (41.3%) |
-| **`.symtab` symbols** | 25,112 (`nm --defined-only`) |
+| **`.symtab` symbols** | 25,623 entries (`readelf -SW` `0x96228`/`0x18`); 24,500 defined (`nm --defined-only`) |
 | **Toolchains** (`.comment`) | GCC 14.2.1 (C++17), GCC 7.3.1/8.5.0 (legacy C), rustc 1.91.1, clang 21.1.0-rc2 |
 | **RTTI** | 201 `_ZTV` / 244 `_ZTI` / 245 `_ZTS`; **no** multiple/virtual inheritance |
 | **`.init_array`** | 77 ctors @`0xbf2b08` (616 B) |
@@ -84,7 +84,7 @@ The CU table counts *functions*; this table counts *bytes*, which is the better 
 | zlib | 25,238 | 33 | VENDORED | inflate/deflate |
 | **act-tables (1P)** | 20,892 | 55 | FIRST-PARTY | activation-table staging |
 
-> **QUIRK —** the public C API (`nrt_*`) that consumers link against is one of the *smallest* first-party regions (0.20 MB, 341 fns). The runtime's mass is behind that thin façade: NEFF parsing, ISA validation, and collective-algorithm composition. A reimplementer who scopes effort from the export list (149 `NRT_*` symbols) will badly under-budget. The exports are thunks into a 4.5 MB first-party body.
+> **QUIRK —** the public C API (`nrt_*`) that consumers link against is one of the *smallest* first-party regions (0.20 MB, 341 fns). The runtime's mass is behind that thin façade: NEFF parsing, ISA validation, and collective-algorithm composition. A reimplementer who scopes effort from the export list (145 `NRT_*` GLOBAL symbols — 137 `NRT_2.0.0` + 8 `NRT_3.0.0`; see [ELF Anatomy §2](elf-anatomy.md)) will badly under-budget. The exports are thunks into a 4.5 MB first-party body.
 
 > **NOTE —** AL-HAL (`al_*`, AnnapurnaLabs/Annapurna Labs HAL) is marked `FIRST-PARTY*` because it ships only inside AWS Neuron but is a distinct upstream component vendored from the driver tree. The HAL *functions* installed into `kaena_khal` are owned by [Part IV's HAL pages](../runtime/hal-adapter.md); this Part owns the *struct/singleton* layout in [Globals Atlas](globals-atlas.md).
 
@@ -148,7 +148,7 @@ The densest single TUs (by DWARF fn-count) are the per-arch instruction-block bu
 | `kelf/kelf2kbin.cpp` | 126 | JSON → KBIN lowering |
 | `tdrv/encd/archs/{arch,cayman,mariana,sunda}.c` | 101/95/95/88 | per-arch descriptor emitters |
 
-> **GOTCHA —** the per-arch fan-out is **triplicated, not parameterized**. `cayman`/`mariana`/`sunda` each get their own `instruction_block_*.c` (248/297/238 fns), `tdrv_arch_*.c`, `encd/archs/*.c`, and `dve_dynamic_config_*.c`. A reimplementation that factors the three arches into one templated builder will not match the binary's call graph or its per-arch `tdrv_arch_ops` (47-slot @`0xc97180`) and `kaena_khal` (~200-slot @`0xcaeb80`) dispatch structs — those are installed by separate `register_funcs_v{2,3,4}` paths. See [Dispatch-Table Taxonomy](dispatch-tables.md).
+> **GOTCHA —** the per-arch fan-out is **triplicated, not parameterized**. `cayman`/`mariana`/`sunda` each get their own `instruction_block_*.c` (248/297/238 fns), `tdrv_arch_*.c`, `encd/archs/*.c`, and `dve_dynamic_config_*.c`. A reimplementation that factors the three arches into one templated builder will not match the binary's call graph or its per-arch `tdrv_arch_ops` (488 B = 61 pointer slots, `nm`: `tdrv_arch_ops` @`0xc97180` → `tdrv_arch_ops_initialized` @`0xc97368`, span `0x1e8`) and `kaena_khal` (~200-slot @`0xcaeb80`) dispatch structs — those are installed by separate `register_funcs_v{2,3,4}` paths. See [Dispatch-Table Taxonomy](dispatch-tables.md).
 
 ---
 
@@ -279,7 +279,7 @@ This overview is the index for Part II. Each sibling page takes one forensic axi
 | [Vendored-Library SBOM](vendored-sbom.md) | The 14-row version-pinned SBOM; protobuf 24-vs-26 and Rust 1.89-vs-1.91 conflict resolutions | `GOOGLE_PROTOBUF_VERSION 5026001`, `/rustc/ed61e7d7e…`, `VerifyVersion` @`0x6fb690` |
 | [Static-Init Pipeline](static-init.md) | The 77-entry `.init_array` order, which globals each ctor touches, what is lazy vs eager | `.init_array` @`0xbf2b08`; ctors #10–#29 first-party |
 | [Globals and Singletons Atlas](globals-atlas.md) | The first-party control plane: `kaena_khal`, `tdrv_arch_ops`, `nrt_config`, `ngc`, `vcores`, `async_sr_ctxs`, `ucode_func_symbols` | `kaena_khal` @`0xcaeb80`; `nrt_config` @`0xc5c480` |
-| [Dispatch-Table Taxonomy](dispatch-tables.md) | The two coexisting per-arch vtables (`kaena_khal` ~200 slots vs `tdrv_arch_ops` 47 slots), seed tables, `register_funcs_v{2,3,4}` | seed `off_BF3698`/`0xbf3778`; `kaena_khal_init` selector |
+| [Dispatch-Table Taxonomy](dispatch-tables.md) | The two coexisting per-arch vtables (`kaena_khal` ~200 slots vs `tdrv_arch_ops` 488 B / 61 slots), seed tables, `register_funcs_v{2,3,4}` | seed `off_BF3698`/`0xbf3778`; `kaena_khal_init` selector |
 | [C++ Class Hierarchy and RTTI](rtti-class-hierarchy.md) | 201 vtables / 244 typeinfo; `mem_ref` 10-class tree, `dma_desc` 4-class, `enc_ins`/`enc_proxy_task`, `ntff::` 40 messages | `_ZTV` @`0xbf6958`–`0xbf8dc8` (1P); SI-only |
 | [String Domain](string-domain.md) | Provenance markers: `KaenaRuntime` `__FILE__` manifest, vendored OSS names, Rust panic strings, protobuf symbols, the env-var catalog | `/opt/workspace/KaenaRuntime/…` paths; `.nrt_brazil_version` |
 | [CRT / PLT / Loader Surface](crt-plt.md) | `DT_NEEDED` (9 libs), PLT/GOT, `.init`/`.fini`, `__cxa_atexit` registrations, the dlopen targets (libncfw / libnrtucode_extisa) | `ucode_init_module` @`0x225940`; `encd_libncfw_init` @`0x251cc0` |
