@@ -138,6 +138,7 @@
 
 - [Penguin IR Node Model — the SSA Def-Use Graph](penguin/ir-node-model.md)
 - [Penguin Axis / Loop-Axis Model](penguin/axis-loop-model.md)
+- [Penguin AffineExpr Algebra over pelican::Expr](penguin/affine-expr-algebra.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
