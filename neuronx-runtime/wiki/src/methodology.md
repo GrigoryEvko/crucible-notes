@@ -133,7 +133,7 @@ The book is explicit about its own ceiling. Stated plainly:
 
 - **How gaps feed forward.** A gap is never silently absorbed. Each opaque region is named at its boundary, its inputs and callers pinned, and the un-walked interior routed to the [Phase-3 Deep-Dive Backlog](appendix/deep-dive-backlog.md) — the sequencer-internal Q7 TIE ops, the NCFW Xtensa handler internals, the per-arch SBUF leaf derivations, the `encd` interior math, the 13 template-inlined switch-platform per-event composer TUs that fold into `enc.cc` by address but were never name-cited. "Not-traced" means the boundary is a contract and the interior is a build-against-the-binary task — not a hole the book pretends is filled.
 
-> **NOTE —** the honest gap is the load-bearing distinction between this book and a decompiler transcript. A marked unknown is correct; a plausible fiction is a landmine for the reimplementer. Where a function was not individually traced, the page says what was done (the range swept, the bodies sized) and what remains — and routes the remainder to the backlog rather than guessing.
+> **NOTE —** the honest gap is the decisive distinction between this book and a decompiler transcript. A marked unknown is correct; a plausible fiction is a landmine for the reimplementer. Where a function was not individually traced, the page says what was done (the range swept, the bodies sized) and what remains — and routes the remainder to the backlog rather than guessing.
 
 ## Cross-References
 
