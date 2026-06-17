@@ -77,6 +77,7 @@
 - [Defaults & Config-File Model — the Absence of a Config File](frontend/defaults-config-model.md)
 - [Environment-Variable Catalog & the NEURON_CC_FLAGS Boundary](frontend/env-var-catalog.md)
 - [Framework Bindings — JAX, PyTorch-XLA & Custom-Call Targets](frontend/framework-bindings.md)
+- [StaticIOTranspose & the io_transpose JSON Schema](frontend/static-io-transpose.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
