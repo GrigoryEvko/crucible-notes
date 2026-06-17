@@ -36,6 +36,7 @@
 - [TENSOR1D / 2D / 3D Descriptors — the 4+4N Rule](isa/tensor-descriptors.md)
 - [ADDR4 — the 32-Bit Address Word](isa/addr4.md)
 - [MEM_PATTERN2D / 3D — the DST/PSUM Role](isa/mempattern-2d-3d.md)
+- [TENSOR4D / MEM_PATTERN4D — the Spill Descriptor](isa/tensor4d-mempattern4d.md)
 - [The 64-Byte Instruction Bundle & Header Skeleton](isa/instruction-bundle.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
