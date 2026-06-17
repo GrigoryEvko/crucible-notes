@@ -106,6 +106,7 @@
 - [Layout Passes](hlo-opt/layout-passes.md)
 - [Input/Output Alias Family](hlo-opt/io-alias-family.md)
 - [Concatenation Optimizations](hlo-opt/concat-optimizations.md)
+- [DUS/DS Simplifier & DynamicSlice Mover](hlo-opt/dus-ds-simplifier.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
