@@ -9,7 +9,7 @@
 
 TDRV (the **tonga device-runtime**) is the device-driver core that sits directly below the public runtime API and directly above NDL (the IOCTL/mmap driver layer) and the KaenaHal register layer. When `nrt_init` ([api-lifecycle](api-lifecycle.md)) reaches its subsystem-init phase it calls `kmgr_init`, and `kmgr_init` calls **`tdrv_init` (`@0x26a310`)** — the single master function (11,922 bytes, 427 basic blocks, 244 distinct callees) that opens every Neuron device, resets its NeuronCores, scrubs HBM, builds a per-process **`tdrv_ctx`** holding one `mla_t` per device, and brings each NeuronCore from cold silicon to a running idle program. `tdrv_destroy` (`@0x269a70`, 2,204 B) unwinds that bring-up in reverse. This page owns the device-level bring-up that `nrt_init` calls into; it does **not** re-derive `nrt_init` itself (owned by [api-lifecycle](api-lifecycle.md)) nor the `nrt_tensor_t` object (owned by [tdrv-tensor](tdrv-tensor.md)).
 
-The reference frame is a classic layered device-driver core with a **per-arch ops vtable**. Two dispatch tables anchor the whole layer. The first is **`tdrv_arch_ops` (`@0xc97180`, 488 B, 47 slots)** — a struct-of-function-pointers populated exactly once, lazily, by one of `tdrv_arch_register_{sunda,cayman,mariana}` according to the silicon's arch type; every `tdrv_arch_get_*` geometry accessor (`get_num_tpb`, `get_default_hbm_index`, the CSR register/deregister hooks, the sync-event tables) routes through a slot in this table. The second is the **nrtucode platform-ops vtable** — two small statically-relocated `.data` tables (`platform_memhandle_impl @0xbf6c40`, `platform_rw_impl @0xbf6c80`) that hand the Q7/GPSIMD microcode runtime ([gpsimd](../gpsimd/extisa-provider.md)) a set of callbacks to allocate, read, write, and free device DRAM through TDRV's `dmem` allocator. TDRV registers these by passing both table pointers into `ucode_core_create` for every microcode core it builds during bring-up.
+The reference frame is a classic layered device-driver core with a **per-arch ops vtable**. Two dispatch tables anchor the whole layer. The first is **`tdrv_arch_ops` (`@0xc97180`, 488 B / 61 physical 8-byte slots (47 named members))** — a struct-of-function-pointers populated exactly once, lazily, by one of `tdrv_arch_register_{sunda,cayman,mariana}` according to the silicon's arch type; every `tdrv_arch_get_*` geometry accessor (`get_num_tpb`, `get_default_hbm_index`, the CSR register/deregister hooks, the sync-event tables) routes through a slot in this table. The second is the **nrtucode platform-ops vtable** — two small statically-relocated `.data` tables (`platform_memhandle_impl @0xbf6c40`, `platform_rw_impl @0xbf6c80`) that hand the Q7/GPSIMD microcode runtime ([gpsimd](../gpsimd/extisa-provider.md)) a set of callbacks to allocate, read, write, and free device DRAM through TDRV's `dmem` allocator. TDRV registers these by passing both table pointers into `ucode_core_create` for every microcode core it builds during bring-up.
 
 The page applies the recurring H3 vocabulary to five units: **(1)** the `tdrv_init` master bring-up sequence and its ordered call-tree; **(2)** `ensure_arch_ops_initialized` / `tdrv_arch_ops_init` — the lazy arch-ops install; **(3)** the nrtucode platform-ops registration (the `platform_memhandle_*` + `device_close_fn` callbacks); **(4)** the NDS-for-device hookup (`tdrv_init_nds_for_device` → `save_process_info`, and its `tdrv_close_nds_for_device` inverse); and **(5)** `tdrv_destroy` teardown in reverse order, including the parallel `pthread`-driven device close.
 
@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Master init** | `tdrv_init` `@0x26a310` — 11,922 B, 427 BBs, 244 callees, 2072-B frame |
 | **Teardown** | `tdrv_destroy` `@0x269a70` — 2,204 B, 83 BBs, 66 callees |
 | **Caller** | `kmgr_init` `@0xde080` (`nrt_init` → `kmgr_init` → `tdrv_init`) |
-| **Arch-ops vtable** | `tdrv_arch_ops` `@0xc97180` (.bss, **488 B / 47 slots**), gate `tdrv_arch_ops_initialized @0xc97368` |
+| **Arch-ops vtable** | `tdrv_arch_ops` `@0xc97180` (.bss, **488 B / 61 physical 8-byte slots (47 named members)**), gate `tdrv_arch_ops_initialized @0xc97368` |
 | **Arch-ops install** | `tdrv_arch_ops_init` `@0x308e80`; cold assert `ensure_arch_ops_initialized @0x308e50` |
 | **Platform-ops tables** | `platform_memhandle_impl @0xbf6c40` (40 B), `platform_rw_impl @0xbf6c80` (32 B) — static `.data`, relocated at load |
 | **Platform-ops register** | `ucode_nx_core_create @0x269620` / `ucode_pooling_q7_core_create @0x2697d0` → `ucode_core_create` |
@@ -209,7 +209,7 @@ The bring-up is **not idempotent at the TDRV layer** — the `"TDRV already init
 
 ### Purpose
 
-Every piece of device geometry that varies by silicon generation — TPB/TopSP/DMA counts, BAR offsets, DMA-queue CSR offsets, the CSR register/deregister hooks, the sync-event ID tables — is reached through **`tdrv_arch_ops` (`@0xc97180`, 488 B, 47 function-pointer slots)**. The table is a single process-wide singleton, installed lazily on first use by `tdrv_arch_ops_init` (`@0x308e80`), which dispatches on `al_hal_tpb_get_arch_type()` to one of three populators. This is the runtime's equivalent of an LLVM `TargetSubtargetInfo` vtable: one indirect call per geometry query, resolved once per process at the first `tdrv_arch_get_*` access.
+Every piece of device geometry that varies by silicon generation — TPB/TopSP/DMA counts, BAR offsets, DMA-queue CSR offsets, the CSR register/deregister hooks, the sync-event ID tables — is reached through **`tdrv_arch_ops` (`@0xc97180`, 488 B / 61 physical 8-byte slots (47 named members))**. The table is a single process-wide singleton, installed lazily on first use by `tdrv_arch_ops_init` (`@0x308e80`), which dispatches on `al_hal_tpb_get_arch_type()` to one of three populators. This is the runtime's equivalent of an LLVM `TargetSubtargetInfo` vtable: one indirect call per geometry query, resolved once per process at the first `tdrv_arch_get_*` access.
 
 ### Entry Point
 
@@ -221,7 +221,7 @@ tdrv_arch_get_num_tpb (0x309050)  [representative — ~78 accessors share this p
 
 tdrv_arch_ops_init (0x308e80)
   └─ switch al_hal_tpb_get_arch_type():
-       case 2: tdrv_arch_register_sunda   (0x30b6a0)          ── populate all 47 slots for SUNDA
+       case 2: tdrv_arch_register_sunda   (0x30b6a0)          ── populate all 61 physical slots (47 named members) for SUNDA
        case 3: tdrv_arch_register_cayman  (0x30c7d0)          ── CAYMAN
        case 4: tdrv_arch_register_mariana (0x30d900)          ── MARIANA
        default: __assert_fail("0 && \"Unknown architecture\"", tdrv_arch_type.c:0x41)
@@ -231,7 +231,7 @@ tdrv_arch_ops_init (0x308e80)
 
 ```c
 // tdrv_arch_ops_init @0x308e80 — install the per-arch ops table exactly once.
-// Globals: tdrv_arch_ops @0xc97180 (.bss, the 47-slot table),
+// Globals: tdrv_arch_ops @0xc97180 (.bss, the 488-B / 61-physical-slot table; 47 named members),
 //          tdrv_arch_ops_initialized @0xc97368 (.bss, the one-shot flag).
 function tdrv_arch_ops_init():
     if tdrv_arch_ops_initialized:                              // already installed
@@ -258,14 +258,14 @@ function ensure_arch_ops_initialized():                      // __noreturn
 ```
 
 ```c
-// tdrv_arch_register_sunda @0x30b6a0 (871 B) — populate all 47 slots for SUNDA.
+// tdrv_arch_register_sunda @0x30b6a0 (871 B) — populate all 61 physical slots (47 named members) for SUNDA.
 // CAYMAN (0x30c7d0) and MARIANA (0x30d900) are the same shape, differing only in the
 // *_sunda → *_cayman / *_mariana leaf-function pointers and the embedded caps/sync tables.
 function tdrv_arch_register_sunda():
     tdrv_arch_ops.get_num_tpb              = tdrv_arch_get_num_tpb_sunda        // +32 → const 2
     tdrv_arch_ops.get_default_hbm_index    = tdrv_arch_get_default_hbm_index_sunda // +56
     tdrv_arch_ops.get_tpb_mem_bar_offset   = …_sunda                            // +104
-    …                                                                          // 47 slots total
+    …                                                                          // 61 physical slots total (47 named members)
     tdrv_arch_ops.instr_block_caps         = &sunda_instr_block_caps            // +248 (table ptr)
     tdrv_arch_ops.tpb_reg_offset           = { …_sunda × 9 }                    // +280 (72-B subtable)
     tdrv_arch_ops.seq_refill               = { …_sunda × 7 }                    // +368 (56-B subtable)
@@ -274,7 +274,9 @@ function tdrv_arch_register_sunda():
     tdrv_arch_ops.sync_events              = &sunda_sync_events                 // +472 (20-B table ptr)
 ```
 
-The 47-slot layout is fixed across arches (DWARF struct `tdrv_arch_ops`, 488 B). Three slots are themselves nested sub-tables: `tpb_reg_offset` (72 B / 9 slots, `@+280`), `seq_refill` (56 B / 7 slots, `@+368`), and the data-pointer slots `instr_block_caps` (`@+248`), `sync_events` (`@+472`).
+The slot layout is fixed across arches (DWARF struct `tdrv_arch_ops`, 488 B / 61 physical 8-byte slots, 47 named members). Three slots are themselves nested sub-tables: `tpb_reg_offset` (72 B / 9 slots, `@+280`), `seq_refill` (56 B / 7 slots, `@+368`), and the data-pointer slots `instr_block_caps` (`@+248`), `sync_events` (`@+472`).
+
+> **CORRECTION —** the slot count is standardized on [tdrv-arch-ops](tdrv-arch-ops.md): **488 B / 61 physical 8-byte slots (47 named members)** (gap `0xc97368-0xc97180 = 0x1e8 = 488 = 61` slots). Earlier "47 slots" phrasing undercounts the physical layout by 14 — 47 is the count of *named* members, not slots.
 
 | Offset | Slot group | Role |
 |---|---|---|
@@ -295,9 +297,9 @@ The 47-slot layout is fixed across arches (DWARF struct `tdrv_arch_ops`, 488 B).
 |---|---|---|---|---|
 | `tdrv_arch_ops_init` | `0x308e80` | 118 | One-shot `switch(arch)` populator dispatch | CERTAIN |
 | `ensure_arch_ops_initialized` | `0x308e50` | 35 | `__noreturn` assert tail on install failure | CERTAIN |
-| `tdrv_arch_register_sunda` | `0x30b6a0` | 871 | Fill all 47 slots with `*_sunda` leaves | CERTAIN |
-| `tdrv_arch_register_cayman` | `0x30c7d0` | 871 | Fill all 47 slots with `*_cayman` leaves | CERTAIN |
-| `tdrv_arch_register_mariana` | `0x30d900` | 871 | Fill all 47 slots with `*_mariana` leaves | CERTAIN |
+| `tdrv_arch_register_sunda` | `0x30b6a0` | 871 | Fill all 61 physical slots (47 named members) with `*_sunda` leaves | CERTAIN |
+| `tdrv_arch_register_cayman` | `0x30c7d0` | 871 | Fill all 61 physical slots (47 named members) with `*_cayman` leaves | CERTAIN |
+| `tdrv_arch_register_mariana` | `0x30d900` | 871 | Fill all 61 physical slots (47 named members) with `*_mariana` leaves | CERTAIN |
 | `tdrv_arch_get_num_tpb` (and ~77 peers) | `0x309050` | 16 | Lazy-init prologue + indirect slot call | CERTAIN |
 
 > **QUIRK —** the install is not done at static-init or at the top of `tdrv_init` — it is **lazy, on the first geometry query**, and `tdrv_init` itself triggers it (its first `tdrv_arch_get_num_tpb` at the device-open phase forces the populate). The double-check `!tdrv_arch_ops_initialized && tdrv_arch_ops_init()` means a successful install returns `0` and the `&&` short-circuits *before* `ensure_arch_ops_initialized`; the `__noreturn` tail is reached only if `tdrv_arch_ops_init` returns non-zero, which in this build it never does (it either succeeds or `__assert_fail`s on an unknown arch). A reimplementer can fold this into an eager init, but must preserve the "unknown arch → abort" semantics; there is no fourth fallback arch.
