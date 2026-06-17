@@ -29,7 +29,7 @@ The ordinals are grounded from three classes of in-binary evidence, every one re
 | 13 | `_WAIT_MODE` (`bir::sync::Wait`) | 3 | LUT (E3) | [2.20](sp-sync-encoding.md) | ✗ remap | CONFIRMED |
 | 14 | `_UPDATE_MODE` (`bir::sync::Update`) | 2+ | identity write (E2) | [2.20](sp-sync-encoding.md) | = (raw) | CONFIRMED |
 | 15 | `_PE_FP32MODE` (PE precision sig.) | `{0,2}` | byte pair (E2) | [2.10](pe-matmul-encoding.md) | n/a | STRONG |
-| 16 | `_RAND_ALGORITHM` (`bir::RandomAlgorithmKind`) | 3 | 2string, identity wire | [2.18](rng-encoding.md) | = | STRONG |
+| 16 | `_RAND_ALGORITHM` (`bir::RandomAlgorithmKind`) | 3 | 2string, identity wire | [2.16](rng-encoding.md) | = | STRONG |
 | 17 | `_MATMUL_PSUM_ACCUMULATE_FLAGS` | 3-bit field | bit setters (E2) | [2.10](pe-matmul-encoding.md) | bits | CONFIRMED |
 | 18 | `_MATMUL_ZERO_REGION` (MX window) | range field | field role (E2) | [2.10](pe-matmul-encoding.md) | n/a | CONFIRMED |
 | 19 | `_DGE_OPCODE` | — (no standalone enum) | GAP | DMA-family | INFERRED | INFERRED |
@@ -398,7 +398,7 @@ The encoder rejects `mode∉{1,2}` with `"only two wait modes supported now: SEM
 
 ## ENUM 16 — `_RAND_ALGORITHM` (`bir::RandomAlgorithmKind`)
 
-**Grounding:** `bir::RandomAlgorithmKind2string @0x401de0` (libBIR) + inverse `string2 @0x40ef50`, round-trip verified; the simulator's `visitInstRand @0x1d6290` dispatches on this ordinal (`mov esi,[rdi+0xF0]`). The ISA `random_algorithm` field on `Rng` (opcode 118) carries the ordinal **identity** (no remap on this path). Tag: **STRONG** (ordinal CERTAIN from 2string; wire = identity). [2.18](rng-encoding.md) carries the same map.
+**Grounding:** `bir::RandomAlgorithmKind2string @0x401de0` (libBIR) + inverse `string2 @0x40ef50`, round-trip verified; the simulator's `visitInstRand @0x1d6290` dispatches on this ordinal (`mov esi,[rdi+0xF0]`). The ISA `random_algorithm` field on `Rng` (opcode 118) carries the ordinal **identity** (no remap on this path). Tag: **STRONG** (ordinal CERTAIN from 2string; wire = identity). [2.16](rng-encoding.md) carries the same map.
 
 | ord | name | grounding |
 |---|---|---|
@@ -408,7 +408,7 @@ The encoder rejects `mode∉{1,2}` with `"only two wait modes supported now: SEM
 
 (default → FATAL `"Unknown RandomAlgorithmKind"`.)
 
-> **CORRECTION — `LFSR=0, PCG32=1, PHILOX_1=2`.** An earlier note implied `PCG32=0`. The binary is authoritative: the 2string `@0x401de0` / `string2 @0x40ef50` decode in order `LFSR / PCG32 / PHILOX_1`. The companion `RandomDistributionKind` (the `Rng` `distribution` field, identity wire) = `{0:Raw, 1:Uniform, 2:Normal, 3:Binomial}`. The gen-2 `Rand2` path runs a fixed `XORWOW` over a *separate* state vector and namespace — do not conflate the two ([2.18](rng-encoding.md)).
+> **CORRECTION — `LFSR=0, PCG32=1, PHILOX_1=2`.** An earlier note implied `PCG32=0`. The binary is authoritative: the 2string `@0x401de0` / `string2 @0x40ef50` decode in order `LFSR / PCG32 / PHILOX_1`. The companion `RandomDistributionKind` (the `Rng` `distribution` field, identity wire) = `{0:Raw, 1:Uniform, 2:Normal, 3:Binomial}`. The gen-2 `Rand2` path runs a fixed `XORWOW` over a *separate* state vector and namespace — do not conflate the two ([2.16](rng-encoding.md)).
 
 ---
 
@@ -530,7 +530,7 @@ No claim required revision against the binary; every L1≠L3 mismatch is flagged
 
 ## Cross-References
 
-- **The encoders that consume these ordinals** — [PE matmul](pe-matmul-encoding.md) (2.10) through [collective / GPSIMD / CustomOp](collective-customop-encoding.md) (2.22): every Part-2 encoding page pins fields to offsets and defers the field *values* here. Notably [TensorScalar](tensorscalar-encoding.md) (2.14, AluOp), [Pool / TensorReduce](pool-reduce-encoding.md) (2.12, PoolFunc / reduce-cmd), [RNG](rng-encoding.md) (2.18, RandomAlgorithm), [SP sync / branch](sp-sync-encoding.md) (2.20, comp_op / wait / update), [collective](collective-customop-encoding.md) (2.22, CollectiveKind).
+- **The encoders that consume these ordinals** — [PE matmul](pe-matmul-encoding.md) (2.10) through [collective / GPSIMD / CustomOp](collective-customop-encoding.md) (2.22): every Part-2 encoding page pins fields to offsets and defers the field *values* here. Notably [TensorScalar](tensorscalar-encoding.md) (2.14, AluOp), [Pool / TensorReduce](pool-reduce-encoding.md) (2.12, PoolFunc / reduce-cmd), [RNG](rng-encoding.md) (2.16, RandomAlgorithm), [SP sync / branch](sp-sync-encoding.md) (2.20, comp_op / wait / update), [collective](collective-customop-encoding.md) (2.22, CollectiveKind).
 - **The struct capstone** — [NEURON_ISA_TPB Struct-Family Capstone](neuron-isa-tpb-capstone.md) (2.9): the byte-layout `.h` these enums are fields of.
 - **The hardware key** — [The Arch Object Model](../arch/arch-object-model.md) (1.01): the confirmed `EngineType` map; [SP engine](../arch/sp-engine.md) (1.12) and [Pool engine](../arch/pool-engine.md) (1.09) for the AluOp / PoolFunc datapath semantics; [execution & sync model](../arch/execution-sync-model.md) (1.14) for the runtime semaphore record.
 - **The L1 / L2 forms** — [Part 7 BIR](../bir/): the libBIR in-memory ordinals and the BIR-JSON spellings these L3 bytes derive from.

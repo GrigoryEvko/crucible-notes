@@ -6,7 +6,7 @@
 
 `TENSOR4D` is the **largest** member of the static-pattern descriptor family ([2.3](tensor-descriptors.md)) — the 20-byte slot that encodes an access pattern with **four** free dimensions. It exists for the same reason a fourth `{stride, count}` pair exists: a 16-byte `TENSOR3D` can describe only three free axes, and some operands' on-chip walk needs four. When an op-encoder reaches an operand whose access pattern cannot be expressed in three free dims, it packs the operand as a `TENSOR4D` (or its destination spelling `MEM_PATTERN4D`) instead of a `TENSOR3D`. This page recovers the 20-byte layout, the single byte-level difference from the 16-byte 3D case, the decision that picks 4D, and a census of *which* instructions actually emit it.
 
-The 20-byte layout is the [4+4N rule](tensor-descriptors.md#the-44n-size-rule) at `N = 4`: `4 + 4·4 = 20`. It is byte-identical to `TENSOR3D` with **one extra `{stride, count}` pair** appended — and, because strides and counts live in two **separate** contiguous arrays, appending the fourth dimension does two things at once: it adds `step3` at the end of the stride array (`+0xA`), and it shifts the whole count array down by two bytes (the count base moves from `+0xA` in 3D to `+0xC` in 4D), then adds `num3` at `+0x12`. The "extra 4 bytes" are exactly `{step3 @+0xA, num3 @+0x12}`. There is no second descriptor, no continuation flag — the spill is the same array grown by one entry, which is why the slot is 20 bytes, not 16.
+The 20-byte layout is the [4+4N rule](tensor-descriptors.md#the-44n-size-rule) at `N = 4`: `4 + 4·4 = 20`. It is byte-identical to `TENSOR3D` with **one extra `{stride, count}` pair** appended — and, because strides and counts live in two **separate** contiguous arrays, appending the fourth dimension does three things at once: it adds `step3` at the end of the stride array (`+0xA`), shifts the whole count array down by two bytes (the count base moves from `+0xA` in 3D to `+0xC` in 4D), then adds `num3` at `+0x12`. The "extra 4 bytes" are exactly `{step3 @+0xA, num3 @+0x12}`. There is no second descriptor, no continuation flag — the spill is the same array grown by one entry, which is why the slot is 20 bytes, not 16.
 
 The central correction this page makes to the naive expectation: **`TENSOR4D` is the general maximal data-tensor descriptor, not a batch-norm / transpose-reduce special case.** Cross-referencing the two `assignAccess<TENSOR4D>` thunks against the symbol table resolves **22 distinct op-encoders** (18 CoreV2 + 4 CoreV3) that emit 4D — copy, shuffle, transpose, pool, reduce, max, gather, iota, memset, reciprocal, RNG-state, the BN-stats reduced inputs, and the gen3 sparse-matmul ifmap — plus a string-keyed generic selector that routes any name-tagged 4D operand. 4D is the **fallback** the encoder spills to when 3D cannot express the walk; BN/reduce/sparse are simply the operands that *most often* need the fourth axis, not the only ones.
 
@@ -58,7 +58,7 @@ The 20 bytes are `[ADDR4][step0..step3][num0..num3]` — the stride array first,
 
 | Offset | Size | Field | Witness | Confidence |
 |---|---|---|---|---|
-| `+0x00` | 4 | `ADDR4` start-address word — partition dim folded in; byte-addr bits `0..28`, region bits `21-22`, bit-31 register-mode (v3/v4 add quadrant bits `25-28`) | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CONFIRMED |
+| `+0x00` | 4 | `ADDR4` start-address word — partition dim folded in; byte-addr bits `0..28`, region/PSUM bits `25..28` (`0x1E000000`), bit-31 register-mode | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CONFIRMED |
 | `+0x04` | 2 | `step0` (i16) — free-dim 0 stride | enc `lea [2·0+4]`; dec reads `+4` | CONFIRMED |
 | `+0x06` | 2 | `step1` (i16) — free-dim 1 stride | enc `lea [2·1+4]` | CONFIRMED |
 | `+0x08` | 2 | `step2` (i16) — free-dim 2 stride | enc `lea [2·2+4]`; dec `cmpw $0,+8` (PSUM path) | CONFIRMED |
@@ -67,6 +67,8 @@ The 20 bytes are `[ADDR4][step0..step3][num0..num3]` — the stride array first,
 | `+0x0E` | 2 | `num1` (u16) — free-dim 1 count | enc `lea [2·1+0xC]`; dec `cmpw $0,+0xE` | CONFIRMED |
 | `+0x10` | 2 | `num2` (u16) — free-dim 2 count | enc `lea [2·2+0xC]`; dec `cmpw $0,+0x10` | CONFIRMED |
 | `+0x12` | 2 | `num3` (u16) — free-dim 3 count — **the spill** | enc `lea [2·3+0xC]`; default-fill `+0x12` @ `0x117739b`; dec `cmpw $0,+0x12` | CONFIRMED |
+
+> **CORRECTION — ADDR4 region bits are `25..28`, not `21-22`.** An earlier draft of the `+0x00` row gave the region/PSUM-discriminator bits as `21-22` and labelled the `25..28` quadrant bits a "v3/v4 add". Both are wrong: the region split is the **arch-universal** mask `0x1E000000` = bits `25..28`, read off the decoder's `and ebx,1E000000h` and the PSUM-window base `0x2000000 = 1<<25` directly in `tensor_start_addr_valid` ([2.2 ADDR4 §PSUM-window detection](addr4.md#psum-window-detection--region-class--bits-2528)). This page's own `tensor4d_valid` source-check walk (below) likewise tests the `25..28` quadrant bits (`& 0x1e000000`). The `21-22` figure is fixed in place.
 
 The encoder witnesses are byte-exact off the packer body (`assignStaticPattern<core_v2::TENSOR4D>` @ `0x1176df0`): the stride store computes its target as `desc + 2i + 4` (`lea r13,[rax+rax+4]` @ `0x11772b9`), the count store as `desc + (2i+4) + 8 = desc + 2i + 0xC` (`lea rdi,[rax+r13+8]` @ `0x11772f9`). The `step`/`num` word widths and signedness are unchanged from the smaller descriptors: `step` is a signed `i16` through `sub_116ca30` (sign-match overflow guard), `num` an unsigned `u16` through `sub_116d620` (zero-rejecting guard) — see [2.3 stride/count words](tensor-descriptors.md#the-stride-word--signed-i16-element-units).
 
@@ -288,7 +290,7 @@ The 20-byte layout is invariant across CoreV2/V3/V4 — the same `+0xC` count ba
 | 16→20 spill = +1 pair, base `+0xA→+0xC` | `mem3d_valid` sweeps `num` to `+0xE` (3); `mem4d_valid` to `+0x12` (4) | CONFIRMED |
 | dim-count = `active ≤ 5` (`= N+1`) | `cmp $0x5,%r13d ; setbe` @ `0x1177162` + `"[1, 4]D"` `.rodata` @ `0x1d53378` | CONFIRMED |
 | dim-0 → ADDR4 (no slot) | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CONFIRMED |
-| region marker `+3` bits `21-22` | encoder `or desc[+3],0x20`; decoder `and $0x60 ; cmp $0x20` | CONFIRMED |
+| indirect/mode marker — byte `+3` bit 5 = word bit 29 (`0x20`); nibble = byte3 `& 0x60` = word bits 29:30 | encoder `or desc[+3],0x20`; decoder `and $0x60 ; cmp $0x20` | CONFIRMED |
 | producer set = 18 v2 + 4 v3 | 65 resolved call sites of the two `TENSOR4D` thunks | CONFIRMED |
 
 ---

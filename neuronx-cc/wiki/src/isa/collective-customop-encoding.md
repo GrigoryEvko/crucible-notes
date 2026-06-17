@@ -415,7 +415,7 @@ All: `[0]`=opcode `[1]`=`0x10` `[2..3]`=0 (setupHeader); `[4..0xB]`=shared BIR `
 
 - **CONFIRMED** (byte-store + opcode + field disassembly this pass): all eleven opcodes; the `0xD9` primary trio `{CCE-op@+0xC, dtype@+0xD, kind@+0xE}` + ADDR8 `TENSOR2D`@`+0x10`; the `0xDA` raw stamp; the collective-kind LUT bytes (`01 02 03 04 09 05 06 07 08`, `xxd`-verified at `0x1DF5790`); the GetCurProc group quad + regId@`+0x12`; GetGlobalRankId `{valid@+0xC, regId@+0x17}` + the `cmp $0xb` guard; TensorCompletion `{handle@+0xC, byte@+0x10}`; GetSequenceBounds `{flags@+0xC/+0xE/+0xF, in TENSOR3D@+0x10, out TENSOR3D@+0x20}`; CoreBarrier `{barrierId@+0xC, idx@+0x10, sema TENSOR4D@+0x20}`; the **GPSIMDSB2SB full map**, re-verified byte-identical to [1.13](../arch/gpsimd-engine.md); Send/Recv `0xCB` + tensor_id + `setAttribute(2)`; the `channel_id@+0x4` permute field; CustomOp `0x85`/`0x86`; module-side `addReplicaGroupIDs`/`addSrcTargetPairIDs`; the `AluOpType2DGEComputeOp` two-branch body.
 - **STRONG**: the `0xDA` secondary-record field detail (mirrors the `0xD9` trio); the `SyncInfo` band sub-layout (shared skeleton, not re-decoded here); `custom_op_header_scratch_space_val` byte offset (pybind-implied, zero-emitted); TensorCompletion `MemLoc+0x234` handle semantics; CustomOp `num_payloads`/`FunctionId`/`num_arguments` field semantics (cross-referenced to Part 11).
-- **INFERRED / DEFER**: the 48-byte ADDR4/ADDR8 AP internal packing ([2.2 ADDR8](tensor-descriptors.md), [2.21 DMA](dma-encoding.md)); the runtime completion-handle and scratch-window semantics (Part 11 / Part 13).
+- **INFERRED / DEFER**: the 48-byte ADDR4/ADDR8 AP internal packing ([2.3 ADDR8](tensor-descriptors.md), [2.21 DMA](dma-encoding.md)); the runtime completion-handle and scratch-window semantics (Part 11 / Part 13).
 
 The binary is authoritative for every offset cited. No SPECULATIVE claims.
 
@@ -425,7 +425,7 @@ The binary is authoritative for every offset cited. No SPECULATIVE claims.
 - [2.1 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the `pxor`-zero / `setupHeader` / `fwrite(0x40)` lifecycle.
 - [2.10 PE Matmul Encoding](pe-matmul-encoding.md) — sibling encoding page; the `setupHeader` body and bundle-lifecycle detail.
 - [2.21 DMA Encoding](dma-encoding.md) — the DGE sibling: where `_DGE_COMPUTE_OP {none=1, add=2}` (§1.2) is encoded on the descriptor, and the ADDR8 / sync skeleton.
-- [2.2 TENSOR Descriptors](tensor-descriptors.md), [2.3 ADDR4](addr4.md) — the `TENSOR2D`/`TENSOR3D`/`TENSOR4D` and ADDR4/ADDR8 access-pattern internals these encoders pack.
+- [2.3 TENSOR Descriptors](tensor-descriptors.md), [2.2 ADDR4](addr4.md) — the `TENSOR2D`/`TENSOR3D`/`TENSOR4D` and ADDR4/ADDR8 access-pattern internals these encoders pack.
 - [Part 8 — Walrus Passes](../walrus/) *(planned)* — `lower_local_collectives` (H23): how a local SendRecv becomes either `0xCB` or the `0xBF` GPSIMD mover.
 - [Part 11 — Custom Ops](../customop/) *(planned)* — the full CUSTOM_OP `0x85`/`0x86` wire byte-layout and the Xtensa CPU cluster.
 - [Part 13 — Distribution / Collectives](../distribution/) *(planned)* — the runtime collective engine, replica-group registry, and the NEFF send/recv-pairing metadata these encoders register.

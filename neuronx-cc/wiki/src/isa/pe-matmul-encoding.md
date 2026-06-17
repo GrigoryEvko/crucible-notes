@@ -423,7 +423,7 @@ The **only** bytes left as INFERRED/unnamed are the pxor-zeroed reserved padding
 
 - [1.08 The PE Engine](../arch/pe-engine.md) — the 128×128 systolic array these bundles drive; the engine this page encodes.
 - [2.1 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — Family A, the `setupHeader` skeleton shared by all nine opcodes.
-- [2.3–2.5 Tensor descriptors / ADDR4 / MEM_PATTERN](addr4.md) — the `+0x10`/`+0x30` access-pattern sub-bands and the ADDR4 atom every operand begins with.
+- [2.2–2.5 ADDR4 / Tensor descriptors / MEM_PATTERN](addr4.md) — the `+0x10`/`+0x30` access-pattern sub-bands and the ADDR4 atom every operand begins with.
 - [2.6 MXMEM_PATTERN1D — MX Operand Addressing](mxmem-pattern1d.md) — the full `assignAccessForMX` algorithm, the indirect `MXINDIRECT16B` triple, and `mxmem1d_valid`.
 - [1.05 Codename Taxonomy](../arch/codename-taxonomy.md) — the CoreV2=20 / V3=30 / V4=40 arch map and the `initCodegen` `std::variant` dispatch.
 - [6.8.7 NKI Sparse Format](../nki/) — the structured-sparsity tag tensor as the NKI frontend produces it.

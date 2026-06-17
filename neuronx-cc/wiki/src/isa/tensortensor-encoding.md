@@ -296,7 +296,7 @@ The const `0x0100` at `+0x0C` (`mov r9d,0x100 @0x1213f5e`) and flag `1` at `+0x0
 
 - [2.1 — The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — Family B (the 3-slot `+0x10..+0x3F` shape, control band squeezed into `+0x0C..+0x0F` *before* the slots); the shared lifecycle and `setupHeader` convention.
 - [2.10 — PE Matmul Encoding](pe-matmul-encoding.md) — the sibling Family-A encoding page; same lifecycle, same `setupHeader`/`assignAccess`/ISA-check skeleton.
-- [2.11 — Pool / TensorReduce / Reciprocal / Iota Encoding](pool-reduce-encoding.md) — the Family-C `+0x20..+0x2F` control band (TensorCopy and Memset share that 4-D band shape).
+- [2.12 — Pool / TensorReduce / Reciprocal / Iota Encoding](pool-reduce-encoding.md) — the Family-C `+0x20..+0x2F` control band (TensorCopy and Memset share that 4-D band shape).
 - [9.3 — CastToNewDType](../numerics/) — the dtype reinterpret/cast semantics behind the `0x46`/`0x47` and `0x72`/`0x99` cast-bit split and `getReinterpretedCopyDtype`.
 - Part 7 (`../bir/`) — codegen tensor-tensor (I06): the front-end pass that fixes `AluOpType` (`inst+0xF0`), the predicate/reduce op (`inst+0x140`) and the engine (`inst+0x90`) long before these encoders read them; and `lower_select`, which produces the `GenericCopy + CopyPredicated` pair.
 - [2.23 — ISA Enum Ordinals](isa-enum-ordinals.md) (planned) — the opcode-ordinal table that pins 65/81/138/142/234/114/153/232/70/71/73/77/178.

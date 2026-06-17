@@ -108,7 +108,7 @@ There are exactly **two** dynamic-offset asserts (index `+3`, data `+7`) and **n
 
 ### Purpose
 
-The 4-D sibling of `INDIRECT16B`. Identical *indirect payload*, identical fork, but the **static fallback** tail-calls `assignStaticPattern<TENSOR4D>` (the 20-byte 4-D pattern), so the slot is 20 bytes. A 4-free-dim AP routes here because one dim cannot be folded into the partition axis and spills to a fourth descriptor dim — exactly the `TENSOR4D` spill rule (see [tensor descriptors](tensor-descriptors.md), 2.1).
+The 4-D sibling of `INDIRECT16B`. Identical *indirect payload*, identical fork, but the **static fallback** tail-calls `assignStaticPattern<TENSOR4D>` (the 20-byte 4-D pattern), so the slot is 20 bytes. A 4-free-dim AP routes here because one dim cannot be folded into the partition axis and spills to a fourth descriptor dim — exactly the `TENSOR4D` spill rule (see [tensor descriptors](tensor-descriptors.md), 2.3).
 
 ### Algorithm
 
@@ -272,8 +272,8 @@ The indirect encoders are CoreV4-family (`assignAccess3D/4D` `0x150ccf0`/`0x150d
 ## Cross-References
 
 - [ADDR4 — the 32-Bit Address Word](addr4.md) (2.2) — the bit-29 indirect mode (`0x20`) the INDEX ADDR4 carries, and the `a4` data-vs-scale resolver fork the SCALE word uses; this page's `or [B+3],0x20` is the marker ADDR4 §"the mode nibble" pins as `0b01`.
-- [TENSOR1D / 2D / 3D Descriptors — the 4+4N Rule](tensor-descriptors.md) (2.1) — the `TENSOR3D`/`TENSOR4D` static patterns whose slot widths name the 16B/20B variants and whose static fill the non-indirect branch emits.
-- [MEM_PATTERN2D / 3D — the DST/PSUM Role](mempattern-2d-3d.md) (2.3) — the `MEM_PATTERN` family these indirect records are validated as.
+- [TENSOR1D / 2D / 3D Descriptors — the 4+4N Rule](tensor-descriptors.md) (2.3) — the `TENSOR3D`/`TENSOR4D` static patterns whose slot widths name the 16B/20B variants and whose static fill the non-indirect branch emits.
+- [MEM_PATTERN2D / 3D — the DST/PSUM Role](mempattern-2d-3d.md) (2.5) — the `MEM_PATTERN` family these indirect records are validated as.
 - *MXMEM_PATTERN1D — the MX twin* (2.6, planned) — the plain MX 1-D pattern (`data@+0` / `scale@+4` / `num@+8`) that `MXINDIRECT16B` shifts `+4` by inserting the INDEX ADDR4.
 - *Penguin middle-end — `TensorCopyDynamic`* (5.24, [Part 5](../penguin/)) — the dynamic-copy op that lowers to the indirect gather/scatter family.
 - *libwalrus backend — `lower_dynamic_dma` / DGE* (Part 8, [walrus](../walrus/)) — the DMA-indirect lowering and the data-gather-engine path the `MXINDIRECT16B` MoE gather feeds.

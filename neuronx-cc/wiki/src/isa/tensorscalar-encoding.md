@@ -310,7 +310,7 @@ CoreV4 byte_1DFBAD0: 03 02 10 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 0a 0b 01 0c
                            ^^ only index 2 differs
 ```
 
-> **QUIRK — the fp4 wire tag moved on CoreV4.** `float4_e2m1fn_x4` (BIR ordinal 2) is `0x05` on CoreV2 (`byte_1DF5760[2]`) but `0x10` on CoreV4 (`byte_1DFBAD0[2]`). Every other dtype tag is byte-identical. STT and the CoreV2 ops take the `0x05` tag; Exponential (CoreV4) takes `0x10`. The full ordinal→dtype name table (`0 uint8 … 19 int64`) is in [2.3 tensor descriptors](addr4.md) and matches the PE matmul page's dtype column.
+> **QUIRK — the fp4 wire tag moved on CoreV4.** `float4_e2m1fn_x4` (BIR ordinal 2) is `0x05` on CoreV2 (`byte_1DF5760[2]`) but `0x10` on CoreV4 (`byte_1DFBAD0[2]`). Every other dtype tag is byte-identical. STT and the CoreV2 ops take the `0x05` tag; Exponential (CoreV4) takes `0x10`. The full ordinal→dtype name table (`0 uint8 … 19 int64`) is in [2.3 tensor descriptors](tensor-descriptors.md) and matches the PE matmul page's dtype column.
 
 ### ALU op — `sub_12039C0` (CoreV2)
 
@@ -342,7 +342,7 @@ All three carry `op0 @+0xF0` / `op1 @+0x120` and the reverse 2-bit pack; they di
 
 BIR member offsets (`bir::InstTensorScalarPtr` / `…Cache` / `…Exponential`, pinned in the encoder disasm): Ptr/Cache — `op0 +0xF0`, `reverse0 +0xF8` (tag `+0x118`), `op1 +0x120`, `reverse1 +0x128` (tag `+0x148`), `apply_transpose +0x150` (tag `+0x170`), `is_tensor_scalar_addr +0x178`, `is_scalar_tensor_tensor +0x1A0` (tag `+0x1C0`); Ptr `acc +0x1F0`; Cache `TSCMode +0x150` + `acc +0x154`; Exponential `reduce_cmd +0xF0`, `engine +0x90`.
 
-> **NOTE — the AP-descriptor sub-byte packing is shared, not pinned here.** The internal layout of the `0x28..0x3F` (`TENSOR3D`/`TENSOR2D`/`MEM_PATTERN3D`) access-pattern descriptors is produced by the generic `assignAccess<…>` templates shared across every DVE op; it is byte-pinned by [2.3–2.5 tensor descriptors](addr4.md), not re-derived here (STRONG at the silicon level). The control-band bytes (`0x0C`, `0x20..0x2F`) are all CONFIRMED from clean `*(bundle+N)=` disassembly stores.
+> **NOTE — the AP-descriptor sub-byte packing is shared, not pinned here.** The internal layout of the `0x28..0x3F` (`TENSOR3D`/`TENSOR2D`/`MEM_PATTERN3D`) access-pattern descriptors is produced by the generic `assignAccess<…>` templates shared across every DVE op; it is byte-pinned by [2.3–2.5 tensor descriptors](tensor-descriptors.md), not re-derived here (STRONG at the silicon level). The control-band bytes (`0x0C`, `0x20..0x2F`) are all CONFIRMED from clean `*(bundle+N)=` disassembly stores.
 
 ---
 
@@ -356,7 +356,7 @@ Every control-band byte — opcode, `accumulator_cmd`/`reduce_cmd`, the `op0`/`o
 
 - [2.10 PE Matmul Encoding](pe-matmul-encoding.md) — the sibling encoding page; same field-table shape, the dtype wire-tag LUT (`byte_1DF5760`/`byte_1DFBAD0`) shared with this family, and the `assignAccess`/`setupHeader` bundle lifecycle.
 - [2.1 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — Family A, the `setupHeader` skeleton and the `CodeGenMode` arms shared by every encoder here.
-- [2.3–2.5 Tensor descriptors / ADDR4 / MEM_PATTERN](addr4.md) — the `0x28..0x3F` AP descriptors (`TENSOR3D`/`TENSOR2D`/`MEM_PATTERN3D`) and the dtype ordinal→name table.
+- [2.2–2.5 ADDR4 / Tensor descriptors / MEM_PATTERN](addr4.md) — the `0x28..0x3F` AP descriptors (`TENSOR3D`/`TENSOR2D`/`MEM_PATTERN3D`) and the dtype ordinal→name table.
 - [2.23 ISA Enum Ordinals](isa-enum-ordinals.md) — the full `AluOpType` ordinal table the `op0`/`op1` wire bytes resolve from, and the `EngineAccumulationType` / `TensorScalarReverseOps` / `TSCMode` enums.
 - [Part 7 — BIR Codegen Tensor-Scalar (I05) + AluOpType (7.7)](../bir/) — the upstream `InstTensorScalarPtr`/`InstTensorScalarCache`/`InstExponential` that feed these encoders, and the `AluOpType` definition.
 - [Build & Version Provenance](../reference/versions.md) — the single pinned build all addresses are read from.

@@ -264,7 +264,7 @@ Byte offsets within the 64-byte bundle. `dt` = dtype byte (`sub_120E650`); `AP` 
        (standalone)                           guards: no-TensorIndirect, num_elem[3]==1
  0x68  reg_load          in_dt out_dt active  +0x24(u16) gather-options/continuation flag;
        (gather half)                          +0x28(u32) vector_depth=0; +0x0C/+0x2C AP
- 0x67  pool_buffer_load  in_dt --    lane     +0x28 elem-cnt, +0x2C 0x1FF, +0x18 idx-AP  (2.16)
+ 0x67  pool_buffer_load  in_dt --    lane     +0x28 elem-cnt, +0x2C 0x1FF, +0x18 idx-AP  (2.10)
  0x7F  dropout           in_dt out_dt active  +0x23 threshold_imm_ptr, +0x24 thr_dtype,
                                               +0x2B rng_mode; +0x10/+0x30 TENSOR3D AP
  0xE7  indirect_copy     in_dt out_dt active  +0x0C index_addr, +0x0F bit5 ind-flag,
