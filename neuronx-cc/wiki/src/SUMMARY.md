@@ -123,6 +123,7 @@
 - [HLO → Native / NKI Kernel Lowering](hlo-opt/hlo-to-native-kernel-lowering.md)
 - [Neuron Op-Fusion — Dot, Elementwise, Transcendental Families](hlo-opt/op-fusion-dot-elementwise.md)
 - [MulRedSqrt / RMSNorm Fusion and FusionCluster CodeGen](hlo-opt/rmsnorm-fusion-cluster-codegen.md)
+- [NeuronInstCombine (MLIR reduce-slice-reduce simplify)](hlo-opt/neuron-instcombine-mlir.md)
 - [Schedule-Fusion & Fusion-to-Composite](hlo-opt/schedule-fusion-composite.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
