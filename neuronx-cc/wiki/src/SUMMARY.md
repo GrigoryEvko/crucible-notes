@@ -89,6 +89,7 @@
 # Part 4 — hlo-opt + hlo2penguin
 
 - [The hlo-opt Pass Registry (the --passes Table)](hlo-opt/pass-registry.md)
+- [HLO/mhlo/stablehlo Ingestion & the Stock-vs-Neuron Boundary](hlo-opt/hlo-ingestion-boundary.md)
 - [Collectives → Custom-Call Forward Conversion](hlo-opt/collectives-to-customcall.md)
 - [Collective Stream-ID & Channel-ID Family](hlo-opt/collective-stream-channel-id.md)
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](hlo-opt/collective-combiners.md)
