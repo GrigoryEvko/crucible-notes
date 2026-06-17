@@ -112,6 +112,7 @@
 - [HLO Misc & Cleanup Sweep](hlo-opt/hlo-misc-cleanup-sweep.md)
 - [Precision & Upcast Passes](hlo-opt/precision-upcast-passes.md)
 - [TopK Legalization](hlo-opt/topk-legalize.md)
+- [Intrinsics & Compare Legalization](hlo-opt/intrinsics-compare-legalize.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
