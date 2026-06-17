@@ -9,7 +9,7 @@ This page is the byte-level ABI companion to [the XU work-queue and worker page]
 
 There are two distinct ABIs in flight per execution, and conflating them is the central reimplementation hazard. The **host SPSC ABI** (`xu_queue_t` + `xuq_exec_info_t`) is a *userspace* contract: the producer writes a 32-byte slot carrying a `seq_id`, a status out-pointer, a completion eventfd, and an opaque work-item pointer; the consumer reads it. Nothing in this ABI ever touches the device. The **device request ABI** (`device_exec_request_t`) is the *opposite* end of the same execution: a 52-byte block of model-switch flags and ten per-engine instruction-block address words that the submit path DMA-copies into the sequencer's DMEM. The slot's `exec_info` pointer (`+0x18`) reaches a 208-byte `tpb_execution_info_t` work item that bridges them — it is what the worker dereferences to find the model, the resources, and the per-TPB completion-response area. This page lays out all three, the work item that ties them, and the producer-stages-then-consumer-reads sequence with its release/acquire pairing.
 
-The memory model is the load-bearing detail. Every cursor advance is a single `_InterlockedAdd64` (`LOCK XADD`, a full barrier on x86-64), and the discipline is "write the body, *then* publish the cursor" on the producer and "capture the body, *then* advance the cursor" on the consumer. The `device_exec_request_t` has its own publish boundary — the request body is `dmem_buf_copyin`'d to the device *before* the trigger descriptors that make the sequencer fetch it are appended to the ring. Get the ordering wrong on either ABI and a torn slot (host) or a stale request (device) escapes; this page calls out exactly which field is published last on each.
+The memory model is the detail that governs correctness. Every cursor advance is a single `_InterlockedAdd64` (`LOCK XADD`, a full barrier on x86-64), and the discipline is "write the body, *then* publish the cursor" on the producer and "capture the body, *then* advance the cursor" on the consumer. The `device_exec_request_t` has its own publish boundary — the request body is `dmem_buf_copyin`'d to the device *before* the trigger descriptors that make the sequencer fetch it are appended to the ring. Get the ordering wrong on either ABI and a torn slot (host) or a stale request (device) escapes; this page calls out exactly which field is published last on each.
 
 For reimplementation, the contract is:
 
@@ -234,7 +234,7 @@ This is the closest thing to a "completion entry struct" the worker fills — th
 
 ### Purpose
 
-A reimplementer arriving from a GPU command-queue background will look for a *completion ring* parallel to the submission ring — a separate descriptor the device or the worker writes to announce "seq N done." There is none on the host SPSC ABI. This section pins the actual completion record, because its absence is itself a load-bearing design fact: completion is encoded entirely in the consumer cursor and the eventfd write.
+A reimplementer arriving from a GPU command-queue background will look for a *completion ring* parallel to the submission ring — a separate descriptor the device or the worker writes to announce "seq N done." There is none on the host SPSC ABI. This section pins the actual completion record, because its absence is itself a defining design fact: completion is encoded entirely in the consumer cursor and the eventfd write.
 
 ### The completion record is the cursor
 
