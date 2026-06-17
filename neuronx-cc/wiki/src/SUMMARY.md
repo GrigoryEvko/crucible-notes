@@ -19,6 +19,8 @@
 - [The Arch Object Model (getArchModel → Board/Device/Core)](arch/arch-object-model.md)
 - [Per-Generation Hardware-Constant Matrix](arch/hardware-constant-matrix.md)
 - [SBUF / PSUM Bank Geometry](arch/sbuf-psum-geometry.md)
+- [Vestigial Generations — CoreV1 (Inferentia) & CoreV5](arch/vestigial-generations.md)
+- [DRAM / HBM Geometry & the DRAM Split](arch/dram-hbm-geometry.md)
 - [The multi-core (LNC) memory model](arch/lnc-memory-model.md)
 - [PE Engine — the Systolic Matmul Array](arch/pe-engine.md)
 - [Pool Engine — Windowed Pooling and the Reduce Leg](arch/pool-engine.md)
