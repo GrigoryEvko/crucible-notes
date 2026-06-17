@@ -65,6 +65,7 @@
 # Part 3 — Frontend, Driver & Diagnostics
 
 - [The Two-Parser Architecture](frontend/two-parser-architecture.md)
+- [Sub-Tool argv Construction & Replay](frontend/subtool-argv.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
