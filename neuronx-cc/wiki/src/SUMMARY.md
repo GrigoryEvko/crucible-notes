@@ -80,6 +80,7 @@
 - [Framework Bindings — JAX, PyTorch-XLA & Custom-Call Targets](frontend/framework-bindings.md)
 - [StaticIOTranspose & the io_transpose JSON Schema](frontend/static-io-transpose.md)
 - [Snapshot / Decomposed Input Format](frontend/snapshot-input-format.md)
+- [Python Logging Façade & Log-Level Mapping](frontend/python-logging-facade.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
