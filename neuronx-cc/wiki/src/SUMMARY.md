@@ -118,6 +118,7 @@
 - [INT8 Uniform-Quantize / Dequantize Legalization (golden-only)](hlo-opt/int8-quantize-legalization.md)
 - [MX-FP8 Microscaling Legalization](hlo-opt/mx-fp8-legalization.md)
 - [Calibration & Scale/Zero-Point Flow](hlo-opt/calibration-scale-flow.md)
+- [MLIR Dynamic-Shape Front-End & the Bucketing Non-Mechanism](hlo-opt/mlir-dynamic-shape-frontend.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
