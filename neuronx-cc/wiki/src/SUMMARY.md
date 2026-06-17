@@ -51,6 +51,7 @@
 - [TensorTensor / Copy / Cast / Select / Memset / MoveShape Encoding](isa/tensortensor-encoding.md)
 - [DVE Search & Datamove Encoding — Max8 / FindIndex8 / MatchReplace / Nonzero](isa/dve-search-encoding.md)
 - [RNG-Family Encoding](isa/rng-encoding.md)
+- [SP Sync / Branch / Control Encoding](isa/sp-sync-encoding.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
