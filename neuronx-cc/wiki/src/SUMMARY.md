@@ -88,6 +88,7 @@
 
 # Part 4 — hlo-opt + hlo2penguin
 
+- [The hlo-opt Pass Registry (the --passes Table)](hlo-opt/pass-registry.md)
 - [Collectives → Custom-Call Forward Conversion](hlo-opt/collectives-to-customcall.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
