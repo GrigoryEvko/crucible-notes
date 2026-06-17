@@ -121,6 +121,8 @@
 - [MLIR Dynamic-Shape Front-End & the Bucketing Non-Mechanism](hlo-opt/mlir-dynamic-shape-frontend.md)
 - [hlo2penguin MLIR Pipeline Order & Entry Flow](hlo-opt/hlo2penguin-mlir-pipeline.md)
 - [HLO → Native / NKI Kernel Lowering](hlo-opt/hlo-to-native-kernel-lowering.md)
+- [Neuron Op-Fusion — Dot, Elementwise, Transcendental Families](hlo-opt/op-fusion-dot-elementwise.md)
+- [MulRedSqrt / RMSNorm Fusion and FusionCluster CodeGen](hlo-opt/rmsnorm-fusion-cluster-codegen.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
