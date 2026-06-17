@@ -149,7 +149,7 @@ The probe maps up to three BARs into the per-device `struct neuron_pci_device` t
 | `bar2` | AXI | `ndhal_pci.axi_bar` | `BAR_UNUSED(-1)` | `BAR_UNUSED(-1)` | `BAR_UNUSED(-1)` |
 | `bar4` | DRAM/HBM window | `ndhal_pci.dram_bar` | 4 | 4 | 4 (inherits V3) |
 
-`BAR_UNUSED = -1` (`neuron_pci.h:13`). The arch BAR-index values live in the DHAL register functions (`v2/neuron_dhal_v2.c:1433-1434`, `v3/neuron_dhal_v3.c:1925-1927`; V4 inherits V3's BAR base and overrides only the device-id read) and are BOUNDARY to this cell — recorded, not owned (see [dhal-core](dhal-core.md)). **(BAR index values: MED** — read from DHAL boundary files.**)**
+`BAR_UNUSED = -1` (`neuron_pci.h:13`). The arch BAR-index values live in the DHAL register functions (`v2/neuron_dhal_v2.c:1433-1434`, `v3/neuron_dhal_v3.c:1925-1927`; V4 inherits V3's BAR base and overrides ~8+1 slots: device-id read, platform type, NPE/mpset/mmap/cdev/perf hooks, `v4/neuron_dhal_v4.c:438-445`) and are BOUNDARY to this cell — recorded, not owned (see [dhal-core](dhal-core.md)). **(BAR index values: MED** — read from DHAL boundary files.**)**
 
 > **QUIRK —** the AXI BAR (`bar2`) is `BAR_UNUSED` on **every** shipping arch, so `neuron_pci_reserve_bar`/`set_npdev`/`release_bar` short-circuit to no-ops (`:249-251, :291-293, :344-346`) and `nd->npdev.bar2` stays `NULL`. `fw_io_setup` is still handed `bar2`/`bar2_size` (both zero/NULL, `:425-426`) — FWIO drives off the APB window (`bar0`) alone. A reimplementer wiring the FWIO context must not assume `bar2` is mapped.
 

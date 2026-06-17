@@ -26,12 +26,14 @@ For reimplementation, the contract is:
 | **Reader acquire / release** | `ncrwl_reader_enter` (`:41`) / `ncrwl_reader_exit` (`:78`) |
 | **Writer acquire / downgrade** | `ncrwl_writer_enter` (`:105`) / `ncrwl_writer_downgrade` (`:154`) |
 | **UUID gate** | `ncrwl_validate_uuid` (`:23`) — `memcmp` UUID + `writer_pid == tgid`, else `-ENOENT` |
-| **Reader cap** | `NEURON_CRWL_READER_MAX_RETRY = 50 * 1000` (`:20`) → `~500 ms` |
-| **Writer cap** | `NEURON_CRWL_WRITER_MAX_RETRY = 200 * 1000` (`:21`) → `~2 s` |
-| **Spin sleep** | `usleep_range(NEURON_CRWL_SLEEP_MIN=10, NEURON_CRWL_SLEEP_MAX=20)` µs (`:16-17`) |
+| **Reader cap** | `NEURON_CRWL_READER_MAX_RETRY = 50 * 1000` (`neuron_crwl.c:20`) → `~500 ms` |
+| **Writer cap** | `NEURON_CRWL_WRITER_MAX_RETRY = 200 * 1000` (`neuron_crwl.c:21`) → `~2 s` |
+| **Spin sleep** | `usleep_range(NEURON_CRWL_SLEEP_MIN=10, NEURON_CRWL_SLEEP_MAX=20)` µs (`neuron_crwl.c:16-17`) |
 | **Forced release** | `ncrwl_release_current_process` (`:267`) on process exit — no preemptive steal |
 | **ioctl entry** | cmds 81–84 (`reader_enter`/`exit`, `writer_enter`/`downgrade`), `neuron_ioctl.h:762-765` |
 | **Confidence** | HIGH — both files read in full; counters, transitions, caps, error codes verbatim. Byte offsets MED (declaration order only) |
+
+> **NOTE (cite convention) —** a **bare** `:NN` citation on this page points into **`neuron_crwl.c`** (the implementation: function bodies, the `usleep_range` spin, and the four retry/sleep `#define`s at `neuron_crwl.c:16-21`). Only `struct neuron_crwl` itself and the `volatile` qualifiers live in the **header** — those are cited explicitly as `neuron_crwl.h:14-22` (struct) and `neuron_crwl.h:18,21` (the `writer_acquired`/`reader_count` qualifiers). The caps/sleep `#define`s are *not* in the header despite sitting next to the struct cite in the table above.
 
 ---
 

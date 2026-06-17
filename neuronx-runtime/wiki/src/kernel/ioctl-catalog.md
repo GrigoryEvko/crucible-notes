@@ -141,13 +141,15 @@ Notification-queue init (V1 deprecated, V2, V2-with-realloc) plus the multiplexe
 | `NOTIFICATIONS_INIT_V1` | 51 (`:747`) | R | `notifications_init_v1` * / 24 | `ncdev_nc_nq_init_deprecated` `:1996` (`:3332`) | (legacy) | PID | `_V2`, `_REALLOC_V2` | HIGH |
 | `NOTIFICATIONS_DESTROY_V1` | 52 (`:748`) | R | `notifications_destroy` * / 8 | inline `return 0` (`:3338`) | `ndl_notification_destroy` `@0xc40d0` (munmap) | none | — | HIGH |
 | `NOTIFICATIONS_INIT_V2` | 53 (`:749`) | R | `notifications_init_v2` * / 48 | `ncdev_nc_nq_init_libnrt` `:2014` (`:3334`) | `ndl_notification_init` `@0xc3ce0` | PID | `_V1`, `_REALLOC_V2` | HIGH |
-| `NOTIFICATIONS_INIT_WITH_REALLOC_V2` | 54 (`:750`) | R | `notifications_init_with_realloc_v2` * / 52 | `ncdev_nc_nq_init_with_realloc_libnrt` `:2045` (`:3336`) | `ndl_notification_init_with_realloc` `@0xc3ea0` | PID | `_V1`, `_V2` | HIGH |
+| `NOTIFICATIONS_INIT_WITH_REALLOC_V2` | 54 (`:750`) | R | `notifications_init_with_realloc_v2` * / 56 | `ncdev_nc_nq_init_with_realloc_libnrt` `:2045` (`:3336`) | `ndl_notification_init_with_realloc` `@0xc3ea0` | PID | `_V1`, `_V2` | HIGH |
 | `NOTIFICATIONS_QUEUE_INFO` | 58 (`:752`) | R | `notifications_queue_info` * / 12 | inline `return -1` (`:3340`, stub) | (none) | none | — | HIGH |
-| `READ_HW_COUNTERS` | 61 (`:755`) | R | `read_hw_counters` * / 20 | `ncdev_read_hw_counters` `:1694` (`:3342`) | `ndl_read_hw_counters` `@0xc3630` | none | — | HIGH |
+| `READ_HW_COUNTERS` | 61 (`:755`) | R | `read_hw_counters` * / 24 | `ncdev_read_hw_counters` `:1694` (`:3342`) | `ndl_read_hw_counters` `@0xc3630` | none | — | HIGH |
 
 > **NOTE —** the `EVENT_SET`/`EVENT_GET` macros are encoded against `struct neuron_ioctl_semaphore *` (`:742-743`) but the handler `copy_from_user`s into `struct neuron_ioctl_event` (`:1462`). The two are layout-identical (`3 × __u32`), so the wire form matches; the handler simply uses a clearer struct name. `SEMAPHORE_READ`/`EVENT_GET` are `_IOWR` (they read a value back); `INCREMENT`/`DECREMENT`/`WRITE`/`SET` and the NQ-init + `READ_HW_COUNTERS` are encoded `_IOR` despite writing back via explicit `copy_to_user` — the driver dispatches on the full `cmd`, not `_IOC_DIR`.
 
 > **GOTCHA —** `NOTIFICATIONS_QUEUE_INFO` (`nr 58`) returns a raw `-1` (`:3340`), which surfaces to userspace as `-EPERM`, not `-ENOSYS` — a reimplementer probing for "unsupported" on this command sees a permission error, not an unimplemented one. `NOTIFICATIONS_DESTROY_V1` (`nr 52`) is an inline `return 0`: NQ teardown is implicit on reset/flush, and `libnrt`'s `ndl_notification_destroy` does the userspace `munmap` of the ring rather than relying on a kernel destroy.
+
+> **CORRECTION (nq/counter `sizeof`) —** the **size** column for `NOTIFICATIONS_INIT_WITH_REALLOC_V2` and `READ_HW_COUNTERS` previously read 52 and 20; those were the *unpadded field sums*. The true `sizeof` on LP64 is **56** and **24** (verified `gcc -m64`): the realloc struct is 9 × `__u32` (36) + 4 pad + 2 × `__u64` (16) = 56 (`neuron_ioctl.h:366-378`), where the trailing `__u64 mmap_offset` forces 8-byte alignment after the odd ninth `__u32 force_alloc_mem`; `read_hw_counters` is `__u64 *` + `__u32 *` + `__u32 count` + 4 pad = 24 (`:405-409`). The handler `copy_from_user`s `sizeof(arg)` (the padded value), so the *kernel* reads 56/24. See [ioctl-nq §correction](ioctl-nq.md), which already documented this and flagged the catalog.
 
 ---
 
@@ -185,13 +187,13 @@ Device info, version negotiation, BDF, topology discovery, CRWL core reservation
 | `POST_METRIC` | 13 (`:678`) | W | `post_metric` * / 8 | `ncdev_post_metric` `:1657` (`:3328`) | (metrics layer) | PID | — | HIGH |
 | `ACQUIRE_NEURON_DS` | 71 (`:758`) | R | `neuron_ds_info` * / 8 | `ncdev_acquire_neuron_ds` `:2076` (`:3344`) | `ndl_nds_open` `@0xc4110` | none | — | HIGH |
 | `RELEASE_NEURON_DS` | 72 (`:759`) | R | `neuron_ds_info` * / 8 | `ncdev_release_neuron_ds` `:2098` (`:3346`) | `ndl_nds_close` `@0xc41b0` | none | — | HIGH |
-| `CRWL_READER_ENTER` | 81 (`:762`) | W | `crwl` * / 8 | `ncdev_crwl_reader_enter` `:2109` (`:3348`) | `ndl_crwl_reader_enter` `@0xc4200` | none | — | HIGH |
-| `CRWL_READER_EXIT` | 82 (`:763`) | W | `crwl` * / 8 | `ncdev_crwl_reader_exit` `:2121` (`:3350`) | `ndl_crwl_reader_exit` `@0xc4240` | none | — | HIGH |
-| `CRWL_WRITER_ENTER` | 83 (`:764`) | W | `crwl` * / 8 | `ncdev_crwl_writer_enter` `:2133` (`:3352`) | `ndl_crwl_writer_enter` `@0xc4280` | none | — | HIGH |
-| `CRWL_WRITER_DOWNGRADE` | 84 (`:765`) | W | `crwl` * / 8 | `ncdev_crwl_writer_downgrade` `:2145` (`:3354`) | `ndl_crwl_writer_downgrade` `@0xc42c0` | none | — | HIGH |
-| `CRWL_NC_RANGE_MARK` | 85 (`:766`) | W | `crwl_nc_map` * / 8 | `ncdev_crwl_nc_range_mark` `:2163` (misc `:3148`) | `ndl_crwl_nc_range_mark` `@0xc4300` | **FA** | `_EXT0` | HIGH |
+| `CRWL_READER_ENTER` | 81 (`:762`) | W | `crwl` * / 36 | `ncdev_crwl_reader_enter` `:2109` (`:3348`) | `ndl_crwl_reader_enter` `@0xc4200` | none | — | HIGH |
+| `CRWL_READER_EXIT` | 82 (`:763`) | W | `crwl` * / 36 | `ncdev_crwl_reader_exit` `:2121` (`:3350`) | `ndl_crwl_reader_exit` `@0xc4240` | none | — | HIGH |
+| `CRWL_WRITER_ENTER` | 83 (`:764`) | W | `crwl` * / 36 | `ncdev_crwl_writer_enter` `:2133` (`:3352`) | `ndl_crwl_writer_enter` `@0xc4280` | none | — | HIGH |
+| `CRWL_WRITER_DOWNGRADE` | 84 (`:765`) | W | `crwl` * / 36 | `ncdev_crwl_writer_downgrade` `:2145` (`:3354`) | `ndl_crwl_writer_downgrade` `@0xc42c0` | none | — | HIGH |
+| `CRWL_NC_RANGE_MARK` | 85 (`:766`) | W | `crwl_nc_map` * / 24 | `ncdev_crwl_nc_range_mark` `:2163` (misc `:3148`) | `ndl_crwl_nc_range_mark` `@0xc4300` | **FA** | `_EXT0` | HIGH |
 | `CRWL_NC_RANGE_MARK_EXT0` | 85 (`:767`) | RW | `crwl_nc_map_ext` / 80 | `ncdev_crwl_nc_range_mark` `:2163` (misc `:3148`) | `ndl_crwl_nc_range_mark` `@0xc4300` | **FA** | `MARK` | HIGH |
-| `CRWL_NC_RANGE_UNMARK` | 86 (`:768`) | W | `crwl_nc_map` * / 8 | `ncdev_crwl_nc_range_unmark` `:2220` (misc `:3150`) | `ndl_crwl_nc_range_unmark` `@0xc4420` | **FA** | `_EXT0` | HIGH |
+| `CRWL_NC_RANGE_UNMARK` | 86 (`:768`) | W | `crwl_nc_map` * / 24 | `ncdev_crwl_nc_range_unmark` `:2220` (misc `:3150`) | `ndl_crwl_nc_range_unmark` `@0xc4420` | **FA** | `_EXT0` | HIGH |
 | `CRWL_NC_RANGE_UNMARK_EXT0` | 86 (`:769`) | W | `crwl_nc_map_ext` / 80 | `ncdev_crwl_nc_range_unmark` `:2220` (misc `:3150`) | `ndl_crwl_nc_range_unmark` `@0xc4420` | **FA** | `UNMARK` | HIGH |
 | `CINIT_SET_STATE` | 91 (`:772`) | W | `cinit_set` * / 8 | `ncdev_cinit_set_state` `:2256` (`:3243`) | `ndl_nc_init_set_state` `@0xc4900` | none | — | HIGH |
 | `NC_MODEL_STARTED_COUNT` | 92 (`:773`) | W | `nc_model_started_count` * / 8 | `ncdev_nc_model_started_count` `:2273` (`:3245`) | `ndl_nc_model_started_count` `@0xc4940` | none | — | HIGH |
@@ -223,6 +225,8 @@ Device info, version negotiation, BDF, topology discovery, CRWL core reservation
 > **NOTE —** `DRIVER_INFO` (`nr 110`) is the lone command keyed on `_IOC_DIR`. `GET` (`_IOR`, `:816`) is dispatched in the misc lane by `_IOC_NR` (`:3163`) and so is reachable free-access; `SET` (`_IOW`, `:817`) is in the attach allow-list (`:3218`) on the main path, but `ncdev_driver_info` returns `-ENOTSUPP` for the write direction (`:1902-1903`) — so `SET` is effectively unimplemented regardless of lane. The `†` on the gate marks this dir-demux: a `SET`-form `cmd` arriving on a free-access fd reaches `ncdev_driver_info` by `_IOC_NR` and is rejected by `_IOC_DIR`. The `GET` response advertises `feature_flags1 = 0x1FF` (all nine capability bits, `:1912-1916`) with `version = 0`.
 
 > **GOTCHA —** the `FA` rows in this family are the free-access lane's full membership: `CRWL_NC_RANGE_MARK`/`UNMARK` (+`_EXT0`), `COMPATIBLE_VERSION`, `DEVICE_BASIC_INFO`, `DEVICE_BDF_EXT`, `DMABUF_FD` (mem family), `DRIVER_INFO_GET`, `PRINTK`, `HOST_DEVICE_ID_TO_RID_MAP`, `NC_PID_STATE_DUMP`, `GET_LOGICAL_TO_PHYSICAL_NC_MAP`, `POD_INFO`/`STATUS`/`CTRL` (pod family), `GET_VA_PLACEMENT`. Most are read-only topology/info, but `CRWL_NC_RANGE_MARK`/`UNMARK` mutate the device-spanning core-reservation map and `PRINTK` carries the size-0 OOB stack-read bug (finding S1). A reimplementation that treats "`O_WRONLY` ⇒ harmless query" is wrong — see [attack-surface §1](../security/ioctl-attack-surface.md#1-at-a-glance--the-gate-lanes-that-make-findings-reachable).
+
+> **CORRECTION (crwl `sizeof`) —** the **size** column for the four `CRWL_{READER,WRITER}_*` rows and the two `CRWL_NC_RANGE_{MARK,UNMARK}` rows previously read 8 (the pointer-form encoded `_IOC_SIZE`), which violates this page's convention (§"Reading a row": the **size** column reports the *struct* `sizeof`). The pointed-to structs are **36** and **24** (verified `gcc -m64`): `struct neuron_ioctl_crwl { __u32 nc_id; struct neuron_uuid uuid; }` = 4 + 32 = 36 (`neuron_ioctl.h:411-414`, `neuron_uuid = __u8[32]` at `share/neuron_driver_shared.h:150-152`); `struct neuron_ioctl_crwl_nc_map` = 4 × `__u32` (16) + `volatile long unsigned int bitmap` (8) = 24 (`:416-422`). The `_EXT0` row's 80 (= 4 × `__u32` + `long unsigned int bitmap[8]`, `:424-430`) was already struct-form and is unchanged.
 
 ---
 

@@ -182,7 +182,7 @@ Every command **not** in this list runs un-PID-gated on a non-free-access fd. No
 The single most important interaction on this page is between Gate 2's *exact-cmd* tests and the dispatcher's *`_IOC_NR`* matching for struct-version families. The attach sub-gate at `:3210-3219` lists base commands by **exact full value**:
 
 ```c
-if (... cmd == NEURON_IOCTL_MEM_COPY              // :3214   = 0x801C4E17 (size 28)
+if (... cmd == NEURON_IOCTL_MEM_COPY              // :3214   = 0x80084E17 (ptr-form, _IOC_SIZE 8)
        cmd == NEURON_IOCTL_MEM_COPY_ASYNC         // :3215   (base async)
        cmd == NEURON_IOCTL_DMA_COPY_DESCRIPTORS   // :3212   (base) ...) {
     if (!npid_is_attached(nd)) return -EACCES;    // :3220-3224
@@ -211,7 +211,9 @@ Two genuinely distinct full commands share the same `nr`. There are two live cas
 
 Same `nr`, same direction, two or three differently-sized structs. The dispatcher matches by `_IOC_NR(cmd) == _IOC_NR(BASE)` and the handler re-disambiguates. Two handler idioms exist.
 
-**Idiom 1 — exact `cmd ==` (size is folded into the constant).** `ncdev_mem_copy` (`:761`) is the canonical example. The two macros `MEM_COPY` (`:686`) and `MEM_COPY64` (`:687`) share `nr = 23` but differ in `_IOC_SIZE` (28 vs 40 bytes), so an exact compare against each constant works:
+**Idiom 1 — exact `cmd ==` (size is folded into the constant).** `ncdev_mem_copy` (`:761`) is the canonical example. The two macros `MEM_COPY` (`:686`) and `MEM_COPY64` (`:687`) share `nr = 23` but differ in `_IOC_SIZE` — `MEM_COPY` is pointer-form so it encodes `8`, `MEM_COPY64` is struct-form so it encodes `40` (the *struct* the handler then copies is 28 vs 40 bytes) — so an exact compare against each constant works:
+
+> **CORRECTION (`_IOC_SIZE` vs struct size) —** an earlier draft said the two macros "differ in `_IOC_SIZE` (28 vs 40 bytes)". The 28 is the `sizeof(struct neuron_ioctl_mem_copy)` (8+8+4+4+4, `neuron_ioctl.h:114-120`) that the handler `copy_from_user`s, **not** the encoded `_IOC_SIZE`: `MEM_COPY` is `_IOR(BASE, 23, struct neuron_ioctl_mem_copy *)` (pointer-form, `:686`), so its encoded `_IOC_SIZE = sizeof(void*) = 8` and `cmd = 0x80084E17` — consistent with this page's "ptr-form ⇒ `_IOC_SIZE = 8`" rule (§at-a-glance, intro). `MEM_COPY64` is struct-form (`:687`), encoding `_IOC_SIZE = 40` and `cmd = 0x80284E17`. The exact-`cmd ==` compare works because the two `cmd` constants differ in their `_IOC_SIZE` field (`8` vs `40`); it is this difference — not the 28-byte struct size — that the `static_assert` at `:763` and the `*64` sub-gate slip both turn on.
 
 ```c
 function ncdev_mem_copy(nd, cmd, param):                  // neuron_cdev.c:761

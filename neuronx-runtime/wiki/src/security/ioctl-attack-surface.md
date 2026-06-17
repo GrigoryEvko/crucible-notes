@@ -157,6 +157,8 @@ ret = ncdev_ncid_valid(arg.nc_id); if (ret) return ret;     // mirror neuron_cde
 
 Independently, `nc_get_event_addr_v{2,3}` should clamp `event_index`/`nc_id` defensively.
 
+> **CORRECTION (event-index `__u32`→`u16` truncation) — HIGH GOTCHA —** this page previously called out only the `nc_id` narrowing on the NQ-engine boundary; there is a *second* silent narrowing on the very same handler. `struct neuron_ioctl_event.event_index` is `__u32` (`neuron_ioctl.h:341`), but `ncdev_events_ioctl` (`neuron_cdev.c:1457-1476`) passes it straight into `nc_event_get`/`nc_event_set`, whose `event_index` parameter is `u16` (`neuron_core.h:70,82`). The upper 16 bits are dropped at the call (`:1468`/`:1473`) with no error — a userspace `event_index` of `0x0001_0000` aliases index `0`, and any value `≥ 0x1_0000` wraps mod 65536. So an attacker cannot reach indices beyond `0..0xFFFF`, but the truncation is *silent* (no `-EINVAL`), which both masks out-of-range inputs and lets a high `event_index` collide with a low one — a correctness hazard for any reimplementer who widens the wrapper to `u32` expecting the old aliasing, or who relies on the driver to reject oversized indices. Pair the `ncdev_ncid_valid` fix above with an explicit `event_index <= U16_MAX` (or per-arch event-count) range check before the call.
+
 ---
 
 ## 5. S3 — `*64` Size-Overload Skips the Attach Sub-Gate

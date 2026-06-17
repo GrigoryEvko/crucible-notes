@@ -19,7 +19,7 @@ For reimplementation, the map-level contract is:
 
 | | |
 |---|---|
-| **Module object / driver node** | `neuron.ko` (`/sys/module/neuron`) — driver `"neuron-driver"` (`neuron_pci.c:536`) |
+| **Module object / driver node** | `neuron.ko` (`/sys/module/neuron`) — driver `"neuron-driver"` (`neuron_pci.c:536-537`) |
 | **Module entry / exit** | `neuron_module_init` (`neuron_module.c:59`) / `neuron_module_exit` (`:90`) |
 | **PCI bind / unbind** | `neuron_pci_probe` (`neuron_pci.c:352`) / `neuron_pci_remove` (`:497`) |
 | **Char-device fops** | `ncdev_fops` (`neuron_cdev.c:3540-3547`) — `open/flush/release/unlocked_ioctl/mmap` only |
@@ -67,7 +67,7 @@ neuron-driver (neuron.ko)  — aws-neuronx-dkms 2.27.4.0, GPL-2.0
 │   neuron_arch.c     narch_init first-wins arch latch
 │   v2/neuron_dhal_v2.c   Trn1 / Inf2 register maps + callbacks
 │   v3/neuron_dhal_v3.c   Trn2
-│   v4/neuron_dhal_v4.c   Trn3 (inherits v3 BAR base, overrides device-id)
+│   v4/neuron_dhal_v4.c   Trn3 (inherits v3 BAR base, overrides ~8+1 slots: device-id, platform, NPE/mpset/mmap/cdev/perf)
 │
 ├─ NOTIFICATION / SYNC ──────────────────────────────────── notification-queues.md, topsp.md
 │   neuron_nq.c       arch-neutral NQ ring engine (nq_mc[][] store)
@@ -92,7 +92,7 @@ neuron-driver (neuron.ko)  — aws-neuronx-dkms 2.27.4.0, GPL-2.0
     neuron_trace.h    CREATE_TRACE_POINTS owner (neuron_module.c)
 ```
 
-> **NOTE —** the module *object* name and the *driver* name differ: `Kbuild` builds `neuron.o` so the module is `/sys/module/neuron`, but `struct pci_driver.name = "neuron-driver"` (`neuron_pci.c:536`), so the sysfs driver node is `/sys/bus/pci/drivers/neuron-driver`. A reimplementer wiring udev or sysfs scripts must use the right one for the right path.
+> **NOTE —** the module *object* name and the *driver* name differ: `Kbuild` builds `neuron.o` so the module is `/sys/module/neuron`, but `struct pci_driver.name = "neuron-driver"` (`neuron_pci.c:537`, struct opens `:536`), so the sysfs driver node is `/sys/bus/pci/drivers/neuron-driver`. A reimplementer wiring udev or sysfs scripts must use the right one for the right path.
 
 ### 1.1 Device identity and the registry
 
@@ -194,7 +194,7 @@ The model has one headline correctness slip a reimplementer must know about: the
 
 ## 4. The DHAL boundary
 
-Every hardware-generation difference — BAR indices, register offsets, NQ/TopSP geometry, device-id reads, reset sequencing, pod election — is hidden behind one global vtable-of-vtables, `ndhal` (`neuron_dhal.{c,h}`). The arch-neutral `.c` files never branch on chip generation; they call through `ndhal->ndhal_<subsystem>.<method>(...)`. `neuron_dhal_init` runs **once** for the whole module (guarded by `ndhal != NULL`, `neuron_dhal.c:14-16`), populating the vtable from the latched architecture's `register_funcs` (V2 = Trn1/Inf2, V3 = Trn2, V4 = Trn3, which inherits V3's BAR base and overrides only the device-id read, `v4/neuron_dhal_v4.c:439`). This is why mixed-architecture hosts are unsupported: the first probed device's `narch_init` wins (`neuron_arch.c:36-37`) and the single global `ndhal` is shared by every later device.
+Every hardware-generation difference — BAR indices, register offsets, NQ/TopSP geometry, device-id reads, reset sequencing, pod election — is hidden behind one global vtable-of-vtables, `ndhal` (`neuron_dhal.{c,h}`). The arch-neutral `.c` files never branch on chip generation; they call through `ndhal->ndhal_<subsystem>.<method>(...)`. `neuron_dhal_init` runs **once** for the whole module (guarded by `ndhal != NULL`, `neuron_dhal.c:14-16`), populating the vtable from the latched architecture's `register_funcs` (V2 = Trn1/Inf2, V3 = Trn2, V4 = Trn3, which inherits V3's BAR base and overrides ~8+1 slots (device-id read, platform type, NPE/mpset/mmap/cdev/perf hooks), `v4/neuron_dhal_v4.c:438-445`). This is why mixed-architecture hosts are unsupported: the first probed device's `narch_init` wins (`neuron_arch.c:36-37`) and the single global `ndhal` is shared by every later device.
 
 The sub-vtables a reimplementer meets across the Part III pages: `ndhal_pci` (BAR indices + routing-id reads, [pci-probe](pci-probe.md)), `ndhal_address_map` (`nc_per_device` and BAR/NQ offset arithmetic), `ndhal_nq` / `ndhal_topsp` (NQ register writers, [notification-queues](notification-queues.md), [topsp](topsp.md)), `ndhal_ndmar` (DMA ring geometry, [dma-rings](dma-rings.md)), `ndhal_npe` (pod election + sysfs class shows, [pod-election](pod-election.md)), and the reset/cleanup hooks (`ndhal_ext_cleanup`, [reset](reset.md)). The vtable structure, the one-time-init guard, and the per-arch `register_funcs` dispatch are owned by [dhal-core](dhal-core.md); the three concrete implementations are [dhal-v2](dhal-v2.md) / [dhal-v3](dhal-v3.md) / [dhal-v4](dhal-v4.md).
 
