@@ -70,6 +70,7 @@
 - [CompileCommand Pipeline & the Canonical Job Order](frontend/compilecommand-pipeline.md)
 - [JobRegistry & the Sub-Tool Process Model](frontend/job-registry.md)
 - [CompileCommand Flag Catalog — the 147-Flag Surface](frontend/flag-catalog.md)
+- [The Opt-Level Planes — -O0..-O3 and the Three Hidden Dials](frontend/opt-level-planes.md)
 - [hlo2penguin Entry & the Native cl::opt Surface](frontend/hlo2penguin-entry.md)
 - [Flag Visibility Taxonomy (ArgKind)](frontend/flag-visibility-argkind.md)
 - [walrus_driver Backend CLI & Pass Vocabulary](frontend/walrus-driver-cli.md)
