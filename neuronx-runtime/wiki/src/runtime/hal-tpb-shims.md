@@ -14,7 +14,7 @@ Two facts repay reading before the tables. First, the layer is **not** uniformly
 For reimplementation, the contract is:
 
 - **The canonical trampoline** — `assert(arch != INVALID); fp = kaena_khal[slot]; if(!fp) {assert | return 0}; return fp(args)`, emitted as a 6-step machine idiom (`push %rbx; mov %rdi,%rbx; call al_hal_tpb_get_arch_type; lea kaena_khal; mov 0xNNN(%rax); test; jmp *%rax`). The arch assert is the *only* validation in a pure trampoline; everything else is the backend's job.
-- **The `kaena_khal` slot map** — the byte offset each shim indexes (SP block `+0x6D8..+0x748`; STPB-ACT `+0x200..+0x2E0`; DVE `+0x1F8`,`+0x208`,`+0x280..+0x2B0`; PE `+0x2E8..+0x328`; Pooling `+0x330..+0x388`), and the three registrars that fill them per generation. Slot offset = `symbol_addr − 0xCAEB80`.
+- **The `kaena_khal` slot map** — the byte offset each shim indexes (SP block `+0x6D8..+0x748`; STPB-ACT `+0x200..+0x2E0`; DVE `+0x1F8`,`+0x208`,`+0x280..+0x2B0`; PE `+0x2E8..+0x328`; Pooling `+0x330..+0x388`), and the three registrars that fill them per generation. Slot offset = `slot_vma − 0xCAEB80`, i.e. the `.bss` slot address the shim's `mov rax,[kaena_khal+disp]` loads — equivalently the `disp` displacement itself (**not** the shim's own `.text` symbol address).
 - **The two NULL-slot policies** — DVE = fatal assert (`"kaena_khal.khal_stpb.dve_<x>"`); PE / Pooling / SP-style = no-op `return 0`. The split encodes a per-silicon capability matrix: PE/Pooling backends are legitimately absent on some generations; DVE backends never are.
 - **The real (non-vtable) bodies** — `aws_hal_stpb_init`, `aws_hal_sp_init`, `program_start`, `check_run_state`, `get_axi_offset`, `stochastic_rounding_config/_enable`, and the four notification-enable functions are straight-line CSR/notific code, **not** trampolines, and must be reimplemented directly rather than dispatched.
 
@@ -71,7 +71,7 @@ function aws_hal_stpb_<engine>_<op>(handle, args...):       // shim @0x45bNNN
         __assert_fail("al_hal_tpb_get_arch_type() != AL_HAL_TPB_ARCH_TYPE_INVALID",
                       ".../tpb/aws_hal_stpb_<tu>.c", <line>, __PRETTY_FUNCTION__)
 
-    fp = *(void**)(&kaena_khal + SLOT)                     // SLOT = symbol_addr - 0xCAEB80, e.g. +0x208
+    fp = *(void**)(&kaena_khal + SLOT)                     // SLOT = slot_vma - 0xCAEB80 = the mov disp, e.g. +0x208
 
     if fp == NULL:
         // --- POLICY DIVERGES HERE ---
@@ -168,7 +168,7 @@ function aws_hal_sp_topsp_init(a1, a2, a3, a4):
 
 ### Function Map — the SP/TopSP shim → slot table
 
-The 15 SP trampolines, each pinned to its `kaena_khal` slot. Slot offset is `symbol_addr − 0xCAEB80`; all dispatch through the `khal_sp` sub-table. NULL policy is the no-op/return-0 family (SP is not the DVE mandatory class). The `_init` pair are the two real bodies.
+The 15 SP trampolines, each pinned to its `kaena_khal` slot. Slot offset is `slot_vma − 0xCAEB80` (the `.bss` slot address the trampoline loads, i.e. the `mov rax,[kaena_khal+disp]` displacement — not the shim's `.text` symbol); all dispatch through the `khal_sp` sub-table. NULL policy is the no-op/return-0 family (SP is not the DVE mandatory class). The `_init` pair are the two real bodies.
 
 | Shim (symbol) | Addr | Slot off | `khal_sp` member / role | Conf |
 |---|---|---|---|---|
@@ -242,7 +242,9 @@ The SUNDA registrar leaves at least one Pooling slot deliberately NULL — `kaen
 
 ### Function Map — the STPB shim → slot table
 
-The STPB engine trampolines, by engine, each pinned to its `khal_stpb` slot and NULL policy. The ACT-family real bodies (`write_profile`, `get_profile_bin[_with_flags]`, the stochastic/program/run-state primitives) are §4. Slot off = `symbol_addr − 0xCAEB80`.
+The STPB engine trampolines, by engine, each pinned to its `khal_stpb` slot and NULL policy. The ACT-family real bodies (`write_profile`, `get_profile_bin[_with_flags]`, the stochastic/program/run-state primitives) are §4. Slot off = `slot_vma − 0xCAEB80` (the `mov rax,[kaena_khal+disp]` displacement; **not** the shim's `.text` symbol address).
+
+> **CORRECTION —** an earlier revision of this page wrote the slot-offset formula as `symbol_addr − 0xCAEB80`, which is arithmetically impossible: the shim symbols live in `.text` (`0x457xxx..0x45cxxx`), so `symbol_addr − 0xCAEB80` is negative. The slot offset is `slot_vma − 0xCAEB80`, where `slot_vma` is the `.bss` address the trampoline's `mov rax,[kaena_khal+disp]` loads — equivalently the `disp` displacement itself. Verified on `aws_hal_stpb_dve_regs_init @0x45b480`: `objdump -d` shows `lea 0x8536ec(%rip),%rax # caeb80 <kaena_khal>` then `mov 0x208(%rax),%rax`, so its slot offset is `+0x208` (the displacement), matching the table values on this page. The sibling [hal-registers](hal-registers.md) already states the formula correctly. The slot *values* in all tables here were already right and are unchanged — only the prose formula is corrected.
 
 | Engine | Shim (symbol) | Addr | Slot off | NULL policy | Conf |
 |---|---|---|---|---|---|
