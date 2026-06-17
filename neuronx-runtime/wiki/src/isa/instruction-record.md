@@ -122,7 +122,10 @@ The real opcodes cluster by engine/datapath in value ranges; the pseudo opcodes 
 | `0x41..0x5F` | POOL / tensor-arith | `TENSOR_TENSOR_ARITH_OP=0x41`, `TENSOR_SCALAR_ARITH_OP=0x43`, `POOL=0x45`, `COPY=0x46`, `CAST=0x47`, `RNG=0x4D`, bitvec variants `0x51..0x5F` |
 | `0x60..0x7F` | POOL / DVE (batch-norm, gather, shuffle) | `BATCH_NORM_STATS=0x60`, `GATHER=0x68`, `STREAM_TRANSPOSE=0x6B`, `IOTA=0x7E`, `DROPOUT=0x7F` |
 | `0xA1..0xBF` | SP / control | `HALT=0xA1`, `DRAIN=0xA2`, `NOP=0xA4`, `NOTIFY=0xA6`, `COMPARE_BRANCH=0xA9`, `DMAMEMCPY=0xB8`, `DMA_INDIRECT=0xBB` |
-| `0xE0..0xFF` | extended / DMA-gather | `SPARSITY_COMPRESS=0xE0`, `QUANTIZE_MX=0xE3`, `INDIRECT_COPY=0xE7`, `EXTENDED_INST=0xF0`, `JPEG_DECODE=0xFF`, `INVALID=0xFF` (terminal) |
+| `0x81` | JPEG decode | `JPEG_DECODE=0x81` (host-lowered form `PSEUDO_JPEG_DECODE=0xD7`) |
+| `0xE0..0xFF` | extended / DMA-gather | `SPARSITY_COMPRESS=0xE0`, `QUANTIZE_MX=0xE3`, `INDIRECT_COPY=0xE7`, `EXTENDED_INST=0xF0`, `INVALID=0xFF` (terminal) |
+
+> **CORRECTION (ISA-IR-2) —** an earlier revision of this cluster table placed `JPEG_DECODE=0xFF` in the `0xE0..0xFF` row alongside `INVALID=0xFF`. That value was wrong. The authoritative DWARF `NEURON_ISA_TPB_OPCODE` enum (1-byte underlying type) gives **`JPEG_DECODE=0x81`**, its host-lowered CC-top form **`PSEUDO_JPEG_DECODE=0xD7`**, and **`0xFF`=`INVALID`** (the terminal sentinel only). `0xFF` is *not* JPEG decode; a reimplementer keying the JPEG-decode path off `0xFF` would never match the real opcode and would collide with the INVALID sentinel. This matches the [ISA overview sibling page](overview.md) (`PSEUDO_JPEG_DECODE 0xD7`).
 
 #### Pseudo opcode band (host-only; lowered before device fetch)
 
