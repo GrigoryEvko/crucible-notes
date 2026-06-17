@@ -104,6 +104,7 @@
 - [CC-Op Decompose & Legalize Family](hlo-opt/ccops-decompose-legalize.md)
 - [Control-Dependency Reification (HLO→MLIR→Penguin)](hlo-opt/control-dep-reification.md)
 - [Layout Passes](hlo-opt/layout-passes.md)
+- [Input/Output Alias Family](hlo-opt/io-alias-family.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
