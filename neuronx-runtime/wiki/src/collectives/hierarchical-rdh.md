@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Hier composer** | `enc_hier_primitive` (248 B) — `compose_operation @0x1a8d20`; 5 alg slots @+224..+240 |
 | **Hier state** | `enc_alg_hier` (386 368 B) — `intra@+0` / `inter@+136736` / `pipeline@+273472` / `devmem_res@+386344` |
-| **Group split** | `init_hierarchical_groups @0x12c820`; pod variant `build_hierarchical_participants_for_pod @0x7e7a50` |
+| **Group split** | `init_hierarchical_groups @0x12c820`; pod variant `build_hierarchical_participants_for_pod` (inlined — name string @.rodata `0x7e7a50`) |
 | **Stage selector** | `__select_algorithms @0x14c620` — fixed priority per slot |
 | **Cross-stage scratch** | `comm.hier.devmem_res` — `0x8000000` (128 MiB, TRN2/3) \| `0x2000000` (32 MiB); checkout `__devmem_res_checkout @0x14cb50` |
 | **Inter-node RDH** | `inter_rdh_scheduler` (512 B) — `schedule @0x1a91e0`; `schedule_rs_tiled @0x1b4f60`; `schedule_ag @0x1b9860` |
@@ -89,7 +89,7 @@ The composer object `enc_hier_primitive` (248 B) extends `enc_alg_primitive` (16
 function init_hierarchical_groups(ctx, nec_dev, group_id, comm, rg, pipeline):  // 0x12c820
     parts = {};  // enc_replica_group_info(&)[2] : [INTRA, INTER]
     if rg.enable_pod:
-        // build_hierarchical_participants_for_pod @0x7e7a50
+        // build_hierarchical_participants_for_pod (inlined; name @.rodata 0x7e7a50)
         // each rank -> (intra_node_rank < local_rank_n, inter_node_rank < node_n)
         for r in rg.participants:
             (in_rank, out_rank) = pod_rank_map(r);            // log @0x7e7cc8
@@ -201,10 +201,12 @@ function __select_algorithms():                                  // 0x14c620
 | `enc_hier_primitive::__compose_pipeline_allreduce` | `0x17b3f0` | slice-interleaved 3-stage AR over `slice_n` chunks | HIGH |
 | `enc_hier_primitive::__devmem_res_checkout` | `0x14cb50` | check out shared scratch (`"allocated dev mem … for hier intermediate buffer"`) | HIGH |
 | `init_hierarchical_groups` | `0x12c820` | setup: split rg into intra/inter (+pipeline) groups | HIGH |
-| `build_hierarchical_participants_for_pod` | `0x7e7a50` | pod variant: rank → (intra_node_rank, inter_node_rank) | HIGH |
+| `build_hierarchical_participants_for_pod` | *inlined* | pod variant: rank → (intra_node_rank, inter_node_rank); no standalone code address — name string @.rodata `0x7e7a50` | HIGH |
 | `should_use_hierarchical_cc_pipeline` | `0x109380` | gate the pipelined (ring-only, single-stream) variant | HIGH |
 | `encd_alg_init_hier` | `0x24f250` | device-resident per-level `encd_alg_metaring` init | HIGH |
 | `enc_free_alg_hier` | `0x10a2f0` | tear down all levels + `pipeline.stage[]` (stride 37624) | HIGH |
+
+> **CORRECTION —** an earlier draft of this page listed `build_hierarchical_participants_for_pod` at code address `0x7e7a50`. That address is in `.rodata` (the `.text` segment ends at `0x7ce6d9`); `0x7e7a50` holds the function's *name* string and `0x7e7cc8` its log-format string. The function is **inlined into `init_hierarchical_groups`** — it has no standalone code address in this build. The pod rank-mapping logic above is correct; only the address citation was wrong.
 
 ---
 

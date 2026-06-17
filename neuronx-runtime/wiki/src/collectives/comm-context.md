@@ -347,7 +347,7 @@ fail:
 `enc_init_global_comm @0xff430` is the once-per-process global-comm constructor, called from `nrt_build_global_comm` / `nrt_cc_global_comm_init`. It gathers this core's identity from the device broker, allocates and populates the `enc_glb_comm`, initializes the semaphore-increment value buffer, validates the pod topology, and registers the comm — all under `gcomm_init_mtx[nec_dev]`.
 
 ```c
-// enc_init_global_comm @0xff430  (DWARF name: enc_init_global_comm_internal)
+// enc_init_global_comm @0xff430
 function enc_init_global_comm(vnc, g_device_id, g_device_count, ctx_id, root_comm_id, check_sigs):  // 0xff430
     vcore = vtpb_get_virtual_core(vnc);             if (!vcore) FAIL "Failed to find core %u";
     if (db_physical_core_get_mla_and_tpb(vcore->tpbs, &mla, &tpb)):  FAIL "Failed to get MLA";
