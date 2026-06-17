@@ -75,6 +75,7 @@
 - [Flag Visibility Taxonomy (ArgKind)](frontend/flag-visibility-argkind.md)
 - [walrus_driver Backend CLI & Pass Vocabulary](frontend/walrus-driver-cli.md)
 - [Defaults & Config-File Model — the Absence of a Config File](frontend/defaults-config-model.md)
+- [Environment-Variable Catalog & the NEURON_CC_FLAGS Boundary](frontend/env-var-catalog.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
