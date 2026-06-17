@@ -96,6 +96,7 @@
 - [AllReduce→ReduceScatter & DynamicSlice Rewrites](hlo-opt/allreduce-dynslice-rewrites.md)
 - [CollectivePermute → AllGather Lowering](hlo-opt/collectivepermute-to-allgather.md)
 - [Looped-Einsum → Collective-Matmul Fusion](hlo-opt/looped-einsum-collective-matmul.md)
+- [Integer All-Reduce & Scalar-Reduce Decomposition](hlo-opt/int-scalar-reduce-decomposition.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
