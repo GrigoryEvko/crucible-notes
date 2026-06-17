@@ -14,7 +14,7 @@ For reimplementation, the contract is:
 
 - **256 signed-32 counting semaphores per NeuronCore**, addressed by an 8-bit index (`id < 256`), arch-invariant across gen2/gen3/gen4. A wait is a non-mutating threshold poll; an update is `inc`/`dec`/`set`.
 - **The 64-byte sync record** — one fixed-length word (`0x40` bytes) whose first byte is the opcode and whose `+0x20..+0x28` lane carries a fused *wait-and-update*: comparator + wait-idx + subtype + act-idx + wait-value + act-value.
-- **The five-engine barrier fan-out** — one `AllEngineBarrier(ALL)` → N per-engine bundles where N = popcount of the datapath mask `0x6E` = 5 engines {Pool, ?, PE, DVE, SP at ordinals 1,2,3,5,6}; each clone fans in (`sem-inc +1`) and fans out (`sem-ge value=N`) on one shared barrier counter.
+- **The five-engine barrier fan-out** — one `AllEngineBarrier(ALL)` → N per-engine bundles where N = popcount of the datapath mask `0x6E` = 5 engines {Pool, Activation, PE, DVE, SP at ordinals 1,2,3,5,6}; each clone fans in (`sem-inc +1`) and fans out (`sem-ge value=N`) on one shared barrier counter.
 - **Drain-before-sync** — a barrier always leads with a `Drain` (retire in-flight DMA/queue traffic) so a peer never proceeds past the barrier while this engine's writes are still draining.
 - **The embedded-events predicate `@+0x04`** — an inline 8-byte wait/signal that the five sync ops *and* eleven control/sequencer ops carry, so most dependencies need no standalone sync op; data-path compute ops (matmul/pool/memset) never carry it.
 
@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **Event bank** | 256 one-bit one-shot flags / NeuronCore (distinct from the counter bank) |
 | **Sync record** | fixed **64 bytes** (`0x40`); opcode word `@+0` = `0x10<op>` little-endian (`0x10` = `inst_word_len` = 16 dwords) |
 | **Sync opcodes (word)** | EventSemaphore `0x10A0` · Halt `0x10A1` · Drain `0x10A2` · MOV32 `0x10A7` · GroupReset `0x10B0` · Ordering `0x10B1` · Poll `0x10B3` · AllEngineBarrier `0x10D5` · CoreBarrier `0x10D8` (gen3+) |
-| **Datapath engines** | mask `0x6E` = bits {1,2,3,5,6} = **5 engines**: PE (=3), DVE (=5), SP (=6), plus Pool/Act at {1,2}; engines 0 (Unassigned), 4 (DMA), 7 (ALL) excluded |
+| **Datapath engines** | mask `0x6E` = bits {1,2,3,5,6} = **5 engines**: Pool (=1), Activation (=2), PE (=3), DVE (=5), SP (=6); engines 0 (Unassigned), 4 (DMA), 7 (ALL) excluded |
 | **Compile sync emitters** | `CoreV2GenImpl::visitInstEventSemaphore` @ `0x1217df0` · `visitInstHalt` @ `0x122d620` · `visitInstDrain` @ `0x122d8d0` · `visitInstAllEngineBarrier` @ `0x122aa10` · `visitInstGroupResetSemaphores` @ `0x122ba40` |
 | **Barrier expander** | `ExpandAllEngineBase::expandInstruction` @ `0xcee080` (the per-engine fan-out cloner) |
 | **Sim bank model** | `Semaphores::needWait` @ `0x19e4b0` (wait) · `Semaphores::actOn` @ `0x19e300` (update); dense `uint32[256]` (`operator new(0x400)`) |
@@ -251,9 +251,9 @@ The fan-out width N is the number of datapath engines, derived from the mask in 
 bool isDataPathEngine(EngineType e) { return (1 << e) & 0x6E; }   // test al, 0x6e [CONFIRMED]
 ```
 
-Re-deriving the mask: `0x6E` = `0b0110_1110` = bits **{1, 2, 3, 5, 6}** — exactly **five** engines. The wiki's confirmed `EngineType` ordinals pin three of them: **PE = 3** (`getDefaultEngine` @ `libBIR 0x3e2cb0` → 3 for all matmul ops), **DVE = 5** (`EngineType2string → "DVE"`, external name "Vector"), **SP = 6** (`isDataPathEngine ... SP=6 ∈ datapath`). The remaining two bits {1, 2} are **Pool** and **Activation**. Excluded from the mask: engine **0** (Unassigned), engine **4** (**DMA** — it owns rotated per-queue semaphores, not the datapath barrier), and engine **7** (**ALL** — the pseudo-engine, which is precisely why a barrier on `ALL` cannot be encoded directly).
+Re-deriving the mask: `0x6E` = `0b0110_1110` = bits **{1, 2, 3, 5, 6}** — exactly **five** engines. The full `EngineType` ordinal map is byte-pinned in `bir::EngineType2string` (`libBIR @ 0x47fa80`): **Pool = 1**, **Activation = 2**, **PE = 3**, **DMA = 4**, **DVE = 5**, **SP = 6** (`getDefaultEngine` → 3 for all matmul ops; `EngineType2string → "DVE"`, external name "Vector"). So the five datapath engines `{1,2,3,5,6}` are **Pool, Activation, PE, DVE, SP**. Excluded from the mask: engine **0** (Unassigned), engine **4** (**DMA** — it owns rotated per-queue semaphores, not the datapath barrier), and engine **7** (**ALL** — the pseudo-engine, which is precisely why a barrier on `ALL` cannot be encoded directly). The full map is owned by [the arch object model](arch-object-model.md#the-enginetype-ordinal-map).
 
-> **CORRECTION — the name↔ordinal binding for the five engines.** The five datapath engines are the bits of `0x6E` = {1,2,3,5,6}. The confirmed ordinals are **PE=3, DVE=5, SP=6** (from the wiki's `getDefaultEngine`/`EngineType2string`/`isDataPathEngine` evidence). The two engines at ordinals {1, 2} are Pool and Activation; *which is 1 and which is 2* is not separately byte-pinned here. An earlier informal list assigned PE=1/Pool=3/DVE=6, which conflicts with the confirmed PE=3/DVE=5 and is **wrong** — use the confirmed ordinals. [CONFIRMED for the mask, PE=3, DVE=5, SP=6; INFERRED for the Pool/Act split across {1,2}]
+> **CORRECTION — the Pool/Act split is now byte-pinned (upgrades a prior INFERRED).** An earlier reading left "which of ordinals {1, 2} is Pool and which is Activation" un-pinned (INFERRED). The `EngineType2string` switch body (`libBIR @ 0x47fa80`, inline-literal decode) settles it byte-exact: **case 1 = "Pool", case 2 = "Activation"**, cross-confirmed by the `getEngineCount` jump table (`@0x47d820`) and the `getValidEngines` legality maps. A separate earlier informal list assigned PE=1/Pool=3/DVE=6, which conflicts with the byte-pinned PE=3/DVE=5 and is **wrong**. The full datapath mask `{1,2,3,5,6}` and every ordinal in it are now CONFIRMED: Pool=1, Activation=2, PE=3, DVE=5, SP=6 (and the non-datapath DMA=4). [CONFIRMED — `EngineType2string @0x47fa80` + `getEngineCount @0x47d820`]
 
 ### Why expansion is mandatory
 
@@ -394,13 +394,12 @@ The wire-mode mapping is the through-line: synchronizer `sem-inc` / `sem-ge-imm`
 - The comparator set `{0x01 EQ, 0x04 default, 0x05 GE-imm, 0x85 GE-reg, 0x07 evt}` and the subtype set `{0x13 sem-inc, 0x14 sem-dec, 0x15 add-imm, 0x17 sub-imm, 0x19 wr-imm, 0x11 evt-set→event bank}`.
 - The opcode-word family `{0x10A0 sema, 0x10A1 halt, 0x10A2 drain, 0x10A7 mov32, 0x10B0 group-reset, 0x10B1 ordering, 0x10B3 poll, 0x10D5 all-engine-barrier, 0x10D8 core-barrier}`.
 - `NumSemaphores` = **256**, signed-32 counters, 8-bit index, arch-invariant gen1–gen4; the sim's `operator new(0x400)` dense array and the `< 256` index guard.
-- The datapath mask `0x6E` = {1,2,3,5,6} = **five** engines; PE=3, DVE=5, SP=6 confirmed.
+- The datapath mask `0x6E` = {1,2,3,5,6} = **five** engines; the full ordinal map Pool=1, Activation=2, PE=3, DVE=5, SP=6 byte-pinned from `EngineType2string @0x47fa80` (+ DMA=4 non-datapath).
 - The barrier fan-out cloner `expandInstruction` @ `0xcee080`; `isDataPathEngine` assert forces expansion; per-engine `sem-inc`/`sem-ge-imm value=N` wait/update; the drain-leads ordering; the verify-abstract-then-expand pipeline order.
 - The embedded-events predicate (`insert_events` one-liner + the per-builder optional-`r8` idiom + the `setupSyncWait`/`setupSyncUpdate` template) and the `getSyncInfo` census (5 sync ops + 11 control ops carry it; compute ops carry zero).
 
 **INFERRED / STRONG** (flagged inline):
 
-- The Pool/Act split across engine ordinals {1, 2} — confirmed they are the two remaining datapath engines, but not which is 1 vs 2.
 - Whether the compile-time barrier uses exactly **one** shared barrier-counter id (matching the runtime) or one-per-engine for the arrival posts — STRONG that it is shared; the exact id-equality policy is not separately field-pinned. The runtime single-id form is authoritative for the end state.
 - The internal packing of the 8-byte events qword above `+0x05` (whether `+0x06/+0x07` hold a second idx or padding) — the `insert_events` store is one qword; the mode/idx/val sub-structure is STRONG, not byte-walked.
 - The runtime `add_sync_barrier` decode is **restated** from disassembly of `libnrt.so`, which is absent from this compiler wheel; the compile↔runtime identity on the shared bytes is STRONG.

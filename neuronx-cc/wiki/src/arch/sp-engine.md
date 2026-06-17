@@ -20,7 +20,7 @@ Everything structured — `for`, `while`, `do-while` — is **fully lowered befo
 
 | | |
 |---|---|
-| **Engine** | `EngineType::SP` (= 6); `EngineType2string` bounds `esi ≤ 7` → 8 values `{0 Unassigned, 1 Pool, 2 Activation, 3 PE, 4 DMA, 5 DVE, 6 SP, 7 ALL}` (STRONG) |
+| **Engine** | `EngineType::SP` (= 6); `EngineType2string` (`libBIR 0x47fa80`) → 8 values `{0 Unassigned, 1 Pool, 2 Activation, 3 PE, 4 DMA, 5 DVE, 6 SP, 7 ALL}` (CONFIRMED — see [the EngineType ordinal map](arch-object-model.md#the-enginetype-ordinal-map)) |
 | **Family signature** | `InstSyncType = 1` (`sequencer`) for *every* SP op — vs `0` datapath (compute), `2` dma (transfer) (STRONG) |
 | **Bundle size** | 64 bytes (`inst_word_len = 16` dwords); `setupHeader` stamps `byte[0]=opcode`, `byte[1]=0x10`, `bytes[2:3]=0` → opcode word `0x10<op>` LE (STRONG) |
 | **Scalar ALU** | `RegisterAlu` (op 73, opcode `0xA8`); `op` field @ `InstRegisterAlu+0xF0` = `bir::AluOpType` (CONFIRMED, sim + dumper); 30-arm wire jump table (STRONG) |

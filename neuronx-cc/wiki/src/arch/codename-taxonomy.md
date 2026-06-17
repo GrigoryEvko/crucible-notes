@@ -225,11 +225,12 @@ switch (archLevel) {                        // constants_used include 20, 30, 40
     case 0x14: → CoreV2Gen   (arch 20)
     case 0x1e: → CoreV3Gen   (arch 30)
     case 0x28: → CoreV4Gen   (arch 40)
-    default:   → throw   ("Codegen: unknown arch " @0x1c83ec6)
+    default:   → throw std::runtime_error("Codegen: unknown arch " + ArchLevel2string(arch))
+                //  format string @0x1c83ec6; __cxa_allocate_exception(0x10)
 }
 ```
 
-So the **active codegen world is `{CoreV2, CoreV3, CoreV4}` = arch `{20, 30, 40}` = gens 2–4.** Arch 10 (gen1/Inferentia) is *not* a `CoreVNGen` target — it is handled by the legacy `Inferentia*` path and has no unified generator. Arch 50 (gen5/CoreV5) has no codegen at all and falls through to the throw. The `std::variant` *type list* itself — `<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` — structurally excludes CoreV1Gen and CoreV5Gen.
+So the **active codegen world is `{CoreV2, CoreV3, CoreV4}` = arch `{20, 30, 40}` = gens 2–4.** Arch 10 (gen1/Inferentia) is *not* a `CoreVNGen` target — it is handled by the legacy `Inferentia*` path and has no unified generator. Arch 50 (gen5/CoreV5) has no codegen at all and falls through to the throw. The fall-through exception type is **`std::runtime_error`** (`__cxa_throw(runtime_error(...))`), carrying the `"Codegen: unknown arch "` format string (`@0x1c83ec6`) concatenated with `ArchLevel2string(arch)` — **not** `boost::out_of_range`, as an earlier draft recorded; the throw type is pinned in detail by [1.03](vestigial-generations.md#the-codegen-floor). The `std::variant` *type list* itself — `<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` — structurally excludes CoreV1Gen and CoreV5Gen.
 
 The RTTI confirms this independently: the only `GenImpl` typeinfo symbols in libwalrus are `_ZTIN9neuronxcc7backend13CoreV{2,3,4}GenImplE` (with matching `_ZTS`/`_ZTV`); there is no `CoreV1GenImpl` or `CoreV5GenImpl` symbol, vtable, or typeinfo. The variants ctor addresses (`CoreV2Gen @0x611690`, `CoreV3Gen @0x61dcc0`, `CoreV4Gen @0x62b170`) are read off `initCodegen`'s callee list.
 

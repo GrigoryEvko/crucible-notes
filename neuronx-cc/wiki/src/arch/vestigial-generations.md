@@ -60,11 +60,11 @@ function codegen(Module *m):
     if (arch == 0x1e) return run_CoreV3Gen(m);  // 0x11d2cca  cmp $0x1e ; arch 30
     if (arch == 0x28) return run_CoreV4Gen(m);  // 0x11d2cd3  cmp $0x28 ; arch 40
     // no arm for 0x0a (10/CoreV1), no arm for 0x32 (50/CoreV5)
-    string msg = "..." + ArchLevel2string(arch);    // bir::ArchLevel2string
+    string msg = "Codegen: unknown arch " + ArchLevel2string(arch);  // fmt str @0x1c83ec6
     throw std::runtime_error(msg);                  // __cxa_allocate_exception(0x10)
 ```
 
-> **CORRECTION (D-M15) —** the fall-through throw is a **`std::runtime_error`** carrying an `ArchLevel2string`-derived message (`__cxa_allocate_exception(0x10u)` in the decompiled body), **not** `boost::throw_exception(std::out_of_range)` as an earlier reading recorded. The *switch restriction* — `20/30/40` only, everything else throws — is unchanged and CONFIRMED; only the exception type is corrected. A reimplementer's dispatcher should reject arch `10`/`50` with a hard error, not silently codegen them.
+> **CORRECTION (D-M15) —** the fall-through throw is a **`std::runtime_error`** carrying the `"Codegen: unknown arch "` format string (`@0x1c83ec6`) concatenated with `ArchLevel2string(arch)` (`__cxa_throw` / `__cxa_allocate_exception(0x10u)` in the decompiled body), **not** `boost::throw_exception(std::out_of_range)` as an earlier reading recorded. The *switch restriction* — `20/30/40` only, everything else throws — is unchanged and CONFIRMED; only the exception type is corrected. The format-string address is the same `0x1c83ec6` cited by [1.02](codename-taxonomy.md); the two pages agree on both the message and the type. A reimplementer's dispatcher should reject arch `10`/`50` with a hard error, not silently codegen them.
 
 ### Function Map
 

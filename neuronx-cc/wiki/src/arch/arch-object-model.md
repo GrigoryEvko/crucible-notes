@@ -175,10 +175,13 @@ The two hops the accessor chain takes — `Board+0x8` and `Device+0x10` — are 
 | `MaxCceDmaSource` | `+0x50` | `uint32` | `NEURON_ISA_TPB_DMA_MAX_CCE_SOURCE` (=16) | CONFIRMED (name) |
 | `RtReservedSemNum` … `MemTensorIndirectEngPartitionGroupSize` | `+0x54`…`+0x68` | `uint32`×6 | Runtime-shared limits | CONFIRMED (name) |
 | `UnassignedEngineCount` | `+0x6c` | `uint32` | Per-engine count (=1) | CONFIRMED |
-| `PoolEngineCount` | `+0x70` | `uint32` | (=1) | STRONG |
-| `ActEngineCount` | `+0x74` | `uint32` | (=1) | CONFIRMED |
-| `PeEngineCount` | `+0x78` | `uint32` | (=1) | CONFIRMED |
-| `DveEngineCount` … `AllEngineCount` | `+0x7c`…`+0x88` | `uint32`×4 | Per-engine counts (=1 each) | CONFIRMED |
+| `PeEngineCount` | `+0x70` | `uint32` | (=1) | CONFIRMED |
+| `PoolEngineCount` | `+0x74` | `uint32` | (=1) | CONFIRMED |
+| `ActEngineCount` | `+0x78` | `uint32` | (=1) | CONFIRMED |
+| `DveEngineCount` | `+0x7c` | `uint32` | (=1) | CONFIRMED |
+| `DmaEngineCount` | `+0x80` | `uint32` | (=1) | CONFIRMED |
+| `SpEngineCount` | `+0x84` | `uint32` | (=1) | CONFIRMED |
+| `AllEngineCount` | `+0x88` | `uint32` | (=1) | CONFIRMED |
 
 > **CORRECTION — `Core+0x30` is `dramSizeGb`, not a ring/queue count.** An earlier reading of the bare immediates labelled `Core+0x30` (= `CoreParamSet+0x60`) a "per-Core ring/queue count" with values 16/16/24/36. The shipped header settles it: `ctm.hpp:187` declares `const unsigned dramSizeGb; // dram/hbm per core`. The values 16/16/24/36 are **GiB of HBM per NeuronCore**, and the chain `getArchModel → Board+0x8 → Device+0x10 → Core+0x30` is the per-core HBM window the budget check reads (see [§The four read-sites](#the-four-read-sites)). Likewise `Device+0x8` is `Device::dramSizeGb` (whole-device HBM), `ctm.hpp:229`.
 
@@ -288,13 +291,33 @@ board = getArchModel(arch); HBMLimit = (uint64)(*(*(*(board+0x8))+0x10)+0x30)) <
 
 // (4) Engine count — bir::getEngineCount (libBIR 0x47d851..0x47d908)
 board = getArchModel(arch); core = *(*(board+0x8))+0x10);
-count = *(core + {Pool:0x6c, Act:0x74, PE:0x78, DMA:0x84, ALL:0x88}[engineType]);
+count = *(core + {Unassigned:0x6c, PE:0x70, Pool:0x74, Act:0x78,
+                  DVE:0x7c, DMA:0x80, SP:0x84, ALL:0x88}[engineType]);
 //     Board+0x8 → Device+0x10 → Core+0x6c.. = per-engine count (jump-table on EngineType)
 ```
+
+> **CORRECTION — the `getEngineCount` offset/engine map (supersedes a prior mis-pairing).** An earlier reading paired the count offsets as `{Pool:0x6c, Act:0x74, PE:0x78, DMA:0x84, ALL:0x88}`. The actual `getEngineCount` jump table (`libBIR 0x47d820`, the per-`EngineType` `mov eax,[rbx+off]` arms) pairs them differently: `Unassigned→0x6c` (`@0x47d8d8`), `PE→0x70` (`@0x47d920`), `Pool→0x74` (`@0x47d8f0`), `Act→0x78` (`@0x47d908`), `DVE→0x7c` (`@0x47d950`), `DMA→0x80` (`@0x47d938`), `SP→0x84` (`@0x47d8a8`), `ALL→0x88` (`@0x47d8c0`). The struct order of the count block is PE, Pool, Act, DVE, DMA, SP, ALL (`0x70`…`0x88`) with `Unassigned` at `0x6c` just below — matching the `Core+0x6c`…`Core+0x88` scalar tail in [§The Core layout](#core). [CONFIRMED — `getEngineCount @0x47d820` jump-table arms]
 
 Read-site (3) is the per-core HBM budget. `HBMUsage::run(vector<...>)` (`libwalrus 0x16b94b0`) reads `Core+0x30`, shifts left 30 (`shl $0x1e`) to get bytes, multiplies the limit by a soft `1.1×` margin (the IEEE-754 double `0x3FF199999999999A`=1.1 at `.rodata 0x1dbf5b0`, confirmed `9a999999 9999f13f`), and warns if estimated usage exceeds `1.1×HBMLimit` while a hard assert flags `usage > HBMLimit`. Gated by the `--hbm-usage-check` flag (`DisableHBMUsageCheck` cl::opt). The full DRAM allocator and split-DRAM machinery are owned by the [DRAM/HBM geometry page](dram-hbm-geometry.md).
 
 > **NOTE — `getEngineCount` reads counts, not geometry.** Read-site (4) reaches `Core+0x6c`…`Core+0x88` — the per-engine *count* block (all =1 here: one Pool, one Act, one PE, … per NeuronCore), not the engine *geometry* sub-objects at `Core+0x00`…`Core+0x18`. Engine *multiplicity* (how many of each engine) and engine *geometry* (how wide each one is) are distinct axes living at distinct offsets. The `bir::EngineInfo` handle (`EngineInfo2string` @ `libBIR 0x47c310`) is itself an 8-byte `{EngineType, engineId}` pair with **no** geometry — geometry is keyed by `EngineType` ordinal through the `Core` sub-object table, never indexed off an `EngineInfo`.
+
+### The EngineType ordinal map
+
+The `EngineType` ordinal is the key every engine page binds to. It is an 8-value enum, byte-pinned from `bir::EngineType2string` (`libBIR 0x47fa80`, internal names) and `bir::EngineType2ExternalName` (`libBIR 0x47fca0`, external/profile names), cross-confirmed by the `getEngineCount` jump table (`0x47d820`) and the `getValidEngines` per-op legality maps. Both name tables decode from inline `mov`-immediate literals (e.g. case 4 = `0x4D44`+`A` = "DMA", case 5 = `0x5644`+`E` = "DVE", external case 4 = `0x636E7953`+… = "SyncDMA"); the default arm throws `runtime_error("Unknown EngineType '<n>'")`.
+
+| Ordinal | Internal (`EngineType2string`) | External (`EngineType2ExternalName`) | Role | Datapath? (`0x6E`) |
+|---|---|---|---|---|
+| 0 | `Unassigned` | `Unassigned` | pseudo / ctor default | no |
+| 1 | `Pool` | `GPSIMD` | pooling / reduce leg (the GPSIMD external alias) | **yes** |
+| 2 | `Activation` | `Scalar` | scalar / activation (PWP LUT) | **yes** |
+| 3 | `PE` | `Tensor` | systolic matmul array | **yes** |
+| 4 | `DMA` | `SyncDMA` | DMA engine | no |
+| 5 | `DVE` | `Vector` | data-movement / vector | **yes** |
+| 6 | `SP` | `Sync` | sync / control sequencer | **yes** |
+| 7 | `ALL` | `All` | pseudo / all-engine barrier | no |
+
+*Confidence: **CONFIRMED** — internal and external names byte-read off both `2string` bodies, ordinals cross-confirmed three ways (`EngineType2string`, `getEngineCount`, `getValidEngines`).* The datapath column is the `bir::isDataPathEngine` mask `0x6E` = `{1,2,3,5,6}` — the five engines an all-engine barrier fans out across ([execution & sync model](execution-sync-model.md)); ordinals 0 (Unassigned), 4 (DMA), 7 (ALL) are excluded. The internal→external alias `Pool→GPSIMD` is the source of the "GPSIMD is not a separate engine" finding ([GPSIMD engine](gpsimd-engine.md)). Every engine page (1.08–1.14) keys to this map: PE=3, Pool=1, Activation=2, DVE=5, SP=6, DMA=4.
 
 ### Function Map
 
