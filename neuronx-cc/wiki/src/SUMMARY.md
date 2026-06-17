@@ -125,6 +125,7 @@
 - [MulRedSqrt / RMSNorm Fusion and FusionCluster CodeGen](hlo-opt/rmsnorm-fusion-cluster-codegen.md)
 - [NeuronInstCombine (MLIR reduce-slice-reduce simplify)](hlo-opt/neuron-instcombine-mlir.md)
 - [Schedule-Fusion & Fusion-to-Composite](hlo-opt/schedule-fusion-composite.md)
+- [Control-Dep Tuple-Flatten (MLIR)](hlo-opt/controldep-tuple-flatten-mlir.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
