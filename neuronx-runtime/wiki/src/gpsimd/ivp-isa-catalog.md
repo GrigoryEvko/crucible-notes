@@ -1,7 +1,7 @@
 # The IVP Vector ISA Catalog
 
 > *All op names, counts, and bit-fields on this page apply to the Cadence/Tensilica `Xm_ncore2gp` "Cairo" Vision-Q7 config shipped in `aws-neuronx-gpsimd-tools 0.21.0.0-bc9b5fad5` (`gpsimd_tools.tgz → tools/ncore2gp/config`, generator `RI-2022.9`, Customer ID `19270`, toolchain `XtensaTools-14.09`). The emitted-subset figures are decoded from the GPSIMD/"Q7" microcode in `libnrtucode_extisa.so` (`aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce`). The authoritative op table is `libisa-core.so` (`Iclass_IVP_*_args`, 9.7 MB); the per-mnemonic encoding is `libtie-core.so`'s `get_xml_*` TIE-XML (51 MB).*
-> *Evidence grade: **Decoded (config-anchored)** — every op name is an `Iclass_IVP_*_args` table present on disk; every FLIX format and slot base-bit is a `Format_*_encode` / `Slot_*` symbol in `libisa-core.so`. Per-member lane width/signedness is read from the canonical suffix grammar (HIGH where the suffix is standard, MED for long-tail variants). Other versions will differ. · Part X — The Q7 GPSIMD Engine · [back to index](../index.md)*
+> *Evidence grade: **Decoded (config-anchored)** — every op name is an `Iclass_IVP_*_args` table present on disk; every FLIX format and slot base-bit is a `Format_*_encode` / `Slot_*` symbol in `libisa-core.so`. Per-member lane width/signedness is read from the canonical suffix grammar (HIGH where the suffix is standard, MED for long-tail variants). Other versions will differ. · Part XI — The IVP Vector ISA Catalog · [back to index](../index.md)*
 
 ## Abstract
 
@@ -96,11 +96,13 @@ Each category lists how many distinct ops the GPSIMD kernels **emit** (decoded b
 
 | Artifact | File | Role | Confidence |
 |---|---|---|---|
-| `Iclass_IVP_*_args` (1064 distinct) | `libisa-core.so` | The ISA-wide op breadth (≡ 1065 `OPCODEDEF`s) | DECODED CERTAIN |
-| `ncore2gp xt-objdump` over carved `lib0`/`lib3`/SUNDA | `XtensaTools/bin` + carved blobs | The 285 emitted ops, by-blob 149/112/182 | DECODED HIGH |
+| `Iclass_IVP_*_args` (1064 distinct) | `libisa-core.so` (out-of-tree) | The ISA-wide op breadth (≡ 1065 `OPCODEDEF`s) | DECODED HIGH |
+| `ncore2gp xt-objdump` over carved `lib0`/`lib3`/SUNDA | `XtensaTools/bin` (out-of-tree) + carved blobs | The 285 emitted ops, by-blob 149/112/182 | DECODED MED |
 | `_TIE_xt_ivp32_xb_vec2Nx8U` ×6 | `libnrtucode_extisa.so` `cptc` blobs | The 2Nx8U lane-shape proof | DECODED CERTAIN |
-| `get_xml_{post_parse,compiler,xinfo}` | `libtie-core.so` | Per-op `OPCODEDEF`/`FIELDDEF`/operand-sem (encoding) | DECODED HIGH |
-| `core.xparm` Vision block | `ncore2gp/config` | `simd16=0x20` (lane count), `dualquad8x8_mac=1` (MAC modes) | DECODED CERTAIN |
+| `get_xml_{post_parse,compiler,xinfo}` | `libtie-core.so` (out-of-tree) | Per-op `OPCODEDEF`/`FIELDDEF`/operand-sem (encoding) | DECODED MED |
+| `core.xparm` Vision block | `ncore2gp/config` (out-of-tree) | `simd16=0x20` (lane count), `dualquad8x8_mac=1` (MAC modes) | DECODED HIGH |
+
+> **NOTE —** the op-count figures on this page (**1065** ISA-wide / **285** emitted / **1064** `Iclass_IVP_*_args` / **~12642** `OPCODEDEF` rows / the per-blob **149 / 112 / 182** split / the FLIX format and slot base-bit tables) are grounded on the Cadence/Tensilica `ncore2gp` toolchain — the `.tie` config, `xt-objdump`, `libisa-core.so`, `libtie-core.so`, and `core.xparm`. **None of those artifacts ship in this repository tree** (verified: `find . -name '*.tie' -o -iname '*xt-objdump*' -o -iname 'libisa-core*' -o -iname 'libtie-core*' -o -iname '*xparm*'` returns nothing). They are corroborated by the in-repo `raw/NX-*` notes, but a reimplementer **cannot reproduce these counts from anything shipped here** — they are externally anchored, hence the downgraded confidence above. What *is* in-binary-confirmed (and stays CERTAIN) is the single `IVP_MULUSAN_2X32` builtin name and the six `cptc_decode_impl<1..6>` instantiations carrying the `_TIE_xt_ivp32_xb_vec2Nx8U` type, both present in `libnrtucode_extisa.so` (build-id `7bb03bc4…`).
 
 ### Considerations
 
@@ -156,11 +158,11 @@ The canonical slot *classes* are fixed across the wide formats: `s0` = LdSt (sca
 
 | Artifact | File | Role | Confidence |
 |---|---|---|---|
-| `length_decoder`, `length_table` | `libisa-core.so` | First-nibble length decode | DECODED CERTAIN |
-| `Format_{F0,F1,F2,F3,F4,F6,F7,F11,N0,N1,N2,x24,x16a,x16b}_encode` | `libisa-core.so` | The 14 FLIX formats | DECODED CERTAIN |
-| `Slot_f3_…_s4_alu_24`, `Slot_f11_…_s4_alu_24` | `libisa-core.so` | The 5-slot forms (F3/F11 only) | DECODED CERTAIN |
-| `Slot_f<fmt>_…_s<n>_<class>_<basebit>` | `libisa-core.so` | Per-format slot base bits | DECODED CERTAIN |
-| `get_xml_post_parse/compiler/xinfo`, `interface_version` | `libtie-core.so` | TIE-XML `OPCODEDEF`/`FIELDDEF` provider | DECODED HIGH |
+| `length_decoder`, `length_table` | `libisa-core.so` (out-of-tree) | First-nibble length decode | DECODED HIGH |
+| `Format_{F0,F1,F2,F3,F4,F6,F7,F11,N0,N1,N2,x24,x16a,x16b}_encode` | `libisa-core.so` (out-of-tree) | The 14 FLIX formats | DECODED HIGH |
+| `Slot_f3_…_s4_alu_24`, `Slot_f11_…_s4_alu_24` | `libisa-core.so` (out-of-tree) | The 5-slot forms (F3/F11 only) | DECODED HIGH |
+| `Slot_f<fmt>_…_s<n>_<class>_<basebit>` | `libisa-core.so` (out-of-tree) | Per-format slot base bits | DECODED HIGH |
+| `get_xml_post_parse/compiler/xinfo`, `interface_version` | `libtie-core.so` (out-of-tree) | TIE-XML `OPCODEDEF`/`FIELDDEF` provider | DECODED MED |
 
 ### Considerations
 

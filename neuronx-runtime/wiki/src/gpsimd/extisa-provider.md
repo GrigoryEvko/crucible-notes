@@ -43,10 +43,10 @@ The provider's entire ABI is exactly 52 `nrtucode_*` functions (`nm -D --defined
 
 | Family | Count | Role | dlsym'd by libnrt |
 |---|---|---|---|
-| `get_` | 7 | Provider query + image/ext-isa fetch | 5 of 7 |
+| `get_` | 7 | Provider query + image/ext-isa fetch | 6 of 7 |
 | `context_` | 5 | Context lifecycle (accessor + scratch + userdata) | 5 of 5 |
-| `core_` | 22 | Per-engine bring-up, log ring, DGE, pc-bounds | 14 of 22 |
-| `ll_` | 9 | Low-level loader / device push stream | 7 of 9 |
+| `core_` | 22 | Per-engine bring-up, log ring, DGE, pc-bounds | 13 of 22 |
+| `ll_` | 9 | Low-level loader / device push stream | 6 of 9 |
 | `opset_` | 9 | Opcode-set build + query (compiler/asm only) | **0 of 9** |
 
 ### `get_` family (7) — provider query and image fetch

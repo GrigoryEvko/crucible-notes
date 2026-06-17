@@ -1,7 +1,7 @@
 # Tensilica Xtensa and Vision-Q7 Identification
 
 > *All evidence on this page applies to the GPSIMD/"Q7" microcode embedded in `libnrtucode_extisa.so` from `aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce` (host build-id `7bb03bc42ce1530924a1797ec9d5e518a7ae5e44`, sha256 `dc00763d…`, 9,656,488 B; `.rodata` VMA == file offset, so every `0x…` offset is a host file offset). The authoritative ISA config is the Cadence/Tensilica `Xm_ncore2gp` "Cairo" build shipped in `aws-neuronx-gpsimd-tools 0.21.0.0-bc9b5fad5` (`gpsimd_tools.tgz → tools/ncore2gp`, generator `RI-2022.9`, Customer ID `19270`).*
-> *Evidence grade: **Confirmed (byte-anchored)** — the identification is closed three independent ways (in-blob mangled TIE type, host ELF32 machine fields, and the on-disk `.tie`/`.xparm` config + `xt_ivp32.h` header). Other versions will differ. · Part X — The Q7 GPSIMD Engine · [back to index](../index.md)*
+> *Evidence grade: **Confirmed (byte-anchored)** — the identification is closed three independent ways (in-blob mangled TIE type, host ELF32 machine fields, and the on-disk `.tie`/`.xparm` config + `xt_ivp32.h` header). Other versions will differ. · Part XI — Tensilica Xtensa & Vision-Q7 Identification · [back to index](../index.md)*
 
 ## Abstract
 
@@ -37,7 +37,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-This section is the load of the page: three fingerprints, each independent, that together identify the engine beyond reasonable doubt. A reimplementer who finds *any one* of these in an unknown binary has strong evidence; finding all three is conclusive. Each is reproducible from the on-disk binaries with `readelf`, `rg`, and `c++filt`.
+This section is the core of the page: three fingerprints, each independent, that together identify the engine beyond reasonable doubt. A reimplementer who finds *any one* of these in an unknown binary has strong evidence; finding all three is conclusive. Each is reproducible from the on-disk binaries with `readelf`, `rg`, and `c++filt`.
 
 ### Fingerprint 1 — the in-blob TIE coprocessor type
 
@@ -257,12 +257,14 @@ IVP_LV2NX8_I  (F0):  s0_ldst[31:17]==0x847         ; IVP_LV2NX8_IP adds [8:8]==0
 
 | Artifact | File | Role | Confidence |
 |---|---|---|---|
-| `length_decoder`, `length_table` | `libisa-core.so` | First-nibble length decode | CERTAIN |
-| `Format_{F0..F11,N0..N2,x24,x16a,x16b}_encode` | `libisa-core.so` | The 14 FLIX formats | CERTAIN |
-| `Slot_f*_s4_alu_24_*` (F3, F11 only) | `libisa-core.so` | 5-slot formats | CERTAIN |
-| `Iclass_IVP_*_args` (1064) | `libisa-core.so` | Per-op operand tables = ISA breadth | CERTAIN |
-| `get_xml_post_parse/compiler/xinfo`, `interface_version` | `libtie-core.so` | Obfuscated TIE-XML provider (OPCODEDEF/FIELDDEF) | HIGH |
-| `IVP_*` macros (2415) / `_TIE_xt_ivp32_IVP_*` protos | `xt_ivp32.h` | Source-level intrinsic catalog | CERTAIN |
+| `length_decoder`, `length_table` | `libisa-core.so` (out-of-tree) | First-nibble length decode | HIGH |
+| `Format_{F0..F11,N0..N2,x24,x16a,x16b}_encode` | `libisa-core.so` (out-of-tree) | The 14 FLIX formats | HIGH |
+| `Slot_f*_s4_alu_24_*` (F3, F11 only) | `libisa-core.so` (out-of-tree) | 5-slot formats | HIGH |
+| `Iclass_IVP_*_args` (1064) | `libisa-core.so` (out-of-tree) | Per-op operand tables = ISA breadth | HIGH |
+| `get_xml_post_parse/compiler/xinfo`, `interface_version` | `libtie-core.so` (out-of-tree) | Obfuscated TIE-XML provider (OPCODEDEF/FIELDDEF) | MED |
+| `IVP_*` macros (2415) / `_TIE_xt_ivp32_IVP_*` protos | `xt_ivp32.h` (out-of-tree) | Source-level intrinsic catalog | HIGH |
+
+> **NOTE —** the ISA-breadth and FLIX figures above (the **1064** `Iclass_IVP_*_args` / **14** formats / 5-slot `Slot_*` base bits / **2415** `IVP_*` macros) are grounded on the `ncore2gp` toolchain — `.tie`, `xt-objdump`, `libisa-core.so`, `libtie-core.so`, `core.xparm`, `xt_ivp32.h`. **None of those ship in this repository tree** (verified: `find . -name '*.tie' -o -iname '*xt-objdump*' -o -iname 'libisa-core*' -o -iname 'libtie-core*' -o -iname '*xparm*'` returns nothing), so a reimplementer cannot reproduce them from anything shipped here; they are externally anchored, hence the downgraded confidence. The identification facts that *are* in-binary-confirmed stay **CERTAIN**: the in-blob `_TIE_xt_ivp32_xb_vec2Nx8U` type across the six `cptc_decode_impl<1..6>` instantiations, the single `IVP_MULUSAN_2X32` builtin in the host raw-Q7 image, and the 13 carved Xtensa ELF32 machine/flags/comment fields — all present in `libnrtucode_extisa.so` (build-id `7bb03bc4…`).
 
 ### Considerations
 

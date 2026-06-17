@@ -49,7 +49,7 @@ The kernel driver ships as unstripped GPL source, and every binary in scope reta
 
 - The **DKMS C source is unstripped GPL-2.0** — kernel pages cite `file:line` directly.
 - **libnrt.so, libnds.a, and libnccom.so preserve DWARF** — function names, struct field names, and enum values survive; pages cite addresses, struct offsets, and DWARF-recovered types. The two firmware carriers **libncfw.so and libnrtucode_extisa.so** (and **libnccom-net.so**) are **unstripped but symtab-only — no DWARF**; pages for those binaries cite named symbols and `.rodata` offsets, not DWARF types.
-- The on-device firmware (NCFW Xtensa sequencer; GPSIMD Vision-Q7 microcode) is **fully disassemblable**: the Tensilica `.tie` config ships in the GPSIMD toolchain, so the custom vector ISA decodes exactly. See [Part X](gpsimd/q7-vision-q7.md).
+- The on-device firmware (NCFW Xtensa sequencer; GPSIMD Vision-Q7 microcode) is **fully disassemblable**: the Tensilica `.tie` config ships in the GPSIMD toolchain, so the custom vector ISA decodes exactly. See [Part XI](gpsimd/xtensa-vision-q7.md).
 
 > **CORRECTION —** an earlier scaffold of this index claimed all four runtime-lib binaries plus both collectives binaries "preserve DWARF". That is overturned by `readelf -SW <bin> | grep -c '\.debug'`: only **libnrt.so** (9), **libnds.a** (835), and **libnccom.so** (8) carry `.debug_*` sections. **libncfw.so** (0), **libnrtucode_extisa.so** (0), and **libnccom-net.so** (0) are unstripped but **symtab-only — no DWARF**; this matches what all four firmware pages already state for libncfw.so. Pages for the symtab-only binaries are grounded on named symbols and `.rodata` offsets, not DWARF-recovered types.
 
@@ -58,7 +58,7 @@ The kernel driver ships as unstripped GPL source, and every binary in scope reta
 ## Companion wikis
 
 - [`neuronx-cc`](../../neuronx-cc/wiki/) — the compiler that produces the NEFFs `nrt_load` consumes
-- [`neuronx-gpsimd`](../../neuronx-gpsimd/wiki/) — the GPSIMD/Q7 custom-op toolchain (the producer side of [Part X](gpsimd/overview.md))
+- [`neuronx-gpsimd`](../../neuronx-gpsimd/wiki/) — the GPSIMD/Q7 custom-op toolchain (the producer side of [Part XI](gpsimd/overview.md))
 - [`neuron-jax-stack`](../../neuron-jax-stack/wiki/) — the PJRT plugin that drives `nrt_*`
 - [`neuronx-distributed`](../../neuronx-distributed/wiki/) — the distributed-training layer above the collectives
 - [`neuronx-misc`](../../neuronx-misc/wiki/) — diagnostic tools (neuron-monitor, neuron-ls, neuron-profile)
