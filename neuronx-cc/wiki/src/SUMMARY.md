@@ -131,6 +131,7 @@
 - [CanonicalizeForTensorizer Rewriters](hlo-opt/canonicalize-for-tensorizer.md)
 - [TensorizerLegalizationPass](hlo-opt/tensorizer-legalization.md)
 - [MhloToPythonPrinter — Penguin Emission Driver & Elementwise Emitters](hlo-opt/mhlo-to-python-printer-driver.md)
+- [MhloToPythonPrinter — Heavy, Collective & Fusion/Reduce Emitters](hlo-opt/mhlo-to-python-printer-heavy.md)
 - [StableHLO Printer & PenguinizeFunctions](hlo-opt/stablehlo-printer-penguinize.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
