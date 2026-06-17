@@ -22,7 +22,6 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **XU array** | `tpb_xus` `@0xc64a40` — `tpb_execution_unit_t[256]`, stride **576 B** (`0x240`), span `0x24000` |
-| **XU array ptr** | `_tpb_xus_ptr` `@0xc06b28` |
 | **SPSC ring** | `xu_queue_t` — **256 B** (ord 13198), cursors `+0x40`/`+0x80`/`+0xC0` |
 | **Ring slot** | `xuq_exec_info_t` — **32 B** (ord 13199) |
 | **Worker array** | `_ZL7workers` `@0xc88ae0` — `kmgr_xu_worker_t[]`, **88 B** each (ord 13206); count `_ZL12worker_count` `@0xc88ac0` |
