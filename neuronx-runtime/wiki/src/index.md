@@ -1,6 +1,6 @@
 # Neuron Runtime Internals
 
-> *Reverse-engineering reference for the AWS Neuron runtime stack. Source packages: `aws-neuronx-dkms_2.27.4.0` (unstripped GPL-2.0 kernel source) · `aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce` (libnrt.so + libncfw.so + libnrtucode_extisa.so + libnds.a, all with DWARF) · `aws-neuronx-collectives_2.31.24.0-1a31ba186` (libnccom.so + libnccom-net.so, with DWARF). Every address on a page pins to these builds.*
+> *Reverse-engineering reference for the AWS Neuron runtime stack. Source packages: `aws-neuronx-dkms_2.27.4.0` (unstripped GPL-2.0 kernel source) · `aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce` (libnrt.so + libnds.a with DWARF; libncfw.so + libnrtucode_extisa.so unstripped but symtab-only, no DWARF) · `aws-neuronx-collectives_2.31.24.0-1a31ba186` (libnccom.so with DWARF; libnccom-net.so symtab-only). Every address on a page pins to these builds.*
 
 ## What this wiki is
 
@@ -45,11 +45,13 @@ A model's journey is the reading order: **silicon model** ([Part I](arch/overvie
 
 ## Evidence basis
 
-Both the kernel driver and every userspace/firmware binary in scope retain debug information, so the great majority of claims here are symbol- and type-grounded rather than pattern-matched:
+The kernel driver ships as unstripped GPL source, and every binary in scope retains at least a full symbol table — several also carry DWARF — so the great majority of claims here are symbol- (and where DWARF survives, type-) grounded rather than pattern-matched:
 
 - The **DKMS C source is unstripped GPL-2.0** — kernel pages cite `file:line` directly.
-- **libnrt.so, libncfw.so, libnrtucode_extisa.so, and libnccom.so all preserve DWARF** — function names, struct field names, and enum values survive. Pages cite addresses, struct offsets, and DWARF-recovered types.
+- **libnrt.so, libnds.a, and libnccom.so preserve DWARF** — function names, struct field names, and enum values survive; pages cite addresses, struct offsets, and DWARF-recovered types. The two firmware carriers **libncfw.so and libnrtucode_extisa.so** (and **libnccom-net.so**) are **unstripped but symtab-only — no DWARF**; pages for those binaries cite named symbols and `.rodata` offsets, not DWARF types.
 - The on-device firmware (NCFW Xtensa sequencer; GPSIMD Vision-Q7 microcode) is **fully disassemblable**: the Tensilica `.tie` config ships in the GPSIMD toolchain, so the custom vector ISA decodes exactly. See [Part X](gpsimd/q7-vision-q7.md).
+
+> **CORRECTION —** an earlier scaffold of this index claimed all four runtime-lib binaries plus both collectives binaries "preserve DWARF". That is overturned by `readelf -SW <bin> | grep -c '\.debug'`: only **libnrt.so** (9), **libnds.a** (835), and **libnccom.so** (8) carry `.debug_*` sections. **libncfw.so** (0), **libnrtucode_extisa.so** (0), and **libnccom-net.so** (0) are unstripped but **symtab-only — no DWARF**; this matches what all four firmware pages already state for libncfw.so. Pages for the symtab-only binaries are grounded on named symbols and `.rodata` offsets, not DWARF-recovered types.
 
 > **CORRECTION —** an earlier scaffold of this wiki described the GPSIMD/Q7 cores as "ARM-derived" with a TIE config that could not be decoded. Both are wrong: the GPSIMD compute cores are **Tensilica Vision-Q7** (Xtensa LX with the IVP vector extension), and the `.tie` is shipped, so the 1065-op vector ISA is fully recovered ([GPSIMD ISA Catalog](gpsimd/ivp-isa-catalog.md)). The separate FW-IO management path is documented at [FW-IO MiscRAM Mailbox](kernel/fw-io.md).
 

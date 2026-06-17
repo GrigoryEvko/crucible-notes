@@ -27,7 +27,7 @@ For reimplementation, the contract for the carrier is:
 | **Arch key** | `nrtucode_coretype` ∈ `{5, 12, 20, 28}` → `{v2/sunda, v3/cayman, v4/mariana, v4_plus/mariana_plus}` |
 | **Job A — provider** | flat `switch` → `{&iram, iram_size, &dram, dram_size}` into 8 `.rodata` blobs (no header/magic) |
 | **Job B — serializer** | `5/12/20/28` dispatch → 152-fn recursive descent → JSON into a 1 MB buffer |
-| **Function census** | 181 total = 3 public + 4 arch dispatchers + 152 serializer helpers + ~12 CRT/PLT + per-arch `ncfw_ctx_log`/`buffer_full` plumbing |
+| **Function census** | 181 total = 3 public + 4 arch dispatchers + 152 serializer helpers (38 families × 4, incl. the 4 `ncfw_ctx_log` tops) + ~12 CRT/PLT thunks + per-arch `ncfw_log_buffer_full` `.bss` data |
 | **Consumer** | `libnrt.so` `encd_libncfw_init` @`0x251cc0` (`dlopen`) / `encd_ncfw_init` @`0x251eb0` (fptr call) |
 
 > **NOTE — three on-device Xtensa cores, do not conflate.** AWS Neuron silicon carries **three** distinct Tensilica Xtensa-family cores, and a reader meeting them for the first time will merge them. (1) The **NCFW collective sequencer** — *this part* — is an Xtensa LX in a proprietary AWS **sequencer TIE** config; its firmware is the eight blobs in `libncfw.so`; it drives ring/mesh/kangaring/barrier DMA from inside each NeuronCore's TPB sequencer block. (2) The **GPSIMD "Q7"** vector cores are Xtensa LX in the **Tensilica Vision-IVP32** config (Vision-Q7 product, e_machine `0x5e`, TIE type `_TIE_xt_ivp32_xb_vec2Nx8U`); their microcode is 13 ELF32 Xtensa objects in the *separate* carrier `libnrtucode_extisa.so` (Part XI). (3) The **Q7 management CPU / FW-IO** mailbox path is a third role — the MiscRAM mailbox protocol documented in [FW-IO MiscRAM Mailbox](../kernel/fw-io.md) — *not* an ISA, and not carried by either firmware library. Same ISA *family* (Xtensa LX), three different TIE configs and three different jobs. The sequencer's `.tie` is **not** shipped (so its custom ops are opaque); the Q7 IVP32 `.tie` *is* shipped, so that ISA decodes fully — the lineage proof lives in [Tensilica Xtensa and Vision-Q7 Identification](../gpsimd/xtensa-vision-q7.md).
@@ -128,7 +128,7 @@ int ncfw_log_<family>(const char *out_buf, int indent, const char *key, void *st
 //
 // ncfw_log_addr @0x41c3 takes an EXTRA leading char arg = "emit trailing comma?":
 int ncfw_log_addr(char trail_comma, const char *out, int indent, const char *key, uint64_t *p);
-//   prints  "soc_addr": "0x%016lX"
+//   prints  <key>: "0x%016lX"      actual constant @0x65127 is `%s: "0x%016lX"\n` (key passed as %s, e.g. "soc_addr")
 ```
 
 Truncation is handled by a per-arch global flag `ncfw_log_buffer_full` (four copies in `.bss` at `0x95029`/`2a`/`2b`/`2c`), set whenever an `snprintf` would overflow the 1 MB buffer; `ncfw_ctx_log` returns `28` (ENOSPC) if any copy is set, else `0`.
@@ -160,7 +160,7 @@ Rather than list all 152 cloned helpers, the table below gives the *shape* of th
 | NEFF barrier subtree | 9 | `ncfw_log_neff_device_barrier_config` @`0xfef5` | host/device barriers, step `m2s/s2m`, `tdrbp`, dma-sync-sema |
 | Config / dev / basic-block / tsync | 9 | `ncfw_log_dev_configs` @`0xc371` | `tpb_id`/`seng_id`/`dev_id`, tsync, basic-block 4 B table |
 
-> **QUIRK —** two families are present in all four arch copies but have **no caller** reachable from `ncfw_ctx_log` in the sunda trace: `ncfw_log_soc_addr` @`0x8a1b` and `ncfw_log_dma_reprogram_info` @`0x4571`. They are either dead/legacy or reached only through a non-sunda context layout (**LOW** — xref unresolved). The latter also carries a recovered firmware-side label bug: its `+12` key is literally `"s2m_low"` again, where the layout implies `s2m_high` (**HIGH** that the duplicate key exists; the intent is inferred).
+> **QUIRK —** two families are present in all four arch copies but have **no caller** reachable from `ncfw_ctx_log` in the sunda trace: `ncfw_log_soc_addr` @`0x8a1b` and `ncfw_log_dma_reprogram_info` @`0x4571`. They are either dead/legacy or reached only through a non-sunda context layout (**LOW** — xref unresolved). The latter also carries a recovered firmware-side gap: the `.rodata` key run is `m2s_low` @`0x65137` / `m2s_high` @`0x6513f` / `s2m_low` @`0x65148`, with **no `s2m_high` key string anywhere in the image** (`strings libncfw.so | grep -c s2m_high` → `0`) — so the serializer emits an `m2s_low`/`m2s_high`/`s2m_low` triple where the four-field layout would expect a closing `s2m_high` (**HIGH** that the `s2m_high` key is absent; that this drops a real field is inferred).
 
 ---
 

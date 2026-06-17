@@ -227,10 +227,10 @@ The DMA/barrier/semaphore serializers all instantiate the convention over a smal
 //                          +16 u32 mask
 int ncfw_log_dma_channel_apb_bcast(char *out, int indent, const char *key, void *p):
 
-    EMIT("%*s\"%s\": {", indent, "", key);             // 0x4900  open object  (fmt @0x65000/0x65005)
+    EMIT("%*s\"%s\": {", indent, "", key);             // 0x4900  open object  (paraphrase of %*s @0x65001 + "%s": {\n @0x65005)
 
     if (*(uint8_t*)p == 0) {                            // 0x4938  movzbl (p) -- empty-descriptor guard
-        EMIT("{}");                                     // 0x49f5  short-circuit empty form (fmt @0x6500e)
+        EMIT("{}");                                     // 0x49f5  short-circuit empty form (paraphrase; open-brace frag {\n @0x6500e)
         return ...;
     }
     EMIT("%*s\"%s\": {\n", indent, "", key);            // 0x4983  (non-empty: re-open keyed object)
@@ -240,14 +240,14 @@ int ncfw_log_dma_channel_apb_bcast(char *out, int indent, const char *key, void 
     ncfw_log_addr(/*trail=*/1, out, indent, "s2m_tail_ptr", (uint64_t*)(p + 8));   // 0x4a70  key @0x6515d
 
     EMIT("%*s\"mask\": %u\n", indent, "", *(uint32_t*)(p + 16));   // key "mask" @0x6516a -- last field, no comma
-    EMIT("%*s},\n", indent, "");                        // close object  (fmt @0x65019)
+    EMIT("%*s},\n", indent, "");                        // close object  (paraphrase; close frag },\n @0x65026)
     return ...;
 }
 
 // The shared SoC-address leaf the two calls above route through:
 // Models ncfw_log_addr @0x41c3 -- note the EXTRA leading char arg (saved %al @-0x34).
 int ncfw_log_addr(char trail_comma, char *out, int indent, const char *key, uint64_t *p):
-    EMIT("%*s\"%s\": \"0x%016lX\"%s", indent, "", key, *p, trail_comma ? ",\n" : "\n");  // fmt @0x65127
+    EMIT("%*s\"%s\": \"0x%016lX\"%s", indent, "", key, *p, trail_comma ? ",\n" : "\n");  // paraphrase; actual constant @0x65127 is `%s: "0x%016lX"\n`
 ```
 
 > **NOTE — `ncfw_log_addr` breaks the uniform signature with a leading flag byte.** The 38 families almost all share `(out, indent, key, struct_ptr)`, but the `soc_addr` leaf `ncfw_log_addr` @`0x41c3` prepends a `char trail_comma` (the firmware-side "is this the last field in its object?" flag), passed in `%al` and saved at `-0x34`. A reimplementer who assumes a uniform 4-arg signature for *every* node will mis-call the single most-used leaf in the tree. The non-trailing variant exists because the last field in a JSON object must omit the comma.
