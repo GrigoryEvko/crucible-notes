@@ -8,7 +8,7 @@
 
 The familiar frame is a **statsd-style drain agent embedded in the kernel**: the runtime is the in-process client that increments shared counters (it never serializes a metric), and this thread is the out-of-band agent that drains, *differentiates against a per-session baseline*, packs, and ships. The difference from statsd is that the "shared memory" is the kernel-mediated NDS slab, the "agent" is a kernel thread, and the "UDP socket" is an on-device firmware mailbox (`POST_TO_CW`). Every COUNTER and UTILIZATION metric is posted as a delta `(curr + freed − prev)` and *skipped* when it has not advanced (`:617`); `prev[]` is rebased to `curr[]` at the end of every post (`nmetric_start_new_session`, `:991`). The wire value is the change since the last post, never the lifetime total.
 
-The 128-byte budget is split across **two ticks** (`POST_TICK_COUNT = 2`, `h:21`): each of the 41 registry rows carries a `tick` field (`TICK_0` / `TICK_1` / `ALWAYS`), the thread alternates `tick = (tick + 1) % 2`, and `ALWAYS` metrics post on every tick. This page is the kernel half of the telemetry plane whose end-to-end flow (runtime publish → NDS slab → this engine → FW-IO → CloudWatch) is owned by [Telemetry, Metrics & Error Reporting](../trace/telemetry-errors.md). §1 is the thread/timer model; §2 is the aggregation tick as annotated pseudocode; §3 is the CloudWatch record encoding and the differential rule; §4 is the post path. The `metric_id` taxonomy and the `NRT_STATUS` table are sibling-owned and only referenced.
+The 128-byte budget is split across **two ticks** (`POST_TICK_COUNT = 2`, `h:21`): each of the 46 registry rows carries a `tick` field (`TICK_0` / `TICK_1` / `ALWAYS`), the thread alternates `tick = (tick + 1) % 2`, and `ALWAYS` metrics post on every tick. This page is the kernel half of the telemetry plane whose end-to-end flow (runtime publish → NDS slab → this engine → FW-IO → CloudWatch) is owned by [Telemetry, Metrics & Error Reporting](../trace/telemetry-errors.md). §1 is the thread/timer model; §2 is the aggregation tick as annotated pseudocode; §3 is the CloudWatch record encoding and the differential rule; §4 is the post path. The `metric_id` taxonomy and the `NRT_STATUS` table are sibling-owned and only referenced.
 
 For reimplementation, the contract is:
 
@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **Per-device state** | `struct neuron_metrics` embedded in `neuron_device.metrics` (`neuron_device.h:104`) |
 | **kthread** | `nmetric_thread_fn` (`:1047`), spawned `kthread_run(…, "nd%d metrics", index)` (`:1139`) |
 | **Per-tick pipeline** | `nmetric_aggregate_and_post_tick` (`:1017`) — aggregate+cache under lock → post → new session |
-| **Registry** | `nmetric_defs[]` (`:172-243`, **41 rows**) of `nmetric_def_t {index,type,count,tick,cw_id,ds_id,flags}` (`h:90-98`, 7×`u8`) |
+| **Registry** | `nmetric_defs[]` (`:172-243`, **46 rows**) of `nmetric_def_t {index,type,count,tick,cw_id,ds_id,flags}` (`h:90-98`, 7×`u8`) |
 | **Metric types** | 10 (`CONSTANT 0` … `ECC_ERR_COUNTER 9`, `h:23-32`); each has a mirror aggregate/post path |
 | **CW wire record** | `struct nmetric_cw_metric { u8 id; u8 len; u8 data[]; }` `__packed` (`:254-258`); ASCII, no NUL |
 | **CW id space** | `enum nmetric_cw_id` (`:42-170`), ids `11..253`; error band `200..253` — taxonomy **owned by** [sysfs](sysfs.md) |
@@ -167,7 +167,7 @@ Four distinct fan-in disciplines share one walk, and a reimplementer must keep t
 - **BITMAP → OR across entries.** Feature flags are unioned: a feature in use by any live process is reported.
 - **CONSTANT_U64 → last writer wins.** `const_u64[index]` is overwritten, not accumulated; whichever in-use entry is walked last sets the device-cluster-id / agg-neff-id. These are device-wide constants, so any live entry carries the same value and the overwrite is harmless.
 
-> **NOTE — the FW-IO error count is not a datastore counter.** `curr[17]` (`NMETRIC_FW_IO_ERR_IDX`, `:251`) is filled *after* the entry loop from `fw_io_get_err_count(nd->fw_io_ctx)` (`:412`), the only `curr[]` slot sourced outside the datastore. Its registry row (`type FW_IO_ERR`, `cw11`, `ds 0xFF`) carries `ds_id = 0xFF` precisely because there is no datastore counter behind it. A reimplementer must special-case this index. (Confidence HIGH.)
+> **NOTE — the FW-IO error count is not a datastore counter.** `curr[17]` (`NMETRIC_FW_IO_ERR_IDX`, `:252`) is filled *after* the entry loop from `fw_io_get_err_count(nd->fw_io_ctx)` (`:412`), the only `curr[]` slot sourced outside the datastore. Its registry row (`type FW_IO_ERR`, `cw11`, `ds 0xFF`) carries `ds_id = 0xFF` precisely because there is no datastore counter behind it. A reimplementer must special-case this index. (Confidence HIGH.)
 
 ### Stage 2 — the freed-buffer snapshot and process-death capture
 
@@ -339,7 +339,7 @@ The CW sink calls through the DHAL FW-IO function table to `fw_io_post_metric` (
 | `nmetric_increment_reset_failure_count` | `:1233` | `[PUBLIC]` `atomic64_inc` the reset-fail counter (from reset) | HIGH |
 | `nmetric_set_performance_profile` | `:1244` | `[PUBLIC]` snprintf profile constant — **ignores its `profile` arg** (reads ndhal field) | LOW |
 
-> **CORRECTION (K-METRICS) —** an earlier scan (SCAN-08 §9a) left `neuron_metrics.c:245-1042` — the `enum nmetric_cw_id` body and all the posting helpers — ungrounded. This page grounds the full range: the id enum (`:42-170`), the 41-row registry (`:172-243`), every post helper (`:433-787`), and the orchestration (`:838-1042`) are read in full and pinned `file:line`. The prior "CW-id enum body ungrounded" gap is closed.
+> **CORRECTION (K-METRICS) —** an earlier scan (SCAN-08 §9a) left `neuron_metrics.c:245-1042` — the `enum nmetric_cw_id` body and all the posting helpers — ungrounded. This page grounds the full range: the id enum (`:42-170`), the 46-row registry (`:172-243`), every post helper (`:433-787`), and the orchestration (`:838-1042`) are read in full and pinned `file:line`. The prior "CW-id enum body ungrounded" gap is closed. A re-count of `nmetric_defs[]` against the source (`rg -c '_DEF\('` over `:172-243`, cross-checked by `nmetric_count = sizeof(nmetric_defs)/sizeof(nmetric_def_t)` at `:244`) yields **46 rows**, correcting an earlier "41 rows" figure that under-counted the registry.
 
 > **NOTE — `nmetric_set_performance_profile` has a dead parameter.** `nmetric_set_performance_profile(nd, int profile)` (`:1244`) takes an `int profile` argument but writes `ndhal->ndhal_perf.current_performance_profile` into the profile constant, **ignoring the arg** (`:1246`). Likely intentional — the ndhal field is the single source of truth — but the unused parameter is a latent bug a reimplementer should either honour or drop, not silently mirror. (Confidence LOW on intent; HIGH that the arg is unused.)
 
