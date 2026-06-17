@@ -1,66 +1,62 @@
-# neuronx-runtime Internals — Driver, Runtime, Firmware
+# Neuron Runtime Internals
 
-> **Status**: scaffolding · **Source packages**: `aws-neuronx-dkms_2.27.4.0_all` (unstripped GPL-2.0 source!) + `aws-neuronx-runtime-lib_2.31.24.0` · **Cross-stack orientation**: [`neuron-platform/wiki/`](../../neuron-platform/wiki/)
+> *Reverse-engineering reference for the AWS Neuron runtime stack. Source packages: `aws-neuronx-dkms_2.27.4.0` (unstripped GPL-2.0 kernel source) · `aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce` (libnrt.so + libncfw.so + libnrtucode_extisa.so + libnds.a, all with DWARF) · `aws-neuronx-collectives_2.31.24.0-1a31ba186` (libnccom.so + libnccom-net.so, with DWARF). Every address on a page pins to these builds.*
 
 ## What this wiki is
 
-The **runtime side** of the AWS Neuron stack: the userspace library (libnrt.so), the on-device firmware carrier (libncfw.so), and the Linux kernel driver (DKMS module). This is the layer that consumes NEFFs produced by [`neuronx-cc/wiki/`](../../neuronx-cc/wiki/) and dispatches work onto physical NeuronCore hardware.
+This book documents the **runtime side** of the AWS Neuron stack at reimplementation grade: the layer that takes a compiled model (a **NEFF**, produced by [`neuronx-cc`](../../neuronx-cc/wiki/)), loads it onto Trainium/Inferentia silicon, runs inference, and orchestrates multi-device collectives. It spans five binaries — a userspace runtime, a GPL kernel driver, two on-device firmware/microcode carriers, and a forked NCCL — reconstructed function-by-function from static analysis.
 
-## Four-layer stack
+The bar is the house bar: a competent systems engineer should be able to **rebuild** each component from its page — the algorithm, the data layout, the wire format, the decision logic — and tell which parts are certain and which are inferred. See [How to Read This Book](front/how-to-read.md), which also covers the evidence and confidence conventions.
 
+## The five binaries
+
+| Binary | Package | Role |
+|---|---|---|
+| **libnrt.so** | runtime-lib | The userspace runtime: API, model load, execution, collectives glue, profiler |
+| **kernel DKMS** | dkms (GPL source) | The `/dev/neuron*` char-device driver: ioctl, DMA, DHAL, NQ, reset, pod |
+| **libncfw.so** | runtime-lib | Carrier for the on-device NCFW collective-sequencer firmware (Xtensa) |
+| **libnrtucode_extisa.so** | runtime-lib | Provider for the GPSIMD/Q7 microcode (Tensilica Vision-Q7) |
+| **libnccom.so / -net.so** | collectives | The NCCL fork (`2.31.24+nrt2.0`) for multi-node collectives over EFA |
+
+`libnds.a` (the Neuron DataStore) is statically linked into libnrt.so and also shipped standalone.
+
+## The layered stack
+
+```text
+  CONSUMERS    libtorchneuron.so / libneuronpjrt.so / JAX-PJRT
+                       │  NRT_2.0.0 + NRT_3.0.0 ABI (149 exports)
+                       ▼
+  RUNTIME      libnrt.so  ── load NEFF, plan memory, submit, harvest, trace
+                       │            │ dlopen
+                       │            ├─► libnccom.so ── multi-node collectives (EFA)
+                       │            └─► libnrtucode_extisa.so ── GPSIMD microcode
+                       │  ioctl(/dev/neuronN, ...)
+                       ▼
+  KERNEL       aws-neuronx-dkms  ── ioctl, DMA rings, DHAL v2/v3/v4, NQ, reset, pod
+                       │  PCIe BAR MMIO · DMA · MSI-X · FW-IO mailbox
+                       ▼
+  ON-DEVICE    NeuronCore engines (PE/ACT/POOL/DVE/SP) + NCFW sequencer (Xtensa)
+               + GPSIMD/Q7 vector cores (Vision-Q7)
 ```
-                ┌────────────────────────────────────────┐
-   USERSPACE    │   libtorchneuron.so / libneuronpjrt.so │  ← consumers
-                └────────────────┬───────────────────────┘
-                                 │  NRT_2.0.0 + NRT_3.0.0 ABI
-                                 ▼
-                ┌────────────────────────────────────────┐
-                │   libnrt.so.2.31.24.0 (122 MB)         │  ← runtime library
-                │   142 nrt_* + 8 nrta_* exports         │
-                │   embeds libndl (IOCTL portal)         │
-                └────────────────┬───────────────────────┘
-                                 │  ioctl(/dev/neuron*, ...)
-                                 ▼
-   KERNEL       ┌────────────────────────────────────────┐
-                │   aws-neuronx-dkms (GPL-2.0, ~20.6k LOC)│  ← kernel driver
-                │   70+ IOCTLs under magic 'N'           │
-                │   v2/v3/v4/vc per-gen DHAL vtables     │
-                └────────────────┬───────────────────────┘
-                                 │  PCIe BAR0 MMIO, DMA, MSI-X
-                                 ▼
-   ON-DEVICE    ┌────────────────────────────────────────┐
-                │   NeuronCore TPB (Xtensa LX)            │  ← firmware
-                │   firmware loaded from libncfw.so       │
-                │   Q7 management coprocessor (separate)  │
-                │   GPSIMD subcores                       │
-                └────────────────────────────────────────┘
-```
 
-## Three firmware-running CPUs
+## How the data flows (the spine of this book)
 
-Per wave-2 N2.5 reconciliation, a single NeuronCore device runs **three distinct on-device CPUs**, each with its own firmware-load path:
+A model's journey is the reading order: **silicon model** ([Part I](arch/overview.md)) → **kernel driver** ([Part III](kernel/overview.md)) → **runtime core** ([Part IV](runtime/overview.md)) → **NEFF parse, memory plan, resource build** ([Part V](neff/overview.md)) → **TPB instruction lowering and ISA validation** ([Part VI](isa/overview.md)) → **execute: submit and harvest** ([Part VII](exec/overview.md)) → **DMA descriptors** ([Part VIII](dma/overview.md)) → **on-device collectives** ([Part IX](collectives/overview.md)) → **collective firmware** ([Part X](firmware/overview.md)) and **GPSIMD microcode** ([Part XI](gpsimd/overview.md)) → **multi-node collectives** ([Part XII](nccom/overview.md)) → **trace and telemetry** ([Part XIII](trace/overview.md)). The cross-cutting apparatus — binary forensics ([Part II](forensics/overview.md)), the datastore ([Part XIV](datastore/overview.md)), security ([Part XV](security/overview.md)), and reference tables ([Part XVI](appendix/subsystem-matrix.md)) — wraps the spine. New readers should start with [An Inference, End to End](front/inference-walkthrough.md).
 
-- **NeuronCore TPB sequencer** — Tensilica Xtensa LX, firmware shipped as `v{2,3,4,4_plus}_ncfw_iram_bin` payloads inside libncfw.so, uploaded by `libnrt.so:encd_ncfw_init` via H2T DMA into device IRAM. This is what `nrt_execute` ultimately dispatches work onto.
-- **Q7 management coprocessor** — separate ARM-derived (Annapurna AL) CPU running Q7 ucode (loaded via a different path that wave-2 did not fully trace; "Failed to get Q7 ucode iram" strings confirm separate path). This is what speaks the **FW_IO protocol** (BAR0 MISC RAM register-poll loop). Wave-1 incorrectly conflated this with the Xtensa NCFW.
-- **GPSIMD subcores** — also Tensilica Xtensa LX (different TIE config), programmed per-custom-op via the [neuronx-gpsimd](../../neuronx-gpsimd/wiki/) toolchain (xt-clang++ → 8 per-core ELFs).
+## Evidence basis
 
-## Easy wins from unstripped sources
+Both the kernel driver and every userspace/firmware binary in scope retain debug information, so the great majority of claims here are symbol- and type-grounded rather than pattern-matched:
 
-- **DKMS C source is unstripped GPL-2.0** at `/extracted/aws-neuronx-dkms_2.27.4.0_all/usr/src/aws-neuronx-2.27.4.0/`. Most kernel-driver pages are mechanical transcription, not RE.
-- **libnrt.so preserves debug_info** (verified by N3 wave-1). Symbol names and types survive — almost all libnrt pages are symbol-lookup, not pattern-matching.
+- The **DKMS C source is unstripped GPL-2.0** — kernel pages cite `file:line` directly.
+- **libnrt.so, libncfw.so, libnrtucode_extisa.so, and libnccom.so all preserve DWARF** — function names, struct field names, and enum values survive. Pages cite addresses, struct offsets, and DWARF-recovered types.
+- The on-device firmware (NCFW Xtensa sequencer; GPSIMD Vision-Q7 microcode) is **fully disassemblable**: the Tensilica `.tie` config ships in the GPSIMD toolchain, so the custom vector ISA decodes exactly. See [Part X](gpsimd/q7-vision-q7.md).
 
-## Where to start
-
-1. **[IOCTL Catalog](topics/ioctl-catalog.md)** — 70+ IOCTLs directly transcribed from `neuron_ioctl.h:656-874`
-2. **[FW I/O Protocol](topics/fw-io-protocol.md)** — the BAR0 MISC RAM register protocol (Q7 path, not Xtensa)
-3. **[PCI Probe and Device IDs](kernel-driver/pci-probe.md)** — 5-entry PCI ID table + BAR mapping
-4. **[DHAL Vtable](kernel-driver/dhal-vtable.md)** — 17-substruct hardware abstraction, per-generation v2/v3/v4/vc
-5. **[libnrt API Surface](runtime/libnrt/api-surface.md)** — 142 NRT_2.0.0 + 8 NRT_3.0.0 (async) symbols
-6. **[libncfw Payloads](firmware/libncfw/payloads.md)** — 8 embedded firmware blobs (4 iram + 4 dram)
-7. **[Xtensa LX ISA Identification](firmware/libncfw/isa-identification.md)** — vector-table fingerprint, L32R idiom, Annapurna lineage
+> **CORRECTION —** an earlier scaffold of this wiki described the GPSIMD/Q7 cores as "ARM-derived" with a TIE config that could not be decoded. Both are wrong: the GPSIMD compute cores are **Tensilica Vision-Q7** (Xtensa LX with the IVP vector extension), and the `.tie` is shipped, so the 1065-op vector ISA is fully recovered ([GPSIMD ISA Catalog](gpsimd/ivp-isa-catalog.md)). The separate FW-IO management path is documented at [FW-IO MiscRAM Mailbox](kernel/fw-io.md).
 
 ## Companion wikis
 
-- [`neuronx-cc/wiki/`](../../neuronx-cc/wiki/) — produces NEFFs that `nrt_load` consumes
-- [`neuron-jax-stack/wiki/`](../../neuron-jax-stack/wiki/) — PJRT plugin that drives nrt_* calls
-- [`neuronx-misc/wiki/`](../../neuronx-misc/wiki/) — diagnostic tools (neuron-monitor, neuron-ls, neuron-profile, neuron-dbg)
+- [`neuronx-cc`](../../neuronx-cc/wiki/) — the compiler that produces the NEFFs `nrt_load` consumes
+- [`neuronx-gpsimd`](../../neuronx-gpsimd/wiki/) — the GPSIMD/Q7 custom-op toolchain (the producer side of [Part X](gpsimd/overview.md))
+- [`neuron-jax-stack`](../../neuron-jax-stack/wiki/) — the PJRT plugin that drives `nrt_*`
+- [`neuronx-distributed`](../../neuronx-distributed/wiki/) — the distributed-training layer above the collectives
+- [`neuronx-misc`](../../neuronx-misc/wiki/) — diagnostic tools (neuron-monitor, neuron-ls, neuron-profile)
