@@ -64,6 +64,7 @@
 
 # Part 3 — Frontend, Driver & Diagnostics
 
+- [The neuronx-cc Command Dispatcher & Subcommand Model](frontend/command-dispatcher.md)
 - [The Two-Parser Architecture](frontend/two-parser-architecture.md)
 - [Sub-Tool argv Construction & Replay](frontend/subtool-argv.md)
 
