@@ -447,7 +447,9 @@ The sequencer TIE occupies three encoding regions a base-ISA decoder cannot reso
 
 ### The behavioral-model path
 
-Where the TIE blocks the symbolic decode, the recoverable facts are the surrounding base-ISA frame: the GPR a TIE op reads (its operand window), the `l32i.n`/`s32i.n` around it (its memory footprint), and the CSR `rsr`/`wsr` it sits between. The deep handlers (`0x167c`, `0x1758`, `0x3074`, `0x2a818`) are visible as scaffolds — `entry`, list walks, `call8` chains, `j` back-edges — but their core work (ring/mesh/kangaring/barrier execution) is TIE. Binding each handler to a CC-op class requires cross-referencing the `cc_op_entry.algo_type` bitfield the handler reads from DRAM, which is owned by the [Collectives Scheduler](libncfw/collectives-scheduler.md) and the libncfw serializer, not recoverable from the sequencer image alone.
+Where the TIE blocks the symbolic decode, the recoverable facts are the surrounding base-ISA frame: the GPR a TIE op reads (its operand window), the `l32i.n`/`s32i.n` around it (its memory footprint), and the CSR `rsr`/`wsr` it sits between. The deep handlers (`0x167c`, `0x1758`, `0x3074`, `0x2a818`) are visible as scaffolds — `entry`, list walks, `call8` chains, `j` back-edges — but their core work (ring/mesh/kangaring/barrier execution) is TIE. Binding each handler to a CC-op class requires cross-referencing the `cc_op_entry.algo_type` bitfield the handler reads from DRAM, which is owned by the [cc_op_entry On-Device Collective ISA](../collectives/cc-op-isa.md) and the libncfw serializer, not recoverable from the sequencer image alone.
+
+> **CORRECTION — broken internal link repointed.** This sentence linked `[Collectives Scheduler](libncfw/collectives-scheduler.md)`, a target that does not exist (no `firmware/libncfw/` subdir). Repointed to the existing page that actually owns the `cc_op_entry.algo_type` bitfield — [The cc_op_entry On-Device Collective ISA](../collectives/cc-op-isa.md).
 
 ---
 

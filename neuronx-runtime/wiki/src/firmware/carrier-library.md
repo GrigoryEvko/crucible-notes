@@ -230,7 +230,7 @@ int ncfw_log_dma_channel_apb_bcast(char *out, int indent, const char *key, void 
     EMIT("%*s\"%s\": {", indent, "", key);             // 0x4900  open object  (paraphrase of %*s @0x65001 + "%s": {\n @0x65005)
 
     if (*(uint8_t*)p == 0) {                            // 0x4938  movzbl (p) -- empty-descriptor guard
-        EMIT("{}");                                     // 0x49f5  short-circuit empty form (paraphrase; open-brace frag {\n @0x6500e)
+        EMIT("{}");                                     // je 0x49b9 (empty short-circuit target; paraphrase; open-brace frag {\n @0x6500e)
         return ...;
     }
     EMIT("%*s\"%s\": {\n", indent, "", key);            // 0x4983  (non-empty: re-open keyed object)
@@ -250,6 +250,8 @@ int ncfw_log_addr(char trail_comma, char *out, int indent, const char *key, uint
     EMIT("%*s\"%s\": \"0x%016lX\"%s", indent, "", key, *p, trail_comma ? ",\n" : "\n");  // paraphrase; actual constant @0x65127 is `%s: "0x%016lX"\n`
 ```
 
+> **CORRECTION — apb_bcast empty-form jump target fixed.** The empty-descriptor short-circuit was cited as `0x49f5`, which is mid-body. The conditional that takes the empty `{}` form is `je 0x49b9` (the `movzbl (%a4)`/test at `0x493d`); `0x49f5` is an interior instruction, not the branch target.
+
 > **NOTE — `ncfw_log_addr` breaks the uniform signature with a leading flag byte.** The 38 families almost all share `(out, indent, key, struct_ptr)`, but the `soc_addr` leaf `ncfw_log_addr` @`0x41c3` prepends a `char trail_comma` (the firmware-side "is this the last field in its object?" flag), passed in `%al` and saved at `-0x34`. A reimplementer who assumes a uniform 4-arg signature for *every* node will mis-call the single most-used leaf in the tree. The non-trailing variant exists because the last field in a JSON object must omit the comma.
 
 ### Function Map
@@ -265,7 +267,9 @@ int ncfw_log_addr(char trail_comma, char *out, int indent, const char *key, uint
 
 ### Considerations
 
-The serializer is the only place the CC-context schema is observable on the host. It does **not** define the on-device *meaning* of the scheduler (that runs in the Xtensa IRAM, partially opaque behind the sequencer TIE — [The NCFW Sequencer](ncfw-sequencer.md)); it merely *reflects* the struct libnrt's collectives layer builds. Because every helper is `arch`-cloned ×4 over byte-identical key strings (the key block is replicated four times in `.rodata` at `0x65000`/`0x65695`/`0x65d2f`/`0x663c4`), a reimplementer should write **one** serializer parameterized by the two top-level context offsets rather than four. The byte-level family tree and the recovered struct offsets are owned by [Serializer Families](serializer-families.md).
+The serializer is the only place the CC-context schema is observable on the host. It does **not** define the on-device *meaning* of the scheduler (that runs in the Xtensa IRAM, partially opaque behind the sequencer TIE — [The NCFW Sequencer](ncfw-sequencer.md)); it merely *reflects* the struct libnrt's collectives layer builds. Because every helper is `arch`-cloned ×4 over byte-identical key strings (the key block is replicated four times in `.rodata` at `0x65001`/`0x65696`/`0x65d2b`/`0x663c0` — the block-start address of each clone, stride `0x695`), a reimplementer should write **one** serializer parameterized by the two top-level context offsets rather than four.
+
+> **CORRECTION — key-band START addresses corrected to the per-clone block starts.** The four key-band starts are `0x65001`/`0x65696`/`0x65d2b`/`0x663c0` (the first `%*s` of each clone block; sec-offsets `0x001`/`0x696`/`0xd2b`/`0x13c0`, VMA = `+0x65000`, stride `0x695`). The previously printed `0x65000`/`0x65695`/`0x65d2f`/`0x663c4` were rounded/off-by-a-few and disagreed with [Serializer Families](serializer-families.md); both pages now standardize on these block-start values. (The per-clone `sema_mask` markers, for reference, sit at sec-offsets `0x0be`/`0x753`/`0xde8`/`0x147d`.) The byte-level family tree and the recovered struct offsets are owned by [Serializer Families](serializer-families.md).
 
 ---
 
