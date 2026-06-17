@@ -62,6 +62,8 @@
 - [ISA Numeric Enum-Ordinal Tables](isa/isa-enum-ordinals.md)
 - [DVE 0xF1/0xF2 Engine-Migration Reconcile](isa/dve-engine-migration.md)
 
+# Part 3 — Frontend, Driver & Diagnostics
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
