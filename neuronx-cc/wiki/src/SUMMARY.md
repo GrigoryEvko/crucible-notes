@@ -7,6 +7,7 @@
 # Part 0 — Reference Apparatus
 
 - [The Compile Pipeline at a Glance](front/pipeline.md)
+- [Worked Example A — a matmul end-to-end](front/worked-example-matmul.md)
 - [Methodology & the Confidence Model](methodology.md)
 - [Binary Inventory & the .so Map](reference/binary-inventory.md)
 - [Build & Version Provenance](reference/versions.md)
