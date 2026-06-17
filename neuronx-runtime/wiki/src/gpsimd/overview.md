@@ -132,7 +132,9 @@ The provider threads three opaque handles (plus `opset`, used only by the compil
 | `nrtucode_ll_t` | `0x48` | `ll_create` @`0x8ef0` | `+0x00 context` · `+0x08 dram_alloc` (device buf) · `+0x10 flavor/IRAM-target` · `+0x18 library_size` |
 | `nrtucode_opset_t` | `0x830` | `opset_create` @`0x8840` | `+0x00 context` · `+0x08 opcode_slots[256]` (opcode `0xF0` = extended w/ 256-byte specialization bitmap) |
 
-The device CSR mailbox (offsets from `core->a4 = *(u64*)(core+0x20)`, all via `rw_impl` read/write): `+0` claim/boot magic (`UNCLAIMED=0x60969274`, `CLAIMED=0x502B2DA1`), `+4` log bufsize, `+8` log buffer dev ptr, `+16` log head, `+20` max loglevel, `+24` DGE priority-class map `u32[5]`, `+40` DGE mailbox slots `u32[5]`, `+56`/`+64` pc-bounds lo/hi. The claim handshake (`on_ucode_booted` @`0x9e50`: read `+0`, expect `0x60969274`, write `0x502B2DA1`, set `boot_state=1`) is the boot-state gate every DGE/pc-bounds call checks. CONFIDENCE: **HIGH** (every offset cross-checked across the log/DGE/pc-bounds functions).
+The device CSR mailbox (offsets from `core->a4 = *(u64*)(core+0x20)`, all via `rw_impl` read/write): `+0` claim/boot magic (`UNCLAIMED=0x6099CB34`, `CLAIMED=0x502B2DA1`), `+4` log bufsize, `+8` log buffer dev ptr, `+16` log head, `+20` max loglevel, `+24` DGE priority-class map `u32[5]`, `+40` DGE mailbox slots `u32[5]`, `+56`/`+64` pc-bounds lo/hi. The claim handshake (`on_ucode_booted` @`0x9e50`: read `+0`, expect `0x6099CB34`, write `0x502B2DA1`, set `boot_state=1`) is the boot-state gate every DGE/pc-bounds call checks. CONFIDENCE: **HIGH** (every offset cross-checked across the log/DGE/pc-bounds functions).
+
+> **CORRECTION —** an earlier scaffold (echoed by this page) gave the `UNCLAIMED`/release magic as **`0x60969274`**. The binary truth is **`0x6099CB34`** — `cmp $0x6099cb34,%r9d` @`0x9e8e` in `on_ucode_booted` and `movl $0x6099cb34,…` @`0x9b4b` in `core_destroy`, both byte-exact. `0x502B2DA1` (CLAIMED) is correct. This matches the [provider page](extisa-provider.md) §3 UC-API correction. CONFIDENCE: **HIGH**.
 
 ### The lifecycle the consumer drives
 
@@ -145,11 +147,11 @@ BRINGUP   context_create(3, rw_impl) → set_memhandle_impl → core_create(ctx,
                               → on_ucode_booted (claim) → enable_logs → [dge_set_priority_class_map | enable_pc_bounds_check]
 LOAD      ll_get_libraries_from_opcodes → ll_create → ll_get_load_sequence (ONE 0x40-byte record)
 QUERY     (compiler side) opset_create → opset_add_instruction(per insn) → opset_get_library_index
-TEARDOWN  print_logs → ll_get_unload_sequence → ll_destroy → core_destroy (writes 0x60969274 unclaim → mailbox+4)
+TEARDOWN  print_logs → ll_get_unload_sequence → ll_destroy → core_destroy (writes 0x6099CB34 unclaim → mailbox+0)
                               → context_destroy → dlclose, NULL all fn-ptr globals
 ```
 
-> **GOTCHA —** `core_destroy` (@`0x9b20`) writes the **unclaim** magic `0x60969274` to `mailbox+4` (the log-bufsize slot), *not* `mailbox+0`. The claim slot `+0` is read-modified by `on_ucode_booted`; the unclaim path uses `+4`. A reimplementer that "releases" the core by zeroing the claim magic at `+0` will leave the device in a state the next boot's `0x60969274 == UNCLAIMED` check does not recognise. CONFIDENCE: **HIGH** (both writes byte-anchored).
+> **CORRECTION —** an earlier GOTCHA on this page claimed `core_destroy` (@`0x9b20`) writes the unclaim magic to **`mailbox+4`** (the log-bufsize slot), not `mailbox+0`. The disasm refutes this: the rw-write address operand is `mov 0x20(%rbx),%rsi` = `core->a4` with **no `+4` displacement** (@`0x9b56`), identical to the claim *read* `mov 0x20(%rbx),%rsi` in `on_ucode_booted` (@`0x9e6c`). Both claim and unclaim target **`mailbox+0`**; the `$0x4` operand seen alongside is the 4-byte rw length (`mov $0x4,%edx`), not a `+4` offset. A reimplementer must release the core by writing `0x6099CB34` to `+0` — the same slot the next boot's `UNCLAIMED` check reads. This matches the [provider page](extisa-provider.md) §3 UC-API correction. CONFIDENCE: **HIGH** (address operand has no displacement at either call site).
 
 ---
 
