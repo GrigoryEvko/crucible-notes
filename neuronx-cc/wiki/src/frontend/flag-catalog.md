@@ -58,7 +58,7 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 |---|---|---|---|---|---|
 | `--allocator <value>` | enum(coloring, linear_scan) | `coloring` | HID | (no help) — selects walrus register/memory allocator; bad value raises *"Unsupported allocator= %s"* `[0x88c30]` | S |
 | `--arch <value>` | enum(inf1,inf2,trn1,trn1n,trn2,trn2n,trn3,sunda) | (from `--target`) | PUB | *"Target MLA architecture"* `[0x88c50]` — sets NeuronCore generation; gates LNC default (`arch!="sunda" or lnc==1` `[0x871a0]`) | C |
-| `--auto-cast <cast mode>` | enum(none, matmult, all) | `matmult` | PUB | *"Automatically cast FP32 operators to a lower-precision type for increased performance. (Default: %(default)s)"* `[0x866e0]`; → fp32-cast policy in `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
+| `--auto-cast <cast mode>` | enum(none, matmult, all) | `none` | PUB | *"Automatically cast FP32 operators to a lower-precision type for increased performance. (Default: %(default)s)"* `[0x866e0]`; → fp32-cast policy in `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
 | `--auto-cast-type <data-type>` | enum(fp16, bf16, tf32) | `bf16` | PUB | *"When auto-cast mode is enabled, set the lower-precision data type to which the selected FP32 operations are cast. (Default: %(default)s)"* `[0x85280]` (fp8e4/fp32r reachable only via `--fast-math` macros) | C |
 | `--auto-compare-mismatch` | bool | False | HID | (no help) — golden-compare debug toggle; feeds `XLAInferGoldens` numerical-compare path | S |
 | `--cc-pipeline-tiling-factor=2` | int(`=N`) | `2` | HID | (no help; literal carries default `=2` `[0x88550]`) — collective-compute pipeline tiling factor | S |
@@ -87,9 +87,11 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 | `--expand-batch-norm-training-and-grad` | bool | False | HID | (no help) `[0x87e80]` — as above plus the gradient computation | S |
 | `--experimental-convolution-kernel-match` | bool/str | False | HID(EARG) | (no help) `[0x86c80]` — experimental conv kernel-matching | S |
 | `--experimental-unsafe-fp8e4m3fn-as-fp8e4m3` | bool | False | HID(EARG) | *"Convert fp8e4m3fn types to fp8e4m3"* `[0x864a0]` — unsafe; internal twin `--internal-experimental-unsafe-fp8e4m3fn-as-fp8e4m3` | C |
-| `--fast-math <cast-method>` | enum/list (macro set) | `fp32-cast-matmult` | PUB | *"Controls how the compiler makes tradeoffs between performance and accuracy for fp32 operations. (Default: %(default)s)"* `[0x87380]` — master precision/relayout knob; macro set → `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
+| `--fast-math <cast-method>` | list (`nargs='+'`, 16-token macro set) | `[]` (empty) | INT | *"Controls how the compiler makes tradeoffs between performance and accuracy for fp32 operations. (Default: %(default)s)"* `[0x87380]` — master precision/relayout knob; macro set → `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
 | `--fork` | bool/int | False/0 | HID | (no help) — run compilation in a forked worker model (distinct from `--enable-internal-fork-backend`, which forks only the backend) | I |
 | `--framework <value>` | enum (XLA) | `XLA` (auto: *"XLA detected"* `[0x89e58]`) | PUB | *"Framework used to generate training model."* `[0x85d80]` — selects input-graph frontend (`XLAInterface`); HLO vs other ingest | C |
+
+> **CORRECTION — the precision-flag `argparse` defaults are `--auto-cast=none` and `--fast-math=[]`, not `matmult`/`fp32-cast-matmult`.** Earlier rows on this page gave `--auto-cast` default `matmult` and `--fast-math` default `fp32-cast-matmult`. Those describe the *behaviour selected when auto-cast is enabled*, not the registered `argparse default=` literals. Byte-anchored in `CompileCommand.__init__` (`0x36290`): the `--auto-cast` kwargs build `PyDict_SetItem(default, __pyx_n_u_none)` (`mov rdx, __pyx_n_u_none @ 0x39a7b` → `mov rsi, __pyx_n_s_default @ 0x39a82`), and `--fast-math` builds `default=` from `PyList_New(0)` (`xor edi, edi; call _PyList_New @ 0x3a6ec` → `n_s_default @ 0x3a702`) — i.e. an empty list. So the genuine defaults are *no casting until the user asks for it*. `--fast-math` is additionally `kind=ArgKind.INTERNAL` (`.INTERNAL` fetched @ `0x3a833`), `nargs='+'`. The rows above and the choice appendix below are corrected accordingly; [3.14 precision-flag-marshalling](precision-flag-marshalling.md) §2.1/§2.3 is authoritative on this axis. *(CONFIRMED — disasm at the cited offsets.)*
 
 ### CompileCommand flags H–M
 
@@ -248,11 +250,11 @@ A flag's help surface is decided by its **ArgKind**, set once at `add_argument` 
 ## Choice / enum appendix (verbatim)
 
 ```text
---auto-cast        : none | matmult (DEFAULT) | all
+--auto-cast        : none (DEFAULT) | matmult | all   (matmult is the behaviour when enabled, not the argparse default)
 --auto-cast-type   : fp16 | bf16 (DEFAULT) | tf32     (fp8e4/fp32r only via --fast-math)
---fast-math macros : all | none |
+--fast-math macros : all | none |       (argparse default = [] empty list; no macro is the default)
                      fp32-cast-all | fp32-cast-all-fp16 | fp32-cast-all-fp32r |
-                     fp32-cast-all-fp8e4 | fp32-cast-matmult (DEFAULT) |
+                     fp32-cast-all-fp8e4 | fp32-cast-matmult |
                      fp32-cast-matmult-bf16 | fp32-cast-matmult-fp16 |
                      fp32-cast-matmult-fp32r | fp32-cast-matmult-fp8e4 | fp32-cast-none |
                      fast-relayout | fast-relayout-fp32 | fast-relayout-fp32r |
@@ -271,7 +273,7 @@ A flag's help surface is decided by its **ArgKind**, set once at `add_argument` 
 --pipeline/--state stages : Frontend | WalrusDriver | Backend | BIRSim  (+ BirCodeGenLoop)
 ```
 
-> **CORRECTION — `--optlevel` accepts only 0–3, default 2.** The choice tokens are exactly the Cython string-table entries `"0"`,`"1"`,`"2"`,`"3"` (`string_tab[1..4]`); **there are no `-O4`..`-O9` constants** (verified: no bare `4`..`9` choice tokens in `.rodata`). The help text names only `-O1`/`-O2`/`-O3`. `-O` is the short alias (`string_tab[111] = ("-O", &__pyx_kp_u_O)`); `-O0/-O1/-O2/-O3` are its argparse short spellings. `-O3` can silently degrade to `-O2` behaviour: BP (~15279–15288) has a guard that, when `-O3` preconditions are unmet, `SetAttr optlevel="2"` and `layer_unroll_factor=0`. Deep level→knob map: [3.10 — opt-level planes](opt-level-planes.md).
+> **CORRECTION — `--optlevel` accepts only 0–3, default 2.** The choice tokens are exactly the Cython string-table entries `"0"`,`"1"`,`"2"`,`"3"` (`string_tab[1..4]`); **there are no `-O4`..`-O9` constants** (verified: no bare `4`..`9` choice tokens in `.rodata`). The help text names only `-O1`/`-O2`/`-O3`. `-O` is the short alias (`string_tab[111] = ("-O", &__pyx_kp_u_O)`); `-O0/-O1/-O2/-O3` are its argparse short spellings. **`-O3` is an *unconditional* rewrite to `-O2`** — not a "degrade when preconditions are unmet". The only guard is the equality test itself: `_Pyx_PyUnicode_Equals(kp_u_3, optlevel)` (BP decompile L15261); when it is true, BP unconditionally does `SetAttr optlevel="2"` (L15279), `SetAttr layer_unroll_factor=0` (L15288), `layer_unroll_factor_Used=True`, and logs the USER advisory (`kp_u_The_O3_setting_is_not_optimized`). There are no preconditions and no guarding `if` beyond `optlevel=="3"`. Deep level→knob map: [3.10 — opt-level planes](opt-level-planes.md) §2.4 (authoritative — full decompile L15262–15378).
 
 ---
 
@@ -282,7 +284,7 @@ Each cross-checked against `CompileCommand.cpython-310-…so` (string table `…
 1. **147 distinct `--` literals.** `jq -r '.[].value' …_strings.json | rg '^--' | sort -u | wc -l` ⇒ **147**. CONFIRMED. This is the literal count and includes the `=value` defaulted forms (`--internal-dma-qos-class-count=`, `--internal-dma-qos-for-spill-code=`) and four `--no-*` companions; the de-duplicated base-name count is ~140.
 2. **No `--M`; `--meta-module` is the real flag.** `rg -x -- '--M'` over the 147-set ⇒ ABSENT. `--meta-module` present with byte-verbatim help "Number of layers to be clustered into a module…". CONFIRMED correction.
 3. **`--optlevel` is 0–3, default 2, no 4–9.** Help string verbatim in `.rodata` names only -O1/-O2/-O3; no `4`–`9` choice tokens exist. CONFIRMED.
-4. **Default-carrying literals are byte-exact.** `--partitions-per-bank=64`, `--softmax-epsilon=-100000000.0`, `--partitioner-opts='--transformer'`, `--run-simulator-after=BirCodeGenLoop`, `--inst-count-limit=100000000`, `--cc-pipeline-tiling-factor=2`, `--layout-transform-heuristic=mcts`, `--model-specific-opt=unet` — all present verbatim in the literal set. CONFIRMED. `--output` default `file.neff` and `--fast-math` default macro `fp32-cast-matmult` likewise present as rodata tokens.
+4. **Default-carrying literals are byte-exact.** `--partitions-per-bank=64`, `--softmax-epsilon=-100000000.0`, `--partitioner-opts='--transformer'`, `--run-simulator-after=BirCodeGenLoop`, `--inst-count-limit=100000000`, `--cc-pipeline-tiling-factor=2`, `--layout-transform-heuristic=mcts`, `--model-specific-opt=unet` — all present verbatim in the literal set. CONFIRMED. `--output` default `file.neff` is a rodata token; `--fast-math`'s `argparse` default is the empty list `[]` (`PyList_New(0)` @ `0x3a6ec`), not a macro token (the `fp32-cast-matmult` *macro string* exists in the choice set but is not the default — see the CORRECTION in the A–F section).
 5. **`--scheduler` choice set + validation.** `none | experimental-loop-shift-left | experimental-loop-lsa` plus the validateArgs raise string *"Unsupported scheduler= %s"* all present in `.rodata`. CONFIRMED.
 
 ## Cross-references
