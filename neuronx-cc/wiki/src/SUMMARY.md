@@ -134,6 +134,10 @@
 - [MhloToPythonPrinter — Heavy, Collective & Fusion/Reduce Emitters](hlo-opt/mhlo-to-python-printer-heavy.md)
 - [StableHLO Printer & PenguinizeFunctions](hlo-opt/stablehlo-printer-penguinize.md)
 
+# Part 5 — Penguin IR & Middle-End
+
+- [Penguin Axis / Loop-Axis Model](penguin/axis-loop-model.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
