@@ -57,6 +57,7 @@
 - [The ISA Datamodel Reflection Layer](isa/isa-reflection-layer.md)
 - [Collective / GPSIMD / CustomOp Encoding](isa/collective-customop-encoding.md)
 - [DVE On-Device Microcode: opcode_table](isa/dve-opcode-table.md)
+- [DVE On-Device Microcode: control_table](isa/dve-control-table.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
