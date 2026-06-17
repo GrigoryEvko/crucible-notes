@@ -6,7 +6,7 @@
 
 ## Abstract
 
-`libnrt.so` ships with full DWARF, and every object it was built from leaves one `DW_TAG_compile_unit` record carrying its source path in `DW_AT_name` and a common build root in `DW_AT_comp_dir`. Reading that compile-unit table back yields the first-party source tree without ever seeing the source: **203 KaenaRuntime translation units** (`.c` / `.cc` / `.cpp`), grouped under thirteen subsystem directories rooted at `/opt/workspace/KaenaRuntime/`, defining **4,407 functions** with their own `DW_TAG_subprogram` body (a `DW_AT_low_pc` inside the CU, deduped by `low_pc`). The remaining 122 of the 331 CUs are vendored object code statically linked in — Abseil, the Rust std/core/alloc runtime, `KaenaProfilerFormat` protobuf, libarchive, simdjson, zlib, `KaenaDriverLib` — versioned on the [Vendored-Library SBOM](../forensics/vendored-sbom.md) and excluded from this page's first-party tree.
+`libnrt.so` ships with full DWARF, and every object it was built from leaves one `DW_TAG_compile_unit` record carrying its source path in `DW_AT_name` and a common build root in `DW_AT_comp_dir`. Reading that compile-unit table back yields the first-party source tree without ever seeing the source: **203 KaenaRuntime translation units** (`.c` / `.cc` / `.cpp`), grouped under thirteen subsystem directories rooted at `/opt/workspace/KaenaRuntime/`, defining **4,407 functions** with their own `DW_TAG_subprogram` body (a `DW_AT_low_pc` inside the CU, deduped by `low_pc`). The remaining 128 of the 331 CUs (incl. the 6 zlib-builtin) are vendored object code statically linked in — Abseil, the Rust std/core/alloc runtime, `KaenaProfilerFormat` protobuf, libarchive, simdjson, zlib, `KaenaDriverLib` — versioned on the [Vendored-Library SBOM](../forensics/vendored-sbom.md) and excluded from this page's first-party tree.
 
 This page is the spine for locating *which page owns which `.c`/`.cc`*. It is the directory-tree view of the same translation units the [Subsystem Matrix](../appendix/subsystem-matrix.md) indexes by subsystem Part: where the matrix answers "I need subsystem X, which TU and which page?", this page answers the inverse — "I am holding `tdrv/dma_ring.c`, where in the book does it live?". The owning-page column below is the exact `SUMMARY.md` path, kept consistent with that matrix; the subsystem→page logic is not re-derived here, only the directory tree and the per-TU function counts that the matrix draws from. Per-function semantics belong to the deep pages; this is the map, not the territory.
 
@@ -15,10 +15,12 @@ This page is the spine for locating *which page owns which `.c`/`.cc`*. It is th
 | **Source root** | `/opt/workspace/KaenaRuntime/` (`DW_AT_comp_dir` of every first-party CU) |
 | **First-party CUs** | 203 translation units / 4,407 defined functions |
 | **Subsystem directories** | 13 (`tdrv/`, `enc/`, `nrt/`, `kelf/`, `kmgr/`, `nds/`, `ucode/`, `utils/`, `nlog/`, `ndebug/`, `dve_config/`, `dx/`, `hw_decode/`) + a 0-fn `build/` blob-stub group |
-| **Total DWARF CUs** | 331 (203 first-party + 122 vendored + 6 zlib builtin folded into vendored) |
+| **Total DWARF CUs** | 331 (203 first-party + 128 vendored, incl. 6 zlib-builtin) |
+
+> **CORRECTION —** the CU partition now closes cleanly at 331 = **203 first-party + 128 vendored**, where the 128 vendored already includes the 6 zlib-builtin CUs (previously narrated as a separate "+6" addend, which read as 203 + 122 + 6 and obscured the closure).
 | **Largest TU (C)** | `tdrv/instruction_block_mariana.c` — 297 fns |
 | **Largest TU (C++)** | `enc/enc.cc` — 352 fns |
-| **Excluded** | 122 vendored CUs (→ SBOM); the no-DWARF siblings `libncfw.so`, `libnrtucode_extisa.so` |
+| **Excluded** | 128 vendored CUs, incl. 6 zlib-builtin (→ SBOM); the no-DWARF siblings `libncfw.so`, `libnrtucode_extisa.so` |
 
 ---
 
@@ -36,7 +38,7 @@ A compact hierarchical view of the thirteen first-party directories, fn-weighted
 │       └─ archs/ 3 CU             per-arch encd: arch / cayman / mariana / sunda
 ├─ enc/          52 CU / 1062 fn   on-device collectives compute engine
 │   ├─ async_sr/  7 CU             async point-to-point sendrecv (OFI / rendezvous / kv_store)
-│   └─ switch_platform/ 29 CU      switch-fabric collective composer
+│   └─ switch_platform/ 33 CU      switch-fabric collective composer
 │       ├─ events/{broadcast,reduce,handshake,sync,function}/   per-event algorithm TUs
 │       └─ ops/{all_gather,all_reduce,all_to_all,reduce_scatter}/ op selectors (1–3 fn each)
 ├─ nrt/          27 CU /  377 fn   public C API + config/profile/sys_trace
@@ -212,7 +214,7 @@ Every first-party translation unit, grouped by directory. **fns** = `DW_TAG_subp
 | `enc/switch_platform/ops/reduce_scatter/reduce_scatter.cc` | 2 | reduce-scatter selector | `collectives/algorithm-taxonomy.md` | MEDIUM |
 | `enc/switch_platform/ops/reduce_scatter/reduce_scatter_one_rank_per_chip.cc` | 2 | reduce-scatter one-rank-per-chip | `collectives/algorithm-taxonomy.md` | MEDIUM |
 
-> **GOTCHA —** the 27 `enc/switch_platform/events/*` and `ops/*` TUs are template-instantiated and `-O2`-inlined; `addr2line` on their `low_pc`s resolves to STL header frames, so the address-band coverage cells folded them into `enc.cc` / `enc_primitive.cc` *by address* without naming the event TU. Their owning-page cells above (`switch-broadcast-barrier.md` for broadcast/barrier/handshake/sync, `algorithm-taxonomy.md` for reduce/op-selectors) are asserted by *directory membership*, not by an address-grounded source-filename cite — the lowest-confidence first-party rows on this page. This is the same gap recorded in the matrix CORRECTION (F-SRCMAP §4b).
+> **GOTCHA —** the 31 `enc/switch_platform/events/*` and `ops/*` TUs are template-instantiated and `-O2`-inlined; `addr2line` on their `low_pc`s resolves to STL header frames, so the address-band coverage cells folded them into `enc.cc` / `enc_primitive.cc` *by address* without naming the event TU. Their owning-page cells above (`switch-broadcast-barrier.md` for broadcast/barrier/handshake/sync, `algorithm-taxonomy.md` for reduce/op-selectors) are asserted by *directory membership*, not by an address-grounded source-filename cite — the lowest-confidence first-party rows on this page. This is the same gap recorded in the matrix CORRECTION (F-SRCMAP §4b).
 
 ### nrt/ — 27 CU / 377 fn
 
@@ -357,7 +359,7 @@ The thirteen subsystem directories plus the `build/` blob stubs sum to the **203
 
 What this tree deliberately excludes:
 
-- **The 122 vendored CUs** — the other half of the 331-CU table. Their object code is statically linked into `libnrt.so`'s `.text` (Abseil, Rust std/core/alloc + crates, `KaenaProfilerFormat`'s `ntff.pb.cc` / `neuron_trace.pb.cc`, libarchive, simdjson, zlib, `KaenaDriverLib`'s `ndl.c`), but they are not KaenaRuntime source and are versioned on the [Vendored-Library SBOM](../forensics/vendored-sbom.md), not here. The `KaenaProfilerFormat` protobuf is *generated* from an AWS-authored `.proto`, so it lands in the vendored half by origin, not by being third-party OSS.
+- **The 128 vendored CUs** (incl. 6 zlib-builtin) — the other half of the 331-CU table. Their object code is statically linked into `libnrt.so`'s `.text` (Abseil, Rust std/core/alloc + crates, `KaenaProfilerFormat`'s `ntff.pb.cc` / `neuron_trace.pb.cc`, libarchive, simdjson, zlib, `KaenaDriverLib`'s `ndl.c`), but they are not KaenaRuntime source and are versioned on the [Vendored-Library SBOM](../forensics/vendored-sbom.md), not here. The `KaenaProfilerFormat` protobuf is *generated* from an AWS-authored `.proto`, so it lands in the vendored half by origin, not by being third-party OSS.
 - **The no-DWARF sibling binaries** — `libncfw.so` (collectives firmware carrier) and `libnrtucode_extisa.so` (GPSIMD/Q7 ext-ISA provider) carry no compile units, so no source tree is recoverable from them; their structure is documented in Parts X–XI from binary layout, not DWARF.
 - **The kernel `.ko`** (`aws-neuronx-dkms`) — a separate GPL binary with its own source tree; its TU filenames are reconstructed from the GPL DKMS tree in Part III, not from `libnrt.so`'s DWARF.
 
@@ -368,6 +370,6 @@ What this tree deliberately excludes:
 ## Cross-References
 
 - [Subsystem ↔ Binary ↔ Source-TU Matrix](../appendix/subsystem-matrix.md) — the same 203 TUs indexed by subsystem Part; the source of every owning-page cell above and the dual-organization straddles
-- [Vendored-Library SBOM](../forensics/vendored-sbom.md) — version pins for the 122 vendored CUs this tree excludes (Abseil, protobuf, Rust, libarchive, zlib, simdjson, `KaenaDriverLib`)
+- [Vendored-Library SBOM](../forensics/vendored-sbom.md) — version pins for the 128 vendored CUs this tree excludes (Abseil, protobuf, Rust, libarchive, zlib, simdjson, `KaenaDriverLib`)
 - [Binary Layout](../reference/binary-layout.md) — the ELF section/segment census these compile units compile into
 - [Symbol-Version Manifest](../appendix/symbol-versions.md) — the `NRT_2.0.0` / `NRT_3.0.0` `.gnu.version_d` nodes that export the public surface of the `nrt/` TUs

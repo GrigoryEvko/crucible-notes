@@ -33,7 +33,7 @@ One row per shipped page, grouped by Part; the SUMMARY path is exact. **Grade** 
 | `front/inference-walkthrough.md` | byte-level | worked example | — | HIGH |
 | `methodology.md` | byte-level | method fixed | — | HIGH |
 | `front/codename-cheatsheet.md` | byte-level | codename↔arch pinned | — | HIGH |
-| `front/source-tree.md` | byte-level | 331 DWARF CU tree | 18 TUs name-gapped (fn-covered) | HIGH |
+| `front/source-tree.md` | byte-level | 331 DWARF CU tree | 31 switch-platform events/*+ops/* TUs, of which 13 are the per-event composer TUs (broadcast/reduce) name-gapped, the rest op-selectors (all fn-covered) | HIGH |
 | `glossary.md` | byte-level | terms fixed | — | HIGH |
 | `front/bibliography.md` | surface-mapped | external refs | — | HIGH |
 | `reference/binary-layout.md` | byte-level | section/segment map | — | HIGH |

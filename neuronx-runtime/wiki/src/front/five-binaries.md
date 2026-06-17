@@ -36,7 +36,7 @@ The single fact a reader must carry forward is that **the four edges out of `lib
 
 ```text
   framework / integration (PyTorch-Neuron, …)
-        │  nrt_* / nrta_*  C ABI  (149 versioned exports: 141 @NRT_2.0.0, 8 @NRT_3.0.0)
+        │  nrt_* / nrta_*  C ABI  (145 GLOBAL exports: 149 raw @@NRT_*, incl. 4 LOCAL std::string bodies)
         ▼
   ┌──────────────────────────────────────────────────────────────────────┐
   │  libnrt.so   (8bb57aba…, SONAME libnrt.so.1)   — host x86-64 runtime   │

@@ -70,7 +70,9 @@ Where DWARF exists, attribution is direct and HIGH. Every first-party CU carries
 /opt/workspace/KaenaRuntime/build/private/develop/almalinux/RelWithDebInfo
 ```
 
-— and a `DW_AT_name` giving the verbatim relative source path (`tdrv/encd/archs/cayman.c`, `enc/enc.cc`, `nrt/nrt_config.cpp`). Counting `DW_TAG_subprogram` records that carry a `DW_AT_low_pc` inside a CU (deduped by `low_pc`) gives the per-TU function count. This partitions the 331 CUs into **203 first-party `KaenaRuntime` TUs (4,407 fns)** and **122 vendored TUs (4,384 fns)** — Abseil, the Rust `std`/`core`/`alloc` crates, the `KaenaProfilerFormat` protobuf, Libarchive, simdjson, `KaenaDriverLib`, zlib. The partition is cross-checked by `addr2line` round-trips on the public exports and against the 17,372-function IDA inventory. This is the spine of [Source-Tree Reconstruction](front/source-tree.md).
+— and a `DW_AT_name` giving the verbatim relative source path (`tdrv/encd/archs/cayman.c`, `enc/enc.cc`, `nrt/nrt_config.cpp`). Counting `DW_TAG_subprogram` records that carry a `DW_AT_low_pc` inside a CU (deduped by `low_pc`) gives the per-TU function count. This partitions the 331 CUs into **203 first-party `KaenaRuntime` TUs (4,407 fns)** and **128 vendored TUs (incl. 6 zlib-builtin)** — Abseil, the Rust `std`/`core`/`alloc` crates, the `KaenaProfilerFormat` protobuf, Libarchive, simdjson, `KaenaDriverLib`, zlib. So 203 + 128 = 331 closes exactly. The partition is cross-checked by `addr2line` round-trips on the public exports and against the 17,372-function IDA inventory. This is the spine of [Source-Tree Reconstruction](front/source-tree.md).
+
+> **CORRECTION —** the CU partition is stated as **203 first-party + 128 vendored**, with the 128 vendored already folding in the 6 zlib-builtin CUs, so 203 + 128 = 331 closes exactly (earlier narration quoted 122 vendored alongside a separate "+6 zlib" addend).
 
 ### 3.2 The assert-string path (no-DWARF binaries)
 
@@ -125,7 +127,7 @@ Gaps, traps, and overturned claims are surfaced as blockquote callouts with a bo
 
 The book is explicit about its own ceiling. Stated plainly:
 
-- **Certain (read, not reconstructed).** The kernel driver — `neuron.ko` ships as GPL-2.0 C in the DKMS package, so its IOCTL dispatch, DMA-op layer, DHAL v2/v3/v4 vtable bodies, NQ/reset/CRWL logic are *read* at `file:line`, not reverse-engineered. The ELF geometry of all six artifacts (`readelf` columns), the `libnrt.so` DWARF CU partition (203 first-party / 122 vendored), the 145 `NRT_*` exports, the 6,211 assert triples, and every wire format / ISA catalogue / struct layout the book grades **byte-level** in [Extraction Status](reference/extraction-status.md).
+- **Certain (read, not reconstructed).** The kernel driver — `neuron.ko` ships as GPL-2.0 C in the DKMS package, so its IOCTL dispatch, DMA-op layer, DHAL v2/v3/v4 vtable bodies, NQ/reset/CRWL logic are *read* at `file:line`, not reverse-engineered. The ELF geometry of all six artifacts (`readelf` columns), the `libnrt.so` DWARF CU partition (203 first-party / 128 vendored, incl. 6 zlib-builtin — 203 + 128 = 331), the 145 `NRT_*` exports, the 6,211 assert triples, and every wire format / ISA catalogue / struct layout the book grades **byte-level** in [Extraction Status](reference/extraction-status.md).
 
 - **Inferred (reconstructed, confidence-tagged).** Everything recovered from closed binary bytes carries a confidence tag, never a bare assertion: byte-budget provenance buckets (name-prefix classified, MED on the edges), the libnccom inherited-NCCL bodies (mapped by delta from upstream, HIGH on first-party deltas only), the KIND-bucketed assert classification (MED on bucketing, HIGH on the condition text itself), and any per-arch leaf body sized but not line-walked (marked LOW/MED in place).
 

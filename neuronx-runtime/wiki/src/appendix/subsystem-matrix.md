@@ -239,7 +239,7 @@ The collective compute engine is **statically embedded in `libnrt.so`** (`enc/` 
 | encd: semaphore / TopSP bring-up | `libnrt.so` | `tdrv/encd.c` + `tdrv/instr_collectives.c` | `collectives/encd-sema-topsp.md` | MEDIUM |
 | encd: per-arch ops dispatch | `libnrt.so` | `tdrv/encd/archs/{arch,cayman,mariana,sunda}.c` | `collectives/encd-arch-ops.md` | HIGH |
 
-> **GOTCHA —** the per-event switch-platform collective TUs (`enc/switch_platform/events/*` and `ops/*`, ~27 small `.cc` files) are template-instantiated and `-O2`-inlined: `addr2line` on their `low_pc`s resolves to STL header frames, so the ENC-ALG coverage cells folded them into `enc.cc`/`enc_primitive.cc` *by address* without naming the event TU. `collectives/switch-broadcast-barrier.md` and `collectives/algorithm-taxonomy.md` are the owning pages, but the per-event source filenames (e.g. `intra_chip_broadcast_event.cc`, `proxy_buff_supported_local_reduce_event.cc`) are a known source-map gap — see the CORRECTION below.
+> **GOTCHA —** the per-event switch-platform collective TUs (`enc/switch_platform/events/*` and `ops/*`, 31 small `.cc` files: 20 events + 11 ops) are template-instantiated and `-O2`-inlined: `addr2line` on their `low_pc`s resolves to STL header frames, so the ENC-ALG coverage cells folded them into `enc.cc`/`enc_primitive.cc` *by address* without naming the event TU. `collectives/switch-broadcast-barrier.md` and `collectives/algorithm-taxonomy.md` are the owning pages, but the per-event source filenames (e.g. `intra_chip_broadcast_event.cc`, `proxy_buff_supported_local_reduce_event.cc`) are a known source-map gap — see the CORRECTION below.
 
 ---
 
