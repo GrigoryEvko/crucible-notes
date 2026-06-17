@@ -19,6 +19,7 @@
 - [The Arch Object Model (getArchModel → Board/Device/Core)](arch/arch-object-model.md)
 - [Per-Generation Hardware-Constant Matrix](arch/hardware-constant-matrix.md)
 - [SBUF / PSUM Bank Geometry](arch/sbuf-psum-geometry.md)
+- [The multi-core (LNC) memory model](arch/lnc-memory-model.md)
 - [PE Engine — the Systolic Matmul Array](arch/pe-engine.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
