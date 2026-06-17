@@ -31,6 +31,8 @@
 - [SP Engine — the TPB Control Processor](arch/sp-engine.md)
 - [Execution & Sync Model — Semaphores & Barriers](arch/execution-sync-model.md)
 
+# Part 2 — The Tonga ISA
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
