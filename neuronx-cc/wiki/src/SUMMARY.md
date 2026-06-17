@@ -46,6 +46,7 @@
 - [BatchNorm-Family Encoding](isa/batchnorm-encoding.md)
 - [Pool / TensorReduce / Reciprocal / Iota Encoding](isa/pool-reduce-encoding.md)
 - [Activation Encoding](isa/activation-encoding.md)
+- [TensorScalar / Cumulative / ScalarTensorTensor / Exp Encoding](isa/tensorscalar-encoding.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
