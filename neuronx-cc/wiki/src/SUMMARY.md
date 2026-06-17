@@ -102,6 +102,7 @@
 - [Boundary Markers & Layer-Cut Analysis](hlo-opt/boundary-markers-layer-cut.md)
 - [While-Loop Collective Code-Motion](hlo-opt/whileloop-collective-codemotion.md)
 - [CC-Op Decompose & Legalize Family](hlo-opt/ccops-decompose-legalize.md)
+- [Control-Dependency Reification (HLO→MLIR→Penguin)](hlo-opt/control-dep-reification.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
