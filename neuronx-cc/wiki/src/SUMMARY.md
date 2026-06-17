@@ -108,6 +108,7 @@
 - [Concatenation Optimizations](hlo-opt/concat-optimizations.md)
 - [DUS/DS Simplifier & DynamicSlice Mover](hlo-opt/dus-ds-simplifier.md)
 - [Duplicate-Parameter & Kernel Dedup Passes](hlo-opt/dedup-passes.md)
+- [InstCombine Peephole Passes](hlo-opt/instcombine-peephole.md)
 - [HLO Misc & Cleanup Sweep](hlo-opt/hlo-misc-cleanup-sweep.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
