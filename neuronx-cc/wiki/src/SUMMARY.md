@@ -93,6 +93,7 @@
 - [Collectives → Custom-Call Forward Conversion](hlo-opt/collectives-to-customcall.md)
 - [Collective Stream-ID & Channel-ID Family](hlo-opt/collective-stream-channel-id.md)
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](hlo-opt/collective-combiners.md)
+- [Flip-Collective OpExpander Family](hlo-opt/flip-collective-opexpander.md)
 - [AllReduce→ReduceScatter & DynamicSlice Rewrites](hlo-opt/allreduce-dynslice-rewrites.md)
 - [CollectivePermute → AllGather Lowering](hlo-opt/collectivepermute-to-allgather.md)
 - [Looped-Einsum → Collective-Matmul Fusion](hlo-opt/looped-einsum-collective-matmul.md)
