@@ -107,6 +107,7 @@
 - [Input/Output Alias Family](hlo-opt/io-alias-family.md)
 - [Concatenation Optimizations](hlo-opt/concat-optimizations.md)
 - [DUS/DS Simplifier & DynamicSlice Mover](hlo-opt/dus-ds-simplifier.md)
+- [Duplicate-Parameter & Kernel Dedup Passes](hlo-opt/dedup-passes.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
