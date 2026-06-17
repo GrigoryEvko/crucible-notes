@@ -124,7 +124,7 @@ The third proof is the Cadence config itself, shipped in `gpsimd_tools.tgz`. `to
 | `e_machine=0x5e`, `e_flags=0x300`, `.comment` | 13 carved ELF32 blobs | Xtensa machine/toolchain | CERTAIN |
 | `vq7_isa=1`, `simd16=0x20`, `Xm_ncore2gp`/Cairo | `core.xparm` / `core.yml` | Config = Vision-Q7 | CERTAIN |
 | `xt_ivp32.h` typedefs + `IVP_*` macros | `xtensa/tie/xt_ivp32.h` | Canonical type/intrinsic source | CERTAIN |
-| `1064 × Iclass_IVP_*_args`, 5 × `get_xml_*` | `libisa-core.so` / `libtie-core.so` | ISA breadth + XML provider | CERTAIN |
+| `1065 × Iclass_IVP_*_args`, 5 × `get_xml_*` | `libisa-core.so` / `libtie-core.so` | ISA breadth + XML provider | CERTAIN |
 
 ### Considerations
 
@@ -260,15 +260,17 @@ IVP_LV2NX8_I  (F0):  s0_ldst[31:17]==0x847         ; IVP_LV2NX8_IP adds [8:8]==0
 | `length_decoder`, `length_table` | `libisa-core.so` (out-of-tree) | First-nibble length decode | HIGH |
 | `Format_{F0..F11,N0..N2,x24,x16a,x16b}_encode` | `libisa-core.so` (out-of-tree) | The 14 FLIX formats | HIGH |
 | `Slot_f*_s4_alu_24_*` (F3, F11 only) | `libisa-core.so` (out-of-tree) | 5-slot formats | HIGH |
-| `Iclass_IVP_*_args` (1064) | `libisa-core.so` (out-of-tree) | Per-op operand tables = ISA breadth | HIGH |
+| `Iclass_IVP_*_args` (1065) | `libisa-core.so` (out-of-tree) | Per-op operand tables = ISA breadth (1:1 with opcodes) | HIGH |
 | `get_xml_post_parse/compiler/xinfo`, `interface_version` | `libtie-core.so` (out-of-tree) | Obfuscated TIE-XML provider (OPCODEDEF/FIELDDEF) | MED |
-| `IVP_*` macros (2415) / `_TIE_xt_ivp32_IVP_*` protos | `xt_ivp32.h` (out-of-tree) | Source-level intrinsic catalog | HIGH |
+| `IVP_*` macros (count unverified — see correction) / `_TIE_xt_ivp32_IVP_*` protos | `xt_ivp32.h` (out-of-tree) | Source-level intrinsic catalog | MED |
 
-> **NOTE —** the ISA-breadth and FLIX figures above (the **1064** `Iclass_IVP_*_args` / **14** formats / 5-slot `Slot_*` base bits / **2415** `IVP_*` macros) are grounded on the `ncore2gp` toolchain — `.tie`, `xt-objdump`, `libisa-core.so`, `libtie-core.so`, `core.xparm`, `xt_ivp32.h`. **None of those ship in this repository tree** (verified: `find . -name '*.tie' -o -iname '*xt-objdump*' -o -iname 'libisa-core*' -o -iname 'libtie-core*' -o -iname '*xparm*'` returns nothing), so a reimplementer cannot reproduce them from anything shipped here; they are externally anchored, hence the downgraded confidence. The identification facts that *are* in-binary-confirmed stay **CERTAIN**: the in-blob `_TIE_xt_ivp32_xb_vec2Nx8U` type across the six `cptc_decode_impl<1..6>` instantiations, the single `IVP_MULUSAN_2X32` builtin in the host raw-Q7 image, and the 13 carved Xtensa ELF32 machine/flags/comment fields — all present in `libnrtucode_extisa.so` (build-id `7bb03bc4…`).
+> **CORRECTION (IVP-COUNT) —** an earlier scaffold gave the `Iclass_IVP_*_args` operand-table count as **1064**; the authoritative folded count is **1065**, corroborated 7× across four independent sources (`libisa-core` `opcodes[]`@`0x4ce6c0` stride-72-to-NULL, `xtensa-modules.c`, the ISA-39 synthesis, the TIE-DB) with a verified 1:1 ivp-opcode↔`Iclass_IVP_*` mapping. The earlier "**2415** `IVP_*` macros" figure was a `xt_ivp32.h` `grep` count that could not be re-verified against any in-tree artifact (the header is out-of-tree), so it is withdrawn here rather than asserted; a reimplementer with the `ncore2gp` config should re-derive it via `grep -c IVP_ xt_ivp32.h`. CONFIDENCE: **HIGH** (the 1065 folded count); the macro tally is unverified.
+>
+> **NOTE —** the ISA-breadth and FLIX figures above (the **1065** `Iclass_IVP_*_args` / **14** formats / 5-slot `Slot_*` base bits) are grounded on the `ncore2gp` toolchain — `.tie`, `xt-objdump`, `libisa-core.so`, `libtie-core.so`, `core.xparm`, `xt_ivp32.h`. **None of those ship in this repository tree** (verified: `find . -name '*.tie' -o -iname '*xt-objdump*' -o -iname 'libisa-core*' -o -iname 'libtie-core*' -o -iname '*xparm*'` returns nothing), so a reimplementer cannot reproduce them from anything shipped here; they are externally anchored, hence the downgraded confidence. The identification facts that *are* in-binary-confirmed stay **CERTAIN**: the in-blob `_TIE_xt_ivp32_xb_vec2Nx8U` type across the six `cptc_decode_impl<1..6>` instantiations, the single `IVP_MULUSAN_2X32` builtin in the host raw-Q7 image, and the 13 carved Xtensa ELF32 machine/flags/comment fields — all present in `libnrtucode_extisa.so` (build-id `7bb03bc4…`).
 
 ### Considerations
 
-The full per-mnemonic encoding (every operation × every format with operand bit-lanes) is available on disk — `libtie-core.so` serves the TIE-XML and `libisa-core.so` holds the operand tables (1064 `Iclass_IVP_*_args`) — but is not exhaustively transcribed here; this is an *identification* page, and the complete op enumeration belongs to the [IVP ISA Catalog](ivp-isa-catalog.md). The one residual gap is **byte-exact bundle re-splitting of the carved blobs**: carving an ELF32 image out of host `.rodata` zeroes the `.xt.prop` section addresses, so the Cadence `xt-objdump` cannot map the property records to `.text` to drive FLIX splitting (it falls back to printing raw fetch words). Every emitted bundle is valid and every `ivp_*` cross-checks the config; only the automatic boundary split needs an `ET_REL` relink with relocated `.xt.prop`. CONFIDENCE: **LOW** (only the automatic split is blocked, not the ISA).
+The full per-mnemonic encoding (every operation × every format with operand bit-lanes) is available on disk — `libtie-core.so` serves the TIE-XML and `libisa-core.so` holds the operand tables (1065 `Iclass_IVP_*_args`) — but is not exhaustively transcribed here; this is an *identification* page, and the complete op enumeration belongs to the [IVP ISA Catalog](ivp-isa-catalog.md). The one residual gap is **byte-exact bundle re-splitting of the carved blobs**: carving an ELF32 image out of host `.rodata` zeroes the `.xt.prop` section addresses, so the Cadence `xt-objdump` cannot map the property records to `.text` to drive FLIX splitting (it falls back to printing raw fetch words). Every emitted bundle is valid and every `ivp_*` cross-checks the config; only the automatic boundary split needs an `ET_REL` relink with relocated `.xt.prop`. CONFIDENCE: **LOW** (only the automatic split is blocked, not the ISA).
 
 ---
 
@@ -292,7 +294,7 @@ Both are Tensilica Xtensa LX — **one ISA family, two TIE configs**. The NCFW c
 The host provider exposes the microcode via three exported functions in `libnrtucode_extisa.so`; the on-device dispatch then launches a kernel by pool-opcode through a standard windowed call:
 
 ```text
-nrtucode_get_num_ext_isa_libs(arch_id,*out)  → {arch5:1, arch12:4, arch20:4, arch28:4}
+nrtucode_get_num_ext_isa_libs(arch_id,*out)  → {arch6:1, arch13:4, arch21:4, arch29:4}
 nrtucode_get_ext_isa(arch_id,lib_idx,out)     → {Xtensa ELF32 body, JSON opcode header}
 nrtucode_get_memory_image(arch_id,engine,flavor,…) → raw Q7 image (the IVP_MULUSAN_2X32 debug flavor)
         │
@@ -300,6 +302,8 @@ nrtucode_get_memory_image(arch_id,engine,flavor,…) → raw Q7 image (the IVP_M
   kernel_info_table : N × 8-byte records  [u32 BE opcode | u32 LE .text entry VA]
         └─ CALL entry  → `entry a1,<frame>` (windowed prologue) → IVP FLIX inner loop → RETW.N
 ```
+
+> **CORRECTION (ARCH-ID) —** an earlier scaffold labelled the reachable `arch_id`s `{5, 12, 20, 28}` (i.e. `idx = arch_id − 5`). The binary computes **`idx = arch_id − 6`** (immediate `41 83 c7 fa` = `add $-6` @`0x870b` in `get_num_ext_isa_libs` @`0x87b0`), so the real, code-reachable `arch_id`s are **`{6, 13, 21, 29}`** with library counts `{arch6:1, arch13:4, arch21:4, arch29:4}`. The `{1,4,4,4}` counts were always right; only the `arch_id` labels were off-by-one against the firmware coretype keys. Byte-proven and fully decoded in [dispatch-tables.md](dispatch-tables.md) (`JT_NUMLIBS`@`0x920e78`, reachable only at idx `0/7/15/23`; corroborated by `libnrt` `CSWTCH.113 = [6,13,21]`@`0x86ada8`). CONFIDENCE: **HIGH**.
 
 ### Considerations
 
