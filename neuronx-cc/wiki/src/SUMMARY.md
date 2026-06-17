@@ -17,6 +17,7 @@
 # Part 1 — Hardware & Engine Model
 
 - [The Arch Object Model (getArchModel → Board/Device/Core)](arch/arch-object-model.md)
+- [Codename ↔ Device ↔ Generation Taxonomy](arch/codename-taxonomy.md)
 - [Per-Generation Hardware-Constant Matrix](arch/hardware-constant-matrix.md)
 - [SBUF / PSUM Bank Geometry](arch/sbuf-psum-geometry.md)
 - [Vestigial Generations — CoreV1 (Inferentia) & CoreV5](arch/vestigial-generations.md)
