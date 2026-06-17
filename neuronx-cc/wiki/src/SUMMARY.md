@@ -69,6 +69,7 @@
 - [Sub-Tool argv Construction & Replay](frontend/subtool-argv.md)
 - [CompileCommand Pipeline & the Canonical Job Order](frontend/compilecommand-pipeline.md)
 - [JobRegistry & the Sub-Tool Process Model](frontend/job-registry.md)
+- [CompileCommand Flag Catalog — the 147-Flag Surface](frontend/flag-catalog.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
