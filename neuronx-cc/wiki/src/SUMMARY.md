@@ -59,6 +59,7 @@
 - [DVE On-Device Microcode: opcode_table](isa/dve-opcode-table.md)
 - [DVE On-Device Microcode: control_table](isa/dve-control-table.md)
 - [DVE On-Device Microcode: datapath_table](isa/dve-datapath-table.md)
+- [ISA Numeric Enum-Ordinal Tables](isa/isa-enum-ordinals.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
