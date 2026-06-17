@@ -24,7 +24,9 @@
 - [DRAM / HBM Geometry & the DRAM Split](arch/dram-hbm-geometry.md)
 - [The multi-core (LNC) memory model](arch/lnc-memory-model.md)
 - [PE Engine — the Systolic Matmul Array](arch/pe-engine.md)
+- [Activation Engine — Datapath and the LUT-Load Mechanism](arch/activation-engine.md)
 - [Pool Engine — Windowed Pooling and the Reduce Leg](arch/pool-engine.md)
+- [DVE Engine — Microcode-Table Architecture](arch/dve-engine.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
