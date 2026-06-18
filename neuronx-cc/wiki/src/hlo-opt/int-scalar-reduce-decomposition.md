@@ -1,6 +1,6 @@
 # Integer All-Reduce and Scalar-Reduce Decomposition
 
-> *All addresses on this page apply to neuronx_cc 2.24.5133.0+58f8de22 (`neuronxcc/starfish/bin/hlo-opt`, cp310). VA == file offset holds for `.text` (0x1e6e960–0x9a1e4a2) and `.rodata` (0x20c940–0xd92a90). Other versions will differ.*
+> *All addresses on this page are virtual addresses (VMA) for neuronx_cc 2.24.5133.0+58f8de22 (`neuronxcc/starfish/bin/hlo-opt`, cp310); resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. The `.text` VMA range is 0x1e6e960–0x9a1e4a2 and `.rodata` is 0x20c940–0xd92a90, but VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other versions will differ.*
 
 ## Abstract
 

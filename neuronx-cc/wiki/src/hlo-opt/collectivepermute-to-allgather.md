@@ -1,6 +1,6 @@
 # CollectivePermute → AllGather Lowering
 
-> *All addresses on this page apply to the `hlo-opt` binary inside `neuronx_cc-2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`). For `.text`/`.rodata` the virtual address equals the file offset; `hlo-opt` is decompile-skipped, so claims are anchored to the IDA function/string/xref tables rather than a Hex-Rays listing. Other versions will differ.*
+> *All addresses on this page are virtual addresses (VMA) for the `hlo-opt` binary inside `neuronx_cc-2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`); resolve via `objdump --start-address` or the VMA-keyed IDA tables. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). `hlo-opt` is decompile-skipped, so claims are anchored to the IDA function/string/xref tables rather than a Hex-Rays listing. Other versions will differ.*
 
 ## Abstract
 
