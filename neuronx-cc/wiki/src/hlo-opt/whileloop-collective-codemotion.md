@@ -1,6 +1,6 @@
 # While-Loop Collective Code-Motion
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`. VA == file offset for `.text`/`.rodata`. Other builds will differ.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`; resolve via `objdump --start-address` or the VMA-keyed `disasm/`/`function_addresses.json` sidecars. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other builds will differ.*
 
 ## Abstract
 

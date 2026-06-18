@@ -332,7 +332,7 @@ StatusOr<long> parseIntConfig<long>(s):
 
 ## Error / String Catalog
 
-All strings verified against `hlo-opt` `strings.json` / `rodata.bin` (`.rodata` VA == file offset, base `0x20c940`).
+All strings verified against `hlo-opt` `strings.json` / `rodata.bin` (`.rodata` VMA base `0x20c940`; note VA ≠ raw file offset — `.rodata` file_off = VA − 0x200000, so the VMA base maps to file offset `0xc940`).
 
 | Addr | String | Used by |
 |---|---|---|
