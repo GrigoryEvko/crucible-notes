@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Invariant families** | partition `≤128` · free-dim byte budget · dtype (PSUM=`{fp32,int32}`) · shape/matmul · addr-space |
 | **Limit source** | runtime `target` attrs (arch-parametric); numeric values from stubs + [1.05](../arch/sbuf-psum-geometry.md) |
 | **Failure messages** | built by `err_*()` template layer → [6.4.5 diagnostic catalog](diagnostic-catalog.md) |
-| **Evidence grade** | rules CONFIRMED via stubs; symbol offsets carried at report grade (sidecar absent) |
+| **Evidence grade** | rules CONFIRMED via stubs; symbol offsets CONFIRMED in-repo via `nm` on `sema.so` (see D-W04 correction) |
 
 ---
 
@@ -53,7 +53,7 @@ op driver (NKIFunc.check_*)              ── per-op, one call per operand
 ### Algorithm
 
 ```c
-function nki_assert(cond, msg):          // sym #23 @ 0xbb9a0  (offset unverified)
+function nki_assert(cond, msg):          // sym #23 @ 0xbb9a0  (offset CONFIRMED via nm)
     if cond:                             // legal — fall through, op proceeds to lowering
         return None
     raise NKISemanticError(msg)          // the single raise; msg pre-built by err_*()
@@ -191,7 +191,7 @@ function assert_dtype_psum(dtype, target):            // sema.py:2749  sym #185 
 
 | Rule | Mechanism | Value | Source / Confidence |
 |---|---|---|---|
-| single-type | `np.issubdtype(tile.dtype, type)` | subtype, not `==` | report decompile — STRONG (offset unverified) |
+| single-type | `np.issubdtype(tile.dtype, type)` | subtype, not `==` | `assert_dtype` `sym #169 @ 0x59070` CONFIRMED via nm; subtype-vs-`==` logic decompile-derived — STRONG |
 | per-op set | `dtype ∈ supported_dtypes` | op-specific | `nki-dtype` stub tables — CONFIRMED |
 | PSUM dtype | `dtype ∈ {float32, int32}` | exactly two | `assert_dtype_psum`; PSUM = PE-array accumulator — CONFIRMED (matmul output to PSUM, stubs) |
 | gen3+ mm dtype | `assert_gen3_or_newer_mm_dtype` (`sym #189 @ 0x54460`) | branches on `target` generation | STRONG — gen3-only matmul operand dtypes |
@@ -361,7 +361,7 @@ logical_and, logical_or
 | `err_reduce_unsupported_negate` | *"negate option can only be used with arithmetic ops"* — `negate` illegal on bitwise/logical |
 | (`atomic_rmw`) | *"`op` param only supports 'add' operation currently."* |
 
-> **NOTE —** the bitvec/arithmetic split is corroborated directly by the shipped `nki/isa/__init__.pyi` `tensor_reduce` docstring: *"There are two types of reduction operators: 1) bitvec operators (e.g., bitwise_and, bitwise_or) … 2) arithmetic operators (e.g., add, subtract, multiply)"* and *"`negate`: … only applicable when op is an arithmetic operator"*. That is the same rule `check_tensor_reduce_supported_ops` and its companion guards enforce — re-grounded against binary-distributed stub evidence (CONFIRMED), independent of the absent decompile.
+> **NOTE —** the bitvec/arithmetic split is corroborated directly by the shipped `nki/isa/__init__.pyi` `tensor_reduce` docstring: *"There are two types of reduction operators: 1) bitvec operators (e.g., bitwise_and, bitwise_or) … 2) arithmetic operators (e.g., add, subtract, multiply)"* and *"`negate`: … only applicable when op is an arithmetic operator"*. That is the same rule `check_tensor_reduce_supported_ops` and its companion guards enforce — re-grounded against binary-distributed stub evidence (CONFIRMED), corroborating the in-corpus `sema.so` decompile.
 
 ---
 
@@ -425,7 +425,9 @@ Operand/op attributes read on the tile side: `dtype`, `shape`, `tensor_ir_class`
 
 The five strongest claims on this page, re-challenged against binary-distributed evidence:
 
-1. **"Five invariant families, all funneling through one `nki_assert` sink."** The five families (partition/free/dtype/shape/addr-space) are each a named assert cluster in the report's index; the single-sink design is asserted at `sym #23`. *Offset unverifiable (sidecar absent); the family taxonomy and the err→nki_assert dispatch are STRONG from the report's symbol/xref structure.* Tagged accordingly — not claimed CONFIRMED-by-binary.
+1. **"Five invariant families, all funneling through one `nki_assert` sink."** The five families (partition/free/dtype/shape/addr-space) are each a named assert cluster in the symbol table; `nki_assert` is `sym #23 @ 0xbb9a0`, **CONFIRMED in-repo via `nm`** (see D-W04 correction). The family taxonomy and the err→nki_assert dispatch are STRONG from the symbol/xref structure.
+
+> **CORRECTION (#824 audit resume) —** items 1, 5 and the "Failures fixed" line below were written under the now-inverted false-absence premise (`sema.so` sidecar "absent"). The D-W04 correction at the top of this page established that `sema.so` **is** in-corpus (`extracted/…/sema.cpython-310-…so`, 751 decompiled bodies) and that all eleven cited `__pyx_pw_*` offsets — including `nki_assert` `sym #23 @ 0xbb9a0` — were re-derived directly via `nm` and **match the page**. The "(offset unverifiable / sidecar absent)" tags here are stale and have been corrected: the symbol offsets are CONFIRMED in-repo; only the `sema.py:NNNN` def-lines and the `edx` RichCompare immediates remain decompile-derived (STRONG).
 
 2. **"PSUM tile dtype must be `float32` or `int32`."** `assert_dtype_psum` tests both via `target.float32`/`target.int32`. Re-grounded: PSUM is the matmul accumulator (`nc_matmul` stub: outputs written to PSUM); fp32/int32 are the natural accumulator formats. **CONFIRMED** by stub + architecture, independent of the offset.
 
@@ -433,9 +435,9 @@ The five strongest claims on this page, re-challenged against binary-distributed
 
 4. **"matmul moving free ≤512, stationary free ≤128 — asymmetric."** Directly from `nc_matmul` stub lines: *"free axis sizes of `stationary` and `moving` … must be `<= 128` and `<=512`, respectively"* with the worked `(128,126)`×`(128,512)`→`(126,512)` example. **CONFIRMED** by binary-distributed stub.
 
-5. **"Reduce op-set = {add, multiply, maximum, minimum, max, min, bitwise_{and,or,xor}, logical_{and,or}}, bitvec-vs-arithmetic split with `negate` arithmetic-only."** The `tensor_reduce` stub docstring confirms the two-category split and the `negate` restriction verbatim; the exact 11-name list is from the `sema.so` module string table (report grade). **CONFIRMED** for the category split; the precise name list is STRONG (carried from the absent decompile's string table, corroborated in spirit by the stub).
+5. **"Reduce op-set = {add, multiply, maximum, minimum, max, min, bitwise_{and,or,xor}, logical_{and,or}}, bitvec-vs-arithmetic split with `negate` arithmetic-only."** The `tensor_reduce` stub docstring confirms the two-category split and the `negate` restriction verbatim; the exact 11-name list is read from the `sema.so` module string table (in-corpus). **CONFIRMED** for the category split; the precise name list is STRONG (read from the decompile's string table, corroborated in spirit by the stub).
 
-Failures fixed: every per-function `@0x…` / `sema.py:NNNN` is now explicitly marked *(offset unverified)* given the absent sidecar; the SBUF byte budget is given as the per-gen `statebuf_par_size_in_bytes` range from [1.05](../arch/sbuf-psum-geometry.md), not a flat "176 KiB", since sema reads it from `target`.
+Failures fixed: the per-function `__pyx_pw_*` `@0x…` symbol offsets are CONFIRMED in-repo via `nm` (D-W04 correction); the residual `sema.py:NNNN` def-lines remain decompile-derived (STRONG); the SBUF byte budget is given as the per-gen `statebuf_par_size_in_bytes` range from [1.05](../arch/sbuf-psum-geometry.md), not a flat "176 KiB", since sema reads it from `target`.
 
 ---
 
