@@ -368,8 +368,9 @@
 - [The Custom-Op CPU ABI: extended_isa::sdk](custom-ops/customop-cpu-abi.md)
 - [The Bundled ATen/c10 Dispatch Surface](custom-ops/aten-c10-surface.md)
 - [CUSTOM_OP Wire Byte-Layout (0x85 / 0x86)](custom-ops/customop-wire-layout.md)
-- [Penguin/BIR Custom-Op Codegen & visitInstCustomOp](custom-ops/customop-codegen.md)
+- [CUSTOM_OP Wire Validators & Scratch/Sync Handshake](custom-ops/customop-wire-validators.md)
 - [FindCustomOpData Staging, FunctionId Binding & ucode_lib.json](custom-ops/findcustomopdata-staging.md)
+- [Penguin/BIR Custom-Op Codegen & visitInstCustomOp](custom-ops/customop-codegen.md)
 - [The Two-GPSIMD Reconciliation — Pool-Engine Alias vs Xtensa Cluster](custom-ops/two-gpsimd-reconciliation.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
