@@ -1,0 +1,9 @@
+book/
+.mdbook-cache/
+*.bak
+*~
+
+# A parent .gitignore has a bare `core` rule (core-dump pattern) that swallows
+# src/isa/core/. Re-include the ISA-core wiki pages explicitly.
+!src/isa/core/
+!src/isa/core/**

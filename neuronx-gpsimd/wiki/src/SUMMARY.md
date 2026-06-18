@@ -26,24 +26,25 @@
 - [The Gen-Invariance Thesis](orientation/gen-invariance.md)
 - [The Reimplementation Verdict & Open-Questions Map](orientation/verdict-and-open-questions.md)
 
+# Part 2 — Q7 Core & ISA Foundations
+
+- [Core Identity & Configuration](isa/core/identity-config.md)
+- [Config-Grounded Microarch Reference Sheet](isa/core/config-reference-sheet.md)
+- [The Canonical ISA Decode Model (libisa-core)](isa/core/libisa-decode-model.md)
+- [The FLIX VLIW Encoding (14 format / 46 slot)](isa/core/flix-encoding.md)
+- [The Eight Register Files](isa/core/register-files.md)
+- [The Floating-Point Sub-ISA (FCR/FSR view)](isa/core/fp-sub-isa.md)
+- [The TIE Database & Four Independent ISA Sources](isa/core/tie-database.md)
+- [The libisa Table Schema & Codec ABI](isa/core/libisa-table-schema.md)
+- [ctype / coproc / funcUnit / bypass Tables](isa/core/ctype-coproc-funcunit.md)
+- [ISA Coverage & the 1534/1607/12642 Tally](isa/core/coverage-tally.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 2 — Q7 Core & ISA Foundations (10)
-- isa/core/identity-config.md          — Core Identity & Configuration
-- isa/core/config-reference-sheet.md   — Config-Grounded Microarch Reference Sheet
-- isa/core/libisa-decode-model.md      — The Canonical ISA Decode Model (libisa-core)
-- isa/core/flix-encoding.md            — The FLIX VLIW Encoding (14 format / 46 slot / 7 length)
-- isa/core/register-files.md           — The Eight Register Files
-- isa/core/fp-sub-isa.md               — The Floating-Point Sub-ISA (FCR/FSR view)
-- isa/core/tie-database.md             — The TIE Database & Four Independent ISA Sources
-- isa/core/libisa-table-schema.md      — The libisa Table Schema & Codec ABI
-- isa/core/ctype-coproc-funcunit.md    — ctype / coproc / funcUnit / bypass Tables
-- isa/core/coverage-tally.md           — ISA Coverage & the 1534/1607/12642 Tally
 
 # Part 3 — Per-Instruction ISA Reference (35)
 - isa/ref/template-and-partition.md    — ISA Reference — Template & 30-Batch Partition
