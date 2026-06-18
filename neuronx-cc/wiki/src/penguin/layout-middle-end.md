@@ -515,7 +515,8 @@ _DesignSpaceGenerationAutotuner  enumerates LayoutCandidateEnumerator candidates
 ## Cross-References
 
 - [Layout & Tiling Pipeline](layout-tiling-pipeline.md) — `LayoutTilingPipeline` assembles {layout assign → tiling}; layout (this page) precedes tiling
-- [HLO Layout Passes](../hlo/legalize-passes.md) — the XLA HLO layout normalization runs in hlo-opt *before* Penguin; a different binary and IR layer, disjoint from this tonga middle-end
+- [HLO Layout Passes](../hlo-opt/layout-passes.md) — the XLA HLO layout normalization runs in hlo-opt *before* Penguin; a different binary and IR layer, disjoint from this tonga middle-end
+  > **CORRECTION (Wave-2 audit) — cross-ref slug.** This link previously pointed at `../hlo/legalize-passes.md`; the `hlo/` directory does not exist and there is no `legalize-passes` page. The hlo-opt-binary layout-normalization page is `hlo-opt/layout-passes.md` ("Layout Passes"). Retargeted; no factual claim changed.
 - [SBUF / PSUM Geometry](../arch/sbuf-psum-geometry.md) — the 128-partition SBUF the partition-axis decision targets
 - [Front Pipeline](../front/pipeline.md) — where the layout middle-end sits in the overall compile flow
 - [Worked Example: Matmul](../front/worked-example-matmul.md) — the contract→partition forcing in a concrete matmul lowering
