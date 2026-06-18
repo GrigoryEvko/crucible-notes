@@ -251,7 +251,8 @@ the opcode→function map for that generation. Reached in the host binaries by t
 `<GEN>_Q7_POOL_PERF_EXTISA_<n>_SO_get` accessors (PERF flavor; each has a paired 32-byte
 `{"dummy_message": "hello world"}` JSON stub). CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK ship four
 (`EXTISA_0..3`); SUNDA ships one (weak-undef). *Anchor:* `CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get` @
-`0x9b3aa0` and 16 embedded Xtensa ELFs in `libnrtucode_internal.so`; 13 in `libnrtucode_extisa.so`.
+`0x9b3aa0` and 16 embedded Xtensa ELFs in `libnrtucode_internal.so` (in this gpsimd checkout);
+13 in `libnrtucode_extisa.so` (the standalone container in the sibling `neuronx-runtime` corpus).
 *Deep page:* [EXTISA Q7 SO-Blob Inventory](images/extisa-inventory.md).
 
 **`EXTENDED_INST` (opcode `0xF0`)** — The opcode (240) that opens the "extended instruction space
@@ -371,8 +372,9 @@ byte-count (symbol *and* byte-string) is **0 across all 29 device ELFs** (`ELFCL
 **`libnrt`** — The host runtime library (`libnrt.so.2.31.24.0`, with a vendored `KaenaHal`): it
 lays out the `aws_hal_q7` register programming, loads a NEFF (`nrt_load`), DMAs any custom Q7
 EXTISA image into Q7 instruction memory, and boots the cores. It is the only binary in the stack
-carrying DWARF line info. *Anchor:* the `nrt_*` public API surface (host `libnrt.so`, a sibling
-package). *Deep page:* [The libnrt Surface Map](runtime/libnrt-surface.md).
+carrying DWARF line info — but it is **not in this gpsimd checkout** (it ships in the sibling
+`neuronx-runtime` corpus), so its DWARF/host-runtime facts here are `CARRIED`. *Anchor:* the
+`nrt_*` public API surface (host `libnrt.so`, a sibling package). *Deep page:* [The libnrt Surface Map](runtime/libnrt-surface.md).
 
 **`nrtucode`** — The host runtime **micro-code** subsystem that manages Q7 device images:
 context/core lifecycle, the coretype/ext-ISA resolvers, the opcode→library resolver, the
@@ -388,9 +390,11 @@ per-core handle (`0x70` bytes, friendly-name `"nrtucode_core_t@%p"`, the `corety
 
 **`nrtucode` family (the four release containers)** — `libnrtucode.so` is the 4-gen **shipped
 front** getter (stripped); `libnrtucode_internal.so` is the not-stripped **5-gen twin** (carries
-MAVERICK + the EXTISA accessors); `libnrtucode_extisa.so` is the blob container (13 embedded
-Xtensa ELFs); `libnrtucode.a` is the static archive. *Anchor:* SONAMEs / BuildIDs in the corpus
-contract; the `*_internal.so` is the debug-info source for the stripped front. *Deep page:* [The libnrt Surface Map](runtime/libnrt-surface.md).
+MAVERICK + the EXTISA accessors); `libnrtucode_extisa.so` is the standalone blob container
+(13 embedded Xtensa ELFs) — present in the sibling `neuronx-runtime` corpus, **not** as a file in
+this gpsimd checkout (where the EXTISA blobs ride inside `libnrtucode_internal.so` instead);
+`libnrtucode.a` is the static archive. *Anchor:* SONAMEs / BuildIDs in the corpus contract; the
+`*_internal.so` is the debug-info source for the stripped front. *Deep page:* [The libnrt Surface Map](runtime/libnrt-surface.md).
 
 **`aws_hal_q7`** — The host-side Q7 Hardware-Abstraction-Layer symbol family (`aws_hal_q7_*`):
 the low-level register/window/swap-table accessors the runtime uses to talk to a Q7 core
@@ -606,8 +610,12 @@ that overturns an earlier or naive reading — state the corrected value, never 
 **The corpus (13 + 29)** — The substrate: **13** host x86-64 config/runtime libraries (the
 `nrtucode` pair, the `libisa`/`libtie`/`libcas`/`libfiss`/`libctype` ISA/sim/TIE libs, `libncfw`,
 `libnrtucode_extisa`) and **29** embedded ELF32-Xtensa (`e_machine = 94`) device blobs carried in
-their `.rodata`, plus cleartext arch-ISA headers / config / TIE. Each host library is pinned by
-SHA-256. *Anchor:* the 13-binary SHA table. *Deep page:* [The Corpus, Tiers & Binary Inventory](reference/corpus-inventory.md).
+their `.rodata`, plus cleartext arch-ISA headers / config / TIE. **Checkout caveat:** of those
+13, the in-`neuronx-gpsimd`-checkout T0 set is the ncore2gp config DLLs + the `libnrtucode`
+trio (`internal`/`.so`/`.a`); `libncfw.so`, `libnrtucode_extisa.so`, and host `libnrt.so` are
+**not standalone files here** — they ship in the sibling `neuronx-runtime` corpus, and their
+device payload is carried embedded inside `libnrtucode_internal.so`. Each host library is pinned
+by SHA-256. *Anchor:* the 13-binary SHA table and the [corpus-inventory NOT-PRESENT list](reference/corpus-inventory.md). *Deep page:* [The Corpus, Tiers & Binary Inventory](reference/corpus-inventory.md).
 
 **The device disassembler** — `XtensaTools/bin/xtensa-elf-objdump` (GNU Binutils 2.34 / Xtensa
 Tools 14.09) with `XTENSA_CORE=ncore2gp` — the only core in its registry — is the device-native

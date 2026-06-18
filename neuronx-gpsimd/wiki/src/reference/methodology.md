@@ -49,7 +49,7 @@ surfaced is [The Do-Not-Repeat / Correction Ledger](correction-ledger.md).
 | **Device-side tooling** | `XtensaTools/bin/xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp` |
 | **Decompile sidecars** | IDA v3 `*_{functions,callgraph,structures,enums,strings,xrefs}.json` + `context/*.md` |
 | **Runtime oracle** | `libfiss-base.so` driven live via `ctypes` (864 value leaves) |
-| **DWARF leg** | the unstripped host `libnrt.so` (`.debug_info`/`.debug_line`) |
+| **DWARF leg** | DWARF (`.debug_info`/`.debug_line`) lives in host `libnrt.so` — **not in this gpsimd checkout**; the host-runtime census here is `CARRIED` via its IDA v3 sidecars / the sibling runtime corpus |
 | **Confidence model** | per-**claim** `HIGH`/`MED`/`LOW` + `OBSERVED`/`INFERRED`/`CARRIED` |
 
 ---
@@ -62,14 +62,18 @@ Three kinds of artifact carry the entire recovery. None of the host libraries is
 
 1. **Host x86-64 proprietary libraries** — the ncore2gp Cadence/Tensilica
    simulator/ISA/TIE stack (`libisa-core.so`, `libcas-core.so`, `libfiss-base.so`,
-   `libtie-core.so`, plus `-ref-` reference variants), the two device-firmware
-   *containers* (`libnrtucode_internal.so`, `libnrtucode_extisa.so`), and
-   `libncfw.so`. These live under
-   `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` and in the customop
-   `.deb`.
+   `libtie-core.so`, plus `-ref-` reference variants) under
+   `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/`, and the device-firmware
+   *container* `libnrtucode_internal.so` (with the stripped front `libnrtucode.so` and the
+   static `libnrtucode.a`) in the customop `.deb`. **Note the absences in *this* checkout:**
+   there is **no** standalone `libnrtucode_extisa.so` (the "EXTISA" content is the embedded
+   blob set *inside* `libnrtucode_internal.so`), and **no** standalone `libncfw.so` or host
+   `libnrt.so` — those ship in the sibling `neuronx-runtime` corpus, so any NCFW-image or
+   host-runtime fact sourced from them is `CARRIED`, not OBSERVED-in-gpsimd (see [The Corpus,
+   Tiers & Binary Inventory](corpus-inventory.md) §3).
 
 2. **Embedded device ELF32-Xtensa blobs** (`e_machine = 94`) that travel inside the
-   `.rodata` of the two `nrtucode` containers, reached by host getter stubs. These
+   `.rodata` of the `nrtucode` containers, reached by host getter stubs. These
    *are* the GPSIMD firmware — the per-(generation, engine) Vision-Q7 images
    (SUNDA / CAYMAN / MARIANA / MARIANA_PLUS / MAVERICK).
 
@@ -127,12 +131,17 @@ both carved non-destructively:
   accessors. The carve parses each accessor body (`lea <data>,%rax ; movq
   $size,(%rsi)`) for `(data_va, size)`, then slices `.rodata[data_va :
   data_va+size]` — relying on the gotcha that `.rodata` file-offset == vaddr (§5).
-- `libnrtucode_extisa.so`: blobs in a flat JSON-delimited container of
-  `[JSON-manifest | Xtensa-ELF]` pairs; ELF size = `e_shoff + e_shentsize*e_shnum`.
+- `libnrtucode_extisa.so` (the sibling `neuronx-runtime` corpus — **not** a standalone file
+  in this gpsimd checkout): blobs in a flat JSON-delimited container of
+  `[JSON-manifest | Xtensa-ELF]` pairs; ELF size = `e_shoff + e_shentsize*e_shnum`. The carve
+  *mechanism* is in-corpus only for the embedded set inside `libnrtucode_internal.so`; the
+  `extisa.so` flat-container variant is `CARRIED` across the package boundary.
 
-**Anchor:** 29 ELFs, all `ELFCLASS32` / `e_machine=94` / LE; cross-package `sha256`
-dedup proves the carve correct (CAYMAN `EXTISA_{0..3}` is byte-identical to the
-internal `CAYMAN_{0..3}`; MARIANA == MARIANA_PLUS). Memory geometry: `.text @
+**Anchor:** 29 ELFs aggregate across both containers (`[HIGH/CARRIED]` for the cross-library
+total; `[HIGH/OBSERVED]` for the 16 embedded in `libnrtucode_internal.so` in-checkout), all
+`ELFCLASS32` / `e_machine=94` / LE; cross-package `sha256` dedup proves the carve correct
+(CAYMAN `EXTISA_{0..3}` is byte-identical to the internal `CAYMAN_{0..3}`; MARIANA ==
+MARIANA_PLUS). Memory geometry: `.text @
 0x01000000` (IRAM) / `.rodata + kernel_info_table @ 0x02000000` (DRAM). `[HIGH]`
 
 ### (b) The native `ncore2gp` Xtensa disassembler — device decode
@@ -186,8 +195,11 @@ per-gen header trees ship as cayman (111 headers) / mariana (120) / maverick (12
 sunda (100). The `instruction_mapping.json` (e.g.
 `neuron_cayman_arch_isa/tpb/instruction_mapping.json`) maps each
 `NEURON_ISA_TPB_*_STRUCT` to its `NEURON_ISA_TPB_OPCODE_*` via `struct2opcode` /
-`struct2pseudo_opcode`. The corroboration channel is the DWARF in the unstripped
-host runtime (technique below). `[HIGH]`
+`struct2pseudo_opcode`. A secondary corroboration channel — the DWARF
+(`.debug_info`/`.debug_line`) in the unstripped host `libnrt.so` — resides in the **sibling
+`neuronx-runtime` corpus, not this gpsimd checkout**, so it is a `CARRIED` cross-check, not
+an in-checkout read; the in-checkout proof is the `offsetof`/`sizeof` compile above. `[HIGH;
+the DWARF corroboration CARRIED]`
 
 ### (d) `kernel_info_table` / DEBUG self-name anchoring
 
@@ -408,10 +420,11 @@ delta. Confirmed on the oracle binary this pass with `readelf -SW`:
 ```
 
 The delta is **binary-specific**, not a universal constant: the `nrtucode` pair is
-`0x3000`, the `ncore2gp` config libs are `0x200000` (above), the ncfw/extisa pair is
-`0x1000`. (Over-generalising the libtpu wave's `0x400000` is itself the
-regression.) Always read the real `Addr`/`Off` columns for the section before
-addressing a `.data`-resident struct.
+`0x3000`, the `ncore2gp` config libs are `0x200000` (above) — both OBSERVED in-checkout — and
+the ncfw/extisa pair is `0x1000` (`[CARRIED]` from the sibling `neuronx-runtime` corpus,
+since neither `libncfw.so` nor `libnrtucode_extisa.so` is a file in this gpsimd checkout).
+(Over-generalising the libtpu wave's `0x400000` is itself the regression.) Always read the
+real `Addr`/`Off` columns for the section before addressing a `.data`-resident struct.
 
 ### A vtable slot in `call *0xN(%rax)` is measured from `vptr = _ZTV + 0x10`
 

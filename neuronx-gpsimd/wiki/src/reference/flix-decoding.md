@@ -545,8 +545,10 @@ un-merged sections), not with a smarter byte-level heuristic. `[HIGH/OBSERVED]`
 ## 11. GOTCHA — the NCFW management core is scalar Xtensa-LX, **not** FLIX
 
 > **Do not apply the FLIX rule to NCFW firmware.** The NeuronCore management firmware (NCFW)
-> that drives collectives — the ring/mesh/hierarchical schedulers in `libncfw.so`'s carved
-> IRAM images — runs on a **scalar Xtensa-LX** core, a *different* Xtensa than the Vision-Q7.
+> that drives collectives — the ring/mesh/hierarchical schedulers in the carved NCFW IRAM
+> images (standalone in the sibling `neuronx-runtime` `libncfw.so`; embedded in the wrapper for
+> this gpsimd checkout) — runs on a **scalar Xtensa-LX** core, a *different* Xtensa than the
+> Vision-Q7.
 > Its instruction length rule is the **base scalar rule** (`op0 ∈ {e,f}` → 3-byte, else 2-byte),
 > and its `op0=e`/`op0=f` bytes are **operand/immediate bytes of 2-/3-byte scalar
 > instructions** — they are **not** FLIX bundle leaders.
@@ -594,7 +596,9 @@ custom-op `.text`, route through the FLIX decoder on this page. `[HIGH/OBSERVED]
 | `get_config_table` | `0x3b5b30` | → `config_table` @ `0x85ea40` |
 
 All addresses are in `libisa-core.so` (`ncore2gp/config/`) unless noted; the firmware images
-are in `libnrtucode_internal.so` / `libnrtucode_extisa.so`.
+are the ELF32-Xtensa blobs **embedded in** `libnrtucode_internal.so` (the standalone
+`libnrtucode_extisa.so` container carries the same set in the sibling `neuronx-runtime`
+corpus, not in this gpsimd checkout — see [The Corpus, Tiers & Binary Inventory](corpus-inventory.md) §3).
 
 ---
 

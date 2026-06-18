@@ -48,38 +48,52 @@ constants and are not.
 
 ---
 
-## 1. FLIX has four distinct instruction byte-lengths, not seven
+## 1. FLIX length: 7 length-class outcomes map to 4 distinct instruction byte-sizes — two different levels
 
-**Superseded.** "The FLIX VLIW encoding is **14 formats / 46 slots / 7 lengths**" — the
-phrasing that still rides in the roadmap title for the FLIX-encoding page and in the
-DX-wave summary narrative. The "7 lengths" half is report-narrative the binary
-contradicts.
+**Superseded.** "The FLIX VLIW encoding is **14 formats / 46 slots / 7 lengths**", written
+as if **7** were the count of distinct *instruction byte-lengths*. The error is the
+flattening of two different levels onto one "lengths" axis: the runtime decoder produces
+**7 length-class outcomes**, but those collapse to only **4 distinct instruction
+byte-sizes**. The number that belongs on the "how many bytes is an instruction" axis is 4,
+not 7.
 
-**Correct.** The issue engine is **14 formats / 46 slots, decoding to exactly four
-distinct instruction byte-lengths `{2, 3, 8, 16}`.** `[HIGH/OBSERVED]`
+**Correct.** Both figures are real and neither supersedes the other — they live on
+different levels:
+- The runtime `length_decoder` (`@0x3b5a50`) + 256-entry `length_table` (`@0x3d4100`)
+  yield **7 length-class outcomes** — the `op0==0xF` 8-vs-16 split keyed on `byte3`, the
+  `{2, 3, 16}` direct lengths, and the illegal `-1`. (This is the figure validated 167/167
+  vs the device objdump.)
+- Those outcomes resolve to exactly **4 distinct positive instruction byte-sizes
+  `{2, 3, 8, 16}`** — the *set* of the static `XCHAL_OP0_FORMAT_LENGTHS` vector.
 
-**Evidence.** The shipped Cadence config header `tie.h` carries the length table the
-hardware decoder is built from:
+State it as **"7 length-class/table outcomes → 4 distinct byte-sizes `{2,3,8,16}`"**, never
+either number alone as "the number of lengths". `[HIGH/OBSERVED]`
+
+**Evidence.** Both halves are read straight from the corpus this pass. The static byte-size
+set comes from the shipped Cadence config header `tie.h`:
 
 ```
 extracted/.../tools/ncore2gp/xtensa-elf/arch/include/xtensa/config/tie.h
   #define XCHAL_OP0_FORMAT_LENGTHS   3,3,3,3,3,3,3,3,2,2,2,2,2,2,16,8
 ```
 
-That is sixteen entries: fourteen format-selector slots (eight at length 3, six at
-length 2) followed by the two long-format lengths (16, 8). Taking the *set* of values
-yields `{2, 3, 8, 16}` — **four** distinct byte-lengths, period. The byte-keyed companion
-`XCHAL_BYTE0_FORMAT_LENGTHS` is the same sixteen-value pattern tiled across all 256 first
-bytes, so it adds no new length. There is no fifth, sixth, or seventh length anywhere in
-the table; the "7" appears to be a miscount of *format groups* read as lengths. The format
-count `num_formats=0xe` (14) and slot count `num_slots=0x2e` (46) are independently
-correct and are read from `libisa-core.so`.
+That is sixteen entries (eight at 3, six at 2, then 16 and 8); the *set* of values is
+`{2, 3, 8, 16}` — **four** distinct byte-sizes, period. The byte-keyed companion
+`XCHAL_BYTE0_FORMAT_LENGTHS` tiles the same sixteen-value pattern across all 256 first bytes
+and adds no new size. The 7-outcome figure comes from the runtime `length_table` itself:
+its 256 `int32` cells take exactly the value census `{-1:2, 2:96, 3:128, 8:8, 16:22}`
+(re-dumped this pass), and the `op0==0xF` column splits on `byte3.low4` into 8 (even
+`b3lo`), 16 (odd `b3lo ∈ {1,3,5,9,b,d}`), or `-1` (`b3lo ∈ {7,f}`) — the split that the
+static byte-0-only macro cannot express. The format count `num_formats=0xe` (14) and slot
+count `num_slots=0x2e` (46) are independently correct, read from `libisa-core.so`.
 
-**Affected pages.** [Index](../index.md) (already states the corrected "4 distinct
-byte-lengths" — keep it that way), [The FLIX VLIW Encoding](../isa/core/flix-encoding.md),
-[FLIX Bundle-Decoding Methodology](flix-decoding.md). When you write a length-resync sweep,
-the advance table has four outcomes, not seven; a sweep that branches on seven lengths has
-a dead arm and will mask a real desync.
+**Affected pages.** [Index](../index.md), [Master Glossary](../glossary.md),
+[FLIX Bundle-Decoding Methodology](flix-decoding.md) (all already state the two-level
+"7 outcomes → 4 byte-sizes" framing — keep it that way), and
+[The FLIX VLIW Encoding](../isa/core/flix-encoding.md). When you write a length-resync
+sweep, the *advance* table has **4** byte-size outcomes; a sweep that hard-codes seven
+distinct byte-lengths has a dead arm and will mask a real desync — but the decoder it ports
+genuinely has 7 length-classes, so do not delete the `op0==0xF` byte-3 branch.
 
 ---
 
@@ -479,6 +493,7 @@ second look, and were only caught on the third.
   exhaustive register: all sixty-seven corrections plus carried stale-copy hazards.
 - [Codename ↔ Generation Cross-Walk](codename-crosswalk.md) — the authoritative
   arch_id↔codename↔platform table the §3/§4/§10/§11 rows feed.
-- [FLIX Bundle-Decoding Methodology](flix-decoding.md) — the four-length sweep (§1) in use.
-- [The FLIX VLIW Encoding](../isa/core/flix-encoding.md) — 14 formats / 46 slots / four
-  byte-lengths.
+- [FLIX Bundle-Decoding Methodology](flix-decoding.md) — the 7-outcome length decoder →
+  4-byte-size advance (§1) in use.
+- [The FLIX VLIW Encoding](../isa/core/flix-encoding.md) — 14 formats / 46 slots /
+  7 length-class outcomes → 4 distinct byte-sizes `{2,3,8,16}`.
