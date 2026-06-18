@@ -290,7 +290,11 @@ provenance; what is independent is the *serialization and the tool that reads it
 `libisa-core.so` is the config's runtime ISA library: a not-stripped 9,690,712-byte host ELF (SHA
 `8fe68bf462ce76ee…`) whose tables drive the assembler/disassembler/ISS at run time. It is the
 authoritative source for the **runtime** roster — `1534` `opcodes[]` entries (469 scalar + 1065
-`ivp_*` vector) and `12569` `(opcode × slot)` placements, the latter confirmed three ways: the
+`ivp_*`-**name-prefix** vector; the `xt_ivp32` *package* count is **1072**, the 7 extra being the
+scalar-FP-control ops `rur/wur.fcr/.fsr` + `recipqli.s`/`mulsone.s`/`mulsone.h`, which are in the
+package but not the `ivp_` prefix — package ≠ prefix, see
+[the coverage tally §4.1](coverage-tally.md#41-the-28-package-census-the-binary-partition-sums-to-1534))
+and `12569` `(opcode × slot)` placements, the latter confirmed three ways: the
 `num_encode_fns()` accessor returns `0x3119 = 12569`, `nm` shows exactly `12569`
 `Opcode_*_Slot_*_encode` symbols, and the per-slot placement re-count sums to `12569`. Each
 placement is a tiny `movl $imm,(%rdi); ret` encode thunk whose immediate is the opcode-selector

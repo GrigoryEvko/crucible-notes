@@ -284,7 +284,7 @@ OBSERVED-by-execution certificate. The companion cycle oracle (`libcas-core.so`)
 | value leaves (denominator) | **864** | `nm libfiss-base.so \| rg -c 'module__xdref_'` = 864 (this pass) | `[HIGH/OBSERVED]` |
 | execution-validated | **~95% of value-bearing leaves** | ~2.09M differential comparisons across 18 op families, **zero firmware value bugs** | `[HIGH/OBSERVED by execution]` |
 | transcendental seed LUTs | `128/128` reproduced | `RECIP_Data8`/`RSQRT_Data8` byte-read + `FISS==SEM==TAB` agreement | `[HIGH/OBSERVED]` |
-| edge behaviours pinned | RZ-default rounding, NaN-asymmetric max/min, quiet/signaling compare split, 3-way pack saturation | differential-execution certificates | `[HIGH/OBSERVED]` |
+| edge behaviours pinned | RZ-default *value-leaf* rounding (the un-parameterized-call default — distinct from the **RNE** architectural FCR reset; see [fp-sub-isa §3.2](fp-sub-isa.md#32-the-encoding--proven-by-execution)), NaN-asymmetric max/min, quiet/signaling compare split, 3-way pack saturation | differential-execution certificates | `[HIGH/OBSERVED]` |
 
 The headline restated: **value-semantics coverage is `864/864` leaves enumerated and ~95%
 execution-validated with zero value bugs across ~2.09M comparisons** — the binary itself is the

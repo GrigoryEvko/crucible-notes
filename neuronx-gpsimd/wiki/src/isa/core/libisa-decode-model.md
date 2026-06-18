@@ -562,6 +562,15 @@ model resolves. `[HIGH/OBSERVED]` on the counts/tables/load order; `[MED/INFERRE
 load" (the load order and disjoint sets imply it; the host merge code is in `libnrtucode`, not
 these libs).
 
+> **NOTE — `81` (this lib) + `6` (the hw lib) = `87`, the `xtensa-modules.c` count.** The
+> `num_states = 81` accessor here is the config-extended partition; `libisa-core-hw.so`'s
+> `num_states = 6` is the bare-hardware-core partition. The Cadence binutils/gdb module source
+> `xtensa-modules.c` is generated from the **fully-merged** model and so `#define NUM_STATES 87`
+> (= `81 + 6`). The [FP sub-ISA page](fp-sub-isa.md#the-87-vs-81-state-count) reads the FCR/FSR
+> block out of that merged 87-state module; it is the same 81-state config partition seen through
+> the merged index, not a different count. Pin `81` for *this* lib's accessor, `87` for the
+> merged module. `[HIGH/OBSERVED]`
+
 > **NOTE — config is not gen-gated *inside* libisa-core.** There is no `arch_id`/`coretype`/
 > codename gate anywhere in `libisa-core.so`'s decode path — it models the single configured Cairo
 > Vision-Q7 core, gen-invariant. Per-generation selection (SUNDA/CAYMAN/MARIANA/MARIANA+/MAVERICK)

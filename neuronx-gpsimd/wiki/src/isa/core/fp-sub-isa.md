@@ -19,7 +19,10 @@ gate-level VFPU datapath exception *timing* lives in
 formats, and regfile geometry are owned by the sibling Part-2 pages.
 
 The whole model is read **directly out of the shipped device state table**
-(`xtensa-modules.c`, `NUM_STATES = 87`) and **proven by live execution** against the
+(`xtensa-modules.c`, `NUM_STATES = 87` — the *fully-merged* binutils/gdb module count, which is
+the `libisa-core.so` `num_states = 81` config-extended set **plus** the `libisa-core-hw.so`
+`num_states = 6` bare-hardware-core set; `81 + 6 = 87`, two tables, not a contradiction — see
+the [CORRECTION below](#the-87-vs-81-state-count)) and **proven by live execution** against the
 license-free value oracle `libfiss-base.so`. Four value-semantics facts on this page carry a
 differential-execution certificate (the round-mode encoding, the fp16 and fp32 classify maps,
 and the `movscfv` pack bit positions); each is flagged where it appears. `[HIGH/OBSERVED]`
@@ -83,6 +86,25 @@ Read verbatim from the device state table (`xtensa-modules.c`). Each entry is
 difference is the whole IEEE sticky model (§5.2). The `IVP_FS0..FS7` predicate-accumulator file
 is a *separate* 8×64-bit state file (the `movvfs/movfsv` predicate datapath); it is **not**
 part of the FCR/FSR arithmetic control and is documented with the predicate datapath, not here.
+
+> <a id="the-87-vs-81-state-count"></a>**CORRECTION — `NUM_STATES = 87` (this page) and
+> `num_states = 81` (the libisa pages) are two *different* state tables, related by `+6`, not a
+> contradiction.** The sibling Part-2 pages — [the decode model](libisa-decode-model.md),
+> [the table schema](libisa-table-schema.md), [the config sheet](config-reference-sheet.md),
+> [the TIE database](tie-database.md) — cite `num_states = 81`, read from the `num_states`
+> accessor in **`libisa-core.so`** (`@ 0x3b6670 → mov $0x51`; `states[]` symbol size `0xa20 ÷
+> 32 = 81`). This page cites `NUM_STATES = 87` from the binutils/gdb **`xtensa-modules.c`**
+> module source. They differ because the two-library libisa model partitions the state space:
+> `libisa-core-hw.so` holds the **6** bare-hardware-core states (`LBEG`/`LEND`/`LCOUNT`/`BR`/…)
+> and `libisa-core.so` holds the **81** config-extended states (the FCR/FSR block, `VECBASE`,
+> `EPC`, the `IVP_FS*` file, …). The Cadence-generated `xtensa-modules.c` is emitted from the
+> **fully-merged** model, so its `NUM_STATES` is `81 + 6 = 87` — verified this pass:
+> `libisa-core-hw.so` `num_states` accessor `@ 0x3510 → mov $0x6`, and `81 + 6 = 87` matches the
+> `#define NUM_STATES 87` byte-for-byte. The FCR/FSR fields this page reads (`xtensa-modules.c`
+> lines 155–177) live in the 81-state config-extended partition; quoting them under the 87-state
+> merged module is correct, because the module *is* the merged table. Pin **87** for the
+> merged-module index this page reads against, **81** for the `libisa-core.so` accessor — never
+> "re-fold" one into the other. `[HIGH/OBSERVED]`
 
 ### 2.1 FCR — the control register (`rur.fcr` / `wur.fcr`)
 
@@ -207,7 +229,13 @@ pin it directly: `1.0 + 2^-11` (an exact half-ULP tie at 1.0) returns `0x3c00` u
 > *unthreaded* (i.e. the leaf is called with no explicit mode and the datapath truncates),
 > produce RZ output — a property of an un-parameterized *leaf call*, not of the architectural
 > register's reset state. Model the FCR reset as **RNE**; if you call a value leaf without
-> supplying mode `0`, do not assume it rounds — pass the mode explicitly. `[HIGH/OBSERVED]`
+> supplying mode `0`, do not assume it rounds — pass the mode explicitly. The two facts are
+> **two levels, not a contradiction**: the *architectural FCR reset* is RNE (proven by execution
+> over 3000/3000 inputs here), and the *fiss-leaf un-parameterized-call default* is RZ (the
+> "RZ-default, 2976/2976 proven-by-execution" property carried in
+> [the Confidence & Walls Model](../../reference/confidence-model.md)) — the former is the
+> register's power-on value, the latter is what a value leaf does when its mode argument is left
+> unthreaded. Both are true at their own level. `[HIGH/OBSERVED]`
 
 The directed-mode round-up logic the leaf implements is the textbook GRS (guard/round/sticky)
 tie-break: RNE increments past the half or at exactly-half-and-odd; RU/RD round up only the sign
@@ -485,9 +513,12 @@ its own arbiter. `[HIGH/OBSERVED]`
 
 **HIGH / OBSERVED**
 
-* The full FCR/FSR field membership — the `NUM_STATES = 87` state table block (`RoundMode` 2b,
-  the 5 `SHARED_OR` flags, the 5 plain enables, `CPENABLE` 7b, `IVP_FS0..7`) read at lines
-  155–177; the `rur/wur fcr/fsr` and `movscfv/movvscf` iclass stateArg lists read verbatim.
+* The full FCR/FSR field membership — the `NUM_STATES = 87` merged-module state table block
+  (`RoundMode` 2b, the 5 `SHARED_OR` flags, the 5 plain enables, `CPENABLE` 7b, `IVP_FS0..7`)
+  read at lines 155–177; the `rur/wur fcr/fsr` and `movscfv/movvscf` iclass stateArg lists read
+  verbatim. (`87` = the merged binutils/gdb module count = `libisa-core.so` `num_states 81` +
+  `libisa-core-hw.so` `num_states 6`; the FCR/FSR block sits in the 81-state partition — see the
+  [§2 CORRECTION](#the-87-vs-81-state-count).)
 * The 11-field pack order and the packed-word bit positions (flags @14..10, RoundMode @9:8,
   enables @6..2, gaps @7/1:0).
 * The four scalar access ops round-tripped through the device assembler; the UR-ids `0xe8`/`0xe9`.

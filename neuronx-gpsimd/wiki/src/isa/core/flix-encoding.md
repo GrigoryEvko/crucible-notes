@@ -497,10 +497,10 @@ Operands name one of **8** register files (`num_regfiles` @ `0x3b5c20` → `mov 
 | 1 | `BR` | `b` | 1 | 16 | xt_booleans | boolean regs |
 | 2 | `vec` | `v` | 512 | 32 | xt_ivp32 | NX16 vector regs (5-bit index) |
 | 3 | `vbool` | `vb` | 64 | 16 | xt_ivp32 | per-lane predicate masks |
-| 4 | `valign` | `u` | — | 4 | xt_ivp32 | alignment regs (load/store align) |
+| 4 | `valign` | `u` | 512 | 4 | xt_ivp32 | alignment regs (load/store align) |
 | 5 | `wvec` | `wv` | 1536 | 4 | xt_ivp32 | wide accumulator (3× NX16) |
-| 6 | `b32_pr` | `pr` | — | 16 | xt_ivp32 | 32-bit predicate/extract regs |
-| 7 | `gvr` | `gr` | 512 | 8 | xt_ivp32 | gather/scatter staging regs (flags bit 0x08, unique) |
+| 6 | `b32_pr` | `pr` | 64 | 16 | xt_ivp32 | 32-bit predicate/extract regs |
+| 7 | `gvr` | `gr` | 512 | 8 | xt_ivp32 | gather/scatter staging regs (flags `0x0d`, the unique extra bit `0x08`) |
 
 Scalar AR fields are 4 bits in the slot (3 index + 1 window/bank bit, XOR-inverted, ×8, plus
 window-base, masked to 6 bits → 64 physical AR). Vector `vec` fields are 5-bit scattered indices
