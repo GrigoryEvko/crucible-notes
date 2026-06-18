@@ -305,6 +305,7 @@
 - [alloc-queues / chain-dma-transposes / insert-switch-queue](walrus/dma-queues.md)
 - [lnc_splitter / expand_replication (Multi-Core Graph Split)](walrus/lnc-splitter.md)
 - [extend-shared-lifetimes / sync-shared-allocations](walrus/shared-lifetimes.md)
+- [Lowering On-Chip Collectives — lower_local_collectives / insert_ptcom_flat](walrus/local-collectives.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
