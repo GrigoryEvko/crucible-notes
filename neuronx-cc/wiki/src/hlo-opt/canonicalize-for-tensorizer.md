@@ -1,6 +1,6 @@
 # CanonicalizeForTensorizer
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310; cp310/11/12 are byte-identical). The pass lives in `neuronxcc/starfish/bin/hlo2penguin`, compiled from `hilo/MLIRPasses/Transforms/CanonicalizeForTensorizer.cc`. The binary is built with `NVOPEN_IDA_SKIP_DECOMPILE`, so every body here is recovered from disassembly, not Hex-Rays; `.text`/`.rodata` VA equals file offset. Other wheels differ — treat every address as version-pinned.*
+> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310; cp310/11/12 are byte-identical). The pass lives in `neuronxcc/starfish/bin/hlo2penguin`, compiled from `hilo/MLIRPasses/Transforms/CanonicalizeForTensorizer.cc`. The binary is built with `NVOPEN_IDA_SKIP_DECOMPILE`, so every body here is recovered from disassembly, not Hex-Rays. **VA ≠ file offset on this binary**: `.rodata` file-offset = VA − 0x200000, `.text` file-offset = VA − 0x201000 (verified `readelf -SW`: `.rodata` VA 0x20d780 / off 0xd780; `.text` VA 0x1ec0d00 / off 0x1cbfd00). Other wheels differ — treat every address as version-pinned.*
 
 ## Abstract
 
