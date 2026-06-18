@@ -327,6 +327,13 @@
 - [Autotuner Orchestration & the Reward Backends (the Closed Loop)](walrus/autotuner-orchestration.md)
 - [Tritium Fusion — Plan Generator, Beam Search & Roofline Cost](walrus/tritium-fusion.md)
 
+# Part 12 — NEFF Container & Packaging
+
+- [NEFF Container — gzip-tar, not ELF](formats/neff-container.md)
+- [The neff_header POD, the In-Memory BOM & the NeffPackager Writer](formats/neff-header-bom-writer.md)
+- [NEFF JSON Sidecars — info / neff / def / tensor_map](formats/neff-json-sidecars.md)
+- [Per-Engine .bin / .json Member Layout](formats/per-engine-bin.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
