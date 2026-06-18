@@ -287,6 +287,9 @@
 - [post_sched & the Three Schedulers — greedy / TimeAware / LncAware](walrus/post-sched-schedulers.md)
 - [The Reservation-Table Disambiguation — Scheduler vs Allocator](walrus/reservation-table-disambiguation.md)
 - [separate-load-and-compute & Prefetch Scheduling](walrus/separate-load-prefetch.md)
+- [Address-Rotation (PSUM/SB/DRAM) & the Emergent SW Pipeline](walrus/address-rotation.md)
+- [order-column-tiled-mms / legalize-mm-accumulation-groups](walrus/matmul-ordering-accgroups.md)
+- [Allocator Drivers — ColoringAllocator Wiring & Loop-Aware Linearize](walrus/allocator-drivers.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
