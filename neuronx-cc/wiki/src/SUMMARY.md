@@ -153,6 +153,7 @@
 - [Penguin Loop-Transform Clients (reference)](penguin/loop-transform-clients.md)
 - [Penguin ISL Dependence-Graph Construction](penguin/isl-dependence-graph.md)
 - [IslCodeGen — ISL-AST → Penguin IR Loop Regeneration](penguin/isl-codegen.md)
+- [ISL Schedule-Tree Construction & Legality Gate](penguin/isl-schedule-tree-legality.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
