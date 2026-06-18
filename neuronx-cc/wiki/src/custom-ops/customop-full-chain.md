@@ -342,7 +342,7 @@ bool is_builtin = (lib_file_name starts_with "libbuiltincustomop_cpu");
 
 ### Purpose
 
-A second, parallel family of "custom" kernels lowers through the `walrus/inline_bir_kernel` library compiled into `nki_klr_sim` ([D-Q06](../raw/D-Q06-macro-lowerers.txt)). These are **not** GPSIMD-CPU custom ops — they expand a macro kernel-inst node into constituent BIR ops on the standard TPB engines — but they share the carrier vocabulary, so a reimplementer must know they exist and where they diverge from the `InstCustomOp` chain.
+A second, parallel family of "custom" kernels lowers through the `walrus/inline_bir_kernel` library compiled into `nki_klr_sim` (**D-Q06**). These are **not** GPSIMD-CPU custom ops — they expand a macro kernel-inst node into constituent BIR ops on the standard TPB engines — but they share the carrier vocabulary, so a reimplementer must know they exist and where they diverge from the `InstCustomOp` chain.
 
 ### Algorithm
 
