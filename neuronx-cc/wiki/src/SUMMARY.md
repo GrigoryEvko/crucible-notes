@@ -258,6 +258,8 @@
 - [codegen: Matmul + MX + QuantizeMx Leaves](bir/codegen-matmul-mx.md)
 - [codegen: Activation / Tensor-Scalar / Tensor-Tensor / Reduce Family](bir/codegen-compute-family.md)
 - [codegen: Copy / DMA / Load-Store / Gather / Select / BN / Transpose](bir/codegen-data-movement.md)
+- [codegen: TopK / RNG / Iota-Memset-Dropout / Control / Barrier / Print-LNC](bir/codegen-dve-rng-control.md)
+- [codegen: Collectives / Send-Recv + the KLR↔BIR Op-Join Table](bir/codegen-collectives-join.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
