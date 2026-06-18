@@ -146,6 +146,7 @@
 - [Penguin Target Abstraction](penguin/target-abstraction.md)
 - [Penguin IR ↔ MLIR / BIR Mapping](penguin/ir-mlir-bir-mapping.md)
 - [Penguin Layout-Tiling Pipeline (the "Tensorizer" Tile Transform)](penguin/layout-tiling-pipeline.md)
+- [Penguin Scheduling: the MinReg Ready-List Scheduler](penguin/scheduling-minreg.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
