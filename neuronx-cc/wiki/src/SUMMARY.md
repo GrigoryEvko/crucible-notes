@@ -249,6 +249,7 @@
 - [pelican::Expr Core: Affine/Binary Nodes & Member Offsets](bir/pelican-expr-core.md)
 - [pelican Index/CC/Runtime Exprs & BirIntRuntimeValue](bir/pelican-index-runtime.md)
 - [pelican Wire Serialization & the APIndex No-Wire-Form Finding](bir/pelican-wire.md)
+- [pelican::ModuloExpr & the Buffer-Ring Address-Rotation Math](bir/pelican-moduleexpr.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
