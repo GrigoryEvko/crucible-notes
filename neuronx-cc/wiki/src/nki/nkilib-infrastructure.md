@@ -98,9 +98,11 @@ heap_curr_addr  = sb_upper_bound;   // grows DOWN
 Both `alloc_stack` (373-437) and `alloc_heap` (439-499) run the **same** OOM predicate against the same gap (`allocator.py:390`, `:456`):
 
 ```c
-// OOM guard, both paths (auto mode skips it entirely)
+// OOM guard, both paths (auto mode skips it entirely) — SAME predicate, DIFFERENT message literal
 if (!is_auto_alloc() && stack_curr_addr + bytes_per_partition > heap_curr_addr)
-    kernel_assert(False, "Stack/Heap out of memory");   // logs stats + tree, then aborts
+    kernel_assert(False, "Stack out of memory");        // stack path: allocator.py:400
+    // alloc_heap path emits "Heap out of memory" instead (allocator.py:466)
+    // — both log stats + tree, then abort
 ```
 
 > **NOTE (D-O23 §1.3 refinement) —** the heap path's OOM test is *not* `heap - req < stack`; it is the identical `stack_curr_addr + req > heap_curr_addr` (`allocator.py:456`). Both cursors are checked against the collision point between them, so the predicate is symmetric by construction.

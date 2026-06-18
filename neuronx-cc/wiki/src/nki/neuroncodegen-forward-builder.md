@@ -4,7 +4,9 @@
 
 ## Abstract
 
-`NeuronCodegen` is the **forward builder** of the NKI compiler: the single public class of `KernelBuilder.py` (Cython-compiled to `KernelBuilder.so`), whose ~150 emit methods translate one lowered `nl`/`nisa` Python call at a time into one **Penguin-IR instruction node**. It is *layer 1* of a three-layer matmul lowering descent. When a kernel author writes `nisa.nc_matmul(out, w, x)`, the call ultimately reaches `NeuronCodegen.matmult`, which validates the operands, computes the SBUF/PSUM shape split, constructs a Penguin `MatMulOp` value-object, and appends it to the current basic block via the inherited `add_named_instruction` primitive. The downstream layers — `BirCodeGenLoop.codegenMatMulOp` (Penguin→klr) and `KlirToBirCodegen::codegenNcMatMul` (klr→BIR) — are documented on [BirCodeGenLoop](bircodegenloop.md) and the I-strand BIR pages; this page owns layer 1.
+`NeuronCodegen` is the **forward builder** of the NKI compiler: the single public class of `KernelBuilder.py` (Cython-compiled to `KernelBuilder.so`), whose ~150 emit methods translate one lowered `nl`/`nisa` Python call at a time into one **Penguin-IR instruction node**. It is the **Penguin-IR-producing front layer** of the matmul lowering descent. When a kernel author writes `nisa.nc_matmul(out, w, x)`, the call ultimately reaches `NeuronCodegen.matmult`, which validates the operands, computes the SBUF/PSUM shape split, constructs a Penguin `MatMulOp` value-object, and appends it to the current basic block via the inherited `add_named_instruction` primitive. Downstream, the Penguin IR reaches BIR through **one of two parallel front-ends** ([6.5.0](architecture-overview.md), [6.5.10](bircodegenloop.md)): the **beta3** driver `BirCodeGenLoop.codegenMatMulOp`, which builds `birpy`/`bir::Instruction` objects **directly** (no KLR), or the **beta2** path `KlirToBirCodegen::codegenNcMatMul` (klr→BIR, the separate `libwalrus` C++ driver). The two are *alternatives that produce the same BIR*, not serial stages; this page owns the Penguin-IR-producing layer.
+
+> **CORRECTION (binary-verified — `BirCodeGenLoop` emits BIR directly, not KLR).** An earlier draft framed the downstream as a serial 3-stage chain `BirCodeGenLoop → klr → KlirToBirCodegen → BIR`, with `BirCodeGenLoop` labelled "Penguin→klr". The binary contradicts this: `BirCodeGenLoop.so` imports `neuronxcc.starfish.birpy.{Instruction,Opcodes,MemoryLocation,Function,Module,BirAffineExpr}` and its `codegenMatMulOp`/`codegenMatMulMXOp`/`codegenMatMulSparseOp` build `birpy` objects directly; the only `klr`/`KLIR` tokens in it belong to the *separate* `codegenExternalNativeNkiKlirKernel` branch, not the matmul lowering. `BirCodeGenLoop` (beta3) and `KlirToBirCodegen` (beta2/klr) are **parallel** drivers onto the same `bir::Inst` model — see the explicit corrections on [6.5.0](architecture-overview.md) and [6.5.10](bircodegenloop.md). The 3-layer diagram below is retained only as the *beta2/klr* descent (the path on which `KlirToBirCodegen` is genuinely downstream of a klr AST); on the beta3 path Layer 2 emits BIR directly with no Layer-2-klr stage. [CONFIRMED — `strings`/imports on `BirCodeGenLoop.so`]
 
 The module docstring, recovered verbatim from `.rodata`, states the class's job exactly:
 
@@ -22,32 +24,36 @@ The reader should leave this page able to (a) place `NeuronCodegen` precisely in
 | **Role** | layer 1: lowered `nl`/`nisa` call → **one Penguin-IR Inst node** |
 | **Emit primitive** | `add_named_instruction` (inherited; resolved & called, *not* a local `__pyx_pw` method) |
 | **Output IR** | Penguin `MatMulOp` / `MatMulMXOp` / `MatMulSparseOp` / `TransposeOp` ([tensor-op family](../penguin/tensor-op-family.md)) |
-| **Downstream** | `BirCodeGenLoop.codegenMatMul*Op` → klr → `KlirToBirCodegen::codegenNcMatMul*` → `bir::InstMatmult(8)`/`InstMatmultMx(95)` |
+| **Downstream (two parallel paths)** | **beta3:** `BirCodeGenLoop.codegenMatMul*Op` → `birpy`/`bir::InstMatmult(8)`/`InstMatmultMx(95)` **directly** (no klr). **beta2:** `KlirToBirCodegen::codegenNcMatMul*` (klr→BIR). Not a serial chain — see [6.5.0](architecture-overview.md)/[6.5.10](bircodegenloop.md) |
 | **Re-emit printer (NOT this)** | the Penguin-IR → NKI-text printer ([NkiCodegen printer](nkicodegen-printer.md), page 6.5.9) |
 
 ---
 
-## 1. Where NeuronCodegen sits — the three-layer stack
+## 1. Where NeuronCodegen sits — the front layer + two parallel BIR descents
 
-A single `nisa.nc_matmul` descends through three distinct codegen layers, each in its own binary. This page is **layer 1**.
+A single `nisa.nc_matmul` first becomes a Penguin IR node here (THIS PAGE); from there it reaches BIR through **one of two parallel front-ends** (beta3 ‖ beta2), not a serial 3-stage chain. This page owns the **Penguin-IR-producing** layer.
 
 ```text
-  LAYER 1   nl/nisa Python  →  Penguin IR        NeuronCodegen.matmult*          (THIS PAGE)
+  FRONT     nl/nisa Python  →  Penguin IR        NeuronCodegen.matmult*          (THIS PAGE)
             KernelBuilder.so                      builds MatMulOp / MatMulMXOp /
                                                   MatMulSparseOp / TransposeOp
                   │                               via self.add_named_instruction
                   ▼
-  LAYER 2   Penguin IR      →  klr (KLIR) AST     BirCodeGenLoop.codegenMatMulOp /
-            BirCodeGenLoop.so                      codegenMatMulMXOp /
-                                                  codegenMatMulSparseOp
-                  │                               → klr::NcMatMul / klr::MatMulMX
-                  ▼
-  LAYER 3   klr (KLIR)      →  BIR (libBIR)       KlirToBirCodegen::codegenNcMatMul /
-            libwalrus / nki_klr_sim                codegenNcMatMulMX
-                                                  → bir::InstMatmult(8) / InstMatmultMx(95)
+            Penguin IR  ──────────────┬───────────────────────────────┐
+                                      │ beta3 (default Penguin path)   │ beta2 (klr path)
+                                      ▼                                ▼
+            BirCodeGenLoop.so: codegenMatMulOp /     KlirToBirCodegen (libwalrus):
+            codegenMatMulMXOp / codegenMatMulSparseOp   codegenNcMatMul / codegenNcMatMulMX
+            builds birpy/bir DIRECTLY (no klr)       ← klr::NcMatMul / klr::MatMulMX AST
+                                      │                                │
+                                      └──────────────┬─────────────────┘
+                                                     ▼
+                                      bir::InstMatmult(8) / InstMatmultMx(95)   (same BIR model)
 ```
 
-The layering is real, not nominal: `NeuronCodegen` is the per-instruction emit *surface* that runs first; the compiled-vs-readable kernel selector `_INTERNAL_KERNEL_REGISTRY` is **not** here — it lives in layer 2 (`BirCodeGenLoop.so`), consulted later. Keeping the layers straight matters because the same conceptual field — say `tile_position` — is a named Python kwarg here, a klr slot in layer 2, and a `tile_position[2]` array at a fixed BIR node offset in layer 3.
+> The two descents converge on the identical `bir::Inst` data model and are selected by the `beta2`/`beta3` switch ([6.5.0 §3.1](architecture-overview.md)). `BirCodeGenLoop` (beta3) constructs `birpy` objects directly — there is **no** Penguin→klr stage on this path; the klr AST exists only on the beta2 descent. [CONFIRMED — `BirCodeGenLoop.so` imports `birpy.*`; klr tokens belong only to `codegenExternalNativeNkiKlirKernel`]
+
+The layering is real, not nominal: `NeuronCodegen` is the per-instruction emit *surface* that runs first; the compiled-vs-readable kernel selector `_INTERNAL_KERNEL_REGISTRY` is **not** here — it lives in layer 2 (`BirCodeGenLoop.so`), consulted later. Keeping the layers straight matters because the same conceptual field — say `tile_position` — is a named Python kwarg here, then either a `birpy` Instruction attribute set directly by `BirCodeGenLoop` (beta3) or a klr slot then a `tile_position[2]` BIR array via `KlirToBirCodegen` (beta2).
 
 > **NOTE — forward builder vs. re-emit printer.** `NeuronCodegen` *builds* Penguin IR going **forward** (NKI → IR). A **separate** class, the re-emit printer ([NkiCodegen printer](nkicodegen-printer.md), page 6.5.9), walks Penguin IR **backward** to regenerate human-readable NKI text. They share neither code nor direction; do not conflate "NeuronCodegen" (forward) with the printer (backward). This page found **no** `NkiCodegen` class symbol inside `KernelBuilder.so`; the printer lives elsewhere in the package, and 6.5.9 owns it.
 
@@ -340,15 +346,16 @@ The per-Op keyword vocabularies (all confirmed `.rodata`) define the layer-1 out
 
 Contraction geometry rides on the `{stationary, moving}` access patterns plus the 2-element `{tile_position, tile_size}`. The accumulate group is **structural** (shared `outputs` PSUM + `tile_position == [0,0]` head + `combine_*_matmult_tiles`), with no explicit group-id field observed in any of the four bodies.
 
-The Penguin→klr→BIR field lineage is end-to-end name-preserving. For one attribute (`tile_position`):
+The field lineage is end-to-end name-preserving on **both** descents. On the **beta3** path the attribute rides straight from Penguin into BIR via `BirCodeGenLoop`'s `birpy` setters (no klr slot). On the **beta2** (klr) path it passes through a klr AST slot first. For one attribute (`tile_position`), the beta2/klr lineage is:
 
 ```text
   Penguin MatMulOp.tile_position
-    → (layer 2) BirCodeGenLoop.codegenMatMulOp → klr::NcMatMul.tilePosition (slot 7)
-    → (layer 3) KlirToBirCodegen::codegenNcMatMul → bir::InstMatmult.tile_position[2]
+    → (beta2 klr AST)  klr::NcMatMul.tilePosition (slot 7)
+    → (KlirToBirCodegen, libwalrus C++)  → bir::InstMatmult.tile_position[2]
+  (beta3: BirCodeGenLoop.codegenMatMulOp sets tile_position on the birpy Instruction DIRECTLY)
 ```
 
-and likewise `is_transpose` → klr byte 50 → BIR `+0x1B8`, `perf_mode="double_row"` → klr perfMode → BIR `DoubleRow(1)`. Layer 2's `codegenMatMul*Op` bodies are documented on [BirCodeGenLoop](bircodegenloop.md); the BIR-level `InstMatmult` encoding on the I-strand BIR pages. This page's job ends at `self.add_named_instruction(inst)`.
+and likewise (beta2) `is_transpose` → klr byte 50 → BIR `+0x1B8`, `perf_mode="double_row"` → klr perfMode → BIR `DoubleRow(1)`. `BirCodeGenLoop`'s `codegenMatMul*Op` bodies (the beta3 `birpy`-direct emit) are documented on [BirCodeGenLoop](bircodegenloop.md); the BIR-level `InstMatmult` encoding on the I-strand BIR pages. This page's job ends at `self.add_named_instruction(inst)`.
 
 ---
 
