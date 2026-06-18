@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`Operator` (`ir/Operator.py` → `Operator.so`) is the **HLO-facing op layer** of the Penguin IR: the subclass of `Instruction` that carries *op semantics* — what the op computes — before the middle-end tiles it and `BirCodeGenLoop` lowers each node to an engine instruction. This is the node set the C-strand Python printer emits (the `hlo2penguin` `MhloToPythonPrinter` writes a Python constructor call per op; see [Part 4 — C-strand emitters](../hlo-opt/mhlo-to-python-printer-heavy.md)) and the set NKI codegen builds when it materializes a kernel ([Part 6 — NKI codegen](../nki/bir-codegen-loop.md)).
+`Operator` (`ir/Operator.py` → `Operator.so`) is the **HLO-facing op layer** of the Penguin IR: the subclass of `Instruction` that carries *op semantics* — what the op computes — before the middle-end tiles it and `BirCodeGenLoop` lowers each node to an engine instruction. This is the node set the C-strand Python printer emits (the `hlo2penguin` `MhloToPythonPrinter` writes a Python constructor call per op; see [Part 4 — C-strand emitters](../hlo-opt/mhlo-to-python-printer-heavy.md)) and the set NKI codegen builds when it materializes a kernel ([Part 6 — NKI codegen](../nki/bircodegenloop.md)).
 
 Every `Operator` inherits the full `Instruction` contract — `operands` (each a `Tensor`+`Access` pair), `results` (`Tensor`s), `attrs`, `predicates` (`AffinePredicate` guards), and `axes` (the `AffineAxis` loop-nest) — and adds two things: **op-specific axis roles** and **op-specific scalar params**. The axis-role model is the distinctive part: an `Operator` does not name "the M dim" or "the K dim"; it tags each `AffineAxis` of the loop-nest with a *role* (`contract` / `lhs_free` / `rhs_free` / `reduce` / `batch`), and the layout solver and tiler ([§5 axis model](axis-loop-model.md)) read those roles to assign each axis to a Partition / Free / Block hardware dimension. A matmul is therefore "a contraction over the axes tagged `contract_axes`", not a fixed-arity `dot(A,B)`.
 
@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **Matmul node** | `TensorContractOp` — 29 methods; axis roles `contract`/`lhs_free`/`rhs_free`/`batch` |
 | **Op-shared method shape** | `__init__`, `operands`, `indices_dfs`, `src_indices_dfs`, `replaceUseOfWith`, `rhs_str`, `serialize`, `verify`, `verifyOperandType`, `update_axes`/`update_indices` |
 | **Emitted by** | `MhloToPythonPrinter` (Python ctor per op), [Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md) |
-| **Lowered by** | `BirCodeGenLoop` (one `codegen<Op>` per tiled Inst), [Part 6](../nki/bir-codegen-loop.md) |
+| **Lowered by** | `BirCodeGenLoop` (one `codegen<Op>` per tiled Inst), [Part 6](../nki/bircodegenloop.md) |
 
 ---
 
@@ -55,7 +55,7 @@ Confirmed `__pyx_pw_…Operator_<idx><method>` wrappers in `Operator.so`:
 
 ### TensorContractOp — the Matmul Node
 
-`TensorContractOp` is the PE-array contraction node — the Penguin matmul. It is the node `mhlo.dot`/`dot_general` lowers to (`printDotOp`, [Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md)) and that `BirCodeGenLoop` lowers to `codegenMatMulOp` / `codegenMatMulMXOp` / `codegenMatMulSparseOp` ([Part 6](../nki/bir-codegen-loop.md); the sparse variant is detailed at [6.8.8 — MatMulSparseOp](../nki/matmul-sparse.md)).
+`TensorContractOp` is the PE-array contraction node — the Penguin matmul. It is the node `mhlo.dot`/`dot_general` lowers to (`printDotOp`, [Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md)) and that `BirCodeGenLoop` lowers to `codegenMatMulOp` / `codegenMatMulMXOp` / `codegenMatMulSparseOp` ([Part 6](../nki/bircodegenloop.md); the sparse variant is detailed at [6.8.8 — MatMulSparseOp](../nki/sparse-matmul-lowering.md)).
 
 All 29 method wrappers below are CONFIRMED from `__pyx_pw_…TensorContractOp_<idx><name>` symbols in `Operator.so`.
 
@@ -190,7 +190,7 @@ struct SoftmaxOp {
 ### Dropout / BatchNorm / Rng
 
 - `DropoutMaskOp` (CONFIRMED class): the dropout-mask generator — fields `p` / `is_keep_rate` / `set_keep_rate` / `data` (INFERRED owner from D-U08 §8.3; class CONFIRMED in pool).
-- `BatchNorm*` family lives in the sibling `ir/BatchNorm.cpython-310-…so`: `BNStatsOp` / `BNAggrOp` / `BNReduceLikeOp` + `BatchNorm{Tensor,Training,Gradient,Backprop,MeanVar}Op`. Lowered to `codegenSundaBNStats`/`BNAggr`/`BNGradient`/`BNBackprop` ([Part 6](../nki/bir-codegen-loop.md)).
+- `BatchNorm*` family lives in the sibling `ir/BatchNorm.cpython-310-…so`: `BNStatsOp` / `BNAggrOp` / `BNReduceLikeOp` + `BatchNorm{Tensor,Training,Gradient,Backprop,MeanVar}Op`. Lowered to `codegenSundaBNStats`/`BNAggr`/`BNGradient`/`BNBackprop` ([Part 6](../nki/bircodegenloop.md)).
 - `RandOp` / `RngUniformTensorOp` live in `ir/RngOp.cpython-310-…so`.
 
 > **GOTCHA —** the softmax/BN/dropout/rng *families* are split across **multiple** `ir/*.so` modules, not all in `Operator.so`. `SoftmaxOp` and `DropoutMaskOp` are in `Operator.so`; `BatchNorm*` is in `BatchNorm.so`; `RandOp` is in `RngOp.so`. A reimplementer sweeping only `Operator.so`'s pyx symbols will miss the BN and Rng nodes.
@@ -237,7 +237,7 @@ These op groups carry op semantics for distribution, region-fusion, and external
 | Fused elementwise+CC | `Operator.so` | `ElementwiseAllGatherOp`, `ElementwiseAllReduceOp`, `ElementwiseCustomCall` | inherit collective + elementwise fields | CONFIRMED (classes in `Operator.so`) |
 | Fusion region | `ir/FusionOp.so` | `FusionOp` ⊃ `ElementwiseFusionOp`/`ReduceFusionOp`/`TensorContractFusionOp` | `formal_inputs`/`formal_outputs`, `local_insts`/`local_tensors`, `default_loopnest_shape` — a **nested Function** treated as one schedulable unit | CONFIRMED (D-U08 §8.6) |
 | Custom / opaque | `ir/CustomOp.so`, `ir/OpaqueOp.so` | `CustomOp`, `OpaqueOp` | opaque external call (`OpaqueAccess` non-affine access) | CONFIRMED |
-| Native / NKI kernel | `ir/NativeKernel.so` | `NativeNkiKernel`, `Internal/ExternalNativeNkiKernel(+Klir)`, `BIRKernel`, `MLPKernel`, `RMSNormQuantKernel`, `NormQKV`, `AttentionMMSoftmaxMM`, `BackwardsAttention` | the NKI→Penguin embedding nodes ([Part 6](../nki/bir-codegen-loop.md) builds these) | CONFIRMED (D-U08 §8.7) |
+| Native / NKI kernel | `ir/NativeKernel.so` | `NativeNkiKernel`, `Internal/ExternalNativeNkiKernel(+Klir)`, `BIRKernel`, `MLPKernel`, `RMSNormQuantKernel`, `NormQKV`, `AttentionMMSoftmaxMM`, `BackwardsAttention` | the NKI→Penguin embedding nodes ([Part 6](../nki/bircodegenloop.md) builds these) | CONFIRMED (D-U08 §8.7) |
 | Index / predicate value | `ir/IndexValue.so` | `IndexValueOp`/`IndexValueBaseOp`, `PredicateValueOp`, `AggregateValueOp` | materialize a loop-index or an `AffinePredicate` as a tensor value (argmax/topk/mask) | CONFIRMED (D-U08 §8.8) |
 
 > **NOTE —** `ElementwiseAllGatherOp`, `ElementwiseAllReduceOp`, and `ElementwiseCustomCall` are CONFIRMED **in `Operator.so`** (their pyx wrappers appear there), not in `CollectiveOp.so` — they are the *fused* elementwise+collective ops, so they live with the elementwise family. The pure collectives (`AllGatherOp`/`AllReduceOp`/…) are in `CollectiveOp.so`.
@@ -272,8 +272,8 @@ AwsNeuronCustomOp / NKI     → CustomOp / NativeNkiKernel → codegen{BIRKernel
 | `AffineAxis` ([§5 axis model](axis-loop-model.md)) | the loop-axis the `used_as_*_axis` role queries classify |
 | `Access` / `TileAccess` ([§5.1](ir-node-model.md)) | the operand binding (`lhs_load`/`rhs_load`) and its tiled form |
 | `MhloToPythonPrinter` ([Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md)) | emits a Python constructor per op in this family |
-| `BirCodeGenLoop` ([Part 6](../nki/bir-codegen-loop.md)) | lowers each tiled Inst to a bir instruction |
-| `MatMulSparseOp` ([6.8.8](../nki/matmul-sparse.md)) | the sparse lowering of `TensorContractOp` |
+| `BirCodeGenLoop` ([Part 6](../nki/bircodegenloop.md)) | lowers each tiled Inst to a bir instruction |
+| `MatMulSparseOp` ([6.8.8](../nki/sparse-matmul-lowering.md)) | the sparse lowering of `TensorContractOp` |
 
 ## Cross-References
 
@@ -281,4 +281,6 @@ AwsNeuronCustomOp / NKI     → CustomOp / NativeNkiKernel → codegen{BIRKernel
 - [Penguin Axis / Loop-Axis Model](axis-loop-model.md) — the `AffineAxis` + `AxisType` the op axis-roles tag
 - [Penguin AffineExpr Algebra](affine-expr-algebra.md) — the quasi-affine address algebra each `Access` carries
 - [mhlo-to-py-penguin](../hlo-opt/mhlo-to-python-printer-heavy.md) — the C-strand printer that emits these op constructors
-- [BirCodeGenLoop](../nki/bir-codegen-loop.md) — Penguin → BIR lowering, one `codegen<Op>` per Inst
+- [BirCodeGenLoop](../nki/bircodegenloop.md) — Penguin → BIR lowering, one `codegen<Op>` per Inst
+
+> **CORRECTION (Wave-2 audit) — cross-ref slugs.** The Part-6 lowering links on this page previously pointed at `../nki/bir-codegen-loop.md` (×7) and `../nki/matmul-sparse.md` (×2); neither slug exists. The shipped pages are `nki/bircodegenloop.md` (the `BirCodeGenLoop` lowering loop) and `nki/sparse-matmul-lowering.md` (the `codegenMatMulSparseOp` lowering, 6.8.8). All links retargeted; no factual claim changed.
