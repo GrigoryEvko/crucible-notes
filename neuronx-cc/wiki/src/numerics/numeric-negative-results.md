@@ -453,4 +453,4 @@ Each row is an absence (or a tightly-bounded positive) with the search that grou
 - [bir::CastToNewDType — Cast / Saturate Engine](cast-to-new-dtype.md) — the cast primitive; independently pins the same `fesetround(0)` RNE-only behavior and the FP8 saturate default
 - [Neuron dtype Catalog & x4-Packing](dtype-catalog.md) — the OCP-MXFP formats whose subnormals §3 proves are handled
 - [BIR Simulator — MX & Matmul](../bir/sim-matmul-mx.md) — the `QuantizeMx` kernel and E8M0 block-scale path referenced for the hard-RNE silicon claim
-- MX-FP microscaling page (Part 9, planned) — the E8M0 block-scale and MX-quantize numerics; mentioned here without a link as the slug is not yet fixed
+- [MX Microscaling](mx-microscaling.md) — §9.8, the E8M0 block-scale and MX-quantize numerics

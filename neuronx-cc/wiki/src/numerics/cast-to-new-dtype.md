@@ -19,7 +19,7 @@ Three facts make this page worth its weight. First, the fp32 hub is a deliberate
 | **FP8 cfg default** | GOT `0x90fba0` → `R_X86_64_GLOB_DAT` → `FP8ConvConfig` `0x917848` = `0x00000001` (saturate ON) |
 | **Rounding** | `fesetround(0)` @ `0x2650e2` + explicit RNE in every encoder; **no RNG** |
 
-The cast *encoding* (how a Copy/Cast instruction is laid down in the ISA) is a separate concern documented in [TensorTensor / Copy / Cast Encoding](../isa/tensortensor-encoding.md). The sim's own elementwise cast path, which shares the RNE discipline and uses inline SSE rather than libm, is in [Sim Core Arithmetic](../bir/sim-core-arithmetic.md). The precision negative-results (what this design *cannot* do) are catalogued in the `numerics/numeric-negative-results.md` page (planned).
+The cast *encoding* (how a Copy/Cast instruction is laid down in the ISA) is a separate concern documented in [TensorTensor / Copy / Cast Encoding](../isa/tensortensor-encoding.md). The sim's own elementwise cast path, which shares the RNE discipline and uses inline SSE rather than libm, is in [Sim Core Arithmetic](../bir/sim-core-arithmetic.md). The precision negative-results (what this design *cannot* do) are catalogued in [Numeric Negative Results](numeric-negative-results.md) (page 9.10).
 
 ## Calling convention and prologue
 
@@ -352,7 +352,7 @@ The dispatch tail-calls element-loop kernels recovered from `__assert_fail` sour
 
 ## The int → int > 2²⁴ round-trip caveat
 
-Because the hub is **single-precision**, an integer conversion that passes through it is bounded by fp32's 24-bit mantissa. An `int8 → int32` cast is exact, but a direct `int32 → int32`-style round trip (or any `intN → fp32 → intM`) of a magnitude above 2²⁴ = 16,777,216 **silently loses the low bits**: Stage A does `cvtsi2ss` (32-bit int → fp32, which cannot represent every integer above 2²⁴), the fence rounds RNE, and Stage B does `cvttss2si` back. The same applies to `uint32`/`int64`/`uint64` magnitudes above 2²⁴. This is not a bug in any one encoder — it is a structural consequence of the fp32-intermediate design, and it is the headline entry of the `numerics/numeric-negative-results.md` catalogue (planned). [**CONFIRMED** by the architecture: every integer leg is `cvtsi2ss → … → cvttss2si`.]
+Because the hub is **single-precision**, an integer conversion that passes through it is bounded by fp32's 24-bit mantissa. An `int8 → int32` cast is exact, but a direct `int32 → int32`-style round trip (or any `intN → fp32 → intM`) of a magnitude above 2²⁴ = 16,777,216 **silently loses the low bits**: Stage A does `cvtsi2ss` (32-bit int → fp32, which cannot represent every integer above 2²⁴), the fence rounds RNE, and Stage B does `cvttss2si` back. The same applies to `uint32`/`int64`/`uint64` magnitudes above 2²⁴. This is not a bug in any one encoder — it is a structural consequence of the fp32-intermediate design, and it is the headline entry of the [Numeric Negative Results](numeric-negative-results.md) catalogue (page 9.10). [**CONFIRMED** by the architecture: every integer leg is `cvtsi2ss → … → cvttss2si`.]
 
 ## Constants reference (`.rodata`)
 

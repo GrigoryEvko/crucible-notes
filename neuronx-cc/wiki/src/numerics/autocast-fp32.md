@@ -489,5 +489,5 @@ The pass is the **producer** of casts. Downstream, a `DTypeMutator` pass moves t
 ## Cross-References
 
 - [Frontend Precision-Flag Marshalling](../frontend/precision-flag-marshalling.md) — the `--auto-cast` / `--fp32-cast` surface that produces the `fp32_cast_mode` value this pass gates on; the *string-is-the-value* convention with no integer enum.
-- DTypeMutator (Part 9, `numerics/dtype-mutator.md`, *planned*) — the pass that moves the casts inserted here.
-- Cast elimination (Part 9, `numerics/cast-elimination.md`, *planned*) — the pass that absorbs the redundant casts this pass and DTypeMutator leave behind.
+- [DTypeMutator](dtype-mutator.md) (§9.5) — the pass that moves the casts inserted here.
+- [Cast elimination](cast-elimination.md) (§9.6) — the pass that absorbs the redundant casts this pass and DTypeMutator leave behind.

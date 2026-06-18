@@ -270,7 +270,7 @@ The four sub-rules, in order of how much they reveal about the type system:
 
 - **`_promote_float_int(t0, t1)`** = `t0 if _is_floating(t0) else t1` — the **float side always wins**, with no widening of the float to fit the integer's range.
 
-[CONFIRMED — the four nested-closure qualnames (`promote_type._is_floating` / `._promote_floats` / `._promote_ints` / `._promote_float_int`), the `__pyx_scope_struct__promote_type` cell struct, and the error strings `"No available implicit dtype promotion path…"` and `"Cannot merge type!"` are all present in `penguin/dtypes.so`; the dispatch and the float-precedence ladder are disasm-grounded per D-X05. The mixed-sign integer result widths are STRONG (ladder targets inferred). The full promotion lattice is the subject of Numerics §9.2 (PLANNED).]
+[CONFIRMED — the four nested-closure qualnames (`promote_type._is_floating` / `._promote_floats` / `._promote_ints` / `._promote_float_int`), the `__pyx_scope_struct__promote_type` cell struct, and the error strings `"No available implicit dtype promotion path…"` and `"Cannot merge type!"` are all present in `penguin/dtypes.so`; the dispatch and the float-precedence ladder are disasm-grounded per D-X05. The mixed-sign integer result widths are STRONG (ladder targets inferred). The full promotion lattice is the subject of [Numerics §9.2](dtype-promotion-lattice.md).]
 
 A stricter sibling, `merge_type` / `can_merge_type`, is used by type-inference and fusion passes (PSUM accumulate, copy elimination); it widens by itemsize and signedness with `float32r` / `bfloat16` special handling and raises `ValueError("Cannot merge type!")` on an incompatible pair. The data flow is: a binary op calls `promote_type(a, b)` → result dtype `R` → operands auto-cast to `R` via `dt.static_cast` → at the BIR level this lowers to `bir::CastToNewDType`. **x4 inputs are laundered** (`launder_x4_dtype`) to their x1 element dtype before promotion, then the `_x4` tag is restored on the container result.
 
@@ -309,5 +309,5 @@ To handle a Neuron dtype end-to-end:
 - [ISA Numeric Enum-Ordinal Tables](../isa/isa-enum-ordinals.md) — Part 2.23, the `NEURON_ISA_TPB_DTYPE` wire ordinals and the pre-v4 `byte_1DF5760` LUT
 - [nki/dtype Façade](../nki/dtype-facade.md) — Part 6.3.3, the Python-facing veneer over `support.dtype` and `neuron_dtypes`
 - [PE Matmul Encoding](../isa/pe-matmul-encoding.md) — Part 2.10, the dense matmul dtype field and the CoreV3 x4-rejection gate
-- Numerics §9.2 (PLANNED) — the full `promote_type` / `merge_type` promotion lattice
-- Numerics §9.8 (PLANNED) — the FP8 / FP4 / E8M0 cast and MX dequant numeric models
+- [Dtype-Promotion Lattice](dtype-promotion-lattice.md) — §9.2, the full `promote_type` / `merge_type` promotion lattice
+- [MX Microscaling](mx-microscaling.md) — §9.8, the FP8 / FP4 / E8M0 cast and MX dequant numeric models

@@ -412,7 +412,7 @@ The runtime E8M0 max-abs reduce was previously known to "live in silicon, not in
 ## Cross-References
 
 - [MX FP8 Legalization](../hlo-opt/mx-fp8-legalization.md) — page 4.29; how `QuantizeMX_*` lowers from HLO to BIR `InstQuantizeMx`
-- [MX MatMul (simulator)](../bir/sim-matmul-mx.md) — page 9.9; the dequant that consumes this E8M0 scale (`ldexpf(x, E8M0 − 127)`)
+- [MX-Matmul Legality & Dequant](mx-matmul-legality.md) — page 9.9; the dequant that consumes this E8M0 scale (`ldexpf(x, E8M0 − 127)`)
 - [MX MatMul Codegen](../bir/codegen-matmul-mx.md) — the CoreV4 encoder side of the same MX path
 - [MXMEM Pattern1D](../isa/mxmem-pattern1d.md) — page 2.6; the scale-stream descriptor whose 4-bit selector the `(i&3)+32(i>>2)` interleave drives
 - [CastToNewDType](cast-to-new-dtype.md) — page 9.3; the libBIR per-format fp8 narrow that finishes the e4m3fn/e5m2 write

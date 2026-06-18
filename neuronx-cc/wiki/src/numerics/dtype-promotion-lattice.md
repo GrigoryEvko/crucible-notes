@@ -35,7 +35,7 @@ To reproduce the lattice a reader needs four things, all on this page:
 - **The int rule.** Both-unsigned and both-signed each reduce to wider-itemsize-wins; the mixed-sign case walks a width ladder over `uint{64,32,16,8}` / `int{32,16}` and escapes to `float32` when no integer type can hold both.
 - **The mixed (float×int) rule.** The float side always wins outright — no widening of the float to cover the int's range.
 
-The single counter-intuitive fact a reimplementer must not miss: `float8_e8m0fnu` is a *scale exponent*, not a numeric float, so it is removed from the float widen path before either the itemsize or the ladder rule runs (see [§3.1](#31-the-e8m0-guard-why-a-scale-is-not-a-value) and the cross-reference to the MX-microscaling page, Part 9, planned).
+The single counter-intuitive fact a reimplementer must not miss: `float8_e8m0fnu` is a *scale exponent*, not a numeric float, so it is removed from the float widen path before either the itemsize or the ladder rule runs (see [§3.1](#31-the-e8m0-guard-why-a-scale-is-not-a-value) and the cross-reference to the [MX-microscaling page](mx-microscaling.md), §9.8).
 
 ---
 
@@ -102,7 +102,7 @@ if (t0 == float8_e8m0fnu) { ... }          // 0x17414: mov $0x2,%edx ; 0x1741f c
 if (t1 == float8_e8m0fnu) { ... }          // 0x17503: mov $0x2,%edx ; 0x1750e call RichCompare
 ```
 
-`float8_e8m0fnu` (E8M0: 8-bit, exponent-only, no sign, no mantissa, bias 127, `0xFF`=NaN) is the OCP-MX block-scale format. It carries the *exponent* of a per-block scale factor, not a value drawn from a numeric range, so it is meaningless to "widen" it against another float — there is no mantissa to preserve and no monotone position on a value lattice. The guard removes it from the widen path before the itemsize or ladder rules can mistakenly select it. The deeper justification — that the device-side `bir::CastToNewDType` decode of e8m0 is a *raw byte* load (no `2^(e−127)` scaling), with the actual power-of-two applied only in the MX matmul/dequant path — belongs to the MX-microscaling page (Part 9, planned; mentioned here without a link). **[CONFIRMED — two Py_EQ compares vs `float8_e8m0fnu` at function entry; mstate field +0x110]**
+`float8_e8m0fnu` (E8M0: 8-bit, exponent-only, no sign, no mantissa, bias 127, `0xFF`=NaN) is the OCP-MX block-scale format. It carries the *exponent* of a per-block scale factor, not a value drawn from a numeric range, so it is meaningless to "widen" it against another float — there is no mantissa to preserve and no monotone position on a value lattice. The guard removes it from the widen path before the itemsize or ladder rules can mistakenly select it. The deeper justification — that the device-side `bir::CastToNewDType` decode of e8m0 is a *raw byte* load (no `2^(e−127)` scaling), with the actual power-of-two applied only in the MX matmul/dequant path — belongs to the [MX-microscaling page](mx-microscaling.md) (§9.8). **[CONFIRMED — two Py_EQ compares vs `float8_e8m0fnu` at function entry; mstate field +0x110]**
 
 > **QUIRK —** e8m0 is the one float-typed dtype that `_promote_floats` refuses to treat as a float. A reimplementer who folds it into the precedence ladder will produce wrong promotions for any op that mixes an MX-scale tensor with a real value tensor. Guard it first.
 
@@ -244,7 +244,7 @@ int _is_floating(PyObject *dt) {
 
 > **CORRECTION —** D-X05 §2 records `merge_type`'s failure as `ValueError("Cannot merge type!")`. The binary raises **`AssertionError`**: the decompiled `merge_type` calls `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_merge_type, …)` at C-line 453. The message text is unchanged; only the exception class differs.
 
-The integer-width predicate family (`is_int32_dtypes`/`is_int64_dtypes` and their `has_*` collection forms) is documented with the dtype catalog (Part 9, in-flight; mentioned here without a link) since it concerns the dtype *set*, not the promotion lattice.
+The integer-width predicate family (`is_int32_dtypes`/`is_int64_dtypes` and their `has_*` collection forms) is documented with the [dtype catalog](dtype-catalog.md) (§9.1) since it concerns the dtype *set*, not the promotion lattice.
 
 ---
 
