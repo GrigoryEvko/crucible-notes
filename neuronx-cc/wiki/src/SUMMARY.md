@@ -180,6 +180,9 @@
 - [NkiTypeSystem & Traced-Tile Operator Overloading](nki/type-system.md)
 - [Type Metaclasses & the Abstract Type Lattice](nki/type-metaclasses.md)
 - [nki/dtype Façade over support.dtype](nki/dtype-facade.md)
+- [nki.isa COMPUTE Intrinsics & Validators](nki/isa-compute-intrinsics.md)
+- [nki.isa REDUCE / SELECT / DVE / MEMORY / DMA Intrinsics](nki/isa-reduce-dve-dma.md)
+- [nki.language (nl.*) Op Dispatch Surface](nki/language-ops.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
