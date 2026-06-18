@@ -200,6 +200,7 @@
 - [BirCodeGenLoop Collective Codegens](nki/bircodegen-collective.md)
 - [BirCodeGenLoop Access-Pattern Builders](nki/bircodegen-ap.md)
 - [NKI Compiler-Option & Allocation Decorators](nki/option-alloc-decorators.md)
+- [The Three-Sink Kernel-Node Model (IT54 / IT55 / IT56)](nki/three-sink-kernel-model.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
