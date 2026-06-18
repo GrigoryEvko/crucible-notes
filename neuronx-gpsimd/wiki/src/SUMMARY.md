@@ -39,49 +39,50 @@
 - [ctype / coproc / funcUnit / bypass Tables](isa/core/ctype-coproc-funcunit.md)
 - [ISA Coverage & the 1534/1607/12642 Tally](isa/core/coverage-tally.md)
 
+# Part 3 — Per-Instruction ISA Reference
+
+- [ISA Reference — Template & 30-Batch Partition](isa/ref/template-and-partition.md)
+- [ISA Batch 01 — Vector ALU (int/compare/logic core)](isa/ref/b01-vec-alu-int.md)
+- [ISA Batch 02 — Vector ALU (fp16/fp32 slice)](isa/ref/b02-vec-alu-fp.md)
+- [ISA Batch 03 — Vector ALU (int/B-variant/flag/predicated)](isa/ref/b03-vec-alu-rest.md)
+- [ISA Batch 04 — Integer MAC Matrix (signed)](isa/ref/b04-mac-integer.md)
+- [ISA Batch 05 — MAC (mixed-sign/complex/wide-acc)](isa/ref/b05-mac-mixed.md)
+- [ISA Batch 06 — Vector Loads + valign priming](isa/ref/b06-loads.md)
+- [ISA Batch 07 — Vector Stores](isa/ref/b07-stores.md)
+- [ISA Batch 08 — Cross-Lane Reduce](isa/ref/b08-reduce.md)
+- [ISA Batch 09 — Vector Move / regfile bridge](isa/ref/b09-vec-mov.md)
+- [ISA Batch 10 — wvec Pack (wide→narrow readout)](isa/ref/b10-wvec-pack.md)
+- [ISA Batch 11 — vbool ALU / predicate](isa/ref/b11-vbool-alu.md)
+- [ISA Batch 12 — Vector Shift / Rotate / Normalize](isa/ref/b12-shift.md)
+- [ISA Batch 13 — fp32 Convert (sp_cvt)](isa/ref/b13-sp-cvt.md)
+- [ISA Batch 14 — fp16 Transcendental Seeds (hp_lookup)](isa/ref/b14-hp-lookup.md)
+- [ISA Batch 15 — fp32 Transcendental Seeds (sp_lookup)](isa/ref/b15-sp-lookup.md)
+- [ISA Batch 16 — Vector Replicate / Extract (vec_rep)](isa/ref/b16-vec-rep.md)
+- [ISA Batch 17 — fp32 Fused Multiply-Add (spfma)](isa/ref/b17-spfma.md)
+- [ISA Batch 18 — fp16 Fused Multiply-Add (hp_fma)](isa/ref/b18-hp-fma.md)
+- [ISA Batch 19 — SuperGather Scatter/Gather](isa/ref/b19-scatter-gather.md)
+- [ISA Batch 20 — fp16 Convert (hp_cvt)](isa/ref/b20-hp-cvt.md)
+- [ISA Batch 21 — Select / Shuffle / Compress](isa/ref/b21-select-shuffle.md)
+- [ISA Batch 22 — Unpack / wvec Move](isa/ref/b22-unpack-wvec-mov.md)
+- [ISA Batch 23 — Vector Integer Divide](isa/ref/b23-divide.md)
+- [ISA Batch 24 — Histogram / Squeeze / QLI / FCR-FSR](isa/ref/b24-composite.md)
+- [ISA Batch 25 — base-Xtensa scalar arith/logic/shift](isa/ref/b25-xt-core.md)
+- [ISA Batch 26 — base-Xtensa ld/st/branch/density/MUL32/div](isa/ref/b26-xt-ctrl.md)
+- [ISA Batch 27 — base-Xtensa System / SR / RegWindow / Sync](isa/ref/b27-xt-system.md)
+- [ISA Batch 28 — base-Xtensa exc-dispatch/bool/loop/minmax](isa/ref/b28-xt-exc.md)
+- [ISA Batch 29 — base-Xtensa debug/timer/cache/MMU/atomic](isa/ref/b29-xt-system2.md)
+- [ISA Batch 30 — Appendix P (pseudo/fence) + Final Coverage](isa/ref/b30-appendix-p.md)
+- [Formal Semantics I — arith / MAC / load-store / gather](isa/semantics/group-semantics-i.md)
+- [Formal Semantics II — predicate / convert-fp / valign-reduce / control](isa/semantics/group-semantics-ii.md)
+- [Formal Semantics — Coverage Ledger](isa/semantics/coverage-ledger.md)
+- [The Complete Formal ISA-Semantics Model](isa/semantics/formal-isa-model.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 3 — Per-Instruction ISA Reference (35)
-- isa/ref/template-and-partition.md    — ISA Reference — Template & 30-Batch Partition
-- isa/ref/b01-vec-alu-int.md           — B01 Vector ALU (int/compare/logic core)
-- isa/ref/b02-vec-alu-fp.md            — B02 Vector ALU (fp16/fp32 slice)
-- isa/ref/b03-vec-alu-rest.md          — B03 Vector ALU (int/B-variant/flag/predicated)
-- isa/ref/b04-mac-integer.md           — B04 Integer MAC Matrix (signed)
-- isa/ref/b05-mac-mixed.md             — B05 MAC (mixed-sign/complex/wide-acc)
-- isa/ref/b06-loads.md                 — B06 Vector Loads + valign priming
-- isa/ref/b07-stores.md                — B07 Vector Stores
-- isa/ref/b08-reduce.md                — B08 Cross-Lane Reduce
-- isa/ref/b09-vec-mov.md               — B09 Vector Move / regfile bridge
-- isa/ref/b10-wvec-pack.md             — B10 wvec Pack (wide→narrow readout)
-- isa/ref/b11-vbool-alu.md             — B11 vbool ALU / predicate
-- isa/ref/b12-shift.md                 — B12 Vector Shift / Rotate / Normalize
-- isa/ref/b13-sp-cvt.md                — B13 fp32 Convert (sp_cvt)
-- isa/ref/b14-hp-lookup.md             — B14 fp16 Transcendental Seeds (hp_lookup)
-- isa/ref/b15-sp-lookup.md             — B15 fp32 Transcendental Seeds (sp_lookup)
-- isa/ref/b16-vec-rep.md               — B16 Vector Replicate / Extract (vec_rep)
-- isa/ref/b17-spfma.md                 — B17 fp32 Fused Multiply-Add (spfma)
-- isa/ref/b18-hp-fma.md                — B18 fp16 Fused Multiply-Add (hp_fma)
-- isa/ref/b19-scatter-gather.md        — B19 SuperGather Scatter/Gather
-- isa/ref/b20-hp-cvt.md                — B20 fp16 Convert (hp_cvt)
-- isa/ref/b21-select-shuffle.md        — B21 Select / Shuffle / Compress
-- isa/ref/b22-unpack-wvec-mov.md       — B22 Unpack / wvec Move
-- isa/ref/b23-divide.md                — B23 Vector Integer Divide
-- isa/ref/b24-composite.md             — B24 Histogram / Squeeze / QLI / FCR-FSR
-- isa/ref/b25-xt-core.md               — B25 base-Xtensa scalar arith/logic/shift
-- isa/ref/b26-xt-ctrl.md               — B26 base-Xtensa ld/st/branch/density/MUL32/div
-- isa/ref/b27-xt-system.md             — B27 base-Xtensa System / SR / RegWindow / Sync
-- isa/ref/b28-xt-exc.md                — B28 base-Xtensa exc-dispatch/bool/loop/minmax
-- isa/ref/b29-xt-system2.md            — B29 base-Xtensa debug/timer/cache/MMU/atomic
-- isa/ref/b30-appendix-p.md            — B30 Appendix P (pseudo/fence) + Final Coverage
-- isa/semantics/group-semantics-i.md   — Formal Semantics I — arith/MAC/load-store/gather
-- isa/semantics/group-semantics-ii.md  — Formal Semantics II — predicate/convert-fp/valign-reduce/control
-- isa/semantics/coverage-ledger.md     — Formal Semantics — Coverage Ledger
-- isa/semantics/formal-isa-model.md    — The Complete Formal ISA-Semantics Model
 
 # Part 4 — Microarchitecture & Timing (14)
 - uarch/pipeline-timing.md                    — Pipeline Timing Model
