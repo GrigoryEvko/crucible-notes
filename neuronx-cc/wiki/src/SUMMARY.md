@@ -142,6 +142,7 @@
 - [Penguin Tensor / Buffer Node & Memory-Space Placement](penguin/tensor-buffer-node.md)
 - [Penguin Dependency Model — DependencyEdge & EdgeKind](penguin/dependency-model.md)
 - [Penguin High-Level Operator (TensorOp) Family](penguin/tensor-op-family.md)
+- [Penguin Pass Roster & Pipeline Driver](penguin/pass-roster-pipeline.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
