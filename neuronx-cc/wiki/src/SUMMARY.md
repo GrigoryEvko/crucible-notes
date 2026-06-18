@@ -306,6 +306,7 @@
 - [lnc_splitter / expand_replication (Multi-Core Graph Split)](walrus/lnc-splitter.md)
 - [extend-shared-lifetimes / sync-shared-allocations](walrus/shared-lifetimes.md)
 - [Lowering On-Chip Collectives — lower_local_collectives / insert_ptcom_flat](walrus/local-collectives.md)
+- [bir_linker — Multi-LNC Re-Assembly (N Per-Core Modules → One Module)](walrus/bir-linker.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
