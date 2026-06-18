@@ -21,8 +21,8 @@ For reimplementation, the contract is:
 |---|---|
 | **Class** | `NeuronIslDependenceAnalysis(IntegerSetAnalysis)` |
 | **Module** | `...transforms.experimental.TongaIslDependenceAnalysis` (this `.so`) |
-| **Base class** | `IntegerSetAnalysis` + `IntegerSetWrapper` (module `neuronxcc.starfish.penguin.IntegerSetAnalysis`, separate `.so`) |
-| **ISL provider** | stock **islpy ~= 2023.1** (pip dep) — all integer-set/schedule/dep primitives |
+| **Base class** | Python `IntegerSetAnalysis` (module `neuronxcc.starfish.penguin.IntegerSetAnalysis`, imported) over C++ `islwrapper::IntegerSetAnalysis` (in `libBIR.so`) |
+| **ISL provider** | stock **islpy ~= 2023.1** (pip dep) — all integer-set/schedule/dep primitives invoked from this `.so` |
 | **Dependence entry** | `get_dependency_map` @ `0x1b8f0` → `(reads, writes)` `Tuple[isl.UnionMap, isl.UnionMap]` |
 | **Legality gate** | `check_valid_schedule` @ `0x273f0` → `Optional[DependenceViolation]` (policy: 5.17) |
 | **IR consumed** | `NeuronInst`, `NeuronAP`, `ScopeRegion`, `Axis`, `AffineExpr` (= `CExpr`) |
@@ -57,7 +57,9 @@ neuronxcc.starfish.penguin.IntegerSetAnalysis      (IntegerSetAnalysis.so — ba
        enums DependenceType / DebugLevel
 ```
 
-The practical consequence of the MRO: when this module calls `self.create_access` / `self.create_domain_space` / `self.domain`, the lookup resolves to the **base** `IntegerSetAnalysis` unless overridden here. Three name-classes interleave at every call site:
+> **CORRECTION (ISL-DEP-1) —** the base "raw-isl factory" is not a separate Python `.so` as a first pass suggested. Two distinct artifacts carry the `IntegerSetAnalysis` name: (a) a **Python** module `neuronxcc.starfish.penguin.IntegerSetAnalysis` imported by this `.so` (confirmed in the string table), and (b) a **C++** class `islwrapper::IntegerSetAnalysis` compiled into `libBIR.so` whose mangled methods — `domain`, `predicated_domain`, `create_domain_space`, `build_aff`, `add_loop_bounds`, `apply_predicates`, `enumerate_predicates`, `enumerate_affine_predicates`, `build_linear_expr`, `quasi_affine_expr`, `convex_hull`, `simplify`, `extract_cst_floor/ceil` — are decompilable in `libBIR`. The low-level domain/aff/predicate algebra is therefore native C++ in `libBIR.so`; the Python `IntegerSetAnalysis` module and this Cython subclass are the policy/glue layers above it. `IntegerSetWrapper` as a discrete Python lifetime-manager class is INFERRED from naming, not separately confirmed.
+
+The practical consequence of the MRO: when this module calls `self.create_access` / `self.create_domain_space` / `self.domain`, the lookup resolves to the **base** `IntegerSetAnalysis` (ultimately the `islwrapper` C++ layer) unless overridden here. Three name-classes interleave at every call site:
 
 | Method | Resolves to | Confidence |
 |---|---|---|
@@ -100,7 +102,7 @@ The corresponding schedule tree:        (printable with print(root.to_str()))
 
 From this:
 
-- One Penguin statement (instruction) `sN` ↔ one isl statement tuple `"sN"`, where `N = inst.id` (format string `"s%s"` in `.rodata`).
+- One Penguin statement (instruction) `sN` ↔ one isl statement tuple `"sN"`, where `N = inst.id`. The `s0`/`s1`/`s2` naming is CONFIRMED by the docstring example; the exact `"s%s"` format string is **not** a `.value` in this module's string table (only `"%s_alloc"` is) — STRONG-inferred to live in the base `IntegerSetAnalysis` tuple-naming, not here.
 - The iteration domain of `sN` is `{ sN[i,j,...] : bounds }`; the index vars are the enclosing loop induction variables (`loopnest_ivs`), and the bounds come from each loop's trip count plus any predicates.
 - The schedule maps `sN[ivs] -> [(loop-coords)]`; a deeper loop (`s1` over `i,j`) gets a nested band `"[{ s1[i,j] -> [(j)] }]"`.
 - The tree is `DOMAIN(union of all sN sets) → SEQUENCE → per-stmt FILTER → BAND → MARK("sN")`. (The `mark` leaf names each statement — built via `insert_mark`/`get_tuple_id` in §Schedule-Tree.)
@@ -127,6 +129,8 @@ function get_child_domain_union_set(self, stmt):       // 0x33a70 — recursive 
 ```
 
 The `ScopeRegion`/`Axis` `__enter__`/`__exit__` manage `loopdepth` so a child `NeuronInst`'s `in_predicate_domain` observes the correct enclosing IVs and bounds. This is the core glue: the nested Penguin loop-nest is flattened into one flat isl `UnionSet` of per-statement Sets. The isl primitives used are stock: `isl.UnionSet.from_set(Set)` and `UnionSet.union(UnionSet)`.
+
+> **NOTE —** `NeuronInst`, `NeuronAP`, and `ScopeRegion` are CONFIRMED as `.value` strings in this module. `Axis` is **not** a string in this `.so`; it is STRONG-inferred as the second loop-scope IR class (the `loopdepth`-pushing context-manager partner of `ScopeRegion`, per Penguin's axis/loop model). A reimplementer should treat the loop-scope handling as "any context-manager scope node," whether the concrete class is `Axis` or `ScopeRegion`.
 
 The base-class build (INFERRED from the `IntegerSetWrapper` symbol set) is: `create_domain_space(loopnest, params)` → `isl.Space` (set space, tuple `sN`, dims = #IVs, params = symbolic loop-bound params); then `add_loop_bounds` / `add_partial_loop_bounds` add `0 <= iv < trip` constraints per loop; `predicated_domain = domain ∩ enumerate_predicates(...)`. Symbolic bound params are named/bounded by `add_param_bounds` / `set_param_dim_name`.
 
