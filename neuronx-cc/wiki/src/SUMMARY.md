@@ -298,6 +298,9 @@
 - [SBSizeLegalization & the Split-Shape Primitive](walrus/sb-size-legalization.md)
 - [vn_splitter / vertical-fusion / shrink_ml (Allocator Prep)](walrus/vnsplitter-shrink.md)
 - [LoopOptimization — LICM + Greedy Fusion (Profit Graph)](walrus/loopopt-licm-fusion.md)
+- [LoopOptimization — Distribution / Interchange / Tiling](walrus/loopopt-transforms.md)
+- [runtime-memory-reservation / inline-nki-kernel / inline-bir-kernel](walrus/memreserve-kernel-inline.md)
+- [DMA Materialization — lower_dma + lower_dynamic_dma (DGE)](walrus/dma-materialization.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
