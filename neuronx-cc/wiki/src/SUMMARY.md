@@ -177,6 +177,9 @@
 - [Memref / View / Access Model (Concrete Tensors)](nki/memref-view-model.md)
 - [Affine-Range & Index/Mask Inference](nki/index-mask-inference.md)
 - [Mask / Predicate Algebra](nki/mask-predicate-algebra.md)
+- [NkiTypeSystem & Traced-Tile Operator Overloading](nki/type-system.md)
+- [Type Metaclasses & the Abstract Type Lattice](nki/type-metaclasses.md)
+- [nki/dtype Façade over support.dtype](nki/dtype-facade.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
