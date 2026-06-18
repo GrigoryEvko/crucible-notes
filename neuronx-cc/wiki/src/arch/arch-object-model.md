@@ -368,7 +368,7 @@ The terminal values, read off the per-arch ctor immediates in both binaries. Eve
 |---|---|---|---|---|---|
 | SBUF bytes/partition | `Statebuf+0x00` `partitionSize` | 96 KiB | 192 KiB | 224 KiB | 256 KiB |
 | SBUF partitions | `Statebuf+0x08` `numPartitions` | 128 | 128 | 128 | 128 |
-| SBUF reserved | `Statebuf+0x18` `reservedSize` | 16384 | 16384 | 16384 | 16384 |
+| SBUF reserved | `Statebuf+0x18` `reservedSize` | 16384 | 16384 | 16392 | 16392 |
 | PSUM banks | `Psumbuf+0x00` `numBanks` | 4 | 8 | 8 | 8 |
 | PSUM partitions | `Psumbuf+0x04` `numPartitions` | 64 | 128 | 128 | 128 |
 | PSUM bank size | `Psumbuf+0x08` `partSize` | 2048 | 2048 | 2048 | 2048 |
@@ -383,6 +383,8 @@ The terminal values, read off the per-arch ctor immediates in both binaries. Eve
 | Semaphores/core | `Core+0x34` `NumSemaphores` | 256 | 256 | 256 | 256 |
 
 The numeric values, their per-arch immediate addresses, and the cross-binary confirmation are owned in full by the [hardware constant matrix](hardware-constant-matrix.md); this row set is the orientation summary, included so a reader who has walked the chain can immediately see what each terminal offset yields.
+
+> **CORRECTION —** the `Statebuf+0x18` `reservedSize` per-arch value is **16392 (0x4008)** for gen3 (Cayman) and gen4 (CoreV4), not 16384 — read off the `CaymanStatebuf` / `CoreV4Statebuf` ctor immediates. gen1/gen2 stay at 16384 (0x4000). The `0x4000` figure that appears in the header prose above is the struct's **default** reservedSize (the value before the gen3/gen4 ctors override it), which is correct as a default; it is the per-arch terminal value for the two newest generations that is 0x4008.
 
 ---
 
