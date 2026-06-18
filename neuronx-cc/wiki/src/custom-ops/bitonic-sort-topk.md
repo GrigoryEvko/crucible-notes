@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Alias** | `neuronxcc/l/l_cpu{0..7}.stripped.so` (byte-identical copy) |
 | **Format / ISA** | ELF32 `EXEC`, Tensilica **Xtensa**, fully stripped |
 | **Size each** | 579,380 bytes; `.text` 0x737d8, `.rodata` 0x5a48 |
-| **Per-core base** | cpu0 `.text`@`0x84000000` … cpu7@`0x84e00000` (0xe00000 stride) |
+| **Per-core base** | cpu0 `.text`@`0x84000000` … cpu7@`0x84e00000` (0x200000 / 2 MiB per-core stride) |
 | **Source TUs** | `bitonic_sort.cpp`, `sort_and_merge.cpp` |
 | **Dispatch names** | `.rodata` 0x7ed20–0x7ed6e (four contiguous literals) |
 | **Output shape** | `[2, data_dim0, data_dim1]` (asserted three times) |
@@ -43,7 +43,7 @@ readelf -h  libbuiltincustomop_cpu0:  Entry 0x8400cd94   .text @ 0x84000000
 readelf -h  libbuiltincustomop_cpu7:  Entry 0x84e0cd94   .text @ 0x84e00000
 ```
 
-The entry points and section bases differ by exactly `cpu_index * 0xe00000` (14 MiB per core). The eight files therefore have **different md5s** despite identical 579,380-byte sizes — the divergence is in absolute addresses (and a small block of relocated `.data` constants), not in logic. Diffing the *string sets* of cpu0 vs. cpu7 yields only address-bearing noise; every `bitonic_sort.cpp` / `sort_and_merge.cpp` assert string is present and identical in all eight.
+The entry points and section bases differ by exactly `cpu_index * 0x200000` (2 MiB per core; cpu0→cpu7 spans `7 · 0x200000 = 0xe00000`). The eight files therefore have **different md5s** despite identical 579,380-byte sizes — the divergence is in absolute addresses (and a small block of relocated `.data` constants), not in logic. Diffing the *string sets* of cpu0 vs. cpu7 yields only address-bearing noise; every `bitonic_sort.cpp` / `sort_and_merge.cpp` assert string is present and identical in all eight.
 
 > **QUIRK — the same op is shipped twice.** `neuronxcc/l/l_cpu0.stripped.so` and `neuronxcc/data/custom_op/libbuiltincustomop_cpu0.stripped.so` are byte-identical (same md5). The `l/` path is an aliased shipping copy; a reimplementer needs to provide only one eight-image set, not two. (CONFIRMED — md5 match.)
 

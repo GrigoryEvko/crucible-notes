@@ -161,7 +161,7 @@ uint32 allocateCustomOpFunctionId(this):
     return id;
 ```
 
-A plain monotonic per-**module** counter: FunctionIds are dense `0,1,2,…` in allocation order, *not* per-library. The caller does `id = allocateCustomOpFunctionId(); addCustomOpFunction(lib, fn, id);` — the allocator is never called *inside* `addCustomOpFunction`. Because the FunctionId is stored as a single byte in the wire form (`sub_opcode`, see [CUSTOM_OP Wire Byte-Layout](customop-wire-layout.md)), the namespace is hard-capped at ≤ 256 unique functions per module; the registrar enforces this with a `Number of unique custom op functions cannot exceed …` guard.
+A plain monotonic per-**module** counter: FunctionIds are dense `0,1,2,…` in allocation order, *not* per-library. The caller does `id = allocateCustomOpFunctionId(); addCustomOpFunction(lib, fn, id);` — the allocator is never called *inside* `addCustomOpFunction`. Because the FunctionId is stored as a single byte in the wire form (`sub_opcode`, see [CUSTOM_OP Wire Byte-Layout](customop-wire-layout.md)) with `0xFF` reserved as the "unset" sentinel, the namespace is hard-capped at ≤ 254 unique functions per module; the registrar enforces this with a `Number of unique custom op functions cannot exceed …` guard that fires past `0xFE` (254).
 
 ### Algorithm — addCustomOpLibFile (the 6-arg sink)
 

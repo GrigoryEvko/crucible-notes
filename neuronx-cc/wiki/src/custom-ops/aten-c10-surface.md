@@ -18,7 +18,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Images** | `libbuiltincustomop_cpu0..7.stripped.so` — Xtensa ELF32, statically linked, stripped, ~566 KiB each |
+| **Images** | `libbuiltincustomop_cpu0..7.stripped.so` — Xtensa ELF32, statically linked, stripped, 579,380 B (≈566 KiB) each |
 | **c10 namespace** | `N3c10…` RTTI: `TensorImpl`, `StorageImpl`, `NeuronTensorImpl`, `NeuronStorageImpl`, `UndefinedTensorImpl`, `intrusive_ptr_target`, `AutogradMetaInterface`, `VariableVersion::VersionCounter`, `Error` |
 | **Custom classes** | `c10::NeuronTensorImpl` (`N3c1016NeuronTensorImplE`), `c10::NeuronStorageImpl` (`N3c1017NeuronStorageImplE`) |
 | **Allocator** | `NeuronAllocator` (`/opt/amazon/custom_op/torch/include/neuron_torch_extension/NeuronAllocator.h`), reached via `c10::GetAllocator` |
@@ -166,7 +166,7 @@ data_transfer.cpp:240  READ_LOCAL_UREG64(MEM_WINDOW0_LO) == SUNDA_APB_BASE
 allocator.cpp:45       mgr != nullptr                                (a memory-manager singleton)
 ```
 
-> **NOTE —** the `cpu_id < 8` assert and the eight identical `libbuiltincustomop_cpuN.stripped.so` images are the same fact seen from two sides: one firmware image per GPSIMD Xtensa core, each carrying its own copy of the c10 subset. The tensor ABI is identical across all eight; only the core index differs. See [GPSIMD Xtensa Layout](gpsimd-xtensa-layout.md).
+> **NOTE —** the `cpu_id < 8` assert and the eight `libbuiltincustomop_cpuN.stripped.so` images are the same fact seen from two sides: one firmware image per GPSIMD Xtensa core, each carrying its own copy of the c10 subset. The eight are **not byte-identical** across cores — they are one program *re-linked* at each core's `0x84000000 + id·0x200000` base (distinct per-core md5s, all 579,380 B), so they differ only by the rebase of absolute addresses. The tensor ABI is identical across all eight; only the link base (and the core index it encodes) differs. See [GPSIMD Xtensa Layout](gpsimd-xtensa-layout.md).
 
 ### Sharing an External Pointer
 
@@ -260,4 +260,4 @@ No claim failed re-challenge. Items marked INFERRED in the tables above (specifi
 - [GPSIMD Xtensa Layout](gpsimd-xtensa-layout.md) — the 8-core Xtensa firmware images that statically link this c10 subset
 - [Bitonic SORT / TOPK Builtin](bitonic-sort-topk.md) — a builtin op built against this `at::Tensor` surface
 - [BIR Dtype Tables](../bir/dtype-tables.md) — the BIR/ISA dtype enum on the other side of the `isa_to_torch_dtype` bridge
-- The custom-op CPU ABI / SDK page (Part 11.3, slug `customop-cpu-abi` if published) — the author-facing entry-point and SDK glue (`SundaCustomOpLibrary`) layered over this surface
+- [The Custom-Op CPU ABI: `extended_isa::sdk`](customop-cpu-abi.md) — Part 11.3, the author-facing entry-point and SDK glue (`SundaCustomOpLibrary`) layered over this surface

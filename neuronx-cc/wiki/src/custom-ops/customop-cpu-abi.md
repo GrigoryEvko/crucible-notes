@@ -414,7 +414,7 @@ The 23 SDK sites are the contract this page documents (the full list is in [§1]
 |---|---|
 | GPSIMD Xtensa ELF layout (11.1) | The image geometry, per-core rebase, and `MEM_WINDOW0_LO` cpu_id source this ABI runs on |
 | Bitonic SORT/TopK builtin (11.2) | The operator embedded in these images; consumes this ABI |
-| ATen/`c10` dispatch surface (11.4) | The bundled tensor subset and `NeuronAllocator` bridge (custom-ops/, not yet written) |
+| ATen/`c10` dispatch surface (11.4) | The bundled tensor subset and `NeuronAllocator` bridge ([aten-c10-surface.md](aten-c10-surface.md)) |
 | BIR Dtype tables (7.6) | The twenty-entry dtype universe of which `isa_to_torch_dtype` maps nine |
 | NeuronCodegen `builtin_custom_op` | The BIR-side encoder that emits the `0x85`/`0x86` payload this ABI decodes |
 

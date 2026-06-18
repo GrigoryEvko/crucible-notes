@@ -220,7 +220,7 @@ This page documents only how the codegen's output *enters* the emitter; the byte
 
 > **CORRECTION (D-Q08) — `num_payloads` is at `+0x0C`, not `+0x06`.** An earlier note here placed it at `+0x06`; that was a decompiler-misread of `sub_123CA60((_WORD*)hdr + 6, …)` — `hdr` is a `_WORD*` (u16), so `+ 6` is u16-pointer arithmetic = `+0x0C` bytes. The encoder's store destination is `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) @0x1262f75; the sibling `num_arguments` setter is `lea [r13+0Fh]` @0x1262fbe. See [11.5](customop-wire-layout.md) §2.1.
 - The single output (the lone `dst` / `isOutput=True` operand) becomes **payload 0**; the `N` inputs (`src` / `isOutput=False`) become payloads `1..N`. The `_259` directional binding (§4) is what makes the output-first ordering meaningful.
-- The legality the emitter enforces (`"Custom ops cannot have more than 1 output"`, SBUF/HBM operand location, no `TensorIndirect` AP, ≤255 unique functions) is downstream of the codegen — the codegen does not pre-check these; the backend `visitInstCustomOp` does.
+- The legality the emitter enforces (`"Custom ops cannot have more than 1 output"`, SBUF/HBM operand location, no `TensorIndirect` AP, ≤254 unique functions — the `0xFE` cap, `0xFF` = unset) is downstream of the codegen — the codegen does not pre-check these; the backend `visitInstCustomOp` does.
 
 ```c
 /* CoreV2GenImpl::visitInstCustomOp @0x12613c0 — how the BIR node enters the wire (sketch) */
@@ -292,5 +292,5 @@ No fabricated symbols or offsets; every address is cited from the named binary's
 - [2.22 Collective / GPSIMD / CustomOp Encoding](../isa/collective-customop-encoding.md) — the sibling ISA-encoding page; §10 first sketched the `0x85`/`0x86` pair.
 - [11.1 The GPSIMD CPUs: 8-core Xtensa ELF Layout](gpsimd-xtensa-layout.md) — the Xtensa CPU cluster the lowered custom op dispatches a kernel onto.
 - [11.2 The Bitonic SORT / TOPK Builtin Algorithm](bitonic-sort-topk.md) — SORT/TOPK, the canonical custom-op occupants (no dedicated opcode; ride `0x85`/`0x86`).
-- [11.6 FindCustomOpData Staging & FunctionId Binding](findcustomopdata-staging.md) — how the header's FunctionId byte maps to `(libfile, function-name)` via `ModuleArtifactInfo`.
+- [11.7 FindCustomOpData Staging & FunctionId Binding](findcustomopdata-staging.md) — how the header's FunctionId byte maps to `(libfile, function-name)` via `ModuleArtifactInfo`.
 - [1.13 GPSIMD Engine — the Pool-Alias Cross-Core SB2SB Mover](../arch/gpsimd-engine.md) — the *other* "GPSIMD" (the `0xBF` Pool-alias mover); resolves the name collision.
