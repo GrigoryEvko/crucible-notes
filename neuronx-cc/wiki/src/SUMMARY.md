@@ -374,6 +374,10 @@
 - [The Two-GPSIMD Reconciliation — Pool-Engine Alias vs Xtensa Cluster](custom-ops/two-gpsimd-reconciliation.md)
 - [Custom-Op Full-Chain Reconciliation (beta2 ∥ beta3 → wire → CPU)](custom-ops/customop-full-chain.md)
 
+# Part 13 — Distribution & Collectives
+
+- [The SpmdPartitioner Driver & Options](distribution/spmd-partitioner-driver.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
