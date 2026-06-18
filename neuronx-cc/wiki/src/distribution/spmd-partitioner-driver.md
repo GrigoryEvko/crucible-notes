@@ -4,9 +4,9 @@
 
 ## Abstract
 
-When a model is sharded across multiple NeuronCores, the HLO module that reaches `hlo-opt` is **annotated** — every instruction carries an `HloSharding` — but not yet **rewritten**. The pass that performs the rewrite, turning a single global program into per-partition local computations and inserting the collectives that stitch them back together, is `xla::spmd::SpmdPartitioner`. This page documents its *driver*: the top-level `SpmdPartitioner::Run` flow, the `SpmdPartitionerOptions` POD it consumes, the pipeline seat where it is constructed and run, and the hard entry/exit invariants it enforces. The per-operator rewrite logic (the `SpmdPartitioningVisitor`) and the collective-emit handlers are owned by [13.2](spmd-partitioning-visitor.md)/[13.3](spmd-collective-emit.md); sharding propagation by [13.4](sharding-propagation.md)/[13.5](sharding-propagation-helpers.md).
+When a model is sharded across multiple NeuronCores, the HLO module that reaches `hlo-opt` is **annotated** — every instruction carries an `HloSharding` — but not yet **rewritten**. The pass that performs the rewrite, turning a single global program into per-partition local computations and inserting the collectives that stitch them back together, is `xla::spmd::SpmdPartitioner`. This page documents its *driver*: the top-level `SpmdPartitioner::Run` flow, the `SpmdPartitionerOptions` POD it consumes, the pipeline seat where it is constructed and run, and the hard entry/exit invariants it enforces. The per-operator rewrite logic (the `SpmdPartitioningVisitor` compute handlers) and the collective-emit handlers are owned by [13.5](spmd-compute-handlers.md)/[13.6](spmd-collective-emission.md); sharding propagation by [13.2](sharding-propagation.md)/[13.3](sharding-algebra.md).
 
-The single most important provenance fact: **this driver is unmodified upstream XLA**. The namespace is `xla::spmd`, the source path string `xla/service/spmd/spmd_partitioner.cc` is embedded verbatim (`@0x37d1c8`), and the pass is constructed and run by the **stock** `xla::cpu::CpuCompiler` pipeline that Neuron reuses as its HLO front-end. Neuron does *not* fork `SpmdPartitioner::Run`. Its only contribution to the driver is the **seat and the wiring**: a config gate that turns the SPMD block on, the `num_partitions`/`replica_count` and sharding vectors it feeds in, and a family of `xla::hilo` collective passes that run *after* the partitioner to lower the emitted collectives for the Neuron device ([13.6](neuron-collective-passes.md), [13.9](lnc-spmd-seam.md)). Everything between those two seams is XLA.
+The single most important provenance fact: **this driver is unmodified upstream XLA**. The namespace is `xla::spmd`, the source path string `xla/service/spmd/spmd_partitioner.cc` is embedded verbatim (`@0x37d1c8`), and the pass is constructed and run by the **stock** `xla::cpu::CpuCompiler` pipeline that Neuron reuses as its HLO front-end. Neuron does *not* fork `SpmdPartitioner::Run`. Its only contribution to the driver is the **seat and the wiring**: a config gate that turns the SPMD block on, the `num_partitions`/`replica_count` and sharding vectors it feeds in, and a family of `xla::hilo` collective passes that run *after* the partitioner to lower the emitted collectives for the Neuron device ([13.6](spmd-collective-emission.md), [13.9](lnc-sharding-constraint.md)). Everything between those two seams is XLA.
 
 Read against the LLVM frame, `SpmdPartitioner` is a single `HloModulePass` (the analogue of an LLVM `ModulePass`) registered into a `HloPassPipeline` (an LLVM `PassManager`). The interesting structure is internal: `Run` is a six-phase sequence — preprocess, log, call-graph-prep, partition, relayout-and-verify, post — and the relayout/verify phase exists to enforce an invariant that distinguishes SPMD from ordinary HLO rewriting: **the global entry signature must survive partitioning byte-for-byte**, even though every internal computation is rewritten to local per-partition shapes.
 
@@ -179,7 +179,7 @@ From the ctor store offsets (`this=rbx`):
 | `+0x198` | `SPMDCollectiveOpsCreator` vtable/sentinel (`xmmword_D7D8D0`) | built in ctor | HIGH |
 | `+0x1A0`…`+0x1B0` | collective-ops-creator inline state | zeroed | HIGH |
 
-> **NOTE — the collective-ops creator is stock.** The ctor first calls `GetDefaultCollectiveOpsCreator(num_partitions, num_replicas)` (`@0x2a932b6`), stores it into the object tail, and frees the temp (`~SPMDCollectiveOpsCreator @0x2a936ac`). A `SpmdPartitioner` built this way uses the **stock** XLA collective emitters. Neuron does NOT swap this at the driver ctor; any Neuron-specific collective lowering happens later in the `xla::hilo` collective passes ([13.6](neuron-collective-passes.md)), not in the creator here.
+> **NOTE — the collective-ops creator is stock.** The ctor first calls `GetDefaultCollectiveOpsCreator(num_partitions, num_replicas)` (`@0x2a932b6`), stores it into the object tail, and frees the temp (`~SPMDCollectiveOpsCreator @0x2a936ac`). A `SpmdPartitioner` built this way uses the **stock** XLA collective emitters. Neuron does NOT swap this at the driver ctor; any Neuron-specific collective lowering happens later in the `xla::hilo` collective passes ([13.6](spmd-collective-emission.md)), not in the creator here.
 
 ### The concrete pass
 
@@ -371,7 +371,7 @@ function CanSideEffectingHaveReplicatedSharding(hlo):       // 0x2a8e260 (127 B)
     return false
 ```
 
-`PreprocessHlos @0x2ab5c30` then rewrites HLOs into partition-friendly forms before the visitor runs — creating Pad / Iota / Compare / Broadcast / Constant nodes, rewriting slice/pad/dynamic-slice patterns, and re-applying `set_sharding` + `OpMetadata::CopyFrom` so the rewritten ops keep correct shardings. Per-op detail is owned by [13.2](spmd-partitioning-visitor.md).
+`PreprocessHlos @0x2ab5c30` then rewrites HLOs into partition-friendly forms before the visitor runs — creating Pad / Iota / Compare / Broadcast / Constant nodes, rewriting slice/pad/dynamic-slice patterns, and re-applying `set_sharding` + `OpMetadata::CopyFrom` so the rewritten ops keep correct shardings. Per-op detail is owned by [13.5](spmd-compute-handlers.md).
 
 ### Exit contract — what Run guarantees on output
 
@@ -389,7 +389,7 @@ The comparison is `Shape::Equal().MinorToMajorOnlyInLayout()` on `saved.paramete
 
 - **Internal ops** carry the per-partition (local) shape. A dim sharded over `k` devices has local size `ceil(global_dim / k)`; halo/padding for windowed/convolution cases is handled by the visitor (`conv_halo_exchange_always_on_lhs` default true, see Options). (STRONG)
 - **Entry boundary** keeps params and root at global shape (Replicated/Manual only). `RecordInputsOutputsSharding @0x2ab2dc0` walks `parameter_instruction(i)->sharding()` and builds the `spmd_parameters_sharding` / `spmd_output_sharding` records (cf. the `mhlo.spmd_*_sharding` strings) so the caller knows how to scatter/gather. (CONFIRMED)
-- **Channel ids**: every emitted collective gets a fresh id from the `&next_channel_id` counter seeded by `hlo_query::NextChannelId`. Neuron later re-stamps these via `NeuronUniqueChannelIdEnforcer` / `NeuronCollectiveStreamIdInjector` ([13.6](neuron-collective-passes.md)). (CONFIRMED)
+- **Channel ids**: every emitted collective gets a fresh id from the `&next_channel_id` counter seeded by `hlo_query::NextChannelId`. Neuron later re-stamps these via `NeuronUniqueChannelIdEnforcer` / `NeuronCollectiveStreamIdInjector` ([13.6](spmd-collective-emission.md)). (CONFIRMED)
 
 ---
 
@@ -413,7 +413,7 @@ The Neuron `xla::hilo` collective-adjacent passes (CONFIRMED present), all post-
 | `DeviceAssignmentLegalization` / `LegalizeCCOpsForTensorizer` | — | Device-assign + CC-op legalize |
 | `RematerializeLargeAllGather` / `NeuronMoveAllGatherWhileLoop` | — | All-gather rematerialization / loop motion |
 
-These are documented in [13.6](neuron-collective-passes.md) and the [4.1 pass registry](../hlo-opt/pass-registry.md); the LNC (logical-NeuronCore) seam where partition count meets the Neuron device geometry is [13.9](lnc-spmd-seam.md). **The partition algorithm itself is stock; the only Neuron surface touching the driver is the gate, the config, and the downstream `hilo` passes.**
+These are documented in [13.6](spmd-collective-emission.md) and the [4.1 pass registry](../hlo-opt/pass-registry.md); the LNC (logical-NeuronCore) seam where partition count meets the Neuron device geometry is [13.9](lnc-sharding-constraint.md). **The partition algorithm itself is stock; the only Neuron surface touching the driver is the gate, the config, and the downstream `hilo` passes.**
 
 ---
 
@@ -428,10 +428,9 @@ These are documented in [13.6](neuron-collective-passes.md) and the [4.1 pass re
 
 ## Cross-References
 
-- [13.2 SpmdPartitioningVisitor — per-op partition](spmd-partitioning-visitor.md) — the visitor `PartitionComputation` drives; owns the per-operator rewrite logic
-- [13.3 SPMD collective emission](spmd-collective-emit.md) — the all-reduce / all-gather / all-to-all / collective-permute emitters keyed by `num_partitions × num_replicas`
-- [13.4 ShardingPropagation](sharding-propagation.md) — the pass that annotates the module the driver's entry contract requires
-- [13.5 Sharding-propagation helpers](sharding-propagation-helpers.md) — sharding canonicalization and the side-effect gate detail
-- [13.6 Neuron collective passes](neuron-collective-passes.md) — the `xla::hilo` collective combiners/legalizers that run after partitioning
-- [13.9 The LNC ↔ SPMD seam](lnc-spmd-seam.md) — how `num_partitions` maps onto the Neuron logical-NeuronCore device geometry
+- [13.5 SPMD Compute-Op Partition Handlers](spmd-compute-handlers.md) — the visitor `PartitionComputation` drives; owns the per-operator rewrite logic
+- [13.6 SPMD collective emission](spmd-collective-emission.md) — the all-reduce / all-gather / all-to-all / collective-permute emitters keyed by `num_partitions × num_replicas`, plus the `xla::hilo` collective passes that run after partitioning
+- [13.2 ShardingPropagation Engine](sharding-propagation.md) — the pass that annotates the module the driver's entry contract requires
+- [13.3 Sharding Algebra](sharding-algebra.md) — the factor algebra the propagation pass operates on
+- [13.9 AwsNeuronLNCShardingConstraint and the SPMD↔LNC Coupling](lnc-sharding-constraint.md) — how `num_partitions` maps onto the Neuron logical-NeuronCore device geometry
 - [4.1 The hlo-opt Pass Registry](../hlo-opt/pass-registry.md) — the `--passes` table that places these passes in the `hlo-opt` invocation
