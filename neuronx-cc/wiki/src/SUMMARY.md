@@ -318,6 +318,8 @@
 - [racecheck — Vector-Clock + Overlap Geometry (intra-core)](walrus/racecheck.md)
 - [barriercheck — Ranger + Intersect + lnc_verifier (inter-core)](walrus/barriercheck.md)
 - [parserdumper / bir_roundtrip — the BIR debug & round-trip serializers](walrus/parserdumper.md)
+- [PerfSim Cost Model — bir::Hwm oracle + the cycle simulator](walrus/perfsim-cost-model.md)
+- [perf_sim Wiring & the pttf Trace Tarball](walrus/perf-sim-wiring.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
