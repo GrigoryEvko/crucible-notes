@@ -164,6 +164,13 @@
 - [Symbolic-AP → Register-ALU Materialization (kind-2 → kind-3)](penguin/symbolic-ap-register-alu.md)
 - [Dynamic-Shape System Synthesis (End-to-End Thread)](penguin/dynamic-shape-synthesis.md)
 
+# Part 6 — NKI Kernel DSL
+
+- [NKI Architecture Overview & the 3-Layer Lowering Stack](nki/architecture-overview.md)
+- [NKI Entrypoints — jit / baremetal / benchmark / profile / simulate_kernel](nki/entrypoints.md)
+- [FrameworkKernel / TraceKernel Lifecycle & the backend_config](nki/framework-kernel-lifecycle.md)
+- [TraceContext — the Abstract-Interpretation Engine](nki/trace-context.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
