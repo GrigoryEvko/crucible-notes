@@ -1,6 +1,6 @@
 # Softmax Legalization
 
-> *All addresses on this page apply to neuronx-cc `hlo-opt` (and `hlo2penguin`) from `neuronx_cc 2.24.5133.0+58f8de22` (cp310, x86-64). Other versions and other Python ABIs will differ. VA == file-offset holds for `.text`/`.rodata` in this binary.*
+> *All addresses on this page are virtual addresses (VMA) for neuronx-cc `hlo-opt` (and `hlo2penguin`) from `neuronx_cc 2.24.5133.0+58f8de22` (cp310, x86-64); resolve via `objdump --start-address` or the VMA-keyed `disasm/`/`_names.json` sidecars. Other versions and other Python ABIs will differ. VA ≠ raw file offset: in `hlo-opt`, `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers).*
 
 ## Abstract
 

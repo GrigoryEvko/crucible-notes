@@ -1,6 +1,6 @@
 # TopK Legalization
 
-> *All addresses on this page apply to neuronx-cc 2.24.5133.0+58f8de22 (`hlo-opt`, cp310). VA == file offset for `.text`/`.rodata`. Other builds will differ.*
+> *All addresses on this page are virtual addresses (VMA) for neuronx-cc 2.24.5133.0+58f8de22 (`hlo-opt`, cp310); resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other builds will differ.*
 
 ## Abstract
 
