@@ -84,7 +84,7 @@ Because `hilo` registers no dialect ops, the de-facto Neuron op set rides as **d
 
 ### The AwsNeuron* custom_call_target Vocabulary (26)
 
-These are the literal `custom_call_target` strings the Neuron front-end recognizes on an upstream `custom_call` op. Each names a fused/native Neuron primitive that a downstream pass lowers to a Penguin/NKI kernel. Verbatim from `strings.json` (`rg -o 'AwsNeuron[A-Za-z0-9]+' | sort -u`, minus the two `ModuleMarker` delimiters):
+These are the literal `custom_call_target` strings the Neuron front-end recognizes on an upstream `custom_call` op. Each names a fused/native Neuron primitive that a downstream pass lowers to a Penguin/NKI kernel. The roster is the **union of clean whole-string `AwsNeuron*` `custom_call_target` literals across both `hlo-opt` and `hlo2penguin`** plus the runtime-assembled collective / `AwsNeuronMLPNKI` targets that never appear as contiguous literals (see the CORRECTION below the table for the exact extraction method and per-binary breakdown). These are `.rodata` data strings, not linker symbols — `nm -DC` surfaces none of them:
 
 | Category | Targets |
 |---|---|
@@ -98,7 +98,13 @@ These are the literal `custom_call_target` strings the Neuron front-end recogniz
 
 Plus two **phase-delimiter markers** (not lowerable ops): `AwsNeuronModuleMarkerStart-{Forward,Backward}` @0x39dc10 / 0x3cd1d0 and `AwsNeuronModuleMarkerEnd-*`. The static-analysis marker class string `NeuronTensorOp` @0x809294-region and verifier class `NeuronHloVerifier` are also present.
 
-> **NOTE —** the roster grounded here is 28 distinct `AwsNeuron*` strings; subtracting the 2 `ModuleMarker` delimiter families gives the **26** genuine `custom_call_target` ops. **CONFIRMED** (`sort -u` on `strings.json`). Per-target lowering lives in the `hilo::Convert*` / `hilo::Legalize*` rewrite passes ([4.32](hlo2penguin-mlir-pipeline.md)).
+> **CORRECTION — the "26" is a cross-binary union of `custom_call_target` rodata strings, not a single-binary `sort -u`.** These are **data strings** (`.rodata` `custom_call_target` literals), *not* linker symbols: `nm -DC hlo-opt | rg AwsNeuron` returns **0** — so the count is a string-table figure, never a symbol-table one. The earlier "28 distinct strings minus 2 markers = 26" derivation is **not reproducible from a naive whole-string scan of `hlo-opt` alone**. Re-grounded against the binaries:
+>
+> - `strings -a hlo-opt | rg -o 'AwsNeuron[A-Za-z0-9]+' | sort -u` yields **30** raw tokens, of which several are noise: mangled-symbol fragments caught by `strings` (`AwsNeuronArgMax3RunEPNS`, `…4nameEv`, `…D0Ev`/`D1Ev`/`D2Ev`, `…EvEUlvE`) and two rodata-adjacency splices (`AwsNeuronAllGathfsdp`, `AwsNeuronAllReduAwsNeuronReduceSfficient`). Filtering those leaves **20** clean strings = **18** genuine targets + **2** `ModuleMarker` delimiter families.
+> - The collective family (`AwsNeuronAllReduce*` / `AwsNeuronAllGather*` / `AwsNeuronReduceScatter*`) and `AwsNeuronMLPNKI` are **runtime-assembled** (movups template + suffix, or byte-built) and so **do not appear as whole literals** in `hlo-opt` — confirmed: `^AwsNeuronAllReduce$`/`^AwsNeuronAllGather$`/`^AwsNeuronReduceScatter$`/`^AwsNeuronMLPNKI$` match nothing in a whole-string scan (only `AwsNeuronTopK`/`AwsNeuronDropout` do).
+> - The remaining union members (`AwsNeuronCustomOp`, `AwsNeuronDropoutMaskV1`, `AwsNeuronIntMatmult`, `AwsNeuronLNCShardingConstraint`, `AwsNeuronMLPNKI`, `AwsNeuronRmsNormBackward`, `AwsNeuronZeroSizedOp`, `AwsNeuronExit`) surface as clean whole literals in the **`hlo2penguin`** binary, not `hlo-opt`.
+>
+> So the **26-target table below is correct as the *recognized vocabulary*** (count the rows: 6+3+2+2+8+3+2 = 26), but its provenance is the **union of `hlo-opt` + `hlo2penguin` clean `custom_call_target` literals plus the byte/runtime-assembled collective + MLPNKI names** — *not* a single `sort -u`. Method, precisely: clean-filter `rg -o 'AwsNeuron[A-Za-z0-9]+'` whole-string hits across both ELFs (drop mangled-symbol fragments and adjacency splices), add the runtime-assembled targets known from the emitter passes, subtract the 2 `ModuleMarker` families. Per-target lowering lives in the `hilo::Convert*` / `hilo::Legalize*` rewrite passes ([4.32](hlo2penguin-mlir-pipeline.md)).
 
 ### The FusionKind / CompositeKind Vocabulary
 
@@ -189,7 +195,7 @@ Five strongest claims, re-challenged against the binary:
 1. **"`initializeMLIRContext` eager-loads exactly 3 dialects."** — `names.json` has exactly three `getOrLoadDialect<X>::{lambda(void)#1}` instantiations: `Mhlo`, `Stablehlo`, `Func`. No fourth eager lambda. **CONFIRMED.**
 2. **"No Neuron dialect/op/type/attr exists."** — `rg -o '4hilo[0-9]+[A-Za-z]*(Op|Type|Attr|Dialect|Interface)E' rtti.json` = empty; 233 `hilo` RTTI records are all Pass/Pattern. **CONFIRMED.**
 3. **"g2s strings referenced only by `upgradeIntrinsicFunction1`."** — `strings.json` record for `tensor.g2s.tile.1d` has `referenced_by:[{from:0x8495e3a, func:_ZL25upgradeIntrinsicFunction1…}]`, refs:1; full nvvm @0xcb1000 refs:0. **CONFIRMED.**
-4. **"26 AwsNeuron custom_call targets."** — `sort -u` gives 28 distinct `AwsNeuron*` strings; minus 2 `ModuleMarker` delimiter families = 26 targets. **CONFIRMED** (count re-derived, not copied).
+4. **"26 AwsNeuron custom_call targets."** — the count is **26 recognized `custom_call_target` ops** (count the table rows: 6+3+2+2+8+3+2 = 26). The provenance is a **cross-binary union**, *not* a single `sort -u`: a naive `strings -a hlo-opt | rg -o 'AwsNeuron[A-Za-z0-9]+' | sort -u` gives **30** raw / **20** clean (18 targets + 2 markers) — it misses the runtime-assembled collective + `MLPNKI` names and the seven extra targets that only surface as clean literals in `hlo2penguin`. These are `.rodata` data strings (`nm -DC` finds none). See the CORRECTION under the vocabulary table for the full per-binary breakdown. **CONFIRMED (count); method re-grounded.**
 5. **"33 `*Dialect` typeinfo classes."** — `rg -o '[A-Za-z_]*DialectE' rtti.json | sort -u | wc -l` = 33. Backing said 31; **CORRECTED to 33** here (two extra upstream dialects). The Neuron-dialect count (zero) is unchanged. **CONFIRMED / corrected.**
 
 No fabricated anchors. The non-cold `initializeMLIRContext` ea is `null` in `functions.json` (only the `.cold` clone @0x1ee04d3 resolves cleanly); the 0x1ee0500 entry and the three `getOrLoadDialect` call-site addresses (0x1ee053e/0x1ee0574/0x1ee0599) are taken from the backing disasm and are **STRONG** (not independently re-disassembled here).

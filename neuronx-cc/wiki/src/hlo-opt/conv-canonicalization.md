@@ -423,10 +423,11 @@ the full human-readable text of `NCC_EUET001` (formatted at runtime).
 | Name | Relationship |
 |---|---|
 | Conv device-lowering selection ([6.8.1](../nki/conv-device-lowering.md)) | consumes the zero-pad/unit-stride canonical form this pass produces; selects the kernel |
-| Conv kernels ([6.8.2](../codegen/conv-kernels.md) / [6.8.3](../codegen/conv-kernels-2.md)) | the actual conv lowerings the device-lowering dispatches to |
+| Conv kernels ([6.8.2 Depthwise](../nki/depthwise-conv.md) / [6.8.3 Dense Conv2D](../nki/dense-conv2d.md) / [6.8.4 conv2d_pbp](../nki/conv2d-pbp.md)) | the actual `private_nkl` conv lowerings the device-lowering dispatches to |
 
 ## Cross-References
 
 - [Conv Device-Lowering Selection](../nki/conv-device-lowering.md) — 6.8.1, the next stage; expects zero-padding, unit-stride convs
-- [Conv Kernels](../codegen/conv-kernels.md) — 6.8.2, kernel implementations dispatched after lowering selection
-- [Conv Kernels (cont.)](../codegen/conv-kernels-2.md) — 6.8.3, additional conv kernel variants
+- [private_nkl Depthwise Conv Kernels](../nki/depthwise-conv.md) — 6.8.2, depthwise conv kernel implementations dispatched after lowering selection
+- [private_nkl Dense Conv2D (NHWC-Replication & Column-Packing)](../nki/dense-conv2d.md) — 6.8.3, dense conv2d kernel implementation
+- [Experimental conv2d_pbp Kernels](../nki/conv2d-pbp.md) — 6.8.4, additional (experimental) conv kernel variants
