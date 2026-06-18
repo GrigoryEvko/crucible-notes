@@ -243,6 +243,8 @@
 - [Cross-Language Wire-Key Consistency & the *Gen Bases](bir/cross-language-wirekeys.md)
 - [Two-Pass BIR-JSON Loader (createFromJson / Pass2)](bir/json-loader.md)
 - [BIR-JSON Write Path (Instruction::toJson, skip-default, always-v2)](bir/json-writer.md)
+- [BIR-JSON Record Schema by Op-Family — the 110-Op Catalog](bir/json-schema-catalog.md)
+- [v1↔v2 Versioning — the pelican-Expr Encoding Gate](bir/wire-versioning.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
