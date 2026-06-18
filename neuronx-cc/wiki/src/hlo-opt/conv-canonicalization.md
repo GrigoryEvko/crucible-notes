@@ -6,7 +6,7 @@
 
 `CanonicalizeConv` is one of the hlo2penguin MLIR conv-canonicalization passes that
 normalizes `mhlo.convolution` before the conv device-lowering selects a kernel
-([6.8.1](../codegen/conv-device-lowering.md)). It is a **func-level**
+([6.8.1](../nki/conv-device-lowering.md)). It is a **func-level**
 `OperationPass<func::FuncOp>` (RTTI-confirmed via the `getName`/`clonePass`
 wrapper) registered under the pass argument `canonicalize-conv`. A byte-identical
 twin, `StableHLOCanonicalizeConv` (`stablehlo-canonicalize-conv`), runs the same
@@ -343,7 +343,7 @@ of the following from conv canonicalization:
   The `hilo::Permutation` is gate-internal (§5).
 - **No layout normalization to a fixed order (NHWC etc.).** The rebuilt conv keeps
   the original layout. Any fixed-layout requirement is enforced by the conv
-  device-lowering ([6.8.1](../codegen/conv-device-lowering.md)), not here.
+  device-lowering ([6.8.1](../nki/conv-device-lowering.md)), not here.
 
 > **NOTE —** the `tensor.g2s.im2col.*` and `tensor.g2s.tile.*` strings present in the
 > binary are **not** Neuron extension ops emitted by this pass. They are upstream
@@ -422,11 +422,11 @@ the full human-readable text of `NCC_EUET001` (formatted at runtime).
 
 | Name | Relationship |
 |---|---|
-| Conv device-lowering selection ([6.8.1](../codegen/conv-device-lowering.md)) | consumes the zero-pad/unit-stride canonical form this pass produces; selects the kernel |
+| Conv device-lowering selection ([6.8.1](../nki/conv-device-lowering.md)) | consumes the zero-pad/unit-stride canonical form this pass produces; selects the kernel |
 | Conv kernels ([6.8.2](../codegen/conv-kernels.md) / [6.8.3](../codegen/conv-kernels-2.md)) | the actual conv lowerings the device-lowering dispatches to |
 
 ## Cross-References
 
-- [Conv Device-Lowering Selection](../codegen/conv-device-lowering.md) — 6.8.1, the next stage; expects zero-padding, unit-stride convs
+- [Conv Device-Lowering Selection](../nki/conv-device-lowering.md) — 6.8.1, the next stage; expects zero-padding, unit-stride convs
 - [Conv Kernels](../codegen/conv-kernels.md) — 6.8.2, kernel implementations dispatched after lowering selection
 - [Conv Kernels (cont.)](../codegen/conv-kernels-2.md) — 6.8.3, additional conv kernel variants
