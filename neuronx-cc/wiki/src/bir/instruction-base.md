@@ -106,11 +106,11 @@ Each of the three operand lists is an `llvm::ilist`-style intrusive **circular**
 
 ### What is *not* serialized
 
-The block is mostly scheduler scratch. The ctor seeds several intrusive list/map roots not reached by `toJson` — at `+0x40` (`= blk+0x48`), `+0x290`, `+0x4E0`, `+0x730` (each set to a self-relative root) — and writes a recurring float `1082130432` (`0x40800000` = `2.0f`) at `+0x268`, `+0x4B8`, and `+0x708` (three `movss [rdx+off], xmm0` of `dword_781930`), plausibly a default per-edge weight or schedule priority.
+The block is mostly scheduler scratch. The ctor seeds several intrusive list/map roots not reached by `toJson` — at `+0x40` (`= blk+0x48`), `+0x290`, `+0x4E0`, `+0x730` (each set to a self-relative root) — and writes a recurring float `1082130432` (`0x40800000` = `4.0f`) at `+0x268`, `+0x4B8`, and `+0x708` (three `movss [rdx+off], xmm0` of `dword_781930`), plausibly a default per-edge weight or schedule priority.
 
-> **CORRECTION —** an earlier draft cited the `2.0f` slots as `+0x4A0` and `+0x4B8`/`+0x614`. The ctor at `0x2dafb0` instead `movss`-stores `dword_781930` (= `0x40800000`, verified in `.rodata`) at `+0x268` (`0x2db148`), `+0x4B8` (`0x2db1b8`), and `+0x708` (`0x2db21d`); `+0x4A0` receives a *byte 0* (`0x2db13a`), not the float. Only the dependency/loop-carried/unroll lists, `order`, `scheduled_start/end`, `sync_info`, and `debug` reach JSON; the rest is internal state the scheduler passes own.
+> **CORRECTION —** an earlier draft cited the float slots as `+0x4A0` and `+0x4B8`/`+0x614`. The ctor at `0x2dafb0` instead `movss`-stores `dword_781930` (= `0x40800000` = `4.0f`, dumped byte-for-byte from `.rodata` at file offset `0x79930`) at `+0x268` (`0x2db148`), `+0x4B8` (`0x2db1b8`), and `+0x708` (`0x2db21d`); `+0x4A0` receives a *byte 0* (`0x2db13a`), not the float. Note `0x40800000` is IEEE-754 `4.0f`, **not** `2.0f` (`2.0f` = `0x40000000`); an earlier survey mis-decoded the constant. Only the dependency/loop-carried/unroll lists, `order`, `scheduled_start/end`, `sync_info`, and `debug` reach JSON; the rest is internal state the scheduler passes own.
 
-> **INFERRED —** the precise semantics of the `2.0f` constant and the extra map roots are not pinned to a named accessor. They are scheduling scratch (mobility / slack / weight); naming them exactly needs the scheduler passes that read them.
+> **INFERRED —** the precise semantics of the `4.0f` constant and the extra map roots are not pinned to a named accessor. They are scheduling scratch (mobility / slack / weight); naming them exactly needs the scheduler passes that read them.
 
 ---
 
@@ -160,7 +160,7 @@ void Instruction(void* this, string* name, BasicBlock* parent, int it) {
     *(qword*)(blk + 0x30) = 1;
     *(qword*)(blk + 0x40) = blk + 0x48;     // dependencies list root (self-relative)
     /* … seed the descendents / loop-carried / map roots at +0x290/+0x4E0/+0x730,
-       write 2.0f (0x40800000) at the per-edge-weight slots,
+       write 4.0f (0x40800000) at the per-edge-weight slots,
        zero the order/sched/sync/debug regions … */
     *(byte*)(blk + 0x960) = 0;              // debug optional = empty
     *(byte*)(blk + 0x9F0) = 0;              // sync_info optional = empty
