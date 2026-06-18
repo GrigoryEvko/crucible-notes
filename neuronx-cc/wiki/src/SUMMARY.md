@@ -202,6 +202,8 @@
 - [NKI Compiler-Option & Allocation Decorators](nki/option-alloc-decorators.md)
 - [The Three-Sink Kernel-Node Model (IT54 / IT55 / IT56)](nki/three-sink-kernel-model.md)
 - [The _INTERNAL_KERNEL_REGISTRY Mechanism](nki/internal-kernel-registry.md)
+- [The NKI-Frontend Bridge & Binary Cache (beta3 Re-Trace)](nki/frontend-bridge-cache.md)
+- [Production Kernel Inventory: the Three-Tree Story](nki/production-kernel-inventory.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
