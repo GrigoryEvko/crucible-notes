@@ -379,6 +379,7 @@
 - [The SpmdPartitioner Driver & Options](distribution/spmd-partitioner-driver.md)
 - [ShardingPropagation Engine](distribution/sharding-propagation.md)
 - [Sharding Algebra — Rules / Projection / Factors](distribution/sharding-algebra.md)
+- [Shardy Dialect ↔ HloSharding Bridge](distribution/shardy-hlosharding-bridge.md)
 - [SPMD Compute-Op Partition Handlers & SpmdBuilder](distribution/spmd-compute-handlers.md)
 - [Mesh → Replica-Group Topology Math](distribution/mesh-replica-group-math.md)
 
