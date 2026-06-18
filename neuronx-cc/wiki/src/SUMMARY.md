@@ -206,6 +206,11 @@
 - [Production Kernel Inventory: the Three-Tree Story](nki/production-kernel-inventory.md)
 - [nkilib Infrastructure: Allocator, Tiling & Common Types](nki/nkilib-infrastructure.md)
 - [MoE Context/Prefill (CTE): Dispatch & the bwmm Shard Variants](nki/moe-cte-prefill.md)
+- [MoE Decode (TKG): Fused Megakernel & Strategy Leaves](nki/moe-decode-tkg.md)
+- [MoE Routing: router_topk](nki/router-topk.md)
+- [Normalization Kernels: RMSNorm & LayerNorm Family](nki/normalization-kernels.md)
+- [Flash-Attention: Context (CTE)](nki/attention-cte.md)
+- [Flash-Attention: Decode (TKG)](nki/attention-tkg.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
