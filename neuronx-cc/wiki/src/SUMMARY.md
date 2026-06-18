@@ -401,6 +401,7 @@
 - [External References](appendix/external-references.md)
 - [The Arch-Model Constant Matrix](appendix/arch-constant-matrix.md)
 - [Confidence Ledger](appendix/confidence-ledger.md)
+- [Recovered Source-File Path Glossary](appendix/source-path-glossary.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
