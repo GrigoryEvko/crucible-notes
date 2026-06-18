@@ -378,6 +378,7 @@
 
 - [The SpmdPartitioner Driver & Options](distribution/spmd-partitioner-driver.md)
 - [ShardingPropagation Engine](distribution/sharding-propagation.md)
+- [Sharding Algebra — Rules / Projection / Factors](distribution/sharding-algebra.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
