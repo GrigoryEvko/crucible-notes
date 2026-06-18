@@ -59,7 +59,7 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 | `--allocator <value>` | enum(coloring, linear_scan) | `coloring` | HID | (no help) — selects walrus register/memory allocator; bad value raises *"Unsupported allocator= %s"* `[0x88c30]` | S |
 | `--arch <value>` | enum(inf1,inf2,trn1,trn1n,trn2,trn2n,trn3,sunda) | (from `--target`) | PUB | *"Target MLA architecture"* `[0x88c50]` — sets NeuronCore generation; gates LNC default (`arch!="sunda" or lnc==1` `[0x871a0]`) | C |
 | `--auto-cast <cast mode>` | enum(none, matmult, all) | `none` | PUB | *"Automatically cast FP32 operators to a lower-precision type for increased performance. (Default: %(default)s)"* `[0x866e0]`; → fp32-cast policy in `tensorizer_options` ([3.14](precision-flag-marshalling.md)) | C |
-| `--auto-cast-type <data-type>` | enum(fp16, bf16, tf32) | `bf16` | PUB | *"When auto-cast mode is enabled, set the lower-precision data type to which the selected FP32 operations are cast. (Default: %(default)s)"* `[0x85280]` (fp8e4/fp32r reachable only via `--fast-math` macros) | C |
+| `--auto-cast-type <data-type>` | enum(fp16, bf16, tf32, fp8_e4m3) | `bf16` | PUB | *"When auto-cast mode is enabled, set the lower-precision data type to which the selected FP32 operations are cast. (Default: %(default)s)"* `[0x85280]` (`fp8_e4m3` canonicalizes to `fp8e4` in `buildPipeline`; `fp32r` reachable only via `--fast-math` macros — see CORRECTION below) | C |
 | `--auto-compare-mismatch` | bool | False | HID | (no help) — golden-compare debug toggle; feeds `XLAInferGoldens` numerical-compare path | S |
 | `--cc-pipeline-tiling-factor=2` | int(`=N`) | `2` | HID | (no help; literal carries default `=2` `[0x88550]`) — collective-compute pipeline tiling factor | S |
 | `--cnn-training-model` | bool | False | HID | (no help) `[0x89510]` — marks graph as CNN-training; cousin of `--model-type cnn-training` | S |
@@ -92,6 +92,8 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 | `--framework <value>` | enum (XLA) | `XLA` (auto: *"XLA detected"* `[0x89e58]`) | PUB | *"Framework used to generate training model."* `[0x85d80]` — selects input-graph frontend (`XLAInterface`); HLO vs other ingest | C |
 
 > **CORRECTION — the precision-flag `argparse` defaults are `--auto-cast=none` and `--fast-math=[]`, not `matmult`/`fp32-cast-matmult`.** Earlier rows on this page gave `--auto-cast` default `matmult` and `--fast-math` default `fp32-cast-matmult`. Those describe the *behaviour selected when auto-cast is enabled*, not the registered `argparse default=` literals. Byte-anchored in `CompileCommand.__init__` (`0x36290`): the `--auto-cast` kwargs build `PyDict_SetItem(default, __pyx_n_u_none)` (`mov rdx, __pyx_n_u_none @ 0x39a7b` → `mov rsi, __pyx_n_s_default @ 0x39a82`), and `--fast-math` builds `default=` from `PyList_New(0)` (`xor edi, edi; call _PyList_New @ 0x3a6ec` → `n_s_default @ 0x3a702`) — i.e. an empty list. So the genuine defaults are *no casting until the user asks for it*. `--fast-math` is additionally `kind=ArgKind.INTERNAL` (`.INTERNAL` fetched @ `0x3a833`), `nargs='+'`. The rows above and the choice appendix below are corrected accordingly; [3.14 precision-flag-marshalling](precision-flag-marshalling.md) §2.1/§2.3 is authoritative on this axis. *(CONFIRMED — disasm at the cited offsets.)*
+
+> **CORRECTION — `--auto-cast-type` has FOUR choices, including `fp8_e4m3`.** An earlier version of this row listed only `enum(fp16, bf16, tf32)` and claimed `fp8e4` was "reachable only via `--fast-math` macros". That is wrong: `fp8_e4m3` is a genuine direct choice of `--auto-cast-type`. Byte-anchored in `CompileCommand.so` `.rodata`: the choice literal `fp8_e4m3` is interned `__pyx_n_u_fp8_e4m3` at `[0x8a560]`, and its per-choice doc line `"fp8_e4m3: floating point with 4 bits exponent and 3 bits mantissa"` sits at `[0x8536e]`, contiguous with the `fp16:`/`bf16:`/`tf32:` doc lines at `[0x85320]`/`[0x85346]`/`[0x85357]` — the four-choice description block. `buildPipeline` then canonicalizes the user spelling `fp8_e4m3 → fp8e4` ([3.14](precision-flag-marshalling.md) §4.1). Only `fp32r` (the `tf32`-canonical) and the relayout-dtype variants are macro-only; `fp8_e4m3` is not. *(CONFIRMED — `.rodata` string + interned-name symbol + adjacent doc-line block.)*
 
 ### CompileCommand flags H–M
 
@@ -251,7 +253,7 @@ A flag's help surface is decided by its **ArgKind**, set once at `add_argument` 
 
 ```text
 --auto-cast        : none (DEFAULT) | matmult | all   (matmult is the behaviour when enabled, not the argparse default)
---auto-cast-type   : fp16 | bf16 (DEFAULT) | tf32     (fp8e4/fp32r only via --fast-math)
+--auto-cast-type   : fp16 | bf16 (DEFAULT) | tf32 | fp8_e4m3   (fp8_e4m3→fp8e4 canonicalized; fp32r only via --fast-math)
 --fast-math macros : all | none |       (argparse default = [] empty list; no macro is the default)
                      fp32-cast-all | fp32-cast-all-fp16 | fp32-cast-all-fp32r |
                      fp32-cast-all-fp8e4 | fp32-cast-matmult |
