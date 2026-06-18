@@ -160,6 +160,7 @@
 - [TensorCopyDynamic Generators (gather/scatter dynamic tensor-copy)](penguin/tensorcopy-dynamic-generators.md)
 - [DGE Level Selection & the dynamic_dma_* Pass Family](penguin/dge-level-dynamic-dma.md)
 - [Backend Polyhedral Dependence-Distance (libwalrus — name-only polyhedral)](penguin/backend-dependence-distance.md)
+- [Data-Dependent Control Flow: InstDynamicForLoop (IT106)](penguin/dynamic-for-loop.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
