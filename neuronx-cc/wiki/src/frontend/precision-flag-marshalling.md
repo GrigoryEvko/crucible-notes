@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The precision surface of `neuronx_cc` is a small, deliberately redundant set of CLI knobs that all converge on **one** decision the numeric layer reads: *which FP32 operators get cast, and to what dtype.* This page is the CLI-side companion to the Numerics chapter ([9.4](../numerics/precision-policy.md), [9.5](../numerics/autocast-fp32.md)). It traces each flag from `argparse` registration, through the one normalization step in `CompileCommand.buildPipeline`, to the exact token string the downstream stage consumes.
+The precision surface of `neuronx_cc` is a small, deliberately redundant set of CLI knobs that all converge on **one** decision the numeric layer reads: *which FP32 operators get cast, and to what dtype.* This page is the CLI-side companion to the Numerics chapter (the precision-policy page, §9.4 — documented in Part 9, pending; and [9.5 AutoCastFP32](../numerics/autocast-fp32.md)). It traces each flag from `argparse` registration, through the one normalization step in `CompileCommand.buildPipeline`, to the exact token string the downstream stage consumes.
 
 The surface lives in **two** Cython modules and is split by audience. The user-facing pair `--auto-cast` (scope: `none`/`matmult`/`all`, default `none`) and `--auto-cast-type` (dtype: `fp16`/`bf16`/`tf32`/`fp8_e4m3`, default `bf16`) is registered in `CompileCommand.__init__` (`0x36290`). The *internal* compact form `--fp32-cast {10 modes}` is registered in the `Frontend` Job's `RegisterArgs` (`0x17ae0`). The two encode the same `(scope, dtype)` pair: `buildPipeline` first **canonicalizes** the user pair (rewriting `tf32→fp32r`, `fp8_e4m3→fp8e4`, and `all+tf32→matmult`), then **reverse-marshals** it back into a single `"fp32-cast-<scope>-<dtype>"` token via a 4-part `_Pyx_PyUnicode_Join` and appends it to the forwarded option list. That token, plus three independent boolean toggles, is what carries the precision decision toward the tensorizer and the native cast.
 
@@ -100,7 +100,7 @@ Binary anchor for the default: `mov rdx, __pyx_n_u_bf16` (`0x39f0d`) immediately
 
 ### 2.3 `--fast-math` (legacy multi-token bag) — default `[]` [CONFIRMED]
 
-`--fast-math` is the O-style legacy surface: `nargs='+'`, an empty-list default, and a 16-token choice set that mixes `fp32-cast-*` spellings (an alternate way to spell the same scope/dtype pair) with `fast-relayout-*` spellings (the transpose-engine dtype, a *separate* axis — see [4.32 native-kernel cast](../codegen/native-kernel-cast.md)).
+`--fast-math` is the O-style legacy surface: `nargs='+'`, an empty-list default, and a 16-token choice set that mixes `fp32-cast-*` spellings (an alternate way to spell the same scope/dtype pair) with `fast-relayout-*` spellings (the transpose-engine dtype, a *separate* axis — see [HLO → Native / NKI Kernel Lowering](../hlo-opt/hlo-to-native-kernel-lowering.md)).
 
 ```c
 parser.add_argument(
@@ -269,7 +269,7 @@ help = "Always use full precision of the accelerator ALU when we do accumulation
         never downcast the input of an accumulation. (Default: true)"
 ```
 
-Semantics: default **on**. When enabled (the default), accumulation inputs are not downcast — the ALU accumulates in full precision; `--disable-mixed-precision-accumulation` turns it off. No in-module consumer in `Frontend.so`; the value rides the args namespace into the tensorizer/codegen (its codegen effect is traced in the native-cast chapter, [4.32](../codegen/native-kernel-cast.md)).
+Semantics: default **on**. When enabled (the default), accumulation inputs are not downcast — the ALU accumulates in full precision; `--disable-mixed-precision-accumulation` turns it off. No in-module consumer in `Frontend.so`; the value rides the args namespace into the tensorizer/codegen (its codegen effect is traced in the native-kernel lowering chapter, [HLO → Native / NKI Kernel Lowering](../hlo-opt/hlo-to-native-kernel-lowering.md)).
 
 ### 5.2 `--enable-saturate-infinity` — default False [CONFIRMED def; bool→cfg bridge INFERRED]
 
@@ -278,7 +278,7 @@ help = "Saturate Inf/-Inf values to MAX_/MIN_FLOAT before operations that could
         produce NaN values for Inf/-Inf inputs on the target architecture"
 ```
 
-The CLI flag is CONFIRMED (PUBLIC, default False, parsed in the Python Frontend), but the path to the native `FP8ConversionConfig.lo` saturate bit (the bit the native cast reads, see [9.4](../numerics/precision-policy.md)) is **not** a verbatim string token: `Frontend.so` references `enable_saturate_infinity` only in the string pool and `RegisterArgs` (no `runXLAFrontend` attribute read), and no cp310 Python module reads `args.enable_saturate_infinity`. The bool reaches the native cast through the **serialized args/compiler-config object**, not a recognizable option keyword. [INFERRED bridge.]
+The CLI flag is CONFIRMED (PUBLIC, default False, parsed in the Python Frontend), but the path to the native `FP8ConversionConfig.lo` saturate bit (the bit the native cast reads; the precision-policy page §9.4 is documented in Part 9, pending) is **not** a verbatim string token: `Frontend.so` references `enable_saturate_infinity` only in the string pool and `RegisterArgs` (no `runXLAFrontend` attribute read), and no cp310 Python module reads `args.enable_saturate_infinity`. The bool reaches the native cast through the **serialized args/compiler-config object**, not a recognizable option keyword. [INFERRED bridge.]
 
 > **NOTE — the CLI default (False) and the per-cast primitive default (saturate-ON) are different layers, and are consistent.** The native FP8 conversion primitive defaults to saturate-ON at the byte level; the CLI flag is an *additional* front-end gate that, when set, requests Inf/-Inf clamping at the *operation* level (pre-op clamp to MAX/MIN_FLOAT) — a broader behaviour than the per-cast config bit. `default(False)` at the CLI therefore does not contradict `saturate-ON` at the byte-cast primitive; they gate different things.
 
@@ -378,4 +378,4 @@ The same value would be produced by the single internal token `--fp32-cast matmu
 
 ---
 
-*Cross-references: [9.4 Numerics precision policy](../numerics/precision-policy.md) · [9.5 AutoCastFP32](../numerics/autocast-fp32.md) · [4.32 native-kernel cast](../codegen/native-kernel-cast.md) · [3.8 Flag Catalog](flag-catalog.md) · [The Compile Pipeline at a Glance](../front/pipeline.md).*
+*Cross-references: 9.4 Numerics precision policy (documented in Part 9, pending) · [9.5 AutoCastFP32](../numerics/autocast-fp32.md) · [HLO → Native / NKI Kernel Lowering](../hlo-opt/hlo-to-native-kernel-lowering.md) · [3.8 Flag Catalog](flag-catalog.md) · [The Compile Pipeline at a Glance](../front/pipeline.md).*

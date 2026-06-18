@@ -336,7 +336,7 @@ This page's list was diffed bidirectionally against the binary's `register_gener
 
 ### The 150 Passes by Subsystem
 
-The list below groups the CONFIRMED 150 names by function. The `register_generator_<name>__` free-function VA is given for a representative anchor per group; full per-pass addresses are in the [Part 14 pass catalog](../catalog/).
+The list below groups the CONFIRMED 150 names by function. The `register_generator_<name>__` free-function VA is given for a representative anchor per group; full per-pass addresses are in the [Part 14 pass catalog](../appendix/) (the appendix pass-catalog page is pending).
 
 **Allocators & coloring** (`0x3dff391`–`0x3dff588` band): `coloring_allocator_dram`, `coloring_allocator_dram_debug`, `coloring_allocator_dram_post_lnk`, `coloring_allocator_dram_shared`, `coloring_allocator_dram_shared_post_lnk`, `coloring_allocator_psum`, `coloring_allocator_reg`, `coloring_allocator_sb`, `coloring_allocator_with_loop`, `linear_scan_allocator`, `runtime_memory_reservation`, `do_nothing`.
 
@@ -439,7 +439,7 @@ Five strongest claims, re-checked against the binary:
 | `CompileCommand` pipeline | Builds the Job list; the `WalrusDriver` Job spawns this CLI — see [3.3](compilecommand-pipeline.md) |
 | `JobRegistry` | Maps the `WalrusDriver` name to the Job class that builds the argv — see [job-registry.md](job-registry.md) |
 | libwalrus backend | Owns all 150 passes the `--pass` vocabulary names — see [Part 8](../walrus/) |
-| Pass catalog | Per-pass addresses, algorithms, and roster — see [Part 14](../catalog/) |
+| Pass catalog | Per-pass addresses, algorithms, and roster — see [Part 14](../appendix/) (pending) |
 
 ## Cross-References
 
@@ -447,4 +447,4 @@ Five strongest claims, re-checked against the binary:
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — `WalrusDriver` is one Job, not a chain; where this CLI sits in the process pipeline
 - [Part 8 — The libwalrus Backend](../walrus/) — the 150 passes, allocators, schedulers, and the optlevel pipeline builders this CLI selects
 - [Opt-Level Planes](opt-level-planes.md) — `--optlevel`/`--allocator`/`--smt-allocation` and the pipelines they choose (3.10)
-- [Part 14 — Pass Catalog](../catalog/) — per-pass `register_generator_<name>__` addresses and algorithms
+- [Part 14 — Pass Catalog](../appendix/) — per-pass `register_generator_<name>__` addresses and algorithms (appendix page pending)

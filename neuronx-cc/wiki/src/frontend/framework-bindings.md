@@ -541,7 +541,7 @@ No fabricated target name, class, or string appears on this page. The one place 
 ## Cross-References
 
 - [Command Dispatcher](command-dispatcher.md) — 3.1, the `neuronx-cc` CLI that `BaremetalKernel._compile` shells out to
-- [Native-Kernel Lowering](../passes/native-kernel-lowering.md) — 4.32, how the compiler backend cracks the `AwsNeuronCustomNativeKernel` custom-call and re-reads the serialized IR
-- [NKI Internals](../nki/overview.md) — Part 6, the NKI→BIR codegen behind `specialize_and_call`
-- [Collectives](../collectives/overview.md) — Part 13, the SPMD/collective backend the `*_cc` builders feed
+- [HLO → Native / NKI Kernel Lowering](../hlo-opt/hlo-to-native-kernel-lowering.md) — how the compiler backend cracks the `AwsNeuronCustomNativeKernel` custom-call and re-reads the serialized IR
+- [NKI Architecture Overview](../nki/architecture-overview.md) — Part 6, the NKI→BIR codegen behind `specialize_and_call`
+- [NeuronCodegen Collective Forward Builders](../nki/neuroncodegen-collectives.md) — the SPMD/collective backend the `*_cc` builders feed (the standalone collectives/distribution Part 13 page is pending)
 - [SBUF/PSUM Geometry](../arch/sbuf-psum-geometry.md) — the bank/partition layout the alloc decorators target
