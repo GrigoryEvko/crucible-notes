@@ -167,7 +167,7 @@ MX is **always** transpose=false, onezero=false, PE-engine, **no** `perf_mode` �
 
 ### 2.3 `codegenMatMulSparseOp` (_37) → bir `MatmultSparse`
 
-Sparse/masked matmul. Reuses the §2.1 base operand binding (stationary/moving/dst, tile geometry, onezero/transpose) and adds a sparse mask access-pattern plus a mask setter:
+Structured-sparse matmul. Reuses the §2.1 base operand binding (stationary/moving/dst, tile geometry, onezero/transpose) and adds the sparse access-pattern builder `addSparseMatmulAP` plus the `set_compress_ratio` setter that threads the user's compression ratio onto the BIR node:
 
 ```c
 // codegenMatMulSparseOp  —  Penguin MatMulSparseOp → bir MatmultSparse, engine PE.
@@ -175,11 +175,14 @@ Instruction codegenMatMulSparseOp(self, op) {
     bind §2.1 base operands;
     addSparseMatmulAP(self, op);          // _281: the sparse-matmul access pattern
     inst = Instruction(Opcode.MatmultSparse);             // CONFIRMED .rodata token
-    inst.setMask(op.mask);                // setMask/setmask + mask / shuffle_mask attrs
-    //   "Mask pattern only support 1 step multiplier"  ← CONFIRMED validation literal.
+    inst.set_compress_ratio(op.compress_ratio);           // verbatim copy from the IR node
+    inst.set_is_transpose / set_is_fmap_onezero / set_is_weight_onezero;
+    inst.set_replication_{resolution,shift_amnt,num_rows}; setTilePosition; set_tile_size;
     return addInstToBir(self, inst);      // PE
 }
 ```
+
+> **CORRECTION —** an earlier revision claimed this body calls `inst.setMask(op.mask)` and cited `"Mask pattern only support 1 step multiplier"` as its validation literal. The decompiled body (`__pyx_pw_…_BirCodeGenLoop_37c` @ `0x102cd0`) contains **zero** `mask`/`setMask`/`shuffle_mask` attribute references; its setter vocabulary is exactly `set_compress_ratio`, `set_is_transpose`, `set_is_fmap_onezero`, `set_is_weight_onezero`, the three `set_replication_*`, `setTilePosition`, `set_tile_size` (`__pyx_n_s_*` interned-name set). The `"Mask pattern only support 1 step multiplier"` string *is* present in `BirCodeGenLoop.so`'s `.rodata`, but it belongs to a different codegen (the mask is a stream-shuffle / lane-mask surface — see `codegenStreamShuffleInst`'s `setMask(shuffle_mask)`, §7.6), **not** the sparse matmul. The structured sparsity input is the `tags` / `compress_ratio` pair carried on `MatMulSparseOp` (no boolean mask). Verified against the body and consistent with [Sparse Matmul Lowering §4](sparse-matmul-lowering.md).
 
 ### 2.4 The matmul-family AP machinery
 
@@ -460,7 +463,7 @@ CONFIRMED: `addInlineASMInst`, `asm_attrs`, `num_inputs`, `setAsmBytes`, `setSyn
 
 - **`codegenDropoutMaskInst` (_59, `0x6f7b0`) → bir `Dropout`** — generates the dropout keep/drop bit-mask. `set_keep_rate` ← `p` (the keep-probability), gated by `is_keep_rate`, bound as an `ImmediateValue` via `addImmValue`. `strip_fp32r` is the fp32-replicated unwrap shared with the reduces.
 - **`codegenIndexValueInst` (_55, `0x15e110`) → iota / index-value** — produces a tile whose elements are an index/affine value. `set_base` (start), `step`, `set_pattern`, `set_channel_multiplier` (per-partition/channel stride), `depth`. The per-element value is a **quasi-affine** expression (`BirQuasiAffineExpr`, `block_index_expr`) of the partition/free indices (`idx_partition_ap` / `idx_free_ap`), and `lnc_id` folds the LNC (Logical-Neuron-Core / replica) id into the expression — so the generated indices are **multi-core-aware** (distinct per neuron core). This is the iota used for position / arange tensors.
-- **`codegenStreamShuffleInst` (_159, `0x152200`) → stream-shuffle** — the lane/stream shuffle is encoded as a mask; `setMask(shuffle_mask)` binds it, and a genexpr closure (`__pyx_scope_struct_22_codegenStreamShuffleInst`) builds the per-lane `shuffle_mask`. Same `setMask` surface as the sparse-matmul mask (§2.3).
+- **`codegenStreamShuffleInst` (_159, `0x152200`) → stream-shuffle** — the lane/stream shuffle is encoded as a mask; `setMask(shuffle_mask)` binds it, and a genexpr closure (`__pyx_scope_struct_22_codegenStreamShuffleInst`) builds the per-lane `shuffle_mask`. This is the **only** matmul/compute-family codegen on this page that uses the `setMask` surface — the structured-sparse matmul (§2.3) does **not** (it carries `tags`/`compress_ratio`, not a boolean mask).
 - **`codegenNoOp` (_51, `0x5c270`, ~2.3 KB)** — the no-op lowering; the smallest body (`inst` only, no attr setters). Emits a placeholder / drops the op — for ops with no silicon effect (scheduling / scope markers). The generic `_noop` (`_311`, `0x72c80`) is a *separate* Cython no-op shim.
 
 ---

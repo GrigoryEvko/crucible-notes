@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **CTE entry** | `mlp_cte_invoke_kernel` — `mlp/mlp_cte.py:424`; per-core `mlp_cte_single_core_kernel:57` |
 | **TKG entry** | `nki_mlp_tkg_isa_kernel` — `mlp_tkg/mlp_tkg_isa.py:169` (via `mlp_tkg.py:12` → `mlp_tkg_isa.py`) |
 | **Param model** | `MLPParameters` (NamedTuple) — `mlp/mlp_parameters.py:170`; builder `build_mlp_params:269` |
-| **Quant types** | `QuantizationType {NONE=0, STATIC=1, ROW=2}` — `common_types.py:41`; **no MX** |
+| **Quant types** | `QuantizationType {NONE=0, STATIC=1, ROW=2}` — the **truncated** `_pre_prod_kernels/common_types.py:41` (md5 `9721a6bb…`); **no MX**. The full 6-member enum lives in the separate `nkilib/core/utils/common_types.py:56`, which this dense path does **not** import |
 | **Act-fn map** | `_act_fn_map` — `util/kernel_helpers.py:18`; default `SiLU` |
 | **IR level** | NKI Python trace → penguin.ir → BIR ([3-layer stack](architecture-overview.md)) |
 

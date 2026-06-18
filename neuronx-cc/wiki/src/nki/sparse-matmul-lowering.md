@@ -24,8 +24,8 @@ For reimplementation, the contract is:
 | **Penguin IR node** | `MatMulSparseOp.__init__` `@0x150b0` (`MatMulSparseOpGen.so`), `⊂ MatMulOpBase` |
 | **Lowering** | `BirCodeGenLoop.codegenMatMulSparseOp` (`_37`) `@0x102cd0` → bir `Opcode.MatmultSparse` |
 | **Sparse operand AP** | `BirCodeGenLoop.addSparseMatmulAP` (`_281`) `@0xf2430` |
-| **BIR HW instruction** | `bir::InstMatmultSparse` (`libBIR.so` ctor `@0x176340`); 4× Hwm latency overloads |
-| **Detection model** | **User-annotated** (mask is structural input; no magnitude prune, no `backend_config` lowering) |
+| **BIR HW instruction** | `bir::InstMatmultSparse` (`libBIR.so` ctor `@0x176340`); four `Hwm` latency overloads (`getLatency{,Exec,ReadInit,WriteDrain}`) |
+| **Detection model** | **User-annotated** (the `tags`/`compress_ratio` pair is structural input — *not* a boolean mask; no magnitude prune, no `backend_config` lowering) |
 | **Compression design point** | `compress_ratio = 4` (4:1); `stationary_K → K/4`, 4-bit nibble tag per kept column |
 
 ---
@@ -347,7 +347,7 @@ A faithful reimplementation of the producer/lowering side must reproduce:
 | `MatMulSparseOp ⊂ MatMulOpBase`; ctor `{tags, compress_ratio, compress_indices, tag_indices}`; `AccessMode.LOAD` | CONFIRMED | `MatMulSparseOpGen.so` strings + ctor body |
 | `combine_sparse_matmult_tiles` shape asserts, helpers, **no** compress_ratio | CONFIRMED | `@0x12b670` body; both assert literals verbatim; `rg -c compress_ratio` = 0 |
 | Annotation, not detection (no auto-dispatch / `backend_config` / magnitude prune) | CONFIRMED | 4 negatives (§5) |
-| `bir::InstMatmultSparse` class surface + 4× Hwm latency overloads + JSON symbols + affine `compress_ratio` | CONFIRMED | `libBIR.so` / `libwalrus.so` native-exports |
+| `bir::InstMatmultSparse` class surface + four `Hwm` latency overloads (`getLatency{,Exec,ReadInit,WriteDrain}`) + JSON symbols + affine `compress_ratio` | CONFIRMED | `libBIR.so` / `libwalrus.so` native-exports |
 | `addSparseMatmulAP` packs weight+tag addresses into one `createAP` operand | STRONG | tokens (`createAP`, `neuron_ap`, `compress_ratio`, `addArgumentOrOutput`) confirmed; address-stream concatenation inferred |
 | `nc_matmul` cost table `max(min(64,N_stationary),N_moving)`, `4×` for fp32 (not a compression term) | CONFIRMED | shipped stub `nki/isa/__init__.pyi:957–959` |
 | BIR JSON field list (9 names present in `libBIR.so` strings); replication-block guard condition | STRONG / INFERRED | field set resolved via rodata pointers in `toJson`/`createFromJson`, not inlined; `replicate_ap` truthiness guard not byte-pinned |

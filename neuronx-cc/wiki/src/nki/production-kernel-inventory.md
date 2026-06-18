@@ -60,7 +60,9 @@ The same kernel family appears in two or three trees with different roles. `moe_
 
 ### The `_pre_prod` Enum Fork
 
-The orchestration tree carries its own reduced copy of the shared enums. `_pre_prod_kernels/__init__.py` re-exports six enums from `_pre_prod_kernels.common_types`: `NormType`, `QKVOutputLayout`, `ActFnType`, `RouterActFnType`, `ExpertAffinityScaleMode`, `QuantizationType`. This `QuantizationType` is a **reduced fork** — `NONE / STATIC / ROW` only, with no MX members — distinct from the eight-member `nkilib` enum (O24; the two `common_types` modules differ by md5). A reimplementer copying enum integer values across trees will silently mis-map MX quantization modes.
+The orchestration tree carries its own reduced copy of the shared enums. `_pre_prod_kernels/__init__.py` re-exports six enums from `_pre_prod_kernels.common_types`: `NormType`, `QKVOutputLayout`, `ActFnType`, `RouterActFnType`, `ExpertAffinityScaleMode`, `QuantizationType`. This `QuantizationType` is a **reduced fork** — `NONE / STATIC / ROW` only, with no MX members — distinct from the **six-member** `nkilib` enum (O24; the two `common_types` modules differ by md5). The full `nkilib/core/utils/common_types.py` (96 lines, md5 `0c2cff02…`) defines `NONE=0, STATIC=1, ROW=2, MX=3, STATIC_MX=4, ROW_MX=5` plus `QKVWeightLayout`; the truncated `_pre_prod_kernels`/`private_nkl` twin (44 lines, md5 `9721a6bb…`) stops at `ROW=2`. A reimplementer copying enum integer values across trees will silently mis-map MX quantization modes.
+
+> **CORRECTION —** an earlier revision of this paragraph called the `nkilib` enum "eight-member." It has **six** members (`NONE=0 … ROW_MX=5`), verified against `nkilib/core/utils/common_types.py:56-62`. Corrected in place.
 
 > **NOTE —** "no warranty" is a literal banner string in the `_pre_prod` files, not editorial colour. It marks these as live-but-experimental glue: imported at runtime, but not the documented stable surface. Treat them as the *current* orchestration, subject to change between releases.
 
