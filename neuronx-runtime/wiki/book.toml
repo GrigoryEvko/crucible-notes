@@ -9,7 +9,7 @@ src = "src"
 build-dir = "../../docs/neuronx-runtime"
 
 [output.html]
-default-theme = "navy"
+default-theme = "light"
 additional-js = ["ai-disclaimer.js"]
 additional-css = ["custom.css"]
 preferred-dark-theme = "navy"

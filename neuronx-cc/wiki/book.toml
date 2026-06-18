@@ -10,7 +10,7 @@ build-dir = "../../docs/neuronx-cc"
 create-missing = false
 
 [output.html]
-default-theme = "navy"
+default-theme = "light"
 additional-js = ["ai-disclaimer.js"]
 additional-css = ["custom.css"]
 preferred-dark-theme = "navy"
