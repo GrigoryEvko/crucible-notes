@@ -223,6 +223,8 @@
 - [private_nkl Depthwise Conv Kernels](nki/depthwise-conv.md)
 - [private_nkl Dense Conv2D: NHWC-Replication & Column-Packing](nki/dense-conv2d.md)
 - [Experimental conv2d_pbp Kernels](nki/conv2d-pbp.md)
+- [SelectAndScatter & ReduceWindow Forward Lowering](nki/select-scatter-reduce-window.md)
+- [Resize Kernels: Nearest-Fixed Indirect-DMA Gather](nki/resize-kernels.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
