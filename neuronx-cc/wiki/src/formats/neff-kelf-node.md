@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`neff.json` is the **TVM / NNVM graph-runtime JSON** member of a NEFF — `nodes / arg_nodes / heads / attrs / node_row_ptr` wrapped in a thin Kaena envelope (see [NEFF JSON Sidecars](neff-json-sidecars.md) for the v0.5 overview). This page covers exactly one element of `graphs[].definition.nodes[]`: the node with **`op = "__kelf"`**. There is one such node per virtual NeuronCore, and its single job is to *name* that core's `kelf-<i>.json` member (the per-core engine BOM decoded in the kelf-json page, in flight) through its `attrs.kelf` string. It is the one and only edge from the graph member to the per-core kelf.
+`neff.json` is the **TVM / NNVM graph-runtime JSON** member of a NEFF — `nodes / arg_nodes / heads / attrs / node_row_ptr` wrapped in a thin Kaena envelope (see [NEFF JSON Sidecars](neff-json-sidecars.md) for the v0.5 overview). This page covers exactly one element of `graphs[].definition.nodes[]`: the node with **`op = "__kelf"`**. There is one such node per virtual NeuronCore, and its single job is to *name* that core's `kelf-<i>.json` member (the per-core TVM graph decoded in [The `kelf-N.json` Field Schema](kelf-json.md), 12.6) through its `attrs.kelf` string. It is the one and only edge from the graph member to the per-core kelf.
 
 The node is emitted by `NeffPackager::writeNeffJson` @`0x152c740`, called once from `NeffPackager::run(vector<unique_ptr<Module>>&)` @`0x15307e0`, which asserts `modules.size() == vnc_nc_count` — so the count of `__kelf` nodes equals the virtual-core count. [CONFIRMED — `nm -DC` resolves both symbols at those addresses.]
 
@@ -95,11 +95,11 @@ The resolution chain at load time:
 
 ```
 neff.json  __kelf node i :  attrs.kelf == "kelf-<i>.json"
-        ── name lookup ──►  kelf-<i>.json   (the per-core engine BOM; see kelf-json page)
+        ── name lookup ──►  kelf-<i>.json   (the per-core TVM graph; see kelf-json page 12.6)
         ─────────────────►  {PE,Pool,Activation,SP,DVE}.bin  (the per-engine streams)
 ```
 
-The runtime reads `neff.json`, and for each `sg_coreV1<i>` node opens the `attrs.kelf` member (`kelf-<i>.json`) co-located in that core's directory leaf, then loads the per-engine `.bin` streams that kelf indexes. The `__kelf` node *names* the kelf; it never carries the engine layout itself. [CONFIRMED — `"kelf-"` / `".json"` / key `"kelf"` literals at the cited addresses; the kelf member's own decode is covered by the kelf-json page (12.6, in flight).]
+The runtime reads `neff.json`, and for each `sg_coreV1<i>` node opens the `attrs.kelf` member (`kelf-<i>.json`) co-located in that core's directory leaf, then loads the per-engine `.bin` streams that kelf indexes. The `__kelf` node *names* the kelf; it never carries the engine layout itself. [CONFIRMED — `"kelf-"` / `".json"` / key `"kelf"` literals at the cited addresses; the kelf member's own decode is covered by [the kelf-json page](kelf-json.md) (12.6).]
 
 ## What `inputs` points at — the IO `null` nodes
 
@@ -139,7 +139,7 @@ A skip-guard at the top of the function returns early without writing `neff.json
 
 ## Corrections
 
-> **CORRECTION — `sgLnk` is NOT a `neff.json` key.** It is the `bir_linker` per-core **symlink directory leaf** (`nc<core>/sg<sub>/sgLnk/`), produced by `BirLinker::setupLinkDir` @`0x15d8590` → `createLinkDir` @`0x15c7910`, which symlinks each core's `{PE,Pool,Activation,SP,DVE}.{bin,json}`, `def.json`, `tensor_map.json`, and `kelf-<i>.json` into that leaf (see [bir_linker](bir-linker.md)). The `sgLnk` token *does* occur in the binary (4 times), but only in the `.rodata` region of the linker (`0x1c87d3e`, `0x1dc604a`), and **no `lea` in `writeNeffJson` targets it**. The inter-core "link tree" is the filesystem layout plus the `attrs.kelf` name references — not an edge list inside `neff.json`. [CONFIRMED — RIP-target scan of the producer body finds no reference to either `sgLnk` string.]
+> **CORRECTION — `sgLnk` is NOT a `neff.json` key.** It is the `bir_linker` per-core **symlink directory leaf** (`nc<core>/sg<sub>/sgLnk/`), produced by `BirLinker::setupLinkDir` @`0x15d8590` → `createLinkDir` @`0x15c7910`, which symlinks each core's `{PE,Pool,Activation,SP,DVE}.{bin,json}`, `def.json`, `tensor_map.json`, and `kelf-<i>.json` into that leaf (see [bir_linker](../walrus/bir-linker.md)). The `sgLnk` token *does* occur in the binary (4 times), but only in the `.rodata` region of the linker (`0x1c87d3e`, `0x1dc604a`), and **no `lea` in `writeNeffJson` targets it**. The inter-core "link tree" is the filesystem layout plus the `attrs.kelf` name references — not an edge list inside `neff.json`. [CONFIRMED — RIP-target scan of the producer body finds no reference to either `sgLnk` string.]
 
 > **CORRECTION — there is NO `size` key on the `__kelf` node.** Earlier notes speculated a `"size"` field holding the kelf byte length; that is wrong. The kelf byte size is recorded inside `kelf-<i>.json`'s own BOM, never in `neff.json`. No `lea` in `writeNeffJson` targets a standalone `"size\0"` `.rodata` string. [CONFIRMED for the resolved RIP-targets — see [Re-verification ceiling](#re-verification-ceiling).]
 

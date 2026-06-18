@@ -213,12 +213,12 @@ libarchive's PAX writer pads each member's data to a **512-byte tar record** bou
 | `neff.json` | subgraph table v0.5: node `main`; per-core `sg_coreV1<i>` op `__kelf` → `kelf-<N>.json` | JSON v0.5 | n | T |
 | `def.json` | per-core definition v0.6: engine→{`_instr`,`_dbg`,`_asm_dbg`,dma}; var table; DMA queues; CCInfo; FP8; features[] | JSON v0.6 | n | C |
 | `tensor_map.json` | per-core unified tensor map (IO binding) | JSON | n | C |
-| `PE.bin` `Pool.bin` `Activation.bin` `SP.bin` `DVE.bin` | per-engine ISA instruction streams (0x40-byte bundles, program order; DMA descriptors folded in) | raw bundles | Y | C |
+| `PE.bin` `Pool.bin` `Activation.bin` `SP.bin` `DVE.bin` | per-engine ISA instruction streams (0x40-byte bundles, program order; DMA descriptors folded in) | raw bundles | **n** | C |
 | `PE.json` `Pool.json` `Activation.json` `SP.json` `DVE.json` | per-engine DMA-descriptor table (`{"dma":[{queue, desc:[{from,to,…}]}]}`) | JSON | n | C |
 | `kelf-<N>.json` | per-core KELF index: engine `.bin` filenames + offsets | JSON | n | C |
 | `ucode_lib.json` | custom-op micro-code lib (`[{name,opcode,sub_opcode}]`) | JSON | n | C |
-| `<const>.bin` | constant/weight backing data, de-dup'd | raw bytes | Y | C |
-| `debug_info_backend.<eng>.dbg` / `debug_info_asm.<eng>.dbg` | BIR-/ASM-layer `ir_debug_info` protobuf | protobuf | n | C |
+| `<const>.bin` / `<w>.npy` | constant/weight backing data, de-dup'd | raw bytes | **n** / *.npy only* | C |
+| `debug_info_backend.<eng>.dbg` / `debug_info_asm.<eng>.dbg` | BIR-/ASM-layer `ir_debug_info` protobuf | protobuf | **Y** | C |
 | `kernel_debug_info.json` | extended kernel debug info | JSON | n | T |
 | `global_metric_store.json` / `hlo_metrics.json` / `metrics.json` / `icMetadata.json` / `loop.json` | metric / autotuner / loop-spec surfaces | JSON | n | T/C |
 | `cpu.so` / `cpu.params` | custom-op **host** CPU kernels (if present) | ELF `.so` / bytes | n | T |
@@ -264,7 +264,9 @@ There are two unrelated things called "BOM" in this codebase, and conflating the
 1. **The NEFF BOM** — `NeffFileWriter`'s `std::map<boost::filesystem::path, std::string>` @ `writer+144`. Key = absolute on-disk source path; value = in-tar member name. Built one entry at a time by `addToBom` @ `0x153fb80`, iterated in key order by `writeArchiveFile` to drive the tar. **This is the "section index" of a NEFF** — an in-memory manifest, not an on-disk record, and not an ELF section header table. Dumped at LogLevel 10 between the literals `The NeffPacakger BOM:` … per-entry … `End of NeffPacakger BOM` (the `Pacakger` typo is in the binary). [CONFIRMED — both literals present]
 2. **The "0xEF 0xBB 0xBF" BOM** — the nlohmann::json **UTF-8 byte-order-mark**. The string `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` is the JSON lexer rejecting a malformed BOM at the head of a *sidecar JSON member*. It has nothing to do with the NEFF container or with the manifest above. [CONFIRMED — live string]
 
-The IR-signature subset (`writer+216`) is a third set: the BOM entries whose bytes feed the MD5. Its membership predicate (a `string::compare`/`find` on the member name) decompiles opaquely — intent is inferred from the `"Adding … to the IR Signature."` gating, not byte-proven per member name. [STRONG]
+The IR-signature subset (`writer+216`) is a third set: the BOM entries whose bytes feed the MD5.
+
+> **CORRECTION (Part-12 reconcile) —** the membership predicate is **byte-proven**, not opaque. 12.4 ([Per-Engine `.bin`](per-engine-bin.md)) and 12.2 ([NEFF header + BOM writer](neff-header-bom-writer.md)) resolve it directly in `addToBom`: a member enters the IR-sig set iff its on-disk basename **equals `".npy"`** (`string::compare==0` @ `0x153fc6f`) **or contains `".dbg"`** (`string::find` @ `0x153fc9b`), plus the constructor pre-seed `"info.json"`. So the signed set is exactly `{info.json} ∪ {*.dbg} ∪ {*.npy}` — the per-engine `.bin` instruction streams and the `<const>.bin` blobs are **not** signed (the roster above is corrected to match). The signature certifies debug-info + weights + header, not the program code.
 
 ---
 
@@ -401,7 +403,7 @@ xxd model.neff | head                   # leading = gzip 1f 8b, OR (uncompressed
 What this page can and cannot stand behind, honestly:
 
 - **CONFIRMED, this session, on the cp312 binary**: the full libarchive PAX+gzip API (20 `archive_*` symbols); zero ELF-writer symbols (the 15 substring hits are all `StaticOffset` DMA false positives); the `archive_write_new`/`set_format_pax`/`open` setup sequence and the per-member `set_uname`/`gname`/`mtime`/`ctime`/`atime` + `add_filter_gzip` + two `set_filter_option` call sites at the cited addresses; the `"nobody"`, `"expand 32-byte k"`, `"file.neff archive"`, `"The NeffPacakger BOM:"`, and `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` strings; the absence of any `set_bytes_per_block` override; the analyzer's import set and by-name member opens (md5-pinned).
-- **STRONG, not byte-proven**: the IR-signature member-subset predicate (`writer+216`); the ChaCha20-keystream→UUID wiring (the sigma constant is confirmed and co-located with the header builder, but the keystream-to-`uuid[16]` copy was not single-stepped).
+- **CONFIRMED (byte-proven elsewhere in Part 12)**: the IR-signature member-subset predicate (`writer+216`) — resolved on the `addToBom` disasm by 12.2/12.4 as `{info.json} ∪ {*.dbg} ∪ {*.npy}` (`.npy`-equals @ `0x153fc6f`, `.dbg`-contains @ `0x153fc9b`); the `.bin` streams are excluded. **STRONG, not byte-proven**: the ChaCha20-keystream→UUID wiring (the sigma constant is confirmed and co-located with the header builder, but the keystream-to-`uuid[16]` copy was not single-stepped).
 - **INFERRED / deferred**: the exact `info.json` key names feeding header fields `+168`/`+476`/`+480` (nlohmann `operator[]` inlined — deferred to 12.2/12.3); the gzip member byte `1f 8b` and the tar `ustar`@`0x101` layout are RFC/POSIX spec facts, not literals stored in the binary (the gzip *filter* is binary-confirmed).
 - **Address-frame caveat**: addresses are the cp312 frame; D-S01/D-S13 cite cp310 frames. The `.text`/`.rodata` bases match exactly, so symbol-relative offsets transfer; the `expand 32-byte k` rodata address differs by a small per-arch delta (`0x1dd5ed0` cp312 vs `0x1DD7910` cp310). The `@plt` thunk addresses form a third VA frame distinct from the `.dynsym` `U` entries and the function-body addresses.
 
@@ -411,8 +413,8 @@ What this page can and cannot stand behind, honestly:
 
 | Name | Relationship |
 |---|---|
-| 12.2 — NEFF header + BOM writer | The `neff_header` POD layout and `addToBom`/BOM mechanics in full (in-flight) |
-| 12.3 — NEFF JSON sidecars | `info.json`/`neff.json`/`def.json`/`tensor_map.json` schemas (in-flight) |
+| [12.2 — NEFF header + BOM writer](neff-header-bom-writer.md) | The `neff_header` POD layout and `addToBom`/BOM mechanics in full |
+| [12.3 — NEFF JSON sidecars](neff-json-sidecars.md) | `info.json`/`neff.json`/`def.json`/`tensor_map.json` schemas |
 | `NeffPackager` driver | Emits the JSON members and assembles the BOM ([§2](#2-producer-topology)) |
 
 ## Cross-References

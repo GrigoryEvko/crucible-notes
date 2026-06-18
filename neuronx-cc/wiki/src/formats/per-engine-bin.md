@@ -245,5 +245,5 @@ There is no numeric file-type field anywhere in a BOM entry — the BOM node sto
 
 - [2.1 The 64-Byte Instruction Bundle](../isa/instruction-bundle.md) — the per-op 64-byte bundle these streams concatenate; the descriptor slot families and the universal header word.
 - [8.36 Per-Engine `.bin` Emission](../walrus/bin-emission.md) — `findBin`/`createBin`, the `fwrite(0x40)` write primitive, and the per-instruction engine routing that folds DMA into compute streams.
-- 12.3 `def.json` and the NEFF JSON sidecars *(in-flight)* — the full `def.json`/`neff.json`/`tensor_map.json` schemas this page references for the engine-token index and the `var` type table.
+- [12.3 `def.json` and the NEFF JSON sidecars](neff-json-sidecars.md) — the full `def.json`/`neff.json`/`tensor_map.json` schemas this page references for the engine-token index and the `var` type table.
 - [The NEFF container](neff-container.md) — the PAX-tar member model, the in-process BOM `std::map<path,member>`, and the proof that a NEFF is not an ELF.

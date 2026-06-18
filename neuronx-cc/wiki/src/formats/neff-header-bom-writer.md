@@ -48,7 +48,7 @@ The POD is built on the stack in `initializeNeffHeader` (`0x1540a00`). The first
 | *(reserved)* | `+16` | `u64` | `0` | STRONG |
 | `section_flag` | `+24` | `u64` | `= NeffFileWriter+0xC8 (=1)` — module/section count flag | STRONG |
 | `version_major` | `+168` | `u32` | `1` (override) or `info.json` uint (normal) | STRONG |
-| `feature_flags` | `+192` | `u64` | 64-bit feature mask (built by `writeNEFFFeatures` `0x15294b0`; bit catalog is Part 12.5) | CONFIRMED |
+| `feature_flags` | `+192` | `u64` | 64-bit feature mask (built by `writeNEFFFeatures` `0x15294b0`; bit catalog is [12.5](neff-feature-flags.md)) | CONFIRMED |
 | `schema_min` | `+200` | `u32` | schema min version; bumped ≥ 2 when functions/ext-feats and arch > 39 | STRONG |
 | `uuid` | `+204` | `byte[16]` | RFC-4122 **v4** UUID, ChaCha20-12 CSPRNG | CONFIRMED |
 | `filename` | `+220` | `char[255]` | `"file.neff"` (override) or `info.json` (normal) | CONFIRMED |
@@ -301,5 +301,5 @@ The five strongest claims were re-checked against the cp312 `libwalrus.so` this 
 ## Cross-References
 
 - [Per-Engine `.bin` Emission](../walrus/bin-emission.md) — the instruction streams `writeDefJson`/`addToBom` register and the writer packs as `<eng>_instr` members.
-- **Part 12.1 — The NEFF Container** *(in-flight)*: the PAX tar/gzip container this writer emits; the byte-level container layout and the no-ELF/no-magic proof.
-- **Part 12.5 — NEFF Feature Flags** *(planned)*: the 64-bit mask at `neff_header+192` built by `writeNEFFFeatures`, bit by bit.
+- [Part 12.1 — The NEFF Container](neff-container.md): the PAX tar/gzip container this writer emits; the byte-level container layout and the no-ELF/no-magic proof.
+- [Part 12.5 — NEFF Feature Flags](neff-feature-flags.md): the 64-bit mask at `neff_header+192` built by `writeNEFFFeatures`, bit by bit.

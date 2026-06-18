@@ -56,7 +56,7 @@ Two facts fall straight out of this layout:
 
 The `sg_coreV1` tag (the subgraph-core schema-V1 version string) and the three `kelf` tokens (`kelf-0.json`, `kelf-`, `__kelf`) live in the same packed blob. The presence of `kelf-` (the concat prefix) *and* `kelf-0.json` (the reader's fixed name) in one pool is the writer/reader handshake made visible.
 
-> **NOTE —** the pool is *shared* between `kelf-N.json` and `neff.json`: both are TVM graphs and both carry `sg_coreV1` / `__kelf` / `revision`. The `neff.json` `__kelf` *node* (op-type `kelf`, attrs `{func_name, flatten_data, num_inputs}`) is documented on the in-flight NEFF/KELF-node page; here we own the `kelf-N.json` *member* it points at. The four-sidecar overview is in [NEFF JSON Sidecars](neff-json-sidecars.md).
+> **NOTE —** the pool is *shared* between `kelf-N.json` and `neff.json`: both are TVM graphs and both carry `sg_coreV1` / `__kelf` / `revision`. The `neff.json` `__kelf` *node* (op-type `kelf`, attrs `{func_name, flatten_data, num_inputs, kelf}`) is documented on the [NEFF/KELF `__kelf` node page](neff-kelf-node.md) (12.7), whose `attrs.kelf` string names the `kelf-<i>.json` *member* this page owns. The four-sidecar overview is in [NEFF JSON Sidecars](neff-json-sidecars.md).
 
 ---
 
@@ -91,9 +91,11 @@ The node that points at the per-engine binaries. Its attrs are CONFIRMED both as
 |---|---|---|
 | `__kelf` | the kelf op-node key (op-type `"kelf"`) | CONFIRMED (string `0x1c86a38`) |
 | `tvm_op` | node op-type tag | CONFIRMED (string) |
-| `func_name` | external function/file the node resolves to (the `kelf-`+N+`.json` linkage) | CONFIRMED (string) |
+| `func_name` | TVM function-name attr; the constant `"0"` in `neff.json`'s `__kelf` node (see CORRECTION) | CONFIRMED (string) |
 | `flatten_data` | `"0"`/`"1"` flag (TVM standard attr) | CONFIRMED (string `0x1c86a3f`) |
 | `num_inputs` | input count, built via `std::to_string` | CONFIRMED (string `0x1c86a4c` + `to_string` call) |
+
+> **CORRECTION (Part-12 reconcile) —** the `neff.json` → `kelf-<i>.json` linkage is the `__kelf` node's **`attrs.kelf`** string (`"kelf-" + to_string(i) + ".json"`), **not** `func_name`. [12.7](neff-kelf-node.md) byte-resolves the `neff.json` `__kelf` node: `attrs.func_name == "0"` (a constant — the per-core kernel *is* the kelf, so the TVM function name is meaningless), and `attrs.kelf` carries the member name. The `func_name`/`storage_id` "indexes the per-engine `.bin`" framing above describes the TVM graph machinery *inside* `kelf-<i>.json`; the cross-member pointer from `neff.json` is `attrs.kelf`.
 
 ### The Key the Reader Extracts
 
@@ -282,4 +284,4 @@ The two structural inferences (`target` JSON path; runtime traversal) would each
 |---|---|
 | [NEFF JSON Sidecars](neff-json-sidecars.md) | the four-sidecar overview + the `dd\|tar` access path `getKelf` funnels through |
 | [The multi-core (LNC) memory model](../arch/lnc-memory-model.md) | the per-core split that produces one subgraph (one `kelf-N.json`) per core |
-| NEFF/KELF `__kelf` node (in-flight) | the `neff.json` `op:"__kelf"` node whose `func_name` points at `kelf-N.json` |
+| [NEFF/KELF `__kelf` node](neff-kelf-node.md) (12.7) | the `neff.json` `op:"__kelf"` node whose `attrs.kelf` string names this `kelf-<i>.json` member |

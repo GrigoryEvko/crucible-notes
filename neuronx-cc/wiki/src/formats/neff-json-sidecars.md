@@ -8,7 +8,7 @@ A compiled `.neff` is not a monolithic blob: it is a libarchive **PAX tar** cont
 
 The reader is the surprising part. `NeffInfo` does **not** link libarchive and walk the tar in C++. It is a Cython module that **shells out to `dd | tar`**, skipping the 1024-byte header with `bs=1024 skip=1`, lists the members, selects one by a **Python regex over the sorted member listing** (`re.findall` against a `file_rgx`), extracts it with `tar … -O <member>`, and feeds the bytes to `json.loads`. This regex-by-name selection is what lets a caller reach `sg00/def.json` or `sgLnk/sg00/tensor_map.json` without knowing the core index — the index is absorbed into a `sg\d+/…` pattern. The producer side is the mirror image: a C++ `NeffPackager` in libwalrus builds each member with `nlohmann::json` and writes the tar with libarchive.
 
-The schemas relate to siblings as follows. `info.json` carries the POD that seeds the binary `neff_header` (cross-referenced to the in-flight NEFF-header / BOM-writer page). `neff.json` is the subgraph manifest whose nodes are `__kelf`-backed (the `__kelf` node itself is the subject of a planned NEFF/KELF-node page); each node points at a `kelf-<N>.json` (the planned KELF-JSON page). `def.json`'s `CCInfo` sub-table and its `replica_groups` structure are revisited from the collectives angle in Part 13. Those four are mentioned here for orientation; this page owns the four sidecar schemas, the `dd|tar` access path, and the `NeffInfo` accessor roster.
+The schemas relate to siblings as follows. `info.json` carries the POD that seeds the binary `neff_header` (cross-referenced to the [NEFF-header / BOM-writer page](neff-header-bom-writer.md), 12.2). `neff.json` is the subgraph manifest whose nodes are `__kelf`-backed (the `__kelf` node itself is the subject of the [NEFF/KELF-node page](neff-kelf-node.md), 12.7); each node points at a `kelf-<N>.json` (the [KELF-JSON page](kelf-json.md), 12.6). `def.json`'s `CCInfo` sub-table and its `replica_groups` structure are revisited from the collectives angle in Part 13. Those four are mentioned here for orientation; this page owns the four sidecar schemas, the `dd|tar` access path, and the `NeffInfo` accessor roster.
 
 For reimplementation, the contract is:
 
@@ -169,7 +169,7 @@ These `__pyx_kp_*` literals are the reader's refusal conditions — each one is 
 
 ### Purpose
 
-`info.json` is the top-level metadata member whose fields seed the **binary** `neff_header`. The producer's `NeffFileWriter::findInfoJson` @ `0x153ca20` locates it as `<writerBaseDir>/info.json`, and `initializeNeffHeader` @ `0x1540a00` reads it field-by-field into the header POD. `getInfoJson` @ `0x100c0` is the reader-side surface. The on-disk POD that this JSON feeds — and the writer that emits both — is the subject of the in-flight NEFF-header / BOM-writer page; here we document only what `info.json` *carries*.
+`info.json` is the top-level metadata member whose fields seed the **binary** `neff_header`. The producer's `NeffFileWriter::findInfoJson` @ `0x153ca20` locates it as `<writerBaseDir>/info.json`, and `initializeNeffHeader` @ `0x1540a00` reads it field-by-field into the header POD. `getInfoJson` @ `0x100c0` is the reader-side surface. The on-disk POD that this JSON feeds — and the writer that emits both — is the subject of the [NEFF-header / BOM-writer page](neff-header-bom-writer.md) (12.2); here we document only what `info.json` *carries*.
 
 ### Schema
 
@@ -250,7 +250,7 @@ The `__kelf` node's internal structure is the subject of a planned NEFF/KELF-nod
 | CC info | `replica_groups` / `src_target_pairs` / `#rank_world_size` (§5) | CONFIRMED |
 | ucode | `{name, opcode, sub_opcode}` entries | CONFIRMED |
 | fp8 | `FP8ConvConfig[0]/[1]` | CONFIRMED |
-| `features` | feature-flag string array (§4.3) | CONFIRMED (string) |
+| `neff_features` | feature-flag string array (§4.3); key is plural `"neff_features"` @ `.rodata 0x1c86984` (see [12.5](neff-feature-flags.md)) | CONFIRMED (string) |
 
 The producer sub-tables run in order; each is a separately-symboled `NeffPackager` method:
 
@@ -319,7 +319,7 @@ SW DGE must be on GPSIMD engine
 
 ### 4.3 The `features` Array and 64-bit Bitmask
 
-`writeNEFFFeatures` @ `0x15294b0` reads `bir::Module::getAttribute()` and emits **two** parallel views: a human-readable `"features"` string array into `def.json`, and a 64-bit feature **bitmask** into the binary header (`neff_header` feature_flags). The bit↔name map (from decompile):
+`writeNEFFFeatures` @ `0x15294b0` reads `bir::Module::getAttribute()` and emits **two** parallel views: a human-readable `"neff_features"` string array into `def.json` (the key is plural — see [12.5](neff-feature-flags.md)), and a 64-bit feature **bitmask** into the binary header (`neff_header+192` `feature_flags`). The named subset that reaches `def.json` is **11** flags; the header mask carries up to ~21 bits (the full bit-by-bit catalog, ordinals, and the `vnc`/`remote_sem` procedural-bit correction are owned by [12.5 — NEFF Feature Flags](neff-feature-flags.md)). The abbreviated bit↔name map (from decompile):
 
 | Bit | Name | Bit | Name |
 |---|---|---|---|
@@ -328,7 +328,7 @@ SW DGE must be on GPSIMD engine
 | `0x000008` | `neff_coalesced_ccops` | `0x000400` | `neff_feature_vnc` (`vnc_nc_count>1`) |
 | `0x000010` | `neff_queue_set_instances` | `0x000800` | DVE perf mode (`archLevel>20 & !disable`) |
 | `0x000020` | `neff_has_functions` | `0x004000` | `neff_feature_remote_sem` (InstDMABlock scan) |
-| `0x000040` | `neff_feature_dynamic_pwp` | `0x1000000` / `0x2000000` | set together when `archLevel>39` (bumps def-schema ver ≥ 2) |
+| `0x000040` | `neff_feature_dynamic_pwp` | `0x2000000` | `neff_feature_large_tensor_support` (ord 0x16); `0x1000000` is the unnamed `archLevel>39` companion (both bump def-schema ver ≥ 2 — see [12.5](neff-feature-flags.md)) |
 | `0x000080` | `neff_feature_indirect_memcpy_32b_sem_wait` | | |
 
 > **QUIRK —** the high attribute bits (`0x1000000`/`0x2000000`) set the bitmask bit but carry **no** human-readable name in the `"features"` array — so the string array and the bitmask are not 1:1. A reimplementer cannot reconstruct the full 64-bit mask from the string array alone; the bitmask is authoritative.
@@ -483,11 +483,15 @@ NeffInfo  (kra, Cython)   parseFile → findInNeff (dd|tar) → json.loads →
 
 | Name | Relationship |
 |---|---|
-| NEFF header / BOM writer (in-flight) | `info.json` is the POD source for the binary `neff_header` |
-| KELF JSON schema (planned) | `kelf-<N>.json` referenced by every `neff.json` `__kelf` node; `getArchType` reads `kelf-0.json` |
-| NEFF/KELF `__kelf` node (planned) | the internal structure of the `neff.json` `op:"__kelf"` subgraph node |
+| [NEFF header / BOM writer](neff-header-bom-writer.md) (12.2) | `info.json` is the POD source for the binary `neff_header` |
+| [KELF JSON schema](kelf-json.md) (12.6) | `kelf-<N>.json` referenced by every `neff.json` `__kelf` node; `getArchType` reads `kelf-0.json` |
+| [NEFF/KELF `__kelf` node](neff-kelf-node.md) (12.7) | the internal structure of the `neff.json` `op:"__kelf"` subgraph node |
 | Part 13 — CCInfo / replica_groups (planned) | the collective angle on `def.json`'s `replica_groups` / `src_target_pairs` |
 
 ## Cross-References
 
-*(Sibling format pages — KELF JSON, the `__kelf` node, the NEFF-header/BOM writer, and Part 13's CCInfo — are planned or in-flight and intentionally unlinked until published.)*
+- [NEFF header + BOM writer](neff-header-bom-writer.md) (12.2) — the `info.json`-fed binary `neff_header` POD and the BOM/MD5-signature writer.
+- [KELF JSON schema](kelf-json.md) (12.6) — the `kelf-<N>.json` member every `__kelf` node names; source of `getArchType`'s `target`.
+- [NEFF/KELF `__kelf` node](neff-kelf-node.md) (12.7) — the `neff.json` `op:"__kelf"` subgraph node and its `attrs.kelf` bridge.
+
+*(Part 13's CCInfo / `replica_groups` deep-dive is planned and intentionally unlinked until published.)*

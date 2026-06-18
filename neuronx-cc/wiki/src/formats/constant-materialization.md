@@ -1,6 +1,6 @@
 # Constant / Weight Materialization & De-dup
 
-> *Addresses on this page belong to three ELF objects from `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel; cp311/cp312 are byte-identical rebuilds). The HLO stage lives in `neuronxcc/starfish/bin/hlo2penguin` (full `.symtab`). The BIR const-tensor model lives in `neuronxcc/starfish/lib/libBIR.so` (`.rodata` @ `0x708000`, VMA == file-offset). The file/dedup/NEFF stages live in `neuronxcc/starfish/lib/libwalrus.so` (`.text` @ `0x62d660`, `.rodata` @ `0x1c72000`, VMA == file-offset). Each address is tagged for the object it belongs to. Treat every offset as version-pinned.*
+> *Addresses on this page belong to three ELF objects from `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel; cp311/cp312 are the same source build, but the per-arch VA frame shifts slightly — e.g. `getUniqFileName` is `0x10b7480` here, `0x10b7430` in cp311 — so treat every address as version-pinned). The HLO stage lives in `neuronxcc/starfish/bin/hlo2penguin` (full `.symtab`). The BIR const-tensor model lives in `neuronxcc/starfish/lib/libBIR.so` (`.rodata` @ `0x708000`, VMA == file-offset). The file/dedup/NEFF stages live in `neuronxcc/starfish/lib/libwalrus.so` (`.text` @ `0x62d660`, `.rodata` @ `0x1c72000`, VMA == file-offset). Each address is tagged for the object it belongs to. Treat every offset as version-pinned.*
 
 ## Abstract
 
