@@ -1,6 +1,8 @@
 # Collective Stream-ID & Channel-ID Family
 
-> *All addresses on this page apply to neuronx_cc 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`. VA == file offset for `.text`/`.rodata`. Other builds will differ.*
+> *All addresses on this page are virtual addresses (VMA) for neuronx_cc 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`; resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other builds will differ.*
+
+> **CORRECTION (audit #815) —** The "two collective predicates" reconstruction below conflates two *distinct* opcode-bitmask routines with *different* masks. `neuron::IsCollective` @0x1f7e010 (called by the enforcer #82) uses masks **`0x20000410`** (low band, indexed by `op` directly) + **`0x80011`** (high band, indexed by `op − 0x53`) plus `op == 7`, selecting opcodes **{0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}** — verified by `objdump` (`mov $0x20000410`, `mov $0x80011`, `sub $0x53`, `cmp $0x1d`). The masks `0x650` / `0x810000000000001` quoted in the pseudocode belong to the *stock* `hlo_query::NextChannelId` @0x8ab1ac0 (and the inlined checker #58 low band), where the `bt` is indexed by `op` **directly** (after `and $0xfffffffd`), not by `op − 0x1C`; the "bits {0,52,59} → opcodes {0x1c,0x50,0x57}" mapping is therefore incorrect. The "Shared substrate / two predicates", "high-band `−0x1C` rebase" GOTCHA, and self-verification item #5 need re-derivation against these three functions separately.*
 
 ## Abstract
 
