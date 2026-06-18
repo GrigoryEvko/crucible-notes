@@ -217,6 +217,10 @@
 - [RoPE Kernels & the cos-via-sin Trick](nki/rope-kernels.md)
 - [Scan / Reduce / Top-K Primitives](nki/scan-reduce-topk.md)
 - [Index / Gather / Cross-Partition Broadcast Subkernels](nki/index-gather-broadcast.md)
+- [MXFP Weight/Scale Load Infrastructure](nki/mxfp-weight-scale-load.md)
+- [Experimental & Pre-Prod Kernels (Cluster)](nki/experimental-kernels.md)
+- [Conv Device-Lowering & Variant Selection](nki/conv-device-lowering.md)
+- [private_nkl Depthwise Conv Kernels](nki/depthwise-conv.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
