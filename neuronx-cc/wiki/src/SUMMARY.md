@@ -388,6 +388,11 @@
 - [Distribution-Strategy Seeding (--distribution-strategy)](distribution/distribution-strategy-seeding.md)
 - [Collective Bucketing & Dynamic Instruction Estimation](distribution/collective-bucketing-dynamic-est.md)
 
+# Part 14 — Appendices
+
+- [Master Opcode Reference](appendix/master-opcode-table.md)
+- [Master Dtype / Enum Reference](appendix/master-enum-dtype-table.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
