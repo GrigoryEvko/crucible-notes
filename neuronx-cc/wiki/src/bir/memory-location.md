@@ -61,7 +61,7 @@ bir::StorageBase                         _ZTI 0x9000e0  (__class root; vtable 0x
 
 ### Set vs Location: which attribute lives where
 
-This split is reimplementation-load-bearing because the wire schema and every accessor obey it. `TensorClass` and `MemoryAddressSpace` are **Set-level** (one per logical tensor); `MemoryType` is **Location-level** (one per placement). The xref map proves it: the `TensorClass` serializer is called only from `MemoryLocationSet::{toJson,createFromJson}`, while `MemoryType2string`/`MemoryAddressSpace2string` are called from `MemoryLocation::{toString,getLatency}`. [CONFIRMED — call-site xrefs.]
+This split is structurally decisive for a reimplementation because the wire schema and every accessor obey it. `TensorClass` and `MemoryAddressSpace` are **Set-level** (one per logical tensor); `MemoryType` is **Location-level** (one per placement). The xref map proves it: the `TensorClass` serializer is called only from `MemoryLocationSet::{toJson,createFromJson}`, while `MemoryType2string`/`MemoryAddressSpace2string` are called from `MemoryLocation::{toString,getLatency}`. [CONFIRMED — call-site xrefs.]
 
 | Attribute | Lives on | Wire key | Why |
 |---|---|---|---|
