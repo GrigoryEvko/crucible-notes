@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **The pass** | `EnforceAluDTAcc(TargetLowering)` — `transforms/EnforceAluDTAcc.*.so` (cp310 sidecar `_ba63736b235d4fe7`) |
 | **ALU accumulator dtype** | fp32 = `target.get_native_alu_dtype` (Tonga `pw @0x54f80`) |
 | **Matmul accumulator dtype** | fp32, hardware-fixed — `PSUMLegalization::widen_psum @0x15592e0` (`libwalrus.so`) |
-| **XLA separate layer** | `xla::ConvertDotAlgorithm(stablehlo::DotAlgorithmAttr) @0x2f0c7d0` (`hlo-opt`) — *not* this flag |
+| **XLA separate layer** | `xla::ConvertDotAlgorithm(stablehlo::DotAlgorithmAttr) @0x2be2680` (`hlo-opt`) — *not* this flag |
 | **Op-family scope** | reduce-sum + 3-pass BatchNorm; **NO matmul** |
 
 ---
@@ -268,10 +268,12 @@ Above the neuron compiler entirely, the StableHLO/MHLO front-door carries its ow
 `mlir::mhlo::DotAlgorithmAttr` / `mlir::stablehlo::DotAlgorithmAttr` expose the fields `getLhsPrecisionType`, `getRhsPrecisionType`, `getAccumulationType`, `getLhsComponentCount`, `getRhsComponentCount`, `getNumPrimitiveOperations`, and `getAllowImpreciseAccumulation`. The converter is a 14-case dispatch (the 13 known algorithm presets + `ALG_UNSET`):
 
 ```text
-xla::ConvertDotAlgorithm(mlir::stablehlo::DotAlgorithmAttr)   @0x2f0c7d0   (hlo-opt)
-xla::ConvertDotAlgorithm(mlir::mhlo::DotAlgorithmAttr)        @0x2f0c4a0   (hlo-opt)
+xla::ConvertDotAlgorithm(mlir::stablehlo::DotAlgorithmAttr)   @0x2be2680   (hlo-opt)
+xla::ConvertDotAlgorithm(mlir::mhlo::DotAlgorithmAttr)        @0x2be2350   (hlo-opt)
     14-way switch (values 2..13 + default ALG_UNSET) → PrecisionConfig_Algorithm
 ```
+
+> **CORRECTION (#812) —** the two `ConvertDotAlgorithm` addresses are `0x2be2680` (stablehlo) and `0x2be2350` (mhlo) in the cp310 `hlo-opt` (`nm`-attested `T` symbols). The previously-cited `0x2f0c7d0`/`0x2f0c4a0` are wrong — those VAs land inside LLVM's `(anonymous namespace)::X86FastISel::fastEmit_*` blocks, not `ConvertDotAlgorithm`. The symbol names, the binary (hlo-opt), and the 14-case switch are unchanged.
 
 The known presets (`mlir::hlo::getKnownDotAlgorithm`) are `ALG_DOT_BF16_BF16_F32`, `_BF16_BF16_F32_X3/X6/X9`, `ALG_DOT_TF32_TF32_F32(_X3)`, `ALG_DOT_F32_F32_F32`, `ALG_DOT_F16_F16_F32`, `ALG_DOT_ANY_F8_ANY_F8_F32(_FAST_ACCUM)`, `ALG_DOT_F64_F64_F64`, and `ALG_UNSET`. The raw string tokens `accumulation_type` (`@0x26c6ba`, len 17) and `allow_imprecise_accumulation` (`@0x260dfc`, len 28) appear only in the not-stripped MLIR tools (`hlo-opt`/`hlo2penguin`); `allow_imprecise_accumulation` appears in **no** neuron `.so`.
 
@@ -281,8 +283,8 @@ The known presets (`mlir::hlo::getKnownDotAlgorithm`) are `ALG_DOT_BF16_BF16_F32
 
 | Symbol | Address | Module | Confidence |
 |---|---|---|---|
-| `xla::ConvertDotAlgorithm(stablehlo::DotAlgorithmAttr)` | `@0x2f0c7d0` | `hlo-opt` | CERTAIN |
-| `xla::ConvertDotAlgorithm(mhlo::DotAlgorithmAttr)` | `@0x2f0c4a0` | `hlo-opt` | CERTAIN |
+| `xla::ConvertDotAlgorithm(stablehlo::DotAlgorithmAttr)` | `@0x2be2680` | `hlo-opt` | CONFIRMED (nm) |
+| `xla::ConvertDotAlgorithm(mhlo::DotAlgorithmAttr)` | `@0x2be2350` | `hlo-opt` | CONFIRMED (nm) |
 | `getAccumulationType` / `getAllowImpreciseAccumulation` | (vtable accessors) | `hlo-opt`/`hlo2penguin` | HIGH |
 
 ---
@@ -293,7 +295,7 @@ The subsystem is best understood as three independent layers that all touch "acc
 
 ```text
 LAYER 1  XLA / StableHLO     DotAlgorithmAttr.accumulationType / allowImpreciseAccumulation
-  (framework)                xla::ConvertDotAlgorithm @0x2f0c7d0 — upstream, hlo-opt only
+  (framework)                xla::ConvertDotAlgorithm @0x2be2680 — upstream, hlo-opt only
                              ↓ (lowered to neuron ops; the attr is NOT carried as the neuron flag)
 LAYER 2  ALU accumulators    --enable-mixed-precision-accumulation → accumulate-on-alu-dtype
   (reduce / BatchNorm)       → EnforceAluDTAcc promotes producers to fp32   ← THIS flag's domain
@@ -320,7 +322,7 @@ The two opposing forces inside the neuron compiler are autocast and `EnforceAluD
 | tonga/CodeGenFlow has zero `EnforceAluDTAcc` | CERTAIN | tonga sidecar string table |
 | PSUM accumulator hardware-fixed fp32 via `widen_psum @0x15592e0` | CERTAIN | D-H10: run @0x155b110, widen @0x15592e0, checkPSUMLegality @0xfefa30 |
 | matmul dst-dtype byte from `perfModeToDstDtype @0x1203630`, not the flag | CERTAIN | CoreV2 bundle +0x23; LUT @0x1df5760 |
-| XLA `ConvertDotAlgorithm @0x2f0c7d0` is a separate layer | CERTAIN | symbol + 14-case switch in the symbol dump |
+| XLA `ConvertDotAlgorithm @0x2be2680` is a separate layer | CONFIRMED | nm-attested symbol (#812 corrected addr) + 14-case switch |
 | `alu_dtype` == fp32 exactly | STRONG | Tonga `get_native_alu_dtype @0x54f80` references `float32`; exact BSS slot not byte-resolved |
 | MX-FP8 ScaledMatmul accumulates in PSUM fp32 like any matmul | INFERRED | no `EnforceAluDTAcc`/MX cross-reference; PSUM legality applies generally |
 
