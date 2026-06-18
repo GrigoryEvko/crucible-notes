@@ -278,6 +278,8 @@
 - [The walrus Pass Pipeline & Optlevel Planes](walrus/pass-pipeline-optlevels.md)
 - [translate-nki-ast-to-bir & Loop Unroll Passes](walrus/translate-nki-unroll.md)
 - [DMA Legalization — Strided / CCE / Generic-Indirect](walrus/dma-legalization.md)
+- [lower_select / lower_control / lower_branch](walrus/lower-select-control-branch.md)
+- [Engine-Lowering Set — lower_sync / lower_act / lower_dve / lower_ap](walrus/engine-lowering-set.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
