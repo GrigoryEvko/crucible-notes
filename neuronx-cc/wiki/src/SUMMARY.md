@@ -382,6 +382,8 @@
 - [Shardy Dialect ↔ HloSharding Bridge](distribution/shardy-hlosharding-bridge.md)
 - [SPMD Compute-Op Partition Handlers & SpmdBuilder](distribution/spmd-compute-handlers.md)
 - [Mesh → Replica-Group Topology Math](distribution/mesh-replica-group-math.md)
+- [The 3-D Rank Model & getCCRankWorldSize](distribution/three-d-rank-model.md)
+- [Distribution-Strategy Seeding (--distribution-strategy)](distribution/distribution-strategy-seeding.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
