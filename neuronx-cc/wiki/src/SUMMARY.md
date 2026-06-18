@@ -157,6 +157,7 @@
 - [IslSimplifier — Predicate / Domain Gist](penguin/isl-simplifier.md)
 - [TongaIslSimplifier — Access → Address Rewrite](penguin/tonga-isl-simplifier.md)
 - [AffineExpr / AffinePredicate ⇄ ISL ⇄ pelican Bridge](penguin/affine-isl-pelican-bridge.md)
+- [TensorCopyDynamic Generators (gather/scatter dynamic tensor-copy)](penguin/tensorcopy-dynamic-generators.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
