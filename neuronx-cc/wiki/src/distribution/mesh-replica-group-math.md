@@ -261,6 +261,8 @@ StatusOr<CollectiveOpGroupMode> mode(bool has_channel_id, optional<bool> g) {
 }
 ```
 
+> **CORRECTION — group-mode reject literal.** An earlier draft of this truth table cited the wrong reject string for the `(has_channel_id=false, use_global_device_ids=true)` branch. The actual `InvalidArgument` literal is **`"Invalid combination of has_channel_id and use_global_device_ids"`** at hlo-opt `.rodata` **`0x36e498`** (file offset `0x16e498` under the `.rodata = fileoff + 0x200000` frame), reached from the `@0x9163b74` branch of `GetCollectiveOpGroupMode @0x9163ae0`. CONFIRMED by the 13.8 grounding ([3-D rank model](three-d-rank-model.md)). The table and pseudocode above now carry the corrected literal.
+
 The four enum names are present in rodata and mapped by `CollectiveOpGroupModeToString` `@0x9163c50`: `kCrossReplica(0)`, `kCrossPartition(1)`, `kCrossReplicaAndPartition(2)`, `kFlattenedID(3)`. Note the counter-intuitive cell: **no channel + `use_global=false` yields `kCrossReplica`, not `kCrossPartition`** — the bool is ignored without a channel id.
 
 > **QUIRK —** the SPMD partitioner's default creator emits `channel_id` set **and** `use_global_device_ids = true`, so its collectives are `kFlattenedID` ([13.6](spmd-collective-emission.md)). In that mode every `replica_group` entry is a **global device id** = `replica_id * num_partitions + partition_id`. This is required when one group must name devices from different replicas *and* partitions by absolute id.
