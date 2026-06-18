@@ -181,7 +181,7 @@ function _would_overflow_sb(self, inst):                // EnforceAluDTAcc @0x13
     return promoted_bytes > limit_bytes
 ```
 
-On the overflow path the compiler raises the catalogued error (in `logging/ErrorMessages.*.so` / `liblogging.so`): *"EnforceAluDTAcc: promoting tensor {name} from {src} to {dst} would overflow SB partition ({promoted} > {limit} bytes)"*, with the guidance *"Remove the --accumulate-on-alu-dtype flag to disable this optimization."* The module's own `.rodata` carries the docstring `"...would overflow SB."`; the parameterized message lives in the shared error catalog. `_would_overflow_sb`'s body references `statebuf_par_size_in_bytes`, `itemsize`, and `partition_size` (all confirmed) — see [SBUF/PSUM Bank Geometry](../arch/sbuf-psum-geometry.md) for `statebuf_par_size_in_bytes` and the partition model.
+On the overflow path the compiler raises the catalogued error, which lives in `starfish/lib/liblogging.so` (not the Python `ErrorMessages` catalog): *"EnforceAluDTAcc: promoting tensor {tensor_name} from {src_dtype} to {dst_dtype} would overflow SB partition ({promoted_bytes} > {limit_bytes} bytes)"*, with the guidance *"Remove the --accumulate-on-alu-dtype flag to disable this optimization."* The message prefix is literally `EnforceAluDTAcc:`. The module's own `.rodata` carries only the short docstring `"...would overflow SB."`; the parameterized message is in `liblogging.so`. `_would_overflow_sb`'s body references `statebuf_par_size_in_bytes`, `itemsize`, and `partition_size` (all confirmed) — see [SBUF/PSUM Bank Geometry](../arch/sbuf-psum-geometry.md) for `statebuf_par_size_in_bytes` and the partition model.
 
 ### Net Codegen Effect
 
@@ -210,7 +210,7 @@ This is a **different axis** from `EnforceAluDTAcc`, and it is the headline trut
 
 ### PSUM is physically fp32 — `widen_psum`
 
-PSUM banks are a grid of 4-byte fp32 accumulator cells. `PSUMLegalization::run @0x155b110` (`libwalrus.so`, pass order 27) calls `widen_psum @0x15592e0`: any matmul whose declared output dtype is < 4 bytes (e.g. bf16) cannot be the direct PSUM accumulator dst, so `widen_psum` rewrites the PSUM location, its access patterns, and the owning set to a 4-byte (fp32) dtype (`bir::widenDtype`), scaling the free extent by `4/srcBytes`. `birverifier::checkPSUMLegality @0xfefa30` enforces it, and the column size of every PSUM tensor is rounded up to a 4-byte multiple so it occupies a whole number of fp32 cells per bank.
+PSUM banks are a grid of 4-byte fp32 accumulator cells. `neuronxcc::backend::PSUMLegalization::run @0x155b110` (`libwalrus.so`, pass order 27) calls `PSUMLegalization::widen_psum @0x15592e0`: any matmul whose declared output dtype is < 4 bytes (e.g. bf16) cannot be the direct PSUM accumulator dst, so `widen_psum` rewrites the PSUM location, its access patterns, and the owning set to a 4-byte (fp32) dtype (`bir::widenDtype`), scaling the free extent by `4/srcBytes`. `birverifier::checkPSUMLegality @0xfefa30` enforces it, and the column size of every PSUM tensor is rounded up to a 4-byte multiple so it occupies a whole number of fp32 cells per bank. All three retain their demangled C++ symbols in `libwalrus.so` (`_ZN9neuronxcc7backend16PSUMLegalization10widen_psumERN3bir6ModuleE` etc.) — these are not stripped.
 
 ```c
 function widen_psum(M):                                  // libwalrus PSUMLegalization @0x15592e0
@@ -233,6 +233,8 @@ In the CoreV2 PE bundle (`NEURON_ISA_TPB_S3D3_MM_STRUCT`, 64 B), the control wor
 | `DST_DTYPE` | `+0x23` | `perfModeToDstDtype(perfMode) @0x1203630` | PSUM/output accumulator dtype byte |
 
 The dst (PSUM) dtype byte is chosen by the matmul **perf mode** (`MatmultPerfMode`: 0 None / 1 DoubleRow / 2 DoubleColumn / 3 DoublePixel / 4 DoubleRowSwInterleave) — `perfModeToDstDtype` returns the perf-mode-derived byte for `perfMode <= 3`. No mixed-precision toggle participates. See [PE Engine](../arch/pe-engine.md) for the systolic array and the perf-mode encoding.
+
+> **NOTE —** `perfModeToDstDtype @0x1203630` is IDA-stripped to `sub_1203630` in `libwalrus.so` — the human-readable name is attested only via the cross-grounding PE-encode analyses, not by a symbol in the binary. Likewise the in-dtype source `@0x1df5760` is a data LUT (20 bytes, BIR dtype `0x00..0x13` → ISA dtype), not a decompiled function. Both addresses are firm; the names are reconstructed.
 
 ### `fp32r` is a separate knob
 
@@ -271,7 +273,7 @@ xla::ConvertDotAlgorithm(mlir::mhlo::DotAlgorithmAttr)        @0x2f0c4a0   (hlo-
     14-way switch (values 2..13 + default ALG_UNSET) → PrecisionConfig_Algorithm
 ```
 
-The known presets (`mlir::hlo::getKnownDotAlgorithm`) are `ALG_DOT_BF16_BF16_F32`, `_BF16_BF16_F32_X3/X6/X9`, `ALG_DOT_TF32_TF32_F32(_X3)`, `ALG_DOT_F32_F32_F32`, `ALG_DOT_F16_F16_F32`, `ALG_DOT_ANY_F8_ANY_F8_F32(_FAST_ACCUM)`, `ALG_DOT_F64_F64_F64`, and `ALG_UNSET`. The raw tokens `accumulation_type` and `allow_imprecise_accumulation` appear only in the not-stripped MLIR tools (`hlo-opt`/`hlo2penguin`); `allow_imprecise_accumulation` appears in **no** neuron `.so`.
+The known presets (`mlir::hlo::getKnownDotAlgorithm`) are `ALG_DOT_BF16_BF16_F32`, `_BF16_BF16_F32_X3/X6/X9`, `ALG_DOT_TF32_TF32_F32(_X3)`, `ALG_DOT_F32_F32_F32`, `ALG_DOT_F16_F16_F32`, `ALG_DOT_ANY_F8_ANY_F8_F32(_FAST_ACCUM)`, `ALG_DOT_F64_F64_F64`, and `ALG_UNSET`. The raw string tokens `accumulation_type` (`@0x26c6ba`, len 17) and `allow_imprecise_accumulation` (`@0x260dfc`, len 28) appear only in the not-stripped MLIR tools (`hlo-opt`/`hlo2penguin`); `allow_imprecise_accumulation` appears in **no** neuron `.so`.
 
 > **NOTE —** at the StableHLO front-door a dot already carries `accumulationType=f32` + `allowImpreciseAccumulation`. Inside the neuron compiler the equivalent decision is *re-expressed* as the `accumulate-on-alu-dtype` pass (ALU) plus PSUM-fp32 legalization plus the fp32r operand choice (PE). The framework attr and the neuron flag are independent layers that happen to express related intent; neither reads the other.
 
