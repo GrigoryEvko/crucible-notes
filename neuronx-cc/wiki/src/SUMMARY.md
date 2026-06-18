@@ -312,6 +312,7 @@
 - [Per-Engine .bin Emission — the 64-byte fwrite path & findBin](walrus/bin-emission.md)
 - [The Opcode Master — setupHeader, the L3 opcode-word table & per-op reconciliation](walrus/opcode-master.md)
 - [DebugInfoWriter & the ir_debug_info Debug-Info Protobuf](walrus/debuginfo-writer.md)
+- [Legality Dispatch — L0 (dormant) vs L1 (birverifier) vs L2 (wire)](walrus/legality-dispatch.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
