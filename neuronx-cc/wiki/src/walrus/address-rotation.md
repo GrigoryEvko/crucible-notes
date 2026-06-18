@@ -115,7 +115,7 @@ void rotateAddrs(this, bir::Module& M) {                 // 0x940e00
     // SB rotation budget — the per-target SBUF slice, computed ONCE.
     // 8 * roundup8( 2*numPartitions / 5 )   ==   8 * ceil_div8( 2N/5 )
     v22 = (2*numPartitions / 5) != 0;                     // line 235
-    this->sbBudget = 8 * (v22 + (((2*numPartitions/5) - v22) >> 3));  // line 236, qword @ obj+280
+    this->sbBudget = 8 * (v22 + (((2*numPartitions/5) - v22) >> 3));  // line 236, store @ obj+0x8C0 (=_QWORD*+280)
 
     fn = M.entryFunction;                                 // M+8, biased -160
     if (Function::hasAttribute(fn, 12)) {                 // line 318 — KERNEL-SCOPE / post-schedule
@@ -161,7 +161,9 @@ void rotateAddrs(this, bir::Module& M) {                 // 0x940e00
 }
 ```
 
-> **NOTE — the SBUF budget idiom.** The decompiler renders `8 * roundup8(x)` as `8 * (v + ((x - v) >> 3))` with `v = (x != 0)`. That `v + ((x−v)>>3)` is integer `ceil(x/8)`; the outer `×8` re-scales it to a byte slice. So `sbBudget = 8·ceil((2N/5)/8)` — two-fifths of the partition count, rounded up to a multiple of 8, times 8. CONFIRMED at `rotateAddrs+235/236`, and re-derived per-kernel at line 542.
+> **NOTE — the SBUF budget idiom.** The decompiler renders `8 * roundup8(x)` as `8 * (v + ((x - v) >> 3))` with `v = (x != 0)`. That `v + ((x−v)>>3)` is integer `ceil(x/8)`; the outer `×8` re-scales it to a byte slice. So `sbBudget = 8·ceil((2N/5)/8)` — two-fifths of the partition count, rounded up to a multiple of 8, times 8. CONFIRMED at `rotateAddrs+235/236` (disasm `shr rax,3` = the divide-by-8 of the `roundup8`), and re-derived per-kernel at line 542. The store target is object byte offset **`0x8C0`** (disasm `mov [r14+0x8C0], rax` @ `0x9411f7`), one qword below the ctor booleans — i.e. the decompiler's `_QWORD*+280` is `280·8 = 0x8C0`.
+
+> **CORRECTION — the SB-budget field is at `0x8C0`, not `0x460`.** An earlier recovery note placed `sbBudget` at `obj+0x460` (1120 bytes), reading the decompiler's `_QWORD*+280` index as if it were a `_DWORD*` index (`280·4 = 0x460`). The store is a 64-bit `mov [r14+0x8C0], rax` (`0x9411f7` / `0x941348`), so the byte offset is `280·8 = 0x8C0` (2240). The arithmetic — `8·roundup8(2·numPartitions/5)` — and the `≥1` 3-sweep `psum_rotation` fixpoint are unaffected and CONFIRMED; only the field offset is corrected. (Verified firsthand in the disassembly.)
 
 > **QUIRK — `psum_rotation` runs exactly three times, by hand.** There is no convergence test; `rotateAddrs` calls `psum_rotation(f)` literally three times in a row (lines 333-336 and 413-415). It is a fixed 3-sweep fixpoint: each sweep can free banks that the previous sweep's relocations made schedulable, and three is enough for the (typically ≤3-deep) pipelines this targets. A reimplementation that loops to convergence is *more* general but will not match the binary's buffer assignment.
 
