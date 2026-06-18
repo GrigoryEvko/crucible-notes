@@ -336,6 +336,11 @@
 - [NEFF Feature-Flag System](formats/neff-feature-flags.md)
 - [The kelf-N.json Field Schema](formats/kelf-json.md)
 - [The neff.json __kelf Subgraph Node](formats/neff-kelf-node.md)
+- [Constant / Weight Materialization & De-Dup](formats/constant-materialization.md)
+
+# Part 9 — Numeric Semantics
+
+- [Neuron dtype Catalog & x4-Packing](numerics/dtype-catalog.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
