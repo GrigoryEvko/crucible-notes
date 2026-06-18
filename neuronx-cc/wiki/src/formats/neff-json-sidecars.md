@@ -228,7 +228,7 @@ The engine-present array is iterated as an `nlohmann` `array<bool>` and stored o
 
 > **QUIRK —** `neff.json` generation is **skipped** when `kelf-0.json` already exists: the packager logs `Skipping neff.json generation since it already exists` and short-circuits (the KELF already encodes the engine layout). A reimplementation that unconditionally emits `neff.json` will not match the reference packager's output set.
 
-The `__kelf` node's internal structure is the subject of a planned NEFF/KELF-node page; the `kelf-<N>.json` schema it points at is a separate planned page.
+The `__kelf` node's internal structure is the subject of the [NEFF/KELF `__kelf` node page](neff-kelf-node.md) (12.7); the `kelf-<N>.json` schema it points at is covered by the [KELF JSON schema page](kelf-json.md) (12.6).
 
 ---
 
