@@ -159,6 +159,7 @@
 - [AffineExpr / AffinePredicate ⇄ ISL ⇄ pelican Bridge](penguin/affine-isl-pelican-bridge.md)
 - [TensorCopyDynamic Generators (gather/scatter dynamic tensor-copy)](penguin/tensorcopy-dynamic-generators.md)
 - [DGE Level Selection & the dynamic_dma_* Pass Family](penguin/dge-level-dynamic-dma.md)
+- [Backend Polyhedral Dependence-Distance (libwalrus — name-only polyhedral)](penguin/backend-dependence-distance.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
