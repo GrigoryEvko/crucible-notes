@@ -226,6 +226,7 @@
 - [SelectAndScatter & ReduceWindow Forward Lowering](nki/select-scatter-reduce-window.md)
 - [Resize Kernels: Nearest-Fixed Indirect-DMA Gather](nki/resize-kernels.md)
 - [Sparse Matmul: SparsityCompress Datapath & Format](nki/sparsity-compress.md)
+- [Sparse Matmul: Penguin MatMulSparseOp Lowering & Producer](nki/sparse-matmul-lowering.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
