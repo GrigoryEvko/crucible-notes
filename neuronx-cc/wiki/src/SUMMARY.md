@@ -146,6 +146,7 @@
 - [Penguin Target Abstraction](penguin/target-abstraction.md)
 - [Penguin IR ↔ MLIR / BIR Mapping](penguin/ir-mlir-bir-mapping.md)
 - [Penguin Layout-Tiling Pipeline (the "Tensorizer" Tile Transform)](penguin/layout-tiling-pipeline.md)
+- [Penguin Layout Middle-End (PAG assignment + MCTS hook)](penguin/layout-middle-end.md)
 - [Penguin Scheduling: the MinReg Ready-List Scheduler](penguin/scheduling-minreg.md)
 - [Penguin Data-Movement: Fusion + Copy-Elimination](penguin/data-movement-fusion.md)
 - [Penguin Software Pipelining (annotation-driven)](penguin/software-pipelining.md)
