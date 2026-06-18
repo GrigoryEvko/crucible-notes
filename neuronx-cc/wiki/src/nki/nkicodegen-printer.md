@@ -173,11 +173,12 @@ the printer never sees BIR.)
 
 ### 2.1 `opcode(self, op)` — ALUOpcode / ActivationFunctionType → Python callable
 
-Body @ `0xbe630` (per the D-P02 IDA pass). It tests the enum member name and rewrites
-a fixed allow-list; everything else passes through as the bare member name. The
-recovered marker strings (`expit`, `erf`, `act_identity`, `abs`, `max`, `min`,
-`copy`, `sigmoid`, `scipy.special`, `np.multiply`, `np.sum`) pin the table:
-[CONFIRMED — strings; STRONG — exact branch mapping per D-P02]
+Body @ `0xbe630` (symbol `…NkiCodegen_10NkiCodegen_221opcode`, `NkiCodegen.py:1255`). It
+tests the enum member name and rewrites a fixed allow-list; everything else passes
+through as the bare member name. The recovered marker strings (`expit`, `erf`,
+`act_identity`, `abs`, `max`, `min`, `copy`, `sigmoid`, `scipy.special`,
+`np.multiply`, `np.sum`) pin the table:
+[CONFIRMED — address + strings; STRONG — exact branch mapping]
 
 | `op.name` | emitted expression | source |
 |---|---|---|
@@ -198,10 +199,11 @@ build-side `codegenAluOp` / act-func remap tables (cross-ref the I-strand
 
 ### 2.2 `reduce_cmd(self, …)` — accumulate command → `nki.isa.reduce_cmd.<m>`
 
-Body @ `0x75170`. It iterates the `EngineAccumulationType` enum `members.items()`
-keyed by `accum_type`/`value` and emits the member name after the prefix
-`nki.isa.reduce_cmd.` (the prefix + `accum_type`, `members`, `items`, `value` are
-recovered strings). [CONFIRMED — prefix string; STRONG — iteration body per D-P02]
+Body @ `0x75170` (symbol `…NkiCodegen_10NkiCodegen_45reduce_cmd`). It iterates the
+`EngineAccumulationType` enum `members.items()` keyed by `accum_type`/`value` and
+emits the member name after the prefix `nki.isa.reduce_cmd.` (the prefix + `accum_type`,
+`members`, `items`, `value` are recovered strings).
+[CONFIRMED — address + prefix string; STRONG — iteration body]
 The result feeds `reduce_cmd=nki.isa.reduce_cmd.<m>` into `activation_reduce`,
 `tensor_scalar_reduce`, `tensor_scalar_cumulative`, `select_reduce`, and
 `range_select`.
@@ -220,7 +222,8 @@ The result feeds `reduce_cmd=nki.isa.reduce_cmd.<m>` into `activation_reduce`,
 ~33 `codegen<Op>` methods, one per Penguin op family. Every `nisa.<x>` / `nl.<x>`
 template below is a **verbatim string literal recovered from the `.so`** (the full
 set was dumped with `strings | rg '^(nisa|nl)\.'` and is reproduced faithfully).
-[CONFIRMED] Addresses in parentheses are from the D-P02 IDA pass [report-sourced].
+[CONFIRMED] Addresses in parentheses resolve to symbols in the cp310 `NkiCodegen.so`
+IDA sidecars (decompile + disasm + context) shipped in this checkout — see §5.
 
 ### 3.1 Activation family
 
@@ -395,11 +398,15 @@ The five strongest claims, re-challenged against the binary:
    none. **HOLDS — tagged INFERRED** as a conceptual handle for the `@trace`
    wrapping, not a recovered name.
 
-Anything not byte-pinned in this checkout is tagged: the per-method **addresses**
-(`opcode @0xbe630`, `reduce_cmd @0x75170`, the `codegen<Op>` body offsets) are
-sourced from the D-P02 IDA pass [report-sourced], since this repo checkout ships the
-`NkiCodegen.so` binary and its string/symbol tables but not the decompiled chunk
-directory for it; every **string/qualname/class-name** claim was independently
+The two enum-marshalling **addresses** are now directly grounded in this checkout:
+`opcode @0xbe630` resolves to symbol `…NkiCodegen_10NkiCodegen_221opcode` (decompile +
+disasm + context sidecars; `NkiCodegen.py:1255`, with the `expit`/`act_identity`/
+`sigmoid` allow-list in the body), and `reduce_cmd @0x75170` resolves to
+`…NkiCodegen_10NkiCodegen_45reduce_cmd` (decompile sidecar, with the
+`accum_type`/`members`/`items` iteration). **CONFIRMED** — upgraded from the earlier
+report-sourced tag now that the cp310 `NkiCodegen.so` decompiled bodies are present.
+The remaining per-method `codegen<Op>` body offsets are still sourced from the D-P02
+IDA pass [report-sourced]; every **string/qualname/class-name** claim was independently
 re-verified here against the `.so`. The cp311/cp312 twins exist as IDA exports but
 the corresponding `targets/codegen/NkiCodegen.cpython-31{1,2}.so` are not extracted
 in this checkout — cp310 is the grounded artifact.
