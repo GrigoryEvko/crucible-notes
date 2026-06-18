@@ -191,6 +191,9 @@
 - [NeuronCodegen Collective Forward Builders](nki/neuroncodegen-collectives.md)
 - [NeuronCodegen Control / Scope / Predicate Emitters](nki/neuroncodegen-control.md)
 - [NeuronCodegen Tiling Internals & the Offloaded-FMA Path](nki/neuroncodegen-tiling.md)
+- [NeuronCodegen Macro-Kernel Emitters](nki/neuroncodegen-macro.md)
+- [NeuronCodegen builtin_custom_op Emitter](nki/neuroncodegen-builtin-customop.md)
+- [NkiCodegen Re-Emit Printer (penguin.ir → NKI text)](nki/nkicodegen-printer.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
