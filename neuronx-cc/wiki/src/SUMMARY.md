@@ -398,6 +398,7 @@
 - [The 64-byte Bundle Quick-Reference](appendix/bundle-quick-reference.md)
 - [Report → Wiki-Page Cross-Reference Map](appendix/report-page-crossref.md)
 - [Binary Build-ID / Version Table](appendix/build-id-version-table.md)
+- [External References](appendix/external-references.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
