@@ -216,6 +216,7 @@
 - [Dense (non-MoE) MLP](nki/dense-mlp.md)
 - [RoPE Kernels & the cos-via-sin Trick](nki/rope-kernels.md)
 - [Scan / Reduce / Top-K Primitives](nki/scan-reduce-topk.md)
+- [Index / Gather / Cross-Partition Broadcast Subkernels](nki/index-gather-broadcast.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
