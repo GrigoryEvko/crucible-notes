@@ -234,6 +234,9 @@
 - [InstructionType: the 110-Opcode Enum & sameInst Family Masks](bir/instruction-type.md)
 - [NamedObject / Container CRTP & the Module→Function→BB→Inst Model](bir/container-model.md)
 - [Argument / AccessPattern / Immediate / Register Value Model](bir/value-model.md)
+- [MemoryLocation / Storage & the Alias Model](bir/memory-location.md)
+- [Dtype Tables & Wire-Tag / Stride / Alignment LUTs](bir/dtype-tables.md)
+- [AluOpType + the Mode Enums & the L1≠L3 Comparison Reorder](bir/aluop-modes.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
