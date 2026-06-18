@@ -254,6 +254,8 @@ A weight's NEFF byte offset is therefore the tile/partition-aligned `const_ap_of
 - const-tensor fields (tensor schema `0x70c880`): `const_ap_offset`, `const_sub_tensor_id`, `is_regloc_offset`.
 - the const payload is recorded as a `.bin` (or `.npy`) member with a `TypeDescriptor` and the access-pattern descriptor `to_sizes / to_off / to_dtype / to_steps / from_off / from_dtype / from_steps` (rodata `0x1c83f44`) — the runtime DMA AP that copies the const from its NEFF member into DRAM/SBUF at load time.
 
+> **NOTE — the `.bin`/`.npy` naming controls MD5-signature membership.** The two payload names are not interchangeable for signing: a `.npy`-named const/weight member **feeds** the NEFF MD5 "IR signature" (the `addToBom` predicate hashes basenames equal to `".npy"`), whereas a `<const>.bin` member is **not** signed (it matches neither the `.npy`-equals nor the `.dbg`-contains branch). So whether a deduped const blob lands in the signature set depends on whether the packager names it `.npy` or `.bin`. See [NEFF container §5 — the two BOMs / the IR-signature subset](./neff-container.md#5-the-two-boms).
+
 Multiple `var_id`s sharing one deduped blob point at the same `referenced_var_id` / `const_ap_offset`, which is exactly how the §4a/4b dedup pays off at the variable layer.
 
 ### 4e — Why dedup feeds reproducibility
