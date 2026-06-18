@@ -197,6 +197,7 @@
 - [BirCodeGenLoop: the beta3 Penguin→BIR Driver](nki/bircodegenloop.md)
 - [BirCodeGenLoop Compute Codegens (matmul / activation / tensor / reduce / copy)](nki/bircodegen-compute.md)
 - [BirCodeGenLoop DMA / Indirect Codegens](nki/bircodegen-dma.md)
+- [BirCodeGenLoop Collective Codegens](nki/bircodegen-collective.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
