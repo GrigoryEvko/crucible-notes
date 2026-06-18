@@ -260,6 +260,8 @@
 - [codegen: Copy / DMA / Load-Store / Gather / Select / BN / Transpose](bir/codegen-data-movement.md)
 - [codegen: TopK / RNG / Iota-Memset-Dropout / Control / Barrier / Print-LNC](bir/codegen-dve-rng-control.md)
 - [codegen: Collectives / Send-Recv + the KLR↔BIR Op-Join Table](bir/codegen-collectives-join.md)
+- [codegen Helpers + the NKI-Kernel Provision Mechanisms](bir/codegen-helpers-kernel-provision.md)
+- [klr::ExtendedInst + the CBOR Wire Format](bir/klr-extendedinst-cbor.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
