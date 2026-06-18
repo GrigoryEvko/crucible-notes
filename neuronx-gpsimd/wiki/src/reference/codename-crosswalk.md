@@ -7,13 +7,22 @@ naming a cell in the table below. The relations between those columns — and
 exactly which ones are read straight from the binary versus deduced from a
 stride — are the whole point of this page.
 
-The hard rule that organises everything: **`coretype = arch_id + 1`**, with a
-**+8 coretype stride** between adjacent generations. The five `coretype` values
+The hard rule that organises everything: **`arch_id = coretype − 1`** — the one
+relation that holds uniformly across every generation. The five `coretype` values
 are literal switch-case constants observed in the disassembly; the `arch_id`
 values are the NCFW selector bytes for the four shipped generations and the
 `coretype − 1` extrapolation for the unshipped fifth. The `coretype` column is
 the one to trust unconditionally; the `arch_id` column is firmware-byte-grounded
 for four rows and inferred for one.
+
+> **CORRECTION — the `coretype` stride is *not* a flat +8.** The observed
+> `coretype` set `{6, 13, 21, 29, 37}` steps **+7 (6→13) then +8, +8, +8** — and
+> the `arch_id` set `{5, 12, 20, 28, 36}` likewise. Neither axis has a uniform +8
+> stride. The *only* relation that is uniform is **`arch_id = coretype − 1`**, and
+> it is that `−1` relation — never a "+8 stride" read off the `coretype` axis —
+> that extends the unshipped MAVERICK `arch_id` to `36`. Where the prose below
+> still says "+8 stride", read it as shorthand for "the +7/+8/+8/+8 progression
+> whose uniform invariant is `coretype = arch_id + 1`."
 
 Every cell carries a confidence tag: **HIGH / MED / LOW** crossed with
 **OBSERVED** (read from bytes / disassembly / a shipped header this session),

@@ -193,7 +193,8 @@ unit an opcode binds (the `funcUnits` table has exactly **one**:
 **`coretype`** — The firmware byte that identifies a GPSIMD generation, read **directly** from
 the `nrtucode_get_ext_isa_internal` switch (@ `0x9b2b30` in `libnrtucode_internal.so`). The five
 constants are `{6, 13, 21, 29, 37}` for SUNDA / CAYMAN / MARIANA / MARIANA_PLUS / MAVERICK,
-spaced **+8** apart. `coretype` is **`[HIGH/OBSERVED]`** for all five (MAVERICK's `37` is anchored
+stepping **+7 then +8, +8, +8** (*not* a flat +8 stride; the uniform relation is
+`arch_id = coretype − 1`). `coretype` is **`[HIGH/OBSERVED]`** for all five (MAVERICK's `37` is anchored
 twice — the header enum ordinal and the twin resolver bitmasks). *Anchor:* the `case 6/13/21/29/37`
 switch @ `0x9b2b30`; `nrtucode_core_get_coretype` @ `0x9b0a10`. *Deep page:* [Codename ↔ Generation Cross-Walk](reference/codename-crosswalk.md).
 
@@ -234,7 +235,7 @@ one. *Anchor:* the `maverick` literal appears **189×** in `libnrtucode_internal
 `libnrtucode.so`; `maverick_libs` @ `0x9b9050`. *Deep page:* [MAVERICK (v5) Profile](generations/maverick-profile.md).
 
 **TONGA** — The pre-unified **outlier** (legacy NC-v1, the "L" family; Inf1). It is **not** a
-sixth GPSIMD generation and is **outside** the `coretype = arch_id + 1` / +8 stride family: no
+sixth GPSIMD generation and is **outside** the `coretype = arch_id + 1` family: no
 `coretype`, no `arch_id`, no NCFW image, no EXTISA blob. Its dtype enum is a distinct 8-code
 `TONGA_ISA_TPB_DTYPE_*` family — a *different name family* (`TONGA_` vs `NEURON_`) signalling an
 older ISA. *Anchor:* `TONGA_ISA_TPB_DTYPE_*` in `arch-isa/tpb/aws_tonga_isa_tpb_common.h`;

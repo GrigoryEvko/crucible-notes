@@ -339,9 +339,13 @@ and reference, not once). Ground every count claim in **`nm <binary> | rg -c <pa
 the actual symbol table. `[HIGH/OBSERVED — methodology]`
 
 **Evidence.** This pass re-grounded two counts directly: the **864** xdref leaves (`nm
-libfiss-base.so | rg -c`), and the **`maverick`** literal census — the binary shows **2**
-occurrences in `libnrtucode_internal.so` and **0** in the front `libnrtucode.so`, where an early
-prose figure had claimed a much larger number.
+libfiss-base.so | rg -c`), and the **`maverick`** literal census — at the **bare-lowercase**
+scope (`rg -c 'maverick'`) the binary shows **2** occurrences in `libnrtucode_internal.so` and
+**0** in the front `libnrtucode.so`. (This is the *lowercase-literal* count, not the
+case-insensitive line count: `rg -ci maverick` = **189** = 187 `MAVERICK` + 2 `maverick`, which
+the [glossary](../glossary.md) and [cross-walk](../reference/codename-crosswalk.md)
+cite — same binary, different grep scope, not a contradiction.) The point stands either way: an
+early prose figure had claimed a much larger *literal* count.
 
 **Why it matters.** Encoding an inflated count as a hard requirement (entry-table sizes,
 opcode-roster totals) propagates a wrong constant. Re-run `nm | rg -c` before you publish a
