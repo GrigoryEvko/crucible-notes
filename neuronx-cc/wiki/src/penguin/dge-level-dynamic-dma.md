@@ -429,7 +429,22 @@ The relevant relative placement in the backend pipeline (the second numbers belo
 > [Backend Dependence-Distance](backend-dependence-distance.md), [the Dynamic For-Loop](dynamic-for-loop.md),
 > and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
 
-> **CORRECTION (Wave-2 audit) — the provenance NOTE above misattributes the database.** There is **no standalone `ida/…libwalrus.so/` IDA database** in the shipped corpus: the only `ida/` walrus DBs are the statically-linked driver binaries (`walrus_driver`, `walrus_bugpoint_driver`), plus `bir_roundtrip`. The standalone `libwalrus.so` *disasm* sidecars only span `0x5e9000–0x7cfb30`, so the fine DGE addresses cited here (`getDGEInstructionType @0x1097330`, `assignEngine @0x1180360`, `DynamicDMAScan::run @0xd03c40`, `sub_1096280`, …) fall **outside** the standalone-`.so` extracted range and are **not** present in any shipped disasm/decompiled sidecar (`rg getDGEInstructionType` over `disasm/`+`decompiled/` → 0). Those VAs match the `0xd0xxxx–0x12xxxxx` band where libwalrus code lands **statically linked into `walrus_driver`**, so the addresses are real and recoverable from the *driver* IDA DB — but the NOTE's specific claim that they were "disassembled" from an `ida/…libwalrus.so/` database is wrong. Read the affected addresses as **driver-DB-grounded** (and the `bir::DGEType` ordinals as the independently-confirmed anchor), not as standalone-`libwalrus.so`-disasm-CONFIRMED. The same over-attribution applies to the four sibling pages this NOTE names.
+> **NOTE (retraction) —** an earlier CORRECTION here (Wave-2 audit) claimed there is *no* standalone
+> `ida/…libwalrus.so/` IDA database and that the fine DGE addresses fell "outside the standalone-`.so`
+> extracted range" of `0x5e9000–0x7cfb30`, so they were merely *driver-DB-grounded*. **That CORRECTION
+> was wrong and is retracted.** A full standalone `ida/…starfish__lib__libwalrus.so/` IDA database (a
+> 1.37 GB `.i64` with 59,466 disassembled functions, per its `_function_addresses.json`) **does** ship in
+> the corpus, with per-symbol `disasm/`, `decompiled/`, `context/` and `graphs/` subdirs. Its function
+> table spans `0x5e9000 … 0x3fdaa30` — the `0x5e9000–0x7cfb30` "ceiling" was an artifact of a *truncated
+> top-level* `disasm/` sidecar dump, **not** the DB's actual range. Every DGE address on this page resolves
+> to real standalone disassembly there: `getDGEInstructionType @0x1097330`, `assignEngine @0x1180360`,
+> `DynamicDMAScan::run @0xd03c40`, `KlirToBirCodegen::assembleDynamicInfo @0xf20230`,
+> `LowerAP::convertSymAP @0x11b7f80`, `LowerAP::run @0x11ba970`, `rewireDynamicAPRegisters @0xef91d0`,
+> `sub_1096280 @0x1096280` (each appears as a `…_0x<va>.asm` in the DB's internal `disasm/`). Each symbol
+> also has a second `.`-prefixed body entry in the `0x5e9xxx–0x6xxxxx` frame (the truncated dump); the
+> CORRECTION saw only that frame and wrongly inferred the DB did not exist. These addresses are therefore
+> **standalone-`libwalrus.so`-disasm-CONFIRMED**, as the original provenance NOTE above states — not merely
+> driver-DB-grounded. The retraction applies equally to the four sibling pages the NOTE names.
 
 ## Related Components
 
