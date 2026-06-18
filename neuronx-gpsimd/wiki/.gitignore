@@ -3,7 +3,10 @@ book/
 *.bak
 *~
 
-# A parent .gitignore has a bare `core` rule (core-dump pattern) that swallows
-# src/isa/core/. Re-include the ISA-core wiki pages explicitly.
-!src/isa/core/
-!src/isa/core/**
+# The repo-root .gitignore (line ~50) has a bare `core` rule (core-dump pattern)
+# that swallows ANY directory named `core` — including wiki source dirs such as
+# src/isa/core/. Defensively un-ignore the ENTIRE wiki source tree so no parent
+# bare-name rule (core, tmp, build, …) can ever drop a wiki page again.
+!src/
+!src/**/
+!src/**
