@@ -384,7 +384,9 @@
 - [SPMD Collective / Communication Emission](distribution/spmd-collective-emission.md)
 - [Mesh → Replica-Group Topology Math](distribution/mesh-replica-group-math.md)
 - [The 3-D Rank Model & getCCRankWorldSize](distribution/three-d-rank-model.md)
+- [AwsNeuronLNCShardingConstraint & the SPMD↔LNC Coupling](distribution/lnc-sharding-constraint.md)
 - [Distribution-Strategy Seeding (--distribution-strategy)](distribution/distribution-strategy-seeding.md)
+- [Collective Bucketing & Dynamic Instruction Estimation](distribution/collective-bucketing-dynamic-est.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
