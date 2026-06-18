@@ -106,7 +106,9 @@ Each of the three operand lists is an `llvm::ilist`-style intrusive **circular**
 
 ### What is *not* serialized
 
-The block is mostly scheduler scratch. The ctor seeds several intrusive list/map roots not reached by `toJson` — at `+0x40` (`= blk+0x48`), `+0x290`, `+0x4E0`, `+0x730` (each set to a self-relative root) — and writes a recurring float `1082130432` (`0x40800000` = `2.0f`) at `+0x4A0` and `+0x4B8`/`+0x614`-region, plausibly a default per-edge weight or schedule priority. Only the dependency/loop-carried/unroll lists, `order`, `scheduled_start/end`, `sync_info`, and `debug` reach JSON; the rest is internal state the scheduler passes own.
+The block is mostly scheduler scratch. The ctor seeds several intrusive list/map roots not reached by `toJson` — at `+0x40` (`= blk+0x48`), `+0x290`, `+0x4E0`, `+0x730` (each set to a self-relative root) — and writes a recurring float `1082130432` (`0x40800000` = `2.0f`) at `+0x268`, `+0x4B8`, and `+0x708` (three `movss [rdx+off], xmm0` of `dword_781930`), plausibly a default per-edge weight or schedule priority.
+
+> **CORRECTION —** an earlier draft cited the `2.0f` slots as `+0x4A0` and `+0x4B8`/`+0x614`. The ctor at `0x2dafb0` instead `movss`-stores `dword_781930` (= `0x40800000`, verified in `.rodata`) at `+0x268` (`0x2db148`), `+0x4B8` (`0x2db1b8`), and `+0x708` (`0x2db21d`); `+0x4A0` receives a *byte 0* (`0x2db13a`), not the float. Only the dependency/loop-carried/unroll lists, `order`, `scheduled_start/end`, `sync_info`, and `debug` reach JSON; the rest is internal state the scheduler passes own.
 
 > **INFERRED —** the precise semantics of the `2.0f` constant and the extra map roots are not pinned to a named accessor. They are scheduling scratch (mobility / slack / weight); naming them exactly needs the scheduler passes that read them.
 
