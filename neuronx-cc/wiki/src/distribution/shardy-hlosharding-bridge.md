@@ -637,7 +637,7 @@ device order, and the downstream lowering of the resulting `HloSharding` into Pe
 |---|---|
 | `xla::sdy` factor algebra | produces the `TensorShardingAttr` this bridge exports ([13.3](sharding-algebra.md)) |
 | `ShardingPropagation` | drives the export pass after the fixpoint converges ([13.2](sharding-propagation.md)) |
-| mesh → replica-group math | consumes the exported tile assignment's device order ([13.7](mesh-replica-group.md)) |
+| mesh → replica-group math | consumes the exported tile assignment's device order ([13.7](mesh-replica-group-math.md)) |
 | `SpmdPartitioner` | rewrites the HLO using the `HloSharding` this bridge yields ([13.1](spmd-partitioner-driver.md)) |
 
 ## Cross-References
@@ -647,7 +647,7 @@ device order, and the downstream lowering of the resulting `HloSharding` into Pe
   the `TensorShardingAttr` this page exports
 - [Sharding Propagation](sharding-propagation.md) — 13.2; the fixpoint that fills the
   shardings before `ExportStablehloShardingsPass` calls `convertToHloSharding`
-- [Mesh → Replica-Group Math](mesh-replica-group.md) — 13.7; how the exported tile
+- [Mesh → Replica-Group Math](mesh-replica-group-math.md) — 13.7; how the exported tile
   assignment's device order becomes collective `replica_groups`
 - [SPMD Partitioner Driver](spmd-partitioner-driver.md) — 13.1; the consumer that
   partitions the HLO from the resulting `HloSharding`

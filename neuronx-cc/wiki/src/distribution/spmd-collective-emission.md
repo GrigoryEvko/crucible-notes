@@ -313,7 +313,7 @@ HloInstruction* AllGatherShards(b, operand, sharding, long* next_channel_id,
 
 ### Purpose
 
-`xla::spmd::(anon)::GetPerGroupCollectiveOpsCreator(const SPMDCollectiveOpsCreator&, const DeviceGroupTileAssignment&)` (`0x2ae83e0`, 4028 B, 140 BB) builds a **brand-new** `SPMDCollectiveOpsCreator` whose 8 callbacks capture the original creator by reference plus the `DeviceGroupTileAssignment`. On each invocation they translate the requested replica groups / partition-id from the sub-group's *local* device numbering into *global* numbering, then forward to the original callback. This is how a nested/grouped sharding (a partial-replicate sub-mesh) emits collectives that name only the devices in its group. Callers: `ExchangeHaloCompact`, `CreatePerGroupPartitioningState` (`0x2b06d90`). STOCK-XLA — the grouping machinery is `xla::hlo_sharding_util`; the translation table comes from `DeviceGroupTileAssignment`, which [13.7 mesh→replica-group](mesh-replica-groups.md) derives from the sharding tile assignment. Neuron influences only *which* sharding/mesh reaches here, via the LNC sharding constraint.
+`xla::spmd::(anon)::GetPerGroupCollectiveOpsCreator(const SPMDCollectiveOpsCreator&, const DeviceGroupTileAssignment&)` (`0x2ae83e0`, 4028 B, 140 BB) builds a **brand-new** `SPMDCollectiveOpsCreator` whose 8 callbacks capture the original creator by reference plus the `DeviceGroupTileAssignment`. On each invocation they translate the requested replica groups / partition-id from the sub-group's *local* device numbering into *global* numbering, then forward to the original callback. This is how a nested/grouped sharding (a partial-replicate sub-mesh) emits collectives that name only the devices in its group. Callers: `ExchangeHaloCompact`, `CreatePerGroupPartitioningState` (`0x2b06d90`). STOCK-XLA — the grouping machinery is `xla::hlo_sharding_util`; the translation table comes from `DeviceGroupTileAssignment`, which [13.7 mesh→replica-group](mesh-replica-group-math.md) derives from the sharding tile assignment. Neuron influences only *which* sharding/mesh reaches here, via the LNC sharding constraint.
 
 ---
 
@@ -361,13 +361,13 @@ cdl = CollectiveDeviceList(IotaReplicaGroupList{num_groups, group_size, [reshape
 //   list is demanded — the post-2023 XLA compact encoding.
 ```
 
-The choice of group-vs-iota is made by the **caller** (compute handler / reshard) based on whether the device groups are an affine iota pattern; [13.7](mesh-replica-groups.md) owns turning mesh + sharding dims into either the `vector<vector<long>>` or the `IotaReplicaGroupList`. `CollectiveDeviceList` ctors: `0x9667ef0` / `0x1f7aa90` / `0x9623620`; `replica_groups()` accessor `0x96240f0`.
+The choice of group-vs-iota is made by the **caller** (compute handler / reshard) based on whether the device groups are an affine iota pattern; [13.7](mesh-replica-group-math.md) owns turning mesh + sharding dims into either the `vector<vector<long>>` or the `IotaReplicaGroupList`. `CollectiveDeviceList` ctors: `0x9667ef0` / `0x1f7aa90` / `0x9623620`; `replica_groups()` accessor `0x96240f0`.
 
 ### use_global_device_ids / constrain_layout
 
 The `CreateAllReduce` / `CreateAllGather` `CollectiveDeviceList` overloads take, after the device list: `bool constrain_layout`, `optional<long> channel_id`, `bool use_global_device_ids`. At the f1 all-reduce-groups call site (`@0x2aa8344`) the fixed immediates are `constrain_layout = false` and `use_global_device_ids = true` — i.e. default-creator collectives are emitted with **global device ids on**, which is required whenever a channel id is present and replica groups span partitions. `CreateCollectivePermute`/`CreateAllToAll` have no `use_global_device_ids` bool (not applicable).
 
-This pairs with [13.7](mesh-replica-groups.md)'s `GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids)` truth table: `(channel && global==true) ⇒ kFlattenedID` (flat global device ids). SPMD partition collectives therefore select `kFlattenedID`. (Tag: the true/false immediates are STRONG — read off the call-site constants; the group-mode mapping is CONFIRMED in [13.7](mesh-replica-groups.md).)
+This pairs with [13.7](mesh-replica-group-math.md)'s `GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids)` truth table: `(channel && global==true) ⇒ kFlattenedID` (flat global device ids). SPMD partition collectives therefore select `kFlattenedID`. (Tag: the true/false immediates are STRONG — read off the call-site constants; the group-mode mapping is CONFIRMED in [13.7](mesh-replica-group-math.md).)
 
 ---
 
@@ -393,7 +393,7 @@ This pairs with [13.7](mesh-replica-groups.md)'s `GetCollectiveOpGroupMode(has_c
 
 - [The SpmdPartitioner Driver & Options](spmd-partitioner-driver.md) — builds the creator in its ctor, seeds `next_channel_id`, runs the pass (13.1)
 - [SPMD Compute Handlers](spmd-compute-handlers.md) — dot/conv/reduce handlers that call these resharders and `ExchangeHaloAndGetValidData` (13.5)
-- [Mesh → Replica-Group Math](mesh-replica-groups.md) — `IotaReplicaGroupList`/`CollectiveDeviceList`, the `GetCollectiveOpGroupMode` truth table, group encoding (13.7)
+- [Mesh → Replica-Group Math](mesh-replica-group-math.md) — `IotaReplicaGroupList`/`CollectiveDeviceList`, the `GetCollectiveOpGroupMode` truth table, group encoding (13.7)
 - [Collective Stream-ID & Channel-ID Family](../hlo-opt/collective-stream-channel-id.md) — the Neuron `xla::hilo` re-stamping that runs *after* this emission
 - [CollectivePermute → AllGather Lowering](../hlo-opt/collectivepermute-to-allgather.md) — the downstream rewrite of f3 output (`Run @0x1f931d0`)
 - [Collective Combiners](../hlo-opt/collective-combiners.md) — the `xla::hilo` combiner cluster that consumes emitted collectives

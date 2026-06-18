@@ -741,5 +741,5 @@ page as a faithful description of OpenXLA's `ShardingPropagation` at the
 
 - [SPMD Partitioner Driver](spmd-partitioner-driver.md) — the consumer of this pass; runs immediately after, holds the Neuron deltas
 - [Sharding Algebra](sharding-algebra.md) — `HloSharding`, tile assignments, `MergeSharding` / `OpShardingRule`, the algebra surface this pass calls
-- [Neuron Constraint Seed](neuron-sharding-constraints.md) — how Neuron seeds the user `Sharding` annotations this pass propagates
+- [AwsNeuronLNCShardingConstraint and the SPMD↔LNC Coupling](lnc-sharding-constraint.md) — 13.9; how Neuron seeds and pins the user `Sharding` annotations this pass propagates
 - [SPMD Programming Model](../nki/spmd-programming-model.md) — `program_id` / `num_programs` / grid, the NKI-level view of distributed execution
