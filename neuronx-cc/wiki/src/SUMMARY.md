@@ -351,6 +351,11 @@
 - [MX-Matmul Legality Contract & Dequant](numerics/mx-matmul-legality.md)
 - [Numeric Negative Results](numerics/numeric-negative-results.md)
 
+# Part 10 — Activation & PWP
+
+- [The Piecewise-Polynomial Activation Model & Evaluation](activation/pwp-model.md)
+- [Activation Function Catalog & Function-Sets](activation/act-function-catalog.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
