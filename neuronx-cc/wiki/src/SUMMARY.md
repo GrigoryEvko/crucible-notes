@@ -175,6 +175,8 @@
 - [SPMD Programming Model — program_id / num_programs / grid](nki/spmd-programming-model.md)
 - [Tile / Tensor Abstract Data Model](nki/tile-tensor-model.md)
 - [Memref / View / Access Model (Concrete Tensors)](nki/memref-view-model.md)
+- [Affine-Range & Index/Mask Inference](nki/index-mask-inference.md)
+- [Mask / Predicate Algebra](nki/mask-predicate-algebra.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
