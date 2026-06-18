@@ -133,9 +133,9 @@ The headline deliverable. Opcode words shown as `0x10NN` (`NN` = L2 low byte). *
 | 40 | StreamTranspose | `0x69`+`0x6B` | `0x1069+0x106B` | = | = | 2 | DVE | `[≠][MB:2][COL2]` mask `0x69` (==StreamShuffle) |
 | 41 | ReadVarAddr | `0xB2`/178 | `0x10B2` | = | = | 1 | DMA | `[≠]` `generateMoveShape`. STRONG |
 | 42 | GenericIndirectLoad | — | (lowered→43) | = | = | lo | — | `[LOW]` → IndirectLoad |
-| 43 | IndirectLoad | `0xD6`/214 | `0x10D6`* | = | = | 1 | DMA | `[≠][COL2]` `generateIndirectLoadSave`; see NOTE-A |
+| 43 | IndirectLoad | `0xC4`/`0xD6` | `0x10C4/0x10D6`* | = | = | 1 | DMA | `[≠][SPLIT][COL2]` `generateIndirectLoadSave`; `0xC4` bound-checked / `0xD6` plain; see NOTE-A |
 | 44 | GenericIndirectSave | — | (lowered→45/46) | = | = | lo | — | `[LOW]` → IndirectSave(Accum) |
-| 45 | IndirectSave | `0xD6`/214 | `0x10D6`* | = | = | 1 | DMA | `[≠][COL2]` `generateIndirectLoadSave(isLoad)`; see NOTE-A |
+| 45 | IndirectSave | `0xC4`/`0xD6` | `0x10C4/0x10D6`* | = | = | 1 | DMA | `[≠][SPLIT][COL2]` `generateIndirectLoadSave(isLoad)`; `0xC4` bound-checked / `0xD6` plain; see NOTE-A |
 | 46 | IndirectSaveAccumulate | `0xCA`/202 | `0x10CA` | = | = | 1 | CCE/Pool/Act | `[≠]` scatter-add (`PseudoEmbeddingUpdate`) |
 | 47 | Collective | — | (base) | = | = | — | POOL | `[BASE]` base of {47,48,49,50} |
 | 48 | CollectiveCompute | `0xD9`/`0xDA` | `0x10D9/0x10DA` | = | = | 1 | POOL | `[≠][SPLIT]` fine `0xD9` / coarse `0xDA` |
@@ -201,7 +201,7 @@ The headline deliverable. Opcode words shown as `0x10NN` (`NN` = L2 low byte). *
 | 108 | DoWhile | — | (lowered) | = | = | lo | — | `[LOW]` lowered to branch IR. SPECULATIVE on enc |
 | 109 | TongaReduceMacroSymbolic | — | (macro) | = | = | lo | — | `[LOW]` macro/symbolic reduce carrier. SPECULATIVE |
 
-> ***\*NOTE-A (IndirectLoad/Save L2 byte) — internal disagreement, resolved.*** Two earlier readings disagree on the low byte for `generateIndirectLoadSave` @`0x1268c00`: one names `0xC4`, the COLLECT-set witness records `0xD6` (214, `PseudoRangeCheck`). The authoritative L2 is the integer **actually inserted into the set** — `0xD6` → `0x10D6` (the table uses this). The `0xC4` reading likely names the indirect-AP sub-word or an older constant. **STRONG** — a third witness (a NEFF hexdiff) would settle it definitively.
+> ***\*NOTE-A (IndirectLoad/Save L2 byte) — SPLIT, not a single value.*** **CORRECTION (#827 audit).** An earlier draft resolved this op to a single L2 `0xD6` and dismissed the competing `0xC4` reading as "the indirect-AP sub-word or an older constant." That is wrong: `generateIndirectLoadSave` @`0x1268c00` inserts **both** opcodes into the per-instruction `std::set<u32>` via genuine COLLECT-arm `_M_insert_unique` calls, selected at runtime by the **bound-check flag** `Inst+0x1ED`. The body branches on `cmp byte ptr [rax+0x1ED],0 ; jz loc_1268FD0` @`0x1268d0c`/`0x1268d13`: bound-check **set** → `movl $0xC4,-0xB0(%rbp)` @`0x1268f89` → `_M_insert_unique` @`0x1268f96` (the path guarded by `"Indirect DMA bound-check can only be on Pool engine"`); bound-check **clear** (the `jz` target) → `movl $0xD6,-0xB0(%rbp)` @`0x1269576` → `_M_insert_unique` @`0x1269583`. Both have identical set-insert status in the same function, so the op is `[SPLIT]` — `0xC4` (range/bound-checked) / `0xD6` (plain). **CONFIRMED — both `movl` + `_M_insert_unique` sites and the `Inst+0x1ED` guard byte-verified.**
 >
 > ***★NOTE-B (RangeSelect second word).*** The V3 `RangeSelect` encoder (`0x135f8c0`) may **append** a `0x9B` (`DveReadAccumulator`) drain word, so the practical emission is 2 words: primary `0xBC` (188) + accumulator-drain `0x9B`. The op opcode is `0xBC`. **STRONG.**
 >
@@ -223,7 +223,7 @@ The wire opcode is **never** a unique per-IT key; these collisions are real and 
 | `0x10CB` | CollectiveSend(49) == CollectiveRecv(50) | direction is an in-bundle field (encoder bodies byte-identical) |
 | `0x10A9` | CompareAndBranch(78) == UnconditionalBranch(79) | branch-condition presence |
 | `0x10D4` | Load(19) == Save(22) == DMACopy(32) | `IT==32` test inside `generateDynamicDMA` — 3-way |
-| `0x10D6` | IndirectLoad(43) == IndirectSave(45) | `isLoad` bool arg (per COLLECT witness; NOTE-A) |
+| `0x10D6` / `0x10C4` | IndirectLoad(43) == IndirectSave(45) | `isLoad` bool arg; each also forks `0xC4` (bound-checked) vs `0xD6` (plain) on `Inst+0x1ED` — NOTE-A |
 | `0x1024` | ReadActivationAccumulator(5) == ActivationReadAccumulator(101) | distinct bodies |
 | `0x1077` | GetRandState(58) == RandGetState(99) | — |
 | `0x1069` | StreamShuffle(39).MASK == StreamTranspose(40).MASK | data-move word differs (`0x6A` vs `0x6B`) |
