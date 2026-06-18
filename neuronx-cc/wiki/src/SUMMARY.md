@@ -188,6 +188,8 @@
 - [KernelBuilder.NeuronCodegen — the Forward Builder (Overview & Matmul)](nki/neuroncodegen-forward-builder.md)
 - [NeuronCodegen Tensor-Op Forward Builders](nki/neuroncodegen-tensorops.md)
 - [NeuronCodegen Memory / DMA Forward Builders](nki/neuroncodegen-memory.md)
+- [NeuronCodegen Collective Forward Builders](nki/neuroncodegen-collectives.md)
+- [NeuronCodegen Control / Scope / Predicate Emitters](nki/neuroncodegen-control.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
