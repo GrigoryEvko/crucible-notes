@@ -2,7 +2,7 @@
 
 > *All addresses on this page are virtual addresses (VMA) for neuronx_cc 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`; resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other builds will differ.*
 
-> **CORRECTION (audit #815) —** The "two collective predicates" reconstruction below conflates two *distinct* opcode-bitmask routines with *different* masks. `neuron::IsCollective` @0x1f7e010 (called by the enforcer #82) uses masks **`0x20000410`** (low band, indexed by `op` directly) + **`0x80011`** (high band, indexed by `op − 0x53`) plus `op == 7`, selecting opcodes **{0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}** — verified by `objdump` (`mov $0x20000410`, `mov $0x80011`, `sub $0x53`, `cmp $0x1d`). The masks `0x650` / `0x810000000000001` quoted in the pseudocode belong to the *stock* `hlo_query::NextChannelId` @0x8ab1ac0 (and the inlined checker #58 low band), where the `bt` is indexed by `op` **directly** (after `and $0xfffffffd`), not by `op − 0x1C`; the "bits {0,52,59} → opcodes {0x1c,0x50,0x57}" mapping is therefore incorrect. The "Shared substrate / two predicates", "high-band `−0x1C` rebase" GOTCHA, and self-verification item #5 need re-derivation against these three functions separately.*
+> **CORRECTION (audit #820) —** an earlier reconstruction labelled `neuron::IsCollective @0x1f7e010` with masks `0x650` + `0x810000000000001`. Those masks belong to `hlo_query::NextChannelId @0x8ab1ac0` and the inlined checker #58, **not** to `IsCollective`. Byte-disassembly (below) proves `IsCollective` uses masks **`0x20000410`** (low band, indexed by `op` directly) + **`0x80011`** (high band, indexed by **`op − 0x53`**) plus `op == 7`, selecting opcodes **{0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}**. The §"The collective predicates" section now gives each of the three predicates (`IsCollective`, `NextChannelId`, checker #58) separately with its own disassembly; self-verification item #5 is re-derived accordingly.*
 
 ## Abstract
 
@@ -14,7 +14,7 @@ This page reconstructs all three `Run` bodies, the shared collective predicates 
 
 For reimplementation, the contract is:
 
-- The **collective predicates**: the typed `xla::DynCast<HloCollectiveInstruction>` test (injector) and the three-band inline `HloOpcode` bitmask test (`op==7`, mask `0x650`, mask `0x810000000000001`) used by the enforcer, checker, and `NextChannelId`.
+- The **collective predicates**: the typed `xla::DynCast<HloCollectiveInstruction>` test (injector) and the inline `HloOpcode` bitmask tests — `neuron::IsCollective` (masks `0x20000410`/`0x80011`, high rebase `−0x53`; used by the enforcer) versus the stock `hlo_query::NextChannelId` family (masks `0x650`/`0x810000000000001`, high rebase `−0x1C`; used by `NextChannelId` and the inlined checker #58). The masks are predicate-specific and must not be cross-applied.
 - The **`stream_id` 2-way partition**: discover TP and FSDP exemplar replica-groups from `collective_type`, then stamp `'0'`/`'1'` on every collective by `ReplicaGroupsEqual`.
 - The **channel-id uniqueness algorithm**: first-seen-wins via `flat_hash_set<optional<long>>`, collisions renumbered monotonically from `NextChannelId(module)`.
 - The **checker's read-only contract**: always returns `{OK, false}`, reports presence through `*(*(arg2)+8)`.
@@ -45,26 +45,70 @@ All three passes derive `xla::HloPassInterface`; `name()` is vtable slot `vptr+0
 
 > **NOTE —** the checker lives in namespace `xla::`, not `xla::hilo::` like the two transforms. The mangled symbols (`_ZN3xla25CollectiveStreamIdChecker3Run…` vs `_ZN3xla4hilo32NeuronCollectiveStreamIdInjector3Run…`) confirm this. The "checker" predates the Neuron `hilo` collective-coalescing cluster; the injector/enforcer are the newer rewrite half of the family.
 
-### The two collective predicates
+### The collective predicates — three byte-proven variants
 
-A "collective" must be recognised before any field is touched. Two distinct implementations exist, equivalent in intent:
+A "collective" must be recognised before any field is touched. The family contains **one typed predicate** and **two distinct bitmask predicates** with *different* masks and *different* high-band indexing. The earlier version of this page collapsed all three into a single `op==7 / 0x650 / 0x810…1` routine and attributed those masks to `neuron::IsCollective`; that conflation is wrong (see CORRECTION below). Each predicate is byte-disassembled separately here.
 
 **Typed route — injector only.** `xla::DynCast<HloCollectiveInstruction>(inst)`; non-null ⇒ collective. This is class-based (RTTI-style cross-cast inside the HLO hierarchy) and therefore the stronger test — it admits exactly the instructions that subclass `HloCollectiveInstruction`.
 
-**Inline bitmask route — enforcer, checker, and `NextChannelId`.** Reads `opcode = *(u8*)(inst+0x14)` (the `HloInstruction::opcode_` byte) and tests three opcode bands. Decoded from the inline masks (CERTAIN mask values; opcode→name mapping MED, see [Part 13](../part13/channel-id-replica-group.md)):
+All three bitmask predicates read `opcode = *(u8*)(inst+0x14)` (the `HloInstruction::opcode_` byte), short-circuit on `op == 7`, then test a **low band** (`bt` on a 32-bit mask, indexed by `op` directly) and a **high band** (`bt` on a 64-bit mask, indexed by a *rebased* opcode). What differs is the mask values and the high-band rebase constant.
+
+**Predicate A — `neuron::IsCollective` @0x1f7e010 (called by the enforcer #82).** Masks `0x20000410` (low) and `0x80011` (high), high band indexed by `op − 0x53`:
 
 ```c
-bool IsCollectiveOpcode(uint8_t op):       // neuron::IsCollective @0x1f7e010, inlined in #82/#58/NextChannelId
-    if op == 7:                            // kAllReduce — always a collective
+bool neuron::IsCollective(uint8_t op):      // @0x1f7e010 — masks 0x20000410 / 0x80011, high rebase −0x53
+    if op == 7:                             // kAllReduce — always a collective
         return true
-    if op > 3 && op <= 0x0A:               // low band: bt 0x650, op
-        return (0x650 >> op) & 1            // bits {4,6,9,10} set (all-gather / all-to-all / permute / broadcast class)
-    if op >= 0x1C && op <= 0x57:           // high band: bt 0x810000000000001, (op - 0x1C)
-        return (0x810000000000001 >> (op - 0x1C)) & 1   // bits {0,52,59} set (async-collective / reduce-scatter / send-recv band)
-    return false
+    if op <= 0x1D:                          //   cmp $0x1d, jbe → low band
+        if op <= 3: return false            //   cmp $0x3, ja
+        return (0x20000410 >> op) & 1       // low band: shr 0x20000410, op (op DIRECT); bits {4,0xa,0x1d}
+    // high band, op > 0x1D:
+    if (op - 0x53) >= 0x14: return false    //   cmp $0x14, cmovae 0 — range guard (clamps op ≤ 0x66)
+    return (0x80011 >> (op - 0x53)) & 1     // high band: shr 0x80011, (op − 0x53); bits {0,4,0x13} → op {0x53,0x57,0x66}
+    // ⇒ selects {0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}
 ```
 
-> **GOTCHA —** the high-band mask is indexed by `op − 0x1C`, not `op`. The set bits `{0, 52, 59}` correspond to opcodes `0x1C`, `0x50`, `0x57`. A reimplementation that tests `bt 0x810000000000001, op` directly (forgetting the `−0x1C` rebase) will misclassify every high-band opcode. (Bit positions re-derived from the immediate `580964351930793985` = `0x810000000000001`; CERTAIN on the mask, MED on each opcode's name.)
+Disassembly evidence: `movzbl 0x14(%rdi),%ecx` · `cmp $0x7,%cl; je` · `cmp $0x1d,%cl; jbe` · low: `mov $0x20000410,%eax; shr %cl,%rax; and $0x1` · high: `sub $0x53,%ecx; mov $0x80011,%eax; shr %cl,%rax; and $0x1; cmp $0x14,%cl; cmovae %edx,%eax`. The low band uses `shr` indexed by `op` **directly**; the high band rebases by **`−0x53`**, not `−0x1C`.
+
+**Predicate B — `hlo_query::NextChannelId` @0x8ab1ac0 (stock XLA helper, inlined collective scan).** Masks `0x650` (low) and `0x810000000000001` (high), high band indexed by `op − 0x1C`, plus extra opcode comparisons:
+
+```c
+bool isCollective_NextChannelId(uint8_t op):  // inlined in @0x8ab1ac0 — masks 0x650 / 0x810000000000001
+    if op == 7: return true
+    if op <= 0xA:                              //   cmp $0xa, ja → high band
+        if op <= 3: return false               //   cmp $0x3, ja
+        return (0x650 >> op) & 1               // low band: bt 0x650, op (op DIRECT); bits {4,6,9,0xa}
+    // high band, op > 0xA:
+    r = op - 0x1C                              //   lea -0x1c(%rax),%r12d
+    if r <= 0x3B && ((0x810000000000001 >> r) & 1):  // bt 0x810000000000001, (op − 0x1C); bits {0,0x34,0x3b} → op {0x1c,0x50,0x57}
+        return true
+    if (op & ~2) == 0x1D: return true          //   and $0xfffffffd; cmp $0x1d  → op ∈ {0x1d,0x1f}
+    if op == 0x53: return true                 //   cmp $0x54 jbe; cmp $0x52 ja
+    if (op - 0x66) <= 1: return true           //   sub $0x66; cmp $0x1  → op ∈ {0x66,0x67}
+    return false
+    // ⇒ selects {0x4,0x6,0x7,0x9,0xa,0x1c,0x1d,0x1f,0x50,0x53,0x57,0x66,0x67}
+```
+
+Disassembly evidence: `movabs $0x810000000000001,%r10; mov $0x650,%r9d` (both masks materialised up-front into registers) · `movzbl 0x14(%rcx),%eax` · `cmp $0x7; je` · `cmp $0xa; ja` · low: `bt %rax,%r9` (r9 = `0x650`, indexed by `op`) · high: `lea -0x1c(%rax),%r12d; cmp $0x3b,%r12b; bt %r12,%r10` (r10 = `0x810000000000001`, indexed by **`op − 0x1C`**), then `and $0xfffffffd,%r12d; cmp $0x1d`, `cmp $0x54`/`cmp $0x52`, `sub $0x66; cmp $0x1`.
+
+**Predicate C — inlined checker #58 @0x1e8c800.** Same masks as NextChannelId (`0x650` / `0x810000000000001`) and the same `op − 0x1C` high rebase, but *without* the trailing `0x1d/0x1f`, `0x53`, `0x66/0x67` comparisons — only the two-band `bt` core plus `op == 7`:
+
+```c
+bool isCollective_checker58(uint8_t op):   // inlined in 0x1e8c800 — masks 0x650 / 0x810000000000001
+    if op == 7: return true
+    if op <= 0xA:                          //   cmp $0xa, ja
+        if op <= 3: return false           //   cmp $0x3, ja
+        return (0x650 >> op) & 1           // low band: bt 0x650, op (op DIRECT)
+    r = op - 0x1C                          //   sub $0x1c,%eax
+    return (r <= 0x3B) && ((0x810000000000001 >> r) & 1)  // bt 0x810000000000001, (op − 0x1C)
+    // ⇒ selects {0x4,0x6,0x7,0x9,0xa,0x1c,0x50,0x57}
+```
+
+Disassembly evidence: `movzbl 0x14(%rbx),%eax; cmp $0x7,%al; je` · `cmp $0x3,%al; ja` · low: `mov $0x650,%edx; bt %rax,%rdx` (op direct) · high: `sub $0x1c,%eax; cmp $0x3b,%al; movabs $0x810000000000001,%rdx; bt %rax,%rdx` (op − 0x1C). After the `bt` the code falls straight into the `_Hash_bytes`/`memcmp "stream_id"` probe — no further opcode comparisons.
+
+> **GOTCHA — the high-band rebase constant is predicate-specific.** `neuron::IsCollective` rebases by **`−0x53`** (mask `0x80011`); the two stock-style predicates (`NextChannelId`, checker #58) rebase by **`−0x1C`** (mask `0x810000000000001`). A reimplementation that copies one predicate's mask with the other's rebase — or that drops the rebase entirely and tests `bt mask, op` — misclassifies every high-band opcode. The masks are also *not* interchangeable: `0x20000410`/`0x80011` belong only to `IsCollective`; `0x650`/`0x810000000000001` belong only to the NextChannelId-family scan.
+
+> **CORRECTION (audit #820, supersedes #815) —** the earlier single-routine reconstruction labelled `neuron::IsCollective @0x1f7e010` with masks `0x650` + `0x810000000000001` and a high-band `op − 0x1C` rebase (bits `{0,52,59}` → opcodes `{0x1c,0x50,0x57}`). Those masks and that rebase actually belong to `hlo_query::NextChannelId @0x8ab1ac0` and the inlined checker #58 — **not** to `IsCollective`. Byte-disassembly proves `IsCollective` uses entirely different masks `0x20000410` (low, `op` direct) + `0x80011` (high, **`op − 0x53`**) plus `op == 7`, selecting `{0x4,0x7,0xa,0x1d,0x53,0x57,0x66}`. The three predicates are now broken out separately above with their own disassembly evidence.
 
 ### The `stream_id` frontend attribute
 
@@ -229,7 +273,7 @@ function Enforcer_Run(module):                          // 0x1fecb40
 
 ### The next-id source: `hlo_query::NextChannelId` (`0x8ab1ac0`, CERTAIN)
 
-`NextChannelId` walks every instruction of every computation; for each collective-class opcode whose `channel_id` is engaged (`*(u8*)(inst+0x210) != 0`, value at `inst[+0x208]`) it tracks `r8 = max(r8, channel_id + 1)`, starting from `r8 = 1`. It returns `max(existing channel_id) + 1` with floor 1. It uses the *same* inline opcode bitmasks as the predicate above — its `constants_used` table contains `1616` (`0x650`) and `580964351930793985` (`0x810000000000001`), confirming the shared mask values. So the new-id space is `[NextChannelId, ∞)`: strictly above every pre-existing id.
+`NextChannelId` walks every instruction of every computation; for each collective-class opcode whose `channel_id` is engaged (`*(u8*)(inst+0x210) != 0`, value at `inst[+0x208]`) it tracks `r8 = max(r8, channel_id + 1)`, starting from `r8 = 1`. It returns `max(existing channel_id) + 1` with floor 1. Its inlined collective predicate is **Predicate B** above (masks `0x650` / `0x810000000000001`, high band rebased by `op − 0x1C`) — *not* the `neuron::IsCollective` mask family the enforcer's own loop uses. The masks are materialised up-front in the prologue (`movabs $0x810000000000001,%r10; mov $0x650,%r9d`), and its `constants_used` table contains `1616` (`0x650`) and `580964351930793985` (`0x810000000000001`). So the new-id space is `[NextChannelId, ∞)`: strictly above every pre-existing id.
 
 ### Why it is correct (CERTAIN)
 
@@ -271,7 +315,7 @@ function Checker_Run(module, arg2):                     // 0x1e8c800
     bool* found = arg2 ? *(bool**)(arg2 + 8) : null;    // out-param derived from 2nd Run arg (see below)
     for comp in module.computations():
         for inst in comp.instructions():
-            if !IsCollectiveOpcode(inst.opcode_): continue          // inline bitmask (op==7 / 0x650 / 0x81…1)
+            if !isCollective_checker58(inst.opcode_): continue      // Predicate C: op==7 / 0x650 (op direct) / 0x81…1 (op−0x1C)
             map = inst[+0x30];                           // frontend_attributes; null ⇒ use kEmptyRare, skip
             map.SyncMapWithRepeatedField();
             if map.size == 0: continue                   // empty map ⇒ skip
@@ -311,7 +355,7 @@ The five strongest claims, re-checked against the binary:
 2. **Channel-ids are renumbered from `NextChannelId(module)`** — VERIFIED. Enforcer's callee list contains `hlo_query::NextChannelId` (`0x8ab1ac0`) as its first call, plus `FlatHashSetPolicy<optional<long>>::prepare_insert` and `set_channel_id`. NextChannelId's `constants_used` includes `1` (the floor) and the opcode masks. CERTAIN.
 3. **The checker is read-only and always returns {OK,false}** — VERIFIED. Checker callees are only sync/hash/memcmp/stack-check; no setter or allocator; return site `0x1e8c9e3` writes 0/0. CERTAIN.
 4. **The `collective_type` vocabulary is exactly the four TP/FSDP literals** — VERIFIED. Stack-built immediates decode to `collective_type`, `tp_all_gather`, `fsdp_all_gather` (and the paired `*_reduce_scatter` family); the `coalesce_fsdp_*` producer symbols confirm the same vocabulary. CERTAIN on the four values.
-5. **Opcode bitmasks `0x650` / `0x810000000000001`** — VERIFIED as immediates (`1616` and `580964351930793985`) in both `IsCollective`-using passes and `NextChannelId`. The high-band `−0x1C` rebase and bit positions {0,52,59} are recomputed directly. CERTAIN on masks; the opcode→collective-name mapping for the non-`kAllReduce` bits is **INFERRED** (MED) — the `HloOpcode` enum table was not transcribed on this page; see [Part 13](../part13/channel-id-replica-group.md).
+5. **The three bitmask predicates use predicate-specific masks and high-band rebases** — VERIFIED by separate disassembly. `neuron::IsCollective @0x1f7e010` uses `mov $0x20000410` (low, `op` direct) + `sub $0x53,%ecx; mov $0x80011` (high, `op − 0x53`, guard `cmp $0x14,%cl; cmovae`) + `cmp $0x7`, selecting `{0x4,0x7,0xa,0x1d,0x53,0x57,0x66}`. `hlo_query::NextChannelId @0x8ab1ac0` and the inlined checker #58 @0x1e8c800 instead use `0x650` (low, `op` direct) + `0x810000000000001` (high, `lea -0x1c`/`sub $0x1c` → `op − 0x1C`, guard `cmp $0x3b`); NextChannelId adds the trailing `(op & ~2)==0x1d`, `op==0x53`, `(op−0x66)≤1` comparisons (full set `{0x4,0x6,0x7,0x9,0xa,0x1c,0x1d,0x1f,0x50,0x53,0x57,0x66,0x67}`), while checker #58 stops at the two-band `bt` core (set `{0x4,0x6,0x7,0x9,0xa,0x1c,0x50,0x57}`). CERTAIN on all masks, rebases, and selected opcode *values*; the opcode→collective-*name* mapping is **INFERRED** (MED) — the `HloOpcode` enum table was not transcribed on this page; see [Part 13](../part13/channel-id-replica-group.md).
 
 **INFERRED / not traced:** the `collective_type` *producer* pass (upstream of hlo-opt); the checker's exact `arg2` struct type (indirect caller); the precise opcode names behind mask bits other than `op==7` = `kAllReduce`.
 
