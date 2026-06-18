@@ -348,6 +348,8 @@
 - [Cast-Elimination Numeric Passes](numerics/cast-elimination.md)
 - [Mixed-Precision Accumulation & Accumulator-dtype](numerics/mixed-precision-accumulation.md)
 - [MX Microscaling: Quantize, Block-Scaling & E8M0](numerics/mx-microscaling.md)
+- [MX-Matmul Legality Contract & Dequant](numerics/mx-matmul-legality.md)
+- [Numeric Negative Results](numerics/numeric-negative-results.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
