@@ -55,7 +55,7 @@ This pass is link #3 of a four-link chain. [`PreserveControlDeps`](control-dep-r
 
 > **NOTE —** the word "tuple" in the pass name refers to the import-side `mhlo.tuple`, **not** an HLO `kTuple`. The HLO pass (4.15) emits flat operands; the tuple appears only after the MHLO/StableHLO round-trip. This pass exists purely to undo that import artifact, restoring the flatness the HLO pass produced.
 
-The flatten in #3 is the prerequisite for #4: `printControlDeps` iterates the CC's operands to emit one `.add_dep_edge` per predecessor. If the predecessors stayed bundled inside one `mhlo.tuple` operand, the printer would see a single tuple operand instead of `k` predecessor values. (Pipeline coupling CERTAIN — shared `isControlDep` recognizer; printer body detail HIGH, owned by 4.15.) See [Part 5 — Penguin dep edges](../penguin/dependency-edges.md) for how `.add_dep_edge` becomes a BIR scheduling constraint.
+The flatten in #3 is the prerequisite for #4: `printControlDeps` iterates the CC's operands to emit one `.add_dep_edge` per predecessor. If the predecessors stayed bundled inside one `mhlo.tuple` operand, the printer would see a single tuple operand instead of `k` predecessor values. (Pipeline coupling CERTAIN — shared `isControlDep` recognizer; printer body detail HIGH, owned by 4.15.) See [Part 5 — Penguin dep edges](../penguin/dependency-model.md) for how `.add_dep_edge` becomes a BIR scheduling constraint.
 
 ---
 
@@ -225,7 +225,7 @@ void replaceTuples(SmallVectorImpl<Operation*>& worklist):    // 0x20f5d40
 - **Dead-tuple GC runs last.** Each recorded tuple/GTE op is erased only after all CCs are rebuilt, and only if all its results are now use-free — so a tuple still consumed elsewhere survives.
 - **Robustness.** Both SmallVectors have `grow_pod` spill paths; the op-name registry lookup `report_fatal_error`s if `mhlo.custom_call` is unknown (i.e. the MHLO dialect must be loaded). (CONFIRMED — string `"Building op `"` + `"mhlo.custom_call"` present in binary.)
 
-> **GOTCHA —** the side-effect flag the HLO pass set on the original control-dep CC (4.15) is **not** explicitly re-asserted across this rebuild — only `call_target_name` is copied; S's attribute dictionary is not. Correctness still holds because the data operand still feeds the consumer and ordering is carried by the now-flat predecessor operand edges. Whether the flattened CC's `has_side_effect` after `mhlo::CustomCallOp::build` matters to the downstream Penguin scheduler was **not traced** into the builder (HIGH-confidence observation; flagged for [Part 5](../penguin/dependency-edges.md)).
+> **GOTCHA —** the side-effect flag the HLO pass set on the original control-dep CC (4.15) is **not** explicitly re-asserted across this rebuild — only `call_target_name` is copied; S's attribute dictionary is not. Correctness still holds because the data operand still feeds the consumer and ordering is carried by the now-flat predecessor operand edges. Whether the flattened CC's `has_side_effect` after `mhlo::CustomCallOp::build` matters to the downstream Penguin scheduler was **not traced** into the builder (HIGH-confidence observation; flagged for [Part 5](../penguin/dependency-model.md)).
 
 > **NOTE —** the disasm seeds the `getStringAttr` Twine with the literal `"AwsNeuronControlDep"` plus a length byte `3`. The `3` is the `Twine` kind tag (`CStringKind`/PtrAndLength packing), **not** a string length — the C-string is the full 19-char `"AwsNeuronControlDep"`, the same literal `isControlDep` compares against.
 
@@ -324,4 +324,4 @@ All strings below CONFIRMED present in `hlo2penguin`; all symbol addresses CONFI
 
 - [Control-Dependency Reification](control-dep-reification.md) — Part 4.15, the HLO-side `PreserveControlDeps` pass that reifies control edges into the flat custom-call this pass restores after the MHLO/StableHLO round-trip.
 - [hlo2penguin MLIR Pipeline Order & Entry Flow](hlo2penguin-mlir-pipeline.md) — where this flatten pass sits in the dialect pipeline.
-- [Penguin Dependency Edges](../penguin/dependency-edges.md) — Part 5, how the emitted `.add_dep_edge` becomes a BIR ordering constraint, and whether the side-effect flag still matters.
+- [Penguin Dependency Edges](../penguin/dependency-model.md) — Part 5, how the emitted `.add_dep_edge` becomes a BIR ordering constraint, and whether the side-effect flag still matters.
