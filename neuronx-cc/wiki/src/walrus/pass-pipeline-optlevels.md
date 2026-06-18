@@ -73,7 +73,7 @@ After whichever optlevel pipeline runs, the driver *always* invokes `sub_805870`
    branch_hint → … → codegen (order 40)
 ```
 
-`coloring_allocator_reg` (the `REG_Allocator`, a Chaitin–Briggs colorer of `bir::Register*`) is optlevel-**independent** — it always runs here. Its algorithm is out of scope for this page; see [8.21](alt-allocators.md). The point for the pipeline reader is that the always-run tail makes every optlevel pipeline a *prefix*: the level only chooses the SBUF/PSUM/DRAM allocation strategy and the surrounding optimization passes; register allocation and codegen are constant across all levels.
+`coloring_allocator_reg` (the `REG_Allocator`, a Chaitin–Briggs colorer of `bir::Register*`) is optlevel-**independent** — it always runs here. Its algorithm is out of scope for this page; see [8.21](alt-allocators-dma-opt.md). The point for the pipeline reader is that the always-run tail makes every optlevel pipeline a *prefix*: the level only chooses the SBUF/PSUM/DRAM allocation strategy and the surrounding optimization passes; register allocation and codegen are constant across all levels.
 
 ---
 
@@ -145,7 +145,7 @@ coloring_allocator_dram_debug → assign_hwdge_engine → alloc_queues → chain
 lnc_barriercheck
 ```
 
-The allocator and pipeline mechanics are out of scope here (see [8.21](alt-allocators.md)). **CONFIRMED** (pass ordering from `sub_809580`).
+The allocator and pipeline mechanics are out of scope here (see [8.21](alt-allocators-dma-opt.md)). **CONFIRMED** (pass ordering from `sub_809580`).
 
 ---
 
@@ -331,5 +331,5 @@ There is no live solver, no dead solver stub, and no removed-Z3 symbol residue (
 
 - [3.10 The Opt-Level Planes](../frontend/opt-level-planes.md) — the four incompatible "opt level" dials; the user `-O` string vs this walrus integer (plane 4).
 - [8.1 The Backend Pass Registry](backendpass-registry.md) — `BackendPass` / `ContainerPass` / `*ForkPass`, `GeneratorRegistration`, and the 150 register-name → 121 class map these pipelines pull from.
-- [8.21 The Alternative Allocators](alt-allocators.md) — `REG_Allocator`, `LinearScanAllocator`, `BestFitMemoryManager`, and the coloring family the optlevels select *(planned)*.
+- [8.21 The Alternative Allocators](alt-allocators-dma-opt.md) — `REG_Allocator`, `LinearScanAllocator`, `BestFitMemoryManager`, and the coloring family the optlevels select *(planned)*.
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — where `WalrusDriver` (one Job) and `--walrus-passes` sit in the driver job schedule.

@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Under **LNC** (Logical Neuron Core) sharding a kernel is split across `lnc_size` cooperating cores, each its own `bir::Module` (see [`lnc_splitter`](lnc-splitter.md), 8.30). Two cores that touch the same shared buffer with no `CoreBarrier` provably between them are an inter-core data race. This page is the checker that proves the barriers are present. It is the **cross-core twin** of the intra-core racecheck (8.42, in-flight): racecheck orders ops on one core with semaphore vector-clocks; barriercheck orders ops *across* cores with `CoreBarrier`-rendezvous **index ranges**. Both share the `PhysicalAccessPattern` geometry and nothing else.
+Under **LNC** (Logical Neuron Core) sharding a kernel is split across `lnc_size` cooperating cores, each its own `bir::Module` (see [`lnc_splitter`](lnc-splitter.md), 8.30). Two cores that touch the same shared buffer with no `CoreBarrier` provably between them are an inter-core data race. This page is the checker that proves the barriers are present. It is the **cross-core twin** of the intra-core racecheck ([8.42](racecheck.md)): racecheck orders ops on one core with semaphore vector-clocks; barriercheck orders ops *across* cores with `CoreBarrier`-rendezvous **index ranges**. Both share the `PhysicalAccessPattern` geometry and nothing else.
 
 The checker has three pieces, in pipeline order. First, **`BarrierRanger`** assigns every instruction, per engine, an integer band `[first, second]` = `[latest preceding CoreBarrier index, earliest following CoreBarrier index]` — the inter-barrier *epoch* the instruction lives in. It computes the band with two monotone dataflow sweeps over a per-engine happens-before DAG whose `CoreBarrier` (`InstructionType == 0x57 == 87`, see [Opcode Master](opcode-master.md), 8.33) nodes carry sequential indices. Second, **`checkBarrierRangeIntersect`** is the disjointness predicate: two ops are barrier-separated on an engine iff their bands are disjoint (`hi1 <= lo2 || lo1 >= hi2`); a missing-barrier race is flagged only when the bands **overlap on every engine**. The `compareTwoAPs` driver gates this with cross-core-ID, MemoryLocationSet, and Boost.ICL partition+address interval filters first. Third, the **`LncVerifier`** pass (the `lnc_verifier` BackendPass) is the structural-legality gate that runs *before* the race check: 14 `NeuronAssertion`s (ErrorCodes 1187–1203) proving the per-core module set is a legal, consistent split — the same shard-id count, barrier inventory, and shared-tensor map on every core.
 
@@ -350,7 +350,7 @@ The concretized checker @ `0x16772a0` runs after the split, when the vector hold
 | Name | Relationship |
 |---|---|
 | `lnc_splitter` / `expand_replication` (8.30) | the producer: clones the symbolic module ×`lnc_size` and concretizes; `LncVerifier` is its correctness oracle |
-| racecheck (8.42, in-flight) | the intra-core twin — semaphore vector-clocks + `doAccessesOverlap`, vs this checker's barrier ranges + icl intersect |
+| racecheck ([8.42](racecheck.md)) | the intra-core twin — semaphore vector-clocks + `doAccessesOverlap`, vs this checker's barrier ranges + icl intersect |
 | Execution & Sync Model (1.14) | the dynamic `CoreBarrier` rendezvous this pass models statically as an index band |
 | `birverifier` (per-op) | pipeline-order sibling — checks each instruction's L1 legality on one module; shares no code with `LncVerifier` |
 

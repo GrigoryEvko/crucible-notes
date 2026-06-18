@@ -8,7 +8,9 @@ This page documents the **byte-output tail** of the libwalrus encoder: the point
 
 The shape is unusual and worth stating up front: there is **no central emit loop that fans out per engine**. The encoder is template-expanded — the same write block is inlined into ~85 distinct `CoreV{2,3,4}GenImpl::visitInst<Op>` / `generate<Op>` bodies. Each body, after building its bundle, calls `findBin(this, Inst)` keyed on *the instruction's own* `bir::EngineInfo` (read from `Inst+0x90`), gets back a `FILE*`, and `fwrite`s 64 bytes to it. The per-engine separation is therefore a **per-instruction map lookup**, not a driver responsibility. The driver ([IRVisitor `visit(Module&)`](#the-driver--program-order-walk)) is a flat program-order walk; routing is incidental to each write.
 
-The same per-`visitInst` block carries a 4-way `CodeGenMode` switch. `GENERATE_ISACODE` (mode 1) is the write path above. `RUN_ISA_CHECKS` (mode 2) builds the identical bundle on the stack and runs the L2 wire validator instead of writing — a dry run with no file. `COLLECT_OPCODES` (mode 0) skips the bundle entirely and records the instruction's **L2 opcode integer** (the `NEURON_ISA_TPB_OPCODE` enum value) into a per-instruction `std::set<unsigned int>`; that set is what `LowerDVE` reads to size the DVE activation-function table to exactly the opcodes a program references. Any fourth value is a hard error naming all three modes.
+The same per-`visitInst` block carries a 4-way `CodeGenMode` switch. `RUN_ISA_CHECKS` (mode 1) is the production write path above — it builds the bundle, `fwrite`s it, and enqueues it for the deferred L2 wire-validation pass. `GENERATE_ISACODE` (mode 2) also builds and `fwrite`s the bundle but does *not* enqueue it (verifier-only path). `COLLECT_OPCODES` (mode 0) skips the bundle entirely and records the instruction's **L2 opcode integer** (the `NEURON_ISA_TPB_OPCODE` enum value) into a per-instruction `std::set<unsigned int>`; that set is what `LowerDVE` reads to size the DVE activation-function table to exactly the opcodes a program references. Any fourth value is a hard error naming all three modes.
+
+> **CORRECTION —** an earlier draft of this page labelled the write+census arm `GENERATE_ISACODE` (mode 1) and the validator-dry-run arm `RUN_ISA_CHECKS` (mode 2) — the mode↔name mapping was **inverted**. The codegen driver page ([8.35 — Codegen Driver and the CodeGenMode Mechanism](codegen-driver.md)) establishes the CONFIRMED ordinals from the branch order in `generateLoadWeights` (`0x1258548`: `cmp r14d,1` → mode 1 = `RUN_ISA_CHECKS`; `cmp r14d,2` → mode 2 = `GENERATE_ISACODE`; `test r14d` → mode 0 = `COLLECT_OPCODES`). The rodata error string lists the *names* human-readable as `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES` (i.e. 2, 1, 0) — **not** in numeric order. The production codegen emit pass selects mode 1 (`RUN_ISA_CHECKS`); mode 2 (`GENERATE_ISACODE`) is reached only by the Verifier's own Generator. The mode labels below have been corrected to match 8.35.
 
 For reimplementation, the contract is:
 
@@ -23,7 +25,7 @@ For reimplementation, the contract is:
 | **File opener** | `Generator::createBin(bir::EngineInfo)` @ `0x11f3db0` (`fopen(path,"wb")`) |
 | **Per-inst debug dump** | `Generator::createInstBin(bir::Instruction&)` @ `0x11f12b0` |
 | **Driver** | `IRVisitor<CoreV2Gen,void>::visit(bir::Module&)` @ `0x11d6dd0` |
-| **Mode selector** | `CodeGenMode` u32 @ `Generator+0x270` — `{0,1,2}` = COLLECT / GENERATE / CHECKS |
+| **Mode selector** | `CodeGenMode` u32 @ `Generator+0x270` — `{0,1,2}` = COLLECT_OPCODES / RUN_ISA_CHECKS / GENERATE_ISACODE (see [8.35](codegen-driver.md)) |
 | **Engine→FILE\* map** | `DenseMap<bir::EngineInfo,_IO_FILE*>` @ `Generator+0x58` |
 | **COLLECT map** | `DenseMap<bir::Instruction const*, std::set<unsigned int>>` @ `Generator+0x20` |
 | **DVE consumer** | `LowerDVE::findCoreDVETable` @ `0x116f8a0` → `sub_116F3A0` → `checkMissingOpcodes` @ `0x116b260` |
@@ -42,7 +44,7 @@ Every `GENERATE_ISACODE`-capable `visitInst<Op>` ends with the same byte-output 
 function visitInst<Op>(Generator *this, bir::Instruction *inst):   // canonical: visitInstHalt @0x122d620
     mode = *(u32*)(this + 0x270)                  // CodeGenMode @this+156 dwords
 
-    if mode == GENERATE_ISACODE:                  // == 1
+    if mode == RUN_ISA_CHECKS:                    // == 1  (production emit path)
         bundle = this->stagingVec.emplace_back()  // SmallVector<array<u8,64>> @this+0x78
         memset(bundle, 0, 64)                      // 4x movups xmm0
         this->vtbl[72](this, bundle, &opcode)      // setupHeader: byte0=opcode, byte1=0x10 — see isa/instruction-bundle
@@ -60,7 +62,7 @@ function visitInst<Op>(Generator *this, bir::Instruction *inst):   // canonical:
         ++ perEngineCount[*(EngineInfo*)(inst+0x90)] // DenseMap<EngineInfo,u32> @this+0x1C8 (this+456)
         perEngineList[*(EngineInfo*)(inst+0x90)].push_back(inst)  // DenseMap<EngineInfo,vector<Inst*>> @this+0x08
 
-    else if mode == RUN_ISA_CHECKS:               // == 2
+    else if mode == GENERATE_ISACODE:             // == 2  (verifier-only path)
         <build same bundle ON STACK, setupHeader, field writes>
         this->vtbl[0](this, inst, bundle)          // L2 wire validator — NO fwrite, NO file
 
@@ -73,7 +75,7 @@ function visitInst<Op>(Generator *this, bir::Instruction *inst):   // canonical:
         updateBranchHintTargetPC(this, inst)       // branch-target bookkeeping; return
 ```
 
-The four arms are the literal if-ladder in `visitInstHalt` (lines 24–95): `v3 == 1` GENERATE, `v3 == 2` CHECKS, `v3` (non-zero) error, `else` (`v3 == 0`) COLLECT. The opcode for Halt is the constant `161` (`0xA1`), visible both as the GENERATE `setupHeader` argument (`LOBYTE(v16[0]) = -95` = `0xA1`, line 39) and as the COLLECT integer (`LODWORD(v15[0]) = 161`, line 92) — the same value taken twice, which is the cross-arm invariant (see [the L2 layer](#collect_opcodes--the-l2-coverage-layer)).
+The four arms are the literal if-ladder in `visitInstHalt` (lines 24–95): `v3 == 1` RUN_ISA_CHECKS (the write path), `v3 == 2` GENERATE_ISACODE (build-on-stack + `vtbl[0]` validator, no fwrite — verifier-only), `v3` (non-zero) error, `else` (`v3 == 0`) COLLECT_OPCODES. The opcode for Halt is the constant `161` (`0xA1`), visible both as the RUN_ISA `setupHeader` argument (`LOBYTE(v16[0]) = -95` = `0xA1`, line 39) and as the COLLECT integer (`LODWORD(v15[0]) = 161`, line 92) — the same value taken twice, which is the cross-arm invariant (see [the L2 layer](#collect_opcodes--the-l2-coverage-layer)).
 
 > **QUIRK —** the per-engine *separation* is done inside the per-instruction emit block by `findBin`, not by the driver. A reimplementation that fans the driver out into one loop per engine and writes a homogeneous stream will produce the wrong program order: real `.bin` files interleave instructions for one engine in the order the *single* program-order walk visited them, with each write routed by the instruction's pinned `EngineInfo`.
 
@@ -94,11 +96,11 @@ The bundle is built into a `SmallVector<std::array<uchar,64>>` at `this+0x78` (`
 | Value | Mode | Sink | Bytes? |
 |---|---|---|---|
 | `0` | `COLLECT_OPCODES` | `set<u32>` insert into `DenseMap<Inst*,set<u32>>` @`this+0x20` | none |
-| `1` | `GENERATE_ISACODE` | 64-byte bundle → `findBin` → `fwrite(0x40)` | 64/bundle |
-| `2` | `RUN_ISA_CHECKS` | build bundle, run `vtbl[0]` L2 validator (dry run) | none |
+| `1` | `RUN_ISA_CHECKS` | 64-byte bundle → `findBin` → `fwrite(0x40)` (production emit path) | 64/bundle |
+| `2` | `GENERATE_ISACODE` | build bundle on stack, run `vtbl[0]` L2 validator (verifier-only; no fwrite in `visitInstHalt`) | none |
 | other | — | `reportError(...)` naming all three modes | — |
 
-The numeric ordinals `{0,1,2}` are **INFERRED** from the dispatch order of the if-ladder (`==1`, `==2`, else-`==0`) and the `reportError` string's enumeration `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES`; they are not pinned to a `libBIR` enum table. The mode also gates the [driver tail](#the-driver--program-order-walk): when `mode != 0` the driver runs `flushISAChecks` + `assertAsmMappingsCorrect` + `printInstrStats` after the walk.
+The numeric ordinals `{0,1,2}` are **CONFIRMED** (per [8.35 — Codegen Driver and the CodeGenMode Mechanism](codegen-driver.md)) from the branch order in `generateLoadWeights` (`0x1258548`: `cmp r14d,1` jz → mode 1 = `RUN_ISA_CHECKS`; `cmp r14d,2` jz → mode 2 = `GENERATE_ISACODE`; `test r14d` jz → mode 0 = `COLLECT_OPCODES`), reproduced in this page's own `visitInstHalt` (`0x122d620`) if-ladder. They are **not** pinned to a `libBIR` enum table, and the `reportError` string's enumeration `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES` is human-readable (2, 1, 0) — **not** the numeric order. The production codegen emit pass selects mode 1; mode 2 is reached only by the Verifier's own Generator (see 8.35). The mode also gates the [driver tail](#the-driver--program-order-walk): when `mode != 0` the driver runs `flushISAChecks` + `assertAsmMappingsCorrect` + `printInstrStats` after the walk.
 
 ---
 
@@ -106,12 +108,12 @@ The numeric ordinals `{0,1,2}` are **INFERRED** from the dispatch order of the i
 
 ### Purpose
 
-`findBin` @ `0x11f4b90` maps an instruction to the `FILE*` of its engine's `.bin`. It is the only routing logic in the emission path; called once per GENERATE write, it reads the instruction's pinned engine, validates it is a real TPB compute engine, then probes (or lazily populates) the engine→`FILE*` map.
+`findBin` @ `0x11f4b90` maps an instruction to the `FILE*` of its engine's `.bin`. It is the only routing logic in the emission path; called once per RUN_ISA_CHECKS (mode 1) write, it reads the instruction's pinned engine, validates it is a real TPB compute engine, then probes (or lazily populates) the engine→`FILE*` map.
 
 ### Entry Point
 
 ```text
-visitInst<Op> (GENERATE arm)
+visitInst<Op> (RUN_ISA_CHECKS / mode-1 write arm)
   └─ Generator::findBin(this, inst)         @0x11f4b90
        ├─ bir::EngineType2string(engine)    ── for the rejection diagnostic
        ├─ [non-TPB engine] bir::reportError("…not valid TPB engines")
@@ -236,7 +238,7 @@ The flag is an `llvm::cl::opt<bool>` (object @ `0x3e03f00`, arg-string `"dumpBin
 
 ### Purpose
 
-`COLLECT_OPCODES` (mode 0) is the dry pass. It emits no bytes and runs no validator: it computes its **opcode integer exactly as the GENERATE arm does**, then inserts it into a per-instruction `std::set<unsigned int>`. That integer is the **`NEURON_ISA_TPB_OPCODE`** enum value (the "L2" identifier) — the same value GENERATE hands to `setupHeader` as the low opcode byte, and the same value the L2 wire validator bit-tests against a per-engine legality bitmap. The collected sets become the input to the DVE-table coverage check.
+`COLLECT_OPCODES` (mode 0) is the dry pass. It emits no bytes and runs no validator: it computes its **opcode integer exactly as the emit (mode-1 RUN_ISA) arm does**, then inserts it into a per-instruction `std::set<unsigned int>`. That integer is the **`NEURON_ISA_TPB_OPCODE`** enum value (the "L2" identifier) — the same value the emit arm hands to `setupHeader` as the low opcode byte, and the same value the L2 wire validator bit-tests against a per-engine legality bitmap. The collected sets become the input to the DVE-table coverage check.
 
 ### The three id layers
 
@@ -248,14 +250,14 @@ L2  NEURON_ISA_TPB_OPCODE enum     (QuantizeMX = 227 = 0xE3)     ── what COL
 L3  16-bit wire header word         (0x10 << 8 | L2 = 0x10E3)    ── what setupHeader stamps at bundle[0:2]
 ```
 
-`L2 ≡ low byte of L3`, and `L2 ≠ L1` (separate enums; the encoder is the non-injective projection `L1 → {L2}`). The relation is **CONFIRMED** by transcription: in `visitInstQuantizeMx` @ `0x143dc60` the COLLECT arm stores `v46.m128i_i32[0] = 227` before `_M_insert_unique` (line 78) while the GENERATE arm stamps `*(WORD*)bundle = 4323` = `0x10E3` (line 160) — `227 == 0xE3 == low byte of 0x10E3`. In `visitInstTensorTensor` @ `0x12356d0` the same value is carried twice: `v5 = isBitVec ? 81 : 65` (the COLLECT int, line 58) and `v8 = (-(isBitVec==0) & 0xF0) + 81` (the GENERATE byte, line 61), where `(u8)v8 == v5`.
+`L2 ≡ low byte of L3`, and `L2 ≠ L1` (separate enums; the encoder is the non-injective projection `L1 → {L2}`). The relation is **CONFIRMED** by transcription: in `visitInstQuantizeMx` @ `0x143dc60` the COLLECT arm stores `v46.m128i_i32[0] = 227` before `_M_insert_unique` (line 78) while the emit (mode-1 RUN_ISA) arm stamps `*(WORD*)bundle = 4323` = `0x10E3` (line 160) — `227 == 0xE3 == low byte of 0x10E3`. In `visitInstTensorTensor` @ `0x12356d0` the same value is carried twice: `v5 = isBitVec ? 81 : 65` (the COLLECT int, line 58) and `v8 = (-(isBitVec==0) & 0xF0) + 81` (the emit-arm byte, line 61), where `(u8)v8 == v5`.
 
 ### Algorithm
 
 ```c
 // COLLECT arm of every visitInst<Op> (mode == 0); canonical: visitInstTensorTensor @0x12356d0
 function collect(Generator *this, bir::Instruction *inst):
-    opcode = <computed exactly as in the GENERATE arm>          // the L2 int (e.g. 65/81, 227)
+    opcode = <computed exactly as in the emit (mode-1 RUN_ISA) arm>   // the L2 int (e.g. 65/81, 227)
     set<u32> &s = collectMap[inst]                              // DenseMap<Inst const*, set<u32>> @this+0x20
     s.insert(opcode)                                            // _Rb_tree::_M_insert_unique<unsigned int>
     updateBranchHintTargetPC(this, inst)
@@ -352,7 +354,7 @@ Five strongest claims, re-checked against the binary:
 4. **L2 = low byte of L3** — CONFIRMED for QuantizeMx (`227` collect int line 78, `4323` = `0x10E3` word line 160) and TensorTensor (`65/81` collect / `0xF0+81` byte).
 5. **The DVE consumer reads the same `Generator+0x20` map** — CONFIRMED. `sub_116F3A0` reads `a3+32` (lines 91–92) and its `at` assert names `DenseMap<const bir::Instruction*, std::set<unsigned int>>` (lines 127–133), the identical type the COLLECT arm writes.
 
-Re-verify ceiling — what is **not** pinned: the `CodeGenMode` ordinals `{0,1,2}` are INFERRED from dispatch order + the error string, not from a `libBIR` enum table. The `EngineInfo2string` output for multi-stream engines (`"<engine>"` vs `"<engine>.<id>"`) is INFERRED; `streamId` is non-zero only for split queues. The `vtbl+0x18` per-engine init hook in `createBin` (line 439) is identified by slot but its body is not transcribed. The exact NEFF archive member naming for each `<engine>.bin` is deferred to NEFF packaging (12.4, planned). The `86 fwrite / 61 file` count is the exact decompiled-corpus figure for this wheel; it counts the literal `1u, 0x40u` `fwrite` form and may miss any write hidden behind an un-inlined helper, of which none were found.
+Re-verify ceiling — what is **not** pinned: the `CodeGenMode` ordinals `{0,1,2}` are **CONFIRMED** from the branch order (this page's `visitInstHalt` + 8.35's `generateLoadWeights` `0x1258548`), but are not pinned to a `libBIR` enum *table* (no named enum constant in rodata; the names come only from the error string). The `EngineInfo2string` output for multi-stream engines (`"<engine>"` vs `"<engine>.<id>"`) is INFERRED; `streamId` is non-zero only for split queues. The `vtbl+0x18` per-engine init hook in `createBin` (line 439) is identified by slot but its body is not transcribed. The exact NEFF archive member naming for each `<engine>.bin` is deferred to NEFF packaging (12.4, planned). The `86 fwrite / 61 file` count is the exact decompiled-corpus figure for this wheel; it counts the literal `1u, 0x40u` `fwrite` form and may miss any write hidden behind an un-inlined helper, of which none were found.
 
 ## Cross-References
 

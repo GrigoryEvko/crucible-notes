@@ -6,7 +6,7 @@
 
 Three different passes in the walrus backend each carry something a casual reader will call a "reservation table," and conflating them produces a specific, recurring error: attributing the **partition-band reservation table** to *the scheduler*. It is not the scheduler's. It is the **SBUF coloring allocator's**, and it has nothing to do with instruction issue order, engines, or cycles. This page exists to draw the three boundaries cleanly and to *prove the ownership from the binary* — which pass's code constructs and reads each table — so that a reimplementer never wires the partition-band intersection test into a list scheduler where it does not belong.
 
-The confusion is structural, not careless. SBUF is a **128-partition × byte** 2-D address space ([1.07](arch/sbuf-psum-geometry.md)), so the allocator that places tensors into it runs a 2-D rectangle-packing intersection test over partition bands. A cycle-accurate scheduler is *also* 2-D — **engine × cycle** — and *also* list-schedules with an intersection-flavoured feasibility test. Two passes, two 2-D resource models, both phrased as "does this thing fit against the already-reserved set." The single word "partition" tips the reader: SBUF has partitions, so the allocator's *partition-band* table reads, at a glance, like a scheduler's *per-engine issue-slot* table. They are different axes in different passes that share no code, no data structure, and no axis.
+The confusion is structural, not careless. SBUF is a **128-partition × byte** 2-D address space ([1.07](../arch/sbuf-psum-geometry.md)), so the allocator that places tensors into it runs a 2-D rectangle-packing intersection test over partition bands. A cycle-accurate scheduler is *also* 2-D — **engine × cycle** — and *also* list-schedules with an intersection-flavoured feasibility test. Two passes, two 2-D resource models, both phrased as "does this thing fit against the already-reserved set." The single word "partition" tips the reader: SBUF has partitions, so the allocator's *partition-band* table reads, at a glance, like a scheduler's *per-engine issue-slot* table. They are different axes in different passes that share no code, no data structure, and no axis.
 
 The decisive evidence is a whole-binary cross-reference: the two assert strings that name the table —
 
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **The table (assert strings)** | `0x1cc2110` / `0x1cc4128` — **2 xrefs total**, both in `selectNode` @ `0xa06d4b` / `0xa06d6a` |
 | **Owner = ALLOCATOR** | `SB_Allocator::selectNode` @ `0xa05250`; the table is its 3rd param `std::array<std::vector<std::pair<int,int>>,4ul>&` |
 | **Axis A — allocator** | partition-band × byte (2-D rectangle ∩); placement-time SBUF address assignment |
-| **Axis B — pre_sched** | SBUF/PSUM live-**byte** budget; `inst_use/def/kill/gain_size` @ `0xcaede0`…`0xcaf010`; no engine, no time ([8.8](walrus/reorder-nonssa-presched.md)) |
+| **Axis B — pre_sched** | SBUF/PSUM live-**byte** budget; `inst_use/def/kill/gain_size` @ `0xcaede0`…`0xcaf010`; no engine, no time ([8.8](reorder-nonssa-presched.md)) |
 | **Axis C — post_sched** | engine × **cycle**; `PerfSim` `SimEvent{start,cost}`; `assign_engines` @ `0x156f700` binds engines |
 | **Pre-sched engine calls** | `run_pre_sched` @ `0xca1490` → **0** calls to `assign_engines`/`getEngineType` |
 | **Post-sched engine calls** | `post_scheduler::schedule(Function)` @ `0xc36010` → `call assign_engines@plt` @ `0xc36539` |
@@ -42,7 +42,7 @@ An early reading of this backend (the S2-07 §3.4 brief) described a single **"s
 
 > **The partition-band reservation table is the SBUF coloring allocator's, not any scheduler's.** No scheduler function in the binary owns, fills, or reads it. pre_sched has *no* resource table at all; post_sched's resource model is per-engine cycle timelines, not partition bands.
 
-This is a **DISAMBIGUATION** page, not a re-derivation: the per-pass internals are documented by their own pages — [8.8](walrus/reorder-nonssa-presched.md) for pre_sched, the post_sched scheduler family (Part 8.11, planned) for post_sched, and the SBUF allocator (Part 8.17, planned) for `selectNode`. This page's deliverable is the **three-axis ownership table** and the **proof of who owns the partition-band table**.
+This is a **DISAMBIGUATION** page, not a re-derivation: the per-pass internals are documented by their own pages — [8.8](reorder-nonssa-presched.md) for pre_sched, the post_sched scheduler family (Part 8.11, planned) for post_sched, and the SBUF allocator (Part 8.17, planned) for `selectNode`. This page's deliverable is the **three-axis ownership table** and the **proof of who owns the partition-band table**.
 
 ### The three passes and where they sit
 
@@ -118,7 +118,7 @@ a06d71:  e8 6a 68 be ff         call 5ed5e0 <__assert_fail@plt>
 
 For completeness — so the reader knows what the misattributed object *really* does — here is the allocator's model, the thing the brief mistook for the scheduler's. It is recovered in full on the SBUF-allocator page (Part 8.17, planned); only the shape relevant to the disambiguation is restated here.
 
-A **partition band** is a 32-partition quadrant of the 128-partition SBUF: `[0,32) [32,64) [64,96) [96,128)`, hence `128 / 32 = 4` ([1.07](arch/sbuf-psum-geometry.md)). For each band, the table holds a **sorted vector of occupied byte intervals** `[lower, upper)`. The two-level structure is exactly the demangled type:
+A **partition band** is a 32-partition quadrant of the 128-partition SBUF: `[0,32) [32,64) [64,96) [96,128)`, hence `128 / 32 = 4` ([1.07](../arch/sbuf-psum-geometry.md)). For each band, the table holds a **sorted vector of occupied byte intervals** `[lower, upper)`. The two-level structure is exactly the demangled type:
 
 ```c
 // SB_Allocator::selectNode 3rd parameter — the partition-band reservation table
@@ -147,7 +147,7 @@ This is **placement-time SBUF address assignment**: it decides *where in the 128
 
 ## What pre_sched uses instead — the live-byte budget (Axis B)
 
-pre_sched is the **first** scheduler (order 33), and it runs **before** any SBUF address exists. Its full internals are on [8.8](walrus/reorder-nonssa-presched.md); the disambiguation-relevant facts are that it has **neither a partition-band table nor any engine model**.
+pre_sched is the **first** scheduler (order 33), and it runs **before** any SBUF address exists. Its full internals are on [8.8](reorder-nonssa-presched.md); the disambiguation-relevant facts are that it has **neither a partition-band table nor any engine model**.
 
 ### No engine binding
 
@@ -227,7 +227,7 @@ The closest scheduler analog to "an instruction occupies a resource for N units"
 
 ## The three-axis ownership table (core deliverable)
 
-| Dimension | **ALLOCATOR** `selectNode` (Axis A) | **pre_sched** [8.8](walrus/reorder-nonssa-presched.md) (Axis B) | **post_sched** 8.11 *(planned)* (Axis C) |
+| Dimension | **ALLOCATOR** `selectNode` (Axis A) | **pre_sched** [8.8](reorder-nonssa-presched.md) (Axis B) | **post_sched** 8.11 *(planned)* (Axis C) |
 |---|---|---|---|
 | TU / subtree | `coloring_allocator/…/sb_select.cpp` | `dep_based_optims/pre_sched.cpp` | `dep_based_optims/inst_sch + time_aware_sched.cpp` |
 | Runs at (order) | ~51 (coloring SB) | 33 (first scheduler) | 92 (cost-model scheduler) |
@@ -263,7 +263,7 @@ The five strongest claims, re-checked against the binary, with the failure mode 
 
 ## Cross-references
 
-- [8.8 — SSA Exit and Pre-Scheduling](walrus/reorder-nonssa-presched.md): pre_sched's two-stage internals (MemoryLocation DAG → per-block list scheduler), the unit-weight critical path, and the live-byte resource model summarized here as Axis B.
+- [8.8 — SSA Exit and Pre-Scheduling](reorder-nonssa-presched.md): pre_sched's two-stage internals (MemoryLocation DAG → per-block list scheduler), the unit-weight critical path, and the live-byte resource model summarized here as Axis B.
 - **Part 8.11 — post_sched schedulers** *(planned)*: the engine × cycle cost-model scheduler, the `PerfSim` cycle timeline, the `backend::ENG`/`SimEngineId` engine rosters, and the Hwm-weighted height priority summarized here as Axis C.
 - **Part 8.17 — SBUF coloring allocator** *(planned)*: `SB_Allocator::selectNode` in full — the partition-band reservation table whose *ownership* this page proves, the `collectReservations`/`compress`/`sort` fill path, and the Chaitin coloring it serves (Axis A).
-- [1.07 — SBUF / PSUM Bank Geometry](arch/sbuf-psum-geometry.md): why SBUF is a 2-D (partition × byte) address space — the geometry the allocator's partition bands quantize, and the reason the partition axis is *physically* the allocator's, not a scheduler's.
+- [1.07 — SBUF / PSUM Bank Geometry](../arch/sbuf-psum-geometry.md): why SBUF is a 2-D (partition × byte) address space — the geometry the allocator's partition bands quantize, and the reason the partition axis is *physically* the allocator's, not a scheduler's.
