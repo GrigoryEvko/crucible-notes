@@ -6,13 +6,13 @@
 
 The Neuron compiler names one piece of silicon as many as six different ways, and which name a reader sees depends only on which layer of the binary they are standing in. The same hardware generation is `inferentia` to the enum, `Inf1` to the customer, `CoreV1` to the cost model, `tonga` to the legacy front-end, ArchLevel `10` to every dispatch, and "gen1" to a human. The mapping is not arbitrary — it is a fixed five-rung ladder, and getting it wrong is the single most common way to misread these binaries. This page establishes the canonical vocabulary the rest of the wiki uses and gives a reader the means to translate any codename/arch-level/marketed-name triple seen in the binaries.
 
-There is **no single silicon-mapping struct** in this build — no `kDeviceTypeInfo[]` array keyed by an enum the way some accelerator toolchains carry one. Instead the taxonomy is distributed across **five in-binary mechanisms that agree**: one alias-cluster table (`getArchModel`, which folds nine spellings onto four device objects) and three pure name-mappers in `libBIR` (`ArchLevel2string`, `ArchLevel2RuntimeTarget`, `ArchLevel2ExternalString`) that each project one ArchLevel ordinal into a *different* name space, plus the `libwalrus` codegen/hardware-model families that bind each ordinal to a `CoreVNGen` generator and a `<Codename>Core` hardware model. Together they pin every codename↔arch↔CoreV↔device binding. The recovery is byte-grounded: the inline string constants in the three mappers decode directly from their `mov`-immediate operands, and the `getArchModel` dispatch arms each return a known `Board` singleton.
+There is **no single silicon-mapping struct** in this build — no `kDeviceTypeInfo[]` array keyed by an enum the way some accelerator toolchains carry one. Instead the taxonomy is distributed across **five in-binary mechanisms that agree**: one alias-cluster table (`getArchModel`, which folds ten spellings onto four device objects) and three pure name-mappers in `libBIR` (`ArchLevel2string`, `ArchLevel2RuntimeTarget`, `ArchLevel2ExternalString`) that each project one ArchLevel ordinal into a *different* name space, plus the `libwalrus` codegen/hardware-model families that bind each ordinal to a `CoreVNGen` generator and a `<Codename>Core` hardware model. Together they pin every codename↔arch↔CoreV↔device binding. The recovery is byte-grounded: the inline string constants in the three mappers decode directly from their `mov`-immediate operands, and the `getArchModel` dispatch arms each return a known `Board` singleton.
 
 The reimplementation contract is small but exact:
 
 - **The five-rung ArchLevel ladder** — ordinals `{10, 20, 30, 40, 50}` = generations `{1, 2, 3, 4, 5}`, the spine every other mapping hangs off.
 - **The three name spaces per ordinal** — internal (enum-canonical), runtime (cost-model codename), external (marketed device) — and the rule that the same ordinal yields three different strings.
-- **The alias-cluster table** — the nine input spellings `getArchModel` accepts and the four `Board` singletons they collapse onto, including the two off-by-one traps (`Trn1` = gen2, not gen1; `inf2` clusters under Sunda).
+- **The alias-cluster table** — the ten input spellings `getArchModel` accepts and the four `Board` singletons they collapse onto, including the two off-by-one traps (`Trn1` = gen2, not gen1; `inf2` clusters under Sunda).
 - **The two asymmetric edge generations** — `CoreV1` (modelled but un-codegen'd) and `CoreV5` (a pure forward stub) — covered fully in [1.03](vestigial-generations.md).
 
 | | |
@@ -52,7 +52,7 @@ Three facts in this table are the ones a reader trips over, so they get their ow
 
 ### Purpose
 
-`getArchModel` is the single forgiving input parser: it accepts nine codename spellings and folds them onto four `Board` singletons (one per built generation). It is what turns a user-supplied or module-carried arch string into a hardware-model object. It is *not* a name *emitter* — it never produces the canonical output spelling; that is the job of the three `ArchLevel2*` mappers. Its asymmetry (nine inputs, four outputs, with no `core_v5` arm) is the structural reason gen5 is a forward stub: there is no `Board` for it to return.
+`getArchModel` is the single forgiving input parser: it accepts ten codename spellings and folds them onto four `Board` singletons (one per built generation). It is what turns a user-supplied or module-carried arch string into a hardware-model object. It is *not* a name *emitter* — it never produces the canonical output spelling; that is the job of the three `ArchLevel2*` mappers. Its asymmetry (ten inputs, four outputs, with no `core_v5` arm) is the structural reason gen5 is a forward stub: there is no `Board` for it to return.
 
 ### Entry Point
 
@@ -101,13 +101,15 @@ const Board& getArchModel(const std::string& name) {
 }
 ```
 
-The four `Board` return targets (`0x91de40` / `0x91dfc0` / `0x91e140` / `0x91e2c0`) and the nine alias-string addresses are read directly from the function's `data_refs` and `strings_referenced`. The aliases sit in a contiguous `.rodata` run from `0x70c6f4` upward; `core_v5` (`0x70c748`) follows the `"0 && Unknown architecture"` assert literal (`0x70c72c`) and is *not* one of the compare arms — the spatial layout itself shows gen5 is past the table.
+The four `Board` return targets (`0x91de40` / `0x91dfc0` / `0x91e140` / `0x91e2c0`) and the ten alias-string addresses are read directly from the function's `data_refs` and `strings_referenced`. The aliases sit in a contiguous `.rodata` run from `0x70c6f4` upward; `core_v5` (`0x70c748`) follows the `"0 && Unknown architecture"` assert literal (`0x70c72c`) and is *not* one of the compare arms — the spatial layout itself shows gen5 is past the table.
+
+> **CORRECTION —** the alias spelling count is **ten**, not nine. The compare chain has exactly ten `std::string::compare(PKc)` arms: `tonga`/`inferentia`/`inf1` (gen1, 3) + `sunda`/`trainium`/`trn1`/`inf2` (gen2, 4) + `cayman`/`gen3` (gen3, 2) + `core_v4` (gen4, 1) = **10**. `core_v5` is **not** a compare arm — its literal sits past the `__assert_fail` string in `.rodata`. Earlier text on this page said "nine spellings"; the body-decompile count of "ten compares" (above) is authoritative.
 
 > **GOTCHA —** `getArchModel` accepts **`inf2` under the gen2/Sunda cluster** and **`trainium`/`trn1` also under Sunda**. `inf2` is the inference-optimised SKU of the *same* gen2 silicon, so it shares Sunda's `Board`. A reimplementer must not give `inf2` its own generation; it is a board variant, not a CoreV. The marketed *output* name for gen2 is `Trn1` (not `Inf2`) — `getArchModel` is a many-spellings-in parser, `ArchLevel2ExternalString` is the one-canonical-name-out emitter.
 
 ### Considerations
 
-The `Board` singletons themselves carry **no inline ArchLevel integer** in libBIR; they are storage references populated at library load by the hardware-model constructors (the geometry tree of [1.01](arch-object-model.md)). So `getArchModel` binds *name → object*, not *name → ordinal*; the ordinal binding is the inverse parser `string2ArchLevel` (below). The libwalrus copy of `getArchModel` (`0x17344c0`) is the same dispatch with the same nine aliases and four singletons, in `.bss` at different addresses — a cross-binary consistency check, two compilations of one `ctm` source.
+The `Board` singletons themselves carry **no inline ArchLevel integer** in libBIR; they are storage references populated at library load by the hardware-model constructors (the geometry tree of [1.01](arch-object-model.md)). So `getArchModel` binds *name → object*, not *name → ordinal*; the ordinal binding is the inverse parser `string2ArchLevel` (below). The libwalrus copy of `getArchModel` (`0x17344c0`) is the same dispatch with the same ten aliases and four singletons, in `.bss` at different addresses — a cross-binary consistency check, two compilations of one `ctm` source.
 
 ---
 

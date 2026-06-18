@@ -40,7 +40,7 @@ The hardware model is a static singleton tree, constructed once when `libwalrus.
 ### Entry Point
 
 ```text
-getArchModel(codename)           @0x17344c0   ── string-compare dispatch over 11 codenames → Board*
+getArchModel(codename)           @0x17344c0   ── string-compare dispatch over 10 codenames → Board*
   └─ returns one of 4 static Board singletons (one per generation)
        Board   @ +0x08 → Device*
        Device  @ +0x10 → Core*
@@ -50,7 +50,9 @@ getArchModel(codename)           @0x17344c0   ── string-compare dispatch ove
        Core    @ +0x30 → dramSizeGb (HBM window — see 1.06)
 ```
 
-The four `Board` objects are selected by codename. `getArchModel` clusters eleven device aliases onto four generations; `core_v5` (gen5, ArchLevel 50) has no `Board` and aborts with `assert("0 && Unknown architecture")` at `ctm.cpp:0x5F` — gen5 is a forward stub in this build. The clustering is CONFIRMED on both binaries (the `libBIR` side via [`getArchModel` @0x478f90](arch-object-model.md), the `libwalrus` side here):
+The four `Board` objects are selected by codename. `getArchModel` clusters ten device aliases onto four generations; `core_v5` (gen5, ArchLevel 50) has no `Board` and aborts with `assert("0 && Unknown architecture")` at `ctm.cpp:0x5F` — gen5 is a forward stub in this build. The clustering is CONFIRMED on both binaries (the `libBIR` side via [`getArchModel` @0x478f90](arch-object-model.md), the `libwalrus` side here):
+
+> **CORRECTION —** the alias count is **ten**, not eleven. The compare chain has exactly ten arms: `tonga`/`inf1`/`inferentia` (3) + `sunda`/`trainium`/`trn1`/`inf2` (4) + `cayman`/`gen3` (2) + `core_v4` (1) = **10**, as the table below enumerates. `core_v5` is *not* a compare arm (its literal sits past the `__assert_fail` string in `.rodata`).
 
 | Generation | ArchLevel | `<Arch>Core` ctor | Codename aliases |
 |---|---|---|---|
