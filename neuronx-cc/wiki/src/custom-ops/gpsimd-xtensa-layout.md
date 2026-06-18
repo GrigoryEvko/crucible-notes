@@ -89,7 +89,7 @@ Each image is far smaller than its window. The span and headroom (computed from 
 ```text
 image span  = .bss_end − .text_base = 0x840a03a0 − 0x84000000 = 0xa03a0 = 656,288 B  (≈641 KiB)
 window      = 0x200000 = 2,097,152 B  (2 MiB)
-headroom    = 0x200000 − 0xa03a0     = 0x15fc60 = 1,441,376 B  (≈1.37 MiB) per core
+headroom    = 0x200000 − 0xa03a0     = 0x15fc60 = 1,440,864 B  (≈1.37 MiB) per core
 ```
 
 That ≈1.37 MiB of unused window per core is where the running image puts its **stack, heap, and DMA scratch** — none of which is in the file image (`.bss` is `NOBITS`; stack/heap are allocated at runtime). The aperture is sized to hold the static image plus a generous runtime working set with room to spare. [Span/headroom CONFIRMED by arithmetic on the section addresses; the stack/heap *use* of the headroom is INFERRED — no allocator code is disassembled.]
