@@ -16,21 +16,22 @@
 - [The Do-Not-Repeat / Correction Ledger](reference/correction-ledger.md)
 - [Master Glossary](glossary.md)
 
+# Part 1 — Orientation
+
+- [What GPSIMD Is — the one-screen map](orientation/what-gpsimd-is.md)
+- [The Seven Faces of the One Machine](orientation/seven-faces.md)
+- [Keystone Facts Reimplementers Get Wrong](orientation/keystone-facts.md)
+- [A Custom Op, End to End](orientation/customop-end-to-end.md)
+- [A Collective, End to End](orientation/collective-end-to-end.md)
+- [The Gen-Invariance Thesis](orientation/gen-invariance.md)
+- [The Reimplementation Verdict & Open-Questions Map](orientation/verdict-and-open-questions.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 1 — Orientation (7)
-- orientation/what-gpsimd-is.md            — What GPSIMD Is — the one-screen map
-- orientation/seven-faces.md               — The Seven Faces of the One Machine
-- orientation/keystone-facts.md            — Keystone Facts Reimplementers Get Wrong
-- orientation/customop-end-to-end.md       — A Custom Op, End to End
-- orientation/collective-end-to-end.md     — A Collective, End to End
-- orientation/gen-invariance.md            — The Gen-Invariance Thesis
-- orientation/verdict-and-open-questions.md — The Reimplementation Verdict & Open-Questions Map
 
 # Part 2 — Q7 Core & ISA Foundations (10)
 - isa/core/identity-config.md          — Core Identity & Configuration
