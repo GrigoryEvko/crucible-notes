@@ -18,7 +18,7 @@ For reimplementation, the contract is:
 - **The HBM weight/scale shapes** (`[E, 128, 2, n_H512_tile, I]` weights, `[E, 16, …]` scales), the `E·16` scale fold, and the expert-selected, LNC-sharded indirect weight DMA (`select` + `slice`).
 - **The quadrant-hole index builder** (`_generate_expert_index_vector`): `iota` + `memset(-1)` + `scalar_tensor_tensor` + `nc_transpose` → a `[128,1]` int32 index, 4 valid per 32, the rest `-1`.
 - **The scale gather** (`dma_copy(vector_offset=idx, indirect_dim=0, oob_mode=skip)`) and the static 4-quadrant loop variant.
-- **The `MX_CONTIGUOUS` / `MX_INTERLEAVED` weight-packing recipes** and the `nc_matmul_mx` 4-operand handoff.
+- **The `MX_CONTIGUOUS` / `MX_INTERLEAVED` weight-packing recipes** and the `nc_matmul_mx` 5-operand handoff (`dst, stationary, moving, stationary_scale, moving_scale` — see §below and [6.5.1 §nc_matmul_mx](neuroncodegen-forward-builder.md)).
 
 | | |
 |---|---|
@@ -278,7 +278,7 @@ The DMA-transpose activation path **demands** `MX_INTERLEAVED` weights; the plai
 
 The loaded x4 data and its E8M0 scale ride into `nc_matmul_mx` as **paired operands**: the descriptor packs a DATA ADDR4 and a SCALE ADDR4 back-to-back ([MXMEM_PATTERN1D](../isa/mxmem-pattern1d.md)), and the NKI call surfaces that pairing as the kwargs `stationary`/`stationary_scale` and `moving`/`moving_scale`. The x4-unpack and the per-32-block dequant happen *inside* the descriptor; the kernel just hands over the two SBUF buffers it built.
 
-### Algorithm — the 4-operand call
+### Algorithm — the 5-operand call (`dst` + 4 paired inputs)
 
 ```c
 // gate_up_projection_mx_tp_shard_I — bwmm_shard_on_I_mx.py:1695-1715
