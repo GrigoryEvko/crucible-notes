@@ -270,6 +270,7 @@
 - [Sim BN / RNG / Max-Index-Match / Collective / DMA](bir/sim-bn-rng-collective-dma.md)
 - [Sim Control-Flow / Sync-Semaphore / Kernel & Custom-Op](bir/sim-control-sync-customop.md)
 - [Sim Activation / PWP & libpwp_sim::Simulator](bir/sim-activation-pwp.md)
+- [birsim DAP Interactive-Debugger Protocol & the Debugger Hierarchy](bir/birsim-dap-debugger.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
