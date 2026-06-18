@@ -320,6 +320,9 @@
 - [parserdumper / bir_roundtrip — the BIR debug & round-trip serializers](walrus/parserdumper.md)
 - [PerfSim Cost Model — bir::Hwm oracle + the cycle simulator](walrus/perfsim-cost-model.md)
 - [perf_sim Wiring & the pttf Trace Tarball](walrus/perf-sim-wiring.md)
+- [metricslibrary::MetricStore & the Cost-Stats Reference](walrus/metricstore.md)
+- [DMAMetrics / PerformanceProfiler / load_profile](walrus/dmametrics-profiler.md)
+- [ProfileGuidedAutoTuning (PGA) Feedback Path](walrus/pga-feedback.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
