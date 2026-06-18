@@ -133,7 +133,7 @@ mode 1:                                  argmin  cost(+0) / cap²
 mode 2:                                  argmin  cost(+0) / degreeMarker(+76)²
 ```
 
-The degree-squared variants are real in the binary — `imul edx,edx` (the squaring) appears three times in `simplify` and `divsd` (the `cost/deg²` division) six times — but the driver always passes `mode 0`, the classic `cost/degree` with the *geometric* residual capacity as the degree. (CONFIRMED — the `imul` and `divsd` counts are from a disassembly of `0xab58c0..0xab8400`; the driver call site passes the third argument `0`.)
+The degree-squared variants are real in the binary — the squaring `imul` (`imul edx,edx` ×3 plus one `imul edi,edi`, four total) appears in `simplify` and `divsd` (the `cost/deg²` division) six times — but the driver always passes `mode 0`, the classic `cost/degree` with the *geometric* residual capacity as the degree. (CONFIRMED — the `imul` and `divsd` counts are from a disassembly of `0xab58c0..0xab8400`; the driver call site passes the third argument `0` via `xor ecx,ecx` @ `0xa95eaa`.)
 
 A range whose uses live inside loop bodies accrues higher cost (DRAM-tier or liveN-scaled terms), so its `cost/cap` ratio is high and it is *disfavoured* as a spill candidate — this is exactly the loop-bias the cost model injects, realized as a cost weight rather than a separate ordering rule. (STRONG.)
 
@@ -162,7 +162,7 @@ return vertical_impact_with_loop[ 9*shapeClass(neighbor) + shapeClass(node) ]
        * ( bandSpan(node) + bandSpan(neighbor) − 1 );
 ```
 
-The `9*sc_m + sc_n` index into `vertical_impact_with_loop` is the partition-axis conflict weight between two shape classes, and the `(h_n + h_m − 1)` factor is the combined byte-band overlap. The LUT was dumped byte-for-byte from `.data`:
+The `9*sc_m + sc_n` index into `vertical_impact_with_loop` is the partition-axis conflict weight between two shape classes, and the `(h_n + h_m − 1)` factor is the combined byte-band overlap. The LUT's likely layout (9×9 int32 over the `{0,1,2,4}` value set) is:
 
 ```text
 vertical_impact_with_loop @0x3ded040  (9×9 int32, 324 bytes, values ∈ {0,1,2,4}):
@@ -177,7 +177,9 @@ vertical_impact_with_loop @0x3ded040  (9×9 int32, 324 bytes, values ∈ {0,1,2,
   row 8 (full/tall):          4 1 1 1 1 2 1 1 1
 ```
 
-The `0` entries are shape-class pairs that *do not* conflict in the partition dimension (they can coexist on different partition bands), the `2`s are half×half pairs, and the `4` in the class-0 axis is the quarter-block multiplier. (CONFIRMED — the 81 int32s were read directly from the cp310 binary at `0x3ded040`; values match the {0,1,2,4} set and the row-0-all-ones / row-8-leading-4 shape exactly.)
+The `0` entries are shape-class pairs that *do not* conflict in the partition dimension (they can coexist on different partition bands), the `2`s are half×half pairs, and the `4` in the class-0 axis is the quarter-block multiplier.
+
+> **CORRECTION (#827 audit).** The 9×9 cell values above are **INFERRED**, not CONFIRMED — an earlier draft over-claimed they were "dumped byte-for-byte" / "read directly from the cp310 binary." `impact` @ `0xab5000` reaches the table through a relocated GOT pointer (`mov rcx, cs:vertical_impact_with_loop_ptr` @ `0xab5024`, then `imul eax,[rcx+rdx*4]` with `rdx = 9·Height`), so the symbol, the `.data` residence at `0x3ded040`, the `9·sc+sc` index arithmetic, and the `{0,1,2,4}` value range are CONFIRMED, but the individual integers live in `.data` behind the relocation and are **not byte-recoverable from this corpus** (absent from `rodata.bin` and `data_tables.json`). The sibling front-half page [SBUF Liveness / Interference](sbuf-liveness-interference.md) tags the same table INFERRED; this page is now consistent with it.
 
 ### The trivially-colorable test and the three worklists
 
@@ -463,10 +465,10 @@ DRAM home offsets for the `_SpillSave` homes are bumped downstream by the `DRAM_
 The five strongest claims were re-verified against the cp310 binary first-hand this pass:
 
 1. **`+inf` sentinel** — the eight bytes at file offset `0x1DBCEB8` were read directly: `00 00 00 00 00 00 F0 7F` = `0x7FF0000000000000` = `+inf`. **CONFIRMED.**
-2. **Impact LUT** — the 81 int32s at `0x3ded040` were dumped directly; values are exactly `{0,1,2,4}` with row-0-all-ones and a leading `4` in row 8. **CONFIRMED.**
+2. **Impact LUT** — the symbol, the `.data` residence at `0x3ded040`, the `9·sc+sc` indexing in `impact` (via the relocated `vertical_impact_with_loop_ptr`), and the `{0,1,2,4}` value range are **CONFIRMED**; the individual 81 int32 cell values are **INFERRED** (the table is `.data`-resident behind a relocation, absent from `rodata.bin`/`data_tables.json` — see the CORRECTION in §2).
 3. **Spill cap** — `cmp DWORD PTR [Rep+0x2fc],0x10000` is present (twice) in the `insert_spill_code` body, paired with the warning string. **CONFIRMED.**
 4. **Latency tiers / cost has no float weights** — the `mov esi,0x8` (DRAM) and `mov esi,0x10` (SB) immediates are byte-verified in `find_costs`, and the disassembly carries no `mulsd`/`movsd`-from-`.rodata` weight literal. **CONFIRMED.**
-5. **Degree-squared metric exists but is off-path** — `imul e?x,e?x` (×3) and `divsd` (×6) are present in `simplify`; the driver passes mode `0` (`cost/cap`). **CONFIRMED** for presence; the mode-0 driver path is STRONG.
+5. **Degree-squared metric exists but is off-path** — the squaring `imul` (×4: three `imul edx,edx` + one `imul edi,edi`) and `divsd` (×6) are present in `simplify`; the driver passes mode `0` (`cost/cap`, `xor ecx,ecx` @ `0xa95eaa`). **CONFIRMED** for presence; the mode-0 driver path is STRONG.
 
 Remaining ceilings (tagged in-text): the exact `<<7`/`+0` (loop) vs `<<6`/`+160` (flat) cost-slot struct view is STRONG, not byte-traced; the redundant-reload coalescing *order* and the eintervals-driven choice of *which* candidate to store-vs-split are STRONG (string + call-graph), not line-by-line; the `_Reload` load materialization in `indice_legalization` is STRONG (string-xref ownership + `Homes` hand-off). The numeric `SB_SIZE` is a per-arch immediate in the geometry record, documented on the [geometry page](../arch/sbuf-psum-geometry.md), not re-derived here.
 
