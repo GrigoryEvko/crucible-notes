@@ -349,6 +349,6 @@ The five strongest claims, re-challenged against the binary:
 ## See also
 
 - [3.2 The Two-Parser Architecture](two-parser-architecture.md) — why the driver has no config/response file and where defaults live
-- [3.3 Sub-Tool argv Construction & Replay](subtool-argv.md) — how `NEURON_CC_FLAGS` tokens, once argv, flow to each Job's sub-tool command line
+- [3.5 Sub-Tool argv Construction & Replay](subtool-argv.md) — how `NEURON_CC_FLAGS` tokens, once argv, flow to each Job's sub-tool command line
 - [3.8 CompileCommand Flag Catalog](flag-catalog.md) — the `--flag` sink that `NEURON_CC_FLAGS` tokens land in
 - [3.7 walrus_driver Backend CLI](walrus-driver-cli.md) — where `NEURON_SCRATCHPAD_PAGE_SIZE` is honoured
