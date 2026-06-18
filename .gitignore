@@ -119,12 +119,21 @@ decompiled/
 disasm/
 graphs/
 ida_run_logs/
+# Raw extracted vendor packages, IDA exports, and intermediate carve trees for
+# neuronx-gpsimd (~11 GB of vendor binaries + IDA sidecars that must never be
+# staged). Scoped to neuronx-gpsimd/ so the curated ptxas/extracted/ datasets and
+# their !-negations near the top of this file are left completely untouched.
+neuronx-gpsimd/extracted/
+neuronx-gpsimd/ida/
+neuronx-gpsimd/archives/
+neuronx-gpsimd/binwalk/
+neuronx-gpsimd/knowledge/
 
 # Mined research data (local only)
 raw/
 findings/
-firmware/
-firmware_6000/
+/firmware/
+/firmware_6000/
 some_docs/
 
 # Extracted target binaries (do not commit vendor binaries)
