@@ -324,4 +324,4 @@ All four `Hwm` latency overrides for `InstDynamicForLoop` are not-implemented st
 
 - [Symbolic AP / Register ALU](symbolic-ap-register-alu.md) — `axisRegs` linkage; how the trip-count register is materialized and the `coeff * reg` MULT emitted
 - [Dynamic Shape Synthesis](dynamic-shape-synthesis.md) — front-end origin of the runtime trip count (dynamic-shape / data-dependent quantity → `BirDynamicForAxis`)
-- [Simulator Control Flow](../bir/sim-control-flow.md) — Part 7, the `birsim` instruction-visitor dispatch and `RegState` register file that `evaluateUpperBoundExpr` reads
+- [Simulator Control Flow](../bir/sim-control-sync-customop.md) — Part 7, the `birsim` instruction-visitor dispatch and `RegState` register file that `evaluateUpperBoundExpr` reads
