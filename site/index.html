@@ -5,27 +5,27 @@
     <meta name="google-site-verification" content="8Iyc1Kf9r8UlYNiDw5Qa3RRuOAXbvy_YknQJMUi5ckY">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>nvopen-tools</title>
-    <meta name="description" content="Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, tileiras, ptxas, cudafe++, nvlink, nvptxcompiler. 680+ pages of reimplementation-grade documentation from static binary analysis.">
+    <meta name="description" content="Reverse engineering reference for NVIDIA's CUDA compiler toolchain (cicc, tileiras, ptxas, cudafe++, nvlink), Google's TPU stack (libtpu), and AWS's Neuron stack (neuronx-cc, neuronx-runtime). 1,600+ pages of reimplementation-grade documentation from static binary analysis.">
     <link rel="canonical" href="https://gh.evko.io/nvopen-tools/index.html">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-192.png">
     <link rel="apple-touch-icon" sizes="256x256" href="images/apple-touch-icon.png">
     <meta property="og:title" content="nvopen-tools — NVIDIA CUDA Compiler Internals">
-    <meta property="og:description" content="680+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain: cicc, tileiras, ptxas, cudafe++, and nvlink.">
+    <meta property="og:description" content="1,600+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain (cicc, tileiras, ptxas, cudafe++, nvlink), Google's TPU stack (libtpu), and AWS's Neuron stack (neuronx-cc, neuronx-runtime).">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://gh.evko.io/nvopen-tools/">
-    <meta name="keywords" content="NVIDIA, CUDA, ptxas, cicc, tileiras, Cuda Tile IR, MLIR, cudafe++, nvlink, nvptxcompiler, compiler internals, reverse engineering, PTX, SASS, GPU, LLVM, Mercury, Blackwell, register allocation, instruction scheduling">
+    <meta name="keywords" content="NVIDIA, CUDA, ptxas, cicc, tileiras, Cuda Tile IR, MLIR, cudafe++, nvlink, nvptxcompiler, libtpu, TPU, Google TPU, AWS Neuron, Trainium, Inferentia, neuronx-cc, NKI, BIR, neuronx-runtime, compiler internals, reverse engineering, PTX, SASS, GPU, LLVM, Mercury, Blackwell, register allocation, instruction scheduling">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="nvopen-tools — NVIDIA CUDA Compiler Internals">
-    <meta name="twitter:description" content="680+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain.">
+    <meta name="twitter:description" content="1,600+ pages of reverse-engineered documentation for NVIDIA CUDA, Google TPU, and AWS Neuron compiler/runtime internals.">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
       "name": "nvopen-tools",
       "url": "https://gh.evko.io/nvopen-tools/",
-      "description": "Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, tileiras, ptxas, cudafe++, nvlink. 680+ pages of reimplementation-grade documentation.",
+      "description": "Reverse engineering reference for NVIDIA's CUDA compiler toolchain (cicc, tileiras, ptxas, cudafe++, nvlink), Google's TPU stack (libtpu), and AWS's Neuron stack (neuronx-cc, neuronx-runtime). 1,600+ pages of reimplementation-grade documentation.",
       "author": {
         "@type": "Person",
         "name": "Grigory Evko",
@@ -378,6 +378,18 @@
                     <td>Google TPU PJRT plugin, 745 MB stripped ELF &mdash; 6 silicon generations, LLO VLIW ISA, TensorCore/SparseCore cost model</td>
                     <td><a href="./libtpu/">wiki</a></td>
                     <td><a href="./libtpu/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><a href="./neuronx-cc/"><strong>neuronx-cc</strong></a></td>
+                    <td>AWS Neuron compiler (Trainium/Inferentia) &mdash; hlo-opt/hlo2penguin front-end, Penguin IR, the NKI kernel DSL, libBIR + the libwalrus backend, NEFF packaging; from the cp310/311/312 wheels</td>
+                    <td><a href="./neuronx-cc/">wiki</a></td>
+                    <td><a href="./neuronx-cc/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><a href="./neuronx-runtime/"><strong>neuronx-runtime</strong></a></td>
+                    <td>AWS Neuron runtime stack &mdash; aws-neuronx-dkms kernel module, libnrt.so userspace runtime (NRT 2.0/3.0 ABI), libncfw.so firmware carrier + 8 embedded Tensilica Xtensa LX payloads</td>
+                    <td><a href="./neuronx-runtime/">wiki</a></td>
+                    <td><a href="./neuronx-runtime/"><span class="badge badge-live">Live</span></a></td>
                 </tr>
             </tbody>
         </table>

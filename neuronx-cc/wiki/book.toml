@@ -6,6 +6,7 @@ language = "en"
 src = "src"
 
 [build]
+build-dir = "../../docs/neuronx-cc"
 create-missing = false
 
 [output.html]

@@ -33,6 +33,8 @@ jobs:
           (cd nvlink/wiki && mdbook build)
           (cd tileiras/wiki && mdbook build)
           (cd libtpu/wiki && mdbook build)
+          (cd neuronx-cc/wiki && mdbook build)
+          (cd neuronx-runtime/wiki && mdbook build)
 
       - name: Assemble site
         run: |
@@ -46,6 +48,8 @@ jobs:
           cp -r docs/nvlink _site/nvlink
           cp -r docs/tileiras _site/tileiras
           cp -r docs/libtpu _site/libtpu
+          cp -r docs/neuronx-cc _site/neuronx-cc
+          cp -r docs/neuronx-runtime _site/neuronx-runtime
 
       - name: Inject canonical links and generate sitemap
         run: python3 .github/workflows/seo_postprocess.py _site

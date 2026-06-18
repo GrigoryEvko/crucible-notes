@@ -5,6 +5,9 @@ description = "Reverse-engineering reference for the AWS Neuron runtime stack: a
 language = "en"
 src = "src"
 
+[build]
+build-dir = "../../docs/neuronx-runtime"
+
 [output.html]
 default-theme = "navy"
 additional-js = ["ai-disclaimer.js"]
