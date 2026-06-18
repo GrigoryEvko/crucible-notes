@@ -179,6 +179,8 @@ For orientation, the `NeffPackager` roster around `writeNeffJson` (all nm-confir
 | `run(std::vector<unique_ptr<bir::Module>>&)` | `0x15307e0` | top-level NEFF packaging entry |
 | `run(bir::Module&)` | `0x151ec00` | single-module entry |
 
+> **NOTE (M2 — verifier frame) —** every `NeffPackager`/`NeffFileWriter` method address on this page (`writeNeffJson 0x152c740`, `writeDefJson 0x152a0e0`, etc.) is the **`.dynsym` symbol-start / function-entry** address on the cp310 binary — the prologue (`push %r15`), with the IDA `functions.json` `addr` and the demangled `.dynsym` value in agreement. `objdump -d --start-address=0x152c740` lands on the prologue, not mid-body. (IDA also reports an internal per-symbol frame ~`0xa0` lower for some of these — that is the second VA frame; verify against the entry addresses cited here.)
+
 ---
 
 ## 3. The N Index — Per-Subgraph / Per-Core
