@@ -143,10 +143,12 @@ result call(self, func, *args, **kwargs):
     //   has_nki_data(args) = any(is_nki_data(a) for a in args)
     //   (TraceContext.call.<locals>.genexpr + .<locals>.has_nki_data closures)
     if (not has_nki_data(args)) and is_nki_data(result):
-        raise self.opts.<error>(
-            "function without nki data as input should not return nki data");
+        assert False,                                  // plain `assert`, see CORRECTION below
+            "function without nki data as input should not return nki data";
     return result;
 ```
+
+> **CORRECTION (W6.1.1-RC) —** the return-consistency violation raises a *plain Python `AssertionError`*, not an `opts`-routed diagnostic. In the `call` body (`…12TraceContext_10call @ 0x2b380`) the emission is `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_function_without_nki_data_as_inp, 0, 0)` — i.e. the source line is a bare `assert <cond>, "function without nki data as input should not return nki data"`. It is therefore subject to `python -O` stripping like any other assertion, and is *not* a `CompileOpts`/`self.opts` error object. (The only `self.opts` access on this path builds the `inline_function` call args, not the error.)
 
 The two nested closures are real and compiled separately:
 
