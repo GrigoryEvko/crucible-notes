@@ -1,6 +1,6 @@
 # INT8 Uniform-Quantize / Dequantize Legalization
 
-> *All addresses on this page apply to `hlo-opt` from neuronx_cc 2.24.5133.0+58f8de22 (cp310 build, BuildID xxHash `93dd8bd9bd4c697b`). The cp311/cp312 builds share the same layout. Other versions will differ.*
+> *All addresses on this page are virtual addresses (VMA) for `hlo-opt` from neuronx_cc 2.24.5133.0+58f8de22 (cp310 build, BuildID xxHash `93dd8bd9bd4c697b`); resolve them via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset here: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000. The cp311/cp312 builds share the same layout. Other versions will differ.*
 
 ## Abstract
 

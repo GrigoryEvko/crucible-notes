@@ -1,6 +1,6 @@
 # AllReduce / ReduceScatter / AllGather Combiners & Threshold Model
 
-> *All addresses on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`, BuildID `93dd8bd9bd4c697b`, not stripped). For `.text` and `.rodata` in this binary VA == file offset; addresses resolve directly in `disasm/` and `*_strings.json`. Other versions will differ.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`, BuildID `93dd8bd9bd4c697b`, not stripped). They resolve directly in `disasm/` and `*_strings.json` (both VMA-keyed) and via `objdump --start-address`. Note VA ≠ raw file offset in this binary: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (from the section headers), so raw `xxd`/`dd` on the ELF must subtract the delta. Other versions will differ.*
 
 ## Abstract
 
