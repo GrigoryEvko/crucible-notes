@@ -453,7 +453,7 @@ The union discriminant is the opcode byte at `raw[0]`. The L2 validator dispatch
 | CompareAndBranch (`0xA9`) | ctrl | comp `@+0x0C`, regs `@+0x20/+0x21`, PC `@+0x30` | — | [D-M10] |
 | DMA DIRECT2D (`0xD4`) | D | `ADDR8` src `@+0x10` / dst `@+0x28` (distinct) | — | [2.1 §NOTE] |
 
-> **NOTE —** the family membership of the byte-verified ops above is CONFIRMED; the family of the remaining ~90 ops in the [110-IT opcode table](../walrus/setupheader-opcode-table.md) is assigned by descriptor-width evidence in their per-engine pages (STRONG for the tail). The op→family rule itself — *width + operand count picks the slot offsets, the control band fills the gap* — is CONFIRMED across all four byte-verified families.
+> **NOTE —** the family membership of the byte-verified ops above is CONFIRMED; the family of the remaining ~90 ops in the [110-IT opcode table](../walrus/opcode-master.md) is assigned by descriptor-width evidence in their per-engine pages (STRONG for the tail). The op→family rule itself — *width + operand count picks the slot offsets, the control band fills the gap* — is CONFIRMED across all four byte-verified families.
 
 ---
 

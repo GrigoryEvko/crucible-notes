@@ -307,6 +307,8 @@
 - [extend-shared-lifetimes / sync-shared-allocations](walrus/shared-lifetimes.md)
 - [Lowering On-Chip Collectives — lower_local_collectives / insert_ptcom_flat](walrus/local-collectives.md)
 - [bir_linker — Multi-LNC Re-Assembly (N Per-Core Modules → One Module)](walrus/bir-linker.md)
+- [The VNC Cross-Core Link — vnc_remote_addr_map / vnc_link](walrus/vnc-cross-core-link.md)
+- [Codegen Driver and the CodeGenMode Mechanism](walrus/codegen-driver.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).

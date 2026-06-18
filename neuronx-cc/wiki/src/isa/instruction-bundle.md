@@ -10,7 +10,7 @@ The single piece of structure that is **truly universal** across all ops and all
 
 The other 60 bytes are **not** a fixed struct. They are an op-specific union body (the `NEURON_ISA_TPB_INST_UNION`). But the descriptor *slots* — the encoded memory-access patterns for the operands — do not land at arbitrary offsets. They land at one of **three family-fixed offset patterns** (A / B / C), chosen by descriptor width and operand count, with a control-byte band wedged into whichever 16-byte region the slots leave free. This page documents the universal header, the emission skeleton, the three slot families, and the single most-repeated error in earlier field maps — that there is a descriptor at `+0x48`. There is not.
 
-This is the skeleton the per-engine encoding pages (2.10 PE matmul, 2.11 Pool, … 2.22 DMA) fill in. After this page a reimplementer can lay out an empty 64-byte bundle and place the header for any opcode in the [master opcode table](../walrus/setupheader-opcode-table.md).
+This is the skeleton the per-engine encoding pages (2.10 PE matmul, 2.11 Pool, … 2.22 DMA) fill in. After this page a reimplementer can lay out an empty 64-byte bundle and place the header for any opcode in the [master opcode table](../walrus/opcode-master.md).
 
 | | |
 |---|---|
@@ -49,7 +49,7 @@ So the 4-byte header word is:
 | `+0x01` | `inst_word_len` | `0x10` = 16 dwords = 64 B | `setupHeader` | hardcoded immediate, zero data dependence |
 | `+0x02` | format / reserved | `0x0000` (word) | `setupHeader` | always zero on the wire |
 
-Read as a little-endian 16-bit word, `*(u16*)bundle = 0x10NN` where `NN` is the opcode byte and the high byte `0x10` is the length. This is why the MX opcodes show up in earlier reports as `0x1009 / 0x100A / 0x10E3` — those are the full *word*, and the opcode proper is the low byte (`0x09 / 0x0A / 0xE3`); the high `0x10` is `inst_word_len`, not part of the opcode. The full per-`InstructionType` × generation opcode table is the [opcode-word authority](../walrus/setupheader-opcode-table.md).
+Read as a little-endian 16-bit word, `*(u16*)bundle = 0x10NN` where `NN` is the opcode byte and the high byte `0x10` is the length. This is why the MX opcodes show up in earlier reports as `0x1009 / 0x100A / 0x10E3` — those are the full *word*, and the opcode proper is the low byte (`0x09 / 0x0A / 0xE3`); the high `0x10` is `inst_word_len`, not part of the opcode. The full per-`InstructionType` × generation opcode table is the [opcode-word authority](../walrus/opcode-master.md).
 
 > **QUIRK —** `inst_word_len` is named as if a bundle could be a different number of dwords. It cannot. `byte[1]` is the literal immediate `0x10` in all three bodies with no branch, no operand, no field read. Every CoreV\* bundle is exactly 64 bytes — one `emplace_back<std::array<u8,64>>` and one `fwrite(…, 0x40, …)`. There are no non-16 lengths in this ISA.
 
@@ -288,5 +288,5 @@ The definitive partition for a reimplementer:
 - [PE Engine — the systolic matmul array](../arch/pe-engine.md) — Family A's canonical user; the accumulate `+0x2B` and zero-region `+0x2F` semantics.
 - [Execution & sync model](../arch/execution-sync-model.md) — the `+0x04..+0x0B` sync header band (1.14).
 - [Arch object model](../arch/arch-object-model.md) — the `EngineType` ordinal map (Pool=1 … SP=6) that the census reads from `Inst+0x90`.
-- [setupHeader & the opcode-word table](../walrus/setupheader-opcode-table.md) — the per-`InstructionType` × generation L3 opcode authority (Part 8).
+- [setupHeader & the opcode-word table](../walrus/opcode-master.md) — the per-`InstructionType` × generation L3 opcode authority (Part 8).
 - [Per-engine `.bin` members](../formats/per-engine-bin.md) — where the emitted 64-byte bundle streams land in the NEFF container (12.4).
