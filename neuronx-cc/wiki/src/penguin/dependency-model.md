@@ -214,5 +214,6 @@ LAYER 2 — DependencyEdge scheduling graph (built by dep passes, per-Function) 
 - [5.1 — Penguin IR Node Model](ir-node-model.md) — the `Value`/`User` SSA use-list that Layer 2 is built on top of
 - [5.4 — High-Level Operator Family](tensor-op-family.md) — the `Operator`/`Instruction` nodes that `src`/`dst` point at; macro expansion drives `replace_with_list_in_dependencies`
 - [5.13 — Software Pipeline & Scheduling](scheduling-minreg.md) — the Tonga scheduler / `LoadStoreDependencyAnalysis` / `AliasDependency*` passes that build and consume these edges
-- [4.15 — Control-Dependence Modeling](../hlo-opt/control-dependence.md) — the upstream control-dep representation that becomes `ORDERED` edges here
+- [4.15 — Control-Dependency Reification (HLO→MLIR→Penguin)](../hlo-opt/control-dep-reification.md) — the upstream control-dep representation that becomes `ORDERED` edges here
+  > **CORRECTION (Wave-2 audit) — cross-ref slug.** This link previously pointed at `../hlo-opt/control-dependence.md`, which does not exist; the Part-4.15 page is `hlo-opt/control-dep-reification.md` ("Control-Dependency Reification (HLO→MLIR→Penguin)"). Retargeted; no factual claim changed.
 - [Part 7 — BIR Dependency & Sync Model](../bir/) — the C++ `bir::EdgeKind` `{Invalid0, Ordered1, Anti2, Output3, Flow4}` this enum lowers into, the inline TBB edge sets, and the MAX-merge
