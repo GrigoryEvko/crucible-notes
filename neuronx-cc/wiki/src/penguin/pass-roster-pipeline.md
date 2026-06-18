@@ -391,4 +391,4 @@ Honest gaps: the `codegen_prepare`/`codegen_optimization` *intra-phase ordering*
 - [Penguin AffineExpr Algebra](affine-expr-algebra.md) — owns the Isl/IntegerSet machinery the delinearization passes use
 - [Tensor / Buffer Node](tensor-buffer-node.md) — the PSUM/SBUF placement the alloc/spill passes target
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — where the backend Job dispatches into `CodeGenFlow`
-- [Part 14 — Pass Catalog](../passes/) — the per-pass deep dives this page indexes
+- Per-pass deep dives this page indexes (Part 5.x siblings): [Scheduling — MinReg](scheduling-minreg.md), [Software Pipelining](software-pipelining.md), [Data-Movement Fusion](data-movement-fusion.md), [Layout-Tiling Pipeline](layout-tiling-pipeline.md), [Loop-Transform Clients](loop-transform-clients.md)
