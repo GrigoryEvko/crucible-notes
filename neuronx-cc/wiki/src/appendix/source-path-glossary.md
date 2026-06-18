@@ -1,0 +1,233 @@
+# Appendix — Recovered Source-File Path Glossary
+
+> *Every path, address, and binary on this page applies to `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel; the IDA string dumps backing this page are the cp310 set, so the build root is uniformly `…KaenaCompilerNativeBuild-310/…/src-3.10.16/…`). cp311/cp312 carry byte-near-identical twins that renumber addresses and substitute the `-311`/`-312` build root. Other versions will differ.*
+
+## Abstract
+
+The shipped neuronx-cc binaries were compiled with `assert(...)` left in. Each surviving `assert` expansion plants its `__FILE__` argument — the compiler's own source-file path — as an interned string in `.rodata`, frequently followed by a `:`*lineno* suffix from the `__LINE__` macro. This appendix is the **glossary of those recovered path strings**: it takes every neuronxcc-internal source-file literal found in the binaries' string tables and maps it to the subsystem it implements and the wiki page that documents that subsystem.
+
+These strings are **direct binary evidence of internal structure**. A path like `walrus/coloring_allocator/src/sb_allocator/sb_spill.cpp` is not a guess about how the allocator is organized — it is the literal byte sequence the compiler emits when an assertion in its spill code fires, recovered from the `.rodata` of `libwalrus.so`. The path *is* the module boundary, the directory *is* the subsystem decomposition, and the `:lineno` suffix pins the assertion to a line. Where a normative page says "the SBUF allocator's spill phase", this appendix shows the file that phase lives in. The provenance model behind treating these as ground truth — and the firewall that keeps this wiki derived solely from binary analysis — is [§0.3 Methodology](../methodology.md).
+
+The glossary is **curated by relevance, not exhaustive**. The cp310 dumps carry **309 distinct** neuronxcc-internal source paths (plus thousands of vendored `external/com_google_absl/…`, `protobuf`, `re2`, `onednn` paths that are *not* neuronx-cc source and are excluded here). This page reproduces the compiler-source paths a reader will actually want to resolve — the IR core, the backend passes, the allocators, the codegen, the simulator, the dtype support, the generators — grouped by the subsystem prefix that is the path's own first directory. [§1](#1-how-the-paths-got-into-the-binary) explains how the strings are planted and how to re-extract them; [§2](#2-the-six-anchor-paths)–[§9](#9-cython-origin-pyx-and-py-paths) are the per-subsystem tables; [§10](#10-adversarial-verification--five-paths-re-confirmed) re-confirms five literals byte-for-byte against the cited binary's `_strings.json`.
+
+| | |
+|---|---|
+| **Target** | `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel) |
+| **Evidence form** | `assert(...)` `__FILE__`/`__LINE__` literals + embedded path strings in `.rodata` |
+| **Source artifact** | per-binary `…_strings.json` (IDA string dumps); each entry tagged `"category": "path"` |
+| **Build root (cp310)** | `/opt/workspace/KaenaCompilerNativeBuild-310/build/private/src-3.10.16/neuronxcc/` |
+| **Distinct neuronxcc paths** | **309** (after excluding vendored `external/…` third-party trees) |
+| **C++ (`.cpp`/`.cc`/`.h`/`.hpp`)** | 307 distinct |
+| **Python-origin (`.py`/`.pyx`)** | `instabrew/brewer.py` + `EmbeddedWalrusDriver.pyx` + `ErrorMessages.pyx` |
+| **Binaries carrying neuronxcc paths** | `libwalrus.so`, `libBIR.so`, `libBIRSimulator.so`, `krtlib`, the per-pass `*_with_loop`/`full_unroll`/… split ELFs, `libbuiltincustomop_cpu0..7` |
+
+> **NOTE —** every path quoted below is reproduced **verbatim** from a binary string table, stripped only of the constant build-root prefix and any `:lineno` suffix for readability. The full literal (with prefix and line) is what appears in the binary; [§10](#10-adversarial-verification--five-paths-re-confirmed) shows three of them in full. These are the compiler's *own* embedded paths — they are **not** sourced from any external, leaked, or reconstructed source tree, and nothing on this page describes source the project did not ship in the binary.
+
+---
+
+## 1. How the paths got into the binary
+
+A path string reaches `.rodata` through one of three mechanisms, all of them ordinary C/C++ build artifacts that a stripped binary still carries:
+
+```text
+(1) assert(cond)  →  __assert_fail("cond", __FILE__, __LINE__, __func__)
+        the libc assert macro interns __FILE__ as a string operand of the
+        __assert_fail call. Surviving asserts ⇒ the full source path is in .rodata,
+        usually as "<path>" and a separate ":<lineno>" or "<path>:<lineno>".
+
+(2) custom check/throw macros  →  log("<file>:<line> <expr>")
+        e.g. libbuiltincustomop's sort_and_merge.cpp asserts surface as ONE string
+        "sort_and_merge.cpp:122 right_data_buffer != nullptr && ..." — file, line,
+        and the failed predicate concatenated (category "generic", not "path").
+
+(3) generator provenance banners  →  literal "Generated by brewer from … brewer.py …"
+        the instabrew generator stamps each emitted *OpGen module with a banner
+        naming its own generator source — brewer.py — and the .pyx it came from.
+```
+
+The IDA string-dump pipeline classifies each literal; neuronxcc source paths land in **`"category": "path"`** (mechanisms 1 and 3 with a full build-root prefix) or **`"category": "generic"`** (mechanism 2, the concatenated `file:line predicate` form). Both are recovered by the same sweep.
+
+### Re-extracting the glossary
+
+```bash
+  # all neuronxcc-internal source paths, any binary, strip build-root + :lineno
+  for f in ida/*/*_strings.json; do
+    jq -r '.[].value | select(test("src-3\\.10\\.16/neuronxcc/")) |
+           select(test("\\.(cpp|cc|hpp|h|py|pyx)"))' "$f"
+  done | sed 's#.*/neuronxcc/##; s/:[0-9].*$//' | sort -u
+  #   => 309 distinct paths (the rows below)
+  # the build root is uniform across the cp310 dumps:
+  #   /opt/workspace/KaenaCompilerNativeBuild-310/build/private/src-3.10.16/neuronxcc/
+```
+
+> **GOTCHA —** the dumps also carry **thousands** of `external/com_google_absl/…`, `external/com_google_protobuf/…`, `external/com_googlesource_code_re2/…`, and `external/onednn/…` paths. Those are statically-linked **third-party** sources (Abseil, protobuf, RE2, oneDNN), *not* neuronx-cc code, and are excluded from every table here. The discriminator is the `…/src-3.10.16/neuronxcc/` prefix versus `…/external/`. Only the `neuronxcc/` subtree is the compiler's own source.
+
+---
+
+## 2. The six anchor paths
+
+These six are the brief's worked examples and the highest-value entries — each names a distinct subsystem and resolves to a documented page. All are reproduced verbatim from the cited binary's `_strings.json` (`category: path`, except the custom-op asserts which are `generic`).
+
+| Recovered path (under `neuronxcc/`) | Binary | Lang | Subsystem | Wiki page |
+|---|---|---|---|---|
+| `walrus/neff_packager/src/neff_packager.cpp` | `libwalrus.so` @ `0x1d729d8` | C++ | NEFF container assembly (the final-stage packager) | [NEFF Container](../formats/neff-container.md) |
+| `walrus/walrus_loop_flow/loop_optimization/src/loop_profitable_fusion.cpp` | `libwalrus.so` @ `0x1ce7238`; `loop_optimization` split ELF @ `0x5c4d60` | C++ | Loop-flow fusion profitability heuristic | [LICM & Fusion](../walrus/loopopt-licm-fusion.md) |
+| `instabrew/brewer.py` | `libBIR.so` @ `0x7208d0`; `libwalrus.so` @ `0x1d31d50`; `libBIRSimulator.so` @ `0x5b3838` | Py | The `*OpGen` instruction-encoder generator | [brewer.py Generator](../bir/brewer-generator.md) |
+| `walrus/perf_sim/src/perf_sim.cpp` | `libwalrus.so` @ `0x1d83328` | C++ | Cost-model / performance simulator | [perf_sim Wiring](../walrus/perf-sim-wiring.md) · [perfsim Cost Model](../walrus/perfsim-cost-model.md) |
+| `support/dtype_impl/float_converter.cpp` | `libBIR.so` @ `0x761908`; `libBIRSimulator.so` @ `0x5cae80`; `krtlib` @ `0x6d228` | C++ | dtype / float-format conversion support | [Dtype Catalog](../numerics/dtype-catalog.md) · [Cast to New Dtype](../numerics/cast-to-new-dtype.md) |
+| `sort_and_merge.cpp` *(bare; `file:line predicate`)* | `libbuiltincustomop_cpu0..7` @ `0x8407d2c0`+ | C++ | CPU custom-op: bitonic sort/merge top-k | [Bitonic Sort/TopK](../custom-ops/bitonic-sort-topk.md) · [CustomOp CPU ABI](../custom-ops/customop-cpu-abi.md) |
+
+> **NOTE —** `float_converter.cpp` and `brewer.py` appear in **three binaries each**. That is expected and itself evidentiary: `bir`/`pelican`/dtype support is *shared* code statically pulled into `libBIR`, `libBIRSimulator`, and `krtlib` (see [Symbol & Offset Index §0.1](symbol-offset-index.md#01-the-binary-roster)). The same `__FILE__` literal in multiple binaries confirms the same translation unit was linked into each. `loop_profitable_fusion.cpp` appears both in `libwalrus.so` and as its own standalone `loop_optimization` pass-driver ELF — the pass ships both ways.
+
+> **QUIRK —** `sort_and_merge.cpp` is the only anchor with **no build-root prefix**: the custom-op `.so` files use a bespoke check macro (mechanism 2) that interns just the basename plus the line and the failed predicate, e.g. `sort_and_merge.cpp:618 right_start < dim2`. The eight `libbuiltincustomop_cpu0..7` copies are byte-identical bodies relocated per-core (`0x8407…`/`0x8427…`/…), so the same 17 assert strings recur eight times.
+
+---
+
+## 3. `walrus/ir/` — the BIR IR core (`libwalrus.so`)
+
+The `walrus/ir/` subtree is the BIR in-memory IR: instruction/block/function objects, access patterns, the affine machinery, and the embedded simulator. These are the densest assert sites; the table is grouped by leaf, representative not exhaustive.
+
+| Recovered path | Lang | What it implements | Wiki page |
+|---|---|---|---|
+| `walrus/ir/lib/IR/Instruction.cpp` · `.../InstBuilder.cpp` · `.../InstructionInfo.cpp` | C++ | Instruction object, builder, per-op info | [Instruction Base](../bir/instruction-base.md) |
+| `walrus/ir/lib/IR/BasicBlock.cpp` · `.../Function.cpp` · `.../Module.cpp` | C++ | Block / function / module containers | [Instruction Base](../bir/instruction-base.md) |
+| `walrus/ir/lib/IR/AccessPattern.cpp` · `.../PhysicalAccessPattern.cpp` · `.../SymbolicAccessPattern.cpp` · `.../RegisterAccessPattern.cpp` | C++ | The access-pattern family | [Codegen AccessPattern](../bir/codegen-accesspattern.md) |
+| `walrus/ir/lib/IR/QuasiAffineExpr.cpp` · `.../AffinePredicate.cpp` · `.../IntegerSetAnalysis.cpp` | C++ | Affine / quasi-affine index algebra | [Affine Expr Algebra](../penguin/affine-expr-algebra.md) |
+| `walrus/ir/lib/IR/MemoryLocation.cpp` · `.../MemoryLocationSet.cpp` | C++ | Memory-location model | [Memory Locations](../bir/memory-location.md) |
+| `walrus/ir/lib/IR/Dtype.cpp` · `walrus/ir/include/bir/IR/Dtype.h` | C++ | BIR dtype enum / tables | [Dtype Tables](../bir/dtype-tables.md) |
+| `walrus/ir/lib/Simulator/kernel_sim.cpp` · `.../mat_mult.cpp` · `.../inst_visitor.cpp` · `.../logical_neuron_core.cpp` | C++ | Functional simulator core | [Sim Core Arithmetic](../bir/sim-core-arithmetic.md) · [Sim Dispatch/State](../bir/sim-dispatch-state.md) |
+| `walrus/ir/lib/Simulator/Memory.cpp` · `.../SyncState.cpp` · `.../RegState.cpp` · `.../Engine.cpp` | C++ | Sim memory / sync / register / engine state | [Sim Control/Sync](../bir/sim-control-sync-customop.md) |
+| `walrus/ir/lib/BarrierCheck/MissingBarrierChecker.cpp` · `.../BarrierRanger.cpp` · `.../InstGraph.cpp` | C++ | Missing-barrier static checker | [Barrier Check](../walrus/barriercheck.md) |
+| `walrus/ir/lib/Racecheck/Graph.cpp` | C++ | Race-condition checker graph | [Racecheck](../walrus/racecheck.md) |
+| `walrus/ir/lib/StaticProfiler/StaticProfiler.cpp` | C++ | Static per-instruction profiler | [perfsim Cost Model](../walrus/perfsim-cost-model.md) |
+| `walrus/ir/lib/Adapters/Json.cpp` · `walrus/ir/include/bir/ParserDumper/Dumper.h` | C++ | BIR↔JSON round-trip | [JSON Writer](../bir/json-writer.md) · [JSON Loader](../bir/json-loader.md) |
+| `walrus/ir/lib/Arch/Architectures.cpp` · `.../EngineInfo.cpp` | C++ | Per-arch / per-engine descriptors | [Arch Object Model](../arch/arch-object-model.md) |
+
+---
+
+## 4. `walrus/coloring_allocator/` — the register/SBUF/PSUM/DRAM allocator (`libwalrus.so`)
+
+The allocator is a graph-coloring core specialized per memory space; the path tree *is* the per-space decomposition (each space gets a `build/select/spill/simplify/live_range` quintet). The `*_with_loop` variants live in their own `coloring_allocator_with_loop` ELF.
+
+| Recovered path (leaf) | Space | Phase | Wiki page |
+|---|---|---|---|
+| `coloring_allocator/src/coloring_allocator.cpp` | (driver) | top-level allocator driver | [Allocator Drivers](../walrus/allocator-drivers.md) |
+| `coloring_allocator/src/reg_allocator/{reg_build,reg_select,reg_spill,reg_simplify,reg_live_range}.cpp` | register | build / select / spill / simplify / live-range | [Allocator Drivers](../walrus/allocator-drivers.md) |
+| `coloring_allocator/src/sb_allocator/{sb_build,sb_select,sb_spill,sb_simplify,sb_loads,sb_partners}.cpp` | SBUF | the SBUF quintet + load/partner helpers | [Allocator Drivers](../walrus/allocator-drivers.md) |
+| `coloring_allocator/src/psum_allocator/{psum_allocator,psum_select,psum_spill,psum_renumber,psum_costs}.cpp` | PSUM | PSUM allocation + cost model | [PSUM Allocator](../walrus/psum-allocator.md) |
+| `coloring_allocator/src/dram_allocator/{dram_build,dram_select,dram_simplify}.cpp` | DRAM/HBM | DRAM coloring | [DRAM Allocator](../walrus/dram-allocator.md) |
+| `coloring_allocator/src/{interval_tree,linearize,linearized_function_allocator}.cpp` | (shared) | interval tree + linearization | [Allocator Drivers](../walrus/allocator-drivers.md) |
+| `walrus_loop_flow/coloring_allocator_with_loop/src/*_with_loop.cpp` (16 leaves) | all | loop-aware allocator variant | [Loopopt Transforms](../walrus/loopopt-transforms.md) |
+| `linear_scan_allocator/src/{linear_scan_allocator,best_fit_memory_manager}.cpp` | (alt) | linear-scan alternative allocator | [Alt Allocators / DMA-Opt](../walrus/alt-allocators-dma-opt.md) |
+
+---
+
+## 5. `walrus/` backend passes (`libwalrus.so` + per-pass split ELFs)
+
+Each pass directory is a `walrus/<pass>/src/<pass>.cpp`. The pass-name *is* the pass purpose; the registry that drives them is `walrus/registration/src/backend_pass_manager.cpp`. Representative high-traffic passes:
+
+| Recovered path (leaf) | Pass family | Wiki page |
+|---|---|---|
+| `registration/src/backend_pass_manager.cpp` · `registration/src/walrus_pass.cpp` | pass-manager registry | [The Pass Catalog](pass-catalog.md) |
+| `driver/src/walrus_driver.cpp` · `pass/include/walrus/modular_flow.h` | backend driver / flow | [Codegen Driver](../walrus/codegen-driver.md) |
+| `dep_based_optims/{pre_sched,inst_sch,post_sched_pass,time_aware_sched,lnc_aware_sched,shift_left_scheduler}.cpp` | scheduling | [Post-Sched Schedulers](../walrus/post-sched-schedulers.md) · [Reorder / Non-SSA / Pre-Sched](../walrus/reorder-nonssa-presched.md) |
+| `walrus_loop_flow/full_unroll/src/{full_unroll,heuristic_unroll,flatten}.cpp` | loop unroll | [Loopopt Transforms](../walrus/loopopt-transforms.md) |
+| `walrus_loop_flow/loop_optimization/src/{loop_optimization,loop_profitable_fusion,loop_opt_doctor}.cpp` | loop fusion | [LICM & Fusion](../walrus/loopopt-licm-fusion.md) |
+| `lower_dma/src/lower_dma.cpp` · `dma_optimization/src/dma_optimization.cpp` · `coalesce_dma_blocks/src/coalesce_dma_blocks.cpp` · `dynamic_dma/src/dynamic_dma.cpp` | DMA lowering / opt | [Alt Allocators / DMA-Opt](../walrus/alt-allocators-dma-opt.md) |
+| `lower_{ac,act,ap,branch,control,sync,dve,dynamic_dma,local_collectives,generic_indirect}/src/*.cpp` | op lowering | [Codegen Driver](../walrus/codegen-driver.md) |
+| `value_numbering/src/gvn.cpp` · `mem2reg/src/mem2reg.cpp` · `constant_propagate/src/constant_propagate.cpp` · `early_peephole_opts/src/early_peephole_opts.cpp` | scalar opt | [The Pass Catalog](pass-catalog.md) |
+| `lnc_splitter/src/lnc_splitter.cpp` · `vn_splitter/src/vn_splitting.cpp` · `bir_splitter/src/bir_splitter.cpp` | core/VN splitting | [LNC Splitter](../walrus/lnc-splitter.md) · [VN Splitter / Shrink](../walrus/vnsplitter-shrink.md) |
+| `bir_linker/src/{bir_linker,post_link_report}.cpp` · `vnc_link/src/vnc_link.cpp` | linking | [BIR Linker](../walrus/bir-linker.md) · [VNC Cross-Core Link](../walrus/vnc-cross-core-link.md) |
+| `partitioner/src/{dag_part,bir_xform,layers}.cpp` | partitioner | [SPMD Partitioner Driver](../distribution/spmd-partitioner-driver.md) |
+| `lnc_verifier/src/lnc_verifier.cpp` · `verifier/src/inst_visitor.cpp` · `verify_bir_serdes/src/verify_bir_serdes.cpp` | verification | [BIR Verifier Per-Op](../walrus/birverifier-per-op.md) |
+| `neff_packager/src/{neff_packager,neff_file_writer}.cpp` | NEFF assembly | [NEFF Container](../formats/neff-container.md) · [NEFF Header/BOM Writer](../formats/neff-header-bom-writer.md) |
+| `dma_metrics/src/dma_metrics.cpp` · `report_stats/src/report_stats.cpp` | profiling/stats | [DMA-Metrics Profiler](../walrus/dmametrics-profiler.md) |
+| `inline_bir_kernel/src/kernels_impl/{attn_fwd,attn_bwd,flash_attn_fwd,mlp,qkv,rmsnorm_quant,router_topk,…}.cpp` | inlined fused kernels | [Tritium Fusion](../walrus/tritium-fusion.md) |
+| `translate_nki_ast_to_bir/src/{translate_nki_ast_to_bir,klir_to_bir_codegen}.cpp` | NKI-AST → BIR | [KLIR→BIR Codegen Dispatch](../bir/klir-codegen-dispatch.md) |
+
+---
+
+## 6. `walrus/codegen/` — the descriptor / core-generation codegen (`libwalrus.so`)
+
+| Recovered path (leaf) | What it implements | Wiki page |
+|---|---|---|
+| `codegen/src/codegen.cpp` · `codegen/src/generator.cpp` · `codegen/include/codegen/generator.h` | codegen entry / generator | [Codegen Driver](../walrus/codegen-driver.md) |
+| `codegen/src/{CoreV2GenImpl,CoreV3GenImpl,CoreV4GenImpl}.cpp` (+ `.h`) | per-core-generation descriptor emit | [Codegen Driver](../walrus/codegen-driver.md) · [Codename Taxonomy](../arch/codename-taxonomy.md) |
+| `codegen/src/descgen.cpp` · `codegen/src/descgen_helper.cpp` | DMA descriptor generation | [Codegen Data-Movement](../bir/codegen-data-movement.md) |
+| `codegen/src/assign_var_id.cpp` | variable-ID assignment | [Codegen Helpers / Kernel Provision](../bir/codegen-helpers-kernel-provision.md) |
+| `codegen/src/debug_info_writer.cpp` | debug-info producer | [Symbol & Offset Index](symbol-offset-index.md) |
+
+> **NOTE —** the `CoreV2/V3/V4GenImpl` triple is the binary's own evidence for the three live core generations. The `hwm/` hardware-model files in [§8](#8-hwm--pelican--support--per-hardware-models-and-shared-cores) (`cayman_bir.cpp`, `sunda_bir.cpp`, `core_v4_bir.cpp`) are the matching per-codename device models. Cross-check against [Codename Taxonomy](../arch/codename-taxonomy.md) and [Vestigial Generations](../arch/vestigial-generations.md).
+
+---
+
+## 7. `pelican/` — the affine-index / expression IR (`libBIR.so`)
+
+`pelican` is the affine-expression / value IR underneath BIR (owned by `libBIR.so`, [§0.1](symbol-offset-index.md#01-the-binary-roster)). Its `include/pelican/IR/*.h` and `lib/IR/*.cpp` literals appear in `libBIR.so`'s string table.
+
+| Recovered path | What it implements | Wiki page |
+|---|---|---|
+| `pelican/lib/IR/{AffineExpr,AffineIdx,AffineIndices,QuasiAffExprs,AffinePredicate}.cpp` | affine index algebra | [Affine Expr Algebra](../penguin/affine-expr-algebra.md) · [Pelican Index Runtime](../bir/pelican-index-runtime.md) |
+| `pelican/lib/IR/{Expr,Value,Stmt,Instruction}.cpp` | expression / value / statement core | [Pelican Expr Core](../bir/pelican-expr-core.md) |
+| `pelican/lib/IR/PelicanContext.cpp` · `pelican/lib/IR/Access.cpp` | context + access | [Pelican Hierarchy](../bir/pelican-hierarchy.md) |
+| `pelican/lib/Analyses/MemDepGraph.cpp` | memory-dependence graph | [ISL Schedule-Tree Legality](../penguin/isl-schedule-tree-legality.md) |
+| `pelican/include/pelican/IR/{AffineExpr,AffineIndices,CompareExpr,Value}.h` · `pelican/include/pelican/Support/DType.h` | public headers | [Pelican Wire](../bir/pelican-wire.md) · [Pelican ModuleExpr](../bir/pelican-moduleexpr.md) |
+| `pelican/python/{PyAccess,PyValue}.cpp` · `pelican/python/{PyBlock,PyPelican}.h` | Python bindings | [Pelican Hierarchy](../bir/pelican-hierarchy.md) |
+
+---
+
+## 8. `hwm/`, `support/` — per-hardware models and shared cores
+
+| Recovered path | Binary | What it implements | Wiki page |
+|---|---|---|---|
+| `hwm/cayman_bir.cpp` · `hwm/sunda_bir.cpp` · `hwm/core_v4_bir.cpp` | `libwalrus.so` | per-codename hardware/device models | [Codename Taxonomy](../arch/codename-taxonomy.md) · [Hardware Constant Matrix](../arch/hardware-constant-matrix.md) |
+| `hwm/ctm.cpp` | `libwalrus.so` | hardware constant/timing model | [Hardware Constant Matrix](../arch/hardware-constant-matrix.md) |
+| `support/dtype_impl/float_converter.cpp` | `libBIR.so`, `libBIRSimulator.so`, `krtlib` | float-format conversion (shared) | [Dtype Catalog](../numerics/dtype-catalog.md) · [Cast to New Dtype](../numerics/cast-to-new-dtype.md) |
+| `metric_bindings/python/pymetrics.cpp` | `libwalrus.so` | Python metric bindings | [DMA-Metrics Profiler](../walrus/dmametrics-profiler.md) |
+
+---
+
+## 9. Cython-origin `.pyx` and `.py` paths
+
+The neuronxcc-internal **Python-origin** paths are few — most of the frontend is interpreted `.py` not compiled, so only the Cython-compiled modules plant their `.pyx`/`.py` source into a binary. The `*OpGen.cpython-310-…so` encoder modules are themselves brewer-*generated* C from those `.pyx`; each carries a provenance banner naming `brewer.py`.
+
+| Recovered path | Binary | Form | What it is | Wiki page |
+|---|---|---|---|---|
+| `instabrew/brewer.py` | `libBIR.so`, `libwalrus.so`, `libBIRSimulator.so` | `.py` (full path) | the instruction-encoder generator | [brewer.py Generator](../bir/brewer-generator.md) |
+| *(banner)* `Generated by brewer from the definition in neuronxcc/instabrew/brewer.py at line 3384` | ~110 `*OpGen.cpython-310-…so` | banner literal | per-`*OpGen` provenance stamp | [brewer.py Generator](../bir/brewer-generator.md) |
+| `driver/jobs/support/EmbeddedWalrusDriver.pyx` | `EmbeddedWalrusDriver.cpython-310-…so` | `.pyx` | the embedded walrus driver shim | [Two-Parser Architecture](../frontend/two-parser-architecture.md) |
+| `ErrorMessages.pyx` *(bare)* | `ErrorMessages.cpython-310-…so` | `.pyx` | the diagnostics dict module | [Error-Message Catalog](error-message-catalog.md) |
+
+> **NOTE —** the `*OpGen` module names in the dump (`MatMulOpGen`, `TensorScalarPtrOpGen.cpytho_…`, `TiledSoftmaxOpGen.cpyth_…`, …) are **module/symbol** names, not source paths — they are the *outputs* brewer emitted, each tagged with the `brewer.py:3384` banner. The single source-of-truth `.py` path is `instabrew/brewer.py`; the `:3384` is the emit-site line inside brewer's template engine. This is the binary's own confirmation of the *OpGen-from-brewer contract documented in [§7.10](../bir/brewer-generator.md).
+
+---
+
+## 10. Adversarial verification — five paths re-confirmed
+
+Five literals were re-extracted directly from the cited binary's `_strings.json` to confirm the byte-exact string is present (not paraphrased). Command form:
+
+```bash
+jq -r '.[] | select(.value|test("<path>")) | "\(.addr)\t\(.category)\t\(.value)"' \
+  ida/<binary>__…_strings.json
+```
+
+| # | Path (claimed) | Binary | Re-confirmed literal & addr | Status |
+|---|---|---|---|---|
+| 1 | `neff_packager.cpp` | `libwalrus.so` | `…/src-3.10.16/neuronxcc/walrus/neff_packager/src/neff_packager.cpp` @ `0x1d729d8`, `category:path`, 4 xrefs (plus `:49`,`:73`,`:110`,`:113`,`:239`,`:490`,`:1061` line variants) | CONFIRMED |
+| 2 | `loop_profitable_fusion.cpp` | `libwalrus.so` + `loop_optimization` ELF | `…/walrus/walrus_loop_flow/loop_optimization/src/loop_profitable_fusion.cpp` @ `0x1ce7238` (libwalrus) and @ `0x5c4d60` (loop_optimization) | CONFIRMED (both binaries) |
+| 3 | `perf_sim.cpp` | `libwalrus.so` | `…/walrus/perf_sim/src/perf_sim.cpp` @ `0x1d83328`, `category:path` (+ `:96`,`:108`,`:121`,`:242`,`:249`,`:488`,`:506`,`:654`,`:758`,`:760`,`:816` line variants) | CONFIRMED |
+| 4 | `float_converter.cpp` | `libBIR.so` · `libBIRSimulator.so` · `krtlib` | `…/support/dtype_impl/float_converter.cpp` @ `0x761908` (libBIR), `0x5cae80` (libBIRSimulator), `0x6d228` (krtlib) — same TU in three binaries | CONFIRMED (3 binaries) |
+| 5 | `sort_and_merge.cpp` | `libbuiltincustomop_cpu0` | `sort_and_merge.cpp:618 right_start < dim2` @ `0x8407d633`, `category:generic` (basename-only `file:line predicate` form; 17 asserts, replicated cpu0..7) | CONFIRMED |
+
+> **NOTE —** the `category` field is itself a provenance signal: `neff_packager`/`perf_sim`/`float_converter`/`loop_profitable_fusion` all carry `"category": "path"` (full build-root `__FILE__` literals), while `sort_and_merge`'s carry `"category": "generic"` (the concatenated `file:line predicate` custom-check form). Both are binary-resident; neither is reconstructed. `brewer.py`'s three hits also carry `"category": "path"`.
+
+---
+
+## Cross-References
+
+- [Methodology & the Confidence Model](../methodology.md) — §0.3; the provenance model that makes these `__FILE__` literals citable ground truth and the firewall keeping the wiki derived solely from binary analysis.
+- [brewer.py Generator & the *OpGen Contract](../bir/brewer-generator.md) — §7.10; the `instabrew/brewer.py` generator whose path and `:3384` banner this glossary recovers.
+- [perf_sim Wiring & the pttf Trace Tarball](../walrus/perf-sim-wiring.md) — §8.46; the `walrus/perf_sim/src/perf_sim.cpp` subsystem this glossary maps.
+- [Symbol & Offset Index](symbol-offset-index.md) — the address→page reverse lookup; pair a recovered path here with its symbols there.
+- [Error-Message Catalog](error-message-catalog.md) — the assert *messages* (the predicate text) whose `__FILE__` paths this page catalogs.
+- [The Pass Catalog](pass-catalog.md) — the `walrus/<pass>/src/<pass>.cpp` paths resolved to pass objects and registry order.
