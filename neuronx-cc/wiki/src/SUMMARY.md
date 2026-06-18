@@ -228,6 +228,12 @@
 - [Sparse Matmul: SparsityCompress Datapath & Format](nki/sparsity-compress.md)
 - [Sparse Matmul: Penguin MatMulSparseOp Lowering & Producer](nki/sparse-matmul-lowering.md)
 
+# Part 7 — BIR, libBIR & the Simulator
+
+- [The bir::Instruction Base Struct & the +0xD0 Sched/Dep Block](bir/instruction-base.md)
+- [NamedObject / Container CRTP & the Module→Function→BB→Inst Model](bir/container-model.md)
+- [Argument / AccessPattern / Immediate / Register Value Model](bir/value-model.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
