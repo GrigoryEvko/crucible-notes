@@ -365,6 +365,9 @@
 
 - [The GPSIMD CPUs: 8-core Xtensa ELF Layout](custom-ops/gpsimd-xtensa-layout.md)
 - [The Bitonic SORT / TOPK Builtin Algorithm](custom-ops/bitonic-sort-topk.md)
+- [The Custom-Op CPU ABI: extended_isa::sdk](custom-ops/customop-cpu-abi.md)
+- [The Bundled ATen/c10 Dispatch Surface](custom-ops/aten-c10-surface.md)
+- [CUSTOM_OP Wire Byte-Layout (0x85 / 0x86)](custom-ops/customop-wire-layout.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
