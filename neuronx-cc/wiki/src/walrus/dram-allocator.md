@@ -208,12 +208,14 @@ function build_interval_tree(func, info):                // sub_0xa71a80
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
-| `lo` | `+0` | u32 | interval start = def's flat instruction index |
-| `hi` | `+4` | u32 | interval end = use's flat instruction index |
-| `max` | `+8` | u32 | augmentation: max `hi` in this node's subtree |
+| `hi` | `+0` | u32 | use's flat instruction index (interval end) |
+| `lo` | `+4` | u32 | def's flat instruction index (interval start) |
+| `max` | `+8` | u32 | augmentation: max in this node's subtree (seeded from the `+4` def index) |
 | `payload` | `+12` | u32 | the `Info`/location index this interval belongs to |
 | `left` | `+16` | i32 | left child array index (`-1` = none) |
 | `right` | `+20` | i32 | right child array index (`-1` = none) |
+
+> **CORRECTION (#827 audit).** The `lo`/`hi` rows were inverted in an earlier draft (it listed `lo@+0, hi@+4`). The construction at `build_interval_tree` `@0xa71a80` (decompiled `:1178`) is `_mm_unpacklo_epi64(_mm_insert_epi32(_mm_cvtsi32_si128(use_flat), def_flat, 1), _mm_insert_epi32(_mm_cvtsi32_si128(def_flat), payload, 1))`, which lays the **use** flat index at `+0` and the **def** flat index at `+4` — i.e. `hi@+0, lo@+4`, exactly the `{ hi, lo, lo, useIdx, -1, -1 }` field order the build pseudocode below already shows. The binary's readers (`makeMax`, `getAllOverlaps`) are internally consistent with this layout: `makeMax` seeds its subtree-max from `+8` (pre-initialized to the def index), and the overlap test reads `+0`/`+4` as its hi/lo operands. Results are correct; only the documented offset→field mapping was wrong. **[CONFIRMED — `:1178` SIMD pack reads `use_flat` into lane 0, `def_flat` into lane 1.]**
 
 `makeTree(lo, hi)` `@0x9a7a00` is a classic recursive perfect-balance builder: `mid = (lo+hi)/2`, `node[mid].left = makeTree(lo, mid)`, `node[mid].right = makeTree(mid+1, hi)`, returns `mid`; asserts `lo <= hi` (`interval_tree.cpp:5`). The tree is keyed by **array index**, not by `lo` — the in-order index sequence *is* the tree, so rebalancing is free. `makeMax(idx)` `@0x9a8000` is the CLRS post-order subtree-max augmentation: `node.max = max(node.hi, makeMax(left), makeMax(right))`.
 
@@ -360,7 +362,7 @@ The CC-buffer region is reserved separately from the rotatable / general region 
 
 | Knob | Type | Default | Description |
 |---|---|---|---|
-| `--allreduce-buffer-size` | int (MB) | **500** | CC-op pipeline buffer size (`0x1F4` initializer at `0x7c441c`); `-1` → `cc_buffer_size` auto-computes (`this+516`) |
+| `--allreduce-buffer-size` | int (MB) | **500** | CC-op pipeline buffer size (`cl::init(500)` in the option registrar `sub_7C2890` `@0x7c2890`); `-1` → `cc_buffer_size` auto-computes (`this+516`) |
 | `--dram-page-size` | int | **512** | GCA granule for the *SBUF* path; DRAM ignores it (flat 4 KiB) |
 | `--print-GCA-debug` | bool | **false** | `this+485` → `Module::save("GCA_debug.bir")` |
 
