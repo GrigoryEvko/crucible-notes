@@ -290,6 +290,9 @@
 - [Address-Rotation (PSUM/SB/DRAM) & the Emergent SW Pipeline](walrus/address-rotation.md)
 - [order-column-tiled-mms / legalize-mm-accumulation-groups](walrus/matmul-ordering-accgroups.md)
 - [Allocator Drivers — ColoringAllocator Wiring & Loop-Aware Linearize](walrus/allocator-drivers.md)
+- [SBUF Allocator — Liveness / Interference / find-partners (Chaitin-Briggs)](walrus/sbuf-liveness-interference.md)
+- [SBUF Allocator — Spill-Cost / Simplify / Select / Spill-Code](walrus/sbuf-spill-select.md)
+- [PSUM Allocator (Bank Model)](walrus/psum-allocator.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
