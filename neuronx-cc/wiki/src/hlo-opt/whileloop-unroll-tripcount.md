@@ -1,6 +1,6 @@
 # While-Loop Unroll & All-Gather Trip-Count Rewrite
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`. For `.text`/`.rodata` the virtual address equals the file offset; the disasm/JSON sidecars are already in VA. Other wheels differ — treat every address as version-pinned.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`; the disasm/JSON sidecars are already in VA and resolve via `objdump --start-address`. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other wheels differ — treat every address as version-pinned.*
 
 ## Abstract
 

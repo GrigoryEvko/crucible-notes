@@ -1,6 +1,6 @@
 # CC-Op Decompose & Legalize Family
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`. Other versions and ABI tags will differ. VA == file-offset for `.text`/`.rodata`.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`; resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. Other versions and ABI tags will differ. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers).*
 
 ## Abstract
 
