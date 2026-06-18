@@ -345,6 +345,7 @@
 - [bir::CastToNewDType — Cast / Saturate Engine](numerics/cast-to-new-dtype.md)
 - [Penguin AutoCastFP32 Cast-Insertion](numerics/autocast-fp32.md)
 - [DTypeMutator Dtype-Propagation Pass](numerics/dtype-mutator.md)
+- [Cast-Elimination Numeric Passes](numerics/cast-elimination.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
