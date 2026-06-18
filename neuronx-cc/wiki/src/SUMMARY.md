@@ -359,6 +359,7 @@
 - [bkt.bin / ctrl.bin On-Device PWP Blob Format](activation/bkt-ctrl-blob.md)
 - [Activation profile_json & updateFromActJsonFile Consumer](activation/activation-profile-json.md)
 - [LoadActFuncSet / On-Chip LUT-Load](activation/loadactfuncset.md)
+- [Activation Set-Cover, calculateBestSets & Prefetch](activation/set-cover.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
