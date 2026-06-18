@@ -185,10 +185,12 @@ jmp    rax;
 | 13 | float16 | `0x265c80` | **INLINE** fp32→float16 RNE |
 | 14 | uint32 | `0x265bb1` | **INLINE** round+clamp → [0,2³²−1] |
 | 15 | int32 | `0x2659e4` | **INLINE** round+saturate → [INT32_MIN,MAX] |
-| 16 | float32 | `0x18b255` | passthrough — return the fp32 buffer |
+| 16 | float32 | (filler → `0x18b255`) | float32-out is the fp32 buffer itself; handled before the table (see CORRECTION) |
 | 17 | float32r | `0x265b99` | `call 0x4b2a60` (cast_fp32_to_fp32r, RNE) |
 
-I verified `dst[1]`, `dst[5]`, `dst[7]`, `dst[13]`, `dst[16]` from the live table bytes — e.g. `dst[5]` = `rel −0x51d2a7` → `0x2659a5` (e4m3fn); `dst[16]` = `rel −0x5f79f7` → `0x18b255` (the fp32-passthrough block lives in a **different basic block** from the rest — the two-VA-frame artifact, not an error). [**CONFIRMED**.]
+I verified `dst[1]`, `dst[5]`, `dst[7]`, `dst[13]`, `dst[16]` from the live table bytes — e.g. `dst[5]` = `rel −0x51d2a7` → `0x2659a5` (e4m3fn); `dst[16]` = `rel −0x5f79f7` → `0x18b255`. [**CONFIRMED bytes**.]
+
+> **CORRECTION (#812) — `0x18b255` is the out-of-range-dtype THROW block, not an fp32 passthrough.** Stage-A's float32 alias-copy is at `0x265460` (correctly documented in §Stage A); on the *output* side, float32 is the fp32 work buffer itself and is returned before the Stage-B jump table ever indexes slot 16. The dispatcher at `0x265430` does `cmp $0x11,%r14d ; ja 18b255` and only then `lea 0x782c4c ; jmp *[table]`. The `0x18b255` body is verifiably an exception throw — `mov $0x10,%edi ; call __cxa_allocate_exception ; … call bir::Dtype2string ; call std::runtime_error::runtime_error` (objdump `0x18b255`–`0x18b292`, inside `boost::wrapexcept<bad_optional_access>::rethrow`) — i.e. the "unknown dtype" abort that out-of-range `dst` (and the unused table slot 16) falls through to. It does **not** "return the fp32 buffer." The table byte (`rel −0x5f79f7`) is correct; its *interpretation* as a passthrough was the error.
 
 > **Note on float16 vs bfloat16.** `dst[13]` is genuinely **half** (fp16), not bf16: its inline encoder at `0x265c80` uses the fp16-specific overflow/underflow thresholds `0x477fffff` / `0x387fffff` (the |x| edges at 2¹⁶ and 2⁻¹⁴). bf16 narrowing is the *named* helper `cast_fp32_to_bf16` at `0x4b2750` (`dst[12]`). [**CONFIRMED**.]
 
@@ -374,7 +376,7 @@ Because the hub is **single-precision**, an integer conversion that passes throu
 
 The five strongest claims on this page were re-checked against the binary directly:
 
-1. **Two-stage src→fp32→dst dispatch** — both jump tables decoded from live `.rodata` bytes; `src[16]==src[17]→0x265460` (fp32 alias), `dst[16]→0x18b255` (passthrough). **CONFIRMED**.
+1. **Two-stage src→fp32→dst dispatch** — both jump tables decoded from live `.rodata` bytes; `src[16]==src[17]→0x265460` (fp32 alias). **CONFIRMED** (the `dst[16]→0x18b255` slot is the out-of-range-dtype throw, not an fp32 passthrough — see the CORRECTION under §Stage B).
 2. **fesetround(0) RNE-only** — `xor %edi,%edi; call fesetround@plt` at `0x2650e2`; no other `fesetround`. **CONFIRMED**.
 3. **FP8 saturate default-ON** — GOT `0x90fba0` → `R_X86_64_GLOB_DAT` → `FP8ConvConfig 0x917848` = `0x00000001` (read from file `0x916848`, accounting for the `.data` +0x1000 delta). **CONFIRMED**.
 4. **int>2²⁴ round-trip caveat** — structural: every integer leg is `cvtsi2ss → cvttss2si` through fp32. **CONFIRMED** by architecture.
