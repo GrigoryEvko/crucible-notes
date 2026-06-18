@@ -162,6 +162,7 @@
 - [Backend Polyhedral Dependence-Distance (libwalrus — name-only polyhedral)](penguin/backend-dependence-distance.md)
 - [Data-Dependent Control Flow: InstDynamicForLoop (IT106)](penguin/dynamic-for-loop.md)
 - [Symbolic-AP → Register-ALU Materialization (kind-2 → kind-3)](penguin/symbolic-ap-register-alu.md)
+- [Dynamic-Shape System Synthesis (End-to-End Thread)](penguin/dynamic-shape-synthesis.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
