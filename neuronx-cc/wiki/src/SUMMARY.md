@@ -221,6 +221,8 @@
 - [Experimental & Pre-Prod Kernels (Cluster)](nki/experimental-kernels.md)
 - [Conv Device-Lowering & Variant Selection](nki/conv-device-lowering.md)
 - [private_nkl Depthwise Conv Kernels](nki/depthwise-conv.md)
+- [private_nkl Dense Conv2D: NHWC-Replication & Column-Packing](nki/dense-conv2d.md)
+- [Experimental conv2d_pbp Kernels](nki/conv2d-pbp.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
