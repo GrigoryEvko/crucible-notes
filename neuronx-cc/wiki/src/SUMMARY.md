@@ -396,6 +396,7 @@
 - [Symbol & Offset Index](appendix/symbol-offset-index.md)
 - [The Pass Catalog](appendix/pass-catalog.md)
 - [The 64-byte Bundle Quick-Reference](appendix/bundle-quick-reference.md)
+- [Report → Wiki-Page Cross-Reference Map](appendix/report-page-crossref.md)
 - [Binary Build-ID / Version Table](appendix/build-id-version-table.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
