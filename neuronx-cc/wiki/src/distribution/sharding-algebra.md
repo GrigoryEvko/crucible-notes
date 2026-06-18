@@ -29,7 +29,7 @@ For reimplementation, the contract is:
 | **Inverse projection** | `TensorFactorShardings::createTensorShardingAttr(...)` @ `0x2c64200` |
 | **Per-factor state** | `FactorSharding` — `DenseMap<long, FactorSharding>` entry stride `0x90` (144 B) |
 | **Opcode count** | 26 distinct StableHLO opcode lambdas (symbol-confirmed) |
-| **Terminal lowering** | `xla::sdy::convertToHloSharding(...)` @ `0x2bc58f0` → `HloSharding` (see [13.4](hlo-sharding.md)) |
+| **Terminal lowering** | `xla::sdy::convertToHloSharding(...)` @ `0x2bc58f0` → `HloSharding` (see [13.4](shardy-hlosharding-bridge.md)) |
 
 ---
 
@@ -291,7 +291,7 @@ TensorShardingAttr TensorFactorShardings::createTensorShardingAttr(        // 0x
                                    replicatedAxes, unreducedAxes);
 ```
 
-This is the map that turns propagated factor state back into a per-tensor `TensorShardingAttr`. The propagation pass writes that attr onto the op; it later becomes an `HloSharding` via the sdy↔mhlo round-trip (see [13.4](hlo-sharding.md)).
+This is the map that turns propagated factor state back into a per-tensor `TensorShardingAttr`. The propagation pass writes that attr onto the op; it later becomes an `HloSharding` via the sdy↔mhlo round-trip (see [13.4](shardy-hlosharding-bridge.md)).
 
 ### Mutators used by propagation
 
@@ -430,7 +430,7 @@ hloSharding = xla::sdy::convertToHloSharding(newSharding, getMesh, manualAxes); 
 
 **Stock OpenXLA Shardy / StableHLO (this page):** `OpShardingRuleAttr`, `OpShardingRuleBuilder`, `createOpShardingRule`, `ShardingProjection`, `TensorFactorShardings`, `FactorSharding`, `FactorType`, `Basic`/`AggressiveFactorPropagation`, `convertToHloSharding`, `Import`/`ExportStablehloShardingsPass`. Also linked but distinct: the older `xla::spmd` partitioner (`SpmdPartitioningVisitor`, `PartitionConvolution`, `WindowedDotGeneralLoop`) — the tensor-level executor, see [13.1](spmd-partitioner-driver.md).
 
-**Neuron-authored (consumers, not the algebra):** `neuron::GetTpReplicaGroup(HloComputation*/HloModule*)` derives tensor-parallel replica groups from the resulting `HloSharding`; `neuron::HasMatchingReplicaGroups`; `xla::hilo::NeuronReduceScatterCombiner`, `NeuronMoveAllGatherWhileLoop` collective rewrites. These run **after** the sdy projection produces shardings; they do not alter the factor algebra. The Logical-NeuronCore (LNC) constraint enters only via `MeshAttr` axis sizes and device order used by `convertToHloSharding` and `GetTpReplicaGroup` — a consumer concern, documented with the collective passes ([13.5](compute-handlers.md)).
+**Neuron-authored (consumers, not the algebra):** `neuron::GetTpReplicaGroup(HloComputation*/HloModule*)` derives tensor-parallel replica groups from the resulting `HloSharding`; `neuron::HasMatchingReplicaGroups`; `xla::hilo::NeuronReduceScatterCombiner`, `NeuronMoveAllGatherWhileLoop` collective rewrites. These run **after** the sdy projection produces shardings; they do not alter the factor algebra. The Logical-NeuronCore (LNC) constraint enters only via `MeshAttr` axis sizes and device order used by `convertToHloSharding` and `GetTpReplicaGroup` — a consumer concern, documented with the compute/collective handlers ([13.5](spmd-compute-handlers.md)).
 
 ### Registry and grounding strings
 
@@ -488,13 +488,13 @@ The following strings are present verbatim in `hlo-opt` `.rodata` and ground the
 |---|---|
 | `mlir::sdy` propagation passes | the driver loop that calls this algebra ([13.2](sharding-propagation.md)) |
 | `xla::spmd` partitioner | tensor-level executor (distinct, older) ([13.1](spmd-partitioner-driver.md)) |
-| `xla::HloSharding` | terminal lowering of the projected factors ([13.4](hlo-sharding.md)) |
-| `neuron::GetTpReplicaGroup` / collective rewrites | Neuron consumers of the resulting sharding ([13.5](compute-handlers.md)) |
+| `xla::HloSharding` | terminal lowering of the projected factors ([13.4](shardy-hlosharding-bridge.md)) |
+| `neuron::GetTpReplicaGroup` / collective rewrites | Neuron consumers of the resulting sharding ([13.5](spmd-compute-handlers.md)) |
 
 ## Cross-References
 
 - [SPMD Partitioner Driver](spmd-partitioner-driver.md) — 13.1; the `xla::spmd` tensor-level partitioner, distinct from this sdy propagation algebra
 - [Sharding Propagation](sharding-propagation.md) — 13.2; the basic/aggressive propagation passes and fixed-point loop that drive this algebra
-- [HLO Sharding](hlo-sharding.md) — 13.4; `convertToHloSharding` and the sdy↔mhlo round-trip that consumes the inverse projection
-- [Compute Handlers](compute-handlers.md) — 13.5; Neuron's replica-group / collective consumers downstream of the projected shardings
+- [Shardy ↔ HloSharding Bridge](shardy-hlosharding-bridge.md) — 13.4; `convertToHloSharding` and the sdy↔mhlo round-trip that consumes the inverse projection
+- [SPMD Compute-Op Partition Handlers](spmd-compute-handlers.md) — 13.5; Neuron's replica-group / collective consumers downstream of the projected shardings
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — where `hlo-opt` and the `Frontend` job sit in the driver pipeline
