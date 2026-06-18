@@ -1,6 +1,6 @@
 # AllReduce→ReduceScatter & DynamicSlice Rewrites
 
-> *All addresses on this page apply to `neuronxcc/starfish/bin/hlo-opt` from the `neuron_cc 2.24.5133.0+58f8de22` wheel (cp310). For `.text`/`.rodata` the virtual address equals the file offset; `.data`-resident structs differ. Other builds will differ.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronxcc/starfish/bin/hlo-opt` from the `neuron_cc 2.24.5133.0+58f8de22` wheel (cp310); resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers); `.data`-resident structs differ again. Other builds will differ.*
 
 ## Abstract
 

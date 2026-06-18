@@ -1,6 +1,6 @@
 # Flip-Collective OpExpander Family
 
-> *All addresses on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`, not stripped). For `.text` and `.rodata` in this binary VA == file offset; addresses resolve directly in `disasm/` and `*_strings.json`. The all-gather field offsets (+0x250/+0x258/+0x260) are pinned from the XLA `HloAllGatherInstruction` ctor/accessor and are HIGH-confidence, not re-bit-verified in this skip-decompiled binary. Other versions will differ.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`, not stripped); they resolve directly in `disasm/` and `*_strings.json` (VMA-keyed) and via `objdump --start-address`. VA ≠ raw file offset here: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). The all-gather field offsets (+0x250/+0x258/+0x260) are pinned from the XLA `HloAllGatherInstruction` ctor/accessor and are HIGH-confidence, not re-bit-verified in this skip-decompiled binary. Other versions will differ.*
 
 ## Abstract
 
