@@ -250,6 +250,8 @@
 - [pelican Index/CC/Runtime Exprs & BirIntRuntimeValue](bir/pelican-index-runtime.md)
 - [pelican Wire Serialization & the APIndex No-Wire-Form Finding](bir/pelican-wire.md)
 - [pelican::ModuloExpr & the Buffer-Ring Address-Rotation Math](bir/pelican-moduleexpr.md)
+- [KlirToBirCodegen Dispatch Core & the Master Routing Table](bir/klir-codegen-dispatch.md)
+- [codegen AccessPattern Primitive (codegenAccess / BirAccessPattern)](bir/codegen-accesspattern.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
