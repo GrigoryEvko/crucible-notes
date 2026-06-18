@@ -280,6 +280,8 @@
 - [DMA Legalization — Strided / CCE / Generic-Indirect](walrus/dma-legalization.md)
 - [lower_select / lower_control / lower_branch](walrus/lower-select-control-branch.md)
 - [Engine-Lowering Set — lower_sync / lower_act / lower_dve / lower_ap](walrus/engine-lowering-set.md)
+- [peephole / constant-propagate / remat / redundancy Passes](walrus/peephole-constprop-remat.md)
+- [SSA Exit & Pre-Scheduling — reorder / non-ssa / pre_sched / dce / localize](walrus/reorder-nonssa-presched.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
