@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The **Pool engine** is Trainium's windowed-reduction unit — the leg of the TPB that owns 2-D **average/max pooling**, free-axis **tensor reduction**, and the 8-wide **argmax** primitives. Unlike the [PE engine](pe-engine.md), it is not one array with one job: four distinct BIR ops route across this leg, and they fan out to **nine** different wire opcodes spread over three physical datapaths (the Pool engine proper, a reduce engine, and the DVE). A reimplementer's first task is therefore not "encode a pool" but "decide *which* of nine opcodes a given pooling/reduction op becomes" — and that decision is driven by enum values the front-end set long before codegen.
+The **Pool engine** is Trainium's windowed-reduction unit — the leg of the TPB that owns 2-D **average/max pooling**, free-axis **tensor reduction**, and the 8-wide **argmax** primitives. Unlike the [PE engine](pe-engine.md), it is not one array with one job: four distinct BIR ops route across this leg, and they fan out to **ten** different wire opcodes spread over three physical datapaths (the Pool engine proper, a reduce engine, and the DVE). A reimplementer's first task is therefore not "encode a pool" but "decide *which* of ten opcodes a given pooling/reduction op becomes" — and that decision is driven by enum values the front-end set long before codegen.
 
 Two design choices make this leg counter-intuitive. First, **the pooling window is not a field** — there is no `window_size`/`stride` in the bundle. The window is the *product of the two innermost access-pattern dimensions*, and for average pooling the encoder folds it into a single reciprocal constant `1/N` written at bundle `+0x28`, so the silicon does a sum and one multiply, never a divide. Second, **`TensorReduce` is two physically distinct datapaths wearing one BIR op**: a *free-axis* path that reduces innermost loop dimensions, and a *cross-lane* path that reduces across the partition (channel) axis — different opcodes, different reduce-command encodings, different legality rules. Choosing the wrong one is silently wrong.
 
@@ -12,7 +12,7 @@ This page is the **functional/architectural model**: the op→datapath→opcode 
 
 For reimplementation, the contract is:
 
-- **The four-op / nine-opcode routing** — which BIR op (`InstPool`/`InstTensorReduce`/`InstMax`/`InstMaxIndex`) becomes which wire opcode(s), and the enum field that forks each.
+- **The four-op / ten-opcode routing** — which BIR op (`InstPool`/`InstTensorReduce`/`InstMax`/`InstMaxIndex`) becomes which wire opcode(s), and the enum field that forks each.
 - **`PoolFunctionType = {Max, Avg}` — and nothing else.** There is no `Sum` pool variant; sum/min/argmax reductions are *separate ops*, not pool functions.
 - **The window-as-reciprocal-fold** — window `N = Pattern[3].num × Pattern[4].num`, encoded as `1/N` at `+0x28` for Avg and `1.0f` for Max; stride lives inside the descriptor, never as a discrete field.
 - **The two reduce datapaths** — free-axis (TR) vs cross-lane (CR), forked on `axis@+0xF4`, with their distinct reduce-command, negate, and legality semantics.
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **BIR ops** | `InstPool` (IT20), `InstTensorReduce` (IT27), `InstMax` (IT88), `InstMaxIndex` (IT89) |
-| **Wire opcodes** | Pool `69`; reduce `124`/`125` (free-axis) + `66`/`82`/`131`/`132` (cross-lane); Max `108`; MaxIndex `109`+`110` — **nine total** |
+| **Wire opcodes** | Pool `69`; reduce `124`/`125` (free-axis) + `66`/`82`/`131`/`132` (cross-lane); Max `108`; MaxIndex `109`+`110` — **ten total** |
 | **Engines** | `InstPool` → Pool engine; `InstTensorReduce` → reduce engine; `InstMax`/`InstMaxIndex` → DVE (engine 5) — all read from `inst+144`, *not* re-assigned in the encoder |
 | **Pool encoder** | `CoreV2GenImpl::visitInstPool` @ `0x1239e50` (3236 B, 117 bb) |
 | **Reduce encoder** | `CoreV2GenImpl::visitInstTensorReduce` @ `0x12383a0` (5807 B, 208 bb) |
@@ -36,7 +36,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-The Pool leg is the single most heavily *overloaded* leg of the ISA: four BIR ops, nine wire opcodes, three engines. Before any encoding detail matters, a reimplementer has to internalize the routing table — because the same source-level intent ("reduce this tensor") splits across four different ops, and one of those ops (`TensorReduce`) splits *again* into two datapaths. Get the routing wrong and you encode a perfectly well-formed bundle for the wrong silicon.
+The Pool leg is the single most heavily *overloaded* leg of the ISA: four BIR ops, ten wire opcodes, three engines. Before any encoding detail matters, a reimplementer has to internalize the routing table — because the same source-level intent ("reduce this tensor") splits across four different ops, and one of those ops (`TensorReduce`) splits *again* into two datapaths. Get the routing wrong and you encode a perfectly well-formed bundle for the wrong silicon.
 
 ### The Routing Table
 
@@ -50,7 +50,9 @@ InstMax           88   DVE (5)         108        (MAX8)           8-wide runnin
 InstMaxIndex      89   DVE (5)         109 + 110  (FIND_INDEX8)    8-wide argmax (two bundles)
 ```
 
-The nine opcodes are: **69** (Pool); **124, 125** (free-axis reduce, float / bit-vector); **66, 82, 131, 132** (cross-lane reduce, forked on bit-vector × transpose — see [The Cross-Lane Opcode Fork](#the-cross-lane-opcode-fork)); **108** (Max8); **109, 110** (the two MaxIndex bundles). (CONFIRMED — re-disassembled from `libwalrus.so` cp310; see the per-op `### Algorithm` sections for the byte anchors.)
+The ten opcodes are: **69** (Pool); **124, 125** (free-axis reduce, float / bit-vector); **66, 82, 131, 132** (cross-lane reduce, forked on bit-vector × transpose — see [The Cross-Lane Opcode Fork](#the-cross-lane-opcode-fork)); **108** (Max8); **109, 110** (the two MaxIndex bundles). That is 1 + 2 + 4 + 1 + 2 = **10**. (CONFIRMED — re-disassembled from `libwalrus.so` cp310; see the per-op `### Algorithm` sections for the byte anchors.)
+
+> **CORRECTION —** the wire-opcode count is **ten**, not nine. The enumerated set above (`69`; `124`/`125`; `66`/`82`/`131`/`132`; `108`; `109`/`110`) sums to ten distinct opcodes; the opcode list was always right, only the running tally said "nine".
 
 > **QUIRK — the engine is *not* in the opcode byte.** None of the four CoreV2 encoders assigns the engine. They *read* `EngineInfo` at `inst+144` (set by an upstream scheduling/placement pass) only for the per-engine census and stream binding: Pool→Pool engine, Max/MaxIndex→DVE(5), TensorReduce→its engine field. A reimplementer who tries to derive the engine from the opcode will fail — the opcode tells you the *micro-op*, the engine binding is a separate scheduling decision carried on the IR node. The same fact holds for the [PE engine](pe-engine.md) (`getDefaultEngine`), so the pattern is consistent across the backend.
 
