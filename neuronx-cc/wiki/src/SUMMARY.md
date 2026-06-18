@@ -284,6 +284,9 @@
 - [SSA Exit & Pre-Scheduling — reorder / non-ssa / pre_sched / dce / localize](walrus/reorder-nonssa-presched.md)
 - [The Dependence Graph — build_fdeps + anti-dependency-analyzer](walrus/dependence-graph.md)
 - [dep_opt / dep_reduction / expand_scheduling_units](walrus/dep-opt-reduction.md)
+- [post_sched & the Three Schedulers — greedy / TimeAware / LncAware](walrus/post-sched-schedulers.md)
+- [The Reservation-Table Disambiguation — Scheduler vs Allocator](walrus/reservation-table-disambiguation.md)
+- [separate-load-and-compute & Prefetch Scheduling](walrus/separate-load-prefetch.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
