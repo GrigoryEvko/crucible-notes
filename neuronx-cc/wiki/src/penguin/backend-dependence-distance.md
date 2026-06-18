@@ -1,6 +1,8 @@
 # Backend Polyhedral Dependence-Distance (libwalrus)
 
 > *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. Driver bodies (`neuronxcc::backend::LoopOptimization`) live in `neuronxcc/starfish/lib/libwalrus.so`; the distance primitive (`bir::getDefUseDistance`) lives in `neuronxcc/starfish/lib/libBIR.so`. Both retain a full C++ symbol table (`nm -DC`), so every body named here is a demangled symbol, not a `sub_*`. cp310 addresses are primary; cp311/cp312 differ by a small fixed delta (table in [§1](#1-symbol-map)).*
+>
+> *Provenance: `libwalrus.so` and `libBIR.so` are present in the corpus — as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so the cited bodies (e.g. `getDefUseDistance @ libBIR 0x20d4e0`) are disassembled, not merely declared. The addresses are CONFIRMED. The same provenance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [DGE Level Selection](dge-level-dynamic-dma.md), [the Dynamic For-Loop](dynamic-for-loop.md), and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).*
 
 ## Abstract
 

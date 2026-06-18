@@ -54,13 +54,27 @@ bypass = 0**.
 | **Kind tag** | symbolic (kind-2) ↔ register (kind-3); discriminated by the backing memloc tag + the C++ AP class |
 | **Drivers** | `LowerAP::run` `0x11ba970` → `convertSymAPtoRegAP` `0x11ba8b0` → `convertSymAPForInst` `0x11b9fd0` → `convertSymAP` |
 
-> **GROUNDING —** The libwalrus.so / libBIR.so shared objects are *not* present in this
-> repo's extracted tree (the `walrus_driver` ELF links them as `NEEDED` but only the
-> driver shell ships in the corpus, `.text` `0x43e9b0..0x489402`). Every address, offset,
-> opcode immediate, and rodata string below is carried from the IDA database of
-> `libwalrus.so` (cp310) on which the two backing analyses were performed; they are
-> binary-derived, not source-derived. Where a claim could only be reasoned structurally
-> it is tagged INFERRED.
+> **GROUNDING —** `libwalrus.so` and `libBIR.so` are both present in the corpus —
+> as per-symbol decompiled/disassembled sidecars and as full IDA databases under `ida/`
+> (`convertSymAP`, for example, appears as a libwalrus sidecar at the internal VA
+> `0x5f8800`). The `0x11b7f80`-frame addresses on this page are the `nm -DC` /
+> `libwalrus.so`-proper VA frame (`.text`/`.rodata` `VA == file-offset`) recovered from the
+> `ida/…libwalrus.so/` database; the per-symbol sidecars use a distinct internal VA frame.
+> The two frames name the same bodies (see the "two image bases" note in
+> [Backend Dependence-Distance §1](backend-dependence-distance.md)). Every address, offset,
+> opcode immediate, and rodata string below is therefore binary-derived. Where a claim
+> could only be reasoned structurally it is tagged INFERRED.
+
+> **CORRECTION (provenance upgrade) — the standalone `.so` bodies ARE in the corpus.** An
+> earlier framing of this page declared `libwalrus.so` / `libBIR.so` "not present in this
+> repo's extracted tree" and downgraded the anchors to a re-used IDA database. That is wrong:
+> both libraries ship full decompiled/disassembled sidecars and complete `ida/` databases.
+> The confusion was purely a two-VA-frame artifact — the `nm -DC` body frame
+> (`0x11b7f80` etc.) versus the per-symbol-sidecar internal frame (`convertSymAP` at
+> `0x5f8800`) — both naming the same code. The addresses here are therefore **CONFIRMED**, the
+> same stance the sibling backend pages take; this matches the identical provenance sentence
+> on [Backend Dependence-Distance](backend-dependence-distance.md), [DGE Level Selection](dge-level-dynamic-dma.md),
+> [the Dynamic For-Loop](dynamic-for-loop.md), and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
 
 ---
 
@@ -611,10 +625,12 @@ the static stride pattern compile-time while moving only the dynamic offset into
 - **INFERRED:** the matmul-RHS "point at last element" rationale (the opcode/arg/element
   guards are CONFIRMED); the `DynamicAPINFO` field *offsets* (the method surface is
   authoritative, the offsets reasoned from entry reads).
-- **GROUNDING LIMIT:** `libwalrus.so` / `libBIR.so` are not present in this repo's
-  extracted tree, so the cited bodies could not be re-disassembled here; the anchors are
-  carried from the libwalrus IDA database the backing analyses ran against. The `walrus_driver`
-  ELF that *does* ship declares both as `NEEDED`.
+- **GROUNDING (provenance):** `libwalrus.so` and `libBIR.so` are present in the corpus —
+  both as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so
+  the cited bodies are disassembled, not merely declared. The `0x11b7f80`-frame anchors are
+  the `libwalrus.so`-proper (`nm -DC`) VA frame from the `ida/…libwalrus.so/` database; the
+  per-symbol sidecars carry the same bodies in a distinct internal VA frame. The addresses
+  on this page are CONFIRMED.
 - **GAP:** the `DynamicAPINFO` setter bodies (defined in libBIR, imported here); the exact
   integer the front-end stamps for the symbolic/register "kind" labels (mapped to the
   C++ AP class + backing memloc tag, not re-derived to a raw libBIR enum constant).

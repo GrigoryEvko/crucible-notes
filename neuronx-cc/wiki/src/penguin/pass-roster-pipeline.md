@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Target-independent passes** | `penguin/transforms/` — **71** modules (excl. `__init__`) |
 | **Target-oriented passes** | `penguin/targets/transforms/` — **131** modules (excl. `__init__`, excl. `autotune/`) |
 | **Sunda / Tonga pass packs** | `targets/sunda/passes/` **6** · `targets/tonga/passes/` **40** |
-| **IR level in / out** | tensoriser-IR (op level) → ISel → `<Target>ISAInst`-level tensoriser-IR → BIR ([5.18 BirCodeGenLoop](bir-codegen-loop.md)) |
+| **IR level in / out** | tensoriser-IR (op level) → ISel → `<Target>ISAInst`-level tensoriser-IR → BIR ([5.18 BirCodeGenLoop](ir-mlir-bir-mapping.md)) |
 
 ---
 
@@ -114,7 +114,7 @@ The Penguin→BIR / →NKI emit drivers live in `targets/codegen/`: `BirCodeGenL
 
 ## The Runner — `DotTransform`, `PassManager`, `IterativePassManager`
 
-Every pass — target-independent or not — subclasses one base, `DotTransform`, defined in `DotTransform.cpython-310-….so`. This is the shared *visitor*: the runner walks the comp-unit (Module → Function → Block/BasicBlock → Stmt → Macro/While/ScopeRegion) and the pass overrides the per-node hooks. It is the same base [`BirCodeGenLoop`](bir-codegen-loop.md) subclasses to emit BIR — so "lower to BIR" is structurally just another `DotTransform` walk.
+Every pass — target-independent or not — subclasses one base, `DotTransform`, defined in `DotTransform.cpython-310-….so`. This is the shared *visitor*: the runner walks the comp-unit (Module → Function → Block/BasicBlock → Stmt → Macro/While/ScopeRegion) and the pass overrides the per-node hooks. It is the same base [`BirCodeGenLoop`](ir-mlir-bir-mapping.md) subclasses to emit BIR — so "lower to BIR" is structurally just another `DotTransform` walk.
 
 ### Purpose
 

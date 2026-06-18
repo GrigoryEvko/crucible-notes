@@ -1,6 +1,8 @@
 # Dynamic-Shape System Synthesis — the End-to-End Thread
 
 > *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel; cp310/11/12 share the C++ core). The front half (HLO/MHLO dynamic passes) lives in the native tools `hlo2penguin` / `hlo-opt`; the runtime-value primitives `bir::BirIntRuntimeValue`, `bir::InstDynamicForLoop`, `bir::DynamicForLoopAxis`, the `bir::Hwm` latency stubs, and `pelican::AffineIdx` live in `libBIR.so` and are exercised by the simulator binary `nki_klr_sim`; the AP-lowering, DGE-routing, and descriptor passes live in `neuronxcc/starfish/lib/libwalrus.so` (`.text` base `0x62d660`, `.rodata` base `0x1c72000`, VA == file-offset); the ADDR4 encoder also lives in `libwalrus.so`. Other wheels differ; treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
+>
+> *Provenance: `libwalrus.so` and `libBIR.so` are present in the corpus — as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/`. The `nm -DC` body addresses (`assembleDynamicInfo @0xf20230`, `rewireDynamicAPRegisters @0xef91d0`, …) are the `libwalrus.so`-proper VA frame recovered from the `ida/…libwalrus.so/` database; the per-symbol sidecars carry the same bodies in a distinct internal VA frame. The cited bodies are disassembled, not merely declared — the addresses are CONFIRMED. The same provenance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [DGE Level Selection](dge-level-dynamic-dma.md), [the Dynamic For-Loop](dynamic-for-loop.md), and [Backend Dependence-Distance](backend-dependence-distance.md).*
 
 ## Abstract
 

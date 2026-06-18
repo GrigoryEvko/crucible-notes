@@ -354,4 +354,4 @@ Four class-level (static) counters, registered with Penguin's `Statistics` subsy
 - [TongaIslSimplifier](tonga-isl-simplifier.md) — the Tonga-specialized sibling that does access→address rewriting on top of the same ISL machinery
 - [ISL Dependence Graph](isl-dependence-graph.md) — how Penguin builds the `isl::map` access relations and iteration domains this pass consumes
 - [ISL Schedule-Tree Legality](isl-schedule-tree-legality.md) — the validation-only ISL use (the legality sibling of this transform-driving use)
-- [Predicate Bridge](predicate-bridge.md) — the `AffinePredicate` IR model and the bridge between Penguin guards and ISL constraints
+- [Predicate Bridge](affine-isl-pelican-bridge.md) — the `AffinePredicate` IR model and the bridge between Penguin guards and ISL constraints

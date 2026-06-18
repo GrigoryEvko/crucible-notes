@@ -65,14 +65,14 @@ The 274 classes group into nine node-model layers, each owned by a later 5.x pag
 | Layer | Representative classes | Owned by |
 |---|---|---|
 | SSA value base | `Value`, `User`, `ComputeValue`, `ScalarValue`, `Instruction`, `Operator` | **this page** |
-| Tensor / buffer | `Tensor`, `TensorType`, `TensorView`, `SingleValueTensor`, `BroadcastScalar`, `VNCAddrSpace` | [5.2](node-families-tensor-buffer.md) |
-| Access-pattern | `Access`, `AffineAccess`, `AffineLoad/Store/AtomicRMW`, `Generic*` | [5.2](node-families-tensor-buffer.md) |
-| Axis / loop | `Axis`, `AffineAxis`, `DynamicAxis`, `SequentialAxis`, `AxisType` | [5.3](node-families-axis-affine.md) |
-| Affine-expr algebra | `Expr`, `AffineExpr`, `Sum/Mult/Modulo/FloorDiv/Compound`, `CC{Div,Mod}Expr` | [5.3](node-families-axis-affine.md) |
+| Tensor / buffer | `Tensor`, `TensorType`, `TensorView`, `SingleValueTensor`, `BroadcastScalar`, `VNCAddrSpace` | [5.2](tensor-buffer-node.md) |
+| Access-pattern | `Access`, `AffineAccess`, `AffineLoad/Store/AtomicRMW`, `Generic*` | [5.2](tensor-buffer-node.md) |
+| Axis / loop | `Axis`, `AffineAxis`, `DynamicAxis`, `SequentialAxis`, `AxisType` | [5.3](axis-loop-model.md) |
+| Affine-expr algebra | `Expr`, `AffineExpr`, `Sum/Mult/Modulo/FloorDiv/Compound`, `CC{Div,Mod}Expr` | [5.3](axis-loop-model.md) |
 | Scope / region / CF | `Module`, `Function`, `BasicBlock`, `Stmt`, `Block`, `Macro`, `While`, `Branch*` | **this page** (§ containment) |
-| High-level Operator | `NullaryOp`…`TensorContractOp`…`*TensorOp` family | [5.4](node-families-operators.md) |
-| Native-kernel / NKI | `NativeKernel`, `NativeNkiKernel`, `BIRKernel`, `MLPKernel`, … | [5.5](node-families-kernels-collectives.md) |
-| Dependency / offloaded | `DependencyEdge`, `EdgeKind`, `Offloaded*` | [5.6](node-families-dependency-offload.md) |
+| High-level Operator | `NullaryOp`…`TensorContractOp`…`*TensorOp` family | [5.4](tensor-op-family.md) |
+| Native-kernel / NKI | `NativeKernel`, `NativeNkiKernel`, `BIRKernel`, `MLPKernel`, … | [5.5](tensor-op-family.md) |
+| Dependency / offloaded | `DependencyEdge`, `EdgeKind`, `Offloaded*` | [5.6](dependency-model.md) |
 
 > **QUIRK — the "registry" is open, not closed.** Unlike an MLIR dialect (a fixed `Op` table registered at startup) or LLVM (a fixed `Instruction::Opcode` enum), Penguin's node set is just "whatever classes the package defines," discovered by import. A reimplementer building from the front half must emit *constructor calls* by class name (`MhloToPythonPrinter` does exactly this, [Part 4](../hlo-opt/mhlo-to-python-printer-driver.md)); there is no integer opcode to switch on until the BIR lowering ([Part 7](../bir/)).
 
@@ -155,11 +155,11 @@ class Instruction(ComputeValue, User):           // ir/Instruction.py, 51 pyx me
 
 The seven predicate methods named above are all CONFIRMED from individually-indexed pyx symbols (`…Instruction_53is_predicated`, `_61addPredicate`, `_65projectPredicates`, `_67approxPredicates`, `_71canonicalizePredicates`, `_75evalMasks`, `_81enumerate_predicates_in_codegen_order`).
 
-> **QUIRK — predication, not branching, is the dominant feature.** Roughly half of `Instruction`'s 51 methods manage a list of `AffinePredicate` guards (`addPredicate`/`projectPredicates`/`evalMasks`/`canonicalizePredicates`/…). Each guard is an integer comparison over the loop-nest axes; `evalMasks` turns the list into the masking the engine applies. This is the Penguin twin of MLIR's `scf.if`/masking — **and the reason the CFG layer (`BasicBlock`/`Branch*`/`While`) is thin**: an affine-bounded conditional that LLVM would lower to a branch, Penguin keeps as a per-instruction predicate. A reimplementer who models conditionals only as CFG edges will fail to reproduce the tiler's masking semantics. See [5.3](node-families-axis-affine.md) for the `AffinePredicate`/`pelican::ICmpExpr` algebra.
+> **QUIRK — predication, not branching, is the dominant feature.** Roughly half of `Instruction`'s 51 methods manage a list of `AffinePredicate` guards (`addPredicate`/`projectPredicates`/`evalMasks`/`canonicalizePredicates`/…). Each guard is an integer comparison over the loop-nest axes; `evalMasks` turns the list into the masking the engine applies. This is the Penguin twin of MLIR's `scf.if`/masking — **and the reason the CFG layer (`BasicBlock`/`Branch*`/`While`) is thin**: an affine-bounded conditional that LLVM would lower to a branch, Penguin keeps as a per-instruction predicate. A reimplementer who models conditionals only as CFG edges will fail to reproduce the tiler's masking semantics. See [5.3](axis-loop-model.md) for the `AffinePredicate`/`pelican::ICmpExpr` algebra.
 
 ### Operator — the HLO-op layer
 
-`Operator` (`ir/Operator.py`) ⊂ `Instruction` is the high-level, HLO-facing op layer — the graph the front-half printer ([Part 4](../hlo-opt/mhlo-to-python-printer-driver.md)) and `GradIRBuilder` build. The base adds `__init__`, `rhs_str`, `serialize`, `verify`, `verifyOperandType` (CONFIRMED), and subclasses add per-op operands/indices/axes (the whole §8 TensorOp family, owned by [5.4](node-families-operators.md)). Its distinctive module helpers are the **axis-role queries** the tiler and scheduler use to classify each `Axis` of an op (all CONFIRMED in `Operator.so`):
+`Operator` (`ir/Operator.py`) ⊂ `Instruction` is the high-level, HLO-facing op layer — the graph the front-half printer ([Part 4](../hlo-opt/mhlo-to-python-printer-driver.md)) and `GradIRBuilder` build. The base adds `__init__`, `rhs_str`, `serialize`, `verify`, `verifyOperandType` (CONFIRMED), and subclasses add per-op operands/indices/axes (the whole §8 TensorOp family, owned by [5.4](tensor-op-family.md)). Its distinctive module helpers are the **axis-role queries** the tiler and scheduler use to classify each `Axis` of an op (all CONFIRMED in `Operator.so`):
 
 ```c
 // Operator.so module-level axis-role classifiers (used by the layout/tiling middle-end)
@@ -170,7 +170,7 @@ used_as_rhs_free_axis(op, axis)     // free dim of the streaming operand
 used_as_reduce_like_axis(op, axis)
 ```
 
-These roles are what the layout solver and tiler read to assign each axis to Partition / Free / Block — the bridge from this node model into the P/F/B tiling vocabulary ([5.9](node-to-bir-mapping.md), and the broader tiler in the [Part 5 overview](node-families-operators.md)). `make_cast`/`custom_op`/`act_identity` are the cast and custom-op constructors. *(CONFIRMED: `used_as_*_axis`, `verifyOperandType`, `make_cast` in `Operator.so` pool.)*
+These roles are what the layout solver and tiler read to assign each axis to Partition / Free / Block — the bridge from this node model into the P/F/B tiling vocabulary ([5.9](ir-mlir-bir-mapping.md), and the broader tiler in the [Part 5 overview](tensor-op-family.md)). `make_cast`/`custom_op`/`act_identity` are the cast and custom-op constructors. *(CONFIRMED: `used_as_*_axis`, `verifyOperandType`, `make_cast` in `Operator.so` pool.)*
 
 ---
 
@@ -193,7 +193,7 @@ class Tensor(ComputeValue):                      // ir/Tensor.py — the def-use
     replaceAllUsesWith, replaceUseOfWith         // RAUW on the tensor
 ```
 
-So for a tensor, "who uses this value" is answered by `accessing_insts`/`loads`/`stores`, and the edge is maintained by `link_use_inst`/`unlink_use_inst`. The full `Tensor` schema (119 methods — shape/dtype/layout/placement) is [5.2](node-families-tensor-buffer.md)'s subject; here the point is only that **`Tensor` is a `ComputeValue` and its uses are the load/store accesses**.
+So for a tensor, "who uses this value" is answered by `accessing_insts`/`loads`/`stores`, and the edge is maintained by `link_use_inst`/`unlink_use_inst`. The full `Tensor` schema (119 methods — shape/dtype/layout/placement) is [5.2](tensor-buffer-node.md)'s subject; here the point is only that **`Tensor` is a `ComputeValue` and its uses are the load/store accesses**.
 
 ### Layer 2 — the Function-level dependency graph (scheduling)
 
@@ -221,7 +221,7 @@ class Function:                                  // ir/Function.py
     replace_inst_in_dependencies, replace_with_list_in_dependencies
 ```
 
-> **GOTCHA — two graphs, two owners. Do not store dependency edges on the instruction.** The SSA use-list (Layer 1) is on the *value*; the scheduling dependency graph (Layer 2) is a flat list of `DependencyEdge` objects on the *Function*. This is the inverse of BIR ([Part 7](../bir/)), where the C++ `bir::Instruction` stores its edges **inline** in three concurrent dep-sets keyed by the target name, MAX-merging a duplicate `(A→B)` to the strongest `EdgeKind`. The Penguin Function-level list is the **source**; the per-instruction inline name-keyed MAX-merged form is a BIR-side representation choice applied during lowering ([5.9](node-to-bir-mapping.md)). The dep-analysis passes (anti-dependency analysis, ordering constraints) build Layer 2 *on top of* Layer 1; they never replace it.
+> **GOTCHA — two graphs, two owners. Do not store dependency edges on the instruction.** The SSA use-list (Layer 1) is on the *value*; the scheduling dependency graph (Layer 2) is a flat list of `DependencyEdge` objects on the *Function*. This is the inverse of BIR ([Part 7](../bir/)), where the C++ `bir::Instruction` stores its edges **inline** in three concurrent dep-sets keyed by the target name, MAX-merging a duplicate `(A→B)` to the strongest `EdgeKind`. The Penguin Function-level list is the **source**; the per-instruction inline name-keyed MAX-merged form is a BIR-side representation choice applied during lowering ([5.9](ir-mlir-bir-mapping.md)). The dep-analysis passes (anti-dependency analysis, ordering constraints) build Layer 2 *on top of* Layer 1; they never replace it.
 
 `EdgeKind`'s member set `{FLOW, ANTI, OUTPUT, ORDERED}` matches BIR's `bir::EdgeKind` `{Invalid0, Ordered1, Anti2, Output3, Flow4}` one-to-one (Penguin omits the `Invalid0` sentinel). The **numeric** values on the Penguin side are not directly recovered (the members are CONFIRMED, the integer ordering is INFERRED from the BIR twin).
 
@@ -264,7 +264,7 @@ class Stmt:                                       // ir/Stmt.py
     DAGMacro   // a macro whose body is a DAG (vs a linear Macro)
 ```
 
-A `Block` **owns** the tensors declared in its scope (block-local tensors) via `addTensor`/`all_tensors`/`dropDeadTensors`/`stealChildren` (CONFIRMED). `Macro`/`DAGMacro` are the schedulable fused units the tiler emits — they wrap a span of the §3-Inst roster into one node ([5.4](node-families-operators.md)).
+A `Block` **owns** the tensors declared in its scope (block-local tensors) via `addTensor`/`all_tensors`/`dropDeadTensors`/`stealChildren` (CONFIRMED). `Macro`/`DAGMacro` are the schedulable fused units the tiler emits — they wrap a span of the §3-Inst roster into one node ([5.4](tensor-op-family.md)).
 
 ### Control-flow markers — two co-existing forms
 
@@ -284,7 +284,7 @@ class ConditionalBranchInst:    condition (field), operands, serialize   // BB�
 class UnconditionalBranchInst:  operands, serialize                      // terminator
 ```
 
-`While` is the structured data-dependent loop (guard + `continue_condition` + body), distinct from the affine-bounded `DynamicAxis` ([5.3](node-families-axis-affine.md)). `ScopeRegion` (`ir/ScopeRegion.py`, 7 methods) is a lighter named lexical region — a labeled scope-begin/scope-end pair bracketing a span of statements for analysis/codegen (e.g. a fusion-cluster or kernel boundary), with fields `parent`/`end`. `OptBarrier`/`CoreBarrierIntrinsic` are the no-reorder scheduling fences. *(CONFIRMED: `While` docstring + `continue_condition`/`is_do_while`/`guard`; `Branch*` rosters.)*
+`While` is the structured data-dependent loop (guard + `continue_condition` + body), distinct from the affine-bounded `DynamicAxis` ([5.3](axis-loop-model.md)). `ScopeRegion` (`ir/ScopeRegion.py`, 7 methods) is a lighter named lexical region — a labeled scope-begin/scope-end pair bracketing a span of statements for analysis/codegen (e.g. a fusion-cluster or kernel boundary), with fields `parent`/`end`. `OptBarrier`/`CoreBarrierIntrinsic` are the no-reorder scheduling fences. *(CONFIRMED: `While` docstring + `continue_condition`/`is_do_while`/`guard`; `Branch*` rosters.)*
 
 ---
 
@@ -302,7 +302,7 @@ These are the boundaries of what the binary yields, stated so a reimplementer do
 
 - **Field types and offsets are not recoverable.** These IR classes are *regular* Python classes — Cython emitted no C-level `__pyx_obj_…<Class>` instance struct and no `tp_members`/`tp_getsets` for them, so their fields live in `__dict__`. The string pool gives field **names** (CONFIRMED present in the module) but not their static types or byte-offsets. A field's **owning class** is CONFIRMED only when a method roster, docstring, or serialize-format pins it; cross-cutting names like `shape`/`axes` are attributed by nearest method context (tagged STRONG/INFERRED in the per-family pages).
 - **`EdgeKind` integer values** are INFERRED from the BIR twin, not directly recovered on the Penguin side (members CONFIRMED).
-- **The `pelican` C++ layer is stripped.** `neuronxcc.pelican.cpython-310…so` ships **no** `debug_info`; the `pelican::Value`/`pelican::Expr` hierarchy is reconstructed from typeinfo/RTTI and assert source-lines only ([5.3](node-families-axis-affine.md)). Member offsets of the C++ uniqued-value layout are not recovered, and the Python↔pelican method correspondence is *named*, not traced.
+- **The `pelican` C++ layer is stripped.** `neuronxcc.pelican.cpython-310…so` ships **no** `debug_info`; the `pelican::Value`/`pelican::Expr` hierarchy is reconstructed from typeinfo/RTTI and assert source-lines only ([5.3](axis-loop-model.md)). Member offsets of the C++ uniqued-value layout are not recovered, and the Python↔pelican method correspondence is *named*, not traced.
 - **The `attrs` dictionary schema is open.** `Instruction.attrs`/`get_attrs_dict` is an open dict keyed by op-specific names (Opcodes, `dma_qos`, `dge_mode`, `engine`, …); a full per-op attr-key table is out of this node-schema page's scope (it needs the generated `<Op>Gen` property lists, [Part 4](../hlo-opt/)).
 
 ---
@@ -318,11 +318,11 @@ These are the boundaries of what the binary yields, stated so a reimplementer do
 
 ## Cross-References
 
-- [5.2 — Tensor & Buffer Node Families](node-families-tensor-buffer.md) — the `Tensor`/`Access` schema and the SBUF/PSUM/DRAM placement
-- [5.3 — Axis & Affine-Expr Node Families](node-families-axis-affine.md) — `AffineAxis`/`AxisType` and the `pelican::Expr` algebra behind predicates
-- [5.4 — High-Level Operator Family](node-families-operators.md) — the §8 TensorOp roster (`TensorContractOp`, reductions, fused macros)
-- [5.5 — Native-Kernel & Collective Nodes](node-families-kernels-collectives.md) — the NKI-kernel embedding and collective op nodes
-- [5.6 — Dependency & Offloaded Nodes](node-families-dependency-offload.md) — the `DependencyEdge` graph and host-offloaded primitives
-- [5.9 — Penguin → BIR Node Mapping](node-to-bir-mapping.md) — the per-node `codegen<Op>` correspondence and the dep-edge MAX-merge
+- [5.2 — Tensor & Buffer Node Families](tensor-buffer-node.md) — the `Tensor`/`Access` schema and the SBUF/PSUM/DRAM placement
+- [5.3 — Axis & Affine-Expr Node Families](axis-loop-model.md) — `AffineAxis`/`AxisType` and the `pelican::Expr` algebra behind predicates
+- [5.4 — High-Level Operator Family](tensor-op-family.md) — the §8 TensorOp roster (`TensorContractOp`, reductions, fused macros)
+- [5.5 — Native-Kernel & Collective Nodes](tensor-op-family.md) — the NKI-kernel embedding and collective op nodes
+- [5.6 — Dependency & Offloaded Nodes](dependency-model.md) — the `DependencyEdge` graph and host-offloaded primitives
+- [5.9 — Penguin → BIR Node Mapping](ir-mlir-bir-mapping.md) — the per-node `codegen<Op>` correspondence and the dep-edge MAX-merge
 - [Part 4 — hlo2penguin / MhloToPythonPrinter](../hlo-opt/mhlo-to-python-printer-driver.md) — the C-strand front half that emits textual Penguin
 - [Part 7 — BIR & libBIR](../bir/) — the C++ IR this node graph lowers into

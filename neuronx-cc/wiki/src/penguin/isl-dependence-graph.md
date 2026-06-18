@@ -6,7 +6,7 @@
 
 `NeuronIslDependenceAnalysis` is Penguin's bridge from backend instruction IR into the [ISL](https://libisl.sourceforge.io/) (Integer Set Library) polyhedral model. Its class docstring states the job exactly: *"NeuronISLDependenceAnalysis - Dependence analysis interface using ISL for TongaISAInst"* (`.rodata`, prefixed with a `Copyright (c) 2021, Amazon.com` banner). It translates a Penguin loop-nest — `NeuronInst` statements wrapped in `ScopeRegion`/`Axis` loop scopes, each touching tensors through `NeuronAP` access patterns — into three isl objects: a per-statement **iteration domain** (`isl.UnionSet`), a per-access **access relation** (`isl.UnionMap`), and a hand-built **RAW/WAR/WAW dependence** relation that a candidate schedule is checked against.
 
-The single most important fact about this module is what it is *not*. The integer-set algebra, the schedule/AST machinery, and the dependence *primitives* are stock **islpy ~= 2023.1**, a pip dependency — they are not Neuron-authored. Every isl call you will see (`apply_range`, `lex_le_union_map`, `lex_lt_at_multi_pw_aff`, `from_set`, `deltas`, `is_empty`) is an upstream islpy method invoked inline. What Neuron wrote — and what this page reverses — is the **glue**: how Penguin IR drives those primitives. A reimplementer who has islpy needs only this glue. The page is organized as that glue: §domain (loop-nest → `UnionSet`), §access (`NeuronAP` → `UnionMap`, including `build_aff`), §dependence (read/write unions → RAW/WAR/WAW), and §schedule-tree feed. This page opens the Part-5 ISL chapter (5.16–5.22); the schedule-tree *legality policy* is owned by [Schedule-Tree Legality](isl-schedule-legality.md) (5.17), which consumes the dependence relation built here.
+The single most important fact about this module is what it is *not*. The integer-set algebra, the schedule/AST machinery, and the dependence *primitives* are stock **islpy ~= 2023.1**, a pip dependency — they are not Neuron-authored. Every isl call you will see (`apply_range`, `lex_le_union_map`, `lex_lt_at_multi_pw_aff`, `from_set`, `deltas`, `is_empty`) is an upstream islpy method invoked inline. What Neuron wrote — and what this page reverses — is the **glue**: how Penguin IR drives those primitives. A reimplementer who has islpy needs only this glue. The page is organized as that glue: §domain (loop-nest → `UnionSet`), §access (`NeuronAP` → `UnionMap`, including `build_aff`), §dependence (read/write unions → RAW/WAR/WAW), and §schedule-tree feed. This page opens the Part-5 ISL chapter (5.16–5.22); the schedule-tree *legality policy* is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md) (5.17), which consumes the dependence relation built here.
 
 > **QUIRK —** the dependence test is **hand-rolled May-dependence**, not isl exact dataflow. There is **no** `compute_flow` / `union_access_info` symbol anywhere in either `.so`. Instead the glue forms access-pair products (`apply_range(reverse())`) and intersects them with the schedule's happens-before relation (`lex_le_union_map`). A reimplementer who reaches for `isl_union_access_info_compute_flow` will produce a *different* (exact-dataflow) result and a *more permissive* legality gate than what ships. See [§Dependence Relation](#dependence-relation-readwrite-unions--rawwarwaw).
 
@@ -287,7 +287,7 @@ function get_alloc_remapping(self, inst, ap):          // 0x2c870
 
 ### Step 2 — check_valid_schedule (the legality gate; policy in 5.17)
 
-This is the gate that *consumes* the dependence relation. The RAW/WAR/WAW *construction* below is the D-Y01 dependence relation and is documented here; the gate *policy* (when it runs, what it does with a violation) is owned by [Schedule-Tree Legality](isl-schedule-legality.md).
+This is the gate that *consumes* the dependence relation. The RAW/WAR/WAW *construction* below is the D-Y01 dependence relation and is documented here; the gate *policy* (when it runs, what it does with a violation) is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md).
 
 ```c
 function check_valid_schedule(self, new_schedule, insts,
@@ -367,7 +367,7 @@ function add_sequence_filter(self, root, stmts):       // 0x22b20 — SEQUENCE o
     return root.insert_sequence(usl)                   // the "- filter: {sN[ivs]:bounds}" siblings
 ```
 
-This reproduces the docstring tree exactly: `DOMAIN(union sets)` / `SEQUENCE` / three `FILTER`s / a nested `BAND` for `s1`'s inner loop / a `MARK("sN")` leaf per statement. The legality policy that wraps this (running `check_valid_schedule` on the produced tree) is [Schedule-Tree Legality](isl-schedule-legality.md).
+This reproduces the docstring tree exactly: `DOMAIN(union sets)` / `SEQUENCE` / three `FILTER`s / a nested `BAND` for `s1`'s inner loop / a `MARK("sN")` leaf per statement. The legality policy that wraps this (running `check_valid_schedule` on the produced tree) is [Schedule-Tree Legality](isl-schedule-tree-legality.md).
 
 ---
 
@@ -437,7 +437,7 @@ Base-class glue (in `IntegerSetAnalysis.so`, not IDA-extracted here — from sym
 
 ## Cross-References
 
-- [Schedule-Tree Legality](isl-schedule-legality.md) — 5.17, owns the `check_valid_schedule` legality *policy* that consumes this page's dependence relation
-- [Affine-Expression Bridge](affine-bridge.md) — 5.21, the `AffineExpr`/`CExpr` substrate that `build_aff` translates
-- [Backend Dependence](backend-dependence.md) — 5.22, the downstream consumer of the dependence graph
+- [Schedule-Tree Legality](isl-schedule-tree-legality.md) — 5.17, owns the `check_valid_schedule` legality *policy* that consumes this page's dependence relation
+- [Affine-Expression Bridge](affine-isl-pelican-bridge.md) — 5.21, the `AffineExpr`/`CExpr` substrate that `build_aff` translates
+- [Backend Dependence](backend-dependence-distance.md) — 5.22, the downstream consumer of the dependence graph
 - [Penguin Front-End Pipeline](../front/pipeline.md) — where Penguin IR (`NeuronInst`/`NeuronAP`/`ScopeRegion`/`Axis`) is produced

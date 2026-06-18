@@ -31,6 +31,17 @@ For reimplementation, the contract is:
 | **Simulator** | `birsim::InstVisitor::visitDynamicForLoop` / `evaluateUpperBoundExpr` (lib `BIRSimulator`) |
 | **Static cost model** | all four `bir::Hwm::getLatency*(InstDynamicForLoop)` = not-implemented stubs |
 
+> **GROUNDING (provenance) — the standalone `.so` bodies ARE in the corpus.** `libBIR.so`,
+> `libBIRSimulator.so` (and its libBIR-core sibling `libBIRParserDumper.so`), and `libwalrus.so`
+> all ship as per-symbol decompiled/disassembled sidecars *and* as full IDA databases under
+> `ida/`. Every body cited here — the `Hwm::getLatency*` stubs, `evaluateUpperBoundExpr`,
+> `visitDynamicForLoop`, `validateTopology` — is disassembled, not merely declared via an
+> import. Where an address is given in a statically-linked driver's frame (`nki_klr_sim`,
+> `coloring_allocator_with_loop`), the same body is independently present in the originating
+> `.so`. The addresses are CONFIRMED — the same stance as the sibling backend pages
+> ([Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [Backend Dependence-Distance](backend-dependence-distance.md),
+> [DGE Level Selection](dge-level-dynamic-dma.md), [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md)).
+
 ---
 
 ## Object Layout & the Axis
@@ -268,7 +279,14 @@ All four `Hwm` latency overrides for `InstDynamicForLoop` are not-implemented st
 | `getLatencyReadInit` | `_ZNK3bir3Hwm18getLatencyReadInitERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | STRONG |
 | `getLatencyWriteDrain` | `_ZNK3bir3Hwm20getLatencyWriteDrainERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | STRONG |
 
-> **NOTE —** all four mangled symbols are CONFIRMED present (they appear as `extrn`/imports in the driver binaries that link `libBIR.so` and as defined symbols in `libBIR.so`'s table). The stub *bodies* (`__assert_fail "not implemented"`, `Hwm.cpp` line refs) are STRONG: read from `libBIR.so` in the backing analysis but not re-disassembled here, where the symbols resolve to the dynamic library. A reimplementer should treat the dynamic loop as having no intrinsic latency and cost it by its body.
+> **NOTE —** all four mangled symbols are CONFIRMED present and their bodies are in the
+> corpus: each `Hwm::getLatency*(InstDynamicForLoop)` overload ships a decompiled/disassembled
+> sidecar (e.g. `getLatency` and `getLatencyReadInit` in the libBIR-core `libBIRParserDumper.so`
+> at `0x1e4fb0` / `0x1e4d78`), and the statically-linked `nki_klr_sim` carries the same bodies
+> in its own VA frame (`getLatency @0x99e608`, …). The stub bodies (`__assert_fail
+> "not implemented"`, `Hwm.cpp` line refs) are therefore CONFIRMED, not merely declared.
+> A reimplementer should treat the dynamic loop as having no intrinsic latency and cost it by
+> its body.
 
 ---
 

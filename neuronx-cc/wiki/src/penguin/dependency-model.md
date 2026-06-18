@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Penguin tracks ordering and data dependencies between operations with a **Function-level edge list**, not inline on each instruction. The unit is `DependencyEdge` (`ir/Dependency.py` → `Dependency.cpython-310-…-.so`): a first-class, directed `src → dst` object between two `Instruction`s, tagged with an `EdgeKind` ∈ `{FLOW, ANTI, OUTPUT, ORDERED}`. The whole set of edges lives on the `Function` (`Function.dep_edges`), and the dependency-analysis passes ([5.13](software-pipeline-and-scheduling.md)) build, query, and prune that set before the Tonga scheduler reorders anything.
+Penguin tracks ordering and data dependencies between operations with a **Function-level edge list**, not inline on each instruction. The unit is `DependencyEdge` (`ir/Dependency.py` → `Dependency.cpython-310-…-.so`): a first-class, directed `src → dst` object between two `Instruction`s, tagged with an `EdgeKind` ∈ `{FLOW, ANTI, OUTPUT, ORDERED}`. The whole set of edges lives on the `Function` (`Function.dep_edges`), and the dependency-analysis passes ([5.13](scheduling-minreg.md)) build, query, and prune that set before the Tonga scheduler reorders anything.
 
 This is a deliberately different shape from the BIR side it lowers into ([Part 7](../bir/)). BIR's `bir::Instruction` stores its edges **inline**, in three TBB `concurrent_unordered_set<EdgePtr>` containers keyed by the target instruction's *name*, with a single `A→B` edge collapsed to the **maximum** `EdgeKind`. Penguin instead keeps a flat, un-merged list of `(src, dst, kind)` objects owned by the `Function`. The four `EdgeKind` members are byte-identical in meaning to BIR's `bir::EdgeKind` (`FLOW`=RAW, `ANTI`=WAR, `OUTPUT`=WAW, `ORDERED`=injected order) — Penguin simply omits BIR's `Invalid0` sentinel. `DependencyEdge.serialize` is the explicit Penguin→BIR handoff: BirCodeGenLoop materializes each edge into a `bir::addDependency(target, kind)` call, and the name-hashing + MAX-merge is a BIR-side representation choice applied *during* lowering.
 
@@ -132,7 +132,7 @@ class Function:
     def replace_with_list_in_dependencies(self, old, [new...]): ...   // op→sequence rewrite
 ```
 
-> **QUIRK —** `replace_with_list_in_dependencies` exists because a single high-level `Operator` (e.g. a fused macro, [5.4](node-families-operators.md)) is lowered into a *list* of ISA `Instruction`s; the edge graph must be rewritten so every edge that pointed at the macro now points at the right member of the expansion. A reimplementation that only offers an instruction-for-instruction `replace_inst_in_dependencies` will silently drop edges during op expansion.
+> **QUIRK —** `replace_with_list_in_dependencies` exists because a single high-level `Operator` (e.g. a fused macro, [5.4](tensor-op-family.md)) is lowered into a *list* of ISA `Instruction`s; the edge graph must be rewritten so every edge that pointed at the macro now points at the right member of the expansion. A reimplementation that only offers an instruction-for-instruction `replace_inst_in_dependencies` will silently drop edges during op expansion.
 
 ---
 
@@ -187,8 +187,8 @@ LAYER 2 — DependencyEdge scheduling graph (built by dep passes, per-Function) 
 
 ## Who Consumes the Edges
 
-- The **Tonga Scheduler** ([5.13](software-pipeline-and-scheduling.md)) builds its data-dependency graph (DDG) from these edges (plus `Dataflow` def/use sets) and greedily reorders SUs to minimize buffer pressure; ties broken by `static_lex_order` (original program order).
-- **BirCodeGenLoop** ([5.x lowering](node-to-bir-mapping.md)) emits the post-schedule order verbatim and materializes each `DependencyEdge` into a BIR `addDependency` call, honoring per-`ScopeRegion` `no_reorder` flags.
+- The **Tonga Scheduler** ([5.13](scheduling-minreg.md)) builds its data-dependency graph (DDG) from these edges (plus `Dataflow` def/use sets) and greedily reorders SUs to minimize buffer pressure; ties broken by `static_lex_order` (original program order).
+- **BirCodeGenLoop** ([5.x lowering](ir-mlir-bir-mapping.md)) emits the post-schedule order verbatim and materializes each `DependencyEdge` into a BIR `addDependency` call, honoring per-`ScopeRegion` `no_reorder` flags.
 - The **backend** (Part 7) re-derives physical `FLOW`/`ANTI` edges post-allocation and materializes sync semaphores — none of which exists at the Penguin level.
 
 ---
@@ -212,7 +212,7 @@ LAYER 2 — DependencyEdge scheduling graph (built by dep passes, per-Function) 
 ## Cross-References
 
 - [5.1 — Penguin IR Node Model](ir-node-model.md) — the `Value`/`User` SSA use-list that Layer 2 is built on top of
-- [5.4 — High-Level Operator Family](node-families-operators.md) — the `Operator`/`Instruction` nodes that `src`/`dst` point at; macro expansion drives `replace_with_list_in_dependencies`
-- [5.13 — Software Pipeline & Scheduling](software-pipeline-and-scheduling.md) — the Tonga scheduler / `LoadStoreDependencyAnalysis` / `AliasDependency*` passes that build and consume these edges
+- [5.4 — High-Level Operator Family](tensor-op-family.md) — the `Operator`/`Instruction` nodes that `src`/`dst` point at; macro expansion drives `replace_with_list_in_dependencies`
+- [5.13 — Software Pipeline & Scheduling](scheduling-minreg.md) — the Tonga scheduler / `LoadStoreDependencyAnalysis` / `AliasDependency*` passes that build and consume these edges
 - [4.15 — Control-Dependence Modeling](../hlo-opt/control-dependence.md) — the upstream control-dep representation that becomes `ORDERED` edges here
 - [Part 7 — BIR Dependency & Sync Model](../bir/) — the C++ `bir::EdgeKind` `{Invalid0, Ordered1, Anti2, Output3, Flow4}` this enum lowers into, the inline TBB edge sets, and the MAX-merge

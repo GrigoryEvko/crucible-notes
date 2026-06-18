@@ -415,7 +415,19 @@ The relevant relative placement in the backend pipeline (the second numbers belo
 | `generateDynamicDMA(InstDMA&, DMAQoSClass)` | `0x1276b10` | Descriptor lowering consumer | CONFIRMED |
 | `isScalar/VectorDynamicOffsetDMA`, `isDstReduceDGE`, `DGEType2string`, `isHWDGEDMAWithEngineSet` | PLT/GOT (libBIR) | AP-flavour probes & route helpers | INFERRED (call sites + assertion strings) |
 
-> **NOTE — corpus provenance.** The fine `libwalrus.so` addresses on this page were recovered in the standalone library; the wheel snapshot inspected here ships the same code statically linked into `walrus_bugpoint_driver`, whose IDA sidecar independently confirms the `cl::list<DGELevels>` parser instantiation and the `Unassigned` enum string. The `bir::DGEType {None0,SWDGE1,HWDGE2,Unassigned3}` ordinals and the `0x62d660`/`0x1c72000` libwalrus base are independently cross-checked against the already-published [ISA Enum Ordinals](../isa/isa-enum-ordinals.md) and [DMA Encoding](../isa/dma-encoding.md) pages, which derive from the same build.
+> **NOTE — corpus provenance.** `libwalrus.so` and `libBIR.so` are present in the corpus —
+> as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so the fine
+> addresses on this page (e.g. `getDGEInstructionType @0x1097330`, `assignEngine @0x1180360`) are
+> the `libwalrus.so`-proper VA frame recovered from the `ida/…libwalrus.so/` database; the cited
+> bodies are disassembled, not merely declared, and are **CONFIRMED**. The wheel snapshot
+> additionally ships the same code statically linked into `walrus_bugpoint_driver`, whose IDA
+> sidecar independently confirms the `cl::list<DGELevels>` parser instantiation and the
+> `Unassigned` enum string. The `bir::DGEType {None0,SWDGE1,HWDGE2,Unassigned3}` ordinals and the
+> `0x62d660`/`0x1c72000` libwalrus base are independently cross-checked against the
+> already-published [ISA Enum Ordinals](../isa/isa-enum-ordinals.md) and [DMA Encoding](../isa/dma-encoding.md)
+> pages. The same provenance stance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md),
+> [Backend Dependence-Distance](backend-dependence-distance.md), [the Dynamic For-Loop](dynamic-for-loop.md),
+> and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
 
 ## Related Components
 
@@ -429,8 +441,8 @@ The relevant relative placement in the backend pipeline (the second numbers belo
 ## Cross-References
 
 - [TensorCopy Dynamic Generators](tensorcopy-dynamic-generators.md) — the dynamic `tensor_copy` lowering that consumes the SWDGE route
-- [Dynamic Copy / Access-Pattern Materialization](../penguin/) — how a runtime offset becomes a `bir::DynamicAPINFO` (5.25)
-- [Dynamic-Shape Synthesis](../penguin/) — the broader dynamic-shape backend sub-thread (5.27)
+- [Symbolic-AP → Register-ALU Materialization](symbolic-ap-register-alu.md) — how a runtime offset becomes a `bir::DynamicAPINFO` and is lowered to registers
+- [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md) — the broader dynamic-shape backend sub-thread (end-to-end)
 - [DMA Encoding](../isa/dma-encoding.md) — `generateDynamicDMA`, the ADDR8 address modes, and how the `DGEType` field is read by the encoder
 - [ISA Enum Ordinals](../isa/isa-enum-ordinals.md) — `bir::DGEType {None,SWDGE,HWDGE,Unassigned}` as an identity wire enum
 - [lower_dma (walrus)](../walrus/) — the descriptor-lowering back end (Part 8)

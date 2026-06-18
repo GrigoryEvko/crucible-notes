@@ -276,7 +276,7 @@ The two map to the gather vs. scatter indirect-DMA descriptor variants the backe
 ## Cross-References
 
 - [DGE-Level Dynamic DMA](dge-level-dynamic-dma.md) — the DGE levels and engine selection that consume the `NeuronEngine` hint on these nodes
-- [Symbolic-AP Register Materialization](symbolic-ap-register-materialization.md) — lowers `addr_free_indices` + `generic_addrs` into address registers
+- [Symbolic-AP Register Materialization](symbolic-ap-register-alu.md) — lowers `addr_free_indices` + `generic_addrs` into address registers
 - [Indirect Descriptors](../isa/indirect-descriptors.md) — the gather/scatter indirect-DMA descriptor format these nodes lower to
 - [Penguin IR Node Model](ir-node-model.md) — the def-use graph `_link_operands` wires these operands into
 - [Penguin Target Abstraction](target-abstraction.md) — the Tonga / `NeuronEngine` target layer the brewer instrs bind to
