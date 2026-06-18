@@ -6,13 +6,15 @@
 
 Two consecutive walrus backend passes reshape the live-range graph *before* the coloring allocator runs, so that coloring can succeed without spilling. They allocate nothing themselves; they edit the set of `MemoryLocation` nodes the allocator will later color. Pass **24** (`vn_splitter`) makes every SBUF/PSUM node fit one SB tile and breaks access-disjoint clusters into independent nodes; pass **25** (`shrink_ml`, the `ShrinkDN` class) trims each node's physical extent down to the bytes actually touched. Together they hand the allocator a *disjoint, minimal, SB-fitting* node set. This is the seam after the pipeline ([`pass-pipeline-optlevels`](pass-pipeline-optlevels.md)) and before the colorers ([`allocator-drivers`](allocator-drivers.md)).
 
-The single most important structural fact — and the one that corrects a naive reading — is that **`vn_splitter` is not a splitter; it is a fold-then-split body.** `VNSplitterPass::run` (`@0xd73890`) calls *two* transforms in sequence: `VerticalFusion::runTransform` (the **FOLD** phase) and then `VNSplitter::runTransform` (the **SPLIT** phase). Both call sites are directly visible in the dispatch. Vertical fusion folds a producer→consumer op chain vertically to collapse an intermediate tensor's liveness; the splitter then carves a surviving tensor along a dimension into `N` disjoint `_VN_` sub-tensors. The two are inverse footprint moves — fold *reduces* node count by merging, split *increases* it by carving — and the pass runs fold-first so the splitter sees the smallest chain it can. The `foldIntoPredecessor` `PassOption` gates the fold stage.
+The single most important structural fact — and the one that corrects a naive reading — is that **`vn_splitter` is not a splitter; it is a split-then-fold body.** `VNSplitterPass::run` (`@0xd73890`) calls *two* transforms in sequence: `VNSplitter::runTransform` (the **SPLIT** phase, called first at `d73d6a`) and then `VerticalFusion::runTransform` (the **FOLD** phase, called second at `d74162`). Both call sites are directly visible in the dispatch, in straight-line order with no reorder branch between them. The splitter carves a tensor along a dimension into `N` disjoint `_VN_` sub-tensors; vertical fusion then folds producer→consumer op chains vertically to collapse intermediate-tensor liveness over the result. The two are inverse footprint moves — split *increases* node count by carving, fold *reduces* it by merging — and the pass runs split-first, so the fold operates on the chains the splitter produced (and any residual chains). The `foldIntoPredecessor` `PassOption` gates the fold stage.
+
+> **CORRECTION — order is SPLIT-then-FOLD, not fold-then-split.** An earlier revision of this page asserted the pass folds first and splits second. That is backwards. In `VNSplitterPass::run` (`@0xd73890`) the call sequence is `VNSplitter::runTransform` (SPLIT) at `d73d6a` **first**, then `VerticalFusion::runTransform` (FOLD) at `d74162` **second** — straight-line, no order-selecting branch. The page's own embedded disassembly (§1) already labelled these two sites correctly; only the surrounding prose had the order inverted. The PGA driver `runVNSplitterOnce` (`@0xd6f440`) runs the same split(`d6fad2`)-then-fold(`d6febf`) order, so there is no order difference between the two drivers. The *why* of the post-split fold is INFERRED (collapse the chains the split produced / residual chains); only the order is CONFIRMED.
 
 The splitter's piece count `N` is not a constant. The Profile-Guided Auto-Tuning loop (`ProfileGuidedAutoTuning::runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`) drives the *same* fold+split body with a tuned `(vn_limit, ratio, perSplitLimit)` triple; the float `ratio` bounds tolerated cross-piece duplication and the two integer caps bound the virtual-node count and pieces-per-node. So the split factor is a **knob the autotuner searches**, not a fixed property of the tensor — documented further in the PGA autotuner page (planned). The `shrink_ml` half is unconditional: it minimizes the per-partition live byte-extent of every shrinkable node, leaving reinterpret-cast and shifted-partition nodes intact.
 
 For reimplementation, the contract is:
 
-- The **fold↔split dispatch**: `VNSplitterPass::run` → `VerticalFusion::runTransform` then `VNSplitter::runTransform`, gated by `foldIntoPredecessor`.
+- The **split↔fold dispatch**: `VNSplitterPass::run` → `VNSplitter::runTransform` then `VerticalFusion::runTransform`, the fold gated by `foldIntoPredecessor`.
 - The **split decision**: how `analyze` clusters access-patterns into `ApGroup`s by overlapping partition sets, and the `isValidForSB` partition + byte gate that decides "splittable".
 - The **split rewrite**: how `split` emits `<orig>_VN_<k>` sub-tensors, re-points cloned access-patterns, and rebases offsets (`normalizeOffsetToNewNode`).
 - The **PGA knob**: `(vn_limit, ratio, perSplitLimit)` as the tuned split-factor triple, and the three reject-strings that pin each role.
@@ -23,8 +25,8 @@ For reimplementation, the contract is:
 |---|---|
 | **Pass 24 entry** | `VNSplitterPass::run(bir::Module&)` `@0xd73890` |
 | **Pass 24 registrar** | `register_generator_vn_splitter__` `@0x3e0135d`; lambda `_M_invoke` `@0xd75660` |
-| **FOLD phase** | `VerticalFusion::runTransform()` (`.plt` `@0x60ab60`); internals not traced here |
-| **SPLIT phase** | `VNSplitter::runTransform()` `@0xd5a3d0` |
+| **SPLIT phase (runs 1st, `d73d6a`)** | `VNSplitter::runTransform()` `@0xd5a3d0` |
+| **FOLD phase (runs 2nd, `d74162`)** | `VerticalFusion::runTransform()` (`.plt` `@0x60ab60`); internals not traced here |
 | **Split decision** | `VNSplitter::analyze(MemoryLocation*, float, int, int)` `@0xd53020` |
 | **SB-fit gate** | `ApGroup::isValidForSB(SBModel, bool)` `@0xd501e0` |
 | **Sub-tensor emit** | `VNSplitter::split(...)` `@0xd57c80` |
@@ -39,13 +41,13 @@ For reimplementation, the contract is:
 
 ---
 
-## 1. Pass identity and the fold-then-split dispatch
+## 1. Pass identity and the split-then-fold dispatch
 
 Both passes are `BackendPass` subclasses registered into the walrus pass set by generator lambdas. The registrars and pass-order positions are CONFIRMED from the registry strings and the `S2-06 §3` pass-order map (`vn_splitter=24`, `shrink_ml=25`), corroborated by the metric `VNSplitterDeadNodesCount` cited in `S2-07 §3.3`.
 
-The `shrink_ml` ↔ `ShrinkDN` identity is CONFIRMED two ways: the class-name string `"ShrinkDN"` is co-resident (×29 occurrences) with the pass-name `"shrink_ml"` (×7), and `shrink_dn.cpp` is the only source TU under `shrink_ml/`. The `run` body's own symbol confirms the mangled name `_ZN9neuronxcc7backend8ShrinkDN3runERN3bir6ModuleE`.
+The `shrink_ml` ↔ `ShrinkDN` identity is CONFIRMED two ways: the class-name string `"ShrinkDN"` is co-resident (×36 occurrences) with the pass-name `"shrink_ml"` (×13), and `shrink_dn.cpp` is the only source TU under `shrink_ml/`. The `run` body's own symbol confirms the mangled name `_ZN9neuronxcc7backend8ShrinkDN3runERN3bir6ModuleE`.
 
-The structural correction is in the `vn_splitter` body. `VNSplitterPass::run` `@0xd73890` does not call one splitter — it calls *two* transforms, and the dispatch is directly readable in the disassembly: [CONFIRMED]
+The structural correction is in the `vn_splitter` body. `VNSplitterPass::run` `@0xd73890` does not call one splitter — it calls *two* transforms, **split first then fold**, and the dispatch is directly readable in the disassembly: [CONFIRMED]
 
 ```text
 d73d6a:  call   5f4930 <…VNSplitter12runTransformEv@plt>        // SPLIT phase
@@ -54,9 +56,9 @@ d74249:  call   5ee600 <…VerticalFusionD1Ev@plt>                // dtors
 d74252:  call   5ed870 <…VNSplitterD1Ev@plt>
 ```
 
-The `VerticalFusion` vtable (`_ZTVN9neuronxcc7backend14VerticalFusionE`) and typeinfo (`_ZTIN…14VerticalFusionE`) are referenced at `d73e93`/`d73ea3`, so `VNSplitterPass::run` constructs a real `VerticalFusion` object, runs its `runTransform`, then constructs and runs the `VNSplitter`. The same two transforms are driven by `ProfileGuidedAutoTuning::runVNSplitterOnce` (the autotuner re-runs the whole fold+split body per trial).
+The `VNSplitter::runTransform` call at `d73d6a` runs first; the `VerticalFusion` vtable (`_ZTVN9neuronxcc7backend14VerticalFusionE`) and typeinfo (`_ZTIN…14VerticalFusionE`) are referenced at `d73e93`/`d73ea3`, after which `VNSplitterPass::run` constructs a real `VerticalFusion` object and runs its `runTransform` at `d74162`. The same two transforms in the same split→fold order are driven by `ProfileGuidedAutoTuning::runVNSplitterOnce` (`@0xd6f440`: split at `d6fad2`, fold at `d6febf`); the autotuner re-runs the whole split+fold body per trial.
 
-> **QUIRK — `vn_splitter` is a two-stage body, not a monolithic splitter.** A reimplementer who treats `vn_splitter` as "split a tensor" will miss half the pass. The first stage is `VerticalFusion` (the fold), gated by the `foldIntoPredecessor` option; only the second stage is the virtual-node split. The fold collapses producer→consumer chains *first* so the splitter operates on the minimal surviving node set. `VerticalFusion::runTransform`'s internals are a separate symbol and are **not traced on this page** [GAP] — only its position in the dispatch and its gating option are pinned.
+> **QUIRK — `vn_splitter` is a two-stage body, not a monolithic splitter.** A reimplementer who treats `vn_splitter` as "split a tensor" will miss half the pass. The first stage is the virtual-node split (`VNSplitter::runTransform` at `d73d6a`); the second stage is `VerticalFusion` (the fold) at `d74162`, gated by the `foldIntoPredecessor` option. The split carves the over-sized nodes *first*; the fold then collapses the producer→consumer chains over the resulting (and any residual) node set. `VerticalFusion::runTransform`'s internals are a separate symbol and are **not traced on this page** [GAP] — only its position in the dispatch and its gating option are pinned.
 
 ### 1.1 `PassOptions` knobs
 
@@ -370,15 +372,15 @@ The coloring allocator ([`allocator-drivers`](allocator-drivers.md)) and `SBSize
 | **INV-3 Clean graph** | VN-Splitter | the original over-sized node and now-redundant copy/memset instructions are removed (`deadSet → removeMemoryLocation`); `VNSplitterDeadNodesCount` records the cleanup. | CONFIRMED |
 | **INV-4 Minimal footprint** | Shrink-ML | each node's physical extent reduced to the live element-range-in-partition, with partition strides re-packed (`updateChannelStep`) and free-dim counts trimmed (`shrinkPAP`). Reinterpret-cast / shifted-partition nodes left intact. | CONFIRMED |
 
-**Ordering rationale.** `vn_splitter`(24) runs before `shrink_ml`(25): split first so each piece is independently shrinkable; shrink each piece to its live extent; then hand the disjoint, minimal, SB-fitting node set to the colorer. The fold stage inside `vn_splitter` runs first of all, so the splitter and shrinker both operate on the chain already collapsed by `VerticalFusion`.
+**Ordering rationale.** `vn_splitter`(24) runs before `shrink_ml`(25): the splitter carves each over-sized node so each piece is independently shrinkable; `shrink_ml` then trims each piece to its live extent; then the disjoint, minimal, SB-fitting node set is handed to the colorer. *Within* `vn_splitter` the order is split-then-fold: the virtual-node split runs first, then `VerticalFusion` folds the producer→consumer chains over the splitter's output (CONFIRMED by call order; the precise rationale for folding *after* splitting is INFERRED).
 
-**The PGA loop closes over this.** Because `runVNSplitterOnce` re-runs the whole fold+split body with a tuned `(vn_limit, ratio, perSplitLimit)`, the autotuner is effectively searching the split factor `N` against the downstream colorer's success/cost — tightening the knobs to fewer, larger pieces or loosening them to more, smaller pieces. The fold↔split duality plus this tuned knob is what makes `vn_splitter` an *adaptive* footprint reshaper rather than a fixed transform.
+**The PGA loop closes over this.** Because `runVNSplitterOnce` re-runs the whole split+fold body with a tuned `(vn_limit, ratio, perSplitLimit)`, the autotuner is effectively searching the split factor `N` against the downstream colorer's success/cost — tightening the knobs to fewer, larger pieces or loosening them to more, smaller pieces. The split↔fold duality plus this tuned knob is what makes `vn_splitter` an *adaptive* footprint reshaper rather than a fixed transform.
 
 ---
 
 ## 5. Confidence summary and gaps
 
-- **CONFIRMED** by direct disassembly: the fold↔split dispatch (`VNSplitterPass::run` calling both `VerticalFusion::runTransform` and `VNSplitter::runTransform`); the `isValidForSB` partition gate (`cmp 0x8(%rax),%edx; jge`); the packed-`SBModel` register split (`sar $0x20,%rsi`); `normalizeOffsetToNewNode` `(off − base)/stride` (`sub`/`idivl`); `getBaseOffset` returning `this+0x08`; the two option-byte reads at `+0x150`/`+0x151`; the `perSplitLimit` reject-string; the `_VN_`, `SplitSB`, `is splittable`, and `VNSplitterDeadNodesCount` strings; the `ShrinkDN::run` symbol and namespace.
+- **CONFIRMED** by direct disassembly: the split↔fold dispatch (`VNSplitterPass::run` calling `VNSplitter::runTransform` at `d73d6a` first, then `VerticalFusion::runTransform` at `d74162`); the `isValidForSB` partition gate (`cmp 0x8(%rax),%edx; jge`); the packed-`SBModel` register split (`sar $0x20,%rsi`); `normalizeOffsetToNewNode` `(off − base)/stride` (`sub`/`idivl`); `getBaseOffset` returning `this+0x08`; the two option-byte reads at `+0x150`/`+0x151`; the `perSplitLimit` reject-string; the `_VN_`, `SplitSB`, `is splittable`, and `VNSplitterDeadNodesCount` strings; the `ShrinkDN::run` symbol and namespace.
 - **STRONG** (pinned by strings/signature but with SIMD-inlined or partly-inferred arithmetic): the `(int, float, int)` PGA signature and the per-knob role mapping; the `isValidForSB` running byte-sum form; the `ApGroup` field map at `+0x4c`/`+0x54`; the `shrinkTensor` ↔ `ShrinkDN` producer/consumer linkage; `VncLink` being unrelated.
 - **GAP** (not traced on this page): `VerticalFusion::runTransform` internals — the actual fold heuristic — are a separate symbol; the `getShrinkDim` selection heuristic lives in libBIR (only thunks here); the exact `runVNSplitterOnce` body and the autotuner's search policy (planned PGA page).
 - **Honest re-verify ceiling.** The structural skeleton (which functions, what they gate, the invariants) is solid against the binary. The two heuristics not in libwalrus (vertical-fold condition, shrink-dim selection) are *named and positioned* but not *reconstructed*; a reimplementer would need the libBIR bodies and `VerticalFusion::runTransform` to fill them.
