@@ -265,6 +265,8 @@
 - [klr::* Node Schema Roster & Serialization](bir/klr-node-schema.md)
 - [BIR Sim Dispatch + the Whole-Machine State Model](bir/sim-dispatch-state.md)
 - [Sim Core Arithmetic — Cast / Accumulate / RNE / MemoryReductionOp](bir/sim-core-arithmetic.md)
+- [Sim Matmul / MX Quantize / Dequantize](bir/sim-matmul-mx.md)
+- [Sim Elementwise / Reduce + Data-Movement + Indirect Gather/Scatter](bir/sim-elementwise-datamove.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
