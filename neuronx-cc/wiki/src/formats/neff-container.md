@@ -1,6 +1,6 @@
 # NEFF Container
 
-> *All addresses on this page apply to `libwalrus.so` from neuronx_cc 2.24.5133.0+58f8de22 (cp312 wheel; `.text` @ `0x62d660`, `.rodata` @ `0x1c72000`, VMA == file-offset for both). The NEFF write path is byte-identical across the cp310/cp311/cp312 wheels — the cp312 bases above match the cp310 bases exactly. Other versions will differ.*
+> *All addresses on this page apply to `libwalrus.so` from neuronx_cc 2.24.5133.0+58f8de22 (**cp310 wheel**; `.text` @ `0x62d660`, `.rodata` @ `0x1c72000`, VMA == file-offset for both). The NEFF write path is byte-identical across the cp310/cp311/cp312 wheels and the wheels **share the same section bases**; function *bodies*, however, shift by a per-wheel delta, so every address on this page is version-pinned to **cp310** to match the cited disassembly. Other versions will differ.*
 
 ## Abstract
 
@@ -127,6 +127,8 @@ NeffPackager::run(vector<unique_ptr<Module>>&)          @ 0x15307e0   (pass "nef
 
 > **NOTE —** the `0x153df90` entry above is the true function start (where `archive_write_new` → `archive_write_set_format_pax` → `archive_write_open` are called). D-S01 cites `0x153e030`, which is the per-member loop body, ~0xa0 bytes into the function. Both are correct frames of the same routine; this page anchors the *setup* to the entry and the *loop body* to `0x153e030+`. (Two-VA-frame: the `archive_*@plt` thunk addresses are a distinct frame again — see [§3](#3-the-write-path).)
 
+> **NOTE (M2 — verifier frame) —** the `NeffPackager`/`NeffFileWriter` method addresses in the tables above and in [§2](#2-producer-topology) (`writePackageFile 0x15200e0`, `writeDefJson 0x152a0e0`, `writeNeffJson 0x152c740`, `writeNEFFFeatures 0x15294b0`, `initializeNeffHeader 0x1540a00`) are the **`.dynsym` symbol-start / function-entry** addresses on the cp310 binary — each is the prologue (`push %r15`), confirmed against the IDA `functions.json` `addr` field and the demangled `.dynsym` value (both equal). A verifier running `objdump -d --start-address=0x15200e0` lands on the prologue, not mid-body. (Do not confuse these with the *internal* per-symbol frame IDA also reports — e.g. `0x60ed60` for `writePackageFile` — which is the `addToBom`-style second VA frame, ~`0xa0` lower; the entry addresses cited here are the ones to verify against.)
+
 ---
 
 ## 3. The Write Path
@@ -230,9 +232,11 @@ libarchive's PAX writer pads each member's data to a **512-byte tar record** bou
 The single most error-prone point. Two spellings of each engine live at different layers:
 
 - **On-disk `.bin`/`.json` basenames** use `bir::EngineInfo2string` = TitleCase: `PE`, `Pool`, `Activation`, `SP`, `DVE`. The shipped analyzer opens exactly these ([§7](#7-the-consumer-proof)).
-- **`def.json` `"definition"` key tokens** use the NEFF-local formatter (`sub_15248C0`, `neff_packager.cpp:49`) = lowercase: `1→"pool"`, `2→"act"`, `3→"pe"`, `4→"dma"`, `5→"dve"`, `6→"sp"`, suffixed `_instr`/`_dbg`/`_asm_dbg`.
+- **`def.json` `"definition"` key tokens** use the NEFF-local formatter `sub_15248C0` (a standalone engine→string function, called by `writeDefJson`/`writeDMAQueueDefinitions`) = lowercase: `1→"pool"`, `2→"act"`, `3→"pe"`, `4→"dma"`, `5→"dve"`, `6→"sp"`, suffixed `_instr`/`_dbg`/`_asm_dbg`.
 
-So `def.json["definition"]["pe"]["_instr"] == "PE.bin"`; the BOM maps the on-disk `…/PE.bin` path → the in-tar member name. `dma`(4) is a `def.json` token but has **no** `.bin` of its own — DMA descriptors fold into the issuing compute engine's stream. [CONFIRMED — analyzer confirms the TitleCase set; lowercase tokens are formatter strcpy literals]
+So `def.json["definition"]["pe"]["_instr"] == "PE.bin"`; the BOM maps the on-disk `…/PE.bin` path → the in-tar member name. `dma`(4) is a `def.json` token but has **no** `.bin` of its own — DMA descriptors fold into the issuing compute engine's stream. [CONFIRMED — analyzer confirms the TitleCase set; the lowercase map is byte-proven from the jump table in `sub_15248C0` (see CORRECTION below).]
+
+> **CORRECTION (M1 — formatter grounding) —** an earlier note tied this map to `sub_15248C0` as if it were a block of standalone `\0pool\0`/`\0act\0`/`\0dve\0` string literals, and a separate survey misread `sub_15248C0` as sitting *inside* `NeffPackager::findRemoteSBVars`. Both are corrected here. (a) `sub_15248C0` (range `0x15248c0–0x1524d03`) is its **own** function, adjacent to but not part of `findRemoteSBVars` (`0x15244d0–0x1524884`). (b) The six tokens are **not** standalone strings — none of `pool`/`act`/`pe`/`dma`/`dve`/`sp` exists as a `\0token\0` literal in `libwalrus.so`. The map is instead produced by a **switch jump table** at `0x15248f1`: each case loads a token via a substring `lea` into a longer string — case 1 `"pool"`, case 2 `"act"` (offset into a longer name), case 3 `"pe"` (= `"Bad Shape"+7`), case 4 `"dma"` (tail of `enableRemoteSemaphoreDMA`), case 5 `"dve"` (`SyncPoolDve+0xa`), case 6 `"sp"` (= `"Ssp"+1`). The `{1→pool … 6→sp}` mapping is therefore **byte-proven from the jump table**, not from token literals. `[CONFIRMED — jump table @ 0x15248f1 with per-case substring leas resolved.]`
 
 ### Per-core directory tree
 
@@ -295,8 +299,8 @@ The UUID at `neff_header+204` is RFC-4122 version 4 (random). Its randomness com
 
 ```c
 // UUID generation (RFC-4122 v4 via ChaCha20 CSPRNG)
-// seed constant "expand 32-byte k" @ .rodata fileoff 0x1dd5ed0 (cp312, this session;
-//   D-S01 cites 0x1DD7910 for cp310 — same string, small per-arch rodata delta).
+// seed constant "expand 32-byte k" @ .rodata fileoff 0x1dd7910 (cp310, the frame this page
+//   is pinned to; the cp312 wheel places the same string at 0x1dd5ed0 — a per-wheel rodata delta).
 // ".rodata VMA == file-offset", so the VMA equals the file-offset.
 function fill_uuid(uuid[16]):
     chacha20_block(state)                 // state[0..3] = "expand 32-byte k" (the 16-byte sigma)
@@ -402,10 +406,10 @@ xxd model.neff | head                   # leading = gzip 1f 8b, OR (uncompressed
 
 What this page can and cannot stand behind, honestly:
 
-- **CONFIRMED, this session, on the cp312 binary**: the full libarchive PAX+gzip API (20 `archive_*` symbols); zero ELF-writer symbols (the 15 substring hits are all `StaticOffset` DMA false positives); the `archive_write_new`/`set_format_pax`/`open` setup sequence and the per-member `set_uname`/`gname`/`mtime`/`ctime`/`atime` + `add_filter_gzip` + two `set_filter_option` call sites at the cited addresses; the `"nobody"`, `"expand 32-byte k"`, `"file.neff archive"`, `"The NeffPacakger BOM:"`, and `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` strings; the absence of any `set_bytes_per_block` override; the analyzer's import set and by-name member opens (md5-pinned).
+- **CONFIRMED, this session, on the cp310 binary** (the frame this page is pinned to): the full libarchive PAX+gzip API (20 `archive_*` symbols); zero ELF-writer symbols (the 15 substring hits are all `StaticOffset` DMA false positives); the `archive_write_new`/`set_format_pax`/`open` setup sequence and the per-member `set_uname`/`gname`/`mtime`/`ctime`/`atime` + `add_filter_gzip` + two `set_filter_option` call sites at the cited addresses; the `"nobody"`, `"expand 32-byte k"`, `"file.neff archive"`, `"The NeffPacakger BOM:"`, and `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` strings; the absence of any `set_bytes_per_block` override; the analyzer's import set and by-name member opens (md5-pinned).
 - **CONFIRMED (byte-proven elsewhere in Part 12)**: the IR-signature member-subset predicate (`writer+216`) — resolved on the `addToBom` disasm by 12.2/12.4 as `{info.json} ∪ {*.dbg} ∪ {*.npy}` (`.npy`-equals @ `0x153fc6f`, `.dbg`-contains @ `0x153fc9b`); the `.bin` streams are excluded. **STRONG, not byte-proven**: the ChaCha20-keystream→UUID wiring (the sigma constant is confirmed and co-located with the header builder, but the keystream-to-`uuid[16]` copy was not single-stepped).
 - **INFERRED / deferred**: the exact `info.json` key names feeding header fields `+168`/`+476`/`+480` (nlohmann `operator[]` inlined — deferred to 12.2/12.3); the gzip member byte `1f 8b` and the tar `ustar`@`0x101` layout are RFC/POSIX spec facts, not literals stored in the binary (the gzip *filter* is binary-confirmed).
-- **Address-frame caveat**: addresses are the cp312 frame; D-S01/D-S13 cite cp310 frames. The `.text`/`.rodata` bases match exactly, so symbol-relative offsets transfer; the `expand 32-byte k` rodata address differs by a small per-arch delta (`0x1dd5ed0` cp312 vs `0x1DD7910` cp310). The `@plt` thunk addresses form a third VA frame distinct from the `.dynsym` `U` entries and the function-body addresses.
+- **CORRECTION (frame banner) — addresses are the cp310 frame.** An earlier revision of this page declared a cp312 banner while citing cp310 body addresses throughout (`addToBom@0x153fb80`, the `.npy`/`.dbg` predicate at `0x153fc6f`/`0x153fc9b`, the method table). That was self-contradictory: the cp310/cp312 wheels **share** `.text`/`.rodata` bases but their function *bodies* differ by a per-wheel delta (~`0xa0`), so a cp312 banner over cp310 body addresses cannot be objdump-verified on either binary. The banner is now pinned to **cp310**, matching the cited disassembly and the seven sibling Part-12 pages. The one stray cp312 datum — the `expand 32-byte k` seed at `0x1dd5ed0` — has been corrected to the cp310 address `0x1dd7910` (the cp312 wheel keeps it at `0x1dd5ed0`). The `@plt` thunk addresses form a third VA frame distinct from the `.dynsym` `U` entries and the function-body addresses.
 
 ---
 
