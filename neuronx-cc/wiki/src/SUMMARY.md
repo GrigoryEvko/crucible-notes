@@ -361,6 +361,11 @@
 - [LoadActFuncSet / On-Chip LUT-Load](activation/loadactfuncset.md)
 - [Activation Set-Cover, calculateBestSets & Prefetch](activation/set-cover.md)
 
+# Part 11 — Custom Ops & GPSIMD
+
+- [The GPSIMD CPUs: 8-core Xtensa ELF Layout](custom-ops/gpsimd-xtensa-layout.md)
+- [The Bitonic SORT / TOPK Builtin Algorithm](custom-ops/bitonic-sort-topk.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
