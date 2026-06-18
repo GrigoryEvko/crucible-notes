@@ -67,7 +67,9 @@ The "best set index" register is initialised to `0xFFFFFFFF` (`mov $0xffffffff,%
 
 ## 3. The greedy cover — `calculateBestSets@0x11597e0`
 
-The function first asserts a non-empty work list (`reportError(empty, "must have at least one Activation instruction")`@0x1159875, guarding `this+0xE8 == this+0xF0`), then runs the greedy pass. The two trailing string asserts — `"must have remaining ActFuncSets for the last …"`@0x1d50563 and `"must have exhausted all ActFuncSets"`@0x1d50540 — bracket the candidate iteration and are the structural proof that the cover is a *single forward sweep* of the candidate list, terminating either by running out of sets or by covering the last group. There is no power-set enumeration and no re-scan.
+The function first asserts a non-empty work list (`reportError(empty, "must have at least one Activation instruction")`@0x1159875, guarding `this+0xE8 == this+0xF0`), then runs the greedy pass. The two trailing string asserts — `"must have remaining ActFuncSets for the last …"`@0x1d50568 and `"must have exhausted all ActFuncSets"`@0x1d50540 — bracket the candidate iteration and are the structural proof that the cover is a *single forward sweep* of the candidate list, terminating either by running out of sets or by covering the last group. There is no power-set enumeration and no re-scan.
+
+> **CORRECTION — the `"must have remaining ActFuncSets …"` string starts at `0x1d50568`, not `0x1d50563`.** An earlier draft pinned this rodata string to `0x1d50563`; that offset lands inside the null padding *after* the preceding `"…ActFuncSets"` (bytes `0x1d50560..67` are `65 74 73 00 00 00 00 00` = `"ets\0\0\0\0\0"`). The C-string actually begins at `0x1d50568` (`6d 75 73 74` = `"must"`), verified by `objdump -s -j .rodata`. The string content and the single-forward-sweep conclusion are unchanged. (CONFIRMED — byte dump of `.rodata` at `0x1d50540..0x1d50590`.)
 
 ```c
 // LowerPWPImpl::calculateBestSets @ 0x11597e0  (greedy first-fit set-cover)
@@ -109,7 +111,7 @@ void LowerPWPImpl::calculateBestSets() {
         chosen.insert(best);                          // accumulate unique sets    @0x1159de3
 
         // termination invariants the binary asserts at the tail of the sweep:
-        //   "must have remaining ActFuncSets for the last ..."  @0x1d50563
+        //   "must have remaining ActFuncSets for the last ..."  @0x1d50568
         //   "must have exhausted all ActFuncSets"               @0x1d50540
     }
     // 'chosen' (a std::set<unsigned>) is the minimal cover handed to load-minting.
@@ -176,7 +178,7 @@ L30  optimize_act_control            enterBasicBlock     ── global dedup    
 
 **CONFIRMED** (anchored byte-exact to the stripped `.so`):
 - `calculateBestSets@0x11597e0` (label resolves exactly; thunk `0x5f2090` → GOT `off_3DCE830`); the first-fit inner `break`, the per-set bit-set clear-on-cover (`not; and; mov`@0x1159a60), the single-pass outer loop, and the `MapVector`/`set` result builders.
-- The greedy-vs-optimal verdict: no power-set search, no backtracking; the `"must have remaining ActFuncSets …"`@0x1d50563 / `"must have exhausted all ActFuncSets"`@0x1d50540 termination asserts.
+- The greedy-vs-optimal verdict: no power-set search, no backtracking; the `"must have remaining ActFuncSets …"`@0x1d50568 / `"must have exhausted all ActFuncSets"`@0x1d50540 termination asserts.
 - The `≤ 8` budget string `@0x1d50118` and the `Engine2UsedActSetNames.size() <= 1` (CoreV4 `== 0`) family bound.
 - The prefetch hoist entry `@0x11651b0` calling `resetStack@0x11650a0`; `Eng2UsedActTables` as `DenseMap<EngineInfo, vector<set<ActivationFunctionType>>>`; the `ForcePrefetchFollowIncomingOrder`@0x15fb5f knob.
 - The `0xFFFFFFFF` "no active set" sentinel shared by cover, load default, and dedup.
