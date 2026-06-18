@@ -41,20 +41,29 @@ Detect the RMS denominator subgraph `sqrt(Σ x²)` and box it into one op so the
 ### Entry Point
 
 ```text
-hilo::NeuronOpFusion::runOnOperation (@0x2101680)
-  ├─ fuseDotLogisticOp
-  ├─ fuseElementwiseOps
-  ├─ fuseMulRedSqrt (@0x20ff510)            ── this pass (3rd of 6)
-  │    ├─ AnalysisManager::getAnalysis<DominanceInfo>   (@0x20ff567)
-  │    ├─ Operation::walk(callback_fn<ReduceOp>)         (@0x20ff59f)
-  │    │     └─ trampoline @0x20fbc30  ── filter op==ReduceOp + "already-fused" guard
-  │    │            └─ matcher @0x20fb9a0  ── P0..P5 + FusionCluster build
-  │    ├─ for each cluster: FusionCluster::codeGen(dom, /*postdom=*/null)  (@0x20ff5c9)
-  │    └─ for each cluster: operator delete(0xD8)         ── destroy
-  ├─ fuseSubExp
-  ├─ fuseExpm1Op
-  └─ fuseLog1pOp
+hilo::NeuronOpFusion::runOnOperation (@0x2101680)   ── disasm-verified call order
+  ├─ fuseSubExp                              ── ALWAYS first (unconditional, call @0x2101696)
+  ├─ if clopts::fuseDotLogistic (byte @0x9c717b8):
+  │    ├─ fuseDotLogisticOp                  ── call @0x21016de
+  │    └─ fuseMulRedSqrt (@0x20ff510)        ── call @0x21016f2 — THIS pass, runs right after DotLogistic
+  │         ├─ AnalysisManager::getAnalysis<DominanceInfo>   (@0x20ff567)
+  │         ├─ Operation::walk(callback_fn<ReduceOp>)         (@0x20ff59f)
+  │         │     └─ trampoline @0x20fbc30  ── filter op==ReduceOp + "already-fused" guard
+  │         │            └─ matcher @0x20fb9a0  ── P0..P5 + FusionCluster build
+  │         ├─ for each cluster: FusionCluster::codeGen(dom, /*postdom=*/null)  (@0x20ff5c9)
+  │         └─ for each cluster: operator delete(0xD8)         ── destroy
+  └─ if clopts::generalElementwiseFusion (byte @0x9c716f8):
+       ├─ fuseExpm1Op                        ── call @0x21016b3
+       ├─ fuseLog1pOp                         ── call @0x21016be
+       └─ fuseElementwiseOps                  ── tail-jmp @0x210170b
 ```
+> **CORRECTION (audit #816) —** an earlier draft of this tree listed the order as
+> `fuseDotLogisticOp → fuseElementwiseOps → fuseMulRedSqrt → fuseSubExp → …` and called this
+> pass "3rd of 6". The disasm of `runOnOperation` @0x2101680 shows `fuseSubExp` is the
+> **unconditional first** call (@0x2101696), `fuseMulRedSqrt` runs **immediately after**
+> `fuseDotLogisticOp` (@0x21016f2, gated with it on the `fuseDotLogistic` flag), and
+> `fuseElementwiseOps` is the **tail** call (@0x210170b under `generalElementwiseFusion`).
+> The order above is the byte-true one; see [4.34](op-fusion-dot-elementwise.md). CERTAIN.
 
 > **NOTE —** the matched window is anchored on the *reduce*, not the mul or the sqrt. The pass `walk`s for `mhlo::ReduceOp`; from each reduce it probes *down* to the sqrt consumer and *up* to the mul producer. Anchoring on the reduce is deliberate: it is the one op in the chain whose identity (a reduction) most narrows the search, and it sits in the middle so both directions are a single hop.
 
