@@ -1,6 +1,6 @@
 # The Two-GPSIMD Reconciliation — Pool-Engine Alias vs Xtensa Cluster
 
-> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. Two binaries carry a unit named "GPSIMD" and they are **different hardware**. The compiler/IR side lives in `neuronxcc/starfish/lib/libwalrus.so` + `libBIR.so` (cp310 frame: `.text`/`.rodata` VMA == file offset, `.data` is `+0x400000`; the `_0x5e9xxx` `.c` sidecars are PLT thunks, real bodies disassemble from `.text 0x135xxxx` — the two-VA-frame artifact). The custom-op CPU side lives in `neuronxcc/data/custom_op/libbuiltincustomop_cpu{0..7}.stripped.so` — eight Tensilica Xtensa ELF32 executables. Disasm offsets quoted from the encoder body were re-confirmed against the cp312 wheel (`CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x13597a0` there vs `0x1359840` cp310); per-wheel address deltas are noted. Treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
+> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. Two binaries carry a unit named "GPSIMD" and they are **different hardware**. The compiler/IR side lives in `neuronxcc/starfish/lib/libwalrus.so` + `libBIR.so` (cp310 frame: `.text`/`.rodata` VMA == file offset, `.data` is `+0x400000`; the `_0x5e9xxx` `.c` sidecars are PLT thunks, real bodies disassemble from `.text 0x135xxxx` — the two-VA-frame artifact). The custom-op CPU side lives in `neuronxcc/data/custom_op/libbuiltincustomop_cpu{0..7}.stripped.so` — eight Tensilica Xtensa ELF32 executables. Disasm offsets quoted from the encoder body are grounded on the cp310 IDA tree (`CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840`, CONFIRMED); the cp312 anchor `0x13597a0` is ASSERTED, not verified — cp312 `libwalrus` is not in the indexed corpus (only the cp312 `walrus_driver` binaries are), so treat the cp312 delta as a noted prediction. Treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
 
 ## Abstract
 
@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **Pool-alias GPSIMD** | `EngineType Pool(1)` → external `"GPSIMD"`; one op `InstGPSIMDSB2SB` (IT33, opcode `0xBF`) |
 | **Xtensa GPSIMD** | 8× Tensilica Xtensa ELF32; reached by `InstCustomOp` (IT53), cpu_id ∈ [0,8) |
 | **Decisive string** | `libBIR` verbatim: `"External: GPSIMD Internal: Pool"` |
-| **Sole SB2SB encoder** | `CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840` (cp310) / `0x13597a0` (cp312) |
+| **Sole SB2SB encoder** | `CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840` (cp310, CONFIRMED) / `0x13597a0` (cp312, ASSERTED — cp312 `libwalrus` not in corpus) |
 | **LNC2 gate** | `cmpl $0x2,0x1a4(%rax)` (cores-per-LNC == 2) @ encoder `+0x227`/`+0x561` |
 | **Per-CPU window** | `0x84000000 + cpu_id·0x200000` (2 MiB stride) — read off ELF `LOAD` vaddrs |
 | **Shared DRAM scratch** | `[0x80000, 0x90000)` (64 KiB), `data_transfer.cpp:160` |
@@ -137,7 +137,7 @@ Every ground below was re-run on the wheel binaries (cp312 layout; the cp310 fra
 
 ### Considerations
 
-There is no third reading. The `getDefaultEngine` accessor for `InstGPSIMDSB2SB` returns `EngineType 1` (Pool) — `mov eax,1` per D-M11 — and `ArithOps` routes to `ArithOpsZeroArithInst`, confirming View A is a pure mover on the Pool sequencer, never a "run arbitrary SIMD code" surface. User custom code targets `CustomOp`/`NKIKernel` (IT53/54/55), i.e. View B, never a GPSIMD opcode. The two paths cannot be merged because they are scheduled as separate instructions on separate engines.
+There is no third reading. The `getDefaultEngine` accessor for `InstGPSIMDSB2SB` returns `EngineType 1` (Pool) — `mov eax,1` per D-M11 — and `ArithOps` routes to `ArithOpsZeroArithInst`, confirming View A is a pure mover on the Pool sequencer, never a "run arbitrary SIMD code" surface. User custom code targets the kernel-class ops (IT53–55: `CustomOp`=IT53, `BIRKernel`=IT54, `NKIKernel`=IT55), i.e. View B, never a GPSIMD opcode. The two paths cannot be merged because they are scheduled as separate instructions on separate engines.
 
 ---
 
