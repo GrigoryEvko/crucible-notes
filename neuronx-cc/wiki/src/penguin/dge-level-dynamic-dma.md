@@ -429,6 +429,8 @@ The relevant relative placement in the backend pipeline (the second numbers belo
 > [Backend Dependence-Distance](backend-dependence-distance.md), [the Dynamic For-Loop](dynamic-for-loop.md),
 > and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
 
+> **CORRECTION (Wave-2 audit) — the provenance NOTE above misattributes the database.** There is **no standalone `ida/…libwalrus.so/` IDA database** in the shipped corpus: the only `ida/` walrus DBs are the statically-linked driver binaries (`walrus_driver`, `walrus_bugpoint_driver`), plus `bir_roundtrip`. The standalone `libwalrus.so` *disasm* sidecars only span `0x5e9000–0x7cfb30`, so the fine DGE addresses cited here (`getDGEInstructionType @0x1097330`, `assignEngine @0x1180360`, `DynamicDMAScan::run @0xd03c40`, `sub_1096280`, …) fall **outside** the standalone-`.so` extracted range and are **not** present in any shipped disasm/decompiled sidecar (`rg getDGEInstructionType` over `disasm/`+`decompiled/` → 0). Those VAs match the `0xd0xxxx–0x12xxxxx` band where libwalrus code lands **statically linked into `walrus_driver`**, so the addresses are real and recoverable from the *driver* IDA DB — but the NOTE's specific claim that they were "disassembled" from an `ida/…libwalrus.so/` database is wrong. Read the affected addresses as **driver-DB-grounded** (and the `bir::DGEType` ordinals as the independently-confirmed anchor), not as standalone-`libwalrus.so`-disasm-CONFIRMED. The same over-attribution applies to the four sibling pages this NOTE names.
+
 ## Related Components
 
 | Name | Relationship |
