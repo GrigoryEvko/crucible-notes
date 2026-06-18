@@ -2,13 +2,27 @@
 
 > **Direction matters.** Pages 6.5.1–6.5.8 document `NeuronCodegen` /
 > `GeneratedNeuronCodegen` — the *forward* trace-time builder that turns
-> `nl.*`/`nisa.*` Python calls **into** a Penguin/BIR graph. This page documents
+> `nl.*`/`nisa.*` Python calls **into** a Penguin IR graph. This page documents
 > the exact **inverse**: a separate Cython class, `NkiCodegen`, whose
-> `codegen<Op>(inst)` methods walk an already-built Penguin graph and **print a
+> `codegen<Op>(inst)` methods walk an already-built Penguin IR graph and **print a
 > line of NKI Python source** — a `nisa.<primitive>(...)` or `nl.<primitive>(...)`
-> call — back out as text. It is a round-tripper (BIR → NKI source), not a lowering
+> call — back out as text. It is a round-tripper (Penguin IR → NKI source), not a lowering
 > path. Everything below is grounded on the cp310 shared object
 > `NkiCodegen.cpython-310-x86_64-linux-gnu.so` and its recovered symbols/strings.
+>
+> > **CORRECTION (input/output IR — binary-verified).** `NkiCodegen.so` consumes
+> > **Penguin IR**, not BIR, and emits NKI text — it never touches BIR. The `.so`
+> > imports its IR types exclusively from `neuronxcc.starfish.penguin.ir`
+> > (`AffineExpr`, `Operator`, `TileAccess`) and walks `NeuronInst` nodes
+> > (`codegenNeuronOperand` / `codegenNeuronInstResult`); a `strings` sweep finds
+> > **zero** `bir`/`birpy` tokens — in sharp contrast to the sibling
+> > `BirCodeGenLoop.so`, which is full of `birpy.Instruction`/`Opcodes`/
+> > `MemoryLocation` (it is the module that actually produces BIR). Per the
+> > [architecture overview](architecture-overview.md), Penguin IR and BIR are
+> > *different* IR levels (Penguin IR → BIR is a separate codegen crossing); the
+> > forward builder `NeuronCodegen` also produces Penguin IR, not BIR. Earlier
+> > "Penguin/BIR" / "BIR → NKI" phrasings on this page conflated the two and are
+> > corrected to **Penguin IR** throughout. [CONFIRMED — `strings`/imports on the `.so`]
 
 ---
 
@@ -47,7 +61,7 @@ that is expected; the printer was never there. It is here, in its own `.so`.
 |---|---|---|
 | Class | `NeuronCodegen` / `GeneratedNeuronCodegen` | `NkiCodegen` |
 | Module home | `nki/compiler/backends/neuron/KernelBuilder.so` | `starfish/penguin/targets/codegen/NkiCodegen.so` |
-| Direction | NKI Python → Penguin/BIR | Penguin/BIR → NKI Python **text** |
+| Direction | NKI Python → Penguin IR | Penguin IR → NKI Python **text** |
 | Per-op method shape | builds `bir::Inst*` via `self.builder` | `printf`-style fills a `nisa.*`/`nl.*` template, calls `write_line` |
 | Consumes | `nl.affine_range`/`nisa.activation` calls | already-built `<Op>Inst` nodes |
 | Produces | IR nodes | a `@trace`-decorated `def {name}(): …` source module |
@@ -149,9 +163,13 @@ list), and where legal `engine=nki.isa.engine.<E>`, `perf_mode=`,
 ## 2. The enum-marshalling core — `opcode()` and `reduce_cmd()`
 
 This is the heart of why the printer is the *inverse* of the build-side remaps. The
-forward builder renumbers Python enum members into BIR integer opcodes; the printer
-**name-maps BIR enum members back to `np.*`/`nl.*`/`scipy.special.*` Python
-callables**. It never renumbers — it rewrites a fixed set of member *names*.
+forward builder renumbers Python enum members into integer opcodes on the way down to
+BIR; the printer **name-maps the Penguin IR enum members
+(`ALUOpcode`/`ActivationFunctionType`/`EngineAccumulationType`, recovered verbatim
+from the `.so`) back to `np.*`/`nl.*`/`scipy.special.*` Python callables**. It never
+renumbers — it rewrites a fixed set of member *names*. (The enums it reads are
+Penguin-level — `neuronxcc.starfish.penguin.targets.Opcodes` — not `bir::` opcodes;
+the printer never sees BIR.)
 
 ### 2.1 `opcode(self, op)` — ALUOpcode / ActivationFunctionType → Python callable
 
