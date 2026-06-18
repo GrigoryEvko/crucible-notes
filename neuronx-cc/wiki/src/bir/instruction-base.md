@@ -90,7 +90,7 @@ Each of the three operand lists is an `llvm::ilist`-style intrusive **circular**
 | Block off | Type | Meaning / JSON key | Anchor | Conf |
 |---|---|---|---|---|
 | `+0x008` | `qword` count | `numDependencies()` (predecessor count) | `numDependencies` @ `0x2d69c0`: `*(*(this+26)+8)` | CERTAIN |
-| `+0x020` | intrusive list head | `"dependencies"` head (predecessor edges) | ctor seeds `+0x40 = blk+0x48`; `toJson` walks `*(blk)+32` | CERTAIN |
+| `+0x020` | intrusive list head | `"dependencies"` head (predecessor edges) | `toJson` walks `*(blk)+32` (`0x2e31d0`: `lea rbx,[rax+0x20]`); ctor leaves it zeroed | CERTAIN |
 | `+0x270` | `qword` head | descendents / successors list head | `clearDescendents` (`v1[78] = 0`) | CERTAIN |
 | `+0x4A8` | `qword` guard | `"loop_carried_dependencies"` count/guard | `toJson` `v80[149]` | CERTAIN |
 | `+0x4C0` | intrusive list head | `"loop_carried_dependencies"` head | `toJson` walks `*(blk)+1216` | CERTAIN |
@@ -101,6 +101,8 @@ Each of the three operand lists is an `llvm::ilist`-style intrusive **circular**
 | `+0xA80` | `QuasiAffineExpr*` (cache) | linearized loopnest-expr cache (lazy) | `getLoopnestExpr` @ `0x2d76e0` (`blk+2688`) | CERTAIN |
 | `+0xA88` | `int64` | `"scheduled_start"` | `toJson [p+0xA88]`; ctor zeroes | CERTAIN |
 | `+0xA90` | `int64` | `"scheduled_end"` | `toJson [p+0xA90]` | CERTAIN |
+
+> **CORRECTION — the dependency edges live in *two* structures, not one intrusive list.** `addDependency(EdgePtr, bool)` @ `0x2e6e90` selects a container base by the `loop_carried` flag (`0x2e6ea4: mov rbp,[rdi+0xD0]` then `0x2e6eb0: lea rdx,[rbp+0x4A8]` / `0x2e6eb7: add rbp,8` / `0x2e6ebe: cmovnz rbp,rdx`): **normal → `blk+0x08`, loop-carried → `blk+0x4A8`**. That base is the header of a `tbb::…::concurrent_unordered_set<bir::EdgePtr>` (the mangled `concurrent_unordered_set_traits<bir::EdgePtr, …EdgeHash, …EdgeEqual>` appears in the call at `0x2e6fb2`): `[base+0]` is the element **count** (`0x2e7056: lock xadd [rbp+0], rdx`), `[base+8]` the segment-table size used as the hash divisor (`0x2e6f9b: mov rcx,[rbp+8]` → `div rcx`), and `[base+0x10]` a `4.0f` max-load-factor compared via `comiss` (`0x2e708d`) — which is the `0x40800000` the ctor writes at `blk+0x18`/`blk+0x4B8` (encoded as the `+0x1A`/word `0x4080` and the explicit `movss`). So the `+0x08`/`+0x4A8` qwords this table calls "count"/"guard" are the **set element counts**, byte-exact. The serialized `"dependencies"`/`"loop_carried_dependencies"` *ordered* lists at `+0x20`/`+0x4C0` are a **separate** intrusive structure that `toJson` walks (`0x2e31d0: lea rbx,[rax+0x20]`, sentinel `byte[rbx+8]&1`; `0x2e3d7a: lea rbx,[rax+0x4C0]`). The OPEN-LEAD suspect ctor stores `+0x40 = blk+0x48` and `lea rcx,[rdx+0x240]` are the concurrent-set's embedded 63-segment bucket array (zeroed `[0x48..0x240)`), **not** the `+0x20` head — this page's four offsets (`+0x08`, `+0x20`, `+0x4A8`, `+0x4C0`) are all correct; only the old `+0x20`-row anchor that cited `+0x40 = blk+0x48` was misattributed.
 
 > **NOTE — symbolic vs resolved schedule.** `"order"` (`+0xA68`, a `vector<QuasiAffineExpr>`) is the *symbolic* multi-dimensional schedule key; `"scheduled_start"`/`"scheduled_end"` (`+0xA88`/`+0xA90`, scalar `int64`) are the *resolved* cycle slots. The pre-scheduling representation carries `order`; the post-scheduling representation fills `scheduled_start/end`. There is no `getHeight`/`getDepth` accessor on `Instruction` — schedule height/depth are computed over the edge lists and the `order` vector, not stored as named base fields.
 
