@@ -323,6 +323,7 @@
 - [metricslibrary::MetricStore & the Cost-Stats Reference](walrus/metricstore.md)
 - [DMAMetrics / PerformanceProfiler / load_profile](walrus/dmametrics-profiler.md)
 - [ProfileGuidedAutoTuning (PGA) Feedback Path](walrus/pga-feedback.md)
+- [The Penguin Autotuner — MCTS Engine + Search Strategies](walrus/penguin-autotuner.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
