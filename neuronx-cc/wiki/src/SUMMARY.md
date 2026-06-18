@@ -267,6 +267,7 @@
 - [Sim Core Arithmetic — Cast / Accumulate / RNE / MemoryReductionOp](bir/sim-core-arithmetic.md)
 - [Sim Matmul / MX Quantize / Dequantize](bir/sim-matmul-mx.md)
 - [Sim Elementwise / Reduce + Data-Movement + Indirect Gather/Scatter](bir/sim-elementwise-datamove.md)
+- [Sim BN / RNG / Max-Index-Match / Collective / DMA](bir/sim-bn-rng-collective-dma.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
