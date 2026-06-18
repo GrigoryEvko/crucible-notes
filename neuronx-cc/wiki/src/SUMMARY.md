@@ -212,6 +212,7 @@
 - [Flash-Attention: Context (CTE)](nki/attention-cte.md)
 - [Flash-Attention: Decode (TKG)](nki/attention-tkg.md)
 - [Flash-Attention: Backward (Training)](nki/attention-bwd.md)
+- [Projection Kernels: Fused QKV & Output-Projection](nki/projection-kernels.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
