@@ -1,7 +1,7 @@
 [book]
-title = "neuronx-gpsimd Internals — Custom-Op SDK Reference"
+title = "neuronx-gpsimd Internals — The Vision-Q7 GPSIMD Reimplementation Reference"
 authors = ["crucible-notes contributors"]
-description = "Reverse-engineering reference for AWS Neuron's GPSIMD custom-op SDK. The runtime target is a Tensilica Xtensa Q7-derived per-core compute engine; the SDK provides C++ kernels compiled by FlexLM-licensed xt-clang++ and dispatched via PyTorch ATen integration."
+description = "Reimplementation-grade reverse-engineering reference for AWS Neuron's GPSIMD engine — the Cadence Tensilica Vision-Q7 NX 'Cairo' DSP (config ncore2gp, 512-bit FLIX/VLIW vector ISA) embedded in each NeuronCore. Covers the Q7 core & ISA, per-instruction encoding & formal semantics, microarchitecture & timing, device firmware & the kernel/opcode catalog, per-generation firmware images (Sunda v2 / Cayman v3 / Mariana v4 / Mariana+ v4+ / Maverick v5), the custom-op ABI, the libnrt host runtime, DMA/descriptors, collectives & NCFW, the NEFF container, the compiler seam, the control plane (CSR/address/interrupt/security), the libcas/libfiss ISS oracle, and bit-exact differential validation. Reconstructed entirely from static analysis of shipped binaries."
 language = "en"
 src = "src"
 
@@ -16,7 +16,8 @@ edit-url-template = "https://github.com/GrigoryEvko/crucible-notes/edit/main/neu
 [output.html.search]
 enable = true
 limit-results = 30
+use-hierarchical-heading = true
 
 [output.html.fold]
 enable = true
-level = 2
+level = 1
