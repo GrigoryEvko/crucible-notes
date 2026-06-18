@@ -372,6 +372,7 @@
 - [FindCustomOpData Staging, FunctionId Binding & ucode_lib.json](custom-ops/findcustomopdata-staging.md)
 - [Penguin/BIR Custom-Op Codegen & visitInstCustomOp](custom-ops/customop-codegen.md)
 - [The Two-GPSIMD Reconciliation — Pool-Engine Alias vs Xtensa Cluster](custom-ops/two-gpsimd-reconciliation.md)
+- [Custom-Op Full-Chain Reconciliation (beta2 ∥ beta3 → wire → CPU)](custom-ops/customop-full-chain.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
