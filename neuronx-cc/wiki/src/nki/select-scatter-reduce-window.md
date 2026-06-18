@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Generic `reduce_window` printer** | `MhloToPythonPrinter::print<ReduceWindowOp>` @ `0x20d5ff0` (3642 B, 134 bb) |
-| **Reduce-body decode** | `extractReduceFunction` @ `0x20afca0` → `extractReduceFunctionBlock` @ `0x20afbe0` → `getReduceOpStrFromOperation` |
+| **Reduce-body decode** | `extractReduceFunction` @ `0x20afca0` → `extractReduceFunctionBlock` @ `0x20afbe0` → `getReduceOpStrFromOperation` @ `0x20af670` (all CONFIRMED symbols) |
 | **`select_and_scatter` printer** | `MhloToPythonPrinter::printSelectAndScatter` @ `0x20de190` |
 | **Dilation verifier** | `xla::hilo::isValidReduceWindowOp` @ `0x2022dc0` (1386 B, 61 bb) |
 | **Native-kernel pass** | `xla::LowerToCustomNativeKernel::Run` @ `0x1ffe750` (2007 B, 71 bb) |
@@ -141,10 +141,10 @@ str getReduceOpStrFromOperation(Operation *innerOp):
 |---|---|
 | `window_shape`, `window_strides`, `window_size`, `padding` | the window geometry (NO dilations — `select_and_scatter` has only these 3 geometric attrs in mhlo) |
 | `operand_shape`, `src_shape`, `mask_shape` | the three tensor shapes |
-| `select_reduce_name` | the select reduction's numpy name — `"maximum"` when `select=GT`, `"minimum"` when `select=LT` |
-| `is_select_first` | the tie-break: pick the **first** matching position (= the iota+min "first argmax" below) |
-| `binary_op_name` | the scatter body op (e.g. numpy `add`) |
-| `scatter_op_type`, `scatter_ident` | scatter computation kind + identity (`0` for add) |
+| `select_reduce_name` | the select reduction's numpy name — `"maximum"` when `select=GT`, `"minimum"` when `select=LT` (`@0x23e4d2`; STRONG) |
+| `is_select_first` | the tie-break: pick the **first** matching position (= the iota+min "first argmax" below) (`@0x2465e5`; STRONG) |
+| `binary_op_name` | the scatter body op (e.g. numpy `add`) (`@0x266996`; STRONG) |
+| `scatter_op_type`, `scatter_ident` | scatter computation kind + identity (`0` for add) (`scatter_op_type`@`0x2669a5` STRONG; `scatter_ident`@`0x26a7f4` CONFIRMED — direct `.rodata` load inside this printer) |
 | `init_val` | reduce-window init for the select (e.g. `-inf` / `0`) |
 
 ```c
@@ -164,13 +164,22 @@ void printSelectAndScatter(Operation *op):
     switch (cmp.getComparisonDirection()):
       case GT /*GE*/: select_reduce_name = "maximum"; is_select_first = true;
       case LT /*LE*/: select_reduce_name = "minimum"; is_select_first = true;
-    // padding<window check (printer-side, NCC_PYP):
+    // padding<window legality fires NCC_PYP030..034 (these codes ARE directly
+    // referenced from this printer's disasm). The human-readable advice
     //   "Ensure padding values are less than corresponding window dimensions.
     //    Check that padding[%d] = (%d,%d) < window_size[%d] = %d."
-    emit NeuronTensorOp(kernel_config='{"kernel_name":"SelectAndScatter"}', ...kwargs);
+    // is the RESOLUTION text bound to the code via hilo::lookup_resolution(ErrorCode)
+    // (@0x21eaa80), NOT a string this printer emits inline. (correction below)
+    emit NeuronTensorOp(kernel_config={kernel_name: "SelectAndScatter"}, ...kwargs);
 ```
 
+> **CORRECTION — the padding-advice string is a resolution entry, not a printer literal.** `"Ensure padding values are less than corresponding window dimensions. Check that padding[%d] = (%d,%d) < window_size[%d] = %d."` (`@0x3494d0`) is referenced from `hilo::lookup_resolution(ErrorCode)` (`@0x21eaa80`) — it is the user-facing *resolution* text the diagnostic system pairs with the error code, not a literal emitted inline by `printSelectAndScatter`. What the printer *does* reference directly are the error codes `NCC_PYP030..034` and the two legality strings `"SelectAndScatter: requires select to be a compare, but got {0}"` (`@0x3a9a00`) and `"SelectAndScatter: expected BlockArgument…{0}"`. STRONG.
+
 This printer path produces the call that, in the FE, dispatches to the NKI `select_and_scatter_kernel` — i.e. the kernel below is the *body* of this named kernel.
+
+> **CORRECTION — `kernel_config` is protobuf-assembled, not a JSON literal.** The page earlier wrote `kernel_config = '{"kernel_name":"SelectAndScatter"}'` as if a single embedded string. It is not: re-verification against the `hlo2penguin` `.rodata` shows the literal `{"kernel_name":"SelectAndScatter"}` does **not** exist as one constant — the `kernel_name` field tag (`xla.cpu.KernelThunkProto.kernel_name`) and the value `"SelectAndScatter"` are serialized separately (protobuf wire form `\nkernel_name` + `SelectAndScatter`). Treat `{kernel_name: "SelectAndScatter"}` as the *logical* config, not a byte-for-byte string. The native-kernel match is corroborated by the diagnostic `"Found match SelectAndScatter for native kernel with result shape: "` (CONFIRMED in `.rodata`). CONFIRMED.
+
+> **CORRECTION — the printer kwargs are split across two printers.** Of the eight kwargs listed, only `scatter_ident` is a *direct* `.rodata` operand load inside `printSelectAndScatter` (@`0x20de190`); `use_init_operand` is a direct load inside `print<ReduceWindowOp>` (@`0x20d5ff0`) — i.e. it is the **reduce_window** printer's kwarg, not select-and-scatter's. The remaining four — `select_reduce_name` (@`0x23e4d2`), `is_select_first` (@`0x2465e5`), `binary_op_name` (@`0x266996`), `scatter_op_type` (@`0x2669a5`) — exist as `.rodata` strings (`scatter_ident`@`0x26a7f4`) but show no direct operand reference in any disassembled function here, so their attribution to this exact printer is STRONG-not-CONFIRMED. The kwarg *set* is real (the strings are all present); which printer emits each is only firmly pinned for `scatter_ident` (SelectAndScatter) and `use_init_operand` (ReduceWindow). STRONG.
 
 ---
 
