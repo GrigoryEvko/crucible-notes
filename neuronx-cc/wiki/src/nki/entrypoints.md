@@ -160,7 +160,9 @@ Docstring (verbatim, `__init__.so`): *"Compile and run a NKI kernel on NeuronDev
 neuronx-cc compile --framework XLA penguin.py --internal-tensorizer-opt-level=nki --pipeline compile SaveTemps --target <arch>
 ```
 
-The `penguin.py` file is the serialized Penguin/BIR IR `write_tensorizer_ir` emits into the temp dir before the shell-out (CONFIRMED symbol). `additional_compile_opt` is appended to this command; the target arch is filled in from the resolved platform target.
+The `penguin.py` file is the serialized **Penguin IR** that `write_tensorizer_ir` emits into the temp dir before the shell-out. `additional_compile_opt` is appended to this command; the target arch is filled in from the resolved platform target.
+
+> **CORRECTION — `write_tensorizer_ir` emits Penguin IR, not BIR.** The label was loosely "Penguin/BIR"; the decompiled body of `NumpyKernel.write_tensorizer_ir` (`NumpyKernel.py:43–45`, decompile + disasm) pins it down: it does `open(os.path.join(dir, "penguin.py"), "w")` — the filename constant is literally `penguin.py` — and writes via `IRWriter.run(...)`, where `IRWriter` resolves to `neuronxcc.starfish.penguin.ir.IRWriter` (the **Penguin** IR text writer, under `penguin/ir/`). So the artifact this function writes is the **Penguin tensorizer-IR** dump. It is **distinct from** the `<fn>.TensorizerBIR.json` artifact: that BIR (`bir::Module`) dump is produced *later*, *inside* the `neuronx-cc compile … penguin.py` shell-out, by `BirCodeGenLoop.runOnFunction` (cf. [bircodegenloop](./bircodegenloop.md) §; the Penguin→BIR lowering). The wheel-side `write_tensorizer_ir` never touches BIR. CONFIRMED (decompile of `sub_1AE60` + the `penguin.py`/`IRWriter`/`os.path.join`/`open` constants at `0x1b08d`/`0x1c206`).
 
 > **GOTCHA — `save_trace_name` forces `save_neff_name`.** The `baremetal` docstring carries the verbatim *"Known issue: if `save_trace_name` is specified, `save_neff_name` must be set to "file.neff"."* If you ask `baremetal` to keep the NTFF execution trace, you must also leave the NEFF name at its default. CONFIRMED string.
 
@@ -210,7 +212,7 @@ It is backed by `SimulateKernel` (`NumpyKernel.so`), which **overrides `post_pro
 
 - The **trace → compile → cache lifecycle**, `dump_config`/`dump_config_with_boundargs`, the base64 `backend_config` payload, operand-output aliasing, and the per-instance specialization cache (`__neuron_kernel_interface_kernel_cache__`) — all shared by every entrypoint above — are [6.0.3 NKI Framework-Kernel Lifecycle](./framework-kernel-lifecycle.md).
 - The broader XLA front door (`libneuronpjrt`, how the framework consumes the emitted custom-call) is [3.13 frontend/framework-bindings](../frontend/framework-bindings.md).
-- The NKI → Penguin/BIR codegen that runs *inside* the trace (`GeneratedNeuronCodegen`, `KernelBuilder`, `write_tensorizer_ir`/`IRWriter`) is the Part-6 codegen pages.
+- The NKI → **Penguin IR** codegen that runs *inside* the trace (`GeneratedNeuronCodegen`, `KernelBuilder`, `write_tensorizer_ir`/`IRWriter`) is the Part-6 codegen pages. (The Penguin→BIR lowering happens later, in the `neuronx-cc compile … penguin.py` shell-out via `BirCodeGenLoop` — see the CORRECTION above.)
 - The `neuron-profile` `.ntff` consumer and the `walrus`/perf-sim trace artifacts are [Part 8 perf-sim](../walrus/).
 
 ## Adversarial self-verification
