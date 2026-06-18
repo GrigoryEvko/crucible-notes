@@ -150,7 +150,7 @@ This `CustomOp` is the Penguin-level equivalent of the KLR `ExtendedInst:210,0` 
 
 ## 5. Handoff down — `InstCustomOp` → BIR `0x85`/`0x86`
 
-The Penguin `InstCustomOp` (`IT53`) is lowered to the BIR custom-op wire by **`CoreV2GenImpl::visitInstCustomOp` @ `0x12613c0`** (in `libwalrus.so`; the largest long-tail encoder). This is where `KernelBuilder`'s structured kwargs finally become bytes. *(Wire details CONFIRMED in the backing analysis; `libwalrus.so` is not in the in-repo tree, so the offsets below are carried at the report's tags.)*
+The Penguin `InstCustomOp` (`IT53`) is lowered to the BIR custom-op wire by **`CoreV2GenImpl::visitInstCustomOp` @ `0x12613c0`** (in `libwalrus.so`; the largest long-tail encoder). This is where `KernelBuilder`'s structured kwargs finally become bytes. *(Wire details CONFIRMED — `libwalrus.so` **is** in-corpus with full disasm/decompiled sidecars; the encoder body at `0x12613c0` was re-disassembled for the #824 audit and the byte stamps below are re-verified against it, not merely carried from the backing analysis.)*
 
 **Validation prologue** (`CoreV2GenImpl.cpp` line strings):
 
@@ -180,8 +180,8 @@ foreach line in getline(lib_spec):              // multi-line lib spec split by 
 
 ```text
 HEADER bundle   opcode 0x85 (= -123)  CUSTOM_OP_HEADER
-  bundle[0]  = 0x85 (setupHeader)        bundle[6..7] = num_payloads
-  bundle[14] = CustomOpFunctionId        bundle[15]   = num_arguments
+  bundle[0]  = 0x85 (setupHeader)        bundle[12..13] = num_payloads (u16 @ +0x0C)
+  bundle[14] = CustomOpFunctionId        bundle[15]     = num_arguments
   bundle[16] = 0 (reserved)              (sub_122ED00 packs PC/branch-hint tail)
 
 OUTPUT bundle   opcode 0x86 (= -122)  CUSTOM_OP_PAYLOAD  (dst)
@@ -192,6 +192,8 @@ PER-ARG bundle  opcode 0x86  CUSTOM_OP_PAYLOAD  (loop k over num_arguments)
   bundle[0]  = 0x86   bundle[15] = 1   if (k==last) mark-last (sub_122EA40)
   &bundle[16] ← packed access pattern of src arg k          (sub_1210900)
 ```
+
+> **CORRECTION (#824 audit — `num_payloads` is at header byte `+0x0C`, not `+0x06`/`bundle[6..7]`).** An earlier draft of this page placed `num_payloads` at header `+0x06` (`bundle[6..7]`). That is the same `_WORD*`-pointer decompiler misread corrected on the Part-11 sibling (D-Q08, commit `da0a0979`): Hex-Rays renders the store as `sub_…((_WORD*)hdr + 6, "instr.num_payloads", …)`, and `+6` on a `u16*` is `6 × 2 = +0x0C` bytes. The byte-proven truth, read straight from `CoreV2GenImpl::visitInstCustomOp` @ `0x12613c0` in `libwalrus.so` (which **is** in-corpus, with full disasm sidecars): `0x1262f75: 49 8d 7d 0c  lea rdi,[r13+0Ch]` immediately followed by `lea rsi, "instr.num_payloads"` → `num_payloads` u16 @ `+0x0C`; `0x1262f37: 41 88 45 0e  mov [r13+0Eh],al` → `CustomOpFunctionId` @ `+0x0E` (= `bundle[14]`, already correct); `0x1262fbe: 49 8d 7d 0f  lea rdi,[r13+0Fh]` + `"instr.num_arguments"` → `num_arguments` @ `+0x0F` (= `bundle[15]`, already correct). The three count/id fields form a contiguous band at `+0x0C..+0x10`. See [11.x custom-op wire-layout](../custom-ops/customop-wire-layout.md) §2 for the full byte map. [CONFIRMED — encoder disasm, libwalrus.so @ 0x12613c0]
 
 So one custom op emits **1×`0x85` header + 1×`0x86` output + N×`0x86` per src argument**. Field provenance to the wire:
 
@@ -242,7 +244,7 @@ The five strongest claims, re-challenged against in-repo evidence:
 1. **Six-parameter signature** — re-verified against the shipped type stub `neuronxcc-stubs/nki/isa/__init__.pyi`: `builtin_custom_op(function_name, lib_file_name, ulib_to_ucode_version, ulib_to_isa_version, srcs, dsts, **kwargs)`. Exact match on the six names and order; the stub additionally reveals a trailing `**kwargs` the backing report missed — issued as a CORRECTION in §1. **CONFIRMED.**
 2. **`CustomOp` field set + AP decomposition** — re-verified against the `SundaCustomOpGen` (cp310) Cython string pool, which carries `function_name`, `lib_file_name`, `ulib_to_isa_version`, `ulib_to_ucode_version`, `is_builtin`, `srcs_shapes`, `dsts_shapes`, `srcs_par_indices`, `srcs_free_indices`, plus methods `operands`/`loadTensor`/`serialize`/`verify`/`ap_indices`. This independently confirms the §4/§5 field tuple and the access-pattern packing. **CONFIRMED.**
 3. **SORT/TOPK are not hard-coded in the emitter; K/axis encoded structurally** — consistent with (1)/(2): no `k`/`axis`/`descending` parameter exists in the stub signature, and the only shape-bearing fields are `*_shapes`/`*_indices` on `CustomOp`. The NKI topk library kernels (`_private_kernels/topk/*`, present in-repo) are the §6(B) callers. **STRONG** (the per-kernel call site strings live in `.pyc`, not the compiled `.so` pool).
-4. **`0x85`/`0x86` two-opcode wire (1 header + 1 output + N args)** — carried from the backing analysis of `CoreV2GenImpl::visitInstCustomOp` @ `0x12613c0`; `libwalrus.so` is not in the in-repo tree, so this cannot be re-disassembled here. The cap-`0xFE` unique-function rule and the SBUF/HBM-only operand rule are consistent with a `CustomOpFunctionId` being a `uint8` handle. **CONFIRMED-by-report / not re-verifiable in-repo** (tagged in §5).
+4. **`0x85`/`0x86` two-opcode wire (1 header + 1 output + N args)** — **re-verified in-repo** for the #824 audit: `libwalrus.so` **is** in-corpus (disasm sidecar present), and `CoreV2GenImpl::visitInstCustomOp` @ `0x12613c0` was re-disassembled. The count-band stamps (`num_payloads` u16 @ `+0x0C` via `lea [r13+0Ch]` + `"instr.num_payloads"`; `CustomOpFunctionId` @ `+0x0E`; `num_arguments` @ `+0x0F`) are byte-proven, and this audit corrected the stale `bundle[6..7]`→`+0x0C` offset (§5 CORRECTION). The cap-`0xFE` unique-function rule and the SBUF/HBM-only operand rule are consistent with a `CustomOpFunctionId` being a `uint8` handle. **CONFIRMED (re-disassembled in-repo).**
 5. **No `ExtendedInst` / no byte payload in `KernelBuilder.so`** — the in-repo `KernelBuilder` IDA dump is truncated and cannot positively confirm a *negative* (string absence) over the whole binary; the claim is carried from the full-binary grep in the backing analysis and is internally consistent with the Penguin `CustomOp` being the sole carrier. **STRONG.**
 
-> **NOTE — re-verification ceiling.** The `0xb8890` method body, the `.rodata` literals (`libbuiltincustomop_cpu`, `Invalid_srcs`/`Invalid_dsts`), and the `0x85`/`0x86` offsets were validated in the backing static analysis against the full UNSTRIPPED binary and `libwalrus.so`. The copy of `KernelBuilder.so`'s IDA extraction in this tree is offset-limited (272 funcs, 7.7 KB of `.rodata`) and does not reach the `__pyx` region, and `libwalrus.so` is absent — so those specific addresses are reported at their original confidence, not re-confirmed here. The page's CONFIRMED tags rest on the two independent in-repo sources (the `.pyi` stub and the `SundaCustomOpGen` field strings).
+> **NOTE — re-verification ceiling (revised, #824 audit).** The full UNSTRIPPED `KernelBuilder.cpython-310…so` (14,588,400 bytes, BuildID `9eb1020e…`) **is** in `extracted/`, so the `0xb8890` `builtin_custom_op` wrapper, its `0x1b49`-byte body size, and the `.rodata` literals are directly `nm`/`rg`-verifiable (the earlier "272-func / 7.7 KB IDA truncation" caveat applied only to one offset-limited IDA split, not the binary itself). `libwalrus.so` is likewise in-corpus (disasm/decompiled sidecars), and `CoreV2GenImpl::visitInstCustomOp` @ `0x12613c0` was re-disassembled: the `0x85`/`0x86` opcode stamps and the `+0x0C/+0x0E/+0x0F` count-band are byte-proven. The page's CONFIRMED tags therefore rest on the binaries directly, corroborated by the `.pyi` stub and the `SundaCustomOpGen` field strings.
