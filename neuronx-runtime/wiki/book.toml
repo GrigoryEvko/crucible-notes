@@ -1,6 +1,6 @@
 [book]
 title = "neuronx-runtime Internals — Driver, Runtime, and Firmware Reference"
-authors = ["nvopen-tools contributors"]
+authors = ["crucible-notes contributors"]
 description = "Reverse-engineering reference for the AWS Neuron runtime stack: aws-neuronx-dkms kernel module (unstripped GPL-2.0 source), libnrt.so userspace runtime (NRT_2.0.0/NRT_3.0.0 ABI), libncfw.so firmware carrier + 8 embedded Tensilica Xtensa LX payloads."
 language = "en"
 src = "src"
@@ -13,8 +13,8 @@ default-theme = "navy"
 additional-js = ["ai-disclaimer.js"]
 additional-css = ["custom.css"]
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
-edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuronx-runtime/wiki/{path}"
+git-repository-url = "https://github.com/GrigoryEvko/crucible-notes"
+edit-url-template = "https://github.com/GrigoryEvko/crucible-notes/edit/main/neuronx-runtime/wiki/{path}"
 
 [output.html.search]
 enable = true

@@ -1,6 +1,6 @@
 [book]
 title = "neuronx-distributed Internals — Parallelism Library Reference"
-authors = ["nvopen-tools contributors"]
+authors = ["crucible-notes contributors"]
 description = "Reference for AWS Neuron's distributed-training and distributed-inference libraries: NxD's 7-axis parallel state mesh (TP/EP/PP/CP/DP plus token-shuffle, KV-shared, speculative-draft groups), 4 pipeline schedules, NeuronZero1Optimizer, NxD-Inference's 15-model catalogue with paged-attention and Eagle speculation."
 language = "en"
 src = "src"
@@ -10,8 +10,8 @@ default-theme = "navy"
 additional-js = ["ai-disclaimer.js"]
 additional-css = ["custom.css"]
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
-edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuronx-distributed/wiki/{path}"
+git-repository-url = "https://github.com/GrigoryEvko/crucible-notes"
+edit-url-template = "https://github.com/GrigoryEvko/crucible-notes/edit/main/neuronx-distributed/wiki/{path}"
 
 [output.html.search]
 enable = true

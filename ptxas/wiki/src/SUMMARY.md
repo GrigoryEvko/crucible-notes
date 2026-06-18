@@ -123,4 +123,5 @@
 - [SASS Opcode Catalog](./reference/sass-opcodes.md)
 - [PTX Instruction Table](./reference/ptx-instructions.md)
 - [EIATTR Attribute Catalog](./reference/eiattr.md)
+- [String-Pool Encryption](./reference/string-pool-cipher.md)
 - [Glossary](./glossary.md)

@@ -1,10 +1,9 @@
-// Sticky AI-disclaimer bar, injected under the mdBook menu bar on every page.
+// AI-disclaimer bar, injected under the mdBook menu bar on every page.
 // Self-contained (styles + element) so it works across light and navy themes.
 (function () {
   var CSS =
-    '#ai-disclaimer-bar{position:-webkit-sticky;position:sticky;' +
-    'top:var(--menu-bar-height,50px);z-index:99;box-sizing:border-box;' +
-    'max-width:var(--content-max-width,750px);margin:0 auto 1rem;' +
+    '#ai-disclaimer-bar{position:static;z-index:99;box-sizing:border-box;' +
+    'max-width:var(--content-max-width,750px);margin:0.25rem auto 1rem;' +
     'padding:8px 18px;background:#b05a55;color:#f4e8d0;' +
     'font-size:1.75rem;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;' +
     'text-align:center;line-height:1.4;border:1px solid rgba(0,0,0,0.20);border-top:none;' +

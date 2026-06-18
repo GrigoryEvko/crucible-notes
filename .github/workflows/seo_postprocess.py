@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SEO postprocess for the nvopen-tools GitHub Pages site.
+"""SEO postprocess for the crucible-notes GitHub Pages site.
 
 Responsibilities
 ----------------
@@ -29,7 +29,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
-BASE_URL = "https://gh.evko.io/nvopen-tools"
+BASE_URL = "https://gh.evko.io/crucible-notes"
 
 # Files inside each wiki that must NOT appear in the sitemap and must be
 # marked noindex.

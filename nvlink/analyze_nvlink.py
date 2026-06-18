@@ -15,7 +15,7 @@ import ida_hexrays
 import json
 import os
 
-OUTPUT_DIR = "/home/grigory/nvopen-tools/nvlink"
+OUTPUT_DIR = "/home/grigory/crucible-notes/nvlink"
 GRAPH_DIR = os.path.join(OUTPUT_DIR, "graphs")
 DISASM_DIR = os.path.join(OUTPUT_DIR, "disasm")
 DECOMP_DIR = os.path.join(OUTPUT_DIR, "decompiled")

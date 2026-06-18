@@ -1,6 +1,6 @@
 [book]
 title = "neuronx-gpsimd Internals — Custom-Op SDK Reference"
-authors = ["nvopen-tools contributors"]
+authors = ["crucible-notes contributors"]
 description = "Reverse-engineering reference for AWS Neuron's GPSIMD custom-op SDK. The runtime target is a Tensilica Xtensa Q7-derived per-core compute engine; the SDK provides C++ kernels compiled by FlexLM-licensed xt-clang++ and dispatched via PyTorch ATen integration."
 language = "en"
 src = "src"
@@ -10,8 +10,8 @@ default-theme = "navy"
 additional-js = ["ai-disclaimer.js"]
 additional-css = ["custom.css"]
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
-edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuronx-gpsimd/wiki/{path}"
+git-repository-url = "https://github.com/GrigoryEvko/crucible-notes"
+edit-url-template = "https://github.com/GrigoryEvko/crucible-notes/edit/main/neuronx-gpsimd/wiki/{path}"
 
 [output.html.search]
 enable = true

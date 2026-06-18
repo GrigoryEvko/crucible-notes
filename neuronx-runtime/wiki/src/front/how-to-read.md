@@ -28,7 +28,7 @@ The conventions below are fixed across the whole book, so a reader learns them o
 
 ## 1. The reimplementation bar
 
-The bar is uniform across every nvopen-tools wiki and it is the single test a page must pass: **a competent engineer could rebuild this subsystem from the page alone**. Not "understand it", not "navigate to the right function" — *rebuild* it: the algorithm, the data layout, the wire format, and the decision logic at each branch. If a paragraph or table is present only because it was easy to extract, it is cut.
+The bar is uniform across every crucible-notes wiki and it is the single test a page must pass: **a competent engineer could rebuild this subsystem from the page alone**. Not "understand it", not "navigate to the right function" — *rebuild* it: the algorithm, the data layout, the wire format, and the decision logic at each branch. If a paragraph or table is present only because it was easy to extract, it is cut.
 
 What the bar implies, concretely, is the difference between a *dependency graph* and a *mechanism*. A dependency graph says "`kmgr_load_nn_nc` calls `neff_parse`, then `kbl_model_add`, then `dlr_kelf_stage`". That is a call list; a reimplementer cannot rebuild from it. A mechanism says what `neff_parse` *does* — preflights the NEFF header, rejects `version_major > 2`, verifies the package hash (SHA-256 for packager 1, MD5 for 2), drives `libarchive` over the gzip-pax-tar payload, and inserts each member into a red-black tree keyed by path — and gives the core of it as annotated C pseudocode. The `### Algorithm` block is where that mechanism lives, and it is the heart of every reimplementable page.
 

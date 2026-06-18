@@ -1,26 +1,26 @@
-# nvopen-tools
+# crucible-notes
 
 Reverse engineering reference for NVIDIA's CUDA compiler toolchain, Google's TPU compiler stack, and AWS's Neuron (Trainium/Inferentia) compiler and runtime stack.
 
 > **AI-GENERATED REVERSE-ENGINEERING NOTES — AUTHOR'S PERSONAL REFERENCE ONLY.**
 > Everything here is a best-guess reconstruction from static binary analysis, **not a reliable source.**
 
-**[Documentation](https://gh.evko.io/nvopen-tools/)**
+**[Documentation](https://gh.evko.io/crucible-notes/)**
 
 ## Components
 
 | Component | Description | Docs | Status |
 |---|---|---|---|
-| **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://gh.evko.io/nvopen-tools/cicc/)** | 267 pages |
-| **tileiras** | Cuda Tile IR optimizing assembler (88 MB, MLIR bytecode → TileAS → PTX/SASS) | **[wiki](https://gh.evko.io/nvopen-tools/tileiras/)** | 143 pages |
-| **ptxas** | PTX→SASS assembler (37.7 MB, proprietary, 159-phase pipeline) | **[wiki](https://gh.evko.io/nvopen-tools/ptxas/)** | 73 pages |
-| **nvlink** | GPU device linker (37 MB, 95% embedded ptxas) | **[wiki](https://gh.evko.io/nvopen-tools/nvlink/)** | 92 pages |
+| **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://gh.evko.io/crucible-notes/cicc/)** | 267 pages |
+| **tileiras** | Cuda Tile IR optimizing assembler (88 MB, MLIR bytecode → TileAS → PTX/SASS) | **[wiki](https://gh.evko.io/crucible-notes/tileiras/)** | 143 pages |
+| **ptxas** | PTX→SASS assembler (37.7 MB, proprietary, 159-phase pipeline) | **[wiki](https://gh.evko.io/crucible-notes/ptxas/)** | 73 pages |
+| **nvlink** | GPU device linker (37 MB, 95% embedded ptxas) | **[wiki](https://gh.evko.io/crucible-notes/nvlink/)** | 92 pages |
 | **nvcc** | CUDA compilation driver | — | Decompiled |
 | **nvptxcompiler** | PTX JIT compilation library (86 MB static lib, 392 objects) | — | Decompiled |
-| **cudafe++** | CUDA C++ frontend (8.5 MB, EDG 6.6, 6,483 functions) | **[wiki](https://gh.evko.io/nvopen-tools/cudafe++/)** | 69 pages |
-| **libtpu** | Google TPU PJRT plugin (745 MB, 6 silicon gens, LLO VLIW ISA + cost model) | **[wiki](https://gh.evko.io/nvopen-tools/libtpu/)** | 424 pages |
-| **neuronx-cc** | AWS Neuron compiler (Trainium/Inferentia) — hlo-opt/Penguin/NKI front-end, libBIR + libwalrus backend, NEFF packaging | **[wiki](https://gh.evko.io/nvopen-tools/neuronx-cc/)** | 355 pages |
-| **neuronx-runtime** | AWS Neuron runtime — aws-neuronx-dkms kernel driver, libnrt.so runtime, libncfw.so firmware + Xtensa payloads | **[wiki](https://gh.evko.io/nvopen-tools/neuronx-runtime/)** | 182 pages |
+| **cudafe++** | CUDA C++ frontend (8.5 MB, EDG 6.6, 6,483 functions) | **[wiki](https://gh.evko.io/crucible-notes/cudafe++/)** | 69 pages |
+| **libtpu** | Google TPU PJRT plugin (745 MB, 6 silicon gens, LLO VLIW ISA + cost model) | **[wiki](https://gh.evko.io/crucible-notes/libtpu/)** | 424 pages |
+| **neuronx-cc** | AWS Neuron compiler (Trainium/Inferentia) — hlo-opt/Penguin/NKI front-end, libBIR + libwalrus backend, NEFF packaging | **[wiki](https://gh.evko.io/crucible-notes/neuronx-cc/)** | 355 pages |
+| **neuronx-runtime** | AWS Neuron runtime — aws-neuronx-dkms kernel driver, libnrt.so runtime, libncfw.so firmware + Xtensa payloads | **[wiki](https://gh.evko.io/crucible-notes/neuronx-runtime/)** | 182 pages |
 | **fatbin** | Fat binary manipulation tools | [readme](fatbin/README.md) | Released |
 
 All analysis is from static reverse engineering of stripped x86-64 ELF binaries using IDA Pro 9.x. No source code or any other restricted or copyrighted material was used — all findings derive solely from analysis of compiled binaries.

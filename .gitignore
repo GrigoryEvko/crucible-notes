@@ -142,3 +142,12 @@ some_docs/
 /ptxas/ptxas
 /cudafe++/cudafe++
 /tileiras/tileiras
+
+# decoded/ — publish only our decoder tools + extracted facts. NVIDIA's verbatim
+# data tables (macro pools, SASS-ISA grammar, name pools) and third-party material
+# stay local: 1201(f) covers decrypting/studying, not redistributing NVIDIA's
+# copyrighted expression.
+/decoded/*
+!/decoded/MANIFEST.md
+!/decoded/tools
+!/decoded/ptxas-scheduling

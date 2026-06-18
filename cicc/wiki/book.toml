@@ -1,6 +1,6 @@
 [book]
 title = "CICC Reverse Engineering Reference"
-authors = ["nvopen-tools"]
+authors = ["crucible-notes"]
 description = "Reverse engineering documentation for NVIDIA's CUDA C-to-PTX compiler (cicc v13.0)"
 language = "en"
 src = "src"
@@ -13,7 +13,7 @@ create-missing = true
 default-theme = "light"
 additional-js = ["ai-disclaimer.js"]
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
+git-repository-url = "https://github.com/GrigoryEvko/crucible-notes"
 additional-css = ["custom.css"]
 no-section-label = false
 
