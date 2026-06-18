@@ -288,7 +288,7 @@ void writeUCodeLibDefinitions(defJson, ucodeLibDoc, w, m, dir):
 }
 ```
 
-Every JSON key is a string literal at a contiguous file-offset run in `libwalrus.so` (CONFIRMED by `strings -t x`): `library` @ `0x1c8664f`, `ulib_to_ucode_version` @ `0x1c86657`, `ulib_to_isa_version` @ `0x1c8666d`, `is_builtin` @ `0x1c86681`, `cpu_id` @ `0x1c8668c`, `total_cpus` @ `0x1c86693`, `ucode_lib` @ `0x1c8669e`, `ucode_lib.json` @ `0x1c866a8`. The short keys `name`/`opcode`/`sub_opcode` are SSO-inlined (strcpy'd into the json node, not pooled), which is why they do not appear in the string table.
+Every JSON key is a string literal at a contiguous file-offset run in `libwalrus.so` (CONFIRMED by `strings -t x`): `library` @ `0x1c8664f`, `ulib_to_ucode_version` @ `0x1c86657`, `ulib_to_isa_version` @ `0x1c8666d`, `is_builtin` @ `0x1c86681`, `cpu_id` @ `0x1c8668c`, `total_cpus` @ `0x1c86693`, `ucode_lib` @ `0x1c8669e`, `ucode_lib.json` @ `0x1c866a8`. The short keys `name`/`sub_opcode` are SSO-inlined (strcpy'd into the json node, not pooled), which is why they are absent from the contiguous `0x1c866xx` run; `opcode` is present but pooled separately at `0x1c78808`, outside that run.
 
 > **QUIRK —** `opcode` is **always** the constant `133` (`0x85` = `CUSTOM_OP` header) — it is never read from the struct; the immediate is baked in at `0x1522f61`. The *per-function* discriminator is `sub_opcode`, the FunctionId byte. The nlohmann `value_t` tags confirm `opcode:133` is a **signed** integer (type 5) while `cpu_id`/`total_cpus`/`sub_opcode` are **unsigned** (type 6) and `is_builtin` is a bool (type 4).
 
