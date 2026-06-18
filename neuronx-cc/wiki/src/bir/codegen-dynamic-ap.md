@@ -438,8 +438,19 @@ of the *address compute*.
 ## 6. The BIR-JSON wire form
 
 The `DynamicAPINFO` is **not** a per-op top-level JSON key. It is nested in the
-access-pattern object under the common-header `ins` / `indirection_ins` arrays, via
-`bir::DynamicAPINFO::toJson` @`0x268c00`:
+access-pattern object under the common-header `ins` / `indirection_ins` arrays.
+
+> **CORRECTION —** an earlier draft attributed the serialization to
+> `bir::DynamicAPINFO::toJson` @`0x268c00`. There is **no** such symbol in `libwalrus.so`:
+> the `DynamicAPINFO` class exports only `getCanonicalPattern`, `setActualPattern`,
+> `isPartitionContiguous`, `setStaticOffsetPortion`, and `getNumElementsPerPartition` (the
+> full method set in `_names.json`) — no member named `toJson`. The address `0x268c00`
+> (body frame `0x1268c00`) is in fact `neuronxcc::backend::CoreV2GenImpl::generateIndirectLoadSave(bir::InstDMA&, bool)`,
+> an unrelated CoreV2 encoder, not a serializer. The field→key mapping below is recovered
+> from the `DynamicAPINFO` member layout (the offsets each setter writes), not from a named
+> `toJson` body, and the wrapping serializer was not pinned to a specific symbol.
+
+The field→key mapping (from the member layout):
 
 ```text
 "actual_ap"                  ← DynamicAPINFO+0x00   (setActualPattern; the static AP)
