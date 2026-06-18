@@ -413,5 +413,5 @@ Anything not pinnable to a string/symbol is tagged INFERRED inline: the precise 
 ## Cross-References
 
 - [Penguin Dependency Model](dependency-model.md) — the `DependencyEdge` kinds and dep-edge construction this scheduler walks
-- [Software Pipelining](software-pipelining.md) — the `SoftwarePipelineCodeGen` modulo-pipeline reorder in full
-- [Post-Scheduling (walrus)](../post_sched/overview.md) — the backend physical schedule that consumes Penguin's logical order and BIR edges
+- [Software Pipelining](software-pipelining.md) — the annotation-driven `SoftwarePipelineCodeGen` stage-slice / predicate-realize pass in full (not a modulo schedule — `N` is the user `num_stages`/`stage_id`, not an II search)
+- [Post-Scheduling (walrus)](../walrus/post-sched-schedulers.md) — the backend physical schedule that consumes Penguin's logical order and BIR edges
