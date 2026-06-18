@@ -197,7 +197,7 @@ This matches the embedded `num_stages = 3` worked example exactly:
 
 **Step 3 — per-stage index offset.** Stage `s` reads/writes iteration `new_iv − s`. Done by `_adjust_indices` @ `0x1a720` (docstring *"Recursively adjust indices in a statement or block. Replace uses of old\_iv with new\_iv"*), a recursive tree-rewriter (the disassembly is ~72 method calls of stmt/block descent) that offsets the iteration variable by the stage position using the IR `replaceUseOfWith` method. `_add_attr` @ `0x292e0` then tags each emitted statement with the `software_pipelined` attribute and its `stage` (docstring: *"Add attributes to the statement to indicate it belongs to a software pipelined stage … for debugging and analysis purposes"*).
 
-> **NOTE — the structuring is purely predicative at the Penguin level.** After this pass the loop is *still one loop*, just with a longer trip count and predicated bodies. A correct (if naively-buffered) software pipeline already exists in the IR. The physical three-block split is never emitted here; that is the backend's job ([Part 8](../walrus/separate-load-compute.md)).
+> **NOTE — the structuring is purely predicative at the Penguin level.** After this pass the loop is *still one loop*, just with a longer trip count and predicated bodies. A correct (if naively-buffered) software pipeline already exists in the IR. The physical three-block split is never emitted here; that is the backend's job ([Part 8](../walrus/separate-load-prefetch.md)).
 
 ### The parallel ISL schedule-tree (band shift)
 
@@ -286,7 +286,7 @@ A given loop takes exactly one. The "upstream heuristic that picks N" referenced
 
 **What the backend realizes (libwalrus owns):**
 
-- **PSUM multi-buffering** — this pass explicitly refused it (`NotImplementedError`). PSUM banking is rotated by `address_rotation_psum` using `pelican::ModuloExpr` (addr = `base + (iv mod N)·stride`, `denom = N` = the ring size = the stage count). So: **Penguin decides N; backend realizes the N-deep PSUM ring** ([Part 7 ModuloExpr](../bir/modulo-expr.md)).
+- **PSUM multi-buffering** — this pass explicitly refused it (`NotImplementedError`). PSUM banking is rotated by `address_rotation_psum` using `pelican::ModuloExpr` (addr = `base + (iv mod N)·stride`, `denom = N` = the ring size = the stage count). So: **Penguin decides N; backend realizes the N-deep PSUM ring** ([Part 7 ModuloExpr](../bir/pelican-moduleexpr.md)).
 - The **physical** three-region split for the *emergent* path (separate blocks, hoisted fill, drained tail). For the *annotated* path the regions are already predicated here and stay one loop; the backend list scheduler still overlaps the predicated bodies across engines.
 - **Physical buffer colouring** — `coloring_allocator_{psum,sb,dram}` assign one physical slot per logical buffer; `address_rotation_sb` commits the SB ring. The Penguin widening reserves the space; the backend rotation hands successive iterations *distinct* slots in it.
 
