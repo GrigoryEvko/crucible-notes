@@ -76,6 +76,19 @@ bypass = 0**.
 > on [Backend Dependence-Distance](backend-dependence-distance.md), [DGE Level Selection](dge-level-dynamic-dma.md),
 > [the Dynamic For-Loop](dynamic-for-loop.md), and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
 
+> **CORRECTION (Wave-2 audit) — the database is misattributed.** There is **no standalone
+> `ida/…libwalrus.so/` IDA database** in the shipped corpus: the only `ida/` walrus DBs are the
+> statically-linked driver binaries (`walrus_driver`, `walrus_bugpoint_driver`), plus
+> `bir_roundtrip`. The standalone `libwalrus.so` *disasm* sidecars only span `0x5e9000–0x7cfb30`
+> — so the genuine per-symbol anchor `convertSymAP @0x5f8800` (and the other internal-frame
+> sidecar VAs) **is** standalone-`.so`-disassembled, but the `0x11b7f80`-frame body addresses
+> (`LowerAP::run @0x11ba970`, `convertSymAPtoRegAP @0x11ba8b0`, …) fall **outside** that range
+> and are **not** in any standalone-`.so` sidecar; they are recoverable from the *driver* IDA DB,
+> where libwalrus is statically linked. Read the `0x11xxxxx`-band addresses as
+> **driver-DB-grounded** (real and recoverable, just not from an `ida/…libwalrus.so/` DB);
+> the internal-frame `0x5fxxxx` anchors remain standalone-`.so`-disasm-CONFIRMED. The same
+> over-attribution applies to the sibling pages this provenance sentence names.
+
 ---
 
 ## 1. What "kind-2 → kind-3" means
