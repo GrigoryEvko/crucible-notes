@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **Instruction streams** | `PE.bin` `Pool.bin` `Activation.bin` `SP.bin` `DVE.bin` (64-byte bundles, program order) — CONFIRMED |
 | **DMA-descriptor sidecars** | `PE.json` `Pool.json` `Activation.json` `SP.json` `DVE.json` (same stem) — CONFIRMED |
 | **Basename formatter** | `bir::EngineInfo2string` (libBIR) — **TitleCase** — CONFIRMED |
-| **`def.json` token formatter** | `sub_15248C0` (`neff_packager.cpp:49`) — **lowercase** `{1:pool,2:act,3:pe,4:dma,5:dve,6:sp}` — CONFIRMED |
+| **`def.json` token formatter** | `sub_15248C0` (standalone engine→string fn; jump table @ `0x15248f1`) — **lowercase** `{1:pool,2:act,3:pe,4:dma,5:dve,6:sp}` — CONFIRMED |
 | **Token → key suffix** | `<tok>_instr` / `<tok>_dbg` / `<tok>_asm_dbg` (`writeDefJson` `_M_append`) — CONFIRMED |
 | **Pairing assert** | `bom.getEngInstrFile().count(eng)==1 && bom.getEngDMADescFile().count(eng)==1` (`DescGen::dumpToFile` `0x11dd610`) — CONFIRMED |
 | **MD5-signed iff** | basename **contains `.dbg`** OR **equals `.npy`**, plus `info.json` — CONFIRMED |
@@ -196,13 +196,15 @@ void addToBom(this, path file, optional<string> entryNameOverride):
     node.value._M_assign(entry)                            // 0x153fd...; last-write-wins
 ```
 
-The third member of the set — `info.json` — is not inserted here; the writer's **constructor** pre-seeds it:
+The third member of the set — `info.json` — is not inserted here; the writer's **constructor** pre-seeds it **[STRONG / INFERRED, not byte-proven]**:
 
 ```c
 // NeffFileWriter::NeffFileWriter(modules, nc_count, uncompressed)  — 0x1543eb0
-build_string(&tmp, "info.json")                            // line 222
-this->irSigSet._M_get_insert_hint_unique_pos(/*set @*/ this+216, …, tmp)   // line 228
+build_string(&tmp, "info.json")                            // "info.json" loaded @ 0x15440cf
+this->irSigSet._M_get_insert_hint_unique_pos(/*set @*/ this+216, …, tmp)   // insert into IR-sig set
 ```
+
+> **CORRECTION (M3 — ctor seed grounding) —** `0x1543eb0` is genuinely the `NeffFileWriter` constructor, and it **does** load `"info.json"` (at `0x15440cf`, via `aKernelDebugInfoJson+0Dh`), so the seed is corroborated. But the entry `0x1543eb0` is the ctor's `__cxa_demangle`→`strlen`→`strstr` preamble, not the IR-sig insert; and the prior `:222`/`:228` source-line anchors are unverifiable against a stripped `.so`. The pre-seed claim is therefore **STRONG / INFERRED** (string-corroborated, not single-stepped to the insert), and the source-line cites are dropped.
 
 So the byte-proven signature set is exactly:
 
@@ -215,7 +217,7 @@ IR-signature set  =  { info.json }  ∪  { members whose basename CONTAINS ".dbg
 
 > **QUIRK — the program is not signed; the debug info and weights are.** The five `<Engine>.bin` instruction streams are the compiled program, yet **none** of them enter the signature set: a basename like `PE.bin` neither equals `.npy` nor contains `.dbg`, and only `info.json` is constructor-seeded. The MD5 "IR signature" therefore certifies the **debug-info** (`*.dbg`) and **constant-weight** (`*.npy`) members plus the `info.json` header — *not* the instruction bytes. A reimplementer who assumes the signature covers the code (a natural reading of "IR signature") is wrong, and a NEFF-diff that relies on the signature to detect code changes will silently miss them.
 
-> **CORRECTION (D-S03 §1.4 vs. earlier J34/J36) —** an earlier backing analysis guessed the signed subset was "the `.bin` streams + the signature JSON". That is overturned by the byte-resolved predicate above: the set is `{info.json} ∪ {*.dbg} ∪ {*.npy}` and explicitly **excludes** the `.bin` streams. This page re-grounds that correction directly on the `addToBom` disassembly (`.npy` compare @ `0x153fc6f`, `.dbg` find @ `0x153fc9b`, both inserting to `[r12+0xD8]`) and the constructor seed (`0x1543eb0:222/228`).
+> **CORRECTION (D-S03 §1.4 vs. earlier J34/J36) —** an earlier backing analysis guessed the signed subset was "the `.bin` streams + the signature JSON". That is overturned by the byte-resolved predicate above: the set is `{info.json} ∪ {*.dbg} ∪ {*.npy}` and explicitly **excludes** the `.bin` streams. This page re-grounds that correction directly on the `addToBom` disassembly (`.npy` compare @ `0x153fc6f`, `.dbg` find @ `0x153fc9b`, both inserting to `[r12+0xD8]`) and the constructor seed (`NeffFileWriter` ctor `0x1543eb0`, which loads `"info.json"` @ `0x15440cf` — STRONG, see M3 correction above).
 
 > **NOTE — `.npy` is an EQUALS test, not a suffix test.** `compare(".npy") == 0` fires only when a basename is *literally* `".npy"` (an extension-only name). A real weight named `"weight.npy"` would **fail** this test — it would enter the signature set only via some other path, or not at all. Whether constant `.npy` files are ever named exactly `.npy` is unproven (INFERRED); the `.dbg`-contains branch and the `info.json` seed are the predicates that demonstrably carry the signature. The `.npy` branch may be vestigial. (Byte-truth: it is `compare()==0`, not `endsWith`.)
 
