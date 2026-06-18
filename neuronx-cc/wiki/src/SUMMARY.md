@@ -334,6 +334,8 @@
 - [NEFF JSON Sidecars — info / neff / def / tensor_map](formats/neff-json-sidecars.md)
 - [Per-Engine .bin / .json Member Layout](formats/per-engine-bin.md)
 - [NEFF Feature-Flag System](formats/neff-feature-flags.md)
+- [The kelf-N.json Field Schema](formats/kelf-json.md)
+- [The neff.json __kelf Subgraph Node](formats/neff-kelf-node.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
