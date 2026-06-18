@@ -333,6 +333,7 @@
 - [The neff_header POD, the In-Memory BOM & the NeffPackager Writer](formats/neff-header-bom-writer.md)
 - [NEFF JSON Sidecars — info / neff / def / tensor_map](formats/neff-json-sidecars.md)
 - [Per-Engine .bin / .json Member Layout](formats/per-engine-bin.md)
+- [NEFF Feature-Flag System](formats/neff-feature-flags.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
