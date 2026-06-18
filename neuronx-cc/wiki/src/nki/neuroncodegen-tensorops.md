@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This page documents the ~30 **tensor-op forward builders** of the NKI `KernelBuilder` module — the methods that take nl/nisa-Python arguments and **construct** a Penguin-IR `<Op>` node, then append it to the current basic block. This is the *forward* (build) direction. It is the exact inverse of the re-emit **printer** documented in [6.5.9](./neuroncodegen-reemit-printer.md), which walks an existing Penguin node back out to `nisa.<prim>(...)` text. The two surfaces marshal the same enums in opposite directions, and confusing them is the single largest hazard in this part of the compiler.
+This page documents the ~30 **tensor-op forward builders** of the NKI `KernelBuilder` module — the methods that take nl/nisa-Python arguments and **construct** a Penguin-IR `<Op>` node, then append it to the current basic block. This is the *forward* (build) direction. It is the exact inverse of the re-emit **printer** documented in [6.5.9](./nkicodegen-printer.md), which walks an existing Penguin node back out to `nisa.<prim>(...)` text. The two surfaces marshal the same enums in opposite directions, and confusing them is the single largest hazard in this part of the compiler.
 
 Each builder follows one fixed shape: parse kwargs, validate, normalize operand tiles through `combine_tiles`, read the tile's access pattern as `(par, free)` index pairs, construct **one** `penguin.ir.<Op>` Python object with named kwargs, and append it through `self.insert` — which reaches `IRBuilder.add_named_instruction` after stamping predicates, dependency edges, bookkeeping, and a source location. The op-selector **enums are passed through verbatim**: the builder stores the Python `np.ufunc` / `ALUOpcode` / `TSOpcode` / `EngineAccumulationType` object on the node as-is. Numeric ISA-enum renumbering happens one layer down at `BirCodeGenLoop` (strands I04/I05), **not** here.
 
@@ -84,7 +84,7 @@ The three op-selector enums are stored as Python objects on the Op node. The bui
 | Accumulate cmd | `reduce_cmd` | `Optional[EngineAccumulationType]` (default `Idle`; reset member `ResetReduce`) | activation / select-reduce / tensor-scalar-cache | **CONFIRMED** — `EngineAccumulationType` string present `@0x24870` |
 | Activation func | `op` (of `activation`) | `np.ufunc` | `ActivationOp` | STRONG (type-hint) |
 
-> **NOTE — this builder is the source the printer reads.** The [6.5.9 printer](./neuroncodegen-reemit-printer.md) `opcode()`/`reduce_cmd()` name-mappers (sigmoid→expit, erf→erf, etc.) read back exactly the `np.ufunc`/enum objects this builder stores verbatim. Builder = store; printer = name-map; `BirCodeGenLoop` = numeric ISA renumber (`codegenAluOp` 1→29; `codegenAccumCmd` Idle/Zero/AddAccum/ZeroAccum). [STRONG cross-ref I04/I05]
+> **NOTE — this builder is the source the printer reads.** The [6.5.9 printer](./nkicodegen-printer.md) `opcode()`/`reduce_cmd()` name-mappers (sigmoid→expit, erf→erf, etc.) read back exactly the `np.ufunc`/enum objects this builder stores verbatim. Builder = store; printer = name-map; `BirCodeGenLoop` = numeric ISA renumber (`codegenAluOp` 1→29; `codegenAccumCmd` Idle/Zero/AddAccum/ZeroAccum). [STRONG cross-ref I04/I05]
 
 ---
 
@@ -368,6 +368,6 @@ The five strongest claims on this page, re-challenged against the binary:
 ## See also
 
 - [6.5.1 NeuronCodegen Forward Builder — overview & matmul](./neuroncodegen-forward-builder.md) — the same class, the matmul/memory halves, and `self.insert` in detail.
-- [6.5.9 NeuronCodegen Re-emit Printer](./neuroncodegen-reemit-printer.md) — the **inverse** surface (Penguin node → `nisa.<prim>` text); reads back the enums this builder stores.
+- [6.5.9 NeuronCodegen Re-emit Printer](./nkicodegen-printer.md) — the **inverse** surface (Penguin node → `nisa.<prim>` text); reads back the enums this builder stores.
 - [5.6 Penguin Tensor-Op Family](../penguin/tensor-op-family.md) — the Penguin-IR `<Op>` nodes these builders construct.
 - **BIR codegen loop (strands I04/I05)** — `BirCodeGenLoop.codegenAluOp`/`codegenAccumCmd` numeric ISA renumbering, one layer below this builder.

@@ -573,4 +573,4 @@ The intrinsic layer never constructs a penguin `Operator` directly; it calls a b
 - [6.4.1 nki.isa Compute Intrinsics](isa-compute-intrinsics.md) — the compute half: `tensor_scalar`, `tensor_tensor`, `activation`, `nc_matmul`, scan/cumulative; owns `load_reduce` (the `reduce_cmd` value never legal here)
 - [2.16 DVE Search Encoding](../isa/dve-search-encoding.md) — wire encoding for `max8` / `find_index8` / `match_replace8`
 - [2.17 DVE Datamove Encoding](../isa/dve-datamove-encoding.md) — wire encoding for `range_select` / `select_reduce` datamove path
-- [6.5.3 Memory Builders](isa-memory-builders.md) — the `nki_ctx` IRBuilder side that materializes the `Operator` nodes these intrinsics request
+- [6.5.3 Memory Builders](neuroncodegen-memory.md) — the `nki_ctx` IRBuilder side that materializes the `Operator` nodes these intrinsics request

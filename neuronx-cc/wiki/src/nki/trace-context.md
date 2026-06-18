@@ -8,7 +8,7 @@ NKI ("Neuron Kernel Interface") kernels are written as ordinary Python functions
 
 The central organ is `TraceContext.call` — a dispatcher invoked for *every* call site in the kernel body that decides trace-vs-concrete. Four gates draw the boundary: a callee marked as an `@nki` op (`nki_func`) is routed to the builder; a function decorated `@dont_trace` (`__nki_dont_trace__`) is run live; a nested `TraceKernel` recurses; and any function whose *defining module* is in the exclusion set (`neuronxcc.nki`, `neuronxcc.starfish.penguin`, `numpy`, `math`) is library code and runs concretely. Everything else — the user's own helper functions — is *inlined and traced*. Around this sit the static control-flow evaluators (`eval_if_cnd`, `if_scope`, `while_scope`): Python `if`/`while` are evaluated *during* the trace on concrete conditions, so a branch is taken (and unrolled) rather than emitted; a branch condition that depends on device data (an `nki_tensor` or a `ScalarPredicate`) is **rejected** — NKI has no dynamic control flow at the Python level.
 
-The whole machine hangs off one process-singleton, `TraceContext.global_ctx`, installed by the `new_ctx` classmethod at trace start and cleared at teardown. That single mutable cell is the ambient context every language intrinsic reaches through [`nki_ctx`](nki-ctx.md); its `cur_scope` is the active emission scope and its `sema` *is* the definition of "we are inside a traced kernel." This page documents the engine itself; the accessor module, range/loop semantics, and the type system are split into the cross-referenced pages below.
+The whole machine hangs off one process-singleton, `TraceContext.global_ctx`, installed by the `new_ctx` classmethod at trace start and cleared at teardown. That single mutable cell is the ambient context every language intrinsic reaches through [`nki_ctx`](nki-ctx-scopes.md); its `cur_scope` is the active emission scope and its `sema` *is* the definition of "we are inside a traced kernel." This page documents the engine itself; the accessor module, range/loop semantics, and the type system are split into the cross-referenced pages below.
 
 For reimplementation, the contract is:
 
@@ -211,7 +211,7 @@ bool eval_if_cnd(self, cnd):
 
 `if_scope` (`0x175f0`, routes through `.predicates`), `while_scope` (`0x17c20`, takes a `cnd`), and the generator `if_cnd_generator` are the surrounding scaffolding. The semantic outcome:
 
-- A `while` loop whose condition is concrete is **unrolled** by the trace (each concrete iteration emits its body once), exactly like `static_range` — see [range semantics](range-semantics.md).
+- A `while` loop whose condition is concrete is **unrolled** by the trace (each concrete iteration emits its body once), exactly like `static_range` — see [range semantics](range-loop-semantics.md).
 - A data-dependent loop or branch must instead be expressed with dedicated tensor/predicate ops (masking, `select`, predicated stores), not Python control flow.
 
 > **CORRECTION (W11-CF) —** the backing report names the rejection symbol `err_dynamic_control_flow_not_sup`. That is the truncated Cython `__pyx_n_s_` identifier; the *full interned string* in the module string table is `err_dynamic_control_flow_not_supported`. Cite the complete name when reasoning about the error catalog.
@@ -251,7 +251,7 @@ void __init__(self, opts):
     self.multi_physical_cores = <bool>;             // grid spans >1 NeuronCore (LNC)
 ```
 
-`cur_scope` is the cell that [`get_cur_scope`](nki-ctx.md) returns; `cur_api` is set/restored by the `nki_api_scope` context manager (`@contextmanager` generator @ `0x15fc0`) so diagnostics can attribute an error to the NKI op currently in flight. `multi_physical_cores` is set from [`grid_has_multi_physical_cores`](spmd-dimensions.md) — it records whether this is a Logical-NeuronCore (LNC) multi-core launch.
+`cur_scope` is the cell that [`get_cur_scope`](nki-ctx-scopes.md) returns; `cur_api` is set/restored by the `nki_api_scope` context manager (`@contextmanager` generator @ `0x15fc0`) so diagnostics can attribute an error to the NKI op currently in flight. `multi_physical_cores` is set from [`grid_has_multi_physical_cores`](spmd-programming-model.md) — it records whether this is a Logical-NeuronCore (LNC) multi-core launch.
 
 ### The singleton
 
@@ -276,9 +276,9 @@ new_ctx(opts) ──installs──▶ TraceContext.global_ctx ◀── nki_ctx(
    ── post-trace nl.* ops then raise err_nki_api_outside_of_nki_kernel
 ```
 
-`trace_kernel` (`0x1c630`) uses `global_ctx` and delegates the statement-by-statement walk to `trace_kernel_impl` (`0x23910`, a generator). The scope helpers mutate the chain: `new_function_scope(name, stack_frame)` (`0x1d780`) pushes a `FunctionScope`; `cur_function_scope` (`0x1f450`) reads it; `finalize` (`0x1d240`) and `finalize_kernel` (`0x16fb0`) tear down. After teardown, `global_ctx` is `None`, so any stray `nl.*` op correctly raises `err_nki_api_outside_of_nki_kernel` — the same string the [`nki_ctx`](nki-ctx.md) guard checks.
+`trace_kernel` (`0x1c630`) uses `global_ctx` and delegates the statement-by-statement walk to `trace_kernel_impl` (`0x23910`, a generator). The scope helpers mutate the chain: `new_function_scope(name, stack_frame)` (`0x1d780`) pushes a `FunctionScope`; `cur_function_scope` (`0x1f450`) reads it; `finalize` (`0x1d240`) and `finalize_kernel` (`0x16fb0`) tear down. After teardown, `global_ctx` is `None`, so any stray `nl.*` op correctly raises `err_nki_api_outside_of_nki_kernel` — the same string the [`nki_ctx`](nki-ctx-scopes.md) guard checks.
 
-> **NOTE —** `global_ctx` is a *single mutable class attribute*, not thread-local on `TraceContext` itself. The thread-locality lives in the [`nki_ctx`](nki-ctx.md) accessor layer (whose docstring is explicitly "the (thread local) global context of IR construction during NKI tracing"). One trace is in flight per interpreter at a time; the report notes a `main_interpreter_id` static guard enforcing single-interpreter loading (INFERRED — the guard's exact mechanism was not individually traced).
+> **NOTE —** `global_ctx` is a *single mutable class attribute*, not thread-local on `TraceContext` itself. The thread-locality lives in the [`nki_ctx`](nki-ctx-scopes.md) accessor layer (whose docstring is explicitly "the (thread local) global context of IR construction during NKI tracing"). One trace is in flight per interpreter at a time; the report notes a `main_interpreter_id` static guard enforcing single-interpreter loading (INFERRED — the guard's exact mechanism was not individually traced).
 
 ### Return handling
 
@@ -357,8 +357,8 @@ Items left at INFERRED and *not* upgraded: the `main_interpreter_id` single-inte
 
 ## Cross-References
 
-- [nki_ctx — the Ambient Trace-Scope Accessor](nki-ctx.md) — `get_cur_scope`/`nki_ctx` reading `global_ctx`; the `.sema`/`.cur_scope` an op fetches
-- [Range Semantics](range-semantics.md) — `static_range` vs `affine_range`/`sequential_range`; the loop analogue of static-if evaluation
+- [nki_ctx — the Ambient Trace-Scope Accessor](nki-ctx-scopes.md) — `get_cur_scope`/`nki_ctx` reading `global_ctx`; the `.sema`/`.cur_scope` an op fetches
+- [Range Semantics](range-loop-semantics.md) — `static_range` vs `affine_range`/`sequential_range`; the loop analogue of static-if evaluation
 - [The NKI Type System](type-system.md) — `DynamicScalar`/`ScalarPredicate`/`nki_tensor`/`EQTileMask`: why comparisons return predicates, not `bool`
-- [SPMD Dimension Model](spmd-dimensions.md) — `grid_has_multi_physical_cores` feeding `multi_physical_cores`; launch-grid → Penguin Axis mapping
+- [SPMD Dimension Model](spmd-programming-model.md) — `grid_has_multi_physical_cores` feeding `multi_physical_cores`; launch-grid → Penguin Axis mapping
 - [NKI Architecture Overview](architecture-overview.md) — where the tracing JIT sits in the NKI front-end

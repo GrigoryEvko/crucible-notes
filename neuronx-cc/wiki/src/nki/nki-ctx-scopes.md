@@ -171,7 +171,7 @@ contextmanager new_scope(self, kind, **payload):
         self.cur_scope = prev         // pop on __exit__
 ```
 
-Each named scope (`if_scope`, `loop_scope`, `allocation_scope`, …) is `create_*_block` (the node factory) + `new_scope(kind=…)` (the push/pop). `cur_scope` is the mutated cell: it is what `get_cur_scope()` reads, so an op emitted inside a `with self.if_scope(pred):` sees the `IfScope` block as its `cur_scope` and the op is inserted `in_cur_scope`. (Region-construction internals — `create_scope_region_block`, `create_affine_axis_block`, `create_while_block` — are documented in [6.5.5 scope emitters](../mlir/dialect-pipeline.md); predicate lowering for `if_scope`/`while_scope` in [6.4.4 sema legality engine](sema.md).)
+Each named scope (`if_scope`, `loop_scope`, `allocation_scope`, …) is `create_*_block` (the node factory) + `new_scope(kind=…)` (the push/pop). `cur_scope` is the mutated cell: it is what `get_cur_scope()` reads, so an op emitted inside a `with self.if_scope(pred):` sees the `IfScope` block as its `cur_scope` and the op is inserted `in_cur_scope`. (Region-construction internals — `create_scope_region_block`, `create_affine_axis_block`, `create_while_block` — are documented in [6.5.5 scope emitters](neuroncodegen-control.md); predicate lowering for `if_scope`/`while_scope` in [6.4.4 sema legality engine](sema-legality.md).)
 
 ---
 
@@ -206,5 +206,5 @@ Nothing in the five required claims failed; the two W11 misreadings (the `allow_
 ## Cross-References
 
 - [TraceContext](trace-context.md) — 6.1.1, the abstract-interpreter that owns `global_ctx`, `new_ctx`, and the scope *classes* (`KernelScope`/`FunctionScope`/`StmtScope`)
-- [Dialect Pipeline / scope emitters](../mlir/dialect-pipeline.md) — 6.5.5, `NeuronCodegen` `@contextmanager` region emitters and `create_*_block` node factories
-- [sema legality engine](sema.md) — 6.4.4, the `sema` module that hosts `err_nki_api_outside_of_nki_kernel` and predicate lowering for `if_scope`/`while_scope`
+- [NeuronCodegen Control / Scope / Predicate Emitters](neuroncodegen-control.md) — 6.5.5, `NeuronCodegen` `@contextmanager` region emitters and `create_*_block` node factories
+- [sema legality engine](sema-legality.md) — 6.4.4, the `sema` module that hosts `err_nki_api_outside_of_nki_kernel` and predicate lowering for `if_scope`/`while_scope`

@@ -110,7 +110,7 @@ Four enums in `nkilib/core/utils/common_types.py` parameterise `qkv` (and o_proj
 
 ### Purpose
 
-When `fused_rope=True`, the rotary embedding is applied to Q and K **inside** the QKV kernel, interleaved with the PSUM→SBUF eviction of the fused matmul output, so the rotated Q/K never round-trip to HBM unrotated. This is CTE-exclusive; TKG defers RoPE to a downstream decode op. RoPE is the planned sibling page [§6.7.11](rope.md) *(planned)* — this section documents only the fused-in-CTE realisation.
+When `fused_rope=True`, the rotary embedding is applied to Q and K **inside** the QKV kernel, interleaved with the PSUM→SBUF eviction of the fused matmul output, so the rotated Q/K never round-trip to HBM unrotated. This is CTE-exclusive; TKG defers RoPE to a downstream decode op. RoPE is documented in the sibling page [§6.7.11 RoPE Kernels](rope-kernels.md) — this section documents only the fused-in-CTE realisation.
 
 ### Algorithm — the half-sin rotation
 

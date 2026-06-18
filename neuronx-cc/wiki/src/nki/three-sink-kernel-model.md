@@ -70,7 +70,7 @@ The numbering is not inferred from string order — it is pinned by the node con
 : Instruction(name, bb, /*InstructionType=*/54)   // ← ordinal is a ctor literal
 ```
 
-So "IT54 / IT55 / IT56" on this page are the literal enum values `BIRKernel=54`, `NKIKernel=55`, `NKIKLIRKernel=56`. All three are direct `bir::Instruction` subclasses (not `InstCollective`/`InstMatmultBase` subclasses), and all three are tagged category `Cust` in the BIR opcode table. `[CONFIRMED — enum + ctor literal, cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md)]`
+So "IT54 / IT55 / IT56" on this page are the literal enum values `BIRKernel=54`, `NKIKernel=55`, `NKIKLIRKernel=56`. All three are direct `bir::Instruction` subclasses (not `InstCollective`/`InstMatmultBase` subclasses), and all three are tagged category `Cust` in the BIR opcode table. `[CONFIRMED — enum + ctor literal, cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned)]`
 
 The enum itself is defined in `libBIR.so` (`neuronxcc/starfish/lib/libBIR.so`, imported as `UND` by every native driver via `DT_NEEDED`). Two mutually-confirming functions pin the ordinals byte-exact:
 
@@ -115,7 +115,7 @@ An `InstBIRKernel` node says: *"here is a kernel called `<kernel_name>`, with th
 | Cast policy | `set_auto_cast`, `set_auto_cast_type` | mixed-precision policy |
 | Operand access | per-operand `addSeqAccess` / `addAP` / `addOpaqueAP` (§5) | the access-pattern marshalling |
 
-No `klir_binary`, no `kernel_format`, no `nki_binary_version_identifier` — those are IT56-only fields (§4). `[CONFIRMED — setter strings present in every IT54 body; cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md)]`
+No `klir_binary`, no `kernel_format`, no `nki_binary_version_identifier` — those are IT56-only fields (§4). `[CONFIRMED — setter strings present in every IT54 body; cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned)]`
 
 ### The four IT54 sinks
 
@@ -286,7 +286,7 @@ In `libwalrus`, `TranslateNKIASTToBIR::lowerKernelInst` @ `0xf0b610` reads `kern
 - **FORM A** (`kernel_format != "bir"`) — `klir_binary@+0xF0` is a path to a serialized `klr::` KLR-AST binary; `fopen` + `KLRFile_des`/`KLRMetaData_des`/`Contents_des` deserialize it (this is the **beta2 / KLIR** default path).
 - **FORM B** (`kernel_format == "bir"`) — `klir_binary@+0xF0` is an embedded/on-disk BIR-JSON blob; `lowerFromBirJson` @ `0xf0a160` nlohmann-parses it and picks `j["functions"][NeuronCoreId]` (this is the **beta3 / BIR** path).
 
-`[CONFIRMED — D-I28 §3/§4; cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md)]`
+`[CONFIRMED — D-I28 §3/§4; cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned)]`
 
 ### The registry's contents (proof of the IT54/IT56 boundary)
 

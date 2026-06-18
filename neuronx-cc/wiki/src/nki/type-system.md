@@ -38,7 +38,7 @@ The single docstring fragment recovered from the base module states the purpose:
 
 ## 1. Three modules, one decorated class set
 
-The traced-value classes — `scalar`, `tensor`, `tile_index`, and the predicate/mask classes — are built by the metaclass machinery ([§6.3.2](./metaclasses.md)) and then **decorated** with three class decorators that rewrite their operator slots. The decorators are applied at module-exec time of whatever module defines the traced-value class; the base `NkiTypeSystem` class itself is decorated by all three (its module-exec looks up the three `synthesize_*` names and applies them as class decorators), which is why `NkiTypeSystem` also gains `logical_and`/`logical_or` that its own `logical_and_nary`/`logical_or_nary` consume.
+The traced-value classes — `scalar`, `tensor`, `tile_index`, and the predicate/mask classes — are built by the metaclass machinery ([§6.3.2](./type-metaclasses.md)) and then **decorated** with three class decorators that rewrite their operator slots. The decorators are applied at module-exec time of whatever module defines the traced-value class; the base `NkiTypeSystem` class itself is decorated by all three (its module-exec looks up the three `synthesize_*` names and applies them as class decorators), which is why `NkiTypeSystem` also gains `logical_and`/`logical_or` that its own `logical_and_nary`/`logical_or_nary` consume.
 
 ```
                        class body of a traced-value class
@@ -345,7 +345,7 @@ Putting the three layers together, here is what each surface-syntax construct re
 | `x in coll`, `x not in coll` | `NkiTypeSystem.in_` / `not_in` | `operator.contains` | predicate | predicate |
 | bool / number operand to `&`/`|`/`~` | promotion | `promote_other_to_predicate` | `AlwaysTruePredicate` / `AlwaysFalsePredicate` | n/a |
 
-The predicate/mask objects produced here flow into the algebra of [§6.2.4 Mask / Predicate Algebra](./mask-predicate-algebra.md), whose `EQTileMask` / `TileMaskIntersection` / `ScalarPredicateIntersection` / `AlwaysTrue*` / `AlwaysFalse*` classes are exactly the result types named above — the two pages describe the *construction* side (this page) and the *combination + lowering to `AffinePredicate`* side (mask-predicate-algebra) of one object graph. The dtype of the tensor-compare result (`np.int8`) connects to the dtype model in [§6.3.3 dtype](./dtype.md); the metaclasses that build `scalar`/`tensor`/`tile_index` (and thus make `get_type_category`'s `isinstance` chain meaningful) are [§6.3.2 metaclasses](./metaclasses.md).
+The predicate/mask objects produced here flow into the algebra of [§6.2.4 Mask / Predicate Algebra](./mask-predicate-algebra.md), whose `EQTileMask` / `TileMaskIntersection` / `ScalarPredicateIntersection` / `AlwaysTrue*` / `AlwaysFalse*` classes are exactly the result types named above — the two pages describe the *construction* side (this page) and the *combination + lowering to `AffinePredicate`* side (mask-predicate-algebra) of one object graph. The dtype of the tensor-compare result (`np.int8`) connects to the dtype model in [§6.3.3 dtype](./dtype-facade.md); the metaclasses that build `scalar`/`tensor`/`tile_index` (and thus make `get_type_category`'s `isinstance` chain meaningful) are [§6.3.2 metaclasses](./type-metaclasses.md).
 
 ---
 

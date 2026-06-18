@@ -366,6 +366,6 @@ mdef ordinals are encoded in the `__pyx_pw_…BirCodeGenLoop_<NNN><name>` symbol
 
 - [The three-sink kernel-node model](three-sink-kernel-model.md) — IT54/IT55/IT56; why only the `InstNKIKLIRKernel` sink is registry-traced
 - [NeuronCodegen macro-kernel emitters](neuroncodegen-macro.md) — the EMIT side that picks the macro-op NAME this registry keys on; the `codegen<Name>` twins for the name-inlined library macros
-- [Conv / sparse kernel leaves](conv-sparse-kernels.md) — Part 6.8.x: the conv2d/resize/select-and-scatter leaves this registry dispatches to *(planned)*
-- [Top-k kernel algorithms](topk-kernels.md) — Part 6.7.12: the scanning/cascaded/rotational top-k implementations and their K-size selection *(planned)*
+- [Conv Device-Lowering & Variant Selection](conv-device-lowering.md) — Part 6.8.1: the conv2d/resize/select-and-scatter leaves this registry dispatches to (with the depthwise/dense/pbp/sparse siblings in 6.8.2–6.8.8)
+- [Scan / Reduce / Top-K Primitives](scan-reduce-topk.md) — Part 6.7.12: the scanning/cascaded/rotational top-k implementations and their K-size selection
 - [Worked example: flash attention](../front/worked-example-flash-attention.md) — an end-to-end trace through the kernel-node sinks the traced leaves lower into

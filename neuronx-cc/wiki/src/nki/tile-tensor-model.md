@@ -155,7 +155,7 @@ PyObject *__getitem__(self, indices) {
 Two semantics:
 
 - **Predicate / mask indexing** (`tile[mask]` or `tile[predicate]`): the receiver is converted to a tile, a raw `predicate` is first *lifted to a mask* via `predicate._promote_to_mask(t)`, and a masked view is produced by `tile.mask_tensor(mask)`. **The `_promote_to_mask` call is on the index object, not the receiver** (STRONG — the getattr order in the decompiled body; the line-96 path is taken only when the index is not already a `mask`).
-- **Value indexing** (affine / `arange` / int slices): everything else dispatches to `self._index_tensor(indices)` (abstract here; concrete in `NeuronSBTensor` and `indexing.so` [6.2.3](indexing.md)), producing a sub-tile / strided view. Because "indices are also a tile," an `arange`-derived index expression is itself a `tile_index`.
+- **Value indexing** (affine / `arange` / int slices): everything else dispatches to `self._index_tensor(indices)` (abstract here; concrete in `NeuronSBTensor` and `indexing.so` [6.2.3](index-mask-inference.md)), producing a sub-tile / strided view. Because "indices are also a tile," an `arange`-derived index expression is itself a `tile_index`.
 
 ### 3.2 `__setitem__` is a hard error — the store-only-lvalue rule (line 104, CONCRETE, CONFIRMED)
 
@@ -191,7 +191,7 @@ PyObject *tile_assignment(a, b) {
 
 `update_lvalue` is abstract in base `tile` (`"update_lvalue not implemented for base tile"`); the concrete impl reifies the assignment as an SSA-style lvalue-update *node* in the trace, not a Python `__setitem__`. This is how the trace machinery models a store: assignment becomes an IR operation (cross-ref `KernelBuilder` / `BirCodeGenLoop`), keeping the value model functional while still expressing mutation.
 
-> **CORRECTION (report §3.4 cross-ref):** the backing report cites the lowering target as "D-P22". On this wiki the trace/codegen lowering is documented under [6.2.6 nki/bir-codegen-loop](bir-codegen-loop.md) and the `KernelBuilder` page; the IR-level reification claim itself is CONFIRMED by the one-line `update_lvalue` delegation and the abstract base stub.
+> **CORRECTION (report §3.4 cross-ref):** the backing report cites the lowering target as "D-P22". On this wiki the trace/codegen lowering is documented under [6.2.6 nki/bir-codegen-loop](bircodegenloop.md) and the `KernelBuilder` page; the IR-level reification claim itself is CONFIRMED by the one-line `update_lvalue` delegation and the abstract base stub.
 
 ---
 
@@ -271,7 +271,7 @@ PyObject *__add__(self, other) {
 }
 ```
 
-Adding a plain tile/number does an elementwise add (`tile._add_tile_or_number` @498 → `self._binop(np.add, other)`, CONFIRMED). Adding a `tile_index` instead builds a **dynamic index expression** via `_build_dynamic_index` (abstract here; concrete in `indexing.so` [6.2.3](indexing.md)). This is how `arange`/affine index math composes: `base_index + offset_tile` produces a new dynamic *access pattern*, not a numeric value-add. The `tile_index` subtype is precisely the carrier that flips `+` from "add values" to "compose accesses."
+Adding a plain tile/number does an elementwise add (`tile._add_tile_or_number` @498 → `self._binop(np.add, other)`, CONFIRMED). Adding a `tile_index` instead builds a **dynamic index expression** via `_build_dynamic_index` (abstract here; concrete in `indexing.so` [6.2.3](index-mask-inference.md)). This is how `arange`/affine index math composes: `base_index + offset_tile` produces a new dynamic *access pattern*, not a numeric value-add. The `tile_index` subtype is precisely the carrier that flips `+` from "add values" to "compose accesses."
 
 ### 5.4 In-place ops — the `_build_inplace_op` factory (lines 464/465, CONCRETE, STRONG)
 
@@ -306,7 +306,7 @@ Both operands are converted via `as_tile()`; `_matmul` (431) is abstract here, w
 
 ---
 
-## 6. `mask` — the predicate algebra (cross-ref [6.2.4](mask-predicate.md))
+## 6. `mask` — the predicate algebra (cross-ref [6.2.4](mask-predicate-algebra.md))
 
 `mask` is an abstract `tensor` subclass (docstring `"mask is an abstract class"`); the concrete masks (`predicate`, `ScalarPredicate`) live in `predicates.so`. A `mask` is a tensor-shaped boolean that gates a tile op, and its operator surface is a *boolean algebra*, not arithmetic:
 
@@ -382,8 +382,8 @@ Items left explicitly tagged below CONFIRMED: the per-element comparison constan
 ## Cross-references
 
 - **[6.2.2 memref / view model](memref-view-model.md)** — the concrete `NeuronSBTensor` / `MemrefTile` where `as_tile`'s partition-dim assertion and the 0-stride `_broadcast_to_impl` actually live.
-- **[6.2.3 indexing inference](indexing.md)** — `_index_tensor` / `_build_dynamic_index` / `tile_index` affine arithmetic (the `arange` machinery).
-- **[6.2.4 mask / predicate](mask-predicate.md)** — concrete `predicate` / `ScalarPredicate` and the `enumerate_*` region splitting.
+- **[6.2.3 indexing inference](index-mask-inference.md)** — `_index_tensor` / `_build_dynamic_index` / `tile_index` affine arithmetic (the `arange` machinery).
+- **[6.2.4 mask / predicate](mask-predicate-algebra.md)** — concrete `predicate` / `ScalarPredicate` and the `enumerate_*` region splitting.
 - **[6.3.1 type system](type-system.md)** — `nki_dtype` / `nki_int_dtype` and the dtype helpers this module imports.
 - **`sema`** — `check_shape` / `check_shape_identical` / `check_store_shape` / `check_matmul_high_level_shape` shape-legality validators imported here.
 - **`metaclasses`** — `tensor_type`, the metaclass driving all four classes.
