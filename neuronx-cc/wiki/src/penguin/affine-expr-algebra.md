@@ -228,7 +228,9 @@ Penguin encodes loop-nest guards as per-instruction `AffinePredicate`s (D-U08 §
 
 `ICmpExpr` (`ICmpKind`) carries a compare-op and two `Expr` operands (`lhs`, `rhs`). The Python `AffinePredicate` layer normalizes *every* comparison to one of two native forms — `e >= 0` or `e == 0` — so the only compare-ops an `ICmpExpr` ever holds from the Python side are `SGE` and `EQ`. The five public constructors (`pred_ge`/`pred_le`/`pred_gt`/`pred_lt`/`pred_eq`) reduce to these two by sign-flipping the subtraction and adding a `-1` for the strict pair; the lone discriminator is a boolean `ge` kwarg (`True` → inequality, `False` → equality). The validity gate `is_legal_predicate` rejects any predicate whose expression has a runtime value or non-affine term — diagnostic string `"Invalid Predicate!"` (confirmed in `AffineExpr.so`).
 
-> **NOTE —** `ICmpExpr` is a *control* atom, never an address expression — it is not serialized to the tensor wire-form. The full predicate normalization, the `ge`-kwarg mechanics, and the round-trip to/from isl constraints are owned by [Part 5.21](affine-isl-pelican-bridge.md); this section establishes only that the predicate atom is a member of the same `Expr` algebra. Byte-level `ICmpExpr` layout is in [Part 7.16–7.20](../bir/pelican-expr-wireform.md).
+> **NOTE —** `ICmpExpr` is a *control* atom, never an address expression — it is not serialized to the tensor wire-form. The full predicate normalization, the `ge`-kwarg mechanics, and the round-trip to/from isl constraints are owned by [Part 5.21](affine-isl-pelican-bridge.md); this section establishes only that the predicate atom is a member of the same `Expr` algebra. Byte-level `ICmpExpr` layout is in [Part 7.16–7.20](../bir/pelican-wire.md).
+>
+> **CORRECTION (Wave-2 audit) — cross-ref slug.** This link previously pointed at `../bir/pelican-expr-wireform.md`, which does not exist in the shipped wiki; the Pelican `Expr` wire-serialization page is `bir/pelican-wire.md`. Retargeted; no factual claim changed.
 
 ---
 
@@ -295,5 +297,5 @@ No fabricated addresses or symbols: every `sub_`/offset cited (`0x17e00`, `0x171
 
 - [Affine ↔ isl ↔ pelican Bridge](affine-isl-pelican-bridge.md) — Part 5.21; how the flat form maps to/from isl, the predicate normalization, the `CC` → integer-division collapse, and the round-trip
 - [Penguin IR Node Model](ir-node-model.md) — the surrounding SSA node schema (Value/Instruction/Tensor/Axis) this algebra plugs into
-- [pelican::Expr Wire-Form](../bir/pelican-expr-wireform.md) — Part 7.16–7.20; the byte-level `Expr` layout, kind tags, factory addresses, and `toJsonv2` encoding
+- [pelican::Expr Wire-Form](../bir/pelican-wire.md) — Part 7.16–7.20; the byte-level `Expr` layout, kind tags, factory addresses, and `toJsonv2` encoding
 - [SBUF / PSUM Geometry (ADDR4)](../arch/sbuf-psum-geometry.md) — Part 2.2; why the 128-partition axis is addressed separately from free dims, what `start_partition` indexes
