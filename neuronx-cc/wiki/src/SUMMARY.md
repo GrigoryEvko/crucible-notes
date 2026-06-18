@@ -204,6 +204,8 @@
 - [The _INTERNAL_KERNEL_REGISTRY Mechanism](nki/internal-kernel-registry.md)
 - [The NKI-Frontend Bridge & Binary Cache (beta3 Re-Trace)](nki/frontend-bridge-cache.md)
 - [Production Kernel Inventory: the Three-Tree Story](nki/production-kernel-inventory.md)
+- [nkilib Infrastructure: Allocator, Tiling & Common Types](nki/nkilib-infrastructure.md)
+- [MoE Context/Prefill (CTE): Dispatch & the bwmm Shard Variants](nki/moe-cte-prefill.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
