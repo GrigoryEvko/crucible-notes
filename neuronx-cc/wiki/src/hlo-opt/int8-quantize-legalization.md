@@ -405,4 +405,4 @@ Custom-call targets: `"QuantizeMX"`, `"ScaledMatmul"`. Pass flags: `legalize-qua
 - [4.29 — MX-FP8 Microscaling Legalization](mx-fp8-legalization.md) — the real device quantized GEMM (Path D), the U32-packed microscaling consumer
 - [4.30 — Calibration and scale/zero-point flow](calibration-scale-flow.md) — `CalibratedQuantizedType`, the oneDNN INT8 matmul scale/zp flow (Path C in depth)
 - [Part 9 — Numerics](../numerics/overview.md) — round-to-nearest-even, clamp, FP8/MXFP8 numeric semantics, golden-vs-device numeric verification
-- [bir::CastToNewDType](../bir/cast-to-new-dtype.md) — the low-level numeric int cast that quantize operands ultimately ride on the device
+- [bir::CastToNewDType](../numerics/cast-to-new-dtype.md) — the low-level numeric int cast that quantize operands ultimately ride on the device
