@@ -194,6 +194,8 @@
 - [NeuronCodegen Macro-Kernel Emitters](nki/neuroncodegen-macro.md)
 - [NeuronCodegen builtin_custom_op Emitter](nki/neuroncodegen-builtin-customop.md)
 - [NkiCodegen Re-Emit Printer (penguin.ir → NKI text)](nki/nkicodegen-printer.md)
+- [BirCodeGenLoop: the beta3 Penguin→BIR Driver](nki/bircodegenloop.md)
+- [BirCodeGenLoop Compute Codegens (matmul / activation / tensor / reduce / copy)](nki/bircodegen-compute.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
