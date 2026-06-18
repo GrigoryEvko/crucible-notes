@@ -231,6 +231,7 @@
 # Part 7 — BIR, libBIR & the Simulator
 
 - [The bir::Instruction Base Struct & the +0xD0 Sched/Dep Block](bir/instruction-base.md)
+- [InstructionType: the 110-Opcode Enum & sameInst Family Masks](bir/instruction-type.md)
 - [NamedObject / Container CRTP & the Module→Function→BB→Inst Model](bir/container-model.md)
 - [Argument / AccessPattern / Immediate / Register Value Model](bir/value-model.md)
 
