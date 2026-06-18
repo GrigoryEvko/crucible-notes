@@ -1,6 +1,6 @@
 # Neuron Dialect Registry and Extension Ops
 
-> *All addresses on this page apply to `hlo2penguin` from neuronx-cc 2.24.5133.0+58f8de22 (cp310). `.rodata` VA = file offset; `.text` VA = file offset − 0x1000. Other builds will differ.*
+> *All addresses on this page apply to `hlo2penguin` from neuronx-cc 2.24.5133.0+58f8de22 (cp310). **VA ≠ file offset on this binary**: `.rodata` file-offset = VA − 0x200000, `.text` file-offset = VA − 0x201000 (verified `readelf -SW`: `.rodata` VA 0x20d780 / off 0xd780; `.text` VA 0x1ec0d00 / off 0x1cbfd00). Other builds will differ.*
 
 ## Abstract
 
