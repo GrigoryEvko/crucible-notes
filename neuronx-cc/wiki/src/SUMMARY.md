@@ -262,6 +262,9 @@
 - [codegen: Collectives / Send-Recv + the KLR↔BIR Op-Join Table](bir/codegen-collectives-join.md)
 - [codegen Helpers + the NKI-Kernel Provision Mechanisms](bir/codegen-helpers-kernel-provision.md)
 - [klr::ExtendedInst + the CBOR Wire Format](bir/klr-extendedinst-cbor.md)
+- [klr::* Node Schema Roster & Serialization](bir/klr-node-schema.md)
+- [BIR Sim Dispatch + the Whole-Machine State Model](bir/sim-dispatch-state.md)
+- [Sim Core Arithmetic — Cast / Accumulate / RNE / MemoryReductionOp](bir/sim-core-arithmetic.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
