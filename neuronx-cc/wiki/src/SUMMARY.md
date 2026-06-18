@@ -301,6 +301,8 @@
 - [LoopOptimization — Distribution / Interchange / Tiling](walrus/loopopt-transforms.md)
 - [runtime-memory-reservation / inline-nki-kernel / inline-bir-kernel](walrus/memreserve-kernel-inline.md)
 - [DMA Materialization — lower_dma + lower_dynamic_dma (DGE)](walrus/dma-materialization.md)
+- [assign-trigger-engine / assign-hwdge-engine (DMA Engine Binding)](walrus/dma-engine-binding.md)
+- [alloc-queues / chain-dma-transposes / insert-switch-queue](walrus/dma-queues.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
