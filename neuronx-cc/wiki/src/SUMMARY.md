@@ -241,6 +241,8 @@
 - [Op-Family Enums & the L1/L2/L3 Crosswalk](bir/op-family-enums.md)
 - [instabrew/brewer.py Generator & the *OpGen Contract](bir/brewer-generator.md)
 - [Cross-Language Wire-Key Consistency & the *Gen Bases](bir/cross-language-wirekeys.md)
+- [Two-Pass BIR-JSON Loader (createFromJson / Pass2)](bir/json-loader.md)
+- [BIR-JSON Write Path (Instruction::toJson, skip-default, always-v2)](bir/json-writer.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
