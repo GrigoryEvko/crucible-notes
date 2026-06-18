@@ -393,7 +393,10 @@
 - [Master Opcode Reference](appendix/master-opcode-table.md)
 - [Master Dtype / Enum Reference](appendix/master-enum-dtype-table.md)
 - [Error-Message Catalog (2556 entries)](appendix/error-message-catalog.md)
+- [Symbol & Offset Index](appendix/symbol-offset-index.md)
+- [The Pass Catalog](appendix/pass-catalog.md)
 - [The 64-byte Bundle Quick-Reference](appendix/bundle-quick-reference.md)
+- [Binary Build-ID / Version Table](appendix/build-id-version-table.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
