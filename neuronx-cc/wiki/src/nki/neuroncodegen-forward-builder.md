@@ -88,18 +88,20 @@ Every index, name, address, and body size below was read directly from the `Kern
 
 | idx (pf/pw) | method | wrapper symbol (`…NeuronCodegen_`) | `pw` addr | body size | `KernelBuilder.py` lines |
 |---|---|---|---|---|---|
-| 100/101 | `matmult` | `101matmult` | `0x266520` | 64,948 B | ~777 – 880 |
-| 102/103 | `matmult_sparse` | `103matmult_sparse` | `0x1d3c20` | 36,075 B | ~748 – 773 |
-| 104/105 | `matmult_transpose` | `105matmult_transpose` | `0x127670` | 10,730 B | ~241 – 300 |
-| 106/107 | `matmult_mx` | `107matmult_mx` | `0x279fe0` | 106,470 B | ~1056 – 1135+ |
-| 108/109 | `get_identity_tensor` | `109get_identity_tensor` | `0xa3470` | 14,026 B | ~1220 – 1245 |
-| 110/111 | `transpose` | `111transpose` | `0x2235f0` | 12,911 B | ~1269 – 1330 |
-| 284/285 | `shared_identity_matrix` | `285shared_identity_matrix` | `0x7b490` | 4,915 B | ~329 – 338 |
-| 92/93 | `get_sb_and_psum_shape` | `93get_sb_and_psum_shape` | `0x6ec10` | 2,830 B | (matmult shape helper) |
+| 100/101 | `matmult` | `101matmult` | `0x266520` | 64,948 B | def @ 777 |
+| 102/103 | `matmult_sparse` | `103matmult_sparse` | `0x1d3c20` | 36,075 B | def @ 908 |
+| 104/105 | `matmult_transpose` | `105matmult_transpose` | `0x127670` | 10,730 B | def @ 1019 |
+| 106/107 | `matmult_mx` | `107matmult_mx` | `0x279fe0` | 106,470 B | def @ 1056 |
+| 108/109 | `get_identity_tensor` | `109get_identity_tensor` | `0xa3470` | 14,026 B | def @ 1220 |
+| 110/111 | `transpose` | `111transpose` | `0x2235f0` | 12,911 B | def @ 1269 |
+| 284/285 | `shared_identity_matrix` | `285shared_identity_matrix` | `0x7b490` | 4,915 B | def @ 4426 |
+| 92/93 | `get_sb_and_psum_shape` | `93get_sb_and_psum_shape` | `0x6ec10` | 2,830 B | def @ 700 (matmult shape helper) |
 
 > **CONFIRMED.** The indices 101 / 103 / 105 / 107 (`matmult` / `matmult_sparse` / `matmult_transpose` / `matmult_mx`) and the addresses above were re-verified against the `KernelBuilder.so` `__pyx_pw_*` symbol table for this page — they match the 6.0.1 architecture-overview index table exactly. The closure `__pyx_pw_…NeuronCodegen_10matmult_mx_1split_par_shape` (the MX scale-partition split) is also present as a real symbol.
 
-The **source order** in `KernelBuilder.py` (from DWARF line ranges) is `matmult_transpose`(241) < `shared_identity_matrix`(329) < `matmult_sparse`(748) < `matmult`(777) < `matmult_mx`(1056) < `get_identity_tensor`(1220) < `transpose`(1269) — a useful sanity anchor when cross-reading the line numbers in any DWARF dump.
+The **source order** in `KernelBuilder.py` (from the DWARF `DW_AT_decl_line` of each `__pyx_pw_*` wrapper) is `get_sb_and_psum_shape`(700) < `matmult`(777) < `matmult_sparse`(908) < `matmult_transpose`(1019) < `matmult_mx`(1056) < `get_identity_tensor`(1220) < `transpose`(1269) < `shared_identity_matrix`(4426) — a useful sanity anchor when cross-reading the line numbers in any DWARF dump.
+
+> **CORRECTION (DWARF-verified — three line ranges and the source-order anchor were wrong).** An earlier draft listed `KernelBuilder.py` line ranges of `~748 – 773` for `matmult_sparse`, `~241 – 300` for `matmult_transpose`, and `~329 – 338` for `shared_identity_matrix`, and a source order beginning `matmult_transpose`(241) < `shared_identity_matrix`(329) < `matmult_sparse`(748) < `matmult`(777). The binary contradicts all three: reading `DW_AT_decl_line` straight off each method's `__pyx_pw_*` subprogram DIE (`objdump --dwarf=info`) gives `matmult` **777**, `matmult_sparse` **908**, `matmult_transpose` **1019**, `matmult_mx` **1056**, `get_identity_tensor` **1220**, `transpose` **1269**, `shared_identity_matrix` **4426** (and `get_sb_and_psum_shape` **700**). `matmult_sparse`, `matmult_transpose`, and `shared_identity_matrix` are *after* `matmult`, not before it; `shared_identity_matrix` in particular lives near line 4426, far down the file. The addresses, body sizes, and indices in the table above are unaffected — only the `KernelBuilder.py` line column was wrong, and is corrected to the exact `decl_line` of each wrapper. [CONFIRMED — `DW_AT_decl_line` for each `__pyx_pw_…NeuronCodegen_<idx>` DIE]
 
 ### 1.3 Module-level tile-combine helpers
 
