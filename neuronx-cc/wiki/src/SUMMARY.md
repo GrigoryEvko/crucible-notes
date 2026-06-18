@@ -237,6 +237,10 @@
 - [MemoryLocation / Storage & the Alias Model](bir/memory-location.md)
 - [Dtype Tables & Wire-Tag / Stride / Alignment LUTs](bir/dtype-tables.md)
 - [AluOpType + the Mode Enums & the L1≠L3 Comparison Reorder](bir/aluop-modes.md)
+- [Engine / Arch / Accumulation / Axis / Indirect / Transpose Enums](bir/structural-enums.md)
+- [Op-Family Enums & the L1/L2/L3 Crosswalk](bir/op-family-enums.md)
+- [instabrew/brewer.py Generator & the *OpGen Contract](bir/brewer-generator.md)
+- [Cross-Language Wire-Key Consistency & the *Gen Bases](bir/cross-language-wirekeys.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
