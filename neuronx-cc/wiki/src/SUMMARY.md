@@ -185,6 +185,9 @@
 - [nki.language (nl.*) Op Dispatch Surface](nki/language-ops.md)
 - [NKI sema Legality-Assert Engine](nki/sema-legality.md)
 - [NKI Diagnostic Catalog — the err_/check_/assert_ Funnel](nki/diagnostic-catalog.md)
+- [KernelBuilder.NeuronCodegen — the Forward Builder (Overview & Matmul)](nki/neuroncodegen-forward-builder.md)
+- [NeuronCodegen Tensor-Op Forward Builders](nki/neuroncodegen-tensorops.md)
+- [NeuronCodegen Memory / DMA Forward Builders](nki/neuroncodegen-memory.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
