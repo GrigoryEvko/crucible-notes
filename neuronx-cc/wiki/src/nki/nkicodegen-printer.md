@@ -173,7 +173,8 @@ the printer never sees BIR.)
 
 ### 2.1 `opcode(self, op)` — ALUOpcode / ActivationFunctionType → Python callable
 
-Body @ `0xbe630` (symbol `…NkiCodegen_10NkiCodegen_221opcode`, `NkiCodegen.py:1255`). It
+Body @ `0xbe630` (symbol `…NkiCodegen_10NkiCodegen_221opcode`, `NkiCodegen.py:1261` per
+DWARF `addr2line`). It
 tests the enum member name and rewrites a fixed allow-list; everything else passes
 through as the bare member name. The recovered marker strings (`expit`, `erf`,
 `act_identity`, `abs`, `max`, `min`, `copy`, `sigmoid`, `scipy.special`,
@@ -222,8 +223,9 @@ The result feeds `reduce_cmd=nki.isa.reduce_cmd.<m>` into `activation_reduce`,
 ~33 `codegen<Op>` methods, one per Penguin op family. Every `nisa.<x>` / `nl.<x>`
 template below is a **verbatim string literal recovered from the `.so`** (the full
 set was dumped with `strings | rg '^(nisa|nl)\.'` and is reproduced faithfully).
-[CONFIRMED] Addresses in parentheses resolve to symbols in the cp310 `NkiCodegen.so`
-IDA sidecars (decompile + disasm + context) shipped in this checkout — see §5.
+[CONFIRMED] Addresses in parentheses resolve to symbols recovered directly from the
+cp310 `NkiCodegen.so` with `nm`/`strings` — see §5. (There is no IDA-exported sidecar
+DB for this particular `.so`; the binary itself is the grounding artifact.)
 
 ### 3.1 Activation family
 
@@ -393,23 +395,38 @@ The five strongest claims, re-challenged against the binary:
 4. **"`opcode()` name-maps `sigmoid`→`expit`, `erf`→`erf`, `abs`→`np.abs`, else the
    member name."** — `expit`, `erf`, `act_identity`, `abs`/`max`/`min`, `copy`,
    `sigmoid`, `scipy.special`, `np.multiply` strings present; exact branch mapping
-   per D-P02 IDA body. **HOLDS** (string-confirmed; branch order STRONG).
+   in the `opcode` body (`@0xbe630`, `NkiCodegen.py:1261`). **HOLDS** (string-confirmed;
+   branch order STRONG — the per-branch ordering is inferred from string proximity, not
+   a decompiled control-flow dump, since no IDA DB exists for this `.so`).
 5. **"There is no `_trace_internal_kernel` symbol."** — `rg` over strings finds
    none. **HOLDS — tagged INFERRED** as a conceptual handle for the `@trace`
    wrapping, not a recovered name.
 
-The two enum-marshalling **addresses** are now directly grounded in this checkout:
-`opcode @0xbe630` resolves to symbol `…NkiCodegen_10NkiCodegen_221opcode` (decompile +
-disasm + context sidecars; `NkiCodegen.py:1255`, with the `expit`/`act_identity`/
-`sigmoid` allow-list in the body), and `reduce_cmd @0x75170` resolves to
-`…NkiCodegen_10NkiCodegen_45reduce_cmd` (decompile sidecar, with the
-`accum_type`/`members`/`items` iteration). **CONFIRMED** — upgraded from the earlier
-report-sourced tag now that the cp310 `NkiCodegen.so` decompiled bodies are present.
+The two enum-marshalling **addresses** are now directly grounded in this checkout via
+`nm` + DWARF `addr2line` on the cp310 `.so` (it retains `.debug_info`/`.debug_line`):
+`opcode @0xbe630` is symbol `…NkiCodegen_10NkiCodegen_221opcode`, which `addr2line`
+maps to `NkiCodegen.py:1261` (the `expit`/`act_identity`/`sigmoid` allow-list strings
+sit in the body), and `reduce_cmd @0x75170` is `…NkiCodegen_10NkiCodegen_45reduce_cmd`,
+mapping to `NkiCodegen.py:309` (with the `accum_type`/`members`/`items` iteration
+strings). Both `…_221opcode`/`…_45reduce_cmd` are the Cython `__pyx_pw_` entry symbols
+(no separate `__pyx_pf_` body symbol is emitted for either). **CONFIRMED** — grounded
+directly against the `.so` (DWARF + `nm`/`strings`), not via an IDA sidecar.
 The remaining per-method `codegen<Op>` body offsets are still sourced from the D-P02
 IDA pass [report-sourced]; every **string/qualname/class-name** claim was independently
-re-verified here against the `.so`. The cp311/cp312 twins exist as IDA exports but
-the corresponding `targets/codegen/NkiCodegen.cpython-31{1,2}.so` are not extracted
-in this checkout — cp310 is the grounded artifact.
+re-verified here against the `.so`.
+
+> **CORRECTION (cp311/cp312 ARE extracted).** An earlier note here said the
+> `targets/codegen/NkiCodegen.cpython-31{1,2}.so` twins were "not extracted in this
+> checkout." That is **wrong** and is corrected in place. All three wheels ship the
+> `.so` under `…/penguin/targets/codegen/`:
+> `NkiCodegen.cpython-310-x86_64-linux-gnu.so` (4,891,928 B — the grounded artifact
+> above), `…cpython-311….so` (5,818,104 B), and `…cpython-312….so` (5,885,376 B). What
+> is *missing* is an IDA-exported sidecar **DB** for the cp310 `NkiCodegen.so`
+> specifically (IDA exported `BirCodeGenLoop`/`CodeGenBase`/`DumpGraphAndMetadata` in
+> that directory but not `NkiCodegen`); the binary itself is present and every address
+> /string/symbol claim on this page was re-grounded directly against it with
+> `nm`/`strings`. cp310 remains the artifact the prose is keyed to, but the cp311/cp312
+> binaries are available for cross-checking. [CONFIRMED — `stat`/`ls` on the three `.so`]
 
 ---
 
