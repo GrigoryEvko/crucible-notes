@@ -328,7 +328,7 @@ mhlo::CustomCallOp::build(OpBuilder&, OperationState&, TypeRange, ValueRange,
 
 ## Cross-References
 
-- [ControlDepTuple Simplifier](control-dep-tuple-simplifier.md) — 4.38; the MHLO/StableHLO `flatten-control-dep-tuple-operands` simplifier in depth
+- [Control-Dep Tuple-Flatten (MLIR)](controldep-tuple-flatten-mlir.md) — 4.38; the MHLO/StableHLO `flatten-control-dep-tuple-operands` simplifier in depth
 - [Pass Registry (the `--passes` Table)](pass-registry.md) — where `preserve-control-deps` sits at slot #61
 - [HLO/mhlo/stablehlo Ingestion Boundary](hlo-ingestion-boundary.md) — the `xla::hilo::` (HLO) vs lowercase `hilo::` (MLIR) split that puts these passes in different binaries
 - [Collectives → Custom-Call Forward Conversion](collectives-to-customcall.md) — the sibling `AwsNeuron*` custom-call family this op belongs to

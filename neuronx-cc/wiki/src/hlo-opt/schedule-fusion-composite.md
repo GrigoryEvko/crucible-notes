@@ -343,5 +343,5 @@ There is **no** `CompositeToFusion` inverse pass in hlo2penguin. The only other 
 
 - [MulRedSqrt / RMSNorm Fusion & FusionCluster CodeGen](rmsnorm-fusion-cluster-codegen.md) — the shared `codeGen`/`stableHLOCodeGen` machinery and the MHLO-moves vs StableHLO-clones seam
 - [Neuron Op-Fusion — Dot, Elementwise, Transcendental Families](op-fusion-dot-elementwise.md) — the other six C-strand `FusionKind`s and their per-fusion attribute payloads
-- [Collective Combiners & Threshold Model](collective-combiners.md) — Part 4.3, the AllGather/ReduceScatter/AllReduce ops that ScheduleFusion co-schedules
-- [Penguin IR & Middle-End](#) — Part 13, the Penguin/Walrus scheduler that realizes the comm-compute overlap from the ScheduleFusion grouping into BIR semaphore pipelining
+- [Collective Combiners & Threshold Model](collective-combiners.md) — Part 4.5, the AllGather/ReduceScatter/AllReduce ops that ScheduleFusion co-schedules
+- [Penguin IR & Middle-End](../penguin/) — Part 5, the Penguin/Walrus scheduler that realizes the comm-compute overlap from the ScheduleFusion grouping into BIR semaphore pipelining

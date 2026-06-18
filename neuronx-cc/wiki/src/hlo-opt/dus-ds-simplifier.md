@@ -332,7 +332,7 @@ Residual gaps (MED): `GetConstantOperandValue`'s 66-bb PrimitiveType dispatch is
 
 ## Cross-References
 
-- [Concatenation Optimizations](concat-optimizations.md) — Part 4.19, the other consumer of `iterationidx=`/`dusidxnow=` tokens; shares the constant-index convention
+- [Concatenation Optimizations](concat-optimizations.md) — Part 4.18, the other consumer of `iterationidx=`/`dusidxnow=` tokens; shares the constant-index convention
 - [Dynamic-Shape Front-End](../frontend/dynamic-shape.md) — Part 4.31, where dynamic-slice index shapes originate before unrolling resolves them
 - [Boundary Markers & Layer-Cut Analysis](boundary-markers-layer-cut.md) — the `NeuronBoundaryMarker-Start/-End` custom-calls both passes strip
 - [While-Loop Unroll & All-Gather Trip-Count Rewrite](whileloop-unroll-tripcount.md) — upstream loop unrolling that makes the indices constant

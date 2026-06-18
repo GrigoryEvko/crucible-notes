@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Three of `hlo-opt`'s HLO passes are where stock XLA collective ops stop being generic `HloInstruction`s and become **Neuron custom-calls**. The centerpiece is `xla::ConvertCollectivesToCustomCall` (pass key `convert-collectives-to-custom-call`), which rewrites exactly three native collective opcodes — `kAllReduce`, `kReduceScatter`, `kAllGather` — into XLA `kCustomCall` instructions whose `custom_call_target` string is built at runtime from a fixed naming contract: `AwsNeuron<Collective>[<ReduceOp>]<dtype>`. There is no `kCustomCall` for `kAllToAll` or `kCollectivePermute` here; both fall straight through the opcode gate and are lowered on their own paths ([4.8](collective-permute.md)). The naming contract is the thing a reimplementer must reproduce byte-for-byte, because downstream legalization (Part 8) dispatches on these exact target strings.
+Three of `hlo-opt`'s HLO passes are where stock XLA collective ops stop being generic `HloInstruction`s and become **Neuron custom-calls**. The centerpiece is `xla::ConvertCollectivesToCustomCall` (pass key `convert-collectives-to-custom-call`), which rewrites exactly three native collective opcodes — `kAllReduce`, `kReduceScatter`, `kAllGather` — into XLA `kCustomCall` instructions whose `custom_call_target` string is built at runtime from a fixed naming contract: `AwsNeuron<Collective>[<ReduceOp>]<dtype>`. There is no `kCustomCall` for `kAllToAll` or `kCollectivePermute` here; both fall straight through the opcode gate and are lowered on their own paths ([4.8](collectivepermute-to-allgather.md)). The naming contract is the thing a reimplementer must reproduce byte-for-byte, because downstream legalization (Part 8) dispatches on these exact target strings.
 
 The other two passes are fusion, not lowering, but they share the same file and the same collective family. `xla::FuseSendRecv` (key `fuse-send-recv`) pairs `Send`/`Recv` by `channel_id` — keyed on the **Done** opcodes `kSendDone`/`kRecvDone`, not the bare `Send`/`Recv` — and emits a fused `kCustomCall` carrying a `channel_id=<N>` backend-config plus an output tuple, hard-failing with `FailedPrecondition` if any half lacks a `channel_id`. `xla::FuseReduceScatter` (key `fuse-reduce-scatter`) is a 74-byte driver that ORs two helpers, `concatenationFusion` and `concatenationDividendFusion`, over the entry computation only; both detect N `reduce-scatter` ops feeding one `concatenate` and merge them into one wider `kReduceScatter` via `CreateReduceScatter`.
 
@@ -179,7 +179,7 @@ The `replica_groups` are preserved exactly. The `channel_id`, `use_global_device
 | `kAllToAll` (10) | **NOT handled** — falls through gate | — | CERTAIN (no 0xa path) |
 | `kCollectivePermute` (29) | **NOT handled** here | — | CERTAIN (no 0x1d path) |
 
-> **NOTE —** `kCollectivePermute` is rewritten to `kAllGather` first by a separate pass (`NeuronCollectivePermuteToAllGather`, see [4.8](collective-permute.md)); the resulting AllGather is then convertible *here*. So a collective-permute does eventually become an `AwsNeuronAllGather*` custom-call, but only after a prior rewrite — never directly in this pass.
+> **NOTE —** `kCollectivePermute` is rewritten to `kAllGather` first by a separate pass (`NeuronCollectivePermuteToAllGather`, see [4.8](collectivepermute-to-allgather.md)); the resulting AllGather is then convertible *here*. So a collective-permute does eventually become an `AwsNeuronAllGather*` custom-call, but only after a prior rewrite — never directly in this pass.
 
 ### The exclusion, proved
 
@@ -280,7 +280,7 @@ The fused custom-call's `custom_call_target` is **constructed at runtime** (stri
 
 ### Purpose
 
-When SPMD partitioning produces several `reduce-scatter` ops that all feed a single `concatenate`, this pass merges them into one wider `kReduceScatter` and drops the concat. It is a structural fusion (concat-based), distinct from the key-based combiner `NeuronReduceScatterCombiner` ([4.5](combiners.md)); the two are complementary, not duplicates.
+When SPMD partitioning produces several `reduce-scatter` ops that all feed a single `concatenate`, this pass merges them into one wider `kReduceScatter` and drops the concat. It is a structural fusion (concat-based), distinct from the key-based combiner `NeuronReduceScatterCombiner` ([4.5](collective-combiners.md)); the two are complementary, not duplicates.
 
 ### Entry Point
 
@@ -393,13 +393,13 @@ Two items remain MED and are **not** fabricated: the per-collective `backend_con
 
 | Pass | # | Relationship |
 |---|---|---|
-| `NeuronCollectivePermuteToAllGather` | 86 | rewrites `kCollectivePermute` → `kAllGather` so it becomes convertible here ([4.8](collective-permute.md)) |
-| `NeuronReduceScatterCombiner` | 78 | key-based RS combiner; complementary to #28's concat-based fusion ([4.5](combiners.md)) |
+| `NeuronCollectivePermuteToAllGather` | 86 | rewrites `kCollectivePermute` → `kAllGather` so it becomes convertible here ([4.8](collectivepermute-to-allgather.md)) |
+| `NeuronReduceScatterCombiner` | 78 | key-based RS combiner; complementary to #28's concat-based fusion ([4.5](collective-combiners.md)) |
 | `lower-local-collectives` (Part 8) | — | consumes the `AwsNeuron*` custom-calls this pass emits |
 
 ## Cross-References
 
-- [Collective-Permute Path](collective-permute.md) — 4.8; where `kAllToAll`/`kCollectivePermute` are actually lowered (not here)
-- [Collective Combiners](combiners.md) — 4.5; the key-based RS/AR combiners that run alongside these fusions
+- [Collective-Permute Path](collectivepermute-to-allgather.md) — 4.8; where `kAllToAll`/`kCollectivePermute` are actually lowered (not here)
+- [Collective Combiners](collective-combiners.md) — 4.5; the key-based RS/AR combiners that run alongside these fusions
 - [SPMD Emission](../distribution/spmd-emission.md) — Part 13; produces the native collectives this pass converts
 - [Lower-Local-Collectives](../walrus/lower-local-collectives.md) — Part 8; the consumer of the `AwsNeuron*` custom-call family

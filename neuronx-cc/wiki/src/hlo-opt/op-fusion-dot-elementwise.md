@@ -476,6 +476,6 @@ The five strongest claims, re-challenged against the binary:
 ## Cross-References
 
 - [RMSNorm Fusion & Cluster Codegen](rmsnorm-fusion-cluster-codegen.md) — 4.35; `fuseMulRedSqrt` and the shared `codeGen` body in depth
-- [Schedule-Fusion](schedule-fusion.md) — 4.36; the seventh `codeGen` caller (collective schedule fusion)
+- [Schedule-Fusion & Fusion-to-Composite](schedule-fusion-composite.md) — 4.37; the seventh `codeGen` caller (collective schedule fusion)
 - [HLO → Native / NKI Kernel Lowering](hlo-to-native-kernel-lowering.md) — where fused ops feed the Penguin backend
 - [Softmax Legalization](softmax-legalize.md) — the upstream pass that often produces the `dot`/`logistic`/log-sum-exp shapes matched here

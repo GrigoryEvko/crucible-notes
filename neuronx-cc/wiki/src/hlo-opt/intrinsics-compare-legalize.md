@@ -320,5 +320,5 @@ Items left **INFERRED / MEDIUM**: (a) the exact branch nesting of the vector-gro
 
 - [The hlo-opt Pass Registry (the --passes Table)](pass-registry.md) — where orders 5 and 13 sit in the 112-row registry, and how `Run` is dispatched.
 - [Activation Engine — Datapath and the LUT-Load Mechanism](../arch/activation-engine.md) — the hardware/kernel side of `AwsNeuron<X>_{f16,f32,bf16}`; what the suffixed targets ultimately compute (Part 10 / activation family).
-- Native-kernel lowering (4.32, forthcoming) — the tensorizer/native-kernel binding that consumes the dtype-suffixed custom-call and the S32 element-count operand.
+- [HLO → Native / NKI Kernel Lowering](hlo-to-native-kernel-lowering.md) — 4.33; the tensorizer/native-kernel binding that consumes the dtype-suffixed custom-call and the S32 element-count operand.
 - [HLO/mhlo/stablehlo Ingestion & the Stock-vs-Neuron Boundary](hlo-ingestion-boundary.md) — how the abstract `AwsNeuron…` custom-calls enter the graph before this pass lowers them.

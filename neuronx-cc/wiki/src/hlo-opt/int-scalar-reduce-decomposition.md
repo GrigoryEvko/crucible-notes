@@ -37,7 +37,7 @@ The TPB collective datapath and the engine reduce primitive are both float-shape
 - **Integer cross-replica sum.** Move the data, not the math. `all-gather` is type-agnostic — it just transports bytes — so the pass replaces the integer collective reduce with an `all-gather` that brings every replica's scalar onto every device, then sums the gathered values with an *ordinary integer `kAdd` tree* built from `MakeBinaryHlo(kAdd, …)`. The cross-replica reduction now runs on the same integer ALU path that any local `add` uses.
 - **Scalar non-`Add` reduce.** Match the data to the engine geometry. A scalar output from a rank-2 operand is reshaped to `[128, N/128]` so the reduction tiles onto the 128-lane partition axis; the free axis is reduced first (`[128, N/128] → [128]`), then the partition axis (`[128] → scalar`). This is the same two-stage shape the [Pool engine reduce leg](../arch/pool-engine.md) wants.
 
-The same "integer hardware gap" theme recurs in the matmul lowering — see [IntMatmulDowncast](int-matmul-downcast.md), which downcasts integer matmuls because the PE array's accumulate path is also float-native.
+The same "integer hardware gap" theme recurs in the matmul lowering — see [Precision & Upcast Passes (IntMatmulDowncast)](precision-upcast-passes.md) (4.23), which downcasts integer matmuls because the PE array's accumulate path is also float-native.
 
 > **NOTE —** the split of labour between the two passes is deliberate and the gates encode it. `DecomposeIntAllReduce` fires *only* on `Add` reductions; `DecomposeScalarReduce` explicitly *excludes* `Add` reductions (`kAdd → return false`). Integer `Add` reductions that are *not* collectives are left for other lowerings; this pass takes `maximum/minimum/multiply/and/or/…`.
 
@@ -291,7 +291,7 @@ Residual tags: IntAllReduce intra-pair lane semantics and the final-reshape oper
 ## Cross-References
 
 - [Pool Engine — Windowed Pooling and the Reduce Leg](../arch/pool-engine.md) — the 128-partition reduce geometry that `DecomposeScalarReduce` targets; *why* float-native reduce forces the rewrite
-- [IntMatmulDowncast](int-matmul-downcast.md) — same integer-hardware-gap theme: the PE array's accumulate path is float-native, so integer matmuls are downcast
+- [Precision & Upcast Passes (IntMatmulDowncast)](precision-upcast-passes.md) — 4.23; same integer-hardware-gap theme: the PE array's accumulate path is float-native, so integer matmuls are downcast
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](collective-combiners.md) — the threshold-driven collective passes these stateless decompositions sit beside
 - [AllReduce→ReduceScatter & DynamicSlice Rewrites](allreduce-dynslice-rewrites.md) — sibling collective rewrites in the same `OpExpander` family
 - [The hlo-opt Pass Registry (the `--passes` Table)](pass-registry.md) — registry orders 88 and 74, and the `RegisterHiloHloPasses` factory shape

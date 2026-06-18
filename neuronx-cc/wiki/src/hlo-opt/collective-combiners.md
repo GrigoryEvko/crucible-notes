@@ -399,5 +399,5 @@ The five strongest claims, re-checked against the binary:
 ## Cross-References
 
 - [Collectives → CustomCall Lowering](collectives-to-customcall.md) — §4.3, how collectives are lowered after combining; the combined collective is what reaches the lowering
-- [Flip / Enable-Combining Pass](enable-combining.md) — §4.6, the flip that enables combining upstream of these passes
+- [Flip-Collective OpExpander Family](flip-collective-opexpander.md) — §4.6, the flip that enables combining upstream of these passes
 - [Distribution Bucketing](../distribution/bucketing.md) — Part 13, the runtime-side bucket model these byte/count thresholds feed

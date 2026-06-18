@@ -4,9 +4,11 @@
 
 ## Abstract
 
-This is the chapter opener for the **C-strand**: the MLIR pass pipeline that turns an *already-optimized* `xla::HloModule` into a textual Penguin Python module. Everything in Part 4.1–4.32 is the **B-strand** — passes that run on the `xla::HloModule` (the "112 HLO passes", driven through the `--passes` registry of [4.1](pass-registry.md)). The C-strand is what happens *after* that: XLA's optimized HLO is imported into the `mhlo` MLIR dialect, then a fixed sequence of ~32 MLIR passes rewrites, schedules, and legalizes it before a terminal pass walks the IR and emits Python. The output of this pipeline is `penguin.py`, the input to [Part 5](../penguin/) — there is **no** Penguin C++ dialect; "Penguin IR" is the textual Python the final pass prints.
+This page (Part **4.32**) is the chapter opener for the **C-strand**: the MLIR pass pipeline that turns an *already-optimized* `xla::HloModule` into a textual Penguin Python module. Everything in Part 4.1–4.31 is the **B-strand** — passes that run on the `xla::HloModule` (the "112 HLO passes", driven through the `--passes` registry of [4.1](pass-registry.md)). The C-strand (4.32–4.45) is what happens *after* that: XLA's optimized HLO is imported into the `mhlo` MLIR dialect, then a fixed sequence of ~32 MLIR passes rewrites, schedules, and legalizes it before a terminal pass walks the IR and emits Python. The output of this pipeline is `penguin.py`, the input to [Part 5](../penguin/) — there is **no** Penguin C++ dialect; "Penguin IR" is the textual Python the final pass prints.
 
 The single most important finding here corrects a long-standing gap. Earlier analysis (S2-03) concluded the MLIR pass order "is built from a textual pipeline string parsed at runtime via `parsePassPipeline`" and "not recoverable from this binary alone." **That is false.** The pipeline is built **imperatively in C++**: a flat sequence of `OpPassManager::addPass(...)` / `addNestedPass<func::FuncOp>(...)` calls inside two functions — `hilo::registerMHLOPasses` @0x1ee12f0 and `hilo::registerStableHLOPasses` @0x1ee2120. There is no pipeline-spec literal, no comma-joined token list, and `mlir::parsePassPipeline` (statically linked) is never called on the Neuron compile path. Earlier analysis stopped one indirect tail-call short — at the 370-byte dispatcher `registerMLIRCompilePasses` @0x1ef12a0, which only logs and branches — and so never saw the `addPass` spine.
+
+> **CORRECTION (Part-4 reconciliation) —** several sibling pages referred to this C-strand opener as "4.33." Per the book's table of contents it is **4.32** (4.31 is the MLIR Dynamic-Shape Front-End; 4.33 is HLO → Native / NKI Kernel Lowering). The B-strand is therefore **4.1–4.31** and the C-strand **4.32–4.45**; references have been harmonized to that numbering across the Part.
 
 The pipeline forks into two near-identical paths — MHLO and StableHLO — selected by a single CompileConfig byte. Each pass in the MHLO path has a StableHLO twin at the same ordinal and gate; the StableHLO path inserts five extra bridge/legalize passes (`HloLegalizeToStablehlo`, `ConvertCustomCallToAllReduce`, `FusionToComposite`, `LegalizeSRA`, `LegalizeScatter`). The per-pass enable knobs are CompileConfig bytes populated from `cl::opt` globals; the *order* is hard-coded.
 
@@ -253,7 +255,7 @@ Both ordered spines are CERTAIN (disasm-verified gate→altblock→jmp-back reco
 
 ## Misc Pass Reference
 
-These five leaf passes are owned by this chapter opener (their pipeline placement is given above; the fusion/canonicalize/tensorizer passes are owned by [4.34–4.42](pass-registry.md)). All are `mlir::PassWrapper<hilo::X, OperationPass<…>>`; the factory lives in `mlir::` and the body in `hilo::` (verified by demangled symbols).
+These five leaf passes are owned by this chapter opener (their pipeline placement is given above; the fusion/canonicalize/tensorizer passes are owned by 4.34–4.42 — [op-fusion](op-fusion-dot-elementwise.md) through [tensorizer-legalization](tensorizer-legalization.md)). All are `mlir::PassWrapper<hilo::X, OperationPass<…>>`; the factory lives in `mlir::` and the body in `hilo::` (verified by demangled symbols).
 
 | Pass (pass-arg) | Factory @ | runOnOperation @ | Base | Match → Action | Conf |
 |---|---|---|---|---|---|
@@ -303,7 +305,9 @@ mlir::RewritePattern
       └ hilo::CollectiveBroadcastToAllGatherPattern (on {mhlo,stablehlo}.CollectiveBroadcastOp)
 ```
 
-The "hilo" prefix = **HIgh-Level Optimizer** (src tree `hilo/`); it is a **pass** namespace, never a dialect. There is no `hilo::*Dialect`, `neuron::*Dialect`, `penguin::*Dialect` (CONFIRMED negative). `initializeMLIRContext` @0x1ee0500 eager-loads exactly **3** dialects in order: `mhlo` → `stablehlo` → `func`; everything else is transitive or the linked-but-dead XLA-GPU/CPU cluster. The de-facto Neuron op set is **data on upstream `custom_call` ops** — 26 `AwsNeuron*` call-target strings plus `FusionKind`/`CompositeKind` attrs and 8 `neuron.*` attrs — not C++ op classes.
+The "hilo" prefix = **HIgh-Level Optimizer** (src tree `hilo/`); it is a **pass** namespace, never a dialect. There is no `hilo::*Dialect`, `neuron::*Dialect`, `penguin::*Dialect` (CONFIRMED negative). `initializeMLIRContext` @0x1ee0500 eager-loads exactly **3** dialects in order: `mhlo` → `stablehlo` → `func`; everything else is transitive or the linked-but-dead XLA-GPU/CPU cluster. The de-facto Neuron op set is **data on upstream `custom_call` ops** — 26 `AwsNeuron*` call-target strings plus `FusionKind`/`CompositeKind` attrs and 9 `neuron.*` attrs — not C++ op classes.
+
+> **CORRECTION (Part-4 reconciliation) —** an earlier draft of this line cited **8** `neuron.*` attrs. The authoritative census ([4.40 Neuron Dialect Registry](neuron-dialect-registry.md)) enumerates and confirms **9** (`neuron.symName`, `actual_shape`, `CrossPassTensor`, `non_local`, `transposable`, `groupID`, `remat.value`, `no_opt`, `readthedocs`). The count is harmonized to 9 here.
 
 > **NOTE —** the `OpRewritePattern<TargetOp>` template base of the two `hilo::` RewritePatterns is INFERRED — the pattern typeinfos exist but the exact `OpRewritePattern<>` instantiation was not pinned.
 

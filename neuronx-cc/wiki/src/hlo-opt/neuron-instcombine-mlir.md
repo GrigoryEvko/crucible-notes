@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`neuron-inst-combine` is an MLIR module pass — `hilo::NeuronInstCombine` (`OperationPass<ModuleOp>`) — that runs in the hlo2penguin dialect pipeline on `mhlo` IR. It is the MLIR-stage twin of the HLO-level InstCombine peepholes ([4.20](instcombine-peephole.md)), but they operate on completely different IRs: 4.20 rewrites `xla::HloInstruction` graphs *before* the IR is imported into MLIR; this pass rewrites `mlir::mhlo` ops *after* import. They share a name and a spirit (algebraic peephole simplification) and nothing else — no code, no pattern table, no driver.
+`neuron-inst-combine` is an MLIR module pass — `hilo::NeuronInstCombine` (`OperationPass<ModuleOp>`) — that runs in the hlo2penguin dialect pipeline on `mhlo` IR. It is the MLIR-stage twin of the HLO-level InstCombine peepholes ([4.21](instcombine-peephole.md)), but they operate on completely different IRs: 4.21 rewrites `xla::HloInstruction` graphs *before* the IR is imported into MLIR; this pass rewrites `mlir::mhlo` ops *after* import. They share a name and a spirit (algebraic peephole simplification) and nothing else — no code, no pattern table, no driver.
 
 Despite being module-scoped, the pass does **not** walk the module. It fetches the single compile-entry function via `hilo::getMainFunction(ModuleOp&)` (@0x21c1e70), builds a greedy `RewritePatternSet` holding **exactly one** pattern — `hilo::SimplifyReduceSliceReducePattern` (PatternBenefit=1, rooted on `mhlo.reduce`) — and runs `applyPatternsGreedily` once per region of that function. The pass is otherwise empty: no other patterns, no analysis, no diagnostics.
 
@@ -29,7 +29,7 @@ For reimplementation, the contract is:
 | **IR level** | MLIR `mhlo` dialect, inside hlo2penguin |
 | **Vtables** | pattern `_ZTVN4hilo32SimplifyReduceSliceReducePatternE`@0x41fda8; pass `_ZTVN4hilo17NeuronInstCombineE`@0x41fde0 |
 
-> **NOTE —** the HLO-level InstCombine (4.20) and this MLIR pass are *not* the same pass at two pipeline points. They are independent implementations on different IR. Do not assume a pattern present in one exists in the other; the MLIR pass carries a single pattern that the HLO pass does not.
+> **NOTE —** the HLO-level InstCombine (4.21) and this MLIR pass are *not* the same pass at two pipeline points. They are independent implementations on different IR. Do not assume a pattern present in one exists in the other; the MLIR pass carries a single pattern that the HLO pass does not.
 
 ---
 
@@ -236,13 +236,13 @@ Tagged inferred: GreedyRewriteConfig field *names* (bit-pattern `{10, -1, topDow
 
 | Name | Relationship |
 |---|---|
-| HLO-level InstCombine ([4.20](instcombine-peephole.md)) | The pre-MLIR twin: same name/spirit, different IR (`HloInstruction` vs `mhlo`), disjoint code |
-| hlo2penguin MLIR pipeline ([4.33](hlo2penguin-mlir-pipeline.md)) | Where `neuron-inst-combine` is scheduled among the mhlo passes |
+| HLO-level InstCombine ([4.21](instcombine-peephole.md)) | The pre-MLIR twin: same name/spirit, different IR (`HloInstruction` vs `mhlo`), disjoint code |
+| hlo2penguin MLIR pipeline ([4.32](hlo2penguin-mlir-pipeline.md)) | Where `neuron-inst-combine` is scheduled among the mhlo passes |
 | Concatenation Optimizations ([concat-optimizations.md](concat-optimizations.md)) | Sibling mhlo-level structural simplifier |
 | DUS/DS Simplifier ([dus-ds-simplifier.md](dus-ds-simplifier.md)) | Sibling slice/dynamic-slice mover in the same stage |
 
 ## Cross-References
 
-- [InstCombine Peephole Passes](instcombine-peephole.md) — 4.20, the HLO-level InstCombine this pass twins (different IR)
-- [hlo2penguin MLIR Pipeline](hlo2penguin-mlir-pipeline.md) — 4.33, pass ordering for `neuron-inst-combine`
+- [InstCombine Peephole Passes](instcombine-peephole.md) — 4.21, the HLO-level InstCombine this pass twins (different IR)
+- [hlo2penguin MLIR Pipeline](hlo2penguin-mlir-pipeline.md) — 4.32, pass ordering for `neuron-inst-combine`
 - [The hlo-opt Pass Registry](pass-registry.md) — `--passes` table the pass arg is registered in

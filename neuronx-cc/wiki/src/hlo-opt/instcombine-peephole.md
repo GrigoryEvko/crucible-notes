@@ -24,7 +24,7 @@ Both matchers return `bool` (changed?); `Run` increments a per-pattern counter o
 | **Opcode encoding** | opcode byte @ `HloInstruction+0x14`; operand count encoded `2*N` @ `+0x18` |
 | **Tally strings** | `"Optimized "` @ `0x23847f` · `" of sliceAddPattern"` @ `0x243df3` · `" of sliceConcatPattern"` @ `0x25b007` |
 
-> **NOTE —** The MLIR-dialect *twin* of this pass (`NeuronInstCombine`, operating on Penguin/Tensorizer ops rather than HLO) is documented in **[4.37 — NeuronInstCombine](../mlir/inst-combine.md)**. The two are independently registered, run on different IRs, and share no code; do not conflate them. The concat-side rewrites here are adjacent to but distinct from the **[4.19 — Concatenation Optimizations](concat-optimizations.md)** family, which handles same-source slice→concat collapse via `GetOriginalSource` (see [§5](#5-the-run-driver-and-the-third-inline-rewrite)).
+> **NOTE —** The MLIR-dialect *twin* of this pass (`NeuronInstCombine`, operating on `mhlo` ops rather than HLO) is documented in **[4.36 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)**. The two are independently registered, run on different IRs, and share no code; do not conflate them. The concat-side rewrites here are adjacent to but distinct from the **[4.18 — Concatenation Optimizations](concat-optimizations.md)** family, which handles same-source slice→concat collapse via `GetOriginalSource` (see [§5](#5-the-run-driver-and-the-third-inline-rewrite)).
 
 ---
 
@@ -316,7 +316,7 @@ StatusOr<bool> Run(HloModule* m, const flat_hash_set<string_view>& /*threads*/) 
       }
       // (inline) same-source slice→concat collapse on concat roots with >3 operands,
       //   all tracing to one GetOriginalSource(@0x1f50dc0) — a SEPARATE rewrite that also
-      //   prints " of sliceConcatPattern" (its own counter). Belongs to 4.19; see NOTE.
+      //   prints " of sliceConcatPattern" (its own counter). Belongs to 4.18; see NOTE.
     }
     // INFO logs (string-pool): "Optimized " <sliceConcatCount> " of sliceConcatPattern"
     //                          "Optimized " <sliceAddCount>    " of sliceAddPattern"  (@0x1f55b2e)
@@ -325,7 +325,7 @@ StatusOr<bool> Run(HloModule* m, const flat_hash_set<string_view>& /*threads*/) 
 }
 ```
 
-> **NOTE — two counters, one label.** `Run` maintains *two* counters that both print `" of sliceConcatPattern"`: one for `matchAndReplaceSliceConcatPattern3D` (this page) and one for the inline `GetOriginalSource`-based same-source collapse (documented in [4.19](concat-optimizations.md)). The `" of sliceConcatPattern"` string (`0x25b007`) is loaded at four sites in `Run` (`0x1f55bdc`, `0x1f55bf8`, `0x1f55c8f`, `0x1f55ca6`); a count printed by this pass may be the *sum* of two distinct rewrites. The `" of sliceAddPattern"` string (`0x243df3`) is loaded only at the slice-add sites (`0x1f55b2e`, `0x1f55b45`).
+> **NOTE — two counters, one label.** `Run` maintains *two* counters that both print `" of sliceConcatPattern"`: one for `matchAndReplaceSliceConcatPattern3D` (this page) and one for the inline `GetOriginalSource`-based same-source collapse (documented in [4.18](concat-optimizations.md)). The `" of sliceConcatPattern"` string (`0x25b007`) is loaded at four sites in `Run` (`0x1f55bdc`, `0x1f55bf8`, `0x1f55c8f`, `0x1f55ca6`); a count printed by this pass may be the *sum* of two distinct rewrites. The `" of sliceAddPattern"` string (`0x243df3`) is loaded only at the slice-add sites (`0x1f55b2e`, `0x1f55b45`).
 
 `GetOriginalSource` (`0x1f50dc0`) and `SkipNoOpReshapesAndBroadcasts` (`0x1f4f130`) are invoked from `Run`/P2, **not** from the slice-add matcher.
 
@@ -385,6 +385,6 @@ Both matchers express their structural predicates as stack-built `xla::match::de
 
 ## See also
 
-- **[4.19 — Concatenation Optimizations](concat-optimizations.md)** — the `GetOriginalSource`-based same-source slice→concat collapse that shares `Run`'s `" of sliceConcatPattern"` label.
+- **[4.18 — Concatenation Optimizations](concat-optimizations.md)** — the `GetOriginalSource`-based same-source slice→concat collapse that shares `Run`'s `" of sliceConcatPattern"` label.
 - **[4.37 — NeuronInstCombine (MLIR)](../mlir/inst-combine.md)** — the independently-registered Penguin/Tensorizer-dialect peephole combiner; the MLIR-level twin of this HLO pass.
 - **[The hlo-opt Pass Registry](pass-registry.md)** — pass `#62` `neuron-hlo-inst-comb` in the `--passes` table.

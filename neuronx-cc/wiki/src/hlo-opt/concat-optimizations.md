@@ -25,7 +25,7 @@ replaced wholesale. #108 runs the inverse: it discovers a buffer that was writte
 slab-by-slab by a chain of dynamic-update-slices, recovers the per-slab order from an
 `iterationidx=` tag, and rebuilds the buffer as a single `concat` over the update tensors.
 The `iterationidx=` tag and the boundary algebra are the same machinery the DUS/DS mover of
-[Part 4.18](allreduce-dynslice-rewrites.md) uses to track loop-unrolled write positions —
+[Part 4.7](allreduce-dynslice-rewrites.md) uses to track loop-unrolled write positions —
 this page shares that coupling.
 
 For reimplementation, the contract is:
@@ -161,7 +161,7 @@ slice fuses to `concat.operand(k)` iff:
 There is no cost model and no partial-cover handling: the window must coincide with exactly one
 operand. A window that straddles `B[k]` (covers part of operand `k` and part of `k+1`) never
 matches; that case is handed off to the slice/concat splitter in
-[Part 4.20](instcombine-slice-concat.md).
+[Part 4.21](instcombine-peephole.md).
 
 > **GOTCHA —** the off-axis predicate compares against `operand(k).dims[d]`, *not*
 > `slice->shape().dims[d]`. They are equal only when the slice is full on axis `d`; the test is
@@ -294,7 +294,7 @@ call-wrapped: broadcast(init) → DUS → DUS → Tuple → GTE → DUS → … 
 Per-DUS, the iteration index is parsed with `ParseIterationIdx` (`0x1fd2c0c`) and the boundary
 slab count with `ExtractBoundaryCountFromBackendConfig` (`0x1fd3cf6`), which keys off the
 custom-call target `"NeuronBoundaryMarker-End"` (`.rodata 0x27a6fd`) — the same boundary-marker
-family documented under [Part 4.18](boundary-markers-layer-cut.md). A `RET_CHECK` enforces the
+family documented under [Part 4.12](boundary-markers-layer-cut.md). A `RET_CHECK` enforces the
 arity invariant:
 
 > `iter_idx.size() == instr->operand_count() - 2` (`.rodata`, ref @`0x1fd5479`)
@@ -316,7 +316,7 @@ and the two `"Should not be here. The DUS chain is not …"` `RET_CHECK`s.
 ### Algorithm — the ordering key (`ParseIterationIdx`)
 
 `ParseIterationIdx(string) → vector<int>` is the link between the two passes on this page and the
-DUS/DS mover of 4.18: it decodes the `"iterationidx="` tag that loop unrolling stamps into each
+DUS/DS mover of 4.7: it decodes the `"iterationidx="` tag that loop unrolling stamps into each
 DUS, and that integer vector is the slab's position in the chain.
 
 ```c
@@ -510,6 +510,6 @@ the full call-hoisting rewrite inside `MoveDusOutOfCall`. None are asserted as f
 
 ## Cross-References
 
-- [AllReduce/DynamicSlice Rewrites](allreduce-dynslice-rewrites.md) — Part 4.18, the DUS/DS mover and the shared `iterationidx=` loop-position tag
-- [Boundary Markers & Layer-Cut Analysis](boundary-markers-layer-cut.md) — Part 4.18, the `NeuronBoundaryMarker-End` custom call #108 keys off
+- [AllReduce/DynamicSlice Rewrites](allreduce-dynslice-rewrites.md) — Part 4.7, the DUS/DS mover and the shared `iterationidx=` loop-position tag
+- [Boundary Markers & Layer-Cut Analysis](boundary-markers-layer-cut.md) — Part 4.12, the `NeuronBoundaryMarker-End` custom call #108 keys off
 - [The hlo-opt Pass Registry](pass-registry.md) — `RegisterHiloHloPasses` and the `--passes` numbering (#27/#107/#108)

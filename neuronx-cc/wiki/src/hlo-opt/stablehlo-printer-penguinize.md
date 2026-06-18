@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This is the closing page of the hlo2penguin chapter. Two components meet here. The first is `mlir::StableHLOToPythonPrinter` — the StableHLO-pipeline twin of the MHLO textual emitter reversed in [4.43](./mhlo-to-py-penguin.md)/[4.44](./python-printer.md) — which serialises the legalized StableHLO module into a `neuronxcc.starfish.penguin` Python program. The second is `PenguinizeFunctions` (whose public factory is misleadingly called `createPenguinizeIOPass`), the **final** MLIR pass that runs *before* the printer fires: it packages the `main` function into the exact shape the printer's prologue assumes — named inputs, a weight-vs-activation partition, and a tuple-free I/O boundary.
+This is the closing page of the hlo2penguin chapter. Two components meet here. The first is `mlir::StableHLOToPythonPrinter` — the StableHLO-pipeline twin of the MHLO textual emitter reversed in [4.43](./mhlo-to-python-printer-driver.md)/[4.44](./mhlo-to-python-printer-heavy.md) — which serialises the legalized StableHLO module into a `neuronxcc.starfish.penguin` Python program. The second is `PenguinizeFunctions` (whose public factory is misleadingly called `createPenguinizeIOPass`), the **final** MLIR pass that runs *before* the printer fires: it packages the `main` function into the exact shape the printer's prologue assumes — named inputs, a weight-vs-activation partition, and a tuple-free I/O boundary.
 
 The two are sequenced producer→consumer. `PenguinizeFunctions::runOnOperation` (@0x20881f0) stamps three attributes — `input_names`, `slowChangingIns`, `slowChangingOuts` — onto the `main` `func.func` and flattens its result tuple; the printer's `printStart` and `print<func::ReturnOp>` then read those attributes back to emit `m.Function(...)`, per-input `Tensor.markInput(..., is_parameter_tensor=…)`, and per-output destinations. Get the pass wrong and the printer emits a malformed prologue; get the printer wrong and Part 5's Penguin middle-end ingests the wrong Python.
 
@@ -31,7 +31,7 @@ The page is organised as: the StableHLO printer's *delta* against the MHLO print
 
 ## 1. The Printer Delta: What StableHLO Adds Over MHLO
 
-`StableHLOToPythonPrinter` shares the **entire driver tier** with the MHLO printer of [4.43](./mhlo-to-py-penguin.md)/[4.44](./python-printer.md): the same `printOperation` TypeID cascade, the same `printOperandsAndAttributes` statement assembler, the same `printSrcs`/`printDsts`/`printMeta`/`printType`/`getImport`/`defScalar`/`getScalar` helpers, the same `m<N>`/`input_<i>`/`v<N>` name families, and the same `perOpCounter` static `StringMap`. The two classes funnel every ordinary op through identical code. **What differs is confined to three emitter families**, because StableHLO carries fusions and a few custom-calls differently than MHLO does.
+`StableHLOToPythonPrinter` shares the **entire driver tier** with the MHLO printer of [4.43](./mhlo-to-python-printer-driver.md)/[4.44](./mhlo-to-python-printer-heavy.md): the same `printOperation` TypeID cascade, the same `printOperandsAndAttributes` statement assembler, the same `printSrcs`/`printDsts`/`printMeta`/`printType`/`getImport`/`defScalar`/`getScalar` helpers, the same `m<N>`/`input_<i>`/`v<N>` name families, and the same `perOpCounter` static `StringMap`. The two classes funnel every ordinary op through identical code. **What differs is confined to three emitter families**, because StableHLO carries fusions and a few custom-calls differently than MHLO does.
 
 ### Two dispatch surfaces
 
@@ -50,7 +50,7 @@ The crucial asymmetry: **composites are routed by an inherent attribute, custom-
 
 The divergence is a downstream consequence of *how each pipeline represents a fusion*, decided long before the printer:
 
-| Aspect | MHLO printer ([4.43](./mhlo-to-py-penguin.md)) | StableHLO printer (this page) |
+| Aspect | MHLO printer ([4.43](./mhlo-to-python-printer-driver.md)) | StableHLO printer (this page) |
 |---|---|---|
 | Fusion carrier | `mhlo.fusion` — body **inline** in the op's region | `stablehlo.composite` + a **private `func.func` decomposition** |
 | Fusion dispatch key | `FusionKind` on the `FusionOp` | `CompositeKind` inherent attr on the `CompositeOp` |
@@ -338,4 +338,4 @@ This is the seam where the hlo2penguin chapter ends. `PenguinizeFunctions` runs 
 
 That Python text **is** the artifact Part 5 ingests. It is not MLIR — it is Penguin-IR source that, when executed, materialises `neuronxcc.starfish.penguin.ir` objects in the Penguin middle-end's process. From there the Penguin/Strand-U lowering turns each `QuantizeMXTensorOp`/scaled-dot `DotOp` into NKI `quantize_mx`/`nc_matmul_mx` and ultimately BIR MX instructions, and turns each `ScheduleFusion`'s transparently-emitted collective adjacency into semaphore-pipelined overlap. The composite *summary* `NeuronTensorOp` and its transparently re-emitted decomposition body both appear in the Python; the middle-end consumes both. **The hlo2penguin chapter ends at this emitted Python; Part 5 — Penguin IR & Middle-End — begins by parsing it.**
 
-> **Cross-references:** [4.43 — MHLO→Py-Penguin printer driver](./mhlo-to-py-penguin.md), [4.44 — the Python printer helpers](./python-printer.md) (shared driver tier this page builds on), [Schedule-Fusion & Fusion-to-Composite](./schedule-fusion-composite.md) (produces the composites), [TensorizerLegalizationPass](./tensorizer-legalization.md) (stamps `output_names`/`neuron.symName` before this pass), [MX-FP8 Microscaling Legalization](./mx-fp8-legalization.md) (emits the `QuantizeMX`/`__op$block_scaled_dot` custom-calls), and Part 5 — Penguin IR & Middle-End (ingests the emitted Python).
+> **Cross-references:** [4.43 — MHLO→Py-Penguin printer driver](./mhlo-to-python-printer-driver.md), [4.44 — the Python printer helpers](./mhlo-to-python-printer-heavy.md) (shared driver tier this page builds on), [Schedule-Fusion & Fusion-to-Composite](./schedule-fusion-composite.md) (produces the composites), [TensorizerLegalizationPass](./tensorizer-legalization.md) (stamps `output_names`/`neuron.symName` before this pass), [MX-FP8 Microscaling Legalization](./mx-fp8-legalization.md) (emits the `QuantizeMX`/`__op$block_scaled_dot` custom-calls), and Part 5 — Penguin IR & Middle-End (ingests the emitted Python).

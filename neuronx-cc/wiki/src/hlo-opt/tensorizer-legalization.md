@@ -335,7 +335,7 @@ The StableHLO twin is a strictly **richer** pass: it adds whole legalization sta
 
 ## Cross-References
 
-- [CanonicalizeForTensorizer Rewriters](canonicalize-for-tensorizer.md) — 4.39, the immediately-prior tensorizer-targeted normalization that runs before this output-side legalization
+- [CanonicalizeForTensorizer Rewriters](canonicalize-for-tensorizer.md) — 4.41, the immediately-prior tensorizer-targeted normalization that runs before this output-side legalization
 - [Schedule-Fusion & Fusion-to-Composite](schedule-fusion-composite.md) — produces the `ScheduleFusion` fusions/composites whose inner region-return value this pass names in CASE 3′
 - [Input/Output Alias Family](io-alias-family.md) — 4.17, the broader alias-legalization family; this pass is the *output-side* member that breaks input/constant==output aliasing
 - [StaticIOTranspose](../frontend/static-io-transpose.md) — 3.15, the IO-transpose job downstream that consumes the named, de-aliased outputs this pass produces

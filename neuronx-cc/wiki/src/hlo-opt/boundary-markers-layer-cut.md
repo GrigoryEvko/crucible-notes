@@ -246,7 +246,7 @@ bool Run(m, threads):
 
 **Mode A** is the trivial 1-operand strip: the wrapped value flows directly to former consumers. **Mode B** unwraps a canonicalized `marker(tuple(…))` by replacing each `gte(marker, i)` with `tuple.operand(i)`, then drops the marker and its now-unused tuple. A marker output reaching a **non-GTE** user is the error `NCC_ITUP001` — i.e. after canonicalization, markers *must* be consumed via `get-tuple-element`. (CERTAIN — `kTuple`=`0x78` and `kGetTupleElement`=`0x3A` byte-compared at `(op+0x14)`; all four CHECK strings + `NCC_ITUP001` + the diagnostic text `" used by non-GTE instruction "` and resolution `"Use GetTupleElement to access tuple components in boundary markers"` transcribed.)
 
-> **GOTCHA —** loop-body markers are stripped in **at least three places**: this pass (#31) *and* the DUS/DS index simplifier (#80) *and* the slice-mover (#87), which inline-strip `NeuronBoundaryMarker-Start/-End` themselves (see [4.13](unroll-and-loop-passes.md)). The redundancy is defensive — multiple passes run after the unroller emits the markers, and any of them may need to see through a marker to its operand. The slice-mover's legality check explicitly whitelists `NeuronBoundaryMarker-End` as an allowed extra user of a dynamic-slice GTE (string: *"Dynamic slice input GTE has users that are not dynamic-slice, root tuple, or NeuronBoundaryMarker-End"*). A reimplementation that strips markers in only one pass will trip that check.
+> **GOTCHA —** loop-body markers are stripped in **at least three places**: this pass (#31) *and* the DUS/DS index simplifier (#80) *and* the slice-mover (#87), which inline-strip `NeuronBoundaryMarker-Start/-End` themselves (see [4.11](whileloop-unroll-tripcount.md)). The redundancy is defensive — multiple passes run after the unroller emits the markers, and any of them may need to see through a marker to its operand. The slice-mover's legality check explicitly whitelists `NeuronBoundaryMarker-End` as an allowed extra user of a dynamic-slice GTE (string: *"Dynamic slice input GTE has users that are not dynamic-slice, root tuple, or NeuronBoundaryMarker-End"*). A reimplementation that strips markers in only one pass will trip that check.
 
 ---
 
@@ -350,7 +350,7 @@ Inferred / not-pinned, tagged in place: the **upstream producer** of the four `A
 
 ## Cross-References
 
-- [Unroll & Loop Passes](unroll-and-loop-passes.md) — 4.13; the while-loop unroller that produces loop-body markers, and the DUS/DS passes that inline-strip them
+- [While-Loop Unroll & All-Gather Trip-Count Rewrite](whileloop-unroll-tripcount.md) — 4.11; the while-loop unroller that produces loop-body markers, and the DUS/DS passes that inline-strip them
 - [Pass Registry](pass-registry.md) — the `--passes` table where #30 `canonicalize-boundary-marker` and #31 `boundary-marker-removal` are registered
 - [Marker Splitter & Penguin Partition](../penguin/marker-splitter-partition.md) — Part 5; the layer-cut algorithm in `hlo2penguin` that consumes the module markers
 - [Norm & Checkpoint Kernels](../nki/norm-checkpoint-kernels.md) — 6.7.5; gradient-checkpointing kernels whose recompute spans are delimited by the forward/backward markers

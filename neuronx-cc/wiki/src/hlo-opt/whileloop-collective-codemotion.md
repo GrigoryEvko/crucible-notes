@@ -567,6 +567,6 @@ beyond its two trip-count invariants.
 
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](collective-combiners.md) — Part 4.5, the consumer of every collective these passes expose
 - [AllReduce→ReduceScatter & DynamicSlice Rewrites](allreduce-dynslice-rewrites.md) — sibling collective rewrites in the same pipeline stage
-- [While-Loop Unrolling](while-loop-unroll.md) — Part 4.13, the alternative that exposes the same collectives by replicating the loop body instead of moving the op
+- [While-Loop Unroll & All-Gather Trip-Count Rewrite](whileloop-unroll-tripcount.md) — Part 4.11, the alternative that exposes the same collectives by replicating the loop body instead of moving the op
 - [The hlo-opt Pass Registry](pass-registry.md) — where `#101`/`#103`/`#105`/`#106` are registered and ordered
 - [Distribution & Collectives](../distribution/replica-groups.md) — Part 13, the replica-group model that `HasMatchingReplicaGroups` compares against

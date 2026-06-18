@@ -34,7 +34,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-The Tonga PE array (the systolic matmul engine) has no native integer-matmul mode; only the floating-point datapath exists. An HLO `dot` whose result type is an integer therefore cannot be lowered directly. This `OpExpanderPass` rewrites such a dot into `convert(int→F32) · convert(int→F32)` feeding an F32 `dot`, then `convert(F32→int)` on the result. The integer matmul is *emulated* on the float hardware. This is the same F32-emulation strategy used for int8 quantize lowering ([§4.28](int8-quantize.md)); the two passes are siblings in intent.
+The Tonga PE array (the systolic matmul engine) has no native integer-matmul mode; only the floating-point datapath exists. An HLO `dot` whose result type is an integer therefore cannot be lowered directly. This `OpExpanderPass` rewrites such a dot into `convert(int→F32) · convert(int→F32)` feeding an F32 `dot`, then `convert(F32→int)` on the result. The integer matmul is *emulated* on the float hardware. This is the same F32-emulation strategy used for int8 quantize lowering ([§4.28](int8-quantize-legalization.md)); the two passes are siblings in intent.
 
 ### Entry Point
 
@@ -325,7 +325,7 @@ Raw read from `_rodata.bin` (VA 0x410830 → dump offset 0x203ef0): `01 01 00 00
 
 ## Cross-References
 
-- [Int8 Quantize](int8-quantize.md) — §4.28, the F32-emulation theme applied to int8 matmul lowering
+- [INT8 Uniform-Quantize / Dequantize Legalization](int8-quantize-legalization.md) — §4.28, the F32-emulation theme applied to int8 matmul lowering
 - [Integer All-Reduce & Scalar-Reduce Decomposition](int-scalar-reduce-decomposition.md) — §4.10, integer-op decomposition at the HLO level
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — the Tensorizer auto-cast machinery keyed by the `auto_cast` frontend attribute
 - [Numerics](../numerics/precision-model.md) — Part 9, the F32/BF16/FP8 datapath precision model these passes feed into

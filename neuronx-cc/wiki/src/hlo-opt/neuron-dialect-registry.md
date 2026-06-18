@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`hlo2penguin` is the front-half MLIR driver of the Neuron compiler: it imports an XLA module (MHLO / StableHLO), runs the `hilo` pass pipeline ([4.33](hlo2penguin-mlir-pipeline.md)), and re-emits textual Python targeting `neuronxcc.starfish.penguin.ir`. A reimplementer's first instinct is to look for a **Neuron MLIR dialect** — a `neuron::NeuronDialect` registering `neuron.*` ops, types, and attributes. **That dialect does not exist.** `hlo2penguin` defines zero custom dialect ops, types, attrs, or interfaces. Every `hilo::*` class in RTTI is a `mlir::PassWrapper<…>` or a `RewritePattern`; `hilo` is a C++ pass *namespace* ("HIgh-Level-Optimizer"), never a dialect.
+`hlo2penguin` is the front-half MLIR driver of the Neuron compiler: it imports an XLA module (MHLO / StableHLO), runs the `hilo` pass pipeline ([4.32](hlo2penguin-mlir-pipeline.md)), and re-emits textual Python targeting `neuronxcc.starfish.penguin.ir`. A reimplementer's first instinct is to look for a **Neuron MLIR dialect** — a `neuron::NeuronDialect` registering `neuron.*` ops, types, and attributes. **That dialect does not exist.** `hlo2penguin` defines zero custom dialect ops, types, attrs, or interfaces. Every `hilo::*` class in RTTI is a `mlir::PassWrapper<…>` or a `RewritePattern`; `hilo` is a C++ pass *namespace* ("HIgh-Level-Optimizer"), never a dialect.
 
 The MLIRContext eagerly loads exactly **three** upstream dialects — `mhlo`, `stablehlo`, `func` — in `hilo::initializeMLIRContext` @0x1ee0500. The remaining ~30 dialects in the statically-linked roster (chlo, tensor, arith, quant, shape, sdy, plus a dead XLA-GPU cluster of gpu/NVVM/ROCDL/linalg/vector/scf/affine) arrive lazily as dependent dialects of the importer and conversion passes, or are linked but never reached on the Trainium path. The genuine "Neuron op set" is therefore **data, not C++ op classes**: a vocabulary of 26 `AwsNeuron*` `custom_call_target` strings carried on upstream `{mhlo,stablehlo}.custom_call` ops, a `FusionKind`/`CompositeKind` string-attr vocabulary, and 9 `neuron.*` discardable/inherent attributes.
 
@@ -74,7 +74,7 @@ The linked binary carries 33 distinct `*Dialect` typeinfo classes (RTTI: typeinf
 
 > **NOTE —** RTTI confirms **33** distinct `*Dialect` typeinfo classes in this build; an earlier pass cited 31. Re-grounded count is 33 (`rg -o '[A-Za-z_]*DialectE' rtti.json | sort -u`). The discrepancy is two additional upstream dialects, none Neuron-authored — the verdict (zero Neuron dialects) is unchanged. **CONFIRMED.**
 
-> **QUIRK —** the `gpu`/`NVVM`/`ROCDL`/`xla::gpu`/`linalg`/`vector`/`scf` cluster is the statically-linked XLA-GPU MLIR pipeline. ~10,000 `nvvm|NVVM|XlaGpu|xla::gpu` functions are in the binary but **off the Trainium code path** — they exist because `hlo2penguin` links the whole XLA MLIR registration TU set. This cluster is the sole origin of the g2s strings (§g2s). There is **no** `hilo::*Dialect`, `neuron::*Dialect`, `tonga::*Dialect`, or `penguin::*Dialect` typeinfo anywhere. `tonga` appears as a namespace *string* only (it is the downstream backend dialect, not loaded here — [4.2](hlo-to-native-kernel-lowering.md)).
+> **QUIRK —** the `gpu`/`NVVM`/`ROCDL`/`xla::gpu`/`linalg`/`vector`/`scf` cluster is the statically-linked XLA-GPU MLIR pipeline. ~10,000 `nvvm|NVVM|XlaGpu|xla::gpu` functions are in the binary but **off the Trainium code path** — they exist because `hlo2penguin` links the whole XLA MLIR registration TU set. This cluster is the sole origin of the g2s strings (§g2s). There is **no** `hilo::*Dialect`, `neuron::*Dialect`, `tonga::*Dialect`, or `penguin::*Dialect` typeinfo anywhere. `tonga` appears as a namespace *string* only (it is the downstream backend dialect, not loaded here — [4.33](hlo-to-native-kernel-lowering.md)).
 
 ---
 
@@ -98,7 +98,7 @@ These are the literal `custom_call_target` strings the Neuron front-end recogniz
 
 Plus two **phase-delimiter markers** (not lowerable ops): `AwsNeuronModuleMarkerStart-{Forward,Backward}` @0x39dc10 / 0x3cd1d0 and `AwsNeuronModuleMarkerEnd-*`. The static-analysis marker class string `NeuronTensorOp` @0x809294-region and verifier class `NeuronHloVerifier` are also present.
 
-> **NOTE —** the roster grounded here is 28 distinct `AwsNeuron*` strings; subtracting the 2 `ModuleMarker` delimiter families gives the **26** genuine `custom_call_target` ops. **CONFIRMED** (`sort -u` on `strings.json`). Per-target lowering lives in the `hilo::Convert*` / `hilo::Legalize*` rewrite passes ([4.33](hlo2penguin-mlir-pipeline.md)).
+> **NOTE —** the roster grounded here is 28 distinct `AwsNeuron*` strings; subtracting the 2 `ModuleMarker` delimiter families gives the **26** genuine `custom_call_target` ops. **CONFIRMED** (`sort -u` on `strings.json`). Per-target lowering lives in the `hilo::Convert*` / `hilo::Legalize*` rewrite passes ([4.32](hlo2penguin-mlir-pipeline.md)).
 
 ### The FusionKind / CompositeKind Vocabulary
 
@@ -207,5 +207,5 @@ No fabricated anchors. The non-cold `initializeMLIRContext` ea is `null` in `fun
 
 ## Cross-References
 
-- [hlo2penguin MLIR Pipeline Order & Entry Flow](hlo2penguin-mlir-pipeline.md) — 4.33, the `hilo` pass sequence that consumes this vocabulary
-- [HLO → Native / NKI Kernel Lowering](hlo-to-native-kernel-lowering.md) — 4.2, how the `AwsNeuron*` custom-call vocabulary lowers to native/NKI kernels
+- [hlo2penguin MLIR Pipeline Order & Entry Flow](hlo2penguin-mlir-pipeline.md) — 4.32, the `hilo` pass sequence that consumes this vocabulary
+- [HLO → Native / NKI Kernel Lowering](hlo-to-native-kernel-lowering.md) — 4.33, how the `AwsNeuron*` custom-call vocabulary lowers to native/NKI kernels

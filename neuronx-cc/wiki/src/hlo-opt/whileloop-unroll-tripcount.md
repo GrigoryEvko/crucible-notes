@@ -6,9 +6,9 @@
 
 `hlo-opt` carries **two** distinct while-loop unrollers and they are not the same pass twice. `xla::UnrollWhileLoop` (registration #25, `--passes` key `unroll-while-loop`) is a **bespoke minimal** unroller: for every `kWhile` it asks the shared trip-count engine for a static count (capped at 128), and if the count is known it explodes the loop into one cloned-and-`Call`ed body per iteration — no body-size budget, no `WhileLoopConfig`, no partial unroll. `xla::hilo::NeuronWhileLoopUnroller` (registration #112, key `while_loop_unroller`) is a **port of upstream XLA `WhileLoopUnroller`** with the full apparatus: module canonicalisation, structural+trip-count eligibility, a three-gate instruction-explosion budget, a full-vs-partial (`wrap_in_trivial_loop`) dispatch, and two Neuron-specific deltas — the budget *defaults* baked into the pass constructor and a boundary-marker cleanup step. Both unrollers share exactly one engine, `while_loop_analysis.cc`'s `ComputeWhileLoopTripCount` / `MatchTrivialLoopTripCount`.
 
-A third pass, `xla::hilo::NeuronRewriteAllGatherTripCount` (registration #111, key `aws_neuron_rewrite_all_gather_trip_count`), is an `OpExpander` that is *trip-count-aware but does not unroll*. It matches the `all_gather(reshape(dynamic_slice(get_tuple_element(parameter))))` idiom inside a known-trip-count while body — the pattern that gathers one slice of a loop-carried tensor each iteration — and rewrites it to gather the **full trip-count-sized** tensor once, then re-derive the per-iteration view by dynamic-slice. It is the dual of the collective-motion family ([4.11](whileloop-collective-codemotion.md)): instead of hoisting the collective out of the loop body wholesale, it hoists the *gathered extent* up to the whole trip count.
+A third pass, `xla::hilo::NeuronRewriteAllGatherTripCount` (registration #111, key `aws_neuron_rewrite_all_gather_trip_count`), is an `OpExpander` that is *trip-count-aware but does not unroll*. It matches the `all_gather(reshape(dynamic_slice(get_tuple_element(parameter))))` idiom inside a known-trip-count while body — the pattern that gathers one slice of a loop-carried tensor each iteration — and rewrites it to gather the **full trip-count-sized** tensor once, then re-derive the per-iteration view by dynamic-slice. It is the dual of the collective-motion family ([4.13](whileloop-collective-codemotion.md)): instead of hoisting the collective out of the loop body wholesale, it hoists the *gathered extent* up to the whole trip count.
 
-This page reconstructs all three: the `UnrollWhileLoop::Run` clone-and-`Call` rewrite, the shared `ComputeWhileLoopTripCount` analysis (induction-var detection → init evaluation → closed-form match → bounded brute-force simulation), the `NeuronWhileLoopUnroller` driver and its budget constants (trip-count ≤ 1000, body ≤ 100000, trip×body ≤ 800000), the full/partial split, and the all-gather rewrite. The boundary-marker coupling that both #112 and the unrolled output depend on is owned by [4.14](boundary-markers-layer-cut.md); the HLO opcode/channel-id/replica-group concepts are owned by [Part 13](../part13/channel-id-replica-group.md).
+This page reconstructs all three: the `UnrollWhileLoop::Run` clone-and-`Call` rewrite, the shared `ComputeWhileLoopTripCount` analysis (induction-var detection → init evaluation → closed-form match → bounded brute-force simulation), the `NeuronWhileLoopUnroller` driver and its budget constants (trip-count ≤ 1000, body ≤ 100000, trip×body ≤ 800000), the full/partial split, and the all-gather rewrite. The boundary-marker coupling that both #112 and the unrolled output depend on is owned by [4.12](boundary-markers-layer-cut.md); the HLO opcode/channel-id/replica-group concepts are owned by [Part 13](../part13/channel-id-replica-group.md).
 
 For reimplementation, the contract is:
 
@@ -85,7 +85,7 @@ function UnrollWhileLoop_Run(module):                       // 0x1f733a0
 
 > **NOTE — 128 is a simulation cap, not a "max unroll" budget.** `ComputeWhileLoopTripCount`'s second argument bounds only the brute-force iteration-count *simulation* (the fallback path). A loop whose count is recovered in *closed form* by `MatchTrivialLoopTripCount` reports that count even if it exceeds 128 — but #25 then unrolls all of it, because it has no `InitialFeasibilityCheck`. In practice #25 is the small-loop path; the budgeted #112 is what protects against explosion on large counts.
 
-> **QUIRK — `set_channel_id` per clone is mandatory for correctness, not cosmetic.** A collective's `channel_id` is the cross-replica rendezvous handle. If every unrolled copy kept the body's original id, the runtime would try to pair *N* distinct iteration-`i` collectives onto one handle and hang or mis-route. Drawing a fresh `NextChannelId` per clone is the same idiom #112's `UnrollSingleIterationOfTrivialLoop` uses and the direct inverse of #111's *reuse* policy (see [4.11](whileloop-collective-codemotion.md)).
+> **QUIRK — `set_channel_id` per clone is mandatory for correctness, not cosmetic.** A collective's `channel_id` is the cross-replica rendezvous handle. If every unrolled copy kept the body's original id, the runtime would try to pair *N* distinct iteration-`i` collectives onto one handle and hang or mis-route. Drawing a fresh `NextChannelId` per clone is the same idiom #112's `UnrollSingleIterationOfTrivialLoop` uses and the direct inverse of #111's *reuse* policy (see [4.13](whileloop-collective-codemotion.md)).
 
 ### Function Map
 
@@ -196,7 +196,7 @@ NeuronWhileLoopUnroller::Run (0x20013a0)
   ├─ per loop:  [this+0x30] ? UnrollInternalWrappedAndReturnReplacement   (0x2000020)  ── partial/wrapped
   │                         : UnrollInternal                              (0x1ffea60)  ── full
   ├─ CallInliner::Run(module)                          (call 0x2001bb4)
-  └─ if boundary: NeuronAddBoundaryMarker::Run(module) (call 0x20019df)   ── see 4.14
+  └─ if boundary: NeuronAddBoundaryMarker::Run(module) (call 0x20019df)   ── see 4.12
 ```
 
 ### Algorithm — `Run` @ `0x20013a0`
@@ -229,7 +229,7 @@ function NeuronWhileLoopUnroller_Run(module, exec_threads):     // 0x20013a0
 
     CallInliner::Run(module, exec_threads)                          // 0x2001bb4 — inline per-iteration Calls
     if boundary:
-        NeuronAddBoundaryMarker::Run(module, exec_threads)          // 0x20019df — Neuron-only, see 4.14
+        NeuronAddBoundaryMarker::Run(module, exec_threads)          // 0x20019df — Neuron-only, see 4.12
     return StatusOr{changed}
 ```
 
@@ -373,7 +373,7 @@ function UnrollSingleIterationOfTrivialLoop(while_op, cfg, i):  // 0x1ffde80
 
 ### Purpose
 
-An `OpExpander` (shares `OpExpanderPass::Run` @ `0x29f0bb0`) that recognises the "gather one slice per iteration" idiom inside a known-trip-count while body and replaces it with a single gather of the **full** trip-count-sized tensor, then re-derives the per-iteration view by dynamic-slice. It does not unroll; it changes *what gets gathered*. The direction is the dual of `NeuronMoveAllGatherWhileLoop` ([4.11](whileloop-collective-codemotion.md)): rather than moving the collective out of the body, it widens the gathered extent to the whole loop-carried tensor.
+An `OpExpander` (shares `OpExpanderPass::Run` @ `0x29f0bb0`) that recognises the "gather one slice per iteration" idiom inside a known-trip-count while body and replaces it with a single gather of the **full** trip-count-sized tensor, then re-derives the per-iteration view by dynamic-slice. It does not unroll; it changes *what gets gathered*. The direction is the dual of `NeuronMoveAllGatherWhileLoop` ([4.13](whileloop-collective-codemotion.md)): rather than moving the collective out of the body, it widens the gathered extent to the whole loop-carried tensor.
 
 ### Matcher — `InstructionMatchesPattern` @ `0x1fd7300` (2012 B)
 
@@ -408,7 +408,7 @@ function InstructionMatchesPattern(inst):                      // 0x1fd7300
     return true
 ```
 
-> **NOTE — the DS-leading-dim == trip-count invariant is shared with the reduce-scatter motion pass.** The string "...dynamic sliced does not match the trip count" is the same invariant `MatchReduceScatterPattern` enforces (see [4.11](whileloop-collective-codemotion.md)). Both passes key on "the loop-carried tensor's leading dimension is exactly the trip count", because that is what makes "this slice is iteration *i*'s view" provable.
+> **NOTE — the DS-leading-dim == trip-count invariant is shared with the reduce-scatter motion pass.** The string "...dynamic sliced does not match the trip count" is the same invariant `MatchReduceScatterPattern` enforces (see [4.13](whileloop-collective-codemotion.md)). Both passes key on "the loop-carried tensor's leading dimension is exactly the trip count", because that is what makes "this slice is iteration *i*'s view" provable.
 
 ### Rewrite — `ExpandInstruction` @ `0x1fd7cc0` (4217 B)
 
@@ -504,16 +504,16 @@ StatusOr<HloInstruction*> NeuronRewriteAllGatherTripCount::ExpandInstruction(Hlo
 
 | Name | Relationship |
 |---|---|
-| `NeuronAddBoundaryMarker` (Run @ `0x2002370`) | #112's final cleanup step; stamps boundary markers around the unrolled region — see [4.14](boundary-markers-layer-cut.md) |
-| `NeuronMoveAllGatherWhileLoop` / `MoveReduceScatterWhileLoop` | collective-motion duals of #111; share the DS-leading-dim==trip-count invariant — see [4.11](whileloop-collective-codemotion.md) |
+| `NeuronAddBoundaryMarker` (Run @ `0x2002370`) | #112's final cleanup step; stamps boundary markers around the unrolled region — see [4.12](boundary-markers-layer-cut.md) |
+| `NeuronMoveAllGatherWhileLoop` / `MoveReduceScatterWhileLoop` | collective-motion duals of #111; share the DS-leading-dim==trip-count invariant — see [4.13](whileloop-collective-codemotion.md) |
 | `WhileLoopTripCountAnnotator` (@ `0x2731e94`) | the *annotation* path (`WhileLoopBackendConfig.known_trip_count`); **not** consulted by any pass here |
 | `CallInliner` | inlines the per-iteration `Call` computations both unrollers emit |
 | Backend `full_unroll` (libwalrus) | the separate later-stage full unroll — out of scope here (HLO-level only) |
 
 ## Cross-References
 
-- [Collective Motion across While Loops](whileloop-collective-codemotion.md) — 4.11, the all-gather/reduce-scatter motion duals of #111's trip-count rewrite
-- [Boundary Markers](boundary-markers-layer-cut.md) — 4.14, the `NeuronAddBoundaryMarker` step #112 runs after unrolling
+- [Collective Motion across While Loops](whileloop-collective-codemotion.md) — 4.13, the all-gather/reduce-scatter motion duals of #111's trip-count rewrite
+- [Boundary Markers](boundary-markers-layer-cut.md) — 4.12, the `NeuronAddBoundaryMarker` step #112 runs after unrolling
 - [Collective Stream-ID & Channel-ID Family](collective-stream-channel-id.md) — `hlo_query::NextChannelId` and the channel-id uniqueness model the unrollers feed
 - [The hlo-opt Pass Registry](pass-registry.md) — registration orders #25 / #111 / #112 and the `--passes` keys
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — where the `Frontend` (`hlo-opt`) job sits in the descent
