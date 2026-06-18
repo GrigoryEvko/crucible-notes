@@ -275,6 +275,9 @@
 # Part 8 — The libwalrus Backend
 
 - [BackendPass Hierarchy & the 150-Name→121-Class Registry](walrus/backendpass-registry.md)
+- [The walrus Pass Pipeline & Optlevel Planes](walrus/pass-pipeline-optlevels.md)
+- [translate-nki-ast-to-bir & Loop Unroll Passes](walrus/translate-nki-unroll.md)
+- [DMA Legalization — Strided / CCE / Generic-Indirect](walrus/dma-legalization.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
