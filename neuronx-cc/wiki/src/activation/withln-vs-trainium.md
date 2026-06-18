@@ -88,7 +88,7 @@ for (set : act_info["act_func_sets"])      // key string @ 0x1c83615
                  set["act"]);              // {func_name: budget} map  — the menu
 file_keys = act_info["pwp_file_keys"];     // key string @ 0x1c83607  == ["bkt_bin","ctrl_bin","profile_json"]
 // the cmp $0x1e near 0x115b767 is an ActivationFunctionType enum compare inside the
-// set-cover Rb_tree (see 10.1 pwp-model), NOT an arch-level gate.
+// set-cover Rb_tree (see 10.7 set-cover), NOT an arch-level gate.
 ```
 
 > **GOTCHA —** the arch switch inside the ctor (`getArchModel`, default case `"LowerAct: unknown arch type"` @ `0x1c8364d`) is for the **HWM cost/geometry model**, not target selection. It picks per-core SBUF/PSUM geometry, never the trainium-vs-with_ln catalog. The set roster is 100% the JSON content; arch and PWP-target are two independent inputs (see [§ The Two Orthogonal Axes](#the-two-orthogonal-axes)).
@@ -177,7 +177,7 @@ The pattern: **all nine `derivative_*` heroes are gone**, `silu` (and its deriva
 
 ### Why two catalogs and not one
 
-Shipping two independent directories lets the compiler embed the *minimal* image for inference (smaller NEFF, fewer LUT refills) and the *full* image for training, with the set-cover packing ([10.1](pwp-model.md)) optimized independently for each. Because with_ln's shared sets carry fewer co-resident functions, their blob section count and packing differ, so the blobs are independently generated:
+Shipping two independent directories lets the compiler embed the *minimal* image for inference (smaller NEFF, fewer LUT refills) and the *full* image for training, with the set-cover packing ([10.7](set-cover.md)) optimized independently for each. Because with_ln's shared sets carry fewer co-resident functions, their blob section count and packing differ, so the blobs are independently generated:
 
 > **CORRECTION (D-M16) —** an earlier assumption held that with_ln re-uses trainium's blobs (a symlink/dedup). It does not. All 11 commonly-named `*_bkt.bin` blobs **differ byte-for-byte** between the directories (`md5`): e.g. `sqrt_and_others_bkt.bin` is `f439cf3e…` in trainium and `0bc145ce…` in with_ln. The *only* byte-identical file across the two directories is the (blank) `version.json` (`md5 bd412555…` both). The fingerprint-dedup hits reported elsewhere were cross-cpython copies (cp310/11/12 of the *same* directory), not cross-target. with_ln is a first-class, separately-built image.
 
@@ -215,7 +215,7 @@ The help string carries **no** `with_ln` token and **no** PWP-target token. The 
 
 The PWP target is the `--act-root-json` path: `pwp_bin_trainium` (21) or `pwp_bin_with_ln` (14). There are only **two** directories and **no** per-gen split — no `pwp_bin_gen2/3/4`. A single PWP target serves all arches because the table-load codegen is **gen-invariant**:
 
-> **NOTE —** the `act_func_set_id` encoding and the `LoadActFuncSet` codegen are gen-invariant — one `CoreV2` visitor is reused for every gen, and opcode `0x23` (`ActivationTableLoad`) is identical across core_v2 and core_v4 (see [10.1](pwp-model.md)). Because the load mechanism does not vary by arch, the PWP catalog does not need a per-arch variant. The single dimension that *does* vary is train-vs-inference profile — and that is exactly the trainium/with_ln split.
+> **NOTE —** the `act_func_set_id` encoding and the `LoadActFuncSet` codegen are gen-invariant — one `CoreV2` visitor is reused for every gen, and opcode `0x23` (`ActivationTableLoad`) is identical across core_v2 and core_v4 (see [10.6 (LoadActFuncSet)](loadactfuncset.md)). Because the load mechanism does not vary by arch, the PWP catalog does not need a per-arch variant. The single dimension that *does* vary is train-vs-inference profile — and that is exactly the trainium/with_ln split.
 
 Therefore "trainium" in the directory name is the **device-family label for the full set** (named after the gen2 device that the full training roster targets), not a per-arch binding. The two axes are independent inputs to the compile; no ISA target-config field disambiguates the PWP target.
 
@@ -273,7 +273,9 @@ The mechanism is fully resolved from the binary; the *policy* is not. This bound
 
 ## Cross-References
 
-- [PWP Activation Model](pwp-model.md) — 10.1, the act_func_set_id encoding, opcode `0x23` table-load, and the set-cover packing both catalogs feed
+- [PWP Activation Model](pwp-model.md) — 10.1, the piecewise-polynomial evaluation model both catalogs' coefficients feed
+- [LoadActFuncSet](loadactfuncset.md) — 10.6, the `act_func_set_id` encoding and opcode `0x23` table-load that is gen-invariant across both catalogs
+- [Set-Cover](set-cover.md) — 10.7, the greedy set-cover packing each catalog drives independently
 - [Activation Function Catalog](act-function-catalog.md) — 10.2, the per-set function rosters and budgets that this page compares between targets
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — where `WalrusDriver` sits and how the `walrus_driver` command line (carrying `--act-root-json`) is emitted
 - [SBUF/PSUM Geometry](../arch/sbuf-psum-geometry.md) — the per-core HWM geometry chosen by the orthogonal arch axis (`getArchModel`)

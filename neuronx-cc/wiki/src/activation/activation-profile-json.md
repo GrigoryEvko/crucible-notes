@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Every loadable activation set in `neuronx_cc` ships as **three** files: two binary blobs (`<set>_bkt.bin`, `<set>_ctrl.bin`) and one JSON manifest (`<set>.json`). This page documents that JSON manifest — the **per-set combined `profile_json`** — and the native code that reads it at NEFF-pack time. The manifest is not the activation numerics (those live one tier up, in `pwp_jsons/<func>_Np.json`, [§10.1](pwp-model.md)); nor is it the packed hardware LUT (that is the two blobs, [§10.4](#)). It is the **index and denormalized control block** that fuses every function co-resident in a set into one image: it names the two blobs, counts their entries, records where each function's data begins inside them (coarse and per-exponent-octave), and carries a 30-field scalar hardware-control record per function.
+Every loadable activation set in `neuronx_cc` ships as **three** files: two binary blobs (`<set>_bkt.bin`, `<set>_ctrl.bin`) and one JSON manifest (`<set>.json`). This page documents that JSON manifest — the **per-set combined `profile_json`** — and the native code that reads it at NEFF-pack time. The manifest is not the activation numerics (those live one tier up, in `pwp_jsons/<func>_Np.json`, [§10.1](pwp-model.md)); nor is it the packed hardware LUT (that is the two blobs, [§10.4](bkt-ctrl-blob.md)). It is the **index and denormalized control block** that fuses every function co-resident in a set into one image: it names the two blobs, counts their entries, records where each function's data begins inside them (coarse and per-exponent-octave), and carries a 30-field scalar hardware-control record per function.
 
 The schema is small and regular: a fixed **9 top-level keys**, and a `profile_meta_data[]` array of **exactly 30 fields** per function. Both counts are invariant across all 35 shipped sets (21 `pwp_bin_trainium` + 14 `pwp_bin_with_ln`). The two index maps that every prior reverse-engineering pass deferred — `func_exp_to_bkt_start_idx` and `func_exp_to_ctl_start_idx` — are decoded here: they are **per-octave** region-base tables whose list length encodes the function's symmetry class (2 = asymmetric, 1 = symmetric/pos-only, 0 = the runtime-alpha `parametric_relu`).
 
@@ -28,7 +28,7 @@ The consumer story carries one sharp **correction**. The task that motivated thi
 | **`profile_meta_data` fields** | exactly **30** per function (identical across all 35 sets) |
 | **Funcs per set** | = `len(profile_meta_data)` = `|func_to_bkt_start_idx|` = roster `act:{}` size (exp set: 15) |
 | **Roster (tier above)** | `act_info.json` — `{pwp_file_keys, act_func_sets[]}`; [§10.x catalog](act-function-catalog.md) |
-| **Blobs (tier below)** | `<set>_bkt.bin` (32 B/entry), `<set>_ctrl.bin` (packed u32/octave); [§10.4](#) |
+| **Blobs (tier below)** | `<set>_bkt.bin` (32 B/entry), `<set>_ctrl.bin` (packed u32/octave); [§10.4](bkt-ctrl-blob.md) |
 | **Numerics (tier above)** | `pwp_jsons/<func>_Np.json` — 24-key polynomial profile; [§10.1](pwp-model.md) |
 | **Native consumer** | `neuronxcc::backend::NeffFileWriter::updateFromActJsonFile` @ `0x1542db0` (`libwalrus`) |
 | **Compile-time roster reader** | `neuronxcc::backend::LowerPWPImpl::fillAllActInfos` @ `0x115af90` (`libwalrus`) |
@@ -46,7 +46,7 @@ The page draws on the per-set schema decode in **D-AG08** and the per-function n
 
 | Key | Type | Role |
 |---|---|---|
-| `bkt_bin` | string | Bucket/coefficient blob reference, e.g. `"exp_and_others_bkt.bin"`. The 32-byte-entry poly-coeff blob ([§10.4](#)). |
+| `bkt_bin` | string | Bucket/coefficient blob reference, e.g. `"exp_and_others_bkt.bin"`. The 32-byte-entry poly-coeff blob ([§10.4](bkt-ctrl-blob.md)). |
 | `bkt_entry_cnt` | int | Number of 32-byte entries in `bkt.bin`. exp set = **941**. `bkt_entry_cnt × 32` = `bkt.bin` byte size. |
 | `ctl_bin` | string | Control/octave blob reference, e.g. `"exp_and_others_ctrl.bin"`. |
 | `ctl_entry_cnt` | int | Number of packed-u32 octave words in `ctrl.bin` (pos + neg, summed over funcs). exp set = **89**. |
@@ -319,13 +319,17 @@ What this confirms, key by key:
 
 ### 5c. Runtime addressing — no profile read at op time
 
-Once a set is resident, an `Activation` op (opcode `0x21`) names its function by `func_id` (the silicon LUT code = `profile_meta_data[f].func_id`, [§3A](#a-identity-2-fields)) at instruction field `+0x23`. The engine resolves `func_id` against the **currently-resident** set's tables, located at the `func_to_*_start_idx` offsets baked into the blobs. No per-set `profile_json` is opened at op time: the manifest's job — binding `func_id` to blob offsets plus the 30 control fields — was performed once, offline, when the blobs were generated.
+Once a set is resident, an `Activation` op (opcode `0x21`) names its function by `func_id` (the silicon LUT code = `profile_meta_data[f].func_id`, [§3A](#a-identity-2-fields)), packed into the encoded **bundle wire byte `+0x23`** — the same selector slot the `LoadActFuncSet` uses for its set index ([10.6 §1/§2](loadactfuncset.md)). The engine resolves `func_id` against the **currently-resident** set's tables, located at the `func_to_*_start_idx` offsets baked into the blobs.
+
+> **NOTE — `+0x23` is the bundle wire byte, not an `InstActivation` IR-struct offset.** The func code reaches the engine in encoded-bundle byte `+0x23` (the 64-byte compute word's activation-table/function selector slot); on the in-memory `InstActivation` IR object the `ActivationFunctionType` lives at `+0x90`/`+0x120` ([10.2 §1](act-function-catalog.md), [10.6 §1](loadactfuncset.md)), and the silicon LUT `func_id` is supplied through the 31-entry func-remap at encode time. Do not read `+0x23` as a field offset of the BIR instruction struct.
+
+No per-set `profile_json` is opened at op time: the manifest's job — binding `func_id` to blob offsets plus the 30 control fields — was performed once, offline, when the blobs were generated.
 
 ---
 
 ## 6. The tie to the blobs: profile = manifest, blobs = packed tables
 
-The per-set `profile_json` and the `bkt`/`ctrl` blobs ([§10.4](#)) are two views of the same data. The profile is the human-readable index; the blobs are the packed tables.
+The per-set `profile_json` and the `bkt`/`ctrl` blobs ([§10.4](bkt-ctrl-blob.md)) are two views of the same data. The profile is the human-readable index; the blobs are the packed tables.
 
 | Profile datum | Blob datum it indexes |
 |---|---|
@@ -350,11 +354,11 @@ A reimplementer needs both: the per-set profile (this page) gives the function�
 | No native `FindActInfo` symbol; the per-set profile is never parsed natively | **CONFIRMED** | symbol sweep → 0 hits; profile keys in 0 decompiled bodies; `FindActInfo.so` is a Cython roster locator. |
 | `updateFromActJsonFile` matches by name → asserts (1228) → embeds `binary` blobs | **CONFIRMED** | `libwalrus` IDA body @ `0x1542db0` (707 lines), D-AG08; assert string + line. |
 | `fma_indirection_src_sel=2` = prelu α/bias indirection select | **STRONG / INFERRED** | unique-to-prelu pattern (CONFIRMED); silicon meaning of `2` INFERRED. |
-| profile↔blob byte ties (sat pointers, ctrl bkt-base, entry counts) | **STRONG** | cross-validated against the [§10.4](#) blob decode; not re-byte-validated here. |
+| profile↔blob byte ties (sat pointers, ctrl bkt-base, entry counts) | **STRONG** | cross-validated against the [§10.4](bkt-ctrl-blob.md) blob decode; not re-byte-validated here. |
 | Roster also ships as obfuscated alias `l`, byte-identical | **STRONG** | reported in D-AG08; the literal `l` file was not present in this extract to re-verify. |
 
 > **GOTCHA — the offline table generator is not in the wheel.** The build-time tool that consumes the per-function `pwp_jsons` and emits the per-set profile + `bkt`/`ctrl` blobs ships nowhere in the wheel. The denormalization rules (field renames, the 4-way saturation-pointer packing, the per-octave `func_exp` computation) are **inferred from the output**, not read from the generator. A reimplementer can reproduce the *runtime* and *NEFF-pack* behavior exactly from the shipped artifacts; reproducing the *generator* requires deriving these rules from the patterns documented in [§3](#3-the-30-field-profile_meta_data-record)–[§4](#4-the-index-maps-func_to_-and-func_exp_to_).
 
 ---
 
-*Sources: per-set schema decode and the `libwalrus` consumer (D-AG08); per-function PWP numerics spec (D-M05). Cross-references: the polynomial activation model ([§10.1](pwp-model.md)); the `bkt`/`ctrl` blob layout ([§10.4](#)); NEFF feature flags ([§12.5](../formats/neff-feature-flags.md)).*
+*Sources: per-set schema decode and the `libwalrus` consumer (D-AG08); per-function PWP numerics spec (D-M05). Cross-references: the polynomial activation model ([§10.1](pwp-model.md)); the `bkt`/`ctrl` blob layout ([§10.4](bkt-ctrl-blob.md)); NEFF feature flags ([§12.5](../formats/neff-feature-flags.md)).*

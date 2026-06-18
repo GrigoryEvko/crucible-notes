@@ -6,7 +6,7 @@
 
 The Activation (Scalar) engine evaluates 31 distinct activation functions, but it does not carry 31 independent fixed-function units. Nine of them are **hardwired elementwise** silicon — relu, abs, identity, square, and their kin — that cost nothing to keep resident. The other twenty-two are **piecewise-polynomial** functions, each realized by a coefficient table (LUT) that must be *loaded* into the engine before it can compute that function. The engine LUT holds **one bundle at a time**, so the compiler cannot freely mix arbitrary polynomial functions in a single pass.
 
-This page documents two things that together form the activation "instruction set" the rest of Part 10 builds on. First, the **catalog**: which functions exist (the 31-member `bir::ActivationFunctionType` enum), and the hardwired-vs-LUT split that decides which ones need a table load. Second, the **function-set structure**: the `act_info.json` roster of pre-baked LUT bundles — **21 sets** for the `trainium` profile, **14 sets** for the `with_ln` profile — each naming a small group of functions that are co-resident when that bundle is loaded. The compiler's set-cover allocator (LowerPWPImpl `calculateBestSets`, see 10.6 — not yet written) picks the minimal sequence of bundles to cover a graph's requested functions, emitting one `InstLoadActFuncSet` per chosen set.
+This page documents two things that together form the activation "instruction set" the rest of Part 10 builds on. First, the **catalog**: which functions exist (the 31-member `bir::ActivationFunctionType` enum), and the hardwired-vs-LUT split that decides which ones need a table load. Second, the **function-set structure**: the `act_info.json` roster of pre-baked LUT bundles — **21 sets** for the `trainium` profile, **14 sets** for the `with_ln` profile — each naming a small group of functions that are co-resident when that bundle is loaded. The compiler's set-cover allocator (LowerPWPImpl `calculateBestSets`, [10.7 (set-cover)](set-cover.md)) picks a greedy first-fit sequence of bundles to cover a graph's requested functions, emitting one `InstLoadActFuncSet` per chosen set ([10.6 (LoadActFuncSet)](loadactfuncset.md) for the codegen).
 
 Two facts shape everything downstream and are easy to get wrong. First, the per-function integer in an `act` map is **not** the LUT bucket count — it is a *profile-variant selector* (`_Np`) that indexes a separate per-function profile in `pwp_jsons/`; the actual polynomial resolution `lut_size` is a different, independent number (`exp` selector 400, but `lut_size` 777). Second, `with_ln` is a strict **functional subset** of `trainium` — it adds no layernorm-specific activation; it merely strips the backward-pass (derivative) and utility functions out of co-residency to leave more LUT headroom on the forward/inference path.
 
@@ -142,7 +142,7 @@ struct ActFuncSet {
 
 > **CORRECTION —** the budget integer is **not** the polynomial bucket count. It is the `_Np` profile-variant selector — a foreign key into `pwp_jsons/<func>_<budget>p.json`. The actual resolution `lut_size` lives *inside* that profile and is an independent number. Verified seven ways: `exp` 400→`lut_size` 777 · `softplus` 40→828 · `sigmoid` 40→796 · `sqrt` 65536→1113 · `reciprocal_sqrt` 40000→1202 · `mish` 4→1099 · `gelu` 4→504. Conflating budget with `lut_size` is the single most common mistake reading these files.
 
-**Co-residency rule.** To compute activation X the compiler must load the (unique-or-cheapest) set Y whose `act` map contains X; that load *also* brings in every other function in Y. You cannot mix two heroes from different sets without a second `InstLoadActFuncSet`. The engine LUT holds one set at a time — `InstLoadActFuncSet` is the residency gate, and the allocator (10.6) is a set-cover minimiser over the requested function list.
+**Co-residency rule.** To compute activation X the compiler must load the (unique-or-cheapest) set Y whose `act` map contains X; that load *also* brings in every other function in Y. You cannot mix two heroes from different sets without a second `InstLoadActFuncSet`. The engine LUT holds one set at a time — `InstLoadActFuncSet` is the residency gate, and the allocator ([10.7](set-cover.md)) is a greedy set-cover over the requested function list.
 
 ---
 
@@ -274,7 +274,8 @@ So `with_ln` drops all 7 backward-pass derivative functions + `copy` + `memset_z
 ## 6. How the catalog is used (forward references)
 
 - **10.1 (`pwp-model.md`)** — the piecewise-polynomial evaluation model that consumes the `pwp_jsons/<func>_<budget>p.json` profiles a budget selects, and the multipass `ln` path.
-- **10.6 (`LoadActFuncSet` codegen — `activation/`, not yet written)** — the set-cover allocator `LowerPWPImpl::calculateBestSets` that picks the minimal sequence of these sets to cover a graph's requested `ActivationFunctionType` list, emitting one `InstLoadActFuncSet` (IT=6) per chosen set. This page is the *menu*; 10.6 is the *chooser*.
+- **[10.6 (`LoadActFuncSet` codegen)](loadactfuncset.md)** — the IT6 wire encoding (opcode `0x23`, the `act_func_set_id`/`act_tbl_sel` index byte), the `dynamic_pwp` gate, and the no-cost-model finding. This page is the *menu*; 10.6 is how a chosen set is *installed*.
+- **[10.7 (set-cover)](set-cover.md)** — the allocator `LowerPWPImpl::calculateBestSets` that picks a **greedy first-fit** sequence of these sets to cover a graph's requested `ActivationFunctionType` list, emitting one `InstLoadActFuncSet` (IT=6) per chosen set. 10.7 is the *chooser*.
 - **1.10 (Activation engine — `arch/`)** — the Scalar/Activation engine that holds one resident set at a time and dispatches polynomial functions by `neuron_id`.
 
 ---
@@ -291,8 +292,8 @@ So `with_ln` drops all 7 backward-pass derivative functions + `copy` + `memset_z
 | budget ≠ `lut_size` | **CONFIRMED** | 7 paired reads (exp 400→777, sqrt 65536→1113, …) |
 | with_ln ⊂ trainium function-universe | **CONFIRMED** | `comm` over `act`-key unions (re-verified) |
 | cp310/311/312 byte-identical rosters | **CONFIRMED** | md5 match across all three wheels |
-| `InstLoadActFuncSet` (IT=6) loads one set | **STRONG** | D-E02 (IT6 residency gate); codegen wire encoding is 10.6 scope |
+| `InstLoadActFuncSet` (IT=6) loads one set | **STRONG** | D-E02 (IT6 residency gate); codegen wire encoding is [10.6](loadactfuncset.md) scope |
 
-**Out of scope here** (owned by sibling pages): the `bkt`/`ctrl` blob byte-decode; the per-SET `profile_json` schema and polynomial coefficient layout; the `InstLoadActFuncSet` codegen / `table_id` wire encoding (10.6); and the per-engine legal-function gate (the libBIR `DenseMap<EngineInfo, vector<set<ActivationFunctionType>>>` static-image — structure known, contents not dumped; this is the per-arch gate on which of the 31 functions an engine accepts).
+**Out of scope here** (owned by sibling pages): the `bkt`/`ctrl` blob byte-decode; the per-SET `profile_json` schema and polynomial coefficient layout; the `InstLoadActFuncSet` codegen / `act_func_set_id` wire encoding ([10.6](loadactfuncset.md)) and the greedy set-cover allocator ([10.7](set-cover.md)); and the per-engine legal-function gate (the libBIR `DenseMap<EngineInfo, vector<set<ActivationFunctionType>>>` static-image — structure known, contents not dumped; this is the per-arch gate on which of the 31 functions an engine accepts).
 
 > *Sourced from D-M04 (PWP `act_info.json` catalog) and D-D11 (`ActivationFunctionType` enum + hardwired/PWP split), both re-verified against the shipped `act_info.json` / `pwp_jsons/` and the libBIR.so serializer addresses for this build.*

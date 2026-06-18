@@ -126,7 +126,7 @@ The datum at `inst+0xF0` is produced by `LowerPWPImpl::generateInstLoadActFuncSe
 struct AllActSetName2ActInfo;
 ```
 
-Because the `MapVector` preserves insertion order and insertion follows the JSON array, **each set's index equals its position in `act_func_sets[]`** — `exp_and_others = 0` … `derivative_gelu_apprx_sigmoid_and_others = 20` for the Trainium roster ([10.4 §11](bkt-ctrl-blob.md) lists all 21 Trainium / 14 `with_ln` sets).
+Because the `MapVector` preserves insertion order and insertion follows the JSON array, **each set's index equals its position in `act_func_sets[]`** — `exp_and_others = 0` … `derivative_gelu_apprx_sigmoid_and_others = 20` for the Trainium roster ([10.2 §3/§4](act-function-catalog.md) lists all 21 Trainium / 14 `with_ln` sets in array order).
 
 ### 3.2 The lookup and store
 
@@ -218,7 +218,7 @@ Two structural budget asserts in `generateInstLoadActFuncSet` cap the residency 
 - `"the number of activation tables must be <= 8"` — **at most 8 resident func-sets** can be referenced per engine. This is distinct from the `act_func_set_id` index range (0..20): the index numbers the *shipped catalog*, the `≤ 8` caps how many a single kernel keeps live.
 - `"Engine2UsedActSetNames.size() <= 1"` (and the CoreV4 variant `== 0`) — one func-set *family* per engine.
 
-[STRONG — pass structure, symbols, and all asserts anchored; the precise cover heuristic inside `calculateBestSets` is not byte-traced.]
+[STRONG — pass structure, symbols, and all asserts anchored. The precise cover heuristic inside `calculateBestSets` is byte-traced in [10.7 (set-cover)](set-cover.md): it is a **greedy first-fit** single forward sweep, *not* an optimal power-set minimiser — so "minimal number of loads" / "minimal cover" here means greedily-fewest by first-fit, not provably-optimal.]
 
 ---
 
@@ -297,7 +297,7 @@ Putting the pieces together, the lifecycle of a single `InstActivation(func = Si
 5. **Encode the activation** — the later `InstActivation` (opcode `0x21`) puts `Sigmoid`'s func code (`0x05`, the func-remap value) into the *same* byte `+0x23`. It carries no set id.
 6. **Run** — the engine loads the `sigmoid_and_others` `(bkt, ctrl)` image into its single resident LUT bank (the `0x23` bundle's effect), then resolves func code `0x05` against that image and evaluates the piecewise-polynomial ([10.4 §2/§7](bkt-ctrl-blob.md)).
 
-The `(set index in the load) + (func code in the activation) + (implicit residency)` triple is the complete "select and address a function on the Activation engine" mechanism. The set-cover (10.7, not yet written) is the optimisation that makes the load count minimal.
+The `(set index in the load) + (func code in the activation) + (implicit residency)` triple is the complete "select and address a function on the Activation engine" mechanism. The set-cover ([10.7](set-cover.md)) is the optimisation that makes the load count minimal.
 
 ---
 
@@ -322,6 +322,6 @@ The `(set index in the load) + (func code in the activation) + (implicit residen
 | `0xC6 → 0x23` materialisation point | INFERRED | pseudo string present; exact lowering not byte-traced |
 | Precise static↔dynamic decision rule / upstream attribute setter | SPECULATIVE | HLO/front-end, not in these binaries |
 
-> **Provenance.** Every address and string on this page was re-verified against the cp310 `libwalrus.so` / `libBIR.so` IDA sidecars (`*_functions.json`, `disasm/*.asm`, `*_rodata.bin`). The `(bkt, ctrl)` blob layout these loads select is [10.4](bkt-ctrl-blob.md); the function catalog and set roster are [Activation Function Catalog](act-function-catalog.md); the Activation (0x21) encoder that consumes the resident set is [2.11](../isa/activation-encoding.md); the engine datapath view is [1.10](../arch/activation-engine.md). The minimal-cover heuristic gets its own page (10.7, set-cover — not yet written).
+> **Provenance.** Every address and string on this page was re-verified against the cp310 `libwalrus.so` / `libBIR.so` IDA sidecars (`*_functions.json`, `disasm/*.asm`, `*_rodata.bin`). The `(bkt, ctrl)` blob layout these loads select is [10.4](bkt-ctrl-blob.md); the function catalog and set roster are [Activation Function Catalog](act-function-catalog.md); the Activation (0x21) encoder that consumes the resident set is [2.11](../isa/activation-encoding.md); the engine datapath view is [1.10](../arch/activation-engine.md). The minimal-cover heuristic gets its own page ([10.7 (set-cover)](set-cover.md)).
 
 *Sources: D-M07 (LoadActFuncSet / LUT-load mechanism), D-AG07 (PWP bkt/ctrl blob + ctrl-word packer), D-J13 (CoreV2/V4 RNG + activation-engine wire encoders).*
