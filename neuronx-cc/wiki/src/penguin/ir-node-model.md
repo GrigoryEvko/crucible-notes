@@ -70,9 +70,11 @@ The 274 classes group into nine node-model layers, each owned by a later 5.x pag
 | Axis / loop | `Axis`, `AffineAxis`, `DynamicAxis`, `SequentialAxis`, `AxisType` | [5.3](axis-loop-model.md) |
 | Affine-expr algebra | `Expr`, `AffineExpr`, `Sum/Mult/Modulo/FloorDiv/Compound`, `CC{Div,Mod}Expr` | [5.3](axis-loop-model.md) |
 | Scope / region / CF | `Module`, `Function`, `BasicBlock`, `Stmt`, `Block`, `Macro`, `While`, `Branch*` | **this page** (§ containment) |
-| High-level Operator | `NullaryOp`…`TensorContractOp`…`*TensorOp` family | [5.4](tensor-op-family.md) |
-| Native-kernel / NKI | `NativeKernel`, `NativeNkiKernel`, `BIRKernel`, `MLPKernel`, … | [5.5](tensor-op-family.md) |
-| Dependency / offloaded | `DependencyEdge`, `EdgeKind`, `Offloaded*` | [5.6](dependency-model.md) |
+| High-level Operator | `NullaryOp`…`TensorContractOp`…`*TensorOp` family | [Operator family](tensor-op-family.md) |
+| Native-kernel / NKI | `NativeKernel`, `NativeNkiKernel`, `BIRKernel`, `MLPKernel`, … | [Operator family](tensor-op-family.md) |
+| Dependency / offloaded | `DependencyEdge`, `EdgeKind`, `Offloaded*` | [Dependency model](dependency-model.md) |
+
+> **NOTE — canonical Part-5 sub-numbering.** The bracketed `[5.N]` tags elsewhere on this page are a page-local reading index, not the canonical Part-5 sequence. In the canonical Part-5 numbering, **§5.4 is the AffineExpr algebra over `pelican::Expr`** ([affine-expr-algebra.md](affine-expr-algebra.md)) and **§5.5 is the dependency model — `DependencyEdge` & `EdgeKind`** ([dependency-model.md](dependency-model.md)); the High-Level Operator (TensorOp) family lives at [tensor-op-family.md](tensor-op-family.md). The three rows above are linked by slug to avoid the `[5.4]`/`[5.5]` collision.
 
 > **QUIRK — the "registry" is open, not closed.** Unlike an MLIR dialect (a fixed `Op` table registered at startup) or LLVM (a fixed `Instruction::Opcode` enum), Penguin's node set is just "whatever classes the package defines," discovered by import. A reimplementer building from the front half must emit *constructor calls* by class name (`MhloToPythonPrinter` does exactly this, [Part 4](../hlo-opt/mhlo-to-python-printer-driver.md)); there is no integer opcode to switch on until the BIR lowering ([Part 7](../bir/)).
 
@@ -92,8 +94,8 @@ The whole node model is one SSA def-use graph rooted at `Value`. The inheritance
        └─ ComputeValue (ir/ComputeValue.py)   the use-list + RAUW + DCE contract
             ├─ ScalarValue   a scalar SSA value (the one concrete class in ComputeValue.so)
             ├─ Tensor        a tensor-valued def                       → [5.2]
-            └─ Instruction   an op that produces results               → §8, [5.4]
-                 └─ Operator   the HLO-op layer (TensorContractOp, …)  → [5.4]
+            └─ Instruction   an op that produces results               → §8, Operator family
+                 └─ Operator   the HLO-op layer (TensorContractOp, …)  → Operator family
 ```
 
 ### Value and User
@@ -159,7 +161,7 @@ The seven predicate methods named above are all CONFIRMED from individually-inde
 
 ### Operator — the HLO-op layer
 
-`Operator` (`ir/Operator.py`) ⊂ `Instruction` is the high-level, HLO-facing op layer — the graph the front-half printer ([Part 4](../hlo-opt/mhlo-to-python-printer-driver.md)) and `GradIRBuilder` build. The base adds `__init__`, `rhs_str`, `serialize`, `verify`, `verifyOperandType` (CONFIRMED), and subclasses add per-op operands/indices/axes (the whole §8 TensorOp family, owned by [5.4](tensor-op-family.md)). Its distinctive module helpers are the **axis-role queries** the tiler and scheduler use to classify each `Axis` of an op (all CONFIRMED in `Operator.so`):
+`Operator` (`ir/Operator.py`) ⊂ `Instruction` is the high-level, HLO-facing op layer — the graph the front-half printer ([Part 4](../hlo-opt/mhlo-to-python-printer-driver.md)) and `GradIRBuilder` build. The base adds `__init__`, `rhs_str`, `serialize`, `verify`, `verifyOperandType` (CONFIRMED), and subclasses add per-op operands/indices/axes (the whole §8 TensorOp family, owned by [the Operator family page](tensor-op-family.md)). Its distinctive module helpers are the **axis-role queries** the tiler and scheduler use to classify each `Axis` of an op (all CONFIRMED in `Operator.so`):
 
 ```c
 // Operator.so module-level axis-role classifiers (used by the layout/tiling middle-end)
@@ -264,7 +266,7 @@ class Stmt:                                       // ir/Stmt.py
     DAGMacro   // a macro whose body is a DAG (vs a linear Macro)
 ```
 
-A `Block` **owns** the tensors declared in its scope (block-local tensors) via `addTensor`/`all_tensors`/`dropDeadTensors`/`stealChildren` (CONFIRMED). `Macro`/`DAGMacro` are the schedulable fused units the tiler emits — they wrap a span of the §3-Inst roster into one node ([5.4](tensor-op-family.md)).
+A `Block` **owns** the tensors declared in its scope (block-local tensors) via `addTensor`/`all_tensors`/`dropDeadTensors`/`stealChildren` (CONFIRMED). `Macro`/`DAGMacro` are the schedulable fused units the tiler emits — they wrap a span of the §3-Inst roster into one node ([the Operator family page](tensor-op-family.md)).
 
 ### Control-flow markers — two co-existing forms
 
@@ -318,11 +320,11 @@ These are the boundaries of what the binary yields, stated so a reimplementer do
 
 ## Cross-References
 
-- [5.2 — Tensor & Buffer Node Families](tensor-buffer-node.md) — the `Tensor`/`Access` schema and the SBUF/PSUM/DRAM placement
-- [5.3 — Axis & Affine-Expr Node Families](axis-loop-model.md) — `AffineAxis`/`AxisType` and the `pelican::Expr` algebra behind predicates
-- [5.4 — High-Level Operator Family](tensor-op-family.md) — the §8 TensorOp roster (`TensorContractOp`, reductions, fused macros)
-- [5.5 — Native-Kernel & Collective Nodes](tensor-op-family.md) — the NKI-kernel embedding and collective op nodes
-- [5.6 — Dependency & Offloaded Nodes](dependency-model.md) — the `DependencyEdge` graph and host-offloaded primitives
-- [5.9 — Penguin → BIR Node Mapping](ir-mlir-bir-mapping.md) — the per-node `codegen<Op>` correspondence and the dep-edge MAX-merge
+- [Tensor & Buffer Node Families](tensor-buffer-node.md) — the `Tensor`/`Access` schema and the SBUF/PSUM/DRAM placement
+- [Axis & Loop-Axis Node Families](axis-loop-model.md) — `AffineAxis`/`AxisType` and the loop-axis nest
+- [§5.4 — AffineExpr Algebra over pelican::Expr](affine-expr-algebra.md) — the quasi-affine address algebra (`Sum`/`Mult`/`Modulo`/`FloorDiv`/`CC{Div,Mod}`) behind every `Access`
+- [§5.5 — Dependency Model — DependencyEdge & EdgeKind](dependency-model.md) — the `DependencyEdge` graph, `EdgeKind` taxonomy, and host-offloaded primitives
+- [High-Level Operator (TensorOp) Family](tensor-op-family.md) — the §8 TensorOp roster (`TensorContractOp`, reductions, fused macros) plus the NKI-kernel embedding and collective op nodes
+- [Penguin → BIR Node Mapping](ir-mlir-bir-mapping.md) — the per-node `codegen<Op>` correspondence and the dep-edge MAX-merge
 - [Part 4 — hlo2penguin / MhloToPythonPrinter](../hlo-opt/mhlo-to-python-printer-driver.md) — the C-strand front half that emits textual Penguin
 - [Part 7 — BIR & libBIR](../bir/) — the C++ IR this node graph lowers into
