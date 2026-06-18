@@ -272,6 +272,10 @@
 - [Sim Activation / PWP & libpwp_sim::Simulator](bir/sim-activation-pwp.md)
 - [birsim DAP Interactive-Debugger Protocol & the Debugger Hierarchy](bir/birsim-dap-debugger.md)
 
+# Part 8 — The libwalrus Backend
+
+- [BackendPass Hierarchy & the 150-Name→121-Class Registry](walrus/backendpass-registry.md)
+
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
      Section headers are kept here so the book's shape is visible from day one.
