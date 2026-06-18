@@ -8,13 +8,13 @@ A Neuron custom op is the compiler's escape hatch: arbitrary C++ that runs on th
 
 The reference frame is a conventional lowering pipeline — front-end builder → IR-to-IR codegen → instruction-selection/encoding → runtime loader → leaf kernel — but with two structural surprises a reimplementer must internalize. First, the chain is a **confluence, not a line**: two independent producer formats carry a custom op (the live **beta3** Penguin `CustomOp` node and the dormant **beta2** klr `ExtendedInst` CBOR record), and they merge at exactly one node — `bir::InstCustomOp` (InstructionType 53) — after which a **single** backend emitter (`CoreV2GenImpl::visitInstCustomOp @0x12613c0`) produces the same wire for every arch and every producer. Second, the op never travels as a single self-describing word: it encodes to a **chain** of 64-byte bundles — one `CUSTOM_OP_HEADER` (`0x85`) carrying counts and the FunctionId, followed by `N+1` `CUSTOM_OP_PAYLOAD` words (`0x86`) carrying the output access pattern first, then `N` argument APs.
 
-This is a synthesis page, so its job is **coherence**: where two siblings disagree on a byte, it adopts the byte-pinned reading and carries the correction in place. Two such reconciliations matter most — the `num_payloads` offset (`+0x06`, **not** `+0x0C`, settled by the encoder's bounded-setter store) and the FunctionId width (a `uint32` in the registry namespace, truncated to a `uint8` on the wire) — and both are resolved in [§4](#4-the-reconciliations--where-two-siblings-disagree). A reader who finishes this page can trace any single custom op from NKI source to the Xtensa CPU leaf, naming every stage's symbol and the bytes that cross each boundary.
+This is a synthesis page, so its job is **coherence**: where two siblings disagree on a byte, it adopts the byte-pinned reading and carries the correction in place. Two such reconciliations matter most — the `num_payloads` offset (`+0x0C`, settled by the encoder's bounded-setter store destination `lea [r13+0Ch]`) and the FunctionId width (a `uint32` in the registry namespace, truncated to a `uint8` on the wire) — and both are resolved in [§4](#4-the-reconciliations--where-two-siblings-disagree). A reader who finishes this page can trace any single custom op from NKI source to the Xtensa CPU leaf, naming every stage's symbol and the bytes that cross each boundary.
 
 For reimplementation, the contract is:
 
 - The **six-layer identity carrier table**: how `function_name`/`lib_file_name` thread from NKI → Penguin → BIR → wire-byte → loader → CPU-string-dispatch, and where the form changes.
 - The **confluence rule**: beta3 ∥ beta2 → `bir::InstCustomOp` (IT53) → the *one* `CoreV2GenImpl` emitter; no per-arch and no per-producer wire divergence.
-- The **wire chain arithmetic**: `num_payloads = N + 2`, the output-first payload ordering, and the byte map (`0x85`/`0x86`, FunctionId@`+0x0E`, num_arguments@`+0x0F`, num_payloads@`+0x06`).
+- The **wire chain arithmetic**: `num_payloads = N + 2`, the output-first payload ordering, and the byte map (`0x85`/`0x86`, num_payloads@`+0x0C`, FunctionId@`+0x0E`, num_arguments@`+0x0F`).
 - The **resolution path** `function_name → FunctionId → .so → *_compute`, and the **builtin-vs-user** discriminator `(lib_file_name, is_builtin)`.
 
 | | |
@@ -73,7 +73,7 @@ The spine, as the ASCII control-flow a reimplementer would build to:
         ▼
 (e) WIRE  CUSTOM_OP_HEADER 0x85 + (1+N)× CUSTOM_OP_PAYLOAD 0x86   [11.5/11.6]  CONFIRMED
       identity = HEADER[0x0E] = CustomOpFunctionId (u8) — op-name now a 1-byte handle
-      HEADER:  num_payloads u16 @+0x06 = N+2 ; FunctionId u8 @+0x0E ; num_arguments u8 @+0x0F
+      HEADER:  num_payloads u16 @+0x0C = N+2 ; FunctionId u8 @+0x0E ; num_arguments u8 @+0x0F
       PAYLOAD: present-flag 1 @+0x0F ; ADDR4 access pattern @+0x10..+0x3F (output first)
         │  runtime: FunctionId → ModuleArtifactInfo → (lib_file, function_name)
         ▼
@@ -213,23 +213,23 @@ The numeric klr `opcode` (beta2) plays **no part** in selecting the `.so`: that 
 
 Two committed siblings, and one source report, phrase a shared byte differently. A synthesis page must pick the byte-pinned reading and carry the correction in place. This section resolves the two that bite a reimplementer.
 
-### Reconciliation A — `num_payloads` is at `+0x06`, not `+0x0C`
+### Reconciliation A — `num_payloads` is at `+0x0C` (a contiguous `[0x0C..0x10]` count-band)
 
-The wire-validators sibling ([11.6](customop-wire-validators.md)) and the source report D-Q10 §5 both place `num_payloads` as a `u16` in the header's `[0x0C..0x0F]` "count/id block". The wire-byte-layout sibling ([11.5](customop-wire-layout.md)) pins it one read deeper, at **`+0x06`**, against the encoder's bounded-setter store. The deeper read wins.
+The wire-validators sibling ([11.6](customop-wire-validators.md)) and the source report D-Q10 §5 both place `num_payloads` as a `u16` in the header's `[0x0C..0x0F]` "count/id block" — and they are **right**. An earlier draft of [11.5](customop-wire-layout.md) pinned it at `+0x06` from a misread of the decompiler; that has been corrected. The byte-proven offset is `+0x0C`.
 
 ```c
 // CoreV2GenImpl::visitInstCustomOp @0x12613c0 — the header stamps.   D-Q08 / 11.5 §2
 setupHeader(&hdr, /*opcode=*/0x85);                   // hdr[0]=0x85, hdr[1]=0x10 → word 0x1085
 customop_header_init(&hdr);                            // sub_122ED00 fills [0x04..0x0B] band
-set_u16(&hdr[6], "instr.num_payloads", N ? N+2 : 1);  // sub_123CA60 — *(u16*)(hdr+6) !!
+set_u16(&hdr[0x0C],"instr.num_payloads", N ? N+2 : 1);// sub_123CA60 — dest lea [r13+0Ch] @0x1262f75
 hdr[0x0E] = function_id;                               // CustomOpFunctionId (u8)
-set_u8 (&hdr[0xF], "instr.num_arguments", N);          // sub_1247BF0 — *(u8*)(hdr+15)
+set_u8 (&hdr[0xF], "instr.num_arguments", N);          // sub_1247BF0 — dest lea [r13+0Fh] @0x1262fbe
 hdr[0x10] = 0;                                         // explicit zero; [0x11..0x3F] pxor-zero
 ```
 
-> **CORRECTION (D-Q08 / 11.5) — `num_payloads` at `+0x06`, FunctionId at `+0x0E`, num_arguments at `+0x0F`.** A coarse byte-walk (carried in 11.6 §"count/id block" and in D-Q10's `[0x0C..0x0D]`) placed `num_payloads` at `+0x0C`. The encoder body refutes it: the bounded `u16` setter `sub_123CA60` (the `utils.h:292` width-`0x10` setter, named `"instr.num_payloads"`) stores `*(u16*)(hdr+6)`. The `FunctionId@+0x0E` and `num_arguments@+0x0F` offsets agree across **both** readings; only the `num_payloads` slot is corrected, to the byte-pinned `+0x06`. The two `[0x0C..0x0E]` figures in 11.6 describe the **payload validator's reserved-zero mask** (the bytes a `0x86` payload must keep zero) — *not* a live header field; they are correct *as a reserved-zero check* but were mislabeled "num_payloads".
+> **CORRECTION (D-Q08 / 11.5) — `num_payloads` at `+0x0C`, not `+0x06`; FunctionId at `+0x0E`, num_arguments at `+0x0F`.** An earlier reconciliation here adopted `+0x06`, citing the decompiler's `sub_123CA60((_WORD*)hdr + 6, …)`. That was the misread: `hdr` is typed `_WORD*` (u16), so `+ 6` is u16-pointer arithmetic = `6 × 2 = +0x0C bytes`, not a `+6`-byte offset. The encoder's store destination is `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) @0x1262f75 (COLLECT-arm twin @0x1263201 stamps the same `[…+0Ch]`). The cross-check: `num_arguments` is stored via a genuine `_BYTE*` `+ 15` → `lea [r13+0Fh]` → byte `+0x0F` — same setter family, *different pointer type*, which is exactly what flipped only `num_payloads`. So 11.6's `[0x0C..0x0F]` count/id block and D-Q10's `[0x0C..0x0D]` were correct all along; `num_payloads`, `FunctionId`, and `num_arguments` form a contiguous `[0x0C..0x10]` count-band.
 
-> **QUIRK — `num_payloads` overlaps the header-init band.** `+0x06` sits *inside* the generic `[0x04..0x0B]` SyncInfo/header overlay that `customop_header_init` fills first. The custom-op header re-purposes `[0x06..0x07]` and the `u16` setter overwrites those two bytes **after** the band is filled. A reimplementer must order the writes: init band first, then stamp `num_payloads` over `+0x06`, or the count is clobbered.
+> **NOTE — the count-band is clear of the header-init band.** `+0x0C` sits *past* the generic `[0x04..0x0B]` SyncInfo/header overlay that `customop_header_init` fills first. The count-band (`num_payloads` @ `+0x0C`, `FunctionId` @ `+0x0E`, `num_arguments` @ `+0x0F`, zero @ `+0x10`) does not overlap or overwrite that band — a reimplementer runs the shared header init, then stamps the count-band, with no ordering hazard.
 
 ### Reconciliation B — FunctionId is `uint32` in the registry, `uint8` on the wire
 
@@ -292,7 +292,7 @@ The header byte map (the live fields; everything else is reserved-zero or the sc
 |---|---|---|---|---|
 | opcode | `+0x00` | 1 | `0x85` (133) → word `0x1085` | CONFIRMED |
 | `inst_word_len` | `+0x01` | 1 | `0x10` | CONFIRMED |
-| `num_payloads` | `+0x06` | 2 | `N + 2` (`set_u16`, `sub_123CA60`) | CONFIRMED |
+| `num_payloads` | `+0x0C` | 2 | `N + 2` (`set_u16`, `sub_123CA60`, dest `lea [r13+0Ch]`) | CONFIRMED |
 | `CustomOpFunctionId` | `+0x0E` | 1 | `uint8` (0..254, 0xFF unset) | CONFIRMED |
 | `num_arguments` | `+0x0F` | 1 | `N` (`set_u8`, `sub_1247BF0`) | CONFIRMED |
 | reserved | `+0x10` | 1 | `0` (explicit) | CONFIRMED |
@@ -389,7 +389,7 @@ The spine and its byte maps are confirmed end-to-end; a handful of edges remain 
 | Claim | Grade | Basis / gap |
 |---|---|---|
 | beta3 spine (a)→(f); the §1 table; convergence at IT53; single CoreV2 emitter | CONFIRMED | byte-verified symbols/offsets/strings |
-| `num_payloads = N+2` @ `+0x06`; FunctionId @ `+0x0E`; num_arguments @ `+0x0F` | CONFIRMED | encoder bounded-setter stores |
+| `num_payloads = N+2` @ `+0x0C`; FunctionId @ `+0x0E`; num_arguments @ `+0x0F` | CONFIRMED | encoder bounded-setter stores (dest `lea [r13+0Ch]`/`[r13+0Fh]`) |
 | op-name → FunctionId → wire-byte; 254 cap; uint32→uint8 truncation | CONFIRMED | registry sigs + `+0x28` store |
 | `(lib_file_name, is_builtin)` as the sole builtin/user discriminator | CONFIRMED | flag traced through whole stack |
 | 9-dtype roster + reject path; 8-image rebase `0x84000000 + id·0x200000` | CONFIRMED | strings + `readelf`/`cmp` |
@@ -401,7 +401,7 @@ The spine and its byte maps are confirmed end-to-end; a handful of edges remain 
 
 > **NOTE — the CPU-leaf interior is structure-only.** There is no Xtensa disassembler in this extraction (host binutils has no Xtensa backend; IDA recovered 0 decompiled bodies from the cpuN images). Every claim about *what the Xtensa code does* — the `cpu_id` derivation, the merge orchestration, the window-mapped DMA, the SIMD comparator network — is INFERRED from `.rodata`/`.data` strings, the byte-for-byte diff across the eight images, and assert templates, never from observed instructions. The *layout* (headers, sizes, entry `0x8400cd94`, the rebase law) is CONFIRMED; the *logic* is INFERRED and tagged as such on the leaf pages.
 
-> **NOTE — grounding provenance for the emitter-internal stores.** The `bir::InstCustomOp` class itself (ctor `@0x1789b0`, `getIsBuiltinEvalIfNeeded @0x176af0`, `createFromJson @0x179080`, `sameInst @0x17d870` in `libBIR`) and the registry signatures (`addCustomOpFunction(string,string,unsigned int)` — the `uint32` id of [§4B](#reconciliation-b--functionid-is-uint32-in-the-registry-uint8-on-the-wire) — and the 6-arg `addCustomOpLibFile(…,bool,uchar,uchar)`) are confirmed **directly** in the per-symbol sidecars. The emitter-internal facts — `CoreV2GenImpl::visitInstCustomOp @0x12613c0`, the `set_u16(hdr+6,…)`/`set_u8(hdr+15,…)` stores, and the `instr.num_payloads`/`instr.num_arguments` strings — are grounded in the **full `libwalrus.so` IDA database** that [11.5](customop-wire-layout.md)/[11.8](customop-codegen.md) cite, not in the partial per-symbol text-sidecar slice (which does not contain that emitter body). This page adopts those at the siblings' CONFIRMED grade and attributes them accordingly; a reimplementer re-verifying from a text-sidecar-only slice must open the `ida/` DB, since the emitter body is absent from the partial decompile dump (the two-VA-frame / partial-extraction artifact).
+> **NOTE — grounding provenance for the emitter-internal stores.** The `bir::InstCustomOp` class itself (ctor `@0x1789b0`, `getIsBuiltinEvalIfNeeded @0x176af0`, `createFromJson @0x179080`, `sameInst @0x17d870` in `libBIR`) and the registry signatures (`addCustomOpFunction(string,string,unsigned int)` — the `uint32` id of [§4B](#reconciliation-b--functionid-is-uint32-in-the-registry-uint8-on-the-wire) — and the 6-arg `addCustomOpLibFile(…,bool,uchar,uchar)`) are confirmed **directly** in the per-symbol sidecars. The emitter-internal facts — `CoreV2GenImpl::visitInstCustomOp @0x12613c0`, the `set_u16` store at byte `+0x0C` (decompiler `(_WORD*)hdr + 6`; dest `lea [r13+0Ch]`) / `set_u8` store at byte `+0x0F` (decompiler `(_BYTE*)hdr + 15`; dest `lea [r13+0Fh]`), and the `instr.num_payloads`/`instr.num_arguments` strings — are grounded in the **full `libwalrus.so` IDA database** that [11.5](customop-wire-layout.md)/[11.8](customop-codegen.md) cite, not in the partial per-symbol text-sidecar slice (which does not contain that emitter body). This page adopts those at the siblings' CONFIRMED grade and attributes them accordingly; a reimplementer re-verifying from a text-sidecar-only slice must open the `ida/` DB, since the emitter body is absent from the partial decompile dump (the two-VA-frame / partial-extraction artifact).
 
 ---
 
@@ -426,7 +426,7 @@ The spine and its byte maps are confirmed end-to-end; a handful of edges remain 
 - [`builtin_custom_op` (6.5.8)](../nki/neuroncodegen-builtin-customop.md) — where the chain begins; the `penguin.ir.CustomOp` build with no byte payload
 - [klr `ExtendedInst` (7.32)](../bir/klr-extendedinst-cbor.md) — the parallel beta2 carrier; CBOR tag 210, kind 70, no op-name
 - [Penguin/BIR Codegen (11.8)](customop-codegen.md) — the three codegen methods and the field-copy order into the BIR node
-- [Wire Byte-Layout (11.5)](customop-wire-layout.md) — the byte-pinned `num_payloads@+0x06` correction this page adopts
+- [Wire Byte-Layout (11.5)](customop-wire-layout.md) — the byte-pinned `num_payloads@+0x0C` layout this page adopts
 - [Wire Validators (11.6)](customop-wire-validators.md) — the reserved-zero masks and the scratch tri-field gate
 - [FindCustomOpData Staging (11.7)](findcustomopdata-staging.md) — the `uint32` FunctionId allocator and the registry sink
 - [Two-GPSIMD Reconciliation (11.9)](two-gpsimd-reconciliation.md) — disambiguates the Pool-engine `GPSIMD` from the Xtensa CPU `GPSIMD`

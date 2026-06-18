@@ -216,7 +216,9 @@ Once the BIR `InstCustomOp` exists (built by `_69`, decorated by `_215`/`_259`),
 
 This page documents only how the codegen's output *enters* the emitter; the byte map is 11.5's subject. The points where this page and 11.5 must agree:
 
-- The emitter reads `num_arguments = N` (the `InstCustomOp` argument list length) and writes the header **`num_payloads` as a `u16` at offset `+0x06`** (NOT `+0x0C`) via the bounded setter `sub_123CA60` (`"instr.num_payloads"`), with the value `N + 2` for `N ≥ 1` (header + output AP + `N` input APs) or `1` for `N == 0`. This page's operand-binding description (one binder call per src and per dst) is the upstream source of that `N` and the one-output invariant.
+- The emitter reads `num_arguments = N` (the `InstCustomOp` argument list length) and writes the header **`num_payloads` as a `u16` at offset `+0x0C`** via the bounded setter `sub_123CA60` (`"instr.num_payloads"`, dest `lea [r13+0Ch]`), with the value `N + 2` for `N ≥ 1` (header + output AP + `N` input APs) or `1` for `N == 0`. This page's operand-binding description (one binder call per src and per dst) is the upstream source of that `N` and the one-output invariant.
+
+> **CORRECTION (D-Q08) — `num_payloads` is at `+0x0C`, not `+0x06`.** An earlier note here placed it at `+0x06`; that was a decompiler-misread of `sub_123CA60((_WORD*)hdr + 6, …)` — `hdr` is a `_WORD*` (u16), so `+ 6` is u16-pointer arithmetic = `+0x0C` bytes. The encoder's store destination is `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) @0x1262f75; the sibling `num_arguments` setter is `lea [r13+0Fh]` @0x1262fbe. See [11.5](customop-wire-layout.md) §2.1.
 - The single output (the lone `dst` / `isOutput=True` operand) becomes **payload 0**; the `N` inputs (`src` / `isOutput=False`) become payloads `1..N`. The `_259` directional binding (§4) is what makes the output-first ordering meaningful.
 - The legality the emitter enforces (`"Custom ops cannot have more than 1 output"`, SBUF/HBM operand location, no `TensorIndirect` AP, ≤255 unique functions) is downstream of the codegen — the codegen does not pre-check these; the backend `visitInstCustomOp` does.
 
@@ -224,7 +226,7 @@ This page documents only how the codegen's output *enters* the emitter; the byte
 /* CoreV2GenImpl::visitInstCustomOp @0x12613c0 — how the BIR node enters the wire (sketch) */
 void visitInstCustomOp(InstCustomOp &inst) {
     int N = arg_list_length(inst);               /* = num_arguments, set by the codegen binds */
-    /* one 0x85 header: num_payloads(+0x06)=N?N+2:1, FunctionId(+0x0E), num_arguments(+0x0F)=N */
+    /* one 0x85 header: num_payloads(+0x0C)=N?N+2:1, FunctionId(+0x0E), num_arguments(+0x0F)=N */
     /* one 0x86 payload per operand: OUTPUT AP first (the isOutput=True dst), then N input APs  */
     /* fwrite 0x40 per word; full byte map in 11.5                                              */
 }
@@ -251,7 +253,7 @@ void visitInstCustomOp(InstCustomOp &inst) {
           → same 7-field copy
     ▼  bir::InstCustomOp  (added to the BasicBlock by the GEN allocator _69)
   CoreV2GenImpl::visitInstCustomOp @0x12613c0  (the single backend emitter)
-    ▼  0x85 CUSTOM_OP_HEADER (num_payloads@+0x06, FunctionId@+0x0E, num_arguments@+0x0F)
+    ▼  0x85 CUSTOM_OP_HEADER (num_payloads@+0x0C, FunctionId@+0x0E, num_arguments@+0x0F)
        + (1+N)×0x86 CUSTOM_OP_PAYLOAD (output AP first, then N input APs)   ← 11.5 byte map
   Xtensa CPU leaf: SORT / TOPK / user NKI kernel, ARG_TYPE_TENSOR [in]/[out] arg tags
   FunctionId → .so binding: bir/runtime ModuleArtifactInfo (off-wire NEFF metadata)
@@ -286,7 +288,7 @@ No fabricated symbols or offsets; every address is cited from the named binary's
 ## Cross-References
 
 - [6.5.8 NeuronCodegen `builtin_custom_op` Emitter](../nki/neuroncodegen-builtin-customop.md) — the NKI front door that **builds** the `penguin.ir.CustomOp` carrier these codegen methods lower; this page is its inverse.
-- [11.5 CUSTOM_OP Wire Byte-Layout (0x85 / 0x86)](customop-wire-layout.md) — the byte map of the `CoreV2GenImpl::visitInstCustomOp` output; pins `num_payloads` @ `+0x06`, `num_payloads = N+2`, FunctionId @ `+0x0E`, num_arguments @ `+0x0F`.
+- [11.5 CUSTOM_OP Wire Byte-Layout (0x85 / 0x86)](customop-wire-layout.md) — the byte map of the `CoreV2GenImpl::visitInstCustomOp` output; pins `num_payloads` @ `+0x0C`, `num_payloads = N+2`, FunctionId @ `+0x0E`, num_arguments @ `+0x0F`.
 - [2.22 Collective / GPSIMD / CustomOp Encoding](../isa/collective-customop-encoding.md) — the sibling ISA-encoding page; §10 first sketched the `0x85`/`0x86` pair.
 - [11.1 The GPSIMD CPUs: 8-core Xtensa ELF Layout](gpsimd-xtensa-layout.md) — the Xtensa CPU cluster the lowered custom op dispatches a kernel onto.
 - [11.2 The Bitonic SORT / TOPK Builtin Algorithm](bitonic-sort-topk.md) — SORT/TOPK, the canonical custom-op occupants (no dedicated opcode; ride `0x85`/`0x86`).
