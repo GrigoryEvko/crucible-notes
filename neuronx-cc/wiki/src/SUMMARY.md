@@ -183,6 +183,8 @@
 - [nki.isa COMPUTE Intrinsics & Validators](nki/isa-compute-intrinsics.md)
 - [nki.isa REDUCE / SELECT / DVE / MEMORY / DMA Intrinsics](nki/isa-reduce-dve-dma.md)
 - [nki.language (nl.*) Op Dispatch Surface](nki/language-ops.md)
+- [NKI sema Legality-Assert Engine](nki/sema-legality.md)
+- [NKI Diagnostic Catalog — the err_/check_/assert_ Funnel](nki/diagnostic-catalog.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
