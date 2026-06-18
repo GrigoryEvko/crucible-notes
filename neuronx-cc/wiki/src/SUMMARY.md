@@ -381,6 +381,7 @@
 - [Sharding Algebra — Rules / Projection / Factors](distribution/sharding-algebra.md)
 - [Shardy Dialect ↔ HloSharding Bridge](distribution/shardy-hlosharding-bridge.md)
 - [SPMD Compute-Op Partition Handlers & SpmdBuilder](distribution/spmd-compute-handlers.md)
+- [SPMD Collective / Communication Emission](distribution/spmd-collective-emission.md)
 - [Mesh → Replica-Group Topology Math](distribution/mesh-replica-group-math.md)
 - [The 3-D Rank Model & getCCRankWorldSize](distribution/three-d-rank-model.md)
 - [Distribution-Strategy Seeding (--distribution-strategy)](distribution/distribution-strategy-seeding.md)
