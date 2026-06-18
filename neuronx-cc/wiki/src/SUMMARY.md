@@ -293,6 +293,11 @@
 - [SBUF Allocator — Liveness / Interference / find-partners (Chaitin-Briggs)](walrus/sbuf-liveness-interference.md)
 - [SBUF Allocator — Spill-Cost / Simplify / Select / Spill-Code](walrus/sbuf-spill-select.md)
 - [PSUM Allocator (Bank Model)](walrus/psum-allocator.md)
+- [DRAM Allocator (Interval Tree) & Shared-DRAM Partitioning](walrus/dram-allocator.md)
+- [Alternative Allocators — REG / LinearScan + DMA-Optimization Passes](walrus/alt-allocators-dma-opt.md)
+- [SBSizeLegalization & the Split-Shape Primitive](walrus/sb-size-legalization.md)
+- [vn_splitter / vertical-fusion / shrink_ml (Allocator Prep)](walrus/vnsplitter-shrink.md)
+- [LoopOptimization — LICM + Greedy Fusion (Profit Graph)](walrus/loopopt-licm-fusion.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
