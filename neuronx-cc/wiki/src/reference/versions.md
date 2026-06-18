@@ -23,7 +23,7 @@ Reverse-engineering claims are only as good as their version pin. Every address,
 - `5133.0` — the build number within the line.
 - `+58f8de22` — the PEP 440 *local version label*: an eight-hex-digit revision tag that uniquely identifies the source snapshot the wheel was built from. It is the most precise handle on the build and is the value to quote when reporting which artifact a finding came from.
 
-> **NOTE —** `58f8de22` is the build's own identifier, recovered from the package metadata; it is unrelated to any ELF `NT_GNU_BUILD_ID`. Where a specific binary's GNU build-id matters (e.g. to distinguish cp310 from cp312), it is given on the page that needs it; the consolidated table lives in [Appendix 14.8](../appendix/build-id-table.md) *(planned)*.
+> **NOTE —** `58f8de22` is the build's own identifier, recovered from the package metadata; it is unrelated to any ELF `NT_GNU_BUILD_ID`. Where a specific binary's GNU build-id matters (e.g. to distinguish cp310 from cp312), it is given on the page that needs it; the consolidated table lives in [Appendix 14.8](../appendix/build-id-version-table.md).
 
 ## The cp310 / cp311 / cp312 parity argument
 
@@ -42,7 +42,7 @@ The GNU `NT_GNU_BUILD_ID` is the unambiguous per-binary anchor — independent o
 | `libBIRSimulator.so` | `f1c6885f176c0d3c5d3a804b0f0b714ae7814ea6` |
 | `hlo-opt` (tool) | `93dd8bd9bd4c697b` (8-byte) |
 
-The shared-library build-ids differ on cp311/cp312 (the SHA differs); the consolidated cross-wheel build-id table is [Appendix 14.8](../appendix/build-id-table.md) *(planned)*.
+The shared-library build-ids differ on cp311/cp312 (the SHA differs); the consolidated cross-wheel build-id table is [Appendix 14.8](../appendix/build-id-version-table.md).
 - **The Cython `*.cpython-3xx-*.so` modules are per-ABI.** They embed the CPython C-API for their version and therefore differ in size and layout across cp310/311/312 (e.g. `KernelBuilder` is 14.6 MB on cp310 vs 17.3 MB on cp311). The *logic* is the same Cython source compiled three ways; the symbol and string evidence a page cites from one ABI is present in the others, but a raw offset is ABI-specific. Pages that cite Cython-module offsets state the ABI.
 
 > **QUIRK —** the size ordering of the Cython modules is not monotone in Python version (cp311's `KernelBuilder` is larger than cp312's). This reflects compiler/codegen differences between the CPython toolchains used to build each wheel, not a difference in the compiler's behavior. Treat module size as an artifact property, not a feature signal.
@@ -58,4 +58,4 @@ The shared-library build-ids differ on cp311/cp312 (the SHA differs); the consol
 
 - [Binary Inventory & the .so Map](binary-inventory.md) — the artifacts this provenance applies to, with sizes.
 - [Methodology & the Confidence Model](../methodology.md) — how a pinned build underpins every confidence claim.
-- [Build-ID / Version Table](../appendix/build-id-table.md) — the consolidated per-binary build identifiers *(planned)*.
+- [Build-ID / Version Table](../appendix/build-id-version-table.md) — the consolidated per-binary build identifiers.

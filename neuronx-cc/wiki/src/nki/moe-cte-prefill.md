@@ -303,7 +303,7 @@ This optimizes padded variable-length sequences: guaranteed-present blocks run u
 
 ## Mechanism: The MX Numeric Scheme (enums 4, 5/6)
 
-The MX kernels are the MX twins of the non-MX ones: **the MoE/MLP skeleton is identical** (block loop, ping-pong or I-shard, dynamic-while, indirect-DGE gather, affinity scale, accumulate-scatter). The entire delta is in the projection inner loops and weight/scale handling. The format is OCP MX (MXFP4/MXFP8): per-32-element blocks carry an E8M0 (8-bit exponent, zero mantissa) scale plus FP4/FP8 mantissas. MX lowers to CoreV4-only ISA, so these kernels are TRN3/gen4 — enforced both by the lowering and by the dtypes the readable kernel asks for (`_q_height=8 × _q_width=4 = 32` OCP block; `float4_e2m1fn_x4`; uint8 E8M0 scale). See [MX microscaling numerics](../appendix/mx-numerics.md) *(planned, Part 9.8)* for the format details.
+The MX kernels are the MX twins of the non-MX ones: **the MoE/MLP skeleton is identical** (block loop, ping-pong or I-shard, dynamic-while, indirect-DGE gather, affinity scale, accumulate-scatter). The entire delta is in the projection inner loops and weight/scale handling. The format is OCP MX (MXFP4/MXFP8): per-32-element blocks carry an E8M0 (8-bit exponent, zero mantissa) scale plus FP4/FP8 mantissas. MX lowers to CoreV4-only ISA, so these kernels are TRN3/gen4 — enforced both by the lowering and by the dtypes the readable kernel asks for (`_q_height=8 × _q_width=4 = 32` OCP block; `float4_e2m1fn_x4`; uint8 E8M0 scale). See [MX microscaling numerics](../numerics/mx-microscaling.md) (Part 9.8) for the format details.
 
 ### x4-packed weights, view-cast from int
 
@@ -385,6 +385,6 @@ These are truthful code-quality observations, all read directly in the shipped s
 - [SPMD programming model](spmd-programming-model.md) — `program_id` / `num_programs`, the 2-core LNC shard model, `core_barrier`
 - [Dynamic for-loop](../front/dynamic-for-loop.md) — `nl.dynamic_range` and the static+dynamic hybrid loop structure
 - [Matmul worked example](../front/worked-example-matmul.md) — the PE stationary/moving mapping and PSUM accumulation in a full trace
-- [MX microscaling numerics](../appendix/mx-numerics.md) *(planned, Part 9.8)* — OCP MXFP4/MXFP8, E8M0, x4-packing details
+- [MX microscaling numerics](../numerics/mx-microscaling.md) (Part 9.8) — OCP MXFP4/MXFP8, E8M0, x4-packing details
 
 *Provenance: D-O01 (dispatch/spec/enum), D-O02 (block-shard), D-O03 (I-shard 1/2/3), D-O04 (block-shard MX), D-O05 (I-shard MX 5/6).*

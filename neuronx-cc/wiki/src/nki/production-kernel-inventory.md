@@ -311,7 +311,7 @@ These leaves are full compiled implementations with **no readable twin in `nkili
 
 > **GOTCHA —** the `mamba_prefix_scan_kernel` lives *inside* `attention.so` (entry strings `mamba_prefix_scan_kernel`, `mamba_prefix_scan_kernel_scan_op` confirmed via `strings`), not in its own module. A reimplementer enumerating modules by filename will miss the only SSM/Mamba support in the wheel — it is a symbol, not a file.
 
-The full recoverability gaps ledger for the compiler lives in [the recoverability gaps appendix](../appendix/recoverability-gaps.md) (Part 14). The `conv2d_*` layout-tag taxonomy (`f01b`/`o01i`/`fb01`/`pbp`/`column_packing`) and the Cayman PE-TP ubench semantics are `.so`-internal and flagged there for a future conv/ubench deep dive; the production conv leaves are catalogued in 6.8.x.
+The full recoverability gaps ledger for the compiler lives in [the Confidence Ledger appendix](../appendix/confidence-ledger.md) (Part 14). The `conv2d_*` layout-tag taxonomy (`f01b`/`o01i`/`fb01`/`pbp`/`column_packing`) and the Cayman PE-TP ubench semantics are `.so`-internal and flagged there for a future conv/ubench deep dive; the production conv leaves are catalogued in 6.8.x.
 
 ---
 
@@ -354,4 +354,4 @@ TRAINING (pre_prod-exclusive, readable): bwd blockwise-MM, backward_attention (a
 - [Internal kernel registry](internal-kernel-registry.md) — 6.6.2, the macro→leaf registry mechanism in `BirCodeGenLoop.so`
 - [Frontend bridge cache](frontend-bridge-cache.md) — 6.6.3, beta2/beta3 trace + cache of the compiled leaves
 - [NeuronCodegen macro](neuroncodegen-macro.md) — 6.5.7, the forward `nl→penguin.ir` builder and the leaf-`.so` enumeration
-- [Recoverability gaps](../appendix/recoverability-gaps.md) — Part 14, the compiler-wide ledger of compiled-only / non-recoverable subjects
+- [Recoverability gaps](../appendix/confidence-ledger.md) — Part 14, the compiler-wide ledger of compiled-only / non-recoverable subjects

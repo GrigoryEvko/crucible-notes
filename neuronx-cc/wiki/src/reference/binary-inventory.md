@@ -79,4 +79,4 @@ The Penguin middle-end and the NKI frontend ship as per-Python-version Cython ex
 
 - [The Compile Pipeline at a Glance](../front/pipeline.md) — which of these binaries runs at each stage.
 - [Build & Version Provenance](versions.md) — the cross-wheel hardlink finding and the cp310/311/312 parity argument.
-- [Symbol & Offset Index](../appendix/symbol-index.md) — per-binary symbol/address lookups *(planned)*.
+- [Symbol & Offset Index](../appendix/symbol-offset-index.md) — per-binary symbol/address lookups.
