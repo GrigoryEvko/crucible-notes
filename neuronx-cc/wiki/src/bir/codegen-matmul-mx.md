@@ -1,4 +1,4 @@
-# 7.26 Codegen Leaves: NcMatMul, MatMulMX, and the QuantizeMX DVE Op
+# Codegen Leaves: NcMatMul, MatMulMX, and the QuantizeMX DVE Op
 
 > *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins present, every VA drifts). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` — the **Strand-I** backend shared object that holds the `KlirToBirCodegen` leaf bodies. `.text` (`0xf00000+`) and `.rodata` (`0x1c72000+`) have **VA == file offset**, so disasm, string literals and jump tables are read by file offset. The `bir::Inst*` node templates the leaves call (`addMatmult`, `addArgument`, `insertElement`, `InstQuantizeMx` ctor) resolve into `libBIR.so` (statically linked into `nki_klr_sim`, also shipped as a sidecar `.so`); both are in the corpus. Every claim below is tagged **CONFIRMED** (read directly off this binary — `nm -DC`, `objdump -d -C`, `strings`), **STRONG** (multi-evidence), **INFERRED**, or **SPECULATIVE**.*
 

@@ -299,7 +299,7 @@ What is **SPECULATIVE / not pinnable from this snapshot:** the calendar date or 
 
 - [pelican Expr Wire Format](pelican-wire.md) — 7.19, the per-kind `fromJsonv1/v2` + `toJsonv1/v2` field layouts, refcount/DAG discipline, and the read-side factory ladder this gate selects between
 - [BIR JSON Loader](json-loader.md) — 7.12, the two-pass `from_json` driver that the version-read site (`adl<Module>::from_json`) heads
-- [BIR JSON Writer / Dumper](json-dumper.md) — 7.13, the emit path whose `Instruction::toJson` hardcodes `version=2`
+- [BIR JSON Writer / Dumper](json-writer.md) — 7.13, the emit path whose `Instruction::toJson` hardcodes `version=2`
 - [Affine Expression Algebra](../penguin/affine-expr-algebra.md) — the `pelican::Expr` / `QuasiAffineExpr` algebra whose trees the gate encodes
 - [Argument / AccessPattern / Value Model](value-model.md) — the `SymbolicAccessPattern.addrs` and `SymbolicImmediateValue` that embed version-gated `QuasiAffineExpr` trees
 - [NEFF JSON Schema](../formats/neff-json.md) — 12.3, the NEFF container `"0.6"` schema version (a *different* version number)

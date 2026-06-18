@@ -1,4 +1,4 @@
-# 7.28 KlirToBirCodegen: the data-movement leaf family — copy / DMA / load-store / gather / select / BN / transpose
+# KlirToBirCodegen: the data-movement leaf family — copy / DMA / load-store / gather / select / BN / transpose
 
 > *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 ABI twins, drifting VAs). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` (md5 `1d93972b81e619ce6d178a0e4b9003b3`, 64,973,024 B) — the **Strand-I** back-end shared object that holds the `KlirToBirCodegen` bodies. `VA == file offset` for `.text` (`0x62d660+`) and `.rodata` (`0x1c72000+`), so every jump table and string literal below is read by file offset. `nki_klr_sim` is stripped and carries only PLT stubs for these symbols; every address cited here is the **real body** (an `nm -DC` `T`/`W` row `> 0xf00000`), not a thunk alias — beware the two-VA-frame artifact (each leaf has a sibling sidecar at a low `0x6xxxxx` internal frame; the real body is the `0xf2xxxx`/`0xf1xxxx` one). All evidence is `nm`, `objdump -d`, `strings`, and `.rodata` table decode against this binary. Tags: CONFIRMED (read directly) / STRONG (multi-evidence) / INFERRED / SPECULATIVE.*
 

@@ -261,6 +261,8 @@ A naive count of typeinfo-name *hits* mentioning a `bir::Inst` type returns ~401
 
 The inflation from 113 to 401 is (a) the per-class RTTI **triplet** — `_ZTV` vtable / `_ZTI` typeinfo / `_ZTS` type-string (~3×) — and (b) template instantiations whose mangled names merely *mention* an `Inst` type (`ilist_iterator<…Instruction…>`, `DenseSet<Instruction const*>`, the ~60 `bir::Hwm::getLatency(InstX&)` overloads, the `visitInst<X>` method symbols). None of those are subclasses. The hard floor is independent: `getValidEngines` is overridden by ~105 concrete leaves, and there are 113 typeinfo strings — both an order of magnitude below 401.
 
+> **NOTE — the `113` here is the *loose-typeinfo* lens.** The 113-string count (`_ZTSN3bir.*Inst`, including the `NamedObject<Instruction,…>` template) and the strict-RTTI-triplet count (`112`, `_ZTSN3bir[0-9]+Inst…E` only) are two of six interlocking lenses on one ~112-class population. The full **121 / 113 / 112 / 110 / 104–105** decomposition — with the nine non-IR symbol-token contaminants enumerated — lives in the canonical reconciliation table at [cross-language wire-keys §2](cross-language-wirekeys.md#2-the-bir-inst-class-family-and-the-121--113--110--105-reconciliation). Use **112** for the polymorphic-class population, **110** for opcodes, **104–105** for concrete leaves; this page's `113 ⇒ 105` is the loose-grep route to the same floor.
+
 ---
 
 ## 7. The Shared Vtable
@@ -288,5 +290,5 @@ The central design point is that the vtable is *small*: most per-opcode behavior
 
 - [`bir/instruction-type.md`](instruction-type.md) — the 110-value `InstructionType` enum and the full leaf→opcode crosswalk (the `+0x58` tag's value space).
 - [`bir/value-model.md`](value-model.md) — `bir::Argument` operand subclasses, `ArgumentKind`, and the `ins`/`indirection_ins`/`outs` list contents.
-- [`bir/brewer.md`](brewer.md) — the Python `brewer` layer that emits BIR JSON consumed by `createFromJson`.
+- [`bir/brewer-generator.md`](brewer-generator.md) — the Python `brewer` layer that emits BIR JSON consumed by `createFromJson`.
 - [`nki/bircodegenloop.md`](../nki/bircodegenloop.md) — the Penguin→BIR driver that constructs these instructions.

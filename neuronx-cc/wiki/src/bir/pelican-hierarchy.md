@@ -310,7 +310,7 @@ A script reading all 16 213 RELA entries, keyed each typeinfo by its `+0x00` ABI
 
 ## Cross-References
 
-- [7.17 — pelican::Expr Member Offsets](pelican-member-offsets.md) *(planned)* — the per-class field layouts that sit behind these typeinfos (`Expr` base 24 B, the div/mod numer/denom fields, the AP-index tile fields).
-- [7.18 — pelican Index & Collective Leaves](pelican-index-cc.md) *(planned)* — the `AffineIdx`/`OpaqueFnExpr`/`CC*` leaves in depth, by `ExprKind`.
+- [7.17 — pelican::Expr Member Offsets](pelican-expr-core.md) — the per-class field layouts that sit behind these typeinfos (`Expr` base 24 B, the div/mod numer/denom fields, the AP-index tile fields).
+- [7.18 — pelican Index & Collective Leaves](pelican-index-runtime.md) — the `AffineIdx`/`OpaqueFnExpr`/`CC*` leaves in depth, by `ExprKind`.
 - [5.4 — Penguin AffineExpr Algebra over pelican::Expr](../penguin/affine-expr-algebra.md) — Penguin's affine layer is built *over* this hierarchy; the bridge ([affine-isl-pelican-bridge](../penguin/affine-isl-pelican-bridge.md)) maps it to ISL.
 - [7.15 — v1↔v2 Versioning: the pelican-Expr Encoding Gate](wire-versioning.md) — the wire-version gate is a `KIND`-switching *free function* (`toJsonv1/v2`), not a vtable slot; this page is the class side of that.

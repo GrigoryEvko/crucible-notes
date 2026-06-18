@@ -4,14 +4,14 @@
 
 ## Abstract
 
-This page documents how a `bir::Module` is **serialized to JSON** — the producer side, the exact inverse of the two-pass loader on the [BIR JSON Loader](json-loader.md) page. A serialized BIR module is a developer / round-trip artifact (the shipped NEFF carries the codegen-side JSONs instead); the wire form here is the authoritative L1 representation before lowering. The complete record schema — every per-op key set, every sub-record — lives on the [BIR-JSON Record Schema](json-schema.md) page; this page is about the **mechanism that emits it**.
+This page documents how a `bir::Module` is **serialized to JSON** — the producer side, the exact inverse of the two-pass loader on the [BIR JSON Loader](json-loader.md) page. A serialized BIR module is a developer / round-trip artifact (the shipped NEFF carries the codegen-side JSONs instead); the wire form here is the authoritative L1 representation before lowering. The complete record schema — every per-op key set, every sub-record — lives on the [BIR-JSON Record Schema](json-schema-catalog.md) page; this page is about the **mechanism that emits it**.
 
 There is **no `JsonWriter` class**. Serialization is raw `nlohmann::json` mutation: each emitter is an out-param mutator `void toJson(json& out)` that writes keys into `out` with the single primitive `out["key"] = value`. The top driver is `adl_serializer<bir::Module>::to_json` @ `0x48ab00`; per-instruction emission is `bir::Instruction::toJson` @ `0x2e2ea0` (the common header) plus a per-leaf `Inst<X>::toJson` that calls the base first, then appends op-specific keys. The producer and the loader are generated from one ISA spec by `brewer.py` ([brewer / *OpGen contract](brewer-generator.md)), which is why their key names, order, nesting, and enum spellings agree by construction.
 
 Three properties dominate the write path and are this page's gotchas:
 
 - **Skip-default emission.** A field whose value equals its constructor default is *not emitted*. Each field hardcodes its own inline gate (`cmp` against the default ordinal, a null-pointer test, or an empty-list test) immediately before its `operator[]`. There is no generic `is_default` helper. Because the loader restores an absent key to that same default, absence ⇄ default is a fixpoint — this is what makes skip-default round-trip-safe.
-- **Always-v2.** `Module::to_json` hardcodes `root["version"] = 2`, and every pelican-expr emit is threaded with version 2 by the caller. The producer *always* writes schema v2, even when it loaded a v1 document. The loader still reads v1 (cross-ref [BIR-JSON Versioning](json-versioning.md)) — so the writer is a one-way v1→v2 normalizer.
+- **Always-v2.** `Module::to_json` hardcodes `root["version"] = 2`, and every pelican-expr emit is threaded with version 2 by the caller. The producer *always* writes schema v2, even when it loaded a v1 document. The loader still reads v1 (cross-ref [BIR-JSON Versioning](wire-versioning.md)) — so the writer is a one-way v1→v2 normalizer.
 - **ICF-merged header bodies.** Identical-code-folding collapses every "no-extra-field" opcode's `toJson` into one shared body: **28** distinct `Inst*::toJson` symbols resolve to the single address `0x434e30`. One address serves many ops.
 
 ### Reimplementation contract
@@ -122,7 +122,7 @@ replication_num_rows · is_transpose · is_fmap_onezero · is_weight_onezero ·
 tile_size · tile_position · ifmap_quant_offset · weights_quant_offset · perf_mode
 ```
 
-The first eight + the two quant-offsets are emitted by `MaybeAffine<T>::writeIntoJson` (the field-level writer for "constant-or-loop-affine" values, [§5d](#5d-maybeaffinet--the-constant-or-affine-writer)); `tile_size` / `tile_position` are 2-element `[int,int]` JSON arrays (an `initializer_list` `basic_json` + `MaybeAffine<int>` writes + two `push_back`s); `perf_mode` goes through `bir::to_json(json&, MatmultPerfMode)` and is **always emitted** (not skip-default). The 13-key roster and offsets are owned by the [BIR-JSON Record Schema §2.A](json-schema.md); this is the emission witness for the count.
+The first eight + the two quant-offsets are emitted by `MaybeAffine<T>::writeIntoJson` (the field-level writer for "constant-or-loop-affine" values, [§5d](#5d-maybeaffinet--the-constant-or-affine-writer)); `tile_size` / `tile_position` are 2-element `[int,int]` JSON arrays (an `initializer_list` `basic_json` + `MaybeAffine<int>` writes + two `push_back`s); `perf_mode` goes through `bir::to_json(json&, MatmultPerfMode)` and is **always emitted** (not skip-default). The 13-key roster and offsets are owned by the [BIR-JSON Record Schema §2.A](json-schema-catalog.md); this is the emission witness for the count.
 
 ### 3b. The Matmult family — thunks vs. wrapper (a refinement)
 
@@ -222,7 +222,7 @@ The access pattern points at its tensor by **name** (`memref`/`memsetref` string
           ... else   → FATAL "Check the version - should be 1 (old) or 2 (new)"
 ```
 
-The version is supplied **by the caller**, *not* read from `Module::getVersion()` inside `toJson`. Because the module driver hardcodes 2 ([§6](#6-the-module-driver-0x48ab00)) and threads 2 into every pelican emit, **`toJsonv2` is the always-taken path on the write side**; `toJsonv1` is reachable only if a caller passes 1, and no such caller exists on the write path. `toJsonv1`/`toJsonv2` differ in the on-wire encoding of the pelican `RefPtr<Expr>` affine tree (the `addrs` / `address_expr` / `bank_expr` / `order` / unroll-predicate lists). This is the **sole** version-keyed divergence in the writer; the rest of the schema is version-agnostic. The full v1↔v2 split is owned by [BIR-JSON Versioning](json-versioning.md). [CONFIRMED — `0x3bbda0` disasm.]
+The version is supplied **by the caller**, *not* read from `Module::getVersion()` inside `toJson`. Because the module driver hardcodes 2 ([§6](#6-the-module-driver-0x48ab00)) and threads 2 into every pelican emit, **`toJsonv2` is the always-taken path on the write side**; `toJsonv1` is reachable only if a caller passes 1, and no such caller exists on the write path. `toJsonv1`/`toJsonv2` differ in the on-wire encoding of the pelican `RefPtr<Expr>` affine tree (the `addrs` / `address_expr` / `bank_expr` / `order` / unroll-predicate lists). This is the **sole** version-keyed divergence in the writer; the rest of the schema is version-agnostic. The full v1↔v2 split is owned by [BIR-JSON Versioning](wire-versioning.md). [CONFIRMED — `0x3bbda0` disasm.]
 
 ### 5d. `MaybeAffine<T>::writeIntoJson` — the constant-or-affine writer
 
@@ -294,13 +294,13 @@ The five strongest claims, re-checked against the cp310 binary:
 4. **ICF merging.** CONFIRMED. `nm -DC libBIR.so | grep '^…434e30 ' | grep -c toJson` = **28** distinct `Inst*::toJson` symbols at one address; `InstCompareAndBranch` alone at `0x434e40`. 115 distinct `Inst*::toJson` leaf symbols total.
 5. **Round-trip identity-up-to-canonical.** CONFIRMED for the harness sequence (`bir_roundtrip` @ `0x427dc0`: `from_json`→`to_json`→`dump(indent=2)`); STRONG for the symmetry property (it follows from the per-key write/read pairing plus the v1→v2 write-only normalization, not from an in-binary equality assertion — the harness leaves equality to an external diff).
 
-**Re-verify ceiling.** The header order, the three DMA gates, the v2 stamp, the pelican version gate, the Argument kind switch, the matmul 13-key order, and the ICF count are all byte-anchored (CONFIRMED). The exhaustive per-key skip-default gate set **beyond** matmul / DMA / Activation was not dumped op-by-op — the *pattern* (null / empty / `==default-ordinal` / MaybeAffine-no-value) is confirmed and generalizes, but a complete per-op gate table is loader-schema territory ([BIR-JSON Record Schema](json-schema.md)). The `BasicBlockHolder` container @ `0x254f70` and `MemoryLocationSet::toJson` @ `0x3481a0` failed Hex-Rays; their key rosters are taken from disasm string-xrefs (CONFIRMED for keys) but not all per-key gates were transcribed. The W8/W9 attribute-bag membership is STRONG (rosters cross-checked against the container model), not byte-dumped on this page.
+**Re-verify ceiling.** The header order, the three DMA gates, the v2 stamp, the pelican version gate, the Argument kind switch, the matmul 13-key order, and the ICF count are all byte-anchored (CONFIRMED). The exhaustive per-key skip-default gate set **beyond** matmul / DMA / Activation was not dumped op-by-op — the *pattern* (null / empty / `==default-ordinal` / MaybeAffine-no-value) is confirmed and generalizes, but a complete per-op gate table is loader-schema territory ([BIR-JSON Record Schema](json-schema-catalog.md)). The `BasicBlockHolder` container @ `0x254f70` and `MemoryLocationSet::toJson` @ `0x3481a0` failed Hex-Rays; their key rosters are taken from disasm string-xrefs (CONFIRMED for keys) but not all per-key gates were transcribed. The W8/W9 attribute-bag membership is STRONG (rosters cross-checked against the container model), not byte-dumped on this page.
 
 ## See also
 
 - [BIR JSON Loader](json-loader.md) — the two-pass `from_json` reader this page inverts (7.12)
-- [BIR-JSON Record Schema](json-schema.md) — the full per-op key sets and sub-records (7.14)
-- [BIR-JSON Versioning](json-versioning.md) — the v1/v2 split and the pelican `toJsonv1`/`toJsonv2` divergence (7.15)
+- [BIR-JSON Record Schema](json-schema-catalog.md) — the full per-op key sets and sub-records (7.14)
+- [BIR-JSON Versioning](wire-versioning.md) — the v1/v2 split and the pelican `toJsonv1`/`toJsonv2` divergence (7.15)
 - [The bir::Instruction Base Struct](instruction-base.md) — the struct backing the 19 header offsets
 - [BIR Value Model](value-model.md) — Argument / AccessPattern / Immediate / Register
 - [MemoryLocation / Storage](memory-location.md) — the tensor placement records referenced by name

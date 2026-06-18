@@ -24,7 +24,7 @@ The one decision that shapes the whole layer is the **static-vs-symbolic split**
 | **Transient output** | `InstArg` — `{MemLoc*, SmallVector<APPair,4>, partition:i32, dtype:i32, valid:u8}` |
 | **Wire consumers** | `addArgument<PhysicalAccessPattern>` `@plt 0x5fcd80` · `addOutput` `@plt 0x5fc5e0` |
 
-This page builds the **transient codegen output**; the **value-object** that consumes it — `bir::PhysicalAccessPattern` and the `Argument` hierarchy — is [BIR Value Model](value-model.md) (note the offset distinction in §5), the on-wire `ADDR4` / `TENSOR1-4D` silicon descriptors are Part 2, and the kind-2→kind-3 lowering is `lower_ap` (cross-ref §7). The dynamic-AP companion `DynamicAPINFO` is detailed in [Dynamic Access Patterns](dynamic-ap.md).
+This page builds the **transient codegen output**; the **value-object** that consumes it — `bir::PhysicalAccessPattern` and the `Argument` hierarchy — is [BIR Value Model](value-model.md) (note the offset distinction in §5), the on-wire `ADDR4` / `TENSOR1-4D` silicon descriptors are Part 2, and the kind-2→kind-3 lowering is `lower_ap` (cross-ref §7). The dynamic-AP companion `DynamicAPINFO` is detailed in [Dynamic Access Patterns](codegen-dynamic-ap.md).
 
 ---
 
@@ -387,4 +387,4 @@ libBIR consumers  addArgument<PhysicalAccessPattern> @plt 0x5fcd80;
                   addOutput @plt 0x5fc5e0; PhysicalAccessPattern::setPattern 0x211d40 (libBIR)
 ```
 
-**Cross-references:** [BIR Value Model](value-model.md) (7.4 — the minted `Argument`/`AccessPattern` value-objects, `+0x50` MI layout) · [BirCodeGenLoop AP Builders](../nki/bircodegen-ap.md) (6.5.14 — the beta3 Penguin twin of this primitive) · [Dynamic Access Patterns](dynamic-ap.md) (7.23 — the `DynamicAPINFO` companion built by `assembleDynamicInfo`).
+**Cross-references:** [BIR Value Model](value-model.md) (7.4 — the minted `Argument`/`AccessPattern` value-objects, `+0x50` MI layout) · [BirCodeGenLoop AP Builders](../nki/bircodegen-ap.md) (6.5.14 — the beta3 Penguin twin of this primitive) · [Dynamic Access Patterns](codegen-dynamic-ap.md) (7.23 — the `DynamicAPINFO` companion built by `assembleDynamicInfo`).

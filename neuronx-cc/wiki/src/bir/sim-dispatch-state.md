@@ -17,7 +17,7 @@ For reimplementation, the contract is:
 - The `110`-row `InstructionType`→`visitInst<X>` dispatch table, its pre-switch CF interception, and its four routing classes.
 - The `InstVisitor` field map — every sub-state's byte offset, pinned to a constructor write.
 - The `Memory` `DenseMap`/`MemoryObject` model (flat per-tensor byte arrays + a per-byte "written" shadow), the `RegState` per-engine register file, and the `SyncState` 256-slot bank with its five update modes.
-- The MT19937-64 host generator — textbook-correct masks, with the `std::uniform_int_distribution` adapter quirk — and the device Xorwow generator.
+- The MT19937-64 host generator — textbook-correct masks, with the `std::uniform_int_distribution` adapter quirk — and the device generators (the gen-2 Xorwow body is given here; the gen-1 `LFSR`/`PCG32`/`Philox` switch is on the [dedicated RNG page](sim-bn-rng-collective-dma.md)).
 
 | | |
 |---|---|
@@ -432,7 +432,7 @@ else   → assert("false && \"Unhandled semaphore update command\"");
 
 ## 6. RNG state — host MT19937-64 + device Xorwow
 
-Two generators coexist: a **host** MT19937-64 (the visitor's own generator, for `Memset(Random)` when no device seed is present) and a **device** Xorwow (the modelled silicon PRNG, allocated per-op for `Rand`/`Rand2`/`Dropout`).
+Two generator *families* coexist: a **host** MT19937-64 (the visitor's own generator, the `SetRandState` scalar-seed source and the `Memset(Random)` fill when no device seed is present) and the **device** PRNGs (the modelled silicon generators, allocated per-op for `Rand`/`Rand2`/`Dropout`). This page documents the host MT19937-64 in full and gives the Xorwow body; the device side is *not* a single Xorwow. The dedicated [RNG kernels page](sim-bn-rng-collective-dma.md#21-gen-1--visitinstrand-it-60-3-way-prng-switch) proves it is **two device generations** — `Rand` (IT 60) is a gen-1 3-way `LFSR / PCG32 / Philox` switch keyed on `RandomAlgorithmKind` (`InstRand+0xF0`), and `Rand2` (IT 97) is the cuRAND **Xorwow** (gen-2). Treat the Xorwow body below as the gen-2 device step; see that page for the gen-1 generators.
 
 ### 6.1 Host MT19937-64 — inline at `InstVisitor+0x3E0`
 
@@ -487,7 +487,7 @@ counter += 362437;
 return counter + t;
 ```
 
-`Rand` (IT 60) / `Rand2` (IT 97) / `Dropout` (IT 65) / `Memset(Random)` build a `std::vector<XorwowState>` (one per partition/lane), seed each from the instruction's `Seed` operand, and stream Xorwow values. The op's PRNG **kind** field selects from `"Supported PRNGs are LFSR/PCG32/PHILOX_1: "` (`getDtypeSize(Seed.getType()) == 4` / `"Invalid seed type"` guard the seed dtype); the Xorwow path is the implemented device model. `RandGetState`/`RandSetState` (IT 98/99) and `Get`/`SetRandState` (IT 58/59) read/write the `XorwowState` vector to/from a tensor — the RNG-state save/restore opcodes. **[Xorwow body CONFIRMED; which op field selects LFSR vs PCG32 vs PHILOX, and whether all three are implemented, is INFERRED from the verifier string — only Xorwow + MT were traced.]**
+`Rand2` (IT 97) and `Dropout` (IT 65) build a `std::vector<XorwowState>` (4 lanes per partition for `Rand2`), seed each from the instruction's `Seed` operand, and stream Xorwow values. `Rand` (IT 60) is the **gen-1** path: it reads the op's PRNG **kind** field (`RandomAlgorithmKind` at `InstRand+0xF0`) and selects one of `"Supported PRNGs are LFSR/PCG32/PHILOX_1: "` — *not* Xorwow (`getDtypeSize(Seed.getType()) == 4` / `"Invalid seed type"` guard the seed dtype). All three gen-1 generators are implemented (LFSR taps `{32,22,2,1}`, PCG-XSH-RR 64/32, Philox-4x32-10) — see the [dedicated RNG kernels page](sim-bn-rng-collective-dma.md#21-gen-1--visitinstrand-it-60-3-way-prng-switch). `RandGetState`/`RandSetState` (IT 98/99) and `Get`/`SetRandState` (IT 58/59) read/write the device state vector to/from a tensor — the RNG-state save/restore opcodes. **[Xorwow body CONFIRMED here; the gen-1 LFSR/PCG32/Philox bodies are CONFIRMED on the dedicated page (per-constant `movabs`/tap anchors).]**
 
 ---
 

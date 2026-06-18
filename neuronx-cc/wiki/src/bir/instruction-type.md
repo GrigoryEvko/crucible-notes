@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **Structural compare** | `bir::Instruction::sameInst(Instruction*)` @ `0x2db7b0` (8119 B; 110-case dispatch) + 16 per-class overrides |
 | **Family predicates** | free `bir::isXxx(const Instruction*)` in `0x30e9a0–0x315710` |
 | **Owning translation unit** | `neuronxcc/walrus/ir/lib/IR/Instruction.cpp` (path baked into the assert string) |
-| **Cross-refs** | [7.1 Instruction base](instruction-base.md) · [7.9 enum crosswalk](enum-crosswalk.md) · [7.14 op-family JSON schema](op-family-schema.md) |
+| **Cross-refs** | [7.1 Instruction base](instruction-base.md) · [7.20 enum crosswalk](codegen-enum-crosswalk.md) · [op-family enums](op-family-enums.md) |
 
 ---
 
@@ -306,7 +306,7 @@ This mixes all three index idioms in one function: an exact test (`== 18`), a ta
 ## Reimplementation checklist
 
 1. **Declare the enum verbatim**, ordinals 0–109, in the table order above. Treat any out-of-range value as a fatal IR-corruption assert, exactly as `InstructionType2string`'s default arm does.
-2. **Serialize by name, never by ordinal.** Ordinals renumber on every enum edit; the printer and JSON path key on the spelling. (See [7.9 enum crosswalk](enum-crosswalk.md) for the name↔ordinal pinning for this build.)
+2. **Serialize by name, never by ordinal.** Ordinals renumber on every enum edit; the printer and JSON path key on the spelling. (See [7.20 enum crosswalk](codegen-enum-crosswalk.md) for the name↔ordinal pinning for this build.)
 3. **Store the opcode at a fixed offset** (`+0x58` here) and build all RTTI on it.
 4. **Implement `sameInst` as a per-opcode switch** with optional class overrides; preserve the directional `Generic ≤ 3` family gate.
 5. **Compute families on demand**, carrying the multiplexer sub-fields (`DMACopy.subtype` at `+0x128`, `Collective.granularity` at `+0xF8`) so one opcode can answer several family queries.

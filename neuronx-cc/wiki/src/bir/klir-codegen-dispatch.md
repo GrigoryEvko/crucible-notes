@@ -1,4 +1,4 @@
-# 7.21 KlirToBirCodegen: the dispatch core & the master routing table
+# KlirToBirCodegen: the dispatch core & the master routing table
 
 > *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins present). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` — the **Strand-I** backend shared object. It retains its **full dynamic symbol table**: `nm -DC libwalrus.so | rg KlirToBirCodegen` yields **176** demangled `class → method → address` rows directly, the authoritative roster used throughout. `.text` (`0xf00000+`) and `.rodata` (`0x1c72000+`) have VA == file-offset, so jump tables are read by file offset. All evidence below is from this binary: `nm`, `objdump -d` disasm, `strings`, and a Python decode of the `.rodata` jump table. Every claim is tagged CONFIRMED (read directly off this binary) / STRONG (multi-evidence) / INFERRED / SPECULATIVE.*
 
@@ -274,7 +274,7 @@ The leaf bodies are not self-contained: they share a set of value-codegen / sub-
 | `legalizeIdentityMatrices` @ `0xf14320` / `legalizeActBiasTensorAddress` @ `0xf16a90` | late address fixups |
 | `getBankId(TensorName, uint, uint)` @ `0xf14ac0` | PSUM/SBUF bank-id resolve |
 
-These sub-encoders are documented per-family in the leaf pages: access/indexing in [7.22 codegenAccess](codegen-access.md) *(planned)*, and the per-op leaves in [7.26–7.30](codegen-leaves.md) *(planned)*.
+These sub-encoders are documented per-family in the leaf pages: access/indexing in [7.22 codegenAccess](codegen-accesspattern.md), and the per-op leaves in 7.26–7.30 ([matmul/MX](codegen-matmul-mx.md), [compute family](codegen-compute-family.md), [data-movement](codegen-data-movement.md), [DVE/RNG/control](codegen-dve-rng-control.md), [collectives](codegen-collectives-join.md)).
 
 ---
 
@@ -334,5 +334,5 @@ The five strongest claims, re-checked against the binary:
 ## Cross-references
 
 - [6.5.10 BirCodeGenLoop: the beta3 Penguin→BIR driver](../nki/bircodegenloop.md) — the **sibling** driver onto the same BIR node model (the active default; this page is the beta2 sibling).
-- [7.22 codegenAccess & the operand grammar](codegen-access.md) *(planned)* — the §4 sub-encoders in depth (`codegenTensorRef`, `codegenBirAccessPattern`, `codegenAP`).
-- [7.26–7.30 the per-op leaves](codegen-leaves.md) *(planned)* — the substantive `codegen<Op>` bodies (matmul, activation, collectives, DMA, RNG) reached by the §3 table.
+- [7.22 codegenAccess & the operand grammar](codegen-accesspattern.md) — the §4 sub-encoders in depth (`codegenTensorRef`, `codegenBirAccessPattern`, `codegenAP`).
+- [7.26 the matmul / MX leaves](codegen-matmul-mx.md), [7.27 the compute family](codegen-compute-family.md), [7.28 the data-movement leaves](codegen-data-movement.md), [7.29 DVE/RNG/control](codegen-dve-rng-control.md), [7.30 collectives](codegen-collectives-join.md) — the substantive `codegen<Op>` bodies (matmul, activation, collectives, DMA, RNG) reached by the §3 table.

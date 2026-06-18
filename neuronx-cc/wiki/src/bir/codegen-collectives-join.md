@@ -1,4 +1,4 @@
-# 7.30 Codegen collectives / send-recv + the KLR↔BIR op-join table
+# Codegen collectives / send-recv + the KLR↔BIR op-join table
 
 > *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins present). Subject binaries: `neuronxcc/starfish/lib/libwalrus.so` (the **Strand-I** backend object — every `KlirToBirCodegen::codegen*` leaf body) and `neuronxcc/starfish/lib/libBIR.so` (the `InstBuilder::addLocalSendRecv` definition; the `libwalrus` copy is an extern `U`-row resolved through the PLT). Both retain their full dynamic symbol tables, so every leaf below is a byte-exact `nm -DC` row. `libwalrus` `.text` (`0xf00000+`) and `.rodata` (`0x1c72000+`) have VA == file-offset, so jump tables read by file offset. Evidence is `nm`, IDA decompiled/disasm sidecars under `ida/…__libwalrus.so/` and `…__libBIR.so/`, and `strings`. The **two-VA-frame artifact** applies: each leaf appears twice in the IDA sidecars — once at its PLT-thunk frame (`_0x6000xx`) and once at its real body frame (`_0xf2xxxx`); addresses below are always the real `nm` body. Every claim is tagged CONFIRMED / STRONG / INFERRED / SPECULATIVE.*
 
