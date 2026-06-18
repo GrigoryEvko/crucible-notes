@@ -173,6 +173,8 @@
 - [nki_ctx, Scopes & the sema Handle](nki/nki-ctx-scopes.md)
 - [Range & Loop Semantics — static / affine / sequential range](nki/range-loop-semantics.md)
 - [SPMD Programming Model — program_id / num_programs / grid](nki/spmd-programming-model.md)
+- [Tile / Tensor Abstract Data Model](nki/tile-tensor-model.md)
+- [Memref / View / Access Model (Concrete Tensors)](nki/memref-view-model.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
