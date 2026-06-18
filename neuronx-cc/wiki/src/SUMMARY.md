@@ -254,6 +254,8 @@
 - [codegen AccessPattern Primitive (codegenAccess / BirAccessPattern)](bir/codegen-accesspattern.md)
 - [codegen Dynamic/Runtime AP (assembleDynamicInfo / DynamicAPINFO)](bir/codegen-dynamic-ap.md)
 - [codegen Operand / Immediate / Register / Dependency-Edge Sub-Encoders](bir/codegen-sub-encoders.md)
+- [codegen Enum-Translation Crosswalk (klr↔BIR)](bir/codegen-enum-crosswalk.md)
+- [codegen: Matmul + MX + QuantizeMx Leaves](bir/codegen-matmul-mx.md)
 
 <!-- Roadmap: pages below land part-by-part as they are written.
      The full 355-page plan is tracked in the task board (one task per page).
