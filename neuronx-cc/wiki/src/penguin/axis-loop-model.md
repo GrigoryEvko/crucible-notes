@@ -302,5 +302,5 @@ Remaining gaps, marked honestly: the exact integer **ordinals** of `AxisType` ar
 
 - [Penguin IR Node Model](ir-node-model.md) — P5.1; `Instruction.axes`/`loopnest`/`loopdepth`, the SSA value base, `While`/`Filter` predicate model
 - [Penguin Loop Transforms](loop-transform-clients.md) — P5.15; LoopSplitting / MacroGeneration / tiling that cut and emit the axis nest
-- [NKI Range Semantics](../nki/range-semantics.md) — P6.1.3; `nl.affine_range` / `nl.sequential_range` → `AxisType.Parallel` / `Sequential`
-- [BIR LoopAxis](../bir/loop-axis.md) — Part 7; the `BirCodeGenLoop` lowering target for each Penguin axis
+- [NKI Range Semantics](../nki/range-loop-semantics.md) — P6.1.3; `nl.affine_range` / `nl.sequential_range` → `AxisType.Parallel` / `Sequential`
+- [BIR LoopAxis](../nki/bircodegenloop.md) — P6.5.10; the `BirCodeGenLoop` lowering target for each Penguin axis
