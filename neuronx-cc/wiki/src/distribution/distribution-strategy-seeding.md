@@ -31,7 +31,7 @@ registry, is the subject of [13.9 (LNC sharding constraint)](lnc-sharding-constr
 and is not re-derived here. The Shardy attr↔`HloSharding` change-of-basis is
 [13.4](shardy-hlosharding-bridge.md); the factor algebra that produces the attrs is
 [13.3](sharding-algebra.md); the full 147-flag CLI catalog is
-[3.8 (flag catalog)](../frontend/compile-command-flags.md).
+[3.8 (flag catalog)](../frontend/flag-catalog.md).
 
 For reimplementation, the contract is:
 
@@ -77,7 +77,7 @@ the rest of this page does is downstream of these four.
 
 ### The flags
 
-The flag surface is owned by the [3.8 catalog](../frontend/compile-command-flags.md)
+The flag surface is owned by the [3.8 catalog](../frontend/flag-catalog.md)
 (provenance D-AF01); reproduced here only as the input to the seeding logic. Every
 literal and dest below is a byte-verbatim `.rodata` string in `CompileCommand.so`.
 
@@ -382,7 +382,7 @@ constraint to a specific LNC core.
 
 ## Cross-references
 
-- **[3.8 — CompileCommand flag catalog](../frontend/compile-command-flags.md)** — the
+- **[3.8 — CompileCommand flag catalog](../frontend/flag-catalog.md)** — the
   full 147-flag CLI surface; the authoritative source for `--distribution-strategy` /
   `--lnc` / `--spmd` flag rows (provenance D-AF01). This page does not contradict it.
 - **[13.3 — Sharding algebra](sharding-algebra.md)** — the `mlir::sdy` factor algebra
