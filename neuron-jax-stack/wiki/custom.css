@@ -1,4 +1,387 @@
-/* Site-specific style overrides for this wiki. */
+/* ── Fonts ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..900;1,8..60,300..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+    --content-max-width: 90rem;
+}
+
+/* ── Light theme palette (matches LaTeX whitepaper) ───────────────── */
+.light, .rust {
+    --bg: #FAFAFA;
+    --fg: #1a1a1a;
+    --sidebar-bg: #F0F0F0;
+    --sidebar-fg: #333333;
+    --sidebar-active: #1a5276;
+    --links: #1a5276;
+    --inline-code-color: #c7254e;
+    --theme-popup-bg: #fafafa;
+    --theme-popup-border: #cccccc;
+    --quote-bg: #f5f5f5;
+    --quote-border: #dddddd;
+    --table-border-color: #d0d0d0;
+    --table-header-bg: #f0f0f0;
+    --table-alternate-bg: #f8f8f8;
+    --searchbar-border-color: #cccccc;
+    --searchbar-bg: #ffffff;
+    --searchresults-header-fg: #333;
+    --searchresults-border-color: #ddd;
+    --rule-color: #333333;
+    --heading-color: #1a1a1a;
+    --subheading-color: #333333;
+    --code-bg: #f5f5f5;
+    --code-border: #e0e0e0;
+}
+
+/* ── Dark theme palette ───────────────────────────────────────────── */
+.navy, .coal, .ayu {
+    --bg: #161923;
+    --fg: #c8cdd3;
+    --sidebar-bg: #11141a;
+    --sidebar-fg: #8a9199;
+    --sidebar-active: #7eb8da;
+    --links: #7eb8da;
+    --inline-code-color: #e06c75;
+    --quote-bg: #1c2028;
+    --quote-border: #2a3040;
+    --table-border-color: #2a3040;
+    --table-header-bg: #1c2028;
+    --table-alternate-bg: #181c24;
+    --rule-color: #4a5568;
+    --heading-color: #e2e8f0;
+    --subheading-color: #a0aec0;
+    --code-bg: #1c2028;
+    --code-border: #2a3040;
+}
+
+/* ── Body typography ──────────────────────────────────────────────── */
+.content main {
+    font-family: 'Source Serif 4', 'STIX Two Text', Georgia, 'Times New Roman', serif;
+    font-size: 1.75rem;
+    line-height: 1.72;
+    letter-spacing: -0.003em;
+    font-feature-settings: 'kern' 1, 'liga' 1, 'onum' 1;
+}
+
+.content main p {
+    margin-bottom: 0.6em;
+    text-align: left;
+    hyphens: auto;
+}
+
+/* ── Headings (sans-serif, like the LaTeX \sffamily\bfseries) ───── */
+.content main h1 {
+    font-family: 'Inter', 'Helvetica Neue', sans-serif;
+    font-weight: 700;
+    font-size: 3.0rem;
+    color: var(--heading-color);
+    margin-top: 1.6em;
+    margin-bottom: 0.3em;
+    padding-bottom: 0.35em;
+    border-bottom: 1.5px solid var(--rule-color);
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+}
+
+.content main h2 {
+    font-family: 'Inter', 'Helvetica Neue', sans-serif;
+    font-weight: 600;
+    font-size: 2.25rem;
+    color: var(--heading-color);
+    margin-top: 1.8em;
+    margin-bottom: 0.25em;
+    padding-bottom: 0.25em;
+    border-bottom: 0.8px solid var(--rule-color);
+    opacity: 0.95;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+}
+
+.content main h3 {
+    font-family: 'Inter', 'Helvetica Neue', sans-serif;
+    font-weight: 600;
+    font-size: 1.75rem;
+    color: var(--subheading-color);
+    margin-top: 1.4em;
+    margin-bottom: 0.2em;
+    letter-spacing: -0.005em;
+}
+
+.content main h4 {
+    font-family: 'Inter', 'Helvetica Neue', sans-serif;
+    font-weight: 600;
+    font-size: 1.25rem;
+    color: var(--subheading-color);
+    margin-top: 1.1em;
+    margin-bottom: 0.15em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* First h1 on page — no top margin */
+.content main > h1:first-child {
+    margin-top: 0;
+}
+
+/* ── Code (monospace) ─────────────────────────────────────────────── */
+.content main code {
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82em;
+    font-feature-settings: 'liga' 0;
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    background-color: var(--code-bg);
+    border: 0.5px solid var(--code-border);
+}
+
+/* Code blocks */
+.content main pre {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 1.25rem;
+    line-height: 1.55;
+    padding: 0.9em 1.1em;
+    border-radius: 4px;
+    background-color: var(--code-bg) !important;
+    border: 1px solid var(--code-border);
+    overflow-x: auto;
+}
+
+.content main pre > code {
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: inherit;
+}
+
+/* ── Tables (booktabs-inspired) ───────────────────────────────────── */
+.content main table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: 1.5rem;
+    line-height: 1.5;
+}
+
+.content main table thead {
+    border-top: 2px solid var(--rule-color);
+    border-bottom: 1px solid var(--rule-color);
+}
+
+.content main table th {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.55em 0.7em;
+    text-align: left;
+    color: var(--subheading-color);
+    background: transparent;
+}
+
+.content main table td {
+    padding: 0.4em 0.7em;
+    border-bottom: 0.5px solid var(--table-border-color);
+    vertical-align: top;
+}
+
+.content main table tbody tr:last-child {
+    border-bottom: 1.5px solid var(--rule-color);
+}
+
+.content main table tbody tr:nth-child(even) {
+    background-color: var(--table-alternate-bg);
+}
+
+/* Code in tables — tighter */
+.content main table code {
+    font-size: 0.8em;
+    padding: 0.05em 0.25em;
+    white-space: nowrap;
+}
+
+/* ── Blockquotes (for TODO stubs and notes) ──────────────────────── */
+.content main blockquote {
+    border-left: 3px solid var(--links);
+    padding: 0.4em 1em;
+    margin: 0.8em 0;
+    background: var(--quote-bg);
+    border-radius: 0 3px 3px 0;
+    font-style: italic;
+    color: var(--subheading-color);
+}
+
+.content main blockquote p {
+    margin: 0.3em 0;
+}
+
+/* ── Lists (compact, like LaTeX \setlist{nosep}) ─────────────────── */
+.content main ul, .content main ol {
+    padding-left: 1.5em;
+    margin: 0.4em 0;
+}
+
+.content main li {
+    margin-bottom: 0.15em;
+}
+
+.content main li > p {
+    margin: 0.2em 0;
+}
+
+/* Nested lists tighter */
+.content main li > ul, .content main li > ol {
+    margin: 0.1em 0;
+}
+
+/* ── Links ────────────────────────────────────────────────────────── */
+.content main a {
+    color: var(--links);
+    text-decoration: none;
+    border-bottom: 0.5px solid transparent;
+    transition: border-color 0.15s;
+}
+
+.content main a:hover {
+    border-bottom-color: var(--links);
+}
+
+/* ── Horizontal rules ─────────────────────────────────────────────── */
+.content main hr {
+    border: none;
+    border-top: 0.8px solid var(--rule-color);
+    margin: 2em 0;
+    opacity: 0.3;
+}
+
+/* ── Sidebar refinements ──────────────────────────────────────────── */
+.sidebar .sidebar-scrollbox {
+    font-family: 'Inter', sans-serif;
+    font-size: 1.25rem;
+}
+
+.sidebar .chapter li a {
+    padding: 3px 0;
+}
+
+.sidebar .chapter li.chapter-item {
+    line-height: 1.6;
+}
+
+/* Section labels in sidebar */
+.sidebar .chapter li.part-title {
+    font-weight: 700;
+    font-size: 1.0rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 1.2em;
+    color: var(--sidebar-fg);
+    opacity: 0.6;
+}
+
+/* ── Strong / emphasis ────────────────────────────────────────────── */
+.content main strong {
+    font-weight: 650;
+    color: var(--heading-color);
+}
+
+.content main em {
+    font-style: italic;
+}
+
+/* ── QUIRK callouts — unified across nvopen-tools wikis ────────────
+   Convention: a blockquote whose first paragraph opens with a literal
+   ⚡ glyph followed by a bold title.
+
+       > ⚡ **QUIRK — short title**
+       > One paragraph explaining the surprise.
+
+   CommonMark renders this as
+
+       <blockquote><p>⚡ <strong>QUIRK — title</strong>… </p></blockquote>
+
+   The first child of the <p> is a text node ("⚡ "). The <strong> is a
+   *later* child. Ordinary `**Note**` blockquotes have <strong> as the
+   FIRST child, so the :has()/:not() pair below correctly fires only on
+   the quirk shape. Browsers without :has() (Firefox <121, etc.) fall
+   back to default blockquote styling, which remains legible.
+
+   Authors can force the style with `<blockquote class="quirk">…` or
+   suppress it with `<blockquote class="note">…`. */
+
+:root {
+    --quirk-border-light: #d97706;   /* amber-600 — AA on warm bg */
+    --quirk-border-dark:  #f59e0b;   /* amber-500 — punchier on dark */
+    --quirk-bg-light:     rgba(217, 119, 6, 0.07);
+    --quirk-bg-dark:      rgba(245, 158, 11, 0.10);
+    --quirk-title-light:  #b45309;   /* amber-700 */
+    --quirk-title-dark:   #fbbf24;   /* amber-400 */
+}
+
+.content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.content main blockquote.quirk {
+    border-left: 3px solid var(--quirk-border-light);
+    background: var(--quirk-bg-light);
+    border-radius: 0 3px 3px 0;
+    font-style: normal;
+    padding: 0.5em 1em;
+    margin: 1em 0;
+    color: var(--fg);
+}
+
+.navy .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.coal .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.ayu  .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.navy .content main blockquote.quirk,
+.coal .content main blockquote.quirk,
+.ayu  .content main blockquote.quirk {
+    border-left-color: var(--quirk-border-dark);
+    background: var(--quirk-bg-dark);
+}
+
+.content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.content main blockquote.quirk > p:first-child > strong {
+    color: var(--quirk-title-light);
+    font-weight: 700;
+    letter-spacing: 0.005em;
+}
+
+.navy .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.coal .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.ayu  .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.navy .content main blockquote.quirk > p:first-child > strong,
+.coal .content main blockquote.quirk > p:first-child > strong,
+.ayu  .content main blockquote.quirk > p:first-child > strong {
+    color: var(--quirk-title-dark);
+}
+
+.content main blockquote.note {
+    border-left: 3px solid var(--links);
+    background: var(--quote-bg);
+    color: var(--subheading-color);
+    font-style: italic;
+}
+
+@media print {
+    .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+    .content main blockquote.quirk {
+        border-left-color: #92400e;
+        background: #fef3c7;
+        color: #000;
+    }
+}
+
+/* ── Print ────────────────────────────────────────────────────────── */
+@media print {
+    .content main {
+        font-size: 10.5pt;
+        max-width: none;
+    }
+    .content main h1 { font-size: 18pt; }
+    .content main h2 { font-size: 14pt; }
+    .content main pre { font-size: 8.5pt; }
+    .content main table { font-size: 9pt; }
+}
+
 /* ── Responsive tables (mobile) ───────────────────────────────
    Let table cells and inline code wrap and shrink on narrow screens instead of
    forcing horizontal scroll on every table. */
