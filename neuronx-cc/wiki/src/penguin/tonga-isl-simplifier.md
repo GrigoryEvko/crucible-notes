@@ -309,6 +309,8 @@ This is the write-side counterpart that pairs with `union_ranges`' read-side rea
 
 > **CORRECTION — `dsts` / `rank` are NOT interned strings in this module.** The backing report's §5.5 reconstruction cites `n_s_dsts` and `n_s_rank` (and the per-store `tensor_shape / access_shape / rank` reshape). Re-grepping the cp310 string pool: `NeuronIndirectSave`, `tensor_shape`, `access_shape`, `reinterpret`, and `tensor_space` **are** present verbatim, but **`dsts` and `rank` are absent** (only `dst_acc` / `dst_load` / `dst_load_inst` / `dst_load_acc` exist). So the exact destination-iteration spelling (`s.dsts`) and the `rank` argument to `reinterpret` are **INFERRED** from the AP model, not literal interned names. Treat the genexpr shape in the pseudocode above as the inferred reshape, not a verbatim transcription.
 
+> **CORRECTION (SUPERSEDED — Wave-2 audit) — `dsts` and `rank` *are* interned after all.** Re-checked the module's `__Pyx_CreateStringTabAndInitStrings` table directly: `__pyx_k_dsts` ("dsts", @ `0x61fb`) and `__pyx_k_rank` ("rank", @ `0x7498`) are both present verbatim. The prior "absent" CORRECTION grepped too narrowly (matching only the `dst_*` family). So `s.dsts` and the `rank` argument to `reinterpret` **are name-confirmed**; the surrounding genexpr *reshape* may still be INFERRED, but not on the grounds that these two names don't exist. Upgrade `dsts` / `rank` from INFERRED to CONFIRMED-name.
+
 ## 6 — End-to-end flow
 
 How the pieces compose when `MemcpyElimination` (or a Tonga simplification pass) wants to fold a copy/load:
@@ -341,7 +343,7 @@ The five strongest claims, re-challenged against the binary:
 4. **`injective_access` uses the shrunk domain; `access` does not.** `…injective_access_0x2e330.c` getattrs `n_s_in_shrink_domain` (`:444`) then `n_s_access_impl` (`:594`); `…access_0x281a0.c` uses `n_s_in_domain` instead. **CONFIRMED.**
 5. **`get_scaled_addrs` / `newaddrs` / `drop_ap_indicies` / `keep_ap_indicies_linear_expr` are module-level globals.** All four resolve via `_Pyx__GetModuleGlobalName` (not `tp_getattro` on `self`), each present exactly once in the string pool. **CONFIRMED.**
 
-Items downgraded during verification: the §5.5 `dsts` / `rank` strings (issued as a CORRECTION above — INFERRED, not interned), the kwarg key→index pairings into `create_access` / `newaddrs` (STRONG/INFERRED — keys present, pairing not separately interned), and the `enumerate_predicates` projection argument order (INFERRED from islpy). Nothing in §1–§4 main flow failed re-challenge.
+Items downgraded during verification: the kwarg key→index pairings into `create_access` / `newaddrs` (STRONG/INFERRED — keys present, pairing not separately interned), and the `enumerate_predicates` projection argument order (INFERRED from islpy). Nothing in §1–§4 main flow failed re-challenge. *(The §5.5 `dsts` / `rank` strings were initially downgraded but are restored to CONFIRMED-name — both are interned, see the SUPERSEDED correction in §5.5.)*
 
 ## See also
 
