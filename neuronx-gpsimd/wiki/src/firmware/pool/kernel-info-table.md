@@ -294,7 +294,9 @@ and then `const16`/`callx8`s into a named `decode_*`/`*_impl` worker. `[HIGH/OBS
 > `pool_cross_lane_reduce_bitvec@0x01000410`, `decode_pool(bool)@0x01000bc0`,
 > `decode_tensor_tensor_arith@0x01000f60`, `pool_extended_inst_copy@0x01003380`,
 > `decode_extended_inst_tensor_tensor_arith@0x010034b0`,
-> `get_sequence_bounds_impl@0x01004284`, `decode_tensor_dequantize@0x01004df0`,
+> `get_sequence_bounds_impl@0x01004284`,
+> `nonzero_with_count_impl<int>@0x01004b80` / `<float>@0x01004940`,
+> `decode_tensor_dequantize@0x01004df0`,
 > `iota_impl<true>@0x01000100` / `<false>@0x010002c0`. `[HIGH/OBSERVED]`
 
 ---
@@ -312,7 +314,7 @@ name was anchored.
 | 2 | `0x7d` (125) | 0 | `0x01000410` | **`pool_cross_lane_reduce_bitvec()`** | `.xt.prop` EXACT | `[HIGH]` |
 | 3 | `0x45` (69) | 0 | `0x01000b90` | `decode_pool(bool)` — trampoline `const16 a2,0x100;const16 a2,0xbc0; callx8` → `0x01000bc0` | route decoded to `.xt.prop` start | `[HIGH]` |
 | 4 | `0x51` (81) | 0 | `0x0100105c` | `decode_tensor_tensor_arith(uint)` entry (worker `@0x01000f60`) | named worker in band | `[MED]` |
-| 5 | `0x41` (65) | 0 | `0x01000f1c` | `tensor_tensor_arith` op trampoline (state ptr `0x0200045c`; worker `tensor_tensor_arith_impl@0x01001280`) | state ptr + worker | `[HIGH op / MED route]` |
+| 5 | `0x41` (65) | 0 | `0x01000f1c` | `tensor_tensor_arith` op trampoline — **computed/indirect**: loads `*(0x0200045c)`, masks low byte, `slli ×16`, `callx8 a2` (runtime vtable, no fixed target) | indirect call confirmed | `[HIGH op / HIGH that it is indirect]` |
 | 6 | `0xf0` (240) | 0 | `0x01003370` | **`ExtendedInstEngineNop`** (`entry a1,32; movi.n a2,0; retw.n` — empty) | full disasm | `[HIGH]` |
 | 7 | `0xf0` (240) | 1 | `0x01003380` | **`pool_extended_inst_copy()`** | `.xt.prop` EXACT | `[HIGH]` |
 | 8 | `0xf0` (240) | 2 | `0x01003484` | `decode_extended_inst_tensor_tensor_arith(bool,uint)` — `const16 a2,0x100;const16 a2,0x34b0; callx8` → `0x010034b0` | route decoded to `.xt.prop` start | `[HIGH]` |
@@ -321,31 +323,44 @@ name was anchored.
 | 11 | `0x52` (82) | 0 | `0x01003b40` | op `0x52` dispatch (loads `.data`/state table; no `.xt.prop` EXACT) | trampoline only | `[LOW]` |
 | 12 | `0x46` (70) | 0 | `0x010040c0` | `pool_copy` op trampoline (SUNDA op 70) | op number + trampoline | `[HIGH op / MED route]` |
 | 13 | `0x47` (71) | 0 | `0x01004160` | `pool_cast` op trampoline (SUNDA op 71) | op number + trampoline | `[HIGH op / MED route]` |
-| 14 | `0xbe` (190) | 0 | `0x01004204` | op `0xbe` dispatch (CAYMAN-specific; no SUNDA entry — see §7) | trampoline only | `[LOW]` |
-| 15 | `0xf2` (242) | 0 | `0x0100484c` | `get_sequence_bounds` / `tensor_dequantize` entry (state ptr `0x0200047c`; worker region `@0x01004284`/`@0x0100511c`) | state ptr + worker band | `[MED]` |
+| 14 | `0xbe` (190) | 0 | `0x01004204` | `get_sequence_bounds_impl` — `const16 a2,0x4284; callx8` (encoding `24 84 42` @ `0x01004278`) → `0x01004284` | route decoded to `.xt.prop` start | `[HIGH]` |
+| 15 | `0xf2` (242) | 0 | `0x0100484c` | `nonzero_with_count_impl<int>` — `const16 a2,0x4b80; callx8` (`24 80 4b` @ `0x0100491c`) → `0x01004b80`; alt branch `const16 a2,0x4940` (`24 40 49` @ `0x01004913`) → `<float>@0x01004940`; state ptr `0x0200047c` | route decoded to `.xt.prop` start | `[HIGH int / MED float branch]` |
 | 16 | `0x7b` (123) | 0 | `0x01004dc4` | `decode_tensor_dequantize(bool)` — `const16 a2,0x100;const16 a2,0x4df0; callx8` → `0x01004df0` | route decoded to `.xt.prop` start | `[HIGH]` |
 
 Naming bases:
 
 - **EXACT** — `funcVA == .xt.prop.<mangled>` function start (records 1, 2, 7). `[HIGH]`
 - **route** — trampoline disassembled; its `const16`/`callx8` (or `call0`/`j`) target
-  lands on a named `.xt.prop` function start (records 3, 8, 16) or its body (records 5,
-  9, 10, 15). `[HIGH for the three clean a2-routes; MED for body routes]`
+  lands on a named `.xt.prop` function start (records 3, 8, 14, 15, 16) or its body
+  (records 0, 9, 10). `[HIGH for the five clean a2-routes; MED for body/branch routes]`
 - **SUNDA op** — the opcode *number* matches the SUNDA opcode→pool-fn map
   (op 65/70/71/124/125/126 = `tensor_tensor_arith`/`copy`/`cast`/`clr_arith`/
   `clr_bitvec`/`iota`); CAYMAN reuses the same opcode numbering. The *number* is
   corroborating evidence; the *name* on this page is grounded in the image's own
   `.xt.prop` symbols. `[HIGH for the op number / CARRIED]`
 
-> **CORRECTION — records 3, 8, 16 routes upgraded to `HIGH`.** A naive `const16`-only
-> byte scan misses the route target because the trampolines first build a `.bss`
-> state-struct pointer with `const16 a2,0x200 ; const16 a2,0x<state_lo>`, *then* build
-> the code target with a second pair `const16 a2,0x0100 ; const16 a2,0x<route_lo>`
-> before `callx8`. Decoding the **second** pair gives `0x100<<16 | 0xbc0 = 0x01000bc0`
-> (decode_pool), `0x100<<16 | 0x34b0 = 0x010034b0`
-> (decode_extended_inst_tensor_tensor_arith), and `0x100<<16 | 0x4df0 = 0x01004df0`
-> (decode_tensor_dequantize) — each an EXACT `.xt.prop` function start. These three are
-> therefore `HIGH` route, not `MED`. `[HIGH/OBSERVED]`
+> **CORRECTION — five routes (records 3, 8, 14, 15, 16) resolve to EXACT `.xt.prop`
+> starts.** A naive `const16`-only byte scan misses the route target because the
+> trampolines first build a `.bss` state-struct pointer with
+> `const16 a2,0x200 ; const16 a2,0x<state_lo>`, *then* build the code target with a
+> single `const16 a2,0x<route_lo>` (implicit high half `0x0100`) immediately before
+> `callx8 a2`. Decoding that code-low `const16` (byte-exact, verified by direct search
+> for the `24 <lo> <hi>` encoding inside each trampoline's body range) gives:
+>
+> | rec | opcode | code-low `const16` (bytes @ VMA) | route target | named function |
+> |----:|:------:|:---------------------------------|:-------------|:---------------|
+> | 3 | `0x45` | `24 c0 0b` @ `0x01000bb0` | `0x01000bc0` | `decode_pool(bool)` |
+> | 8 | `0xf0/2` | `24 b0 34` @ `0x010034a4` | `0x010034b0` | `decode_extended_inst_tensor_tensor_arith` |
+> | 14 | `0xbe` | `24 84 42` @ `0x01004278` | `0x01004284` | `get_sequence_bounds_impl` |
+> | 15 | `0xf2` | `24 80 4b` @ `0x0100491c` | `0x01004b80` | `nonzero_with_count_impl<int>` |
+> | 16 | `0x7b` | `24 f0 4d` @ `0x01004de4` | `0x01004df0` | `decode_tensor_dequantize` |
+>
+> Each lands on an EXACT `.xt.prop` function start, so these five are `HIGH` route.
+> Records **14** (`0xbe`) and **15** (`0xf2`) were previously `LOW`/`MED` with a wrong
+> worker attribution — `0xbe` was mis-tagged "no SUNDA entry / unresolved", and `0xf2`
+> was mis-attributed to `get_sequence_bounds`/`tensor_dequantize`. The binary shows
+> `0xbe → get_sequence_bounds_impl` and `0xf2 → nonzero_with_count_impl<int>` (with a
+> `<float>@0x01004940` alt branch). Corrected here. `[HIGH/OBSERVED]`
 
 > **NOTE — trampoline `.bss` state pointers.** The state-struct pointers loaded by the
 > trampolines (`0x02000458` record 3, `0x0200045c` record 5, `0x02000468` record 8,
@@ -358,12 +373,21 @@ Naming bases:
 
 ## 7. Entries not cleanly resolved — flagged honestly
 
-- **op `0x52` (record 11)** and **op `0xbe` (record 14)** have no SUNDA opcode→pool-fn
-  match (the SUNDA map omits them; CAYMAN is an earlier generation with a slightly
-  different opcode set). Their trampolines load `.data`/state tables and fall in the
-  dispatch band, but the named worker is not pinned by an EXACT `.xt.prop` start or a
-  clean single-target route. Marked `[LOW]`. A reimplementer should treat the names as
-  unknown until the worker is reached through a live trace.
+- **op `0x51` (record 4), op `0x52` (record 11), op `0x46` (record 12), op `0x47`
+  (record 13)** could **not** be cleanly route-resolved. Their trampoline bodies are
+  dominated by `op0 = 0xf` 16-byte FLIX wide bundles that the available toolchain
+  cannot keep in sync (every candidate `j`/`call` target lands out of range — a clear
+  desync artifact). Records 11/12 share a byte-identical prologue and 13 is a close
+  sibling, suggesting a shared `copy`/`cast` dispatch family, but the actual transfer is
+  not recoverable statically. The **opcode** is `HIGH`; the **worker name** is `LOW`
+  (record 4 names `decode_tensor_tensor_arith` from the in-band `.xt.prop`, but its
+  route is not byte-confirmed). Treat these worker names as provisional until reached
+  through a live trace.
+- **op `0x41` (record 5)** is a genuinely **indirect / runtime-computed** call: the
+  trampoline loads a function pointer from `*(0x0200045c)`, masks the low byte,
+  `slli ×16`, and `callx8 a2`. There is **no fixed code `const16`** before the call, so
+  there is no single static named target — the dispatch is a runtime vtable index. That
+  it is indirect is `HIGH`; the concrete worker depends on runtime state.
 - **op `0xf0` specs 0/3/4 (records 6, 9, 10):** the `0xf0` opcode is multiplexed by the
   spec byte. Spec 1 (`pool_extended_inst_copy`) and spec 2
   (`decode_extended_inst_tensor_tensor_arith`) resolve `HIGH`; spec 0 is an empty NOP
