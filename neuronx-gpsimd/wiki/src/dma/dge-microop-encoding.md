@@ -154,8 +154,10 @@ in-flight compute engine; the Pool descriptor dump prints it as `compute_op: 0x%
 
 `NEURON_ISA_TPB_EVENTS` (8 B, `common.h:418–424`):
 `wait_mode(1) wait_idx(1) update_mode(1) update_idx(1) semaphore_value(u32)`. This is the
-per-instruction events gate (e.g. `wait_mode = wait≥value`, `update_mode = inc-on-complete`)
-— **distinct** from the DGE's own `semaphore`/`sem_increment` completion fields.
+per-instruction events gate (e.g. `wait_mode = 0x04` `WAIT_FOR_SEM_GT_IMM` — wait until
+sem **strictly >** value; `0x05` is the **≥** form — and `update_mode = inc-on-complete`;
+see [field-tables §4.13](descriptor-ring-field-tables.md)) — **distinct** from the DGE's own
+`semaphore`/`sem_increment` completion fields.
 
 `NEURON_ISA_TPB_BOUND_CHECK_REG` (1 B, `common.h:707–711`):
 `bc_reg:6` (and `bc_reg+1` holds the high 32 bits in wide-offset mode),

@@ -291,7 +291,8 @@ magnitude test** (`addr >= 0x2000000`; no bank bit, no region register). Per-gen
 (cayman): SBUF **256 KiB partition stride / 224 KiB active**, 128 partitions; PSUM **8 banks ×
 2048 B = 16 KiB active**/partition. The SoC region bases are byte-exact in
 `cayman/address_map.h`: **STATE_BUF `0x2000000000`** (32 MiB), **STATE_BUF_SCRATCH_RAM
-`0x2004000000`** (32 MiB; the *window* the Q7 pins is 64 MiB, NOT 64 MiB of region —
+`0x2004000000`** (32 MiB region; the NX *window* the Q7 pins over it is 64 MiB, but the
+scratch *region* itself is only 32 MiB —
 [onchip-working-memory §1 CORRECTION](onchip-working-memory.md)), **DGE_MEMORY `0x2040000000`**
 (1 GiB), **PSUM_BUF `0x2802000000`** (4 MiB). [HIGH/OBSERVED — re-read this pass]
 
@@ -401,12 +402,13 @@ the data — not an interrupt). [HIGH/OBSERVED — `tpb_semaphores_inc @0x1800` 
 ### 6.2 The completion-ring write-back gate — the resolved `en_comp_ring_update` contradiction
 
 Whether the al_udma writes a completion-ring entry at all is gated per queue by
-`comp_cfg.en_comp_ring_update[0]`. Two siblings disagreed on its S2M reset value
-(P9.7/[udma-hw-engine §2.2](udma-hw-engine.md) said **S2M reset = 1**; P9.10/[field-tables
-§6.2 CORRECTION](descriptor-ring-field-tables.md) claimed **reset = 0 on BOTH engines**). I
-re-grounded it directly from the Cayman RTL JSON this pass.
+`comp_cfg.en_comp_ring_update[0]`. Two earlier drafts disagreed on its S2M reset value
+(P9.7/[udma-hw-engine §2.2](udma-hw-engine.md) said **S2M reset = 1**; an earlier draft of
+P9.10/[field-tables §6.2](descriptor-ring-field-tables.md) claimed **reset = 0 on BOTH
+engines**). I re-grounded it directly from the Cayman RTL JSON, the field-tables page has
+since been corrected to match, and both pages now agree.
 
-> **CORRECTION (resolved — the field-tables page needs the fix).** The Cayman RTL JSON shows
+> **CORRECTION (resolved — field-tables now fixed to match).** The Cayman RTL JSON shows
 > `en_comp_ring_update` reset is **engine-asymmetric**:
 >
 > | engine | field | abs (queue 0) | reset | source |
@@ -415,13 +417,13 @@ re-grounded it directly from the Cayman RTL JSON this pass.
 > | **S2M** | `comp_cfg.en_comp_ring_update[0]` | `0x1054` | **`0x1` (ON)** | `cayman-arch-regs/csrs/sdma/udma_s2m.json` |
 >
 > So **P9.7 (udma-hw-engine) is CORRECT** — S2M write-back is ON by default, the *opposite*
-> posture to M2S — and **P9.10 (descriptor-ring-field-tables §6.2) is WRONG**: its CORRECTION
-> claiming "rst 0 for both engines" is contradicted by the JSON. **The fix is owed to
-> [descriptor-ring-field-tables.md](descriptor-ring-field-tables.md) §6.2** — its
-> `S2M_Q.comp_cfg.en_comp_ring_update` row must read **rst 1**, and the CORRECTION callout
-> beneath it must be reversed. The S2M *companion* defaults P9.10 lists are correct
-> (`dis_comp_coal=1`, `first_pkt_promotion=1`, `buf2_len_location=1`) — only the
-> `en_comp_ring_update` reset was mis-stated. Confirmed on **both** the Cayman RTL JSON and
+> posture to M2S — and the earlier P9.10 (descriptor-ring-field-tables §6.2) claim of "rst 0
+> for both engines" was wrong. **[descriptor-ring-field-tables.md](descriptor-ring-field-tables.md)
+> §6.2 has been corrected to match**: its `S2M_Q.comp_cfg.en_comp_ring_update` row now reads
+> **rst 1**, and the CORRECTION callout beneath it has been reversed. The S2M *companion*
+> defaults P9.10 lists were already correct (`dis_comp_coal=1`, `first_pkt_promotion=1`,
+> `buf2_len_location=1`) — only the `en_comp_ring_update` reset was mis-stated. Confirmed on
+> **both** the Cayman RTL JSON and
 > the Mariana customop-shipped JSON (S2M=1, M2S=0 on both). [HIGH/OBSERVED — `udma_s2m.json`
 > `comp_cfg@0x54.en_comp_ring_update ResetValue 0x1`; `udma_m2s.json`
 > `comp_cfg@0xa0.en_comp_ring_update ResetValue 0x0`; re-read this pass]
@@ -516,11 +518,12 @@ the host topology (`EdgeRemoteMLA`, `C2CPortsPerMla=4`, `seng^2`) (§5).
 absent PSUM region are OBSERVED, but the v5 inline-descriptor runtime semantics, the UCIe PHY,
 and any v5 firmware-side behaviour are INFERRED (no v5 NX-POOL firmware ships here).
 
-**Reconciliation note (§6.2).** This synthesis resolves the one known open cross-page
-contradiction: **[descriptor-ring-field-tables.md](descriptor-ring-field-tables.md) §6.2 is
-wrong** about `S2M_Q.comp_cfg.en_comp_ring_update` (it says rst 0 for both engines; the truth
-is S2M rst **1**, M2S rst 0). [udma-hw-engine.md](udma-hw-engine.md) §2.2 is correct. The fix
-is owed to the field-tables page.
+**Reconciliation note (§6.2).** This synthesis resolved the one known open cross-page
+contradiction about `S2M_Q.comp_cfg.en_comp_ring_update`: the truth is **S2M rst 1, M2S rst
+0** (engine-asymmetric), confirmed on both the Cayman and Mariana JSON.
+[udma-hw-engine.md](udma-hw-engine.md) §2.2 was correct, and
+[descriptor-ring-field-tables.md](descriptor-ring-field-tables.md) §6.2 — whose earlier draft
+claimed rst 0 for both engines — has been corrected to match. All three pages now agree.
 
 ---
 

@@ -545,7 +545,7 @@ FLIX-desynced body.]**
 
 ## 6. Part-1 reconciliation — the per-gen builder map
 
-| feature | SUNDA (v3) | CAYMAN | MARIANA (v4) | MARIANA_PLUS (v4+) | MAVERICK (v5) |
+| feature | SUNDA (v2) | CAYMAN (v3) | MARIANA (v4) | MARIANA_PLUS (v4+) | MAVERICK (v5) |
 |---|---|---|---|---|---|
 | `dge_shape{num/step}` | yes | yes | yes | yes | INFERRED |
 | reshape strategy / transpose | stub | yes | yes | yes | INFERRED |

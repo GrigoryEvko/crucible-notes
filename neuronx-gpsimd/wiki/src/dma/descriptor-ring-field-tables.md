@@ -626,7 +626,7 @@ below are **relative** to the bank base; an absolute address is `0x1000 + i*0x10
 | `0x84` | 4 | RW | `dwrr_cfg_2` | `{q_qos[7:0]}` DWRR per-queue QoS |
 | `0x88` | 4 | RW | `dwrr_cfg_3` | `{weight[7:0]}` DWRR per-queue weight |
 | `0x8c` | 4 | RW | `dwrr_sw_ctrl` | |
-| `0xa0` | 4 | RW | `comp_cfg` | `{en_comp_ring_update[0]` (rst **0**), `dis_comp_coal[1]}` |
+| `0xa0` | 4 | RW | `comp_cfg` | `{en_comp_ring_update[0]` (rst **0 — OFF, OPPOSITE S2M**), `dis_comp_coal[1]}` |
 | `0xb0` | 4 | RW | `q_sw_ctrl` | `{rst_dmb[0], rst_tail_ptr[1], rst_head_ptr[2], rst_current_ptr[3], q_isolation[4], rst_q[8]}` |
 | `0xc0` | 4 | RO | `q_tx_pkt` | transmitted-packet count |
 | `0xd0` | 4 | RW | `read_data_snp` | snoop status |
@@ -676,7 +676,7 @@ bandwidth-shaped).
 | `0x48` | 4 | RW | `RCRBP_high` | RX Completion Ring Base Ptr `[63:32]` |
 | `0x4c` | 4 | RO | `RCRHP` | RX Completion Ring head ptr |
 | `0x50` | 4 | RO | `RCRHP_internal` | |
-| `0x54` | 4 | RW | `comp_cfg` | `{en_comp_ring_update[0]` (rst **0**), `dis_comp_coal[1]` (rst 1), `first_pkt_promotion[2]` (rst 1), `buf2_len_location[3]` (rst 1), `desc_size[15:12]` (rst 4)}` |
+| `0x54` | 4 | RW | `comp_cfg` | `{en_comp_ring_update[0]` (rst **1 — ON, OPPOSITE M2S**), `dis_comp_coal[1]` (rst 1), `first_pkt_promotion[2]` (rst 1), `buf2_len_location[3]` (rst 1), `desc_size[15:12]` (rst 4)}` |
 | `0x58` | 4 | RW | `comp_cfg_2` | |
 | `0x5c` | 4 | RW | `pkt_cfg` | `{hdr_split_size[15:0]` (rst 64), `en_hdr_split[17]}` — S2M-only header split |
 | `0x60` | 4 | RW | `qos_cfg` | `{q_qos[7:0]}` |
@@ -707,11 +707,16 @@ bandwidth-shaped).
 | [18] | `cmpl_force_full_line` | **1** | [31:28] | `AXI_qos` | `0xe` |
 | [20] | `allow_lt_min_pref` | 0 | | | |
 
-> **CORRECTION (S2M `en_comp_ring_update` reset).** An earlier draft stated S2M
-> `comp_cfg.en_comp_ring_update` resets to **1** ("write-back ON by default — OPPOSITE
-> M2S"). The RTL JSON shows **rst 0** for *both* engines. What differs on S2M is the
-> companion defaults: `dis_comp_coal` rst **1**, `first_pkt_promotion` rst **1**,
-> `buf2_len_location` rst **1**, `desc_size` rst **4** — none of which exist on M2S.
+> **CORRECTION (S2M `en_comp_ring_update` reset — engine-asymmetric).** The reset is
+> **not** the same on both engines. The RTL JSON gives
+> `udma_s2m.json: comp_cfg@0x54.en_comp_ring_update ResetValue 0x1` (**ON**) and
+> `udma_m2s.json: comp_cfg@0xa0.en_comp_ring_update ResetValue 0x0` (**OFF**) — verified on
+> both the Cayman (NC-v3) and Mariana (NC-v4) register JSON. So S2M defaults the
+> completion-ring write-back **ON**, M2S **OFF**. (A prior reconciliation draft of this page
+> mistakenly "corrected" the S2M reset to 0 for both engines — that claim was wrong and is
+> retracted here.) The companion S2M-only defaults still hold: `dis_comp_coal` rst **1**,
+> `first_pkt_promotion` rst **1**, `buf2_len_location` rst **1**, `desc_size` rst **4** —
+> none of which exist on M2S.
 
 > **CORRECTION (S2M append-register names).** The three append registers are
 > `append_orig_addr_low@0xe0`, `append_orig_addr_high@0xe4`, `append_orig_len@0xe8`,
