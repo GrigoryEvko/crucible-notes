@@ -180,51 +180,49 @@
 - [DMA / Transpose Opcode Cluster](firmware/kernels/dma-transpose-opcode-cluster.md)
 - [Gen-Bracket Extremes — MAVERICK INT_WIDE + SUNDA BF16](firmware/kernels/intwide-bf16-extremes.md)
 
+# Part 6 — Firmware Images & Generations (35)
+- [EXTISA Q7 SO-Blob Inventory + Blob→Getter Map](images/extisa-inventory.md)
+- [Firmware-Image Accessor Index](images/image-catalog-index.md)
+- [CAYMAN × ACT image](images/cayman-act.md)
+- [CAYMAN × DVE image](images/cayman-dve.md)
+- [CAYMAN × PE image](images/cayman-pe.md)
+- [CAYMAN × POOL image (dual-dispatch)](images/cayman-pool.md)
+- [CAYMAN × SP image (+ SP-vs-TOP_SP)](images/cayman-sp.md)
+- [MARIANA × ACT image (cross-gen diff vs Cayman)](images/mariana-act.md)
+- [MARIANA × DVE image](images/mariana-dve.md)
+- [MARIANA × PE image](images/mariana-pe.md)
+- [MARIANA × POOL image (dual-core)](images/mariana-pool.md)
+- [MARIANA × SP image](images/mariana-sp.md)
+- [MARIANA_PLUS × ACT image](images/mariana-plus-act.md)
+- [MARIANA_PLUS × DVE image](images/mariana-plus-dve.md)
+- [MARIANA_PLUS × PE image](images/mariana-plus-pe.md)
+- [MARIANA_PLUS × POOL image (dual-core)](images/mariana-plus-pool.md)
+- [MARIANA_PLUS × SP image](images/mariana-plus-sp.md)
+- [MAVERICK × ACT image (the ACT→DVE fold)](images/maverick-act.md)
+- [MAVERICK × DVE image (absorbs ACT)](images/maverick-dve.md)
+- [MAVERICK × PE image](images/maverick-pe.md)
+- [MAVERICK × POOL image (dual-core)](images/maverick-pool.md)
+- [MAVERICK × SP image](images/maverick-sp.md)
+- [SUNDA × POOL image (the v2 baseline)](images/sunda-pool.md)
+- [SUNDA × SP + remaining NX engines](images/sunda-sp-remaining.md)
+- [SUNDA arch5 EXTISA ELF](images/sunda-arch5-extisa.md)
+- [PROF_CAM / PROF_TABLE Blob Formats](images/prof-cam-table-formats.md)
+- [Cross-Gen kernel_info_table / Opcode Matrix](images/cross-gen-kernel-info-matrix.md)
+- [Firmware-Image Catalog Capstone](images/firmware-image-catalog.md)
+- [Codename ↔ Generation Map](generations/codename-generation-map.md)
+- [SUNDA v2 Baseline Topology](generations/sunda-v2-baseline.md)
+- [MARIANA_PLUS (v4+) Generation Delta](generations/mariana-plus-delta.md)
+- [MAVERICK (v5) Profile + Maximal-Observed Carve](generations/maverick-profile.md)
+- [Cross-Generation Arch-ISA Header Diff](generations/arch-isa-header-diff.md)
+- [Cross-Generation Opcode-Table Diff + TONGA](generations/cross-gen-opcode-diff.md)
+- [Master Per-Generation Capability Matrix](generations/master-capability-matrix.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 6 — Firmware Images & Generations (35)
-## Per-(gen × engine) images (28)
-- images/extisa-inventory.md            — EXTISA Q7 SO-Blob Inventory + Blob→Getter Map
-- images/image-catalog-index.md         — Firmware-Image Accessor Index
-- images/cayman-act.md                  — CAYMAN × ACT image
-- images/cayman-dve.md                  — CAYMAN × DVE image
-- images/cayman-pe.md                   — CAYMAN × PE image
-- images/cayman-pool.md                 — CAYMAN × POOL image (dual-dispatch)
-- images/cayman-sp.md                   — CAYMAN × SP image (+ SP-vs-TOP_SP)
-- images/mariana-act.md                 — MARIANA × ACT image (cross-gen diff vs Cayman)
-- images/mariana-dve.md                 — MARIANA × DVE image
-- images/mariana-pe.md                  — MARIANA × PE image
-- images/mariana-pool.md                — MARIANA × POOL image (dual-core)
-- images/mariana-sp.md                  — MARIANA × SP image
-- images/mariana-plus-act.md            — MARIANA_PLUS × ACT image
-- images/mariana-plus-dve.md            — MARIANA_PLUS × DVE image
-- images/mariana-plus-pe.md             — MARIANA_PLUS × PE image
-- images/mariana-plus-pool.md           — MARIANA_PLUS × POOL image (dual-core)
-- images/mariana-plus-sp.md             — MARIANA_PLUS × SP image
-- images/maverick-act.md                — MAVERICK × ACT image (the ACT→DVE fold)
-- images/maverick-dve.md                — MAVERICK × DVE image (absorbs ACT)
-- images/maverick-pe.md                 — MAVERICK × PE image
-- images/maverick-pool.md               — MAVERICK × POOL image (dual-core)
-- images/maverick-sp.md                 — MAVERICK × SP image
-- images/sunda-pool.md                  — SUNDA × POOL image (the v2 baseline)
-- images/sunda-sp-remaining.md          — SUNDA × SP + remaining NX engines
-- images/sunda-arch5-extisa.md          — SUNDA arch5 EXTISA ELF
-- images/prof-cam-table-formats.md      — PROF_CAM / PROF_TABLE Blob Formats
-- images/cross-gen-kernel-info-matrix.md — Cross-Gen kernel_info_table / Opcode Matrix
-- images/firmware-image-catalog.md      — Firmware-Image Catalog Capstone
-## Generations (7)
-- generations/codename-generation-map.md  — Codename ↔ Generation Map
-- generations/sunda-v2-baseline.md         — SUNDA v2 Baseline Topology
-- generations/mariana-plus-delta.md        — MARIANA_PLUS (v4+) Generation Delta
-- generations/maverick-profile.md          — MAVERICK (v5) Profile + Maximal-Observed Carve
-- generations/arch-isa-header-diff.md       — Cross-Generation Arch-ISA Header Diff
-- generations/cross-gen-opcode-diff.md      — Cross-Generation Opcode-Table Diff + TONGA
-- generations/master-capability-matrix.md   — Master Per-Generation Capability Matrix
 
 # Part 7 — Custom-Op ABI (21)
 - abi/q7ptrtype.md                — Q7PtrType + Lazy Translation
