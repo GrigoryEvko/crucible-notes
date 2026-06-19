@@ -649,10 +649,22 @@ central-state base. `[addresses HIGH/OBSERVED.]`
 > `[MED/INFERRED]` (host/config). `[role HIGH; setter NOT RESOLVED.]`
 
 > **NOTE — `GetSequenceBounds @0xd224` is a table-neighbor, not part of the branch core.** Its
-> handler loads `const16 a2,0x82d80` (the `[lo,hi]` sequence-bounds slots, zeroed in image,
-> immediately preceding the `"S: GetSequenceBounds"` string at `0x82d90`). It shares the decode
-> module but is *not* on the branch/prefetch control path. `[HIGH/OBSERVED — the `0xd224` head
-> and the `0x82d80` anchor; the bounds-struct fields are runtime, MED.]`
+> handler reads the sequence-bounds global at DRAM **`0x82dc0`** (built at `0xd25b` by
+> `const16 a2,8 ; const16 a2,0x2dc0`, then dereferenced by the 8-word `l32i.n` struct copy at
+> `0xd25e`). It shares the decode module but is *not* on the branch/prefetch control path.
+> `[HIGH/OBSERVED — the `0xd224` head and the `0x82dc0` bounds-global anchor; the bounds-struct
+> fields are runtime, MED.]`
+>
+> **CORRECTION — the bounds global is `0x82dc0`, not `0x82d80` (this page's earlier value was
+> wrong).** An earlier draft of this NOTE (and the §summary table) "corrected" the bounds global
+> to `0x82d80`, contradicting [pc-bounds.md](pc-bounds.md). Re-disassembling
+> `GetSequenceBounds@0xd224` byte-exact this reconcile settles it: the *only* `const16`/`l32i`
+> that builds and **dereferences** a bounds pointer is `0xd25b: const16 a2,0x2dc0` →
+> `0xd25e: l32i.n a3,a2,12` (= load `[0x82dc0+12]`, first of eight). The value `0x2d80`
+> appears only once, at `0xd233`, on a `bnez.n a5` log/assert branch into the print helper
+> `0x18b84` — it is **never** an `l32i` base. So **`0x82dc0` is byte-true**; pc-bounds.md was
+> right all along and this page's `0x82d80` claim is retracted. `[HIGH/OBSERVED — byte-exact
+> disasm of `0xd224`.]`
 
 ---
 
@@ -848,12 +860,14 @@ page.]`
 |---|---|---|
 | sub-opcode table load | `c811: const16 a3,0x82b84` (single op) | **two** const16: `c811: const16 a3,8` + `c814: const16 a3,0x2b84` (HI:LO pair) |
 | `descr[+56]` base | "`descr[+56]`" (base unstated) | descriptor base = `central_state(0x855e0) + 24`; `0x6f24`/`0x6f38` both `addi …,24` first |
-| `GetSequenceBounds` data | bounds @`0x82dc0` | handler `@0xd224` loads `const16 …,0x82d80` (the `[lo,hi]` slots before the string `@0x82d90`); `0x82dc0` is a *different* zeroed 4-word region |
+| `GetSequenceBounds` data | bounds @`0x82dc0` ([pc-bounds.md](pc-bounds.md)) | **CONFIRMED `0x82dc0`** — handler `@0xd224` builds the pointer at `0xd25b` (`const16 a2,8 ; const16 a2,0x2dc0`) and dereferences it at `0xd25e` (`l32i.n a3,a2,12`). The `0x2d80` const16 at `0xd233` is on a log/assert branch only (never an `l32i` base). This page's earlier `0x82d80` claim is **retracted** — see the §7 CORRECTION |
 | BRANCH/BRTAKEN log emitter | per-site thunks | all logs go through the single printf emitter `0x18b84` |
 
 These are refinements, not contradictions: the prior-report offsets and semantics hold; this
-page tightens the `const16`-pair rendering, pins the descriptor base, and corrects the
-`GetSequenceBounds` data anchor. `[HIGH/OBSERVED.]`
+page tightens the `const16`-pair rendering and pins the descriptor base. The
+`GetSequenceBounds` data anchor is **`0x82dc0`** (byte-confirmed this reconcile; an earlier draft
+of this page mis-stated it as `0x82d80` and has been retracted — see the §7 CORRECTION).
+`[HIGH/OBSERVED.]`
 
 ---
 

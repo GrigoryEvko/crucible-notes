@@ -107,10 +107,14 @@ The arith/bitvec opcode-pair convention is the family's standard low-nibble spli
 are firmware **kernel-lane** opcodes (the ~140-entry `NEURON_ISA_TPB_OPCODE_*` SEQ axis), **not** Xtensa ISA
 mnemonics — the same two-axis caution [`tensor-scalar.md`](tensor-scalar.md) §3 raises. `[HIGH/OBSERVED]`
 
-> **GOTCHA — `0x87` is reused as a non-opcode constant on NC-v3+.** On cayman/mariana/maverick the value
-> `0x87` is `NEURON_ISA_TPB_UPDATE_MODE_SEM_SUB_REG_READ = 0x87` (`common.h:366`), a **semaphore-update-mode**
-> constant in a *different* enum — confirming the Dual *opcode* was **retired** post-NC-v2, not merely
-> renamed. A reimplementer must not treat `0x87`/`0x88` as PtrMulti opcodes outside SUNDA. `[HIGH/OBSERVED]`
+> **GOTCHA — `0x87` was NEVER "reused"; both meanings coexist in SUNDA, only the OPCODE name is dropped on
+> NC-v3+.** SUNDA already carries `0x87` in **two** distinct enums simultaneously:
+> `OPCODE_…_PTR_MULTI_DUAL_ARITH = 0x87` (`common.h:221`) **and** `UPDATE_MODE_SEM_SUB_REG_READ = 0x87`
+> (a semaphore-update-mode constant in a *different* enum). On cayman/mariana/maverick only the **OPCODE**
+> name is dropped; the `UPDATE_MODE` constant is gen-stable, so it is not a "reuse" of a freed value — the
+> value lived in both namespaces all along. A reimplementer must not treat `0x87`/`0x88` as PtrMulti
+> opcodes outside SUNDA. (See [sunda-dual-tensorscalarptr.md](sunda-dual-tensorscalarptr.md) §3c for the
+> byte-exact enum-boundary scan.) `[HIGH/OBSERVED]`
 
 ### 3a. The struct→opcode binding (`instruction_mapping.json`)
 

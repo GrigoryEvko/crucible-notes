@@ -68,7 +68,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
  │  17 fixed 8-byte records, no header, no in-band terminator                     │
  │                                                                                │
  │   record i  (8 bytes):                                                         │
- │     +0x00 [0x00] [0x00] [spec] [opcode]   ← 4-byte BE key  = opcode<<24|spec<<16│
+ │     +0x00 [0x00] [0x00] [spec] [opcode]   ← key bytes; LE u32 = opcode<<24|spec<<16│
  │     +0x04 [        funcVA (u32 LE)        ]  ← R_XTENSA_RELATIVE, load-relocated │
  │                                                                                │
  │   delimited by: section size  AND  base-getter(0x380)/end-getter(0x408) pair   │

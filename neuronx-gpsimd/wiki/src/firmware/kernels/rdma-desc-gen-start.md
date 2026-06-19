@@ -665,7 +665,7 @@ decode is CAYMAN-grounded byte-exact, others CARRIED/INFERRED.]`
 
 - [SB2SB Remote-Copy Collective](sb2sb-remote-copy.md) — the opcode-6 collective (the
   `0xBF` sequencer path) that lowers to these two ops; the call edge `0x3742 → 0x161f4` is
-  byte-confirmed above. *(sibling; currently a stub — forward content)*
+  byte-confirmed above.
 - [Cross-die RDMA](../../dma/rdma-cross-die.md) — the `io_d2d`/PCIE/RMVT/D2D fabric the
   copy + sema traverse. *(planned — Part 9)*
 - [UDMA M2S CSR](../../control/csr/udma-m2s.md) — the `TDRTP_inc` tail-pointer doorbell the

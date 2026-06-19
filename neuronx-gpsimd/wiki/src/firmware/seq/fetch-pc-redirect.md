@@ -61,8 +61,8 @@ Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but 
    ┌────────────────────────  SUNDA SOFTWARE-FETCH FSM  (back-edge 0x31a3 -> 0x2d81)  ───────────────────────┐
    │                                                                                                          │
    │  STEP 1  poll-surprises  0x6af4  -> state[0x855e0+100].bit0 (running?)  -- empty -> retw EXIT            │
-   │  STEP 2  pending_redirect? 0x6b0c                                                                        │
-   │            ├─ YES -> 0x4c3c compute 64-bit target PC                                                     │
+   │  STEP 2  sunda_check_surprises 0x6b0c  (surprise check — gates the redirect; see CORRECTION)            │
+   │            ├─ HANDLED -> 0x4c3c compute 64-bit target PC                                                 │
    │            │         0x6b70 translate PC -> iram_pc / cache index                                        │
    │            │         LOG "redirecting to pc=…/iram_pc=…"                                                 │
    │            │         0x6bb0 commit redirect ; s8i 0,[a2] CLEAR pending                                   │
@@ -188,14 +188,25 @@ static inline bool seq_is_running(void) {
 if (!seq_is_running()) return;   /* beqz a10,0x31a6 -> 0x31a9 retw.n : LOOP EXIT */
 ```
 
-### 2.2 STEP 2 — pending-redirect (the software PC redirect)
+### 2.2 STEP 2 — surprise check then the software PC redirect
 
 ```
-2d8f:  const16 a2, 0x5068 ; s32i a2,[a1+36] ; mov.n a10,a2   ; redirect-state ptr -> stack[+36]
-2d9a:  call8 0x6b0c                                          ; pending_redirect? (nonzero => redirect)
-2d9d:  bnez.n a10, 0x2daa                                    ; redirect pending -> take redirect block
-2da2:  movi.n a2,0 ; s8i a2,[a1+40] ; j 0x2e3b               ; no redirect -> clear ready flag, fall to exit test
+2d8f:  const16 a2, 0x5068 ; s32i a2,[a1+36] ; mov.n a10,a2   ; per-engine ctx ptr -> stack[+36]
+2d9a:  call8 0x6b0c                                          ; sunda_check_surprises (nonzero => handled; see CORRECTION)
+2d9d:  bnez.n a10, 0x2daa                                    ; surprise handled -> take redirect block
+2da2:  movi.n a2,0 ; s8i a2,[a1+40] ; j 0x2e3b               ; not handled -> clear ready flag, fall to exit test
 ```
+
+> **CORRECTION — `0x6b0c` is `sunda_check_surprises`, not a dedicated `pending_redirect`.** The
+> STEP-2 gate call `0x2d9a: call8 0x6b0c` was earlier named `pending_redirect`/`seq_pending_redirect`.
+> Re-disassembled, `0x6b0c` logs DRAM `0x819cc` (`"S: sunda_check_surprises: any=%d, surprises=0x%x"`),
+> computes the surprise word, and tail-calls the surprise bit-mask handler `0x6ce0` — it is the
+> surprise **check** (`surprises.hpp`). The PC-redirect body documented below (`0x4c3c` target
+> compute, `0x6b70` translate, `0x5750` PC-rewrite, `0x6bb0` commit, the `"S: sunda_fetch:
+> redirecting…"` strings @DRAM `0x8197b`/`0x81951`) is real and is this page's subject — it just
+> runs **gated by** the surprise check rather than by a standalone `pending_redirect` function.
+> The two functions are adjacent in the same packed region. Authoritative treatment of the check:
+> [surprises-irq.md](surprises-irq.md) §2–§3. `[HIGH/OBSERVED]`
 
 The redirect block (`0x2daa`) — the span SX-FW-02 lost to FLIX desync, **re-synced this
 session**. The interior `0x2dba..0x2dd1` decodes as garbage under the linear sweep (the
@@ -235,8 +246,8 @@ arming/clearing instructions bracket it:
 struct redir_state { uint8_t armed; /* [+0] */ /* ... */ uint8_t flag56; /* [+56] */ };
 
 static void seq_check_pending_redirect(struct redir_state *rs) {
-    if (!seq_pending_redirect())          /* 0x6b0c -> bnez.n a10 */
-        return;                           /* no redirect this iteration */
+    if (!sunda_check_surprises(ctx))      /* 0x6b0c -> bnez.n a10 (surprise check gate) */
+        return;                           /* no surprise handled this iteration */
     if (!(rs->armed & 0x1))               /* l8ui [a2]; bbci a3,0 -> 0x2df5 */
         return;                           /* armed bit clear: nothing to do */
 
@@ -363,7 +374,7 @@ The two ways the PC moves are structurally distinct and must not be conflated.
 
 | | Sequential advance | PC redirect (branch/jump) |
 |---|---|---|
-| Trigger | every iteration, default | `pending_redirect` poll `0x6b0c` returns nonzero |
+| Trigger | every iteration, default | `sunda_check_surprises` gate `0x6b0c` returns "handled" |
 | Mechanism | `0x1c64`→`0x3a78` drains notify queue → `s32i a2,[a4]` writes next word to cursor | `0x4c3c` computes 64-bit target → `0x5750` writes it to CSR `0x1060`/`0x1080` |
 | PC write | implicit (cursor advances, in-stream) | explicit (architectural CSR pair rewritten) |
 | Cache side-effect | reads the already-filled line | pushes a new cache-fill descriptor `{phase,iram_addr,num_instr}` |
@@ -445,7 +456,7 @@ void seq_redirect_execute(const struct pc_desc *ctx) {
 | Addr | Role | Tag |
 |---|---|---|
 | `0x4c3c` | compute/return the 64-bit redirect target PC (small getter) | `[HIGH role / MED field-math]` |
-| `0x6b0c` | `pending_redirect` check (returns nonzero ⇒ redirect) | `[HIGH/OBSERVED]` |
+| `0x6b0c` | `sunda_check_surprises` (logs DRAM `0x819cc`, tail-calls handler `0x6ce0`; "handled" bool gates the redirect — see §2.2 CORRECTION + [surprises-irq.md](surprises-irq.md)) | `[HIGH/OBSERVED]` |
 | `0x6b70` | PC → iram_pc / cache-index translate (reads `state[0x855e0+24]`) | `[HIGH/OBSERVED]` |
 | `0x6bb0` | commit the redirect / push (`"S: Redirect"` `@DRAM 0x81a62`) | `[HIGH/OBSERVED]` |
 | `0x5b74` | redirect-state flag set (`[redir+56]`); reads `state[0x85070]` | `[HIGH/OBSERVED]` |
@@ -704,7 +715,8 @@ SHAs match: `iram.bin 8e4412b9…`, `dram.bin 7bdf6ed7…`; disassembly exit 0, 
 
 - Carve reproduced: `iram.bin` 116768 B / sha256 `8e4412b9…ab9ed70a`, `dram.bin` 28448 B /
   sha256 `7bdf6ed7…d6816ecd`; head bytes match the reset-vector anchor `j 0x1dc`.
-- The full Sunda software-fetch FSM body (poll `0x6af4` → pending-redirect `0x6b0c`/`0x2daa` →
+- The full Sunda software-fetch FSM body (poll `0x6af4` → surprise check
+  `sunda_check_surprises` `0x6b0c` → redirect block `0x2daa` →
   advance `0x1c64` → fetch `[a4]` → `opcode−0x41` → `bgeu 177` → table `@0x80814` `jx` →
   back-edge `0x31a3`), **including** the redirect block `0x2db3..0x2def` (re-synced).
 - 64-bit PC in CSR `0x1060`/`0x1080`; redirect writes the new PC there (`0x5790`/`0x579c`).

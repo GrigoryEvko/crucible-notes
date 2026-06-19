@@ -428,7 +428,10 @@ The op-class predicates (their **C bodies** live in `aws_neuron_isa_tpb_assert.h
 - `is_general_arith_op` (`assert.h:1850`) = `is_arith_op(op) && op != Divide && op != Pow && op != Mod &&
   !is_valid_int_aluop(op) && op != Rsqrt`
   ⇒ `{Bypass, Add, Subtract, Mult, Max, Min, LogicalAnd, LogicalOr, LogicalXor, IsEQ, IsGT, IsGE, IsLE,
-  IsLT, IsNE, AbsoluteDiff, AbsoluteValue, AbsMax, AbsMin, ReLU, Square}`.
+  IsLT, IsNE, AbsoluteDiff, AbsoluteValue, AbsMax, AbsMin, ReLU, Square}` (the **MARIANA+/MAVERICK**
+  21-op form; **SUNDA/CAYMAN** lack the float `AbsMax/AbsMin/ReLU/Square` enumerators (`0x20..0x23`),
+  so there the set is **17** — per-gen 17/21, canonical in the [ALU-op matrix §3.1](./alu-op-matrix.md)).
+  The `is_arith_op` list above likewise reflects the MARIANA+ enum.
 - `is_bitvec_op` (`assert.h:1788`) = `{Bypass, BitwiseNot, ArithShiftLeft, ArithShiftRight,
   LogicalShiftLeft, LogicalShiftRight, BitwiseAnd, BitwiseOr, BitwiseXor, Crc32}`.
 
@@ -436,7 +439,7 @@ So:
 
 | family | op0 / op1 accept set | Tag |
 |--------|---------------------|-----|
-| **TS ARITH** (`0x43`/`0x44`) | **both** must be `is_general_arith_op` (the 21-op set above) — **or** the single special case `op0==Rsqrt && op1==Bypass && imm0==imm1==0 && imm0_src==imm1_src==0` | HIGH/OBSERVED |
+| **TS ARITH** (`0x43`/`0x44`) | **both** must be `is_general_arith_op` (21 ops on MARIANA+/MAVERICK; 17 on SUNDA/CAYMAN — see above) — **or** the single special case `op0==Rsqrt && op1==Bypass && imm0==imm1==0 && imm0_src==imm1_src==0` | HIGH/OBSERVED |
 | **TS BITVEC** (`0x53`/`0x54`) | **both** must be `is_bitvec_op` (And/Or/Xor/Not/shifts/Crc32) | HIGH/OBSERVED |
 
 Common rejects on **both** `op0` and `op1`: `Divide(0x07)`, `Pow(0x1A)`, `Mod(0x1B)`. `Rsqrt(0x1D)`,

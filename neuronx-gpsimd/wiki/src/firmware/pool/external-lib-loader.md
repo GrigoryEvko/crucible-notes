@@ -255,9 +255,12 @@ $ readelf -S cay_extisa0.bin
 ```
 
 The VMA `0x02000380` matches [`dispatch-hub`](../seq/dispatch-hub.md) exactly. Decoded
-entries (8 bytes each: **BE u32 key `(spec<<8 | opcode)` at +0**, **LE funcVA at +4**):
+entries (8 bytes each: **key bytes `[0x00, 0x00, spec, opcode]` at +0** — which the POOL
+dispatcher compares as a native-LE `u32` = `(opcode<<24)|(spec<<16)` — followed by the **LE
+funcVA at +4**). The "BE `(spec<<8|opcode)`" reading of the same four bytes is the host-emit
+transcode framing — see the CORRECTION below:
 
-| idx | key bytes (BE) | opcode | spec | funcVA (LE) | dispatch key `opcode<<24\|spec<<16` |
+| idx | key bytes (`[0,0,spec,opcode]`) | opcode | spec | funcVA (LE) | dispatch key `opcode<<24\|spec<<16` |
 |---|---|---|---|---|---|
 | 0 | `0x0000007e` | `0x7e` | 0 | `0x01000080` | `0x7e000000` |
 | 3 | `0x00000045` | `0x45` | 0 | `0x01000b90` | `0x45000000` |
@@ -481,7 +484,7 @@ mechanisms:
 
 ## See also
 
-- [POOL Engine Main Dispatch Loop](./pool-dispatch.md) — the loop that scans the table this loader binds *(stub at time of writing — #677, concurrent)*.
+- [POOL Engine Main Dispatch Loop](./pool-dispatch.md) — the loop that scans the table this loader binds (#677).
 - [POOL Extended-Opcode (0xF0) Dispatch](./pool-ext-0xf0.md) — the `opcode 0xf0` / `spec` family seen in the decoded table *(stub — #678, concurrent)*.
 - [kernel_info_table Binary Layout](./kernel-info-table.md) — the 8-byte entry format in full *(stub — #681)*.
 - [External-Lib Prelink Validation + NUM_POOL_CORES](./prelink-validation.md) — the `total_cpus`/bounds validator §8 hands off to *(stub — #680)*.

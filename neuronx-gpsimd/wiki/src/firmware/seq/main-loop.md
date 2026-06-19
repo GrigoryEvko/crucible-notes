@@ -54,7 +54,7 @@ InstRAM base `0x0`). DRAM string offsets are **VA − 0x80000** (DataRAM base
                         ┌──────────────── LEVEL 3a — SUNDA SEQ LOOP (sw fetch) ───────┐
                         │  0x2d81  call8 0x6af4   POLL-SURPRISES (work? → a10)        │
                         │  0x2d84  beqz a10 → 0x31a6 ─► retw.n  (LOOP EXIT)           │
-                        │  0x2d9a  call8 0x6b0c   PENDING-REDIRECT (sunda_fetch)      │
+                        │  0x2d9a  call8 0x6b0c   SURPRISE CHECK (sunda_check_surprises)│
                         │  0x2e3b  l8ui [a1+40]   STOP test → 0x31a9 retw on stop     │
                         │  0x2e46  call8 0x1c64   ADVANCE / surprise-consume          │
                         │  0x2e50  l32i [a4]      FETCH opcode word of microcode instr│
@@ -111,7 +111,7 @@ itself called every pass of the forever outer boot loop.
 | IRAM `.rodata` size (DEBUG) | `0x1c820` = **116,768 B** | `readelf -SW` | `[HIGH/OBSERVED]` |
 | DRAM `.rodata` size (DEBUG) | `0x6f20` = 28,448 B | `readelf -SW` | `[HIGH/OBSERVED]` |
 | IRAM `.rodata` size (PERF) | `0x17280` = **94,848 B** (smaller; strings stripped) | `readelf -SW` PERF member | `[HIGH/OBSERVED]` |
-| `'S:'` strings in DEBUG DRAM | **178** | `rg -c -a 'S: ' dram.bin` | `[HIGH/OBSERVED]` |
+| `'S:'` strings in DEBUG DRAM | **178** records / **187** instances | `rg -c -a 'S: '` = 178 NUL-delimited records (1/dispatch slot); `rg -o`/`bytes.count` = 187 literal `S: ` substrings (9 extra from 4 multi-`S:` records) | `[HIGH/OBSERVED]` |
 | `'S:'` strings in PERF DRAM | **0** | `rg -c -a 'S: ' perf_dram.bin` | `[HIGH/OBSERVED]` |
 | Sunda FSM body | `0x2d81` (fetch) … `0x31a3 → 0x2d81` back-edge | disasm | `[HIGH/OBSERVED]` |
 | HW-decode FSM body | function `@0x31ac` ("Seq Loop, iter") | disasm | `[HIGH/OBSERVED]` |
@@ -212,8 +212,8 @@ sunda_loop:                                  // back-edge target 0x2d81
   if (poll_surprises() == 0)                 // 0x2d81: call8 0x6af4
       goto exit_retw;                         // 0x2d84: beqz a10 → 0x31a6 → 0x31a9 retw.n
 
-  // STEP 2 — PENDING-REDIRECT (software PC redirect, Sunda mode)
-  if (pending_redirect()) {                  // 0x2d9a: call8 0x6b0c (nonzero ⇒ redirect)
+  // STEP 2 — SURPRISE CHECK then software PC redirect (Sunda mode)
+  if (sunda_check_surprises(ctx)) {          // 0x2d9a: call8 0x6b0c (nonzero ⇒ handled; see CORRECTION)
       if (redirect_flag_byte & 1) {          // 0x2daa: l8ui ; bbci a3,0 → 0x2df5
           compute_redirect_target();         // 0x2db3: call8 0x4c3c
           // ... 0x2dd3 0x5b74 ; 0x2dd6 0x6b70 ...
@@ -303,10 +303,23 @@ bool poll_surprises(void) {
 > `[HIGH/OBSERVED · INFERRED on the "surprise" naming]`
 
 ```c
-// pending_redirect @0x6b0c — returns nonzero ⇒ a software PC redirect is queued.
-// Reads a per-engine redirect descriptor, normalises a flag to bit0, returns it.
-// (body partially interleaved; the bool-return contract is exact.) [HIGH/OBSERVED]
+// sunda_check_surprises @0x6b0c — returns nonzero ⇒ a surprise was handled.
+// Computes the surprise word from the per-engine context, logs DRAM 0x819cc
+// ("S: sunda_check_surprises: any=%d, surprises=0x%x"), tail-calls the bit-mask
+// handler 0x6ce0, and folds the "handled" bool back to bit0 to gate the redirect
+// body. (body partially FLIX-interleaved; the bool-return contract is exact.)
+// NOT pending_redirect — see CORRECTION below and surprises-irq.md §2/§3. [HIGH/OBSERVED]
 ```
+
+> **CORRECTION — `0x6b0c` is `sunda_check_surprises`, not `pending_redirect`/`sunda_fetch`.**
+> The STEP-2 gate call `0x2d9a: call8 0x6b0c` was earlier labelled "pending_redirect". Re-
+> disassembled, `0x6b0c` logs DRAM `0x819cc` (`"S: sunda_check_surprises: any=%d, surprises=0x%x"`),
+> computes the surprise word, and tail-calls the surprise bit-mask handler `0x6ce0` — it **is**
+> the surprise check (`surprises.hpp`), not a fetch redirect. The PC-redirect / `sunda_fetch`
+> work (the `"S: sunda_fetch: redirecting…"` strings @DRAM `0x8197b`/`0x819a8`) runs **after**
+> the check returns "handled", in the body at `0x2db3`/`0x2df5` onward. The two functions are
+> adjacent in the same packed region, which is the likely source of the mislabel. Full
+> treatment: [surprises-irq.md](surprises-irq.md) §2–§3. `[HIGH/OBSERVED]`
 
 ---
 
@@ -329,6 +342,16 @@ jx handler;                               // 0x2e76
 session): 178 little-endian 4-byte IRAM targets, `index = opcode_byte − 0x41`, span
 DRAM `0x814 .. 0xadc` (712 bytes), default target `0x3198`. Counted directly:
 **55 real handlers, 123 default**. `[HIGH/OBSERVED]`
+
+> **NOTE — `0x80814` is the Sunda SW-fetch table; a second table `0x80adc` serves HW-Decode.**
+> The Sunda software-fetch FSM documented above (STEP 6) indexes `0x80814`. The HW-Decode FSM
+> (`@0x31ac`, the "Seq Loop, iter" path) indexes a **second**, structurally identical 178-entry
+> table at DRAM **`0x80adc`** (55 real / 123 default, default fill `0x3a04`) via `const16 a3,0x80adc`
+> at `0x36ce`. Which table runs is a **per-runtime-mode** choice (mode flag `state[0x855e0+108]`
+> bit0 / CSR `0x4000`[0] `disable_hw_decode`), **not** per-generation — both modes exist on every
+> v3+ gen; SUNDA v2 has a single monolithic front-end. See
+> [HW-Decode vs Sunda Dual Fetch](dual-fetch.md) for the full side-by-side and the
+> HIGHER-`0x80adc`-is-HW-Decode resolution. `[HIGH/OBSERVED]`
 
 Each *real* table entry points at an 8-byte **trampoline** in the packed region
 `0x2e79..0x3198` of the form `call8 <impl> ; j 0x31a3` — i.e. call the opcode
@@ -549,7 +572,9 @@ hw_loop:
 
 `img_CAYMAN_NX_POOL_PERF_IRAM` is a distinct, **smaller** build (`.rodata` =
 `0x17280` = 94,848 B vs `0x1c820` = 116,768 B for DEBUG — verified this session). The
-PERF DRAM image carries **0** `'S:'` strings; DEBUG carries **178**. Removing every
+PERF DRAM image carries **0** `'S:'` strings; DEBUG carries **178** records (one
+NUL-delimited `S:` record per dispatch slot; the same population counts as **187** literal
+`S: ` substrings — see §1 metric note). Removing every
 `call8 0x18b84` log call (each a 6-byte `const16`-pair + a `call8`) shifts **all**
 downstream code offsets, so the DEBUG addresses on this page **do not map 1:1 onto
 PERF**. `[HIGH/OBSERVED]`
@@ -583,7 +608,7 @@ State variables (all OBSERVED this session unless noted):
 | ENTER_RUN | `start_ctrl(0x0004) != 0` | ack `start_ctrl=0`; `run_state=1`; set running flag | SEQ_LOOP (3a) |
 | SEQ_LOOP (3a) | poll-surprises(`0x6af4`)`==0` | `retw.n` (`0x31a9`) | → BOOT_LOOP |
 | SEQ_LOOP (3a) | stop flag `[a1+40]==0` | `retw.n` (`0x31a9`) | → BOOT_LOOP |
-| SEQ_LOOP (3a) | pending_redirect | sunda_fetch redirect; clear flag | SEQ_LOOP (fetch) |
+| SEQ_LOOP (3a) | `sunda_check_surprises` (`0x6b0c`) handled | then sunda_fetch redirect; clear flag | SEQ_LOOP (fetch) |
 | SEQ_LOOP (3a) | have instr | fetch word; `opcode = byte−0x41` | DISPATCH |
 | DISPATCH | `idx ∈ [0,177]` & handler ≠ default | `jx table[idx]`; `j 0x31a3` → `0x2d81` | (handler) → SEQ_LOOP |
 | DISPATCH | out of range / default | `j 0x3198` (unknown-opcode) | (default) → SEQ_LOOP |
@@ -675,8 +700,10 @@ To rebuild a Vision-Q7-compatible SEQ main loop, the structure to reproduce is:
 - [SEQ Boot / Entry Path](boot.md) — reset → `_start` → `BEGIN` → boot loop → the
   `enter_run` handoff this page picks up at.
 - [SEQ Fetch + PC-Redirect Front-End](fetch-pc-redirect.md) — `poll_surprises`
-  (`0x6af4`), `pending_redirect` (`0x6b0c`), and the `sunda_fetch` redirect family
-  (STEP 1/2 above) in full.
+  (`0x6af4`), the surprise check `sunda_check_surprises` (`0x6b0c`), and the `sunda_fetch`
+  redirect family (STEP 1/2 above) in full.
+- [SEQ Surprises / IRQ Path](surprises-irq.md) — the authoritative treatment of
+  `sunda_check_surprises` (`0x6b0c`) and the surprise bit-mask handler `0x6ce0`.
 - [SEQ Decode / Dispatch Hub](dispatch-hub.md) — the 178-entry table, the trampoline
   region, and the per-opcode handler implementations (STEP 6 above) in full.
 - [SEQ Run-State Machine](run-state.md) — `start_ctrl` / `run_state` / `intr_info` and

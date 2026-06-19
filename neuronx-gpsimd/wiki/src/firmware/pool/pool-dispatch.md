@@ -11,9 +11,9 @@ tensor kernel across the core's share of channels (its `'P%i:'` per-core log str
 
 This page is the definitive reference for the POOL **dispatch loop and its opcode→kernel
 map**; the table's own binary layout has a dedicated companion page
-([kernel_info_table Binary Layout](kernel-info-table.md), *stub*), and the two-level `0xf0`
-extended-instruction sub-dispatch its own ([POOL Extended-Opcode (0xF0) Dispatch](pool-ext-0xf0.md),
-*stub*). The opcode→kernel rows enumerated here in §6 are the table the per-kernel pages
+([kernel_info_table Binary Layout](kernel-info-table.md)), and the two-level `0xf0`
+extended-instruction sub-dispatch its own ([POOL Extended-Opcode (0xF0) Dispatch](pool-ext-0xf0.md)).
+The opcode→kernel rows enumerated here in §6 are the table the per-kernel pages
 (Iota, Copy, Cast, Cross-Lane-Reduce, Tensor-Tensor-Arith, Tensor-Dequantize, …) cross-link
 back to.
 
@@ -296,7 +296,7 @@ with the second const16 building a DRAM pointer in `.bss` (`0x02000450 .. 0x0200
 | 3 | `0x45` (pool/decode_pool) | `0x01000b90` | `0x02000458` |
 | 5 | `0x41` (tensor_tensor_arith) | `0x01000f1c` | `0x0200045c` |
 | 8 | `0xf0` spec 2 (ext tt-arith) | `0x01003484` | `0x02000468` |
-| 15 | `0xf2` (seq-bounds/dequant) | `0x0100484c` | `0x0200047c` |
+| 15 | `0xf2` (nonzero_with_count) | `0x0100484c` | `0x0200047c` |
 | 16 | `0x7b` (tensor_dequantize) | `0x01004dc4` | `0x02000480` |
 
 **FLIX-immediate trampolines** (the remaining entries 0,1,2,4,6,7,9,10,11,12,13,14) have a FLIX
@@ -373,8 +373,8 @@ CARRIED from the cross-image opcode JSON the backing reports cite).
 | 11 | `0x52` (82) | 0 | `0x01003b40` | op `0x52` dispatch *(CAYMAN-specific; no SUNDA/DEBUG name)* | LOW |
 | 12 | `0x46` (70) | 0 | `0x010040c0` | `pool_copy` *(SUNDA op70; DEBUG "Copy : num_chans")* | HIGH(op)/MED(route) |
 | 13 | `0x47` (71) | 0 | `0x01004160` | `pool_cast` *(SUNDA op71; DEBUG "Cast : num_chans")* | HIGH(op)/MED(route) |
-| 14 | `0xbe` (190) | 0 | `0x01004204` | op `0xbe` dispatch *(CAYMAN-specific; no SUNDA/DEBUG name)* | LOW |
-| 15 | `0xf2` (242) | 0 | `0x0100484c` | `get_sequence_bounds` / `tensor_dequantize` entry *(state `0x0200047c`)* | MED |
+| 14 | `0xbe` (190) | 0 | `0x01004204` | `get_sequence_bounds_impl` entry *(trampoline `0x01004204` → body `0x01004284`)* | HIGH |
+| 15 | `0xf2` (242) | 0 | `0x0100484c` | `nonzero_with_count_impl<int/float>` entry *(trampoline `0x0100484c` → dtype-branch → bodies `0x01004b80`/`0x01004940`; state `0x0200047c`)* | HIGH |
 | 16 | `0x7b` (123) | 0 | `0x01004dc4` | `decode_tensor_dequantize` entry *(state `0x02000480`)* | HIGH(route) |
 
 > **NOTE — name resolution sources and what is grounded here.** The **funcVA / opcode / spec
@@ -388,6 +388,19 @@ CARRIED from the cross-image opcode JSON the backing reports cite).
 > that map is not in this archive). CAYMAN reuses the SUNDA opcode numbering. `[HIGH for the
 > table; per-row name conf as marked]`
 
+> **CORRECTION — idx14 (`0xbe`) and idx15 (`0xf2`) resolved names (off-by-neighbor).** Earlier
+> drafts left idx14 `0xbe` as an unresolved "CAYMAN-specific dispatch" (LOW) and mis-attributed
+> idx15 `0xf2` to "`get_sequence_bounds` / `tensor_dequantize`" (MED) — a one-slot shift that
+> collided `0xbe`'s name onto the `0xf2` row and the neighbouring `0x7b` (idx16) dequantize name
+> onto it too. The **funcVA / opcode / spec bytes were always correct**; only the names were off.
+> Byte-grounded against the dedicated kernel pages: idx14 `0xbe` → trampoline `0x01004204` →
+> body `get_sequence_bounds_impl@0x01004284` (see
+> [Get Sequence Bounds](../kernels/get-sequence-bounds.md), KIT idx14 `{0xbe → 0x01004204}`);
+> idx15 `0xf2` → trampoline `0x0100484c` → `in_dtype`-branch →
+> `nonzero_with_count_impl<int>@0x01004b80` / `<float>@0x01004940` (see
+> [Nonzero With Count](../kernels/nonzero-with-count.md), KIT idx15 `{0xf2 → 0x0100484c}`). Both
+> rows upgraded to HIGH. `[CORRECTION folded in place]`
+
 > **GOTCHA — this is the per-IMAGE kernel set, not the universe of POOL opcodes.** The 17-entry
 > CAYMAN table lists only the kernels **this image implements**. The DEBUG build references
 > further decode handlers (`decode_embedding_update`, `decode_sb2sb_collective`, `decode_sort`,
@@ -395,7 +408,7 @@ CARRIED from the cross-image opcode JSON the backing reports cite).
 > that route through **other** per-generation tables, not CAYMAN's 17-entry table; and newer
 > SUNDA images add opcodes (`memset 0x49`, `embedding_update 0x79`, `gather 0x68`,
 > `affine_select 0x92`, `dma_memcopy 0xb8`, …). The full cross-engine opcode inventory is the
-> [Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) (*stub*); per-kernel detail lives
+> [Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md); per-kernel detail lives
 > on the individual kernel pages. `[HIGH/OBSERVED for the per-image set; CARRIED for the wider
 > opcode space]`
 
@@ -424,8 +437,7 @@ session from `dbg_dram.bin`):
 So: the top-level scan matches opcode `0xf0` → routes into `dispatch_extended_inst`, which
 sub-selects on the spec byte. This is exactly why the table groups five `0xf0` rows by spec. The
 mechanism, the per-spec funcVAs, and the spec-1/spec-2 names are HIGH; the spec-0/3/4 variant
-pairing is MED. Full treatment: [POOL Extended-Opcode (0xF0) Dispatch](pool-ext-0xf0.md)
-(*stub — pending authoring*).
+pairing is MED. Full treatment: [POOL Extended-Opcode (0xF0) Dispatch](pool-ext-0xf0.md).
 
 > **NOTE — the `0xf0` spec byte is the only place spec ≠ 0 in this table.** Every other row has
 > `spec = 0`; only `0xf0` multiplexes on spec. That is why the key is `(opcode<<24)\|(spec<<16)`
@@ -504,7 +516,7 @@ shared across CAYMAN / MARIANA / MARIANA_PLUS, so the loop flow described here i
 those three generations**. The smaller per-engine sub-images (CAYMAN_1/2/3) each embed their own
 *smaller* `kernel_info_table` (1 / 2 / 9 entries) at their own VMAs (`0x02000048` /
 `0x02000070` / `0x020008c8`), with the same 8-byte format and the same dispatch mechanism. Full
-layout detail: [kernel_info_table Binary Layout](kernel-info-table.md) (*stub*). `[HIGH/CARRIED
+layout detail: [kernel_info_table Binary Layout](kernel-info-table.md). `[HIGH/CARRIED
 from SX-FW-14/§11, SX-FW-18 cross-image section]`
 
 ---
@@ -602,8 +614,9 @@ match: PERF `internal_CAYMAN_0.so 910d41c3…`, DEBUG `dbg_dram.bin 226f4254…`
 
 **LOW / UNRECOVERED:**
 
-- op `0x52` (82) and op `0xbe` (190): CAYMAN-specific, no SUNDA/DEBUG name pin — funcVA OBSERVED,
-  kernel name LOW.
+- op `0x52` (82): CAYMAN-specific, no SUNDA/DEBUG name pin — funcVA OBSERVED, kernel name LOW.
+  *(op `0xbe` (190), formerly listed here, is now resolved to `get_sequence_bounds_impl` — see §6
+  CORRECTION and [Get Sequence Bounds](../kernels/get-sequence-bounds.md).)*
 
 ---
 
@@ -611,11 +624,11 @@ match: PERF `internal_CAYMAN_0.so 910d41c3…`, DEBUG `dbg_dram.bin 226f4254…`
 
 - [SEQ Decode / Dispatch Hub](../seq/dispatch-hub.md) — the contrasting SEQ front-end dispatch
   (178-entry direct-indexed table → `Handler::execute()`); §9 there pins the SEQ↔POOL contrast.
-- [kernel_info_table Binary Layout](kernel-info-table.md) *(stub — pending authoring)* — the
+- [kernel_info_table Binary Layout](kernel-info-table.md) — the
   POOL table's full binary layout (record fields, relocations, cross-image VMAs).
-- [POOL Extended-Opcode (0xF0) Dispatch](pool-ext-0xf0.md) *(stub — pending authoring)* — the
+- [POOL Extended-Opcode (0xF0) Dispatch](pool-ext-0xf0.md) — the
   two-level `0xf0` extended-instruction sub-dispatcher (§7).
-- [The Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) *(stub — pending authoring)* —
+- [The Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) —
   the cross-engine opcode inventory the §6 map feeds.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the
   OBSERVED/INFERRED/CARRIED × HIGH/MED/LOW tagging used throughout.

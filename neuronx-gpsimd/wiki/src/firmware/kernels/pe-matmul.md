@@ -355,7 +355,11 @@ static void pe_matmul_group(const s3_lw_t   *lw,        // Ldweights descriptor 
 
         // 4) on MULTI_END / SINGLE: commit the group; out_dtype (FP32 | BF16 v4+) drains.
         //    A BF16 drain uses the PSUM stochastic-rounding RNG (seeds managed by op 0x08).
-        //    The ACT engine later evicts PSUM via ActivationReadAccumulator (op 0x24).
+        //    The PE PSUM is later read by the ACT engine's Activate op: its src TENSOR3D is
+        //    AllowedInPSUM::True, so Activate reads PSUM directly, applies the affine+PWL, and
+        //    writes SBUF. (NOT op 0x24 ActivationReadAccumulator — that reads the ACT engine's
+        //    OWN per-lane fp32 reduction accumulator, a different register, not PE PSUM. See
+        //    activate-pwl.md §1 "Two distinct accumulators".)
         if (mode == SINGLE || mode == MULTI_END)
             psum_commit(mm->dst_mem_pattern, mm->out_dtype);  // matmul_done_last -> SBUF resp
     }

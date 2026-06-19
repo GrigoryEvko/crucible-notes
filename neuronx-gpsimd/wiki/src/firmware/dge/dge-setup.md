@@ -554,14 +554,13 @@ ring tail and **launches the engine**. This is the UDMA doorbell. `[HIGH/OBSERVE
 - **[DGE 3-Backend Selector](dge-backend-selector.md)** — the next stage: decodes the
   Pool/RTL/software builders (`0x135d4` / `0x13c5c` / `0x13c4c` and the RTL path) and the
   availability-table arm whose probe (`const16 a4,0x5fe0`) is the §6 hand-off point.
-  *(sibling page, currently a stub — link forward.)*
 - **[DGE Reshape / Dimension Handling](dge-reshape.md)** — `analyze_tensor_reshape` /
   `gen_spray_info` / `make_gather_pattern`: the Reshape-Strategy / #DMA / partition split that
-  sits between decode (§4) and backend-select (§6). *(sibling stub.)*
+  sits between decode (§4) and backend-select (§6).
 - **[DGE Descriptor Emit](dge-emit.md)** — the `push GENERATE` / `DIMPUSH` / `REGWRITE` ops
-  that fill the ring §7 feeds. *(sibling stub.)*
+  that fill the ring §7 feeds.
 - **[iDMA / Legacy DMA](idma-legacy-dma.md)** — the legacy single-transfer `DramRingDMA` path,
-  the contrast anchor: one BD vs. the DGE's descriptor program. *(sibling stub.)*
+  the contrast anchor: one BD vs. the DGE's descriptor program.
 - **DGE Builder + QoS** (`../../dma/dge-builder-qos.md`) — **forward link, Part 9, not yet
   authored.** Will decode the priority-class / QoS arbitration that the `engine`/`queue`
   binding (§3) and the host priority-class map feed. *(planned path — NOTE: target file does

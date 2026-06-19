@@ -426,9 +426,8 @@ What makes the iDMA **legacy**, grounded:
 > under the `legacy_dma.hpp` name. The mechanism is NX/SEQ-engine-only across **all**
 > generations — never present in a Q7/POOL image. `[HIGH/OBSERVED — §7.]`
 
-> **NOTE — forward links.** The DGE pages are still being authored. Once available, see
-> [DGE Setup + Context Init](dge-setup.md) for the descriptor-context init that this page
-> contrasts against (currently a stub). The SoC SDMA hardware the DGE drives — and which the
+> **NOTE — links.** See [DGE Setup + Context Init](dge-setup.md) for the descriptor-context
+> init that this page contrasts against. The SoC SDMA hardware the DGE drives — and which the
 > iDMA pointedly does *not* — will be documented at
 > [UDMA Hardware Engine](../../dma/udma-hw-engine.md) (Part 9, **not yet authored**).
 
@@ -506,8 +505,7 @@ consumer" MED — an absence claim over the decoded SEQ span and the Q7 grep.]`
 - [SEQ IRAM Instruction Cache / Overlay](../seq/iram-cache.md) — the **consumer**: the
   cache that calls `start_fill_siram` / `wait_for_dma_fill`; same KICK/poll contract on
   `0x1120/40/60/80`.
-- [DGE Setup + Context Init](dge-setup.md) — the modern engine this page contrasts against
-  *(stub — pending authoring)*.
+- [DGE Setup + Context Init](dge-setup.md) — the modern engine this page contrasts against.
 - [UDMA Hardware Engine](../../dma/udma-hw-engine.md) — the SoC SDMA the DGE drives and the
   iDMA does **not** *(Part 9 — not yet authored)*.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the meaning of the

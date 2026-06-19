@@ -500,16 +500,13 @@ ERRORS (dge-errors.md): bounds OOB / NO BACKEND -> report-and-continue
 ## Cross-references
 
 - [DGE Setup + Context Init](dge-setup.md) — the context-init `sw=%d` flag, the
-  availability-table populate, and the hand-off **to** this selector (Part 5,
-  #683; concurrently authored — currently a stub).
+  availability-table populate, and the hand-off **to** this selector (Part 5, #683).
 - [DGE Emit](dge-emit.md) — the GENERATE / DIMPUSH / REGWRITE the chosen backend
-  issues, and the per-backend descriptor emit (Part 5, #686 — **stub, not yet
-  authored**).
+  issues, and the per-backend descriptor emit (Part 5, #686).
 - [DGE Errors](dge-errors.md) — the `NO BACKEND FOUND` fall-through and the
   `Dispatched error notification` the selector's no-backend arm feeds.
 - [iDMA / Legacy DMA](idma-legacy-dma.md) — the legacy IRAM cache-fill DMA path
-  the software backend is contrasted with, and the glr CSRs (Part 5, #682 —
-  currently a stub).
+  the software backend is contrasted with, and the glr CSRs (Part 5, #682).
 - [runtime/dge-host-api.md](../../runtime/dge-host-api.md) — the host-side
   priority-class map (Part 8, #825 — **forward link, not yet authored**).
 - [dma/dge-builder-qos.md](../../dma/dge-builder-qos.md) — the host QoS/builder

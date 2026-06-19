@@ -607,8 +607,7 @@ MED/INFERRED from layer placement.]`
   halt-spin that every window-miss / free-list-overflow panic in §8 falls into.
 - [External-lib loader (device side)](../pool/external-lib-loader.md) — the
   caller that drives `translate_soc_to_xt_address` at library load time and
-  `push_unallocated_window` on unload. *(Forward link — currently a stub; the
-  load/unload wiring lands there.)*
+  `push_unallocated_window` on unload (the load/unload wiring lands there).
 - [The SoC ↔ Q7 Translation Windows](../../control/address/soc-q7-translation-windows.md)
   — the address-map view of the same window apertures (the NX/SoC base placement,
   the granule pins). *(Forward link — not yet authored.)*
@@ -620,6 +619,5 @@ MED/INFERRED from layer placement.]`
 
 > **NOTE (forward links).** `control/address/soc-q7-translation-windows.md` and
 > `abi/neuron-translate-windows.md` are planned (their directories exist but the
-> pages are not yet authored), and `firmware/pool/external-lib-loader.md` is
-> currently a stub. The links are kept against their SUMMARY-pinned slugs and will
+> pages are not yet authored). The links are kept against their SUMMARY-pinned slugs and will
 > resolve when those pages land.

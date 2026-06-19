@@ -231,10 +231,12 @@ NEURON_ISA_TPB_TENS_SCALAR_REV_OPS_BOTH   = 0x03,
 The two predicates resolve from the float `NEURON_ISA_TPB_ALU_OP` enum
 (`common.h:939`):
 
-- **`is_general_arith_op`** = `is_arith_op` minus `{Divide, Pow, Mod}` and minus
+- **`is_general_arith_op`** = `is_arith_op` minus `{Divide, Pow, Mod, Rsqrt}` and minus
   *all* `is_valid_int_aluop` members (the `*_INT`/`*_UINT` integer-engine ops
-  `0xC4..0xE1`). The resulting general-arith set is the float ALU range `0x00..0x19`
-  minus `{Divide 0x07, Pow 0x1A, Mod 0x1B}`, i.e. **17 ops**:
+  `0xC4..0xE1`). The resulting general-arith set is **per-gen: 17 ops on SUNDA/CAYMAN, 21 on
+  MARIANA+/MAVERICK** (MARIANA+ adds `AbsMax 0x20`, `AbsMin 0x21`, `ReLU 0x22`, `Square 0x23`
+  — see the [ALU-op matrix §3.1](./alu-op-matrix.md), the canonical home of this count). The
+  **17-op SUNDA/CAYMAN core**:
 
   | op | code | | op | code | | op | code |
   |---|---|---|---|---|---|---|---|
@@ -245,20 +247,26 @@ The two predicates resolve from the float `NEURON_ISA_TPB_ALU_OP` enum
   | `Max` | 0x08 | | `IsEQ` | 0x12 | | `IsNE` | 0x18 |
   |  |  | | `IsGT` | 0x13 | | `AbsoluteValue` | 0x19 |
 
+  On **MARIANA/MARIANA_PLUS/MAVERICK** the four extra float AluOps `AbsMax 0x20`, `AbsMin 0x21`,
+  `ReLU 0x22`, `Square 0x23` are real enumerators in the ALU_OP enum, are in `is_arith_op`, are
+  not special-excluded, and are not in `is_valid_int_aluop` — so they join the set, giving **21**.
+
 - **`is_general_bitvec_op`** = `is_bitvec_op` minus `{Crc32 0x1C}`, i.e. **9 ops**:
   `Bypass 0x00`, `BitwiseNot 0x01`, `ArithShiftLeft 0x02`, `ArithShiftRight 0x03`,
   `LogicalShiftLeft 0x10`, `LogicalShiftRight 0x11`, `BitwiseAnd 0x0A`,
   `BitwiseOr 0x0B`, `BitwiseXor 0x0C`.
 
-> **CORRECTION vs SX-FW-53.** The backing report's general-arith list appends
-> "(+AbsMax/AbsMin/ReLU/Square on the gens that define them)". The shipped
-> `aws_neuron_isa_tpb_common.h` (all four gens) defines **no** `ReLU` or `Square`
-> AluOp, and `AbsMax`/`AbsMin`/`AbsDiff` exist **only** as `*_INT` variants
-> (`ABS_MAX_INT 0xCB`, `ABS_MIN_INT 0xCC`, `ABS_DIFF_INT 0xCD`), which
-> `is_valid_int_aluop` explicitly **excludes** from `is_general_arith_op`. The
-> correct general-arith set for STT on these headers is exactly the 17 ops above —
-> no `ReLU`/`Square`, no `AbsMax`/`AbsMin`. `[HIGH/OBSERVED — common.h:939, 1671,
-> 1419]`
+> **CORRECTION (per-gen) vs SX-FW-53.** The backing report's general-arith list appends
+> "(+AbsMax/AbsMin/ReLU/Square on the gens that define them)" — and that *gen-qualified* form is
+> correct. An earlier draft of this page over-corrected it to "no `ReLU`/`Square`,
+> no `AbsMax`/`AbsMin` on **all four** gens", which is wrong: only **SUNDA/CAYMAN** lack those
+> float AluOps (there they exist solely as `*_INT` variants `ABS_MAX_INT 0xCB` / `ABS_MIN_INT 0xCC`,
+> which `is_valid_int_aluop` excludes — giving the 17-op set above). **MARIANA/MARIANA_PLUS/MAVERICK**
+> add the float enumerators `ABS_MAX = 0x20`, `ABS_MIN = 0x21`, `RE_LU = 0x22`, `SQUARE = 0x23` to
+> the ALU_OP enum and to `is_arith_op`; none are special-excluded, so general-arith there is **21**.
+> So the STT general-arith set is **17 (SUNDA/CAYMAN) / 21 (MARIANA+)**, harmonized with the
+> canonical [ALU-op matrix §3.1](./alu-op-matrix.md). `[HIGH/OBSERVED — common.h ALU_OP enum +
+> `is_arith_op`/`is_general_arith_op`/`is_valid_int_aluop` bodies, per-gen]`
 
 The fused-multiply-add `dst = scalar·src0 + src1` is therefore the *special case*
 `op0=MULT(0x06)`, `op1=ADD(0x04)`, `reverse_operands=NONE`. STT is the **generic

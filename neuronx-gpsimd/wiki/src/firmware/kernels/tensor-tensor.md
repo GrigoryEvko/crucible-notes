@@ -405,7 +405,8 @@ is_bitvec_op = { BYPASS, BITWISE_NOT, ARITH_SHIFT_LEFT, ARITH_SHIFT_RIGHT,
 is_general_bitvec_op(op) = is_bitvec_op(op) && op != CRC32
 //  => TensorTensorBitvecOp(0x51) accepts the bitvec set MINUS CRC32 (9 ops).
 
-// is_arith_op(op): the arithmetic/compare/logical set (26 ops)
+// is_arith_op(op): the arithmetic/compare/logical set — 26 ops on SUNDA/CAYMAN (below);
+//   MARIANA+/MAVERICK add the 4 float ops ABS_MAX 0x20/ABS_MIN 0x21/RE_LU 0x22/SQUARE 0x23 = 30.
 is_arith_op = { BYPASS, ADD, SUBTRACT, MULT, DIVIDE, MAX, MIN,
                 LOGICAL_AND, LOGICAL_OR, LOGICAL_XOR,
                 IS_EQ, IS_GT, IS_GE, IS_LE, IS_LT, IS_NE,
@@ -414,6 +415,8 @@ is_arith_op = { BYPASS, ADD, SUBTRACT, MULT, DIVIDE, MAX, MIN,
 is_general_arith_op(op) = is_arith_op(op)
                        && op != DIVIDE && op != POW && op != MOD && op != RSQRT
                        && !is_valid_int_aluop(op)
+//   => is_general_arith_op cardinality is per-gen: 17 (SUNDA/CAYMAN) / 21 (MARIANA+/MAVERICK);
+//      canonical count + membership in alu-op-matrix.md §3.1.
 //  => TensorTensorArithOp(0x41) accepts:
 //       is_general_arith_op(op) || op == POW || is_valid_int_aluop(op)
 //     (the general arith set, PLUS POW, PLUS the int band — but NOT raw DIVIDE/RSQRT;

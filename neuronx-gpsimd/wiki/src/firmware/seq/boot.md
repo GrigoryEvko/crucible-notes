@@ -24,7 +24,10 @@ naive reading), **NOTE** (orientation).
 > engine, whose firmware emits **`P%i:`** lines and is documented in
 > [Boot / Reset Sequence + Startup Config](../../uarch/boot-reset.md). The two prefixes are
 > mutually exclusive in every image (verified: the `CAYMAN_NX_POOL` DEBUG DRAM holds **187**
-> `S:` strings and **0** `P%i:`; the `CAYMAN_Q7_POOL` DEBUG DRAM holds **0** `S:` and **156**
+> literal `S: ` substrings — equivalently **178** NUL-delimited `S:` records, one per dispatch
+> slot, the 9-substring surplus coming from 4 records that carry multiple `S:` on one line (see
+> [dispatch-hub.md §1](dispatch-hub.md) / [main-loop.md §1](main-loop.md)) — and **0** `P%i:`;
+> the `CAYMAN_Q7_POOL` DEBUG DRAM holds **0** `S:` and **156**
 > `P%i:`). When this page says "the SEQ engine releases the Q7 cores from run-stall", it is the
 > NX sequencer reaching across to the eight Q7 compute sequencers — the handoff the uarch page
 > describes from the Q7 side. `[HIGH/OBSERVED]`

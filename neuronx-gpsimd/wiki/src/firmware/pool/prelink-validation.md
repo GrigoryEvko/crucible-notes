@@ -4,7 +4,7 @@ This page **owns and fully characterizes** the **validation layer** that wraps t
 external-library loader on the GPSIMD **POOL** engine. The loader proper —
 selector→resident-image resolution, the record walk, the DMA-in of the host-staged `UCPL `
 image, the `.kernel_info_table` bind, and `call_start_symbol` — is documented on its own page
-([External-Lib Loader (device side)](external-lib-loader.md), *stub*). **This** page is the
+([External-Lib Loader (device side)](external-lib-loader.md)). **This** page is the
 definitive reference for everything that *guards* that load: the host-side **UCPL prelinker**
 checks (ELF magic / class / segment-flag structure / segment-bounds / full relocation), the
 device-side runtime checks (the `NUM_POOL_CORES` core-count invariant, the UCPL content
@@ -552,7 +552,7 @@ FW-17 does **not** add a separate `.kernel_info_table` validation pass: the tabl
 a consequence of the host emit, and its *binding* (the resolve-by-name + the dispatcher install)
 is the loader's job, not a guard. The table's binary layout — record shape, key encoding, row
 enumeration — is the subject of the companion page
-([kernel_info_table Binary Layout](kernel-info-table.md), *stub*). The `MED` here is on the
+([kernel_info_table Binary Layout](kernel-info-table.md)). The `MED` here is on the
 exact *bind instruction* (named, not insn-pinned); the string and its `const16` reference are
 `HIGH/OBSERVED`.
 
@@ -580,11 +580,11 @@ were measured:
 ## 10. Cross-references
 
 - [External-Lib Loader (device side)](external-lib-loader.md) — the load driver this layer
-  wraps (#679, *stub* — concurrently authored).
+  wraps (#679).
 - [POOL Engine Main Dispatch Loop](pool-dispatch.md) — consumes the broadcast-vs-single
   `total_cpus` contract and reads the bound `.kernel_info_table` (#677).
 - [kernel_info_table Binary Layout](kernel-info-table.md) — the table whose presence the host
-  emits and the device binds (#681, *stub* — **NOTE:** not yet authored).
+  emits and the device binds (#681).
 - [tpb-pool / ADDR-05](../../control/address/tpb-pool.md) — the architectural source of the
   8-core POOL cluster = `NUM_POOL_CORES` (*forward — Part 13*, **NOTE:** not yet authored).
 - [runtime / prelinker-ucpl](../../runtime/prelinker-ucpl.md) — the host UCPL prelink chain in

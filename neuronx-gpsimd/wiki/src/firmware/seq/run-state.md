@@ -572,12 +572,12 @@ This page owns the **run-state FSM**: the enum, the control CSRs, the StartCtrl 
 Pause/Halt transitions, resume-PC save/restore, and the dispatcher/error integration. The
 sibling SEQ-internals pages cover the machinery this page only touches at transition points:
 
-- [SEQ Surprises / IRQ Poll](surprises-irq.md) *(currently a stub)* — the async-event
-  (*"surprises"*) poll/handler (`0x6af4` poll, `0x6b0c` check, the bitmask handler) and the
-  `intr_info`/`intr_ctrl` latching detail.
-- [SEQ uarch + on-device debugger](uarch-debugger.md) *(currently a stub)* — the HW-decode
+- [SEQ Surprises / IRQ Poll](surprises-irq.md) — the async-event
+  (*"surprises"*) poll/handler (`0x6af4` poll, `sunda_check_surprises 0x6b0c` check, the bitmask
+  handler `0x6ce0`) and the `intr_info`/`intr_ctrl` latching detail.
+- [SEQ uarch + on-device debugger](uarch-debugger.md) — the HW-decode
   breakpoint/step CSRs read at `enter_run` via `0x5504`/`0x5514`.
-- [SEQ SoC Window-Manager](soc-window-manager.md) *(currently a stub)* — the 40
+- [SEQ SoC Window-Manager](soc-window-manager.md) — the 40
   address-translation windows (`window` bundle `0x2000`, `ArraySize 40`) that map the
   IRAM/DRAM/peripheral apertures the SEQ engine fetches and stores through.
 
@@ -589,12 +589,12 @@ sibling SEQ-internals pages cover the machinery this page only touches at transi
   boot-side of §3a, with the `0x2c63`/`0x2c64` mis-decode GOTCHA).
 - [SEQ Main FSM Loop](main-loop.md) — the fetch → decode → dispatch loop that run-state gates;
   the outer boot loop `@0x2499` and the inner Sunda/HW-decode FSMs.
-- [SEQ Decode / Dispatch Hub](dispatch-hub.md) *(stub)* — the 178-entry table at DRAM
+- [SEQ Decode / Dispatch Hub](dispatch-hub.md) — the 178-entry table at DRAM
   `0x80814` (55 real / 123 default → `0x3198`), and the dispatch index `0x60` that reaches the
   sync handler in §4.
 - [SEQ Fetch + PC-Redirect Front-End](fetch-pc-redirect.md) — the `poll_surprises`/PC-redirect
   front-end on the RUNNING path.
-- [SEQ Error-Handler / Fault Reporting](error-handler.md) *(stub)* — the FW-09 FATAL raise
+- [SEQ Error-Handler / Fault Reporting](error-handler.md) — the FW-09 FATAL raise
   `0x13e00`, `HandleBadOpcode 0x13f58`, and the error record / trap ring referenced in §7.
 - [SEQ PC-Bounds Guard](pc-bounds.md) — `is_pc_in_bounds @0x68d0`, the soft prefetch guard
   noted in §7.

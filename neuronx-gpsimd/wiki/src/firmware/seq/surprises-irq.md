@@ -637,7 +637,7 @@ To rebuild a Vision-Q7-compatible surprises subsystem:
   (the separate, coarser interrupt layer).
 - [SEQ Main FSM Loop](main-loop.md) — where the poll (STEP 1) and check (STEP 2) sit at the top
   of the Sunda and HW-decode loops; the §2.1 CORRECTION on the `0x6b0c` label applies to its §4.
-- [SEQ Error-Handler / Fault Reporting](error-handler.md) *(stub)* — the FW-09 FATAL raise
+- [SEQ Error-Handler / Fault Reporting](error-handler.md) — the FW-09 FATAL raise
   `0x13e00` that an unhandled surprise or an unarmed EXT_BREAK lands in (§4.4).
 - [Atomic + Memory-Ordering Model](../../uarch/atomics-ordering.md) — the canonical home of
   `STRONG_ORDER` (§7 there); `ATOMCTL` is the 10-bit `[9:0]` field, and `RSR.ATOMCTL` serialises

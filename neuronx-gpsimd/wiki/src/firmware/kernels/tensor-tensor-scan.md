@@ -214,17 +214,22 @@ fn is_general_arith_op(op: AluOp) -> bool {
 ```
 
 The resulting **scan combine op set** (both `op0` and `op1` draw from it) — from `is_arith_op`
-(`common.h:1859`) minus the four exclusions and the int band:
+(`common.h:1859`) minus the four exclusions and the int band. This is the **MARIANA+/MAVERICK**
+21-op form (the gens that actually wire `0xe5`); **SUNDA/CAYMAN** lack the float
+`AbsMax/AbsMin/ReLU/Square` enumerators (`0x20..0x23`), so on those gens the set is **17** —
+the per-gen 17/21 split is canonical in the [ALU-op matrix §3.1](alu-op-matrix.md):
 
 | AluOp | value | AluOp | value | AluOp | value |
 |---|---|---|---|---|---|
 | `Bypass` | `0x00` | `IsEQ` | `0x12` | `IsNE` | `0x18` |
 | `Add` | `0x04` | `IsGT` | `0x13` | `AbsoluteValue` | `0x19` |
-| `Subtract` | `0x05` | `IsGE` | `0x14` | `AbsMax` | `0x20` |
-| `Mult` | `0x06` | `IsLE` | `0x15` | `AbsMin` | `0x21` |
-| `Max` | `0x08` | `IsLT` | `0x16` | `ReLU` | `0x22` |
-| `Min` | `0x09` | `AbsoluteDiff` | `0x17` | `Square` | `0x23` |
+| `Subtract` | `0x05` | `IsGE` | `0x14` | `AbsMax`\* | `0x20` |
+| `Mult` | `0x06` | `IsLE` | `0x15` | `AbsMin`\* | `0x21` |
+| `Max` | `0x08` | `IsLT` | `0x16` | `ReLU`\* | `0x22` |
+| `Min` | `0x09` | `AbsoluteDiff` | `0x17` | `Square`\* | `0x23` |
 | `LogicalAnd` | `0x0D` | `LogicalOr` | `0x0E` | `LogicalXor` | `0x0F` |
+
+\* `AbsMax/AbsMin/ReLU/Square` are MARIANA+/MAVERICK-only float AluOps (absent on SUNDA/CAYMAN).
 
 > **NOTE — two selectors, *both* unrestricted (the answer to "one selector or two").** TensorTensorScan
 > takes **two** AluOp selectors, **both** any `general_arith` op. This is the sharp contrast to

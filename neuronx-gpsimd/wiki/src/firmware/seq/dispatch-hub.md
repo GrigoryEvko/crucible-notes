@@ -177,6 +177,18 @@ Base `0x80814`; **178 × 4-byte LE absolute IRAM targets**; span `0x814..0xadc`
 `dram.bin` this session: **55 real / 123 default**, all 55 real targets `< 0x1c820`
 (in-range IRAM). `[HIGH/OBSERVED]`
 
+> **NOTE — this is the LOWER of TWO dispatch tables.** The `0x80814` table enumerated here is
+> the one indexed by the **Sunda software-fetch** FSM (`const16 a3,0x80814` at `0x2e6b`). The
+> firmware ships a **second**, structurally identical table at DRAM **`0x80adc`** (also 178
+> entries, 55 real / 123 default — but its default fill is `0x3a04`, not `0x3198`), indexed by the
+> **HW-Decode** FSM (`const16 a3,0x80adc` at `0x36ce`). The two are selected **per-runtime-mode,
+> not per-generation**: the mode flag `state[0x855e0+108]` bit0 (`1`=Sunda SW-fetch, `0`=HW-Decode;
+> CSR `0x4000`[0] `disable_hw_decode` chicken bit) chooses which FSM — and therefore which table —
+> runs, on every v3+ gen (SUNDA v2 has neither mode: a single monolithic front-end). Full
+> side-by-side treatment, the per-gen presence proof, and the resolution of which physical slot is
+> HW-Decode (HIGHER `0x80adc` = HW-Decode) are in
+> [HW-Decode vs Sunda Dual Fetch](dual-fetch.md). `[HIGH/OBSERVED]`
+
 ### 3a. The 55 real handlers
 
 Each row: `opcode → trampoline → impl → handler-fn → thunk → operation`. The trampoline
@@ -757,11 +769,11 @@ Five strongest claims, each re-challenged against the re-carved image this sessi
   (`is_pc_in_bounds @0x68d0`), distinct from the opcode-value bound here.
 - [SEQ Error-Handler / Fault Reporting](error-handler.md) — the Bad/Illegal-Opcode fault
   arms the default path lands in.
-- [POOL Engine Main Dispatch Loop](../pool/pool-dispatch.md) *(stub)* — the contrasting
+- [POOL Engine Main Dispatch Loop](../pool/pool-dispatch.md) — the contrasting
   POOL dispatch style (§9).
-- [kernel_info_table Binary Layout](../pool/kernel-info-table.md) *(stub)* — the POOL
+- [kernel_info_table Binary Layout](../pool/kernel-info-table.md) — the POOL
   8-byte `(key, funcVA)` table (§9).
-- [The Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) *(stub)* — the
+- [The Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) — the
   cross-engine opcode inventory this table's 55 named handlers feed.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the
   OBSERVED/INFERRED/CARRIED × HIGH/MED/LOW tagging used throughout.

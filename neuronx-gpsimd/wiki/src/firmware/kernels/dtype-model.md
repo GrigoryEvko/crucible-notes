@@ -710,15 +710,15 @@ incomplete. See [move-dtype](move-dtype.md). `[HIGH/OBSERVED — string read thi
 * [ScalarType ↔ dtype Rosetta](../../abi/scalartype-dtype-rosetta.md) — *forward link, Part 7
   (not yet authored; `abi/` is empty this pass)*: the host-side `c10::ScalarType` ordinals,
   element sizes, and the `isa_to_torch_dtype` arm analysis.
-* [ALU op matrix](alu-op-matrix.md) — *stub*: the per-op × per-dtype ALU support grid that
+* [ALU op matrix](alu-op-matrix.md) — the per-op × per-dtype ALU support grid that
   Table B summarises.
-* [tensor-dequantize](tensor-dequantize.md) — *stub*: the POOL `TensorDequantize` /
+* [tensor-dequantize](tensor-dequantize.md) — the POOL `TensorDequantize` /
   `dequant_fmt` micro-format expansion.
-* [mx-dequant](mx-dequant.md) — *stub*: the MX block-scale dequant (both mechanisms §2.4).
-* [opcode-catalog-ledger](opcode-catalog-ledger.md) — *concurrently authored*: the full opcode
+* [mx-dequant](mx-dequant.md) — the MX block-scale dequant (both mechanisms §2.4).
+* [opcode-catalog-ledger](opcode-catalog-ledger.md) — the full opcode
   roster (`QUANTIZE_MX = 0xe3`, `MATMUL_MX = 0x0A`, `LDWEIGHTS_MX = 0x09`, …).
-* [pe-matmul](pe-matmul.md) — *stub*: the matmul/PE FP32-accum dtype matrix (§2.5).
-* [cptc-codec](cptc-codec.md) — *stub*: the CPTC codec decoder family (§3).
+* [pe-matmul](pe-matmul.md) — the matmul/PE FP32-accum dtype matrix (§2.5).
+* [cptc-codec](cptc-codec.md) — the CPTC codec decoder family (§3).
 * [move-dtype](move-dtype.md) — the `move` full-register dtype gate (§7).
 * [The Confidence & Walls model](../../reference/confidence-model.md) — the `[HIGH/OBSERVED]`
   tag and wall taxonomy used throughout this page.

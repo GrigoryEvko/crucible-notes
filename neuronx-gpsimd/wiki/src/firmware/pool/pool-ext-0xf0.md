@@ -235,8 +235,8 @@ The `callx8` target `0x010034b0` is the function start of
 is a one-`callx8` route into the 64-bit-aware tensor-tensor arith decoder; DEBUG anchor
 `"ExtendedInstTensorTensorArith : num_tensor_elements = %d : alu_op = 0x%x"`. The
 underlying ALU and 64-bit paths are characterized in
-[ext-tensor-tensor-arith](../kernels/ext-tensor-tensor-arith.md) *(stub)* and
-[tensor-tensor-64bit](../kernels/tensor-tensor-64bit.md) *(stub)*. `[HIGH route]`
+[ext-tensor-tensor-arith](../kernels/ext-tensor-tensor-arith.md) and
+[tensor-tensor-64bit](../kernels/tensor-tensor-64bit.md). `[HIGH route]`
 
 ### spec 4 — `0x010037a8` — Rand/Cptc band (via `decode_pool`) `[MED]`
 
@@ -416,7 +416,7 @@ the **selector** is a two-stage funnel:
 > `in_dtype/out_dtype → N` map (e.g. a lookup table vs a computed index) is inside the
 > `0xE4`/`0xF0`-spec-7 FLIX-desynced bodies and is reported structurally as
 > "dtype-indexed selection over `impl<1..6>`", not byte-exact. Full codec detail is in
-> [cptc-codec](../kernels/cptc-codec.md) *(stub)*.
+> [cptc-codec](../kernels/cptc-codec.md).
 > `[HIGH family location & dtype-driven selection / MED exact index arithmetic]`
 
 ---
@@ -536,15 +536,15 @@ To rebuild the POOL `0xF0` extended dispatch:
 
 ## See also
 
-- [POOL Engine Main Dispatch Loop](pool-dispatch.md) *(stub at time of writing)* — the
+- [POOL Engine Main Dispatch Loop](pool-dispatch.md) — the
   top-level linear `kernel_info_table` scan this page's five rows sit beneath.
-- [kernel_info_table Binary Layout](kernel-info-table.md) *(stub)* — the physical
+- [kernel_info_table Binary Layout](kernel-info-table.md) — the physical
   8-byte `(key, funcVA)` row format and the full 17-row table.
-- [Cptc Codec](../kernels/cptc-codec.md) *(stub)* — the `cptc_decode_impl<1..6>` codec
+- [Cptc Codec](../kernels/cptc-codec.md) — the `cptc_decode_impl<1..6>` codec
   internals and the `in_dtype/out_dtype → impl<N>` selection.
-- [Extended Tensor-Tensor Arith](../kernels/ext-tensor-tensor-arith.md) *(stub)* — the
+- [Extended Tensor-Tensor Arith](../kernels/ext-tensor-tensor-arith.md) — the
   spec-2 `decode_extended_inst_tensor_tensor_arith` body.
-- [Tensor-Tensor 64-bit](../kernels/tensor-tensor-64bit.md) *(stub)* — the 64-bit ALU
+- [Tensor-Tensor 64-bit](../kernels/tensor-tensor-64bit.md) — the 64-bit ALU
   paths the extended tensor-tensor arith dispatches into.
 - [SEQ Decode / Dispatch Hub](../seq/dispatch-hub.md) — the contrasting SEQ
   computed-jump dispatch (the `opcode<<24 | spec<<16` key contrast originates there).
