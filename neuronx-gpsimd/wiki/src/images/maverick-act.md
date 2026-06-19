@@ -145,7 +145,8 @@ image exists on v4+ and is gone on v5. [HIGH/OBSERVED]
 
 > **GOTCHA — MAVERICK is internal-twin-EXCLUSIVE; the carve is single-source.**
 > `libnrtucode.a` (sha256 `158dadc5…`, re-hashed MATCH) ships **0** MAVERICK members
-> (`CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 = 435`). MAVERICK lives
+> (**435** total = **420 image** [CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 /
+> MAVERICK 0] **+ 15 framework `.c.o`**). MAVERICK lives
 > *only* in the clang-15 `internal.so` twin. So unlike the MARIANA_PLUS carve —
 > reconciled 8/8 against the matching `.a` member `.rodata` — **there is no
 > `.a` member to byte-reconcile a MAVERICK carve against.** Every MAVERICK blob
@@ -304,8 +305,10 @@ MAVERICK** — the exact opposite of MARIANA_PLUS's `+0/−0` ACT diff. [HIGH/OB
 **5b. The MAVERICK DVE handler roster is DVE-NATIVE, not a DVE+ACT union.** Strict
 end-anchored extraction (`rg -oP 'S: \K[A-Za-z][A-Za-z0-9_/-]*$' | sort -u`, the
 MARIANA_PLUS method-2): **MAVERICK DVE = 59** vs **MARIANA_PLUS DVE = 60**. The only
-strict difference is `QuantizeMx` (dropped from the named DVE set on MAVERICK; it
-migrates to the Q7 POOL MX-dequant path, §6). The roster is DVE-native:
+strict difference is `QuantizeMx` — the **named handler is DROPPED** on MAVERICK (0 hits region-wide),
+**not** migrated; the `0xe3 QUANTIZE_MX` opcode stays DVE-bound (armed on the MAVERICK DVE PROF CAM),
+and POOL's only MX surface is the pre-existing `0x7b TENSOR_DEQUANTIZE` dequant path (§6,
+[maverick-pool.md §2.2](maverick-pool.md)). The roster is DVE-native:
 `BatchNormalize{,BackProp,GradAccum,GradAccum2,ParamLoad,ParamLoad2}`, `Dropout`,
 `SparsityCompress{,Tag}`, `MatchReplace`, `MatchValueLoad`, `FindIndex8`,
 `RangeSelect`, `Exponential`, `CastPredicated`, `CopyPredicated{,Reduce,Scalar}`,
@@ -466,7 +469,7 @@ The five strongest claims, re-challenged against the binary this task:
 
 **Honesty ledger.** *HIGH/OBSERVED:* `internal.so b7c67e89` + `.a 158dadc5`
 re-hashed (MATCH); 0 `MAVERICK_NX_ACT` symbols (×4 zeros incl. IDA sidecar); 0
-MAVERICK `.a` members (435 = 124×3 + 48); 62 getters (DVE 14 / PE 10 / POOL 10 /
+MAVERICK `.a` members (435 = 124×3 + 48 + 0 = **420 image** + **15 framework** = 435); 62 getters (DVE 14 / PE 10 / POOL 10 /
 SP 8 / Q7 20); 8 DVE blobs carved + sha256'd; gen-boundary byte-exact
 (`0x86f300+0x2000 == 0x871300`); reset `j 0x1d8 / j 0x1e4` decoded with `ncore2gp`
 (exit 0), `enter_run@0x94`, base `0x1490`, `−0x20` shift; DRAM magic `0x6099cb34`

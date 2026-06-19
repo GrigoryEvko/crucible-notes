@@ -82,7 +82,8 @@ later SoC instance* (OBSERVED); the part name is not.
 
 `nm libnrtucode_internal.so` exposes **62** `MAVERICK_*_get` accessors; `ar t
 libnrtucode.a` (sha256 `158dadc5…`) carries **0** MAVERICK members
-(`CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 = 435`, re-verified
+(**435** total = **420 image members** [CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 /
+SUNDA 48 / MAVERICK 0] **+ 15 framework `.c.o`** objects, re-verified
 `ar t | rg -ic maverick` → empty this pass). So **every MAVERICK carve is
 single-source by necessity** — there is no `.a` member to byte-reconcile against
 (unlike the v4/v4+ carves, which reconciled `.so`==`.a`). The shipped static archive
@@ -191,7 +192,7 @@ marker shown where load-bearing). `OBS` = OBSERVED this pass; `INF` = inferred; 
 | NCFW arch_id | 0x14 | **0x24\*** (image ABSENT) | INF |
 | OPCODE enumerators | 159 | **165** (+6 strict superset) | OBS |
 | ENUM_LIST kinds (`enums.h`) | 78 | **91** (+13) | OBS |
-| `tpb/` header files | 118 | **124** (+6, 0 drop) | OBS |
+| `tpb/` header files | 117 | **123** (+6, 0 drop) | OBS |
 | common/ device-CSR headers | 3 (`xt_defines` etc.) | 3, **BYTE-IDENTICAL to v4** | OBS |
 | **`COMPACT_CONTROL_INST`** | — | **`0xb6`** (`:266 // Y`, `ctrl_cci.h`, 15 micro-ops/64-B §5) | OBS |
 | **`TENSOR_TENSOR_INT_WIDE`** | — | **`0xf3`** (`:320 // Y`, `s2s2d2d2_tt.h`, 32→64-bit int, lo/hi dst) | OBS |
@@ -297,26 +298,29 @@ vs the Q7_POOL SRAM compute core). The maximal carve resolves it.
 >   // Y`, gate `nc==V5`); the maverick DVE PROF CAM arms `0xe3` (the
 >   [maverick-dve.md](../images/maverick-dve.md) `0x1e3` finding is the 9-bit→8-bit
 >   *mask*-respec of the same `0xe3` arming, **not** a 4th deprecation). [HIGH/OBSERVED]
-> - **the QuantizeMx *named handler / roster body*** → leaves the v5 DVE **named SEQ
->   roster** (the 60→59 strict diff). The DVE page's "migrates to the Q7 POOL MX path"
->   is a statement about the **MX machinery's home engine** (the Q7 POOL is where the MX
->   dequant/codec compute lives), **not** about the Q7 POOL gaining the `0xe3` *opcode*
->   or a `0xe3` KIT row. [INFERRED-HIGH — the "migration" is roster-string-level + the
->   MX-home-engine reading; the opcode binding is OBSERVED]
+> - **the QuantizeMx *named handler*** → **DROPPED** from the v5 DVE roster (the 60→59
+>   strict diff), **not migrated**. Binary-verified twice: `QuantizeMx` has **0** string hits
+>   in the entire `0x871300+` MAVERICK region (the 2 lib-wide hits are MARIANA/MPLUS DVE DEBUG
+>   DRAM, both `<0x871300`). The Q7 POOL does **not** gain the `0xe3` opcode or a `0xe3` KIT
+>   row; the MX *dequant* machinery the Q7 POOL hosts is the **separate** `0x7b` path, present
+>   since NC-v3. The earlier "migrates to the Q7 POOL MX path" phrasing conflated the
+>   handler-drop with POOL's pre-existing `0x7b` dequant — it is corrected to **dropped, not
+>   migrated**. [HIGH/OBSERVED — the handler drop + the opcode binding]
 > - **the POOL Q7 dequant** (`0x7b → proc_4bit_mx_8`) is the **dequant** direction —
 >   an older, in-band block-of-8 mechanism, retained byte-for-name on v5, distinct from
 >   the v5 `0xe3`/`MATMUL_MX` forward path with its out-of-band `MXTENSOR_V2`/`SFP8_E8`
 >   scale surface. [HIGH/OBSERVED]
 
 The net resolution: **`0xe3` is a DVE opcode; the Q7 POOL adds no `0xe3` KIT row; the
-"migration" language refers to MX *machinery home*, not the opcode.** The brief's
+`QuantizeMx` named handler is DROPPED (not migrated).** The brief's
 worry — "if the binary cannot disambiguate, flag it" — does **not** apply: the binary
 disambiguates cleanly (KIT key-set carve + PROF arming + the engine-tagged enum
-comment `// DVE`). The only residue left for the Part-6 reconcile is purely
-phrasing: the [maverick-dve.md](../images/maverick-dve.md) sentence "QuantizeMx
-migrates to the Q7 POOL" should be read with the [maverick-pool.md](../images/maverick-pool.md)
-§2.2 CORRECTION attached, which this page now does. **Confidence: HIGH/OBSERVED for the
-opcode binding; INFERRED-HIGH for the roster-migration semantics.**
+comment `// DVE` + the 0-hit `QuantizeMx` region sweep). The Part-6 reconcile has now
+harmonized [maverick-dve.md](../images/maverick-dve.md),
+[maverick-act.md](../images/maverick-act.md), and
+[maverick-pool.md §2.2](../images/maverick-pool.md) to the same wording: the named handler
+is dropped, `0xe3` stays DVE-bound, POOL's MX surface is `0x7b`. **Confidence: HIGH/OBSERVED
+for the opcode binding and the handler drop.**
 
 ```c
 // The v5 MX direction split, in one block (the OBSERVED opcode→engine binding;
@@ -453,9 +457,9 @@ NX_ACT 0); 0 `.a` members of 435; `maverick_libs @0x9b9050`; the ct37 dispatch
 delta-table opcode value (`0x09/0x0A/0x23/0x25/0x26/0x7b/0x9b/0xb6/0xb9/0xba/0xe3/0xe4/
 0xf3/0xf4`) + the MX dtypes `0x11/0x12/0x13-0x16`; the four POOL KIT key-sets
 (`{…}` union, no `0xe3`); the per-engine reset bytes (`ncore2gp` exit 0); the device-CSR
-header byte-identity to v4. *MED/INFERRED:* `arch_id 36*` (no NCFW v5); the
-QuantizeMx-roster *migration* semantics (opcode binding OBSERVED, the "Q7 POOL home"
-reading inferred); "DGE re-architected to HW DMA"; the v5 Q7 geometry / CSR programmer
+header byte-identity to v4; the `QuantizeMx` named-handler drop (0 hits region-wide) +
+the `0xe3` DVE binding (DVE PROF CAM) + POOL `0x7b`-only MX surface. *MED/INFERRED:*
+`arch_id 36*` (no NCFW v5); "DGE re-architected to HW DMA"; the v5 Q7 geometry / CSR programmer
 / run-stall / DKL (Cayman-class+ inferred); the per-opcode→handler-body binding
 (FLIX-desync frontier). *LOW / NOT CLAIMED:* the `coretype→silicon-part` (Trn-next)
 binding; the exact marketing name; shipping-vs-pre-release status; the UCIe PHY IP; the

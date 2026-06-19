@@ -95,7 +95,8 @@ Related pages: [MARIANA_PLUS × SP (the diff base)](./mariana-plus-sp.md) ·
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, Xtensa Tools 14.09;
 > `--version` exit 0). **MAVERICK is internal.so-EXCLUSIVE:** `libnrtucode.a`
-> (435 members = CAYMAN/MARIANA/MARIANA_PLUS/SUNDA) carries **0** MAVERICK members,
+> (435 members = **420 image** [CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 / MAVERICK 0]
+> **+ 15 framework `.c.o`**) carries **0** MAVERICK members,
 > so unlike the MARIANA_PLUS SP 6/6 `.so`↔`.a` reconciliation there is **no**
 > second-source byte-identity check — the carve is single-source. The shipped C
 > ISA header `neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` is cited for
@@ -491,9 +492,9 @@ divergence, each row anchored to its committed/in-flight page:
 | engine | idx | image shape | PROF (v5) | DGE FP | the v5 change | page |
 |---|---:|---|---|:---:|---|---|
 | **ACT** | 1 | **ABSENT** (folded into DVE) | n/a | n/a | AMPUTATED: no `NX_ACT` image; ACT opcodes `0x23`/`0x25` armed on DVE PROF; read-accum → `DveReadAccumulator`. | [act](./maverick-act.md) |
-| **DVE** | 3 | 14 getters, FULL DEBUG (the only one) | CAM `dbff2b84` + TABLE `f349e417` (re-authored) | DROPPED | HEAD engine: absorbed ACT; +6 new v5 opcodes; `QuantizeMx` migrated to Q7; PROF re-authored; DGE dropped; independent build. | [dve](./maverick-dve.md) |
+| **DVE** | 3 | 14 getters, FULL DEBUG (the only one) | CAM `dbff2b84` + TABLE `f349e417` (re-authored) | DROPPED | HEAD engine: absorbed ACT; +6 new v5 opcodes; `0xe3 QuantizeMx` stays DVE-bound (DVE PROF CAM) but the **named handler is dropped** (60→59); PROF re-authored; DGE dropped; independent build. | [dve](./maverick-dve.md) |
 | **PE** | 0 | 10 getters, **NO DEBUG** | CAM `85d857a7` + TABLE `e94d413a` (re-authored) | DROPPED | Matmul roster retained; MX unified into Matmul/Ldweights; +FP8/INT4/SFP8 dtypes; DEBUG dropped; PROF re-authored; DGE dropped; ≈64 % smaller; indep build. | [pe](./maverick-pe.md) |
-| **POOL** | 2 | 10 getters NX, **NO DEBUG**; Q7_POOL keeps DEBUG+EXTISA | re-authored (MED) | DROPPED | Q7-MX expansion: MX/dequant machinery in the Q7 POOL core; `QuantizeMx` migrated here from DVE; NX_POOL DEBUG dropped. | [pool](./maverick-pool.md) |
+| **POOL** | 2 | 10 getters NX, **NO DEBUG**; Q7_POOL keeps DEBUG+EXTISA | reused verbatim (disarmed) | DROPPED | dual-core; **NO MX expansion on POOL** (all 4 EXTISA KITs key-set == MARIANA_PLUS, `+0/−0`); POOL's only MX surface is the pre-existing `0x7b TENSOR_DEQUANTIZE` dequant (`0xe3` absent from every KIT); NX_POOL DEBUG dropped; Q7 → SRAM. | [pool](./maverick-pool.md) |
 | **SP** | 4 | **8 getters, NO DEBUG, NO PROF** (4 real); **SRAM-resident** | **NONE** (no PROF) | **DROPPED** | LEAN sync/control core, **SRAM-resident** (the v5 anomaly); DEBUG dropped; DGE fast-path **DROPPED** (was PRESENT on MPLUS SP — the decisive contrast); `enter_run @0x94` (Top-Sync reset `j 0x1e4`); dispatch + handler surface + dtype RETAINED; no new SP opcodes; ≈62 % smaller; indep build. **The degenerate lower bound.** | **this page** |
 
 ### 8.1 The gen-wide v4+ → v5 invariants (across the MAVERICK NX engines)
@@ -508,7 +509,7 @@ divergence, each row anchored to its committed/in-flight page:
   `enter_run @0x94` (the +4 v5 signature). The DRAM `.globstruct` magic `0x6099cb34`
   + init block is **unchanged** on every engine.
 * **INTERNAL-TWIN-EXCLUSIVE.** MAVERICK ships **only** in
-  `libnrtucode_internal.so`; **0** members in `libnrtucode.a` (435 total). No `.a`
+  `libnrtucode_internal.so`; **0** members in `libnrtucode.a` (435 total = 420 image + 15 framework). No `.a`
   byte-reconcile exists for any MAVERICK engine.
 * **THE DGE FAST-PATH IS DROPPED GEN-WIDE.** The v4+ SEQ-side fast-path that was
   PRESENT on **every** MARIANA_PLUS NX engine (incl. the lean SP) is GONE region-wide

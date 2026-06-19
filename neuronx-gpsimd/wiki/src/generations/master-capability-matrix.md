@@ -124,11 +124,13 @@ linked in §10.
 > (the namespace) from **image-shipped** (a kernel body present) — this is the
 > key framing the per-gen image pages use. [GEN-12 §1.3; sunda-v2-baseline #778] H/OBS.
 
-> **CORRECTION (to the task framing).** The prompt's "header count 99→123" is
-> approximate. The OBSERVED `tpb/` header-file counts this pass are
-> **100 / 109 / 118 / 124** (SUNDA / CAYMAN / MARIANA / MAVERICK), monotone — a
-> capability signature. M_PLUS reuses the MARIANA `tpb/` dir (no separate header
-> tree). [DX-01 §7; SPOT §9] H/OBS. Use the OBSERVED `100→124`, not `99→123`.
+> **NOTE — `tpb/` header-file counts.** The byte-true OBSERVED `tpb/` `.h` counts
+> (`fd --no-ignore -e h` / `find -type f -name '*.h'`, re-run this pass) are
+> **99 / 108 / 117 / 123** (SUNDA / CAYMAN / MARIANA / MAVERICK), monotone (+9/+9/+6) — a
+> capability signature. M_PLUS reuses the MARIANA `tpb/` dir (no separate header tree).
+> This agrees with [arch-isa-header-diff.md](arch-isa-header-diff.md); an earlier
+> `100/109/118/124` reading on this page was off by +1 per gen (a counted umbrella/index
+> `.h`) and is **corrected to 99/108/117/123**. [SPOT §9; arch-isa-header-diff #781] H/OBS.
 
 ### Block B — Engines, firmware, RNG, MX, DGE
 
@@ -210,9 +212,11 @@ advance at every step:
 The **only removals** in the whole chain: SUNDA's `CUSTOM_OP_HEADER`/`PAYLOAD`
 (and `nx_map`) dropped at CAYMAN, plus the **7 v2-only BF16/dual-ptr ops**
 (`0x87 0x88 0x8a 0x8b 0x8c 0x8d 0x8f`) retired at the v3 re-baseline — their
-bytes ABANDONED, never reused (the single `0x81` reuse for `JPEG_DECODE` aside).
-A stray `0x8a–0x8d/0x8f` in a v3+ stream is a decode error or a v2 artifact.
-[DX-05 §3.3] H/OBS.
+bytes ABANDONED, **never reused (ZERO byte-reuse across the chain)**. CAYMAN's
+`JPEG_DECODE = 0x81` is **not** a reuse — it fills a **pre-existing free byte**
+(`0x80`/`0x81` are permanent holes in all four gens; the SUNDA enum jumps
+`DROPOUT 0x7f → TRANSPOSE_BATCH_NORM_STATS2 0x82`). A stray `0x8a–0x8d/0x8f` in a
+v3+ stream is a decode error or a v2 artifact. [DX-05 §3.3; cross-gen-opcode-diff #782] H/OBS.
 
 ### B — Partial-order EXCEPTIONS (where strict-superset does NOT hold)
 
@@ -483,7 +487,7 @@ grid cell is **CARRIED** from a committed page with its own binary anchor.
 | 9 | **(6) ACT-fold** | `strings INT \| rg -o 'img_MAVERICK_NX_[A-Z]+'` vs `img_MARIANA_NX_*` | MAVERICK = {DVE,PE,POOL,SP} **no ACT**; MARIANA = {ACT,DVE,PE,POOL,SP} — **PASS** |
 | 10 | **engine_idx enum** | `rg 'ACT = 1'` in maverick `common.h` | `ACT=1` still in the ISA enum (fold is image-level) — **PASS** |
 | 11 | **arch-isa dirs** | `ls neuron_*_arch_isa` / `ls arch-headers/*` | 4 ISA dirs (no `mariana_plus`); 6 reg-map dirs (incl `mariana_plus`, `tonga`) — **PASS** |
-| 12 | **(2) header counts** | `ls neuron_<g>_arch_isa/tpb \| wc -l` | 100/109/118/124 (CORRECTION to "99→123") — **PASS** |
+| 12 | **(2) header counts** | `fd --no-ignore -e h neuron_<g>_arch_isa/tpb \| wc -l` | 99/108/117/123 (byte-true; agrees with #781) — **PASS** |
 | 13 | **(9) POOL dequant** | `rg 'TENSOR_DEQUANTIZE = 0x..'` sunda/maverick | `0x7b` on both (POOL MX surface invariant) — **PASS** |
 
 All 13 PASSED. The carved cells span IDENTITY / ISA / DTYPE / ENGINES / MX / DGE /

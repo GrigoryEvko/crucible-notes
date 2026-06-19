@@ -14,8 +14,12 @@ and unlike the v4→v4+ step, the delta is **real and structural**.
 > `ActivationReadAccumulator`/`Activate2`) are **ABSENT firmware-wide** on MAVERICK — **0 each**,
 > region-wide over the entire `0x871300..EOF` MAVERICK block **and** 0 each in the DVE DEBUG DRAM
 > specifically. The MAVERICK DVE handler set is **DVE-native** — **59 strict**, and the *only*
-> strict difference vs MARIANA_PLUS DVE's **60** is `QuantizeMx` (removed → migrates to the Q7 POOL
-> MX path). The fold's **image-level footprint** is three concrete, byte-exact things on the DVE
+> strict difference vs MARIANA_PLUS DVE's **60** is `QuantizeMx` — the **`QuantizeMx` NAMED HANDLER is
+> DROPPED** on MAVERICK (the 60→59 delta is a removal, **not** a migration: `QuantizeMx` has 0 string
+> hits in the entire `0x871300+` MAVERICK region). The `0xe3 QUANTIZE_MX` **opcode stays DVE-bound**
+> (armed only in the MAVERICK DVE PROF CAM `dbff2b84`); POOL's MX surface is the pre-existing
+> **`0x7b TENSOR_DEQUANTIZE`** (EXTISA_0 idx16, funcVA `0x50ec`), **not** `0xe3`. The fold's
+> **image-level footprint** is three concrete, byte-exact things on the DVE
 > side: **(1)** the DVE PROF CAM newly **arms ACT opcodes `0x23` ACTIVATION_TABLE_LOAD + `0x25`
 > ACTIVATE2** (absent from the MARIANA/MARIANA_PLUS DVE PROF); **(2)** the ACT read-accumulator
 > survives **renamed** as the DVE-native `DveReadAccumulator` (the ACT op `0x24`, re-expressed
@@ -58,7 +62,7 @@ The full v4+→v5 step, leading with the fold thesis. Δ marks: **`F`** the fold
 | **ACT read-accumulator** | ACT-side handler `ActivationReadAccumulator` (op `0x24`) | re-expressed DVE-native **`DveReadAccumulator`** | **F** |
 | **`ACT_CONTROL_TABLE`** (address-map) | standalone ACT engine instances | folded **under `…DVE_0_0_ACT_CONTROL_TABLE`**; **0** `amzn_tpb ACT_` MMIO instances | **F** |
 | dispatch handler set (strict `S:` roster) | **60** | **59** | **−** (`−QuantizeMx`) |
-| `QuantizeMx` handler | present | **absent** (migrates to Q7 POOL MX path) | **−** |
+| `QuantizeMx` *named handler* | present | **DROPPED** (0 hits region-wide; **not** migrated — `0xe3` stays DVE-bound, POOL's MX surface is `0x7b`) | **−** |
 | PROF CAM armed-opcode set | `ca588683`, **47** armed | **`dbff2b84`, 53 armed** — `+10 / −3` | **R** |
 | PROF\_TABLE | `d72b339f` (== MARIANA verbatim) | **`f349e417`** — re-authored | **R** |
 | reset vector | `j 0x1f8` (`06 7d`, the `+0x1c` MARIANA shift) | **`j 0x1d8` (`06 75`)** — a new **−0x20** v5 shift | **R** |
@@ -82,7 +86,8 @@ anchors in §2–§7]`
 > v4→v4+ step. v4+ was a *pure recompile + DGE fast-path* (no functional dispatch change, PROF
 > byte-identical). v5 is a **genuinely new generation**: an amputated ACT engine folded onto DVE
 > (PROF-armed, not handler-merged), a new `−0x20` reset geometry, a re-authored PROF (CAM **and**
-> TABLE), the DGE fast-path *dropped*, the MX dtype machinery *relocated* to the Q7 POOL, the DVE
+> TABLE), the DGE fast-path *dropped*, the `QuantizeMx` named handler *dropped* (the MX dtype
+> *dequant* machinery lives in the Q7 POOL via `0x7b`, but `0xe3` itself stays DVE-bound), the DVE
 > errata *dropped*, **smaller** in every variant, internal-twin-only, an independent build (6.1%
 > 16-byte block similarity). The dispatch *mechanism* (187-entry `addi −48` table) survives; almost
 > everything else moved. `[HIGH/OBSERVED]`
@@ -127,8 +132,9 @@ MATCH** the SX-IMG-18 anchors byte-for-byte:
 `[HIGH/OBSERVED — carved + sha256'd this session]`
 
 > **GOTCHA — no `.a` byte-reconcile exists for MAVERICK.** `libnrtucode.a` (`sha 158dadc5`) carries
-> **0 MAVERICK members** (CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 = **435** total,
-> verified by `ar t`). Unlike the MARIANA_PLUS DVE carve (which reconciles 8/8 `.so`==`.a`), MAVERICK
+> **0 MAVERICK members** (**435** total = **420 image members** [CAYMAN 124 / MARIANA 124 /
+> MARIANA_PLUS 124 / SUNDA 48 / MAVERICK 0] **+ 15 framework `.c.o`** objects, verified by `ar t`).
+> Unlike the MARIANA_PLUS DVE carve (which reconciles 8/8 `.so`==`.a`), MAVERICK
 > is **internal.so-EXCLUSIVE** — cross-validation is by the getter `(img-ptr,size)` parse + the sha256
 > match to SX-IMG-18, **not** by an `.a` member. The shipped `.a` topping out at MARIANA_PLUS is
 > itself a gen-step signature. `[HIGH/OBSERVED — `nm -D` MAVERICK = 0, `ar t` MAVERICK = 0]`
@@ -256,8 +262,13 @@ run on both DEBUG DRAMs):
 - **ADDED in MAVERICK DVE: (none).** **REMOVED from MPLUS DVE: `QuantizeMx`.**
 
 The **only** strict difference is `QuantizeMx` — confirmed **absent** on MAVERICK (`QuantizeMx` count
-0 in the DVE DEBUG DRAM) and **present** on MPLUS. `QuantizeMx` migrates to the Q7 POOL MX-dequant
-path (the MX machinery is *not* in the NX sequencer on v5, §6). The MAVERICK DVE list is **DVE-native**
+0 in the DVE DEBUG DRAM, **and 0 region-wide across `0x871300..EOF`**) and **present** on MPLUS. The
+`QuantizeMx` **named handler is DROPPED** on v5 — this is a removal, **not** a migration. The MX
+machinery is *not* in the NX sequencer on v5 (§6), but the opcode binding is unchanged: `0xe3
+QUANTIZE_MX` **stays DVE-bound** (armed on the MAVERICK DVE PROF CAM `dbff2b84`), and POOL's only MX
+surface is the pre-existing **`0x7b TENSOR_DEQUANTIZE`** (EXTISA_0 idx16, funcVA `0x50ec`), **never**
+`0xe3` (proven absent from all four MAVERICK Q7 POOL KITs, [maverick-pool.md §2.2](maverick-pool.md)).
+The MAVERICK DVE list is **DVE-native**
 — it carries (count ≥1): the batch-norm cluster (`BatchNormalize{,BackProp,GradAccum,ParamLoad}`),
 `MatchReplace`/`MatchValueLoad`/`FindIndex8`/`CastPredicated`/`RangeSelect`/`Exponential`/
 `SparsityCompress`/`Rand2`/`DveReadAccumulator`/`DveReadIndices` + the shared SEQ control core
@@ -448,8 +459,11 @@ INFERRED-HIGH from the string + the shared boot path]`
 
 > **WALL — `coretype 37` is OBSERVED upstream, `arch_id 36` is INFERRED.** `coretype = 37`
 > [HIGH/OBSERVED upstream — `maverick_libs @0x9b9050`; the ct=37 dispatch + bit37 in the
-> `get_num_ext_isa_libs` mask `{13,21,29,37}`]. `arch_id = 36` [MED/INFERRED — `coretype = arch_id+1`
-> across the four lower gens; **no NCFW v5 image** to confirm; never binary-observed]. The v5
+> `get_num_ext_isa_libs` mask `{13,21,29,37}`]. `arch_id = 36` [MED/INFERRED — **doubly**: it rests
+> on `coretype = arch_id+1` across the four lower gens, **and** the `NX_TOPSP = arch_id` rule that
+> grounds the other four gens *fails* for MAVERICK (enum slot 36 = `MAVERICK_NX__REMOVED__`
+> placeholder; the real `MAVERICK_NX_TOPSP` is at index 54). **No NCFW v5 image** to confirm; never
+> binary-observed — see [maverick-profile §7 W1](../generations/maverick-profile.md)]. The v5
 > `Q7_CC_TOP` is **FILE-ABSENT**. `[CARRIED from generations/maverick-profile.md]`
 
 ---
@@ -499,9 +513,11 @@ the dispatch level — and the fold is a PROF-arming + datapath-rename event, NO
 merge.** The five ACT handlers ceased to exist as firmware images (0 each); their opcodes (`0x23`/
 `0x25`) are armed on the DVE PROF (absent from MARIANA/MPLUS DVE PROF); the read-accumulator is
 re-expressed DVE-native (`DveReadAccumulator`); the address-map folds `ACT_CONTROL_TABLE` under the
-DVE block. The DVE handler set is DVE-native 59 (only `QuantizeMx` left, for the Q7 POOL). The v5
+DVE block. The DVE handler set is DVE-native 59 (the `QuantizeMx` named handler is **dropped**, not
+migrated; `0xe3` stays DVE-bound, POOL's MX surface is `0x7b`). The v5
 image-level deltas — a new `−0x20` reset geometry, a re-authored PROF (CAM + TABLE, `+10/−3` armed,
-the `0xe3` mask respec), the DGE fast-path dropped, the MX dtype machinery relocated to the Q7 POOL,
+the `0xe3` mask respec), the DGE fast-path dropped, the `QuantizeMx` named handler dropped (MX
+*dequant* lives in the Q7 POOL via `0x7b`; `0xe3` is unmoved),
 the `mariana-4062` errata dropped, smaller in every variant, internal-twin-only, an independent build
 (6.1% block-similarity) — are each OBSERVED. The only INFERRED items are the fold *causal* reading,
 the per-handler-body binding (FLIX-desync frontier), and `arch_id 36`.
@@ -518,7 +534,7 @@ PROF-arming (`0x23`/`0x25` on DVE) + `DveReadAccumulator` on DVE, **not** a DVE-
 
 - `internal.so b7c67e89` + `.a 158dadc5` re-hashed (MATCH). 14 `MAVERICK_NX_DVE` getters parsed
   instruction-exact (8 real + 6 zero cursors → TEST/DEBUG_IRAM + PE_PERF_IRAM, proving DVE→PE).
-  **0 MAVERICK members** in `libnrtucode.a` (435 total) — single-source carve. 8/8 carves sha256'd
+  **0 MAVERICK members** in `libnrtucode.a` (435 total = 420 image + 15 framework) — single-source carve. 8/8 carves sha256'd
   (MATCH SX-IMG-18). DVE-is-head; gen boundary byte-exact (`0x86f300+0x2000 == 0x871300`).
 - Reset/boot decoded `ncore2gp` (exit 0): `j 0x1d8` / `j 0x1e4` → `enter_run @0x94`, base `0x1490`;
   the `−0x20`/`+4` v5 shift. DRAM magic `0x6099cb34`. Dispatch `extui;addx4;l32i;jx` @`0x1f7`.

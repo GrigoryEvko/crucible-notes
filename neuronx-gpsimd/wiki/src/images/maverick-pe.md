@@ -233,10 +233,18 @@ MAVERICK PE PERF IRAM carve this session:
 0x205:  a0 04 00     jx       a4
 ```
 
-So the v5 reset shift is uniform: **primary `−0x20`** (`0x1f8`→`0x1d8`), **secondary
+So the PE v5 reset shift is **primary `−0x20`** (`0x1f8`→`0x1d8`), **secondary
 `−0x20`** (`0x204`→`0x1e4`), **enter_run `+4`** (`0x90`→`0x94`), boot dispatch
 `−0x20` (`0x217`→`0x1f7`). This is the **exact** v5 geometry the MAVERICK matrix
-carries on [DVE](./maverick-dve.md). The boot-stub *body* at `0xc..0x1c` (`a0 71 69
+carries on [DVE](./maverick-dve.md).
+
+> **NOTE — `−0x20` is the NX-compute class shift, not gen-wide.** The `−0x20` /
+> `j 0x1d8` geometry is shared by the **NX-compute** engines (PE, DVE, NX_POOL — head
+> `06 75`); the **SRAM-resident** cores differ: SP is `−0x14` (Top-Sync stub, head
+> `06 78` → `j 0x1e4`) and Q7_POOL is `−0x1c` (head `06 78` → `j 0x1e4`). What **all**
+> v5 engines share is **`enter_run @0x94`** (the +4 v5 invariant). See the unified
+> per-engine reset table in
+> [maverick-profile §8](../generations/maverick-profile.md). `[HIGH/OBSERVED]` The boot-stub *body* at `0xc..0x1c` (`a0 71 69
 80 …`) is byte-identical to MARIANA_PLUS (the canonical NX boot shell is reused
 verbatim), but the image diverges from `0x1c` onward — an independent v5 build that
 reuses the NX boot-stub bytes. The decode of `enter_run @0x94` lands on a real C

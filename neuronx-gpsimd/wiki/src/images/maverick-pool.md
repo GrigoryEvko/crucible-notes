@@ -56,7 +56,7 @@ Confidence/evidence tags follow the project
 **OBSERVED/INFERRED/CARRIED**.
 
 Related pages: [MARIANA_PLUS × POOL (the diff base)](./mariana-plus-pool.md) ·
-[MAVERICK × DVE (ACT-fold, QuantizeMx target)](./maverick-dve.md) ·
+[MAVERICK × DVE (ACT-fold; `0xe3` DVE-bound, named handler dropped)](./maverick-dve.md) ·
 [MAVERICK × PE (MATMUL_MX/LDWEIGHTS_MX)](./maverick-pe.md) ·
 [MAVERICK × ACT (the v5 anchor)](./maverick-act.md) ·
 [Cross-Gen kernel_info_table matrix](./cross-gen-kernel-info-matrix.md) ·
@@ -170,12 +170,15 @@ surface is the **pre-existing** `TENSOR_DEQUANTIZE 0x7b` — the **dequant** dir
 (E8M0) scale surface. So the v5 MX expansion is real — but it lands on **DVE/PE**, not as
 new POOL `kernel_info_table` rows. [HIGH/OBSERVED enum + KIT]
 
-> **CORRECTION — refining the [DVE page](./maverick-dve.md)'s "QuantizeMx migrates to the
-> Q7 POOL MX path".** That migration statement is about the *MX machinery's home engine*,
-> not about POOL gaining the `QuantizeMx` *opcode*. `QUANTIZE_MX 0xe3` is the **DVE
-> forward-direction** op; the POOL Q7 carries the **DEQUANT-direction** MX (`op 0x7b →
-> proc_4bit_mx_8`), which is pre-existing. The two are distinct opcodes on distinct
-> engines. The v5 forward MX op set adds **no** POOL KIT rows. [HIGH/OBSERVED]
+> **CORRECTION — the `QuantizeMx` handler is DROPPED, not "migrated to POOL".** The
+> [DVE page](./maverick-dve.md) and [maverick-profile §6](../generations/maverick-profile.md)
+> now state the binary-resolved truth (#780, byte-verified twice): the `QuantizeMx` **named
+> handler is dropped** on MAVERICK (0 string hits in the `0x871300+` MAVERICK region; the DVE
+> roster delta 60→59 is the removal). The `0xe3 QUANTIZE_MX` opcode **stays DVE-bound** (armed
+> only in the MAVERICK DVE PROF CAM `dbff2b84`). POOL gains **no** `QuantizeMx`/`0xe3` opcode and
+> **no** KIT row; POOL's only MX surface is the pre-existing **DEQUANT-direction** `op 0x7b →
+> proc_4bit_mx_8` (idx16, funcVA `0x50ec`). The two are distinct opcodes on distinct engines, and
+> the v5 forward MX op set adds **no** POOL KIT rows. [HIGH/OBSERVED]
 
 ### 2.3 The funcVAs differ — same routing, independently recompiled kernels
 
