@@ -361,10 +361,18 @@ elsewhere — `CARRIED`; here only the ll-object's role is `OBSERVED`.
 |---|---|---|---|---|---|
 | `0x000` | 8 | `context*` | `context` | ctor arg1. | HIGH OBS |
 | `0x008` | 8×256 | `void*[256]` | `opcode_bucket[op]` | one slot per opcode `0..255` (`opset+8+8*op`). NULL = opcode absent; set to a `calloc(1,0x100)` bucket by `add_instruction`. | HIGH OBS |
-| `0x808` | `0x21` | `char[0x21]` | `friendly_name` | `snprintf(opset+0x808,0x21,"nrtucode_opset_t@%p",opset)` (`add $0x808,%rdi`@`0x9b250c`). | HIGH OBS |
-| `0x829` | `0x07` | — | tail pad | round-up to `0x830`. | MED |
+| `0x808` | `0x28` | `char[0x28]` | `friendly_name` | 40-byte inline name buffer spanning `+0x808..+0x830`. `create` `snprintf(opset+0x808,0x21,"nrtucode_opset_t@%p",opset)` (`add $0x808,%rdi`@`0x9b250c`); `set_friendly_name` forces the terminating NUL at `+0x828` (`movb $0x0,0x828(%r14)`@`0x9b294e`). | HIGH OBS |
 
 `sizeof = 0x830 = 8 + 256*8 + 0x28`. `HIGH/OBSERVED`.
+
+> **CORRECTION — `friendly_name` is `char[0x28]` (40 B), not `char[0x21]` + a `0x07` tail pad.**
+> An earlier draft of this row typed the field as `char[0x21]` with a separate `0x07` pad
+> at `+0x829`. The byte evidence (cross-checked on [`nrtucode-opset`](nrtucode-opset.md) §2)
+> makes the whole `+0x808..+0x830` range the name buffer with **no** separate pad:
+> `set_friendly_name` writes the forced terminating NUL at **`+0x828`** (`movb $0x0,0x828(%r14)`
+> @`0x9b294e`), which is only reachable if the field extends past `+0x828`. The `0x21` is the
+> **default-name `snprintf` cap** (`mov $0x21,%esi`@`0x9b251a`), not the field size. So
+> `0x830 = 8 + 0x800 + 0x28`, all of the trailing `0x28` being the name buffer. *[HIGH/OBSERVED]*
 
 Each present bucket is a separate `calloc(1,0x100)` = a 256-entry `uint8`
 **specialization-presence** array indexed by spec id `0..255`.

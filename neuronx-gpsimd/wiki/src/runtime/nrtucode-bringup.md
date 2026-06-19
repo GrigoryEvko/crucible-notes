@@ -350,11 +350,21 @@ Enum name shape `NRTUCODE_CORE_<ARCH>_<NX|Q7>_<ENGINE>`; arch enum `2=SUNDA 3=CA
 > CAYMAN/MARIANA add `Q7_CCE` — matching the device archive's image histogram
 > (`Q7_CC_TOP` present only on CAYMAN/MARIANA/MARIANA_PLUS).
 
-> **GOTCHA — mask `0x2020204` for the DGE mailbox gate.** On the device side,
-> `nrtucode_core_get_dge_mailbox_addr` requires `boot_state==1` *and* a coretype in mask
-> `0x2020204` (bits 2/9/17/25 = the four `NX_POOL` coretypes 4/11/19/27). Do not confuse
-> the **NX_POOL** engine coretype with the **Q7_POOL** GPSIMD coretype — the DMA-gather
-> mailbox is an NX_POOL feature, not a Q7-Pool one.
+> **GOTCHA — mask `0x102020204` for the DGE mailbox gate.** On the device side,
+> `nrtucode_core_get_dge_mailbox_addr` requires `boot_state==1` *and* a coretype in the
+> HOST core-validity mask `0x102020204` (bits **2/9/17/25/32** = the five `NX_POOL`
+> coretypes SUNDA/CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK). Do not confuse the **NX_POOL**
+> host coretype set with the **Q7_POOL** GPSIMD coretype set `{6,13,21,29,37}` — the
+> DMA-gather mailbox is an NX_POOL feature, not a Q7-Pool one.
+>
+> **CORRECTION — the mask is `0x102020204` = `{2,9,17,25,32}`, not `0x2020204` = `{2,9,17,25}`.**
+> An earlier draft of this GOTCHA cited mask `0x2020204` (dropping bit 32, MAVERICK) and
+> further mislabelled the bit positions as "4/11/19/27". **Byte evidence** (`libnrtucode_internal.so`):
+> the gate at `0x9b1013` is `cmp $0x20,%rax ; ja` then `0x9b101c: movabs $0x102020204,%rsi ; bt %rax,%rsi ; jae` —
+> a **REX.W** 64-bit immediate with bit 32 set, so the set is the 5-element HOST core-validity
+> set `{2,9,17,25,32}`, matching the `nrtucode-core` §3.5 legality gate and the `dge-host-api`
+> priority gate `@0x9b1000`. MAVERICK/bit-32 is `[INFERRED interior]` for v5 silicon but the
+> bit is byte-OBSERVED in the immediate.
 
 ---
 
