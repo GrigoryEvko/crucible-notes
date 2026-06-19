@@ -1,0 +1,3 @@
+# CopyPredicatedReduce
+
+*(stub — pending authoring)*

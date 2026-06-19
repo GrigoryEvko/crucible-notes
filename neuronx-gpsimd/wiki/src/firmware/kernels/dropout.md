@@ -1,0 +1,3 @@
+# Dropout
+
+*(stub — pending authoring)*

@@ -1,0 +1,3 @@
+# CopyPredicatedScalar
+
+*(stub — pending authoring)*

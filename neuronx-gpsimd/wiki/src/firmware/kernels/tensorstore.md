@@ -1,0 +1,3 @@
+# TensorStore
+
+*(stub — pending authoring)*

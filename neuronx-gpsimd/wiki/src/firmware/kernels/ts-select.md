@@ -1,0 +1,3 @@
+# TensorScalarSelect
+
+*(stub — pending authoring)*

@@ -1,0 +1,3 @@
+# GetSequenceBounds
+
+*(stub — pending authoring)*

@@ -93,103 +93,99 @@
 - [Microarchitecture Synthesis](uarch/microarch-synthesis.md)
 - [Per-Engine Firmware Depth (PE/SP/TOP_SP/ACT)](uarch/per-engine-depth.md)
 
+# Part 5 — Device Firmware & Kernel Catalog (85)
+- [SEQ Boot / Entry Path](firmware/seq/boot.md)
+- [SEQ Main FSM Loop](firmware/seq/main-loop.md)
+- [SEQ Fetch + PC-Redirect Front-End](firmware/seq/fetch-pc-redirect.md)
+- [SEQ IRAM Instruction Cache / Overlay](firmware/seq/iram-cache.md)
+- [SEQ Branch + Prefetch-Hint](firmware/seq/branch-prefetch.md)
+- [SEQ PC-Bounds Enforcement + Host API](firmware/seq/pc-bounds.md)
+- [SEQ Decode / Dispatch Hub](firmware/seq/dispatch-hub.md)
+- [SEQ Run-State Machine](firmware/seq/run-state.md)
+- [SEQ Error-Handler / Fault Reporting](firmware/seq/error-handler.md)
+- [SEQ Surprises / IRQ Poll](firmware/seq/surprises-irq.md)
+- [SEQ Uarch Register Model + Single-Step Debugger](firmware/seq/uarch-debugger.md)
+- [SEQ SoC Window Manager](firmware/seq/soc-window-manager.md)
+- [HW-Decode vs Sunda Dual Fetch](firmware/seq/dual-fetch.md)
+- [POOL Engine Main Dispatch Loop](firmware/pool/pool-dispatch.md)
+- [POOL Extended-Opcode (0xF0) Dispatch](firmware/pool/pool-ext-0xf0.md)
+- [External-Lib Loader (device side)](firmware/pool/external-lib-loader.md)
+- [External-Lib Prelink Validation + NUM_POOL_CORES](firmware/pool/prelink-validation.md)
+- [kernel_info_table Binary Layout](firmware/pool/kernel-info-table.md)
+- [iDMA / Legacy DMA (IRAM cache-fill)](firmware/dge/idma-legacy-dma.md)
+- [DGE Setup + Context Init](firmware/dge/dge-setup.md)
+- [DGE 3-Backend Selector](firmware/dge/dge-backend-selector.md)
+- [DGE Reshape Engine](firmware/dge/dge-reshape.md)
+- [DGE Descriptor-Emit Path](firmware/dge/dge-emit.md)
+- [DGE Error Notifications](firmware/dge/dge-errors.md)
+- [The Opcode Catalog Ledger (140 real opcodes)](firmware/kernels/opcode-catalog-ledger.md)
+- [On-Device Virtual File-I/O Manager](firmware/kernels/file-io-manager.md)
+- [The Unified Datatype Model](firmware/kernels/dtype-model.md)
+- [RNG — Xorwow Software Path](firmware/kernels/rng-xorwow-sw.md)
+- [RNG — Xorwow TIE Hardware Path](firmware/kernels/rng-xorwow-tie.md)
+- [RNG — LFSR + rand_algo Dispatch Tree](firmware/kernels/rng-lfsr-dispatch.md)
+- [Rand2 (user random-tensor op)](firmware/kernels/rand2.md)
+- [SB2SB Remote-Copy Collective Kernel](firmware/kernels/sb2sb-remote-copy.md)
+- [RDMA Descriptor Gen/Start (TX-RX protocol)](firmware/kernels/rdma-desc-gen-start.md)
+- [The CPTC Compressed-Tensor Codec Family](firmware/kernels/cptc-codec.md)
+- [BatchNormalize — Forward Statistics](firmware/kernels/batchnorm-forward.md)
+- [BatchNormalize — Back-Prop](firmware/kernels/batchnorm-backprop.md)
+- [BatchNormalize — GradAccum](firmware/kernels/batchnorm-gradaccum.md)
+- [BatchNormalize — ParamLoad](firmware/kernels/batchnorm-paramload.md)
+- [Dropout](firmware/kernels/dropout.md)
+- [Exponential (the EXP transform)](firmware/kernels/exponential.md)
+- [ConvLutLoad (legacy LUT-load path of 0xe4)](firmware/kernels/convlutload.md)
+- [DVE Search/Select Cluster (FindIndex8/Max8/MatchReplace8)](firmware/kernels/search-cluster.md)
+- [CrossLaneReduce](firmware/kernels/cross-lane-reduce.md)
+- [RangeSelect](firmware/kernels/rangeselect.md)
+- [Sort / DECODE_SORT](firmware/kernels/sort.md)
+- [Tensor-Tensor Elementwise Arith + the ALU-OP Table](firmware/kernels/tensor-tensor.md)
+- [Tensor-Scalar + Tensor-Scalar-PTR](firmware/kernels/tensor-scalar.md)
+- [Tensor-Reduce (cross-partition)](firmware/kernels/tensor-reduce.md)
+- [TensorTensorScan](firmware/kernels/tensor-tensor-scan.md)
+- [Scalar-Tensor-Tensor](firmware/kernels/scalar-tensor-tensor.md)
+- [TensorScalarCacheCumulative](firmware/kernels/ts-cache-cumulative.md)
+- [TensorScalarCacheReduce](firmware/kernels/ts-cache-reduce.md)
+- [TensorScalarSelect](firmware/kernels/ts-select.md)
+- [TensorScalarImmLd (Arith/Bitvec)](firmware/kernels/ts-immld.md)
+- [TensorScalarPtrMulti (Arith/Bitvec)](firmware/kernels/ts-ptrmulti.md)
+- [StreamTranspose (DVE datapath transpose)](firmware/kernels/stream-transpose.md)
+- [SparsityCompress / SparsityCompressTag](firmware/kernels/sparsity-compress-tag.md)
+- [CastPredicated](firmware/kernels/castpredicated.md)
+- [CopyPredicatedReduce](firmware/kernels/copypredicatedreduce.md)
+- [TensorDequantize](firmware/kernels/tensor-dequantize.md)
+- [MX (Microscaling) Dequant Compute Paths](firmware/kernels/mx-dequant.md)
+- [TensorLoad](firmware/kernels/tensorload.md)
+- [TensorStore](firmware/kernels/tensorstore.md)
+- [PE Matrix-Multiply Path (LdWeight/Matmul/ManageSeed)](firmware/kernels/pe-matmul.md)
+- [Extended Tensor-Tensor Arith (0xF0 variant)](firmware/kernels/ext-tensor-tensor-arith.md)
+- [Tensor-Tensor 64-bit Path](firmware/kernels/tensor-tensor-64bit.md)
+- [decode_pool (the "Pool" kernel disambiguation)](firmware/kernels/decode-pool.md)
+- [avg_pool / max_pool](firmware/kernels/avg-max-pool.md)
+- [Iota / sequence-index generator](firmware/kernels/iota.md)
+- [Cast and Copy](firmware/kernels/cast-copy.md)
+- [NonzeroWithCount](firmware/kernels/nonzero-with-count.md)
+- [The Indirection Engine (gather/scatter/embedding)](firmware/kernels/indirection-gather.md)
+- [Activate + the PWL Application Mechanism](firmware/kernels/activate-pwl.md)
+- [GetSequenceBounds](firmware/kernels/get-sequence-bounds.md)
+- [Move (general-purpose register move + dtype gate)](firmware/kernels/move-dtype.md)
+- [The ALU-Op Datapath + Dtype Matrix](firmware/kernels/alu-op-matrix.md)
+- [AffineSelect (TensorScalarAffineSelect)](firmware/kernels/affineselect.md)
+- [CopyPredicatedScalar](firmware/kernels/copypredicatedscalar.md)
+- [TensorCumulative](firmware/kernels/tensorcumulative.md)
+- [DVE State Read-Back (DveReadAccumulator/Indices)](firmware/kernels/dve-read-state.md)
+- [SUNDA-only Dual / Deprecated TensorScalarPtr](firmware/kernels/sunda-dual-tensorscalarptr.md)
+- [POOL/ACT Compute Gap-Cluster](firmware/kernels/pool-compute-misc.md)
+- [RNG Seed-State Opcodes (0x77/0x78)](firmware/kernels/rng-seed-state-ops.md)
+- [DMA / Transpose Opcode Cluster](firmware/kernels/dma-transpose-opcode-cluster.md)
+- [Gen-Bracket Extremes — MAVERICK INT_WIDE + SUNDA BF16](firmware/kernels/intwide-bf16-extremes.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 5 — Device Firmware & Kernel Catalog (85)
-## SEQ front-end (13)
-- firmware/seq/boot.md                  — SEQ Boot / Entry Path
-- firmware/seq/main-loop.md             — SEQ Main FSM Loop
-- firmware/seq/fetch-pc-redirect.md     — SEQ Fetch + PC-Redirect Front-End
-- firmware/seq/iram-cache.md            — SEQ IRAM Instruction Cache / Overlay
-- firmware/seq/branch-prefetch.md       — SEQ Branch + Prefetch-Hint
-- firmware/seq/pc-bounds.md             — SEQ PC-Bounds Enforcement + Host API
-- firmware/seq/dispatch-hub.md          — SEQ Decode / Dispatch Hub
-- firmware/seq/run-state.md             — SEQ Run-State Machine
-- firmware/seq/error-handler.md         — SEQ Error-Handler / Fault Reporting
-- firmware/seq/surprises-irq.md         — SEQ Surprises / IRQ Poll
-- firmware/seq/uarch-debugger.md        — SEQ Uarch Register Model + Single-Step Debugger
-- firmware/seq/soc-window-manager.md    — SEQ SoC Window Manager
-- firmware/seq/dual-fetch.md            — HW-Decode vs Sunda Dual Fetch
-## POOL dispatch (5)
-- firmware/pool/pool-dispatch.md        — POOL Engine Main Dispatch Loop
-- firmware/pool/pool-ext-0xf0.md        — POOL Extended-Opcode (0xF0) Dispatch
-- firmware/pool/external-lib-loader.md  — External-Lib Loader (device side)
-- firmware/pool/prelink-validation.md   — External-Lib Prelink Validation + NUM_POOL_CORES
-- firmware/pool/kernel-info-table.md    — kernel_info_table Binary Layout
-## DGE (6)
-- firmware/dge/idma-legacy-dma.md       — iDMA / Legacy DMA (IRAM cache-fill)
-- firmware/dge/dge-setup.md             — DGE Setup + Context Init
-- firmware/dge/dge-backend-selector.md  — DGE 3-Backend Selector
-- firmware/dge/dge-reshape.md           — DGE Reshape Engine
-- firmware/dge/dge-emit.md              — DGE Descriptor-Emit Path
-- firmware/dge/dge-errors.md            — DGE Error Notifications
-## Kernels & opcode catalog (61)
-- firmware/kernels/opcode-catalog-ledger.md       — The Opcode Catalog Ledger (140 real opcodes)
-- firmware/kernels/file-io-manager.md             — On-Device Virtual File-I/O Manager
-- firmware/kernels/dtype-model.md                 — The Unified Datatype Model
-- firmware/kernels/rng-xorwow-sw.md               — RNG — Xorwow Software Path
-- firmware/kernels/rng-xorwow-tie.md              — RNG — Xorwow TIE Hardware Path
-- firmware/kernels/rng-lfsr-dispatch.md           — RNG — LFSR + rand_algo Dispatch Tree
-- firmware/kernels/rand2.md                       — Rand2 (user random-tensor op)
-- firmware/kernels/sb2sb-remote-copy.md           — SB2SB Remote-Copy Collective Kernel
-- firmware/kernels/rdma-desc-gen-start.md         — RDMA Descriptor Gen/Start (TX-RX protocol)
-- firmware/kernels/cptc-codec.md                  — The CPTC Compressed-Tensor Codec Family
-- firmware/kernels/batchnorm-forward.md           — BatchNormalize — Forward Statistics
-- firmware/kernels/batchnorm-backprop.md          — BatchNormalize — Back-Prop
-- firmware/kernels/batchnorm-gradaccum.md         — BatchNormalize — GradAccum
-- firmware/kernels/batchnorm-paramload.md         — BatchNormalize — ParamLoad
-- firmware/kernels/dropout.md                     — Dropout
-- firmware/kernels/exponential.md                 — Exponential (the EXP transform)
-- firmware/kernels/convlutload.md                 — ConvLutLoad (legacy LUT-load path of 0xe4)
-- firmware/kernels/search-cluster.md              — DVE Search/Select Cluster (FindIndex8/Max8/MatchReplace8)
-- firmware/kernels/cross-lane-reduce.md           — CrossLaneReduce
-- firmware/kernels/rangeselect.md                 — RangeSelect
-- firmware/kernels/sort.md                        — Sort / DECODE_SORT
-- firmware/kernels/tensor-tensor.md               — Tensor-Tensor Elementwise Arith + the ALU-OP Table
-- firmware/kernels/tensor-scalar.md               — Tensor-Scalar + Tensor-Scalar-PTR
-- firmware/kernels/tensor-reduce.md               — Tensor-Reduce (cross-partition)
-- firmware/kernels/tensor-tensor-scan.md          — TensorTensorScan
-- firmware/kernels/scalar-tensor-tensor.md        — Scalar-Tensor-Tensor
-- firmware/kernels/ts-cache-cumulative.md         — TensorScalarCacheCumulative
-- firmware/kernels/ts-cache-reduce.md             — TensorScalarCacheReduce
-- firmware/kernels/ts-select.md                   — TensorScalarSelect
-- firmware/kernels/ts-immld.md                    — TensorScalarImmLd (Arith/Bitvec)
-- firmware/kernels/ts-ptrmulti.md                 — TensorScalarPtrMulti (Arith/Bitvec)
-- firmware/kernels/stream-transpose.md            — StreamTranspose (DVE datapath transpose)
-- firmware/kernels/sparsity-compress-tag.md       — SparsityCompress / SparsityCompressTag
-- firmware/kernels/castpredicated.md              — CastPredicated
-- firmware/kernels/copypredicatedreduce.md        — CopyPredicatedReduce
-- firmware/kernels/tensor-dequantize.md           — TensorDequantize
-- firmware/kernels/mx-dequant.md                  — MX (Microscaling) Dequant Compute Paths
-- firmware/kernels/tensorload.md                  — TensorLoad
-- firmware/kernels/tensorstore.md                 — TensorStore
-- firmware/kernels/pe-matmul.md                   — PE Matrix-Multiply Path (LdWeight/Matmul/ManageSeed)
-- firmware/kernels/ext-tensor-tensor-arith.md     — Extended Tensor-Tensor Arith (0xF0 variant)
-- firmware/kernels/tensor-tensor-64bit.md         — Tensor-Tensor 64-bit Path
-- firmware/kernels/decode-pool.md                 — decode_pool (the "Pool" kernel disambiguation)
-- firmware/kernels/avg-max-pool.md                — avg_pool / max_pool
-- firmware/kernels/iota.md                        — Iota / sequence-index generator
-- firmware/kernels/cast-copy.md                   — Cast and Copy
-- firmware/kernels/nonzero-with-count.md          — NonzeroWithCount
-- firmware/kernels/indirection-gather.md          — The Indirection Engine (gather/scatter/embedding)
-- firmware/kernels/activate-pwl.md                — Activate + the PWL Application Mechanism
-- firmware/kernels/get-sequence-bounds.md         — GetSequenceBounds
-- firmware/kernels/move-dtype.md                  — Move (general-purpose register move + dtype gate)
-- firmware/kernels/alu-op-matrix.md               — The ALU-Op Datapath + Dtype Matrix
-- firmware/kernels/affineselect.md                — AffineSelect (TensorScalarAffineSelect)
-- firmware/kernels/copypredicatedscalar.md        — CopyPredicatedScalar
-- firmware/kernels/tensorcumulative.md            — TensorCumulative
-- firmware/kernels/dve-read-state.md              — DVE State Read-Back (DveReadAccumulator/Indices)
-- firmware/kernels/sunda-dual-tensorscalarptr.md  — SUNDA-only Dual / Deprecated TensorScalarPtr
-- firmware/kernels/pool-compute-misc.md           — POOL/ACT Compute Gap-Cluster
-- firmware/kernels/rng-seed-state-ops.md          — RNG Seed-State Opcodes (0x77/0x78)
-- firmware/kernels/dma-transpose-opcode-cluster.md — DMA / Transpose Opcode Cluster
-- firmware/kernels/intwide-bf16-extremes.md       — Gen-Bracket Extremes — MAVERICK INT_WIDE + SUNDA BF16
 
 # Part 6 — Firmware Images & Generations (35)
 ## Per-(gen × engine) images (28)

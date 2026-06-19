@@ -1,0 +1,3 @@
+# RangeSelect
+
+*(stub — pending authoring)*

@@ -1,0 +1,3 @@
+# TensorTensorScan
+
+*(stub — pending authoring)*

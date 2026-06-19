@@ -1,0 +1,3 @@
+# CrossLaneReduce
+
+*(stub — pending authoring)*

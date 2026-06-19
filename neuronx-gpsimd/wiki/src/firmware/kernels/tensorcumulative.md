@@ -1,0 +1,3 @@
+# TensorCumulative
+
+*(stub — pending authoring)*
