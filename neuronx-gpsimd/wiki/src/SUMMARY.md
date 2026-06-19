@@ -270,26 +270,26 @@
 - [Image + HW-Decode Resolvers](runtime/image-hwdecode-resolvers.md)
 - [The Host Prelinker — UCPL / Segment Loader / R_XTENSA / Staging](runtime/prelinker-ucpl.md)
 
+# Part 9 — DMA / Descriptors / Memory (12)
+- [The DMA / Descriptor / Memory Subsystem](dma/descriptor-model.md)
+- [Gather/Scatter + Gather-Transpose Descriptors](dma/gather-scatter-descriptors.md)
+- [RDMA Cross-Die SBUF→SBUF P2P](dma/rdma-cross-die.md)
+- [CCE (Compute-DMA) In-Transfer Compute](dma/cce-in-transfer.md)
+- [DGE Descriptor-Builder + SDMA QoS/Arbitration](dma/dge-builder-qos.md)
+- [On-Chip State-Buffer (SBUF) + PSUM Bank Model](dma/sbuf-psum-banks.md)
+- [The al_udma Hardware DMA Engine](dma/udma-hw-engine.md)
+- [DGE Micro-Op Encoding (byte-level)](dma/dge-microop-encoding.md)
+- [Consolidated Data-Movement + Collectives Reference](dma/data-movement-reference.md)
+- [Descriptor + Ring Field-Table Reference](dma/descriptor-ring-field-tables.md)
+- [SDMA Address Windows + APB Chain](dma/sdma-windows-apb.md)
+- [On-Chip Working-Memory Regions (SBUF/PSUM/scratch)](dma/onchip-working-memory.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 9 — DMA / Descriptors / Memory (12)
-- dma/descriptor-model.md               — The DMA / Descriptor / Memory Subsystem
-- dma/gather-scatter-descriptors.md     — Gather/Scatter + Gather-Transpose Descriptors
-- dma/rdma-cross-die.md                 — RDMA Cross-Die SBUF→SBUF P2P
-- dma/cce-in-transfer.md                — CCE (Compute-DMA) In-Transfer Compute
-- dma/dge-builder-qos.md                — DGE Descriptor-Builder + SDMA QoS/Arbitration
-- dma/sbuf-psum-banks.md                — On-Chip State-Buffer (SBUF) + PSUM Bank Model
-- dma/udma-hw-engine.md                 — The al_udma Hardware DMA Engine
-- dma/dge-microop-encoding.md           — DGE Micro-Op Encoding (byte-level)
-- dma/data-movement-reference.md        — Consolidated Data-Movement + Collectives Reference
-- dma/descriptor-ring-field-tables.md   — Descriptor + Ring Field-Table Reference
-- dma/sdma-windows-apb.md               — SDMA Address Windows + APB Chain
-- dma/onchip-working-memory.md          — On-Chip Working-Memory Regions (SBUF/PSUM/scratch)
 
 # Part 10 — Collectives & NCFW (28)
 ## Collective ops (14)
