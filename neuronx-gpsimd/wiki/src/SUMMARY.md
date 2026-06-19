@@ -217,35 +217,35 @@
 - [Cross-Generation Opcode-Table Diff + TONGA](generations/cross-gen-opcode-diff.md)
 - [Master Per-Generation Capability Matrix](generations/master-capability-matrix.md)
 
+# Part 7 — Custom-Op ABI (21)
+- [Q7PtrType + Lazy Translation](abi/q7ptrtype.md)
+- [The at::Tensor Object Chain](abi/tensor-object-chain.md)
+- [The Retargeted TensorAccessor](abi/tensor-accessor.md)
+- [The CoherencyEnforcer](abi/coherency-enforcer.md)
+- [TensorStream + TCM Staging](abi/tensorstream-tcm.md)
+- [ScalarType ↔ DTYPE Rosetta](abi/scalartype-dtype-rosetta.md)
+- [customop_* Marshalling Entries](abi/customop-marshalling.md)
+- [build_custom_op.py Codegen](abi/build-custom-op-codegen.md)
+- [Stack-Switch Dispatch](abi/stack-switch.md)
+- [neuron_translate Window Family](abi/neuron-translate-windows.md)
+- [Device Memory Allocators](abi/device-allocators.md)
+- [Data-Transfer Backends](abi/data-transfer-backends.md)
+- [The Multicore API (8-core SPMD)](abi/multicore-spmd.md)
+- [Build → Compile → Link → Strip → Package Flow](abi/build-flow.md)
+- [LSP Linker Specs + ELF Layout](abi/lsp-elf.md)
+- [FlexLM Licensing Gate](abi/flexlm-licensing.md)
+- [The Device-Side Custom-Op ABI Reference](abi/device-abi-reference.md)
+- [The Complete Custom-Op ABI (libneuroncustomop.a)](abi/complete-customop-abi.md)
+- [The Q7 ELF VADDR + Per-Core Memory Model](abi/q7-elf-vaddr.md)
+- [End-to-End ABI Synthesis](abi/abi-synthesis.md)
+- [The Custom-Op Programming Model (overview)](abi/programming-model.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 7 — Custom-Op ABI (21)
-- abi/q7ptrtype.md                — Q7PtrType + Lazy Translation
-- abi/tensor-object-chain.md      — The at::Tensor Object Chain
-- abi/tensor-accessor.md          — The Retargeted TensorAccessor
-- abi/coherency-enforcer.md       — The CoherencyEnforcer
-- abi/tensorstream-tcm.md         — TensorStream + TCM Staging
-- abi/scalartype-dtype-rosetta.md — ScalarType ↔ DTYPE Rosetta
-- abi/customop-marshalling.md     — customop_* Marshalling Entries
-- abi/build-custom-op-codegen.md  — build_custom_op.py Codegen
-- abi/stack-switch.md             — Stack-Switch Dispatch
-- abi/neuron-translate-windows.md — neuron_translate Window Family
-- abi/device-allocators.md        — Device Memory Allocators
-- abi/data-transfer-backends.md   — Data-Transfer Backends
-- abi/multicore-spmd.md           — The Multicore API (8-core SPMD)
-- abi/build-flow.md               — Build → Compile → Link → Strip → Package Flow
-- abi/lsp-elf.md                  — LSP Linker Specs + ELF Layout
-- abi/flexlm-licensing.md         — FlexLM Licensing Gate
-- abi/device-abi-reference.md     — The Device-Side Custom-Op ABI Reference
-- abi/complete-customop-abi.md    — The Complete Custom-Op ABI (libneuroncustomop.a)
-- abi/q7-elf-vaddr.md             — The Q7 ELF VADDR + Per-Core Memory Model
-- abi/abi-synthesis.md            — End-to-End ABI Synthesis
-- abi/programming-model.md        — The Custom-Op Programming Model (overview)
 
 # Part 8 — Host Runtime (28)
 - runtime/libnrt-surface.md                   — The libnrt Surface Map (GPSIMD lens)
