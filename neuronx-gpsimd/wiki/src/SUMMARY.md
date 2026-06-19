@@ -284,44 +284,42 @@
 - [SDMA Address Windows + APB Chain](dma/sdma-windows-apb.md)
 - [On-Chip Working-Memory Regions (SBUF/PSUM/scratch)](dma/onchip-working-memory.md)
 
+# Part 10 — Collectives & NCFW (28)
+- [TriggerCollective (0xC8)](collectives/ops/trigger-collective.md)
+- [TriggerCollective2 + Ext (0xD9/0xDA)](collectives/ops/trigger-collective2-ext.md)
+- [ALL_REDUCE](collectives/ops/all-reduce.md)
+- [S3D3 Collective (SB2SB, 0xBF)](collectives/ops/s3d3-collective.md)
+- [PseudoCurProcessingRankID (0xDB)](collectives/ops/rank-id.md)
+- [PSEUDO_CORE_BARRIER (0xD8)](collectives/ops/core-barrier.md)
+- [PSEUDO_SYNC_BARRIER (0xD5)](collectives/ops/sync-barrier.md)
+- [PSEUDO_DMABARRIER (0xC3)](collectives/ops/dma-barrier.md)
+- [SENDRECV (point-to-point, 0xCB)](collectives/ops/sendrecv.md)
+- [RDMA/DMA Collective Pseudo-Ops (DIRECT2D/GATHER_XPOSE/INDIRECT1D)](collectives/ops/rdma-gather-pseudo-ops.md)
+- [Collective-Type + cc_op Enum Reference](collectives/ops/collective-enums.md)
+- [TOP_SP Collective Lowering](collectives/ops/top-sp-lowering.md)
+- [XRP Host↔DSP Messaging Transport](collectives/ops/xrp-host-dsp-messaging.md)
+- [The Unified Collective-Communication Architecture](collectives/ops/architecture-synthesis.md)
+- [NCFW IRAM Images + Host Selector](collectives/ncfw/ncfw-iram-images.md)
+- [NCFW DRAM Images + ctx_log Decoder](collectives/ncfw/ncfw-dram-ctx-log.md)
+- [NCFW Main Dispatch Loop](collectives/ncfw/main-dispatch-loop.md)
+- [Ring + Kangaring Collective](collectives/ncfw/ring-kangaring.md)
+- [Mesh Collective](collectives/ncfw/mesh-collective.md)
+- [Hierarchical Collective](collectives/ncfw/hierarchical-collective.md)
+- [pring (Persistent DMA Descriptor Ring)](collectives/ncfw/pring-descriptors.md)
+- [NEFF Device Barrier](collectives/ncfw/neff-device-barrier.md)
+- [NEFF Host Barrier + Step-Config Sequencing](collectives/ncfw/neff-host-barrier.md)
+- [NCFW DMA Reprogram + APB Broadcast + Alloc Bitmap](collectives/ncfw/dma-reprogram-apb-bcast.md)
+- [NCFW spad-ctrl cc_op Table + tsync](collectives/ncfw/spad-ccop-tsync.md)
+- [NCFW CUST3 DMA Doorbell Thunks](collectives/ncfw/cust3-doorbell-thunks.md)
+- [NCFW Ring Send/Wait + Config Schema + Host Command](collectives/ncfw/ring-protocol-config-command.md)
+- [NCFW LX-ISA / DMA-Naming / arch_id-Diff / Orchestration Synthesis](collectives/ncfw/lx-isa-naming-archid-synthesis.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 10 — Collectives & NCFW (28)
-## Collective ops (14)
-- collectives/ops/trigger-collective.md        — TriggerCollective (0xC8)
-- collectives/ops/trigger-collective2-ext.md   — TriggerCollective2 + Ext (0xD9/0xDA)
-- collectives/ops/all-reduce.md                — ALL_REDUCE
-- collectives/ops/s3d3-collective.md           — S3D3 Collective (SB2SB, 0xBF)
-- collectives/ops/rank-id.md                   — PseudoCurProcessingRankID (0xDB)
-- collectives/ops/core-barrier.md              — PSEUDO_CORE_BARRIER (0xD8)
-- collectives/ops/sync-barrier.md              — PSEUDO_SYNC_BARRIER (0xD5)
-- collectives/ops/dma-barrier.md               — PSEUDO_DMABARRIER (0xC3)
-- collectives/ops/sendrecv.md                  — SENDRECV (point-to-point, 0xCB)
-- collectives/ops/rdma-gather-pseudo-ops.md    — RDMA/DMA Collective Pseudo-Ops (DIRECT2D/GATHER_XPOSE/INDIRECT1D)
-- collectives/ops/collective-enums.md          — Collective-Type + cc_op Enum Reference
-- collectives/ops/top-sp-lowering.md           — TOP_SP Collective Lowering
-- collectives/ops/xrp-host-dsp-messaging.md    — XRP Host↔DSP Messaging Transport
-- collectives/ops/architecture-synthesis.md    — The Unified Collective-Communication Architecture
-## NCFW (14)
-- collectives/ncfw/ncfw-iram-images.md             — NCFW IRAM Images + Host Selector
-- collectives/ncfw/ncfw-dram-ctx-log.md            — NCFW DRAM Images + ctx_log Decoder
-- collectives/ncfw/main-dispatch-loop.md           — NCFW Main Dispatch Loop
-- collectives/ncfw/ring-kangaring.md               — Ring + Kangaring Collective
-- collectives/ncfw/mesh-collective.md              — Mesh Collective
-- collectives/ncfw/hierarchical-collective.md      — Hierarchical Collective
-- collectives/ncfw/pring-descriptors.md            — pring (Persistent DMA Descriptor Ring)
-- collectives/ncfw/neff-device-barrier.md          — NEFF Device Barrier
-- collectives/ncfw/neff-host-barrier.md            — NEFF Host Barrier + Step-Config Sequencing
-- collectives/ncfw/dma-reprogram-apb-bcast.md      — NCFW DMA Reprogram + APB Broadcast + Alloc Bitmap
-- collectives/ncfw/spad-ccop-tsync.md              — NCFW spad-ctrl cc_op Table + tsync
-- collectives/ncfw/cust3-doorbell-thunks.md        — NCFW CUST3 DMA Doorbell Thunks
-- collectives/ncfw/ring-protocol-config-command.md — NCFW Ring Send/Wait + Config Schema + Host Command
-- collectives/ncfw/lx-isa-naming-archid-synthesis.md — NCFW LX-ISA / DMA-Naming / arch_id-Diff / Orchestration Synthesis
 
 # Part 11 — NEFF Container Format (11)
 - neff/container-byte-format.md     — NEFF Container Byte Format
