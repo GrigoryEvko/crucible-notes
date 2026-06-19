@@ -348,7 +348,9 @@ write @13 (3-cyc FMA)    --forward-->  stage-10 vec read
 The `vbool` predicate path forwards `@10`/`@11` → `vbool` `@10`. The `valign` divide-scratch (`vu`)
 forwards `@12` → `@10` within the iterative `DIVN_*_4STEP` step sequence.
 
-**Scalar pipe** (7-stage R0/E3/M4/W6 scalar Xtensa):
+**Scalar pipe** (7-stage `A1 / B3 / E4 / M5 / W6` ISS convention, the one the stamps below use;
+TIE-root convention is `r0/e3/m4/w6`, i.e. ISS E/M − 1, W and the vec ports unchanged — see
+[pipeline-timing §2](pipeline-timing.md) / [microarch-synthesis §2.3](microarch-synthesis.md)):
 
 | producer class | result stage | consumer read | dep-latency | forward? |
 |---|---|---|---:|---|
@@ -372,8 +374,14 @@ forwards `@12` → `@10` within the iterative `DIVN_*_4STEP` step sequence.
 A dependency **stalls** exactly when the producer's result-write stage is later than the earliest
 stage the consumer can read that operand **and** no shorter-stage forward of the result exists. The
 schedule encodes these as per-instance **`<inst>_stall`** predicate functions — `libcas-core.so`
-ships **1 651** of them (and **2 149** `_issue` functions, the dual-issue legality hooks). Enumerated
+ships **1 746** of them (and **2 149** `_issue` functions, the dual-issue legality hooks). Enumerated
 data hazards:
+
+> **CORRECTION — the `_stall` count is `1746`, not `1651`.** An earlier draft of this page (and
+> [pipeline-timing §7]) cited **1651** `_stall` functions. The binary, re-counted this pass
+> (`nm libcas-core.so | rg -c '_stall$'`), returns **1746** — matching [co-issue-matrix §4] and the
+> consolidating [Microarchitecture Synthesis §2.4](microarch-synthesis.md). The `2149` `_issue` /
+> `~160 k` `_stage<N>` counts are unchanged. Pin **1746**. `[HIGH/OBSERVED]`
 
 - **H1 — scalar `MUL32` → scalar ALU/AGU consumer.** STALL = 2 cycles. `MUL32` writes its result
   `@6` (W-stage); a dependent ALU reads `@4`. No `@4` (or `@5`) forward of a `@6` result exists, so
@@ -459,6 +467,9 @@ coarser prior claims, and each is a direct `nm` witness rather than an inference
 - [Pipeline Timing Model](pipeline-timing.md) — the 16-stage pipeline and per-engine latencies the
   write stages here index into (shared ground truth: the `_stage_functions` descriptors).
 - [Co-Issue Matrix](co-issue-matrix.md) — the full FLIX format × slot-class legality table behind §3.
+- [Microarchitecture Synthesis](microarch-synthesis.md) — the consolidating capstone that carries
+  this page's port model, the `wvec` `(12,12)` RMW, and the `s2|s3` FMA binding into the one
+  cycle-approximate model, and where the `1746` `_stall` count (§7) is unified.
 - [LSU / Memory Subsystem](lsu-memory.md) — the stage-9 memory port that feeds the stage-10 `vec`
   read (the load-forward path of §6/§7) and the scatter/gather `gvr` addressing.
 - [VFPU / IEEE Numerics](vfpu-ieee.md) — the `gvr`/`FSR`/`FCR` control/status file accessed via

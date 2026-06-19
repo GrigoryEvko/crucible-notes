@@ -12,7 +12,10 @@
 > ceiling live in [FLIX Co-Issue Matrix](./co-issue-matrix.md); the multi-ported register-file
 > read/write-port pressure analysis and the bypass-network reconstruction live in
 > [Register-File Port Model + Bypass Network](./regfile-ports.md). This page owns the **stage
-> model**, the **per-class latency/forwarding table**, and the honest **empty-reservation wall**.
+> model**, the **per-class latency/forwarding table**, and the **structural-hazard substrate**
+> (operand-availability scoreboard + the 2 LSU mem-ports + the FLIX slot count). The unified
+> resolution of the reservation-model framing across the Part-4 pages is the
+> [Microarchitecture Synthesis §2.4](microarch-synthesis.md) capstone.
 > The per-instruction operand semantics that these latencies attach to are catalogued in the
 > ISA reference, e.g. [B02 vec-alu/fp](../isa/ref/b02-vec-alu-fp.md),
 > [B04 mac-integer](../isa/ref/b04-mac-integer.md), [B13 sp-cvt](../isa/ref/b13-sp-cvt.md).
@@ -232,9 +235,10 @@ the shipped tables show. `[HIGH × OBSERVED for the latency; MED × INFERRED for
 
 ```c
 // One canonical reservation/forwarding sketch per latency class. RESULT_STAGE and READ_PORT
-// are the ISS stamps disassembled above; the "reservation" is the empty wall of §6 — there is
-// no per-port single-issue counter in the shipped ISS, so II is bounded only by the FLIX slot
-// count (§6) and operand availability. Symbols named are real ISS callbacks.
+// are the ISS stamps disassembled above; the reservation substrate is the populated scoreboard +
+// mem-port of §6 — there is no per-COMPUTE-unit single-issue counter in the shipped ISS, so a
+// compute unit's II is bounded by the FLIX slot count (§6) + operand availability (the per-port
+// stall cycle count stays [MED]). Symbols named are real ISS callbacks.
 
 enum { READ_PORT_VEC = 10, READ_PORT_AR_E = 4, READ_PORT_AR_A = 1, READ_PORT_BR = 3 };
 
@@ -301,13 +305,29 @@ INFERRED network]`
 
 ---
 
-## 6. The honest wall — empty reservation model
+## 6. The structural-hazard substrate — scoreboard + mem-port + slot-count
 
 A reimplementer needs a *structural-hazard* model to know how many ops of a class may issue per
-cycle below the FLIX slot ceiling. **That model is not recoverable from the shipped artifacts,
-and this page does not invent it.** `[HIGH × OBSERVED]`
+cycle below the FLIX slot ceiling. The realizable bound **is** recoverable: it is
+`operand-availability (RAW/WAW scoreboard) + the 2 LSU mem-ports + the FLIX slot count + the
+class-exclusive lane partition`. The per-`(format,slot,opcode,stage)` bodies that encode it ship
+**fully populated** in `libcas-core.so` (`_issue` = 2149, `_stall` = 1746, `_stage<N>` ≈ 160 k,
+stages 0–15 — re-counted `nm | rg -c` this pass). What stays `[MED]` is only the reduction of
+those populated bodies to an **exact per-port single-issue stall cycle count** — a task, not a
+wall. `[HIGH × OBSERVED on the bodies + the slot/mem-port bound; MED × the exact cycle counts]`
 
-Two independent observations establish the wall:
+> **CORRECTION (divergence #1, resolved at the capstone) — the reservation model is PRESENT, not
+> an empty wall.** An earlier framing of this section called the model "the honest empty-reservation
+> wall / not recoverable." That over-read one artifact: the empty `MODULE_SCHEDULE` reservation
+> bodies belong to the *TIE encoding DB* (`libisa-core.so`), which indeed carries no schedule — but
+> the *cycle model* `libcas-core.so` ships the reservation as the populated `_issue`/`_stage<N>`
+> function bodies above. The honest residual is the **exact stall cycle count** (MED), not the
+> model's existence. This is unified across the Part-4 pages in
+> [Microarchitecture Synthesis §2.4 + §8 row 1](microarch-synthesis.md) and
+> [co-issue-matrix §4](./co-issue-matrix.md); this page adopts that resolution. `[HIGH × OBSERVED]`
+
+Two observations describe *what* the populated bodies model (a per-register scoreboard + one
+memory-only functional-unit port), and *what* they do not (a per-compute-unit issue counter):
 
 1. **The `…_stall` functions implement a per-register DEF/USE *scoreboard* — never a
    functional-unit reservation station.** Each of the 1746 `…_stall` functions calls
@@ -342,12 +362,16 @@ Two independent observations establish the wall:
    }   // no functional-unit / issue-port counter anywhere
    ```
 
-2. **The per-module reservation bodies ship empty.** Prior census found all 1994
-   `MODULE_SCHEDULE` elements self-closing (0 non-empty bodies), each a `(line,file)` pointer
-   into a `coretie2_internalmodules.tie` source that is **absent** from this extraction; and the
-   `SLOT_OPCODES` eligibility lists are **permissive supersets** (Tensilica lists nearly every op
-   as slot-legal). `[HIGH × CARRIED, re-verified: the corresponding ISS-side resource model is
-   confirmed empty in (1).]`
+2. **The `MODULE_SCHEDULE` reservation bodies of the TIE-DB ship empty — but that is the
+   *encoding DB*, not the cycle model.** Prior census found all 1994 `MODULE_SCHEDULE` elements
+   self-closing (0 non-empty bodies) in the `libisa-core.so` TIE encoding DB, each a `(line,file)`
+   pointer into a `coretie2_internalmodules.tie` source that is **absent** from this extraction;
+   and the `SLOT_OPCODES` eligibility lists are **permissive supersets** (Tensilica lists nearly
+   every op as slot-legal). This says nothing about the cycle model: the per-stage reservation
+   bodies in `libcas-core.so` (the `_issue`/`_stall`/`_stage<N>` functions of §6 intro) **are**
+   populated — they are where the scoreboard + the one memory-only port live ([co-issue-matrix §4],
+   [microarch-synthesis §2.4](microarch-synthesis.md)). The empty `MODULE_SCHEDULE` is the
+   *TIE-DB* table; the populated `_issue`/`_stage<N>` bodies are the reservation. `[HIGH × OBSERVED]`
 
 **Consequence.** The structural bounds that *are* sound:
 
@@ -364,21 +388,26 @@ Two independent observations establish the wall:
   `loadStoreUnitsCount=2`). Compute units (ALU/MAC/FMA/convert) have **no** modeled port and are
   bounded only by slots + operand availability.
 
-The exact **per-port single-issue ceiling below the slot count is UNRECOVERABLE** —
-e.g. "exactly one multiply per bundle" vs "up to two/three" cannot be decided, because the only
-artifact that would pin it (the reservation body) is empty and the `_stall` code never consults a
-unit counter. **Flagged, not invented.** A cycle-accurate model of *this config* must treat each
-functional unit as fully pipelined (II=1) bounded by FLIX slot count + operand availability, and
-mark the finer single-port limit as a config-dependent unknown.
+The exact **per-port single-issue cycle count below the slot count is `[MED]`, not a wall** —
+e.g. "exactly one multiply per bundle" vs "up to two/three" is not reduced to a byte-readable
+literal *here*, because the question requires unfolding the populated `_stage<N>` bodies rather
+than reading a single field, and the `_stall` code consults a per-register scoreboard, not a
+per-compute-unit counter. The realizable structural bounds that *are* sound and authoritative for
+issue legality (the FLIX slot count, the 2 mem-ports + ≤1 store, the single `S2_Mul` lane) stand;
+a cycle-accurate model of *this config* treats each compute unit as fully pipelined (II=1) bounded
+by FLIX slot count + operand availability, with the finer single-port cycle count flagged `[MED]`
+(recoverable in principle from the populated bodies — a task, not an empty wall).
 
 > **CORRECTION — divergent multiply-per-format counts.** One prior pass claimed a specific
 > per-format multiply co-issue ceiling (`F4/F6=3, F0/F1/F3=2, F11/F7/N0=1`). Re-deriving it here
 > from the ISS `…_issue` symbol set (mapping opcodes to the multiply/MAC/FMA/divide class by
 > name and counting mul-capable slots per format) instead yields `{F0,F1,F2,F3,F7}=2
-> (S2_Mul+S3_ALU), {F4,F6,F11,N1}=1 (S2_Mul only)`. **The two methods disagree** — which is
-> exactly the symptom of the empty-reservation wall: both are reading *permissive* eligibility,
-> not a true port limit. Do not trust either number as a hard ceiling; trust only the slot-count
-> bound above. Recorded as an open cross-page divergence.
+> (S2_Mul+S3_ALU), {F4,F6,F11,N1}=1 (S2_Mul only)`. **The two methods disagree** because both read
+> *permissive* eligibility, not a true single-issue port limit — the `[MED]` residual above. Do not
+> trust either number as a hard ceiling; trust only the slot-count bound (the unified
+> `1×S2 + 1×S3` MAC-class ceiling of [co-issue-matrix §3.2](./co-issue-matrix.md) /
+> [microarch-synthesis §2.2](microarch-synthesis.md)). Recorded as the open cross-page divergence
+> resolved at the capstone.
 
 ---
 
@@ -420,8 +449,8 @@ mark the finer single-port limit as a config-dependent unknown.
 | load-use @5 / @10 | `L16UI` @5, `IVP_LV2NX8_I` @10 | DX-ISA ld_st | CONSISTENT |
 | FSR flags @14 | 4–5× `mov $0xe` per FP op | DX-ISA-02 @14 | CONSISTENT |
 | branch resolve @3 (B) | `BEQZ_W15` AR @3 | DX-HW-01 §2 | CONSISTENT |
-| reservation model | `_stall` = availability-only; 0 resource symbols | MODULE_SCHEDULE empty | **CONFIRMED EMPTY** |
-| multiply-per-format ceiling | unrecoverable; methods diverge | prior `3/2/1` | **OPEN DIVERGENCE** (§6) |
+| reservation model | `_stall` (1746) = per-register scoreboard + 1 mem-only port; `_issue` (2149) / `_stage<N>` (~160 k) bodies PRESENT | MODULE_SCHEDULE (TIE-DB) empty | **PRESENT** (scoreboard + mem-port + slot-count; exact cycle counts MED) |
+| multiply-per-format ceiling | slot-count bound `1×S2 + 1×S3`; finer cycle count MED, methods diverge | prior `3/2/1` | **RESOLVED** at [synthesis §2.2](microarch-synthesis.md) (§6) |
 
 ---
 

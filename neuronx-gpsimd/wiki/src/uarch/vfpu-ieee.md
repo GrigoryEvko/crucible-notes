@@ -47,7 +47,7 @@ absolute path; `extracted/` is gitignored):
 | # | Finding | Strongest anchor | Tag |
 |---|---------|------------------|-----|
 | 1 | The VFPU is **one** fully-multiplexed FMA pipe for binary16 (`NXF16`, 32 lanes) + binary32 (`N_2XF32`, 16 lanes); `d = round_RM(±(a·b) ± c)` with a **single rounding** | `MADD_S/MADD_H/IVP_MULAN_2XF32T/IVP_MULANXF16T` share the s0/s1/s2 skeleton; co-issue round-trips this pass | HIGH/OBSERVED |
-| 2 | "2×FMA" = the datapath **placed in two FLIX slots** — `S3_ALU` primary + `S2_Mul` borrow in F2/F7 — so one bundle co-issues two FMAs | `{ … ivp_muln_2xf32 v3,v4,v5 ; madd.h v2,v0,v1 }` assembles legal | HIGH/OBSERVED |
+| 2 | "2×FMA" = the datapath **placed in two FLIX slots** — `S3_ALU` primary + `S2_Mul` borrow in F2/F7/N1 (on N1, which has no `S3_ALU` slot, the only FP-FMA placement *is* `S2_Mul`) — so one wide bundle co-issues two FMAs | `nm 'Opcode_madd_s_Slot'` = `s2_mul` ×3 (f2/f7/n1) + `s3_alu` ×4 (f0/f1/f2/f7); `{ … ivp_muln_2xf32 v3,v4,v5 ; madd.h v2,v0,v1 }` assembles legal | HIGH/OBSERVED |
 | 3 | FCR = `RoundMode(2b)` + 5 enables; FSR = 5 flags each `XTENSA_STATE_IS_SHARED_OR` (lanes sticky-OR to one bit) | `Iclass_rur_fcr_stateArgs` / `Iclass_rur_fsr_stateArgs`; state structs `flags=0x02` on Flags, `0x00` on Enables | HIGH/OBSERVED |
 | 4 | The 11-field FCR+FSR pack is `movscfv`/`movvscf`, order `{IxF,UfF,OfF,DzF,IvF, RM, IxE,UfE,OfE,DzE,IvE}` + CPENABLE gate | `Iclass_IVP_MOVVSCF_stateArgs` resolved verbatim this pass | HIGH/OBSERVED |
 | 5 | Two-tier exceptions: **precise** `Coprocessor1Exception` (cp1 @stage 3, squash) vs **imprecise** FSR flags @stage 14 + `VectorPipeImpreciseErr` @stage 15 | `Coprocessor1Exception_exc@0x1780ff0`; `nx_VectorPipeImpreciseErr_interface`; `_issue` stage immediates `0xa/0xd/0xe` | HIGH/OBSERVED |
@@ -398,14 +398,19 @@ stage 15   VectorPipeImpreciseErr DEF                                   <-- defe
 
 ## 5. The FP-pipeline block diagram + device round-trip
 
-The FP-FMA op occupies `S3_ALU` (canonical) and, in the 4-slot formats **F2/F7**, **also**
-`S2_Mul` — two FMA lanes, the "2×FMA". One wide bundle can co-issue an SP-FMA and an HP-FMA (or
-two HP). The integer quad-MAC is pinned to `S2_Mul`, memory to `S0/S1`.
+The FP-FMA op occupies `S3_ALU` (canonical) and **also** `S2_Mul` — in the wide formats **F2/F7**
+and the narrow **N1**. (On N1, which carries *no* `S3_ALU` slot, the only FP-FMA placement *is*
+`S2_Mul`.) That gives two FMA lanes on a wide bundle, the "2×FMA". One wide bundle can co-issue an
+SP-FMA and an HP-FMA (or two HP). The integer quad-MAC is pinned to `S2_Mul`, memory to `S0/S1`.
 
-> **CORRECTION — FP-FMA is NOT `S3_ALU`-exclusive.** `madd_s`/`madd_h` *also* ride `S2_Mul` in
-> F2/F7; the binding constraint is **slot-count** (`1×S2 + 1×S3` available), not slot identity.
-> Confirmed by assembling `{ … ivp_muln_2xf32 v3,v4,v5 ; madd.h v2,v0,v1 }` as a legal bundle
-> (two FMAs in one). See `uarch/co-issue-matrix.md` (#651). `[HIGH/OBSERVED]`
+> **CORRECTION — FP-FMA is NOT `S3_ALU`-exclusive.** `madd_s`/`madd_h` *also* ride `S2_Mul`:
+> `nm libisa-core.so | rg 'Opcode_madd_s_Slot'` lists `s2_mul` ×3 (**f2, f7, n1**) alongside
+> `s3_alu` ×4 (f0, f1, f2, f7) — `msub_s` identically. The binding constraint is **slot-count**
+> (`1×S2 + 1×S3` available), not slot identity; an FMA placed on `S2_Mul` **excludes** a same-bundle
+> integer quad-MAC (they contend for the one `S2_Mul` lane), while an FMA on `S3_ALU` co-issues with
+> a MAC on `S2`. Confirmed by assembling `{ … ivp_muln_2xf32 v3,v4,v5 ; madd.h v2,v0,v1 }` as a legal
+> bundle (two FMAs in one). See [co-issue-matrix §2.3/§3.2](co-issue-matrix.md) and the unified
+> ceiling at [microarch-synthesis §2.2](microarch-synthesis.md). `[HIGH/OBSERVED]`
 
 ```
 FLIX BUNDLE (wide formats F0..F11 / narrow N0..N2)

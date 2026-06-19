@@ -475,7 +475,9 @@ DataRAM banks supply the 512-bit bus its read/write bandwidth. `[HIGH/OBSERVED]`
 The d-side memory-port stage model, grounded in the `nx_*_interface` port signals (§2.1) and the
 per-op `stage<N>` bodies (§4):
 
-**Scalar** (`xt_xtensa`, ~7-stage R0/E·/M·/W pipe):
+**Scalar** (`xt_xtensa`, ~7-stage pipe; stages below in the **ISS `A1/B3/E4/M5/W6`** convention the
+`stage<N>` bodies use — TIE-root is `r0/e3/m4/w6`, ISS E/M − 1, W unchanged, see
+[pipeline-timing §2](pipeline-timing.md)):
 
 ```
 L32I / L16UI / L32R / L32EX : AGU base @1 (nx_VAddrBase),
@@ -608,6 +610,9 @@ tag carries the access width. `[HIGH/OBSERVED]`
   `1534/12569` placement denominator and the `1+1` co-issue framing this page sharpens.
 * [Pipeline Timing Model](pipeline-timing.md) — the per-op result latencies (int-MAC, FP-FMA, the
   stage model) whose *co-issue* and *memory-port* faces this page supplies.
+* [Microarchitecture Synthesis](microarch-synthesis.md) — the consolidating capstone that unifies
+  this page's reservation-bodies-present finding (§4) and the `1×S2 + 1×S3` MAC-class ceiling (§3.2)
+  with the sibling framings (synthesis §2.2/§2.4 + §8 rows 1, 4).
 * [Local-Memory / System-Bus / LSU Model](lsu-memory.md) — the LSU port detail, the SBUF/AXI bridge,
   and the DataRAM bank arbitration whose conflict cycle counts are the MED residual flagged here.
 * [The Confidence & Walls Model](../reference/confidence-model.md) — what `[HIGH/OBSERVED]`,

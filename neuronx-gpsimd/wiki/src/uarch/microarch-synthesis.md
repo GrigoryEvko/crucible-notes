@@ -363,10 +363,11 @@ that forward. `[HIGH × OBSERVED gaps; INFERRED network]`
 > `[MED]`, a task, not a wall.** `[HIGH × OBSERVED on the bodies' presence and the slot/mem-port
 > bound; MED × the cycle counts]`
 
-> **NOTE — the stall-count divergence is resolved to 1746.** [pipeline-timing §7] and
-> [regfile-ports §7] cite **1651** `_stall` functions; [co-issue-matrix §4] cites **1746**. The
-> binary (`nm libcas-core.so | rg -c '_stall$'`) returns **1746** this pass — the co-issue-matrix
-> figure is correct; the 1651 in the other two pages is stale. `[HIGH × OBSERVED]`
+> **NOTE — the stall-count divergence is resolved to 1746.** [pipeline-timing §6/§7] and
+> [regfile-ports §7] previously cited **1651** `_stall` functions (and [lsu-memory §8] cited a
+> third stale variant, **1795**); [co-issue-matrix §4] cited **1746**. The binary
+> (`nm libcas-core.so | rg -c '_stall$'`) returns **1746** this pass — the co-issue-matrix figure
+> is correct, and the source pages now carry an in-place CORRECTION to **1746**. `[HIGH × OBSERVED]`
 
 > **NOTE — `libcas-core.so` has NO DWARF; symtab is 179 079, no debug sections (divergence #6).**
 > `readelf -SW` shows **zero** `.debug_*` sections; "unstripped" here means a full `.symtab` only

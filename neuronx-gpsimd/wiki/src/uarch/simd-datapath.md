@@ -712,6 +712,10 @@ this page are identical to those siblings. The integer-MAC count frame follows t
 - [Register-File Port Model + Bypass Network](regfile-ports.md) — the per-file read/write port counts,
   the `vec` 5-read MAC, the `wvec` `(12,12)` RMW, the `s2|s3` FMA binding, and the forwarding matrix
   this page's connectivity map (§7) ports.
+- [Microarchitecture Synthesis](microarch-synthesis.md) — the consolidating capstone that places this
+  datapath (the Booth/PP/CSA multiply tree, the 1536-bit `wvec`, the VFPU FMA, SuperGather, permute)
+  in the one cycle-approximate model, and where the `188 = 65 + 123` integer-MAC / `24` FP-reclaimed
+  frame and the `s2|s3` FMA binding are unified (synthesis §2.2/§3.3, §8 rows 4, 5).
 - [Pipeline Timing Model](pipeline-timing.md) — the 16-stage pipeline, the @10 read port, the
   per-class result stages (@11/12/13), and the empty-reservation wall (`II=1`) behind §2.3/§3.5/§8.
 - [FLIX Co-Issue Matrix](co-issue-matrix.md) — the format × slot-class legality behind the slot

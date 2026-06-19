@@ -218,8 +218,10 @@ fail:
 ### 2.3 Exclusive-monitor pipeline timing (ISS-confirmed)
 
 [HIGH/OBSERVED — `libcas-core.so` cycle model.] `L32EX`/`S32EX` run the normal
-scalar LSU pipe (7-stage `R0/E3/M4/W6`, DX-HW-03 §5.2) and assert the
-exclusive-monitor barrier on the **XTSYNC register pipeline** at **stage 6**:
+scalar LSU pipe (7-stage; the stages below are the **ISS `A1/B3/E4/M5/W6`** convention
+the cycle stamps use — the TIE-root spelling is `r0/e3/m4/w6`, ISS E/M − 1, W unchanged;
+see [Pipeline Timing Model §2](pipeline-timing.md)) and assert the exclusive-monitor
+barrier on the **XTSYNC register pipeline** at **stage 6**:
 
 | ISS function (`libcas-core.so`) | stage | what it does |
 |---|---|---|

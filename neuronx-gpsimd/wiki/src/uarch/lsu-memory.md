@@ -18,10 +18,12 @@
 > [B07 Vector Stores](../isa/ref/b07-stores.md); the FLIX slot bitfield decode is in
 > [FLIX Co-Issue Matrix](./co-issue-matrix.md); the multi-ported file read/write-port pressure
 > is in [Register-File Port Model](./regfile-ports.md); the full cycle-latency table is in
-> [Pipeline Timing Model](./pipeline-timing.md). The SBUF/PSUM bank model and the off-core DMA
-> contention belong to the DMA Part (link forward → `dma/sbuf-psum-banks.md`, Part 9). This
-> page owns the **address map**, the **LSU/valign datapath**, the **AXI/write-buffer model**,
-> and the **L/S→pipeline timing**.
+> [Pipeline Timing Model](./pipeline-timing.md); the consolidating cycle-approximate capstone that
+> unifies the valign `@9`/`@10`/`@12` stage views and the `nx_{Load_0,Load_1,Store_0}` mem-port
+> bound across the Part-4 pages is the [Microarchitecture Synthesis](./microarch-synthesis.md).
+> The SBUF/PSUM bank model and the off-core DMA contention belong to the DMA Part (link forward →
+> `dma/sbuf-psum-banks.md`, Part 9). This page owns the **address map**, the **LSU/valign
+> datapath**, the **AXI/write-buffer model**, and the **L/S→pipeline timing**.
 
 Every claim is tagged `[CONF × PROV]`: confidence `HIGH/MED/LOW`; provenance `OBSERVED`
 (read byte-exact out of a shipped config header / unstripped config DLL / device disassembly
@@ -693,7 +695,7 @@ AXI-master read-outstanding depth (SoC-fabric dependent), flagged `[MED]`.
 | --- | --- | --- |
 | LSU count / unified | `XCHAL_NUM_LOADSTORE_UNITS`, `XCHAL_UNIFIED_LOADSTORE` | `2`, `1` (`core-isa.h:226,240`) |
 | 2 load + 1 store port | `nx_Load_0_interface`, `nx_Load_1_interface`, `nx_Store_0_interface` | imported (U) by `libcas-core.so`; no `nx_Store_1_interface` |
-| S0/S1 op-class slots | `…S0_{Ld,LdSt,LdStALU}…`, `…S1_{Ld,ALU}…` `_inst_…_{issue,stall}` | 1795 stall + 2149 issue fns, `libcas-core.so` |
+| S0/S1 op-class slots | `…S0_{Ld,LdSt,LdStALU}…`, `…S1_{Ld,ALU}…` `_inst_…_{issue,stall}` | **1746** stall + 2149 issue fns, `libcas-core.so` (`nm \| rg -c '_stall$'`; see [microarch-synthesis §2.4](microarch-synthesis.md)) |
 | stage encoders | `opnd_sem_{AR,vec,valign,vbool,wvec,gvr}_addr` | `@0x17a9f20…@0x17aa2c0` (`& 0x3` valign, `& 0x1f` vec) |
 | issue/stall dispatch | `dll_get_issue_functions`, `dll_get_stall_functions`, `dll_set_tie_stall_eval` | `@0x17aa340`, `@0x17aa2e0`, `@0x17aa2f0` |
 | load stages | `…IVP_LA2NX8_IP_{issue,stall}` | `@0x118a360` / `@0x11b32d0`: AR@1, valign@9, vec@10 |
