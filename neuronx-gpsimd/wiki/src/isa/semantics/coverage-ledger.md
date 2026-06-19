@@ -242,8 +242,11 @@ Reconciliation of the bottom line:
 | **TOTAL** | **1607** | **1534** |
 
 The shipped 1534 is a **clean subset** of the 1607 (zero shipped-only). The +73 fold-out
-= 24 `.W18` wide-branch macro forms (have bodies) + 6 virtualops (have bodies) + 43
-no-body decode-tree pseudo-mnemonics. The MED set lives **entirely** inside the 1528
+= 24 wide-branch alternate-encoding macro forms (have bodies) + 6 virtualops (have bodies) + 43
+no-body decode-tree pseudo-mnemonics. (The wide-branch 24 = the `xt_wide_branch` `_w15` branch set,
+nm-direct in `libisa-core.so`; the `.W18`/`xt_sem_widebranch18` source-macro naming used in earlier drafts
+is **CARRIED** — no `_w18`/`widebranch18` symbol exists in any config DLL, see
+[B30 §3.4](../ref/b30-appendix-p.md).) The MED set lives **entirely** inside the 1528
 shipped COVERED ops — there is no MED among the fold-out or the fences.
 
 > **CORRECTION (the ~138 MED is an upper bound after the live oracle).** The upstream

@@ -76,6 +76,13 @@ than a 5-bit `vec` index) fits the Mul slot where the three-`vec`-source variabl
 > builds **one** parameterized per-lane barrel shifter — `(val, amt, width, {logical|arith|rotate})` —
 > plus a small count-leading-bit unit for the normalize path, and drives both from the decoded opcode
 > group, exactly as §4's leaves do. `[HIGH/OBSERVED]`
+>
+> **Do not confuse this per-lane barrel shifter with the `valign` cross-lane funnel.** This batch is the
+> `ivp_sem_vec_shift` per-lane shifter (shifts *within* each 8/16/32-bit lane). The `valign` byte funnel —
+> the fiss leaf `module__xdref_lashift_512_512_6` / `wideldshift_*_512_6` (TIE name
+> `xdsem_ld_shifter_512`/`xdsem_st_shifter_512`), which shifts *across* the 512-bit row — is a **separate**
+> datapath, owned by [B06 loads](b06-loads.md)/[B08 reduce](b08-reduce.md). Different shifter, different
+> leaf. `[HIGH/OBSERVED]`
 
 ---
 

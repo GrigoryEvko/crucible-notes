@@ -17,8 +17,12 @@ This page is the **value-semantics-and-encoding** companion to the control-view
 (the two-level RNE vs fiss-leaf-RZ rounding); this page owns *what each seed opcode computes,
 bit-exact, and how each one is encoded into a slot*. The opcode this batch seeds is **only the seed
 itself** — the iterative refinement that consumes the seed is **not** here: the Newton/QLI step
-`recipqli`, the `divn` Newton-step macro, and the fp FMA refine ops live in
-[B17 fp32 FMA](b17-spfma.md), [B23 divide](b23-divide.md), and B24. The §"Batch boundary" table pins
+`recipqli`, the **fp `divn` Newton-refine macro** (`module__xdref_divn_*_32f_32f_32f_32f_2` — the **fp DIVN
+family**, distinct from the *integer* `divn_2x32x16` step opcodes that [B23 divide](b23-divide.md) owns),
+and the fp FMA refine ops live in [B17 fp32 FMA](b17-spfma.md), the fp DIVN family, and B24. (The
+**integer** `divn_2x32x16{s,u}_4step*` opcodes are in [B23](b23-divide.md); the **fp** Newton `divn` is a
+separate reference leaf, not a B23 opcode — see [B23 §"divn is two things"](b23-divide.md).) The
+§"Batch boundary" table pins
 every near-neighbor; the fp16 siblings (`recip0nxf16`/`rsqrt0nxf16`/`nexp0nxf16`/…) are all
 [B14](b14-hp-lookup.md).
 
@@ -494,8 +498,8 @@ roll into the **864** value-leaf denominator
 | `module__xdref_nexp01_32f_32f` | `0x87a4d0` | `2^x` split — **table-free** (§5.3) |
 | `table__RECIP_Data8` | `0x958fc0` (`.rodata`) | 128 × 8-bit reciprocal-mantissa seeds (§3) |
 | `table__RSQRT_Data8` | `0x958dc0` (`.rodata`) | 128 × 8-bit rsqrt-mantissa seeds, 2 binade halves (§3) |
-| `module__xdref_divn_1_1_1_32f_32f_32f_32f_2` | `0x878c30` | `divn` Newton step — **B23** (consumes div0 seed) |
-| `module__xdref_recipqli_1_1_1_1_1_32f_32f` | `0x87df20` | QLI refine — **B23/B24** (uses `fp_recip_qli_lut*`) |
+| `module__xdref_divn_1_1_1_32f_32f_32f_32f_2` | `0x878c30` | **fp** `divn` Newton refine — the **fp DIVN family** (consumes div0 seed); *not* a B23 opcode — B23 owns the *integer* `divn_2x32x16` |
+| `module__xdref_recipqli_1_1_1_1_1_32f_32f` | `0x87df20` | QLI refine — **B24** fp (uses `fp_recip_qli_lut*`) |
 | `bbn_sem_vec_sprecip_rsqrt_opcode_stage0..15` | `0x61b0a0…` (`libcas-core.so`) | the **16-stage** seed pipeline (recip+rsqrt share it) |
 | `Opcode_ivp_recip0n_2xf32_Slot_f1_s3_alu_encode` | `0x34b860` (`libisa-core.so`) | `movl $0x26348306,(%rdi); ret` — F1 selector (§2) |
 | `Iclass_IVP_RECIP0N_2XF32_args` | `0x852ba0` (`libisa-core.so`) | recip0 operand iclass record |
@@ -515,7 +519,7 @@ roll into the **864** value-leaf denominator
 |---|---|---|
 | `recip0nxf16`/`rsqrt0nxf16`/`sqrt0nxf16`/`div0nxf16`/`nexp0nxf16`/`nexp01nxf16` | [B14 hp-lookup](b14-hp-lookup.md) (#629) | **fp16** transcendental seeds — same seed-lookup architecture at half precision |
 | `recipqlin_2xf32_0/_1` (and `t`) | [B23 divide](b23-divide.md)/B24 | QLI **refine** (quadratic linear-interp), uses `fp_recip_qli_lut*`, consumes the seed |
-| `divn_2x32x16*_4step*`, `divnn_2xf32`, `divnx16*` | [B23 divide](b23-divide.md) (#638) | the **Newton-step** divide macros that consume `div0`'s seed |
+| `divn_2x32x16*_4step*` (**integer**), `divnx16*` (**integer**) | [B23 divide](b23-divide.md) (#638) | the **integer** Newton-step divide opcodes (32b÷16b lane quotient). The **fp** `divnn_2xf32`/`divnnxf16` and the fp `xdref_divn_*_32f` Newton refine are the **separate fp DIVN family**, not B23 opcodes |
 | `mula*`/`madd*`/`fma*` fp32 | [B17 fp32 FMA](b17-spfma.md) (#632) | the fused multiply-add **refine** iterations (`y·(2−x·y)`, `y·(1.5−0.5xy²)`) |
 | `mula*`/`madd*`/`fma*` fp16 | [B18 fp16 FMA](b18-hp-fma.md) (#633) | fp16 FMA refine |
 | `addexpn_2xf32`/`addexpmn_2xf32` | [B02 fp ALU](b02-vec-alu-fp.md) (#617) | exponent-add scale-by-2ⁿ — the `2^n` step *after* `nexp01`'s split |

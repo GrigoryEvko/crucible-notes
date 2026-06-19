@@ -384,6 +384,14 @@ proven on both signs including the signed-zero edges (`fifloor(-0.5) = -1.0`, `f
 *reads* FCR; `firound` is the one that *cannot* be expressed by FCR (the `away` code). All five are
 fp32→fp32. `[HIGH/OBSERVED·exec]`
 
+> **NOTE — half-away increment is the *integer-round* path, not the narrow-convert path.** The
+> `firound`/`away` half-away increment proven here is the **FI integer-round** datapath (`2.5 → 3`,
+> `−2.5 → −3`). On the **narrow** output-rounding path (e.g. fp32→fp16), `away` reads the `R` (round) bit
+> and at the *exact* narrow half it does **not** increment — it behaves like RTZ — because the half-quantum
+> lands below the bit the core treats as `R`. Drive `away` semantics from FIROUND, not from a narrow
+> exact-half. See [Formal Semantics II](../semantics/group-semantics-ii.md) §2 (narrow exact-half
+> correction) and [B20 hp-cvt](b20-hp-cvt.md) §5.2. `[HIGH/OBSERVED]`
+
 ---
 
 ## 6. fp16 → fp32 widen — `cvtf32f16` / `cvtf32nxf16`

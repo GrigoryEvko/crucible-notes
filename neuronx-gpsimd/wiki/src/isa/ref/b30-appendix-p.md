@@ -96,8 +96,9 @@ The runtime confirms `12569` as a baked-in constant — `num_encode_fns()` at `0
 
 The pre-fold TIE-DB roster (the partition frame B01–B30 is defined over) is the larger descriptor set the
 assembler enumerates: **1607** distinct mnemonics over **12642** `<OPCODEDEF>` placements. Both frames are
-reconciled in §3.4 below; the connecting **+73 fold** is exactly the 43 P-a/P-c residuals + 24 `.W18`
-wide-branch macro forms + 6 virtualops.
+reconciled in §3.4 below; the connecting **+73 fold** is exactly the 43 P-a/P-c residuals + 24 wide-branch
+alternate-encoding macro forms (the `xt_wide_branch` `_w15` branch set; see the §3.4 correction on the
+`.W18` naming) + 6 virtualops.
 
 ### 1.2 The residual set
 
@@ -373,9 +374,21 @@ split by lane-width/sub-family across batches (disjoint by construction — each
 
 Check: `243+232+195+56+44+42+33+32+31+30+29+28+27+27+24+21+18+18+14+8+6+6+5+2+2+1 = 1174`. ✓
 
+> **FRAME NOTE — `1174` (pre-fold B01–B24 semantic membership) vs `1065` (shipped `ivp_` vector roster).**
+> This `1174` is the **pre-fold** count of `<SEMANTIC>`-group members assigned to batches B01–B24, and it
+> **includes the 109 scalar-FP forms** that the composite batch [B24](b24-composite.md) carries
+> (`recipqli_s`, the `rur/wur.fcr/fsr` UR ops, the scalar-FP convert/lookup tail, …). The **shipped**
+> `ivp_`-prefixed vector roster is **1065** (nm-direct on the opcode-name table). The two reconcile exactly:
+> `1174 − 1065 = 109` = the B24 scalar-FP population, which the shipped frame counts in the **469 scalar**
+> axis, not the vector axis. So `1174` (pre-fold IVP, this §3 frame) and `1065` (shipped vector,
+> [B24](b24-composite.md) §7 frame) are **the same partition viewed in two frames**, not a disagreement.
+> `[HIGH/OBSERVED]`
+
 **Base-Xtensa (B25–B29).** The non-ivp / non-residual semantic membership, **384** mnemonics spread over
 278 base semantic groups (many singletons — each `RSR.X`/`WSR.X`/`XSR.X` concrete SR form is its own
-one-member group; the two largest are `xt_sem_widebranch15` (24) and `xt_sem_widebranch18` (24)). The
+one-member group; the largest is `xt_sem_widebranch15` (24 distinct branch mnemonics — `nm libcas-core.so
+\| rg -o 'xt_sem_widebranch15_opcode_stage[0-9]'` plus `nm libisa-core.so \| rg -o 'Opcode_([a-z0-9]+)_w15_args'
+-r '$1' \| rg -v '^loop' \| sort -u \| wc -l` = 24)). The
 B25–B29 split is by **package/function**, not by group:
 
 | batch | package theme | ops |
@@ -388,6 +401,14 @@ B25–B29 split is by **package/function**, not by group:
 | **base total** | (package histogram: `xt_core` 124, `xt_exceptions` 40, `xt_ivp32` 38, `xt_debug` 32, `xt_wide_branch` 24, `xt_booleans` 16, `xt_regwin` 14, `xt_density` 12, `xt_timer` 12, `xt_mmu` 10, `xt_misc` 8, `xt_instcache` 7, branchpred 6, virtualops 6, sync 5, externalregisters 5, mul 5, integerdivide 4, instram 3, dataram 3, coprocessors 3, prefetch 3, halt 2, interrupt 1, trace 1 = **384**) | **384** |
 
 **Appendix P (B30, this doc).** `37 (P-a) + 6 (P-b) + 6 (P-c) = ` **49**.
+
+> **FRAME NOTE — base-Xtensa `384` (pre-fold, B25–B29) vs `360` ([template](template-and-partition.md) §6.1,
+> shipped).** This `384` is the **pre-fold** semantic-group membership of the base packages. The
+> [partition template](template-and-partition.md) reports the **shipped** base-Xtensa scalar count as
+> **360** (`469 scalar − 109 B24 scalar-FP`). They bridge exactly: `384 − 24 = 360`, where the **24** is the
+> `xt_wide_branch` `_w15` branch set that is pre-fold-only in this base region (the fold-out the §3.4 table
+> places at "B28/base"). The 6 virtualops + 43 no-body fold-out members live in the B25/B30 slices, not in
+> this base subtotal. Same partition, two frames. `[HIGH/OBSERVED]`
 
 ### 3.2 Grand total — distinct mnemonics (pre-fold frame)
 
@@ -423,10 +444,23 @@ subset** of 1607. The +73 splits:
 
 | fold class | n | have body? | shipped? | where in partition |
 |---|---|---|---|---|
-| `.W18` wide-branch macro forms (`.W15` ships instead) | 24 | yes (`xt_sem_widebranch18`) | no | B28/base |
+| wide-branch alternate-encoding macro forms (`.W15` collapses into the shipped plain `beq`/`bne`/… entries) | 24 | yes | no | B28/base |
 | virtualops (`ADDI.A.N CLAMPSF FFS POPC POPCE SEXTF`) | 6 | yes (`xt_virtualops`) | no | B25/base |
 | no-body decode-tree pseudo-mnemonics | 43 | **no** | no | **B30** (P-a 37 + P-c 6) |
 | **fold total** | **73** | | | |
+
+> **CORRECTION — wide-branch fold naming (`.W18`/`xt_sem_widebranch18` are not in any binary).** The
+> wide-branch fold class was previously labelled "24 `.W18` macro forms (`xt_sem_widebranch18`)". No
+> `_w18`, `.W18`, or `widebranch18` symbol exists in any ncore2gp config DLL (`nm` over
+> `libisa-core/libcas-core/libtie-core/libfiss-base` = 0). The only wide-branch semantic group present is
+> **`xt_sem_widebranch15`** (libcas-core, 4 stage symbols), and the only wide-branch encode thunks are the
+> 24 `_w15` **branch** forms (`ball bany bbc bbci bbs bbsi beq beqi beqz bge bgei bgeu bgeui bgez blt blti
+> bltu bltui bltz bnall bne bnei bnez bnone`) plus 3 `_w15` **loop** forms (`loop loopgtz loopnez`, package
+> `xt_wide_loop`). The shipped 1534 roster lists the **plain** mnemonics (`beq`/`bne`/`loop`/…) — the `_w15`
+> suffix is the FLIX-slot encode-thunk variant, not a separate roster entry. So the **count 24 is
+> OBSERVED** (24 `xt_wide_branch` branch mnemonics, nm-direct), but the `.W18`-vs-`.W15` *source-macro
+> distinction* that explains why exactly 24 fold out is **CARRIED** from TIE-DB knowledge — it is not
+> visible in the runtime/reference binaries. `[count: HIGH/OBSERVED · fold-mechanism: MED/CARRIED]`
 
 The placement fold is **also +73** because each fold-out mnemonic contributes exactly 1 placement:
 `12642 − 12569 = 73`. The mnemonic delta and the placement delta coincide by construction. ✓
@@ -487,7 +521,9 @@ residual mnemonics (no-datapath, signature ii). `[HIGH/OBSERVED]`
 > pinning a major/sub-opcode field that its children inherit), *not* as emittable mnemonics. `[HIGH/OBSERVED]`
 
 > **NOTE — pre-fold vs post-fold, the +73.** The partition is defined over the **1607** pre-fold TIE roster;
-> the runtime ships **1534**. The `+73` fold is fully accounted: `24 .W18 + 6 virtualops + 43 B30 no-body`.
+> the runtime ships **1534**. The `+73` fold is fully accounted: `24 wide-branch macro forms + 6 virtualops
+> + 43 B30 no-body` (the wide-branch 24 = the `xt_wide_branch` `_w15` branch set; the `.W18` source-form
+> naming is CARRIED, see §3.4 correction).
 > The mnemonic fold and the placement fold are both exactly 73 because every fold-out op is a single
 > placement. Do not confuse the two totals: count claims about the *shipped engine* use 1534/12569; count
 > claims about the *decode DB partition* use 1607/12642. `[HIGH/OBSERVED]`

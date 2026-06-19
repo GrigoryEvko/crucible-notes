@@ -390,6 +390,14 @@ but the **rotate-merge extract** that `la*` performs *is* a `libfiss-base` leaf 
 `module__xdref_lashift_512_512_6` — so the unaligned-read math is **proven by execution**, not decoded
 and guessed.
 
+> **NOTE — the valign funnel has two names (one datapath).** The fiss value leaf
+> `module__xdref_lashift_512_512_6` (and the width-parameterized siblings
+> `module__xdref_wideldshift_*_512_6`) is the *same* shifter the TIE layer names
+> `xdsem_ld_shifter_512` (load) / `xdsem_st_shifter_512` (store) in `libcas-core.so`. This is a
+> **naming-layer** difference (fiss leaf vs TIE module), not two distinct datapaths. See
+> [Formal Semantics II](../semantics/group-semantics-ii.md) §3, [B08 reduce](b08-reduce.md), and
+> [B12 shift](b12-shift.md). `[HIGH/OBSERVED]`
+
 ### 5.1 The two-row funnel shift (executed, bit-exact)
 
 The `lashift` leaf is a byte-granular **funnel shift** over a 128-byte concatenation of two 512-bit

@@ -208,6 +208,12 @@ two halves live in **two distinct selector bands** of `word0`:
 > network reuses the load/permute crossbar (the same datapath that feeds `valign`), so the bool fold and
 > the lane-count→mask expansion ride it; the arithmetic accumulator tree hangs off the ALU.
 > `[HIGH/OBSERVED]`
+>
+> The `valign` funnel that crossbar feeds has **two names for one datapath**: the fiss value leaf is
+> `module__xdref_lashift_512_512_6` / `module__xdref_wideldshift_*_512_6` (`libfiss-base.so`), and the TIE
+> layer names the same shifter `xdsem_ld_shifter_512` / `xdsem_st_shifter_512` (`libcas-core.so`) — a
+> naming-layer difference, not two datapaths (see [B06 loads](b06-loads.md) §5,
+> [Formal Semantics II](../semantics/group-semantics-ii.md) §3).
 
 ### 3.2 The load-band selector is a clean enumerated counter
 

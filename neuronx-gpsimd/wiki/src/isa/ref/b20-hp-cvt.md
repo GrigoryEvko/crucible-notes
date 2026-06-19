@@ -337,6 +337,14 @@ value leaves are `module__xdref_{ficeil,fifloor,firound,fitrunc}_1_16f_16f`
 > `firint` to the 2-bit-FCR-mode rounder; conflating them is wrong on every `.5` input.
 > `[HIGH/OBSERVED·exec]`
 
+> **NOTE — the `firound` half-away increment is the *integer-round* path, not the *narrow*-convert path.**
+> The `2.5→3.0`/`0.5→1.0` half-away increment above is the **FI integer-round** datapath (input and output
+> both fp16, rounding to an integral value). On a **narrow** output-rounding convert (e.g. fp32→fp16), the
+> `away` arm reads the `R` (round) bit and at the *exact* narrow half does **not** increment — it matches
+> RTZ — because the half-quantum sits below the bit the core treats as `R`. So drive `away` from FIROUND,
+> not from a narrow exact-half. Consistent with [Formal Semantics II](../semantics/group-semantics-ii.md) §2
+> (narrow exact-half correction) and [B13 sp-cvt](b13-sp-cvt.md) §5.2. `[HIGH/OBSERVED]`
+
 ### 5.3 Special values (proven by execution)
 
 ```c

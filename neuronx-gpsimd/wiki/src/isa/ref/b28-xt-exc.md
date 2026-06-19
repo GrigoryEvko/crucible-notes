@@ -129,9 +129,11 @@ and the `RFDO`/`RFR` debug-return + cache/timer/MMU remainder are [B29](b25-xt-c
 > **NOTE — the loop SRs are pulled in with the construct they serve.** `LBEG`/`LEND`/`LCOUNT` are
 > Xtensa special registers and would, by a generic SR sweep, fall to B27; they are placed here because
 > they *are* the zero-overhead-loop subsystem — the `LOOP*` ops write them and the fetch unit reads
-> them for the hardware back-edge. The `num_states` accessor (`@0x3b6670` → `mov $0x51,%eax; ret`)
-> reports **81** architectural state cells in this config; `LBEG`/`LEND`/`LCOUNT` are three of them.
-> `[HIGH/OBSERVED]`
+> them for the hardware back-edge. The `num_states` accessor (`libisa-core.so` `@0x3b6670` →
+> `mov $0x51,%eax; ret`) reports **81** architectural state cells in the core config; `LBEG`/`LEND`/`LCOUNT`
+> are three of them. Merging the `libisa-core-hw.so` module (its `num_states` → `mov $0x6,%eax` = 6) gives
+> **87 = 81 + 6** — the merged figure the Part-2 register/identity pages cite. Read **81** for the core
+> architectural-state count, **87** for the merged (incl. `libisa-core-hw`) total. `[HIGH/OBSERVED]`
 
 ---
 
@@ -707,8 +709,12 @@ All 51 representatives assembled + disassembled identically through the device t
 > **CORRECTION 2 — the four BR views are `BR2`/`BR4`/`BR8`/`BR16`** (widths 2/4/8/16, parent `BR`),
 > not `BR`/`BR2`/`BR4`/`BR8`. (§2.1) `[HIGH/OBSERVED — regfile_views[] raw read]`
 >
-> **CORRECTION 3 — `num_states` = 81** (`0x51`), not 87; `LBEG`/`LEND`/`LCOUNT` are three of the 81.
-> (§1) `[HIGH/OBSERVED — num_states accessor]`
+> **CORRECTION 3 — `num_states` = 81 (libisa-core) / 87 (merged).** `libisa-core.so` `num_states` returns
+> `0x51` = **81** (core architectural states); a prior note used 87 *as if it were the libisa-core value* —
+> that is wrong for libisa-core alone. The **87** is the *merged* total: `81 + 6` from the `libisa-core-hw.so`
+> module (`num_states → 0x6`). The Part-2 register/identity pages correctly use **87** (merged); this
+> exception page reads **81** for the core-config state count. `LBEG`/`LEND`/`LCOUNT` are three of the 81.
+> (§1) `[HIGH/OBSERVED — num_states accessor, both modules]`
 >
 > **DIVERGENCE — `CLAMPS` is counted at B29, not B28.** The task groups `CLAMPS` with `MIN`/`MAX`
 > (it is the saturating compare-select), so it is documented here (§3.12) as an adjacent cross-ref, but

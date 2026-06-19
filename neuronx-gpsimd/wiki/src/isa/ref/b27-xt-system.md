@@ -220,8 +220,9 @@ the windowed-state read (MS is shared with B28; the window primitives read
 
 > **CORRECTION (vs. a prior windowed-state note).** `num_states` returns
 > `0x51 = 81` (disassembled at `libisa-core.so` `num_states` ⇒ `mov $0x51,%eax;
-> ret`); the SR set maps onto these states plus the 6 hardware states in the
-> companion config. The AR register file is `regfiles[]` index 0 — 32-bit × 64
+> ret`) — read **81 (libisa-core) / 87 (merged incl. `libisa-core-hw.so`, whose
+> `num_states → 0x6` adds the 6 hardware states)**. The SR set maps onto these
+> states. The AR register file is `regfiles[]` index 0 — 32-bit × 64
 > physical / 16 visible, **windowed** — and `ENTRY`/`RETW`/`MOVSP` rotate it via
 > the `WindowBase`/`WindowStart` SRs. [HIGH/OBSERVED for `num_states`; AR-file
 > width CARRIED from the batch template.]

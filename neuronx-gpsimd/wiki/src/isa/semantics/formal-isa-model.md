@@ -206,8 +206,10 @@ funnel), `ivp_sem_csa_8_16_32_l0/l1/l2` (the reduce CSA tree).
 
 ### G8 — Control / state — the base-Xtensa per-op spine *(384 ops + 6 fences + 43 pseudo)*
 
-**Many small per-op blocks**: 118 per-SR `rsr`/`wsr`/`xsr` + 26 branch + the wide-branch (`.W15`
-ships / `.W18` folds out) + loops + regwin + extreg + virtualops + density + sync + debug — driven by
+**Many small per-op blocks**: 118 per-SR `rsr`/`wsr`/`xsr` + 26 branch + the wide-branch (the 24
+`xt_wide_branch` `_w15` branch forms ship and collapse into the plain `beq`/`bne`/… roster entries; the
+`.W18` alternate macro folds out — a CARRIED TIE-DB distinction, no `_w18`/`widebranch18` symbol exists in
+any config DLL) + loops + regwin + extreg + virtualops + density + sync + debug — driven by
 the `msem` interface (645 signal decls + 118 load/store reference functions).
 
 * **SR op** = `{SRAddr const + SRRead/SRWrite strobe + the exact state↔AR bitfield move + per-SR
@@ -328,7 +330,9 @@ Of the **1607-mnemonic** pre-fold TIE-DB roster:
 
 Of the **1534-mnemonic** shipped runtime roster: 1528 bit-precise / 6 categorical-fence / 0 no-body →
 **99.6%** of every shipped opcode has a bit-precise reference body. The `+73` TIE-DB-only delta =
-`{24 .W18 wide branches + 6 virtualops (have bodies, folded) + 43 no-body pseudo}`; the shipped 1534
+`{24 wide-branch macro forms + 6 virtualops (have bodies, folded) + 43 no-body pseudo}` (the wide-branch 24
+= the `xt_wide_branch` `_w15` branch set; the `.W18` source-macro naming is CARRIED, not in any binary —
+see [B30 §3.4](../ref/b30-appendix-p.md)); the shipped 1534
 is a **clean subset** of the 1607 (0 shipped-only). The fold reconciles both frames:
 `1607 − 1534 = 12642 − 12569 = 73` (encode placements: `num_encode_fns() = 0x3119 = 12569` shipped ↔
 12642 pre-fold `<OPCODEDEF>` placements). **No semantically-significant shipped op lacks a reference
