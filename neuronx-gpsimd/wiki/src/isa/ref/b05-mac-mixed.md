@@ -569,8 +569,9 @@ The classifier, applied to the `nm` `Opcode_ivp_mul*` mnemonic roster (first-mat
 `m = 123` rolls into the **1534** vector axis (it is a slice of the 1065 `ivp_`-prefix mnemonics);
 `p = 654` rolls into the **12569** placement cover, paired only with `1534` — **never** the pre-fold
 `12642` ([roll-up §6.2](template-and-partition.md#62-the-placement-roll-up-pairs--12569-never-12642)).
-Together with B04's `71 / 373`, the integer-MAC region contributes `65 + 123 = 188` mnemonics and
-`373 + 654` placements to the vector axis; the 24 FP MAC mnemonics roll into B17/B18, not here.
+Together with B04's `65 / 355` (signed `ivp_mul*`), the integer-MAC region contributes
+`65 + 123 = 188` mnemonics and `355 + 654 = 1009` placements to the vector axis; the 24 FP MAC
+mnemonics (`184` placements) roll into B17/B18, not here.
 `[HIGH/OBSERVED]`
 
 ---

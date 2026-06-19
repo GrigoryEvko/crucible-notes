@@ -35,8 +35,8 @@ binary / static-analysis derived only.
 
 | Fact | Value | Binary source |
 |---|---|---|
-| B04 mnemonics (signed-int MAC) | **71** | classifier over `nm libisa-core.so` `Opcode_*` roster ([§9](#9-the-b04--b05-partition-boundary)) |
-| B04 placements (`mnemonic × slot`) | **373** | summed `nm \| rg -c 'Opcode_<m>_Slot_*_encode'` over the 71 |
+| B04 signed-multiply roster | **71** = 65 signed `ivp_mul*` + 6 signed `dmul` | classifier over `nm libisa-core.so` `Opcode_*` roster ([§9](#9-the-b04--b05-partition-boundary)); `dmul` ∉ the 212 `ivp_mul*` base |
+| B04 placements (`mnemonic × slot`) | **373** = 355 (65 `ivp_mul*`) + 18 (6 `dmul`) | summed `nm \| rg -c 'Opcode_<m>_Slot_*_encode'` over the 71 |
 | Issue slot | **`s2 = Mul`** of every wide format + `N1` | `Opcode_*_Slot_<f>_s2_mul_encode` (8 placements typical) |
 | Accumulate target | **`wvec`** (idx 5, 1536-bit, 4 entries) | [register-files §3](../core/register-files.md#3-the-eight-register-files--the-authoritative-roster) |
 | Multiplicand source | **`vec`** (idx 2, 512-bit, 32 entries) | same |
@@ -180,8 +180,9 @@ This is exactly the Mul-slot roster from
 inner loop. The `packl` forms drop the `F0/F3/F11` placements (they need the ALU-style writeback
 path), landing in F1/F2/F7/N1 only — confirmed `nm` this pass. `[HIGH/OBSERVED]`
 
-The placement total over the 71 B04 mnemonics is **373** (summed `nm | rg -c` per mnemonic). With
-45 of the 71 carrying the canonical 8 Mul-slot placements and the F4-only quad / restricted-`packl`
+The placement total over the 71 B04 mnemonics is **373** (summed `nm | rg -c` per mnemonic): the 65
+signed `ivp_mul*` contribute **355**, the 6 signed `dmul` add **18**. With 30 of the 71 carrying the
+canonical 8 Mul-slot placements and the F4-only quad / multi-fanout `dxr8`/`qxr8` / restricted-`packl`
 forms carrying fewer, `373` is the contribution of B04 to the certified `12569` placement cover
 ([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary-this-pass)).
 `[HIGH/OBSERVED]`
@@ -444,18 +445,43 @@ source" property.
 ## 9. The B04 / B05 partition boundary
 
 B04 (this page) is **signed × signed** integer MAC, non-complex. Everything mixed-sign, unsigned, or
-complex is [B05](b05-mac-mixed.md). The split is mechanical and arithmetic-checked — **no double
-count**:
+complex is [B05](b05-mac-mixed.md). Floating-point multiply-add is **neither** — it is
+[B17](b17-spfma.md) (fp32) / [B18](b18-hp-fma.md) (fp16). The `ivp_mul*` opcode base partitions
+mechanically and `nm`-grounded — **no double count**:
 
 ```
-integer-vector MAC mnemonics (libisa-core, drop FP xf16/xf32 + scalar base) = 212
-  B04 (this page)  signed×signed, non-complex                                =  71
-  B05 (next page)  mixed-sign (us/su) + unsigned (uu) + complex (c/j)        = 141
-                                                                       sum   = 212   ✓
-  overlap (us/su/uu that are also complex)                                   =   0   ✓
+all ivp_mul* mnemonics (libisa-core)                                       = 212
+  FP MAC (xf16 / xf32 / sone)                       -> B17 / B18           =  24
+  ----------------------------------------------------------------------------------
+  integer-vector MAC (ivp_mul*)                                            = 188
+    B04   signed × signed, non-complex   (signed ivp_mul*)                 =  65
+    B05   mixed-sign (us/su) + unsigned (uu) + complex (c/j)               = 123
+                                                                     sum    = 188   ✓
+    overlap (a mnemonic in two integer buckets)                            =   0   ✓
 ```
 
-The classifier, applied to the `nm` `Opcode_*` mnemonic roster:
+B04's **65** signed `ivp_mul*` carry **355** placements (summed `nm | rg -c` per mnemonic). The
+B04 roster headline of **71 mnemonics / 373 placements** ([§2](#2-roster--the-71-signed-integer-mac-mnemonics),
+[§1](#1-key-facts)) is the wider **signed-multiply** roster: it adds the **6 signed `dmul`**
+double-quad forms (`ivp_dmulq2n8{,a}{,d,q}xr8`, [§2.3](#23-quad-replicate-signed-mac-mulq-dmulq-mul4t),
+**18** placements) to the 65 signed `ivp_mul*` (`65 + 6 = 71`; `355 + 18 = 373`). Those 6 `dmul`
+mnemonics are **not** part of the 212 `ivp_mul*` base (distinct `ivp_dmul*` prefix), so they do
+**not** appear in the 188-integer partition above — they are counted only in B04's signed-multiply
+roster, never double-counted against the `ivp_mul*` cover.
+
+> **CORRECTION — the old "drop FP → 212; B04 71 + B05 141 = 212 ✓" closure was arithmetically
+> broken and is replaced by the `nm`-grounded `ivp_mul*` partition above.** The defect was twofold.
+> (1) The figure **212 already includes the 24 FP MAC forms** (`*xf16`/`*xf32`/`*sone`); dropping
+> FP yields **188**, not 212 — so labelling 212 as "FP-dropped" was self-contradictory. (2)
+> **`71 + 141` cannot partition the `ivp_mul*` integer base**: the binary split is `65 + 123 = 188`,
+> and the old `141` was the loose `212 − 71` remainder that swept the 24 FP forms into B05 (see
+> [B05 §9 CORRECTION](b05-mac-mixed.md#9-the-b04--b05--fp-partition-boundary)). The B04 roster total
+> of **71** is real, but its basis is **65 signed `ivp_mul*` + 6 signed `dmul`** (the `dmul` ∉ the
+> 212 `ivp_mul*` base), `355 + 18 = 373` placements — not a `212 − 141` subtraction. This pins the
+> binary-true frame used by [B05](b05-mac-mixed.md), [B17](b17-spfma.md), [B18](b18-hp-fma.md),
+> [B30](b30-appendix-p.md), and the coverage roll-up. `[HIGH/OBSERVED]`
+
+The classifier, applied to the `nm` `Opcode_ivp_mul*` mnemonic roster:
 
 | token in mnemonic | meaning | batch |
 |---|---|---|
@@ -466,7 +492,7 @@ The classifier, applied to the `nm` `Opcode_*` mnemonic roster:
 | `su` (`mulsu*`) | signed × unsigned | B05 |
 | `uu` (`muluu*`) | unsigned × unsigned | B05 |
 | `c` / `j` lane suffix (`*nx16c`, `*nx16j`, `*_2x32c`) | complex / conjugate | B05 |
-| `xf16` / `xf32` / `_s` / `_h` scalar-FP | floating-point MAC | B17 / B18 |
+| `xf16` / `xf32` / `sone` (floating-point lane) | floating-point MAC | B17 / B18 |
 
 > **GOTCHA — the `s` ambiguity is the single trap in this partition.** `muls` (one `s`) =
 > multiply-**subtract**, signed, **B04**. `mulsu` (the `su` pair) = signed×unsigned, **B05**. `mulus`
@@ -483,11 +509,17 @@ The classifier, applied to the `nm` `Opcode_*` mnemonic roster:
 
 Each claim re-derived against the binary this pass; nothing taken on a report's word.
 
-1. **"71 signed-int MAC mnemonics, 373 placements."** Re-derived: integer-vector MAC roster (drop FP
-   + scalar) = 212; the `us`/`su`/`uu`/`c`/`j` classifier removes 141, leaving **71**; summing
-   `nm | rg -c 'Opcode_<m>_Slot_*_encode'` over the 71 = **373**. The 71+141=212 partition closes
-   with **0** overlap. *Challenge:* could `muls` (subtract) have been wrongly counted as a sign? No —
-   the executed leaf `muls_24_24_8_8` sign-extends both operands; it is signed×signed.
+1. **"71 signed-multiply MAC mnemonics, 373 placements (= 65 signed `ivp_mul*` + 6 signed `dmul`)."**
+   Re-derived `nm`-first: `nm libisa-core.so | rg -o 'Opcode_(ivp_mul…)…'` = **212** distinct
+   `ivp_mul*`; the FP filter (`xf16`/`xf32`/`sone`) removes **24** → **188** integer; the
+   `us`/`su`/`uu`/`c`/`j` classifier selects **123** (B05), leaving **65** signed `ivp_mul*` for B04
+   (`188 = 65 + 123`, **0** overlap). Summing `nm | rg -c 'Opcode_<m>_Slot_*_encode'` over the 65 =
+   **355**. B04's roster headline adds the **6 signed `dmul`** double-quad forms (**18** placements,
+   `dmul ∉` the 212 `ivp_mul*` base), giving the **71 / 373** roster total (`65 + 6`; `355 + 18`).
+   *Challenge:* could `muls` (subtract) have been wrongly counted as a sign? No — the executed leaf
+   `muls_24_24_8_8` sign-extends both operands; it is signed×signed. *Challenge:* does folding the 6
+   `dmul` into "71" double-count against the 188? No — `dmul` is a distinct mnemonic prefix outside
+   the 212 `ivp_mul*` cover, so the 188-integer partition (§9) sees only the 65 signed `ivp_mul*`.
    `[HIGH/OBSERVED]`
 
 2. **"Accumulate wraps mod 2^(3L), no saturation."** *Challenge:* maybe the leaf saturates and the
@@ -522,7 +554,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 
 | Claim | Confidence | Provenance |
 |---|---|---|
-| 71 signed-int MAC mnemonics; 373 placements; B04+B05=212, overlap 0 | `[HIGH/OBSERVED]` | `nm libisa-core.so` `Opcode_*` roster + classifier + per-mnemonic `rg -c` |
+| 71 signed-multiply roster (65 signed `ivp_mul*` + 6 signed `dmul`); 373 placements (355 + 18); `ivp_mul*` integer = 65 + 123 (B05) = 188, overlap 0 | `[HIGH/OBSERVED]` | `nm libisa-core.so` `Opcode_*` roster + FP/sign classifier + per-mnemonic `rg -c` |
 | Every signed MAC is a `s2_mul`-slot opcode (8 placements typical) | `[HIGH/OBSERVED]` | `Opcode_*_Slot_<f>_s2_mul_encode` symtab |
 | Opcode-sel templates (byte-exact `F0_S2_Mul`/`F4` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks this pass |
 | Accumulate is a distinct opcode/iclass (no global bit) | `[HIGH/OBSERVED]` | template deltas non-uniform across lane widths |
