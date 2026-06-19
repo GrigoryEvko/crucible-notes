@@ -97,7 +97,7 @@ constants emitted by `_init_translate_ctx` (`movi a5,7; slli a5,a5,24` →
 > `0x80000000` as an offset-bookkeeping *proxy* base; it numerically coincides
 > with the SBUF window NX base but is **never dereferenced through it** (the
 > allocator subtracts it back). Do not conflate the allocator proxy anchor with
-> the real SBUF HW window. (CARRIED from `neuron-translate-windows.md` / the xmem
+> the real SBUF HW window. (CARRIED from [neuron-translate-windows.md](neuron-translate-windows.md) / the xmem
 > allocator page.)
 
 ### As a C-style memory-map header

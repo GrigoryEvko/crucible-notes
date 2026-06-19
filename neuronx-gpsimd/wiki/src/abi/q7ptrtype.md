@@ -224,18 +224,21 @@ DW_TAG_subprogram  _Z16neuron_translatePvy  "neuron_translate"
 
 The body is a **window-table walk** over the `_translation_ctx` (entries at
 context offsets +16, +48, +80, +112, +144 — five 32-byte window descriptors,
-consistent with the 168-byte `_translation_ctx_t`). Each iteration masks/compares
-the SoC `ptr` against a window's `{base, mask}` (`and`/`xor`/`or` then
-`beqz` on match) and, on a hit, adds the windowed offset:
+consistent with the 168-byte `_translation_ctx_t`). Each iteration masks the
+incoming SoC `addr` and compares it against a window's masked **tag** `ptr`
+(`and`/`xor`/`or` then `beqz` on match) — i.e. the predicate is
+`(addr & mask) == ptr`, with `ptr` the comparison tag (never an addend). On a
+hit it returns `window + (addr & ~mask)`, where `window` (record `+8`, a
+`uint32_t`) is the NX-local base and `~mask` selects the in-window offset:
 
 ```
 00000120 <_Z16neuron_translatePvy>:
  120:  entry a1, 32
- 123:  { l32i a2,a2,16 ; l32i a6,a2,20 ; mov.a a3,a2 }   ; load window[0] base/mask, ctx in a3
- 133:  { l32i a7,a3,0  ; l32i a8,a3,4 }                  ; mask lo/hi
- 13b:  and a6,a6,a5 ; and a9,a2,a4                       ; (ptr & mask)
- 143:  xor a7,a9,a7 ; xor a15,a6,a8                      ; compare to base
- 14b:  or  a7,a7,a15
+ 123:  { l32i a2,a2,16 ; l32i a6,a2,20 ; mov.a a3,a2 }   ; load records[0].mask lo/hi (ctx+16), ctx in a3
+ 133:  { l32i a7,a3,0  ; l32i a8,a3,4 }                  ; records[0].ptr (tag) lo/hi (ctx+0)
+ 13b:  and a6,a6,a5 ; and a9,a2,a4                       ; (addr & mask)
+ 143:  xor a7,a9,a7 ; xor a15,a6,a8                      ; compare to tag ptr
+ 14b:  or  a7,a7,a15                                     ; ==0  <=>  (addr & mask) == ptr
  150:  beqz a7, 204 <...+0xe4>                           ; match -> resolve  (reloc .text+0x204)
  153:  ... window[1] at +48/+32 ...  movi.n a6,1  beqz ... 0x204
  17b:  ... window[2] at +80/+64 ...  movi a6,2    beqz ... 0x204
@@ -243,11 +246,11 @@ the SoC `ptr` against a window's `{base, mask}` (`and`/`xor`/`or` then
  1d7:  ... window[4] at +144/+128 .. movi a6,4    bnez ... 0x215
 00000204 <...+0xe4>:                                     ; matched window 'a6' -> compute NX addr
  204:  slli a5,a6,5      ; entry = a6 * 32
- 207:  add.n a3,a3,a5    ; &ctx.window[a6]
+ 207:  add.n a3,a3,a5    ; &ctx.records[a6]
  209:  and a2,a4,a2
- 20c:  l32i.n a3,a3,8    ; window NX-local base
- 20e:  xor a2,a4,a2
- 211:  add.n a2,a3,a2    ; result = base + (ptr & ~mask)
+ 20c:  l32i.n a3,a3,8    ; a3 = records[a6].window (NX-local base, +8)
+ 20e:  xor a2,a4,a2      ; a2 = addr & ~mask
+ 211:  add.n a2,a3,a2    ; result = window + (addr & ~mask)
  213:  retw.n            ; return void* (32-bit NX address)
 ```
 
@@ -256,8 +259,18 @@ mapping facility: `data_scratch_map`, `_sbuf_window`,
 `extended_isa::sdk::hbm_scratch` (`_ZN12extended_isa3sdk11hbm_scratchE`), and the
 `_ctx` global. The miss path (`+0xf5` / `0x215`) allocates a *new* scratch window
 (`l8ui a2,a3,160` reads a free-slot index, programs `hbm_scratch`, issues `memw`
-barriers). This is the full behaviour `neuron-translate-windows.md` documents;
+barriers). This is the full behaviour [neuron-translate-windows.md](neuron-translate-windows.md) documents;
 here it is cited only as the translation primitive that `operator[]` invokes.
+
+> **CORRECTION — the window record is `{ptr@0, window@8, mask@16, reg_location@24}`,
+> not `{base, mask}`.** An earlier framing of this disassembly called the `+0`
+> field a "base" and gave the result as `base + (ptr & ~mask)`. The DWARF-pinned
+> layout (see [neuron-translate-windows.md](neuron-translate-windows.md) §2) is a
+> *masked-tag compare*: `ptr` (`+0`) is the comparison **tag** (the value
+> `(addr & mask)` must equal, never an addend), and the NX-local base is the
+> `uint32_t` **`window`** field (`+8`). The returned address is therefore
+> **`window + (addr & ~mask)`** (the `l32i.n a3,a3,8` at `0x20c` loads `window`).
+> `[HIGH × OBSERVED]`
 
 > The lazy model in one sentence: **`Q7PtrType` stores the HBM device address;
 > translation to a CPU-dereferenceable NX-local address happens only at access

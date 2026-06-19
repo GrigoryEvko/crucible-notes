@@ -22,7 +22,7 @@ facts. Source report **DX-RT-11**.
 > Tensilica `xtensa-elf-objdump`/`xtensa-elf-nm` configured for
 > `XTENSA_CORE=ncore2gp`. Addresses are **section-relative file offsets inside
 > the archive member**; the final link assigns absolute Q7 virtual addresses
-> (see `q7-elf-vaddr.md`). Member→symbol layout is the same as the runtime sees
+> (see [q7-elf-vaddr.md](q7-elf-vaddr.md)). Member→symbol layout is the same as the runtime sees
 > after `ar x`.
 
 The library has exactly ten members; the contract is spread across them:
@@ -98,7 +98,7 @@ So the kernel object **must define** exactly three symbols (they are
 > *(HIGH / OBSERVED: `R_XTENSA_SLOT0_OP _Z12get_func_cntv` @ 0x8c6.)*
 
 The codegen that emits this trio (a `get_func_*` table built from the user's
-`__attribute__`-tagged kernels) is described in `build-custom-op-codegen.md`.
+`__attribute__`-tagged kernels) is described in [build-custom-op-codegen.md](build-custom-op-codegen.md).
 
 ### 1.2 The boot path: `_start` → `entry_func`
 
@@ -171,11 +171,11 @@ So the two shapes are:
 > instead of Xtensa register windows can replace this whole file with a simple
 > `setjmp`/`longjmp`-style swap, but **must** preserve `LBEG/LEND/LCOUNT` and
 > `ISL` across the switch or hardware loop and stack-limit state will be
-> corrupted. See `stack-switch.md`.
+> corrupted. See [stack-switch.md](stack-switch.md).
 
 `STACK_SIZE` defaults to **4196 bytes** and is bounded by
 `MAX_STACK_SIZE = 0x400000` (4 MiB); the default is deliberately tiny so the
-common path stays in place. *(HIGH / CARRIED: `stack-switch.md`.)*
+common path stays in place. *(HIGH / CARRIED: [stack-switch.md](stack-switch.md).)*
 
 ---
 
@@ -202,7 +202,7 @@ makes. It:
 
 The tensor argument record is 48 bytes. This layout is canonical across Part 7;
 it is reproduced here as the wire contract a host serializer must emit and a
-kernel `next` routine must parse. *(HIGH / CARRIED: `customop-marshalling.md`,
+kernel `next` routine must parse. *(HIGH / CARRIED: [customop-marshalling.md](customop-marshalling.md),
 and OBSERVED below via `ArgParser::next_ucode_arg<UTensor>`.)*
 
 | Offset | Size | Field | Values / meaning |
@@ -283,7 +283,7 @@ each `bnei a5, <code>`):
 
 *(HIGH / OBSERVED: `wrapper_api.o:.text._ZN7UTensor4copy…:0x28..0x82`.)* The
 reverse direction (ScalarType→ISA) appears at `+0xa0..+0x12c` of the same
-function. See `scalartype-dtype-rosetta.md` for the full table and the inverse.
+function. See [scalartype-dtype-rosetta.md](scalartype-dtype-rosetta.md) for the full table and the inverse.
 
 > **CORRECTION.** This is an **inline** ladder, not a table lookup — searching
 > for an `isa_to_torch_dtype` symbol returns nothing. Reimplementers must port
@@ -323,7 +323,7 @@ shape (records at ctx `+0`,`+32`,`+64`,`+96`,`+128`; each tests
 ```
 
 *(HIGH / OBSERVED.)* The canonical struct (carried from
-`neuron-translate-windows.md`):
+[neuron-translate-windows.md](neuron-translate-windows.md)):
 
 ```c
 // _translation_ctx_t : 168 bytes
@@ -381,7 +381,7 @@ method initialized to **2 = DMA**:
 *(HIGH / OBSERVED: `R_XTENSA_32` relocs at `.data 0x200/0x204/0x208`; raw bytes
 at `0x20c` = `02 00 00 00`.)* All three backends funnel through
 `memcpy_data_transfer_impl(char*,uint64_t,bool,uint32_t,bool)`
-(`_Z25memcpy_data_transfer_implPcybjb`). See `data-transfer-backends.md`.
+(`_Z25memcpy_data_transfer_implPcybjb`). See [data-transfer-backends.md](data-transfer-backends.md).
 
 > **GOTCHA — the dataram-staging window is hard-asserted.** `data_transfer.o`
 > carries the `.rodata` assert string
@@ -413,7 +413,7 @@ core's own address space). Both round the size up to a 64-byte alignment and run
 the `xmem_heap_alloc` heap (e.g. `neuron_dataram_allocate` @ `0x1d0` uses a
 default `align=64` in `a12`, calls `xmem_heap_alloc`, then `s32i a10,[a3]` /
 `movi a2,-1` for the fail path). *(HIGH / OBSERVED & CARRIED:
-`device-allocators.md`.)*
+[device-allocators.md](device-allocators.md).)*
 
 ### 3.4 SPMD identity + libc shims
 
@@ -428,7 +428,7 @@ default `align=64` in `a12`, calls `xmem_heap_alloc`, then `s32i a10,[a3]` /
 > A reimplementation targeting a different POOL-core count must change this
 > constant *and* the per-core LSP base spacing in Part 4 together — they encode
 > the same fan-out. *(HIGH / OBSERVED.)* SPMD launch semantics:
-> `multicore-spmd.md`.
+> [multicore-spmd.md](multicore-spmd.md).
 
 ---
 
@@ -444,7 +444,7 @@ support routines expose.
 | Local Q7 address space | 32-bit flat | `void*` | direct loads/stores | HIGH / OBSERVED (Q7 is a 32-bit core) |
 | HBM tensor windows | `(addr & mask) == ptr → window + (addr & ~mask)` | 64-bit HBM ↔ 32-bit local | `neuron_translate` over `_ctx` (5 records) | HIGH / OBSERVED |
 | dataram / TCM staging | **`[0x80000, 0x90000)`** | 64 KiB | `neuron_dataram_allocate` / `tcm_malloc`; data-transfer staging | HIGH / OBSERVED (assert string) |
-| Per-core LSP base | **`0x84000000 + i · 0x200000`** (i = `get_cpu_id()`) | 2 MiB/core stride | local-scratchpad (LSP) ELF mapping | MED / CARRIED (`lsp-elf.md`) |
+| Per-core LSP base | **`0x84000000 + i · 0x200000`** (i = `get_cpu_id()`) | 2 MiB/core stride | local-scratchpad (LSP) ELF mapping | MED / CARRIED ([lsp-elf.md](lsp-elf.md)) |
 | HBM scratch stack | `neuron_hbm_allocate`(≤ 4 MiB) then `neuron_translate` | 64-bit | `allocate_hbm_stack` / stack-switch | HIGH / OBSERVED |
 | `extended_isa::sdk` scratch | `data_scratch`, `hbm_scratch` globals + sizes | — | firmware-provided scratch | HIGH / OBSERVED (`start_exit.o:.bss`) |
 
@@ -465,8 +465,8 @@ The `extended_isa::sdk` scratch globals a kernel inherits (all `B`-symbols in
 > its own address space (SPMD), not by an explicit per-core table inside
 > `translation.o`. The per-core LSP base `0x84000000 + i·0x200000` is the
 > address-space convention the firmware imposes, not a value computed inside the
-> custom-op library. *(MED / CARRIED: `neuron-translate-windows.md`,
-> `lsp-elf.md`; the LSP base is a firmware constant, not in this binary.)*
+> custom-op library. *(MED / CARRIED: [neuron-translate-windows.md](neuron-translate-windows.md),
+> [lsp-elf.md](lsp-elf.md); the LSP base is a firmware constant, not in this binary.)*
 
 > **GOTCHA — never dereference a 64-bit HBM address directly.** A `uint64_t`
 > SoC/HBM address (e.g. the `0x18` storage-union of an `ARG_TENSOR` whose
@@ -556,25 +556,25 @@ A kernel `.o` is dispatchable iff **all** of the following hold:
 5. Uses only `ISA dtype` codes in the §2.4 map (anything else aborts via the
    inline `_Assert`).
 6. Targets `XTENSA_CORE=ncore2gp`, ELF32-LE; the final link resolves
-   section-relative offsets to Q7 virtual addresses (`q7-elf-vaddr.md`).
+   section-relative offsets to Q7 virtual addresses ([q7-elf-vaddr.md](q7-elf-vaddr.md)).
 
 ---
 
 ## Cross-references
 
-* `customop-marshalling.md` — host-side serialization of the argument stream and
+* [customop-marshalling.md](customop-marshalling.md) — host-side serialization of the argument stream and
   the `ARG_TENSOR` wire format.
-* `neuron-translate-windows.md` — full derivation of the 5-record translation
+* [neuron-translate-windows.md](neuron-translate-windows.md) — full derivation of the 5-record translation
   ctx and window-match algorithm.
-* `device-allocators.md` — `neuron_hbm_*` / `neuron_dataram_*` heap internals and
+* [device-allocators.md](device-allocators.md) — `neuron_hbm_*` / `neuron_dataram_*` heap internals and
   the `xmem_heap` backing store.
-* `data-transfer-backends.md` — the C / vector / DMA `neuron_memcpy` backends and
+* [data-transfer-backends.md](data-transfer-backends.md) — the C / vector / DMA `neuron_memcpy` backends and
   the dataram staging window.
-* `stack-switch.md` — `switch_stack_or_call_wrapper`, `STACK_SIZE`/`MAX_STACK_SIZE`,
+* [stack-switch.md](stack-switch.md) — `switch_stack_or_call_wrapper`, `STACK_SIZE`/`MAX_STACK_SIZE`,
   and the `saveContext`/`switchBack` register-window machinery.
-* `scalartype-dtype-rosetta.md` — the complete bidirectional dtype map.
-* `lsp-elf.md` — the per-core LSP base `0x84000000 + i·0x200000` and image layout.
-* `q7-elf-vaddr.md` — how section-relative offsets become Q7 virtual addresses.
+* [scalartype-dtype-rosetta.md](scalartype-dtype-rosetta.md) — the complete bidirectional dtype map.
+* [lsp-elf.md](lsp-elf.md) — the per-core LSP base `0x84000000 + i·0x200000` and image layout.
+* [q7-elf-vaddr.md](q7-elf-vaddr.md) — how section-relative offsets become Q7 virtual addresses.
 * `../orientation/customop-end-to-end.md` — the narrative walk-through this page
   formalizes.
 
