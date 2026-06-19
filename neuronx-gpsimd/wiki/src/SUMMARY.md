@@ -77,28 +77,28 @@
 - [Formal Semantics — Coverage Ledger](isa/semantics/coverage-ledger.md)
 - [The Complete Formal ISA-Semantics Model](isa/semantics/formal-isa-model.md)
 
+# Part 4 — Microarchitecture & Timing (14)
+- [Pipeline Timing Model](uarch/pipeline-timing.md)
+- [FLIX Co-Issue Matrix + Cache/Local-Memory Timing](uarch/co-issue-matrix.md)
+- [Register-File Port Model + Bypass Network](uarch/regfile-ports.md)
+- [Boot / Reset Sequence + Startup Config](uarch/boot-reset.md)
+- [Local-Memory / System-Bus / LSU Model](uarch/lsu-memory.md)
+- [Atomic + Memory-Ordering Model](uarch/atomics-ordering.md)
+- [The SIMD Compute-Datapath](uarch/simd-datapath.md)
+- [The VFPU / IEEE-754 Exception Model](uarch/vfpu-ieee.md)
+- [Activation + Transcendental Table Engine](uarch/activation-transcendental-tables.md)
+- [The NCFW Scalar-LX Management Core](uarch/ncfw-lx-core.md)
+- [Clock / Reset / Power Domains](uarch/clock-reset-power.md)
+- [NX1.1.4 Revision Markers](uarch/rev-markers.md)
+- [Microarchitecture Synthesis](uarch/microarch-synthesis.md)
+- [Per-Engine Firmware Depth (PE/SP/TOP_SP/ACT)](uarch/per-engine-depth.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 4 — Microarchitecture & Timing (14)
-- uarch/pipeline-timing.md                    — Pipeline Timing Model
-- uarch/co-issue-matrix.md                    — FLIX Co-Issue Matrix + Cache/Local-Memory Timing
-- uarch/regfile-ports.md                      — Register-File Port Model + Bypass Network
-- uarch/boot-reset.md                         — Boot / Reset Sequence + Startup Config
-- uarch/lsu-memory.md                         — Local-Memory / System-Bus / LSU Model
-- uarch/atomics-ordering.md                   — Atomic + Memory-Ordering Model
-- uarch/simd-datapath.md                      — The SIMD Compute-Datapath
-- uarch/vfpu-ieee.md                          — The VFPU / IEEE-754 Exception Model
-- uarch/activation-transcendental-tables.md   — Activation + Transcendental Table Engine
-- uarch/ncfw-lx-core.md                        — The NCFW Scalar-LX Management Core
-- uarch/clock-reset-power.md                   — Clock / Reset / Power Domains
-- uarch/rev-markers.md                         — NX1.1.4 Revision Markers
-- uarch/microarch-synthesis.md                 — Microarchitecture Synthesis
-- uarch/per-engine-depth.md                    — Per-Engine Firmware Depth (PE/SP/TOP_SP/ACT)
 
 # Part 5 — Device Firmware & Kernel Catalog (85)
 ## SEQ front-end (13)
