@@ -240,42 +240,42 @@
 - [End-to-End ABI Synthesis](abi/abi-synthesis.md)
 - [The Custom-Op Programming Model (overview)](abi/programming-model.md)
 
+# Part 8 — Host Runtime (28)
+- [The libnrt Surface Map (GPSIMD lens)](runtime/libnrt-surface.md)
+- [The nrtucode Subsystem + Device Bring-Up](runtime/nrtucode-bringup.md)
+- [The aws_hal_q7_* HAL](runtime/aws-hal-q7.md)
+- [HW-Decode CAM-Table Programming](runtime/hw-decode-cam-programming.md)
+- [Execute-Time GPSIMD Custom-Op Dispatch](runtime/execute-time-dispatch.md)
+- [The 8-Core SPMD Execution Model + Teardown](runtime/spmd-teardown.md)
+- [Host Model Lifecycle + Error-Handling Model](runtime/lifecycle-error-model.md)
+- [Multi-Model / Context Tree + dmem Allocator](runtime/multimodel-context-dmem.md)
+- [The libnrt Runtime Synthesis](runtime/runtime-synthesis.md)
+- [The nrt Host API Surface Reference](runtime/public-api-table.md)
+- [Public-vs-Internal API Partition + Versioned Symbols](runtime/public-vs-internal-partition.md)
+- [The UCODE Relocation / Prelink Engine (runtime consumer)](runtime/ucode-relocation-consumer.md)
+- [Host-Runtime Concurrency Primitives](runtime/concurrency-primitives.md)
+- [Host↔Device Descriptor Handoff (runtime side)](runtime/host-device-descriptor-handoff.md)
+- [Crypto / SQLite / Codec Reachability Cuts](runtime/reachability-cuts.md)
+- [The nrtucode Object Model Graph](runtime/object-model-graph.md)
+- [Runtime End-to-End Call-Graph Spine](runtime/callgraph-spine.md)
+- [nrtucode_context_t + Lifecycle](runtime/nrtucode-context.md)
+- [nrtucode_core_t Struct + Introspection/Boot](runtime/nrtucode-core.md)
+- [nrtucode Logging + Leak-Tracking Allocator](runtime/nrtucode-logging-allocator.md)
+- [The DGE Host-Private API (priority/mailbox/PC-bounds)](runtime/dge-host-api.md)
+- [nrtucode_ll_create / destroy / name / size](runtime/nrtucode-ll-create.md)
+- [Opcode-Set → Library Resolver](runtime/opcode-to-lib-resolver.md)
+- [ll Load / Unload Sequence Generators](runtime/nrtucode-ll-load-unload.md)
+- [Opset Create / Add-Instruction / Query](runtime/nrtucode-opset.md)
+- [Version + Ext-ISA Getters](runtime/version-extisa-getters.md)
+- [Image + HW-Decode Resolvers](runtime/image-hwdecode-resolvers.md)
+- [The Host Prelinker — UCPL / Segment Loader / R_XTENSA / Staging](runtime/prelinker-ucpl.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 8 — Host Runtime (28)
-- runtime/libnrt-surface.md                   — The libnrt Surface Map (GPSIMD lens)
-- runtime/nrtucode-bringup.md                 — The nrtucode Subsystem + Device Bring-Up
-- runtime/aws-hal-q7.md                        — The aws_hal_q7_* HAL
-- runtime/hw-decode-cam-programming.md         — HW-Decode CAM-Table Programming
-- runtime/execute-time-dispatch.md             — Execute-Time GPSIMD Custom-Op Dispatch
-- runtime/spmd-teardown.md                     — The 8-Core SPMD Execution Model + Teardown
-- runtime/lifecycle-error-model.md             — Host Model Lifecycle + Error-Handling Model
-- runtime/multimodel-context-dmem.md           — Multi-Model / Context Tree + dmem Allocator
-- runtime/runtime-synthesis.md                 — The libnrt Runtime Synthesis
-- runtime/public-api-table.md                  — The nrt Host API Surface Reference
-- runtime/public-vs-internal-partition.md      — Public-vs-Internal API Partition + Versioned Symbols
-- runtime/ucode-relocation-consumer.md         — The UCODE Relocation / Prelink Engine (runtime consumer)
-- runtime/concurrency-primitives.md            — Host-Runtime Concurrency Primitives
-- runtime/host-device-descriptor-handoff.md    — Host↔Device Descriptor Handoff (runtime side)
-- runtime/reachability-cuts.md                 — Crypto / SQLite / Codec Reachability Cuts
-- runtime/object-model-graph.md                — The nrtucode Object Model Graph
-- runtime/callgraph-spine.md                   — Runtime End-to-End Call-Graph Spine
-- runtime/nrtucode-context.md                  — nrtucode_context_t + Lifecycle
-- runtime/nrtucode-core.md                     — nrtucode_core_t Struct + Introspection/Boot
-- runtime/nrtucode-logging-allocator.md        — nrtucode Logging + Leak-Tracking Allocator
-- runtime/dge-host-api.md                      — The DGE Host-Private API (priority/mailbox/PC-bounds)
-- runtime/nrtucode-ll-create.md                — nrtucode_ll_create / destroy / name / size
-- runtime/opcode-to-lib-resolver.md            — Opcode-Set → Library Resolver
-- runtime/nrtucode-ll-load-unload.md           — ll Load / Unload Sequence Generators
-- runtime/nrtucode-opset.md                    — Opset Create / Add-Instruction / Query
-- runtime/version-extisa-getters.md            — Version + Ext-ISA Getters
-- runtime/image-hwdecode-resolvers.md          — Image + HW-Decode Resolvers
-- runtime/prelinker-ucpl.md                    — The Host Prelinker — UCPL / Segment Loader / R_XTENSA / Staging
 
 # Part 9 — DMA / Descriptors / Memory (12)
 - dma/descriptor-model.md               — The DMA / Descriptor / Memory Subsystem
