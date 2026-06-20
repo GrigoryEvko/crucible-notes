@@ -84,6 +84,7 @@
 # GPU Architecture Targets
 
 - [SM Architecture Map](./targets/index.md)
+- [SM Version Codes & Scheduler Generations](./targets/version-codes.md)
 - [Turing & Ampere (SM 75–88)](./targets/turing-ampere.md)
 - [Ada & Hopper (SM 89–90a)](./targets/ada-hopper.md)
 - [Blackwell (SM 100–121)](./targets/blackwell.md)
@@ -125,6 +126,7 @@
 - [PTX Instruction Table](./reference/ptx-instructions.md)
 - [PTX Lexer Tokens](./reference/ptx-lexer-tokens.md)
 - [Operand-Type Signatures & Attributes](./reference/operand-types-attributes.md)
+- [Instruction Legality Matrix](./reference/instruction-legality.md)
 - [EIATTR Attribute Catalog](./reference/eiattr.md)
 - [Extracted .rodata Tables (45 JSON)](./reference/extracted-tables.md)
 - [Diagnostics & Messages (506)](./reference/diagnostics.md)
