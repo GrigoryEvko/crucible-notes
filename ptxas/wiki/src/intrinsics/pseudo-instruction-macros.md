@@ -91,6 +91,33 @@ The numeric dictionary is the lookup from a chosen builtin's hash to its expansi
 handler, keeping the (large) set of typed leaf expansions addressable without
 shipping their names.
 
+## Where the 1,080 prototypes come from (473 + 607)
+
+The 473 expansion handlers should not be confused with the **1,080-case** dispatch in
+the [Prototype Emitter](./prototype-emitter.md) — they are two different stages:
+
+- **Declaration** — `sub_5FF700` is a 1,080-case dispatch that emits the
+  `.weak .func` / `.FORCE_INLINE .func` PTX *prototype string* for a `__cuda_*` helper,
+  indexed by a dense id (0–1,079) assigned by the body-template registrar `sub_5D7430`.
+  Every helper referenced by emitted PTX needs its declaration appended before SASS
+  lowering — e.g. `case 1078` emits the prototype for `__cuda_sm20_div_s16`. This is the
+  full helper set: 1,080 = the entries in `embedded_ptx_intrinsics.json`.
+- **Body** — the 473 numeric (Adler-32-keyed) handlers here provide a macro-pool PTX
+  *expansion* for a helper. Only a subset of the 1,080 have one.
+
+The 1,080 declared helpers decompose exactly by where their body lives:
+
+| Body source | Count | Where |
+|---|---|---|
+| macro-pool PTX expansion | 473 | `sub_5D4190` numeric dict (Adler-32-keyed) |
+| precompiled SASS function stub | 607 | the high-entropy `.rodata` stub region (607-entry offset index) |
+| **total declared** | **1,080** | `sub_5FF700` prototype emitter / `embedded_ptx_intrinsics.json` |
+
+All 473 numeric-handler names are a strict subset of the 1,080 (verified: 473 ∩ 1,080 =
+473). So a case index like 1078 belongs to the *declaration* table — which spans every
+helper — not the 473-entry *expansion* registrar; the two are different stages with
+different sizes.
+
 ## Template anatomy
 
 Every builtin — numeric and named — expands a brace-delimited template stored in the
