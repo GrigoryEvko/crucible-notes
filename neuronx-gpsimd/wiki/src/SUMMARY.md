@@ -341,76 +341,72 @@
 - [The NKI Frontend + Reference Simulator](compiler/nki-frontend.md)
 - [Compiler Cross-Reference to the neuronx-cc Wiki](compiler/crossref-neuronxcc.md)
 
+# Part 13 — Control Plane: CSR / Address / Interrupt / Security (58)
+- [Cayman SoC Top-Level Address Map (master)](control/address/soc-master-map.md)
+- [SoC Physical-Address Bitfield Layout (64-die mesh)](control/address/addr-decode.md)
+- [Host-Side PCIe BAR Address Map](control/address/pcie-bars.md)
+- [PREPROC / Compute-Cluster (CC) Address Subtree](control/address/preproc-cc.md)
+- [TPB_0 POOL-Engine Address Subtree (8-core)](control/address/tpb-pool.md)
+- [TPB Event/Semaphore Regions (EVT_SEM)](control/address/evt-sem-regions.md)
+- [The Block → Schema Cross-Reference](control/address/block-schema-xref.md)
+- [al_address_map_db.pkl — Load + Schema + Top Blocks](control/address/pkl-db.md)
+- [pkl TPB-Engine Subtree](control/address/pkl-tpb-subtree.md)
+- [pkl DMA-Engine Subtree](control/address/pkl-dma-subtree.md)
+- [pkl HBM / Memory Subtree](control/address/pkl-hbm-subtree.md)
+- [pkl PCIe / D2D / Fabric Subtree](control/address/pkl-pcie-d2d-fabric.md)
+- [pkl INTC / SPROT Security Subtree](control/address/pkl-intc-sprot-security.md)
+- [pkl TOP_SP / Sync / MISC Subtree + Coverage Tally](control/address/pkl-topsp-coverage.md)
+- [The SoC ↔ Q7 Translation Windows](control/address/soc-q7-translation-windows.md)
+- [The LSP SRAM Window Map (build-time view)](control/address/lsp-sram-window-map.md)
+- [The Unified GPSIMD / Cayman SoC Memory Map](control/address/unified-soc-memory-map.md)
+- [CSR — tpb_xt_local_reg](control/csr/tpb-xt-local-reg.md)
+- [CSR — Xtensa Q7 Debug/Trace/PMU/OCD](control/csr/xtensa-q7.md)
+- [CSR — Xtensa NX (NX-vs-Q7 diff)](control/csr/xtensa-nx.md)
+- [CSR — tpb (top-level cluster control)](control/csr/tpb.md)
+- [CSR — PE Array Sequencer (host-visible)](control/csr/pe-array-sequencer.md)
+- [CSR — NOTIFIC Queue](control/csr/notific-queue.md)
+- [CSR — UDMA M2S](control/csr/udma-m2s.md)
+- [CSR — UDMA S2M](control/csr/udma-s2m.md)
+- [CSR — UDMA_GEN + GEN_EX + TDMA_MODEL](control/csr/udma-gen-tdma.md)
+- [CSR — INTC 4-Group (no_msix + msix)](control/csr/intc-4group.md)
+- [CSR — INTC 1-Group + ap_intc (IOFIC)](control/csr/intc-1group-apintc.md)
+- [CSR — qos_prot (FIS QoS / AXI NTS)](control/csr/qos-prot.md)
+- [CSR — amzn_remapper / user_remapper](control/csr/remapper.md)
+- [CSR — nsm (AXI Network-Security Monitor)](control/csr/nsm.md)
+- [CSR — qos_pmu + qos_host_visible](control/csr/qos-pmu-hostvisible.md)
+- [CSR — rdm_model + top_sp](control/csr/rdm-top-sp.md)
+- [CSR — HBM / D2D / PCIe Blocks](control/csr/hbm-d2d-pcie-blocks.md)
+- [CSR — FIS Control + errtrig + spad](control/csr/fis-errtrig-spad.md)
+- [CSR — TPB Sub-Blocks (SBUF/events/act-table/DGE)](control/csr/tpb-subblocks.md)
+- [CSR — NOTIFIC Variants + SDMA Residual + Coverage Ledger](control/csr/notific-sdma-residual.md)
+- [SDMA Trigger Set](control/interrupt/sdma-triggers.md)
+- [IO-Fabric Source Map](control/interrupt/io-fabric-triggers.md)
+- [PCIe / HBM / TPB / D2D Sources](control/interrupt/pcie-hbm-tpb-d2d-triggers.md)
+- [PEB Apex / CC / TOP_SP Sources](control/interrupt/peb-cc-topsp-triggers.md)
+- [Trigger-YAML Schema Atlas + Source Map](control/interrupt/schema-atlas.md)
+- [Physical INTC Instance Map](control/interrupt/physical-intc-instances.md)
+- [errtrig / FIS Error Routing](control/interrupt/errtrig-fis-routing.md)
+- [Abort / Scan-Dump / Clock-Stop Control](control/interrupt/abort-scandump-clockstop.md)
+- [INTC → Q7 Firmware "Surprises" Binding](control/interrupt/q7-surprises-binding.md)
+- [NSM Fault → Isolation → IRQ + Unified Synthesis](control/interrupt/nsm-flow-unified.md)
+- [The XEA3 Interrupt / Exception Architecture](control/interrupt/xea3-interrupt-architecture.md)
+- [The Interrupt/Exception Handler Bodies](control/interrupt/handler-bodies.md)
+- [Device→Host Interrupt / Notification Path + Sync/Events](control/interrupt/device-host-notification.md)
+- [Boot / Fault Chain Overview](control/security/boot-fault-overview.md)
+- [The SoC-Fabric Perimeter](control/security/soc-fabric-perimeter.md)
+- [Boot-Arming + Device Fault Recovery](control/security/boot-arming-fault-recovery.md)
+- [Profiling / Trace / Debug + Access Gating](control/security/profiling-trace-debug-gating.md)
+- [Custom-Op Reachability / Isolation Model](control/security/reachability-isolation.md)
+- [Firmware Trust Chain + Threat Model](control/security/trust-chain-threat-model.md)
+- [Information-Leakage / Side-Channel Surface](control/security/side-channel-leakage.md)
+- [SEC-Lane Synthesis (boot→attest→fault)](control/security/security-synthesis.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 13 — Control Plane: CSR / Address / Interrupt / Security (58)
-## Address map (17)
-- control/address/soc-master-map.md            — Cayman SoC Top-Level Address Map (master)
-- control/address/addr-decode.md               — SoC Physical-Address Bitfield Layout (64-die mesh)
-- control/address/pcie-bars.md                 — Host-Side PCIe BAR Address Map
-- control/address/preproc-cc.md                — PREPROC / Compute-Cluster (CC) Address Subtree
-- control/address/tpb-pool.md                  — TPB_0 POOL-Engine Address Subtree (8-core)
-- control/address/evt-sem-regions.md           — TPB Event/Semaphore Regions (EVT_SEM)
-- control/address/block-schema-xref.md         — The Block → Schema Cross-Reference
-- control/address/pkl-db.md                    — al_address_map_db.pkl — Load + Schema + Top Blocks
-- control/address/pkl-tpb-subtree.md           — pkl TPB-Engine Subtree
-- control/address/pkl-dma-subtree.md           — pkl DMA-Engine Subtree
-- control/address/pkl-hbm-subtree.md           — pkl HBM / Memory Subtree
-- control/address/pkl-pcie-d2d-fabric.md       — pkl PCIe / D2D / Fabric Subtree
-- control/address/pkl-intc-sprot-security.md   — pkl INTC / SPROT Security Subtree
-- control/address/pkl-topsp-coverage.md        — pkl TOP_SP / Sync / MISC Subtree + Coverage Tally
-- control/address/soc-q7-translation-windows.md — The SoC ↔ Q7 Translation Windows
-- control/address/lsp-sram-window-map.md       — The LSP SRAM Window Map (build-time view)
-- control/address/unified-soc-memory-map.md    — The Unified GPSIMD / Cayman SoC Memory Map
-## CSR (20)
-- control/csr/tpb-xt-local-reg.md       — CSR — tpb_xt_local_reg
-- control/csr/xtensa-q7.md              — CSR — Xtensa Q7 Debug/Trace/PMU/OCD
-- control/csr/xtensa-nx.md              — CSR — Xtensa NX (NX-vs-Q7 diff)
-- control/csr/tpb.md                    — CSR — tpb (top-level cluster control)
-- control/csr/pe-array-sequencer.md     — CSR — PE Array Sequencer (host-visible)
-- control/csr/notific-queue.md          — CSR — NOTIFIC Queue
-- control/csr/udma-m2s.md               — CSR — UDMA M2S
-- control/csr/udma-s2m.md               — CSR — UDMA S2M
-- control/csr/udma-gen-tdma.md          — CSR — UDMA_GEN + GEN_EX + TDMA_MODEL
-- control/csr/intc-4group.md            — CSR — INTC 4-Group (no_msix + msix)
-- control/csr/intc-1group-apintc.md     — CSR — INTC 1-Group + ap_intc (IOFIC)
-- control/csr/qos-prot.md               — CSR — qos_prot (FIS QoS / AXI NTS)
-- control/csr/remapper.md               — CSR — amzn_remapper / user_remapper
-- control/csr/nsm.md                    — CSR — nsm (AXI Network-Security Monitor)
-- control/csr/qos-pmu-hostvisible.md    — CSR — qos_pmu + qos_host_visible
-- control/csr/rdm-top-sp.md             — CSR — rdm_model + top_sp
-- control/csr/hbm-d2d-pcie-blocks.md    — CSR — HBM / D2D / PCIe Blocks
-- control/csr/fis-errtrig-spad.md       — CSR — FIS Control + errtrig + spad
-- control/csr/tpb-subblocks.md          — CSR — TPB Sub-Blocks (SBUF/events/act-table/DGE)
-- control/csr/notific-sdma-residual.md  — CSR — NOTIFIC Variants + SDMA Residual + Coverage Ledger
-## Interrupts (13)
-- control/interrupt/sdma-triggers.md               — SDMA Trigger Set
-- control/interrupt/io-fabric-triggers.md          — IO-Fabric Source Map
-- control/interrupt/pcie-hbm-tpb-d2d-triggers.md   — PCIe / HBM / TPB / D2D Sources
-- control/interrupt/peb-cc-topsp-triggers.md       — PEB Apex / CC / TOP_SP Sources
-- control/interrupt/schema-atlas.md                — Trigger-YAML Schema Atlas + Source Map
-- control/interrupt/physical-intc-instances.md     — Physical INTC Instance Map
-- control/interrupt/errtrig-fis-routing.md         — errtrig / FIS Error Routing
-- control/interrupt/abort-scandump-clockstop.md    — Abort / Scan-Dump / Clock-Stop Control
-- control/interrupt/q7-surprises-binding.md        — INTC → Q7 Firmware "Surprises" Binding
-- control/interrupt/nsm-flow-unified.md            — NSM Fault → Isolation → IRQ + Unified Synthesis
-- control/interrupt/xea3-interrupt-architecture.md — The XEA3 Interrupt / Exception Architecture
-- control/interrupt/handler-bodies.md              — The Interrupt/Exception Handler Bodies
-- control/interrupt/device-host-notification.md    — Device→Host Interrupt / Notification Path + Sync/Events
-## Security (8)
-- control/security/boot-fault-overview.md          — Boot / Fault Chain Overview
-- control/security/soc-fabric-perimeter.md         — The SoC-Fabric Perimeter
-- control/security/boot-arming-fault-recovery.md   — Boot-Arming + Device Fault Recovery
-- control/security/profiling-trace-debug-gating.md — Profiling / Trace / Debug + Access Gating
-- control/security/reachability-isolation.md       — Custom-Op Reachability / Isolation Model
-- control/security/trust-chain-threat-model.md     — Firmware Trust Chain + Threat Model
-- control/security/side-channel-leakage.md         — Information-Leakage / Side-Channel Surface
-- control/security/security-synthesis.md           — SEC-Lane Synthesis (boot→attest→fault)
 
 # Part 14 — ISS as Executable Oracle (20)
 - iss/cas-core-surface.md           — libcas-core Surface + ISS Plugin ABI
