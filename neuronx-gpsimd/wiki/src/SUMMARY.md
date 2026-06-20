@@ -423,24 +423,24 @@
 - [Running the ISS — Invocation / Config / Memory / Trace / Perf](iss/runnable-iss-infra.md)
 - [ISS Introspection / Single-Step / Fault / SystemC + Oracle Synthesis](iss/iss-oracle-synthesis.md)
 
+# Part 15 — Validation & Verification (10)
+- [The 4-Oracle Bit-Exact Differential Method](validation/four-oracle-method.md)
+- [VAL — fp16/fp32 Soft-Float Family](validation/fp-soft-float.md)
+- [VAL — MAC / Multiply Family](validation/mac-multiply.md)
+- [VAL — Convert / Pack / Cast Family](validation/convert-pack-cast.md)
+- [VAL — Reduce / Shift / Shuffle-Select Family](validation/reduce-shift-shuffle.md)
+- [VAL — Gather / Scatter (SuperGather) Family](validation/gather-scatter.md)
+- [VAL — Predicate / Classify / Compare Family](validation/predicate-classify.md)
+- [VAL — fp Transcendental Seed/Refine Family](validation/transcendental-seed.md)
+- [VAL — Regfile-Bridge / Accumulator-Readout + Divergence Catalog](validation/regfile-bridge-divergence.md)
+- [VAL — Residual Closures + the Per-Family Pass/Fail Capstone](validation/capstone-matrix.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 15 — Validation & Verification (10)
-- validation/four-oracle-method.md          — The 4-Oracle Bit-Exact Differential Method
-- validation/fp-soft-float.md               — VAL — fp16/fp32 Soft-Float Family
-- validation/mac-multiply.md                — VAL — MAC / Multiply Family
-- validation/convert-pack-cast.md           — VAL — Convert / Pack / Cast Family
-- validation/reduce-shift-shuffle.md        — VAL — Reduce / Shift / Shuffle-Select Family
-- validation/gather-scatter.md              — VAL — Gather / Scatter (SuperGather) Family
-- validation/predicate-classify.md          — VAL — Predicate / Classify / Compare Family
-- validation/transcendental-seed.md         — VAL — fp Transcendental Seed/Refine Family
-- validation/regfile-bridge-divergence.md   — VAL — Regfile-Bridge / Accumulator-Readout + Divergence Catalog
-- validation/capstone-matrix.md             — VAL — Residual Closures + the Per-Family Pass/Fail Capstone
 
 # Part 16 — Appendices (15)
 - appendix/struct-census-overview.md          — Struct Census Overview
