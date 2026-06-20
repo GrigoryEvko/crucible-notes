@@ -23,7 +23,7 @@ in lane order: the method itself ([four-oracle-method](four-oracle-method.md)), 
 [convert-pack-cast](convert-pack-cast.md), [reduce-shift-shuffle](reduce-shift-shuffle.md),
 [gather-scatter](gather-scatter.md), [predicate-classify](predicate-classify.md),
 [transcendental-seed](transcendental-seed.md), and
-[regfile-bridge-divergence](regfile-bridge-divergence.md) (which carries the D1–D12 catalog
+[regfile-bridge-divergence](regfile-bridge-divergence.md) (which carries the D1–D13 catalog
 this page totalizes). The value oracle these all execute is the 864-leaf
 [fiss-datapath-oracle](../iss/fiss-datapath-oracle.md); the decode/timing half is
 [cas-timing-model](../iss/cas-timing-model.md); the heavy-leg escalation for the one wall is
@@ -247,7 +247,8 @@ INDIRECT_COPY) is a **routing** attribute the compiler picks, not a value differ
 The collective-communication-engine (CCE) reduce arithmetic — the `ADD0` (reduce-add identity
 seed), the `FMA` accumulate, and the `MIN`/`MAX` reduce ops the reduce-scatter / all-reduce
 collective applies — is **not** exposed as a dedicated `module__xdref_cce_*` value leaf
-(`nm -D | rg -i 'cce|allreduce|reducescatter'` = 0 in `libfiss-base.so`; the CCE is a
+(`nm -D | rg -c 'module__xdref_(cce|allreduce|reducescatter)'` = 0 in `libfiss-base.so` — the bare
+`cce` substring matches only incidental symbols like `…eraccess`, never a value leaf; the CCE is a
 collective-engine path, the subject of the Part-10 collectives lane, not the in-core FISS
 oracle). Its **per-element arithmetic** is nonetheless closed by its constituents in this
 oracle, all driven LIVE:
@@ -361,9 +362,10 @@ caught **reimplementer traps** and **harness bugs** — never a firmware value d
 
 The single most important result of the whole VAL lane, front and centre: **across nine
 families and ~2.09M comparisons, the firmware value oracle had ZERO value defects. Every one of
-the twelve catalogued divergences lived in the reference model (nki numpy), the SEM/lift (the
-analyst's reading of the bytes), or the python harness (the ctypes driver's ABI/index) — NOT
-ONE in the firmware.** The consolidated D1–D12 catalog (owned by
+the thirteen catalogued divergences lived in the reference model (nki numpy), the SEM/lift (the
+analyst's reading of the bytes), the python harness (the ctypes driver's ABI/index), or — for
+D13 — the analyst's INFERRED reconstruction-FORM of a ROM — NOT ONE in the firmware.** The
+consolidated D1–D13 catalog (owned by
 [regfile-bridge §7](regfile-bridge-divergence.md)), read down its **"Where it lived"** column:
 
 | # | Family | Divergence | Where it lived | Tie to the family CORRECTION |
@@ -380,22 +382,26 @@ ONE in the firmware.** The consolidated D1–D12 catalog (owned by
 | **D10** | four-oracle-method | unary leaf bound with the 4-arg ABI | **HARNESS (ABI)** | unary is 3-arg, out-ptr `%rdx` not `%rcx` |
 | **D11** | convert / mac | `packvr*` accumulator bound by pointer | **HARNESS (ABI)** | `packvr*` takes the accumulator BY VALUE in `%esi` |
 | **D12** | mac-multiply | `%rdi` mistaken for the first operand | **HARNESS (ABI)** | `%rdi` is the dead xstate; operand 0 is `%rsi` |
+| **D13** | transcendental-seed | seed closed-form off one ULP at 2 entries | **INFERRED reconstruction-FORM (NOT firmware)** | RECIP `i=127` (`0x81` vs form `128`, exact `128.2505`), RSQRT hi `idx=13` (`0xa5` vs form `164`, exact `164.499`); the LIVE leaf reproduces the ROM bit-exact (§4.2) — ship the bytes, not the formula |
 | **—** | regfile-bridge | **none** | **AGREE** | bit-exact across all four sub-groups |
 
 The classification is sharp: **D1/D2/D7** are *legitimate* reference-surface differences (numpy's
 truncate-wrap / round-half-even / single-index argmax are correct *for numpy*, just not the
 hardware contract); **D3–D6/D9** were model mis-specs; **D8/D10/D11/D12** were harness ABI/index
-bugs the LIVE-vs-lift self-check caught. In every case the resolution was identical: **the LIVE
-`libfiss-base.so` was the arbiter, and the binary won.** A python lift can carry the analyst's
-misreading; the executed leaf cannot. **That is why the differential is anchored to the binary,
-not to the lift.**
+bugs the LIVE-vs-lift self-check caught; and **D13** is the seed-ROM closed-FORM mispredicting two
+half-ULP near-ties — where the shipped `.rodata` ROM, reproduced bit-exact by the LIVE leaf over
+all 128 buckets at both widths (§4.2), is OBSERVED truth and only the *inferred formula* is wrong.
+In every case the resolution was identical: **the LIVE `libfiss-base.so` was the arbiter, and the
+binary won.** A python lift or a hand-recovered formula can carry the analyst's misreading; the
+executed leaf cannot. **That is why the differential is anchored to the binary, not to the lift.**
 
 > **CORRECTION — the divergence *direction* is the headline.** A reviewer's natural prior is "a
 > differential finds bugs in the thing under test." Here the thing under test (the shipped
 > firmware value function) had **zero** value defects; **every** divergence was on the
 > *measuring* side. The VAL lane did not find the firmware wrong — it found **four reimplementer
-> traps** (D1/D2/D4/D6) and **arbitrated four harness bugs** (D8/D10/D11/D12), and certified the
-> firmware bit-exact throughout. `[HIGH/OBSERVED]`
+> traps** (D1/D2/D4/D6), **arbitrated four harness bugs** (D8/D10/D11/D12), and **bounded one
+> inferred-formula miss** (D13: the seed-ROM closed-form off one ULP at two near-ties, ROM=truth),
+> and certified the firmware bit-exact throughout. `[HIGH/OBSERVED]`
 
 ---
 
@@ -572,9 +578,9 @@ arch_id 36 INFERRED ; ct37 OBSERVED                        — gen-axis carries 
 Families differentially validated ........ 9   (ALU, fp, MAC, convert, reduce, gather, predicate, seed, bridge)
 Aggregate comparisons .................... ~2.09M   (≈0.60M summable + ~1.49M fp/MAC/4-leg CARRIED)
 Firmware-value mismatches ................ 0        (every family, every leg)
-Divergences catalogued (D1–D12) .......... 12, ALL in reference/model/harness, NONE in firmware
+Divergences catalogued (D1–D13) .......... 13, ALL in reference/model/harness/inferred-form, NONE in firmware
 Structural walls ......................... 1   (recipqli soft-float dispatch — 3 leaves, heavy-leg only)
-Closed-form residuals .................... 2   (FW-42 half-ULP: RECIP i=127, RSQRT hi-idx=13 — table=truth)
+Closed-form residuals .................... 2   (FW-42 half-ULP: RECIP i=127, RSQRT hi-idx=13 — table=truth; = D13)
 ```
 
 **Value semantics: 100% known.** Every value-producing leaf in the 864-leaf oracle has its
@@ -620,10 +626,11 @@ order-sensitive on ±0; ordered relationals that signal on any NaN) are named an
    cells (`min` vs `minu`, `lt` vs `ltu`, `radds` vs `radd`, propagated vs generated NaN) prove
    the legs distinguish meaning, not copy. **Survives.** `[HIGH/OBSERVED·exec]`
 
-3. **"Every divergence was the model/reference/harness, never the firmware."** *Challenge:* is
-   any D1–D12 actually a firmware bug? *Resolved:* walk the "Where it lived" column (§3) —
-   D1/D2/D7 are numpy-API surface differences (hardware is the correct behaviour, reproduced by
-   SEM+LIVE+FLIX); D3–D6/D9 are model mis-specs; D8/D10/D11/D12 are harness ABI/index bugs. In
+3. **"Every divergence was the model/reference/harness/inferred-form, never the firmware."**
+   *Challenge:* is any D1–D13 actually a firmware bug? *Resolved:* walk the "Where it lived"
+   column (§3) — D1/D2/D7 are numpy-API surface differences (hardware is the correct behaviour,
+   reproduced by SEM+LIVE+FLIX); D3–D6/D9 are model mis-specs; D8/D10/D11/D12 are harness ABI/index
+   bugs; D13 is the seed-ROM inferred closed-form off one ULP at two near-ties (ROM=truth, §4.2). In
    every case the firmware leaf, driven correctly, produced the right value with **zero edits**.
    No catalog entry is a firmware defect. **Survives.** `[HIGH/OBSERVED]`
 
@@ -673,7 +680,7 @@ family, the fiss oracle, and the verdict:
 - [VAL — Gather / Scatter (SuperGather) Family](gather-scatter.md) — the two-layer marshal+port, GSEnable merge.
 - [VAL — Predicate / Classify / Compare Family](predicate-classify.md) — the vbool field widths, the `_t` merge, exhaustive clsfy.
 - [VAL — fp Transcendental Seed/Refine Family](transcendental-seed.md) — the seed ROMs, the FW-42 narrowing, the recipqli wall.
-- [VAL — Regfile-Bridge / Accumulator-Readout + Divergence Catalog](regfile-bridge-divergence.md) — the D1–D12 catalog this page totalizes.
+- [VAL — Regfile-Bridge / Accumulator-Readout + Divergence Catalog](regfile-bridge-divergence.md) — the D1–D13 catalog this page totalizes.
 - [fiss Datapath — the 864-Leaf Value Oracle](../iss/fiss-datapath-oracle.md) — the value oracle every leg executes.
 - [libcas-core — The Cycle/Pipeline Timing Model](../iss/cas-timing-model.md) — the decode+timing half.
 - [ISS Introspection / Single-Step / Oracle Synthesis](../iss/iss-oracle-synthesis.md) — the heavy-leg escalation the recipqli wall requires.

@@ -301,28 +301,34 @@ divergences *observed* across all of them:
 | **D10** | four-oracle-method | unary leaf bound with the 4-arg ABI | harness vs d | unary leaves are genuinely **3-arg** — out-pointer in `%rdx`, not `%rcx`; the 4-arg bind writes through an uninitialised register | **HARNESS (ABI)** |
 | **D11** | convert-pack-cast / mac | `packvr*` accumulator bound by pointer | harness vs d | `packvr*` takes the accumulator **by value** in `%esi`; the wide `pack` core takes it by pointer | **HARNESS (ABI)** |
 | **D12** | mac-multiply | `%rdi` mistaken for the first operand | harness vs d | `%rdi` is the dead xstate; operand 0 is `%rsi` — the off-by-one-arg shift | **HARNESS (ABI)** |
+| **D13** | transcendental-seed | seed closed-form rounds one ULP off the `.rodata` byte at 2 entries | INFERRED form vs d | RECIP `i=127` (table `0x81`=129, form `128`, exact `128.2505`) and RSQRT hi `idx=13` (table `0xa5`=165, form `164`, exact `164.499`) — the LIVE leaf reproduces the ROM bit-exact over all 128 buckets × {fp16,fp32}; only the analyst's *inferred reconstruction-form* mispredicts at those two half-ULP near-ties. **The ROM is OBSERVED truth; ship the bytes, not the formula.** | **INFERRED reconstruction-FORM (NOT the firmware)** |
 | **—** | **this page (regfile-bridge)** | **none** | a vs d | bit-exact across vec_mov / vec_rep / wvec_pack / unpack_wvec_mov | **AGREE** |
 
 ### 7.1 The meta-finding  `[HIGH/OBSERVED]`
 
 Read down the **"Where it lived"** column: **every divergence — without exception — was in the
-REFERENCE MODEL (the nki numpy reference), the SEM/lift (the analyst's reading of the bytes), or
-the python HARNESS (the ctypes driver's ABI/index). NOT ONE was a defect in the firmware value
-oracle.** In every case the resolution was the same: **the LIVE `libfiss-base.so` was the
-arbiter, and the binary won.** D1/D2/D7 are *legitimate* reference-surface differences (numpy's
-truncate-wrap / round-half-even / single-index argmax are correct *for numpy* — they just are not
-the hardware contract); D3–D6/D9 were model mis-specs; D8/D10/D11/D12 were harness ABI bugs caught
-by the LIVE-vs-lift self-check. This is the whole point of anchoring the differential to the
-**executed binary** rather than to a python lift: a lift can carry the analyst's misreading; the
-live leaf cannot.
+REFERENCE MODEL (the nki numpy reference), the SEM/lift (the analyst's reading of the bytes), the
+python HARNESS (the ctypes driver's ABI/index), or — for D13 — the analyst's INFERRED
+reconstruction-FORM of a ROM. NOT ONE was a defect in the firmware value oracle.** In every case
+the resolution was the same: **the LIVE `libfiss-base.so` was the arbiter, and the binary won.**
+D1/D2/D7 are *legitimate* reference-surface differences (numpy's truncate-wrap / round-half-even /
+single-index argmax are correct *for numpy* — they just are not the hardware contract); D3–D6/D9
+were model mis-specs; D8/D10/D11/D12 were harness ABI bugs caught by the LIVE-vs-lift self-check;
+and D13 is the seed-ROM closed-FORM mispredicting two half-ULP near-ties — the shipped `.rodata`
+ROM (which the LIVE leaf reads bit-exact over all 128 buckets at both widths) is OBSERVED truth,
+so even D13 lived on the *measuring* side. This is the whole point of anchoring the differential
+to the **executed binary** rather than to a python lift or a hand-recovered formula: a lift or a
+formula can carry the analyst's misreading; the live leaf cannot.
 
 > **CORRECTION — the divergence direction is the headline.** A reviewer's natural prior is "a
 > differential finds bugs in the thing under test." Here the thing under test (the shipped firmware
 > value function) had **zero** value defects across nine families and >1M aggregate comparisons;
-> every one of the twelve divergences was on the *measuring* side. The VAL lane did not find the
-> firmware wrong — it found **four reimplementer traps** (D1/D2/D4/D6: nki-narrow-wrap,
-> FIROUND≠FIRINT, the `>>32` flush, the name-encoded writeback width) and **arbitrated four harness
-> bugs** (D8/D10/D11/D12), and certified the firmware bit-exact throughout. `[HIGH/OBSERVED]`
+> every one of the **thirteen** divergences was on the *measuring* side. The VAL lane did not find
+> the firmware wrong — it found **four reimplementer traps** (D1/D2/D4/D6: nki-narrow-wrap,
+> FIROUND≠FIRINT, the `>>32` flush, the name-encoded writeback width), **arbitrated four harness
+> bugs** (D8/D10/D11/D12), and **bounded one inferred-formula miss** (D13: the seed-ROM closed-form
+> off by one ULP at two near-ties, where the ROM byte is truth) — and certified the firmware
+> bit-exact throughout. `[HIGH/OBSERVED]`
 
 ---
 
@@ -356,14 +362,26 @@ These value claims carry `[HIGH/OBSERVED·exec]` — the vendor binary computed 
 
 ### 8.3 CARRIED (proven on a sibling page, cited not re-run)
 
-The twelve catalog divergences D1–D12 are **CARRIED** from their committed source pages
-(convert-pack-cast, mac-multiply, reduce-shift-shuffle, gather-scatter, four-oracle-method). The
-three transcendental fp seed boundaries that *would* appear here are **not yet committed** — the
-[transcendental-seed](transcendental-seed.md), [fp-soft-float](fp-soft-float.md), and
-[predicate-classify](predicate-classify.md) pages are still stubs at this commit, so this catalog
-records **no** seed-ULP divergence rather than carry an unverifiable one. The `recipqli`
-soft-float-dispatch **wall** (the one structural limit, not a divergence) is carried from
-[four-oracle-method §7](four-oracle-method.md).
+The thirteen catalog divergences D1–D13 are **CARRIED** from their committed source pages
+(convert-pack-cast, mac-multiply, reduce-shift-shuffle, gather-scatter, four-oracle-method, and
+transcendental-seed).
+
+> **CORRECTION — D13 is now carried; the seed pages are committed.** An earlier draft of this
+> catalog stopped at D12, on the basis that the [transcendental-seed](transcendental-seed.md),
+> [fp-soft-float](fp-soft-float.md), and [predicate-classify](predicate-classify.md) pages were
+> still stubs and it would not carry the then-unverified "2 half-ULP seed boundaries." Those three
+> pages are **now committed**, and transcendental-seed §3.2/§3.3 has **confirmed by execution** the
+> exact two boundaries (RECIP `i=127`, RSQRT hi `idx=13`): both seed ROMs reproduce bit-exact via
+> the LIVE leaf over all 128 buckets × {fp16,fp32}, and only the analyst's INFERRED closed-FORM
+> mispredicts by one ULP at those two near-ties. That is now recorded as **D13**, tagged as living
+> in the **INFERRED reconstruction-FORM, NOT the firmware** — so the meta-finding (§7.1) is
+> unchanged: every divergence, D13 included, lived on the *measuring* side, never in the firmware
+> value oracle. fp-soft-float and predicate-classify added **no** new firmware-side divergence —
+> every CORRECTION on those pages is a reimplementer-trap framing of a bit-exact result, so they
+> contribute no D-entry. `[HIGH/OBSERVED·exec]`
+
+The `recipqli` soft-float-dispatch **wall** (the one structural limit, not a divergence) is carried
+from [four-oracle-method §7](four-oracle-method.md).
 
 > **NOTE — what "OBSERVED-only" does NOT mean.** It does not mean "unverified." Every OBSERVED-only
 > leaf was disassembled this pass and its value semantic read from the bytes; the only thing not
@@ -397,12 +415,14 @@ machinery unchanged.
    larger than the mnemonic axis. The "44/28" figures are not mnemonic counts on these pages — the
    CORRECTION stands. `[HIGH/OBSERVED·nm]`
 
-2. **"Every VAL divergence was in the reference/model/harness, never the firmware."** Re-challenge:
-   is any of D1–D12 actually a firmware value bug? Walk each: D1/D2/D7 are numpy-API surface
-   differences (the hardware behaviour is the *correct* one, reproduced by SEM+LIVE+FLIX); D3–D6/D9
-   are model mis-specs the LIVE binary corrected; D8/D10/D11/D12 are python-driver ABI/index bugs.
-   In **every** case the firmware leaf, when finally driven correctly, produced the right value with
-   zero edits. No catalog entry is a firmware defect. `[HIGH/OBSERVED]`
+2. **"Every VAL divergence was in the reference/model/harness/inferred-form, never the firmware."**
+   Re-challenge: is any of D1–D13 actually a firmware value bug? Walk each: D1/D2/D7 are numpy-API
+   surface differences (the hardware behaviour is the *correct* one, reproduced by SEM+LIVE+FLIX);
+   D3–D6/D9 are model mis-specs the LIVE binary corrected; D8/D10/D11/D12 are python-driver
+   ABI/index bugs; D13 is the seed-ROM inferred closed-form off one ULP at two near-ties, where the
+   LIVE leaf reproduces the `.rodata` ROM bit-exact (the ROM is OBSERVED truth, only the formula
+   misses). In **every** case the firmware leaf, when finally driven correctly, produced the right
+   value with zero edits. No catalog entry is a firmware defect. `[HIGH/OBSERVED]`
 
 3. **"`mov_16_32` masks, `mov_32f_32f` is byte-identical (no NaN canonicalise)."** Re-challenge:
    could the fp move canonicalise? LIVE `mov_32f_32f(0xC0490FDB) = 0xc0490fdb` (−π, exact); the body
@@ -446,9 +466,10 @@ whole-lane `rep_nx16`), **wvec_pack** (the `packvr` round+sat vs `packvrnr` trun
 leaves as convert/mac), and **unpack_wvec_mov** (`cvt24u`/`cvt48u`/`cvt96u` widen-into-accumulator,
 zero-fill) — all driven LIVE this pass, **zero firmware value defects**.
 
-And it **closes the VAL arc**: nine families differentially validated, **twelve divergences
+And it **closes the VAL arc**: nine families differentially validated, **thirteen divergences
 catalogued and root-caused, every one of them in the reference model (nki numpy) / the SEM-lift /
-the python harness — NEVER the firmware value oracle.** The LIVE binary was the arbiter in every
-case and won in every case. The capstone pass/fail matrix and the residual closures (the `recipqli`
-soft-float-dispatch wall; the not-yet-committed fp seed/soft-float/predicate slices) are assembled
-in [capstone-matrix](capstone-matrix.md).
+the python harness / the analyst's INFERRED reconstruction-FORM (D13) — NEVER the firmware value
+oracle.** The LIVE binary was the arbiter in every case and won in every case. The capstone
+pass/fail matrix and the residual closures (the `recipqli` soft-float-dispatch wall; the FW-42 seed
+two-half-ULP boundaries now committed in [transcendental-seed](transcendental-seed.md)) are
+assembled in [capstone-matrix](capstone-matrix.md).
