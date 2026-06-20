@@ -401,34 +401,34 @@
 - [Information-Leakage / Side-Channel Surface](control/security/side-channel-leakage.md)
 - [SEC-Lane Synthesis (boot→attest→fault)](control/security/security-synthesis.md)
 
+# Part 14 — ISS as Executable Oracle (20)
+- [libcas-core Surface + ISS Plugin ABI](iss/cas-core-surface.md)
+- [cas Vector-Arithmetic Semantics](iss/cas-arith-sem.md)
+- [cas/fiss MAC / 2×-FMAC Semantics](iss/cas-mac-fmac.md)
+- [cas/fiss Load/Store (LSU) Semantics](iss/cas-load-store.md)
+- [cas/fiss SuperGather Semantics](iss/cas-supergather.md)
+- [cas/fiss Predicate / Boolean (vbool) Semantics](iss/cas-predicate-boolean.md)
+- [cas/fiss Convert / Pack / FP Semantics](iss/cas-convert-pack-fp.md)
+- [cas/fiss VALIGN / Shuffle-Select / Reduce](iss/cas-valign-shuffle-reduce.md)
+- [libfiss-base Surface + Exception Model](iss/fiss-surface-exceptions.md)
+- [fiss Slotfill — FLIX Formats F0–F3](iss/fiss-slotfill-f0-f3.md)
+- [fiss Slotfill — FLIX Formats F4/F6/F7/F11](iss/fiss-slotfill-f4-f11.md)
+- [fiss Slotfill — Narrow Formats N0/N1/N2](iss/fiss-slotfill-n0-n2.md)
+- [fiss Datapath — the 864-Leaf Value Oracle](iss/fiss-datapath-oracle.md)
+- [libcas-core — The Cycle/Pipeline Timing Model](iss/cas-timing-model.md)
+- [libtie-core + libtie-Xtensa-msem (TIE Runtime)](iss/libtie-core-msem.md)
+- [libctype — CSTUB Custom-Type Functions](iss/libctype-cstub.md)
+- [ref-vs-production ISS Variant Diff](iss/ref-vs-production-diff.md)
+- [The ISS Semantic-Model Synthesis](iss/iss-semantic-synthesis.md)
+- [Running the ISS — Invocation / Config / Memory / Trace / Perf](iss/runnable-iss-infra.md)
+- [ISS Introspection / Single-Step / Fault / SystemC + Oracle Synthesis](iss/iss-oracle-synthesis.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 14 — ISS as Executable Oracle (20)
-- iss/cas-core-surface.md           — libcas-core Surface + ISS Plugin ABI
-- iss/cas-arith-sem.md              — cas Vector-Arithmetic Semantics
-- iss/cas-mac-fmac.md              — cas/fiss MAC / 2×-FMAC Semantics
-- iss/cas-load-store.md            — cas/fiss Load/Store (LSU) Semantics
-- iss/cas-supergather.md           — cas/fiss SuperGather Semantics
-- iss/cas-predicate-boolean.md     — cas/fiss Predicate / Boolean (vbool) Semantics
-- iss/cas-convert-pack-fp.md       — cas/fiss Convert / Pack / FP Semantics
-- iss/cas-valign-shuffle-reduce.md — cas/fiss VALIGN / Shuffle-Select / Reduce
-- iss/fiss-surface-exceptions.md   — libfiss-base Surface + Exception Model
-- iss/fiss-slotfill-f0-f3.md       — fiss Slotfill — FLIX Formats F0–F3
-- iss/fiss-slotfill-f4-f11.md      — fiss Slotfill — FLIX Formats F4/F6/F7/F11
-- iss/fiss-slotfill-n0-n2.md       — fiss Slotfill — Narrow Formats N0/N1/N2
-- iss/fiss-datapath-oracle.md      — fiss Datapath — the 864-Leaf Value Oracle
-- iss/cas-timing-model.md          — libcas-core — The Cycle/Pipeline Timing Model
-- iss/libtie-core-msem.md          — libtie-core + libtie-Xtensa-msem (TIE Runtime)
-- iss/libctype-cstub.md            — libctype — CSTUB Custom-Type Functions
-- iss/ref-vs-production-diff.md    — ref-vs-production ISS Variant Diff
-- iss/iss-semantic-synthesis.md    — The ISS Semantic-Model Synthesis
-- iss/runnable-iss-infra.md        — Running the ISS — Invocation / Config / Memory / Trace / Perf
-- iss/iss-oracle-synthesis.md      — ISS Introspection / Single-Step / Fault / SystemC + Oracle Synthesis
 
 # Part 15 — Validation & Verification (10)
 - validation/four-oracle-method.md          — The 4-Oracle Bit-Exact Differential Method
