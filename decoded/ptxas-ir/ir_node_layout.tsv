@@ -1,0 +1,41 @@
+offset	size	type	field	init_by_alloc_7DD010	evidence	description
+0	8	ptr	prev	OWORD@0 -> 0	sub_7DD010:28	Previous instruction in BB doubly-linked list (nullptr at head)
+8	8	ptr	next	OWORD@0 -> 0	sub_7DD010:28	Next instruction in BB doubly-linked list (nullptr at tail). Forward iter: instr=*(instr+8)
+16	4	i32	id	*(+16)=0	sub_7DD010:23	Unique per-function instruction id (also reused as ref scratch)
+20	4	i32	ref_count	(in OWORD@16)	sub_7E6090	Reference/use count
+24	4	i32	bb_index	*(+24)=0	sub_7DD010:29	Owning basic-block index (bix)
+28	4	i32	sched_pos	*(+28)=0	sub_7DD010:27; sub_7EB4B0	Scheduling order position in BB; set to -1 when unscheduled
+32	4	u32	control_word	*(+32)=0	sub_7DD010:26	SASS scheduling control word (stall/yield/barriers). LOW CONFIDENCE: +32 aliased by many context objects; not isolated on instr in this pass
+36	4	u32	flags_36	(zeroed)	-	Instruction subtype/flag bits (bits 19-21 = subtype)
+40	8	ptr	sched_slot	*(+40)=0	sub_7DD010:30	Scheduling state pointer. LOW CONFIDENCE: +40 heavily reused (11k refs); zeroed on instr but no clean instr-side reader isolated
+48	8	u64	flag_bits	*(+48)=0	sub_7DD010:37	Extended flag bits (bit5=volatile, bit27=reuse)
+56	8	ptr	def_instr	*(+56 dword)=0	sub_7DD010:38	Defining instruction pointer (def-use)
+64	8	ptr	operand_constraints	*(+64)=0	sub_7DD010:39	Per-operand constraint/liveness table; deref *(p+8*i)
+72	4	u32	opcode	*(+72)=0	sub_7DD010:40; sub_7E0030:32	Opcode word. base = word & 0xFFFFCFFF (clears modifier bits 12-13). 8325 files read it
+76	4	u32	opcode_aux	(in QWORD@72)	sub_7DD010:40	Auxiliary opcode data (sub-op / comparison predicate)
+80	4	u32	operand_count	*(+80)=0	sub_7DD010:41; sub_7E0030:36	Total operands. Effective dst count = count - ((opcode>>11)&2)
+84	8	u64	operands[0]	*(+84..)=0	sub_7DD010:42; sub_7E0030:67	Inline operand slot 0 (lo=+84, hi=+88)
+92	8	u64	operands[1]	*(+88,+96 dwords)=0	sub_7DD010:42-43	Inline operand slot 1
+100	8	u64	operands[2]	*(+96..104)=0	sub_7DD010:43-44	Inline operand slot 2
+108	8	u64	operands[3]	(zeroed)	sub_7DD010:45	Inline operand slot 3
+116	8	u64	operands[4]	(zeroed)	sub_7DD010:45-46	Inline operand slot 4
+124	8	u64	operands[5]	*(+112,+120,+128)=0	sub_7DD010:46-47	Inline operand slot 5. Array = +84 + 8*i, 6 slots
+128	8	ptr	sched_next (OVERLAY)	(in operands region)	sub_7EB4B0:11,18; sub_7EB830:39	OVERLAY: for operand-less scheduling pseudo-instrs, +128 = scheduler per-BB list NEXT ptr. Aliases operand slot 5/6. See note below
+132	4	u32	reserved_132	(zeroed)	sub_7DD010:47	Padding to +136
+136	8	ptr	sched_prev (OVERLAY)	OWORD@136 -> 0	sub_7DD010:31; sub_7EB4B0:12,21	OVERLAY: scheduler per-BB list PREV ptr (paired with +128). Zeroed OWORD by alloc; reused as list linkage during scheduling
+144	8	u64	reserved_144	(in OWORD@136)	sub_7DD010:31	Tail of zeroed OWORD@136
+152	16	u128	reserved_152	OWORD@152 -> 0	sub_7DD010:32	Zeroed OWORD (covers +152..+167)
+160	8	ptr	enc_buf	(in OWORD@152)	sub_7DD010:32	Encoding buffer pointer (filled in codegen)
+168	4	u32	ext_operand_count	*(+168)=0	sub_7DD010:48; sub_7D62D0:27	Extended operand count; sub_7D62D0 sets 2*N
+172	12	u32[]	ext_operands	(OWORD@176 -> 0)	sub_7D62D0:21-23	Overflow operand slots; lo at +172, hi at +176, pairwise
+184	4	u32	enc_mode	(OWORD@176)	sub_7DD010:34	Encoding mode selector
+200	8	u64	imm_value	(in OWORD@192)	sub_7DD010:35	Immediate value for constant operands
+208	16	xmm	sched_params	_mm_load_si128 @+208	sub_7DD010:24,33	Scheduling params, init from xmmword constant
+224	16	u128	sched_params_ext	OWORD@224 -> 0	sub_7DD010:36	Extended scheduling params (zeroed)
+240	4	u32	src_loc	*(+240)=0	sub_7DD010:49	PTX source location ref; bits0-23 masked &0xFFFFFF; 7=none
+244	4	u32	debug_info	*(+244 byte)=0	sub_7DD010:50	Debug source info record (upper word of loc pair)
+248	8	i64	sentinel_248	*(+248)=-1	sub_7DD010:51	Initialized to 0xFFFFFFFFFFFFFFFF
+256	8	i64	sentinel_256	*(+256)=0xFFFFFFFF	sub_7DD010:52	Low dword 0xFFFFFFFF, high dword 0
+264	8	i64	global_index	*(+264)=0xFFFFFFFF00000000; low set to v12	sub_7DD010:53,88	Low dword = global index assigned by allocator; high dword sentinel 0xFFFFFFFF
+272	8	ptr	annotation_list	*(+272)=0xFFFFFFFF00000000	sub_7DD010:54	Annotation/metadata chain head (singly-linked, iter *(p+8))
+280	16	u128	lowering_flags+pad	OWORD@280 -> 0	sub_7DD010:55	+280 u32 lowering flags (bit0 from-call, bit2 side-effect, bit3 from-PTX); +284 tail padding to 296

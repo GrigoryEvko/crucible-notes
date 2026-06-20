@@ -1,0 +1,12 @@
+sm	dep_entries	lat_table_family	units_disabled(rt4)	rule_type_active	barrier_lat_distinct	identical_to
+sm_100	430	10x	10	420	33	
+sm_103	430	10x	129	301	31	
+sm_80	256	8x	19	237	17	
+sm_86	256	8x	6	250	18	sm_90 (byte-identical dep rules)
+sm_89	256	8x	6	250	19	
+sm_90	256	8x	6	250	18	sm_86 (byte-identical dep rules)
+sm_90a	256	8x	0	256	19	
+sm_70	619	7x	146	473	19	
+sm_72	619	7x	170	449	19	
+sm_75	619	7x	173	446	20	
+sm_60	619	7x	136	483	16	

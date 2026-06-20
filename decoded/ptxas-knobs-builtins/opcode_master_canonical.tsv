@@ -1,0 +1,323 @@
+opcode_id	mnemonic	rot13_stored	sm_gen	encoding_slot	encoding_status	pipeline_flags_sm7x	pipeline_flags_sm10x	in_opcode_to_encoding_table
+0	ERRBAR	REEONE	sm_70	0	default-slot	1	1	yes
+1	IMAD	VZNQ	sm_70	0	default-slot	1	1	yes
+2	IMAD_WIDE	VZNQ_JVQR	sm_70	0	default-slot	3	3	yes
+3	IADD3	VNQQ3	sm_70	0	default-slot	3	3	yes
+4	BMSK	OZFX	sm_70	0	default-slot	1	1	yes
+5	SGXT	FTKG	sm_70	160	isel-slot	1	1	yes
+6	LOP3	YBC3	sm_70	241	isel-slot			yes
+7	ISETP	VFRGC	sm_70	148	isel-slot			yes
+8	IABS	VNOF	sm_70	97	isel-slot	1	1	yes
+9	LEA	YRN	sm_70	0	default-slot	1	1	yes
+10	SHF	FUS	sm_70	93	isel-slot	1		yes
+11	FFMA	SSZN	sm_70	94	isel-slot	1	1	yes
+12	FADD	SNQQ	sm_70	0	default-slot		1	yes
+13	FMUL	SZHY	sm_70	95	isel-slot	1	1	yes
+14	FMNMX	SZAZK	sm_70	0	default-slot	1	1	yes
+15	FSWZADD	SFJMNQQ	sm_70	0	default-slot	3	3	yes
+16	FSET	SFRG	sm_70	0	default-slot	0	0	yes
+17	FSEL	SFRY	sm_70	0	default-slot	1	1	yes
+18	FSETP	SFRGC	sm_70	0	default-slot	1	1	yes
+19	MOV	ZBI	sm_70	0	default-slot	1	1	yes
+20	SEL	FRY	sm_70	29	isel-slot	1	1	yes
+21	P2R	C2E	sm_70	0	default-slot	1		yes
+22	R2P	E2C	sm_70	37	isel-slot	1	1	yes
+23	PLOP3	CYBC3	sm_70	0	default-slot	1	1	yes
+24	PRMT	CEZG	sm_70	188	isel-slot	1	1	yes
+25	NOP	ABC	sm_70	190	isel-slot	3	3	yes
+26	VOTE	IBGR	sm_70	0	default-slot	3		yes
+27	CS2R_32	PF2E_32	sm_70	0	default-slot	3		yes
+28	CS2R_64	PF2E_64	sm_70	0	default-slot	1	1	yes
+29	PMTRIG	CZGEVT	sm_70	32	isel-slot	3	3	yes
+30	CSMTEST	PFZGRFG	sm_70	271	isel-slot	1	1	yes
+31	VABSDIFF	INOFQVSS	sm_70	159	isel-slot	1		yes
+32	VABSDIFF4	INOFQVSS4	sm_70	72	isel-slot	3	3	yes
+33	IDP	VQC	sm_70	0	default-slot	2	2	yes
+34	IDE	VQR	sm_70	55	isel-slot	3	1	yes
+35	I2I	V2V	sm_70	42	isel-slot	3		yes
+36	I2IP	V2VC	sm_70	53	isel-slot	1	1	yes
+37	IMNMX	VZAZK	sm_70	0	default-slot	1		yes
+38	POPC	CBCP	sm_70	0	default-slot	1	1	yes
+39	FLO	SYB	sm_70	0	default-slot	4	4	yes
+40	FCHK	SPUX	sm_70	355	sentinel-unencoded			yes
+41	IPA	VCN	sm_70	0	default-slot			yes
+42	MUFU	ZHSH	sm_70	0	default-slot			yes
+43	F2F	S2S	sm_70	0	default-slot			yes
+44	F2F_X	S2S_K	sm_70	0	default-slot			yes
+45	F2I	S2V	sm_70	0	default-slot			yes
+46	F2I_X	S2V_K	sm_70	0	default-slot			yes
+47	I2F	V2S	sm_70	224	isel-slot			yes
+48	I2F_X	V2S_K	sm_70	235	isel-slot			yes
+49	FRND	SEAQ	sm_70	355	sentinel-unencoded			yes
+50	FRND_X	SEAQ_K	sm_70	150	isel-slot			yes
+51	AL2P	NY2C	sm_70	87	isel-slot			yes
+52	AL2P_INDEXED	NY2C_VAQRKRQ	sm_70	0	default-slot			yes
+53	BREV	OERI	sm_70	0	default-slot			yes
+54	BMOV_B	OZBI_O	sm_70	0	default-slot			yes
+55	BMOV_R	OZBI_E	sm_70	16	isel-slot			yes
+56	BMOV	OZBI	sm_70	0	default-slot			yes
+57	S2R	F2E	sm_70	98	isel-slot			yes
+58	B2R	O2E	sm_70	153	isel-slot			yes
+59	R2B	E2O	sm_70	183	isel-slot			yes
+60	LEPC	YRCP	sm_70	288	isel-slot			yes
+61	BAR	ONE	sm_70	18	isel-slot			yes
+62	BAR_INDEXED	ONE_VAQRKRQ	sm_70	302	isel-slot			yes
+63	SETCTAID	FRGPGNVQ	sm_70	303	isel-slot			yes
+64	SETLMEMBASE	FRGYZRZONFR	sm_70	0	default-slot			yes
+65	GETLMEMBASE	TRGYZRZONFR	sm_70	248	isel-slot			yes
+66	DEPBAR	QRCONE	sm_70	0	default-slot			yes
+67	BRA	OEN	sm_70	0	default-slot			yes
+68	BRX	OEK	sm_70	283	isel-slot			yes
+69	JMP	WZC	sm_70	164	isel-slot			yes
+70	JMX	WZK	sm_70	168	isel-slot			yes
+71	CALL	PNYY	sm_70	130	isel-slot			yes
+72	RET	ERG	sm_70	0	default-slot			yes
+73	BSSY	OFFL	sm_70	0	default-slot			yes
+74	BREAK	OERNX	sm_70	12	isel-slot			yes
+75	BPT	OCG	sm_70	13	isel-slot			yes
+76	KILL	XVYY	sm_70	0	default-slot			yes
+77	EXIT	RKVG	sm_70	172	isel-slot			yes
+78	RTT	EGG	sm_70	30	isel-slot			yes
+79	BSYNC	OFLAP	sm_70	0	default-slot			yes
+80	MATCH	ZNGPU	sm_70	0	default-slot			yes
+81	NANOSLEEP	ANABFYRRC	sm_70	0	default-slot			yes
+82	NANOTRAP	ANABGENC	sm_70	0	default-slot			yes
+83	TEX	GRK	sm_70	0	default-slot			yes
+84	TLD	GYQ	sm_70	86	isel-slot			yes
+85	TLD4	GYQ4	sm_70	88	isel-slot			yes
+86	TMML	GZZY	sm_70	89	isel-slot			yes
+87	TXD	GKQ	sm_70	0	default-slot			yes
+88	TXQ	GKD	sm_70	187	isel-slot			yes
+89	LDC	YQP	sm_70	0	default-slot			yes
+90	ALD	NYQ	sm_70	0	default-slot			yes
+91	AST	NFG	sm_70	0	default-slot			yes
+92	OUT	BHG	sm_70	0	default-slot			yes
+93	OUT_FINAL	BHG_SVANY	sm_70	0	default-slot			yes
+94	LDS	YQF	sm_70	0	default-slot			yes
+95	STS	FGF	sm_70	0	default-slot			yes
+96	LDG	YQT	sm_70	0	default-slot			yes
+97	STG	FGT	sm_70	0	default-slot			yes
+98	LDL	YQY	sm_70	0	default-slot			yes
+99	STL	FGY	sm_70	1	isel-slot			yes
+100	LD	YQ	sm_70	25	isel-slot			yes
+101	ST	FG	sm_70	33	isel-slot			yes
+102	ATOM	NGBZ	sm_70	38	isel-slot			yes
+103	ATOMG	NGBZT	sm_70	0	default-slot			yes
+104	RED	ERQ	sm_70	44	isel-slot			yes
+105	ATOMS	NGBZF	sm_70	45	isel-slot			yes
+106	QSPC	DFCP	sm_70	59	isel-slot			yes
+107	CCTL_NO_SB	PPGY_AB_FO	sm_70	0	default-slot			yes
+108	CCTL	PPGY	sm_70	60	isel-slot			yes
+109	CCTLL	PPGYY	sm_70	62	isel-slot			yes
+110	CCTLT	PPGYG	sm_70	68	isel-slot			yes
+111	MEMBAR	ZRZONE	sm_70	71	isel-slot			yes
+112	SULD	FHYQ	sm_70	78	isel-slot			yes
+113	SUST	FHFG	sm_70	79	isel-slot			yes
+114	SUATOM	FHNGBZ	sm_70	106	isel-slot			yes
+115	SURED	FHERQ	sm_70	0	default-slot			yes
+116	PIXLD	CVKYQ	sm_70	0	default-slot			yes
+117	ISBERD	VFOREQ	sm_70	0	default-slot			yes
+118	ISBEWR	VFORJE	sm_70	147	isel-slot			yes
+119	SHFL	FUSY	sm_70	149	isel-slot			yes
+120	WARPSYNC	JNECFLAP	sm_70	0	default-slot			yes
+121	YIELD	LVRYQ	sm_70	0	default-slot			yes
+122	DFMA	QSZN	sm_70	179	isel-slot			yes
+123	DADD	QNQQ	sm_70	180	isel-slot			yes
+124	DMUL	QZHY	sm_70	192	isel-slot			yes
+125	DSETP	QFRGC	sm_70	191	isel-slot			yes
+126	HADD2	UNQQ2	sm_70	199	isel-slot			yes
+127	HADD2_F32	UNQQ2_S32	sm_70	215	isel-slot			yes
+128	HFMA2	USZN2	sm_70	0	default-slot			yes
+129	HMUL2	UZHY2	sm_70	221	isel-slot			yes
+130	HSET2	UFRG2	sm_70	225	isel-slot			yes
+131	HSETP2	UFRGC2	sm_70	2	isel-slot			yes
+132	HMMA_16	UZZN_16	sm_70	10	isel-slot			yes
+133	HMMA_32	UZZN_32	sm_70	48	isel-slot			yes
+134	IMMA	VZZN	sm_70	0	default-slot			yes
+135	INTRINSIC	VAGEVAFVP	sm_70	0	default-slot			yes
+136	SM70_LAST	FZ70_YNFG	sm_70	0	default-slot			yes
+137	SM73_FIRST	FZ73_SVEFG	sm_73	0	default-slot			yes
+138	UBREV	HOERI	sm_73	0	default-slot			yes
+139	UBMSK	HOZFX	sm_73	0	default-slot			yes
+140	UCLEA	HPYRN	sm_73	0	default-slot			yes
+141	UISETP	HVFRGC	sm_73	120	isel-slot			yes
+142	ULDC	HYQP	sm_73	126	isel-slot			yes
+143	ULEA	HYRN	sm_73	129	isel-slot			yes
+144	UP2UR	HC2HE	sm_73	139	isel-slot			yes
+145	ULOP3	HYBC3	sm_73	143	isel-slot			yes
+146	UPLOP3	HCYBC3	sm_73	151	isel-slot			yes
+147	USEL	HFRY	sm_73	163	isel-slot			yes
+148	USGXT	HFTKG	sm_73	0	default-slot			yes
+149	UFLO	HSYB	sm_73	200	isel-slot			yes
+150	UIADD3	HVNQQ3	sm_73	201	isel-slot			yes
+151	UIMAD	HVZNQ	sm_73	206	isel-slot			yes
+152	UMOV	HZBI	sm_73	207	isel-slot			yes
+153	UPRMT	HCEZG	sm_73	208	isel-slot			yes
+154	VOTEU	IBGRH	sm_73	213	isel-slot			yes
+155	UPOPC	HCBCP	sm_73	0	default-slot			yes
+156	USHF	HFUS	sm_73	214	isel-slot			yes
+157	SCATTER	FPNGGRE	sm_73	0	default-slot			yes
+158	F2FP	S2SC	sm_73	216	isel-slot			yes
+159	HMMA_1688	UZZN_1688	sm_73	217	isel-slot			yes
+160	HMMA_16816	UZZN_16816	sm_73	219	isel-slot			yes
+161	BMMA	OZZN	sm_73	227	isel-slot			yes
+162	TTUCCTL	GGHPPGY	sm_73	229	isel-slot			yes
+163	TTUMACRO	GGHZNPEB	sm_73	290	isel-slot			yes
+164	R2UR	E2HE	sm_73	7	isel-slot			yes
+165	MOVM	ZBIZ	sm_73	0	default-slot			yes
+166	LDSM	YQFZ	sm_73	0	default-slot			yes
+167	LDTRAM	YQGENZ	sm_73	0	default-slot			yes
+168	FOOTPRINT	SBBGCEVAG	sm_73	36	isel-slot			yes
+169	S2UR	F2HE	sm_73	355	sentinel-unencoded			yes
+170	BRXU	OEKH	sm_73	0	default-slot			yes
+171	SM73_LAST	FZ73_YNFG	sm_73	0	default-slot			yes
+172	SM82_FIRST	FZ82_SVEFG	sm_82	110	isel-slot			yes
+173	GATHER	TNGURE	sm_82	115	isel-slot			yes
+174	GENMETADATA	TRAZRGNQNGN	sm_82	114	isel-slot			yes
+175	SPMETADATA	FCZRGNQNGN	sm_82	117	isel-slot			yes
+176	BMMA_88128	OZZN_88128	sm_82	196	isel-slot			yes
+177	BMMA_168128	OZZN_168128	sm_82	254	isel-slot			yes
+178	BMMA_168256	OZZN_168256	sm_82	255	isel-slot			yes
+179	CLMAD	PYZNQ	sm_82	256	isel-slot			yes
+180	DMMA	QZZN	sm_82	257	isel-slot			yes
+181	HMMA_SP_1688	UZZN_FC_1688	sm_82	258	isel-slot			yes
+182	HFMA2_MMA	USZN2_ZZN	sm_82	259	isel-slot			yes
+183	HMNMX2	UZAZK2	sm_82	260	isel-slot			yes
+184	IMMA_88	VZZN_88	sm_82	261	isel-slot			yes
+185	IMMA_SP_88	VZZN_FC_88	sm_82	0	default-slot			yes
+186	IMMA_16816	VZZN_16816	sm_82	0	default-slot			yes
+187	IMMA_16832	VZZN_16832	sm_82	262	isel-slot			yes
+188	IMMA_SP_16832	VZZN_FC_16832	sm_82	243	isel-slot			yes
+189	ARRIVES	NEEVIRF	sm_82	0	default-slot			yes
+190	LDGDEPBAR	YQTQRCONE	sm_82	0	default-slot			yes
+191	LDGSTS	YQTFGF	sm_82	0	default-slot			yes
+192	REDUX	ERQHK	sm_82	0	default-slot			yes
+193	SM82_LAST	FZ82_YNFG	sm_82	0	default-slot			yes
+194	SM86_FIRST	FZ86_SVEFG	sm_86	0	default-slot			yes
+195	F2IP	S2VC	sm_86	0	default-slot			yes
+196	UF2FP	HS2SC	sm_86	0	default-slot			yes
+197	I2FP	V2SC	sm_86	0	default-slot			yes
+198	SUQUERY	FHDHREL	sm_86	0	default-slot			yes
+199	SM86_LAST	FZ86_YNFG	sm_86	0	default-slot			yes
+200	SM89_FIRST	FZ89_SVEFG	sm_89	0	default-slot			yes
+201	QMMA_16816	DZZN_16816	sm_89	0	default-slot			yes
+202	QMMA_16832	DZZN_16832	sm_89	96	isel-slot			yes
+203	QMMA_SP_16832	DZZN_FC_16832	sm_89	0	default-slot			yes
+204	QMMA_SP_12864	DZZN_FC_12864	sm_89	169	isel-slot			yes
+205	SM89_LAST	FZ89_YNFG	sm_89	178	isel-slot			yes
+206	SM90_FIRST	FZ90_SVEFG	sm_90	197	isel-slot			yes
+207	ACQBLK	NPDOYX	sm_90	239	isel-slot			yes
+208	CGABAR_ARV	PTNONE_NEI	sm_90	154	isel-slot			yes
+209	CGABAR_GET	PTNONE_TRG	sm_90	0	default-slot			yes
+210	CGABAR_SET	PTNONE_FRG	sm_90	195	isel-slot			yes
+211	CGABAR_WAIT	PTNONE_JNVG	sm_90	175	isel-slot			yes
+212	CGAERRBAR	PTNREEONE	sm_90	355	sentinel-unencoded			yes
+213	CREATEPOLICY	PERNGRCBYVPL	sm_90	355	sentinel-unencoded			yes
+214	CVTA	PIGN	sm_90	355	sentinel-unencoded			yes
+215	DMMA	QZZN	sm_90	355	sentinel-unencoded			yes
+216	ELECT	RYRPG	sm_90	355	sentinel-unencoded			yes
+217	ENDCOLLECTIVE	RAQPBYYRPGVIR	sm_90	309	isel-slot			yes
+218	FENCE_G	SRAPR_T	sm_90	170	isel-slot			yes
+219	FENCE_S	SRAPR_F	sm_90	355	sentinel-unencoded			yes
+220	FMNMX	SZAZK	sm_90	355	sentinel-unencoded			yes
+221	GMMA	TZZN	sm_90	0	default-slot			yes
+222	LDCU	YQPH	sm_90		no-encoding-entry			no
+223	LEPC	YRCP	sm_90		no-encoding-entry			no
+224	MAPA	ZNCN	sm_90		no-encoding-entry			no
+225	PREEXIT	CERRKVG	sm_90		no-encoding-entry			no
+226	R2UR_H	E2HE_U	sm_90		no-encoding-entry			no
+227	REDAS	ERQNF	sm_90		no-encoding-entry			no
+228	SETMAXREG	FRGZNKERT	sm_90		no-encoding-entry			no
+229	SETSMEMSIZE	FRGFZRZFVMR	sm_90		no-encoding-entry			no
+230	STAS	FGNF	sm_90		no-encoding-entry			no
+231	STSM	FGFZ	sm_90		no-encoding-entry			no
+232	SYNCS_BASIC	FLAPF_ONFVP	sm_90		no-encoding-entry			no
+233	SYNCS_LD_UNIFM	FLAPF_YQ_HAVSZ	sm_90		no-encoding-entry			no
+234	UBLKCP	HOYXPC	sm_90		no-encoding-entry			no
+235	UBLKRED	HOYXERQ	sm_90		no-encoding-entry			no
+236	UBLKPF	HOYXCS	sm_90		no-encoding-entry			no
+237	UCVTA	HPIGN	sm_90		no-encoding-entry			no
+238	ULEPC	HYRCP	sm_90		no-encoding-entry			no
+239	UMAPA	HZNCN	sm_90		no-encoding-entry			no
+240	UTMACCTL	HGZNPPGY	sm_90		no-encoding-entry			no
+241	UTMACMDFLUSH	HGZNPZQSYHFU	sm_90		no-encoding-entry			no
+242	UTMALDG	HGZNYQT	sm_90		no-encoding-entry			no
+243	UTMAPF	HGZNCS	sm_90		no-encoding-entry			no
+244	UTMREDG	HGZERQT	sm_90		no-encoding-entry			no
+245	UTMALST	HGZNYFG	sm_90		no-encoding-entry			no
+246	VHMNMX	IUZAZK	sm_90		no-encoding-entry			no
+247	VIADD	IVNQQ	sm_90		no-encoding-entry			no
+248	VIADDMNMX	IVNQQZAZK	sm_90		no-encoding-entry			no
+249	VIMNMX	IVZAZK	sm_90		no-encoding-entry			no
+250	VIMNMX3	IVZAZK3	sm_90		no-encoding-entry			no
+251	WARPGROUP	JNECTEBHC	sm_90		no-encoding-entry			no
+252	SM90_LAST	FZ90_YNFG	sm_90		no-encoding-entry			no
+253	SM100_FIRST	FZ100_SVEFG	sm_100		no-encoding-entry			no
+254	CREDUX	PERQHK	sm_100		no-encoding-entry			no
+255	FADD2	SNQQ2	sm_100		no-encoding-entry			no
+256	FFMA2	SSZN2	sm_100		no-encoding-entry			no
+257	FMNMX3	SZAZK3	sm_100		no-encoding-entry			no
+258	FMUL2	SZHY2	sm_100		no-encoding-entry			no
+259	LDTM	YQGZ	sm_100		no-encoding-entry			no
+260	UGETNEXTWORKID	HTRGARKGJBEXVQ	sm_100		no-encoding-entry			no
+261	UTCBAR_1CTA	HGPONE_1PGN	sm_100		no-encoding-entry			no
+262	UTCBAR_2CTA	HGPONE_2PGN	sm_100		no-encoding-entry			no
+263	UTCCP_1CTA	HGPPC_1PGN	sm_100		no-encoding-entry			no
+264	UTCCP_2CTA	HGPPC_2PGN	sm_100		no-encoding-entry			no
+265	UTCMMA_1CTA	HGPZZN_1PGN	sm_100		no-encoding-entry			no
+266	UTCMMA_2CTA	HGPZZN_2PGN	sm_100		no-encoding-entry			no
+267	UTCSHIFT_1CTA	HGPFUVSG_1PGN	sm_100		no-encoding-entry			no
+268	UTCSHIFT_2CTA	HGPFUVSG_2PGN	sm_100		no-encoding-entry			no
+269	VIRTCOUNT	IVEGPBHAG	sm_100		no-encoding-entry			no
+270	TCATOMSWS	GPNGBZFJF	sm_100		no-encoding-entry			no
+271	TCLDSWS	GPYQFJF	sm_100		no-encoding-entry			no
+272	TCSTSWS	GPFGFJF	sm_100		no-encoding-entry			no
+273	QFMA4	DSZN4	sm_100		no-encoding-entry			no
+274	QADD4	DNQQ4	sm_100		no-encoding-entry			no
+275	QMUL4	DZHY4	sm_100		no-encoding-entry			no
+276	MEMSET	ZRZFRG	sm_100		no-encoding-entry			no
+277	ACQSHMINIT	NPDFUZVAVG	sm_100		no-encoding-entry			no
+278	STTM	FGGZ	sm_100		no-encoding-entry			no
+279	FENCE_T	SRAPR_G	sm_100		no-encoding-entry			no
+280	SM100_LAST	FZ100_YNFG	sm_100		no-encoding-entry			no
+281	SM104_FIRST	FZ104_SVEFG	sm_104		no-encoding-entry			no
+282	IADD	VNQQ	sm_104		no-encoding-entry			no
+283	UVIADD	HIVNQQ	sm_104		no-encoding-entry			no
+284	IMNMX	VZAZK	sm_104		no-encoding-entry			no
+285	IMNMX	VZAZK	sm_104		no-encoding-entry			no
+286	UIMNMX	HVZAZK	sm_104		no-encoding-entry			no
+287	UVIMNMX	HIVZAZK	sm_104		no-encoding-entry			no
+288	ISETP	VFRGC	sm_104		no-encoding-entry			no
+289	UISETP	HVFRGC	sm_104		no-encoding-entry			no
+290	MOV	ZBI	sm_104		no-encoding-entry			no
+291	UMOV	HZBI	sm_104		no-encoding-entry			no
+292	SEL	FRY	sm_104		no-encoding-entry			no
+293	USEL	HFRY	sm_104		no-encoding-entry			no
+294	UFADD	HSNQQ	sm_104		no-encoding-entry			no
+295	UFSEL	HSFRY	sm_104		no-encoding-entry			no
+296	UFFMA	HSSZN	sm_104		no-encoding-entry			no
+297	UFMUL	HSZHY	sm_104		no-encoding-entry			no
+298	UFSET	HSFRG	sm_104		no-encoding-entry			no
+299	UFSETP	HSFRGC	sm_104		no-encoding-entry			no
+300	UI2I	HV2V	sm_104		no-encoding-entry			no
+301	UI2IP	HV2VC	sm_104		no-encoding-entry			no
+302	UF2F	HS2S	sm_104		no-encoding-entry			no
+303	UFRND	HSEAQ	sm_104		no-encoding-entry			no
+304	UF2I	HS2V	sm_104		no-encoding-entry			no
+305	UF2IP	HS2VC	sm_104		no-encoding-entry			no
+306	UI2F	HV2S	sm_104		no-encoding-entry			no
+307	UI2FP	HV2SC	sm_104		no-encoding-entry			no
+308	UIABS	HVNOF	sm_104		no-encoding-entry			no
+309	CS2UR	PF2HE	sm_104		no-encoding-entry			no
+310	UF2FP	HS2SC	sm_104		no-encoding-entry			no
+311	MXQMMA_SF_16832	ZKDZZN_FS_16832	sm_104		no-encoding-entry			no
+312	OMMA_16864	BZZN_16864	sm_104		no-encoding-entry			no
+313	OMMA_SP_168128	BZZN_FC_168128	sm_104		no-encoding-entry			no
+314	QMMA_16816	DZZN_16816	sm_104		no-encoding-entry			no
+315	QMMA_16832	DZZN_16832	sm_104		no-encoding-entry			no
+316	QMMA_SP_16832	DZZN_FC_16832	sm_104		no-encoding-entry			no
+317	QMMA_SP_12864	DZZN_FC_12864	sm_104		no-encoding-entry			no
+318	QMMA_SF_16832	DZZN_FS_16832	sm_104		no-encoding-entry			no
+319	QMMA_SF_SP_16864	DZZN_FS_FC_16864	sm_104		no-encoding-entry			no
+320	SM104_LAST	FZ104_YNFG	sm_104		no-encoding-entry			no
+321	LAST	YNFG	sentinel		no-encoding-entry			no

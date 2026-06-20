@@ -1,0 +1,14 @@
+region	va	end_va	entry_count	role	notes
+vtable_pool	0x22A5AA0	-	455	FAM0_methods	polymorphic ISel node method table
+vtable_pool	0x22A68E8	-	158	FAM0_query	polymorphic ISel node method table
+vtable_pool	0x22A6DE8	-	15	FAM0_operand	polymorphic ISel node method table
+vtable_pool	0x22A6E70	-	455	FAM1_methods	polymorphic ISel node method table
+vtable_pool	0x22A7CB8	-	159	FAM1_query	polymorphic ISel node method table
+vtable_pool	0x22A81C0	-	15	FAM1_operand	polymorphic ISel node method table
+vtable_pool	0x22A8248	-	455	FAM2_methods	polymorphic ISel node method table
+vtable_pool	0x22A9090	-	159	FAM2_query	polymorphic ISel node method table
+vtable_pool	0x22A9598	-	15	FAM2_operand	polymorphic ISel node method table
+vtable_pool	0x22A9620	-	159	FAM3_query	polymorphic ISel node method table
+vtable_pool	0x22A9B28	-	15	FAM3_operand	polymorphic ISel node method table
+vtable_pool	0x22A9BB0	-	455	FAM3_methods	polymorphic ISel node method table
+vtable_pool	0x22AA9F8	-	129	COORD	polymorphic ISel node method table

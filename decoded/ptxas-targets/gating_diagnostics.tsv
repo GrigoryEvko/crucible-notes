@@ -1,0 +1,15 @@
+# Architecture / ISA feature-gating diagnostic format strings (binary-derived, ptxas .rodata)
+# These are emitted when a (target SM, PTX ISA version, instruction, modifier) tuple fails legality.
+va	format_string
+0x1cffc58	Instruction '%s' not supported on .target '%s'
+0x1cffc28	Feature '%s' not supported on .target '%s'
+0x1d05630	Unsupported instruction '%s' used when compiling for '%s' target architecture
+0x1cff500	Modifier '%s' on instruction '%s' %s is not supported starting %s and later architectures
+0x1cff800	Instruction '%s' with '%s' is not supported starting from PTX ISA version %s
+0x1cff850	Instruction '%s' without '.sync' is not supported on .target sm_70 and higher from PTX ISA version 6.4
+0x1cff338	Pragma '%s' not supported on %s, will be ignored.
+0x1d062c0	Option '%s' not supported for gpu architecture '%s'
+0x1d06230	Per-function compilation not supported for gpu architecture '%s'
+0x1d004e8	Target architecture not defined at start of file '%s'
+0x1d00470	Instruction '%s' requires SM 1.3 or higher, or map_f64_to_f32 directive
+0x1d056f8	 32-Bit ABI (--machine 32 or 32-Bit addressing) is not supported on %s or higher architectures.

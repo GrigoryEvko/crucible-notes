@@ -155,3 +155,9 @@ some_docs/
 !/decoded/ptxas-instr-defs
 !/decoded/ptxas-pseudo-instructions
 !/decoded/ptxas-messages
+!/decoded/ptxas-ir
+!/decoded/ptxas-passes
+!/decoded/ptxas-sched-full
+!/decoded/ptxas-isel
+!/decoded/ptxas-targets
+!/decoded/ptxas-knobs-builtins

@@ -560,7 +560,7 @@ for (int op = 0; op < 355; ++op) {
         case 16:                                          lat = 300; break; // long global-memory
         case 17: case 42: case 53: case 55:
         case 91: case 183: case 195:                      lat = 24;  break; // SFU / slow-MIO
-        case 38: case 60: case 61: case 63: case 68:
+        case 38: case 59: case 60: case 62: case 67:
         case 78: case 79: case 106: case 162: case 180:
         case 182: case 192: case 194: case 199:
         case 215: case 221:                               lat = 13;  break; // medium / control / MIO
@@ -581,7 +581,7 @@ The model collapses to **five bands**:
 | Cycles | Band | Opcode ids (index into `oracle+744`) |
 |---|---|---|
 | 6   | default ALU (non-memory) | every opcode not listed below, property bit `0x40` clear |
-| 13  | medium / control / MIO | 38, 60, 61, 63, 68, 78, 79, 106, 162, 180, 182, 192, 194, 199, 215, 221 |
+| 13  | medium / control / MIO | 38, 59, 60, 62, 67, 78, 79, 106, 162, 180, 182, 192, 194, 199, 215, 221 |
 | 24  | SFU / slow-MIO | 17, 42, 53, 55, 91, 183, 195 |
 | 30  | shared / atomic | 88, 89 |
 | 300 | long global-memory miss | 16, 223, 228, and any opcode with property bit `0x40` set |

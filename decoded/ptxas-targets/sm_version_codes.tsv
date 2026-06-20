@@ -1,0 +1,23 @@
+# ptxas v13.0.88 SM version-code table @ VA 0x2020620, 128 x u16
+# indexed by (internal_arch_index); reader: sub_60FBF0 v33=(*(a2+64)-20); if v33<=0x65 code=table[v33]
+# code encoding: bits[15:12]=major*10, bits[11:8]=minor, bits[7:0]=variant
+# valid window: index 0..101 (0x65). index>=102 = adjacent-table bleed (ignore)
+table_index	code_hex	code_dec	sm_num	variant	sm_string	note
+0	0x2000	8192	20	0	sm_20	
+1	0x2001	8193	20	1	sm_20a	
+50	0x5000	20480	50	0	sm_50	
+52	0x5001	20481	50	1	sm_50a	
+53	0x6000	24576	60	0	sm_60	
+55	0x6001	24577	60	1	sm_60a	
+62	0x7001	28673	70	1	sm_70a	
+66	0x7002	28674	70	2	sm_70?2	
+67	0x7003	28675	70	3	sm_70c	
+68	0x7004	28676	70	4	sm_70?4	
+69	0x7005	28677	70	5	sm_70f	
+70	0x8000	32768	80	0	sm_80	
+80	0x9000	36864	90	0	sm_90	
+81	0x9001	36865	90	1	sm_90a	
+83	0x9003	36867	90	3	sm_90c	
+90	0x9001	36865	90	1	sm_90a	duplicate of 0x9001(sm_90a) at distinct arch-index
+100	0x9004	36868	90	4	sm_90?4	0x9004 -> sm_90a (variant 4 also maps to 'a' suffix arch-side)
+101	0x9005	36869	90	5	sm_90f	
