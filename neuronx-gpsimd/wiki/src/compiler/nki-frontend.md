@@ -101,15 +101,20 @@ resident** slice is shown; the names agree field-for-field with compiler-map.
 | `local_gather` | `emit_indirect_copy` | GpSimd | `150 + (n_idx·elem)/C` | `INDIRECT_COPY 0xe7` | `gather.py:local_gather` |
 | `nc_n_gather` | `emit_gather` | GpSimd | — | `GATHER 0x68` | `gather.py:nc_n_gather` |
 | `nonzero_with_count` | `emit_nonzero_with_count` | GpSimd | — | `NONZERO_WITH_COUNT 0xf2` | `misc.py:nonzero_with_count` |
-| `quantize_mx` | `emit_quantize_mx` | Vector ◆ | — | `TENSOR_DEQUANTIZE 0x7b` (fwd pack) | `advanced.py:quantize_mx` |
+| `quantize_mx` | `emit_quantize_mx` | Vector ◆ | — | `QUANTIZE_MX 0xe3` (fwd pack, DVE) | `advanced.py:quantize_mx` |
 | `sequence_bounds` | `emit_sequence_bounds` | GpSIMD | — | `GET_SEQUENCE_BOUNDS 0xbe` | (`isa/misc.py`) |
 | `tensor_tensor` (arith) | `emit_tensor_tensor_arith` | Vector **or** GpSimd (route) | `max(MIN_II,2N)` | `TENSOR_TENSOR_ARITH 0x41` | `tensor_ops.py:tensor_tensor_arith` |
 | `tensor_scalar` (arith) | `emit_tensor_scalar_arith` | Vector/Scalar **or** GpSimd (rsqrt only) | `max(MIN_II,N)` | `TENSOR_SCALAR_ARITH 0x43` | `tensor_ops.py:tensor_scalar_arith` |
 | `tensor_copy` (copy/cast) | `emit_tensor_copy` | Vector/Scalar/GpSimd | — | `COPY 0x46` / `CAST 0x47` | `copy.py:tensor_copy` |
 | `memset` | `emit_memset` | Vector **or** GpSimd | — | `MEMSET 0x49` | `copy.py:memset` |
 
-◆ `quantize_mx` declares **Vector** in the irbuilder `.so` docstring (compiler-map §4.2
-CORRECTION); the device decode is the *inverse* MX dequant on POOL. The opcode numerics
+◆ **CORRECTION — forward `quantize_mx` lowers to `0xe3 QUANTIZE_MX` (DVE), not `0x7b`.**
+An earlier reading bound the forward pack to `TENSOR_DEQUANTIZE 0x7b`; the device ledger
+§2.3 lists the forward as the dedicated **`0xe3 QUANTIZE_MX | DVE`** opcode, while
+`0x7b TENSOR_DEQUANTIZE` is the **inverse** dequant on POOL (no forward BIR producer). The
+engine is **Vector** per the irbuilder `.so` docstring (compiler-map §4.2 CORRECTION). Per
+[bir-inst-roster §3.3](bir-inst-roster.md) and
+[dtype-engine-fanin-synthesis §A.5.1](dtype-engine-fanin-synthesis.md). The opcode numerics
 match [compiler-map.md](compiler-map.md) §3 and
 [../firmware/kernels/opcode-catalog-ledger.md](../firmware/kernels/opcode-catalog-ledger.md).
 [opcode CARRIED; `nki.isa` names + cost formulas HIGH/OBSERVED.]

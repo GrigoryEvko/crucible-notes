@@ -46,7 +46,7 @@ backend, so the opcode set below is the **complete** GPSIMD surface for both pat
 |---|---|---|
 | HLO frontend | `CC/starfish/bin/hlo2penguin`; `penguin/transforms/{Frontend,CanonicalizeIR,TargetLowering}.so` | XLA-HLO → penguin BIR |
 | NKI frontend | `NKI/backends/mlir_tracer/{isa.py,isa_emit.py}` + `NKI/compiler/_internal/_mlir_libs/_nki_irbuilder.*.so`; `CC/.../sunda/passes/NKICodeGenFlow.so`, `InlineNKIKernels.so` | NKI → NISA-MLIR → penguin BIR |
-| Penguin BIR (IR) | `CC/starfish/lib/libBIR.so` (`bir::Inst*`); `CC/generated/starfish/birpy/{Opcodes,InstructionOpcodes}.so` | ~119 `Inst*` opcodes |
+| Penguin BIR (IR) | `CC/starfish/lib/libBIR.so` (`bir::Inst*`); `CC/generated/starfish/birpy/{Opcodes,InstructionOpcodes}.so` | 110 concrete `Inst*` classes (§1.2) |
 | Lower / legalize | `penguin/transforms/Lower*.so` (`LowerTensorOp`, `LowerIntrinsics`, `LowerPartitionTile`, `LowerBroadcast`, `LowerTranspose`, `LowerToSendRecv`, `LowerCCOpBlockAxis`, `LowerShardAxis`) | generic BIR → target BIR |
 | Sunda ISel | `CC/.../sunda/passes/SundaISel.so`; `targets/sunda/SundaISAInst.so` | BIR → `SundaISAInst` ISA insts |
 | Tiling / layout | `SundaSizeTiling.so`; `transforms/{LayoutTilingPipeline,FlattenAxesForTiling,TileCCOps,PGAnalysisForTiling}.so` | tiled, partition-assigned insts |
@@ -98,15 +98,25 @@ from the unstripped Cython symbol tables.
 
 ### 1.2 The BIR (penguin IR) layer — observed `Inst*` count
 
-`CC/starfish/lib/libBIR.so` exposes **119 distinct `bir::Inst*` class names** in its
-mangled symbol table (counted by matching `_ZN3bir<len><Name>` and keeping roots
-beginning `Inst`). About nine of those are non-instruction helpers (`InstBuilder`,
-`Instruction`, `InstructionType`, `InstSyncType2string`, …); the rest are real IR nodes.
+`CC/starfish/lib/libBIR.so` exposes **110 concrete `bir::Inst*` classes**, grounded on
+the `_ZTV` vtable set minus the two abstract bases (`Instruction`,
+`InstructionBasicBlockHolder`) and corroborated by `createFromJson` (= 110 after
+filtering the abstract base). A naïve `_ZN3bir<len><Name>`/`Inst`-root grep over the
+*raw* mangled symbol table returns a larger figure (≈112–119) because it also catches the
+abstract bases plus ctor/template symbols — those are not concrete IR nodes.
 
-> **CORRECTION (vs DX-CC-01 / GX-REF-02 §3.1, which CARRIED "73 Inst\*").** The shipped
-> `libBIR.so` symbol table shows **~119 `Inst*` classes**, not 73 — the earlier figure
-> was carried from a smaller intermediate read of `birpy`, not the full `libBIR.so`
-> symbol table. The GPSIMD-relevant node set is directly visible:
+> **CORRECTION (vs an earlier compiler-seam read that CARRIED "~119" / "73").** This page
+> previously gave a "~119 mangled-symbol count"; the reconciled figure is **110 concrete
+> `Inst*` classes** (raw symbol count ~112 incl. the 2 abstract bases, more if ctor/template
+> symbols are counted). The authoritative count is owned by
+> [bir-inst-roster §2/§8](bir-inst-roster.md) and reaffirmed by the capstone
+> [dtype-engine-fanin-synthesis §C.1](dtype-engine-fanin-synthesis.md): `_ZTV` − 2 abstract
+> bases = 110, `createFromJson` = 110 after filtering `bir::Instruction`, the two sets
+> diff-identical. The **"73"** figure (DX-CC-01 / GX-REF-02 §3.1) was the GPSIMD-relevant
+> *subset* (compute/gather/PE/ACT/BN/MX/RNG/collective/DMA, before the control spine,
+> load/store, and kernel containers), not the total. Ground the count on `createFromJson`
+> or `_ZTV`, never on the `C2ERKNSt` ctor recipe (which drops `InstDynamicForLoop`,
+> undercounting to 109). The GPSIMD-relevant node set is directly visible:
 > `InstIota`, `InstGather`, `InstIndirectCopy`, `InstTensorScalarAffineSelect`,
 > `InstQuantizeMx`, `InstNonzeroWithCount`, `InstGetSequenceBounds`, `InstSelect`,
 > `InstCopyPredicated`, `InstGPSIMDSB2SB`, `InstCollective`/`InstCollectiveCompute`/
@@ -230,7 +240,7 @@ surface. `† MAVERICK/MED` = ledger flags the opcode as MAVERICK-only and not b
 | `emit_gather` | `gather` | `GATHER 0x68` | GpSimd | [../firmware/kernels/indirection-gather.md](../firmware/kernels/indirection-gather.md) | HIGH/O+C |
 | `emit_indirect_copy` | `indirect_copy` | `INDIRECT_COPY 0xe7` | GpSimd | [../firmware/kernels/indirection-gather.md](../firmware/kernels/indirection-gather.md) | HIGH/O+C |
 | `emit_nonzero_with_count` | `nonzero_with_count` | `NONZERO_WITH_COUNT 0xf2` | GpSimd | [../firmware/kernels/nonzero-with-count.md](../firmware/kernels/nonzero-with-count.md) | HIGH/O+C |
-| `emit_quantize_mx` | `quantize_mx` | `TENSOR_DEQUANTIZE 0x7b` (fwd pack) / `QUANTIZE_MX 0xe3` (device) | Vector ◆ | [../firmware/kernels/mx-dequant.md](../firmware/kernels/mx-dequant.md) | HIGH/O+C |
+| `emit_quantize_mx` | `quantize_mx` | `QUANTIZE_MX 0xe3` (fwd pack, DVE) / inverse `TENSOR_DEQUANTIZE 0x7b` (POOL) | Vector ◆ | [../firmware/kernels/mx-dequant.md](../firmware/kernels/mx-dequant.md) | HIGH/O+C |
 | `emit_sequence_bounds` | `sequence_bounds` | `GET_SEQUENCE_BOUNDS 0xbe` | GpSIMD | [../firmware/kernels/get-sequence-bounds.md](../firmware/kernels/get-sequence-bounds.md) | HIGH/O+C |
 | `emit_tensor_tensor_arith` | `tensor_tensor_arith` | `TENSOR_TENSOR_ARITH 0x41` | Vector **or** GpSimd (route) | [../firmware/kernels/tensor-tensor.md](../firmware/kernels/tensor-tensor.md) | HIGH/O+C |
 | `emit_tensor_tensor_power` | `tensor_tensor_power` | `TENSOR_TENSOR_ARITH 0x41` (power) | GpSimd | [../firmware/kernels/tensor-tensor.md](../firmware/kernels/tensor-tensor.md) | HIGH/O+C `***` |
@@ -360,11 +370,16 @@ The binary docstring is authoritative for the engine the IR builder *declares*:
 > (`0x9a`/`0xe6`) are unchanged and ledger-confirmed; only the declared engine differs.
 > [HIGH/OBSERVED — irbuilder `.so` docstring strings.]
 
-> **CORRECTION ◆ — `quantize_mx` declares Vector, not GpSimd.** DX-CC-01 §3 tabulated it
-> `gpsimd`. The `.so` docstring reads: *"Apply on-the-fly quantization … in OCP
-> Microscaling (MX) formats using **Vector Engine**."* The device decode is the inverse
-> MX dequant kernel (`TENSOR_DEQUANTIZE 0x7b` / `QUANTIZE_MX 0xe3`); the host forward
-> pack is declared on Vector. [HIGH/OBSERVED — irbuilder `.so` docstring.]
+> **CORRECTION ◆ — `quantize_mx` declares Vector, not GpSimd, and its forward device
+> opcode is `0xE3`, not `0x7b`.** DX-CC-01 §3 tabulated it `gpsimd`. The `.so` docstring
+> reads: *"Apply on-the-fly quantization … in OCP Microscaling (MX) formats using **Vector
+> Engine**."* The **forward** pack lowers to **`QUANTIZE_MX 0xe3` on the DVE (Vector)**; the
+> inverse standalone dequant is the separate **`TENSOR_DEQUANTIZE 0x7b` on POOL** with no
+> forward BIR producer. The opcode catalog here is the device ledger §2: do not bind the
+> forward `quantize_mx` to `0x7b`. (Per
+> [bir-inst-roster §3.3 CORRECTION](bir-inst-roster.md) and
+> [dtype-engine-fanin-synthesis §A.5.1](dtype-engine-fanin-synthesis.md).)
+> [HIGH/OBSERVED — irbuilder `.so` docstring; ledger §2.3 `0xe3 QUANTIZE_MX | DVE`.]
 
 (For contrast, `tensor_scalar_addr` *does* declare `Gpsimd` in the `.so` docstring —
 *"…64-bit address calculations using Gpsimd Engine"* — confirming DX-CC-01's gpsimd
@@ -549,7 +564,7 @@ All four host versions are compiler/host op-set releases; none is a firmware ver
 ## Cross-references
 
 - [sundaisel.md](sundaisel.md) — the NISA→TPB instruction selector, op-by-op rewrite rules.
-- [bir-inst-roster.md](bir-inst-roster.md) — the ~119 `bir::Inst*` node set.
+- [bir-inst-roster.md](bir-inst-roster.md) — the 110-class `bir::Inst*` node set.
 - [dtype-engine-fanin-synthesis.md](dtype-engine-fanin-synthesis.md) — the bf16/INT_WIDE dtype→opcode dispatch (S4).
 - [../firmware/kernels/opcode-catalog-ledger.md](../firmware/kernels/opcode-catalog-ledger.md) — the authoritative device opcode roster.
 - neuronx-cc compiler wiki (full internals): `neuronx-cc/wiki/src/...` — the walrus descriptor emitter, the scheduler cost model, the memory planner, and the per-pass details out of scope here.

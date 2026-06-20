@@ -462,10 +462,13 @@ nki bindings this pass; the `0xE3`-fwd binding INFERRED-HIGH per §2.3.]`
 > reimplementer must emit **`0xE3` on the DVE** for the forward quantize and reserve
 > `0x7b` on POOL for the inverse. `[HIGH — engine OBSERVED; numeric INFERRED-HIGH.]`
 
-### 6.3 A second divergence vs the device pages — the `0xE3` gen-availability
+### 6.3 The `0xE3` gen-availability — RESOLVED (floor = NC-v4 / MARIANA)
 
-The shipped evidence disagrees on **which generation first ships `0xE3`**, and this
-page flags it rather than smoothing it over:
+The shipped sources *appeared* to disagree on **which generation first ships `0xE3`**;
+the divergence is now **RESOLVED** (floor = NC-v4 per
+[mx-device-bodies §6.1](mx-device-bodies.md) / [dtype-engine-fanin-synthesis §A.5.1](dtype-engine-fanin-synthesis.md)).
+The three rows below are reconciled by the per-arch header read in the CORRECTION beneath
+the table — each `nc == Vn` gate is gen-local to its own header, not a global floor:
 
 | source | `0xE3 QUANTIZE_MX` available on… |
 |---|---|
@@ -473,16 +476,23 @@ page flags it rather than smoothing it over:
 | this page §2.3 (the `.pyi` gating) | "v4 and newer" |
 | [mx-dequant](../firmware/kernels/mx-dequant.md) §6.2 / [dtype-model](../firmware/kernels/dtype-model.md) §2.4 | **NC-v5 only** (`s3dmx1_quant_valid_nc: nc == V5`) |
 
-> **GOTCHA — the `S3DMX1_QUANT` validity gate is `nc == V5`, but the enum/`.pyi`
-> presence is v4+.** The enum-presence column (`--YYY`) and the host `.pyi` gate
-> ("v4 and newer") place `0xE3` from **MARIANA (v4)**; the `is_valid_s3dmx1_quant`
-> *struct validity* gate reads `nc == V5`. The opcode can be **named/present** in the
-> v4 enum while its *operand struct* is only **valid** on v5 — a roster-vs-validity
-> split, not a contradiction in the opcode number. A v4-targeting reimplementer
-> should treat the `nc == V5` struct gate as the tighter constraint and verify
-> against its own target image; the **opcode number `0xE3` and the engine (DVE) are
-> not in dispute**. `[MED — the two device pages and the ledger disagree on the gen
-> floor; the opcode/engine are HIGH.]`
+> **CORRECTION — RESOLVED: the `0xE3` gen floor is NC-v4 (MARIANA); `nc == V5` is the
+> maverick-header-LOCAL gate, not a global floor.** This page originally flagged the floor
+> as a MED divergence. [mx-device-bodies §6.1](mx-device-bodies.md) and
+> [dtype-engine-fanin-synthesis §A.5.1](dtype-engine-fanin-synthesis.md) **resolve** it by
+> reading both per-arch `s3dmx1_quant.h` headers directly: the header is present in
+> **mariana(v4) + maverick(v5), absent in sunda + cayman(v3)**, and each present header
+> gates `0xE3` on **its own** core version — `mariana/.../s3dmx1_quant.h:142` reads
+> `nc == V4`, `maverick/.../s3dmx1_quant.h:103` reads `nc == V5`. The `nc == V5` that
+> [mx-dequant §6.2](../firmware/kernels/mx-dequant.md) and
+> [dtype-model §2.4](../firmware/kernels/dtype-model.md) quote is the **MAVERICK** header's
+> own gate (gen-local), not a claim that `0xE3` first ships on v5. So there is **no
+> contradiction with the ledger** (`--YYY`) or the host `.pyi` ("v4 and newer"): the
+> forward `QUANTIZE_MX` gen floor is **NC-v4 (MARIANA)**. A reimplementer should target the
+> **v4** floor and use the per-target header's own `s3dmx1_quant_valid_nc` as the validity
+> gate (`V4` on MARIANA, `V5` on MAVERICK). The **opcode number `0xE3` and the engine (DVE)
+> were never in dispute**. `[HIGH/OBSERVED — both per-arch headers byte-read, per
+> mx-device-bodies §6.1.]`
 
 ### 6.4 Reconciling the two "MX" surfaces
 
@@ -546,11 +556,11 @@ the exact MAC-input-vs-PSUM-drain TAP of the PE-side scale is MED per pe-matmul 
 | block geometry | 32 = 8 part × 4 elem ; 16 blocks × 8 = 128 | ✔ (hard consts) |
 | SBUF scale scatter | ×32 quadrant stride (0-3 / 32-35 / 64-67 / 96-99) | ✔ (fwd & inv inverses) |
 | scale-multiply tie | `ldexp == 2.0**(s−127) == FW-75 MAC == addexp` | ✔ bit-exact |
-| `0xE3` gen floor | ledger/`.pyi` v4+ vs `S3DMX1_QUANT` validity `nc==V5` | **FLAGGED** (§6.3) |
+| `0xE3` gen floor | NC-v4 (MARIANA); `nc==V5` is the maverick-header-local gate | **RESOLVED** (§6.3) |
 
 **Verdict:** one **CORRECTION** (the forward `0xE3`-not-`0x7b` engine/opcode), one
-**SHARPENING** (the v4 separate `0x09`/`0x0A` PE pair), one **flagged divergence**
-(the `0xE3` gen floor across device pages), zero residual opcode-numeric
+**SHARPENING** (the v4 separate `0x09`/`0x0A` PE pair), one **resolved divergence**
+(the `0xE3` gen floor = NC-v4 / MARIANA, §6.3), zero residual opcode-numeric
 disagreements. Every engine the nki frontend names — Vector for `quantize_mx`, Tensor
 for `nc_matmul_mx` — matches the ledger engine of the corrected opcode; the E8M0
 multiply is bit-exact across host/sim/FW/ISS.
@@ -590,8 +600,10 @@ To rebuild a Vision-Q7-compatible OCP-MX path:
   DVE` row, but the host-emitter → `0xE3` numeric step is not byte-read.
 - **The forward `0xE3` DVE FLIX body is not byte-decoded** this pass (§7); it is
   INFERRED-HIGH to be the mirror of the FW-75 dequant legs.
-- **The `0xE3` gen floor is contested** across the device pages (ledger/`.pyi` v4+
-  vs `S3DMX1_QUANT` validity `nc == V5`) — flagged in §6.3, not resolved.
+- **The `0xE3` gen floor is RESOLVED** (no longer a desync flag): the floor is
+  **NC-v4 (MARIANA)**, and the `nc == V5` predicate is the maverick header's gen-local
+  gate, not a global floor — see §6.3 and [mx-device-bodies §6.1](mx-device-bodies.md)
+  (both per-arch `s3dmx1_quant.h` headers byte-read).
 - **The PE-side MX scale TAP** (multiplier-input vs PSUM-drain) is MED/INFERRED — the
   PE array RTL is out of corpus ([pe-matmul](../firmware/kernels/pe-matmul.md) §7).
 - **v5/MAVERICK MX interiors are header-OBSERVED only.** The `MXTENSOR_V2` struct +
