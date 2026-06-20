@@ -125,5 +125,6 @@
 - [PTX Instruction Table](./reference/ptx-instructions.md)
 - [EIATTR Attribute Catalog](./reference/eiattr.md)
 - [Extracted .rodata Tables (45 JSON)](./reference/extracted-tables.md)
+- [Diagnostics & Messages (506)](./reference/diagnostics.md)
 - [String-Pool Encryption](./reference/string-pool-cipher.md)
 - [Glossary](./glossary.md)
