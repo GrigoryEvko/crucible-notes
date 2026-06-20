@@ -1,0 +1,10 @@
+field	value	meaning
+hdr[0]	120	gpr_banks_or_count
+hdr[1]	120	gpr_count_max
+hdr[2]	64	predicate_regs
+hdr[3]	256	uniform_regs
+hdr[4]	32	barriers
+hdr[5]	8	barrier_alloc_unit
+hdr[6]	32	convergence_barriers
+hdr[7]	4	b_alloc
+hdr[8]	64	datapath_width

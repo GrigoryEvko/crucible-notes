@@ -1,0 +1,9 @@
+va	label	dword0	dword1	dword2	dword3	interpretation
+0x229C400	sm90_regfile_params	6	128	32768	255	alloc_granularity_log2=6;warps_per_subpartition=128;half_reg_file=32768;max_reg_per_thread=255
+0x229C410	sm90_granularity_params	63	7	7	16	granularity_mask=63;round_shift=7;round_shift=7;max_warps=16
+0x229C420	barrier_cta_params	4	2048	8	2	barrier_alloc=4;regfile_per_part=2048;barriers_per_warp=8;cta_dim=2
+0x229C430	sm60_sm70_max_warps	32	32	64	32	warp_alloc=32;warp_gran=32;max_warps_per_sm=64;blocks=32
+0x229C440	sm53_sm62_regfile_params	6	128	65536	255	alloc_granularity_log2=6;warps=128;half_reg_file=65536;max_reg=255
+0x229C450	sm35_sm37_max_warps	32	32	48	16	warp_alloc=32;gran=32;max_warps=48;blocks=16
+0x229C460	sm3x_sm5x_max_warps	32	32	48	24	warp_alloc=32;gran=32;max_warps=48;blocks=24
+0x229C470	sm70plus_granularity	80	7	7	16	granularity=80;round=7;round=7;max_warps=16

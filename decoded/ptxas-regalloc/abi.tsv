@@ -1,0 +1,21 @@
+aspect	value	description	evidence
+reserved_low_gprs	R0-R3	Registers 0-3 are reserved by ABI and cannot be used (4 GPRs)	binary string @0x1cff248 + sub_4394D0 base v10=4
+param_reg_start	R4	first parameter register = base (v10) after reserved block; v10=4 default	sub_4394D0 line 70
+param_reg_start_call	R5 or R6	+1 for return-addr reg; +2 (=R6) when return value is 8 bytes (64-bit pair)	sub_4394D0 lines 87-90,116-119
+param_reg_alloc_unit	4	parameter registers allocated in groups of 4 ((words+3)>>2)	sub_4394D0 v27=v25>>2
+param_reg_max_boundary	252	warning 'Parameter register ...' when v13+v10 > 252	sub_4394D0 line 155
+max_phys_regs	255	architectural max register-per-thread (R0..R255); occupancy max_reg field=255	occupancy_constants sm90 dword3=0xFF
+abi_min_gpr	13	ABI minimum GPR floor; values below bumped up; cost matrix floor=13	operand_resource_strategy matrix_b floor; sub_4394D0 '>13' threshold
+alloc_granularity_gpr	4	register count rounded/stepped by 4 (matrix step=4; rfc alloc_granularity=4)	register_file_config dword5=4; matrices step 4
+retaddr_register	GPR (R%d), 64-bit pair	return address held in a GPR pair; relative 32-bit retaddr needs caller-save 64-bit scratch pair	binary strings: 'return address register', 'Relative 32-bit return address requires a caller-save 64-bit scratch register pair'
+scratch_registers	caller/callee declared	scratch data registers + scratch control barriers declared per function; mismatch -> spills	strings 'scratch data registers','scratch control barriers', sub_43F400
+retaddr_distinct_rule	caller!=callee	caller and callee must use different return-address registers	string @0x1d05048
+scratch_not_retaddr	constraint	a scratch register may not also be the return-address register	string @0x1d050c8
+param_retaddr_no_overlap	constraint	parameter register range must not overlap return-address register range	string @0x1d051e8
+first_reserved_rreg_opt	--first-reserved-rreg	controls first reserved R register	sub_4428E0
+uniform_regs	256	uniform register file size (UR); from register_file_config header[3]	register_file_limits hdr[3]=256
+predicate_regs	64	predicate register count (header[2]); but R0-R3-style P reserved varies	register_file_limits hdr[2]=64
+barriers	32	convergence/named barrier count (header[4])	register_file_limits hdr[4]=32
+smem_spill_abi_rule	disallowed	shared-memory spilling disabled when function uses ABI	string 'Smem spilling should not be enabled when functions use abi.'
+multi_return_abi	disallowed	functions with multiple return values disable ABI	string 'Function with multiple return values is not allowed with ABI'
+abi32_unsupported	--machine 32	32-bit ABI unsupported on newer architectures	string '32-Bit ABI ... not supported'

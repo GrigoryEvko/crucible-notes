@@ -1,0 +1,6 @@
+layer	inter_encoding_tree	inter_sass_dispatch_1	inter_sass_dispatch_2	inter_per_sm_dispatch	inter_isel_vtable	size
+encoding_tree	4618	2828	3367	2194	0	4618
+sass_dispatch_1	2828	6915	2832	1711	0	6915
+sass_dispatch_2	3367	2832	3478	1899	0	3478
+per_sm_dispatch	2194	1711	1899	2421	0	2421
+isel_vtable	0	0	0	0	3707	3707

@@ -1,0 +1,4 @@
+sm_generation	num_records	num_distinct_classes	class_ids	extended_flag2_count
+sm_10x	97	14	0,1,2,3,4,5,6,7,8,9,10,11,12,13	9
+sm_8x	24	11	0,1,2,3,4,5,6,7,8,9,10	0
+sm_7x	150	17	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16	20

@@ -1,0 +1,9 @@
+layer	region_va	indexing_scheme	keyed_by	distinct_handlers	note
+opcode_to_encoding	0x22B4B60	flat u16[222]	opcode_index	-	opcode -> encoding_slot (sentinel 355)
+encoding_tree_1	0x233BE00-0x2353E00	16B slotted tree (274 internal/5169 leaf)	(format_id<<8)|minor via slot	4618	primary format+handler selection
+encoding_tree_2	0x235CE00-0x2379E00	16B slotted tree (427 internal/6251 leaf)	(format_id<<8)|minor via slot	-	secondary/extended tree (shares pool)
+sass_dispatch_1	0x22C0E00-0x22F1E00	(opcode,category,variant) sub-tables	opcode_id	6915	superset emit-handler list (6915 rows)
+sass_dispatch_2	0x2379E00-0x2399E00	(opcode,category,variant) sub-tables	opcode_id	3478	reduced/prefix of dispatch_1 (3485 rows)
+per_sm_dispatch	0x22E7AD0-0x23B99D0	5x{u64 op,u64 ptr,u64 pad} arrays	(format_id<<8)|minor	2421	Mercury arch-specialized override (sm50_7x/sm75/sm100/sm80_8x/sm86_89)
+isel_vtable(0x22ad230/0x23b3a80)	0x22AD230,0x23B3A80	C++ vtable	virtual slot	3707	NOT encoder; ISel node vtables (off_22AD230 assigned as vptr)
+encoder_handler_union	-	-	-	8874	union of tree+sass1+sass2+per_sm

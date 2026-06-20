@@ -1,0 +1,11 @@
+va	count	bank	reg_lo	reg_hi	step	note
+0x21EE460	240	1	640	879	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EE820	34	1	576	609	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EEBE0	240	1	400	639	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EEFA0	32	1	160	191	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EF020	136	2	192	462	2	paired/wide (64-bit) register IDs, step 2
+0x21EF260	16	1	464	479	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EF2A0	48	2	480	574	2	paired/wide (64-bit) register IDs, step 2
+0x21EF360	240	1	160	399	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EF720	168	1	640	807	1	GP (general-purpose) register IDs; bank<<16|reg
+0x21EF9E0	64	1	808	871	1	GP (general-purpose) register IDs; bank<<16|reg
