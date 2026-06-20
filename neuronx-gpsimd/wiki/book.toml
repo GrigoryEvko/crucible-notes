@@ -5,6 +5,9 @@ description = "Reimplementation-grade reverse-engineering reference for AWS Neur
 language = "en"
 src = "src"
 
+[build]
+build-dir = "../../docs/neuronx-gpsimd"
+
 [output.html]
 default-theme = "navy"
 additional-js = ["ai-disclaimer.js"]

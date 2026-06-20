@@ -35,6 +35,7 @@ jobs:
           (cd libtpu/wiki && mdbook build)
           (cd neuronx-cc/wiki && mdbook build)
           (cd neuronx-runtime/wiki && mdbook build)
+          (cd neuronx-gpsimd/wiki && mdbook build)
 
       - name: Assemble site
         run: |
@@ -51,6 +52,7 @@ jobs:
           cp -r docs/libtpu _site/libtpu
           cp -r docs/neuronx-cc _site/neuronx-cc
           cp -r docs/neuronx-runtime _site/neuronx-runtime
+          cp -r docs/neuronx-gpsimd _site/neuronx-gpsimd
 
       - name: Inject canonical links and generate sitemap
         run: python3 .github/workflows/seo_postprocess.py _site

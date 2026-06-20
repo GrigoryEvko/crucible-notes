@@ -21,6 +21,7 @@ Reverse engineering reference for NVIDIA's CUDA compiler toolchain, Google's TPU
 | **libtpu** | Google TPU PJRT plugin (745 MB, 6 silicon gens, LLO VLIW ISA + cost model) | **[wiki](https://gh.evko.io/crucible-notes/libtpu/)** | 424 pages |
 | **neuronx-cc** | AWS Neuron compiler (Trainium/Inferentia) — hlo-opt/Penguin/NKI front-end, libBIR + libwalrus backend, NEFF packaging | **[wiki](https://gh.evko.io/crucible-notes/neuronx-cc/)** | 355 pages |
 | **neuronx-runtime** | AWS Neuron runtime — aws-neuronx-dkms kernel driver, libnrt.so runtime, libncfw.so firmware + Xtensa payloads | **[wiki](https://gh.evko.io/crucible-notes/neuronx-runtime/)** | 182 pages |
+| **neuronx-gpsimd** | AWS Neuron GPSIMD engine — the Cadence Tensilica Vision-Q7 NX "Cairo" DSP (config ncore2gp, 512-bit FLIX/VLIW vector ISA) embedded in each NeuronCore: Q7 core & per-instruction ISA + formal semantics, microarchitecture & timing, device firmware + kernel/opcode catalog, per-generation images (Sunda/Cayman/Mariana/Mariana+/Maverick), custom-op ABI, collectives & NCFW, the NEFF container, the libcas/libfiss ISS oracle + bit-exact differential validation | **[wiki](https://gh.evko.io/crucible-notes/neuronx-gpsimd/)** | 407 pages |
 | **fatbin** | Fat binary manipulation tools | [readme](fatbin/README.md) | Released |
 
 All analysis is from static reverse engineering of stripped x86-64 ELF binaries using IDA Pro 9.x. No source code or any other restricted or copyrighted material was used — all findings derive solely from analysis of compiled binaries.
