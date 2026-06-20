@@ -269,7 +269,7 @@ on reads, poisons the payload. The detector *decides*; the NTS responder *respon
 | Fault | Detector | Response code | Poison | Source page |
 |---|---|---|---|---|
 | remapper CAM miss / policy DENY | `amzn`/`user_remapper` | reuses NTS path | — (decides only) | [remapper](../csr/remapper.md) |
-| qos NTS no-target-slave | `qos_prot.nts_amzn` | `read/write_response` = **`0x2` SLVERR** | `read_data` = **`0xDEADBEEF`** ×2 (256-bit beat) | [qos-prot](../csr/qos-prot.md) |
+| qos NTS no-target-slave | `qos_prot.nts_amzn` | `read/write_response` = **`0x2` SLVERR** | `read_data` = **`0xDEADBEEF`** (×1 register, replicated across the 256-bit beat) | [qos-prot](../csr/qos-prot.md) |
 | NSM write-side (4 causes: no-match-AW, B-timeout, AW/W-handshake timeout) | `nsm.wr.status` | `BRESP` = `wr.cfg_1.axi_bresp` rst **`0x2` SLVERR** | — (write) | [nsm](../csr/nsm.md) |
 | NSM read-side (5 causes: early/missing RLAST, no-match-AR, R/AR-handshake timeout) | `nsm.rd.status` | `RRESP` = `rd.cfg_1.axi_rresp` rst **`0x2` SLVERR** | `error_data_0..7` = **`0xDEADBEEF`** ×8 (256-bit poison) | [nsm](../csr/nsm.md) |
 
@@ -279,6 +279,17 @@ on reads, poisons the payload. The detector *decides*; the NTS responder *respon
 > (`3735928559`). A host that reads `0xDEADBEEF` from device memory is reading a *fail-stopped*
 > fabric transaction, not data. The NSM read-poison surface (a recognizable 256-bit pattern)
 > is noted as a leakage surface by [`side-channel-leakage.md`](./side-channel-leakage.md).
+
+> **CORRECTION — qos-NTS materializes ONE poison register, not two.** An earlier
+> pass tagged the `qos_prot.nts_amzn` poison "×2." The byte-grounded census is
+> **8 / 1 / 0** (NSM lays the full beat in 8× `error_data_*` @`0x21c..0x238`;
+> qos_prot-NTS materializes **exactly one** register `read_data` @abs `0x40c`,
+> datapath-replicated across the 256-bit beat; the remapper holds zero and delegates
+> to NTS). The "×2" was count-grep inflation — `rg -ci deadbeef qos_prot.json` = 2,
+> but the second hit is that register's own Description text ("default=deadbeef"),
+> not a second register. The "same wire bytes, different CSR materialization"
+> framing is unchanged. See [`nsm-flow-unified.md`](../interrupt/nsm-flow-unified.md)
+> §9 and [`soc-fabric-perimeter.md`](./soc-fabric-perimeter.md). `[HIGH · OBSERVED]`
 > `[HIGH · OBSERVED — reset values CARRIED from [nsm §4b](../csr/nsm.md) / [qos-prot](../csr/qos-prot.md).]`
 
 ### 4b. Layer B — RAS / abort faults (HW, freeze-the-block) `[HIGH · OBSERVED · CARRIED]`

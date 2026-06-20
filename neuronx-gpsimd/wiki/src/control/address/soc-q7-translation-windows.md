@@ -2,7 +2,9 @@
 
 > **Scope.** This is the address-translation keystone for the GPSIMD engine: the
 > complete, byte-grounded model of how a **32-bit Q7 NX-local** pointer maps into
-> the **57-bit Cayman/Sunda SoC physical** space. Three views are reconciled here —
+> the **Cayman/Sunda SoC physical** space — a **58-bit decode field (`[57:0]`),
+> `[54:0]` routed, 2⁵⁴ populated** (the precise form; see the CORRECTION below).
+> Three views are reconciled here —
 > the **device runtime software TLB** (`neuron_translate`), the **hardware
 > window-register block** (the RTL `tpb_nx.h` CSRs), and the **host
 > window-programming API** (`nxlib_window.h` + the `soc_window_manager` runtime).
@@ -23,8 +25,9 @@ the unified memory map [`unified-soc-memory-map.md`](unified-soc-memory-map.md).
 ## 0. The one-paragraph model
 
 The Q7 (Xtensa-NX `ncore2gp`) core dereferences a **32-bit NX-local** address space.
-Anything in the **57-bit SoC physical** space (HBM, SBUF, hbm_scratch, EVT_SEM,
-remote die/chip) is reached through a small set of **hardware window registers** in
+Anything in the **SoC physical** space (HBM, SBUF, hbm_scratch, EVT_SEM,
+remote die/chip) — a 58-bit decode field, `[54:0]` routed (see §1) — is reached
+through a small set of **hardware window registers** in
 the core's NX register block. On **Sunda** (NC-v2) that block is at NX
 `0x00100000` and a window is a **`{lo, hi}` base pair** — eight 16-MB windows
 (`MEM_WINDOW0..7`) plus two 64-MB windows, *not resizeable*. On **Cayman** (NC-v3)
@@ -40,7 +43,7 @@ registers `MEM_WINDOW3 / MEM_WINDOW5 / MEM_WINDOW6` (`0x100218 / 0x100228 /
 0x100230`), leaving the other five 16-MB windows for the host runtime.
 
 ```
-   Q7 NX 32-bit pointer  ──►  [ device TLB: neuron_translate ]  ──►  [ HW window reg ]  ──►  57-bit SoC phys
+   Q7 NX 32-bit pointer  ──►  [ device TLB: neuron_translate ]  ──►  [ HW window reg ]  ──►  SoC phys ([57:0] field, [54:0] routed)
         0x07012345               5-entry sw cache, %3 round-robin       MEM_WINDOWn (Sunda)        0x2802012345
                                  hit = arith; miss = reprogram reg      TCAM window (Cayman)
                                           ▲
@@ -50,7 +53,7 @@ registers `MEM_WINDOW3 / MEM_WINDOW5 / MEM_WINDOW6` (`0x100218 / 0x100228 /
 
 ---
 
-## 1. The target space — the 57-bit SoC physical address
+## 1. The target space — the SoC physical address
 
 `HIGH/CARRIED` — from [`addr-decode.md`](addr-decode.md) / the SoC decode headers.
 A SoC address is 64-bit with bits `[57:0]` defined; the **LOCAL** (own-die) view:
@@ -70,13 +73,26 @@ A SoC address is 64-bit with bits `[57:0]` defined; the **LOCAL** (own-die) view
 > *same* NX window can be re-pointed at a remote die or chip simply by writing a tag
 > with `DIE[47]` / `CAYMAN_ID[53:48]` set. This is the cross-die mechanism (§7).
 
+> **CORRECTION — "57-bit SoC physical" is loose shorthand; the precise form is
+> 58-bit decode field, `[54:0]` routed, 2⁵⁴ populated.** Earlier passes of this
+> page (and a few siblings) called the target a "57-bit SoC physical" space. That
+> is an off-by-one against the decode struct: `cayman_addr_decode.h` defines bits
+> **`[57:0]` — a 58-bit field**. The *routed* geometry is `[54:0]` (`LOCAL[46:0]` +
+> `DIE[47]` + `CAYMAN_ID[53:48]` + `CAYMAN_ID_VALID[54]`); bits `[57:55]` are
+> attribute/poison flags, not address bits; the *populated* map tops out at **2⁵⁴**
+> (`0x40000000000000`). State it as **"58-bit decode field, `[54:0]` routed,
+> 2⁵⁴-populated"**, matching [`unified-soc-memory-map.md`](unified-soc-memory-map.md)
+> and [`soc-master-map.md`](soc-master-map.md). The window-tag mechanism above is
+> unchanged — only the width label is corrected. `[HIGH · OBSERVED]`
+
 ---
 
 ## 2. The complete Q7 NX 32-bit address-space map
 
 `HIGH/OBSERVED` for every NX base + route unless noted. Two structurally-distinct
 parts: **(A)** fixed, directly-dereferenceable NX regions, and **(B)** the windowed
-region where an NX slice is a movable view of a 57-bit SoC address.
+region where an NX slice is a movable view of a 58-bit SoC address (`[57:0]` field,
+`[54:0]` routed — see §1).
 
 | NX range | What it is | Reach / source |
 | :--- | :--- | :--- |
@@ -435,8 +451,9 @@ The explicit agreement points:
 ## 7. Cross-die / cross-chip addressing
 
 `HIGH/OBS` die-bit; `MED` the translate-routes-the-barrier reading. An NX window does
-**not** itself carry die/chip bits — those live in the 57-bit SoC tag the window
-register is programmed with. To reach a remote die/chip from a Q7 core:
+**not** itself carry die/chip bits — those live in the SoC tag (`[54:0]` of the
+58-bit decode field) the window register is programmed with. To reach a remote
+die/chip from a Q7 core:
 
 1. Compose the remote SoC address: set `LOCAL[46:0]` to the in-die offset, `DIE[47]`
    for the other die of the package, `CAYMAN_ID[53:48]` + `CAYMAN_ID_VALID[54]` for a
@@ -494,7 +511,7 @@ HBM stack capacity 16 GiB.
 
 ---
 
-## 9. Worked example — one 32-bit Q7 address → 57-bit SoC physical
+## 9. Worked example — one 32-bit Q7 address → SoC physical (`[54:0]` routed)
 
 **Goal:** a Q7 op wants to read SoC PSUM `0x2802012345` (PSUM base `0x2802000000` +
 offset `0x12345`). Cold cache, dynamic slot 0 (`window 0x07000000`) is the victim.

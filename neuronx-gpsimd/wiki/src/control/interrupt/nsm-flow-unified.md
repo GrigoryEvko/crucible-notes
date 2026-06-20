@@ -405,23 +405,30 @@ poison convention, different trigger** — this is the **NTS terminator family**
 * **(B) NTS** (`qos_prot.nts_amzn`, absent target during isolation/power-down):
   `read_response`@0x408 / `write_response`@0x410 (reset `0x2` SLVERR; `0x3` DECERR;
   `0x0` OK), `read_data`@0x40c (reset `0xdeadbeef`, "replicated across the bus").
-  Confirmed this session: **2× `0xdeadbeef`** in `qos_prot.json`.
-  `control.mode` selects NO-TARGET vs BLOCK post-flush.
+  Confirmed this session: **exactly ONE** materialized `read_data` register in
+  `qos_prot.json` holds the poison word (`rg -ci deadbeef qos_prot.json` = 2, but
+  the second hit is that register's own **Description** text "default=deadbeef" @line
+  1820, *not* a second register). `control.mode` selects NO-TARGET vs BLOCK
+  post-flush.
 
 The **remapper deny reuses (B)** — it has no own response field. So three blocks
 terminate AXI faults with the **same signature `SLVERR(0x2)` + `0xDEADBEEF`**:
 `qos_prot` NTS, `amzn`/`user_remapper` (deny, via NTS), and `nsm`. The poison
 matches the `udma_gen_ex` DEADBEEF convention.
 
-> **CORRECTION — the deadbeef *register* counts differ by block; the *bus* poison
-> is identical.** A naïve reading equates the two injectors, but the schemas
-> differ: NSM holds **8** `error_data_*` registers (a full 256-bit beat
-> materialized in CSR), while `qos_prot` holds **2** `read_data` registers and
-> **replicates** the single `0xDEADBEEF` word across the bus width at response time.
-> Both put `DEADBEEF DEADBEEF …` on the wire; only the CSR materialization differs
-> (8-reg vs 1-reg-replicated). The remapper holds **zero** — it delegates. When you
-> see `0xDEADBEEF` on the read-data bus, the master hit one of these three FIS
-> guards. `[HIGH · OBSERVED]`
+> **CORRECTION — the deadbeef *register* census is 8 / 1 / 0, not 8 / 2 / 0.** A
+> naïve reading equates the two injectors, but the schemas differ — and an earlier
+> pass over-counted the qos side. NSM holds **8** `error_data_*` registers (a full
+> 256-bit beat materialized in CSR @`0x21c..0x238`), while `qos_prot`-NTS holds
+> **exactly ONE** materialized register (`nts_amzn.read_data` @abs `0x40c`) and
+> **replicates** that single `0xDEADBEEF` word across the 256-bit beat at response
+> time. The "2" previously cited for `qos_prot` was **count-grep inflation**:
+> `rg -ci deadbeef qos_prot.json` = 2, but the second hit is the register's own
+> Description field ("default=deadbeef"), not a second register. Both blocks put
+> `DEADBEEF DEADBEEF …` on the wire; only the CSR materialization differs (8-reg vs
+> 1-reg-replicated). The remapper holds **zero** — it delegates to NTS. Census =
+> **8 / 1 / 0** (nsm / qos_prot-NTS / remapper). When you see `0xDEADBEEF` on the
+> read-data bus, the master hit one of these three FIS guards. `[HIGH · OBSERVED]`
 
 ---
 
@@ -767,7 +774,7 @@ a per-die apex (119 entries, 79 criticals vs Cayman's 32), and FIS parity source
 | claim | conf · prov | grounding (re-verified this session unless CARRIED) |
 |-------|-------------|-----------------------------------------------------|
 | NSM 9 protocol-shape causes (4 wr + 5 rd) | HIGH · OBSERVED | `nsm.json wr/rd.status` |
-| 8× `0xDEADBEEF` (NSM) / 2× (qos NTS) / 0 (remapper) | HIGH · OBSERVED | `rg -ci deadbeef`: nsm 8, qos 2 |
+| `0xDEADBEEF` register census **8 / 1 / 0** (NSM / qos NTS / remapper) | HIGH · OBSERVED | NSM 8× `error_data_*` regs; qos_prot 1 `read_data` reg (the `rg -ci deadbeef`=2 second hit is the Description text, not a 2nd reg); remapper delegates |
 | `axi_bresp/rresp` reset `0x2` (SLVERR) | HIGH · OBSERVED | `nsm.json @0x118/0x218` |
 | 6 `enter_isolation_mode_on_*` (2 wr + 4 rd) | HIGH · OBSERVED | `nsm.json cfg_1` (counted = 6) |
 | `cfg_auto_iso` 5-cause `{err_resp,long,short,spurious,timeout}` | HIGH · OBSERVED | `nsm.json` |

@@ -467,7 +467,8 @@ and [`tpb-subblocks.md`](../csr/tpb-subblocks.md) for the control bundle in cont
 ## 8. Cross-die / cross-chip addressing of a semaphore
 
 A semaphore on die N (or chip M) is reached from die/chip P by composing the EVT_SEM SoC
-offset with the SoC 57-bit routing fields (see [`soc-master-map.md`](soc-master-map.md)):
+offset with the SoC routing fields — `[54:0]` of the 58-bit decode field (see
+[`soc-master-map.md`](soc-master-map.md)):
 
 | bit field | meaning | how a remote sema is addressed |
 | --- | --- | --- |
@@ -547,4 +548,4 @@ ISA fields index the same 256-space).
 - [`spad-ccop-tsync.md`](../../collectives/ncfw/spad-ccop-tsync.md) — NCFW counted-semaphore barrier
 - [`device-host-notification.md`](../interrupt/device-host-notification.md) — the notification egress path
 - [`tpb-subblocks.md`](../csr/tpb-subblocks.md) — the `events_semaphores` control bundle in context
-- [`soc-master-map.md`](soc-master-map.md) — the enclosing SoC region map + 57-bit routing
+- [`soc-master-map.md`](soc-master-map.md) — the enclosing SoC region map + 58-bit decode field (`[54:0]` routed)

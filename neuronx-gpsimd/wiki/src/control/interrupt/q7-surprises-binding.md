@@ -88,7 +88,7 @@ of both shipped images finds **none of them**:
 | `rfi` (return from interrupt) | **0** | **0** | return from a leveled vector |
 | `wsr/rsr.intenable` | **0** | **0** | enable specific interrupt lines |
 | `wsr/rsr.interrupt` | **0** | **0** | read/clear the interrupt latch |
-| `eps2`–`eps6` / `epc2`–`epc6` | **0** | **0** | per-level saved PS/PC (XEA2 leveled) |
+| `eps2`–`eps6` / `epc2`–`epc6` | **0** | **0** | per-level saved PS/PC (legacy XEA2-leveled SRs; XEA3 omits them) |
 | `waiti` (wait-for-interrupt) | **1** (off-path) | **3** (off-path) | sleep until IRQ |
 | `wsr.vecbase` | **1** (boot) | **1** (boot) | program vector base once |
 
@@ -96,9 +96,27 @@ The total absence of `rsil`/`rfi`/`intenable` in **both** images is the stronges
 proof: the on-die Xtensa **never enters, and never returns from, a leveled interrupt
 vector**. This is the firmware-side correlate of the architectural finding that the
 `ncore2gp` sysreg table carries **no** `INTERRUPT`/`INTENABLE`/`EPS[2-6]`/`EPC[2-6]` SRs
-— only the single-level XEA2 *exception* model (`EPC1`/`EXCCAUSE`/`EXCVADDR`/`VECBASE`)
-plus the `ActiveInterrupt`/`ActivePriority` arbitration **state** that the config exposes
-without leveled delivery. `[CARRIED · XEA3 arch §1–§2; firmware census re-verified here]`
+— only the single-dispatch **XEA3** *exception* model (`EPC1`/`EXCCAUSE`/`EXCVADDR`/`VECBASE`
++ `MS`/`IEVEC`/`ISB`/`ISL`/`KSL`) plus the `ActiveInterrupt`/`ActivePriority`/`CurrentPriority`
+arbitration **state** that the config exposes without leveled delivery.
+`[CARRIED · XEA3 arch §1–§2; firmware census re-verified here]`
+
+> **CORRECTION — this core is XEA3, not "single-level XEA2".** Earlier wording on
+> this page called the model a "single-level **XEA2** exception model" and the
+> `nx_iram` head a "standard `ncore2gp` **XEA2** vector region." That is the wrong
+> architecture name. The `ncore2gp` Vision-Q7 core is **XEA3** (Exception
+> Architecture 3) — proven in the `libisa-core.so` register file: the
+> XEA3-distinctive SRs `MS` (`0xe5`), `IEVEC` (`0x74`), `ISB`, `ISL`, `KSL` are all
+> present (the `xt_exception_dispatch` package), while *every* XEA2-only SR
+> (`EPC2-7`/`EPS2-7`/`INTENABLE`/`INTERRUPT`/`rsil`/`rfi`) is absent from both the
+> roster and both shipped firmware images. "No leveled interrupt registers" is the
+> defining **signature of XEA3** (which removes XEA2's level ladder), *not* a
+> stripped-down XEA2. The `(XEA2 leveled)` label on the absent `eps2-6`/`epc2-6`
+> rows below is correct in the narrow sense that those SRs *belong to* the legacy
+> XEA2 leveled model — it is precisely why XEA3 omits them. The polled-not-vectored
+> firmware conclusion on every page is **unchanged**; only the architecture name is
+> corrected. See [`xea3-interrupt-architecture.md`](./xea3-interrupt-architecture.md)
+> §1 for the byte-grounded register-file proof. `[HIGH · OBSERVED]`
 
 The lone `waiti` per image sits in an idle/quiesce primitive inside a FLIX-desynced
 fragment, **not** on the FSM run-loop path — it is not a run-loop interrupt-wait.
@@ -113,7 +131,7 @@ fragment, **not** on the FSM run-loop path — it is not a run-loop interrupt-wa
 
 ### 1a. The vector table is exception + window only `[HIGH · OBSERVED]`
 
-The head of `nx_iram` is the standard `ncore2gp` XEA2 vector region: a reset jump, the
+The head of `nx_iram` is the standard `ncore2gp` XEA3 vector region: a reset jump, the
 windowed-ABI overflow/underflow handlers (`l32e`/`s32e` runs), and an `EXCVADDR`-save
 exception vector. There is **no dense block of leveled interrupt vectors** (no
 Level-2..6 EXCVEC). `VECBASE` is programmed exactly **once** at boot (single

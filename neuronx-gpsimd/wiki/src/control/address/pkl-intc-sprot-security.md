@@ -80,7 +80,7 @@ decompile**.
 | # | surface | what it is | leaf count | view split (user / secure) |
 |---|---------|-----------|-----------:|----------------------------|
 | A | per-IP embedded INTC fleet (`type='INTC'`) | 13 per-IP-block interrupt controllers | **5,904** | 1,312 / 4,592 |
-| B1 | errtrig `intc_4grp` PAIR | symmetric `TRIG_0`+`TRIG_1` error-trigger generator | `TRIG_0` 1,372 · `TRIG_1` 1,372 | — |
+| B1 | errtrig `intc_4grp` PAIR | symmetric `TRIG_0`+`TRIG_1` error-trigger generator | `TRIG_0` 844 · `TRIG_1` 844 (per-vector); 1,372 anchor NODEs (§2b) | — |
 | B2 | `ap_intc` / IOFIC family | `iofic_x1/x2/x4` + Maverick `iofic_x8_msix` + `int_sec_grp` SWOM | schema family (§2c) | — |
 | B3 | `peb_intc` apex | top-of-tree PEB INTC (`peb_intc_amzn`) | **24** | 0 / 24 (secure only) |
 | C | per-FIS `sprot` stack | remapper → qos → nsm enforcement | **3,616** (6 schemas) | see §4a |
@@ -148,12 +148,24 @@ has **zero** of these schemas on disk (§7) — this whole fleet is the v5 add.
 ### 2b. The errtrig `intc_4grp` PAIR primitive `[HIGH · OBSERVED]`
 
 The error-trigger fabric is built from a **symmetric pair** of `intc_4grp` units. Streaming
-the `.json`:
+the Maverick (v5) `.json` for the strict per-vector `ERRTRIG_TRIG_*` short_name:
 
 ```
-TRIG_0  (short_name)  = 1,372
-TRIG_1  (short_name)  = 1,372     →  TRIG_0 == TRIG_1  →  1,372 generator PAIRS
+ERRTRIG_TRIG_0  =  844
+ERRTRIG_TRIG_1  =  844     →  TRIG_0 == TRIG_1  →  844 generator PAIRS (Maverick/v5)
 ```
+
+> **CORRECTION — Maverick per-vector `TRIG_0`/`TRIG_1` is 844 each, not 1,372;
+> "1,372" is the errtrig anchor-NODE total.** An earlier pass of this page cited
+> `TRIG_0 == TRIG_1 == 1,372`. Re-grounding the streamed Maverick `al_address_map_db`
+> shows the strict `ERRTRIG_TRIG_0` / `ERRTRIG_TRIG_1` short_names count **844 each**
+> (`rg -c ERRTRIG_TRIG_0` = 844). The **1,372** figure is the errtrig *generator-anchor
+> NODE* total = `errtrig_amzn.json` (**928**) + `errtrig_user.json` (**444**) = 1,372
+> — the parent NODEs that *own* the `TRIG_0`/`TRIG_1`/`NOTIFIC` triplet, not a
+> per-vector `TRIG` count. This matches
+> [`physical-intc-instances.md`](../interrupt/physical-intc-instances.md) §7, which is
+> authoritative on the v5 INTC census. The symmetric-pair *structure* is unchanged;
+> only the number attached to "TRIG_0 == TRIG_1" is corrected. `[HIGH · OBSERVED]`
 
 The equality is structural, not coincidental: every errtrig generator **always emits two
 `intc_4grp` units** (an on-die-summary half and its twin), so the count of `TRIG_0` and
@@ -174,8 +186,9 @@ ERRTRIG keyword decomposition (5,488 = user 592 / secure 4,896), by container/ha
 
 | short_name | count | role |
 |------------|------:|------|
-| `TRIG_0` / `TRIG_1` | 1,372 each | the symmetric `intc_4grp` PAIR halves |
-| `NOTIFIC` | 1,372 | per-pair notific queue |
+| `ERRTRIG_TRIG_0` / `ERRTRIG_TRIG_1` | 844 each | the symmetric `intc_4grp` PAIR halves (per-vector, Maverick/v5) |
+| `NOTIFIC` | 844 | per-pair notific queue |
+| `errtrig_amzn` + `errtrig_user` anchor NODEs | 928 + 444 = **1,372** | the generator-anchor NODE total (owns each TRIG triplet) — *this* is the "1,372" |
 | `ERRTRIG_INTC` | 528 | per-block errtrig INTC |
 | `USER_ERRTRIG` | 444 | host-visible errtrig container (user 148 / sec 296) |
 | `AMZN_ERRTRIG` | 400 | privileged errtrig container (secure-only) |
@@ -262,7 +275,7 @@ The byte-grounded cross-check is the **Cayman flat-YAML** physical-instance coun
 |---------|-------------:|------------------|
 | `type='INTC'` per-IP embedded INTCs (13 schemas) | **5,904** | 0 (Cayman had none) |
 | `intc_4grp` errtrig units | `no_msix` + `msix` fabric | 1,928 errtrig (4grp) |
-| errtrig generator PAIRS (`TRIG_0`==`TRIG_1`) | **1,372** | 642 pairs |
+| errtrig generator PAIRS (`TRIG_0`==`TRIG_1`) | **844** per-vector (1,372 anchor NODEs) | **962** pairs |
 | `ap_intc`/IOFIC units (x1/x2/x4/x8_msix) | first-class addressable | "includes-only" in PMDT |
 | `peb_intc` apex | **24** | 4 |
 | Cayman `intc_1grp_msix_unit` (RDM root) | 0 | 4 |
@@ -273,6 +286,21 @@ addition of the 5,904 per-IP INTCs, the promotion of the IOFIC family to address
 (incl. `iofic_x8_msix`), and the drop of the Cayman RDM `intc_1grp`. The structural identity
 is `[HIGH]`; the absolute unit counts are Maverick-specific and the cross-gen numeric delta
 is `[MED]`.
+
+> **CORRECTION — the Cayman errtrig PAIR is 962, not 642.** An earlier pass of this
+> cross-gen table cited "642 pairs" for the Cayman flat-YAML side. That is wrong on
+> the very file it claims to read: `rg -c ERRTRIG_TRIG_0 address_map_flat.yaml` =
+> **962**, `ERRTRIG_TRIG_1` = **962**, `ERRTRIG_NOTIFIC` = **962** → **962 generator
+> PAIRS** (one `notific_1_queue` each), splitting **428 USER + 534 AMZN**. This
+> matches [`fis-errtrig-spad.md`](../csr/fis-errtrig-spad.md) (#930, the re-grounded
+> source) and [`errtrig-fis-routing.md`](../interrupt/errtrig-fis-routing.md) (#939).
+> The **962** is the raw `TRIG` pair count (BCAST mirror aliases *included*); the
+> de-aliased **direct** generator count — BCAST excluded, the figure
+> [`physical-intc-instances.md`](../interrupt/physical-intc-instances.md) §3 reports
+> as **642** (428 USER + 214 AMZN direct generators) — is a *different axis*, not a
+> contradiction. The PAIR-count column here uses the byte-grounded **962**. The
+> Maverick side is **844** per-vector (1,372 errtrig anchor NODEs; §2b). The two SoCs
+> differ — keep the per-gen provenance explicit. `[HIGH · OBSERVED]`
 
 ---
 
@@ -481,7 +509,7 @@ Every count below was streamed from the `.json` this session and closes **exactl
 | sprot enforcement (6 schemas) | 3,616 = 408 + 612 + 784 + 1,176 + 24 + 612 | `[HIGH · OBSERVED]` |
 | `NSM` | 24 = 4 SENG × 3 dies × 2 apertures | `[HIGH · OBSERVED]` |
 | `FIS` keyword | 34,384 = user 8,568 + secure 25,816 (by-IP table §6) | `[HIGH · OBSERVED]` |
-| errtrig PAIR symmetry | `TRIG_0` 1,372 == `TRIG_1` 1,372 → 1,372 pairs | `[HIGH · OBSERVED]` |
+| errtrig PAIR symmetry | `TRIG_0` 844 == `TRIG_1` 844 (Maverick/v5 per-vector; 1,372 anchor NODEs; Cayman PAIR=962) | `[HIGH · OBSERVED]` |
 | `type` census | 268,201 + 38,573 + 9,848 + 5,904 + 336 + 336 = 323,198 | `[HIGH · OBSERVED]` |
 
 JSON-sibling equivalence: every keyword count above is byte-identical between the `.pkl`
@@ -598,7 +626,8 @@ def fis_decision(domain, cam_hit, is_write, amzn_schema, user_schema):
 the inert load gate (header `80 04 95 …`, file 216,631,794 B, 323,198 records, `type` census,
 0 dangerous opcodes carried from [`pkl-db.md`](./pkl-db.md)); the 13 per-IP INTC schemas
 (`type='INTC'` = 5,904, streamed, partitioned by `short_name_lc`); the symmetric errtrig PAIR
-(`TRIG_0`==`TRIG_1`==1,372); the `iofic_x8_msix` HalName + the `int_sec_grp`/`int_regs_sec_grp`
+(Maverick/v5 `TRIG_0`==`TRIG_1`==844 per-vector, 1,372 errtrig anchor NODEs; Cayman PAIR=962 §3);
+the `iofic_x8_msix` HalName + the `int_sec_grp`/`int_regs_sec_grp`
 SWOM fork + APB interface in `ap_intc_grp_ctrl.json`; the `peb_intc` apex (24, secure, 12×2);
 the 6 `sprot` enforcement schemas (3,616, with view splits and the privilege asymmetry); the
 `FIS_0_SPROT` remapper-FIRST/qos-SECOND stack; the `nsm` 9-cause/8×deadbeef/SLVERR watchdog
