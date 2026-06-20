@@ -1,0 +1,96 @@
+## ptxas CUDA 13.0.88 — device-ELF (cubin) section / type / flag / symbol catalog
+## METHOD: cross-checked three ways. (1) EMITTED real cubins with the V13.0.88 ptxas binary
+##   (ptxas -arch=<sm> [-c] on minimal PTX) and read raw sh_type/sh_flags from the ELF bytes.
+##   (2) cuobjdump --dump-elf symbolic names. (3) the publicly distributed CUDA toolchain's numeric defines. BINARY WINS.
+## CRITICAL: device-ELF section TYPES depend on OUTPUT MODE:
+##   - RELOCATABLE  (ptxas -c, e_type=ET_REL=1): memory-space sections keep their SHT_CUDA_* LOPROC types.
+##   - FINAL cubin  (default, e_type=ET_EXEC=2): the SAME sections are LOWERED to standard ELF types
+##       (.nv.constant*->PROGBITS, .nv.global/.nv.shared->NOBITS). Only .nv.info/.nv.compat/.nv.callgraph
+##       keep LOPROC types in the final cubin. Both observations are BINARY-confirmed (see notes column).
+## SHT_CUDA_* = 0x70000000(SHT_LOPROC) + N. kind: HDR=ELF ident/machine ; EFLAG=e_flags ; SHT=section type ;
+##   SHFLAG=sh_flags bit ; STT=symbol type ; STO=symbol st_other ; SYM=special symbol name.
+kind	value	name_or_macro	on_wire_section	purpose / binary evidence
+HDR	0x41	e_ident[EI_OSABI]	(ELF ident byte 7)	BINARY: emitted cubins carry 0x41 (earlier toolchains used the CUDA OSABI tag 0x33)
+HDR	0x08	e_ident[EI_ABIVERSION]	(ELF ident byte 8)	BINARY: 0x08 (cuobjdump prints ABI=8); earlier builds used 7
+HDR	190	EM_CUDA	(e_machine)	device-ELF machine id (0xbe); host ptxas binary itself is EM_X86_64=62
+HDR	1	ET_REL	(e_type)	relocatable output (ptxas -c) — keeps SHT_CUDA_* memory-space types
+HDR	2	ET_EXEC	(e_type)	final cubin (default) — memory-space sections lowered to PROGBITS/NOBITS
+EFLAG	0x000000ff	format/ABI nibble	(e_flags bits 0..7)	BINARY: 0x04 for sm_<=90, 0x02 for Blackwell sm_100/103/120/121
+EFLAG	0x0000ff00	real SM (SM*10)	(e_flags bits 8..15)	BINARY: sm_90->0x5a sm_100->0x64 sm_103->0x67 sm_120->0x78 sm_121->0x79 (earlier toolchains carried real-SM in the low byte)
+EFLAG	0x00ff0000	virtual/PTX SM	(e_flags bits 16..23)	EF_CUDA_VIRTUAL_SM; carries compute_ target; 0 when virtual==real
+EFLAG	0xff000000	high format byte	(e_flags bits 24..31)	BINARY: constant 0x06 across all 13.0.88 samples
+EFLAG	0x100	EF_CUDA_TEXMODE_UNIFIED	(e_flags)	unified texture mode
+EFLAG	0x200	EF_CUDA_TEXMODE_INDEPENDENT	(e_flags)	independent texture mode (set via .target texmode_independent)
+EFLAG	0x400	EF_CUDA_64BIT_ADDRESS	(e_flags)	64-bit device address model
+EFLAG	0x80000000	EF_CUDA_MERCURY	(e_flags MSB)	set on pre-finalize Mercury ELF; clear on final SASS cubin
+SHT	0x00	SHT_NULL	(index 0)	standard null section
+SHT	0x01	SHT_PROGBITS	.text.<entry>, .nv.constant* (final), .debug_frame	loadable program data; .text is ALWAYS PROGBITS in both modes
+SHT	0x02	SHT_SYMTAB	.symtab	symbol table (24-byte ELF64 entries)
+SHT	0x03	SHT_STRTAB	.strtab, .shstrtab	string tables
+SHT	0x04	SHT_RELA	.rela.<sec>, .nv.merc.rela	relocations WITH addend (24-byte: r_offset, r_info=(sym<<32)|type, r_addend)
+SHT	0x07	SHT_NOTE	.note.nv.tkinfo, .note.nv.cuinfo	ELF notes (binary uses sh_type 7; standard NOTE)
+SHT	0x08	SHT_NOBITS	.nv.global, .nv.shared.<e> (final)	zero-init / no file data
+SHT	0x09	SHT_REL	.rel.<sec>	relocations WITHOUT addend (not seen in normal ptxas output)
+SHT	0x12	SHT_SYMTAB_SHNDX	.symtab_shndx, .nv.merc.symtab_shndx	extended section-index table (>SHN_LORESERVE)
+SHT	0x70000000	SHT_CUDA_INFO	.nv.info, .nv.info.<entry>	BINARY-confirmed 0x70000000 in BOTH modes; EIATTR attribute stream
+SHT	0x70000001	SHT_CUDA_CALLGRAPH	.nv.callgraph	BINARY-confirmed 0x70000001 in BOTH modes; 8-byte call records
+SHT	0x70000002	SHT_CUDA_PROTOTYPE	.nv.prototype	function prototype records (indirect-call inputs; not in plain compiles)
+SHT	0x70000003	SHT_CUDA_RESOLVED_RELA	.nv.resolvedrela	resolved-rela records
+SHT	0x70000004	SHT_CUDA_METADATA	.nv.metadata	misc metadata (string present in binary)
+SHT	0x70000005	SHT_CUDA_PGO_INFO	.nv.pgoinfo.<text>	profile-guided-opt info
+SHT	0x70000006	SHT_CUDA_CONSTANT	.nv.constant (legacy)	deprecated single constant section
+SHT	0x70000007	SHT_CUDA_GLOBAL	.nv.global	BINARY-confirmed (relocatable -c): 0x70000007; final cubin lowers to NOBITS
+SHT	0x70000008	SHT_CUDA_GLOBAL_INIT	.nv.global.init	BINARY-confirmed (relocatable -c): 0x70000008; holds initialized .global data
+SHT	0x70000009	SHT_CUDA_LOCAL	.nv.local.<entry>	per-entry local memory
+SHT	0x7000000a	SHT_CUDA_SHARED	.nv.shared.<entry>	BINARY-confirmed (relocatable -c): 0x7000000a; final cubin lowers to NOBITS
+SHT	0x7000000b	SHT_CUDA_RELOCINFO	.nv.rel.action	relocation-action stream
+SHT	0x7000000c	SHT_CUDA_MERCURY	.nv.merc, .nv.merc.<sub>	Mercury grouping/container section
+SHT	0x7000000d	SHT_CUDA_MERCURY_SASS_MAP	.nv.merc.nv_debug_line_sass	Mercury->SASS mapping table
+SHT	0x7000000e	SHT_CUDA_UFT	.nv.uft	unified function table
+SHT	0x70000010	SHT_CUDA_UFT_INDEX	.nv.uft.index	UFT index
+SHT	0x70000011	SHT_CUDA_UFT_ENTRY	.nv.uft.entry	UFT per-entry record
+SHT	0x70000064	SHT_CUDA_CONSTANT_B0	.nv.constant0.<entry>	BINARY-confirmed (relocatable -c): 0x70000064; per-kernel param cbank; final->PROGBITS
+SHT	0x70000067	SHT_CUDA_CONSTANT_B3	.nv.constant3	BINARY-confirmed (relocatable -c): 0x70000067 (=B0+3); bank# = type - 0x70000064; final->PROGBITS
+SHT	0x70000065..0x70000075	SHT_CUDA_CONSTANT_B1..B17	.nv.constant1 .. .nv.constant17	constant banks; 18 distinct bank names in binary (.nv.constant0..17)
+SHT	0x70000086	SHT_CUDA_COMPAT_INFO	.nv.compat	BINARY-confirmed 0x70000086 (LOPROC+0x86) in BOTH modes; cuobjdump=CUDA_COMPAT_INFO; EICOMPAT stream
+SHT	0x70000078	SHT_MERCURY_CONSTANT_PARAMS	.nv.constant.entry_params	Mercury per-entry param bank (string in binary)
+SHT	0x70000079	SHT_MERCURY_CONSTANT_IMGHDR	.nv.constant.entry_image_header_indices	Mercury image-header-index bank
+SHT	0x7000007a	SHT_MERCURY_CONSTANT_DRIVER	.nv.constant.driver	Mercury driver constant bank
+SHT	0x7000007b	SHT_MERCURY_CONSTANT_OPT	.nv.constant.optimizer	Mercury optimizer constant bank
+SHT	0x7000007c	SHT_MERCURY_CONSTANT_USER	.nv.constant.user	Mercury user constant bank
+SHT	0x7000007d	SHT_MERCURY_CONSTANT_PIC	.nv.constant.pic	Mercury PIC constant bank
+SHT	0x7000007e	SHT_MERCURY_CONSTANT_TOOLS	.nv.constant.tools_data	Mercury tools-data constant bank
+SHFLAG	0x0001	SHF_WRITE	-	writable; set on .nv.shared (0x43=W|A|barriers) and .nv.global (0x03=W|A)
+SHFLAG	0x0002	SHF_ALLOC	-	occupies device memory; set on .nv.constant* (0x02), .text (0x06)
+SHFLAG	0x0004	SHF_EXECINSTR	-	executable SASS; .text.<entry> flags=0x06 (ALLOC|EXEC)
+SHFLAG	0x0010	SHF_MERGE	-	mergeable data
+SHFLAG	0x0020	SHF_STRINGS	-	null-terminated strings
+SHFLAG	0x0040	SHF_INFO_LINK	-	sh_info holds section index; on .nv.info.<entry> (0x40), .nv.constant0 (0x42), .note.nv.cuinfo
+SHFLAG	0x0080	SHF_LINK_ORDER	-	preserve order on link
+SHFLAG	0x0200	SHF_GROUP	-	member of a section group
+SHFLAG	0x01000000	SHF_MASKOS-bit	.note.nv.cuinfo flags=0x01000040	BINARY: cuinfo note carries 0x01000000 OS flag + SHF_INFO_LINK
+SHFLAG	0x02000000	SHF_MASKOS-bit	.note.nv.tkinfo flags=0x02000000	BINARY: tkinfo note carries 0x02000000 OS flag
+SHFLAG	0x07f00000	SHF_BARRIER_MASK	(.text barrier count)	DRIFT: a barrier-count field (count=flags>>20) was used by earlier toolchains but is NOT populated by 13.0.88; barrier count now in EIATTR_NUM_BARRIERS(76)
+SHFLAG	0x0ff00000	SHF_MASKOS	-	OS-specific flag bits (notes use bits 24-25)
+SHFLAG	0xf0000000	SHF_MASKPROC	-	processor-specific flag bits
+STT	0x02	STT_FUNC	(kernel symbol)	BINARY: kernel entry = STT_FUNC|STB_GLOBAL (info=0x12), st_other=0x10
+STT	0x0a	STT_CUDA_TEXTURE	(symtab st_info)	BINARY: .texref symbol (tex0) shows type 10 (STT_LOOS+0)
+STT	0x0b	STT_CUDA_SAMPLER	(symtab)	sampler reference symbol (STT_LOOS+1)
+STT	0x0c	STT_CUDA_SURFACE	(symtab)	BINARY: .surfref symbol (surf0) shows type 12 (STT_LOOS+2)
+STT	0x0d	STT_CUDA_OBJECT	(symtab)	memory-space object; space encoded in st_other (STT_LOOS+3)
+STO	0x04	STO_CUDA_MANAGED	(st_other)	managed (unified) symbol
+STO	0x08	STO_CUDA_OBSCURE	(st_other)	obscured symbol
+STO	0x10	STO_CUDA_ENTRY	(st_other)	BINARY-confirmed: kernel entry function (addvec/k1/k2 all show 0x10)
+STO	0x20	STO_CUDA_GLOBAL	(st_other)	memspace=global (for STT_CUDA_OBJECT)
+STO	0x40	STO_CUDA_SHARED	(st_other)	memspace=shared
+STO	0x60	STO_CUDA_LOCAL	(st_other)	memspace=local
+STO	0x80	STO_CUDA_CONSTANT	(st_other)	memspace=constant
+STO	0xa0	STO_CUDA_(0xa0 memspace)	(st_other)	BINARY: __nv_reservedSMEM_offset_N_alias shows 0xa0 — NEW memspace nibble beyond the previously known enum range
+SYM	-	.nv.reservedSmem.offset0	(symbol name)	BINARY: WEAK STT_OBJECT size 4; reserved shared-memory offset object
+SYM	-	__nv_reservedSMEM_offset_0_alias	(symbol name)	BINARY: WEAK, st_other=0xa0; alias into reserved-smem region
+SYM	-	.nv.reservedSmem.begin/end/cap	(symbol names)	reserved shared-memory region boundary markers (strings in binary)
+SYM	-	.nv.ptx.const0.size	(symbol name)	PTX constant-bank-0 size marker (string in binary)
+SYM	-	.nv.unified.texrefDescSize	(symbol name)	unified-mode texref descriptor size
+SYM	-	.nv.independent.texrefDescSize	(symbol name)	independent-mode texref descriptor size
+SYM	-	.nv.independent.samplerrefDescSize	(symbol name)	independent-mode samplerref descriptor size
+SYM	-	.nv.surfrefDescSize	(symbol name)	surfref descriptor size

@@ -1,0 +1,38 @@
+## Relocation kind conversion chain across the Mercury->SASS finalization flow.
+## Three round-trips: (1) R_MERCURY ELF reloc <-> RK_MERCURY OCG kind (merc<->ocg), (2) OCG RK_SM* kind -> R_CUDA ELF reloc on TEXT (ocg->elf), (3) R_MERCURY -> R_CUDA on DATA (merc->sass).
+## The data-section switch (merc->sass) is binary-corroborated by the ".nv.merc.rela" clone path.
+stage	from_kind	to_kind	condition	conversion_site	notes
+merc2ocg	R_MERCURY_ABS32	RK_MERCURY_ABS32	sym==SHARED sets SymIsShared	merc->ocg	Mercury ELF reloc -> OCG-referencable RK kind (into GenerateSASS)
+merc2ocg	R_MERCURY_ABS32_LO	RK_MERCURY_ABS32_LO	-	merc->ocg	-
+merc2ocg	R_MERCURY_ABS32_HI	RK_MERCURY_ABS32_HI	-	merc->ocg	-
+merc2ocg	R_MERCURY_ABS64	RK_MERCURY_ABS64	-	merc->ocg	-
+merc2ocg	R_MERCURY_ABS16	RK_MERCURY_ABS16	-	merc->ocg	-
+merc2ocg	R_MERCURY_PROG_REL32	RK_MERCURY_PROG_REL32	-	merc->ocg	-
+merc2ocg	R_MERCURY_ABS_PROG_REL32_LO	RK_MERCURY_ABS_PROG_REL32_LO	-	merc->ocg	-
+merc2ocg	R_MERCURY_ABS_PROG_REL32_HI	RK_MERCURY_ABS_PROG_REL32_HI	-	merc->ocg	-
+text_ocg2elf	RK_SM70_IMM47_ABS	R_CUDA_ABS47_34	-	ocg->elf	OCG kind -> SASS ELF reloc on text (out of GenerateSASS)
+text_ocg2elf	RK_SM70_IMM32_ABS	R_CUDA_FUNC_DESC32_32	sym==ENTRY_FUNC	ocg->elf	entry func -> func descriptor
+text_ocg2elf	RK_SM70_IMM32_ABS	R_CUDA_ABS32_32	sym!=ENTRY_FUNC	ocg->elf	-
+text_ocg2elf	RK_SM70_IMM32_ABS_LO	R_CUDA_FUNC_DESC32_LO_32	sym==ENTRY_FUNC	ocg->elf	-
+text_ocg2elf	RK_SM70_IMM32_ABS_HI	R_CUDA_FUNC_DESC32_HI_32	sym==ENTRY_FUNC	ocg->elf	-
+text_ocg2elf	RK_SM90_IMM55_ABS	R_CUDA_ABS55_16_34	Hopper	ocg->elf	2-action reloc
+text_ocg2elf	RK_SM70_YIELD_NOP	R_CUDA_YIELD_OPCODE9_0	-	yield-reloc-add	patch 9-bit NOP opcode
+text_ocg2elf	RK_SM70_YIELD_CLEAR_PRED	R_CUDA_YIELD_CLEAR_PRED4_87	-	yield-reloc-add	clear 4 pred bits at bit 87
+text_progrel_clear	RK_MERCURY_PROG_REL32	R_CUDA_NONE	prog-rel text	reloc-offset-remap	PROG_REL offsets set during GenerateSASS, type cleared
+text_progrel_clear	RK_MERCURY_PROG_REL32_HI	R_CUDA_NONE	prog-rel text	reloc-offset-remap	-
+text_progrel_clear	RK_MERCURY_PROG_REL32_LO	R_CUDA_NONE	prog-rel text	reloc-offset-remap	-
+cbank_clear	RK_MERCURY_PROG_REL32	R_CUDA_NONE	const-bank	cbank-reloc-clear	indirect-call cbank relocs cleared
+data_merc2sass	R_MERCURY_G64	R_CUDA_G64	data section	merc->sass	data-section relocs (".nv.merc.rela" clone path)
+data_merc2sass	R_MERCURY_ABS64	R_CUDA_64	data section	merc->sass	-
+data_merc2sass	R_MERCURY_ABS32	R_CUDA_32	data section	merc->sass	-
+data_merc2sass	R_MERCURY_TEX_HEADER_INDEX	R_CUDA_TEX_HEADER_INDEX	data section	merc->sass	-
+data_merc2sass	R_MERCURY_SAMP_HEADER_INDEX	R_CUDA_SAMP_HEADER_INDEX	!ENABLE_MERCURY_IMAGE_DCI	merc->sass	DCI variant maps to R_CUDA_SAMP_HEADER_INDEX_0
+data_merc2sass	R_MERCURY_SURF_HEADER_INDEX	R_CUDA_SURF_HEADER_INDEX	data section	merc->sass	-
+data_merc2sass	R_MERCURY_UNUSED_CLEAR64	R_CUDA_UNUSED_CLEAR64	data section	merc->sass	-
+data_merc2sass	R_MERCURY_FUNC_DESC_64	R_CUDA_FUNC_DESC_64	data section	merc->sass	-
+data_merc2sass	R_MERCURY_8_n	R_CUDA_8_n	n=0..56	merc->sass	byte-lane absolute
+data_merc2sass	R_MERCURY_G8_n	R_CUDA_G8_n	n=0..56	merc->sass	byte-lane generic
+data_merc2sass	R_MERCURY_FUNC_DESC_8_n	R_CUDA_FUNC_DESC_8_n	n=0..56	merc->sass	byte-lane func desc
+data_merc2sass	R_MERCURY_ABS_PROG_REL32	R_CUDA_32	data section	merc->sass	addend converted to PC-relative
+data_merc2sass	R_MERCURY_ABS_PROG_REL64	R_CUDA_64	data section	merc->sass	addend converted to PC-relative
+data_merc2sass	(default)	(unchanged)	no mapping	merc->sass	relType returned as-is

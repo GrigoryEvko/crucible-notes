@@ -1,0 +1,23 @@
+caller_addr	caller_role	softfloat_target_addr	ptx_op_inferred	evidence
+# ===========================================================================
+# Callers of the FP constant-fold engine in ptxas (CUDA 13.0.88).
+# softfloat_target_addr names the FOLD-ENGINE entry actually invoked (softfloat
+# proper is absent — see softfloat_routines.tsv header). Edges from callgraph.json
+# (from_addr -> to_addr) and decompiled bodies.
+# ===========================================================================
+0x926a30	constfold_master	0x9203a0	add/sub/mul/div/min/max .f32/.f64 (binary)	0x926a30 -> 0x9203a0 (2 edges); master switch routes binary ALU ops to native-double folder
+0x926a30	constfold_master	0x921820	sqrt/cos/lg2/ex2/rcp/round/cvt .f32/.f64 (unary)	master switch routes transcendental+sqrt+cvt unary ops to libm folder
+0x9203a0	constfold_binary	0x91b730	operand decode (any .f16/.f32/.f64/.bf16 imm)	0x9203a0 -> 0x91b730; decodes both source immediates to host double before native op
+0x9203a0	constfold_binary	0x91a0f0	operand descriptor fetch	0x9203a0 -> 0x91a0f0 (2 edges)
+0x9203a0	constfold_binary	0x91cdd0	intern folded f32 result	0x9203a0 -> 0x91cdd0 (2 edges)
+0x9203a0	constfold_binary	0x7db1e0	non-const operand emit	0x9203a0 -> 0x7db1e0; taken when operand not a compile-time constant
+0x921820	constfold_unary	0x91b730	operand decode	0x921820 -> 0x91b730 (2 edges)
+0x921820	constfold_unary	0x2a12cb0	sqrt.f64 / sqrt.f32 (opcode 0xC0)	decompiled: v28 = sqrt(a7); host sqrt() == sqrt.approx/rn fold
+0x921820	constfold_unary	0x2a12d50	ex2.approx (opcode 0x3B -> pow(2.0,x))	decompiled: pow(2.0, x)
+0x921820	constfold_unary	0x91ba60	write folded result	0x921820 -> 0x91ba60 (5 edges)
+0x91b730	imm_decoder	0x2a12d50	f16 immediate -> double (pow(2.0,exp-15))	0x91b730 -> .pow; f16 path reconstructs value with libm pow
+0x91fcb0	constfold_variant	0x91b730	operand decode	0x91fcb0 -> 0x91b730 (2 edges)
+0x91fcb0	constfold_variant	0x91cdd0	intern f32 result	0x91fcb0 -> 0x91cdd0
+0x9229f0	constfold_variant	0x91b730	operand decode	0x9229f0 -> 0x91b730 (2 edges)
+0x923d40	constfold_cvt	0x91b730	cvt operand decode	0x923d40 -> 0x91b730 (2 edges)
+0x91eb40	constfold_helper	0x7d6700	scratch/format helper	0x91eb40 -> 0x7d6700

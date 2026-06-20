@@ -163,3 +163,9 @@ some_docs/
 !/decoded/ptxas-knobs-builtins
 !/decoded/ptxas-encoding-full
 !/decoded/ptxas-regalloc
+!/decoded/ptxas-elf-output
+!/decoded/ptxas-mercury
+!/decoded/ptxas-driver
+!/decoded/ptxas-passes-detail
+!/decoded/ptxas-fp-debug
+!/decoded/ptxas-gap-closure

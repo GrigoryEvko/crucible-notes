@@ -1,0 +1,18 @@
+## Mercury/finalizer nvinfo (EIATTR) + compat (EICOMPAT) attributes -- ptxas CUDA 13.0.88.
+## EIATTR codes for the two Mercury attrs are binary-only (new since earlier toolchains); recovered from the binary nvinfo descriptor table.
+## EICOMPAT_* are string-pool tokens in the finalizer block; codes inferred by string adjacency unless a table backs them.
+attribute	kind	numeric_code	eifmt	eival_kind	name_vma	confidence	notes
+EIATTR_MERCURY_FINALIZER_OPTIONS	EIATTR	0x5A (90)	5 (EIFMT_SVAL)	2	0x23fd020	CONFIRMED	indexed descriptor table @0x23fdc20 (16B stride); structured length-prefixed payload built at finalize time; carries the finalizer option blob
+EIATTR_MERCURY_ISA_VERSION	EIATTR	0x5F (95)	5 (EIFMT_SVAL)	2	0x23fcddf	CONFIRMED	combined Mercury ISA version emitted into .nv.info
+EICOMPAT_ATTR_ERROR	EICOMPAT	0 (inferred)	-	-	0x2405bd3	INFERRED	core enum base, by string adjacency
+EICOMPAT_ATTR_PAD	EICOMPAT	1 (inferred)	-	-	0x2405be7	INFERRED	core enum
+EICOMPAT_ATTR_ISA_CLASS	EICOMPAT	2 (inferred)	-	-	0x2405bf9	INFERRED	core enum
+EICOMPAT_ATTR_ERROR_LAST	EICOMPAT	3 (inferred)	-	-	0x2405c11	INFERRED	core enum terminator
+EICOMPAT_ATTR_INST_TENSORMAP_V1	EICOMPAT	?	-	-	0x2406330	NAME-ONLY	finalizer-block string; no table/refs in binary
+EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED	EICOMPAT	?	-	-	0x2406350	NAME-ONLY	no recoverable code
+EICOMPAT_ATTR_INST_TCGEN05_MMA	EICOMPAT	?	-	-	0x2406380	NAME-ONLY	no recoverable code
+EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION	EICOMPAT	?	-	-	0x24063a0	NAME-ONLY	concept implemented via runtime flag (ctx+120 opportunistic-lvl), not this attr code
+EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION	EICOMPAT	?	-	-	0x24063d0	NAME-ONLY	.nv.compat struct +6 word (default 0x0100=v1.0); split major.minor
+EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION	EICOMPAT	?	-	-	0x2406400	NAME-ONLY	patch component of split ISA version
+EICOMPAT_ATTR_CUDA_ACCELERATOR_TARGET	EICOMPAT	?	-	-	0x2406428	NAME-ONLY	no recoverable code
+EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE	EICOMPAT	?	-	-	0x2406450	NAME-ONLY	concept = object capability bit (hdr+48 mask: 2 for 'A' container else 0x4000) -> LOBYTE(state[54])

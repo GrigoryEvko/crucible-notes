@@ -1,0 +1,41 @@
+## ptxas CUDA 13.0.88 — EICOMPAT (.nv.compat attribute) enumeration
+## .nv.compat is a NEW section type SHT_CUDA_COMPAT_INFO = 0x70000086 (LOPROC+0x86), BINARY-confirmed.
+## Wire format is IDENTICAL to .nv.info: nvinfo element {byte EIFMT, byte attr, union value}, 4-byte aligned.
+## Unlike EIATTR, the EICOMPAT names are NOT reachable via an 8-byte name-pointer array in the binary
+##   (verified: no pointer to the EICOMPAT_ATTR_ERROR string at VMA 0x2405bd3 exists). The codes below were
+##   RECOVERED by correlating the raw on-wire attr byte (decoded from emitted cubins) against cuobjdump's
+##   symbolic name printout for the SAME element, in emission order. Stable across sm_90/sm_100/sm_120.
+## EIFMT used per attr taken from the wire bytes (BVAL=2 one byte, HVAL=3 two bytes, SVAL=4 sized).
+## status: confirmed=code proven by wire<->cuobjdump pairing ; inferred=string present, code by enum ordering only.
+code	name	eifmt	observed_value	status	notes
+0	EICOMPAT_ATTR_ERROR	-	-	inferred	sentinel; string present @ .rodata VMA 0x2405bd3; never emitted
+1	EICOMPAT_ATTR_PAD	-	-	inferred	alignment padding element; string present
+2	EICOMPAT_ATTR_ISA_CLASS	BVAL	0x01	confirmed	ISA class / arch-variant selector (carries the 'a'/'f' distinction; sm_90==sm_90a in e_flags)
+3	EICOMPAT_ATTR_INST_TENSORMAP_V1	BVAL	0x00	confirmed	tensormap v1 instruction requirement level
+4	EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED	-	-	inferred	string present; deprecated tcgen05 MMA variant (fills code 4 by string order)
+5	EICOMPAT_ATTR_INST_TCGEN05_MMA	BVAL	0x05	confirmed	tcgen05 MMA instruction-class requirement level (Blackwell tensor core)
+6	EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION	BVAL	0x01	confirmed	opportunistic-finalization enable flag
+7	EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION	HVAL	0x0101	confirmed	Mercury ISA major.minor (0x0101 = v1.1 on sm_90)
+8	EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION	-	-	inferred	string present; Mercury ISA patch component (fills code 8 by string order)
+9	EICOMPAT_ATTR_CUDA_ACCELERATOR_TARGET	BVAL	0x00	confirmed	accelerator target id (0x0 = none); FIRST element emitted
+10	EICOMPAT_ATTR_(reserved)	-	-	inferred	gap; no string anchor recovered for code 10
+11	EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE	SVAL	(8-byte blob)	confirmed	fast-path-finalize capability descriptor (sized payload, 8 bytes observed)
+## ==========================================================================================================
+## OBSERVED EMISSION ORDER for an sm_90 kernel (this is the on-wire order, NOT the numeric code order):
+##   1: code 9 (CUDA_ACCELERATOR_TARGET, BVAL=0)
+##   2: code 2 (ISA_CLASS, BVAL=1)
+##   3: code 5 (INST_TCGEN05_MMA, BVAL=5)
+##   4: code 7 (MERCURY_ISA_MAJOR_MINOR_VERSION, HVAL=0x0101)
+##   5: code 3 (INST_TENSORMAP_V1, BVAL=0)
+##   6: code 6 (ENABLE_OPPORTUNISTIC_FINALIZATION, BVAL=1)
+##   7: code 11 (CAN_FASTPATH_FINALIZE, SVAL 8 bytes)
+## raw bytes (sm_90 .nv.compat, off 0x63c, size 0x24):
+##   02 09 00 | 02 02 01 | 02 05 05 | 03 07 0101 | 02 03 00 | 02 06 01 | 04 0b 0800 0000000000000000
+## ==========================================================================================================
+## EICOMPAT_ATTR_* strings present in binary .rodata (file offsets; VMA = file_off + 0x400000):
+##   0x2005bd3 EICOMPAT_ATTR_ERROR ; 0x2005be7 EICOMPAT_ATTR_PAD ; 0x2005bf9 EICOMPAT_ATTR_ISA_CLASS ;
+##   0x2005c11 EICOMPAT_ATTR_ERROR_LAST ; 0x2006330 EICOMPAT_ATTR_INST_TENSORMAP_V1 ;
+##   0x2006350 EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED ; 0x2006380 EICOMPAT_ATTR_INST_TCGEN05_MMA ;
+##   0x20063a0 EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION ;
+##   0x20063d0 EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION ; 0x2006400 EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION ;
+##   0x2006428 EICOMPAT_ATTR_CUDA_ACCELERATOR_TARGET ; 0x2006450 EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE

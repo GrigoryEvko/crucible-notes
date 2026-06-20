@@ -1,0 +1,25 @@
+fn_addr	role	evidence_string_or_table	confidence
+0x463710	resource_report	"Used %d registers" / ", used %d barriers" / ", %lld bytes smem|lmem|gmem" / ", %lld bytes cmem[%d]" / ", %d textures|surfaces|samplers" / "Compile time = %.3f ms" / dword_29FC140 "Compiling entry function" / dword_29FC0C0 "Function properties for"	98
+0x446240	sass_emit_driver	calls sub_463710 at 0x447b8a gated by !verboseByte(+402) && !forceText(+613); also "CompileTime = %f ms" debug path	90
+0x42F590	resource_report	message-emit core: "info    "/"warning "/"error   "/"fatal   " prefixes + @I@/@O@/@W@/@E@ channel tags; consumes dword_29FC* descriptors ([type][fmt-ptr])	92
+0x703AB0	sass_emit_driver	"--binary-kind" mercury,capmerc,sass option (a1+88 mercury,a1+81 capmerc); "self-check"->a1+83; "out-sass"->a1+84; help "Generate output of capmerc based reconstituted sass only through -self-check"	90
+0x43CC70	sass_emit_driver	".sass" file extension output path (line 521-522)	75
+0x719D00	sass_emit	self-check SASS text builder (50KB, 0 inline strings -> table+vtable driven); 1 caller	80
+0x720F00	sass_emit	Flex lexer for SASS-text self-check input: ".texref"/".samplerref"/".surfref" (15.8KB)	88
+0x7CB560	mnemonic_print	1026 refs into ROT13 opcode-name + modifier-format-string regions (0x21C1336 names, 0x21C5E00 mod templates); master mnemonic+modifier name resolver (24KB)	85
+0x896D50	mnemonic_print	1026 refs into ROT13 name/modifier tables (21KB); second mnemonic/modifier resolver	80
+0x7A5D10	modifier_print	412 refs into modifier-format-string region (0x21C5E00-0x21CEE00)	75
+0x7C5410	modifier_print	412 refs into modifier-format-string region	75
+0xBE7390	modifier_print	412 refs into modifier-format-string region	72
+0x9D12F0	operand_print	operand encoder: fills 64-byte (4x __m128i) operand struct per index; 289 callers; resolves reg/imm/cmem/mem	90
+0x9DB7E0	ctrl_annotation	predicate guard printer @Px (begin/end_predicate_guard vtable+936/+944); 19 callers	88
+0x91C840	operand_print	register-class discriminator: type codes 1-0x17 -> output class IDs 0-18; 232 callers	85
+0x9CEB50	operand_print	address-space qualifier resolver (57 callers) for [Rx], c[b][o], UR	82
+0xAA9330	disasm_loop	printer dispatch driver; calls sub_181E1D0 (ISA-override fixup); called from sub_AC82F0	78
+0x181E1D0	disasm_loop	ISA-override fixup dispatcher (post-process); compares vtable method ptrs vs discriminators; 45 opcodes	85
+0x18189C0	disasm_loop	texture/surface SASS printer (largest, 8.8KB binary/45KB IDA); switch on opcodes 18/119/186/211/283/315; 0 static callers (vtable)	88
+0x181B370	operand_print	multi-operand SASS printer (VOTE 0x7A, multi-op 0x138); up to 12 operands; 0 static callers (vtable)	82
+0x1812F60	operand_print	16-DWORD immediate printer: 16x vtable[272]+vtable[16] kind IDs 55-70; 0 static callers (vtable)	85
+0x1810D20	modifier_print	comparison-mode printer: switch (modifier>>4)&0xF; vtable[3528]/[3536] comparison config; 0 static callers (vtable)	82
+0x1817C50	operand_print	texture header index encoder: linearizes 2D bitfields bits[0:8]xbits[9:17] -> index 0-52; 6 callers	85
+0x73B360	ctrl_annotation	scheduler diagnostic dump (5.7KB) printing ", MacReuses " (0x21b459f) + LDS latency stats; consumes reuse-token table 0x2032120 (_breuse_bkeep_buffer0..3,_areuse); NOTE: diagnostic, not main SASS line	70

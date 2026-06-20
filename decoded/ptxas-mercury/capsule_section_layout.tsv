@@ -1,0 +1,38 @@
+## Capsule / Mercury (capmerc) container layout -- ELF-level constants (ptxas CUDA 13.0.88).
+## Section types are processor-specific (SHT_LOPROC = 0x70000000). Header flags / e_type / ABI from the CUDA ELF (EM_CUDA=190=0xBE).
+## All values binary-confirmed (section-name strings + flag tests in ptxas) and corroborated by older CUDA toolkit binaries.
+constant	symbolic_value	numeric	notes
+SHT_LOPROC	processor_specific_base	0x70000000	ELF SHT_LOPROC base; all CUDA section types are LOPROC+N
+SHT_CUDA_INFO	SHT_LOPROC+0	0x70000000	.nv.info nvinfo attributes (EIATTR_* TLVs); sh_info==0 => global nvinfo
+SHT_CUDA_CALLGRAPH	SHT_LOPROC+1	0x70000001	.nv.callgraph
+SHT_CUDA_PROTOTYPE	SHT_LOPROC+2	0x70000002	.nv.prototype
+SHT_CUDA_RESOLVED_RELA	SHT_LOPROC+3	0x70000003	.nv.resolvedrela (relocs already resolved)
+SHT_CUDA_METADATA	SHT_LOPROC+4	0x70000004	.nv.metadata
+SHT_CUDA_PGO_INFO	SHT_LOPROC+5	0x70000005	.nv.pgoinfo.<textsec>
+SHT_CUDA_CONSTANT	SHT_LOPROC+6	0x70000006	.nv.constant (suffix = bank number)
+SHT_CUDA_GLOBAL	SHT_LOPROC+7	0x70000007	.nv.global
+SHT_CUDA_GLOBAL_INIT	SHT_LOPROC+8	0x70000008	.nv.global.init
+SHT_CUDA_LOCAL	SHT_LOPROC+9	0x70000009	.nv.local.<entry>
+SHT_CUDA_SHARED	SHT_LOPROC+10	0x7000000A	.nv.shared.<entry>
+SHT_CUDA_RELOCINFO	SHT_LOPROC+11	0x7000000B	.nv.rel.action (relocInfo descriptors for driver-side patching)
+SHT_CUDA_MERCURY	SHT_LOPROC+12	0x7000000C	Mercury grouping/clone section; the ".nv.merc.*" capsule copies carry this type (flags=SHF_NULL, info=original section index)
+SHT_CUDA_MERCURY_SASS_MAP	SHT_LOPROC+13	0x7000000D	Mercury-to-SASS offset-correspondence table (offset-map emitter output); info=SASS section index
+SHT_MERCURY_CONSTANT_PARAMS	SHT_LOPROC+120	0x70000078	.nv.constant.entry_params
+SHT_MERCURY_CONSTANT_IMGHDR	SHT_LOPROC+121	0x70000079	.nv.constant.entry_image_header_indices
+SHT_MERCURY_CONSTANT_DRIVER	SHT_LOPROC+122	0x7000007A	.nv.constant.driver
+SHT_MERCURY_CONSTANT_OPT	SHT_LOPROC+123	0x7000007B	.nv.constant.optimizer
+SHT_MERCURY_CONSTANT_USER	SHT_LOPROC+124	0x7000007C	.nv.constant.user
+SHT_MERCURY_CONSTANT_PIC	SHT_LOPROC+125	0x7000007D	.nv.constant.pic
+SHT_MERCURY_CONSTANT_TOOLS	SHT_LOPROC+126	0x7000007E	.nv.constant.tools_data (SHT_IS_CUDA_CONSTANT upper bound)
+EF_CUDA_MERCURY	header_flag	0x80000000	marks an unfinalized Mercury/capmerc ELF; cleared by the SASS-ELF emitter (sub_1CB8E40) on SASS output
+EF_CUDA_MERCURY_VERSION_MASK	header_flag_mask	0x7F000000	Mercury container version in bits 24..30; EF_CUDA_MERCURY_VERSION(e)=(e&mask)>>24
+EF_CUDA_TEXMODE_UNIFIED	header_flag	0x100	unified texture/sampler mode (drives R_MERCURY_UNIFIED* relocs)
+EF_CUDA_TEXMODE_INDEPENDENT	header_flag	0x200	independent texture mode
+EM_CUDA	e_machine	190	0xBE; NVIDIA CUDA architecture
+ET_REL	e_type	1	relocatable Mercury object (accepted input)
+ET_EXEC	e_type	2	executable Mercury (accepted input; triggers NOBITS demotion of shared/global/local on output)
+ET_EWP	e_type	ET_LOPROC=0xFF00	Extensible Whole Program (accepted input)
+ELFMERCABIV_ABI	abi_version	0	initial==latest Mercury ABI; input abiVersion must equal this or ELFNLZR_ERROR_UNSUPPORTED_ABI
+ELFOSABIV_LATEST	abi_version	7	SASS ABI version set on finalized output (replaces ELFMERCABIV_ABI)
+.nv.merc	section_name_prefix	-	prefix prepended to every cloned original section in the capsule (binary spelling; earlier toolchains used ".merc")
+.nv.capmerc	section_name_prefix	-	per-function capmerc payload section family (ptxas capmerc output)

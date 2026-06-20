@@ -1,0 +1,18 @@
+section_name	emitter_fn_addr	purpose	gated_by_flag	source	confidence
+.debug_line	0x866BB0	DWARF line-number program: source file/line -> address (PTX-level pass, a3=0)	-lineinfo OR -g	emit	high
+.nv_debug_line_sass	0x866BB0	SASS-level line table: SASS pc -> PTX/source line (second pass, a3=1, gated on SASS-line-info ptr)	-lineinfo OR -g	emit	high
+.nv_debug_info_reg_sass	0x8679F0	Register-to-variable location sidecar (chain ctx+408/buf+416/size+424); which physical reg holds each var at each SASS pc; data produced by post-RA pass 0x88D870	-g only	sidecar	high
+.nv_debug_info_reg_type	0x867B00	Type sidecar for register locations (chain ctx+432/buf+440/size+448); associates reg locations with DWARF type ids	-g only	sidecar	high
+.debug_frame	0x866BB0_cluster	CFI: copies OCG CIE/FDE entries, rewrites FDE CIE_pointer as .debug_frame-relative reloc	-g OR forceDebugFrame	emit	high
+.nv_debug_ptx_txt	0x679DC0_path	Verbatim PTX source text (stripped of .loc/.file/@@DWARF/.bNN dwarf lines); renamed +adler32 for SC	-lineinfo OR -g	emit	high
+.debug_info	0x66F4E0	DIE tree (CUs/subprograms/vars/types); cicc PTX-DWARF parsed then re-emitted with SASS addrs+relocs	-g only	emit	high
+.debug_abbrev	0x66A0B0	Abbreviation table (DIE tag/attr schemas); decoded first to drive .debug_info rewrite	-g only	emit	high
+.debug_loc	0x66A0B0	Location lists (DW_OP_regx/bregx live ranges) parsed to live-range map, re-emitted	-g only	emit	high
+.debug_str	0x66A0B0	String table (DW_FORM_strp / inline-fn function_name); also emitted under -lineinfo	-lineinfo OR -g	emit	high
+.debug_ranges	0x66A0B0	Address-range lists for non-contiguous scopes (misc-section path)	-g only	emit	medium
+.debug_pubnames	0x66A0B0	Public name lookup table (misc-section path)	-g only	emit	medium
+.debug_pubtypes	0x66A0B0	Public type lookup table (misc-section path)	-g only	emit	medium
+.debug_aranges	0x66A0B0	Address-range table mapping CUs to code ranges (misc-section path)	-g only	emit	medium
+.debug_macinfo	0x66A0B0	Macro information (misc-section path)	-g only	emit	low
+.nv_debug_info_ptx	0x1CC5EB0	PTX-namespace mirror of .debug_info created during CU-header parse/dump	parse-time	parse	medium
+.nv.merc.debug_*	0x1C98C60	Mercury (SM100+) namespace clones of every debug section, classified for capsule cloning	-g (Mercury target)	emit	medium

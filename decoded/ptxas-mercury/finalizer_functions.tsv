@@ -1,0 +1,18 @@
+## Finalizer (FNLZR) + capmerc binary functions -- ptxas CUDA 13.0.88 (binary-confirmed).
+function_vma	role	approx_size	confidence	notes
+sub_703AB0	CLI parser	10KB	CONFIRMED	parses --binary-kind {mercury,capmerc,sass}, --cap-merc, --self-check, --out-sass, --opportunistic-finalization-lvl, --fastpath-off; opportunistic-lvl->ctx+120 (default 0, validated <=4); fastpath-off->ctx+92; arch->ctx+112; SM>99 auto-enables capmerc (ctx+81=1)
+sub_612DE0	Kernel/module off-target finalizer (fastpath)	~9KB	CONFIRMED	source SM=hdr+48 (>>8 if hdr+7=='A' container else &0xFF); target=arg or source; ISA ceiling >0x101 -> error 25
+sub_60F290	Family-compatibility checker (off-target)	435B	CONFIRMED	family normalize 104->120,130->107,101->110; cap-bit 100->0x01,103->0x08,110->0x02,121->0x40; reads CAN_FINALIZE_DEBUG env
+sub_1CB06B0	.nv.compat section loader -> compat state	-	CONFIRMED	struct +6=ISA ver (default 0x0100=v1.0), +16=cap-bitmask ptr, +24=count
+sub_1CB05A0	.nv.compat TLV walker	-	CONFIRMED	section magic dword 0x70000086
+sub_1CD48C0	Master relocation resolver (R_MERCURY + R_CUDA)	~20KB	CONFIRMED	'A'/0x41 ELF-class dispatch; Mercury reloc index = r_type-0x10000 (<=0x3F); alias-redirect, dead-func skip, UFT_OFFSET drop
+sub_1CD4510/sub_1CD43A0	Relocation record builder / pre-pass	-	CONFIRMED	(HIDWORD(desc+0x10)-12)<=3 -> sub_1CBD0D0 marks section for deferred processing
+sub_1CD34E0	Bit-field patcher (in-place SASS rewrite)	-	CONFIRMED	entry = table_base + (idx<<6); reads action slot @+12 {start_bit,width,sym_value}; cross-QWORD spill via sub_1CD3330
+sub_1CD33F0	Multi-word bit-field EXTRACT (read existing addend)	-	CONFIRMED	recursive cross-QWORD read of width bits @ offset (analog of extract_bits)
+sub_1CD3330	Multi-word bit-field INSERT (write patched value)	-	CONFIRMED	write companion to extract (analog of compose_bits)
+sub_1CB8E40	capmerc emitter driver (dedup + relocs + symtab)	-	CONFIRMED	see dedup_functions.tsv
+sub_1C98C60	Merc section classifier	~9KB	CONFIRMED	recognizes the .nv.merc.* / .nv.capmerc family names
+sub_1C9F280	Master ELF emitter (full CUBIN output)	~97KB	CONFIRMED	orchestrates output section table, per-function capmerc payload sections
+sub_1C9C300	Per-function capsule descriptor builder	-	CONFIRMED	328-byte capsule descriptor object, one per function
+sub_720F00	Flex SASS text lexer (self-check reconstitution)	~64KB	CONFIRMED(name)	thread-safe; reconstitutes SASS for self-check
+sub_729540	SASS comparator (self-check)	~35KB	CONFIRMED(name)	section-by-section compare; errors 17/18/19 on mismatch

@@ -1,0 +1,20 @@
+field_name	format_string	emitter_fn_addr	order_index	confidence
+gmem	%lld bytes gmem	0x463710	0	95
+cmem_global	, %lld bytes cmem[%d]	0x463710	1	95
+compiling_entry	Compiling entry function '%s' for '%s'	0x463710	2	95
+function_properties	Function properties for %s\n    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads	0x463710	3	95
+registers	Used %d registers	0x463710	4	98
+barriers	, used %d barriers	0x463710	5	98
+stack	, %d bytes cumulative stack size	0x463710	6	95
+smem	, %lld bytes smem	0x463710	7	98
+cmem	, %lld bytes cmem[%d]	0x463710	8	98
+lmem	, %lld bytes lmem	0x463710	9	98
+textures	, %d textures	0x463710	10	95
+surfaces	, %d surfaces	0x463710	11	95
+samplers	, %d samplers	0x463710	12	95
+compile_time	Compile time = %.3f ms	0x463710	13	90
+spill_stores	Function properties for %s\n    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads	0x463710	3	90
+spill_loads	Function properties for %s\n    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads	0x463710	3	90
+spill_warning	Registers are spilled to local memory in function '%s', %d bytes spill stores, %d bytes spill loads	0x46xxxx	98	70
+lmem_warning	Local memory used for function '%s', size of stack frame: %d bytes	0x46xxxx	99	70
+stack_limit_error	Function '%s' uses %d bytes stack but limited to %d	0x46xxxx	100	60

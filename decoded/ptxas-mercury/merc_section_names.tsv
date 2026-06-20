@@ -1,0 +1,24 @@
+## Mercury auxiliary section name families emitted by the ptxas capmerc/Mercury emitter (binary-extracted from .rodata string pool).
+## Each original input ELF section is cloned into the capsule under a ".nv.merc." prefix (CUDA-13 spelling; earlier toolchains used the shorter ".merc" prefix -- naming DRIFT, binary wins).
+## These ".nv.merc.*" clones carry type SHT_CUDA_MERCURY (SHT_LOPROC+12 = 0x7000000C) so the finalizer/driver can recover the original Mercury blob + debug data after SASS reconstitution.
+## 19 distinct suffixes verified present in the binary string table (plus the bare ".nv.merc" / ".nv.merc." prefix tokens).
+merc_section_name	clones_original	category
+.nv.merc.debug_abbrev	.debug_abbrev	DWARF debug
+.nv.merc.debug_aranges	.debug_aranges	DWARF debug
+.nv.merc.debug_frame	.debug_frame	DWARF debug
+.nv.merc.debug_info	.debug_info	DWARF debug
+.nv.merc.debug_line	.debug_line	DWARF debug (PC->line; coupled to FNLZR PC relabel)
+.nv.merc.debug_loc	.debug_loc	DWARF debug
+.nv.merc.debug_macinfo	.debug_macinfo	DWARF debug
+.nv.merc.debug_pubnames	.debug_pubnames	DWARF debug
+.nv.merc.debug_pubtypes	.debug_pubtypes	DWARF debug
+.nv.merc.debug_ranges	.debug_ranges	DWARF debug
+.nv.merc.debug_str	.debug_str	DWARF debug
+.nv.merc.nv_debug_info_reg_sass	.nv_debug_info_reg_sass	NV register-debug
+.nv.merc.nv_debug_info_reg_type	.nv_debug_info_reg_type	NV register-debug
+.nv.merc.nv_debug_line_sass	.nv_debug_line_sass	NV SASS line table
+.nv.merc.nv_debug_ptx_txt	.nv_debug_ptx_txt	NV PTX source text
+.nv.merc.nv.shared.reserved.	.nv.shared.reserved.<entry>	shared-mem reservation
+.nv.merc.rela	.rela<sec>	relocation clone
+.nv.merc.symtab	.symtab	symbol table clone
+.nv.merc.symtab_shndx	.symtab_shndx	extended section index clone

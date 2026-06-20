@@ -1,0 +1,14 @@
+## Section content-equality DEDUP mechanism -- ptxas CUDA 13.0.88 (binary-only; new since earlier toolchains, which had no finalizer-side analog).
+## Earlier toolchains' finalizers had NO whole-section dedup -- they DUPLICATE (emit .nv.merc.* clones). Their only content-equality merge was a constant-pool overlap primitive in the generic ELF writer, gated on memcmp and emitting the FATAL "overlapping non-identical data". That primitive evolved into the CUDA-13 emitter-side dedup below (note the same FATAL string survives in the binary).
+## Driver: sub_1CB8E40(elf_state, do_relocs): if BYTE8 flag -> sub_1CABD60 (merge/content-dedup) else sub_1CAB190 (no-merge); if do_relocs -> sub_1CD48C0 (master reloc resolver); then sub_1CB68D0 (symtab/name-dedup).
+function_vma	role	confidence	notes
+sub_1CB8E40	Mercury/capmerc emitter driver (3-stage)	CONFIRMED	stage1 sub_1CABD60 (content dedup) OR sub_1CAB190 (no-merge); stage2 sub_1CD48C0 (relocs); stage3 sub_1CB68D0 (name dedup)
+sub_1CABD60	Layout-and-merge / content-dedup stage	CONFIRMED	log "layout and merge section %s"; sole caller of sub_1CA6890 at 2 sites (TEMP_MERGED_CONSTANTS, TEMP_OCG_CONSTANTS)
+sub_1CA6890	Content-value dedup dispatcher (4-byte / 8-byte fast paths)	CONFIRMED	case4->"found duplicate value 0x%x, alias %s to %s"; case8->"found duplicate 64bit value 0x%llx, alias %s to %s"; alias=redirect dup symbol to canonical offset
+sub_1CA6760	N-byte content matcher (per-size-class memcmp linear scan)	CONFIRMED	"found duplicate %d byte value, alias %s to %s"; per-size linked list, memcmp(size); prepend new canonical on miss
+sub_1CA5A00	Overlap inserter / equality guard	CONFIRMED	FATAL "overlapping non-identical data" on memcmp mismatch (the binary-verified FATAL string); constant section type 0x7000000E
+sub_1CA6650	Data-node layout allocator	CONFIRMED	0x28-byte payload; offset=align_up(tail,align); append to section list
+sub_1CB68D0	Symbol/string-table builder (name-dedup stage)	CONFIRMED	installs interning callbacks sub_1CB3EB0/sub_1CB3FD0 via sub_1CD3210
+sub_1CB3EB0	Section-name string interning	CONFIRMED	"set duplicate name for %s(%d) to %d"; key=name C-string ptr
+sub_1CB3FD0	Symbol-name string interning	CONFIRMED	key=name C-string ptr; symbol-name dedup map
+sub_426D60/sub_426150	scalar hash-map lookup / insert	CONFIRMED	identity hash (4B) and lo^hi fold (8B); NOT FNV; 16B entries {key,value}, -1-terminated bucket dirs

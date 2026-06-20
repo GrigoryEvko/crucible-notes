@@ -1,0 +1,37 @@
+fn_addr	role	evidence_string_or_addr	confidence
+0x463C40	leb128	unsigned LEB128: v6=a1>>7, v8=v5&0x7F, *v7++=v8|0x80; no 0x40 test; ret 1 on overflow	high
+0x463CA0	leb128	signed LEB128: a1>>31 sign-ext, stop = (byte^sign)&0x40==0	high
+0x45A870	line_program	PTX-level statement-program writer; strings "when generating LEB128 number for {file number,setting prologue,address advance,line advance,setting context,setting function Offset}"; calls 0x463C40/0x463CA0	high
+0x45C3A0	line_program	PTX-level DWARF line + .debug_frame generator; "$LDWend" end label via sub_4279D0; "function index not found in debug function map"; emits .debug_frame via sub_4590D0	high
+0x866BB0	line_program	SASS-level .debug_line(sel=0)/.nv_debug_line_sass(sel=1) generator; prologue copied from ctx a1+160*sel+{68,76-90}; "when generating LEB128 number for {timestamp,file size}"; writes via sub_1CA72B0	high
+0x867880	line_program	top-level entry: calls 0x866BB0(sel=0) then 0x866BB0(sel=1) guarded by *(a1+16) SASS-line-info ptr	high
+0x8679F0	reg_sass	.nv_debug_info_reg_sass emitter; walks chain head a1+408, buffer a1+416, size a1+424; sub_1CA7AB0+sub_1CA7180	high
+0x867B00	reg_type	.nv_debug_info_reg_type emitter; chain head a1+432, buffer a1+440, size a1+448; same shape +24 shift	high
+0x88D870	reg_sass	post-RA liveness annotator producing reg-location data for reg_sass/reg_type/line_sass; not an ELF writer	high
+0x679DC0	reloc	debug-emission ORCHESTRATOR (builds all cubin debug sections): gated on (a7=deviceDebug | a8=lineInfo); calls 0x867880 (line tables) always, 0x8679F0/0x867B00 + .debug_info only if deviceDebug; builds .nv_debug_ptx_txt (drops #/// /.loc!=.local/.file/@@DWARF/.bNN lines), SC rename .nv_debug_ptx_txt.<adler32>	high
+0x66A0B0	die_emit	DWARF attribute emitter during IR lowering (28KB); .debug_abbrev/misc-section value+reloc rewrite	medium
+0x66F4E0	die_emit	main .debug_info DIE builder (59KB); cicc PTX-DWARF -> SASS-addr rewrite + relocations	medium
+0x66E250	line_program	IR-phase .debug_line builder (33KB)	medium
+0x671C00	line_program	debug line-number record formatter (11KB): context, functionOffset, line number	medium
+0x1CC0850	abbrev	.debug_abbrev parser/dumper; "Contents of the .debug_abbrev section:"; "[has children]"; "unexpectedly too many dwarf attributes for any DW_TAG entry!"	high
+0x1CC4A40	dump_printer	.debug_info DIE-tree walker/printer; " <%d><%x>: Abbrev Number: %d"	high
+0x1CC5EB0	dump_printer	CU header parser/printer + .nv_debug_info_ptx creator; "Compilation Unit @ offset"/"Length"/"Version"/"Abbrev Offset"/"Pointer Size"; stores ver@ctx+204 ptrsize@+208 abbrevoff@+212	high
+0x1CC34E0	dump_printer	location-expression DW_OP_* decoder/printer (DW_OP_addr/regN/bregN/fbreg/xderef/plus_uconst/stack_value)	high
+0x1CBF820	dump_printer	DW_FORM_* id->string table (forms 1-22 = DWARF2 set)	high
+0x1CBF9B0	dump_printer	DW_AT_* id->string table	high
+0x1CC24C0	die_emit	DWARF info processor (non-dump emission mode)	medium
+0x1C98C60	reloc	Mercury .nv.merc.debug_* classifier (15 names); gated by Mercury bit name[11]&0x10	high
+0x1C99340	reloc	SASS .debug_*/.nv_debug_* classifier	high
+0x1C9D1F0	reloc	unified classifier; gates on deviceDebug @ctx+432; maps sections to ctx+{72,80,88,96,104,112,120}; setjmp/longjmp recovery	high
+0x1C998D0	reloc	section-name -> internal buffer-ptr mapper; .debug_line->a1[10], .debug_frame->a1[9], .nv_debug_line_sass->a1[11], .debug_info->a1[14], .debug_loc->a1[15], reg_sass->a1[12], reg_type->a1[13]	high
+0x1CA7AB0	reloc	ELF helper: get-or-create data section by name	high
+0x1CB2C60	reloc	ELF helper: lookup section/symbol index by name	high
+0x1CA72B0	reloc	ELF helper: place data at section offset (overlap-checked); used to write line program	high
+0x1CA7180	reloc	ELF helper: append data node/section payload; used by reg_sass/reg_type	high
+0x1CD46B0	reloc	ELF helper: emit relocation entry (.debug_str ref from line table)	medium
+0x1CD4510	reloc	ELF helper: emit relocation entry (per-filename symbol)	medium
+0x703AB0	dump_printer	--lineinfo option handler: "Generate debug line table information"	high
+0x4428E0	dump_printer	flag validation: "device-debug or lineinfo" (blocks --extensible-whole-program with debug)	high
+0x432A00	dump_printer	--output-dwarf/dump option help: "Specify name of file into which the DWARF information ... must be written"	high
+0x4CE6B0	reloc	@@DWARF/.address_size directive handling: "Negative numbers in dwarf section", ".address_size directive"	medium
+0x4890E0	reloc	"@@DWARF directive" handler	medium

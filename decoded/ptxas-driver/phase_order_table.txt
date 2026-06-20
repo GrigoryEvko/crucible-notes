@@ -1,0 +1,26 @@
+# ptxas phase-order table  (binary-derived facts, CUDA 13.0.88)
+#
+# rodata object: rodata VMA 0x22BEEA0  (file offset 0x1EBEEA0; rodata delta = -0x400000)
+# Returned by the accessor sub_C60D20 (0xC60D20) as a (pointer, count) pair:
+#     mov $0x22beea0, %eax     ; rax = &order_table
+#     mov $0x9d,      %edx     ; rdx = 0x9D = 157  (element count)
+#     ret
+#
+# Type: int32[].  The driver reads it as the ordered list of phase IDs to dispatch.
+#
+# Layout:
+#   order_table[0..156]  = identity  (value i at index i; 157 entries, IDs 0..156)
+#   order_table[157]     = 0         (trailing sentinel, NOT read at default count)
+#   order_table[158]     = 0         (trailing sentinel, NOT read at default count)
+#
+# Because sub_C60D20 hands the caller count = 157, the dispatch loop
+# (sub_C64F70, end = base + 157*4) consumes exactly entries [0..156] and
+# never reads the two trailing zeros.  Phase IDs 157 (DebuggerBreak) and
+# 158 (NOP) are therefore NOT dispatched on the default pipeline.
+
+VA          0x22BEEA0
+count       157            (0x9D, from sub_C60D20 rdx)
+stride      4 bytes (int32)
+entries     identity 0,1,2,...,156   then  0,0  (sentinels)
+verified    entries[i]==i for i in 0..156 : TRUE
+            entries[157]==0, entries[158]==0
