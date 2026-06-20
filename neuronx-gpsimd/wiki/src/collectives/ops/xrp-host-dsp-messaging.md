@@ -409,11 +409,23 @@ aws_hal_notific_nq_read @0x451040:
 > `idx*5 → idx*11 → <<5 = idx*352`, with the array based at `nq_base + 0x210`. Use **`0x160`**.
 > (The `+0x210` base and the vtable `+0x438` dispatch in the report are correct.)
 
-Host "consume" entry points (trace events): `exec_consume_nc_status_notifications`,
-`exec_consume_cc_core_notifications` (the **collective / CC‑core** completion drain),
-`notification_consume_errors`, `exec_consume_gpsimd_stdio`. The full NOTIFIC CSR schema
+Host "consume" entry points — the **collective / CC‑core** completion drain:
+`consume_ready_exec_notification_v2 @0x2fcce0`, `notification_consume_errors @0x300350`
+(+ `notification_consume_error_block @0x2ff250`), and the profile-side
+`nrt_profile_session_append_cc_notifications @0xaf700`. The full NOTIFIC CSR schema
 belongs to the Part‑13 NOTIFIC‑Queue page (`../../control/csr/notific-queue.md`, stub);
 this page links it by path.
+
+> **CORRECTION — there is no `exec_consume_cc_core_notifications` (nor
+> `exec_consume_nc_status_notifications` / `exec_consume_gpsimd_stdio`) symbol in
+> `libnrt.so`.** Verified absent this pass (`nm | rg -c` = 0 for each). The real
+> CC-notification consumers are `consume_ready_exec_notification_v2 @0x2fcce0`,
+> `notification_consume_errors @0x300350`, and `exec_request_process_errors.isra.0
+> @0x2615b0` (the per-TOP_SP count/type validator). This matches the standing
+> correction in
+> [ring-protocol-config-command](../ncfw/ring-protocol-config-command.md); cite
+> these, not a non-existent consume symbol. `[OBSERVED HIGH — symbol presence/absence
+> via `nm` over `libnrt.so`.]`
 
 ### 4.3 The device‑side ring abstraction (`libnrtucode_extisa`)  [HIGH strings / INFERRED loop]
 
@@ -510,7 +522,7 @@ The corpus uses **parallel** bespoke command transports, unified only by the EVT
 
 | op class | command path | completion |
 |---|---|---|
-| **Collectives** | general `hw_exec_queue` DMA legs **+** the TOP_SP `host_trigger` doorbell (`kaena_khal.khal_sp.topsp_set_host_trigger`; the SP local‑reg trigger). The SPAD cc_op program is HBM‑staged + DMA‑loaded onto TOP_SP (**engine 5**), **not** posted via `xt_cc`. | `tdrv_sync_get_collective_topsp_ack_first/_last` + NQ (`exec_consume_cc_core_notifications`) |
+| **Collectives** | general `hw_exec_queue` DMA legs **+** the TOP_SP `host_trigger` doorbell (`kaena_khal.khal_sp.topsp_set_host_trigger`; the SP local‑reg trigger). The SPAD cc_op program is HBM‑staged + DMA‑loaded onto TOP_SP (**engine 5**), **not** posted via `xt_cc`. | `tdrv_sync_get_collective_topsp_ack_first/_last` + NQ (`consume_ready_exec_notification_v2 @0x2fcce0` / `notification_consume_errors @0x300350`) |
 | **Custom‑op** | **device‑local**: TPB custom‑op **instruction** arg interface (`rd_args_from_insns`) consumed on the Q7/POOL core + `respond(TPB_WRITE_RESPONSE)`; launched by on‑device `switch_stack_or_call_wrapper`. **No** host `xt_cc`/`hw_exec_queue` enqueue. | `respond` handshake (device‑local) |
 | **JPEG decode** | the **sole** rider of the `xt_cc` Q7 command queue (§3): 40‑B record → Q7 DMEM ring → per‑Q7 `JPEG_CMD_QUEUE_TAIL` doorbell (CSRs 9..12) | EVT_SEM + NQ |
 

@@ -437,11 +437,23 @@ Three row-bands:
   `0x...06900000`, die-banked) — the device↔host top-level DMA, distinct from the
   per-NC compute-engine doorbells.
 
-The table ends at `+0xb0`, where the 8-slot engine-dispatch table begins
-(`{0x3c38, 0x3c35, 0x3c2e, 0x48f0, 0x3c27, 0x3c20, 0x3c20, 0x3c20}`; slot 3 `0x48f0`
-is the deep DVE handler). The exc-cause table at `+0x000` is
-`{0x1399, 0x13b1, 0x13c5, 0x1399}`; the secondary/completion table at `+0xd0` is
-`{0x3e9c, 0x3e32, 0x3e76, 0x3e80}`. *(all tables OBSERVED HIGH this session.)*
+The table ends at `+0xb0`, where the **12-entry `algo_type` engine-dispatch table**
+begins (`{0x3c38, 0x3c35, 0x3c2e, 0x48f0, 0x3c27, 0x3c20, 0x3c20, 0x3c20, 0x3e9c,
+0x3e32, 0x3e76, 0x3e80}`; idx 3 `0x48f0` is the error/default outlier). The exc-cause
+table at `+0x000` is `{0x1399, 0x13b1, 0x13c5, 0x1399}`. *(all tables OBSERVED HIGH
+this session.)*
+
+> **CORRECTION — `+0xb0` is ONE 12-entry table, not an 8-slot table + a 4-entry
+> `+0xd0` secondary.** An earlier framing here (and in
+> [`ncfw-dram-ctx-log`](ncfw-dram-ctx-log.md) §2.3, since corrected) split the
+> `0xb0..0xe0` window into an 8-slot table at `+0xb0` plus a separate 4-entry table at
+> `+0xd0`. The dispatch instruction at v3 IRAM `0x3bf8` (`const16 a2,0xB0; addx4
+> a2,a3,a2; l32i.n a5,a2,0` — a single base literal, one ×4 index, one load; no second
+> `const16 0xD0`) reads it as **one contiguous 12-entry `algo_type` jump table** with
+> `a3 ∈ 0..11`; entries 8..11 fall at `0xB0 + 8·4 = 0xD0`. See the capstone
+> [`lx-isa-naming-archid-synthesis`](lx-isa-naming-archid-synthesis.md) §4.3 and the
+> [`main-dispatch-loop`](main-dispatch-loop.md) §4. *(the dispatch read is the decider —
+> OBSERVED HIGH.)*
 
 ### 5.1 `cayman_bcast_region_table` — byte-identity with idx[8..15] + 0x80000
 

@@ -547,7 +547,9 @@ aws_reg_sunda_..._host_trigger_offset                      @0x479120:  mov $0x60
 immediate returns). These are dispatched per-arch through the `kaena_khal` HAL
 vtable: `aws_hal_sp_topsp_get_host_trigger_reg_offset @0x457ba0` does
 `call al_hal_tpb_get_arch_type ; mov 0x710(%rax),%rax` (vtable slot `+0x710` is the
-*offset getter*; the adjacent `aws_hal_sp_topsp_set_host_trigger` performs the write).
+*offset getter*; the adjacent `aws_hal_sp_topsp_set_host_trigger` performs the **write**
+through slot **`+0x708`**, `@0x457b44: mov 0x708(%rax),%rax` — see the authoritative
+split in [TOP_SP lowering §3a](top-sp-lowering.md)).
 A one-shot value-`1` write to this CSR is the literal *"It then triggers the
 operation"* of the `0xC7` header comment. `[HIGH/OBSERVED — immediate-return offsets +
 the vtable dispatch disasm. This resolves the LOW CSR gap of the 0xC8/0xD9 pages.]`
@@ -603,7 +605,7 @@ firmware [SB2SB Remote Copy](../../firmware/kernels/sb2sb-remote-copy.md).
 | B · **SELECT** | per-leg algo | `__select_algorithms @0x14c620` → `enc_can_post_* (×N)` → `enc_alg_type`; `SINGLE_CYCLE_RING` op_type==1 guard | `libnrt.so` |
 | B · **COMPOSE** | step primitives | `__compose_allreduce* (0x1a34c0 / 0x171600 / 0x19ce00 …)` → `recv_reduce_*(SDMA_CCETYPE)` / `direct_recv_*` | `libnrt.so` |
 | B · **EMIT** | desc packets + SPAD | `add_dma_packet_cce @0x2307d0`; `create_spad_ctrl_entry @0x232cd0` (`.cc_op=1`); `ntff::collectives_op_info` | `libnrt.so` |
-| B · trigger | host-trigger CSR | `host_trigger 0x615a0` (cayman/mariana) / `0x60848` (sunda) via `kaena_khal` vtable `+0x710` | `libnrt.so` → TOP_SP NX |
+| B · trigger | host-trigger CSR | `host_trigger 0x615a0` (cayman/mariana) / `0x60848` (sunda) via `kaena_khal` vtable `+0x708` (write `set_host_trigger`; `+0x710` is the offset getter) | `libnrt.so` → TOP_SP NX |
 | C · NCFW | dispatch the algo | `algo_type` 4-bit (low nibble of `enc_alg_type`) indexes the DRAM`+0xB0` 12-entry table | `v{3,4,4+}_ncfw_iram_bin` (LX) |
 | dev · move | intra-node copy | `SB2SB_COLLECTIVE = 0xBF` → `decode_sb2sb_collective` (POOL/Q7 iDMA) | `libnrtucode_extisa.so` |
 | dev · reduce | CCE during transfer | `SDMA_CCETYPE` → CCE reduce field; `cce_dtypes.4 @0x9b9f40` = `{BF16,FP16,FP32R,FP8_E3/E4/E5}` | SDMA HW |

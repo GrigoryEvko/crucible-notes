@@ -464,10 +464,12 @@ table; idx 3 is the unknown-command guard). **[HIGH × OBSERVED]**
 > `0x3bf8`: a single `const16 a2,0xB0` (the literal `24 b0 00` occurs **exactly once** in
 > the v3 image — there is **no second `const16 0xD0`**), followed by **one** `addx4`
 > (×4 scale) and **one** `l32i.n`. A genuine 8+4 split would require a second base literal
-> and a second indexed load; the binary has neither. The `+0xd0` boundary in
-> `ncfw-dram-ctx-log` is a layout coincidence — entries 8..11 of the *same* table land at
-> `0xB0 + 8·4 = 0xD0`. **The 8+4 split is the contested alternative to be reconciled into
-> [`ncfw-dram-ctx-log`](ncfw-dram-ctx-log.md); the dispatch instruction is the decider.**
+> `const16 0xD0` (`24 d0 00`, count **0** in the v3 image) and a second indexed load; the
+> binary has neither. The `+0xd0` boundary is a layout coincidence — entries 8..11 of the
+> *same* table land at `0xB0 + 8·4 = 0xD0`. **Reconciled:**
+> [`ncfw-dram-ctx-log`](ncfw-dram-ctx-log.md) §2.3 now reads the single 12-entry table
+> too (its earlier 8+4 split overturned in place against this dispatch read); the
+> dispatch instruction is the decider.
 > **[CORRECTION HIGH × OBSERVED — addx4/l32i dispatch read at v3 0x3bf8]**
 
 The case *bodies* the handlers run are FLIX-undecodable (§1.2); the leg-cluster grouping

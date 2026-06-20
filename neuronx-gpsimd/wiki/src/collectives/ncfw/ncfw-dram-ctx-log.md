@@ -10,8 +10,9 @@ carve and the v5 wall) and to
 [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md) (which owns the
 ISA/decode/dispatch-spine story). **This page owns: the DRAM-image carve, the three
 static dispatch/CSR tables in the DRAM header (the exc-cause vector @ `+0x000`, the
-engine register-address table @ `+0x010`, and the 8-slot engine-dispatch table @
-`+0x0b0`), and how the host `ctx_log` chain reads the firmware's runtime context.**
+engine register-address table @ `+0x010`, and the 12-entry `algo_type`
+engine-dispatch table @ `+0x0b0`), and how the host `ctx_log` chain reads the
+firmware's runtime context.**
 
 > **GOTCHA — two Xtensa cores, do not cross the wires.** The structs decoded here
 > belong to the **scalar Xtensa-LX management core** (NCFW), *not* the Vision-Q7
@@ -191,40 +192,49 @@ Two byte-grounded properties pin the layout `[HIGH/OBSERVED]`:
 > plus per-entry offsets. `[base table HIGH/OBSERVED; the firmware-side per-entry
 > arithmetic INFERRED — it runs in the un-disassemblable LX core.]`
 
-### 2.3 The 8-slot engine-dispatch table @ `DRAM+0x0b0`, secondary @ `+0x0d0`
+### 2.3 The 12-entry `algo_type` engine-dispatch table @ `DRAM+0x0b0`
 
-> **CORRECTION — the region at `DRAM+0x0b0` is an 8-slot engine table plus a separate
-> 4-entry secondary table, not one "12-entry table."** A prior reading (and the
-> sibling [IRAM-images](ncfw-iram-images.md) §1 NOTE) described `DRAM+0xB0` as a
-> single "12-entry `algo_type` jump table." Byte-measurement of the carved v4 image
-> this pass splits it cleanly: **`+0x0b0` is an 8-slot engine-dispatch table** (slots
-> 0–7) and **`+0x0d0` is a distinct 4-entry secondary completion-handler table**. The
-> two are contiguous but semantically separate. `[HIGH/OBSERVED — `<12I` unpack of the
-> `0xb0..0xe0` window.]`
+> **CORRECTION — `DRAM+0x0b0` is ONE contiguous 12-entry `algo_type` jump table, not
+> an 8-slot table plus a separate 4-entry secondary table.** An earlier reading on
+> this page split the `0xb0..0xe0` window by value range (the `0x3c..` cluster at
+> `+0xb0` vs the `0x3e..` cluster at `+0xd0`) into two tables. **That split is
+> overturned by the dispatch instruction**, re-verified byte-exact this pass at v3
+> IRAM `0x3bf8`: `const16 a2,0xB0 (24 b0 00) ; addx4 a2,a3,a2 (20 23 a0) ; l32i.n
+> a5,a2,0 (58 02)` — a **single** `const16` base literal (`24 b0 00` occurs **exactly
+> once** in the v3 image, **zero** in v2), **one** `addx4` ×4-scale, and **one**
+> `l32i.n`. A genuine 8+4 split would need a *second* base literal `const16 0xD0`
+> (`24 d0 00`) and a *second* indexed load; the v3 image contains **neither**
+> (`24 d0 00` count = 0). The `+0xd0` boundary is a layout coincidence — entries 8..11
+> of the same table land at `0xB0 + 8·4 = 0xD0`. The capstone
+> [`lx-isa-naming-archid-synthesis`](lx-isa-naming-archid-synthesis.md) §4.3 (which
+> reads the `addx4/l32i` dispatch and bounds `a3 ∈ 0..11`), the
+> [`main-dispatch-loop`](main-dispatch-loop.md) §4, and the
+> [`ncfw-iram-images`](ncfw-iram-images.md) §1 NOTE all read this as the single
+> 12-entry table; this page now agrees. `[HIGH/OBSERVED — the v3 `0x3bf8`
+> `addx4/l32i` dispatch read is the decider; `<12I` unpack of the `0xb0..0xe0`
+> window.]`
 
-The 8-slot engine table maps a per-engine slot index to its IRAM handler entry-point;
-the secondary table holds engine-completion notification handlers:
+The table maps the dispatch `algo_type` index (0..11) to an IRAM case-label
+entry-point inside the main-loop function (a staggered computed-goto, not separate
+functions — see [main dispatch loop §4.2](main-dispatch-loop.md#42-the-12-entry-table-dram0xb0-carved-byte-exact)):
 
-| | slot 0 | slot 1 | slot 2 | slot 3 | slot 4 | slot 5/6/7 |
-|---|---|---|---|---|---|---|
-| **v4 8-slot** (`+0x0b0`) | `0x3c38` | `0x3c35` | `0x3c2e` | `0x48f0` | `0x3c27` | `0x3c20` (shared) |
-| **v3 8-slot** (`+0x0b0`) | `0x3c20` | `0x3c1d` | `0x3c16` | `0x48c4` | `0x3c0f` | `0x3c08` (shared) |
-
-| | entry 0 | entry 1 | entry 2 | entry 3 |
-|---|---|---|---|---|
-| **v4 secondary** (`+0x0d0`) | `0x3e9c` | `0x3e32` | `0x3e76` | `0x3e80` |
-| **v3 secondary** (`+0x0d0`) | `0x3e84` | `0x3e1e` | `0x3e5e` | `0x3e68` |
+| | idx 0 | 1 | 2 | **3** | 4 | 5/6/7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **v4** (`+0x0b0`) | `0x3c38` | `0x3c35` | `0x3c2e` | `0x48f0` | `0x3c27` | `0x3c20` (shared) | `0x3e9c` | `0x3e32` | `0x3e76` | `0x3e80` |
+| **v3** (`+0x0b0`) | `0x3c20` | `0x3c1d` | `0x3c16` | `0x48c4` | `0x3c0f` | `0x3c08` (shared) | `0x3e84` | `0x3e1e` | `0x3e5e` | `0x3e68` |
 
 Structure `[HIGH/OBSERVED]`:
 
-- **8 slots, 5 distinct + a 3-way catchall.** Slots `{0,1,2,4}` are distinct IRAM
-  entries packed on a **7-byte stride** (`0x3c38`/`0x3c35`/`0x3c2e`/`0x3c27` — a
-  computed-goto chain in the IRAM); **slot 3 is a structurally-distinct deep handler**
-  (`0x48f0` in v4, far from the chain — the DVE / collective-comms candidate); and
-  **slots 5/6/7 all point at the `0x3c20` catchall**.
-- **`DRAM+0x0b0` is all-zero in v2/SUNDA** — SUNDA has *no* 8-slot engine table (its
-  simpler boot, [§4](#4-per-arch-differences-v2-is-simpler-v3v4-are-relocated)).
-- The handler bodies these slots point to are decoded on the
+- **12 entries, two case-clusters + an outlier.** idx `{0,1,2,4}` are distinct entries
+  packed on a **7-byte stride** in the `0x3c..` cluster (`0x3c38`/`0x3c35`/`0x3c2e`/
+  `0x3c27` — a computed-goto chain in the IRAM); **idx 3 is the structurally-distinct
+  outlier** (`0x48f0` in v4, far from the cluster — the error/default leg into the
+  `0x48e0` region); idx `5/6/7` all share the `0x3c20` catchall entry; idx `8..11` are
+  the second case-cluster in the `0x3e..` region.
+- **`DRAM+0x0b0` is all-zero in v2/SUNDA** — SUNDA has *no* `+0xB0` dispatch table
+  (its simpler monolithic boot, [§4](#4-per-arch-differences-v2-is-simpler-v3v4-are-relocated)),
+  consistent with the absence of any `const16 0xB0` (`24 b0 00`) instruction in v2.
+- The handler bodies these entries point to are decoded on the
   [main dispatch loop](main-dispatch-loop.md) page; here the table only pins the
   *entry contract*.
 
@@ -456,8 +466,7 @@ dispatch-table region `[HIGH/OBSERVED]`:
 
 | offsets | nature |
 |---|---|
-| `+0xb0`–`+0xcf` (8-slot engine table) | each entry `+0x18` (e.g. `0x3c20`→`0x3c38`, `0x48c4`→`0x48f0`) |
-| `+0xd0`–`+0xdf` (4-entry secondary table) | each entry `+0x18` (`0x3e84`→`0x3e9c`, `0x3e68`→`0x3e80`) |
+| `+0xb0`–`+0xdf` (12-entry `algo_type` table, idx 0..11) | each entry `+0x18` (e.g. idx0 `0x3c20`→`0x3c38`, idx3 `0x48c4`→`0x48f0`, idx8 `0x3e84`→`0x3e9c`, idx11 `0x3e68`→`0x3e80`) |
 | `+0x12c` (one IRAM ptr) | `0x5c`→`0x88` byte |
 
 Byte-diff this pass: differing offsets =
@@ -470,7 +479,7 @@ a pure code-layout delta, not a config/topology change.
 
 **v2 (SUNDA) DRAM — structurally simpler** `[HIGH/OBSERVED]`:
 
-| image | size | reg-addr entries | 8-slot engine table | 40-B records |
+| image | size | reg-addr entries | 12-entry `algo_type` table | 40-B records |
 |---|---|---|---|---|
 | v2 | `0x36c0` | 4 (`0x0fff_xxxx` range) | **absent** (`+0xb0` all-zero) | 11 |
 | v3 | `0x4e00` | 20 (`0x02xx_0270_0000`) | present | 16 |
@@ -478,7 +487,7 @@ a pure code-layout delta, not a config/topology change.
 | v4+ | `0x4e00` | == v4 | == v4 | == v4 |
 
 SUNDA has only **4** real register apertures (`0x0fffc2700000`, `0x0fffc6700000`,
-`0x0ffff0600000`, `0x0ffff0d00000`), **no 8-slot engine table** (`+0xb0` zeroed; its
+`0x0ffff0600000`, `0x0ffff0d00000`), **no `+0xB0` dispatch table** (`+0xb0` zeroed; its
 boot block of `0xffffffff` sentinels + IRAM ptrs starts by `+0x30`), and **11**
 descriptor records. The per-arch ×4 delta on the runtime context is therefore a
 **size delta** (v2 smaller) + an **offset shift** of the neff/algo ctx regions — *not*
@@ -518,10 +527,10 @@ To rebuild a compatible NCFW DRAM image + host decoder:
    flat, no ELF/load-address header. `[HIGH]`
 2. **Lay the header tables-first**: exc-cause vector @ `+0x000` (4×u32, slot 3 == slot
    0 catchall); per-die engine register-address table @ `+0x010` (`u64` apertures,
-   engine selector in bits [32:39], NC bank in bit [47]); 8-slot engine-dispatch table
-   @ `+0x0b0` (5 distinct + 3-way catchall) + 4-entry secondary completion table @
-   `+0x0d0`; 40-byte descriptor array @ `+0x188`. Zero the rest (the runtime working
-   region). `[HIGH]`
+   engine selector in bits [32:39], NC bank in bit [47]); the **12-entry `algo_type`
+   engine-dispatch table** @ `+0x0b0` (idx 0..11, ×4-indexed by a single `addx4` —
+   one contiguous table, entries 8..11 land at `+0xd0`); 40-byte descriptor array @
+   `+0x188`. Zero the rest (the runtime working region). `[HIGH]`
 3. **Provide `ctx_log(ctx, buf, model_name, arch_id)`** with the *same four-key*
    `cmpl {0x1c,0x14,0x05,0x0c}` ladder as `get_image`, routing to per-codename thunks;
    EINVAL (22) on NULL or out-of-range arch_id. `[HIGH]`
@@ -565,8 +574,8 @@ To rebuild a compatible NCFW DRAM image + host decoder:
   full ISA evidence (windowed XEA2 ABI, the `0x24` handler, the FLIX-mis-decode
   debunk). **The authoritative core characterization.**
 - [NCFW Main Dispatch Loop](main-dispatch-loop.md) *(Part 10)* — decodes the IRAM
-  handler bodies the DRAM exc-cause vector + 8-slot engine table point at, and the
-  `waiti 15` idle loop.
+  handler bodies the DRAM exc-cause vector + 12-entry `algo_type` table point at, and
+  the `waiti 15` idle loop.
 - [NCFW DMA Reprogram + APB Broadcast + Alloc Bitmap](dma-reprogram-apb-bcast.md)
   *(Part 10)* — the `configs."neff".dma_alloc_bitmap` child + the DMA-engine / nc-event
   naming over the `+0x010` reg-addr base.
@@ -589,16 +598,20 @@ To rebuild a compatible NCFW DRAM image + host decoder:
 |---|---|---|---|
 | 1 | Four DRAM blobs; carved size == `u32` szword == `nm` size; v4 DRAM == v4+ DRAM | `nm -S` + Python carve + `<I` unpack + sha256: all four match; `v4==v4plus` True (sha `1c3ac5f4…`) | **HIGH/OBSERVED** |
 | 2 | reg-addr table @ `DRAM+0x010` = 20×u64 per-die apertures, base `0x02700000`, engine selector bits [32:39], **NC bank = bit [47]** | `<20Q` unpack of v4 carve; `reg[0]^reg[4]=0x0000800000000000` (bit 47); base `0x02700000` common | **HIGH/OBSERVED** |
-| 3 | 8-slot engine table @ `DRAM+0x0b0` `{0x3c38,0x3c35,0x3c2e,0x48f0,0x3c27,0x3c20×3}` + secondary @ `+0x0d0` `{0x3e9c,0x3e32,0x3e76,0x3e80}` (v3 = same `−0x18`; v2 absent) | `<12I` unpack of v4/v3/v2 carves; v2 `+0xb0` all-zero | **HIGH/OBSERVED** |
+| 3 | **One 12-entry `algo_type` table** @ `DRAM+0x0b0` `{0x3c38,0x3c35,0x3c2e,0x48f0,0x3c27,0x3c20×3,0x3e9c,0x3e32,0x3e76,0x3e80}` (v3 = same `−0x18`; v2 absent) — single `addx4`-indexed table, NOT an 8+4 split | `<12I` unpack of v4/v3/v2 carves; v3 `0x3bf8` `const16 a2,0xB0; addx4; l32i.n` dispatch read (`24 b0 00` once, `24 d0 00` zero); v2 `+0xb0` all-zero | **HIGH/OBSERVED** |
 | 4 | `libncfw_ctx_log @0x1309`: 4-key `cmpl {0x1c,0x14,0x05,0x0c}` ladder → `{sunda,cayman,mariana,mariana_plus}_ncfw_ctx_log`, EINVAL default | `objdump -d 0x1309`: cmp/je legs + `call 0x1a12b/0x32ed2/0x4bc79/0x64a20`, `mov eax,0x16` | **HIGH/OBSERVED** |
 | 5 | ctx_log walk: 1 MiB `memset`, keys `ncfw_ctx_top_sp`/`model_name`/`configs`/`neff`/`algo`; fan-out configs@+0 / neff_ctx@+0x3060\|0x4280 / algo_ctx@+0x30C0\|0x42E0; ring@+0/hier@+0x200/mesh@+0x204; barrier_completed@+0x5c | `objdump -d 0x19f01/0x19c0e/0x18cd2/0x1653b/0x32ca8`; rodata strings @`0x65685`/`0x6566e`/`0x65666`/`0x6565d`/`0x65658` | **HIGH/OBSERVED** |
 
 ### Corrections recorded on this page
 
-1. **`DRAM+0x0b0` is an 8-slot engine table + a 4-entry secondary table, not one
-   "12-entry table."** Byte-measured `<12I` window splits cleanly at `+0x0d0`
-   (§2.3). The earlier/sibling "12-entry `algo_type` jump table" reading conflated the
-   two contiguous-but-separate tables.
+1. **`DRAM+0x0b0` is ONE contiguous 12-entry `algo_type` jump table** (idx 0..11),
+   **not** an 8-slot table + a separate 4-entry secondary table (§2.3). An earlier
+   reading on this page split the window by value range; the v3 `0x3bf8` dispatch
+   instruction (`const16 a2,0xB0; addx4 a2,a3,a2; l32i.n a5,a2,0` — a single base
+   literal + single ×4 index + single load, with no second `const16 0xD0`) overturns
+   that split. Entries 8..11 land at `+0xd0` only as `0xB0 + 8·4`. Reconciled onto the
+   capstone [`lx-isa-naming-archid-synthesis`](lx-isa-naming-archid-synthesis.md) §4.3
+   and [`main-dispatch-loop`](main-dispatch-loop.md) §4.
 2. **The reg-addr table at `DRAM+0x010` is the engine register-address table with the
    NC bank in bit [47]** (not an undifferentiated "soc_addr CSR table") — the engine
    selector is bits [32:39], the NC0/NC1 select is bit [47], byte-proven via the
