@@ -314,25 +314,25 @@
 - [NCFW Ring Send/Wait + Config Schema + Host Command](collectives/ncfw/ring-protocol-config-command.md)
 - [NCFW LX-ISA / DMA-Naming / arch_id-Diff / Orchestration Synthesis](collectives/ncfw/lx-isa-naming-archid-synthesis.md)
 
+# Part 11 — NEFF Container Format (11)
+- [NEFF Container Byte Format](neff/container-byte-format.md)
+- [metaneff Protobuf + var/mem_ref Device I/O ABI](neff/metaneff-io-abi.md)
+- [Per-Engine TPB-Sequencer Microcode (64-byte word)](neff/seq-microcode.md)
+- [Relocation / Patch Subsystem + Weight Layout](neff/relocation-weights.md)
+- [Per-Engine Instruction-Block Assembly Pipeline](neff/assembly-pipeline.md)
+- [NEFF Version / Compatibility Model](neff/version-compat.md)
+- [The NEFF Format Reference (synthesis)](neff/format-reference.md)
+- [A Concrete NEFF, Carved Byte-by-Byte](neff/concrete-carve.md)
+- [The NEFF ↔ ELF Relationship](neff/neff-elf-relationship.md)
+- [The NEFF Byte-Level Container Capstone](neff/container-capstone.md)
+- [ntff Trace Protobuf + simdjson NEFF Parse State](neff/ntff-trace-parse-state.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 11 — NEFF Container Format (11)
-- neff/container-byte-format.md     — NEFF Container Byte Format
-- neff/metaneff-io-abi.md           — metaneff Protobuf + var/mem_ref Device I/O ABI
-- neff/seq-microcode.md             — Per-Engine TPB-Sequencer Microcode (64-byte word)
-- neff/relocation-weights.md        — Relocation / Patch Subsystem + Weight Layout
-- neff/assembly-pipeline.md         — Per-Engine Instruction-Block Assembly Pipeline
-- neff/version-compat.md            — NEFF Version / Compatibility Model
-- neff/format-reference.md          — The NEFF Format Reference (synthesis)
-- neff/concrete-carve.md            — A Concrete NEFF, Carved Byte-by-Byte
-- neff/neff-elf-relationship.md     — The NEFF ↔ ELF Relationship
-- neff/container-capstone.md        — The NEFF Byte-Level Container Capstone
-- neff/ntff-trace-parse-state.md    — ntff Trace Protobuf + simdjson NEFF Parse State
 
 # Part 12 — Compiler Seam (12)
 - compiler/compiler-map.md                  — The GPSIMD-Relevant Compiler Map + emit_*→opcode
