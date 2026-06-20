@@ -35,7 +35,7 @@ against the binary at every use.
 | Symbol version | `VERS_1.1` | `.gnu.version_d` index 2; every export binds `@@VERS_1.1` | HIGH · OBSERVED |
 | Version anchor | `VERS_1.1` `@0x0` type `A` | `nm -D` shows one absolute symbol | HIGH · OBSERVED |
 | ABI/build stamp | `dll_get_version()` → `0x1381f` (79903) | `mov $0x1381f,%eax ; ret` `@0x1776580` | HIGH · OBSERVED |
-| Per-instance state size | `dll_get_data_size()` → `0x4a09f0` (4,851,184 B) | `mov $0x4a09f0,%eax ; ret` `@0x1776570` | HIGH · OBSERVED |
+| Per-instance state size | `dll_get_data_size()` → `0x4a09f0` (4,852,208 B, ≈4.63 MB) | `mov $0x4a09f0,%eax ; ret` `@0x1776570` | HIGH · OBSERVED |
 | Compiler | GCC (GNU) 4.9.4 | `.comment` string dump | HIGH · OBSERVED |
 | SONAME / NEEDED | *none* | `readelf -d` has no `SONAME`/`NEEDED` entry | HIGH · OBSERVED |
 | Modeled core | Cayman / Vision-Q7 IVP VLIW | regfile-name table + vector ISA op families (§4) | MED · INFERRED |
@@ -47,11 +47,18 @@ against the binary at every use.
 > Cayman / Vision-Q7 vector core. (CARRIED from SX-ISS-01; the BASE string and
 > the vector regfile names are OBSERVED.)
 
-> **GOTCHA — "4.85 MB".** `dll_get_data_size` returns **4,851,184 bytes**. That
-> is 4.85 *decimal* MB but only **4.628 MiB**. The harness `malloc`s exactly this
-> many bytes per simulated core instance and passes the pointer as `rdi` (arg0)
-> to every accessor; `dll_initialize` then `memset`s precisely `0x4a09f0` bytes
+> **GOTCHA — instance size.** `dll_get_data_size` returns
+> **4,852,208 B (0x4a09f0, ≈4.63 MB)**. The harness `malloc`s exactly this many
+> bytes per simulated core instance and passes the pointer as `rdi` (arg0) to
+> every accessor; `dll_initialize` then `memset`s precisely `0x4a09f0` bytes
 > (verified below). Do not size the instance buffer in MiB.
+>
+> > **CORRECTION.** An earlier draft of this page asserted an off-by-1,024
+> > decimal (`0x4a05f0`, a 9↔5 nibble slip) and mislabelled it in decimal-MB.
+> > The real value is `0x4a09f0 = 4,852,208 B` (≈4.63 MB), 1,024 B above the
+> > slipped figure. The disasm immediate is
+> > `b8 f0 09 4a 00` (`mov $0x4a09f0,%eax`) and the live `ctypes` return is
+> > `4,852,208`. The canonical figure is **4,852,208 B (0x4a09f0, ≈4.63 MB)**.
 
 ### Symbol census (`nm -D`)
 
@@ -160,7 +167,7 @@ dll_initialize @0x17b5c90 :  (rdi=state, rsi=harness_handle, rdx=init_ctx)
   mov  rsi, rbp              ; rbp = harness_handle (arg1)
   mov  rdi, rbx              ; rbx = state (arg0)
   mov  $0x4a09f0, edx
-  call memset@plt            ; <-- zero exactly 4,851,184 bytes of instance state
+  call memset@plt            ; <-- zero exactly 4,852,208 bytes (0x4a09f0) of instance state
   mov  rbp, (rbx)            ; state+0x00 = harness_handle
   mov  (r12), rax
   mov  rax, 0x8(rbx)         ; state+0x08 = init_ctx->vtable_base
@@ -171,9 +178,9 @@ dll_initialize @0x17b5c90 :  (rdi=state, rsi=harness_handle, rdx=init_ctx)
   mov  rax, 0x5a0(rbx)       ; mirror init_ctx control word
   ; --- registration loop (unrolled) ---
   mov  rbp, rdi
-  lea  "REV8AR"(rip), rsi    ; .rodata 0x17cdb53 : a state-register NAME string
+  lea  "AR"(rip), rsi        ; .rodata 0x17cdb53 : suffix-merged "AR" tail of "REV8AR\0"
   call *0x10(rbx)            ; <-- INDIRECT call through the installed vtable:
-                             ;     harness->register(handle, "REV8AR", &slot)
+                             ;     harness->register(handle, "AR", &slot)
   lea  0x14eb8(rbx), rdx
   mov  rbp, rdi
   lea  <name>(rip), rsi      ; next register name (.rodata 0x17cdd0f ...)
@@ -188,7 +195,18 @@ register and calls back through that table (`call *0x10(rbx)`, `call *0x28(rbx)`
 the matching state slot. **This is the "register" half of the dlopen/register/run
 lifecycle** — implemented as core-calls-harness, not harness-calls-factory.
 *(HIGH · OBSERVED — `memset 0x4a09f0`, `rep movsq`, and the `call *N(rbx)` chain
-are all in the disassembly; the registered name `REV8AR` reads off `.rodata`.)*
+are all in the disassembly.)*
+
+> **GOTCHA — the first registered name is `"AR"`, not `"REV8AR"`.** The `lea`
+> targets `.rodata 0x17cdb53`, but the pooled string `"REV8AR\0"`
+> (`52 45 56 38 41 52 00`) begins four bytes earlier at `0x17cdb4f`; the compiler
+> **suffix-merged** the `"AR"` literal into the tail of `"REV8AR"`, so the `lea`
+> displacement (`# 17cdb53`) points at the `"AR"` substring +4 in. The first
+> registered architectural state register is the **AR** register file
+> (`num_aregs = 64`), not the `REV8AR` special register. A naïve "read the
+> null-terminated string at the `lea` displacement" reports `REV8AR` for what is
+> really `AR`. See [`iss-oracle-synthesis`](./iss-oracle-synthesis.md) §2.
+> *(HIGH · OBSERVED.)*
 
 ### 2.4 `dll_cycle_advance` — the one-tick pipeline stepper
 
@@ -296,6 +314,14 @@ Grouped by regex bucket (groups overlap; counts are not a strict partition).
 | SuperGather control | 5 | `nx_GSControl_{0,1}`, `nx_GSEnable_{0,1}`, `nx_GSVAddrOffset_0` |
 | OCD / debug | 3 | `nx_OCDEnabled`, `nx_NextOCDEnabled`, `nx_BreakNum` |
 | Misc (excl. monitor, instr-mem, …) | rem. | `nx_EXCLRES`/`_next`, `nx_InstructionMemDataIn`, `nx_NMILock`, `nx_MEMCTLOut`, `nx_S32dis*` |
+
+> **NOTE — SuperGather is a 6-port indirection engine.** The canonical framing
+> ([`cas-supergather`](./cas-supergather.md)) counts **6 indirection-engine ports**
+> — the 5 control ports above **plus `nx_ScatterData_0`**, which this page also
+> buckets under the 52 memory ports. The buckets overlap by design, so
+> `nx_ScatterData_0` is counted in *both* the memory and the SuperGather views; the
+> 119 total is unchanged either way. *(HIGH · OBSERVED —
+> `nm -D \| rg -c 'nx_GS\|nx_ScatterData' == 6`.)*
 
 > **NOTE — dual `_0`/`_1` LSU.** Many memory ports come in `_0`/`_1` pairs
 > (`nx_Load_0`/`nx_Load_1`, `nx_VAddrBase_0`/`_1`, `nx_GSControl_0`/`_1`). This is

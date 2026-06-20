@@ -407,7 +407,7 @@ primitive that *is* the semantic. (Latencies are deliberately omitted; see
 
 **HIGH / OBSERVED (re-grounded against the shipped binaries this pass):** the 119 / 0 / 864 /
 12 569 / 20 379 keystone counts; the slotfill census `6 288 + 4 158 + 1 790 + 333 = 12 569`; the
-180 / 684 float / integer split; the `0x4a09f0 = 4 852 208 B` cas state size (read from
+180 / 684 float / integer split; the `0x4a09f0 = 4,852,208 B` (≈4.63 MB) cas state size (read from
 `dll_get_data_size`); the `avgr`/`adds`/`add`/`maxu` leaves driven **live** byte-exact; the 4-arg
 leaf ABI; the 6 ctype dispatchers / 299 `Function_TIE_*`.
 
@@ -426,11 +426,13 @@ the Newton-seed (`recip0`/`rsqrt0`/`sqrt0`/`div0`) polynomial coefficients (name
 not disassembled); the reduce hardware lane-pairing tree (the oracle uses a flat fold, value-equivalent
 by associativity); device endianness (LE inferred from host-x86 mirroring).
 
-> **CORRECTION — the cas per-instance state is 4 852 208 B (0x4a09f0), not 4 851 184 B.** The
-> "4 851 184 B" figure carried across the ISS reports is `0x4a05f0` — exactly **1 024 bytes** below
-> the value `dll_get_data_size` actually loads. The disassembly is unambiguous
-> (`1776570: b8 f0 09 4a 00  mov $0x4a09f0,%eax`), and `0x4a09f0 = 4 852 208`. The binary is
-> authoritative: per-instance cas state ≈ **4.63 MB**, not 4.85 MB. `[HIGH/OBSERVED]`
+> **CORRECTION — the cas per-instance state is 4,852,208 B (0x4a09f0, ≈4.63 MB).** An
+> off-by-1,024 decimal carried across some early ISS reports was `0x4a05f0` (a 9↔5 nibble
+> slip) — exactly **1,024 bytes** below the value `dll_get_data_size` actually loads. The
+> disassembly is unambiguous (`1776570: b8 f0 09 4a 00  mov $0x4a09f0,%eax`), and
+> `0x4a09f0 = 4,852,208`. The binary is authoritative: per-instance cas state is
+> **4,852,208 B (0x4a09f0, ≈4.63 MB)**; the decimal-MB reading is what echoes the slipped
+> figure, so prefer ≈4.63 MB. `[HIGH/OBSERVED]`
 
 The remaining open work is the *introspection / single-step / fault-replay / SystemC* surface and the
 final cross-layer roll-up — [the Oracle Synthesis](./iss-oracle-synthesis.md) — and the live

@@ -9,7 +9,7 @@
 > host value-marshalling floor. **This page describes how you actually *run* it.**
 > It documents the `dll_*` lifecycle ABI as a runnable init→step→teardown loop,
 > the `ncore2gp-params` configuration surface that wires the six DLLs together,
-> the 4.85 MB per-instance memory model, and the trace/perf machinery. The
+> the ≈4.63 MB per-instance memory model, and the trace/perf machinery. The
 > capstone that fuses timing + values into one re-runnable reference is
 > [The ISS as Executable Oracle](./iss-oracle-synthesis.md).
 
@@ -218,16 +218,14 @@ Observed live results (all match the disassembly): `dll_get_version → 0x1381f`
 `dll_get_data_size → 4,852,208`, the full low-nibble decode row
 `[3×8, 2×6, 16, 8]`, and `0xFF → −1`. `[HIGH · OBSERVED — executed.]`
 
-> **CORRECTION — `dll_get_data_size` is 4,852,208 bytes, not 4,851,184.** Both the
-> sibling [cas Core Surface](./cas-core-surface.md) and
-> [cas Timing Model](./cas-timing-model.md) cite the *hex* `0x4a09f0` (which is
-> correct — the binary literally encodes `b8 f0 09 4a 00` = `mov $0x4a09f0,%eax`)
-> but gloss it in decimal as **4,851,184**. That decimal is wrong:
-> `0x4a09f0 = 4,852,208`, and `4,851,184 = 0x4a05f0` — off by exactly **1,024 B**.
-> The live `ctypes` return is `4,852,208`, confirming the binary. The "4.85 MB /
-> 4.628 MiB" rounding in the surface page is still right (`4,852,208 / 1e6 =
-> 4.8522 MB`; `/1024² = 4.6274 MiB`); only the exact byte count must read
-> **4,852,208**. A reimplementer who sizes the instance buffer at 4,851,184 is
+> **CORRECTION — `dll_get_data_size` is 4,852,208 bytes (`0x4a09f0`, ≈4.63 MB).**
+> The binary literally encodes `b8 f0 09 4a 00` = `mov $0x4a09f0,%eax`, and
+> `0x4a09f0 = 4,852,208`. An off-by-1,024 decimal carried across some early ISS
+> drafts was `0x4a05f0` (a 9↔5 nibble slip) — exactly **1,024 B** below the real
+> value. The live `ctypes` return is `4,852,208`, confirming the binary. Note the
+> magnitude is **≈4.63 MB** (`4,852,208 / 1024² = 4.6274 MiB`; the decimal-MB
+> reading `/1e6 = 4.8522 MB` is what echoes the slipped figure — prefer ≈4.63 MB).
+> A reimplementer who sizes the instance buffer at `0x4a05f0` is
 > **1 KB short** of what `dll_initialize` will `memset`, which would corrupt the
 > last page of the block. `[HIGH · OBSERVED — disasm immediate + executed return,
 > two independent witnesses.]`
@@ -436,9 +434,9 @@ OBSERVED]`
 
 ## 4. The memory model
 
-### 4.1 The 4.85 MB per-instance state block
+### 4.1 The ≈4.63 MB per-instance state block
 
-`dll_get_data_size()` returns **`0x4a09f0` = 4,852,208 bytes** (§1.4) — the size
+`dll_get_data_size()` returns **`0x4a09f0` = 4,852,208 bytes** (≈4.63 MB, §1.4) — the size
 the harness `malloc`s per core and `dll_initialize` `memset`s. Layout, from the
 accessor bodies that read each region: `[HIGH · OBSERVED offsets; MED · INFERRED
 region spans]`
@@ -641,7 +639,7 @@ functions** — the distributed schedule, re-grounded from `nm` on the one binar
   `dll_export_state_stall` have side effects beyond their inferred names — they
   are part of the 24-accessor surface (OBSERVED present) but their bodies were
   not walked in full this pass.
-- **[LOW]** The exact byte spans of the inter-region gaps in the 4.85 MB block —
+- **[LOW]** The exact byte spans of the inter-region gaps in the ≈4.63 MB block —
   the cited offsets are OBSERVED from accessor bodies; the spans between them are
   not exhaustively mapped.
 - **[HIGH]** §1 (the 24-accessor ABI, the lifecycle, the two live-certified

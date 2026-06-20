@@ -2,7 +2,9 @@
 
 > **Scope.** This is the **timing half** of the cas/fiss reference oracle. `libcas-core.so` decodes a FLIX bundle, schedules every operand read and write on a 32-deep pipeline-stage ring, runs a latency-aware RAW-hazard scoreboard with a forwarding window, enforces the structural writeback-port and multi-slot-dispatch interlocks, and steps one cycle per `dll_cycle_advance` tick. It computes **zero element values** — those are produced by `libfiss-base` and the host TIE-port callbacks ([`fiss-datapath-oracle.md`](./fiss-datapath-oracle.md), referenced by title where the file is a stub). A reimplementer diffs their **cycle counts and stall decisions** against this page; they diff their **element values** against the fiss page. The two are orthogonal and were read from the same binary.
 >
-> **Binary.** `libcas-core.so` — 45,878,080 bytes, ELF64 x86-64, **not stripped**, GCC 4.9.4. Identity `dll_get_version → 0x1381f`, `dll_get_data_size → 0x4a09f0` (4,851,184 B per-instance state). Modeled core = **Cayman / Vision-Q7 IVP VLIW** (FLIX) on Xtensa. All addresses below are file offsets into that image; `.text`/`.rodata` are VMA==fileoffset, `.data.rel.ro`/`.data` carry a **+0x200000** VMA→fileoffset delta (subtract before `xxd`). Sibling surface/ABI facts: [`cas-core-surface.md`](./cas-core-surface.md).
+> **Binary.** `libcas-core.so` — 45,878,080 bytes, ELF64 x86-64, **not stripped**, GCC 4.9.4. Identity `dll_get_version → 0x1381f`, `dll_get_data_size → 0x4a09f0` (**4,852,208 B (0x4a09f0, ≈4.63 MB)** per-instance state). Modeled core = **Cayman / Vision-Q7 IVP VLIW** (FLIX) on Xtensa. All addresses below are file offsets into that image; `.text`/`.rodata` are VMA==fileoffset, `.data.rel.ro`/`.data` carry a **+0x200000** VMA→fileoffset delta (subtract before `xxd`). Sibling surface/ABI facts: [`cas-core-surface.md`](./cas-core-surface.md).
+>
+> > **CORRECTION.** An earlier draft glossed `0x4a09f0` in decimal with an off-by-1,024 figure (`0x4a05f0`, a 9↔5 nibble slip, 1,024 B short). The disasm immediate `b8 f0 09 4a 00` and the live `ctypes` return both give **4,852,208 B (0x4a09f0, ≈4.63 MB)**.
 
 ---
 

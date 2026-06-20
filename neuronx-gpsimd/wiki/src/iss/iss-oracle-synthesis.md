@@ -534,20 +534,20 @@ predicate determinism is OBSERVED; the differential-test workflow is the
 reimplementation recipe).
 
 **LOW / open (none material to the oracle):** the inter-region byte spans of the
-4.85 MB block; the cas dispatch role labels (`esi` 1=def-post vs 3=set_def); the
+≈4.63 MB block; the cas dispatch role labels (`esi` 1=def-post vs 3=set_def); the
 Newton-seed (`recip0`/`rsqrt0`/…) polynomial coefficients (named SEED leaves,
 bodies not disassembled); the reduce hardware lane-pairing tree (the oracle uses a
 flat fold, value-equivalent by associativity).
 
-> **CORRECTION — the cas per-instance state is 4,852,208 B (`0x4a09f0`), not
-> 4,851,184 B.** The "4,851,184" figure carried across the early ISS reports is
-> `0x4a05f0` — exactly **1,024 bytes** below the value `dll_get_data_size` actually
-> loads. The disassembly is unambiguous (`1776570: b8 f0 09 4a 00  mov
-> $0x4a09f0,%eax`), `0x4a09f0 = 4,852,208`, and the live `ctypes` return is
-> `4,852,208` — two independent witnesses. A reimplementer who sizes the instance
-> buffer at 4,851,184 is **1 KB short** of what `dll_initialize` will `memset`,
-> corrupting the last page of the block. The "4.85 MB / 4.63 MiB" rounding still
-> holds; only the exact byte count must read **4,852,208**. This is the single
+> **CORRECTION — the cas per-instance state is 4,852,208 B (`0x4a09f0`, ≈4.63 MB),
+> not the off-by-1,024 figure.** A decimal carried across the early ISS reports
+> was `0x4a05f0` (a 9↔5 nibble slip) — exactly **1,024 bytes** below the value
+> `dll_get_data_size` actually loads. The disassembly is unambiguous
+> (`1776570: b8 f0 09 4a 00  mov $0x4a09f0,%eax`), `0x4a09f0 = 4,852,208`, and the
+> live `ctypes` return is `4,852,208` — two independent witnesses. A reimplementer
+> who sizes the instance buffer at `0x4a05f0` is **1 KB short** of what
+> `dll_initialize` will `memset`, corrupting the last page of the block. The exact
+> byte count must read **4,852,208 B (0x4a09f0, ≈4.63 MB)**. This is the single
 > strongest correction of this page. `[HIGH/OBSERVED — disasm immediate + executed
 > return, independently re-confirmed.]`
 
