@@ -9,7 +9,7 @@ src = "src"
 build-dir = "../../docs/neuronx-gpsimd"
 
 [output.html]
-default-theme = "navy"
+default-theme = "light"
 additional-js = ["ai-disclaimer.js"]
 additional-css = ["custom.css"]
 preferred-dark-theme = "navy"
