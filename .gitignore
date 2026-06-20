@@ -151,3 +151,7 @@ some_docs/
 !/decoded/MANIFEST.md
 !/decoded/tools
 !/decoded/ptxas-scheduling
+!/decoded/ptxas-tokens
+!/decoded/ptxas-instr-defs
+!/decoded/ptxas-pseudo-instructions
+!/decoded/ptxas-messages

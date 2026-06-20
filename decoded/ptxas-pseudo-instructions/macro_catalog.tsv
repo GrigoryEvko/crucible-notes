@@ -1,0 +1,598 @@
+# ptxas pseudo-instruction macro-builtin catalog (CUDA 13.0.88)
+# Registrar: sub_5D4190. 588 entries = 115 NAMED (human-named pseudo-ops, dict a1+808)
+#   + 473 NUMERIC (key = adler32(__cuda_* macro name), dict a1+816).
+# expansion_summary recovered from the decoded PTX macro pool
+#   (decoded/ptxas-ptx-macro-pool/ptxas_ptx_macro_pool.decoded.bin): each numeric
+#   template uses registers prefixed __ptxMacroFuncsFermi_<name>_ with a __skip_<name>: end label;
+#   named templates are anchored by a $..._cuda_<op>_DONE label. arch=(code) for NAMED ops
+#   whose entry-point lowering lives in the handler fn (expansion still pool-templated by op name).
+# columns: kind  key(dec)  hex  handler_fn  cuda_name  family  arch  expansion_summary
+kind	key	hex	handler_fn	cuda_name	family	arch	expansion_summary
+NAMED			sub_4DB410	membar	barrier/bar	(code)	memory fence; lowers to membar/fence with scope suffix
+NAMED			sub_57F6E0	tensormap.replace	tensormap	(code)	patch tensormap descriptor fields in mem via ld/shl/lop3(0xD8 merge)/st RMW per field
+NAMED			sub_59F630	cvt	convert	(code)	numeric type conversion; lowers to cvt with rounding/sat suffix
+NAMED			sub_573860	div.full	math	(code)	f32: scale, rcp.approx.ftz.f32, Newton mul-refine, rescale; subnormal slow-path
+NAMED			sub_5B76D0	div	math	(code)	int/rounded-f32: call __cuda_sm20_div_{s16,u16,s32,u32,s64,u64} reciprocal subroutine, cvt back
+NAMED			sub_589810	rem	math	(code)	int: call __cuda_sm20_rem_* reciprocal subroutine; q=a/b then r=a-q*b
+NAMED			sub_5B0CD0	rcp	math	(code)	range-reduce (selp scale subnormal/huge), rcp.approx.ftz.f32, rescale
+NAMED			sub_57BFC0	rsqrt	math	(code)	subnormal scale-select, rsqrt.approx.ftz.f32/f64, rescale
+NAMED			sub_583190	ex2	math	(code)	range-reduced ex2.approx.ftz.f32; f16 via cvt->ex2->cvt; f16x2 packed per half
+NAMED			sub_52A5C0	lg2	math	(code)	lg2.approx.ftz.f32 core with pre/post scaling
+NAMED			sub_5B4040	sqrt	math	(code)	sqrt.approx.ftz.f32 (approx) or call __cuda_sm20_sqrt_rn_ftz_f32 (rn)
+NAMED			sub_52CAC0	sured.b	tex/surface	(code)	surface reduction passthrough: sured.b.<op>.<geom>.<type> [surf,coords],data
+NAMED			sub_590C20	bfind	bit/int	(code)	b32 passthrough; b64: bfind on hi word, fallback to lo+32 if hi all-clear
+NAMED			sub_50B5A0	brev	bit/int	(code)	b32 passthrough; b64: brev.b32 each half then swap lo<->hi
+NAMED			sub_578470	bfe	bit/int	(code)	bit-field-extract passthrough (b32); b64 via helper
+NAMED			sub_52E100	bfi	bit/int	(code)	bit-field-insert passthrough (b32); b64 via __cuda_sm20_bfi_u64 helper
+NAMED			sub_4DBCC0	clz	bit/int	(code)	count-leading-zeros; b64 picks hi/lo word +32 then clz.b32
+NAMED			sub_4DB210	popc	bit/int	(code)	population-count; b64 = popc.b32(lo)+popc.b32(hi)
+NAMED			sub_581A10	testp	bit/int	(code)	f32/f64 predicate test (sign/finite/...); split to {lo,hi}, mask exp/sign bits, setp
+NAMED			sub_50B180	copysign	bit/int	(code)	lop3.b32(...,0x80000000,...,0xB8): (mag & ~signbit) | (sign & signbit)
+NAMED			sub_4DD860	_ldldu	tex/surface	(code)	load-uniform: ldu.global (non-coherent uniform load) when addr warp-uniform, else ld
+NAMED			sub_584D10	tex	tex/surface	(code)	texture fetch passthrough tex.<geom>.<type>; v4.f16 packs 4 results into f16x2 regs
+NAMED			sub_5879B0	tex.base	tex/surface	(code)	tex base (implicit LOD0) passthrough
+NAMED			sub_58B6A0	tex.level	tex/surface	(code)	tex.level (explicit LOD) passthrough
+NAMED			sub_56D700	tld4	tex/surface	(code)	tld4 4-texel gather with RGBA component selector, 2D/3D coords
+NAMED			sub_5ADDC0	tex.grad	tex/surface	(code)	tex.grad: pack coords+dPdx/dPdy gradient vectors into .param buffers, call form
+NAMED			sub_59C7E0	vadd	video(v*)	(code)	1-way SIMD video emul: scalar add + optional prmt.b32 byte/hw merge + saturation
+NAMED			sub_59B1D0	vsub	video(v*)	(code)	1-way SIMD video emul (sub) via prmt-merge + sat
+NAMED			sub_598630	vmin	video(v*)	(code)	1-way SIMD video emul (min) via prmt-merge + sat
+NAMED			sub_599BF0	vmax	video(v*)	(code)	1-way SIMD video emul (max) via prmt-merge + sat
+NAMED			sub_59DDF0	vabsdiff	video(v*)	(code)	1-way SIMD video emul (|a-b|) via prmt-merge + sat
+NAMED			sub_5945E0	vshl	video(v*)	(code)	1-way SIMD video emul (shift-left) via prmt-merge
+NAMED			sub_595A80	vshr	video(v*)	(code)	1-way SIMD video emul (shift-right) via prmt-merge
+NAMED			sub_591F00	vset	video(v*)	(code)	1-way SIMD video emul (compare->bool) via prmt-merge
+NAMED			sub_596F30	vmad	video(v*)	(code)	1-way SIMD video emul multiply-add (multi-operand)
+NAMED			sub_575950	vadd2	video(v*)	(code)	2-way halfword SIMD emul: prmt unpack, cvt extend, per-lane add, prmt repack
+NAMED			sub_57EB70	vmax2	video(v*)	(code)	2-way halfword SIMD emul (max) via prmt unpack/repack
+NAMED			sub_57E030	vmin2	video(v*)	(code)	2-way halfword SIMD emul (min) via prmt unpack/repack
+NAMED			sub_550260	vabsdiff2	video(v*)	(code)	2-way halfword SIMD emul (|a-b|) via prmt unpack/repack
+NAMED			sub_52DB20	vset2	video(v*)	(code)	2-way halfword SIMD emul (compare) via prmt unpack/repack
+NAMED			sub_5761F0	vsub2	video(v*)	(code)	2-way halfword SIMD emul (sub) via prmt unpack/repack
+NAMED			sub_579760	vavrg2	video(v*)	(code)	2-way halfword SIMD emul (average) via prmt unpack/repack
+NAMED			sub_586B10	vadd4	video(v*)	(code)	4-way byte SIMD emul: prmt(0x765x) unpack, cvt.s32.s8, per-lane add, repack
+NAMED			sub_573040	vmin4	video(v*)	(code)	4-way byte SIMD emul (min) via prmt byte unpack/repack
+NAMED			sub_5717E0	vmax4	video(v*)	(code)	4-way byte SIMD emul (max) via prmt byte unpack/repack
+NAMED			sub_572800	vabsdiff4	video(v*)	(code)	4-way byte SIMD emul (|a-b|); mask 0x7f7f7f7f, dp4a w/0x01010101 to sum lanes
+NAMED			sub_56DED0	vset4	video(v*)	(code)	4-way byte SIMD emul (compare) via prmt byte unpack/repack
+NAMED			sub_585CA0	vsub4	video(v*)	(code)	4-way byte SIMD emul (sub) via prmt byte unpack/repack
+NAMED			sub_57AAE0	vavrg4	video(v*)	(code)	4-way byte SIMD emul (average); 0x80808080 trick, dp4a lane-sum
+NAMED			sub_56BA60	dp2a.lo	dp2a/dp4a	(code)	emits dp2a (16-bit-pair x 8-bit dot-product, low half)
+NAMED			sub_56C8D0	dp2a.hi	dp2a/dp4a	(code)	emits dp2a (high half)
+NAMED			sub_577BA0	dp4a	dp2a/dp4a	(code)	emits dp4a.u32.u32 (4x8-bit dot-product accumulate)
+NAMED			sub_56A5A0	bar.warp	barrier/bar	(code)	bar.warp.sync mask (aligned); unaligned: _warpsync+match.all+bra.conv convergence
+NAMED			sub_567680	redux	redux	(code)	redux.sync.{add,min,max,and,or,xor}.{u32,s32} (aligned); unaligned calls __cuda_reduxsync
+NAMED			sub_570290	barrier	barrier/bar	(code)	barrier.sync bar{,count} (modern named-barrier; .aligned fast path)
+NAMED			sub_524FB0	bar	barrier/bar	(code)	legacy bar.sync bar{,count}; emits barrier.sync.aligned fast path
+NAMED			sub_570940	barrier.arrive	barrier/bar	(code)	barrier.arrive bar{,count} (split-barrier producer half)
+NAMED			sub_500BF0	bar.arrive	barrier/bar	(code)	legacy bar.arrive
+NAMED			sub_5889B0	barrier.red	barrier/bar	(code)	barrier.red.{popc,and,or} bar,{count,}pred (across-thread reduction at barrier)
+NAMED			sub_52D590	bar.red	barrier/bar	(code)	legacy bar.red.{popc,and,or}
+NAMED			sub_4DAB60	barrier.cta	barrier/bar	(code)	CTA-scoped barrier.sync
+NAMED			sub_4DA880	bar.cta	barrier/bar	(code)	legacy CTA-scoped bar.sync
+NAMED			sub_4DAD00	barrier.cta.arrive	barrier/bar	(code)	CTA-scoped barrier.arrive
+NAMED			sub_4DA9F0	bar.cta.arrive	barrier/bar	(code)	legacy CTA-scoped bar.arrive
+NAMED			sub_4DBA60	barrier.cta.red	barrier/bar	(code)	CTA-scoped barrier.red
+NAMED			sub_4DB600	bar.cta.red	barrier/bar	(code)	legacy CTA-scoped bar.red
+NAMED			sub_580E50	vote	vote/shfl/match	(code)	vote.sync.{all,any,uni,ballot}.b32 (aligned); intersects with groupwise activemask
+NAMED			sub_5801D0	shfl	vote/shfl/match	(code)	shfl.sync.{up,down,bfly,idx}.b32 dst|p,val,lane,c,mask; legacy shfl.* fallback
+NAMED			sub_58A730	match	vote/shfl/match	(code)	match.sync.{all,any}.b32/.b64; .all returns (dst,pred) via _p helper
+NAMED			sub_4DC180	cp.async.mbarrier.arrive	cp.async/bulk	(code)	cvta.to.shared then cp.async.mbarrier.arrive[.noinc].shared.b64 [ptr]
+NAMED			sub_593210	cp.async.bulk	cp.async/bulk	(code)	param-pack dst/src/mbar/size; unicast vs cluster-multicast dispatch; cp.async.bulk.shared::cta.global
+NAMED			sub_5AB460	cp.async.bulk.tensor	cp.async/bulk	(code)	param-pack + tensormap + 1-5D coords; cp.async.bulk.tensor.shared::cta.global [tmap,coords],mbar
+NAMED			sub_50D4B0	ldmatrix	wmma/mma	(code)	cvta.to.shared, then ldmatrix.sync.aligned (_ldsm) .x1/x2/x4[.trans].m8n8.b16
+NAMED			sub_4DAEA0	movmatrix	wmma/mma	(code)	_warpsync then movmatrix.trans.m8n8.b16 (in-register transpose)
+NAMED			sub_58E9B0	st.async	cp.async/bulk	(code)	cvta.to.shared then st.async[.weak][.mbarrier::complete_tx].shared::cluster [dsmem],val,[dsmbar]
+NAMED			sub_5825A0	red.async	cp.async/bulk	(code)	red.async.<op>.shared::cluster [dsmem],val,[dsmbar]; global form via ocg builtin
+NAMED			sub_4F05D0	stmatrix	wmma/mma	(code)	cvta.to.shared then stmatrix.sync.aligned.shared [smem],src
+NAMED			sub_549430	st.bulk	cp.async/bulk	(code)	cvta.to.shared, numBlocks=numBytes>>3, call __nv_ptx_builtin_ocg_memclear (bulk-zero)
+NAMED			sub_57D530	createpolicy.range	createpolicy	(code)	window math (blockSizeBits=max(ceil(log2(size))-7,12)), createpolicy.range.b64; sw _encode base 0x18..
+NAMED			sub_577300	createpolicy.fractional	createpolicy	(code)	numerator=floor(frac*15.99)&0xF; createpolicy.fractional.b64 dst,n,256; sw _encode base 0x10..
+NAMED			sub_4DB840	createpolicy.cvt	createpolicy	(code)	createpolicy.cvt.L2.b64 dst,src (convert access-property -> policy descriptor)
+NAMED			sub_507FB0	prefetch	cp.async/bulk	(code)	prefetch.tensormap [ptr] or prefetch.{global,local}.{L1,L2}[.L2::evict_*]
+NAMED			sub_5A2D10	wmma.load.a	wmma/mma	(code)	call load_a*_update_ptr then ld.v4.b32/.v2.b32 vectorized fragment gather
+NAMED			sub_5A0EA0	wmma.load.b	wmma/mma	(code)	call load_b*_update_ptr then ld.v4.b32/.v2.b32 vectorized fragment gather
+NAMED			sub_5A8E40	wmma.load.c	wmma/mma	(code)	f16 acc gather: ld.b16 pairs, mov.b32 {x,y} pack into C fragment regs
+NAMED			sub_5A6BD0	wmma.store.d	wmma/mma	(code)	inverse of load.c: mov.b32 {x,y} unpack, st.b16 scatter strided by ldm
+NAMED			sub_5C10A0	mma	wmma/mma	(code)	lowest-level MMA emitter: _mma %s.row.col[.block_scale] d,a,b,c (printf-style shape/type slots)
+NAMED			sub_5C7A50	wmma.mma	wmma/mma	(code)	mma.sync.aligned.m8n8k4[.layout].f32.f16.f16.{f32|f16} (sm70 tensor-core); may call downconvert/swizzle
+NAMED			sub_50AC70	wgmma.mma_async	wgmma	(code)	mma.warpgroup[.sp].thread.ignoreC_pred (sm90 Hopper async warpgroup MMA)
+NAMED			sub_4DA380	wgmma.fence	wgmma	(code)	warpgroup.arrive (sm90)
+NAMED			sub_4DA4B0	wgmma.commit_group	wgmma	(code)	warpgroup.commit_batch (sm90)
+NAMED			sub_4DA5E0	wgmma.wait_group	wgmma	(code)	warpgroup.wait <N> (sm90)
+NAMED			sub_505B00	tanh	math	(code)	split b32 to 2x f16, tanh.approx.f16 each half, repack
+NAMED			sub_58D8B0	multimem.ld_reduce	multimem	(code)	multimem.ld_reduce.{f16x2,bf16x2,e5m2x4,e4m3x4,v2,v4} into accumulators (sm10x)
+NAMED			sub_57B4C0	multimem.st	multimem	(code)	pack operands then multimem st.{b32,b16,b8,v2,v4} (sm10x)
+NAMED			sub_50A850	multimem.red	multimem	(code)	compute global ptr then red.global.<op>[.noftz] [ptr],val (sm10x)
+NAMED			sub_569180	tcgen05.alloc	tcgen05	(code)	guardrails(phase,bounds,granularity); cvta TMEM; call alloc_one_sm/two_sm (sm10x Blackwell)
+NAMED			sub_526370	tcgen05.relinquish_alloc_permit	tcgen05	(code)	elect.sync leader, ocg_virtcount(128), st.shared.u8 phase=1
+NAMED			sub_58C7F0	tcgen05.dealloc	tcgen05	(code)	guardrail bounds; rebuild col bitmask; verify==allocated (else trap); clear mask/startbit SMEM
+NAMED			sub_574050	tcgen05.ld	tcgen05	(code)	guardrails(bounds,cols,owner=0); call ocg_ldtm into .param array
+NAMED			sub_578DB0	tcgen05.ld.red	tcgen05	(code)	guardrails like ld; call ocg_ldtm_stat (reduction-with-status variant)
+NAMED			sub_571FE0	tcgen05.st	tcgen05	(code)	guardrails(bounds,cols,owner=1); call ocg_sttm (.noreturn)
+NAMED			sub_56C190	tcgen05.commit	tcgen05	(code)	cvta mbar to shared; call ocg_tcbar(mbar[,cta-mask])
+NAMED			sub_5427F0	tcgen05.cp	tcgen05	(code)	guardrails(bounds,cols); build taddr+64b sdesc; call ocg_tccp(taddr,sdesc)
+NAMED			sub_4F1A90	tcgen05.shift	tcgen05	(code)	guardrails(bounds,cols); call ocg_tcshift(taddr)
+NAMED			sub_5BBC30	tcgen05.mma	tcgen05	(code)	per-operand triple guardrail (bounds/cols/datapath); build idesc+upp pred; call ocg_tcmma_tmem/gdesc
+NAMED			sub_58FA20	tcgen05.mma.ws	tcgen05	(code)	like mma but datapath flag=1 (weight-stationary); adds uri0/uri1 routing pair; ocg_tcmma_*_ws
+NAMED			sub_4DA720	_tcgen05.guardrails.is_phase_valid	tcgen05	(code)	load phase byte (+28), require==0, else trap_phase_invalid_during_alloc
+NAMED			sub_4DDE70	_tcgen05.guardrails.are_columns_allocated	tcgen05	(code)	build access mask, require (used&allocated)==used, else trap_unallocated_columns_access
+NAMED			sub_4DBF20	_tcgen05.guardrails.is_current_warp_valid_owner	tcgen05	(code)	warp_rank&3 subpartition == (addr&0x600000)>>21, else trap_current_warp_owner_invalid
+NAMED			sub_4DE180	_tcgen05.guardrails.in_physical_bounds	tcgen05	(code)	require start_col & end_col in [0,512) (TMEM 512 cols), else trap_access_out_of_physical_bounds
+NAMED			sub_4DB050	_tcgen05.guardrails.allocation_granularity	tcgen05	(code)	popc(num_cols)==1 (power of two), else trap_allocation_granularity_invalid
+NAMED			sub_4F0960	_tcgen05.guardrails.datapath_alignment	tcgen05	(code)	decode M from idesc, validate dpAddr alignment vs cta_group/sparsity, else trap
+NAMED			sub_4DD580	_tcgen05.guardrails.sp_consistency_across_idesc_mod	tcgen05	(code)	inline guardrail: sparsity flag consistent across idesc modifications
+NAMED			sub_500FA0	_tcgen05.guardrails.check_sparse_usage	tcgen05	(code)	inline guardrail: validate sparse-operand usage vs configured sparsity
+NUM	2644314910	0x9D9D0B1E	sub_4DDB80	__cuda_sm70_query_activemask	vote/ballot	sm70	activemask.b32 (warp-wide active-lane mask)
+NUM	605425506	0x24160F62	sub_4DE4A0	__cuda_sm70_query_activemask_groupwise	vote/ballot	sm70	activemask.b32 AND member mask (groupwise active lanes)
+NUM	359337725	0x156B0EFD	sub_518FE0	__cuda_sm70_votesync_ballot_groupwise	vote/ballot	sm70	vote.sync.ballot.b32 then AND group activemask
+NUM	4134604268	0xF6710DEC	sub_4F1700	__cuda_sm70_votesync_aligned_ballot	vote/ballot	sm70	vote.sync.ballot.b32 then AND group activemask
+NUM	3457617063	0xCE170CA7	sub_502EC0	__cuda_sm70_votesync_aligned_all	vote/ballot	sm70	ballot then setp.eq(ballot,activemask) -> all-in-group
+NUM	3458731190	0xCE280CB6	sub_4FF520	__cuda_sm70_votesync_aligned_any	vote/ballot	sm70	ballot then setp.ne(ballot,0) -> any-in-group
+NUM	3461614778	0xCE540CBA	sub_5083B0	__cuda_sm70_votesync_aligned_uni	vote/ballot	sm70	(ballot==0)||(ballot==activemask) via setp+or.pred
+NUM	273026588	0x10460E1C	sub_4F1020	__cuda_sm70_matchsync_aligned_all_b32	match	sm70	match.sync.any.b32 & activemask, set.eq test entire-group-matched
+NUM	273550881	0x104E0E21	sub_4F1390	__cuda_sm70_matchsync_aligned_all_b64	match	sm70	match.sync.any.b64 & activemask, set.eq test entire-group-matched
+NUM	766250731	0x2DAC0EEB	sub_5032A0	__cuda_sm70_matchsync_aligned_all_b32_p	match	sm70	match.sync.any.b32 & activemask, set.eq test entire-group-matched +output pred
+NUM	767430384	0x2DBE0EF0	sub_503690	__cuda_sm70_matchsync_aligned_all_b64_p	match	sm70	match.sync.any.b64 & activemask, set.eq test entire-group-matched +output pred
+NUM	278072875	0x10930E2B	sub_4DE7D0	__cuda_sm70_matchsync_aligned_any_b32	match	sm70	match.sync.any.b32 & member mask
+NUM	278597168	0x109B0E30	sub_4DEB10	__cuda_sm70_matchsync_aligned_any_b64	match	sm70	match.sync.any.b64 & member mask
+NUM	3013151698	0xB3990BD2	sub_56ED00	__cuda_sm80_createpolicy_range	createpolicy	sm80	L2 access-policy: window math + createpolicy.range.b64 (or sw-encode descriptor base 0x18..)
+NUM	1034227483	0x3DA50F1B	sub_511BF0	__cuda_sm8x_tf32_wmma_m16n16k8_load_a_row	wmma-tf32	sm8x	load_a: laneid->elem gather, ld.generic.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2998735345	0xB2BD11F1	sub_512060	__cuda_sm8x_tf32_wmma_m16n16k8_load_a_row_shared	wmma-tf32	sm8x	load_a: laneid->elem gather, ld.shared.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2995851755	0xB29111EB	sub_5124D0	__cuda_sm8x_tf32_wmma_m16n16k8_load_a_row_global	wmma-tf32	sm8x	load_a: laneid->elem gather, ld.global.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	1030557441	0x3D6D0F01	sub_50FCE0	__cuda_sm8x_tf32_wmma_m16n16k8_load_a_col	wmma-tf32	sm8x	load_a: laneid->elem gather, ld.generic.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2983137751	0xB1CF11D7	sub_510150	__cuda_sm8x_tf32_wmma_m16n16k8_load_a_col_shared	wmma-tf32	sm8x	load_a: laneid->elem gather, ld.shared.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2980254161	0xB1A311D1	sub_510A30	__cuda_sm8x_tf32_wmma_m16n16k8_load_a_col_global	wmma-tf32	sm8x	load_a: laneid->elem gather, ld.global.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	4210694260	0xFAFA1874	sub_4DF810	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_shared_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	4203485294	0xFA8C186E	sub_4DFB50	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_global_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	1497109918	0x593C159E	sub_4DFE90	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2394822284	0x8EBE168C	sub_4E01D0	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_shared_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	2387613318	0x8E501686	sub_4E0510	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_global_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	4199093174	0xFA4913B6	sub_4E0850	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	88478685	0x054613DD	sub_4E0B90	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_shared	wmma-subbyte	sm7x	load_a: laneid->elem gather, ld.shared.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	85595095	0x051A13D7	sub_4E0ED0	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_global	wmma-subbyte	sm7x	load_a: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1848645077	0x6E3015D5	sub_4FAF20	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_global_desc	wmma-subbyte	sm7x	load_a: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2192249095	0x82AB1107	sub_4E1210	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row	wmma-subbyte	sm7x	load_a: laneid->elem gather, ld.generic.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3719369477	0xDDB11305	sub_4FAB80	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row_desc	wmma-subbyte	sm7x	load_a: laneid->elem gather, ld.desc.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2918388213	0xADF311F5	sub_4E1550	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_shared	wmma-bit1b	sm7x	load_a: laneid->elem gather, ld.shared.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2915504623	0xADC711EF	sub_4E1890	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_global	wmma-bit1b	sm7x	load_a: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	224662509	0x0D6413ED	sub_4FA440	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_global_desc	wmma-bit1b	sm7x	load_a: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	952045343	0x38BF0F1F	sub_4E1BD0	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row	wmma-bit1b	sm7x	load_a: laneid->elem gather, ld.generic.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2319257885	0x8A3D111D	sub_4FA7E0	__cuda_sm7x_bit_wmma_m8n8k128_load_a_row_desc	wmma-bit1b	sm7x	load_a: laneid->elem gather, ld.desc.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	1094325528	0x413A1518	sub_502AD0	__cuda_sm7x_wmma_m16n16k16_load_a_row_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	3069252162	0xB6F11242	sub_4E1F10	__cuda_sm7x_wmma_m16n16k16_load_a_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	1087116562	0x40CC1512	sub_4E2250	__cuda_sm7x_wmma_m16n16k16_load_a_row_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	2848461329	0xA9C81211	sub_4E2590	__cuda_sm7x_wmma_m32n8k16_load_a_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	843846881	0x324C14E1	sub_4E28D0	__cuda_sm7x_wmma_m32n8k16_load_a_row_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	851055847	0x32BA14E7	sub_5026E0	__cuda_sm7x_wmma_m32n8k16_load_a_row_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	90377643	0x05630DAB	sub_5421E0	__cuda_sm7x_wmma_m16n16k16_load_a_row	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1335693225	0x4F9D0FA9	sub_55A920	__cuda_sm7x_wmma_m16n16k16_load_a_row_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1883181179	0x703F107B	sub_538440	__cuda_sm7x_wmma_m16n16k16_load_a_row_global	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3364426361	0xC8891279	sub_555BE0	__cuda_sm7x_wmma_m16n16k16_load_a_row_global_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1886064769	0x706B1081	sub_567D80	__cuda_sm7x_wmma_m16n16k16_load_a_row_shared	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1678118992	0x64061050	sub_56E5F0	__cuda_sm7x_wmma_m32n8k16_load_a_row_shared	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1325928250	0x4F080F3A	sub_512940	__cuda_sm8x_wmma_m16n16k16_load_a_row_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2738688312	0xA33D1138	sub_51C840	__cuda_sm8x_wmma_m16n16k16_load_a_row_desc_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3355120138	0xC7FB120A	sub_512DB0	__cuda_sm8x_wmma_m16n16k16_load_a_row_global_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	709825544	0x2A4F1408	sub_51B9D0	__cuda_sm8x_wmma_m16n16k16_load_a_row_global_desc_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3359969808	0xC8451210	sub_51B040	__cuda_sm8x_wmma_m16n16k16_load_a_row_shared_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1675235402	0x63DA104A	sub_539670	__cuda_sm7x_wmma_m32n8k16_load_a_row_global	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3140424264	0xBB2F1248	sub_553BB0	__cuda_sm7x_wmma_m32n8k16_load_a_row_global_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	4198894970	0xFA460D7A	sub_539C80	__cuda_sm7x_wmma_m32n8k16_load_a_row	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1134169976	0x439A0F78	sub_5588F0	__cuda_sm7x_wmma_m32n8k16_load_a_row_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1059984638	0x3F2E14FE	sub_4FFCB0	__cuda_sm7x_wmma_m16n16k16_load_a_col_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1052775672	0x3EC014F8	sub_4E2C10	__cuda_sm7x_wmma_m16n16k16_load_a_col_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3046838824	0xB59B1228	sub_4E2F50	__cuda_sm7x_wmma_m16n16k16_load_a_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	816714957	0x30AE14CD	sub_500080	__cuda_sm7x_wmma_m32n8k16_load_a_col_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	2826047991	0xA87211F7	sub_4E3290	__cuda_sm7x_wmma_m32n8k16_load_a_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	809505991	0x304014C7	sub_4E35D0	__cuda_sm7x_wmma_m32n8k16_load_a_col_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	1870467175	0x6F7D1067	sub_56F420	__cuda_sm7x_wmma_m16n16k16_load_a_col_shared	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	86707601	0x052B0D91	sub_52F2C0	__cuda_sm7x_wmma_m16n16k16_load_a_col	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1323503503	0x4EE30F8F	sub_554890	__cuda_sm7x_wmma_m16n16k16_load_a_col_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1867583585	0x6F511061	sub_52ECB0	__cuda_sm7x_wmma_m16n16k16_load_a_col_global	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3340309087	0xC719125F	sub_554220	__cuda_sm7x_wmma_m16n16k16_load_a_col_global_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1662521398	0x63181036	sub_56FB60	__cuda_sm7x_wmma_m32n8k16_load_a_col_shared	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1313738528	0x4E4E0F20	sub_513220	__cuda_sm8x_wmma_m16n16k16_load_a_col_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2717978910	0xA201111E	sub_5206D0	__cuda_sm8x_wmma_m16n16k16_load_a_col_desc_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3331002864	0xC68B11F0	sub_513690	__cuda_sm8x_wmma_m16n16k16_load_a_col_global_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	677188590	0x285D13EE	sub_51FD30	__cuda_sm8x_wmma_m16n16k16_load_a_col_global_desc_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3335852534	0xC6D511F6	sub_52AB10	__cuda_sm8x_wmma_m16n16k16_load_a_col_shared_bf16	wmma-fp16	sm8x	load_a: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1659637808	0x62EC1030	sub_5415C0	__cuda_sm7x_wmma_m32n8k16_load_a_col_global	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3116306990	0xB9BF122E	sub_55D630	__cuda_sm7x_wmma_m32n8k16_load_a_col_global_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	4195224928	0xFA0E0D60	sub_541BD0	__cuda_sm7x_wmma_m32n8k16_load_a_col	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1121980254	0x42E00F5E	sub_55E310	__cuda_sm7x_wmma_m32n8k16_load_a_col_desc	wmma-fp16	sm7x	load_a: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2889945594	0xAC4111FA	sub_5286A0	__cuda_sm70_wmma_m16n16k16_load_a_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2867532256	0xAAEB11E0	sub_52BAD0	__cuda_sm70_wmma_m16n16k16_load_a_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2673873353	0x9F6011C9	sub_527C80	__cuda_sm70_wmma_m32n8k16_load_a_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2651460015	0x9E0A11AF	sub_529100	__cuda_sm70_wmma_m32n8k16_load_a_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2678854089	0x9FAC11C9	sub_5223D0	__cuda_sm70_wmma_m8n32k16_load_a_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2656440751	0x9E5611AF	sub_521A10	__cuda_sm70_wmma_m8n32k16_load_a_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	4003207167	0xEE9C17FF	sub_501750	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_shared_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1343296809	0x50111529	sub_4E3910	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3995998201	0xEE2E17F9	sub_4E3C50	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_global_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3711244238	0xDD3517CE	sub_501F10	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_shared_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1073812728	0x400114F8	sub_4E4FD0	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3704035272	0xDCC717C8	sub_4E5310	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_global_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3716224974	0xDD8117CE	sub_501B30	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_shared_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1078793464	0x404D14F8	sub_4E5650	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3709016008	0xDD1317C8	sub_4E5990	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_global_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	4259320680	0xFDE01368	sub_501370	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_shared	wmma-int8	sm72	load_a: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2122780818	0x7E871092	sub_4F8E80	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row	wmma-int8	sm72	load_a: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3611562640	0xD7441290	sub_5052E0	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	4256437090	0xFDB41362	sub_4F9220	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_global	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1687164256	0x64901560	sub_5056F0	__cuda_sm72_Integer_wmma_m16n16k16_load_a_row_global_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	4002681655	0xEE941337	sub_52B050	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_shared	wmma-int8	sm72	load_a: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3999798065	0xEE681331	sub_50C760	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_global	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1414468911	0x544F152F	sub_51E050	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_global_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1888620641	0x70921061	sub_50C2F0	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row	wmma-int8	sm72	load_a: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3361346143	0xC85A125F	sub_51EEC0	__cuda_sm72_Integer_wmma_m32n8k16_load_a_row_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	4007662391	0xEEE01337	sub_4F0CB0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_shared	wmma-int8	sm72	load_a: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1893601377	0x70DE1061	sub_4E5CD0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row	wmma-int8	sm72	load_a: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3366326879	0xC8A6125F	sub_4FA0A0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	4004778801	0xEEB41331	sub_4E6010	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_global	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1419449647	0x549B152F	sub_4F83A0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_row_global_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3968866277	0xEC9017E5	sub_4E6350	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_shared_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1320883471	0x4EBB150F	sub_4E6690	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3961657311	0xEC2217DF	sub_4E69D0	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_global_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3676903348	0xDB2917B4	sub_4E6D10	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_shared_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1051399390	0x3EAB14DE	sub_4E7050	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3669694382	0xDABB17AE	sub_4E7390	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_global_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3681884084	0xDB7517B4	sub_4E76D0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_shared_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1056380126	0x3EF714DE	sub_4E7A10	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3674675118	0xDB0717AE	sub_4E7D50	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_global_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	4243723086	0xFCF2134E	sub_4F78C0	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_shared	wmma-int8	sm72	load_a: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2119110776	0x7E4F1078	sub_4F7C60	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col	wmma-int8	sm72	load_a: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3599372918	0xD68A1276	sub_504ED0	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	4240839496	0xFCC61348	sub_4F8000	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_global	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1663046982	0x63201546	sub_505F30	__cuda_sm72_Integer_wmma_m16n16k16_load_a_col_global_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3987084061	0xEDA6131D	sub_515E80	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_shared	wmma-int8	sm72	load_a: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3984200471	0xED7A1317	sub_513B00	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_global	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1390351637	0x52DF1515	sub_520200	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_global_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1884950599	0x705A1047	sub_513F70	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col	wmma-int8	sm72	load_a: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3349156421	0xC7A01245	sub_51F860	__cuda_sm72_Integer_wmma_m32n8k16_load_a_col_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3992064797	0xEDF2131D	sub_4E4950	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_shared	wmma-int8	sm72	load_a: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1889931335	0x70A61047	sub_4E4C90	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col	wmma-int8	sm72	load_a: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3354137157	0xC7EC1245	sub_4F6DE0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3989181207	0xEDC61317	sub_4E42D0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_global	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1395332373	0x532B1515	sub_4F8AE0	__cuda_sm72_Integer_wmma_m8n32k16_load_a_col_global_desc	wmma-int8	sm72	load_a: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1537545665	0x5BA515C1	sub_4E4610	__cuda_sm8x_double_fp_wmma_m8n8k4_load_a_row_update_ptr	wmma-fp64	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	1515132327	0x5A4F15A7	sub_4E3F90	__cuda_sm8x_double_fp_wmma_m8n8k4_load_a_col_update_ptr	wmma-fp64	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	453121116	0x1B02145C	sub_4DC440	__cuda_sm8x_double_fp_wmma_m8n8k4_load_ab_row_global	wmma-fp64	sm8x	load_a: laneid->elem gather, ld.global.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	437523522	0x1A141442	sub_4DC720	__cuda_sm8x_double_fp_wmma_m8n8k4_load_ab_col_global	wmma-fp64	sm8x	load_a: laneid->elem gather, ld.global.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	456004706	0x1B2E1462	sub_4DCA00	__cuda_sm8x_double_fp_wmma_m8n8k4_load_ab_row_shared	wmma-fp64	sm8x	load_a: laneid->elem gather, ld.shared.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	440407112	0x1A401448	sub_4DCCE0	__cuda_sm8x_double_fp_wmma_m8n8k4_load_ab_col_shared	wmma-fp64	sm8x	load_a: laneid->elem gather, ld.shared.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	2498761100	0x94F0118C	sub_4DCFC0	__cuda_sm8x_double_fp_wmma_m8n8k4_load_ab_row	wmma-fp64	sm8x	load_a: laneid->elem gather, ld.generic.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	2495091058	0x94B81172	sub_4DD2A0	__cuda_sm8x_double_fp_wmma_m8n8k4_load_ab_col	wmma-fp64	sm8x	load_a: laneid->elem gather, ld.generic.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1034555164	0x3DAA0F1C	sub_50E240	__cuda_sm8x_tf32_wmma_m16n16k8_load_b_row	wmma-tf32	sm8x	load_b: laneid->elem gather, ld.generic.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2999521778	0xB2C911F2	sub_50E6B0	__cuda_sm8x_tf32_wmma_m16n16k8_load_b_row_shared	wmma-tf32	sm8x	load_b: laneid->elem gather, ld.shared.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2996638188	0xB29D11EC	sub_50EB20	__cuda_sm8x_tf32_wmma_m16n16k8_load_b_row_global	wmma-tf32	sm8x	load_b: laneid->elem gather, ld.global.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	1030885122	0x3D720F02	sub_510EA0	__cuda_sm8x_tf32_wmma_m16n16k8_load_b_col	wmma-tf32	sm8x	load_b: laneid->elem gather, ld.generic.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2983924184	0xB1DB11D8	sub_511310	__cuda_sm8x_tf32_wmma_m16n16k8_load_b_col_shared	wmma-tf32	sm8x	load_b: laneid->elem gather, ld.shared.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	2981040594	0xB1AF11D2	sub_511780	__cuda_sm8x_tf32_wmma_m16n16k8_load_b_col_global	wmma-tf32	sm8x	load_b: laneid->elem gather, ld.global.b32 series (tf32(b32)); store_d/load call *_update_ptr for base
+NUM	1095832857	0x41511519	sub_4FF8E0	__cuda_sm7x_wmma_m16n16k16_load_b_row_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1088623891	0x40E31513	sub_4DEE50	__cuda_sm7x_wmma_m16n16k16_load_b_row_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3070300739	0xB7011243	sub_4DF190	__cuda_sm7x_wmma_m16n16k16_load_b_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	852563176	0x32D114E8	sub_500450	__cuda_sm7x_wmma_m32n8k16_load_b_row_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	2849509906	0xA9D81212	sub_4DF4D0	__cuda_sm7x_wmma_m32n8k16_load_b_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	845354210	0x326314E2	sub_4E8090	__cuda_sm7x_wmma_m32n8k16_load_b_row_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	1886851202	0x70771082	sub_56AC80	__cuda_sm7x_wmma_m16n16k16_load_b_row_shared	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	90705324	0x05680DAC	sub_53F770	__cuda_sm7x_wmma_m16n16k16_load_b_row	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1336348586	0x4FA70FAA	sub_55F660	__cuda_sm7x_wmma_m16n16k16_load_b_row_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1883967612	0x704B107C	sub_53FD80	__cuda_sm7x_wmma_m16n16k16_load_b_row_global	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3365540474	0xC89A127A	sub_555570	__cuda_sm7x_wmma_m16n16k16_load_b_row_global_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3361083921	0xC8561211	sub_51AB80	__cuda_sm8x_wmma_m16n16k16_load_b_row_shared_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1326583611	0x4F120F3B	sub_50D960	__cuda_sm8x_wmma_m16n16k16_load_b_row_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2739671353	0xA34C1139	sub_51D6B0	__cuda_sm8x_wmma_m16n16k16_load_b_row_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3356234251	0xC80C120B	sub_50DDD0	__cuda_sm8x_wmma_m16n16k16_load_b_row_global_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	711267337	0x2A651409	sub_51DB80	__cuda_sm8x_wmma_m16n16k16_load_b_row_global_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1678905425	0x64121051	sub_569ED0	__cuda_sm7x_wmma_m32n8k16_load_b_row_shared	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1676021835	0x63E6104B	sub_538A50	__cuda_sm7x_wmma_m32n8k16_load_b_row_global	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3141538377	0xBB401249	sub_557C10	__cuda_sm7x_wmma_m32n8k16_load_b_row_global_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	4199222651	0xFA4B0D7B	sub_5365F0	__cuda_sm7x_wmma_m32n8k16_load_b_row	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1134825337	0x43A40F79	sub_5575A0	__cuda_sm7x_wmma_m32n8k16_load_b_row_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3137016288	0xBAFB11E0	sub_4F8740	__cuda_sm8x_wmma_m32n8k16_load_b_row_shared_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3132166618	0xBAB111DA	sub_4F7180	__cuda_sm8x_wmma_m32n8k16_load_b_row_global_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	471143384	0x1C1513D8	sub_5046B0	__cuda_sm8x_wmma_m32n8k16_load_b_row_global_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1124994826	0x430E0F0A	sub_4F7520	__cuda_sm8x_wmma_m32n8k16_load_b_row_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2522026248	0x96531108	sub_504AC0	__cuda_sm8x_wmma_m32n8k16_load_b_row_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1061491967	0x3F4514FF	sub_5022F0	__cuda_sm7x_wmma_m16n16k16_load_b_col_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	1054283001	0x3ED714F9	sub_4E83D0	__cuda_sm7x_wmma_m16n16k16_load_b_col_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	3047887401	0xB5AB1229	sub_4E8710	__cuda_sm7x_wmma_m16n16k16_load_b_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	818222286	0x30C514CE	sub_500820	__cuda_sm7x_wmma_m32n8k16_load_b_col_shared_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	2827096568	0xA88211F8	sub_4E8A50	__cuda_sm7x_wmma_m32n8k16_load_b_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	811013320	0x305714C8	sub_4E8D90	__cuda_sm7x_wmma_m32n8k16_load_b_col_global_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	1871253608	0x6F891068	sub_571050	__cuda_sm7x_wmma_m16n16k16_load_b_col_shared	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	87035282	0x05300D92	sub_536C00	__cuda_sm7x_wmma_m16n16k16_load_b_col	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1324158864	0x4EED0F90	sub_55CFC0	__cuda_sm7x_wmma_m16n16k16_load_b_col_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1868370018	0x6F5D1062	sub_537210	__cuda_sm7x_wmma_m16n16k16_load_b_col_global	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3341423200	0xC72A1260	sub_55C2E0	__cuda_sm7x_wmma_m16n16k16_load_b_col_global_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3336966647	0xC6E611F7	sub_52B590	__cuda_sm8x_wmma_m16n16k16_load_b_col_shared_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1314393889	0x4E580F21	sub_50CBD0	__cuda_sm8x_wmma_m16n16k16_load_b_col_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2718961951	0xA210111F	sub_51BEA0	__cuda_sm8x_wmma_m16n16k16_load_b_col_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3332116977	0xC69C11F1	sub_50D040	__cuda_sm8x_wmma_m16n16k16_load_b_col_global_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	678630383	0x287313EF	sub_51C370	__cuda_sm8x_wmma_m16n16k16_load_b_col_global_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1663307831	0x63241037	sub_56B370	__cuda_sm7x_wmma_m32n8k16_load_b_col_shared	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1660424241	0x62F81031	sub_540390	__cuda_sm7x_wmma_m32n8k16_load_b_col_global	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3117421103	0xB9D0122F	sub_55FCD0	__cuda_sm7x_wmma_m32n8k16_load_b_col_global_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	4195552609	0xFA130D61	sub_5409A0	__cuda_sm7x_wmma_m32n8k16_load_b_col	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1122635615	0x42EA0F5F	sub_55AF90	__cuda_sm7x_wmma_m32n8k16_load_b_col_desc	wmma-fp16	sm7x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3112899014	0xB98B11C6	sub_4F9960	__cuda_sm8x_wmma_m32n8k16_load_b_col_shared_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3108049344	0xB94111C0	sub_4F9D00	__cuda_sm8x_wmma_m32n8k16_load_b_col_global_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	438506430	0x1A2313BE	sub_503A80	__cuda_sm8x_wmma_m32n8k16_load_b_col_global_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1112805104	0x42540EF0	sub_4F95C0	__cuda_sm8x_wmma_m32n8k16_load_b_col_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2501316846	0x951710EE	sub_5042A0	__cuda_sm8x_wmma_m32n8k16_load_b_col_desc_bf16	wmma-fp16	sm8x	load_b: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	4177860699	0xF905185B	sub_4E90D0	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_shared_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	4170651733	0xF8971855	sub_4E9410	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_global_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	1475745157	0x57F61585	sub_4E9750	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	73667524	0x046413C4	sub_4E9A90	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_shared	wmma-subbyte	sm7x	load_b: laneid->elem gather, ld.shared.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	70783934	0x043813BE	sub_4E9DD0	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_global	wmma-subbyte	sm7x	load_b: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1825641916	0x6CD115BC	sub_4F2560	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_global_desc	wmma-subbyte	sm7x	load_b: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2188906734	0x827810EE	sub_4EA110	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col	wmma-subbyte	sm7x	load_b: laneid->elem gather, ld.generic.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3707835116	0xDD0112EC	sub_4F21C0	__cuda_sm7x_sub_byte_wmma_m8n8k32_load_b_col_desc	wmma-subbyte	sm7x	load_b: laneid->elem gather, ld.desc.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2361988723	0x8CC91673	sub_4EA450	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_shared_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced shared ptr (no ld/st)
+NUM	2354779757	0x8C5B166D	sub_4EA790	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_global_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced global ptr (no ld/st)
+NUM	4177728413	0xF903139D	sub_4EAAD0	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2903577052	0xAD1111DC	sub_4EAE10	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_shared	wmma-bit1b	sm7x	load_b: laneid->elem gather, ld.shared.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	201659348	0x0C0513D4	sub_4F1E20	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_global_desc	wmma-bit1b	sm7x	load_b: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2900693462	0xACE511D6	sub_4EB150	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_global	wmma-bit1b	sm7x	load_b: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2307723524	0x898D1104	sub_4F5480	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col_desc	wmma-bit1b	sm7x	load_b: laneid->elem gather, ld.desc.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	948702982	0x388C0F06	sub_4EB490	__cuda_sm7x_bit_wmma_m8n8k128_load_b_col	wmma-bit1b	sm7x	load_b: laneid->elem gather, ld.generic.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2868580833	0xAAFB11E1	sub_528BD0	__cuda_sm70_wmma_m16n16k16_load_b_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2890994171	0xAC5111FB	sub_52D040	__cuda_sm70_wmma_m16n16k16_load_b_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2652508592	0x9E1A11B0	sub_521EF0	__cuda_sm70_wmma_m32n8k16_load_b_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2674921930	0x9F7011CA	sub_525470	__cuda_sm70_wmma_m32n8k16_load_b_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2657489328	0x9E6611B0	sub_528190	__cuda_sm70_wmma_m8n32k16_load_b_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2679902666	0x9FBC11CA	sub_529B60	__cuda_sm70_wmma_m8n32k16_load_b_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	1516180904	0x5A5F15A8	sub_4EBE50	__cuda_sm8x_double_fp_wmma_m8n8k4_load_b_col_update_ptr	wmma-fp64	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	1538594242	0x5BB515C2	sub_4EC190	__cuda_sm8x_double_fp_wmma_m8n8k4_load_b_row_update_ptr	wmma-fp64	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3061191149	0xB67611ED	sub_52A090	__cuda_sm70_wmma_m16n16k16_acc_f16_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3243250227	0xC1501233	sub_4EC4D0	__cuda_sm7x_wmma_m16n16k16_acc_f32_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3020952069	0xB4101205	sub_4EC810	__cuda_sm8x_wmma_m16n16k8_acc_f32_row_update_ptr	wmma-fp16	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3019248130	0xB3F61202	sub_4ECB50	__cuda_sm7x_wmma_m32n8k16_acc_f32_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	434050149	0x19DF1465	sub_4ECE90	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_row_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3231978109	0xC0A4127D	sub_4ED1D0	__cuda_sm7x_bit_wmma_m8n8k128_acc_row_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	303240176	0x121313F0	sub_4ED510	__cuda_sm72_Integer_wmma_m16n16k16_acc_row_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	43389887	0x029613BF	sub_4ED850	__cuda_sm72_Integer_wmma_m32n8k16_acc_row_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	48370623	0x02E213BF	sub_4EDB90	__cuda_sm72_Integer_wmma_m8n32k16_acc_row_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	275189148	0x10670D9C	sub_540FB0	__cuda_sm7x_wmma_m16n16k16_acc_f32_row	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1515589530	0x5A560F9A	sub_55DCA0	__cuda_sm7x_wmma_m16n16k16_acc_f32_row_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2061111404	0x7ADA106C	sub_539060	__cuda_sm7x_wmma_m16n16k16_acc_f32_row_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3537441386	0xD2D9126A	sub_556F30	__cuda_sm7x_wmma_m16n16k16_acc_f32_row_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2063994994	0x7B061072	sub_534DB0	__cuda_sm7x_wmma_m16n16k16_acc_f32_row_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	86052206	0x05210D6E	sub_5353C0	__cuda_sm8x_wmma_m16n16k8_acc_f32_row	wmma-fp16	sm8x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1850871870	0x6E52103E	sub_5359D0	__cuda_sm8x_wmma_m16n16k8_acc_f32_row_global	wmma-fp16	sm8x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1853755460	0x6E7E1044	sub_535FE0	__cuda_sm8x_wmma_m16n16k8_acc_f32_row_shared	wmma-fp16	sm8x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1308364633	0x4DFC0F59	sub_533570	__cuda_sm72_Integer_wmma_m16n16k16_acc_row	wmma-int8	sm72	acc: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2694582615	0xA09C1157	sub_556250	__cuda_sm72_Integer_wmma_m16n16k16_acc_row_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3298431529	0xC49A1229	sub_533B80	__cuda_sm72_Integer_wmma_m16n16k16_acc_row_global	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	626594855	0x25591427	sub_5568C0	__cuda_sm72_Integer_wmma_m16n16k16_acc_row_global_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3301315119	0xC4C6122F	sub_534190	__cuda_sm72_Integer_wmma_m16n16k16_acc_row_shared	wmma-int8	sm72	acc: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	86510955	0x05280D6B	sub_5347A0	__cuda_sm7x_wmma_m32n8k16_acc_f32_row	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1310855017	0x4E220F69	sub_554F00	__cuda_sm7x_wmma_m32n8k16_acc_f32_row_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1849954363	0x6E44103B	sub_53A290	__cuda_sm7x_wmma_m32n8k16_acc_f32_row_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3310228025	0xC54E1239	sub_553540	__cuda_sm7x_wmma_m32n8k16_acc_f32_row_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1852837953	0x6E701041	sub_53A8A0	__cuda_sm7x_wmma_m32n8k16_acc_f32_row_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1083838248	0x409A0F28	sub_53AEB0	__cuda_sm72_Integer_wmma_m32n8k16_acc_row	wmma-int8	sm72	acc: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2453999910	0x92451126	sub_552ED0	__cuda_sm72_Integer_wmma_m32n8k16_acc_row_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3051426296	0xB5E111F8	sub_53B4C0	__cuda_sm72_Integer_wmma_m32n8k16_acc_row_global	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	363533302	0x15AB13F6	sub_551B80	__cuda_sm72_Integer_wmma_m32n8k16_acc_row_global_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3054309886	0xB60D11FE	sub_53BAD0	__cuda_sm72_Integer_wmma_m32n8k16_acc_row_shared	wmma-int8	sm72	acc: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1088818984	0x40E60F28	sub_53C0E0	__cuda_sm72_Integer_wmma_m8n32k16_acc_row	wmma-int8	sm72	acc: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2458980646	0x92911126	sub_55C950	__cuda_sm72_Integer_wmma_m8n32k16_acc_row_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3059290622	0xB65911FE	sub_537820	__cuda_sm72_Integer_wmma_m8n32k16_acc_row_shared	wmma-int8	sm72	acc: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3056407032	0xB62D11F8	sub_537E30	__cuda_sm72_Integer_wmma_m8n32k16_acc_row_global	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	368514038	0x15F713F6	sub_55B600	__cuda_sm72_Integer_wmma_m8n32k16_acc_row_global_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1354829774	0x50C10FCE	sub_4F33E0	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_row	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.generic.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2779386316	0xA5AA11CC	sub_507790	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_row_desc	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.desc.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3398570654	0xCA92129E	sub_4F3780	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_row_global	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	765072540	0x2D9A149C	sub_507BA0	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_row_global_desc	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3401454244	0xCABE12A4	sub_4F2900	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_row_shared	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.shared.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	210570726	0x0C8D0DE6	sub_4F2CA0	__cuda_sm7x_bit_wmma_m8n8k128_acc_row	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.generic.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	1475219428	0x57EE0FE4	sub_507380	__cuda_sm7x_bit_wmma_m8n8k128_acc_row_desc	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.desc.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2030440630	0x790610B6	sub_4F3040	__cuda_sm7x_bit_wmma_m8n8k128_acc_row_global	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	3531018932	0xD27712B4	sub_503E90	__cuda_sm7x_bit_wmma_m8n8k128_acc_row_global_desc	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2033324220	0x793210BC	sub_4F3B20	__cuda_sm7x_bit_wmma_m8n8k128_acc_row_shared	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.shared.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	411636811	0x1889144B	sub_4EDED0	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_col_update_ptr	wmma-subbyte	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3209564771	0xBF4E1263	sub_4EE210	__cuda_sm7x_bit_wmma_m8n8k128_acc_col_update_ptr	wmma-bit1b	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2998538731	0xB2BA11EB	sub_4EE550	__cuda_sm8x_wmma_m16n16k8_acc_f32_col_update_ptr	wmma-fp16	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3220836889	0xBFFA1219	sub_4EE890	__cuda_sm7x_wmma_m16n16k16_acc_f32_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2996834792	0xB2A011E8	sub_4EEBD0	__cuda_sm7x_wmma_m32n8k16_acc_f32_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	280826838	0x10BD13D6	sub_4EEF10	__cuda_sm72_Integer_wmma_m16n16k16_acc_col_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	20976549	0x014013A5	sub_4EF250	__cuda_sm72_Integer_wmma_m32n8k16_acc_col_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	25957285	0x018C13A5	sub_4EF590	__cuda_sm72_Integer_wmma_m8n32k16_acc_col_update_ptr	wmma-int8	sm72	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	82382164	0x04E90D54	sub_53DF30	__cuda_sm8x_wmma_m16n16k8_acc_f32_col	wmma-fp16	sm8x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1835274276	0x6D641024	sub_53E540	__cuda_sm8x_wmma_m16n16k8_acc_f32_col_global	wmma-fp16	sm8x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1838157866	0x6D90102A	sub_52F8D0	__cuda_sm8x_wmma_m16n16k8_acc_f32_col_shared	wmma-fp16	sm8x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	271519106	0x102F0D82	sub_52FEE0	__cuda_sm7x_wmma_m16n16k16_acc_f32_col	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1503399808	0x599C0F80	sub_55BC70	__cuda_sm7x_wmma_m16n16k16_acc_f32_col_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2045513810	0x79EC1052	sub_5304F0	__cuda_sm7x_wmma_m16n16k16_acc_f32_col_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3513324112	0xD1691250	sub_558F60	__cuda_sm7x_wmma_m16n16k16_acc_f32_col_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2048397400	0x7A181058	sub_530B00	__cuda_sm7x_wmma_m16n16k16_acc_f32_col_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1304694591	0x4DC40F3F	sub_531110	__cuda_sm72_Integer_wmma_m16n16k16_acc_col	wmma-int8	sm72	acc: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2682392893	0x9FE2113D	sub_5595D0	__cuda_sm72_Integer_wmma_m16n16k16_acc_col_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3282833935	0xC3AC120F	sub_531720	__cuda_sm72_Integer_wmma_m16n16k16_acc_col_global	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	602477581	0x23E9140D	sub_559C40	__cuda_sm72_Integer_wmma_m16n16k16_acc_col_global_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3285717525	0xC3D81215	sub_531D30	__cuda_sm72_Integer_wmma_m16n16k16_acc_col_shared	wmma-int8	sm72	acc: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1085148942	0x40AE0F0E	sub_532340	__cuda_sm72_Integer_wmma_m8n32k16_acc_col	wmma-int8	sm72	acc: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2446790924	0x91D7110C	sub_55A2B0	__cuda_sm72_Integer_wmma_m8n32k16_acc_col_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3043693028	0xB56B11E4	sub_532950	__cuda_sm72_Integer_wmma_m8n32k16_acc_col_shared	wmma-int8	sm72	acc: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3040809438	0xB53F11DE	sub_532F60	__cuda_sm72_Integer_wmma_m8n32k16_acc_col_global	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	344396764	0x148713DC	sub_558280	__cuda_sm72_Integer_wmma_m8n32k16_acc_col_global_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	82840913	0x04F00D51	sub_53C6F0	__cuda_sm7x_wmma_m32n8k16_acc_f32_col	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1298665295	0x4D680F4F	sub_5521F0	__cuda_sm7x_wmma_m32n8k16_acc_f32_col_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1834356769	0x6D561021	sub_53CD00	__cuda_sm7x_wmma_m32n8k16_acc_f32_col_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3286110751	0xC3DE121F	sub_552860	__cuda_sm7x_wmma_m32n8k16_acc_f32_col_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1837240359	0x6D821027	sub_53D310	__cuda_sm7x_wmma_m32n8k16_acc_f32_col_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1080168206	0x40620F0E	sub_53D920	__cuda_sm72_Integer_wmma_m32n8k16_acc_col	wmma-int8	sm72	acc: laneid->elem gather, ld.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	2441810188	0x918B110C	sub_55E980	__cuda_sm72_Integer_wmma_m32n8k16_acc_col_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3038712292	0xB51F11E4	sub_53EB50	__cuda_sm72_Integer_wmma_m32n8k16_acc_col_shared	wmma-int8	sm72	acc: laneid->elem gather, ld.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3035828702	0xB4F311DE	sub_53F160	__cuda_sm72_Integer_wmma_m32n8k16_acc_col_global	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	339416028	0x143B13DC	sub_55EFF0	__cuda_sm72_Integer_wmma_m32n8k16_acc_col_global_desc	wmma-int8	sm72	acc: laneid->elem gather, ld.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1351159732	0x50890FB4	sub_4F4600	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_col	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.generic.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2767196594	0xA4F011B2	sub_506750	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_col_desc	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.desc.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3382973060	0xC9A41284	sub_4F49A0	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_col_global	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	740955266	0x2C2A1482	sub_506340	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_col_global_desc	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3385856650	0xC9D0128A	sub_4F4D40	__cuda_sm7x_sub_byte_wmma_m8n8k32_acc_col_shared	wmma-subbyte	sm7x	acc: laneid->elem gather, ld.shared.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	206900684	0x0C550DCC	sub_4F50E0	__cuda_sm7x_bit_wmma_m8n8k128_acc_col	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.generic.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	1463029706	0x57340FCA	sub_506F70	__cuda_sm7x_bit_wmma_m8n8k128_acc_col_desc	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.desc.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2014843036	0x7818109C	sub_4F3EC0	__cuda_sm7x_bit_wmma_m8n8k128_acc_col_global	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	3506901658	0xD107129A	sub_506B60	__cuda_sm7x_bit_wmma_m8n8k128_acc_col_global_desc	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	2017726626	0x784410A2	sub_4F4260	__cuda_sm7x_bit_wmma_m8n8k128_acc_col_shared	wmma-bit1b	sm7x	acc: laneid->elem gather, ld.shared.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	3038777811	0xB52011D3	sub_529630	__cuda_sm70_wmma_m16n16k16_acc_f16_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3245216309	0xC16E1235	sub_4EF8D0	__cuda_sm7x_wmma_m16n16k16_acc_f16_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3021214212	0xB4141204	sub_4EFC10	__cuda_sm7x_wmma_m32n8k16_acc_f16_row_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	275713438	0x106F0D9E	sub_5143E0	__cuda_sm7x_wmma_m16n16k16_acc_f16_row	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1516769180	0x5A680F9C	sub_51F390	__cuda_sm7x_wmma_m16n16k16_acc_f16_row_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2065436788	0x7B1C1074	sub_514850	__cuda_sm7x_wmma_m16n16k16_acc_f16_row_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2062553198	0x7AF0106E	sub_514CC0	__cuda_sm7x_wmma_m16n16k16_acc_f16_row_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3539538540	0xD2F9126C	sub_521070	__cuda_sm7x_wmma_m16n16k16_acc_f16_row_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1854279747	0x6E861043	sub_515130	__cuda_sm7x_wmma_m32n8k16_acc_f16_row_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1851396157	0x6E5A103D	sub_5155A0	__cuda_sm7x_wmma_m32n8k16_acc_f16_row_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3312325179	0xC56E123B	sub_520BA0	__cuda_sm7x_wmma_m32n8k16_acc_f16_row_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	87035245	0x05300D6D	sub_515A10	__cuda_sm7x_wmma_m32n8k16_acc_f16_row	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1312034667	0x4E340F6B	sub_521540	__cuda_sm7x_wmma_m32n8k16_acc_f16_row_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3222802971	0xC018121B	sub_4EFF50	__cuda_sm7x_wmma_m16n16k16_acc_f16_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2998800874	0xB2BE11EA	sub_4F0290	__cuda_sm7x_wmma_m32n8k16_acc_f16_col_update_ptr	wmma-fp16	sm7x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	272043396	0x10370D84	sub_5105C0	__cuda_sm7x_wmma_m16n16k16_acc_f16_col	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1504579458	0x59AE0F82	sub_51E520	__cuda_sm7x_wmma_m16n16k16_acc_f16_col_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2049839194	0x7A2E105A	sub_50BA10	__cuda_sm7x_wmma_m16n16k16_acc_f16_col_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2046955604	0x7A021054	sub_50BE80	__cuda_sm7x_wmma_m16n16k16_acc_f16_col_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3515421266	0xD1891252	sub_51E9F0	__cuda_sm7x_wmma_m16n16k16_acc_f16_col_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	83365203	0x04F80D53	sub_50EF90	__cuda_sm7x_wmma_m32n8k16_acc_f16_col	wmma-fp16	sm7x	acc: laneid->elem gather, ld.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1299844945	0x4D7A0F51	sub_51D1E0	__cuda_sm7x_wmma_m32n8k16_acc_f16_col_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1838682153	0x6D981029	sub_50F400	__cuda_sm7x_wmma_m32n8k16_acc_f16_col_shared	wmma-fp16	sm7x	acc: laneid->elem gather, ld.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1835798563	0x6D6C1023	sub_50F870	__cuda_sm7x_wmma_m32n8k16_acc_f16_col_global	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3288207905	0xC3FE1221	sub_51CD10	__cuda_sm7x_wmma_m32n8k16_acc_f16_col_global_desc	wmma-fp16	sm7x	acc: laneid->elem gather, ld.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2841907644	0xA96411BC	sub_51A230	__cuda_sm70_wmma_m32n8k16_acc_f16_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2819494306	0xA80E11A2	sub_51A6D0	__cuda_sm70_wmma_m32n8k16_acc_f16_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2846888380	0xA9B011BC	sub_5228B0	__cuda_sm70_wmma_m8n32k16_acc_f16_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2824475042	0xA85A11A2	sub_522D90	__cuda_sm70_wmma_m8n32k16_acc_f16_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3059225067	0xB65811EB	sub_52C020	__cuda_sm70_wmma_m16n16k16_acc_f32_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3036811729	0xB50211D1	sub_52C570	__cuda_sm70_wmma_m16n16k16_acc_f32_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2839941562	0xA94611BA	sub_527770	__cuda_sm70_wmma_m32n8k16_acc_f32_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2817528224	0xA7F011A0	sub_527260	__cuda_sm70_wmma_m32n8k16_acc_f32_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2844922298	0xA99211BA	sub_525970	__cuda_sm70_wmma_m8n32k16_acc_f32_row_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	2822508960	0xA83C11A0	sub_525E70	__cuda_sm70_wmma_m8n32k16_acc_f32_col_update_ptr	wmma-fp16	sm70	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	3422950081	0xCC0612C1	sub_4F6A40	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_row_global	wmma-fp64	sm8x	acc: laneid->elem gather, ld.global.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	3407352487	0xCB1812A7	sub_4F5BC0	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_col_global	wmma-fp64	sm8x	acc: laneid->elem gather, ld.global.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1363152881	0x51400FF1	sub_4F5F60	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_row	wmma-fp64	sm8x	acc: laneid->elem gather, ld.generic.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1359482839	0x51080FD7	sub_4F6300	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_col	wmma-fp64	sm8x	acc: laneid->elem gather, ld.generic.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	3425833671	0xCC3212C7	sub_4F66A0	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_row_shared	wmma-fp64	sm8x	acc: laneid->elem gather, ld.shared.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	3410236077	0xCB4412AD	sub_4F5820	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_col_shared	wmma-fp64	sm8x	acc: laneid->elem gather, ld.shared.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	467604616	0x1BDF1488	sub_4EB7D0	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_row_update_ptr	wmma-fp64	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	445191278	0x1A89146E	sub_4EBB10	__cuda_sm8x_double_fp_wmma_m8n8k4_acc_col_update_ptr	wmma-fp64	sm8x	address-gen only: laneid->element offset math, returns advanced generic ptr (no ld/st)
+NUM	1158287159	0x450A0F37	sub_54BF00	__cuda_sm8x_wmma_m16n16k8_store_d_row_f32	wmma-fp16	sm8x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3132756487	0xBABA1207	sub_54C520	__cuda_sm8x_wmma_m16n16k8_store_d_row_f32_global	wmma-fp16	sm8x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3135640077	0xBAE6120D	sub_54CB40	__cuda_sm8x_wmma_m16n16k8_store_d_row_f32_shared	wmma-fp16	sm8x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3637908057	0xD8D61259	sub_54D160	__cuda_sm72_Integer_wmma_m16n16k16_store_d_row_s32	wmma-int8	sm72	store_d: laneid->elem gather, st.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	981800023	0x3A851457	sub_560340	__cuda_sm72_Integer_wmma_m16n16k16_store_d_row_s32_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1686312233	0x64831529	sub_54B8E0	__cuda_sm72_Integer_wmma_m16n16k16_store_d_row_s32_global	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3560118055	0xD4331727	sub_563CA0	__cuda_sm72_Integer_wmma_m16n16k16_store_d_row_s32_global_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1689195823	0x64AF152F	sub_543430	__cuda_sm72_Integer_wmma_m16n16k16_store_d_row_s32_shared	wmma-int8	sm72	store_d: laneid->elem gather, st.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3387691560	0xC9EC1228	sub_54ACA0	__cuda_sm72_Integer_wmma_m32n8k16_store_d_row_s32	wmma-int8	sm72	store_d: laneid->elem gather, st.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	715527206	0x2AA61426	sub_564300	__cuda_sm72_Integer_wmma_m32n8k16_store_d_row_s32_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1413616888	0x544214F8	sub_54B2C0	__cuda_sm72_Integer_wmma_m32n8k16_store_d_row_s32_global	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3271366390	0xC2FD16F6	sub_563640	__cuda_sm72_Integer_wmma_m32n8k16_store_d_row_s32_global_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1416500478	0x546E14FE	sub_54A680	__cuda_sm72_Integer_wmma_m32n8k16_store_d_row_s32_shared	wmma-int8	sm72	store_d: laneid->elem gather, st.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1147801373	0x446A0F1D	sub_543A30	__cuda_sm8x_wmma_m16n16k8_store_d_col_f32	wmma-fp16	sm8x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3110343149	0xB96411ED	sub_544030	__cuda_sm8x_wmma_m16n16k8_store_d_col_f32_global	wmma-fp16	sm8x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3113226739	0xB99011F3	sub_544630	__cuda_sm8x_wmma_m16n16k8_store_d_col_f32_shared	wmma-fp16	sm8x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1666782485	0x63591515	sub_544C30	__cuda_sm72_Integer_wmma_m16n16k16_store_d_col_s32_shared	wmma-int8	sm72	store_d: laneid->elem gather, st.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1663898895	0x632D150F	sub_545230	__cuda_sm72_Integer_wmma_m16n16k16_store_d_col_s32_global	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3529185037	0xD25B170D	sub_5609A0	__cuda_sm72_Integer_wmma_m16n16k16_store_d_col_s32_global_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3627422271	0xD836123F	sub_545830	__cuda_sm72_Integer_wmma_m16n16k16_store_d_col_s32	wmma-int8	sm72	store_d: laneid->elem gather, st.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	962794557	0x3963143D	sub_561000	__cuda_sm72_Integer_wmma_m16n16k16_store_d_col_s32_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3377205774	0xC94C120E	sub_54D780	__cuda_sm72_Integer_wmma_m32n8k16_store_d_col_s32	wmma-int8	sm72	store_d: laneid->elem gather, st.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	696521740	0x2984140C	sub_566980	__cuda_sm72_Integer_wmma_m32n8k16_store_d_col_s32_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1391203550	0x52EC14DE	sub_54DDA0	__cuda_sm72_Integer_wmma_m32n8k16_store_d_col_s32_global	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3240433372	0xC12516DC	sub_567000	__cuda_sm72_Integer_wmma_m32n8k16_store_d_col_s32_global_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1394087140	0x531814E4	sub_549A40	__cuda_sm72_Integer_wmma_m32n8k16_store_d_col_s32_shared	wmma-int8	sm72	store_d: laneid->elem gather, st.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3392672296	0xCA381228	sub_545E30	__cuda_sm72_Integer_wmma_m8n32k16_store_d_row_s32	wmma-int8	sm72	store_d: laneid->elem gather, st.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	720507942	0x2AF21426	sub_562FE0	__cuda_sm72_Integer_wmma_m8n32k16_store_d_row_s32_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1421481214	0x54BA14FE	sub_546430	__cuda_sm72_Integer_wmma_m8n32k16_store_d_row_s32_shared	wmma-int8	sm72	store_d: laneid->elem gather, st.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1418597624	0x548E14F8	sub_546A30	__cuda_sm72_Integer_wmma_m8n32k16_store_d_row_s32_global	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3276347126	0xC34916F6	sub_562980	__cuda_sm72_Integer_wmma_m8n32k16_store_d_row_s32_global_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3382186510	0xC998120E	sub_54E3C0	__cuda_sm72_Integer_wmma_m8n32k16_store_d_col_s32	wmma-int8	sm72	store_d: laneid->elem gather, st.generic.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	701502476	0x29D0140C	sub_566300	__cuda_sm72_Integer_wmma_m8n32k16_store_d_col_s32_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.desc.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1396184286	0x533814DE	sub_54E9E0	__cuda_sm72_Integer_wmma_m8n32k16_store_d_col_s32_global	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	3245414108	0xC17116DC	sub_565C80	__cuda_sm72_Integer_wmma_m8n32k16_store_d_col_s32_global_desc	wmma-int8	sm72	store_d: laneid->elem gather, st.global.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1399067876	0x536414E4	sub_54F000	__cuda_sm72_Integer_wmma_m8n32k16_store_d_col_s32_shared	wmma-int8	sm72	store_d: laneid->elem gather, st.shared.b32 series (int8(4 packed/b32)); store_d/load call *_update_ptr for base
+NUM	1359482725	0x51080F65	sub_54F620	__cuda_sm7x_wmma_m16n16k16_store_d_row_f32	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2749632867	0xA3E41163	sub_561660	__cuda_sm7x_wmma_m16n16k16_store_d_row_f32_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3355054645	0xC7FA1235	sub_54FC40	__cuda_sm7x_wmma_m16n16k16_store_d_row_f32_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	687150131	0x28F51433	sub_564960	__cuda_sm7x_wmma_m16n16k16_store_d_row_f32_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3357938235	0xC826123B	sub_54A060	__cuda_sm7x_wmma_m16n16k16_store_d_row_f32_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1157959476	0x45050F34	sub_5508C0	__cuda_sm7x_wmma_m32n8k16_store_d_row_f32	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2532053298	0x96EC1132	sub_569830	__cuda_sm7x_wmma_m32n8k16_store_d_row_f32_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3131052548	0xBAA01204	sub_550F00	__cuda_sm7x_wmma_m32n8k16_store_d_row_f32_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	447091714	0x1AA61402	sub_568AE0	__cuda_sm7x_wmma_m32n8k16_store_d_row_f32_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3133936138	0xBACC120A	sub_551540	__cuda_sm7x_wmma_m32n8k16_store_d_row_f32_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3745714894	0xDF4312CE	sub_4FB2C0	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_row_s32	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.generic.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1127945420	0x433B14CC	sub_50A440	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_row_s32_desc	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.desc.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1847793054	0x6E23159E	sub_4FCC90	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_row_s32_global	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3759937436	0xE01C179C	sub_509400	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_row_s32_global_desc	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1850676644	0x6E4F15A4	sub_4FD040	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_row_s32_shared	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.shared.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2345603302	0x8BCF10E6	sub_4FD3F0	__cuda_sm7x_bit_wmma_m8n8k128_store_d_row_s32	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.generic.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	3861910244	0xE63012E4	sub_508FF0	__cuda_sm7x_bit_wmma_m8n8k128_store_d_row_s32_desc	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.desc.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	223810486	0x0D5713B6	sub_4FD7A0	__cuda_sm7x_bit_wmma_m8n8k128_store_d_row_s32_global	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	1976047028	0x75C815B4	sub_5087D0	__cuda_sm7x_bit_wmma_m8n8k128_store_d_row_s32_global_desc	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	226694076	0x0D8313BC	sub_4FDB50	__cuda_sm7x_bit_wmma_m8n8k128_store_d_row_s32_shared	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.shared.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	3735229108	0xDEA312B4	sub_4FDF00	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_col_s32	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.generic.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1108939954	0x421914B2	sub_508BE0	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_col_s32_desc	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.desc.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1825379716	0x6CCD1584	sub_4FE2B0	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_col_s32_global	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	3729004418	0xDE441782	sub_50A030	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_col_s32_global_desc	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.global.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	1828263306	0x6CF9158A	sub_4FE660	__cuda_sm7x_sub_byte_wmma_m8n8k32_store_d_col_s32_shared	wmma-subbyte	sm7x	store_d: laneid->elem gather, st.shared.b32 series (4-bit packed); store_d/load call *_update_ptr for base
+NUM	2335117516	0x8B2F10CC	sub_4FEA10	__cuda_sm7x_bit_wmma_m8n8k128_store_d_col_s32	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.generic.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	3842904778	0xE50E12CA	sub_509C20	__cuda_sm7x_bit_wmma_m8n8k128_store_d_col_s32_desc	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.desc.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	201397148	0x0C01139C	sub_4FEDC0	__cuda_sm7x_bit_wmma_m8n8k128_store_d_col_s32_global	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	1945114010	0x73F0159A	sub_509810	__cuda_sm7x_bit_wmma_m8n8k128_store_d_col_s32_global_desc	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.global.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	204280738	0x0C2D13A2	sub_4FF170	__cuda_sm7x_bit_wmma_m8n8k128_store_d_col_s32_shared	wmma-bit1b	sm7x	store_d: laneid->elem gather, st.shared.b32 series (1-bit packed); store_d/load call *_update_ptr for base
+NUM	1348996939	0x50680F4B	sub_547C30	__cuda_sm7x_wmma_m16n16k16_store_d_col_f32	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2730627401	0xA2C21149	sub_564FC0	__cuda_sm7x_wmma_m16n16k16_store_d_col_f32_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3332641307	0xC6A4121B	sub_548230	__cuda_sm7x_wmma_m16n16k16_store_d_col_f32_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	656217113	0x271D1419	sub_565620	__cuda_sm7x_wmma_m16n16k16_store_d_col_f32_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3335524897	0xC6D01221	sub_548830	__cuda_sm7x_wmma_m16n16k16_store_d_col_f32_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1147473690	0x44650F1A	sub_548E30	__cuda_sm7x_wmma_m32n8k16_store_d_col_f32	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2513047832	0x95CA1118	sub_561CC0	__cuda_sm7x_wmma_m32n8k16_store_d_col_f32_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3108639210	0xB94A11EA	sub_547030	__cuda_sm7x_wmma_m32n8k16_store_d_col_f32_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	416158696	0x18CE13E8	sub_562320	__cuda_sm7x_wmma_m32n8k16_store_d_col_f32_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3111522800	0xB97611F0	sub_547630	__cuda_sm7x_wmma_m32n8k16_store_d_col_f32_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1359482727	0x51080F67	sub_516760	__cuda_sm7x_wmma_m16n16k16_store_d_row_f16	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2750288229	0xA3EE1165	sub_524AD0	__cuda_sm7x_wmma_m16n16k16_store_d_row_f16_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3358855741	0xC834123D	sub_516BE0	__cuda_sm7x_wmma_m16n16k16_store_d_row_f16_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3355972151	0xC8081237	sub_517060	__cuda_sm7x_wmma_m16n16k16_store_d_row_f16_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	688722997	0x290D1435	sub_523270	__cuda_sm7x_wmma_m16n16k16_store_d_row_f16_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1348996941	0x50680F4D	sub_5174E0	__cuda_sm7x_wmma_m16n16k16_store_d_col_f16	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2731282763	0xA2CC114B	sub_523750	__cuda_sm7x_wmma_m16n16k16_store_d_col_f16_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3333558813	0xC6B2121D	sub_517960	__cuda_sm7x_wmma_m16n16k16_store_d_col_f16_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	657789979	0x2735141B	sub_523C30	__cuda_sm7x_wmma_m16n16k16_store_d_col_f16_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3336442403	0xC6DE1223	sub_517DE0	__cuda_sm7x_wmma_m16n16k16_store_d_col_f16_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1157959478	0x45050F36	sub_519910	__cuda_sm7x_wmma_m32n8k16_store_d_row_f16	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2532708660	0x96F61134	sub_526880	__cuda_sm7x_wmma_m32n8k16_store_d_row_f16_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3131970054	0xBAAE1206	sub_519DA0	__cuda_sm7x_wmma_m32n8k16_store_d_row_f16_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	448664580	0x1ABE1404	sub_526D70	__cuda_sm7x_wmma_m32n8k16_store_d_row_f16_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3134853644	0xBADA120C	sub_519480	__cuda_sm7x_wmma_m32n8k16_store_d_row_f16_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1147473692	0x44650F1C	sub_518260	__cuda_sm7x_wmma_m32n8k16_store_d_col_f16	wmma-fp16	sm7x	store_d: laneid->elem gather, st.generic.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	2513703194	0x95D4111A	sub_524110	__cuda_sm7x_wmma_m32n8k16_store_d_col_f16_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.desc.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3109556716	0xB95811EC	sub_5186E0	__cuda_sm7x_wmma_m32n8k16_store_d_col_f16_global	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	417731562	0x18E613EA	sub_5245F0	__cuda_sm7x_wmma_m32n8k16_store_d_col_f16_global_desc	wmma-fp16	sm7x	store_d: laneid->elem gather, st.global.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	3112440306	0xB98411F2	sub_518B60	__cuda_sm7x_wmma_m32n8k16_store_d_col_f16_shared	wmma-fp16	sm7x	store_d: laneid->elem gather, st.shared.b32 series (fp16(b32=2xf16)); store_d/load call *_update_ptr for base
+NUM	1884820921	0x705815B9	sub_4FB670	__cuda_sm8x_double_fp_wmma_m8n8k4_store_d_row_f64_global	wmma-fp64	sm8x	store_d: laneid->elem gather, st.global.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1862407583	0x6F02159F	sub_4FBA20	__cuda_sm8x_double_fp_wmma_m8n8k4_store_d_col_f64_global	wmma-fp64	sm8x	store_d: laneid->elem gather, st.global.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	3770356457	0xE0BB12E9	sub_4FBDD0	__cuda_sm8x_double_fp_wmma_m8n8k4_store_d_row_f64	wmma-fp64	sm8x	store_d: laneid->elem gather, st.generic.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	3759870671	0xE01B12CF	sub_4FC180	__cuda_sm8x_double_fp_wmma_m8n8k4_store_d_col_f64	wmma-fp64	sm8x	store_d: laneid->elem gather, st.generic.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1887704511	0x708415BF	sub_4FC530	__cuda_sm8x_double_fp_wmma_m8n8k4_store_d_row_f64_shared	wmma-fp64	sm8x	store_d: laneid->elem gather, st.shared.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1865291173	0x6F2E15A5	sub_4FC8E0	__cuda_sm8x_double_fp_wmma_m8n8k4_store_d_col_f64_shared	wmma-fp64	sm8x	store_d: laneid->elem gather, st.shared.b32 series (f64); store_d/load call *_update_ptr for base
+NUM	1944652170	0x73E9098A	sub_542E20	__cuda_sm70_wmma_swizzle	wmma-convert	sm70	in-register fragment reorder (swizzle)
+NUM	597299025	0x239A0F51	sub_5748B0	__cuda_sm70_wmma_downconvert_satfinite	wmma-convert	sm70	cvt.rz.f16.f32 x8 src -> pack mov.b32 {x,y} x4 (fragment downconvert)
+NUM	2637630251	0x9D370B2B	sub_575100	__cuda_sm70_wmma_downconvert	wmma-convert	sm70	cvt.rz.f16.f32 x8 src -> pack mov.b32 {x,y} x4 (fragment downconvert)
+NUM	2351893152	0x8C2F0AA0	sub_576A80	__cuda_sm7x_wmma_upconvert	wmma-convert	sm7x	unpack b32 -> cvt.f32.f16 (fragment upconvert)
+NUM	2267286071	0x87240A37	sub_51B500	__cuda_sm10x_get_warp_rank	vote/ballot	sm10x	sm72 warp-size/rank query
+NUM	3536260243	0xD2C70C93	sub_583F50	__cuda_sm10x_tcgen05_alloc_one_sm	tcgen05	sm10x	TMEM alloc subroutine: phase-check, ocg_findandset spin, OR mask into SMEM, write granted col
+NUM	3543796907	0xD33A0CAB	sub_5A4C40	__cuda_sm10x_tcgen05_alloc_two_sm	tcgen05	sm10x	TMEM alloc subroutine, 2-SM: cluster-pair coord via mbarrier mapa.shared::cluster
+NUM	263656552	0x0FB71468	sub_52E6E0	__cuda_sm10x_tcgen05_guardrails_check_phase_validity	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
+NUM	1337398693	0x4FB715A5	sub_57A130	__cuda_sm10x_tcgen05_guardrails_check_column_allocation	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
+NUM	1319900574	0x4EAC159E	sub_568430	__cuda_sm10x_tcgen05_guardrails_check_datapath_validity	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
+NUM	626988249	0x255F14D9	sub_56D000	__cuda_sm10x_tcgen05_guardrails_check_physical_bounds	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
+NUM	3246921673	0xC18817C9	sub_5162F0	__cuda_sm10x_tcgen05_guardrails_check_allocation_granularity	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
+NUM	1681331703	0x643715F7	sub_57CA50	__cuda_sm10x_tcgen05_guardrails_check_datapath_alignment	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail

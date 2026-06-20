@@ -83,7 +83,7 @@ shape sweep (token `0x182`):
 
 ## Reproduce
 
-The full token table is in the local archive: `decoded/ptxas-tokens/ptx_tokens.tsv`
+The full token table is in the repo: `decoded/ptxas-tokens/ptx_tokens.tsv`
 (token id → keyword(s)/group-members, kind) and `ptxas_action_to_token.tsv` (the
 552-action map: action, token id, sub-code, jump target). Regenerate with
 `decoded/tools/ptxas_flex_tokens.py` (parameterized by table VMA / start state; it

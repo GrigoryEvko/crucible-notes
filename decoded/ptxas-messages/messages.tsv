@@ -1,0 +1,509 @@
+table	id	severity_code	severity	message	source
+main	0	6	fatal	Memory allocation failure	plaintext
+main	1	6	fatal	"Stray '""' character"	plaintext
+main	2	6	fatal	Stray '[' character	plaintext
+main	3	6	fatal	Stray '' character	plaintext
+main	4	6	fatal	Could not open output file '%s'	plaintext
+main	5	6	fatal	Could not open input file '%s'	plaintext
+main	6	6	fatal	Memory allocation failure	plaintext
+main	7	6	fatal	Unexpected non-ASCII character encountered on line %u	plaintext
+main	8	6	fatal	Unexpected EOF encountered on line %u	plaintext
+main	9	5	error	Non-generic address is not supported as operand for %s instruction	plaintext
+main	10	5	error	Illegal operand type for address/array-index	plaintext
+main	11	5	error	Instruction '%s' is not yet implemented %s '%s'	plaintext
+main	12	5	error	Only %s vector modifier supported with type %s on %s operation for %s	plaintext
+main	13	6	fatal	Unsupported Function '%s' on arch '%s' or higher	plaintext
+main	14	5	error	'%s' syntax expected for instruction '%s'	plaintext
+main	15	5	error	Argument %d of instruction '%s': value '%d' must be %s the value '%d' of argument %d	plaintext
+main	16	5	error	Unsupported modifier '%s' for instruction '%s'	plaintext
+main	17	5	error	Unsupported modifier '%s' %s for instruction '%s'	plaintext
+main	18	5	error	Unexpected number of '%s' modifiers specified	plaintext
+main	19	6	fatal	No variable storage specified	plaintext
+main	20	5	error	Number of threads participating in barrier must be in multiple of warp size	plaintext
+main	21	5	error	Call to '%s' requires call prototype	plaintext
+main	22	2	info	Potential out of bound access while accessing symbol '%s' of type '%s' with instruction type '%s'.	plaintext
+main	23	5	error	Illegal to use symbol '%s' of type %s as %s. Use %s only.	plaintext
+main	24	5	error	Invalid combination of '%s' and '%s' for instruction '%s' %s	plaintext
+main	25	6	fatal	Number of %s arguments (%d) to inline function '%s' crosses the limit %d. Consider increasing the limit	plaintext
+main	26	5	error	Argument %d of instruction '%s': Maximum of %d-bits are expected to be set	plaintext
+main	27	5	error	Invalid reserved shared memory variable %s	plaintext
+main	28	5	error	Registers 0-3 are reserved by ABI and cannot be used for %s	plaintext
+main	29	5	error	Minimum parameter register %d and number of parameter registers %d together overflows maximum register limit %d for %s	plaintext
+main	30	5	error	Unexpected number of arguments specified for pragma %s	plaintext
+main	31	3	warning	Unknown pragma '%s'. Ignoring pragma	plaintext
+main	32	5	error	Cannot define alias to variable object '%s'	plaintext
+main	33	5	error	Function '%s' with %s scope cannot be aliased	plaintext
+main	34	5	error	Mismatch in prototype of alias '%s' and aliasee '%s'. %s differ(s)	plaintext
+main	35	5	error	'%s' is already aliased to '%s' and cannot be redefined	plaintext
+main	36	5	error	Cannot alias a function to itself	plaintext
+main	37	5	error	Cannot define alias to entry function '%s'	plaintext
+main	38	5	error	Illegal redefinition of function '%s' as alias	plaintext
+main	39	5	error	Modifier '%s' on instruction '%s' %s is not supported starting %s and later architectures	plaintext
+main	40	2	info	Advisory: Modifier '%s' should be used on instruction '%s' instead of modifier '%s' as it is expected to have substantially reduced performance on some future architectures	plaintext
+main	41	3	warning	Advisory: '%s' modifier on instruction '%s' should be used on .target '%s' instead of .target '%s' as this feature is expected to have substantially reduced performance on some future architectures	plaintext
+main	42	3	warning	'%s' modifier on instruction %s is deprecated since PTX ISA version %s and will be discontinued from future PTX ISA version	plaintext
+main	43	3	warning	'%s' modifier on instruction %s may produce unexpected results on %s and later architectures	plaintext
+main	44	5	error	Instruction '%s' with '%s' is not supported starting from PTX ISA version %s	plaintext
+main	45	5	error	Instruction '%s' without '.sync' is not supported on .target sm_70 and higher from PTX ISA version 6.4	plaintext
+main	46	3	warning	Instruction '%s' without '.sync' is deprecated since PTX ISA version 6.0 and will be discontinued in a future PTX ISA version	plaintext
+main	47	3	warning	Instruction '%s' without '.sync' may produce unpredictable results on %s and later architectures	plaintext
+main	48	5	error	Argument(s) to pragma '%s' cannot be empty	plaintext
+main	49	5	error	Attribute '%s' specified multiple times in function	plaintext
+main	50	5	error	Pragma '%s' is allowed only within function scope	plaintext
+main	51	5	error	Pragma '%s' cannot be specified for device functions	plaintext
+main	52	5	error	Pragma '%s' cannot be specified for function '%s'	plaintext
+main	53	5	error	local_maxnreg specified multiple times in function '%s'	plaintext
+main	54	5	error	Pragma '%s' specified multiple times in function '%s'	plaintext
+main	55	5	error	Invalid range '%s' specified for .pragma '%s'	plaintext
+main	56	5	error	Invalid value '%s' specified for .pragma '%s'	plaintext
+main	57	5	error	Illegal %clayout '%s' for instruction '%s'	plaintext
+main	58	5	error	Feature '%s' cannot be compiled for architecture '%s'	plaintext
+main	59	5	error	Instruction '%s' cannot be compiled for architecture '%s'	plaintext
+main	60	5	error	Feature '%s' not supported on .target '%s'	plaintext
+main	61	5	error	Instruction '%s' not supported on .target '%s'	plaintext
+main	62	5	error	Illegal matrix shape '%s' for instruction '%s' with '%s' modifier	plaintext
+main	63	5	error	Illegal matrix shape '%s' for instruction '%s'	plaintext
+main	64	5	error	Modifier '%s' requires '%s' space for instruction '%s'	plaintext
+main	65	5	error	%s must be in '%s' space	plaintext
+main	66	5	error	Only the last input parameter can be an incomplete array.	plaintext
+main	67	5	error	%s cannot be an incomplete array.	plaintext
+main	68	3	warning	Program is doing double precision computations.	plaintext
+main	69	5	error	Undefined metadata index '%d'	plaintext
+main	70	5	error	Duplicate metadata node with index '%d'	plaintext
+main	71	5	error	Illegal use of attribute '%s' for instruction '%s'	plaintext
+main	72	5	error	Illegal to predicate instruction '%s' with operand '%s'	plaintext
+main	73	5	error	Illegal attribute '%s' for symbol '%s'	plaintext
+main	74	5	error	Illegal operand type to instruction '%s'	plaintext
+main	75	3	warning	%s	plaintext
+main	76	3	warning	Double is not supported. Demoting to float	plaintext
+main	77	5	error	Modifier '%s' requires .target %s or higher	plaintext
+main	78	5	error	Modifier '%s' requires PTX ISA .version %s or later	plaintext
+main	79	5	error	Feature '%s' requires .target %s or higher	plaintext
+main	80	5	error	Modifier '%s' on '%s' requires .target %s or higher	plaintext
+main	81	5	error	Modifier '%s' on '%s' requires PTX ISA .version %s or later	plaintext
+main	82	5	error	Feature '%s' requires PTX ISA .version %s or later	plaintext
+main	83	5	error	Instruction '%s%s%s%s' requires PTX ISA .version %d.%d or later	plaintext
+main	84	5	error	Instruction '%s%s%s%s' requires .target sm_%d or higher	plaintext
+main	85	5	error	Instruction '%s' requires .target %s or higher	plaintext
+main	86	5	error	Undefined preprocessor macro '%s'	plaintext
+main	87	6	fatal	Non-terminated preprocessor macro	plaintext
+main	88	6	fatal	Missing .ENDMACRO	plaintext
+main	89	6	fatal	Missing .ENDIF	plaintext
+main	90	6	fatal	Ill formed conditional	plaintext
+main	91	5	error	Too many operands for macro '%s'	plaintext
+main	92	5	error	Formal parameter '%s' is also the name of a reserved macro parameter.	plaintext
+main	93	5	error	Formal parameter names must be all different.	plaintext
+main	94	5	error	Deprecated feature: '%s' not supported as of PTX version %s	plaintext
+main	95	5	error	Unimplemented feature: %s	plaintext
+main	96	5	error	Source location %d %d %d used in inlined_at directive must be used in a preceding .loc directive	plaintext
+main	97	5	error	Debug information not found in presence of .target debug	plaintext
+main	98	5	error	%s directive(s) required for directive '%s'	plaintext
+main	99	5	error	Conflicting directives: %s	plaintext
+main	100	5	error	Directive map_f64_to_f32 is not supported with SM 1.3 or higher	plaintext
+main	101	5	error	Instruction '%s' requires SM 1.3 or higher, or map_f64_to_f32 directive	plaintext
+main	102	6	fatal	Missing .target directive at start of file '%s'	plaintext
+main	103	6	fatal	Target architecture not defined at start of file '%s'	plaintext
+main	104	5	error	Conflicting .target option '%s'	plaintext
+main	105	6	fatal	Unsupported .target '%s'	plaintext
+main	106	6	fatal	Missing .version directive at start of file '%s'	plaintext
+main	107	6	fatal	Unsupported .version %s; current version is '%s'	plaintext
+main	108	5	error	Instruction '%s' applies only to signed numeric types	plaintext
+main	109	5	error	Read-only special register cannot be destination argument	plaintext
+main	110	5	error	Special register argument not allowed for instruction '%s'	plaintext
+main	111	5	error	Module-scoped variables in %s state space are not allowed with ABI	plaintext
+main	112	5	error	Undefined file index #%d	plaintext
+main	113	5	error	Duplicate file index #%d	plaintext
+main	114	5	error	Unable to infer type of vector elements (assuming .b8)	plaintext
+main	115	5	error	Incompatible elements of vector expression	plaintext
+main	116	2	info	Field '%s' is ignored in .texref variables in independent texture mode	plaintext
+main	117	6	fatal	Unrecognized field name '%s' in opaque struct initializer	plaintext
+main	118	6	fatal	Too many elements in opaque struct initializer	plaintext
+main	119	5	error	Opaque structure initializer requires named fields	plaintext
+main	120	6	fatal	Greater number of elements in array initializer	plaintext
+main	121	6	fatal	Incorrect number of elements in vector initializer	plaintext
+main	122	6	fatal	Variable used as initial value not in .global or .const state space	plaintext
+main	123	6	fatal	Expected initializer for symbol '%s'.	plaintext
+main	124	6	fatal	Invalid initial value expression	plaintext
+main	125	5	error	Invalid mask value '0x%llx' used in initializer	plaintext
+main	126	6	fatal	Invalid initial value symbol '%s'	plaintext
+main	127	5	error	Unrecognized initial value symbol '%s'	plaintext
+main	128	6	fatal	Initial value type mismatch	plaintext
+main	129	5	error	Directive '%s' is supported only for '%s' functions	plaintext
+main	130	5	error	Invalid directive '%s' for function '%s'	plaintext
+main	131	5	error	Operand negation not allowed for instruction '%s'	plaintext
+main	132	5	error	Floating-point coordinates required	plaintext
+main	133	5	error	Integer coordinates require .s32 instruction type	plaintext
+main	134	5	error	Illegal type for %s	plaintext
+main	135	5	error	Value out of range for type .b%d %lld	plaintext
+main	136	5	error	Positive non-zero value expected for %s	plaintext
+main	137	5	error	Barrier number '%llu' out of range, expected to be in range [0..15]	plaintext
+main	138	5	error	Instruction '%s' requires .v%d type	plaintext
+main	139	5	error	Operand vector size doesn't match geometry for instruction '%s'	plaintext
+main	140	5	error	Illegal query modifier for instruction '%s'	plaintext
+main	141	6	fatal	No initial value is allowed for .f16 type	plaintext
+main	142	5	error	No initial value is allowed for external symbol '%s'	plaintext
+main	143	5	error	No initial value is allowed for '%s' in this state space	plaintext
+main	144	5	error	Unexpected number of state spaces specified in instruction '%s'	plaintext
+main	145	5	error	Multiple state spaces specified	plaintext
+main	146	5	error	%s %d is invalid for %s	plaintext
+main	147	5	error	Alignment value too large, %s	plaintext
+main	148	5	error	Argument %d of '%s' instruction: value must be %s	plaintext
+main	149	5	error	Alignment must be a power of two	plaintext
+main	150	5	error	Argument %d of instruction '%s' : value '%lld' expected to be a non-zero positive	plaintext
+main	151	5	error	Instruction '%s' requires a non-zero thread count argument	plaintext
+main	152	5	error	Membar level required for instruction '%s'	plaintext
+main	153	5	error	Declarations not allowed in .sreg space	plaintext
+main	154	5	error	%s state space expected for feature '%s'	plaintext
+main	155	5	error	State space incorrect for feature '%s'	plaintext
+main	156	5	error	State space mismatch between instruction and address in instruction '%s'	plaintext
+main	157	5	error	State space incorrect for instruction '%s', expected '%s'	plaintext
+main	158	5	error	State space incorrect for instruction '%s'	plaintext
+main	159	5	error	No state space qualifier expected for instruction '%s'	plaintext
+main	160	5	error	Sink '_' is expected as a destination operand for instruction '%s' with '%s'	plaintext
+main	161	6	fatal	Result discard mode is not allowed for instruction '%s'	plaintext
+main	162	5	error	Sink '_' not allowed as a destination operand for instruction '%s'	plaintext
+main	163	5	error	Sink '_' not allowed as a source operand	plaintext
+main	164	5	error	Illegal state space for address operand '%s' with instruction '%s'	plaintext
+main	165	5	error	Illegal rounding modifier for instruction '%s'	plaintext
+main	166	5	error	Incorrect '%s' modifier specified for instruction '%s'	plaintext
+main	167	5	error	Illegal modifier '%s' for instruction '%s' with '%s'	plaintext
+main	168	5	error	Illegal modifier '%s' for instruction '%s' with type '%s'	plaintext
+main	169	5	error	Illegal modifier '%s' for instruction '%s', for arch '%s'	plaintext
+main	170	5	error	Illegal modifier '%s' for instruction '%s'	plaintext
+main	171	5	error	Unknown modifier '%s'	plaintext
+main	172	5	error	Multiple %s modifiers specified	plaintext
+main	173	5	error	Duplicate '%s' modifier specified for instruction '%s'	plaintext
+main	174	5	error	Duplicate %s modifier	plaintext
+main	175	5	error	Argument %d of instruction '%s': unexpected value '%lld' when '%s' and '%s'	plaintext
+main	176	5	error	Argument %d of instruction '%s': unexpected value '%lld', expected to be %s	plaintext
+main	177	5	error	Argument %d of instruction '%s': unexpected value '%lld', expected to be multiple of %d	plaintext
+main	178	5	error	Argument %d of instruction '%s': value '%lld' expected to be in range [%d..%d] when %s	plaintext
+main	179	5	error	Argument %d of instruction '%s': value '%f' out of range, expected to be in range (%f .. %f]	plaintext
+main	180	5	error	Argument %d of instruction '%s': value '%lld' out of range, expected to be in range [%lld..%lld]	plaintext
+main	181	5	error	Argument %d of instruction '%s': value '%d' out of range, expected to be in range [%d..%d]	plaintext
+main	182	5	error	Argument %d of instruction '%s': must be %d-bit size	plaintext
+main	183	5	error	Argument %d of instruction '%s': must be constant	plaintext
+main	184	5	error	Argument %d of instruction '%s': must be register or constant	plaintext
+main	185	5	error	Indirect access to texture requires unified texture mode	plaintext
+main	186	5	error	Indirect access to surface requires .u64 type	plaintext
+main	187	5	error	Indirect access to sampler requires .u64 type	plaintext
+main	188	5	error	Indirect access to texture requires .u64 type	plaintext
+main	189	5	error	Instruction or declaration violates .target texmode_%s setting	plaintext
+main	190	5	error	Argument %d of instruction '%s': value of mask should be between 1 and 127	plaintext
+main	191	5	error	Argument %d of instruction '%s': vector size should be equal to number of bits set in mask	plaintext
+main	192	5	error	Argument %d of instruction '%s': duplicate elements are not allowed in destination vector	plaintext
+main	193	5	error	Argument %d of instruction '%s': .samplerref or .u64 register expected	plaintext
+main	194	5	error	Argument %d of instruction '%s': .surfref or .u64 register expected	plaintext
+main	195	5	error	Argument %d of instruction '%s': .texref or .u64 register expected	plaintext
+main	196	5	error	Argument %d of instruction '%s': .samplerref expected	plaintext
+main	197	5	error	Argument %d of instruction '%s': must be register	plaintext
+main	198	5	error	Result register required for instruction '%s'	plaintext
+main	199	5	error	Instruction '%s' requires .u32 or .u64 type	plaintext
+main	200	5	error	Instruction '%s' requires '%s' type with '%s' modifier.	plaintext
+main	201	5	error	Instruction '%s' requires '%s' type	plaintext
+main	202	5	error	Incorrect type '%s' for operation '%s' in instruction '%s'	plaintext
+main	203	5	error	Operation requires .pred type	plaintext
+main	204	5	error	Operation requires .u32 type	plaintext
+main	205	5	error	Operation %s requires %s type for instruction '%s'	plaintext
+main	206	5	error	Illegal operation '%s' for instruction '%s'	plaintext
+main	207	5	error	Reduction operation is required for instruction '%s'	plaintext
+main	208	5	error	Illegal reduction operation for instruction '%s%s%s'	plaintext
+main	209	5	error	Boolean operation is required for instruction '%s'	plaintext
+main	210	5	error	Comparison qualifier is not allowed for instruction '%s'	plaintext
+main	211	5	error	Mismatch between instruction type and comparison qualifier	plaintext
+main	212	5	error	Vector qualifier is not allowed for instruction '%s'	plaintext
+main	213	5	error	Illegal argument to predicate negation	plaintext
+main	214	5	error	Illegal argument to unary minus	plaintext
+main	215	5	error	Operand negation limited to either (source A xor source B) or source C	plaintext
+main	216	5	error	Illegal combination of .sat and .add modifiers	plaintext
+main	217	5	error	Illegal secondary operation for video instruction '%s'	plaintext
+main	218	5	error	Video selector is not allowed on 'source C' operand	plaintext
+main	219	5	error	Video selector is not allowed on source operand for instruction '%s'	plaintext
+main	220	5	error	Video selector is not allowed on destination for instruction '%s'	plaintext
+main	221	5	error	Video instruction cannot have destination selector and secondary operation	plaintext
+main	222	5	error	Unexpected Byte/Word selector when '%s' and '%s'	plaintext
+main	223	5	error	Incompatible Byte/Word selector when '%s' and '%s'	plaintext
+main	224	5	error	Byte/Word selector is required for operand %d of instruction '%s'	plaintext
+main	225	5	error	Argument %d of instruction '%s': Argument vector size mismatch	plaintext
+main	226	5	error	Argument %d of instruction '%s': incompatible Byte/word selector when '%s' and '%s'	plaintext
+main	227	5	error	Byte selector is required for operand %d of instruction '%s'	plaintext
+main	228	5	error	Incorrect byte selector for operand %d of instruction '%s'	plaintext
+main	229	5	error	Incorrect video selector for operand %d	plaintext
+main	230	5	error	Unknown video selector: '%s'	plaintext
+main	231	5	error	Unknown vector selector: '%c'	plaintext
+main	232	5	error	Conflicting use of '.po' modifier with operand negation	plaintext
+main	233	5	error	Multiple instruction post-operation flags set	plaintext
+main	234	5	error	Multiple comparisons set	plaintext
+main	235	5	error	Illegal vector-vector operands for vector-scalar or scalar-vector mov instruction	plaintext
+main	236	5	error	Vector operand is not allowed for instruction '%s'	plaintext
+main	237	5	error	Argument vector size mismatch for instruction '%s'	plaintext
+main	238	5	error	Vector of size %d is expected for argument %d of instruction '%s'	plaintext
+main	239	5	error	Vector is not expected for argument %d of instruction '%s'	plaintext
+main	240	5	error	Vector expected for argument %d	plaintext
+main	241	5	error	Result vector expected	plaintext
+main	242	5	error	Predicate expression expected	plaintext
+main	243	5	error	Modifier '.cc' applies only to %s integer types	plaintext
+main	244	5	error	Modifier '.sat' does not apply to '%s' type	plaintext
+main	245	5	error	Modifier '.ftz' does not apply to this type of convert operation	plaintext
+main	246	5	error	%s modifier required for instruction '%s' with modifier '%s'	plaintext
+main	247	5	error	Modifier '%s' required for instruction '%s' with type '%s' and operation '%s'	plaintext
+main	248	5	error	'%s' modifier required for instruction '%s' with destination type '%s'	plaintext
+main	249	5	error	'%s' modifier required for instruction '%s' with type '%s'	plaintext
+main	250	5	error	%s modifier required for instruction '%s' with %d arguments	plaintext
+main	251	5	error	%s modifier required for instruction '%s%s%s%s'	plaintext
+main	252	5	error	%s modifier required for instruction '%s'	plaintext
+main	253	5	error	Illegal cache operation for instruction 'ld.nc'	plaintext
+main	254	5	error	Modifier '.nc' requires .global space	plaintext
+main	255	5	error	Modifier '%s' requires modifier '%s' for instruction '%s'	plaintext
+main	256	5	error	Modifier '%s' requires modifier '%s'	plaintext
+main	257	5	error	Modifier '%s' requires %s with '%s' instruction	plaintext
+main	258	5	error	Modifier '%s' cannot be combined with modifier '%s'	plaintext
+main	259	5	error	Modifier '%s' cannot be applied to '%s' space for instruction '%s'	plaintext
+main	260	5	error	Modifier '%s' cannot be applied to '%s' space	plaintext
+main	261	5	error	Predicate output expected for instruction '%s'	plaintext
+main	262	5	error	Predicate output not allowed for instruction '%s'	plaintext
+main	263	5	error	Illegal instruction types specified for '%s' with shape '%s'	plaintext
+main	264	5	error	Not a name of any known instruction: '%s'	plaintext
+main	265	5	error	Unexpected number of arguments specified for %s with '%s'	plaintext
+main	266	5	error	Unexpected number of arguments specified for %s with shape '%s'	plaintext
+main	267	5	error	Unexpected number of instruction types specified for %s with shape '%s'	plaintext
+main	268	5	error	Unexpected number of operations specified for %s with shape '%s'	plaintext
+main	269	5	error	Incorrect operations specified for %s with shape '%s'	plaintext
+main	270	5	error	.dtype must be '%s' when .ctype is '%s' for '%s' instruction with shape '%s'	plaintext
+main	271	5	error	Modifier '%s' require for instruction %s with shape '%s'	plaintext
+main	272	5	error	Modifier %s not allowed for instruction %s with shape '%s'	plaintext
+main	273	5	error	Incorrect instruction type specified for %s with shape '%s'	plaintext
+main	274	5	error	Modifier %s not allowed for shape '%s'	plaintext
+main	275	5	error	Inconsistent type '%s' with vector .v%d for '%s'	plaintext
+main	276	5	error	Instruction '%s' supports vector of only %s types	plaintext
+main	277	3	warning	Unexpected instruction types specified for '%s'	plaintext
+main	278	5	error	Unexpected instruction types specified for '%s'	plaintext
+main	279	5	error	Arguments mismatch for instruction '%s'	plaintext
+main	280	5	error	Illegal expression '%s'	plaintext
+main	281	5	error	Unknown symbol '%s'	plaintext
+main	282	5	error	Unknown field '%s'	plaintext
+main	283	5	error	Array indexing on non-array	plaintext
+main	284	5	error	Type %s may only be used as an instruction type	plaintext
+main	285	5	error	Vector type too large, exceeds 128 bit limit	plaintext
+main	286	5	error	Array index in the '%s' instruction has unexpected type. Expecting type .u32	plaintext
+main	287	5	error	Vector with elements of different types are not allowed in %s instruction	plaintext
+main	288	5	error	Incorrect no. of matrix: %d for %s with shape '%s'	plaintext
+main	289	5	error	Illegal vector size: %d	plaintext
+main	290	5	error	Illegal bank number: %d	plaintext
+main	291	5	error	Constant banks 1..%d are reserved for external incomplete arrays	plaintext
+main	292	5	error	Inconsistent state space for parameter '%s'	plaintext
+main	293	5	error	Formal parameter '%s' declared in .param space cannot be used as argument to call	plaintext
+main	294	5	error	Call argument '%s' has illegal state space	plaintext
+main	295	5	error	Illegal to write to function input parameter '%s'	plaintext
+main	296	5	error	Illegal to read function return parameter '%s'	plaintext
+main	297	5	error	Multiple return parameters require .register state space	plaintext
+main	298	5	error	Function parameter '%s' has illegal state space	plaintext
+main	299	5	error	Illegal parameter name '%s'	plaintext
+main	300	5	error	Entry parameter '%s' must have .param state space	plaintext
+main	301	5	error	Parameter variables must be declared within .entry parameter list	plaintext
+main	302	5	error	Parameter variables may not be declared at module scope	plaintext
+main	303	5	error	Parameter variables must be declared within .entry function	plaintext
+main	304	5	error	%s variables must be declared in .global space	plaintext
+main	305	5	error	Texture/surface variable must be at module or entry parameter scope	plaintext
+main	306	5	error	Texture variables must be declared at module scope	plaintext
+main	307	5	error	Function definition conflicts with '.extern' declaration for function '%s'	plaintext
+main	308	5	error	'.extern' variable '%s' cannot be resolved by a '.static'	plaintext
+main	309	5	error	Inconsistent redefinition of variable '%s'	plaintext
+main	310	5	error	Illegal scope for variable '%s'	plaintext
+main	311	5	error	Immediate addresses allowed only for .local state space	plaintext
+main	312	5	error	Variable '%s' cannot be allocated in .param state space	plaintext
+main	313	5	error	Variable '%s' cannot be allocated into a register	plaintext
+main	314	5	error	Predicate type can only be used to define scalar register variables	plaintext
+main	315	5	error	Predicate variable '%s' must be in register state space	plaintext
+main	316	5	error	Non-external variable '%s' has incomplete type	plaintext
+main	317	5	error	Vector type only allowed over basic types	plaintext
+main	318	5	error	Illegal to take address of parameter '%s'	plaintext
+main	319	5	error	Illegal Addressing Mode in instruction '%s'	plaintext
+main	320	5	error	Address expected for argument %d of instruction '%s'	plaintext
+main	321	6	fatal	.const or .global array expected for argument %d of instruction '%s'	plaintext
+main	322	6	fatal	Label or %s array expected for argument %d of instruction '%s'	plaintext
+main	323	5	error	Label with '.branchtargets' directive expected for argument %d of instruction '%s'	plaintext
+main	324	5	error	Label expected for argument %d of instruction '%s'	plaintext
+main	325	6	fatal	Label expected for forward reference of '%s'	plaintext
+main	326	5	error	Illegal call target, device function expected	plaintext
+main	327	5	error	Illegal branch target, label expected	plaintext
+main	328	5	error	Variable '%s' must be type .u32 or .u64	plaintext
+main	329	5	error	Array of incomplete type	plaintext
+main	330	5	error	Illegal target for instruction '%s'	plaintext
+main	331	5	error	Illegal argument for formal parameter '%s'	plaintext
+main	332	5	error	Alignment of argument does not match formal parameter '%s'	plaintext
+main	333	5	error	Type of argument does not match formal parameter '%s'	plaintext
+main	334	5	error	Call has wrong number of parameters	plaintext
+main	335	6	fatal	Call target not recognized	plaintext
+main	336	5	error	Function '%s' not declared in this scope	plaintext
+main	337	5	error	Parameter '%s' uses .allocno %d which overlaps with other parameter's .allocno	plaintext
+main	338	5	error	Parameter '%s' uses .allocno %d which is not aligned for type '%s'	plaintext
+main	339	5	error	Parameter '%s' has illegal alignment (must be aligned to 1, 2, 4, 8, 16, 32, 64, or 128 bytes)	plaintext
+main	340	5	error	Function '%s' uses .allocno for some input and return parameters but not all	plaintext
+main	341	5	error	Mismatch between declaration and definition of function '%s', %s differ	plaintext
+main	342	5	error	Inconsistent prototypes of '%s', %s differ	plaintext
+main	343	5	error	Inconsistent redefinition of '%s' as entry and function	plaintext
+main	344	6	fatal	Inconsistent redefinition of symbol '%s'	plaintext
+main	345	5	error	Duplicate definition of macro '%s'	plaintext
+main	346	5	error	Duplicate definition of function '%s'	plaintext
+main	347	5	error	Duplicate definition of variable '%s'	plaintext
+main	348	5	error	Duplicate definition of label '%s'	plaintext
+main	349	5	error	Unsupported cast operation	plaintext
+main	350	6	fatal	Constant expression has division by zero	plaintext
+main	351	5	error	Constant expression type mismatch	plaintext
+main	352	5	error	Integer constant expression expected	plaintext
+main	353	5	error	Constant overflow	plaintext
+main	354	5	error	Entry function '%s' uses too much parameter space (0x%x bytes, 0x%x max).	plaintext
+main	355	5	error	Illegal placement of kernel parameter attribute	plaintext
+main	356	5	error	Illegal value for .address_size directive (must be 32 or 64)	plaintext
+main	357	6	fatal	Error reading obfuscated PTX file	plaintext
+main	358	5	error	Parsing error near '%s': %s	plaintext
+main	359	6	fatal	Parsing error near '%s': %s	plaintext
+main	360	6	fatal	Input file '%s' could not be opened	plaintext
+main	361	3	warning	GNU Jobserver support requested, but no compatible jobserver found. Ignoring '--jobserver'	plaintext
+main	362	6	fatal	Jobserver requested, but an error occurred	plaintext
+main	363	5	error	Function '%s' uses reserved shared memory when not allowed.	plaintext
+main	364	6	fatal	Cancellation of compilation requested through callback function	plaintext
+main	365	2	info	Disabling default position-independent-code(pic) compilation mode as program requires more resources than allowed.	plaintext
+main	366	5	error	Function '%s' uses single CTA(.cta_group::1) and CTA pair granularity(.cta_group::2) and that is not allowed.	plaintext
+main	367	5	error	Function '%s' using feature '%s' and with shape '%s' cannot be compiled with specified register target constraints	plaintext
+main	368	3	warning	Caller and callee expected to have different return address register but '%s' and '%s' both use R%d as return address register	plaintext
+main	369	3	warning	Function '%s' specifies register R%d as scratch register which is used as return address register	plaintext
+main	370	3	warning	Parameter register R%d is not marked as scratch for function '%s'	plaintext
+main	371	3	warning	Register spills may happen since callee '%s' specifies register R%d as scratch but caller '%s' doesn't specify	plaintext
+main	372	5	error	Parameter registers from R%d to R%d overlap with return address register R%d to R%d for %s '%s'	plaintext
+main	373	5	error	Feature '%s' requires command line option '%s'.	plaintext
+main	374	5	error	Pragma '%s' has value %d which is not aligned	plaintext
+main	375	5	error	%s %d is invalid for %s	plaintext
+main	376	5	error	Cannot specify R%d-R%d as %s since function '%s' is restricted to use maximum of %d registers	plaintext
+main	377	5	error	Pragma %s value should be atleast %d %s	plaintext
+main	378	3	warning	Pragma %s requires %s, ignoring pragma	plaintext
+main	379	5	error	Pragma %s conflicts with previously defined pragma %s for function '%s'	plaintext
+main	380	6	fatal	ABI mismatch when '%s' calls '%s': %s differ	plaintext
+main	381	6	fatal	Mismatch in return address abi when '%s' calls '%s'	plaintext
+main	382	6	fatal	Pragma '%s' cannot be specified for syscall function '%s'	plaintext
+main	383	3	warning	'%s' option is ignored unless '%s' option is specified	plaintext
+main	384	3	warning	'%s' option should be specified when '%s' option is given	plaintext
+main	385	6	fatal	Unsupported instruction '%s' used when compiling for '%s' target architecture	plaintext
+main	386	3	warning	Too many values specified for option '%s', option will be ignored	plaintext
+main	387	3	warning	 %s section not found	plaintext
+main	388	6	fatal	 32-Bit compilation is no longer supported	plaintext
+main	389	6	fatal	 32-Bit ABI (--machine 32 or 32-Bit addressing) is not supported on %s or higher architectures.	plaintext
+main	390	6	fatal	 %d Bit host architecture (--machine) being used must match with .address_size of %d bits for -g compilation	plaintext
+main	391	3	warning	 %d Bit host architecture (--machine) being used mismatches with .address_size of %d bits	plaintext
+main	392	3	warning	Program uses %d-bit address %s which is conflicting with .address_size %d	plaintext
+main	393	6	fatal	Unknown function %s	plaintext
+main	394	6	fatal	File '%s' could not be opened	plaintext
+main	395	5	error	Program using constant pointers passed as entry function parameter cannot use cvta.const	plaintext
+main	396	3	warning	Program compiled without abi might not work properly under debugger	plaintext
+main	397	3	warning	'%s' option is not fully implemented for '%s' and may not work as expected	plaintext
+main	398	3	warning	'%s' is a deprecated option, It will be removed in future release and is not recommended	plaintext
+main	399	5	error	Entry function '%s' with max regcount of %d calls function '%s' with regcount of %d	plaintext
+main	400	2	info	Command line option '%s' not supported for '%s', will be ignored	plaintext
+main	401	3	warning	Option '%s' may not work as expected in separate compilation unless all modules participating in linking have this option specified.	plaintext
+main	402	6	fatal	%s is not allowed when command line option '%s' is specified 	plaintext
+main	403	5	error	%s is not allowed when command line option '%s' is specified 	plaintext
+main	404	3	warning	Command line option '%s' not supported for '%s', will be ignored	plaintext
+main	405	6	fatal	'%s' requires PTX ISA .version %s or later	plaintext
+main	406	5	error	Function with multiple return values is not allowed with ABI	plaintext
+main	407	3	warning	Function %s%s%s with multiple return values found, disabling ABI	plaintext
+main	408	3	warning	Use of module scoped .local or .reg variable '%s' found, disabling ABI	plaintext
+main	409	6	fatal	Line No: %s: Cannot take address of %s '%s' %s	plaintext
+main	410	6	fatal	Cannot take address of %s '%s' %s	plaintext
+main	411	3	warning	Value specified in pragma %s %d for '%s' should be lower than the %s %d. Ignoring %s	plaintext
+main	412	6	fatal	Invalid value for --Ofast-compile/-Ofc (%s), is not 'max', 'mid', 'min', or '0'	plaintext
+main	413	3	warning	Value of RegUsageLevel (%d) is out of valid range {0..10}, option will be ignored	plaintext
+main	414	3	warning	Too big maxrregcount value specified %d, will be ignored	plaintext
+main	415	3	warning	For %s %s adjusting per thread register count of %d to lower bound of %d	plaintext
+main	416	2	info	Overriding maximum register limit %d for '%s' with %s %d %s	plaintext
+main	417	2	info	Overriding global maxrregcount %d with entry-specific value %d %s	plaintext
+main	418	3	warning	Value of %s for entry %s is out of range. %s will be ignored	plaintext
+main	419	3	warning	Too many %s specified for entry %s, will be ignored	plaintext
+main	420	6	fatal	Function '%s' is recursive	plaintext
+main	421	3	warning	Unresolved extern variable '%s' in whole program compilation, ignoring extern qualifier	plaintext
+main	422	6	fatal	Unresolved extern %s '%s'	plaintext
+main	423	6	fatal	Conflicting options %s and %s specified	plaintext
+main	424	3	warning	Option %s requires option %s; ignoring since latter is not specified	plaintext
+main	425	3	warning	Conflicting options %s and %s specified, ignoring %s option	plaintext
+main	426	2	info	STAT: %s	plaintext
+main	427	5	error	Invalid value '%d' of '%s' with option '%s'	plaintext
+main	428	6	fatal	Invalid value '%s' for option '%s'	plaintext
+main	429	6	fatal	Unknown option '%s'	plaintext
+main	430	3	warning	Construct '%s' on %s is supported only with %s, ignoring construct	plaintext
+main	431	3	warning	Pragma '%s' on %s is supported only with %s, ignoring pragma	plaintext
+main	432	3	warning	Pragma '%s' not supported on %s, ignoring pragma	plaintext
+main	433	5	error	Pragma '%s' not supported	plaintext
+main	434	3	warning	Option '%s' not supported for gpu architecture '%s', will be ignored	plaintext
+main	435	5	error	Option '%s' not supported for gpu architecture '%s'	plaintext
+main	436	6	fatal	'%s' requires ABI	plaintext
+main	437	5	error	Unresolved label '%s' used in function_name attribute.	plaintext
+main	438	5	error	Invalid value '%s' for option -abi.	plaintext
+main	439	3	warning	.loc directive without .file directive is found, line information in generated binary may not be complete	plaintext
+main	440	5	error	PTX .version %s does not support .target %s	plaintext
+main	441	6	fatal	PTX with .target '%s' cannot be compiled for architecture '%s'	plaintext
+main	442	6	fatal	Program with .target '%s' cannot be compiled to different SM-family architecture	plaintext
+main	443	6	fatal	Program with .target '%s' cannot be compiled to future architecture	plaintext
+main	444	6	fatal	SM version specified by .target is higher than default SM version assumed	plaintext
+main	445	5	error	labels '%s' and '%s' must be defined in the same section	plaintext
+main	446	5	error	label '%s' invalid	plaintext
+main	447	2	info	"Function properties for %s
+    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads"	plaintext
+main	448	2	info	"Fatpoint count for entry %s for regclass %s : %d
+"	plaintext
+main	449	5	error	Invalid default cache modifier on %s specified: %s	plaintext
+main	450	6	fatal	Optimized debugging not supported	plaintext
+main	451	2	info	(C%04d) %s	plaintext
+main	452	3	warning	(C%04d) %s	plaintext
+main	453	5	error	(C%04d) %s	plaintext
+main	454	6	fatal	(C%04d) %s	plaintext
+main	455	2	info	Compiling entry function '%s' for '%s'	plaintext
+main	456	2	info	%s	plaintext
+main	457	6	fatal	Ptx assembly aborted due to errors	plaintext
+main	458	6	fatal	Unsupported code generation for gpu '%s', forcetext=%d	plaintext
+main	459	6	fatal	Unsupported gpu architecture '%s'	plaintext
+main	460	6	fatal	Output file '%s' could not be opened	plaintext
+main	461	6	fatal	Parsed trace file not in expected format : %s	plaintext
+main	462	6	fatal	Input file '%s' not in expected format	plaintext
+main	463	6	fatal	Input file '%s' could not be opened	plaintext
+main	464	6	fatal	Internal compiler error%s, please report	plaintext
+link	0	6	fatal	Dwarf version %d is not supported	plaintext
+link	1	6	fatal	Duplicate debug line sequence for a section found	plaintext
+link	2	6	fatal	Actual row for context %d is unknown	plaintext
+link	3	6	fatal	Debug line table not present for current sequence	plaintext
+link	4	6	fatal	LEB128 enoding error while encoding '%s'	plaintext
+link	5	6	fatal	Unknown argument %d for option %s	plaintext
+link	6	6	fatal	Unknown argument %s for option %s	plaintext
+link	7	6	fatal	Knobs file not found	plaintext
+link	8	6	fatal	Input file '%s' could not be opened	plaintext
+link	9	6	fatal	%s value (%s) out of range	plaintext
+link	10	6	fatal	Too many options file opened '%s'	plaintext
+link	11	3	warning	option '%s' has been deprecated	plaintext
+link	12	6	fatal	Could not open options file '%s'	plaintext
+link	13	6	fatal	No value specified for option '%s'	plaintext
+link	14	6	fatal	Value '%s' is not defined for option '%s'	plaintext
+link	15	6	fatal	Keyword '%s' is not defined for option '%s'	plaintext
+link	16	6	fatal	Unknown option '%s'	plaintext
+link	17	6	fatal	'%s': expected a number	plaintext
+link	18	6	fatal	'%s': expected true or false	plaintext
+link	19	6	fatal	redefinition of keyword '%s' 	plaintext
+link	20	6	fatal	'%s' is not in 'keyword=value' format	plaintext
+link	21	3	warning	incompatible redefinition for option '%s', the last value of this option was used	plaintext
+link	22	6	fatal	redefinition of argument '%s'	plaintext
+link	23	6	fatal	no argument expected after '%s'	plaintext
+link	24	6	fatal	argument expected after '%s'	plaintext
+link	25	5	error	Function '%s' uses single CTA(.cta_group::1) and CTA pair granularity(.cta_group::2) and that is not allowed.	plaintext
+link	26	5	error	Function '%s' uses reserved shared memory when not allowed.	plaintext
+link	27	5	error	For kernel functions with parameter size higher than 4k bytes on sm_7x and sm_8x, all objects must be compiled with 12.1 or later	plaintext
+link	28	5	error	Cannot link shared object '%s' with partially linked kernel '%s'	plaintext
+link	29	3	warning	Function '%s' and function '%s' have conflicting cache preference, falling back to use cache preference of entry '%s'	plaintext
+link	30	3	warning	Function '%s' has address taken but no calls to it found	plaintext
+link	31	5	error	Function '%s' uses %d bytes stack but limited to %d	plaintext
+link	32	6	fatal	Internal error: %s	plaintext
+link	33	6	fatal	Unified symbols found but index file not specified.	plaintext
+link	34	5	error	entry function '%s' with max regcount of %d calls function '%s' with regcount of %d	plaintext
+link	35	5	error	Undefined reference to '%s' in '%s'	plaintext
+link	36	3	warning	Stack size for entry function '%s' cannot be statically determined	plaintext
+link	37	6	fatal	More than %d %s used in entry function '%s'	plaintext
+link	38	5	error	Entry function '%s' uses too much data for compiler-generated constants; please recompile with -Xptxas --disable-optimizer-constants	plaintext
+link	39	5	error	File uses too much global %s data (0x%llx bytes, 0x%x max)	plaintext
+link	40	5	error	Entry function '%s' uses too much %s data (0x%llx bytes, 0x%x max)	plaintext

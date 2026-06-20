@@ -144,7 +144,7 @@ op name. A recurring shape is an *aligned fast path* guarded against an
 
 The 588 handlers (473 numeric + 115 named) classify cleanly by family and target arch
 (recovered from the `__cuda_smXX_` prefixes and the pool templates; full table in the
-local archive at `decoded/ptxas-pseudo-instructions/macro_catalog.tsv`):
+repo at `decoded/ptxas-pseudo-instructions/macro_catalog.tsv`):
 
 | Family | Count | Family | Count |
 |---|---|---|---|

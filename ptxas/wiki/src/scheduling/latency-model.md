@@ -443,7 +443,7 @@ Offset  Bytes                       Field           Decoded
                                                     p11=0
 ```
 
-The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set); pipes 2–7 carry `0xFF` = "not applicable." `pipe_masks_b` is the dual-issue eligibility vector. Of the twelve params, only three are named with confidence across the whole 256-entry table: **p1** is the throughput class (observed values `{0,1,2,4,132}`), **p5** is the max-stall cycle count (`{0..7}`, dominated by 3 and 7), and **p7** is the class id repeated as a self-reference (it equals `class_id` at +0 for every record). The remaining params are emitted as observed columns; their exact semantics are not asserted. The full 256-class dump (id 2..771) is in the local archive at `decoded/ptxas-scheduling/sched_class_table.txt`.
+The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set); pipes 2–7 carry `0xFF` = "not applicable." `pipe_masks_b` is the dual-issue eligibility vector. Of the twelve params, only three are named with confidence across the whole 256-entry table: **p1** is the throughput class (observed values `{0,1,2,4,132}`), **p5** is the max-stall cycle count (`{0..7}`, dominated by 3 and 7), and **p7** is the class id repeated as a self-reference (it equals `class_id` at +0 for every record). The remaining params are emitted as observed columns; their exact semantics are not asserted. The full 256-class dump (id 2..771) is in the repo at `decoded/ptxas-scheduling/sched_class_table.txt`.
 
 **40-byte dependency rule** (from `sm_80` table, entry 0, matching unit\_id 2):
 
