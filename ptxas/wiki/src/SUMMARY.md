@@ -123,6 +123,8 @@
 
 - [SASS Opcode Catalog](./reference/sass-opcodes.md)
 - [PTX Instruction Table](./reference/ptx-instructions.md)
+- [PTX Lexer Tokens](./reference/ptx-lexer-tokens.md)
+- [Operand-Type Signatures & Attributes](./reference/operand-types-attributes.md)
 - [EIATTR Attribute Catalog](./reference/eiattr.md)
 - [Extracted .rodata Tables (45 JSON)](./reference/extracted-tables.md)
 - [Diagnostics & Messages (506)](./reference/diagnostics.md)
