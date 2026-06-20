@@ -58,8 +58,10 @@ Crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real
 > a structure is byte-identical under MARIANA / MARIANA_PLUS it is noted `CARRIED`.
 > The **MAVERICK (NC-v5)** interior is `INFERRED`: no v5-specific firmware image or
 > CSR schema ships (the NCFW `get_image` selector ladder closes at `arch_id 0x1c`).
-> The carry relation `arch_id = coretype − 1` is `OBSERVED` (`ct37` = `0x25` ⇒
-> hypothetical `arch_id 36 = 0x24`, which is **INFERRED** — no such image exists).
+> Note the seam — **`coretype 37` (`ct37`) is OBSERVED** (the `maverick_libs` jump-table
+> target, the `nrtucode.h:56` ordinal, and the two resolver bitmasks both setting bit 37,
+> §1.5i / [Cross-Walk card §3](codename-crosswalk-table.md)); the dependent `arch_id 36`
+> is `INFERRED` (`coretype − 1`, no NCFW image, no `cmp $0x24`).
 
 ---
 
@@ -576,17 +578,32 @@ DWARF + libncfw printer offsets.]`
 > is `OBSERVED` on those four. **No NCFW image ships for MAVERICK (NC-v5)**: the host
 > `get_image` selector ladder stops at `arch_id 0x1c`, there is **no** `cmp 0x24`
 > (arch_id 36) arm, and the blob region closes into `__GNU_EH_FRAME_HDR @0x918e4`. So
-> the v5 interior is `INFERRED`. `[arch_id 0x05/0x0c/0x14/0x1c + coretype OBSERVED; v5
-> arch_id 36 / coretype 37 INFERRED.]`
+> the v5 interior is `INFERRED`. **`coretype 37` itself is OBSERVED** (the `maverick_libs`
+> target + `nrtucode.h:56` + the two resolver bitmasks, §3 of the
+> [Cross-Walk card](codename-crosswalk-table.md)); only the v5 NCFW *image* is file-absent
+> and the dependent `arch_id 36` is INFERRED. `[arch_id 0x05/0x0c/0x14/0x1c + coretype
+> {6,13,21,29,37} OBSERVED; v5 NCFW image OBSERVED-absent; v5 arch_id 36 INFERRED.]`
 >
-> > **CORRECTION — coretype 37 (`ct37`, `arch_id 0x24`) is INFERRED, not OBSERVED.** A
-> > prior survey note recorded `ct37` as an OBSERVED carry wall. Re-grounded against all
-> > nine NCFW pages this session: the MAVERICK / NC-v5 / coretype-37 / `arch_id 0x24`
-> > NCFW image is **FILE-ABSENT** — the selector ladder closes at `0x1c` with no `0x24`
-> > arm. The binary wins: treat any v5/`ct37` NCFW statement as `INFERRED`, not a
-> > confirmed observation. The `arch_id = coretype − 1` relation that *would* give
-> > `ct37 ⇒ arch_id 36` is OBSERVED on v2–v4+ but cannot be confirmed for v5 with no
-> > image. `[CORRECTION — INFERRED, the binary has no v5 NCFW.]`
+> > **CORRECTION — coretype 37 (`ct37`) is OBSERVED; only the NCFW *image* is absent.
+> > Do NOT conflate the two.** A prior draft of this callout flipped `ct37` to INFERRED
+> > by folding the (true) NCFW-image absence into a (false) coretype-value absence. The
+> > binary refutes the flip: **`ct37` is OBSERVED three independent ways** — re-grounded
+> > against `libnrtucode_internal.so` this pass — and the do-not-repeat distinction is
+> > **"v5 NCFW *image* file-absent (TRUE, OBSERVED-negative) ≠ coretype *value* 37
+> > unobserved (FALSE — it IS observed, OBSERVED-positive)."** The three reads:
+> > **(1)** the `maverick_libs` jump-table target (`get_ext_isa` case `idx 31` ⇒
+> > `lea … 0x9b9050 <maverick_libs>`, `nm`-confirmed @`0x9b9050`); **(2)** the enum
+> > ordinal `NRTUCODE_CORE_MAVERICK_Q7_POOL = 37` (`nrtucode.h:56`); **(3)** the two
+> > resolver bitmasks `movabs $0x2020202000` (`→ {13,21,29,37}`) and `$0x2020202040`
+> > (`→ {6,13,21,29,37}`) — **bit 37 set in both** — gated by `cmp $0x25,%edi` (37). So
+> > `ct37` is `[HIGH/OBSERVED]`. What remains absent is the *image*: the host `libncfw
+> > get_image` selector ladder closes at `arch_id 0x1c`, there is **no `cmp $0x24` arm**,
+> > and `MAVERICK_Q7_CC_TOP*_get = 0` — so the **v5 NCFW orchestration image is
+> > file-absent** (OBSERVED-negative), and the dependent `arch_id 36` is INFERRED (§3
+> > / [the master ledger §1](do-not-repeat-full-ledger.md), the
+> > [Cross-Walk card §3](codename-crosswalk-table.md)). These are different artifacts;
+> > the image's absence does not unobserve the coretype value. `[ct37 HIGH/OBSERVED; v5
+> > NCFW image HIGH/OBSERVED-absent; arch_id 36 MED/INFERRED.]`
 
 ---
 

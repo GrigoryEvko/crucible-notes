@@ -217,11 +217,18 @@ Counts re-grounded against each shipped binary. RTTI columns are
 > **CORRECTION — the "13,578 structs / 522 enums / 770 RTTI for libnrt.so" tally
 > does not reproduce.** A backing pass attributed those figures to `libnrt.so`.
 > Re-grounding on the binaries present here and on the host-runtime anchor:
-> **(a)** no file named `libnrt.so` exists in *this* checkout at all
-> (`fd --no-ignore 'libnrt' … | rg '\.so'` returns only `libnrtucode.so` and
-> `libnrtucode_internal.so`); the full host runtime lives in a *separate*
-> `aws-neuronx-runtime-lib` package and is the `122 956 336`-byte
-> `libnrt.so.2.31.24.0` anchored in [The libnrt Surface Map](../runtime/libnrt-surface.md).
+> **(a)** no `libnrt.so` exists **under `neuronx-gpsimd/`** (`fd --no-ignore 'libnrt'
+> neuronx-gpsimd/ | rg '\.so'` returns only `libnrtucode.so` and
+> `libnrtucode_internal.so`), but it **is present in the sibling `neuronx-runtime/`
+> tree** — the `122 956 336`-byte `libnrt.so.2.31.24.0` (sha256 `956382de…`) at
+> `neuronx-runtime/extracted/aws-neuronx-runtime-lib_2.31.24.0-…/opt/aws/neuron/lib/libnrt.so.2.31.24.0`.
+> The git root is the **parent** of both packages, so `neuronx-runtime/` is a citeable
+> peer: host-runtime facts are `OBSERVED` against *that* file (the
+> [host-runtime layouts](struct-host-runtime-layouts.md) and
+> [exec-state census](struct-exec-state-census.md) pages read its DWARF; the
+> [bibliography](bibliography-source-binaries.md) §2 hashes it) and `CARRIED` into the
+> gpsimd pages. The full host runtime is the `libnrt.so.2.31.24.0` anchored in
+> [The libnrt Surface Map](../runtime/libnrt-surface.md).
 > **(b)** Its **RTTI** count is **266 `_ZTI` / 225 `_ZTV` / 245 `_ZTS`**
 > (`nm libnrt.so | rg -c`), *not* 770 — the "770" is roughly the *sum*
 > `266+225+245 = 736`, inflated, and it is the wrong axis (RTTI ≠ "structs").

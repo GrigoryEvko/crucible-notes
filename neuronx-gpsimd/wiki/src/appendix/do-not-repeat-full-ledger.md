@@ -103,8 +103,11 @@ coretype value 37 is present (OBSERVED-positive).** They are different artifacts
 > [the MAVERICK Profile §1](../generations/maverick-profile.md), the
 > [Codename Cross-Walk §3](../reference/codename-crosswalk.md), and the
 > [Codename Cross-Walk card §3](codename-crosswalk-table.md), is **`ct37` OBSERVED**.
-> **Part-16 reconcile: rewrite #986's §1.5i CORRECTION to OBSERVED, keeping its (correct)
-> point that the *NCFW image* is file-absent.** `[ct37: HIGH/OBSERVED]` `[WALL — anchor]`
+> **RESOLVED (Part-16 reconcile): #986's §1.5i CORRECTION has been rewritten to OBSERVED**
+> (all three places — the top WALL, the §1.5i WALL, and the inner CORRECTION), keeping its
+> (correct) point that the *NCFW image* is file-absent and citing this ledger §1 + the
+> [Cross-Walk card §3](codename-crosswalk-table.md) as the anchors. The appendix is now
+> book-wide consistent on `ct37` OBSERVED. `[ct37: HIGH/OBSERVED]` `[WALL — anchor]`
 
 **Source.** [maverick-profile §1/§10](../generations/maverick-profile.md),
 [codename-crosswalk-table §3](codename-crosswalk-table.md),
@@ -307,8 +310,9 @@ the stale source.** Listed so a reviewer recognizes a re-introduction.
   a derivable stride.
 - **The "−0x20 v5 reset" shorthand (R1)** is correct only for DVE/PE/NX_POOL; use the
   per-engine table for SP/Q7.
-- **The `ct37` = INFERRED note in #986 (§1)** is the live stale verdict this page overturns;
-  it is scheduled for the Part-16 reconcile.
+- **The `ct37` = INFERRED note in #986 (§1)** was the live stale verdict this page overturned;
+  **RESOLVED in the Part-16 reconcile** — #986 §1.5i now reads `ct37` OBSERVED (keeping its true
+  v5-NCFW-image-absent point). Listed so a re-introduction is recognized.
 
 ---
 

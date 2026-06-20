@@ -285,13 +285,18 @@ only in the non-shipped symbol twin. One row per artifact:
 |---|---|---|---|---|---|---|
 | **NCFW** `libncfw.so` (images) | v2 | v3 | v4 | v4+ | — | `arch_id ≤ 0x1c` (28); `ja` default; 8 blob symbols, no v5 `H/OBS` |
 | **SO** `libnrtucode.so` (front getter) | ✓ | ✓ | ✓ | ✓ | — (stub) | 24-entry table `cmp $0x17` → `coretype ≤ 29`; `strings \| rg -ci maverick` = 0 `H/OBS` |
-| `libnrtucode_extisa.so` (blob container) | ✓ | ✓ | ✓ | ✓ | — | container; `strings \| rg -ci maverick` = 0 `H/OBS` |
+| `libnrtucode_extisa.so` (blob container)³ | ✓ | ✓ | ✓ | ✓ | — | container; `strings \| rg -ci maverick` = 0 `H/CARRIED` |
 | `libnrtucode.a` (static) | —¹ | ✓ | ✓ | ✓ | — | 435 members = 48+124+124+124+0+15; `ar t \| rg -ic maverick` = 0 `H/OBS` |
 | **INT** `libnrtucode_internal.so` (twin) | ✓² | ✓ | ✓ | ✓ | **✓** | `cmp $0x25` → `coretype ≤ 37`; 5 `*_libs` symbols incl `maverick_libs@0x9b9050` `H/OBS` |
 
 ¹ SUNDA `.a`/getter contents resolved from the container as a weak-undef
 (`R_X86_64_64` to `SUNDA_…_EXTISA_0_{SO,JSON}_get`). ² **INT** also carries the
-SUNDA weak-undef plus the four MAVERICK-only Q7 ELFs.
+SUNDA weak-undef plus the four MAVERICK-only Q7 ELFs. ³ The **flat
+`libnrtucode_extisa.so`** is **NOT a standalone file in the gpsimd checkout** — under
+`neuronx-gpsimd/` the EXTISA content is the embedded blob set *inside* **INT** (66
+`*_EXTISA_*_SO_get` accessors); the flat container ships in the sibling
+`neuronx-runtime` corpus, so its row is `CARRIED` across the package boundary (see
+[bibliography §1 CORRECTION](bibliography-source-binaries.md)).
 
 **The split is sharp in the tallies** (re-counted this pass): a `maverick` literal
 appears **189 times** via `strings INT | rg -oi maverick | wc -l` and **125 times**

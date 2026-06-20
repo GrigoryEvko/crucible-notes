@@ -41,7 +41,7 @@ Deep table: [Codename ↔ Generation Cross-Walk](../reference/codename-crosswalk
 | **Vision-Q7 / Q7** | the off-the-shelf Cadence Tensilica vector DSP IP that GPSIMD *is* | [Core Identity & Configuration](../isa/core/identity-config.md) |
 | **`ncore2gp`** | Tensilica CoreID of the Cairo config; the `XTENSA_CORE=` handle for the device disassembler | [Core Identity & Configuration](../isa/core/identity-config.md) |
 | **`coretype`** | firmware byte identifying a generation — `{6,13,21,29,37}` `[HIGH/OBSERVED]` | [Codename Cross-Walk](../reference/codename-crosswalk.md) |
-| **`arch_id`** | host NCFW image-selector byte = `coretype − 1` (an INFERRED stride) | [Codename Cross-Walk](../reference/codename-crosswalk.md) |
+| **`arch_id`** | host NCFW image-selector byte; `arch_id = coretype − 1` (the **only** uniform relation — the `coretype` set `{6,13,21,29,37}` is *not* a flat +8 stride). `{5,12,20,28}` OBSERVED (double-anchored v2–v4); `36*` INFERRED (v5, no NCFW byte) | [Codename Cross-Walk](../reference/codename-crosswalk.md) |
 | **SUNDA** | gen v2 (NC-v2; Trn1/Inf2) · `coretype 6` / `arch_id 0x05` · the no-HW-Decode floor | [SUNDA v2 Baseline](../generations/sunda-v2-baseline.md) |
 | **CAYMAN** | gen v3 (NC-v3; Trn2) · `coretype 13` / `arch_id 0x0c` · the byte-grounded reference gen | [Codename ↔ Generation Map](../generations/codename-generation-map.md) |
 | **MARIANA** | gen v4 (NC-v4) · `coretype 21` / `arch_id 0x14` · distinct compile of the CAYMAN contract | [Codename ↔ Generation Map](../generations/codename-generation-map.md) |

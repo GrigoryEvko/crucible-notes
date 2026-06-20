@@ -253,9 +253,15 @@ and the [IMG catalog](../images/firmware-image-catalog.md), re-grounded this pas
 > **Both are internally consistent** (`ct37` is OBSERVED *in the IMG/GEN binaries*, absent *in the
 > NCFW binary*), but the pages differ on whether to call the v5 surface "header-OBSERVED" or
 > "INFERRED-or-absent." The hard, non-negotiable fact all four pages agree on is the one stated at
-> the top of §4: **the v5 NCFW image is FILE-ABSENT.** This divergence is flagged for the
-> **Part-16 reconcile** — standardize on `[ct37 HIGH/OBSERVED in the IMG/GEN getter binaries;
-> arch_id 36 MED/INFERRED·doubly; v5 NCFW image FILE-ABSENT HIGH/OBSERVED-absence]`. `[CORRECTION]`
+> the top of §4: **the v5 NCFW image is FILE-ABSENT.** The **appendix-internal** standardization is
+> now applied (Part-16 reconcile): the one appendix outlier — the
+> [device-firmware globals §1.5i](struct-device-firmware-globals.md) CORRECTION that had flipped
+> `ct37` to INFERRED — was rewritten to **OBSERVED** (keeping its true v5-NCFW-image-absent point),
+> so every appendix page now reads `[ct37 HIGH/OBSERVED in the IMG/GEN getter binaries; arch_id 36
+> MED/INFERRED·doubly; v5 NCFW image FILE-ABSENT HIGH/OBSERVED-absence]`. The residual cross-Part
+> framing question — whether the **NCFW synthesis page** should re-assert `ct37` OBSERVED or keep its
+> "INFERRED-or-absent" framing (its own `libncfw.so` carries no v5 arm to read) — is the only piece
+> left for the **global cross-Part pass**. `[CORRECTION]`
 
 ### 4.2 The other v5 interiors — INFERRED, per lane
 
