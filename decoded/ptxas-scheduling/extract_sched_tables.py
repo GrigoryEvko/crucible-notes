@@ -37,7 +37,7 @@ def extract_class_table(rodata: bytes):
 ORACLE_BANDS = {
     300: {16, 223, 228},                                   # long global-memory miss
      24: {17, 42, 53, 55, 91, 183, 195},                   # SFU / slow-MIO
-     13: {38, 60, 61, 63, 68, 78, 79, 106, 162, 180,
+     13: {38, 59, 60, 62, 67, 78, 79, 106, 162, 180,
           182, 192, 194, 199, 215, 221},                   # medium / control / MIO
      30: {88, 89},                                          # shared / atomic (LDS/STS class)
 }

@@ -78,6 +78,9 @@ out of the user's own binary at run time — it is not shipped here.
   nvdisasm `.data` blob; requires `lz4` (`pip install lz4`).
 - `decode_blobC.py` — cicc position-XOR decoder.
 - `blob_scan.py` — generic ELF entropy/xref scanner used to locate the blobs.
+- `decode_pseudo_names.py` — de-obfuscates ptxas's 473 numeric pseudo-instruction
+  handler keys (e.g. `1030557441`): each is `adler32(__cuda_* macro name)`, inverted
+  by hashing the `__cuda_*` names harvested from the macro pool + string tables.
 
 ### `ptxas-scheduling/` — the SASS scheduling model (tool + extracted facts)
 - `extract_sched_tables.py` — extracts both tables below from a `.rodata` dump of
@@ -90,6 +93,26 @@ out of the user's own binary at run time — it is not shipped here.
   `sub_8BF3A0` (`oracle+744`). The flattened scalar model — the dense producer×
   consumer hazard matrix is a build-time DSL that ships in no binary.
 - `README.md` — column semantics + reproduce steps.
+
+### `ptxas-tokens/` — the PTX lexer vocabulary (facts)
+- `ptx_tokens.tsv` — token id → keyword(s); `ptxas_action_to_token.tsv` — the
+  552-action flex map. Recovered from the embedded flex DFA; dumper at
+  `tools/ptxas_flex_tokens.py`.
+
+### `ptxas-instr-defs/` — the instruction registry (facts + our solver)
+- `instruction_table.tsv` — 1410 registrations / 268 names (operand-type signature,
+  datatype string, 128-bit attribute mask). `attribute_bits.tsv` — the recovered
+  bit → attribute legend. `extract_instruction_table.py` / `solve_attribute_bits.py` —
+  our extractor + correlation solver. `union_mask.txt` — the 110 used bits.
+
+### `ptxas-pseudo-instructions/` — the `sub_5D4190` registry (facts)
+- `pseudo_instruction_names.tsv` — 115 named + 473 `adler32 → __cuda_* name` rows.
+  `macro_catalog.tsv` — per-handler family / arch / one-line expansion summary (our
+  prose). Regenerate names with `tools/decode_pseudo_names.py`.
+
+### `ptxas-messages/` — the diagnostic catalog (facts)
+- `messages.tsv` — 506 messages (id, severity, text); `extract_messages.py` — our
+  extractor. All strings are cleartext in the binary.
 
 ## Local-only outputs (not in git — regenerate with the tools above)
 

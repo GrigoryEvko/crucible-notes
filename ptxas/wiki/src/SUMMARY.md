@@ -93,6 +93,7 @@
 
 - [Intrinsic Table (608 Entries)](./intrinsics/index.md)
 - [Prototype Emitter (1,080-Case Dispatch)](./intrinsics/prototype-emitter.md)
+- [Pseudo-Instruction Expansion & Adler-32 Macro Registry](./intrinsics/pseudo-instruction-macros.md)
 - [OCG Intrinsic System (44 Operations)](./intrinsics/ocg.md)
 - [Math Intrinsics](./intrinsics/math.md)
 - [Tensor Core Intrinsics](./intrinsics/tensor.md)

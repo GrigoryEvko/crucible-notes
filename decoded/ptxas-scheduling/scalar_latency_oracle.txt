@@ -14,7 +14,7 @@ band  cycles  meaning                         Ori opcode ids (index into oracle+
 ----  ------  ------------------------------  ---------------------------------------
   A     300   long global-memory miss         16, 223, 228
   B      24   SFU / slow-MIO                   17, 42, 53, 55, 91, 183, 195
-  C      13   medium / control / MIO          38, 60, 61, 63, 68, 78, 79, 106,
+  C      13   medium / control / MIO          38, 59, 60, 62, 67, 78, 79, 106,
                                                162, 180, 182, 192, 194, 199, 215, 221
   D      30   shared / atomic                  88, 89
   -       6   default ALU (non-memory)         every other opcode with property bit 0x40 clear
