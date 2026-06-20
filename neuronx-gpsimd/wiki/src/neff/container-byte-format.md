@@ -3,7 +3,7 @@
 > **Scope.** This page opens the **NEFF Part**. NEFF — the *Neuron Executable File
 > Format* — is the on-disk model container produced by `neuronx-cc` and consumed by
 > `libnrt.so`'s `nrt_load` path. This page reverses it **from the loader side**, byte by
-> byte: (1) the fixed **1024-byte header** `neff_header_t`; (2) the inner **gzip-pax-tar**
+> byte: (1) the fixed **1024-byte header** `neff_header_t`; (2) the inner **gzip-GNU-ustar-tar**
 > archive walk into `neff_t::files`; (3) the **section → exact `libnrt` parser** map keyed
 > off `sgNN/def.json`; (4) the **`feature_bits` forward-compat trapdoor**; (5) how a
 > **GPSIMD custom-op's device code** rides in as a *ucode library* and is placed into the
@@ -42,8 +42,17 @@ archive begins at exactly that offset. The inner archive is selected by `pkg_ver
 
 | `pkg_version` | inner archive | integrity digest |
 |:---:|:---|:---|
-| `2` (current) | **gzip**-compressed POSIX-pax **tar** | **MD5** (16 B, in `hash[0:16]`) |
-| `1` (legacy)  | raw POSIX-pax **tar**                 | **SHA-256** (32 B, full `hash[]`) |
+| `2` (current) | **gzip**-compressed **GNU ustar** tar | **MD5** (16 B, in `hash[0:16]`) |
+| `1` (legacy)  | raw **GNU ustar** tar                 | **SHA-256** (32 B, full `hash[]`) |
+
+> **CORRECTION (vs an earlier "POSIX-pax tar" label; per [concrete-carve](concrete-carve.md) §3,
+> [format-reference](format-reference.md) §1.2, [container-capstone](container-capstone.md) §1.2).**
+> The carved fixture's member-0 tar header is **GNU `ustar`**, *not* POSIX-pax: magic `ustar `
+> (`75 73 74 61 72 20`, trailing space) + version ` \0` at `+0x100`/`+0x106`, GNU **base-256**
+> `uid`/`gid` (high bit `0x80` set), and **zero** PAX/GNU-longname extension records (no
+> `typeflag 'x'/'g'/'L'/'K'` anywhere). `libarchive`'s `archive_read_support_format_tar` accepts
+> the GNU dialect transparently, so the *reader* is dialect-agnostic; a NEFF **writer** emits GNU
+> `ustar` to match the producer byte-for-byte. `[HIGH × OBSERVED]`
 
 There is **no literal magic number**. NEFF is identified *structurally*: `header_size` (`+0x08`)
 sane and `< file_size`; `data_size` (`+0x10`) `<= file_size − 0x400`; `neff_version_major`
@@ -328,7 +337,8 @@ naming convention. Each engine's `<eng>.bin` is fetched by `parse_one_engine_ins
 > The `<eng>.bin` is **not** Vision-Q7 / Xtensa code. It is a **TPB sequencer** instruction stream —
 > the on-chip engine microcode — in **64-byte slots** (proven in §7). The byte-level ISA decode of
 > these slots is the sibling [seq-microcode](seq-microcode.md) page; here we only fix the framing:
-> 16-bit LE lead opcode per slot, one slot = 64 B.
+> **1-byte opcode** at `byte0` (`= base | (engine<<5)`) immediately followed by `byte1 =
+> inst_word_len = 0x10` (`== NWORDS == 16`, the constant 64-B slot-length marker), one slot = 64 B.
 
 ---
 
@@ -442,7 +452,7 @@ single 64-byte slot; its first 32 bytes:
 
 ```
 pe.bin (64 B, one slot):
-  00: c8 10 00 00   LE lead opcode = 0x10C8
+  00: c8 10 00 00   opcode = 0xC8 ; inst_word_len = 0x10 ; debug_cmd = 0 ; debug_hint = 0
   04: 04 0a 13 16   (predicate / semaphore operands)
   08: 00 00 00 00   04 0a 00 00
   10: 03 00 00 00   = input_tensor_id  = 3
@@ -451,6 +461,14 @@ pe.bin (64 B, one slot):
   1c: 00 00 00 00
 ```
 
+> **CORRECTION (vs the older "16-bit LE opcode `0x10C8`" reading; per [seq-microcode](seq-microcode.md)
+> §0/§1.1).** The little-endian lead word `0x10C8` is **not** a 16-bit opcode. It is the first two
+> bytes of the 4-byte `TONGA_ISA_TPB_INST_HEADER`: `byte0 = opcode = 0xC8` (the 1-byte
+> `TONGA_ISA_TPB_OPCODE = base | (engine<<5)`; here `0x08 | (RT<<5)`) and `byte1 = inst_word_len =
+> 0x10 = 16 = NWORDS`, the **constant** 64-B slot-length marker that is identical for every slot.
+> So `0x10C8 == { opcode 0xC8, len 16 }`, not opcode `0x10C8`. Pin `byte0` as the 1-byte opcode.
+> `[HIGH × OBSERVED]`
+
 The matching `pe.asm` (debug disasm of the *same* bytes):
 
 ```
@@ -458,12 +476,14 @@ PSEUDO_TRIGGER_COLLECTIVE $S[10]>0 $S[22]++@complete ctype=ALL_REDUCE
   input_tensor_id=3 output_tensor_id=4 num_elements=32 dtype=fp32 op=ADD group_id=0;
 ```
 
-`pool.bin` is **192 B = three 64-byte slots**, lead opcode `0x10C1`, and at `+0x0C` of slot 0 it
-embeds the ASCII queue name `q_gradient_in` — the Pool engine's DMA-trigger program, cross-linked
-to the `pool.json` `dma_queue` entries. `act.bin` / `dve.bin` / `sp.bin` are **0 bytes** (empty
-engines get a 0-byte `.bin`; the loader installs an empty placeholder `instr_set` + WARN). So: a
-16-bit LE opcode leads each 64-byte slot, and the `.asm` is the debug-only disassembly of the
-identical bytes. The full opcode/operand-field decode is [seq-microcode](seq-microcode.md).
+`pool.bin` is **192 B = three 64-byte slots**, slot-0 `byte0 = 0xC1` (`PSEUDO_DMA_TRIGGER`,
+`byte1 = 0x10` word_len), and at `+0x0C` of slot 0 it embeds the ASCII queue name `q_gradient_in` —
+the Pool engine's DMA-trigger program, cross-linked to the `pool.json` `dma_queue` entries.
+`act.bin` / `dve.bin` / `sp.bin` are **0 bytes** (empty engines get a 0-byte `.bin`; the loader
+installs an empty placeholder `instr_set` + WARN). So: a **1-byte opcode** (`base | (engine<<5)`)
+leads each 64-byte slot, immediately followed by `byte1 = 0x10` word_len, and the `.asm` is the
+debug-only disassembly of the identical bytes. The full opcode/operand-field decode is
+[seq-microcode](seq-microcode.md).
 
 ---
 
@@ -526,7 +546,7 @@ regions so the runtime's own allocator stays out of compiler-claimed SB space.
 nrt_load → nrt_load_util → neff_parse @0x4ca3f0
     neff_get_header_from_buffer @0x4ca2c0   (1024-B header, version ≤ 2, feature_bits gate)
     MD5/SHA-256 verify (over compressed data[data_size])
-    archive_read_* tar walk → neff_t::files     (gzip+pax, in-memory, no temp files)
+    archive_read_* tar walk → neff_t::files     (gzip+GNU-ustar, in-memory, no temp files)
   → kelf_load_from_neff @0x4c0870  (per graph in kelf-a.json)
       simdjson(def.json) → parse_one_variable / parse_one_dma_ring / parse_replica_groups /
       parse_src_target_pairs / ucode_get_q7_lib / parse_one_ucode_lib / parse_sb_carveouts /
@@ -548,7 +568,7 @@ re-carve of this fixture is [concrete-carve](concrete-carve.md); the consolidate
 
 ## Key design points  `[HIGH]`
 
-1. **Two-level, self-contained, no magic.** 1024-B C-struct header + in-memory gzip-pax-tar
+1. **Two-level, self-contained, no magic.** 1024-B C-struct header + in-memory gzip-GNU-ustar-tar
    (libarchive, `read_open_memory` — zero temp files). Identified structurally, not by a magic
    number.
 2. **`feature_bits` bits 27..62 are a forward-compat trapdoor** (mask `0x7FFFFFFFF8000000`): clean

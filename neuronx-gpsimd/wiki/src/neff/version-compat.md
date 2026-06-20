@@ -176,7 +176,7 @@ if (neff_size - 1024 < data_size) {             // inner archive must fit
     return NRT_INVALID;                          // code 2
 }
 
-if (header->pkg_version == 1) {                  // LEGACY: raw POSIX-pax tar + SHA256
+if (header->pkg_version == 1) {                  // LEGACY: raw GNU ustar tar + SHA256
     data = header->data;
     if (a3 /*verify*/) {
         if (data_size == 0)
@@ -212,11 +212,19 @@ The archive-format gate, byte-exact:
 
 | property | `pkg_version 1` (legacy) | `pkg_version 2` (current) |
 |:---|:---|:---|
-| inner archive | raw POSIX-pax tar | gzip-compressed POSIX-pax tar |
+| inner archive | raw **GNU ustar** tar | gzip-compressed **GNU ustar** tar |
 | integrity hash | SHA-256 (32 B, all of `hash[]`) | MD5 (16 B, first 16 of `hash[]`) |
 | `__assert_fail` line | `neff.cpp:0x34` (`sha256`) | `neff.cpp:0x40` (`md5`) |
 | gzip filter | registered but inert | decompresses the stream |
 | unsupported value | → `NRT_UNSUPPORTED_NEFF_VERSION` (10), `"Unsupported NEFF packager"` | |
+
+> **CORRECTION (vs an earlier "POSIX-pax tar" label; per [concrete-carve](concrete-carve.md) §3,
+> [format-reference](format-reference.md) §1.2, [container-capstone](container-capstone.md) §1.2).**
+> The carved fixture's inner tar is **GNU `ustar`**, not POSIX-pax: member-0 magic `ustar ` +
+> version ` \0` at `+0x100`/`+0x106`, GNU **base-256** `uid`/`gid` (high bit `0x80`), and **zero**
+> PAX/GNU-longname extension records (no `typeflag 'x'/'g'/'L'/'K'`). The format gate itself does
+> not test the tar dialect — `archive_read_support_format_tar` accepts GNU `ustar` transparently —
+> so this is a producer-side fact, not a version gate; a writer emits GNU `ustar`. `[HIGH × OBSERVED]`
 
 Key points:
 

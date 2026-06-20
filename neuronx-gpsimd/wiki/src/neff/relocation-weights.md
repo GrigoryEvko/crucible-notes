@@ -463,6 +463,14 @@ pool.bin = 192 B = THREE slots: 0x10C1 (PSEUDO_DMA_TRIGGER q_gradient_in),
 ```
 `[OBSERVED — xxd of pe.bin/pool.bin; pe.asm/pool.asm verbatim]`
 
+> **NOTE — the lead halfword is `{opcode, word_len}`, not a 16-bit opcode (per
+> [seq-microcode.md](./seq-microcode.md) §0/§1.1).** Each LE lead word above (`0x10C8`,
+> `0x10C1`, `0x10A0`) is the first two bytes of the 4-byte `TONGA_ISA_TPB_INST_HEADER`:
+> `byte0 = opcode` (the 1-byte `TONGA_ISA_TPB_OPCODE`; here `0xC8` / `0xC1` / `0xA0`) and
+> `byte1 = inst_word_len = 0x10` (`== NWORDS == 16`, the **constant** 64-B slot-length marker).
+> The relocation walk below strides whole 64-B slots regardless; the per-slot opcode that selects
+> which pseudo to lower is the single `byte0`, not the halfword `0x10Cx`.
+
 Load-time lowering of the **PE** engine (`eng = PE = 0`):
 
 1. `ib_create_one_block` prepends a PREAMBLE (sync/all-engine barrier), say `K`
