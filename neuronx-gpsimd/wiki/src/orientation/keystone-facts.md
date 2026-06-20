@@ -11,10 +11,9 @@ truth** that overrides it, **the one-line evidence anchor** you re-run if you do
 **why it matters** for a reimplementation. Every fact is tagged `[CONF / PROV]` per
 [The Confidence & Walls Model](../reference/confidence-model.md).
 
-This page is the *distillation*. It is deliberately **not** the full register — the complete
-sixty-seven-row do-not-repeat ledger, with affected-page lists and the long tail of
-single-number refinements, lives in [The Do-Not-Repeat / Correction Ledger](../reference/correction-ledger.md).
-What follows is the subset a reimplementer meets first and falls into hardest.
+This page is the *distillation*. It is deliberately **not** the full register — the long tail of
+single-number refinements and per-row affected-page lists is omitted here. What follows is the
+subset of corrections a reimplementer meets first and falls into hardest.
 
 > **How to use this page.** When you are about to assert something that *feels* like a settled
 > constant — what GPSIMD computes, how many instruction lengths the FLIX decoder has, which
@@ -394,11 +393,9 @@ root — and the GPSIMD path touches no crypto / sqlite / codec / ffi at all.
 
 This is the orientation distillation — the ~18 traps a reimplementer hits first. It does **not**
 carry the long tail of single-number refinements (a stride `148` not `149`, a struct field at
-`@12` not `@16`), the carried stale-copy hazards, or the per-row affected-page lists. All of that
-is in [The Do-Not-Repeat / Correction Ledger](../reference/correction-ledger.md) (curated front
-copy) and its appendix register. When a fact below *feels* like a settled constant, check it here
-first, then the full ledger, then the binary — these are exactly the corrections that survived a
-first plausible reading and a second look.
+`@12` not `@16`), the carried stale-copy hazards, or the per-row affected-page lists. When a fact
+below *feels* like a settled constant, check it here first, then the binary — these are exactly the
+corrections that survived a first plausible reading and a second look.
 
 ---
 
@@ -406,8 +403,6 @@ first plausible reading and a second look.
 
 - [The Confidence & Walls Model](../reference/confidence-model.md) — what `[HIGH/OBSERVED]`,
   `[INFERRED]`, `[CARRIED]`, and "wall" mean; the `arch_id 36` / `ct37` walls in full.
-- [The Do-Not-Repeat / Correction Ledger](../reference/correction-ledger.md) — the complete
-  corrections register that this page distills.
 - [What GPSIMD Is — the one-screen map](what-gpsimd-is.md) — the orientation these traps qualify.
 - [The Seven Faces of the One Machine](seven-faces.md) — the one-core / many-views model behind
   K1–K3.

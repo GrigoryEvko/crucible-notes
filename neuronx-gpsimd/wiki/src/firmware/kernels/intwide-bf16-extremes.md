@@ -23,7 +23,7 @@ the [DTYPE Model](./dtype-model.md) (the dtype enum these gate on), the
 [Tensor-Tensor 64-bit Path](./tensor-tensor-64bit.md) (the native-`INT64`/`UINT64` dispatch that
 `INT_WIDE` is *related to but distinct from*), the
 [Batch-Norm Param Load](./batchnorm-paramload.md) (the `0x8e` op that sits *inside* the BF16 byte span
-but is **not** a BF16 op), the [Correction Ledger](../../reference/correction-ledger.md), and the
+but is **not** a BF16 op), and the
 forward-planned [Master Per-Generation Capability Matrix](../../generations/master-capability-matrix.md).
 
 > **NOTE — provenance.** Every primary fact derives from the shipped customop-lib package

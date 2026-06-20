@@ -24,7 +24,7 @@ docstrings survive); the block geometry is hard-pinned from the production weigh
 constants. Every device-opcode numeric value is cross-checked against the firmware
 ledger; mismatches are flagged as **CORRECTION**, never silently reconciled.
 
-Confidence per [the Confidence & Walls model](../reference/correction-ledger.md):
+Confidence per [the Confidence & Walls model](../reference/confidence-model.md):
 `[HIGH/MED/LOW]` × `OBSERVED` (read-from-byte / shipped `.py` this pass) /
 `INFERRED` (reasoned over OBSERVED) / `CARRIED` (re-used from a cited sibling page at
 its confidence). The `extracted/` trees are gitignored — reach them with
@@ -627,5 +627,3 @@ To rebuild a Vision-Q7-compatible OCP-MX path:
   = FP8_S0E8M0` (E8M0), the scale-only codes, the FP32 convert hub.
 - [The Opcode Catalog Ledger](../firmware/kernels/opcode-catalog-ledger.md) — the
   `0xE3` / `0x7B` / `0x09` / `0x0A` engine + per-gen presence rows.
-- [The Correction Ledger](../reference/correction-ledger.md) — the cross-report
-  correction register (the `quantize_mx → 0xE3` binding belongs here).

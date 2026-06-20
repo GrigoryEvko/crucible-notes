@@ -600,8 +600,7 @@ DWARF + libncfw printer offsets.]`
 > > get_image` selector ladder closes at `arch_id 0x1c`, there is **no `cmp $0x24` arm**,
 > > and `MAVERICK_Q7_CC_TOP*_get = 0` — so the **v5 NCFW orchestration image is
 > > file-absent** (OBSERVED-negative), and the dependent `arch_id 36` is INFERRED (§3
-> > / [the master ledger §1](do-not-repeat-full-ledger.md), the
-> > [Cross-Walk card §3](codename-crosswalk-table.md)). These are different artifacts;
+> > / the [Cross-Walk card §3](codename-crosswalk-table.md)). These are different artifacts;
 > > the image's absence does not unobserve the coretype value. `[ct37 HIGH/OBSERVED; v5
 > > NCFW image HIGH/OBSERVED-absent; arch_id 36 MED/INFERRED.]`
 

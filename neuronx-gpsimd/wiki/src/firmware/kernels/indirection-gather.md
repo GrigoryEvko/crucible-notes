@@ -152,7 +152,7 @@ op named `nc_n_gather` lowers to the literal **Gather**. The index dtypes are re
 `nki/isa/gather.py`: `local_gather` — *"The indices in `index` tile must be uint16 types"*
 (line 56); `nc_n_gather` — *"The `indices` tile must be uint32"* (line 136). [HIGH/OBSERVED]
 
-> **GOTCHA (logged to the [correction ledger](../../reference/correction-ledger.md)).** The
+> **GOTCHA.** The
 > NKI gather name and the opcode it lowers to are *crossed*: `local_gather → 0xe7 IndirectCopy`
 > and `nc_n_gather → 0x68 Gather`. The intuitive reading — that the op spelled with "gather"
 > maps to the opcode spelled `GATHER` — is **wrong** for `local_gather`. A reimplementation that
@@ -750,6 +750,3 @@ INFERRED-HIGH]
   (`ivp_gatheranx8ut`, `writeback__ivp_gatheranx16`) for the same HW gather op.
 - [VAL — Gather / Scatter (SuperGather) Family](../../validation/gather-scatter.md) — the
   validation sweep for the indirection family.
-- [The Do-Not-Repeat / Correction Ledger](../../reference/correction-ledger.md) — the
-  `local_gather → 0xe7` / `nc_n_gather → 0x68` crossed-split correction and the `0x79` vs `0xca`
-  embedding-opcode distinction.

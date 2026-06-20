@@ -357,9 +357,6 @@ registers, and every lane's owning synthesis page.
 - **The Open-Questions Register** (`appendix/open-questions-register.md`) — the per-residual
   *why-unreachable / what-would-close-it*, partitioned by closability; the companion register to this
   coverage accounting (referenced by title; lands in the sidebar when committed).
-- **The Do-Not-Repeat / Correction Ledger** (`appendix/do-not-repeat-full-ledger.md`) — the
-  empirical record of refined MED claims and the traps this ledger's WALLs guard against (referenced
-  by title; lands in the sidebar when committed).
 
 **Per-lane owning synthesis pages** (one per row of §2):
 

@@ -397,9 +397,7 @@ matching on the substring "select" mis-binds (compiler-map §4.3 S2).
 
 ### 5.2 `local_gather` vs `nc_n_gather` — the 2:1 split (do-not-repeat)
 
-These two NKI names map to **different POOL kernels** and must not be conflated — the
-do-not-repeat item flagged in
-[../reference/correction-ledger.md](../reference/correction-ledger.md):
+These two NKI names map to **different POOL kernels** and must not be conflated:
 
 | NKI name | `emit_` → opcode | model | indices | sim |
 |---|---|---|---|---|
@@ -633,5 +631,4 @@ that handshake. [HIGH/OBSERVED — five distinct strings; the join point is `uli
 
 - [compiler-map.md](compiler-map.md) — the authoritative 62-row `emit_*`→opcode table (the lowering seam this page sits on).
 - [../firmware/kernels/opcode-catalog-ledger.md](../firmware/kernels/opcode-catalog-ledger.md) — the device opcode roster the `nki.isa` names bind against.
-- [../reference/correction-ledger.md](../reference/correction-ledger.md) — the do-not-repeat ledger (the `local_gather`/`nc_n_gather` 2:1 split lives there).
 - Part-15 validation replay: `neuronx-gpsimd/wiki/src/validation/` — the lane that runs the §4–5 numpy simulator as the bit-exact kernel oracle (cited as a path; per-op replay stubs may not exist yet).

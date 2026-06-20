@@ -13,10 +13,8 @@
 The tagging system (`[CONF/PROV]` and the closability classes) is the
 [Confidence & Walls Model](../reference/confidence-model.md); the named-wall *defining subset* is
 that page's §4. The per-axis coverage accounting behind the five headline fractions is the
-[Coverage Ledger](coverage-ledger.md); the empirical record of where MED claims were later refined
-is the [Correction Ledger](../reference/correction-ledger.md) and the
-[Full Do-Not-Repeat / Correction Ledger](do-not-repeat-full-ledger.md). This register is the
-long-form *why-unreachable* + *what-would-close-it* for every row those pages summarize.
+[Coverage Ledger](coverage-ledger.md). This register is the
+long-form *why-unreachable* + *what-would-close-it* for every row that ledger summarizes.
 
 ---
 
@@ -375,9 +373,6 @@ single easiest way to mis-rate a residual that is, in fact, 256/256 execution-va
   the **reference** wall taxonomy (§3 closability, §4 the named-wall defining subset).
 - [The Coverage Ledger](coverage-ledger.md) — the per-axis, per-lane coverage accounting behind the
   five headline fractions (the *what-is-covered* counterpart to this *what-is-not*).
-- [The Correction Ledger](../reference/correction-ledger.md) · [The Full Do-Not-Repeat / Correction
-  Ledger](do-not-repeat-full-ledger.md) — the empirical record that the flagging works (where MED
-  claims were later refined; the traps a reimplementer must not re-walk).
 - The residual-owning pages: [VAL — transcendental seed](../validation/transcendental-seed.md) (Q12a,
   the FW-42 narrowing) · [VAL — capstone matrix](../validation/capstone-matrix.md) (Q1, the recipqli
   wall; the value verdict) · [VAL — regfile-bridge / divergence catalog](../validation/regfile-bridge-divergence.md)

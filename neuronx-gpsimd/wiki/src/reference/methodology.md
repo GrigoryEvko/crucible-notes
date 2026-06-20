@@ -24,8 +24,7 @@ re-run command-for-command. It closes with the four verification gotchas that ea
 caused a real regression during the effort, stated precisely enough to avoid.
 
 The deep companion on bundle decoding is [FLIX Bundle-Decoding
-Methodology](flix-decoding.md); the running list of premise corrections this method
-surfaced is [The Do-Not-Repeat / Correction Ledger](correction-ledger.md).
+Methodology](flix-decoding.md).
 
 ## What a reimplementer must be able to do
 
@@ -259,8 +258,7 @@ tag (`OBSERVED` = read from shipped bytes/files **or executed this pass**;
 confidence). A synthesis **never inflates** a source's confidence — it carries it
 forward. The defining habit is **adversarial premise-correction**: when later binary
 evidence contradicts an earlier report — or the task's own premise — the correction
-is recorded explicitly rather than quietly conformed to, then propagated into the
-[correction ledger](correction-ledger.md). The full vocabulary and the
+is recorded explicitly rather than quietly conformed to. The full vocabulary and the
 "confidence walls" are in [The Confidence & Walls Model](confidence-model.md).
 `[HIGH]`
 

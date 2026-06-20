@@ -77,8 +77,7 @@ Part 5's kernel catalog is what Part 7's ABI dispatches into; Part 12's compiler
 seam is what produces the NEFF that Part 11 describes. If you read nothing else
 first, read **[Part 1 · What GPSIMD Is](../orientation/what-gpsimd-is.md)** and
 **[Part 1 · Keystone Facts Reimplementers Get Wrong](../orientation/keystone-facts.md)**
-— they inoculate you against the mistakes the [Correction Ledger](correction-ledger.md)
-catalogues.
+— they inoculate you against the mistakes a reimplementer makes most often.
 
 ### Path B — "I just need opcode X" (lookup)
 
@@ -188,9 +187,8 @@ Inline markers flag the four things you most need to not miss:
   FLIX decoder the real little-endian bytes*).
 - **NOTE** — context that aids understanding but isn't a hazard.
 - **CORRECTION** — a place where an earlier or naive reading was wrong, stating the
-  **right** value and pointing at the [Correction Ledger](correction-ledger.md).
-  The ledger holds 67 such corrections (12 of them HIGH-severity); the wiki always
-  states the corrected value and never the superseded one.
+  **right** value. The wiki always states the corrected value and never the
+  superseded one.
 
 ### 4.3 How pseudocode names real symbols
 
@@ -277,10 +275,6 @@ links back here for its provenance framing:
 - **[Codename ↔ Generation Cross-Walk](codename-crosswalk.md)** — the definitive
   codename ↔ NC-version ↔ coretype ↔ arch_id ↔ product table, each cell pinned to
   a binary surface, with the v5-label-overload hazard called out.
-- **[The Do-Not-Repeat / Correction Ledger](correction-ledger.md)** — the 67
-  cross-report corrections (12 HIGH). State the corrected value, never the
-  superseded one; the full ledger is also in
-  [Appendix · Full Correction Ledger](../appendix/do-not-repeat-full-ledger.md).
 - **[Master Glossary](../glossary.md)** — every term a reimplementer meets, each
   grounded in its anchor (Cairo, `ncore2gp`, NX1.1.4, Xtensa24, FLIX, FLIX-desync,
   scalar-LX, NCFW, TPB, the engine `engine_idx` numbering, RTTI, `.xt.prop`,

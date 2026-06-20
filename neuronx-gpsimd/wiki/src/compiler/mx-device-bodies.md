@@ -30,7 +30,7 @@ version, and the true floor is **MARIANA (v4)**.
 > MAC on *both* engines. `[HIGH/OBSERVED — every cited bundle disassembled native this
 > pass, SHA-pinned carve.]`
 
-Confidence per [the Confidence & Walls model](../reference/correction-ledger.md):
+Confidence per [the Confidence & Walls model](../reference/confidence-model.md):
 `[HIGH/MED/LOW]` × `OBSERVED` (read from byte / disassembled / compile-verified /
 live-driven this pass) / `INFERRED` (reasoned over OBSERVED) / `CARRIED` (re-used from
 a cited sibling page at its confidence). The `extracted/` and `ida/` trees are

@@ -459,7 +459,6 @@ FLIX-desync device interiors of the `0xBD`/`0xF1` SEQ FLIX-inline DMA-transpose 
 > elsewhere only as the unrelated `UPDATE_MODE_SEM_SUB_REG_COMPLETE = 0x97` in a
 > *different* enum), and `0x98` is the real `TENSOR_SCALAR_SELECT`
 > ([ts-select](ts-select.md)). SortMerge is named-but-never-shipped. See
-> [correction-ledger §14](../../reference/correction-ledger.md) and
 > [confidence-model §4.5](../../reference/confidence-model.md). `[HIGH/OBSERVED — maverick
 > header line read this session.]`
 
@@ -542,5 +541,4 @@ documented on a dedicated page (authored separately). The major ones, by family:
 [`kernel_info_table` byte layout](../pool/kernel-info-table.md) (the 17-entry table) ·
 the [`0xF0` extended sub-dispatch](../pool/pool-ext-0xf0.md) (the 5-spec bridge) · the
 [SEQ ASCII dispatch hub](../seq/dispatch-hub.md) (the 178-slot fetch table) · the
-[correction ledger](../../reference/correction-ledger.md) (SortMerge phantom) · the
 [Confidence & Walls model](../../reference/confidence-model.md).

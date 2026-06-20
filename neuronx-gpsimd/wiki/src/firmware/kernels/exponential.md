@@ -689,5 +689,3 @@ bytes, the shipped C headers, and the `instruction_mapping.json`) — lawful int
   `nexp01` range-split + the seed roster; the firmware-side set-up primitives (§7c) draw from this family.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the tags, the FW-42 host-content
   wall, and the OBSERVED/INFERRED/CARRIED vocabulary every claim here carries.
-- [The Do-Not-Repeat / Correction Ledger](../../reference/correction-ledger.md) — the curated register
-  the §9b row belongs to (the sampler-vs-transform correction).

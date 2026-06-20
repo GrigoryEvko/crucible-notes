@@ -247,9 +247,8 @@ has **no row** — NCFW absent (the v5 wall).
 > (3) the source-file strings in address order `sunda.c (0x954f9) < cayman.c
 > (0x95923) < mariana.c (0x9592c) < mariana_plus.c (0x95936)` — the same order as
 > both the per-codename `ctx_log` symbols and the DRAM-blob symbols. `[HIGH/OBSERVED
-> — triple-anchored this session.]` Cross-linked to **§3 of the
-> [Do-Not-Repeat / Correction Ledger](../../reference/correction-ledger.md)**
-> (*"`0x0c = CAYMAN/v3`, `0x14 = MARIANA/v4`"*). Carry it; never re-introduce the
+> — triple-anchored this session.]` The binding is **`0x0c = CAYMAN/v3`,
+> `0x14 = MARIANA/v4`**. Carry it; never re-introduce the
 > swap. (coretype = arch_id + 1: SUNDA 6, CAYMAN 13, MARIANA 21, MARIANA_PLUS 29.)
 
 **Cross-check on the region size** (the `ncfw_log_algo_configs` leas, correctly
@@ -624,8 +623,6 @@ The idle loop parks at `waiti 15` with a tight back-edge:
 - The byte-exact enum bodies (`enc_alg_type`, `enc_alg_mesh_type`, the 61-event
   `enc_mesh_event_type`, the `cc_op` command word):
   [Collective-Type + cc_op Enum Reference](../ops/collective-enums.md)
-- The arch_id↔codename binding correction (the C1 inversion this page carries):
-  [The Do-Not-Repeat / Correction Ledger §3](../../reference/correction-ledger.md)
 - The scalar-LX ISA / decode / dispatch-spine evidence and the v5 wall:
   [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md),
   [NCFW IRAM Images + Host Selector](./ncfw-iram-images.md)

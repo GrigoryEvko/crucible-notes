@@ -448,8 +448,6 @@ unlock tomorrow.
   §4.4 and the resync discipline that lifts the spine to HIGH.
 - **[The Corpus, Tiers & Binary Inventory](corpus-inventory.md)** — what is and is not in the
   checkout; the file-absent walls (§4.7) are corpus facts.
-- **[The Do-Not-Repeat / Correction Ledger](correction-ledger.md)** — where MED claims have
-  been refined by later passes; the empirical record that the flagging works.
 - **The Open-Questions Register** (`appendix/open-questions-register.md`) and **The Coverage
   Ledger** (`appendix/coverage-ledger.md`) — the exhaustive, closability-partitioned residual
   ledger that this page's named walls are the defining subset of.

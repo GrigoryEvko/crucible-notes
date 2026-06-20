@@ -398,8 +398,7 @@ any top-level scan miss → `"P%i: UNKNOWN OPCODE=0x%x"` (**hex** opcode).
 ## 5. The do-not-repeat rows (explicit walls)
 
 These rows are **NOT live HW opcodes a reimplementer should decode as such.** They are
-called out so a future author does not re-list them as real kernels. The full ledger is
-on the [Do-Not-Repeat / Correction Ledger](do-not-repeat-full-ledger.md).
+called out so a future author does not re-list them as real kernels.
 
 ### 5.1 The SortMerge PHANTOM — do not document as an opcode
 
@@ -410,8 +409,7 @@ on the [Do-Not-Repeat / Correction Ledger](do-not-repeat-full-ledger.md).
 > `0x97` is **never assigned to any opcode** in any gen (it appears only as the unrelated
 > `NEURON_ISA_TPB_UPDATE_MODE_SEM_SUB_REG_COMPLETE = 0x97` in a *different* enum), and
 > `0x98` is the real `TENSOR_SCALAR_SELECT` ([ts-select](../firmware/kernels/ts-select.md)).
-> **SortMerge is named-but-never-shipped — it is NOT one of the 140.** See
-> [correction-ledger](../reference/correction-ledger.md). `[HIGH/OBSERVED — maverick header
+> **SortMerge is named-but-never-shipped — it is NOT one of the 140.** `[HIGH/OBSERVED — maverick header
 > `0x98` line + the absence of any `OPCODE_* = 0x97` re-verified this pass.]`
 
 ### 5.2 The MAVERICK (v5) / Maverick-only adds — flagged on the byte, MED on the body
@@ -519,8 +517,6 @@ compute/DMA/ACT gap** (the true remaining kernel-lane decode debt). The **20 dor
   Dtype column names.
 * [SEQ Decode / Dispatch Hub](../firmware/seq/dispatch-hub.md) — Surface A, the 178-slot
   fetch table the `CTRL`/SEQ-spine rows reach.
-* [Do-Not-Repeat / Correction Ledger](do-not-repeat-full-ledger.md) ·
-  [Correction Ledger](../reference/correction-ledger.md) — the phantom/retired-op record.
 * [Cross-Generation Opcode-Table Diff + TONGA](../generations/cross-gen-opcode-diff.md) —
   the per-gen step-diff + the TONGA V1 deep-dive.
 * [The Confidence & Walls Model](../reference/confidence-model.md) — the

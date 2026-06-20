@@ -323,5 +323,3 @@ map carries the defining subset they expand.)
   walls also guard against.
 - [The Gen-Invariance Thesis](gen-invariance.md) — the R(Q7) invariant/scaling/absent partition
   that backs the v2–v4 byte-grounded vs v5 bounded-INFERRED scope.
-- [The Do-Not-Repeat / Correction Ledger](../reference/correction-ledger.md) — where MED claims
-  have been refined by later passes; the empirical record that the flagging works.

@@ -13,7 +13,6 @@
 - [The Corpus, Tiers & Binary Inventory](reference/corpus-inventory.md)
 - [Toolchain Inventory & Versions](reference/toolchain-versions.md)
 - [Codename ↔ Generation Cross-Walk](reference/codename-crosswalk.md)
-- [The Do-Not-Repeat / Correction Ledger](reference/correction-ledger.md)
 - [Master Glossary](glossary.md)
 
 # Part 1 — Orientation
@@ -446,10 +445,8 @@
 - [The Codename ↔ NC-ver ↔ coretype ↔ arch_id Cross-Walk](appendix/codename-crosswalk-table.md)
 - [The Open-Questions Register](appendix/open-questions-register.md)
 - [The Coverage Ledger](appendix/coverage-ledger.md)
-- [The Full Do-Not-Repeat / Correction Ledger](appendix/do-not-repeat-full-ledger.md)
 - [Bibliography of Source Binaries](appendix/bibliography-source-binaries.md)
 - [Abbreviations & Symbol Index](appendix/abbreviations-index.md)
-- [Provenance & Methodology Changelog](appendix/changelog-provenance.md)
 - [The Reimplementation Checklist](appendix/reimplementation-checklist.md)
 
 <!-- ===========================================================================

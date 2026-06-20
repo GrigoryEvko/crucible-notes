@@ -606,7 +606,7 @@ with zero firmware value bugs found. *Deep page:* [The Confidence & Walls Model]
 **Callout markers** — Inline flags used on every page: **QUIRK** (a counter-intuitive but real
 behavior to reproduce), **GOTCHA** (a reimplementation/recovery trap), **CORRECTION** (a value
 that overturns an earlier or naive reading — state the corrected value, never the superseded one),
-**NOTE** (orienting context). *Deep pages:* [How to Read This Guide](reference/how-to-read.md), [The Do-Not-Repeat / Correction Ledger](reference/correction-ledger.md).
+**NOTE** (orienting context). *Deep pages:* [How to Read This Guide](reference/how-to-read.md).
 
 **The corpus (13 + 29)** — The substrate: **13** host x86-64 config/runtime libraries (the
 `nrtucode` pair, the `libisa`/`libtie`/`libcas`/`libfiss`/`libctype` ISA/sim/TIE libs, `libncfw`,

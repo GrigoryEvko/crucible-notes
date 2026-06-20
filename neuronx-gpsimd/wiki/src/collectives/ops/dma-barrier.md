@@ -357,8 +357,7 @@ event-semaphore array.
 > underscore) is a **dangling reference** — a stale TONGA-era underscore token left
 > behind by the TONGA→Neuron *no-underscore* rename of the DMA-pseudo family. No
 > current Neuron enum constant resolves it. `[HIGH/OBSERVED — grepped both directions;`
-> `lineage OBSERVED in the TONGA copy.]` This row also belongs in the
-> [Correction Ledger](../../reference/correction-ledger.md).
+> `lineage OBSERVED in the TONGA copy.]`
 
 Byte-exact inventory of every spelling:
 

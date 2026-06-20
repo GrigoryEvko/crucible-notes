@@ -49,9 +49,8 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
 > is an older, wholly *monolithic* firmware that has **neither** mode and **no** dispatch
 > table at all (§5). **"Sunda-mode"** is a runtime software-fetch *fallback* present only
 > on CAYMAN-and-later images, named after the legacy SUNDA-style software fetch and
-> retained as a boot-selectable alternative to the new HW-Decode path. This is the
-> [correction-ledger §8](../../reference/correction-ledger.md) distinction; keep it
-> straight or every per-gen claim below inverts. `[HIGH/OBSERVED]`
+> retained as a boot-selectable alternative to the new HW-Decode path. Keep this
+> distinction straight or every per-gen claim below inverts. `[HIGH/OBSERVED]`
 
 ---
 
@@ -339,8 +338,8 @@ sides) but the predicate's register-source slot decodes to `<undef>`.
 > table** — each FSM builds its own table base in fully-decoded scalar instructions,
 > regardless of how the gate slot reads the flag. So the residual is a documented FLIX
 > slot-table-coverage wall on the *data flow of the device data step* in the `0x31ac`
-> body, not a fact missing from the binding. Tagged **MED/INFERRED** and **`[BOUNDED]`**,
-> per [correction-ledger §9](../../reference/correction-ledger.md). `[MED/INFERRED]`
+> body, not a fact missing from the binding. Tagged **MED/INFERRED** and **`[BOUNDED]`**.
+> `[MED/INFERRED]`
 
 ---
 
@@ -445,8 +444,8 @@ HW-Decode path. It is **RESOLVED** here, and the prior mis-label is folded as an
 > | **LOWER** | `0x80814` | `0x2d81` (SW cursor, `pending_redirect`, no coherence telemetry) | **Sunda-mode** (SW fallback) |
 > | **HIGHER** | `0x80adc` | `0x31ac` (a7-frame, iter counter, RTL_PC_check coherence, fetch-gate) | **HW-Decode** (FIFO-assisted) |
 >
-> The IMG "lower = HW-Decode" label is **refuted as a positional artifact**, per
-> [correction-ledger §9](../../reference/correction-ledger.md). `[HIGH/OBSERVED]`
+> The IMG "lower = HW-Decode" label is **refuted as a positional artifact**.
+> `[HIGH/OBSERVED]`
 
 **The binary evidence that HIGHER = HW-Decode** — a whole-IRAM `const16`-immediate
 uniqueness census, re-run this session over the 116,768-byte `iram.bin`:
@@ -516,8 +515,8 @@ dual-mode construct exists:
 > its software-fetch/surprises functions plainly (`fast_fetch`, `handle_surprises`). The
 > CAYMAN+ build renamed those to `sunda_fetch` / `sunda_handle_surprises` precisely *when
 > it added the HW-decode path*, to mark the retained legacy path as "the old Sunda-style
-> fetch". So "Sunda-mode" is a CAYMAN+ runtime fallback name, not the silicon generation —
-> [correction-ledger §8](../../reference/correction-ledger.md). This single fact kills the
+> fetch". So "Sunda-mode" is a CAYMAN+ runtime fallback name, not the silicon generation.
+> This single fact kills the
 > per-generation hypothesis. `[HIGH/OBSERVED]`
 
 ### 7b. The per-gen presence table
@@ -653,8 +652,7 @@ carved fresh):
 **CARRIED (not re-derived this session):**
 
 - The host-side polarity (`disable_hw_decode = CSR 0x4000[0]`; HW decode default ON on
-  v3/v4; unsupported on v2) — from the runtime cross-reference and
-  [correction-ledger §8/§9](../../reference/correction-ledger.md).
+  v3/v4; unsupported on v2) — from the runtime cross-reference.
 - The cache backend HW/SW split (descr[+60]) — [iram-cache.md](iram-cache.md).
 - The per-engine `addi`-normalize-vs-raw-compare table shape — from the IMG cross-refs.
 
@@ -678,7 +676,5 @@ carved fresh):
 - [HW-Decode CAM-Table Programming](../../runtime/hw-decode-cam-programming.md) — the
   host-side profiler-CAM/table programming over the same `hw_decode` CSR bundle *(Part 8
   forward-link — **not yet authored** at time of writing)*.
-- [The Do-Not-Repeat Correction Ledger](../../reference/correction-ledger.md) — §8
-  ("Sunda-mode" ≠ SUNDA gen) and §9 (the O1 polarity resolution) this page implements.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the
   OBSERVED/INFERRED/CARRIED × HIGH/MED/LOW tagging used throughout.

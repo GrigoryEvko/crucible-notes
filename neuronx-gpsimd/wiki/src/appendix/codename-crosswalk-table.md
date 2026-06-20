@@ -436,7 +436,3 @@ family is genuinely open — **no "Trn4" is named anywhere; do not fabricate one
   the resolver bitmasks, the front-lib `cmp $0x17` 4-gen bound).
 - [Cross-Generation Opcode-Table Diff + TONGA](../generations/cross-gen-opcode-diff.md)
   — the TONGA V1 ISA deep-dive and the v2..v5 opcode-namespace evolution.
-- [The Full Do-Not-Repeat / Correction Ledger](do-not-repeat-full-ledger.md) — the
-  consolidated ledger of crossed-label / mis-read traps (the NCFW v3/v4 label
-  crossing, the `arch_id 36` understatement, the 187→189 re-count) this card is
-  pinned against.
