@@ -435,6 +435,23 @@
 - [VAL — Regfile-Bridge / Accumulator-Readout + Divergence Catalog](validation/regfile-bridge-divergence.md)
 - [VAL — Residual Closures + the Per-Family Pass/Fail Capstone](validation/capstone-matrix.md)
 
+# Part 16 — Appendices (15)
+- [Struct Census Overview](appendix/struct-census-overview.md)
+- [Host-Runtime Struct Layouts (field-exact)](appendix/struct-host-runtime-layouts.md)
+- [Device-Firmware Global Structs (field-exact)](appendix/struct-device-firmware-globals.md)
+- [Host Execution-State Structs + Census Close](appendix/struct-exec-state-census.md)
+- [The Opcode ↔ Kernel ↔ Engine Matrix](appendix/opcode-kernel-engine-matrix.md)
+- [The Master ISA Encoding Appendix](appendix/isa-encoding-appendix.md)
+- [The CSR Field-Table Index](appendix/csr-field-table-index.md)
+- [The Codename ↔ NC-ver ↔ coretype ↔ arch_id Cross-Walk](appendix/codename-crosswalk-table.md)
+- [The Open-Questions Register](appendix/open-questions-register.md)
+- [The Coverage Ledger](appendix/coverage-ledger.md)
+- [The Full Do-Not-Repeat / Correction Ledger](appendix/do-not-repeat-full-ledger.md)
+- [Bibliography of Source Binaries](appendix/bibliography-source-binaries.md)
+- [Abbreviations & Symbol Index](appendix/abbreviations-index.md)
+- [Provenance & Methodology Changelog](appendix/changelog-provenance.md)
+- [The Reimplementation Checklist](appendix/reimplementation-checklist.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
@@ -442,22 +459,6 @@ committed roadmap; as a page ships, its author MOVES that line out of the commen
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
 
-# Part 16 — Appendices (15)
-- appendix/struct-census-overview.md          — Struct Census Overview
-- appendix/struct-host-runtime-layouts.md     — Host-Runtime Struct Layouts (field-exact)
-- appendix/struct-device-firmware-globals.md  — Device-Firmware Global Structs (field-exact)
-- appendix/struct-exec-state-census.md        — Host Execution-State Structs + Census Close
-- appendix/opcode-kernel-engine-matrix.md     — The Opcode ↔ Kernel ↔ Engine Matrix
-- appendix/isa-encoding-appendix.md           — The Master ISA Encoding Appendix
-- appendix/csr-field-table-index.md           — The CSR Field-Table Index
-- appendix/codename-crosswalk-table.md        — The Codename ↔ NC-ver ↔ coretype ↔ arch_id Cross-Walk
-- appendix/open-questions-register.md         — The Open-Questions Register
-- appendix/coverage-ledger.md                 — The Coverage Ledger
-- appendix/do-not-repeat-full-ledger.md       — The Full Do-Not-Repeat / Correction Ledger
-- appendix/bibliography-source-binaries.md    — Bibliography of Source Binaries
-- appendix/abbreviations-index.md             — Abbreviations & Symbol Index
-- appendix/changelog-provenance.md            — Provenance & Methodology Changelog
-- appendix/reimplementation-checklist.md      — The Reimplementation Checklist
 
 LEGACY SOURCE (superseded by the Parts above — kept on disk for authors to mine,
 NOT linked): src/topics/{overview,toolchain,build-pipeline,programming-model,
