@@ -327,26 +327,26 @@
 - [The NEFF Byte-Level Container Capstone](neff/container-capstone.md)
 - [ntff Trace Protobuf + simdjson NEFF Parse State](neff/ntff-trace-parse-state.md)
 
+# Part 12 — Compiler Seam (12)
+- [The GPSIMD-Relevant Compiler Map + emit_*→opcode](compiler/compiler-map.md)
+- [SundaISel Deep-Dive](compiler/sundaisel.md)
+- [The MX Microscaling Path (end-to-end)](compiler/mx-path.md)
+- [Byte-Decode of the MX Device Bodies](compiler/mx-device-bodies.md)
+- [Tiling / Memory-Planning / Scheduling Backend](compiler/tiling-memory-scheduling.md)
+- [The Penguin BIR Instruction Set + BIR→ISA Map](compiler/bir-inst-roster.md)
+- [Fused-CC / nkilib Kernel Lowering (worked)](compiler/fused-cc-lowering.md)
+- [Optimization + Inter-Engine Sync Insertion](compiler/opt-sync-insertion.md)
+- [The Collective NRT-Load-Time Rewrite (byte-level)](compiler/collective-loadtime-rewrite.md)
+- [Dtype/Engine/Gen Fan-In + CC-Lane Synthesis](compiler/dtype-engine-fanin-synthesis.md)
+- [The NKI Frontend + Reference Simulator](compiler/nki-frontend.md)
+- [Compiler Cross-Reference to the neuronx-cc Wiki](compiler/crossref-neuronxcc.md)
+
 <!-- ===========================================================================
 ROADMAP — Parts 1–16 (401 leaf pages). Journey order: a reimplementer reads top
 to bottom to rebuild a Vision-Q7-compatible GPSIMD engine. Each Part below is a
 committed roadmap; as a page ships, its author MOVES that line out of the comment
 into a live `# Part N — Title` section + `- [Title](path.md)` link, in order.
 Per-page tasks: harness #588–#998. Do NOT bulk-uncomment — wire one page at a time.
-
-# Part 12 — Compiler Seam (12)
-- compiler/compiler-map.md                  — The GPSIMD-Relevant Compiler Map + emit_*→opcode
-- compiler/sundaisel.md                     — SundaISel Deep-Dive
-- compiler/mx-path.md                       — The MX Microscaling Path (end-to-end)
-- compiler/mx-device-bodies.md              — Byte-Decode of the MX Device Bodies
-- compiler/tiling-memory-scheduling.md      — Tiling / Memory-Planning / Scheduling Backend
-- compiler/bir-inst-roster.md               — The Penguin BIR Instruction Set + BIR→ISA Map
-- compiler/fused-cc-lowering.md             — Fused-CC / nkilib Kernel Lowering (worked)
-- compiler/opt-sync-insertion.md            — Optimization + Inter-Engine Sync Insertion
-- compiler/collective-loadtime-rewrite.md   — The Collective NRT-Load-Time Rewrite (byte-level)
-- compiler/dtype-engine-fanin-synthesis.md  — Dtype/Engine/Gen Fan-In + CC-Lane Synthesis
-- compiler/nki-frontend.md                  — The NKI Frontend + Reference Simulator
-- compiler/crossref-neuronxcc.md            — Compiler Cross-Reference to the neuronx-cc Wiki
 
 # Part 13 — Control Plane: CSR / Address / Interrupt / Security (58)
 ## Address map (17)
