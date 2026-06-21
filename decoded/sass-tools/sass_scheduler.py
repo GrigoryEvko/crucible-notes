@@ -180,6 +180,13 @@ class Operands:
     writes_cc: bool = False                          # writes a predicate/CC
     is_mem: bool = False
     is_branch: bool = False
+    # Predicates consumed as an @P / @!P EXECUTION GUARD (predicated execution or
+    # a guarded branch), as distinct from predicates read as an ordinary ALU
+    # operand (e.g. FSEL/SEL `!P0`, IADD3 carry-in).  Only a guard read triggers
+    # the CC/predicate control band; an operand read is an ordinary cross-pipe
+    # edge.  Differentially confirmed on sm_89: FSETP feeding @P0 BRA pays 13,
+    # FSETP feeding FSEL `!P0` pays 4.  (A subset of `reads`.)
+    guard_reads: set[str] = field(default_factory=set)
 
 
 # A register token: R0, R12, RZ, UR4, URZ, P0, PT, plus optional .reuse/.64 etc.
@@ -286,6 +293,7 @@ def disasm_operands(cubin: str) -> list[Operands]:
         ops = _split_dest_src(mnem, operand_str)
         if guard_reg:
             ops.reads.add(guard_reg)
+            ops.guard_reads.add(guard_reg)   # consumed as an @P execution guard
         out.append(ops)
     return out
 
@@ -473,28 +481,59 @@ def raw_weight(prod: Node, cons: Node, arch: str = "SM89") -> tuple[int, str]:
         return prod.band, "scoreboard"
 
     prod_pipe = LT.coupled_pipe(prod.mnem)
-    # The CC/predicate control band applies only when the consumer reads the
-    # producer's predicate result as a *guard*; a SETP whose predicate is read as
-    # a plain predicate-ALU operand is an ordinary cross-pipe edge.  The control
-    # band is a hard latency the predicated consumer cannot proceed without, so
-    # the mechanism is marked "stall_ctrl" (the fixpoint emits it in full, never
-    # reduced by intervening independent work).
+    # The CC/predicate control band (13) applies ONLY when the consumer reads the
+    # producer's predicate result as an @P EXECUTION GUARD (predicated execution
+    # or a guarded branch).  A SETP whose predicate is read as a plain ALU operand
+    # (FSEL/SEL `!P0`) is an ordinary same-/cross-pipe edge: differentially
+    # confirmed on sm_89, FSETP -> @P0 BRA pays 13 but FSETP -> FSEL `!P0` pays 4.
+    #
+    # The band IS absorbable by intervening issue, exactly like any other coupled
+    # producer latency: ptxas pays the full 13 only when the guarded consumer is
+    # immediately adjacent (gap=1); with independent work in the shadow it shrinks
+    # (gap=2 -> ~3 on sm_89).  Patching the gap=1 band 13->5 both saves 8 cyc/iter
+    # AND corrupts the result on the GPU, so the magnitude is hardware-enforced;
+    # but it is a producer-latency the consumer waits out, not an un-hideable
+    # floor.  So we mark it "stall_ctrl" purely for reporting; the fixpoint
+    # absorbs it through the normal intervening-cycle accounting.
     if prod.ops.writes_cc and _consumer_reads_guard(prod, cons):
         prod_pipe = LT.PIPE_CC
         cons_pipe = LT.consumer_pipe(cons.mnem, ccm)
         return LT.coupled_stall(arch, prod_pipe, cons_pipe), "stall_ctrl"
 
+    # Non-guard predicate use (or a CC producer feeding a value operand): the SETP
+    # forwards through its underlying compare datapath, NOT the control band.  Map
+    # a CC producer to its datapath pipe (FP compares share the FMA pipe; integer
+    # compares the INT pipe) so the matrix yields the ordinary forward (4/5), not
+    # the 13-cycle band reserved for guards.
+    if prod_pipe == LT.PIPE_CC:
+        prod_pipe = _setp_datapath_pipe(prod.mnem)
     cons_pipe = LT.consumer_pipe(cons.mnem, ccm)
     stall = LT.coupled_stall(arch, prod_pipe, cons_pipe)
     return stall, "stall"
 
 
+def _setp_datapath_pipe(mnem: str) -> str:
+    """The underlying compare datapath of a SETP-class producer when its result
+    is read as a value operand (not an @P guard): FP compares (FSETP/DSETP/HSETP2)
+    resolve on the FMA pipe, integer compares (ISETP) on the INT pipe."""
+    base = _base_mnem(mnem)
+    if base.startswith("F") or base.startswith("D") or base.startswith("H"):
+        return LT.PIPE_FMA
+    return LT.PIPE_INT
+
+
 def _consumer_reads_guard(prod: Node, cons: Node) -> bool:
-    """True if the consumer reads the producer's predicate/CC result as a guard
-    (the control-band dependency), vs. as an ordinary register operand."""
+    """True if the consumer reads the producer's predicate/CC result as an @P
+    EXECUTION GUARD (predicated execution / guarded branch) -- the control-band
+    dependency -- vs. as an ordinary register operand (FSEL/SEL `!P0`, carry-in).
+
+    Only the guard read triggers the 13-cycle control band; an operand read is an
+    ordinary cross-pipe edge (4/5).  Differentially confirmed on sm_89: an ISETP/
+    FSETP feeding `@P0 BRA`/`@P0 FFMA` pays the band, the same SETP feeding
+    `FSEL Rd, Ra, Rb, !P0` pays only the cross-pipe forward (4)."""
     pred_writes = {r for r in prod.ops.writes
                    if r.startswith("P") or r.startswith("UP")}
-    return bool(pred_writes & cons.ops.reads)
+    return bool(pred_writes & cons.ops.guard_reads)
 
 
 def war_weight() -> int:
@@ -739,13 +778,25 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None,
             "EXIT", "BRA", "RET", "NOP", "BAR", "JMP", "CALL", "BRX")
 
     def _floor(idx: int) -> int:
-        """Per-op dispatch-stall floor.  Terminators yield (0); ordinary math
-        carries the 1-cycle dispatch floor; a memory/issue op carries 2 (the
-        request-issue slot ptxas reserves -- being conservative here is always
-        hazard-safe, confirmed by dynamic validation)."""
+        """Per-op dispatch-stall floor.  Ordinary math carries the 1-cycle
+        dispatch floor; a memory/issue op carries 2 (the request-issue slot ptxas
+        reserves); branch and EXIT terminators are split below.  Being
+        conservative here is always hazard-safe, confirmed by dynamic validation.
+
+        TERMINATOR BRANCH FLOOR (sm_89, differentially measured):  a *taken*
+        control-transfer branch (BRA/BRX/JMP/CALL) needs a floor of 2 issue
+        cycles.  ptxas conservatively emits 5 on every such branch, but sweeping
+        the back-edge BRA of a hot loop shows stalls 2..5 are all equivalent
+        (~45 cyc/iter) while stall 1 falls off a cliff to ~65 cyc/iter (a +20-cyc
+        branch-resolution bubble per iteration) -- so the real requirement is 2,
+        not 5, and floor 0 (the old value) would model a loop back-edge as free
+        when the silicon pays 20 extra cycles.  EXIT/RET/NOP/BAR genuinely yield
+        (floor 0): patching EXIT's emitted 5 down to 1 leaves cycles unchanged."""
+        base = _base_mnem(dag.nodes[idx].mnem)
+        if base in ("BRA", "BRX", "JMP", "CALL", "CALLR"):
+            return 2
         if _is_terminator(idx):
             return 0
-        base = _base_mnem(dag.nodes[idx].mnem)
         # Memory-issue ops and the MUFU/special-function pipe reserve a 2-cycle
         # dispatch slot (the request-issue / SFU-launch latency).  Floor 2 is
         # the conservative, hazard-safe minimum confirmed by dynamic validation
@@ -787,13 +838,20 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None,
         for i in range(n):
             req = _floor(i)
             for dst, weight, is_ctrl in out_stall[i]:
-                if is_ctrl and not absorb_ctrl:
-                    req = max(req, weight)
-                    continue
                 # cycles already accumulated by instructions strictly between the
-                # producer i and the consumer dst (they occupy real issue slots).
-                # When absorb_ctrl is set the control band is treated identically:
-                # intervening independent issue genuinely hides it (proven on GPU).
+                # producer i and the consumer dst (they occupy real issue slots
+                # and so genuinely delay the consumer's issue).  The CC/predicate
+                # control band is absorbed by intervening issue exactly like any
+                # other coupled producer latency: differential measurement on
+                # sm_89 shows ptxas pays the full 13 only when the guarded consumer
+                # is immediately adjacent (gap=1, between=0) and shrinks it once
+                # independent work fills the shadow (gap=2 -> ~3).  At gap=1
+                # `between` is 0, so the full magnitude is emitted -- and that 13
+                # is hardware-enforced (patching it lower corrupts the result on
+                # the GPU).  The band therefore needs no special case.  The
+                # `absorb_ctrl` flag is retained for API compatibility; it no
+                # longer changes the band (which always absorbs against the real
+                # intervening issue) -- only the GPU gate decides acceptance.
                 between = issue_cycle[dst] - issue_cycle[i] - max(stalls[i], 1)
                 residual = weight - between
                 req = max(req, min(residual, weight))
@@ -1469,13 +1527,26 @@ $L:
 }
 
 
-def build_amp_corpus(workdir: Path, arch: str) -> list[tuple[str, str]]:
-    """Compile every amplified probe for one arch.  Returns [(name, cubin)].
+def build_amp_corpus(workdir: Path, arch: str,
+                     opt: str = "-O1") -> list[tuple[str, str]]:
+    """Compile every amplified probe for one arch at optimisation `opt`.
 
-    Uses -O1 so ptxas does not unroll the loop (an unrolled body folds the
-    back-edge into a straight chain the linear-DAG composer would under-stall;
-    the per-instruction surgical / full-composed V2 is only sound on the rolled
-    loop)."""
+    Returns [(name, cubin)].  `opt` is a ptxas optimisation flag, default -O1.
+
+    WHY THE DEFAULT IS -O1, AND WHY WE ALSO EXPOSE -O3
+    --------------------------------------------------
+    At -O1 ptxas does not unroll these tiny loops; an unrolled body would fold the
+    loop back-edge into a straight chain the linear-DAG composer can under-stall,
+    so the per-instruction surgical V2 stays sound on the rolled loop.  BUT -O1 is
+    not what production code is built at -- to claim a stall is *real ptxas waste*
+    the honest comparison is against ptxas -O3 (its best schedule).  These probe
+    bodies each carry a global store to one of 8 addresses, so ptxas does NOT
+    unroll them at -O3 either (verified: same instruction count, the rolled loop
+    survives), which means the surgical V2 is sound at -O3 as well.  Callers that
+    measure waste (perf_diff) drive opt="-O3"; --stall-profile keeps -O1 (it only
+    needs PC-sample density, and the -O1 body has the fixed PC layout the profile
+    cross-map expects).  A probe that DID unroll at -O3 would be skipped by the
+    per-iteration soundness check in perf_diff, not silently mismeasured."""
     workdir.mkdir(parents=True, exist_ok=True)
     smnum = arch.lower().replace("sm", "").lstrip("_")
     smflag = f"sm_{smnum}"
@@ -1487,13 +1558,13 @@ def build_amp_corpus(workdir: Path, arch: str) -> list[tuple[str, str]]:
         ptx_path = workdir / f"{name}.ptx"
         cub = workdir / f"{name}.cubin"
         ptx_path.write_text(ptx)
-        r = subprocess.run([PTXAS, "-arch", smflag, "-O1", "-o", str(cub),
+        r = subprocess.run([PTXAS, "-arch", smflag, opt, "-o", str(cub),
                             str(ptx_path)], capture_output=True, text=True)
         if r.returncode == 0:
             out.append((name, str(cub)))
         else:
-            print(f"  ! ptxas {smflag} {name} failed: {r.stderr.strip()[:120]}",
-                  file=sys.stderr)
+            print(f"  ! ptxas {smflag} {opt} {name} failed: "
+                  f"{r.stderr.strip()[:120]}", file=sys.stderr)
     return out
 
 
@@ -1515,7 +1586,8 @@ def _understall_candidates(d: Decomposition, cr: ComposeResult) -> list[dict]:
 # =============================================================================
 
 def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
-              niter: int = 200000, workdir: Path | None = None) -> int:
+              niter: int = 200000, workdir: Path | None = None,
+              opt: str = "-O3") -> int:
     """Measure, on the GPU, whether ptxas's conservative stalls are genuine waste.
 
     For each amplified probe that carries an understall candidate, build two
@@ -1535,11 +1607,32 @@ def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
       * V2 NOT bit-identical              : HAZARD, not waste (>=1 of those stalls
         was required -- tightening it changes results; ptxas was right).
 
-    Runs at low occupancy (one warp per scheduler) so a per-warp dispatch stall
-    is exposed on the critical path rather than hidden behind sibling warps.
+    `opt` is the ptxas optimisation level the probes are built at (default -O3 --
+    production opt: the honest comparison is against ptxas's BEST schedule, not
+    the under-scheduled -O1).  Runs at low occupancy (one warp per scheduler) so a
+    per-warp dispatch stall is exposed on the critical path rather than hidden
+    behind sibling warps.
+
+    MEASUREMENT RIGOR (so the reported wins are trustworthy):
+      * the correctness gate compares against ptxas's output for MANY seeds and
+        relaunches each -- a tightening must be hazard-safe across many inputs, not
+        bit-identical for one seed by luck;
+      * cycles use sm__cycles_active.avg (measured CV ~0.00% here vs
+        gpc__cycles_elapsed.max's 0.1-0.2%) measured PAIRED/interleaved V1,V2,...
+        so slow GPU-clock drift cancels;
+      * the WIN threshold is the measured noise floor (NOISE_FLOOR_CV), not an
+        eyeballed 0.5%.
     """
     import copy
-    workdir = workdir or Path("/tmp/sass_sched_amp")
+    import sass_reorder as R
+    # normalise the opt flag so "-O3", "O3", and "3" all mean ptxas -O3 (argparse
+    # eats a leading-dash value of a separate token, so accepting the bare form
+    # lets `--opt O3` work without the `=` quirk).
+    o = opt.strip().lstrip("-")
+    if o and not o.upper().startswith("O"):
+        o = "O" + o
+    opt = "-" + (o.upper() if o else "O3")
+    workdir = workdir or Path(f"/tmp/sass_sched_amp_{opt.lstrip('-')}")
     harness = _launch_harness()
     if harness is None:
         print("  ! launch harness unavailable (need gcc + libcuda)",
@@ -1549,13 +1642,16 @@ def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
         print(f"  ! ncu not found at {NCU}", file=sys.stderr)
         return 2
 
+    floor_pct = 100.0 * R.NOISE_FLOOR_CV
     print("=" * 78)
     print(f"PERF-DIFF  (ptxas V1 vs composed V2, measured on the GPU)  arch={arch}")
-    print(f"  grid={grid} block={block} niter={niter}  "
+    print(f"  grid={grid} block={block} niter={niter}  ptxas {opt}  "
           f"(low occupancy: per-warp stall on the critical path)")
+    print(f"  metric={R.CYCLE_METRIC} (paired)  WIN threshold={floor_pct:.2f}% "
+          f"(measured noise floor)  seeds={len(R._GATE_SEEDS)}")
     print("=" * 78)
 
-    cubins = build_amp_corpus(workdir, arch)
+    cubins = build_amp_corpus(workdir, arch, opt=opt)
     verdicts = []
     blocked = False
     for name, cub in cubins:
@@ -1576,11 +1672,16 @@ def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
         patch_cubin(cub, v2, entry, surg)
         saved = sum(c["ptxas"] - c["composed"] for c in cands)
 
-        # correctness gate: identical output on the GPU (a faulting V2 just means
-        # the all-candidates tighten hit a hazard -> bisect below, so quiet).
-        out1 = _run_kernel(harness, cub, entry, 8, grid, block, niter)
-        out2 = _run_kernel(harness, v2, entry, 8, grid, block, niter, quiet=True)
-        identical = (out1 is not None and out1 == out2)
+        # MULTI-SEED correctness gate: a tightening must reproduce ptxas's output
+        # for EVERY seed (across relaunches), not bit-identical for one seed by
+        # luck.  refs is the per-seed ptxas reference; a faulting V2 just means the
+        # all-candidates tighten hit a hazard -> bisect below.
+        refs = R._gate_outputs(harness, cub, entry, 8, grid, block, niter)
+        if refs is None:
+            print(f"\n{name}: reference launch failed; skipping")
+            continue
+        identical = R._gate_identical(harness, v2, entry, 8, grid, block, niter,
+                                      refs)
 
         cand_desc = ", ".join(f"#{c['idx']} {_base_mnem(c['mnem'])} "
                               f"{c['ptxas']}->{c['composed']}" for c in cands)
@@ -1589,8 +1690,8 @@ def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
 
         if not identical:
             # >=1 candidate is a real hazard.  Bisect (launch-only, no ncu) to
-            # find the largest subset whose tightening stays bit-identical, so we
-            # report exactly which candidates are waste vs which are hazards.
+            # find the largest subset whose tightening stays bit-identical across
+            # ALL seeds, so we report exactly which candidates are waste vs hazard.
             safe = []
             for c in cands:
                 trial = copy.deepcopy(base)
@@ -1599,9 +1700,8 @@ def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
                                                              end_group=False)
                 tcub = f"{workdir}/{name}_trial.cubin"
                 patch_cubin(cub, tcub, entry, trial)
-                ot = _run_kernel(harness, tcub, entry, 8, grid, block, niter,
-                                 quiet=True)
-                if ot is not None and ot == out1:
+                if R._gate_identical(harness, tcub, entry, 8, grid, block, niter,
+                                     refs):
                     safe.append(c)
             hazards = [c for c in cands if c not in safe]
             hz_desc = ", ".join(f"#{c['idx']} {_base_mnem(c['mnem'])} "
@@ -1621,36 +1721,36 @@ def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
             saved = sum(c["ptxas"] - c["composed"] for c in safe)
             safe_desc = ", ".join(f"#{c['idx']} {_base_mnem(c['mnem'])}"
                                   for c in safe)
-            print(f"  safe subset (bit-identical): {safe_desc}  "
+            print(f"  safe subset (bit-identical, all seeds): {safe_desc}  "
                   f"({saved} stall cyc/iter)")
             cands = safe        # measure + report the safe subset
 
-        # measure both variants
-        r1 = _ncu_perf(harness, cub, entry, grid, block, niter)
-        if r1.blocked:
-            blocked = True
-            break
-        r2 = _ncu_perf(harness, v2, entry, grid, block, niter)
-        if r2.blocked:
-            blocked = True
-            break
-        if not (r1.ok and r2.ok):
-            print(f"  ! ncu measurement failed "
-                  f"(v1={r1.stderr[:80]} v2={r2.stderr[:80]})")
+        # PAIRED/interleaved measurement on the stable metric: V1,V2,V1,V2,... so
+        # slow GPU-clock drift cancels and the delta reflects the per-iteration
+        # critical path (sm__cycles_active.avg, measured CV ~0.00% here).
+        pm = R._measure_paired(harness, cub, v2, entry, grid, block, niter, 8,
+                               pairs=7)
+        if pm is None:
+            # distinguish access-denied from a transient failure.
+            chk = _ncu_perf(harness, cub, entry, grid, block, niter)
+            if chk.blocked:
+                blocked = True
+                break
+            print(f"  ! ncu measurement failed")
             continue
-
-        c1 = r1.metrics.get("gpc__cycles_elapsed.max", 0.0)
-        c2 = r2.metrics.get("gpc__cycles_elapsed.max", 0.0)
+        c1, c2 = pm
         delta = c1 - c2
         pct = (100.0 * delta / c1) if c1 else 0.0
-        # noise floor: treat sub-0.5% as hardware-enforced (within run jitter)
-        if c1 and pct > 0.5:
+        # WIN iff the delta clears the MEASURED noise floor (NOISE_FLOOR_CV); a
+        # sub-floor delta is hardware-enforced (within run jitter).
+        if c1 and pct > floor_pct:
             verdict = "WASTE"
         else:
             verdict = "hw-enforced"
-        print(f"  GATE: V2 bit-identical to V1 (correctness OK)")
+        print(f"  GATE: V2 bit-identical to V1 across {len(refs)} seeds "
+              f"(correctness OK)")
         print(f"  cycles V1(ptxas)={c1:,.0f}  V2(composed)={c2:,.0f}  "
-              f"delta={delta:,.0f} ({pct:+.2f}%)")
+              f"delta={delta:,.0f} ({pct:+.2f}%)  [floor {floor_pct:.2f}%]")
         print(f"  VERDICT: {'MEASURED ptxas WASTE' if verdict=='WASTE' else 'HARDWARE-ENFORCED (stall absorbed)'}")
         verdicts.append((name, verdict, c1, c2, cands))
 
@@ -2331,14 +2431,17 @@ def _run_tighten(sr, args) -> int:
         print("  GATE: FAILED -- tightened output differed (should not happen "
               "after bisection); NO patch accepted")
         return 1
-    print("  GATE: bit-identical to ptxas (correctness OK)")
+    print(f"  GATE: bit-identical to ptxas across {len(sr._GATE_SEEDS)} seeds "
+          f"(correctness OK)")
     if res.cycles_ptxas:
         d_ = res.cycles_ptxas - res.cycles_ours
         pct = 100.0 * d_ / res.cycles_ptxas if res.cycles_ptxas else 0.0
+        floor_pct = 100.0 * sr.NOISE_FLOOR_CV
         print(f"  cycles V1(ptxas)={res.cycles_ptxas:,.0f}  "
               f"V2(tightened)={res.cycles_ours:,.0f}  "
-              f"delta={d_:,.0f} ({pct:+.2f}%)")
-        print(f"  VERDICT: {'MEASURED WIN' if pct > 0.5 else 'hardware-enforced (no slack)'}")
+              f"delta={d_:,.0f} ({pct:+.2f}%)  "
+              f"[{sr.CYCLE_METRIC}, paired; floor {floor_pct:.2f}%]")
+        print(f"  VERDICT: {'MEASURED WIN' if pct > floor_pct else 'hardware-enforced (no slack)'}")
     elif res.n_safe == 0:
         print("  (no slack found; ptxas already minimal on this kernel)")
     return 0
@@ -2386,9 +2489,11 @@ def _run_optsched(sr, args) -> int:
     if res.cycles_ptxas:
         d_ = res.cycles_ptxas - res.cycles_ours
         pct = 100.0 * d_ / res.cycles_ptxas if res.cycles_ptxas else 0.0
+        floor_pct = 100.0 * sr.NOISE_FLOOR_CV
         print(f"  cycles V(ptxas)={res.cycles_ptxas:,.0f}  "
-              f"V(ours)={res.cycles_ours:,.0f}  delta={d_:,.0f} ({pct:+.2f}%)")
-        print(f"  VERDICT: {'MEASURED REORDER WIN' if pct > 0.5 else 'no measured cycle change (reorder hidden by stalls/occupancy)'}")
+              f"V(ours)={res.cycles_ours:,.0f}  delta={d_:,.0f} ({pct:+.2f}%)  "
+              f"[{sr.CYCLE_METRIC}; floor {floor_pct:.2f}%]")
+        print(f"  VERDICT: {'MEASURED REORDER WIN' if pct > floor_pct else 'no measured cycle change (reorder hidden by stalls/occupancy)'}")
     elif n_accept == 0:
         print("  (no block beat ptxas's order on this kernel -- ptxas's "
               "schedule is already makespan-optimal here)")
@@ -2436,6 +2541,12 @@ def main(argv: list[str]) -> int:
                          "amp_transc / amp_intchain / amp_fpchain / amp_loadmath)")
     ap.add_argument("--arch", default="sm_89",
                     help="arch for --perf-diff (default sm_89)")
+    ap.add_argument("--opt", default="O3",
+                    help="ptxas optimisation level for --perf-diff probes "
+                         "(default O3 = production opt; the honest waste "
+                         "comparison is vs ptxas's best schedule).  Give it WITHOUT"
+                         " a leading dash (O3 / O1 / O0) so argparse does not "
+                         "mistake the value for a flag; --opt=-O3 also works.")
     ap.add_argument("--grid", type=int, help="grid blocks (GPU-measurement modes)")
     ap.add_argument("--block", type=int, help="block threads (GPU-measurement modes)")
     ap.add_argument("--niter", type=int, help="loop iterations (amplification)")
@@ -2468,7 +2579,8 @@ def main(argv: list[str]) -> int:
         return perf_diff(arch=args.arch,
                          grid=args.grid if args.grid else 20,
                          block=args.block if args.block else 32,
-                         niter=args.niter if args.niter else 200000)
+                         niter=args.niter if args.niter else 200000,
+                         opt=args.opt)
     if args.tighten:
         import sass_reorder
         return _run_tighten(sass_reorder, args)

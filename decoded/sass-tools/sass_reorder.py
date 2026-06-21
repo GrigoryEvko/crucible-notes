@@ -60,6 +60,33 @@ from sass_ctrl_decode import Ctrl  # noqa: E402
 NVDISASM = S.NVDISASM
 PTXAS = S.PTXAS
 
+# -----------------------------------------------------------------------------
+# Cycle-measurement metric + noise-floor-derived gate margin.
+# -----------------------------------------------------------------------------
+# Primary cycle metric for the gate.  Live noise characterisation on the sm_89
+# box (RTX 1000 Ada; recovered scheduling model + live-GPU measurement) showed
+# sm__cycles_active.avg is ~10-20x more stable than gpc__cycles_elapsed.max:
+# repeating the SAME unmodified cubin gives sm__cycles_active.avg CV ~= 0.00%
+# (range < 0.01%) at every niter, while gpc__cycles_elapsed.max drifts (CV
+# 0.1-0.2%, range up to ~0.8%) and the drift GROWS with niter (it folds in launch
+# ramp / tail / GPC clock-domain wobble that does NOT touch the per-iteration
+# critical path).  For a loop-amplified single-warp-per-SM probe the per-SM
+# active-cycle count IS the per-iteration critical path x niter, so
+# sm__cycles_active.avg is both the right physical quantity AND the low-noise one.
+# We keep gpc as a cross-check / fallback.
+CYCLE_METRIC = "sm__cycles_active.avg"
+CYCLE_METRIC_XCHECK = "gpc__cycles_elapsed.max"
+
+# Measured noise floor of CYCLE_METRIC on this box (run-to-run CV, same cubin).
+# sm__cycles_active.avg is effectively jitter-free here (CV ~0.00%), but we keep a
+# small non-zero floor so the gate margin is principled rather than 0.  1.001
+# (0.1%) is >>50x the measured CV of sm__cycles_active.avg yet far below the
+# smallest real win we re-validated (+2.7% transc, +4.7% fpchain @-O3, paired) --
+# so the gate rejects noise but never rejects a genuine win.  This is also the
+# WIN/no-win reporting threshold (a delta below this is "within noise").
+NOISE_FLOOR_CV = 0.001          # 0.1% -- measured-floor-derived gate margin
+CYCLE_GATE = 1.0 + NOISE_FLOOR_CV
+
 
 # =============================================================================
 # Reordered control-word recomposition.
@@ -117,15 +144,44 @@ def recompose_for_order(d: "S.Decomposition", perm: list[int],
 # =============================================================================
 
 def reorder_patch(src: str, dst: str, entry: str, perm: list[int],
-                  cr: "S.ComposeResult", n_instr: int) -> int:
+                  cr: "S.ComposeResult", n_instr: int,
+                  active: set[int] | None = None) -> int:
     """Write a reordered + recomposed copy of the cubin.
 
     The .text.<entry> section's first n_instr 16-byte words are rewritten so that
-    new position k holds the raw 16-byte word of old instruction perm[k], with
-    its scheduling-control bits replaced by pack_control(cr.fields[k]); every
-    other bit (opcode, operands, reuse, predicate) is preserved verbatim.  Words
-    beyond n_instr (trailing NOP padding) are left untouched.  Returns words
-    written.
+    new position k holds the raw 16-byte word of old instruction perm[k], with its
+    scheduling-control AND operand-reuse bits (105-125) replaced by
+    pack_control(cr.fields[k]); the opcode / operands / predicate are preserved
+    verbatim.  Words beyond n_instr (trailing NOP padding) are left untouched.
+
+    WHY THE OPERAND-REUSE FLAG IS CLEARED, NOT PRESERVED
+    ----------------------------------------------------
+    The per-operand `.reuse` flag is a POSITION-DEPENDENT hint: it tells the
+    hardware to hold this instruction's operand in the collector so the NEXT
+    instruction that reads the same register port skips the register-file fetch.
+    Its correctness depends on which instruction follows -- so a verbatim-preserved
+    reuse flag is STALE the moment we permute words (it would feed the new
+    successor a value cached for a different one).  The dependency DAG does not
+    model the reuse cache, so we cannot re-derive a correct reuse bit; instead we
+    CLEAR it on every reordered word (recompose emits batch_t/reuse = 0).  Clearing
+    reuse is always correctness-safe (the operand is simply re-fetched), it only
+    forgoes a micro-optimisation.  On this ISA the reuse flags live in bits 122-125
+    (the field the composer calls batch_t plus the 4th slot at 125), so the clear
+    mask spans 105-125 -- one bit wider than pack_control writes -- to wipe the
+    top reuse slot too.  Returns words written.
+
+    TRUE FALLBACK FOR NON-REORDERED POSITIONS
+    -----------------------------------------
+    `active` is the set of NEW positions that belong to an accepted-reorder block.
+    Our recomposed control words only reproduce ptxas EXACTLY for blocks the GPU
+    gate accepted; recomposing an UN-reordered block would substitute the model's
+    stalls/scoreboards for ptxas's (and the model is conservative-but-not-exact:
+    on a tight FP chain it can emit a shorter stall than ptxas, which corrupts the
+    result).  So a position NOT in `active` (a block that fell back to ptxas, or
+    trailing padding) is copied BYTE-FOR-BYTE from ptxas -- its control word is
+    ptxas's verbatim, not recomposed.  This makes "fall back to ptxas" a true
+    byte-level fallback: when no block is accepted the output is bit-identical to
+    the original cubin.  `active=None` rewrites every position (legacy behaviour).
     """
     data = bytearray(Path(src).read_bytes())
     off, size = S._text_section_span(Path(src), entry)
@@ -134,9 +190,17 @@ def reorder_patch(src: str, dst: str, entry: str, perm: list[int],
     # overwrite is correct (we read from the snapshot, write to `data`).
     orig = [int.from_bytes(data[off + k * 16: off + k * 16 + 16], "little")
             for k in range(nwords)]
-    clear = ~(((1 << (124 - 105 + 1)) - 1) << 105)   # zero bits 105..124
+    # zero bits 105..125: the scheduling-control word (105-124) AND the top
+    # operand-reuse slot (125), so no stale reuse flag survives a reorder.
+    clear = ~(((1 << (125 - 105 + 1)) - 1) << 105)
     patched = 0
     for k in range(min(n_instr, len(perm), nwords)):
+        if active is not None and k not in active:
+            # un-reordered position: keep ptxas's exact word (order AND control).
+            w = orig[perm[k]]
+            data[off + k * 16: off + k * 16 + 16] = w.to_bytes(16, "little")
+            patched += 1
+            continue
         w = orig[perm[k]] & clear
         if k < len(cr.fields):
             w |= S.pack_control(cr.fields[k])
@@ -163,6 +227,82 @@ def _run(harness: str, cubin: str, entry: str, nwords: int, grid: int,
          block: int, niter: int, quiet: bool = True) -> str | None:
     return S._run_kernel(harness, cubin, entry, nwords, grid, block, niter,
                          quiet=quiet)
+
+
+# Multiple seeds for the bit-identical gate.  A single seed (the shipped default
+# 12345) can pass by LUCK: a tightening that drops a stall below the true hazard
+# latency may still read the right value if, for THAT input, the stale register
+# happens to equal the fresh one, or the producer happens to finish in time at
+# this clock.  Exercising several seeds drives different register values down the
+# dependent chain, and several launches per seed exposes a nondeterministic race
+# (one that resolves correctly most of the time).  A subset is accepted only if
+# EVERY (cubin, seed, launch) matches the same-seed reference -- so "bit-identical"
+# means hazard-safe across the whole sample, not safe-for-one-input-by-luck.
+_GATE_SEEDS = (12345, 0x9E3779B9, 0x1234567, 0xDEADBEEF, 1, 0xFFFFFFFF)
+_GATE_RELAUNCH = 2          # launches per seed (catch nondeterministic races)
+
+
+def _gate_outputs(harness: str, cubin: str, entry: str, nwords: int, grid: int,
+                  block: int, niter: int,
+                  seeds=_GATE_SEEDS) -> dict[int, str] | None:
+    """Per-seed reference outputs for the original cubin (one launch per seed).
+    Returns {seed -> stdout}; None if any launch failed."""
+    refs: dict[int, str] = {}
+    for s in seeds:
+        o = S._run_kernel(harness, cubin, entry, nwords, grid, block, niter,
+                          seed=s, quiet=False)
+        if o is None:
+            return None
+        refs[s] = o
+    return refs
+
+
+def _gate_identical(harness: str, cubin: str, entry: str, nwords: int, grid: int,
+                    block: int, niter: int, refs: dict[int, str],
+                    relaunch: int = _GATE_RELAUNCH) -> bool:
+    """True iff `cubin` reproduces the reference output for EVERY seed, across
+    `relaunch` launches each (a race that resolves correctly most of the time is
+    rejected the first launch it diverges)."""
+    for s, ref in refs.items():
+        for _ in range(max(1, relaunch)):
+            o = S._run_kernel(harness, cubin, entry, nwords, grid, block, niter,
+                              seed=s, quiet=True)
+            if o is None or o != ref:
+                return False
+    return True
+
+
+def _measure_paired(harness: str, c1: str, c2: str, entry: str, grid: int,
+                    block: int, niter: int, nwords: int,
+                    pairs: int = 5) -> tuple[float, float] | None:
+    """Interleaved V1,V2,V1,V2,... measurement of CYCLE_METRIC.
+
+    Measuring V1 and V2 back-to-back cancels slow GPU-clock drift (the dominant
+    systematic error on a throttling laptop GPU): each pair sees nearly the same
+    clock state, so the per-pair ratio is clean even if the absolute cycle counts
+    wander run-to-run.  Returns (median_v1, median_v2) reconstructed so the caller
+    can report both an absolute and a delta; None if either side never measured.
+    One warmup pair settles the clock out of idle before the timed pairs."""
+    # warmup (settle clock); discarded.
+    S._ncu_perf(harness, c1, entry, grid, block, niter, nwords)
+    S._ncu_perf(harness, c2, entry, grid, block, niter, nwords)
+    v1s: list[float] = []
+    v2s: list[float] = []
+    for _ in range(max(1, pairs)):
+        r1 = S._ncu_perf(harness, c1, entry, grid, block, niter, nwords)
+        r2 = S._ncu_perf(harness, c2, entry, grid, block, niter, nwords)
+        if r1.blocked or r2.blocked:
+            return None
+        a = r1.metrics.get(CYCLE_METRIC) or r1.metrics.get(CYCLE_METRIC_XCHECK)
+        b = r2.metrics.get(CYCLE_METRIC) or r2.metrics.get(CYCLE_METRIC_XCHECK)
+        if a:
+            v1s.append(a)
+        if b:
+            v2s.append(b)
+    if not v1s or not v2s:
+        return None
+    v1s.sort(); v2s.sort()
+    return v1s[len(v1s) // 2], v2s[len(v2s) // 2]
 
 
 # =============================================================================
@@ -266,10 +406,13 @@ def optsched_kernel(cubin: str, entry: str | None = None,
                 perm[blk.start:blk.end] = block_perm[blk.bid]
         return perm
 
-    # ground-truth output from the original cubin
-    out_ref = _run(harness, cubin, entry, nwords, grid, block, niter, quiet=False)
-    if out_ref is None:
+    # ground-truth output from the original cubin, captured PER SEED so every
+    # accepted reorder must reproduce ptxas's result for the whole seed sample
+    # (not just the shipped seed 12345 -- see _gate_outputs / _gate_identical).
+    refs = _gate_outputs(harness, cubin, entry, nwords, grid, block, niter)
+    if refs is None:
         raise RuntimeError("reference kernel launch failed")
+    out_ref = refs[_GATE_SEEDS[0]]   # single-seed view for sub-helpers/reporting
 
     # baseline ptxas cycles -- the bar every accepted reorder must beat (or tie).
     base_cycles = _measure_cycles(harness, cubin, entry, grid, block, niter,
@@ -293,7 +436,7 @@ def optsched_kernel(cubin: str, entry: str | None = None,
         trial = accepted_bids | {bid}
         perm = build_perm(trial)
         cub_t, ident = _emit_and_check(harness, cubin, entry, perm, d,
-                                       live_in_all, n, out_ref, grid, block,
+                                       live_in_all, n, refs, grid, block,
                                        niter, nwords)
         if not ident:
             block_reason[bid] = "GPU gate: output differed -> fell back to ptxas"
@@ -301,8 +444,9 @@ def optsched_kernel(cubin: str, entry: str | None = None,
         if best_cycles is not None:
             cyc = _measure_cycles(harness, cub_t, entry, grid, block, niter,
                                   nwords)
-            # accept only if it does not regress beyond a small noise margin.
-            if cyc is None or cyc > best_cycles * 1.002:
+            # accept only if it does not regress beyond the measured noise floor
+            # (CYCLE_GATE = 1 + measured CV of sm__cycles_active.avg, see below).
+            if cyc is None or cyc > best_cycles * CYCLE_GATE:
                 block_reason[bid] = (
                     f"cycle gate: {cyc:,.0f} > best {best_cycles:,.0f} "
                     f"-> fell back to ptxas")
@@ -322,10 +466,10 @@ def optsched_kernel(cubin: str, entry: str | None = None,
     reorder_patch(cubin, final_cub, entry, final_perm, cr, n)
 
     result = OptResult(entry, n, outcomes, final_perm)
-    # final correctness assertion
-    out_final = _run(harness, final_cub, entry, nwords, grid, block, niter,
-                     quiet=False)
-    result.gate_ok = (out_final is not None and out_final == out_ref)
+    # final correctness assertion: the committed cubin must reproduce ptxas's
+    # output for the ENTIRE seed sample (multi-seed / multi-launch), not one seed.
+    result.gate_ok = _gate_identical(harness, final_cub, entry, nwords, grid,
+                                     block, niter, refs)
 
     # STAGE-1 ON TOP: tighten the slack stalls of the FINAL (possibly reordered)
     # schedule, GPU-gated bit-identical + cycle-non-regressing.  This captures the
@@ -366,6 +510,19 @@ def _tighten_on_top(harness, cubin, base_cub, entry, perm, d, live_in, n,
         return 0, 0, None
     base_fields = [S.ctrl_to_fields(c) for c in d2.ctrls]
 
+    # MULTI-SEED reference: the tightened reorder must reproduce the ORIGINAL
+    # ptxas output for every seed (base_cub already gates bit-identical to ptxas,
+    # so its reference is the original cubin's per-seed output).  This supersedes
+    # the single-seed out_ref the caller passes; if out_ref is provided we still
+    # require it to be the seed-12345 reference (a cheap consistency assert).
+    refs = _gate_outputs(harness, cubin, entry, nwords, grid, block, niter)
+    if refs is None:
+        return 0, 0, None
+    if out_ref is not None and refs.get(_GATE_SEEDS[0]) != out_ref:
+        # the caller's reference disagrees with a fresh launch -> environment
+        # changed under us; bail rather than gate against a stale baseline.
+        return 0, 0, None
+
     def patch_subset(subset):
         surg = [S.SchedFields(f.usched, f.dst_wr, f.src_rel, f.wait_mask,
                               f.batch_t) for f in base_fields]
@@ -377,20 +534,19 @@ def _tighten_on_top(harness, cubin, base_cub, entry, perm, d, live_in, n,
         return p
 
     v = patch_subset(cands)
-    ot = _run(harness, v, entry, nwords, grid, block, niter, quiet=True)
     safe = cands
-    if ot is None or ot != out_ref:
+    if not _gate_identical(harness, v, entry, nwords, grid, block, niter, refs):
         safe = []
         for c in cands:
             t = patch_subset(safe + [c])
-            o = _run(harness, t, entry, nwords, grid, block, niter, quiet=True)
-            if o is not None and o == out_ref:
+            if _gate_identical(harness, t, entry, nwords, grid, block, niter,
+                               refs):
                 safe.append(c)
     if not safe:
         return 0, 0, None
     final = patch_subset(safe)
-    of = _run(harness, final, entry, nwords, grid, block, niter, quiet=False)
-    if of is None or of != out_ref:
+    if not _gate_identical(harness, final, entry, nwords, grid, block, niter,
+                           refs):
         return 0, 0, None
     # cycle-gate the tightened result; only keep it if it does not regress.
     new_cyc = None
@@ -398,7 +554,7 @@ def _tighten_on_top(harness, cubin, base_cub, entry, perm, d, live_in, n,
         new_cyc = _measure_cycles(harness, final, entry, grid, block, niter,
                                   nwords)
         ref = cur_cycles if cur_cycles else base_cycles
-        if new_cyc is None or new_cyc > ref * 1.002:
+        if new_cyc is None or new_cyc > ref * CYCLE_GATE:
             return 0, 0, None
     # commit the tightened cubin as the final output.
     Path(f"/tmp/sass_optsched_{entry}.cubin").write_bytes(Path(final).read_bytes())
@@ -407,16 +563,32 @@ def _tighten_on_top(harness, cubin, base_cub, entry, perm, d, live_in, n,
 
 
 def _measure_cycles(harness: str, cubin: str, entry: str, grid: int, block: int,
-                    niter: int, nwords: int) -> float | None:
-    """Median of 3 ncu cycle measurements (gpc__cycles_elapsed.max) -- robust to
-    run-to-run jitter so the cycle gate does not accept/reject on noise."""
+                    niter: int, nwords: int, reps: int = 5,
+                    warmup: int = 1) -> float | None:
+    """Median of `reps` ncu cycle measurements (sm__cycles_active.avg) with a
+    warmup launch, robust to run-to-run jitter so the cycle gate does not
+    accept/reject on noise.
+
+    sm__cycles_active.avg is the per-SM active-cycle count: for our loop-amplified
+    single-warp-per-SM probes this is the per-iteration critical path x niter and
+    is essentially jitter-free on this box (measured CV ~0.00%), unlike
+    gpc__cycles_elapsed.max which carries launch/tail/clock-domain noise.  We take
+    a warmup measurement first (to settle the GPU clock out of its idle P-state)
+    then the median of `reps` -- the median rejects a single drift outlier."""
+    # warmup: discard the first measurement(s) -- the clock ramps from idle.
+    for _ in range(max(0, warmup)):
+        r = S._ncu_perf(harness, cubin, entry, grid, block, niter, nwords)
+        if r.blocked:
+            return None
     vals: list[float] = []
-    for _ in range(3):
+    for _ in range(max(1, reps)):
         r = S._ncu_perf(harness, cubin, entry, grid, block, niter, nwords)
         if r.blocked:
             return None
         if r.ok:
-            v = r.metrics.get("gpc__cycles_elapsed.max", 0.0)
+            v = r.metrics.get(CYCLE_METRIC, 0.0)
+            if not v:                       # metric missing -> fall back to xcheck
+                v = r.metrics.get(CYCLE_METRIC_XCHECK, 0.0)
             if v:
                 vals.append(v)
     if not vals:
@@ -427,14 +599,21 @@ def _measure_cycles(harness: str, cubin: str, entry: str, grid: int, block: int,
 
 def _emit_and_check(harness: str, cubin: str, entry: str, perm: list[int],
                     d: "S.Decomposition", live_in: dict[int, set[int]], n: int,
-                    out_ref: str, grid: int, block: int, niter: int,
+                    refs: dict[int, str], grid: int, block: int, niter: int,
                     nwords: int) -> tuple[str, bool]:
-    """Emit the reordered+recomposed cubin for `perm` and return (path, ident)."""
+    """Emit the reordered+recomposed cubin for `perm` and return (path, ident).
+
+    A REORDER permutes whole instruction words, so its blast radius is larger than
+    the stall-tightener's: it can disturb a stale operand-reuse flag, a cross-block
+    scoreboard pairing, or an input-dependent hazard that a single seed masks by
+    luck.  We therefore gate the reorder against the SAME multi-seed / multi-launch
+    reference the tightener uses (`refs`), not a single shipped seed."""
     cr = recompose_for_order(d, perm, live_in)
     trial = f"/tmp/sass_optsched_gate_{entry}.cubin"
     reorder_patch(cubin, trial, entry, perm, cr, n)
-    out = _run(harness, trial, entry, nwords, grid, block, niter, quiet=True)
-    return trial, (out is not None and out == out_ref)
+    ident = _gate_identical(harness, trial, entry, nwords, grid, block, niter,
+                            refs)
+    return trial, ident
 
 
 # =============================================================================
@@ -481,8 +660,11 @@ def tighten_kernel(cubin: str, entry: str | None = None,
         return res
 
     base = [S.ctrl_to_fields(c) for c in d.ctrls]
-    out_ref = _run(harness, cubin, entry, nwords, grid, block, niter, quiet=False)
-    if out_ref is None:
+    # MULTI-SEED reference: the gate compares against ptxas's output for EVERY
+    # seed, so a tightening must be hazard-safe across many register-value inputs,
+    # not just bit-identical for the single shipped seed by luck.
+    refs = _gate_outputs(harness, cubin, entry, nwords, grid, block, niter)
+    if refs is None:
         raise RuntimeError("reference launch failed")
 
     # surgical all-on
@@ -496,16 +678,14 @@ def tighten_kernel(cubin: str, entry: str | None = None,
         return p
 
     v2 = patch_subset(cands)
-    out2 = _run(harness, v2, entry, nwords, grid, block, niter, quiet=True)
     safe = cands
-    if out2 is None or out2 != out_ref:
-        # bisect: greedily add candidates that stay bit-identical
+    if not _gate_identical(harness, v2, entry, nwords, grid, block, niter, refs):
+        # bisect: greedily add candidates that stay bit-identical across ALL seeds
         safe = []
         for c in cands:
             trial = patch_subset(safe + [c])
-            ot = _run(harness, trial, entry, nwords, grid, block, niter,
-                      quiet=True)
-            if ot is not None and ot == out_ref:
+            if _gate_identical(harness, trial, entry, nwords, grid, block, niter,
+                               refs):
                 safe.append(c)
     hazards = [c for c in cands if c not in safe]
 
@@ -521,14 +701,15 @@ def tighten_kernel(cubin: str, entry: str | None = None,
         return res
 
     final = patch_subset(safe)
-    out_final = _run(harness, final, entry, nwords, grid, block, niter,
-                     quiet=False)
-    res.gate_ok = (out_final is not None and out_final == out_ref)
+    res.gate_ok = _gate_identical(harness, final, entry, nwords, grid, block,
+                                  niter, refs)
 
     if measure and res.gate_ok:
-        r1 = S._ncu_perf(harness, cubin, entry, grid, block, niter, nwords)
-        r2 = S._ncu_perf(harness, final, entry, grid, block, niter, nwords)
-        if r1.ok and r2.ok:
-            res.cycles_ptxas = r1.metrics.get("gpc__cycles_elapsed.max", 0.0)
-            res.cycles_ours = r2.metrics.get("gpc__cycles_elapsed.max", 0.0)
+        # paired/interleaved measurement on the stable metric: cancels clock drift
+        # so the reported V1->V2 delta reflects the per-iteration critical path,
+        # not run-to-run wobble (see _measure_paired / CYCLE_METRIC rationale).
+        pm = _measure_paired(harness, cubin, final, entry, grid, block, niter,
+                             nwords)
+        if pm is not None:
+            res.cycles_ptxas, res.cycles_ours = pm
     return res

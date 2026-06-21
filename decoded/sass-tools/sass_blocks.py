@@ -16,9 +16,13 @@ BB boundaries are recovered from `nvdisasm -c` directly:
 
   * a label line (`.L_x_0:`) starts a new block -- it is a branch target, so the
     instruction it precedes is a block leader.
-  * any control-transfer instruction (BRA/BRX/JMP/CALL/RET/EXIT/BSSY/BSYNC/
-    BREAK/BMOV/WARPSYNC/CALL/BPT/RTT/KILL/NANOSLEEP/YIELD) ENDS the current block;
-    the next instruction is a leader.
+  * any control-transfer instruction (BRA/BRX/JMP/CALL/RET/EXIT/BSYNC/BREAK/BMOV/
+    WARPSYNC/BPT/RTT/KILL) ENDS the current block; the next instruction is a leader.
+    BSYNC reconverges to a stacked PC and is itself a branch target, so it is a real
+    control point.  BSSY, by contrast, only PUSHES a reconvergence PC (execution
+    falls through), and YIELD/NANOSLEEP are scheduling hints -- none changes the PC,
+    so none ends a block; each is instead pinned to its slot (PINNED_IN_PLACE) so it
+    cannot float across the branch it guards while the rest of the block reorders.
   * BAR.* (barrier sync) and any instruction nvdisasm marks as a branch target
     also force a split.
 
@@ -49,15 +53,35 @@ from sass_ctrl_decode import Ctrl
 NVDISASM = "/usr/local/cuda-13.1/bin/nvdisasm"
 
 # Control-transfer / block-terminating mnemonics (base form, uppercase).
+#
+# Only PC-changing ops belong here.  Two subtleties recovered from sm_89 -O3 output:
+#
+#   * BSYNC reconverges to a stacked PC and is, in every observed cubin, ITSELF a
+#     branch target (so it already starts a block); it is a genuine control point
+#     and correctly ends the divergent region's block -> keep it a terminator.
+#   * BSSY only PUSHES a reconvergence PC onto the convergence stack; it does NOT
+#     change the PC (execution falls through).  So the instruction after a BSSY is
+#     NOT a basic-block leader -- making BSSY a terminator would create a false
+#     leader and fragment a real block.  BSSY is therefore handled separately
+#     (PINNED_IN_PLACE below): its block stays whole and reorderable, but the BSSY
+#     itself is pinned to its slot so it never floats across the branch it guards.
+#   * YIELD / NANOSLEEP are scheduling hints (no PC change) and must NOT be here for
+#     the same reason; they too only pin their own slot.
 TERMINATORS = {
     "BRA", "BRX", "JMP", "JMX", "CALL", "CALLR", "RET", "EXIT", "BREAK",
-    "BMOV", "WARPSYNC", "BPT", "RTT", "KILL", "NANOSLEEP", "YIELD", "RPCMOV",
+    "BMOV", "WARPSYNC", "BPT", "RTT", "KILL", "RPCMOV", "BSYNC",
 }
+# Ops that do NOT change the PC but whose program position is a control / scheduling
+# fence we must not reorder across: a BSSY's reconvergence-PC arm must stay ahead of
+# the divergent branch it guards; a YIELD/NANOSLEEP hint must stay where ptxas put
+# it.  The containing block stays reorder-eligible (these are not state-straddling
+# barriers), but each such instruction is pinned to its own slot.
+PINNED_IN_PLACE = {"BSSY", "YIELD", "NANOSLEEP"}
 # Barrier / synchronization ops whose state may straddle a block boundary; a
 # block containing one is NOT reorder-eligible (we keep ptxas's order there and
 # only run the Stage-1 stall-tightener on it).
 BARRIER_OPS = {
-    "BSSY", "BSYNC", "BAR", "DEPBAR", "MEMBAR", "ERRBAR", "BMSK.BAR",
+    "BAR", "DEPBAR", "MEMBAR", "ERRBAR", "BMSK.BAR",
     "ELECT", "VOTE.SYNC", "MATCH.SYNC", "REDUX.SYNC", "LDGSTS",
 }
 
@@ -78,10 +102,15 @@ class Block:
     is_target: bool = False    # block leader is an explicit branch target
     # cross-block (loop-carried / fall-through) scoreboard state we must preserve
     # verbatim through a reorder.  live_in_waits[idx] = set of SBs the consumer
-    # at `idx` waits on that were armed in an EARLIER block; pin_arms = SB ids
-    # armed in this block that are still live at block exit (consumed later).
+    # at `idx` waits on that were armed in an EARLIER block; live_out_arms = SB ids
+    # armed in this block that are still live at block exit (consumed in a LATER
+    # block), with their last-armer index pinned so the composer keeps the pairing.
     live_in_waits: dict[int, set[int]] = field(default_factory=dict)
+    live_out_arms: dict[int, int] = field(default_factory=dict)  # SB -> armer idx
     pinned: list[int] = field(default_factory=list)  # indices pinned in place
+    # internal: per-SB last in-block armer index, filled by _classify_block and
+    # consumed by partition_cubin's global live-out pass.
+    _last_armer: dict[int, int] = field(default_factory=dict)
 
     @property
     def size(self) -> int:
@@ -186,14 +215,31 @@ def _classify_block(blk: Block, ctrls: list[Ctrl], targets: set[int]) -> None:
             blk.reorder_ok = False
             blk.reason = f"barrier op #{k} {ctrls[k].mnem} (state straddles BB)"
             return
+    # PINNED_IN_PLACE ops (BSSY reconvergence-PC arm, YIELD/NANOSLEEP hints) do not
+    # change the PC, so the block stays reorderable -- but each must stay in its slot
+    # so it never floats across the divergent branch it guards (or, for a hint, away
+    # from the issue point ptxas chose).  Pin its index; the block terminator is
+    # already pinned last by the optsched model, so a lower-bound rank pin suffices.
+    for k in range(blk.start, blk.end):
+        if _base(ctrls[k].mnem) in PINNED_IN_PLACE:
+            if k not in blk.pinned:
+                blk.pinned.append(k)
     # Record cross-block scoreboard hazards so the reorder can preserve them:
     #   * a wait on an SB not armed earlier in THIS block is a live-in wait (the
     #     producer is in a previous block / a previous loop iteration).  The
     #     consumer keeps that wait bit verbatim; we additionally pin its index so
     #     it cannot float ahead of where the live value is guaranteed ready.
-    #   * the producer/consumer roles for in-block-armed SBs are re-derived by the
-    #     composer, so they need no pinning.
+    #   * an SB armed in THIS block whose consumer is in a LATER block (a live-out
+    #     arm -- e.g. a loop-invariant LDG hoisted into the prologue whose board the
+    #     loop body waits on every iteration) must keep its producer's last-armer
+    #     position: the composer re-derives in-block pairings but cannot see the
+    #     out-of-block consumer, so a moved/re-numbered producer would orphan the
+    #     downstream wait.  We mark the live-out armers here; partition_cubin's
+    #     global pass (which can see the consumers) pins the ones that are truly
+    #     live at block exit.  (In-block producer/consumer pairs need no pinning --
+    #     the composer re-derives them; only the cross-block ones are pinned.)
     armed_in_block: set[int] = set()
+    last_armer: dict[int, int] = {}          # SB -> last in-block index arming it
     for k in blk.indices():
         c = ctrls[k]
         live_in = {sb for sb in c.wait_sbs if sb not in armed_in_block}
@@ -202,8 +248,14 @@ def _classify_block(blk: Block, ctrls: list[Ctrl], targets: set[int]) -> None:
             blk.pinned.append(k)
         if c.dst_wr != 7:
             armed_in_block.add(c.dst_wr)
+            last_armer[c.dst_wr] = k
         if c.src_rel != 7:
             armed_in_block.add(c.src_rel)
+            last_armer[c.src_rel] = k
+    # a PINNED_IN_PLACE op may also be a live-in consumer; dedup + keep sorted.
+    blk.pinned = sorted(set(blk.pinned))
+    # stash the per-SB last-armer index for the global live-out pass to consult.
+    blk._last_armer = last_armer
 
 
 @dataclass
@@ -221,10 +273,80 @@ class Partition:
                 f"(sizes {sorted(b.size for b in rb)})")
 
 
+def _pin_live_out_arms(ctrls: list[Ctrl], blocks: list[Block]) -> None:
+    """Pin the producer of every scoreboard that is live at its block's exit.
+
+    A scoreboard armed in block B is "live-out" when some later instruction WAITS
+    on it before any instruction re-arms it.  The classic case is a loop-invariant
+    `LDG` hoisted into the prologue: it arms SBk once, and the rolled loop body (a
+    different block) waits on SBk every iteration.  The per-block composer re-derives
+    only in-block producer->consumer pairings, so a live-out producer that the
+    reorder moves or renumbers would orphan its out-of-block consumer.  We therefore
+    pin that producer's last-armer index in place (added to `pinned`, recorded in
+    `live_out_arms`) so the schedule keeps the cross-block arm where the consumer
+    expects it.  The GPU bit-identical gate is still the final safety net; this pass
+    just stops a correct schedule from being needlessly rejected.
+
+    Re-arm before wait kills the liveness: we scan forward from each block's exit and
+    take the FIRST event per SB (a re-arm makes the earlier arm dead; a wait makes it
+    live).  Conservative on the loop back-edge: a block reachable from a later branch
+    target is treated as a possible successor of every earlier block, so a wait
+    anywhere after the producer (even across the back-edge) keeps the arm pinned.
+    """
+    n = len(ctrls)
+    # For each SB, find for each instruction index whether the NEXT cross-stream
+    # event is a wait (live) or a re-arm (dead).  We do a single backward sweep.
+    # next_wait[sb] = nearest later index that WAITS on sb with no intervening
+    # re-arm; we mark a producer live-out if such a wait exists in a LATER block.
+    SB = 6
+    next_event_is_wait = [[False] * SB for _ in range(n + 1)]
+    # walk backward: at each index, propagate per-SB "next event after me is a wait"
+    state = [False] * SB        # for sb: is the next downstream event a wait?
+    for i in range(n - 1, -1, -1):
+        c = ctrls[i]
+        # snapshot AFTER i (what the producer at i sees downstream) is current state
+        for sb in range(SB):
+            next_event_is_wait[i][sb] = state[sb]
+        # now fold i's own events into state (so earlier indices see i): a re-arm at
+        # i resets liveness to dead unless i itself also waits; a wait at i sets live.
+        waited = set(c.wait_sbs)
+        armed = set()
+        if c.dst_wr != 7:
+            armed.add(c.dst_wr)
+        if c.src_rel != 7:
+            armed.add(c.src_rel)
+        for sb in range(SB):
+            if sb in waited:
+                state[sb] = True       # a wait at i: producers before i are live
+            elif sb in armed:
+                state[sb] = False      # a re-arm at i with no wait: earlier arm dead
+    # now pin each block's live-out armers.
+    for blk in blocks:
+        if not blk.reorder_ok:
+            continue
+        for sb, armer_idx in getattr(blk, "_last_armer", {}).items():
+            # is the arm at armer_idx consumed by a wait AFTER the block ends?
+            # next_event_is_wait[armer_idx][sb] is True iff the first downstream
+            # event for sb (after armer_idx) is a wait with no intervening re-arm.
+            if next_event_is_wait[armer_idx][sb]:
+                # only a CROSS-BLOCK consumer matters: an in-block wait was already
+                # handled by the composer (it re-derives in-block pairings).  Check
+                # whether the resolving wait lies outside this block.
+                resolved_in_block = any(
+                    sb in ctrls[k].wait_sbs for k in range(armer_idx + 1, blk.end))
+                if resolved_in_block:
+                    continue
+                blk.live_out_arms[sb] = armer_idx
+                if armer_idx not in blk.pinned:
+                    blk.pinned.append(armer_idx)
+        blk.pinned.sort()
+
+
 def partition_cubin(cubin: str, ctrls: list[Ctrl]) -> Partition:
     """Top-level: partition a decoded cubin into basic blocks."""
     targets = label_offsets(cubin)
     blocks = split_blocks(ctrls, targets)
+    _pin_live_out_arms(ctrls, blocks)
     return Partition(ctrls, blocks, targets)
 
 
@@ -240,7 +362,9 @@ if __name__ == "__main__":
         tag = "REORDER" if b.reorder_ok else f"PINNED ({b.reason})"
         extra = ""
         if b.live_in_waits:
-            extra = f"  live-in waits: {b.live_in_waits}"
+            extra += f"  live-in waits: {b.live_in_waits}"
+        if b.live_out_arms:
+            extra += f"  live-out arms: {b.live_out_arms}"
         print(f"  BB{b.bid:<2} [{b.start:>3}..{b.end:<3}) "
               f"off={b.start_off:#06x} size={b.size:<3} {tag}{extra}")
         for k in b.indices():
