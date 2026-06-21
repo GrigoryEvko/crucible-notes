@@ -406,6 +406,17 @@ def optsched_kernel(cubin: str, entry: str | None = None,
                 perm[blk.start:blk.end] = block_perm[blk.bid]
         return perm
 
+    def build_active(active_bids: set[int]) -> set[int]:
+        """The NEW positions whose control words we recompose: exactly the index
+        ranges of the actively-reordered blocks.  Every other position keeps
+        ptxas's exact word (true fallback), so a block we did NOT accept is
+        byte-identical to the original cubin."""
+        active: set[int] = set()
+        for blk in part.blocks:
+            if blk.bid in active_bids and blk.bid in block_perm:
+                active.update(range(blk.start, blk.end))
+        return active
+
     # ground-truth output from the original cubin, captured PER SEED so every
     # accepted reorder must reproduce ptxas's result for the whole seed sample
     # (not just the shipped seed 12345 -- see _gate_outputs / _gate_identical).
@@ -437,7 +448,7 @@ def optsched_kernel(cubin: str, entry: str | None = None,
         perm = build_perm(trial)
         cub_t, ident = _emit_and_check(harness, cubin, entry, perm, d,
                                        live_in_all, n, refs, grid, block,
-                                       niter, nwords)
+                                       niter, nwords, active=build_active(trial))
         if not ident:
             block_reason[bid] = "GPU gate: output differed -> fell back to ptxas"
             continue
@@ -461,9 +472,12 @@ def optsched_kernel(cubin: str, entry: str | None = None,
                 oc.reason = block_reason.get(oc.bid, "fell back to ptxas")
 
     final_perm = build_perm(accepted_bids)
+    final_active = build_active(accepted_bids)
     cr = recompose_for_order(d, final_perm, live_in_all)
     final_cub = f"/tmp/sass_optsched_{entry}.cubin"
-    reorder_patch(cubin, final_cub, entry, final_perm, cr, n)
+    # only accepted-reorder positions get recomposed control; everything else is
+    # ptxas's exact word -- so if NOTHING was accepted the output == the original.
+    reorder_patch(cubin, final_cub, entry, final_perm, cr, n, active=final_active)
 
     result = OptResult(entry, n, outcomes, final_perm)
     # final correctness assertion: the committed cubin must reproduce ptxas's
@@ -600,17 +614,24 @@ def _measure_cycles(harness: str, cubin: str, entry: str, grid: int, block: int,
 def _emit_and_check(harness: str, cubin: str, entry: str, perm: list[int],
                     d: "S.Decomposition", live_in: dict[int, set[int]], n: int,
                     refs: dict[int, str], grid: int, block: int, niter: int,
-                    nwords: int) -> tuple[str, bool]:
+                    nwords: int,
+                    active: set[int] | None = None) -> tuple[str, bool]:
     """Emit the reordered+recomposed cubin for `perm` and return (path, ident).
 
     A REORDER permutes whole instruction words, so its blast radius is larger than
     the stall-tightener's: it can disturb a stale operand-reuse flag, a cross-block
     scoreboard pairing, or an input-dependent hazard that a single seed masks by
     luck.  We therefore gate the reorder against the SAME multi-seed / multi-launch
-    reference the tightener uses (`refs`), not a single shipped seed."""
+    reference the tightener uses (`refs`), not a single shipped seed.
+
+    `active` restricts the recomposed control words to the reordered block(s) under
+    trial; every other position keeps ptxas's exact word, so a trial isolates the
+    block(s) being added and is not polluted by recomposing un-reordered blocks
+    (whose model stalls may differ from ptxas and would fault the gate spuriously,
+    masking which block is actually safe)."""
     cr = recompose_for_order(d, perm, live_in)
     trial = f"/tmp/sass_optsched_gate_{entry}.cubin"
-    reorder_patch(cubin, trial, entry, perm, cr, n)
+    reorder_patch(cubin, trial, entry, perm, cr, n, active=active)
     ident = _gate_identical(harness, trial, entry, nwords, grid, block, niter,
                             refs)
     return trial, ident
