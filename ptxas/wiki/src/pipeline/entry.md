@@ -2,9 +2,20 @@
 
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The ptxas binary has a deceptively simple entry point. The exported `main` at `0x409460` is an 84-byte wrapper that sets up unbuffered I/O and immediately tail-calls `sub_446240` — the real compilation driver. This driver is a monolithic 11 KB function that allocates a 1,352-byte master options block on the stack, establishes `setjmp`-based error recovery, parses all command-line options through a generic framework, reads PTX input, and then loops over compile units running the full `Parse -> CompileUnitSetup -> DAGgen -> OCG -> ELF -> DebugInfo` pipeline for each. The entire error-handling strategy is non-local: any of the 2,350 call sites to the central diagnostic emitter `sub_42FBA0` can trigger a `longjmp` back to the driver's recovery point on fatal errors.
+The ptxas binary has a deceptively simple entry point. The exported `main` at `0x409460` is an 84-byte wrapper that sets up unbuffered I/O and immediately tail-calls `sub_446240` — the real compilation driver. That driver is a monolithic 11 KB function that:
 
-The same binary doubles as an in-process library. When nvcc loads ptxas as a shared object rather than spawning a subprocess, three extra arguments to the driver carry an output buffer pointer, an extra option count, and an extra options array. Callback function pointers at fixed offsets in the options block allow the host process to receive diagnostics and progress notifications without going through stderr.
+- Allocates a 1,352-byte master options block on the stack.
+- Establishes `setjmp`-based error recovery.
+- Parses all command-line options through a generic framework.
+- Reads PTX input.
+- Loops over compile units, running the full `Parse -> CompileUnitSetup -> DAGgen -> OCG -> ELF -> DebugInfo` pipeline for each.
+
+> The entire error-handling strategy is non-local: any of the 2,350 call sites to the central diagnostic emitter `sub_42FBA0` can trigger a `longjmp` back to the driver's recovery point on fatal errors.
+
+The same binary doubles as an in-process library. When nvcc loads ptxas as a shared object rather than spawning a subprocess:
+
+- Three extra arguments to the driver carry an output buffer pointer, an extra option count, and an extra options array.
+- Callback function pointers at fixed offsets in the options block let the host process receive diagnostics and progress notifications without going through stderr.
 
 | | |
 |---|---|
@@ -258,7 +269,13 @@ The option parsing library lives in the `0x1C96000`--`0x1C97FFF` range and is sh
 
 ## From Parsed Options to the Per-Function OCG Context
 
-The 1,352-byte options block produced here is the "parsed-options struct" consumed downstream by the per-function backend. After PTX parse and IR build, `sub_446240` dispatches into the per-function backend through C++ virtual dispatch: a target backend class (built by `sub_607DB0`) holds a 24-entry per-target trampoline table; the per-function "compile function" slot routes to one of 24 wrappers (e.g. `sub_608F20`) and on to `sub_663C30`. Inside `sub_663C30`, the call `sub_662920` is the sole caller of the OCG-context constructor `sub_7F7DC0`, which reads the parsed-options struct and writes the ~2140-byte per-function OCG context. The fields that matter at the entry boundary:
+The 1,352-byte options block produced here is the "parsed-options struct" consumed downstream by the per-function backend. After PTX parse and IR build, `sub_446240` dispatches into that backend through C++ virtual dispatch:
+
+- A target backend class (built by `sub_607DB0`) holds a 24-entry per-target trampoline table.
+- The per-function "compile function" slot routes to one of 24 wrappers (e.g. `sub_608F20`) and on to `sub_663C30`.
+- Inside `sub_663C30`, the call `sub_662920` is the sole caller of the OCG-context constructor `sub_7F7DC0`, which reads the parsed-options struct and writes the ~2140-byte per-function OCG context.
+
+The fields that matter at the entry boundary:
 
 | Parsed-opts off | Meaning | → OCG context field | Note |
 |---|---|---|---|
@@ -269,7 +286,11 @@ The 1,352-byte options block produced here is the "parsed-options struct" consum
 | `+132` | register/limit | `ctx+1720` (default 512) | |
 | many `+88..+1808` | feature/knob flags | packed bits `ctx+1396..+1421` | each `(opt != 0)` → one bit |
 
-The `-O`/`--opt-level` registration (`sub_703AB0`) sets the default to `3` and the accepted external range to `0..3`; `-O0` additionally auto-enables the stack-pointer bounds-check sequence (the same sequence enabled by device-debug `-g`). The external-to-internal opt-level remap and the per-function nvopt bounds check (0..5) are documented on the [Optimization Levels](../config/opt-levels.md) page; the optimizer driver `sub_7FB6C0` and the 159-registered / 157-dispatched phase model are documented on the [Optimization Pipeline](optimizer.md) page.
+The `-O`/`--opt-level` registration (`sub_703AB0`) sets the default to `3` and the accepted external range to `0..3`:
+
+- `-O0` additionally auto-enables the stack-pointer bounds-check sequence (the same sequence enabled by device-debug `-g`).
+- The external-to-internal opt-level remap and the per-function nvopt bounds check (0..5) are documented on the [Optimization Levels](../config/opt-levels.md) page.
+- The optimizer driver `sub_7FB6C0` and the 159-registered / 157-dispatched phase model are documented on the [Optimization Pipeline](optimizer.md) page.
 
 ## Diagnostic System — `sub_42FBA0`
 

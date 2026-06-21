@@ -117,25 +117,34 @@ ptxas ships **7** of these tables. The split is architectural:
 
 The wait depth and interval that go with each triplet come from the **dependency-rule** columns
 `barrier_latency` / `barrier_throughput` (40-byte rule record, see
-[Latency Model](latency-model.md#dependency-rule-40-b--the-per-class-producerconsumer-cells));
-`barrier_throughput == -1` means the class is not decoupled. A decoupled op (oracle property bit
-`0x02`) gets a scoreboard wait seed of **5** (`sub_738E20` sets `oracle+2212[op] = 5`), then the
-config triplets above set the per-class wait. A side-by-side sm_100-vs-sm_90 config sample is in
+[Latency Model](latency-model.md#dependency-rule-40-b--the-per-class-producerconsumer-cells)):
+
+- `barrier_throughput == -1` means the class is not decoupled.
+- A decoupled op (oracle property bit `0x02`) gets a scoreboard wait seed of **5** (`sub_738E20` sets `oracle+2212[op] = 5`), then the config triplets above set the per-class wait.
+
+A side-by-side sm_100-vs-sm_90 config sample is in
 [Per-SM Scheduling Sample](../reference/data/per-sm-scheduling-sample.md); the full tables are in
 the repo at `decoded/ptxas-sched-full/scoreboard_configs_<sm>.tsv`.
 
 The Cutlass-aware override `sub_939370` can replace the default barrier policy around MMA groups:
-it FNV-1a-hashes the basic-block id (seed `0x811C9DC5`, prime `16777619`) against a per-kernel
-barrier table and, on a hit, returns a packed `(stall_target, register_limit)` pair; a miss returns
-the sentinel `0x7FFFFFFF00000000`.
+
+- It FNV-1a-hashes the basic-block id (seed `0x811C9DC5`, prime `16777619`) against a per-kernel barrier table.
+- On a hit, it returns a packed `(stall_target, register_limit)` pair.
+- A miss returns the sentinel `0x7FFFFFFF00000000`.
 
 ## Phase 114: FixUpTexDepBarAndSync
 
-Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), correcting barrier state that the instruction scheduler (phases 97–110) left inconsistent with texture pipeline requirements. The dispatch is doubly-indirect through a scheduling/scoreboard subsystem object owned by the architecture backend (`arch_backend+16 -> vtable slot 14`). See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarandsync) for the full algorithm, per-SM scoreboard configuration table, and dispatch pseudocode.
+Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), correcting barrier state that the instruction scheduler (phases 97–110) left inconsistent with texture pipeline requirements. The dispatch is doubly-indirect through a scheduling/scoreboard subsystem object owned by the architecture backend (`arch_backend+16 -> vtable slot 14`).
+
+See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarandsync) for the full algorithm, per-SM scoreboard configuration table, and dispatch pseudocode.
 
 ### Summary
 
-Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200–400+ cycles, exceeding the 4-bit stall-count range. Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings. The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass. The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
+Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200–400+ cycles, exceeding the 4-bit stall-count range. The phase works as follows:
+
+- Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings.
+- The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass.
+- The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
 
 ## Phase 115: AdvancedScoreboardsAndOpexes
 
@@ -277,9 +286,15 @@ function AssignOperandScoreboard(backend, func, instr, operand_idx, insert_pt, s
 | `dep_distance > 15` and free barrier exists | Barrier: allocate from pool of 6 | `wr_barrier` (3 bits) + `wait_mask` bit on consumer |
 | `dep_distance > 15` and all 6 occupied | Recycle: evict oldest, insert DEPBAR.LE wait | DEPBAR inserted before consumer + barrier reused |
 
-**Operand slot selection.** When an instruction has two candidate operand slots (e.g., dual-source ALU), `sub_13A5D50` (extended tracker) or `sub_13A4DA0` (basic tracker) selects which slot receives the barrier. Both walk the instruction chain backward up to `*(tracker+28)` instructions, matching operand descriptors with a 25-bit mask `(desc_a ^ desc_b) & 0x1FFFFFF` and preferring the slot whose producer appears earlier. This ensures the barrier covers the longer-latency dependency while the shorter one can be absorbed as a stall.
+**Operand slot selection.** When an instruction has two candidate operand slots (e.g., dual-source ALU), `sub_13A5D50` (extended tracker) or `sub_13A4DA0` (basic tracker) selects which slot receives the barrier:
 
-**Per-SM parameters** from `per_sm_scoreboard_configs.json`: each architecture provides up to 75 entries of 88-byte scoreboard configuration records. Each record holds up to 6 triplets of `(scoreboard_id, threshold, mask)` where `threshold` (typically 56) is the instruction-distance cutoff for barrier freeing, and `mask` (-1 = all register classes) controls tracking scope.
+- Both walk the instruction chain backward up to `*(tracker+28)` instructions, matching operand descriptors with a 25-bit mask `(desc_a ^ desc_b) & 0x1FFFFFF` and preferring the slot whose producer appears earlier.
+- This ensures the barrier covers the longer-latency dependency while the shorter one can be absorbed as a stall.
+
+**Per-SM parameters** from `per_sm_scoreboard_configs.json`: each architecture provides up to 75 entries of 88-byte scoreboard configuration records. Each record holds up to 6 triplets of `(scoreboard_id, threshold, mask)`:
+
+- `threshold` (typically 56) is the instruction-distance cutoff for barrier freeing.
+- `mask` (-1 = all register classes) controls tracking scope.
 
 ### Key Support Functions
 
@@ -519,7 +534,11 @@ The `*(ctx+1040) & 0x20` flag controls whether the architecture supports texture
 
 ## Scoreboard Object Layout (952 bytes)
 
-The scoreboard object is allocated by `sub_8D0640` (ScheduleInstructions) when the architecture feature flag `*(func+1385) & 4` is set. The 952-byte allocation goes through the function context's vtable-dispatched allocator at `*(func+16)`, and the constructor `sub_69A1A0` initializes it. The pointer is stored at `func+1864`.
+The scoreboard object is allocated by `sub_8D0640` (ScheduleInstructions) when the architecture feature flag `*(func+1385) & 4` is set:
+
+- The 952-byte allocation goes through the function context's vtable-dispatched allocator at `*(func+16)`.
+- The constructor `sub_69A1A0` initializes it.
+- The pointer is stored at `func+1864`.
 
 The object has three regions: 35 reference-counted counter slots, a linked-list/tree node for active barrier tracking, and 14 barrier tracking records.
 
@@ -585,7 +604,11 @@ Total: 112 bytes.
 
 ### Region 3: Barrier Tracking Records (offsets +392 to +951)
 
-14 identical 40-byte records, each tracking one dependency barrier register. The first 6 records correspond to the 6 hardware dependency barriers per warp. Records 6–12 are extended/spare slots for overflow or future barrier model expansion (sm_100+). Record 13 uses a different initialization path (`sub_6996C0` instead of `sub_69A120`), suggesting it serves as a sentinel or special-purpose record.
+14 identical 40-byte records, each tracking one dependency barrier register:
+
+- The first 6 records correspond to the 6 hardware dependency barriers per warp.
+- Records 6–12 are extended/spare slots for overflow or future barrier model expansion (sm_100+).
+- Record 13 uses a different initialization path (`sub_6996C0` instead of `sub_69A120`), suggesting it serves as a sentinel or special-purpose record.
 
 Per-record layout (40 bytes):
 
@@ -666,7 +689,12 @@ The 14 barrier records provide 6 slots for the hardware barrier registers plus 8
 
 The scoreboard object is a passive state store; three scheduling-time operations query and mutate it. All three are called from the control word encoder chain (`sub_A356A0` / `sub_A342E0` / `sub_A34B70`) during Phase 115.
 
-**Counter slot usage.** Slots 0–17 are organized as `(barrier_state, stall_counter)` pairs for each of the 9 register classes (R, P, UR, UP, B, plus 4 arch-specific). The barrier\_state half tracks which hardware barrier index, if any, is currently live for that register class. The stall\_counter half accumulates the minimum stall cycles computed from dependency distances. Slots 18–34 are auxiliary scoreboard counters used by the linked-list node (Region 2) and the 14 barrier records (Region 3) as shared refcounted storage for cross-context state propagation.
+**Counter slot usage.** The 35 slots split into two ranges:
+
+- **Slots 0–17** — `(barrier_state, stall_counter)` pairs for each of the 9 register classes (R, P, UR, UP, B, plus 4 arch-specific):
+  - The barrier\_state half tracks which hardware barrier index, if any, is currently live for that register class.
+  - The stall\_counter half accumulates the minimum stall cycles computed from dependency distances.
+- **Slots 18–34** — auxiliary scoreboard counters used by the linked-list node (Region 2) and the 14 barrier records (Region 3) as shared refcounted storage for cross-context state propagation.
 
 ```c
 // Called from sub_A342E0 (EncodeWriteBarrierIndex) when a long-latency
@@ -758,7 +786,12 @@ function release_barrier(sb, idx):
         arena_free(shared)
 ```
 
-**Ref-counting protocol summary.** Every 24-byte counter node starts with `refcount = 1` (owned by its slot in Region 1). When Region 2 or Region 3 cross-references a node, the constructor increments the refcount by 2 (one logical ref for the record, one for the back-pointer chain). The destructor `sub_69A120` decrements and, on reaching zero, walks the node's value-list at `node+8` to deallocate chained sub-nodes before returning the node itself to the arena via `vtable[4]` (offset +32 in the allocator vtable). `sub_6996C0` is identical but used exclusively for the sentinel record (index 13), isolating its teardown from the main barrier pool.
+**Ref-counting protocol summary.** Every 24-byte counter node tracks its own lifetime:
+
+- It starts with `refcount = 1` (owned by its slot in Region 1).
+- When Region 2 or Region 3 cross-references a node, the constructor increments the refcount by 2 (one logical ref for the record, one for the back-pointer chain).
+- The destructor `sub_69A120` decrements and, on reaching zero, walks the node's value-list at `node+8` to deallocate chained sub-nodes before returning the node itself to the arena via `vtable[4]` (offset +32 in the allocator vtable).
+- `sub_6996C0` is identical but used exclusively for the sentinel record (index 13), isolating its teardown from the main barrier pool.
 
 ## Stall Count Computation
 
@@ -836,7 +869,10 @@ The scheduling context stores the related stall threshold at `sched_ctx+408` (kn
 | sm_100 | Blackwell | 4 | 3 | `*(sm_backend+912)` / 4 |
 | sm_120 | Blackwell | 4 | 3 | `*(sm_backend+912)` / 4 |
 
-The yield threshold itself (the `> 3` comparison) does not vary by architecture — it is a compile-time constant in `sub_8F3650`. What varies per architecture is the **yield batch size** at `sm_backend+912`: for texture-opcode yield sequences (opcode 288 path at `sub_8F3650+0xA8`), the function reads `*(sm_backend+912) / 4` to determine how many texture operations share a single yield group. The SM backend vtable calls at offsets `+904` and `+936` provide the texture group index and batch divisor respectively.
+The yield threshold itself (the `> 3` comparison) does not vary by architecture — it is a compile-time constant in `sub_8F3650`. What varies per architecture is the **yield batch size** at `sm_backend+912`:
+
+- For texture-opcode yield sequences (opcode 288 path at `sub_8F3650+0xA8`), the function reads `*(sm_backend+912) / 4` to determine how many texture operations share a single yield group.
+- The SM backend vtable calls at offsets `+904` and `+936` provide the texture group index and batch divisor respectively.
 
 ## Mercury Opex Path (Phase 120)
 
@@ -907,13 +943,22 @@ This function:
 - Assigns barriers from the pool of 6 using an oldest-first eviction policy
 - Handles architecture-specific barrier count variations
 
-The two control word generators (`sub_A36360` for final emission, `sub_8D7760` for scheduling) share the same barrier allocation algorithm but operate at different pipeline stages. `sub_8D7760` produces preliminary assignments that `sub_A36360` may refine during the final scoreboard pass.
+The two control word generators (`sub_A36360` for final emission, `sub_8D7760` for scheduling) share the same barrier allocation algorithm but operate at different pipeline stages: `sub_8D7760` produces preliminary assignments that `sub_A36360` may refine during the final scoreboard pass.
 
 ### Barrier Assignment Lifecycle Reconciliation
 
-Pre-scheduling (`sub_8D7760`) and post-scheduling (`sub_A36360` / `sub_A23CF0`) run on opposite sides of register allocation. Pre-scheduling operates on virtual registers with estimated latencies; post-scheduling sees physical registers with final instruction distances. Because register allocation may insert spill/reload instructions, reorder operands, or coalesce registers, the physical distances between a producer and its consumers can differ from the virtual-register estimates. The reconciliation protocol ensures the final control word reflects the true physical distances rather than the stale pre-scheduling guesses.
+Pre-scheduling (`sub_8D7760`) and post-scheduling (`sub_A36360` / `sub_A23CF0`) run on opposite sides of register allocation:
 
-**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots. For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25–29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23). The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete). These annotations travel through register allocation unchanged — the allocator preserves the operand descriptor high bits and the tracking flag.
+- Pre-scheduling operates on virtual registers with estimated latencies; post-scheduling sees physical registers with final instruction distances.
+- Because register allocation may insert spill/reload instructions, reorder operands, or coalesce registers, the physical distances between a producer and its consumers can differ from the virtual-register estimates.
+
+The reconciliation protocol ensures the final control word reflects the true physical distances rather than the stale pre-scheduling guesses.
+
+**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots:
+
+- For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25–29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23).
+- The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete).
+- These annotations travel through register allocation unchanged — the allocator preserves the operand descriptor high bits and the tracking flag.
 
 **Post-scheduling re-evaluation.** When `sub_A36360` processes each instruction in final order, it does not blindly copy pre-scheduling barrier indices. Instead, it runs a full three-step reconciliation:
 
@@ -952,7 +997,10 @@ function reconcile_barriers(pre_sched_state, phys_reg_distances) -> final:
     return final                                           // written by sub_9253C0
 ```
 
-**Key design point.** The pre-scheduling barrier index is *not* preserved across the boundary. `sub_A36360` builds a fresh 952-byte scoreboard object per basic block and populates it in scheduled order. Only the tracking flag (bit 23) and operand classification bits survive from `sub_8D7760`; the barrier index itself is recomputed because final instruction ordering determines which slots are oldest, which have affinity, and which exceed the 56-cycle threshold.
+**Key design point.** The pre-scheduling barrier index is *not* preserved across the boundary:
+
+- `sub_A36360` builds a fresh 952-byte scoreboard object per basic block and populates it in scheduled order.
+- Only the tracking flag (bit 23) and operand classification bits survive from `sub_8D7760`; the barrier index itself is recomputed because final instruction ordering determines which slots are oldest, which have affinity, and which exceed the 56-cycle threshold.
 
 ## Architecture-Specific Control Word Configuration
 
@@ -980,7 +1028,12 @@ Within the scheduling context, the control word is maintained at instruction off
 | Encoding format | `*(instr+56)` | DWORD | 4 = barrier format in Mercury |
 | Stall bits | `*(instr+168)` | BYTE | Final stall value for encoding |
 
-The `sub_A2D340` (32 KB) function writes these fields through a large if/else cascade on the Ori IR opcode at `*(uint32_t*)(instr+72)` (masked via `BYTE1 & 0xCF`). The dispatched opcodes are control-flow and branch-stack instructions whose names come from the [Ori IR table](../ir/instructions.md) / [ROT13 mnemonic table](../reference/sass-opcodes.md): 50 (`FRND_X`, FP round extended), 61 (`BAR`, barrier synchronization), 73 (`BSSY`, branch-sync-stack push), 74 (`BREAK`, break out of convergence region), 77 (`EXIT`, thread exit), 78 (`RTT`, return-to-trap-handler), plus 35, 39, 40, 63, 83, 105, 125, 186, 220, 223, 270, 279, 297. Each arm writes a different Mercury control-byte template into `*(WORD*)(instr+196)` (e.g. `0xC5` for RTT, `0xAD` for BSSY, `0xAE` for BREAK) and an opcode-specific stall/barrier/reuse layout. The Enc-ID table column in [SASS opcode encoders](../reference/sass-opcodes.md#memory) reuses these same small integers for unrelated memory/tensor variants (50=ATOM, 73=BAR, 74=ST, 77=LDS/STS, 78=HMMA); that is the *encoder* dispatch space and is not what this switch reads.
+The `sub_A2D340` (32 KB) function writes these fields through a large if/else cascade on the Ori IR opcode at `*(uint32_t*)(instr+72)` (masked via `BYTE1 & 0xCF`). The dispatched opcodes are control-flow and branch-stack instructions whose names come from the [Ori IR table](../ir/instructions.md) / [ROT13 mnemonic table](../reference/sass-opcodes.md):
+
+- 50 (`FRND_X`, FP round extended), 61 (`BAR`, barrier synchronization), 73 (`BSSY`, branch-sync-stack push), 74 (`BREAK`, break out of convergence region), 77 (`EXIT`, thread exit), 78 (`RTT`, return-to-trap-handler), plus 35, 39, 40, 63, 83, 105, 125, 186, 220, 223, 270, 279, 297.
+- Each arm writes a different Mercury control-byte template into `*(WORD*)(instr+196)` (e.g. `0xC5` for RTT, `0xAD` for BSSY, `0xAE` for BREAK) and an opcode-specific stall/barrier/reuse layout.
+
+> **NOTE** — the Enc-ID table column in [SASS opcode encoders](../reference/sass-opcodes.md#memory) reuses these same small integers for unrelated memory/tensor variants (50=ATOM, 73=BAR, 74=ST, 77=LDS/STS, 78=HMMA); that is the *encoder* dispatch space and is not what this switch reads.
 
 ## Function Map
 

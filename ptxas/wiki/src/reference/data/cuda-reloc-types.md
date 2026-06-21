@@ -2,7 +2,12 @@
 
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The complete `R_CUDA_*` relocation enumeration ptxas emits into SASS cubins, re-extracted from the binary's name-pointer table at VMA `0x23FD4C0` (stride 16 B, 117 entries 0..116, terminating on the first NULL pointer) and the parallel action-record table at file offset `0x2000080` (64 B stride). Each entry's name maps 1:1 to its ELF relocation type code (the `abi_value` column). The **handler** column is the resolver class from the action table's handler field: `NVRH_LINKER` (nvlink resolves), `NVRH_DRIVER` (CUDA driver resolves), `NVRH_EITHER` (linker or driver), `NVRH_NONE` (no action). The **bit actions** describe the SASS instruction-word field each reloc patches: `bits[a..b]=VALUE>>shift`. Codes 114 and 115 are present only in this build; `R_CUDA_NONE_LAST` sits at 116.
+The complete `R_CUDA_*` relocation enumeration ptxas emits into SASS cubins, re-extracted from the binary's name-pointer table at VMA `0x23FD4C0` (stride 16 B, 117 entries 0..116, terminating on the first NULL pointer) and the parallel action-record table at file offset `0x2000080` (64 B stride). Each entry's name maps 1:1 to its ELF relocation type code (the `abi_value` column). Column meanings:
+
+- **handler** — the resolver class from the action table's handler field: `NVRH_LINKER` (nvlink resolves), `NVRH_DRIVER` (CUDA driver resolves), `NVRH_EITHER` (linker or driver), `NVRH_NONE` (no action).
+- **bit actions** — the SASS instruction-word field each reloc patches: `bits[a..b]=VALUE>>shift`.
+
+Codes 114 and 115 are present only in this build; `R_CUDA_NONE_LAST` sits at 116.
 
 | Code | Name | Handler | Bit actions |
 |---:|---|---|---|

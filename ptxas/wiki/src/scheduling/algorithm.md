@@ -2,7 +2,15 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The scheduling engine implements a classical priority list scheduling algorithm extended with GPU-specific heuristics for register pressure management, functional unit contention avoidance, yield hint generation, and barrier-aware instruction ordering. A single unified engine (`sub_688DD0`, 20 KB) serves all three scheduling phases — ReduceReg, ILP/Latency, and DynBatch — differentiated only by a mode byte that selects different priority weight configurations. The algorithm iterates basic blocks, builds a ready list of zero-dependency instructions, selects the highest-priority candidate via an 8-bit packed heuristic, emits it into the final schedule, updates the dependency DAG, and repeats until all instructions in the block are placed.
+The scheduling engine implements a classical priority list scheduling algorithm extended with GPU-specific heuristics for register pressure management, functional unit contention avoidance, yield hint generation, and barrier-aware instruction ordering. A single unified engine (`sub_688DD0`, 20 KB) serves all three scheduling phases — ReduceReg, ILP/Latency, and DynBatch — differentiated only by a mode byte that selects different priority weight configurations.
+
+The algorithm runs a worklist loop over basic blocks:
+
+- Build a ready list of zero-dependency instructions.
+- Select the highest-priority candidate via an 8-bit packed heuristic.
+- Emit it into the final schedule.
+- Update the dependency DAG.
+- Repeat until all instructions in the block are placed.
 
 | | |
 |---|---|
@@ -118,7 +126,11 @@ function decode_mode(sched):                                    // sub_688DD0, l
         // Vtable: pipeline_group_C (indices 54-76 at 0x8E22xx-0x8E24xx)
 ```
 
-The three vtable pipeline groups contain 23 method pointers each (one per scheduling callback slot). All groups share the same 8 core methods (indices 0-7) but substitute specialized implementations for the 23 pipeline-specific hooks that control ready-list insertion order, candidate comparison, and post-scheduling resource updates. The callback index passed to the engine (0x39=57, 0x41=65, 0x49=73 decimal) selects the entry point within the core methods, indexing into the vtable at `off_21DBEF8`.
+The three vtable pipeline groups contain 23 method pointers each (one per scheduling callback slot):
+
+- All groups share the same 8 core methods (indices 0-7).
+- Each substitutes specialized implementations for the 23 pipeline-specific hooks that control ready-list insertion order, candidate comparison, and post-scheduling resource updates.
+- The callback index passed to the engine (`0x39`=57, `0x41`=65, `0x49`=73 decimal) selects the entry point within the core methods, indexing into the vtable at `off_21DBEF8`.
 
 The engine uses vtable dispatch at `*(a1+40)` and `*(a1+48)` for polymorphic pre/post scheduling hooks. This allows each mode to inject custom behavior at scheduling boundaries without modifying the core loop.
 
@@ -140,7 +152,12 @@ function BuildReadyList(sched):
             *(DWORD*)(metadata + 28) = 0           // reset latency counter
 ```
 
-The ready list is a singly-linked list threaded through SchedNode offset `+16` (the `nextReady` field). Sort order is maintained at insertion time by the priority function — each new instruction is inserted at its correct position so that the head of the list is always the highest-priority candidate. All `metadata+N` offsets throughout the scheduling pages refer to fields within the SchedNode block pointed to by `instr+40` (`sched_slot`), not offsets from the instruction object itself. See the [SchedNode layout](overview.md#per-instruction-scheduling-metadata-schednode) for the complete field map.
+The ready list is a singly-linked list threaded through SchedNode offset `+16` (the `nextReady` field):
+
+- Sort order is maintained at insertion time by the priority function — each new instruction is inserted at its correct position so that the head of the list is always the highest-priority candidate.
+- All `metadata+N` offsets throughout the scheduling pages refer to fields within the SchedNode block pointed to by `instr+40` (`sched_slot`), not offsets from the instruction object itself.
+
+See the [SchedNode layout](overview.md#per-instruction-scheduling-metadata-schednode) for the complete field map.
 
 Opcode 52 instructions are phantom BB boundary markers. The builder skips them but follows their linked-list successors to reach real instructions beyond the boundary.
 
@@ -176,7 +193,13 @@ Classification uses `sub_A9CDE0` (hot detection) and `sub_A9CF90` (cold detectio
 
 ### Pressure Overflow
 
-Bit 4 in the packed byte holds the hot-cold flag (see above). The pressure overflow signal is a separate Boolean computed by checking all four register classes (GPR, predicate, address, UGP) against their respective limits. When any class exceeds its budget, the pressure overflow flag activates and acts as a **comparison override**: the candidate wins regardless of the packed priority byte, forcing the scheduler to select the instruction that relieves register pressure. This is the primary mechanism by which the ReduceReg phase achieves its objective: the mode sets a tight register budget via `scheduler+178`, causing pressure overflow to activate frequently and driving the scheduler toward pressure-reducing orderings. See the Priority Function Internals section for the exact per-class threshold checks.
+Bit 4 in the packed byte holds the hot-cold flag (see above). The pressure overflow signal is a separate Boolean:
+
+- It is computed by checking all four register classes (GPR, predicate, address, UGP) against their respective limits.
+- When any class exceeds its budget, the pressure overflow flag activates and acts as a **comparison override**: the candidate wins regardless of the packed priority byte, forcing the scheduler to select the instruction that relieves register pressure.
+- This is the primary mechanism by which the ReduceReg phase achieves its objective: the mode sets a tight register budget via `scheduler+178`, causing pressure overflow to activate frequently and driving the scheduler toward pressure-reducing orderings.
+
+See the Priority Function Internals section for the exact per-class threshold checks.
 
 ### Priority Evaluation Sequence
 
@@ -340,7 +363,10 @@ fn RegToHWUnits(scheduler, count):
         return count                           // 1:1 passthrough
 ```
 
-Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) is set on sm\_70+ targets, where the hardware allocates registers in 8-register blocks (256 registers/warp). When set, the scheduler internally tracks pressure in 4-register half-units, so `RegToHWUnits` doubles to produce full 8-register hardware units. On sm\_30–sm\_60, registers allocate in 2-register blocks (64 registers/warp) and the scheduler tracks in native units, so the function is an identity.
+Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) controls the doubling:
+
+- **Set on sm\_70+ targets**, where the hardware allocates registers in 8-register blocks (256 registers/warp). The scheduler internally tracks pressure in 4-register half-units, so `RegToHWUnits` doubles to produce full 8-register hardware units.
+- **Clear on sm\_30–sm\_60**, where registers allocate in 2-register blocks (64 registers/warp) and the scheduler tracks in native units, so the function is an identity.
 
 | SM Generation | HW Alloc Granularity | Bit 3 | Multiplier | Effect |
 |---|---|---|---|---|
@@ -418,7 +444,10 @@ else:
     pressure_overflow = overflow
 ```
 
-When pressure_overflow = 1, the candidate wins the comparison regardless of other bits — it is the scheduler's mechanism for emergency register pressure relief. In the packed byte's bit 4 position, the hot-cold flag occupies the slot. The pressure overflow signal operates at a higher level: it can force the candidate to win even when its packed priority byte is lower.
+When pressure_overflow = 1, the candidate wins the comparison regardless of other bits — it is the scheduler's mechanism for emergency register pressure relief. Two facts about the bit-4 slot:
+
+- In the packed byte's bit 4 position, the hot-cold flag occupies the slot.
+- The pressure overflow signal operates at a higher level: it can force the candidate to win even when its packed priority byte is lower.
 
 **Per-register-class overflow limits.** The four register classes each have a fixed overflow threshold. Three are hardcoded constants; the fourth is dynamic:
 
@@ -1089,7 +1118,10 @@ The region 0x89C550–0x8BE320 contains 17+ specialized scheduling strategies. T
 
 ### Backtracking Scheduler
 
-The backtracking strategy (`sub_8B1190`) is notable because it breaks from the greedy nature of standard list scheduling. When a scheduling decision leads to excessive stalls or resource conflicts, it can undo the last N steps (where N is bounded by a configurable depth), re-insert the affected instructions into the ready list, and try a different selection. This provides limited but effective lookahead without the full cost of optimal scheduling.
+The backtracking strategy (`sub_8B1190`) is notable because it breaks from the greedy nature of standard list scheduling:
+
+- When a scheduling decision leads to excessive stalls or resource conflicts, it can undo the last N steps (where N is bounded by a configurable depth), re-insert the affected instructions into the ready list, and try a different selection.
+- This provides limited but effective lookahead without the full cost of optimal scheduling.
 
 ### Dual-Issue Scheduling
 
@@ -1101,11 +1133,19 @@ Two mechanisms prevent the scheduling algorithm from hitting quadratic complexit
 
 ### BB Size Limit
 
-`sub_8CBAD0` scans all basic blocks during pre-scheduling setup. Any BB exceeding **4095 instructions** is split by inserting scheduling barriers (`sub_931920`). This caps the per-BB scheduling problem size, ensuring the O(n^2) dependency graph construction remains tractable. The maximum BB size is tracked at `scheduler+388`.
+`sub_8CBAD0` scans all basic blocks during pre-scheduling setup:
+
+- Any BB exceeding **4095 instructions** is split by inserting scheduling barriers (`sub_931920`).
+- This caps the per-BB scheduling problem size, ensuring the O(n^2) dependency graph construction remains tractable.
+- The maximum BB size is tracked at `scheduler+388`.
 
 ### Large Function Chunking
 
-Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-based scheduling via `sub_A9DDD0` (11.5 KB). The function is partitioned into chunks that are scheduled independently, then the results are merged. This avoids the full O(n^2) DAG construction for very large kernels. The chunk boundary selection respects BB boundaries and dependency chains to minimize cross-chunk constraint violations.
+Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-based scheduling via `sub_A9DDD0` (11.5 KB):
+
+- The function is partitioned into chunks that are scheduled independently, then the results are merged.
+- This avoids the full O(n^2) DAG construction for very large kernels.
+- The chunk boundary selection respects BB boundaries and dependency chains to minimize cross-chunk constraint violations.
 
 ## Function Map
 
@@ -1177,7 +1217,10 @@ Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-
 
 ## Per-SM Scheduling Backends
 
-Everything documented above describes the **main scheduler** (Backend A), which covers approximately 436 KB at 0x680000–0x8FE000. ptxas contains two additional complete scheduling implementations activated for newer SM architectures. The three backends coexist in the binary; SM-version-gated dispatch selects which combination runs.
+Everything documented above describes the **main scheduler** (Backend A), which covers approximately 436 KB at 0x680000–0x8FE000:
+
+- ptxas contains two additional complete scheduling implementations activated for newer SM architectures.
+- The three backends coexist in the binary; SM-version-gated dispatch selects which combination runs.
 
 ### Architecture Dispatch
 
@@ -1221,7 +1264,10 @@ The entry point `sub_1233D70` initializes two pairs of floating-point weights fr
 | `pressure_weight` | **1.8** | Contribution of register pressure to scheduling priority. Positive = favors orderings that reduce live register count. |
 | `ilp_weight` | **-0.8** | Contribution of instruction-level parallelism. Negative = penalizes moves that reduce available parallelism. |
 
-The two weights sum to 1.0 and form a weighted combination on a unit scale. The default 1.8/-0.8 split heavily favors register pressure reduction, accepting moderate ILP degradation — appropriate for register-hungry Ada Lovelace and Hopper kernels.
+The two weights sum to 1.0 and form a weighted combination on a unit scale:
+
+- The default 1.8/-0.8 split heavily favors register pressure reduction, accepting moderate ILP degradation.
+- This is appropriate for register-hungry Ada Lovelace and Hopper kernels.
 
 **Pair 2 — Secondary scoring axis** (options offsets 7560/7568):
 
@@ -1299,11 +1345,21 @@ The guard condition `P > min_regs` short-circuits evaluation: when pressure is a
 
 #### Forward Pass (sub_122AD60)
 
-The forward scheduler implements list scheduling with a BST priority queue, iterating basic blocks front-to-back. It uses FNV-1a hash tables (seed 0x811C9DC5, multiplier 16777619) for tracking scheduled instruction mappings. Instruction properties are queried via `sub_7DF3A0`. The function manages a ref-counted working set with proper cleanup at function exit. The Pair 1 score is evaluated inline via the stored `pressure_weight`, `min_regs`, and `pressure_slope` fields in the scheduling context at offsets +112, +104, and +120 respectively. At 4,118 decompiled lines, it is the largest function in the 0x1225000 scheduling range.
+The forward scheduler implements list scheduling with a BST priority queue, iterating basic blocks front-to-back:
+
+- It uses FNV-1a hash tables (seed `0x811C9DC5`, multiplier 16777619) for tracking scheduled instruction mappings.
+- Instruction properties are queried via `sub_7DF3A0`.
+- The function manages a ref-counted working set with proper cleanup at function exit.
+- The Pair 1 score is evaluated inline via the stored `pressure_weight`, `min_regs`, and `pressure_slope` fields in the scheduling context at offsets +112, +104, and +120 respectively.
+- At 4,118 decompiled lines, it is the largest function in the `0x1225000` scheduling range.
 
 #### Backward Pass (sub_122F650)
 
-The backward scheduler receives `range` and `secondary_slope` as direct double parameters (a2, a3) and processes basic blocks in reverse order. It evaluates both Pair 1 and Pair 2 scores, using the scheduling context fields at offsets +136/+144/+152 for the secondary pair. It calls into the barrier/scoreboard system (`sub_BDC080`, `sub_BDBA60`, `sub_BDC0A0`) and performs register liveness analysis via `sub_A0EDE0`. The function uses BST operations with left/right/parent pointer traversal and explicit rebalancing, then performs iterative tree cleanup at exit.
+The backward scheduler receives `range` and `secondary_slope` as direct double parameters (a2, a3) and processes basic blocks in reverse order:
+
+- It evaluates both Pair 1 and Pair 2 scores, using the scheduling context fields at offsets +136/+144/+152 for the secondary pair.
+- It calls into the barrier/scoreboard system (`sub_BDC080`, `sub_BDBA60`, `sub_BDC0A0`) and performs register liveness analysis via `sub_A0EDE0`.
+- The function uses BST operations with left/right/parent pointer traversal and explicit rebalancing, then performs iterative tree cleanup at exit.
 
 ### Backend C — RBT List Scheduler (0x18CD000)
 
@@ -1544,7 +1600,10 @@ function SolutionHashInsert(block, candidate, sched_entry):
         Resize(block + 304, 4 * capacity)                 // sub_18FBD20
 ```
 
-The separate function `sub_1906510` (14 KB) provides the same hash-table-plus-BST lookup interface used by the cross-block scheduling path. It combines the FNV-1a hash chain with a red-black tree at `*(context_base + 312)` that orders solutions by a bitvector comparison (`sub_19061B0`), enabling efficient retrieval of the best cached solution across multiple evaluation blocks.
+The separate function `sub_1906510` (14 KB) provides the same hash-table-plus-BST lookup interface used by the cross-block scheduling path:
+
+- It combines the FNV-1a hash chain with a red-black tree at `*(context_base + 312)` that orders solutions by a bitvector comparison (`sub_19061B0`).
+- This enables efficient retrieval of the best cached solution across multiple evaluation blocks.
 
 #### Recursive Cost Propagation (sub_18FFD70)
 
@@ -1622,7 +1681,11 @@ This propagation allows scheduling decisions in callee functions to influence ca
 
 ## Scheduling Guidance Output
 
-After scheduling completes, ptxas can emit statistics comments into the SASS output and DUMPIR stream. Three emitter functions produce scheduling guidance in different contexts, all reading from a shared ~1400-byte statistics object. `sub_A46CE0` controls the "SCHEDULING GUIDANCE:" header that wraps per-block scheduling output. `sub_A3A7E0` emits per-function statistics as `# [field=value]` comment lines during DUMPIR. Eight post-regalloc clones at `sub_ABBA50`--`sub_ABEB50` emit a variant with hardware pipe names.
+After scheduling completes, ptxas can emit statistics comments into the SASS output and DUMPIR stream. Three emitter functions produce scheduling guidance in different contexts, all reading from a shared ~1400-byte statistics object:
+
+- `sub_A46CE0` controls the "SCHEDULING GUIDANCE:" header that wraps per-block scheduling output.
+- `sub_A3A7E0` emits per-function statistics as `# [field=value]` comment lines during DUMPIR.
+- Eight post-regalloc clones at `sub_ABBA50`--`sub_ABEB50` emit a variant with hardware pipe names.
 
 ### Verbosity Controls
 

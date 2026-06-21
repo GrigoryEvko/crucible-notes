@@ -556,7 +556,15 @@ Each 8-byte operand slot encodes:
 | 30 | 1 | `.ABS` modifier (`0x40000000`) — absolute value of source |
 | 31 | 1 | `.NEG` modifier (`0x80000000`) — arithmetic negation of source |
 
-The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 test is `v17 < 0` (sign-bit set means negate); bit-30 is `v17 & 0x40000000` (set means absolute value). These two source-operand modifiers are independent of the **branch predicate guard** negation bit, which lives at **bit 24 (`0x1000000`)** of word1 of the predicate-register operand in the guard pair (verified in `sub_137E3A0` line 50, which reads `instr[2*last_idx + 22] & 0x1000000`). The textual printer `sub_70B780` does **not** consult this binary bit — it reads the `'!'` prefix from the operand-descriptor name string at `+2120`. The two surfaces stay in sync because the passes that negate a guard set both, but downstream code that mutates only one must rebuild the other (see `passes/predication.md`).
+The polarity is "set means modifier applied":
+
+- **Source-operand modifiers** (in `sub_9D12F0`):
+  - word-1 bit-31 test is `v17 < 0` — sign-bit set means negate.
+  - bit-30 is `v17 & 0x40000000` — set means absolute value.
+- **Branch predicate guard negation** is independent of the two source-operand modifiers above. It lives at **bit 24 (`0x1000000`)** of word1 of the predicate-register operand in the guard pair (verified in `sub_137E3A0` line 50, which reads `instr[2*last_idx + 22] & 0x1000000`).
+- **Textual printer `sub_70B780`** does **not** consult this binary bit — it reads the `'!'` prefix from the operand-descriptor name string at `+2120`.
+
+> The two surfaces stay in sync because the passes that negate a guard set both, but downstream code that mutates only one must rebuild the other (see `passes/predication.md`).
 
 ### Global Lookup Tables
 
@@ -597,7 +605,12 @@ The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 
 
 ## Compile-Time FP Folding
 
-The literal floating-point immediates that appear in the rendered SASS — and any `.f16`/`.bf16`/`.tf32`/`.f32`/`.f64` constant the optimizer folds during code generation — are computed without any software-float library. ptxas links **no** Berkeley-SoftFloat layer, **no** FP128/extF80, and **no** 128-bit-integer software routines: the canonical SoftFloat reciprocal lookup tables (`approxRecip_1k0s` / `approxRecipSqrt_1k0s`) are absent from the entire 37.74 MB image, there are no `roundPackToF64`/`F32` leaves, and the dynamic math imports are exactly the glibc libm set (`sqrt`, `pow`, `floor`, `ceil`, `cos`, `sin`, `log` `@GLIBC_2.2.5`) — notably with no `fma` and no `fesetround`/`fegetround` import. The lone `__float128` string in the binary lives in the C++ Itanium demangler's type table, not on any folding path.
+The literal floating-point immediates that appear in the rendered SASS — and any `.f16`/`.bf16`/`.tf32`/`.f32`/`.f64` constant the optimizer folds during code generation — are computed without any software-float library. ptxas links **no** Berkeley-SoftFloat layer, **no** FP128/extF80, and **no** 128-bit-integer software routines:
+
+- **No SoftFloat reciprocal tables** — the canonical `approxRecip_1k0s` / `approxRecipSqrt_1k0s` are absent from the entire 37.74 MB image.
+- **No `roundPackToF64`/`F32` leaves.**
+- **Dynamic math imports are exactly the glibc libm set** — `sqrt`, `pow`, `floor`, `ceil`, `cos`, `sin`, `log` `@GLIBC_2.2.5`, notably with no `fma` and no `fesetround`/`fegetround` import.
+- **The lone `__float128` string** in the binary lives in the C++ Itanium demangler's type table, not on any folding path.
 
 Instead, ptxas folds FP immediates with the **host x86 SSE2 FPU** (`_mm_*_pd`/`_ss`) plus glibc libm, applying manual round-bit twiddling for the directed-rounding and narrowing cases. The fold cluster:
 
@@ -619,7 +632,13 @@ Enables printing of code generation statistics after compilation. The statistics
 
 #### Resource-Usage Report
 
-The familiar `ptxas info :` resource report is built by the single unified formatter `sub_463710`. It assembles each line into a stringstream buffer (`sub_4287D0` create, `sub_428F30` sprintf-append, `sub_4289F0` finalize) and flushes through the message-emit core `sub_42F590`, which prepends the `ptxas info :` prefix. The report-line descriptors live in a `.rodata` array at `0x29FC000` with a 16-byte stride `[severity dword][pad][format-ptr]`; severities are `1=plain, 2=info, 3=warning, 5=error, 6=fatal`, and `sub_42F590` writes the matching `info`/`warning`/`error`/`fatal` word plus the `@I@`/`@O@`/`@W@`/`@E@` channel tags. The report is gated at the call site (`sub_446240`, near `0x447b8a`) by `verboseMode && !forceText`.
+The familiar `ptxas info :` resource report is built by the single unified formatter `sub_463710`.
+
+- **Line assembly** — each line is assembled into a stringstream buffer (`sub_4287D0` create, `sub_428F30` sprintf-append, `sub_4289F0` finalize), then flushed through the message-emit core `sub_42F590`, which prepends the `ptxas info :` prefix.
+- **Report-line descriptors** — live in a `.rodata` array at `0x29FC000` with a 16-byte stride `[severity dword][pad][format-ptr]`.
+  - Severities: `1=plain, 2=info, 3=warning, 5=error, 6=fatal`.
+  - `sub_42F590` writes the matching `info`/`warning`/`error`/`fatal` word plus the `@I@`/`@O@`/`@W@`/`@E@` channel tags.
+- **Gating** — the report is gated at the call site (`sub_446240`, near `0x447b8a`) by `verboseMode && !forceText`.
 
 The report has two-block structure: a **global** line (`gmem`, then `cmem[N]` over the const-bank tags) followed by a **per-entry** line (`Compiling entry function`, `Function properties`, register/barrier/stack/smem/cmem/lmem and texture/surface/sampler counts), plus a separate `Compile time = %.3f ms` line. Field order:
 

@@ -240,19 +240,36 @@ Because the prototype literals live in `.rodata` (read-only) the allocation is r
 
 ## QUIRK — `.FORCE_INLINE` is a ptxas-only directive
 
-The PTX ISA documentation does **not** list `.FORCE_INLINE` as a linkage attribute — the public document only defines `.func`, `.weak .func`, `.entry`, and `.extern .func`. `.FORCE_INLINE` is a private extension recognised only by ptxas's PTX parser (`sub_50B4F0`, the directive-handling table) and stripped before the resulting cubin is emitted. If you hand-write PTX with `.FORCE_INLINE` and feed it to a non-NVIDIA PTX parser (LLVM NVPTX, Open64), it will fail to parse. The 464 occurrences of this directive in `sub_5FF700` are the only documented use sites; they vanish from the cubin because the inliner runs before the SASS printer.
+The PTX ISA documentation does **not** list `.FORCE_INLINE` as a linkage attribute — the public document only defines `.func`, `.weak .func`, `.entry`, and `.extern .func`. Key facts:
+
+- It is a private extension recognised only by ptxas's PTX parser (`sub_50B4F0`, the directive-handling table) and stripped before the resulting cubin is emitted.
+- Hand-written PTX with `.FORCE_INLINE` fed to a non-NVIDIA PTX parser (LLVM NVPTX, Open64) will fail to parse.
+- The 464 occurrences of this directive in `sub_5FF700` are the only documented use sites; they vanish from the cubin because the inliner runs before the SASS printer.
 
 ## QUIRK — Helper IDs are not stable across ptxas versions
 
-The dense ID space (0 — 1,079) is populated by the order in which `sub_5D7430` walks its prefix-suffix tables, and that order has changed three times in the public CUDA 12.x -> 13.x window. A cubin embedded from CUDA 12.0 referencing helper ID 942 will not resolve to the same `__cuda_*` symbol when re-encoded by CUDA 13.0 ptxas. This is harmless because the IDs are an in-memory artefact — they never appear in the cubin — but it does break any third-party tool that scrapes the body-template table and tries to memoise by integer. Always rekey by symbol name, never by ID. The MEMORY-pickle method in [`cicc/wiki/methodology.md`](../../../../cicc/wiki/src/methodology.md) (sister-tool extraction recipe) implicitly assumes name keying for exactly this reason.
+The dense ID space (0 — 1,079) is populated by the order in which `sub_5D7430` walks its prefix-suffix tables, and that order has changed three times in the public CUDA 12.x -> 13.x window.
+
+- A cubin embedded from CUDA 12.0 referencing helper ID 942 will not resolve to the same `__cuda_*` symbol when re-encoded by CUDA 13.0 ptxas.
+- This is harmless because the IDs are an in-memory artefact — they never appear in the cubin — but it does break any third-party tool that scrapes the body-template table and tries to memoise by integer.
+- **Always rekey by symbol name, never by ID.** The MEMORY-pickle method in [`cicc/wiki/methodology.md`](../../../../cicc/wiki/src/methodology.md) (sister-tool extraction recipe) implicitly assumes name keying for exactly this reason.
 
 ## QUIRK — The `0` case is at the highest address in the binary
 
-The IDA jump table for `0x5FF711` lists case bodies in **descending** ID order, which leaves case 0 (`__cuda_sm20_div_s16`) at the linearly *latest* address `0x607CF8`, and case 1079 (`__cuda_sm10x_tcgen05_guardrails_*`) immediately after the dispatch at `0x5FF718`. The most-likely explanation is that the compiler that built ptxas walked an `std::map<int, ...>` in reverse iteration order while emitting the switch. The default branch is `0x607D16`, which sits **between** case 1079's body and the next function — IDs above 1079 are unreachable from `sub_4CCF30` because the body-template registrar caps the ID space, but the layout means the default branch is a 5-byte no-op tail. Any binary-diff tool that compares ptxas builds by linear address will report wholesale code movement here even when the only change is "added one new helper at ID 0 of the new ordering".
+The IDA jump table for `0x5FF711` lists case bodies in **descending** ID order:
+
+- Case 0 (`__cuda_sm20_div_s16`) lands at the linearly *latest* address `0x607CF8`; case 1079 (`__cuda_sm10x_tcgen05_guardrails_*`) lands immediately after the dispatch at `0x5FF718`.
+- The most-likely explanation is that the compiler that built ptxas walked an `std::map<int, ...>` in reverse iteration order while emitting the switch.
+- The default branch is `0x607D16`, which sits **between** case 1079's body and the next function. IDs above 1079 are unreachable from `sub_4CCF30` because the body-template registrar caps the ID space, but the layout means the default branch is a 5-byte no-op tail.
+
+> Any binary-diff tool that compares ptxas builds by linear address will report wholesale code movement here even when the only change is "added one new helper at ID 0 of the new ordering".
 
 ## QUIRK — `_param_0` / `_param_1` shadow symbols for sanitiser hooks
 
-The compute-sanitizer hooks (e.g. `__cuda_sanitizer_memcheck_malloc`) come with paired `_param_0` and `_param_1` symbols that look like the parameters of the helper but are declared **as separate `.weak .func`** entries with no body and an empty signature. These are not callable — they are address-only sentinels that the sanitiser instrumentation pass binds to during PTX rewriting, so that the rewriter can replace `call malloc, %addr, %size` with `call malloc, %_param_0, %_param_1`. The `_param_*` symbols never appear in the cubin (the sanitiser pass replaces them with concrete `.param` slot bindings) but they must be present in the intrinsic table so the PTX parser accepts them without complaining about undefined references.
+The compute-sanitizer hooks (e.g. `__cuda_sanitizer_memcheck_malloc`) come with paired `_param_0` and `_param_1` symbols that look like the parameters of the helper but are declared **as separate `.weak .func`** entries with no body and an empty signature.
+
+- They are not callable — they are address-only sentinels that the sanitiser instrumentation pass binds to during PTX rewriting, so the rewriter can replace `call malloc, %addr, %size` with `call malloc, %_param_0, %_param_1`.
+- The `_param_*` symbols never appear in the cubin (the sanitiser pass replaces them with concrete `.param` slot bindings), but they must be present in the intrinsic table so the PTX parser accepts them without complaining about undefined references.
 
 ## Cross-References
 

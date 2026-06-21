@@ -39,7 +39,13 @@ generation = *(int*)(sm_target + 372) >> 12
 | 9 | sm\_90, sm\_90a | Hopper ABI: 24-register minimum, uniform return address support |
 | >9 | sm\_100+ | Blackwell ABI: no minimum enforced (skips check), extended register reservation |
 
-The minimum register count varies by generation. For generations 3–4 (sm\_35 through sm\_53), the ABI requires at least 16 registers per function. For generations 5–9 (sm\_60 through sm\_90a), the minimum is 24. Generations below 3 and above 9 skip the minimum check entirely. Violating these minimums emits warning 7016: `"regcount %d specified below abi_minimum of %d"`. The `abi_minimum` value is computed as `(generation - 5) < 5 ? 24 : 16`.
+The minimum register count varies by generation:
+
+- Generations 3–4 (sm\_35 through sm\_53) — at least 16 registers per function.
+- Generations 5–9 (sm\_60 through sm\_90a) — minimum is 24.
+- Generations below 3 and above 9 — skip the minimum check entirely.
+
+Violating these minimums emits warning 7016: `"regcount %d specified below abi_minimum of %d"`. The `abi_minimum` value is computed as `(generation - 5) < 5 ? 24 : 16`.
 
 ## Master ABI Setup: sub\_19D1AF0
 
@@ -96,7 +102,15 @@ function abi_master_setup(func, sm_target, abi_spec):
 
 Parameters are passed in consecutive R registers starting from a configurable base register. The ABI tracks `"number of registers used for parameter passing"` and `"first parameter register"` as per-function properties. The parameter register range begins after the reserved registers (R0–R3) and the return address register.
 
-The simpler parameter-base computation path (`sub_4394D0`) records the binary-level constants that bound this allocation: the default first parameter register is **R4** (the base after the 4 reserved low GPRs, `v10 = 4`); the return-address register is `R5`, or `R6` when the return value is an 8-byte (64-bit) pair (`+1` for the return-address reg, `+2` when the return value is 64-bit); parameter registers are claimed in **groups of 4** (`(words + 3) >> 2`); and the allocator emits the `"Parameter register ..."` warning when the highest parameter register plus the base exceeds **252** (`v13 + v10 > 252`). The relative-32-bit return-address mode additionally requires a caller-save 64-bit scratch register pair. The ABI also enforces an absolute floor of **13 GPRs** per function (`> 13` threshold in `sub_4394D0`; the cost-matrix floor is the same value) — below the generation minimums of 16/24 documented above, this 13 is the hard architectural floor that values are bumped up to before the generation check.
+The simpler parameter-base computation path (`sub_4394D0`) records the binary-level constants that bound this allocation:
+
+- The default first parameter register is **R4** (the base after the 4 reserved low GPRs, `v10 = 4`).
+- The return-address register is `R5`, or `R6` when the return value is an 8-byte (64-bit) pair (`+1` for the return-address reg, `+2` when the return value is 64-bit).
+- Parameter registers are claimed in **groups of 4** (`(words + 3) >> 2`).
+- The allocator emits the `"Parameter register ..."` warning when the highest parameter register plus the base exceeds **252** (`v13 + v10 > 252`).
+- The relative-32-bit return-address mode additionally requires a caller-save 64-bit scratch register pair.
+
+> **NOTE** — the ABI also enforces an absolute floor of **13 GPRs** per function (`> 13` threshold in `sub_4394D0`; the cost-matrix floor is the same value). Below the generation minimums of 16/24 documented above, this 13 is the hard architectural floor that values are bumped up to before the generation check.
 
 ### Parameter Register Allocator: sub\_19CA730
 
@@ -219,7 +233,14 @@ The checks are mode-dependent. Mode 2 (regular GPR) enters the 7002/7001/7003/70
 
 ### Return Address Setup: sub\_19D1720
 
-The setup function (4.8 KB, 95% confidence) runs before the validator. It propagates ABI flag `0x04` to the function state (byte 1389), validates that the return address register (register 1) is not classified as scratch when it must be preserved (warning 7012: `"%d register should not be classified as scratch"`), sizes the preserved register set to 255 entries via `sub_BDBAD0`, and computes the effective register range as `return_size + param_size` for comparison against the maximum available. The 7012 check fires when `*(abi_spec+88) & 0x01` and `*(abi_spec+48) & 0x02` are both set, always with argument 1 (the return address register).
+The setup function (4.8 KB, 95% confidence) runs before the validator. Its steps:
+
+- Propagates ABI flag `0x04` to the function state (byte 1389).
+- Validates that the return address register (register 1) is not classified as scratch when it must be preserved (warning 7012: `"%d register should not be classified as scratch"`).
+- Sizes the preserved register set to 255 entries via `sub_BDBAD0`.
+- Computes the effective register range as `return_size + param_size` for comparison against the maximum available.
+
+> The 7012 check fires when `*(abi_spec+88) & 0x01` and `*(abi_spec+48) & 0x02` are both set, always with argument 1 (the return address register).
 
 The function also enforces the mutual exclusion rule (warning 7006): `"ABI allows either specifying return address or return address before params"`. This fires when mode is 1 (fixed, "return address before params") but an explicit return address register is also assigned (`return_addr != -1`). You pick one strategy, not both.
 
@@ -280,7 +301,12 @@ function adjust_spill_cost_for_abi(alloc, func, instr):
                 vreg.spill_cost += cost_mult * (2 * base_weight) * block_freq
 ```
 
-The `2 * base_weight` factor (30.0 default, 6.0 under pressure) reflects the paired save+restore cost: one store before the call, one load after. The `cost_mult` further doubles to `4 * base_weight` when the vreg is provably live in both directions across the call. Uniform registers (flag `0x200`) are exempt because they use a separate spill path through the UR file. The save chain estimate (`sub_944740`) provides a cheaper alternative when the caller-save sequence is short enough, bounded by `alloc+1544` (default 4.0, from knob 680).
+Reading the cost model:
+
+- The `2 * base_weight` factor (30.0 default, 6.0 under pressure) reflects the paired save+restore cost: one store before the call, one load after.
+- The `cost_mult` further doubles to `4 * base_weight` when the vreg is provably live in both directions across the call.
+- Uniform registers (flag `0x200`) are exempt because they use a separate spill path through the UR file.
+- The save chain estimate (`sub_944740`) provides a cheaper alternative when the caller-save sequence is short enough, bounded by `alloc+1544` (default 4.0, from knob 680).
 
 ## Per-Pass Instruction Lowering: sub\_19DC4B0
 
@@ -304,7 +330,9 @@ Lowers high-level Ori opcodes into ABI-conforming SASS sequences. Entry is gated
 | 185 | ATOMG | `+1105 & 0x20` | `sub_19D5DD0` |
 | 183 | (special) | `+1107 & 0x02` or `+1105 & 0x02` | `sub_7E2670` reclassification to mode 2/3 |
 
-The instruction stream is scanned linearly. For CALL instructions (Ori opcode 109 in this pass's local opcode-to-handler table — note this is the table-row index from the lowering table above, not the 322-entry ROT13 SASS name table where index 109 is `CCTLL` and index 71 is the actual SASS `CALL`), two sub-phases execute in sequence:
+The instruction stream is scanned linearly. For CALL instructions, two sub-phases execute in sequence:
+
+> **NOTE** — "CALL" here is Ori opcode 109 in this pass's local opcode-to-handler table. This is the table-row index from the lowering table above, **not** the 322-entry ROT13 SASS name table (where index 109 is `CCTLL` and index 71 is the actual SASS `CALL`).
 
 #### CALL lowering: parameter register fixup (`sub_19D5680`)
 
@@ -751,7 +779,13 @@ Each parameter or return value is described by a 32-byte entry. The allocator it
 | `+12` | 1 | `byte` | `is_register_allocated` | 0 = stack-passed (fallback), 1 = register-allocated |
 | `+16` | 4 | `int` | `assigned_register_id` | Physical register ID assigned by the allocator (from `sub_7FA420`) |
 
-The total byte size is `element_count * element_size`. The register count is `ceil(total_bytes / 4)`, computed as `(total + 3) >> 2`. The alignment mask applied to register slot selection is `-(alignment_hint >> 2)`, producing a bitmask that enforces natural alignment: 8-byte parameters require even-aligned base registers, 16-byte parameters require 4-register-aligned bases.
+Deriving the register footprint of an entry:
+
+- The total byte size is `element_count * element_size`.
+- The register count is `ceil(total_bytes / 4)`, computed as `(total + 3) >> 2`.
+- The alignment mask applied to register slot selection is `-(alignment_hint >> 2)`, producing a bitmask that enforces natural alignment:
+  - 8-byte parameters require even-aligned base registers,
+  - 16-byte parameters require 4-register-aligned bases.
 
 ### 2048-Bit Free-List Bitmap (Stack Local)
 
@@ -766,7 +800,12 @@ Initialization:
   Result: 2040 bits all-ones (255 bytes)
 ```
 
-A bit value of **1** means the register slot is free; **0** means occupied. The bitmap is indexed relative to `first_param_register`, not absolute R0. When a contiguous run of free slots is found for a parameter, the allocator zeroes the corresponding bytes using a size-optimized zeroing sequence (special-cased for lengths < 4, == 4, and >= 8 bytes). After allocation, the assigned registers are also recorded in the persistent bitvectors at `+4456` (parameters) and `+4480` (return values) via `sub_BDBB80`.
+Bitmap semantics and usage:
+
+- A bit value of **1** means the register slot is free; **0** means occupied.
+- The bitmap is indexed relative to `first_param_register`, not absolute R0.
+- When a contiguous run of free slots is found for a parameter, the allocator zeroes the corresponding bytes using a size-optimized zeroing sequence (special-cased for lengths < 4, == 4, and >= 8 bytes).
+- After allocation, the assigned registers are also recorded in the persistent bitvectors at `+4456` (parameters) and `+4480` (return values) via `sub_BDBB80`.
 
 The bitmap supports up to 2040 register slots, far exceeding the 255-register GPR limit. This over-provisioning accommodates the allocator's use for both parameter and return value allocation in a single bitmap, and provides headroom for potential multi-class allocation in future architectures.
 
@@ -784,11 +823,21 @@ The ABI engine accesses the target descriptor (at `func_ctx+1584`) through these
 | `+2096` | `vfunc` | Register class capacity query; called with `(target, reg_class)` |
 | `+3000` | `vfunc` | Validator callback; `nullsub_464` = no-op (validation skipped) |
 
-The vtable call at `+896` takes a 32-byte query structure initialized to `{hi=-1 lo=0, 0, 0, 0, 0, 148, 148, -1}`. The result at query `+24` (as two 32-bit halves) returns the reserved register range boundaries. This is used by warnings 7014 (reserved range overlaps parameters) and 7017 (insufficient registers for reservation).
+The vtable call at `+896`:
+
+- Takes a 32-byte query structure initialized to `{hi=-1 lo=0, 0, 0, 0, 0, 148, 148, -1}`.
+- Returns the reserved register range boundaries at query `+24` (as two 32-bit halves).
+- Is used by warnings 7014 (reserved range overlaps parameters) and 7017 (insufficient registers for reservation).
 
 ## ABI Validation Diagnostics
 
-The ABI engine emits 15 distinct warning codes (7001–7017) from six functions. Two codes are unused in this binary version (7007, 7018). All codes share the contiguous hex ID range `0x1B59`--`0x1B69` and are emitted through two parallel paths: `sub_7EEFA0` (standalone diagnostic buffer) and `sub_895530` (context-attached diagnostic using the compilation context at `*(func+48)`).
+The ABI engine emits 15 distinct warning codes (7001–7017) from six functions:
+
+- Two codes are unused in this binary version (7007, 7018).
+- All codes share the contiguous hex ID range `0x1B59`--`0x1B69`.
+- They are emitted through two parallel paths:
+  - `sub_7EEFA0` — standalone diagnostic buffer,
+  - `sub_895530` — context-attached diagnostic using the compilation context at `*(func+48)`.
 
 ### Complete Warning Catalog
 

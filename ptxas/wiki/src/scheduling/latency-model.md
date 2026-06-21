@@ -2,7 +2,13 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas instruction scheduler uses a static hardware performance model to estimate instruction latencies, functional unit occupancy, and pipeline conflicts. The model is architecture-parameterized: a static per-class descriptor table in `.rodata` (at `0x2297C00`) seeds it, and a family of table-construction helpers at `0x8E7300`–`0x8E9DC0` (generic grow-and-copy record appenders, fed per-architecture class data by their callers) assemble the runtime tables consumed by the scheduling engine. A separate 85 KB function (`sub_89FBA0`, SetOpcodeLatencies) assigns per-opcode scheduling classes that index into these tables. The combination produces a cost model that drives stall-count computation, priority scoring, and dual-issue pairing decisions.
+The ptxas instruction scheduler uses a static hardware performance model to estimate instruction latencies, functional unit occupancy, and pipeline conflicts. The model is architecture-parameterized, assembled from three parts:
+
+- A static per-class descriptor table in `.rodata` (at `0x2297C00`) seeds it.
+- A family of table-construction helpers at `0x8E7300`–`0x8E9DC0` (generic grow-and-copy record appenders, fed per-architecture class data by their callers) assemble the runtime tables consumed by the scheduling engine.
+- A separate 85 KB function (`sub_89FBA0`, SetOpcodeLatencies) assigns per-opcode scheduling classes that index into these tables.
+
+The combination produces a cost model that drives stall-count computation, priority scoring, and dual-issue pairing decisions.
 
 | | |
 |---|---|
@@ -257,7 +263,13 @@ Observed latency index values and their instruction classes. The table below cov
 | 0xFA | 250 | 761 | 22 | DP tensor (wide) |
 | 0xFB | 251 | 765–767 | 52 | BGMMA/QMMA |
 
-For common instruction classes, the latency index stored at `a3+196` equals the scheduling class ID directly — no remapping is needed. Only the tensor/collective classes (0xE6–0xFB) use explicit latency-index overrides that differ from their scheduling class ID. The model latency value of 17 for ALU classes with throughput 0 corresponds to the lowest-latency fully-pipelined path (4-cycle register-to-register, encoded as cost 17 in the scheduling cost product). Classes with model latency 22 and throughput 2 represent the "default" short-latency profile used for most single-cycle pipe instructions. The jump from 42–52 to 65–72 marks the boundary between standard functional units and long-latency tensor/FP64 operations that require scoreboard barriers.
+Reading the two tables together:
+
+- For common instruction classes, the latency index stored at `a3+196` equals the scheduling class ID directly — no remapping is needed.
+- Only the tensor/collective classes (0xE6–0xFB) use explicit latency-index overrides that differ from their scheduling class ID.
+- The model latency value of 17 for ALU classes with throughput 0 corresponds to the lowest-latency fully-pipelined path (4-cycle register-to-register, encoded as cost 17 in the scheduling cost product).
+- Classes with model latency 22 and throughput 2 represent the "default" short-latency profile used for most single-cycle pipe instructions.
+- The jump from 42–52 to 65–72 marks the boundary between standard functional units and long-latency tensor/FP64 operations that require scoreboard barriers.
 
 ## Functional Unit Categories
 
@@ -443,7 +455,17 @@ Offset  Bytes                       Field           Decoded
                                                     p11=0
 ```
 
-The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set); pipes 2–7 carry `0xFF` = "not applicable." `pipe_masks_b` is the dual-issue eligibility vector. Of the twelve params, only three are named with confidence across the whole 256-entry table: **p1** is the throughput class (observed values `{0,1,2,4,132}`), **p5** is the max-stall cycle count (`{0..7}`, dominated by 3 and 7), and **p7** is the class id repeated as a self-reference (it equals `class_id` at +0 for every record). The remaining params are emitted as observed columns; their exact semantics are not asserted. The full 256-class dump (id 2..771) is in the repo at `decoded/ptxas-scheduling/sched_class_table.txt`.
+Decoding the fields:
+
+- The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on pipe 0 or pipe 1 (bitmask `0x03` = bits 0+1 set); pipes 2–7 carry `0xFF` = "not applicable."
+- `pipe_masks_b` is the dual-issue eligibility vector.
+- Of the twelve params, only three are named with confidence across the whole 256-entry table:
+  - **p1** is the throughput class (observed values `{0,1,2,4,132}`),
+  - **p5** is the max-stall cycle count (`{0..7}`, dominated by 3 and 7),
+  - **p7** is the class id repeated as a self-reference (it equals `class_id` at +0 for every record).
+- The remaining params are emitted as observed columns; their exact semantics are not asserted.
+
+The full 256-class dump (id 2..771) is in the repo at `decoded/ptxas-scheduling/sched_class_table.txt`.
 
 **40-byte dependency rule** (from `sm_80` table, entry 0, matching unit\_id 2):
 
@@ -586,28 +608,20 @@ The model collapses to **five bands**:
 | 30  | shared / atomic | 88, 89 |
 | 300 | long global-memory miss | 16, 223, 228, and any opcode with property bit `0x40` set |
 
-The default seed at `oracle+92` is loaded from `xmmword_2029FE0 = {300,0,0,0}`, so an
-unclassified *memory* opcode falls through to 300 cycles. Two of these bands are
-architecturally-stable fixed points: the **6-cycle ALU baseline** (FXU
-register-to-register, unchanged Volta→Hopper) and the **300-cycle global-memory miss**
-(the unresolved-space scoreboard wait). The 13 / 24 / 30 bands are ptxas-internal OCG
-scalars and need not equal any single hazard-matrix cell.
+The default seed at `oracle+92` is loaded from `xmmword_2029FE0 = {300,0,0,0}`, so an unclassified *memory* opcode falls through to 300 cycles. Two of these bands are architecturally-stable fixed points:
 
-This five-band scalar oracle is the **fast per-opcode path** the OCG consults directly. It is
-*not* the whole model: ptxas also ships a **richer per-class producer/consumer table** — the
-40-byte dependency rules described in the next section — keyed by the scheduling class that
-`sub_89FBA0` assigns. The two agree on anchors (ALU = 6, long-memory = 300) but the 13 / 24 / 30
-oracle bands are OCG-internal scalars and need not equal any single dependency-rule cell. What
-does **not** ship in byte-readable form is the build-time scheduling DSL itself (the source
-`SM*.latencies_` description); it is compiled into the table-construction native code, so the
-recoverable artifacts are the *shipped* tables it emits: this five-band scalar oracle, the 72-byte
-sched-class descriptors (next section), and the 40-byte per-SM dependency rules.
+- the **6-cycle ALU baseline** (FXU register-to-register, unchanged Volta→Hopper),
+- the **300-cycle global-memory miss** (the unresolved-space scoreboard wait).
 
-The opcode→mnemonic naming must be resolved through the [Ori opcode table](../ir/instructions.md):
-the index space here is the Ori opcode id (`*(instr+72) & 0xFFFFCFFF`), **not** the SASS
-scheduling-class id (2..771) used by the descriptor table. The extracted oracle is archived in the
-repo at `decoded/ptxas-scheduling/scalar_latency_oracle.txt` (band-corrected copy in
-`decoded/ptxas-sched-full/scalar_latency_oracle.tsv`).
+> **NOTE** — the 13 / 24 / 30 bands are ptxas-internal OCG scalars and need not equal any single hazard-matrix cell.
+
+This five-band scalar oracle is the **fast per-opcode path** the OCG consults directly. It is *not* the whole model:
+
+- ptxas also ships a **richer per-class producer/consumer table** — the 40-byte dependency rules described in the next section — keyed by the scheduling class that `sub_89FBA0` assigns.
+- The two agree on anchors (ALU = 6, long-memory = 300) but the 13 / 24 / 30 oracle bands are OCG-internal scalars and need not equal any single dependency-rule cell.
+- What does **not** ship in byte-readable form is the build-time scheduling DSL itself (the source `SM*.latencies_` description); it is compiled into the table-construction native code, so the recoverable artifacts are the *shipped* tables it emits: this five-band scalar oracle, the 72-byte sched-class descriptors (next section), and the 40-byte per-SM dependency rules.
+
+The opcode→mnemonic naming must be resolved through the [Ori opcode table](../ir/instructions.md): the index space here is the Ori opcode id (`*(instr+72) & 0xFFFFCFFF`), **not** the SASS scheduling-class id (2..771) used by the descriptor table. The extracted oracle is archived in the repo at `decoded/ptxas-scheduling/scalar_latency_oracle.txt` (band-corrected copy in `decoded/ptxas-sched-full/scalar_latency_oracle.tsv`).
 
 ### The Full Per-SM Scheduling Model (three table families)
 
@@ -802,30 +816,27 @@ After all records are appended, the function computes the total serialized size 
 
 ### Table-Construction Helpers (`sub_8E7300`–`sub_8E97B0`)
 
-The cluster of functions at `0x8E7300`–`0x8E97B0` is the table-construction family
-invoked during scheduler init. An earlier draft of this page labelled each address
-with a specific SM (`sub_8E7720` = "sm\_75 builder, 3.5 KB", `sub_8E8480` = "sm\_90
-builder, 5.2 KB", …). **That per-SM attribution and the table-size column were an
-inference and do not hold up against the decompiles.** Reading the two that were
-spot-checked:
+The cluster of functions at `0x8E7300`–`0x8E97B0` is the table-construction family invoked during scheduler init.
 
-- `sub_8E7720` and `sub_8E8480` are **generic grow-and-copy record appenders**, not
-  per-architecture builders. Each reads the growable array's `{base, count, capacity}`
-  triple (`a1+56 / +64 / +68`), grows it by 1.5× when full (`count + ((count+1)>>1)`),
-  copies the existing 96-byte records (three `_mm_loadu_si128` loads each, cloning the
-  `+48` string field via `sub_714160`), and appends one new record. The only thing that
-  differs is the record *type code* and the data the **caller** supplies: `sub_8E7720`
-  stamps type `16` and copies the caller's `int`-pair (`a2[0]`, `a2[1]`); `sub_8E8480`
-  stamps the `','` type-44 marker and `class_flags = 2`. Neither contains any SM
-  constant, latency value, or intrinsic table size.
+> **CORRECTION** — an earlier draft of this page labelled each address with a specific SM (`sub_8E7720` = "sm\_75 builder, 3.5 KB", `sub_8E8480` = "sm\_90 builder, 5.2 KB", …). **That per-SM attribution and the table-size column were an inference and do not hold up against the decompiles.**
 
-So these addresses are best understood as **shared append primitives** parameterized
-entirely by their callers; the per-SM table sizes previously listed were derived from
-inference, not from the function bodies, and have been removed. The actual
-per-architecture content enters through the *callers* of these helpers (which pass the
-SM-specific class data) and through the static base table at `0x2297C00` documented
-above. Recovering a verified address-to-SM map would require tracing each caller's data
-argument — that work is not yet done, and the page no longer claims it.
+Reading the two that were spot-checked:
+
+- `sub_8E7720` and `sub_8E8480` are **generic grow-and-copy record appenders**, not per-architecture builders. Each:
+  - reads the growable array's `{base, count, capacity}` triple (`a1+56 / +64 / +68`),
+  - grows it by 1.5× when full (`count + ((count+1)>>1)`),
+  - copies the existing 96-byte records (three `_mm_loadu_si128` loads each, cloning the `+48` string field via `sub_714160`),
+  - and appends one new record.
+- The only thing that differs is the record *type code* and the data the **caller** supplies:
+  - `sub_8E7720` stamps type `16` and copies the caller's `int`-pair (`a2[0]`, `a2[1]`);
+  - `sub_8E8480` stamps the `','` type-44 marker and `class_flags = 2`.
+- Neither contains any SM constant, latency value, or intrinsic table size.
+
+So these addresses are best understood as **shared append primitives** parameterized entirely by their callers:
+
+- The per-SM table sizes previously listed were derived from inference, not from the function bodies, and have been removed.
+- The actual per-architecture content enters through the *callers* of these helpers (which pass the SM-specific class data) and through the static base table at `0x2297C00` documented above.
+- Recovering a verified address-to-SM map would require tracing each caller's data argument — that work is not yet done, and the page no longer claims it.
 
 ## Warp-Level Hardware Profile (sub\_8E4400)
 
@@ -1053,7 +1064,15 @@ This analysis runs after scheduling is complete and drives feedback for the Mac 
 
 ## Dual-Issue Rules
 
-Dual-issue scheduling is split across three functions: `sub_8CF5D0` (CheckDualIssueEligibility, 3.5 KB) decides whether the pass runs at all and computes the per-function benefit score; `sub_8B77C0` (DualIssueScheduler, 15 KB) drives the per-slot pairing loop; `sub_8BDC40` (DualIssuePairing, 7.9 KB) is the partner-record helper that `sub_8B77C0` calls per candidate — it walks the candidate's dependency-rule bucket, applies the `pipe_masks_b` compatibility mask, checks for RAW/WAR conflicts against the already-committed slot 0 instruction, and either marks the pair as co-issued (writing into `pair_record+offset` at `slot_array[id*96]`) or returns 0 to signal the caller to try the next candidate.
+Dual-issue scheduling is split across three functions:
+
+- `sub_8CF5D0` (CheckDualIssueEligibility, 3.5 KB) decides whether the pass runs at all and computes the per-function benefit score.
+- `sub_8B77C0` (DualIssueScheduler, 15 KB) drives the per-slot pairing loop.
+- `sub_8BDC40` (DualIssuePairing, 7.9 KB) is the partner-record helper that `sub_8B77C0` calls per candidate. It:
+  - walks the candidate's dependency-rule bucket,
+  - applies the `pipe_masks_b` compatibility mask,
+  - checks for RAW/WAR conflicts against the already-committed slot 0 instruction,
+  - and either marks the pair as co-issued (writing into `pair_record+offset` at `slot_array[id*96]`) or returns 0 to signal the caller to try the next candidate.
 
 ### Eligibility Check
 
@@ -1260,7 +1279,12 @@ The SSE-optimized accumulation uses `_mm_add_epi32` to add 4 resource counters a
 
 ### Detection (sub\_8F47E0)
 
-`sub_8F47E0` (12 lines) detects Cutlass GEMM kernels via `strstr(function_name, "cutlass")`, where the function name comes from the compilation unit's symbol table through `ctx->symtab->getName(ctx->func_id)`. The result propagates into `ctx+1381` bit 6 (`0x40`). This bit is set by the opcode visitor `sub_92C240` for both HMMA (case 77) and WMMA (case 50) opcodes — both flow through LABEL\_329, which ORs `0x40` unconditionally. The strstr result gates *downstream consumption* of the bit, not its setting.
+`sub_8F47E0` (12 lines) detects Cutlass GEMM kernels via `strstr(function_name, "cutlass")`, where the function name comes from the compilation unit's symbol table through `ctx->symtab->getName(ctx->func_id)`.
+
+- The result propagates into `ctx+1381` bit 6 (`0x40`).
+- This bit is set by the opcode visitor `sub_92C240` for both HMMA (case 77) and WMMA (case 50) opcodes — both flow through LABEL\_329, which ORs `0x40` unconditionally.
+
+> **NOTE** — the strstr result gates *downstream consumption* of the bit, not its setting.
 
 ### Flag Propagation into the Scheduler
 
@@ -1305,11 +1329,23 @@ When `sched->is_cutlass` or `sched+441` is nonzero and the barrier worklist is p
 
 ### Iterative Rematerialization (sub\_913A30)
 
-The Cutlass flag activates an iterative sink+remat path in Phase 28. When `ctx+1381 & 0x40` is set, `sub_913A30` runs the core engine `sub_911030` (2408 lines) in a convergence loop of up to knob 862 iterations (default 5). Each iteration calls `sub_8F5220` (init state), `sub_911030` (sink+remat), `sub_8F59C0` (convergence check), `sub_8F5AD0` (update state), and `sub_909A20` (propagate). Non-Cutlass functions receive a single-pass path via `sub_A0F020` instead. The remat cost model `sub_90B790` also relaxes eligibility for Cutlass: instructions with property bits 2-3 set (normally disqualifying) are permitted when `sub_8F47E0` returns true.
+The Cutlass flag activates an iterative sink+remat path in Phase 28. When `ctx+1381 & 0x40` is set, `sub_913A30` runs the core engine `sub_911030` (2408 lines) in a convergence loop of up to knob 862 iterations (default 5). Each iteration calls:
+
+- `sub_8F5220` (init state),
+- `sub_911030` (sink+remat),
+- `sub_8F59C0` (convergence check),
+- `sub_8F5AD0` (update state),
+- `sub_909A20` (propagate).
+
+Non-Cutlass functions receive a single-pass path via `sub_A0F020` instead. The remat cost model `sub_90B790` also relaxes eligibility for Cutlass: instructions with property bits 2-3 set (normally disqualifying) are permitted when `sub_8F47E0` returns true.
 
 ### Join Point: scheduling\_class + pipe\_class --> Final Control Word
 
-The two classification systems operate at different pipeline stages and converge in the control word encoder. `sub_89FBA0` runs during IR-level scheduling to assign a `scheduling_class` (integer stored at `SchedNode+4`, range 2–772+). `sub_13710B0` runs during SASS encoding to assign a `pipe_class` (9-bit value in `*(WORD*)(a3+196) & 0x1FF`, range 0x00–0x141). On Blackwell (sm\_10x), `sub_7C4950` dispatches to `sub_89FBA0` for opcodes it handles natively and falls back to `sub_13710B0` for others, meaning some opcodes get both classifications while others get only `pipe_class`.
+The two classification systems operate at different pipeline stages and converge in the control word encoder:
+
+- `sub_89FBA0` runs during IR-level scheduling to assign a `scheduling_class` (integer stored at `SchedNode+4`, range 2–772+).
+- `sub_13710B0` runs during SASS encoding to assign a `pipe_class` (9-bit value in `*(WORD*)(a3+196) & 0x1FF`, range 0x00–0x141).
+- On Blackwell (sm\_10x), `sub_7C4950` dispatches to `sub_89FBA0` for opcodes it handles natively and falls back to `sub_13710B0` for others, meaning some opcodes get both classifications while others get only `pipe_class`.
 
 The two values are consumed at different points in the stall/barrier computation pipeline:
 
@@ -1344,11 +1380,24 @@ function EmitControlWord(sched, instr):
     // resource vector accounting (which of the 10 FU counters to charge)
 ```
 
-The critical asymmetry: `scheduling_class` controls *how long* to wait (latency lookup, barrier threshold), while `pipe_class` controls *where* the instruction executes (pipe mask, sub-class, reuse flags). For the 206 opcodes with specialized handlers in `sub_89FBA0`, both values are set in the same switch body — the function writes `*(v8+4) = <sched_class>` and `*(WORD*)(a3+196) = <pipe_class>` together, then falls through to LABEL\_3 for reuse-flag post-processing. The remaining 124 default-handler opcodes get only `scheduling_class` from `sub_89FBA0` (pipe\_class stays at 0xF8000 = all-pipes sentinel), and the SASS encoder `sub_13710B0` later overwrites the pipe\_class with a SASS-level value for the actual encoding.
+The critical asymmetry:
+
+- `scheduling_class` controls *how long* to wait (latency lookup, barrier threshold).
+- `pipe_class` controls *where* the instruction executes (pipe mask, sub-class, reuse flags).
+
+Which values each opcode receives depends on its handler:
+
+- For the 206 opcodes with specialized handlers in `sub_89FBA0`, both values are set in the same switch body — the function writes `*(v8+4) = <sched_class>` and `*(WORD*)(a3+196) = <pipe_class>` together, then falls through to LABEL\_3 for reuse-flag post-processing.
+- The remaining 124 default-handler opcodes get only `scheduling_class` from `sub_89FBA0` (pipe\_class stays at 0xF8000 = all-pipes sentinel), and the SASS encoder `sub_13710B0` later overwrites the pipe\_class with a SASS-level value for the actual encoding.
 
 ## Execution Pipe Assignment (sub\_13710B0)
 
-`sub_13710B0` (7.1 KB, 1,088 lines decompiled) is the SASS-backend execution pipe class assigner. It runs in the SASS encoding pipeline (address range 0x1370–0x139F) *after* instruction selection, register allocation, and the main scheduling pass are complete. Where `sub_89FBA0` assigns IR-level scheduling class IDs (2–772+) consumed by the priority and stall-computation passes, `sub_13710B0` writes SASS-level pipe class IDs (0x00–0x141) that control control-word encoding: stall counts, barrier assignments, and dual-issue pairing in the final binary.
+`sub_13710B0` (7.1 KB, 1,088 lines decompiled) is the SASS-backend execution pipe class assigner. It runs in the SASS encoding pipeline (address range 0x1370–0x139F) *after* instruction selection, register allocation, and the main scheduling pass are complete.
+
+The division of labor with `sub_89FBA0`:
+
+- `sub_89FBA0` assigns IR-level scheduling class IDs (2–772+) consumed by the priority and stall-computation passes.
+- `sub_13710B0` writes SASS-level pipe class IDs (0x00–0x141) that control control-word encoding: stall counts, barrier assignments, and dual-issue pairing in the final binary.
 
 ### Descriptor Initialization
 

@@ -53,7 +53,12 @@ Per-register state actually lives in **two** distinct bits, on two different byt
   └─────────────────────────┘
 ```
 
-Both bits are written by `sub_90C180`. `vreg+48` bit 3 is the per-operand replica used by `OptimizeUniformAtomic` (phase 44) — it caches the address-operand divergence so the atomic rewriter does not need to chase definitions across a basic block boundary. `vreg+49` bit 2 is the canonical divergence flag and is the bit referenced by every downstream consumer described in the table above. Confidence: **HIGH** (cross-referenced through `passes/uniform-regs.md` ground-truth correction note).
+Both bits are written by `sub_90C180`:
+
+- `vreg+48` bit 3 is the per-operand replica used by `OptimizeUniformAtomic` (phase 44) — it caches the address-operand divergence so the atomic rewriter does not need to chase definitions across a basic block boundary.
+- `vreg+49` bit 2 is the canonical divergence flag, referenced by every downstream consumer described in the table above.
+
+> Confidence: **HIGH** (cross-referenced through `passes/uniform-regs.md` ground-truth correction note).
 
 ## Algorithm
 
@@ -155,7 +160,14 @@ restart: ;
 }
 ```
 
-`sub_90C180` is the engine of the propagator and is responsible for both the bit-2 write at `vreg+49` and the address-operand replica at `vreg+48`. Its 2,093-byte body decodes the instruction's operand list (an intrusive doubly-linked list rooted at the instruction record), reads each operand's register descriptor, OR-merges divergence into the destination's accumulator (`v61 = *v5 | *v73`), and uses `sub_8FE340` to push freshly-tainted registers back onto the worklist. The `_BitScanReverse64` pair in `sub_90E620` (offsets `0x90e9d8`, `0x90ed47`) implements an O(1) "next set bit" iterator over the worklist bitvector — this is what keeps the outer loop subquadratic on functions with thousands of vregs.
+`sub_90C180` is the engine of the propagator, responsible for both the bit-2 write at `vreg+49` and the address-operand replica at `vreg+48`. Its 2,093-byte body:
+
+- decodes the instruction's operand list (an intrusive doubly-linked list rooted at the instruction record),
+- reads each operand's register descriptor,
+- OR-merges divergence into the destination's accumulator (`v61 = *v5 | *v73`), and
+- uses `sub_8FE340` to push freshly-tainted registers back onto the worklist.
+
+The `_BitScanReverse64` pair in `sub_90E620` (offsets `0x90e9d8`, `0x90ed47`) implements an O(1) "next set bit" iterator over the worklist bitvector — this is what keeps the outer loop subquadratic on functions with thousands of vregs.
 
 > ⚡ **QUIRK — VOTE.BALLOT looks divergent but is uniform**
 > The `VOTE.BALLOT` instruction produces a 32-bit value where bit `i` reflects whether lane `i` satisfied the predicate. The integer is identical in every lane (it is a *cross-warp* reduction whose result is broadcast), so the destination is **uniform**, not varying. Naïve seeders that mark anything reading per-lane state as varying mis-classify `BALLOT` and unnecessarily inflate register pressure by keeping its result in the R file. Confirmed by inspection of the seed table in `sub_900020` and the inverse case (`SHFL`) which *is* seeded as varying.
@@ -299,7 +311,12 @@ bool propagate_to_callees(CodeObject *fn, uint32_t *vreg_idx_ptr) {
 }
 ```
 
-Constants `0x811C9DC5` and `0x01000193` (FNV-1a 32-bit prime and offset basis) are recovered verbatim from `sub_90E3F0` and appear at `0x90e5da..0x90e5cd` in the binary. The big-endian byte order is unusual for FNV — standard implementations process bytes little-endian — and is a ptxas-specific quirk introduced because the callee-vreg index is stored in the IR as a big-endian-packed 32-bit field for compatibility with the Mercury encoder's operand layout. Confidence: **MED** (constants and order are HIGH; the rationale is reconstructed from the surrounding Mercury-encoder hash collisions that would arise under little-endian byte order, and is not directly stated in any string).
+Notes on the hash:
+
+- Constants `0x811C9DC5` and `0x01000193` (FNV-1a 32-bit prime and offset basis) are recovered exactly from `sub_90E3F0` and appear at `0x90e5da..0x90e5cd` in the binary.
+- The big-endian byte order is unusual for FNV — standard implementations process bytes little-endian — and is a ptxas-specific quirk: the callee-vreg index is stored in the IR as a big-endian-packed 32-bit field for compatibility with the Mercury encoder's operand layout.
+
+> Confidence: **MED** (constants and order are HIGH; the rationale is reconstructed from the surrounding Mercury-encoder hash collisions that would arise under little-endian byte order, and is not directly stated in any string).
 
 > ⚡ **QUIRK — FNV-1a with big-endian byte stream**
 > The classical FNV-1a algorithm processes bytes in memory order. `sub_90E3F0` instead extracts bytes most-significant-first from a 32-bit integer (`HIBYTE(v) ^ ... ^ BYTE2(v) ^ ... ^ BYTE1(v) ^ ... ^ (uint8_t)v`). The hash is *still* a valid hash, but it is incompatible with any external FNV-1a output you might want to compare against. If you re-implement this analysis externally and use a stock FNV-1a, your hashes will not match ptxas's internal table layout — relevant only if you are reading per-callee state from a dumped IR snapshot.
@@ -365,7 +382,10 @@ Result of phase 53/70 on this fragment:
 | R16 | yes | Seed (`SHFL`) |
 | R17 | yes | `MovPhi` merge across a divergent branch — **always** varying, regardless of source uniformity |
 
-After phase 63 if-converts the branch (if the region is small enough), `MovPhi` becomes a predicated `SEL.@P0 R17, R16, R15`. Phase 70 re-runs and reaches a structurally identical conclusion: R17 sources R16 (varying), so R17 stays varying. But if predication had failed (region too large or live-out conflicts), and the branch survived as a true CFG edge, then phase 70 would still mark R17 varying via the same MovPhi rule. The two-run design ensures the answer is *correct* under either fate of the branch.
+The two-run design ensures the answer is *correct* under either fate of the branch:
+
+- **If predication succeeds** (region small enough): `MovPhi` becomes a predicated `SEL.@P0 R17, R16, R15`. Phase 70 re-runs and reaches a structurally identical conclusion — R17 sources R16 (varying), so R17 stays varying.
+- **If predication fails** (region too large or live-out conflicts) and the branch survives as a true CFG edge: phase 70 still marks R17 varying via the same MovPhi rule.
 
 ## Knobs and Gating
 

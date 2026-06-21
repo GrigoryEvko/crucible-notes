@@ -2,7 +2,12 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded instruction streams with relocation metadata, debug information, and a snapshot of compilation knobs, enabling deferred finalization for a target SM that may differ from the original compilation target. Where standard Mercury produces a fully-resolved SASS binary bound to a single SM, capmerc produces an intermediate ELF object that a downstream tool (the driver or linker) can finalize into native SASS at load time. This is the default output format for all SM 100+ targets (Blackwell, Jetson Thor, consumer RTX 50-series). The capmerc data lives in `.nv.capmerc<funcname>` per-function ELF sections alongside 21 types of `.nv.merc.*` auxiliary sections carrying cloned debug data, memory-space metadata, and Mercury-specific relocations. Finalization can be "opportunistic" — the same capmerc object may be finalized for different SMs within or across architectural families, controlled by `--opportunistic-finalization-lvl`.
+Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded instruction streams with relocation metadata, debug information, and a snapshot of compilation knobs, enabling deferred finalization for a target SM that may differ from the original compilation target.
+
+- **Versus standard Mercury** — where standard Mercury produces a fully-resolved SASS binary bound to a single SM, capmerc produces an intermediate ELF object that a downstream tool (the driver or linker) can finalize into native SASS at load time.
+- **Default for SM 100+** — this is the default output format for all SM 100+ targets (Blackwell, Jetson Thor, consumer RTX 50-series).
+- **On-disk layout** — the capmerc data lives in `.nv.capmerc<funcname>` per-function ELF sections, alongside 21 types of `.nv.merc.*` auxiliary sections carrying cloned debug data, memory-space metadata, and Mercury-specific relocations.
+- **Opportunistic finalization** — the same capmerc object may be finalized for different SMs within or across architectural families, controlled by `--opportunistic-finalization-lvl`.
 
 | | |
 |---|---|

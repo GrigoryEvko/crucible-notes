@@ -2,7 +2,11 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-`ExtractShaderConsts` is the ptxas pass that identifies values which are warp-uniform-and-loop-invariant (CTA-invariant across an entire kernel invocation, more precisely) and rewrites their per-thread computation into a single load from constant memory. It runs **twice** at fixed pipeline positions — phase 34 (`ExtractShaderConstsFirst`) and phase 51 (`ExtractShaderConstsFinal`) — but both positions dispatch into one shared implementation, `sub_1C72640` (4,582 bytes, 171 basic blocks, 37 outgoing calls). The two wrappers `sub_C5FDA0` (phase 34) and `sub_C5FDD0` (phase 51) differ in exactly one parameter — a single byte passed as the second argument selects whether the call site is "first" (0) or "final" (1) — and that flag controls one additional finalization step inside the engine. Everything else, including the candidate-collection state machine, the rank-and-select loop, and the IR rewrite, is identical between the two runs.
+`ExtractShaderConsts` is the ptxas pass that identifies values which are warp-uniform-and-loop-invariant (CTA-invariant across an entire kernel invocation, more precisely) and rewrites their per-thread computation into a single load from constant memory.
+
+- **Runs twice** at fixed pipeline positions — phase 34 (`ExtractShaderConstsFirst`) and phase 51 (`ExtractShaderConstsFinal`) — but both positions dispatch into one shared implementation, `sub_1C72640` (4,582 bytes, 171 basic blocks, 37 outgoing calls).
+- **One byte differs between the wrappers.** `sub_C5FDA0` (phase 34) and `sub_C5FDD0` (phase 51) differ in exactly one parameter — a single byte passed as the second argument selects whether the call site is "first" (0) or "final" (1) — and that flag controls one additional finalization step inside the engine.
+- **Everything else is identical** between the two runs, including the candidate-collection state machine, the rank-and-select loop, and the IR rewrite.
 
 The pass exists because the partial-SSA IR window between phases 23 and 73 deliberately preserves expressions that *look* uniform but were either materialised inline by an earlier lowering (kernel parameter arithmetic, surface descriptor reads, sampler binding indices, ABI register staging) or exposed as uniform only after a preceding analysis. Shader-const extraction is what closes the gap: it intercepts those expressions, allocates a constant-bank slot, and replaces the original compute chain with a `LDC c[bank][offset]` that the back end can broadcast to every lane via the uniform-datapath registers.
 
@@ -36,7 +40,11 @@ The "shader" in the pass name is historical — ptxas inherits the term from the
 2. **Surface and sampler descriptors.** Reading a 32-byte texture descriptor from `c[bank][offset]` produces a uniform-by-construction value whose subsequent address arithmetic (mipmap-level stride, slice offset, array stride) is also uniform.
 3. **Compile-time-known launch parameters.** `gridDim`, `blockDim`, and other launch attributes the host driver patches into `c[0]` before the kernel starts. Same propagation rule.
 
-The pass does not invent new constants; it only re-bins existing ones. Specifically: when an expression tree rooted in `c[bank_A][offset]` produces a derived value that is *also* warp-uniform and that is used at three or more dynamic sites (the threshold is `v18 > 3` in the gate at line `1c7281c`), the engine allocates a new constant-bank slot in `c[bank_B]`, materialises the derived value once at module-load time via the constant-bank pre-staging mechanism, and rewrites every use site to a single-instruction `LDC` from `c[bank_B]`.
+The pass does not invent new constants; it only re-bins existing ones. When an expression tree rooted in `c[bank_A][offset]` produces a derived value that is *also* warp-uniform and that is used at three or more dynamic sites (the threshold is `v18 > 3` in the gate at line `1c7281c`), the engine:
+
+1. Allocates a new constant-bank slot in `c[bank_B]`.
+2. Materialises the derived value once at module-load time via the constant-bank pre-staging mechanism.
+3. Rewrites every use site to a single-instruction `LDC` from `c[bank_B]`.
 
 Confidence: **MED** on the three-class taxonomy (each class has a distinct seeding rule in `sub_1BD9200` and a distinct cost weight in `sub_1C6DD40`, but the names are reconstructed from the constant-bank index conventions documented in `cubin/constant-banks.md`, not from any string the binary embeds).
 
@@ -49,7 +57,18 @@ Both runs share one engine; what differs is the *state of the IR* when each runs
 | `sub_C5FDA0` | 34 (`ExtractShaderConstsFirst`) | After `OriPerformLiveDeadSecond` (33), before `OriHoistInvariantsEarly` (35) | First chance to catch easy candidates immediately after early-DCE has eliminated the obvious noise. `a2 = 0` ⇒ the finalize sub-step is **skipped**. The pass is permitted to leave partially-rewritten chains for the second position to clean up. |
 | `sub_C5FDD0` | 51 (`ExtractShaderConstsFinal`) | After `OriReassociateAndCommon` (50), before `OriReplaceEquivMultiDefMov` (52) | Reassociation has just exposed new uniform sub-expressions that were not syntactically uniform on the first run. `a2 = 1` ⇒ the finalize sub-step (`sub_1C68760`) **runs**, committing all pending extractions to the constant bank and closing the per-function bookkeeping. |
 
-The seventeen phases between the two positions include the most aggressive expression-rewriting work of the entire optimizer — strength reduction (21), pipelining (24), loop unrolling (22), the linear replacement engine (31), the macro-instruction creator (8), and the GvnCse/reassociate pair (49–50). Every one of these can synthesise new uniform expressions that did not exist when phase 34 ran. Running shader-const extraction only at phase 51 would miss the candidates that the early passes (35–48) want to consume; running only at phase 34 would miss everything the late-rewriters expose. The two-position design is the standard "snapshot now, refine later" pattern that ptxas uses across the partial-SSA window.
+The seventeen phases between the two positions include the most aggressive expression-rewriting work of the entire optimizer:
+
+- Strength reduction (21), pipelining (24), loop unrolling (22).
+- The linear replacement engine (31), the macro-instruction creator (8).
+- The GvnCse/reassociate pair (49–50).
+
+Every one of these can synthesise new uniform expressions that did not exist when phase 34 ran:
+
+- Running shader-const extraction **only at phase 51** would miss the candidates that the early passes (35–48) want to consume.
+- Running **only at phase 34** would miss everything the late-rewriters expose.
+
+The two-position design is the standard "snapshot now, refine later" pattern that ptxas uses across the partial-SSA window.
 
 > ⚡ **QUIRK — one engine, two pipeline positions, single byte selector**
 > The two wrappers `sub_C5FDA0` and `sub_C5FDD0` are byte-for-byte identical except for the literal `0` vs `1` passed as `a2`. The engine `sub_1C72640` reads `a2` exactly once — at the gate where it controls whether `sub_1C68760` (the finalize) runs (line `1c72cb2`). Every other piece of behaviour is identical between the two calls. A re-implementation that treated each phase as a distinct pass would duplicate ~4.5 KB of code; the ptxas convention is to keep the body unique and parameterise the call site. Confidence: **HIGH** (visible in both wrapper decompilations side-by-side).
@@ -291,7 +310,12 @@ The list lives in `candidates` (v134 / `sub_1C68B60`-allocated). Confidence: **M
 
 ### Ranker (`sub_1C6DD40`)
 
-The 4,013-byte ranker is the cost-model heart of the pass. It is the largest individual callee of the engine and is itself essentially a two-loop bin-packing algorithm: outer loop over bank classes, inner loop over candidates within that class. The outer loop's invariant is that bank-class `k` has used at most `bank_capacity[k]` slots by iteration end; the inner loop picks the highest-`cost_score` candidate that fits in the remaining capacity. Both losers (couldn't fit) and tied candidates are demoted to `pending` for the next pipeline position.
+The 4,013-byte ranker is the cost-model heart of the pass. It is the largest individual callee of the engine and is itself essentially a two-loop bin-packing algorithm:
+
+- **Outer loop over bank classes.** Invariant: bank-class `k` has used at most `bank_capacity[k]` slots by iteration end.
+- **Inner loop over candidates within that class.** Picks the highest-`cost_score` candidate that fits in the remaining capacity.
+
+Both losers (couldn't fit) and tied candidates are demoted to `pending` for the next pipeline position.
 
 > ⚡ **QUIRK — ranker re-runs the size guard at line 416 of the engine**
 > The engine checks `body_size > 3` twice: once at line 270 (to decide whether to allocate scratch at all) and once at line 416 (to decide whether to run the ranker). The second check is **redundant** — the only branch that arrives at line 416 has already passed the line 270 gate. The duplicate is a remnant of an earlier code shape where the ranker was a separate phase with its own gate; the merger left the inner check in place. It costs one compare-and-branch per function and is otherwise harmless. Confidence: **HIGH** (visible at both `1c72805` and `1c7359c` in the decompilation).

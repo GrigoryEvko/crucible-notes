@@ -933,7 +933,10 @@ Two structural observations constrain the implementation:
 
 1. **Single-block loops only.** Phase 24 operates on single-basic-block loop bodies (the feasibility check at `sub_9202D0` rejects multi-operand forms, and multi-block handling is gated to the unroller via `UnrollMultiBlockLoops`). In a single-block DDG where every instruction executes once per iteration, the only cycles are recurrences — chains where instruction A feeds B feeds ... feeds A across iteration boundaries. The count of such cycles is bounded by the number of loop-carried edges, typically small (1–4 for register recurrences).
 
-2. **Implicit via constraint propagation.** The post-RA SoftwarePipeline variant (`sub_8B9390`) tracks `maxDependencyCycle` (+92) and `maxPredecessorCycle` (+88) in the per-instruction 96-byte scheduling record. These fields propagate forward during the modulo scheduling placement loop: when B depends on A with latency L and distance D, the earliest slot for B is `A.scheduled_time + L - D * II`. If no valid placement exists at the current II, II is incremented and the MRT is rebuilt. This means RecMII is effectively computed as the smallest II for which all recurrence constraints are satisfiable, rather than being pre-computed by a separate cycle-enumeration pass.
+2. **Implicit via constraint propagation.** The post-RA SoftwarePipeline variant (`sub_8B9390`) tracks `maxDependencyCycle` (+92) and `maxPredecessorCycle` (+88) in the per-instruction 96-byte scheduling record:
+   - These fields propagate forward during the modulo scheduling placement loop: when B depends on A with latency L and distance D, the earliest slot for B is `A.scheduled_time + L - D * II`.
+   - If no valid placement exists at the current II, II is incremented and the MRT is rebuilt.
+   - So RecMII is effectively computed as the smallest II for which all recurrence constraints are satisfiable, rather than being pre-computed by a separate cycle-enumeration pass.
 
 **ResMII** (resource-constrained): Computed by accumulating per-pipe FP64 instruction costs and dividing by per-pipe issue width. The process uses `sub_91E610` (which wraps `sub_91A0F0`) to classify each instruction's latency class, then maps the class through `vtable+904` (`PipeAssignment`) to obtain a pipe index into the 7-entry resource table at `code_object+16`.
 
@@ -1065,7 +1068,10 @@ function SoftwarePipelineSchedule(ctx, loop_desc, stage_mask):
             next: instr = instr.next
 ```
 
-The 7-class register bank partitioning (the cascade of comparisons against `ctx+16[0..6]` at decompiled lines 416-460) maps physical register indices to hardware register file banks. The boundaries come from the same pipe class table at `code_object+16` used by the pre-RA ResMII computation, ensuring consistent resource accounting across both pipelining layers. Class 5 receives special treatment: when the hardware profile's tensor-pipe mode flag at `profile+5112` is nonzero, instructions in this bank bypass `sub_8B81F0` and route to `sub_8B9230` (the fast-path tensor emitter that calls `sub_8B8900` / TensorScheduler).
+The 7-class register bank partitioning (the cascade of comparisons against `ctx+16[0..6]` at decompiled lines 416-460) maps physical register indices to hardware register file banks:
+
+- The boundaries come from the same pipe class table at `code_object+16` used by the pre-RA ResMII computation, ensuring consistent resource accounting across both pipelining layers.
+- Class 5 receives special treatment: when the hardware profile's tensor-pipe mode flag at `profile+5112` is nonzero, instructions in this bank bypass `sub_8B81F0` and route to `sub_8B9230` (the fast-path tensor emitter that calls `sub_8B8900` / TensorScheduler).
 
 **`sub_8B81F0`** (bank-aware placement) takes seven parameters: `(ctx, loop_desc, instruction, register_class, bank_offset, is_cross_iteration, stage_index)`. From the call graph it invokes `sub_10AF2C0` (latency query), `sub_8B5E20` (dependency edge update), and the scoreboard chain `sub_10AEBC0`/`sub_10AE9A0`/`sub_10AEB30`, confirming it as the core cycle-level conflict resolver.
 
@@ -1406,7 +1412,11 @@ function MarkInvariants_Forward(context, block_index):
                     reg.use_count += 1                    // count loop-internal uses
 ```
 
-The key insight is that invariance is determined by **definition site**: if every source register was defined outside the loop (or in a block already processed), the instruction is invariant. Immediates and constants are trivially invariant. The check is not purely structural — it uses the `reg+76` field which gets updated as hoisting proceeds, allowing transitive invariance discovery.
+The key insight is that invariance is determined by **definition site**:
+
+- If every source register was defined outside the loop (or in a block already processed), the instruction is invariant.
+- Immediates and constants are trivially invariant.
+- The check is not purely structural — it uses the `reg+76` field, which gets updated as hoisting proceeds, allowing transitive invariance discovery.
 
 ##### Set-Based Invariance Alternative (knob 934)
 
@@ -1444,7 +1454,12 @@ function BuildInvariantSet(co, block_idx, hdr_depth, max_depth, inv_set, filter,
 
 **Phase B — Per-instruction classification (`sub_8F7280`):** walks the block once after the set is final. For each register operand, looks up `reg.class_and_id >> 8` in the BST. If the bitmap bit is set: writes `reg.def_block = block_index` (marking invariant). If the bit is clear and the operand is a definition: increments `reg.use_count` (loop-internal use count). On the forward pass (`a3=1`), clears `reg+84` before the lookup; on the backward pass (`a3=0`), preserves it.
 
-**Why two paths exist.** The default single-pass interleaves invariance detection with destination marking. It misses transitive invariance: if instruction A defines R1 and later instruction B uses R1 to define R2, R2 cannot be marked in the same pass. The default delegates this to Stage 4 (`sub_8F7DD0`). The set-based path solves it directly — once R1 enters the set, the next fixpoint iteration promotes R2. The cost is memory (64-byte BST nodes per register group) and repeated block scans, hence it remains opt-in behind knob 934.
+**Why two paths exist.**
+
+- The default single-pass interleaves invariance detection with destination marking. It misses transitive invariance: if instruction A defines R1 and later instruction B uses R1 to define R2, R2 cannot be marked in the same pass. The default delegates this to Stage 4 (`sub_8F7DD0`).
+- The set-based path solves it directly — once R1 enters the set, the next fixpoint iteration promotes R2.
+
+The cost is memory (64-byte BST nodes per register group) and repeated block scans, hence the set-based path remains opt-in behind knob 934.
 
 #### Stage 3: Backward Non-Invariance Marking (sub_8FEAC0, a3=0)
 
@@ -1460,7 +1475,12 @@ The backward pass calls the same `sub_8FEAC0` with `a3=0`. Five behavioral diver
 
 **Divergence 5 — Source-match early exit.** When a source register already has `def_block == block_index` (loop-internal definition found during the operand scan), both passes set `v17 = 0` and break from the operand loop (line 293). The forward pass then re-evaluates the `!a3` condition (false), so it must pass through the full side-effect/memory/observable chain before reaching destination marking. The backward pass (`!a3` is true) falls directly into LABEL_25, reaching the same chain but without the conditional guard — a minor control-flow simplification since the result is the same.
 
-The net effect: Stage 2 (forward) optimistically marks registers whose definitions appear outside the current block and clears use-counts to prepare a blank slate. Stage 3 (backward) pessimistically re-stamps `def_block` on any destination belonging to a non-invariant instruction, and builds use-count for every register that survived both passes. Only registers with `def_block != block_index` after both passes are candidates for hoisting.
+The net effect:
+
+- **Stage 2 (forward)** optimistically marks registers whose definitions appear outside the current block and clears use-counts to prepare a blank slate.
+- **Stage 3 (backward)** pessimistically re-stamps `def_block` on any destination belonging to a non-invariant instruction, and builds use-count for every register that survived both passes.
+
+Only registers with `def_block != block_index` after both passes are candidates for hoisting.
 
 #### Stage 4: Transitive Invariance Propagation (sub_8F7DD0)
 
@@ -1554,7 +1574,12 @@ function IsProfitable(context, block_index, budget, is_hoist_safe):
 
 The profitability check encodes a fundamental GPU tradeoff: hoisting reduces dynamic instruction count (proportional to trip count) but extends live ranges (increasing register pressure and reducing occupancy). The `budget` parameter, which varies by 100x between pass_id 0 and 3, controls how aggressively this tradeoff is resolved.
 
-The denominator distinction is the core difference between the aggressive and conservative LICM passes. Pass_id 0 (Early) divides by the number of instructions actually scanned in the candidate block — a local, small denominator that makes the score-to-penalty ratio easy to satisfy. Pass_id > 0 (Late, Late2, Late3) divides by a weighted combination of the loop's header and body instruction counts (`body_weight / 3 + header_weight`, precomputed by `sub_8F8BC0`). This global denominator is typically larger, requiring a proportionally higher score to justify hoisting. The `body_weight / 3` term discounts body instructions because they execute every iteration (their cost is amortized), while header instructions execute once per loop entry and thus weigh more heavily in the normalization.
+The denominator distinction is the core difference between the aggressive and conservative LICM passes:
+
+- **Pass_id 0 (Early)** divides by the number of instructions actually scanned in the candidate block — a local, small denominator that makes the score-to-penalty ratio easy to satisfy.
+- **Pass_id > 0 (Late, Late2, Late3)** divides by a weighted combination of the loop's header and body instruction counts (`body_weight / 3 + header_weight`, precomputed by `sub_8F8BC0`). This global denominator is typically larger, requiring a proportionally higher score to justify hoisting.
+
+The `body_weight / 3` term discounts body instructions because they execute every iteration (their cost is amortized), while header instructions execute once per loop entry and thus weigh more heavily in the normalization.
 
 An additional behavioral difference: when the candidate block contains no invariant-eligible instructions, pass_id 0 returns false immediately (no vacuous hoisting), while pass_id > 0 falls through to the formula with score = 0 and latency_penalty = 0, yielding true if the denominator is nonzero (vacuous profitability — no instructions means no penalty).
 

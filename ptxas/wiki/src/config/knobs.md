@@ -2,7 +2,10 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob. The system is shared with cicc but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs). All knob names are stored ROT13-encoded in the binary, a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
+The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob.
+
+- **Two instantiations.** The system is shared with cicc, but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs).
+- **ROT13 names.** All knob names are stored ROT13-encoded in the binary — a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
 
 The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x6F8000` (DAG knob instantiation, shared with the Mercury SASS pipeline) and `0x797000`--`0x7A2000` (OCG knob instantiation, the larger set). Both regions are compiled from the same template.
 
@@ -86,7 +89,13 @@ The `& 0xDF` trick converts lowercase to uppercase before range-checking, so bot
 To reverse-engineer knob names from the binary: extract the ROT13 strings from the knob definition table (64-byte stride at the table base pointer), apply ROT13, and you get the cleartext name. A reference decoder lives at `tools/decode_rot13_knobs.py` and operates directly on `ptxas_strings.json`; the prefix-filter mode (`--prefix Mercury`, `--prefix URF`, `--prefix Speculatively`) keeps the output narrow when triaging a specific subsystem.
 
 > ⚡ **QUIRK — why ROT13 at all?**
-> ROT13 is involutive (`rot13(rot13(x)) == x`), trivially reversible, and adds zero runtime cost when the decoder is fused with the case-insensitive compare (one `& 0xDF` masks case; one range test selects the rotation). The goal is not secrecy — anyone with a Python shell defeats it in two lines — it is to keep internal names out of casual `strings(1)` scans, ELF symbol dumps, and grep-based audits of customer support payloads. Three concrete effects: (1) the ~3,000 ROT13'd identifiers never appear in `strings ptxas | sort -u`, so a grep for `Mercury`, `XBlock`, or `Scav` returns only the handful of plaintext pipeline-phase labels; (2) the `0k`-prefixed hex defaults (1,380 strings, e.g. `0x590`, `0x5a0`) are interleaved with ROT13 names, raising the noise floor for entropy-based string filters; (3) the obfuscation lives below `.dynsym` and `.symtab` (both stripped), so symbol-table tooling sees nothing. The cipher is also stable across observed builds — every ptxas since r10.x uses the same scheme — so a single decoder works across the toolkit history.
+> ROT13 is involutive (`rot13(rot13(x)) == x`), trivially reversible, and adds zero runtime cost when the decoder is fused with the case-insensitive compare (one `& 0xDF` masks case; one range test selects the rotation). The goal is not secrecy — anyone with a Python shell defeats it in two lines — it is to keep internal names out of casual `strings(1)` scans, ELF symbol dumps, and grep-based audits of customer support payloads. Three concrete effects:
+>
+> 1. The ~3,000 ROT13'd identifiers never appear in `strings ptxas | sort -u`, so a grep for `Mercury`, `XBlock`, or `Scav` returns only the handful of plaintext pipeline-phase labels.
+> 2. The `0k`-prefixed hex defaults (1,380 strings, e.g. `0x590`, `0x5a0`) are interleaved with ROT13 names, raising the noise floor for entropy-based string filters.
+> 3. The obfuscation lives below `.dynsym` and `.symtab` (both stripped), so symbol-table tooling sees nothing.
+>
+> The cipher is also stable across observed builds — every ptxas since r10.x uses the same scheme — so a single decoder works across the toolkit history.
 
 ### Broader Decoded-Name Surface (beyond Mercury)
 
@@ -1225,7 +1234,9 @@ Confidence: HIGH (names recovered via ROT13 decode of the descriptor table); MED
 
 ### Mercury Backend (~20 knobs)
 
-The Mercury encoder cluster is undocumented beyond the small set referenced in the [Mercury Encoder page](../codegen/mercury.md). Recovered names include `MercuryAssumePTXPortability`, `MercuryCompactedAssumes`, `MercuryConsumeAssumes`, `MercuryConverterStats`, `MercuryDepStagePreferNonLiveinPSB`, `MercuryDumpInstsAsBinary`, `MercuryEncodeDecode`, `MercuryEncodeNewWorkerFiles`, `MercuryForceISAClass`, `MercuryForceUnknownTcgen05Attr`, `MercuryGenSassUCode`, `MercuryInsertAssumes`, `MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryIssueDelayWBStallSelfLoop`, `MercuryMergePrologueBlocks`, `MercuryPresumeXblockWaitBeneficial`, `MercuryTepidAwareSb`, `MercuryTrackMultiReadsWarLatency`, `MercuryUseActiveThreadCollectiveInsts`. These control assume-stream construction, dependency-bar / cross-block-wait insertion, and the ucode-emit fallback path.
+The Mercury encoder cluster is undocumented beyond the small set referenced in the [Mercury Encoder page](../codegen/mercury.md). These control assume-stream construction, dependency-bar / cross-block-wait insertion, and the ucode-emit fallback path. Recovered names:
+
+`MercuryAssumePTXPortability`, `MercuryCompactedAssumes`, `MercuryConsumeAssumes`, `MercuryConverterStats`, `MercuryDepStagePreferNonLiveinPSB`, `MercuryDumpInstsAsBinary`, `MercuryEncodeDecode`, `MercuryEncodeNewWorkerFiles`, `MercuryForceISAClass`, `MercuryForceUnknownTcgen05Attr`, `MercuryGenSassUCode`, `MercuryInsertAssumes`, `MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryIssueDelayWBStallSelfLoop`, `MercuryMergePrologueBlocks`, `MercuryPresumeXblockWaitBeneficial`, `MercuryTepidAwareSb`, `MercuryTrackMultiReadsWarLatency`, `MercuryUseActiveThreadCollectiveInsts`.
 
 ### Loop Optimization (~15 knobs)
 
@@ -1269,7 +1280,17 @@ The stored-as-`One*` family decodes to `Bar*`: `BarDeferBlocking`, `BarDeferBloc
 
 ### Other Recovered Singletons
 
-`DumpInstPhase`, `IntrinsicDescrFile`, `PhaseIRFile`, `PhaseIRPre`, `PhaseIRPost` (dump/intrumentation surface area beyond `DUMPIR`); `EnableConstExprCFG`, `EnableConvergedFastSyncPath`, `EnableConvergentURInABIFunc`, `EnableGvnCse`, `EnableMembarWar`, `EnableMeshMVWar`, `EnableRegAllocValidation`, `EnableSingleThreadPeelingLoops`, `EnableStackSecurity`, `EnableStaticColdBlockAnalysis`, `EnableSynchronizedCohesiveRegion`, `EnableUnbalancedSync`, `EnableUR16Bit`, `EnableValidatorTesting`; `ForwardProgress` (separate from the `DisableForwardProgressWar1842954` workaround toggle); `MaxActiveWarpsPerSM`, `MaxCBRegCount`, `MaxRegsForMaxWarp`, `MaxRRegCount`, `MaxRRegInflation`, `MaxShaderConstBytes`, `MaxSmemPerSM`, `MaxSmemSpillSlots`, `MaxSyncDepth`, `MaxUregCount` (architecture-targeting ceilings); `OptimizeBindlessHeaderLoads`, `OptimizeCmpToPredBudget`, `OptimizeCommonRegisters`, `OptimizeCommonRegistersBudget`, `OptimizeF2FP`, `OptimizeFloatIntFloatConv`, `OptimizeHotColdFlow`, `OptimizeHotColdFlowBudget`, `OptimizeHotColdInvert`, `OptimizeMatchWithVaryingAnalysis`, `OptimizeMulRcp`, `OptimizeMulSqrt`, `OptimizeShflWithVaryingAnalysis`, `OptimizeUniformAtomicMode` (per-optimization budgets and selectors); `CtaReconfigMaxRegAlloc`, `CtaReconfigMaxRegDealloc` (sm_90+ CTA reconfiguration limits); `WarDeploySyncsFlush`, `WarDeploySyncsFlush_SW4397903`, `DisableWar_HW4403675` (workarounds added after the disable-switches sweep); `SinkCodeIntoBlock`, `SinkCodeIntoSplitBlock`, `SinkTexCacheUses`, `SinkTexInstAcrossKill`, `SinkTexInstsToICacheRatio`, `SinkTexLowRegTargetScale`, `SinkTexMaxRegTargetScale`, `SinkTexReadInstRatio` (sinking pass beyond `SinkRemat*`); `VectorizeAndRemapTLD`, `VectorizeBudget`, `VectorizeConstantsBudget`, `VectorizeFp32` (load/store/constant vectorization parameters distinct from the disable switches).
+Grouped by the parenthetical category each cluster falls under:
+
+- **Dump / instrumentation** (surface area beyond `DUMPIR`): `DumpInstPhase`, `IntrinsicDescrFile`, `PhaseIRFile`, `PhaseIRPre`, `PhaseIRPost`.
+- **`Enable*` toggles**: `EnableConstExprCFG`, `EnableConvergedFastSyncPath`, `EnableConvergentURInABIFunc`, `EnableGvnCse`, `EnableMembarWar`, `EnableMeshMVWar`, `EnableRegAllocValidation`, `EnableSingleThreadPeelingLoops`, `EnableStackSecurity`, `EnableStaticColdBlockAnalysis`, `EnableSynchronizedCohesiveRegion`, `EnableUnbalancedSync`, `EnableUR16Bit`, `EnableValidatorTesting`.
+- **`ForwardProgress`** — separate from the `DisableForwardProgressWar1842954` workaround toggle.
+- **Architecture-targeting ceilings** (`Max*`): `MaxActiveWarpsPerSM`, `MaxCBRegCount`, `MaxRegsForMaxWarp`, `MaxRRegCount`, `MaxRRegInflation`, `MaxShaderConstBytes`, `MaxSmemPerSM`, `MaxSmemSpillSlots`, `MaxSyncDepth`, `MaxUregCount`.
+- **Per-optimization budgets and selectors** (`Optimize*`): `OptimizeBindlessHeaderLoads`, `OptimizeCmpToPredBudget`, `OptimizeCommonRegisters`, `OptimizeCommonRegistersBudget`, `OptimizeF2FP`, `OptimizeFloatIntFloatConv`, `OptimizeHotColdFlow`, `OptimizeHotColdFlowBudget`, `OptimizeHotColdInvert`, `OptimizeMatchWithVaryingAnalysis`, `OptimizeMulRcp`, `OptimizeMulSqrt`, `OptimizeShflWithVaryingAnalysis`, `OptimizeUniformAtomicMode`.
+- **sm_90+ CTA reconfiguration limits**: `CtaReconfigMaxRegAlloc`, `CtaReconfigMaxRegDealloc`.
+- **Workarounds added after the disable-switches sweep**: `WarDeploySyncsFlush`, `WarDeploySyncsFlush_SW4397903`, `DisableWar_HW4403675`.
+- **Sinking pass beyond `SinkRemat*`**: `SinkCodeIntoBlock`, `SinkCodeIntoSplitBlock`, `SinkTexCacheUses`, `SinkTexInstAcrossKill`, `SinkTexInstsToICacheRatio`, `SinkTexLowRegTargetScale`, `SinkTexMaxRegTargetScale`, `SinkTexReadInstRatio`.
+- **Vectorization** (load/store/constant parameters distinct from the disable switches): `VectorizeAndRemapTLD`, `VectorizeBudget`, `VectorizeConstantsBudget`, `VectorizeFp32`.
 
 To convert any of these into a fully-documented entry: run `DUMP_KNOBS_TO_FILE=… ptxas -arch sm_100 -o /dev/null trivial.ptx` to obtain index + default + type, then trace consumer sites via the cross-reference graph rooted at `sub_6F0FF0` (DAG `GetKnobValue`) and `sub_7A1B80`/`sub_7A1CC0`/`sub_7A1E10` (OCG per-type getters).
 
@@ -1345,12 +1366,12 @@ with no runtime effect in this binary. Statistically (n = 1000), the per-bit pat
 
 Flags histogram: `0x0:534, 0x2:155, 0x3:112, 0x1:103, 0x4:59, 0x6:36, 0x7:1`.
 
-**Descriptor ↔ name join.** Descriptor index `i` aligns with name index `i` — the schema table and
-the knob-index enum are emitted in lockstep from one ordered list, and at runtime the same `i`
-indexes both the 64-byte ROT13 name array (`*(reg+16)+(i<<6)`) and the 72-byte value array
-(`*(reg+72)+72·i`); `GetKnobIndex` (`sub_79B240`) returns that `i`. Caveat: ~19 leading entries in
-the schema table are non-knob helper strings (`NamedPhases`, `DUMP_KNOBS_TO_FILE`, `GetKnobIndex`,
-phase names) that must be filtered before aligning the 1000 descriptors with the knob-name list.
+**Descriptor ↔ name join.** Descriptor index `i` aligns with name index `i`:
+
+- The schema table and the knob-index enum are emitted in lockstep from one ordered list.
+- At runtime the same `i` indexes both the 64-byte ROT13 name array (`*(reg+16)+(i<<6)`) and the 72-byte value array (`*(reg+72)+72·i`); `GetKnobIndex` (`sub_79B240`) returns that `i`.
+
+> Caveat: ~19 leading entries in the schema table are non-knob helper strings (`NamedPhases`, `DUMP_KNOBS_TO_FILE`, `GetKnobIndex`, phase names) that must be filtered before aligning the 1000 descriptors with the knob-name list.
 
 The type tokens in `field[2]` are `OKT_NONE` / `OKT_INT` / `OKT_BDGT` (BUDGET) / `OKT_IRNG`
 (INT_RANGE) / `OKT_ILIST` (INT_LIST) / `OKT_DBL` (DOUBLE) / `OKT_STR` (STRING) / `OKT_WHEN` /

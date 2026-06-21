@@ -36,11 +36,28 @@ PTX (Parallel Thread Execution) is NVIDIA's virtual ISA for GPU compute. SASS (S
 
 PTXAS is not a monolithic assembler. It decomposes into three largely independent subsystems with distinct coding conventions, data structures, and lineages:
 
-**1. PTX Frontend** (~3 MB, `0x400000`--`0x5AA000`) — A Flex-generated DFA scanner (`sub_720F00`, 64 KB, ~552 rules) feeds tokens into a Bison-generated LALR(1) parser (`sub_4CE6B0`, 48 KB). The parser is driven from `sub_446240` (the real `main`, 11 KB), which orchestrates the full pipeline: parse, DAGgen, OCG, ELF, DebugInfo. The frontend also contains 1,141 instruction descriptors registered via `sub_46E000` (93 KB) that define accepted type combinations for every PTX opcode, 608 CUDA runtime intrinsics registered in `sub_5D1660` (46 KB), and a suite of per-instruction semantic validators (`0x460000`--`0x4D5000`) that check architecture requirements, type compatibility, and operand constraints before lowering. See [PTX Parser](./pipeline/ptx-parser.md) and [Entry Point & CLI](./pipeline/entry.md).
+**1. PTX Frontend** (~3 MB, `0x400000`--`0x5AA000`) — A Flex-generated DFA scanner (`sub_720F00`, 64 KB, ~552 rules) feeds tokens into a Bison-generated LALR(1) parser (`sub_4CE6B0`, 48 KB). The parser is driven from `sub_446240` (the real `main`, 11 KB), which orchestrates the full pipeline: parse, DAGgen, OCG, ELF, DebugInfo. The frontend also contains:
 
-**2. Ori Optimizer** (~8 MB, `0x5AA000`--`0xC52000`) — A proprietary 159-phase optimization pipeline managed by the PhaseManager (`sub_C62720`). The phase factory at `sub_C60D30` is a 159-case switch that allocates polymorphic phase objects from a vtable table at `off_22BD5C8`. Each phase has virtual methods for `execute()`, `isNoOp()`, and `getName()`. Major subsystems include: a fatpoint-based register allocator (`sub_957160` core, `sub_95DC10` driver, `sub_926A30` interference graph builder), a 3-phase instruction scheduler (`sub_688DD0` with ReduceReg/DynBatch modes and 9 register pressure counters), copy propagation, strength reduction, predication (if-conversion), rematerialization, and GMMA/WGMMA pipelining. The pipeline reads its default phase ordering from a 159-entry table at `0x22BEEA0`. See [Optimization Pipeline](./pipeline/optimizer.md) and [Phase Manager](./passes/phase-manager.md).
+- 1,141 instruction descriptors registered via `sub_46E000` (93 KB) that define accepted type combinations for every PTX opcode.
+- 608 CUDA runtime intrinsics registered in `sub_5D1660` (46 KB).
+- A suite of per-instruction semantic validators (`0x460000`--`0x4D5000`) that check architecture requirements, type compatibility, and operand constraints before lowering.
 
-**3. SASS Backend** (~14 MB, `0xC52000`--`0x1CE3000`) — The Mercury encoder generates native SASS binary code. Instruction encoding is handled by ~4,000 per-variant handler functions (683 + 678 = 1,361 in the SM100 Blackwell encoding tables alone at `0xED1000`--`0x107B000`, with additional tables for other SM generations). Each handler follows a rigid template: set opcode ID, load a 128-bit encoding format descriptor via SIMD, initialize a 10-slot register class map, register operand descriptors via `sub_7BD3C0`/`sub_7BD650`/`sub_7BE090`, finalize with `sub_7BD260`, then extract bitfields from the packed instruction word. The backend also contains 3 peephole optimizers (the `PeepholeOptimizer` class at `0x7A5D10` with `Init`, `RunOnFunction`, `RunOnBB`, `RunPatterns`, `SpecialPatterns`, `ComplexPatterns`, and `SchedulingAwarePatterns` methods), a capsule Mercury ELF embedder for debug metadata (`sub_1CB53A0`, section `.nv.capmerc`), and a custom ELF emitter (`sub_1C9F280`, 97 KB) that builds the final CUBIN output. See [SASS Code Generation](./pipeline/codegen.md), [Mercury Encoder](./codegen/mercury.md), and [Peephole Optimization](./codegen/peephole.md).
+See [PTX Parser](./pipeline/ptx-parser.md) and [Entry Point & CLI](./pipeline/entry.md).
+
+**2. Ori Optimizer** (~8 MB, `0x5AA000`--`0xC52000`) — A proprietary 159-phase optimization pipeline managed by the PhaseManager (`sub_C62720`). The phase factory at `sub_C60D30` is a 159-case switch that allocates polymorphic phase objects from a vtable table at `off_22BD5C8`; each phase has virtual methods for `execute()`, `isNoOp()`, and `getName()`. Major subsystems:
+
+- A fatpoint-based register allocator (`sub_957160` core, `sub_95DC10` driver, `sub_926A30` interference graph builder).
+- A 3-phase instruction scheduler (`sub_688DD0` with ReduceReg/DynBatch modes and 9 register pressure counters).
+- Copy propagation, strength reduction, predication (if-conversion), rematerialization, and GMMA/WGMMA pipelining.
+
+The pipeline reads its default phase ordering from a 159-entry table at `0x22BEEA0`. See [Optimization Pipeline](./pipeline/optimizer.md) and [Phase Manager](./passes/phase-manager.md).
+
+**3. SASS Backend** (~14 MB, `0xC52000`--`0x1CE3000`) — The Mercury encoder generates native SASS binary code. Instruction encoding is handled by ~4,000 per-variant handler functions (683 + 678 = 1,361 in the SM100 Blackwell encoding tables alone at `0xED1000`--`0x107B000`, with additional tables for other SM generations).
+
+- **Handler template.** Each handler follows a rigid sequence: set opcode ID, load a 128-bit encoding format descriptor via SIMD, initialize a 10-slot register class map, register operand descriptors via `sub_7BD3C0`/`sub_7BD650`/`sub_7BE090`, finalize with `sub_7BD260`, then extract bitfields from the packed instruction word.
+- **Also in the backend:** 3 peephole optimizers (the `PeepholeOptimizer` class at `0x7A5D10` with `Init`, `RunOnFunction`, `RunOnBB`, `RunPatterns`, `SpecialPatterns`, `ComplexPatterns`, and `SchedulingAwarePatterns` methods), a capsule Mercury ELF embedder for debug metadata (`sub_1CB53A0`, section `.nv.capmerc`), and a custom ELF emitter (`sub_1C9F280`, 97 KB) that builds the final CUBIN output.
+
+See [SASS Code Generation](./pipeline/codegen.md), [Mercury Encoder](./codegen/mercury.md), and [Peephole Optimization](./codegen/peephole.md).
 
 Additionally, the binary embeds a custom pool allocator (`sub_424070`, 3,809 callers), MurmurHash3-based hash maps (`sub_426150` insert / `sub_426D60` lookup), a thread pool with pthread-based parallel compilation support, and a GNU Make jobserver client for integration with build systems.
 
@@ -105,9 +122,27 @@ PTXAS exposes three layers of configuration:
 
 **CLI Options** (~100 flags) — Registered in `sub_432A00` and parsed by `sub_434320`. Key options include `--gpu-name` (target SM), `--maxrregcount` (register limit), `--opt-level` (0–4), `--verbose`, `--warn-on-spills`, `--warn-on-local-memory-usage`, `--fast-compile`, `--fdevice-time-trace` (Chrome trace JSON output), `--compile-as-tools-patch` (sanitizer mode), and `--extensible-whole-program`. Help is printed by `sub_403588` which calls `sub_1C97640` to enumerate all registered options.
 
-**Internal Knobs** (1,294 ROT13-encoded entries) — A separate configuration system. The knob table is populated by two massive static constructors: `ctor_005` at `0x40D860` (80 KB, ~2,000 general OCG knobs) and `ctor_007` at `0x421290` (8 KB, 98 Mercury scheduler knobs). All knob names are ROT13-obfuscated in the binary. Examples after decoding: `MercuryUseActiveThreadCollectiveInsts`, `MercuryTrackMultiReadsWarLatency`, `MercuryPresumeXblockWaitBeneficial`, `ScavInlineExpansion`, `ScavDisableSpilling`. Knobs are read from environment variables and knob files via `ReadKnobsFile` (`sub_79D070`) which parses `[knobs]`-header INI files. Lookup is performed by `GetKnobIndex` (`sub_79B240`) with inline ROT13 decoding and case-insensitive comparison. See [Knobs System](./config/knobs.md).
+**Internal Knobs** (1,294 ROT13-encoded entries) — A separate configuration system.
 
-**SM Profile Tables** — Per-architecture capability maps initialized by `sub_607DB0` (14 KB) which creates 7 hash maps indexing `sm_XX` / `compute_XX` strings to handler functions. Profile objects are constructed by `sub_6765E0` (54 KB) with architecture-to-family mappings (sm\_75 -> Turing, sm\_80/86/87/88 -> Ampere, sm\_89 -> Ada Lovelace, sm\_90/90a -> Hopper, sm\_100/100a/100f -> Blackwell, sm\_103/103a/103f -> Blackwell Ultra, sm\_110/110a/110f -> Jetson Thor, sm\_120/120a/120f -> RTX 50xx, sm\_121/121a/121f -> DGX Spark). See [SM Architecture Map](./targets/index.md).
+- **Population.** The knob table is built by two massive static constructors: `ctor_005` at `0x40D860` (80 KB, ~2,000 general OCG knobs) and `ctor_007` at `0x421290` (8 KB, 98 Mercury scheduler knobs).
+- **Names.** All knob names are ROT13-obfuscated in the binary. Examples after decoding: `MercuryUseActiveThreadCollectiveInsts`, `MercuryTrackMultiReadsWarLatency`, `MercuryPresumeXblockWaitBeneficial`, `ScavInlineExpansion`, `ScavDisableSpilling`.
+- **Access.** Knobs are read from environment variables and knob files via `ReadKnobsFile` (`sub_79D070`), which parses `[knobs]`-header INI files; lookup is performed by `GetKnobIndex` (`sub_79B240`) with inline ROT13 decoding and case-insensitive comparison.
+
+See [Knobs System](./config/knobs.md).
+
+**SM Profile Tables** — Per-architecture capability maps initialized by `sub_607DB0` (14 KB), which creates 7 hash maps indexing `sm_XX` / `compute_XX` strings to handler functions. Profile objects are constructed by `sub_6765E0` (54 KB) with these architecture-to-family mappings:
+
+- sm\_75 -> Turing
+- sm\_80/86/87/88 -> Ampere
+- sm\_89 -> Ada Lovelace
+- sm\_90/90a -> Hopper
+- sm\_100/100a/100f -> Blackwell
+- sm\_103/103a/103f -> Blackwell Ultra
+- sm\_110/110a/110f -> Jetson Thor
+- sm\_120/120a/120f -> RTX 50xx
+- sm\_121/121a/121f -> DGX Spark
+
+See [SM Architecture Map](./targets/index.md).
 
 ## Reading This Wiki
 

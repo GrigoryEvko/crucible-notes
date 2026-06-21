@@ -117,7 +117,11 @@ The pass is gated by knob 487 (general optimization enablement).
 
 Analysis pass that examines constant bank (`c[]`) accesses and determines which constant memory loads can be safely speculated — that is, hoisted or sunk across control-flow boundaries without changing program semantics. The pass name `AnalyzeUniformsForSpeculation` refers to the *speculation safety of uniform-address constant loads*, not to per-register divergence classification.
 
-Constant memory loads via `LDC c[bank][offset]` are pure (no side effects) when the address is uniform, but hoisting them above a branch may introduce a load on a path that the original program never executed. This is benign for constant memory (the load cannot fault and the value is fixed), but the compiler must still confirm that the address expression is safe to evaluate speculatively. Phase 27 performs this confirmation and records the result so that downstream passes know which `LDC` instructions (and their dependent computations) may be freely moved across control flow.
+Constant memory loads via `LDC c[bank][offset]` are pure (no side effects) when the address is uniform, but hoisting them above a branch may introduce a load on a path that the original program never executed. The mechanism:
+
+- Speculative hoisting is benign for constant memory — the load cannot fault and the value is fixed.
+- But the compiler must still confirm the address expression is safe to evaluate speculatively.
+- Phase 27 performs this confirmation and records the result, so downstream passes know which `LDC` instructions (and their dependent computations) may be freely moved across control flow.
 
 ### Consumers
 
@@ -139,11 +143,27 @@ The distinction matters: a value can be uniform (not varying) yet still unsafe t
 
 ### Interaction with Post-Predication Safety
 
-Phase 27 operates before predication; a separate, narrower mechanism tracks speculation safety *after* predication. `sub_137EE50` (called from phase 63) scans predicated code for loads to `.surf`/tensor extended memory (category 18) and records them in a hash set at `state+240`, setting `context+1392` bit 0. This flag persists through later passes and is checked by `OriHoistInvariantsLate` (phase 66) to prevent hoisting those loads. The two mechanisms are complementary: phase 27 covers the pre-predication window for constant bank accesses, `context+1392` covers the post-predication residual for surface/tensor loads.
+Phase 27 operates before predication; a separate, narrower mechanism tracks speculation safety *after* predication.
+
+- `sub_137EE50` (called from phase 63) scans predicated code for loads to `.surf`/tensor extended memory (category 18) and records them in a hash set at `state+240`, setting `context+1392` bit 0.
+- This flag persists through later passes and is checked by `OriHoistInvariantsLate` (phase 66) to prevent hoisting those loads.
+
+The two mechanisms are complementary: phase 27 covers the pre-predication window for constant bank accesses, `context+1392` covers the post-predication residual for surface/tensor loads.
 
 ### Evidence Note
 
-The execute body of this phase was not decompiled; the function at vtable `off_22BDA00` slot +0 has not been traced. The original description was reconstructed from (a) the phase name table, (b) `vreg+49` bit 2 usage in consumer passes, and (c) the predication pass's `has_uniform_speculation` field. That reconstruction incorrectly attributed the `vreg+49` bit 2 divergence flag to this pass. Subsequent cross-reference analysis of the binary established that `vreg+49` bit 2 is set exclusively by `OriPropagateVarying` (phases 53/70), and that the phase name "AnalyzeUniformsForSpeculation" refers to constant bank access speculation safety rather than per-register uniformity classification. The internal algorithm (worklist vs. single-pass, lattice width, convergence guarantee) remains unknown pending decompilation of the execute body.
+The execute body of this phase was not decompiled; the function at vtable `off_22BDA00` slot +0 has not been traced. The original description was reconstructed from:
+
+- the phase name table,
+- `vreg+49` bit 2 usage in consumer passes, and
+- the predication pass's `has_uniform_speculation` field.
+
+That reconstruction incorrectly attributed the `vreg+49` bit 2 divergence flag to this pass. Subsequent cross-reference analysis of the binary established two corrections:
+
+- `vreg+49` bit 2 is set exclusively by `OriPropagateVarying` (phases 53/70).
+- The phase name "AnalyzeUniformsForSpeculation" refers to constant bank access speculation safety rather than per-register uniformity classification.
+
+> The internal algorithm (worklist vs. single-pass, lattice width, convergence guarantee) remains unknown pending decompilation of the execute body.
 
 ## Phase 74: ConvertToUniformReg
 
@@ -172,7 +192,11 @@ Phase 74 runs immediately after SSA destruction (`ConvertAllMovPhiToMov`, phase 
 
 The eligibility check (`sub_90C010`, 456 bytes) tests all five criteria simultaneously per instruction. A value qualifies for R-to-UR conversion when all hold:
 
-1. **R-file source operand.** The operand word at `inst+84+8*idx` must have type field `(operand>>28) & 7 == 1` (register-class operand — this 3-bit field carries 1=register, 2/3=wide-register pair/quad, 5=constant-pool indirect; it does **not** distinguish R from UR — both R and UR sources appear with class 1) and byte `+7` low bit clear (special/fixed flag). The R-vs-UR discriminator is the referenced vreg's `+64` reg_type (R is class 1, UR is class 3 in the enum at `ir/registers.md`); the check at `sub_90C010:21` is structurally only a "must be register class" gate, and the subsequent reg_type test (`v8 = vreg[+64]`) is what selects R-source candidates for promotion. The function returns 0 immediately if either gate fails.
+1. **R-file source operand.** The operand word at `inst+84+8*idx` must pass two gates, and the function returns 0 immediately if either fails:
+   - **Type field** `(operand>>28) & 7 == 1` (register-class operand) and byte `+7` low bit clear (special/fixed flag).
+   - This 3-bit field carries 1=register, 2/3=wide-register pair/quad, 5=constant-pool indirect; it does **not** distinguish R from UR — both R and UR sources appear with class 1.
+   - The R-vs-UR discriminator is instead the referenced vreg's `+64` reg_type (R is class 1, UR is class 3 in the enum at `ir/registers.md`).
+   - So the check at `sub_90C010:21` is structurally only a "must be register class" gate; the subsequent reg_type test (`v8 = vreg[+64]`) is what selects R-source candidates for promotion.
 
 2. **UR-expressible opcode.** The opcode (masked to `opcode & 0xFFFFCFFF` to strip modifier bits) must match the 64-bit bitmask `0x2080000010000001` shifted by base 22, selecting exactly four opcode classes: **IADD3** (22), **PRMT** (50), **SEL** (77), **SGXT** (83). Opcodes **297** and **352** (VOTEU and a predicate variant) pass via explicit equality checks. MOV (164) is explicitly *rejected* in `sub_90B790`, returning cost 1 (bridge-only).
 
@@ -275,7 +299,12 @@ The `OriPropagateVarying` passes (phases 53 and 70) propagate divergence informa
 
 Both passes execute the same forward dataflow procedure. The analysis is an **iterative fixed-point loop**, not a single forward pass. Although the Ori IR is in partial-SSA form (phases 23–73) where intra-procedural def-use ordering is trivially satisfied by forward program order, inter-procedural divergence propagation requires re-iteration: when a function called on a divergent path is newly marked varying, the varying status must propagate through that callee's register definitions, which may in turn affect other call sites. The loop terminates when no register's varying status changes during a complete iteration.
 
-Binary analysis of `sub_90E620` (1,919 bytes, called from `sub_90EDA0`) confirms this structure. The function contains an outer `do { ... } while (worklist)` loop driven by a bitvector of pending registers. Within the loop body, `sub_90C180` (2,093 bytes) propagates varying status to each register and returns a non-zero changed flag when the status was updated. When changes are detected and the affected register belongs to a callee function (checked via the call-graph edge list at `codeobj+128`), `sub_90E3F0` resolves the callee's divergence through FNV-1a hash lookups on the function-local state at offsets `+288`/`+328`. If the callee function itself was newly marked varying (comparing the callee's function record against the changed record), the loop restarts from the beginning via `goto LABEL_24`, re-processing all pending registers with the updated information.
+Binary analysis of `sub_90E620` (1,919 bytes, called from `sub_90EDA0`) confirms this structure:
+
+- The function contains an outer `do { ... } while (worklist)` loop driven by a bitvector of pending registers.
+- Within the loop body, `sub_90C180` (2,093 bytes) propagates varying status to each register and returns a non-zero changed flag when the status was updated.
+- When changes are detected and the affected register belongs to a callee function (checked via the call-graph edge list at `codeobj+128`), `sub_90E3F0` resolves the callee's divergence through FNV-1a hash lookups on the function-local state at offsets `+288`/`+328`.
+- If the callee function itself was newly marked varying (comparing the callee's function record against the changed record), the loop restarts from the beginning via `goto LABEL_24`, re-processing all pending registers with the updated information.
 
 ```c
 PropagateVarying(code_object):
@@ -328,7 +357,12 @@ Registers that remain with bit 2 clear after convergence are proven uniform and 
 
 1. **Base-address tracking (opcode 97 / STG).** `sub_892F50` records the address register of the store into the pass-local state. Subsequent atomics targeting the same address inherit this base, enabling the uniformity check without a full reaching-definition analysis.
 
-2. **Atomic candidate match (opcodes 228, 16 after mask).** `sub_893100` (12 KB) performs the eligibility test. It rejects the instruction if: (a) the operand type is not a supported memory width (type 12 = 32-bit, types 9–11 = 64/128-bit; type 6 = scope-qualified is accepted only when `codeobj+1397` bit 5 is set), (b) the address operand carries the varying flag (bit 3 of `vreg+48`), or (c) a CAS-ordered operand is present (bit 20 of the last operand word). After passing these filters, the function extracts the **reduction operation type** from operand bits `[8:4]` (for opcode 16) or `[8:5]` (for opcode 228) and dispatches through a switch:
+2. **Atomic candidate match (opcodes 228, 16 after mask).** `sub_893100` (12 KB) performs the eligibility test. It rejects the instruction if any of these hold:
+   - (a) the operand type is not a supported memory width (type 12 = 32-bit, types 9–11 = 64/128-bit; type 6 = scope-qualified is accepted only when `codeobj+1397` bit 5 is set);
+   - (b) the address operand carries the varying flag (bit 3 of `vreg+48`); or
+   - (c) a CAS-ordered operand is present (bit 20 of the last operand word).
+
+   After passing these filters, the function extracts the **reduction operation type** from operand bits `[8:4]` (for opcode 16) or `[8:5]` (for opcode 228) and dispatches through a switch:
 
 | Case | Op   | Replacement strategy |
 |------|------|----------------------|
@@ -339,7 +373,10 @@ Registers that remain with bit 2 clear after convergence are proven uniform and 
 | 8    | OR   | Bitwise warp-reduce |
 | 9    | XOR  | Bitwise warp-reduce |
 
-For ADD with a uniform address on sm_80+ (`codeobj+1398` bit 2 and `ctx+1045` bit 1 both set, operand types 11–12), `sub_892420` emits `ATOM.UNIFORM` directly. Otherwise the general path in `sub_88FC40`/`sub_890C90` constructs an ELECT + REDUX + conditional-ATOM sequence: elect one lane, perform a warp-level REDUX to combine the per-thread values, then execute a single ATOM from the elected lane and broadcast the result.
+The replacement strategy splits two ways:
+
+- **Fast path** — ADD with a uniform address on sm_80+ (`codeobj+1398` bit 2 and `ctx+1045` bit 1 both set, operand types 11–12): `sub_892420` emits `ATOM.UNIFORM` directly.
+- **General path** — `sub_88FC40`/`sub_890C90` constructs an ELECT + REDUX + conditional-ATOM sequence: elect one lane, perform a warp-level REDUX to combine the per-thread values, then execute a single ATOM from the elected lane and broadcast the result.
 
 3. **All other opcodes** are skipped.
 

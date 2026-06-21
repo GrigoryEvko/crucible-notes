@@ -2,9 +2,14 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Phase 31 (`OriLinearReplacement`) is the multi-pattern affine-expression linearizer of ptxas. It walks every instruction in every function and, when the operand chain feeding an arithmetic or addressing-mode opcode forms a linear expression `base + scale·index + offset` over already-strength-reduced inputs, it rewrites the chain into a single emitted instruction (LEA-style IADD3 / IADD.X / IMAD.WIDE with a folded immediate) and deletes the intermediates. At 7,084 bytes and 241 basic blocks it is the largest single-function pass in the Ori optimization pipeline; the size is entirely driven by the breadth of its opcode catalog — eleven distinct input shapes are recognized in one flat dispatch over the source-instruction opcode, each with its own legality test, range check, and emission template.
+Phase 31 (`OriLinearReplacement`) is the multi-pattern affine-expression linearizer of ptxas. It walks every instruction in every function and, when the operand chain feeding an arithmetic or addressing-mode opcode forms a linear expression `base + scale·index + offset` over already-strength-reduced inputs, it rewrites the chain into a single emitted instruction (LEA-style IADD3 / IADD.X / IMAD.WIDE with a folded immediate) and deletes the intermediates.
 
-The pass runs immediately after `DoSwitchOptSecond` (phase 30) and before `CompactLocalMemory` (phase 32). Its placement is deliberate: switch lowering exposes new address-computation chains (jump-table base + scaled index + per-target offset) that look syntactically identical to the IADD3-fold targets the linearizer already handles, and local-memory compaction relies on the linearizer having pulled all scale·index multiplies through any intermediate MOV/SEL so that the surviving stack-slot offsets are direct immediates rather than expression trees.
+At 7,084 bytes and 241 basic blocks it is the largest single-function pass in the Ori optimization pipeline. The size is entirely driven by the breadth of its opcode catalog: eleven distinct input shapes are recognized in one flat dispatch over the source-instruction opcode, each with its own legality test, range check, and emission template.
+
+The pass runs immediately after `DoSwitchOptSecond` (phase 30) and before `CompactLocalMemory` (phase 32). Its placement is deliberate:
+
+- **Switch lowering** (phase 30) exposes new address-computation chains (jump-table base + scaled index + per-target offset) that look syntactically identical to the IADD3-fold targets the linearizer already handles.
+- **Local-memory compaction** (phase 32) relies on the linearizer having pulled all scale·index multiplies through any intermediate MOV/SEL so that the surviving stack-slot offsets are direct immediates rather than expression trees.
 
 | | |
 |---|---|
@@ -264,7 +269,13 @@ if ((uint64_t)(disp + 0x80000000ULL) > 0xFFFFFFFFULL) {
 }
 ```
 
-The expression `(uint64_t)(x + 0x80000000) > 0xFFFFFFFF` is the canonical "does signed-32 fit" test (`INT32_MIN ≤ x ≤ INT32_MAX`). When a fold would not fit in signed 32, the matcher does **not** reject the rewrite outright; instead it adds `0x80000000` to the displacement, marks the result with bit `0x90000000` in the operand type field (instead of the usual `0x10000000`), and emits a different IADD encoding (`sub_92F490` instead of `sub_92FE10`) that the encoder will lower to a `IADD3.X` (carry-extended) instead of a plain `IADD3`. Confidence: **MED** — the `0x90000000` vs `0x10000000` distinction is robust (visible at `0x7ed946` and `0x7ed32a`), but the SASS-level interpretation of the two encodings is inferred from cross-reference with `passes/late-legalization.md` rather than directly stated.
+The expression `(uint64_t)(x + 0x80000000) > 0xFFFFFFFF` is the canonical "does signed-32 fit" test (`INT32_MIN ≤ x ≤ INT32_MAX`). When a fold would not fit in signed 32, the matcher does **not** reject the rewrite outright; instead it takes the biased path:
+
+1. Adds `0x80000000` to the displacement.
+2. Marks the result with bit `0x90000000` in the operand type field (instead of the usual `0x10000000`).
+3. Emits a different IADD encoding (`sub_92F490` instead of `sub_92FE10`) that the encoder will lower to a `IADD3.X` (carry-extended) instead of a plain `IADD3`.
+
+Confidence: **MED** — the `0x90000000` vs `0x10000000` distinction is robust (visible at `0x7ed946` and `0x7ed32a`), but the SASS-level interpretation of the two encodings is inferred from cross-reference with `passes/late-legalization.md` rather than directly stated.
 
 > ⚡ **QUIRK — half-fold is sm_100/sm_103 only**
 > The Blackwell-datacenter IMAD half-fold path (case 5 of the catalog, when the multiply produces a 64-bit intermediate and the linearizer wants to merge the low half with a 32-bit displacement) only runs when `(ctx->target_flags & 0x2) != 0` AND `ctx->sm_class ∈ {4, 5}`. On consumer Blackwell (sm_120/sm_121), Hopper (sm_90), and earlier, this path is gated off and the multi-instruction sequence survives. The rationale is the IMAD.WIDE.X variant introduced in Blackwell datacenter that allows a 33-bit immediate displacement; pre-Blackwell, the same fold would require a temporary register holding the upper bits and the rewrite would be a net loss. Confirmed at `0x7ec678..0x7ed253` (the `sub_7846D0` call site is gated on the same two conditions).

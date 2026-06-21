@@ -649,12 +649,20 @@ Note: The stats emitter accesses the Code Object through a float pointer (`v3`),
 
 ## Basic Block Representation (two parallel structures)
 
-ptxas uses **two separate basic-block containers** that coexist in the Code Object, and an **earlier draft of this wiki conflated them into a single "40-byte BasicBlock" struct**. The conflation is the source of apparent contradictions between this page and the per-pass documentation (which accesses offsets like `bb+128`, `bb+144`, `bb+152`, `bb+232`, `bb+280`, `bb+292` — all far beyond 40 bytes). The reality is:
+ptxas uses **two separate basic-block containers** that coexist in the Code Object, and an **earlier draft of this wiki conflated them into a single "40-byte BasicBlock" struct**.
+
+> The conflation is the source of apparent contradictions between this page and the per-pass documentation, which accesses offsets like `bb+128`, `bb+144`, `bb+152`, `bb+232`, `bb+280`, `bb+292` — all far beyond 40 bytes.
+
+The reality is:
 
 1. **`bb_array` at Code Object +296** — a dense `BasicBlock**` table (8-byte stride), i.e. *one pointer per block* to a **heap-allocated full BasicBlock object (≥293 bytes)**. Used by every optimization pass that needs CFG structure (predecessors, successors, RPO, flags, loop attributes).
 2. **`block_info` at Code Object +976** — an *inline contiguous array* of **40-byte scheduling descriptors** (40-byte stride). Each 40-byte entry is the scheduling / DOT-dumper view of a block and is *not* a BasicBlock — it carries an instruction-range bracket (head / tail-sentinel), the block index, and a flag byte.
 
-The two structures are parallel: index `i` in `bb_array` and index `i` in `block_info` describe the same logical block. Count-wise, `bb_array[0..ctx[+304]]` is the iteration range (inclusive upper bound), and `block_info[0..ctx[+984]]` is the iteration range for the 40-byte array (also inclusive). The two counts are set independently but remain in lock-step because the creation paths update both.
+The two structures are parallel: index `i` in `bb_array` and index `i` in `block_info` describe the same logical block.
+
+- `bb_array[0..ctx[+304]]` is the iteration range (inclusive upper bound).
+- `block_info[0..ctx[+984]]` is the iteration range for the 40-byte array (also inclusive).
+- The two counts are set independently but remain in lock-step because the creation paths update both.
 
 ### The 40-byte `block_info` entry (at +976)
 
@@ -742,9 +750,15 @@ The entries of `bb_array` point to a much larger heap object. The size has not b
 | +282 | `u8`    | `sub_781F80:908` (`(*(_BYTE*)(v20+282) & 8) != 0`) | high byte of the `+280` flags dword (byte-level test) |
 | +292 | `u8`    | `sub_781F80:602,733,904` (bitwise OR / AND) | secondary flag byte (paired with `+280`) |
 
-The access at offset `+292` (a byte, written with `|= 8`) sets the lower bound on the BasicBlock size at **≥ 293 bytes**, and the natural alignment of the arena allocator rounds this up to a multiple of 8 (so the next valid allocator bucket is 296 bytes). **The earlier "BasicBlock = 40 bytes" claim is wrong** and was the result of describing the 40-byte `block_info` entry as if it were the full block object.
+The access at offset `+292` (a byte, written with `|= 8`) sets the lower bound on the BasicBlock size at **≥ 293 bytes**, and the natural alignment of the arena allocator rounds this up to a multiple of 8 (so the next valid allocator bucket is 296 bytes).
 
-The previous revision of this section also misattributed the scheduling-pass initializer `sub_8D0640` to the 40-byte array. That was wrong: `sub_8D0640` walks a *separate* linked list rooted at `scheduling_ctx[+104]` (`for (i = *(v21+104); i; i = (__int64*)*i)`), with the zeroing pattern `i[7] = 0`, `i[13] = 0`, `*((_DWORD*)i+19) = 0`, `*((_DWORD*)i+21) = -1`. This linked list stores *per-scheduling-group* records (qword fields at +56, +104; dword fields at +76, +84), not block_info entries. The 40-byte entries are never rewritten in a single pass like that — they are populated incrementally during CFG construction via `sub_10AE800` and mutated in-place by `sub_BE0690` / `sub_8A5240` when backedge analysis needs to mark a terminator.
+> **Correction.** The earlier "BasicBlock = 40 bytes" claim is wrong — it was the result of describing the 40-byte `block_info` entry as if it were the full block object.
+
+The previous revision of this section also misattributed the scheduling-pass initializer `sub_8D0640` to the 40-byte array. That was wrong:
+
+- `sub_8D0640` walks a *separate* linked list rooted at `scheduling_ctx[+104]` (`for (i = *(v21+104); i; i = (__int64*)*i)`), with the zeroing pattern `i[7] = 0`, `i[13] = 0`, `*((_DWORD*)i+19) = 0`, `*((_DWORD*)i+21) = -1`.
+- This linked list stores *per-scheduling-group* records (qword fields at +56, +104; dword fields at +76, +84), not block_info entries.
+- The 40-byte entries are never rewritten in a single pass like that — they are populated incrementally during CFG construction via `sub_10AE800` and mutated in-place by `sub_BE0690` / `sub_8A5240` when backedge analysis needs to mark a terminator.
 
 ### Access cheat sheet
 
@@ -948,7 +962,11 @@ Each slab is tracked by a 56-byte descriptor:
 
 ### Hierarchical Pools
 
-Pools are hierarchical. When `sub_424070` is called with `a1 = NULL`, it falls back to a global allocator (`sub_427A10`) that uses `malloc` directly. Non-null `a1` values are pool objects that allocate from their own slabs, which are themselves allocated from a parent pool (the TLS context at offset +24 holds the per-thread pool pointer). The top-level pool is named `"Top level ptxas memory pool"` and is created in the compilation driver.
+Pools are hierarchical:
+
+- When `sub_424070` is called with `a1 = NULL`, it falls back to a global allocator (`sub_427A10`) that uses `malloc` directly.
+- Non-null `a1` values are pool objects that allocate from their own slabs, which are themselves allocated from a parent pool (the TLS context at offset +24 holds the per-thread pool pointer).
+- The top-level pool is named `"Top level ptxas memory pool"` and is created in the compilation driver.
 
 ## Hash Map
 
@@ -1111,7 +1129,10 @@ The output stream used for diagnostics and stats reporting (e.g., at compilation
 
 ## ORI Record Serializer (`sub_A50650`)
 
-The ORI Record Serializer (`sub_A50650`, 74 KB, 2,728 decompiled lines) is the central function that takes a Code Object's in-memory state and flattens it into a linear output buffer organized as a table of typed section records. It is the serialization backbone for both the DUMPIR diagnostic subsystem and the compilation output path. Despite the `_ORI_` string it contains, it is not an optimization pass — it is infrastructure.
+The ORI Record Serializer (`sub_A50650`, 74 KB, 2,728 decompiled lines) is the central function that takes a Code Object's in-memory state and flattens it into a linear output buffer organized as a table of typed section records.
+
+- It is the serialization backbone for both the DUMPIR diagnostic subsystem and the compilation output path.
+- Despite the `_ORI_` string it contains, it is not an optimization pass — it is infrastructure.
 
 | | |
 |---|---|

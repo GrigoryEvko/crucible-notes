@@ -2,9 +2,22 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables. The emitter writes standard ELF headers with NVIDIA extensions: `EM_CUDA` (`0xBE` / 190) as the machine type, NVIDIA-specific section types (`SHT_CUDA_INFO` = `0x70000000` for `.nv.info`, `SHT_CUDA_CALLGRAPH` = `0x70000001` for `.nv.callgraph`, `SHT_CUDA_COMPAT_INFO` = `0x70000086` for `.nv.compat`), and CUDA-specific ELF flags encoding the SM architecture version. The design handles both 32-bit and 64-bit ELF classes, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit). Finalization is a single-pass algorithm that orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
+ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables.
 
-ptxas emits two ELF flavours, selected by the `-c` flag. A **final cubin** (default) is `ET_EXEC` (`e_type` = 2): the memory-space sections are lowered to standard `SHT_PROGBITS`/`SHT_NOBITS` and the file carries 6 program headers. A **relocatable object** (`-c`) is `ET_REL` (`e_type` = 1): the memory-space sections keep their `SHT_CUDA_*` LOPROC types and the file carries 0 program headers. Only `.nv.info`, `.nv.compat`, and `.nv.callgraph` keep LOPROC section types in the final cubin — every other CUDA-specific section is type-lowered. The byte-exact header fields, e_flags SM encoding, and NOTE-section layouts are tabulated in [ELF header & NOTE reference](../reference/data/elf-header-notes.md).
+The emitter writes standard ELF headers with NVIDIA extensions:
+
+- **Machine type** — `EM_CUDA` (`0xBE` / 190).
+- **NVIDIA-specific section types** — `SHT_CUDA_INFO` = `0x70000000` for `.nv.info`, `SHT_CUDA_CALLGRAPH` = `0x70000001` for `.nv.callgraph`, `SHT_CUDA_COMPAT_INFO` = `0x70000086` for `.nv.compat`.
+- **CUDA-specific ELF flags** — encode the SM architecture version.
+- **Dual ELF class** — both 32-bit and 64-bit, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit).
+- **Single-pass finalization** — orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
+
+ptxas emits two ELF flavours, selected by the `-c` flag:
+
+- **Final cubin** (default) — `ET_EXEC` (`e_type` = 2): the memory-space sections are lowered to standard `SHT_PROGBITS`/`SHT_NOBITS` and the file carries 6 program headers.
+- **Relocatable object** (`-c`) — `ET_REL` (`e_type` = 1): the memory-space sections keep their `SHT_CUDA_*` LOPROC types and the file carries 0 program headers.
+
+Only `.nv.info`, `.nv.compat`, and `.nv.callgraph` keep LOPROC section types in the final cubin — every other CUDA-specific section is type-lowered. The byte-exact header fields, e_flags SM encoding, and NOTE-section layouts are tabulated in [ELF header & NOTE reference](../reference/data/elf-header-notes.md).
 
 | | |
 |---|---|
@@ -617,7 +630,13 @@ The `e_flags` word is the CUDA driver's primary architecture key. ptxas v13.0.88
 | virtual/PTX SM | 16–23 | `0` when virtual==real | `EF_CUDA_VIRTUAL_SM` |
 | high format byte | 24–31 | constant `0x06` across all v13.0.88 samples | |
 
-Full `e_flags` words observed: `sm_75=0x06004b04`, `sm_80=0x06005004`, `sm_90/sm_90a=0x06005a04`, `sm_100=0x06006402`, `sm_120=0x06007802`. Bit flags layered on top: `EF_CUDA_TEXMODE_UNIFIED` (`0x100`), `EF_CUDA_TEXMODE_INDEPENDENT` (`0x200`), `EF_CUDA_64BIT_ADDRESS` (`0x400`), and `EF_CUDA_MERCURY` (`0x80000000`, set on a pre-finalize Mercury ELF and cleared on the final SASS cubin). The `'a'`/`'f'` arch-variant does **not** appear in `e_flags` — `sm_90` and `sm_90a` produce identical `0x06005a04`; the variant is carried in `.nv.compat` `EICOMPAT_ATTR_ISA_CLASS` and the `.note.nv.cuinfo` virtual-SM field. The mask `0x7FFFBFFF` clears bits 14 and 31 (the reserved control bits and `EF_CUDA_MERCURY`) before the SM bytes are written. See [ELF header & NOTE reference](../reference/data/elf-header-notes.md) for the full per-arch capture and the program-header/NOTE layouts.
+Full `e_flags` words observed: `sm_75=0x06004b04`, `sm_80=0x06005004`, `sm_90/sm_90a=0x06005a04`, `sm_100=0x06006402`, `sm_120=0x06007802`.
+
+- **Bit flags layered on top:** `EF_CUDA_TEXMODE_UNIFIED` (`0x100`), `EF_CUDA_TEXMODE_INDEPENDENT` (`0x200`), `EF_CUDA_64BIT_ADDRESS` (`0x400`), and `EF_CUDA_MERCURY` (`0x80000000`, set on a pre-finalize Mercury ELF and cleared on the final SASS cubin).
+- **Arch-variant absent from `e_flags`:** the `'a'`/`'f'` variant does **not** appear — `sm_90` and `sm_90a` produce identical `0x06005a04`; the variant is carried in `.nv.compat` `EICOMPAT_ATTR_ISA_CLASS` and the `.note.nv.cuinfo` virtual-SM field.
+- **Write mask:** `0x7FFFBFFF` clears bits 14 and 31 (the reserved control bits and `EF_CUDA_MERCURY`) before the SM bytes are written.
+
+See [ELF header & NOTE reference](../reference/data/elf-header-notes.md) for the full per-arch capture and the program-header/NOTE layouts.
 
 ## NVIDIA-Specific Section Types
 
@@ -630,7 +649,13 @@ Beyond standard ELF section types, the emitter uses NVIDIA-defined types in the 
 | `SHT_CUDA_CONSTANT_B0` | `0x70000064` | `.nv.constant0.<entry>` — per-kernel param constant bank (bank# = type − `0x70000064`) |
 | `SHT_CUDA_COMPAT_INFO` | `0x70000086` | `.nv.compat` — forward-compatibility attributes |
 
-The magic constant `1879048292` (`0x70000064`) is `SHT_CUDA_CONSTANT_B0` — the per-kernel param constant bank type, and the **base** of the constant-bank type range. The bank number of any `.nv.constant<N>` section is recovered as `sh_type − 0x70000064`, so `.nv.constant3` is `0x70000067`. The emitter's range check in `sub_1CB3570` treats the range `0x70000064`--`0x7000007E` (constant banks 0–17 plus the seven Mercury constant banks) plus `0x70000006` as receiving special relocatable-mode handling. The `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`) for the type field, and `.nv.callgraph` uses `0x70000001`. See the [Section Catalog](sections.md) for the complete LOPROC type vocabulary.
+The magic constant `1879048292` (`0x70000064`) is `SHT_CUDA_CONSTANT_B0` — the per-kernel param constant bank type, and the **base** of the constant-bank type range.
+
+- **Bank recovery:** the bank number of any `.nv.constant<N>` section is `sh_type − 0x70000064`, so `.nv.constant3` is `0x70000067`.
+- **Range check (`sub_1CB3570`):** treats the range `0x70000064`--`0x7000007E` (constant banks 0–17 plus the seven Mercury constant banks) plus `0x70000006` as receiving special relocatable-mode handling.
+- **Other type fields:** the `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`); `.nv.callgraph` uses `0x70000001`.
+
+See the [Section Catalog](sections.md) for the complete LOPROC type vocabulary.
 
 ## Cross-References
 

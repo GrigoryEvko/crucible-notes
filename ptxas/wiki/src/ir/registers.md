@@ -80,7 +80,11 @@ sub_91BF30(out_id_ptr, func_ctx a2, class a3):             // line 4
 
 Key observations from this body:
 
-1. **`flags = 0x1000` vs `0x1018`.** Bit 12 (`0x1000`) is a "constructor-defaulted" marker that is set on every newly created register. Bits 3 and 4 (`0x18`) are a downstream "live / already usable" hint — checked by consumers such as `sub_86AD90:71` (`if ((vreg->flags & 8) == 0) continue;`). Classes **2 and 3** deliberately clear bits 3–4, producing a **dormant** register; classes 1/4/5/6/7 produce an **active** register. The practical effect is that a class-2 register spawned by `sub_86D0D0` as a shadow for a predicate source starts out invisible to passes that iterate `vreg->flags & 8`, until a subsequent pass promotes it.
+1. **`flags = 0x1000` vs `0x1018`.**
+   - Bit 12 (`0x1000`) is a "constructor-defaulted" marker set on every newly created register.
+   - Bits 3 and 4 (`0x18`) are a downstream "live / already usable" hint — checked by consumers such as `sub_86AD90:71` (`if ((vreg->flags & 8) == 0) continue;`).
+   - Classes **2 and 3** deliberately clear bits 3–4, producing a **dormant** register; classes 1/4/5/6/7 produce an **active** register.
+   - The practical effect: a class-2 register spawned by `sub_86D0D0` as a shadow for a predicate source starts out invisible to passes that iterate `vreg->flags & 8`, until a subsequent pass promotes it.
 
 2. **`physical_reg = 0` if and only if `a3 == 7`.** Class 7 is the "fixed compile-time register" slot — the only class for which the constructor assigns a physical number inline. Every other class leaves `physical_reg = -1` (unassigned). Class 7 callers (`sub_6D9690`, `sub_84EC30`, ...) use this to materialise opcode-encoded operands of the form `vid & 0xFFFFFF | 0x90000000` with a guaranteed physical slot.
 
@@ -247,7 +251,11 @@ Every virtual register in a function is represented by a 160-byte descriptor all
 | +144 | 8 | `ptr` | `constraint_list` | Constraint list head for allocator |
 | +152 | 8 | `ptr` | `split_list` | Live range split point list head |
 
-**Constructor qword write at +20 (overlap explained).** The constructor stores `*(_QWORD*)(v6+20) = -1`, a single 8-byte write that sets bytes +20 through +27 all to 0xFF. This simultaneously initializes two i32 fields: `state_flags` (+20) = -1 (0xFFFFFFFF) and `bb_index` (+24) = -1. The decompiler shows this as one operation; there is no separate "flags_byte = 0" followed by "alias_parent = -1". The earlier wiki entry conflated this write with the `alias_parent` field at +36, which does not exist as a separate pointer — the coalescing chain is the single 8-byte pointer at +32. The constructor initializes +32..+39 to NULL via the overlapping qword writes at +28 and +36 (`*(_QWORD*)(v6+28) = 0` covers +28..+35; `*(_QWORD*)(v6+36) = 0xBF80000000000000` covers +36..+43, where the low 4 bytes at +36..+39 are 0 completing the NULL pointer, and the high 4 bytes at +40..+43 are 0xBF800000 = -1.0f for `spill_cost`).
+**Constructor qword write at +20 (overlap explained).** The constructor stores `*(_QWORD*)(v6+20) = -1`, a single 8-byte write that sets bytes +20 through +27 all to 0xFF:
+
+- This simultaneously initializes two i32 fields: `state_flags` (+20) = -1 (0xFFFFFFFF) and `bb_index` (+24) = -1. The decompiler shows this as one operation; there is no separate "flags_byte = 0" followed by "alias_parent = -1".
+- The earlier wiki entry conflated this write with the `alias_parent` field at +36, which does not exist as a separate pointer — the coalescing chain is the single 8-byte pointer at +32.
+- The constructor initializes +32..+39 to NULL via the overlapping qword writes at +28 and +36: `*(_QWORD*)(v6+28) = 0` covers +28..+35; `*(_QWORD*)(v6+36) = 0xBF80000000000000` covers +36..+43, where the low 4 bytes at +36..+39 are 0 completing the NULL pointer, and the high 4 bytes at +40..+43 are 0xBF800000 = -1.0f for `spill_cost`.
 
 **Interference edge lists at +128/+136.** Both store singly-linked list heads of interference edge nodes. Each edge node is `{ptr next; i32 padding; i32 neighbor_id}` (12 bytes). `sub_749200` removes edges by neighbor ID from the +136 list; `sub_749290` removes from both +136 and +128 symmetrically. The two lists represent the two directions of an undirected interference edge.
 
@@ -469,7 +477,14 @@ The 4-bit register file type field in the SASS encoding maps the **operand-recor
 | 64 | 10 | (extended pair) |
 | 128 | 11 | (extended quad) |
 
-The `.UR` discriminator at the SASS encoding layer is therefore the **encoded value 2 or 3** of this 4-bit field (originating from operand `+20` raw codes 3 or 4). A parallel sentinel exists in the operand-record's first byte: the small one-liner cluster at `sub_B28E00`..`sub_B28EF0` checks fixed byte constants (`sub_B28E80` = 3 = R class; `sub_B28E90` = 15 = UR class; `sub_B28EB0` = 14 = **PT** — the always-true predicate sentinel consumed by the predicate-register encoder `sub_7BCF00` at line 65 as `*(BYTE*)v5 != 14`; `sub_B28EA0` = 13 and `sub_B28EC0` = 16 are two further special operand families used by IR-level lowering helpers such as `sub_B2A420`). The 3-bit field in the operand word at bits [30:28] is **not** the `.UR` flag — it does not carry uniformity information at all.
+The `.UR` discriminator at the SASS encoding layer is therefore the **encoded value 2 or 3** of this 4-bit field (originating from operand `+20` raw codes 3 or 4). A parallel sentinel exists in the operand-record's first byte: the small one-liner cluster at `sub_B28E00`..`sub_B28EF0` checks fixed byte constants:
+
+- `sub_B28E80` = 3 = R class;
+- `sub_B28E90` = 15 = UR class;
+- `sub_B28EB0` = 14 = **PT** — the always-true predicate sentinel consumed by the predicate-register encoder `sub_7BCF00` at line 65 as `*(BYTE*)v5 != 14`;
+- `sub_B28EA0` = 13 and `sub_B28EC0` = 16 are two further special operand families used by IR-level lowering helpers such as `sub_B2A420`.
+
+> The 3-bit field in the operand word at bits [30:28] is **not** the `.UR` flag — it does not carry uniformity information at all.
 
 A second predicate-related encoder, `sub_7BCF00` (856 bytes, 1657 callers), branches on operand byte[0]: it takes the "side-effecting" path only when byte[0] is **not** 14 (PT) **and** byte[0] is in `{15, 16}` (the UR / extended-UR sentinels), clearing the pointer slot at `+8` of the operand record. Earlier wiki revisions described this encoder as "2-bit type + 3-bit condition + 8-bit value"; the actual body emits a different bitfield layout and the 14-vs-15/16 gating is part of how it disambiguates a PT-fed predicate slot from a UR-bridge slot rather than encoding the value field directly.
 
@@ -672,7 +687,11 @@ Slot assignments from `sub_7D82E0` per-index `reg_type` argument to `sub_91BF30`
 | 43 | 3 | UR | **URZ** (uniform-register zero) | line 39: `sub_91BF30(v20, a2, 3)` |
 | 44 | 2 | R (GPR alt) | **RZ** (32-bit zero) | line 33: `sub_91BF30(v20, a2, 2)` |
 
-After the creation loop (`LABEL_9`, lines 68–106), `sub_7D82E0` post-processes slots 38, 39, 41, 42, 43, 44, and 45 — clearing `vreg+72` (physical_size byte) to mark them as "no physical slot consumed" and normalizing pair-mode bits 20–21 at `vreg+48`. Slots 38 and 45 get the same post-processing treatment but are **not** in `sub_9446D0`'s skip set, suggesting they are "architectural but spillable" sentinels (e.g., a barrier-class zero or condition-code register) while 39/41–44 are the five unspillable typed zero/true constants.
+After the creation loop (`LABEL_9`, lines 68–106), `sub_7D82E0` post-processes slots 38, 39, 41, 42, 43, 44, and 45:
+
+- It clears `vreg+72` (physical_size byte) to mark them as "no physical slot consumed" and normalizes pair-mode bits 20–21 at `vreg+48`.
+- Slots 38 and 45 get the same post-processing treatment but are **not** in `sub_9446D0`'s skip set, suggesting they are "architectural but spillable" sentinels (e.g., a barrier-class zero or condition-code register).
+- Slots 39/41–44 are the five unspillable typed zero/true constants.
 
 Callers of `sub_9446D0` (all in spill/liveness/coalesce passes):
 - `sub_94F150` lines 200, 242, 323 — spill codegen

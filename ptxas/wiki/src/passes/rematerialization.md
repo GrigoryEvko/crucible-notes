@@ -198,9 +198,29 @@ function sink_remat_driver(ctx):                   // sub_A0F020
     ctx[1370] &= ~0x10
 ```
 
-**Sinking decision criteria** (`sub_A08250`): For each instruction encountered during the backward block walk, the callback examines every source operand. A register operand whose register ID is present in the block's live-in bitvector (`ctx+832`) triggers a single-use test (`sub_A07C00`); if single-use, the register is removed from the live set and recorded for possible rollback. An operand whose register is *not* live (and live-through mode is disabled) is rewritten to dead (`operand = 0xF0000000`). After processing all operands, two final gates must pass: (1) `sub_747FC0` returns false (instruction is not address-taken), and (2) the architecture vtable slot 159 (`vtable+1272`) approves the sink. If either rejects, any bitvector changes are rolled back. Otherwise `sub_9253C0` moves the instruction to its single use site.
+**Sinking decision criteria** (`sub_A08250`): for each instruction encountered during the backward block walk, the callback examines every source operand.
 
-**Sinkability predicate** (`sub_A07940`): Returns false (reject) when any of: instruction flag byte has bit 3 set (pinned), signed byte at `insn+28` is negative (side-effecting), architecture opcode-info table has bit 2 set (non-movable) for the opcode, the instruction has address-taken dependencies (`sub_7E0030`), or operand constraints prevent relocation (`sub_7E08E0`). Specific opcodes are unconditionally rejected: 0x10F, 0x20 (32), 0xEC (236). Opcodes 183/288 additionally check `sub_7E25E0` (shared-memory conflict); opcode 250 requires the destination register index to be zero; opcode 315 checks a source-operand bit.
+- **Live operand:** a register operand whose register ID is present in the block's live-in bitvector (`ctx+832`) triggers a single-use test (`sub_A07C00`); if single-use, the register is removed from the live set and recorded for possible rollback.
+- **Dead operand:** an operand whose register is *not* live (and live-through mode is disabled) is rewritten to dead (`operand = 0xF0000000`).
+- **Two final gates** must then pass:
+  1. `sub_747FC0` returns false (instruction is not address-taken)
+  2. the architecture vtable slot 159 (`vtable+1272`) approves the sink
+- **Outcome:** if either gate rejects, any bitvector changes are rolled back; otherwise `sub_9253C0` moves the instruction to its single use site.
+
+**Sinkability predicate** (`sub_A07940`): returns false (reject) when any of these holds:
+
+- instruction flag byte has bit 3 set (pinned)
+- signed byte at `insn+28` is negative (side-effecting)
+- architecture opcode-info table has bit 2 set (non-movable) for the opcode
+- the instruction has address-taken dependencies (`sub_7E0030`)
+- operand constraints prevent relocation (`sub_7E08E0`)
+
+Per-opcode rules layer on top:
+
+- **Unconditionally rejected:** `0x10F`, `0x20` (32), `0xEC` (236).
+- **Opcodes 183/288** additionally check `sub_7E25E0` (shared-memory conflict).
+- **Opcode 250** requires the destination register index to be zero.
+- **Opcode 315** checks a source-operand bit.
 
 The block visitor (`sub_A06A60`) manages per-block liveness bitvectors:
 - `block+16`: live-in bitvector

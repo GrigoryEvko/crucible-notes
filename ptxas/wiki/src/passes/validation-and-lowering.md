@@ -27,7 +27,15 @@ The full per-phase transform detail, with byte-level offsets and worker addresse
 
 ## The OptBudget Gate — `sub_7DDB50`
 
-A single function backs the `OPT` / `NOOPT` predicates that appear in most execute-thunks. It is **not** a raw opt-level getter. It reads the OCG knob object (`Gb+0x1664`) and consults knob **499** (the optimization-budget knob) at the 72-byte knob-entry stride (`entry = knobs[9] + 72*499 = +0x8C58`): `byte+0` = active, `dword+8` = limit, `dword+12` = running count. While under budget it returns the configured effective opt level `*(Gb+0x838)` and increments the count; **once the budget is exhausted it returns the literal `1`** — a forced-O0 sentinel. The per-thunk comparison therefore reads:
+A single function backs the `OPT` / `NOOPT` predicates that appear in most execute-thunks. It is **not** a raw opt-level getter.
+
+- **Knob read.** It reads the OCG knob object (`Gb+0x1664`) and consults knob **499** (the optimization-budget knob) at the 72-byte knob-entry stride (`entry = knobs[9] + 72*499 = +0x8C58`):
+  - `byte+0` = active.
+  - `dword+8` = limit.
+  - `dword+12` = running count.
+- **Return value.** While under budget it returns the configured effective opt level `*(Gb+0x838)` and increments the count. **Once the budget is exhausted it returns the literal `1`** — a forced-O0 sentinel.
+
+The per-thunk comparison therefore reads:
 
 | Thunk comparison | Meaning |
 |---|---|
@@ -62,11 +70,36 @@ Promotes native-FP16 operations to FP32 sequences on targets that lack hardware 
 
 ### AnalyzeControlFlow (bin 3)
 
-The canonical CFG (re)builder: basic blocks, predecessor/successor edges, loop headers/depth/back-edges, reachability. Its thunk gates on `sub_7DDB50(ctx) == 1` (NOOPT) and a knob check (`DISABLESOURCEORDER` at `oriKnobs + 0x4218`), then calls `sub_781F80(ctx, 0)`. The worker (~131 callers) with `a2 = 0` does a structural non-mutating build (default); `a2 != 0` adds RPO loop-rotation and branch-straightening. It builds the ordered block index array at `ctx+512`, per-block predecessor list at `block+0x80` and successor list at `block+0x88` (intrusive edge nodes), and packs loop-header/back-edge/reachable bits in the block flags dword `block+0x118`. It partitions instructions by normalizing the masked opcode at `node+72` (`BYTE1 & 0xCF`): opcode `0x61` = `OP_LABEL` starts a block; branch/exit opcodes terminate one. On completion it sets `ctx+1370` bit 2 (CFG-valid) and bit 3 (analysis-strength = `a2 & 1`).
+The canonical CFG (re)builder: basic blocks, predecessor/successor edges, loop headers/depth/back-edges, reachability.
+
+- **Gate.** Its thunk gates on `sub_7DDB50(ctx) == 1` (NOOPT) and a knob check (`DISABLESOURCEORDER` at `oriKnobs + 0x4218`), then calls `sub_781F80(ctx, 0)`.
+- **Build mode** (worker has ~131 callers):
+  - `a2 = 0` — structural non-mutating build (default).
+  - `a2 != 0` — adds RPO loop-rotation and branch-straightening.
+- **Structures built:**
+  - Ordered block index array at `ctx+512`.
+  - Per-block predecessor list at `block+0x80` and successor list at `block+0x88` (intrusive edge nodes).
+  - Loop-header / back-edge / reachable bits packed in the block flags dword `block+0x118`.
+- **Block partitioning.** Instructions are partitioned by normalizing the masked opcode at `node+72` (`BYTE1 & 0xCF`): opcode `0x61` = `OP_LABEL` starts a block; branch/exit opcodes terminate one.
+- **Completion.** Sets `ctx+1370` bit 2 (CFG-valid) and bit 3 (analysis-strength = `a2 & 1`).
 
 ### OriCreateMacroInsts (bin 9)
 
-Expands packed multi-result macro pseudo-instructions into explicit per-result definition sequences. Worker `sub_19DFC20`, gated on `ctx+0x564` bit 7 (HasTTU early-out). It walks the instruction list matching the masked opcode class `(node+0x48 & 0xCF00) == 0xFC00` (OP_TTUOPEN, the sequence head), with sub-class handling for `0xFD00` and `0xFA00` operand legalization and an `OP_MACRO` dissolve path keyed on `0x6D00`. On a match it allocates and zero-inits a 0x40-byte macro record via `sub_7DD250` (sets `*rec = 0xFFFFFFFF`, `+0x18 = 3`), grows the per-function definition table through the `ctx+0x188/+0x190/+0x194` base/count/cap triple (geometric growth), and splices a new MACRO node into the doubly-linked list (writing `node+0x20/+0x28` = begin/end instruction, setting flag bits, recomputing the uniformity byte at `+0x14`), then emits the replacement via `sub_19DFBD0`. The body gates on HasTTU, scans for the open opcode, legalizes operands via inserted MOVs, sets the macro instruction range, splices the constituents out, and emits the replacement.
+Expands packed multi-result macro pseudo-instructions into explicit per-result definition sequences. Worker `sub_19DFC20`, gated on `ctx+0x564` bit 7 (HasTTU early-out).
+
+It walks the instruction list matching the masked opcode class `(node+0x48 & 0xCF00) == 0xFC00` (OP_TTUOPEN, the sequence head), with:
+
+- Sub-class handling for `0xFD00` and `0xFA00` operand legalization.
+- An `OP_MACRO` dissolve path keyed on `0x6D00`.
+
+On a match, the worker:
+
+1. Allocates and zero-inits a 0x40-byte macro record via `sub_7DD250` (sets `*rec = 0xFFFFFFFF`, `+0x18 = 3`).
+2. Grows the per-function definition table through the `ctx+0x188/+0x190/+0x194` base/count/cap triple (geometric growth).
+3. Splices a new MACRO node into the doubly-linked list — writing `node+0x20/+0x28` = begin/end instruction, setting flag bits, recomputing the uniformity byte at `+0x14`.
+4. Emits the replacement via `sub_19DFBD0`.
+
+In summary, the body gates on HasTTU, scans for the open opcode, legalizes operands via inserted MOVs, sets the macro instruction range, splices the constituents out, and emits the replacement.
 
 > The neighboring thunk `0xC5F8E0` belongs to a **different** phase (bin 11, `EarlyOriSimpleLiveDead`, worker `sub_A112C0`) and gates on `ctx+0x588` bit 7. The two must not be conflated — the canonical `OriCreateMacroInsts` thunk is `0xC5F8D0` → `sub_19DFC20`.
 
@@ -83,8 +116,15 @@ All four mode/symbol strings are byte-verified in `.rodata` (`"memcheck"`, `"thr
 
 Both share worker `sub_1C72640`; the boolean `a2` selects extract (First, `a2=0`) vs finalize (Final, `a2=1`). Both gate on `sub_7DDB50 > 1` (OPT).
 
-- **First (`a2=0`):** computes `remainingConstBytes = (block-range query) − *(ctx+928)` and takes an early-out unless that budget `> 3`. It allocates def/ref bookkeeping bitmaps sized `(numVregs+64)>>6`, per-const-bank slot maps, and worklists, then runs `MarkShaderConstDefs → UnmarkLeastProfitableConstDefs → ExtractShaderConstDefs(false)`: reachable const-def expression trees are replicated into the priming/setup-shader region and main-shader references rewritten to const-bank reads. It **skips** the finalize commit so it may run again. Register ids extracted as `operand & 0xFFFFFF` (24-bit).
-- **Final (`a2=1`):** bypasses the `remainingConstBytes ≤ 3` early-out (it must run even with no const space, to commit consts a prior pass already extracted) and runs the finalize commit `sub_1C68760` (FinalizeSetupShader): it allocates the setup function if needed, materializes the const-bank setup instructions, and re-runs the CFG builder (`sub_781F80`) when constants are present. A post-rewrite consistency check walks every setup-function block, reads each operand register id (`& 0xFFFFFF`), and asserts the rewritten const-bank reference's loop-id (`*(v+66)`) matches the target block field (`+164`); a mismatch (or an unreached operand) raises a `BUG()`. This guards that const extraction never moved a reference across a loop or block boundary.
+- **First (`a2=0`):** computes `remainingConstBytes = (block-range query) − *(ctx+928)` and takes an early-out unless that budget `> 3`. It then:
+  - Allocates def/ref bookkeeping bitmaps sized `(numVregs+64)>>6`, per-const-bank slot maps, and worklists.
+  - Runs `MarkShaderConstDefs → UnmarkLeastProfitableConstDefs → ExtractShaderConstDefs(false)`: reachable const-def expression trees are replicated into the priming/setup-shader region and main-shader references rewritten to const-bank reads.
+  - **Skips** the finalize commit so it may run again. Register ids extracted as `operand & 0xFFFFFF` (24-bit).
+- **Final (`a2=1`):** bypasses the `remainingConstBytes ≤ 3` early-out (it must run even with no const space, to commit consts a prior pass already extracted), then:
+  - Runs the finalize commit `sub_1C68760` (FinalizeSetupShader): allocates the setup function if needed, materializes the const-bank setup instructions, and re-runs the CFG builder (`sub_781F80`) when constants are present.
+  - Runs a post-rewrite consistency check: walks every setup-function block, reads each operand register id (`& 0xFFFFFF`), and asserts the rewritten const-bank reference's loop-id (`*(v+66)`) matches the target block field (`+164`). A mismatch (or an unreached operand) raises a `BUG()`.
+
+  > This consistency check guards that const extraction never moved a reference across a loop or block boundary.
 
 ### ConvertVTGReadWrite (bin 45)
 
@@ -115,11 +155,27 @@ Both strategies finish by clearing the `JMX_SRC_INDEX` bit (`node+0x5c &= ~1`), 
 
 ### FinalInspectionPass (bin 110)
 
-A final per-shaderType legality inspection before irreversible scheduling and register allocation. It reads the shaderType object at `ctx+0x640` and applies a default-impl guard: if its vtable slot `+0x60` equals the base `sub_661310`, it runs the canonical two-stage inspection inline — load the inner pipeline object at `shaderType+0x10`, call its slot `+0x118` (pre-check), reload, and tail its slot `+0xC10` (main inspection). Otherwise a specialized shaderType has overridden `+0x60`, and a single direct dispatch on the shaderType itself is taken. The base `sub_661310` is exactly `(*(*(a1+16)+280))(*(a1+16)); return (*(*(a1+16)+3088))(*(a1+16));`. No run-gate.
+A final per-shaderType legality inspection before irreversible scheduling and register allocation. It reads the shaderType object at `ctx+0x640` and applies a default-impl guard:
+
+- **Default path** (vtable slot `+0x60` equals the base `sub_661310`): runs the canonical two-stage inspection inline — load the inner pipeline object at `shaderType+0x10`, call its slot `+0x118` (pre-check), reload, and tail its slot `+0xC10` (main inspection).
+- **Override path** (a specialized shaderType has overridden `+0x60`): a single direct dispatch on the shaderType itself is taken.
+
+The base `sub_661310` is exactly `(*(*(a1+16)+280))(*(a1+16)); return (*(*(a1+16)+3088))(*(a1+16));`. No run-gate.
 
 ### BackPropagateVEC2D (bin 116)
 
-Back-propagates the VEC2 2D (paired-register) attribute after scheduling. Gated on `sub_7DDB50 > 1` (OPT); the worker `sub_90B6A0` gates again on `ctx+0x559 & 0x40` (VEC2D back-prop enabled). It allocates a 24-byte worklist control node from the per-context arena, seeds it via `sub_90AB90`, then drains the worklist in reverse-CFG order until empty. The seed first re-derives CFG/region structure, then iterates instructions: for each whose masked opcode (`node+72`, `BYTE1 & 0xCF`) `== 272` (`OP_VEC2D`) with a clean modifier mask, it resolves the destination vreg id (`*(node+84) & 0xFFFFFF`), checks the vreg descriptor's paired/64-bit flag, queries the profile's VEC2D-legality gate, and on success pushes a propagation node so the worklist walks predecessor edges backward. The propagated attribute is the even-aligned register-pair constraint: a VEC2D consumer forces its two source vregs into an aligned consecutive pair, pushed back to the defining instructions. It runs post-`ScheduleInstructions` and before `AllocateRegisters` because instruction order and pairing are only fixed after scheduling, so the pairing constraint must be re-pushed to defs before regalloc.
+Back-propagates the VEC2 2D (paired-register) attribute after scheduling.
+
+- **Gates.** Gated on `sub_7DDB50 > 1` (OPT); the worker `sub_90B6A0` gates again on `ctx+0x559 & 0x40` (VEC2D back-prop enabled).
+- **Driver.** Allocates a 24-byte worklist control node from the per-context arena, seeds it via `sub_90AB90`, then drains the worklist in reverse-CFG order until empty.
+- **Seed.** First re-derives CFG/region structure, then iterates instructions. For each whose masked opcode (`node+72`, `BYTE1 & 0xCF`) `== 272` (`OP_VEC2D`) with a clean modifier mask, it:
+  - Resolves the destination vreg id (`*(node+84) & 0xFFFFFF`).
+  - Checks the vreg descriptor's paired/64-bit flag.
+  - Queries the profile's VEC2D-legality gate.
+  - On success, pushes a propagation node so the worklist walks predecessor edges backward.
+- **Propagated attribute.** The even-aligned register-pair constraint: a VEC2D consumer forces its two source vregs into an aligned consecutive pair, pushed back to the defining instructions.
+
+> It runs post-`ScheduleInstructions` and before `AllocateRegisters` because instruction order and pairing are only fixed after scheduling, so the pairing constraint must be re-pushed to defs before regalloc.
 
 ## Cross-References
 

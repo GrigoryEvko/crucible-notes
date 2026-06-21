@@ -2,9 +2,22 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-PTX directives — `.version`, `.target`, `.entry`, `.func`, `.global`, `.shared`, `.local`, `.const`, `.reg`, `.param`, `.weak`, `.common`, `.extern`, `.visible`, `.alias`, `.pragma` — are parsed and semantically validated by the Bison reduction actions embedded in the 48 KB parser function `sub_4CE6B0`. Unlike instructions which pass through opcode table lookup (`sub_46E000`) and per-instruction semantic validators, directives are handled entirely within the Bison reduction switch: each grammar production's action block reads values from the parser value stack, validates them against the current PTX version and target architecture, and writes the results into the 1,200-byte parser state object or its child compile-unit state (`CU_state`). No intermediate AST is constructed; directives take effect immediately during parsing.
+PTX directives — `.version`, `.target`, `.entry`, `.func`, `.global`, `.shared`, `.local`, `.const`, `.reg`, `.param`, `.weak`, `.common`, `.extern`, `.visible`, `.alias`, `.pragma` — are parsed and semantically validated by the Bison reduction actions embedded in the 48 KB parser function `sub_4CE6B0`. Unlike instructions, which pass through opcode table lookup (`sub_46E000`) and per-instruction semantic validators, directives are handled entirely within the Bison reduction switch:
 
-The state object maintains 18 linked lists (9 head/tail pairs at offsets 368–512) that track symbols per state space, a string-keyed hash map (offset 208) for target feature flags, and a scope chain (offset 984) rooted at offset 968 for nested function declarations. Two version-gating functions — `sub_489050` (PTX ISA version) and `sub_489390` (SM architecture) — guard every directive that was introduced after the baseline ISA.
+- Each grammar production's action block reads values from the parser value stack.
+- It validates them against the current PTX version and target architecture.
+- It writes the results into the 1,200-byte parser state object or its child compile-unit state (`CU_state`).
+
+> No intermediate AST is constructed; directives take effect immediately during parsing.
+
+The state object carries the per-state-space symbol bookkeeping and the version gates:
+
+- **18 linked lists** (9 head/tail pairs at offsets 368–512) track symbols per state space.
+- A **string-keyed hash map** (offset 208) holds target feature flags.
+- A **scope chain** (offset 984), rooted at offset 968, tracks nested function declarations.
+- Two version-gating functions guard every directive introduced after the baseline ISA:
+  - `sub_489050` — PTX ISA version.
+  - `sub_489390` — SM architecture.
 
 | | |
 |---|---|

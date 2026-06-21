@@ -141,7 +141,12 @@ if last_iteration:
         return 0   // reject candidate
 ```
 
-Bit 3 of `candidate_bb+282` is a "retry-eligible" marker set during earlier passes on blocks that were close to the profitability threshold but did not cross it. `state.byte[76]` is a secondary relaxation gate populated by the SM backend initializer. When both conditions hold, the candidate proceeds to normal evaluation; otherwise it is skipped. This narrows the second pass to only the most promising candidates that nearly qualified on pass 1, avoiding wasted compile time on clearly unprofitable blocks.
+The two fields tested by this filter:
+
+- Bit 3 of `candidate_bb+282` is a "retry-eligible" marker set during earlier passes on blocks that were close to the profitability threshold but did not cross it.
+- `state.byte[76]` is a secondary relaxation gate populated by the SM backend initializer.
+
+When both conditions hold, the candidate proceeds to normal evaluation; otherwise it is skipped. This narrows the second pass to only the most promising candidates that nearly qualified on pass 1, avoiding wasted compile time on clearly unprofitable blocks.
 
 ### Main Loop — `sub_1381010`
 
@@ -257,7 +262,12 @@ This function (`sub_137E3A0`, 367 bytes) validates that a basic block is part of
 
 1. **Predecessor count**: The merge block must have exactly `header_predecessor_count + 1` predecessors.
 2. **Terminator type**: The header's terminator must match opcode 95 after masking bits 12-13 (`STS` in the ROT13 name table; used here as a control-flow terminator class marker, not an actual store-shared instruction).
-3. **Branch predicate**: The branch guard must be a non-negated register operand. Three independent fields are consulted (parallel to the `.UR` multi-field surface described in [Registers](../ir/registers.md#operand-field-encoding)): (a) operand word0 type tag `(word0 >> 28) & 7 == 1` (register-class operand); (b) operand word1 bit 24 (`& 0x1000000`) must be **clear** (negation flag) — this is the binary-IR counterpart to the textual `!` prefix that `sub_70B780` reads from the operand-descriptor name string at `+2120`; (c) the vreg's `+64` reg_type must match one of the state's two stored predicate file types at `a1[5]` (primary) or `a1[6]` (secondary). The wiki had previously claimed these were "2 or 3, R or UR" — the state slots actually hold the P / UP file-type values, not R/UR, and the constants are loaded from the SM backend's vtable initializer.
+3. **Branch predicate**: The branch guard must be a non-negated register operand. Three independent fields are consulted (parallel to the `.UR` multi-field surface described in [Registers](../ir/registers.md#operand-field-encoding)):
+   - (a) operand word0 type tag `(word0 >> 28) & 7 == 1` (register-class operand);
+   - (b) operand word1 bit 24 (`& 0x1000000`) must be **clear** (negation flag) — this is the binary-IR counterpart to the textual `!` prefix that `sub_70B780` reads from the operand-descriptor name string at `+2120`;
+   - (c) the vreg's `+64` reg_type must match one of the state's two stored predicate file types at `a1[5]` (primary) or `a1[6]` (secondary).
+
+   > **Correction.** The wiki had previously claimed these were "2 or 3, R or UR" — the state slots actually hold the P / UP file-type values, not R/UR, and the constants are loaded from the SM backend's vtable initializer.
 4. **No backedges**: The predecessor list must not contain a self-edge.
 5. **Merge block successor check**: Validates that the merge block's sole successor leads to the expected continuation block.
 
@@ -323,7 +333,12 @@ For each instruction in the candidate block:
 
     **Explicit tier** — two Mercury extended opcodes are checked by direct comparison: opcode 352 (`MERCURY_addmin_srcs_r_r_0`) and opcode 297 (`MERCURY_barrier_cta_red_popc_srcs_uimm_uimm_0`).
 
-    For every matching instruction, the SM backend's `getExtraLatency` virtual method at vtable offset +1392 is called. The base-class implementation (`sub_7D72B0`) returns 0, so targets that do not override this slot contribute nothing. When the backend does override the slot, the method receives `(sm_backend_obj, instruction)` and returns an `int` latency penalty in cycles. The return value is **summed** into the accumulator at `candidate+16` (`extra_latency += getExtraLatency(instr)`), so the total is the linear sum over all long-latency instructions in the region. The profitability heuristic at step 6 of `sub_1380BF0` uses this accumulated value: if knob 260 is active and **both** the true-side and false-side candidates have `extra_latency > 0`, if-conversion is rejected outright.
+    For every matching instruction, the SM backend's `getExtraLatency` virtual method at vtable offset +1392 is called:
+
+    - The base-class implementation (`sub_7D72B0`) returns 0, so targets that do not override this slot contribute nothing.
+    - When the backend does override the slot, the method receives `(sm_backend_obj, instruction)` and returns an `int` latency penalty in cycles.
+    - The return value is **summed** into the accumulator at `candidate+16` (`extra_latency += getExtraLatency(instr)`), so the total is the linear sum over all long-latency instructions in the region.
+    - The profitability heuristic at step 6 of `sub_1380BF0` then uses this accumulated value: if knob 260 is active and **both** the true-side and false-side candidates have `extra_latency > 0`, if-conversion is rejected outright.
 
 6. **Predicate-register conflict**: If any destination operand writes to the same predicate register that the branch uses as its guard, the region cannot be if-converted (the predicate would be clobbered before all instructions are guarded).
 
@@ -614,7 +629,11 @@ When `sub_9324E0` encounters an instruction with bit 12 already set (predicated 
 //   @Pnew FADD R0, R1, R2                       ; combined guard
 ```
 
-**Register pressure management.** The predicate file has 7 usable registers (P0-P6) plus hardwired PT. Allocation via `sub_91BF30(ctx, 5)` draws from the same pool used by comparison instructions; when exhausted, the overflow allocator at `*(*(ctx+32)+8)` is consumed (freelist pop) or a fresh 160-byte descriptor is requested from the context's memory manager. The accumulator cache ensures that consecutive instructions sharing the same existing predicate reuse a single combined register, which is the primary mechanism for bounding predicate register pressure during deep if-conversion.
+**Register pressure management.** The predicate file has 7 usable registers (P0-P6) plus hardwired PT.
+
+- Allocation via `sub_91BF30(ctx, 5)` draws from the same pool used by comparison instructions.
+- When exhausted, the overflow allocator at `*(*(ctx+32)+8)` is consumed (freelist pop) or a fresh 160-byte descriptor is requested from the context's memory manager.
+- The accumulator cache ensures consecutive instructions sharing the same existing predicate reuse a single combined register — the primary mechanism for bounding predicate register pressure during deep if-conversion.
 
 ## Post-Transformation — `sub_137DE90`
 
@@ -702,7 +721,11 @@ The actual speculation safety tracking is handled by `sub_137EE50` (post-predica
 - Only category 18 loads are tracked as "speculatively unsafe" in the hash set at `state+240`
 - The `context+1392` bit 0 flag persists and is checked by `OriHoistInvariantsLate` (phase 66)
 
-This means global loads (category 11) that are speculatively predicated are **not** tracked as unsafe. In the ptxas cost model, global memory loads under a predicate guard are considered acceptable: the hardware will issue the load speculatively, and if the predicate is false, the result is simply discarded. On architectures with memory access traps (e.g., page faults on unmapped addresses), the hardware masks the fault for lanes where the predicate is false. Surface/tensor extended operations (category 18), however, may have side effects that cannot be masked, so they receive the unsafe designation.
+This means global loads (category 11) that are speculatively predicated are **not** tracked as unsafe. The ptxas cost model rationale:
+
+- Global memory loads under a predicate guard are acceptable: the hardware issues the load speculatively, and if the predicate is false, the result is simply discarded.
+- On architectures with memory access traps (e.g., page faults on unmapped addresses), the hardware masks the fault for lanes where the predicate is false.
+- Surface/tensor extended operations (category 18), however, may have side effects that cannot be masked, so they receive the unsafe designation.
 
 ## Fall-Through Block Analysis — `sub_1380810`
 
@@ -778,7 +801,19 @@ FSETP.LT.AND P1, P2, R3, R4, PT   // P1 = (R3 < R4), P2 = !(R3 < R4)
 
 Uniform predicates (UP0–UP6, UPT) are the warp-uniform variant available on sm_75+. When all threads in a warp have the same predicate value, using UP instead of P avoids consuming a per-thread predicate register and enables the hardware to skip the entire instruction rather than masking per-thread.
 
-In the Ori IR, the predicate **guard** is appended as a pair of operands: the **register operand** (word0 type tag 1, `0x10000000 | reg_index`; word1 carries the negation flag at bit 24 / `0x1000000`) followed by the **control word** (word0 type tag 6, `0x60000000 | reg_index`; word1 zero). The "type field 5" used elsewhere in the operand-class taxonomy refers to constant-pool indirect, not predicates. The predicate-register **encoder** at the SASS-binary level (`sub_7BC5C0`, 416 bytes, see [Encoding](../codegen/encoding.md#predicate-encoder--sub_7bc5c0)) emits two contiguous bitfields: a 1-bit presence/range flag and a 5-bit predicate value where bits [2:0] select P0..P6/PT and the upper two bits encode the file (P vs UP) and the `.NOT` polarity, so the **same** negation signal travels through three independent surfaces (Ori operand word1 bit 24, textual `!` in the descriptor name at `+2120`, and the SASS-binary 5-bit field's polarity bit).
+In the Ori IR, the predicate **guard** is appended as a pair of operands:
+
+- **register operand** — word0 type tag 1, `0x10000000 | reg_index`; word1 carries the negation flag at bit 24 / `0x1000000`.
+- **control word** — word0 type tag 6, `0x60000000 | reg_index`; word1 zero.
+
+> The "type field 5" used elsewhere in the operand-class taxonomy refers to constant-pool indirect, not predicates.
+
+The predicate-register **encoder** at the SASS-binary level (`sub_7BC5C0`, 416 bytes, see [Encoding](../codegen/encoding.md#predicate-encoder--sub_7bc5c0)) emits two contiguous bitfields:
+
+- a 1-bit presence/range flag, and
+- a 5-bit predicate value where bits [2:0] select P0..P6/PT and the upper two bits encode the file (P vs UP) and the `.NOT` polarity.
+
+So the **same** negation signal travels through three independent surfaces: Ori operand word1 bit 24, textual `!` in the descriptor name at `+2120`, and the SASS-binary 5-bit field's polarity bit.
 
 ## Opcode Reference
 

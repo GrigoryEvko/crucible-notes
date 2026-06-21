@@ -2,7 +2,12 @@
 
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The complete phase registry built by `sub_C62720` (factory `sub_C60D30`), indexed by **bin_index** = factory switch case = name-table index at `off_22BD0C0`. The **exec_order** column gives the position in the default 157-entry order table at `0x22BEEA0`; a dash (`-`) marks the two registered phases that are **not** in the default schedule (`DebuggerBreak`=157, `NOP`=158), reachable only via the recipe/named-phases path (OCG knob 298). The **opt_gate** column shows the opt-level predicate the phase's own `execute()` body applies (read via the OptBudget oracle `sub_7DDB50`); blank = runs at all levels. Every dispatched phase's `execute()` is called unconditionally — the gate is an early-return inside the body, not a dispatch-loop skip.
+The complete phase registry built by `sub_C62720` (factory `sub_C60D30`), indexed by **bin_index** = factory switch case = name-table index at `off_22BD0C0`. Column meanings:
+
+- **exec_order** — position in the default 157-entry order table at `0x22BEEA0`. A dash (`-`) marks the two registered phases that are **not** in the default schedule (`DebuggerBreak`=157, `NOP`=158), reachable only via the recipe/named-phases path (OCG knob 298).
+- **opt_gate** — the opt-level predicate the phase's own `execute()` body applies (read via the OptBudget oracle `sub_7DDB50`); blank = runs at all levels.
+
+Every dispatched phase's `execute()` is called unconditionally — the gate is an early-return inside the body, not a dispatch-loop skip.
 
 | exec_order | bin_index | phase_name | name_string_va | category | opt_gate | role |
 |---|---|---|---|---|---|---|

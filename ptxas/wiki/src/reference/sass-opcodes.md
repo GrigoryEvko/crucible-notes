@@ -2,7 +2,10 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Complete reference table of all SASS opcode mnemonics known to ptxas v13.0.88. Extracted from the ROT13-encoded opcode name table in the `InstructionInfo` constructor (`sub_7A5D10`, vtable `off_233ADC0`). The table stores exactly 322 named entries (indices 0–321) at object offset +0x1058, with each entry occupying 16 bytes (8-byte string pointer + 8-byte length). A parallel constructor `sub_BE7390` initializes an identical table. Immediately after the name table, a 322-element identity-mapped index array (0x508 bytes of 4-byte integers 0..321) is bulk-copied from `unk_21C0E00` to object offset +0x2478; this is a separate data structure (encoding category map), not additional opcode names.
+Complete reference table of all SASS opcode mnemonics known to ptxas v13.0.88, extracted from the ROT13-encoded opcode name table in the `InstructionInfo` constructor (`sub_7A5D10`, vtable `off_233ADC0`).
+
+- **Name table.** Stores exactly 322 named entries (indices 0–321) at object offset +0x1058, each occupying 16 bytes (8-byte string pointer + 8-byte length). A parallel constructor `sub_BE7390` initializes an identical table.
+- **Index array.** Immediately after the name table, a 322-element identity-mapped index array (0x508 bytes of 4-byte integers 0..321) is bulk-copied from `unk_21C0E00` to object offset +0x2478. This is a separate data structure (encoding category map), not additional opcode names.
 
 All SASS mnemonic strings in the ptxas binary are ROT13-obfuscated. The cleartext names shown here are the result of applying ROT13 decoding to the stored strings.
 
@@ -706,7 +709,11 @@ The 64-bit short-form encoders cover 27 opcode classes across 174 encoder functi
 
 ## SM100 Encoding Variant Counts
 
-Per-opcode variant counts for the SM100 (Blackwell datacenter) SASS encoder, extracted from the 683 concrete encoding handler functions at `0xED1520`--`0xFA5F10`. Each function encodes one (opcode, operand-form) pair — e.g., `FFMA reg,reg,reg` vs `FFMA reg,reg,imm` vs `FFMA reg,reg,pred`. The "Enc ID" column is the numeric value written to `*(WORD*)(a2+12)` by each handler, which maps to the SASS binary major opcode through the encoding dispatch megafunctions. The "SASS Mnemonic" column gives the canonical name from the 322-entry ROT13 opcode name table in `InstructionInfo`. Where two encoder IDs map to the same mnemonic (e.g. IADD3 IDs 0+1, LOP3 IDs 4+10), both are listed; the "Combined" column gives the merged count for that instruction.
+Per-opcode variant counts for the SM100 (Blackwell datacenter) SASS encoder, extracted from the 683 concrete encoding handler functions at `0xED1520`--`0xFA5F10`. Each function encodes one (opcode, operand-form) pair — e.g., `FFMA reg,reg,reg` vs `FFMA reg,reg,imm` vs `FFMA reg,reg,pred`. Column meanings:
+
+- **Enc ID** — the numeric value written to `*(WORD*)(a2+12)` by each handler, which maps to the SASS binary major opcode through the encoding dispatch megafunctions.
+- **SASS Mnemonic** — the canonical name from the 322-entry ROT13 opcode name table in `InstructionInfo`.
+- **Combined** — where two encoder IDs map to the same mnemonic (e.g. IADD3 IDs 0+1, LOP3 IDs 4+10), both are listed and this column gives the merged count for that instruction.
 
 Source: sweep report `p1.14-sweep-0xED1000-0xFA6000.txt`, ptxas v13.0.88.
 

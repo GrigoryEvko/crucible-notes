@@ -2,7 +2,13 @@
 
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The PhaseManager **registers 159 phase objects** (IDs 0–158) but the default driver **dispatches exactly 157** of them (IDs 0–156), in the fixed identity order given by the static index table at `0x22BEEA0`. The two remaining registered phases — ID 157 `DebuggerBreak` and ID 158 `NOP` — are constructed but not part of the default schedule; they run only via the recipe/named-phases override path (OCG knob 298). The order accessor `sub_C60D20` returns the order-table pointer in `rax` and the count `0x9D = 157` in `rdx`; the dispatch loop `sub_C64F70` bounds at `&schedule[157]`. Every dispatched phase's `execute()` runs unconditionally — phase skipping is decided inside each phase's own `execute()` body (opt-level/knob/predicate checks), not by `isNoOp()` and not by reordering the table. This page is the definitive inventory of all 159 registered phases: their index, name, category, one-line description, and cross-references to detailed documentation where available.
+The PhaseManager **registers 159 phase objects** (IDs 0–158) but the default driver **dispatches exactly 157** of them (IDs 0–156), in the fixed identity order given by the static index table at `0x22BEEA0`.
+
+- **The two un-dispatched phases:** ID 157 `DebuggerBreak` and ID 158 `NOP` are constructed but not part of the default schedule; they run only via the recipe/named-phases override path (OCG knob 298).
+- **How the count flows:** the order accessor `sub_C60D20` returns the order-table pointer in `rax` and the count `0x9D = 157` in `rdx`; the dispatch loop `sub_C64F70` bounds at `&schedule[157]`.
+- **Skipping is per-phase, not table-driven:** every dispatched phase's `execute()` runs unconditionally — phase skipping is decided inside each phase's own `execute()` body (opt-level/knob/predicate checks), not by `isNoOp()` and not by reordering the table.
+
+This page is the definitive inventory of all 159 registered phases: their index, name, category, one-line description, and cross-references to detailed documentation where available.
 
 All 159 phases have names in the static name table at `off_22BD0C0` (159 entries, indexed 0–158). The factory switch at `sub_C60D30` allocates each phase as a 16-byte polymorphic object with a 5-slot vtable: `execute()` at +0, `getIndex()` at +8 (returns the factory/table index), and `isNoOp()` at +16 (returns 1 only to suppress the Before/After timing banner — it does **not** gate `execute()`). Slots +24 and +32 are NULL.
 
@@ -48,7 +54,26 @@ Phases 139–158 are late-pipeline phases covering Mercury encoding, scoreboards
 
 **Reading guide:** `W#` = wiki phase number used on this page. Rows marked **SKIP** have no wiki number (16 phases). Rows marked **DISP** are displaced to wiki 132–138 (7 phases). Delta = binary index minus wiki number.
 
-> **Name shortening.** The Phase Name column below uses compact aliases to fit the two-column layout; the actual strings in the static name table at `off_22BD0C0` are the unabbreviated forms used everywhere else on this page. Aliases used here: `AdvPh*` = `AdvancedPhase*` (15 phases), `AdvScoreboardsAndOpexes` = `AdvancedScoreboardsAndOpexes`, `MergeEquivCondFlow` = `MergeEquivalentConditionalFlow`, `LateMergeEquivCondFlow` = `LateMergeEquivalentConditionalFlow`, `LateExpUnSupportedOps[2]` = `LateExpansionUnsupportedOps[2]`, `LateExpUnSupOpsMid` = `LateExpansionUnsupportedOpsMid`, `LateEnforceArgRestr` = `LateEnforceArgumentRestrictions`, `UpdateAfterConvUnSupOps` = `UpdateAfterConvertUnsupportedOps`, `UpdateAfterSchedInstr` = `UpdateAfterScheduleInstructions`, `UpdateAfterOriDoSync` = `UpdateAfterOriDoSyncronization`, `UpdateAfterOriAllocReg` = `UpdateAfterOriAllocateRegisters`, `ReportBeforeRegAlloc` = `ReportBeforeRegisterAllocation`, `ReportAfterRegAlloc` = `ReportAfterRegisterAllocation`, `OriSplitHiPressLR` = `OriSplitHighPressureLiveRanges`, `AnalyzeUniformsForSpec` = `AnalyzeUniformsForSpeculation`, `InsertPseudoUseDefConvUR` = `InsertPseudoUseDefForConvUR`, `ConvMemToRegOrUniform` = `ConvertMemoryToRegisterOrUniform`, `ApplyPostSyncWars` = `ApplyPostSyncronizationWars`.
+> **Name shortening.** The Phase Name column below uses compact aliases to fit the two-column layout; the actual strings in the static name table at `off_22BD0C0` are the unabbreviated forms used everywhere else on this page. Aliases used here:
+>
+> - `AdvPh*` = `AdvancedPhase*` (15 phases)
+> - `AdvScoreboardsAndOpexes` = `AdvancedScoreboardsAndOpexes`
+> - `MergeEquivCondFlow` = `MergeEquivalentConditionalFlow`
+> - `LateMergeEquivCondFlow` = `LateMergeEquivalentConditionalFlow`
+> - `LateExpUnSupportedOps[2]` = `LateExpansionUnsupportedOps[2]`
+> - `LateExpUnSupOpsMid` = `LateExpansionUnsupportedOpsMid`
+> - `LateEnforceArgRestr` = `LateEnforceArgumentRestrictions`
+> - `UpdateAfterConvUnSupOps` = `UpdateAfterConvertUnsupportedOps`
+> - `UpdateAfterSchedInstr` = `UpdateAfterScheduleInstructions`
+> - `UpdateAfterOriDoSync` = `UpdateAfterOriDoSyncronization`
+> - `UpdateAfterOriAllocReg` = `UpdateAfterOriAllocateRegisters`
+> - `ReportBeforeRegAlloc` = `ReportBeforeRegisterAllocation`
+> - `ReportAfterRegAlloc` = `ReportAfterRegisterAllocation`
+> - `OriSplitHiPressLR` = `OriSplitHighPressureLiveRanges`
+> - `AnalyzeUniformsForSpec` = `AnalyzeUniformsForSpeculation`
+> - `InsertPseudoUseDefConvUR` = `InsertPseudoUseDefForConvUR`
+> - `ConvMemToRegOrUniform` = `ConvertMemoryToRegisterOrUniform`
+> - `ApplyPostSyncWars` = `ApplyPostSyncronizationWars`
 
 | Bin | DUMPIR# | Phase Name | W# | D | | Bin | Phase Name | W# | D |
 |--:|--:|---|--:|--:|---|--:|---|--:|--:|
@@ -206,7 +231,16 @@ All 17 gate passes fall into three categories when activated by a backend overri
 | `AdvPhOriPhaseEncoding` (127) | 152 | C | `sub_C5E0B0` (7B) | `ctx+1552 = 21`; marks encoding boundary | P2_15 disasm; `sub_8C0270` checks `== 19` |
 | *(total: 5 type A, 5 type B, 6 type C = 16 gates)* | | | | | |
 
-**Type A** gates (5) dispatch to a named worker phase in the static name table — valid `DUMPIR`/`NamedPhases`/`DisablePhases` targets. `AdvPhEarlyEnforceArgs` was reclassified from C to A based on P5_02 evidence: it dispatches to `EnforceArgumentRestrictions` [48], with `LateEnforceArgumentRestrictions` [103] as its late counterpart. **Type B** gates (5) dispatch through an SM backend vtable slot at `ctx+0x630`; the worker code lives in the per-SM backend object. Specific vtable offsets: +0x168 (late sync expansion), +0x178 (late unsupported ops), +0x110 (post-reg-attr, guarded by default-impl check against `nullsub_170@0x7D6C80`). **Type C** gates (6) write `ctx+1552` (pipeline_progress) to values 1–21, forming a monotonically increasing timeline that 20+ downstream guards check. `AdvPhPostSched` was reclassified from B to C based on P0_03 evidence: `sub_C5E830` is a 7-byte thunk writing `ctx+1552 = 14`, identical in structure to the other progress thunks.
+The 16 gates fall into three dispatch types:
+
+- **Type A** (5) dispatch to a named worker phase in the static name table — valid `DUMPIR`/`NamedPhases`/`DisablePhases` targets.
+  - `AdvPhEarlyEnforceArgs` was reclassified from C to A based on P5_02 evidence: it dispatches to `EnforceArgumentRestrictions` [48], with `LateEnforceArgumentRestrictions` [103] as its late counterpart.
+- **Type B** (5) dispatch through an SM backend vtable slot at `ctx+0x630`; the worker code lives in the per-SM backend object. Specific vtable offsets:
+  - `+0x168` (late sync expansion)
+  - `+0x178` (late unsupported ops)
+  - `+0x110` (post-reg-attr, guarded by default-impl check against `nullsub_170@0x7D6C80`)
+- **Type C** (6) write `ctx+1552` (pipeline_progress) to values 1–21, forming a monotonically increasing timeline that 20+ downstream guards check.
+  - `AdvPhPostSched` was reclassified from B to C based on P0_03 evidence: `sub_C5E830` is a 7-byte thunk writing `ctx+1552 = 14`, identical in structure to the other progress thunks.
 
 See [Optimization Levels](../config/opt-levels.md) for per-gate activation rules.
 
@@ -393,7 +427,17 @@ Scanning all phase wrappers in `0xC5F7xx`--`0xC60Bxx` (the per-phase `execute` t
 Resolving the gate with `opt_level = 0` (i.e. `sub_7DDB50` returns the minimal level) against the dispatched phase schedule and the Category-B wrappers identified above:
 
 **At -O0, the following phases early-return (runtime no-ops):**
-Phase 14 `DoSwitchOptFirst` (gate `sub_C5F720`), 15 `OriBranchOpt` (`sub_C5F950`), 22 `OriLoopUnrolling`, 24 `OriPipelining`, 26 `OriRemoveRedundantBarriers`, 28 `SinkRemat`, 30 `DoSwitchOptSecond` (`sub_C5FC80`), 38 `OptimizeNestedCondBranches` (`sub_C5FA70`), 49 `GvnCse`, 54 `OriDoRematEarly`, 58 `GeneralOptimizeLate` (`sub_C603E0`, unless option-31 override), 63 `OriDoPredication`, 69 `OriDoRemat`, 71 `OptimizeSyncInstructions`, 72 `LateExpandSyncInstructions`, 95 `SetAfterLegalization`, 99 `OriDoSyncronization`, 100 `ApplyPostSyncronizationWars`, 110 `PostSchedule`, 115 `AdvancedScoreboardsAndOpexes`, and ~60 other Category-B phases. At `-O0` the scheduling subsystem *does* still run phase 116 `ProcessO0WaitsAndSBs`, which performs the conservative-scoreboard insertion that makes O0 code actually executable — phase 116 is itself a Category-A wrapper that dispatches to `sub_C5E2A0` only when the target architecture has `sm_version > 0x3FFF`.
+
+- Phase 14 `DoSwitchOptFirst` (gate `sub_C5F720`), 15 `OriBranchOpt` (`sub_C5F950`)
+- 22 `OriLoopUnrolling`, 24 `OriPipelining`, 26 `OriRemoveRedundantBarriers`, 28 `SinkRemat`
+- 30 `DoSwitchOptSecond` (`sub_C5FC80`), 38 `OptimizeNestedCondBranches` (`sub_C5FA70`)
+- 49 `GvnCse`, 54 `OriDoRematEarly`, 58 `GeneralOptimizeLate` (`sub_C603E0`, unless option-31 override)
+- 63 `OriDoPredication`, 69 `OriDoRemat`, 71 `OptimizeSyncInstructions`, 72 `LateExpandSyncInstructions`
+- 95 `SetAfterLegalization`, 99 `OriDoSyncronization`, 100 `ApplyPostSyncronizationWars`
+- 110 `PostSchedule`, 115 `AdvancedScoreboardsAndOpexes`
+- ...and ~60 other Category-B phases.
+
+> **NOTE — `-O0` still runs the scoreboard inserter.** The scheduling subsystem *does* still run phase 116 `ProcessO0WaitsAndSBs`, which performs the conservative-scoreboard insertion that makes O0 code actually executable. Phase 116 is itself a Category-A wrapper that dispatches to `sub_C5E2A0` only when the target architecture has `sm_version > 0x3FFF`.
 
 **At -O3 (the default), every Category-A wrapper runs**, and every Category-B wrapper also runs because `sub_7DDB50` returns `3` which satisfies `> 1`. The difference between -O2 and -O3 at the wrapper level is therefore **zero phases** — both levels activate the same 159 wrappers. The -O2/-O3 distinction happens entirely inside the implementation bodies (e.g. scheduling direction in `sub_8D0640`, which branches on `opt_level > 2`). The same is true for -O3 vs. -O4 vs. -O5: identical layer-1 wrapper activation, different internal algorithm selection. Only the `-O0` and `-O1` thresholds produce layer-1 visible skips.
 
@@ -405,7 +449,19 @@ See [Optimization Levels](../config/opt-levels.md) for the confirmed per-phase t
 
 ## Complete 159-Phase Table
 
-> **Coverage status (audit 2026-05-18).** Of the 159 phases: **92 GREEN** rows carry a cross-reference to a dedicated detail page (column **Detail Page** populated, link verified to resolve to an existing file); **27 YELLOW** rows carry no dedicated page but ARE covered by an in-page anchor section — the 10 RED gate hooks documented in [§Gate Passes](#gate-passes-advancedphase), the 4 RED update phases in [§Update Passes](#update-passes), the 7 RED report/debugger phases in [§Report Passes](#report-passes), and the 6 nullsub-bodied late-pipeline phases (150, 151, 152, 154, 157, 158) in [§Phase-by-phase deep dive (139–158)](#phase-by-phase-deep-dive-139158); **40 RED** rows have neither a detail page nor an in-page anchor section beyond their single-row description. Of those 40 RED, the highest-leverage targets are the lowering/expansion phases (`ConvertVTGReadWrite` 39, `DoVirtualCTAExpansion` 40, `ForwardProgress` 43, `ExpandJmxComputation` 80, `EnforceArgumentRestrictions` 48, `ExtractShaderConsts` 34/51, `BackPropagateVEC2D` 98) and the validation/setup phases (`OriCheckInitialProgram` 0, `PromoteFP16` 2, `AnalyzeControlFlow` 3, `OriCreateMacroInsts` 8, `OriSanitize` 12, `FinalInspectionPass` 94). New detail pages should follow the structure of [Strength Reduction](strength-reduction.md) or [Varying Propagation](varying-propagation.md) (front-matter table, algorithm pseudocode, data flow, function map, cross-refs).
+> **Coverage status (audit 2026-05-18).** Of the 159 phases:
+>
+> - **92 GREEN** rows carry a cross-reference to a dedicated detail page (column **Detail Page** populated, link verified to resolve to an existing file).
+> - **27 YELLOW** rows carry no dedicated page but ARE covered by an in-page anchor section:
+>   - the 10 RED gate hooks documented in [§Gate Passes](#gate-passes-advancedphase)
+>   - the 4 RED update phases in [§Update Passes](#update-passes)
+>   - the 7 RED report/debugger phases in [§Report Passes](#report-passes)
+>   - the 6 nullsub-bodied late-pipeline phases (150, 151, 152, 154, 157, 158) in [§Phase-by-phase deep dive (139–158)](#phase-by-phase-deep-dive-139158)
+> - **40 RED** rows have neither a detail page nor an in-page anchor section beyond their single-row description. Of those 40, the highest-leverage targets are:
+>   - **lowering/expansion phases:** `ConvertVTGReadWrite` 39, `DoVirtualCTAExpansion` 40, `ForwardProgress` 43, `ExpandJmxComputation` 80, `EnforceArgumentRestrictions` 48, `ExtractShaderConsts` 34/51, `BackPropagateVEC2D` 98
+>   - **validation/setup phases:** `OriCheckInitialProgram` 0, `PromoteFP16` 2, `AnalyzeControlFlow` 3, `OriCreateMacroInsts` 8, `OriSanitize` 12, `FinalInspectionPass` 94
+>
+> New detail pages should follow the structure of [Strength Reduction](strength-reduction.md) or [Varying Propagation](varying-propagation.md) (front-matter table, algorithm pseudocode, data flow, function map, cross-refs).
 >
 > **Ranked-by-impact targets for the next hunter-resolver wave** (composite score = implementation size in bytes + 100 × outgoing callees, derived by walking the factory `sub_C60D30` jump table at `0x22BBEB8`, reading vtable slot 0 from `0x22BCC78 .. 0x22BEE50`, and cross-referencing `ptxas_functions.json`):
 >
@@ -878,7 +934,13 @@ The Mercury phases (141–147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`
 
 **Stage numbering.** The 10 stages on this page (Stage 1–10) subdivide the 159-phase OCG pipeline. They are distinct from the 6 timed phases in [Pipeline Overview](../pipeline/overview.md) (Parse, CompileUnitSetup, DAGgen, OCG, ELF, DebugInfo), which cover the entire program lifecycle. All 10 stages here fall within the single OCG timed phase.
 
-**Identity ordering.** The default ordering table at `0x22BEEA0` (159 x `uint32`) is an identity mapping for indices 0–156: `exec[N] = factory[N]`. The last two entries are zero: `exec[157] = 0` and `exec[158] = 0`, mapping both slots back to factory index 0 instead of the expected 157 and 158. This is benign — phase 157 (`DebuggerBreak`, empty body in release builds) and phase 158 (`NOP`, terminal sentinel) both have trivial `execute()` bodies, so the factory index they resolve through is irrelevant to pipeline behavior. For all practical purposes the factory index IS the execution order: phases execute in strict index order 0–158, and the two trailing zeros are don't-care slots. The original wiki analysis that placed phases 132–138 as "out-of-order slots" was based on a compressed 139-phase model that excluded 20 phases (see note below).
+**Identity ordering.** The default ordering table at `0x22BEEA0` (159 x `uint32`) is an identity mapping for indices 0–156: `exec[N] = factory[N]`.
+
+- **Two trailing zeros:** `exec[157] = 0` and `exec[158] = 0` map both slots back to factory index 0 instead of the expected 157 and 158.
+- **Why it is benign:** phase 157 (`DebuggerBreak`, empty body in release builds) and phase 158 (`NOP`, terminal sentinel) both have trivial `execute()` bodies, so the factory index they resolve through is irrelevant to pipeline behavior.
+- **Net effect:** for all practical purposes the factory index IS the execution order — phases execute in strict index order 0–158, and the two trailing zeros are don't-care slots.
+
+The original wiki analysis that placed phases 132–138 as "out-of-order slots" was based on a compressed 139-phase model that excluded 20 phases (see note below).
 
 **Repeated passes.** Several transformations run at multiple pipeline positions because intervening passes expose new opportunities:
 

@@ -109,7 +109,12 @@ The orchestrator `sub_9F3340` runs two steps sequentially:
 
 2. **Operand reorganization** (`sub_9EF5E0`, 27KB): post-conversion lowering that restructures operand lists into a form the Mercury encoder can consume directly. Gated by `*(BYTE*)(*(context+16) + 1048) != 0` AND `*(context+104) != 0` (non-empty instruction BST).
 
-**Gate flag `byte_1398 & 0x20` — who sets it.** The flag lives in the SM-backend profile object at byte offset 1398. It is set by the architecture initialization function `sub_7DD480`, which reads the architecture capability word at `profile+1413` and programs byte 1398 based on the encoding-mode bits. Specifically, bit 0x20 is set (`byte_1398 = old & 0x1F | 0x60`) when capability bits 3 (`cap & 0x08`, Mercury-capable) or bits 4-5 (`cap & 0x30 == 0x20`, Capsule-Mercury-capable) are present. When the capability word has `cap & 0x30 == 0x10` (legacy non-Mercury mode), bit 0x20 is left unset (`byte_1398 &= ~0x80`; bit 5 untouched in the 0x10 path). The net effect: bit 0x20 at offset 1398 means "this SM target supports Mercury opcode conversion," and when clear, both phase 5 and phase 141 skip the opcode conversion step entirely, running only operand reorganization (if applicable).
+**Gate flag `byte_1398 & 0x20` — who sets it.** The flag lives in the SM-backend profile object at byte offset 1398. It is set by the architecture initialization function `sub_7DD480`, which reads the architecture capability word at `profile+1413` and programs byte 1398 based on the encoding-mode bits:
+
+- **Bit 0x20 set** (`byte_1398 = old & 0x1F | 0x60`) when capability bits 3 (`cap & 0x08`, Mercury-capable) or bits 4-5 (`cap & 0x30 == 0x20`, Capsule-Mercury-capable) are present.
+- **Bit 0x20 left unset** when the capability word has `cap & 0x30 == 0x10` (legacy non-Mercury mode): `byte_1398 &= ~0x80`; bit 5 untouched in the `0x10` path.
+
+> **Net effect:** bit 0x20 at offset 1398 means "this SM target supports Mercury opcode conversion." When clear, both phase 5 and phase 141 skip the opcode conversion step entirely, running only operand reorganization (if applicable).
 
 ### Post-Conversion Lowering — `sub_9EF5E0` (27KB)
 
@@ -782,7 +787,12 @@ The finalizer accepts `e_type ∈ {ET_REL = 1, ET_EXEC = 2, ET_EWP = 0xFF00}` as
 | `SHT_CUDA_MERCURY_SASS_MAP` | `SHT_LOPROC+13` = `0x7000000D` | `.mercury_to_sass_map` — Mercury↔SASS offset map (per text section; `sh_info` = SASS section index) |
 | `SHT_MERCURY_CONSTANT_PARAMS..TOOLS` | `SHT_LOPROC+120..126` = `0x70000078..0x7000007E` | `.nv.constant.entry_params`, `.nv.constant.entry_image_header_indices`, `.nv.constant.driver`, `.nv.constant.optimizer`, `.nv.constant.user`, `.nv.constant.pic`, `.nv.constant.tools_data` |
 
-Every original input section is cloned into the capsule under a `.nv.merc.` prefix (earlier toolchains used the shorter `.merc.` prefix) so the finalizer can recover the original Mercury blob and debug data after SASS reconstitution. The string pool holds 19 distinct `.nv.merc.*` clone families, spanning the DWARF debug sections (`.nv.merc.debug_abbrev`, `.debug_info`, `.debug_line`, `.debug_str`, `.debug_loc`, `.debug_frame`, `.debug_ranges`, `.debug_aranges`, `.debug_macinfo`, `.debug_pubnames`, `.debug_pubtypes`), the NV register-debug and SASS-line sidecars (`.nv.merc.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_line_sass`, `.nv_debug_ptx_txt`), the shared-memory reservation (`.nv.merc.nv.shared.reserved.`), and the symbol/relocation clones (`.nv.merc.rela`, `.nv.merc.symtab`, `.nv.merc.symtab_shndx`).
+Every original input section is cloned into the capsule under a `.nv.merc.` prefix (earlier toolchains used the shorter `.merc.` prefix) so the finalizer can recover the original Mercury blob and debug data after SASS reconstitution. The string pool holds 19 distinct `.nv.merc.*` clone families:
+
+- **DWARF debug sections** — `.nv.merc.debug_abbrev`, `.debug_info`, `.debug_line`, `.debug_str`, `.debug_loc`, `.debug_frame`, `.debug_ranges`, `.debug_aranges`, `.debug_macinfo`, `.debug_pubnames`, `.debug_pubtypes`.
+- **NV register-debug and SASS-line sidecars** — `.nv.merc.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_line_sass`, `.nv_debug_ptx_txt`.
+- **Shared-memory reservation** — `.nv.merc.nv.shared.reserved.`.
+- **Symbol/relocation clones** — `.nv.merc.rela`, `.nv.merc.symtab`, `.nv.merc.symtab_shndx`.
 
 ## Mercury↔SASS Offset Map
 

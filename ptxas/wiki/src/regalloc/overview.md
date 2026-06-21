@@ -2,7 +2,14 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas register allocator is a fat-point allocator with a Chaitin-Briggs-style simplify-select ordering. Before the core allocation loop runs, the ordering function (`sub_93FBE0`, 940 lines) classifies every virtual register into one of six membership lists based on interference degree, constraint count, and register width. Low-interference and unconstrained vregs are drained first (simplify phase), followed by high-interference vregs selected by lowest spill cost (potential-spill phase). The resulting ordering is pushed onto an assignment stack at `alloc+744`. The core fat-point allocator (`sub_957160`) then pops this stack in reverse, assigning each vreg to the physical register slot with the lowest interference count in a per-physical-register pressure histogram (512-DWORD array). High-interference vregs that were deferred during simplify are colored optimistically — if the fat-point scan finds a slot below threshold, they succeed without spilling.
+The ptxas register allocator is a fat-point allocator with a Chaitin-Briggs-style simplify-select ordering. The pipeline runs in three steps:
+
+- **Ordering** (`sub_93FBE0`, 940 lines) — before the core allocation loop runs, classifies every virtual register into one of six membership lists based on interference degree, constraint count, and register width:
+  - Low-interference and unconstrained vregs are drained first (simplify phase).
+  - High-interference vregs are selected by lowest spill cost next (potential-spill phase).
+  - The resulting ordering is pushed onto an assignment stack at `alloc+744`.
+- **Coloring** (`sub_957160`) — the core fat-point allocator pops this stack in reverse, assigning each vreg to the physical register slot with the lowest interference count in a per-physical-register pressure histogram (512-DWORD array).
+- **Optimistic fallback** — high-interference vregs that were deferred during simplify are colored optimistically: if the fat-point scan finds a slot below threshold, they succeed without spilling.
 
 This hybrid design combines the Chaitin-Briggs simplify-select priority ordering with a fat-point conflict resolution step that replaces the traditional interference-graph adjacency check. There is no explicit interference graph in the main allocation path; instead, per-physical-register pressure histograms serve as the conflict representation. The fat-point scan trades graph-coloring's theoretical optimality for speed on the very large register files of NVIDIA GPUs (up to 255 GPRs per thread).
 
@@ -498,7 +505,18 @@ ConvertMemoryToRegisterOrUniform(code_obj):
   rewrite_phis(candidates)                             // sub_914B40, 1737 lines
 ```
 
-**Def-use analysis engine** (`sub_911030`, 2408 lines) — core of the promotion decision. Numbers basic blocks sequentially (`bb[52] = index`, `bb[48] = -1`), then for each stack variable in `code_obj->field_99` walks the def-use chain. Uses the same `PREALLOC_MASK` bitmask (`0x2080000010000001 >> (opcode - 22)`) as the pre-allocator plus opcodes 297/352. Classifies register operands via per-opcode handlers: `sub_7E40E0` (R2P/22), `sub_7E36C0` (EXIT/77), `sub_7E3790` (UFMUL/297), `sub_7E3800` (SEL/352), `sub_7E3640` (TEX/83); ATOM/50 uses a packed lookup table. Builds a BST of def-use nodes keyed by BB index, tracking earliest/latest definitions to bound promotion scope.
+**Def-use analysis engine** (`sub_911030`, 2408 lines) — core of the promotion decision. It works as follows:
+
+- Numbers basic blocks sequentially (`bb[52] = index`, `bb[48] = -1`), then for each stack variable in `code_obj->field_99` walks the def-use chain.
+- Uses the same `PREALLOC_MASK` bitmask (`0x2080000010000001 >> (opcode - 22)`) as the pre-allocator plus opcodes 297/352.
+- Classifies register operands via per-opcode handlers:
+  - `sub_7E40E0` (R2P/22),
+  - `sub_7E36C0` (EXIT/77),
+  - `sub_7E3790` (UFMUL/297),
+  - `sub_7E3800` (SEL/352),
+  - `sub_7E3640` (TEX/83);
+  - ATOM/50 uses a packed lookup table.
+- Builds a BST of def-use nodes keyed by BB index, tracking earliest/latest definitions to bound promotion scope.
 
 ### Pre-Allocation Pass
 
@@ -628,7 +646,12 @@ Cross-calls into the subsystem from the four large engines below confirm the clu
 
 ### Register Coalescing Engine (`sub_9B1200`, 800 lines)
 
-Eliminates register-to-register copies by merging live ranges. The model is **conservative, interference-checked, preference/bias-driven optimistic coloring** (not classic Briggs degree-count, not pure preference): coalesce candidates are linked and pushed on top of the coloring stack, and the merge is committed at color time only if the target physical register passes a point-interference bitvector check (plus alignment and don't-split-a-vector-word checks). The path is restricted to **class 3 (GPR/UR) and class 6 (UR/Tensor-Acc)** — see [algorithm.md § Coalescing Model](./algorithm.md#coalescing-model--conservative-interference-checked-preference-biased). Gated by knob 618 (`RegAllocCoalescing`); MAC/MMA accumulator coalescing is a separate enable.
+Eliminates register-to-register copies by merging live ranges. The model is **conservative, interference-checked, preference/bias-driven optimistic coloring** (not classic Briggs degree-count, not pure preference):
+
+- Coalesce candidates are linked and pushed on top of the coloring stack.
+- The merge is committed at color time only if the target physical register passes a point-interference bitvector check (plus alignment and don't-split-a-vector-word checks).
+- The path is restricted to **class 3 (GPR/UR) and class 6 (UR/Tensor-Acc)** — see [algorithm.md § Coalescing Model](./algorithm.md#coalescing-model--conservative-interference-checked-preference-biased).
+- Gated by knob 618 (`RegAllocCoalescing`); MAC/MMA accumulator coalescing is a separate enable.
 
 Lines 1-100 compute an FNV-1a-variant hash (multiplier 1025, XOR-shift-6) over the operand stream, stored at `range_ctx+80` for dedup. Dispatches on mode at `range_ctx+8`:
 
@@ -1157,7 +1180,13 @@ Occupancy-aware register budget interpolation. Computes a dynamic register budge
 
 #### Piecewise Budget Fraction Evaluation
 
-The interpolation table at +1664 through +1712 encodes a 4-segment piecewise linear function mapping physical register count to a budget fraction in [0.0, 1.0]. The table stores (x, y) pairs as interleaved doubles: odd indices are x-coordinates (thread-count breakpoints), even indices are y-coordinates (fraction values). During initialization (`sub_947150`), points [0], [2], [4] are set to coefficient A (default 0.2) and point [6] is set to coefficient B (default 1.0), while the x-breakpoints come from the max-threads knob, the pressure-threshold knob, and a vtable-derived limit.
+The interpolation table at +1664 through +1712 encodes a 4-segment piecewise linear function mapping physical register count to a budget fraction in [0.0, 1.0].
+
+- The table stores (x, y) pairs as interleaved doubles: odd indices are x-coordinates (thread-count breakpoints), even indices are y-coordinates (fraction values).
+- During initialization (`sub_947150`):
+  - points [0], [2], [4] are set to coefficient A (default 0.2),
+  - point [6] is set to coefficient B (default 1.0),
+  - the x-breakpoints come from the max-threads knob, the pressure-threshold knob, and a vtable-derived limit.
 
 ```c
 // sub_937E90 -- piecewise interpolation lookup (lines 112-136 of decompiled)

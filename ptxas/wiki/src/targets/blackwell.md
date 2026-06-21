@@ -2,7 +2,12 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas v13.0.88 handles five Blackwell-era base targets — sm_100, sm_103, sm_110, sm_120, sm_121 — spanning datacenter, automotive, consumer, and DGX product lines. All share generation 9 (upper nibble `0x9000` of the codegen factory) and the `"Blackwell"` family string internally, but each uses a distinct sub-variant: sm_100=36864 (`0x9000`), sm_103=36867 (`0x9003`), sm_110=36868 (`0x9004`), sm_120=sm_121=36869 (`0x9005`). The defining Blackwell feature is **Capsule Mercury** (capmerc) as the default binary output format, automatically enabled for SM numbers exceeding 99. The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
+ptxas v13.0.88 handles five Blackwell-era base targets — sm_100, sm_103, sm_110, sm_120, sm_121 — spanning datacenter, automotive, consumer, and DGX product lines.
+
+- **Shared identity.** All share generation 9 (upper nibble `0x9000` of the codegen factory) and the `"Blackwell"` family string internally.
+- **Distinct sub-variants.** sm_100=36864 (`0x9000`), sm_103=36867 (`0x9003`), sm_110=36868 (`0x9004`), sm_120=sm_121=36869 (`0x9005`).
+- **Defining feature.** **Capsule Mercury** (capmerc) is the default binary output format, automatically enabled for SM numbers exceeding 99.
+- **tcgen05 split.** The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
 
 | | |
 |---|---|
@@ -206,9 +211,16 @@ TCGen05 is the defining hardware feature of Blackwell datacenter parts. It intro
 | sm_120 / 120a / 120f | **No** | Consumer — no TMEM, no tcgen05 |
 | sm_121 / 121a / 121f | **No** | DGX Spark — no TMEM, no tcgen05 |
 
-The tcgen05 ISA is gated by SM version checks (visible as `sub_70FA00(*, 29)` capability queries). sm_120 and sm_121 have no warpgroup or tensor-memory MMA at all: the tensor path is warp-level `mma.sync` (the HMMA/IMMA lineage from sm_70–sm_89) extended with the block-scaled narrow-precision family (`mma.sync.aligned.kind::f8f6f4` and `kind::mxf4nvf4` for FP4/FP6/FP8).
+The tcgen05 ISA is gated by SM version checks (visible as `sub_70FA00(*, 29)` capability queries). sm_120 and sm_121 have no warpgroup or tensor-memory MMA at all — the tensor path is warp-level `mma.sync`:
 
-> **CORRECTION (WGMMA-01) —** earlier revisions of this page listed WGMMA (`wgmma.mma_async`) among the tensor paths inherited by Blackwell. That is wrong: WGMMA is **Hopper-exclusive**. ptxas v13.1.115 assembles `wgmma.fence`/`wgmma.commit_group` only for `.target sm_90a`; every Blackwell target — datacenter *and* consumer — rejects it with `error: Instruction 'wgmma.fence' not supported on .target 'sm_100a'` (and identically for `sm_103a`/`sm_110a`/`sm_120a`/`sm_121a`). Datacenter Blackwell replaced the warpgroup matmul with tcgen05; consumer Blackwell fell back to warp-level `mma.sync`. No software knob re-enables a hardware instruction the silicon lacks.
+- The HMMA/IMMA lineage from sm_70–sm_89.
+- Extended with the block-scaled narrow-precision family (`mma.sync.aligned.kind::f8f6f4` and `kind::mxf4nvf4` for FP4/FP6/FP8).
+
+> **CORRECTION (WGMMA-01) —** earlier revisions of this page listed WGMMA (`wgmma.mma_async`) among the tensor paths inherited by Blackwell. That is wrong: WGMMA is **Hopper-exclusive**.
+>
+> - ptxas v13.1.115 assembles `wgmma.fence`/`wgmma.commit_group` only for `.target sm_90a`; every Blackwell target — datacenter *and* consumer — rejects it with `error: Instruction 'wgmma.fence' not supported on .target 'sm_100a'` (and identically for `sm_103a`/`sm_110a`/`sm_120a`/`sm_121a`).
+> - Datacenter Blackwell replaced the warpgroup matmul with tcgen05; consumer Blackwell fell back to warp-level `mma.sync`.
+> - No software knob re-enables a hardware instruction the silicon lacks.
 
 ### PTX Instructions
 

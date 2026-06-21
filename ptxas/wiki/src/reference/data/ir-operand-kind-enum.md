@@ -2,7 +2,11 @@
 
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The instruction-selection operand-descriptor kind enum. Each operand descriptor is a 32-byte record (array base at `operand_list+32`, stride 32): `byte[0]` = kind tag, `+4` = value/id, `+20` = secondary id; descriptor count at `operand_list+92`; accessor `sub_B28F30(list, i) = *(list+32) + 32*i`. Each kind has a dedicated one-line predicate helper `bool f(char tag){ return tag == K; }` in the bank `0xB28E00`-`0xB28EF0`. This is distinct from the 3-bit packed operand kind (bits 28-30) carried in each inline operand word. Only kinds 1, 2, and 6 are firmly anchored; kinds 3-5/7-11/13-16 are confirmed by helper VA but their operand-class meanings are medium confidence. Kinds 0 and 12 have no helper in the bank; `sub_B28E00` is the identity/dispatch root.
+The instruction-selection operand-descriptor kind enum. Layout and provenance:
+
+- **Descriptor record.** Each operand descriptor is a 32-byte record (array base at `operand_list+32`, stride 32): `byte[0]` = kind tag, `+4` = value/id, `+20` = secondary id; descriptor count at `operand_list+92`; accessor `sub_B28F30(list, i) = *(list+32) + 32*i`.
+- **Predicate helpers.** Each kind has a dedicated one-line predicate helper `bool f(char tag){ return tag == K; }` in the bank `0xB28E00`-`0xB28EF0`. This is distinct from the 3-bit packed operand kind (bits 28-30) carried in each inline operand word.
+- **Confidence.** Only kinds 1, 2, and 6 are firmly anchored; kinds 3-5/7-11/13-16 are confirmed by helper VA but their operand-class meanings are medium confidence. Kinds 0 and 12 have no helper in the bank; `sub_B28E00` is the identity/dispatch root.
 
 | kind | helper_va | helper | meaning (inferred) | confidence |
 |---|---|---|---|---|

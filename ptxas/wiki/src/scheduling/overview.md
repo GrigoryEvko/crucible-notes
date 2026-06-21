@@ -6,7 +6,13 @@
 
 The ptxas instruction scheduler is a priority list scheduler with a 3-phase architecture. A single top-level orchestrator (`sub_8D0640`, ScheduleInstructions) drives three passes through one unified scheduling engine (`sub_688DD0`), each configured by a mode parameter that selects a different optimization objective: register pressure reduction, ILP/latency hiding, or dynamic batch optimization for tensor warpgroup operations. The scheduler runs twice in the ptxas pipeline — once before register allocation on virtual registers (pre-scheduling) and once after physical register assignment (post-scheduling).
 
-The scheduler consumes a dependency DAG built over the instruction list and produces a final instruction ordering together with SASS control words encoding stall counts, yield hints, barrier assignments, and scoreboard dependencies. The entire subsystem occupies two principal address ranges: the main scheduler core at `0x893000–0x8FE000` (428 KB of native code, ~115 functions including the orchestrator, engine, priority evaluator, dependency builder, DynBatch context, and per-SM HW profile builders) and a supporting infrastructure block at `0x67F000–0x6A0000` (132 KB; ready-list construction, instruction relink, region-init, and the unified-engine entry-point thunks). The scoreboard/control-word pipeline at `0xA22000–0xA3B000` (post-scheduling phases 114–116) accounts for an additional ~100 KB.
+The scheduler consumes a dependency DAG built over the instruction list and produces a final instruction ordering together with SASS control words encoding stall counts, yield hints, barrier assignments, and scoreboard dependencies.
+
+The entire subsystem occupies three principal address ranges:
+
+- **Main scheduler core** — `0x893000–0x8FE000` (428 KB of native code, ~115 functions including the orchestrator, engine, priority evaluator, dependency builder, DynBatch context, and per-SM HW profile builders).
+- **Supporting infrastructure block** — `0x67F000–0x6A0000` (132 KB; ready-list construction, instruction relink, region-init, and the unified-engine entry-point thunks).
+- **Scoreboard/control-word pipeline** — `0xA22000–0xA3B000` (post-scheduling phases 114–116), accounting for an additional ~100 KB.
 
 | | |
 |---|---|
@@ -342,7 +348,10 @@ The scheduling context stores its vtable pointer at offset +0 (`sched[0] = off_2
 | `0x41` (65) | DynBatch | +64 | `[8]` | pipeline_A slot 0 | `0x8E0F18` — thunk entry inside `sub_8E0DB0` (DynBatch pipeline backend) |
 | `0x49` (73) | ILP/Latency | +72 | `[9]` | pipeline_A slot 1 | `0x8E0F90` — thunk entry inside `sub_8E0DB0` (ILP pipeline backend) |
 
-Slots 8 and 9 are interior labels of the shared dispatcher `sub_8E0DB0` (~700 B), not standalone functions; multiple adjacent vtable entries in this table resolve to the same routine, which then branches on the originating slot offset. Slot 7 is a hard nullsub: when ReduceReg fires, the mode-1 path in `sub_8C9320` (via the `sched+240` selector and the `sched+484` ReduceReg flag) carries the entire register-pressure-minimizing heuristic.
+Two structural facts about these slots:
+
+- **Slots 8 and 9** are interior labels of the shared dispatcher `sub_8E0DB0` (~700 B), not standalone functions; multiple adjacent vtable entries in this table resolve to the same routine, which then branches on the originating slot offset.
+- **Slot 7** is a hard nullsub: when ReduceReg fires, the mode-1 path in `sub_8C9320` (via the `sched+240` selector and the `sched+484` ReduceReg flag) carries the entire register-pressure-minimizing heuristic.
 
 The orchestrator `sub_8D0640` invokes the engine three times with these modes:
 
@@ -374,7 +383,10 @@ In addition to the SelectBest dispatch, the engine calls two polymorphic hooks p
 
 These hooks are checked against sentinel values (`nullsub_39`, `nullsub_40`) and skipped when the backend provides no override.
 
-The engine manages **10 register pressure counters** at scheduler context offsets 48–87 (copied from the [per-block record](#per-block-scheduling-record-72-bytes) offsets +4--+40 at BB entry). These correspond to the GPU register classes: R (general), P (predicate), UR (uniform), UP (uniform predicate), B (barrier), and 5 architecture-specific classes. Counter [0] (R class) uses a separate update path; counters [1]--[9] are decremented from a per-opcode resource cost table during the scheduling loop.
+The engine manages **10 register pressure counters** at scheduler context offsets 48–87 (copied from the [per-block record](#per-block-scheduling-record-72-bytes) offsets +4--+40 at BB entry). These correspond to the GPU register classes:
+
+- R (general), P (predicate), UR (uniform), UP (uniform predicate), B (barrier), and 5 architecture-specific classes.
+- Counter [0] (R class) uses a separate update path; counters [1]--[9] are decremented from a per-opcode resource cost table during the scheduling loop.
 
 ## Ready List Construction
 
@@ -942,7 +954,11 @@ Sub-architecture variants (stored at profile offset +26) are assigned by specifi
 
 ### Representative Per-SM Latency Values
 
-The following table shows representative scheduling latencies extracted from the per-SM dependency rule tables (`per_sm_dependency_rules`). Each row is a scheduling class (unit\_id) corresponding to a key instruction category. Values are the `latency` field — the scheduler's static cycle cost used for DAG edge weights and stall-count computation. The `tp_inv` column gives the inverse throughput (issue-to-issue delay for back-to-back instructions of the same class); 0 means fully pipelined (one per cycle).
+The following table shows representative scheduling latencies extracted from the per-SM dependency rule tables (`per_sm_dependency_rules`). How to read it:
+
+- Each row is a scheduling class (unit\_id) corresponding to a key instruction category.
+- Values are the `latency` field — the scheduler's static cycle cost used for DAG edge weights and stall-count computation.
+- The `tp_inv` column gives the inverse throughput (issue-to-issue delay for back-to-back instructions of the same class); 0 means fully pipelined (one per cycle).
 
 | Instruction class | Sched class | sm\_70 | sm\_80 | sm\_86 | sm\_89 | sm\_90 | sm\_100 | sm\_103 |
 |---|---|---|---|---|---|---|---|---|
@@ -1305,7 +1321,11 @@ The scheduler uses two allocator strategies:
 
 ## Per-Instruction Scheduling Metadata (SchedNode)
 
-Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-allocated scheduling metadata block called a SchedNode. The metadata offsets documented throughout the scheduling pages (e.g., `metadata+24`, `metadata+32`, `metadata+108`) are relative to this SchedNode, **not** to the 296-byte Ori instruction object itself. The SchedNode block is at least 240 bytes (the cross-block scheduling loop accesses fields up to +236); all nodes are linked into a singly-linked list at `func+104` (Code Object offset +104), separate from the instruction linked list at `func+272`.
+Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-allocated scheduling metadata block called a SchedNode.
+
+- The metadata offsets documented throughout the scheduling pages (e.g., `metadata+24`, `metadata+32`, `metadata+108`) are relative to this SchedNode, **not** to the 296-byte Ori instruction object itself.
+- The SchedNode block is at least 240 bytes (the cross-block scheduling loop accesses fields up to +236).
+- All nodes are linked into a singly-linked list at `func+104` (Code Object offset +104), separate from the instruction linked list at `func+272`.
 
 ### SchedNode Layout
 
@@ -1434,7 +1454,12 @@ The opcodes that set bit 5 (`hasLongLatencyOp`): 18 (with knob 62 gate), 23, 26,
 
 ### Cross-Block Scheduling Setup
 
-After per-BB initialization, `sub_6833F0` walks the CFG to identify cross-block scheduling opportunities, with the master gate being knob 744 (`SchedCrossBlockLimit`): when its boolean form is true the integer value supplies the speculative distance threshold; when disabled the default threshold is 2. (The per-BB walk also stores `sched+177` from knob 742 (`SchedCrossBlock`): byte 0 = enabled, byte 1 = conditional on `options+53648 != 0`, byte >= 2 = disabled.)
+After per-BB initialization, `sub_6833F0` walks the CFG to identify cross-block scheduling opportunities. The master gate is knob 744 (`SchedCrossBlockLimit`):
+
+- When its boolean form is true, the integer value supplies the speculative distance threshold.
+- When disabled, the default threshold is 2.
+
+The per-BB walk also stores `sched+177` from knob 742 (`SchedCrossBlock`): byte 0 = enabled, byte 1 = conditional on `options+53648 != 0`, byte >= 2 = disabled.
 
 ```c
 // Phase 1: compute speculative distance threshold (sub_6833F0, LABEL_49 block)
@@ -1491,9 +1516,20 @@ for each bb in RPO_order(func):                      // bb_array[ctx+296]
     AllocRegionContext(sched, bb, best_pred)          // sub_682F10
 ```
 
-**`CrossBlockEligible`** (`sub_682D40`). Returns false if `vtable[23]` (arch override, default `sub_661250` = always-eligible) vetoes the pair. Otherwise walks forward from `bb` toward `best_pred`, checking at each intermediate BB: (a) no `hasLongLatencyOp` (bit 5 of `record[rpo].flags`), (b) all predecessor RPOs lie strictly between the pair's RPO bounds, (c) all successor RPOs lie strictly within bounds. Any violation returns false.
+**`CrossBlockEligible`** (`sub_682D40`). Returns false if `vtable[23]` (arch override, default `sub_661250` = always-eligible) vetoes the pair. Otherwise walks forward from `bb` toward `best_pred`, checking at each intermediate BB:
 
-**`IsTextureBlock`** (`sub_7E5120`). Returns true when a BB contains texture/surface instructions. Tests four conditions (short-circuit OR): (1) arch-specific classifier via double vtable deref at `ctx+1784`, (2) per-BB scheduling class table at `ctx+1776`, (3) `*(instr+283) & 1`, (4) fallback `sub_7A1A90(ctx+1664, 91, instr)`.
+- (a) no `hasLongLatencyOp` (bit 5 of `record[rpo].flags`),
+- (b) all predecessor RPOs lie strictly between the pair's RPO bounds,
+- (c) all successor RPOs lie strictly within bounds.
+
+Any violation returns false.
+
+**`IsTextureBlock`** (`sub_7E5120`). Returns true when a BB contains texture/surface instructions. Tests four conditions (short-circuit OR):
+
+- (1) arch-specific classifier via double vtable deref at `ctx+1784`,
+- (2) per-BB scheduling class table at `ctx+1776`,
+- (3) `*(instr+283) & 1`,
+- (4) fallback `sub_7A1A90(ctx+1664, 91, instr)`.
 
 **`AllocRegionContext`** (`sub_682F10`). Allocates 136 bytes from the scheduling arena:
 
@@ -1511,7 +1547,10 @@ for each bb in RPO_order(func):                      // bb_array[ctx+296]
 | +120 | 4 | tail_lat | `succTailLatency` | Last-instruction latency of successor BB |
 | +128 | 8 | 0 | (reserved) | |
 
-Pointers stored at `record[pred_rpo].regionContext` (+48) and `record[succ_rpo].regionContext2` (+56). The instruction scan inside `sub_682F10` classifies each instruction into barrier-class (bit 6 of `sub_7DF3A0`), arch long-latency (`vtable[228]`), or default, accumulating the counter rows. For branch variants (`(opcode & 0xFFFFCFFD) == 0xBC`), it checks operand encoding to set bit 3 and record branch stall cost at `+4`.
+Pointers stored at `record[pred_rpo].regionContext` (+48) and `record[succ_rpo].regionContext2` (+56). The instruction scan inside `sub_682F10`:
+
+- classifies each instruction into barrier-class (bit 6 of `sub_7DF3A0`), arch long-latency (`vtable[228]`), or default, accumulating the counter rows.
+- for branch variants (`(opcode & 0xFFFFCFFD) == 0xBC`), checks operand encoding to set bit 3 and record branch stall cost at `+4`.
 
 ```text
 +0                  +4                                           +44  +48              +56              +64  +72
@@ -1521,7 +1560,10 @@ Pointers stored at `record[pred_rpo].regionContext` (+48) and `record[succ_rpo].
 
 ## Scheduler Context Object Layout
 
-The scheduling context object (`sched` / `a1`) is the central state structure passed as the first argument to every function in the scheduling subsystem. It is populated by `sub_A95DC0` (SchedulingContext::configure, 35 KB) which reads dozens of knob values and architecture parameters. The object spans approximately 1600 bytes, from a vtable pointer at offset 0 through architecture-specific SSE vectors at offset +1584.
+The scheduling context object (`sched` / `a1`) is the central state structure passed as the first argument to every function in the scheduling subsystem.
+
+- It is populated by `sub_A95DC0` (SchedulingContext::configure, 35 KB), which reads dozens of knob values and architecture parameters.
+- The object spans approximately 1600 bytes, from a vtable pointer at offset 0 through architecture-specific SSE vectors at offset +1584.
 
 ### Core Fields (offsets 0–176)
 

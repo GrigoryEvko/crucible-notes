@@ -2,7 +2,13 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-`AnalyzeControlFlow` is the shared control-flow infrastructure of ptxas: the routine called whenever a pass needs the per-basic-block CFG annotations — RPO rank, loop-header bit, in-loop bit, predecessor-RPO-of-latch, loop-exit RPO marker — to be valid for the *current* IR. It runs once as **phase 3** of the 159-phase pipeline (wrapper `sub_C60870`, gated on O1+ and knob 235), but the *implementation* `sub_781F80` (8,335 B, 454 BBs, 51 callees) has **131 callers** across the binary, including loop-simplification, predication, rematerialization, register allocation, the scheduler, and every CFG-mutating optimizer that needs to refresh its view of the graph. The "phase" itself is the entry point; the body is a re-entrant CFG-rebuild service that every other pass invokes on demand. There is no LLVM-equivalent single object: LLVM splits these annotations across `LoopInfo`, `DominatorTree`, `MachineLoopInfo`, and per-block `MachineBasicBlock` flags. ptxas keeps them in a single 40-byte BasicBlock record and a single recomputation routine.
+`AnalyzeControlFlow` is the shared control-flow infrastructure of ptxas: the routine called whenever a pass needs the per-basic-block CFG annotations — RPO rank, loop-header bit, in-loop bit, predecessor-RPO-of-latch, loop-exit RPO marker — to be valid for the *current* IR.
+
+- **It runs once as phase 3** of the 159-phase pipeline (wrapper `sub_C60870`, gated on O1+ and knob 235)...
+- **...but the implementation `sub_781F80`** (8,335 B, 454 BBs, 51 callees) has **131 callers** across the binary, including loop-simplification, predication, rematerialization, register allocation, the scheduler, and every CFG-mutating optimizer that needs to refresh its view of the graph.
+- **The "phase" is just the entry point;** the body is a re-entrant CFG-rebuild service that every other pass invokes on demand.
+
+There is no LLVM-equivalent single object: LLVM splits these annotations across `LoopInfo`, `DominatorTree`, `MachineLoopInfo`, and per-block `MachineBasicBlock` flags. ptxas keeps them in a single 40-byte BasicBlock record and a single recomputation routine.
 
 | | |
 |---|---|
@@ -291,10 +297,16 @@ The cases observed in the decompilation, with their structural role:
 | 97 | block-start marker | bumps RPO, records the new "current header" |
 
 > ⚡ **QUIRK — `+152` is a dual-use field**
-> The same 32-bit field at BB `+152` serves two unrelated purposes within `sub_781F80`'s own body. During the linear sweep (Phase 2) it stores the **smallest predecessor RPO** seen so far for the current header — feeding the back-edge detector in Phase 3. After Phase 3 confirms the loop, the same field is **overwritten** with the **loop-exit RPO marker** consumed by `sub_78B430` (`LoopStructurePass`, `passes/loop-passes.md`). Both writes touch the same offset (lines 769 and 772 of the decompilation), and the field's meaning depends on whether the per-BB `+280` bit `0x10` (LOOP_HEADER) has already been set. Any reader of `+152` that does not first check `+280 & 0x10` will misinterpret one of the two states.
+>
+> The same 32-bit field at BB `+152` serves two unrelated purposes within `sub_781F80`'s own body:
+>
+> - **During the linear sweep (Phase 2)** it stores the **smallest predecessor RPO** seen so far for the current header — feeding the back-edge detector in Phase 3.
+> - **After Phase 3 confirms the loop**, the same field is **overwritten** with the **loop-exit RPO marker** consumed by `sub_78B430` (`LoopStructurePass`, `passes/loop-passes.md`).
+>
+> Both writes touch the same offset (lines 769 and 772 of the decompilation), and the field's meaning depends on whether the per-BB `+280` bit `0x10` (LOOP_HEADER) has already been set. Any reader of `+152` that does not first check `+280 & 0x10` will misinterpret one of the two states.
 
 > ⚡ **QUIRK — `BYTE1(opcode) &= 0xCFu` matches MercConverter exactly**
-> The byte-1 mask `0xCFu` strips bits 4-5 from the second byte of the 32-bit opcode word. This is the *identical* mask used by `sub_9ED2D0` (the MercConverter dispatcher) and by `sub_900020` (the varying-propagation seeder). Maintaining bit-for-bit parity across the three pre-mask operations is a hard requirement: a divergence here would mean two passes would disagree on whether two opcode words refer to the same logical instruction. The mask is replicated verbatim, not centralised, in all three call sites.
+> The byte-1 mask `0xCFu` strips bits 4-5 from the second byte of the 32-bit opcode word. This is the *identical* mask used by `sub_9ED2D0` (the MercConverter dispatcher) and by `sub_900020` (the varying-propagation seeder). Maintaining bit-for-bit parity across the three pre-mask operations is a hard requirement: a divergence here would mean two passes would disagree on whether two opcode words refer to the same logical instruction. The mask is replicated byte-for-byte, not centralised, in all three call sites.
 
 > ⚡ **QUIRK — the wrapper's `knob 235` test inverts the usual polarity**
 > Most knob gates in ptxas use the pattern `if (knob_set) take_path_A`. `sub_C60870` inverts it: `if (knob_set) skip the impl` (line 19 of `sub_C60870`: `if (!(_BYTE)v5) sub_781F80(...)`). Setting knob 235 *disables* `AnalyzeControlFlow` at phase 3 — but every consumer that calls the impl directly *bypasses* the knob, so disabling phase 3 only affects the initial canonical run. Knob 235 is the only ptxas knob whose effect is fully suppressed by the existence of incremental re-invocation sites.

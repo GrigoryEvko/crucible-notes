@@ -2,7 +2,12 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas defines two parallel relocation type systems for CUBIN ELF files: **R_CUDA_\*** (117 types, ordinals 0–116) for SASS-encoded cubins targeting SM 30–90a, and **R_MERCURY_\*** (65 types, ordinals 0–64) for Mercury-encoded cubins targeting SM 100+ (Blackwell and later). Both systems use standard `Elf64_Rela` relocation entries in `.rela.text.<funcname>` sections, with a custom resolution algorithm that handles alias redirection, dead function filtering, UFT/UDT pseudo-relocations, PC-relative branch validation, and sub-byte instruction patching. The symbol table (`.symtab`) follows standard ELF `Elf64_Sym` format with CUDA-specific symbol types and an extended section index mechanism (`.symtab_shndx`) for programs exceeding 65,280 sections.
+ptxas defines two parallel relocation type systems for CUBIN ELF files:
+
+- **R_CUDA_\*** — 117 types (ordinals 0–116) for SASS-encoded cubins targeting SM 30–90a.
+- **R_MERCURY_\*** — 65 types (ordinals 0–64) for Mercury-encoded cubins targeting SM 100+ (Blackwell and later).
+
+Both systems use standard `Elf64_Rela` relocation entries in `.rela.text.<funcname>` sections, with a custom resolution algorithm that handles alias redirection, dead function filtering, UFT/UDT pseudo-relocations, PC-relative branch validation, and sub-byte instruction patching. The symbol table (`.symtab`) follows standard ELF `Elf64_Sym` format with CUDA-specific symbol types and an extended section index mechanism (`.symtab_shndx`) for programs exceeding 65,280 sections.
 
 | | |
 |---|---|
@@ -778,7 +783,11 @@ Position-independent code mode (`IsPIC` flag) changes the relocation encoding. T
 
 ## CDP Runtime Symbol Table — `off_2403A60`
 
-The reference to "CUDA Dynamic Parallelism" (CDP, also spelled "cnp" internally for *CUDA Nested Parallelism*) is preserved as a static 34-entry pointer array at virtual address `0x2403A60` in the `.rodata` segment. Each entry is an 8-byte little-endian pointer to a NUL-terminated symbol name elsewhere in `.rodata`. The array is bracketed by an 8-byte NUL gap at `0x2403A58` and terminated at `0x2403B70` by zero padding followed by the unrelated string `" ERROR "`. When ptxas emits a cubin that calls into the device runtime, these are the symbol names it writes into the `.symtab` as `STB_GLOBAL`/`STT_NOTYPE` undefined references for the CUDA driver's runtime linker to resolve against `libcudadevrt`.
+The reference to "CUDA Dynamic Parallelism" (CDP, also spelled "cnp" internally for *CUDA Nested Parallelism*) is preserved as a static 34-entry pointer array at virtual address `0x2403A60` in the `.rodata` segment.
+
+- **Entry format:** each is an 8-byte little-endian pointer to a NUL-terminated symbol name elsewhere in `.rodata`.
+- **Bracketing:** an 8-byte NUL gap precedes the array at `0x2403A58`; it is terminated at `0x2403B70` by zero padding followed by the unrelated string `" ERROR "`.
+- **Use:** when ptxas emits a cubin that calls into the device runtime, these are the symbol names it writes into the `.symtab` as `STB_GLOBAL`/`STT_NOTYPE` undefined references for the CUDA driver's runtime linker to resolve against `libcudadevrt`.
 
 Entries 0–4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever PTX uses `vprintf`, `malloc`, `free`, `vfprintf`, or `assert`. Entries 5–28 are the device-side launch/sync/event/query API. Entries 29–33 are the CUDA Graphs device-launch additions (this group's name strings live in a separate string pool starting at `0x24038C6`, distinct from the `0x21F4F62`-based pool used by entries 0–28; see the "VA" column below). The terminator dword at `0x2403B70` is `0x00000000` and is what the runtime symbol resolver tests against to know it has reached the end of the table.
 
@@ -822,7 +831,11 @@ Entries 0–4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever
 
 QUIRK: the symbol names use the legacy `cnp` prefix (CUDA Nested Parallelism, the project's original 2011-era codename) rather than the public-facing `cudaDevice*` names exposed in `cuda_device_runtime_api.h`. The driver-side `libcudadevrt` exports both spellings as aliases. Mixing a relocatable object emitted by an older ptxas (which only references `cnp*`) with a newer one (which adds the `cudaGraph*` entries 29–33) therefore still links cleanly, since the alias map covers backwards compatibility — but the reverse, feeding a `cudaGraph*` reference into a pre-Graphs driver, fails at runtime symbol resolution with `CUDA_ERROR_INVALID_PTX`.
 
-QUIRK: entries 29–33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0–28 (`0x21F4F62` and up). The two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent. The terminator dword is plain `0x00000000`, not a sentinel pointer — the resolver's loop reads a qword and stops when the low 8 bytes are zero, which means a hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32–63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would. ASLR loads ptxas above 4 GB, so the constraint holds in practice.
+> **QUIRK.** Entries 29–33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0–28 (`0x21F4F62` and up).
+>
+> - **Split pools:** the two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent.
+> - **Terminator semantics:** the terminator dword is plain `0x00000000`, not a sentinel pointer — the resolver's loop reads a qword and stops when the low 8 bytes are zero. A hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32–63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would.
+> - **Why it holds:** ASLR loads ptxas above 4 GB, so the constraint holds in practice.
 
 ## Cross-References
 

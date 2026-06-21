@@ -357,7 +357,9 @@ The `LoopStructurePass` (`sub_78B430`) combines RPO numbering with backedge anal
 3. For each block, checks three conditions to identify a loop header:
    - `rpo_number` (+144) is non-zero,
    - `rpo_number` equals the value at +152 (loop-exit RPO marker), and
-   - the block's first instruction has a terminator-class opcode: `opcode & 0xFFFFFFFD == 0x5D`. The mask `0xFFFFFFFD` clears bit 1, so this matches exactly two Ori opcodes: **93** (`OUT_FINAL`) and **95** (`STS`). These are NOT `BRA` (opcode 67 = `0x43`). In the Ori IR, opcodes 93 and 95 are repurposed as control-flow terminator markers — their ROT13 names reflect SASS mnemonics, but in loop analysis they denote conditional-exit and unconditional-exit block terminators respectively.
+   - the block's first instruction has a terminator-class opcode: `opcode & 0xFFFFFFFD == 0x5D`.
+     - The mask `0xFFFFFFFD` clears bit 1, so this matches exactly two Ori opcodes: **93** (`OUT_FINAL`) and **95** (`STS`). These are NOT `BRA` (opcode 67 = `0x43`).
+     - In the Ori IR, opcodes 93 and 95 are repurposed as control-flow terminator markers — their ROT13 names reflect SASS mnemonics, but in loop analysis they denote conditional-exit and unconditional-exit block terminators respectively.
 4. Walks the predecessor list (+136) to find the preheader — the predecessor whose RPO number is the smallest among those less than the header's RPO.
 5. Walks the successor list (+128) to find the loop exit — the successor whose RPO number is the largest among those less than the preheader's RPO.
 
@@ -376,7 +378,10 @@ After the latch passes the terminator check, the raw opcode (without the bit-1 m
 - **Opcode == 93 (exact):** Calls `sub_9253C0` to rewrite the branch target directly. This handles the unconditional-exit case.
 - **Opcode == 95:** Calls `sub_748BF0` to insert a new preheader block and redirect edges. Then rewrites the latch's operand encoding with `0x40000000` (taken target) and `0x60000000` (fall-through target) flags, using `sm_backend->vtable[79]` (offset `+632`) to resolve the new target address.
 
-After transformation, `sub_931920` splits blocks and updates the instruction list. A post-split check (`cmp dword [rdx+48h], 5Dh` at `0x78b7e0`) tests whether the newly created block ends with opcode 93; if so, no further splitting is needed. Otherwise, a second `sub_931920` + `sub_748BF0` pass inserts an additional block and emits opcode 93 via `sub_92E1B0` as a convergence barrier.
+After transformation, `sub_931920` splits blocks and updates the instruction list:
+
+- A post-split check (`cmp dword [rdx+48h], 5Dh` at `0x78b7e0`) tests whether the newly created block ends with opcode 93; if so, no further splitting is needed.
+- Otherwise, a second `sub_931920` + `sub_748BF0` pass inserts an additional block and emits opcode 93 via `sub_92E1B0` as a convergence barrier.
 
 ## Dominance
 
@@ -430,7 +435,11 @@ Block index 0 (`bix0`) is always the function entry block. It is the first eleme
 
 The exit block is the block containing the `EXIT` instruction (opcode 77 = `EXIT` in the ROT13 name table). For functions with multiple exit points, each `EXIT`-containing block is a CFG sink. The RPO computation assigns these the highest RPO numbers. The `SetControlFlowOpLastInBB` phase (phase 6) ensures each `EXIT` is the final instruction in its block.
 
-The `CFG::buildAndAnalyze` function (`sub_BE0690`) also builds a parallel edge representation for the scheduling-level `block_info` array at Code Object +976. This representation uses a compressed block-type field at `block_info[i]+28` (read as a 16-bit value from the first instruction's +28 field): type 4 = unconditional branch (1 successor), type 7 = conditional branch (2 successors via sub-hash iteration). Opcodes 93 (`OUT_FINAL`) and 95 (`STS`) serve as control-flow boundary markers in loop analysis (see [Natural Loop Detection](#natural-loop-detection) below). The authoritative Ori IR opcode-to-successor mapping is described in the [Successor Edge Population Algorithm](#successor-edge-population-algorithm) pseudocode above.
+The `CFG::buildAndAnalyze` function (`sub_BE0690`) also builds a parallel edge representation for the scheduling-level `block_info` array at Code Object +976:
+
+- This representation uses a compressed block-type field at `block_info[i]+28` (read as a 16-bit value from the first instruction's +28 field): type 4 = unconditional branch (1 successor), type 7 = conditional branch (2 successors via sub-hash iteration).
+- Opcodes 93 (`OUT_FINAL`) and 95 (`STS`) serve as control-flow boundary markers in loop analysis (see [Natural Loop Detection](#natural-loop-detection) below).
+- The authoritative Ori IR opcode-to-successor mapping is described in the [Successor Edge Population Algorithm](#successor-edge-population-algorithm) pseudocode above.
 
 ## CFG Update Protocol
 

@@ -2,7 +2,14 @@
 
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The ptxas optimizer is a fixed-order pipeline that transforms Ori IR from its initial post-lowering form into scheduled, register-allocated SASS machine code. The PhaseManager **registers 159 phase objects** (IDs 0–158), but the default driver **dispatches exactly 157 of them** (IDs 0–156) in a fixed identity order. Both numbers are real and describe different objects: 159 is the size of the phase-*name registry* and the inclusive ceiling for explicit phase selection, while 157 is the length of the default phase-*schedule* the dispatch loop actually walks. The two trailing registered phases — ID 157 `DebuggerBreak` and ID 158 `NOP` — are constructed but never scheduled on a default compile; they enter a schedule only through the recipe/named-phases override path (OCG knob 298). Unlike LLVM's PassManager — which uses dependency-driven scheduling and analysis preservation — ptxas dispatches every scheduled phase unconditionally and in a predetermined order; each phase decides internally (via opt-level, knob, and predicate checks inside its own `execute()` body) whether to do anything. Architecture-specific behavior is injected through "AdvancedPhase" hook points whose vtables are overridden per target.
+The ptxas optimizer is a fixed-order pipeline that transforms Ori IR from its initial post-lowering form into scheduled, register-allocated SASS machine code.
+
+- **Registered = 159, dispatched = 157.** The PhaseManager **registers 159 phase objects** (IDs 0–158), but the default driver **dispatches exactly 157 of them** (IDs 0–156) in a fixed identity order. Both numbers are real and describe different objects:
+  - **159** is the size of the phase-*name registry* and the inclusive ceiling for explicit phase selection.
+  - **157** is the length of the default phase-*schedule* the dispatch loop actually walks.
+- **The two trailing slots** — ID 157 `DebuggerBreak` and ID 158 `NOP` — are constructed but never scheduled on a default compile; they enter a schedule only through the recipe/named-phases override path (OCG knob 298).
+- **No dependency scheduling.** Unlike LLVM's PassManager — which uses dependency-driven scheduling and analysis preservation — ptxas dispatches every scheduled phase unconditionally and in a predetermined order; each phase decides internally (via opt-level, knob, and predicate checks inside its own `execute()` body) whether to do anything.
+- **Architecture-specific behavior** is injected through "AdvancedPhase" hook points whose vtables are overridden per target.
 
 Each phase is a polymorphic C++ object exactly 16 bytes in size, allocated from a memory pool by a 159-case factory switch. The PhaseManager constructs all 159 phase objects up front during initialization, stores them in a flat array, and iterates a separate 157-entry order array in a simple dispatch loop. Per-phase timing and memory consumption are optionally tracked for `--stat=phase-wise` output.
 
@@ -274,7 +281,13 @@ Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboards
 | 115 | `AdvancedScoreboardsAndOpexes` | Scoreboard generation |
 | 116 | `ProcessO0WaitsAndSBs` | O0 wait/scoreboard |
 
-Hot/cold partitioning (phases 108–109) separates frequently executed blocks from cold paths, improving instruction cache locality. `PlaceBlocksInSourceOrder` (phase 112) determines the final layout of basic blocks in the emitted binary. The scoreboard sub-system has two paths: at `-O1` and above, `AdvancedScoreboardsAndOpexes` (phase 115) performs full dependency analysis to compute the 23-bit control word per instruction (4-bit stall count, 1-bit yield, 3-bit write barrier, 6-bit read barrier mask, 6-bit wait barrier mask, plus reuse flags). At `-O0`, phase 115 is a no-op and `ProcessO0WaitsAndSBs` (phase 116) inserts conservative waits.
+Highlights of this group:
+
+- **Hot/cold partitioning** (phases 108–109) separates frequently executed blocks from cold paths, improving instruction cache locality.
+- **`PlaceBlocksInSourceOrder`** (phase 112) determines the final layout of basic blocks in the emitted binary.
+- **Scoreboard sub-system** — two paths by opt level:
+  - At `-O1` and above, `AdvancedScoreboardsAndOpexes` (phase 115) performs full dependency analysis to compute the 23-bit control word per instruction (4-bit stall count, 1-bit yield, 3-bit write barrier, 6-bit read barrier mask, 6-bit wait barrier mask, plus reuse flags).
+  - At `-O0`, phase 115 is a no-op and `ProcessO0WaitsAndSBs` (phase 116) inserts conservative waits.
 
 ### Group 8 — Mercury Backend (phases 117–122)
 
@@ -289,7 +302,15 @@ SASS instruction encoding, expansion, WAR generation, opex computation, microcod
 | 121 | `MercGenerateWARs2` | WAR generation (2nd pass) |
 | 122 | `MercGenerateSassUCode` | SASS microcode generation |
 
-"Mercury" is NVIDIA's internal name for the SASS encoding framework. Phase 117 converts Ori instructions into Mercury's intermediate encoding, then decodes them back to verify round-trip correctness. Phase 118 expands pseudo-instructions into their final SASS sequences. WAR generation runs in two passes (119, 121) because expansion in phase 118 can introduce new write-after-read hazards. Phase 120 generates "opex" (operation extension) annotations. Phase 122 produces the final SASS microcode bytes. The MercConverter infrastructure (`sub_9F1A90`, 35KB) drives the instruction-level legalization using a visitor pattern dispatched through a large opcode switch (`sub_9ED2D0`, 25KB).
+"Mercury" is NVIDIA's internal name for the SASS encoding framework. The six phases run in order:
+
+- **Phase 117** converts Ori instructions into Mercury's intermediate encoding, then decodes them back to verify round-trip correctness.
+- **Phase 118** expands pseudo-instructions into their final SASS sequences.
+- **WAR generation** runs in two passes (119, 121) because expansion in phase 118 can introduce new write-after-read hazards.
+- **Phase 120** generates "opex" (operation extension) annotations.
+- **Phase 122** produces the final SASS microcode bytes.
+
+The MercConverter infrastructure (`sub_9F1A90`, 35KB) drives the instruction-level legalization using a visitor pattern dispatched through a large opcode switch (`sub_9ED2D0`, 25KB).
 
 ### Group 9 — Post-Mercury (phases 123–131)
 
@@ -326,7 +347,12 @@ Late merge operations, late unsupported-op expansion, high-pressure live range s
 
 Phases 132–138 handle late-breaking transformations that must run after the Mercury backend but before finalization. `OriSplitHighPressureLiveRanges` (phase 138) is a last-resort live range splitter that fires when register pressure exceeds hardware limits after the main allocation pass.
 
-Phases 139–158 are 20 additional registered slots — and they **are** named in the static name table at `off_22BD0C0`, which holds all 159 entries (indices 0–158). There is no "139 named + 20 unnamed" split; every phase ID resolves to a name through the table. Of these tail slots, IDs 139–156 (e.g. `ProcessO0WaitsAndSBs`=139 … `DumpNVuCodeHex`=156) are part of the default 157-entry schedule, while IDs 157 (`DebuggerBreak`) and 158 (`NOP`) are registered but dispatched only via the recipe path. Vtable addresses for the tail run `off_22BEB08`..`off_22BEE78`.
+Phases 139–158 are 20 additional registered slots:
+
+- **All named.** They **are** named in the static name table at `off_22BD0C0`, which holds all 159 entries (indices 0–158). There is no "139 named + 20 unnamed" split; every phase ID resolves to a name through the table.
+- **IDs 139–156** (e.g. `ProcessO0WaitsAndSBs`=139 … `DumpNVuCodeHex`=156) are part of the default 157-entry schedule.
+- **IDs 157 (`DebuggerBreak`) and 158 (`NOP`)** are registered but dispatched only via the recipe path.
+- **Tail vtables** run `off_22BEB08`..`off_22BEE78`.
 
 ## Optimization Level Gating
 

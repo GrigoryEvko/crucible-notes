@@ -18,7 +18,13 @@ The six passes run at deliberately different pipeline positions because each int
 
 ## Why Six Passes
 
-A monolithic legalize-everything pass early in the pipeline would cripple optimization. Many optimizations (CSE, LICM, strength reduction, predication) work on high-level operation semantics. If `div.rn.f64` were expanded into a 30-instruction Newton-Raphson sequence at phase 5, loop-invariant code motion at phase 35 would see 30 independent instructions instead of one hoistable division. Conversely, some unsupported operations only appear after optimization passes transform the IR: predication (phase 63) can create new predicated ops that need legalization, GMMA fixup (phase 87) can introduce new WGMMA-related sequences, and conditional flow merging (phases 133/136) can expose operations that were previously dead.
+A monolithic legalize-everything pass early in the pipeline would cripple optimization. The tension runs in both directions:
+
+- **Early expansion blinds optimization.** Many optimizations (CSE, LICM, strength reduction, predication) work on high-level operation semantics. If `div.rn.f64` were expanded into a 30-instruction Newton-Raphson sequence at phase 5, loop-invariant code motion at phase 35 would see 30 independent instructions instead of one hoistable division.
+- **Optimization itself exposes new unsupported ops.** Some unsupported operations only appear after optimization passes transform the IR:
+  - Predication (phase 63) can create new predicated ops that need legalization.
+  - GMMA fixup (phase 87) can introduce new WGMMA-related sequences.
+  - Conditional flow merging (phases 133/136) can expose operations that were previously dead.
 
 The six passes form a progressive legalization strategy:
 
@@ -107,7 +113,14 @@ The outer backend at `ctx+0x640` wraps the SM backend at `ctx+0x630`. In the def
 
 **Flag effect.** After execution, the secondary vtable method at offset `[40]` (`sub_C5F5D0`) sets bit 0 of `context+1378`, signaling to downstream passes that early legalization has completed. Passes like `OriCreateMacroInsts` (phase 8) check this flag to know whether certain patterns have already been lowered.
 
-**What gets legalized early.** Operations that cannot survive optimization in their original form. The legality decision is driven by a 60,416-entry lookup table at VA `0x22FEE00` (241,664 bytes). Each entry pair encodes `(op_key, action)` where `op_key` packs the Ori opcode and type/modifier bits into a 16-bit value, and `action` is either a function pointer to the expansion handler (values in the `0x118xxxx` range) or the flag `0x08000000` meaning "unconditionally illegal, requires special validation." Of the 60,416 entries, 19,086 (31.6%) are nonzero — the rest represent operations that are legal on all targets without conversion. Concrete categories:
+**What gets legalized early.** Operations that cannot survive optimization in their original form. The legality decision is driven by a 60,416-entry lookup table at VA `0x22FEE00` (241,664 bytes):
+
+- Each entry pair encodes `(op_key, action)`:
+  - `op_key` packs the Ori opcode and type/modifier bits into a 16-bit value.
+  - `action` is either a function pointer to the expansion handler (values in the `0x118xxxx` range) or the flag `0x08000000` meaning "unconditionally illegal, requires special validation."
+- Of the 60,416 entries, 19,086 (31.6%) are nonzero — the rest represent operations that are legal on all targets without conversion.
+
+Concrete categories:
 
 - **Integer division/remainder** (`div.s64`, `rem.u64`, `div.s16`, `rem.u16`): no single-instruction SASS encoding on any SM. Always expanded via `__cuda_sm20_div_*` / `__cuda_sm20_rem_*` library functions.
 - **FP64 atomics** (`atom.add.f64`): native hardware only on sm_60+; expanded on sm_50.
@@ -139,7 +152,12 @@ vtable  = *backend                   // read vtable pointer
 jmp     vtable[0xB0]                 // tail call offset +0xB0 (176)
 ```
 
-There is no default-check-and-unwrap pattern here. The SM backend provides the handler directly, and no override mechanism exists for library or OptiX mode. The implementation varies by SM generation, because each SM backend constructor installs a different vtable (see the SM Backend table under Phase 5 above), and each vtable has a different function pointer at offset `+0xB0`. On older architectures (sm_50/sm_60) the handler at `+0xB0` is typically a no-op or near-trivial, since most operations needing mid-pipeline expansion did not exist pre-Volta. The slot becomes substantive on sm_70+ where barrier-adjacent operations, cache-policy creation (`__cuda_sm80_*` library functions on sm_80+), and async copy lowering require mid-pipeline treatment.
+There is no default-check-and-unwrap pattern here. The SM backend provides the handler directly, and no override mechanism exists for library or OptiX mode.
+
+The implementation varies by SM generation, because each SM backend constructor installs a different vtable (see the SM Backend table under Phase 5 above), and each vtable has a different function pointer at offset `+0xB0`:
+
+- **sm_50/sm_60:** the handler at `+0xB0` is typically a no-op or near-trivial, since most operations needing mid-pipeline expansion did not exist pre-Volta.
+- **sm_70+:** the slot becomes substantive — barrier-adjacent operations, cache-policy creation (`__cuda_sm80_*` library functions on sm_80+), and async copy lowering all require mid-pipeline treatment.
 
 **Why this pipeline position.** MidExpansion must follow ExpandMbarrier (phase 42) because barrier pseudo-instructions must be lowered before any further legalization touches the same basic blocks. It must precede GvnCse (phase 49) and OriReassociateAndCommon (phase 50) because the expanded sequences benefit from value numbering and reassociation — expanding earlier would expose these sequences to fewer optimization passes.
 
@@ -313,11 +331,21 @@ A placeholder update pass that rebuilds IR metadata after late unsupported-op co
 
 The legalization passes replace unsupported operations with calls to a library of 607 predefined helper functions plus 473 force-inlined templates, for a combined pool of 1,080 `__cuda_*` entries embedded in the ptxas binary. These are not external libraries — they are PTX function bodies compiled into the binary image and linked into the output at need.
 
-The two tiers serve different purposes. The 607 `.weak .func` entries are call targets: legalization replaces an unsupported Ori instruction with a `CALL` to the named function, and the function body is emitted once per compilation unit. The 473 `.FORCE_INLINE` entries are templates whose bodies are spliced directly into the caller's instruction stream, avoiding call overhead for performance-critical sequences (WMMA load/store variants, warp shuffle/vote, MMA shuffle helpers).
+The two tiers serve different purposes:
+
+- **607 `.weak .func` entries — call targets.** Legalization replaces an unsupported Ori instruction with a `CALL` to the named function, and the function body is emitted once per compilation unit.
+- **473 `.FORCE_INLINE` entries — templates.** Their bodies are spliced directly into the caller's instruction stream, avoiding call overhead for performance-critical sequences (WMMA load/store variants, warp shuffle/vote, MMA shuffle helpers).
 
 **Tier 1 — Call targets (`sub_5D1660`, 607 registrations).** Copies a 9,728-byte pre-built table from `unk_1D4D940` (608 x 16B slots, ID 0 = null sentinel), creates a hash map at `context+1064`, and registers 607 names with contiguous IDs `0x01`--`0x25F`.
 
-**Tier 2 — Inline templates (`sub_5D7430`, 473 registrations).** Builds a second hash map at `context+824` with 1,079 entries (607 tier-1 names re-registered plus 473 additional WMMA/MMA generation-specific variants). The extra 473 entries cover sm72 integer WMMA (114), sm7x sub-byte/bit WMMA (229), sm8x tf32/bf16/f64 WMMA (80), additional sm70 inline helpers (40), sm10x tcgen05 inline variants (9), and one sm80 inline entry.
+**Tier 2 — Inline templates (`sub_5D7430`, 473 registrations).** Builds a second hash map at `context+824` with 1,079 entries (607 tier-1 names re-registered plus 473 additional WMMA/MMA generation-specific variants). The extra 473 entries cover:
+
+- sm72 integer WMMA (114).
+- sm7x sub-byte/bit WMMA (229).
+- sm8x tf32/bf16/f64 WMMA (80).
+- additional sm70 inline helpers (40).
+- sm10x tcgen05 inline variants (9).
+- one sm80 inline entry.
 
 ### Library Function Categories (Tier 1 — 607 Call Targets)
 
@@ -484,7 +512,13 @@ The switch routes to seven categories of legalization logic, totalling 164 case 
 
 Case 6 additionally checks whether src1 is in uniform register class 6 and calls `sub_13A75D0` (uniform-to-GPR conversion) before materialization. Cases 2/3/4/5/7 compute a variable operand count from the instruction modifier word (slots at offsets 16/24) before dispatching to a shared suffix at `LABEL_125` / `LABEL_119`.
 
-**Category B — Variable-length operand scanning (5 cases).** Case 16 (store) scans up to 15 operand slots, testing each against the `0x70000000` sentinel to find where active operands end. After materializing each source, it delegates the address operand range to `vtable+2328` (or `vtable+2600` if the vtable slot is the default `sub_13A6110`). Cases 109, 284, 288, 329 use similar counted loops: case 109 walks operand slots backward using a callee-descriptor bitmap; case 284 loops `operand_count - 4` times calling `sub_13A6AE0`; case 288 loops `(modifier & 7) + 1` times; case 329 reads the destination count from the modifier word then delegates the tail to `vtable+2328`.
+**Category B — Variable-length operand scanning (5 cases).** These walk a counted or sentinel-terminated operand range:
+
+- **Case 16 (store):** scans up to 15 operand slots, testing each against the `0x70000000` sentinel to find where active operands end. After materializing each source, it delegates the address operand range to `vtable+2328` (or `vtable+2600` if the vtable slot is the default `sub_13A6110`).
+- **Case 109:** walks operand slots backward using a callee-descriptor bitmap.
+- **Case 284:** loops `operand_count - 4` times calling `sub_13A6AE0`.
+- **Case 288:** loops `(modifier & 7) + 1` times.
+- **Case 329:** reads the destination count from the modifier word then delegates the tail to `vtable+2328`.
 
 **Category C — Architecture-specific vtable delegation (24 cases).**
 
@@ -508,13 +542,31 @@ Case 6 additionally checks whether src1 is in uniform register class 6 and calls
 | `+2896` | 280-281 (prefix) | Bulk-copy modifier pre-hook |
 | `+3168` | 288 (suffix) | Store-to-address-space override |
 
-**Category D — Opcode rewriting (3 cases).** Case 137 rewrites the opcode field: to `0x82` (130, CMOV) when the type is FP and the modifier has destination flags, or to `0x109` (265, MOV-from-special-register) when the source is in register class 4 (special). Case 137 also attempts FP16 immediate folding: if the source is a 16-bit immediate fitting the SASS encoding width (10-bit or 7-bit mantissa), it emits an `FMOV_TINY` (opcode `0x10E` = 270) instruction instead. Cases 36 and 32 also rewrite: case 36 may convert to opcode `0x29` (41, PRMT) when source is in class 4/5; case 32 may convert opcode to `0x0B`/`0x0C` (11/12) based on FP type width.
+**Category D — Opcode rewriting (3 cases).** These mutate the opcode field rather than just legalizing operands:
 
-**Category E — Conditional materialization (15 cases).** These inspect the modifier word, data type, or register class before deciding which operands to legalize. Case 43 checks `(modifier >> 4) & 0xF` and `modifier & 0xF` to select between materializing slot 1 only, slot 2 only, or both. Case 118 reads `modifier & 3`: value 0 means materialize slot 1; value 1 means slots 1+2. Cases 88/89 compute variable slot indices from signed operand values (shifted by `>> 31`) to handle packed-pair FP operations. Case 29/95/96/190 check whether the last operand is in register class 6 (uniform), 9, 4, or 5 before choosing between `sub_13A6AE0` (special-class) and `sub_13A6280` (general).
+- **Case 137:** rewrites the opcode field to `0x82` (130, CMOV) when the type is FP and the modifier has destination flags, or to `0x109` (265, MOV-from-special-register) when the source is in register class 4 (special). Also attempts FP16 immediate folding: if the source is a 16-bit immediate fitting the SASS encoding width (10-bit or 7-bit mantissa), it emits an `FMOV_TINY` (opcode `0x10E` = 270) instruction instead.
+- **Case 36:** may convert to opcode `0x29` (41, PRMT) when source is in class 4/5.
+- **Case 32:** may convert opcode to `0x0B`/`0x0C` (11/12) based on FP type width.
 
-**Category F — Complex multi-phase legalization (8 cases).** Cases 223/228/234/238 (load/store with addressing modes) compute a source-count from the modifier word (`(modifier >> 19) & 0xF + (modifier >> 4) & 3`), materialize that many sources in a counted loop, then dispatch the address portion to `vtable+2840`/`vtable+2848` depending on the address-space type code (4 or 5). Case 280-281 iterates over source-pair operands in steps of 2, calling `vtable+2704` per pair, then performs a suffix that reorders source/address operands and adjusts modifier bit-fields for the encoding. Case 125 and 211 have similarly deep logic with intermediate register-class queries and possible instruction splitting.
+**Category E — Conditional materialization (15 cases).** These inspect the modifier word, data type, or register class before deciding which operands to legalize:
 
-**Category G — Passthrough / no-op (22 cases + default).** Cases 24, 34, 209, 213, 214 jump directly to the exit. Cases 38, 59, 106, 180, 182, 192, 194, 215, 221 exit unless `SM_version > 0x4FFF` (SM80+), in which case they materialize slot 1. Cases 44, 45, 135, 161 always materialize slot 1 (so are Category A in practice but share the same `LABEL_325` target). The `default` case exits immediately.
+- **Case 43:** checks `(modifier >> 4) & 0xF` and `modifier & 0xF` to select between materializing slot 1 only, slot 2 only, or both.
+- **Case 118:** reads `modifier & 3` — value 0 means materialize slot 1; value 1 means slots 1+2.
+- **Cases 88/89:** compute variable slot indices from signed operand values (shifted by `>> 31`) to handle packed-pair FP operations.
+- **Cases 29/95/96/190:** check whether the last operand is in register class 6 (uniform), 9, 4, or 5 before choosing between `sub_13A6AE0` (special-class) and `sub_13A6280` (general).
+
+**Category F — Complex multi-phase legalization (8 cases).** These chain several materialization phases per instruction:
+
+- **Cases 223/228/234/238 (load/store with addressing modes):** compute a source-count from the modifier word (`(modifier >> 19) & 0xF + (modifier >> 4) & 3`), materialize that many sources in a counted loop, then dispatch the address portion to `vtable+2840`/`vtable+2848` depending on the address-space type code (4 or 5).
+- **Case 280-281:** iterates over source-pair operands in steps of 2, calling `vtable+2704` per pair, then performs a suffix that reorders source/address operands and adjusts modifier bit-fields for the encoding.
+- **Cases 125 and 211:** have similarly deep logic with intermediate register-class queries and possible instruction splitting.
+
+**Category G — Passthrough / no-op (22 cases + default).** These do little or no operand work:
+
+- **Cases 24, 34, 209, 213, 214:** jump directly to the exit.
+- **Cases 38, 59, 106, 180, 182, 192, 194, 215, 221:** exit unless `SM_version > 0x4FFF` (SM80+), in which case they materialize slot 1.
+- **Cases 44, 45, 135, 161:** always materialize slot 1 (so are Category A in practice but share the same `LABEL_325` target).
+- **`default` case:** exits immediately.
 
 ### The 0x70000000 Null-Operand Sentinel
 

@@ -301,7 +301,13 @@ Immediately following each xmmword in rodata are three arrays of 10 DWORDs that 
 
 Observed slot-size values: `10` = register (10-bit number + overhead), `12` = register with type, `17` = immediate/cbuf, `33` = wide third slot (3-slot formats), `-1` = unused. Slot-type values: `28` = register-type, `0` = basic, `-1` = unused. Slot-flag values: `0` = default, `2` = secondary (uniform/extended), `-1` = unused.
 
-There are **38 format descriptors** in total (the 16 format-group catalog below collapses them by `format_id`; several `format_id` values have two or three index variants with different slot geometry). The single most-shared slot-size template is the **universal slot template** at `0x23F1C60` (referenced 7,302 times), holding sizes `[3, 2, 4, 6, 8]` — these are the canonical slot widths the per-format descriptors specialize. All 38 descriptors share an invariant 32-bit opcode header (DW2=4) and bit-48 operand region (DW3=6); only DW0 (format class ID) and the trailing slot arrays vary. The full 38-row descriptor table, the universal-slot template, and the per-arch Tier-2 modifier constants are dumped in [reference/data/sass-encoding-dispatch.md](../reference/data/sass-encoding-dispatch.md).
+There are **38 format descriptors** in total:
+
+- **Format-group collapse** — the 16 format-group catalog below collapses them by `format_id`; several `format_id` values have two or three index variants with different slot geometry.
+- **Universal slot template** — the single most-shared slot-size template lives at `0x23F1C60` (referenced 7,302 times), holding sizes `[3, 2, 4, 6, 8]`. These are the canonical slot widths the per-format descriptors specialize.
+- **Shared invariants** — all 38 descriptors share an invariant 32-bit opcode header (DW2=4) and bit-48 operand region (DW3=6); only DW0 (format class ID) and the trailing slot arrays vary.
+
+> The full 38-row descriptor table, the universal-slot template, and the per-arch Tier-2 modifier constants are dumped in [reference/data/sass-encoding-dispatch.md](../reference/data/sass-encoding-dispatch.md).
 
 The copy uses SSE 128-bit loads for 16-byte chunks and scalar DWORD writes for the remainder. The first array (16-byte aligned in `.rodata`) is read with `_mm_load_si128`; the second and third arrays sit at +40 and +80 from the descriptor and are read with `_mm_loadu_si128`. Stores into the encoder context happen through `*(__m128i *)` lvalues, since the context is laid out to be 16-byte aligned at those offsets. The alignment check visible in every decompiled encoder (`if (a1 + 120 <= dword_XXXXX8 || a1 + 24 >= &dword_XXXXX8)`) is a compiler-generated overlap guard for the `memcpy`-like bulk copy.
 
@@ -1744,7 +1750,19 @@ The SM89/90 pair operates entirely at the Mercury IR level and produces no packe
 
 ## Encoder Dispatch — Layering Note
 
-The handler tables that route each opcode to its encoder are **layered**: an opcode→slot scalar table (`word_22B4B60`), two 16-byte-slotted encoding decision trees keyed by `(format_id << 8) | minor_opcode`, two `(opcode, category, variant)` sub-table arrays, and a per-SM authoritative override array — all four function-pointer layers draw from one shared handler pool of 8,874 distinct addresses. In every dispatch row the **`category`** field is an encoding/opcode-CLASS family (not an SM-generation bucket — the SM split is carried by *which* per-SM array is indexed), and **`variant`** is a sequential, modifier-driven sub-opcode; the alternate-encoding choice is a separate runtime flag on the operand struct, not the table `variant`. The full layer reconciliation, the 13,568-slot tree geometry, and the correction that `off_22AD230` / `off_23B3A80` are ISel C++ vtables (not encoder dispatch) are documented in [SASS Encoding Dispatch Tables § Dispatch Reconciliation](./encoding-tables.md#dispatch-reconciliation--four-encoder-layers-plus-an-isel-vtable).
+The handler tables that route each opcode to its encoder are **layered**. All four function-pointer layers draw from one shared handler pool of 8,874 distinct addresses:
+
+- An opcode→slot scalar table (`word_22B4B60`).
+- Two 16-byte-slotted encoding decision trees keyed by `(format_id << 8) | minor_opcode`.
+- Two `(opcode, category, variant)` sub-table arrays.
+- A per-SM authoritative override array.
+
+Field semantics within each dispatch row:
+
+- **`category`** is an encoding/opcode-CLASS family — not an SM-generation bucket. The SM split is carried by *which* per-SM array is indexed.
+- **`variant`** is a sequential, modifier-driven sub-opcode. The alternate-encoding choice is a separate runtime flag on the operand struct, not the table `variant`.
+
+> The full layer reconciliation, the 13,568-slot tree geometry, and the correction that `off_22AD230` / `off_23B3A80` are ISel C++ vtables (not encoder dispatch) are documented in [SASS Encoding Dispatch Tables § Dispatch Reconciliation](./encoding-tables.md#dispatch-reconciliation--four-encoder-layers-plus-an-isel-vtable).
 
 ## Cross-References
 

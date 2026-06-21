@@ -2,7 +2,12 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas maintains two separate intrinsic subsystems that together cover every CUDA runtime helper function, every PTX opcode requiring inline code generation, and every Blackwell+ OCG builtin operation. The first subsystem (`sub_5D1660` + `sub_5D4190` + `sub_5D7430` + `sub_5FF700`) handles 607 classical CUDA intrinsics and PTX opcode dispatch through a name-to-ID hash map, a body template name table, and a giant prototype generator. The second subsystem (`sub_6C9EB0` and its handler cluster at `0x6C0000`--`0x6CC000`) handles OCG (Optimized Code Generation) builtins for SM100+ targets. Both subsystems use the same hash map infrastructure (`sub_425CA0` / `sub_426150` / `sub_426D60`) documented in [Hash Tables & Bitvectors](../infra/hash-bitvector.md).
+ptxas maintains two separate intrinsic subsystems that together cover every CUDA runtime helper function, every PTX opcode requiring inline code generation, and every Blackwell+ OCG builtin operation:
+
+- **Classical subsystem** (`sub_5D1660` + `sub_5D4190` + `sub_5D7430` + `sub_5FF700`) — handles 607 classical CUDA intrinsics and PTX opcode dispatch through a name-to-ID hash map, a body template name table, and a giant prototype generator.
+- **OCG subsystem** (`sub_6C9EB0` and its handler cluster at `0x6C0000`--`0x6CC000`) — handles OCG (Optimized Code Generation) builtins for SM100+ targets.
+
+Both subsystems use the same hash map infrastructure (`sub_425CA0` / `sub_426150` / `sub_426D60`) documented in [Hash Tables & Bitvectors](../infra/hash-bitvector.md).
 
 | | |
 |---|---|
@@ -570,7 +575,11 @@ Generates inline PTX code for all `div` variants.
 
 ## OCG Intrinsic System — `sub_6C9EB0`
 
-The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel dispatch mechanism for SM100+ builtin operations. While the classical system at `sub_5D1660` maps CUDA runtime helper names to integer IDs and generates inline PTX, the OCG system maps `__nv_ptx_builtin_ocg_*` function names to type-specific handlers that validate parameters and emit SASS instructions directly — bypassing PTX entirely. The OCG table contains 44 operations across 9 categories: arithmetic, packed float, vector integer, async copy/TMA, load/store/cache, reduction/fence, tensor core, tensor memory, and synchronization.
+The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel dispatch mechanism for SM100+ builtin operations:
+
+- The classical system at `sub_5D1660` maps CUDA runtime helper names to integer IDs and generates inline PTX.
+- The OCG system instead maps `__nv_ptx_builtin_ocg_*` function names to type-specific handlers that validate parameters and emit SASS instructions directly — bypassing PTX entirely.
+- The OCG table contains 44 operations across 9 categories: arithmetic, packed float, vector integer, async copy/TMA, load/store/cache, reduction/fence, tensor core, tensor memory, and synchronization.
 
 See **[OCG Intrinsic System (44 Operations)](ocg.md)** for the complete builtin name table, handler functions, validation strings, SASS-level handlers, and the full five-stage lowering pipeline with operand buffer layout.
 
@@ -578,10 +587,9 @@ See **[OCG Intrinsic System (44 Operations)](ocg.md)** for the complete builtin 
 
 Separate from the *registered* intrinsic name→ID system, ptxas carries a contiguous `.rodata` blob
 of **1,080 pre-written PTX builtin declarations** at VMA `0x1D1E200`–`0x1D4B777` (185,719 bytes).
-Each is a complete `.weak .func` prototype string — return register, mangled name, and parameter
-list — for a device-runtime helper, ready to splice into the PTX stream when a kernel calls it.
-These are the *strings* the prototype emitter (`sub_5FF700`) selects among; the 1,080 count matches
-the emitter's 1,080-case dispatch (and the 1,079 body-template names, off-by-one for the null slot).
+
+- Each is a complete `.weak .func` prototype string — return register, mangled name, and parameter list — for a device-runtime helper, ready to splice into the PTX stream when a kernel calls it.
+- These are the *strings* the prototype emitter (`sub_5FF700`) selects among; the 1,080 count matches the emitter's 1,080-case dispatch (and the 1,079 body-template names, off-by-one for the null slot).
 
 The catalog breaks down into six categories by name prefix:
 

@@ -2,7 +2,14 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-`sub_A97600` is a 7,780-byte, 425-block per-target virtual method installed at vtable slot **+0x5F0** (index 190) on six of ptxas's legacy SM-target classes. Despite its size and the lure of its position adjacent to other scheduling-related virtuals, it is **not** a scheduler. It is the legacy implementation of the per-instruction, per-operand **source-slot-count / operand-class query** that the scheduling and register-pressure machinery consults whenever it needs to know "how many physical source-register slots does operand `k` of this instruction occupy under the current target's hardware encoding?". On modern SM tiers (sm_80+) this query is answered by a per-opcode dispatch table; on the six legacy target classes it is answered by this single 7.8-KB switch.
+`sub_A97600` is a 7,780-byte, 425-block per-target virtual method installed at vtable slot **+0x5F0** (index 190) on six of ptxas's legacy SM-target classes. Despite its size and the lure of its position adjacent to other scheduling-related virtuals, it is **not** a scheduler.
+
+It is the legacy implementation of the per-instruction, per-operand **source-slot-count / operand-class query** that the scheduling and register-pressure machinery consults whenever it needs to know:
+
+> "How many physical source-register slots does operand `k` of this instruction occupy under the current target's hardware encoding?"
+
+- On modern SM tiers (sm_80+) this query is answered by a per-opcode dispatch table.
+- On the six legacy target classes it is answered by this single 7.8-KB switch.
 
 The `Wave 18D` reference in [post-schedule.md § Function Map](./post-schedule.md#function-map) describing `sub_A97600` as `PostSchedulePass::runOnFunction` is **incorrect on multiple counts** and is superseded by this page. The corrections, in summary:
 
@@ -39,9 +46,21 @@ The six vtables that install `sub_A97600` at slot 190 are:
 | `0x229D418` | 469 | shared | `sub_8102C0` |
 | `0x22B2A58` | 455 | shared | `sub_8102C0` |
 
-All six share the same slot-189 method (`sub_A90D60`, the predecessor-operand-eligibility query) and split into two slot-191 cohorts on a binary discriminator (`sub_AAEF20` vs `sub_8102C0`). The slot-190 (operand-class) method, slot-189 (pred-op-eligibility) method, and slot-191 (binary cohort discriminator) form a **tight three-method invariant of the legacy target hierarchy**. Modern targets at sm_80+ install different functions at every one of these slots — in particular, the modern slot-190 implementations are smaller (`sub_44A308`, `sub_7DB178`, etc.) and dispatch through the per-opcode tables documented in [codegen/encoding-tables.md § Per-SM-Tier Encoder Index Tables](../codegen/encoding-tables.md#per-sm-tier-encoder-index-tables--0x22a5aa0-family). The 7.8-KB switch is the legacy artifact of a path that was never table-driven.
+All six share the same slot-189 method (`sub_A90D60`, the predecessor-operand-eligibility query) and split into two slot-191 cohorts on a binary discriminator (`sub_AAEF20` vs `sub_8102C0`). Three slots form a **tight three-method invariant of the legacy target hierarchy**:
 
-The exact SM mapping is not in RTTI (the typeinfo and offset-to-top fields above each of the six vtables are zeroed in the binary), but the slot-size pattern (~466 slots), the sibling-method identity, and the lack of any Ampere-era specialisations on these six targets are consistent with the pre-sm_80 family (Maxwell sm_50/sm_52/sm_53, Pascal sm_60/sm_61/sm_62, Volta sm_70/sm_72, Turing sm_75 — nine SM variants, six target classes after deduplication of trivially identical sub_targets).
+- slot-190 — the operand-class method (`sub_A97600`),
+- slot-189 — the pred-op-eligibility method (`sub_A90D60`),
+- slot-191 — the binary cohort discriminator (`sub_AAEF20` / `sub_8102C0`).
+
+Modern targets at sm_80+ install different functions at every one of these slots — in particular, the modern slot-190 implementations are smaller (`sub_44A308`, `sub_7DB178`, etc.) and dispatch through the per-opcode tables documented in [codegen/encoding-tables.md § Per-SM-Tier Encoder Index Tables](../codegen/encoding-tables.md#per-sm-tier-encoder-index-tables--0x22a5aa0-family). The 7.8-KB switch is the legacy artifact of a path that was never table-driven.
+
+The exact SM mapping is not in RTTI (the typeinfo and offset-to-top fields above each of the six vtables are zeroed in the binary), but three signals are consistent with the pre-sm_80 family:
+
+- the slot-size pattern (~466 slots),
+- the sibling-method identity,
+- the lack of any Ampere-era specialisations on these six targets.
+
+That family is Maxwell sm_50/sm_52/sm_53, Pascal sm_60/sm_61/sm_62, Volta sm_70/sm_72, Turing sm_75 — nine SM variants, six target classes after deduplication of trivially identical sub_targets.
 
 ## What the function computes
 
@@ -161,7 +180,11 @@ Every other case follows the same six-step template — read the opcode flag wor
 
 Modern SM tiers (sm_80–sm_120) answer the same query through the per-opcode tables documented in [codegen/encoding-tables.md](../codegen/encoding-tables.md). The replacement is one `lea r10, [rip + table]; jmp [r10 + 8*opcode_category]` indirected through one of the 444-slot percase tables in the `0x22A5AA0` family — at most 470 cache-warm pointer chases, no per-case decision tree.
 
-The legacy switch is a 425-block decision tree because the legacy targets predate the table-driven encoder family. The pre-sm_80 encoding-tables (`0x22A5AA0` and its cohort) have 93 nullsub holes for opcodes that did not exist in those architectures. Without a way to express "this opcode does not exist on this target" cleanly in the table, the original implementer fell back on a hand-written switch with explicit per-opcode operand accounting. The switch fans out into 425 BBs because every case has its own per-operand-index logic (read the type bits, decide whether to extend a vector window, branch on whether the operand is the destination or a source, ...).
+The legacy switch is a 425-block decision tree because the legacy targets predate the table-driven encoder family:
+
+- The pre-sm_80 encoding-tables (`0x22A5AA0` and its cohort) have 93 nullsub holes for opcodes that did not exist in those architectures.
+- Without a way to express "this opcode does not exist on this target" cleanly in the table, the original implementer fell back on a hand-written switch with explicit per-opcode operand accounting.
+- The switch fans out into 425 BBs because every case has its own per-operand-index logic (read the type bits, decide whether to extend a vector window, branch on whether the operand is the destination or a source, ...).
 
 The two designs are functionally equivalent on the opcodes both support. The switch is simply the older form, kept around for the six target classes whose opcode set never changed enough to justify migrating to the table-driven format.
 
@@ -183,19 +206,44 @@ Every caller of `(target_vtable + 1520)` is a function whose body needs to know,
 3. **Read-port conflict accounting** (`sub_7E8200`): an operand whose `getOperandSrcSlotCount` returns zero is treated as "no register-port consumer" — immediate operands, predicate-only operands, and TMA-descriptor handles all gate out of read-port-conflict checks via this path.
 4. **Post-RA pressure cost** (`sub_18FDAF0`'s `PressureCost` helper, on sm_80+ via a different vtable slot): the same query is performed against the per-opcode dispatch tables, returning identical semantics. The post-RA result feeds into key 2 of the RBT priority comparison.
 
-All four clients treat the return value as load-bearing for correctness, not just performance: an operand wrongly classified as a register source would induce false RAW edges and serialise the schedule; an operand wrongly classified as non-register would let the scheduler issue back-to-back read-port-conflicting instructions, producing a wall-clock stall the encoder cannot express in the control word. The function is therefore in the small set of legacy-target methods that ptxas refuses to no-op even when other parts of the target stack are disabled.
+All four clients treat the return value as critical for correctness, not just performance:
+
+- An operand wrongly classified as a register source would induce false RAW edges and serialise the schedule.
+- An operand wrongly classified as non-register would let the scheduler issue back-to-back read-port-conflicting instructions, producing a wall-clock stall the encoder cannot express in the control word.
+
+The function is therefore in the small set of legacy-target methods that ptxas refuses to no-op even when other parts of the target stack are disabled.
 
 ## QUIRK — 7.8 KB of code, zero direct callers
 
-`sub_A97600` is **only** reachable through `(target->vtable + 1520)`. The IDA xref database returns no incoming direct calls — every entry is the function's own intra-body branches. This is normal for a virtual method, but the size makes the function feel like it should have direct entry points. It does not. A reimplementer hunting for callers must walk *every* user of `(target_vtable + 1520)`: at least 18 functions in the decompiled corpus call through this slot (sub_7E4150, sub_7E8200, sub_7EAD70, sub_7F5D50, sub_806F80, sub_887F00, sub_92EF10, sub_93A030, sub_93A0D0, sub_93BA60, sub_9511E0, sub_967000, sub_967860, sub_973550, sub_A90D60, sub_A94B80, sub_122AD60, ...). Searching for the symbol name yields nothing. Searching for the literal `0xA97600` in the rodata yields only the six vtable installs.
+`sub_A97600` is **only** reachable through `(target->vtable + 1520)`. The IDA xref database returns no incoming direct calls — every entry is the function's own intra-body branches. This is normal for a virtual method, but the size makes the function feel like it should have direct entry points. It does not.
+
+A reimplementer hunting for callers must walk *every* user of `(target_vtable + 1520)`:
+
+- At least 18 functions in the decompiled corpus call through this slot: `sub_7E4150`, `sub_7E8200`, `sub_7EAD70`, `sub_7F5D50`, `sub_806F80`, `sub_887F00`, `sub_92EF10`, `sub_93A030`, `sub_93A0D0`, `sub_93BA60`, `sub_9511E0`, `sub_967000`, `sub_967860`, `sub_973550`, `sub_A90D60`, `sub_A94B80`, `sub_122AD60`, ...
+- Searching for the symbol name yields nothing.
+- Searching for the literal `0xA97600` in the rodata yields only the six vtable installs.
 
 ## QUIRK — the case-`0x32` xmmword scratch buffer
 
-Inside `case 0x32u` (the tex-sampler operand-class case) the body materialises three xmmword-sized constants from `.rodata:xmmword_21B2EC0` plus three immediate `_QWORD` literals (`433471489971520000LL`, `0xE0A0804000B07LL`, magic `336595972`) into an 80-byte stack scratch buffer `v229[80]`. The constants encode the operand-slot windows for the four sampler-coordinate combinations indexed by `(opcode32 >> 2) & 3`. The scratch buffer is **written three times** during the case (the constants are re-materialised before each lookup). This is a Hex-Rays artefact: the underlying assembly issues a single `movdqa` plus three `mov [rsp+...]`s and reuses the buffer; the decompiler renders each access as a fresh store because the buffer is unfreed in between. A reimplementer should not infer that the constants change between accesses — they do not. The pattern is "fetch 16-byte coordinate-class table into stack, index by sampler-mode, return slot-window width".
+Inside `case 0x32u` (the tex-sampler operand-class case) the body materialises three xmmword-sized constants from `.rodata:xmmword_21B2EC0` plus three immediate `_QWORD` literals (`433471489971520000LL`, `0xE0A0804000B07LL`, magic `336595972`) into an 80-byte stack scratch buffer `v229[80]`. The constants encode the operand-slot windows for the four sampler-coordinate combinations indexed by `(opcode32 >> 2) & 3`.
+
+> **CAUTION** — the scratch buffer is **written three times** during the case (the constants are re-materialised before each lookup). This is a Hex-Rays artefact:
+> - The underlying assembly issues a single `movdqa` plus three `mov [rsp+...]`s and reuses the buffer; the decompiler renders each access as a fresh store because the buffer is unfreed in between.
+> - A reimplementer should not infer that the constants change between accesses — they do not.
+
+The pattern is "fetch 16-byte coordinate-class table into stack, index by sampler-mode, return slot-window width".
 
 ## QUIRK — vtable+1024 / vtable+1056 / vtable+1288 / vtable+1480 self-callbacks
 
-The `default:` arm of the switch (lines 1180–1364 of the decompilation) calls back into the **same target's** other vtable slots — vtable+1024, +1056, +1288, +1480 — to ask sub-queries like "does this target support 64-bit address mode?" and "does this target classify opcode 6 as a memory access?". The reason is that the `default` arm has to handle every opcode the seven explicit cases do not, and the precise answer depends on per-target capabilities. Rather than encoding all of those capabilities in a per-target operand-class table, the legacy implementation re-uses the target's other introspection hooks. The cost is that an unfamiliar reader watching a debugger step through the `default` arm sees the same target's `this` pointer bouncing through four different vtable slots before producing a final answer. This is the third-party indirection load that the modern table-driven replacement eliminated.
+The `default:` arm of the switch (lines 1180–1364 of the decompilation) calls back into the **same target's** other vtable slots — vtable+1024, +1056, +1288, +1480 — to ask sub-queries like "does this target support 64-bit address mode?" and "does this target classify opcode 6 as a memory access?".
+
+The reason is the division of responsibility:
+
+- The `default` arm has to handle every opcode the explicit cases do not, and the precise answer depends on per-target capabilities.
+- Rather than encoding all of those capabilities in a per-target operand-class table, the legacy implementation re-uses the target's other introspection hooks.
+- The cost is that an unfamiliar reader watching a debugger step through the `default` arm sees the same target's `this` pointer bouncing through four different vtable slots before producing a final answer.
+
+This is the third-party indirection cost that the modern table-driven replacement eliminated.
 
 ## Function Map
 

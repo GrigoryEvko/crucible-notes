@@ -2,7 +2,11 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The PTX-to-Ori lowering is the transition from parsed PTX assembly into the Ori internal representation — the SASS-level, virtual-register IR that all subsequent optimization operates on. Unlike a traditional compiler where the parser builds an AST and a separate lowering pass consumes it, ptxas has **no materialized AST**: the Bison parser's reduction actions directly construct Ori IR nodes, basic blocks, and CFG edges inline. What the `--compiler-stats` timer calls "DAGgen-time" measures this inline construction phase. The result is a raw Ori IR that still uses PTX-derived opcodes and has unresolved architecture-dependent constructs. Fourteen "bridge phases" (pipeline indices 0–13) then transform this raw IR into the optimizer-ready form where every instruction carries its final SASS opcode, the CFG is fully annotated, and architecture-incompatible operations have been legalized.
+The PTX-to-Ori lowering is the transition from parsed PTX assembly into the Ori internal representation — the SASS-level, virtual-register IR that all subsequent optimization operates on.
+
+- **No materialized AST.** Unlike a traditional compiler where the parser builds an AST and a separate lowering pass consumes it, ptxas's Bison parser's reduction actions directly construct Ori IR nodes, basic blocks, and CFG edges inline. What the `--compiler-stats` timer calls "DAGgen-time" measures this inline construction phase.
+- **Raw output.** The result is a raw Ori IR that still uses PTX-derived opcodes and has unresolved architecture-dependent constructs.
+- **Bridge phases.** Fourteen "bridge phases" (pipeline indices 0–13) then transform this raw IR into the optimizer-ready form where every instruction carries its final SASS opcode, the CFG is fully annotated, and architecture-incompatible operations have been legalized.
 
 The key architectural consequence of this design: there is no separate "lowering" function that you can point at and say "this converts PTX to Ori." The conversion is distributed across (1) the Bison parser's 443 reduction actions, (2) a 44 KB operand processing function, (3) the MercConverter instruction legalization pass, and (4) six additional bridge phases that handle FP16 promotion, control flow canonicalization, macro fusion, and recipe application.
 
@@ -440,7 +444,14 @@ The fundamental semantic transformation during lowering: PTX uses high-level, ex
 
 ### Lowering Rules Reference (95 common PTX instructions)
 
-The table below lists the primary SASS opcode(s) each PTX instruction lowers to during the bridge phases. "1:1" means a single SASS instruction; "1:N" means a multi-instruction expansion whose size depends on type width, rounding mode, or target SM. The lowering phase column indicates where the conversion happens: **P** = parser inline (Bison reduction action writes the SASS opcode directly), **5** = Phase 5 ConvertUnsupportedOps / MercConverter, **45/78** = later legalization passes. Entries marked with an SM gate are only lowered on architectures that lack native hardware support.
+The table below lists the primary SASS opcode(s) each PTX instruction lowers to during the bridge phases.
+
+- **Ratio column:** "1:1" means a single SASS instruction; "1:N" means a multi-instruction expansion whose size depends on type width, rounding mode, or target SM.
+- **Phase column** indicates where the conversion happens:
+  - **P** = parser inline (Bison reduction action writes the SASS opcode directly).
+  - **5** = Phase 5 ConvertUnsupportedOps / MercConverter.
+  - **45/78** = later legalization passes.
+- **SM gate.** Entries marked with an SM gate are only lowered on architectures that lack native hardware support.
 
 | # | PTX instruction | SASS opcode(s) | Ratio | Phase | Notes |
 |---|---|---|---|---|---|

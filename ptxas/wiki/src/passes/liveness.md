@@ -201,7 +201,11 @@ GPU register allocation manages multiple register files. ptxas tracks liveness s
 
 ### Independent Solve Per File
 
-The R and UR bitvectors are solved independently: each has its own GEN, KILL, and live-in/live-out sets, and the iterative fixed-point converges separately for each. The scheduling entry point (`sub_A0F970`) allocates the R bitvector unconditionally at `func+832` via `sub_BDBAD0`, then conditionally allocates the UR bitvector at `func+856` only when the flag at Code Object `+1368` bit 4 is set (indicating the function uses uniform registers). The per-block scheduler (`sub_A06A60`) processes both bitvectors in the same instruction walk — for each instruction it updates R liveness at `+832` and, when the `v76` flag (`+1368` bit 4) is set, also updates UR liveness at `+856`. Both updates use the same `orWithAndNotIfChanged` transfer function but operate on separate bitvector objects. When the first scheduling pass fails, `sub_A0F970` supports a "retry without uniform regs" fallback (v63 toggle) that disables UR tracking for the retry attempt.
+The R and UR bitvectors are solved independently: each has its own GEN, KILL, and live-in/live-out sets, and the iterative fixed-point converges separately for each.
+
+- **Allocation.** The scheduling entry point (`sub_A0F970`) allocates the R bitvector unconditionally at `func+832` via `sub_BDBAD0`, then conditionally allocates the UR bitvector at `func+856` only when the flag at Code Object `+1368` bit 4 is set (indicating the function uses uniform registers).
+- **Per-block update.** The per-block scheduler (`sub_A06A60`) processes both bitvectors in the same instruction walk — for each instruction it updates R liveness at `+832` and, when the `v76` flag (`+1368` bit 4) is set, also updates UR liveness at `+856`. Both updates use the same `orWithAndNotIfChanged` transfer function but operate on separate bitvector objects.
+- **Retry fallback.** When the first scheduling pass fails, `sub_A0F970` supports a "retry without uniform regs" fallback (v63 toggle) that disables UR tracking for the retry attempt.
 
 ### P/UP: Operand-Level Tracking
 
@@ -209,11 +213,20 @@ Predicate registers (P, UP) are not tracked in the main bitvectors. Instead, the
 
 ### Cross-File Dependency: P2R / R2P
 
-The P2R (predicate-to-register) and R2P (register-to-predicate) instructions create a cross-file data dependency: P2R packs up to 8 predicate bits into a single GPR, and R2P unpacks them back. This coupling matters for two reasons. First, during predicate spilling the allocator uses P2R/R2P pairs to spill predicate registers through GPR stack slots, creating chains where P liveness depends on R liveness of the base GPR. Second, the regalloc verifier (`sub_A55D80`) explicitly validates that every R2P has a matching P2R (case 3: `P2R_R2P_PATTERN_FAILURE`) and that no instruction overwrites the base GPR between the pair (case 8: `P2R_R2P_BASE_DESTROYED`). Despite this coupling, the liveness solvers remain structurally independent — the cross-file constraint is enforced at the allocator and verifier level rather than by unifying the dataflow lattices.
+The P2R (predicate-to-register) and R2P (register-to-predicate) instructions create a cross-file data dependency: P2R packs up to 8 predicate bits into a single GPR, and R2P unpacks them back. This coupling matters for two reasons:
+
+- **Predicate spilling.** The allocator uses P2R/R2P pairs to spill predicate registers through GPR stack slots, creating chains where P liveness depends on R liveness of the base GPR.
+- **Verifier checks.** The regalloc verifier (`sub_A55D80`) explicitly validates that every R2P has a matching P2R (case 3: `P2R_R2P_PATTERN_FAILURE`) and that no instruction overwrites the base GPR between the pair (case 8: `P2R_R2P_BASE_DESTROYED`).
+
+Despite this coupling, the liveness solvers remain structurally independent — the cross-file constraint is enforced at the allocator and verifier level rather than by unifying the dataflow lattices.
 
 ### Barrier Register Exclusion from GEN/KILL
 
-Barrier registers (`reg_type = 9`, covering B0–B15 and UB0–UB15) are excluded from the standard liveness GEN/KILL computation. The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG. This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups — they do not carry data values that participate in the liveness lattice. The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
+Barrier registers (`reg_type = 9`, covering B0–B15 and UB0–UB15) are excluded from the standard liveness GEN/KILL computation:
+
+- The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG.
+- This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups — they do not carry data values that participate in the liveness lattice.
+- The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
 
 ## Phase 10: EarlyOriSimpleLiveDead
 
@@ -381,7 +394,10 @@ The core intersection loop synchronizes two cursors — one over the kill bitvec
 3. On hit: executes `tzcnt` to find the lowest set bit within the intersecting qword, packs the result as `(qword_index << 6) | bit_position` into `result+0`, sets `result+4 = 1`, and returns immediately.
 4. On exhaustion of either iterator: sets `result[0] = 0, result[4] = 0` (no interference).
 
-The bitvector uses a mixed-width layout: when the declared size (`VR+8`) is odd, the last element is stored as a 32-bit dword at `base + 4*(size-1)` instead of a full qword, handled by a special-case branch at each comparison point. Tree traversal follows standard in-order successor logic (right-child-then-leftmost, or walk-up-to-first-right-parent), advancing through all interference entries for the given hash bucket.
+Two structural details:
+
+- **Mixed-width layout.** When the declared size (`VR+8`) is odd, the last element is stored as a 32-bit dword at `base + 4*(size-1)` instead of a full qword, handled by a special-case branch at each comparison point.
+- **Tree traversal.** Follows standard in-order successor logic (right-child-then-leftmost, or walk-up-to-first-right-parent), advancing through all interference entries for the given hash bucket.
 
 **Phase 5: Cleanup** — Marks phi/copy chains with the `+245` rewrite flag (triggering opcode mutation from 188 to 93 or 95), frees hash tables and per-block records, clears `ctx+1370 bit 2` to signal liveness invalidation.
 
@@ -555,7 +571,11 @@ The scheduling subsystem has its own dataflow infrastructure (separate from the 
 | `sub_8DE7A0` | 12KB | `HashMap::insertWideWithPayload` — allocates a 168-byte dataflow node; stores payload at `+32`/`+8`/`+24`; builds two nested hash tables (at offsets `+40` and `+136`); inserts into outer table via FNV-1a on (uint32, uint64) compound key |
 | `sub_8DEF90` | 2.0KB | `HashMap::lookupTwoLevel` — two-level lookup: first hashes (uint32, uint64) into the outer table to get a dataflow-node ID, then hashes that ID into the inner table at `+80` to retrieve the result pointer |
 
-The scheduler instantiates these structures at Code Object `+832` to maintain per-block dataflow state. The RB-tree in `sub_8DBAF0`/`sub_8DB5F0` manages the backing memory pool (node `+40` color flag, rotations for balance), not liveness intervals directly. The hash tables in `sub_8DC880`--`sub_8DEF90` store the actual dataflow facts keyed by (block-ID, register-address) pairs, using the standard FNV-1a hash seen throughout ptxas. The two-level lookup in `sub_8DEF90` enables the iterative solver to efficiently query "what is the dataflow state of register R at block B?" without scanning all blocks.
+The scheduler instantiates these structures at Code Object `+832` to maintain per-block dataflow state:
+
+- **Backing memory pool.** The RB-tree in `sub_8DBAF0`/`sub_8DB5F0` manages the backing memory pool (node `+40` color flag, rotations for balance), not liveness intervals directly.
+- **Dataflow facts.** The hash tables in `sub_8DC880`--`sub_8DEF90` store the actual dataflow facts keyed by (block-ID, register-address) pairs, using the standard FNV-1a hash seen throughout ptxas.
+- **Query.** The two-level lookup in `sub_8DEF90` enables the iterative solver to efficiently query "what is the dataflow state of register R at block B?" without scanning all blocks.
 
 ## sub\_781F80: Basic Block Rebuild
 

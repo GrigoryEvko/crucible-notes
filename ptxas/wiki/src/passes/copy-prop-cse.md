@@ -151,7 +151,12 @@ The expression key is `*(I+144)`, a 32-bit index assigned during def-chain const
 
 5. **Predicate handling.** Predicated instructions (`@P0 IADD R1, R2, R3`) hash the predicate register's value number as an additional operand. Two identical computations under different predicates are distinct values.
 
-6. **Predicate-operand compatibility (`sub_7E7380`).** After opcode and type matching in the caller, `sub_7E7380` performs a focused predicate-operand compatibility check (30 lines, 150 bytes). The function tests: (a) predicate modifier parity — `instr+73` bit 4 versus `instr+72` bit 12 (`0x1000`); if one instruction has a predicate modifier and the other does not, they are incompatible; (b) last operand 24-bit value ID — `(instr + 84 + 8*(operand_count-1)) & 0xFFFFFF` must match; (c) second-to-last operand 8-byte encoding — the two dwords immediately before the last operand slot must be identical. The broader structural comparison (opcodes masked with `& 0xFFFFCFFF`, data types at `+76`, operand counts at `+80`, full per-operand encoding, register class at `+64`) is performed by each of the 21 callers of `sub_7E7380`, not by the function itself. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE by the callers' pre-checks.
+6. **Predicate-operand compatibility (`sub_7E7380`).** After opcode and type matching in the caller, `sub_7E7380` performs a focused predicate-operand compatibility check (30 lines, 150 bytes). The function tests three things:
+    - **(a) predicate modifier parity** — `instr+73` bit 4 versus `instr+72` bit 12 (`0x1000`); if one instruction has a predicate modifier and the other does not, they are incompatible.
+    - **(b) last operand 24-bit value ID** — `(instr + 84 + 8*(operand_count-1)) & 0xFFFFFF` must match.
+    - **(c) second-to-last operand 8-byte encoding** — the two dwords immediately before the last operand slot must be identical.
+
+    The broader structural comparison (opcodes masked with `& 0xFFFFCFFF`, data types at `+76`, operand counts at `+80`, full per-operand encoding, register class at `+64`) is performed by each of the 21 callers of `sub_7E7380`, not by the function itself. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE by the callers' pre-checks.
 
 ### GVN Algorithm Details (Binary Trace)
 
@@ -1175,7 +1180,11 @@ procedure OriCopyProp(ctx):
             continue
 ```
 
-**Transitive chain resolution.** When the pass encounters a CSEL (opcode 124) that was not immediately preceded by a recognized copy (`copy_seen` is false) and the architecture does not support predicate marking, it follows the defining instruction backward through `def_ctx+136`. If the single defining instruction is itself a copy or CSEL (opcode 18 or 124), propagation resolves transitively: the current instruction inherits the `0x100` propagated flag without the intermediate copy needing to be live. For other defining opcodes, the pass walks forward through the linked list calling `sub_7DF3A0` (liveness query) at each step until it finds a live use (stopping) or another copy/CSEL (resolving transitively). Opcode 52 (block boundary marker) terminates the walk in both directions.
+**Transitive chain resolution.** When the pass encounters a CSEL (opcode 124) that was not immediately preceded by a recognized copy (`copy_seen` is false) and the architecture does not support predicate marking, it follows the defining instruction backward through `def_ctx+136`:
+
+- **If the single defining instruction is itself a copy or CSEL** (opcode 18 or 124), propagation resolves transitively — the current instruction inherits the `0x100` propagated flag without the intermediate copy needing to be live.
+- **For other defining opcodes**, the pass walks forward through the linked list calling `sub_7DF3A0` (liveness query) at each step until it finds a live use (stopping) or another copy/CSEL (resolving transitively).
+- **Opcode 52 (block boundary marker)** terminates the walk in both directions.
 
 **Convergence.** OriCopyProp itself is a single linear scan — it does not iterate internally. The fixpoint behavior comes from the enclosing GeneralOptimize loop: Variant A (phases 13, 29) caps iterations via knob 464; Variant B (phases 37, 58) uses a cost-based threshold of 0.25 (knob 474). Each invocation may expose constant operands for folding or create dead instructions for DCE, motivating re-invocation.
 

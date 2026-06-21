@@ -2,7 +2,13 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Binary phases 78 (`DoKillMovement`) and 79 (`DoTexMovement`), together with two unnamed sibling movement phases, are four thin wrappers (`sub_C5FE00`, `sub_C5FE30`, `sub_C5FE60`, `sub_C5FE90`) that all tail-call the same 573-byte engine, `sub_8FFDE0`. The wrappers differ in exactly one register: the second argument passed to the engine — a movement-kind discriminator with values 0, 1, 2, 3. The engine then applies that discriminator at three internal decision points to select the direction of motion (down vs up), the destination block class (last-use vs preheader), and whether the cleanup-emission helper `sub_785E20` is invoked at the end. The entire scheme is a single parameterised movement primitive masquerading as four phases.
+Binary phases 78 (`DoKillMovement`) and 79 (`DoTexMovement`), together with two unnamed sibling movement phases, are four thin wrappers (`sub_C5FE00`, `sub_C5FE30`, `sub_C5FE60`, `sub_C5FE90`) that all tail-call the same 573-byte engine, `sub_8FFDE0`. The entire scheme is a single parameterised movement primitive masquerading as four phases.
+
+- **The wrappers differ in exactly one register:** the second argument passed to the engine — a movement-kind discriminator with values 0, 1, 2, 3.
+- **The engine applies that discriminator at three internal decision points** to select:
+  - the direction of motion (down vs up)
+  - the destination block class (last-use vs preheader)
+  - whether the cleanup-emission helper `sub_785E20` is invoked at the end
 
 The engine reuses the LICM dataflow built earlier in the pipeline by `OriHoistInvariantsLate` (wiki 66 / binary 76). It is gated on the same `HoistInvariants` named-phase token that gates the late LICM pass, and the underlying movement worker `sub_A112C0` is the same function that LICM itself calls. The "movement" phases are therefore best understood as **post-LICM positional fixups** that drive the LICM worker in different modes to relocate specific instruction classes (kill markers, TEX, and two unnamed classes) into more profitable basic blocks.
 
@@ -32,7 +38,11 @@ The engine name does not appear as a string in the binary; only `DoKillMovement`
 | **2** | `sub_C5FE60` | `DoTexMovement` (bin 79) | Downward — toward last use | Texture fetches: `TEX`/`TLD`/`TXQ` pseudo-instructions whose latency must be hidden by surrounding compute |
 | **3** | `sub_C5FE90` | sibling B (unnamed) | Upward — toward latest hoist point | Likely a tex-mode variant; `a2 > 2` skips the early-return for the cleanup helper path |
 
-Confidence: **HIGH** that all four wrappers tail-call the same engine with discriminator ∈ {0, 1, 2, 3} (directly visible in each wrapper's decompilation). **MED** on the precise semantics of discriminators 1 and 3 — they are not named in the `.rodata` string pool, and only the engine's branch structure (`if (a2 <= 1)`, `if (a2 <= 2)`, `if (!a2)`, `if (a2 == 1)`) reveals their existence. They could equally be **second-pass invocations** of the kill/tex movements (some kernels need two passes to settle when a kill moves past another kill's last-use block) rather than independent phases. **LOW** on whether the two unnamed siblings are surfaced by the phase manager at all — they may be invoked only internally from `sub_A112C0` recursion rather than appearing in the 159-phase vtable.
+Confidence is graded by claim:
+
+- **HIGH** that all four wrappers tail-call the same engine with discriminator ∈ {0, 1, 2, 3} (directly visible in each wrapper's decompilation).
+- **MED** on the precise semantics of discriminators 1 and 3 — they are not named in the `.rodata` string pool, and only the engine's branch structure (`if (a2 <= 1)`, `if (a2 <= 2)`, `if (!a2)`, `if (a2 == 1)`) reveals their existence. They could equally be **second-pass invocations** of the kill/tex movements (some kernels need two passes to settle when a kill moves past another kill's last-use block) rather than independent phases.
+- **LOW** on whether the two unnamed siblings are surfaced by the phase manager at all — they may be invoked only internally from `sub_A112C0` recursion rather than appearing in the 159-phase vtable.
 
 ## Algorithm Overview
 
@@ -201,16 +211,32 @@ The "one engine, four discriminators" idiom appears throughout the ptxas optimiz
 - **`OriHoistInvariantsEarly` / `OriHoistInvariantsLate` / `OriHoistInvariantsLate2` / `OriHoistInvariantsLate3`** (binary phases 46 / 88 / 92 / 104) — four wrappers, **one** LICM engine (`sub_94F150` and its callees), discriminator selects loop-class scope.
 - **`OriPerformLiveDeadFirst..Fourth`** — four wrappers, one liveness engine.
 
-What makes the movement family distinguishable is that its wrappers are **adjacent in memory** (0xC5FE00, 0xC5FE30, 0xC5FE60, 0xC5FE90 — exactly 0x30 = 48 bytes apart, matching the 34-byte body + 14-byte alignment slot) and **collectively register-class indistinguishable**: each is 34 bytes long, has 12 instructions, 4 basic blocks, 1 try-block, and references only the constant `1` (plus `2` for `C5FE60`, `3` for `C5FE90`). This memory layout — a stride-48 array of 34-byte trampolines — is the same pattern used for the [Late Expansion thunks](late-legalization.md) and the per-phase Mercury dispatch helpers. Confidence: **HIGH** (the addresses, sizes, and constants-referenced are direct from `ptxas_functions.json`).
+What makes the movement family distinguishable is two properties of its wrappers:
+
+- **Adjacent in memory:** `0xC5FE00`, `0xC5FE30`, `0xC5FE60`, `0xC5FE90` — exactly `0x30` = 48 bytes apart, matching the 34-byte body + 14-byte alignment slot.
+- **Collectively register-class indistinguishable:** each is 34 bytes long, has 12 instructions, 4 basic blocks, 1 try-block, and references only the constant `1` (plus `2` for `C5FE60`, `3` for `C5FE90`).
+
+This memory layout — a stride-48 array of 34-byte trampolines — is the same pattern used for the [Late Expansion thunks](late-legalization.md) and the per-phase Mercury dispatch helpers. Confidence: **HIGH** (the addresses, sizes, and constants-referenced are direct from `ptxas_functions.json`).
 
 > ⚡ **QUIRK — `HoistInvariants` named-phase token disables four movements at once**
-> The engine's first action after the master-bit and opt-level gates is `sub_799250(km, "HoistInvariants", &disabled)`. Passing `-Xptxas --disable-named-phase=HoistInvariants` (or its equivalent through the OCG `DisablePhases` mechanism, which is a sequence-of-strings stored at `*(km+72)+13328`) disables **all four** movement passes plus the LICM pass `OriHoistInvariantsLate` itself, because they all share the single token "HoistInvariants" rather than four distinct tokens. Setting `DisablePhases=DoTexMovement` does **not** disable TEX movement specifically — the token is looked up only via the unified name. Confirmed at `0x8ffe18` (the `sub_799250` call site with the string at `aHoistinvariants`). Confidence: HIGH.
+>
+> - **The check:** the engine's first action after the master-bit and opt-level gates is `sub_799250(km, "HoistInvariants", &disabled)`.
+> - **What it disables:** passing `-Xptxas --disable-named-phase=HoistInvariants` (or its equivalent through the OCG `DisablePhases` mechanism, a sequence-of-strings stored at `*(km+72)+13328`) disables **all four** movement passes plus the LICM pass `OriHoistInvariantsLate` itself — they all share the single token "HoistInvariants" rather than four distinct tokens.
+> - **No per-phase override:** setting `DisablePhases=DoTexMovement` does **not** disable TEX movement specifically — the token is looked up only via the unified name.
+>
+> Confirmed at `0x8ffe18` (the `sub_799250` call site with the string at `aHoistinvariants`). Confidence: HIGH.
 
 > ⚡ **QUIRK — `DoKillMovement` requires `> O2`, not the `> O1` that its wrapper checks**
 > The wrapper `sub_C5FE00` gates on `sub_7DDB50(ctx) > 1` (i.e. opt-level > O1, meaning O2 or O3), but the engine then re-tests `sub_7DDB50(ctx) <= 2` and returns immediately at O2. The wrapper's check is therefore strictly weaker than the engine's; phase manager calls the wrapper on `nvcc -O2`, the wrapper proceeds, the engine bails. The wrapper's `> 1` is best understood as a "fast reject for `-O0`/`-O1`" rather than a true gate. The same pattern repeats in the three sibling wrappers. Net effect: **all four movement variants are silently dead at `-O2`** despite the phase being listed as enabled in `--dump-named-phases`. Confidence: HIGH (both comparisons are direct in the decompilation: wrapper at `0x8ffde0`-relative `cmp eax, 1` vs engine at `0x8ffdfc`-relative `cmp eax, 2`).
 
 > ⚡ **QUIRK — the engine's "function count" loop unsafely indexes from offset 4**
-> The per-function loop initializes `v13 = 4` (byte offset into `*(ctx+512)`, which is a `int[]` of function IDs) and computes the terminator as `v14 = 4 * (n_funcs - 1) + 8`, then reads `*(int *)(*(ctx+512) + v13)`. Translation: the array is being indexed as **`fn_id_array[1], fn_id_array[2], ..., fn_id_array[n_funcs]`** — skipping element 0, and reading one element past what a naïve C `for (i = 1; i <= n; ++i)` would suggest. Cross-check with `sub_C5FD10` (the LinearReplacement wrapper, identical 1-based-with-overshoot loop) confirms this is a deliberate convention: element 0 of `*(ctx+512)` is the **count** itself (in older builds) and element `n_funcs+1` is a guard sentinel. Touching element `n_funcs` (the last real entry) reads the sentinel, not the array — but the loop's terminator `v14 == v13` prevents that read from completing. The off-by-one is structural, not a bug. Confidence: MED (the reading pattern is consistent across all four wrappers and the LinearReplacement family, but no comment or string confirms the "element 0 = count" interpretation).
+>
+> - **The loop bounds:** the per-function loop initializes `v13 = 4` (byte offset into `*(ctx+512)`, which is a `int[]` of function IDs), computes the terminator as `v14 = 4 * (n_funcs - 1) + 8`, then reads `*(int *)(*(ctx+512) + v13)`.
+> - **Translation:** the array is being indexed as `fn_id_array[1], fn_id_array[2], ..., fn_id_array[n_funcs]` — skipping element 0, and reading one element past what a naïve C `for (i = 1; i <= n; ++i)` would suggest.
+> - **The convention it follows:** cross-check with `sub_C5FD10` (the LinearReplacement wrapper, identical 1-based-with-overshoot loop) confirms this is deliberate — element 0 of `*(ctx+512)` is the **count** itself (in older builds) and element `n_funcs+1` is a guard sentinel.
+> - **Why it is safe:** touching element `n_funcs` (the last real entry) reads the sentinel, not the array — but the loop's terminator `v14 == v13` prevents that read from completing. The off-by-one is structural, not a bug.
+>
+> Confidence: MED (the reading pattern is consistent across all four wrappers and the LinearReplacement family, but no comment or string confirms the "element 0 = count" interpretation).
 
 ## Function Map
 
@@ -251,7 +277,11 @@ Bin 80  OriDoRemat                           consumes the moved positions when
 The movement family runs after `OriHoistInvariantsLate` (binary 76) so the LICM dataflow is fresh, and before `OriDoRemat` (binary 80) so rematerialization sees the moved kill markers and chooses remat candidates that respect the new register-pressure profile. The engine deliberately does not invalidate the LICM dataflow; instead it relies on `sub_785E20` (the post-cleanup helper) to repair the parts of use-def that are affected by movement.
 
 > ⚡ **QUIRK — sibling phases inherit `DoKillMovement`'s phase manager entry**
-> The phase manager (wiki [phase-manager.md](phase-manager.md)) lists only `DoKillMovement` (wiki 67) and `DoTexMovement` (wiki 68), with no separate entries for siblings A and B. This is because the binary phase vtable at `0x21DBEF8`-family stores only two distinct names for the four wrappers — the unnamed wrappers reuse the previous name's slot, and `--dump-named-phases` reports them as identical to their named predecessor. Toggling `DUMPIR=DoKillMovement` actually dumps IR around **both** kill-class wrappers (esi=0 and esi=1), and `DUMPIR=DoTexMovement` dumps around **both** tex-class wrappers (esi=2 and esi=3). Confidence: MED (consistent with the absence of additional strings in `ptxas_strings.json`, but the DUMPIR behaviour is inferred from the named-phase token check rather than directly observed).
+>
+> - **Only two names for four wrappers:** the phase manager (wiki [phase-manager.md](phase-manager.md)) lists only `DoKillMovement` (wiki 67) and `DoTexMovement` (wiki 68), with no separate entries for siblings A and B — the binary phase vtable at `0x21DBEF8`-family stores only two distinct names, and the unnamed wrappers reuse the previous name's slot. `--dump-named-phases` reports them as identical to their named predecessor.
+> - **DUMPIR dumps two wrappers per name:** toggling `DUMPIR=DoKillMovement` dumps IR around **both** kill-class wrappers (esi=0 and esi=1), and `DUMPIR=DoTexMovement` dumps around **both** tex-class wrappers (esi=2 and esi=3).
+>
+> Confidence: MED (consistent with the absence of additional strings in `ptxas_strings.json`, but the DUMPIR behaviour is inferred from the named-phase token check rather than directly observed).
 
 ## Storage Layout
 
@@ -260,7 +290,7 @@ The engine's stack frame (122 bytes for the engine itself; 8 bytes for each wrap
 ```text
 v25  (offset +1):  disabled flag — written by sub_799250(HoistInvariants)
 v26  (offset +2):  (_QWORD*)ctx — engine forwards the context pointer
-v27  (offset +A):  kind — the discriminator value verbatim
+v27  (offset +A):  kind — the discriminator value, copied unchanged
 v28  (offset +12): __int128 zero — reserved profile slot
 v29  (offset +22): __int64 zero — reserved profile slot
 v30..v36 (+2A..+30): seven byte flags written by sub_8FF780:
@@ -306,7 +336,13 @@ The cleanup branch is taken: `sub_785E20` rebuilds use-def around `BB3`, then `s
 Net: one TEX instruction relocated three basic blocks downward, hiding ~80 cycles of texture latency behind the unrelated IADD computation in BB2.
 
 > ⚡ **QUIRK — kill markers don't move; their *anchors* do**
-> `DoKillMovement` (kind=0) operates on `KILL` pseudo-instructions, which are zero-cost SASS-invisible markers used by the register allocator to indicate "vreg's last use is here". Moving a kill marker downward extends the apparent live range of its target vreg, **increasing** register pressure locally — the opposite of what the name suggests. The actual purpose is to **align kill positions with SASS basic-block boundaries** so the allocator's spill heuristic sees blocks where multiple vregs die simultaneously (which is cheaper to spill than scattered single-vreg deaths). The downward direction is therefore not an optimization in the usual sense; it is a **regularization pass** for the allocator's heuristic. Confidence: MED — the regularization interpretation matches `OriPerformLiveDeadFirst..Fourth`'s usage of the same `KILL` markers, but no string in the binary explicitly states this rationale.
+>
+> - **What `KILL` is:** `DoKillMovement` (kind=0) operates on `KILL` pseudo-instructions — zero-cost SASS-invisible markers used by the register allocator to indicate "vreg's last use is here".
+> - **The counter-intuitive effect:** moving a kill marker downward extends the apparent live range of its target vreg, **increasing** register pressure locally — the opposite of what the name suggests.
+> - **The actual purpose:** **align kill positions with SASS basic-block boundaries** so the allocator's spill heuristic sees blocks where multiple vregs die simultaneously (cheaper to spill than scattered single-vreg deaths).
+> - **So the downward direction is not an optimization** in the usual sense; it is a **regularization pass** for the allocator's heuristic.
+>
+> Confidence: MED — the regularization interpretation matches `OriPerformLiveDeadFirst..Fourth`'s usage of the same `KILL` markers, but no string in the binary explicitly states this rationale.
 
 ## Verification Anchors
 

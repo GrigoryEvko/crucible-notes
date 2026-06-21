@@ -326,9 +326,17 @@ Per-instruction dispatch on `opcode & 0xFFFFCFFF`:
 
 - **271 or 32** (`warpgroup.wait` / `warpgroup.arrive`): reads the last source operand's flag byte (`& 2`). If set, the register is an in-flight accumulator — records conflict. Otherwise probes the pass's visited-register RB-tree (`a1[84]`) by `reg_id >> 8`; if found and the bitmap bit is set, same conflict. Otherwise probes `bbArray[reg_id & 0xFFFFFF]` to check if the target BB is empty (extern call, state 1) or if `vreg+216 >= 0` and the callee is marked clobbering (`byte at ctx->field_43[vreg_idx]+57 != 0`, also state 1).
 - **236** (function call): forces state 1 if `v206 == 0`. Resets `v36`, `v38`, `v207` to null.
-- **309** (`wgmma.mma_async`): if `v36` is null, creates a `warpgroup.arrive` via `sub_ACBE60`, assigns `v37` as its sequence index, pushes to the arrive list. If `v38` is non-null, marks the previous commit's last accumulator operand with bit 2 (`|= 4`) and clears `v38`. Inserts the instruction into a per-accumulator-group FNV-1a hash table (48-byte nodes, key = `instr->field_16`, prime 16777619, basis 0x811C9DC5). The hash table auto-grows when `total_entries > bucket_count / 2`. Then runs **three conflict checks** against operand roles 1, 2, 4, 3 (see below). Sets `instr->field_52 = v37++`. For each register-type destination operand, sets `vreg->field_56 = instr` (back-pointer to defining WGMMA).
+- **309** (`wgmma.mma_async`):
+  - If `v36` is null, creates a `warpgroup.arrive` via `sub_ACBE60`, assigns `v37` as its sequence index, pushes to the arrive list.
+  - If `v38` is non-null, marks the previous commit's last accumulator operand with bit 2 (`|= 4`) and clears `v38`.
+  - Inserts the instruction into a per-accumulator-group FNV-1a hash table (48-byte nodes, key = `instr->field_16`, prime 16777619, basis 0x811C9DC5). The hash table auto-grows when `total_entries > bucket_count / 2`.
+  - Runs **three conflict checks** against operand roles 1, 2, 4, 3 (see below).
+  - Sets `instr->field_52 = v37++`. For each register-type destination operand, sets `vreg->field_56 = instr` (back-pointer to defining WGMMA).
 - **323** (`commit_batch`): if `v38` is non-null, marks its last accumulator operand with bit 2. Resets `v38 = 0`, records `v207 = instr`. If the commit's last source operand has flag bits `& 3` nonzero, sets `v218 = 1`; otherwise sets `v36 = instr` (commit becomes the new arrive anchor).
-- **Other opcodes**: scans operands backward from last to find register-type-6 (accumulator class, `vreg+64 == 6`). For each, probes `v238`; on hit, checks `v218` and the target descriptor (`byte at ctx+208+72+26064 == 1` and `dword at +26072 != 0`): if both true, creates a `warpgroup.wait` via `sub_ACBF80` and pushes to the wait list. If `v36` is non-null, iterates its accumulator operands via `sub_ACC0A0` and probes the conflict set `v242` (via `sub_7554F0`); any conflict clears `v36`. Also increments per-register use counts at `a1[90]` via `sub_923B30`.
+- **Other opcodes**: scans operands backward from last to find register-type-6 (accumulator class, `vreg+64 == 6`). For each operand:
+  - Probes `v238`; on hit, checks `v218` and the target descriptor (`byte at ctx+208+72+26064 == 1` and `dword at +26072 != 0`): if both true, creates a `warpgroup.wait` via `sub_ACBF80` and pushes to the wait list.
+  - If `v36` is non-null, iterates its accumulator operands via `sub_ACC0A0` and probes the conflict set `v242` (via `sub_7554F0`); any conflict clears `v36`.
+  - Also increments per-register use counts at `a1[90]` via `sub_923B30`.
 
 **Three conflict checks for opcode 309** (lines 898–1029). After inserting the WGMMA into the hash table:
 
@@ -338,7 +346,14 @@ Per-instruction dispatch on `opcode & 0xFFFFCFFF`:
 
 #### Phase 4: Post-BB boundary handling (lines 1113–1233)
 
-After exhausting a BB's instruction list: if `v38` is pending, marks its last accumulator operand with bit 2. If any WGMMA was seen (`v207 != 0`), updates the sequence table's per-sequence extent record via `sub_75FE80`/`sub_75FE60` (dominance-aware BB range merge using `codeObj->field_64`). Checks the successor BB's first instruction: if opcode 188 (`nop`/`wgmma.fence`) with a register-type-6 first operand whose low 2 bits encode fence flavor 1–3, injects a `warpgroup.wait`. Also injects a wait if the BB has the accumulator-propagation flag (`bb+280 bit 0`) and the successor starts with opcodes 93/94 (`sync` variants) followed by opcode 54 (`warpgroup.depbar`). Advances to the next BB by following branch/fall-through to `v210`.
+After exhausting a BB's instruction list, the pass performs the following steps:
+
+- If `v38` is pending, marks its last accumulator operand with bit 2.
+- If any WGMMA was seen (`v207 != 0`), updates the sequence table's per-sequence extent record via `sub_75FE80`/`sub_75FE60` (dominance-aware BB range merge using `codeObj->field_64`).
+- Checks the successor BB's first instruction for two wait-injection conditions:
+  - **Fence-flavor wait:** opcode 188 (`nop`/`wgmma.fence`) with a register-type-6 first operand whose low 2 bits encode fence flavor 1–3 → injects a `warpgroup.wait`.
+  - **Propagation-flag wait:** the BB has the accumulator-propagation flag (`bb+280 bit 0`) and the successor starts with opcodes 93/94 (`sync` variants) followed by opcode 54 (`warpgroup.depbar`) → also injects a wait.
+- Advances to the next BB by following branch/fall-through to `v210`.
 
 #### Phase 5: Arrive/wait emission with diagnostics (lines 1242–1377)
 
@@ -683,7 +698,13 @@ The serialization fallback function `sub_AE47B0` replaces the pipelined WGMMA se
 
 Called with the orchestrator context (`a1`) and a packed argument `a2` whose low 32 bits are a flags word and high 32 bits a secondary limit. The algorithm iterates every WGMMA instruction in the pipeline hash table (stored at `a1[71]`, bucket count at `a1[72]`, enabled flag at `a1+140`).
 
-For each WGMMA instruction `v20` in the table, the function resolves the instruction's accumulator peer set via `sub_AD5120`. When `v66` (flags) is zero, it takes the fast path: looks up the peer in the hash table using FNV-1a on bytes at `v20+16` (the register identity word) and copies the peer's accumulator register list into a local vector via SSE-optimized `memcpy`. It then re-calls `sub_AD5120` with the merged peer list. If `sub_AD5120` returns 0, the consistency check failed — the function reads the basic block's function identifier from `*(ctx->field_0->bb_list[bb_array[instr+24]]+164) -> *(ctx->field_0->fn_table[fn_id]+200)` and returns error code 3 (packed with the function ID in the high 32 bits).
+For each WGMMA instruction `v20` in the table, the function resolves the instruction's accumulator peer set via `sub_AD5120`:
+
+- **Fast path** (when `v66` flags is zero):
+  - Looks up the peer in the hash table using FNV-1a on bytes at `v20+16` (the register identity word).
+  - Copies the peer's accumulator register list into a local vector via SSE-optimized `memcpy`.
+  - Re-calls `sub_AD5120` with the merged peer list.
+- **Consistency failure** (`sub_AD5120` returns 0): reads the basic block's function identifier from `*(ctx->field_0->bb_list[bb_array[instr+24]]+164) -> *(ctx->field_0->fn_table[fn_id]+200)` and returns error code 3 (packed with the function ID in the high 32 bits).
 
 After each instruction, operands at offsets +80/+84 are scanned for register references with tag `(bits[31:28] & 7) == 1` and register type 6 (accumulator, from `*(reg_desc+64)`). These accumulator register IDs are inserted into a sorted set at `a1+93` via `sub_768AB0`.
 
@@ -714,9 +735,17 @@ The largest validator (7,538 bytes). Called after metadata finalization. Perform
 
 1. **Input register validation** (lines 383–387): calls `sub_AE0D20` twice — once on the arrive annotation set (`a1+69`, offset +69 from context) and once on the wait annotation set (`a1+74`). `sub_AE0D20` verifies that every register in the pipeline's declared input set has a matching annotation. If either call returns false, error code 5 is returned (non-WGMMA defines input registers).
 
-2. **Per-block instruction walk** (lines 537–660): iterates the WGMMA stage list at `*(ctx->field_792)`. For each stage entry, resolves the basic block range from `bb_start = reg_desc[instr.field_8+84] & 0xFFFFFF` through `bb_end` via the ordering array at `ctx+512`. Walks every instruction in the range, assigning sequence numbers at `instr+52`. For WGMMA opcodes (309 or 323 after masking), the instruction pointer is recorded into two arrays indexed by `instr+24` (basic block index): `v228[]` records the last WGMMA seen, `v231[]` records the first. Stage group IDs at `instr+264` matching `bb.field_144 == ctx->field_99[stage_id*4]` trigger insertion into the conflict register set via `sub_98CF00`. Commit-batch instructions (opcode `0x143` after `& 0xFFFFCFFF`) whose accumulator operand has `(flags & 3) == 2` and `(flags & 0x3C) == 0` are recorded via `sub_758060`.
+2. **Per-block instruction walk** (lines 537–660): iterates the WGMMA stage list at `*(ctx->field_792)`. For each stage entry:
+   - Resolves the basic block range from `bb_start = reg_desc[instr.field_8+84] & 0xFFFFFF` through `bb_end` via the ordering array at `ctx+512`.
+   - Walks every instruction in the range, assigning sequence numbers at `instr+52`. For WGMMA opcodes (309 or 323 after masking), the instruction pointer is recorded into two arrays indexed by `instr+24` (basic block index): `v228[]` records the last WGMMA seen, `v231[]` records the first.
+   - Stage group IDs at `instr+264` matching `bb.field_144 == ctx->field_99[stage_id*4]` trigger insertion into the conflict register set via `sub_98CF00`.
+   - Commit-batch instructions (opcode `0x143` after `& 0xFFFFCFFF`) whose accumulator operand has `(flags & 3) == 2` and `(flags & 0x3C) == 0` are recorded via `sub_758060`.
 
-3. **WGMMA accumulator conflict scan** (lines 662–912): iterates all instructions in basic-block linked-list order. For each `wgmma.mma_async` (opcode 309 masked): checks accumulator source operands via `sub_AD4CC0`/`sub_ACC800`; if the result set is non-empty (`!sub_ACC3A0`), returns error code 7 (non-WGMMA defines accumulators). Checks accumulator destination operands via `sub_AD4BE0`/`sub_ACBB60`; if non-empty, returns error code 6 (non-WGMMA reads accumulators). For `_warpgroup.commit_batch` (opcode 323): checks commit-source operands, and if a knob-gated diagnostic (`sub_ACBCA0`) indicates a conflict in the per-stage register set, walks the conflict set via `sub_ACC110` and `sub_ACC8B0` to verify every conflicting register, returning error code 6 if any accumulator conflict persists.
+3. **WGMMA accumulator conflict scan** (lines 662–912): iterates all instructions in basic-block linked-list order.
+   - For each `wgmma.mma_async` (opcode 309 masked):
+     - Checks accumulator source operands via `sub_AD4CC0`/`sub_ACC800`; if the result set is non-empty (`!sub_ACC3A0`), returns error code 7 (non-WGMMA defines accumulators).
+     - Checks accumulator destination operands via `sub_AD4BE0`/`sub_ACBB60`; if non-empty, returns error code 6 (non-WGMMA reads accumulators).
+   - For `_warpgroup.commit_batch` (opcode 323): checks commit-source operands, and if a knob-gated diagnostic (`sub_ACBCA0`) indicates a conflict in the per-stage register set, walks the conflict set via `sub_ACC110` and `sub_ACC8B0` to verify every conflicting register, returning error code 6 if any accumulator conflict persists.
 
 ## Interaction with Register Allocation
 

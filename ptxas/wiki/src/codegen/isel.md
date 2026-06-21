@@ -768,7 +768,11 @@ For a given instruction, the dispatcher may invoke multiple matchers (one per ap
 
 #### Vtable Registration and Dispatch Table Layout
 
-All ~801 matchers are registered through a single C++ vtable rooted at `off_22AD230` (installed by the descriptor constructor `sub_9CE190`). The vtable contains 244 general-purpose virtual method slots followed by a contiguous **dispatch table** of 1884 function pointers starting at vtable byte offset `+1952` (address `0x22AD9D0`). Every pointer in this dispatch table targets a location inside a single 200 KB monolithic function `sub_BA9CF0` (spanning `0xBA9CF0`--`0xBDBA60`), which the compiler emitted as an enormous switch-case body. Of the 1884 entries, 1611 point to distinct case handlers (the actual matcher logic) and 273 point to a shared sentinel at `0xBA9E23` (a no-op return indicating "no matcher for this slot").
+All ~801 matchers are registered through a single C++ vtable rooted at `off_22AD230` (installed by the descriptor constructor `sub_9CE190`):
+
+- **Vtable layout** — 244 general-purpose virtual method slots followed by a contiguous **dispatch table** of 1884 function pointers starting at vtable byte offset `+1952` (address `0x22AD9D0`).
+- **Dispatch targets** — every pointer in this dispatch table targets a location inside a single 200 KB monolithic function `sub_BA9CF0` (spanning `0xBA9CF0`--`0xBDBA60`), which the compiler emitted as an enormous switch-case body.
+- **Entry breakdown** — of the 1884 entries, 1611 point to distinct case handlers (the actual matcher logic) and 273 point to a shared sentinel at `0xBA9E23` (a no-op return indicating "no matcher for this slot").
 
 The coordinator function `sub_13AF3D0` (137 KB) invokes matchers through indirect calls at specific vtable byte offsets. Each offset maps to a dispatch table index:
 

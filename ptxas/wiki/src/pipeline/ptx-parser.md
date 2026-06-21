@@ -2,7 +2,12 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas front-end parses PTX assembly text into internal IR using a classic two-stage architecture: a Flex-generated DFA scanner (lexer) and a Bison-generated LALR(1) shift-reduce parser. Unlike most compiler front-ends, the parser does **not** construct an AST. Instead, Bison reduction actions directly build IR nodes, populate the instruction table, and emit validation calls — the parse tree is consumed inline and never materialized as a data structure. A separate macro preprocessor handles `.MACRO`, `.ELSE`/`.ELIF`/`.ENDIF`, and `.INCLUDE` directives at the character level before tokens reach the Flex DFA. The instruction table builder (`sub_46E000`, 93 KB) registers the public PTX opcodes (1,141 variants) into the primary opcode hash table during parser initialization; a second 269-entry registration path populates a separate internal-opcode table for compiler-private and lowering-only mnemonics. An instruction lookup subsystem then classifies operands into 12 categories at parse time.
+The ptxas front-end parses PTX assembly text into internal IR using a classic two-stage architecture: a Flex-generated DFA scanner (lexer) and a Bison-generated LALR(1) shift-reduce parser. Its defining properties:
+
+- **No AST.** Unlike most compiler front-ends, the parser does **not** construct a parse tree. Bison reduction actions directly build IR nodes, populate the instruction table, and emit validation calls — the parse tree is consumed inline and never materialized as a data structure.
+- **Character-level macro preprocessing.** A separate macro preprocessor handles `.MACRO`, `.ELSE`/`.ELIF`/`.ENDIF`, and `.INCLUDE` directives before tokens reach the Flex DFA.
+- **Table-driven opcode registration.** The instruction table builder (`sub_46E000`, 93 KB) registers the public PTX opcodes (1,141 variants) into the primary opcode hash table during parser initialization; a second 269-entry registration path populates a separate internal-opcode table for compiler-private and lowering-only mnemonics.
+- **12-category operand classifier.** An instruction lookup subsystem classifies operands into 12 categories at parse time.
 
 | | |
 |---|---|
@@ -85,7 +90,15 @@ The scanner returns integer token codes to the Bison parser. The value 550 is `Y
 
 ### Token Categories
 
-The ≈552 Flex actions of `ptxlex` emit **163 distinct named terminal codes** in the range `[258..422]`, plus **25 one-character ASCII literals** in `[0x21..0x7E]`, plus the three Bison system tokens `$end (0)`, `error (256)`, and `$undefined (257)` — a total of **191 concrete terminals**. Bison reserves `YYNTOKENS = 193` internal slots (see [Grammar Parameters](#grammar-parameters)) because two of the 165 external slots Bison allocates between 258 and 422 are **unused in v13.0.88** (gaps at external codes `321` and `398`, confirmed absent from every `return` statement and every attribute-assignment branch in `sub_720F00`). The catalog below was reconstructed by walking the action switch linearly and recording every `(action-case → token-code → attribute-value)` triple from `ptxas/decompiled/sub_720F00_0x720f00.c` lines 389–2412.
+The ≈552 Flex actions of `ptxlex` emit a layered terminal alphabet:
+
+- **163 distinct named terminal codes** in the range `[258..422]`
+- **25 one-character ASCII literals** in `[0x21..0x7E]`
+- the three Bison system tokens `$end (0)`, `error (256)`, and `$undefined (257)`
+
+That is **191 concrete terminals**, but Bison reserves `YYNTOKENS = 193` internal slots (see [Grammar Parameters](#grammar-parameters)) because two of the 165 external slots Bison allocates between 258 and 422 are **unused in v13.0.88** — gaps at external codes `321` and `398`, confirmed absent from every `return` statement and every attribute-assignment branch in `sub_720F00`.
+
+> The catalog below was reconstructed by walking the action switch linearly and recording every `(action-case → token-code → attribute-value)` triple from `ptxas/decompiled/sub_720F00_0x720f00.c` lines 389–2412.
 
 #### Correction to earlier version
 
@@ -672,7 +685,13 @@ Allocates and initializes two objects: the **parser state** (1,128 bytes, `sub_4
 
 This is the largest single function in the front-end region at 93 KB (`disasm/sub_46E000_0x46e000.asm`, 17,842 lines, 1,464,386 bytes). It is not a normal function body but a massive initialization sequence that calls `sub_46BED0` exactly **1,141 times** — once per legal PTX instruction variant. Every call registers one `(opcode name, operand encoding, type-suffix code, validator index)` tuple.
 
-> **Reconstruction note.** `sub_46E000` is intentionally **not** present in `ptxas/decompiled/` for this build — at 93 KB of straight-line calls it overflows the hand-decompilation budget. Everything in this section is reconstructed from three orthogonal sources that fully determine the answer: (1) the decompiled registration function `sub_46BED0_0x46bed0.c` (321 lines) which fixes the exact shape of each descriptor, (2) the decompiled matcher prologue `sub_46C6E0_0x46c6e0.c` (first 200 lines read for descriptor-field offsets and the 12-category operand classifier), and (3) the 1,080 `.weak .func` lowering targets in `ptxas/extracted/embedded_ptx_intrinsics.json` (`entry_count: 1080`, categorized as `cuda_other: 549, sm70_intrinsics: 433, sm20_math: 70, redux_sync: 17, sanitizer: 7, sm80_intrinsics: 4`) cross-referenced against the 322 SASS mnemonics in `ptxas/extracted/opcode_master.json` (`opcode_master.count: 322`) and the public PTX ISA 8.x reference. The per-family variant counts below were built by decoding the little-endian imm32 operands of every `mov REG, imm32; ...; call sub_46BED0` call site in `disasm/sub_46E000_0x46e000.asm` and reading the pooled C-string at that RVA from `.rodata`; the sum of per-family counts equals exactly 1,141, matching the static call count observed in the disassembly.
+> **Reconstruction note.** `sub_46E000` is intentionally **not** present in `ptxas/decompiled/` for this build — at 93 KB of straight-line calls it overflows the hand-decompilation budget. Everything in this section is reconstructed from three orthogonal sources that fully determine the answer:
+>
+> 1. the decompiled registration function `sub_46BED0_0x46bed0.c` (321 lines), which fixes the exact shape of each descriptor;
+> 2. the decompiled matcher prologue `sub_46C6E0_0x46c6e0.c` (first 200 lines read for descriptor-field offsets and the 12-category operand classifier);
+> 3. the 1,080 `.weak .func` lowering targets in `ptxas/extracted/embedded_ptx_intrinsics.json` (`entry_count: 1080`, categorized as `cuda_other: 549, sm70_intrinsics: 433, sm20_math: 70, redux_sync: 17, sanitizer: 7, sm80_intrinsics: 4`) cross-referenced against the 322 SASS mnemonics in `ptxas/extracted/opcode_master.json` (`opcode_master.count: 322`) and the public PTX ISA 8.x reference.
+>
+> The per-family variant counts below were built by decoding the little-endian imm32 operands of every `mov REG, imm32; ...; call sub_46BED0` call site in `disasm/sub_46E000_0x46e000.asm` and reading the pooled C-string at that RVA from `.rodata`. The sum of per-family counts equals exactly 1,141, matching the static call count observed in the disassembly.
 
 ### 368-byte Descriptor Layout
 
@@ -695,7 +714,10 @@ Every registration allocates one descriptor at `sub_46BED0_0x46bed0.c:63` (`v18 
 
 Notes on the layout:
 
-- The `type_class[]` and `width_mask[]` arrays are indexed by `v21`, the running operand-slot counter (initialized to `-1` at line 67 so the first `++v21` writes slot 0). `v21` is bumped either pre-switch (`N`, `O`, `P`, `T`, `E` cases, which use `++v21`) or deferred into `v48` and committed at `LABEL_26` (`F`, `H`, `I`, `B`, `Q`, `R` cases, which allow a `[width|width|...]` group to follow). Both paths write the same logical slot, but the offsets differ in the decompiled source: `v18+v21+9` in the pre-increment path vs `v18+v21+10` in the deferred path — that is because at the deferred write-site `v21` is still the *previous* operand's index, so the `+10` reaches one slot forward. Either way the class lands at `byte_offset = 36 + 4*slot`.
+- The `type_class[]` and `width_mask[]` arrays are indexed by `v21`, the running operand-slot counter (initialized to `-1` at line 67 so the first `++v21` writes slot 0). The counter is bumped on one of two paths:
+  - **pre-switch** for the `N`, `O`, `P`, `T`, `E` cases, which use `++v21`;
+  - **deferred** into `v48` and committed at `LABEL_26` for the `F`, `H`, `I`, `B`, `Q`, `R` cases, which allow a `[width|width|...]` group to follow.
+  - Both paths write the same logical slot, but the offsets differ in the decompiled source: `v18+v21+9` in the pre-increment path vs `v18+v21+10` in the deferred path — at the deferred write-site `v21` is still the *previous* operand's index, so the `+10` reaches one slot forward. Either way the class lands at `byte_offset = 36 + 4*slot`.
 - The `width_mask[]` array holds **pointers** to bitmask objects, not bitmasks themselves. `sub_1CB0790()` allocates an empty mask; `sub_1CB0850(mask, w)` adds bit `w` to it. The matcher tests a candidate operand width against the mask via `sub_1CB06F0`/`sub_1CB0700` (not decompiled here; referenced from `sub_46C6E0`).
 - The `type_subclass[]` / `type_digit[]` split lets one suffix character encode either a symbolic tag (upper- or lowercase letter, 22 distinct values) or a small integer (`0`..`9`). A digit-class slot has `type_subclass[i] = 0` and `type_digit[i] = digit`; the matcher looks at `type_digit[i]` only when `type_subclass[i] == 0`.
 - The 16-slot cap on per-operand arrays is the hard upper bound on operand count for any PTX instruction: no registered opcode has more than 16 operands (the biggest real examples are `_mma.warpgroup` at 12 and `wmma.mma` at 10).
@@ -832,11 +854,20 @@ Table 1's semantic-index space has **holes** in the low range — the indices `1
 - **Newer / compiler-internal scalar ops**: `mad.fused.hi` (1), `madc.fused.hi` (2), `p2r` (5), `r2p` (6), `cachepolicy` (9), `mbarrier.tx` (37), `setmaxreg.try_alloc`/`alloc`/`dealloc` (40–42), `setsmemsize`/`setsmemsize.flush` (43, 44).
 - **Sparse-MMA metadata / data-movement ops**: `scatter` (30), `spmetadata` (31), `gather` (32), `genmetadata` (33), and the index-45 internal helpers.
 
-The remaining table-2 entries (sem-ids `3, 4, 7, 8, 10..29, 34..36, 38, 39`) re-register **internal variants of opcodes that also have public forms** in table 1 — `tanh`, `ex2`, `ld`, `st`, `cvt`, `mma`, `atom`, `red`, `cp.async*`, `mbarrier.*expect_tx`, plus the `_`-prefixed pseudo-ops (`_mma`, `_mma.warpgroup`, `_ldsm`, `_movm`, `_warpgroup.arrive`/`commit_batch`/`wait`). Categorized: 7 of the 45 names are `_`-prefixed compiler-private pseudo-ops; the other 38 are public-syntax mnemonics whose internal-lowering variants live in the secondary table. The 16 table-2-exclusive names — `cachepolicy`, `elect.one`, `gather`, `genmetadata`, `mad.fused.hi`, `madc.fused.hi`, `mbarrier.tx`, `p2r`, `r2p`, `scatter`, `setmaxreg.{try_alloc,alloc,dealloc}`, `setsmemsize{,.flush}`, `spmetadata` — are the ones absent from `+2472` entirely.
+The remaining table-2 entries (sem-ids `3, 4, 7, 8, 10..29, 34..36, 38, 39`) re-register **internal variants of opcodes that also have public forms** in table 1:
+
+- **Re-registered public mnemonics:** `tanh`, `ex2`, `ld`, `st`, `cvt`, `mma`, `atom`, `red`, `cp.async*`, `mbarrier.*expect_tx`, plus the `_`-prefixed pseudo-ops (`_mma`, `_mma.warpgroup`, `_ldsm`, `_movm`, `_warpgroup.arrive`/`commit_batch`/`wait`).
+- **Categorization of the 45 names:** 7 are `_`-prefixed compiler-private pseudo-ops; the other 38 are public-syntax mnemonics whose internal-lowering variants live in the secondary table.
+- **The 16 table-2-exclusive names** (absent from `+2472` entirely): `cachepolicy`, `elect.one`, `gather`, `genmetadata`, `mad.fused.hi`, `madc.fused.hi`, `mbarrier.tx`, `p2r`, `r2p`, `scatter`, `setmaxreg.{try_alloc,alloc,dealloc}`, `setsmemsize{,.flush}`, `spmetadata`.
 
 #### External corroboration (redplait, denvdis)
 
-This second table was independently located by redplait while reverse-engineering **CUDA 13.1** ptxas; his [denvdis](https://github.com/redplait/denvdis) repository (`cudaso/de_ptx.cc`) walks the same two structures. His [`cicc13/ptx_ops.txt`](https://github.com/redplait/denvdis/blob/master/cicc13/ptx_ops.txt) (1,151 rows) is the 13.1 analog of our table 1, and [`cicc13/ptx_ops2.txt`](https://github.com/redplait/denvdis/blob/master/cicc13/ptx_ops2.txt) (1,420 rows) is the merged dump after adding the second table. His `de_ptx.cc` anchors the 13.1 build at: ptx-ops registration parser `0xC2341C`, primary insert function (`reg_call`) `0xC210C0`, and the second function-pointer array spanning `0x2971268 .. 0x2971AD0` — **269 entries**, identical to our 13.0 array count. The 13.1-vs-13.0 deltas reconcile cleanly:
+This second table was independently located by redplait while reverse-engineering **CUDA 13.1** ptxas; his [denvdis](https://github.com/redplait/denvdis) repository (`cudaso/de_ptx.cc`) walks the same two structures.
+
+- **The two dumps:** [`cicc13/ptx_ops.txt`](https://github.com/redplait/denvdis/blob/master/cicc13/ptx_ops.txt) (1,151 rows) is the 13.1 analog of our table 1; [`cicc13/ptx_ops2.txt`](https://github.com/redplait/denvdis/blob/master/cicc13/ptx_ops2.txt) (1,420 rows) is the merged dump after adding the second table.
+- **13.1 build anchors** (from `de_ptx.cc`): ptx-ops registration parser `0xC2341C`, primary insert function (`reg_call`) `0xC210C0`, and the second function-pointer array spanning `0x2971268 .. 0x2971AD0` — **269 entries**, identical to our 13.0 array count.
+
+The 13.1-vs-13.0 deltas reconcile cleanly:
 
 - His `ptx_ops2.txt − ptx_ops.txt` = `1,420 − 1,151 = 269` rows added by the second table — **exactly** our second-table count.
 - Our 13.0 merged total is `1,410` (1,141 + 269) versus his 13.1 merged `1,420`. The 10-row difference is the version delta: 13.1 carries 10 additional table-1 variants (`1,151 − 1,141 = 10`), while the second-table size is unchanged at 269 between the two releases.
@@ -945,7 +976,12 @@ The hash insert uses `d->name` (the interned opcode pointer, deduped across the 
 
 ### Catalog — 1,141 Primary-Table Registrations by PTX Family
 
-This catalog covers the **primary `+2472` table only** (the 1,141 `sub_46BED0` calls). The additional 269 internal-opcode registrations in the `+2480` table are documented in [The second registration site](#the-second-registration-site--sub_465030-and-its-269-entry-function-pointer-array) above; merged, the two tables hold 1,410 registrations across 268 unique opcode names. The tables below give **every** primary-table registered opcode, with its variant count and the distinct operand encoding strings it accepts. Methodology: all 1,141 `mov edx, <opcode>; mov esi, <encoding>; mov ecx, <suffix>; ...; call sub_46BED0` call sites were extracted from `disasm/sub_46E000_0x46e000.asm` by decoding the little-endian imm32 in each `mov REG, imm32` instruction's byte stream and reading the null-terminated C-string at that address from `ptxas_rodata.bin`. This bypasses IDA symbol-comment truncation (`"_tcgen05.guardrails.sp_consistency_acro"...`) and substring-reference opacity (`1D07286h` -> inner offset of the pooled string `"F32F16"` -> the 3-byte substring `"F16"`).
+This catalog covers the **primary `+2472` table only** (the 1,141 `sub_46BED0` calls).
+
+- **Scope.** The additional 269 internal-opcode registrations in the `+2480` table are documented in [The second registration site](#the-second-registration-site--sub_465030-and-its-269-entry-function-pointer-array) above; merged, the two tables hold 1,410 registrations across 268 unique opcode names. The tables below give **every** primary-table registered opcode, with its variant count and the distinct operand encoding strings it accepts.
+- **Methodology.** All 1,141 `mov edx, <opcode>; mov esi, <encoding>; mov ecx, <suffix>; ...; call sub_46BED0` call sites were extracted from `disasm/sub_46E000_0x46e000.asm` by decoding the little-endian imm32 in each `mov REG, imm32` instruction's byte stream and reading the null-terminated C-string at that address from `ptxas_rodata.bin`. This bypasses:
+  - IDA symbol-comment truncation (`"_tcgen05.guardrails.sp_consistency_acro"...`), and
+  - substring-reference opacity (`1D07286h` -> inner offset of the pooled string `"F32F16"` -> the 3-byte substring `"F16"`).
 
 Totals by category:
 
@@ -1605,7 +1641,12 @@ Descriptor *match_instruction(
 
 #### Ambiguity Resolution
 
-The matcher is **not** a pure "first match wins" scheme. When multiple descriptors survive every filter, disambiguation is by the **SM target code** stored at descriptor byte `+232` (compared against `a7`, the compile target). If `a7 == 0` (target-independent lookup, as during macro expansion), the matcher returns the first surviving descriptor unconditionally (line 994). If more than one descriptor survives **and** more than one has matching `sm_target`, the matcher still returns the first one encountered in list order — there is no tie-breaking heuristic, so instruction-table registration order (which is deterministic because `sub_46E000` registers in source order) is the silent arbiter. Truly-ambiguous encodings are prevented at table-build time rather than at parse time.
+The matcher is **not** a pure "first match wins" scheme. When multiple descriptors survive every filter, disambiguation is by the **SM target code** stored at descriptor byte `+232` (compared against `a7`, the compile target):
+
+- **`a7 == 0`** (target-independent lookup, as during macro expansion): the matcher returns the first surviving descriptor unconditionally (line 994).
+- **Multiple survivors with matching `sm_target`:** the matcher still returns the first one encountered in list order — there is no tie-breaking heuristic, so instruction-table registration order (deterministic because `sub_46E000` registers in source order) is the silent arbiter.
+
+> Truly-ambiguous encodings are prevented at table-build time rather than at parse time.
 
 #### Failure Diagnostics
 

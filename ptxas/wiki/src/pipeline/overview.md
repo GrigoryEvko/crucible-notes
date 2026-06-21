@@ -77,7 +77,13 @@ A concrete trace of a single-kernel PTX module compiled for sm_100 at `-O2`:
 
 **4. PTX-to-Ori lowering (DAGgen).** `sub_6273E0` (44 KB) converts each AST instruction into an Ori IR node: a basic block with virtual registers, control flow edges, and memory space annotations. Special registers (`%ntid`, `%laneid`, `%smid`) map to internal IDs. Address computation uses a 6-bit operand type encoding. A 500-instruction PTX kernel typically produces ~600–1,200 Ori instructions (expansion from pseudo-ops, address calculations, and predicate materialization). The `"Permanent OCG memory pool"` is created here to hold all IR state.
 
-**5. OCG phase pipeline** (`sub_C62720` registers 159 phase objects, `sub_C64F70` dispatches 157). Each phase is a 16-byte polymorphic object with `execute()`, `getIndex()`, and `isNoOp()` vtable methods. The driver iterates the 157-entry identity order table at `0x22BEEA0` (count from `sub_C60D20`'s `rdx`), calling `execute()` on every entry unconditionally; phases that do nothing return early inside their own body (the `isNoOp()` virtual only suppresses the Before/After banner). At `-O2`, roughly 80–100 of the dispatched phases do real work. Typical expansion factors: the initial 1,000 Ori instructions may grow to 1,200–1,500 after unrolling and intrinsic expansion, then shrink to 800–1,000 after CSE/DCE, then re-expand to 1,500–2,500 after register allocation spill/fill insertion. The PhaseManager logs `"Before <phase>"` / `"After <phase>"` strings (visible in the `sub_C64F70` decompile) when phase-wise compile-stats are enabled.
+**5. OCG phase pipeline** (`sub_C62720` registers 159 phase objects, `sub_C64F70` dispatches 157).
+
+- Each phase is a 16-byte polymorphic object with `execute()`, `getIndex()`, and `isNoOp()` vtable methods.
+- The driver iterates the 157-entry identity order table at `0x22BEEA0` (count from `sub_C60D20`'s `rdx`), calling `execute()` on every entry unconditionally; phases that do nothing return early inside their own body (the `isNoOp()` virtual only suppresses the Before/After banner).
+- At `-O2`, roughly 80–100 of the dispatched phases do real work.
+- **Typical expansion factors:** the initial 1,000 Ori instructions may grow to 1,200–1,500 after unrolling and intrinsic expansion, then shrink to 800–1,000 after CSE/DCE, then re-expand to 1,500–2,500 after register allocation spill/fill insertion.
+- The PhaseManager logs `"Before <phase>"` / `"After <phase>"` strings (visible in the `sub_C64F70` decompile) when phase-wise compile-stats are enabled.
 
 **6. Register allocation** (phase 101, `sub_971A90`). The Fatpoint algorithm attempts NOSPILL allocation first. If pressure exceeds the register budget, the spill guidance engine (`sub_96D940`, 84 KB) computes spill candidates across 7 register classes, and the retry loop makes up to N attempts (knob 638/639) with progressively more aggressive spilling. Physical register assignments are committed; spill/fill instructions are inserted into the Ori IR.
 
@@ -195,7 +201,12 @@ struct ThreadLocalContext {  // 280 bytes (0x118), per-thread via pthread_getspe
 };
 ```
 
-Accessed by `sub_4280C0` (3,928 callers — the single most-called function in the binary). On first call in a new thread, allocates and initializes via `malloc(0x118)` + `memset` + `pthread_cond_init` + `pthread_mutex_init` + `sem_init`. The decompiled code confirms the 280-byte size: `v5 = malloc(0x118u)`, followed by `memset(v5, 0, 0x118u)`, `pthread_cond_init(v5 + 128)`, `pthread_mutex_init(v5 + 176)`, `sem_init(v5 + 216)`. After initialization, the struct is inserted into a global doubly-linked list (offsets +256 and +264 hold prev/next pointers, protected by a global mutex). The `pthread_setspecific(key, v5)` call stores the pointer for subsequent `pthread_getspecific` retrieval.
+Accessed by `sub_4280C0` (3,928 callers — the single most-called function in the binary).
+
+- **First call in a new thread** allocates and initializes via `malloc(0x118)` + `memset` + `pthread_cond_init` + `pthread_mutex_init` + `sem_init`.
+- **280-byte size confirmed** in the decompiled code: `v5 = malloc(0x118u)`, followed by `memset(v5, 0, 0x118u)`, `pthread_cond_init(v5 + 128)`, `pthread_mutex_init(v5 + 176)`, `sem_init(v5 + 216)`.
+- **Global list insertion.** After initialization, the struct is inserted into a global doubly-linked list (offsets +256 and +264 hold prev/next pointers, protected by a global mutex).
+- **TLS store.** The `pthread_setspecific(key, v5)` call stores the pointer for subsequent `pthread_getspecific` retrieval.
 
 ## Key Function Call Chain
 
@@ -442,7 +453,11 @@ An architecture vtable factory at `sub_1CCEEE0` (17KB, 244 callees) constructs a
 | sm_100-110 | Blackwell | 7th gen | **Active** — factory 36864. |
 | sm_120-121 | Consumer / DGX Spark | 7th gen (desktop) | **Active** — factory 36864 (shared with Blackwell datacenter). |
 
-The distinction between "validation only" and "active" is critical: the base validation table at `unk_1D16220` contains 32 entries including all legacy SMs back to sm_20, allowing ptxas to parse PTX files that declare `.target sm_30` without immediately rejecting them. However, the capability dispatch initializer `sub_607DB0` only registers handler functions for sm_75 through sm_121 (13 base targets). Attempting to compile code for an unregistered SM produces a fatal error during codegen factory lookup — the architecture vtable factory `sub_1CCEEE0` cannot construct a backend object for these targets.
+The distinction between "validation only" and "active" is critical:
+
+- **Validation table** `unk_1D16220` contains 32 entries including all legacy SMs back to sm_20, allowing ptxas to parse PTX files that declare `.target sm_30` without immediately rejecting them.
+- **Active handlers.** The capability dispatch initializer `sub_607DB0` only registers handler functions for sm_75 through sm_121 (13 base targets).
+- **Fatal on unregistered SM.** Attempting to compile code for an unregistered SM produces a fatal error during codegen factory lookup — the architecture vtable factory `sub_1CCEEE0` cannot construct a backend object for these targets.
 
 The legacy codegen factory values (12288 for sm_30, 16385/20481 for sm_50, 24576 for sm_60) survive as comparison constants in feature-gating checks throughout the backend (e.g., `if (factory_value > 28673)` gates sm_90+ features), but the code paths they would activate no longer exist.
 
