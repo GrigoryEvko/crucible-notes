@@ -60,6 +60,7 @@ PIPE_FP16 = "FP16"      # packed FP16x2: HADD2 HMUL2 HFMA2 HSETP2
 PIPE_CC = "CC"          # writes a condition-code / predicate: ISETP FSETP ...
 PIPE_CVT = "CVT"        # coupled cross-domain conversion: I2FP F2FP I2I I2IP
 PIPE_UNIFORM = "UNIFORM"  # uniform datapath: ULDC and U-prefixed coupled ops
+PIPE_VINT = "VINT"      # secondary integer adder (VIADD / Blackwell IADD)
 PIPE_AGU = "AGU"        # decoupled memory address-generation (consumer side)
 PIPE_SFU = "SFU"        # decoupled MUFU transcendental input (consumer side)
 PIPE_CVTI = "CVTI"      # decoupled float<->int conversion input (I2F/F2I/F2F)
@@ -72,8 +73,10 @@ _COUPLED_PIPE = {
     "IADD3": PIPE_INT, "LOP3": PIPE_INT, "LEA": PIPE_INT, "SHF": PIPE_INT,
     "SEL": PIPE_INT, "BMSK": PIPE_INT, "SGXT": PIPE_INT, "PRMT": PIPE_INT,
     "IABS": PIPE_INT, "PLOP3": PIPE_INT, "P2R": PIPE_INT, "R2P": PIPE_INT,
-    "VOTE": PIPE_INT, "IMNMX": PIPE_INT, "ICMP": PIPE_INT, "VIADD": PIPE_INT,
+    "VOTE": PIPE_INT, "IMNMX": PIPE_INT, "ICMP": PIPE_INT,
     "FLO": PIPE_INT,  # (decoupled in tables, but if seen coupled -> int)
+    # secondary integer adder pipe (cross-pipe to the main IADD3 ALU)
+    "VIADD": PIPE_VINT, "IADD": PIPE_VINT,
     # integer multiply
     "IMAD": PIPE_IMUL, "IMUL": PIPE_IMUL, "IDP": PIPE_IMUL, "VIMNMX": PIPE_IMUL,
     # FP32 FMA pipe
@@ -392,25 +395,26 @@ def _load_stall_matrix() -> dict[tuple[str, str, str], int]:
 
 def coupled_stall(arch: str, prod_pipe: str, cons_pipe: str) -> int:
     """Issue-relative stall a coupled producer in `prod_pipe` owes a consumer in
-    `cons_pipe`, for the arch's family.
+    `cons_pipe`.
 
-    Resolution is most-specific first, and within a tie a *producer*-pipe rule
-    outranks a *consumer*-pipe rule -- a CC/predicate producer always emits the
-    control band regardless of the consumer, and a cross-domain conversion
-    producer levies its own penalty.  Family-specific rows outrank the family-`*`
-    rows.  Falls through to the same-pipe (4) / cross-pipe (5) / CC (13) /
-    AGU (5) / SFU (6) structural anchors."""
-    fam = arch_family(arch)
+    Resolution is most-specific first: the exact arch key (e.g. `sm80`) outranks
+    the family key (`sm8x`) which outranks the family-`*` row.  Within a tie a
+    *producer*-pipe rule outranks a *consumer*-pipe rule -- a CC/predicate
+    producer always emits the control band regardless of the consumer, and a
+    cross-domain conversion producer levies its own penalty.  Falls through to
+    the same-pipe (4) / cross-pipe (5) / CC (13) / AGU (5) / CVTI (6) / SFU (4)
+    structural anchors."""
+    scope = (f"sm{_arch_num(arch)}", arch_family(arch), "*")
     m = _load_stall_matrix()
-    # (family-specificity, then producer-then-consumer wildcard specificity)
-    for f in (fam, "*"):
-        if (f, prod_pipe, cons_pipe) in m:        # both exact
+    # both exact, then producer-specific (outranks), then consumer-specific.
+    for f in scope:
+        if (f, prod_pipe, cons_pipe) in m:
             return m[(f, prod_pipe, cons_pipe)]
-    for f in (fam, "*"):
-        if (f, prod_pipe, "*") in m:              # producer-specific (outranks)
+    for f in scope:
+        if (f, prod_pipe, "*") in m:
             return m[(f, prod_pipe, "*")]
-    for f in (fam, "*"):
-        if (f, "*", cons_pipe) in m:              # consumer-specific
+    for f in scope:
+        if (f, "*", cons_pipe) in m:
             return m[(f, "*", cons_pipe)]
     # structural defaults (binary anchors)
     if prod_pipe == PIPE_CC:

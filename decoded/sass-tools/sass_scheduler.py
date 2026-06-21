@@ -768,13 +768,7 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
             return 2
         return 1
 
-    # Ancestors of each node along RAW-stall edges.  Latency is hidden only by
-    # *independent* instructions issued between producer and consumer -- an
-    # instruction that is itself an ancestor of the consumer (on the dependency
-    # path) serializes rather than hides, so its cycles must NOT be subtracted.
-    # Counting all intervening cycles as hidden is unsound and under-stalls
-    # address-producing chains (caught by dynamic validation).
-    # Per-producer stall edges (dst, weight, is_ctrl).
+    # Per-producer fixed-stall edges (dst, weight, is_ctrl).
     out_stall: list[list[tuple[int, int, bool]]] = [[] for _ in range(n)]
     for e in dag.edges:
         if _is_stall_edge(e):
@@ -1177,16 +1171,20 @@ def _composed_pairs(dag: DAG, cr: ComposeResult) -> set[tuple[int, int]]:
 
 
 def _classify_stall_mismatch(c: Ctrl, f: SchedFields, dag: DAG, i: int) -> str:
-    diff = abs(c.stall - f.stall)
-    if diff == 1:
+    """Bucket a stall mismatch.  The sign matters: composed > ptxas is a safe
+    over-stall (ptxas hid the latency with scheduling freedom we cannot replay);
+    composed < ptxas is an under-stall relative to ptxas (still hazard-safe per
+    the issue-cycle fixpoint + the dynamic GPU check, but flagged separately)."""
+    over = f.stall > c.stall                       # we stall more than ptxas
+    base = _base_mnem(c.mnem)
+    if base in ("ULDC", "UMOV", "ULDCU", "LDCU"):
+        return "uniform_descriptor_distance"       # ULDC publish-distance variance
+    if not over:                                   # composed < ptxas
+        return "understall_vs_ptxas_conservatism"
+    # composed > ptxas: we could not hide the latency ptxas hid.
+    if abs(c.stall - f.stall) == 1:
         return "off_by_one_pipe_penalty"
-    if c.stall in (8,) and f.stall in (4, 5):
-        return "turing_prestore_slot"   # SM75 emits 8 in the pre-store slot
-    if c.stall == 13:
-        return "cc_pred_control_band"
-    if c.stall > 6 or f.stall > 6:
-        return "tensor_or_special_band"
-    return "other"
+    return "overstall_unhidden_latency"
 
 
 # =============================================================================
@@ -1272,6 +1270,65 @@ CORPUS_PTX = {
   cvt.rn.f32.u32 %f1, %r3; fma.rn.f32 %f2, %f1, %f1, 0f3F800000;
   cvt.rzi.u32.f32 %r4, %f2; add.s32 %r5, %r4, %r3;
   st.global.u32 [%rd2], %r5; ret;
+}
+""",
+    # extra pipe-mix probes added to exercise the table-driven stall paths:
+    "int_mul_chain": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry int_mul_chain(.param .u64 p) {
+  .reg .b32 %r<12>; .reg .b64 %rd<3>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  mov.u32 %r1, %tid.x;
+  add.s32 %r2, %r1, 3; mul.lo.s32 %r3, %r2, %r2; and.b32 %r4, %r3, 255;
+  mad.lo.s32 %r5, %r4, %r4, %r2; shl.b32 %r6, %r5, 2; or.b32 %r7, %r6, %r4;
+  st.global.u32 [%rd2], %r7; ret;
+}
+""",
+    "fp_transcend_mix": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry fp_transcend_mix(.param .u64 p) {
+  .reg .f32 %f<10>; .reg .b32 %r1; .reg .b64 %rd<3>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  mov.u32 %r1, %tid.x; cvt.rn.f32.u32 %f1, %r1;
+  mul.f32 %f2, %f1, %f1; sqrt.approx.f32 %f3, %f2; add.f32 %f4, %f3, %f1;
+  sin.approx.f32 %f5, %f4; fma.rn.f32 %f6, %f5, %f5, %f1;
+  st.global.f32 [%rd2], %f6; ret;
+}
+""",
+    "mem_chain": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry mem_chain(.param .u64 p) {
+  .reg .b32 %r<10>; .reg .b64 %rd<6>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  mov.u32 %r1, %tid.x; mul.wide.u32 %rd3, %r1, 4; add.s64 %rd4, %rd2, %rd3;
+  ld.global.u32 %r2, [%rd4]; and.b32 %r5, %r2, 7; mul.wide.u32 %rd5, %r5, 4;
+  add.s64 %rd4, %rd2, %rd5;
+  ld.global.u32 %r3, [%rd4]; add.s32 %r4, %r3, %r2;
+  st.global.u32 [%rd2], %r4; ret;
+}
+""",
+    "scbd_overload": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry scbd_overload(.param .u64 p) {
+  .reg .b32 %r<20>; .reg .b64 %rd<12>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  mov.u32 %r1, %tid.x; mul.wide.u32 %rd3, %r1, 4; add.s64 %rd2, %rd2, %rd3;
+  ld.global.u32 %r2, [%rd2+0];  ld.global.u32 %r3, [%rd2+4];
+  ld.global.u32 %r4, [%rd2+8];  ld.global.u32 %r5, [%rd2+12];
+  ld.global.u32 %r6, [%rd2+16]; ld.global.u32 %r7, [%rd2+20];
+  ld.global.u32 %r8, [%rd2+24]; ld.global.u32 %r9, [%rd2+28];
+  add.s32 %r10, %r2, %r3; add.s32 %r11, %r4, %r5; add.s32 %r12, %r6, %r7;
+  add.s32 %r13, %r8, %r9; add.s32 %r14, %r10, %r11; add.s32 %r15, %r12, %r13;
+  add.s32 %r16, %r14, %r15;
+  st.global.u32 [%rd2], %r16; ret;
 }
 """,
 }

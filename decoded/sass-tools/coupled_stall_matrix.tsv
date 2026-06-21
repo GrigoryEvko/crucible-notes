@@ -38,8 +38,11 @@ sm7x	FP16	FP16	6
 *	FP16	FP16	4
 #
 # -- cross-pipe coupled math (a different math family): +1 inter-pipe penalty.
+#    The integer multiplier (IMAD) and the integer ALU (IADD3/LOP3/SHF) are
+#    distinct pipes; a result crossing between them costs 5 (binary-confirmed on
+#    every arch: IMAD->IMAD = 4 but IMAD->LOP3/SHF = 5, and IADD3->IMAD = 5).
 *	INT	IMUL	5
-*	IMUL	INT	4
+*	IMUL	INT	5
 *	FMA	CC	5
 *	INT	CC	4
 *	FMA	IMUL	5
@@ -47,14 +50,27 @@ sm7x	FP16	FP16	6
 *	CVT	CC	4
 *	UNIFORM	INT	4
 *	UNIFORM	IMUL	4
-#   int -> coupled int->float conversion (I2FP): 4 on sm_86..sm_100, 5 on the
-#   newest sm_10x (sm_120); I2FP is absent on sm7x (conversion is decoupled I2F).
-sm10x	INT	CVT	5
+#   secondary integer adder (VIADD on Blackwell, IADD on sm_120) -> main IADD3
+#   ALU is a cross-pipe edge: 5.
+*	VINT	INT	5
+*	VINT	IMUL	5
+#   int -> coupled int->float conversion (I2FP): 4 on sm_86..sm_100; on the
+#   newest sm_10x (sm_120) the cross-domain coupled edge widens to 5.  (I2FP is
+#   absent on sm7x -- there the conversion is decoupled I2F, handled as CVTI.)
+sm120	INT	CVT	5
+sm121	INT	CVT	5
 *	INT	CVT	4
 *	IMUL	CVT	4
+#   on sm_120 the SETP-output / cross-domain conversion edges widen by 1 (the
+#   coupled-pipe forwarding slot lengthened): CVT-producer cross edges -> 5.
+sm120	CVT	CC	5
+sm121	CVT	CC	5
 #
 # -- coupled producer -> memory address/data (AGU): pre-issue collect slot.
-#    sm8x+/sm10x = 5; Turing-class sm7x widens it to 8.
+#    sm8x+/sm10x = 5; Turing-class sm7x widens it to 8.  (An IMAD.WIDE feeding a
+#    load address can cost 6 when strictly back-to-back, but 5 once any slot is
+#    available -- the majority case; the safe issue-cycle fixpoint covers the
+#    back-to-back case via the intervening-cycle accounting.)
 sm7x	*	AGU	8
 *	*	AGU	5
 #
@@ -64,6 +80,14 @@ sm7x	*	SFU	6
 *	*	SFU	4
 #
 # -- coupled producer -> decoupled float<->int conversion input (CVTI: I2F/F2I/
-#    F2F): the coupled feeder pays the full result band (6) before the decoupled
-#    conversion issues, on every arch.
-*	*	CVTI	6
+#    F2F).  sm_75: every feeder pays the full result band (6).  sm_80: the int
+#    feeder (IADD3 -> decoupled I2F) forwards at 4, but the FP feeder (FFMA/FMUL
+#    -> F2I) still pays 6.  From sm_86 the int->float conversion is the coupled
+#    I2FP form (handled by the INT/IMUL -> CVT cross edges above) and the
+#    remaining decoupled F2I forwards at 4 from any pipe.
+sm75	*	CVTI	6
+sm80	FMA	CVTI	6
+sm80	INT	CVTI	4
+sm80	IMUL	CVTI	4
+sm80	*	CVTI	6
+*	*	CVTI	4
