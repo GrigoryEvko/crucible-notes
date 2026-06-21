@@ -91,7 +91,7 @@ Blackwell-DC=34, consumer Blackwell=27). Population by form:
 | `FMA64` | 64-bit FMA path, wide convert | 66 | 66 | 111 | 67 | 67 |
 | `UNORDERED` | `BAR`/`CCTL`/`LDC`/`BMOV` | 48 | 45 | 88 | 94 | 92 |
 | `CBU` | convergence/branch (`BRA`/`BSSY`/`BSYNC`/`CALL`/`EXIT`) | 53 | 64 | 71 | 68 | 68 |
-| `TEX` | texture/surface (`TEX`/`SULD`/`SUQUERY`) | 61 | 53 | 57 | 24 | 36 |
+| `TEX` | texture/surface (`TEX`/`SULD`/`TXQ`) | 61 | 53 | 57 | 24 | 36 |
 | `REDIRECTABLE` | FP64 **emulation** queue (`DADD`/`DFMA`/`DMUL`) | 29 | 36 | 36 | 20 | **0** |
 | `REDIRECTABLE_FP16` | **Turing-only** FP16 pipe | 42 | 0 | 0 | 0 | 0 |
 | `FP64` | **SM120-only** *native* double precision | 0 | 0 | 0 | 0 | **20** |
