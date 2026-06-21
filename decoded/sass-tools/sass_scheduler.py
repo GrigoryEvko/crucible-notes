@@ -94,6 +94,7 @@ import sass_latency_tables as LT  # noqa: E402
 
 NVDISASM = "/usr/local/cuda-13.1/bin/nvdisasm"
 PTXAS = "/usr/local/cuda-13.1/bin/ptxas"
+NCU = "/usr/local/cuda-13.1/bin/ncu"
 TABLE_DIR = HERE.parent / "nvdisasm-sass-isa"
 
 
@@ -1039,12 +1040,14 @@ def patch_cubin(src: str, dst: str, entry: str,
 
 
 def _launch_harness() -> str | None:
-    """Build (once) and return the path to the C Driver-API launch harness."""
+    """Build (rebuilding on source change) the C Driver-API launch harness."""
     binpath = Path("/tmp/sass_sched_launch")
     src = HERE / "launch_cubin.c"
     if not src.exists():
         return None
-    if not binpath.exists():
+    stale = (not binpath.exists()
+             or binpath.stat().st_mtime < src.stat().st_mtime)
+    if stale:
         r = subprocess.run(
             ["gcc", "-O2", str(src), "-o", str(binpath),
              "-I/usr/local/cuda-13.1/include",
@@ -1056,13 +1059,31 @@ def _launch_harness() -> str | None:
     return str(binpath)
 
 
-def _run_kernel(harness: str, cubin: str, entry: str, nwords: int) -> str | None:
+def _harness_argv(harness: str, cubin: str, entry: str, nwords: int,
+                  grid: int = 1, block: int = 32, niter: int = 0,
+                  seed: int = 12345) -> list[str]:
+    """Positional argv for launch_cubin.c (backward compatible: a 3-arg call is
+    one block of 32 threads, single .param .u64 p; niter>0 appends the loop
+    count as a second .param .u32)."""
+    return [harness, cubin, entry, str(nwords), str(seed),
+            str(grid), str(block), str(niter)]
+
+
+def _run_kernel(harness: str, cubin: str, entry: str, nwords: int,
+                grid: int = 1, block: int = 32, niter: int = 0,
+                seed: int = 12345, quiet: bool = False) -> str | None:
+    """Launch the kernel and return its stdout (None on failure).  quiet=True
+    suppresses the failure diagnostic (used by the perf-diff bisection, where a
+    trial that tightens a real hazard is *expected* to fault)."""
     env = dict(os.environ)
     env["LD_LIBRARY_PATH"] = "/lib64:" + env.get("LD_LIBRARY_PATH", "")
-    r = subprocess.run([harness, cubin, entry, str(nwords)],
-                       capture_output=True, text=True, env=env)
+    r = subprocess.run(
+        _harness_argv(harness, cubin, entry, nwords, grid, block, niter, seed),
+        capture_output=True, text=True, env=env)
     if r.returncode != 0:
-        print(f"  ! launch failed: {r.stderr.strip()[:200]}", file=sys.stderr)
+        if not quiet:
+            print(f"  ! launch failed: {r.stderr.strip()[:200]}",
+                  file=sys.stderr)
         return None
     return r.stdout
 
@@ -1111,6 +1132,701 @@ def verify_dynamic(cubin: str, entry: str | None = None,
         return 0
     print("  RESULT: DIFFERENT -> composed schedule changed kernel semantics!")
     return 1
+
+
+# =============================================================================
+# GPU MEASUREMENT (Nsight Compute) : prove which stalls are wasteful, and read
+# per-instruction hardware warp-stall behaviour.  Two modes share the patch /
+# launch plumbing above (patch_cubin / _launch_harness / _run_kernel) and add a
+# thin ncu wrapper.  All metric names committed here are the PUBLIC ncu names
+# (smsp__pcsamp_warps_issue_stalled_*); the recovered can't-issue taxonomy is
+# used only to *interpret* them and is referred to solely by those public names.
+# =============================================================================
+
+# Public Nsight Compute warp-stall-reason metrics (Source Counters / PC sampling).
+# These are sampled per program-counter over the kernel runtime: each gives the
+# count of samples at which a resident warp at that PC was stalled for the named
+# reason.  Names verified against `ncu --query-metrics` on CUDA 13.1 / NCU 2025.4.
+PCSAMP_METRICS = [
+    "smsp__pcsamp_sample_count",
+    "smsp__pcsamp_warps_issue_stalled_short_scoreboard",
+    "smsp__pcsamp_warps_issue_stalled_long_scoreboard",
+    "smsp__pcsamp_warps_issue_stalled_wait",
+    "smsp__pcsamp_warps_issue_stalled_barrier",
+    "smsp__pcsamp_warps_issue_stalled_membar",
+    "smsp__pcsamp_warps_issue_stalled_not_selected",
+    "smsp__pcsamp_warps_issue_stalled_dispatch_stall",
+    "smsp__pcsamp_warps_issue_stalled_no_instructions",
+    "smsp__pcsamp_warps_issue_stalled_branch_resolving",
+    "smsp__pcsamp_warps_issue_stalled_math_pipe_throttle",
+    "smsp__pcsamp_warps_issue_stalled_mio_throttle",
+    "smsp__pcsamp_warps_issue_stalled_lg_throttle",
+    "smsp__pcsamp_warps_issue_stalled_tex_throttle",
+    "smsp__pcsamp_warps_issue_stalled_imc_miss",
+    "smsp__pcsamp_warps_issue_stalled_drain",
+    "smsp__pcsamp_warps_issue_stalled_sleeping",
+    "smsp__pcsamp_warps_issue_stalled_misc",
+]
+
+# Cycle-count metrics for the perf-diff (V1 vs V2) measurement.
+PERF_METRICS = ["sm__cycles_active.avg", "gpc__cycles_elapsed.max",
+                "smsp__inst_executed.sum"]
+
+# A short stall-reason key (the ncu suffix after "..._stalled_") -> how our
+# scheduling model classifies the instruction that would dominantly show it.
+# This is the cross-map MODE 2 reports: it bridges the live silicon stall reason
+# to (1) which scheduling MECHANISM our composer assigns and (2) the recovered
+# can't-issue taxonomy, referred to here only by its public ncu reason name.
+#   - "scoreboard wait (req_bit_set)" : our decoupled-producer scoreboard waits
+#   - "fixed usched stall"            : our coupled fixed-latency stalls
+#   - "structural / not modelled"     : issue-pipe / occupancy / branch effects
+#     that our single-warp dependency model does not predict (they are emergent
+#     from many-warp contention or control flow, not a per-edge hazard).
+STALL_REASON_MODEL = {
+    # decoupled producers resolved by a scoreboard the consumer waits on
+    "short_scoreboard": "scoreboard wait (req_bit_set)",   # MUFU / S2R / LDS / shared
+    "long_scoreboard":  "scoreboard wait (req_bit_set)",   # global/local memory load
+    # coupled fixed-latency producers resolved by a usched stall count
+    "wait":             "fixed usched stall",
+    "dispatch_stall":   "fixed usched stall",
+    "short_scoreboard_pipe_l1tex": "scoreboard wait (req_bit_set)",
+    # structural / many-warp / control-flow effects (not a per-edge hazard)
+    "not_selected":     "structural / not modelled",
+    "no_instructions":  "structural / not modelled",       # i-cache / branch refill
+    "branch_resolving": "structural / not modelled",
+    "math_pipe_throttle": "structural / not modelled",
+    "mio_throttle":     "structural / not modelled",
+    "lg_throttle":      "structural / not modelled",
+    "tex_throttle":     "structural / not modelled",
+    "imc_miss":         "structural / not modelled",        # immediate-constant miss
+    "barrier":          "structural / not modelled",
+    "membar":           "structural / not modelled",
+    "drain":            "structural / not modelled",
+    "sleeping":         "structural / not modelled",
+    "misc":             "structural / not modelled",
+    "selected":         "issued",
+}
+
+# ncu's access-denied signatures.  When profiling is restricted to admin users,
+# ncu exits with one of these; we detect it, print the exact remediation, and
+# degrade gracefully instead of failing the whole run.
+_NCU_PERM_SIGNATURES = (
+    "ERR_NVGPUCTRPERM", "insufficient permissions", "access is restricted",
+    "The user does not have permission", "profiling is not allowed",
+)
+
+_NCU_PERM_REMEDIATION = (
+    "  GPU performance counters are restricted to admin users on this box.\n"
+    "  Remediation (either):\n"
+    "    (a) add the modprobe option and reload the driver:\n"
+    "        echo 'options nvidia NVreg_RestrictProfilingToAdminUsers=0' \\\n"
+    "          | sudo tee /etc/modprobe.d/nvidia-profiling.conf\n"
+    "        then reboot (or reload nvidia.ko); or\n"
+    "    (b) run the profiler under sudo: sudo -E ncu ...\n"
+    "  See: https://developer.nvidia.com/ERR_NVGPUCTRPERM"
+)
+
+
+@dataclass
+class NcuResult:
+    ok: bool
+    blocked: bool                 # access-denied (permissions); see remediation
+    metrics: dict[str, float]     # aggregate metric -> value (perf mode)
+    per_pc: list[dict]            # per-instruction rows (stall-profile mode)
+    stderr: str
+
+
+def _ncu_available() -> bool:
+    return Path(NCU).exists()
+
+
+def _parse_ncu_num(s: str) -> float:
+    """Parse an ncu metric value: strips thousands separators, tolerates ''."""
+    s = s.strip().strip('"').replace(",", "")
+    if not s:
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _ncu_perf(harness: str, cubin: str, entry: str, grid: int, block: int,
+              niter: int, nwords: int = 8) -> NcuResult:
+    """Run ncu for the cycle metrics (V1/V2 perf-diff).  Detects access-denied
+    and returns blocked=True with the stderr so the caller can degrade."""
+    env = dict(os.environ)
+    env["LD_LIBRARY_PATH"] = "/lib64:" + env.get("LD_LIBRARY_PATH", "")
+    argv = [NCU, "--metrics", ",".join(PERF_METRICS), "--csv",
+            "--"] + _harness_argv(harness, cubin, entry, nwords, grid, block,
+                                  niter)
+    r = subprocess.run(argv, capture_output=True, text=True, env=env)
+    blocked = any(sig in (r.stderr + r.stdout) for sig in _NCU_PERM_SIGNATURES)
+    if blocked:
+        return NcuResult(False, True, {}, [], r.stderr)
+    if r.returncode != 0:
+        return NcuResult(False, False, {}, [], r.stderr)
+    metrics = _parse_ncu_csv_aggregate(r.stdout)
+    return NcuResult(bool(metrics), False, metrics, [], r.stderr)
+
+
+def _parse_ncu_csv_aggregate(csv_text: str) -> dict[str, float]:
+    """Pull metric values out of ncu's default-page `--csv` output, which is the
+    long format: one row per metric with 'Metric Name' / 'Metric Value' columns.
+    Returns {metric_name -> value}."""
+    import csv as _csv
+    import io
+    lines = [ln for ln in csv_text.splitlines() if ln.startswith('"')]
+    if not lines:
+        return {}
+    rows = list(_csv.reader(io.StringIO("\n".join(lines))))
+    header = rows[0]
+    if "Metric Name" not in header or "Metric Value" not in header:
+        return {}
+    ni, vi = header.index("Metric Name"), header.index("Metric Value")
+    out: dict[str, float] = {}
+    for r in rows[1:]:
+        if len(r) > max(ni, vi):
+            out[r[ni]] = _parse_ncu_num(r[vi])
+    return out
+
+
+def _ncu_pcsamp(harness: str, cubin: str, entry: str, grid: int, block: int,
+                niter: int, nwords: int = 8) -> NcuResult:
+    """Run ncu PC-sampling and read back the per-instruction (per-PC) warp-stall
+    histogram from the Source page CSV.  Exports a report then re-imports it on
+    the Source page so each row is one SASS instruction with its stall columns."""
+    env = dict(os.environ)
+    env["LD_LIBRARY_PATH"] = "/lib64:" + env.get("LD_LIBRARY_PATH", "")
+    rep = f"/tmp/sass_sched_pcsamp_{entry}"
+    collect = [NCU, "--metrics", ",".join(PCSAMP_METRICS),
+               "--export", rep, "--force-overwrite",
+               "--"] + _harness_argv(harness, cubin, entry, nwords, grid, block,
+                                     niter)
+    r = subprocess.run(collect, capture_output=True, text=True, env=env)
+    blocked = any(sig in (r.stderr + r.stdout) for sig in _NCU_PERM_SIGNATURES)
+    if blocked:
+        return NcuResult(False, True, {}, [], r.stderr)
+    if r.returncode != 0 or not Path(rep + ".ncu-rep").exists():
+        return NcuResult(False, False, {}, [], r.stderr)
+    rd = subprocess.run([NCU, "--import", rep + ".ncu-rep", "--page", "source",
+                         "--print-source", "sass", "--csv"],
+                        capture_output=True, text=True, env=env)
+    if rd.returncode != 0:
+        return NcuResult(False, False, {}, [], rd.stderr)
+    per_pc = _parse_ncu_source_csv(rd.stdout)
+    return NcuResult(bool(per_pc), False, {}, per_pc, "")
+
+
+def _parse_ncu_source_csv(csv_text: str) -> list[dict]:
+    """Parse the Source-page CSV: the first line names the kernel, the second is
+    the column header (Address, Source, then one column per pcsamp metric), and
+    each subsequent row is one SASS instruction.  Returns per-instruction dicts
+    keyed by the short stall-reason name (the suffix after '..._stalled_')."""
+    import csv as _csv
+    import io
+    lines = csv_text.splitlines()
+    # find the header row (the one starting with "Address")
+    hdr_i = next((i for i, ln in enumerate(lines)
+                  if ln.lstrip().startswith('"Address"')), None)
+    if hdr_i is None:
+        return []
+    rows = list(_csv.reader(io.StringIO("\n".join(lines[hdr_i:]))))
+    header = rows[0]
+
+    def _short(name: str) -> str:
+        m = re.search(r"warps_issue_stalled_(\w+)", name)
+        if m:
+            return m.group(1)
+        if name.endswith("pcsamp_sample_count"):
+            return "sample_count"
+        return name
+
+    cols = {i: _short(h) for i, h in enumerate(header)}
+    out: list[dict] = []
+    for r in rows[1:]:
+        if len(r) < 2 or not r[0].startswith("0x"):
+            continue
+        rec: dict = {"addr": int(r[0], 16), "sass": r[1].strip()}
+        reasons: dict[str, int] = {}
+        for i in range(2, min(len(r), len(header))):
+            reasons[cols[i]] = int(_parse_ncu_num(r[i]))
+        rec["reasons"] = reasons
+        out.append(rec)
+    return out
+
+
+# =============================================================================
+# Amplified probe corpus : self-contained per-iteration dependent chains looped
+# N times.  Each isolates one understall-candidate FAMILY in a hot loop so the
+# per-iteration stall delta accumulates above launch noise.  The body is written
+# so the only loop-carried value is the induction variable (and, where noted, a
+# cheap accumulator): this keeps the linear-DAG composer's schedule sound (no
+# hidden back-edge hazard), which is exactly what lets a bit-identical V2 prove
+# slack rather than mask a hazard.  Compiled at -O1 to keep ptxas from unrolling
+# (an unrolled body folds the back-edge into a chain the linear DAG mis-stalls).
+# =============================================================================
+
+AMP_PTX = {
+    # rsqrt/mul transcendental chain over INDEPENDENT elements (no data carry):
+    # exercises the MUFU decoupled-scoreboard waits + FMUL same-pipe stalls and a
+    # loop-invariant `MOV Rx, 0x4` that ptxas over-stalls (the corpus MOV case).
+    "amp_transc": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry amp_transc(.param .u64 p, .param .u32 niter) {
+  .reg .pred %pq; .reg .f32 %f<8>; .reg .b32 %r<8>; .reg .b64 %rd<5>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  ld.param.u32 %r2, [niter];
+  mov.u32 %r1, %tid.x; mov.u32 %r3, 0;
+$L:
+  add.s32 %r4, %r1, %r3;
+  cvt.rn.f32.u32 %f1, %r4;
+  rsqrt.approx.f32 %f2, %f1; mul.f32 %f3, %f2, %f2;
+  rsqrt.approx.f32 %f4, %f3; mul.f32 %f5, %f4, %f4;
+  and.b32 %r5, %r4, 7; mul.wide.u32 %rd3, %r5, 4; add.s64 %rd4, %rd2, %rd3;
+  st.global.f32 [%rd4], %f5;
+  add.s32 %r3, %r3, 1; setp.lt.u32 %pq, %r3, %r2; @%pq bra $L;
+  ret;
+}
+""",
+    # integer dependent chain over independent elements: same/cross-pipe coupled
+    # forwarding stalls (IMAD/LOP3/IADD3) -- the int_mul_chain understall family.
+    "amp_intchain": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry amp_intchain(.param .u64 p, .param .u32 niter) {
+  .reg .pred %pq; .reg .b32 %r<12>; .reg .b64 %rd<5>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  ld.param.u32 %r2, [niter];
+  mov.u32 %r1, %tid.x; mov.u32 %r3, 0;
+$L:
+  add.s32 %r4, %r1, %r3;
+  mul.lo.s32 %r5, %r4, %r4; xor.b32 %r6, %r5, %r4; mul.lo.s32 %r7, %r6, %r6;
+  add.s32 %r8, %r7, %r4;
+  and.b32 %r9, %r4, 7; mul.wide.u32 %rd3, %r9, 4; add.s64 %rd4, %rd2, %rd3;
+  st.global.u32 [%rd4], %r8;
+  add.s32 %r3, %r3, 1; setp.lt.u32 %pq, %r3, %r2; @%pq bra $L;
+  ret;
+}
+""",
+    # fp fma chain over independent elements: FFMA same-pipe forwarding stalls.
+    "amp_fpchain": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry amp_fpchain(.param .u64 p, .param .u32 niter) {
+  .reg .pred %pq; .reg .f32 %f<8>; .reg .b32 %r<8>; .reg .b64 %rd<5>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  ld.param.u32 %r2, [niter];
+  mov.u32 %r1, %tid.x; mov.u32 %r3, 0;
+$L:
+  add.s32 %r4, %r1, %r3; cvt.rn.f32.u32 %f1, %r4;
+  fma.rn.f32 %f2, %f1, %f1, 0f3F800000; fma.rn.f32 %f3, %f2, %f2, 0f40000000;
+  fma.rn.f32 %f4, %f3, %f3, 0f40400000; fma.rn.f32 %f5, %f4, %f4, 0f40800000;
+  and.b32 %r5, %r4, 7; mul.wide.u32 %rd3, %r5, 4; add.s64 %rd4, %rd2, %rd3;
+  st.global.f32 [%rd4], %f5;
+  add.s32 %r3, %r3, 1; setp.lt.u32 %pq, %r3, %r2; @%pq bra $L;
+  ret;
+}
+""",
+    # load-feeds-math over independent elements: the ULDC / IMAD.WIDE address
+    # computation + a global load feeding a short math chain (mem_chain family).
+    "amp_loadmath": """
+.version 8.3
+.target sm_XX
+.address_size 64
+.visible .entry amp_loadmath(.param .u64 p, .param .u32 niter) {
+  .reg .pred %pq; .reg .b32 %r<10>; .reg .b64 %rd<6>;
+  ld.param.u64 %rd1, [p]; cvta.to.global.u64 %rd2, %rd1;
+  ld.param.u32 %r2, [niter];
+  mov.u32 %r1, %tid.x; mov.u32 %r3, 0;
+$L:
+  add.s32 %r4, %r1, %r3; and.b32 %r5, %r4, 7;
+  mul.wide.u32 %rd3, %r5, 4; add.s64 %rd4, %rd2, %rd3;
+  ld.global.u32 %r6, [%rd4];
+  add.s32 %r7, %r6, 7; mul.lo.s32 %r8, %r7, %r7; add.s32 %r9, %r8, %r6;
+  st.global.u32 [%rd4], %r9;
+  add.s32 %r3, %r3, 1; setp.lt.u32 %pq, %r3, %r2; @%pq bra $L;
+  ret;
+}
+""",
+}
+
+
+def build_amp_corpus(workdir: Path, arch: str) -> list[tuple[str, str]]:
+    """Compile every amplified probe for one arch.  Returns [(name, cubin)].
+
+    Uses -O1 so ptxas does not unroll the loop (an unrolled body folds the
+    back-edge into a straight chain the linear-DAG composer would under-stall;
+    the per-instruction surgical / full-composed V2 is only sound on the rolled
+    loop)."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    smnum = arch.lower().replace("sm", "").lstrip("_")
+    smflag = f"sm_{smnum}"
+    ver = _ptx_version_for(smnum)
+    out = []
+    for name, tpl in AMP_PTX.items():
+        ptx = tpl.replace("sm_XX", smflag).replace(
+            ".version 8.3", f".version {ver}").strip()
+        ptx_path = workdir / f"{name}.ptx"
+        cub = workdir / f"{name}.cubin"
+        ptx_path.write_text(ptx)
+        r = subprocess.run([PTXAS, "-arch", smflag, "-O1", "-o", str(cub),
+                            str(ptx_path)], capture_output=True, text=True)
+        if r.returncode == 0:
+            out.append((name, str(cub)))
+        else:
+            print(f"  ! ptxas {smflag} {name} failed: {r.stderr.strip()[:120]}",
+                  file=sys.stderr)
+    return out
+
+
+def _understall_candidates(d: Decomposition, cr: ComposeResult) -> list[dict]:
+    """The understall candidates in a (decomposed, composed) kernel: coupled
+    producers feeding a coupled RAW where our composed stall < ptxas's stall."""
+    cands = []
+    for i, (c, f) in enumerate(zip(d.ctrls, cr.fields)):
+        node = d.dag.nodes[i]
+        if (node.coupled and _feeds_coupled_raw(d.dag, i)
+                and f.stall < c.stall):
+            cands.append({"idx": i, "offset": c.offset, "mnem": c.mnem,
+                          "ptxas": c.stall, "composed": f.stall})
+    return cands
+
+
+# =============================================================================
+# MODE 1 : --perf-diff  -- turn understall "candidates" into measured fact.
+# =============================================================================
+
+def perf_diff(arch: str = "sm_89", grid: int = 20, block: int = 32,
+              niter: int = 200000, workdir: Path | None = None) -> int:
+    """Measure, on the GPU, whether ptxas's conservative stalls are genuine waste.
+
+    For each amplified probe that carries an understall candidate, build two
+    cubins -- V1 = ptxas's native control words, V2 = ptxas's words with ONLY the
+    understall-candidate instructions' stalls tightened to our composed value
+    (every other control word held at ptxas).  This SURGICAL V2 isolates exactly
+    the slack ptxas left on those instructions: any cycle change is attributable
+    to the candidate stalls alone, not to a wholesale re-schedule (a full
+    recompose also raises other stalls -- over-stalls -- which would wash out the
+    signal).  Run BOTH under ncu on identical inputs, gate on bit-identical
+    output (the correctness gate), and compare cycles.  Per-kernel verdict:
+
+      * V2 bit-identical AND fewer cycles : MEASURED ptxas WASTE (the candidate
+        stalls were slack -- removing them really saves cycles).
+      * V2 bit-identical AND equal cycles : HARDWARE-ENFORCED (the stall delta is
+        absorbed; the latency is structural, not wasted issue slots).
+      * V2 NOT bit-identical              : HAZARD, not waste (>=1 of those stalls
+        was required -- tightening it changes results; ptxas was right).
+
+    Runs at low occupancy (one warp per scheduler) so a per-warp dispatch stall
+    is exposed on the critical path rather than hidden behind sibling warps.
+    """
+    import copy
+    workdir = workdir or Path("/tmp/sass_sched_amp")
+    harness = _launch_harness()
+    if harness is None:
+        print("  ! launch harness unavailable (need gcc + libcuda)",
+              file=sys.stderr)
+        return 2
+    if not _ncu_available():
+        print(f"  ! ncu not found at {NCU}", file=sys.stderr)
+        return 2
+
+    print("=" * 78)
+    print(f"PERF-DIFF  (ptxas V1 vs composed V2, measured on the GPU)  arch={arch}")
+    print(f"  grid={grid} block={block} niter={niter}  "
+          f"(low occupancy: per-warp stall on the critical path)")
+    print("=" * 78)
+
+    cubins = build_amp_corpus(workdir, arch)
+    verdicts = []
+    blocked = False
+    for name, cub in cubins:
+        d = decompose(cub)
+        cr = compose(d.dag, d.ctrls)
+        cands = _understall_candidates(d, cr)
+        if not cands:
+            continue
+        # entry name == probe name (the .entry directive)
+        entry = name
+        # SURGICAL V2: ptxas base, only the understall candidates tightened.
+        base = [ctrl_to_fields(c) for c in d.ctrls]
+        surg = copy.deepcopy(base)
+        for c in cands:
+            surg[c["idx"]].usched = stall_to_usched(c["composed"],
+                                                    end_group=False)
+        v2 = f"{workdir}/{name}_v2.cubin"
+        patch_cubin(cub, v2, entry, surg)
+        saved = sum(c["ptxas"] - c["composed"] for c in cands)
+
+        # correctness gate: identical output on the GPU (a faulting V2 just means
+        # the all-candidates tighten hit a hazard -> bisect below, so quiet).
+        out1 = _run_kernel(harness, cub, entry, 8, grid, block, niter)
+        out2 = _run_kernel(harness, v2, entry, 8, grid, block, niter, quiet=True)
+        identical = (out1 is not None and out1 == out2)
+
+        cand_desc = ", ".join(f"#{c['idx']} {_base_mnem(c['mnem'])} "
+                              f"{c['ptxas']}->{c['composed']}" for c in cands)
+        print(f"\n{name}  ({len(cands)} understall candidate(s), "
+              f"{saved} stall cyc/iter removed: {cand_desc})")
+
+        if not identical:
+            # >=1 candidate is a real hazard.  Bisect (launch-only, no ncu) to
+            # find the largest subset whose tightening stays bit-identical, so we
+            # report exactly which candidates are waste vs which are hazards.
+            safe = []
+            for c in cands:
+                trial = copy.deepcopy(base)
+                for s in safe + [c]:
+                    trial[s["idx"]].usched = stall_to_usched(s["composed"],
+                                                             end_group=False)
+                tcub = f"{workdir}/{name}_trial.cubin"
+                patch_cubin(cub, tcub, entry, trial)
+                ot = _run_kernel(harness, tcub, entry, 8, grid, block, niter,
+                                 quiet=True)
+                if ot is not None and ot == out1:
+                    safe.append(c)
+            hazards = [c for c in cands if c not in safe]
+            hz_desc = ", ".join(f"#{c['idx']} {_base_mnem(c['mnem'])} "
+                                f"{c['ptxas']}->{c['composed']}" for c in hazards)
+            print(f"  GATE: V2 output DIFFERS from V1  -> HAZARD on: {hz_desc}")
+            if not safe:
+                print("  VERDICT: HAZARD (every candidate stall is required; "
+                      "not waste)")
+                verdicts.append((name, "hazard", 0, 0, cands))
+                continue
+            # measure the safe subset instead
+            surg2 = copy.deepcopy(base)
+            for c in safe:
+                surg2[c["idx"]].usched = stall_to_usched(c["composed"],
+                                                         end_group=False)
+            patch_cubin(cub, v2, entry, surg2)
+            saved = sum(c["ptxas"] - c["composed"] for c in safe)
+            safe_desc = ", ".join(f"#{c['idx']} {_base_mnem(c['mnem'])}"
+                                  for c in safe)
+            print(f"  safe subset (bit-identical): {safe_desc}  "
+                  f"({saved} stall cyc/iter)")
+            cands = safe        # measure + report the safe subset
+
+        # measure both variants
+        r1 = _ncu_perf(harness, cub, entry, grid, block, niter)
+        if r1.blocked:
+            blocked = True
+            break
+        r2 = _ncu_perf(harness, v2, entry, grid, block, niter)
+        if r2.blocked:
+            blocked = True
+            break
+        if not (r1.ok and r2.ok):
+            print(f"  ! ncu measurement failed "
+                  f"(v1={r1.stderr[:80]} v2={r2.stderr[:80]})")
+            continue
+
+        c1 = r1.metrics.get("gpc__cycles_elapsed.max", 0.0)
+        c2 = r2.metrics.get("gpc__cycles_elapsed.max", 0.0)
+        delta = c1 - c2
+        pct = (100.0 * delta / c1) if c1 else 0.0
+        # noise floor: treat sub-0.5% as hardware-enforced (within run jitter)
+        if c1 and pct > 0.5:
+            verdict = "WASTE"
+        else:
+            verdict = "hw-enforced"
+        print(f"  GATE: V2 bit-identical to V1 (correctness OK)")
+        print(f"  cycles V1(ptxas)={c1:,.0f}  V2(composed)={c2:,.0f}  "
+              f"delta={delta:,.0f} ({pct:+.2f}%)")
+        print(f"  VERDICT: {'MEASURED ptxas WASTE' if verdict=='WASTE' else 'HARDWARE-ENFORCED (stall absorbed)'}")
+        verdicts.append((name, verdict, c1, c2, cands))
+
+    if blocked:
+        print("\n" + "=" * 78)
+        print("PROFILING BLOCKED (ncu access-denied)")
+        print(_NCU_PERM_REMEDIATION)
+        print("  (the perf-diff cubins were still built; rerun once profiling is "
+              "permitted.)")
+        return 3
+
+    print("\n" + "=" * 78)
+    print("PERF-DIFF SUMMARY")
+    print("=" * 78)
+    for name, verdict, c1, c2, cands in verdicts:
+        tag = {"WASTE": "MEASURED ptxas WASTE",
+               "hw-enforced": "hardware-enforced",
+               "hazard": "HAZARD (not waste)"}[verdict]
+        extra = (f"  {c1:,.0f} -> {c2:,.0f} cyc" if c1 else "")
+        print(f"  {name:<16} {tag}{extra}")
+    return 0
+
+
+# =============================================================================
+# MODE 2 : --stall-profile  -- per-instruction hardware warp-stall observability,
+# cross-mapped to our scheduling model.
+# =============================================================================
+
+def stall_profile(cubin: str, entry: str | None = None, grid: int = 20,
+                  block: int = 256, niter: int = 60000,
+                  amp: str | None = None) -> int:
+    """Read live per-instruction warp-stall reasons (ncu PC sampling) and confirm
+    they agree with our scheduling model.
+
+    For each SASS instruction we get the dominant observed stall reason (the
+    public ncu `..._issue_stalled_<reason>` metric with the most samples) and
+    cross-map it to (1) the MECHANISM our composer assigned that instruction (a
+    fixed usched stall vs a scoreboard `req_bit_set` wait), and (2) the recovered
+    can't-issue taxonomy (referred to by the public ncu reason name).  We then
+    report agreement: does `long_scoreboard` land on our decoupled-producer waits
+    (global loads), `short_scoreboard` on our shorter decoupled waits (MUFU /
+    shared), `wait`/`dispatch_stall` on our fixed coupled stalls?  Any instruction
+    whose observed reason contradicts our classification is flagged.
+
+    If `amp` names an amplified probe, that probe is built and profiled (its loop
+    gives enough samples per PC); otherwise the given cubin is profiled directly.
+    """
+    harness = _launch_harness()
+    if harness is None:
+        print("  ! launch harness unavailable", file=sys.stderr)
+        return 2
+    if not _ncu_available():
+        print(f"  ! ncu not found at {NCU}", file=sys.stderr)
+        return 2
+
+    if amp:
+        wd = Path("/tmp/sass_sched_amp")
+        built = dict(build_amp_corpus(wd, "sm_89"))
+        if amp not in built:
+            print(f"  ! no amplified probe '{amp}' (have {list(built)})",
+                  file=sys.stderr)
+            return 2
+        cubin, entry = built[amp], amp
+
+    if entry is None:
+        out = subprocess.run([NVDISASM, "-c", cubin], capture_output=True,
+                             text=True).stdout
+        m = re.search(r"\.text\.(\S+)", out)
+        entry = m.group(1) if m else None
+    if entry is None:
+        print("  ! could not determine entry name", file=sys.stderr)
+        return 2
+
+    res = _ncu_pcsamp(harness, cubin, entry, grid, block, niter)
+    if res.blocked:
+        print("PROFILING BLOCKED (ncu access-denied)")
+        print(_NCU_PERM_REMEDIATION)
+        return 3
+    if not res.ok:
+        print(f"  ! pcsamp failed: {res.stderr[:200]}", file=sys.stderr)
+        return 2
+
+    # our model's per-instruction prediction (mechanism)
+    d = decompose(cubin)
+    cr = compose(d.dag, d.ctrls)
+    pred = _model_mechanism(d, cr)        # offset -> ("fixed usched stall"|"scoreboard wait (req_bit_set)"|"none", detail)
+
+    # align ncu rows (virtual addrs) to our offsets via the first instruction PC
+    base_addr = res.per_pc[0]["addr"] if res.per_pc else 0
+
+    print("=" * 100)
+    print(f"STALL-PROFILE  {Path(cubin).name}  entry={entry}  "
+          f"(grid={grid} block={block} niter={niter})")
+    print("  per-instruction dominant warp-stall reason (ncu PC sampling) vs our "
+          "scheduling-model prediction")
+    print("=" * 100)
+    hdr = (f"{'off':>6} {'mnem':<20} {'samples':>8} {'dominant ncu stall':<20} "
+           f"{'-> our mechanism':<32} {'model pred':<32} {'agree'}")
+    print(hdr)
+    print("-" * 130)
+
+    agree = contradict = 0
+    contradictions = []
+    for row in res.per_pc:
+        off = row["addr"] - base_addr
+        reasons = row["reasons"]
+        samples = reasons.get("sample_count", 0)
+        # dominant *stall* reason (exclude the issued 'selected' bucket)
+        stall_reasons = {k: v for k, v in reasons.items()
+                         if k not in ("sample_count", "selected") and v > 0}
+        dom = max(stall_reasons, key=stall_reasons.get) if stall_reasons else "-"
+        obs_mech = STALL_REASON_MODEL.get(dom, "structural / not modelled")
+        pm, detail = pred.get(off, ("none", ""))
+        mnem = _offset_mnem(d, off)
+
+        is_term = _base_mnem(mnem) in (
+            "EXIT", "BRA", "BRX", "JMP", "CALL", "RET", "BSSY", "BSYNC", "NOP")
+        if dom == "-" or samples < 3:
+            verdict = "."        # too few samples to judge
+        elif obs_mech == "issued":
+            verdict = "."
+        elif is_term:
+            # a terminator's `wait` is drain (in-flight memory retiring at EXIT)
+            # or branch resolution -- structural, not a per-edge data hazard.
+            verdict = "~"
+        elif obs_mech == "structural / not modelled":
+            verdict = "~"        # structural effect our per-edge model omits
+        elif pm == "none":
+            # observed a data-dependency stall where our model predicted none
+            verdict = "X"
+            contradict += 1
+            contradictions.append((off, mnem, dom, obs_mech, pm))
+        elif obs_mech == pm:
+            verdict = "OK"
+            agree += 1
+        else:
+            verdict = "X"
+            contradict += 1
+            contradictions.append((off, mnem, dom, obs_mech, pm))
+
+        print(f"{off:#06x} {mnem:<20} {samples:>8} {dom:<20} "
+              f"{obs_mech:<32} {pm:<32} {verdict}")
+
+    print("-" * 130)
+    judged = agree + contradict
+    rate = (100.0 * agree / judged) if judged else 100.0
+    print(f"\nMODEL-vs-SILICON AGREEMENT (data-dependency stalls only): "
+          f"{agree}/{judged} = {rate:.1f}%")
+    print(f"  '.' issued / too-few-samples   '~' structural (not a per-edge "
+          f"hazard our model predicts)   'OK' agree   'X' contradiction")
+    if contradictions:
+        print("\nCONTRADICTIONS (observed data-stall reason vs our prediction)")
+        for off, mnem, dom, obs, pm in contradictions:
+            print(f"  @{off:#06x} {mnem:<18} ncu={dom} ({obs}) vs model={pm or 'none'}")
+    else:
+        print("  No contradictions: every observed data-dependency stall matches "
+              "the mechanism our scheduler assigned.")
+    return 0
+
+
+def _model_mechanism(d: Decomposition, cr: ComposeResult) -> dict[int, tuple]:
+    """offset -> (mechanism, detail) our composer assigns each instruction:
+    'scoreboard wait (req_bit_set)' if it waits on a decoupled producer's
+    scoreboard; 'fixed usched stall' if it carries (or a producer owes it) a
+    fixed coupled stall; else 'none'."""
+    out: dict[int, tuple] = {}
+    for i, (c, f) in enumerate(zip(d.ctrls, cr.fields)):
+        off = c.offset
+        # consumer waits on a scoreboard -> decoupled-producer dependency
+        waits_sb = f.wait_mask != 0
+        # this instruction must wait on a fixed coupled stall from a producer
+        # (an incoming fixed-latency RAW edge), or carries a stall itself for a
+        # coupled consumer.
+        in_fixed = any(_is_stall_edge(e) for e in d.dag.in_edges(i))
+        if waits_sb:
+            out[off] = ("scoreboard wait (req_bit_set)",
+                        f"wait_mask={f.wait_mask:06b}")
+        elif in_fixed:
+            out[off] = ("fixed usched stall", "incoming fixed RAW")
+        else:
+            out[off] = ("none", "")
+    return out
+
+
+def _offset_mnem(d: Decomposition, off: int) -> str:
+    for c in d.ctrls:
+        if c.offset == off:
+            return c.mnem
+    return "?"
 
 
 def _scoreboard_pairs(d: Decomposition) -> set[tuple[int, int]]:
@@ -1593,6 +2309,22 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--verify-corpus", action="store_true")
     ap.add_argument("--arches", nargs="+",
                     help="arches for --verify-corpus (default sm_89 sm_75 sm_80 sm_90)")
+    ap.add_argument("--perf-diff", action="store_true",
+                    help="MODE 1: build amplified probes, measure ptxas (V1) vs "
+                         "composed (V2) cycles on the GPU with ncu, gate on "
+                         "bit-identical output, classify each understall as real "
+                         "ptxas waste vs hardware-enforced")
+    ap.add_argument("--stall-profile", metavar="CUBIN", nargs="?", const="",
+                    help="MODE 2: per-instruction warp-stall-reason histogram "
+                         "(ncu PC sampling) cross-mapped to our scheduling model")
+    ap.add_argument("--amp", metavar="PROBE",
+                    help="amplified probe name for --stall-profile (e.g. "
+                         "amp_transc / amp_intchain / amp_fpchain / amp_loadmath)")
+    ap.add_argument("--arch", default="sm_89",
+                    help="arch for --perf-diff (default sm_89)")
+    ap.add_argument("--grid", type=int, help="grid blocks (GPU-measurement modes)")
+    ap.add_argument("--block", type=int, help="block threads (GPU-measurement modes)")
+    ap.add_argument("--niter", type=int, help="loop iterations (amplification)")
     args = ap.parse_args(argv[1:])
 
     if args.decompose:
@@ -1618,6 +2350,22 @@ def main(argv: list[str]) -> int:
         return verify_dynamic(args.verify_dyn, args.entry)
     if args.verify_corpus:
         return verify_corpus(args.arches)
+    if args.perf_diff:
+        return perf_diff(arch=args.arch,
+                         grid=args.grid if args.grid else 20,
+                         block=args.block if args.block else 32,
+                         niter=args.niter if args.niter else 200000)
+    if args.stall_profile is not None:
+        cub = args.stall_profile or None
+        if cub is None and not args.amp:
+            print("  ! --stall-profile needs a CUBIN or --amp PROBE",
+                  file=sys.stderr)
+            return 2
+        return stall_profile(cub or "", entry=args.entry,
+                             grid=args.grid if args.grid else 20,
+                             block=args.block if args.block else 256,
+                             niter=args.niter if args.niter else 60000,
+                             amp=args.amp)
     ap.print_help()
     return 0
 

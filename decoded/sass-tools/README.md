@@ -224,6 +224,9 @@ transposed RAW matrix is the classic reconstruction mistake.
   (`launch_cubin.c`: `cuModuleLoad` + `cuLaunchKernel`, plain C against `libcuda`
   to avoid the gcc/nvcc host-header clash), and diff the output. Identical output
   proves the composed schedule is hazard-safe.
+- `--perf-diff` — **MODE 1, measured ptxas-waste proof** (below).
+- `--stall-profile {K.cubin | --amp PROBE}` — **MODE 2, per-instruction warp-stall
+  observability** (below).
 
 ```sh
 python3 sass_scheduler.py --decompose k.cubin
@@ -231,7 +234,108 @@ python3 sass_scheduler.py --compose   k.cubin          # composed vs ptxas, per 
 python3 sass_scheduler.py --debug      k.cubin --dot k.dot
 python3 sass_scheduler.py --verify-corpus
 python3 sass_scheduler.py --verify-dyn k.cubin --entry kname   # needs gcc + GPU
+python3 sass_scheduler.py --perf-diff  --arch sm_89            # needs gcc + ncu + GPU
+python3 sass_scheduler.py --stall-profile --amp amp_loadmath   # needs gcc + ncu + GPU
 ```
+
+### GPU measurement: which conservative stalls are *real waste*
+
+`--verify-corpus` reports an `understall_vs_ptxas_conservatism` bucket — coupled
+instructions where our hazard-safe composed stall is **smaller** than ptxas's and
+the kernel still runs bit-identical (e.g. `transcendental MOV ptxas=4/composed=1`,
+`mem_chain IMAD.WIDE ptxas=6/composed=5`). Those are *candidate* over-stalls. The
+two GPU modes turn the candidates into measured fact and validate the model
+against live silicon. Both reuse the patch/launch plumbing (`patch_cubin`,
+`launch_cubin.c`) and add a thin Nsight Compute (`ncu`) wrapper. Every metric name
+in the code is a **public ncu name**; the recovered can't-issue taxonomy is used
+only to *interpret* them.
+
+**`--perf-diff` — proving ptxas waste on the GPU.** The corpus probes are tiny, so
+a per-instruction stall delta is invisible above launch noise. The mode compiles
+an **amplified probe corpus** (`AMP_PTX`): each probe is a self-contained
+per-iteration dependent chain looped `N` times so the per-iteration delta
+accumulates, built at `-O1` so ptxas does not unroll (an unrolled body folds the
+loop back-edge into a chain the linear-DAG composer would under-stall). For each
+probe with an understall candidate it builds **V1** (ptxas's native control words)
+and a **surgical V2** (ptxas's words with *only* the understall-candidate stalls
+tightened — every other word held at ptxas, so any cycle change is attributable to
+those stalls alone), measures both under `ncu`
+(`sm__cycles_active.avg`, `gpc__cycles_elapsed.max`, `smsp__inst_executed.sum`) at
+**low occupancy** (one warp per scheduler, so a per-warp dispatch stall is on the
+critical path, not hidden behind sibling warps), and gates on **bit-identical
+output**. When the all-candidates tighten faults or diverges, it **bisects**
+(launch-only) to the largest bit-identical subset and measures that. Per-kernel
+verdict:
+
+| verdict | condition | meaning |
+|---|---|---|
+| **MEASURED ptxas WASTE** | V2 bit-identical, V2 fewer cycles (> 0.5 %) | the candidate stalls were slack — removing them really saves cycles |
+| **hardware-enforced** | V2 bit-identical, equal cycles | the stall delta is absorbed; the latency is structural, not wasted issue slots |
+| **HAZARD (not waste)** | V2 output differs | ≥ 1 of those stalls was required — tightening changes results; ptxas was right |
+
+Measured on the sm_89 GPU (RTX 1000 Ada, 20 SMs, `niter=150000`, grid 20×32):
+
+| probe | safe candidates | V1 cyc | V2 cyc | Δ | verdict |
+|---|---|---|---|---|---|
+| `amp_transc` | ULDC, IADD3, LOP3, IMAD.WIDE (MOV is a hazard) | 17.03 M | 15.30 M | **−10.1 %** | **MEASURED WASTE** |
+| `amp_fpchain` | ULDC, IADD3, I2FP, LOP3, IMAD | 6.15 M | 5.70 M | **−7.3 %** | **MEASURED WASTE** |
+| `amp_intchain` | ULDC, MOV | 6.75 M | 6.75 M | ≈ 0 % | hardware-enforced |
+| `amp_loadmath` | ULDC (IMAD is a hazard) | 10.95 M | 10.95 M | ≈ 0 % | hardware-enforced |
+
+So some of ptxas's `understall_vs_ptxas_conservatism` cases are **genuine slack**
+(the transcendental/FP chains run ~7–10 % faster with the conservative stalls
+removed, bit-identical), while others are **hardware-enforced** (the integer-chain
+and load-feeds-math stalls are absorbed by surrounding latency — removing them
+changes nothing) and a few are **real hazards the linear-DAG composer cannot see**
+(a loop-carried `MOV`/`IMAD` feeding the address path), which the bit-identical
+gate correctly rejects.
+
+**`--stall-profile` — per-instruction warp-stall observability.** Runs `ncu` PC
+sampling (the public `smsp__pcsamp_warps_issue_stalled_*` family via the Source
+Counters page), reads back a **per-SASS-instruction stall-reason histogram**, and
+cross-maps each instruction's dominant reason to (1) the mechanism our composer
+assigned it (a fixed `usched` stall vs a scoreboard `req_bit_set` wait) and (2) the
+recovered can't-issue taxonomy (named only by its public ncu reason). It then
+reports model-vs-silicon **agreement**:
+
+- `long_scoreboard` lands on our **decoupled global-memory-load** waits (e.g. the
+  `IADD3` consuming a `LDG.E` in `amp_loadmath` — 33 k samples, exactly our
+  scoreboard wait);
+- `short_scoreboard` lands on our shorter **decoupled MUFU / shared** waits (the
+  two `FMUL`s consuming `MUFU.RSQ` in `amp_transc`);
+- `wait` / `dispatch_stall` land on our **fixed coupled stalls** (the FFMA / IMAD /
+  ISETP forwarding chains);
+- branch-refill (`no_instructions` / `branch_resolving`), `imc_miss` and `drain`
+  are flagged `~` (structural effects of many-warp contention / control flow, not
+  a per-edge hazard our single-warp model predicts).
+
+Across the four amplified probes the agreement on data-dependency stalls is
+**100 % (`amp_intchain`), 93.8 % (`amp_transc`), 88.9 % (`amp_fpchain`), 85.7 %
+(`amp_loadmath`)**. The handful of contradictions are useful model-refinement
+flags: e.g. in `amp_loadmath` an `IMAD` consuming a *coupled* producer shows `wait`
+(ncu is right — a fixed stall) where our model over-attributed the load's
+scoreboard; in `amp_fpchain` a constant-`MOV` feeding the address `IMAD.WIDE` shows
+a `wait` our per-edge model did not predict. The contradictions are reported
+per-instruction so they can drive the next round of model calibration.
+
+### Reachability ladder (how deep can we observe the scheduler?)
+
+| Tier | channel | on this box | what it gives | caveats |
+|---|---|---|---|---|
+| **1** | Nsight Compute (`ncu`) PC sampling + cycle counters | **usable** (no sudo; `NVreg_RestrictProfilingToAdminUsers=0`) | per-instruction warp-stall-reason histograms, per-kernel cycle counts (both modes here) | sampled, aggregated over warps; not per-issue-slot truth |
+| **2** | CUDA Debugger API / `cuda-gdb` | **possible** (verified: attach, `break_on_launch`, `stepi`, `info registers`, `info cuda warps/lanes`) | architectural ground truth — GPRs, PC, active/divergent lane masks for a *stopped* warp, SASS single-step | invasive: stops the whole grid, so it reads register/PC state, not live pipeline timing — complementary to Tier 1, not a stall-timing channel |
+| **3** | privileged BAR0 / on-chip performance-monitor MMIO | not attempted | raw can't-issue signal counters behind the public metric names | root + undocumented register map + real risk of wedging the GPU |
+| **4** | JTAG / DFT scan | n/a | gate-level state | lab equipment only |
+
+Tier 1 is what these modes use and is sufficient to *prove* waste (cycle deltas
+under a correctness gate) and to *validate* the scheduling model against live
+silicon (per-instruction stall-reason agreement). Tier 2 is feasible here as a
+future architectural-state oracle; Tiers 3–4 are out of scope.
+
+If `ncu` returns an access-denied error (`ERR_NVGPUCTRPERM`), both modes detect it
+early, print the exact remediation (the `NVreg_RestrictProfilingToAdminUsers=0`
+modprobe option, or running under `sudo`), and degrade gracefully — the perf-diff
+cubins are still built so the run can be repeated once profiling is permitted.
 
 **Validation (CUDA 13.1).** **Producer→scoreboard pairing is 100 %** on every
 arch (which producer arms each consumer's wait bit is reproduced exactly).
