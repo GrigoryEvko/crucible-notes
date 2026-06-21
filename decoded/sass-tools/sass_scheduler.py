@@ -18,9 +18,15 @@ fixed by which side reads and which writes:
 
   * RAW  (P writes reg, C reads it)  : edge P->C, weight = P's RESULT latency
         (the producer must have produced the value). For coupled-math producers
-        this collapses to the issue-relative stall: 4 same-pipe, 5 cross-pipe,
-        13 if the producer writes a condition-code / predicate (the control band).
-        Never dropped.
+        this collapses to an issue-relative stall looked up by (arch-family,
+        producer-pipe, consumer-pipe) in the table-driven model
+        (sass_latency_tables): 4 same-pipe, 5 cross-pipe, the AGU pre-issue slot
+        (5; 8 on Turing), the slow-input latch (6 to the float<->int conversion;
+        4/6 to MUFU by arch), and 13 (12 on Turing) if the producer writes a
+        condition-code / predicate read as a guard (the control band).  The pipe
+        and the coupled/decoupled verdict come from the per-arch SASS-ISA table
+        (INSTRUCTION_TYPE / VIRTUAL_QUEUE); the magnitudes from a calibrated
+        matrix recovered by differential analysis of emitted SASS.
   * WAR  (P reads reg, C writes it)  : edge P->C, weight = a SMALL operand-read
         latency -- its OWN per-resource default, NOT the transpose of the RAW
         weight. On registers it is zero-but-ordered (the reader has already
@@ -96,16 +102,16 @@ TABLE_DIR = HERE.parent / "nvdisasm-sass-isa"
 # SASS).  These are the dependency EDGE WEIGHTS, not the scalar result bands.
 # =============================================================================
 
-# Coupled-math RAW (issue-relative): the stall the consumer owes after the
-# producer issues.  Confirmed stable SM75->SM120 on the emitted control words.
-COUPLED_SAME_PIPE = 4     # IADD3->IADD3, IMAD->IMAD, FFMA->FFMA, FADD->FADD ...
-COUPLED_CROSS_PIPE = 5    # IADD3->IMAD, LOP3/FMUL->consumer (inter-pipe penalty)
-COUPLED_CC_PRED = 13      # producer writes a condition-code / predicate (ISETP)
-COUPLED_FWD_SAME = 0      # same-pipe back-to-back forwarding (no hazard)
+# Coupled-math RAW issue-relative anchors, kept for the debug reasoning labels.
+# The actual per-(arch,pipe,pipe) magnitudes come from the table-driven model in
+# sass_latency_tables (coupled_stall); these are only the canonical names the
+# --debug output uses to describe an edge's weight.
+COUPLED_SAME_PIPE = 4     # same-pipe coupled forwarding
+COUPLED_CROSS_PIPE = 5    # cross-pipe inter-pipe penalty
 
-# Variable-latency producers handled by scoreboards, not stalls.  The number
-# here is the result-band MAGNITUDE (used only for critical-path weighting and
-# debug reasoning) -- the *mechanism* is always a scoreboard wait.
+# Structural-fallback band magnitudes for the operand classifier and the
+# classify_mnem fallback (used only when a mnemonic is absent from the per-arch
+# table; the authoritative bands come from sass_latency_tables.result_band).
 VARLAT_BAND = {
     "LDG": 300, "LD": 300, "LDL": 300, "LDS": 30, "LDSM": 30, "LDC": 24,
     "STG": 1, "STS": 1, "STL": 1, "ST": 1, "RED": 1, "ATOMG": 300, "ATOM": 300,
@@ -115,20 +121,6 @@ VARLAT_BAND = {
     "FLO": 13, "BREV": 24, "PRMT": 13,
     "HMMA": 13, "IMMA": 13, "DMMA": 13, "BMMA": 13, "OMMA": 13,
     "LDGSTS": 300, "LDGDEPBAR": 1, "DEPBAR": 1,
-}
-
-# Pipe family of a coupled-math mnemonic, for the same-pipe / cross-pipe split.
-# (Two ops are "same pipe" when they share a family; a different family pays +1.)
-PIPE_FAMILY = {
-    # integer FXU / IMAD pipe
-    "IADD3": "I", "IMAD": "IMAD", "LOP3": "I", "LEA": "I", "SHF": "I",
-    "ISETP": "I", "IABS": "I", "BMSK": "I", "SGXT": "I", "FLO": "I",
-    "SEL": "I", "PRMT": "I", "P2R": "I", "R2P": "I", "PLOP3": "I",
-    # FP32 FMA pipe
-    "FFMA": "F", "FADD": "F", "FMUL": "F", "FMNMX": "F", "FSETP": "F",
-    "FSEL": "F", "FSET": "F", "MOV": "F", "FSWZADD": "F",
-    # FP16x2 pipe
-    "HADD2": "H", "HMUL2": "H", "HFMA2": "H", "HSETP2": "H",
 }
 
 # Coupled ops that write a condition-code / predicate destination -> control band.
@@ -142,17 +134,10 @@ def _base_mnem(m: str) -> str:
 
 
 # =============================================================================
-# Per-arch INSTRUCTION_TYPE map (mnemonic -> coupled/decoupled), recovered from
-# the per-arch SASS instruction tables (sass_isa_SM*.txt CLASS PROPERTIES).
+# Per-arch INSTRUCTION_TYPE map (mnemonic -> coupled/decoupled).  Recovered from
+# the per-arch SASS instruction tables; the parse + cache lives in
+# sass_latency_tables.load_arch_model and this is a thin compatibility adapter.
 # =============================================================================
-
-_CLASS_RE = re.compile(r'^CLASS\s+"([^"]+)"')
-_ITYPE_RE = re.compile(r"INSTRUCTION_TYPE\s*=\s*INST_TYPE_(\w+)")
-_MINWAIT_RE = re.compile(r"MIN_WAIT_NEEDED\s*=\s*(\d+)")
-
-# A CLASS name leads with the lowercase mnemonic up to the first '_' separator.
-_CLASS_MNEM_RE = re.compile(r"^([a-z0-9]+)")
-
 
 @dataclass
 class TypeInfo:
@@ -162,15 +147,6 @@ class TypeInfo:
     wr_scbd: bool          # arms a write scoreboard (dst_wr_sb)
     rd_scbd: bool          # arms a read-release scoreboard (src_rel_sb)
     depbar: bool           # branch-unit / DEPBAR decoupled
-
-
-def _itype_props(itype: str) -> tuple[bool, bool, bool, bool]:
-    """(coupled, arms_wr_scbd, arms_rd_scbd, is_depbar) from an INSTRUCTION_TYPE."""
-    coupled = itype.startswith("COUPLED")
-    wr = ("WR_SCBD" in itype) or ("RD_WR_SCBD" in itype)
-    rd = ("RD_SCBD" in itype) or ("RD_WR_SCBD" in itype) or ("RD_NOREQ" in itype)
-    depbar = "DEPBAR" in itype
-    return coupled, wr, rd, depbar
 
 
 def build_type_map(arch: str) -> dict[str, TypeInfo]:
@@ -1438,16 +1414,22 @@ def verify_corpus(arches: list[str] | None = None,
         print("\nNo mismatches: exact reproduction of stalls + scoreboard pairings.")
 
     print("\nEXACT vs APPROXIMATE")
-    print("  exact      : producer->scoreboard pairings (structure); the CC/pred")
-    print("               control band; same-/cross-pipe coupled stall magnitudes")
-    print("  conservative: when the composed stall differs it is >= ptxas's "
-          "(ptxas hides")
-    print("               latency with full scheduling freedom we cannot replay; "
-          "over-stalling")
-    print("               is hazard-safe -- proven by --verify-dyn on the GPU)")
-    print("  approximate : variable-latency completion *times* (not recovered "
-          "constants);")
-    print("               exact SB index (allocator-policy dependent)")
+    print("  exact      : producer->scoreboard pairings (structure); the table-")
+    print("               driven coupled-stall magnitudes -- same/cross-pipe, the")
+    print("               AGU pre-issue slot (incl. the Turing 8), the float<->int")
+    print("               conversion / MUFU-input latch, and the CC/pred control")
+    print("               band (13; 12 on Turing) -- keyed by the per-arch pipe")
+    print("               classification from the SASS-ISA table.")
+    print("  over-stall : when composed > ptxas, ptxas hid the latency with full")
+    print("               scheduling freedom we cannot replay; over-stalling is")
+    print("               hazard-safe (proven by --verify-dyn on the GPU).")
+    print("  under-stall: when composed < ptxas, ptxas chose a more conservative")
+    print("               stall than the hazard requires; our schedule is still")
+    print("               hazard-safe (the issue-cycle fixpoint honours every RAW")
+    print("               edge; confirmed bit-identical on the GPU).")
+    print("  approximate : variable-latency completion *times* (resolved by")
+    print("               scoreboards, not stalls); the ULDC uniform-descriptor")
+    print("               publish distance; the exact SB index (allocator policy).")
     # Success criterion: producer->scoreboard pairing must be exact (the
     # primary correctness result); composed stalls need only be safe
     # (>= ptxas), which dynamic validation confirms.  Stall *exactness* is a
