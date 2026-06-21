@@ -99,8 +99,8 @@ These tables each point to >200 distinct functions and are the workhorses of the
 
 | Table address | Slots | Unique funcs | Nullsubs | Target VA range | Likely role | Conf |
 |---|---|---|---|---|---|---|
-| `0x22ad230` | 2,129 | 246 | 65 | `0xA393D0..0x19F72E0` | Composite operand-decode dispatch (multi-segment) | **MED** |
-| `0x23b3a80` | 2,109 | 150 | 1 | `0x9DAA40..0x181D9B0` | Opcode→canonical-name printer (PTX↔SASS) | **MED** |
+| `0x22ad230` | 2,129 | 246 | 65 | `0xA393D0..0x19F72E0` | **ISel C++ vtable** (see correction below) — NOT an encoder table | **HIGH** |
+| `0x23b3a80` | 2,109 | 150 | 1 | `0x9DAA40..0x181D9B0` | **ISel C++ vtable** (see correction below) — NOT an encoder table | **HIGH** |
 | `0x23f4430` | 633 | 633 | 0 | `0x1BB38B0..0x1BBD2C0` | One-to-one per-slot dispatch — 633 unique entries, no sharing | **MED** |
 | `0x21f9158` | 470 | 469 | 8 | `0x7D6AE0..0xBE26C0` | Per-opcode pretty-printer or trace formatter (nullsubs at slots 4, 55, 302, 321, 331, 457, 460, 461) | **MED** |
 | `0x21d6860` | 470 | 469 | 4 | `0x6611B0..0x15F4870` | Sibling of `0x21f9158`, distinct entry-point set | **MED** |
@@ -183,6 +183,71 @@ The encoding picture is two-layered. [Format descriptors](./encoding.md#instruct
 
 If you want to predict what ptxas emits for a given instruction without running ptxas, you must trace this entire chain. The function-pointer tables are the entry point: without them, you cannot reach step 2 because Hex-Rays cannot tell you which mega-switch case fires for a particular opcode-category integer.
 
+## Dispatch Reconciliation — Four Encoder Layers Plus an ISel Vtable
+
+The encoder back-end does not have one dispatch table; it has **four function-pointer layers plus an opcode→slot scalar table**, and they all draw their handler targets from a **single shared handler pool**. The four layers route the same logical instruction through different keying schemes; the per-SM layer is the authoritative override when present. A reimplementer who treats any one of these as "the" dispatch will mis-encode every architecture-specific instruction.
+
+| Layer | Region VA | Indexing scheme | Keyed by | Distinct handlers | Role |
+|---|---|---|---|---|---|
+| `opcode_to_encoding` | `0x22B4B60` | flat `u16[222]` | opcode index | — | opcode → encoding slot (sentinel **355** = extended/macro-lowered) |
+| `encoding_tree_1` | `0x233BE00`–`0x2353E00` | 16-byte slotted radix tree (274 internal / 5,169 leaf) | `(format_id<<8) \| minor` via slot | 4,618 | primary format + handler selection |
+| `encoding_tree_2` | `0x235CE00`–`0x2379E00` | 16-byte slotted tree (427 internal / 6,251 leaf) | `(format_id<<8) \| minor` via slot | — | secondary/extended tree (shares the handler pool) |
+| `sass_handler_dispatch_1` | `0x22C0E00`–`0x22F1E00` | `(opcode, category, variant)` sub-tables | opcode id | 6,915 | superset emit-handler list (6,915 rows) |
+| `sass_handler_dispatch_2` | `0x2379E00`–`0x2399E00` | `(opcode, category, variant)` sub-tables | opcode id | 3,478 | reduced prefix of `_1` (`_2` is a strict subset) |
+| `per_sm_handler_dispatch` | `0x22E7AD0`–`0x23B99D0` | 5 × `{u64 op, u64 ptr, u64 pad}` arrays | `(format_id<<8) \| minor` | 2,421 | **per-arch specialized override** (sm50_7x / sm75 / sm100 / sm80_8x / sm86_89) |
+| *(correction)* `off_22AD230`, `off_23B3A80` | `0x22AD230`, `0x23B3A80` | C++ vtables (virtual slot) | virtual slot | 3,707 | **ISel node vtables — NOT encoder dispatch** (the prior catalog mislabel) |
+
+Overlap (handlers shared between layers, from the reconciliation matrix):
+
+| | encoding_tree | sass_dispatch_1 | sass_dispatch_2 | per_sm_dispatch | isel_vtable |
+|---|---|---|---|---|---|
+| **encoding_tree** | 4,618 | 2,828 | 3,367 | 2,194 | 0 |
+| **sass_dispatch_1** | 2,828 | 6,915 | 2,832 | 1,711 | 0 |
+| **sass_dispatch_2** | 3,367 | 2,832 | 3,478 | 1,899 | 0 |
+| **per_sm_dispatch** | 2,194 | 1,711 | 1,899 | 2,421 | 0 |
+| **isel_vtable** | 0 | 0 | 0 | 0 | 3,707 |
+
+The decisive evidence for the ISel-vtable correction is the bottom row/column: **the two C++ vtables share zero handlers with any of the four encoder layers.** A genuine alternate encoder dispatch would necessarily re-use the same `0xC6xxxx`–`0xE2xxxx` encoder-stub pool that the four real layers all index into; `off_22AD230` and `off_23B3A80` point exclusively into the ISel matcher/node method bodies (`0xBA9CF0`–`0xBDBA60` and the surrounding range), with no intersection. The union of the four encoder layers is **8,874** distinct handler addresses; adding the two vtables would add 3,707 ISel methods that never participate in encoding.
+
+> ⚡ **QUIRK — the dispatch key is `(format_id<<8) | minor_opcode`, not the opcode**
+> Both encoding trees and the per-SM override array key on a composite 16-bit value formed from the 7-bit format ID in the high byte and the 8-bit minor opcode in the low byte. The opcode integer alone does **not** index these tables — it indexes only `opcode_to_encoding` and the `sass_handler_dispatch_*` sub-tables. A reimplementer who keys the trees by raw opcode will land on the wrong leaf for every multi-format instruction (every ALU op that has both a 64-bit and 128-bit encoding).
+
+### Encoding decision trees — geometry
+
+The two trees are 16-byte-slot arrays spanning a fixed address window. Each tree's window holds more slots than are populated; the empty tail slots are reserved:
+
+| Tree | Window | 16-byte slots in window | Populated internal | Populated leaf | Reserved tail |
+|---|---|---|---|---|---|
+| `encoding_tree_1` | `0x233BE00`–`0x2353E00` | 6,144 | 274 | 5,169 | 701 |
+| `encoding_tree_2` | `0x235CE00`–`0x2379E00` | 7,424 | 427 | 6,251 | 746 |
+| **total** | — | **13,568** | 701 | 11,420 | 1,447 |
+
+Slot shapes:
+
+- **Internal node** — `{child_ptr, child_count}`: a radix fan-out. `child_ptr` points at a contiguous run of `child_count` child slots; the walk descends by matching successive bytes of the composite key.
+- **Leaf node** — three flavors observed across the 11,420 leaves: `key_handler` (4,117 leaves) carries `{dispatch_key = (format_id<<8)|minor, handler_va}`; `handler_value` (3,635 leaves) carries `{handler_va, extra_value}`; `null_or_data` (3,668 leaves) carries an inline data word or a null terminator. Of the `key_handler` leaves, **396** distinct dispatch keys and **2,542** distinct handler addresses are observed (multiple keys can share a handler; one key can appear in both trees at different specificity).
+
+See [reference/data/sass-encoding-dispatch.md](../reference/data/sass-encoding-dispatch.md) for the full per-layer summary and reconciliation matrix as browsable tables.
+
+### Dispatch-row semantics — category and variant
+
+Each row of the `sass_handler_dispatch_*` and `per_sm_handler_dispatch` arrays is 24 bytes: `{u64 handler, u64 pad=0, u32 variant, u32 category}`, looked up by the composite key `(category << 8) | variant`. The two fields are independent axes:
+
+- **`category` = the encoding-format / opcode-CLASS family** (one per functional-unit / op-class), **not** an SM-generation bucket. The SM split is carried entirely by *which* `per_sm` array is indexed (sm50_7x / sm75 / sm80_8x / sm86_89 / sm100) — orthogonal to `category`. The encoding width (64- vs 128-bit) selects the format-descriptor width; the per-SM arrays hold byte-identical handler clusters that differ only in their `setBits` triples.
+- **`variant` = a sequential, modifier-driven sub-opcode** within a category (dense enumeration `0x02`..`0x1b`, running sequentially per category group). The *alternate-encoding* choice (the second physical encoding some instructions accept) is a **separate runtime flag** on the operand struct (`*(u8*)(op+0x28) != 0`, which reads an extra source from `op+0x34`) — **not** the table `variant`.
+
+> ⚡ **QUIRK — `category` is an op-class, `variant` is a sub-opcode, and "which SM" is a third, orthogonal axis**
+> Three independent dimensions select one handler: the op-class (`category`), the modifier-driven sub-opcode (`variant`), and the architecture (which `per_sm` array). Earlier work that read `category` as an SM-generation bucket conflated the first and third axes. Concretely: the same `(category, variant)` pair resolves to byte-identical handler bodies across every `per_sm` array — only the embedded `setBits(start, width, value)` triples differ, because the field positions move between SM encodings.
+
+### `encoding_bitfield_lookup` — `field_a` / `field_b`
+
+The bitfield-lookup table at `0x23F2E00`–`0x23FAE00` is 4,096 entries of `{u32 field_a, u32 field_b}` (4,014 active; sentinel `0xFFFFFFFF` ends a field-list run). The two fields are role-distinct:
+
+- **`field_a`** (a `.text` VA pointer in 3,924 of the active entries; 2,067 unique values) is a **per-(opcode, operand-layout) operand-field encoder function**. It marshals the parsed operand fields for one field group and tail-calls the multi-bit-field insert primitive `setBits` at `0x7B9B80`, which writes the SASS code bitstring into the encoder buffer at `obj+0x220`. Example: entry 116's `field_a = 0x1BA4C00` reads `op+0x2C`/`op+0x30` and writes `dst+0x1C`/`+0x20`; `0x1BA4C50`/`0x1BA4C80`/`0x1BA4BB0` are N-field variants of the same marshaller; `0x1BB2A48` is a trampoline.
+- **`field_b`** is an **operand-field-KIND classifier code**, not a raw bit width: `0` = none/default (3,961 entries); small codes `1`..`17` name specific operand-field classes; `0xFFFFFFFF` marks end-of-field-list. A handful of "half-sentinel" rows carry only `field_b ∈ {4, 24, 28, 30}` to mark special field categories. A descriptor *run* is a sequence of `{field_a = sub-encoder, field_b = kind}` pairs bounded by the `0xFFFFFFFF` sentinel.
+
+This is the executable counterpart to the static `slot_sizes`/`slot_types` arrays in the [format descriptors](./encoding.md#instruction-format-group-catalog): the format descriptor says *how wide* each slot is; `field_a` is the code that actually *packs* it.
+
 ## Targeting Behavior — `nullsub` Sentinels
 
 64 of the 409 tables contain at least one `nullsub_*` slot. The IDA convention is that `nullsub` is a function whose entire body is `ret` — used as a placeholder for "this entry is reachable but does nothing." In ptxas's dispatch tables, nullsubs mean three different things:
@@ -213,8 +278,8 @@ A compact catalog for navigation. The "Pattern" column captures what the table l
 |---|---|---|---|---|---|
 | `0x22f1f60` | 5,560 | 6 | 0 | mega | The six mega-dispatchers, shared block |
 | `0x237a1b0` | 2,455 | 2 | 0 | gotomap | `sub_15F5510` + `sub_169B190` thread |
-| `0x22ad230` | 2,129 | 246 | 65 | mixed | Composite operand-decode |
-| `0x23b3a80` | 2,109 | 150 | 1 | mixed | PTX↔SASS name dispatch |
+| `0x22ad230` | 2,129 | 246 | 65 | mixed | **ISel matcher vtable** (`off_22AD230`) — not an encoder table |
+| `0x23b3a80` | 2,109 | 150 | 1 | mixed | **ISel node vtable** (`off_23B3A80`) — not an encoder table |
 | `0x23f6d00` | 2,064 | 1 | 0 | gotomap | `sub_B12920` thread (tensor/MMA?) |
 | `0x2358c38` | 1,971 | 1 | 0 | gotomap | `sub_143C440` thread |
 | `0x23d2a30` | 1,966 | 1 | 0 | gotomap | `sub_198BCD0` thread |
@@ -359,7 +424,7 @@ Five distinct sizes (24, 80, 192, 2056, 4096) appear across the binary; the slot
 Tables that warrant individual deep-dives in future work:
 
 - **`0x23f4430` (633 unique per-slot funcs)** — appears one-to-one with no sharing. The target range (`0x1BB38B0..0x1BBD2C0`, ~38 KB of code) is too compact to be the main encoder corpus but too broad to be a single function. Likely the SASS *printer* dispatch (one printer per opcode) feeding `sass-printing.md` infrastructure. **Confidence: MED. Action: cross-ref with `sass-printing.md` opcode mnemonic list.**
-- **`0x23b3a80` (2,109 slots, 150 unique, only 1 nullsub)** — broad target range across 0x9DA000–0x181D000 (over 13 MB of code). Suggests an opcode-keyed lookup that fans out across many subsystems (printer + validator + lowering?). **Confidence: LOW. Action: pick 10 random slots, identify their owner functions, look for common ancestor.**
+- **`0x23b3a80` (2,109 slots, 150 unique, only 1 nullsub)** — resolved: this is the second ISel node C++ vtable (`off_23B3A80`), the polymorphic dispatch surface for the ISel pattern-matcher node hierarchy. The broad target range (0x9DA000–0x181D000) is the spread of virtual method bodies across the matcher and lowering ranges, not an encoder fan-out. See [Dispatch Reconciliation](#dispatch-reconciliation--four-encoder-layers-plus-an-isel-vtable) below and [Instruction Selection § Vtable Registration](./isel.md#vtable-registration-and-dispatch-table-layout). **Confidence: HIGH.**
 - **The 159-entry family at `0x22a7cb8`, `0x22a9090`, `0x22a9620`, `0x22aa9f8`, `0x2399f58`** — five tables of 159 slots each (matching the [PhaseManager](../passes/phase-manager.md) phase count). These are *not* encoder tables but phase-vtable variants. They deserve a separate section in `passes/phase-manager.md`. **Confidence: HIGH. Action: hand off to passes-wiki authors.**
 - **`0x21cb0f8..0x21eaa88` (eight 126-slot tables)** — a Mercury-region family. The slot-0 fingerprint differs across all eight, suggesting eight Mercury sub-pipelines (more than the six stages documented in [mercury.md](./mercury.md#architecture)). Possible that two are for `capmerc`-mode-only stages. **Confidence: MED. Action: diff slot-0s against the Mercury phase enum.**
 

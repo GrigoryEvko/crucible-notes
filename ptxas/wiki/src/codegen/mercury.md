@@ -758,6 +758,85 @@ sub_6E4110 (24KB, final SASS emission)
 
 The encoding pipeline uses FNV-1a hashing (seed `0x811C9DC5`, multiplier `16777619`) to cache instruction encodings and avoid re-encoding identical instructions.
 
+## Mercury Container Format
+
+The Mercury stream produced by stages 1–5 is wrapped in an ELF container before it reaches the finalizer. The container uses NVIDIA's CUDA ELF machine type `EM_CUDA = 190 (0xBE)` and a set of processor-specific (`SHT_LOPROC = 0x70000000`) section types and header flags that distinguish an unfinalized Mercury object from a finalized SASS cubin.
+
+### Header Flags and ELF Type
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `EF_CUDA_MERCURY` | `0x80000000` | Marks an unfinalized Mercury/capmerc ELF; cleared by the finalizer on SASS output |
+| `EF_CUDA_MERCURY_VERSION_MASK` | `0x7F000000` | Mercury container version in bits 24–30: `version = (e_flags & mask) >> 24` |
+| `EF_CUDA_TEXMODE_UNIFIED` | `0x100` | Unified texture/sampler mode (drives the `R_MERCURY_UNIFIED*` relocs below) |
+| `EF_CUDA_TEXMODE_INDEPENDENT` | `0x200` | Independent texture mode |
+| `EF_CUDA_64BIT_ADDRESS` | `0x400` | 64-bit device addressing (set on finalized output) |
+
+The finalizer accepts `e_type ∈ {ET_REL = 1, ET_EXEC = 2, ET_EWP = 0xFF00}` as input, where `ET_EWP` is the extensible-whole-program type in the `ET_LOPROC` range. The input `abiVersion` must equal `ELFMERCABIV_ABI (0)` or finalization aborts. On output the finalizer **clears** `EF_CUDA_MERCURY`, sets `abiVersion = ELFOSABIV_LATEST (7)`, sets `EF_CUDA_64BIT_ADDRESS`, demotes the shared/global/local sections to `SHT_NOBITS` for an `ET_EXEC` output, and zeroes `e_phoff`/`e_phnum` (a relocatable object carries no program headers).
+
+### Mercury Section Types
+
+| Section type | Value | Section name(s) |
+|---|---|---|
+| `SHT_CUDA_MERCURY` | `SHT_LOPROC+12` = `0x7000000C` | `.nv.merc`, `.nv.merc.<sub>` — the cloned-section container; clones carry the original section index in `sh_info` |
+| `SHT_CUDA_MERCURY_SASS_MAP` | `SHT_LOPROC+13` = `0x7000000D` | `.mercury_to_sass_map` — Mercury↔SASS offset map (per text section; `sh_info` = SASS section index) |
+| `SHT_MERCURY_CONSTANT_PARAMS..TOOLS` | `SHT_LOPROC+120..126` = `0x70000078..0x7000007E` | `.nv.constant.entry_params`, `.nv.constant.entry_image_header_indices`, `.nv.constant.driver`, `.nv.constant.optimizer`, `.nv.constant.user`, `.nv.constant.pic`, `.nv.constant.tools_data` |
+
+Every original input section is cloned into the capsule under a `.nv.merc.` prefix (earlier toolchains used the shorter `.merc.` prefix) so the finalizer can recover the original Mercury blob and debug data after SASS reconstitution. The string pool holds 19 distinct `.nv.merc.*` clone families, spanning the DWARF debug sections (`.nv.merc.debug_abbrev`, `.debug_info`, `.debug_line`, `.debug_str`, `.debug_loc`, `.debug_frame`, `.debug_ranges`, `.debug_aranges`, `.debug_macinfo`, `.debug_pubnames`, `.debug_pubtypes`), the NV register-debug and SASS-line sidecars (`.nv.merc.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_line_sass`, `.nv_debug_ptx_txt`), the shared-memory reservation (`.nv.merc.nv.shared.reserved.`), and the symbol/relocation clones (`.nv.merc.rela`, `.nv.merc.symtab`, `.nv.merc.symtab_shndx`).
+
+## Mercury↔SASS Offset Map
+
+The `.mercury_to_sass_map` section (`SHT_CUDA_MERCURY_SASS_MAP`) records the correspondence between Mercury instruction offsets and final SASS instruction offsets, so the driver or debugger can relabel Mercury program counters to SASS program counters after finalization. It is emitted by the master ELF emitter `sub_1C9F280` together with the per-function capsule descriptor builder `sub_1C9C300`, and is structured as a line-program-style byte-code state machine in the same spirit as a DWARF line program.
+
+The 16-byte header is four little-endian `u32` words:
+
+| Field | Value | Meaning |
+|---|---|---|
+| `version` | 1 | Map format version |
+| `headerLength` | 16 | Header size in bytes |
+| `sassInstSize` | 16 | Bytes per finalized SASS instruction (`0x10`) |
+| `mercInitialInstsize` | 32 | Bytes per Mercury packet / MPE (`0x20`) |
+
+A Mercury packet (MPE) is therefore **32 bytes** and a finalized SASS instruction is **16 bytes**; the 2:1 ratio is the reason the map needs a sub-index field (a single Mercury packet can expand into more than one SASS instruction). Each opcode is one byte followed by LEB128 arguments:
+
+| Opcode | Value | Args | Effect |
+|---|---|---|---|
+| `MSM_nop` | `0x00` | — | Padding / no-op |
+| `MSM_reset` | `0x01` | — | Reset state: `mercOffset=0, sassOffset=0, sassInsSize=0x10, mercInsSize=0x20, sassIndex=0, repCount=1` |
+| `MSM_set_mercury_offset` | `0x02` | uleb | `mercOffset = arg` |
+| `MSM_set_mercury_insn_size` | `0x03` | uleb | `mercInsSize = arg` (default `0x20`) |
+| `MSM_set_sass_offset` | `0x04` | uleb | `sassOffset = arg` |
+| `MSM_set_sass_insn_size` | `0x05` | uleb | `sassInsSize = arg` (default `0x10`) |
+| `MSM_set_sass_index` | `0x06` | uleb | `sassIndex = arg` (sub-index for 1-Mercury → N-SASS expansion) |
+| `MSM_incr_offsets` | `0x07` | uleb,sleb | `mercOffset += arg0; sassOffset += arg1` |
+| `MSM_repeat` | `0x08` | uleb | `repCount = arg` (run-length prefix for the next map op) |
+| `MSM_map` | `0x09` | — | Emit one `(mercOffset, sassOffset)` pair; advance both by their instruction sizes |
+| `MSM_map_incr` | `0x0a` | uleb,sleb | Emit pair, then `mercOffset += arg0; sassOffset += arg1` (custom advance) |
+| `MSM_map_expanded` | `0x0b` | uleb | 1-Mercury → N-SASS expansion; expansion count = arg; `sassIndex` sub-steps |
+
+## R_MERCURY Relocations
+
+Mercury objects carry their own relocation kind family, `R_MERCURY_*`, decoded byte-exact from the `mercury_reloc_info[]` table in `.rodata` at VMA `0x23FF080` (stride `0x40`, 64 bytes per entry). The table holds **64 named entries** spanning relocation type codes `0x10000..0x1003F`, with the base `R_MERCURY_NONE = 0x10000`. Entry 64 (type `0x10040`) is the first entry of the contiguous `sass_reloc_info[]` (`R_CUDA_*`) table — the two relocation tables sit adjacent in `.rodata`, which is exactly why the master resolver indexes a Mercury reloc as `mercury_reloc_info[r_type − 0x10000]`.
+
+Each entry decodes as `{ const char *name; uint32 handler; action[3] × {start_bit, num_bits, sym_value, src_start_bit} }`. The `handler` field is the `NVRH_*` resolver class, and it drives the finalizer-vs-deferred split:
+
+- **`NVRH_FINALIZER`** relocs are resolved by the finalizer in place. Only the **PROG_REL family** is `NVRH_FINALIZER`: `PROG_REL64`, `PROG_REL32`, `PROG_REL32_LO`, `PROG_REL32_HI`, and the byte-lane `PROG_REL8_0 .. PROG_REL8_56`. The decision is literally `mercury_reloc_info[rtype − 0x10000].handler == NVRH_FINALIZER`.
+- Every other handler class (`NVRH_DRIVER`, `NVRH_LINKER`, `NVRH_EITHER`) is **deferred** to the CUDA driver or nvlink — those relocs are converted to their `R_CUDA_*` equivalents and emitted into the output `.rela` sections rather than patched at finalize time.
+
+The two newest entries, `R_MERCURY_UNIFIED32_LO (0x1003E)` and `R_MERCURY_UNIFIED32_HI (0x1003F)`, use the symbol-value codes 55/56 (`NVRS_LOUADDR` / `NVRS_HIUADDR`). Earlier toolchains ended the table at `R_MERCURY_ABS_PROG_REL64 (0x1003D)` followed by a sentinel; the remaining 62 entries are byte-identical across builds. The full 64-entry catalog with per-field bit actions and symbol-value codes is in the [R_MERCURY relocation reference](../reference/data/mercury-reloc-types.md).
+
+## Content-Equality Section Dedup
+
+When the Mercury/capmerc emitter writes the output ELF it can fold byte-identical data slices, a content-equality dedup stage that earlier toolchains did not have — those simply duplicate data by emitting `.nv.merc.*` clones, with no whole-section dedup. The only content-equality merge in earlier builds was a constant-pool overlap primitive in the generic ELF writer, gated on `memcmp` and guarded by the FATAL `"overlapping non-identical data"`; that same FATAL string survives in this build (in `sub_1CA5A00`), bridging the two designs.
+
+The emitter driver `sub_1CB8E40` runs three stages:
+
+1. **Content dedup** — `sub_1CABD60` (logs `"layout and merge section %s"`), or `sub_1CAB190` for the no-merge path. The value dispatcher `sub_1CA6890` has 4-byte and 8-byte fast paths (`"found duplicate value 0x%x, alias %s to %s"`, `"found duplicate 64bit value 0x%llx, alias %s to %s"`); larger slices go through the N-byte matcher `sub_1CA6760` (`"found duplicate %d byte value, alias %s to %s"`), a per-size-class linear `memcmp` scan.
+2. **Relocations** — `sub_1CD48C0`, the master reloc resolver.
+3. **Symbol/name dedup** — `sub_1CB68D0`, which installs interning callbacks `sub_1CB3EB0` (section names) and `sub_1CB3FD0` (symbol names), logging `"set duplicate name for %s(%d) to %d"`.
+
+The fold is **conservative**: two slices are merged only when their backing bytes are byte-identical (`memcmp == 0`), never by name alone, and a single differing relocation entry on otherwise-identical data blocks the fold. A duplicate is collapsed by aliasing the redundant symbol's offset onto the canonical slice's offset rather than physically removing bytes mid-stream.
+
 ## Architecture-Specific Dispatch
 
 Architecture selection reads `*(int*)(config + 372) >> 12` to determine the SM generation. A vtable at `*(context+416)` (equivalently `*(compilation_state+1584)`) with 400+ slots provides per-architecture behavior for encoding, latency tables, resource queries, and hazard rules. 41 slots have confirmed call sites; the highest observed is slot 402 (+3216).
@@ -1247,3 +1326,4 @@ Cross-referenced DAG knob indices already documented elsewhere in the wiki (`con
 - [Phase Manager](../passes/phase-manager.md) — 159-phase pipeline infrastructure
 - [Optimization Levels](../config/opt-levels.md) — `-O0` vs higher-level scoreboard behavior
 - [Knobs System](../config/knobs.md) — knob #16, #17, #743, #747 details
+- [R_MERCURY relocation reference](../reference/data/mercury-reloc-types.md) — full 64-entry relocation catalog

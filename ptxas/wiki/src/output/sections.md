@@ -18,18 +18,36 @@ A CUDA cubin is a standard ELF container with NVIDIA-proprietary extensions. ptx
 | **Layout calculator** | `sub_1C9DC60` (5,663 B native — offset assignment) |
 | **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp — shared/constant/local addresses) |
 | **SHT_CUDA_INFO** | `0x70000000` (1,879,048,192) |
-| **SHT_CUDA_CALLGRAPH** | `0x70000064` (1,879,048,292) |
+| **SHT_CUDA_CALLGRAPH** | `0x70000001` (1,879,048,193) |
+| **SHT_CUDA_CONSTANT_B0** | `0x70000064` (1,879,048,292) |
 | **.nv.compat section type** | `0x70000086` (1,879,048,326) |
 
 ## NVIDIA-Specific Section Types
 
-Beyond standard ELF section types (`SHT_PROGBITS`, `SHT_STRTAB`, `SHT_SYMTAB`, `SHT_RELA`, `SHT_NOTE`), ptxas uses NVIDIA-defined types in the `SHT_LOPROC`--`SHT_HIPROC` range (`0x70000000`--`0x7FFFFFFF`):
+Beyond standard ELF section types (`SHT_PROGBITS`, `SHT_STRTAB`, `SHT_SYMTAB`, `SHT_RELA`, `SHT_NOTE`), ptxas uses NVIDIA-defined types in the `SHT_LOPROC`--`SHT_HIPROC` range (`0x70000000`--`0x7FFFFFFF`). All of these were re-extracted from the binary by emitting both a final cubin and a `-c` relocatable object and reading the raw `sh_type` words.
 
-| Constant | Value | Decimal | Used by |
+| Constant | Value | Mode where seen | Section |
 |---|---|---|---|
-| `SHT_CUDA_INFO` | `0x70000000` | 1,879,048,192 | `.nv.info`, `.nv.info.<func>` |
-| `SHT_CUDA_CALLGRAPH` | `0x70000064` | 1,879,048,292 | `.nv.callgraph` |
-| `SHT_CUDA_COMPAT` | `0x70000086` | 1,879,048,326 | `.nv.compat` |
+| `SHT_CUDA_INFO` | `0x70000000` | both | `.nv.info`, `.nv.info.<func>` |
+| `SHT_CUDA_CALLGRAPH` | `0x70000001` | both | `.nv.callgraph` |
+| `SHT_CUDA_PROTOTYPE` | `0x70000002` | both | `.nv.prototype` (indirect-call inputs) |
+| `SHT_CUDA_RESOLVED_RELA` | `0x70000003` | both | `.nv.resolvedrela` |
+| `SHT_CUDA_METADATA` | `0x70000004` | both | `.nv.metadata` |
+| `SHT_CUDA_PGO_INFO` | `0x70000005` | both | `.nv.pgoinfo.<text>` |
+| `SHT_CUDA_CONSTANT` | `0x70000006` | relocatable | `.nv.constant` (legacy single bank) |
+| `SHT_CUDA_GLOBAL` | `0x70000007` | relocatable (`-c`) | `.nv.global` — lowered to `SHT_NOBITS` in the final cubin |
+| `SHT_CUDA_GLOBAL_INIT` | `0x70000008` | relocatable (`-c`) | `.nv.global.init` |
+| `SHT_CUDA_LOCAL` | `0x70000009` | relocatable | `.nv.local.<entry>` |
+| `SHT_CUDA_SHARED` | `0x7000000a` | relocatable (`-c`) | `.nv.shared.<entry>` — lowered to `SHT_NOBITS` in the final cubin |
+| `SHT_CUDA_RELOCINFO` | `0x7000000b` | both | `.nv.rel.action` |
+| `SHT_CUDA_MERCURY` | `0x7000000c` | Mercury | `.nv.merc`, `.nv.merc.<sub>` clone container |
+| `SHT_CUDA_MERCURY_SASS_MAP` | `0x7000000d` | Mercury | `.mercury_to_sass_map` |
+| `SHT_CUDA_CONSTANT_B0` | `0x70000064` | relocatable (`-c`) | `.nv.constant0.<entry>` — per-kernel param cbank; lowered to `SHT_PROGBITS` in the final cubin. Bank# = `sh_type − 0x70000064`. |
+| `SHT_CUDA_CONSTANT_B1..B17` | `0x70000065`..`0x70000075` | relocatable | `.nv.constant1` .. `.nv.constant17` (18 bank names total) |
+| `SHT_MERCURY_CONSTANT_PARAMS..TOOLS` | `0x70000078`..`0x7000007e` | Mercury | `.nv.constant.{entry_params, entry_image_header_indices, driver, optimizer, user, pic, tools_data}` |
+| `SHT_CUDA_COMPAT_INFO` | `0x70000086` | both | `.nv.compat` |
+
+**Two output-mode vocabularies.** In a `-c` relocatable object (`ET_REL`) the memory-space sections keep their `SHT_CUDA_*` LOPROC types as listed above. In a **final cubin** (`ET_EXEC`, default) the same sections are lowered to standard types — `.nv.constant*`→`SHT_PROGBITS`, `.nv.global`/`.nv.shared`→`SHT_NOBITS`. Only `.nv.info`, `.nv.compat`, and `.nv.callgraph` keep LOPROC types in the final cubin.
 
 The section creator `sub_1CB3570` contains a range check on CUDA-specific types:
 
@@ -41,7 +59,7 @@ if (elf_mode != 1 && is_relocatable
 }
 ```
 
-This tells us that NVIDIA reserves the range `0x70000064`--`0x7000007E` (27 types) plus `0x70000006` for CUDA-specific sections that receive special treatment in relocatable object mode.
+`0x70000064` (`SHT_CUDA_CONSTANT_B0`) is the **base** of the constant-bank range, not the callgraph type. The check covers `0x70000064`--`0x7000007E` (the 18 numbered banks plus the seven Mercury constant banks) plus the legacy `0x70000006` — exactly the sections whose addresses are assigned by the constant-bank/shared-memory allocators rather than the generic ELF layout walk.
 
 ## Complete Section Catalog
 
@@ -59,13 +77,15 @@ Created unconditionally by the ELFW constructor (`sub_1CB53A0`). These form the 
 
 ### NVIDIA Note Sections
 
-Created unconditionally. Carry module-level metadata the CUDA driver reads before launching any kernel.
+Created unconditionally. Carry module-level metadata the CUDA driver reads before launching any kernel. Both notes use `sh_type = SHT_NOTE (0x07)`, owner string `"NVIDIA Corp\0"` (`namesz=12`), and note version `u16 = 2`.
 
-| Section | Type | Flags | Purpose |
-|---|---|---|---|
-| `.note.nv.tkinfo` | `SHT_NOTE` | — | Toolkit info: version string, build ID, CLI arguments |
-| `.note.nv.cuinfo` | `SHT_NOTE` | — | CUDA info: SM version, feature flags |
-| `.note.nv.cuver` | `SHT_NOTE` | — | CUDA version note |
+| Section | n_type | descsz | sh_flags | Purpose |
+|---|---|---|---|---|
+| `.note.nv.tkinfo` | `0x7d0` (2000) | 136 | `0x02000000` | Toolkit info: `noteVer=2`, tool name `"ptxas"`, version string `"Cuda compilation tools, release 13.0, V13.0.88"`, build branch, literal CLI args |
+| `.note.nv.cuinfo` | `0x3e8` (1000) | 8 | `0x01000040` | CUDA info: `u16 noteVer=2`, `u16 virtualSM` (`0x5a`=90 for sm_90), `u32 CUDA-API-version` (`0x82`=130); `SHF_INFO_LINK` set |
+| `.note.nv.cuver` | — | — | — | CUDA version note (string in binary table; emitted in some configs) |
+
+The full byte-level NOTE layout and program-header capture are in the [ELF header & NOTE reference](../reference/data/elf-header-notes.md).
 
 ### Per-Kernel Code Sections
 
@@ -87,7 +107,7 @@ The `.rela` companion is auto-created by the section creator when `SHF_EXECINSTR
 | `.nv.shared.<func>` | `SHT_NOBITS` | `SHF_ALLOC \| SHF_WRITE` | — | Shared memory layout (size only, no file data) |
 | `.nv.local.<func>` | `SHT_NOBITS` | `SHF_ALLOC \| SHF_WRITE` | — | Local (spill) memory layout |
 
-The `.nv.info.<func>` section uses `SHF_LINK_ORDER` (flag `0x40`) to declare its association with the function's symbol. The `SHT_CUDA_INFO` type value `0x70000000` is used; note that the nvlink wiki previously documented `0x70000064` for this — the discrepancy arises because nvlink uses a different constant in its own emitter. Binary evidence from ptxas shows `sub_1CC7FB0` consistently passes `1879048192` (`0x70000000`).
+The `.nv.info.<func>` section uses `SHF_INFO_LINK` (flag `0x40`) to declare its association with the function's symbol, with `sh_info` holding the function's symbol index. Binary evidence from ptxas shows `sub_1CC7FB0` consistently passes `1879048192` (`0x70000000`) as `SHT_CUDA_INFO` for both the global and per-entry `.nv.info` sections. (`0x70000064` is the unrelated `SHT_CUDA_CONSTANT_B0` constant-bank type — see the section-type table above.)
 
 ### Global Metadata Sections
 
@@ -278,29 +298,64 @@ Three section types are skipped during offset assignment:
 
 Each `.nv.info` section contains a flat sequence of EIATTR (Entry Information Attribute) records. There is no section header or record count — the parser walks from byte 0 to `sh_size`, consuming records sequentially. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp) — one of the three largest functions in the output pipeline.
 
-### TLV Record Format
+### Element Wire Format
+
+Each element begins with a 1-byte **EIFMT** format tag and a 1-byte **EIATTR** attribute code; the format tag — not the attribute — determines the payload shape. The four formats and their on-wire sizes:
+
+| EIFMT | Value | Element layout | Total size |
+|---|---|---|---|
+| `EIFMT_NVAL` | `0x01` | `[fmt][attr]` — no payload | 2 bytes |
+| `EIFMT_BVAL` | `0x02` | `[fmt][attr][u8 value]` | 4 bytes (1 padded) |
+| `EIFMT_HVAL` | `0x03` | `[fmt][attr][u16 value]` | 4 bytes |
+| `EIFMT_SVAL` | `0x04` | `[fmt][attr][u16 size][size bytes]` | `4 + ALIGN_UP(size,4)` |
+
+The writer picks the EIFMT per emit call from the payload width: no value → NVAL, one byte → BVAL, half → HVAL, sized blob → SVAL. Elements are 4-byte aligned; an 8-byte SVAL struct that would straddle an odd boundary is preceded by an `EIATTR_PAD` element. Note the **format tag is independent of the attribute** — the same EIATTR code may be emitted as different EIFMTs in different contexts (e.g. `EIATTR_MAXREG_COUNT` is HVAL, `EIATTR_REGCOUNT` is SVAL carrying a `{symidx, regCount}` record).
+
+### Worked Wire Examples
+
+Global `.nv.info` for a leaf kernel (sm_90), one triple per function symbol:
 
 ```text
-Offset  Size  Field
-------  ----  -----
-0x00    1     format      Format byte (determines payload structure)
-0x01    1     attr_code   EIATTR type code (identifies the attribute)
-0x02    2     size        Payload size in bytes (little-endian uint16)
-0x04    var   payload     Attribute-specific data (size bytes)
+04 2f 0800 0e000000 0a000000   EIFMT_SVAL EIATTR_REGCOUNT   {symidx=0xe, regCount=0xa}
+04 11 0800 0e000000 00000000   EIFMT_SVAL EIATTR_FRAME_SIZE {symidx=0xe, frameSize=0}
+04 12 0800 0e000000 00000000   EIFMT_SVAL EIATTR_MIN_STACK_SIZE {symidx, stackSize}
 ```
 
-Total record size = `4 + ALIGN_UP(size, 4)`. Records are 4-byte aligned.
+Per-kernel `.nv.info.addvec` (sm_90), in emission order:
 
-### Format Byte
+```text
+04 37 ...   EIATTR_CUDA_API_VERSION    0x82 (=130)
+04 17 ...   EIATTR_KPARAM_INFO         ordinal 2  (12-byte record, descending ordinal)
+04 17 ...   EIATTR_KPARAM_INFO         ordinal 1
+04 17 ...   EIATTR_KPARAM_INFO         ordinal 0
+03 50 0000  EIATTR_SPARSE_MMA_MASK     0x0  (HVAL; default on sm_90, absent on sm_75)
+03 1b ff00  EIATTR_MAXREG_COUNT        0xff (255 = no maxregcount limit)
+03 5f 0101  EIATTR_MERCURY_ISA_VERSION 0x101 (Mercury ISA v1.1; =0x0 on sm_75)
+04 1c ...   EIATTR_EXIT_INSTR_OFFSETS  0x90 (byte offset of EXIT in .text)
+03 19 1400  EIATTR_CBANK_PARAM_SIZE    0x14 (=20 bytes total param size)
+04 0a ...   EIATTR_PARAM_CBANK         {symidx=0xf, offset=0x210, bytes=0x14}
+04 36 ...   EIATTR_SW_WAR              0x8
+```
 
-| Format | Name | Payload structure |
-|---|---|---|
-| `0x01` | Free | Raw bytes, attribute-specific layout |
-| `0x02` | Value | Single 32-bit value (no symbol index) |
-| `0x03` | Sized | 16-bit value + padding |
-| `0x04` | Indexed | `[sym_index:4][value:4]` — per-symbol attribute |
+When a kernel actually uses named barriers (e.g. an sm_75 kernel with three `bar.sync`), an extra element appears — `EIFMT_BVAL EIATTR_NUM_BARRIERS = 0x03`. The barrier **count** lives in `EIATTR_NUM_BARRIERS` (code 76); the `SHF_BARRIER_MASK` section-flag field that earlier ptxas builds populated (count = `sh_flags >> 20`) is no longer written.
 
-Format `0x04` (indexed) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to, enabling the linker to remap symbol indices during merge.
+### EIATTR_KPARAM_INFO Bitfield
+
+The 12-byte `EIATTR_KPARAM_INFO` (code 23) record describes one kernel parameter. Decoded byte-exact from the emitted payload (no reliance on cuobjdump labels):
+
+```text
+bytes [0:4]   u32 index      symbol index (0 for the common case)
+bytes [4:6]   u16 ordinal    parameter position
+bytes [6:8]   u16 offset     byte offset within the param constant bank
+bytes [8:12]  u32 packed, LSB-first:
+                logAlign  : 8
+                space     : 4
+                cbankid   : 5
+                isSmemParam : 1
+                size      : 14
+```
+
+Worked example — ordinal-2 record bytes `02 00 10 00 00 f0 11 00`: `index=0, ordinal=2, offset=0x10, packed=0x0011f000` → `logAlign=0, space=0, cbankid=(0x11f000>>12)&0x1f=0x1f (=31, param cbank), isSmem=0, size=(0x11f000>>18)&0x3fff=4`. Parameters are emitted in **descending** ordinal.
 
 ### Parsing Pseudocode
 
@@ -309,25 +364,28 @@ uint8_t *ptr = section_data;
 uint8_t *end = section_data + section_size;
 
 while (ptr < end) {
-    uint8_t  format    = ptr[0];
-    uint8_t  attr_code = ptr[1];
-    uint16_t size      = *(uint16_t *)(ptr + 2);
-
-    switch (format) {
-    case 0x04:  // Indexed
-        uint32_t sym_idx = *(uint32_t *)(ptr + 4);
-        uint32_t value   = *(uint32_t *)(ptr + 8);
-        process_indexed(attr_code, sym_idx, value);
+    uint8_t eifmt = ptr[0];
+    uint8_t attr  = ptr[1];
+    switch (eifmt) {
+    case 0x01:  // NVAL: no payload
+        process_flag(attr);
+        ptr += 2;
         break;
-    case 0x02:  // Value
-        uint32_t value = *(uint32_t *)(ptr + 4);
-        process_global(attr_code, value);
+    case 0x02:  // BVAL: one byte
+        process_byte(attr, ptr[2]);
+        ptr += 4;          // 1 value byte + 1 pad
         break;
-    default:    // Free / Sized
-        process_raw(attr_code, ptr + 4, size);
+    case 0x03:  // HVAL: u16
+        process_half(attr, *(uint16_t *)(ptr + 2));
+        ptr += 4;
+        break;
+    case 0x04: {  // SVAL: u16 size + payload
+        uint16_t size = *(uint16_t *)(ptr + 2);
+        process_blob(attr, ptr + 4, size);
+        ptr += 4 + ALIGN_UP(size, 4);
         break;
     }
-    ptr += 4 + ALIGN_UP(size, 4);
+    }
 }
 ```
 
@@ -988,3 +1046,4 @@ All shared state modifications are protected by the mutex at `a2+240`:
 - [Mercury Encoder](../codegen/mercury.md) — Mercury encoding that feeds `.nv.merc.*` sections
 - [Capsule Mercury](../codegen/capmerc.md) — SM 100+ capsule and `.nv.capmerc` sections
 - [Pipeline Overview](../pipeline/overview.md) — where section emission fits in the pipeline
+- [ELF header & NOTE reference](../reference/data/elf-header-notes.md) — byte-exact header, program-header, NOTE, and `.nv.compat` capture

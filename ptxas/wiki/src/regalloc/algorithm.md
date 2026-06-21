@@ -820,6 +820,25 @@ tail_checks:
 
 `find_dest_operand` (`sub_938350`) scans operands left-to-right for the first type-1 register whose `vreg->reg_class` is 3 (UR) or 6 (Tensor/Acc), skipping pair-extension operands (bit 24 clear). Returns index or -1. `try_pair_preassign` (`sub_9498C0`) verifies both operands are type-1 registers outside 41–44, same `reg_class` matching `alloc+1504`, compares pair widths via `(vreg->flags >> 20) & 3`, and calls `link_prealloc_pair` (`sub_9496B0`) with direction 0/1/2 (wider-to-narrower / narrower-to-wider / equal).
 
+### Coalescing Model — Conservative, Interference-Checked, Preference-Biased
+
+The coalescing is not the classic Briggs degree-count test, nor a pure preference merge. It is **conservative, interference-checked, preference/bias-driven optimistic coloring**:
+
+- **Coalesce candidates are *linked* and colored first.** A merge candidate is pushed on top of the coloring stack (via the pre-allocation pair links above) so the fat-point allocator colors it before any independent vreg.
+- **The merge is committed at color time only if it passes a point-interference check.** When the linked candidate is popped, a single point-interference bitvector test (`sub_956130` builds the masks; the per-neighbor interference walk in the merge engine `sub_9AD220` validates legality) gates the merge — plus alignment and "don't split a vector word" checks. If the target physical register fails the test, the candidate is colored independently, not merged.
+- **Preference/bias drives the *order* and the *target*, not the legality.** The pair-preassign hints bias which physical register the candidate prefers; interference decides whether it gets it.
+- **Coalescing is restricted to class 3 (GPR/UR) and class 6 (UR/Tensor-Acc).** `find_dest_operand` only triggers for `reg_class ∈ {3, 6}`; other classes never enter the coalescing path. Gated by knob 618 (`RegAllocCoalescing`); the MAC/MMA accumulator coalescing is a separate enable.
+
+### Class-6 Sub-Register Selector 5 / 6 / 7
+
+Register **class 6 = Tensor/Accumulator** (MMA/WGMMA). When the accumulator handler `sub_9539C0` computes a sub-register selector value of `5`, `6`, or `7`, these are **computed accumulator operand-vector indices**, not static "paired low/high/both" tags:
+
+- the accumulator base operand is `operand[numOps − pairAdj − 5]`; `+1` / `+2` then walk the consecutive 32-bit accumulator lanes (hence selectors 5/6/7);
+- the partition *span* comes from a separate 3-bit field `(desc & 7) + 1`, scaled by instruction subtype (`×2` for subtype 19, `÷2` for subtype 13);
+- the static "paired-low / paired-high / aligned-pair" meaning belongs to a *different* constraint-type switch (ctype 5/6/7), driven by pair-align bits 26–27, **not** to the class-6 selector value itself.
+
+So the same numbers 5/6/7 mean "accumulator lane index" in the class-6 selector and "pair-align constraint kind" in the constraint-type switch — two unrelated uses that must not be conflated.
+
 ### Per-Operand Pre-Assigner: sub\_93ECB0
 
 Iterates operands finding register-typed candidates, uses the opcode switch to classify each as read-side or write-side:

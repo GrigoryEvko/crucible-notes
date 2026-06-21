@@ -73,9 +73,9 @@ The allocator processes 7 register classes. Class 0 (unified) is skipped in the 
 | 3 | UR | 32-bit | 63 | fixed by arch profile | Uniform general-purpose registers (UR0–UR62) |
 | 4 | UR (ext) | 32-bit | 63 | mirror of class 3 | Uniform GPR variant (extended uniform) |
 | 5 | P / UP | 1-bit | 7 | fixed by arch profile | Predicate registers (P0–P6, UP0–UP6) |
-| 6 | Tensor/Acc | 32-bit | per-arch | profile vtable | Tensor/accumulator registers (MMA/WGMMA) |
+| 6 | Tensor/Acc | 32-bit | per-arch | profile vtable | Tensor/accumulator registers (MMA/WGMMA). Sub-register selectors 5/6/7 are computed accumulator operand-vector lane indices (see [algorithm.md § Class-6 Sub-Register Selector](./algorithm.md#class-6-sub-register-selector-5--6--7)) |
 
-The arch cap is the architectural ceiling reported as `regfile_params[3]`. The effective budget written into `RegClassDesc.max_regs` (`alloc+884+32*class_id`) is the minimum of the CLI/PTX inputs and the occupancy-derived budget from `evaluate_budget_fraction()` (see below). Classes 3–5 are not exposed to `--maxrregcount`; their budget equals the architectural cap.
+The arch cap is the architectural ceiling reported as `regfile_params[3]`. The full register-file header, warp-budget table, occupancy constants, and per-class register-ID arrays are dumped in [reference/data/register-file-budget.md](../reference/data/register-file-budget.md). The effective budget written into `RegClassDesc.max_regs` (`alloc+884+32*class_id`) is the minimum of the CLI/PTX inputs and the occupancy-derived budget from `evaluate_budget_fraction()` (see below). Classes 3–5 are not exposed to `--maxrregcount`; their budget equals the architectural cap.
 
 Barrier registers (B, UB) have `reg_type = 9`, which is above the `<= 6` allocator cutoff and are handled by a separate mechanism.
 
@@ -628,7 +628,9 @@ Cross-calls into the subsystem from the four large engines below confirm the clu
 
 ### Register Coalescing Engine (`sub_9B1200`, 800 lines)
 
-Eliminates register-to-register copies by merging live ranges. Lines 1-100 compute an FNV-1a-variant hash (multiplier 1025, XOR-shift-6) over the operand stream, stored at `range_ctx+80` for dedup. Dispatches on mode at `range_ctx+8`:
+Eliminates register-to-register copies by merging live ranges. The model is **conservative, interference-checked, preference/bias-driven optimistic coloring** (not classic Briggs degree-count, not pure preference): coalesce candidates are linked and pushed on top of the coloring stack, and the merge is committed at color time only if the target physical register passes a point-interference bitvector check (plus alignment and don't-split-a-vector-word checks). The path is restricted to **class 3 (GPR/UR) and class 6 (UR/Tensor-Acc)** — see [algorithm.md § Coalescing Model](./algorithm.md#coalescing-model--conservative-interference-checked-preference-biased). Gated by knob 618 (`RegAllocCoalescing`); MAC/MMA accumulator coalescing is a separate enable.
+
+Lines 1-100 compute an FNV-1a-variant hash (multiplier 1025, XOR-shift-6) over the operand stream, stored at `range_ctx+80` for dedup. Dispatches on mode at `range_ctx+8`:
 
 ```c
 coalesce_pass(alloc, range_ctx):

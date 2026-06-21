@@ -13,7 +13,6 @@ metadata recovered from the stripped ELF.
 | Version | **13.0.88** |
 | Build tag | `cuda_13.0.r13.0/compiler.36424714_0` |
 | Build date | Wed Aug 20 01:55:12 PM PDT 2025 |
-| Source path | `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h` |
 | ELF size | 37,741,528 bytes (37.7 MB) |
 | Architecture | x86-64 (AMD64) |
 | Linking | Dynamically linked, stripped |
@@ -69,22 +68,6 @@ The SM-version-to-code-object mapping lives in the ELF emitter at
 | 12288 | sm_30 | 0x70007 |
 | 20481 | sm_50 | 0xC000C |
 
-## Build System Metadata
-
-The source path leaked through `__FILE__` macros in the knobs infrastructure
-reveals the NVIDIA internal build tree layout:
-
-```text
-/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/
-  drivers/common/utils/generic/impl/generic_knobs_impl.h
-```
-
-Key observations:
-- **`/dvs/p4/`** — Perforce depot root on the DVS (Driver Verification System) build farm.
-- **`sw/rel/gpgpu/toolkit/r13.0/`** — Release branch for CUDA toolkit 13.0.
-- **`compiler/drivers/common/`** — Shared compiler driver code (used by both ptxas and cicc).
-- **`generic_knobs_impl.h`** — The knob system implementation header; the `__FILE__` macro at lines 395-1090 of this file is embedded in ptxas error metadata.
-
 ## Evidence Index
 
 | Claim | Source |
@@ -92,7 +75,6 @@ Key observations:
 | Version 13.0.88, 37.7 MB | Headers of all 30 sweep reports (e.g. `p1.23`, `p1.28`) |
 | `sub_432A00` strings | `p1.01` lines 514-521 |
 | `sub_6784B0` default sm_75 | User-provided; corroborated by sm_75 prevalence across all validators |
-| Source path | `p1.05` lines 14-16, `p1.04a` line 628 |
 | `ptxocg.0.0` | `p1.01` line 553, `p1.05` line 1256 |
 | ELF emitter / EM_CUDA | `p1.30` lines 46-69 |
 | SM version encoding table | `p1.08b` lines 217-237 |

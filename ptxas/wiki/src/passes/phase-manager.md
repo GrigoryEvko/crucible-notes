@@ -1,10 +1,10 @@
 # Phase Manager Infrastructure
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The PhaseManager is the central orchestration layer in ptxas. It owns the entire 159-phase optimization and code generation pipeline, constructs each phase as a polymorphic object via an abstract factory, and drives execution through a virtual dispatch loop. Every compilation unit passes through the same PhaseManager sequence: construct all 159 phase objects, iterate the phase index array calling `execute()` on each, optionally collect per-phase timing and memory statistics, then tear down. The PhaseManager also hosts an optional NvOptRecipe sub-manager (440 bytes) for architecture-specific "advanced phase" hooks that inject additional processing at 16 defined points in the pipeline.
+The PhaseManager is the central orchestration layer in ptxas. It **registers 159 phase objects** for the optimization and code generation pipeline, constructs each as a polymorphic object via an abstract factory, and drives execution through a virtual dispatch loop. The **default driver dispatches 157 of the 159** registered phases (IDs 0–156): construct all 159 phase objects, fetch the 157-entry default order array, iterate it calling `execute()` on each, optionally collect per-phase timing and memory statistics, then tear down. The two trailing registered phases — ID 157 `DebuggerBreak` and ID 158 `NOP` — are constructed but not in the default order; they run only through the recipe/named-phases path (OCG knob 298). The PhaseManager also hosts an optional NvOptRecipe sub-manager (440 bytes) for architecture-specific "advanced phase" hooks that inject additional processing at 16 defined points in the pipeline.
 
-The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch statement maps phase indices to vtable pointers, each vtable provides `execute()`, `isNoOp()`, and `getName()` virtual methods, and the dispatch loop iterates a flat index array that defines execution order. This makes the pipeline fully data-driven — reordering, disabling, or injecting phases requires only modifying the index array, not the dispatch logic.
+The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch statement maps phase indices to vtable pointers, each vtable provides `execute()`, `isNoOp()`, and `getIndex()` virtual methods, and the dispatch loop iterates a flat order array (the 157-entry identity table at `0x22BEEA0`) that defines execution order. This makes the pipeline fully data-driven — reordering, disabling, or injecting phases requires only modifying the order array, not the dispatch logic.
 
 | | |
 |---|---|
@@ -16,12 +16,14 @@ The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch 
 | **Name lookup** | `sub_C641D0` (305 bytes, case-insensitive binary search) |
 | **Timing reporter** | `sub_C64310` (3,168 bytes) |
 | **Pool reporter** | `sub_C62200` (888 bytes) |
-| **Total phases** | 159 (139 explicitly named + 20 arch-specific) |
-| **AdvancedPhase hooks** | 16 no-op-by-default insertion points |
-| **Default phase table** | Static array at `0x22BEEA0` (returned by `sub_C60D20`) |
-| **Phase name table** | Static array at `off_22BD0C0` (159 string pointers) |
+| **Registered phases** | 159 (all named in `off_22BD0C0`) |
+| **Dispatched by default** | 157 (IDs 0–156); IDs 157/158 are recipe-only |
+| **AdvancedPhase hooks** | 16 insertion points (banner-suppressed by default, `execute()` still runs) |
+| **Default order table** | `0x22BEEA0` — identity `[0..156]` (157 entries) |
+| **Order accessor** | `sub_C60D20` — returns `(&0x22BEEA0, 157)` in `(rax, rdx)` |
+| **Phase name table** | Static array at `off_22BD0C0` (159 string pointers, 1272 bytes) |
 | **Vtable range** | `off_22BD5C8` (phase 0) through `off_22BEE78` (phase 158) |
-| **Callers** | `sub_7FB6C0` (main compilation driver), `sub_9F63D0` (library/ftrace entry) |
+| **Callers** | `sub_7FB6C0` (compilation driver, default path), `sub_9F63D0` (recipe/named-phases path) |
 
 ## PhaseManager Object Layout
 
@@ -36,7 +38,9 @@ PhaseManager (112+ bytes)
   +28   int       sorted_name_capacity
   +32   int64*    allocator2            // copy of allocator (for phase list ops)
   +40   void*     phase_list            // array of 16-byte {phase_ptr, pool_ptr} pairs
-  +48   int       phase_list_count      // always 159 after construction
+  +48   int       phase_list_count      // always 159 (the registered count, PM+0x68/+0x6c)
+                                        //   note: the *dispatch* count is the separate 157
+                                        //   returned by sub_C60D20, not this field
   +52   int       phase_list_capacity
   +56   int64     nvopt_recipe_ptr      // NvOptRecipe sub-manager, or NULL
   +64   int64     (reserved)
@@ -101,7 +105,19 @@ pair<phase*, pool*> PhaseFactory(int phase_index, context* ctx) {
 }
 ```
 
-Called exclusively by the constructor (`sub_C62720`).
+Called exclusively by the constructor (`sub_C62720`). The factory is a 159-arm jump table (`cmp $0x9e` upper bound, valid 0–158); all 159 arms are distinct. Arm 157 builds the `DebuggerBreak` phase (ctor at `0xc60d61`) and arm 158 builds the `NOP` phase (ctor at `0xc61ae8`). Both objects are constructed on every compile, but neither ID appears in the default 157-entry order table, so their `execute()` is never reached unless a recipe explicitly schedules them.
+
+## Registered (159) vs Dispatched (157)
+
+Two distinct counts apply to the PhaseManager, and they must not be conflated:
+
+| Object | Builder / accessor | What it is | Count |
+|---|---|---|---|
+| Phase-name registry (rodata) | `off_22BD0C0` | `const char*[]` of phase names | 159 ptrs (1272 bytes) |
+| PhaseManager name array | built by `sub_C62720` | runtime copy of the registry | 159 (`PM+0x6c = 159`) |
+| Default order table | `0x22BEEA0` | `int32[]` of phase IDs to run; identity `0..156` | **157** (`0x9D`) |
+
+The order accessor `sub_C60D20` returns a `(pointer, count)` pair: the order-table pointer in `rax` and `0x9D = 157` in `rdx`. In the Hex-Rays C view the inferred prototype returns a single pointer, so the `rdx` count is dropped and the body shows only `return &unk_22BEEA0;`. The driver (`sub_7FB6C0`) reloads only `rdi`/`rsi` between the two calls, so `rdx = 157` flows untouched into the third integer argument of the dispatch loop `sub_C64F70`, where it bounds the loop at `&order[157]`. The table holds the identity sequence `[0..156]`; the bytes after entry 156 belong to a different rodata structure. Registry = 159; default schedule = 157; `DebuggerBreak` (157) and `NOP` (158) are registered but not dispatched by default.
 
 ## Construction Sequence — `sub_C62720`
 
@@ -256,8 +272,8 @@ into `var_68`) are both written **before** the first `isNoOp()` call at `0xC6507
 When timing is enabled, `sub_C64310` is called at `0xC65121` in the common path
 that both no-op and active phases reach.  A disabled phase therefore appears in the
 timing array with near-zero elapsed time and a zero-delta memory snapshot, rather
-than being omitted.  This means `--ftime` output always shows all 159 phase slots,
-with no-op phases contributing empty rows.
+than being omitted.  This means `--ftime` output shows a row for all 157 dispatched
+phase slots, with no-op phases contributing empty rows.
 
 The "Before" / "After" diagnostic strings use an interesting encoding trick: the string `"Before "` is stored as the 64-bit integer `0x2065726F666542` in little-endian, allowing the compiler to emit a single `mov` instruction instead of a `memcpy`. The string `"After "` is stored as two writes: a 4-byte `dword 0x65746641` ("Afte") plus a 2-byte `word 0x2072` ("r ") plus a null terminator byte, totaling 7 bytes at `0xC651F7`--`0xC65208`.
 
@@ -956,8 +972,8 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 154 | `UpdateAfterFormatCodeList` | **`nullsub_628`** — stripped from release, `isNoOp=1` suppresses diagnostics |
 | 155 | `DumpNVuCodeText` | Debug SASS-text dumper gate (`ctx+0x598 > 0`); tail-call target is `nullsub_31` in release |
 | 156 | `DumpNVuCodeHex` | Debug SASS-hex dumper gate; tail-call target is `nullsub_30` in release |
-| 157 | `DebuggerBreak` | **`nullsub_627`** — debug-only breakpoint marker |
-| 158 | `NOP` | **`nullsub_626`** — terminal sentinel anchoring the 159-phase dispatch loop |
+| 157 | `DebuggerBreak` | **`nullsub_627`** — registered but not in the default schedule; debug-only breakpoint marker (recipe-only) |
+| 158 | `NOP` | **`nullsub_626`** — registered but not in the default schedule; the lookup-failure sentinel (`sub_C641D0` returns 158) and recipe-seed value |
 
 All 20 phases in the 139–158 range have names in the static table at `off_22BD0C0` (159 entries total, not 139). Name resolution goes through each phase's `getIndex()` virtual method (vtable+8) returning the phase index as a constant (`mov eax, 0x8b..0x9e; ret`), which the dispatch loop (`sub_C64F70`) uses as the lookup key into the name table. The earlier claim that these phases had names "returned by a `getName()` virtual method" was incorrect.
 

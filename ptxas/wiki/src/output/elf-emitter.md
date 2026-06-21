@@ -2,7 +2,9 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables. The emitter writes standard ELF headers with NVIDIA extensions: `EM_CUDA` (`0xBE` / 190) as the machine type, NVIDIA-specific section types (`SHT_CUDA_INFO` = `0x70000000` for `.nv.info`, `SHT_CUDA_CALLGRAPH` = `0x70000064` for `.nv.callgraph`, `SHT_CUDA_COMPAT` = `0x70000086` for `.nv.compat`), and CUDA-specific ELF flags encoding the SM architecture version. The design handles both 32-bit and 64-bit ELF classes, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit). Finalization is a single-pass algorithm that orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
+ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables. The emitter writes standard ELF headers with NVIDIA extensions: `EM_CUDA` (`0xBE` / 190) as the machine type, NVIDIA-specific section types (`SHT_CUDA_INFO` = `0x70000000` for `.nv.info`, `SHT_CUDA_CALLGRAPH` = `0x70000001` for `.nv.callgraph`, `SHT_CUDA_COMPAT_INFO` = `0x70000086` for `.nv.compat`), and CUDA-specific ELF flags encoding the SM architecture version. The design handles both 32-bit and 64-bit ELF classes, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit). Finalization is a single-pass algorithm that orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
+
+ptxas emits two ELF flavours, selected by the `-c` flag. A **final cubin** (default) is `ET_EXEC` (`e_type` = 2): the memory-space sections are lowered to standard `SHT_PROGBITS`/`SHT_NOBITS` and the file carries 6 program headers. A **relocatable object** (`-c`) is `ET_REL` (`e_type` = 1): the memory-space sections keep their `SHT_CUDA_*` LOPROC types and the file carries 0 program headers. Only `.nv.info`, `.nv.compat`, and `.nv.callgraph` keep LOPROC section types in the final cubin — every other CUDA-specific section is type-lowered. The byte-exact header fields, e_flags SM encoding, and NOTE-section layouts are tabulated in [ELF header & NOTE reference](../reference/data/elf-header-notes.md).
 
 | | |
 |---|---|
@@ -18,9 +20,11 @@ ptxas builds its ELF/cubin output without libelf or any external ELF library. Th
 | **File serializer** | `sub_1CD13A0` (2,541 bytes) |
 | **Cubin entry point** | `sub_612DE0` (47 KB, called from `sub_446240`) |
 | **ELF machine type** | `EM_CUDA` = `0xBE` (190) |
+| **e_ident[EI_OSABI]** | `0x41` (earlier builds used the CUDA OSABI tag `0x33`) |
+| **e_ident[EI_ABIVERSION]** | `0x08` (cuobjdump prints `ABI=8`; earlier builds used 7) |
 | **CUDA section type (`.nv.info`)** | `SHT_CUDA_INFO` = `0x70000000` |
-| **CUDA section type (`.nv.callgraph`)** | `SHT_CUDA_CALLGRAPH` = `0x70000064` |
-| **CUDA section type (`.nv.compat`)** | `SHT_CUDA_COMPAT` = `0x70000086` |
+| **CUDA section type (`.nv.callgraph`)** | `SHT_CUDA_CALLGRAPH` = `0x70000001` |
+| **CUDA section type (`.nv.compat`)** | `SHT_CUDA_COMPAT_INFO` = `0x70000086` |
 | **ELF magic** | `0x464C457F` (`\x7fELF`) |
 | **Memory pool** | `"elfw memory space"` (4,096-byte initial) |
 
@@ -148,8 +152,8 @@ The ELF header is stored inline at the start of the ELFW object. Field positions
 | 4 | 1B | `e_ident[EI_CLASS]` | `(v11 != 0) + 1`: 1 = ELFCLASS32, 2 = ELFCLASS64 |
 | 5 | 1B | `e_ident[EI_DATA]` | Hardcoded 1 (little-endian) |
 | 6 | 1B | `e_ident[EI_VERSION]` | Hardcoded 1 (EV_CURRENT) |
-| 7 | 1B | `e_ident[EI_OSABI]` | `0x41` ('A') for 64-bit cubin, `0x33` ('3') for 32-bit |
-| 8 | 1B | `e_ident[EI_ABIVERSION]` | Constructor parameter `a3` |
+| 7 | 1B | `e_ident[EI_OSABI]` | `0x41` on 64-bit cubins (earlier builds used `0x33`); `readelf` prints `<unknown: 41>` |
+| 8 | 1B | `e_ident[EI_ABIVERSION]` | Constructor parameter `a3`; emitted value `0x08` (earlier builds used `0x07`) |
 | 16 | 2B | `e_type` | Constructor parameter `a1` (cast to uint16) |
 | 18 | 2B | `e_machine` | Hardcoded `0x00BE` (EM_CUDA = 190) |
 | 62 | 2B | `e_shstrndx` | `*(_WORD*)(v17 + 31)` — set to `.shstrtab` section index |
@@ -595,12 +599,25 @@ The ELF header written by the ELFW constructor follows the standard ELF format w
 | 0x04 | 1B | `e_ident[EI_CLASS]` | `0x33` ('3', 32-bit) or `0x41` ('A', 64-bit) |
 | 0x05 | 1B | `e_ident[EI_DATA]` | `0x01` (little-endian) |
 | 0x06 | 1B | `e_ident[EI_VERSION]` | `0x01` (EV_CURRENT) |
-| 0x07 | 1B | `e_ident[EI_OSABI]` | CUDA ABI version |
+| 0x07 | 1B | `e_ident[EI_OSABI]` | `0x41` (earlier builds: `0x33`) |
+| 0x08 | 1B | `e_ident[EI_ABIVERSION]` | `0x08` (earlier builds: `0x07`) |
+| 0x10 | 2B | `e_type` | `2` (ET_EXEC) for a final cubin; `1` (ET_REL) for `-c` |
 | 0x12 | 2B | `e_machine` | `0x00BE` (EM_CUDA = 190) |
 | 0x14 | 4B | `e_version` | `0x00000001` |
 | 0x24 | 4B | `e_flags` | SM version + CUDA flags (masked via `0x7FFFBFFF`) |
 
-The `e_flags` field encodes the target SM architecture (e.g., `sm_100` for Blackwell) and several CUDA-specific flags including relocatable object mode vs executable mode. The mask `0x7FFFBFFF` clears bits 14 and 31, which are reserved CUDA control bits.
+### e_flags SM Encoding
+
+The `e_flags` word is the CUDA driver's primary architecture key. ptxas v13.0.88 lays it out as four bytes, where the **real** SM lives in bits 8–15 and the **virtual** (PTX `compute_`) SM in bits 16–23 — earlier ptxas builds carried the real-SM number in the low byte instead. Worked samples (`ptxas -arch=<sm>` on minimal PTX, raw header bytes):
+
+| Field | Bits | Value | Notes |
+|---|---|---|---|
+| format/ABI nibble | 0–7 | `0x04` for sm_≤90, `0x02` for Blackwell (sm_100/103/120/121) | |
+| real SM (SM×10) | 8–15 | sm_75→`0x4b`, sm_90→`0x5a`, sm_100→`0x64`, sm_103→`0x67`, sm_120→`0x78`, sm_121→`0x79` | `EF_CUDA_SM` |
+| virtual/PTX SM | 16–23 | `0` when virtual==real | `EF_CUDA_VIRTUAL_SM` |
+| high format byte | 24–31 | constant `0x06` across all v13.0.88 samples | |
+
+Full `e_flags` words observed: `sm_75=0x06004b04`, `sm_80=0x06005004`, `sm_90/sm_90a=0x06005a04`, `sm_100=0x06006402`, `sm_120=0x06007802`. Bit flags layered on top: `EF_CUDA_TEXMODE_UNIFIED` (`0x100`), `EF_CUDA_TEXMODE_INDEPENDENT` (`0x200`), `EF_CUDA_64BIT_ADDRESS` (`0x400`), and `EF_CUDA_MERCURY` (`0x80000000`, set on a pre-finalize Mercury ELF and cleared on the final SASS cubin). The `'a'`/`'f'` arch-variant does **not** appear in `e_flags` — `sm_90` and `sm_90a` produce identical `0x06005a04`; the variant is carried in `.nv.compat` `EICOMPAT_ATTR_ISA_CLASS` and the `.note.nv.cuinfo` virtual-SM field. The mask `0x7FFFBFFF` clears bits 14 and 31 (the reserved control bits and `EF_CUDA_MERCURY`) before the SM bytes are written. See [ELF header & NOTE reference](../reference/data/elf-header-notes.md) for the full per-arch capture and the program-header/NOTE layouts.
 
 ## NVIDIA-Specific Section Types
 
@@ -609,10 +626,11 @@ Beyond standard ELF section types, the emitter uses NVIDIA-defined types in the 
 | Type Constant | Value | Section |
 |---|---|---|
 | `SHT_CUDA_INFO` | `0x70000000` | `.nv.info`, `.nv.info.*` — global and per-entry EIATTR attributes |
-| `SHT_CUDA_CALLGRAPH` | `0x70000064` | `.nv.callgraph` — inter-function call edges (relocatable mode) |
-| `SHT_CUDA_COMPAT` | `0x70000086` | `.nv.compat` — forward-compatibility attributes |
+| `SHT_CUDA_CALLGRAPH` | `0x70000001` | `.nv.callgraph` — inter-function call edges (relocatable mode) |
+| `SHT_CUDA_CONSTANT_B0` | `0x70000064` | `.nv.constant0.<entry>` — per-kernel param constant bank (bank# = type − `0x70000064`) |
+| `SHT_CUDA_COMPAT_INFO` | `0x70000086` | `.nv.compat` — forward-compatibility attributes |
 
-The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilation as a range-check endpoint for CUDA-specific section types — `sub_1CB3570` treats the range `0x70000064`--`0x7000007E` plus `0x70000006` as receiving special relocatable-mode handling. The `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`) for the type field.
+The magic constant `1879048292` (`0x70000064`) is `SHT_CUDA_CONSTANT_B0` — the per-kernel param constant bank type, and the **base** of the constant-bank type range. The bank number of any `.nv.constant<N>` section is recovered as `sh_type − 0x70000064`, so `.nv.constant3` is `0x70000067`. The emitter's range check in `sub_1CB3570` treats the range `0x70000064`--`0x7000007E` (constant banks 0–17 plus the seven Mercury constant banks) plus `0x70000006` as receiving special relocatable-mode handling. The `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`) for the type field, and `.nv.callgraph` uses `0x70000001`. See the [Section Catalog](sections.md) for the complete LOPROC type vocabulary.
 
 ## Cross-References
 
@@ -622,6 +640,7 @@ The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilat
 - [Mercury Encoder](../codegen/mercury.md) — Mercury/capmerc encoding that feeds into the ELF emitter
 - [Pipeline Overview](../pipeline/overview.md) — where the ELF phase fits in the compilation pipeline
 - [Memory Pool Allocator](../infra/memory-pools.md) — the `sub_424070` pool allocator used by ELFW
+- [ELF header & NOTE reference](../reference/data/elf-header-notes.md) — byte-exact header, e_flags per arch, program headers, NOTE and `.nv.compat` capture
 
 ## Function Map
 

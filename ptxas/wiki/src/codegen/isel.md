@@ -1081,6 +1081,56 @@ The simplest matchers skip operand validation entirely and rely solely on opcode
 | `sub_B28EE0` | `isType11` | `(tag) -> bool` | `tag == 11` |
 | `sub_B28EF0` | `isType8` | `(tag) -> bool` | `tag == 8` |
 
+### ISel Node-Family Method Tables — Per-Architecture Lowering Generations
+
+The ISel node hierarchy is not one parameterized class — it is **four discrete per-architecture method-table families plus a shared coordinator family**, each emitted as a vtable triple `{methods, query, operand}`. The families are distinct *generations* of lowering logic (Volta/Turing, Ampere/Ada, Hopper/Blackwell, Mercury/Blackwell-tensor); the `COORD` family is the shared coordinator. The method-table count (455) is identical across the four main families because they implement the same virtual interface; only the bodies differ per generation.
+
+| Family | methods VA | methods slots | query VA | query slots | operand VA | operand slots |
+|---|---|---|---|---|---|---|
+| FAM0 | `0x22A5AA0` | 455 | `0x22A68E8` | 158 | `0x22A6DE8` | 15 |
+| FAM1 | `0x22A6E70` | 455 | `0x22A7CB8` | 159 | `0x22A81C0` | 15 |
+| FAM2 | `0x22A8248` | 455 | `0x22A9090` | 159 | `0x22A9598` | 15 |
+| FAM3 | `0x22A9BB0` | 455 | `0x22A9620` | 159 | `0x22A9598`* | 15 |
+| COORD | `0x22AA9F8` | 129 | — | — | — | — |
+
+(*FAM3's operand table sits at `0x22A9598`; the query table at `0x22A9620` precedes its 455-slot method table in `.rodata`.) Each family is a `{455-method, ~159-query, 15-operand}` triple. The four 455-slot method tables are the same arrays the [encoding-tables](./encoding-tables.md#per-sm-tier-encoder-index-tables--0x22a5aa0-family) page tracks as the "SM-tier encoder index" family — here they are seen from the ISel side, as the polymorphic node method tables, with the progressive nullsub fill (93 → 25 → 25 → 2 holes) encoding which opcodes each generation added.
+
+### Operand Constraint Records — 44 × 256-Byte Type-Signature Tables
+
+The same `.data` bank that the [OCG template lookup `sub_C3F490`](#ocg-encoding-template-lookup--sub_c3f490) indexes (`0x22B8900`–`0x22BB460`, 256-byte / `0x100` stride) is, structurally, a bank of **44 operand-constraint records** — one per ISel constraint signature. Each record carries an 8-element constraint *header* (a per-operand-position kind code: `0`/`1`/`2` = none/src-class/dst-class), a *type-id list* at `+0x60`, and a constraint-flags vector. `sub_C3F490` returns the `+0x60` type-list base for a given index; the OCG/MercExpand operand-gather walk then iterates that list.
+
+```c
+struct OperandConstraintRecord {  // 256 bytes (the OCG "operand gathering template")
+    /* +0x00 */ uint8_t  header[8];        // per-position operand kind (0,1,2 = none/src/dst-class)
+    /* +0x60 */ uint8_t  type_ids[N];      // DagType ids accepted at this constraint (template body)
+    /* ...    */ uint8_t  constraint_flags[5];
+};
+```
+
+The `type_ids` lists are drawn from the DagType enum below. Record 0 (`0x22B8900`), for example, accepts the 21-element set `{1,2,3,4,8,16,5,6,7,14,17,12,19,20,21,22,23,24,9,10}` — i.e. UNK-free integer/float/logical types. The records are the per-arch lowered descriptor space (distinct from the 8-value DAG-level packed kind); the lowered classes are binary-only. Viewed from the OCG side these same 256-byte records are the operand-gathering templates; viewed from the ISel side they are the operand type-signature constraints.
+
+### Operand `type_id` — the DagType Enum (0–25)
+
+The per-operand `type_id` field walked during ISel and encoding is a positional **DagType** (DAG value type) enum, recovered from the type-suffix string table in `.rodata`:
+
+| id | Name | Meaning | id | Name | Meaning |
+|---|---|---|---|---|---|
+| 0 | UNK | unknown | 13 | SHORT | S16 |
+| 1 | NONE | no type | 14 | USHORT | U16 |
+| 2 | BITS8 | 8-bit bits | 15 | BYTE | S8 |
+| 3 | BITS16 | 16-bit bits | 16 | UBYTE | U8 |
+| 4 | BITS32 | 32-bit bits | 17 | DOUBLE | F64 |
+| 5 | BITS64 | 64-bit bits | 18 | BOOL | boolean |
+| 6 | FLOAT | F32 | 19 | LBOOL | long boolean |
+| 7 | HALF | F16 | 20 | LOGICAL | logical |
+| 8 | FIXED | F12 fixed | 21 | SLOGICAL | signed logical |
+| 9 | LONG | S64 | 22 | TEXTURE | texture handle |
+| 10 | ULONG | U64 | 23 | SAMPLER | sampler handle |
+| 11 | INT | S32 | 24 | CC | condition code |
+| 12 | UINT | U32 | 25 | ADDRESS | address |
+
+(Higher ids 26=F16X2, 27=F16X4, 28=STRING, 29=MAX continue the same enum.) This is the type space referenced by the operand-constraint records above and by the matcher field checks (the per-operand type predicates in [Operand Type Predicates](#operand-type-predicates) classify the 8-value *DAG-packed* operand tag, which is a separate, narrower encoding from this 30-value DagType).
+
 ### SM120 Pattern Coordinator — `sub_13AF3D0` (137 KB)
 
 The largest ISel function in the binary (137 KB, 4,225 lines, 570+ locals). It is an architecture-specific operand-emission coordinator that runs in Phase 2 as a **parallel backend** to the mega-selector `sub_C0EB10`. The two do not call each other — they are mutually exclusive implementations of the same ISel protocol, selected per-SM by the vtable in the ISel driver. The mega-selector covers opcodes 7–221 for the default backend; the coordinator covers opcodes 2–352 for the SM120 (consumer RTX 50xx / enterprise Pro) backend.

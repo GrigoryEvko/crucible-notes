@@ -523,6 +523,33 @@ resolve_relocations(elfw):
 
 The sub-byte `R_MERCURY_8_N` types (ordinals 4–11) use patch mode 6 in `sub_1CD34E0`, which extracts byte `N/8` from the computed value and writes it to the target offset without touching adjacent bytes. This avoids a read-modify-write on the full QWORD — the descriptor's `bit_start` field encodes the byte position (0, 8, 16, ... 56) and `bit_width` is always 8.
 
+The full 64-entry R_MERCURY catalog — every type code, handler class (`NVRH_FINALIZER` vs driver/linker), and per-field bit action — is in the [R_MERCURY relocation reference](../reference/data/mercury-reloc-types.md).
+
+### R_MERCURY → R_CUDA Conversion Chain
+
+Finalization performs three relocation-kind round-trips: Mercury ELF reloc ↔ OCG `RK_MERCURY_*` kind on the way into GenerateSASS, OCG `RK_SM*` kind → `R_CUDA_*` ELF reloc on the **text** section on the way out, and `R_MERCURY_*` → `R_CUDA_*` directly on **data** sections (the `.nv.merc.rela` clone path). The `PROG_REL` text relocs are resolved to concrete offsets during GenerateSASS, so their ELF type is cleared to `R_CUDA_NONE`.
+
+| Stage | From | To | Condition |
+|---|---|---|---|
+| merc→ocg | `R_MERCURY_ABS32` | `RK_MERCURY_ABS32` | `sym==SHARED` sets `SymIsShared` |
+| merc→ocg | `R_MERCURY_ABS64` / `ABS16` / `ABS32_LO` / `ABS32_HI` | `RK_MERCURY_*` (same) | — |
+| merc→ocg | `R_MERCURY_PROG_REL32`, `ABS_PROG_REL32_LO/HI` | `RK_MERCURY_*` (same) | — |
+| text ocg→elf | `RK_SM70_IMM47_ABS` | `R_CUDA_ABS47_34` | — |
+| text ocg→elf | `RK_SM70_IMM32_ABS` | `R_CUDA_FUNC_DESC32_32` | `sym==ENTRY_FUNC` |
+| text ocg→elf | `RK_SM70_IMM32_ABS` | `R_CUDA_ABS32_32` | `sym!=ENTRY_FUNC` |
+| text ocg→elf | `RK_SM70_IMM32_ABS_LO/HI` | `R_CUDA_FUNC_DESC32_LO/HI_32` | `sym==ENTRY_FUNC` |
+| text ocg→elf | `RK_SM90_IMM55_ABS` | `R_CUDA_ABS55_16_34` | Hopper (2-action reloc) |
+| text ocg→elf | `RK_SM70_YIELD_NOP` | `R_CUDA_YIELD_OPCODE9_0` | patches 9-bit NOP opcode |
+| text ocg→elf | `RK_SM70_YIELD_CLEAR_PRED` | `R_CUDA_YIELD_CLEAR_PRED4_87` | clears 4 pred bits at bit 87 |
+| text prog-rel clear | `RK_MERCURY_PROG_REL32/_LO/_HI` | `R_CUDA_NONE` | offsets set during GenerateSASS |
+| data merc→sass | `R_MERCURY_G64` / `ABS64` / `ABS32` | `R_CUDA_G64` / `R_CUDA_64` / `R_CUDA_32` | — |
+| data merc→sass | `R_MERCURY_8_n` / `G8_n` / `FUNC_DESC_8_n` | `R_CUDA_8_n` / `G8_n` / `FUNC_DESC_8_n` | byte lane n=0..56 |
+| data merc→sass | `R_MERCURY_TEX/SURF_HEADER_INDEX` | `R_CUDA_TEX/SURF_HEADER_INDEX` | — |
+| data merc→sass | `R_MERCURY_SAMP_HEADER_INDEX` | `R_CUDA_SAMP_HEADER_INDEX` | `R_CUDA_SAMP_HEADER_INDEX_0` under image-DCI |
+| data merc→sass | `R_MERCURY_FUNC_DESC_64` / `UNUSED_CLEAR64` | `R_CUDA_FUNC_DESC_64` / `UNUSED_CLEAR64` | — |
+| data merc→sass | `R_MERCURY_ABS_PROG_REL32` / `REL64` | `R_CUDA_32` / `R_CUDA_64` | addend converted to PC-relative |
+| data merc→sass | (default) | (unchanged) | no mapping — `relType` returned as-is |
+
 ## Mercury Section Binary Layouts
 
 ### Section Classifier Algorithm — `sub_1C98C60`
@@ -767,6 +794,19 @@ Level 2 allows a capmerc binary compiled for sm_100 (datacenter Blackwell) to be
 
 The key constraint is instruction encoding compatibility: the sub-byte R_MERCURY_8_* relocations can patch SM-specific encoding bits, but the overall instruction format and register file layout must be compatible between source and target.
 
+The level is parsed by the CLI handler `sub_703AB0` and stored at context `+120` (default 0, validated `≤ 4`). The same parser also stores `--fastpath-off` at `+92`, the target arch at `+112`, and sets the capmerc auto-enable flag (`+81 = 1`) whenever the SM number exceeds 99. The `--binary-kind {mercury,capmerc,sass}` selector routes `mercury → +88`, `capmerc → +81`, with `--self-check → +83` and `--out-sass → +84`.
+
+### Mercury nvinfo attributes
+
+Two EIATTR codes carry Mercury finalizer state into `.nv.info`:
+
+| Code | Name | EIFMT | Carries |
+|---|---|---|---|
+| `0x5A` (90) | `EIATTR_MERCURY_FINALIZER_OPTIONS` | SVAL | structured length-prefixed finalizer option blob |
+| `0x5F` (95) | `EIATTR_MERCURY_ISA_VERSION` | SVAL | the combined Mercury ISA version stamp |
+
+A plain sm_90 kernel already emits the Mercury ISA version in both `.nv.info` (`EIATTR_MERCURY_ISA_VERSION`) and `.nv.compat` (`EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION`, `0x0101` = v1.1); both are absent on sm_75, which still uses the direct SASS path.
+
 ## Off-Target Finalization
 
 Off-target finalization converts a capmerc binary compiled for SM X into native SASS for SM Y. The compatibility checker `sub_60F290` gates this with a two-phase test: family normalization followed by capability bitmask validation.
@@ -806,7 +846,9 @@ fn can_finalize_offtarget(ctx, source_sm, target_sm, cross_family_ok) -> bool:
     return (cap_flags & required_bits[tgt_fam]) == required_bits[tgt_fam]
 ```
 
-The `CAN_FINALIZE_DEBUG` environment variable enables verbose tracing of the decision (read via `getenv`/`strtol` at entry; the parsed value gates logging in callers, not the decision itself).
+The `CAN_FINALIZE_DEBUG` environment variable enables verbose tracing of the decision (read via `getenv`/`strtol` at entry; the parsed value gates logging in callers, not the decision itself). The capability bitmask the checker reads comes from the `.nv.compat` section: the loader `sub_1CB06B0` parses it into a compat-state object whose `+6` holds the ISA version (default `0x0100` = v1.0), `+16` the capability-bitmask pointer, and `+24` the entry count; the TLV walker `sub_1CB05A0` validates the section by its magic dword `0x70000086` (the `SHT_CUDA_COMPAT_INFO` type) before iterating elements.
+
+The fastpath's source SM is taken from the capsule header field at `+48`: when the container byte at `+7` is `'A'` (`0x41`) the SM is `dword_48 >> 8` (16-bit field), otherwise `dword_48 & 0xFF` (8-bit field). An ISA-version ceiling check rejects any input whose Mercury ISA exceeds `0x101`, raising finalizer error 25.
 
 ### Kernel finalizer fastpath (`sub_612DE0`)
 
@@ -893,6 +935,41 @@ void EmitELF(context) {
 }
 ```
 
+## Finalizer Pipeline (FNLZR)
+
+When a Mercury or capmerc ELF is finalized into native SASS — whether inline during a normal compile or off-target at load time — the finalizer (FNLZR) runs an ordered sequence of stages. The lib-driver gates and parses the input (stages 1–3), a per-text-section codegen machine runs GenerateSASS (stage 4 and its sub-phases), and the remaining stages remap relocations, size the output, and emit the SASS ELF.
+
+| Stage | Level | What it does |
+|---|---|---|
+| accept (`sub_612DE0` fastpath) | lib-driver | gate input: 64-bit, `EF_CUDA_MERCURY` set, `e_type ∈ {ET_REL, ET_EXEC, ET_EWP}`, `abiVersion == ELFMERCABIV_ABI` (0); arch-compatible / off-target family check (`sub_60F290`) |
+| section-grouping | lib-driver | group each Mercury `.text.<fn>` with its `SHT_RELA` reloc section + `SHT_CUDA_INFO` nvinfo section; build the SASS symbol table |
+| section parse | lib-driver | parse reloc + text nvinfo sections into per-section meta-info; parse the global nvinfo section |
+| GenerateSASS | per-text | run the SASS machine per text section (sub-phases below); a min-heap threadpool bins sections by summed size across the available core count |
+| UPDATE_RELOCS_OFFSET | per-text post | `sub_1CD48C0` (master resolver): remap reloc offsets byte→instr via the instr-offset vector; `PROG_REL32/_HI/_LO` set to `R_CUDA_NONE` during emit; clear const-bank relocs; add a yield relocation if virtual SM < 70 |
+| FNLZR-vs-driver split | per-reloc | `mercury_reloc_info[rtype−0x10000].handler == NVRH_FINALIZER` → defer to the deferred-reloc list (no output rela slot); otherwise emit a rela with the merc→sass reloc conversion |
+| output-size pass | lib-driver | size the output SASS ELF; only `EIATTR_FRAME_SIZE` / `EIATTR_MIN_STACK_SIZE` in the global nvinfo may grow |
+| SASS-ELF emit | lib-driver | `sub_1CB8E40`: write the SASS ELF — clear `EF_CUDA_MERCURY`, set `abiVersion = ELFOSABIV_LATEST` (7), set `EF_CUDA_64BIT_ADDRESS`, demote shared/global/local to `SHT_NOBITS` for `ET_EXEC`, set `phoff = phnum = 0` |
+| Mercury-aux emit | lib-driver | `sub_1C98C60` / `sub_1C9F280`: emit `.nv.merc.*` clones, the Mercury-to-SASS map sections, and renamed Mercury constant banks |
+| dedup | emit sub-stage | content-equality dedup of constant blobs then symbol/name dedup |
+| self-check | optional | `--self-check`: reconstitute SASS from the capsule (`sub_720F00` lexer) and compare section-by-section (`sub_729540`); errors 17/18/19 on mismatch |
+
+### GenerateSASS sub-phases
+
+GenerateSASS (stage 4) turns the Mercury packet stream of one text section into SASS bytes through six ordered sub-phases:
+
+| Sub-phase | Action |
+|---|---|
+| `CONVERT_MERC_BINARY_TO_MERC_IR` | decode the Mercury packet stream (MPE) into Mercury IR |
+| `FINALIZER_EXPANSION` | expand pseudo / macro Mercury ops into concrete instruction forms |
+| `FINALIZER_OPEX` | operand-extension / scheduling-barrier (scoreboard) resolution |
+| `FINALIZER_WARS` | apply per-SM hardware workarounds |
+| `MERC_IR_TO_SASS` | emit final SASS bytes; build the instruction-offset vector (Mercury offset → SASS offset); record yield-instruction offsets and count |
+| `UPDATE_INST_VECTOR` | finalize the offset map |
+
+### Deferred relocation resolution
+
+After all text-section symbol values are known, the deferred FNLZR relocs (the `PROG_REL` family flagged `NVRH_FINALIZER` during the split) are patched in place by the bit-patcher `sub_1CD34E0`. Only `NVRS_ADDR` (32/64) and the `NVRS_ADDR8_*` byte lanes are valid here; any other symbol-value code raises `ELFNLZR_ERROR_INVALID_RELOCATION`.
+
 ## Function Map
 
 | Address | Size | Identity |
@@ -922,3 +999,4 @@ void EmitELF(context) {
 - [Knobs System](../config/knobs.md) — knob infrastructure that KNOBS embedding serializes
 - [Phase Manager](../passes/phase-manager.md) — 159-phase pipeline infrastructure
 - [SM Architecture Map](../targets/index.md) — SM version numbers and family groupings
+- [R_MERCURY relocation reference](../reference/data/mercury-reloc-types.md) — full 64-entry catalog with handler class and bit actions

@@ -1,6 +1,6 @@
 # Instructions & Opcodes
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
 This page documents the Ori IR instruction representation: in-memory layout, opcode encoding, operand model, instruction flags, creation/iteration APIs, the master descriptor table, and opcode categories. All offsets are from `ptxas v13.0.88` (37.7 MB stripped x86-64 ELF).
 
@@ -18,9 +18,9 @@ Every Ori instruction is a 296-byte C++ object allocated from the Code Object's 
 | +20 | 4 | `i32` | `ref_count` | Reference/use count (incremented by `sub_7E6090`) |
 | +24 | 4 | `i32` | `bb_index` | Basic block index (`bix`) this instruction belongs to |
 | +28 | 4 | `i32` | `sched_pos` | Scheduling-order position within BB; set to -1 when unscheduled (by `sub_7EB4B0`) |
-| +32 | 4 | `u32` | `control_word` | Scheduling control word (stall cycles, yield, etc.) |
+| +32 | 4 | `u32` | `reserved_32` | Reserved / dead u32 — zero-init only (`sub_7DD010@0x7dd043 movl $0,0x20`); **not** the SASS control word (see below) |
 | +36 | 4 | `u32` | `flags_36` | Instruction flags (bits 19-21 = subtype, see below) |
-| +40 | 8 | `ptr` | `sched_slot` | Scheduling state pointer |
+| +40 | 8 | `ptr` | `sched_slot` | Pointer to the lazily-allocated per-instruction scheduling record (NULL until the scheduler runs); the SASS control word lives **inside** this record |
 | +48 | 8 | `u64` | `flag_bits` | Extended flag bits (bit 5 = volatile, bit 27 = reuse) |
 | +56 | 8 | `ptr` | `def_instr` | Defining instruction (for SSA def-use chains) |
 | +64 | 8 | `ptr` | `operand_constraints` | Per-operand constraint/liveness table pointer; dereferenced as `*(ptr + 8*operand_idx)` in `sub_7E9E80` to look up per-operand BB-scoped metadata |
@@ -111,7 +111,9 @@ int dst_count = *(uint32_t*)(instr + 80) - adj;
 
 ### Canonical Opcode Reference
 
-The opcode value stored at instruction+72 is the same index into the ROT13 name table at `InstructionInfo+4184`. There is a single numbering system — the ROT13 table index IS the runtime opcode. This was verified by tracing `sub_BEBAC0` (getName), which computes `InstructionInfo + 4184 + 16 * opcode` with no remapping.
+The opcode value stored at instruction+72 is the same index into the ROT13 name table at `InstructionInfo+4184`. There is a single numbering system — the ROT13 table index IS the runtime opcode. This was verified by tracing `sub_BEBAC0` (getName), which computes `InstructionInfo + 4184 + 16 * opcode` with no remapping. The name table is built by the `InstructionInfo` constructor `sub_BE7390` (16 bytes/entry).
+
+There are **322 primary Ori opcodes** (IDs 0–321), plus a separate **385-entry Mercury-extended** opcode set covering SM103 tensor operations. The full primary enum — id, mnemonic, ROT13 form, earliest SM generation, and constructor-verified flag — is reproduced as a [reference data page](../reference/data/ir-opcode-enum.md).
 
 The following table lists frequently-referenced opcodes from decompiled code, with their canonical SASS mnemonic names from the ROT13 table. Each opcode appears in 10+ decompiled functions reading `*(instr+72)`.
 
@@ -190,32 +192,41 @@ Word 0 (at instr + 84 + 8*i):
 
  31  30  29  28  27  26  25  24  23  22  21  20  19                  0
 +---+---+---+---+---+---+---+---+---+---+---+---+---------------------+
-| S |  type(3) |       modifier (8 bits)        |    index (20 bits)   |
+| D |  type(3) |       modifier (8 bits)        |    index (24 bits)   |
 +---+---+---+---+---+---+---+---+---+---+---+---+---------------------+
   ^   ^                                           ^
-  |   bits 28-30: operand type                    bits 0-19: register/symbol index
-  bit 31: sign/negative flag (S)
+  |   bits 28-30: packed operand-kind            bits 0-23: register/symbol index
+  bit 31: is-DESTINATION (def) flag (D)           (dominant mask 0xFFFFFF; 0xFFFFF in 20b sites)
 
 Word 1 (at instr + 88 + 8*i):
 
  31                                                                  0
 +--------------------------------------------------------------------+
-|               extended data / immediate bits / flags                |
+|   per-operand auxiliary 32-bit word (paired with lo for def/eq)     |
 +--------------------------------------------------------------------+
 ```
 
-### Operand Type Field (bits 28-30)
+**Bit 31 is the is-DESTINATION (def) marker, not a sign/negate flag.** The operand reader `sub_7E6090` tests `operand_word < 0` (bit 31) together with `kind == 1` to mark *register definitions* for ref-count and def-use bookkeeping (`sub_7E6090:257,281`; the `0x8000000` def flag is set when the operand is a def). Operand negate/abs modifiers live in the **modifier byte** (bits 20–27), not in bit 31. The hi-word (`+88+8*i`) is a per-operand auxiliary word walked in lock-step with the lo-word and used together with it as the comparand in def/equality matching (`sub_8D2810:150-161`, `sub_7E6090:533`).
 
-| Value | Type | Index Meaning |
-|-------|------|---------------|
+### Two distinct operand-kind encodings
+
+ptxas uses **two** unrelated operand-kind encodings; do not conflate them:
+
+1. **Packed-word kind** — the 3-bit field at bits 28–30 of the lo-word (8 values). This is the per-instruction operand kind read in the hot path (`(w >> 28) & 7`).
+2. **ISel descriptor kind** — a 1–16 value held in the byte0 of a 32-byte operand descriptor (a separate structure used during instruction selection). See the [Data Structure Layouts](data-structures.md) page and the [ISel descriptor kind table](../reference/data/ir-operand-kind-enum.md).
+
+### Packed Operand-Kind Field (bits 28-30)
+
+The 3-bit packed field can hold only 8 values; the firmly-established anchors are below. The full 16-value semantic operand space (immediate, uniform-register, address, symbol, etc.) belongs to the ISel descriptor enum, not this 3-bit field.
+
+| Value | Kind (anchored) | Index Meaning |
+|-------|-----------------|---------------|
 | 0 | Unused / padding | — |
-| 1 | Register | Index into `*(code_obj+88) + 8*index` register descriptor array |
-| 2 | Predicate register | Index into predicate register file |
-| 3 | Uniform register | UR file index |
-| 4 | Address/offset | Memory offset value |
-| 5 | Symbol/constant | Index into `*(code_obj+152)` symbol table |
-| 6 | Predicate guard | Guard predicate controlling conditional execution |
-| 7 | Immediate | Encoded immediate value |
+| 1 | Register | Index into `*(code_obj+88) + 8*index` register descriptor array (dominant `kind == 1` check) |
+| 6 | Predicate guard | the guard predicate is the **last** operand (`sub_7E0650:29` tests last-op `== 6`) |
+| 7 | Sentinel | all type bits set (`(w ^ 0x70000000) & 0x70000000 == 0`); the unused/sentinel value |
+
+> Anchors `1` (register), `6` (guard-last-operand) and `7` (sentinel) are binary-confirmed (HIGH). The intermediate packed values 2–5 are not settled at the 3-bit granularity; the richer set of operand classes (predicate, uniform-register, address, symbol/const, immediate, …) is the 16-value ISel descriptor space, documented separately.
 
 ### Operand Extraction Pattern
 
@@ -224,33 +235,45 @@ This exact extraction pattern appears in 50+ functions across scheduling, regall
 ```c
 uint32_t operand_word = *(uint32_t*)(instr + 84 + 8 * i);
 
-int  type   = (operand_word >> 28) & 7;     // bits 28-30
-int  index  = operand_word & 0xFFFFF;        // bits 0-19 (also seen as 0xFFFFFF)
-int  mods   = (operand_word >> 20) & 0xFF;   // bits 20-27
-bool is_neg = (operand_word >> 31) & 1;      // bit 31
+int  kind   = (operand_word >> 28) & 7;      // bits 28-30 (packed operand kind)
+int  index  = operand_word & 0xFFFFFF;       // bits 0-23 (dominant; 0xFFFFF in 20b sites)
+int  mods   = (operand_word >> 20) & 0xFF;   // bits 20-27 (lane/byte selector, negate/abs)
+bool is_def = (operand_word >> 31) & 1;      // bit 31: is-DESTINATION (def) marker
 
 // Register operand check (most common pattern)
-if (type == 1) {
+if (kind == 1) {
     reg_descriptor = *(ptr*)(*(ptr*)(code_obj + 88) + 8 * index);
     reg_file_type  = *(uint32_t*)(reg_descriptor + 64);
     reg_number     = *(uint32_t*)(reg_descriptor + 12);
 }
 ```
 
-Some functions use a 24-bit index mask (`& 0xFFFFFF`) instead of 20-bit, packing additional modifier bits into the upper nibble of the index field.
+The 24-bit index mask (`& 0xFFFFFF`) dominates (~2398 sites); a 20-bit mask (`& 0xFFFFF`) appears at the smaller set of sites that also extract the upper modifier nibble separately.
 
-### Operand Classification Predicates
+### Operand Classification Predicates (ISel descriptor kind)
 
-Small predicate functions at `0xB28E00`-`0xB28E90` provide the instruction selection interface for operand queries:
+A bank of one-line predicate helpers at `0xB28E00`–`0xB28EF0` provides the instruction-selection interface for the **32-byte ISel operand descriptor** kind (the 1–16 value space, *not* the 3-bit packed field). Each helper is `bool f(char tag) { return tag == K; }`. The descriptor record is 32 bytes: `byte[0]` = kind tag, `+4` = value/id, `+20` = secondary id; the array base is at `operand_list+32`, stride 32, count at `operand_list+92`.
 
-| Address | Function | Logic |
-|---------|----------|-------|
-| `sub_B28E00` | `getRegClass` | Returns register class; 1023 = wildcard, 1 = GPR |
-| `sub_B28E10` | `isRegOperand` | `(word >> 28) & 7 == 1` |
-| `sub_B28E20` | `isPredOperand` | `(word >> 28) & 7 == 2` |
-| `sub_B28E40` | `isImmOperand` | `(word >> 28) & 7 == 7` |
-| `sub_B28E80` | `isConstOperand` | `(word >> 28) & 7 == 5` |
-| `sub_B28E90` | `isUReg` | `(word >> 28) & 7 == 3` |
+| Address | Kind | Meaning (confidence) |
+|---------|-----:|----------------------|
+| `sub_B28E00` | — | identity — returns the tag (the dispatch root) |
+| `sub_B28E20` | 1 | register (HIGH — cross-checked vs `(w>>28)==1`) |
+| `sub_B28E10` | 2 | predicate register (HIGH) |
+| `sub_B28E30` | 6 | guard predicate, last operand (HIGH) |
+| `sub_B28E80` | 3 | operand class 3 (MED) |
+| `sub_B28E70` | 4 | operand class 4 (MED) |
+| `sub_B28E60` | 5 | operand class 5 (MED) |
+| `sub_B28ED0` | 7 | operand class 7 (MED) |
+| `sub_B28EF0` | 8 | operand class 8 (MED) |
+| `sub_B28E50` | 9 | operand class 9 (MED) |
+| `sub_B28E40` | 10 | operand class 10 (MED) |
+| `sub_B28EE0` | 11 | operand class 11 (MED) |
+| `sub_B28EA0` | 13 | operand class 13 (MED) |
+| `sub_B28EB0` | 14 | operand class 14 (MED) |
+| `sub_B28E90` | 15 | operand class 15 (MED) |
+| `sub_B28EC0` | 16 | operand class 16 (MED) |
+
+Kinds 0 and 12 have no observed helper in the bank. Only kinds 1, 2, and 6 are firmly anchored; the remaining helper↔kind bindings are confirmed by helper VA but their operand-class *meanings* are medium confidence. The full table is reproduced at [ISel operand-kind enum](../reference/data/ir-operand-kind-enum.md).
 
 ### Destination vs. Source Operand Split
 
@@ -335,16 +358,28 @@ The 64-bit flag word at offset +48 accumulates flags throughout the compilation 
 | 27 | `0x8000000` | Same-block def | `sub_7E6090` |
 | 33 | `0x200000000` | Source-only ref | `sub_7E6090` |
 
-### Control Word (offset +32)
+### SASS Control Word — lives in the `+40` scheduling record, not at `+32`
 
-The control word encodes scheduling metadata added by the instruction scheduler. It is initialized to zero and populated during scheduling (phases ~150+):
+A common misreading places the SASS scheduling control word at instruction `+32`. The binary does not support this: `+32` is zero-initialized by `sub_7DD010` and an exhaustive sweep of every function that reads the `0xFFFFCFFF` opcode at `+72` found **no reader or writer of `instr+32` on the same object**. (The prior misattribution came from offset aliasing between the instruction `+32` and an unrelated VREG `+32` coalesce-chain field.)
 
-- Stall cycles (how many cycles to wait before issuing the next instruction)
-- Yield hint (whether the warp scheduler should yield after this instruction)
-- Dependency barrier assignments
-- Reuse flags (register reuse hints for the hardware register file cache)
+The actual scheduling control word lives **inside the lazily-allocated record pointed to by `+40`**. That record is the per-instruction `SchedInfo` handle: it is NULL until the scheduler runs and is allocated on first scheduling use; it holds the availability link plus the SASS control fields. Within the record:
 
-The stall cycle field is checked during scoreboard computation at `sub_A08910`. The control word format is the same as the SASS encoding control field.
+- **Stall cycles** at `(*(instr+40)) + 144`
+- **Wait/read barrier bits** at `(*(instr+40)) + 168` / `+172`
+- Yield hint, dependency-barrier assignments, and register-reuse flags accompany those fields
+
+The control word format matches the SASS encoding control field. Phases earlier than scheduling see `+40 == NULL` and must not read the control word.
+
+### Per-Instruction Scheduling Record (the `+40` handle)
+
+The pointer at instruction `+40` is the per-instruction `SchedInfo` handle — a polymorphic record allocated lazily on the instruction's first scheduling use. Before the scheduler runs, `+40` is `NULL` (zero-initialized by `sub_7DD010`). Once allocated, the record holds the scheduling availability link plus the SASS control fields:
+
+| Field in `*(instr+40)` record | Offset | Meaning |
+|---|---|---|
+| stall cycles | `+144` | cycles to wait before issuing the next instruction |
+| read/wait barrier bits | `+168` / `+172` | scoreboard wait and read-barrier assignments |
+
+This is why the SASS control word is **not** at instruction `+32` (a reserved/dead u32): the control state lives one indirection away, inside the lazily-allocated record. The `+264` `global_index` field (low dword = the allocator-assigned global index, high dword = `0xFFFFFFFF` sentinel) is the stable per-instruction key used to associate an instruction with its scheduling record and other side tables.
 
 ### Data Type Flags (offset +100)
 

@@ -1,6 +1,6 @@
 # The Ori Internal Representation
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
 Ori — short for "Original IR" — is ptxas's sole intermediate representation. It is a fully proprietary, SASS-level IR with virtual registers, its own CFG infrastructure, and a partial-SSA discipline. Ori has no relationship to LLVM IR: there is no LLVM Value hierarchy, no LLVM-style use-def chains, no SSA dominance-frontier construction. Every IR-level optimization pass in ptxas (prefixed `Ori` in the NamedPhases table: `OriCopyProp`, `OriSanitize`, `OriBranchOpt`, `OriLoopSimplification`, `OriStrengthReduce`, `OriDoPredication`, etc.) operates on this representation.
 
@@ -527,16 +527,16 @@ The regalloc verifier (`sub_A55D80`, confidence 0.95) classifies 10 problem cate
 9. Bit-spill-refill base destroyed
 10. Definitions disappeared without new ones added
 
-The pattern matcher infrastructure at `0xB7D000`--`0xBA9D00` (~390 functions) uses a separate classification for instruction selection:
+The pattern matcher infrastructure at `0xB7D000`--`0xBA9D00` (~390 functions) uses a separate classification: the **32-byte ISel operand-descriptor kind** (1–16). Each kind has a one-line predicate helper `bool f(char tag){ return tag == K; }` in the bank `0xB28E00`–`0xB28EF0`. The verified helper-VA → kind bindings (do not assume name order tracks VA order):
 
-| Function | Predicate |
-|----------|-----------|
-| `sub_B28E10` | `isRegOperand` |
-| `sub_B28E20` | `isPredOperand` |
-| `sub_B28E40` | `isImmOperand` |
-| `sub_B28E80` | `isConstOperand` |
-| `sub_B28E90` | `isUReg` |
-| `sub_B28E00` | `getRegClass` (1023 = wildcard, 1 = GPR) |
+| Function | Kind | Predicate (anchored kinds only) |
+|----------|-----:|---------------------------------|
+| `sub_B28E00` | — | identity / dispatch root (returns the tag) |
+| `sub_B28E20` | 1 | register (HIGH) |
+| `sub_B28E10` | 2 | predicate register (HIGH) |
+| `sub_B28E30` | 6 | guard predicate, last operand (HIGH) |
+
+Kinds 3–5, 7–11, and 13–16 each have a helper in the bank but their operand-class meanings are medium confidence. The complete helper↔kind table is at [ISel operand-kind enum](../reference/data/ir-operand-kind-enum.md). Note these descriptor kinds (1–16) are a different encoding from the 3-bit packed operand kind (bits 28–30) carried in each inline operand word; see [Instructions & Opcodes](instructions.md#two-distinct-operand-kind-encodings).
 
 ## Ori vs. PTX
 

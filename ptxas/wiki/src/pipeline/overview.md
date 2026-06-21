@@ -1,6 +1,6 @@
 # Compilation Pipeline Overview
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
 This page maps the complete end-to-end flow of a PTX assembly through ptxas v13.0.88, from the initial CLI invocation to the final ELF/cubin binary output. Each stage is a self-contained subsystem with its own address range, data structures, and failure modes. The links below lead to dedicated pages with reimplementation-grade detail for every stage.
 
@@ -30,9 +30,9 @@ nvcc / cicc
 |     |  PTX AST -> Ori IR (basic blocks, virtual registers)     |
 |     |  address space annotation, special register mapping      |
 |     v                                                          |
-|  5. 159-Phase Optimization -------> [optimizer.md]             |
-|     |  PhaseManager: sub_C62720 (constructor),                 |
-|     |                sub_C64F70 (executor)                     |
+|  5. Optimization (159 reg / 157 run) -> [optimizer.md]        |
+|     |  PhaseManager: sub_C62720 (registers 159),               |
+|     |                sub_C64F70 (dispatches 157)               |
 |     |  10 stages, 17 AdvancedPhase hooks,                     |
 |     |  8-phase Mercury encoding sub-pipeline                   |
 |     |  per-kernel via sub_7FBB70 -> sub_7FB6C0                 |
@@ -77,7 +77,7 @@ A concrete trace of a single-kernel PTX module compiled for sm_100 at `-O2`:
 
 **4. PTX-to-Ori lowering (DAGgen).** `sub_6273E0` (44 KB) converts each AST instruction into an Ori IR node: a basic block with virtual registers, control flow edges, and memory space annotations. Special registers (`%ntid`, `%laneid`, `%smid`) map to internal IDs. Address computation uses a 6-bit operand type encoding. A 500-instruction PTX kernel typically produces ~600–1,200 Ori instructions (expansion from pseudo-ops, address calculations, and predicate materialization). The `"Permanent OCG memory pool"` is created here to hold all IR state.
 
-**5. 159-phase OCG pipeline** (`sub_C62720` constructs, `sub_C64F70` executes). Each phase is a 16-byte polymorphic object with `execute()`, `isNoOp()`, and `getName()` vtable methods. The PhaseManager iterates the phase table at `0x22BEEA0`, skipping any phase whose `isNoOp()` returns true. At `-O2`, roughly 80–100 of the 159 phases are active. Typical expansion factors: the initial 1,000 Ori instructions may grow to 1,200–1,500 after unrolling and intrinsic expansion, then shrink to 800–1,000 after CSE/DCE, then re-expand to 1,500–2,500 after register allocation spill/fill insertion. The PhaseManager logs `"Before <phase>"` / `"After <phase>"` strings (visible in the `sub_C64F70` decompile) for DUMPIR.
+**5. OCG phase pipeline** (`sub_C62720` registers 159 phase objects, `sub_C64F70` dispatches 157). Each phase is a 16-byte polymorphic object with `execute()`, `getIndex()`, and `isNoOp()` vtable methods. The driver iterates the 157-entry identity order table at `0x22BEEA0` (count from `sub_C60D20`'s `rdx`), calling `execute()` on every entry unconditionally; phases that do nothing return early inside their own body (the `isNoOp()` virtual only suppresses the Before/After banner). At `-O2`, roughly 80–100 of the dispatched phases do real work. Typical expansion factors: the initial 1,000 Ori instructions may grow to 1,200–1,500 after unrolling and intrinsic expansion, then shrink to 800–1,000 after CSE/DCE, then re-expand to 1,500–2,500 after register allocation spill/fill insertion. The PhaseManager logs `"Before <phase>"` / `"After <phase>"` strings (visible in the `sub_C64F70` decompile) when phase-wise compile-stats are enabled.
 
 **6. Register allocation** (phase 101, `sub_971A90`). The Fatpoint algorithm attempts NOSPILL allocation first. If pressure exceeds the register budget, the spill guidance engine (`sub_96D940`, 84 KB) computes spill candidates across 7 register classes, and the retry loop makes up to N attempts (knob 638/639) with progressively more aggressive spilling. Physical register assignments are committed; spill/fill instructions are inserted into the Ori IR.
 
@@ -107,7 +107,7 @@ The compilation driver `sub_446240` measures six timed phases per compile unit a
 | Parse-time | `"Parse-time            : %.3f ms (%.2f%%)\n"` | PTX lexer + Bison parser + semantic validation |
 | CompileUnitSetup-time | `"CompileUnitSetup-time : %.3f ms (%.2f%%)\n"` | Target configuration, ABI setup, register constraints |
 | DAGgen-time | `"DAGgen-time           : %.3f ms (%.2f%%)\n"` | PTX-to-Ori lowering, CFG construction, initial DAG formation |
-| OCG-time | `"OCG-time              : %.3f ms (%.2f%%)\n"` | Optimized Code Generation: all 159 optimization phases, register allocation, instruction scheduling, SASS encoding |
+| OCG-time | `"OCG-time              : %.3f ms (%.2f%%)\n"` | Optimized Code Generation: the 157 dispatched optimization phases, register allocation, instruction scheduling, SASS encoding |
 | ELF-time | `"ELF-time              : %.3f ms (%.2f%%)\n"` | ELF construction, section layout, symbol table, relocations, EIATTR, file write |
 | DebugInfo-time | `"DebugInfo-time        : %.3f ms (%.2f%%)\n"` | DWARF `.debug_info`/`.debug_line`/`.debug_frame` generation, LEB128 encoding |
 
@@ -129,11 +129,44 @@ ptxas supports two compilation modes for multi-kernel PTX modules:
 The compilation driver `sub_446240` iterates over compile units sequentially. For each kernel entry:
 
 1. `sub_43CC70` — per-entry compilation unit processor, skips `__cuda_dummy_entry__`
-2. `sub_7FBB70` — per-kernel entry point, prints `"\nFunction name: "` + kernel name
-3. `sub_7FB6C0` — pipeline orchestrator: builds phases via `sub_C62720`, executes via `sub_C64F70`
+2. `sub_7FBB70` — per-kernel entry point: calls `sub_C173E0` (DAG/codegen setup; bails if it returns 0), conditionally prints `"\nFunction name: "` + kernel name when `ctx+1428 < 0`, ORs `0x80` into `ctx+1416`, then tail-calls `sub_7FB6C0`
+3. `sub_7FB6C0` — pipeline orchestrator: registers 159 phases via `sub_C62720`, dispatches the 157-entry order via `sub_C64F70` (default path), or takes the recipe path `sub_9F63D0` when OCG knob 298 is set
 4. Cleanup: destroys 17 analysis data structures (live ranges, register maps, scheduling state)
 
-Each kernel runs through the entire 159-phase pipeline independently. Cross-kernel state is limited to shared memory layout and the global symbol table.
+Each kernel runs through the per-function backend pipeline independently. Cross-kernel state is limited to shared memory layout and the global symbol table.
+
+## Backend Driver Call Chain
+
+The per-function backend is reached from the CLI driver through a chain of C++ virtual dispatches. From the ELF entry to phase dispatch:
+
+```text
+start (0x42333C)                          ; ELF entry
+  main (0x409460)                         ; setvbuf(stdout/stderr); -> sub_446240
+    sub_446240 (0x446240)                 ; THE DRIVER: CLI parse + module compile
+      |  argv -> parsed-options struct:
+      |     -O (raw 0..3)  -> parsed-opts+0x70 (112)
+      |     target/arch    -> parsed-opts+704 / +352 / +360
+      |  [PTX parse -> IR build]  (module-level front-end)
+      |
+      +-- per-function backend  (C++ virtual dispatch; one target class per SM family)
+          |   target backend class built by sub_607DB0; its 24-entry per-target
+          |   trampoline table refs wrappers sub_608F20 / sub_609B40 .. sub_609F30
+          v
+          one of 24 wrappers (e.g. sub_608F20)  -> sub_663C30
+            sub_663C30 (0x663C30)         ; per-function backend body
+              +-- sub_662920 (0x662920)   ; BUILD per-function OCG context
+              |     sub_7F7DC0 (0x7F7DC0) ; <<< OCG-CONTEXT CONSTRUCTOR
+              |        reads parsed-options, writes the ~2140-byte ctx,
+              |        including opt-level ctx+0x838, knob object ctx+0x680,
+              |        options object ctx+0x1664
+              +-- sub_7FBB70 (0x7FBB70)    ; backend entry (per-function ctx)
+                    +-- sub_C173E0          ; DAG / codegen setup; bail if returns 0
+                    +-- if (ctx+1428 < 0): emit "Function name: <name>"
+                    +-- ctx+1416 |= 0x80
+                    +-- sub_7FB6C0          ; <<< THE OPTIMIZATION DRIVER
+```
+
+The OCG context built by `sub_7F7DC0` is the ~2140-byte per-function struct that carries the resolved optimization level (`ctx+0x838`), the OCG knob/config object (`ctx+0x680`), and the options view (`ctx+0x1664`). Every per-phase opt-level and knob decision reads from this context. The per-function virtual-dispatch site above `sub_663C30` is C++ vtable dispatch (the 24 trampolines and 5 target-class builders appear in the static call graph only as data-xref reachable), with the actual `call *vtable[slot]` living in the module-compile loop reached from `sub_446240`.
 
 ### Thread Pool Mode (`--split-compile`)
 
@@ -208,11 +241,11 @@ sub_446240 (0x446240, 11KB) ---- "Top-level compilation driver"
   |         |  if NamedPhases: delegate to sub_9F63D0
   |         |  else:
   |         |    sub_C62720 -- PhaseManager constructor (159 phases)
-  |         |    sub_C60D20 -- get default phase table (at 0x22BEEA0)
-  |         |    sub_C64F70 -- execute all phases
+  |         |    sub_C60D20 -- get default order table (0x22BEEA0, count 157)
+  |         |    sub_C64F70 -- dispatch the 157 ordered phases
   |         |  cleanup: destroy 17 analysis data structures
   |         v
-  |       [159-phase pipeline: optimization -> regalloc -> scheduling -> encoding]
+  |       [157 dispatched phases: optimization -> regalloc -> scheduling -> encoding]
   |
   |-- sub_612DE0 (0x612DE0, 47KB) -- Kernel finalizer / ELF builder
   |     |  "Finalizer fastpath optimization"
@@ -317,7 +350,7 @@ sub_446240 (top-level driver)
         sub_432500 (finalization bridge)
           setjmp(jmp_buf_local)  // Level 3: catches OCG pipeline fatals
             |
-            [159-phase pipeline, regalloc, encoding, ELF]
+            [157 dispatched phases, regalloc, encoding, ELF]
 ```
 
 **Level 1 (global).** Established by `sub_446240` at function entry. If any code path anywhere in ptxas calls `sub_42FBA0` with severity >= 6 (fatal), execution longjmps back here. The handler cleans up global resources and returns a non-zero exit code. This is the last-resort handler.

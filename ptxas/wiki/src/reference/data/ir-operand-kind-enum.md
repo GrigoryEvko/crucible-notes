@@ -1,0 +1,23 @@
+# ISel Operand-Descriptor Kind Enum (1-16)
+
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
+
+The instruction-selection operand-descriptor kind enum. Each operand descriptor is a 32-byte record (array base at `operand_list+32`, stride 32): `byte[0]` = kind tag, `+4` = value/id, `+20` = secondary id; descriptor count at `operand_list+92`; accessor `sub_B28F30(list, i) = *(list+32) + 32*i`. Each kind has a dedicated one-line predicate helper `bool f(char tag){ return tag == K; }` in the bank `0xB28E00`-`0xB28EF0`. This is distinct from the 3-bit packed operand kind (bits 28-30) carried in each inline operand word. Only kinds 1, 2, and 6 are firmly anchored; kinds 3-5/7-11/13-16 are confirmed by helper VA but their operand-class meanings are medium confidence. Kinds 0 and 12 have no helper in the bank; `sub_B28E00` is the identity/dispatch root.
+
+| kind | helper_va | helper | meaning (inferred) | confidence |
+|---|---|---|---|---|
+| 1 | 0xB28E20 | sub_B28E20 | register | high (cross-checked: >>28==1 register path) |
+| 2 | 0xB28E10 | sub_B28E10 | predicate register | high |
+| 3 | 0xB28E80 | sub_B28E80 | (operand class 3) | med |
+| 4 | 0xB28E70 | sub_B28E70 | (operand class 4) | med |
+| 5 | 0xB28E60 | sub_B28E60 | (operand class 5) | med |
+| 6 | 0xB28E30 | sub_B28E30 | guard predicate (last operand) | high (sub_7E0650:29 last-op ==6) |
+| 7 | 0xB28ED0 | sub_B28ED0 | (operand class 7) | med |
+| 8 | 0xB28EF0 | sub_B28EF0 | (operand class 8) | med |
+| 9 | 0xB28E50 | sub_B28E50 | (operand class 9) | med |
+| 10 | 0xB28E40 | sub_B28E40 | (operand class 10) | med |
+| 11 | 0xB28EE0 | sub_B28EE0 | (operand class 11) | med |
+| 13 | 0xB28EA0 | sub_B28EA0 | (operand class 13) | med |
+| 14 | 0xB28EB0 | sub_B28EB0 | (operand class 14) | med |
+| 15 | 0xB28E90 | sub_B28E90 | (operand class 15) | med |
+| 16 | 0xB28EC0 | sub_B28EC0 | (operand class 16) | med |

@@ -75,9 +75,29 @@ The `patch_mode` field at offset +24 drives the bit-field patching logic in `sub
 
 When `flags_hi` (at descriptor offset +28) is in the range 12–15, the relocation creator calls `sub_1CBD0D0` to register the relocation's target section in the call graph. This triggers call graph edge creation for function descriptors and branch targets.
 
+### Action-Record Layout and Handler Enum
+
+Re-extracting the descriptor table byte-exact from `.rodata` resolves the speculative `unknown_04`/`unknown_08` fields above: bytes `+8..+12` hold the **handler** class (`uint32`), and `+12` onward holds up to three **action** records, each four `uint32` words `{start_bit, num_bits, sym_value, src_start_bit}`. An action means "field `bits[start .. start+num−1]` = `sym_value >> src_start_bit`". The `R_CUDA` name-pointer table sits at VMA `0x23FD4C0` (16 B stride, 117 entries) and its action table at file `0x2000080`; the `R_MERCURY` name table at `0x23FD0A0` (65 entries) and action table at file `0x1FFF080`.
+
+The handler field selects who resolves the relocation:
+
+| Handler | Value | Resolved by | R_CUDA count |
+|---|---|---|---|
+| `NVRH_NONE` | 0 | — (sentinel) | 2 |
+| `NVRH_LINKER` | 1 | nvlink | 39 |
+| `NVRH_DRIVER` | 2 | CUDA runtime/driver | 52 |
+| `NVRH_FINALIZER` | 3 | Mercury finalizer | 0 (all Mercury `PROG_REL*` only) |
+| `NVRH_EITHER` | 4 | linker or driver | 24 |
+
+Earlier ptxas builds used a four-value enum `{NONE, LINKER, DRIVER, EITHER}=0..3`. This build **inserts** `FINALIZER` at value 3 and pushes `EITHER` to 4 — the prose handler names above are the semantic (binary-correct) class; the bracketed numeric value is this build's enum index. No `R_CUDA_*` type uses `FINALIZER`; it exists for the Mercury `PROG_REL` family, which the finalizer patches in place.
+
+The complete byte-exact catalogs — all 117 `R_CUDA_*` and all 64 `R_MERCURY_*` types with their handler class and per-field bit actions — are tabulated in the [R_CUDA relocation reference](../reference/data/cuda-reloc-types.md) and [R_MERCURY relocation reference](../reference/data/mercury-reloc-types.md).
+
 ## R_CUDA_\* Relocation Types
 
-117 types from `R_CUDA_NONE` (ordinal 0) to `R_CUDA_NONE_LAST` (ordinal 116). String addresses span `0x23FBE0E`--`0x23FC6B6` in the ptxas binary, confirming these are contiguous in the read-only data section. Ordinals are assigned by string table order.
+117 types from `R_CUDA_NONE` (ordinal 0) to `R_CUDA_NONE_LAST` (ordinal 116). String addresses span `0x23FBE0E`--`0x23FC6B6` in the ptxas binary, confirming these are contiguous in the read-only data section. Ordinals are assigned by string-table order and match the on-wire ELF relocation type code 1:1. The two newest types — `R_CUDA_ABS56_16_34` (114) and `R_CUDA_CONST_FIELD22_37` (115) — are present only in this build; `R_CUDA_NONE_LAST` consequently moved from 114 to 116.
+
+The thematic tables below highlight the most common families; the **complete 117-entry catalog with handler class and per-field bit actions** is in the [R_CUDA relocation reference](../reference/data/cuda-reloc-types.md).
 
 ### Absolute Address Relocations
 
@@ -426,6 +446,23 @@ The binding byte at `st_other & 3` (low 2 bits of the high nibble) maps to:
 | 2 | `STB_GLOBAL` | Normal resolution |
 | 3 | `STB_WEAK` | Resolve if available, otherwise use default |
 
+### STO_CUDA Memory-Space Encoding
+
+Two distinct uses of `st_other` are confirmed from emitted cubins. A kernel **entry function** carries `st_other = STO_CUDA_ENTRY (0x10)` (every observed entry — `addvec`, `k1`, `k2` — shows `0x10`) together with `st_info = STT_FUNC | STB_GLOBAL (0x12)`. A memory-space **object** (`STT_CUDA_OBJECT`, type 13) encodes its space in the high nibble of `st_other`:
+
+| `st_other` | Name | Memory space |
+|---|---|---|
+| `0x04` | `STO_CUDA_MANAGED` | managed (unified) symbol |
+| `0x08` | `STO_CUDA_OBSCURE` | obscured symbol |
+| `0x10` | `STO_CUDA_ENTRY` | kernel entry function |
+| `0x20` | `STO_CUDA_GLOBAL` | global |
+| `0x40` | `STO_CUDA_SHARED` | shared |
+| `0x60` | `STO_CUDA_LOCAL` | local |
+| `0x80` | `STO_CUDA_CONSTANT` | constant |
+| `0xa0` | (new memspace) | the `__nv_reservedSMEM_offset_N_alias` weak symbols carry `0xa0` — a memory-space nibble beyond the previously known enum range |
+
+The texture/surface/sampler reference symbols use the CUDA symbol **types** `STT_CUDA_TEXTURE` (10), `STT_CUDA_SAMPLER` (11), `STT_CUDA_SURFACE` (12) from `STT_LOOS+0..2`.
+
 ### Symbol Table Builder — `sub_1CB68D0`
 
 The symbol table builder (9,578 bytes, approximately 1,700 decompiled lines) processes the ELFW internal symbol list in these steps:
@@ -712,6 +749,19 @@ When ptxas produces a relocatable object (`.o`), all relocations are preserved i
 "Generate relocatable object"
 ```
 
+The `.rela.*` entries are standard 24-byte `Elf64_Rela`: `r_offset (u64)`, `r_info (u64) = (symidx << 32) | relocType`, `r_addend (s64)`. A concrete capture from an emitted cubin — `.rela.nv.constant4 = {r_offset=0, r_info=0x800000002, addend=0}` — is `R_CUDA_64` (type 2) on symbol #8 (`gCounter`), patching a global pointer stored in constant bank 4.
+
+`.nv.callgraph` (`SHT_CUDA_CALLGRAPH = 0x70000001`, `entsize = 8`) is a stream of 8-byte records `{u32 x, u32 y}`. When `x == 0`, `y` is a **marker** that introduces the following record category:
+
+| Marker (`y`) | Name | Following records |
+|---|---|---|
+| `0xffffffff` (−1) | `CALL_MARKER` | `{caller, callee}` pairs |
+| `0xfffffffe` (−2) | `PROTO_MARKER` | `{func, protoStrIdx}` |
+| `0xfffffffd` (−3) | `ICALL_MARKER` | `{icaller, protoStrIdx}` (indirect-call) |
+| `0xfffffffc` (−4) | (new 4th category) | present only in this build; absent in earlier builds |
+
+A leaf kernel emits all four markers with no following pairs (`00000000 ffffffff | 00000000 feffffff | 00000000 fdffffff | 00000000 fcffffff`), because ptxas inlines aggressively — populating real `{caller, callee}` edges requires separate compilation.
+
 The `--preserve-relocs` flag additionally preserves relocations that would normally be resolved internally:
 
 ```text
@@ -781,6 +831,8 @@ QUIRK: entries 29–33 (`cudaGraph*`) point into a *different* string pool (`0x2
 - [Debug Information](debug-info.md) — DWARF section generation
 - [Pipeline Overview](../pipeline/output.md) — where relocation resolution fits in the 11-phase pipeline
 - [Capsule Mercury](../codegen/capmerc.md) — Mercury-specific relocation handling
+- [R_CUDA relocation reference](../reference/data/cuda-reloc-types.md) — full 117-entry catalog
+- [R_MERCURY relocation reference](../reference/data/mercury-reloc-types.md) — full 64-entry catalog
 
 ## Function Map
 

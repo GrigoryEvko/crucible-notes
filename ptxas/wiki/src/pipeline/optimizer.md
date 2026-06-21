@@ -1,28 +1,31 @@
-# Optimization Pipeline (159 Phases)
+# Optimization Pipeline (159 Registered / 157 Dispatched)
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The ptxas optimizer is a fixed-order pipeline of 159 compilation phases that transform Ori IR from its initial post-lowering form into scheduled, register-allocated SASS machine code. Unlike LLVM's PassManager — which uses dependency-driven scheduling and analysis preservation — ptxas runs every phase unconditionally in a predetermined order, relying on per-phase `isNoOp()` checks to skip inapplicable transformations. This design trades flexibility for predictability: the phase ordering is identical across all compilations, and architecture-specific behavior is injected through 16 "AdvancedPhase" hook points whose vtables are overridden per target.
+The ptxas optimizer is a fixed-order pipeline that transforms Ori IR from its initial post-lowering form into scheduled, register-allocated SASS machine code. The PhaseManager **registers 159 phase objects** (IDs 0–158), but the default driver **dispatches exactly 157 of them** (IDs 0–156) in a fixed identity order. Both numbers are real and describe different objects: 159 is the size of the phase-*name registry* and the inclusive ceiling for explicit phase selection, while 157 is the length of the default phase-*schedule* the dispatch loop actually walks. The two trailing registered phases — ID 157 `DebuggerBreak` and ID 158 `NOP` — are constructed but never scheduled on a default compile; they enter a schedule only through the recipe/named-phases override path (OCG knob 298). Unlike LLVM's PassManager — which uses dependency-driven scheduling and analysis preservation — ptxas dispatches every scheduled phase unconditionally and in a predetermined order; each phase decides internally (via opt-level, knob, and predicate checks inside its own `execute()` body) whether to do anything. Architecture-specific behavior is injected through "AdvancedPhase" hook points whose vtables are overridden per target.
 
-Each phase is a polymorphic C++ object exactly 16 bytes in size, allocated from a memory pool by a 159-case factory switch. The PhaseManager constructs all 159 phase objects up front during initialization, stores them in a flat array, and iterates the array in a simple dispatch loop. Per-phase timing and memory consumption are optionally tracked for `--stat=phase-wise` output.
+Each phase is a polymorphic C++ object exactly 16 bytes in size, allocated from a memory pool by a 159-case factory switch. The PhaseManager constructs all 159 phase objects up front during initialization, stores them in a flat array, and iterates a separate 157-entry order array in a simple dispatch loop. Per-phase timing and memory consumption are optionally tracked for `--stat=phase-wise` output.
+
+> **157 vs 159 — definitive.** The order accessor `sub_C60D20` returns a *pair*: the order-table pointer (`0x22BEEA0`) in `rax` and the count `0x9D = 157` in `rdx`. Hex-Rays drops `rdx` because the inferred prototype returns a single pointer, so the C view shows only `return &unk_22BEEA0;`. The driver passes `(ptr, count)` straight into the dispatch loop `sub_C64F70`, whose bound is `&schedule[count]` with `count = 157`. The order table at `0x22BEEA0` is the identity array `[0..156]` followed by unrelated rodata; `sub_C62720` sizes the *name registry* at 159 (`*((_DWORD*)PM+27) = 159`, copies `1272 = 159*8` bytes from `off_22BD0C0`). Registered = 159; dispatched by default = 157.
 
 ## Key Facts
 
 | Field | Value |
 |---|---|
-| Total phases | 159 (indices 0–158) |
-| Named phases (static table) | 139 (indices 0–138) |
-| Dynamic phases (vtable names) | 20 (indices 139–158) |
+| Registered phases | 159 (IDs 0–158; all named in `off_22BD0C0`) |
+| Dispatched by default | 157 (IDs 0–156) |
+| Debug-only (registered, not scheduled) | 2 — ID 157 `DebuggerBreak`, ID 158 `NOP` |
 | AdvancedPhase hook points | 16 |
 | Mercury sub-pipeline phases | 8 (phases 113–114, 117–122) |
 | Phase object size | 16 bytes: `{vtable_ptr, allocator_ptr}` |
 | Factory switch | `sub_C60D30` (3554 bytes, 159 cases) |
 | PhaseManager constructor | `sub_C62720` (4734 bytes) |
+| Order accessor | `sub_C60D20` — returns `(&0x22BEEA0, 157)` |
 | Dispatch loop | `sub_C64F70` (1455 bytes) |
 | Phase name table | `off_22BD0C0` (159 entries, 1272 bytes) |
-| Default ordering table | `unk_22BEEA0` (159-entry index array) |
+| Default order table | `0x22BEEA0` — identity `[0..156]` (157 entries) |
 | Vtable range | `off_22BD5C8`..`off_22BEE78` (40-byte stride) |
-| NamedPhases option ID | 298 |
+| Recipe/NamedPhases knob ID | 298 (OCG knob; `config+0x53D0`) |
 | Pipeline orchestrator | `sub_7FB6C0` |
 
 ## Phase Object Layout
@@ -40,35 +43,41 @@ The vtable provides three virtual methods common to all phases:
 
 | Offset | Signature | Purpose |
 |---|---|---|
-| `+0` | `execute(Phase*, CompilationContext*)` | Run the phase on the IR |
+| `+0` | `execute(Phase*, CompilationContext*)` | Run the phase on the IR — **always called** for every dispatched phase |
 | `+8` | `getIndex(Phase*) -> int` | Return the factory/table index (0–158) |
-| `+16` | `isNoOp(Phase*) -> bool` | Return 0 for active phases, 1 for gates skipped by default |
+| `+16` | `isNoOp(Phase*) -> bool` | Return 1 to suppress the Before/After timing banner — **does not gate `execute()`** |
 
 Vtable slots `+24` and `+32` are NULL in all 159 vtable instances. Memory allocation uses standalone `pool_alloc` (`sub_424070`) / `pool_free` (`sub_4248B0`), not vtable dispatch.
 
 ## Dispatch Loop
 
-The dispatch loop at `sub_C64F70` drives execution:
+The dispatch loop at `sub_C64F70` drives execution. The key fact: `execute()` runs **unconditionally** on every entry of the 157-element order array; `isNoOp()` gates only whether the `"Before "`/`"After "` diagnostic banner is printed, not whether the phase body runs. A phase that should do nothing returns early inside its own `execute()` body (an opt-level, knob, or predicate check), not by being skipped here.
 
 ```c
 // sub_C64F70 -- simplified
-void dispatch(PhaseManager* pm, int* phase_indices, int count) {
+void dispatch(PhaseManager* pm, int* order, int count /* = 157 */) {
     MemorySnapshot baseline = take_snapshot();
 
     for (int i = 0; i < count; i++) {
-        int idx = phase_indices[i];
+        int idx = order[i];
         Phase* phase = pm->phase_list[idx];
 
-        const char* name = pm->name_table[phase->getName()];
+        const char* name = pm->name_table[phase->getIndex()];   // vtable+8
 
-        if (!phase->isNoOp()) {
-            MemorySnapshot before = take_snapshot();
-            phase->execute(pm->compilation_unit);
+        MemorySnapshot before = take_snapshot();                // always
 
-            if (pm->timing_enabled) {
-                report_phase_stats(pm, name, &before);
-            }
-        }
+        // isNoOp() (vtable+16) gates ONLY the diagnostic banner, checked
+        // once before execute and once after. It never skips execute().
+        if (!phase->isNoOp())
+            diagnostic("Before " + name);
+
+        phase->execute(pm->compilation_unit);                   // vtable+0, ALWAYS
+
+        if (!phase->isNoOp())
+            diagnostic("After " + name);
+
+        if (pm->timing_enabled)
+            report_phase_stats(pm, name, &before);              // unconditional
     }
 
     if (pm->timing_enabled) {
@@ -77,6 +86,8 @@ void dispatch(PhaseManager* pm, int* phase_indices, int count) {
     }
 }
 ```
+
+Because `execute()` always runs and the timing record + pre-snapshot are written before the first `isNoOp()` check, `--ftime` output contains a row for every dispatched phase, including phases that immediately early-returned; gated-off phases simply show near-zero elapsed time rather than being omitted.
 
 Timing output format (to stderr when `--stat=phase-wise`):
 ```text
@@ -315,13 +326,13 @@ Late merge operations, late unsupported-op expansion, high-pressure live range s
 
 Phases 132–138 handle late-breaking transformations that must run after the Mercury backend but before finalization. `OriSplitHighPressureLiveRanges` (phase 138) is a last-resort live range splitter that fires when register pressure exceeds hardware limits after the main allocation pass.
 
-Phases 139–158 are 20 additional slots whose names are not in the static name table but are returned by their vtable `getString()` methods. These are architecture-specific phases registered in the factory switch (vtable addresses `off_22BEB08`..`off_22BEE78`) that target particular SM generations or compilation modes. They provide extensibility for new architectures without modifying the fixed 139-phase base table.
+Phases 139–158 are 20 additional registered slots — and they **are** named in the static name table at `off_22BD0C0`, which holds all 159 entries (indices 0–158). There is no "139 named + 20 unnamed" split; every phase ID resolves to a name through the table. Of these tail slots, IDs 139–156 (e.g. `ProcessO0WaitsAndSBs`=139 … `DumpNVuCodeHex`=156) are part of the default 157-entry schedule, while IDs 157 (`DebuggerBreak`) and 158 (`NOP`) are registered but dispatched only via the recipe path. Vtable addresses for the tail run `off_22BEB08`..`off_22BEE78`.
 
 ## Optimization Level Gating
 
 ### AdvancedPhase Hook Points
 
-Sixteen phases serve as conditional extension points. Their `isNoOp()` method returns `true` by default, causing the dispatch loop to skip them. Architecture backends and optimization-level configurations override the vtable to activate these hooks:
+Sixteen phases serve as conditional extension points. Their `isNoOp()` returns `true` by default — which suppresses their Before/After banner but does **not** remove them from the schedule: their `execute()` still runs every compile and returns early until a backend installs a non-stub override. Architecture backends and optimization-level configurations override the vtable (or the per-architecture profile slot the stub dispatches to) to activate these hooks:
 
 | Phase | Name | Gate Location |
 |---|---|---|
@@ -353,57 +364,74 @@ At `-O0`, the pipeline skips most optimization phases via their individual `isNo
 
 Individual phases also check the optimization level internally via the compilation context. The scheduling infrastructure (`sub_8D0640`) reads the opt-level via `sub_7DDB50` and selects between forward-pass scheduling (opt-level <= 2, register-pressure-reducing) and reverse-pass scheduling (opt-level > 2, latency-hiding).
 
-## NamedPhases Override (Option 298)
+## The OCG-Knob Mechanism
 
-The NamedPhases mechanism allows complete replacement of the default 159-phase pipeline with a user-specified phase sequence, primarily used for debugging and performance investigation.
+Every control-flow decision the optimizer driver makes is gated by an **OCG knob**. An OCG knob is one 72-byte entry in a flat array at `config+0x48`, where `config` is the OCG config object reached as `ctx+0x680` (equivalently the options view `ctx+0x1664`). The config offset of knob `N` is exactly `N*72` (`0x48`-relative). Each 72-byte entry has a presence/type tag byte at `entry[0]` (`0` = unset, `5` = "set, value present") and a value pointer at `entry[8]` (read when the tag is `5`).
+
+Two inlined leaf accessors recur, compared by address throughout the driver:
+
+| Accessor | Address | Semantics |
+|---|---|---|
+| bool | `sub_6614A0` | `knobs = obj+0x48; e = knobs + idx*72; return e[0] != 0` |
+| value | `sub_6614C0` | same indexing; `if (e[0] == 5) return e[8]; else 0` |
+
+When the live accessor object's vtable slot does not match these fast leaves, the driver does a virtual call `(*slot)(obj, idx)` with the knob index. The knobs the driver and optimizer actually consult:
+
+| Knob | config off | Read by | Role |
+|---|---|---|---|
+| 249 | `0x4608` | `sub_C62720` @0xc62786 | phase-wise compile-stats flag → sets PhaseManager+0x48 (Before/After/Summary timing report on/off) |
+| 298 | `0x53D0` | `sub_7FB6C0` @0x7fb6ef | recipe/named-phases selector → takes the `sub_9F63D0` path instead of the default |
+| 298 | `0x53D8` | `sub_9F4040` @0x9f4258 | recipe STRING value (tag==5, ptr at entry+8) → tokenizer `sub_798B60` |
+| 391 | `0x6DF8` | `sub_C62720` @0xc6297d | NvOptRecipe present? → wires the `ApplyNvOptRecipes` (phase ID 1) object |
+| 391 | `0x6E00` | `sub_C62720` @0xc62ac9 | NvOptRecipe value → recipe-apply object +312 |
+| 499 | `0x8C58` | `sub_7DDB50` | "disable optimization" → forces opt level 1 past a budget counter |
+
+All offsets `id*72` are byte-exact (`298*72 = 0x53D0`, `391*72 = 0x6DF8`, `249*72 = 0x4608`, `499*72 = 0x8C58`, remainder 0).
+
+## Recipe / NamedPhases Override (OCG Knob 298)
+
+The recipe mechanism allows replacement of the default 157-phase schedule with a custom sequence, used for debugging and engineering investigation. It is gated by an internal knob, not a documented user-facing ptxas flag; default compiles never reach it.
 
 ### Activation
 
-The pipeline orchestrator (`sub_7FB6C0`) checks option ID 298 via a vtable call at compilation context offset `+72`. When set, the orchestrator bypasses the default pipeline and delegates to `sub_9F63D0` (NamedPhases entry point):
+The pipeline orchestrator (`sub_7FB6C0`) reads OCG knob 298 (presence flag at `config+0x53D0`). When clear (the default), it builds the PhaseManager and dispatches the default 157-entry schedule. When set, it delegates to `sub_9F63D0`, which builds a custom schedule and feeds it to the **same** dispatch loop:
 
 ```c
 // sub_7FB6C0 -- simplified
-void orchestrate(CompilationUnit* cu) {
-    if (cu->config->getOption(298)) {
-        // NamedPhases mode -- user-specified phase sequence
-        NamedPhases_run(cu);              // sub_9F63D0
+void orchestrate(Context* ctx) {
+    ocg = *(ctx + 0x680);                       // OCG knob/config object
+    if (knob_active(ocg, 298)) {                // config+0x53D0 != 0
+        recipe_run(ctx);                        // sub_9F63D0 (custom schedule)
     } else {
-        // Default mode -- fixed 159-phase pipeline
-        PhaseManager* pm = PhaseManager_new(cu);  // sub_C62720
-        int* ordering = get_default_ordering();    // sub_C60D20
-        dispatch(pm, ordering, 159);               // sub_C64F70
-        PhaseManager_destroy(pm);                  // sub_C61B20
+        PhaseManager pm;
+        PhaseManager_construct(&pm, ctx);       // sub_C62720 -> registers 159
+        auto [order, count] = get_default_order(); // sub_C60D20 -> (&0x22BEEA0, 157)
+        dispatch(&pm, order, count);            // sub_C64F70 -> runs IDs 0..156
+        PhaseManager_destroy(&pm);              // sub_C61B20
     }
-    // ... cleanup 17 data structures, refcounted objects ...
+    // ... teardown ctx+1880 / +1872 / +1864 scratch objects ...
 }
 ```
 
-### Configuration String Format
+### Recipe path and DSL
 
-Option 298 is set via a knob string (environment variable or command-line). The string is stored at compilation context offset 21464 with a type indicator at offset 21456. The parser (`sub_798B60`, NamedPhases::ParsePhaseList) tokenizes the comma-delimited string:
+`sub_9F63D0` builds the PhaseManager (same `sub_C62720`), seeds a 256-int buffer with `[0] = 158` (NOP), then calls `sub_9F4040` to compute a custom schedule and length. `sub_9F4040` starts from the default 157-identity schedule (`sub_C60D20()`), tokenizes the recipe string (`sub_798B60`) into parallel name/value arrays, and applies a small DSL. Explicit phase IDs are **clamped to `[0, 159]`** (`if (v121 > 159) v121 = 159;`), and unknown phase names map to `158`/NOP via `sub_C641D0`. This is the **only** path that can schedule IDs 157/158.
 
-```text
-"phase_name1,phase_name2=param,shuffle,swap1,..."
-```
+| Token | Kind | Effect |
+|---|---|---|
+| `NamedPhases` | phase-list | replace the schedule with the explicit name list; each name → ID via `sub_C641D0` (miss/`-` → 158) |
+| `p%d` | index-select | select phases by numeric index (`sprintf "p%d", i`); clamped to `[0, 159]` |
+| `shuffle` | permute | seeded pairwise rotation pass over the schedule slots (reps-controlled) |
+| `reps` | repeat-count | number of shuffle iterations (≤ 256) |
+| `swap1`..`swap6` | swap-slot | swap a pair of schedule slots; each variant uses an independent base offset |
+| `dce1`..`dce3` | inject-phase | insert `OriPerformLiveDead` (DCE; phase IDs 18/38/70/99 family) at the counter position |
+| `cpy1`..`cpy3` | inject-phase | insert `OriCopyProp` (phase ID 22) at the counter position |
 
-Maximum 256 entries. The parser populates three parallel arrays:
-- Phase name strings
-- Parameter value strings (parsed via `strtol`)
-- Full `name=value` pairs
+OCG knob 297 is pulsed (write-style virtual call) once per applied recipe element — a diagnostic "recipe-applied" event/counter. Every value is parsed with `strtol` and bounds-clamped to `[0, 256]` or `[0, 159]`.
 
-### Phase List Builder
+### NvOptRecipe (Knob 391) — the user-facing counterpart
 
-The core builder (`sub_9F4040`, 49KB) processes the parsed configuration:
-
-1. Allocates a `0x2728`-byte stack frame with 256-entry string tables
-2. Initializes a 158-entry phase descriptor table (zeroed `0x400` bytes)
-3. Resolves phase names to indices via `sub_C641D0` (case-insensitive binary search)
-4. Recognized manipulation keywords:
-   - **`shuffle`** — randomize the phase ordering
-   - **`swap1`..`swap6`** — swap specific phase pairs (for A/B testing)
-   - **`OriPerformLiveDead`** — override liveness pass placement
-   - **`OriCopyProp`** — override copy propagation placement
-5. Constructs the final phase index sequence and dispatches via `sub_C64F70`
+When OCG knob 391 is present, the PhaseManager ctor reads its value (`391*72+8 = +0x6E00`) and constructs a 440-byte recipe-apply object, stashing the recipe pointer at its `+312`. That object is consumed by phase ID 1, `ApplyNvOptRecipes` — the second phase in the default schedule. This is the supported path for applying recipe transforms without diverting the whole pipeline.
 
 ### Pass-Disable Integration
 
@@ -468,7 +496,7 @@ Created when option 391 is set. Contains timing records with 584-byte stride, a 
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_C60D20` | 16 B | Default phase table pointer |
+| `sub_C60D20` | 11 B | Default order accessor — returns `(&0x22BEEA0, 157)` in `(rax, rdx)` |
 | `sub_C60D30` | 3554 B | Phase factory (159-case switch) |
 | `sub_C60BD0` | 334 B | Multi-function phase invoker |
 | `sub_C61B20` | 1753 B | PhaseManager destructor |

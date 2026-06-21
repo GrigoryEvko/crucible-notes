@@ -1235,6 +1235,7 @@ match_spill_refill_pairs(verifier, post_insn, operand_idx):
 | Address | Lines | Role | Confidence |
 |---------|-------|------|---|
 | `sub_939BD0` | 65 | Spill allocator setup (knob 623 dispatch) | HIGH |
+| `sub_93A840` | — | Spill-slot allocator (per-spill-kind slot type tag; one tag distinguishes bit-spills of predicate registers to GPR slots) | MEDIUM |
 | `sub_93C0B0` | 582 | Spill range optimizer | HIGH |
 | `sub_93D070` | 155 | Best allocation result recorder | HIGH |
 | `sub_93E290` | 397 | Spill candidate node creator (192-byte arena nodes) | HIGH |

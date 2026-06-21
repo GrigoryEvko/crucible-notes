@@ -547,7 +547,7 @@ construction time by the per-SM-family oracle constructor. `sub_738E20` is the
 constructor for the **sm\_9x / Blackwell** family (its object is 4184 bytes). The
 final loop of the constructor walks Ori opcodes `0..354` and writes each opcode's
 latency into `*(this + 4*opcode + 744)`. The assignment is a plain `switch` on the
-opcode id, transcribed verbatim from the decompiled body — this is the actual
+opcode id, transcribed from the decompiled body — this is the actual
 latency model ptxas's own OCG scheduler consults:
 
 ```c
@@ -593,16 +593,147 @@ register-to-register, unchanged Volta→Hopper) and the **300-cycle global-memor
 (the unresolved-space scoreboard wait). The 13 / 24 / 30 bands are ptxas-internal OCG
 scalars and need not equal any single hazard-matrix cell.
 
-This scalar form is *all* that ships. ptxas does **not** carry the dense
-producer×consumer hazard matrix (the per-pipe RAW/WAW/WAR cycle tables): that richer
-model is a build-time scheduling DSL compiled into native code, so the byte-level
-matrices appear in no shipped binary. What is recoverable — and faithful to how ptxas
-actually schedules — is exactly this five-band scalar oracle plus the 256-class
-descriptor table at `0x2297C00`. The opcode→mnemonic naming must be resolved through
-the [Ori opcode table](../ir/instructions.md): the index space here is the Ori opcode
-id (`*(instr+72) & 0xFFFFCFFF`), **not** the SASS scheduling-class id (2..771) used by
-the descriptor table. The extracted oracle is archived locally at
-`decoded/ptxas-scheduling/scalar_latency_oracle.txt`.
+This five-band scalar oracle is the **fast per-opcode path** the OCG consults directly. It is
+*not* the whole model: ptxas also ships a **richer per-class producer/consumer table** — the
+40-byte dependency rules described in the next section — keyed by the scheduling class that
+`sub_89FBA0` assigns. The two agree on anchors (ALU = 6, long-memory = 300) but the 13 / 24 / 30
+oracle bands are OCG-internal scalars and need not equal any single dependency-rule cell. What
+does **not** ship in byte-readable form is the build-time scheduling DSL itself (the source
+`SM*.latencies_` description); it is compiled into the table-construction native code, so the
+recoverable artifacts are the *shipped* tables it emits: this five-band scalar oracle, the 72-byte
+sched-class descriptors (next section), and the 40-byte per-SM dependency rules.
+
+The opcode→mnemonic naming must be resolved through the [Ori opcode table](../ir/instructions.md):
+the index space here is the Ori opcode id (`*(instr+72) & 0xFFFFCFFF`), **not** the SASS
+scheduling-class id (2..771) used by the descriptor table. The extracted oracle is archived in the
+repo at `decoded/ptxas-scheduling/scalar_latency_oracle.txt` (band-corrected copy in
+`decoded/ptxas-sched-full/scalar_latency_oracle.tsv`).
+
+### The Full Per-SM Scheduling Model (three table families)
+
+Beyond the scalar oracle, ptxas ships three `.rodata` table families that together form the
+complete per-SM latency / dependency / scoreboard model. All three are indexed by the scheduling
+class (or config index), and cover all 26 SMs the binary supports.
+
+| Table | Record | Indexed by | Variants | Coverage |
+|---|---|---|---|---|
+| **Latency / sched-class descriptor** | 72 B | scheduling-class id | 3 (one per SM *family*) | sm_7x = 619, sm_8x = 256, sm_10x = 430 classes |
+| **Dependency rule** | 40 B | scheduling-class id | 11 (per individual SM) | 10 distinct sets (sm_86 ≡ sm_90, byte-identical) |
+| **Scoreboard config** | 88 B | config index | 7 | sm_100 uses ≤ 6 scoreboards; pre-Blackwell use 1 |
+
+The latency descriptor tables are **shared per family**: `0x2297C00` (sm_8x — shared by
+sm_80/86/89/90/90a), `0x226C880` (sm_10x — sm_100/103), `0x2245060` (sm_7x — sm_60/70/72/75).
+Dependency-rule tables are **per-SM**.
+
+#### Latency / sched-class descriptor (72 B)
+
+```text
+class_id (u32) · reserved (u32) · pipeA (8 B) · pipeB (8 B) · p0..p11 (12 × u32)
+```
+
+- `pipeA` = per-pipe eligibility byte vector (a `0xFF` byte = pipe N/A for that class); `pipeB` =
+  the dual-issue eligibility vector.
+- `p1` = throughput class (sm_8x: `{0,1,2,4,132}`; sm_7x / sm_10x add `{64,68,84,…}`).
+- `p5` = max-stall cycles `{0..7}` (3 and 7 dominate).
+- `p7` = the class id itself — a self-reference that equals `class_id` in **every** record of all
+  three families (a structural invariant, verified).
+- `p11` = always 0. `p0` is a packed flag word (high bit set in a few rows). `p2,p3,p4,p6,p8,p9,p10`
+  are small enums emitted as observed columns; their individual semantics are not asserted.
+
+#### Dependency rule (40 B) — the per-class producer/consumer cells
+
+Ten `i32` fields, verified byte-exact against `.rodata`:
+
+```text
+unit_id · rule_type · latency · throughput_inv · barrier_latency · barrier_throughput
+        · read_latency · write_latency · stall_cycles · issue_slots
+```
+
+| Field | Meaning |
+|---|---|
+| `rule_type` | `0/1/2` = active; **`4` = disabled / unit-absent** (always paired with `latency = 255`) |
+| `latency` | producer→consumer pipeline latency; `255` = not-present sentinel |
+| `throughput_inv` | inverse throughput (issue interval); `0` = fully pipelined |
+| `barrier_latency` / `barrier_throughput` | dependency-barrier wait / interval for decoupled (scoreboard-tracked) ops; `-1` = none |
+| `read_latency` / `write_latency` | explicit **RAW** / **WAW** operand-latency overrides; `-1` (0xFFFFFFFF) = "unset, use `latency`" |
+| `stall_cycles` | static stall hint |
+| `issue_slots` | dual-issue slot count |
+
+`read_latency` / `write_latency` are populated for a minority of classes (e.g. sm_70 sets
+`read_latency` on ~50 classes) and are the binary's explicit per-class RAW/WAW hazard cells — the
+shipped equivalent of a producer×consumer matrix, but stored per scheduling class rather than as a
+dense N×N grid.
+
+#### Scoreboard config (88 B)
+
+Seven `{scoreboard_id, threshold, mask}` triplets (3 × `i32` each) plus a `count` at `+84`:
+
+- `mask == -1` (0xFFFFFFFF) = all-lanes / unconditional wait; small masks (`2,4,8,32`) =
+  pipe-specific. `threshold` is the barrier-count cutoff (56 dominates).
+- sm_100 uses up to **6** scoreboards per config (the Blackwell async dependency-barrier model);
+  sm_80/86/89/90/90a/103 use a single triplet with a pipe mask. See
+  [Scoreboards](scoreboards.md) for how the control-word generator installs these.
+
+#### Per-SM coverage and the sm_90 / sm_90a split
+
+- 3 latency tables cover all 26 SMs by family; 10 distinct dependency-rule sets cover 11 SMs
+  (`sm_86` and `sm_90` are **byte-identical**).
+- `sm_90a` enables every class (0 disabled); **`sm_90` disables 6 classes** — units
+  41, 561, 562, 563, 566, 567, the WGMMA / async-MMA tensor classes (`rule_type = 4`,
+  `latency = 255`). This is the entire mechanical difference between the sm_90 and sm_90a targets.
+- Disabled-unit counts grow for restricted / older arches: sm_103 = 129, sm_75 = 173, sm_72 = 170,
+  sm_70 = 146, sm_60 = 136, sm_80 = 19, sm_100 = 10.
+
+A representative slice — sm_90 vs sm_90a dependency rules, an sm_8x sched-class descriptor sample,
+and sm_100 vs sm_90 scoreboard configs — is in
+[Per-SM Scheduling Sample](../reference/data/per-sm-scheduling-sample.md). The full per-SM TSVs
+are in the repo at `decoded/ptxas-sched-full/`.
+
+#### Opcode → pipeline → class → band (end-to-end)
+
+```text
+OriOpcode  --(opcode_pipeline_map)-->        pipeline_flags {0..4}
+OriOpcode  --(sub_89FBA0 SetOpcodeLatencies)--> scheduling class_id (2..771)
+class_id   --(latency_table_sm{fam})-->      pipe-eligibility + throughput class + max-stall
+class_id   --(dependency_rules_<sm>)-->      latency / tput_inv / barrier / RAW(read) / WAW(write)
+OriOpcode  --(scalar oracle via sub_738E20)--> flat latency band {6,13,24,30,300}
+decoupled? --(oracle property bit 0x02)-->   scoreboard wait seed = 5 + per-SM scoreboard config
+```
+
+#### The hazard model (recovered from the OCG scheduler functions)
+
+| Role | Function |
+|---|---|
+| Per-instruction latency query | `sub_8BF3A0` (reads `oracle+744`) |
+| Long-latency predicate (> 19 cyc) | `sub_8CCF80` |
+| Memory-space classifier | `sub_693BC0` |
+| Resource / scoreboard occupancy | `sub_A08A00` (3 modes: 1 = issue, 2 = commit, 3 = revert) |
+| Per-operand register cost | `sub_A08910` |
+| Stall-cycle accumulation | `sub_A09530` (node+12, 9-bit `& 0x1FF`) |
+| Oracle constructor (bands) | `sub_738E20` |
+| HW-profile / table builder | `sub_8E5CA0` |
+| Warp / dispatch profile | `sub_8E4400` |
+| Cutlass barrier override (FNV-1a) | `sub_939370` |
+
+- **Latency lookup** (`sub_8BF3A0`): for a node, if its operand flags (`*(op+108) & 5`) mark it a
+  special form, return the default seed `oracle+92` (`{300,0,0,0}`); else if `*(op+104)` is
+  non-zero use it directly; else index the flat scalar oracle at `oracle[744 + 4·(OriOpcode &
+  0xFFFFCFFF)]`.
+- **RAW handling**: the producer latency comes from the dependency-rule `latency` (or the per-class
+  `read_latency` override when set ≠ −1); the consumer is held that many cycles. `sub_A08A00`
+  mode-1 walks source operands (`sub_A08910`), adds each operand's cost into a per-functional-unit
+  cumulative array `acc[4·unit_id]`, and sets the operand's register bit in the live scoreboard
+  (`sub_BDBB80`).
+- **WAW / WAR handling**: destination operands use `write_latency` (override) and the same
+  scoreboard bitset; mode-3 (revert) clears bits via `sub_BDBC70`. The read/write split is exactly
+  the `read_latency` / `write_latency` dependency-rule columns.
+- **Long-latency gate**: `sub_8CCF80` returns true when the queried latency `> 19`, which decides
+  whether an op is treated as latency-hiding material (memory / MMA) vs short ALU. The threshold 19
+  is binary-fixed.
+- **Cutlass tuning**: `sub_939370` FNV-1a-hashes the basic-block id (seed `0x811C9DC5`, prime
+  `16777619`) against a per-kernel barrier table; a hit returns a packed `(stall_target,
+  register_limit)` overriding default barrier insertion around MMA groups; a miss returns the
+  sentinel `0x7FFFFFFF00000000`.
 
 #### Sub-Record Formats in the Growable Buffer (+80)
 

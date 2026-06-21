@@ -108,9 +108,15 @@ Variant ID structure (32-bit, approximate field boundaries):
   bits 16-31:  opcode + layout composite (467 unique hi16 values)
 ```
 
+### Phase Ordering — Text vs Encoding
+
+The late Mercury phase-label table at `0x22bd400` orders the relevant tail phases as `MercGenerateSassUCode → ReportFinalMemoryUsage → FormatCodeList → DumpNVuCodeText → DumpNVuCodeHex`. The two SASS-named phases are easily confused: `MercGenerateSassUCode` is the SASS **encoding-generation** phase (it produces the binary instruction words) and is **not** the text printer. `DumpNVuCodeText` (phase 129) is the SASS-**text** phase, and `DumpNVuCodeHex` (phase 130) is the raw-hex phase. Only the latter two consume the disassembly renderer described below.
+
 ### Level 2: SASS Disassembly Renderer
 
-The SASS printer at `0x17F8000`--`0x181FFFF` operates on binary-encoded SASS instructions and produces text through a builder/visitor pattern. This is used for the `--self-check` roundtrip verification and `--out-sass` output.
+The SASS printer at `0x17F8000`--`0x181FFFF` operates on binary-encoded SASS instructions and produces text through a builder/visitor pattern. This is used for the `--self-check` roundtrip verification and `--out-sass` output. The text builder `sub_719D00` (50 KB) carries **zero inline format strings** — it is entirely table+vtable driven: the opcode at `instruction+72` indexes a ROT13-obfuscated mnemonic table, which selects modifier templates, then operands flow through the operand encoder and predicate/control flags through the builder vtable methods. A Flex lexer (`sub_720F00`) re-parses the rendered SASS text for `--self-check`.
+
+The mnemonic and modifier names are resolved by `sub_7CB560` and `sub_896D50` (1,026 table references each) against the ROT13 opcode-name region at `0x21C1336` (322 primary names plus 385 Mercury-extended names) and the modifier-format-string region at `0x21C5E00`. Modifier formatting proper runs through `sub_7A5D10`, `sub_7C5410`, and `sub_BE7390` (412 references each, into `0x21C5E00`–`0x21CEE00`). Because the opcode names are stored ROT13-encoded — e.g. ROT13 `VZNQ` decodes to `IMAD`, `SSZN` to `FFMA` — the resolver applies the rotation at print time rather than storing plaintext mnemonics in the binary.
 
 ```text
 SASS instruction (binary-encoded)
@@ -589,11 +595,52 @@ The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 
 | `sub_181F000` | 7.6 KB | ~1 | Data-type specialized printer | 75% |
 | `sub_181F4F0` | 17.3 KB | ~1 | Multi-variant data-type printer | 80% |
 
+## Compile-Time FP Folding
+
+The literal floating-point immediates that appear in the rendered SASS — and any `.f16`/`.bf16`/`.tf32`/`.f32`/`.f64` constant the optimizer folds during code generation — are computed without any software-float library. ptxas links **no** Berkeley-SoftFloat layer, **no** FP128/extF80, and **no** 128-bit-integer software routines: the canonical SoftFloat reciprocal lookup tables (`approxRecip_1k0s` / `approxRecipSqrt_1k0s`) are absent from the entire 37.74 MB image, there are no `roundPackToF64`/`F32` leaves, and the dynamic math imports are exactly the glibc libm set (`sqrt`, `pow`, `floor`, `ceil`, `cos`, `sin`, `log` `@GLIBC_2.2.5`) — notably with no `fma` and no `fesetround`/`fegetround` import. The lone `__float128` string in the binary lives in the C++ Itanium demangler's type table, not on any folding path.
+
+Instead, ptxas folds FP immediates with the **host x86 SSE2 FPU** (`_mm_*_pd`/`_ss`) plus glibc libm, applying manual round-bit twiddling for the directed-rounding and narrowing cases. The fold cluster:
+
+| Address | Role |
+|---|---|
+| `sub_926a30` | constant-fold master dispatch (multi-thousand-line opcode switch) |
+| `sub_9203a0` | binary-op folder — native `__m128d` add/sub/mul/div/min/max `.f32`/`.f64` |
+| `sub_921820` | unary-op folder via libm — `0xC0`→`sqrt()`, `0x3B`→`pow(2.0,x)` (ex2), `0x6A`→`log()`/ln2 (lg2), rcp/round/cvt |
+| `sub_91b730` | typed-immediate decoder → host `double` — f16 via `pow(2.0, e−15)`, bf16 `<< 16`, flushing subnormals to a signed zero |
+| `sub_91ba60` / `sub_91cdd0` | folded-result writer / f32 const-pool interner |
+
+The libm kernels are reached through PLT thunks `sub_2a12cb0` (`sqrt`) and `sub_2a12d50` (`pow`). Because the engine narrows through `double` and re-rounds explicitly, half- and bfloat-precision immediates round-trip exactly while `.f32`/`.f64` directed-rounding modes are honoured by the post-fold bit fix-up rather than by the host rounding-mode register.
+
 ## CLI Integration
 
 ### `--verbose` / `-v`
 
 Enables printing of code generation statistics after compilation. The statistics printers at `sub_ABBA50`--`sub_ABEB50` (8 SM-variant clones, 7,603 bytes each) emit post-scheduling metrics in `"# [...] "` comment format.
+
+#### Resource-Usage Report
+
+The familiar `ptxas info :` resource report is built by the single unified formatter `sub_463710`. It assembles each line into a stringstream buffer (`sub_4287D0` create, `sub_428F30` sprintf-append, `sub_4289F0` finalize) and flushes through the message-emit core `sub_42F590`, which prepends the `ptxas info :` prefix. The report-line descriptors live in a `.rodata` array at `0x29FC000` with a 16-byte stride `[severity dword][pad][format-ptr]`; severities are `1=plain, 2=info, 3=warning, 5=error, 6=fatal`, and `sub_42F590` writes the matching `info`/`warning`/`error`/`fatal` word plus the `@I@`/`@O@`/`@W@`/`@E@` channel tags. The report is gated at the call site (`sub_446240`, near `0x447b8a`) by `verboseMode && !forceText`.
+
+The report has two-block structure: a **global** line (`gmem`, then `cmem[N]` over the const-bank tags) followed by a **per-entry** line (`Compiling entry function`, `Function properties`, register/barrier/stack/smem/cmem/lmem and texture/surface/sampler counts), plus a separate `Compile time = %.3f ms` line. Field order:
+
+| Field | Format string |
+|---|---|
+| gmem | `%lld bytes gmem` |
+| cmem (global) | `, %lld bytes cmem[%d]` |
+| compiling entry | `Compiling entry function '%s' for '%s'` |
+| function properties | `Function properties for %s\n    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads` |
+| registers | `Used %d registers` |
+| barriers | `, used %d barriers` |
+| stack | `, %d bytes cumulative stack size` |
+| smem | `, %lld bytes smem` |
+| cmem | `, %lld bytes cmem[%d]` |
+| lmem | `, %lld bytes lmem` |
+| textures | `, %d textures` |
+| surfaces | `, %d surfaces` |
+| samplers | `, %d samplers` |
+| compile time | `Compile time = %.3f ms` |
+
+The `, used %d barriers` and `Compile time = %.3f ms` lines are newer than the field set older ptxas builds emitted — treat both as standard modern fields. The spill, lmem, and stack-limit diagnostics are **separate warning descriptors** (`dword_29FD320`/`dword_29FD330`, severity 3) gated by the `warn-on-spills` knob, not part of the info report itself.
 
 ### `--forcetext`
 
@@ -718,3 +765,4 @@ The remaining 473 opcode variants (arithmetic, logic, load/store, control flow, 
 - [CLI Options](../config/cli-options.md) — `--verbose`, `--forcetext`, `--out-sass` flags
 - [Knobs System](../config/knobs.md) — DUMPIR knob triggering phase 129/130
 - [Phase Manager](../passes/phase-manager.md) — phase 129/130 registration and execution
+- [SASS printer & `-v` report function map](../reference/data/sass-printer-functions.md) — full printer/report/DWARF function table

@@ -632,7 +632,11 @@ Instruction (variable size, linked list node)
   +0     prev_ptr           // doubly-linked list: previous instruction
   +8     next_ptr           // doubly-linked list: next instruction
   +16    child_ptr          // child/expanded instruction chain
-  +32    control_word_ptr   // set later during scheduling (initially NULL)
+  +32    reserved_u32       // reserved/dead u32 (zero-init only; NOT a control word)
+  +40    sched_slot_ptr     // QWORD pointer to the per-inst scheduling/latency/barrier
+                            //   record; NULL until the scheduler runs, then lazily
+                            //   allocated. The SASS control word (stall/yield/barrier/
+                            //   reuse) lives inside this record, not at +32.
   +72    opcode             // byte 0: primary opcode
                             // byte 1 bits 4-5: modifier (masked with 0xCF)
   +80    operand_count      // number of operands
@@ -643,10 +647,16 @@ Instruction (variable size, linked list node)
 
 ```text
 Each operand is a packed 32-bit value:
-  Bits 28-30: operand kind ((value >> 28) & 7)
-    1 = register operand
-    5 = predicate register
-    (other values for immediate, constant bank, label, etc.)
+  Bits 28-30: operand kind ((value >> 28) & 7)  -- 3-bit DAG-IR kind enum
+    The 8 values form a DAG-level kind enum (Unknown / VReg / Imm32 / Imm64 /
+    Label / Symbol / Info / Null). Two anchors are firm: kind 1 = register
+    (VReg, the dominant value), kind 7 = the sentinel/null/hole value. The
+    exact lowered labels for the middle values (2,3,4,5,6) are not settled at
+    this revision — they are NOT the same as the behavioral 2=predicate /
+    3=uniform / 4=address / 7=immediate labels some earlier notes used.
+  Bit 31: is-DESTINATION (def) marker -- set on the destination operand of an
+    instruction (used for def/use ref-count bookkeeping); NOT a sign/negate bit.
+    Operand negate/abs modifiers live in the modifier byte, not bit 31.
 
   Lower bits: operand-kind-specific payload (register ID, immediate value, etc.)
 ```

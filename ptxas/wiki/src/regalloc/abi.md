@@ -96,6 +96,8 @@ function abi_master_setup(func, sm_target, abi_spec):
 
 Parameters are passed in consecutive R registers starting from a configurable base register. The ABI tracks `"number of registers used for parameter passing"` and `"first parameter register"` as per-function properties. The parameter register range begins after the reserved registers (R0–R3) and the return address register.
 
+The simpler parameter-base computation path (`sub_4394D0`) records the binary-level constants that bound this allocation: the default first parameter register is **R4** (the base after the 4 reserved low GPRs, `v10 = 4`); the return-address register is `R5`, or `R6` when the return value is an 8-byte (64-bit) pair (`+1` for the return-address reg, `+2` when the return value is 64-bit); parameter registers are claimed in **groups of 4** (`(words + 3) >> 2`); and the allocator emits the `"Parameter register ..."` warning when the highest parameter register plus the base exceeds **252** (`v13 + v10 > 252`). The relative-32-bit return-address mode additionally requires a caller-save 64-bit scratch register pair. The ABI also enforces an absolute floor of **13 GPRs** per function (`> 13` threshold in `sub_4394D0`; the cost-matrix floor is the same value) — below the generation minimums of 16/24 documented above, this 13 is the hard architectural floor that values are bumped up to before the generation check.
+
 ### Parameter Register Allocator: sub\_19CA730
 
 The core parameter allocator (2277 bytes, 98% confidence). It uses a 256-byte free-list array (`v103[]`) where each byte represents one register slot: `0xFF` = free, `0x00` = occupied.

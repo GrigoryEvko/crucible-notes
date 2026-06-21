@@ -975,7 +975,30 @@ Key observations from the extracted data:
 - **Tensor core classes 13/14 only appear in sm\_100+ dependency rules**, reflecting the Blackwell scheduling model's explicit tensor pipe tracking. Earlier SMs use the WGMMA/HMMA scheduling classes (744, 745, 759) instead.
 - **WGMMA (class 745) has latency 65 and tp\_inv 28** on architectures that support it (sm\_70 uses this slot for a different purpose; the values are meaningful only on sm\_90+/sm\_100+).
 
-See [Latency Model](latency-model.md) for per-opcode latency tables and functional unit mapping.
+#### The full per-SM model (not just the representative slice)
+
+The table above is a representative slice. The complete model ships as **three table families**,
+all keyed by scheduling class and covering all 26 SMs:
+
+- **Latency / sched-class descriptors (72 B)** — shared per SM *family*: 3 tables (sm_7x = 619
+  classes, sm_8x = 256, sm_10x = 430) cover all 26 SMs. Each record carries the pipe-eligibility
+  byte vectors, throughput class, and max-stall.
+- **Dependency rules (40 B)** — **per-SM** (11 tables, 10 distinct sets; sm_86 ≡ sm_90 byte-exact).
+  Each rule holds `latency / throughput_inv / barrier_latency / barrier_throughput`, plus the
+  explicit `read_latency` (RAW) and `write_latency` (WAW) override cells, with `rule_type = 4` /
+  `latency = 255` marking a disabled class.
+- **Scoreboard configs (88 B)** — 7 tables; sm_100 uses up to 6 `{scoreboard_id, threshold, mask}`
+  triplets per class (the Blackwell async barrier model), pre-Blackwell uses a single masked triplet.
+
+**Worked example — the sm_90 vs sm_90a divergence.** The two targets share the same sm_8x latency
+descriptor table and almost the same dependency rules; the only mechanical difference is that
+`sm_90` marks **six scheduling classes disabled** — units 41, 561, 562, 563, 566, 567 (the WGMMA /
+async-MMA tensor classes), each `rule_type = 4`, `latency = 255` — while `sm_90a` keeps all 256
+classes active. That single 6-class delta is why `sm_90a` is required to emit warpgroup MMA. See
+[Per-SM Scheduling Sample](../reference/data/per-sm-scheduling-sample.md) for the side-by-side rows.
+
+See [Latency Model](latency-model.md) for the full three-table model, per-opcode latency bands,
+and the functional-unit mapping; the full per-SM TSVs are in the repo at `decoded/ptxas-sched-full/`.
 
 ## Scheduling Knobs
 

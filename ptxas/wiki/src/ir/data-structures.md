@@ -1,6 +1,6 @@
 # Data Structure Layouts
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
 This page documents the key internal data structures in ptxas v13.0.88: the compilation context ("god object"), the Ori Code Object, symbol tables, constant/shared memory descriptors, the pool allocator's object model, and the generic container types (hash maps, linked lists, growable arrays) that underpin nearly every subsystem.
 

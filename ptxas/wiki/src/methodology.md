@@ -160,16 +160,6 @@ The central diagnostic emitter `sub_42FBA0` (2,350 callers) prints error message
 - `"Invalid knob identifier"`, `"Invalid knob specified (%s)"` — identifies the knob parsing infrastructure around `sub_79D070`
 - `"fseek() error knobsfile %s"`, `"[knobs]"` — identifies `ReadKnobsFile` at `sub_79D070`
 
-### Source File Path
-
-One recovered source path provides a structural anchor:
-
-```text
-/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h
-```
-
-This string (at `0x202D4D8`, 66 xrefs) is referenced from assertion checks throughout the knobs infrastructure, confirming that the knob system is a shared utility component (`generic_knobs_impl.h`) used across NVIDIA's compiler drivers.
-
 ### Build and Version Strings
 
 ```text

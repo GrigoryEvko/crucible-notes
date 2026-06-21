@@ -2,22 +2,22 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob. The system is shared with cicc via a common header (`generic_knobs_impl.h`) but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs). All knob names are stored ROT13-encoded in the binary, a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
+The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob. The system is shared with cicc but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs). All knob names are stored ROT13-encoded in the binary, a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
 
-The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x6F8000` (DAG knob instantiation, shared with the Mercury SASS pipeline) and `0x797000`--`0x7A2000` (OCG knob instantiation, the larger set). Both regions are compiled from the same template in `generic_knobs_impl.h`.
+The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x6F8000` (DAG knob instantiation, shared with the Mercury SASS pipeline) and `0x797000`--`0x7A2000` (OCG knob instantiation, the larger set). Both regions are compiled from the same template.
 
 | | |
 |---|---|
 | **Total knobs** | 1,294 (99 DAG + 1,195 OCG) |
-| **Source header** | `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h` |
 | **DAG GetKnobIndex** | `sub_6F0820` (2,782 bytes) |
 | **OCG GetKnobIndex** | `sub_79B240` (518 bytes) |
 | **ParseKnobValue** | `sub_6F7360` / `sub_79F540` (DAG: 18KB, OCG: 18KB) |
 | **ReadKnobsFile** | `sub_79D070` (9,879 bytes) |
 | **KnobsInit (master)** | `sub_79D990` (40,817 bytes) |
 | **KnobInit (per-knob)** | `sub_7A0C10` (13,874 bytes) |
-| **Knob descriptor** | 64 bytes per entry |
+| **Knob descriptor (runtime def)** | 64 bytes per entry |
 | **Knob runtime value** | 72 bytes per slot |
+| **OKT dump-schema descriptor** | 72 bytes (9 `char*`) per entry @ `0x1CE9C40`, 1000 entries (dump path only) |
 | **Name obfuscation** | ROT13 with case-insensitive comparison |
 | **Setting mechanisms** | `-knob NAME=VALUE`, knobs file (`[knobs]` header), PTX `pragma`, env var |
 | **Debug dump** | `DUMP_KNOBS_TO_FILE` environment variable |
@@ -261,7 +261,7 @@ Types 11 and 12 are aliases: type 11 shares the exact handler with type 8 (both 
 
 ### ParseKnobValue Dispatch Algorithm
 
-`ParseKnobValue` (`sub_79F540`, source lines 435–551 of `generic_knobs_impl.h`) implements a two-phase dispatch. The first switch pre-initializes compound types; the second switch parses the value string.
+`ParseKnobValue` (`sub_79F540`) implements a two-phase dispatch. The first switch pre-initializes compound types; the second switch parses the value string.
 
 **Phase 1 — Pre-initialization (compound types only):**
 
@@ -352,27 +352,27 @@ Format: `"FADD,FMUL,IADD3"` — opcode names only, no integers. Each is resolved
 
 `ParseKnobValue` (`sub_79F540` / `sub_6F7360`) produces these diagnostic strings on parse failure:
 
-| Error String | Source Line | Def Type | Condition |
-|---|---|---|---|
-| `"Empty when-string"` | 435 | 9 | WHEN knob with NULL value |
-| `"Empty integer range value"` | 445 | 4 | IRNG knob with NULL or empty value |
-| `"Empty integer list value"` | 451 | 5 | ILIST knob with NULL or empty value |
-| `"Integer list value is not an integer"` | 453 | 5 | First char not digit or `-` |
-| `"End of integer range value is not ',' or null character"` | 457 | 5 | ILIST terminator not `,` or `\0` |
-| `"Empty integer value"` | 470 | 2 | INT knob with NULL or empty value |
-| `"Empty integer value"` | 478 | 3 | BDGT knob with NULL or empty value |
-| `"Empty floating point value"` | 491 | 6 | FLOAT knob with NULL or empty value |
-| `"Invalid floating point value"` | 496 | 6 | `sscanf` returns != 1 |
-| `"Empty double value"` | 502 | 7 | DBL knob with NULL or empty value |
-| `"Invalid double value"` | 506 | 7 | `sscanf` returns != 1 |
-| `"Empty value pair list"` | 515 | 10 | OPCODE_STR_LIST with NULL value |
-| `"Empty opcode string"` | 520 | 10 | Opcode name resolves to NULL |
-| `"Empty integer value"` | 522 | 10 | Integer after opcode resolves to NULL |
-| `"Empty opcode list"` | 536 | 12 | Opcode-list variant with NULL value |
-| `"Invalid knob type"` | 551 | — | Unrecognized type tag in definition table |
-| `"Invalid knob identifier"` | 395 | — | `GetKnobIndex` — name not found |
+| Error String | Def Type | Condition |
+|---|---|---|
+| `"Empty when-string"` | 9 | WHEN knob with NULL value |
+| `"Empty integer range value"` | 4 | IRNG knob with NULL or empty value |
+| `"Empty integer list value"` | 5 | ILIST knob with NULL or empty value |
+| `"Integer list value is not an integer"` | 5 | First char not digit or `-` |
+| `"End of integer range value is not ',' or null character"` | 5 | ILIST terminator not `,` or `\0` |
+| `"Empty integer value"` | 2 | INT knob with NULL or empty value |
+| `"Empty integer value"` | 3 | BDGT knob with NULL or empty value |
+| `"Empty floating point value"` | 6 | FLOAT knob with NULL or empty value |
+| `"Invalid floating point value"` | 6 | `sscanf` returns != 1 |
+| `"Empty double value"` | 7 | DBL knob with NULL or empty value |
+| `"Invalid double value"` | 7 | `sscanf` returns != 1 |
+| `"Empty value pair list"` | 10 | OPCODE_STR_LIST with NULL value |
+| `"Empty opcode string"` | 10 | Opcode name resolves to NULL |
+| `"Empty integer value"` | 10 | Integer after opcode resolves to NULL |
+| `"Empty opcode list"` | 12 | Opcode-list variant with NULL value |
+| `"Invalid knob type"` | — | Unrecognized type tag in definition table |
+| `"Invalid knob identifier"` | — | `GetKnobIndex` — name not found |
 
-All errors carry source attribution: `generic_knobs_impl.h` with a line number and function name (`"GetKnobIndex"`, `"ParseKnobValue"`, `"ReadKnobsFile"`). Error constructors: `sub_79CDB0` (simple format string) and `sub_79AED0` (format with knob name and value context).
+All errors carry an embedded function-name tag (`"GetKnobIndex"`, `"ParseKnobValue"`, `"ReadKnobsFile"`). Error constructors: `sub_79CDB0` (simple format string) and `sub_79AED0` (format with knob name and value context).
 
 ## Setting Knobs
 
@@ -399,7 +399,7 @@ RegAllocBudget=5000
 WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200
 ```
 
-`ReadKnobsFile` (`sub_79D070`, source lines 1060–1090 of `generic_knobs_impl.h`) processes the file:
+`ReadKnobsFile` (`sub_79D070`) processes the file:
 
 ```text
 1. fopen(path, "r")                               line ~1060
@@ -480,7 +480,7 @@ The DAG (Directed Acyclic Graph) scheduler knob table contains 99 entries. These
 |---|---|
 | GetKnobIndex | `sub_6F0820` |
 | ParseKnobValue | `sub_6F7360` |
-| InitializeKnobs | `sub_6F68C0` (9KB, 24 references to `generic_knobs_impl.h`) |
+| InitializeKnobs | `sub_6F68C0` (9KB) |
 | Table size | 99 entries x 64 bytes = 6,336 bytes |
 
 DAG knobs referenced in the binary include knob indices 8 and 17 (pipeline options in `sub_6F52F0`), 16 (WAR generation options in `sub_6FBC20`), and 743/747 (expansion options in `sub_6FFDC0`).
@@ -1299,6 +1299,66 @@ Paths of 15 bytes or fewer are stored inline without heap allocation. Longer pat
 
 This is the primary mechanism for discovering which knobs exist and what their current values are. Setting it produces a text file with all 1,294 knob names and their resolved values.
 
+### The OKT Descriptor-Schema Table (`0x1CE9C40`)
+
+The dump path is driven by a separate **self-describing schema table** at VMA `0x1CE9C40` —
+distinct from the 64-byte runtime knob-definition descriptor and the 72-byte runtime value slot.
+This schema table has **exactly one** reference in the whole binary: a single instruction
+`mov $0x1CE9C40,%ebx @0x44675C` inside the JSON knob dumper `sub_446240` (the
+`DUMP_KNOBS_TO_FILE` path). Nothing else reads it; it carries no runtime behavior.
+
+It is a **1000-entry, 72-byte-stride (9 qwords) array**. The entry count is exact:
+`(0x1CFB580 − 0x1CE9C40) / 72 = 1000`, where `0x1CFB580` is the sentinel that the dumper's
+`+= 9`-qword walk stops on. Each entry is **nine `char*` pointers to ASCII strings** — a JSON
+schema, *not* a packed binary struct — which is precisely why the dumper can re-emit every field
+unmodified as text.
+
+```text
+field  off   meaning              example (entry 0)
+─────  ────  ───────────────────  ──────────────────
+[0]    0x00  bss_offset slot      "0x590"
+[1]    0x08  (name / index)
+[2]    0x10  type                 "OKT_INT"
+[3]    0x18  (description)
+[4]    0x20  min                  "0"
+[5]    0x28  max                  "1"
+[6]    0x30  default              "1"
+[7]    0x38  stepsize             "0x1"
+[8]    0x40  flags                "0x0"
+```
+
+This is a **72-byte stride** (correcting any "64-byte descriptor" reading of *this* table — the
+64-byte table documented earlier is the separate runtime definition descriptor). The runtime knob
+*values* do not live here: they live in a separate `.bss` region indexed by `field[0]` =
+`bss_offset`, parsed via the 64-byte name objects.
+
+**The flags are emitted, never bit-tested.** ptxas does *not* perform `&1` / `&2` / `&4` / `strtol`
+on the flags field anywhere; the dumper writes the flags string straight through. So the flag bits
+are a **static-init schema convention** — documentation metadata baked in for external tooling —
+with no runtime effect in this binary. Statistically (n = 1000), the per-bit pattern is:
+
+| Bit | Apparent convention | Evidence |
+|---|---|---|
+| `0x1` | has-explicit-default | correlates with non-empty default field |
+| `0x2` | range-checked / tunable | the "hidden/internal-gating" hypothesis is refuted — the dumper emits *all* knobs |
+| `0x4` | budget / category tag | 57 of 59 set entries are `OKT_BDGT`; the combo `0x5` never occurs |
+
+Flags histogram: `0x0:534, 0x2:155, 0x3:112, 0x1:103, 0x4:59, 0x6:36, 0x7:1`.
+
+**Descriptor ↔ name join.** Descriptor index `i` aligns with name index `i` — the schema table and
+the knob-index enum are emitted in lockstep from one ordered list, and at runtime the same `i`
+indexes both the 64-byte ROT13 name array (`*(reg+16)+(i<<6)`) and the 72-byte value array
+(`*(reg+72)+72·i`); `GetKnobIndex` (`sub_79B240`) returns that `i`. Caveat: ~19 leading entries in
+the schema table are non-knob helper strings (`NamedPhases`, `DUMP_KNOBS_TO_FILE`, `GetKnobIndex`,
+phase names) that must be filtered before aligning the 1000 descriptors with the knob-name list.
+
+The type tokens in `field[2]` are `OKT_NONE` / `OKT_INT` / `OKT_BDGT` (BUDGET) / `OKT_IRNG`
+(INT_RANGE) / `OKT_ILIST` (INT_LIST) / `OKT_DBL` (DOUBLE) / `OKT_STR` (STRING) / `OKT_WHEN` /
+`OKT_OPCODE_STR_LIST`. The OPCODE_LIST value space is
+`{ARRIVES, DFMA, FFMA, HFMA2, HMMA, IMAD, IDP, IMMA, LDG, LDGSTS, LDS, LDSM, MEMBAR, STG, STS, XMAD}`.
+
+The full extracted schema is in the repo at `decoded/ptxas-knobs-builtins/okt_descriptors.tsv`.
+
 ## Error Handling
 
 The knob system uses structured error descriptors (96 bytes each) allocated from an arena:
@@ -1308,8 +1368,8 @@ Offset  Size  Field
 ──────  ────  ─────────────────────────────────────
 +0      8     formatted message string pointer
 +8      8     message length
-+16     8     source file path pointer
-+24     8     source file path length
++16     8     path-string pointer
++24     8     path-string length
 +32     8     line number
 +40     8     function name pointer
 +48     48    (additional context fields)

@@ -8,7 +8,7 @@ ptxas v13.0.88 defines 97 EIATTR codes, numbered 0 through 96 (`0x00`--`0x60`). 
 
 | | |
 |---|---|
-| **ELF section type** | `SHT_CUDA_INFO` = `0x70000064` |
+| **ELF section type** | `SHT_CUDA_INFO` = `0x70000000` |
 | **Section name (global)** | `.nv.info` |
 | **Section name (per-function)** | `.nv.info.<function_name>` |
 | **Record format** | Type-Length-Value (TLV), 4-byte aligned |
@@ -119,7 +119,7 @@ A cubin contains two kinds of `.nv.info` sections:
 
 **Per-function `.nv.info.<name>`** — One section per kernel or device function, named `.nv.info.<function_name>` with `sh_link` pointing to the corresponding symbol table entry. Carries per-kernel resource descriptors: register count, barrier count, stack sizes, parameter bank layout, and instruction-offset tables.
 
-Both section variants use `sh_type = SHT_CUDA_INFO` (`0x70000064`). The ELF section type is the authoritative way to identify `.nv.info` sections; the name is only a convention.
+Both section variants use `sh_type = SHT_CUDA_INFO` (`0x70000000`). The ELF section type is the authoritative way to identify `.nv.info` sections; the name is only a convention.
 
 ## Complete Code Table
 

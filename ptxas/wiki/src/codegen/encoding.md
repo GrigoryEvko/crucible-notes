@@ -299,7 +299,9 @@ Immediately following each xmmword in rodata are three arrays of 10 DWORDs that 
 | `dword_XXXXE0[10]` | `a1+64` .. `a1+100` | Operand slot types (register class selector) |
 | `dword_XXXXX8[10]` | `a1+104` .. `a1+140` | Operand slot flags (encoding mode flags) |
 
-Observed slot-size values: `10` = register (10-bit number + overhead), `12` = register with type, `17` = immediate/cbuf, `-1` = unused. Slot-type values: `28` = register-type, `0` = basic, `-1` = unused. Slot-flag values: `0` = default, `2` = secondary (uniform/extended), `-1` = unused.
+Observed slot-size values: `10` = register (10-bit number + overhead), `12` = register with type, `17` = immediate/cbuf, `33` = wide third slot (3-slot formats), `-1` = unused. Slot-type values: `28` = register-type, `0` = basic, `-1` = unused. Slot-flag values: `0` = default, `2` = secondary (uniform/extended), `-1` = unused.
+
+There are **38 format descriptors** in total (the 16 format-group catalog below collapses them by `format_id`; several `format_id` values have two or three index variants with different slot geometry). The single most-shared slot-size template is the **universal slot template** at `0x23F1C60` (referenced 7,302 times), holding sizes `[3, 2, 4, 6, 8]` — these are the canonical slot widths the per-format descriptors specialize. All 38 descriptors share an invariant 32-bit opcode header (DW2=4) and bit-48 operand region (DW3=6); only DW0 (format class ID) and the trailing slot arrays vary. The full 38-row descriptor table, the universal-slot template, and the per-arch Tier-2 modifier constants are dumped in [reference/data/sass-encoding-dispatch.md](../reference/data/sass-encoding-dispatch.md).
 
 The copy uses SSE 128-bit loads for 16-byte chunks and scalar DWORD writes for the remainder. The first array (16-byte aligned in `.rodata`) is read with `_mm_load_si128`; the second and third arrays sit at +40 and +80 from the descriptor and are read with `_mm_loadu_si128`. Stores into the encoder context happen through `*(__m128i *)` lvalues, since the context is laid out to be 16-byte aligned at those offsets. The alignment check visible in every decompiled encoder (`if (a1 + 120 <= dword_XXXXX8 || a1 + 24 >= &dword_XXXXX8)`) is a compiler-generated overlap guard for the `memcpy`-like bulk copy.
 
@@ -707,7 +709,7 @@ Concrete evidence: the 6 excluded hardware numbers are 16, 48, 80, 112, 144, and
 `sub_1B72F60` (32 bytes, 483 callers) writes the 8-bit hardware register number into the SASS instruction word. The encoding is split across two non-contiguous bitfields within a single DWORD:
 
 ```c
-// sub_1B72F60 -- register field writer (decompiled verbatim)
+// sub_1B72F60 -- register field writer (from the decompiled body)
 __int64 write_register_field(__int64 a1, int encoded_reg) {
     __int64 buf = *(_QWORD *)(a1 + 112);   // instruction encoding buffer
     __int64 result = *(_DWORD *)(buf + 12)  // DWORD at byte offset 12
@@ -1740,8 +1742,13 @@ The SM89/90 pair operates entirely at the Mercury IR level and produces no packe
 | `sub_EB3040` | 1.9 KB | — | **decode_dispatcher** — binary search on instruction type | HIGH |
 | `sub_112CDA0` | 8.9 KB | — | **register_pair_encoder** — 40-pair mapping via if-chain | HIGH |
 
+## Encoder Dispatch — Layering Note
+
+The handler tables that route each opcode to its encoder are **layered**: an opcode→slot scalar table (`word_22B4B60`), two 16-byte-slotted encoding decision trees keyed by `(format_id << 8) | minor_opcode`, two `(opcode, category, variant)` sub-table arrays, and a per-SM authoritative override array — all four function-pointer layers draw from one shared handler pool of 8,874 distinct addresses. In every dispatch row the **`category`** field is an encoding/opcode-CLASS family (not an SM-generation bucket — the SM split is carried by *which* per-SM array is indexed), and **`variant`** is a sequential, modifier-driven sub-opcode; the alternate-encoding choice is a separate runtime flag on the operand struct, not the table `variant`. The full layer reconciliation, the 13,568-slot tree geometry, and the correction that `off_22AD230` / `off_23B3A80` are ISel C++ vtables (not encoder dispatch) are documented in [SASS Encoding Dispatch Tables § Dispatch Reconciliation](./encoding-tables.md#dispatch-reconciliation--four-encoder-layers-plus-an-isel-vtable).
+
 ## Cross-References
 
+- [SASS Encoding Dispatch Tables](./encoding-tables.md) — the four-layer dispatch reconciliation, encoding trees, and `encoding_bitfield_lookup` semantics
 - [Mercury Encoder](mercury.md) — the assembler backend that invokes the encoding phase
 - [Capsule Mercury & Finalization](capmerc.md) — post-encoding finalization
 - [SASS Opcode Catalog](../reference/sass-opcodes.md) — full mnemonic table

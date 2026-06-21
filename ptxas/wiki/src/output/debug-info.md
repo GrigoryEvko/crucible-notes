@@ -43,6 +43,19 @@ The cubin entry point `sub_612DE0` reads both `deviceDebug` and `lineInfo` flags
 
 The `--lineinfo` flag is described in the CLI as `"Generate debug line table information"` and is orthogonal to `-g`. When only `--lineinfo` is active, ptxas generates the two line table sections but omits the heavyweight `.debug_info`/`.debug_abbrev`/`.debug_loc` sections. The string `"device-debug or lineinfo"` appears in a validation check that prevents `--extensible-whole-program` from being combined with either debug mode.
 
+### Debug-Emission Orchestrator — `sub_679DC0`
+
+`sub_679DC0` is the master debug-emission entry — the function that builds every cubin debug section. Its behaviour is gated by the two flags it receives in arg slots `a7` (`deviceDebug`, `-g`) and `a8` (`lineInfo`, `-lineinfo`). The exact section set per mode:
+
+| Flag state | Sections emitted |
+|---|---|
+| `-lineinfo` | `.debug_line`, `.nv_debug_line_sass`, `.nv_debug_ptx_txt`, `.debug_str` |
+| `-g` | the above **plus** `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.debug_info`, `.debug_abbrev`, `.debug_loc`, `.debug_frame`, `.debug_ranges`/`pubnames`/`pubtypes`/`aranges` |
+| `forceDebugFrame \|\| -g` | `.debug_frame` (emitted before the suppress check) |
+| `--suppress-debug-info` | early-returns after the frame, stripping everything else |
+
+The orchestrator always calls the line-table writer (`sub_867880`), and only calls the register sidecars (`sub_8679F0`/`sub_867B00`) and the `.debug_info` builder when `deviceDebug` is set. It is also where `.nv_debug_ptx_txt` is assembled — the raw PTX input with the DWARF-machinery lines stripped (lines beginning `#`, `///`, `.loc` other than `.local`/`.file`, `@@DWARF`, and the `.bNN` block markers), renamed to `.nv_debug_ptx_txt.<adler32>` so separate compilation units can be distinguished by an Adler-32 of the PTX input.
+
 ## Debug Section Catalog
 
 ptxas generates three tiers of debug sections depending on compilation mode. Standard DWARF sections use the conventional `.debug_*` namespace. NVIDIA extensions use `.nv_debug_*` names. Capsule Mercury binaries additionally carry `.nv.merc.debug_*` clones.
@@ -154,6 +167,27 @@ The DWARF `.debug_line` section generator `sub_866BB0` is the central function f
 
 6. **Finalization**: Writes the complete section via `sub_1CA7180` (ELF section write).
 
+### Line-Program Prologue Constants
+
+The line-number-program prologue ptxas writes is **DWARF version 2** with these fixed parameters:
+
+| Field | Value |
+|---|---|
+| `minimum_instruction_length` | 1 |
+| `default_is_stmt` | 1 |
+| `line_base` | −5 |
+| `line_range` | 14 |
+| `opcode_base` | 10 |
+| `standard_opcode_lengths` | the DWARF-2 set (9 entries) |
+
+A special opcode encodes a combined line+address advance as:
+
+```text
+op = (advLine − line_base) + (advAddr / min_inst_length) × line_range + opcode_base
+```
+
+When the requested advance falls outside the special-opcode range, the writer falls back to explicit `advance_line` / `advance_pc` / `copy` opcodes. The same writer (`sub_866BB0`) is invoked twice by `sub_867880`: pass 0 produces `.debug_line` (keyed to PTX addresses), pass 1 produces `.nv_debug_line_sass` (only when a SASS-line-info pointer is present at debug-context +16). In the SASS pass, each row's address is re-keyed from the PTX address to the final SASS pc, collapsing duplicate rows except where the prologue's `preserve` flag is set.
+
 ### Debug Line Context Structure
 
 ```text
@@ -196,7 +230,7 @@ void emit_debug_info(ctx, elf, aux, source_path) {
 
 ## LEB128 Encoding
 
-The DWARF standard uses LEB128 (Little-Endian Base 128) variable-length encoding for integers throughout debug sections. ptxas implements this in `sub_45A870`, which handles encoding for multiple fields. Error strings in this function reveal the field types being encoded:
+The DWARF standard uses LEB128 (Little-Endian Base 128) variable-length encoding for integers throughout debug sections. The two primitive encoders are leaf functions: `sub_463C40` (unsigned LEB128) and `sub_463CA0` (signed LEB128, which stops when the continuation byte XOR'd with the sign bit clears bit `0x40`). Both return 1 on overflow. The PTX-level statement-program writer `sub_45A870` calls these for each numeric field; its error strings name the field being encoded:
 
 | Field | Error string on overflow |
 |---|---|
@@ -236,6 +270,25 @@ void emit_reg_sass(debug_ctx, elf) {
 ### `.nv_debug_info_reg_type`
 
 Emitted by `sub_867B00`. Structurally identical to the reg_sass emitter but operates on offsets +432/+440/+448. Associates register locations with DWARF type information, enabling the debugger to interpret register contents correctly (e.g., distinguishing a 32-bit float in R5 from a 32-bit integer in R5).
+
+The register-location data for both sidecars comes from the post-RA liveness annotator `sub_88D870`. Its on-wire form, per `.debug_loc`-style entry, is `DW_OP_regx` = ULEB128 register name (variable lives entirely in that register), or `DW_OP_bregx` = ULEB128 register name + SLEB128 offset (register holds a base address with a frame/struct offset).
+
+## SASS-Address Relocation Rewrite
+
+ptxas does not author DWARF from scratch — it consumes the PTX-level DWARF that cicc emits (as `@@DWARF` directives and PTX `.debug_*` sections), **rewrites every symbolic label reference to a final SASS address**, and re-emits the bytes into the cubin `.debug_*` and `.nv_debug_*` sections. Where the final address is not yet known at this stage, ptxas emits a relocation instead of a literal, classified by the reference's kind:
+
+| Reference class | Resolution |
+|---|---|
+| function / label symbol | `R_MERCURY_ABS_PROG_REL32`/`64` (addend adjusted to the SASS offset) or legacy `R_CUDA_32`/`64` |
+| CBANK param | direct patch |
+| stack variable | deferred `DW_OP_fbreg` SLEB128 frame-offset patch, resolved by a lightweight DWARF decoder |
+| constant-space symbol | `R_MERCURY_G64` / `R_CUDA_G32`/`G64` generic-address relocs |
+
+This is why the `.nv_debug_line_sass` file-table entry references `.nv_debug_ptx_txt[.<adler32>]` — the SASS line table is keyed to the final machine addresses, while the PTX text it points back to is fixed by an Adler-32 of the PTX input.
+
+### Mercury Debug Namespace (SM 100+)
+
+For the deferred-finalization (capsule/Mercury) path, ptxas additionally emits a full `.nv.merc.debug_*` namespace (15 names) classified by `sub_1C98C60` (a switch on the `SHT_LOPROC`-range section tags, e.g. `0x70000006`). These clones travel inside the Mercury capsule with `R_MERCURY_*` relocations so the finalizer can reconstitute debug-capable SASS for a target SM without re-invoking the full compiler. See [Capsule Mercury](../codegen/capmerc.md) for the capsule layout.
 
 ## DWARF Processing Subsystem
 
@@ -414,7 +467,10 @@ ptxas generates **DWARF version 2** debug information. Evidence:
 
 - The form table (`sub_1CBF820`) covers exactly forms 1–22, which is the DWARF 2 form set. No DWARF 3+ forms (`DW_FORM_sec_offset` = 0x17, `DW_FORM_exprloc` = 0x18) are present.
 - The CU header parser (`sub_1CC5EB0`) prints `"Version: %d"` as a field, consistent with the 11-byte DWARF 2 CU header format.
+- The line-program prologue constants written by `sub_866BB0` (`line_base=-5`, `line_range=14`, `opcode_base=10`) are the DWARF-2 defaults.
 - The attribute table includes DWARF 2 attributes only.
+
+The string `"Dwarf version %d is not supported"` is a **reader-side** guard inside the DWARF-line reader, which rejects an input DWARF version it cannot parse; it is not an emitter-side version selector. ptxas always emits DWARF v2.
 
 ### CUDA-Specific DWARF Extensions
 
@@ -447,3 +503,11 @@ The ELF section layout calculator `sub_1C9DC60` applies special handling to `.de
 | `0x1C98000`--`0x1C9A000` | Section classifiers (merc + SASS) | ~6 |
 | `0x1C9D000`--`0x1C9E000` | Unified section classifier | 1 |
 | `0x1CBF000`--`0x1CC7000` | DWARF processor/dumper cluster | ~12 |
+
+## Cross-References
+
+- [Custom ELF Emitter](elf-emitter.md) — section ordering and the `.debug_line` layout special case
+- [Section Catalog](sections.md) — debug-section catalog and Mercury `.nv.merc.debug_*` clones
+- [Relocations & Symbols](relocations.md) — the `R_MERCURY`/`R_CUDA` relocs used to rewrite label references to SASS addresses
+- [Capsule Mercury](../codegen/capmerc.md) — Mercury debug-namespace cloning for deferred finalization
+- [SASS printer & `-v` report function map](../reference/data/sass-printer-functions.md) — the DWARF emitter and LEB128 function addresses

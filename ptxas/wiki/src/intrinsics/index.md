@@ -574,6 +574,38 @@ The OCG (Optimized Code Generation) intrinsic subsystem is a separate, parallel 
 
 See **[OCG Intrinsic System (44 Operations)](ocg.md)** for the complete builtin name table, handler functions, validation strings, SASS-level handlers, and the full five-stage lowering pipeline with operand buffer layout.
 
+## The Embedded PTX Builtin Catalog (1,080 `.weak .func` declarations)
+
+Separate from the *registered* intrinsic name→ID system, ptxas carries a contiguous `.rodata` blob
+of **1,080 pre-written PTX builtin declarations** at VMA `0x1D1E200`–`0x1D4B777` (185,719 bytes).
+Each is a complete `.weak .func` prototype string — return register, mangled name, and parameter
+list — for a device-runtime helper, ready to splice into the PTX stream when a kernel calls it.
+These are the *strings* the prototype emitter (`sub_5FF700`) selects among; the 1,080 count matches
+the emitter's 1,080-case dispatch (and the 1,079 body-template names, off-by-one for the null slot).
+
+The catalog breaks down into six categories by name prefix:
+
+| Category | Count | Representative names |
+|---|---|---|
+| `cuda_other` | 549 | `__cuda_sm3x_div_rn_*`, `__cuda_scalar_video_emulation_*`, misc helpers |
+| `sm70_intrinsics` | 433 | `__cuda_sm70_warpsync`, `__cuda_sm70_barrier_sync*`, WMMA load/store/mma |
+| `sm20_math` | 70 | `__cuda_sm20_div_s16`, `__cuda_sm20_rcp_rn_f32`, `__cuda_sm20_sqrt_*` |
+| `redux_sync` | 17 | `__cuda_reduxsync_b32_xor`, `__cuda_reduxsync_u32_add`, `__cuda_reduxsync_f32_max` |
+| `sanitizer` | 7 | `__cuda_sanitizer_memcheck_{global,shared,local,generic,malloc,free,readmetadata}` |
+| `sm80_intrinsics` | 4 | `__cuda_sm80_createpolicy_{range,range_encode,fractional,fractional_encode}` |
+
+A worked example of the stored declaration form (one row of the catalog):
+
+```text
+.weak .func (.reg .s32 %d) __cuda_sm20_div_s16 (.reg .s32 %a0, .reg .s32 %a1) ;
+```
+
+**473 of the 1,080 are macro-expanded** — i.e. the same 473 declarations also surface as
+macro-expansion targets in the prototype/pseudo-instruction machinery, so the 1,080 embedded
+strings are a superset (473 macro-expanded ⊂ 1,080). The remaining 607 line up with the registered
+classical intrinsics. The full catalog (every declaration string, with parsed return type and
+parameter count) is in the repo at `decoded/ptxas-knobs-builtins/builtins_catalog.tsv`.
+
 ## Intrinsic Families by SM Generation
 
 Each SM generation introduces new intrinsic families while preserving all earlier ones. The per-SM intrinsic table initializer functions (`sub_60AXXX` cluster, registered in Map 3 of the [capability dispatch](../targets/index.md)) control which intrinsics are available on each target.

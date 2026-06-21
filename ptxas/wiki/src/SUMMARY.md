@@ -34,6 +34,7 @@
 
 - [Pass Inventory & Ordering](./passes/index.md)
 - [Phase Manager Infrastructure](./passes/phase-manager.md)
+- [Validation & Lowering Passes](./passes/validation-and-lowering.md)
 - [AnalyzeControlFlow (CFG Rebuild)](./passes/analyze-control-flow.md)
 - [GeneralOptimize Bundles](./passes/general-optimize.md)
 - [Branch & Switch Optimization](./passes/branch-switch.md)
@@ -132,3 +133,24 @@
 - [Diagnostics & Messages (506)](./reference/diagnostics.md)
 - [String-Pool Encryption](./reference/string-pool-cipher.md)
 - [Glossary](./glossary.md)
+
+# Reference Data
+
+Full binary-recovered data tables, rendered as browsable pages.
+
+- [SASS Opcode Master Table (322)](./reference/data/sass-opcode-master.md)
+- [Ori Primary Opcode Enum](./reference/data/ir-opcode-enum.md)
+- [ISel Operand-Kind Enum](./reference/data/ir-operand-kind-enum.md)
+- [Instruction Attribute Bits](./reference/data/instruction-attribute-bits.md)
+- [PTX Lexer Token Table](./reference/data/ptx-tokens.md)
+- [SASS Encoding Dispatch & Format Tables](./reference/data/sass-encoding-dispatch.md)
+- [Register File & Occupancy Budget](./reference/data/register-file-budget.md)
+- [Phase Pipeline (159 / 157)](./reference/data/phase-pipeline.md)
+- [Validation & Lowering Pass Detail](./reference/data/passes-detail.md)
+- [Per-SM Scheduling Sample](./reference/data/per-sm-scheduling-sample.md)
+- [SM Version-Code Table](./reference/data/sm-version-codes.md)
+- [R_CUDA Relocation Types (117)](./reference/data/cuda-reloc-types.md)
+- [R_MERCURY Relocation Types (64)](./reference/data/mercury-reloc-types.md)
+- [Device-ELF Header Notes](./reference/data/elf-header-notes.md)
+- [SASS Printer / DWARF Function Map](./reference/data/sass-printer-functions.md)
+- [Diagnostic Message Catalog (506)](./reference/data/diagnostic-messages.md)

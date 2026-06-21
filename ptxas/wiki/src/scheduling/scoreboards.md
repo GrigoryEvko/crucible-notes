@@ -93,6 +93,42 @@ The stall count and dependency barriers serve complementary purposes:
 
 For operations with latency <= 15 cycles, the stall count alone suffices. For longer latencies, a dependency barrier must be used because 4 bits cannot encode delays beyond 15 cycles. The yield flag provides an additional hint: when set, it tells the warp scheduler that this warp is about to stall and should be descheduled in favor of another ready warp.
 
+### Per-SM Scoreboard Configuration Tables (88 B)
+
+The barrier-assignment policy is parameterized per SM by an 88-byte scoreboard-config record,
+indexed by config (scheduling-class) index. Each record is **seven `{scoreboard_id, threshold,
+mask}` triplets** (3 × `i32` each) plus a `count` at `+84`:
+
+| Field | Meaning |
+|---|---|
+| `scoreboard_id` | which of the 6 hardware barrier registers this triplet maps to |
+| `threshold` | barrier-count cutoff for freeing the barrier (56 dominates) |
+| `mask` | `-1` (0xFFFFFFFF) = all-lanes / unconditional wait; small masks (`2,4,8,32`) = pipe-specific |
+| `count` (`+84`) | number of active triplets in this config (1 on pre-Blackwell, up to 6 on sm_100) |
+
+ptxas ships **7** of these tables. The split is architectural:
+
+- **sm_80 / sm_86 / sm_89 / sm_90 / sm_90a / sm_103** — a **single** triplet per config with a pipe
+  mask (e.g. sm_90 config 0 = `{sb_id 0, threshold 56, mask 8}`). Pre-Blackwell hardware tracks one
+  barrier per scheduling class at a time.
+- **sm_100 (Blackwell)** — up to **6** triplets per config, all with `threshold 56` and `mask -1`,
+  modelling the multi-scoreboard async dependency-barrier hardware. This wider config is the
+  primary motivation for the phase-114 texture-barrier fixup.
+
+The wait depth and interval that go with each triplet come from the **dependency-rule** columns
+`barrier_latency` / `barrier_throughput` (40-byte rule record, see
+[Latency Model](latency-model.md#dependency-rule-40-b--the-per-class-producerconsumer-cells));
+`barrier_throughput == -1` means the class is not decoupled. A decoupled op (oracle property bit
+`0x02`) gets a scoreboard wait seed of **5** (`sub_738E20` sets `oracle+2212[op] = 5`), then the
+config triplets above set the per-class wait. A side-by-side sm_100-vs-sm_90 config sample is in
+[Per-SM Scheduling Sample](../reference/data/per-sm-scheduling-sample.md); the full tables are in
+the repo at `decoded/ptxas-sched-full/scoreboard_configs_<sm>.tsv`.
+
+The Cutlass-aware override `sub_939370` can replace the default barrier policy around MMA groups:
+it FNV-1a-hashes the basic-block id (seed `0x811C9DC5`, prime `16777619`) against a per-kernel
+barrier table and, on a hit, returns a packed `(stall_target, register_limit)` pair; a miss returns
+the sentinel `0x7FFFFFFF00000000`.
+
 ## Phase 114: FixUpTexDepBarAndSync
 
 Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), correcting barrier state that the instruction scheduler (phases 97–110) left inconsistent with texture pipeline requirements. The dispatch is doubly-indirect through a scheduling/scoreboard subsystem object owned by the architecture backend (`arch_backend+16 -> vtable slot 14`). See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarandsync) for the full algorithm, per-SM scoreboard configuration table, and dispatch pseudocode.

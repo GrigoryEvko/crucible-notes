@@ -1,15 +1,17 @@
 # Pass Inventory & Ordering
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The ptxas compilation pipeline consists of exactly 159 phases, executed in a fixed order determined by a static index table at `0x22BEEA0`. Every compilation traverses the same sequence — phase skipping is handled per-phase via `isNoOp()` virtual method overrides, not by reordering the table. This page is the definitive inventory of all 159 phases: their index, name, category, one-line description, and cross-references to detailed documentation where available.
+The PhaseManager **registers 159 phase objects** (IDs 0–158) but the default driver **dispatches exactly 157** of them (IDs 0–156), in the fixed identity order given by the static index table at `0x22BEEA0`. The two remaining registered phases — ID 157 `DebuggerBreak` and ID 158 `NOP` — are constructed but not part of the default schedule; they run only via the recipe/named-phases override path (OCG knob 298). The order accessor `sub_C60D20` returns the order-table pointer in `rax` and the count `0x9D = 157` in `rdx`; the dispatch loop `sub_C64F70` bounds at `&schedule[157]`. Every dispatched phase's `execute()` runs unconditionally — phase skipping is decided inside each phase's own `execute()` body (opt-level/knob/predicate checks), not by `isNoOp()` and not by reordering the table. This page is the definitive inventory of all 159 registered phases: their index, name, category, one-line description, and cross-references to detailed documentation where available.
 
-All 159 phases have names in the static name table at `off_22BD0C0` (159 entries, indexed 0–158). The factory switch at `sub_C60D30` allocates each phase as a 16-byte polymorphic object with a 5-slot vtable: `execute()` at +0, `getIndex()` at +8 (returns the factory/table index), and `isNoOp()` at +16 (returns 0 for active phases, 1 for phases skipped by default). Slots +24 and +32 are NULL.
+All 159 phases have names in the static name table at `off_22BD0C0` (159 entries, indexed 0–158). The factory switch at `sub_C60D30` allocates each phase as a 16-byte polymorphic object with a 5-slot vtable: `execute()` at +0, `getIndex()` at +8 (returns the factory/table index), and `isNoOp()` at +16 (returns 1 only to suppress the Before/After timing banner — it does **not** gate `execute()`). Slots +24 and +32 are NULL.
 
 | | |
 |---|---|
-| **Total phases** | 159 (indices 0–158) |
+| **Registered phases** | 159 (IDs 0–158) |
+| **Dispatched by default** | 157 (IDs 0–156) |
 | **Named (static table)** | 159 (all have entries in `off_22BD0C0`) |
+| **Debug-only (not scheduled)** | 2 — ID 157 `DebuggerBreak`, ID 158 `NOP` |
 | **Late-pipeline phases** | 20 (indices 139–158, added after the original 0–138 design) |
 | **Gate passes (AdvancedPhase)** | 17 conditional hooks |
 | **Update passes** | 9 data-structure refresh passes (6 in main table + 3 in static name table, not yet positioned) |
@@ -36,7 +38,7 @@ Each phase is tagged with one of 10 categories. These are not present in the bin
 | **Cleanup** | Post-transformation updates, NOP removal, block layout | 13 |
 | **Gate** | Conditional hooks (`AdvancedPhase*`) — no-op by default | 17 |
 
-Phases 139–158 are late-pipeline phases covering Mercury encoding, scoreboards, register map computation, diagnostics, and a terminal NOP. They have the same vtable infrastructure as phases 0–138 and are fully named in the static table.
+Phases 139–158 are late-pipeline phases covering Mercury encoding, scoreboards, register map computation, diagnostics, and a terminal NOP. They have the same vtable infrastructure as phases 0–138 and are fully named in the static table. The last phase in the **default 157-entry schedule** is ID 156 `DumpNVuCodeHex`; IDs 157 `DebuggerBreak` and 158 `NOP` are registered (and named) but excluded from the default order — they enter a schedule only through the recipe/named-phases path.
 
 ## Numbering Discrepancy — Complete Wiki-to-Binary Mapping
 
@@ -266,7 +268,7 @@ See [GeneralOptimize Bundles](general-optimize.md) for the sub-pass decompositio
 
 ### Mechanism
 
-The 159-phase pipeline does **not** carry any opt-level metadata on the phase objects themselves. Three binary facts establish this:
+The phase pipeline does **not** carry any opt-level metadata on the phase objects themselves. Three binary facts establish this:
 
 1. **Uniform phase construction.** `sub_C60D30` (the 159-case phase factory at `0xC60D30`, 1132 lines) allocates every phase object via the same 5-line body: request 16 bytes from the pool, store a per-case vtable pointer at offset `+0`, store the allocator pointer at `+8`, return. There is no `*(char*)(obj+N) = LEVEL` write anywhere in the switch; every case is byte-identical except for the vtable symbol (cases 0–158 at `sub_C60D30_0xc60d30.c:172–1125`, tail default at 1126–1129). The 16-byte phase object therefore has room for exactly `{vtable, allocator}` and no inline "minimum opt level" field.
 
@@ -297,9 +299,9 @@ The 159-phase pipeline does **not** carry any opt-level metadata on the phase ob
    }
    ```
 
-   `sub_7DDB50` (the opt-level accessor at `0x7DDB50`, 232 bytes) reads the cached 32-bit opt_level field from `ocg_ctx + 2104` (i.e. `ctx + 0x838`), but only when knob 499 is active; otherwise it returns `1`, capping effective behaviour at O1. The knob-499 kill-switch and the iteration-budget counter at `kv->state[35940]` are documented in [Optimization Levels — Gate Accessor](../config/opt-levels.md#gate-accessor-sub_7ddb50).
+   `sub_7DDB50` (the OptBudget gate at `0x7DDB50`, 232 bytes) reads the cached 32-bit opt_level field from `ocg_ctx + 2104` (i.e. `ctx + 0x838`). When knob 499 ("disable optimization") is clear, it returns that real level unchanged. When knob 499 is set, it returns the real level only while a per-compile budget counter holds (`entry+12 < entry+8` at `499*72 = 0x8c58`), incrementing the counter each call; once the budget is exhausted it returns the literal `1`, forcing minimal-opt behaviour. The knob-499 budget counter at `kv->state[35940]` is documented in [Optimization Levels — Gate Accessor](../config/opt-levels.md#gate-accessor-sub_7ddb50).
 
-**Important corollary.** Because `execute()` is always invoked, every phase's timing record and pre-snapshot (written at `sub_C64F70:72–85`, before the first `isNoOp()` call) are also recorded. `--ftime` output therefore contains a row for all 159 phases in every compilation, including phases that immediately early-returned because the opt-level guard failed. Gated-off phases show near-zero elapsed time rather than being omitted.
+**Important corollary.** Because `execute()` is always invoked, every dispatched phase's timing record and pre-snapshot (written at `sub_C64F70:72–85`, before the first `isNoOp()` call) are also recorded. `--ftime` output therefore contains a row for all 157 dispatched phases in every compilation, including phases that immediately early-returned because the opt-level guard failed. Gated-off phases show near-zero elapsed time rather than being omitted.
 
 ### Pseudocode for the full gate mechanism
 
@@ -388,7 +390,7 @@ Scanning all phase wrappers in `0xC5F7xx`--`0xC60Bxx` (the per-phase `execute` t
 
 ### Concrete -O0 vs -O3 phase lists
 
-Resolving the gate with `opt_level = 0` (i.e. `sub_7DDB50` returns 0) against the 159-phase pipeline and the Category-B wrappers identified above:
+Resolving the gate with `opt_level = 0` (i.e. `sub_7DDB50` returns the minimal level) against the dispatched phase schedule and the Category-B wrappers identified above:
 
 **At -O0, the following phases early-return (runtime no-ops):**
 Phase 14 `DoSwitchOptFirst` (gate `sub_C5F720`), 15 `OriBranchOpt` (`sub_C5F950`), 22 `OriLoopUnrolling`, 24 `OriPipelining`, 26 `OriRemoveRedundantBarriers`, 28 `SinkRemat`, 30 `DoSwitchOptSecond` (`sub_C5FC80`), 38 `OptimizeNestedCondBranches` (`sub_C5FA70`), 49 `GvnCse`, 54 `OriDoRematEarly`, 58 `GeneralOptimizeLate` (`sub_C603E0`, unless option-31 override), 63 `OriDoPredication`, 69 `OriDoRemat`, 71 `OptimizeSyncInstructions`, 72 `LateExpandSyncInstructions`, 95 `SetAfterLegalization`, 99 `OriDoSyncronization`, 100 `ApplyPostSyncronizationWars`, 110 `PostSchedule`, 115 `AdvancedScoreboardsAndOpexes`, and ~60 other Category-B phases. At `-O0` the scheduling subsystem *does* still run phase 116 `ProcessO0WaitsAndSBs`, which performs the conservative-scoreboard insertion that makes O0 code actually executable — phase 116 is itself a Category-A wrapper that dispatches to `sub_C5E2A0` only when the target architecture has `sm_version > 0x3FFF`.
@@ -665,8 +667,8 @@ Columns: `#` (wiki number) = `Bin#` (binary factory index) for all late-pipeline
 | 154 | `UpdateAfterFormatCodeList` | Cleanup | **`nullsub_628` at `0xC5E050` (2 B)** | — | **True no-op.** `isNoOp()` = 1 (`sub_C5E070`). Hook point kept in case a backend needs to re-sync IR metadata after FormatCodeList reorders instructions, but no release target uses it. |
 | 155 | `DumpNVuCodeText` | Reporting | `sub_C60420` (54 B) | `ctx[+0x598] > 0 && ctx[+0x740] != NULL && *ctx[+0x740] != NULL` | Guarded by `-dump_nvu_code_text=1` knob; the full gate cascade is retained, but the tail-call target `0x67FF60` resolves to **`nullsub_31` (2 B)** — the actual text dumper has been stripped from release ptxas, leaving the gate as an orphan that falls through to a stub. Effective no-op. See [SASS Printing](../codegen/sass-printing.md). |
 | 156 | `DumpNVuCodeHex` | Reporting | `sub_C60460` (~48 B) | `ctx[+0x598] > 0 && ctx[+0x740] != NULL` | Mirror image of phase 155 with a simpler gate (no extra pointer indirection) and tail-call target `0x67FF50` = **`nullsub_30` (2 B)**. Same conclusion: stripped from release, orphan gate only. See [SASS Printing](../codegen/sass-printing.md). |
-| 157 | `DebuggerBreak` | Cleanup | **`nullsub_627` at `0xC5DFE0` (2 B)** | — | Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so the "Before/After" diagnostic frame still fires — useful when running ptxas under `gdb` with `b *0xC5DFE0` because the dispatch loop will print `"Before DebuggerBreak"` / `"After DebuggerBreak"` on either side of the breakpoint. |
-| 158 | `NOP` | Cleanup | **`nullsub_626` at `0xC5DFB0` (2 B)** | — | Terminal sentinel. The 159-phase dispatch loop (`sub_C64F70`) iterates `a1[0] .. a1[158]` and needs a final slot to anchor the loop end; `NOP` is that anchor. `isNoOp()` = 0 (`sub_C5DFD0`), so the final `"Before NOP"` / `"After NOP"` prints appear in verbose dumps as the explicit terminator for `"All Phases Summary"`. |
+| 157 | `DebuggerBreak` | Cleanup | **`nullsub_627` at `0xC5DFE0` (2 B)** | — | Registered but **not in the default 157-entry schedule** — it runs only when a recipe (OCG knob 298) explicitly schedules it. Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so when it *is* scheduled the "Before/After" diagnostic frame fires — useful under `gdb` with `b *0xC5DFE0`. |
+| 158 | `NOP` | Cleanup | **`nullsub_626` at `0xC5DFB0` (2 B)** | — | Registered but **not in the default schedule**. It is the lookup-failure sentinel returned by the name resolver `sub_C641D0` (unknown phase name → 158) and the default-seed value of the recipe schedule buffer; its `execute()` is an immediate `return`. `isNoOp()` = 0 (`sub_C5DFD0`). It runs only via an explicit recipe. |
 
 Phases 139–158 are 20 late-pipeline phases whose vtable pointers range from `off_22BEB80` to `off_22BEE78` (40-byte stride, 20 * 0x28 bytes). All 20 have names in the static table at `off_22BD0C0` (159 entries — the earlier wiki note claiming "139 entries" was based on a compressed model that excluded these phases). Name resolution for the dispatch-loop diagnostic (`sub_C64F70`) goes through the static table indexed by `getIndex()` at vtable+8.
 
@@ -859,10 +861,10 @@ repz ret
 Mirror image of phase 155 with a simpler gate (no extra pointer indirection) and tail-call target `0x67FF50` = **`nullsub_30`**. Same conclusion: stripped from release, orphan gate only.
 
 **Phase 157 `DebuggerBreak`** — `vtable=0x22BEE50` — execute `nullsub_627` at `0xC5DFE0` (**2 bytes, `repz ret`**).
-Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so the diagnostic frame still fires — useful when running ptxas under `gdb` with `b *0xC5DFE0` because the dispatch loop will print `"Before DebuggerBreak"` / `"After DebuggerBreak"` on either side of the breakpoint.
+Registered but **not in the default 157-entry schedule** — it runs only when a recipe (OCG knob 298) explicitly schedules it. Debug-build breakpoint marker; release builds emit a bare `ret`. `isNoOp()` = 0 (`sub_C5E000`), so when scheduled the diagnostic frame fires — useful under `gdb` with `b *0xC5DFE0`.
 
 **Phase 158 `NOP`** — `vtable=0x22BEE78` — execute `nullsub_626` at `0xC5DFB0` (**2 bytes, `repz ret`**).
-Terminal sentinel. The 159-phase dispatch loop (`sub_C64F70`) iterates `a1[0] .. a1[158]` and needs a final slot to anchor the loop end; `NOP` is that anchor. `isNoOp()` = 0 (`sub_C5DFD0`), so the final "Before NOP" / "After NOP" prints appear in verbose dumps as the explicit terminator for `"All Phases Summary"`.
+Registered but **not in the default schedule**. `NOP` is the lookup-failure sentinel returned by `sub_C641D0` (unknown phase name → 158) and the default-seed of the recipe schedule buffer; its `execute()` is an immediate `return`. `isNoOp()` = 0 (`sub_C5DFD0`). The default dispatch loop bounds at `&order[157]` (IDs 0..156), so `NOP` runs only via an explicit recipe.
 
 **Summary of nullsubs (release build).** Five of the 20 phases have bodies that are pure `ret` stubs: **150, 151, 154, 157, 158**. Two more (**155, 156**) have non-trivial gate cascades but their tail-call targets resolve to nullsubs, making them effectively no-ops too. That leaves **13 phases (139–149, 152, 153)** that actually transform IR or pipeline state in a release build. Of the 13 active phases, seven are Mercury encoder stages (141–147) gated by `ctx+0x570`/`ctx+0x571` bits — so on a non-Mercury backend the active count drops to six (139, 140, 148, 149, 152, 153).
 

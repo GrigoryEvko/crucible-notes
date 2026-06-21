@@ -867,6 +867,32 @@ Known IR-index-to-numeric correlations (confirmed from switch statements across 
 | 96 | 0x38 | LDG |
 | 221 | 0xDF | GMMA |
 
+## Canonical Per-Opcode Master Table
+
+The complete 322-entry table — opcode id, mnemonic, introducing SM generation, encoding slot,
+encoding status, and per-family pipeline flags — is dumped at
+[SASS Opcode Master Table](./data/sass-opcode-master.md). Two columns are worth calling out here:
+
+- **`encoding_slot` / `encoding_status`** classify how each opcode reaches an encoder. There are
+  four states across the 322 opcodes:
+
+  | status | meaning | count |
+  |---|---|---|
+  | `isel-slot` | dedicated ISel encoder slot (`1 ≤ slot < 222`) | 117 |
+  | `no-encoding-entry` | no static `opcode_to_encoding` entry; opcodes ≥ 222 fall through to the **per-SM handler dispatch** instead of a fixed slot | 100 |
+  | `default-slot` | uses encoding slot 0 (the shared default encoder path) | 95 |
+  | `sentinel-unencoded` | `slot == 355`, the not-encodable sentinel (boundary / abstract opcodes and arch-gated forms reached only through a later generation's dispatch) | 10 |
+
+- **`encoding_category`** is the parallel 322-entry array bulk-copied from `unk_21C0E00` into the
+  object at `+0x2478`. It is an **identity map** — `category[i] == i` for every `i` — so it carries
+  no payload of its own; the real per-SM selection happens by *which* per-SM encoder array is
+  indexed, not by this category value. (This is why the page above describes it as "a separate data
+  structure, not additional opcode names.")
+
+The pipeline-flag columns (`pf7x` / `pf10x`) are the scheduling `pipeline_flags` for the sm_7x and
+sm_10x families — the same `{0..4}` codes that feed the scheduling-class assignment (see
+[Latency Model](../scheduling/latency-model.md)).
+
 ## Extended Mnemonic Table (`sub_896D50`)
 
 A second, much larger mnemonic table is constructed by `sub_896D50` (21KB, vtable `off_21DA9F8`). This "extended" table serves a different purpose from the primary 322-entry table: it is used during **SASS disassembly input parsing** (string-to-index lookup), whereas the primary table is used during **encoding** (index-to-string). The two tables share the same base class (`sub_A2B110`) but have different vtables and different object layouts.

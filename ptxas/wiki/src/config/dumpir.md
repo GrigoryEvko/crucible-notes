@@ -1,18 +1,18 @@
-# DUMPIR & NamedPhases
+# DUMPIR & Recipe / NamedPhases
 
-> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+> *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base 0x400000 (non-PIE).*
 
-The DUMPIR knob and NamedPhases option are the two primary mechanisms for inspecting ptxas's internal IR at arbitrary points in the 159-phase optimization pipeline. DUMPIR is an OCG string knob that triggers an IR dump after a named phase completes. NamedPhases is a separate OCG string knob (index 298) that restricts the pipeline to execute only the specified phases, effectively allowing selective phase execution and reordering. Both knobs accept phase names resolved through a case-insensitive binary search over a sorted table of 144 phase names (`sub_C641D0`, 305 bytes).
+The DUMPIR knob and the recipe/NamedPhases knob are the two primary mechanisms for inspecting ptxas's internal IR at points in the optimization pipeline. DUMPIR is an OCG string knob that triggers an IR dump after a named phase completes. The recipe knob (OCG knob index 298) diverts the optimizer driver onto the recipe path, where a small DSL builds a custom phase schedule. Both knobs accept phase names resolved through a case-insensitive binary search over the sorted phase-name table by `sub_C641D0` (305 bytes). The name table holds **159 entries** (IDs 0–158), copied from `off_22BD0C0`; on lookup failure the search returns the NOP sentinel, ID **158**.
 
 | | |
 |---|---|
 | **DUMPIR knob** | OCG string knob (ROT13: `QhzcVE`), registered in `ctor_005` at `0x412B80` |
-| **NamedPhases knob** | OCG knob index 298, runtime offset 21456 in knob value array |
+| **Recipe / NamedPhases knob** | OCG knob index 298 (`config+0x53D0` presence, `+0x53D8` value) |
 | **Phase name lookup** | `sub_C641D0` (305 bytes, case-insensitive binary search) |
 | **Table sort** | `sub_C63FA0` (on-demand iterative quicksort via `sub_C639A0`) |
-| **Name table** | 144 entries at `off_22BD0C0` + 5 arch-specific additions |
-| **NamedPhases parser** | `sub_798B60` (1,776 bytes) |
-| **Phase fragment parser** | `sub_798280` (900 bytes) |
+| **Name table** | 159 entries at `off_22BD0C0` (1272 bytes); all IDs 0–158 named |
+| **Recipe tokenizer** | `sub_798B60` (1,776 bytes) |
+| **Recipe schedule builder** | `sub_9F4040` |
 | **Report passes** | Phases 9, 96, 102, 126, 129, 130 |
 | **Sentinel return** | 158 (NOP phase, returned on lookup failure) |
 
@@ -81,9 +81,9 @@ Adjacent knobs in `ctor_005` (for boundary context):
 
 Three knob names appear in both pipelines: `DumpCFG`, `DumpIR`, and (implicitly) their string addresses differ (`0x21BDBF0` vs `0x21DCCA0` for DumpCFG). Setting one does not affect the other.
 
-## NamedPhases Knob
+## Recipe / NamedPhases Knob (OCG 298)
 
-The NamedPhases knob (OCG index 298) provides a mechanism to restrict the optimization pipeline to execute only specific phases. Unlike DUMPIR which passively observes, NamedPhases actively controls which phases run.
+The recipe knob (OCG index 298) diverts the optimizer driver `sub_7FB6C0` onto the recipe path (`sub_9F63D0` → `sub_9F4040`), where a small DSL builds a **custom phase schedule** that replaces the default 157-entry order. Unlike DUMPIR, which passively observes, this knob actively controls which phases run and in what order. It is an internal engineering interface (gated by a knob, not a documented user-facing ptxas flag); default compiles never reach it. The recipe schedule is fed to the **same** dispatch loop `sub_C64F70` as the default path, with a computed length — and this is the only path that can schedule IDs 157 (`DebuggerBreak`) and 158 (`NOP`).
 
 ### Knob Location
 
@@ -100,12 +100,9 @@ if (v12 == 5)                         // type 5 = string
 
 ### Parser — `sub_798B60`
 
-The NamedPhases parser (`sub_798B60`, 1,776 bytes) reads the knob value string and parses it into parallel arrays of up to 256 entries. It is called from two sites:
+The recipe tokenizer (`sub_798B60`, 1,776 bytes) reads the knob value string and parses it into parallel arrays of up to 256 entries. The schedule builder `sub_9F4040` (reached from the optimizer driver via `sub_9F63D0`) consumes those arrays and applies the recipe DSL to the default 157-identity schedule. The "NamedPhases" string appears in both: at `0x798E90` in the tokenizer and at `0x9F42B0` in the schedule builder — they are two stages of the same recipe path, not a separate Mercury mechanism.
 
-1. **OCG pipeline** (`sub_798B60` direct): parses the NamedPhases string from OCG knob index 298, referenced at address `0x798E90` where the string "NamedPhases" (`0x21B64C8`) appears in an error/diagnostic message.
-2. **Mercury pipeline** (`sub_9F4040`): the Mercury encoder's phase reordering mechanism also references the "NamedPhases" string at `0x9F42B0`, using the same knob to control Mercury-side phase execution.
-
-The parser operates as follows:
+The tokenizer operates as follows:
 
 1. Reads knob value at offset 21456 from the knob state
 2. If the knob is unset (type byte == 0), returns immediately (no filtering)
@@ -128,25 +125,26 @@ The `+` character acts as an entry separator (analogous to how the DisablePhases
 -knob NamedPhases=PhaseA,param1+PhaseB,param2+PhaseC
 ```
 
-### Mercury NamedPhases — `sub_9F4040`
+### The Recipe DSL — `sub_9F4040`
 
-The Mercury encoder pipeline (`sub_9F4040`, 1,850 lines decompiled) uses the NamedPhases knob to support phase reordering within the Mercury backend. In addition to standard pipeline phase names, it recognizes Mercury-specific pseudo-phases:
+The schedule builder `sub_9F4040` starts from the default 157-identity schedule (`sub_C60D20()`) and applies a small DSL parsed from the tokenized recipe string. Explicit phase IDs are clamped to `[0, 159]` and unknown phase names map to 158/NOP via `sub_C641D0`. These tokens operate on the **main OCG phase schedule** — they are not Mercury-specific:
 
-| Name | Decompiled Line | Match Method | Purpose |
+| Token | Decompiled Line | Match Method | Effect |
 |---|---|---|---|
-| `shuffle` | 843 | strlen + byte compare (8 chars) | Mercury instruction shuffle pass |
-| `swap1` | 950 | strlen + byte compare (6 chars) | Mercury register swap level 1 |
-| `swap2` | 1007 | strlen + byte compare (6 chars) | Mercury register swap level 2 |
-| `swap3` | 1061 | strlen + byte compare (6 chars) | Mercury register swap level 3 |
-| `swap4` | 1119 | strlen + byte compare (6 chars) | Mercury register swap level 4 |
-| `swap5` | 1162 | strlen + byte compare (6 chars) | Mercury register swap level 5 |
-| `swap6` | 1202 | `strcmp()` | Mercury register swap level 6 |
-| `OriPerformLiveDead` | 1556 | `sub_C641D0()` lookup | Liveness analysis within Mercury context |
-| `OriCopyProp` | 1648 | `sub_C641D0()` lookup | Copy propagation within Mercury context |
+| `NamedPhases` | 381 | string compare | replace the schedule with the explicit name list (each name → ID via `sub_C641D0`) |
+| `p%d` | 467 | `sprintf "p%d"` | select phases by numeric index; value from the parallel value array, clamped to `[0,159]` |
+| `shuffle` | 843 | strlen + byte compare (8 chars) | seeded pairwise rotation pass over the schedule slots (reps-controlled) |
+| `reps` | — | string compare | number of shuffle iterations (≤ 256) |
+| `swap1` | 950 | strlen + byte compare (6 chars) | swap a pair of schedule slots (base offset 1) |
+| `swap2` | 1007 | strlen + byte compare (6 chars) | swap a pair of schedule slots (base offset 2) |
+| `swap3` | 1061 | strlen + byte compare (6 chars) | swap a pair of schedule slots (base offset 3) |
+| `swap4` | 1119 | strlen + byte compare (6 chars) | swap a pair of schedule slots (base offset 4) |
+| `swap5` | 1162 | strlen + byte compare (6 chars) | swap a pair of schedule slots (base offset 5) |
+| `swap6` | 1202 | `strcmp()` | swap a pair of schedule slots (base offset 6) |
+| `dce1`/`dce2`/`dce3` | 1556 / 1282 / 1319 | counter trigger | inject `OriPerformLiveDead` (DCE) at the counter position |
+| `cpy1`/`cpy2`/`cpy3` | 1648 / 1395 / 1442 | counter trigger | inject `OriCopyProp` at the counter position |
 
-`shuffle` and `swap1`--`swap6` are pure Mercury pseudo-phases: they do not exist in the main 144-entry phase name table at `off_22BD0C0`. Their name matching is done inline with strlen-guarded character comparison (not `strcmp` — except `swap6` which uses a full `strcmp` call, likely because it is the last in a fallthrough chain).
-
-`OriPerformLiveDead` and `OriCopyProp` resolve through `sub_C641D0` (the standard binary search), meaning they ARE in the main phase table. They are special in that Mercury conditionally inserts them into its own phase sequence rather than inheriting them from the standard pipeline ordering. The insertion is guarded by state flags (`v234`, `v252`, `v240` for OriPerformLiveDead; `v222`, `v236`, `v257` for OriCopyProp), suggesting they are injected only when the Mercury encoder detects certain register-pressure or correctness conditions.
+`shuffle` and `swap1`–`swap6` are recipe keywords, not phase names: they do not exist in the phase name table at `off_22BD0C0`. Their matching is done inline with strlen-guarded character comparison (not `strcmp` — except `swap6`, the last in a fallthrough chain). The `dceN`/`cpyN` tokens inject real registered phases: `OriPerformLiveDead` (the DCE family, IDs 18/38/70/99) and `OriCopyProp` (ID 22), both resolved through `sub_C641D0`. OCG knob 297 is pulsed once per applied recipe element as a diagnostic "recipe-applied" counter. For the full DSL see the [Optimization Pipeline](../pipeline/optimizer.md#recipe--namedphases-override-ocg-knob-298) page.
 
 ## Phase Name Lookup — `sub_C641D0`
 
@@ -366,16 +364,12 @@ The memory format reuses the suffix from `"PeakMemoryUsage = %.3lf KB"` (at `0x1
 
 ## Phase Name Table
 
-The static phase name table at `off_22BD0C0` contains 145 entries: 1 sentinel ("All Phases Summary") plus 144 phase names. After sorting by `sub_C63FA0`, the binary search in `sub_C641D0` provides O(log n) lookup — approximately 8 comparisons for 145 entries.
+The static phase name table at `off_22BD0C0` contains **159 entries** (IDs 0–158), copied wholesale into the PhaseManager by `sub_C62720` (`1272 = 159*8` bytes). After sorting by `sub_C63FA0`, the binary search in `sub_C641D0` provides O(log n) lookup — approximately 8 comparisons for ~159 entries.
 
-The 144 non-sentinel entries include:
-- **139 base pipeline phases** (indices 0–138) with fixed names
-- **5 arch-specific phase aliases** that map to indices >= 139:
-  - `LateEnforceArgumentRestrictions`
-  - `UpdateAfterScheduleInstructions`
-  - `UpdateAfterOriDoSyncronization`
-  - `ReportBeforeRegisterAllocation`
-  - `UpdateAfterOriAllocateRegisters`
+The 159 entries cover every phase ID:
+- **IDs 0–138** — the base pipeline phases with fixed names
+- **IDs 139–156** — the late-pipeline phases (Mercury encoding, scoreboards, register map, diagnostics), all named, e.g. `ProcessO0WaitsAndSBs` (139) … `DumpNVuCodeHex` (156)
+- **IDs 157–158** — `DebuggerBreak` and `NOP`, named and registered but excluded from the default 157-entry schedule
 
 The `AllocateRegisters` string (`0x21F0229`) also appears as a phase name referenced by the register allocation subsystem (`sub_A55D80`, `sub_A76030`) and is present in the name table at `0x22BD490`.
 
@@ -393,9 +387,10 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 
 | Address | Size | Function | Confidence |
 |---|---|---|---|
-| `sub_798280` | 900 | `ParsePhaseNameFragment` — splits `NAME,PARAM` from NamedPhases token | MEDIUM |
-| `sub_798B60` | 1,776 | `NamedPhases::ParsePhaseList` — tokenizes NamedPhases knob string | CERTAIN |
-| `sub_9F4040` | ~7,400 | `MercuryNamedPhases` — Mercury pipeline phase selection/reordering | HIGH |
+| `sub_798280` | 900 | `ParsePhaseNameFragment` — splits `NAME,PARAM` from a recipe token | MEDIUM |
+| `sub_798B60` | 1,776 | recipe tokenizer — tokenizes the OCG-knob-298 recipe string | CERTAIN |
+| `sub_9F4040` | ~7,400 | recipe schedule builder — applies the recipe DSL to the default OCG schedule | HIGH |
+| `sub_9F63D0` | 342 | recipe path entry — builds PhaseManager, calls `sub_9F4040`, dispatches via `sub_C64F70` | HIGH |
 | `sub_A3A7E0` | ~2,000 | `CodeObject::EmitStats` — per-function statistics header printer | HIGH |
 | `sub_C639A0` | ~800 | `QuicksortNameTable` — iterative quicksort for phase name table | MEDIUM |
 | `sub_C63FA0` | ~600 | `EnsureSortedNameTable` — lazy sorted table construction | MEDIUM |
@@ -421,7 +416,7 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 
 7. **NamedPhases in Mercury** (`sub_9F4040`) supports 7 pure pseudo-phases (`shuffle`, `swap1`--`swap6`) that do not exist in the main phase table. These use inline strlen-guarded byte comparison, not `strcmp` (except `swap6`). Two additional names (`OriPerformLiveDead`, `OriCopyProp`) ARE in the main table but are conditionally injected into Mercury's phase sequence based on register-pressure/correctness state flags.
 
-8. **The "Before" string is a raw 8-byte LE literal store**, not a `strcpy`. The dispatch loop writes `0x2065726F666542` directly to the buffer, which is `"Before "` in ASCII. This is a micro-optimization for the hot path (pre-phase execution). The "After" path uses `strcpy` since it is post-execution.
+8. **The "Before" string is a raw 8-byte LE literal store**, not a `strcpy`. The dispatch loop writes `0x2065726F666542` directly to the buffer, which is `"Before "` in ASCII. The `"After "` banner is emitted by a similar inline literal store (a 4-byte `0x65746641` "Afte" plus a 2-byte `0x2072` "r " plus a null), not a runtime `strcpy`. Both are gated by `isNoOp()` returning false; neither affects whether the phase's `execute()` runs.
 
 9. **Statistics header has two variants.** The pre-register-allocation format strings (at `0x21EC050`) use commas between some spill fields: `[SSpillB=%d], [SRefillB=%d]`. The post-register-allocation variant (at `0x21FA008`) drops those commas: `[SSpillB=%d] [SRefillB=%d]`. A reimplementation should match whichever variant is appropriate for the dump point.
 
@@ -434,4 +429,5 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 - [Phase Manager](../passes/phase-manager.md) — dispatch loop, phase factory, name table infrastructure
 - [Pass Inventory](../passes/index.md) — complete 159-phase table with report pass positions
 - [Register Allocator](../regalloc/overview.md) — DUMPIR=AllocateRegisters diagnostic reference
-- [Mercury Encoder](../codegen/mercury.md) — Mercury-side NamedPhases and DAG DumpIR knob
+- [Optimization Pipeline](../pipeline/optimizer.md) — the OCG-knob mechanism and the full recipe DSL
+- [Mercury Encoder](../codegen/mercury.md) — the DAG-side DumpIR knob instance
