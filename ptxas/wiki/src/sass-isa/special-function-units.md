@@ -54,7 +54,7 @@ SM103 adds a packed-FP16 SIMD form of the special-function unit (a `MUFU` that
 processes an `f16x2` pair per issue); it is absent on the consumer line.
 
 The operand grammar has three forms — register, immediate, and constant-bank — with
-the source carrying the usual **negate** (`-`) and **absolute-value** (`|x|`)
+the source operand carrying the usual **negate** (`-`) and **absolute-value** (`|x|`)
 modifiers folded in by the assembler:
 
 ```
@@ -264,9 +264,19 @@ Atomics split by **memory space** and by **whether a value is returned**:
 `REDS`) omit the destination entirely. **The compiler chooses the no-return form when
 the returned value is dead.** This is a real optimisation, visible in ground truth:
 assembling `atom.global.add.u32 %r, [p], %v` and then never reading `%r` makes ptxas
-emit `REDG.E.ADD.STRONG.GPU` (no `Rd`), not `ATOMG`. The decision is driven by a
-"all results null / dead" predicate in the lowering — a reduction is strictly cheaper
-because it never has to forward a value back.
+emit `REDG.E.ADD.STRONG.GPU` (no `Rd`), not `ATOMG`. The downgrade is gated on the
+**global / surface** spaces — a dead-result *shared* atomic stays `ATOMS` (the
+reduction-only shared opcode `REDS` is an SM100+ addition); and on the **operation**
+having a reduction form (exchange and compare-and-swap never downgrade, because their
+whole point is the read-back). A reduction is strictly cheaper because it never has to
+forward a value back: the returning forms arm a **read+write** scoreboard (the consumer
+waits on the write-back), the no-return forms arm only a **read** scoreboard.
+
+Two further mappings ride the atomic unit, both Ampere-and-later and confirmed in
+emitted SASS: `mbarrier.arrive` lowers to an **`ATOMS` arrive-count** atomic
+(`ATOMS.POPC.INC.32` — an atomic population-count increment on the shared barrier
+word), and the atomic op field carries an `ARRIVE` form for the barrier-arrival path.
+These are the same functional unit as the data atomics, not a separate barrier engine.
 
 ### 4.2 The operation set
 
@@ -303,6 +313,10 @@ The operation carries a **size/type** field:
   `atom.global.add.f32` → `ATOMG.E.ADD.F32.FTZ.RN.STRONG.GPU` and
   `red.global.add.f64` → `REDG.E.ADD.F64.RN.STRONG.GPU`. FP atomics carry their own
   `.FTZ` and `.RN` rounding qualifier because the add is performed in the atomic unit.
+* **Packed and vector FP** — a packed-half add (`atom.global.add.f16x2`) gets its own
+  size encoding, and **vector** FP atomics (`atom.global.add.v2/.v4.f32`, the `MIN`/`MAX`
+  half forms) are an **Ampere-and-later, global/generic-only** capability: the vector
+  form supports `f32`/`f16` with `ADD`/`MIN`/`MAX`, but `f32` only with `ADD`.
 * **`.E`** on the global forms is the *extended* (64-bit) address flag.
 
 The shared-memory path is narrower: shared **FP** atomics are not native. An
