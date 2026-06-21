@@ -11,7 +11,6 @@ decoded), `UNNAMED` / `UNK` (the bit is set on real forms but its semantic name 
 
 | bit | attribute | kind | confidence |
 |---|---|---|---|
-
 | 0 | BOP | BOOL | HIGH |
 | 2 | CMP | BOOL | HIGH |
 | 3 | (unnamed) | UNNAMED | - |

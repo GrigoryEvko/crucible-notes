@@ -26,7 +26,6 @@ for every row whose status is not `no-encoding-entry`.
 
 | id | mnemonic | sm_gen | slot | status | pf7x | pf10x |
 |---|---|---|---|---|---|---|
-
 | 0 | `ERRBAR` | sm_70 | 0 | default-slot | 1 | 1 |
 | 1 | `IMAD` | sm_70 | 0 | default-slot | 1 | 1 |
 | 2 | `IMAD_WIDE` | sm_70 | 0 | default-slot | 3 | 3 |

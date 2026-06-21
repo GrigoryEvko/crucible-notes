@@ -9,7 +9,6 @@ entries (`<identifier>`, `<int-literal>`) are token *classes*, not literal keywo
 
 | token_id (dec) | token_id (hex) | keyword(s) / group members | kind |
 |---|---|---|---|
-
 | 258 | 0x102 | `<identifier>` | single |
 | 259 | 0x103 | `<dotted-identifier>` | single |
 | 260 | 0x104 | `call` | single |

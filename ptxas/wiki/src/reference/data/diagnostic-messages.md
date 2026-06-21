@@ -12,7 +12,6 @@ Tables: link=41, main=465.
 
 | table | id | sev | severity | message |
 |---|---|---|---|---|
-
 | main | 0 | 6 | fatal | Memory allocation failure |
 | main | 1 | 6 | fatal | Stray '"' character |
 | main | 2 | 6 | fatal | Stray '[' character |
