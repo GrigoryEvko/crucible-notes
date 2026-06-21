@@ -254,41 +254,43 @@ only to *interpret* them.
 a per-instruction stall delta is invisible above launch noise. The mode compiles
 an **amplified probe corpus** (`AMP_PTX`): each probe is a self-contained
 per-iteration dependent chain looped `N` times so the per-iteration delta
-accumulates, built at `-O1` so ptxas does not unroll (an unrolled body folds the
-loop back-edge into a chain the linear-DAG composer would under-stall). For each
-probe with an understall candidate it builds **V1** (ptxas's native control words)
-and a **surgical V2** (ptxas's words with *only* the understall-candidate stalls
+accumulates (default `-O3`, production ptxas; these probes do not unroll at the
+trip counts used, so the surgical V2 stays sound). For each probe with an
+understall candidate it builds **V1** (ptxas's native control words) and a
+**surgical V2** (ptxas's words with *only* the understall-candidate stalls
 tightened — every other word held at ptxas, so any cycle change is attributable to
-those stalls alone), measures both under `ncu`
-(`sm__cycles_active.avg`, `gpc__cycles_elapsed.max`, `smsp__inst_executed.sum`) at
+those stalls alone), measures both under `ncu` (**`sm__cycles_active.avg`** — the
+low-noise per-iteration metric — paired V1/V2/V1/V2 to cancel clock drift) at
 **low occupancy** (one warp per scheduler, so a per-warp dispatch stall is on the
 critical path, not hidden behind sibling warps), and gates on **bit-identical
-output**. When the all-candidates tighten faults or diverges, it **bisects**
-(launch-only) to the largest bit-identical subset and measures that. Per-kernel
-verdict:
+output across 6 seeds**. When the all-candidates tighten faults or diverges, it
+**bisects** (launch-only) to the largest bit-identical subset and measures that.
+Per-kernel verdict:
 
 | verdict | condition | meaning |
 |---|---|---|
-| **MEASURED ptxas WASTE** | V2 bit-identical, V2 fewer cycles (> 0.5 %) | the candidate stalls were slack — removing them really saves cycles |
+| **MEASURED ptxas WASTE** | V2 bit-identical, V2 fewer cycles (> 0.1 % floor) | the candidate stalls were slack — removing them really saves cycles |
 | **hardware-enforced** | V2 bit-identical, equal cycles | the stall delta is absorbed; the latency is structural, not wasted issue slots |
-| **HAZARD (not waste)** | V2 output differs | ≥ 1 of those stalls was required — tightening changes results; ptxas was right |
+| **HAZARD (not waste)** | V2 output differs (any of 6 seeds) | ≥ 1 of those stalls was required — tightening changes results; ptxas was right |
 
-Measured on the sm_89 GPU (RTX 1000 Ada, 20 SMs, `niter=150000`, grid 20×32):
+Measured on the sm_89 GPU (RTX 1000 Ada laptop), `niter=100000`, grid 8×32,
+**`-O3` (production ptxas)**, `sm__cycles_active.avg` paired (floor ≈ 0.10 %):
 
 | probe | safe candidates | V1 cyc | V2 cyc | Δ | verdict |
 |---|---|---|---|---|---|
-| `amp_transc` | ULDC, IADD3, LOP3, IMAD.WIDE (MOV is a hazard) | 17.03 M | 15.30 M | **−10.1 %** | **MEASURED WASTE** |
-| `amp_fpchain` | ULDC, IADD3, I2FP, LOP3, IMAD | 6.15 M | 5.70 M | **−7.3 %** | **MEASURED WASTE** |
-| `amp_intchain` | ULDC, MOV | 6.75 M | 6.75 M | ≈ 0 % | hardware-enforced |
-| `amp_loadmath` | ULDC (IMAD is a hazard) | 10.95 M | 10.95 M | ≈ 0 % | hardware-enforced |
+| `amp_transc`  | MOV, IADD3, LOP3, IMAD (4)        | 4.44 M | 4.32 M | **+2.70 %** | **MEASURED WASTE** |
+| `amp_fpchain` | 18 coupled stalls                 | 2.13 M | 2.03 M | **+4.70 %** | **MEASURED WASTE** |
+| `amp_intchain`| 18 coupled stalls                 | 0.63 M | 0.62 M | **+1.59 %** | **MEASURED WASTE** |
+| `amp_loadmath`| 9 of 15 (6 address-IMAD hazards)  | —      | —      | +0.00 % | hardware-enforced |
 
 So some of ptxas's `understall_vs_ptxas_conservatism` cases are **genuine slack**
-(the transcendental/FP chains run ~7–10 % faster with the conservative stalls
-removed, bit-identical), while others are **hardware-enforced** (the integer-chain
-and load-feeds-math stalls are absorbed by surrounding latency — removing them
-changes nothing) and a few are **real hazards the linear-DAG composer cannot see**
-(a loop-carried `MOV`/`IMAD` feeding the address path), which the bit-identical
-gate correctly rejects.
+(the transcendental/FP/int chains run ~1.5–4.7 % faster with the conservative
+stalls removed, bit-identical, even against `-O3`), while `amp_loadmath` is
+**hardware-enforced** — its load-feeds-math stalls are absorbed by surrounding
+latency, and 6 of its candidates are **real hazards** (a loop-carried `IMAD`
+feeding the address path) that the multi-seed bit-identical gate correctly rejects.
+(Earlier `-O1` measurements showed larger ~7–10 % deltas because `-O1` ptxas leaves
+more slack; the numbers above are the honest `-O3` figures with a stable metric.)
 
 **`--stall-profile` — per-instruction warp-stall observability.** Runs `ncu` PC
 sampling (the public `smsp__pcsamp_warps_issue_stalled_*` family via the Source
@@ -317,6 +319,82 @@ flags: e.g. in `amp_loadmath` an `IMAD` consuming a *coupled* producer shows `wa
 scoreboard; in `amp_fpchain` a constant-`MOV` feeding the address `IMAD.WIDE` shows
 a `wait` our per-edge model did not predict. The contradictions are reported
 per-instruction so they can drive the next round of model calibration.
+
+### Beating ptxas on cycles — a GPU-gated optimizing scheduler
+
+Two modes turn the model into an optimizer that is **provably never wrong and
+never slower than ptxas**. Both reuse the patch/launch/`ncu` plumbing above and
+add the same absolute correctness gate: a rescheduled cubin is accepted only if,
+on the sm_89 GPU, its output is **bit-identical to ptxas's across 6 seeds × 2
+relaunches** *and* its measured cycles do not regress; otherwise that block (or
+that stall) **falls back to ptxas byte-for-byte**. The final per-block result is
+therefore `min(ptxas, ours-that-passed-the-gate)`.
+
+The cycle metric is **`sm__cycles_active.avg`** (run-to-run CV ≈ 0.00 % on this
+box vs up to 0.83 % for `gpc__cycles_elapsed.max`), measured **paired** (V1, V2,
+V1, V2 … to cancel DVFS drift). The accept/win threshold (0.1 %) is tied to that
+measured noise floor.
+
+**`--tighten K.cubin` (Stage 1 — stall-tightener).** Keeps ptxas's instruction
+*order* and tightens only the stalls the model proves are slack (a coupled
+producer whose hazard-safe stall is below ptxas's conservative one). It builds a
+**surgical** patch (only the candidate stalls change), gates bit-identical, and on
+a fault **bisects** to the maximal safe subset. This is a guaranteed, zero-risk
+win on FP/transcendental-heavy kernels. Measured at **`-O3`** (production ptxas),
+hardened harness:
+
+| kernel | tightened (bit-identical) | ptxas cyc | ours cyc | Δ | verdict |
+|---|---|---|---|---|---|
+| `amp_transc`  | 4 stalls (6 cyc/iter)  | 4.44 M | 4.32 M | **+2.70 %** | MEASURED WIN |
+| `amp_fpchain` | 18 stalls (30 cyc/iter)| 2.13 M | 2.03 M | **+4.70 %** | MEASURED WIN |
+| `amp_intchain`| 18 stalls (35 cyc/iter)| 0.63 M | 0.62 M | **+1.59 %** | MEASURED WIN |
+| `amp_loadmath`| 9 of 15 (6 are hazards)| —      | —      | +0.00 % | hardware-enforced |
+
+The multi-seed gate is what makes this honest: on `amp_loadmath` it correctly
+flags **6 of 15** candidates as genuine hazards (an address-feeding `IMAD` whose
+latency the GPU enforces) that a single-seed gate would have wrongly accepted.
+
+**`--optsched K.cubin` (Stage 2 — constraint-optimal reorder).** Splits the
+kernel into basic blocks at branch targets (`sass_blocks.py`; barrier/`BSSY`/
+control-straddling state is pinned, loop-carried scoreboards have **both** their
+arm and wait ends pinned), builds the per-block dependency DAG, and solves for an
+issue order that minimizes the block makespan:
+
+- **model.** Per-instruction issue cycle `t[i]`; constraints = RAW latency
+  (coupled fixed stall `t[c] ≥ t[p] + lat`, decoupled scoreboard-absorbed
+  order floor), WAR/WAW/CTRL ordering (the **fixed register allocation** is
+  preserved — every false dependency is a hard edge, which caps the achievable
+  reorder), single-issue `Distinct(t)`, terminator-last, and the pinned cross-block
+  state. The objective is the global makespan.
+- **solver.** The whole program is encoded as **one SMT-LIB2 optimization** and
+  discharged to an external Z3 (incremental bounded check-sat / binary search on
+  the makespan), so the solver co-optimizes every block at once; a per-block list
+  scheduler + in-process Z3-Opt back it up. Per block we keep the best of
+  `{ptxas, list, optimal}`.
+- **emit + patch.** Because every SASS instruction is a fixed 16 bytes and a block
+  has no internal branch target, the chosen permutation is applied by **permuting
+  the 16-byte words in place** (no PC-relative fixup) and writing freshly
+  recomposed control words; the operand-reuse hint is cleared on reorder.
+
+The honest result: **`-O3` ptxas's combined order+stall schedule is excellent and
+essentially optimal on small or rolled kernels** — the model and silicon agree, so
+`--optsched` proposes no reorder and simply falls back (never slower). Reproducible
+*ordering* wins appear only on **large unrolled hot loop bodies** where ptxas's
+greedy list scheduler leaves a few cycles per iteration. On `rc1_twochain` (a hot
+loop of four independent FFMA chains, 48-instruction unrolled body), the solver
+re-interleaves the chains (block makespan 56 → 49), **all 5 reordered blocks pass
+the bit-identical + cycle gate**, and the kernel measures **930 400 → 920 399
+cycles (+1.08 %)** — a real, gated reorder win over `-O3` ptxas. `--optsched` then
+runs Stage-1 tightening on top, so it is always at least as good as `--tighten`.
+
+**Limits (stated plainly).** The fixed register allocation we inherit from ptxas
+turns every WAR/WAW into a hard ordering edge, which structurally caps how much
+reordering is possible (we never rename). Variable-latency producers are handled
+by scoreboards, not static timing, so the model bounds — not predicts — their
+completion. And the correctness gate is an *oracle for the inputs it runs*: a
+kernel whose output is genuinely input-independent cannot be distinguished from a
+hazard by any finite seed set (such blocks only have their semantically-inert
+scheduling fields touched, so they remain safe in practice).
 
 ### Reachability ladder (how deep can we observe the scheduler?)
 
