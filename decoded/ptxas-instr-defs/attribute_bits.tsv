@@ -109,3 +109,11 @@ bit_index	attribute_name	kind	confidence	used
 125	(unnamed)	UNNAMED	-	yes
 126	(unnamed)	UNNAMED	-	yes
 127	(unnamed)	UNNAMED	-	yes
+128	TCGEN05_WAIT	BOOL	MED	yes
+129	TCGEN05_GUARDRAIL	FIELD	MED	yes
+130	TCGEN05_GUARDRAIL	FIELD	MED	yes
+131	CPASYNCBULK	BOOL	MED	yes
+132	(unnamed)	UNNAMED	-	no
+133	(unnamed)	UNNAMED	-	no
+134	(unnamed)	UNNAMED	-	no
+135	(unnamed)	UNNAMED	-	no

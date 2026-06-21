@@ -14,10 +14,37 @@ Each registration is emitted as a block of the shape:
 
 The locally-built mask (verified against disasm: stored on the stack arg area
 and read back by the constructor) is the 16-byte attribute mask.
+
+FULL WIDTH (verified at disassembly/ABI level):
+The mask is actually 17 significant bytes held in a 20-byte (dword-aligned) field.
+The constructor stores the 16-byte __m128i at descriptor offset +12 and an extra
+dword (arg a9) at offset +28 (contiguous: 12 + 16 = 28). Byte 16 of the mask =
+the low byte of that dword (descriptor +28 = bits 128..135); bytes 17..19 are
+always padding (never written at any call site). The C decompiler mis-models a9
+as `<snap>.m128i_i32[0]`, so byte 16 cannot be read from the C; it is recovered
+directly from the call-site machine code, where it is built as
+`movb $V,0x40(%rsp); mov 0x40(%rsp),%eax; mov %eax,0x10(%rsp)`. Only 8 STANDARD
+forms set a nonzero byte 16 (bits 128..131); these are injected below by
+(name, datatype_sig) key.
 """
 import re, sys, glob, struct
 
 WIDTH = {'i8': 1, 'i16': 2, 'i32': 4, 'i64': 8}
+
+# byte 16 (descriptor +28 = bits 128..135), recovered from the call-site machine
+# code of the STANDARD registration site (sub_46E000 -> sub_46BED0). Keyed by
+# (name, datatype_sig). Every form not listed has byte 16 == 0 (all 269 EXTENDED
+# forms and all but 8 STANDARD forms write `movl $0,0x10(%rsp)`).
+BYTE16 = {
+    ('tcgen05.wait', ''): 0x01,                                          # bit 128
+    ('_tcgen05.guardrails.are_columns_allocated', 'du'): 0x02,           # bit 129
+    ('_tcgen05.guardrails.are_columns_allocated', 'duu'): 0x06,          # bits 129,130
+    ('_tcgen05.guardrails.in_physical_bounds', 'du'): 0x02,              # bit 129
+    ('_tcgen05.guardrails.in_physical_bounds', 'duu'): 0x06,             # bits 129,130
+    ('_tcgen05.guardrails.datapath_alignment', 'duuC'): 0x06,            # bits 129,130
+    ('cp.async.bulk', 'MMux'): 0x08,                                     # bit 131
+    ('cp.async.bulk', 'MMuUx'): 0x08,                                    # bit 131
+}
 
 # aligned:   v10.m128i_i16[5] = 1090;
 RE_ALIGNED = re.compile(
@@ -94,14 +121,14 @@ def parse_file(path):
         mc = RE_CALL.search(s)
         if mc:
             opsig, name, dtype, idx = mc.group(1), mc.group(2), mc.group(3), int(mc.group(4))
-            rows.append((idx, name, opsig, dtype, pick_mask(s, buf, snapshots), 'str'))
+            rows.append((idx, name, opsig, dtype, full_mask(s, buf, snapshots, name, dtype), 'str'))
             continue
         # registration call (numeric name-token)
         mn = RE_CALL_NUM.search(s)
         if mn:
             opsig, tok, dtype, idx = mn.group(1), int(mn.group(2)), mn.group(3), int(mn.group(4))
             name = TOKEN_NAME.get(tok, f"#{tok}")
-            rows.append((idx, name, opsig, dtype, pick_mask(s, buf, snapshots), 'tok'))
+            rows.append((idx, name, opsig, dtype, full_mask(s, buf, snapshots, name, dtype), 'tok'))
             continue
     return rows
 
@@ -110,6 +137,13 @@ def pick_mask(s, buf, snapshots):
         if re.search(r'\b' + re.escape(sv) + r'\b', s):
             return sb
     return bytes(buf)
+
+def full_mask(s, buf, snapshots, name, dtype):
+    """16-byte mask (bytes 0..15 from C) + byte 16 (bits 128..135) from BYTE16
+    + bytes 17..19 padding -> 17 significant bytes returned (byte 16 included)."""
+    lo = pick_mask(s, buf, snapshots)         # 16 bytes
+    b16 = BYTE16.get((name, dtype), 0)
+    return bytes(lo) + bytes([b16])           # 17 bytes; bytes 17..19 are always 0
 
 def write_le(buf, off, width, val):
     if off < 0 or off + width > 16:
@@ -160,10 +194,13 @@ def main():
     for r in all_rows:
         union |= int.from_bytes(r[5], 'little')
     nbits = bin(union).count('1')
+    bits = [b for b in range(160) if (union >> b) & 1]
     print(f"unique names(str+resolved)={len(names)} unresolved-token-names={len(toks_unres)}", file=sys.stderr)
     print(f"nonzero masks={nz}; distinct bits set across all masks={nbits}", file=sys.stderr)
-    print(f"union mask = {union:0128b}"[:60]+"...", file=sys.stderr)
-    open('/tmp/union_mask.txt','w').write(f"{union:032x}\n{union:0128b}\n")
+    print(f"bits>=128 used: {[b for b in bits if b >= 128]}", file=sys.stderr)
+    # 17 significant bytes (byte 16 = bits 128..135) in a 20-byte field
+    open('/tmp/union_mask.txt','w').write(
+        union.to_bytes(17, 'little').hex() + "\n" + f"{union:0136b}\n")
 
 if __name__ == '__main__':
     main()

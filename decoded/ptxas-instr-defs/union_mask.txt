@@ -1,3 +1,22 @@
-union of all 1410 attribute masks (16-byte little-endian):
-hex(LE bytes): fdffc87fffffff99ff7ffefc3ffffdff
-bits set (110): [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 19, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 59, 60, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 104, 105, 106, 107, 108, 109, 110, 111, 112, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]
+union of all 1410 attribute masks (full-width: 17 significant bytes in a 20-byte field):
+hex(LE bytes, 17B): fdffc87fffffff99ff7ffefc3ffffdff0f
+hex(LE bytes, 20B field): fdffc87fffffff99ff7ffefc3ffffdff0f000000
+bits set (114): [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 19, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 59, 60, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 81, 82, 83, 84, 85, 86, 87, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 104, 105, 106, 107, 108, 109, 110, 111, 112, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131]
+
+The mask field is 17 meaningful bytes, allocated as 20 bytes (dword-aligned) in the
+instruction-descriptor record:
+  - bytes 0..15  (bits 0..127):  the 16-byte __m128i, descriptor offset +12..+27.
+  - byte 16      (bits 128..135): the extra dword's low byte, descriptor offset +28.
+  - bytes 17..19 (bits 136..159): always zero (padding); never written at any call site.
+
+Bits 0..127 (110 set): reproduced by extract_instruction_table.py from the registration
+call arguments. Bits 128..135 (byte 16) are carried by constructor arg a9 and stored to
+descriptor +28; only 4 bits (128..131) are ever set, by 8 STANDARD forms:
+  bit 128 (0x01): tcgen05.wait                              [1 form]
+  bit 129 (0x02): _tcgen05.guardrails.are_columns_allocated,
+                  _tcgen05.guardrails.in_physical_bounds,
+                  _tcgen05.guardrails.datapath_alignment    [5 forms]
+  bit 130 (0x04): _tcgen05.guardrails.are_columns_allocated,
+                  _tcgen05.guardrails.in_physical_bounds,
+                  _tcgen05.guardrails.datapath_alignment    [3 forms]
+  bit 131 (0x08): cp.async.bulk                             [2 forms]

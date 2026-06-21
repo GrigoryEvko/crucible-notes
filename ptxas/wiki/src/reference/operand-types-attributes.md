@@ -3,10 +3,10 @@
 > *Addresses apply to ptxas v13.0.88 (CUDA 13.0). VA base `0x400000` (non-PIE).*
 
 Every PTX instruction ptxas accepts is registered with three pieces of static data:
-an **operand-type signature**, a parallel **datatype-code string**, and a **128-bit
-attribute mask**. Together they drive operand type-checking and instruction-form
-selection. This page documents all three as recovered from the binary — 1410
-registrations across 268 unique mnemonics.
+an **operand-type signature**, a parallel **datatype-code string**, and a **136-bit
+attribute mask** (17 significant bytes held in a 20-byte field). Together they drive
+operand type-checking and instruction-form selection. This page documents all three as
+recovered from the binary — 1410 registrations across 268 unique mnemonics.
 
 ## The instruction registry
 
@@ -22,11 +22,18 @@ here):
 The per-registration argument layout, read off the call sites:
 
 ```text
-reg(table, operand_type_sig, name, datatype_sig, index, _, attr_mask_xmm16, _, _)
+reg(table, operand_type_sig, name, datatype_sig, index, _, _, attr_mask_xmm16, attr_byte16_dword)
 ```
 
-The 16-byte attribute mask is built byte-by-byte on the stack and stored at the
-instruction record's offset **+12**. A small set of STANDARD entries pass the name
+The attribute mask is built byte-by-byte on the stack. The constructor (`sub_46BED0`,
+`0x46bed0`) stores the 16-byte `__m128i` at the instruction record's offset **+12**
+(`movups %xmm0,0xc(%rbx)`) and a contiguous extra dword — arg `a9` — at offset **+28**
+(`mov %eax,0x1c(%rbx)`; `0xc + 16 = 0x1c`). That dword's **low byte is byte 16 of the
+mask (bits 128–135)**; its upper three bytes are never written, so bytes 17–19 are pure
+padding. The C decompiler mis-models `a9` as the snapshot's `m128i_i32[0]`; the true
+byte-16 value is recovered from the call-site machine code, where it is staged as
+`movb $V,0x40(%rsp); mov 0x40(%rsp),%eax; mov %eax,0x10(%rsp)` (vs. `movl $0,0x10(%rsp)`
+for every form whose byte 16 is zero). A small set of STANDARD entries pass the name
 slot as a bare 32-bit integer token rather than a string pointer (10 instructions
 exist only in this integer-keyed form); these are recorded as `#<int>`.
 
@@ -52,7 +59,7 @@ binary's data:
 | R | 11 | sub-byte microscaling float (e.g. fp4 e2m1) | R4, R8, R16 |
 
 `E`, `T`, `Q`, and `R` (bf16 / tf32 / fp8 / fp4-microscaling) are **binary-discovered
-post-2022 additions** — they have no counterpart in older type-string documentation.
+newer-ISA additions** — they have no counterpart in older type-string documentation.
 Example block-scaled MMA signature: `F32R4R4F32Q8` (an fp4×fp4 accumulate into fp32
 with an fp8 scale operand).
 
@@ -67,17 +74,21 @@ i→12 C→13 D→14 P→15 Q→16 M→17 S→18 T→19 A→20 V→21 L→22
 Digits in the datatype string denote a literal size; a leading digit (e.g. the `0`s in
 `"000U"`) selects which entry of the instruction's type list each operand follows.
 
-## The 128-bit attribute mask
+## The 136-bit attribute mask
 
-The mask is a flat 16-byte little-endian bitfield. **Bit numbering is logical
-LSB-first**: bit 0 is the least-significant bit of byte 0, bit 8 is the LSB of byte 1,
-… bit 127 is the MSB of byte 15. (Reading the on-disk hex as a single big-endian
-integer flips this — bit `b` then appears at `8·(15 − b÷8) + (b mod 8)`.)
+The mask is a flat little-endian bitfield: **17 significant bytes (bits 0–135) held in a
+20-byte field** (bytes 17–19 are always-zero padding). Bytes 0–15 are the `__m128i` at
+record offset +12; byte 16 (bits 128–135) is the low byte of the extra dword at offset
++28. **Bit numbering is logical LSB-first**: bit 0 is the least-significant bit of byte 0,
+bit 8 is the LSB of byte 1, … bit 127 is the MSB of byte 15, and bits 128–135 live in
+byte 16. (Reading the low 16 bytes as a single big-endian integer flips the low half —
+bit `b` then appears at `8·(15 − b÷8) + (b mod 8)` for `b < 128`.)
 
-Across all 1410 forms, **110 of the 128 bits are used**. The masks themselves are exact
-binary facts; the *names* below were recovered by correlating which instructions set
-which bits against PTX semantics (generic PTX vocabulary), then cross-checked by two
-independent solvers that agreed with zero disagreements. Confidence is annotated.
+Across all 1410 forms, **114 of the 136 bits are used**: 110 in the low 128 (byte 0–15)
+plus 4 in byte 16 (bits 128–131). The masks themselves are exact binary facts; the
+*names* below were recovered by correlating which instructions set which bits against PTX
+semantics (generic PTX vocabulary), then cross-checked by two independent solvers that
+agreed with zero disagreements. Confidence is annotated.
 
 ### Boolean attributes (54 bits, high confidence)
 
@@ -110,16 +121,36 @@ exact bit↔name split is not separable from the masks alone:
 ### Ambiguous and unnamed
 
 - **Ambiguous (5 bits)** — {74,75} = SHR|VMAD and {105,106,114} = ABS|NANMODE|XORSIGN: each group always co-occurs in the matched forms, so the masks cannot separate them.
-- **Unnamed post-2022 (19 bits)** — 3, 4, 13, 14, 15, 19, 52, 78, 87, 97, 112, 119, 121–127: set only by wgmma / tcgen05 / `cp.async.bulk` / multimem / clusterlaunchcontrol forms that postdate any older naming source.
+- **Unnamed newer-ISA (19 bits)** — 3, 4, 13, 14, 15, 19, 52, 78, 87, 97, 112, 119, 121–127: set only by wgmma / tcgen05 / `cp.async.bulk` / multimem / clusterlaunchcontrol forms that postdate older naming conventions.
 - **Used-but-unlabeled (7 bits)** — 30, 45, 53, 59, 104, 118, 120: too sparse for a clean correlation.
+
+### Byte 16 — bits 128–135 (the 17th byte)
+
+Bits 128–131 are the only bits beyond 127 that are ever set, and only by 8 STANDARD
+forms (the newest Blackwell pseudo-ops). Bits 132–135 and bytes 17–19 are never set.
+Bit 131 is observably read at a lowering site as `*(_BYTE *)(desc + 28) & 8` (an
+early-out predicate), confirming byte 16 is a genuine continuation of the attribute mask.
+
+| Bit | Hex | Forms (count) | Set by |
+|---|---|---|---|
+| 128 | `0x01` | 1 | `tcgen05.wait` |
+| 129 | `0x02` | 5 | `_tcgen05.guardrails.are_columns_allocated` · `_tcgen05.guardrails.in_physical_bounds` · `_tcgen05.guardrails.datapath_alignment` |
+| 130 | `0x04` | 3 | `_tcgen05.guardrails.are_columns_allocated` · `_tcgen05.guardrails.in_physical_bounds` · `_tcgen05.guardrails.datapath_alignment` |
+| 131 | `0x08` | 2 | `cp.async.bulk` |
+
+Bits 129–130 behave as a small enum-like field shared across the `tcgen05.guardrails.*`
+pseudo-ops (values `0x02` and `0x06` observed); the exact sub-split is not separable from
+the masks alone.
 
 ## Reproduce
 
 The full 1410-row instruction table and the bit legend are in the repo:
 `decoded/ptxas-instr-defs/instruction_table.tsv` (index, name, operand_type_signature,
-datatype_sig, attribute_mask_hex, STD/EXT, name_kind) and `attribute_bits.tsv`,
-regenerated by `extract_instruction_table.py` (parses the registration call arguments)
-and `solve_attribute_bits.py` (the correlation solver).
+datatype_sig, attribute_mask_hex — now 34 hex chars / 17 bytes, STD/EXT, name_kind) and
+`attribute_bits.tsv` (bits 0–135), regenerated by `extract_instruction_table.py` (parses
+the registration call arguments for bytes 0–15 and injects byte 16 from the call-site
+machine code) and `solve_attribute_bits.py` (the correlation solver). The full-width OR
+of all masks is in `union_mask.txt` (`fdffc87fffffff99ff7ffefc3ffffdff0f`).
 
 ## Cross-References
 
