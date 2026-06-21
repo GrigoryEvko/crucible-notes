@@ -126,3 +126,79 @@ clearly flagged, coarse pipe families — not recovered constants).
 Validated against CUDA 13.1 ptxas/nvdisasm V13.1.115 across `sm_75 sm_80 sm_86
 sm_89 sm_90 sm_90a sm_100 sm_120`: **221 producer→consumer scoreboard pairs, 0
 unmatched; opex invariant holds on 1912/1912 instructions.**
+
+## `sass_scheduler.py` — scheduling composer / decomposer (the "scheduler brain")
+
+Chooses the stall counts and scoreboard pairings a SASS patcher cannot. It models
+scheduling as a **directed, typed, weighted dependency DAG** and works across four
+invertible layers:
+
+```
+L0  raw 128-bit word, control bits 102-125
+L1  decoded control fields (usched_info/dst_wr_sb/src_rel_sb/req_bit_set/batch_t)
+L2  semantic events (arm SB n / wait SB n / stall k / co-issue group / yield)
+L3  abstract typed+weighted dependency DAG over instructions
+```
+
+**Four edge kinds — RAW ≠ WAR in weight (the key asymmetry).** For a producer P
+and a later consumer C sharing a register:
+
+| Kind | P / C | weight | mechanism |
+|---|---|---|---|
+| **RAW** | P writes, C reads | producer **result** latency (4 same-pipe / 5 cross-pipe / 13 CC-pred coupled; or a variable band for memory/MUFU) | stall, or scoreboard |
+| **WAR** | P reads, C writes | a small **operand-read** default — its **own** per-resource value, **never** the transpose of the RAW weight; zero-but-ordered on registers | order |
+| **WAW** | both write | write-ordering default (zero-but-ordered) | order |
+| **CTRL** | CC / branch / barrier | sequencing | order |
+
+The same directed graph carries RAW and WAR edges with **different magnitudes**
+because they are different physical events: RAW = "wait for the value to exist"
+(≥4 cyc); WAR = "wait for the old value to be consumed" (≈0 cyc, the reader has
+already latched by issue time and ptxas renames). Treating the WAR table as a
+transposed RAW matrix is the classic reconstruction mistake.
+
+**Capabilities.**
+- `--decompose K.cubin` — parse `nvdisasm -c -hex`, build per-instruction
+  read/write sets (GPR/UR/PRED, predicate guards, implicit UR descriptors),
+  construct the typed/weighted DAG, decode each L1 control word, and **attribute**
+  every wait-bit / stall to the producer it resolves.
+- `--compose K.cubin` — the scheduler: walk issue order on a virtual cycle clock;
+  for each coupled producer set `usched` stall = the minimum that satisfies its
+  fixed-latency RAW edges (reduced only by *independent* — non-ancestor —
+  intervening cycles; CC/pred band emitted in full); assign `dst_wr_sb`/`src_rel_sb`
+  to variable-latency producers, set consumers' `req_bit_set`, and run the
+  6-scoreboard VSB→PSB overload allocator (DEPBAR.LE on overflow).
+- `--debug K.cubin [--dot g.dot]` — L0/L1/L2/L3 side-by-side, the DAG, per-
+  instruction reasoning ("stall=4 because RAW Rd=R5 to next coupled math; SB2 waits
+  the LDG at #N"), critical path, and an optional Graphviz graph.
+- `--verify K.cubin …` — round-trip: decompose→compose on real ptxas output,
+  compare to ptxas's stalls and scoreboard pairings, classify every mismatch.
+- `--verify-corpus` — compile a battery of hand-written PTX probes (independent
+  arith, dependent chains, loads feeding math, transcendental chains, mixed) with
+  `ptxas -arch {sm_75,sm_80,sm_89,sm_90}`, decode, recompute, diff.
+- `--verify-dyn K.cubin --entry NAME` — **stretch dynamic check**: patch the
+  recomposed control words back into a copy of the cubin (`patch_cubin`), launch
+  the original and the patched kernel on the GPU via the CUDA Driver API
+  (`launch_cubin.c`: `cuModuleLoad` + `cuLaunchKernel`, plain C against `libcuda`
+  to avoid the gcc/nvcc host-header clash), and diff the output. Identical output
+  proves the composed schedule is hazard-safe.
+
+```sh
+python3 sass_scheduler.py --decompose k.cubin
+python3 sass_scheduler.py --compose   k.cubin          # composed vs ptxas, per instr
+python3 sass_scheduler.py --debug      k.cubin --dot k.dot
+python3 sass_scheduler.py --verify-corpus
+python3 sass_scheduler.py --verify-dyn k.cubin --entry kname   # needs gcc + GPU
+```
+
+**Validation (CUDA 13.1, sm_75/80/86/89/90).** Across 30 compiled probe kernels:
+**producer→scoreboard pairing 100 % (71/71 pairs)** — which producer arms each
+consumer's wait bit is reproduced exactly; **coupled-math stall ≈ 72 %** exact, and
+every non-exact stall is **≥ ptxas's** (conservative: ptxas hides latency with full
+scheduling freedom we cannot replay, and over-stalling is always hazard-safe).
+**Dynamic: 8/8 sm_89 kernels** (including a scoreboard-overload 8-load kernel)
+recompose to **bit-identical GPU output**. Exact = scoreboard pairings, CC/pred
+control band, same/cross-pipe coupled magnitudes; approximate = variable-latency
+completion *times* (not recovered constants) and the exact SB *index*
+(allocator-policy dependent). The model is recovered purely from binary analysis of
+CUDA 13.1 `ptxas`/`nvdisasm` and differential study of emitted SASS; it republishes
+no vendor table text.
