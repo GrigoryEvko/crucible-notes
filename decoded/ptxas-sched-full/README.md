@@ -14,7 +14,7 @@ ships in no binary, so everything below is the *shipped* form read from
 |---|---|---|---|---|
 | **Latency / sched-class descriptor** | 72 B | scheduling-class id | 3 (one per SM *family*) | sm_7x=619, sm_8x=256, sm_10x=430 classes |
 | **Dependency rule** | 40 B | scheduling-class id | 11 (per individual SM) | 10 distinct sets (sm_86 == sm_90) |
-| **Scoreboard config** | 88 B | config index | 7 | sm_100 uses ≤6 scoreboards; pre-Blackwell use 1 |
+| **Scoreboard config** | 88 B | config index | 7 | config = N `{sb,thr,mask}` rows (`mask` = pipe bitset, not a count); sm_100 ≤6 rows/cfg, sm_103 1 row/cfg with wider masks (same Blackwell schema) |
 
 Latency descriptor tables are **shared per family**: `0x2297C00` (sm_8x, shared
 by sm_80/86/89/90/90a), `0x226C880` (sm_10x: sm_100/103), `0x2245060` (sm_7x:
@@ -58,7 +58,7 @@ sm_60/70/72/75). Dependency-rule tables are **per-SM** at the VA ranges in
   for decoupled (scoreboard-tracked) ops. `barrier_throughput == -1` = none.
 - `read_latency` / `write_latency` = explicit RAW / WAW operand-latency overrides;
   `-1` (0xFFFFFFFF) = "unset, use `latency`". These are populated for a minority of
-  units (e.g. sm_70 read_latency set on ~50 classes) and are the binary's explicit
+  units (e.g. sm_70 read_latency set on 190 classes) and are the binary's explicit
   per-class hazard cells.
 - `stall_cycles` = static stall hint; `issue_slots` = dual-issue slot count.
 
@@ -145,9 +145,9 @@ need not equal any single dependency-rule cell.
 
 - 3 latency tables cover all 26 SMs by family; 10 distinct dependency-rule sets
   cover 11 SMs (`sm_86` and `sm_90` are **byte-identical**).
-- `sm_90a` enables every class (0 disabled); `sm_90` disables 6 (units 41,
-  561–567 — the WGMMA / async-MMA tensor classes), explaining the sm_90 vs
-  sm_90a split.
+- `sm_90a` enables every class (0 disabled); `sm_90` disables exactly 6 — units
+  `{41, 561, 562, 563, 566, 567}` (the WGMMA / async-MMA classes; 564/565 do not
+  exist) — which is the sole sm_90 vs sm_90a difference.
 - Disabled-unit counts grow for restricted/older arches: sm_103=129, sm_75=173,
   sm_72=170, sm_70=146, sm_60=136, sm_80=19, sm_100=10. See
   `sm_coverage_summary.tsv`.
