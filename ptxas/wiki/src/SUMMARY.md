@@ -92,6 +92,14 @@
 - [Blackwell (SM 100–121)](./targets/blackwell.md)
 - [TCGen05 — 5th Gen Tensor Cores](./targets/tcgen05.md)
 
+# SASS ISA & Hardware Model
+
+- [Overview](./sass-isa/overview.md)
+- [Instruction Encoding (128-bit)](./sass-isa/instruction-encoding.md)
+- [Execution Model — Pipelines & Scheduling](./sass-isa/execution-model.md)
+- [Legality & Capabilities](./sass-isa/legality-and-capabilities.md)
+- [Architecture Evolution (SM75→SM121)](./sass-isa/architecture-evolution.md)
+
 # CUDA Intrinsics
 
 - [Intrinsic Table (608 Entries)](./intrinsics/index.md)
