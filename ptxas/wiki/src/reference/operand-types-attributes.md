@@ -30,7 +30,7 @@ The attribute mask is built byte-by-byte on the stack. The constructor (`sub_46B
 (`movups %xmm0,0xc(%rbx)`) and a contiguous extra dword — arg `a9` — at offset **+28**
 (`mov %eax,0x1c(%rbx)`; `0xc + 16 = 0x1c`). That dword's **low byte is byte 16 of the
 mask (bits 128–135)**; its upper three bytes are never written, so bytes 17–19 are pure
-padding. The C decompiler mis-models `a9` as the snapshot's `m128i_i32[0]`; the true
+padding. The C decompiler mis-models `a9` as the `__m128i` union's `m128i_i32[0]`; the true
 byte-16 value is recovered from the call-site machine code, where it is staged as
 `movb $V,0x40(%rsp); mov 0x40(%rsp),%eax; mov %eax,0x10(%rsp)` (vs. `movl $0,0x10(%rsp)`
 for every form whose byte 16 is zero). A small set of STANDARD entries pass the name

@@ -26,6 +26,47 @@ The combination produces a cost model that drives stall-count computation, prior
 | **Cutlass detector** | `sub_8F47E0` — detects cutlass kernels for tuned scheduling |
 | **Pipe class assigner** | `sub_13710B0` (7.1 KB) — SASS-level execution pipe assignment |
 
+## Functional-unit base latencies
+
+Each functional unit has a fixed result latency charged to a dependent consumer
+(cycles from the producer's issue), with per-generation deltas:
+
+| Functional unit | Latency (Volta) | Latency (Ampere) | Notes |
+|---|--:|--:|---|
+| ALU / FMA (FP32, INT) | 4 | 4 | the coupled-math fast path |
+| FP16×2 | 6 | 4 | |
+| FMA64-lite (DP add/setp) | 8 | 6 | |
+| CBU (branch unit) | 6 | 6 | |
+| XU64 (64-bit shift/convert) | 16 | 16 | |
+| LSU (shared/local, `S2R`, `ISBERD`) | 24 | 24 | |
+| IPA (attribute interpolation) | 32 | 32 | |
+| LDS-class | 40 | 40 | |
+| HMMA m16n8k8 | 14 | 16 | tensor |
+| HMMA m16n8k16 | 22 | 24 | tensor |
+| DMMA | — | 18 | Ampere+ |
+| GMMA | — | 20 | |
+| REDUX | — | 25 | |
+| TEX / global memory | 300 | 300 | variable-latency sentinel (scoreboarded) |
+
+These project onto the **scalar bands `{6, 13, 24, 30, 300}`** the per-opcode
+classifier emits: band **6** = coupled ALU/FMA; **13** = a transcendental or control
+op *plus* the condition-code / predicate-write penalty (`13 = 6 + 7`); **24** =
+LSU/`S2R`/`ISBERD`; **30** = IPA; **300** = the texture/global sentinel.
+
+### Result forwarding (bypass)
+
+The latency a dependent actually pays is **not** always the full result latency — the
+model carries explicit bypass paths:
+
+- **Same-pipe forwarding** — when producer and consumer issue to the *same* pipe (`ALU→ALU`, `FP16→FP16`, the `HMMA→HMMA` accumulator), the hazard penalty drops to **0**; the result is forwarded rather than read back from the register file.
+- **Predicate bypass** — a consumer guarded by a freshly produced predicate skips the predicate-collection penalty.
+
+So the emitted stall between two coupled-math instructions is the producer→consumer
+**dependency-edge weight** — **4** cycles same-pipe, **5** cross-pipe (one inter-pipe
+hazard cycle) — which sits *below* the 6-cycle band because the band also folds in
+the slower condition-code/predicate path. (Observed stalls and cross-validation are
+in [Dependency & Hazard Model](dependency-model.md).)
+
 ## Architecture of the Latency Model
 
 The model has three layers:
@@ -619,7 +660,7 @@ This five-band scalar oracle is the **fast per-opcode path** the OCG consults di
 
 - ptxas also ships a **richer per-class producer/consumer table** — the 40-byte dependency rules described in the next section — keyed by the scheduling class that `sub_89FBA0` assigns.
 - The two agree on anchors (ALU = 6, long-memory = 300) but the 13 / 24 / 30 oracle bands are OCG-internal scalars and need not equal any single dependency-rule cell.
-- What does **not** ship in byte-readable form is the build-time scheduling DSL itself (the source `SM*.latencies_` description); it is compiled into the table-construction native code, so the recoverable artifacts are the *shipped* tables it emits: this five-band scalar oracle, the 72-byte sched-class descriptors (next section), and the 40-byte per-SM dependency rules.
+- What does **not** ship in byte-readable form is the build-time scheduling description itself (the per-arch latency DSL the tables are generated from); it is compiled into the table-construction native code, so the recoverable artifacts are the *shipped* tables it emits: this five-band scalar oracle, the 72-byte sched-class descriptors (next section), and the 40-byte per-SM dependency rules.
 
 The opcode→mnemonic naming must be resolved through the [Ori opcode table](../ir/instructions.md): the index space here is the Ori opcode id (`*(instr+72) & 0xFFFFCFFF`), **not** the SASS scheduling-class id (2..771) used by the descriptor table. The extracted oracle is archived in the repo at `decoded/ptxas-scheduling/scalar_latency_oracle.txt` (band-corrected copy in `decoded/ptxas-sched-full/scalar_latency_oracle.tsv`).
 

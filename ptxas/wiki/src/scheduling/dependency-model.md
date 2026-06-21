@@ -55,7 +55,13 @@ window — a couple of cycles — **not** the result latency. That is the crucia
 asymmetry: RAW is "wait for the value to be produced" (6–13+ cycles); WAR is "wait
 for the old value to be consumed" (≈1–2 cycles). They are different physical events
 with different magnitudes, so **the anti table is never the transpose of the true
-table.** Treating it as such is the classic mistake when reconstructing these tables.
+table.** The asymmetry is structural, not incidental: the anti latency is carried by
+its own per-resource default (a small fixed value — ~1 cycle for fault-class writers,
+zero-but-ordered otherwise), entirely independent of the producer's result latency.
+The true (RAW) table is consulted only to decide whether a given WAR edge *collapses*
+to zero-but-ordered or to no-latency — never to copy the RAW magnitude across. Treating
+the anti table as a transposed RAW matrix is the classic mistake when reconstructing
+these tables.
 
 On register resources the WAR (and WAW) default is **zero-but-ordered**: a packed
 sentinel meaning *0 cycles, ordering preserved*. In-order issue plus the register
@@ -223,10 +229,19 @@ carries a small stall on the producer, stable across every generation:
 | `ISETP`→predicated op (CC/predicate) | **13** (the control band) |
 | `HMMA.16816`→consumer (tensor) | **11** + follow-on (the tensor band) |
 
-The observed stall is the result-latency band minus one issue cycle (a band-6
-result is readable 6 cycles after the producer issues; the consumer issues one
-cycle later, so ptxas emits 4–5). The control/tensor band (13) shows up
-unmodified on the `ISETP`→predicate edge and the `HMMA` result.
+The emitted stall is the **producer→consumer dependency latency** for the coupled
+math pipe, not the full result band: a same-pipe pair (`IADD3`→`IADD3`,
+`FFMA`→`FFMA`) carries the coupled base latency of **4**, and a cross-pipe pair
+(`IADD3`→`IMAD`, `LOP3`/`FMUL`→consumer) adds one cycle of inter-pipe hazard
+penalty for **5**. Both sit *below* the 6-cycle scalar band because that band also
+folds in the slower CC/predicate-write path — a coupled op that writes a
+condition-code or predicate exposes `6 + 7 = 13` (the control band), which is why
+the `ISETP`→predicated-op edge shows **13** unmodified. The `HMMA.16816` result
+carries its own pipe penalty (**11** + follow-on, the tensor band). In every case
+the stall encodes the cycle distance *between the two issue slots* — the value the
+consumer must wait after the producer issues — which is already issue-relative, so
+it is the dependency edge weight directly rather than a fixed band with a constant
+subtracted.
 
 **True (RAW), variable path — the scoreboard pairing.** Every variable-latency
 producer that sets a write scoreboard is matched by a consumer carrying that

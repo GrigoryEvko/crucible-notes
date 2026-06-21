@@ -17,35 +17,57 @@ guard region, a middle operand region, and a high scheduling-control word.
 ## Word layout
 
 ```text
- bit 127 .. 125 | 124 ........ 105 | 104 | 103 102 | 101 .. 92 | 91 | 90 ........ 16 | 15 | 14 .. 12 | 11 .. 0
- +-------------+-----------------+-----+---------+-----------+----+--------------+----+---------+--------+
- |  reserved   | CONTROL / SCHED | gap | pm_pred | reserved  |OPC | OPERAND REGION|Pg_ |  Pg     | OPCODE |
- |  (unused)   |     WORD        |     | (perf)  | (unused)  |hi  | regs/imm/mod  |not | guard   | low 12 |
- +-------------+-----------------+-----+---------+-----------+----+--------------+----+---------+--------+
+ bit 127 126 | 125 ........ 105 | 104 | 103 102 | 101 .. 92 | 91 | 90 ........ 16 | 15 | 14 .. 12 | 11 .. 0
+ +----------+-----------------+-----+---------+-----------+----+--------------+----+---------+--------+
+ | reserved | CONTROL / SCHED | gap | pm_pred | reserved  |OPC | OPERAND REGION|Pg_ |  Pg     | OPCODE |
+ | (unused) |     WORD        |     | (perf)  | (unused)  |hi  | regs/imm/mod  |not | guard   | low 12 |
+ +----------+-----------------+-----+---------+-----------+----+--------------+----+---------+--------+
 ```
+
+The scheduling word is one contiguous 21-bit field at bits `125:105` in every
+class: the decoder names it `opex` and exposes its sub-fields (below). Only bits
+`127:126` are reserved at the top of the word — bit `125` is the high bit of the
+scheduling field, not a reserved bit.
 
 - **Opcode** — a 13-bit field split `{bit 91} ++ {bits 11:0}`: the low 12 bits are
   the primary opcode, bit 91 is the single high extension bit. Literals are 10–13
   bits, zero-extended. *Verified on real SASS:* a Turing `STG` decodes with bit 91 = 1
   (13-bit `0x1986`), while its neighbouring `BAR.SYNC` decodes with bit 91 = 0 (legacy
-  `0xb1d`). *Exception:* on **SM75 (Turing) only**, **69 distinct legacy
-  control/barrier classes** carry a pure 12-bit opcode form with no bit-91 extension —
-  a broad set including `BAR`, `BRA`, `BRX`, `BSSY`, `BSYNC`, `BPT`, `B2R`, `AL2P`,
-  `S2R`, `NOP`, `EXIT`, `VOTE`, `SHFL`, `MEMBAR`, `DEPBAR`, `YIELD`, `JMP`, `KILL`,
-  `LEPC`, `MATCH` and others. (SM80+ uses the 13-bit form universally.)
+  `0xb1d`). The low 12 bits are themselves a contiguous integer assembled from four
+  sub-fields — reading high-to-low, `{11:9}` (3) ++ `{8}` (1) ++ `{7:5}` (3) ++ `{4:0}`
+  (5), a `3+1+3+5` packing identical in every decoded class on every arch.
+  *Exception:* on **SM75 (Turing) only**, **69 distinct
+  legacy control/barrier classes** carry a pure 12-bit opcode whose bit-91 extension is
+  fixed at 0 (the class is fully identified by `{11:0}` alone) — a broad set including
+  `BAR`, `BRA`, `BRX`, `BSSY`, `BSYNC`, `BPT`, `B2R`, `AL2P`, `S2R`, `NOP`, `EXIT`,
+  `VOTE`, `SHFL`, `MEMBAR`, `DEPBAR`, `YIELD`, `JMP`, `KILL`, `LEPC`, `MATCH` and others.
+  (Bit 91 is still a physically present field in these classes; it simply carries no
+  opcode information. SM80+ uses the 13-bit form universally.)
 - **Guard predicate** — `Pg`@`14:12` (3-bit, `P0..PT`) with `Pg_not`@`15` (inversion).
   Present on **every** instruction; the same slot carries `UPg` for uniform-datapath classes.
 - **Operand region** — bits `16:91`: register ports, immediates, constant-bank
   addresses, and operand modifiers (below).
-- **Control / scheduling word** — bits `102:124`, architecturally stable Turing→Blackwell (below).
-- **Never-encoded bits** — `92:101`, `104`, and `125:127` are unused by any field
-  across the entire ISA.
+- **Control / scheduling word** — bits `102:125`, architecturally stable Turing→Blackwell (below).
+  The scheduling/opex sub-region occupies a single 21-bit slot at `125:105`,
+  identical in every decoded class on every arch (610+ classes per arch all place
+  it at exactly `125:105`); `pm_pred`@`103:102` is carved from the otherwise-unused
+  `104:102` window on SM90+.
+- **Never-encoded bits** — `92:101` and `104` are unused by any field, and the only
+  reserved bits at the top of the word are `127:126`. (Earlier drafts marked
+  `125:127` reserved; bit `125` is in fact the high bit of the scheduling field —
+  the same bit the empirical `.reuse` read recovers from `{125:122}`.)
 
-## The scheduling-control word (bits 102–124)
+## The scheduling-control word (bits 102–125)
+
+The whole `125:105` span is a single decoder field (`opex`); the rows below are the
+named sub-fields the decoder tiles across it. The scoreboard fields (`req_bit_set` /
+`src_rel_sb` / `dst_wr_sb`) fill `121:110`, leaving the high `125:122` and low `109:105`
+groups for the `opex` `batch_t`/`usched_info`/`.reuse` packing — which is why `opex` is
+listed split.
 
 | Field | Bits | Width | Role |
 |---|---|---:|---|
-| `opex` | `124:122, 109:105` | 8 (split) | packs `batch_t` + `usched_info` (stall/yield) + per-operand `.reuse` flags, LUT-compressed via `TABLES_opex_N` |
+| `opex` | `125:122, 109:105` | 9 (split) | packs `batch_t` + `usched_info` (stall/yield) + per-operand `.reuse` flags, LUT-compressed via `TABLES_opex_N` |
 | `req_bit_set` | `121:116` | 6 | scoreboard **wait mask** — which of 6 dependency barriers to wait on |
 | `src_rel_sb` | `115:113` | 3 | read/release scoreboard (variable-latency source barrier; `7` = none) |
 | `dst_wr_sb` | `112:110` | 3 | write scoreboard (destination barrier; `7` = none) |
@@ -169,7 +191,7 @@ emitted by ptxas — its raw little-endian word is `lo = 0x0000000405007c0c`,
 | `yield` | `109` | `0` | yield bit clear |
 | `req_bit_set` | `121:116` | `0` | no scoreboard wait |
 | `dst_wr_sb`/`src_rel_sb` | `112:110`/`115:113` | `7`/`7` | no scoreboard armed/released |
-| `opex` | `{124:122}++{109:105}` | `13` | `batch_t=0, usched_info=13` (= stall 13, no group-end) |
+| `opex` | `{125:122}++{109:105}` | `13` | `batch_t=0, usched_info=13` (= stall 13, no group-end); bit 125 = 0 here |
 
 Reassembled: `@PT ISETP.GE.AND P0, PT, R5, UR4, PT` with a 13-cycle stall — byte-identical to nvdisasm's own disassembly.
 
@@ -195,22 +217,28 @@ waiting on bit 3. `.reuse` annotations were matched 3/3 from bits `{125:122}` wi
 0 false positives over 277 non-reuse instructions.
 
 Two model fields the round-trip *corrected*: dest predicates do **not** use the
-`7−N` complement (below), and a naive opcode lexer silently drops `.`-bearing
+`7−N` complement — that map applies only to the load/store source-guard slot (below) —
+and a naive opcode lexer silently drops `.`-bearing
 mnemonics like `HFMA2.MMA`/`LOP3.LUT` (fixed in the parser — the per-arch opcode
 counts above are the corrected totals).
 
 ## Encoding oddities (decoder pitfalls)
 
-1. **Destination predicates encode *straight*, not complemented.** A `DestPred`
-   token table (`P0→7, P1→6, … PT→0`, the `7−N` complement) is *defined* in every
-   arch table, but **no `BITS_*` encoding directive references it** — the dest-predicate
-   ports (`Pu`@`83:81`, `cop`/`Pv`@`86:84`) read the operand directly (`BITS_3_83_81_Pu=Pu`).
-   Confirmed on real `ISETP`: `ISETP.GT P1` encodes `Pu=1`, `ISETP.GE P0` encodes `Pu=0`
-   — the encoded value equals the displayed predicate, with no complement. (Earlier
-   docs that applied a blanket `7−N` to dest predicates were wrong; the complement table
-   is vestigial.)
+1. **Destination predicates encode *straight*; the `7−N` complement belongs to one
+   *source* predicate slot, not the dest ports.** A `7−N` complement map (`P0→7,
+   P1→6, … PT→0`) does exist in the tables, but it applies only to the **source
+   guard-type predicate** of the load/store family — the predicate that gates the
+   access in `LDG`/`LD`/`LDS`/`STG`/… (a source-predicate slot in the `Rc`-region at
+   bits `66:64`, with its inversion at bit `67`). Its always-true default `@PT`
+   therefore encodes as all-zeros (`7−7 = 0`), the common case. The
+   **destination** predicate ports (`Pu`@`83:81`, `cop`/`Pv`@`86:84`) read the operand
+   **directly, with no complement** — they are pushed into the operand as the raw field
+   value. Confirmed on real `ISETP`: `ISETP.GT P1` encodes `Pu=1`, `ISETP.GE P0` encodes
+   `Pu=0` — the encoded value equals the displayed predicate. (Earlier docs that applied
+   a blanket `7−N` to *dest* predicates were wrong; the complement is real but confined
+   to that one source-guard slot.)
 2. **Header mislabeling.** Every table reports `ARCHITECTURE "Volta"`, `PROCESSOR_ID Volta`, `WORD_SIZE 64` regardless of true arch — a generic decoder-header artifact. True width is 128 bits; true arch is the per-class content.
-3. **SM75 dual opcode form** — 69 distinct legacy control/barrier classes carry a pure 12-bit opcode form (no bit-91 extension); verified by round-trip against real Turing SASS.
+3. **SM75 dual opcode form** — 69 distinct legacy control/barrier classes carry a pure 12-bit opcode whose bit-91 extension is fixed at 0 (the bit is physically present but carries no opcode information); verified by round-trip against real Turing SASS.
 4. **Zero-width fields** — `BITS_0_Sb=Sb` is a real feature: an operand named in the syntax that contributes 0 encoding bits (implicit/aliased operand).
 5. **Bit-name reuse** — the same physical bit serves different roles across families (bit 90 = `input_reg_sz_32_dist` in `IMAD` but `Pp@not` in `BSSY`; bit 63 = negate/invert/immediate by class). No global bit→role map exists.
 

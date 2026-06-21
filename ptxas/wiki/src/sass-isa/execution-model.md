@@ -15,6 +15,32 @@ scoreboard-assisted, statically stall-scheduled** machine: the compiler pre-comp
 every fixed stall and every variable-latency barrier; the hardware just evaluates the
 wait mask, honours the stall counter, and picks among ready warps.
 
+## The SM as a physical machine
+
+The scheduling model runs on a fixed physical substrate, stable across the
+Volta→Hopper generations:
+
+| Resource | Value |
+|---|---|
+| Register file | **65,536 × 32-bit registers per SM** (256 KB), split **16,384 per sub-partition** |
+| Register banks | **2 banks** (even/odd by register number) on Volta–Ampere; 4 banks on Kepler–Pascal |
+| Sub-partitions (warp schedulers) | **4 per SM** |
+| Warps per SM | **64** (Volta, sm_80) · **48** (sm_86) · **32** (Turing) |
+| FP32 FMA lanes | **64 per SM** (4 sub-partitions × 16 lanes) |
+| SMs per TPC | 2 |
+| Constant bank size | **64 KB** per bank |
+| Dependency scoreboards | **6 per warp** (SB0–SB5) |
+| Max registers / thread | **255** (`RZ` = R255; allocation granularity 8) |
+
+A warp is bound to one of the 4 sub-partitions, which owns its register-file slice,
+its dispatch unit, and the 6 scoreboards; the single-issue rule is *per
+sub-partition*. The **2-bank** (even/odd) register file is exactly why the operand
+collector and the `.reuse` cache matter — two source operands drawn from the same
+bank in one cycle would conflict, so the allocator biases an accumulator into the
+opposite bank from its multiplicands and the reuse cache serves a repeated operand
+without a second read. (Banking and the allocator's bank bias are in
+[Register Allocation](../regalloc/overview.md).)
+
 ## Coupled vs decoupled — the `INSTRUCTION_TYPE` split
 
 Each instruction's `INSTRUCTION_TYPE` classifies how its latency is tracked. The enum
@@ -89,12 +115,12 @@ consumer Blackwell implements FP64 and its tensor variants natively.
 
 ## The scheduling-control word
 
-Bits 102–124 of every instruction carry the schedule ptxas computed (layout identical on all arches):
+Bits 102–125 of every instruction carry the schedule ptxas computed (only bits 127–126 are reserved; layout identical on all arches):
 
 | Field | Bits | W | Role |
 |---|---|--:|---|
 | `pm_pred` | 102–103 | 2 | perf-monitor predicate (`PMN`/`PM1`/`PM2`/`PM3`) — SM90+ |
-| `opex` | 105–109 + 122–124 | 8 | stall + yield + dual-issue batch (below) |
+| `opex` | 105–109 + 122–125 | 9 | stall + yield + dual-issue batch + `.reuse` (below) |
 | `dst_wr_sb` | 110–112 | 3 | write scoreboard the producer **sets** on writeback (`7` = none) |
 | `src_rel_sb` | 113–115 | 3 | read scoreboard released when sources are consumed (`7` = none) |
 | `req_bit_set` | 116–121 | 6 | **wait mask** — one bit per scoreboard SB0–SB5 |
@@ -223,12 +249,18 @@ immediate dependent consumer is small and **stable across every generation**:
 | `MUFU`, `F2I`/`I2F`/`F2F`, `POPC`→consumer | variable → scoreboard (MUFU pipe) | scoreboard, **not** a fixed stall |
 | `cp.async` group wait | variable → `DEPBAR` | `LDGDEPBAR` + `DEPBAR.LE SBn, k` |
 
-The result-latency *band* (6 for ALU, 13 for control/tensor) and the dispatch
-*stall* differ by one issue cycle: a band-6 result is readable 6 cycles after the
-producer issues, and the consumer issues one cycle later, so the emitted stall is
-4–5. The MUFU pipe (transcendentals, `F2*`/`I2F` conversions, `POPC`) carries the
-band-13 *latency* but delivers it through a **scoreboard**, not a fixed stall —
-the band gives the magnitude, the `INSTRUCTION_TYPE` gives the mechanism.
+The dispatch *stall* is the producer→consumer dependency latency for the coupled
+math pipe, which is *narrower* than the 6-cycle result band: a same-pipe pair emits
+**4** (the coupled base latency), a cross-pipe pair emits **5** (one extra cycle of
+inter-pipe hazard penalty). The 6-cycle band is the higher-level scalar that also
+covers the slower CC/predicate-write path — a coupled op writing a condition-code or
+predicate exposes `6 + 7 = 13`, the control band, which is why an `ISETP`→predicate
+edge stalls 13. The stall always counts the cycles *between the two issue slots*
+(the wait the consumer owes after the producer issues), so it is the dependency edge
+weight directly, not a band with a constant subtracted. The MUFU pipe
+(transcendentals, `F2*`/`I2F` conversions, `POPC`) carries the band-13 *latency* but
+delivers it through a **scoreboard**, not a fixed stall — the band gives the
+magnitude, the `INSTRUCTION_TYPE` gives the mechanism.
 
 `cp.async` (`cp.async.commit_group` → `LDGDEPBAR`; `cp.async.wait_group k` →
 `DEPBAR.LE SBn, k`) is the explicit partial-wait path: the count `k` is the

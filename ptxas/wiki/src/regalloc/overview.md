@@ -13,6 +13,26 @@ The ptxas register allocator is a fat-point allocator with a Chaitin-Briggs-styl
 
 This hybrid design combines the Chaitin-Briggs simplify-select priority ordering with a fat-point conflict resolution step that replaces the traditional interference-graph adjacency check. There is no explicit interference graph in the main allocation path; instead, per-physical-register pressure histograms serve as the conflict representation. The fat-point scan trades graph-coloring's theoretical optimality for speed on the very large register files of NVIDIA GPUs (up to 255 GPRs per thread).
 
+## The register file and its banks
+
+The allocator targets a physical register file of **65,536 × 32-bit registers per SM**
+(256 KB), partitioned **16,384 registers per sub-partition** (4 sub-partitions). A
+thread may use up to **255** GPRs (`R255` = `RZ`), allocated in granularity-8 blocks.
+
+The register file is **banked**, and a register's bank is a function of its number:
+
+- **Volta through Ampere: 2 banks (even/odd)** — `bank = regNo & 1`.
+- Kepler / Maxwell / Pascal: 4 banks — `bank = regNo & 3`.
+
+A functional unit can read only a limited number of operands from one bank per cycle,
+so two source operands in the same bank create a **bank conflict** that serializes the
+read. The allocator mitigates this two ways: it biases an accumulator destination into
+the **opposite** bank from its multiplicand sources (notably for the doubled-`FFMA`
+pattern), and the hardware **operand-reuse cache** (the `.reuse` flag) serves a
+repeated source from a small per-lane cache instead of a second register-file read.
+The fat-point conflict-cost array is **bank-aware** — same-bank pressure is one of the
+conflict types it accumulates.
+
 ## Six-List Classification (`sub_93FBE0`)
 
 The ordering function walks the vreg linked list (`alloc+736`) and classifies each vreg into one of six doubly-linked lists. Classification is based on the vreg's interference cost (computed by `sub_938EA0`), constraint chain presence (`vreg+144`), width (`vreg+74`), and flag bits (`vreg+48`):
