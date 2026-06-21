@@ -1,8 +1,11 @@
 # SASS Instruction Encoding (128-bit)
 
 > *Recovered from the decoded per-architecture SASS instruction tables in
-> nvdisasm V13.1.115 (CUDA 13.1), validated by a parser that processes all 13
-> tables cleanly (291,325 bit-field directives, 99.996% exact reconstruction).*
+> nvdisasm V13.1.115 (CUDA 13.1), processed by a parser that handles all 13 tables
+> cleanly, and **round-trip-validated against real ptxas output**: a table-driven
+> 128-bit decoder reproduces nvdisasm's own opcode, operands, and guard predicate on
+> 368 real instructions across 8 architectures at 100% (tooling and worked example
+> below).*
 
 Every post-Volta SASS instruction is a **128-bit word**, even though the decoder
 header reports `WORD_SIZE 64` (a generic header artifact present in every table).
@@ -23,9 +26,13 @@ guard region, a middle operand region, and a high scheduling-control word.
 
 - **Opcode** — a 13-bit field split `{bit 91} ++ {bits 11:0}`: the low 12 bits are
   the primary opcode, bit 91 is the single high extension bit. Literals are 10–13
-  bits, zero-extended. *Exception:* on **SM75 (Turing) only**, 80 legacy
-  control/barrier classes (`BAR`, `BRA`, `BRX`, `BSSY`, `BPT`, `B2R`, `AL2P`) use a
-  pure 12-bit opcode with no bit-91 extension.
+  bits, zero-extended. *Verified on real SASS:* a Turing `STG` decodes with bit 91 = 1
+  (13-bit `0x1986`), while its neighbouring `BAR.SYNC` decodes with bit 91 = 0 (legacy
+  `0xb1d`). *Exception:* on **SM75 (Turing) only**, **69 distinct legacy
+  control/barrier classes** carry a pure 12-bit opcode form with no bit-91 extension —
+  a broad set including `BAR`, `BRA`, `BRX`, `BSSY`, `BSYNC`, `BPT`, `B2R`, `AL2P`,
+  `S2R`, `NOP`, `EXIT`, `VOTE`, `SHFL`, `MEMBAR`, `DEPBAR`, `YIELD`, `JMP`, `KILL`,
+  `LEPC`, `MATCH` and others. (SM80+ uses the 13-bit form universally.)
 - **Guard predicate** — `Pg`@`14:12` (3-bit, `P0..PT`) with `Pg_not`@`15` (inversion).
   Present on **every** instruction; the same slot carries `UPg` for uniform-datapath classes.
 - **Operand region** — bits `16:91`: register ports, immediates, constant-bank
@@ -49,10 +56,20 @@ is a Hopper-era addition. The dynamic meaning of these fields — coupled vs
 decoupled issue, scoreboard signalling, the wait mask — is the
 [Execution Model](execution-model.md); this page covers only their bit placement.
 
-> **`.reuse` is not a bit.** Operand-reuse flags live *inside* `opex`, table-compressed
-> via `TABLES_opex_N(batch_t, usched_info, reuse_a, reuse_b, reuse_c)`. The variant
-> index `N` encodes reuse arity (`opex_4` = 3-source reuse for `IADD3`/`IMAD`/`CLMAD`;
-> `opex_2` = 1 reuse; `opex_0/1` = none). Recovering reuse requires inverting the LUT.
+> **`opex = batch_t<<5 | usched_info`**, confirmed directly from the `TABLES_opex_0`
+> LUT: `(batch_t, usched_info) → opex` gives `(1,1)→33`, `(2,1)→65`, `(3,1)→97`, i.e.
+> `33 = 1·32+1`, `65 = 2·32+1`. So `usched_info` (the stall/yield enum) is the low 5
+> bits `{109:105}` and `batch_t` the high 3 bits `{124:122}`.
+>
+> **`.reuse` is folded into `opex`, not a free-standing bit.** Operand-reuse flags
+> ride in the high bits via `TABLES_opex_N(batch_t, usched_info, reuse_a, reuse_b, …)`;
+> the variant index `N` encodes reuse arity (`opex_5` = 2-source reuse for `ISETP`;
+> `opex_4` = 3-source for `IADD3`/`IMAD`). The fold is *context-dependent* — for some
+> `usched_info` values reuse lands in the bit-122 group, for others it perturbs lower
+> bits — which is why reverse-mapping reuse means inverting the LUT, not masking a bit.
+> *Empirically*, reading the raw bits `{125:122}` recovers `.reuse` cleanly: across 280
+> real instructions it matched nvdisasm's `.reuse` annotation 3/3 with 0 false positives
+> (e.g. `IMAD.WIDE R2, R5.reuse, …` → bit 122 set, the `Ra` reuse slot).
 
 ## Register file
 
@@ -131,27 +148,89 @@ property, not an arch-encoding one. Families:
 - **Byte-lane** — `R_CUDA_8_{0..56}` / `G8_*` / `UNIFIED_8_*` (one byte lane each, written at bit 0).
 - **Misc** — `UNIFIED*` (tag `unified`), `G32`/`G64`, `YIELD_OPCODE9_0`, `INSTRUCTION64`/`INSTRUCTION128`.
 
+## Worked decode of one real instruction
+
+A table-driven decoder (`decoded/sass-tools/sass_decode.py`) reads a raw 128-bit
+word straight out of a cubin's `.text` section and reconstructs every field from
+this model. Take the Hopper instruction `ISETP.GE.AND P0, PT, R5, UR4, PT`
+emitted by ptxas — its raw little-endian word is `lo = 0x0000000405007c0c`,
+`hi = 0x000fda000bf06270`, so the 128-bit word is `hi<<64 | lo`.
+
+| Field | Bits | Raw value | Meaning |
+|---|---|---:|---|
+| opcode | `{91}++{11:0}` | `0x1c0c` | bit 91 = 1, low 12 = `0xc0c` → class `isetp__RUR_RUR_EX` (the uniform-`Rb` compare-EX form) |
+| `Pg` / `Pg_not` | `14:12` / `15` | `7` / `0` | guard `@PT` (unconditional) |
+| `Ra` | `31:24` | `5` | source A = `R5` |
+| `Ra_URb` | `37:32` | `4` | source B = `UR4` (low-6 bits read as a uniform register: RHS source is `URb`) |
+| `Pu` | `83:81` | `0` | dest predicate `P0` — encoded **straight** (not `7−P0`) |
+| `cop` (`Pv`) | `86:84` | `7` | second dest predicate `PT` (unwritten), straight |
+| `sco` | `78:76` | `6` | compare op = `GE` |
+| `stall` | `108:105` | `13` | issue stall 13 cycles |
+| `yield` | `109` | `0` | yield bit clear |
+| `req_bit_set` | `121:116` | `0` | no scoreboard wait |
+| `dst_wr_sb`/`src_rel_sb` | `112:110`/`115:113` | `7`/`7` | no scoreboard armed/released |
+| `opex` | `{124:122}++{109:105}` | `13` | `batch_t=0, usched_info=13` (= stall 13, no group-end) |
+
+Reassembled: `@PT ISETP.GE.AND P0, PT, R5, UR4, PT` with a 13-cycle stall — byte-identical to nvdisasm's own disassembly.
+
+## Round-trip validation against nvdisasm
+
+The decoder is validated by re-decoding real ptxas output and scoring every field
+against `nvdisasm -c`'s disassembly (harness: `decoded/sass-tools/sass_roundtrip.py`).
+Across **368 real instructions on eight architectures** (`sm_75 sm_80 sm_86 sm_89
+sm_90 sm_90a sm_100 sm_120`, CUDA 13.1 / nvdisasm V13.1.115):
+
+| Field checked | Match rate |
+|---|---:|
+| opcode / mnemonic family | 100% (368/368) |
+| destination GPR (`Rd`) | 100% |
+| source GPRs (`Ra`/`Rb`/`Rc`, UR-aware) | 100% |
+| guard predicate (`Pg`/`Pg_not`) | 100% |
+
+The scheduling word is cross-checked *semantically* against data dependencies:
+every scoreboard-wait mask (`req_bit_set`) pairs with an earlier producer that
+armed exactly that write barrier — e.g. `LDG.E R0` arming write-barrier 2, its
+consumer `VIADD R7, R0, …` waiting on bit 2; `LDG.E R6` → barrier 3 → `FFMA R9, R6`
+waiting on bit 3. `.reuse` annotations were matched 3/3 from bits `{125:122}` with
+0 false positives over 277 non-reuse instructions.
+
+Two model fields the round-trip *corrected*: dest predicates do **not** use the
+`7−N` complement (below), and a naive opcode lexer silently drops `.`-bearing
+mnemonics like `HFMA2.MMA`/`LOP3.LUT` (fixed in the parser — the per-arch opcode
+counts above are the corrected totals).
+
 ## Encoding oddities (decoder pitfalls)
 
-1. **Destination predicates encode complemented.** Source/guard predicates encode straight (`P0→0 … PT→7`), but dest-predicate ports use the `DestPred` table (`P0→7, P1→6, … PT→0`). Apply the `7−N` complement only to dest-predicate fields.
+1. **Destination predicates encode *straight*, not complemented.** A `DestPred`
+   token table (`P0→7, P1→6, … PT→0`, the `7−N` complement) is *defined* in every
+   arch table, but **no `BITS_*` encoding directive references it** — the dest-predicate
+   ports (`Pu`@`83:81`, `cop`/`Pv`@`86:84`) read the operand directly (`BITS_3_83_81_Pu=Pu`).
+   Confirmed on real `ISETP`: `ISETP.GT P1` encodes `Pu=1`, `ISETP.GE P0` encodes `Pu=0`
+   — the encoded value equals the displayed predicate, with no complement. (Earlier
+   docs that applied a blanket `7−N` to dest predicates were wrong; the complement table
+   is vestigial.)
 2. **Header mislabeling.** Every table reports `ARCHITECTURE "Volta"`, `PROCESSOR_ID Volta`, `WORD_SIZE 64` regardless of true arch — a generic decoder-header artifact. True width is 128 bits; true arch is the per-class content.
-3. **SM75 dual opcode form** — 80 legacy control/barrier ops use a pure 12-bit opcode (no bit-91 extension).
+3. **SM75 dual opcode form** — 69 distinct legacy control/barrier classes carry a pure 12-bit opcode form (no bit-91 extension); verified by round-trip against real Turing SASS.
 4. **Zero-width fields** — `BITS_0_Sb=Sb` is a real feature: an operand named in the syntax that contributes 0 encoding bits (implicit/aliased operand).
 5. **Bit-name reuse** — the same physical bit serves different roles across families (bit 90 = `input_reg_sz_32_dist` in `IMAD` but `Pp@not` in `BSSY`; bit 63 = negate/invert/immediate by class). No global bit→role map exists.
 
 ## Per-arch counts (parser-validated)
 
+Opcode-entry counts include mnemonics with `.` in the name (e.g. `HFMA2.MMA`,
+`LOP3.LUT`), which a naive `[\w]+` opcode lexer drops; the figures below count
+every `OPCODES` directive across all operand sub-forms.
+
 | arch | classes | opcode entries | distinct `BITS_*` fields |
 |---|---:|---:|---:|
-| SM75 | 898 | 1854 | 99 |
-| SM80 | 962 | 1942 | 109 |
-| SM86/87/88 | 999 | 2018 | 108 |
-| SM89 | 1049 | 2118 | 112 |
-| SM90/90a | 1168 | 2366 | 115 |
-| SM100 | 975 | 2018 | 121 |
-| SM103 | 971 | 2010 | 123 |
-| SM110 | 901 | 1870 | 118 |
-| SM120/121 | 1012 | 2088 | 112 |
+| SM75 | 898 | 1862 | 99 |
+| SM80 | 962 | 1986 | 109 |
+| SM86/87/88 | 999 | 2062 | 108 |
+| SM89 | 1049 | 2162 | 112 |
+| SM90/90a | 1168 | 2410 | 115 |
+| SM100 | 975 | 2028 | 121 |
+| SM103 | 971 | 2020 | 123 |
+| SM110 | 901 | 1880 | 118 |
+| SM120/121 | 1012 | 2096 | 112 |
 
 ## Cross-References
 

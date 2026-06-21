@@ -169,3 +169,5 @@ some_docs/
 !/decoded/ptxas-passes-detail
 !/decoded/ptxas-fp-debug
 !/decoded/ptxas-gap-closure
+!/decoded/sass-tools
+/decoded/sass-tools/__pycache__/

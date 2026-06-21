@@ -176,6 +176,75 @@ Each cycle, for a warp's next decoded instruction *I*:
 4. **Batch** — `BATCH_START … BATCH_END` co-issue into distinct pipes in one decision (the only "dual issue"; mutually exclusive with a stall on most pipes).
 5. **Issue** — into the instruction's `VIRTUAL_QUEUE`. `COUPLED_MATH` → fixed pipe, no scoreboard; `DECOUPLED_*` → FU queue, arm `dst_wr_sb`/`src_rel_sb`, move on. `BRANCH_DELAY == 0` on all arches — no architected branch delay slot; convergence is the `CBU` pipe (`BSSY`/`BSYNC`) + control scoreboards.
 
+## Validation against ptxas-emitted SASS
+
+The model above is reproduced exactly by the schedule ptxas computes. The check
+assembles PTX with `ptxas`, reads each instruction's 128-bit encoding with
+`nvdisasm -c -hex`, and decodes the control word (bits 105–124) back into
+`usched`/`dst_wr_sb`/`src_rel_sb`/`req_bit_set`/`batch_t`. A `saxpy` inner block
+on SM90 decodes as:
+
+| Op | `usched`→stall | `dst_wr` | `src_rel` | wait mask | role |
+|---|---|---|---|---|---|
+| `IMAD.WIDE` (addr of x) | 6 → stall 6 | — | — | SB0 | waits the index `S2R` chain |
+| `LDG.E R2` (load x) | 17 → stall 1 | **SB2** | — | — | arms write scoreboard SB2 |
+| `IMAD.WIDE` (addr of y) | 5 → stall 5 | — | — | SB1 | independent address math, fills the load shadow |
+| `LDG.E R7` (load y) | 18 → stall 2 | **SB2** | — | — | second load **reuses SB2** (count-based) |
+| `FFMA R7, R2, a, R7` | 5 → stall 5 | — | — | **SB2** | consumer waits SB2 until **both** loads complete |
+| `STG.E` (store) | 17 → stall 1 | — | — | — | |
+
+The two loads share one scoreboard (`SB2`); the consuming `FFMA` carries a single
+`req_bit_set` bit for SB2 and blocks until that scoreboard's outstanding count
+returns to its target — i.e. until *both* loads have written back. This is the
+producer→consumer pairing the model predicts, realized verbatim.
+
+Across `sm_75 sm_80 sm_86 sm_89 sm_90 sm_90a sm_100 sm_120`, over a battery of
+math-chain, load, transcendental, tensor and `cp.async` probes (1912 decoded
+instructions): **every consumer wait-bit pairs with an earlier producer that
+armed exactly that scoreboard — 221 pairs, 0 unmatched — and `opex =
+batch_t<<5 | usched_info` holds on every single instruction** (0 violations,
+recomputed independently from the raw 128-bit words). A co-issue batch
+(`batch_t ≠ 0`) never carries a group-ending stall (`usched` 1–15); the only
+stall that rides a batch member is the 1–2-cycle no-group-end spacing of a
+`.reuse` co-issue pair — confirming "batch *or* stall, not both".
+
+### Observed dispatch stall by producer class
+
+For fixed-latency math, the stall ptxas places between a producer and its
+immediate dependent consumer is small and **stable across every generation**:
+
+| Dependent pair | Mechanism | Stall (SM75→SM120) |
+|---|---|---|
+| `IADD3`→`IADD3`, `IMAD`→`IMAD`, `FFMA`→`FFMA`, `FADD`→`FADD` | fixed (coupled math) | **4** |
+| `IADD3`→`IMAD`, `LOP3`/`FMUL`→consumer | fixed (coupled math) | **5** (SM75 emits 8 for the pre-store slot) |
+| `ISETP`→predicated op (CC/predicate) | fixed (control class) | **13** |
+| `HMMA.16816`→consumer (tensor) | fixed (tensor class) | **11** + follow-on |
+| `LDG`/`LDS`→consumer | variable → scoreboard | `dst_wr_sb` + matching `req_bit_set` |
+| `MUFU`, `F2I`/`I2F`/`F2F`, `POPC`→consumer | variable → scoreboard (MUFU pipe) | scoreboard, **not** a fixed stall |
+| `cp.async` group wait | variable → `DEPBAR` | `LDGDEPBAR` + `DEPBAR.LE SBn, k` |
+
+The result-latency *band* (6 for ALU, 13 for control/tensor) and the dispatch
+*stall* differ by one issue cycle: a band-6 result is readable 6 cycles after the
+producer issues, and the consumer issues one cycle later, so the emitted stall is
+4–5. The MUFU pipe (transcendentals, `F2*`/`I2F` conversions, `POPC`) carries the
+band-13 *latency* but delivers it through a **scoreboard**, not a fixed stall —
+the band gives the magnitude, the `INSTRUCTION_TYPE` gives the mechanism.
+
+`cp.async` (`cp.async.commit_group` → `LDGDEPBAR`; `cp.async.wait_group k` →
+`DEPBAR.LE SBn, k`) is the explicit partial-wait path: the count `k` is the
+number of outstanding copy *groups* the warp will tolerate, byte-identical from
+SM80 through SM120. WAR (read-then-overwrite) pairs carry **no extra stall** —
+ptxas renames the destination so the anti-dependency never reaches the schedule.
+
+### Reference simulator
+
+`decoded/sass-tools/sass_sched_sim.py` is a single-warp issue/timing simulator
+that replays exactly this rule over a decoded stream — wait-mask gate, dispatch
+stall, yield-on-DRAIN, `batch_t` co-issue, scoreboard arm/wait — and emits a
+cycle-by-cycle trace plus a basic-block cycle estimate. Its `--validate` mode is
+the producer→barrier and `opex` self-check used above. `sass_ctrl_decode.py` is
+the control-word decoder it consumes.
+
 ## Per-arch execution deltas
 
 | Axis | SM75 Turing | SM80–89 | SM90 Hopper | SM100/103/110 Bk-DC | SM120/121 Bk-consumer |
@@ -197,3 +266,5 @@ Each cycle, for a warp's next decoded instruction *I*:
 - [Dependency & Hazard Model](../scheduling/dependency-model.md) — the ptxas-side RAW/WAR/WAW decision.
 - [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) — ptxas scoreboard allocation.
 - [Architecture Evolution](architecture-evolution.md) — the pipe additions per generation.
+- Tooling: `decoded/sass-tools/sass_ctrl_decode.py` (control-word decoder) and
+  `sass_sched_sim.py` (warp-issue / timing simulator + `--validate` self-check).

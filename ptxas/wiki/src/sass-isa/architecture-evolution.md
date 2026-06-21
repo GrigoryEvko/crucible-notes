@@ -118,6 +118,60 @@ entirely by the async / tensor / cluster families above.
 4. **Hopper is the single largest expansion** (+41 mnemonics): TMA, CGA clusters, warpgroup MMA, and async barriers all arrive together.
 5. **The matrix datapath was redesigned twice** in three generations — Ampere/Ada `HMMA`/`QMMA` → Hopper warpgroup `*GMMA` → Blackwell async `UTC*MMA` + tensor memory.
 
+## Validated against real SASS
+
+The capability map was cross-checked by generating tensor kernels per arch and
+seeing what `ptxas` (V13.1.115) accepts, rejects, and emits. Two evidence
+sources agree: the decoded-table presence of each family, and the SASS opcode
+`ptxas` actually produces.
+
+**Tensor-op presence (decoded tables).** `UTC*` (tcgen05) and TMEM
+(`LDTM`/`STTM`/`LDT`/`STT`) exist only on the datacenter line; consumer Blackwell
+substitutes `OMMA`:
+
+| Arch | `UTC*` (tcgen05) | TMEM (`LDTM`/…) | `OMMA` | `*GMMA` |
+|---|:---:|:---:|:---:|:---:|
+| SM90 (Hopper) | — | — | — | ✅ (21 classes) |
+| SM100 (Bk-DC) | ✅ (60) | ✅ (4) | — | — |
+| SM103 (Bk-Ultra) | ✅ (52) | ✅ (5) | — | — |
+| SM110 (Thor) | ✅ (60) | ✅ (5) | — | — |
+| SM120 (Bk-consumer) | **—** | **—** | ✅ (2) | — |
+
+`UTCIMMA` (integer tensor) is present on SM100 and SM110 but **absent on SM103** —
+the GB300/Ultra INT8-tensor drop, confirmed at the class level.
+
+**FP-format gates (ptxas accept/reject).** Generating `mma` of each width and
+reading `ptxas`'s own diagnostics:
+
+| Test | sm_75 | sm_80 | sm_89 | sm_90 | sm_100 | sm_120 |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| FP16 `wmma` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| FP8 `mma.e4m3` | reject¹ | reject¹ | ✅ | ✅ | ✅ | ✅ |
+| FP4 `mma.block_scale` | reject | reject | reject | reject² | reject³ | ✅ |
+
+¹ ptxas: *"Feature 'mma with FP8 floating point type' requires .target sm_89 or
+higher."* ² Hopper rejects block-scale outright. ³ The datacenter `mma.sync`
+block-scale form is rejected on `sm_100a` because datacenter Blackwell routes FP4
+through **tcgen05** (`UTC*`/`tcgen05.mma`), not the warp-level `mma.sync` path —
+which is itself the bifurcation this page describes; consumer `sm_120a` accepts
+it via the per-warp **`OMMA`** path.
+
+**Emitted SASS opcode confirms the datapath split.** What each tensor kernel
+actually lowers to:
+
+| Kernel / arch | emitted SASS | reading |
+|---|---|---|
+| FP8 `mma` / sm_89 (Ada) | `QMMA` | the transient Ada FP8 tensor op |
+| FP8 `mma` / sm_100 | `HMMA` | warp-level FP8 via the HMMA pipe |
+| FP16 `wmma` / sm_90a, sm_100, sm_120a | `HMMA` | warp-`wmma` always lowers to `HMMA` |
+| FP4 `mma.block_scale` / sm_120a | `OMMA` | the consumer-Blackwell per-warp FP4 op |
+
+The warp-level `wmma.*` API lowers to `HMMA` on every arch; Hopper `HGMMA` and
+Blackwell `UTC*MMA` are reached only through their dedicated async PTX paths
+(`wgmma`, `tcgen05.mma`), never through `wmma`. `QMMA` on Ada and `OMMA` on
+consumer Blackwell appear exactly where the generation diff predicts. Tooling and
+the full sweep: `decoded/sass-tools/sass_validate.py`.
+
 ## Cross-References
 
 - [SASS Instruction Encoding](instruction-encoding.md) — the 128-bit word these mnemonics encode into.

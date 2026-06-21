@@ -203,6 +203,68 @@ above (sm_100/103/110/120/121 are present here but absent from older tables).
 > redistributed; only recovered facts — type names, counts, field bit-positions —
 > are cited.
 
+## Validation on emitted SASS (CUDA 13.1)
+
+The resolved hazards are observable directly: assemble PTX with `ptxas`, read each
+instruction's 128-bit encoding with `nvdisasm -c -hex`, and decode the control
+word (`usched`/`dst_wr_sb`/`src_rel_sb`/`req_bit_set`/`batch_t`). A battery of
+probes — fixed-latency math chains, global/shared loads, transcendentals,
+conversions, tensor MMA, and `cp.async` — was compiled for `sm_75 sm_80 sm_86
+sm_89 sm_90 sm_90a sm_100 sm_120` (1912 decoded instructions). Each predicted
+hazard mechanism appears exactly where the model places it.
+
+**True (RAW), fixed path — the stall.** A dependent fixed-latency math pair
+carries a small stall on the producer, stable across every generation:
+
+| Pair | Stall (SM75→SM120) |
+|---|---|
+| `IADD3`→`IADD3`, `IMAD`→`IMAD`, `FFMA`→`FFMA`, `FADD`→`FADD` | **4** |
+| `IADD3`→`IMAD`, `LOP3`/`FMUL`→consumer | **5** |
+| `ISETP`→predicated op (CC/predicate) | **13** (the control band) |
+| `HMMA.16816`→consumer (tensor) | **11** + follow-on (the tensor band) |
+
+The observed stall is the result-latency band minus one issue cycle (a band-6
+result is readable 6 cycles after the producer issues; the consumer issues one
+cycle later, so ptxas emits 4–5). The control/tensor band (13) shows up
+unmodified on the `ISETP`→predicate edge and the `HMMA` result.
+
+**True (RAW), variable path — the scoreboard pairing.** Every variable-latency
+producer that sets a write scoreboard is matched by a consumer carrying that
+exact `req_bit_set` bit — **221 producer→consumer pairs, 0 unmatched**, on every
+arch:
+
+| arch | producers arming a write SB | matched consumer waits | unmatched |
+|---|--:|--:|--:|
+| sm_75 / sm_80 / sm_86 / sm_89 | 17 / 18 / 18 / 18 | 17 / 18 / 18 / 18 | 0 |
+| sm_90 / sm_90a | 32 / 32 | 32 / 32 | 0 |
+| sm_100 / sm_120 | 35 / 35 | 35 / 35 | 0 |
+
+Loads (`LDG`/`LDS`/`LDGSTS`), special-register reads (`S2R`/`S2UR`), constant
+loads (`LDC.64`), the MUFU pipe (`MUFU.RSQ`/`SIN`, `F2I`/`I2F`/`F2F`, `POPC`) all
+arm `dst_wr_sb` and gate their consumer with `req_bit_set`. Note the MUFU pipe
+carries the band-13 *latency* but delivers it through a **scoreboard**, not a
+fixed stall — the scalar band gives the magnitude, the `INSTRUCTION_TYPE` gives
+the mechanism. When loads outnumber the free scoreboards, ptxas packs several onto
+one scoreboard (e.g. two `LDG`s both arming `SB2`) and the consumer's single wait
+bit gates on the scoreboard *count* reaching its target.
+
+**Partial-wait — `DEPBAR`.** A batch of `cp.async` copies confirms the
+`DEPBAR.LE` mechanism. `cp.async.commit_group` lowers to `LDGDEPBAR` (commits the
+outstanding `LDGSTS` into a group counter on `SB0`); `cp.async.wait_group k`
+lowers to **`DEPBAR.LE SB0, k`** — block until ≤ *k* groups remain outstanding.
+`wait_group 1` → `DEPBAR.LE SB0, 0x1`; `wait_group 0` → `DEPBAR.LE SB0, 0x0`.
+Byte-identical SM80 through SM120. This is the "wait on partial completion of a
+batch of outstanding ops" path the variable-latency model describes.
+
+**Anti (WAR) — zero-but-ordered, confirmed.** Read-then-overwrite pairs carry
+**no extra stall**: ptxas renames the destination register so the
+anti-dependency never reaches the schedule, exactly as the *zero-but-ordered*
+default predicts. The `opex` invariant (`opex = batch_t<<5 | usched_info`) holds
+on all 1912 instructions, and no co-issue batch carries a group-ending stall.
+
+Tooling: `decoded/sass-tools/sass_ctrl_decode.py` decodes the control words and
+`sass_sched_sim.py --validate` runs the producer→barrier and `opex` self-check.
+
 ## Cross-References
 
 - [Latency Model & Functional Units](latency-model.md) — the 72-B/40-B table layouts and per-FU latencies.

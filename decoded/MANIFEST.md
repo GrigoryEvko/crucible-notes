@@ -82,6 +82,18 @@ out of the user's own binary at run time — it is not shipped here.
   handler keys (e.g. `1030557441`): each is `adler32(__cuda_* macro name)`, inverted
   by hashing the `__cuda_*` names harvested from the macro pool + string tables.
 
+### `sass-tools/` — SASS-ISA model tooling (our code)
+- `sass_isa_parser.py` — reconstructs each instruction class's bit-field layout from
+  the decoded SASS-ISA tables (per-sub-form `OPCODES`+`ENCODING` pairing). `sass_decode.py` —
+  table-driven 128-bit decoder (opcode `{91}++{11:0}`, operands, control word);
+  round-trip-validated 368 instrs / 8 arches @ 100% via `sass_roundtrip.py`.
+- `sass_ctrl_decode.py` — scheduling-control-word decoder; `sass_sched_sim.py` — single-warp
+  issue/timing simulator (validated: 221 producer→consumer scoreboard pairs, opex invariant
+  1912/1912). `sass_legality.py` — constraint checker + `iadd3`/`lop3`/`shf`/`prmt` functional
+  model; `sass_validate.py` — hypothesis harness vs real ptxas SASS.
+- All require the user to regenerate the (local-only) decoded tables first via
+  `tools/nvdisasm_decode.py`. Documented in the ptxas wiki `sass-isa/` section.
+
 ### `ptxas-scheduling/` — the SASS scheduling model (tool + extracted facts)
 - `extract_sched_tables.py` — extracts both tables below from a `.rodata` dump of
   your own ptxas (our code).

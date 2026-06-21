@@ -1,0 +1,23 @@
+# Observed dependent-pair stall (ptxas control word) vs scalar latency band.
+# stall = usched-derived cycles carried on the producer feeding the next dependent op.
+# Measured on ptxas-emitted SASS, CUDA 13.1 V13.1.115, across sm_75..sm_120.
+# band = scalar_latency_oracle pipeline class (decoded/ptxas-sched-full).
+producer_consumer	mechanism	band	observed_stall_sm75_to_sm120	note
+IADD3->IADD3	fixed (COUPLED_MATH)	6	4	stable every gen
+IADD3->IMAD	fixed (COUPLED_MATH)	6	5	+1 for the IMAD pipe
+IMAD->IMAD	fixed (COUPLED_MATH)	6	4	stable
+LOP3->consumer	fixed (COUPLED_MATH)	6	5	
+FFMA->FFMA	fixed (COUPLED_MATH)	6	4	stable every gen
+FFMA->FADD	fixed (COUPLED_MATH)	6	4	
+FADD->FADD	fixed (COUPLED_MATH)	6	4	
+FMUL->consumer	fixed (COUPLED_MATH)	6	5	sm_75 emits 8 (Turing slot)
+ISETP->predicated-op	fixed (COUPLED_MATH, CC)	13	13	control/CC band
+HMMA->consumer	fixed (COUPLED_MATH, tensor)	13	11	Hopper m16n8k16; +follow-on
+LDG->consumer	variable (DECOUPLED_RD_WR_SCBD)	300	scoreboard	dst_wr_sb + req_bit_set wait
+LDS->consumer	variable (DECOUPLED_RD_WR_SCBD)	300	scoreboard	
+LDGSTS group->wait	variable (DEPBAR)	300	DEPBAR.LE	cp.async.wait_group n -> DEPBAR.LE SB,n
+MUFU.RSQ/SIN->consumer	variable (DECOUPLED, MUFU pipe)	13	scoreboard	scoreboarded NOT fixed-stall
+F2I/I2F/F2F->consumer	variable (DECOUPLED, MUFU pipe)	13	scoreboard	scoreboarded
+POPC->consumer	variable (DECOUPLED, MUFU pipe)	13	scoreboard	band-13 latency via scoreboard
+S2R/S2UR->consumer	variable (DECOUPLED)	-	scoreboard	special-register read
+WAR (read->overwrite)	zero-but-ordered	0	0	no extra stall; reg-renamed
