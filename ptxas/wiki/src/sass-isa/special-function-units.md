@@ -166,15 +166,16 @@ scoreboard) hosts the **format conversions** and a handful of bit-manipulation o
 | `F2F.<dst>.<src>` | `cvt.<rnd>.f*.f*` | float → float (different formats) |
 | `FRND.<fmt>.<rnd>` | `cvt.<rnd>.f*.f*` same-format | float → float **same format**, just re-round |
 | `F2I.<dst>.<src>` | `cvt.<rnd>i.s*/u*.f*` | float → integer |
-| `I2F` (SM75–SM89) / `I2FP.<dst>.<src>` (SM90+) | `cvt.<rnd>.f*.s*/u*` | integer → float |
+| `I2F` (SM75/SM80) / `I2FP.<dst>.<src>` (SM86+) | `cvt.<rnd>.f*.s*/u*` | integer → float |
 | `I2I.<dst>.<src>` / `I2IP.<dst>` | `cvt[.sat].s*/u*.s*/u*` | integer → integer (resize/saturate) |
 
 The float↔float split is real and recovered from the lowering: when source and
 destination format are **identical** the compiler emits **`FRND`** (a pure re-round —
 e.g. `cvt.rzi.f32.f32`); when they differ it emits **`F2F`** (e.g.
-`F2F.F32.F64` for double→float). The **`I2F` → `I2FP` rename at SM90** is a confirmed
+`F2F.F32.F64` for double→float). The **`I2F` → `I2FP` rename at SM86** is a confirmed
 binary fact: `cvt.rn.f32.s32` disassembles as `I2F` on SM75/SM80 and as
-`I2FP.F32.S32` on SM90/SM100/SM120. Consumer Blackwell additionally exposes
+`I2FP.F32.S32` from SM86 onward (SM86/SM89/SM90/SM100/SM120). Consumer Blackwell
+additionally exposes
 **uniform-register** conversions `UF2F`/`UF2I`/`UI2F`/`UI2I`/`UFRND` that run the same
 conversions on the uniform datapath.
 
