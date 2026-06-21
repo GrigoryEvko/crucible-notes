@@ -99,6 +99,8 @@
 - [Execution Model — Pipelines & Scheduling](./sass-isa/execution-model.md)
 - [Control Flow, Divergence & Convergence](./sass-isa/control-flow.md)
 - [Memory Hierarchy & Ordering](./sass-isa/memory-model.md)
+- [Asynchronous Copy, mbarrier & TMA](./sass-isa/async-copy.md)
+- [Tensor-Core Pipeline — MMA, Fragments & wgmma](./sass-isa/tensor-pipeline.md)
 - [Occupancy, Resources & Work Distribution](./sass-isa/occupancy.md)
 - [Legality & Capabilities](./sass-isa/legality-and-capabilities.md)
 - [Architecture Evolution (SM75→SM121)](./sass-isa/architecture-evolution.md)
