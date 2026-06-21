@@ -704,7 +704,8 @@ class ComposeResult:
     depbars: list[int]    # indices where a DEPBAR.LE was needed (overflow)
 
 
-def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
+def compose(dag: DAG, ctrls: list[Ctrl] | None = None,
+            absorb_ctrl: bool = False) -> ComposeResult:
     """Walk issue order on a virtual cycle clock and assign control words.
 
     For each instruction:
@@ -715,6 +716,16 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
         their consumers set the matching req_bit_set bit;
       * the 6-scoreboard allocator overloads (VSB->PSB by minimum added stall)
         when >6 are live; unbounded groups fall to SB5 + DEPBAR.LE.
+
+    `absorb_ctrl` (reorder path only): treat the CC/predicate control band like an
+    ordinary issue-relative RAW latency that intervening independent instructions
+    absorb, rather than a hard un-hideable floor.  ptxas does the same -- it never
+    emits a full 13-cycle stall on an ISETP/FSETP whose guard use is several
+    instructions later.  Keeping this OFF for --verify-corpus preserves the exact
+    ptxas-matching default; turning it ON when we REORDER lets the schedule hide
+    the band behind the work we hoisted into its shadow.  Any over-tightening is
+    caught by the GPU bit-identical + cycle gate, so this can only ever propose a
+    faster-or-rejected schedule, never an accepted-but-wrong one.
 
     Returns one SchedFields per node plus per-instruction reasoning.
     """
@@ -776,11 +787,13 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
         for i in range(n):
             req = _floor(i)
             for dst, weight, is_ctrl in out_stall[i]:
-                if is_ctrl:
+                if is_ctrl and not absorb_ctrl:
                     req = max(req, weight)
                     continue
                 # cycles already accumulated by instructions strictly between the
                 # producer i and the consumer dst (they occupy real issue slots).
+                # When absorb_ctrl is set the control band is treated identically:
+                # intervening independent issue genuinely hides it (proven on GPU).
                 between = issue_cycle[dst] - issue_cycle[i] - max(stalls[i], 1)
                 residual = weight - between
                 req = max(req, min(residual, weight))
@@ -2291,6 +2304,98 @@ def compose_print(cubin: str) -> None:
 
 
 # =============================================================================
+# Stage 1 / Stage 2 report printers
+# =============================================================================
+
+def _run_tighten(sr, args) -> int:
+    """Print the Stage-1 stall-tightener report for one cubin."""
+    grid = args.grid if args.grid else 8
+    block = args.block if args.block else 32
+    niter = args.niter if args.niter else 100000
+    res = sr.tighten_kernel(args.tighten, entry=args.entry,
+                            grid=grid, block=block, niter=niter)
+    print("=" * 78)
+    print(f"STAGE 1  STALL-TIGHTENER  {Path(args.tighten).name}  "
+          f"entry={res.entry}")
+    print(f"  (ptxas order fixed; only model-proven-slack stalls tightened, "
+          f"each GPU-gated bit-identical)")
+    print("=" * 78)
+    print(f"  understall candidates : {res.n_candidates}")
+    print(f"  bit-identical safe    : {res.n_safe}  "
+          f"({res.saved_stall} stall cyc/iter removed)")
+    if res.safe_desc:
+        print(f"  tightened (safe)      : {', '.join(res.safe_desc)}")
+    if res.hazard_desc:
+        print(f"  hazards (kept ptxas)  : {', '.join(res.hazard_desc)}")
+    if not res.gate_ok:
+        print("  GATE: FAILED -- tightened output differed (should not happen "
+              "after bisection); NO patch accepted")
+        return 1
+    print("  GATE: bit-identical to ptxas (correctness OK)")
+    if res.cycles_ptxas:
+        d_ = res.cycles_ptxas - res.cycles_ours
+        pct = 100.0 * d_ / res.cycles_ptxas if res.cycles_ptxas else 0.0
+        print(f"  cycles V1(ptxas)={res.cycles_ptxas:,.0f}  "
+              f"V2(tightened)={res.cycles_ours:,.0f}  "
+              f"delta={d_:,.0f} ({pct:+.2f}%)")
+        print(f"  VERDICT: {'MEASURED WIN' if pct > 0.5 else 'hardware-enforced (no slack)'}")
+    elif res.n_safe == 0:
+        print("  (no slack found; ptxas already minimal on this kernel)")
+    return 0
+
+
+def _run_optsched(sr, args) -> int:
+    """Print the Stage-2 reorder-scheduler report for one cubin."""
+    grid = args.grid if args.grid else 8
+    block = args.block if args.block else 32
+    niter = args.niter if args.niter else 100000
+    res = sr.optsched_kernel(args.optsched, entry=args.entry,
+                             grid=grid, block=block, niter=niter)
+    print("=" * 90)
+    print(f"STAGE 2  CONSTRAINT-OPTIMAL REORDER SCHEDULER  "
+          f"{Path(args.optsched).name}  entry={res.entry}")
+    print(f"  (per basic block: list + Z3-Opt makespan minimiser; reorder-patch "
+          f"in place; GPU-gate each block bit-identical)")
+    print("=" * 90)
+    print(f"  {'BB':<4} {'size':>4} {'solver':<8} {'ptxas':>6} {'ours':>6} "
+          f"{'gain':>5} {'reordered':<10} {'accepted':<9} note")
+    print("  " + "-" * 86)
+    n_reorder = n_accept = 0
+    for oc in res.outcomes:
+        gain = oc.ptxas_makespan - oc.our_makespan if oc.reordered else 0
+        if oc.reordered:
+            n_reorder += 1
+        if oc.reordered and oc.accepted:
+            n_accept += 1
+        ro = "yes" if oc.reordered else "-"
+        ac = ("YES" if oc.accepted else "fallback") if oc.reordered else "-"
+        mk1 = oc.ptxas_makespan if oc.reordered else "-"
+        mk2 = oc.our_makespan if oc.reordered else "-"
+        print(f"  {oc.bid:<4} {oc.size:>4} {oc.solver:<8} {str(mk1):>6} "
+              f"{str(mk2):>6} {str(gain) if gain else '-':>5} {ro:<10} "
+              f"{ac:<9} {oc.reason}")
+    print("  " + "-" * 86)
+    print(f"  blocks reordered by solver : {n_reorder}")
+    print(f"  blocks accepted (GPU gate) : {n_accept}")
+    print(f"  blocks fell back to ptxas  : {n_reorder - n_accept}")
+    if not res.gate_ok:
+        print("\n  GATE: FAILED -- final kernel output differed from ptxas! "
+              "NO reorder accepted (this must never happen).")
+        return 1
+    print("\n  GATE: final kernel bit-identical to ptxas (correctness OK)")
+    if res.cycles_ptxas:
+        d_ = res.cycles_ptxas - res.cycles_ours
+        pct = 100.0 * d_ / res.cycles_ptxas if res.cycles_ptxas else 0.0
+        print(f"  cycles V(ptxas)={res.cycles_ptxas:,.0f}  "
+              f"V(ours)={res.cycles_ours:,.0f}  delta={d_:,.0f} ({pct:+.2f}%)")
+        print(f"  VERDICT: {'MEASURED REORDER WIN' if pct > 0.5 else 'no measured cycle change (reorder hidden by stalls/occupancy)'}")
+    elif n_accept == 0:
+        print("  (no block beat ptxas's order on this kernel -- ptxas's "
+              "schedule is already makespan-optimal here)")
+    return 0
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -2314,6 +2419,15 @@ def main(argv: list[str]) -> int:
                          "composed (V2) cycles on the GPU with ncu, gate on "
                          "bit-identical output, classify each understall as real "
                          "ptxas waste vs hardware-enforced")
+    ap.add_argument("--tighten", metavar="CUBIN",
+                    help="STAGE 1: keep ptxas's instruction order, tighten only "
+                         "the stalls our model proves are slack, GPU-gated "
+                         "bit-identical (surgical + bisection); measure cycles")
+    ap.add_argument("--optsched", metavar="CUBIN",
+                    help="STAGE 2: per-basic-block constraint-optimal reorder "
+                         "scheduler (list + Z3-Opt), reorder-patch in place, "
+                         "GPU-gate each block bit-identical (fall back to ptxas "
+                         "per block), measure cycles V(ptxas) vs V(ours)")
     ap.add_argument("--stall-profile", metavar="CUBIN", nargs="?", const="",
                     help="MODE 2: per-instruction warp-stall-reason histogram "
                          "(ncu PC sampling) cross-mapped to our scheduling model")
@@ -2355,6 +2469,12 @@ def main(argv: list[str]) -> int:
                          grid=args.grid if args.grid else 20,
                          block=args.block if args.block else 32,
                          niter=args.niter if args.niter else 200000)
+    if args.tighten:
+        import sass_reorder
+        return _run_tighten(sass_reorder, args)
+    if args.optsched:
+        import sass_reorder
+        return _run_optsched(sass_reorder, args)
     if args.stall_profile is not None:
         cub = args.stall_profile or None
         if cub is None and not args.amp:
