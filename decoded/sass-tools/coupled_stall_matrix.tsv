@@ -1,0 +1,69 @@
+# Coupled-math issue-relative stall matrix -- recovered by differential analysis
+# of CUDA 13.1 ptxas-emitted SASS (no vendor table bytes; this is our own result).
+#
+# A coupled (fixed-latency) producer resolves a RAW with a usched stall whose
+# magnitude is set by the producer pipe and the consumer pipe.  ptxas's OCG
+# scheduler derives it from the producer's result band and the consumer's
+# operand-collect timing; we recover the resulting issue-relative magnitudes here
+# by decoding the producer's emitted usched on immediate (gap=1) dependent pairs
+# across sm_75..sm_120.
+#
+# Columns: family  prod_pipe  cons_pipe  stall
+#   family    : latency-descriptor family (sm7x = sm_60/70/72/75;
+#               sm8x = sm_80/86/89/90/90a; sm10x = sm_100/103/110/120/121; * = any)
+#   prod_pipe : INT IMUL FMA FP16 CC CVT UNIFORM  (* = any)
+#   cons_pipe : INT IMUL FMA FP16 CC CVT AGU SFU CVTI UNIFORM  (* = any)
+#               AGU  = memory address/data collect; SFU = MUFU transcendental
+#               input; CVTI = decoupled float<->int conversion input (I2F/F2I/F2F)
+#   stall     : usched cycles the consumer owes the producer
+#
+# Resolution (sass_latency_tables.coupled_stall): exact (fam,pp,cp) first, then
+# producer-specific (fam,pp,*) [outranks], then consumer-specific (fam,*,cp),
+# trying the arch family before the family-`*` row; then structural anchors.
+#
+# -- CC / predicate-guard producer (control band): the predicated consumer cannot
+#    proceed without the flag, so it is emitted in full.  sm7x = 12, sm8x+ = 13.
+sm7x	CC	*	12
+*	CC	*	13
+#
+# -- same-pipe coupled math -> same-pipe coupled math: forwarding stall 4.
+*	INT	INT	4
+*	IMUL	IMUL	4
+*	FMA	FMA	4
+*	CVT	CVT	4
+#   packed FP16x2 same-pipe diverges by arch: 6 (sm7x), 4 (sm8x/sm10x baseline);
+#   sm_90/sm_90a's HFMA2.MMA lowering costs 10 -- handled as the sm8x default 4
+#   here (rare in scalar code; the safe fixpoint never under-stalls it).
+sm7x	FP16	FP16	6
+*	FP16	FP16	4
+#
+# -- cross-pipe coupled math (a different math family): +1 inter-pipe penalty.
+*	INT	IMUL	5
+*	IMUL	INT	4
+*	FMA	CC	5
+*	INT	CC	4
+*	FMA	IMUL	5
+*	CVT	FMA	5
+*	CVT	CC	4
+*	UNIFORM	INT	4
+*	UNIFORM	IMUL	4
+#   int -> coupled int->float conversion (I2FP): 4 on sm_86..sm_100, 5 on the
+#   newest sm_10x (sm_120); I2FP is absent on sm7x (conversion is decoupled I2F).
+sm10x	INT	CVT	5
+*	INT	CVT	4
+*	IMUL	CVT	4
+#
+# -- coupled producer -> memory address/data (AGU): pre-issue collect slot.
+#    sm8x+/sm10x = 5; Turing-class sm7x widens it to 8.
+sm7x	*	AGU	8
+*	*	AGU	5
+#
+# -- coupled producer -> MUFU transcendental input (SFU): full result band (6) on
+#    sm7x, forwarded at 4 on sm8x+.
+sm7x	*	SFU	6
+*	*	SFU	4
+#
+# -- coupled producer -> decoupled float<->int conversion input (CVTI: I2F/F2I/
+#    F2F): the coupled feeder pays the full result band (6) before the decoupled
+#    conversion issues, on every arch.
+*	*	CVTI	6

@@ -84,6 +84,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from sass_ctrl_decode import Ctrl, disasm_cubin, usched_to_stall  # noqa: E402
+import sass_latency_tables as LT  # noqa: E402
 
 NVDISASM = "/usr/local/cuda-13.1/bin/nvdisasm"
 PTXAS = "/usr/local/cuda-13.1/bin/ptxas"
@@ -175,38 +176,20 @@ def _itype_props(itype: str) -> tuple[bool, bool, bool, bool]:
 def build_type_map(arch: str) -> dict[str, TypeInfo]:
     """Mnemonic (uppercase, base) -> TypeInfo, from one arch's CLASS table.
 
-    Many CLASS forms share a mnemonic; if forms disagree on coupled-ness we keep
-    the *decoupled* verdict (the safe one: a scoreboard is conservative)."""
-    path = TABLE_DIR / f"sass_isa_{arch}.txt"
-    if not path.exists():
-        path = TABLE_DIR / f"sass_isa_SM{arch.lstrip('SMsm')}.txt"
+    Thin adapter over sass_latency_tables.load_arch_model (the cached per-arch
+    class model that also carries the pipe family, band and MIN_WAIT_NEEDED).
+    Kept for the rest of this module's API; new code should consult the richer
+    ClassModel via classify_mnem / latency_model_for."""
     out: dict[str, TypeInfo] = {}
-    if not path.exists():
-        return out
-    cur_mnem = None
-    with path.open() as fh:
-        for ln in fh:
-            mc = _CLASS_RE.match(ln)
-            if mc:
-                mm = _CLASS_MNEM_RE.match(mc.group(1))
-                cur_mnem = mm.group(1).upper() if mm else None
-                continue
-            mt = _ITYPE_RE.search(ln)
-            if mt and cur_mnem:
-                itype = mt.group(1)
-                coupled, wr, rd, depbar = _itype_props(itype)
-                ti = TypeInfo(coupled, itype, 0, wr, rd, depbar)
-                prev = out.get(cur_mnem)
-                # prefer the decoupled verdict if forms disagree
-                if prev is None or (prev.coupled and not coupled):
-                    out[cur_mnem] = ti
-                cur_mnem = None  # consume; MIN_WAIT picked up next
-            mw = _MINWAIT_RE.search(ln)
-            if mw and cur_mnem is None:
-                # MIN_WAIT_NEEDED follows INSTRUCTION_TYPE for the class we just
-                # recorded; attach to the most-recent mnemonic if unset.
-                pass
+    for mn, cm in LT.load_arch_model(arch).items():
+        out[mn] = TypeInfo(cm.coupled, cm.itype, cm.min_wait,
+                           cm.arms_wr, cm.arms_rd, cm.depbar)
     return out
+
+
+def latency_model_for(arch: str) -> dict[str, "LT.ClassModel"]:
+    """The cached per-arch class model (mnemonic -> ClassModel)."""
+    return LT.load_arch_model(arch)
 
 
 # =============================================================================
@@ -340,6 +323,16 @@ EDGE_WAW = "WAW"
 EDGE_CTRL = "CTRL"
 
 
+# A fixed-latency RAW edge resolved by a usched stall (rather than a scoreboard).
+# "stall_ctrl" additionally marks the CC/predicate control band -- a hard latency
+# the predicated consumer cannot proceed without (never reduced by hidden work).
+STALL_MECHS = ("stall", "stall_ctrl")
+
+
+def _is_stall_edge(e: "Edge") -> bool:
+    return e.kind == EDGE_RAW and e.mechanism in STALL_MECHS
+
+
 @dataclass
 class Edge:
     src: int          # producer index
@@ -347,7 +340,7 @@ class Edge:
     kind: str         # RAW / WAR / WAW / CTRL
     reg: str          # the shared resource (register / 'CC' / 'flow')
     weight: int       # cycle weight on this directed edge
-    mechanism: str    # 'stall' | 'scoreboard' | 'depbar' | 'order'
+    mechanism: str    # 'stall' | 'stall_ctrl' | 'scoreboard' | 'depbar' | 'order'
 
 
 @dataclass
@@ -373,18 +366,22 @@ class DAG:
         return [e for e in self.edges if e.dst == i]
 
 
-def classify_mnem(mnem: str, type_map: dict[str, TypeInfo]) -> tuple[bool, int]:
-    """(coupled?, result-band) for a mnemonic, using the per-arch type table
-    with a model fallback."""
+def classify_mnem(mnem: str, type_map: dict[str, TypeInfo],
+                  arch: str = "SM89") -> tuple[bool, int]:
+    """(coupled?, result-band) for a mnemonic.
+
+    Coupled-ness and band come from the per-arch ClassModel (exact INSTRUCTION_TYPE
+    + the scalar oracle band).  Falls back to the structural defaults only when a
+    mnemonic is absent from the arch's table."""
     base = _base_mnem(mnem)
-    band = VARLAT_BAND.get(base, 6)
-    ti = type_map.get(base)
-    if ti is not None:
-        return ti.coupled, band
-    # fallback: known variable-latency families are decoupled
+    cm = LT.load_arch_model(arch).get(base)
+    if cm is not None:
+        return cm.coupled, cm.band
+    # fallback for a mnemonic missing from the arch table.
+    band = LT.result_band(base)
     coupled = base not in VARLAT_BAND or base in ("PRMT",)
     if base in ("LDG", "LDS", "LDC", "LDL", "STG", "STS", "STL", "S2R", "S2UR",
-                "CS2R", "ULDC", "MUFU", "F2F", "F2I", "I2F", "POPC", "TEX",
+                "CS2R", "MUFU", "F2F", "F2I", "I2F", "POPC", "TEX",
                 "ATOMG", "LDGSTS", "HMMA", "IMMA"):
         coupled = False
     return coupled, band
@@ -402,7 +399,7 @@ def build_dag(ctrls: list[Ctrl], operands: list[Operands],
     n = min(len(ctrls), len(operands))
     for i in range(n):
         c = ctrls[i]
-        coupled, band = classify_mnem(c.mnem, type_map)
+        coupled, band = classify_mnem(c.mnem, type_map, arch)
         dag.nodes.append(Node(i, c.offset, c.mnem, operands[i], coupled, band))
 
     # Implicit uniform-descriptor dependency: a global memory op (LDG/STG/ATOMG/
@@ -480,41 +477,47 @@ _MEM_CONS = ("STG", "STS", "STL", "ST", "RED", "ATOMG", "ATOMS", "ATOM",
 def raw_weight(prod: Node, cons: Node, arch: str = "SM89") -> tuple[int, str]:
     """RAW edge weight = producer RESULT latency, issue-relative.
 
-    Coupled producer -> a stall: 4 same-pipe, 5 when the consumer levies the
-    inter-pipe / pre-issue penalty (a memory op, or the IMAD multiplier fed from
-    the integer ALU), 13 if the producer writes a CC/predicate.  On Turing
-    (SM75) the producer feeding the final store carries 8 (the wider pre-store
-    issue slot).  Decoupled producer -> a scoreboard (band magnitude reported
-    for critical-path weighting; the mechanism is the scoreboard, not a stall).
+    Table-driven (sass_latency_tables): a coupled producer resolves the RAW with
+    a fixed *issue-relative* stall looked up by (arch-family, producer-pipe,
+    consumer-pipe) from the calibrated coupled-stall matrix -- 4 same-pipe,
+    5 cross-pipe, the AGU pre-issue slot (5; 8 on Turing), the slow-input latch
+    (6 to F2I; 4/6 to MUFU by arch), the CC/predicate control band (13; 12 on
+    Turing).  A decoupled (variable-latency) producer is resolved by a scoreboard
+    -- the band magnitude is reported only for critical-path weighting.
     """
     pbase = _base_mnem(prod.mnem)
-    cbase = _base_mnem(cons.mnem)
-    is_turing = arch.upper() in ("SM75", "SM72", "SM70", "SM60")
-    # The conversion pipe (I2F/F2I/F2F/I2FP) emits a coupled-math stall to a
-    # coupled consumer even though its result is also scoreboard-trackable.  It
-    # is a cross-domain (int<->float) producer, so it levies the +1 inter-pipe
-    # penalty: confirmed I2FP->FFMA = 5 while FFMA->FFMA = 4.
-    if not prod.coupled and cons.coupled and pbase in (
-            "I2F", "F2I", "F2F", "I2FP", "F2FP", "I2I", "I2IP"):
-        return COUPLED_CROSS_PIPE, "stall"
+    model = LT.load_arch_model(arch)
+    ccm = model.get(_base_mnem(cons.mnem))
+
+    # A decoupled producer (memory / MUFU / S2R / and the decoupled conversions
+    # I2F/F2I on the arches where they are scoreboard-tracked) is resolved by a
+    # scoreboard, not a stall.
     if not prod.coupled:
         return prod.band, "scoreboard"
-    if pbase in CC_PRED_PRODUCERS or prod.ops.writes_cc:
-        return COUPLED_CC_PRED, "stall"
-    # A coupled cross-domain conversion producer (e.g. I2FP int->float) levies
-    # the +1 inter-pipe penalty into any consumer: I2FP->FFMA = 5.
-    if pbase in ("I2FP", "F2FP", "I2IP"):
-        return COUPLED_CROSS_PIPE, "stall"
-    # +1 penalty: consumer is a memory op (address/data pre-read), or the IMAD
-    # multiplier fed from a non-IMAD producer.
-    if cbase in _MEM_CONS:
-        # Turing widens the pre-store/pre-load slot to 8 cycles.
-        if is_turing and cbase in ("STG", "STS", "STL", "ST"):
-            return 8, "stall"
-        return COUPLED_CROSS_PIPE, "stall"
-    if cbase == "IMAD" and pbase != "IMAD":
-        return COUPLED_CROSS_PIPE, "stall"
-    return COUPLED_SAME_PIPE, "stall"
+
+    prod_pipe = LT.coupled_pipe(prod.mnem)
+    # The CC/predicate control band applies only when the consumer reads the
+    # producer's predicate result as a *guard*; a SETP whose predicate is read as
+    # a plain predicate-ALU operand is an ordinary cross-pipe edge.  The control
+    # band is a hard latency the predicated consumer cannot proceed without, so
+    # the mechanism is marked "stall_ctrl" (the fixpoint emits it in full, never
+    # reduced by intervening independent work).
+    if prod.ops.writes_cc and _consumer_reads_guard(prod, cons):
+        prod_pipe = LT.PIPE_CC
+        cons_pipe = LT.consumer_pipe(cons.mnem, ccm)
+        return LT.coupled_stall(arch, prod_pipe, cons_pipe), "stall_ctrl"
+
+    cons_pipe = LT.consumer_pipe(cons.mnem, ccm)
+    stall = LT.coupled_stall(arch, prod_pipe, cons_pipe)
+    return stall, "stall"
+
+
+def _consumer_reads_guard(prod: Node, cons: Node) -> bool:
+    """True if the consumer reads the producer's predicate/CC result as a guard
+    (the control-band dependency), vs. as an ordinary register operand."""
+    pred_writes = {r for r in prod.ops.writes
+                   if r.startswith("P") or r.startswith("UP")}
+    return bool(pred_writes & cons.ops.reads)
 
 
 def war_weight() -> int:
@@ -684,8 +687,7 @@ def attribute_hazards(ctrls: list[Ctrl], operands: list[Operands],
                                            f"SB{sb} armed by #{p} {ctrls[p].mnem}"))
         # coupled stall -> nearest earlier RAW producer (the dependent edge)
         if c.stall and c.dst_wr == 7 and not c.wait_sbs:
-            raws = [e for e in dag.in_edges(i) if e.kind == EDGE_RAW
-                    and e.mechanism == "stall"]
+            raws = [e for e in dag.in_edges(i) if _is_stall_edge(e)]
             if raws:
                 e = max(raws, key=lambda e: e.src)
                 attribs.append(Attribution(i, e.src, EDGE_RAW, e.reg, "stall",
@@ -772,25 +774,28 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
     # path) serializes rather than hides, so its cycles must NOT be subtracted.
     # Counting all intervening cycles as hidden is unsound and under-stalls
     # address-producing chains (caught by dynamic validation).
-    raw_preds: list[set[int]] = [set() for _ in range(n)]
+    # Per-producer stall edges (dst, weight, is_ctrl).
+    out_stall: list[list[tuple[int, int, bool]]] = [[] for _ in range(n)]
     for e in dag.edges:
-        if e.kind == EDGE_RAW and e.mechanism == "stall":
-            raw_preds[e.dst].add(e.src)
-    ancestors: list[set[int]] = [set() for _ in range(n)]
-    for i in range(n):
-        acc: set[int] = set()
-        for p in raw_preds[i]:
-            acc.add(p)
-            acc |= ancestors[p]
-        ancestors[i] = acc
+        if _is_stall_edge(e):
+            out_stall[e.src].append((e.dst, e.weight, e.mechanism == "stall_ctrl"))
 
-    # ---- stall fixpoint -------------------------------------------------------
-    # The stall on a producer is its RAW weight reduced only by the cycles that
-    # *independent* (non-ancestor) instructions scheduled between it and its
-    # dependent consumer absorb.  Iterate to a fixpoint (monotone, converges in
-    # a few passes, bounded by chain length).
+    # ---- stall fixpoint (difference constraints) ------------------------------
+    # Every fixed-latency RAW edge P->C imposes the hazard constraint
+    #     issue_cycle[C] - issue_cycle[P] >= weight
+    # i.e. the consumer must not issue before the producer's result exists.  The
+    # issue cycle of every instruction is the running sum of max(stall,1) over the
+    # stream, so the cycles of *all* instructions scheduled between P and C
+    # (whether independent or themselves dependent) genuinely delay C's issue and
+    # therefore reduce how much stall P must carry on its own.  We solve the
+    # constraint system by raising producer stalls to a fixpoint: monotone,
+    # converges in a few passes (bounded by the longest dependent chain), and at
+    # the fixpoint every edge's constraint holds simultaneously -- which is
+    # exactly the hazard-safety guarantee (proven on the GPU by --verify-dyn).
+    # The CC/predicate control band is a hard producer latency emitted in full
+    # (it is not an inter-issue gap the consumer can absorb by waiting).
     stalls = [_floor(i) for i in range(n)]
-    for _ in range(8):
+    for _ in range(12):
         issue_cycle = [0] * n
         c = 0
         for i in range(n):
@@ -799,24 +804,15 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
         changed = False
         for i in range(n):
             req = _floor(i)
-            for e in dag.out_edges(i):
-                if e.kind == EDGE_RAW and e.mechanism == "stall":
-                    # The CC/predicate control band (13) is a hard latency the
-                    # predicated consumer cannot proceed without -- it is not
-                    # hidden by independent work, so emit it in full.
-                    if e.weight == COUPLED_CC_PRED:
-                        req = max(req, e.weight)
-                        continue
-                    # hidden = cycles of independent instructions strictly
-                    # between producer i and consumer e.dst (exclude i itself,
-                    # the consumer, and any ancestor of the consumer).
-                    anc = ancestors[e.dst]
-                    hidden = 0
-                    for k in range(i + 1, e.dst):
-                        if k not in anc:
-                            hidden += max(stalls[k], 1)
-                    residual = e.weight - hidden
-                    req = max(req, min(residual, e.weight))
+            for dst, weight, is_ctrl in out_stall[i]:
+                if is_ctrl:
+                    req = max(req, weight)
+                    continue
+                # cycles already accumulated by instructions strictly between the
+                # producer i and the consumer dst (they occupy real issue slots).
+                between = issue_cycle[dst] - issue_cycle[i] - max(stalls[i], 1)
+                residual = weight - between
+                req = max(req, min(residual, weight))
             req = min(max(req, _floor(i)), MAX_STALL)
             if req != stalls[i]:
                 stalls[i] = req
@@ -854,17 +850,17 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None) -> ComposeResult:
         # ---- producer side: fixed-latency RAW stall (from fixpoint) --------
         stall = stalls[i]
         for e in dag.out_edges(i):
-            if e.kind == EDGE_RAW and e.mechanism == "stall":
-                kind = ("same-pipe" if e.weight == COUPLED_SAME_PIPE
+            if _is_stall_edge(e):
+                kind = ("CC/pred control band" if e.mechanism == "stall_ctrl"
+                        else "same-pipe" if e.weight == COUPLED_SAME_PIPE
                         else "cross-pipe" if e.weight == COUPLED_CROSS_PIPE
-                        else "CC/pred control band")
-                anc = ancestors[e.dst]
-                hidden = sum(max(stalls[k], 1) for k in range(i + 1, e.dst)
-                             if k not in anc)
+                        else f"pipe stall {e.weight}")
+                between = (issue_cycle[e.dst] - issue_cycle[i]
+                           - max(stalls[i], 1))
                 reasons.append(f"stall={stall}: RAW {e.reg} to #{e.dst} "
                                f"{dag.nodes[e.dst].mnem} (weight {e.weight} "
                                f"{kind}"
-                               f"{f', {hidden} hidden by independent work' if hidden else ''})")
+                               f"{f', {between} cyc absorbed by intervening issue' if between and e.mechanism != 'stall_ctrl' else ''})")
 
         # ---- producer side: variable-latency -> arm a scoreboard -----------
         dst_wr = 7
@@ -1019,8 +1015,7 @@ def round_trip(cubin: str) -> tuple[int, int, list[Mismatch], dict]:
 
 
 def _feeds_coupled_raw(dag: DAG, i: int) -> bool:
-    return any(e.kind == EDGE_RAW and e.mechanism == "stall"
-               for e in dag.out_edges(i))
+    return any(_is_stall_edge(e) for e in dag.out_edges(i))
 
 
 # =============================================================================
@@ -1282,6 +1277,19 @@ CORPUS_PTX = {
 }
 
 
+def _ptx_version_for(smnum: str) -> str:
+    """Minimum PTX ISA version that accepts a given SM target.
+
+    sm_100/sm_103 need PTX 8.6, sm_110/sm_120/sm_121 need 8.7; older targets
+    accept 8.3.  (ptxas rejects a target newer than the declared .version.)"""
+    n = int(re.match(r"\d+", smnum).group())
+    if n >= 110:
+        return "8.7"
+    if n >= 100:
+        return "8.6"
+    return "8.3"
+
+
 def build_corpus(workdir: Path, arches: list[str]) -> list[tuple[str, str, str]]:
     """Compile every probe for every arch.  Returns [(arch, name, cubin_path)]."""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -1289,8 +1297,10 @@ def build_corpus(workdir: Path, arches: list[str]) -> list[tuple[str, str, str]]
     for arch in arches:
         smnum = arch.lower().replace("sm", "").lstrip("_")
         smflag = f"sm_{smnum}"
+        ver = _ptx_version_for(smnum)
         for name, tpl in CORPUS_PTX.items():
-            ptx = tpl.replace("sm_XX", smflag).strip()
+            ptx = tpl.replace("sm_XX", smflag).replace(
+                ".version 8.3", f".version {ver}").strip()
             ptx_path = workdir / f"{name}_{smnum}.ptx"
             cubin_path = workdir / f"{name}_{smnum}.cubin"
             ptx_path.write_text(ptx)
