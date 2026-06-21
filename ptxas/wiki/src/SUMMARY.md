@@ -97,6 +97,9 @@
 - [Overview](./sass-isa/overview.md)
 - [Instruction Encoding (128-bit)](./sass-isa/instruction-encoding.md)
 - [Execution Model — Pipelines & Scheduling](./sass-isa/execution-model.md)
+- [Control Flow, Divergence & Convergence](./sass-isa/control-flow.md)
+- [Memory Hierarchy & Ordering](./sass-isa/memory-model.md)
+- [Occupancy, Resources & Work Distribution](./sass-isa/occupancy.md)
 - [Legality & Capabilities](./sass-isa/legality-and-capabilities.md)
 - [Architecture Evolution (SM75→SM121)](./sass-isa/architecture-evolution.md)
 

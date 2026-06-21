@@ -101,7 +101,7 @@ decoupled issue, scoreboard signalling, the wait mask — is the
 | **Uniform** | `UR0..UR62` + `URZ`(63) | 6-bit, in the **low 6 bits of a GPR byte-slot** (top 2 bits select form) |
 | **Predicate** | `P0..P6` + `PT`(7) | 3-bit |
 | **Uniform predicate** | `UP0..UP6` + `UPT`(7) | 3-bit |
-| **Convergence barrier** | `B0..B63` | 4-bit `barReg` (in `BSSY`/`BMOV`) |
+| **Convergence barrier** | `B0..B15` | 4-bit `barReg` (in `BSSY`/`BMOV`); value 15 = no barrier present |
 | **Special (S2R)** | `SR0..SR255` (named: `SR_LANEID`, `SR_CLOCK`, `SR_TID`, …) | 8-bit `SRa`@`79:72` |
 
 ## Operand ports (SM90 reference)
