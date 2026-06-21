@@ -1,6 +1,6 @@
 # Declaration Parser
 
-C++ declaration parsing is the most ambiguity-ridden phase of front-end compilation. A statement like `T(x);` is simultaneously a valid function-style cast (expression) and a variable declaration with redundant parentheses. EDG 6.6 in cudafe++ resolves this by splitting the work into two stages: a prescanning/disambiguation phase (`disambig.c`) that probes ahead in the token stream to classify ambiguous constructs, followed by committed parsing across four tightly-coupled source files — `decl_spec.c` (declaration specifiers), `declarator.c` (declarator syntax), `decls.c` (symbol table insertion and semantic validation), and `decl_inits.c` (initializer processing). CUDA adds a fifth axis of complexity: every declaration may carry execution space attributes (`__device__`, `__host__`, `__global__`) and memory space qualifiers (`__shared__`, `__constant__`, `__managed__`), which are parsed as attribute category 4 and must be separated from standard C++ attributes before semantic analysis.
+C++ declaration parsing is the most ambiguity-ridden phase of front-end compilation. A statement like `T(x);` is simultaneously a valid function-style cast (expression) and a variable declaration with redundant parentheses. EDG 6.6 in cudafe++ resolves this by splitting the work into two stages: a prescanning/disambiguation phase that probes ahead in the token stream to classify ambiguous constructs, followed by committed parsing across four tightly-coupled function clusters — declaration specifiers, declarator syntax, symbol-table insertion and semantic validation, and initializer processing. CUDA adds a fifth axis of complexity: every declaration may carry execution space attributes (`__device__`, `__host__`, `__global__`) and memory space qualifiers (`__shared__`, `__constant__`, `__managed__`), which are parsed as attribute category 4 and must be separated from standard C++ attributes before semantic analysis.
 
 The core pipeline processes approximately 22,000 lines of decompiled logic across six major functions, each exceeding 1,000 lines. The design is a classic recursive-descent parser with significant state carried in stack-allocated structures (128-byte `decl_spec` accumulators packed as `__m128i` arrays) and global scope chain state (784-byte entries in the scope table at `qword_126C5E8`).
 
@@ -8,7 +8,7 @@ The core pipeline processes approximately 22,000 lines of decompiled logic acros
 
 | Property | Value |
 |---|---|
-| Source files | `decl_spec.c`, `declarator.c`, `decls.c`, `decl_inits.c`, `disambig.c` |
+| Subsystem | Declaration parsing — specifiers, declarators, decls, initializers, disambiguation (EDG 6.6) |
 | Address range | `0x4A0000`--`0x4F8000` (~360 KB of code, ~530 functions) |
 | Central dispatcher | `sub_4ACF80` (`decl_specifiers`, 4,761 lines) |
 | Declarator entry | `sub_4B7BC0` (`declarator`, 284 lines) |

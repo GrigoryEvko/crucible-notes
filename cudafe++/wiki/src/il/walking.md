@@ -1,6 +1,6 @@
 # IL Tree Walking
 
-The IL tree walking framework is the backbone of every operation that must visit the complete IL graph: debug display, device code marking, IL serialization, and IL copying for template instantiation. The framework lives in `il_walk.c` (with entry-kind dispatch logic auto-generated from `walk_entry.h`). It provides a generic, callback-driven traversal engine consisting of two core functions: `walk_file_scope_il` (sub_60E4F0), which orchestrates the top-level iteration over all global entry-kind lists, and `walk_entry_and_subtree` (sub_604170), which recursively descends into a single entry's children according to the IL schema. Five global function-pointer slots allow each client to customize the walk's behavior without modifying the walker itself.
+The IL tree walking framework is the backbone of every operation that must visit the complete IL graph: debug display, device code marking, IL serialization, and IL copying for template instantiation. It is the IL-walking subsystem of the EDG 6.6 frontend, with entry-kind dispatch logic auto-generated from a `walk_entry.h` header. It provides a generic, callback-driven traversal engine consisting of two core functions: `walk_file_scope_il` (sub_60E4F0), which orchestrates the top-level iteration over all global entry-kind lists, and `walk_entry_and_subtree` (sub_604170), which recursively descends into a single entry's children according to the IL schema. Five global function-pointer slots allow each client to customize the walk's behavior without modifying the walker itself.
 
 The framework follows a strict separation of traversal and action. The walker knows how to navigate the IL graph; the callbacks decide what to do at each node. This design enables the same walker to serve four fundamentally different purposes: pretty-printing, transitive-closure marking, pointer remapping during copy, and entry filtering during serialization.
 
@@ -8,9 +8,7 @@ The framework follows a strict separation of traversal and action. The walker kn
 
 | Property | Value |
 |---|---|
-| Source file | `il_walk.c` (EDG 6.6) |
-| Header (auto-generated dispatch) | `walk_entry.h` |
-| Assert path | `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/il_walk.c` |
+| Subsystem | IL walking (EDG 6.6) |
 | Top-level file-scope walker | `sub_60E4F0` (`walk_file_scope_il`), 2043 lines |
 | Recursive entry walker | `sub_604170` (`walk_entry_and_subtree`), 7763 lines / 42KB |
 | Routine-scope walker | `sub_610200` (`walk_routine_scope_il`), 108 lines |
@@ -656,7 +654,7 @@ walk_file_scope_il(callbacks...)
 
 ## Function Map
 
-| Address | Identity | Confidence | Lines | EDG Source |
+| Address | Identity | Confidence | Lines | Assert-string label |
 |---|---|---|---|---|
 | `sub_60E4F0` | `walk_file_scope_il` | 99% | 2043 | `il_walk.c:270` |
 | `sub_604170` | `walk_entry_and_subtree` | 99% | 7763 | `il_walk.c` / `walk_entry.h` |

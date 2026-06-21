@@ -10,7 +10,7 @@
 | Binary address | `0x7A40A0` |
 | Binary size | 1267 bytes |
 | EDG source | `trans_unit.c` |
-| Confidence | DEFINITE (source path and function name embedded at lines 696, 725, 556) |
+| Confidence | DEFINITE (path-string and function name embedded at lines 696, 725, 556) |
 | Signature | `int process_translation_unit(char *filename, int is_recompilation, void *module_info)` |
 | Direct callees | 27 |
 | Debug trace entry | `"Processing translation unit %s\n"` |
@@ -727,7 +727,7 @@ The function contains three assertion checks, each producing a fatal diagnostic 
 | `sub_7047C0` | `close_file_scope` | `scope_stk.c` | Pop file scope, activate using-directives |
 | `sub_7A2FE0` | `process_verification_list` | `trans_corresp.c` | ODR verification for multi-TU (RDC) |
 | `sub_76C910` | `namespace_cleanup` | `cp_gen_be.c` | C++ namespace state cleanup |
-| `sub_4F2930` | `assertion_failure` | `error.c` | Fatal assertion handler (prints source path + line) |
+| `sub_4F2930` | `assertion_failure` | `error.c` | Fatal assertion handler (prints path-string + line) |
 
 ## Cross-References
 

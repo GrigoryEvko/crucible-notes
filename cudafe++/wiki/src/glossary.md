@@ -1,8 +1,8 @@
 # Glossary
 
-This glossary defines the terms used throughout the cudafe++ wiki. It collects the vocabulary the analysis inherits from three distinct sources: the IDA Pro / Hex-Rays toolchain that produced the raw evidence, the EDG C++ Front End 6.6 source tree the binary was built from, and the CUDA-specific layer NVIDIA bolted on top. Entries are grouped by domain and listed alphabetically within each group. Cross-links point to the wiki pages that develop each concept in depth.
+This glossary defines the terms used throughout the cudafe++ wiki. It collects the vocabulary the analysis inherits from three distinct sources: the IDA Pro / Hex-Rays toolchain that produced the raw evidence, the EDG C++ Front End 6.6 the binary was built from, and the CUDA-specific layer NVIDIA bolted on top. Entries are grouped by domain and listed alphabetically within each group. Cross-links point to the wiki pages that develop each concept in depth.
 
-Operation names, struct field offsets, and IDA anchor identifiers appear in backticks. Where a term has a confidence implication (CONFIRMED, HIGH, MEDIUM, LOW), the relevant evidence chain is noted; otherwise every entry is treated as established documentation. See the [Methodology](./methodology.md) page for the meaning of the confidence tags and the source-attribution chain.
+Operation names, struct field offsets, and IDA anchor identifiers appear in backticks. Where a term has a confidence implication (CONFIRMED, HIGH, MEDIUM, LOW), the relevant evidence chain is noted; otherwise every entry is treated as established documentation. See the [Methodology](./methodology.md) page for the meaning of the confidence tags and the module-attribution chain.
 
 ## A. Reverse-Engineering Anchors
 
@@ -24,13 +24,13 @@ These terms refer to artifacts of IDA Pro's auto-analysis and the conventions th
 
 ## B. EDG Frontend Core
 
-These terms are inherited from the Edison Design Group C++ Front End 6.6 source tree the binary was built from. They name the data structures, traversal mechanisms, and lifecycle phases of the parser.
+These terms are inherited from the Edison Design Group C++ Front End 6.6 the binary was built from. They name the data structures, traversal mechanisms, and lifecycle phases of the parser.
 
 | Term | Meaning |
 | --- | --- |
 | `ck_*` | The `constant_kind` enum prefix. 16 values that classify constant expressions stored in the IL (integer, float, complex, character, null pointer, etc.). |
 | `dik_*` | The `dynamic_init_kind` enum prefix. 9 values classifying dynamic-initialization mechanisms emitted for global objects with non-trivial constructors. |
-| EDG | Edison Design Group, the company licensing the C++ Front End that cudafe++ is built on. The binary was compiled from EDG version 6.6, as confirmed by the build path `/dvs/p4/.../EDG_6.6/src/` embedded in every assertion string. See [EDG 6.6 Overview](./edg/overview.md). |
+| EDG | Edison Design Group, the company licensing the C++ Front End that cudafe++ is built on. The binary was compiled from EDG version 6.6, as confirmed by the `EDG_6.6` tag in the assertion path-strings embedded in every assertion. See [EDG 6.6 Overview](./edg/overview.md). |
 | EDG callbacks | The five-slot callback table consumed by every IL walker: `enter_node`, `exit_node`, `enter_scope`, `exit_scope`, and `descend_children`. Each walk-driven pass (keep-in-IL, display, constexpr, name lookup, code generation) registers a different set of callbacks against the same walker infrastructure. See [IL Tree Walking](./il/walking.md). |
 | `enk_*` | The `expression_node_kind` enum prefix. 36 values that discriminate IL expression nodes (binary op, unary op, function call, member access, cast, etc.). |
 | Entity | A named or anonymous declaration node — variable, routine, type, namespace, template parameter — that lives in the IL. The execution-space bitfield at offset `+182` lives on the entity node, as does its scope back-pointer and template metadata. Wiki prose uses "entity node" and the bare "node" (in context) interchangeably; both refer to this record. See [Entity Node Layout](./structs/entity-node.md). |
@@ -51,8 +51,8 @@ These terms are inherited from the Edison Design Group C++ Front End 6.6 source 
 | Translation unit (TU) | One `.cu` source file as seen by the frontend, plus all transitively included headers. The TU descriptor is a 424-byte struct; `reset_tu_state` (`sub_7A4860`) zeros per-TU globals between compilations. See [Translation Unit Descriptor](./structs/translation-unit.md). |
 | Type kind (`type_kind`) | See `tk_*`. The 1-byte tag on a [Type Node](./structs/type-node.md) discriminating fundamental, derived, and compound types. |
 | Wrapup | EDG's term for the 5-pass IL finalization that follows the parse, implemented in `fe_wrapup.c`. Each pass walks the IL applying a different transformation — template instantiation completion, dependent-name resolution, default-argument substitution, vtable layout, and final attribute propagation — before backend emission begins. See [Frontend Wrapup](./pipeline/fe-wrapup.md). |
-| `cp_gen_be.c` | The EDG source file holding the backend code-generation dispatcher and its per-kind emitters. Every `gen_*` routine — `gen_routine_decl`, `gen_template`, `gen_lambda` — lives here. Identified via the embedded assertion path strings. See [Backend Code Generation](./pipeline/backend.md). |
-| `nv_transforms.c` | The single source file inside the EDG tree that holds the bulk of NVIDIA's CUDA-specific transformations. It is called from `class_decl.c`, `cp_gen_be.c`, and `statements.c` but does not itself call back into the EDG parser, producing a clean lateral extension boundary. See [Methodology — Call Graph Analysis](./methodology.md#call-graph-analysis). |
+| `cp_gen_be.c` | The EDG module holding the backend code-generation dispatcher and its per-kind emitters. Every `gen_*` routine — `gen_routine_decl`, `gen_template`, `gen_lambda` — lives here. Identified via the embedded assertion path-strings. See [Backend Code Generation](./pipeline/backend.md). |
+| `nv_transforms.c` | The single NVIDIA-authored EDG module that holds the bulk of NVIDIA's CUDA-specific transformations. It is called from `class_decl.c`, `cp_gen_be.c`, and `statements.c` but does not itself call back into the EDG parser, producing a clean lateral extension boundary. See [Methodology — Call Graph Analysis](./methodology.md#call-graph-analysis). |
 
 ## C. CUDA / NVIDIA Additions
 
@@ -103,4 +103,4 @@ These terms label recurring shapes in the Hex-Rays pseudocode that the wiki cite
 
 ## Reading Notes
 
-Source file names appear in backticks: `attribute.c`, `il.c`, `fe_wrapup.c`. Function names are written with their address in the same form Hex-Rays produces: `gen_routine_decl` (`sub_47BFD0`). Struct field offsets are written as bare hex offsets when the wiki cites them in pseudocode (e.g., `entity + 182` for the execution-space bitfield), and otherwise are described by their reconstructed names. Cross-links into the wiki always point at the most specific page that develops the term; the [Methodology](./methodology.md) page is the authoritative source for the evidence chain behind every claim.
+Module names appear in backticks: `attribute.c`, `il.c`, `fe_wrapup.c`. Function names are written with their address in the same form Hex-Rays produces: `gen_routine_decl` (`sub_47BFD0`). Struct field offsets are written as bare hex offsets when the wiki cites them in pseudocode (e.g., `entity + 182` for the execution-space bitfield), and otherwise are described by their reconstructed names. Cross-links into the wiki always point at the most specific page that develops the term; the [Methodology](./methodology.md) page is the authoritative source for the evidence chain behind every claim.

@@ -1,6 +1,6 @@
 # IL Display
 
-The IL display subsystem produces a human-readable text dump of the entire Intermediate Language graph. It is compiled from EDG's `il_to_str.c` (source path `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/il_to_str.c`, confirmed by an assertion at line 6175 in `form_float_constant`). The display code occupies address range `0x5EB290`--`0x603A00` in the binary (roughly 90KB), with the main dispatch functions at `0x5EC600`--`0x5F7FD0` and formatting helpers continuing through `0x6039E0`.
+The IL display subsystem produces a human-readable text dump of the entire Intermediate Language graph. It is the IL-to-string subsystem of the EDG 6.6 frontend; an embedded assertion string anchored at line 6175 inside `form_float_constant` identifies the cluster. The display code occupies address range `0x5EB290`--`0x603A00` in the binary (roughly 90KB), with the main dispatch functions at `0x5EC600`--`0x5F7FD0` and formatting helpers continuing through `0x6039E0`.
 
 Activation is via the `il_display` CLI flag (flag index 10 in the boolean flag table), which triggers `display_il_file` after the frontend completes parsing. The output goes to stdout through an indirectable callback mechanism (`qword_126F980`). When active, every IL entry in every memory region is printed with labeled fields, 25-column-aligned formatting, and scope/address annotations.
 
@@ -8,7 +8,7 @@ Activation is via the `il_display` CLI flag (flag index 10 in the boolean flag t
 
 | Property | Value |
 |---|---|
-| Source file | `il_to_str.c` (EDG 6.6) |
+| Subsystem | IL-to-string display (EDG 6.6) |
 | Address range | `0x5EB290`--`0x6039E0` |
 | Top-level entry point | `sub_5F7DF0` (`display_il_file`), 56 lines |
 | Header + file-scope | `sub_5F76B0` (`display_il_header`), 174 lines |
@@ -487,7 +487,7 @@ final_suspend_call, unhandled_exception_call, get_return_object_call,
 new_routine, delete_routine, ...
 ```
 
-The field name `"paramter_copies"` (missing the 'e' in "parameter") is a typo preserved verbatim from the EDG source. This confirms the display strings originate from Edison Design Group's own `il_to_str.c` — a reimplementation would spell it correctly.
+The field name `"paramter_copies"` (missing the 'e' in "parameter") is a typo preserved verbatim from the EDG 6.6 frontend. This confirms the display strings originate from Edison Design Group's own code — a reimplementation would spell it correctly.
 
 ### scope (Kind 23)
 

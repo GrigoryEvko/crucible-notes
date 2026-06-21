@@ -1,6 +1,6 @@
 # The Preprocessor
 
-The preprocessor in cudafe++ is EDG 6.6's `preproc.c` — the directive-recognition layer that sits between the lexer's raw token stream and every higher-level subsystem. It implements the C and C++ preprocessor: `#include`, `#define`, `#undef`, `#if`/`#ifdef`/`#ifndef`, `#elif`/`#elifdef`/`#elifndef`/`#else`/`#endif`, `#line`, `#error`, `#warning`, `#pragma`, `#ident`, `#assert`, `#unassert`, `#include_next`, and the C++23 conditional extensions. The subsystem occupies approximately `0x6F9310`--`0x6FE130` in the binary (roughly 20 KB of code in 36 functions), with the master dispatcher `pp_directive` at `0x6FC940` consuming a single 5,047-byte function. Source attribution is anchored by an assertion at `preproc.c:4834` (`"pp_directive: bad pp directive code"`) inside `pp_directive` itself, by `preproc.c:2964` inside `look_up_pragma_id`, and by `preproc.c:3521` inside `process_gnu_system_header_pragma`.
+The preprocessor in cudafe++ is the EDG 6.6 directive-recognition layer that sits between the lexer's raw token stream and every higher-level subsystem. It implements the C and C++ preprocessor: `#include`, `#define`, `#undef`, `#if`/`#ifdef`/`#ifndef`, `#elif`/`#elifdef`/`#elifndef`/`#else`/`#endif`, `#line`, `#error`, `#warning`, `#pragma`, `#ident`, `#assert`, `#unassert`, `#include_next`, and the C++23 conditional extensions. The subsystem occupies approximately `0x6F9310`--`0x6FE130` in the binary (roughly 20 KB of code in 36 functions), with the master dispatcher `pp_directive` at `0x6FC940` consuming a single 5,047-byte function. The cluster is delimited by embedded assertion strings carrying `preproc.c:4834` (`"pp_directive: bad pp directive code"`) inside `pp_directive` itself, `preproc.c:2964` inside `look_up_pragma_id`, and `preproc.c:3521` inside `process_gnu_system_header_pragma`.
 
 Unlike GCC's libcpp or Clang's `Lex`, EDG's preprocessor is not a separate phase. It runs *interleaved* with the lexer: the lexer returns a token, the parser/dispatcher sees it is `#` (token kind 1), and synchronously enters `pp_directive` which consumes additional tokens until end-of-line, then control returns to the caller as if a single token had been produced. There is no token buffer, no PP-token AST — the directive's effect (a macro definition, a conditional branch decision, an `#include` push) is applied to mutable preprocessor state and the parser continues. Macros are expanded by the lexer itself (`macro.c`, `sub_676860`'s cache layer) rather than by the directive handler.
 
@@ -8,7 +8,7 @@ Unlike GCC's libcpp or Clang's `Lex`, EDG's preprocessor is not a separate phase
 
 | Property | Value |
 |---|---|
-| Source file | `preproc.c` (EDG 6.6) |
+| Subsystem | Preprocessor (EDG 6.6) |
 | Address range | `0x6F9310`--`0x6FE130` |
 | Function count | ~36 |
 | Master dispatcher | `pp_directive` (`sub_6FC940`, 5,047 bytes, 269 basic blocks, 53 callees) |

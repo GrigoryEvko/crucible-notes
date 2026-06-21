@@ -1,18 +1,12 @@
 # EDG 6.6 Overview
 
-cudafe++ is built on top of Edison Design Group's (EDG) commercial C++ frontend, version 6.6. EDG provides the complete C++ language implementation — lexer, preprocessor, parser, semantic analysis, type system, template instantiation, overload resolution, constant evaluation, and Itanium ABI name mangling. NVIDIA licenses this frontend and compiles it from source with CUDA-specific modifications injected at three distinct integration levels: a dedicated NVIDIA source file (`nv_transforms.c`), surgical modifications to EDG source files that call into NVIDIA headers, and a large layer of CUDA property-query leaf functions that permeate every compilation phase.
+cudafe++ is built on top of Edison Design Group's (EDG) commercial C++ frontend, version 6.6. EDG provides the complete C++ language implementation — lexer, preprocessor, parser, semantic analysis, type system, template instantiation, overload resolution, constant evaluation, and Itanium ABI name mangling. CUDA-specific behavior is injected at three distinct integration levels visible in the binary: a dedicated block of NVIDIA-authored transform functions, surgical hooks in the EDG frontend that call into them, and a large layer of CUDA property-query leaf functions that permeate every compilation phase.
 
-The build path embedded in the binary is:
+## Translation-Unit Map
 
-```text
-/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/
-```
+The binary's `.rodata` retains debug strings naming 52 `.c` compilation units and 13 `.h` headers. Together these account for the entire EDG frontend plus NVIDIA's single dedicated module. The names below are the labels these strings carry and are used throughout the wiki to identify each subsystem by its function clusters and address ranges.
 
-## Source Tree
-
-The binary contains debug path references to 52 `.c` files and 13 `.h` files. Together these constitute the entire EDG frontend plus NVIDIA's single dedicated source file.
-
-### Source Files (.c)
+### Compilation Units (.c)
 
 | # | File | Pipeline role |
 |---|---|---|
@@ -93,8 +87,8 @@ The binary contains approximately 6,300 identifiable functions in the EDG portio
 
 | Category | Functions | % of binary | Description |
 |---|---|---|---|
-| Attributed to source files | ~2,200 | ~35% | Matched to one of the 52 `.c` files via assert strings, source path references, or address-range mapping |
-| Unmapped EDG functions | ~2,900 | ~46% | EDG code without source file attribution (inlined, optimized, or from headers) |
+| Attributed to a compilation unit | ~2,200 | ~35% | Matched to one of the 52 `.c` labels via assert strings or address-range mapping |
+| Unmapped EDG functions | ~2,900 | ~46% | EDG code with no recoverable unit label (inlined, optimized, or from headers) |
 | C++ runtime / ABI | ~1,200 | ~19% | Itanium ABI runtime, exception handling, `std::` library, operator new/delete |
 
 ### Top 10 Source Files by Function Count
@@ -194,7 +188,7 @@ A single dedicated NVIDIA source file at address range `0x6BAE70`--`0x6BE4A0`, c
 | `nv_emit_host_reference_array` | `0x6BCF80` | Generate `.nvHRKE`/`.nvHRDI`/etc. ELF section arrays |
 | `nv_get_full_nv_static_prefix` | `0x6BE300` | Build scoped name + register entity in host ref arrays |
 
-The companion header `nv_transforms.h` declares the API surface that EDG source files call into. This is the primary NVIDIA integration point — EDG code never calls `nv_transforms.c` functions directly; it calls through the header's declarations.
+The companion header `nv_transforms.h` declares the API surface that the EDG frontend units call into. This is the primary NVIDIA integration point — EDG code never calls the `nv_transforms` functions directly; it calls through the header's declarations.
 
 Key data structures managed by `nv_transforms.c`:
 
@@ -210,7 +204,7 @@ Key data structures managed by `nv_transforms.c`:
 
 ### Level 2: NVIDIA-Modified EDG Files
 
-Three EDG source files contain direct calls into `nv_transforms.h` functions, making them the "NVIDIA-aware" EDG files:
+Three EDG frontend units contain direct calls into `nv_transforms.h` functions, making them the "NVIDIA-aware" EDG units:
 
 **`cp_gen_be.c`** — The backend code generator. When it encounters a type named `__nv_lambda_preheader_injection` during source sequence walking, it calls `nv_emit_lambda_preamble` (`sub_6BCC20`) to inject the entire `__nv_*` template library. It also calls NVIDIA functions for host reference array emission, managed variable boilerplate, and device stub generation.
 

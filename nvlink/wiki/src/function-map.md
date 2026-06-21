@@ -380,7 +380,7 @@ The "MercExpand" instruction expansion pass — NVIDIA's custom ISel/lowering fo
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
-| `0x49B1A0` | `sub_49B1A0` | knobs_file_read_parse | 59KB | HIGH | Reads knobsfile, parses "[knobs]" section header, processes key=value pairs. Source: `generic_knobs_impl.h`. |
+| `0x49B1A0` | `sub_49B1A0` | knobs_file_read_parse | 59KB | HIGH | Reads knobsfile, parses "[knobs]" section header, processes key=value pairs. |
 | `0x49D8A0` | `sub_49D8A0` | parse_knob_value | 24KB | HIGH | Parses single knob value: integer, integer_range, integer_list, double, float, opcode, when-string, value_pair_list. |
 | `0x49A0C0` | `sub_49A0C0` | knob_decode_and_apply | 14KB | MEDIUM | Decodes and applies knobs at pipeline stages: "After Decode", "After Expansion", "After WAR post-expansion", "After Opex". |
 | `0x498FE0` | `sub_498FE0` | knob_inject_string | 8.7KB | HIGH | Injects string value into knob system. "Invalid knob specified (%s)". |

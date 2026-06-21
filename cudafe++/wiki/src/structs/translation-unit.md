@@ -545,7 +545,7 @@ The `print_trans_unit_statistics` function (`sub_7A45A0`) reports the allocation
 
 ## Assertions
 
-The TU system contains 8 assertion sites (calls to `sub_4F2930` with source path `trans_unit.c`):
+The TU system contains 8 assertion sites (calls to `sub_4F2930` with assert-string label `trans_unit.c`):
 
 | Line | Function | Condition | Meaning |
 |---|---|---|---|

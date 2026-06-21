@@ -1,6 +1,6 @@
 # Symbol Reference & Name Hiding
 
-The symbol-reference subsystem in cudafe++ is EDG 6.6's `symbol_ref.c` — the central layer that fires every time a symbol is **named** at use-site rather than at declaration-site. It is invoked from the expression parser, the declaration parser, the template-instantiation engine, and the constant-expression interpreter; it answers four interleaved questions for each reference: *(1)* does this name shadow another visible name (name-hiding diagnostics), *(2)* is the entity reachable from the current execution space (the CUDA `__host__`/`__device__` cross-space check), *(3)* is the entity deprecated, deleted, or unavailable, and *(4)* should this use be appended to the cross-reference log (`-Xptxas --gen-xrefs` and friends). The subsystem occupies approximately `0x726F20`–`0x72D375` in the binary (about 21 KB of code across 17 functions plus two 29-byte assert trampolines at `0x408064`/`0x408081`). Source attribution is unambiguous: every non-trivial function in the file carries an assertion citing `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/symbol_ref.c`, and most also leak the original C symbol name through the assertion's third argument.
+The symbol-reference subsystem in cudafe++ is the EDG 6.6 layer that fires every time a symbol is **named** at use-site rather than at declaration-site. It is invoked from the expression parser, the declaration parser, the template-instantiation engine, and the constant-expression interpreter; it answers four interleaved questions for each reference: *(1)* does this name shadow another visible name (name-hiding diagnostics), *(2)* is the entity reachable from the current execution space (the CUDA `__host__`/`__device__` cross-space check), *(3)* is the entity deprecated, deleted, or unavailable, and *(4)* should this use be appended to the cross-reference log (`-Xptxas --gen-xrefs` and friends). The subsystem occupies approximately `0x726F20`–`0x72D375` in the binary (about 21 KB of code across 17 functions plus two 29-byte assert trampolines at `0x408064`/`0x408081`). The cluster is unambiguous to delimit: every non-trivial function carries an embedded assertion string naming this subsystem, and most also leak the original C symbol name through the assertion's third argument.
 
 Unlike the lexer/preprocessor pair, this subsystem has **no** dispatch table. There is no `pp_directive`-style switch. Instead it is a cluster of seven public entry points that the rest of EDG calls directly, plus ten private helpers. Two of those entry points (`sub_72A650` and `sub_72B510`) are **near-identical twins** containing the same control flow, the same string set, and the same 41 callees — one is the IL-traversal version, the other is the source-parse version. CUDA's host-vs-device check happens deep inside both.
 
@@ -8,7 +8,7 @@ Unlike the lexer/preprocessor pair, this subsystem has **no** dispatch table. Th
 
 | Property | Value |
 |---|---|
-| Source file | `symbol_ref.c` (EDG 6.6) |
+| Subsystem | Symbol reference (EDG 6.6) |
 | Address range | `0x726F20`–`0x72D375` (plus `0x408064`/`0x408081` assert trampolines) |
 | Function count | 17 (15 in main range + 2 trampolines) |
 | Total code | ~21 KB |
@@ -98,7 +98,7 @@ The function carries six separate `preproc.c`-style assertions, each of which le
 
 ### Phase 3 — The CUDA Cross-Space Check
 
-EDG's stock `symbol_ref.c` does **not** know anything about `__host__`/`__device__`. NVIDIA inlined the check at the recorder level rather than wrapping the function: the strings `"__shared__"` and `"__constant__"` appear in `sub_72B510` itself, not in a separate wrapper. The flow:
+The stock EDG symbol-reference code does **not** know anything about `__host__`/`__device__`. NVIDIA inlined the check at the recorder level rather than wrapping the function: the strings `"__shared__"` and `"__constant__"` appear in `sub_72B510` itself, not in a separate wrapper. The flow:
 
 1. Read the current function's execution-space bit from the entity-context stack.
 2. Read the referenced entity's execution-space bit (or, for variables in namespace scope, the `__constant__`/`__shared__`/`__device__` annotation bits).
@@ -196,7 +196,7 @@ It is called from four sites in the C declaration parser. In C++ mode the functi
 
 ## Trampolines: The 29-Byte Assert Stubs
 
-`sub_408064` and `sub_408081` are 29-byte tail-call thunks at the *low* end of the binary, far from the rest of `symbol_ref.c`. Their entire body is a load of `"/dvs/p4/.../symbol_ref.c"` and a load of `"make_new_hidden_name"` (or `"symbol_is_candidate_for_hiding"`) followed by a tail call to `sub_4F2930` (the assertion handler). They exist because:
+`sub_408064` and `sub_408081` are 29-byte tail-call thunks at the *low* end of the binary, far from the rest of the symbol-reference cluster. Their entire body is a load of the subsystem's embedded assertion-file string and a load of `"make_new_hidden_name"` (or `"symbol_is_candidate_for_hiding"`) followed by a tail call to `sub_4F2930` (the assertion handler). They exist because:
 
 1. Inlining the assertion site into 29 bytes is cheaper than a full call frame, but
 2. They have to live at a *fixed* address so that the assertion handler's stack-unwinder can map the return address back to a function name without per-translation-unit debug data.
@@ -214,7 +214,7 @@ The fact that they sit at `0x408064` and `0x408081` — adjacent to other early-
 
 ## State Globals
 
-`symbol_ref.c` is largely stateless — it operates on entity nodes passed in from callers — but it does read several language-mode and trace globals shared with the rest of EDG:
+The symbol-reference subsystem is largely stateless — it operates on entity nodes passed in from callers — but it does read several language-mode and trace globals shared with the rest of EDG:
 
 | Global | Purpose |
 |---|---|

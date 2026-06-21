@@ -1,12 +1,12 @@
 # Name Mangling
 
-The name mangling subsystem in cudafe++ implements the Itanium C++ ABI name mangling specification, with NVIDIA-specific extensions for CUDA device lambda wrappers and host reference array registration. The mangling pipeline lives in `lower_name.c` (60+ functions spanning `0x69C980`--`0x6AB280`) and produces the `_Z` prefixed symbols that appear in `.int.c` output and PTX. A separate CUDA-aware demangler at `sub_7CABB0` (930 lines, statically linked, not EDG code) reverses the process with extensions for three NVIDIA vendor-specific mangled prefixes: `Unvdl`, `Unvdtl`, and `Unvhdl`. The glue between mangling and CUDA execution spaces is `nv_get_full_nv_static_prefix` in `nv_transforms.c`, which constructs scoped static prefixes for `__global__` template stubs destined for host reference arrays.
+The name mangling subsystem in cudafe++ implements the Itanium C++ ABI name mangling specification, with NVIDIA-specific extensions for CUDA device lambda wrappers and host reference array registration. The mangling pipeline is an EDG 6.6 cluster of 60+ functions spanning `0x69C980`--`0x6AB280` and produces the `_Z` prefixed symbols that appear in `.int.c` output and PTX. A separate CUDA-aware demangler at `sub_7CABB0` (930 lines, statically linked, not EDG code) reverses the process with extensions for three NVIDIA vendor-specific mangled prefixes: `Unvdl`, `Unvdtl`, and `Unvhdl`. The glue between mangling and CUDA execution spaces is the NVIDIA-authored `nv_get_full_nv_static_prefix` (`sub_6BE300`), which constructs scoped static prefixes for `__global__` template stubs destined for host reference arrays.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Source file | `lower_name.c` (60+ functions), `nv_transforms.c` (prefix builder) |
+| Subsystem | Name mangling (EDG 6.6, 60+ functions) + NVIDIA static-prefix builder |
 | Address range | `0x69C980`--`0x6AB280` (mangling), `0x6BE300` (static prefix) |
 | Demangler | `sub_7CABB0` (930 lines, NVIDIA custom, not EDG) |
 | ABI standard | Itanium C++ ABI (IA-64), extended with NVIDIA vendor types |

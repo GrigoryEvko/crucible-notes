@@ -19,7 +19,7 @@ This page documents the instance record layout, the master instance info record,
 | Fixpoint entry point | `sub_78A9D0` (`template_and_inline_entity_wrapup`) |
 | Worklist walker | `sub_78A7F0` (`do_any_needed_instantiations`) |
 | Decision gate | `sub_774620` (`should_be_instantiated`) |
-| Source file | `templates.c` (EDG 6.6, path `edg/EDG_6.6/src/templates.c`) |
+| Module | `templates.c` (EDG 6.6) |
 
 ## Instance Record Layout (128 bytes)
 

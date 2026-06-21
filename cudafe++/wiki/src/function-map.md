@@ -1,8 +1,8 @@
 # Function Map
 
-Every function in the cudafe++ binary that triggers an EDG assertion encodes three pieces of data in the assertion string: the source file path, the line number, and the enclosing function name. These strings survive in `.rodata` and cross-reference back to the compiled functions, providing a ground-truth mapping from binary address to EDG source file. This page catalogs that mapping for all 52 `.c` source files and 13 `.h` header files identified in the CUDA 13.0 build of cudafe++ (EDG 6.6).
+Every function in the cudafe++ binary that triggers an EDG assertion encodes three pieces of data in the assertion string: an assertion path-string (whose trailing component names a `.c`/`.h` module), the line number, and the enclosing function name. These strings survive in `.rodata` and cross-reference back to the compiled functions, providing a ground-truth mapping from binary address to EDG module. This page catalogs that mapping for all 52 `.c` modules and 13 `.h` header modules identified in the CUDA 13.0 build of cudafe++ (EDG 6.6).
 
-The mapping was produced by extracting all string literals matching `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/*.c` and `*.h` from the binary's `.rodata` section, then tracing their cross-references to determine which functions load each path. A function that references `attribute.c` in an assertion string was compiled from `attribute.c`. Functions that reference no source path at all (the "unmapped" pool) are either too small to contain assertions, are inlined from headers, or belong to the statically-linked C++ runtime.
+The mapping was produced by extracting all `.rodata` strings whose trailing component is a `.c`/`.h` filename and that are loaded by an assert stub, then tracing their cross-references to determine which functions load each path-string. A function that references the `attribute.c` module string in an assertion was compiled from that module. Functions that reference no module string at all (the "unmapped" pool) are either too small to contain assertions, are inlined from headers, or belong to the statically-linked C++ runtime.
 
 ## Coverage Summary
 
@@ -22,17 +22,17 @@ The 2,924 unmapped functions in the EDG region include inlined header expansions
 
 The EDG `.text` region (`0x403300`--`0x7E0000`) has a three-part structure:
 
-1. **Assert stub region** (`0x403300`--`0x408B40`): 235 small `__noreturn` functions, one per assertion site. Each encodes a source file path, line number, and function name, then calls `sub_4F2930` (the internal error handler). These stubs are sorted by source file name — the linker grouped them from all 52 `.c` files into one contiguous block. 198 stubs resolve to a single source file (181 to `.c` files, 17 to `.h` files inlined into `.c` compilation units); the remaining 37 are unattributed — their `__FILE__` argument is either folded into a shared string or supplied by the caller and is not visible as a direct cross-reference.
+1. **Assert stub region** (`0x403300`--`0x408B40`): 235 small `__noreturn` functions, one per assertion site. Each encodes an assertion path-string, line number, and function name, then calls `sub_4F2930` (the internal error handler). These stubs are sorted by module name — the linker grouped them from all 52 `.c` compilation units into one contiguous block. 198 stubs resolve to a single module (181 to `.c` modules, 17 to `.h` modules inlined into `.c` compilation units); the remaining 37 are unattributed — their `__FILE__` argument is either folded into a shared string or supplied by the caller and is not visible as a direct cross-reference.
 
 2. **Constructor region** (`0x408B40`--`0x409350`): 15 C++ static constructor functions (`ctor_001` through `ctor_015`) that initialize global tables at program startup.
 
-3. **Main body region** (`0x409350`--`0x7DFFF0`): The bulk of the compiler. Source files are laid out roughly in alphabetical order by filename, a consequence of the linker processing object files in directory-listing order. The alphabetical ordering holds across the entire range: `attribute.c` starts at `0x409350`, `class_decl.c` at `0x419280`, progressing through to `types.c` at `0x7A4940`, `modules.c` at `0x7C0C60`, and `floating.c` at `0x7D0EB0`.
+3. **Main body region** (`0x409350`--`0x7DFFF0`): The bulk of the compiler. Modules are laid out roughly in alphabetical order by name, a consequence of the linker processing object files in directory-listing order. The alphabetical ordering holds across the entire range: `attribute.c` starts at `0x409350`, `class_decl.c` at `0x419280`, progressing through to `types.c` at `0x7A4940`, `modules.c` at `0x7C0C60`, and `floating.c` at `0x7D0EB0`.
 
-## Source File Address Table
+## Module Address Table
 
-The table below lists all 52 `.c` source files sorted by their main body start address. "Total Funcs" counts all functions referencing the file (stubs + main body). "Stubs" counts assert stubs in `0x403300`--`0x408B40`. "Main Funcs" counts functions in the main body region.
+The table below lists all 52 `.c` modules sorted by their main body start address. "Total Funcs" counts all functions referencing the module (stubs + main body). "Stubs" counts assert stubs in `0x403300`--`0x408B40`. "Main Funcs" counts functions in the main body region.
 
-| # | Source File | Origin | Total Funcs | Stubs | Main Funcs | Main Body Start | Main Body End | Sweep |
+| # | Module | Origin | Total Funcs | Stubs | Main Funcs | Main Body Start | Main Body End | Sweep |
 |---|---|---|---|---|---|---|---|---|
 | 1 | `attribute.c` | EDG | 177 | 7 | 170 | `0x409350` | `0x418F80` | P1.01 |
 | 2 | `class_decl.c` | EDG | 273 | 9 | 264 | `0x419280` | `0x447930` | P1.01–02 |
@@ -87,11 +87,11 @@ The table below lists all 52 `.c` source files sorted by their main body start a
 | 51 | `modules.c` | EDG | 22 | 3 | 19 | `0x7C0C60` | `0x7C2560` | P1.19 |
 | 52 | `floating.c` | EDG | 50 | 9 | 41 | `0x7D0EB0` | `0x7D59B0` | P1.19 |
 
-**Totals:** 5,338 cross-references across 52 `.c` files, resolving to 2,129 unique functions. With `.h` file references added, 2,209 unique functions are mapped.
+**Totals:** 5,338 cross-references across 52 `.c` modules, resolving to 2,129 unique functions. With `.h` module references added, 2,209 unique functions are mapped.
 
-### Largest Source Files by Function Count
+### Largest Modules by Function Count
 
-| Source File | Main Body Funcs | Approximate Code Size |
+| Module | Main Body Funcs | Approximate Code Size |
 |---|---|---|
 | `expr.c` | 528 | ~373 KB (`0x4F9870`--`0x5565E0`) |
 | `templates.c` | 443 | ~282 KB (`0x7530C0`--`0x794D30`) |
@@ -104,11 +104,11 @@ The table below lists all 52 `.c` source files sorted by their main body start a
 | `cp_gen_be.c` | 201 | ~141 KB (`0x466F90`--`0x489000`) |
 | `decl_inits.c` | 192 | ~91 KB (`0x48B3F0`--`0x4A1540`) |
 
-## Header File Cross-References
+## Header Module Cross-References
 
-Thirteen `.h` header files appear in assertion strings. These are headers that contain non-trivial inline functions or macros that expand to assertion-bearing code. When a function compiled from `decls.c` triggers an assertion whose `__FILE__` is `types.h`, that assertion was inlined from `types.h` into the `decls.c` compilation unit.
+Thirteen `.h` header modules appear in assertion strings. These are headers that contain non-trivial inline functions or macros that expand to assertion-bearing code. When a function compiled from `decls.c` triggers an assertion whose `__FILE__` names `types.h`, that assertion was inlined from `types.h` into the `decls.c` compilation unit.
 
-| # | Header File | Xrefs | Stubs | Main Funcs | Address Range | Inlined Into |
+| # | Header Module | Xrefs | Stubs | Main Funcs | Address Range | Inlined Into |
 |---|---|---|---|---|---|---|
 | 1 | `decls.h` | 1 | 0 | 1 | `0x4E08F0` | `decls.c` |
 | 2 | `float_type.h` | 63 | 0 | 63 | `0x7D1C90`--`0x7DEB90` | `floating.c` |
@@ -138,7 +138,7 @@ Thirteen `.h` header files appear in assertion strings. These are headers that c
 
 ### `nv_transforms.c`
 
-The only NVIDIA-authored `.c` file in the EDG source tree. Despite having only **1 mapped function** via `__FILE__` (`sub_6BE300` at `0x6BE300`), the sweep analysis of the `0x6BAE70`--`0x6BE4A0` range identified approximately 40 functions compiled from this file. The discrepancy exists because `nv_transforms.c` uses NVIDIA's own assertion macros (not EDG's standard `internal_error` path), so most functions do not reference the EDG-style `__FILE__` string.
+The only NVIDIA-authored `.c` module among the EDG front-end modules. Despite having only **1 mapped function** via `__FILE__` (`sub_6BE300` at `0x6BE300`), the sweep analysis of the `0x6BAE70`--`0x6BE4A0` range identified approximately 40 functions compiled from this module. The discrepancy exists because `nv_transforms.c` uses NVIDIA's own assertion macros (not EDG's standard `internal_error` path), so most functions do not reference the EDG-style `__FILE__` string.
 
 Functions confirmed in the `nv_transforms.c` region:
 
@@ -161,7 +161,7 @@ Key infrastructure in this file:
 
 ### `nv_transforms.h`
 
-NVIDIA's hook header, `#include`-d from three EDG source files. It declares the functions that bridge standard EDG processing to NVIDIA's CUDA transform layer. The three inclusion sites represent the three points where EDG's standard C++ frontend cedes control to NVIDIA-specific logic:
+NVIDIA's hook header, `#include`-d from three EDG modules. It declares the functions that bridge standard EDG processing to NVIDIA's CUDA transform layer. The three inclusion sites represent the three points where EDG's standard C++ frontend cedes control to NVIDIA-specific logic:
 
 1. **`class_decl.c`** (`sub_432280` at `0x432280`): Called during class definition processing to apply CUDA execution-space attributes to closure types and validate lambda capture constraints.
 
@@ -171,11 +171,11 @@ NVIDIA's hook header, `#include`-d from three EDG source files. It declares the 
 
 ## Unmapped Regions (Gap Analysis)
 
-Several address ranges within the EDG `.text` region contain functions that could not be mapped to any source file via `__FILE__` strings. The major gaps and their probable contents:
+Several address ranges within the EDG `.text` region contain functions that could not be mapped to any module via `__FILE__` strings. The major gaps and their probable contents:
 
 | Gap Range | Size | Probable Content | Evidence |
 |---|---|---|---|
-| `0x408B40`--`0x409350` | ~2 KB | Static constructors (`ctor_001`--`ctor_015`) | No source path; global table initializers |
+| `0x408B40`--`0x409350` | ~2 KB | Static constructors (`ctor_001`--`ctor_015`) | No module string; global table initializers |
 | `0x447930`--`0x44B250` | ~13 KB | `class_decl.c` / `cmd_line.c` boundary helpers | Between confirmed ranges |
 | `0x459630`--`0x461C20` | ~34 KB | `cmd_line.c` tail + `const_ints.c` preamble | Unmapped option handlers |
 | `0x5E8300`--`0x5F7FD0` | ~87 KB | IL display routines (`il_to_str.c` early body) | No assertions (display-only code) |
@@ -193,11 +193,11 @@ Several address ranges within the EDG `.text` region contain functions that coul
 
 The largest unmapped gap within EDG code is the IL display region at `0x5E8300`--`0x5F7FD0` (87 KB). These functions were compiled from `il_to_str.c` but contain no assertions because the display/dump subsystem was built without assertion macros — it is purely diagnostic code that formats IL trees to stdout.
 
-The `float_type.h` block at `0x7D1C90`--`0x7DEB90` (52 KB) is technically mapped via `.h` cross-references but has no `.c` file attribution because the template instantiations carry only the header's `__FILE__` path.
+The `float_type.h` block at `0x7D1C90`--`0x7DEB90` (52 KB) is technically mapped via `.h` cross-references but has no `.c` module attribution because the template instantiations carry only the header's `__FILE__` string.
 
 ## Alphabetical Ordering Observation
 
-The files are laid out in the binary in rough alphabetical order, consistent with a build system that compiles object files in directory-listing order and a linker that processes them sequentially:
+The modules are laid out in the binary in rough alphabetical order, consistent with a build system that compiles object files in directory-listing order and a linker that processes them sequentially:
 
 ```text
 0x409350  attribute.c      (a)
@@ -254,23 +254,17 @@ The files are laid out in the binary in rough alphabetical order, consistent wit
 0x7D0EB0  floating.c       (f)  [breaks alphabetical order]
 ```
 
-Two files break the alphabetical pattern: `modules.c` at `0x7C0C60` and `floating.c` at `0x7D0EB0`. Both appear after `types.c` instead of in their expected positions (between `mem_manage.c` and `nv_transforms.c` for `modules.c`, between `float_pt.c` and `folding.c` for `floating.c`). This suggests these two files are compiled as separate translation units outside the main EDG source directory, or are added to the link line after the alphabetically-sorted EDG objects.
+Two modules break the alphabetical pattern: `modules.c` at `0x7C0C60` and `floating.c` at `0x7D0EB0`. Both appear after `types.c` instead of in their expected positions (between `mem_manage.c` and `nv_transforms.c` for `modules.c`, between `float_pt.c` and `folding.c` for `floating.c`). This suggests these two modules are compiled as separate translation units, or are added to the link line after the alphabetically-sorted EDG objects.
 
 ## Data Source
 
-All mappings were extracted from the binary's `.rodata` string table. The extraction command:
+All mappings were extracted from the binary's `.rodata` string table. Each entry's trailing path component is a `.c` filename used as the module identifier. The extraction command selects the assertion path-strings, keys them by that trailing filename, and counts cross-references per module:
 
 ```bash
-jq '[.[] | select(.value | test("/dvs/p4/.*\\.c$")) |
+jq '[.[] | select(.value | test("\\.c$")) |
   {file: (.value | split("/") | last),
    xrefs: [.xrefs[].func] | length}
 ] | sort_by(.file)' cudafe++_strings.json
-```
-
-The full build path for every source file is:
-
-```text
-/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/<filename>
 ```
 
 Address ranges were verified against the 20 sweep reports (P1.01 through P1.20) produced during the binary analysis phase.

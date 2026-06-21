@@ -38,10 +38,8 @@ The build string `cuda_13.0.r13.0/compiler.36424714_0` encodes:
 | `cuda_13.0` | Toolkit series | CUDA Toolkit 13.0 |
 | `r13.0` | Release branch | Release 13.0 branch in the internal build system |
 | `compiler` | Component | Compiler team build artifact |
-| `36424714` | Changelist / build number | Internal Perforce-style changelist or CI build ID |
+| `36424714` | Changelist / build number | Build/CI changelist or build ID |
 | `_0` | Build variant | Default (non-debug) variant |
-
-The internal build path `0x1D41468` confirms the Perforce depot structure: `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h`.
 
 ### Two Build Timestamps
 

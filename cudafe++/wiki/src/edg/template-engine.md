@@ -1,6 +1,6 @@
 # Template Engine
 
-The template engine in cudafe++ is EDG 6.6's implementation of C++ template instantiation, argument deduction, partial specialization ordering, and the worklist-driven fixpoint loop that produces all needed template instantiations at translation-unit end. It lives primarily in `templates.c` (160+ functions at `0x7530C0`--`0x794D30`) with supporting cross-TU correspondence logic in `trans_corresp.c` (`0x796E60`--`0x79F9E0`).
+The template engine in cudafe++ is the EDG 6.6 implementation of C++ template instantiation, argument deduction, partial specialization ordering, and the worklist-driven fixpoint loop that produces all needed template instantiations at translation-unit end. The main instantiation cluster spans 160+ functions at `0x7530C0`--`0x794D30`, with supporting cross-TU correspondence logic at `0x796E60`--`0x79F9E0`.
 
 Template instantiation in a C++ compiler is fundamentally a deferred operation: the compiler parses template definitions, records their bodies in a declaration cache, and only instantiates when a concrete use forces it. EDG implements this with two pending worklists — one for class templates, one for function/variable templates — that accumulate entries during parsing and are drained by a fixpoint loop at the end of each translation unit. This page documents the complete instantiation pipeline from "entity added to worklist" through "instantiated body emitted into IL."
 
@@ -8,7 +8,7 @@ Template instantiation in a C++ compiler is fundamentally a deferred operation: 
 
 | Property | Value |
 |---|---|
-| Source file | `templates.c` (172 functions), `trans_corresp.c` (36 functions) |
+| Subsystem | Template instantiation (172 functions) + cross-TU correspondence (36 functions), EDG 6.6 |
 | Address range | `0x7530C0`--`0x794D30` (templates), `0x796E60`--`0x79F9E0` (correspondence) |
 | Fixpoint entry point | `sub_78A9D0` (`template_and_inline_entity_wrapup`), 136 lines |
 | Worklist walker | `sub_78A7F0` (`do_any_needed_instantiations`), 72 lines |
@@ -645,7 +645,7 @@ The correspondence system ensures that when `std::vector<int>` is instantiated i
 
 ## Function Map
 
-| Address | Identity | Confidence | Lines | EDG Source |
+| Address | Identity | Confidence | Lines | Assert-string label |
 |---|---|---|---|---|
 | `sub_78A9D0` | `template_and_inline_entity_wrapup` | 100% | 136 | `templates.c:40084` |
 | `sub_78A7F0` | `do_any_needed_instantiations` | 100% | 72 | `templates.c:39760` |

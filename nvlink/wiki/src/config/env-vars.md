@@ -2,7 +2,7 @@
 
 nvlink reads exactly eight environment variables via `getenv()` calls. This count has been exhaustively verified: every `getenv` call site in the binary (14 total, across 8 decompiled functions plus the PLT thunk at `0x4034A0`) has been identified and mapped. No additional environment variable reads exist through `secure_getenv`, `environ`, or indirect mechanisms.
 
-Unlike CLI flags, which are parsed centrally by `sub_427AE0`, environment variables are consumed at point of use — each subsystem calls `getenv()` directly when it needs the value. The variables divide into three categories: search paths that influence file discovery, temporary file placement, and debug/diagnostic controls shared with other CUDA toolchain components through the `generic_knobs_impl.h` infrastructure.
+Unlike CLI flags, which are parsed centrally by `sub_427AE0`, environment variables are consumed at point of use — each subsystem calls `getenv()` directly when it needs the value. The variables divide into three categories: search paths that influence file discovery, temporary file placement, and debug/diagnostic controls shared with other CUDA toolchain components through the common knobs configuration infrastructure.
 
 None of these variables are documented in nvlink's `--help` output. Their existence is inferred from string references in the binary.
 
@@ -215,7 +215,6 @@ The knobs system is NVIDIA's internal configuration mechanism for compiler tunin
 Note: the knobs infrastructure reads knob *values* from knobs files (via `-knob` CLI flag and the `sub_49B1A0` parser, 59KB), not from individual environment variables. The ROT13-encoded knob names visible in the string table (approximately 500 entries, e.g. `AIBZRTN_CNGU` = `NVOMEGA_PATH`, `CNEGVNY_YVAX_ZBQR` = `PARTIAL_LINK_MODE`) are knob identifiers, not environment variable names.
 
 **Consumed by:** Knobs infrastructure during initialization and at dump time.
-**Source:** `generic_knobs_impl.h` (path: `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h`)
 **Related functions:** `sub_49A930` (knob_system_init), `sub_49B1A0` (knobs_file_read_and_parse, 59KB), `sub_4FDC30` (knob_dump_to_file, 14KB)
 
 ## CAN_FINALIZE_DEBUG

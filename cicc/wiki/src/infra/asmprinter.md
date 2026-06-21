@@ -147,7 +147,7 @@ The **stack frame** is emitted before registers when the function has a non-zero
 .reg .b64   %SPL;                            ← stack pointer local
 ```
 
-The `__local_depot` name is a fixed prefix (`#define DEPOTNAME "__local_depot"` in the source). `%SP` is the global stack pointer; `%SPL` points into the local depot. In 32-bit mode these are `.reg .b32`.
+The `__local_depot` name is a fixed prefix (the `DEPOTNAME` constant). `%SP` is the global stack pointer; `%SPL` points into the local depot. In 32-bit mode these are `.reg .b32`.
 
 ## Global Variable & Texture Emission — `sub_2156420`
 

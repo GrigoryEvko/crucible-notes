@@ -1,12 +1,12 @@
 # Overload Resolution
 
-The overload resolution engine in cudafe++ is EDG 6.6's implementation of the C++ overload resolution algorithm (ISO C++ [over.match]). It lives in `overload.c` — approximately 100 functions spanning address range `0x6BE4A0`--`0x6EF7A0` (roughly 200KB of compiled code). Overload resolution is one of the most complex subsystems in any C++ compiler because it sits at the intersection of nearly every other language feature: implicit conversions, user-defined conversions, template argument deduction, SFINAE, partial ordering, reference binding, list initialization, copy elision, and operator overloading each contribute decision branches to the algorithm. EDG implements the standard three-phase architecture — candidate collection, viability checking, best-viable selection — with NVIDIA-specific extensions for CUDA execution-space filtering.
+The overload resolution engine in cudafe++ is the EDG 6.6 implementation of the C++ overload resolution algorithm (ISO C++ [over.match]). It is a cluster of approximately 100 functions spanning address range `0x6BE4A0`--`0x6EF7A0` (roughly 200KB of compiled code). Overload resolution is one of the most complex subsystems in any C++ compiler because it sits at the intersection of nearly every other language feature: implicit conversions, user-defined conversions, template argument deduction, SFINAE, partial ordering, reference binding, list initialization, copy elision, and operator overloading each contribute decision branches to the algorithm. EDG implements the standard three-phase architecture — candidate collection, viability checking, best-viable selection — with NVIDIA-specific extensions for CUDA execution-space filtering.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Source file | `overload.c` (~100 functions) |
+| Subsystem | Overload resolution (EDG 6.6, ~100 functions) |
 | Address range | `0x6BE4A0`--`0x6EF7A0` |
 | Total code size | ~200KB |
 | Main selection entry | `sub_6E6400` (`select_overloaded_function`, 1,483 lines, 20 parameters) |

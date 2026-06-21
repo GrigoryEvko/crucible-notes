@@ -54,14 +54,14 @@ The `.text` section contains all 6,501 functions in the binary. It divides into 
 
 ### Assert Stub Region (0x403300 — 0x408B40, 34 KB)
 
-Contains 235 small `__noreturn` functions, each encoding a single assertion site. Every stub loads three string constants — source file path, line number, and function name — then calls `sub_4F2930` (the `internal_error` handler in `error.c`). These stubs are called from the bodies of larger functions when an impossible condition is detected.
+Contains 235 small `__noreturn` functions, each encoding a single assertion site. Every stub loads three string constants — an assertion path-string, line number, and function name — then calls `sub_4F2930` (the `internal_error` handler in the `error` module). These stubs are called from the bodies of larger functions when an impossible condition is detected.
 
-The linker groups all stubs from all 52 `.c` source files into this contiguous block, sorted approximately by source file name. Of the 235 stubs:
+The linker groups all stubs from all 52 `.c` modules into this contiguous block, sorted approximately by module name. Of the 235 stubs:
 
-- 200 map to `.c` source files (e.g., `attribute.c:10897` at `0x403300`, `cp_gen_be.c:22342` at `0x4036F6`)
-- 35 map to `.h` header files inlined into `.c` compilation units (e.g., `types.h` at `0x40345C`)
+- 200 map to `.c` modules (e.g., `attribute.c` line 10897 at `0x403300`, `cp_gen_be.c` line 22342 at `0x4036F6`)
+- 35 map to `.h` header modules inlined into `.c` compilation units (e.g., `types.h` at `0x40345C`)
 
-Each stub is exactly 29 bytes: a `lea` for the file path, a `mov` for the line number, a `lea` for the function name, then a `call` to `sub_4F2930`.
+Each stub is exactly 29 bytes: a `lea` for the path-string, a `mov` for the line number, a `lea` for the function name, then a `call` to `sub_4F2930`.
 
 ### Constructor Region (0x408B40 — 0x409350, 8 KB)
 
@@ -83,7 +83,7 @@ Constructors 4–9 belong to statically-linked libstdc++. Only constructors 1–
 
 ### EDG Main Body (0x409350 — 0x7DF400, 3.61 MB)
 
-The core of the compiler. Contains 5,115 functions compiled from 52 EDG `.c` source files plus 3 NVIDIA-specific source files. Functions are laid out in approximate alphabetical order by source file name — the linker processed object files in directory-listing order:
+The core of the compiler. Contains 5,115 functions compiled from 52 EDG `.c` modules plus 3 NVIDIA-specific modules. Functions are laid out in approximate alphabetical order by module name — the linker processed object files in directory-listing order:
 
 ```text
 0x409350   attribute.c     (170 functions)
@@ -101,7 +101,7 @@ The core of the compiler. Contains 5,115 functions compiled from 52 EDG `.c` sou
   ~0x7DF400  end of EDG code
 ```
 
-The 52 source files break down by subsystem:
+The 52 modules break down by subsystem:
 
 | Subsystem | Files | Functions | Description |
 |---|---|---|---|
@@ -113,11 +113,11 @@ The 52 source files break down by subsystem:
 | Code generation | 3 `.c` | ~150 | Backend `.int.c` emission |
 | NVIDIA additions | 3 `.c` | ~110 | CUDA transforms, attribute validation, lambda wrappers |
 
-See [Function Map](./function-map.md) for the complete address-to-source-file table.
+See [Function Map](./function-map.md) for the complete address-to-module table.
 
 ### C++ Runtime Region (0x7DF400 — 0x829722, 304 KB)
 
-Statically-linked library code with no EDG source attribution. Contains approximately 900 functions from three libraries:
+Statically-linked library code with no EDG module attribution. Contains approximately 900 functions from three libraries:
 
 **Berkeley SoftFloat 3e** (0x7E0D30 — 0x7E4150, ~80 functions). IEEE 754 arithmetic for half-precision (float16), extended precision (float80), and quad-precision (float128). Operations: add, sub, mul, div, sqrt, comparisons, int/float conversions. Global state at `12D4820` (exception flags) and `12D4821` (rounding mode). Used by the EDG `floating.c` subsystem for constant folding of non-native float types.
 
@@ -164,9 +164,9 @@ off_E6DD80[84] = "last"       // sentinel
 
 The `il_one_time_init` function (`sub_5CF7F0`) validates at startup that this table ends with the `"last"` sentinel, catching version mismatches between the table and the enum.
 
-### EDG Source File Path Strings
+### EDG Assertion Path Strings
 
-Approximately 65 string literals of the form `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/<file>.<ext>`. These are `__FILE__` expansions embedded in assertion macros. Each is referenced by the corresponding assert stub in the 0x403300 region.
+Approximately 65 string literals, each a `__FILE__` expansion embedded in an assertion macro. Every string shares a common prefix ending in `EDG_6.6` and terminates in a `.c`/`.h` filename that names the module. Each is referenced by the corresponding assert stub in the 0x403300 region.
 
 ### Jump Tables
 
@@ -395,6 +395,6 @@ No shared libraries are loaded at runtime. The binary is fully self-contained.
 
 **Static linking adds 304 KB of dead-weight code.** The C++ runtime region (0x7DF400 — 0x829722) contains 900 functions, the majority of which (600+ locale facet methods) are never called by cudafe++. The locale system is pulled in transitively through iostream initialization. A reimplementation that avoids `std::cout`/`std::cerr` could eliminate this entirely.
 
-**The EDG code is tightly packed.** The 3.61 MB EDG main body has almost no inter-function padding. Functions from the same source file are contiguous, and the alphabetical ordering by filename is consistent across the entire range. This makes address-to-source-file attribution reliable.
+**The EDG code is tightly packed.** The 3.61 MB EDG main body has almost no inter-function padding. Functions from the same module are contiguous, and the alphabetical ordering by module name is consistent across the entire range. This makes address-to-module attribution reliable.
 
 **The binary is position-dependent.** No PIE (Position-Independent Executable) flag is set. All code references use absolute addressing. The `.got` is minimal (56 bytes / 7 entries) — almost all data references are direct.

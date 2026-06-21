@@ -103,7 +103,7 @@ A secondary extraction `byte & 0x60` distinguishes kernels from plain device fun
 
 ### nv_is_device_only_routine Truth Table
 
-The predicate is inlined from `nv_transforms.h:367` and appears in multiple call sites. Its internal_error guard string `"nv_is_device_only_routine"` appears in `sub_432280` at the source path `EDG_6.6/src/nv_transforms.h`. The complete truth table for all execution space combinations:
+The predicate is inlined from `nv_transforms.h:367` and appears in multiple call sites. Its internal_error guard string `"nv_is_device_only_routine"` appears in `sub_432280`. The complete truth table for all execution space combinations:
 
 | Execution space | byte+182 | byte & 0x30 | byte & 0x60 | Result |
 |---|---|---|---|---|

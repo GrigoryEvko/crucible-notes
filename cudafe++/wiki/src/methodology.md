@@ -39,7 +39,7 @@ The script is structured as a `main()` function that calls `idaapi.auto_wait()` 
 
 The 12 passes, in execution order:
 
-1. **`export_all_strings()`** — Enumerates `idautils.Strings()`, then for each string walks `XrefsTo(string_ea)` to record every function that references it. Each string entry captures the address, string value, string type code, and a list of xref records (`{from_addr, func_name, xref_type}`). This is the foundation for source attribution (see below).
+1. **`export_all_strings()`** — Enumerates `idautils.Strings()`, then for each string walks `XrefsTo(string_ea)` to record every function that references it. Each string entry captures the address, string value, string type code, and a list of xref records (`{from_addr, func_name, xref_type}`). This is the foundation for module attribution (see below).
 
 2. **`export_all_functions()`** — For each function in `idautils.Functions()`, records start/end address, size, instruction count (via `idc.is_code()` on each head), library flag (`FUNC_LIB`), thunk flag (`FUNC_THUNK`), and builds caller/callee lists. Callers are found via `XrefsTo(func_start)`; callees via `XrefsFrom(head)` filtered to call-type xrefs (`fl_CN` = type 17, `fl_CF` = type 19).
 
@@ -74,49 +74,43 @@ The 12 passes, in execution order:
 
 The script is invoked via IDA's headless batch mode or interactive scripting console. It does not call `qexit()` at the end, allowing the IDA database to remain open for further interactive analysis after extraction. Total extraction time is approximately 30-45 minutes on a workstation-class machine, dominated by the 6,501 decompilation calls in pass 12.
 
-## Source Attribution Technique
+## Module Attribution Technique
 
-The single most powerful technique in this analysis is **source attribution via `__FILE__` strings**. The EDG C++ frontend uses C-style assertions throughout its codebase. When an assertion fires, the handler receives the source file path, line number, and function name as compile-time string constants embedded by the `__FILE__`, `__LINE__`, and `__func__` macros. Because the binary is stripped (no `.symtab`), these assertion strings are the only surviving link to the original source tree.
+The single most powerful technique in this analysis is **module attribution via `__FILE__` strings**. The EDG C++ frontend uses C-style assertions throughout its codebase. When an assertion fires, the handler receives an assertion path-string, line number, and function name as compile-time string constants embedded by the `__FILE__`, `__LINE__`, and `__func__` macros. Because the binary is stripped (no `.symtab`), these assertion strings are the only surviving link back to the logical module each function belongs to. The trailing component of each path-string is a `.c`/`.h` filename that serves as a stable module identifier.
 
 ### The Assert Handler
 
-The central assert handler is `sub_4F2930`, located in `error.c`. It is a `__noreturn` function that formats and emits an internal compiler error message, then terminates the process. A total of **2,139 functions** in the binary call `sub_4F2930`, with **5,178 total call sites** (many functions have multiple assertion points throughout their bodies).
+The central assert handler is `sub_4F2930` (the `internal_error` routine). It is a `__noreturn` function that formats and emits an internal compiler error message, then terminates the process. A total of **2,139 functions** in the binary call `sub_4F2930`, with **5,178 total call sites** (many functions have multiple assertion points throughout their bodies).
 
-The highest-density callers are the **235 assert stubs** in the region `0x403300`--`0x408B40`. Each stub is exactly 29 bytes: three register loads (source file path via `lea rdi`, line number via `mov esi`, function name via `lea rdx`) followed by a `call` to `sub_4F2930`:
+The highest-density callers are the **235 assert stubs** in the region `0x403300`--`0x408B40`. Each stub is exactly 29 bytes: three register loads (assertion path-string via `lea rdi`, line number via `mov esi`, function name via `lea rdx`) followed by a `call` to `sub_4F2930`:
 
 ```asm
-sub_403300:         ; assert stub for is_aliasable (attribute.c:10897)
-  lea  rdi, aAttributeC    ; "/dvs/p4/.../EDG_6.6/src/attribute.c"
+sub_403300:         ; assert stub for is_aliasable (attribute module, line 10897)
+  lea  rdi, aAttributeC    ; assertion path-string ending in "attribute.c"
   mov  esi, 10897           ; line number (integer, not string)
   lea  rdx, aIsAliasable   ; "is_aliasable"
   call sub_4F2930           ; internal_error(__FILE__, __LINE__, __func__)
 ```
 
-Of the 235 stubs, 200 reference `.c` file paths and 35 reference `.h` file paths (inlined assertions from header files). The stubs are sorted approximately by source file name within the stub region — the linker grouped them from all 52 `.c` compilation units into one contiguous block.
+Of the 235 stubs, 200 reference `.c` module path-strings and 35 reference `.h` path-strings (inlined assertions from header modules). The stubs are sorted approximately by module name within the stub region — the linker grouped them from all 52 `.c` compilation units into one contiguous block.
 
-Beyond the dedicated stubs, 1,904 additional functions contain inline assertion checks: the `lea rdi, <file_path>` instruction appears within the function body at the assertion site, not in a separate stub. These inline assertions provide the same source-file attribution as the stubs.
+Beyond the dedicated stubs, 1,904 additional functions contain inline assertion checks: the `lea rdi, <path_string>` instruction appears within the function body at the assertion site, not in a separate stub. These inline assertions provide the same module attribution as the stubs.
 
 ### The Attribution Chain
 
 The attribution chain works in three steps:
 
-1. **String discovery.** Extract all strings matching the EDG build path prefix `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/`. This yields one string per source file, each cross-referenced by the assert stubs that load it.
+1. **String discovery.** Extract all `.rodata` strings whose trailing component is a `.c`/`.h` filename and that are loaded by an assert stub. This yields one path-string per module, each cross-referenced by the stubs that load it.
 
-2. **Xref tracing.** For each assert stub, follow `XrefsTo()` to find which main-body functions call it. A function at `0x40DFD0` that calls the `attribute.c:5108` stub was compiled from `attribute.c`. This attributes the caller to the source file.
+2. **Xref tracing.** For each assert stub, follow `XrefsTo()` to find which main-body functions call it. A function at `0x40DFD0` that calls the `attribute` module's assert stub (line 5108) was compiled from that module. This attributes the caller to the module.
 
-3. **Range extension.** Assert stubs are sparse — not every function contains an assertion. Once a set of functions in a contiguous address range are attributed to the same source file, the entire range is assigned to that file. This works because the linker places all object code from a single `.c` file contiguously, and the files are arranged roughly alphabetically by filename.
+3. **Range extension.** Assert stubs are sparse — not every function contains an assertion. Once a set of functions in a contiguous address range are attributed to the same module, the entire range is assigned to that module. This works because the linker places all object code from a single compilation unit contiguously, and the modules are arranged roughly alphabetically by name.
 
-This technique attributed 2,209 functions (34.0% of the binary) to specific source files. The remaining 4,292 functions fall into three categories: C++ runtime code (1,085 functions from libstdc++/glibc, identifiable by address range), PLT/init stubs (283 functions), and unmapped EDG functions (2,924 functions that contain no assertions and cannot be confidently attributed).
+This technique attributed 2,209 functions (34.0% of the binary) to specific modules. The remaining 4,292 functions fall into three categories: C++ runtime code (1,085 functions from libstdc++/glibc, identifiable by address range), PLT/init stubs (283 functions), and unmapped EDG functions (2,924 functions that contain no assertions and cannot be confidently attributed).
 
-### Build Path
+### Version Attribution
 
-The full build path embedded in the binary is:
-
-```text
-/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/
-```
-
-This reveals the NVIDIA internal Perforce depot structure (`/dvs/p4/`), the release branch (`r13.0`), and the EDG version (`EDG_6.6`). It confirms the binary was built from EDG C++ Front End version 6.6, licensed from Edison Design Group.
+The assertion path-strings share a common prefix that ends in `EDG_6.6`. This confirms the binary was built from EDG C++ Front End version 6.6, licensed from Edison Design Group. The same prefix carries a `r13.0` release tag matching the CUDA Toolkit 13.0 version. No other part of the prefix is meaningful to the binary's behavior.
 
 ## Confidence Levels
 
@@ -124,16 +118,16 @@ Every identification in the raw sweep reports and wiki pages carries one of four
 
 | Level | Tag | Criteria | Example |
 |---|---|---|---|
-| **CONFIRMED** | Direct match | The function's identity is proven by an assertion string that encodes the exact function name, source file, and line number. No ambiguity. | `sub_403300` loads `"is_aliasable"` + `"attribute.c"` + `"10897"` — it is the assertion stub for `is_aliasable()` in `attribute.c` at line 10897. |
+| **CONFIRMED** | Direct match | The function's identity is proven by an assertion string that encodes the exact function name, module, and line number. No ambiguity. | `sub_403300` loads `"is_aliasable"` + the `attribute.c` module string + `"10897"` — it is the assertion stub for `is_aliasable()` in the `attribute` module at line 10897. |
 | **HIGH** | String + callgraph | The function references a distinctive string (error message, format string, keyword literal) AND its position in the call graph is consistent with a single plausible identity. | `sub_459630` references 276 CLI flag strings and is called from `main()` at the position where command-line processing occurs — identified as `proc_command_line()`. |
-| **MEDIUM** | Pattern + context | The function matches a known EDG pattern (struct layout access, IL node walking, type query) and its address falls within the expected source file range, but no string or assertion directly confirms the identity. | A function at `0x5B3000` accesses the IL node kind field at the expected struct offset and falls within the `il.c` address range — likely an IL accessor, but the specific function name is inferred. |
-| **LOW** | Address proximity | The function's address falls within a source file's range, but no internal evidence (strings, struct accesses, callees) distinguishes it from neighboring functions. The attribution is based solely on the linker's contiguous placement of object code. | A small leaf function at `0x5B2F80` sits between two `il.c`-attributed functions — probably from `il.c`, but it could be an inlined header function. |
+| **MEDIUM** | Pattern + context | The function matches a known EDG pattern (struct layout access, IL node walking, type query) and its address falls within the expected module range, but no string or assertion directly confirms the identity. | A function at `0x5B3000` accesses the IL node kind field at the expected struct offset and falls within the `il.c` module range — likely an IL accessor, but the specific function name is inferred. |
+| **LOW** | Address proximity | The function's address falls within a module's range, but no internal evidence (strings, struct accesses, callees) distinguishes it from neighboring functions. The attribution is based solely on the linker's contiguous placement of object code. | A small leaf function at `0x5B2F80` sits between two `il.c`-attributed functions — probably from the `il` module, but it could be an inlined header function. |
 
 In practice, approximately 34% of functions are CONFIRMED (via assert strings), ~20% are HIGH (via distinctive strings or unique callgraph positions), ~25% are MEDIUM, and ~21% are LOW or unattributed.
 
 ## Terminology
 
-The wiki uses a fixed vocabulary drawn from three sources: EDG's internal source tree, NVIDIA's CUDA extensions, and IDA Pro / Hex-Rays naming conventions. Every recurring term is defined in the dedicated [Glossary](./glossary.md) page, which groups entries by domain and cross-links to the wiki pages that develop each concept in depth.
+The wiki uses a fixed vocabulary drawn from three sources: EDG 6.6's module naming and data structures, NVIDIA's CUDA extensions, and IDA Pro / Hex-Rays naming conventions. Every recurring term is defined in the dedicated [Glossary](./glossary.md) page, which groups entries by domain and cross-links to the wiki pages that develop each concept in depth.
 
 ## Call Graph Analysis
 
@@ -161,15 +155,15 @@ The call graph exhibits a layered structure typical of compiler frontends:
 3. **Core layer.** The parser (`expr.c`, `decls.c`, `statements.c`) calls into the type system (`types.c`, `exprutil.c`), IL builder (`il.c`, `il_alloc.c`), and name lookup (`lookup.c`, `scope_stk.c`).
 4. **Leaf layer.** Memory management (`mem_manage.c`), error reporting (`error.c`), and type queries form the bottom of the call hierarchy, referenced from almost every subsystem.
 
-NVIDIA's `nv_transforms.c` sits as a lateral extension at the core layer: it is called from `class_decl.c`, `cp_gen_be.c`, and `statements.c` (via `nv_transforms.h` inlines), but does not itself call back into the EDG parser. This clean separation suggests NVIDIA modifies the EDG source minimally, preferring to hook into existing EDG extension points rather than fork the core.
+NVIDIA's `nv_transforms.c` sits as a lateral extension at the core layer: it is called from `class_decl.c`, `cp_gen_be.c`, and `statements.c` (via `nv_transforms.h` inlines), but does not itself call back into the EDG parser. This clean separation suggests NVIDIA modifies the EDG front end minimally, preferring to hook into existing EDG extension points rather than fork the core.
 
 ## String-Based Discovery
 
-The binary contains **52,489 strings** in `.rodata`. These strings are the second most important evidence source after the assertion paths. Major categories:
+The binary contains **52,489 strings** in `.rodata`. These strings are the second most important evidence source after the assertion path-strings. Major categories:
 
 | Category | Approximate Count | Usage |
 |---|---|---|
-| EDG assertion paths (`/dvs/p4/...`) | 65 (52 `.c` + 13 `.h`) | Source attribution |
+| EDG assertion path-strings | 65 (52 `.c` + 13 `.h`) | Module attribution |
 | CUDA keyword strings | ~300 | Keyword table initialization, CLI flag names |
 | Error message templates | ~3,800 | Diagnostic emission (`off_88FAA0` error table, 3,795 entries) |
 | C/C++ keyword strings | ~200 | Lexer token recognition |
@@ -201,7 +195,7 @@ Similar artifacts appear in functions with complex switch statements (EDG uses c
 
 ### Lost Preprocessor Logic
 
-The original EDG source makes heavy use of preprocessor conditionals (`#if CUDA_SUPPORT`, `#ifdef FRONT_END_CPFE`, etc.). The compiled binary contains only the taken branch — the preprocessor evaluated all conditions at build time. This means the decompiled code shows the CUDA-enabled configuration only; any host-only or non-CUDA EDG behavior is invisible.
+The EDG front end makes heavy use of preprocessor conditionals (`#if CUDA_SUPPORT`, `#ifdef FRONT_END_CPFE`, etc.). The compiled binary contains only the taken branch — the preprocessor evaluated all conditions at build time. This means the decompiled code shows the CUDA-enabled configuration only; any host-only or non-CUDA EDG behavior is invisible.
 
 Similarly, C macros that wrap common patterns (assertion macros, IL access macros, type query macros) are fully expanded in the binary. The decompiled output shows the expanded form — a sequence of struct field accesses and conditional jumps — rather than the concise macro invocation the original source used.
 
@@ -263,22 +257,22 @@ P1.XX SWEEP: Address range 0xNNNNNN - 0xMMMMMM
 ================================================================================
 Range: 0xNNNNNN - 0xMMMMMM
 Functions found: N
-EDG source files:
-  - file.c (assert stub range, main body range)
+EDG modules:
+  - module.c (assert stub range, main body range)
   ...
 
 ### 0xAAAAAA -- sub_AAAAAA (NN bytes / NN lines)
-**Identity**: function_name (source_file.c:NNNN)
+**Identity**: function_name (module.c, line NNNN)
 **Confidence**: CONFIRMED / HIGH / MEDIUM / LOW
-**EDG Source**: source_file.c
+**Module**: module.c
 **Notes**: Additional observations about behavior, callers, callees
 ```
 
-Every function in the sweep range gets an entry. Functions are documented in address order. The identity field records the inferred function name and source location. The confidence field uses the four-level system defined above. Notes capture anything unusual — unexpected callers, CUDA-specific behavior, undocumented error codes, or connections to other subsystems.
+Every function in the sweep range gets an entry. Functions are documented in address order. The identity field records the inferred function name and module. The confidence field uses the four-level system defined above. Notes capture anything unusual — unexpected callers, CUDA-specific behavior, undocumented error codes, or connections to other subsystems.
 
 ## Phase 2: Targeted Deep Dives
 
-After the Phase 1 sweep establishes the complete function map and identifies all source files, Phase 2 produces the detailed wiki pages. Each wiki page corresponds to one W-series work report that focuses on a specific subsystem or topic.
+After the Phase 1 sweep establishes the complete function map and identifies all modules, Phase 2 produces the detailed wiki pages. Each wiki page corresponds to one W-series work report that focuses on a specific subsystem or topic.
 
 ### Deep Dive Methodology
 
@@ -331,7 +325,7 @@ As of this writing, 28 W-series reports have been produced, each backing one or 
 | W053 | CUDA errors | `diagnostics/cuda-errors.md` |
 | W056 | Entity node layout | `structs/entity-node.md` |
 | W061 | CLI flags | `config/cli-flags.md` |
-| W065 | EDG source map | `reference/edg-source-map.md` |
+| W065 | EDG module map | `reference/edg-source-map.md` |
 | W066 | Global variables | `reference/global-variables.md` |
 
 ## Numerical Summary
@@ -344,13 +338,13 @@ As of this writing, 28 W-series reports have been produced, each backing one or 
 | Decompiled files (actual on disk) | 6,202 |
 | Disassembly files | 6,342 |
 | CFG files (JSON + DOT) | 12,684 |
-| Functions attributed to source files | 2,209 (34.0%) |
+| Functions attributed to modules | 2,209 (34.0%) |
 | Functions calling `sub_4F2930` (assert handler) | 2,139 |
 | Total call sites to `sub_4F2930` | 5,178 |
 | Assert stubs (`0x403300`--`0x408B40`) | 235 |
-| Source files identified (`.c`) | 52 |
-| Header files identified (`.h`) | 13 |
-| EDG build-path strings in `.rodata` | 65 |
+| Modules identified (`.c`) | 52 |
+| Header modules identified (`.h`) | 13 |
+| EDG assertion path-strings in `.rodata` | 65 |
 | String literals extracted | 52,489 |
 | Cross-references extracted | 1,243,258 |
 | Call graph edges | 67,756 (5,057 callers, 5,382 callees) |
@@ -385,7 +379,7 @@ As of this writing, 28 W-series reports have been produced, each backing one or 
 
 Every finding in this wiki can be reproduced by:
 
-1. Obtaining `cudafe++` from CUDA Toolkit 13.0 (version string embedded in binary as the build path prefix `r13.0`).
+1. Obtaining `cudafe++` from CUDA Toolkit 13.0 (version string `r13.0` embedded in the binary's assertion path-strings).
 2. Loading it into IDA Pro 9.0 (64-bit) with default x86-64 analysis settings. Wait for auto-analysis to complete (5-10 minutes).
 3. Running `analyze_cudafe++.py` via File > Script File to extract all raw data (30-45 minutes).
 4. Querying the exported JSON files with `jq` to trace cross-reference chains, string lookups, and callgraph paths.

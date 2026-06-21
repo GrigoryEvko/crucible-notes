@@ -1,6 +1,6 @@
 # Constexpr Interpreter
 
-The constexpr interpreter is the compile-time expression evaluation engine inside cudafe++. It lives in EDG 6.6's `interpret.c` (69 functions at `0x620CE0`--`0x65DE10`, approximately 33,000 decompiled lines) and implements a virtual machine that executes arbitrary C++ expressions during compilation. Its central function, `do_constexpr_expression` (`sub_634740`), is the single largest function in the entire cudafe++ binary: 11,205 decompiled lines, 63KB of machine code, 128 unique callees, and 28 self-recursive call sites.
+The constexpr interpreter is the compile-time expression evaluation engine inside cudafe++. This EDG 6.6 cluster spans 69 functions at `0x620CE0`--`0x65DE10` (approximately 33,000 decompiled lines) and implements a virtual machine that executes arbitrary C++ expressions during compilation. Its central function, `do_constexpr_expression` (`sub_634740`), is the single largest function in the entire cudafe++ binary: 11,205 decompiled lines, 63KB of machine code, 128 unique callees, and 28 self-recursive call sites.
 
 The interpreter exists because C++ constexpr evaluation requires the compiler to act as an execution engine. Since C++11, constexpr has grown from simple return-expression functions to a Turing-complete subset of C++ that includes loops, branches, dynamic memory allocation (C++20), virtual dispatch, exception-like control flow, and — as of C++26 — compile-time reflection. The interpreter must evaluate all of these constructs faithfully, track object lifetimes, detect undefined behavior, and convert results back into IL constants.
 
@@ -8,7 +8,7 @@ The interpreter exists because C++ constexpr evaluation requires the compiler to
 
 | Property | Value |
 |---|---|
-| Source file | `interpret.c` (69 functions, ~33,000 decompiled lines) |
+| Subsystem | Constexpr interpreter (EDG 6.6, 69 functions, ~33,000 decompiled lines) |
 | Address range | `0x620CE0`--`0x65DE10` |
 | Main evaluator | `sub_634740` (`do_constexpr_expression`), 11,205 lines, 63KB |
 | Builtin evaluator | `sub_651150` (`do_constexpr_builtin_function`), 5,032 lines |

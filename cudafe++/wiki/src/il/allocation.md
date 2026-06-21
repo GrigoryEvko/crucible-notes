@@ -1,12 +1,12 @@
 # IL Allocation
 
-Every IL node in cudafe++ is allocated through a region-based bump allocator implemented in `il_alloc.c` (EDG 6.6 source at `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/il_alloc.c`). The allocator manages 70+ distinct IL entry types across two memory region categories — file-scope (persistent for the entire translation unit) and per-function-scope (transient, freed after each function body is processed). Free-lists recycle high-churn node types to reduce region pressure. The allocation subsystem occupies address range `0x5E0600`-`0x5EAF00` in the binary, roughly 43KB of compiled code covering 100+ functions.
+Every IL node in cudafe++ is allocated through a region-based bump allocator — the IL-allocation subsystem of the EDG 6.6 frontend. The allocator manages 70+ distinct IL entry types across two memory region categories — file-scope (persistent for the entire translation unit) and per-function-scope (transient, freed after each function body is processed). Free-lists recycle high-churn node types to reduce region pressure. The allocation subsystem occupies address range `0x5E0600`-`0x5EAF00` in the binary, roughly 43KB of compiled code covering 100+ functions.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Source file | `il_alloc.c` (EDG 6.6) |
+| Subsystem | IL allocation (EDG 6.6) |
 | Address range | `0x5E0600`-`0x5EAF00` |
 | Core allocator | `sub_6B7D60` (`region_alloc(region_id, size)`) |
 | File-scope allocator | `sub_5E03D0` (`alloc_in_file_scope_region`) |

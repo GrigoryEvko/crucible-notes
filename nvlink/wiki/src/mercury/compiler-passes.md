@@ -393,7 +393,7 @@ The knob system uses ROT13-encoded strings for pass names and ROT13-encoded hex 
 - `Sched*`: 20+ scheduling options
 - `RegAlloc*`: 8+ register allocation options
 
-The knob infrastructure is implemented in `generic_knobs_impl.h` (source path: `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/common/utils/generic/impl/generic_knobs_impl.h`, verified from error strings in `sub_498720`). The knobs file reader at `sub_498720` (59KB) looks for a `"[knobs]"` section header (string at `0x1D415D1`, xrefs from `sub_49EE70` and `sub_1761030`) and parses typed values (BXG_INT, BXG_FLOAT, BXG_STR, etc.).
+The knob infrastructure is driven by the knobs file reader at `sub_498720` (59KB), identified from its error strings. It looks for a `"[knobs]"` section header (string at `0x1D415D1`, xrefs from `sub_49EE70` and `sub_1761030`) and parses typed values (BXG_INT, BXG_FLOAT, BXG_STR, etc.).
 
 The Mercury option byte offsets are concentrated in a tight range (`0x3D40`--`0x3E40`, 256 bytes). The `AdvancedSBCrossBlockMercuryAssume` option is the exception at `0x5B0`, placed with its `AdvancedSB*` siblings rather than with the Mercury block. Two offsets (`0x3DB8` and `0x3DB9`) are only 1 byte apart, indicating bit-level granularity for the `MercuryForceISAClass` / `MercuryForceUnknownTcgen05Attr` pair.
 
@@ -469,7 +469,7 @@ Pass behavior descriptions marked **[V]** are derived from sources 1 and 2. Desc
 | MercConverter instruction converter `sub_1919030` (92KB) refs `"CONVERTING"` | **HIGH** | Function exists. String `"CONVERTING"` verified with xref to this function. `"Internal compiler error."` also confirmed. |
 | `UseMercSemantics` at `0x23F34F0` and `UseMercResources` at `0x23F3510` | **HIGH** | Both ROT13 strings verified at exact addresses. Each has 1 xref to `ctor_007`. |
 | `DumpMercOpCounts` at `0x1D4AB40` (ROT13 `QhzcZrepBcPbhagf`) | **HIGH** | ROT13 string verified at stated address. Located in `ctor_004` (xref from `0x410F30`). |
-| Knobs infrastructure at `sub_498720` (59KB), source path `generic_knobs_impl.h` | **MEDIUM** | Function exists. Source path string verified in error messages within the function. 1,287 knob count is approximate from string scanning. `"[knobs]"` string at `0x1D415D1` verified with 2 xrefs. |
+| Knobs infrastructure at `sub_498720` (59KB) | **MEDIUM** | Function exists, identified from error strings within it. 1,287 knob count is approximate from string scanning. `"[knobs]"` string at `0x1D415D1` verified with 2 xrefs. |
 | Tepid scheduler subsystem `0x16F6000`--`0x1740000` (~296KB) | **MEDIUM** | Address range from sweep analysis. `"TepidMacUtil"` at `0x23EF746` and `"TepidTime"` at `0x23F0851` verified. Metric strings confirmed. |
 | Pass behavior descriptions marked [N] (inferred from decoded names) | **MEDIUM** | Names are extremely descriptive and self-documenting. Corroborated by related infrastructure (e.g., `MercuryTrackMultiReadsWarLatency` corroborated by `MercGenerateWARs1`/`MercGenerateWARs2` stages). Exact implementation details may differ from inferred behavior. |
 | Default values (enabled/disabled by default) | **MEDIUM** | Inferred from naming conventions ("Force", "Disable", "Dump" = off by default). Not directly verified from ctor_007 body (not decompiled). |

@@ -453,7 +453,7 @@ The most-connected function in the entire cudafe++ binary: 5,185 call sites. Dec
 
 ```c
 void __noreturn assertion_handler(
-    char *source_file,     // EDG source file path
+    char *source_file,     // assertion path-string
     int   line_number,     // source line number
     const char *func_name, // enclosing function name
     const char *prefix,    // message prefix (or NULL)

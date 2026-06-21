@@ -1,6 +1,6 @@
 # IL Comparison & Deep Copy
 
-The IL comparison and deep copy engines are two tightly coupled subsystems in EDG's `il.c` that serve template instantiation, constant sharing, and overload resolution. The comparison engine determines structural equivalence between two IL expression trees or constant nodes — needed when the compiler must decide whether two template arguments are "the same" or whether a constant has already been allocated. The deep copy engine clones expression trees while optionally substituting template parameters for their actual arguments — the core mechanism behind template instantiation. Both subsystems are recursive tree walkers dispatched by node-kind switches, and both operate on the same IL node layout described in [IL Overview](overview.md).
+The IL comparison and deep copy engines are two tightly coupled subsystems of the EDG 6.6 IL core that serve template instantiation, constant sharing, and overload resolution. The comparison engine determines structural equivalence between two IL expression trees or constant nodes — needed when the compiler must decide whether two template arguments are "the same" or whether a constant has already been allocated. The deep copy engine clones expression trees while optionally substituting template parameters for their actual arguments — the core mechanism behind template instantiation. Both subsystems are recursive tree walkers dispatched by node-kind switches, and both operate on the same IL node layout described in [IL Overview](overview.md).
 
 These two engines share the address range `0x5D0750`--`0x5DFAD0` in the binary (roughly 37KB of compiled code). The comparison engine occupies `0x5D0750`--`0x5D2160`, constant sharing infrastructure sits at `0x5D2170`--`0x5D2D80`, the expression copy engine fills `0x5D2DE0`--`0x5D5550`, and the template parameter substitution dispatcher extends from `0x5DC000`--`0x5DFAD0`.
 
@@ -8,8 +8,7 @@ These two engines share the address range `0x5D0750`--`0x5DFAD0` in the binary (
 
 | Property | Value |
 |---|---|
-| Source file | `il.c` (EDG 6.6) |
-| Assert path | `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/il.c` |
+| Subsystem | IL core (EDG 6.6) |
 | Comparison engine | `sub_5D0750` (`compare_expressions`), 588 lines |
 | Constant comparison | `sub_5D1350` (`compare_constants`), 525 lines |
 | Dynamic init comparison | `sub_5D1FE0` (`compare_dynamic_inits`), ~80 lines |

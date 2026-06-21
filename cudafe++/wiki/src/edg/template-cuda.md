@@ -6,7 +6,7 @@ CUDA's split-compilation model imposes restrictions on C++ templates that have n
 
 | Property | Value |
 |---|---|
-| Source file | `cp_gen_be.c` (EDG 6.6 backend code generator) |
+| Subsystem | Backend code generator (EDG 6.6) |
 | Access checker | `sub_469F80` (`template_arg_is_accessible`, 144 lines) |
 | Cache engine | `sub_469480` (`cache_access_result_for`, 670 lines) |
 | Arg list walker | `sub_46A230` (walks template arg lists, 182 lines) |

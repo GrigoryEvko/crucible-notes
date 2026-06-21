@@ -2,13 +2,13 @@
 
 cudafe++ compiles a single `.cu` translation unit that contains both host and device code. After the EDG frontend builds the complete IL tree, cudafe++ must split the two worlds: host-side declarations feed into the `.int.c` output, while device-side declarations feed into the binary IL emitted for cicc. The **keep-in-il** mechanism performs this split. It is a transitive-closure walk that starts from known device entities (functions with `__device__`/`__global__` attributes, `__shared__`/`__constant__`/`__managed__` variables) and recursively marks every IL entry they reference. Entries that survive the mark phase are written to the device IL; entries without the mark are stripped by the elimination pass.
 
-The entire mechanism lives in `il_walk.c` (the mark/walk side) and `il.c` (the elimination side). It runs as pass 3 of `fe_wrapup`, after IL lowering (pass 2) and before C++ class finalization (pass 4).
+The entire mechanism lives in the IL-walking subsystem (the mark/walk side) and the IL core (the elimination side) of the EDG 6.6 frontend. It runs as pass 3 of `fe_wrapup`, after IL lowering (pass 2) and before C++ class finalization (pass 4).
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Source file | `il_walk.c` (mark), `il.c` (eliminate) |
+| Subsystem | IL walking (mark), IL core (eliminate) — EDG 6.6 |
 | Mark entry point | `sub_610420` (`mark_to_keep_in_il`), 892 lines |
 | Recursive worker | `sub_6115E0` (`walk_tree_and_set_keep_in_il`), 4649 lines / 23KB |
 | Prune callback | `sub_617310` (`prune_keep_in_il_walk`), 127 lines |
@@ -550,7 +550,7 @@ The debug output for eliminated vs. retained entities uses a string trick: `"TAR
 
 ## Function Map
 
-| Address | Identity | Confidence | Lines | EDG Source |
+| Address | Identity | Confidence | Lines | Assert-string label |
 |---|---|---|---|---|
 | `sub_610420` | `mark_to_keep_in_il` | 99% | 892 | `il_walk.c:1959` |
 | `sub_6115E0` | `walk_tree_and_set_keep_in_il` | 98% | 4649 | `il_walk.c` |

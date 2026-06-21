@@ -1,6 +1,6 @@
 # IL Overview
 
-The Intermediate Language (IL) is EDG's central data structure — a typed, scope-linked graph of every declaration, type, expression, statement, and template in the translation unit. cudafe++ (EDG 6.6) builds the IL during parsing, walks it for CUDA device/host separation, and emits it as the `.int.c` output. The IL never touches disk: `IL_SHOULD_BE_WRITTEN_TO_FILE=0` forces in-memory-only operation. All IL nodes live in a region-based arena allocator, organized into file-scope (region 1) and per-function (region N) memory pools.
+The Intermediate Language (IL) is the central data structure of the EDG frontend — a typed, scope-linked graph of every declaration, type, expression, statement, and template in the translation unit. cudafe++ (EDG 6.6) builds the IL during parsing, walks it for CUDA device/host separation, and emits it as the `.int.c` output. The IL never touches disk: `IL_SHOULD_BE_WRITTEN_TO_FILE=0` forces in-memory-only operation. All IL nodes live in a region-based arena allocator, organized into file-scope (region 1) and per-function (region N) memory pools.
 
 The IL is versioned as `IL_VERSION_NUMBER="6.6"` and carries the compile-time flag `ALL_TEMPLATE_INFO_IN_IL=1`, meaning template definitions, specializations, and instantiation directives are fully represented in the IL graph rather than deferred to a separate template database.
 
@@ -402,7 +402,7 @@ The statement kind byte lives at offset `+32` in the statement node. 26 values:
 | 24 | `stmk_empty` | — | Empty statement |
 | 25 | `stmk_stmt_expr_result` | — | GCC statement expression result |
 
-The coroutine statement (kind 9) carries the largest supplement at 128 bytes, containing traits, handle, promise, initial/final suspend calls, unhandled_exception call, get_return_object call, new/delete routines, and parameter copies. A preserved typo in the EDG source reads `"paramter_copies"` (missing 'e'), confirming genuine EDG lineage.
+The coroutine statement (kind 9) carries the largest supplement at 128 bytes, containing traits, handle, promise, initial/final suspend calls, unhandled_exception call, get_return_object call, new/delete routines, and parameter copies. A preserved typo in the embedded strings reads `"paramter_copies"` (missing 'e'), confirming genuine EDG lineage.
 
 ### Scope Kinds (sck_*)
 

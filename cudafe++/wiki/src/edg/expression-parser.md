@@ -1,6 +1,6 @@
 # Expression Parser
 
-The expression parser is the largest subsystem in cudafe++. It lives in EDG 6.6's `expr.c`, which compiles to approximately 335KB of code (address range `0x4F8000`--`0x556600`) containing roughly 320 functions. The central function `scan_expr_full` (`sub_511D40`) alone occupies 80KB — approximately 2,000 decompiled lines with over 300 local variables. EDG uses a hand-written recursive descent parser, not a generated one (no yacc/bison). Each C++ operator precedence level has its own scanning function, and the call chain follows the precedence hierarchy: assignment, conditional, logical-or, logical-and, bitwise-or, bitwise-xor, bitwise-and, equality, relational, shift, additive, multiplicative, pointer-to-member, unary, postfix, primary.
+The expression parser is the largest subsystem in cudafe++. This EDG 6.6 cluster occupies approximately 335KB of code (address range `0x4F8000`--`0x556600`) containing roughly 320 functions. The central function `scan_expr_full` (`sub_511D40`) alone occupies 80KB — approximately 2,000 decompiled lines with over 300 local variables. EDG uses a hand-written recursive descent parser, not a generated one (no yacc/bison). Each C++ operator precedence level has its own scanning function, and the call chain follows the precedence hierarchy: assignment, conditional, logical-or, logical-and, bitwise-or, bitwise-xor, bitwise-and, equality, relational, shift, additive, multiplicative, pointer-to-member, unary, postfix, primary.
 
 CUDA-specific extensions are woven directly into this subsystem: cross-execution-space call validation at every function call site, remapping of GCC `__sync_fetch_and_*` builtins to NVIDIA `__nv_atomic_fetch_*` intrinsics, and constexpr-if gating of literal evaluation based on compilation mode.
 
@@ -8,8 +8,8 @@ CUDA-specific extensions are woven directly into this subsystem: cross-execution
 
 | Property | Value |
 |---|---|
-| Source file | `expr.c` (~320 functions) + `exprutil.c` (~90 functions) |
-| Address range | `0x4F8000`--`0x556600` (expr.c), `0x558720`--`0x55FE10` (exprutil.c) |
+| Subsystem | Expression parsing (~320 functions) + expression utilities (~90 functions), EDG 6.6 |
+| Address range | `0x4F8000`--`0x556600` (parsing), `0x558720`--`0x55FE10` (utilities) |
 | Total code size | ~385KB |
 | Central dispatcher | `sub_511D40` (`scan_expr_full`, 80KB, ~2,000 lines, 300+ locals) |
 | Ternary handler | `sub_526E30` (`scan_conditional_operator`, 48KB) |

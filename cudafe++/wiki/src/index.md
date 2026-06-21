@@ -12,9 +12,9 @@ This wiki documents the complete internals of the `cudafe++` binary from CUDA To
 | Format | ELF 64-bit LSB executable, x86-64, statically linked, stripped |
 | File size | 8,910,936 bytes (8.5 MB) |
 | EDG base | Edison Design Group C++ Front End v6.6 |
-| Build path | `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/` |
+| Build tag | `r13.0` / `EDG_6.6` (from embedded assertion path-strings) |
 | Total functions | 6,501 |
-| Functions mapped to source | 2,208 (34%) |
+| Functions mapped to module | 2,208 (34%) |
 
 ## Segment Layout
 
@@ -59,11 +59,11 @@ This wiki documents the complete internals of the `cudafe++` binary from CUDA To
 
 The binary runs as a single-threaded, single-pass-per-stage pipeline with 8 stages: pre-init, CLI parsing (276 flags), one-time init (38 subsystem initializers), TU state reset, frontend parse (EDG parser + CUDA extensions), 5-pass IL finalization, backend `.int.c` emission, and exit. See [Pipeline Overview](./pipeline/overview.md) for the full stage diagram.
 
-## Source Attribution
+## Module Attribution
 
-The binary embeds `__FILE__` strings from the EDG build system, revealing the original source file structure. From these strings plus address-range analysis of decompiled code, 52 `.c` source files and 13 `.h` header files have been identified:
+The binary embeds `__FILE__` assertion strings whose trailing component names the originating `.c`/`.h` module. From these strings plus address-range analysis of decompiled code, 52 `.c` modules and 13 `.h` header modules have been identified:
 
-| Category | Files | Functions Mapped | Description |
+| Category | Modules | Functions Mapped | Description |
 |---|---|---|---|
 | EDG core parser | 15 `.c` | ~800 | Lexer, expression/declaration parser, statement handling |
 | EDG type system | 6 `.c` | ~350 | Type representation, checking, conversion |
@@ -74,13 +74,13 @@ The binary embeds `__FILE__` strings from the EDG build system, revealing the or
 | NVIDIA additions | 3 `.c` | ~110 | CUDA transforms, attribute validation, lambda wrappers |
 | Headers | 13 `.h` | (inline) | Shared constants, struct layouts, macro definitions |
 
-The NVIDIA-specific source files are:
+The NVIDIA-specific modules are:
 
 - **`nv_transforms.c`** (~34 functions, ~14 KB of `.text`): The heart of CUDA support. Implements device/host-device lambda wrapper template generation (`__nv_dl_wrapper_t`, `__nv_hdl_wrapper_t`, `__nv_hdl_create_wrapper_t`), CUDA attribute validation (`__launch_bounds__`, `__cluster_dims__`, `__block_size__`, `__maxnreg__`), host reference array emission (`.nvHRKI`/`.nvHRDE`/`.nvHRCE` ELF sections), lambda preamble injection (`sub_6BCC20`), and array capture helper generation.
 
 - **`nv_transforms.h`**: Header with NVIDIA-specific declarations, type trait template names, and bitmask table definitions.
 
-- **3 modified EDG files**: `cmd_line.c` (CUDA CLI flags spliced into EDG's flag table), `fe_init.c` (CUDA-specific initialization at stage 3), and `cp_gen_be.c` (device stub generation, lambda wrapper emission, registration table output in the backend).
+- **3 modified EDG modules**: `cmd_line.c` (CUDA CLI flags spliced into EDG's flag table), `fe_init.c` (CUDA-specific initialization at stage 3), and `cp_gen_be.c` (device stub generation, lambda wrapper emission, registration table output in the backend).
 
 ## Key Discoveries
 
@@ -187,7 +187,7 @@ CLI flag inventory (276 flags by category), EDG build configuration (compile-tim
 
 ### Reference
 
-EDG source file map (52 `.c` + 13 `.h`), global variable index, token kind table (357 types), full error message catalog, and virtual override mismatch matrix.
+EDG module map (52 `.c` + 13 `.h`), global variable index, token kind table (357 types), full error message catalog, and virtual override mismatch matrix.
 
 ## Navigating This Wiki
 
@@ -199,7 +199,7 @@ EDG source file map (52 `.c` + 13 `.h`), global variable index, token kind table
 
 **If you want to understand the IL format:** Start with [IL Overview](./il/overview.md) for the 85 entry kinds, then [Keep-in-IL](./il/keep-in-il.md) for how device code is selected.
 
-**If you want to look up a specific function:** The Function Map provides address-to-identity mappings for all 2,208 identified functions. The EDG Source File Map shows which source file each address range belongs to.
+**If you want to look up a specific function:** The Function Map provides address-to-identity mappings for all 2,208 identified functions. The EDG Module Map shows which module each address range belongs to.
 
 ## Data Sources
 

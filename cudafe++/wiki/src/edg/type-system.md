@@ -1,6 +1,6 @@
 # Type System
 
-The type system in cudafe++ is EDG 6.6's implementation of the C++ type representation, query, construction, comparison, and layout infrastructure. It lives primarily in `types.c` (250+ functions at `0x7A4940`--`0x7C02A0`) with type allocation in `il_alloc.c` (`0x5E2E80`--`0x5E45C0`), type construction helpers in `il.c` (`0x5D64F0`--`0x5D6DB0`), and class layout computation in `layout.c` (`0x65EA50`--`0x665B50`).
+The type system in cudafe++ is the EDG 6.6 implementation of the C++ type representation, query, construction, comparison, and layout infrastructure. The main cluster spans 250+ functions at `0x7A4940`--`0x7C02A0`, with type allocation at `0x5E2E80`--`0x5E45C0`, type construction helpers at `0x5D64F0`--`0x5D6DB0`, and class layout computation at `0x65EA50`--`0x665B50`.
 
 Every C++ entity — variable, function parameter, expression result, template argument — carries a type pointer. EDG represents types as 176-byte heap-allocated nodes organized by a `type_kind` discriminant, with supplementary structures for complex kinds (classes, functions, integers, typedefs, template parameters). Type identity in the IL is pointer-based: two types are the "same type" if and only if they resolve to the same canonical node after chasing typedef chains. This page documents the complete type node architecture, the 22 type kinds, the 130 leaf query functions, the MRU-cached type construction pipeline, and the Itanium ABI class layout engine.
 
@@ -8,8 +8,8 @@ Every C++ entity — variable, function parameter, expression result, template a
 
 | Property | Value |
 |---|---|
-| Source file | `types.c` (250+ functions), `il_alloc.c` (allocators), `il.c` (construction), `layout.c` (class layout) |
-| Address range | `0x7A4940`--`0x7C02A0` (types.c), `0x5E2E80`--`0x5E45C0` (alloc), `0x5D64F0`--`0x5D6DB0` (il.c), `0x65EA50`--`0x665B50` (layout) |
+| Subsystem | Type system (250+ functions) + IL allocators, IL construction, class layout — EDG 6.6 |
+| Address range | `0x7A4940`--`0x7C02A0` (types), `0x5E2E80`--`0x5E45C0` (alloc), `0x5D64F0`--`0x5D6DB0` (construction), `0x65EA50`--`0x665B50` (layout) |
 | Type node size | 176 bytes (raw allocation includes 16-byte IL prefix) |
 | Type kind count | 22 values (`0x00`--`0x15`) |
 | Leaf query functions | 130 at `0x7A6260`--`0x7A9F90` (3,648 total call sites across binary) |

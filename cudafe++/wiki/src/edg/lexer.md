@@ -1,6 +1,6 @@
 # Lexer & Tokenizer
 
-The lexer in cudafe++ is EDG 6.6's `lexical.c` implementation — a hand-coded, state-machine-driven tokenizer that converts raw source bytes into a stream of 357 distinct token kinds. It spans approximately 185 functions across the address range `0x668330`--`0x689130` and constitutes one of the densest subsystems in the binary. The design is a classic multi-layered scanner: a byte-level character scanner (`sub_679800`, 907 lines) feeds into a token acquisition engine (`sub_6810F0`, 3,811 lines), which in turn is wrapped by a cache-aware token delivery function (`sub_676860`, 1,995 lines). CUDA keyword recognition is injected at the `get_token_main` level, gated on `dword_106C2C0` (GPU compilation mode flag).
+The lexer in cudafe++ is the EDG 6.6 tokenizer — a hand-coded, state-machine-driven scanner that converts raw source bytes into a stream of 357 distinct token kinds. It spans approximately 185 functions across the address range `0x668330`--`0x689130` and constitutes one of the densest subsystems in the binary. The design is a classic multi-layered scanner: a byte-level character scanner (`sub_679800`, 907 lines) feeds into a token acquisition engine (`sub_6810F0`, 3,811 lines), which in turn is wrapped by a cache-aware token delivery function (`sub_676860`, 1,995 lines). CUDA keyword recognition is injected at the `get_token_main` level, gated on `dword_106C2C0` (GPU compilation mode flag).
 
 The lexer does not use generated tables from tools like flex. Instead, every character-class test, keyword match, and operator scan is written as explicit C switch/if chains, compiled into dense jump tables by the optimizer. This produces extremely large functions — `get_token_main` alone has approximately 300 local variables in its decompiled form — but eliminates the overhead of table-driven DFA transitions for a language as context-sensitive as C++.
 
@@ -8,7 +8,7 @@ The lexer does not use generated tables from tools like flex. Instead, every cha
 
 | Property | Value |
 |---|---|
-| Source file | `lexical.c` (~185 functions) |
+| Subsystem | Lexer / tokenizer (EDG 6.6, ~185 functions) |
 | Address range | `0x668330`--`0x689130` |
 | Token kinds | 357 (indexed from `off_E6D240` name table) |
 | Primary scanner | `sub_679800` (`scan_token`, 907 lines) |
@@ -804,7 +804,7 @@ The stop-token table at `qword_126DB48 + 8` (357 entries) controls which token k
 
 ## Function Map
 
-| Address | Identity | Confidence | Lines | EDG Source |
+| Address | Identity | Confidence | Lines | Assert-string label |
 |---|---|---|---|---|
 | `sub_5863A0` | `keyword_init` / `fe_translation_unit_init` | 98% | 1,113 | `fe_init.c:1597` |
 | `sub_666720` | `select_dual_lookup_symbol` | HIGH | 372 | `lexical.c:22477` |
