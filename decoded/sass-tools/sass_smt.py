@@ -112,9 +112,18 @@ def _emit_smtlib(d: "S.Decomposition", part: "B.Partition") -> tuple[str, dict]:
         if not blk.reorder_ok or size < 2:
             continue                # pinned: fixed order, no variables
         m = OS.build_block_model(d.dag, blk, d.arch)
-        # an upper bound on any issue cycle: the unit makespan plus the worst-case
-        # latency slack (sum of all edge weights) -- generous so a model exists.
-        upper = size + sum(w for u in range(size) for _, w in m.lat[u]) + 2
+        # An upper bound on any issue cycle.  The list scheduler produces a
+        # CONCRETE, achievable single-issue makespan, so it is both a valid model
+        # witness (a solution exists at or below it) and a TIGHT bound -- using it
+        # instead of the sum-of-all-edge-weights (which inflates the integer
+        # domain to ~10x and makes Z3's Optimize time out on the `distinct` over a
+        # huge range) keeps the search space small enough for the external solver
+        # to return an optimum in well under the budget.  We add the block size as
+        # slack so every instruction still has a distinct cycle even in the
+        # degenerate all-dependent chain.
+        list_mk = OS.list_schedule(m).makespan
+        ptxas_mk = OS.ptxas_schedule(m).makespan
+        upper = max(list_mk, ptxas_mk) + size + 2
         meta["blocks"][blk.bid] = {"model": m, "base": base, "blk": blk,
                                    "upper": upper}
         # issue-cycle variables t_b_i in [0, upper); single-issue -> distinct.
@@ -152,11 +161,17 @@ def _emit_smtlib(d: "S.Decomposition", part: "B.Partition") -> tuple[str, dict]:
     # total program length is the sum of block lengths + fixed inter-block gaps).
     lines.append("(declare-const TOTAL Int)")
     lines.append(f"(assert (= TOTAL (+ {' '.join(obj_terms)})))")
-    lines.append("(minimize TOTAL)")
-    lines.append("(check-sat)")
-    lines.append("(get-objectives)")
-    lines.append("(get-model)")
-    return "\n".join(lines) + "\n", meta
+    # The objective is discharged by the caller via incremental bounded check-sat
+    # (binary search on TOTAL), NOT Z3's `(minimize)`: the Optimize engine is slow
+    # on this shape (a `distinct` over a bounded integer range plus difference
+    # constraints), timing out even when the plain decision problem is solved in
+    # milliseconds.  Bounded check-sat over the SAME constraints converges in a
+    # handful of solver calls.  We hand back the base text; schedule_program adds
+    # the bound assertions, check-sat, and get-model.
+    meta["base_text"] = "\n".join(lines) + "\n"
+    meta["obj_lo"] = len(obj_terms)            # >= one cycle per block at minimum
+    meta["obj_hi"] = sum(info["upper"] for info in meta["blocks"].values())
+    return meta["base_text"], meta
 
 
 _DEF_RE = re.compile(r"\(define-fun\s+(\w+)\s*\(\)\s+Int\s+(-?\d+)\)")
@@ -175,6 +190,73 @@ def _parse_model(out: str) -> tuple[dict[str, int], int | None]:
     return vals, obj
 
 
+# Per-bounded-query budget.  Each bounded check-sat is either instantly SAT (a
+# witness exists) or has to PROVE infeasibility of a tight makespan, which is hard
+# for Z3 with `distinct` and can run long.  We cap each query at a few seconds and
+# treat a per-query timeout as "do not tighten past here" -- the best SAT model
+# found so far is kept and GPU-gated, so a slightly-suboptimal bound is harmless
+# (a correct, fast schedule), while a never-terminating optimal proof is not.
+SMT_QUERY_TIMEOUT_S = 4
+
+
+def _solve_bounded(base_text: str, lo: int, hi: int,
+                   timeout_s: int) -> tuple[dict[str, int], int | None]:
+    """Minimise TOTAL by incremental bounded check-sat (binary search).
+
+    Drives the external Z3 in SMT-LIB2 mode: assert the base constraints, then for
+    each trial bound k add `(assert (<= TOTAL k))`, `(check-sat)`, and on sat
+    capture the model before retrying a smaller k.  Z3's plain (non-Optimize)
+    decision procedure answers a SAT query in milliseconds; an UNSAT (tight-bound
+    infeasibility) proof can be slow, so each query is capped at
+    SMT_QUERY_TIMEOUT_S and a capped query stops the descent with the best model
+    kept.  This costs O(log(hi-lo)) cheap queries instead of one slow `(minimize)`
+    that times out outright.  Returns (best model vars, best TOTAL) or ({}, None)."""
+    q_to = min(SMT_QUERY_TIMEOUT_S, timeout_s)
+    # First, get any feasible model + its achieved TOTAL (the search seed).
+    script = [base_text, "(check-sat)", "(get-value (TOTAL))", "(get-model)"]
+    out = _run_z3("\n".join(script), q_to)
+    if out is None or out.split("\n", 1)[0].strip() != "sat":
+        return {}, None
+    best_vals, _ = _parse_model(out)
+    mt = re.search(r"\(\s*TOTAL\s+(-?\d+)\s*\)", out)
+    if not best_vals or mt is None:
+        return {}, None
+    best = int(mt.group(1))
+    hi = min(hi, best - 1)
+    # binary search for the minimum feasible TOTAL in [lo, best-1].
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        trial = [base_text,
+                 "(assert (<= TOTAL {}))".format(mid), "(check-sat)",
+                 "(get-value (TOTAL))", "(get-model)"]
+        out = _run_z3("\n".join(trial), q_to)
+        first = out.split("\n", 1)[0].strip() if out else ""
+        if first == "sat":
+            vals, _ = _parse_model(out)
+            mt = re.search(r"\(\s*TOTAL\s+(-?\d+)\s*\)", out)
+            if vals and mt is not None:
+                best_vals, best = vals, int(mt.group(1))
+                hi = best - 1
+            else:
+                break
+        elif first == "unsat":           # mid infeasible -> need a larger bound
+            lo = mid + 1
+        else:                            # query timed out / unknown: stop, keep best
+            break
+    return best_vals, best
+
+
+def _run_z3(script: str, timeout_s: int) -> str | None:
+    """Run the external Z3 on an SMT-LIB2 script; return stdout (None on failure)."""
+    try:
+        r = subprocess.run([Z3_BIN, f"-T:{timeout_s}", "-smt2", "-in"],
+                           input=script, capture_output=True, text=True,
+                           timeout=timeout_s + 10)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return r.stdout
+
+
 def schedule_program(cubin: str, d: "S.Decomposition",
                      part: "B.Partition") -> SmtSchedule:
     """Solve the whole kernel as ONE SMT-LIB2 optimisation, discharged to Z3_BIN.
@@ -187,16 +269,8 @@ def schedule_program(cubin: str, d: "S.Decomposition",
     if not smt or Z3_BIN is None:
         return _fallback(d, part)
 
-    try:
-        r = subprocess.run([Z3_BIN, f"-T:{SMT_TIMEOUT_S}", "-smt2", "-in"],
-                           input=smt, capture_output=True, text=True,
-                           timeout=SMT_TIMEOUT_S + 10)
-    except (subprocess.TimeoutExpired, OSError):
-        return _fallback(d, part)
-    out = r.stdout
-    if "unsat" in out.split("\n")[0] or "sat" not in out:
-        return _fallback(d, part)
-    vals, obj = _parse_model(out)
+    vals, obj = _solve_bounded(meta["base_text"], meta["obj_lo"], meta["obj_hi"],
+                               SMT_TIMEOUT_S)
     if not vals:
         return _fallback(d, part)
 

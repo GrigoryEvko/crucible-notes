@@ -509,7 +509,34 @@ def raw_weight(prod: Node, cons: Node, arch: str = "SM89") -> tuple[int, str]:
         prod_pipe = _setp_datapath_pipe(prod.mnem)
     cons_pipe = LT.consumer_pipe(cons.mnem, ccm)
     stall = LT.coupled_stall(arch, prod_pipe, cons_pipe)
+
+    # IMMEDIATE-ONLY PRODUCER fast-forward.  A `MOV Rd, <imm>` / `MOV Rd, c[...]`
+    # with no register source reads has its result encoded in the instruction word
+    # (or pulled from the constant cache), so it skips the operand-collect stage a
+    # register-sourced producer pays -- ptxas forwards it to a cross-pipe consumer
+    # (e.g. the IMAD.WIDE address multiplier) at 1-3, never the full cross-pipe 5.
+    # Differentially confirmed on sm_89: `MOV R5, 0x4` -> `IMAD.WIDE` runs
+    # bit-identical at stall 1.  Cap such an edge at the same-pipe forward; the
+    # fixpoint then absorbs it further against the real intervening issue.
+    if pbase == "MOV" and not prod.ops.reads and stall > COUPLED_SAME_PIPE:
+        stall = COUPLED_SAME_PIPE
+
+    # PREDICATE-OPERAND SELECT penalty.  FSEL/SEL (and other coupled ops that read
+    # a predicate as a value operand) collect the predicate one cycle later than a
+    # plain GPR source, so their result forwards one cycle slower than an ordinary
+    # same-pipe op.  Differentially confirmed on sm_89: an `FSEL Rd, Ra, Rb, !P0`
+    # feeding an `FFMA` needs stall 5 (not the same-pipe 4) -- at 4 the FFMA reads
+    # a stale Rd and the result diverges.  Levy the +1 once.
+    if pbase in ("FSEL", "SEL") and _reads_pred_operand(prod):
+        stall += 1
     return stall, "stall"
+
+
+def _reads_pred_operand(node: Node) -> bool:
+    """True if the node reads a predicate register as a value operand (not an @P
+    guard) -- e.g. FSEL/SEL's select predicate."""
+    return any((r.startswith("P") or r.startswith("UP"))
+               for r in node.ops.reads) and not node.ops.guard_reads
 
 
 def _setp_datapath_pipe(mnem: str) -> str:
@@ -537,9 +564,20 @@ def _consumer_reads_guard(prod: Node, cons: Node) -> bool:
 
 
 def war_weight() -> int:
-    """WAR (anti) edge weight: zero-but-ordered on registers.  Its OWN per-
-    resource default -- independent of, and never copied from, the RAW table."""
-    return 0
+    """WAR (anti) edge weight: the reader's OPERAND-COLLECT WINDOW.
+
+    A writer that clobbers a register an earlier instruction still reads must not
+    issue before that reader has latched the operand.  A coupled reader latches
+    its sources a couple of cycles after it issues, so a back-to-back overwrite
+    needs a small floor -- not zero.  Differentially confirmed on sm_89: an
+    `FFMA Rx, ..., R3` immediately followed by `MOV R3, <imm>` runs bit-identical
+    only when the MOV waits >=3 cycles after the FFMA issues (an operand-collect
+    window of ~2 on top of the MOV's own dispatch floor); at the old weight 0 the
+    overwrite races the read and corrupts the result.  Weight 2 is the recovered
+    minimum; the issue-cycle fixpoint absorbs it against intervening issue, so a
+    well-separated WAR costs nothing.  This is the anti-edge's OWN default --
+    independent of, and never copied from, the RAW table."""
+    return 2
 
 
 def waw_weight(prod: Node) -> int:
@@ -756,15 +794,16 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None,
       * the 6-scoreboard allocator overloads (VSB->PSB by minimum added stall)
         when >6 are live; unbounded groups fall to SB5 + DEPBAR.LE.
 
-    `absorb_ctrl` (reorder path only): treat the CC/predicate control band like an
-    ordinary issue-relative RAW latency that intervening independent instructions
-    absorb, rather than a hard un-hideable floor.  ptxas does the same -- it never
-    emits a full 13-cycle stall on an ISETP/FSETP whose guard use is several
-    instructions later.  Keeping this OFF for --verify-corpus preserves the exact
-    ptxas-matching default; turning it ON when we REORDER lets the schedule hide
-    the band behind the work we hoisted into its shadow.  Any over-tightening is
-    caught by the GPU bit-identical + cycle gate, so this can only ever propose a
-    faster-or-rejected schedule, never an accepted-but-wrong one.
+    `absorb_ctrl`: retained for API compatibility.  The CC/predicate control band
+    is now ALWAYS modelled as an absorbable issue-relative latency (the fixpoint's
+    intervening-cycle accounting hides it behind independent work exactly as ptxas
+    does -- differentially confirmed on sm_89, where the full 13 appears only when
+    the @P-guarded consumer is immediately adjacent), so this flag no longer
+    changes the band.  The control-band magnitude itself is hardware-enforced (at
+    gap=1 it is emitted in full; patching it lower corrupts the result on the GPU)
+    -- it is the SHADOW that is hideable, not the latency.  Any over-tightening is
+    caught by the GPU bit-identical + cycle gate, so a reorder can only ever
+    propose a faster-or-rejected schedule, never an accepted-but-wrong one.
 
     Returns one SchedFields per node plus per-instruction reasoning.
     """
@@ -807,11 +846,30 @@ def compose(dag: DAG, ctrls: list[Ctrl] | None = None,
             return 2
         return 1
 
-    # Per-producer fixed-stall edges (dst, weight, is_ctrl).
+    # Per-producer fixed-stall edges (dst, weight, is_ctrl).  The fixpoint raises
+    # the SOURCE instruction's stall so the difference constraint
+    # issue[dst] - issue[src] >= weight holds.  Three edge classes contribute:
+    #   * RAW stall / stall_ctrl  -- the consumer must wait for the producer's
+    #     coupled result (or the control band).
+    #   * WAR  -- a register-clobbering writer (dst) must not overwrite an operand
+    #     an earlier coupled reader (src) has not yet latched: weight = the
+    #     reader's operand-collect window (war_weight).  Without this the composer
+    #     would let a cheap immediate writer race ahead of a still-collecting
+    #     reader and corrupt it (confirmed on sm_89: FFMA Rx,...,R3 then MOV R3,
+    #     <imm> needs the MOV >=3 cycles after the FFMA).
+    #   * WAW  -- a fast writer (dst) following a slow (decoupled) writer (src) to
+    #     the same register keeps its small nonzero floor (waw_weight) so the
+    #     final value wins.
+    # A scoreboard-tracked (decoupled) source resolves its WAR/WAW via the
+    # consumer's wait bit, not a stall, so only edges whose SOURCE is coupled are
+    # added here (a decoupled source already arms a scoreboard below).
     out_stall: list[list[tuple[int, int, bool]]] = [[] for _ in range(n)]
     for e in dag.edges:
         if _is_stall_edge(e):
             out_stall[e.src].append((e.dst, e.weight, e.mechanism == "stall_ctrl"))
+        elif e.kind in (EDGE_WAR, EDGE_WAW) and e.weight > 0 \
+                and dag.nodes[e.src].coupled:
+            out_stall[e.src].append((e.dst, e.weight, False))
 
     # ---- stall fixpoint (difference constraints) ------------------------------
     # Every fixed-latency RAW edge P->C imposes the hazard constraint

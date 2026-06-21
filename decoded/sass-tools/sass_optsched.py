@@ -120,8 +120,19 @@ def build_block_model(dag: "S.DAG", blk: Block, arch: str) -> BlockModel:
             continue
         if e.kind == S.EDGE_RAW and S._is_stall_edge(e):
             w = max(1, e.weight)           # coupled fixed-latency RAW
+        elif e.kind in (S.EDGE_WAR, S.EDGE_WAW) and e.weight > 0 \
+                and dag.nodes[e.src].coupled:
+            # Anti/output edge from a coupled source: the reader's operand-collect
+            # window (WAR) or the fast-writer floor (WAW).  Use the real edge
+            # weight so the block makespan the solver MINIMISES matches what the
+            # composer will EMIT for this order -- otherwise the model would
+            # under-count these gaps (weight 1) and propose an order whose
+            # recomposed makespan is larger than the model predicted (a model-win
+            # that is not a silicon-win).
+            w = max(1, e.weight)
         else:
-            # decoupled-producer RAW (scoreboard) or WAR/WAW/CTRL: order-only.
+            # decoupled-producer RAW (scoreboard) or zero-weight WAR/WAW/CTRL:
+            # order-only.
             w = 1
         key = (u, v)
         if key in seen:
