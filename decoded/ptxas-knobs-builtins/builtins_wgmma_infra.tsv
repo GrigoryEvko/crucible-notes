@@ -1,5 +1,3 @@
-# ptxas WGMMA (Hopper warpgroup MMA) intrinsic dispatch/handler infrastructure (CUDA 13.0.88)
-# region 0x229C480-0x22A1500 (20608 bytes); one row per sub-block of wgmma_intrinsic_infra
 block_name	kind	count	source_va_or_note	description
 region	metadata	1	0x229C480-0x22A1500 (20608B)	Bounding VA range of the entire WGMMA intrinsic infrastructure region in ptxas .rodata
 wgmma_pipeline	pipeline_params + handler vtable	22	0x229C480	WGMMA scheduler tuning struct (pipeline_depth=32, max_pending=128, 8 stage latencies=24, special_latency=300, max_pipeline_length=1000) followed by a 22-slot handler vtable (vtable_va=0x229C4C0), 7 opcode_indices [44,45,43,54,53,52,...] and an 18-entry enum_config selecting per-stage behavior

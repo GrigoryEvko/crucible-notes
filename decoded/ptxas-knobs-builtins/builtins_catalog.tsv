@@ -1,7 +1,3 @@
-# ptxas device-builtin (embedded PTX intrinsic) catalog (CUDA 13.0.88)
-# source_va=0x1D1E200 end_va=0x1D4B777 size_bytes=185719 entry_count=1080
-# categories: cuda_other=549, sm70_intrinsics=433, sm20_math=70, redux_sync=17, sanitizer=7, sm80_intrinsics=4
-# n_params parsed from final paren group of the .func declaration
 index	va	function_name	category	return_type	n_params	declaration
 0	0x1D1E200	__cuda_sm20_div_s16	sm20_math	.reg .s32 %d	2	.weak .func (.reg .s32 %d) __cuda_sm20_div_s16 (.reg .s32 %a0, .reg .s32 %a1)        ;
 1	0x1D1E260	__cuda_sm20_div_u16	sm20_math	.reg .u32 %d	2	.weak .func (.reg .u32 %d) __cuda_sm20_div_u16 (.reg .u32 %a0, .reg .u32 %a1)        ;

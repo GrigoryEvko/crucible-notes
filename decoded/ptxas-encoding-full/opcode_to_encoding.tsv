@@ -1,4 +1,3 @@
-# source_va=0x22B4B60 sentinel=355 count=222
 opcode	encoding_slot	is_sentinel
 0	0	False
 1	0	False

@@ -446,10 +446,8 @@ main	443	6	fatal	Program with .target '%s' cannot be compiled to future architec
 main	444	6	fatal	SM version specified by .target is higher than default SM version assumed	plaintext
 main	445	5	error	labels '%s' and '%s' must be defined in the same section	plaintext
 main	446	5	error	label '%s' invalid	plaintext
-main	447	2	info	"Function properties for %s
-    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads"	plaintext
-main	448	2	info	"Fatpoint count for entry %s for regclass %s : %d
-"	plaintext
+main	447	2	info	"Function properties for %s\n    %d bytes stack frame, %d bytes spill stores, %d bytes spill loads"	plaintext
+main	448	2	info	"Fatpoint count for entry %s for regclass %s : %d\n"	plaintext
 main	449	5	error	Invalid default cache modifier on %s specified: %s	plaintext
 main	450	6	fatal	Optimized debugging not supported	plaintext
 main	451	2	info	(C%04d) %s	plaintext
@@ -506,4 +504,4 @@ link	36	3	warning	Stack size for entry function '%s' cannot be statically determ
 link	37	6	fatal	More than %d %s used in entry function '%s'	plaintext
 link	38	5	error	Entry function '%s' uses too much data for compiler-generated constants; please recompile with -Xptxas --disable-optimizer-constants	plaintext
 link	39	5	error	File uses too much global %s data (0x%llx bytes, 0x%x max)	plaintext
-link	40	5	error	Entry function '%s' uses too much %s data (0x%llx bytes, 0x%x max)	plaintext
+link	40	5	error	Entry function '%s' uses too much %s data (0x%llx bytes, 0x%x max)	plaintext\n

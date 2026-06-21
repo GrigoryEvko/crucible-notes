@@ -78,7 +78,7 @@ token_id_dec	token_id_hex	keyword(s)/group-members	kind
 336	0x150	.retaddr_allocno	single
 337	0x151	.cta|.cluster|.gl|.gpu|.sys	modifier-group(5)
 338	0x152	.v2|.v4	modifier-group(2)
-339	0x153	.version	0.0	single
+339	0x153	.version 0.0	single
 340	0x154	.target	single
 341	0x155	.address_size	single
 342	0x156	.scratch	single
@@ -162,16 +162,15 @@ token_id_dec	token_id_hex	keyword(s)/group-members	kind
 421	0x1a5	::ld|::st	modifier-group(2)
 422	0x1a6	.block16|.block32	modifier-group(2)
 			no-token-rule(action 0)
-		.DEFINE	A	no-token-rule(action 1)
+		.DEFINE A	no-token-rule(action 1)
 		.IF	no-token-rule(action 3)
 		.byte	no-token-rule(action 287)
 		.4byte	no-token-rule(action 288)
 		<#line-marker>	no-token-rule(action 540)
-				no-token-rule(action 543)
+			no-token-rule(action 543)
 		/*	no-token-rule(action 544)
 		//	no-token-rule(action 545)
-		
-	no-token-rule(action 546)
+		<newline>	no-token-rule(action 546)
 			no-token-rule(action 547)
 		<single-char-punct>	no-token-rule(action 548)
 			no-token-rule(action 549)

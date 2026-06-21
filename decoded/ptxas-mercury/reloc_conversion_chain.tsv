@@ -1,6 +1,3 @@
-## Relocation kind conversion chain across the Mercury->SASS finalization flow.
-## Three round-trips: (1) R_MERCURY ELF reloc <-> RK_MERCURY OCG kind (merc<->ocg), (2) OCG RK_SM* kind -> R_CUDA ELF reloc on TEXT (ocg->elf), (3) R_MERCURY -> R_CUDA on DATA (merc->sass).
-## The data-section switch (merc->sass) is binary-corroborated by the ".nv.merc.rela" clone path.
 stage	from_kind	to_kind	condition	conversion_site	notes
 merc2ocg	R_MERCURY_ABS32	RK_MERCURY_ABS32	sym==SHARED sets SymIsShared	merc->ocg	Mercury ELF reloc -> OCG-referencable RK kind (into GenerateSASS)
 merc2ocg	R_MERCURY_ABS32_LO	RK_MERCURY_ABS32_LO	-	merc->ocg	-

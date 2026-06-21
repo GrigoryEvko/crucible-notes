@@ -1,20 +1,7 @@
-## ptxas CUDA 13.0.88 — .nv.info / .nv.callgraph / .note / RELA on-wire layout (BINARY GROUND TRUTH)
-## Produced by assembling real cubins (minimal PTX, sm_75/sm_90/sm_100) and reading raw section bytes,
-##   cross-checked with cuobjdump --dump-elf.
-## ==========================================================================================================
-## .nv.info ELEMENT WIRE FORMAT (nvinfo element): [EIFMT(1B)][EIATTR(1B)][value...]
-##   EIFMT: 1=NVAL (no payload, 2-byte element), 2=BVAL (1 byte in 3rd byte, 4-byte element),
-##          3=HVAL (2 bytes in 3rd-4th byte, 4-byte element), 4=SVAL (u16 size then payload, padded to 4B).
-##   The .nv.info writer chooses EIFMT per emit call by payload width: novalue->NVAL, byte->BVAL, half->HVAL, sized->SVAL.
-## ==========================================================================================================
-## SECTION .nv.info  (whole-module; one triple per function symbol) — raw bytes (sm_90):
-##   04 2f 0800 0e000000 0a000000 | 04 11 0800 0e000000 00000000 | 04 12 0800 0e000000 00000000
 order	eifmt	eiattr_code	eiattr_name	payload_meaning (decoded)
 1	SVAL	47	EIATTR_REGCOUNT	{u32 symidx=0xe, u32 regCount=0xa}  (regcount record; (g) module-level)
 2	SVAL	17	EIATTR_FRAME_SIZE	{u32 symidx, u32 frameSize}  (frame-size record)
 3	SVAL	18	EIATTR_MIN_STACK_SIZE	{u32 symidx, s32 stackSize}  (min-stack-size record; -1 = unknown/recursion)
-## ==========================================================================================================
-## SECTION .nv.info.<entry>  (per-kernel) — observed order for kernel "addvec" (sm_90), raw decode:
 order	eifmt	eiattr_code	eiattr_name	observed_value / payload
 1	SVAL	55	EIATTR_CUDA_API_VERSION	0x82 (=130; link-time API version stamp, u32 word)
 2	SVAL	23	EIATTR_KPARAM_INFO	param ordinal 2 (12-byte record; bitfield below)
@@ -27,32 +14,3 @@ order	eifmt	eiattr_code	eiattr_name	observed_value / payload
 9	HVAL	25	EIATTR_CBANK_PARAM_SIZE	0x14 (=20 bytes total param size)
 10	SVAL	10	EIATTR_PARAM_CBANK	{u32 symidx=0xf(.nv.constant0.<entry>), u16 offset=0x210, u16 bytes=0x14}
 11	SVAL	54	EIATTR_SW_WAR	0x8 (SW workaround bitmask, u32 word)
-## NOTE: with bar.sync barriers present (sm_75 test, 3 barriers) an extra element appears:
-##   BVAL 76 EIATTR_NUM_BARRIERS = 0x03  -> barrier COUNT now lives here, NOT in SHF_BARRIER_MASK (13.0.88 drift).
-## ==========================================================================================================
-## EIATTR_KPARAM_INFO 12-byte payload (kparam record) — bitfield INDEPENDENTLY decoded from the
-##   emitted bytes (NO reliance on cuobjdump labels):
-## bytes [0:4]   = u32 index        (symbol index, 0 here)
-## bytes [4:6]   = u16 ordinal      (param position)
-## bytes [6:8]   = u16 offset       (byte offset within param cbank)
-## bytes [8:12]  = u32 packed, LSB-first: logAlign:8, space:4, cbankid:5, isSmemParam:1, size:14
-##   worked example: ordinal-2 record bytes = 02 00 10 00 00 f0 11 00
-##     -> index=0, ordinal=2, offset=0x10, packed=0x0011f000
-##     -> logAlign=0, space=0, cbankid=(0x11f000>>12)&0x1f=0x1f(=31, param cbank), isSmem=0, size=(0x11f000>>18)&0x3fff=4
-##     (matches cuobjdump's Size=4 logAlign=0 Space=0 cbank=0x1f, but here derived purely from the struct bitfield)
-## ==========================================================================================================
-## .nv.callgraph  (SHT_CUDA_CALLGRAPH=0x70000001, entsize 8) — record = {u32 x, u32 y}:
-##   if x==0, y is a MARKER: -1(0xffffffff)=CALL_MARKER (following = {caller,callee} pairs),
-##     -2(0xfffffffe)=PROTO_MARKER ({func,protoStrIdx}), -3(0xfffffffd)=ICALL_MARKER ({icaller,protoStrIdx}),
-##     -4(0xfffffffc)=NEW MARKER in 13.0.88 (absent in earlier toolchains; 4th category/terminator).
-##   raw (leaf kernel "addvec"): 00000000 ffffffff | 00000000 feffffff | 00000000 fdffffff | 00000000 fcffffff
-##   (ptxas inlines aggressively; populating real {caller,callee} call records needs separate compilation.)
-## ==========================================================================================================
-## .note.nv.tkinfo  : ELF note. namesz=12, descsz=136, n_type=0x7d0(2000), name="NVIDIA Corp\0".
-##   desc: u16 noteVersion=2, then tool name "ptxas", tool version string "Cuda compilation tools, release
-##   13.0, V13.0.88", build branch, and the literal command-line args (e.g. "-arch sm_90 ").
-## .note.nv.cuinfo  : namesz=12, descsz=8, n_type=0x3e8(1000), name="NVIDIA Corp\0".
-##   desc (8 bytes): 02 00 | 5a 00 | 82 00 00 00  = noteVersion=2, virtualSM=0x5a(=90), CUDA-API-version=0x82(=130).
-## ==========================================================================================================
-## RELA entries (SHT_RELA, 24-byte ELF64): r_offset(u64), r_info(u64)=(symidx<<32)|relocType, r_addend(s64).
-##   example: .rela.nv.constant4 = {r_offset=0, r_info=0x800000002, addend=0} = R_CUDA_64 on sym #8 (gCounter).

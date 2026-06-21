@@ -1,24 +1,3 @@
-# ptxas OCG knob model (binary-derived, CUDA 13.0.88)
-#
-# The driver/optimizer reads a small set of "OCG knobs" to decide its control flow.
-# These are NOT the same namespace as the 994 okt/bss knobs in extracted/okt_knob_descriptors.json.
-# An OCG knob is one 72-byte entry in the knob array at  config_obj+0x48.
-# The config object is reached as:  ctx+0x680 (OCG cfg obj) -> +0x48 (knob array base),
-# OR via the options object  ctx+0x1664 -> +0x48  (same array; two views of the same store).
-#
-# Knob entry layout (72 bytes):
-#   entry[0]   : presence/type tag byte. 0 = unset. 5 = "set, value present".
-#   entry[8]   : value pointer (read when tag == 5).
-# Config offset of knob N  ==  N * 72  (0x48-relative).  Verified: 298*72=0x53D0, 391*72=0x6DF8,
-# 249*72=0x4608, 499*72=0x8C58 -- all exact, remainder 0.
-#
-# Two leaf accessors are inlined/compared by address throughout the driver:
-#   sub_6614A0  : BOOL accessor.   knobs=obj+0x48; entry=knobs+idx*72; return (entry[0] != 0).
-#   sub_6614C0  : VALUE accessor.  same indexing; if entry[0]==5 return entry[8] else 0.
-# When the live accessor object's vtable slot does NOT equal these fast leaves, the driver
-# instead does a virtual call  (*slot)(obj, idx)  with the knob index as an int arg.
-#
-# knob_id  config_off  accessor_slot  read_by(addr)            role
 249        0x4608       vt+72(bool)    sub_C62720 @0xc62786     phase-wise compile-stats flag -> sets PhaseManager+0x48 (timing report on/off)
 298        0x53D0       vt+72(bool)    sub_7FB6C0 @0x7fb6ef     recipe / named-phases pipeline selector: if set -> sub_9F63D0 (debug/recipe path) instead of default
 298        0x53D0       vt+72(bool)    sub_9F4040 @0x9f40fd     re-checked inside recipe builder (cmpb $0,0x53d0 -> governs recipe path)
@@ -27,6 +6,3 @@
 391        0x6DF8       vt+224(value)  sub_C62720 @0xc62ac9     NvOptRecipe value (entry[0]==5 -> entry[8] at +0x6E00); stored into recipe-apply object +312
 499        0x8C58       vt+72(bool)    sub_7DDB50 @0x7ddb..      "disable optimization" override: when set, the opt-level accessor returns ctx+0x838 only while a budget counter (entry+12 < entry+8) holds, else returns minimal level 1
 297        n/a          vt+72/224      sub_9F4040 (many)         recipe-step event/counter knob; pulsed once per applied recipe element (write-style virtual call)
-#
-# Confidence: VERY HIGH. Every config offset == id*72 verified; accessor bodies disassembled;
-# read sites disassembled and matched to decompiled C.

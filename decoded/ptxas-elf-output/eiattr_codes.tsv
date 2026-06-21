@@ -1,15 +1,3 @@
-## ptxas CUDA 13.0.88 — EIATTR (.nv.info attribute) enumeration
-## INDEPENDENTLY RE-EXTRACTED FROM BINARY (this run) by walking the .rodata name-pointer table at
-##   file 0x1FFDC20 / VMA 0x23FDC20 (97 x 16-byte entries, terminates when the name ptr leaves .rodata):
-##   struct { const char *name; u32 fmt_kind; u32 fmt_sub; }   -> EIATTR code == array index.
-##   The extraction reproduced all 97 names AND both fmt words byte-for-byte (see body). EIATTR_ERROR string
-##   @ file 0x1FFC6C7 / VMA 0x23FC6C7 (rodata file->VMA delta = +0x400000). ERROR_LAST is 96 in the 13.0.88
-##   binary; earlier CUDA toolchains exposed a shorter enum (ERROR_LAST near 52, then 59) — the enum has grown
-##   over releases to 97 entries. Codes 0..55 retain the historical low-range ordering; binary-emitted .nv.info
-##   bytes confirm e.g. 0x2f=47=REGCOUNT, 0x17=23=KPARAM_INFO, 0x36=54=SW_WAR, 0x37=55=CUDA_API_VERSION, 0x0a=10=PARAM_CBANK.
-## fmt_kind/fmt_sub are the per-entry classification words (NOT the on-wire EIFMT byte; EIFMT is chosen per emit call:
-##   EIFMT_NVAL=1 no payload, EIFMT_BVAL=2 1-byte, EIFMT_HVAL=3 2-byte, EIFMT_SVAL=4 size-prefixed blob).
-## status: baseline=present in earlier toolchains (low-range codes); NEW=added since; moved=reindexed.
 code	name	fmt_kind	fmt_sub	status	notes
 0	EIATTR_ERROR	0x1	0x0	baseline	sentinel, never emitted
 1	EIATTR_PAD	0x1	0x0	baseline	4/8-byte alignment padding element
@@ -25,7 +13,7 @@ code	name	fmt_kind	fmt_sub	status	notes
 11	EIATTR_SMEM_PARAM_OFFSETS	0x1	0x0	baseline	deprecated by KPARAM_INFO
 12	EIATTR_CBANK_PARAM_OFFSETS	0x1	0x0	baseline	deprecated by KPARAM_INFO
 13	EIATTR_SYNC_STACK	0x1	0x0	baseline	deprecated by CRS_STACK_SIZE
-14	EIATTR_TEXID_SAMPID_MAP	0x1	0x0	baseline
+14	EIATTR_TEXID_SAMPID_MAP	0x1	0x0	baseline	
 15	EIATTR_EXTERNS	0x1	0x0	baseline	array of symtab indices
 16	EIATTR_REQNTID	0x1	0x0	baseline	req-ntid record {x,y,z}
 17	EIATTR_FRAME_SIZE	0x1	0x0	baseline	(g) frame-size record
@@ -73,43 +61,38 @@ code	name	fmt_kind	fmt_sub	status	notes
 59	EIATTR_SAM_REGION_STACK_SIZE	0x5	0x2	baseline-era	(g)
 60	EIATTR_PER_REG_TARGET_PERF_STATS	0x5	0x2	baseline-era	per-reg-target-perf-stats[]
 61	EIATTR_CTA_PER_CLUSTER	0x5	0x2	NEW	cluster dims
-62	EIATTR_EXPLICIT_CLUSTER	0x5	0x2	NEW
-63	EIATTR_MAX_CLUSTER_RANK	0x5	0x2	NEW
-64	EIATTR_INSTR_REG_MAP	0x5	0x2	NEW
-65	EIATTR_RESERVED_SMEM_USED	0x5	0x2	NEW
-66	EIATTR_RESERVED_SMEM_0_SIZE	0x5	0x2	NEW
-67	EIATTR_UCODE_SECTION_DATA	0x5	0x2	NEW
-68	EIATTR_UNUSED_LOAD_BYTE_OFFSET	0x5	0x1	NEW
+62	EIATTR_EXPLICIT_CLUSTER	0x5	0x2	NEW	
+63	EIATTR_MAX_CLUSTER_RANK	0x5	0x2	NEW	
+64	EIATTR_INSTR_REG_MAP	0x5	0x2	NEW	
+65	EIATTR_RESERVED_SMEM_USED	0x5	0x2	NEW	
+66	EIATTR_RESERVED_SMEM_0_SIZE	0x5	0x2	NEW	
+67	EIATTR_UCODE_SECTION_DATA	0x5	0x2	NEW	
+68	EIATTR_UNUSED_LOAD_BYTE_OFFSET	0x5	0x1	NEW	
 69	EIATTR_KPARAM_INFO_V2	0x5	0x0	NEW	extended kernel-param descriptor
 70	EIATTR_SYSCALL_OFFSETS	0x5	0x2	NEW	array
 71	EIATTR_SW_WAR_MEMBAR_SYS_INSTR_OFFSETS	0x5	0x2	NEW	array
 72	EIATTR_GRAPHICS_GLOBAL_CBANK	0x5	0x2	NEW	graphics path
 73	EIATTR_SHADER_TYPE	0x5	0x2	NEW	graphics path
-74	EIATTR_VRC_CTA_INIT_COUNT	0x5	0x2	NEW
-75	EIATTR_TOOLS_PATCH_FUNC	0x5	0x2	NEW
-76	EIATTR_NUM_BARRIERS	0x5	0x2	NEW
-77	EIATTR_TEXMODE_INDEPENDENT	0x5	0x2	NEW
-78	EIATTR_PERF_STATISTICS	0x5	0x2	NEW
+74	EIATTR_VRC_CTA_INIT_COUNT	0x5	0x2	NEW	
+75	EIATTR_TOOLS_PATCH_FUNC	0x5	0x2	NEW	
+76	EIATTR_NUM_BARRIERS	0x5	0x2	NEW	
+77	EIATTR_TEXMODE_INDEPENDENT	0x5	0x2	NEW	
+78	EIATTR_PERF_STATISTICS	0x5	0x2	NEW	
 79	EIATTR_AT_ENTRY_FRAGEMENTS	0x5	0x2	NEW	canonical enum spelling is misspelled "FRAGEMENTS"
-80	EIATTR_SPARSE_MMA_MASK	0x5	0x2	NEW
+80	EIATTR_SPARSE_MMA_MASK	0x5	0x2	NEW	
 81	EIATTR_TCGEN05_1CTA_USED	0x5	0x2	NEW	Blackwell tensor-core gen5, 1-CTA
 82	EIATTR_TCGEN05_2CTA_USED	0x5	0x2	NEW	Blackwell tensor-core gen5, 2-CTA
-83	EIATTR_GEN_ERRBAR_AT_EXIT	0x5	0x2	NEW
-84	EIATTR_REG_RECONFIG	0x5	0x2	NEW
-85	EIATTR_ANNOTATIONS	0x5	0x2	NEW
+83	EIATTR_GEN_ERRBAR_AT_EXIT	0x5	0x2	NEW	
+84	EIATTR_REG_RECONFIG	0x5	0x2	NEW	
+85	EIATTR_ANNOTATIONS	0x5	0x2	NEW	
 86	EIATTR_UNKNOWN	0x5	0x2	NEW	in-range placeholder slot, not a sentinel
 87	EIATTR_STACK_CANARY_TRAP_OFFSETS	0x5	0x2	NEW	stack-protection
-88	EIATTR_STUB_FUNCTION_KIND	0x5	0x2	NEW
-89	EIATTR_LOCAL_CTA_ASYNC_STORE_OFFSETS	0x5	0x2	NEW
+88	EIATTR_STUB_FUNCTION_KIND	0x5	0x2	NEW	
+89	EIATTR_LOCAL_CTA_ASYNC_STORE_OFFSETS	0x5	0x2	NEW	
 90	EIATTR_MERCURY_FINALIZER_OPTIONS	0x5	0x2	NEW	Mercury finalizer config
-91	EIATTR_BLOCKS_ARE_CLUSTERS	0x5	0x2	NEW
+91	EIATTR_BLOCKS_ARE_CLUSTERS	0x5	0x2	NEW	
 92	EIATTR_SANITIZE	0x5	0x2	NEW	compute-sanitizer
-93	EIATTR_SYSCALLS_FALLBACK	0x5	0x2	NEW
-94	EIATTR_CUDA_REQ	0x5	0x2	NEW
+93	EIATTR_SYSCALLS_FALLBACK	0x5	0x2	NEW	
+94	EIATTR_CUDA_REQ	0x5	0x2	NEW	
 95	EIATTR_MERCURY_ISA_VERSION	0x5	0x2	NEW	Mercury ISA version stamp
 96	EIATTR_ERROR_LAST	0x5	0x2	moved	sentinel; lower-numbered in earlier toolchains
-## Non-enumerated EIATTR strings present in binary but with NO ordinal in the primary table:
-##   EIATTR_AT_ENTRY_FRAGMENTS (corrected spelling) @ VMA 0x2405DA1
-##   EIATTR_COROUTINE_RESUME_ID_OFFSETS @ VMA 0x24064D8
-## On-wire encoding: each .nv.info element = nvinfo-element header (4B: format,attr,{bval|hval|size}) optionally
-##   followed by size-prefixed sval payload; all elements 4-byte aligned (8-byte structs use EIATTR_PAD).

@@ -1,7 +1,3 @@
-## Mercury FINALIZER pipeline (FNLZR) -- ordered stages that turn a Mercury/capmerc ELF into native SASS.
-## "stage_name" = descriptive label / phase tag recovered from binary strings where present.
-## "bin_fn" = binary-confirmed ptxas function VMA where known; "-" = stage is internal/inlined or arch-ucode (not separately documented here).
-## The lib driver gates and parses input (stages 1-3); per-text-section codegen runs the SASS machine (GenerateSASS sub-phases); stages 5-12 remap relocs, size, and emit the SASS ELF.
 stage	level	stage_name	bin_fn	what_it_does
 01_accept	lib-driver	finalize-entry	sub_612DE0(fastpath)	gate input: 64-bit, EF_IS_MERCURY set, e_type in {ET_REL,ET_EXEC,ET_EWP}, abiVersion==ELFMERCABIV_ABI(0); arch-compatible / off-target family check (sub_60F290)
 02_secgroup	lib-driver	section-grouping	-	group each Mercury .text.<fn> with its SHT_RELA reloc sec + SHT_CUDA_INFO nvinfo sec; build SASS symbol table, section-group info

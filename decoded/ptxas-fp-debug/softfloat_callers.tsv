@@ -1,10 +1,4 @@
 caller_addr	caller_role	softfloat_target_addr	ptx_op_inferred	evidence
-# ===========================================================================
-# Callers of the FP constant-fold engine in ptxas (CUDA 13.0.88).
-# softfloat_target_addr names the FOLD-ENGINE entry actually invoked (softfloat
-# proper is absent — see softfloat_routines.tsv header). Edges from callgraph.json
-# (from_addr -> to_addr) and decompiled bodies.
-# ===========================================================================
 0x926a30	constfold_master	0x9203a0	add/sub/mul/div/min/max .f32/.f64 (binary)	0x926a30 -> 0x9203a0 (2 edges); master switch routes binary ALU ops to native-double folder
 0x926a30	constfold_master	0x921820	sqrt/cos/lg2/ex2/rcp/round/cvt .f32/.f64 (unary)	master switch routes transcendental+sqrt+cvt unary ops to libm folder
 0x9203a0	constfold_binary	0x91b730	operand decode (any .f16/.f32/.f64/.bf16 imm)	0x9203a0 -> 0x91b730; decodes both source immediates to host double before native op

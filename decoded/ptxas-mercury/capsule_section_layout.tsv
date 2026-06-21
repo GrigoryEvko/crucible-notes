@@ -1,6 +1,3 @@
-## Capsule / Mercury (capmerc) container layout -- ELF-level constants (ptxas CUDA 13.0.88).
-## Section types are processor-specific (SHT_LOPROC = 0x70000000). Header flags / e_type / ABI from the CUDA ELF (EM_CUDA=190=0xBE).
-## All values binary-confirmed (section-name strings + flag tests in ptxas) and corroborated by older CUDA toolkit binaries.
 constant	symbolic_value	numeric	notes
 SHT_LOPROC	processor_specific_base	0x70000000	ELF SHT_LOPROC base; all CUDA section types are LOPROC+N
 SHT_CUDA_INFO	SHT_LOPROC+0	0x70000000	.nv.info nvinfo attributes (EIATTR_* TLVs); sh_info==0 => global nvinfo

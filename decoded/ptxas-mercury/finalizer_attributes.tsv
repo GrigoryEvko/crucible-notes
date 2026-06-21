@@ -1,6 +1,3 @@
-## Mercury/finalizer nvinfo (EIATTR) + compat (EICOMPAT) attributes -- ptxas CUDA 13.0.88.
-## EIATTR codes for the two Mercury attrs are binary-only (new since earlier toolchains); recovered from the binary nvinfo descriptor table.
-## EICOMPAT_* are string-pool tokens in the finalizer block; codes inferred by string adjacency unless a table backs them.
 attribute	kind	numeric_code	eifmt	eival_kind	name_vma	confidence	notes
 EIATTR_MERCURY_FINALIZER_OPTIONS	EIATTR	0x5A (90)	5 (EIFMT_SVAL)	2	0x23fd020	CONFIRMED	indexed descriptor table @0x23fdc20 (16B stride); structured length-prefixed payload built at finalize time; carries the finalizer option blob
 EIATTR_MERCURY_ISA_VERSION	EIATTR	0x5F (95)	5 (EIFMT_SVAL)	2	0x23fcddf	CONFIRMED	combined Mercury ISA version emitted into .nv.info

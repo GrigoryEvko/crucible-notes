@@ -1,18 +1,8 @@
-## Mercury-to-SASS offset map (SHT_CUDA_MERCURY_SASS_MAP = SHT_LOPROC+13 = 0x7000000D).
-## Section name: ".mercury_to_sass_map" (MERC_MAP_SECNAME), suffixed with the text-section name; sh_info = SASS section index.
-## A DWARF-line-program-style byte-code state machine emitted by the ptxas master ELF emitter (sub_1C9F280) + capsule descriptor builder (sub_1C9C300).
-## It records the correspondence Mercury-instruction-offset <-> SASS-instruction-offset so the driver/debugger can relabel Mercury PCs to SASS PCs after finalization.
-## Opcode/header identifiers and the MPE/SASS sizes are corroborated binary-side (MPE packet = 32B, SASS inst = 16B).
-##
-## --- HEADER (map header, 16 bytes, 4x u32 LE) ---
-field	value	meaning
-version	1	map format version
-headerLength	16	header size in bytes
-sassInstSize	16	bytes per finalized SASS instruction (0x10)
-mercInitialInstsize	32	bytes per Mercury packet / MPE (0x20)
-##
-## --- OPCODES (1 byte opcode + LEB128 args; state machine) ---
-opcode	value	args	effect
+entry	value	args	description
+version	1		map format version
+headerLength	16		header size in bytes
+sassInstSize	16		bytes per finalized SASS instruction (0x10)
+mercInitialInstsize	32		bytes per Mercury packet / MPE (0x20)
 MSM_nop	0x00	none	padding / no-op
 MSM_reset	0x01	none	reset state: mercOffset=0, sassOffset=0, sassInsSize=0x10, mercInsSize=0x20, sassIndex=0, repCount=1
 MSM_set_mercury_offset	0x02	uleb	mercOffset = arg

@@ -1,14 +1,3 @@
-## ptxas CUDA 13.0.88 — device-ELF (cubin) section / type / flag / symbol catalog
-## METHOD: cross-checked three ways. (1) EMITTED real cubins with the V13.0.88 ptxas binary
-##   (ptxas -arch=<sm> [-c] on minimal PTX) and read raw sh_type/sh_flags from the ELF bytes.
-##   (2) cuobjdump --dump-elf symbolic names. (3) the publicly distributed CUDA toolchain's numeric defines. BINARY WINS.
-## CRITICAL: device-ELF section TYPES depend on OUTPUT MODE:
-##   - RELOCATABLE  (ptxas -c, e_type=ET_REL=1): memory-space sections keep their SHT_CUDA_* LOPROC types.
-##   - FINAL cubin  (default, e_type=ET_EXEC=2): the SAME sections are LOWERED to standard ELF types
-##       (.nv.constant*->PROGBITS, .nv.global/.nv.shared->NOBITS). Only .nv.info/.nv.compat/.nv.callgraph
-##       keep LOPROC types in the final cubin. Both observations are BINARY-confirmed (see notes column).
-## SHT_CUDA_* = 0x70000000(SHT_LOPROC) + N. kind: HDR=ELF ident/machine ; EFLAG=e_flags ; SHT=section type ;
-##   SHFLAG=sh_flags bit ; STT=symbol type ; STO=symbol st_other ; SYM=special symbol name.
 kind	value	name_or_macro	on_wire_section	purpose / binary evidence
 HDR	0x41	e_ident[EI_OSABI]	(ELF ident byte 7)	BINARY: emitted cubins carry 0x41 (earlier toolchains used the CUDA OSABI tag 0x33)
 HDR	0x08	e_ident[EI_ABIVERSION]	(ELF ident byte 8)	BINARY: 0x08 (cuobjdump prints ABI=8); earlier builds used 7

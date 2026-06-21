@@ -1,7 +1,3 @@
-# ptxas v13.0.88 SM version-code table @ VA 0x2020620, 128 x u16
-# indexed by (internal_arch_index); reader: sub_60FBF0 v33=(*(a2+64)-20); if v33<=0x65 code=table[v33]
-# code encoding: bits[15:12]=major*10, bits[11:8]=minor, bits[7:0]=variant
-# valid window: index 0..101 (0x65). index>=102 = adjacent-table bleed (ignore)
 table_index	code_hex	code_dec	sm_num	variant	sm_string	note
 0	0x2000	8192	20	0	sm_20	
 1	0x2001	8193	20	1	sm_20a	

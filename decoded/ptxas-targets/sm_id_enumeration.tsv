@@ -1,6 +1,3 @@
-# Supported compute-capability enumeration @ VA 0x1CE7F80, 28 x u32
-# reader: sub_442710(a1): v1=a1-7; if (u32)v1<=0x1B return table[v1]; else 0
-# => internal arch_index 7..34 maps to these SM ids; 0 entries are list separators
 table_index	arch_index	sm_id	sm_string	note
 0	7	30	sm_30	
 1	8	32	sm_32	

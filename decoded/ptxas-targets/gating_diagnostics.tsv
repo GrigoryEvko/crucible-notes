@@ -1,5 +1,3 @@
-# Architecture / ISA feature-gating diagnostic format strings (binary-derived, ptxas .rodata)
-# These are emitted when a (target SM, PTX ISA version, instruction, modifier) tuple fails legality.
 va	format_string
 0x1cffc58	Instruction '%s' not supported on .target '%s'
 0x1cffc28	Feature '%s' not supported on .target '%s'

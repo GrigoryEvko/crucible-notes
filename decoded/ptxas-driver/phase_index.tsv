@@ -1,19 +1,3 @@
-# ptxas phase registry (binary-derived, CUDA 13.0.88)
-#
-# All 159 phase IDs from the name table at VA 0x22BD0C0 (file off 0x1EBD0C0, rodata delta 0x400000).
-# Verified byte-exact against extracted/phase_names.json (count 159) and
-# decoded/ptxas-passes/phase_pipeline.tsv (159 rows): ZERO mismatches.
-#
-# bin_index : phase ID; index into name table 0x22BD0C0 AND the 159-arm factory jump table 0x22BBEB8.
-# phase_name : exact plaintext string (no decoding needed).
-# name_va    : VA of the name string in .rodata.
-# is_default : true for IDs 0..156 (in the default schedule 0x22BEEA0, count 157);
-#              false for 157 (DebuggerBreak) and 158 (NOP) -- registered but NOT dispatched
-#              by default; reachable only via the recipe/named-phases path (knob 298).
-#
-# Factory: sub_C60D30, cmp $0x9e (158) upper bound, jmp *0x22BBEB8(,idx,8); all 159 arms distinct
-#          (each phase has its own 16-byte object + vtable). Arm 157 -> 0xc60d61, arm 158 -> 0xc61ae8.
-#
 bin_index	phase_name	name_va	is_default
 0	OriCheckInitialProgram	0x22bc429	true
 1	ApplyNvOptRecipes	0x22bc440	true

@@ -1,12 +1,3 @@
-# ptxas pseudo-instruction macro-builtin catalog (CUDA 13.0.88)
-# Registrar: sub_5D4190. 588 entries = 115 NAMED (human-named pseudo-ops, dict a1+808)
-#   + 473 NUMERIC (key = adler32(__cuda_* macro name), dict a1+816).
-# expansion_summary recovered from the decoded PTX macro pool
-#   (decoded/ptxas-ptx-macro-pool/ptxas_ptx_macro_pool.decoded.bin): each numeric
-#   template uses registers prefixed __ptxMacroFuncsFermi_<name>_ with a __skip_<name>: end label;
-#   named templates are anchored by a $..._cuda_<op>_DONE label. arch=(code) for NAMED ops
-#   whose entry-point lowering lives in the handler fn (expansion still pool-templated by op name).
-# columns: kind  key(dec)  hex  handler_fn  cuda_name  family  arch  expansion_summary
 kind	key	hex	handler_fn	cuda_name	family	arch	expansion_summary
 NAMED			sub_4DB410	membar	barrier/bar	(code)	memory fence; lowers to membar/fence with scope suffix
 NAMED			sub_57F6E0	tensormap.replace	tensormap	(code)	patch tensormap descriptor fields in mem via ld/shl/lop3(0xD8 merge)/st RMW per field

@@ -1,6 +1,3 @@
-# Scheduling-builder seed table @ VA 0x1D16148, 50 x {u32 sm_id,u32 gen_code,u32 variant}
-# gen_code = INTERNAL scheduler-model generation index (NOT marketing arch). Binary-derived groupings below.
-# 3 segments: [0-7] blackwell/thor subset, [8-17] hopper/blackwell subset, [18-49] full arch list
 table_index	sm_id	sm_string	gen_code	variant	gen_meaning
 0	0		0	0	none/pad
 1	0		0	0	none/pad

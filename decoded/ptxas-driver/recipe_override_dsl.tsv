@@ -1,19 +1,3 @@
-# ptxas recipe / named-phases override DSL (binary-derived, CUDA 13.0.88)
-#
-# When OCG knob 298 is set (presence flag at config+0x53D0), the optimizer driver sub_7FB6C0
-# takes the DEBUG/RECIPE path sub_9F63D0 instead of the default. The recipe STRING value
-# (knob 298, tag==5, value ptr at config+0x53D8) is tokenized by sub_798B60 into parallel
-# arrays s2[256] (token names) / nptr[256] (token values) / v343[520] (phase-name list), then
-# sub_9F4040 builds a custom phase schedule from it. The schedule it returns is passed to the
-# SAME dispatch loop sub_C64F70 with a COMPUTED length.
-#
-# Baseline: sub_9F4040 starts from sub_C60D20() -> the default 157-entry identity schedule,
-# then applies the keywords below. Explicit phase IDs are CLAMPED to [0,159]
-# (if v121 > 159: v121 = 159; if v121 < 0: keep prior). 159 is thus the inclusive ceiling
-# (lets DebuggerBreak=157 / NOP=158 be selected explicitly). Unknown phase names map to 158
-# (NOP) via sub_C641D0; a phase-list token beginning with '-' (0x2d) is also forced to 158.
-#
-# token        kind            decompiled site         effect
 NamedPhases    phase-list      sub_9F4040 @L381        replace schedule with the explicit v343[] name list; each name -> ID via sub_C641D0 (miss/'-' -> 158)
 p%d            index-select    sub_9F4040 @L467        select phases by numeric index (sprintf "p%d", i); per-index value from nptr[]; clamped to <=159, >=0
 shuffle        permute         sub_9F4040 @L843        seeded pairwise rotation pass over the schedule slots (reps-controlled), value = base offset
@@ -30,14 +14,3 @@ dce3           inject-phase    sub_9F4040 @L1319       third DCE-injection trigg
 cpy1           inject-phase    sub_9F4040 @L1648       insert OriCopyProp (copy-prop; phase ID 22) at the position matching counter value
 cpy2           inject-phase    sub_9F4040 @L1395       second copy-prop-injection trigger position
 cpy3           inject-phase    sub_9F4040 @L1442       third copy-prop-injection trigger position
-#
-# Notes:
-# - OCG knob 297 is pulsed (write-style virtual call vt+72) once per applied recipe element --
-#   a "recipe-applied" event/counter for diagnostics.
-# - Every value is parsed with strtol(nptr[i],0,10) and bounds-clamped to [0, 256] or [0, 159].
-# - This DSL is a DEBUG/engineering interface (gated by an internal knob), not a documented
-#   user-facing ptxas flag. Default compiles never reach it (knob 298 unset -> default path).
-#
-# Confidence: HIGH. All 17 token strings verified present in the binary; the parse sites are
-# read directly from decompiled sub_9F4040; the injected phase names (OriPerformLiveDead /
-# OriCopyProp) are confirmed as real registry entries (IDs 18/38/70/99 and 22).

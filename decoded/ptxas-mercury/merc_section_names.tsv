@@ -1,7 +1,3 @@
-## Mercury auxiliary section name families emitted by the ptxas capmerc/Mercury emitter (binary-extracted from .rodata string pool).
-## Each original input ELF section is cloned into the capsule under a ".nv.merc." prefix (CUDA-13 spelling; earlier toolchains used the shorter ".merc" prefix -- naming DRIFT, binary wins).
-## These ".nv.merc.*" clones carry type SHT_CUDA_MERCURY (SHT_LOPROC+12 = 0x7000000C) so the finalizer/driver can recover the original Mercury blob + debug data after SASS reconstitution.
-## 19 distinct suffixes verified present in the binary string table (plus the bare ".nv.merc" / ".nv.merc." prefix tokens).
 merc_section_name	clones_original	category
 .nv.merc.debug_abbrev	.debug_abbrev	DWARF debug
 .nv.merc.debug_aranges	.debug_aranges	DWARF debug

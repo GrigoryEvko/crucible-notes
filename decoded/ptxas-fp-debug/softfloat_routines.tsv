@@ -1,20 +1,4 @@
 binary_addr	inferred_op	category	fingerprint_evidence	confidence
-# ===========================================================================
-# ptxas (CUDA 13.0.88) FP constant-fold engine inventory.
-# KEY FINDING: ptxas does NOT statically link the Berkeley SoftFloat-3e library.
-# No softfloat approxRecip/approxRecipSqrt tables, no countLeadingZeros8 LUT,
-# no roundPackToF64/F32 leaves, no softfloat rounding-mode/exception-flag global,
-# no magsFuncPtr indirect-dispatch exist anywhere in the 37 MB ELF.
-# Constant folding of .f16/.f32/.f64 (and bf16/tf32) immediates is performed with
-# the HOST x86 FPU (SSE2 packed-double ops _mm_*_pd/_ss) plus glibc libm
-# (sqrt/pow/floor/ceil/cos/log) and manual round-bit bit-twiddling for the
-# directed-rounding / narrowing cases. Rows below document THAT engine (the
-# structural replacement for softfloat) — category uses the softfloat taxonomy
-# where a counterpart exists, else 'foldengine'. See DRIFT note in report.
-# The lone "__float128" string @0x240bc2a is the C++ Itanium demangler type table
-# (neighbours: long double / decimal128 / unsigned __int128 / static_cast), NOT
-# softfloat float128_t.  extF80 / f128 / i128-primitive routines: ABSENT.
-# ===========================================================================
 0x926a30	ptx_constfold_master_dispatch	foldengine	3882-line opcode switch; root of fold cluster; takes __m128/double args; calls 0x9203a0 et al	high
 0x9203a0	fold_binary_op (add/sub/mul/div/min/max .f32/.f64)	foldengine	native __m128d: _mm_and_pd/_mm_or_pd/_mm_cmpgt_sd; manual near-even tie bits (0x6000/0x3FFF,0x2000); reads typed imm via 0x91b730	high
 0x921820	fold_unary_op (sqrt/cos/lg2/ex2/rcp/round/cvt .f32/.f64)	foldengine	opcode switch: 0xC0->sqrt(), 0x26->cos(), 0x3B->pow(2.0,x), 0x6A->log()/ln2, 0x21/0x44->rint-via-int-cast; native libm	high
@@ -27,7 +11,6 @@ binary_addr	inferred_op	category	fingerprint_evidence	confidence
 0x91ba60	write_folded_result_to_pool	foldengine	21-line; stores folded __m128i immediate back; pairs with 0x91cdd0	high
 0x91cdd0	intern_f32_immediate_in_constpool	foldengine	scans (a1+440) pool for matching 32-bit value, returns index or appends; memcpy grow	high
 0x7db1e0	emit_operand_no_fold (non-const path)	foldengine	called when operand is not a compile-time constant (a8/a10 == 0 branch)	med
-# ---- glibc libm thunks used as the fold math kernels (PLT) ----
 0x2a12cb0	sqrt@GLIBC (sqrt.f64/f32 fold kernel)	state	imports.json PLT; called by 0x921820 for opcode 0xC0	high
 0x2a12d50	pow@GLIBC (ex2 / f16-exp reconstruction)	state	PLT; called by 0x91b730 (f16 decode) and 0x921820 (ex2)	high
 0x2a12b40	floor@GLIBC	state	PLT; rounding fold	high

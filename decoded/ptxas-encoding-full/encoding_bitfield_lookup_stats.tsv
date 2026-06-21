@@ -1,4 +1,3 @@
-# source_va=0x23F2E00 end=0x23FAE00 entry_format=(u32 field_a, u32 field_b) sentinel=0xFFFFFFFF
 metric	value
 total_entries	4096
 active_entries	4014

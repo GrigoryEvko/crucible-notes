@@ -1,12 +1,3 @@
-# Instruction legality / validation table @ VA 0x22FEE00..0x2339E00 (241664 B = 60416 u32)
-# Flat sparse view: every NON-ZERO u32 with its index/VA and value-class.
-# Layout is a packed record table (dominant stride 24 B = 6 u32) but record size varies by region;
-# the reliable binary facts are the value-classes below. Records group as {key, handler/ptr}.
-# value classes: text_handler_ptr=dedicated (opcode,modifier) validator/encoder fn in .text;
-#   rodata_subtable_ptr=pointer into nested dispatch sub-table (0x1CE0000-0x2400000);
-#   small_key=(format_id<<8)|minor_opcode (same key as per_sm_handler_dispatch);
-#   special_validation_sentinel=0x08000000 (no dedicated handler; run generic validation path).
-# value_class_totals={'zero': 41330, 'small_key (fmt<<8|minor)': 9721, 'text_handler_ptr': 8087, 'rodata_subtable_ptr': 918, 'special_validation_sentinel': 259, 'other': 101}
 dword_index	va	value_hex	value_class	as_key_fmt	as_key_minor
 136	0x22FF020	0x300	small_key (fmt<<8|minor)	0x3	0x0
 138	0x22FF028	0x118E200	text_handler_ptr		

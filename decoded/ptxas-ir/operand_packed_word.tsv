@@ -1,19 +1,7 @@
-# Packed inline operand lo-word bitfield (operand slot lo at instr+84+8*i)
-# All facts binary-derived from ptxas v13.0.88 decompilation.
 field	bits	mask_or_expr	evidence	notes
 sign_negate	31	*(int*)(slot) < 0  /  (w>>31)&1	sub_7E6090:257,281; sub_405930:9	Sign / negate flag; gates register checks (>=0 path)
 type_tag	28-30	(w>>28)&7  ==  (w^0x70000000)&0x70000000	sub_7E0030:153,200; sub_7E0650:29; sub_7E6090:257,341	Compact operand type. type==1 = register (dominant check). type==7 (all bits set) sentinel
 modifier	20-27	(w>>20)&0xF (4 bits observed); 0xFF region claimed	sub_A0F020:418; sub_AED3C0:2320	Lane/byte selector & operand modifiers; only low nibble (20-23) seen extracted
 index	0-19 or 0-23	w & 0xFFFFF (20b) | w & 0xFFFFFF (24b)	20b sub_A0F020:418; 24b sub_7E0030:70, sub_7E6090:267	Symbol/register id into table at code_obj+88 (regs) / +152 (syms). 24-bit mask dominant (~2398 sites)
 
-# Hi-word (operand slot hi at instr+88+8*i):
-# Per-operand auxiliary 32-bit word; walked in lock-step with lo-word.
-# Used as comparand in def/equality matching (lo+hi together identify an operand).
-# Evidence: sub_8D2810:150-161 (v18=base+88+8*i advanced with lo type test);
-#           sub_7E6090:533 (hi compared: v50[22]==*(+88) paired with lo v78==v50[21]).
 
-# Dest/src split: destinations first, sources after.
-# Effective count adjustment: adj = (opcode>>11)&2 (0 or 2 -> 2 extra dests).
-# Last operand index = operand_count - 1 - adj  (encoded as count + ~((op>>11)&2)).
-# Evidence: sub_7E0030:36,109,121; sub_7E0650:26,37; sub_7E0E80.
-# Prevalence: ">>11)&2" appears 5134x; split form in 696 files.

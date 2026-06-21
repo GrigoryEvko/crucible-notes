@@ -1,5 +1,3 @@
-# Canonical supported-target summary (binary-derived join of 3 tables)
-# sm_id_enumeration(0x1CE7F80) + sm_version_codes(0x2020620) + sm_scheduling_seeds(0x1D16148)
 sm_id	sm_string	arch_family	version_code_base	sched_gen_code
 30	sm_30	Kepler	(no base code in table)	3
 32	sm_32	Kepler	(no base code in table)	4

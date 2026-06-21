@@ -1,8 +1,3 @@
-## ptxas CUDA 13.0.88 — ELF header (e_ident/e_flags), program headers, .note.* sections (BINARY GROUND TRUTH)
-## ALL values BINARY-confirmed by emitting real cubins (ptxas -arch=<sm> [-c] on minimal PTX) and reading the
-##   raw ELF header / phdr / note bytes, plus cuobjdump --dump-elf. On any mismatch with older toolchains, BINARY WINS.
-## ==========================================================================================================
-## E_IDENT / HEADER  (drift vs earlier builds flagged)
 kind	field	value_13.0.88	value_prior	notes
 HDR	e_ident[EI_OSABI]	0x41	0x33 (ELFOSABI_CUDA)	DRIFT: OSABI tag 0x33 -> 0x41 in 13.0.88 (readelf shows "<unknown: 41>")
 HDR	e_ident[EI_ABIVERSION]	0x08	0x07 (ELFOSABIV_LATEST)	DRIFT: ABI version 7 -> 8; cuobjdump prints "ABI=8"
@@ -11,10 +6,6 @@ HDR	e_type	2 (ET_EXEC) final / 1 (ET_REL) for -c	ET_REL|ET_EXEC|ET_EWP	final ass
 HDR	e_version	1 (EV_CURRENT)	EV_CURRENT	standard
 HDR	e_entry	0	-	cubins carry entry=0 (device entry resolved by driver, not ELF e_entry)
 HDR	e_phnum	6 (final) / 0 (-c)	-	final cubin has 6 program headers; relocatable -c has 0
-## ==========================================================================================================
-## E_FLAGS — BINARY samples: sm_75=0x06004b04 sm_80=0x06005004 sm_86=0x06005604 sm_89=0x06005904
-##   sm_90/sm_90a=0x06005a04 sm_100/100a=0x06006402 sm_103/103a=0x06006702 sm_120/120a=0x06007802 sm_121/121a=0x06007902
-## DRIFT: earlier toolchains (EF_CUDA_SM_MASK=0xff) put real-SM in the LOW byte. 13.0.88 moves real-SM to BITS 8..15.
 EFLAG	bits 8..15	real SM (SM*10)	low byte 0xff (earlier)	sm_75->0x4b(75) sm_90->0x5a(90) sm_100->0x64(100) sm_103->0x67(103) sm_120->0x78(120) sm_121->0x79(121)
 EFLAG	bits 0..7	0x04 (sm<=90) / 0x02 (Blackwell+)	-	format/ABI variant nibble; 0x04 for sm_<=90, 0x02 for sm_100/103/120/121 (BINARY)
 EFLAG	bits 16..23	virtual/PTX SM	bits 16..23 (earlier)	EF_CUDA_VIRTUAL_SM; 0 when virtual==real
@@ -23,24 +14,13 @@ EFLAG	0x100	EF_CUDA_TEXMODE_UNIFIED	0x100	texture mode
 EFLAG	0x200	EF_CUDA_TEXMODE_INDEPENDENT	0x200	set by .target texmode_independent
 EFLAG	0x400	EF_CUDA_64BIT_ADDRESS	0x400	64-bit device addressing
 EFLAG	0x80000000	EF_CUDA_MERCURY	0x80000000	set on pre-finalize Mercury ELF; clear on final SASS cubin
-## NOTE: sm_90 and sm_90a produce IDENTICAL e_flags (0x06005a04). The 'a'/'f' arch-variant is NOT in e_flags;
-##   it is carried in .nv.compat EICOMPAT_ATTR_ISA_CLASS and the .note.nv.cuinfo virtual-SM field.
-## ==========================================================================================================
-## PROGRAM HEADERS — BINARY exact capture (final sm_90 cubin, 6 PHDRs). Relocatable (-c) carries 0.
-##   section->segment mapping from cuobjdump: PH4 covers .nv.shared+.nv.global; PH5 covers .nv.constant0.<entry>.
 PHDR	PH0	PT_PHDR  flags=R(0x4) filesz=memsz	-	program-header self-descriptor (off=0x1028)
 PHDR	PH1	PT_LOAD  flags=R(0x4)	-	read-only image group (.nv.info / .symtab / notes / readonly)
 PHDR	PH2	PT_LOAD  flags=R(0x4)	-	read-only driver constant banks (.nv.constant3 / .nv.constant4)
 PHDR	PH3	PT_LOAD  flags=R+X(0x5)	-	executable SASS (.text.<entry>)
 PHDR	PH4	PT_LOAD  flags=R+W(0x6) filesz=0	-	NOBITS group (.nv.shared.<e> + .nv.global); memsz>0 filesz=0
 PHDR	PH5	PT_LOAD  flags=R(0x4)	-	per-entry constant-bank-0 param area (.nv.constant0.<entry>)
-## ==========================================================================================================
-## ELF .note SECTIONS — BINARY exact (sh_type=SHT_NOTE=0x07; owner string "NVIDIA Corp"; note version u16=2)
 NOTE	.note.nv.tkinfo	n_type=0x7d0 (2000), namesz=12, descsz=136	-	toolkit info: noteVer=2, tool name "ptxas", tool version "Cuda compilation tools, release 13.0, V13.0.88", build branch, literal command-line args
 NOTE	.note.nv.cuinfo	n_type=0x3e8 (1000), namesz=12, descsz=8	-	CUDA info: 8-byte desc = u16 noteVer=2, u16 virtualSM(=90 for sm_90), u32 CUDA-API-version(=130). sh_flags=0x01000040 (OS bit + SHF_INFO_LINK)
 NOTE	.note.nv.tkinfo flags	0x02000000	-	OS-specific flag bit on tkinfo note
 NOTE	.note.nv.cuver	-	-	CUDA version note name present in binary string table; emitted in some configs
-## ==========================================================================================================
-## .nv.compat SECTION — sh_type=SHT_CUDA_COMPAT_INFO=0x70000086 (BINARY-confirmed both modes; cuobjdump=CUDA_COMPAT_INFO).
-## EICOMPAT attribute stream, wire-format identical to .nv.info. Full attribute enumeration + codes: see eicompat_codes.tsv.
-## NEW in 13.0.88 (absent in earlier toolchains). 7 attributes emitted for a plain sm_90 kernel.

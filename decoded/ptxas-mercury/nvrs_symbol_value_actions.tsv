@@ -1,6 +1,3 @@
-## NVRS_* symbol-value enum -- the "what value to patch" codes used in the action[] field of each R_MERCURY entry.
-## Integer code = index decoded from the binary mercury_reloc_info[] action.sym_value field; semantics recovered from the binary reloc dispatch.
-## "patch_op" describes what the reloc dispatch (bit-patcher sub_1CD34E0 + extract sub_1CD33F0 / insert sub_1CD3330, stride 0x40) does for that code.
 code	name	patch_op	used_by_mercury_relocs
 0	NVRS_NONE	no-op (ignore action)	R_MERCURY_NONE
 1	NVRS_ADDR	value = sym+addend; full-width insert (width64@bit0 = whole qword copy; else compose_bits)	G64, ABS64/32/16, PROG_REL64/32/32_LO/32_HI

@@ -143,4 +143,3 @@ group_idx	start_slot	size	first_target	last_target
 141	1862	7	0xBB976D	0xBB97E2
 142	1870	8	0xBB991A	0xBB9809
 143	1879	5	0xBB681F	0xBB675F
-# total slots=1884 real=1611 sentinels=273 groups=144

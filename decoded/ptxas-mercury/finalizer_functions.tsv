@@ -1,4 +1,3 @@
-## Finalizer (FNLZR) + capmerc binary functions -- ptxas CUDA 13.0.88 (binary-confirmed).
 function_vma	role	approx_size	confidence	notes
 sub_703AB0	CLI parser	10KB	CONFIRMED	parses --binary-kind {mercury,capmerc,sass}, --cap-merc, --self-check, --out-sass, --opportunistic-finalization-lvl, --fastpath-off; opportunistic-lvl->ctx+120 (default 0, validated <=4); fastpath-off->ctx+92; arch->ctx+112; SM>99 auto-enables capmerc (ctx+81=1)
 sub_612DE0	Kernel/module off-target finalizer (fastpath)	~9KB	CONFIRMED	source SM=hdr+48 (>>8 if hdr+7=='A' container else &0xFF); target=arg or source; ISA ceiling >0x101 -> error 25

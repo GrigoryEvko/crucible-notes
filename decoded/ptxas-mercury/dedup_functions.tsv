@@ -1,6 +1,3 @@
-## Section content-equality DEDUP mechanism -- ptxas CUDA 13.0.88 (binary-only; new since earlier toolchains, which had no finalizer-side analog).
-## Earlier toolchains' finalizers had NO whole-section dedup -- they DUPLICATE (emit .nv.merc.* clones). Their only content-equality merge was a constant-pool overlap primitive in the generic ELF writer, gated on memcmp and emitting the FATAL "overlapping non-identical data". That primitive evolved into the CUDA-13 emitter-side dedup below (note the same FATAL string survives in the binary).
-## Driver: sub_1CB8E40(elf_state, do_relocs): if BYTE8 flag -> sub_1CABD60 (merge/content-dedup) else sub_1CAB190 (no-merge); if do_relocs -> sub_1CD48C0 (master reloc resolver); then sub_1CB68D0 (symtab/name-dedup).
 function_vma	role	confidence	notes
 sub_1CB8E40	Mercury/capmerc emitter driver (3-stage)	CONFIRMED	stage1 sub_1CABD60 (content dedup) OR sub_1CAB190 (no-merge); stage2 sub_1CD48C0 (relocs); stage3 sub_1CB68D0 (name dedup)
 sub_1CABD60	Layout-and-merge / content-dedup stage	CONFIRMED	log "layout and merge section %s"; sole caller of sub_1CA6890 at 2 sites (TEMP_MERGED_CONSTANTS, TEMP_OCG_CONSTANTS)
