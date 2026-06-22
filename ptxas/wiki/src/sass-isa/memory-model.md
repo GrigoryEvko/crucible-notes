@@ -148,11 +148,12 @@ the hardware does not support raises a shared-memory-size class error
 
 ### Shared-memory atomics
 
-Atomics that target shared memory use the dedicated `ATOMS`/`REDS` opcodes (distinct
-from the global `ATOMG`/`REDG`): `atom.shared.add` lowers to `ATOMS.POPC.INC`,
-`atom.shared.cas` to `ATOMS.CAS`, and `red.shared.add` to `ATOMS.POPC.INC` with a
-discarded result. These resolve in the shared-memory unit and do not participate in
-the global cache-coherence scopes below.
+Atomics that target shared memory use the dedicated `ATOMS` opcode (distinct from
+the global `ATOMG`/`REDG`): `atom.shared.add` lowers to `ATOMS.ADD`,
+`atom.shared.cas` to `ATOMS.CAS`, and `red.shared.add` to `ATOMS.ADD RZ` (the same
+`ATOMS` instruction with the result tied to `RZ`). There is no separate `REDS`
+opcode and no scope field — shared atomics resolve in the per-CTA shared-memory
+unit and do not participate in the global cache-coherence scopes below.
 
 ## Cache hierarchy
 
@@ -196,27 +197,33 @@ These are exactly what ptxas emits for the corresponding PTX: `prefetch.global.L
 Pre-Volta architectures encoded the classic cache modifiers as a single load/store
 field — `.ca` (cache all, L1+L2), `.cg` (cache global, L2 only / bypass L1), `.cs`
 (cache streaming), `.cv` (cache volatile / don't cache) on loads, and `.wb`
-(write-back), `.cg`, `.cs`, `.wt` (write-through) on stores. **Volta and later split
-this into two orthogonal fields**, an *eviction priority* and a *scope* (next
-section), and the PTX modifier is lowered accordingly. The complete modifier set the
-code generator models is:
+(write-back), `.cg`, `.cs`, `.wt` (write-through) on stores. **Volta and later
+decompose this into three orthogonal fields**: an *eviction priority* (`cop`), a
+*strength* (`sem`), and a *scope* (`sco`). The legacy PTX modifier is no longer a
+field of its own — it is *projected* onto those three. Assembling each modifier as a
+one-variable probe for `sm_90a` and reading the emitted `LDG`/`STG` makes the
+projection exact:
 
-| Modifier | Name | Effect |
-|---|---|---|
-| `.ca` | cache all | allocate in L1 and L2 |
-| `.cg` | cache global | L2 only, bypass L1 |
-| `.cs` | streaming | low cache-pollution allocation |
-| `.lu` | last use | hint that the line is dead after this read |
-| `.cv` | volatile | do not cache (uncached/volatile) |
-| `.wb` | write back | store stays dirty in cache |
-| `.wt` | write through | store propagates immediately |
+| PTX modifier | SASS load form | SASS store form | projected fields |
+|---|---|---|---|
+| `.ca` / `.wb` | `LDG.E.STRONG.SM` | `STG.E.STRONG.SM` | `cop=EN`, `sem=STRONG`, `sco=CTA` (printed `.SM`) |
+| `.cg` | `LDG.E.STRONG.GPU` | `STG.E.STRONG.GPU` | `cop=EN`, `sem=STRONG`, `sco=GPU` |
+| `.cs` | `LDG.E.EF` | `STG.E.EF` | `cop=EF`, `sem=WEAK`, no scope |
+| `.lu` | `LDG.E.LU` | — | `cop=LU`, `sem=WEAK` |
+| `.cv` / `.wt` | `LDG.E.STRONG.SYS` | `STG.E.STRONG.SYS` | `cop=EN`, `sem=STRONG`, `sco=SYS` |
+| (default, weak) | `LDG.E` | `STG.E` | all fields at their bare value |
 
-### Eviction priority (Volta+)
+So the cache *all*/*global*/*volatile* distinction is carried by the **scope** field
+(CTA / GPU / SYS strength), *streaming* is carried by the **eviction** field
+(`cop=EF`, evict-first), and *last-use* is `cop=LU`. There is no separate "cache
+class" bit on Volta-onward `LDG`/`STG` — the three fields below are the entire model.
+
+### Eviction priority `cop` (Volta+)
 
 On Volta and later, a load's residency hint is a 3-bit **eviction-priority** field
-with six values, observable as the suffix on `LDG`/`STG`:
+(`cop`) with six values, observable as the suffix on `LDG`/`STG`:
 
-| Suffix | Value | Meaning |
+| Suffix | `cop` | Meaning |
 |---|---|---|
 | `.EF` | 0 | Evict first |
 | `.EN` | 1 | Evict normal (default — printed bare) |
@@ -226,28 +233,40 @@ with six values, observable as the suffix on `LDG`/`STG`:
 | `.NA` | 5 | No-allocate |
 
 These are emitted directly — `ld.global.L1::evict_first` → `LDG.E.EF`,
-`L1::evict_last` → `LDG.E.EL`, `L1::no_allocate` → `LDG.E.NA`,
-`ld.global.lu` → `LDG.E.LU`. An adjacent field controls **L2 sector promotion**
+`L1::evict_last` → `LDG.E.EL`, `L1::evict_unchanged` → `LDG.E.EU`,
+`L1::no_allocate` → `LDG.E.NA`, `ld.global.lu` → `LDG.E.LU` (all reproduced from
+isolated probes). An adjacent field controls **L2 sector promotion**
 (`NOSP` / 64 B / 128 B / 256 B) — the width of the L2 fill triggered by a single
-access.
+access. The `.E` decoration that prefixes every global form is a separate 1-bit
+**extended-address** flag (a 64-bit pointer register pair); `LDG`/`STG`/`ATOMG`
+always carry it, while `LDS`/`STS`/`LDC` (32-bit window addresses) never do.
 
 ## Memory ordering
 
-Every ordered memory access carries two more fields: a **memory order** and a
-**scope**. The order is one of:
+Every ordered memory access carries two more fields: a 2-bit **strength** (`sem`)
+and a 3-bit **scope** (`sco`). The strength is one of:
 
-| Order | Restrictiveness | Meaning |
+| `sem` | Value | Meaning |
 |---|---|---|
-| `CONSTANT` | weakest | compile-time-constant memory (no ordering) |
-| `WEAK` / `NONE` | weak | no inter-thread ordering |
-| `STRONG` | strong | ordered with respect to scope (acquire on load, release on store) |
-| `ACQ_OR_REL` | — | acquire applied to loads, release applied to stores |
-| `MMIO` | strongest | uncached, strongly ordered device access |
+| `CONSTANT` | 0 | compile-time-constant / read-only memory (no ordering) |
+| `WEAK` | 1 | no inter-thread ordering (the bare `LDG.E` default) |
+| `STRONG` | 2 | ordered with respect to scope (acquire on load, release on store) |
+| `MMIO` | 3 | uncached, strongly ordered device access |
 
 ptxas renders a strong ordered access as `LDG.E.STRONG.<scope>` /
 `STG.E.STRONG.<scope>`, with the scope drawn from the graded set below. (An access
 that is both `.EF` and weak prints just `LDG.E.EF`; the STRONG marker appears only
-when the access is genuinely ordered.)
+when the access is genuinely ordered.) Two behaviours were pinned by probe:
+
+- **`.relaxed.<scope>` and `.acquire`/`.release`/`.acq_rel.<scope>` produce the
+  *same* printed and encoded form** — e.g. `ld.global.relaxed.gpu` and
+  `ld.global.acquire.gpu` both emit `LDG.E.STRONG.GPU` with identical bits. A
+  single strong access at a given scope already provides the acquire/release
+  half-fence on this hardware; the ordering distinction is folded into the
+  scope+strength pair, not a separate acquire/release bit.
+- **`mmio` retargets the addressing path**: `ld.global.mmio.relaxed.sys` emits
+  `LDG.E.MMIO.SYS` over a *bare* `[Rn.64]` operand, bypassing the
+  `desc[UR][Rn.64]` memory-descriptor addressing every cached form uses.
 
 ### Scope ladder
 
@@ -264,26 +283,48 @@ CTA  <  SM  <  GPU  <  VC  <  SYS
 - **`VC`** — the video-/coherence domain (a peer-coherence tier above GPU).
 - **`SYS`** — system scope, including the host and peers across the bus.
 
-The same ladder qualifies atomics: `atom.global.add` → `ATOMG.E.ADD.STRONG.GPU`,
-`atom.global.cas` → `ATOMG.E.CAS.STRONG.GPU`, `red.global.add` → `REDG.E.ADD.STRONG.GPU`.
-Acquire/release atomics (`atom.acquire`/`atom.release`) bracket the operation with
-the corresponding fence.
+The default `sco` value differs by class, recovered from probes: a **load/store**
+with no explicit scope is `WEAK` with no scope (bare `LDG.E`), but an **atomic or
+reduction** with no explicit scope defaults to **`STRONG.GPU`**. The verified
+atomic/reduction forms are `atom.global.add` → `ATOMG.E.ADD.STRONG.GPU`,
+`atom.global.min.s32` → `ATOMG.E.MIN.S32.STRONG.GPU`, `atom.global.exch` →
+`ATOMG.E.EXCH.STRONG.GPU`, and `red.global.add` → `REDG.E.ADD.STRONG.GPU`.
+`atom.global.cas` is special: it lowers to `ATOMG.E.CAS.STRONG.GPU` but on a
+**distinct opcode** (a separate primary byte) over bare `[Rn]` addressing —
+compare-and-swap is its own SASS instruction, not a value of the atomic-op field.
+The integer atomic-op field enumerates `ADD=0, MIN=1, MAX=2, INC=3, DEC=4, AND=5,
+OR=6, XOR=7, EXCH=8`. Acquire/release atomics fold their ordering into the same
+`STRONG.<scope>` pair (`atom.global.add.acq_rel.gpu` → `ATOMG.E.ADD.STRONG.GPU`).
+
+A **shared-memory** atomic uses the scope-free `ATOMS` opcode
+(`atom.shared.add` → `ATOMS.ADD`, `atom.shared.cas` → `ATOMS.CAS`), and a
+**shared reduction** lowers to `ATOMS.ADD RZ` — the same `ATOMS` opcode with the
+result register tied off to `RZ`, *not* a distinct `REDS` opcode.
 
 ### Fences: `MEMBAR` and `FENCE`
 
-The fence opcode carries a **semantics** field (`SC` sequential-consistency, `ALL`
-ordering, `NONE`, `MMIO`) and the same scope field:
+The fence opcode carries a 2-bit **semantics** field `membar_sem`
+(`SC`=0 sequential-consistency, `ALL`=1 ordering, `NONE`=2, `MMIO`=3) and its own
+3-bit scope field `membar_sco` with a numbering *distinct* from the load/store
+`sco` (`CTA`=0, `SM`=1, `GPU`=2, `SYS`=3, `VC`=5). The exact lowerings, each
+disassembled from a probe, are:
 
 | PTX | SASS | Effect |
 |---|---|---|
-| `membar.cta` | `MEMBAR.ALL.CTA` | order all prior memory ops, CTA scope |
-| `membar.gl` | `MEMBAR.SC.GPU` | sequential-consistency fence, GPU scope |
+| `membar.cta` | `MEMBAR.SC.CTA` | sequential-consistency fence, CTA scope |
+| `membar.gl` | `MEMBAR.SC.GPU` | SC fence, GPU scope |
 | `membar.sys` | `MEMBAR.SC.SYS` | SC fence, system scope |
-| `fence.acq_rel.cta` | `MEMBAR.ALL.CTA` | acquire-release fence at CTA scope |
 | `fence.sc.gpu` | `MEMBAR.SC.GPU` | SC fence at GPU scope |
+| `fence.acq_rel.cta` | `MEMBAR.ALL.CTA` | acquire-release (ordering) fence at CTA scope |
+| `fence.acq_rel.gpu` | `MEMBAR.ALL.GPU` | acq-rel fence at GPU scope |
+| `fence.acq_rel.cluster` | `MEMBAR.ALL.GPU` + `ERRBAR; CGAERRBAR` | cluster fence: GPU membar plus the cluster error-pipe drain |
+| `fence.proxy.tensormap` | `UTMACCTL.IV` | invalidate the TMA tensor-map proxy cache |
 
-`MEMBAR.SC` (sequential-consistency) is strictly stronger than `MEMBAR.ALL`
-(plain ordering). The code generator may **demote** a fence whose effect is already
+Note the consequence of the two `membar_sem` rules: a **`membar.*`** is always an
+`SC` fence, but a **`fence.acq_rel.*`** is an `ALL` fence — so `membar.cta` and
+`fence.acq_rel.cta` are *not* the same instruction (`MEMBAR.SC.CTA` vs
+`MEMBAR.ALL.CTA`). `MEMBAR.SC` (sequential-consistency) is strictly stronger than
+`MEMBAR.ALL` (plain ordering). The code generator may **demote** a fence whose effect is already
 covered (e.g. a GPU-scope fence narrowed to CTA scope when no wider sharing exists,
 or elided entirely when a subsequent fence subsumes it) — fence minimization is part
 of codegen. A `MEMBAR.SYS` may additionally require an off-deck drain, and on the
