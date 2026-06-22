@@ -1339,9 +1339,10 @@ def run_gpu_harness(max_pairs: int = 200, verbose: bool = False) -> int:
         if bad == 0:
             print(f"  {p.name:<28} PASS  {ok:>5} vectors")
 
-    # fp8 narrow conversions (cvt.rn.satfinite.e4m3/e5m2.f32) and the recovered
-    # MUFU correction sequences (div.rn / sqrt.rn fast path).
-    for name, ok, bad in _verify_fp8(cu) + _verify_mufu(cu):
+    # narrow conversions (fp8 + bf16 + saturating I2I) and the recovered MUFU
+    # correction sequences (div.rn / sqrt.rn fast path).
+    for name, ok, bad in (_verify_fp8(cu) + _verify_bf16_i2i(cu)
+                          + _verify_mufu(cu)):
         total_ok += ok
         total_bad += bad
         if bad:
@@ -1425,6 +1426,44 @@ def _verify_fp8(cu) -> list[tuple[str, int, int]]:
             else:
                 bad += 1
         res.append((f"F2FP.{fmt.upper()}.F32", ok, bad))
+    return res
+
+
+def _verify_bf16_i2i(cu) -> list[tuple[str, int, int]]:
+    """bf16 narrowing (cvt.rn.bf16.f32) and saturating integer resize
+    (cvt.sat.s8.s32) -- both checked bit-exact against the device."""
+    import random
+    res = []
+    rng = random.Random(5)
+    vals = [0.0, -0.0, 1.0, -1.0, 0.5, 3.14159, 1e30, 1e-30, float("inf"),
+            float("nan"), 2.5, 123.456] + [rng.uniform(-1e5, 1e5)
+                                           for _ in range(30)]
+    ptx = """.version 8.3
+.target sm_89
+.address_size 64
+.visible .entry k(.param .u64 p){ .reg .f32 %f<2>; .reg .b16 %h; .reg .u64 %rd<2>;
+ ld.param.u64 %rd1,[p]; ld.global.f32 %f1,[%rd1]; cvt.rn.bf16.f32 %h,%f1;
+ st.global.b16 [%rd1],%h; ret; }"""
+    ins = [(f32_to_bits(v),) for v in vals]
+    gpu = _run_one(cu, ptx, "k", ins, [4], 2)
+    if gpu is not None:
+        ok = sum(1 for (a,), g in zip(ins, gpu) if f2f(F32, BF16, a, RN) == g)
+        res.append(("F2FP.BF16.F32", ok, len(ins) - ok))
+
+    ptx = """.version 8.3
+.target sm_89
+.address_size 64
+.visible .entry k(.param .u64 p){ .reg .b32 %r<3>; .reg .u64 %rd<2>;
+ ld.param.u64 %rd1,[p]; ld.global.s32 %r1,[%rd1]; cvt.sat.s8.s32 %r2,%r1;
+ st.global.s32 [%rd1],%r2; ret; }"""
+    ints = [0, 1, 0xFFFFFFFF, 127, 128, 200, 0xFFFFFF38, 0xFFFFFF7F, 0x7FFFFFFF,
+            0x80000000, 42, 0x100, 0x7F, 0x80]
+    ins = [(v,) for v in ints]
+    gpu = _run_one(cu, ptx, "k", ins, [4], 4)
+    if gpu is not None:
+        ok = sum(1 for (v,), g in zip(ins, gpu)
+                 if i2i(v, 32, True, 8, True, sat=True) == (g & 0xFF))
+        res.append(("I2I.S8.S32.SAT", ok, len(ins) - ok))
     return res
 
 
