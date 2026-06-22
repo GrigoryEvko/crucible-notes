@@ -13,7 +13,7 @@
 | **Callers** | 1 (`sub_4CCF30` at `0x4CDFC0`, the body-template materialisation driver) |
 | **Switch instruction** | `0x5FF711` (jump table base immediately after the dispatch entry) |
 | **Switch ID range** | 0 — 1,079 (dense, no holes) |
-| **Default branch** | `0x40592E` style sink (no-op fall-through, ID 1079 maps to `0x607D16`) |
+| **Default branch** | `0x607D34` (returned for any ID > 1079; returns the empty default string `@0x202D147`). ID 1079 is a real case (`__cuda_sanitizer_memcheck_free`, body `@0x607D16`), **not** the default. |
 | **String references** | 1,035 distinct .rodata pointers (some IDs reuse the same string with different leading whitespace) |
 | **Output directives** | 571× `.weak .func`, 464× `.FORCE_INLINE .func` |
 
@@ -25,7 +25,8 @@ sub_5D7430(ctx)        ─── populates body-template name → ID hash map
    │ id 1 = "__cuda_sm20_div_u16"
    │ id 2 = "__cuda_sm20_rem_s16"
    │ ...
-   │ id 1079 = "__cuda_sm10x_tcgen05_guardrails_*"
+   │ id 1078 = "__cuda_sanitizer_memcheck_malloc"
+   │ id 1079 = "__cuda_sanitizer_memcheck_free"   (highest ID)
    v
 sub_4CCF30(ctx, id)    ─── body-template materialisation driver
    │ allocates a `struct ptx_decl` (header + variable text)
@@ -37,8 +38,9 @@ sub_5FF700(buffer, id) ─── THIS PAGE
    │   case 4:   strcpy(buf, "    .weak .func (.reg .u64 %rdv1) __cuda_sm20_div_u64 ..."); break;
    │   case 25:  strcpy(buf, ".weak .func (.reg .f64 %fdv1) __cuda_sm20_div_rn_f64_full ..."); break;
    │   ...
-   │   case 1078: strcpy(buf, "        .weak .func (.reg .s32 %d) __cuda_sm20_div_s16 ...");
-   │   default:  /* no-op, falls through */
+   │   case 1078: strcpy(buf, ".weak .func (.param .b64 func_retval0) __cuda_sanitizer_memcheck_malloc ...");
+   │   case 1079: strcpy(buf, ".weak .func (.param .b64 func_retval0) __cuda_sanitizer_memcheck_free ...");
+   │   default:  /* id > 1079: returns the empty/default string @0x202D147 */
    │ }
    v
    buffer holds a NUL-terminated PTX declaration ready for the PTX printer
@@ -51,15 +53,15 @@ The body-template ID assigned by `sub_5D7430` and the switch value consumed by `
 The switch is implemented with the System V jump-table idiom: a 32-bit base pointer in `.rodata`, indexed by the helper ID, producing the target block address. Every case body is a 3-instruction sequence — `lea buffer_ptr`, `lea string_literal_ptr`, `call sub_4DA340` — which is why the function is so large: 1,080 such bodies inflate to ≈ 34 KiB even though no real logic lives in any individual case.
 
 ```text
-0x5FF700: <prologue, load id into edi, range-check>
-0x5FF711: switch dispatch (indirect jmp through jump table)
-0x5FF718: case 1078 body (str_sm20_div_s16)
-0x5FF736: case 1077 body (str_sm20_div_u16)
-0x5FF77C: case 1076 body (str_sm20_rem_s16)
+0x5FF700: <prologue, load id into edi, range-check (id > 0x437=1079 -> default 0x607D34)>
+0x5FF711: switch dispatch (indirect jmp through jump table @0x1D4B778, 1080 entries)
+0x5FF718: case 1078 body (str __cuda_sanitizer_memcheck_malloc @0x1D4B618)
+0x5FF736: case 1077 body (str __cuda_sanitizer_memcheck_generic @0x1D4B410)
+0x5FF77C: case 1076 body (str __cuda_sanitizer_memcheck_local   @0x1D4B288)
 ...
-0x607CF8: case 0    body (lowest ID, observed last in linear layout)
-0x607D02: case 1079 body (highest ID, observed first in linear layout)
-0x607D16: default / fall-through
+0x607CF8: case 0    body (str __cuda_sm20_div_s16, lowest ID, observed last in linear layout)
+0x607D16: case 1079 body (str __cuda_sanitizer_memcheck_free @0x1D4B6D8, highest ID)
+0x607D34: default / fall-through (returns empty default string @0x202D147)
 ```
 
 The IDA-extracted jump table is reverse-ordered relative to the helper-ID space: the linear address-order of the case bodies decreases as the ID increases, which suggests the compiler that built ptxas emitted the switch from a sorted descending list (likely an `std::map<int,string>` walked in reverse) and the linker did not reshuffle.
@@ -258,9 +260,9 @@ The dense ID space (0 — 1,079) is populated by the order in which `sub_5D7430`
 
 The IDA jump table for `0x5FF711` lists case bodies in **descending** ID order:
 
-- Case 0 (`__cuda_sm20_div_s16`) lands at the linearly *latest* address `0x607CF8`; case 1079 (`__cuda_sm10x_tcgen05_guardrails_*`) lands immediately after the dispatch at `0x5FF718`.
+- Case 0 (`__cuda_sm20_div_s16`) lands at the linearly *latest* address `0x607CF8`; the lowest-address body immediately after the dispatch (`0x5FF718`) is case **1078** (`__cuda_sanitizer_memcheck_malloc`). The single highest ID, case 1079 (`__cuda_sanitizer_memcheck_free`), is the lone exception that sits at `0x607D16`, just past case 0's body.
 - The most-likely explanation is that the compiler that built ptxas walked an `std::map<int, ...>` in reverse iteration order while emitting the switch.
-- The default branch is `0x607D16`, which sits **between** case 1079's body and the next function. IDs above 1079 are unreachable from `sub_4CCF30` because the body-template registrar caps the ID space, but the layout means the default branch is a 5-byte no-op tail.
+- The default branch is `0x607D34` (reached only for IDs > 1079 via the `ja` at `0x5FF707`); it returns the empty default string `@0x202D147`. IDs above 1079 are unreachable from `sub_4CCF30` because the body-template registrar caps the ID space.
 
 > Any binary-diff tool that compares ptxas builds by linear address will report wholesale code movement here even when the only change is "added one new helper at ID 0 of the new ordering".
 

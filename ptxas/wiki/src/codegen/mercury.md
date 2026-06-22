@@ -1269,14 +1269,14 @@ The MercConverter sweeps (phase 5 and phase 141) consume `MercuryConverterStats`
 > Unlike most ptxas knobs whose defaults appear as ASCII strings (`"true"`, `"false"`, `"3"`, etc.) and can be recovered by name -> nearby-string proximity, the Mercury cluster's defaults are immediate constants embedded directly in `ctor_005` registration calls. Recovering them requires decompiling `ctor_005` register-passing or stepping the descriptor table at init time — not pattern-matching on `.rodata`. Confidence on documented defaults is therefore necessarily LOW unless the value is determined by the knob's name (e.g. `Disable*` defaults to OFF by convention).
 
 > ⚡ **QUIRK — the cluster lives in DAG, not OCG**
-> ptxas hosts two independent knob tables: OCG (1,195 entries, indexed by `sub_79B240`) and DAG (99 entries, indexed by `sub_6F0820`). The Mercury knobs are entirely in DAG. This matters because the two tables have separate `-knob` parsers and separate `KNOBS` env var processors — a `-knob MercuryInsertXblockWait=1` is parsed by the DAG path (`sub_6F7360`), never reaches OCG, and a typo silently misses the OCG table without any "unknown knob" warning. Cross-table contamination is also impossible: the DAG and OCG tables share no indices.
+> ptxas hosts two independent knob tables: OCG (1,000 entries, indexed by `sub_79B240`) and DAG (99 entries, indexed by `sub_6F0820`). The Mercury knobs are entirely in DAG. This matters because the two tables have separate `-knob` parsers and separate `KNOBS` env var processors — a `-knob MercuryInsertXblockWait=1` is parsed by the DAG path (`sub_6F7360`), never reaches OCG, and a typo silently misses the OCG table without any "unknown knob" warning. Cross-table contamination is also impossible: the DAG and OCG tables share no indices.
 
 > ⚡ **QUIRK — sm_75–sm_99 ignores most of the cluster**
 > The cross-block / backedge / Xblock-wait family (`MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryPresumeXblockWaitBeneficial`, `MercuryDepStagePreferNonLiveinPSB`) only takes effect when `*(BYTE*)(profile+1398) & 0x20` is set, i.e. on SM targets whose capability word (`profile+1413`) advertises Mercury or Capsule-Mercury capability. Setting these knobs on Turing/Ampere/Hopper compiles silently no-ops; the WAR / Opex bodies guard on the same capability bit before consulting the knob value. The cluster is effectively a Blackwell-onwards control surface despite being available on all targets at the CLI level.
 
 ### Inferred Value Types
 
-The DAG knob descriptor (64 bytes) stores a type tag at descriptor offset +24. The five generic ptxas knob types appear in the table below; assignment per Mercury knob is inferred from naming conventions consistently observed across the rest of the binary (1,294-knob universe documented in `config/knobs.md`).
+The DAG knob descriptor (64 bytes) stores a type tag at descriptor offset +24. The five generic ptxas knob types appear in the table below; assignment per Mercury knob is inferred from naming conventions consistently observed across the rest of the binary (1,099-knob universe documented in `config/knobs.md`).
 
 | Type tag | Type | Naming convention | Storage |
 |---|---|---|---|

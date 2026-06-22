@@ -84,7 +84,7 @@ ptxas -arch sm_90 -split-compile 0 -o kernel.cubin kernel.ptx
 # 9. Internal knob override (developer/debugging)
 ptxas -arch sm_90 -knob DUMPIR=AllocateRegisters -o kernel.cubin kernel.ptx
 
-# 10. Discover all 1,294 internal knob values
+# 10. Discover all 1,099 internal knob values
 DUMP_KNOBS_TO_FILE=/tmp/knobs.txt ptxas -arch sm_90 -o kernel.cubin kernel.ptx
 ```
 
@@ -381,7 +381,7 @@ Internal options for system-call based operations (texturing, bulk copy).
 
 ## Knobs Configuration
 
-The `-knob` flag is the primary CLI mechanism for setting internal knob values — the 1,294 tuning parameters documented in [Knobs System](knobs.md). It is **not** listed in `--help` output and uses a single-dash prefix (not `--knob`).
+The `-knob` flag is the primary CLI mechanism for setting internal knob values — the 1,099 tuning parameters documented in [Knobs System](knobs.md). It is **not** listed in `--help` output and uses a single-dash prefix (not `--knob`).
 
 ### Syntax
 
@@ -442,7 +442,7 @@ Condition prefixes: `SH=` (shader hash), `IH=` (instruction hash), `K=` (direct 
 
 ### Environment Variable: DUMP_KNOBS_TO_FILE
 
-The `DUMP_KNOBS_TO_FILE` environment variable causes ptxas to write all 1,294 knob names and their resolved values to a file:
+The `DUMP_KNOBS_TO_FILE` environment variable causes ptxas to write all 1,099 knob names and their resolved values to a file:
 
 ```bash
 DUMP_KNOBS_TO_FILE=/tmp/all_knobs.txt ptxas -arch sm_90 -o out.cubin input.ptx
@@ -463,7 +463,7 @@ This is the primary mechanism for discovering which knobs exist, their current d
 | `IgnorePotentialMixedSizeProblems` | bool | Suppress mixed-size register warnings |
 | `DisablePragmaKnobs` | bool | Ignore all `.pragma` knob directives in PTX |
 
-For the complete knob type system, file format, and all 1,294 knob categories, see [Knobs System](knobs.md).
+For the complete knob type system, file format, and all 1,099 knob categories, see [Knobs System](knobs.md).
 
 ## Version and Architecture Queries
 
