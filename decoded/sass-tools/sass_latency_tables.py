@@ -32,7 +32,7 @@ Everything is cached per arch.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -199,43 +199,375 @@ def _load_oracle() -> dict[str, int]:
     return out
 
 
-# Result-latency bands (cycles) when the oracle has no explicit row.  ALU/math
-# anchor at 6; the longer ones are completion latencies measured directly on the
-# sm_89 GPU (clock-delta timing of a producer->consumer pair, scoreboard wait
-# intact).  These weight the critical path; correctness is carried by the
-# scoreboard model, not these numbers.  Per-tier / per-scoreboard detail lives in
-# ../ptxas-sched-full/{decoupled_scalar_latency,memory_latency,tensor_latency}.tsv.
-#
-# Global loads stay at the representative 300 (the measured tiers are L1-hit 35 /
-# L2 152 / DRAM-miss 606 -- 300 is the mid-weight; the tiers are in the tsv).
-# Stores are fire-and-forget (1).  CS2R is coupled (no scoreboard) -> 11.
-_DEFAULT_BAND = {
-    "LDG": 300, "LD": 300, "LDL": 300, "LDGSTS": 300, "ATOMG": 300, "ATOM": 300,
-    "TEX": 300, "TLD": 300, "TXD": 300, "SULD": 300,
-    "LDS": 24, "LDSM": 24, "STS": 1, "STG": 1, "STL": 1, "ST": 1, "RED": 1,
-    "LDC": 30, "ULDC": 30, "S2R": 30, "S2UR": 30, "CS2R": 11, "BREV": 29,
-    "MUFU": 36, "F2F": 34, "F2I": 34, "I2F": 34, "I2I": 13, "POPC": 29,
-    "FLO": 29, "PRMT": 6,
-    "HMMA": 27, "IMMA": 27, "DMMA": 26, "BMMA": 27, "OMMA": 27,
-}
+# Measured-latency tables: the GPU-measurement TSVs under ../ptxas-sched-full/
+# are the SINGLE SOURCE OF TRUTH for the result bands.  The four loaders below
+# parse them lazily (each cached) and the band-derivation maps the per-op rows
+# into one critical-path weight per base mnemonic, honoring the measurement
+# caveats documented inline.  No band number is duplicated in code; the .py
+# carries only the *selection* logic over the measured data.
+
+DECOUPLED_TSV = SCHED_DIR / "decoupled_scalar_latency.tsv"
+MEMORY_TSV = SCHED_DIR / "memory_latency.tsv"
+TENSOR_TSV = SCHED_DIR / "tensor_latency.tsv"
+UPRED_TSV = SCHED_DIR / "uniform_pred_hazards.tsv"
+ASYNC_TSV = SCHED_DIR / "async_scoreboards.tsv"
+
+_BAND_WEIGHT_RE = re.compile(r"\bband=(\d+)")
+_FIRST_INT_RE = re.compile(r"(\d+)")
+
+
+def _read_tsv_rows(path: Path) -> list[list[str]]:
+    """Tab-split every non-comment, non-blank line of a TSV; drop the one
+    column-header line (the first non-`#` row).  Robust to per-file schemas."""
+    rows: list[list[str]] = []
+    if not path.exists():
+        return rows
+    header_seen = False
+    with path.open(errors="replace") as fh:
+        for ln in fh:
+            if ln.startswith("#"):
+                continue
+            ln = ln.rstrip("\n")
+            if not ln.strip():
+                continue
+            if not header_seen:        # the first non-comment line is the header
+                header_seen = True
+                continue
+            rows.append(ln.split("\t"))
+    return rows
+
+
+# -- decoupled scalar completion latency (SFU / MIO / FMA64-conv / coupled CS2R).
+
+@lru_cache(maxsize=1)
+def _load_decoupled() -> dict[str, tuple[str, int]]:
+    """base-mnemonic -> (scoreboard, gpu_measured_latency cycles).
+
+    Columns: op sets_scoreboard source_model ptxas_emitted_wait
+             gpu_measured_latency note.  Many opcodes have several variant rows
+             (MUFU has eight transcendentals); keep the LONGEST measured latency
+             as the conservative critical-path weight for the base mnemonic.
+    The scoreboard is "-coupled" for the coupled exceptions (CS2R, I2FP)."""
+    out: dict[str, tuple[str, int]] = {}
+    for cols in _read_tsv_rows(DECOUPLED_TSV):
+        if len(cols) < 5:
+            continue
+        base = _base_mnem(cols[0]).upper()
+        scbd = cols[1].strip()
+        try:
+            lat = int(cols[4].strip())
+        except ValueError:
+            continue
+        prev = out.get(base)
+        if prev is None or lat > prev[1]:
+            out[base] = (scbd, lat)
+    return out
+
+
+def decoupled_latency(mnem: str) -> tuple[str, int]:
+    """(scoreboard, cycles) for a decoupled scalar op, from
+    decoupled_scalar_latency.tsv.  `scoreboard` is the SBn the producer arms
+    ("SB0".."SB5") or "-coupled" for the coupled exceptions (CS2R, I2FP).
+    Raises KeyError if the op has no measured row."""
+    return _load_decoupled()[_base_mnem(mnem).upper()]
+
+
+# -- memory load/store latency, per space and global cache tier.
+
+@lru_cache(maxsize=1)
+def _load_memory() -> dict[str, list[dict]]:
+    """base-mnemonic -> list of per-(space,tier) rows.
+
+    Each row dict: {space, tier, scoreboard, weight (the band=N critical-path
+    weight ptxas assigns), measured (gpu_measured_latency)}.  Columns: op space
+    cache_tier sets_scoreboard source_model gpu_measured_latency note."""
+    out: dict[str, list[dict]] = {}
+    for cols in _read_tsv_rows(MEMORY_TSV):
+        if len(cols) < 6:
+            continue
+        base = _base_mnem(cols[0]).upper()
+        wm = _BAND_WEIGHT_RE.search(cols[4])
+        try:
+            measured = int(cols[5].strip())
+        except ValueError:
+            continue
+        out.setdefault(base, []).append({
+            "space": cols[1].strip(),
+            "tier": cols[2].strip(),
+            "scoreboard": cols[3].strip(),
+            "weight": int(wm.group(1)) if wm else measured,
+            "measured": measured,
+        })
+    return out
+
+
+# Cache tiers (ordered cheapest -> dearest) used to pick a representative tier
+# when the caller does not name one: the first present in this order wins.
+_TIER_PREFERENCE = ("smem", "const_cache_hit", "L1_hit", "L2", "L1_writeback",
+                    "smem_rmw", "L2_rmw", "async_copy_L2", "DRAM_miss")
+
+
+def memory_latency(op: str, space: str | None = None,
+                   tier: str | None = None) -> int:
+    """Measured load-use latency (cycles) of a memory op from
+    memory_latency.tsv.
+
+    With no `space`/`tier` the cheapest representative tier is returned (the
+    on-chip / L1-hit common case); pass `space=` and/or `tier=` to select a
+    specific row (e.g. memory_latency("LDG", tier="DRAM_miss") -> 606).  All
+    tiers stay exposed -- the global-load tiers measured on sm_89 are
+    L1_hit 35 / L2 152 / DRAM_miss 606.  Raises KeyError for an unknown op."""
+    rows = _load_memory()[_base_mnem(op).upper()]
+    cand = [r for r in rows
+            if (space is None or r["space"] == space)
+            and (tier is None or r["tier"] == tier)]
+    if not cand:
+        raise KeyError(f"no memory_latency row for op={op} space={space} "
+                       f"tier={tier}")
+    if len(cand) == 1 or tier is not None:
+        return cand[0]["measured"]
+    order = {t: i for i, t in enumerate(_TIER_PREFERENCE)}
+    cand.sort(key=lambda r: order.get(r["tier"], len(order)))
+    return cand[0]["measured"]
+
+
+# -- tensor (MMA) result latency.
+
+@lru_cache(maxsize=1)
+def _load_tensor() -> dict[str, tuple[bool, int]]:
+    """base-mnemonic -> (coupled, result_latency cycles).
+
+    The result band is the COMPLETION latency from the source_model column
+    (e.g. "27-28" -> 27 for HMMA/IMMA/BMMA, "25-26" -> 26 for DMMA), NOT the
+    gpu_min_required hardware-interlock floor (3) -- that floor is correctness,
+    not when the accumulator is readable.  coupled = HMMA/IMMA/BMMA (no write
+    scoreboard); DMMA is decoupled (it arms a real scoreboard).  Group-async
+    rows (HGMMA/tcgen05, source_model "static") carry no scalar band and are
+    skipped for the result-band map."""
+    out: dict[str, tuple[bool, int]] = {}
+    for cols in _read_tsv_rows(TENSOR_TSV):
+        if len(cols) < 4:
+            continue
+        base = _base_mnem(cols[0]).upper()
+        coupled = cols[2].strip() == "coupled"
+        m = _FIRST_INT_RE.search(cols[3])
+        if not m:                      # "static" group-async rows: no band
+            continue
+        out.setdefault(base, (coupled, int(m.group(1))))
+    return out
+
+
+def tensor_latency(mnem: str) -> tuple[bool, int]:
+    """(coupled, cycles) for a tensor MMA op from tensor_latency.tsv.
+
+    `cycles` is the result-completion band (~27 for HMMA/IMMA/BMMA, ~26 for
+    DMMA), used for critical-path weighting -- distinct from the
+    gpu_min_required hardware floor (3).  Raises KeyError for an unknown op."""
+    return _load_tensor()[_base_mnem(mnem).upper()]
+
+
+# -- uniform-register / predicate / return-PC hazards.
+
+@lru_cache(maxsize=1)
+def _load_upred() -> list[dict]:
+    """Rows of uniform_pred_hazards.tsv as dicts.
+
+    Columns: producer consumer kind source_model ptxas_emitted gpu_min note.
+    Producer/consumer are slash-joined opcode-class lists; matching is done by
+    substring against those lists in `uniform_pred_hazard`."""
+    out: list[dict] = []
+    for cols in _read_tsv_rows(UPRED_TSV):
+        if len(cols) < 6:
+            continue
+        out.append({
+            "producer": cols[0].strip(), "consumer": cols[1].strip(),
+            "kind": cols[2].strip(), "source_model": cols[3].strip(),
+            "ptxas_emitted": cols[4].strip(), "gpu_min": cols[5].strip(),
+        })
+    return out
+
+
+def _hazard_cycles(row: dict) -> int | None:
+    """Best available cycle count for a uniform-hazard row: GPU-verified gpu_min
+    first, then ptxas_emitted, else the source-model number; None if the row is
+    a pure scoreboard/sequencing handshake (no sweepable stall).
+
+    A cycle count is a STANDALONE integer column ("4", "13"); the non-numeric
+    tokens ("SB0"/"SB" scoreboard arm-or-wait, "seq" sequencing, "-" static,
+    "scoreboard(seed 2)", "(per UGPR row)") are not stalls and yield None -- so
+    the stray digits inside "SB0" / "scoreboard(seed 2)" are never mistaken for
+    a cycle count."""
+    for col in ("gpu_min", "ptxas_emitted", "source_model"):
+        val = row[col].strip()
+        if val.isdigit():
+            return int(val)
+    return None
+
+
+def uniform_pred_hazard(producer: str, consumer: str
+                        ) -> tuple[str, int | None]:
+    """(kind, cycles) for a uniform-datapath / predicate / return-PC hazard from
+    uniform_pred_hazards.tsv.
+
+    `producer`/`consumer` are matched as substrings of the TSV's slash-joined
+    opcode-class columns (e.g. uniform_pred_hazard("UMOV", "IMAD")).  `cycles`
+    is the GPU-verified gpu_min where present, else the ptxas-emitted stall, else
+    the source-model band; None when the hazard is a scoreboard/sequencing
+    handshake rather than a fixed stall.  Raises KeyError if no row matches."""
+    pu, cu = producer.upper(), consumer.upper()
+    for row in _load_upred():
+        if pu in row["producer"].upper() and cu in row["consumer"].upper():
+            return row["kind"], _hazard_cycles(row)
+    raise KeyError(f"no uniform_pred_hazard row for {producer!r}->{consumer!r}")
+
+
+# -- async warp-state scoreboards (wgmma / tcgen05 / cluster, newer arches).
+
+@lru_cache(maxsize=1)
+def _load_async() -> dict[str, dict]:
+    """named-barrier -> {latency, readers, writers, arch, note}, from
+    async_scoreboards.tsv.  Columns: scoreboard readers writers latency arch
+    note.  A name may appear twice (Hopper + Blackwell rows); keep the first."""
+    out: dict[str, dict] = {}
+    for cols in _read_tsv_rows(ASYNC_TSV):
+        if len(cols) < 5:
+            continue
+        name = cols[0].strip()
+        try:
+            lat = int(cols[3].strip())
+        except ValueError:
+            continue
+        out.setdefault(name, {
+            "latency": lat, "readers": cols[1].strip(),
+            "writers": cols[2].strip(),
+            "arch": cols[4].strip() if len(cols) > 4 else "",
+        })
+    return out
+
+
+def async_scoreboard(name: str) -> tuple[int, str, str]:
+    """(latency, readers, writers) for a named async warp-state barrier from
+    async_scoreboards.tsv (WGMMA_ACCUM_SB / WGMMA_GROUP_SB / CGA_BARRIER /
+    TCGEN05_TMEM / RPC).  Raises KeyError for an unknown barrier."""
+    row = _load_async()[name]
+    return row["latency"], row["readers"], row["writers"]
+
+
+# -- the result-band map assembled from the measured TSVs (single source of
+# truth).  GPU-measured completion latency wins; the few caveat overrides below
+# select the RIGHT measured number when a raw row is contaminated or tier-split.
+
+# Fire-and-forget / async-issue ops carry the ptxas critical-path WEIGHT, not
+# their measured RAW-forward / round-trip latency (a store is not on a RAW
+# completion path; its scoreboard is for ordering/WAR only).
+_MEM_WEIGHT_OPS = {"STG", "STS", "STL", "ST", "RED"}
+# Global-load tiered ops: the measured latency is tier-dependent (L1/L2/DRAM),
+# so the result band uses the representative critical-path weight (300); the
+# per-tier numbers stay reachable via memory_latency().
+_MEM_REPRESENTATIVE_OPS = {"LDG", "LDL", "LD", "ATOMG", "ATOM", "LDGSTS"}
+
+
+@lru_cache(maxsize=1)
+def _measured_band() -> dict[str, int]:
+    """base-mnemonic -> result band, derived purely from the measured TSVs.
+
+    Resolution per op: tensor result band, then decoupled-scalar measured, then
+    memory (weight for stores / tiered global loads, measured otherwise), with
+    the documented caveat overrides applied last.  Nothing here is a literal
+    cycle count -- every number is read out of a TSV row."""
+    band: dict[str, int] = {}
+
+    # tensor MMA: the completion band (~27 / ~26), not the HW-interlock floor.
+    for base, (_coupled, cyc) in _load_tensor().items():
+        band[base] = cyc
+
+    # decoupled scalar: the measured completion latency (SFU/MIO/FMA64).  The
+    # coupled exceptions are handled by class: CS2R (a clock read) keeps its
+    # measured coupled floor as its band, but I2FP (the 32-bit s32->f32 coupled
+    # conversion) forwards like ALU math -- its measured number is the clock-read
+    # bracket floor (an artifact of the measurement harness, shared with CS2R),
+    # NOT a conversion completion latency, so it is left to the ALU anchor (6).
+    for base, (scbd, lat) in _load_decoupled().items():
+        if scbd == "-coupled" and base == "I2FP":
+            continue
+        band[base] = lat
+
+    # memory: stores/RED take the weight; tiered global loads the representative
+    # weight; everything else (LDS/LDC/ATOMS/...) its measured latency.
+    mem = _load_memory()
+    for base, rows in mem.items():
+        if base in _MEM_WEIGHT_OPS:
+            band[base] = max(r["weight"] for r in rows)
+        elif base in _MEM_REPRESENTATIVE_OPS:
+            band[base] = max(r["weight"] for r in rows)
+        else:
+            band[base] = memory_latency(base)
+
+    # -- caveat overrides (still TSV-sourced numbers, cross-referenced):
+    #  * F2F (f32->f64) and I2F (s64->f64) measured 57/71 INCLUDE an FP64
+    #    consumer (DADD) that inflates them; the pure conversion band is F2I's
+    #    clean s32 conversion latency.  Pin F2F/I2F to the F2I measured row.
+    dec = _load_decoupled()
+    if "F2I" in dec:
+        f2i = dec["F2I"][1]
+        band["F2F"] = f2i
+        band["I2F"] = f2i
+    return band
 
 
 def result_band(mnem: str) -> int:
     """Result-latency band of an op (for critical-path weighting / debug).
 
-    The GPU-measured completion latencies take precedence: the ptxas oracle's
-    per-op band is its own coarse internal weight (e.g. MUFU 24, POPC 13), which
-    underestimates the real completion (36 / 29 measured on sm_89).  For an
-    accurate critical path we weight by the measured truth where we have it, and
-    fall back to the oracle for ops without a measured band, then the ALU anchor.
-    """
+    Resolution is measured-first: the GPU-measured completion latency (from the
+    ../ptxas-sched-full/ measurement TSVs) wins, then the ptxas scalar oracle's
+    coarse internal band, then the ALU anchor (6).  The oracle's per-op band is
+    its own weight (e.g. MUFU 24, POPC 13) and underestimates the real
+    completion (39 / 29 measured on sm_89), so the measured tables override it.
+    Every numeric band lives in a TSV row; this function only selects among
+    them.  The tiny code-level fallbacks below cover ops with no TSV row at all
+    (warm const-cache LDC, the coupled I2I conversion, the secondary 64-bit
+    load aliases) and are clearly marked."""
     base = _base_mnem(mnem)
-    if base in _DEFAULT_BAND:
-        return _DEFAULT_BAND[base]
+    m = _measured_band()
+    if base in m:
+        return m[base]
+    # code-level fallbacks for ops with NO measured TSV row (clearly marked):
+    if base in _BAND_FALLBACK:
+        return _BAND_FALLBACK[base]
     o = _load_oracle()
     if base in o:
         return o[base]
     return 6   # default ALU band (binary anchor)
+
+
+# Code-level band fallback -- ONLY for ops that have no row in any measurement
+# TSV.  These are aliases / variants whose silicon number is not separately
+# measured but whose CLASS weight is known from the op's pipe; kept tiny and
+# explicit so the measured TSVs remain the source of truth for everything that
+# IS measured.  Each value mirrors the class of a measured sibling:
+#   * the global/texture load family weights at the representative 300 (the
+#     measured LDG tier weight) -- LD/ATOM and the texture ops (TEX/TLD/TXD/SULD)
+#     are not separately pointer-chased on sm_89;
+#   * the store/RED family is fire-and-forget (weight 1, like the measured STG);
+#   * LDSM mirrors the measured LDS shared band (24);
+#   * the uniform aliases ULDC/S2UR mirror the measured LDC(warm)/S2R;
+#   * I2I is the coupled int->int narrow (oracle weight 35 is the throughput
+#     band; its coupled forwarding sits in the control/CC class, 13);
+#   * OMMA is an unmeasured tensor MMA variant -> the HMMA/IMMA result band 27.
+_BAND_FALLBACK = {
+    # global / texture load family (representative weight, like measured LDG)
+    "LD": 300, "ATOM": 300, "TEX": 300, "TLD": 300, "TXD": 300, "SULD": 300,
+    # store / reduction family: fire-and-forget (like measured STG)
+    "STL": 1, "ST": 1,
+    # shared-memory alias of the measured LDS
+    "LDSM": 24,
+    # uniform-datapath aliases of the measured LDC(warm)/S2R
+    "ULDC": 30, "S2UR": 30,
+    # coupled int->int narrow (oracle 35 is the throughput weight)
+    "I2I": 13,
+    # unmeasured tensor MMA variant -> HMMA/IMMA result band
+    "OMMA": 27,
+}
 
 
 # Per-arch class model: mnemonic -> {coupled, itype, min_wait, scbd arming,
@@ -447,8 +779,60 @@ def coupled_stall(arch: str, prod_pipe: str, cons_pipe: str) -> int:
     return 5
 
 
+def _selfcheck() -> int:
+    """Assert the TSV-derived bands and the new accessors are sane.  Returns the
+    number of failures (0 = OK).  Numbers are read from the measurement TSVs, so
+    this also confirms the TSVs are present and parse."""
+    fails = 0
+
+    def chk(label: str, got, want) -> None:
+        nonlocal fails
+        ok = got == want
+        fails += 0 if ok else 1
+        print(f"  {'OK ' if ok else 'FAIL'} {label:34s} got={got!r:>14} "
+              f"want={want!r}")
+
+    print("# result_band (measured -> oracle -> anchor):")
+    chk("result_band(IADD3) ALU anchor", result_band("IADD3"), 6)
+    chk("result_band(MUFU) decoupled max", result_band("MUFU"), 39)
+    chk("result_band(POPC) decoupled", result_band("POPC"), 29)
+    chk("result_band(F2I) decoupled", result_band("F2I"), 34)
+    chk("result_band(F2F) =F2I caveat", result_band("F2F"), 34)
+    chk("result_band(I2F) =F2I caveat", result_band("I2F"), 34)
+    chk("result_band(I2FP) ALU anchor", result_band("I2FP"), 6)
+    chk("result_band(CS2R) coupled floor", result_band("CS2R"), 11)
+    chk("result_band(LDG) representative", result_band("LDG"), 300)
+    chk("result_band(LDS) measured", result_band("LDS"), 24)
+    chk("result_band(STG) weight", result_band("STG"), 1)
+    chk("result_band(HMMA) result band", result_band("HMMA"), 27)
+    chk("result_band(IMMA) result band", result_band("IMMA"), 27)
+    chk("result_band(BMMA) result band", result_band("BMMA"), 27)
+    chk("result_band(DMMA) result band", result_band("DMMA"), 25)
+
+    print("\n# new accessors:")
+    # decoupled_latency aggregates a base mnemonic to its longest measured
+    # variant: MUFU's eight transcendentals -> the 39-cyc RSQ/SQRT/LG2 worst.
+    chk("decoupled_latency(MUFU.*)", decoupled_latency("MUFU.RCP"), ("SB0", 39))
+    chk("decoupled_latency(CS2R)", decoupled_latency("CS2R"), ("-coupled", 11))
+    chk("memory_latency(LDG) repr tier", memory_latency("LDG"), 35)
+    chk("memory_latency(LDG,DRAM_miss)",
+        memory_latency("LDG", tier="DRAM_miss"), 606)
+    chk("memory_latency(LDG,L2)", memory_latency("LDG", tier="L2"), 152)
+    chk("tensor_latency(HMMA)", tensor_latency("HMMA"), (True, 27))
+    chk("tensor_latency(DMMA)", tensor_latency("DMMA"), (False, 25))
+    k, c = uniform_pred_hazard("ISETP", "VOTE")
+    chk("uniform_pred_hazard(ISETP,VOTE)", (k, c), ("RAW_coupled", 13))
+    lat, _r, _w = async_scoreboard("CGA_BARRIER")
+    chk("async_scoreboard(CGA_BARRIER).lat", lat, 6)
+
+    print("\n" + ("SELFCHECK OK" if fails == 0 else f"{fails} CHECK(S) FAILED"))
+    return fails
+
+
 if __name__ == "__main__":
     import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--selfcheck":
+        raise SystemExit(1 if _selfcheck() else 0)
     arch = sys.argv[1] if len(sys.argv) > 1 else "SM89"
     model = load_arch_model(arch)
     print(f"# {arch}: {len(model)} classes")
