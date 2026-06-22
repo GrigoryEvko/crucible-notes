@@ -4,5 +4,5 @@ block_idx	lead_va	lead_handler_va	emitter_region	slots	distinct_handlers	shared_
 3	0x236CD10	0xEA7440	classic(0xC693D0+)	2142	2142	1402	34.5	sm100	sm_90/sm_90a/sm_100/sm_103 (Hopper + datacenter Blackwell)
 4	0x238C9B0	0xEA7440	classic(0xC693D0+)	1744	1744	1438	17.5	sm80_8x	sm_80 Ampere datacenter
 5	0x23A8090	0xEA7440	classic(0xC693D0+)	1754	1754	1438	18.0	sm86_89	sm_86/sm_87/sm_88/sm_89 Ampere/Ada
-6	0x23BA8A0	0x18F0540	new6(0x18DF870..0x18F0CF0)	657	657	0	100.0	(none, NEW)	sm_110 Jetson Thor [this run]
-7	0x23DB120	0x1AEE1D0	new7(0x1A01050..0x1AF5230)	682	682	0	100.0	(none, NEW)	sm_120/sm_120a/sm_121/sm_121a consumer Blackwell [this run]
+6	0x23BA8A0	0x18F0540	new6(0x18DF870..0x18F0CF0)	657	657	0	100.0	(none)	sm_110 Jetson Thor
+7	0x23DB120	0x1AEE1D0	new7(0x1A01050..0x1AF5230)	682	682	0	100.0	(none)	sm_120/sm_120a/sm_121/sm_121a consumer Blackwell
