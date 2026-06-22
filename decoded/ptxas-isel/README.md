@@ -6,7 +6,7 @@ sha256 `daba837a68265cae38c832d13399b61dab811891de9b8914defddef143b849f2`) plus
 its companion `nvdisasm`. Reverse engineering of a publicly distributed binary
 for interoperability / research; DMCA 17 U.S.C. § 1201(f), *Sega v. Accolade*,
 EU 2009/24/EC. Only our own tools and uncopyrightable factual data are
-published — no NVIDIA source, no verbatim NVIDIA data tables.
+published.
 
 ## Files
 
@@ -23,7 +23,7 @@ published — no NVIDIA source, no verbatim NVIDIA data tables.
 - `isel_node_vtables.tsv` — the polymorphic ISel-node method/query/operand
   vtable pools (FAM0..FAM3 + COORD).
 
-### Per-arch instruction selection (behavioural, target-axis) — NEW
+### Per-arch instruction selection (behavioural, target-axis)
 The opcode registry is largely target-invariant; the *selection* of which SASS
 class lowers a given PTX op is **target-dependent**, and that dependence is what
 distinguishes datacenter Blackwell (sm_100/103), Jetson Thor (sm_110) and
@@ -35,11 +35,11 @@ by driving the real ptxas + nvdisasm on a fixed probe (see the extractor):
   sm_121).
 - `per_arch_encoding_opbyte.tsv` — the same, keyed by the SASS **primary
   opcode byte** (low byte of the 128-bit encoding word) rather than mnemonic.
-- `extract_per_arch_isel.py` — our extractor. Self-contained (embeds the probe
-  PTX); regenerate with
+- `extract_per_arch_isel.py` — the extractor. Self-contained (embeds the probe
+  PTX); run with
   `python3 extract_per_arch_isel.py <ptxas> <nvdisasm> [outdir]`.
 
-### Async / TMA / cluster / tcgen05 SASS opcode map — NEW
+### Async / TMA / cluster / tcgen05 SASS opcode map
 - `tma_cluster_async_opcodes.tsv` — the PTX → SASS lowering for the
   memory-ordering, async-copy, bulk/TMA, cluster/DSMEM, multicast, warpgroup-MMA
   and Blackwell tcgen05 instruction families that the bulk-async PTX exposes but
@@ -60,7 +60,7 @@ by driving the real ptxas + nvdisasm on a fixed probe (see the extractor):
   `tcgen05.alloc/dealloc` → `UTCATOMSWS` (`0xe3`). Consumer Blackwell
   (`sm_120a`/`121a`) rejects all `tcgen05.*` — confirming TMEM is datacenter-only.
 
-### SIMD video & dot-product SASS lowering — NEW
+### SIMD video & dot-product SASS lowering
 - `video_dp_lowering.tsv` — the PTX → SASS lowering of the SIMD video family
   (`vadd`/`vsub`/`vabsdiff`/`vmin`/`vmax`/`vshl`/`vshr`/`vmad`/`vset`, the
   packed `.v2`/`.v4` forms incl. `vavrg`) and the integer dot-products
@@ -77,7 +77,7 @@ by driving the real ptxas + nvdisasm on a fixed probe (see the extractor):
   with the accumulator `c` folded into the instruction's third source.
   Prose companion: `ptxas/wiki/src/intrinsics/simd-video-dp.md`.
 
-## Per-arch instruction-selection differences (the headline result)
+## Per-arch instruction-selection differences
 
 For one identical PTX program, ptxas selects measurably different SASS per
 target. Equivalence classes (verified at the SASS-text and 128-bit-encoding
@@ -108,9 +108,8 @@ by inspecting the emitted SASS, not just the histogram. What differs on
 sm_120/121 is the **FP-immediate materialization idiom**: those targets emit 4×
 `HFMA2 R, -RZ, RZ, 0, imm` (e.g. to splat a small half/FP constant), whereas
 sm_100/103/110 emit zero `HFMA2`. The histogram's `HFMA2 = 4 (sm_120 only)`
-and `HADD2 = 1 (all)` rows are correct; an earlier draft of this table mislabeled
-the sm_120 *half-add* as `HFMA2`, which the SASS-level diff disproves.
-Jetson Thor (sm_110) keeps the `IMAD.MOV` move idiom but drops the
+and `HADD2 = 1 (all)` rows reflect this: the sm_120 `HFMA2` is the FP-immediate
+splat, not the half-add. Jetson Thor (sm_110) keeps the `IMAD.MOV` move idiom but drops the
 vector-integer `VIADD`/`VIADDMNMX`/`VIMNMX` ops in favour of scalar
 `IADD3`/`IMNMX`. The
 heavy fixed NOP padding on sm_103/110/120/121 reflects a more conservative
@@ -121,16 +120,13 @@ corresponding ISA-class coverage deltas (tcgen05/TMEM present on
 sm_100/103/110 but absent on sm_120; RT/TTU and consumer tensor classes present
 only on sm_120; etc.).
 
-## Verification provenance
+## Provenance
 
-Both histogram TSVs were regenerated from scratch with
-`extract_per_arch_isel.py <ptxas> <nvdisasm>` (ptxas `V13.0.88`, sha256
-`daba837a…`; nvdisasm `V13.1.115`) and reproduce the committed files
-byte-for-byte. The per-arch idioms in the table above were then re-confirmed by
-inspecting the actual emitted SASS per target (compile → `nvdisasm -c -hex` →
-diff mnemonic + low-encoding-byte sets), which is what surfaced the half-add
-mislabel: `add.f16` → `HADD2` on all five targets, and the sm_120/121 `HFMA2`
-is an FP-immediate splat, not the half-add. The opcode-byte mapping was
-verified directly (NOP `0x18`, IMAD.MOV.U32 `0x24`, MOV `0x02`, IADD3 `0x10`).
-The `sm_100 ≡ sm_100a/f` / `sm_120 ≡ sm_121` SASS equivalences were confirmed
-via byte-level SASS hashes (sm_120 and sm_121 share SHA `714d057def7525c7`).
+Both histogram TSVs are produced by `extract_per_arch_isel.py <ptxas> <nvdisasm>`
+(ptxas `V13.0.88`, sha256 `daba837a…`; nvdisasm `V13.1.115`). The per-arch idioms
+in the table above come from inspecting the emitted SASS per target (compile →
+`nvdisasm -c -hex` → diff mnemonic + low-encoding-byte sets): `add.f16` → `HADD2`
+on all five targets, and the sm_120/121 `HFMA2` is an FP-immediate splat, not the
+half-add. The opcode-byte mapping is direct (NOP `0x18`, IMAD.MOV.U32 `0x24`,
+MOV `0x02`, IADD3 `0x10`). The `sm_100 ≡ sm_100a/f` / `sm_120 ≡ sm_121` SASS
+equivalences hold at the byte level (sm_120 and sm_121 share SHA `714d057def7525c7`).

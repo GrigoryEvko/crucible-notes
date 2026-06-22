@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Final consolidation of attribute bit<->name legend.
+"""Consolidate the attribute bit<->name legend.
 
-Strategy: residual greedy. Binary masks authoritative; an external name legend
-supplies the human-readable attribute names (paths redacted).
+Strategy: residual greedy. The binary masks drive the solve; an optional name
+legend (see NAME_LEGENDS) supplies human-readable attribute names when present.
 1. Build matched (mask, flagset). 2. Iteratively: for each unassigned flag,
    candidate = bits set in ALL positives, clear in ALL negatives, minus already
    assigned bits. Assign flags whose candidate is a singleton. Repeat. This peels
@@ -13,9 +13,9 @@ supplies the human-readable attribute names (paths redacted).
 """
 import re, csv, collections, json
 
-# External attribute-name legend(s). Paths redacted; the binary masks below are
-# authoritative and self-contained. If no legend is present, every used bit falls
-# through to UNNAMED / (used, unlabeled) without affecting the mask solve.
+# Optional attribute-name legend file(s). The binary masks drive the solve and
+# stand alone; with no legend present every used bit falls through to UNNAMED /
+# (used, unlabeled) without affecting the mask solve.
 NAME_LEGENDS=[]
 def parse_legend():
     by_full={}; by_name=collections.defaultdict(list)

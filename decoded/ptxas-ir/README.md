@@ -2,8 +2,7 @@
 
 Binary-derived documentation of ptxas v13.0.88's internal instruction representation
 (project name "Ori"). Every fact recovered from the stripped ptxas binary
-(`ptxas/ptxas`, 37.7 MB x86-64 ELF) and its decompilation; on any source/binary
-disagreement the binary wins.
+(`ptxas/ptxas`, 37.7 MB x86-64 ELF) and its decompilation.
 
 ## Files
 
@@ -36,20 +35,17 @@ disagreement the binary wins.
   322 primary + 385 Mercury opcodes, operand array +84 (6x8B), operand type bits 28-30,
   guard=type-6-last-operand, bit-11 dest adjustment, ext-operand store, kind-enum membership.
 - MEDIUM: modifier field exact width (only bits 20-23 observed extracted).
-- The packed-word and instruction-object fields below were re-resolved by the later
-  gap-closure pass (see `../ptxas-gap-closure/resolved_items.tsv`, items F1-IR / F1-ISel) and
-  the TSVs here have been UPDATED to that binding:
-  - operand bit31 = OPD_DEF **is-destination** flag (mask 0x80000000), NOT sign/negate
-    — CORRECTION, now HIGH.
+- Packed-word and instruction-object field bindings:
+  - operand bit31 = OPD_DEF **is-destination** flag (mask 0x80000000), not sign/negate
+    — HIGH.
   - operand type_tag bits28-30 = 3-bit **DAG-IR kind** (0=Unknown,1=VReg,2=Imm32,3=Imm64,
     4=Lab,5=Sym,6=Info,7=Null/sentinel) — HIGH for the enum; exact 13.0.88 lowered labels MED.
-  - +32 = reserved/dead u32 (zero-init only, no reader); the SASS control word is NOT here
-    — CORRECTION, now HIGH.
+  - +32 = reserved/dead u32 (zero-init only, no reader); the SASS control word is not here
+    — HIGH.
   - +40 sched_slot = pointer to a lazily-allocated polymorphic (vtable@0) per-inst
-    scheduling/latency/barrier record holding the SASS control word — CONFIRMED, UPGRADE
-    LOW->HIGH.
+    scheduling/latency/barrier record holding the SASS control word — HIGH.
   - 32-byte ISel descriptor kinds (`operand_kind_enum.tsv`): 3=Imm, 9=cond-pred, 10=reg-alt-src
     HIGH; 13/14/15/16 MED; 4/5/7/8/11 = match-only variants (never emitted) LOW; the 1<->2
-    register/predicate naming anchor remains OPEN (structure solid, name binding unresolved).
+    register/predicate naming anchor is open (structure solid, name binding unresolved).
 - The +128/+136 scheduler list is an OVERLAY over the operand region, used by
   operand-less scheduling pseudo-instructions; not a second always-present linkage.

@@ -14,9 +14,9 @@ call arguments. Bits 128..135 (byte 16) are carried by constructor arg a9 and st
 descriptor +28; only 4 bits (128..131) are ever set, by 8 STANDARD forms. These four are
 the Blackwell-introduced (sm_100..sm_121) attribute bits.
 
-Machine-code-verified (HIGH confidence). The a9 value cannot be read from the Hex-Rays
-C (it is mis-modelled as `<snap>.m128i_i32[0]`); it was recovered directly from the
-call-site assembly of the STANDARD registration site sub_46E000. There the a9 slot is
+Machine-code-derived (HIGH confidence). The Hex-Rays C models the a9 value as
+`<snap>.m128i_i32[0]`; the value comes from the call-site assembly of the STANDARD
+registration site sub_46E000. There the a9 slot is
 0x10(%rsp) (`var_78`), loaded from `eax`, which is in turn loaded from a scratch byte at
 0x40(%rsp) (`var_48`) set immediately before each call. Across the whole function 1141
 writes target the a9 slot; 1124 write an explicit 0, and 17 do `mov [var_78],eax`. Of

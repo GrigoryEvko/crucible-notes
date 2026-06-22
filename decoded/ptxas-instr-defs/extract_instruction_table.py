@@ -12,20 +12,18 @@ Each registration is emitted as a block of the shape:
     <snap> = _mm_load_si128(&<tmp>);    # snapshot
     sub_46BED0/sub_465030(a1, "<opsig>", (..)"<name>", "<datatype>", <idx>, ...);
 
-The locally-built mask (verified against disasm: stored on the stack arg area
-and read back by the constructor) is the 16-byte attribute mask.
+The locally-built mask (stored on the stack arg area and read back by the
+constructor) is the 16-byte attribute mask.
 
-FULL WIDTH (verified at disassembly/ABI level):
-The mask is actually 17 significant bytes held in a 20-byte (dword-aligned) field.
-The constructor stores the 16-byte __m128i at descriptor offset +12 and an extra
-dword (arg a9) at offset +28 (contiguous: 12 + 16 = 28). Byte 16 of the mask =
-the low byte of that dword (descriptor +28 = bits 128..135); bytes 17..19 are
-always padding (never written at any call site). The C decompiler mis-models a9
-as `<snap>.m128i_i32[0]`, so byte 16 cannot be read from the C; it is recovered
-directly from the call-site machine code, where it is built as
-`movb $V,0x40(%rsp); mov 0x40(%rsp),%eax; mov %eax,0x10(%rsp)`. Only 8 STANDARD
-forms set a nonzero byte 16 (bits 128..131); these are injected below by
-(name, datatype_sig) key.
+Full width: the mask is 17 significant bytes held in a 20-byte (dword-aligned)
+field. The constructor stores the 16-byte __m128i at descriptor offset +12 and an
+extra dword (arg a9) at offset +28 (contiguous: 12 + 16 = 28). Byte 16 of the mask
+= the low byte of that dword (descriptor +28 = bits 128..135); bytes 17..19 are
+always padding (never written at any call site). The Hex-Rays C models a9 as
+`<snap>.m128i_i32[0]`, so byte 16 comes from the call-site machine code, where it
+is built as `movb $V,0x40(%rsp); mov 0x40(%rsp),%eax; mov %eax,0x10(%rsp)`. Only
+8 STANDARD forms set a nonzero byte 16 (bits 128..131); these are injected below
+by (name, datatype_sig) key.
 """
 import re, sys, glob, struct
 
@@ -66,19 +64,17 @@ RE_CALL_NUM = re.compile(
 # integer name-token -> resolved mnemonic by shared index (filled in main)
 TOKEN_NAME = {}
 
-# Some registration calls pass the mnemonic as a bare integer where the
-# disassembler failed to recover the `(__int64)"name"` string pointer (the
-# relocation was rendered as a literal).  When such a token shares NO index with
-# any string-named registration, the index-sharing heuristic cannot resolve it,
-# and the row would otherwise carry the raw `#<token>` placeholder.  The entries
-# below are name-tokens recovered out-of-band and confirmed independently:
+# Some registration calls pass the mnemonic as a bare integer token rather than a
+# `(__int64)"name"` string pointer. When such a token shares no index with any
+# string-named registration, the index-sharing resolver leaves the row with a raw
+# `#<token>` placeholder; the table below supplies the name directly.
 #
-#   37741882 (index 84, opsig "B[32|64]", datatype "00")  ->  brev
-#       This slot sits between bfind(83) and bfe(85) in the bit-op registration
-#       cluster (popc/clz/bfind/_/bfe/bfi/prmt).  `brev` is the one bitwise PTX
+#   Token 37741882 (index 84, opsig "B[32|64]", datatype "00") is `brev`.
+#       The slot sits between bfind(83) and bfe(85) in the bit-op registration
+#       cluster (popc/clz/bfind/brev/bfe/bfi/prmt). `brev` is the one bitwise PTX
 #       mnemonic with no string-named row; ptxas accepts `brev.b32`/`brev.b64`
 #       and emits the native BREV SASS opcode (32-bit reverse; the 64-bit form
-#       lowers to two BREV on swapped halves) -- pinned on the sm_89 hardware.
+#       lowers to two BREV on swapped halves), confirmed on sm_89.
 KNOWN_TOKEN_NAME = {
     37741882: "brev",
 }
@@ -173,8 +169,7 @@ def main():
     site1 = 'ptxas/decompiled/sub_46E000_0x46e000.c'
     # site2 EXTENDED registration sites: the 269 functions that call sub_465030
     # (excluding the constructor sub_465030 itself). Sorted so the EXT row order
-    # is deterministic and the committed instruction_table.tsv reproduces
-    # byte-for-byte regardless of how the file list was built.
+    # is deterministic.
     site2_list = sorted(l.strip() for l in open('/tmp/site2_files.txt') if l.strip())
     files = [('STD', site1)] + [('EXT', f) for f in site2_list]
 
@@ -192,8 +187,8 @@ def main():
         tok = int(m.group(2)); idx = int(m.group(4))
         if idx in idx2name:
             TOKEN_NAME[tok] = idx2name[idx]
-    # apply out-of-band recovered name-tokens (e.g. brev) that share no index
-    # with any string-named registration -- these are authoritative.
+    # apply directly-named tokens (e.g. brev) that share no index with any
+    # string-named registration.
     TOKEN_NAME.update(KNOWN_TOKEN_NAME)
 
     # ---- pass 2: full parse ----
