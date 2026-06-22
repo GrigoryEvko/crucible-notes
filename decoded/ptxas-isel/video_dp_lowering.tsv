@@ -1,0 +1,27 @@
+ptx_op	form	primary_sass	native	secondary_add_sass	min_arch	notes
+vadd	scalar	IADD3	no	IMAD.IADD/IADD3	sm_75	PRMT lane-select then add
+vsub	scalar	IADD3.neg	no	IMAD.IADD/IADD3	sm_75	PRMT lane-select then negate-add
+vabsdiff	scalar	IADD3+IABS/SEL	no	IMAD.IADD/IADD3	sm_75	diff then sign-conditional negate
+vmin	scalar	ISETP+SEL/IMNMX	no	IMAD.IADD	sm_75	signed uses .EX carry chain
+vmax	scalar	ISETP+SEL/IMNMX	no	IMAD.IADD	sm_75	direction in compare
+vshl	scalar	SHF.L.U32	no	IMAD.IADD	sm_75	clamp=ISETP.LT0x20+SEL wrap=LOP3&0x1f
+vshr	scalar	SHF.R.S32/U32	no	IMAD.IADD	sm_75	arith vs logical from .s/.u
+vset	scalar	ISETP+SEL	no	IMAD.IADD	sm_75	compare to 1/0 in data reg
+vmad	scalar	IMAD	no	folded	sm_75	.shrN=IMAD.WIDE+SHF.R
+vadd2	packed_v2	IADD3+LOP3	no	IADD3	sm_75	per-lane carry isolation re-pack
+vsub2	packed_v2	IADD3.neg+LOP3	no	IADD3	sm_75	PRMT-emulated
+vmin2	packed_v2	IMNMX+LOP3	no	IADD3	sm_75	2 lanes
+vmax2	packed_v2	IMNMX+LOP3	no	IADD3	sm_75	2 lanes
+vabsdiff2	packed_v2	PRMT+IADD3+IABS	no	IMAD.IADD	sm_75	emulated
+vavrg2	packed_v2	IADD3+SHF.R	no	IMAD.IADD	sm_75	rounding average per lane
+vadd4	packed_v4	IADD3+LOP3	no	IADD3	sm_75	4 byte lanes re-pack
+vsub4	packed_v4	IADD3.neg+LOP3	no	IADD3	sm_75	emulated
+vmin4	packed_v4	IMNMX	no	IADD3	sm_75	4x PRMT extract 4x IMNMX re-pack
+vmax4	packed_v4	IMNMX	no	IADD3	sm_75	4 lanes
+vabsdiff4_u	packed_v4	VABSDIFF4.U8	yes	VABSDIFF4.U8.ACC	sm_75	the ONLY native packed video op
+vabsdiff4_s	packed_v4	PRMT+IABS	no	IADD3	sm_75	signed form emulated
+vavrg4	packed_v4	IADD3+SHF.R	no	IADD3	sm_75	rounding average 4 lanes
+dp4a_u	dotprod	IDP.4A.U8.U8	yes	folded_Rc	sm_75	4x(u8*u8)+c one instruction
+dp4a_s	dotprod	IDP.4A.S8.S8	yes	folded_Rc	sm_75	signed bytes
+dp2a_lo	dotprod	IDP.2A.LO.U16.U8	yes	folded_Rc	sm_75	a=2x16b b=low byte-pair
+dp2a_hi	dotprod	IDP.2A.HI.S16.S8	yes	folded_Rc	sm_75	a=2x16b b=high byte-pair signed

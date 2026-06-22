@@ -27,6 +27,9 @@ Both subsystems use the same hash map infrastructure (`sub_425CA0` / `sub_426150
 - [Prototype Emitter (`sub_5FF700`)](prototype-emitter.md) — 1,080-case dispatch producing the `.weak .func` / `.FORCE_INLINE .func` PTX declarations consumed by every helper-emitting kernel
 - [OCG Intrinsic System](ocg.md) — SM100+ OCG builtins (44 operations), lowering pipeline, SASS handler map
 - [Math Intrinsics](math.md) — IEEE math software emulation (div, rcp, sqrt, rem)
+- [SIMD Video & Dot-Product Lowering](simd-video-dp.md) — the `v*` SIMD-video family and `dp4a`/`dp2a` → SASS (PRMT-emulation vs native `IDP`/`VABSDIFF4`)
+- [Convert (`cvt`) Lowering](cvt-lowering.md) — the `F2F`/`F2I`/`I2F`/`I2I`/`FRND`/`F2FP` round × type-pair × ftz × sat matrix as compact rules
+- [Registry-Only & Special-Op Lowering](registry-ops.md) — `set`/`slct`/`cnot`/`testp`/`fns`/`bmsk`/`szext`/`isspacep`/cache hints/stack ops/cluster intrinsics/`trap`/`nanosleep`/`pmevent`
 - [Tensor Core Intrinsics](tensor.md) — WMMA, MMA, WGMMA, tcgen05 lowering
 - [Sync & Warp Intrinsics](sync-warp.md) — Barriers, vote, shuffle, match, redux
 

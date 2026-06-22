@@ -60,6 +60,23 @@ by driving the real ptxas + nvdisasm on a fixed probe (see the extractor):
   `tcgen05.alloc/dealloc` → `UTCATOMSWS` (`0xe3`). Consumer Blackwell
   (`sm_120a`/`121a`) rejects all `tcgen05.*` — confirming TMEM is datacenter-only.
 
+### SIMD video & dot-product SASS lowering — NEW
+- `video_dp_lowering.tsv` — the PTX → SASS lowering of the SIMD video family
+  (`vadd`/`vsub`/`vabsdiff`/`vmin`/`vmax`/`vshl`/`vshr`/`vmad`/`vset`, the
+  packed `.v2`/`.v4` forms incl. `vavrg`) and the integer dot-products
+  (`dp4a`, `dp2a.lo`, `dp2a.hi`). Seven uniform columns: `ptx_op`, `form`
+  (scalar / packed_v2 / packed_v4 / dotprod), `primary_sass`, `native`
+  (yes/no — whether a hardware op exists vs integer-pipe emulation),
+  `secondary_add_sass` (how the `.add` secondary op merges `c`), `min_arch`,
+  `notes`. Every row was produced by assembling a one-variable probe kernel
+  with ptxas v13.1 (`sm_75`/`sm_89`) and reading the SASS with `nvdisasm`.
+  Headline facts: the scalar `v*` ops have **no native SASS op** on any arch
+  ptxas still targets (all open-coded with a leading `PRMT` lane selector);
+  the **only** native packed video op is `vabsdiff4.u32` → `VABSDIFF4.U8`
+  (`.ACC` absorbs the `.add`); `dp4a`/`dp2a` map 1:1 to `IDP.4A`/`IDP.2A`
+  with the accumulator `c` folded into the instruction's third source.
+  Prose companion: `ptxas/wiki/src/intrinsics/simd-video-dp.md`.
+
 ## Per-arch instruction-selection differences (the headline result)
 
 For one identical PTX program, ptxas selects measurably different SASS per
