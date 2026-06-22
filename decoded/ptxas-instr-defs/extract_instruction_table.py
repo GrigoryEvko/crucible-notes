@@ -154,7 +154,11 @@ def write_le(buf, off, width, val):
 
 def main():
     site1 = 'ptxas/decompiled/sub_46E000_0x46e000.c'
-    site2_list = [l.strip() for l in open('/tmp/site2_files.txt')]
+    # site2 EXTENDED registration sites: the 269 functions that call sub_465030
+    # (excluding the constructor sub_465030 itself). Sorted so the EXT row order
+    # is deterministic and the committed instruction_table.tsv reproduces
+    # byte-for-byte regardless of how the file list was built.
+    site2_list = sorted(l.strip() for l in open('/tmp/site2_files.txt') if l.strip())
     files = [('STD', site1)] + [('EXT', f) for f in site2_list]
 
     # ---- pass 1: collect numeric tokens & their indices, and string names per index ----
@@ -182,9 +186,9 @@ def main():
     print(f"site1(STD) rows={counts['STD']} site2(EXT) rows={counts['EXT']} total={len(all_rows)}", file=sys.stderr)
 
     with open('/tmp/instr_table.tsv', 'w') as out:
-        out.write("flags\tindex\tname\toperand_type_signature\tdatatype_sig\tattribute_mask_hex\tname_kind\n")
+        out.write("index\tname\toperand_type_signature\tdatatype_sig\tattribute_mask_hex\tflags\tname_kind\n")
         for flags, idx, name, opsig, dtype, mask, kind in all_rows:
-            out.write(f"{flags}\t{idx}\t{name}\t{opsig}\t{dtype}\t{mask.hex()}\t{kind}\n")
+            out.write(f"{idx}\t{name}\t{opsig}\t{dtype}\t{mask.hex()}\t{flags}\t{kind}\n")
 
     names = set(r[2] for r in all_rows if not r[2].startswith('#'))
     toks_unres = set(r[2] for r in all_rows if r[2].startswith('#'))

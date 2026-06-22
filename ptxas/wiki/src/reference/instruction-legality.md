@@ -60,10 +60,14 @@ are real per-`(opcode, modifier)` validators; others are always-legal stubs — 
 
 ## The three-layer gate
 
-1. **Per-SM encoder dispatch — the hard gate.** Five generation tables (sm50–7x / sm75 /
-   sm80–8x / sm86–89 / sm100+), each keyed by `(fmt<<8)|minor` → handler. An instruction is
-   encodable on a target **iff** its key resolves to a handler in that generation's table. Per-gen
-   opcode counts grow monotonically (newer arches add opcodes); 492 opcodes are common to all five.
+1. **Per-SM encoder dispatch — the hard gate.** Generation tables keyed by `(fmt<<8)|minor` →
+   handler. An instruction is encodable on a target **iff** its key resolves to a handler in that
+   generation's table. The five *classic* tables (sm50–7x / sm75 / sm80–8x / sm86–89 / sm100+) share
+   one handler pool; their per-gen opcode counts grow monotonically (newer arches add opcodes) and
+   **492 opcodes are common to all five**. Two further Blackwell-generation blocks — sm_110 (Jetson
+   Thor) and sm_120/sm_121 (consumer Blackwell) — sit beyond them with entirely disjoint emitter
+   code, so the full dispatch region holds **seven** arch blocks (see
+   [encoding-tables → Dispatch Reconciliation](../codegen/encoding-tables.md#dispatch-reconciliation--four-encoder-layers-plus-an-isel-vtable)).
 2. **Per-class legality dispatch** (the two-level table above) — the STANDARD validation layer that
    calls a per-`(class, index)` validator before per-SM encoding.
 3. **PTX-ISA-version gate** — a second axis independent of the target SM. Diagnostics gate

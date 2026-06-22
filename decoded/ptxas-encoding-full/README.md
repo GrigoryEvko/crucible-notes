@@ -100,7 +100,7 @@ deltas that explain the encoder-block split:
 | consumer tensor (`qmma`/`omma`/`mxqmma`) | 0      | 0      | 0      | **7**  |
 | datacenter FP8 quad (`qadd4`/`qfma4`/`qmul4`) | 11 | 11     | **0**  | 0      |
 | gather / scatter / metadata              | 4      | 4      | **0**  | 0      |
-| native 64-bit mov-imm (`mov_imm64` etc.) | 0      | 0      | 0      | **4**  |
+| native 64-bit MOV (`mov_imm64_`/`mov64iur_*`/`umov_imm64_`) | 0 | 0 | 0 | **4**  |
 
 The tcgen05/TMEM row counts the full `utc*`/`ldtm_*`/`sttm_*` family per arch
 (38/31/35/0). A prior draft listed `8` here — that was the count of only the
