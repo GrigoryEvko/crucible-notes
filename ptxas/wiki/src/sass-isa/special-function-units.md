@@ -40,7 +40,7 @@ instruction tables is, in field order:
 | 1 | `.SIN` | sin(x), x in revolutions after range reduction | f32 |
 | 2 | `.EX2` | 2^x | f32 |
 | 3 | `.LG2` | log2(x) | f32 |
-| 4 | `.RCP` | 1/x (single-`MUFU` ≈12-bit seed) | f32 |
+| 4 | `.RCP` | 1/x (single-`MUFU` seed, ≈0.65 ULP on Ada — §1.2) | f32 |
 | 5 | `.RSQ` | 1/√x (seed) | f32 |
 | 6 | `.RCP64H` | high-word seed for the FP64 reciprocal NR loop | f64 hi |
 | 7 | `.RSQ64H` | high-word seed for the FP64 rsqrt NR loop | f64 hi |
@@ -68,15 +68,41 @@ not cost a separate instruction.
 
 ### 1.2 The approximation model
 
-The hardware evaluates each transcendental by **piecewise polynomial interpolation**:
-the input mantissa indexes a small **coefficient ROM** holding the per-interval
-polynomial constants, and the unit evaluates a low-degree (quadratic-class) polynomial
-on the in-interval fraction. The single-`MUFU` result is therefore a *bounded-accuracy
-approximation* (~the `.approx` PTX flavour), not a correctly-rounded IEEE result — the
-selector picks which ROM table and which post-scale the unit applies. This is why
-`MUFU.RCP`/`.RSQ`/`.SQRT` alone carry only seed-grade precision (≈12 bits for the
-single-precision reciprocal seed) and why anything needing more is *refined in
-software* (§1.3).
+The hardware evaluates each transcendental by a **piecewise polynomial interpolation
+in silicon**: the input mantissa indexes a small **coefficient ROM** holding the
+per-interval polynomial constants, and the unit evaluates a low-degree
+(quadratic-class) polynomial on the in-interval fraction. The single-`MUFU` result is a
+*bounded-accuracy approximation* (the `.approx` PTX flavour), not a correctly-rounded
+IEEE result — the selector picks which ROM table and which post-scale the unit applies.
+
+**The ROM interpolation coefficients themselves are not recoverable and are not
+claimed here.** They sit in the hardware, not in any toolchain table: disassembling a
+`MUFU` shows the opcode and the 4-bit selector, but nothing about the polynomial
+constants or the breakpoint table. What *is* recoverable — and what is stated below —
+is (a) the **measured accuracy** of each bare `MUFU` form, and (b) the exact
+**software refinement** the compiler wraps around the seed (§1.3–1.4), which lives in
+the code generator and is fully visible in SASS.
+
+The measured accuracy comes from executing each bare `.approx` form on the device over
+a value sweep and comparing the raw result bits to the value computed at higher
+precision (the differential harness in `decoded/sass-tools/sass_sem_fp.py`):
+
+| `MUFU` form | PTX | measured max error (sm_89) |
+|---|---|---|
+| `MUFU.RCP` | `rcp.approx.f32` | ≈ 0.65 ULP |
+| `MUFU.RSQ` | `rsqrt.approx.f32` | ≈ 1.2 ULP |
+| `MUFU.EX2` | `ex2.approx.f32` | ≈ 1.5 ULP |
+| `MUFU.LG2` | `lg2.approx.f32` | ≈ 0.9 ULP (away from x = 1) |
+| `MUFU.SIN`/`.COS` | `sin/cos.approx.f32` | tens of ULP on a raw-radian argument |
+| `MUFU.TANH` | `tanh.approx.f32` | tens of ULP near the knee |
+
+`MUFU.RCP`/`.RSQ` on this part are already sub-ULP / ~1 ULP — far better than the
+"≈12-bit seed" quoted for older hardware — which is why the full-precision refinement
+needs only **one** Newton step (§1.3), not several. They are still *not*
+correctly-rounded, so `rcp.rn`/`div.rn`/`sqrt.rn` always emit the refinement. The large
+`sin`/`cos` figure is expected: the unit is indexed in *revolutions*, so without the
+compiler's 1/(2π) range reduction the bare op is only `.approx`-grade on a radian
+argument.
 
 Two ground-truth fingerprints of the ROM model are visible in emitted SASS:
 
@@ -84,53 +110,91 @@ Two ground-truth fingerprints of the ROM model are visible in emitted SASS:
   1/(2π) (`FMUL.RZ Rt, Rx, 0.15915494…`) feeding `MUFU.SIN`/`MUFU.COS` — the unit's
   ROM is indexed in *revolutions*, so the compiler reduces the argument to that
   domain before the `MUFU`.
-* **Exponent fix-ups.** `rsqrtf`/`sqrtf`/`lg2f` on denormal/large inputs are
-  pre-scaled (`@!P1 FMUL Rd, Rd, 4096`, `@!P1 FADD Rd, Rd, -24`, etc.) around the
-  `MUFU`, compensating the ROM's limited input exponent range with a power-of-two
-  pre/post-scale chosen by a range predicate.
+* **Exponent fix-ups.** `rsqrt`/`sqrt`/`lg2` on denormal/large inputs are pre-scaled
+  around the `MUFU`. The measured `rsqrt.approx.f32` body is exactly a predicated
+  power-of-two bracket:
+  ```
+  FSETP.GEU.AND P0, PT, |x|, 1.17549435e-38   ; is |x| >= the smallest normal?
+  @!P0 FMUL     R0, R0, 16777216              ; subnormal: pre-scale by 2^24
+  MUFU.RSQ      R5, R0
+  @!P0 FMUL     R5, R5, 4096                   ; post-scale the seed by 2^12 = 2^(24/2)
+  ```
+  i.e. a 2²⁴ input pre-scale paired with a 2¹² seed post-scale, taken only when the
+  input is below the smallest normal — compensating the ROM's limited input-exponent
+  range with a range-predicated power-of-two pre/post-scale.
 
 ### 1.3 Refined (IEEE) single-precision: one seed + a Newton step
 
-`rcp.rn.f32` / `rsqrt`-derived division / `sqrt.rn.f32` do **not** emit a single
-`MUFU`. ptxas emits the `MUFU` seed followed by a **Newton–Raphson correction** in the
-coupled FMA pipe. The recovered IEEE reciprocal sequence is exactly:
+`rcp.rn.f32` / `div.rn.f32` / `sqrt.rn.f32` do **not** emit a single `MUFU`. ptxas
+emits the `MUFU` seed followed by a **Newton–Raphson (reciprocal) or Heron (sqrt)
+correction** in the coupled FMA pipe. These sequences live in the code generator, are
+fully visible in SASS, and are reproduced **bit-for-bit** by the functional model's
+`mufu_div_rn_f32` / `mufu_sqrt_rn_f32`, which were checked against the device on every
+input of a value sweep (120 `div.rn` cases, 30 `sqrt.rn`, all exact).
+
+The recovered `rcp.rn.f32` body is exactly one Newton iteration:
 
 ```
-MUFU.RCP   R3, R0            ; y0 ≈ 1/x  (12-bit seed)
-FFMA       R2, R3, R0, -1    ; e  = x·y0 − 1
-FADD.FTZ   R2, -R2, -RZ      ; −e (flush-to-zero)
-FFMA       R4, R3, R2, R3    ; y1 = y0 + y0·(−e) = y0·(2 − x·y0)   → ~24-bit
+MUFU.RCP   R5, R0            ; y0 ≈ 1/x   (≈ 0.65-ULP seed, §1.2)
+FFMA       R4, R0, R5, -1    ; e  = x·y0 − 1
+FADD.FTZ   R4, -R4, -RZ      ; −e  (flush-to-zero)
+FFMA       R5, R5, R4, R5    ; y1 = y0 + y0·(−e) = y0·(2 − x·y0)
 ```
 
-— one `MUFU` plus one Newton iteration (2× `FFMA` + 1× `FADD.FTZ`). `sqrt.rn.f32`
-uses the `RSQ` seed and a half-step Heron iteration (`FMUL.FTZ`, `FFMA`, `FFMA`).
-The `.FTZ` on the correction adds is the unit's flush-to-zero path; it is emitted
-unconditionally on the refinement, independent of the kernel's global FTZ flag, to
-keep the iteration numerically well-behaved.
+`div.rn.f32` extends it: refine the reciprocal of the divisor, then form and correct
+the quotient with a fused residual step (the verified body):
+
+```
+MUFU.RCP   R2, R3            ; y0 ≈ 1/d
+FFMA       R7, -R3, R2, 1    ; e  = 1 − d·y0
+FFMA       R7, R2, R7, R2    ; y1 = y0 + y0·e        (refined reciprocal)
+FFMA       R2, R0, R7, RZ    ; q0 = n·y1
+FFMA       R6, -R3, R2, R0   ; r  = n − d·q0          (residual, single rounding)
+FFMA       R7, R7, R6, R2    ; q  = q0 + y1·r         (corrected quotient)
+```
+
+`sqrt.rn.f32` uses the `RSQ` seed and a half-step Heron iteration:
+
+```
+MUFU.RSQ   R5, R0
+FMUL.FTZ   R7, R0, R5        ; s = x·rsqrt ≈ √x
+FMUL.FTZ   R5, R5, 0.5       ; h = ½·rsqrt
+FFMA       R0, -R7, R7, R0   ; d = x − s²              (residual)
+FFMA       R5, R0, R5, R7    ; s + d·h                 (one Heron step)
+```
+
+The `.FTZ` on the correction multiplies/adds is the unit's flush-to-zero path; it is
+emitted on the refinement independent of the kernel's global FTZ flag, to keep the
+iteration numerically well-behaved. Denormal, zero, infinity and NaN inputs divert to a
+`*_slowpath` weak function (a 2⁶⁴ pre-scale bracket guarded by `FSETP` predicates and
+an `FCHK` division-validity test) that yields the IEEE-correct result the fast path
+cannot; the model takes the same direct-round branch for those operands.
 
 ### 1.4 FP64 reciprocal / rsqrt: the `64H` seeds
 
 `rcp.rn.f64` / `sqrt.rn.f64` / `div.rn.f64` cannot be seeded from a 32-bit `MUFU`.
 The unit exposes **`MUFU.RCP64H`** and **`MUFU.RSQ64H`**: each takes the *high* 32-bit
-word of a double and returns the high word of an FP64 seed (the low word is set to
-zero, giving a coarse double approximation). ptxas then runs a **full FP64
-Newton–Raphson refinement in `DFMA`** to reach 53-bit precision. The observed
-`rcp.rn.f64` body is:
+word of a double and returns the high word of an FP64 seed (the low word is taken as
+zero, a coarse double approximation). ptxas then runs a **full FP64 Newton–Raphson
+refinement in `DFMA`** to reach 53-bit precision. The recovered `rcp.rn.f64` body is:
 
 ```
-MUFU.RCP64H R5, R3          ; double seed (high word) ≈ 1/x
-DFMA  R6, -R2, R4, 1        ; e  = 1 − x·y0
-DFMA  R6, R6, R6, R6        ; e + e²   (Halley-style doubling)
-DFMA  R6, R4, R6, R4        ; y1 = y0 + y0·(…)
-DFMA  R8, -R2, R6, 1        ; second residual
-DFMA  R4, R6, R8, R6        ; y2  → 53-bit
+MUFU.RCP64H R7, R5          ; double seed (high word) ≈ 1/x
+DFMA  R8, -R4, R6, 1        ; e  = 1 − x·y0
+DFMA  R8, R8, R8, R8        ; e + e²        (quadratic-doubling step)
+DFMA  R8, R6, R8, R6        ; y1 = y0 + y0·(e + e²)
+DFMA  R10, -R4, R8, 1       ; second residual  1 − x·y1
+DFMA  R8, R8, R10, R8       ; y2 = y1 + y1·(…)   → 53-bit
 ```
 
-— one `RCP64H` seed plus ~2–3 `DFMA` Newton iterations. `sqrt.rn.f64` uses
-`RSQ64H` plus a `DMUL`/`DFMA` Heron sequence, and `div.rn.f64` extends the reciprocal
-sequence with a final `DFMA.RM`/`DFMA.RP`-bracketed last bit and a `DSETP`-driven
-remainder correction. The whole thing is built by the code generator out of the seed +
-DP-FMA primitives; the seed is the *only* part the special-function unit contributes.
+— one `RCP64H` seed plus two coupled `DFMA` refinement steps. `sqrt.rn.f64` uses
+`RSQ64H` plus a `DMUL`/`DFMA` Heron sequence and finishes with a **`DFMA.RM`/`DFMA.RP`
+directed-rounding bracket** and a **`DSETP.GT`/`DSETP.NE` remainder test** that fixes
+the last bit (the recovered tail is `DFMA.RM …; DFMA.RP -s, …; DSETP.GT.AND P0; DSETP.NE.AND P0`).
+`div.rn.f64` extends the reciprocal sequence the same way. The whole thing is built by
+the code generator out of the seed + DP-FMA primitives; the seed is the *only* part the
+special-function unit contributes, and everything after it is ordinary `DFMA`/`DSETP`
+the model already covers bit-exactly (see the FP64 group in the differential harness).
 
 ### 1.5 Pipe, latency, and throughput
 
@@ -430,6 +494,48 @@ This page covers only their **unit placement** (coupled, band-6, no scoreboard) 
 contrast with the decoupled special-function/atomic units above is explicit: the four
 scoreboard-driven units (`MUFU`, conversions, FP64, atomics) are exactly the ones the
 coupled ALU is *not*.
+
+### 5.1 The floating-point semantics — bit-exact model and the measured NaN rule
+
+The **bit-exact IEEE-754 semantics** of the FP set (`FADD`/`FMUL`/`FFMA`, `FSETP`,
+`FMNMX`, `HADD2`/`HMUL2`/`HFMA2`, `DADD`/`DMUL`/`DFMA`, and the `F2F`/`F2FP`/`F2I`/
+`I2F`/`I2I` conversions) are modelled, executably and in closed form, in
+`decoded/sass-tools/sass_sem_fp.py`. Every op is a single function over Python big
+integers with explicit `.RN`/`.RZ`/`.RM`/`.RP` rounding, `.FTZ`, `.SAT` and `satfinite`
+— no enumerated tables. It is **GPU-ground-truthed** the same way the integer model is:
+each PTX op is lowered by ptxas to the exact SASS op (confirmed in the `nvdisasm`
+decode), executed on the sm_89 (Ada) device over a value spread (signed zeros,
+denormals, the FTZ boundary, ±Inf, qNaN/sNaN, rounding ties, FMA fused-vs-split cases,
+saturate clamps, integer-overflow corners), and the **raw result bits** are asserted
+equal — bit patterns, never float `==`. The committed harness passes **10,526/10,526**
+differential checks, including the `MUFU`+Newton/Heron refinement bodies of §1.3 (which
+it reproduces bit-for-bit) and the `cvt.rn.satfinite.{e4m3,e5m2}.f32` fp8 conversions.
+
+The single non-obvious result that the device — not any specification — dictates is
+**NaN canonicalisation**, which is *width- and unit-dependent*:
+
+- **`FADD`/`FMUL`/`FFMA`, `HADD2`/`HMUL2`/`HFMA2` (f32 and f16-packed):** every NaN
+  result, whether propagated from a NaN input or generated by an invalid op (`Inf−Inf`,
+  `0·Inf`), is the **all-ones canonical** — `0x7FFFFFFF` for f32, `0x7FFF` for f16. The
+  input payload and sign are discarded.
+- **`DADD`/`DMUL`/`DFMA` (f64):** a *propagated* NaN is quieted (mantissa MSB set) and
+  keeps its payload and sign; the preferred operand is the **last NaN in source order**
+  (scan `c`, then `b`, then `a`). A *generated* NaN (invalid op, no NaN input) is the
+  fixed negative default `0xFFF8000000000000`.
+- **`FMNMX` (min/max):** the non-NaN operand always wins (the NaN is ignored); only when
+  *both* are NaN does it emit the format canonical (all-ones for f32/f16, the positive
+  default `0x7FF8…` for f64). For ±0 it is sign-aware: `min` returns −0, `max` +0.
+- **Conversions:** the *packed-convert* unit (`F2FP`, used for f16/bf16/fp8) emits the
+  destination's **all-ones canonical** on a NaN; the *wide-convert* unit (`F2F`, used
+  for f64↔f32) **quiets and re-scales the payload** (left-shift on a widen, truncate on
+  a narrow) and preserves the sign. `cvt.satfinite` clamps an overflow to the largest
+  finite instead of producing Inf.
+
+`add.sat`/`mul.sat`/`fma.sat` clamp the IEEE result to `[0,1]` after the op (NaN→+0,
+any negative including −0 → +0, anything > 1 including +Inf → 1.0). The `MUFU` ROM
+coefficients are the only part of the FP set that remains underivable (§1.2); every
+arithmetic op, every rounding mode, every conversion, and the software refinement around
+`MUFU` are reproduced exactly.
 
 ---
 
