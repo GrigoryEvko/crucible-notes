@@ -397,15 +397,39 @@ condition-code or predicate (`ISETP`→predicated op). `IMAD`/`IMAD.WIDE`/`FFMA`
 `PRMT`/`ISETP`/`FSETP`/`SEL`/`MOV`/`PLOP3` use the ALU resource — both coupled, both
 4-cycle base.
 
-The **bit-exact semantics** of these ops — `IADD3` 3-input modular add, `LOP3`'s
-8-bit-LUT arbitrary ternary boolean, `SHF`'s 64-bit funnel shift, and `PRMT`'s byte
-permute — are not re-derived here: they are modelled, executably, in the SASS legality
-and functional checker (`decoded/sass-tools/sass_legality.py`), which loads each
-class's `CONDITIONS` rules and evaluates the LUT/funnel/permute against a concrete
-operand environment. This page covers only their **unit placement** (coupled, band-6,
-no scoreboard) so the contrast with the decoupled special-function/atomic units above
-is explicit: the four scoreboard-driven units (`MUFU`, conversions, FP64, atomics) are
-exactly the ones the coupled ALU is *not*.
+The **bit-exact semantics** of the full integer/logic set are not re-derived here:
+they are modelled, executably and in closed form, in
+`decoded/sass-tools/sass_sem_int.py`, with each op a single function whose result
+reproduces the silicon bit-for-bit. That model is **GPU-ground-truthed**: a companion
+harness (`sass_gpu_probe.py`) emits PTX that ptxas lowers to the exact SASS op,
+confirms the mnemonic+modifiers in the `cuobjdump -sass` decode, runs the op on the
+sm_89 (Ada) device over an edge-case corpus (`0`, `±1`, `INT_MIN/MAX`, carry
+boundaries, shift ≥ 32, every `PRMT` selector nibble), and asserts the model matches —
+the committed gate passes **6007/6007** differential checks across 25 op-probes. A few
+points worth recording from that exercise, because they are easy to get wrong:
+
+- **`LOP3`** indexes its 8-bit LUT as `i = (a<<2)|(b<<1)|c` (the `a` bit is the MSB of
+  the index); `immLut` is the one-line truth-table byte built from the canonical
+  selectors `a=0xF0`, `b=0xCC`, `c=0xAA` — no 256-row table.
+- **`SHF`** funnels `{hi:lo}` with the *low* word first and the shift count last; the
+  `.W` (wrap) count masks `& 0x1f` and the clamp form saturates the count at `32` (not
+  the 64-bit datapath width).
+- **`PRMT`** has seven modes — the default index mode (low 3 bits pick a pool byte,
+  bit 3 sign-replicates) plus `F4E`/`B4E`/`RC8`/`ECL`/`ECR`/`RC16`, each a fixed
+  byte-pattern keyed by the low selector bits — all native SASS on this generation.
+- **`BMSK`** wrap takes base and width each `mod 32`; clamp saturates base at 32 and
+  width at `32-base`.
+- **`BFE`/`BFI`** have **no native opcode** on Volta..Ada — ptxas synthesizes them from
+  `PRMT`/`SHF`/`SGXT`/`BMSK`/`LOP3` — yet the synthesized result still matches the
+  closed-form `bfe`/`bfi` model exactly. `ICMP` and the scalar 32-bit `VABSDIFF`
+  likewise lower to `ISETP`+`SEL` and `PRMT`+`IADD3`; `VABSDIFF4` (4-way byte SAD) is
+  native. The 64-bit `IADD3`+`IADD3.X` carry chain and the `SHF.R.S32` signed funnel
+  are verified through `add.s64` / `shr.s64`.
+
+This page covers only their **unit placement** (coupled, band-6, no scoreboard) so the
+contrast with the decoupled special-function/atomic units above is explicit: the four
+scoreboard-driven units (`MUFU`, conversions, FP64, atomics) are exactly the ones the
+coupled ALU is *not*.
 
 ---
 

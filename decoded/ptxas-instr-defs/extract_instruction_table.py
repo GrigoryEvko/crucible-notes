@@ -66,6 +66,23 @@ RE_CALL_NUM = re.compile(
 # integer name-token -> resolved mnemonic by shared index (filled in main)
 TOKEN_NAME = {}
 
+# Some registration calls pass the mnemonic as a bare integer where the
+# disassembler failed to recover the `(__int64)"name"` string pointer (the
+# relocation was rendered as a literal).  When such a token shares NO index with
+# any string-named registration, the index-sharing heuristic cannot resolve it,
+# and the row would otherwise carry the raw `#<token>` placeholder.  The entries
+# below are name-tokens recovered out-of-band and confirmed independently:
+#
+#   37741882 (index 84, opsig "B[32|64]", datatype "00")  ->  brev
+#       This slot sits between bfind(83) and bfe(85) in the bit-op registration
+#       cluster (popc/clz/bfind/_/bfe/bfi/prmt).  `brev` is the one bitwise PTX
+#       mnemonic with no string-named row; ptxas accepts `brev.b32`/`brev.b64`
+#       and emits the native BREV SASS opcode (32-bit reverse; the 64-bit form
+#       lowers to two BREV on swapped halves) -- pinned on the sm_89 hardware.
+KNOWN_TOKEN_NAME = {
+    37741882: "brev",
+}
+
 def find_byref_temps(text):
     """Names of the BYREF __m128i temp(s) used to build masks."""
     temps = set()
@@ -175,6 +192,9 @@ def main():
         tok = int(m.group(2)); idx = int(m.group(4))
         if idx in idx2name:
             TOKEN_NAME[tok] = idx2name[idx]
+    # apply out-of-band recovered name-tokens (e.g. brev) that share no index
+    # with any string-named registration -- these are authoritative.
+    TOKEN_NAME.update(KNOWN_TOKEN_NAME)
 
     # ---- pass 2: full parse ----
     all_rows = []
