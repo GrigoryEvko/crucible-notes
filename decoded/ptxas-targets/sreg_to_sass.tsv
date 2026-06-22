@@ -1,0 +1,90 @@
+ptx_sreg	ptx_type	sass_op	sr_name	sr_index	uniform	min_arch	meaning
+%tid.x	b32	S2R	SR_TID.X	33	N	sm_50	thread index within CTA, X component
+%tid.y	b32	S2R	SR_TID.Y	34	N	sm_50	thread index within CTA, Y component
+%tid.z	b32	S2R	SR_TID.Z	35	N	sm_50	thread index within CTA, Z component
+%ntid.x	b32	CBANK	-	-	N	sm_50	CTA dimension X (blockDim.x); read from const bank c[0x0][0x0]
+%ntid.y	b32	CBANK	-	-	N	sm_50	CTA dimension Y (blockDim.y); const bank c[0x0][0x4]
+%ntid.z	b32	CBANK	-	-	N	sm_50	CTA dimension Z (blockDim.z); const bank c[0x0][0x8]
+%ctaid.x	b32	S2R	SR_CTAID.X	37	N	sm_50	CTA index within grid, X component
+%ctaid.y	b32	S2R	SR_CTAID.Y	38	N	sm_50	CTA index within grid, Y component
+%ctaid.z	b32	S2R	SR_CTAID.Z	39	N	sm_50	CTA index within grid, Z component
+%nctaid.x	b32	CBANK	-	-	N	sm_50	grid dimension X (gridDim.x); const bank c[0x0][0xc]
+%nctaid.y	b32	CBANK	-	-	N	sm_50	grid dimension Y (gridDim.y); const bank c[0x0][0x10]
+%nctaid.z	b32	CBANK	-	-	N	sm_50	grid dimension Z (gridDim.z); const bank c[0x0][0x14]
+%laneid	b32	S2R	SR_LANEID	0	N	sm_50	lane index within warp (0..31)
+%warpid	b32	S2R	SR_VIRTID	3	N	sm_50	virtual warp id within CTA; ptxas reads SR_VIRTID then masks warp field
+%nwarpid	b32	S2R	SR_VIRTCFG	2	N	sm_90	max warps per SM; sm_<90 constant-folds to per-arch literal (sm_89=48)
+%smid	b32	S2R	SR_VIRTUALSMID	67	N	sm_50	physical/virtual SM id the warp runs on
+%nsmid	b32	CBANK	-	-	N	sm_50	number of SMs; read from grid-constant window c[0x0][0x10c]
+%gridid	b64	CBANK	-	-	N	sm_50	launch sequence id; const bank c[0x0][0x30..0x34] (64-bit)
+%lanemask_eq	b32	S2R	SR_EQMASK	56	N	sm_50	1<<laneid (bit for this lane only)
+%lanemask_le	b32	S2R	SR_LEMASK	58	N	sm_50	bits for lanes <= laneid
+%lanemask_lt	b32	S2R	SR_LTMASK	57	N	sm_50	bits for lanes < laneid
+%lanemask_ge	b32	S2R	SR_GEMASK	60	N	sm_50	bits for lanes >= laneid
+%lanemask_gt	b32	S2R	SR_GTMASK	59	N	sm_50	bits for lanes > laneid
+%clock	b32	CS2R	SR_CLOCKLO	80	N	sm_50	free-running SM clock, low 32 bits (CS2R = constant-latency S2R)
+%clock_hi	b32	CS2R	SR_CLOCKHI	81	N	sm_50	free-running SM clock, high 32 bits
+%clock64	b64	CS2R	SR_CLOCKLO	80	N	sm_50	64-bit SM clock; CS2R.64 reads SR_CLOCKLO+CLOCKHI pair
+%globaltimer	b64	CS2R	SR_GLOBALTIMERLO	82	N	sm_50	64-bit nanosecond global timer; CS2R.64 SR_GLOBALTIMERLO/HI
+%globaltimer_lo	b32	CS2R	SR_GLOBALTIMERLO	82	N	sm_50	global timer low 32 bits
+%globaltimer_hi	b32	CS2R	SR_GLOBALTIMERHI	83	N	sm_50	global timer high 32 bits
+%total_smem_size	b32	S2R	SR_SMEMSZ	50	N	sm_50	total static+dynamic shared mem bytes for the CTA (S2UR on sm_90+)
+%dynamic_smem_size	b32	CBANK	-	-	N	sm_50	dynamic shared-mem bytes; const bank c[0x0][0x2c]
+%clusterid.x	b32	S2UR	SR_CTAID.X	37	Y	sm_90	cluster index in grid X; ctaid/cluster-dim, uniform datapath
+%clusterid.y	b32	S2UR	SR_CTAID.Y	38	Y	sm_90	cluster index in grid Y
+%clusterid.z	b32	S2UR	SR_CTAID.Z	39	Y	sm_90	cluster index in grid Z
+%nclusterid.x	b32	CBANK	-	-	Y	sm_90	cluster grid dim X; const bank (SR_CgaSize on sm_100+)
+%nclusterid.y	b32	CBANK	-	-	Y	sm_90	cluster grid dim Y
+%nclusterid.z	b32	CBANK	-	-	Y	sm_90	cluster grid dim Z
+%cluster_ctaid.x	b32	S2UR	SR_CTAID.X	37	Y	sm_90	CTA rank-coord within cluster X
+%cluster_ctaid.y	b32	S2UR	SR_CTAID.Y	38	Y	sm_90	CTA rank-coord within cluster Y
+%cluster_ctaid.z	b32	S2UR	SR_CTAID.Z	39	Y	sm_90	CTA rank-coord within cluster Z
+%cluster_nctaid.x	b32	CBANK	-	-	Y	sm_90	cluster shape X (#CTAs); const bank (SR_CgaSize on sm_100+)
+%cluster_nctaid.y	b32	CBANK	-	-	Y	sm_90	cluster shape Y
+%cluster_nctaid.z	b32	CBANK	-	-	Y	sm_90	cluster shape Z
+%cluster_ctarank	b32	S2R	SR_CgaCtaId	136	N	sm_90	linear CTA rank within cluster (CGA = cooperative grid array)
+%cluster_nctarank	b32	CBANK	-	-	Y	sm_90	linear cluster size; const bank (SR_CgaSize#138 on sm_100+)
+%is_explicit_cluster	pred	CBANK	-	-	N	sm_90	1 if launched with an explicit cluster dim; const bank predicate
+%reserved_smem_offset_begin	b32	S2R	SR_SMEMSZ	50	N	sm_90	driver-reserved smem window start (derived from SR_SMEMSZ)
+%reserved_smem_offset_end	b32	CBANK	-	-	N	sm_90	driver-reserved smem window end; const bank c[0x0][0x120]
+%reserved_smem_offset_cap	b32	S2R	SR_SMEMSZ	50	N	sm_90	driver-reserved smem capacity (derived from SR_SMEMSZ)
+%pm0	b32	CS2R	SR_PM0	100	N	sm_50	performance-monitor counter 0 (CS2R; counters are 64-bit lo/hi pairs)
+%pm1	b32	CS2R	SR_PM1	102	N	sm_50	performance-monitor counter 1 (CS2R; counters are 64-bit lo/hi pairs)
+%pm2	b32	CS2R	SR_PM2	104	N	sm_50	performance-monitor counter 2 (CS2R; counters are 64-bit lo/hi pairs)
+%pm3	b32	CS2R	SR_PM3	106	N	sm_50	performance-monitor counter 3 (CS2R; counters are 64-bit lo/hi pairs)
+%pm4	b32	CS2R	SR_PM4	108	N	sm_50	performance-monitor counter 4 (CS2R; counters are 64-bit lo/hi pairs)
+%pm5	b32	CS2R	SR_PM5	110	N	sm_50	performance-monitor counter 5 (CS2R; counters are 64-bit lo/hi pairs)
+%pm6	b32	CS2R	SR_PM6	112	N	sm_50	performance-monitor counter 6 (CS2R; counters are 64-bit lo/hi pairs)
+%pm7	b32	CS2R	SR_PM7	114	N	sm_50	performance-monitor counter 7 (CS2R; counters are 64-bit lo/hi pairs)
+%envreg0	b32	CBANK	-	-	N	sm_50	driver environment word 0; const bank c[0x0][0x88]
+%envreg1	b32	CBANK	-	-	N	sm_50	driver environment word 1; const bank c[0x0][0x8c]
+%envreg2	b32	CBANK	-	-	N	sm_50	driver environment word 2; const bank c[0x0][0x90]
+%envreg3	b32	CBANK	-	-	N	sm_50	driver environment word 3; const bank c[0x0][0x94]
+%envreg4	b32	CBANK	-	-	N	sm_50	driver environment word 4; const bank c[0x0][0x98]
+%envreg5	b32	CBANK	-	-	N	sm_50	driver environment word 5; const bank c[0x0][0x9c]
+%envreg6	b32	CBANK	-	-	N	sm_50	driver environment word 6; const bank c[0x0][0xa0]
+%envreg7	b32	CBANK	-	-	N	sm_50	driver environment word 7; const bank c[0x0][0xa4]
+%envreg8	b32	CBANK	-	-	N	sm_50	driver environment word 8; const bank c[0x0][0xa8]
+%envreg9	b32	CBANK	-	-	N	sm_50	driver environment word 9; const bank c[0x0][0xac]
+%envreg10	b32	CBANK	-	-	N	sm_50	driver environment word 10; const bank c[0x0][0xb0]
+%envreg11	b32	CBANK	-	-	N	sm_50	driver environment word 11; const bank c[0x0][0xb4]
+%envreg12	b32	CBANK	-	-	N	sm_50	driver environment word 12; const bank c[0x0][0xb8]
+%envreg13	b32	CBANK	-	-	N	sm_50	driver environment word 13; const bank c[0x0][0xbc]
+%envreg14	b32	CBANK	-	-	N	sm_50	driver environment word 14; const bank c[0x0][0xc0]
+%envreg15	b32	CBANK	-	-	N	sm_50	driver environment word 15; const bank c[0x0][0xc4]
+%envreg16	b32	CBANK	-	-	N	sm_50	driver environment word 16; const bank c[0x0][0xc8]
+%envreg17	b32	CBANK	-	-	N	sm_50	driver environment word 17; const bank c[0x0][0xcc]
+%envreg18	b32	CBANK	-	-	N	sm_50	driver environment word 18; const bank c[0x0][0xd0]
+%envreg19	b32	CBANK	-	-	N	sm_50	driver environment word 19; const bank c[0x0][0xd4]
+%envreg20	b32	CBANK	-	-	N	sm_50	driver environment word 20; const bank c[0x0][0xd8]
+%envreg21	b32	CBANK	-	-	N	sm_50	driver environment word 21; const bank c[0x0][0xdc]
+%envreg22	b32	CBANK	-	-	N	sm_50	driver environment word 22; const bank c[0x0][0xe0]
+%envreg23	b32	CBANK	-	-	N	sm_50	driver environment word 23; const bank c[0x0][0xe4]
+%envreg24	b32	CBANK	-	-	N	sm_50	driver environment word 24; const bank c[0x0][0xe8]
+%envreg25	b32	CBANK	-	-	N	sm_50	driver environment word 25; const bank c[0x0][0xec]
+%envreg26	b32	CBANK	-	-	N	sm_50	driver environment word 26; const bank c[0x0][0xf0]
+%envreg27	b32	CBANK	-	-	N	sm_50	driver environment word 27; const bank c[0x0][0xf4]
+%envreg28	b32	CBANK	-	-	N	sm_50	driver environment word 28; const bank c[0x0][0xf8]
+%envreg29	b32	CBANK	-	-	N	sm_50	driver environment word 29; const bank c[0x0][0xfc]
+%envreg30	b32	CBANK	-	-	N	sm_50	driver environment word 30; const bank c[0x0][0x100]
+%envreg31	b32	CBANK	-	-	N	sm_50	driver environment word 31; const bank c[0x0][0x104]

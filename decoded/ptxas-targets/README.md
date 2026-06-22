@@ -59,6 +59,7 @@ families that requires PTX 9.0; a sub-9.0 `.version` is rejected with
 
 | File | Contents |
 |---|---|
+| `sreg_to_sass.tsv` | the consolidated PTX special-register (`%sreg`) → SASS-source map: every `%tid/%ctaid/%laneid/%warpid/%smid/%lanemask_*/%clock*/%globaltimer*/%clusterid*/%cluster_*/%pm0-7/%envreg0-31/…` (89 entries) → the `S2R`/`CS2R`/`S2UR` op + `SR_*` register-file name + decimal SR index, *or* the constant-bank window the front end folds it into, with the first SM family it lowers there. Built by compiling one `mov %r,%sreg;` per register at sm_89/sm_90a/sm_100a and reading the emitted SASS source (`cuobjdump -sass`); the SR index is the byte at bits[8:15] of the operand word, cross-checked against the `nvdisasm` `SR_*` spelling. Uniform 8 columns, 100% parseable |
 | `sm_id_enumeration.tsv` | table_index / arch_index / sm_id arch enumeration (incl. sm_110/120/121) |
 | `supported_targets.tsv` | sm_id → arch_family / version_code / sched_gen (sm_101 = internal enum slot only, CLI-rejected) |
 | `sm_version_codes.tsv` | legacy 16-bit hash-slot code table @0x2020620 (ends at sm_90f) + provenance note |
