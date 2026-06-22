@@ -1,0 +1,17 @@
+# Per-arch register-allocator binding, byte-verified from the per-target C++ class vtable selector thunks,
+# the register-class-table population function sub_ABF590, and the register-file-param selector sub_ABF250
+# (CUDA 13.0.88 ptxas). VMA = file_offset + 0x400000 for .text/.rodata.
+#
+# Each arch class' vtable slot[0] thunk returns an internal 16-bit SELECTOR code. sub_ABF590 dispatches on it
+# and writes a register-class-table pointer into ctx+0x98; sub_ABF250 writes the register-file params
+# (mode_flag@0x68, reg-limit-1@0x60, reg-limit-2@0x64). The two limit fields and mode_flag are the concrete
+# per-family register-file difference. Register-class-table VMAs are POSITIONAL labels recovered from the
+# population dispatch (the legacy register_classes.tsv sm_7x/8x/10x labels are inverted vs the real binding).
+sm_string	codename	selector_thunk_vma	selector_code	regclass_table_vma	regfile_mode_flag	reg_limit_0x60	reg_limit_0x64	note
+sm_90	Hopper	0xb08050	0x4000	0x224FE80	1	0xff	0x3f	sm_90 uses its own class table (0x224FE80) + mode_flag 1; limit2=0x3f(63)
+sm_100	Blackwell (datacenter)	0xb08140	0x5000	0x21FB680	2	0xff	0xff	Blackwell family class table 0x21FB680; mode_flag 2; both limits 0xff(255)
+sm_101	(class present; -arch rejected)	0xb081c0	0x5001	0x21FB680	2	0xff	0xff	arch CLASS exists (selector 0x5001) but gpu-name parser rejects -arch=sm_101
+sm_103	Blackwell Ultra	0xb08210	0x5003	0x21FB680	2	0xff	0xff	shares Blackwell-family table 0x21FB680 + mode_flag 2
+sm_110	Jetson Thor	(no own class)	(aliases existing class)	(via alias)	(via alias)	(via alias)	(via alias)	NO dedicated arch class/selector; excluded from sub_ABF590/sub_ABF250 (default branch). Recognized as input (__CUDA_ARCH__=1100, isaClass assert) + cap-bit 0x02; instantiates by aliasing a Blackwell-family class
+sm_120	consumer RTX 50xx / Pro	0xb08290	0x5004	0x21FB680	2	0xff	0xff	consumer Blackwell; identical register-file params to datacenter sm_100/103
+sm_121	DGX Spark	0xb082e0	0x5005	0x21FB680	2	0xff	0xff	identical register binding to sm_120; differ only by e_flags SM byte (0x79 vs 0x78)

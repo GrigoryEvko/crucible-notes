@@ -35,15 +35,15 @@ ptxas-internal, or family-keyed in a way that already subsumes 110/120/121); **f
 | ptxas-driver (mine) | no | arch-independent | arch-independent | arch-independent | driver/PhaseManager/O0-O5/recipe DSL — 0 SM mentions |
 | ptxas-passes-detail (mine) | no | arch-independent | arch-independent | arch-independent | 14 phase deep-dives — 0 SM mentions |
 | ptxas-passes (mine) | no | arch-independent | arch-independent | arch-independent | 159-phase pipeline — phase identity, not arch |
-| ptxas-targets | yes (per-SM enum) | covered | covered | covered | `sm_id_enumeration` / `supported_targets` / `sm_scheduling_seeds`: 110/Thor/gen9, 120/121/Blackwell/gen8. (`sm_version_codes.tsv` stops at sm_90f.) |
+| ptxas-targets | yes (per-SM enum) | **extracted-now** | **extracted-now** | **extracted-now** | added `sm_target_properties.tsv` (`__CUDA_ARCH__` 1000/1030/1100/1200/1210 @0x2027a08) + `sass_elf_eflags.tsv` (EF_CUDA_SM 0x6e02/0x7802/0x7902); fixed spurious sm_101 row; `sm_version_codes.tsv` legacy table confirmed to end at sm_90f by design |
 | nvdisasm-sass-isa | yes (one file per SM) | covered | covered | covered | `sass_isa_SM110/SM120/SM121.txt`; SM120≡SM121 byte-identical |
 | sass-tools | partly (stall matrix) | family | covered | covered | `coupled_stall_matrix.tsv`: sm10x family incl 110; explicit sm120/sm121 override rows |
 | ptxas-encoding-full | per-family band | **MISSING** | covered | covered | `tier2_modifiers.tsv` has consumer band sm_120-121; no Thor band; `per_sm_handler_dispatch` stops at sm100 |
 | ptxas-sched-full | yes (per-SM/family) | **MISSING** | **MISSING** | **MISSING** | stops at sm_103; sm_10x family table (VMA 0x226C880) currently = sm_100/103 only |
 | ptxas-isel | yes (sm_gen col) | **MISSING** | **MISSING** | **MISSING** | `opcode_to_encoding.tsv` sm_gen stops at sm_90 |
-| ptxas-regalloc | yes (family col) | family | family | family | `register_classes.tsv` sm_generation = {sm_7x, sm_8x, sm_10x}; sm10x subsumes all three |
+| ptxas-regalloc | yes (selector code) | alias | **extracted-now** | **extracted-now** | corrected the class-table binding (sub_ABF590 + vtable thunks): Blackwell family sm_100/101/103/120/121 (selectors 0x5000-0x5005) share table 0x21FB680 + regfile mode_flag=2 / limit2=0xff(255) vs sm_90 mode_flag=1 / limit2=0x3f(63). sm_110 has no own class (aliases). Budget identical (255/24/4). Added `per_arch_regalloc_binding.tsv` + `fp64_throughput_class.tsv` (sm_100 full-rate FP64; sm_103/110/120/121 rate-limited, 0x50 dependent-DFMA gap) |
 | ptxas-scheduling | no (representative) | arch-independent | arch-independent | arch-independent | single sched-class table (sm_8x family) at VMA 0x2297C00 |
-| ptxas-mercury | no (container/reloc) | arch-independent | arch-independent | arch-independent | Mercury capsule / R_MERCURY relocs / finalizer; SM-aware mechanism but no per-SM table |
+| ptxas-mercury | yes (cap-bit table) | **extracted-now** | **extracted-now** | **extracted-now** | decoded `sub_60F290` off-target cap-bit jump table @0x2020030 + normalize rules; `arch_compat_capbits.tsv` (sm_100=0x01, sm_103=0x08, sm_110=0x02, sm_120-family=0x10, sm_121=0x40). Capsule/reloc/finalizer rest remains arch-independent |
 | ptxas-instr-defs | no | arch-independent | arch-independent | arch-independent | instruction registry; no arch/capability column |
 | ptxas-messages | no | arch-independent | arch-independent | arch-independent | diagnostic catalog keyed by msg id |
 | ptxas-tokens | no | arch-independent | arch-independent | arch-independent | PTX lexer vocabulary |
@@ -82,5 +82,3 @@ ptxas-messages, ptxas-tokens, cicc-tables, the three PTX-macro pools, and refere
   latency/sched-class table only covers sm_100/103 today.
 - **ptxas-encoding-full**: no Thor/sm_110 band (consumer sm_120-121 band exists).
 - **ptxas-isel**: sm_gen stops at sm_90.
-- **ptxas-regalloc**: only family granularity (sm_10x) — adequate if family-keying is
-  intended, otherwise a per-SM refinement gap.

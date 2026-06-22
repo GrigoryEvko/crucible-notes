@@ -88,6 +88,26 @@ name alone; a single differing reloc entry blocks the fold.
 | `dedup_functions.tsv` | content + name dedup function map (binary VMAs + FATAL strings) |
 | `finalizer_functions.tsv` | FNLZR / capmerc binary functions |
 | `finalizer_attributes.tsv` | EIATTR_MERCURY_* / EICOMPAT_* nvinfo attributes |
+| `arch_compat_capbits.tsv` | per-SM off-target finalizer capability bits (`sub_60F290` jump table @0x2020030) + family-normalize rules |
+
+## Per-arch off-target finalization (the only arch-parameterized Mercury logic)
+
+Most of the Mercury layer is **SM-version-independent** (the R_MERCURY catalog, capsule
+container constants, MSM map, dedup, and reloc-conversion tables are identical across all targets;
+the only ISA-conditioned conversion steps are the `vSM<70` yield-reloc insertion and the
+Hopper-only `RK_SM90_IMM55_ABS → R_CUDA_ABS55_16_34`). The one place where the SM number drives a
+per-arch decision is the **off-target family-compatibility check** in the fast-path finalizer
+`sub_60F290` (`arch_compat_capbits.tsv`):
+
+- It reads the `CAN_FINALIZE_DEBUG` env (`getenv`/`strtol`), **normalizes** both the self- and
+  target-SM (`104→120`, `130→107`, `101→110`), then dispatches on `(normalized_sm − 100)` through a
+  22-entry jump table at **VMA 0x2020030** to set a single **capability bit**, which is ANDed against
+  the capsule's capability mask.
+- Recovered cap-bits (CUDA-13 has these for the Blackwell/Thor families): **sm_100 = 0x01**,
+  **sm_103 = 0x08**, **sm_110 = 0x02** (also reached by the `sm_101→110` normalize), the
+  **sm_104/sm_120 family slot = 0x10**, **sm_121 = 0x40**. The raw `sm_120` index (0x14) returns 0
+  because sm_120 is reached through the `104↔120` family alias. `sm_101` is a phantom (no real arch in
+  13.0.88) that exists only as a normalize source folding into sm_110.
 
 ## Confidence
 

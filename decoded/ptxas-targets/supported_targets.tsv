@@ -19,9 +19,9 @@ sm_id	sm_string	arch_family	version_code_base	sched_gen_code
 88	sm_88	Ampere	(no base code in table)	7
 89	sm_89	Ada	(no base code in table)	7
 90	sm_90	Hopper	0x9000	8
-100	sm_100	Blackwell	(no base code in table)	8
-101	sm_101	Blackwell	(no base code in table)	8
-110	sm_110	Thor	(no base code in table)	9
-103	sm_103	Blackwell	(no base code in table)	8
-120	sm_120	Blackwell	(no base code in table)	8
-121	sm_121	Blackwell	(no base code in table)	8
+100	sm_100	Blackwell	__CUDA_ARCH__=1000	8
+101	sm_101	Blackwell	NOT PRESENT in ptxas 13.0.88 (no arch string; -arch=sm_101 rejected by gpu-name parser)	8
+110	sm_110	Thor	__CUDA_ARCH__=1100	9
+103	sm_103	Blackwell	__CUDA_ARCH__=1030	8
+120	sm_120	Blackwell	__CUDA_ARCH__=1200	8
+121	sm_121	Blackwell	__CUDA_ARCH__=1210	8

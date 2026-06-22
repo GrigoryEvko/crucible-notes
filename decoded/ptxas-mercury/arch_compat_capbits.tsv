@@ -1,0 +1,16 @@
+# Mercury off-target finalizer family-compatibility cap-bits — sub_60F290 @ VMA 0x60F290 (CUDA 13.0.88 ptxas).
+# Function (rdi=ctx, esi=self_sm, edx=target_sm, ecx=flag): reads CAN_FINALIZE_DEBUG env (getenv/strtol),
+# normalizes both self+target SM, then dispatches on (normalized_sm - 0x64) through the jump table at
+# VMA 0x2020030 (22 entries, index 0..0x15) to set a capability bit, ANDed against the capsule capability mask.
+# Family-normalize cmp ladder (applied to both self_sm and target_sm before the cap-bit lookup):
+#   norm1: sm_104 (0x68) -> sm_120 (0x78)   [sm_104 phantom folds into the sm_120 family]
+#   norm2: sm_130 (0x82) -> sm_107 (0x6b)
+#   norm3: sm_101 (0x65) -> sm_110 (0x6e)   [sm_101 phantom (not a real arch in 13.0.88) folds into sm_110]
+# Cap-bit dispatch table (index = normalized_sm - 0x64); all indices not listed return cap_bit 0x00 (no bit):
+table_index	sm_number	dispatch_target_vma	cap_bit	canonical_arch	note
+0x00	100	0x60f427	0x01	sm_100	datacenter Blackwell capability bit
+0x03	103	0x60f40f	0x08	sm_103	Blackwell Ultra
+0x04	104	0x60f43c	0x10	sm_120-family	sm_104 slot; reached via the 104<->120 family normalize (the sm_120 capability bit)
+0x0a	110	0x60f42e	0x02	sm_110	Jetson Thor (also reached via the sm_101->110 normalize)
+0x14	120	0x60f38a	0x00	sm_120-raw	raw sm_120 index returns 0; the family cap-bit 0x10 comes via the 104 alias
+0x15	121	0x60f435	0x40	sm_121	DGX Spark

@@ -1,0 +1,24 @@
+sm_string	cuda_arch_code	codename	variant	lto_token	isaclass_token	descriptor_vma	note
+sm_75	750	Turing	base	lto_75	-	0x2027a08	-
+sm_80	800	Ampere	base	lto_80	-	0x2027a2a	-
+sm_86	860	-	base	lto_86	-	0x2027a4c	-
+sm_87	870	-	base	lto_87	-	0x2027a67	-
+sm_88	880	-	base	lto_88	-	0x2027a82	-
+sm_89	890	Ada	base	lto_89	-	0x2027a9d	-
+sm_90	900	Hopper	base	lto_90	(profile_sm_90)->isaClass	0x2027abc	-
+sm_90a	90a0	-	a	lto_90a	-	0x2027af8	arch-specific (a) variant; CUDA_ARCH uses a0 suffix
+sm_100	1000	Blackwell	base	lto_100	(profile_sm_100)->isaClass	0x2027b15	datacenter Blackwell
+sm_100a	100a0	-	a	lto_100a	-	0x2027b57	-
+sm_100f	100f0	-	f	lto_100f	-	0x2027b76	family-compatible (f) variant; f0 suffix
+sm_110	1100	-	base	lto_110	(profile_sm_110)->isaClass	0x2027b95	Jetson Thor
+sm_110a	110a0	-	a	lto_110a	-	0x2027bcd	-
+sm_110f	110f0	-	f	lto_110f	-	0x2027bec	-
+sm_103	1030	-	base	lto_103	(profile_sm_103)->isaClass	0x2027c0b	Blackwell Ultra
+sm_103a	103a0	-	a	lto_103a	-	0x2027c43	-
+sm_103f	103f0	-	f	lto_103f	-	0x2027c62	-
+sm_120	1200	-	base	lto_120	(profile_sm_120)->isaClass	0x2027c81	consumer RTX 50xx / Pro
+sm_120a	120a0	-	a	lto_120a	-	0x2027cb9	-
+sm_120f	120f0	-	f	lto_120f	-	0x2027cd8	-
+sm_121	1210	-	base	lto_121	(profile_sm_121)->isaClass	0x2027cf7	DGX Spark
+sm_121a	121a0	-	a	lto_121a	-	0x2027d2f	-
+sm_121f	121f0	-	f	lto_121f	-	0x2027d4e	-
