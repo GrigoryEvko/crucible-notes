@@ -50,8 +50,11 @@ The raw section/header/symbol bytes were then decoded with a small Python reader
   13.0.88 and carries the architecture-variant ("a"/"f") and Mercury-finalizer
   capability info.
 - **Mercury finalizer is the default path in 13.0.88.** A plain `sm_90` kernel
-  already emits `EIATTR_MERCURY_ISA_VERSION` and an `.nv.compat` Mercury ISA
-  version; both are absent on `sm_75`.
+  emits both `EIATTR_MERCURY_ISA_VERSION` (in `.nv.info`) and a whole `.nv.compat`
+  section carrying the Mercury ISA major.minor. On `sm_75` the `EIATTR_MERCURY_ISA_VERSION`
+  attribute is **still present** in `.nv.info`, but the `.nv.compat` section is
+  **absent** entirely (cuobjdump- and raw-section-confirmed on 13.0.88) — so the
+  arch split is in the `.nv.compat` container, not in the EIATTR.
 - **Drifts from earlier toolchains**: OS/ABI byte `0x33`→`0x41`, ABI
   version `7`→`8`, real-SM moved from `e_flags` low byte to bits 8–15, the
   `SHF_BARRIER_MASK` section flag is no longer populated (barrier count moved to
