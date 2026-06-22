@@ -1,10 +1,10 @@
-# ptxas phase dispatch: 157 vs 159 — definitive resolution (CUDA 13.0.88)
+# ptxas phase dispatch: 157 dispatched, 159 registered (CUDA 13.0.88)
 
-**Authority:** the `ptxas` binary. Every claim is pinned to a binary address and checked at
-the byte level. `.text` and `.rodata` use `VMA == file_offset + 0x400000` (rodata delta
+Every claim is pinned to a binary address and checked at the byte level.
+`.text` and `.rodata` use `VMA == file_offset + 0x400000` (rodata delta
 `-0x400000`: VMA `0x1ce2e00` -> file `0x18e2e00`).
 
-## Verdict
+## Counts
 
 The default ptxas pipeline **dispatches exactly 157 phases** (phase IDs `0..156`).
 The PhaseManager **registers 159 phase names** (IDs `0..158`). The two trailing registered
@@ -133,19 +133,15 @@ When **knob 298** is set the driver takes `sub_7FB6C0` → `sub_9F63D0` → sche
 This is the only way IDs 157/158 can enter a schedule, and only under explicit selection.
 It confirms `159` as the inclusive selection ceiling and leaves the **default** count at 157.
 
-## Structural corroboration (binary mechanism)
+## Structural mechanism
 
 The ORI backend phase manager registers its full phase list once and builds the default
 schedule from a subset that **omits the two trailing sentinel phases** `{ DebuggerBreak, NOP }`,
 so registered-minus-scheduled is exactly **2**. The dispatch loop iterates a list of IDs,
 looks up name+function per ID, and emits `"Before "`/`"After "` tracepoints and a final
 `"All Phases Summary"` (all three strings present in `.rodata`). On a name miss the lookup
-returns the NOP id — the binary's `sub_C641D0` returns `158` for unknown names. `DebuggerBreak`
+returns the NOP id — `sub_C641D0` returns `158` for unknown names. `DebuggerBreak`
 is the explicit-break entry point; `NOP`'s phase body is an immediate `return`.
-
-Across earlier toolchains the absolute counts were smaller (≈143 run / ≈145 registered);
-CUDA 13.0.88 has grown to 157 run / 159 registered (≈14 added optimization phases). The
-**mechanism and the identity of the two excluded sentinels are unchanged**.
 
 ## One-line summary
 
@@ -153,7 +149,3 @@ CUDA 13.0.88 has grown to 157 run / 159 registered (≈14 added optimization pha
 > untouched through the driver into `sub_C64F70`'s third arg, and bounds the loop at
 > `&schedule[157]`. Registry = 159 names; default schedule = 157 IDs (`0..156`);
 > `DebuggerBreak` (157) and `NOP` (158) are registered but not dispatched by default.
-
-**Confidence: very high.** Every link is pinned to a binary address and byte-checked, and the
-structural mechanism (registry vs. schedule, two excluded sentinel phases) is consistent across
-toolchain versions.

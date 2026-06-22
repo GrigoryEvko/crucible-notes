@@ -1,9 +1,8 @@
 # ptxas optimization-level (-O) model (binary-derived, CUDA 13.0.88)
 
-All addresses are VMA == file offset for `.text`/`.rodata`. Binary is ground
-truth. The OCG context (the ~2140-byte per-function struct built by
-`sub_7F7DC0`) holds the resolved optimization level at **offset 0x838 (2104)**
-as a signed int32.
+All addresses are VMA == file offset for `.text`/`.rodata`. The OCG context
+(the ~2140-byte per-function struct built by `sub_7F7DC0`) holds the resolved
+optimization level at **offset 0x838 (2104)** as a signed int32.
 
 ## 1. The external option
 
@@ -45,15 +44,9 @@ opt-level(-O) 0 is specified").
 | 3 | 4 |
 
 So only **three effective global tiers** exist at runtime: **{1, 2, 4}**
-(O0/O1 collapse to 1).
-
-> **Version drift note (binary wins).** This `{O0/O1->1, O2->2, O3->4}` remap is
-> what the **CUDA 13.0.88 binary** does (byte-verified at `0x7f8baa` and
-> `0x7f9e79`). Older toolchain generations mapped `-O n` straight onto a 6-value
-> internal enum with no O3->4 step (external 0..3 -> internal 0..3, default 3).
-> The collapse of O0/O1 to a single tier and the O3->4 widening are 13.x-era
-> changes; the binary is authoritative for 13.0.88. The internal-level *domain*
-> is still 0..5 (see below), but the global `-O` tier only ever produces {1,2,4}.
+(O0/O1 collapse to 1). This remap is byte-verified at `0x7f8baa` and
+`0x7f9e79`. The internal-level *domain* is 0..5 (see below), but the global
+`-O` tier only ever produces {1,2,4}.
 
 ### Global tier vs per-function nvopt level (two distinct fields)
 

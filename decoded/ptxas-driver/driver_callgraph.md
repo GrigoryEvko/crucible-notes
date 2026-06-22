@@ -1,8 +1,7 @@
 # ptxas compilation driver & pipeline orchestration (binary-derived, CUDA 13.0.88)
 
 All addresses from the stripped ptxas binary. VMA == file offset for `.text`
-and `.rodata`. Binary is ground truth; mismatches with any external reference
-are flagged as drift.
+and `.rodata`.
 
 ## Full call chain: ELF entry -> phase dispatch
 
@@ -166,14 +165,13 @@ for the driver/opt model:
       `sub_663C30`'s post-pass.
 4. ELF / cubin output -- module-level, after all functions, back in `sub_446240`.
 
-## Known limits / drift notes
+## Static call-graph notes
 
 - The per-function virtual-dispatch site above `sub_663C30` is C++ vtable
   dispatch; the static call graph shows the 24 trampolines and the 5
   target-class builders as reachable only through data (`type 1`) xrefs, not
   direct `call` edges. The exact `call *vtable[slot]` lives in the
   module-compile loop reached from `sub_446240`.
-- Phase *counts* differ from older toolkits (the dispatch *mechanism* is
-  stable: a PhaseManager that registers every phase + a default order list
-  that names the subset to run). For 13.0.88 the binary is authoritative:
-  159 registered / 157 default.
+- The dispatch mechanism is a PhaseManager that registers every phase plus a
+  default order list that names the subset to run: 159 registered, 157
+  default-dispatched.
