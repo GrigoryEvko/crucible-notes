@@ -172,3 +172,4 @@ some_docs/
 !/decoded/ptxas-gap-closure
 !/decoded/sass-tools
 /decoded/sass-tools/__pycache__/
+!/decoded/sass-bitsem
