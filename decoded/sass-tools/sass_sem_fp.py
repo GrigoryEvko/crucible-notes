@@ -98,6 +98,24 @@ class FpFormat:
         """The all-ones exponent field value (Inf/NaN exponent on IEEE formats)."""
         return self.exp_mask
 
+    @property
+    def has_special_exp(self) -> bool:
+        """True when the all-ones exponent field is reserved for Inf/NaN (IEEE
+        formats and e5m2).  False for e4m3 (top exp is finite, only the all-ones
+        *mantissa* there is NaN) and e2m1 (no specials at all)."""
+        return self.has_inf
+
+    @property
+    def max_normal_exp_field(self) -> int:
+        """Highest exponent field a finite normal can use."""
+        return self.max_exp_field - 1 if self.has_special_exp else self.max_exp_field
+
+    @property
+    def max_finite_man(self) -> int:
+        """Largest mantissa field at ``max_normal_exp_field`` (e4m3 reserves the
+        all-ones mantissa there for its single NaN)."""
+        return self.man_mask - 1 if self.name == "e4m3" else self.man_mask
+
 
 # The standard IEEE binary formats plus the OCP/NVIDIA narrow ones.  qnan_default
 # is the NVIDIA canonical quiet-NaN (verified against the device): the sign is
@@ -234,8 +252,13 @@ def to_exact(v: FpVal, ftz: bool) -> tuple[int, int | None, int, str]:
 # the rounding mode, handle subnormal/overflow, and pack.                       #
 # --------------------------------------------------------------------------- #
 def round_pack(fmt: FpFormat, sign: int, sig: int, exp: int, mode: str,
-               ftz_out: bool) -> int:
-    """Round (-1)^sign * sig * 2**exp into ``fmt``. ``sig`` > 0 (integer)."""
+               ftz_out: bool, satfinite: bool = False) -> int:
+    """Round (-1)^sign * sig * 2**exp into ``fmt``. ``sig`` > 0 (integer).
+
+    ``satfinite`` (the PTX ``cvt.satfinite`` flag the narrow conversions carry):
+    an overflow clamps to the format's largest finite instead of becoming Inf,
+    on every rounding mode.
+    """
     if sig == 0:
         return encode(fmt, sign, 0, 0)
 
@@ -313,19 +336,20 @@ def round_pack(fmt: FpFormat, sign: int, sig: int, exp: int, mode: str,
     if rounded >> P:                       # carry into a new MSB
         rounded >>= 1
         exp_field += 1
-    # overflow to inf / max-finite per mode.
-    if exp_field >= fmt.max_exp_field and (fmt.has_inf or fmt.has_nan):
-        # IEEE-style format with an Inf encoding (or e4m3's finite top).
-        if fmt.has_inf:
-            if _overflow_to_inf(mode, sign):
-                return encode(fmt, sign, fmt.max_exp_field, 0)    # +-Inf
-            return encode(fmt, sign, fmt.max_exp_field - 1, fmt.man_mask)  # max finite
-        # no-inf IEEE-ish (e4m3): clamp to the largest finite the format encodes.
-        return _max_finite_bits(fmt, sign)
-    if exp_field >= fmt.max_exp_field + (0 if (fmt.has_inf or fmt.has_nan) else 1):
-        # finite-only format (e2m1): saturate to max finite.
-        return _max_finite_bits(fmt, sign)
     man_field = rounded & fmt.man_mask
+
+    # Overflow: the rounded value exceeds the largest finite this format can
+    # represent (exp beyond the max-normal field, or at it with too-big mantissa
+    # for the e4m3 NaN-reserving case).
+    overflowed = (exp_field > fmt.max_normal_exp_field
+                  or (exp_field == fmt.max_normal_exp_field
+                      and man_field > fmt.max_finite_man))
+    if overflowed:
+        if satfinite or not fmt.has_inf:
+            return _max_finite_bits(fmt, sign)            # clamp to max finite
+        if _overflow_to_inf(mode, sign):
+            return encode(fmt, sign, fmt.max_exp_field, 0)        # +-Inf
+        return _max_finite_bits(fmt, sign)                # RZ / wrong-direction
     return encode(fmt, sign, exp_field, man_field)
 
 
@@ -691,23 +715,28 @@ def _ftz_bits(fmt: FpFormat, bits: int, ftz: bool) -> int:
 # Conversions.                                                                 #
 # --------------------------------------------------------------------------- #
 def f2f(src: FpFormat, dst: FpFormat, bits: int, mode: str = RN,
-        ftz: bool = False, sat: bool = False) -> int:
-    """F2F: float (src) -> float (dst), widen or narrow, rounded under ``mode``.
+        ftz: bool = False, satfinite: bool = False) -> int:
+    """F2F / F2FP: float (src) -> float (dst), widen or narrow, rounded ``mode``.
 
-    Widening (f32->f64, f16->f32) is exact; narrowing rounds.  NaN -> canonical
-    qNaN of the destination format; Inf -> Inf (or saturate on no-inf dst).
+    Widening (f16->f32, f32->f64) is exact; narrowing rounds.  NaN follows the
+    measured conversion-unit rule (``_f2f_nan``).  ``satfinite`` is the PTX
+    ``cvt.satfinite`` flag the narrow forms carry: overflow clamps to the
+    destination's largest finite rather than producing Inf -- and, for a
+    no-Inf destination (e4m3), an Inf input also clamps to max finite.
     """
     v = decode(src, bits)
     if v.is_nan:
-        return _sat(dst, _f2f_nan(src, dst, v), sat)
+        if satfinite and not dst.has_nan:
+            return _max_finite_bits(dst, v.sign)      # e2m1: no NaN, clamp
+        return _f2f_nan(src, dst, v)
     if v.is_inf:
-        if dst.has_inf:
-            return _sat(dst, encode(dst, v.sign, dst.max_exp_field, 0), sat)
-        return _max_finite_bits(dst, v.sign)          # no-inf dst: clamp
+        if dst.has_inf and not satfinite:
+            return encode(dst, v.sign, dst.max_exp_field, 0)
+        return _max_finite_bits(dst, v.sign)          # satfinite / no-Inf dst
     s, sig, e, _ = to_exact(v, ftz)
     if sig == 0:
-        return _sat(dst, encode(dst, s, 0, 0), sat)
-    return _sat(dst, round_pack(dst, s, sig, e, mode, ftz), sat)
+        return encode(dst, s, 0, 0)
+    return round_pack(dst, s, sig, e, mode, ftz, satfinite=satfinite)
 
 
 def _f2f_nan(src: FpFormat, dst: FpFormat, v: FpVal) -> int:
@@ -722,11 +751,15 @@ def _f2f_nan(src: FpFormat, dst: FpFormat, v: FpVal) -> int:
         the payload re-scaled to the destination width -- left-shift on a widen,
         right-shift (truncate) on a narrow.
     """
-    if src.name == "f16" or dst.name == "f16":
-        # F2FP path: all-ones canonical of the destination.
-        return _ARITH_CANON_NAN.get(dst.name, encode(dst, 0, dst.max_exp_field,
-                                                      dst.man_mask))
-    # F2F wide path: quiet + payload re-scale + sign-preserve.
+    packed = {"f16", "bf16", "e4m3", "e5m2", "e2m1"}
+    if src.name in packed or dst.name in packed:
+        # Packed-convert unit (F2FP): the destination's ALL-ONES canonical NaN,
+        # payload and sign discarded.  e4m3's NaN happens to be all-ones too.
+        if not dst.has_nan:                # e2m1 has no NaN -> max finite
+            return _max_finite_bits(dst, 0)
+        return _ARITH_CANON_NAN.get(dst.name,
+                                    encode(dst, 0, dst.max_exp_field, dst.man_mask))
+    # F2F wide path (f64<->f32): quiet + payload re-scale + sign-preserve.
     msb_dst = 1 << (dst.man_bits - 1)
     shift = dst.man_bits - src.man_bits            # >0 widen, <0 narrow
     if shift >= 0:
@@ -1306,6 +1339,17 @@ def run_gpu_harness(max_pairs: int = 200, verbose: bool = False) -> int:
         if bad == 0:
             print(f"  {p.name:<28} PASS  {ok:>5} vectors")
 
+    # fp8 narrow conversions (cvt.rn.satfinite.e4m3/e5m2.f32) and the recovered
+    # MUFU correction sequences (div.rn / sqrt.rn fast path).
+    for name, ok, bad in _verify_fp8(cu) + _verify_mufu(cu):
+        total_ok += ok
+        total_bad += bad
+        if bad:
+            failed_ops += 1
+            print(f"  {name:<28} FAIL  {bad}/{ok+bad}")
+        else:
+            print(f"  {name:<28} PASS  {ok:>5} vectors")
+
     cu.mem_free(arena)
     cu.close()
     print("-" * 78)
@@ -1313,6 +1357,110 @@ def run_gpu_harness(max_pairs: int = 200, verbose: bool = False) -> int:
           f"{failed_ops} op(s) with any mismatch")
     print(f"  RESULT: {'ALL PASS' if failed_ops == 0 else 'FAILURES PRESENT'}")
     return failed_ops
+
+
+def _run_one(cu, ptx: str, entry: str, ins: list[tuple[int, ...]],
+             elem_in: list[int], outb: int) -> list[int] | None:
+    """Compile a probe, run each input tuple, return the read-back output ints."""
+    import subprocess
+    import tempfile
+    sys_path_setup()
+    import sass_launch as L
+    with tempfile.NamedTemporaryFile("w", suffix=".ptx", delete=False) as f:
+        f.write(ptx)
+        pp = f.name
+    cp = pp[:-4] + ".cubin"
+    r = subprocess.run([PTXAS, "-arch", "sm_89", pp, "-o", cp],
+                       capture_output=True, text=True)
+    if r.returncode:
+        print(f"    ptxas: {r.stderr.strip()[:120]}")
+        return None
+    cubin = open(cp, "rb").read()
+    ki = L.introspect(cp, entry)
+    arena = cu.mem_alloc(1 << 16)
+    out = []
+    fn = cu.get_function(cu.load_module(cubin), entry)
+    for combo in ins:
+        cu.memset_d8(arena, 0, 1 << 16)
+        host = b"".join(int(v).to_bytes(e, "little")
+                        for v, e in zip(combo, elem_in))
+        cu.memcpy_htod(arena, host)
+        pbuf = L.build_param_buffer(ki, arena)
+        cu.chk(cu.lib.cuCtxSetCurrent(cu._ctx), "ctx")
+        cu.launch(fn, (1, 1, 1), (1, 1, 1), 0, pbuf)
+        cu.synchronize()
+        out.append(int.from_bytes(cu.memcpy_dtoh(arena, outb)[:outb], "little"))
+    cu.mem_free(arena)
+    return out
+
+
+def _verify_fp8(cu) -> list[tuple[str, int, int]]:
+    """cvt.rn.satfinite.{e4m3,e5m2}.f32 -- compare the low byte to the model."""
+    import random
+    rng = random.Random(3)
+    res = []
+    e4 = [0.0, -0.0, 1.0, -1.0, 0.5, 2.0, 448.0, 500.0, -500.0, 0.001953125,
+          3.14, -3.14, 0.015625, 256.0, float("inf"), -float("inf"),
+          float("nan"), 7.0, 15.5] + [rng.uniform(-600, 600) for _ in range(30)]
+    e5 = [0.0, 1.0, -1.0, 0.5, 2.0, 57344.0, 70000.0, -70000.0, 6.1e-5, 3.14,
+          float("inf"), float("nan"), 0.25, 98304.0] \
+        + [rng.uniform(-70000, 70000) for _ in range(30)]
+    for fmt, dst, vals in [("e4m3", E4M3, e4), ("e5m2", E5M2, e5)]:
+        ptx = f""".version 8.5
+.target sm_89
+.address_size 64
+.visible .entry k(.param .u64 p){{ .reg .f32 %f<3>; .reg .b16 %h<2>; .reg .u64 %rd<2>;
+ ld.param.u64 %rd1,[p]; ld.global.f32 %f1,[%rd1]; ld.global.f32 %f2,[%rd1+4];
+ cvt.rn.satfinite.{fmt}x2.f32 %h1,%f2,%f1; st.global.b16 [%rd1],%h1; ret; }}"""
+        ins = [(f32_to_bits(v), f32_to_bits(v)) for v in vals]
+        gpu = _run_one(cu, ptx, "k", ins, [4, 4], 2)
+        if gpu is None:
+            res.append((f"F2FP.{fmt.upper()}.F32", 0, 1))
+            continue
+        ok = bad = 0
+        for (a, _), g in zip(ins, gpu):
+            lo = g & 0xFF
+            if f2f(F32, dst, a, RN, satfinite=True) == lo:
+                ok += 1
+            else:
+                bad += 1
+        res.append((f"F2FP.{fmt.upper()}.F32", ok, bad))
+    return res
+
+
+def _verify_mufu(cu) -> list[tuple[str, int, int]]:
+    """Verify the recovered MUFU correction sequences reproduce the device's
+    full-precision div.rn / sqrt.rn bit-for-bit."""
+    import random
+    rng = random.Random(7)
+    vals = [1.0, 2.0, 0.5, 3.0, 7.0, 0.1, 123.456, 1e-20, 1e20, 0.3333, 2.5,
+            9.999, 1.0001] + [rng.uniform(1e-10, 1e10) for _ in range(40)]
+    res = []
+    # div.rn.f32
+    ins = [(f32_to_bits(a), f32_to_bits(b)) for a in vals[:20] for b in vals[:6]]
+    ptx = """.version 8.3
+.target sm_89
+.address_size 64
+.visible .entry k(.param .u64 p){ .reg .f32 %f<4>; .reg .u64 %rd<2>;
+ ld.param.u64 %rd1,[p]; ld.global.f32 %f1,[%rd1]; ld.global.f32 %f2,[%rd1+4];
+ div.rn.f32 %f3,%f1,%f2; st.global.f32 [%rd1],%f3; ret; }"""
+    gpu = _run_one(cu, ptx, "k", ins, [4, 4], 4)
+    if gpu is not None:
+        ok = sum(1 for (a, b), g in zip(ins, gpu) if mufu_div_rn_f32(a, b) == g)
+        res.append(("MUFU+NR div.rn.f32", ok, len(ins) - ok))
+    # sqrt.rn.f32
+    sv = [(f32_to_bits(x),) for x in vals if x > 0][:30]
+    ptx = """.version 8.3
+.target sm_89
+.address_size 64
+.visible .entry k(.param .u64 p){ .reg .f32 %f<3>; .reg .u64 %rd<2>;
+ ld.param.u64 %rd1,[p]; ld.global.f32 %f1,[%rd1]; sqrt.rn.f32 %f2,%f1;
+ st.global.f32 [%rd1],%f2; ret; }"""
+    gpu = _run_one(cu, ptx, "k", sv, [4], 4)
+    if gpu is not None:
+        ok = sum(1 for (v,), g in zip(sv, gpu) if mufu_sqrt_rn_f32(v) == g)
+        res.append(("MUFU+Heron sqrt.rn.f32", ok, len(sv) - ok))
+    return res
 
 
 def _bits_match(a: int, b: int, nbytes: int) -> bool:
