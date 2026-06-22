@@ -228,13 +228,22 @@ transposed RAW matrix is the classic reconstruction mistake.
   default corpus sm_120/sm_121 reach 90.7% exact stall / 100% scoreboard pairing
   vs 88.9% for sm_100/sm_103/sm_110 — the consumer-Blackwell model is picked, not
   a fallback.
-- `--verify-dyn K.cubin --entry NAME` — **stretch dynamic check**: patch the
+- `--verify-dyn K.cubin [--entry NAME]` — **stretch dynamic check**: patch the
   recomposed control words back into a copy of the cubin (`patch_cubin`), launch
-  the original and the patched kernel on the GPU via the CUDA Driver API
-  (`launch_cubin.c`: `cuModuleLoad` + `cuLaunchKernel`, plain C against `libcuda`
-  to avoid the gcc/nvcc host-header clash), and diff the output. Identical output
-  proves the composed schedule is hazard-safe.
-- `--perf-diff` — **MODE 1, measured ptxas-waste proof** (below).
+  the original (V1) and the patched (V2) kernel on the GPU on **identical
+  synthesized inputs**, and diff the output. Identical output proves the composed
+  schedule is hazard-safe. By default this routes through the **generic
+  introspection launcher** (`sass_launch.py`, below), so it works on **any**
+  cubin — no hand-wired signature. Add `--legacy-harness` to force the old
+  fixed-signature C harness (`launch_cubin.c`).
+- `--launch K.cubin` — **introspect + test-launch every kernel** in an arbitrary
+  cubin and print a per-kernel verdict (`launchable` / `crashed` / `timed_out` /
+  `needs_cluster`). The generic launch primitive, run standalone.
+- `--introspect K.cubin` — print the recovered parameter-buffer layout (per-param
+  ordinal / offset / size, pointer vs scalar) for every kernel; no launch.
+- `--perf-diff` — **MODE 1, measured ptxas-waste proof** on the amplified probe
+  corpus (below). `--perf-diff-cubin K.cubin` runs the same V1/V2 bit-gate +
+  cycle measurement on an **arbitrary** cubin via the generic launcher.
 - `--stall-profile {K.cubin | --amp PROBE}` — **MODE 2, per-instruction warp-stall
   observability** (below).
 
@@ -243,10 +252,112 @@ python3 sass_scheduler.py --decompose k.cubin
 python3 sass_scheduler.py --compose   k.cubin          # composed vs ptxas, per instr
 python3 sass_scheduler.py --debug      k.cubin --dot k.dot
 python3 sass_scheduler.py --verify-corpus
-python3 sass_scheduler.py --verify-dyn k.cubin --entry kname   # needs gcc + GPU
-python3 sass_scheduler.py --perf-diff  --arch sm_89            # needs gcc + ncu + GPU
+python3 sass_scheduler.py --introspect k.cubin                 # param layout, no GPU
+python3 sass_scheduler.py --launch     k.cubin                 # test-launch all kernels
+python3 sass_scheduler.py --verify-dyn k.cubin --entry kname   # generic; needs GPU
+python3 sass_scheduler.py --perf-diff  --arch sm_89            # corpus; needs ncu + GPU
+python3 sass_scheduler.py --perf-diff-cubin k.cubin            # arbitrary cubin + GPU
 python3 sass_scheduler.py --stall-profile --amp amp_loadmath   # needs gcc + ncu + GPU
 ```
+
+## `sass_launch.py` — generic cubin introspect + launch (Driver API, pure Python)
+
+The corpus modes above launch *hand-wired* kernels whose signature the harness
+already knows. To run the V1/V2 correctness gate on **arbitrary** cubins — real
+kernels such as the sm_120a CUTLASS cubins, not just the corpus — the tool needs
+to introspect any cubin and launch it with synthesized inputs. `sass_launch.py`
+is that reusable primitive: a pure-Python `ctypes` binding to `libcuda` (no
+host-C++ compile, so it sidesteps the gcc-16 / nvcc host-header clash) plus a
+cubin parameter-layout parser.
+
+**Introspection.** Kernel parameters live in constant bank 0. `ptxas` records the
+layout in the per-entry `.nv.info.<entry>` attribute stream, all readable with
+`cuobjdump --dump-elf`:
+
+| attribute | gives |
+|---|---|
+| `EIATTR_CBANK_PARAM_SIZE` | total param-buffer size in bytes |
+| `EIATTR_PARAM_CBANK` | the cbank window: `[u16 base_offset][u16 total_bytes]` |
+| `EIATTR_KPARAM_INFO` | one 12-byte record per parameter: **Ordinal**, **Offset** in the buffer, **Size** (4 = a 32-bit scalar slot, 8 = a 64-bit / pointer slot) |
+
+`cuLaunchKernel`'s parameter buffer **is** that cbank window with the base
+subtracted: a flat buffer of `CBANK_PARAM_SIZE` bytes where parameter *k* lives at
+its `KPARAM_INFO` Offset for Size bytes. (The offsets are *not* sequential —
+`ptxas` reorders by alignment and packs adjacent scalars, e.g. a `(u32, u64)`
+signature places the u32 at 0x0 and the pointer at 0x8 with a 4-byte gap. Sourcing
+the offsets from `KPARAM_INFO` rather than assuming packing is the whole point.)
+The recovered buffer size is cross-checked against `cuFuncGetAttribute`.
+
+**Input synthesis — the arena trick.** Allocate one large zeroed device *arena*
+and build the param buffer so that **every 8-byte slot = the arena base address**
+(so every pointer parameter is a *valid* device pointer into zeroed memory — reads
+return 0, writes land in the captured arena, no illegal-address fault) and **every
+4-byte scalar slot = a small value** (1 — a benign count/stride that keeps indexing
+in-bounds). Most "load → compute → store" kernels then launch and write into the
+arena; we read the arena back and hash it.
+
+**Robust launch.** Each launch runs under a watchdog thread (timeout → verdict),
+and CUDA errors are caught per kernel into a verdict — `launchable | crashed |
+timed_out | needs_cluster | introspect_failed` — instead of aborting the batch.
+An illegal-address / launch-failed error is **sticky for the whole process** in
+the Driver API (even `cuCtxDestroy` + `cuCtxCreate` keep returning it), so for
+true batch robustness each kernel is launched in its **own subprocess** (the
+`--worker` mode): a kernel that faults kills only its child, and the parent reads
+its verdict + arena hash from one JSON line. A wedged (infinite-loop) kernel hits
+the in-thread watchdog and the child fast-exits, leaving the GPU work for the OS
+to reclaim.
+
+**The V1/V2 gate (`--verify-dyn`, `--perf-diff-cubin`).** V1 = the cubin `ptxas`
+emitted; V2 = the same cubin with its scheduling control words re-encoded by our
+composer (`decompose → compose → patch` bits 105–124 in place). Launch **both** in
+isolated subprocesses on the **same** synthesized inputs and compare the read-back
+arena hash. **Bit-identical output proves the reschedule is hazard-safe — no
+ground-truth needed: V1 *is* the reference.** Several small scalar inputs are used
+so a match cannot pass by luck on one input.
+
+```sh
+python3 sass_launch.py k.cubin --introspect-only   # param layout, no GPU
+python3 sass_launch.py k.cubin                      # test-launch every kernel
+python3 sass_launch.py k.cubin --verify-dyn         # V1/V2 bit-gate
+python3 sass_launch.py k.cubin --entry NAME --timeout 5 --scalar 1
+python3 selftest_sass_launch.py                     # full self-test (sm_89 GPU)
+```
+
+`selftest_sass_launch.py` builds a corpus of varied-signature kernels (single pointer,
+scalar+pointer, three buffers, shared-memory, a 5-param scalar/pointer mix, and a
+deliberate null-deref), and asserts: introspection recovers the right param
+layout; the arena trick launches each and reads back a hash; the null-deref is
+**caught** (`crashed`), not fatal; the faithful recompose **matches** V1; and a
+deliberately-removed scoreboard wait **differs** (so the gate is not a no-op).
+
+### Running it on the sm_120a CUTLASS cubins (Blackwell box)
+
+The sm_89 GPU here cannot *execute* sm_120a SASS, but the introspection step is
+arch-independent and the launch path is identical on Blackwell. On a Blackwell box
+(RTX 50-series / Pro, or DGX) with CUDA 13.x:
+
+```sh
+# 1. extract the kernels from the CUTLASS fatbin/cubin
+cuobjdump -elf cutlass_kernel.cubin | grep '\.text\.'      # entry names
+python3 sass_launch.py cutlass_kernel.cubin --introspect-only
+
+# 2. test-launch each kernel with synthesized inputs
+python3 sass_launch.py cutlass_kernel.cubin                 # per-kernel verdict
+
+# 3. V1/V2 correctness gate on a chosen entry
+python3 sass_scheduler.py --verify-dyn cutlass_kernel.cubin --entry <name>
+
+# 4. measured cycles (needs ncu profiling permission)
+python3 sass_scheduler.py --perf-diff-cubin cutlass_kernel.cubin --entry <name>
+```
+
+Kernels that need a thread-block **cluster** launch (Hopper/Blackwell
+`EIATTR_CTA_PER_CLUSTER` / `EIATTR_EXPLICIT_CLUSTER`) are reported as
+`needs_cluster` and skipped by the simple grid launcher (a cooperative
+cluster-launch path would be the next extension). Kernels whose pointers must
+point at *structured* inputs (descriptors, TMA tensor maps) may fault under the
+zeroed-arena trick and are reported `crashed` — expected, and isolated so the rest
+of the batch still runs.
 
 ### GPU measurement: which conservative stalls are *real waste*
 

@@ -1218,13 +1218,25 @@ def _run_kernel(harness: str, cubin: str, entry: str, nwords: int,
 
 
 def verify_dynamic(cubin: str, entry: str | None = None,
-                   nwords: int = 8) -> int:
+                   nwords: int = 8, generic: bool = True) -> int:
     """Stretch validation: recompose this kernel's control words, patch them into
     a copy of the cubin, launch both on the GPU, and confirm identical output.
 
     A composed schedule that produces the same numerical result as ptxas's proves
     it is hazard-safe (every RAW dependency is honoured by a stall or scoreboard
-    wait that is at least as conservative as the original)."""
+    wait that is at least as conservative as the original).
+
+    Two launch paths share the recompose+patch logic:
+      * GENERIC (default): `sass_launch` introspects the kernel's parameter
+        layout from the cubin and synthesizes inputs (an arena of zeroed device
+        memory; every pointer slot -> the arena base, every scalar slot -> a
+        small value), so it works on ANY cubin -- real CUTLASS kernels included,
+        not just the hand-wired corpus.  V1 and V2 launch in isolated
+        subprocesses on identical inputs and the read-back arena hash is
+        compared.  Set generic=False to force the legacy path.
+      * LEGACY: the C harness (`launch_cubin.c`), which seeds a single
+        `.param .u64 p` buffer.  Kept for the corpus kernels and as a fallback
+        when the generic launcher cannot run (e.g. no `cuobjdump`/`libcuda`)."""
     cub = Path(cubin)
     if entry is None:
         out = subprocess.run([NVDISASM, "-c", cubin], capture_output=True,
@@ -1234,6 +1246,16 @@ def verify_dynamic(cubin: str, entry: str | None = None,
     if entry is None:
         print("  ! could not determine entry name", file=sys.stderr)
         return 2
+
+    # Prefer the generic, introspection-driven launcher (works on arbitrary
+    # cubins).  Fall back to the C harness if it is unavailable.
+    if generic:
+        try:
+            import sass_launch as SL
+            return SL.verify_dyn_generic(cubin, entry=entry)
+        except Exception as e:                              # noqa: BLE001
+            print(f"  ! generic launcher unavailable ({type(e).__name__}: "
+                  f"{e}); falling back to the C harness", file=sys.stderr)
 
     harness = _launch_harness()
     if harness is None:
@@ -2577,8 +2599,21 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--verify", nargs="+", metavar="CUBIN")
     ap.add_argument("--verify-dyn", metavar="CUBIN",
                     help="patch recomposed control words, launch on GPU, diff "
-                         "results (proves hazard-safety)")
-    ap.add_argument("--entry", help="kernel entry name (for --verify-dyn)")
+                         "results (proves hazard-safety).  Uses the generic "
+                         "introspection launcher (any cubin); add "
+                         "--legacy-harness to force the fixed-signature C harness")
+    ap.add_argument("--legacy-harness", action="store_true",
+                    help="force --verify-dyn to use the C harness (launch_cubin.c)"
+                         " instead of the generic introspection launcher")
+    ap.add_argument("--launch", metavar="CUBIN",
+                    help="introspect + test-launch every kernel in an arbitrary "
+                         "cubin (synthesized inputs, isolated subprocess per "
+                         "kernel); print the per-kernel verdict "
+                         "(launchable/crashed/timed_out/needs_cluster)")
+    ap.add_argument("--introspect", metavar="CUBIN",
+                    help="print the recovered parameter-buffer layout for every "
+                         "kernel in a cubin (no launch)")
+    ap.add_argument("--entry", help="kernel entry name (for --verify-dyn/--launch)")
     ap.add_argument("--verify-corpus", action="store_true")
     ap.add_argument("--arches", nargs="+",
                     help="arches for --verify-corpus (default sm_89 sm_75 sm_80 sm_90)")
@@ -2587,6 +2622,11 @@ def main(argv: list[str]) -> int:
                          "composed (V2) cycles on the GPU with ncu, gate on "
                          "bit-identical output, classify each understall as real "
                          "ptxas waste vs hardware-enforced")
+    ap.add_argument("--perf-diff-cubin", metavar="CUBIN",
+                    help="MODE 1 on an ARBITRARY cubin: recompose its control "
+                         "words, gate V1/V2 bit-identical on synthesized inputs, "
+                         "then measure cycles (generic introspection launcher -- "
+                         "works on real kernels, e.g. CUTLASS)")
     ap.add_argument("--tighten", metavar="CUBIN",
                     help="STAGE 1: keep ptxas's instruction order, tighten only "
                          "the stalls our model proves are slack, GPU-gated "
@@ -2634,10 +2674,42 @@ def main(argv: list[str]) -> int:
             pairs_ok = (summ["scbd_pairs_matched"] == summ["scbd_pairs_gt"])
             rc |= (0 if pairs_ok else 1)
         return rc
+    if args.launch:
+        import sass_launch as SL
+        return SL.launch_report(args.launch, entry=args.entry)
+    if args.introspect:
+        import sass_launch as SL
+        entries = ([args.entry] if args.entry
+                   else SL.list_entries(args.introspect))
+        if not entries:
+            print(f"  ! no kernel entries found in {Path(args.introspect).name}")
+            return 1
+        for name in entries:
+            ki = SL.introspect(args.introspect, name)
+            if ki is None:
+                print(f"{name}: introspect_failed")
+                continue
+            print(f"{name}: buf={ki.param_buffer_size}B "
+                  f"base=0x{ki.cbank_base:x} params={len(ki.params)} "
+                  f"(ptr={ki.n_pointer_slots} scalar={ki.n_scalar_slots}) "
+                  f"req_block={ki.req_block} cluster={ki.cluster}")
+            for p in ki.params:
+                kind = ("ptr/u64" if p.size == 8 else
+                        "scalar32" if p.size == 4 else f"{p.size}B")
+                print(f"    ord {p.ordinal:>2}  off=0x{p.offset:<4x} "
+                      f"size={p.size}  ({kind})")
+        return 0
     if args.verify_dyn:
-        return verify_dynamic(args.verify_dyn, args.entry)
+        return verify_dynamic(args.verify_dyn, args.entry,
+                              generic=not args.legacy_harness)
     if args.verify_corpus:
         return verify_corpus(args.arches)
+    if args.perf_diff_cubin:
+        import sass_launch as SL
+        g = (args.grid, 1, 1) if args.grid else None
+        b = (args.block, 1, 1) if args.block else None
+        return SL.perf_diff_generic(args.perf_diff_cubin, entry=args.entry,
+                                    grid=g, block=b)
     if args.perf_diff:
         return perf_diff(arch=args.arch,
                          grid=args.grid if args.grid else 20,
