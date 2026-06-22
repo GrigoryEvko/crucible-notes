@@ -916,12 +916,12 @@ def verify_dyn_generic(cubin: str | Path, entry: str | None = None,
                              arena_bytes=arena_bytes, scalar_value=sv,
                              timeout_s=timeout_s)
         if r2.verdict != "launchable":
-            print(f"  scalar={sv:#x}: V1 ok hash={r1.out_hash[:16]}  "
+            print(f"  scalar={sv:#x}: V1 ok hash={(r1.out_hash or '?')[:16]}  "
                   f"V2 {r2.verdict} ({r2.detail[:50]})  -> HAZARD")
             all_match = False
             continue
         match = (r1.out_hash == r2.out_hash)
-        print(f"  scalar={sv:#x}: V1={r1.out_hash[:16]}  V2={r2.out_hash[:16]}  "
+        print(f"  scalar={sv:#x}: V1={(r1.out_hash or '?')[:16]}  V2={(r2.out_hash or '?')[:16]}  "
               f"{'MATCH' if match else 'DIFFER'}")
         all_match = all_match and match
 
