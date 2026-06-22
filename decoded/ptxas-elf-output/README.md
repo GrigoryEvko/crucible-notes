@@ -75,9 +75,11 @@ architecture-dependent output is in the ELF container — captured field-by-fiel
   sm_121" holds for *SASS/encoding* but **not** for the `.nv.compat` finalizer record:
   the two cubins differ in this one wire field (plus the real-SM byte in `e_flags`).
 - **sm_110 (Thor / GB10-class) emits a GB10B silicon workaround.** A plain kernel adds
-  two extra symbols absent on sm_120/121: `__nv_reservedSMEM_gb10b_war_var` (literal
-  string in ptxas `.rodata`) and its `.nv.shared.reserved.0` backing section. This shifts
-  sm_110's symbol-table indices relative to sm_120/121.
+  two extra `.symtab` entries absent on sm_120/121: `__nv_reservedSMEM_gb10b_war_var`
+  (literal string in ptxas `.rodata`) and a section symbol for `.nv.shared.reserved.0`
+  (binary-verified `.symtab` diff: 12 entries vs 10). Note the `.nv.shared.reserved.0`
+  *section itself* is present on all three archs — only sm_110 gives it a symbol-table
+  entry (it backs the WAR var). This shifts sm_110's symbol indices relative to sm_120/121.
 
 `e_flags` differs only in the real-SM byte (bits 8–15): `0x6e`/`0x78`/`0x79` for
 sm_110/120/121; the variant nibble (bits 0–7) is `0x02` on all three (Blackwell-class).
@@ -86,8 +88,8 @@ sm_121→121/0x79) — cuobjdump's "CUDA Virtual SM" line confirms on both 13.0.
 its CUDA-API word is `130` on 13.0.88 (toolkit-keyed, not arch-keyed; system 13.1.115 emits
 `131`). sm_110 requires PTX `.version 9.0`;
 sm_120/121 accept `8.8`. The `.text` is byte-identical for `sm_120`/`sm_121` generally
-(and `sm_120a`); `sm_110` matches only trivial samples — arith/isel kernels diverge
-(`sm_110 IADD3` vs `sm_120 IADD`).
+(and `sm_120a`, all SHA-verified); `sm_110` matches only trivial samples — arith/isel
+kernels diverge (same mnemonics but different register allocation / encoding bytes).
 
 See the final report (returned in the analysis conversation) for the full
 emitter walkthrough, confidence levels, and the proposed wiki outline.

@@ -18,7 +18,7 @@ EICOMPAT OPPORTUNISTIC_FINALIZATION (attr 6)	0x01	0x01	0x01	BVAL; opportunistic-
 EICOMPAT ACCELERATOR_TARGET (attr 9)	0x00	0x00	0x00	BVAL; accelerator target id (none); FIRST element emitted
 EICOMPAT CAN_FASTPATH_FINALIZE (attr 11, 8B)	0x0000000000000000	0x0000000000000050	0x0000000000000000	SVAL 8-byte descriptor. *** sm_120 = 0x50, sm_110 & sm_121 = 0x00 *** stable across O0/O3; sm_120a == sm_120 (0x50)
 GB10B reserved-SMEM workaround symbol	__nv_reservedSMEM_gb10b_war_var (PRESENT)	(absent)	(absent)	Thor/GB10-class silicon WAR; literal string in ptxas .rodata
-.nv.shared.reserved.0 section	PRESENT	(absent)	(absent)	shared-memory backing for the gb10b WAR variable
-symtab symbol count (sample vadd kernel)	12	10	10	sm_110 carries the 2 extra GB10B-WAR symbols above
-SASS encoding	identical*	identical	identical	sm_120≡sm_121 byte-identical in .text (general; sm_120a==sm_120). *sm_110 matches only for trivial samples — arith/isel kernels diverge (sm_110 IADD3 vs sm_120 IADD)
+.nv.shared.reserved.0 SYMTAB entry	PRESENT	(absent)	(absent)	The .nv.shared.reserved.0 *section* exists on ALL three archs; only sm_110 emits a symbol-table entry for it (it backs the gb10b WAR var). So the arch split is in the .symtab, not the section list.
+symtab symbol count (minimal kernel)	12	10	10	sm_110 carries 2 extra symbols: __nv_reservedSMEM_gb10b_war_var + the .nv.shared.reserved.0 section symbol (binary-verified diff)
+SASS encoding	identical*	identical	identical	sm_120≡sm_121 byte-identical in .text (general; sm_120a==sm_120, all SHA-verified). *sm_110 matches only for trivial samples — arith/isel kernels diverge (different register allocation/encoding; same mnemonics, different .text bytes)
 min PTX .version to target	9.0	8.8	8.8	sm_110 requires PTX 9.0; sm_120/121 accept 8.8+
