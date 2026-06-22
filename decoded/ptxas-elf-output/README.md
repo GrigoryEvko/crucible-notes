@@ -9,10 +9,8 @@ Everything here was obtained by **binary analysis only**: emitting real cubins
 with the V13.0.88 `ptxas` binary and reading the raw ELF bytes, cross-checked
 with `cuobjdump --dump-elf` and the publicly distributed CUDA toolchain. Numeric
 enums (EIATTR codes, relocation types, section types) were re-extracted directly
-from the binary's `.rodata` name-pointer tables. Where older CUDA toolkit
-binaries expose a different constant, that difference is noted as version drift;
-on any conflict the **emitted bytes win** (the binary is 13.0.88; several fields
-have drifted relative to earlier builds).
+from the binary's `.rodata` name-pointer tables. The emitted bytes are the
+authority for every value recorded here.
 
 ## How the ground truth was produced
 
@@ -55,18 +53,18 @@ The raw section/header/symbol bytes were then decoded with a small Python reader
   attribute is **still present** in `.nv.info`, but the `.nv.compat` section is
   **absent** entirely (cuobjdump- and raw-section-confirmed on 13.0.88) — so the
   arch split is in the `.nv.compat` container, not in the EIATTR.
-- **Drifts from earlier toolchains**: OS/ABI byte `0x33`→`0x41`, ABI
-  version `7`→`8`, real-SM moved from `e_flags` low byte to bits 8–15, the
-  `SHF_BARRIER_MASK` section flag is no longer populated (barrier count moved to
-  `EIATTR_NUM_BARRIERS`), the reloc handler enum gained a `FINALIZER` value, the
-  callgraph gained a 4th marker, and a new `0xa0` symbol memory-space appeared.
+- **Container-level constants in 13.0.88**: OS/ABI byte `0x41`, ABI version `8`,
+  real-SM carried in `e_flags` bits 8–15, the `SHF_BARRIER_MASK` section flag
+  unpopulated (barrier count lives in `EIATTR_NUM_BARRIERS`), a `FINALIZER` value
+  in the reloc handler enum, a 4th callgraph marker, and a `0xa0` symbol
+  memory-space nibble.
 
 ## Per-architecture container facts (sm_110 / sm_120 / sm_121)
 
 The SASS body ptxas emits for these three Blackwell-class targets is byte-identical
 (same encoder/scheduler family; `sm_120a` shares `sm_120`'s tables too). The only
 architecture-dependent output is in the ELF container — captured field-by-field in
-`per_arch_sm110_120_121.tsv`. Two findings are worth calling out:
+`per_arch_sm110_120_121.tsv`:
 
 - **`EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE` (attr 11) splits sm_120 from sm_121.** Its
   8-byte `.nv.compat` value is `0x50` for `sm_120` (and `sm_120a`) but `0x00` for both
@@ -90,6 +88,3 @@ its CUDA-API word is `130` on 13.0.88 (toolkit-keyed, not arch-keyed; system 13.
 sm_120/121 accept `8.8`. The `.text` is byte-identical for `sm_120`/`sm_121` generally
 (and `sm_120a`, all SHA-verified); `sm_110` matches only trivial samples — arith/isel
 kernels diverge (same mnemonics but different register allocation / encoding bytes).
-
-See the final report (returned in the analysis conversation) for the full
-emitter walkthrough, confidence levels, and the proposed wiki outline.
