@@ -2,8 +2,9 @@
 # Resolved to the sm_103 Blackwell dependency-rule table @ .rodata VMA
 # 0x2262720 (installer sub_ABF590 enum 0x4001).  Binary-derived
 # (ptxas 13.0.88).  sm_120 == sm_121 byte-identical; both resolve to sm_103
-# (matches sm_103 -- not sm_100 -- on F2I/F2F/DFMA/LOP3 decoupled bands,
-# verified empirically).  Identical bytes to dependency_rules_sm_103.tsv.
+# (FP64 DFMA/DADD decoupled like sm_103 -- not coupled like sm_100;
+# dependent-DFMA issue gap 0x50 not 0x10 -- verified empirically).
+# Identical bytes to dependency_rules_sm_103.tsv.
 idx	unit_id	rule_type	latency	throughput_inv	barrier_latency	barrier_throughput	read_latency	write_latency	stall_cycles	issue_slots
 0	0	0	52	21	56	1	-1	-1	39	4
 1	2	1	17	0	56	8	-1	-1	0	1

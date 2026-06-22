@@ -1,22 +1,47 @@
-# Consumer/Thor Blackwell vs datacenter Blackwell -- per-op issue-relative stall deltas.
-# Our own differential-analysis result (NOT a binary byte table): identical PTX compiled
-# with this exact ptxas (CUDA 13.0.88) and disassembled (nvdisasm 13.1), reading the
-# usched stall field of each emitted instruction.  All five arches share the lat10x
-# latency-descriptor family and resolve to the sm_103 dependency-rule + scoreboard tables
-# (installer sub_ABF590 enum 0x4001); these are the residual per-arch scheduler deltas the
-# OCG applies on top of that shared base, observed on a mixed decoupled-op probe kernel.
+# Blackwell lineup (sm_100/103/110/120/121) -- per-op scheduling divergences.
+# Our own differential-analysis result (NOT a binary byte table): isolated probes
+# compiled with this exact ptxas (CUDA 13.0.88) and disassembled (nvdisasm 13.1),
+# reading the SASS control word (decoded/sass-tools/sass_ctrl_decode.py).  Regenerate
+# with measure_blackwell_deltas.py.
 #
-# Coupled-math ops (FADD/FFMA/FMUL/IMAD/IADD3/SHF/LDG/STG) are IDENTICAL across all five
-# arches (shared lat10x descriptors) and are omitted.  Only the decoupled bands differ.
+# WHY THE METRIC CHANGED (corrects a prior version of this file):
+#   A single "stall cycles per op" number is NOT a sound per-arch fact.  The usched
+#   stall field is the gap to the NEXT issued instruction, which the scheduler fills
+#   with reordered independent work; it changes with register pressure and neighbours.
+#   Re-measuring with isolated single-producer/single-consumer probes -- and re-checking
+#   every candidate divergence across 2-4 operand/consumer/pressure variants -- shows
+#   the only reorder-INVARIANT signals are (a) coupled-vs-decoupled (does the producer
+#   set a write scoreboard?) and (b) the dependent-chain issue gap.  Several deltas in
+#   the prior file (POPC/I2FP/F2I numbers, and the LOP3 / general-MUFU divergences) did
+#   not survive that re-check and are corrected to "identical" / "artifact" below.
 #
-# sm_120 == sm_121 byte-identical (verified).  "base" = the sm_103 value all arches share
-# unless noted.  Stall = cycles the dependent consumer is held (usched stall enum).
+# All five arches share the lat10x latency-descriptor family (.rodata 0x226C880) and
+# the sm_103 dependency-rule + scoreboard tables EXCEPT sm_100, which installs its own
+# dep-rule + scoreboard set (installer sub_ABF590: enum 0x4000=sm_100, 0x4001=sm_103;
+# sm_110/120/121 resolve to the 0x4001 sm_103 set).  The divergences below are the
+# residual per-arch behaviour observed in emitted SASS on top of those tables.
+#
+# Notation:  c = coupled (fixed pipeline latency, no scoreboard);
+#            D = decoupled (variable latency, producer sets a write scoreboard);
+#            the number is the producer's usched value in the isolated probe.
+#
+# ROBUST divergences (survive every probe variant) ----------------------------------
 op	sm_100(GB100)	sm_103(GB300)	sm_120/121(consumer)	sm_110(Thor)	note
-POPC	8	5	6	5	popc consumer-collect; consumer Blackwell +1 over sm_103
-I2FP	7	7	4	4	int->fp convert; consumer + Thor shorter than datacenter
-FSETP	13	2	1	2	fp predicate; sm_100 long, consumer -1 vs sm_103
-F2I	8	1	1	1	fp->int convert; sm_100 long, others short
-F2F	1	15	15	15	fp->fp convert decoupled band; sm_100 differs
-DFMA	10	15	15	15	double FMA decoupled; sm_100 differs
-LOP3	2	6	6	6	logic op band; sm_100 differs
-MUFU	matches-103-shape	1/8/1	1/1/2	1/2/1	transcendental SFU collect varies per position
+DFMA	c (coupled)	D (decoupled)	D (decoupled)	D (decoupled)	FP64: GB100 keeps DFMA coupled (full-rate); all others decouple it
+DADD	c (coupled)	D (decoupled)	D (decoupled)	D (decoupled)	FP64: same split as DFMA -- intrinsic, invariant to the consumer
+F2F.F32.F64	D18	D15	D15	D15	f32->f64 widen: GB100 producer usched 18 vs 15 elsewhere (both decoupled)
+FSETP	c4	c4	c5	c5	fp predicate: consumer Blackwell (sm_120/121) +1; holds across gt/geu/lt/eq + pressure
+#
+# FP64 RATE FLOOR (dependent back-to-back DFMA chain, byte gap between issues) -------
+# op	sm_100	sm_103	sm_120	sm_121	sm_110
+DFMA_chain_issue_gap	0x10	0x50	0x50	0x50	0x50	GB100=1 slot (full FP64); all others=5 slots (rate-limited)
+#
+# WEAK / RSQ-specific (consistent only on MUFU.RSQ; SIN/RCP show no difference) ------
+MUFU.RSQ	D21	D21	D19	D19	D21	consumer Blackwell rsqrt collect usched 19 vs 21 (RSQ only; not a general MUFU delta)
+#
+# IDENTICAL across all five arches (no per-arch divergence; prior file was wrong) ----
+POPC	D18	D18	D18	D18	D18	decoupled everywhere; equal usched -- NOT 8/5/6/5 as previously claimed
+I2FP	c5	c5	c5	c5	c5	coupled everywhere; equal -- NOT 7/7/4/4 as previously claimed
+F2I	D18	D18	D18	D18	D18	decoupled everywhere; equal -- NOT 8/1/1/1 as previously claimed
+F2F.F64.F32	D18	D18	D18	D18	D18	f64->f32 narrow: equal everywhere
+LOP3	c4	c4	c4	c4	c4	coupled everywhere; equal (the sm_120/121=2 seen in one probe is a reorder artifact)

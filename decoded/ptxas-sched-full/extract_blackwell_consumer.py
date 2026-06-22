@@ -26,12 +26,17 @@ disassembling the per-SM table installer at .text 0xABF590):
         enum 0x4001 -> lat10x(0x226C880) + dep_sm103(0x2262720) + sb_sm103(0x2261740)
     (decoded byte-exact from the function body; see README).
 
-  * Empirically (this exact ptxas, nvdisasm 13.1, identical PTX): sm_120a and
-    sm_121a emit BYTE-IDENTICAL SASS; their per-instruction stalls match sm_103
-    on the F2I / F2F / DFMA / LOP3 decoupled bands and DIFFER from sm_100 there
-    -- i.e. sm_120/sm_121 resolve to the **sm_103** (enum 0x4001) Blackwell
-    tables, not sm_100.  sm_110 (Thor, a distinct codegen generation) routes
-    through the same Blackwell lat10x latency family.
+  * Empirically (this exact ptxas, nvdisasm 13.1, identical PTX): sm_120 and
+    sm_121 emit BYTE-IDENTICAL SASS (only the .target label differs); their FP64
+    ops (DFMA/DADD) are DECOUPLED onto a hardware dependency barrier like sm_103
+    and the dependent-DFMA chain is rate-gated to one issue per 0x50 -- whereas
+    sm_100 keeps DFMA/DADD COUPLED and issues the chain back-to-back at 0x10.
+    So sm_120/sm_121 resolve to the **sm_103** (enum 0x4001) Blackwell tables,
+    not sm_100.  sm_110 (Thor) likewise decouples FP64 like sm_103 and resolves
+    to the sm_103 dep/scoreboard set; it routes through the same Blackwell lat10x
+    latency family but makes different scheduling/reg-alloc choices (same SASS
+    length, different order).  See blackwell_consumer_stall_deltas.tsv /
+    measure_blackwell_deltas.py for the reorder-invariant per-arch divergences.
 
 Therefore sm_110/sm_120/sm_121 do not own new bytes; they SHARE the sm_103
 Blackwell hardware tables.  This script re-reads those exact bytes from .rodata
@@ -192,8 +197,9 @@ def main() -> int:
             f"# Resolved to the sm_103 Blackwell dependency-rule table @ .rodata VMA\n"
             f"# 0x{DEP_SM103_VMA:X} (installer sub_ABF590 enum 0x4001).  Binary-derived\n"
             f"# (ptxas 13.0.88).  sm_120 == sm_121 byte-identical; both resolve to sm_103\n"
-            f"# (matches sm_103 -- not sm_100 -- on F2I/F2F/DFMA/LOP3 decoupled bands,\n"
-            f"# verified empirically).  Identical bytes to dependency_rules_sm_103.tsv.")
+            f"# (FP64 DFMA/DADD decoupled like sm_103 -- not coupled like sm_100;\n"
+            f"# dependent-DFMA issue gap 0x50 not 0x10 -- verified empirically).\n"
+            f"# Identical bytes to dependency_rules_sm_103.tsv.")
         _write(
             f"scoreboard_configs_{arch}.tsv", SB_HDR, sb,
             f"# {arch} 88-B scoreboard configs ({SB_SM103_COUNT} entries).\n"
