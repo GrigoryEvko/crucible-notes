@@ -221,13 +221,20 @@ _DEFAULT_BAND = {
 
 
 def result_band(mnem: str) -> int:
-    """Result-latency band of an op (for critical-path weighting / debug)."""
+    """Result-latency band of an op (for critical-path weighting / debug).
+
+    The GPU-measured completion latencies take precedence: the ptxas oracle's
+    per-op band is its own coarse internal weight (e.g. MUFU 24, POPC 13), which
+    underestimates the real completion (36 / 29 measured on sm_89).  For an
+    accurate critical path we weight by the measured truth where we have it, and
+    fall back to the oracle for ops without a measured band, then the ALU anchor.
+    """
     base = _base_mnem(mnem)
+    if base in _DEFAULT_BAND:
+        return _DEFAULT_BAND[base]
     o = _load_oracle()
     if base in o:
         return o[base]
-    if base in _DEFAULT_BAND:
-        return _DEFAULT_BAND[base]
     return 6   # default ALU band (binary anchor)
 
 
