@@ -5,9 +5,9 @@ offset	size	type	field	init_by_alloc_7DD010	evidence	description
 20	4	i32	ref_count	(in OWORD@16)	sub_7E6090	Reference/use count
 24	4	i32	bb_index	*(+24)=0	sub_7DD010:29	Owning basic-block index (bix)
 28	4	i32	sched_pos	*(+28)=0	sub_7DD010:27; sub_7EB4B0	Scheduling order position in BB; set to -1 when unscheduled
-32	4	u32	control_word	*(+32)=0	sub_7DD010:26	SASS scheduling control word (stall/yield/barriers). LOW CONFIDENCE: +32 aliased by many context objects; not isolated on instr in this pass
+32	4	u32	reserved_32	*(+32)=0	sub_7DD010:26 (movl $0,0x20)	CORRECTION (gap-closure F1): reserved/dead u32, zero-init only; NO opcode-co-located reader. The SASS scheduling control word is NOT here — it lives inside the +40 scheduling record (see sched_slot row)
 36	4	u32	flags_36	(zeroed)	-	Instruction subtype/flag bits (bits 19-21 = subtype)
-40	8	ptr	sched_slot	*(+40)=0	sub_7DD010:30	Scheduling state pointer. LOW CONFIDENCE: +40 heavily reused (11k refs); zeroed on instr but no clean instr-side reader isolated
+40	8	ptr	sched_slot	*(+40)=0	sub_7DD010:30 (movq $0,0x28)	CONFIRMED (gap-closure F1, UPGRADE LOW->HIGH): pointer to a lazily-allocated, polymorphic (vtable@0) per-inst scheduling/latency/barrier record; the SASS control word lives in this record's interior (not at +32)
 48	8	u64	flag_bits	*(+48)=0	sub_7DD010:37	Extended flag bits (bit5=volatile, bit27=reuse)
 56	8	ptr	def_instr	*(+56 dword)=0	sub_7DD010:38	Defining instruction pointer (def-use)
 64	8	ptr	operand_constraints	*(+64)=0	sub_7DD010:39	Per-operand constraint/liveness table; deref *(p+8*i)

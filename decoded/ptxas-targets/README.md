@@ -66,7 +66,7 @@ families that requires PTX 9.0; a sub-9.0 `.version` is rejected with
 | `sass_elf_eflags.tsv` | finalized SASS-ELF `e_flags` / EF_CUDA_SM + `.nv.compat` fast-path mask + min PTX `.version` per arch (sm_90..sm_121) |
 | `sm_scheduling_seeds.tsv` | per-sm scheduling-generation codes (sm_110 = gen9; sm_100/103/120/121 = gen8) |
 | `gating_diagnostics.tsv` | target/feature-legality diagnostic format strings |
-| `instruction_legality.tsv` | per-instruction × per-target legality matrix |
+| `instruction_legality.tsv` | dump of the instruction-validation dispatch table (VMA 0x22FF020..0x2339DF8): each entry pairs a small instruction-key (`fmt<<8\|minor`) with a `.text` handler pointer; also carries rodata-subtable and special-validation-sentinel entries. This is the per-instruction legality *dispatch table*, not a flat instruction×target matrix |
 
 ## New-architecture coverage (this update)
 

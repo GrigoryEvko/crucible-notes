@@ -1,7 +1,5 @@
 field	bits	mask_or_expr	evidence	notes
-sign_negate	31	*(int*)(slot) < 0  /  (w>>31)&1	sub_7E6090:257,281; sub_405930:9	Sign / negate flag; gates register checks (>=0 path)
-type_tag	28-30	(w>>28)&7  ==  (w^0x70000000)&0x70000000	sub_7E0030:153,200; sub_7E0650:29; sub_7E6090:257,341	Compact operand type. type==1 = register (dominant check). type==7 (all bits set) sentinel
+is_dest	31	*(int*)(slot) < 0  /  (w>>31)&1	sub_7E6090:257,281; sub_405930:9	CORRECTION (gap-closure F1, HIGH): bit31 = OPD_DEF is-DESTINATION flag (mask 0x80000000), NOT sign/negate. Set on dest operands (dest-first ordering); the >=0 path is the source/use path
+type_tag	28-30	(w>>28)&7  ==  (w^0x70000000)&0x70000000	sub_7E0030:153,200; sub_7E0650:29; sub_7E6090:257,341	3-bit DAG-IR kind (gap-closure F1): 0=Unknown,1=VReg(register),2=Imm32,3=Imm64,4=Lab,5=Sym,6=Info,7=Null/sentinel. type==1 register dominant; type==7 (all bits set) sentinel
 modifier	20-27	(w>>20)&0xF (4 bits observed); 0xFF region claimed	sub_A0F020:418; sub_AED3C0:2320	Lane/byte selector & operand modifiers; only low nibble (20-23) seen extracted
 index	0-19 or 0-23	w & 0xFFFFF (20b) | w & 0xFFFFFF (24b)	20b sub_A0F020:418; 24b sub_7E0030:70, sub_7E6090:267	Symbol/register id into table at code_obj+88 (regs) / +152 (syms). 24-bit mask dominant (~2398 sites)
-
-
