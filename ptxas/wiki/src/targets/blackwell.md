@@ -4,15 +4,15 @@
 
 ptxas v13.0.88 handles five Blackwell-era base targets — sm_100, sm_103, sm_110, sm_120, sm_121 — spanning datacenter, automotive, consumer, and DGX product lines.
 
-- **Shared identity.** All share generation 9 (upper nibble `0x9000` of the codegen factory) and the `"Blackwell"` family string internally.
-- **Distinct sub-variants.** sm_100=36864 (`0x9000`), sm_103=36867 (`0x9003`), sm_110=36868 (`0x9004`), sm_120=sm_121=36869 (`0x9005`).
+- **Shared identity.** All share the internal **profile code** generation nibble `0x9` (stamped into `profile+0x15c` by each profile constructor) and the `"Blackwell"` family string internally.
+- **Distinct profile codes.** The per-arch internal code in `profile+0x15c` is `(9 << 12) | chip_ordinal`: sm_100=`0x9000`, sm_101/sm_110=`0x9001`, sm_103=`0x9003`, sm_120=`0x9004`, sm_121=`0x9005` (byte-verified at the `movl $0x900N,0x15c(%rax)` stamps `0x608E15`/`0x60AA45`/`0x60A725`/`0x60A935`/`0x60A505`). This is *not* the legacy 16-bit hash-slot version-code (that table at `0x2020620` ends at `0x9005`=`sm_90f` and structurally cannot encode sm_100+); the canonical user-visible code for these targets is the `__CUDA_ARCH__` decimal (1000/1100/1030/1200/1210). See [Version Codes](./version-codes.md).
 - **Defining feature.** **Capsule Mercury** (capmerc) is the default binary output format, automatically enabled for SM numbers exceeding 99.
-- **tcgen05 split.** The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
+- **tcgen05 split.** sm_100, sm_103 and **sm_110 (Jetson Thor)** accept **tcgen05** (5th-generation tensor cores with dedicated tensor memory) — empirically: ptxas v13.0.88 assembles a `tcgen05.alloc` for `sm_100a`/`sm_103a`/`sm_110a`; the consumer variants sm_120/sm_121 reject it (`Instruction 'tcgen05.*' not supported`).
 
 | | |
 |---|---|
 | **SM targets** | sm_100, sm_103, sm_110, sm_120, sm_121 (+ `a` and `f` sub-variants each) |
-| **Codegen factory range** | 36864–36869 (`0x9000`--`0x9005`, generation 9) |
+| **Internal profile-code range** | `0x9000`--`0x9005` (`profile+0x15c`, `(9<<12)\|chip_ordinal`) — distinct from the legacy 16-bit version-code table (which ends at `sm_90f`) |
 | **Family string** | `"Blackwell"` (all five targets) |
 | **Default binary format** | Capsule Mercury (capmerc) — auto-enabled for SM > 99 |
 | **SASS encoding** | 128-bit per instruction (Mercury-encoded) |
@@ -23,15 +23,15 @@ ptxas v13.0.88 handles five Blackwell-era base targets — sm_100, sm_103, sm_11
 
 ## SM Version Table
 
-| SM | Product | `__CUDA_ARCH__` | Codegen Factory | Hex | Variant |
+| SM | Product | `__CUDA_ARCH__` | Profile code (`+0x15c`) | e_flags SM byte | Chip ordinal |
 |---|---|---|---|---|---|
-| `sm_100` | B100 / B200 (datacenter) | 1000 | 36864 | `0x9000` | 0 (gen 9 base) |
-| `sm_103` | GB300 (Blackwell Ultra) | 1030 | 36867 | `0x9003` | 3 |
-| `sm_110` | Jetson Thor SoC | 1100 | 36868 | `0x9004` | 4 |
-| `sm_120` | RTX 50xx / RTX Pro | 1200 | 36869 | `0x9005` | 5 |
-| `sm_121` | DGX Spark | 1210 | 36869 | `0x9005` | 5 |
+| `sm_100` | B100 / B200 (datacenter) | 1000 | `0x9000` | `0x64` (100) | 0 (gen-9 base) |
+| `sm_103` | GB300 (Blackwell Ultra) | 1030 | `0x9003` | `0x67` (103) | 3 |
+| `sm_110` | Jetson Thor SoC | 1100 | `0x9001` (shared with sm_101 ordinal) | `0x6e` (110) | 1 |
+| `sm_120` | RTX 50xx / RTX Pro | 1200 | `0x9004` | `0x78` (120) | 4 |
+| `sm_121` | DGX Spark | 1210 | `0x9005` | `0x79` (121) | 5 |
 
-**Codegen factory encoding:** `(9 << 12) | sub_variant`. sm_100 is variant 0 (generation base). sm_103 is variant 3. sm_110 is variant 4. sm_120 and sm_121 appear to share variant 5 in the scheduling sub-architecture table at `sub_8E4400`.
+**Profile-code encoding:** `(9 << 12) | chip_ordinal`, stamped into `profile+0x15c`. sm_100 is ordinal 0 (generation base); sm_103 ordinal 3; sm_120 ordinal 4 (`0x9004`); sm_121 ordinal 5 (`0x9005`) — **sm_120 and sm_121 are distinct** (`0x9004` vs `0x9005`, byte-verified at the constructor stamps and confirmed by distinct e_flags SM bytes `0x78`/`0x79`). sm_110 (Thor) reuses the sm_101 ordinal slot `0x9001`. These internal codes are **not** the legacy hash-slot version code (which ends at `sm_90f`); the canonical code for these targets is the `__CUDA_ARCH__` decimal.
 
 **Unreleased SM numbers referenced in the binary:** The SASS formatter `sub_583190` (rsqrt) checks for SM codes 102, 103, 107, 124, 130 in architecture-specific dispatch paths, suggesting internal/future variants beyond the five publicly exposed targets.
 
@@ -109,26 +109,27 @@ Every Blackwell SM has **unique** handler functions in all 7 maps. This contrast
 
 ## Warp Geometry
 
-The warp geometry initializer at `sub_8E4400` uses the codegen factory value to select dispatch parameters. All Blackwell targets (codegen factory > 36863) fall into the maximum bucket:
+The warp geometry initializer at `sub_8E4400` switches on the internal profile code (`profile+0x15c`, value `0x900N`) to select dispatch parameters. All Blackwell targets (code `> 0x8fff`) fall into the maximum bucket:
 
 ```text
-encoded >  36863  -> 16 warps, 240 dispatch slots
+code >  0x8fff  -> 16 warps, 240 dispatch slots
 ```
 
 This is identical to Hopper (sm_90). The 16-warp / 240-slot geometry supports Blackwell's warpgroup execution model (4 warps per warpgroup, 4 warpgroups per SM partition).
 
 ### Sub-Architecture Variant Table
 
-The secondary variant assignment at `sub_8E4400` maps codegen factory values to sub-architecture indices:
+`sub_8E4400` is a switch on the profile code — `cmp $0x9000/$0x9003/$0x9004/$0x9005` each branch to a **distinct** target (disassembly at `0x8E4438`–`0x8E445C`). sm_120 (`0x9004`) and sm_121 (`0x9005`) take **different** branches (`je 0x8E4670` vs `je 0x8E46A0`); they do **not** share a sub-variant. sm_110/sm_101 (`0x9001`) is handled by the `jbe`-low path (`0x8E4444`), not a `0x9004` case:
 
-| Codegen Factory | Variant | SM |
+| Profile code (`+0x15c`) | Chip ordinal | SM |
 |---|---|---|
-| 36864 | 0 | sm_100 (base) |
-| 36867 | 3 | sm_103 |
-| 36868 | 4 | sm_110 |
-| 36869 | 5 | sm_120, sm_121 |
+| `0x9000` | 0 | sm_100 (base) |
+| `0x9001` | 1 | sm_101 (phantom) / sm_110 |
+| `0x9003` | 3 | sm_103 |
+| `0x9004` | 4 | sm_120 |
+| `0x9005` | 5 | sm_121 |
 
-These variant indices select different entries within the per-SM latency tables, allowing the scheduler to use silicon-specific pipeline timing.
+These codes select different entries within the per-SM latency tables, allowing the scheduler to use silicon-specific pipeline timing.
 
 ## Hardware Resource Geometry
 
@@ -282,7 +283,7 @@ These helpers (decompiled in `sub_70D910` and `sub_70DDB0`) generate inline PTX 
 
 ## SM 100 / SM 100a / SM 100f — Blackwell Datacenter
 
-sm_100 is the reference Blackwell architecture. Codegen factory 36864 (`0x9000`), CUDA_ARCH 1000.
+sm_100 is the reference Blackwell architecture. Internal profile code `0x9000` (`profile+0x15c`), CUDA_ARCH 1000, e_flags SM byte `0x64`, min PTX `.version` 8.6.
 
 ### Products
 
@@ -327,7 +328,7 @@ The profile constructor stores `dword_29FE2C4 = 100` after constructing all sm_1
 
 ## SM 103 / SM 103a / SM 103f — Blackwell Ultra
 
-sm_103 is Blackwell Ultra, targeting the GB300 NVL72 platform. Codegen factory 36867 (`0x9003`), CUDA_ARCH 1030.
+sm_103 is Blackwell Ultra, targeting the GB300 NVL72 platform. Internal profile code `0x9003` (`profile+0x15c`), CUDA_ARCH 1030, e_flags SM byte `0x67`, min PTX `.version` 8.8.
 
 ### Products
 
@@ -367,7 +368,7 @@ CUDA_ARCH:     "-D__CUDA_ARCH__=1030"
 
 ## SM 110 / SM 110a / SM 110f — Jetson Thor
 
-sm_110 targets the Jetson Thor SoC for automotive and robotics applications. Codegen factory 36868 (`0x9004`), CUDA_ARCH 1100.
+sm_110 targets the Jetson Thor SoC for automotive and robotics applications. Internal profile code `0x9001` (`profile+0x15c`, shares the sm_101 chip-ordinal slot), CUDA_ARCH 1100, e_flags SM byte `0x6e`. Minimum PTX `.version` **9.0** (the only modern family that requires PTX 9.0; verified by binary-searching `-arch=sm_110` and by the base min-PTX table at `0x1D161C0`).
 
 ### Products
 
@@ -375,21 +376,23 @@ Jetson Thor (automotive-grade SoC with integrated GPU). Originally internally de
 
 ### sm_101 Legacy Alias
 
-sm_101 (with variants sm_101a and sm_101f) was the original internal name for Jetson Thor. It was renamed to sm_110 in a later CUDA release, but all three validation table entries are retained for backward compatibility:
+sm_101 (with variants sm_101a and sm_101f) was the original internal name for Jetson Thor. It was renamed to sm_110 in a later CUDA release. `sm_101` is **not a usable target in this build** — `-arch=sm_101` (and `sm_101a`/`sm_101f`) is rejected by the `gpu-name` CLI parser with `Value 'sm_101' is not defined for option 'gpu-name'` (verified on v13.0.88 and v13.1.115). It survives only as an *internal* enum slot: it occupies the sm-id enumeration array, owns a register-class arch selector (`0x5001`, vtable thunk `0xb081c0`), and keeps its `{sm, major, minor}` rows in the min-PTX `.version` tables:
 
-| Table | Entry | PTX ISA | Purpose |
+| Table | VMA | sm_101 entry | min PTX |
 |---|---|---|---|
-| Base (`unk_1D16220`) | `{101, 8, 6}` | 8.6 | Accepts `--gpu-name sm_101` in existing PTX files |
-| Accelerated (`unk_1D161C0`) | `{101, 8, 6}` | 8.6 | Accepts `sm_101a` |
-| Feature-reduced (`unk_1D16160`) | `{101, 8, 8}` | 8.8 | Accepts `sm_101f` |
+| Base | `0x1D161C0` | `{101, 8, 6}` | 8.6 |
+| Accelerated | `0x1D16358` | `{101, 8, 6}` | 8.6 |
+| Feature-reduced | `0x1D16160` | `{101, 8, 8}` | 8.8 |
 
-The validation tables use `bsearch()` (`sub_484B70` comparator), so both sm_101 and sm_110 are independently findable. However, `sub_6765E0` (the profile constructor) registers only sm_110 / sm_110a / sm_110f — there is no profile object for sm_101. After passing validation, sm_101 must resolve to the sm_110 profile through an internal aliasing path (likely in `sub_4B1080`, the target directive parser).
+(These are the three `{sm, major, minor}` min-PTX tables; each is a sorted run beginning at `{90,8,0}`/`{100,8,…}` and queried by `bsearch`. The sm_101 rows are real, but they are unreachable from the CLI because the `gpu-name` parser rejects the string before any min-PTX check runs.)
 
-The PTX ISA version difference is notable: sm_101 requires PTX 8.6 (same as sm_100), while sm_110 requires PTX 9.0. This reflects the timeline — sm_101 was named when the Jetson Thor target was first added alongside sm_100, before the sm_110 numbering and PTX 9.0 specification existed.
+`sub_6765E0` (the profile constructor) registers only sm_110 / sm_110a / sm_110f — there is no separate profile object for sm_101; the Mercury normalize rule folds `sm_101 → sm_110`. So sm_101 has **no `__CUDA_ARCH__` descriptor string** and is a phantom slot.
+
+The PTX ISA version is notable: the sm_101 rows carry PTX 8.6 (same as sm_100), while **sm_110 requires PTX 9.0** (`{110, 9, 0}` in every table) — the only modern family gated to PTX 9.0. This reflects the timeline: sm_101 was named when the Jetson Thor target was first added alongside sm_100, before the sm_110 numbering and PTX 9.0 specification existed.
 
 ### Key Characteristics
 
-- **Full tcgen05 hardware**: Retains datacenter-class tensor memory and tensor core features
+- **Full tcgen05 hardware**: despite being an automotive/robotics SoC (not a datacenter part), sm_110 carries the Blackwell tensor-memory + 5th-gen tensor-core path — `tcgen05.*` instructions assemble for `sm_110a` (verified), the same as sm_100/sm_103 and unlike consumer sm_120/sm_121
 - **Cluster operations inherited**: thread-block clusters and distributed shared memory carry forward from Hopper; the WGMMA matmul does *not* (replaced by tcgen05, as on sm_100)
 - **SoC-specific constraints**: Differentiated from sm_100 through capability flags, not through missing features — the capability accessor functions (`sub_609F30`, `sub_608F50`) return SoC-appropriate resource limits
 
@@ -417,7 +420,7 @@ Note: sm_110 uses different `xmmword` constants for profile fields `[5]`--`[7]` 
 
 ## SM 120 / SM 120a / SM 120f — Blackwell Consumer
 
-sm_120 targets consumer and enterprise workstation GPUs. Codegen factory 36869 (`0x9005`), CUDA_ARCH 1200.
+sm_120 targets consumer and enterprise workstation GPUs. Internal profile code `0x9004` (`profile+0x15c`), CUDA_ARCH 1200, e_flags SM byte `0x78`, min PTX `.version` 8.7.
 
 ### Products
 
@@ -469,7 +472,7 @@ sm_120 uses a third distinct set of `xmmword` constants for profile fields, incl
 
 ## SM 121 / SM 121a / SM 121f — DGX Spark
 
-sm_121 targets the DGX Spark desktop AI workstation. Codegen factory 36869 (`0x9005`), CUDA_ARCH 1210.
+sm_121 targets the DGX Spark desktop AI workstation. Internal profile code `0x9005` (`profile+0x15c`), CUDA_ARCH 1210, e_flags SM byte `0x79`, min PTX `.version` 8.8.
 
 ### Products
 
@@ -477,7 +480,7 @@ NVIDIA DGX Spark (desktop AI workstation with Grace CPU + Blackwell GPU).
 
 ### Relationship to sm_120
 
-sm_121 shares the same codegen factory sub-variant (5) as sm_120 in the scheduling sub-architecture table, and inherits sm_120's `xmmword` profile constants. This suggests sm_121 is a binned or slightly modified sm_120 die, similar to how sm_86 relates to sm_80 in the Ampere generation.
+sm_121 has its **own** profile code `0x9005` (chip ordinal 5), distinct from sm_120's `0x9004` (ordinal 4) — they take separate branches in the `sub_8E4400` switch (`je 0x8E46A0` vs `je 0x8E4670`). But sm_121 inherits sm_120's `xmmword` profile constants and its SASS code generation is byte-identical to sm_120 (nvdisasm diff = 0; the two differ only in the e_flags SM byte `0x79` vs `0x78` and the `.nv.compat` CAN_FASTPATH_FINALIZE mask `0x00` vs `0x50`). This suggests sm_121 is a binned or slightly modified sm_120 die, similar to how sm_86 relates to sm_80 in the Ampere generation.
 
 Like sm_120, sm_121 has **no tcgen05 support** and **no WGMMA** — tensor operations use the warp-level `mma.sync` path (HMMA/IMMA plus block-scaled FP4/FP6/FP8 `kind::f8f6f4`/`mxf4nvf4`), identical to sm_120.
 
@@ -519,13 +522,13 @@ These instructions execute on the uniform datapath (UDP, functional unit index 9
 
 ## Architecture Version Threshold Checks
 
-All Blackwell targets share codegen factory 36864+ (`0x9000`+). The binary uses these thresholds to gate Blackwell-specific features:
+All Blackwell targets share profile code `0x9000`+ (`profile+0x15c` ≥ 36864). The binary uses these thresholds to gate Blackwell-specific features:
 
 | Check Pattern | Threshold | Meaning |
 |---|---|---|
-| `encoded > 36863` | > sm_90 extended | Blackwell warp geometry (16 warps, 240 slots) |
-| `codegen_factory >= 36864` | >= sm_100 | Blackwell generation features |
-| `codegen_factory == 36864` | sm_100 exactly | sm_100-specific paths |
+| `code > 0x8fff` (36863) | > sm_90 extended | Blackwell warp geometry (16 warps, 240 slots) |
+| `profile_code >= 0x9000` (36864) | >= sm_100 | Blackwell generation features |
+| `profile_code == 0x9000` (36864) | sm_100 exactly | sm_100-specific paths |
 | `SM_number > 99` | sm_100+ | Capsule Mercury auto-enable |
 | `sub_70FA00(*, 29)` | — | tcgen05 capability query (SM-specific) |
 
@@ -535,12 +538,12 @@ The tcgen05 gating is not a simple threshold — it uses a per-SM capability que
 
 The basic block initializer `sub_6E8EB0` uses a secondary encoding space for Blackwell:
 
-| Secondary Encoding | SM | Flags |
+| Register-class selector (`profile+0xD4`) | SM | Flags |
 |---|---|---|
-| 20480 (`0x5000`) | sm_100 | Instruction set flags for datacenter |
-| 20484 (`0x5004`) | sm_103 | XOR 0x10, XOR 0x40 for Ultra variants |
+| 20480 (`0x5000`) | sm_100 | Instruction-set flags for datacenter |
+| 20484 (`0x5004`) | **sm_120** (consumer) | XOR `0x10`, XOR `0x40` instruction-set flags |
 
-This secondary encoding uses generation 5 in the BB init context (`5 << 12`), separate from the primary codegen factory's generation 9.
+`sub_6E8EB0` reads the register-class selector at `profile+0xD4` and matches `$0x5000` (sm_100) and `$0x5004` (sm_120) exactly (disasm at `0x6E915E`/`0x6E9169`). These are the same selector codes the register allocator dispatches on: `0x5000`=sm_100, `0x5003`=sm_103, `0x5004`=sm_120, `0x5005`=sm_121 (see [Register Allocation](../regalloc/overview.md)). The XOR `0x10`/`0x40` flag toggles are applied on the **sm_120 (consumer)** path, not sm_103. The selector's generation nibble is `0x5` (`5 << 12`), separate from the profile code's generation nibble `0x9`.
 
 ## Scheduling Profile Differences
 
@@ -634,8 +637,11 @@ When enabled, the compiler inserts inline validation code (the 8 guardrail funct
 
 | Feature | sm_100 | sm_103 | sm_110 | sm_120 | sm_121 |
 |---|---|---|---|---|---|
-| Codegen factory | 36864 | 36867 | 36868 | 36869 | 36869 |
-| Sub-arch variant | 0 | 3 | 4 | 5 | 5 |
+| `__CUDA_ARCH__` | 1000 | 1030 | 1100 | 1200 | 1210 |
+| Profile code (`+0x15c`) | `0x9000` | `0x9003` | `0x9001` | `0x9004` | `0x9005` |
+| e_flags SM byte | `0x64` | `0x67` | `0x6e` | `0x78` | `0x79` |
+| Min PTX `.version` | 8.6 | 8.8 | 9.0 | 8.7 | 8.8 |
+| Chip ordinal | 0 | 3 | 1 (w/ sm_101) | 4 | 5 |
 | Family string | Blackwell | Blackwell | Blackwell | Blackwell | Blackwell |
 | Capsule Mercury default | Yes | Yes | Yes | Yes | Yes |
 | tcgen05 (tensor memory) | Yes | Yes | Yes | **No** | **No** |

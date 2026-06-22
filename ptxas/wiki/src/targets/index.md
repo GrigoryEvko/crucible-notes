@@ -36,9 +36,9 @@ ptxas validates the `--gpu-name` target against three sorted lookup tables, cons
 | `sm_90` / `sm_90a` | 900 | Hopper | H100 / H200 | 32768 | Production | [ada-hopper](ada-hopper.md) |
 | `sm_100` / `sm_100a` / `sm_100f` | 1000 | Blackwell | B200 (datacenter) | 36864 | Production | [blackwell](blackwell.md) |
 | `sm_103` / `sm_103a` / `sm_103f` | 1030 | Blackwell Ultra | GB300 (datacenter) | 36867 | Production | [blackwell](blackwell.md) |
-| `sm_110` / `sm_110a` / `sm_110f` | 1100 | Jetson Thor | Thor SoC (auto/robotics) | 36868 | Production | [blackwell](blackwell.md) |
-| `sm_120` / `sm_120a` / `sm_120f` | 1200 | Blackwell (sm120) | RTX 50xx / RTX Pro | 36869 | Production | [blackwell](blackwell.md) |
-| `sm_121` / `sm_121a` / `sm_121f` | 1210 | Blackwell (sm120) | DGX Spark | 36869 | Production | [blackwell](blackwell.md) |
+| `sm_110` / `sm_110a` / `sm_110f` | 1100 | Jetson Thor | Thor SoC (auto/robotics) | 36865 (`0x9001`) | Production | [blackwell](blackwell.md) |
+| `sm_120` / `sm_120a` / `sm_120f` | 1200 | Blackwell (sm120) | RTX 50xx / RTX Pro | 36868 (`0x9004`) | Production | [blackwell](blackwell.md) |
+| `sm_121` / `sm_121a` / `sm_121f` | 1210 | Blackwell (sm120) | DGX Spark | 36869 (`0x9005`) | Production | [blackwell](blackwell.md) |
 
 The family name stored in the profile object (from `sub_6765E0`) uses NVIDIA's internal naming: `"Turing"`, `"Ampere"`, `"Hopper"`, `"Blackwell"`. Ada Lovelace (sm_89) is stored as Ampere-derived internally despite being a distinct microarchitecture. sm_120/121 use `"Blackwell"` internally despite being a different consumer microarchitecture from sm_100 datacenter Blackwell.
 
@@ -238,9 +238,19 @@ Related encoded values seen in the binary:
 28673  = sm_80 (Ampere)       // 7 << 12 | 1
 28674-28677 = sm_86/87/88/89  // 7 << 12 | 2..5
 32768  = sm_90 (Hopper)       // 8 << 12
-36864  = sm_100 (Blackwell)   // 9 << 12
-36865-36869 = sm_103..121     // 9 << 12 | 1..5
+36864  = sm_100 (Blackwell)   // 9 << 12 | 0  (0x9000)
+36865  = sm_101 / sm_110      // 9 << 12 | 1  (0x9001; sm_110 reuses the sm_101 ordinal)
+36867  = sm_103 (Ultra)       // 9 << 12 | 3  (0x9003; no 0x9002 — slot unused)
+36868  = sm_120 (consumer)    // 9 << 12 | 4  (0x9004)
+36869  = sm_121 (DGX Spark)   // 9 << 12 | 5  (0x9005)
 ```
+
+> The gen-9 chip-ordinal here matches the register-allocator selector low-nibble exactly
+> (`0x5000`/`0x5001`/`0x5003`/`0x5004`/`0x5005` for sm_100/101/103/120/121 — see
+> [Register Allocation](../regalloc/overview.md)). sm_120 (`0x9004`) and sm_121 (`0x9005`)
+> are **distinct** codes, not a shared variant. These `+348` codes are an internal profile
+> identifier, separate from the legacy 16-bit hash-slot version-code table (which ends at
+> `sm_90f`); see [Version Codes](./version-codes.md).
 
 ## Hardware Resource Geometry
 
