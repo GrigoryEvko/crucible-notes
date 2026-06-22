@@ -5,8 +5,7 @@ dependency/scoreboard hazard model, recovered purely from the `ptxas` binary
 (CUDA 13.0.88, sha256 `daba837a…849f2`). No machine-description source is
 consulted; the build-time latency DSL (`SM*.latencies_`) is compiled away and
 ships in no binary, so everything below is the *shipped* form read from
-`.rodata` and the OCG scheduler functions. This page upgrades the prior
-"representative" coverage in `decoded/ptxas-scheduling/` to the full set.
+`.rodata` and the OCG scheduler functions.
 
 ## Three table families (all SMs through sm_121)
 
@@ -54,13 +53,12 @@ are **not at new VMAs** — they are the **sm_103 Blackwell tables**, shared:
 So sm_110/120/121 **share** the sm_103 Blackwell hardware tables. The emitted
 `*_sm_110/120/121.tsv` carry the byte-identical sm_103 data with a provenance
 header. The residual per-arch scheduling deltas are the OCG's per-arch
-adjustments **on top of** the shared table; we re-measured them by isolated
-single-op differential SASS analysis (re-checked across operand / consumer /
-pressure variants to discard reorder artifacts) and ship them in
-`blackwell_consumer_stall_deltas.tsv` (our own result, not binary bytes). The
-only divergences that survive every variant are the **FP64 coupling split**
-(GB100 couples DFMA/DADD at full rate; all others decouple them) and a
-**+1-cycle FSETP latch on consumer Blackwell** (sm_120/121).
+adjustments **on top of** the shared table, measured by isolated single-op
+differential SASS analysis (each candidate divergence checked across operand /
+consumer / pressure variants to exclude reorder artifacts) and shipped in
+`blackwell_consumer_stall_deltas.tsv`. The reorder-invariant divergences are the
+**FP64 coupling split** (GB100 couples DFMA/DADD at full rate; all others
+decouple them) and a **+1-cycle FSETP latch on consumer Blackwell** (sm_120/121).
 
 ## Artifacts
 
@@ -73,11 +71,11 @@ only divergences that survive every variant are the **FP64 coupling split**
 | `dependency_rules_all.tsv` | long-form union (4616 rows), `sm` column prepended |
 | `scoreboard_configs_<sm>.tsv` (×7) | flattened scoreboard `(id, threshold, mask)` triplets |
 | `scoreboard_configs_sm_{110,120,121}.tsv` | sm_11x/sm_12x 88-B configs = byte-identical to `sm_103` (shared) |
-| `blackwell_consumer_stall_deltas.tsv` | **our** differential-analysis result: the reorder-invariant per-arch divergences (FP64 coupling split, FSETP latch) + the ops verified identical across the lineup |
+| `blackwell_consumer_stall_deltas.tsv` | differential-analysis result: the reorder-invariant per-arch divergences (FP64 coupling split, FSETP latch) + the ops identical across the lineup |
 | `measure_blackwell_deltas.py` | regenerates `blackwell_consumer_stall_deltas.tsv` from isolated probes (compile + decode SASS control word) |
 | `opcode_pipeline_map.tsv` | Ori opcode → pipeline-flags (sm_7x, sm_10x) |
-| `scalar_latency_oracle.tsv` | per-Ori-opcode latency band — **binary-corrected** (see below) |
-| `sm_coverage_summary.tsv` | per-SM coverage: entry count, family, disabled units, identity (now through sm_121) |
+| `scalar_latency_oracle.tsv` | per-Ori-opcode latency band (see "oracle band 13" below) |
+| `sm_coverage_summary.tsv` | per-SM coverage: entry count, family, disabled units, identity (through sm_121) |
 | `render_sched_full.py` | reproducible renderer (reads the extracted JSON) |
 | `extract_blackwell_consumer.py` | re-reads the sm_103 Blackwell tables from `.rodata` and emits the sm_110/120/121 TSVs with provenance |
 
@@ -117,17 +115,14 @@ only divergences that survive every variant are the **FP64 coupling split**
   dependency-barrier model); sm_80/86/89/90/90a/103 use a single triplet with a
   pipe mask.
 
-## Binary correction (oracle band 13)
+## Oracle band 13
 
-The prior `decoded/ptxas-scheduling/scalar_latency_oracle.txt` listed band-13 as
-`{38, 60, 61, 63, 68, 78, 79, 106, 162, 180, 182, 192, 194, 199, 215, 221}`.
-The actual `sub_738E20` switch (`result = opcode_index − 16`; cases
+The `sub_738E20` switch (`result = opcode_index − 16`; cases
 `22,43,44,46,51,62,63,90,146,164,166,176,178,183,199,205`) yields band-13 =
 **`{38, 59, 60, 62, 67, 78, 79, 106, 162, 180, 182, 192, 194, 199, 215, 221}`**.
-Three entries were off by one (`61,63,68` → `59,62,67`). Bands 300/24/30 match.
-`scalar_latency_oracle.tsv` carries the corrected set. (Mnemonics are
-best-effort: the oracle indexes the sm_9x/Blackwell Ori opcode space, not the
-sm_70 opcode_master used for naming — keep the numeric Ori id authoritative.)
+`scalar_latency_oracle.tsv` carries this set. (Mnemonics are best-effort: the
+oracle indexes the sm_9x/Blackwell Ori opcode space, not the sm_70 opcode_master
+used for naming — the numeric Ori id is authoritative.)
 
 ## The hazard model (recovered from the OCG scheduler functions)
 
@@ -203,20 +198,17 @@ need not equal any single dependency-rule cell.
 
 ### Consumer / Thor vs datacenter Blackwell (binary-derived + differential)
 
-> **Corrected (this verify pass).** A prior version of this table reported a
-> single "stall cycles per op" for POPC/I2FP/FSETP/F2I/etc. That metric is not a
-> sound per-arch fact: the `usched` stall is the gap to the *next issued*
-> instruction, which the scheduler fills with reordered work, so it shifts with
-> register pressure and neighbours. Re-measuring with **isolated** single-op
-> probes — and re-checking each candidate divergence across 2–4 operand /
-> consumer / pressure variants — shows most of those numbers were reorder
-> artifacts and the ops are actually **identical** across the lineup. Only the
-> reorder-invariant signals below survive.
+The `usched` stall is the gap to the *next issued* instruction, which the
+scheduler fills with reordered work, so a single "stall cycles per op" number
+shifts with register pressure and neighbours and is not a sound per-arch fact.
+Each candidate divergence is measured with isolated single-op probes across 2–4
+operand / consumer / pressure variants; only the reorder-invariant signals below
+hold across every variant.
 
 All five Blackwell arches share the lat10x latency descriptors. The
 **coupled-math** stalls (FADD/FFMA/FMUL/IMAD/IADD3/SHF, LDG/STG) are identical
-across all of them. The genuine per-arch divergences, decoded from emitted SASS
-(`blackwell_consumer_stall_deltas.tsv`, regen with `measure_blackwell_deltas.py`):
+across all of them. The per-arch divergences, decoded from emitted SASS
+(`blackwell_consumer_stall_deltas.tsv`):
 
 | signal | sm_100 (GB100) | sm_103 (GB300) | sm_120/121 (consumer) | sm_110 (Thor) | confidence |
 |---|---|---|---|---|---|
@@ -232,8 +224,8 @@ The dominant, reorder-independent fact is the **FP64 coupling split**: sm_100
 dependent chain back-to-back (0x10 = one slot apart); sm_103 (GB300) **and all of
 sm_110/120/121** decouple FP64 onto a hardware dependency barrier and gate the
 dependent chain to one issue per **0x50** (five slots) — the rate-limited FP64
-datapath. This — not the SFU stall numbers — is why sm_120/121 "resolve to
-sm_103, not sm_100." On top of that, consumer Blackwell (sm_120/121) adds **one
+datapath. This is why sm_120/121 resolve to sm_103, not sm_100. On top of that,
+consumer Blackwell (sm_120/121) adds **one
 cycle to the FSETP predicate latch** (4→5) and shaves the rsqrt collect (21→19);
 Thor (sm_110) tracks sm_103 exactly on these but schedules differently. These are
 OCG per-arch adjustments layered on the shared sm_103 table (no separate table
@@ -247,40 +239,17 @@ exists in the binary).
 | dependency-rule field names | **High** | values + scheduler-function usage |
 | `rule_type 4 = disabled`, `latency 255 = absent` | **High** | perfect correlation across all SMs |
 | scoreboard triplet `{id,threshold,mask}` + count@+84 | **High** | byte-exact |
-| oracle band-13 correction | **High** | verbatim `sub_738E20` switch cases |
+| oracle band-13 set | **High** | `sub_738E20` switch cases |
 | `p7=self`, `p11=0` | **High** | holds for every record, all families |
 | sm_11x/sm_12x have **no** new latency/dep/scoreboard table | **High** | exhaustive `.rodata` scan (0 extra ≥200-entry 72-B/40-B tables) + installer `sub_ABF590` Blackwell branch hard-codes only 0x4000/0x4001 |
 | sm_120 ≡ sm_121, both → sm_103 tables | **High** | byte-identical SASS (only `.target` differs); FP64 decoupled like sm_103, not coupled like sm_100 |
 | FP64 coupling split (GB100 coupled / others decoupled), 0x10 vs 0x50 issue gap | **High** | isolated DFMA/DADD probes, invariant to consumer; dependent-chain byte gap measured directly |
 | consumer-Blackwell FSETP +1-cycle latch (sm_120/121) | **High** | survives 4 probe variants (gt/geu/lt/eq) + pressure perturbation |
-| sm_110 (Thor) → sm_103 dep/scoreboard set; distinct scheduling | **High** | FP64 decoupled like sm_103; same 64-slot / 0x400-byte `.text` as sm_103/120 (the prior "3.4× more SASS" was wrong); different instr order/reuse |
+| sm_110 (Thor) → sm_103 dep/scoreboard set; distinct scheduling | **High** | FP64 decoupled like sm_103; same 64-slot / 0x400-byte `.text` as sm_103/120; different instr order/reuse |
 | MUFU.RSQ −2 on consumer Blackwell | **Medium** | consistent on RSQ across two contexts; SIN/RCP show no delta |
-| POPC/I2FP/F2I/LOP3 per-arch deltas | **None (corrected)** | re-measured identical across all five; prior 8/5/6/5-style numbers were reorder artifacts |
+| POPC/I2FP/F2I/LOP3 per-arch deltas | **None** | identical across all five (isolated probes; apparent deltas are reorder artifacts) |
 | latency-descriptor `p0,p2,p3,p4,p6,p8,p9,p10` semantics | **Medium/Low** | columns emitted; not individually named |
 | oracle mnemonics | **Low** | Ori-opcode↔name space mismatch (numeric id authoritative) |
-
-## Wiki outline (representative → full)
-
-**`scheduling/latency-model.md`**
-- Replace "Representative Per-SM Latency Values" with the **three full tables**
-  (sm_7x/8x/10x) — link the TSVs; note the per-family sharing (3 tables, 26 SMs).
-- Add the **dependency-rule** section: 40-B layout, all 11 SMs, the
-  RAW(`read_latency`)/WAW(`write_latency`) override columns, `rule_type 4 =
-  disabled`, `latency 255 = absent`. Link `dependency_rules_all.tsv`.
-- Correct the band-13 oracle list (`59,62,67`, not `61,63,68`); cite the
-  `sub_738E20` switch. Keep the 5-band scalar oracle as the fast path.
-
-**`scheduling/scoreboards.md`**
-- Under "Hardware Dependency Barrier Model" add the **per-SM scoreboard-config
-  tables** (7 SMs): triplet `{scoreboard_id, threshold, mask}`, `mask=-1`
-  unconditional vs pipe-masked, sm_100 ≤6 scoreboards vs single-triplet
-  pre-Blackwell. Cross-link `sub_939370` (Cutlass FNV-1a override) and the
-  `barrier_latency`/`barrier_throughput` dependency-rule columns.
-
-**`scheduling/overview.md`**
-- In "Hardware Latency Profiles" replace the representative table with the
-  full-family note + TSV links; add the end-to-end opcode→pipeline→class→band map
-  and the `sm_90` vs `sm_90a` (WGMMA enable) divergence as a worked example.
 
 ## Reproduce
 ```

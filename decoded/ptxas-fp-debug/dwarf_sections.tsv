@@ -4,7 +4,7 @@ section_name	emitter_fn_addr	purpose	gated_by_flag	source	confidence
 .nv_debug_info_reg_sass	0x8679F0	Register-to-variable location sidecar (chain ctx+408/buf+416/size+424); which physical reg holds each var at each SASS pc; data produced by post-RA pass 0x88D870	-g only	sidecar	high
 .nv_debug_info_reg_type	0x867B00	Type sidecar for register locations (chain ctx+432/buf+440/size+448); associates reg locations with DWARF type ids	-g only	sidecar	high
 .debug_frame	0x866BB0_cluster	CFI: copies OCG CIE/FDE entries, rewrites FDE CIE_pointer as .debug_frame-relative reloc	-g OR forceDebugFrame	emit	high
-.nv_debug_ptx_txt	0x679DC0_path	Verbatim PTX source text (stripped of .loc/.file/@@DWARF/.bNN dwarf lines); renamed +adler32 for SC	-lineinfo OR -g	emit	high
+.nv_debug_ptx_txt	0x679DC0_path	Exact PTX source text (stripped of .loc/.file/@@DWARF/.bNN dwarf lines); renamed +adler32 for SC	-lineinfo OR -g	emit	high
 .debug_info	0x66F4E0	DIE tree (CUs/subprograms/vars/types); cicc PTX-DWARF parsed then re-emitted with SASS addrs+relocs	-g only	emit	high
 .debug_abbrev	0x66A0B0	Abbreviation table (DIE tag/attr schemas); decoded first to drive .debug_info rewrite	-g only	emit	high
 .debug_loc	0x66A0B0	Location lists (DW_OP_regx/bregx live ranges) parsed to live-range map, re-emitted	-g only	emit	high

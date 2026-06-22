@@ -2,7 +2,7 @@
 # == the sm_10x latency family @ .rodata VMA 0x226C880 (430 classes).
 # Binary-derived (ptxas 13.0.88).  sm_120 and sm_121 install this exact table
 # (installer sub_ABF590 enum 0x4001, shared with sm_100/sm_103); sm_120 == sm_121
-# byte-identical SASS verified empirically.  Identical bytes to latency_table_sm10x.tsv.
+# byte-identical SASS.  Identical bytes to latency_table_sm10x.tsv.
 idx	class_id	pipeA_hex	pipeB_hex	p0_flags	p1_tput	p2	p3	p4	p5_maxstall	p6	p7_self	p8	p9	p10	p11
 0	0	ffffffffffffffff	0000ffffffff0000	8	0	39	4	19	7	3	0	0	2	2	0
 1	2	1010ffffffffffff	0000ffffffff0000	0	4	0	1	0	7	3	2	1	2	3	0

@@ -43,9 +43,9 @@ Every emitted cubin carries a `.nv.compat` (`SHT_CUDA_COMPAT_INFO`) TLV stream. 
 8-byte `EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE` value (TLV tag 0x0b, `EIFMT_SVAL`) — the per-arch capability
 mask consumed by the Mercury off-target fast-path finalizer (`sub_60F290`, see `../ptxas-mercury`). Decoded
 from the cubins of **both** toolkits (13.0.88 + 13.1.115), the mask is **per-arch**, not a simple on/off:
-**sm_100 = 0x09**, **sm_120 = 0x50**, and **sm_90 / sm_103 / sm_110 / sm_121 = 0x00**. (The earlier
-"0x50 vs 0x00" framing missed the distinct sm_100 = 0x09 value.) The mask is ANDed against the off-target
-capability bits from the Mercury cap-bit table when deciding whether a fast-path off-target finalize is legal.
+**sm_100 = 0x09**, **sm_120 = 0x50**, and **sm_90 / sm_103 / sm_110 / sm_121 = 0x00**. The mask is ANDed
+against the off-target capability bits from the Mercury cap-bit table when deciding whether a fast-path
+off-target finalize is legal.
 
 ## Minimum PTX `.version` per target (`sass_elf_eflags.tsv`, `min_ptx_version` column)
 
@@ -69,7 +69,7 @@ families that requires PTX 9.0; a sub-9.0 `.version` is rejected with
 | `gating_diagnostics.tsv` | target/feature-legality diagnostic format strings |
 | `instruction_legality.tsv` | dump of the instruction-validation dispatch table (VMA 0x22FF020..0x2339DF8): each entry pairs a small instruction-key (`fmt<<8\|minor`) with a `.text` handler pointer; also carries rodata-subtable and special-validation-sentinel entries. This is the per-instruction legality *dispatch table*, not a flat instruction×target matrix |
 
-## New-architecture coverage (this update)
+## New-architecture coverage
 
 sm_110 (Jetson Thor), sm_120 (consumer RTX 50xx / Pro), sm_121 (DGX Spark) — all present in 13.0.88
 ptxas (the `gpu-name` parser accepts `sm_110/120/121` + `a`/`f` variants and compiles real kernels).

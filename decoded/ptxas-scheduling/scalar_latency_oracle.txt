@@ -7,8 +7,8 @@ Loop        : opcode index 0..354 (355 slots), switch on the Ori opcode id.
 
 This is the flattened scalar latency model ptxas's own OCG scheduler consults.
 It is NOT a producer x consumer hazard matrix — that richer form is a build-time
-DSL that is compiled away and ships in no binary. The bands below are transcribed
-verbatim from the decompiled switch body.
+DSL that is compiled away and ships in no binary. The bands below come straight
+from the `sub_738E20` switch body.
 
 band  cycles  meaning                         Ori opcode ids (index into oracle+744)
 ----  ------  ------------------------------  ---------------------------------------
