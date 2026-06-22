@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code; the scheduling
-# model is recovered from static + differential analysis of the CUDA 13.1
-# ptxas / nvdisasm binaries plus live-GPU measurement.
+# nvopen-tools -- SASS reverse-engineering tooling.  The scheduling model is
+# recovered from static + differential analysis of the CUDA 13.1 ptxas /
+# nvdisasm binaries plus live-GPU measurement.
 """
 Basic-block partitioning of a compiled SASS kernel, for the reorder scheduler.
 
@@ -101,7 +101,7 @@ class Block:
     reason: str                # why not reorder-eligible (if reorder_ok False)
     is_target: bool = False    # block leader is an explicit branch target
     # cross-block (loop-carried / fall-through) scoreboard state we must preserve
-    # verbatim through a reorder.  live_in_waits[idx] = set of SBs the consumer
+    # unchanged through a reorder.  live_in_waits[idx] = set of SBs the consumer
     # at `idx` waits on that were armed in an EARLIER block; live_out_arms = SB ids
     # armed in this block that are still live at block exit (consumed in a LATER
     # block), with their last-armer index pinned so the composer keeps the pairing.
@@ -227,7 +227,7 @@ def _classify_block(blk: Block, ctrls: list[Ctrl], targets: set[int]) -> None:
     # Record cross-block scoreboard hazards so the reorder can preserve them:
     #   * a wait on an SB not armed earlier in THIS block is a live-in wait (the
     #     producer is in a previous block / a previous loop iteration).  The
-    #     consumer keeps that wait bit verbatim; we additionally pin its index so
+    #     consumer keeps that wait bit unchanged; we additionally pin its index so
     #     it cannot float ahead of where the live value is guaranteed ready.
     #   * an SB armed in THIS block whose consumer is in a LATER block (a live-out
     #     arm -- e.g. a loop-invariant LDG hoisted into the prologue whose board the

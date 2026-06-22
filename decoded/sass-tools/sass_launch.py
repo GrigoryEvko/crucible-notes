@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code (MIT-style).
-# Built only on the public CUDA Driver API and `cuobjdump`; no vendor source.
+# nvopen-tools -- SASS reverse-engineering tooling (MIT-style).
+# Built on the public CUDA Driver API and `cuobjdump`.
 """
 Generic CUDA cubin **introspect + launch** primitive (pure-Python / ctypes).
 
-The SASS scheduler's correctness gate is V1(ptxas) vs V2(our-reschedule) on the
+The SASS scheduler's correctness gate is V1(ptxas) vs V2(reschedule) on the
 SAME synthesized inputs -> bit-identical output proves the reschedule preserves
-semantics.  To run that gate on *arbitrary* cubins (e.g. real CUTLASS kernels,
-not a hand-wired corpus) we need to (1) discover any kernel's parameter-buffer
-layout, (2) synthesize inputs that let it launch without faulting, (3) launch it
-with a watchdog and per-kernel error capture, and (4) read the result back and
-hash it.  This module is that reusable primitive.
+semantics.  Running that gate on arbitrary cubins (e.g. real CUTLASS kernels,
+not a hand-wired corpus) requires (1) discovering any kernel's parameter-buffer
+layout, (2) synthesizing inputs that let it launch without faulting, (3) launching
+it with a watchdog and per-kernel error capture, and (4) reading the result back
+and hashing it.  This module is that reusable primitive.
 
-WHY ctypes->libcuda (not the C harness)
----------------------------------------
+ctypes->libcuda (not the C harness):
 The Driver API (`cuModuleLoadData` + `cuLaunchKernel`) needs no host-side device
 code, so there is nothing for nvcc/gcc to compile -- it sidesteps the gcc-16 vs
-nvcc host-header clash entirely.  We bind `libcuda.so` directly with ctypes.
+nvcc host-header clash entirely.  `libcuda.so` is bound directly with ctypes.
 
 INTROSPECTION (where the param layout comes from)
 -------------------------------------------------
@@ -50,8 +49,8 @@ This makes most "load -> compute -> store" kernels launch and write into the
 arena.  We then read the arena back and hash it -- that hash is what the V1/V2
 gate compares.
 
-ROBUSTNESS
-----------
+FAULT HANDLING
+--------------
 Each launch runs in a watchdog thread; a CUDA error (illegal address, launch
 failure) or a timeout is caught and turned into a per-kernel verdict
 (`launchable | crashed | timed_out | needs_cluster | skipped`) instead of
@@ -715,17 +714,14 @@ def hash_arena_for(cu: Cuda, cubin_path: str | Path, entry: str,
     return r.out_hash, r
 
 
-# --------------------------------------------------------------------------- #
-# Process-isolated launch (the robust path).                                   #
-#                                                                              #
-# An illegal-address / launch-failed error is STICKY for the whole process in  #
-# the CUDA Driver API -- even cuCtxDestroy + cuCtxCreate keep returning it.    #
-# The only reliable recovery is a fresh process.  So for batch robustness (and #
-# for the V1/V2 gate, where one variant may legitimately fault) we launch each #
-# kernel in its own subprocess: a poisoning kernel kills only that child, and  #
-# the parent reads its verdict + hash from one line of stdout.  A child that   #
-# segfaults / is killed by the driver shows up as a non-zero exit -> `crashed`.#
-# --------------------------------------------------------------------------- #
+# Process-isolated launch.
+# An illegal-address / launch-failed error is STICKY for the whole process in
+# the CUDA Driver API -- even cuCtxDestroy + cuCtxCreate keep returning it. The
+# only reliable recovery is a fresh process, so each kernel launches in its own
+# subprocess (and the V1/V2 gate, where one variant may legitimately fault): a
+# poisoning kernel kills only that child, and the parent reads its verdict + hash
+# from one line of stdout. A child that segfaults / is killed by the driver shows
+# up as a non-zero exit -> `crashed`.
 def launch_isolated(cubin_path: str | Path, entry: str,
                     grid: tuple[int, int, int] | None = None,
                     block: tuple[int, int, int] | None = None,
@@ -735,7 +731,7 @@ def launch_isolated(cubin_path: str | Path, entry: str,
                     device: int = 0) -> LaunchResult:
     """Run a single introspect+launch in a fresh subprocess and parse the result.
 
-    This is the robust primitive the V1/V2 gate uses: call it on V1 and V2 with
+    The V1/V2 gate uses this primitive: call it on V1 and V2 with
     identical (grid, block, scalar_value, arena_bytes) -> the synthesized inputs
     are identical, so a matching `out_hash` proves the reschedule is semantics-
     preserving.  A faulting variant returns verdict=crashed instead of poisoning

@@ -150,7 +150,6 @@ some_docs/
 /decoded/*
 !/decoded/MANIFEST.md
 !/decoded/sm_coverage.md
-!/decoded/blackwell_validation_report.md
 !/decoded/tools
 !/decoded/ptxas-scheduling
 !/decoded/ptxas-tokens

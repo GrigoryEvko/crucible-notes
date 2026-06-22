@@ -10,7 +10,7 @@ with the offending rule and message.
 Two parts:
   1. LegalityChecker -- loads a class's CONDITIONS from a table file and
      evaluates them against an operand environment. Models the four constraint
-     families the task targets:
+     families the tables enforce:
         - OOR_REG_ERROR            (register index in range, != R254)
         - MISALIGNED_REG_ERROR     (sz-driven pair/quad alignment)
         - INVALID_CONST_ADDR_ERROR (const-bank partition + RTV offset cap)

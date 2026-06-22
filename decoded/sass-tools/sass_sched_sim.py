@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SASS warp-issue / timing simulator — binary-derived model.
+SASS warp-issue / timing simulator.
 
 Given a decoded SASS stream (opcode + control word per instruction, as produced
 by `sass_ctrl_decode.py`), this replays the per-warp issue model documented in
@@ -19,13 +19,13 @@ the SASS execution-model wiki page:
 This is a SINGLE-WARP issue/timing model: it produces the lower-bound cycle cost
 of one warp running a basic block back-to-back with no other warp to hide behind.
 Real throughput on a full SM overlaps many warps; the per-warp trace is the unit
-the compiler schedules against, which is what we validate.
+the compiler schedules against.
 
 Variable-latency completion (scoreboard clear) uses a small, configurable
 latency map keyed by the producer mnemonic family; these are *modelling
 defaults*, not recovered constants -- the validated facts are the control-word
 fields themselves (stall, wait-mask, scoreboard ids), which the simulator
-consumes verbatim from real ptxas output.
+consumes as-is from real ptxas output.
 
 Usage:
     python3 sass_sched_sim.py <cubin> [--func NAME] [--json]

@@ -16,7 +16,7 @@ DMCA 17 U.S.C. § 1201(f) (and *Sega v. Accolade*, *Sony v. Connectix*, EU
 2009/24/EC Arts. 5–6) protects the **act of decrypting and studying** a publicly
 distributed binary for interoperability and research, and the **disclosure of the
 circumvention means** to others for that purpose. It does **not** grant a license
-to *redistribute NVIDIA's copyrighted expression verbatim*. So the line we draw:
+to *redistribute NVIDIA's copyrighted expression wholesale*. So the line we draw:
 
 **Published (in git):**
 - **Our decoder/extractor tools** (`tools/`, `ptxas-scheduling/extract_sched_tables.py`).
@@ -31,9 +31,9 @@ to *redistribute NVIDIA's copyrighted expression verbatim*. So the line we draw:
 - The **wholesale decoded NVIDIA data tables** — the PTX-macro pools, the SASS-ISA
   grammar dumps, the cicc name pools. These are NVIDIA-authored creative/compiled
   expression; § 1201(f) lets us decrypt and analyze them, not republish them. Our
-  *analysis* of their contents lives in the wiki as commentary; the verbatim bytes
+  *analysis* of their contents lives in the wiki as commentary; the raw bytes
   stay off-repo.
-- **Third-party material** (redplait's extractor and his decrypted snapshot) — not
+- **Third-party material** (redplait's extractor and his decrypted pool dump) — not
   ours to redistribute.
 
 Anyone can regenerate the local-only outputs from their own CUDA install using the
@@ -71,13 +71,11 @@ out of the user's own binary at run time — it is not shipped here.
 
 ## Published contents
 
-### Top-level reports
+### Top-level report
 - `sm_coverage.md` — SM-version coverage + correctness matrix across every per-arch
-  table in `decoded/`, for the full Blackwell lineup (sm_100/103/110/120/121).
-- `blackwell_validation_report.md` — independent two-oracle (13.0.88 + 13.1.115)
-  cross-validation of every per-arch decoded table; empirically measured ground truth
-  (e_flags, `__CUDA_ARCH__`, max-regs, FP64 DFMA gap, SASS byte-identity), discrepancies
-  flagged against the owning sibling directory.
+  table in `decoded/`, for the full Blackwell lineup (sm_100/103/110/120/121), with the
+  two-oracle (13.0.88 + 13.1.115) ground truth (e_flags, `__CUDA_ARCH__`, max-regs, FP64
+  DFMA gap, SASS byte-identity, ELF-container details).
 
 ### `tools/` — decoders (our code)
 - `decode_pool.py` — reproduces the ptxas/nvlink PTX-macro pool from the on-disk
@@ -143,9 +141,9 @@ out of the user's own binary at run time — it is not shipped here.
   consumer-vs-datacenter move-idiom / integer-ALU differences.
 
 ### `ptxas-encoding-full/` — SASS-encoding dispatch (facts + our tools)
-- The seven per-arch encoder blocks in `.rodata 0x22E7AD0..0x23EFB60`. Prior run
-  covered 5 (sm50_7x/sm75/sm100/sm80_8x/sm86_89); this run adds blocks 6 (sm_110
-  Jetson Thor) and 7 (sm_120/121 consumer Blackwell) — `arch_blocks.tsv`,
+- The seven per-arch encoder blocks in `.rodata 0x22E7AD0..0x23EFB60`: blocks 0–4
+  (sm50_7x/sm75/sm100/sm80_8x/sm86_89), block 6 (sm_110 Jetson Thor) and block 7
+  (sm_120/121 consumer Blackwell) — `arch_blocks.tsv`,
   `new_arch_blocks_sm110_sm120.tsv`, `per_arch_encoder_blocks.tsv` via
   `extract_arch_blocks.py`. Blocks 6/7 share 0 emitters with the classic family
   (disjoint `.text` code). `sass_class_presence_by_arch.tsv` cross-checks ISA-class
@@ -194,8 +192,8 @@ out of the user's own binary at run time — it is not shipped here.
   (+ merged `dependency_rules_all.tsv`), `scoreboard_configs_sm_*.tsv`,
   `scalar_latency_oracle.tsv`, `opcode_pipeline_map.tsv`, `sm_coverage_summary.tsv`,
   `blackwell_consumer_stall_deltas.tsv`. Our code: `render_sched_full.py`,
-  `extract_blackwell_consumer.py`, `measure_blackwell_deltas.py`. Upgrades the
-  representative coverage in `ptxas-scheduling/` to the full set. See README.
+  `extract_blackwell_consumer.py`, `measure_blackwell_deltas.py`. The full set
+  spanning what `ptxas-scheduling/` covers representatively. See README.
 
 ### `ptxas-elf-output/` — device-ELF (cubin) output emitter (facts)
 - What ptxas writes when assembling PTX into a cubin: `section_catalog.tsv` (CUDA
@@ -223,14 +221,13 @@ out of the user's own binary at run time — it is not shipped here.
   `opcode_master_canonical.tsv` (322 canonical opcodes: mnemonic, sm_gen, encoding slot,
   per-family pipeline flags).
 
-### `ptxas-gap-closure/` — confidence-upgrade pass (facts + prose)
-- `resolved_items.tsv` — one row per (item, subitem) resolving the open / MEDIUM-confidence
-  questions from the prior deep-mine, with binary evidence + confidence.
-  `wiki_corrections.md` carries the prose corrections fed back to the wiki.
+### `ptxas-gap-closure/` — resolved ptxas internals (facts)
+- `resolved_items.tsv` — one row per (item, subitem): resolution, binary evidence,
+  and confidence.
 
 ## Local-only outputs (not in git — regenerate with the tools above)
 
-These are produced by the published tools but are NVIDIA's verbatim data tables, so
+These are produced by the published tools but are NVIDIA's data tables, so
 they are git-ignored and not redistributed:
 
 - `ptxas-ptx-macro-pool/`, `nvlink-ptx-macro-pool/` — the decoded printf-template
@@ -244,8 +241,8 @@ they are git-ignored and not redistributed:
   targets, pins cicc to LLVM 21), the Clang `Builtins` table (12,506), and cicc's
   PTX-emission mnemonic dictionary. The LLVM/Clang names are themselves public
   (Apache-2.0) and the PTX mnemonics are documented in NVIDIA's PTX ISA; we keep the
-  bulk verbatim dumps off-repo regardless and cite the facts in the wiki.
-- `reference/` — redplait's `denvdis` extractor and his decrypted pool snapshot
+  bulk dumps off-repo regardless and cite the facts in the wiki.
+- `reference/` — redplait's `denvdis` extractor and his decrypted pool dump
   (third-party; see his blog, not republished here).
 
 ## Provenance / legal

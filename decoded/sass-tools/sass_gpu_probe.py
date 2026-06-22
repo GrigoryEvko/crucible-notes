@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code (MIT-style).
-# Built only on the public CUDA Driver API + ptxas/nvdisasm/cuobjdump; no vendor source.
+# nvopen-tools -- SASS reverse-engineering tooling.  Built on the public CUDA
+# Driver API + ptxas/nvdisasm/cuobjdump.
 """GPU differential-test harness for SASS integer/logic functional models.
 
 The functional model in `sass_sem_int` claims a closed-form bit-exact result for

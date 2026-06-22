@@ -1,5 +1,5 @@
-# Coupled-math issue-relative stall matrix -- recovered by differential analysis
-# of CUDA 13.1 ptxas-emitted SASS (no vendor table bytes; this is our own result).
+# Coupled-math issue-relative stall matrix, recovered by differential analysis
+# of CUDA 13.1 ptxas-emitted SASS.
 #
 # A coupled (fixed-latency) producer resolves a RAW with a usched stall whose
 # magnitude is set by the producer pipe and the consumer pipe.  ptxas's OCG
@@ -39,8 +39,8 @@ sm7x	FP16	FP16	6
 #
 # -- cross-pipe coupled math (a different math family): +1 inter-pipe penalty.
 #    The integer multiplier (IMAD) and the integer ALU (IADD3/LOP3/SHF) are
-#    distinct pipes; a result crossing between them costs 5 (binary-confirmed on
-#    every arch: IMAD->IMAD = 4 but IMAD->LOP3/SHF = 5, and IADD3->IMAD = 5).
+#    distinct pipes; a result crossing between them costs 5 on every arch
+#    (IMAD->IMAD = 4 but IMAD->LOP3/SHF = 5, and IADD3->IMAD = 5).
 *	INT	IMUL	5
 *	IMUL	INT	5
 *	FMA	CC	5
@@ -57,10 +57,10 @@ sm7x	FP16	FP16	6
 #   int -> coupled int->float conversion (I2FP): the integer ALU (IADD3/LOP3/
 #   SHF) feeds the converter at 4 on sm_86..sm_100, widening to 5 on sm_120.  The
 #   integer MULTIPLIER (IMAD/IMUL) is a distinct pipe one stage further from the
-#   converter, so IMUL -> CVT is a full cross-pipe edge (5) on every arch --
-#   differentially confirmed on sm_89: `IMAD Rd,... ; I2FP.F32.S32 Re, Rd` runs
-#   bit-identical only at stall 5; at 4 the I2FP reads a stale Rd.  (I2FP is
-#   absent on sm7x -- there the conversion is decoupled I2F, handled as CVTI.)
+#   converter, so IMUL -> CVT is a full cross-pipe edge (5) on every arch:
+#   `IMAD Rd,... ; I2FP.F32.S32 Re, Rd` runs bit-identical only at stall 5; at 4
+#   the I2FP reads a stale Rd.  (I2FP is absent on sm7x -- there the conversion
+#   is decoupled I2F, handled as CVTI.)
 sm120	INT	CVT	5
 sm121	INT	CVT	5
 *	INT	CVT	4

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code (MIT-style).
-# Built only on the public CUDA Driver API + ptxas/nvdisasm/cuobjdump; no vendor source.
+# nvopen-tools -- SASS reverse-engineering tooling (MIT-style).
+# Built on the public CUDA Driver API + ptxas/nvdisasm/cuobjdump.
 """Bit-exact closed-form functional model of the SASS integer/logic datapath.
 
 Every function here reproduces one SASS instruction's result *exactly* -- the
-closed-form computation the silicon performs, not an enumerated table.  Each was
+closed-form computation the silicon performs, not an enumerated table.  Each is
 confirmed against `ptxas -arch sm_89` SASS plus live-GPU readback over an
 edge-case corpus (0, +/-1, INT_MIN/MAX, carry boundaries, shift>=32, every PRMT
 selector nibble); run this module's `__main__` to re-run that differential gate.
 
-Recovered from static analysis of the CUDA 13.x ptxas/nvdisasm instruction
-tables (operand fields + modifier enums) and pinned bit-for-bit on the GPU.  The
-integer/logic ISA is Volta-class and stable Volta..Blackwell, so the sm_89
-ground-truth holds for every arch that shares this encoder family.
+Derived from the CUDA 13.x ptxas/nvdisasm instruction tables (operand fields +
+modifier enums) and pinned bit-for-bit on the GPU.  The integer/logic ISA is
+Volta-class and stable Volta..Blackwell, so the sm_89 ground-truth holds for
+every arch that shares this encoder family.
 
 Conventions
 -----------
@@ -21,9 +21,9 @@ Conventions
   reinterpret a masked uint as two's-complement signed.
 * Carry-in / carry-out predicates are 0/1 ints; ops that take or emit them
   expose them as explicit parameters / extra return values.
-* The four ops already in `sass_legality` (iadd3 base / lop3 / shf / prmt
-  default) are SUPERSEDED here with the full-modifier versions; `sass_legality`
-  keeps its minimal copies for its own self-test, this is the complete model.
+* The four ops also in `sass_legality` (iadd3 base / lop3 / shf / prmt default)
+  appear here in their full-modifier versions; `sass_legality` keeps minimal
+  copies for its own self-test, and this is the complete model.
 """
 from __future__ import annotations
 
@@ -262,7 +262,8 @@ def lea(a: int, b: int, shift: int) -> int:
     """LEA Rd, Ra, Rb, shift  ->  ((Ra << shift) + Rb) mod 2^32.
 
     Scaled add: Ra is left-shifted by `shift` (0..31) then added to Rb.  This
-    is ptxas's primary address/index-scale primitive (supersedes the old SHL+IADD).
+    is ptxas's primary address/index-scale primitive, folding a shift and add
+    into one instruction.
     """
     return ((u32(a) << (shift & 31)) + u32(b)) & M32
 

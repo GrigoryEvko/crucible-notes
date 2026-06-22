@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code (MIT-style).
+# nvopen-tools -- SASS reverse-engineering tooling (MIT-style).
 # Built on the public CUDA Driver API + cuobjdump/nvdisasm and live-GPU
-# measurement; no vendor source.
+# measurement.
 """
 Bit-exact **32-lane warp-collective + MMA-fragment functional model** for the
 NVIDIA SASS warp datapath (Volta..Ada; the uniform/cluster extensions of
 Hopper/Blackwell are noted where they change the lowering).
 
-WHY THIS EXISTS
----------------
-The SASS scheduler/recompose work (``sass_scheduler.py``) proves a reschedule
-preserves semantics by a V1(ptxas) vs V2(ours) bit-compare of the launched
-kernel's output.  That gate only covers what a kernel *computes*; it says
-nothing about whether our *model* of a warp-collective instruction is correct.
-This module closes that: it is a closed-form, per-lane reference implementation
-of every warp-wide instruction ptxas emits --
+A closed-form, per-lane reference implementation of every warp-wide instruction
+ptxas emits --
 
     VOTE / VOTEU (.all/.any/.ballot/.uni)        -> SASS VOTE / VOTEU
     SHFL (.idx/.up/.down/.bfly)                  -> SASS SHFL  (+ in-range pred)

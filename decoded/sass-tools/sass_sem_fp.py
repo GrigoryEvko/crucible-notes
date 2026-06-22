@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code (MIT-style).
-# Built only on public CUDA tools (ptxas/nvdisasm/libcuda) + live-GPU measurement;
-# no vendor source.
+# nvopen-tools -- SASS reverse-engineering tooling (MIT-style).
+# Built on the public CUDA tools (ptxas/nvdisasm/libcuda) + live-GPU measurement.
 """
 Bit-exact IEEE-754 functional model for the floating-point SASS instruction set.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SASS control-word decoder — binary-derived from ptxas-emitted cubins.
+SASS control-word decoder.
 
 Reads `nvdisasm -c -hex <cubin>` output and reconstructs, for each instruction,
 the scheduling-control word that ptxas computed. Field bit-positions are the
@@ -22,9 +22,8 @@ usched_info decode (per the SASS-table enum):
     17..27       -> stall n-16, no group-end          (Wn)
     16           -> reserved/unused in practice
 
-This is a facts extractor: no NVIDIA table text is reproduced; only the bit
-positions (already documented in the wiki) and the decoded per-instruction
-control values from compiler output are emitted.
+Emits the bit positions and the decoded per-instruction control values from
+compiler output.
 """
 from __future__ import annotations
 import re

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  MIT-style: our code; the
-# scheduling model below is recovered from static + differential analysis of the
-# CUDA 13.1 ptxas / nvdisasm binaries.  This module loads the *local* decoded
-# tables at runtime (no vendor table text or matrices are duplicated here).
+# nvopen-tools -- SASS reverse-engineering tooling.  The scheduling model below is
+# recovered from static + differential analysis of the CUDA 13.1 ptxas / nvdisasm
+# binaries.  This module loads the decoded tables at runtime.
 """
 Per-(arch, SASS-class) scheduling model -- the lookup the scheduler consumes.
 
@@ -22,11 +21,11 @@ Bridges two binary-derived keyings into one cached per-arch model:
 The join key from a SASS mnemonic to the oracle's Ori-opcode band is the
 mnemonic itself (the oracle's best-effort name column).  The coupled-math
 issue-relative stall (4 same-pipe / 5 cross-pipe / 6 to a slow input / 8 the
-Turing pre-AGU slot / 13 CC-pred) is NOT a single table cell -- ptxas's OCG
+Turing pre-AGU slot / 13 CC-pred) is not a single table cell -- ptxas's OCG
 scheduler derives it from the producer's result band and the consumer's
-operand-collect timing.  We recover those constants by differential analysis of
-emitted SASS and ship them as a small per-(family, prod-pipe, cons-pipe) matrix
-(coupled_stall_matrix.tsv) -- our own result, not vendor bytes.
+operand-collect timing.  Those constants come from differential analysis of
+emitted SASS, held as a per-(family, prod-pipe, cons-pipe) matrix
+(coupled_stall_matrix.tsv).
 
 Everything is cached per arch.
 """
@@ -43,12 +42,10 @@ SCHED_DIR = HERE.parent / "ptxas-sched-full"
 STALL_MATRIX = HERE / "coupled_stall_matrix.tsv"
 
 
-# =============================================================================
 # Pipe families.  A coupled-math op resolves a RAW with a fixed issue-relative
 # stall whose magnitude depends on the producer pipe and the consumer pipe.
-# These family names are our classification; the *membership* is derived from
-# the SASS-table mnemonic / INSTRUCTION_TYPE and the oracle band.
-# =============================================================================
+# Membership is derived from the SASS-table mnemonic / INSTRUCTION_TYPE and the
+# oracle band.
 
 # Coupled-math pipe family by mnemonic (the in-order math pipes; the SASS tables
 # leave VIRTUAL_QUEUE unset for coupled ops, so the pipe is derived here from the
@@ -143,9 +140,7 @@ def consumer_pipe(mnem: str, cm: "ClassModel | None" = None) -> str:
     return coupled_pipe(mnem)
 
 
-# =============================================================================
 # Arch family (the latency tables are shared per family).
-# =============================================================================
 
 def arch_family(arch: str) -> str:
     """Latency-descriptor family for an arch: sm_7x / sm_8x / sm_10x.
@@ -174,9 +169,7 @@ def _arch_num(arch: str) -> int:
     return int(m.group(1)) if m else 89
 
 
-# =============================================================================
 # Scalar latency oracle: Ori-opcode -> result band {6,13,24,30,300}.
-# =============================================================================
 
 @lru_cache(maxsize=1)
 def _load_oracle() -> dict[str, int]:
@@ -231,10 +224,8 @@ def result_band(mnem: str) -> int:
     return 6   # default ALU band (binary anchor)
 
 
-# =============================================================================
 # Per-arch class model: mnemonic -> {coupled, itype, min_wait, scbd arming,
-# pipe, band}.  Parsed from the local decoded SASS-ISA table.
-# =============================================================================
+# pipe, band}.  Parsed from the decoded SASS-ISA table.
 
 @dataclass
 class ClassModel:
@@ -346,9 +337,7 @@ def load_arch_model(arch: str) -> dict[str, ClassModel]:
     return out
 
 
-# =============================================================================
-# Per-arch dependency-rule join (optional richer model).
-# =============================================================================
+# Per-arch dependency-rule join.
 
 @lru_cache(maxsize=None)
 def load_dependency_rules(arch: str) -> list[dict]:
@@ -366,8 +355,8 @@ def load_dependency_rules(arch: str) -> list[dict]:
         return []
     rows: list[dict] = []
     with path.open() as fh:
-        # Skip leading provenance/comment lines (the sm_110/120/121 files carry a
-        # `#`-prefixed header recording that they share the sm_103 Blackwell table);
+        # Skip leading comment lines (the sm_110/120/121 files carry a
+        # `#`-prefixed header noting they share the sm_103 Blackwell table);
         # the first non-comment line is the column header.
         hdr: list[str] | None = None
         for ln in fh:
@@ -383,10 +372,8 @@ def load_dependency_rules(arch: str) -> list[dict]:
     return rows
 
 
-# =============================================================================
 # Coupled-stall matrix: (family, prod_pipe, cons_pipe) -> issue-relative stall.
-# Loaded from the local TSV (our own differential-analysis result).
-# =============================================================================
+# Loaded from the TSV (differential-analysis result).
 
 @lru_cache(maxsize=1)
 def _load_stall_matrix() -> dict[tuple[str, str, str], int]:

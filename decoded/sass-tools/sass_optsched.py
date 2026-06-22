@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code; the scheduling
-# model is recovered from static + differential analysis of the CUDA 13.1
-# ptxas / nvdisasm binaries plus live-GPU measurement.
+# nvopen-tools -- SASS reverse-engineering tooling.  The scheduling model is
+# recovered from static + differential analysis of the CUDA 13.1 ptxas /
+# nvdisasm binaries plus live-GPU measurement.
 """
 Constraint-optimal per-basic-block SASS instruction-reorder scheduler.
 
@@ -83,9 +83,7 @@ Z3_MAX_INSTR = 32        # only run the exact solver on blocks this small
 Z3_TIMEOUT_MS = 8000     # per-block Z3 budget
 
 
-# =============================================================================
 # Per-block edge model: order edges + latency edges, restricted to a block.
-# =============================================================================
 
 @dataclass
 class BlockModel:
@@ -229,9 +227,7 @@ def _critical_lengths(size: int, lat: list[list[tuple[int, int]]]) -> list[int]:
     return crit
 
 
-# =============================================================================
-# List scheduler (the workhorse).
-# =============================================================================
+# List scheduler.
 
 @dataclass
 class Schedule:
@@ -310,9 +306,7 @@ def ptxas_schedule(m: BlockModel) -> Schedule:
     return Schedule(order, issue, makespan, "ptxas")
 
 
-# =============================================================================
 # Z3 exact makespan minimiser.
-# =============================================================================
 
 def z3_schedule(m: BlockModel, upper: int) -> Schedule | None:
     """Exact integer-cycle makespan minimiser via Z3-Opt.
@@ -352,9 +346,7 @@ def z3_schedule(m: BlockModel, upper: int) -> Schedule | None:
     return Schedule(order, issue, makespan, "optimal")
 
 
-# =============================================================================
 # Per-block driver: pick the best schedule.
-# =============================================================================
 
 @dataclass
 class BlockResult:

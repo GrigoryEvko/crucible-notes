@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  MIT-style: our code; the
-# scheduling model below is recovered from static + differential analysis of the
-# CUDA 13.1 ptxas / nvdisasm binaries (no vendor table text or matrices ship here).
+# nvopen-tools -- SASS reverse-engineering tooling.  MIT-style.  The scheduling
+# model below is recovered from static + differential analysis of the
+# CUDA 13.1 ptxas / nvdisasm binaries.
 """
 SASS instruction-scheduling **composer / decomposer** across abstraction layers.
 
@@ -1151,7 +1151,7 @@ def patch_cubin(src: str, dst: str, entry: str,
 
     Returns the number of instruction words patched.  Each 16-byte word's
     scheduling control bits are cleared and replaced by pack_control(fields[k]);
-    all other bits (opcode, operands, reuse, pm_pred) are preserved verbatim.
+    all other bits (opcode, operands, reuse, pm_pred) are preserved unchanged.
     """
     data = bytearray(Path(src).read_bytes())
     off, size = _text_section_span(Path(src), entry)
@@ -1613,19 +1613,17 @@ def build_amp_corpus(workdir: Path, arch: str,
 
     Returns [(name, cubin)].  `opt` is a ptxas optimisation flag, default -O1.
 
-    WHY THE DEFAULT IS -O1, AND WHY WE ALSO EXPOSE -O3
-    --------------------------------------------------
+    The -O1/-O3 split:
     At -O1 ptxas does not unroll these tiny loops; an unrolled body would fold the
     loop back-edge into a straight chain the linear-DAG composer can under-stall,
-    so the per-instruction surgical V2 stays sound on the rolled loop.  BUT -O1 is
-    not what production code is built at -- to claim a stall is *real ptxas waste*
-    the honest comparison is against ptxas -O3 (its best schedule).  These probe
-    bodies each carry a global store to one of 8 addresses, so ptxas does NOT
-    unroll them at -O3 either (verified: same instruction count, the rolled loop
-    survives), which means the surgical V2 is sound at -O3 as well.  Callers that
+    so the per-instruction surgical V2 stays sound on the rolled loop.  A claim
+    that a stall is real ptxas waste is compared against ptxas -O3 (its best
+    schedule).  These probe bodies each carry a global store to one of 8 addresses,
+    so ptxas does not unroll them at -O3 either (same instruction count, the rolled
+    loop survives), so the surgical V2 is sound at -O3 as well.  Callers that
     measure waste (perf_diff) drive opt="-O3"; --stall-profile keeps -O1 (it only
     needs PC-sample density, and the -O1 body has the fixed PC layout the profile
-    cross-map expects).  A probe that DID unroll at -O3 would be skipped by the
+    cross-map expects).  A probe that unrolls at -O3 is skipped by the
     per-iteration soundness check in perf_diff, not silently mismeasured."""
     workdir.mkdir(parents=True, exist_ok=True)
     smnum = arch.lower().replace("sm", "").lstrip("_")
