@@ -8,6 +8,16 @@
 # by decoding the producer's emitted usched on immediate (gap=1) dependent pairs
 # across sm_75..sm_120.
 #
+# sm8x rows are GPU-verified on sm_89 silicon (coupled_stall_probe.py): a strict
+# dependent producer->consumer chain is launched, its read-back hash captured,
+# then the producer-edge stall is patched DOWN in the .text and re-launched until
+# the hash races -- the smallest still-correct stall is the exact hardware floor.
+# The integer-ALU forwarding edges (INT/IMUL, same- and cross-pipe) carry a real
+# 4-cycle floor; the FP32/FP16/convert/predicate operand collectors latch their
+# input within the warp re-issue cadence, so a same-warp dependent read of those
+# never races below ptxas's emitted stall -- those rows hold ptxas's value as the
+# multi-warp-safe scheduling minimum rather than the looser same-warp floor.
+#
 # Columns: family  prod_pipe  cons_pipe  stall
 #   family    : latency-descriptor family (sm7x = sm_60/70/72/75;
 #               sm8x = sm_80/86/89/90/90a; sm10x = sm_100/103/110/120/121; * = any)
@@ -39,8 +49,18 @@ sm7x	FP16	FP16	6
 #
 # -- cross-pipe coupled math (a different math family): +1 inter-pipe penalty.
 #    The integer multiplier (IMAD) and the integer ALU (IADD3/LOP3/SHF) are
-#    distinct pipes; a result crossing between them costs 5 on every arch
-#    (IMAD->IMAD = 4 but IMAD->LOP3/SHF = 5, and IADD3->IMAD = 5).
+#    distinct pipes; ptxas emits 5 for a result crossing between them (IMAD->IMAD
+#    = 4 but IMAD->LOP3/SHF = 5, and IADD3->IMAD = 5).  GPU measurement on sm_89
+#    shows the integer cross edge is hardware-safe at 4, not 5: a strict
+#    dependent chain `LOP3 ; IMAD` (and `IMAD ; LOP3`) with the producer stall
+#    patched down stays bit-identical at 4 and only races at 3, holding from one
+#    warp up to a full 1024-thread block (32 warps, operand-collector saturated).
+#    ptxas over-stalls this edge by 1; the GPU-verified minimum 4 equals the
+#    same-pipe integer forwarding floor.  Tightened for the sm8x family (the
+#    measured silicon); the cross-arch `*` row keeps the conservative 5 for the
+#    unmeasured Blackwell branch.
+sm8x	INT	IMUL	4
+sm8x	IMUL	INT	4
 *	INT	IMUL	5
 *	IMUL	INT	5
 *	FMA	CC	5
