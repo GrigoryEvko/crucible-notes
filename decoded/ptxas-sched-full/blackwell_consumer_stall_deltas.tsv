@@ -30,7 +30,7 @@ op	sm_100(GB100)	sm_103(GB300)	sm_120/121(consumer)	sm_110(Thor)	note
 DFMA	c (coupled)	D (decoupled)	D (decoupled)	D (decoupled)	FP64: GB100 keeps DFMA coupled (full-rate); all others decouple it
 DADD	c (coupled)	D (decoupled)	D (decoupled)	D (decoupled)	FP64: same split as DFMA -- intrinsic, invariant to the consumer
 F2F.F32.F64	D18	D15	D15	D15	f32->f64 widen: GB100 producer usched 18 vs 15 elsewhere (both decoupled)
-FSETP	c4	c4	c5	c5	fp predicate: consumer Blackwell (sm_120/121) +1; holds across gt/geu/lt/eq + pressure
+FSETP	c4	c4	c5	c4	fp predicate: consumer Blackwell (sm_120/121) +1 only; sm_110(Thor)=4 like sm_100/103; holds across gt/geu/lt/eq + pressure
 #
 # FP64 RATE FLOOR (dependent back-to-back DFMA chain, byte gap between issues) -------
 # op	sm_100	sm_103	sm_120	sm_121	sm_110

@@ -27,8 +27,8 @@ Side table:
 Anchor cross-checks (architecturally stable, Volta -> Hopper):
   - default ALU baseline = 6   (FXU register-to-register)
   - long memory miss     = 300 (unresolved-space global load)
-These two anchors are the load-bearing fixed points; the 13 / 24 / 30 bands are
-ptxas-internal OCG scalars and need not equal any single matrix cell.
+These two anchors are the architecturally fixed reference points; the 13 / 24 / 30
+bands are ptxas-internal OCG scalars and need not equal any single matrix cell.
 
 Naming note: the index space is the Ori opcode id (the value ptxas masks out of
 instr+72 as *(instr+72) & 0xFFFFCFFF), NOT the SASS scheduling class. Mnemonics
