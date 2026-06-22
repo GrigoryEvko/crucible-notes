@@ -129,14 +129,20 @@ def extract(path, tables=None):
     return rows
 
 
+def _tsv_clean(s: str) -> str:
+    """Escape embedded control chars so each record stays on one TSV row
+    (GFM-renderable): real newlines/tabs/CRs become two-char ``\\n``/``\\t``/``\\r``."""
+    return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\r", "\\r").replace("\n", "\\n")
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "../../ptxas/ptxas"
     auto = "--auto" in sys.argv
     rows = extract(path, None if auto else TABLES_13_0_88)
-    w = csv.writer(sys.stdout, delimiter="\t")
+    w = csv.writer(sys.stdout, delimiter="\t", lineterminator="\n")
     w.writerow(["table", "id", "severity_code", "severity", "message", "source"])
     for comp, idx, sev, name, msg in rows:
-        w.writerow([comp, idx, sev, name, msg, "plaintext"])
+        w.writerow([comp, idx, sev, name, _tsv_clean(msg), "plaintext"])
 
 
 if __name__ == "__main__":

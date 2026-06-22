@@ -7,8 +7,8 @@ e_flags bits24..31	0x06	0x06	0x06	high format byte; constant 0x06 across all thr
 e_ident[EI_OSABI]	0x41	0x41	0x41	unchanged across arch (13.0.88 OSABI tag)
 e_ident[EI_ABIVERSION]	0x08	0x08	0x08	unchanged across arch
 e_machine	190	190	190	EM_CUDA
-.note.nv.cuinfo virtualSM	100	100	100	u16 in cuinfo desc; = 100 (compute_100 family base) for ALL Blackwell, NOT the -arch SM — cuobjdump-confirmed on both 13.0.88 and 13.1.115
-.note.nv.cuinfo CUDA-API-version	130	130	130	u32; CUDA 13.0 -> 130 (toolkit-keyed, not arch-keyed)
+.note.nv.cuinfo virtualSM	110	120	121	u16 in cuinfo desc = the -arch SM number (sm_110->110, sm_120->120, sm_121->121); cuobjdump "CUDA Virtual SM" confirms on both 13.0.88 and 13.1.115. raw desc u16[1]: 0x6e/0x78/0x79
+.note.nv.cuinfo CUDA-API-version	130	130	130	u32; CUDA 13.0.88 -> 130 (toolkit-keyed, not arch-keyed); system 13.1.115 emits 131
 .note.nv.cuinfo noteVer	2	2	2	cuinfo note version
 EICOMPAT ISA_CLASS (attr 2)	0x01	0x01	0x01	BVAL; arch-variant selector (carries a/f distinction)
 EICOMPAT TCGEN05_MMA (attr 5)	0x05	0x05	0x05	all three are tcgen05-class (Blackwell tensor core)

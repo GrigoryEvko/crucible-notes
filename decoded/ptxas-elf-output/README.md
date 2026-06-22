@@ -78,9 +78,10 @@ architecture-dependent output is in the ELF container — captured field-by-fiel
 
 `e_flags` differs only in the real-SM byte (bits 8–15): `0x6e`/`0x78`/`0x79` for
 sm_110/120/121; the variant nibble (bits 0–7) is `0x02` on all three (Blackwell-class).
-`.note.nv.cuinfo` virtualSM = **100** (the `compute_100` family base) on all three — NOT
-the `-arch` SM (cuobjdump-confirmed on both 13.0.88 and 13.1.115); its CUDA-API word is
-`130` on all three (toolkit-keyed, not arch-keyed). sm_110 requires PTX `.version 9.0`;
+`.note.nv.cuinfo` virtualSM = the **`-arch` SM number** (sm_110→110/0x6e, sm_120→120/0x78,
+sm_121→121/0x79) — cuobjdump's "CUDA Virtual SM" line confirms on both 13.0.88 and 13.1.115;
+its CUDA-API word is `130` on 13.0.88 (toolkit-keyed, not arch-keyed; system 13.1.115 emits
+`131`). sm_110 requires PTX `.version 9.0`;
 sm_120/121 accept `8.8`. The `.text` is byte-identical for `sm_120`/`sm_121` generally
 (and `sm_120a`); `sm_110` matches only trivial samples — arith/isel kernels diverge
 (`sm_110 IADD3` vs `sm_120 IADD`).

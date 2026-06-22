@@ -105,9 +105,11 @@ per-arch decision is the **off-target family-compatibility check** in the fast-p
   the capsule's capability mask.
 - Recovered cap-bits (CUDA-13 has these for the Blackwell/Thor families): **sm_100 = 0x01**,
   **sm_103 = 0x08**, **sm_110 = 0x02** (also reached by the `sm_101→110` normalize), the
-  **sm_104/sm_120 family slot = 0x10**, **sm_121 = 0x40**. The raw `sm_120` index (0x14) returns 0
-  because sm_120 is reached through the `104↔120` family alias. `sm_101` is a phantom (no real arch in
-  13.0.88) that exists only as a normalize source folding into sm_110.
+  **raw-sm_104 slot (index 0x04) = 0x10**, **sm_121 = 0x40**. The `sm_120` index (0x14) returns 0,
+  and because the normalize ladder folds `104→120` *before* the table lookup, both sm_120 and sm_104
+  land on index 0x14 → cap-bit **0x00**; the 0x10 slot at index 0x04 is only live for an
+  un-normalized raw `target_sm = 0x68`. `sm_101` is a phantom (no real arch in 13.0.88) that exists
+  only as a normalize source folding into sm_110.
 
 ## Confidence
 
