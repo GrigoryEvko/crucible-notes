@@ -41,9 +41,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Constants -- all from prior static analysis of ptxas 13.0.88.
-# ---------------------------------------------------------------------------
+# Constants from static analysis of ptxas 13.0.88.
 RODATA_VMA = 0x1CE2E00          # .rodata virtual address
 RODATA_FILE_OFF = 0x18E2E00     # .rodata file offset (delta 0x400000)
 
@@ -188,9 +186,7 @@ def main() -> int:
 
     OUT_TSV.write_text("\n".join(tsv_lines) + "\n")
 
-    # ---------------------------------------------------------------------
     # SUMMARY
-    # ---------------------------------------------------------------------
     print("=" * 78)
     print("PTXAS PER-ARCH SASS-ENCODING DISPATCH BLOCKS -- SUMMARY")
     print("ptxas 13.0.88  .rodata region 0x22E7AD0 .. 0x23EFB60")
