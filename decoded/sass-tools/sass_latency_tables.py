@@ -199,17 +199,24 @@ def _load_oracle() -> dict[str, int]:
     return out
 
 
-# The default result bands when the oracle has no explicit row: 6 for ALU/math,
-# the variable bands for memory / SFU resolved through scoreboards.  These are
-# the binary-confirmed anchors (ALU=6, long-memory=300).
+# Result-latency bands (cycles) when the oracle has no explicit row.  ALU/math
+# anchor at 6; the longer ones are completion latencies measured directly on the
+# sm_89 GPU (clock-delta timing of a producer->consumer pair, scoreboard wait
+# intact).  These weight the critical path; correctness is carried by the
+# scoreboard model, not these numbers.  Per-tier / per-scoreboard detail lives in
+# ../ptxas-sched-full/{decoupled_scalar_latency,memory_latency,tensor_latency}.tsv.
+#
+# Global loads stay at the representative 300 (the measured tiers are L1-hit 35 /
+# L2 152 / DRAM-miss 606 -- 300 is the mid-weight; the tiers are in the tsv).
+# Stores are fire-and-forget (1).  CS2R is coupled (no scoreboard) -> 11.
 _DEFAULT_BAND = {
     "LDG": 300, "LD": 300, "LDL": 300, "LDGSTS": 300, "ATOMG": 300, "ATOM": 300,
     "TEX": 300, "TLD": 300, "TXD": 300, "SULD": 300,
-    "LDS": 30, "LDSM": 30, "STS": 1, "STG": 1, "STL": 1, "ST": 1, "RED": 1,
-    "LDC": 24, "ULDC": 24, "S2R": 24, "S2UR": 24, "CS2R": 24, "BREV": 24,
-    "MUFU": 24, "F2F": 13, "F2I": 13, "I2F": 13, "I2I": 13, "POPC": 13,
-    "FLO": 13, "PRMT": 6,
-    "HMMA": 13, "IMMA": 13, "DMMA": 13, "BMMA": 13, "OMMA": 13,
+    "LDS": 24, "LDSM": 24, "STS": 1, "STG": 1, "STL": 1, "ST": 1, "RED": 1,
+    "LDC": 30, "ULDC": 30, "S2R": 30, "S2UR": 30, "CS2R": 11, "BREV": 29,
+    "MUFU": 36, "F2F": 34, "F2I": 34, "I2F": 34, "I2I": 13, "POPC": 29,
+    "FLO": 29, "PRMT": 6,
+    "HMMA": 27, "IMMA": 27, "DMMA": 26, "BMMA": 27, "OMMA": 27,
 }
 
 
