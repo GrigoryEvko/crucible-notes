@@ -7,7 +7,7 @@ e_flags bits24..31	0x06	0x06	0x06	high format byte; constant 0x06 across all thr
 e_ident[EI_OSABI]	0x41	0x41	0x41	unchanged across arch (13.0.88 OSABI tag)
 e_ident[EI_ABIVERSION]	0x08	0x08	0x08	unchanged across arch
 e_machine	190	190	190	EM_CUDA
-.note.nv.cuinfo virtualSM	110	120	121	u16 in cuinfo desc; tracks -arch SM
+.note.nv.cuinfo virtualSM	100	100	100	u16 in cuinfo desc; = 100 (compute_100 family base) for ALL Blackwell, NOT the -arch SM — cuobjdump-confirmed on both 13.0.88 and 13.1.115
 .note.nv.cuinfo CUDA-API-version	130	130	130	u32; CUDA 13.0 -> 130 (toolkit-keyed, not arch-keyed)
 .note.nv.cuinfo noteVer	2	2	2	cuinfo note version
 EICOMPAT ISA_CLASS (attr 2)	0x01	0x01	0x01	BVAL; arch-variant selector (carries a/f distinction)
@@ -20,5 +20,5 @@ EICOMPAT CAN_FASTPATH_FINALIZE (attr 11, 8B)	0x0000000000000000	0x00000000000000
 GB10B reserved-SMEM workaround symbol	__nv_reservedSMEM_gb10b_war_var (PRESENT)	(absent)	(absent)	Thor/GB10-class silicon WAR; literal string in ptxas .rodata
 .nv.shared.reserved.0 section	PRESENT	(absent)	(absent)	shared-memory backing for the gb10b WAR variable
 symtab symbol count (sample vadd kernel)	12	10	10	sm_110 carries the 2 extra GB10B-WAR symbols above
-SASS encoding (sample kernel)	identical	identical	identical	sm_110==sm_120==sm_121 byte-for-byte in .text; sm_120a==sm_120 too
+SASS encoding	identical*	identical	identical	sm_120≡sm_121 byte-identical in .text (general; sm_120a==sm_120). *sm_110 matches only for trivial samples — arith/isel kernels diverge (sm_110 IADD3 vs sm_120 IADD)
 min PTX .version to target	9.0	8.8	8.8	sm_110 requires PTX 9.0; sm_120/121 accept 8.8+
