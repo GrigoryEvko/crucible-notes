@@ -20,7 +20,7 @@ sm_id	sm_string	arch_family	version_code_base	sched_gen_code
 89	sm_89	Ada	(no base code in table)	7
 90	sm_90	Hopper	0x9000	8
 100	sm_100	Blackwell	__CUDA_ARCH__=1000	8
-101	sm_101	Blackwell	NOT PRESENT in ptxas 13.0.88 (no arch string; -arch=sm_101 rejected by gpu-name parser)	8
+101	sm_101	Blackwell	internal enum slot only (sm-id array idx 29 + regclass selector 0x5001); NO __CUDA_ARCH__ string; -arch=sm_101 REJECTED by gpu-name parser ("not defined for option 'gpu-name'")	8
 110	sm_110	Thor	__CUDA_ARCH__=1100	9
 103	sm_103	Blackwell	__CUDA_ARCH__=1030	8
 120	sm_120	Blackwell	__CUDA_ARCH__=1200	8
