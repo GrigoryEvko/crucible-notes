@@ -32,8 +32,7 @@ def extract_class_table(rodata: bytes):
 
 # Binary-derived per-opcode scalar latency oracle (sub_738E20, sm_9x / Blackwell
 # family). The constructor switches on the Ori opcode id (index into the
-# oracle+744 DWORD array, read back by sub_8BF3A0). Bands transcribed from the
-# decompiled switch body, verbatim:
+# oracle+744 DWORD array, read back by sub_8BF3A0). Per-band Ori-opcode sets:
 ORACLE_BANDS = {
     300: {16, 223, 228},                                   # long global-memory miss
      24: {17, 42, 53, 55, 91, 183, 195},                   # SFU / slow-MIO
