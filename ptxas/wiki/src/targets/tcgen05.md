@@ -408,7 +408,7 @@ The `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` attribute tags objects compiled 
 
 ### SM 100 vs SM 103 Differences
 
-Both sm_100 and sm_103 share the same tcgen05 instruction set and codegen factory (36864). They share all 7 dispatch-table handler functions. The differences between sm_100 and sm_103 are:
+Both sm_100 and sm_103 share the same tcgen05 instruction set, but they have **distinct** internal profile codes (sm_100=`0x9000`/36864, sm_103=`0x9003`/36867) and distinct per-SM dispatch-table handler functions. The differences between sm_100 and sm_103 are:
 
 - Different Handler A and Handler B capability accessor functions (sm_100: `sub_609C30`/`sub_609BD0`; sm_103: `sub_608F20`/`sub_609D20`)
 - Different intrinsic table initializers (sm_100: `sub_60A910`; sm_103: `sub_60A700`)

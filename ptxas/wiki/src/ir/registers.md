@@ -425,9 +425,9 @@ Each instruction operand is encoded as a 32-bit packed value in the operand arra
 ```text
  31   30  29  28  27            24  23  22  21  20  19                  0
 +----+---+---+---+---------------+---+---+---+---+---------------------+
-|sign|     type  |  modifier (8) |                index (20)           |
+|def |     type  |  modifier (8) |                index (20)           |
 +----+---+---+---+---------------+---+---+---+---+---------------------+
- bit 31: sign/direction flag          bits 0-19: register/symbol index
+ bit 31: OPD_DEF is-destination flag  bits 0-19: register/symbol index
  bits 28-30: operand type (3 bits)    bit 24: pair extension flag
 ```
 
@@ -435,10 +435,10 @@ Extraction pattern (50+ call sites):
 
 ```c
 uint32_t operand = *(uint32_t*)(instr + 84 + 8 * i);
-int type    = (operand >> 28) & 7;     // bits 28-30
+int type    = (operand >> 28) & 7;     // bits 28-30 (DAG-IR kind)
 int index   = operand & 0xFFFFF;       // bits 0-19
 int mods    = (operand >> 20) & 0xFF;  // bits 20-27
-bool is_neg = (operand >> 31) & 1;     // bit 31
+bool is_def = (operand >> 31) & 1;     // bit 31 = OPD_DEF (destination), NOT sign/negate
 ```
 
 | Type value | Meaning |

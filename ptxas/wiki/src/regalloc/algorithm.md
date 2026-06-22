@@ -171,8 +171,8 @@ Each operand in the Ori IR is an 8-byte (two-DWORD) value. The low DWORD encodes
 
 ```text
 Low DWORD (operand[0]):
-  bits 31       sign/direction flag (1 = negated or descending)
-  bits 28–30   operand_type (3 bits, 0–7)
+  bit  31       OPD_DEF is-destination flag (mask 0x80000000) — NOT a sign/negate flag
+  bits 28–30   operand_type (3 bits, 0–7; allocator-stage classification — see the operand-type table below)
   bits 24–27   modifier / pair extension (bit 24 = pair half selector)
   bits  0–23   reg_id (24-bit virtual register index)
 
@@ -598,7 +598,7 @@ The fat-point interference builder (`sub_926A30`, 4005 lines) processes constrai
 - bits 28–30 — operand type,
 - bits 0–23 — register index,
 - bit 24 — pair extension bit,
-- bit 31 — sign/direction flag.
+- bit 31 — OPD_DEF is-destination flag (mask 0x80000000), NOT a sign/direction flag.
 
 The builder recognizes 15 constraint types. Each constraint type adds interference weight to specific physical register slots in the pressure arrays:
 
