@@ -1,0 +1,74 @@
+# ptxas instruction-selection tables
+
+Facts recovered by static + behavioural analysis of the freely-distributed
+`ptxas` (CUDA **13.0.88**, `V13.0.88`,
+sha256 `daba837a68265cae38c832d13399b61dab811891de9b8914defddef143b849f2`) plus
+its companion `nvdisasm`. Reverse engineering of a publicly distributed binary
+for interoperability / research; DMCA 17 U.S.C. § 1201(f), *Sega v. Accolade*,
+EU 2009/24/EC. Only our own tools and uncopyrightable factual data are
+published — no NVIDIA source, no verbatim NVIDIA data tables.
+
+## Files
+
+### Static dispatch structure (in-binary, opcode-axis)
+- `opcode_to_encoding.tsv` — the ptxas opcode → encoding-slot map. Column
+  `sm_gen` is the **generation in which each opcode was introduced** (sm_70,
+  sm_73, sm_82, sm_86, sm_89, sm_90 …), i.e. the opcode-registry growth axis,
+  not a per-target dispatch. `encoding_slot` is the slot index into the encoder
+  (sentinel `355` = EXTENDED handler).
+- `isel_dispatch_groups.tsv` — the 144 ISel dispatch groups (start_slot, size,
+  first/last target VA) — the grouping the selector walks.
+- `isel_operand_constraint_records.tsv` — operand-type-signature records
+  (per-node type-id list + constraint flags) consumed by ISel legality.
+- `isel_node_vtables.tsv` — the polymorphic ISel-node method/query/operand
+  vtable pools (FAM0..FAM3 + COORD).
+
+### Per-arch instruction selection (behavioural, target-axis) — NEW
+The opcode registry is largely target-invariant; the *selection* of which SASS
+class lowers a given PTX op is **target-dependent**, and that dependence is what
+distinguishes datacenter Blackwell (sm_100/103), Jetson Thor (sm_110) and
+consumer Blackwell (sm_120/121). These two files capture the selection facts
+by driving the real ptxas + nvdisasm on a fixed probe (see the extractor):
+
+- `per_arch_opcode_histogram.tsv` — per-target count of each SASS mnemonic
+  emitted for one fixed PTX program (sm_90a, sm_100, sm_103, sm_110, sm_120,
+  sm_121).
+- `per_arch_encoding_opbyte.tsv` — the same, keyed by the SASS **primary
+  opcode byte** (low byte of the 128-bit encoding word) rather than mnemonic.
+- `extract_per_arch_isel.py` — our extractor. Self-contained (embeds the probe
+  PTX); regenerate with
+  `python3 extract_per_arch_isel.py <ptxas> <nvdisasm> [outdir]`.
+
+## Per-arch instruction-selection differences (the headline result)
+
+For one identical PTX program, ptxas selects measurably different SASS per
+target. Equivalence classes (verified at the SASS-text and 128-bit-encoding
+level): `sm_100 ≡ sm_100a ≡ sm_100f`, `sm_103 ≡ sm_103a ≡ sm_103f`,
+`sm_110 ≡ sm_110a ≡ sm_110f`, and `sm_120 ≡ sm_120a ≡ sm_120f ≡ sm_121 ≡
+sm_121a ≡ sm_121f` (sm_120 and sm_121 are byte-identical). So along the
+encoding-table axis there are exactly four new Blackwell-generation profiles:
+**sm_100, sm_103, sm_110, sm_120(=121)**.
+
+Selection of the **register-move idiom** is the cleanest discriminator:
+
+| target            | move idiom         | integer-add idiom | half-add | scheduler NOPs |
+|-------------------|--------------------|-------------------|----------|----------------|
+| sm_90a / sm_100   | `IMAD.MOV.U32 …,RZ,RZ,x` | `VIADD` + `IADD3` | `HADD2`  | tight (≈13)    |
+| sm_103            | `IMAD.MOV.U32`     | `VIADD` + `IADD3` | `HADD2`  | padded (≈150)  |
+| sm_110 (Jetson)   | `IMAD.MOV.U32`     | `IADD3` only (no `VIADD`); uses `IMNMX` | `HADD2` | padded (≈147) |
+| sm_120 / sm_121   | plain `MOV` / `MOV.64` (no `IMAD.MOV`) | `IADD3` only | `HFMA2` | padded (≈152) |
+
+Concretely, for `mov.b32 %r,%r` ptxas emits on sm_100 the integer-pipe idiom
+`IMAD.MOV.U32 R,RZ,RZ,src` (SASS opcode byte `0x24`), whereas on sm_120 it
+emits the dedicated `MOV` (opcode byte `0x02`). Consumer Blackwell routes
+register moves and many integer adds through a real uniform MOV/`IADD3` path
+instead of occupying the integer-MAD pipe; it also packs half adds as `HFMA2`.
+Jetson Thor (sm_110) keeps the `IMAD.MOV` move idiom but drops the
+vector-integer `VIADD`/`VIADDMNMX` ops in favour of scalar `IADD3`/`IMNMX`. The
+heavy fixed NOP padding on sm_103/110/120/121 reflects a more conservative
+fixed-latency scheduling model than the tight sm_100 schedule.
+
+See `../ptxas-encoding-full/sass_class_presence_by_arch.tsv` for the
+corresponding ISA-class coverage deltas (tcgen05/TMEM present on
+sm_100/103/110 but absent on sm_120; RT/TTU and consumer tensor classes present
+only on sm_120; etc.).

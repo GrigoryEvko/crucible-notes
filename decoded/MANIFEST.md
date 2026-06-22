@@ -126,6 +126,24 @@ out of the user's own binary at run time — it is not shipped here.
 - `messages.tsv` — 506 messages (id, severity, text); `extract_messages.py` — our
   extractor. All strings are cleartext in the binary.
 
+### `ptxas-isel/` — instruction selection (facts + our tools)
+- Static: `opcode_to_encoding.tsv` (opcode→slot, `sm_gen` = introduction
+  generation), `isel_dispatch_groups.tsv` (144 groups), `isel_operand_constraint_records.tsv`,
+  `isel_node_vtables.tsv`. Behavioural per-arch: `per_arch_opcode_histogram.tsv` +
+  `per_arch_encoding_opbyte.tsv` (sm_90a/100/103/110/120/121 SASS selection for a
+  fixed probe) via `extract_per_arch_isel.py`. See its README for the
+  consumer-vs-datacenter move-idiom / integer-ALU differences.
+
+### `ptxas-encoding-full/` — SASS-encoding dispatch (facts + our tools)
+- The seven per-arch encoder blocks in `.rodata 0x22E7AD0..0x23EFB60`. Prior run
+  covered 5 (sm50_7x/sm75/sm100/sm80_8x/sm86_89); this run adds blocks 6 (sm_110
+  Jetson Thor) and 7 (sm_120/121 consumer Blackwell) — `arch_blocks.tsv`,
+  `new_arch_blocks_sm110_sm120.tsv`, `per_arch_encoder_blocks.tsv` via
+  `extract_arch_blocks.py`. Blocks 6/7 share 0 emitters with the classic family
+  (disjoint `.text` code). `sass_class_presence_by_arch.tsv` cross-checks ISA-class
+  coverage (tcgen05/TMEM only on sm_100/103/110; RT/TTU + consumer-tensor only on
+  sm_120). See its README.
+
 ## Local-only outputs (not in git — regenerate with the tools above)
 
 These are produced by the published tools but are NVIDIA's verbatim data tables, so
