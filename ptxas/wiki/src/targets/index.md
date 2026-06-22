@@ -98,7 +98,7 @@ sm_100, sm_101, sm_103, sm_110, sm_120, sm_121 // Blackwell (active, PTX 8.6–9
 
 **sm_82** (PTX 6.2): Undocumented internal Ampere target. Not registered in `sub_6765E0` (no profile object). Serves as the SASS opcode generation boundary (`SM82_FIRST`/`SM82_LAST`, opcode indices 172–193). The anomalously low PTX version requirement (6.2 vs sm_80's 7.0) suggests it was an early development target added before PTX ISA versioning was finalized.
 
-**sm_101** (PTX 8.6): Original internal designation for Jetson Thor, renamed to sm_110 in a later CUDA release. Both entries coexist in the validation table for backward compatibility with PTX files referencing the old name. `sub_6765E0` registers only sm_110; sm_101 is validation-only.
+**sm_101** (PTX 8.6, internal-only): Original internal designation for Jetson Thor, renamed to sm_110 in a later CUDA release. It is **not selectable** — `-arch=sm_101` (and `sm_101a`/`sm_101f`) is rejected by the `gpu-name` CLI parser (`Value 'sm_101' is not defined for option 'gpu-name'`, verified on v13.0.88/v13.1.115). It survives only as an internal enum slot: it keeps its `{101,8,6}`/`{101,8,8}` rows in the min-PTX `.version` tables (`0x1D161C0`/`0x1D16358`/`0x1D16160`) and owns register-class selector `0x5001` (profile code `0x9001`), but `sub_6765E0` builds no profile for it — the Mercury normalize rule folds `sm_101 → sm_110`, so it has no `__CUDA_ARCH__` descriptor and is unreachable from the CLI.
 
 ### Accelerated Table — `unk_1D161C0` (7 entries)
 
