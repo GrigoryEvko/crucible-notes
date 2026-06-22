@@ -97,8 +97,19 @@ out of the user's own binary at run time — it is not shipped here.
   issue/timing simulator (validated: 221 producer→consumer scoreboard pairs, opex invariant
   1912/1912). `sass_legality.py` — constraint checker + `iadd3`/`lop3`/`shf`/`prmt` functional
   model; `sass_validate.py` — hypothesis harness vs real ptxas SASS.
+- `sass_sem_int.py` / `sass_sem_fp.py` / `sass_warp.py` — bit-exact functional models
+  (integer/logic, IEEE float, 32-lane warp collectives + MMA), each gated by a live-GPU
+  differential harness (`sass_gpu_probe.py`, `sass_launch.py` generic cubin launcher).
+  `sass_scheduler.py` with `sass_smt.py`/`sass_optsched.py` — latency-optimal scheduler.
 - All require the user to regenerate the (local-only) decoded tables first via
   `tools/nvdisasm_decode.py`. Documented in the ptxas wiki `sass-isa/` section.
+
+### `sass-bitsem/` — typed, machine-checked bit semantics (Lean 4, our code)
+- `SassBitsem/{Logic,Convert,Synthesis}.lean` — the SASS bit functions as width-typed
+  `BitVec` operations (lop3 LUT, funnel shift, bmsk; integer casts + bf16↔f32 surgery;
+  invented-op synthesis). Every identity is proved by `bv_decide` (bit-blast → SAT), so it
+  holds for all inputs with a kernel-checked term. `lake build`; no external deps. The
+  typed companion to the executable `sass-tools/` models.
 
 ### `ptxas-scheduling/` — the SASS scheduling model (tool + extracted facts)
 - `extract_sched_tables.py` — extracts both tables below from a `.rodata` dump of
@@ -171,7 +182,7 @@ out of the user's own binary at run time — it is not shipped here.
 - `phase_index.tsv` (factory/dispatch phase index), `phase_order_table.txt` (default
   order), `ocg_knobs.tsv` (OCG tuning knobs), `recipe_override_dsl.tsv` (the
   NvOptRecipe / named-phases override grammar, option 298). Prose: `driver_callgraph.md`,
-  `opt_level_model.md`, `phase_dispatch_157_vs_159.md`, `wiki_outline_and_corrections.md`.
+  `opt_level_model.md`, `phase_dispatch_157_vs_159.md`.
 
 ### `ptxas-targets/` — target / SM-version gating tables (facts)
 - `sm_id_enumeration.tsv`, `sm_version_codes.tsv` (legacy 16-bit hash-slot codes),
