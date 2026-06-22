@@ -14,9 +14,10 @@ Cipher (recovered from sub_430710 @ 0x430710, init sub_4305D0 @ 0x4305d0):
      prev = c                              # feedback uses the CIPHERTEXT byte
      plaintext = p ^ s
 """
-import sys, struct
+import os, sys, struct
 
 PTXAS_130 = "/home/grigory/iprit/nvopen-tools/ptxas/ptxas"
+OUT_DEFAULT = "/tmp/rp/decoded_pool.bin"
 KEY = 0x5389A4F8
 RODATA_DELTA = 0x400000           # VMA - file_offset for .rodata in 13.0
 SBOX_VMA  = 0x1CE3340
@@ -45,14 +46,16 @@ def decode(blob, sbox, key=KEY):
 
 def main():
     binpath = sys.argv[1] if len(sys.argv) > 1 else PTXAS_130
+    outpath = sys.argv[2] if len(sys.argv) > 2 else OUT_DEFAULT
     data = open(binpath, "rb").read()
     sbox_fo = SBOX_VMA - RODATA_DELTA
     blob_fo = BLOB_VMA - RODATA_DELTA
     sbox = data[sbox_fo:sbox_fo + 256]
     blob = data[blob_fo:blob_fo + POOL_LEN]
     pool = decode(blob, sbox)
-    open("/tmp/rp/decoded_pool.bin", "wb").write(pool)
-    print(f"decoded {len(pool)} bytes -> /tmp/rp/decoded_pool.bin")
+    os.makedirs(os.path.dirname(outpath) or ".", exist_ok=True)
+    open(outpath, "wb").write(pool)
+    print(f"decoded {len(pool)} bytes -> {outpath}")
     print("decoded[:48] =", pool[:48])
 
     # verify against the live-dumped pool (13.0)

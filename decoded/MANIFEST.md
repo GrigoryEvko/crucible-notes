@@ -71,6 +71,14 @@ out of the user's own binary at run time — it is not shipped here.
 
 ## Published contents
 
+### Top-level reports
+- `sm_coverage.md` — SM-version coverage + correctness matrix across every per-arch
+  table in `decoded/`, for the full Blackwell lineup (sm_100/103/110/120/121).
+- `blackwell_validation_report.md` — independent two-oracle (13.0.88 + 13.1.115)
+  cross-validation of every per-arch decoded table; empirically measured ground truth
+  (e_flags, `__CUDA_ARCH__`, max-regs, FP64 DFMA gap, SASS byte-identity), discrepancies
+  flagged against the owning sibling directory.
+
 ### `tools/` — decoders (our code)
 - `decode_pool.py` — reproduces the ptxas/nvlink PTX-macro pool from the on-disk
   binary (reads the encrypted blob + S-box out of the ELF you point it at).
@@ -143,6 +151,82 @@ out of the user's own binary at run time — it is not shipped here.
   (disjoint `.text` code). `sass_class_presence_by_arch.tsv` cross-checks ISA-class
   coverage (tcgen05/TMEM only on sm_100/103/110; RT/TTU + consumer-tensor only on
   sm_120). See its README.
+
+### `ptxas-ir/` — the Ori internal IR (facts)
+- `ir_node_layout.tsv` (296-byte instruction-object field map), `opcode_enum.tsv`
+  (322 primary Ori opcodes, ROT13-decoded, with `sm_gen`), `opcode_enum_mercury.tsv`
+  (385 Mercury/SM103 tensor extended opcode names), `operand_packed_word.tsv` (packed
+  inline-operand bitfield), `operand_kind_enum.tsv` (ISel operand-descriptor kinds).
+  All recovered from the stripped binary; see its README.
+
+### `ptxas-passes/` — the optimization phase pipeline (facts)
+- `phase_pipeline.tsv` — 159 phases: default `exec_order`, authoritative `bin_index`
+  (phase-name table at `0x22BD0C0` + factory switch), plaintext `phase_name`,
+  `name_string_va`, analytical category, and the layer-1 opt-level gate per phase.
+
+### `ptxas-passes-detail/` — per-phase deep-dive (facts)
+- `passes_detail.tsv` — one row per of 14 high-leverage phases:
+  `phase | bin_index | vtable_va | execute_thunk_va | worker_or_slot | dispatch_kind |
+  role | key_transform`. Grounded in disassembly + vtable layout.
+
+### `ptxas-driver/` — compilation driver, O0–O5 model, recipe DSL (facts + prose)
+- `phase_index.tsv` (factory/dispatch phase index), `phase_order_table.txt` (default
+  order), `ocg_knobs.tsv` (OCG tuning knobs), `recipe_override_dsl.tsv` (the
+  NvOptRecipe / named-phases override grammar, option 298). Prose: `driver_callgraph.md`,
+  `opt_level_model.md`, `phase_dispatch_157_vs_159.md`, `wiki_outline_and_corrections.md`.
+
+### `ptxas-targets/` — target / SM-version gating tables (facts)
+- `sm_id_enumeration.tsv`, `sm_version_codes.tsv` (legacy 16-bit hash-slot codes),
+  `sm_target_properties.tsv`, `supported_targets.tsv`, `sass_elf_eflags.tsv` (EF_CUDA
+  flag encoding), `sm_scheduling_seeds.tsv`, `gating_diagnostics.tsv`, and
+  `instruction_legality.tsv` (~19k per-arch instruction/feature legality rows). See README.
+
+### `ptxas-regalloc/` — register allocation / occupancy tables (facts)
+- `register_classes.tsv` + `register_class_summary.tsv` (3 per-generation class tables,
+  selector `sub_ABF590`), `register_file_config.tsv` / `register_file_limits.tsv`,
+  `occupancy_constants.tsv`, `abi.tsv` (calling-convention constraints),
+  `operand_regcount_matrix.tsv`, `per_arch_regalloc_binding.tsv`,
+  `fp64_throughput_class.tsv`, `register_id_arrays.tsv`. Corroborated with `ptxas -v`.
+
+### `ptxas-sched-full/` — full per-SM SASS scheduling model (facts + our tools)
+- The complete latency / dependency-rule / scoreboard tables for every SM through
+  sm_121: `latency_table_sm{7x,8x,10x,11x,12x}.tsv`, `dependency_rules_sm_*.tsv`
+  (+ merged `dependency_rules_all.tsv`), `scoreboard_configs_sm_*.tsv`,
+  `scalar_latency_oracle.tsv`, `opcode_pipeline_map.tsv`, `sm_coverage_summary.tsv`,
+  `blackwell_consumer_stall_deltas.tsv`. Our code: `render_sched_full.py`,
+  `extract_blackwell_consumer.py`, `measure_blackwell_deltas.py`. Upgrades the
+  representative coverage in `ptxas-scheduling/` to the full set. See README.
+
+### `ptxas-elf-output/` — device-ELF (cubin) output emitter (facts)
+- What ptxas writes when assembling PTX into a cubin: `section_catalog.tsv` (CUDA
+  section types), `eiattr_codes.tsv` (`.nv.info` EIATTR codes), `eicompat_codes.tsv`,
+  `reloc_types.tsv`, `nvinfo_wire_groundtruth.tsv`, `header_notes_compat.tsv`,
+  `per_arch_sm110_120_121.tsv`. Re-extracted from `.rodata` name-pointer tables and
+  cross-checked against emitted bytes / `cuobjdump --dump-elf`. See README.
+
+### `ptxas-mercury/` — Mercury container / capmerc / Finalizer (facts)
+- The Mercury SASS container + capsule packaging + R_MERCURY relocations + FNLZR
+  finalizer + section content-dedup: `capsule_section_layout.tsv`, `r_mercury_relocs.tsv`,
+  `reloc_conversion_chain.tsv`, `finalizer_{functions,attributes,pipeline}.tsv`,
+  `merc_section_names.tsv`, `merc_sass_map.tsv`, `nvrs_symbol_value_actions.tsv`,
+  `dedup_functions.tsv`, `arch_compat_capbits.tsv` (off-target family-compat cap-bits).
+
+### `ptxas-fp-debug/` — FP constant-fold, DWARF debug, SASS text printing (facts)
+- `softfloat_{routines,callers}.tsv` (the FP constant-fold engine — see README's key
+  negative finding), `dwarf_{sections,emitters}.tsv` (debug-info emission),
+  `sass_{listing_fields,printer_fns}.tsv` (the `-v` resource report + self-check SASS).
+
+### `ptxas-knobs-builtins/` — tuning knobs + builtin/opcode catalogs (facts)
+- `knob_names.tsv` (1121 tuning-knob names, ROT13 where stored that way),
+  `okt_descriptors.tsv` (option-knob-table descriptors), `builtins_catalog.tsv` (1080
+  builtin function declarations), `builtins_wgmma_infra.tsv` (wgmma infra blocks),
+  `opcode_master_canonical.tsv` (322 canonical opcodes: mnemonic, sm_gen, encoding slot,
+  per-family pipeline flags).
+
+### `ptxas-gap-closure/` — confidence-upgrade pass (facts + prose)
+- `resolved_items.tsv` — one row per (item, subitem) resolving the open / MEDIUM-confidence
+  questions from the prior deep-mine, with binary evidence + confidence.
+  `wiki_corrections.md` carries the prose corrections fed back to the wiki.
 
 ## Local-only outputs (not in git — regenerate with the tools above)
 
