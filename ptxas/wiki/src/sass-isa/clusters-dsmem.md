@@ -135,6 +135,13 @@ remoteness is entirely in the address bits:
 | `atom.shared::cluster.add.u32` | `ATOM.E.ADD.STRONG.GPU` |
 | `red.shared::cluster.add.u32` | `ATOM.E.ADD.STRONG.GPU` (no result) |
 
+The inverse of `mapa` is **`getctarank.shared::cluster`** — given a
+`.shared::cluster` address it returns the CTA rank it points at. ptxas lowers it
+to the matching byte-extract (`PRMT`/shift pulling byte 3 back into a register),
+the read-side mirror of the `LEA …0x18` + `PRMT 0x654` build. No dedicated opcode
+is involved; like the remote accesses above, the rank is purely an address-bit
+manipulation.
+
 ## Scope: `.cluster` is a locality unit, not a memory-ordering domain
 
 The PTX memory-ordering scope ladder is `.cta` ⊂ `.cluster` ⊂ `.gpu` ⊂ `.sys`, but the
@@ -173,10 +180,15 @@ every CTA in the cluster. They lower to the **uniform** CGA-barrier opcodes:
 | cluster error barrier | `CGAERRBAR` | `CGAERRBAR` = `2902` |
 
 The arrive/wait/get/set distinction is carried **entirely in the opcode** (four
-different full-opcode values), not in a shared mode field. The only in-instruction mode
-bits are `UCGABARARV.ucgabar_syncall` (bit 72 — arrive-and-sync-all variant) and
-`CGAERRBAR.errbar_cga` (bit 72 — selects the CGA-wide error barrier). A release-ordered
-arrive (`barrier.cluster.arrive.release`) prefixes the barrier with
+different full-opcode values), not in a shared mode field. In the emitted 128-bit
+word the arrive and wait forms share the low primary byte `0xc7` but differ in the
+adjacent bits — the disassembled low-words are `0x79c7` (`UCGABAR_ARV`) versus
+`0x7dc7` (`UCGABAR_WAIT`), confirming the distinct-opcode model directly. The only
+in-instruction mode bits are `UCGABARARV.ucgabar_syncall` (bit 72 —
+arrive-and-sync-all variant) and `CGAERRBAR.errbar_cga` (bit 72 — selects the
+CGA-wide error barrier; the cluster `CGAERRBAR` low-word is `0x75ab`, distinct from
+the warp-level `ERRBAR` `0x79ab`). A release-ordered arrive
+(`barrier.cluster.arrive.release`) prefixes the barrier with
 `MEMBAR.ALL.GPU; ERRBAR; CGAERRBAR`; the plain relaxed arrive is just `UCGABAR_ARV`.
 
 The machine model treats the cluster-barrier state as a hazarded resource: there must
