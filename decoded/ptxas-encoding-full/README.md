@@ -125,6 +125,26 @@ form and FP16-SIMD MUFU), netting 971 vs 975. So sm_100 and sm_103 select
 from the same encoder family (block 3) but expose slightly different tensor /
 MUFU class menus; they are not byte-identical the way sm_120 ≡ sm_121 is.
 
+## Memory / async field layout (the modifier-bit axis)
+
+`memory_field_layout.tsv` decodes the per-access SASS modifier bit-fields that
+ptxas packs onto `LDG`/`STG`/`LD`/`ST`/`ATOM*`/`RED`/`LDGSTS`/`MEMBAR` from the
+PTX cache, scope, ordering, and size qualifiers. Six uniform columns (`field`,
+`applies_to`, `width_bits`, `enum_values`, `role`, `source_witness`). The key
+recovered structure: the legacy PTX cache modifiers (`.ca/.cg/.cs/.cv/.lu` on
+loads, `.wb/.wt/.cg/.cs` on stores) are **not** one field — Volta-onward they
+decompose into three orthogonal fields, an eviction-class **`cop`**
+(EF/EN/EL/LU/EU/NA), a strength **`sem`** (CONSTANT/WEAK/STRONG/MMIO), and a
+scope **`sco`** (CTA/SM/GPU/SYS). Witnessed in the disassembly:
+`ld.global.ca` → `LDG.E.STRONG.SM`, `.cg` → `STRONG.GPU`, `.cv` → `STRONG.SYS`,
+`.cs` → `LDG.E.EF`; `MEMBAR` carries its own distinct scope numbering
+(CTA=0/SM=1/GPU=2/SYS=3) and a `sem` of SC=0/ALL=1, so `membar.cta` →
+`MEMBAR.SC.CTA` but `fence.acq_rel.cta` → `MEMBAR.ALL.CTA`. `cp.async` adds the
+`loc` (BYPASS/ACCESS), `zfill`, and `sp2` (L2 sector-promotion) sub-fields on
+`LDGSTS`. Bit positions for `cop`/`sem`/`sco`/`E` and the `MEMBAR`
+scope/sem field were read by diffing the raw 128-bit words of one-variable
+probe kernels (`.text` section dumped via `readelf -x`).
+
 ## Verification provenance
 
 Every table here was re-validated against ground truth (not just re-asserted):

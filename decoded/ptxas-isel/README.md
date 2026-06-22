@@ -39,6 +39,27 @@ by driving the real ptxas + nvdisasm on a fixed probe (see the extractor):
   PTX); regenerate with
   `python3 extract_per_arch_isel.py <ptxas> <nvdisasm> [outdir]`.
 
+### Async / TMA / cluster / tcgen05 SASS opcode map — NEW
+- `tma_cluster_async_opcodes.tsv` — the PTX → SASS lowering for the
+  memory-ordering, async-copy, bulk/TMA, cluster/DSMEM, multicast, warpgroup-MMA
+  and Blackwell tcgen05 instruction families that the bulk-async PTX exposes but
+  which were missing from `opcode_to_encoding.tsv`. Eight uniform columns:
+  `ptx_op`, `sass_opcode`, `op_byte` (low byte of the 128-bit word),
+  `intro_sm`, `addr_form`, `operand_fields`, `completion`, `notes`. Every row was
+  produced by assembling a one-variable probe kernel with ptxas (`sm_80` for
+  `cp.async`/`LDGSTS`, `sm_90a` for TMA/cluster/wgmma, `sm_100a` for tcgen05) and
+  reading the emitted machine code with `cuobjdump -sass` + `nvdisasm`. Notable
+  recovered facts: `cp.async.bulk` → `UBLKCP.S.G`/`UBLKCP.G.S` (op `0xba`);
+  tensor TMA → `UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF` (`0xb4`–`0xb8`);
+  `mbarrier.*` → the `SYNCS.{EXCH,ARRIVE,PHASECHK,CCTL}.TRANS64` family
+  (`0xa7`/`0xb1`/`0xb2`); `fence.proxy.tensormap` → `UTMACCTL.IV` (`0xb9`);
+  `barrier.cluster.{arrive,wait}` → `UCGABAR_{ARV,WAIT}` (`0xc7`, full words
+  `0x79c7`/`0x7dc7`); `tcgen05.mma` → `UTCHMMA`/`UTCIMMA` (`0xea`, with `.2CTA` for
+  the paired-issue group) over the explicit `gdesc[UR]`/`tmem[UR]`/`idesc[UR]`
+  operand classes; `tcgen05.ld/st` → `LDTM`/`STTM` (`0xee`/`0xed`);
+  `tcgen05.alloc/dealloc` → `UTCATOMSWS` (`0xe3`). Consumer Blackwell
+  (`sm_120a`/`121a`) rejects all `tcgen05.*` — confirming TMEM is datacenter-only.
+
 ## Per-arch instruction-selection differences (the headline result)
 
 For one identical PTX program, ptxas selects measurably different SASS per

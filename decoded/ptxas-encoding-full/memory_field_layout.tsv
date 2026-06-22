@@ -1,0 +1,15 @@
+field	applies_to	width_bits	enum_values	role	source_witness
+cop	LDG/STG/LD/ST/LDGSTS	3	EF=0,EN=1,EL=2,LU=3,EU=4,NA=5	eviction-priority / cache class	LDG.E.EF vs .EL vs .EU vs .NA vs .LU disasm on sm_90a
+sem	LDG/STG/LD/ST/ATOM*/RED*	2	CONSTANT=0,WEAK=1,STRONG=2,MMIO=3	memory-order strength	LDG.E (weak) vs LDG.E.STRONG.* vs LDG.E.MMIO.SYS
+sco	LDG/STG/LD/ST/ATOM*/RED*	3	NOSCO=0,CTA=1,SM=2,VC=3,GPU=4,SYS=5	coherence scope (printed .SM/.GPU/.SYS)	.ca->SM .cg->GPU .cv->SYS strong-scope prints
+E	LDG/STG/LD/ST/ATOM/RED/LDGSTS	1	0=32-bit,1=64-bit address	extended (64-bit) address-register pair	LDG/STG/ATOMG always print .E; LDS/STS/LDC do not
+membar_sco	MEMBAR	3	CTA=0,SM=1,GPU=2,SYS=3,VC=5	fence scope (distinct numbering from ld/st sco)	MEMBAR scope bits [77:76]: SC.CTA=0 SC.GPU=2 SC.SYS=3
+membar_sem	MEMBAR	2	SC=0,ALL=1,NONE=2,MMIO=3	fence semantics	bit 79: SC clear, ALL set (MEMBAR.SC.* vs MEMBAR.ALL.*)
+atom_op	ATOMG/ATOM/ATOMS/RED	4	ADD=0,MIN=1,MAX=2,INC=3,DEC=4,AND=5,OR=6,XOR=7,EXCH=8,SAFEADD=9	atomic/reduction operation	ATOMG.E.ADD/MIN/EXCH disasm
+cas_opcode	ATOMG.CAS/ATOM.CAS/ATOMS.CAS	-	distinct op byte (0xa9/0x8d)	compare-and-swap (not an atom_op value)	ATOMG.E.CAS uses op 0xa9 and [Rn] (non-desc) addressing
+loc	LDGSTS	1	BYPASS=0,ACCESS=1	cp.async L1 bypass vs access	cp.async.cg -> LDGSTS.E.BYPASS; cp.async.ca -> no BYPASS
+zfill	LDGSTS	1	NONE=0,ZFILL=1	cp.async out-of-bounds zero-fill	source-size operand -> LDGSTS.E.128.ZFILL
+sp2	LDG/LDGSTS	2	NOSP=0,LTC64B=1,LTC128B=2,LTC256B=3	L2 sector-promotion hint	ld.global.L2::128B -> .LTC128B
+sz	LDG/STG/LDGSTS	3	SIZE32=4,SIZE64=5,SIZE128=6,SIZE128_UNIFORM=7	access width	LDGSTS.E (4B) / .64 (8B) / .128 (16B)
+trans_count	SYNCS.ARRIVE.TRANS64	-	A1T0/A0TR modifiers	thread-arrive + transaction-byte raise	SYNCS.ARRIVE.TRANS64.A1T0 (arrive+tx) vs .RED.A0TR (tx only)
+gsbcnt	WARPGROUP.DEPBAR	4	0..15	pending GMMA-group count threshold	WARPGROUP.DEPBAR.LE gsb0,0x0
