@@ -128,7 +128,7 @@
 # Configuration
 
 - [CLI Options](./config/cli-options.md)
-- [Knobs System (1,294 Knobs)](./config/knobs.md)
+- [Knobs System (1,099 Knobs)](./config/knobs.md)
 - [Optimization Levels](./config/opt-levels.md)
 - [DUMPIR & NamedPhases](./config/dumpir.md)
 

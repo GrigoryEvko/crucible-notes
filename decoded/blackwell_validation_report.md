@@ -30,7 +30,7 @@ they exist only as internal enum slots / cap-bit normalize targets.
 |---|---|---|
 | 1 | `e_flags` (13.0.88 ≡ 13.1) | sm_100 `0x06006402`, sm_103 `0x06006702`, sm_110 `0x06006e02`, sm_120 `0x06007802`, sm_121 `0x06007902` |
 | 2 | `__CUDA_ARCH__` (nvcc) | 1000 / 1030 / 1100 / 1200 / 1210 |
-| 3 | `.note.nv.cuinfo` virtualSM | **= 100 for ALL five** (family base, not per-arch) — both 13.0.88 & 13.1 |
+| 3 | `.note.nv.cuinfo` virtualSM | **= -arch SM** (110/120/121) — tracks the PTX `.target`; cuobjdump "CUDA Virtual SM: sm_120", raw u16 0x6e/0x78/0x79. (D1 "=100 for all" was a `compute_100`-base-compile artifact — RESOLVED below) |
 | 4 | max registers | **255** for all five (`--maxrregcount=256` rejected, 255 accepted) |
 | 5 | FP64 dependent-DFMA address gap | sm_100 = **0x10** (16 B, back-to-back); sm_103/110/120/121 = **0x50** (80 B, 4 stall slots) |
 | 6 | SASS byte-identity | sm_120 ≡ sm_121 (all kernels, both versions); sm_100 ≡ sm_103 ≡ sm_110 (simple vadd, both versions) |
@@ -79,17 +79,17 @@ but absolute stall enum uses a different normalization than my raw control-word 
 
 ## Discrepancies (flagged to owning directory)
 
-### D1 — elf-output: cuinfo.virtualSM is NOT per-arch (MEDIUM) — owner: **ptxas-elf-output**
+### D1 — RESOLVED: FALSE DISCREPANCY (cuinfo.virtualSM tracks the PTX `.target`) — owner: **ptxas-elf-output**
 
-`per_arch_sm110_120_121.tsv` row `.note.nv.cuinfo virtualSM` claims
-`110 / 120 / 121` "u16 in cuinfo desc; tracks -arch SM". **Ground truth: cuinfo.virtualSM
-= 100 for every Blackwell arch**, on BOTH 13.0.88 and 13.1.115 (parsed straight from the
-`.nv.cuinfo` note descriptor: `noteVer=2, virtualSM=100, cudaApi=130`). The virtual-SM
-field is the *compute-capability family base* (compute_100), constant across the lineup —
-`cuobjdump -elf` independently confirms "CUDA Virtual SM: sm_100" for all five. The per-arch
-distinction lives in the e_flags real-SM byte (0x64/0x67/0x6e/0x78/0x79) and the cap-bits,
-**not** in cuinfo. Fix: change that row to `100 / 100 / 100` and the note to
-"= family virtual SM (compute_100); does NOT track -arch SM".
+**Overturned by direct measurement.** `cuinfo.virtualSM` is NOT a constant 100 — it tracks the
+source PTX `.target` (the virtual/compute arch). For the standard per-arch compile
+(`ptxas -arch sm_120a` of `.target sm_120a` PTX), `cuobjdump -elf` prints **"CUDA Virtual SM:
+sm_120"** and the raw `.nv.cuinfo` desc u16 = **0x6e / 0x78 / 0x79** (= 110 / 120 / 121),
+confirmed on both 13.0.88 and 13.1.115 (and independently re-verified by the intrinsics/elf
+agent). So the elf-output table's `110 / 120 / 121` is **correct** for per-arch compilation and
+was NOT changed. The earlier "= 100 for all" reading arose from compiling every arch from a
+single `compute_100`-base PTX (forward-compat), where virtualSM = the base's `.target` — a
+property of the source, not a per-arch-table error.
 
 ### D2 — elf-output: "virtual SM = e_flags bits[16:23]" mislabel (LOW) — owner: **ptxas-elf-output**
 
@@ -144,8 +144,8 @@ for 13.0.88). The `.nv.capmerc` Mercury-ISA-patch trailer also differs by family
    (`sass_elf_eflags`, `sm_target_properties`), `ptxas-elf-output`
    (`header_notes_compat`), and `ptxas-mercury` agree on the e_flags real-SM bytes, the
    `0x06`-family virtual marker, and `__CUDA_ARCH__` codes (nvcc-verified). The only
-   inconsistency is the elf-output **cuinfo.virtualSM** field (D1) and the **bits[16:23]**
-   virtual-SM label (D2). The phantom-arch story (sm_101/104/107/130 internal-only) is
+   residual note is the **bits[16:23]** virtual-SM label (D2); D1 (cuinfo.virtualSM) was
+   RESOLVED as a false discrepancy (virtualSM tracks the PTX `.target` = the -arch SM). The phantom-arch story (sm_101/104/107/130 internal-only) is
    consistent across targets / regalloc / mercury.
 
 3. **FP64 / regalloc — CONSISTENT.** `ptxas-regalloc/fp64_throughput_class.tsv`
@@ -170,7 +170,7 @@ for 13.0.88). The `.nv.capmerc` Mercury-ISA-patch trailer also differs by family
 
 | item | severity | owning dir |
 |---|---|---|
-| D1 cuinfo.virtualSM = 100 (not per-arch) | MEDIUM | ptxas-elf-output |
+| D1 cuinfo.virtualSM — RESOLVED: false discrepancy (tracks PTX `.target` = -arch SM, 110/120/121) | — | ptxas-elf-output |
 | D2 e_flags bits[16:23] mislabel as virtual-SM | LOW | ptxas-elf-output |
 | D3 "sm_110==sm_120 byte-for-byte" needs kernel/version scoping | LOW | ptxas-elf-output |
 | N1 isel IADD3=34 pin to 13.0.88 | INFO | ptxas-isel |
