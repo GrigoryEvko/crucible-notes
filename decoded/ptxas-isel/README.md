@@ -51,20 +51,30 @@ encoding-table axis there are exactly four new Blackwell-generation profiles:
 
 Selection of the **register-move idiom** is the cleanest discriminator:
 
-| target            | move idiom         | integer-add idiom | half-add | scheduler NOPs |
-|-------------------|--------------------|-------------------|----------|----------------|
-| sm_90a / sm_100   | `IMAD.MOV.U32 …,RZ,RZ,x` | `VIADD` + `IADD3` | `HADD2`  | tight (≈13)    |
-| sm_103            | `IMAD.MOV.U32`     | `VIADD` + `IADD3` | `HADD2`  | padded (≈150)  |
-| sm_110 (Jetson)   | `IMAD.MOV.U32`     | `IADD3` only (no `VIADD`); uses `IMNMX` | `HADD2` | padded (≈147) |
-| sm_120 / sm_121   | plain `MOV` / `MOV.64` (no `IMAD.MOV`) | `IADD3` only | `HFMA2` | padded (≈152) |
+| target            | move idiom         | integer-add idiom | half-add | imm-materialize | scheduler NOPs |
+|-------------------|--------------------|-------------------|----------|-----------------|----------------|
+| sm_90a / sm_100   | `IMAD.MOV.U32 …,RZ,RZ,x` | `VIADD` + `IADD3` | `HADD2`  | no `HFMA2`      | tight (≈13)    |
+| sm_103            | `IMAD.MOV.U32`     | `VIADD` + `IADD3` | `HADD2`  | no `HFMA2`      | padded (≈150)  |
+| sm_110 (Jetson)   | `IMAD.MOV.U32`     | `IADD3` only (no `VIADD`); uses `IMNMX` | `HADD2` | no `HFMA2` | padded (≈147) |
+| sm_120 / sm_121   | plain `MOV` / `MOV.64` (no `IMAD.MOV`) | `IADD3` only (`VIMNMX` for min/max) | `HADD2` | `HFMA2 R,-RZ,RZ,0,imm` (4×) | padded (≈152) |
 
 Concretely, for `mov.b32 %r,%r` ptxas emits on sm_100 the integer-pipe idiom
 `IMAD.MOV.U32 R,RZ,RZ,src` (SASS opcode byte `0x24`), whereas on sm_120 it
 emits the dedicated `MOV` (opcode byte `0x02`). Consumer Blackwell routes
 register moves and many integer adds through a real uniform MOV/`IADD3` path
-instead of occupying the integer-MAD pipe; it also packs half adds as `HFMA2`.
+instead of occupying the integer-MAD pipe.
+
+Note on the half path: the **half-add itself (`add.f16`) lowers to `HADD2`**
+(`HADD2 R, R.H0_H0, R.H1_H1`) on *every* target including sm_120/121 — verified
+by inspecting the emitted SASS, not just the histogram. What differs on
+sm_120/121 is the **FP-immediate materialization idiom**: those targets emit 4×
+`HFMA2 R, -RZ, RZ, 0, imm` (e.g. to splat a small half/FP constant), whereas
+sm_100/103/110 emit zero `HFMA2`. The histogram's `HFMA2 = 4 (sm_120 only)`
+and `HADD2 = 1 (all)` rows are correct; an earlier draft of this table mislabeled
+the sm_120 *half-add* as `HFMA2`, which the SASS-level diff disproves.
 Jetson Thor (sm_110) keeps the `IMAD.MOV` move idiom but drops the
-vector-integer `VIADD`/`VIADDMNMX` ops in favour of scalar `IADD3`/`IMNMX`. The
+vector-integer `VIADD`/`VIADDMNMX`/`VIMNMX` ops in favour of scalar
+`IADD3`/`IMNMX`. The
 heavy fixed NOP padding on sm_103/110/120/121 reflects a more conservative
 fixed-latency scheduling model than the tight sm_100 schedule.
 
@@ -72,3 +82,17 @@ See `../ptxas-encoding-full/sass_class_presence_by_arch.tsv` for the
 corresponding ISA-class coverage deltas (tcgen05/TMEM present on
 sm_100/103/110 but absent on sm_120; RT/TTU and consumer tensor classes present
 only on sm_120; etc.).
+
+## Verification provenance
+
+Both histogram TSVs were regenerated from scratch with
+`extract_per_arch_isel.py <ptxas> <nvdisasm>` (ptxas `V13.0.88`, sha256
+`daba837a…`; nvdisasm `V13.1.115`) and reproduce the committed files
+byte-for-byte. The per-arch idioms in the table above were then re-confirmed by
+inspecting the actual emitted SASS per target (compile → `nvdisasm -c -hex` →
+diff mnemonic + low-encoding-byte sets), which is what surfaced the half-add
+mislabel: `add.f16` → `HADD2` on all five targets, and the sm_120/121 `HFMA2`
+is an FP-immediate splat, not the half-add. The opcode-byte mapping was
+verified directly (NOP `0x18`, IMAD.MOV.U32 `0x24`, MOV `0x02`, IADD3 `0x10`).
+The `sm_100 ≡ sm_100a/f` / `sm_120 ≡ sm_121` SASS equivalences were confirmed
+via byte-level SASS hashes (sm_120 and sm_121 share SHA `714d057def7525c7`).

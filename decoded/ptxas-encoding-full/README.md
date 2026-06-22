@@ -42,7 +42,23 @@ blocks**, which the older toolchains did not have:
 The decisive structural fact: blocks 6 and 7 share **zero** per-opcode emitter
 handlers with the classic family (blocks 1–5, union 2408 handlers) — they are
 backed by entirely separate `.text` emitter code in disjoint address ranges.
-They are genuinely new encoding families, not parameter variants.
+Verified two ways: (a) handler-set intersection is empty (b6∩classic = 0,
+b7∩classic = 0, b6∩b7 = 0); (b) the per-opcode emitter VAs of each new block
+fall in a single isolated 1 MB `.text` window — block 6's 657 emitters all lie
+in `0x18Dxxxx..0x18Fxxxx`, block 7's 682 all in `0x1A0xxxx..0x1AFxxxx`, with no
+classic handler numerically inside either window. They are genuinely new
+encoding families, not parameter variants.
+
+Caveat on the *lead* handler: for the classic blocks 1–5 the lead handler
+`0xEA7440` is a full default-emitter routine, but for blocks 6 (`0x18F0540`)
+and 7 (`0x1AEE1D0`) the lead qword points at a trivial `mov $1; ret` predicate
+stub (one of a run of identical 16-byte-aligned stubs), not a full dispatcher.
+The per-arch *encoding identity* of blocks 6/7 therefore rests on their
+per-opcode slot emitters (the disjoint 1 MB windows above), not on the lead
+handler. The lead pointer is also not reachable from any external arch-indexed
+pointer table in the binary — each lead VA appears exactly once, inside its own
+block header — so the block↔arch assignment is an inference (next section), not
+a directly-tabulated dispatch.
 
 ### block ↔ arch mapping basis
 Blocks 1–5 keep the prior run's labels. sm_103 (datacenter Blackwell Ultra)
@@ -79,16 +95,45 @@ deltas that explain the encoder-block split:
 
 | category (SASS classes)                  | sm_100 | sm_103 | sm_110 | sm_120 |
 |------------------------------------------|:------:|:------:|:------:|:------:|
-| tcgen05 / TMEM (`utc*`, `ldtm_`, `sttm_`)| 8      | 8      | 8      | **0**  |
+| tcgen05 / TMEM (`utc*`, `ldtm_`, `sttm_`)| 38     | 31     | 35     | **0**  |
 | RT / TTU ray-tracing (`ttu*`)            | 0      | 0      | 0      | **7**  |
 | consumer tensor (`qmma`/`omma`/`mxqmma`) | 0      | 0      | 0      | **7**  |
 | datacenter FP8 quad (`qadd4`/`qfma4`/`qmul4`) | 11 | 11     | **0**  | 0      |
 | gather / scatter / metadata              | 4      | 4      | **0**  | 0      |
 | native 64-bit mov-imm (`mov_imm64` etc.) | 0      | 0      | 0      | **4**  |
 
+The tcgen05/TMEM row counts the full `utc*`/`ldtm_*`/`sttm_*` family per arch
+(38/31/35/0). A prior draft listed `8` here — that was the count of only the
+TMEM/async-warp subset that the published presence matrix tabulates
+(`ldtm_`, `sttm_`, `utcatomsws_{cas,fas,op}_`, `utcbar_flush_`, `utcldsws_`,
+`utcstsws_`), not the whole tensor-core family; corrected against the nvdisasm
+class sets. sm_110 keeps almost the whole family (35); sm_103 drops 8
+integer-MMA / scaled-mxqmma `utc*` variants relative to sm_100 (see below),
+so 31. Consumer Blackwell (sm_120) has none.
+
 Consumer Blackwell (sm_120/121) has **no tcgen05/TMEM** but adds RT/TTU and
 the `qmma`/`omma` consumer-tensor and native 64-bit MOV-immediate classes —
 exactly the differences seen in the per-arch SASS (no `IMAD.MOV`, real
-`MOV.64`, `HFMA2`). Jetson Thor (sm_110) keeps tcgen05/TMEM but is the leanest
-ISA (drops the datacenter FP8-quad and gather/scatter ops). sm_103 tracks
-sm_100 on every category — consistent with sharing encoder block 3.
+`MOV.64`). Jetson Thor (sm_110) keeps tcgen05/TMEM (35 classes) but is the
+leanest ISA (drops the datacenter FP8-quad and gather/scatter ops). sm_103
+shares encoder block 3 with sm_100 but its **class set is not identical**: a
+direct set diff of the nvdisasm class names shows sm_103 *drops* 8 sm_100
+tcgen05 variants (`utcimma_{1,2}cta__A_{gdesc,tmem}`,
+`utcmxqmma_{1,2}cta_scale__A_{gdesc,tmem}` — integer-MMA and scaled-mxqmma)
+and *adds* 4 (`ldtm_stat_`, `mufu_fp16_simd__R{I,R,U}` — a TMEM-load-status
+form and FP16-SIMD MUFU), netting 971 vs 975. So sm_100 and sm_103 select
+from the same encoder family (block 3) but expose slightly different tensor /
+MUFU class menus; they are not byte-identical the way sm_120 ≡ sm_121 is.
+
+## Verification provenance
+
+Every table here was re-validated against ground truth (not just re-asserted):
+the block extractor was re-run against the binary (`sha256 daba837a…`,
+`V13.0.88`) and reproduces `arch_blocks.tsv` byte-for-byte; the lead headers,
+slot counts (1616/1759/2142/1744/1754/657/682), and the empty handler-set
+intersections were confirmed by reading `.rodata` directly (objcopy) and
+disassembling the lead/slot handlers (objdump). The SASS-ISA class counts and
+the entire `sass_class_presence_by_arch.tsv` (209 classes × 4 arches = 836
+cells) were checked against fresh `nvdisasm -c` class-name sets with **zero**
+mismatches. The category-delta table was the only place a count was wrong (the
+tcgen05/TMEM row, fixed above).
