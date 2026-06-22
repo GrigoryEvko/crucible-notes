@@ -4,8 +4,7 @@ White-hat RE of NVIDIA **ptxas** (CUDA **13.0.88**, binary at `ptxas/ptxas`). Th
 **Mercury** SASS container, the **capsule / capmerc** packaging layout, the **R_MERCURY** relocation kinds,
 the **finalizer (FNLZR)** stage, and the **section content-equality dedup** mechanism.
 
-All findings are **binary-derived**. Where older CUDA toolkit binaries corroborate the binary, that is noted;
-on any mismatch the **binary wins** and the drift is flagged. Addresses are ptxas v13.0.88 VMAs.
+All findings are **binary-derived**. Addresses are ptxas v13.0.88 VMAs.
 
 ## The chain: encoder → capsule → finalizer
 
@@ -44,15 +43,14 @@ PTX → ptxas Mercury encoder ──▶ capmerc ELF (EF_CUDA_MERCURY set) ──
 - **Handler split** (the `NVRH_*` handler enum): `NVRH_FINALIZER` relocs are resolved by FNLZR; everything else is deferred to
   driver/linker. The decision is literally `mercury_reloc_info[rtype - 0x10000].handler == NVRH_FINALIZER`. Only the
   **PROG_REL** family is `NVRH_FINALIZER`: `PROG_REL64/32/32_LO/32_HI` and the byte-lane `PROG_REL8_0..56`.
-- **CUDA-13 deltas vs earlier toolchains:** older builds ended the table at `R_MERCURY_ABS_PROG_REL64 = 0x1003D`
-  (+ sentinel `0x1003E`). The binary **appends** `R_MERCURY_UNIFIED32_LO (0x1003E)` / `UNIFIED32_HI (0x1003F)` using
-  new sym_value codes 55/56 (`NVRS_LOUADDR` / `NVRS_HIUADDR`). All other 62 entries are byte-identical to earlier builds.
+- The last two entries are `R_MERCURY_UNIFIED32_LO (0x1003E)` / `UNIFIED32_HI (0x1003F)`, using
+  sym_value codes 55/56 (`NVRS_LOUADDR` / `NVRS_HIUADDR`); `R_MERCURY_ABS_PROG_REL64 = 0x1003D` precedes them.
 
 ## Capsule layout (`capsule_section_layout.tsv`, `merc_section_names.tsv`)
 
 - Section taxonomy: `SHT_CUDA_MERCURY = LOPROC+12 (0x7000000C)`, `SHT_CUDA_MERCURY_SASS_MAP = LOPROC+13`,
   `SHT_MERCURY_CONSTANT_PARAMS..TOOLS = LOPROC+120..126`. 19 distinct `.nv.merc.*` clone suffixes are present in the binary
-  string pool. **Naming drift:** earlier toolchains prefixed clones with `.merc`; the CUDA-13 binary uses `.nv.merc`.
+  string pool. Clones are prefixed `.nv.merc`.
 - Header constants: `EM_CUDA = 190 (0xBE)`; accepted `e_type ∈ {ET_REL=1, ET_EXEC=2, ET_EWP=0xFF00}`; input
   `abiVersion == ELFMERCABIV_ABI (0)`. On output the finalizer clears `EF_CUDA_MERCURY`, sets `abiVersion=7`, sets
   `EF_CUDA_64BIT_ADDRESS`, demotes shared/global/local to `SHT_NOBITS` for `ET_EXEC`, and zeroes `phoff/phnum`.
@@ -64,21 +62,18 @@ DWARF-line-program-style byte-code (`MSM_*` opcodes 0x00–0x0B) in the `.mercur
 
 ## Content-equality dedup (`dedup_functions.tsv`)
 
-**Binary-only (CUDA-13).** Earlier toolchains had **no** whole-section dedup — they *duplicate* (emit `.nv.merc.*` clones).
-The only content-equality merge in earlier builds was a constant-pool overlap primitive in the generic ELF writer,
-gated on `memcmp` with the FATAL `"overlapping non-identical data"`. That primitive **evolved** into the CUDA-13
-emitter-side dedup: driver `sub_1CB8E40` runs a content-dedup stage (`sub_1CABD60 → sub_1CA6890/sub_1CA6760`, logging
+Driver `sub_1CB8E40` runs a content-dedup stage (`sub_1CABD60 → sub_1CA6890/sub_1CA6760`, logging
 `"found duplicate value 0x%x, alias %s to %s"`, `"found duplicate 64bit value 0x%llx…"`, `"found duplicate %d byte value…"`)
 followed by symbol/name dedup (`sub_1CB68D0 → sub_1CB3EB0/sub_1CB3FD0`, `"set duplicate name for %s(%d) to %d"`). The
-**same** `"overlapping non-identical data"` FATAL survives in the binary (`sub_1CA5A00`) — the bridge between the two eras.
-Dedup is **conservative**: two slices are folded only if their backing bytes are byte-identical (`memcmp == 0`), never by
-name alone; a single differing reloc entry blocks the fold.
+constant-pool overlap primitive in the generic ELF writer is gated on `memcmp` with the FATAL
+`"overlapping non-identical data"` (`sub_1CA5A00`). Dedup is **conservative**: two slices are folded only if their
+backing bytes are byte-identical (`memcmp == 0`), never by name alone; a single differing reloc entry blocks the fold.
 
 ## Files
 
 | File | Contents |
 |---|---|
-| `r_mercury_relocs.tsv` | 64-entry R_MERCURY catalog, binary-decoded (name/handler/bit-action/sym_value/VMA) + version provenance |
+| `r_mercury_relocs.tsv` | 64-entry R_MERCURY catalog, binary-decoded (name/handler/bit-action/sym_value/VMA) |
 | `nvrs_symbol_value_actions.tsv` | `NVRS_*` symbol-value codes → patch semantics |
 | `capsule_section_layout.tsv` | SHT_CUDA_MERCURY* / SHT_MERCURY_CONSTANT_* / EF_*/ET_* container constants |
 | `merc_section_names.tsv` | 19 `.nv.merc.*` clone families |

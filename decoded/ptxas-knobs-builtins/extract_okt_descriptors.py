@@ -5,7 +5,7 @@ The dump path (`DUMP_KNOBS_TO_FILE` / JSON knob dumper `sub_446240`) is driven b
 self-describing schema table at VMA ``0x1CE9C40`` in ptxas (CUDA 13.0.88). It is the
 *only* reader of the table (single ``mov $0x1CE9C40,%ebx`` at ``0x44675C``); the table
 carries no runtime behavior, which is why every field is a plain ``char*`` ASCII
-string the dumper can re-emit verbatim.
+string the dumper can re-emit byte-for-byte.
 
 Layout (binary-verified): a contiguous array of **1000** entries, **72-byte stride**
 (9 ``char*`` qwords each). The count is exact::
@@ -29,7 +29,7 @@ Emitted as a 10-column TSV: ``index`` plus the nine raw string fields. Strings a
 emitted exactly as stored (control chars escaped) so the TSV reproduces byte-for-byte.
 
 Recovered solely from a freely distributed binary (DMCA 1201(f) interoperability
-research). Run against your own ptxas to regenerate.
+research).
 """
 import csv
 import struct
