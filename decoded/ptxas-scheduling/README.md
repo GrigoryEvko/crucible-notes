@@ -18,6 +18,18 @@ Confidently-named fields: **p1** = throughput class (`{0,1,2,4,132}`),
 dual-issue-eligibility vector. The remaining params (p0,p2,p3,p4,p6,p8–p11) are
 emitted as observed columns; their exact semantics are not asserted.
 
+## Arch coverage of the oracle
+
+`scalar_latency_oracle.txt` is built by `sub_738E20`, which has **no SM-version
+branching** (verified: zero `cmp $0x3xxx/0x4xxx/0x5xxx/0x9xxx` in the function
+body) — it produces a single flat per-Ori-opcode band table that serves the
+whole sm_9x/Blackwell family, **including sm_120 / sm_121 (consumer Blackwell)
+and sm_110 (Jetson Thor)**. The Ori-opcode space is shared across the lineup, so
+the oracle needs no per-arch extension for the newer Blackwell targets; their
+per-SM hazard nuances live in the dependency-rule / scoreboard tables (see
+`decoded/ptxas-sched-full/` — sm_110/120/121 share the sm_103 Blackwell set,
+sm_120 ≡ sm_121).
+
 ## Reproduce
 
 The extractor reads a raw `.rodata` dump. Regenerate it from **your own** CUDA 13.0

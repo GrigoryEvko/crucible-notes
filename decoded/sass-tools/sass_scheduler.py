@@ -2200,11 +2200,16 @@ CORPUS_PTX = {
 def _ptx_version_for(smnum: str) -> str:
     """Minimum PTX ISA version that accepts a given SM target.
 
-    sm_100/sm_103 need PTX 8.6, sm_110/sm_120/sm_121 need 8.7; older targets
-    accept 8.3.  (ptxas rejects a target newer than the declared .version.)"""
+    Per-target minima confirmed empirically against ptxas 13.0.88 (it rejects a
+    target newer than the declared .version):
+        sm_100 -> 8.6, sm_120 -> 8.7, sm_103 / sm_121 -> 8.8, sm_110 -> 9.0.
+    Older targets accept 8.3."""
     n = int(re.match(r"\d+", smnum).group())
-    if n >= 110:
-        return "8.7"
+    per_arch = {100: "8.6", 120: "8.7", 103: "8.8", 121: "8.8", 110: "9.0"}
+    if n in per_arch:
+        return per_arch[n]
+    if n >= 110:        # any future Blackwell-class target: use the newest seen
+        return "9.0"
     if n >= 100:
         return "8.6"
     return "8.3"

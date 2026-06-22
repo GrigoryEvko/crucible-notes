@@ -1,0 +1,52 @@
+# sm_120 88-B scoreboard configs (46 entries).
+# Resolved to the sm_103 Blackwell scoreboard-config table @ .rodata VMA
+# 0x2261740 (installer sub_ABF590 enum 0x4001).  Binary-derived
+# (ptxas 13.0.88).  Single-triplet {sb_id, threshold, mask} per config
+# (sm_103 Blackwell schema).  Identical bytes to scoreboard_configs_sm_103.tsv.
+idx	triplet_count	sb_id	threshold	mask
+0	1	0	56	8
+1	1	0	43	8
+2	1	1	56	8
+3	1	2	56	2
+4	1	5	56	4
+5	1	6	56	8
+6	1	12	8	2
+7	1	12	9	1
+8	1	12	12	4
+9	1	12	13	2
+10	1	13	56	8
+11	1	14	56	1
+12	1	15	56	4
+13	1	16	56	32
+14	1	17	56	4
+15	1	18	56	2
+16	1	19	2	584
+17	1	19	3	584
+18	1	19	4	1024
+19	1	19	5	1024
+20	1	19	10	64
+21	1	19	14	4
+22	1	19	17	8
+23	1	19	19	8
+24	1	19	21	4
+25	1	19	23	4
+26	1	19	25	6
+27	1	19	26	6
+28	1	19	28	6
+29	1	19	31	4
+30	1	19	33	6
+31	1	19	35	4
+32	1	19	36	6
+33	1	19	38	8
+34	1	19	39	4
+35	1	21	56	1
+36	1	23	45	8
+37	1	23	46	16
+38	1	23	47	16
+39	1	27	56	32
+40	1	28	0	8
+41	1	28	52	4
+42	1	28	54	8
+43	1	30	56	32
+44	1	31	56	2
+45	1	33	56	8

@@ -1,0 +1,22 @@
+# Consumer/Thor Blackwell vs datacenter Blackwell -- per-op issue-relative stall deltas.
+# Our own differential-analysis result (NOT a binary byte table): identical PTX compiled
+# with this exact ptxas (CUDA 13.0.88) and disassembled (nvdisasm 13.1), reading the
+# usched stall field of each emitted instruction.  All five arches share the lat10x
+# latency-descriptor family and resolve to the sm_103 dependency-rule + scoreboard tables
+# (installer sub_ABF590 enum 0x4001); these are the residual per-arch scheduler deltas the
+# OCG applies on top of that shared base, observed on a mixed decoupled-op probe kernel.
+#
+# Coupled-math ops (FADD/FFMA/FMUL/IMAD/IADD3/SHF/LDG/STG) are IDENTICAL across all five
+# arches (shared lat10x descriptors) and are omitted.  Only the decoupled bands differ.
+#
+# sm_120 == sm_121 byte-identical (verified).  "base" = the sm_103 value all arches share
+# unless noted.  Stall = cycles the dependent consumer is held (usched stall enum).
+op	sm_100(GB100)	sm_103(GB300)	sm_120/121(consumer)	sm_110(Thor)	note
+POPC	8	5	6	5	popc consumer-collect; consumer Blackwell +1 over sm_103
+I2FP	7	7	4	4	int->fp convert; consumer + Thor shorter than datacenter
+FSETP	13	2	1	2	fp predicate; sm_100 long, consumer -1 vs sm_103
+F2I	8	1	1	1	fp->int convert; sm_100 long, others short
+F2F	1	15	15	15	fp->fp convert decoupled band; sm_100 differs
+DFMA	10	15	15	15	double FMA decoupled; sm_100 differs
+LOP3	2	6	6	6	logic op band; sm_100 differs
+MUFU	matches-103-shape	1/8/1	1/1/2	1/2/1	transcendental SFU collect varies per position

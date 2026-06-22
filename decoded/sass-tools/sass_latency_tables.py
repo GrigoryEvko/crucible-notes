@@ -152,7 +152,15 @@ def arch_family(arch: str) -> str:
 
     The decoded tables share one 72-B latency-descriptor table per family
     (sm_7x = sm_60/70/72/75; sm_8x = sm_80/86/89/90/90a; sm_10x = sm_100/103).
-    Newer Blackwell-class arches (sm_110/120/121) follow the sm_10x schema."""
+    The newer Blackwell-class arches resolve into the sm_10x family too: ptxas's
+    per-SM table installer (sub_ABF590) hard-codes only the lat10x descriptor
+    table (.rodata VMA 0x226C880) for the whole Blackwell branch, and an
+    exhaustive .rodata scan finds no additional 72-B descriptor table.  sm_120
+    and sm_121 are byte-identical and resolve to the sm_103 dependency-rule +
+    scoreboard tables (installer enum 0x4001); sm_110 (Jetson Thor, a distinct
+    codegen generation) routes through the same lat10x latency family.  See
+    decoded/ptxas-sched-full/ for the per-arch TSVs and the empirically measured
+    consumer/Thor-vs-datacenter stall deltas."""
     n = _arch_num(arch)
     if n < 80:
         return "sm7x"
@@ -358,8 +366,16 @@ def load_dependency_rules(arch: str) -> list[dict]:
         return []
     rows: list[dict] = []
     with path.open() as fh:
-        hdr = next(fh).rstrip("\n").split("\t")
+        # Skip leading provenance/comment lines (the sm_110/120/121 files carry a
+        # `#`-prefixed header recording that they share the sm_103 Blackwell table);
+        # the first non-comment line is the column header.
+        hdr: list[str] | None = None
         for ln in fh:
+            if ln.startswith("#"):
+                continue
+            if hdr is None:
+                hdr = ln.rstrip("\n").split("\t")
+                continue
             vals = ln.rstrip("\n").split("\t")
             if len(vals) != len(hdr):
                 continue

@@ -137,7 +137,13 @@ keyings into one model:
   `MIN_WAIT_NEEDED`, `SIDL_NAME`, `VIRTUAL_QUEUE` (the decoupled functional-unit
   pipe), `MEM_SCBD`/`MEM_SCBD_TYPE` (Blackwell);
 - the ptxas scheduling tables (`decoded/ptxas-sched-full/`) → the scalar latency
-  oracle (per-Ori-opcode result band {6,13,24,30,300}).
+  oracle (per-Ori-opcode result band {6,13,24,30,300}) and the per-SM
+  dependency-rule rows (`load_dependency_rules(arch)`). The Blackwell lineup is
+  fully wired: sm_100/sm_103 each use their own dep-rule + scoreboard table, and
+  sm_110/sm_120/sm_121 use the **real extracted** sm_103 Blackwell tables they
+  resolve to (not the generic sm_10x fallback) — sm_120 ≡ sm_121 byte-identical;
+  the residual consumer/Thor stall deltas are in
+  `decoded/ptxas-sched-full/blackwell_consumer_stall_deltas.tsv`.
 
 `load_arch_model(arch)` returns `{mnemonic → ClassModel}` (coupled?, pipe family,
 min-wait, scoreboard arming, band). `coupled_stall(arch, prod_pipe, cons_pipe)`
@@ -216,8 +222,12 @@ transposed RAW matrix is the classic reconstruction mistake.
   arith, dependent chains, loads feeding math, transcendental chains, mixed,
   int-multiply chains, transcendental mixes, memory chains, and an 8-load
   scoreboard-overload kernel) across `--arches` (default sm_75/80/86/89/90; the
-  PTX `.version` auto-bumps to 8.6/8.7 for sm_100/sm_120), decode, recompute,
-  diff, and print per-arch match rates + a diagnostic mismatch taxonomy.
+  PTX `.version` auto-bumps per target — sm_100→8.6, sm_120→8.7, sm_103/sm_121→8.8,
+  sm_110→9.0), decode, recompute, diff, and print per-arch match rates + a
+  diagnostic mismatch taxonomy. The full Blackwell lineup verifies: on the
+  default corpus sm_120/sm_121 reach 90.7% exact stall / 100% scoreboard pairing
+  vs 88.9% for sm_100/sm_103/sm_110 — the consumer-Blackwell model is picked, not
+  a fallback.
 - `--verify-dyn K.cubin --entry NAME` — **stretch dynamic check**: patch the
   recomposed control words back into a copy of the cubin (`patch_cubin`), launch
   the original and the patched kernel on the GPU via the CUDA Driver API

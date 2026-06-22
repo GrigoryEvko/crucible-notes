@@ -8,7 +8,7 @@ ships in no binary, so everything below is the *shipped* form read from
 `.rodata` and the OCG scheduler functions. This page upgrades the prior
 "representative" coverage in `decoded/ptxas-scheduling/` to the full set.
 
-## Three table families (all 26 SMs)
+## Three table families (all SMs through sm_121)
 
 | Table | Record | Indexed by | Variants | Coverage |
 |---|---|---|---|---|
@@ -17,22 +17,61 @@ ships in no binary, so everything below is the *shipped* form read from
 | **Scoreboard config** | 88 B | config index | 7 | config = N `{sb,thr,mask}` rows (`mask` = pipe bitset, not a count); sm_100 ≤6 rows/cfg, sm_103 1 row/cfg with wider masks (same Blackwell schema) |
 
 Latency descriptor tables are **shared per family**: `0x2297C00` (sm_8x, shared
-by sm_80/86/89/90/90a), `0x226C880` (sm_10x: sm_100/103), `0x2245060` (sm_7x:
-sm_60/70/72/75). Dependency-rule tables are **per-SM** at the VA ranges in
-`per_sm_dependency_rules.json`.
+by sm_80/86/89/90/90a), `0x226C880` (sm_10x: sm_100/103 **and sm_110/120/121**),
+`0x2245060` (sm_7x: sm_60/70/72/75). Dependency-rule tables are **per-SM** at the
+VA ranges in `per_sm_dependency_rules.json`.
+
+### sm_11x / sm_12x (Jetson Thor / consumer Blackwell) — shared, not new
+
+The full Blackwell lineup (sm_110, sm_120, sm_121) ships in this same ptxas and
+compiles cleanly, but the sm_11x/sm_12x latency / dependency / scoreboard tables
+are **not at new VMAs** — they are the **sm_103 Blackwell tables**, shared:
+
+- An exhaustive `.rodata` scan finds **exactly** 3 latency tables (72 B), 11
+  dependency-rule tables (40 B), and 7 scoreboard tables (88 B). There is **no
+  12th/13th** of any of them and no dedicated sm_11x/sm_12x byte region — the
+  consumer Blackwell and Thor latency tables searched for at "not-yet-located"
+  VMAs simply do not exist as separate tables.
+- The per-SM table installer (`sub_ABF590`) dispatches on an internal
+  family-enum; its **entire Blackwell branch hard-codes only two cases**:
+  `0x4000 → lat10x(0x226C880) + dep_sm100(0x2268440) + sb_sm100(0x2266A60)` and
+  `0x4001 → lat10x(0x226C880) + dep_sm103(0x2262720) + sb_sm103(0x2261740)`. The
+  Blackwell **latency family is a single shared table**; only the dep-rule +
+  scoreboard tables differ (sm_100 GB100 vs sm_103 GB300 — 165/430 rows differ).
+- **Empirical resolution** (identical PTX compiled with this exact ptxas,
+  disassembled with nvdisasm 13.1, reading the per-instruction `usched` stall):
+  **sm_120a and sm_121a emit byte-identical SASS**, and their decoupled-op
+  stalls match **sm_103** (not sm_100) on the F2I / F2F / DFMA / LOP3 bands → so
+  **sm_120 ≡ sm_121, both resolving to the sm_103 (enum 0x4001) tables**. sm_110
+  (Jetson Thor, internal generation "Thor") routes through the same Blackwell
+  lat10x latency family; its codegen is a genuinely distinct generation (a fixed
+  probe expands to 3.4× more SASS), but it introduces no new 72/40/88-B table.
+
+So sm_110/120/121 **share** the sm_103 Blackwell hardware tables. The emitted
+`*_sm_110/120/121.tsv` carry the byte-identical sm_103 data with a provenance
+header. The residual per-arch scheduling deltas — POPC, I2FP, FSETP, MUFU
+collect timing differing between consumer/Thor and datacenter Blackwell — are the
+OCG's per-arch adjustments **on top of** the shared table; we measured them by
+differential SASS analysis and ship them in `blackwell_consumer_stall_deltas.tsv`
+(our own result, not binary bytes).
 
 ## Artifacts
 
 | File | Contents |
 |---|---|
 | `latency_table_sm{7x,8x,10x}.tsv` | full 72-B sched-class descriptors, all classes, all families |
+| `latency_table_sm{11x,12x}.tsv` | sm_110 / sm_120-121 72-B descriptors = byte-identical to `sm10x` (shared Blackwell family) |
 | `dependency_rules_<sm>.tsv` (×11) | full 40-B dependency rules per SM |
+| `dependency_rules_sm_{110,120,121}.tsv` | sm_11x/sm_12x 40-B rules = byte-identical to `sm_103` (shared); sm_120 == sm_121 |
 | `dependency_rules_all.tsv` | long-form union (4616 rows), `sm` column prepended |
 | `scoreboard_configs_<sm>.tsv` (×7) | flattened scoreboard `(id, threshold, mask)` triplets |
+| `scoreboard_configs_sm_{110,120,121}.tsv` | sm_11x/sm_12x 88-B configs = byte-identical to `sm_103` (shared) |
+| `blackwell_consumer_stall_deltas.tsv` | **our** differential-analysis result: consumer/Thor-vs-datacenter Blackwell per-op stall deltas (POPC, I2FP, FSETP, MUFU, …) |
 | `opcode_pipeline_map.tsv` | Ori opcode → pipeline-flags (sm_7x, sm_10x) |
 | `scalar_latency_oracle.tsv` | per-Ori-opcode latency band — **binary-corrected** (see below) |
-| `sm_coverage_summary.tsv` | per-SM coverage: entry count, family, disabled units, identity |
+| `sm_coverage_summary.tsv` | per-SM coverage: entry count, family, disabled units, identity (now through sm_121) |
 | `render_sched_full.py` | reproducible renderer (reads the extracted JSON) |
+| `extract_blackwell_consumer.py` | re-reads the sm_103 Blackwell tables from `.rodata` and emits the sm_110/120/121 TSVs with provenance |
 
 ## Field semantics
 
@@ -143,14 +182,39 @@ need not equal any single dependency-rule cell.
 
 ## Per-SM coverage and divergence (highlights)
 
-- 3 latency tables cover all 26 SMs by family; 10 distinct dependency-rule sets
-  cover 11 SMs (`sm_86` and `sm_90` are **byte-identical**).
+- 3 latency tables cover the whole SM lineup by family; 10 distinct
+  dependency-rule sets cover 11 individual SMs (`sm_86` and `sm_90` are
+  **byte-identical**). sm_110/120/121 add no new tables — they share the sm_103
+  Blackwell set (sm_120 ≡ sm_121).
 - `sm_90a` enables every class (0 disabled); `sm_90` disables exactly 6 — units
   `{41, 561, 562, 563, 566, 567}` (the WGMMA / async-MMA classes; 564/565 do not
   exist) — which is the sole sm_90 vs sm_90a difference.
 - Disabled-unit counts grow for restricted/older arches: sm_103=129, sm_75=173,
-  sm_72=170, sm_70=146, sm_60=136, sm_80=19, sm_100=10. See
-  `sm_coverage_summary.tsv`.
+  sm_72=170, sm_70=146, sm_60=136, sm_80=19, sm_100=10. sm_110/120/121 = 129
+  (inherited from sm_103). See `sm_coverage_summary.tsv`.
+
+### Consumer / Thor vs datacenter Blackwell (binary-derived + differential)
+
+All five Blackwell arches share the lat10x latency descriptors and the sm_103
+dependency-rule + scoreboard tables; the **coupled-math** stalls
+(FADD/FFMA/FMUL/IMAD/IADD3/SHF, LDG/STG) are identical across all of them. The
+**decoupled** bands carry the only divergence (measured per-instruction from
+emitted SASS, `blackwell_consumer_stall_deltas.tsv`):
+
+| op | sm_100 (GB100) | sm_103 (GB300) | sm_120/121 (consumer) | sm_110 (Thor) |
+|---|---|---|---|---|
+| POPC | 8 | 5 | **6** | 5 |
+| I2FP | 7 | 7 | **4** | **4** |
+| FSETP | 13 | 2 | **1** | 2 |
+| F2I | 8 | 1 | 1 | 1 |
+| F2F / DFMA / LOP3 | (low) | 15/15/6 | 15/15/6 | 15/15/6 |
+
+sm_120/121 track sm_103 on F2I/F2F/DFMA/LOP3 (hence "resolves to sm_103") but
+shorten the I2FP convert and the FSETP predicate latch and add one cycle to the
+POPC collect — the consumer-Blackwell SFU/conversion datapath. sm_110 (Thor)
+also tracks sm_103 but adopts the consumer-short I2FP. sm_100 (GB100) is the
+outlier with long F2I/FSETP latches. These deltas are OCG per-arch adjustments
+layered on the shared sm_103 table (no separate table exists in the binary).
 
 ## Confidence
 
@@ -162,6 +226,10 @@ need not equal any single dependency-rule cell.
 | scoreboard triplet `{id,threshold,mask}` + count@+84 | **High** | byte-exact |
 | oracle band-13 correction | **High** | verbatim `sub_738E20` switch cases |
 | `p7=self`, `p11=0` | **High** | holds for every record, all families |
+| sm_11x/sm_12x have **no** new latency/dep/scoreboard table | **High** | exhaustive `.rodata` scan (0 extra ≥200-entry 72-B/40-B tables) + installer `sub_ABF590` Blackwell branch hard-codes only 0x4000/0x4001 |
+| sm_120 ≡ sm_121, both → sm_103 tables | **High** | byte-identical SASS; decoupled stalls track sm_103 (F2I/F2F/DFMA/LOP3) not sm_100 |
+| sm_110 (Thor) → Blackwell lat10x family | **High** | empirical SASS shares lat10x coupled timing; gen "Thor" codegen distinct |
+| consumer/Thor stall deltas (POPC/I2FP/FSETP) | **Medium** | differential SASS measurement (our result), one probe family |
 | latency-descriptor `p0,p2,p3,p4,p6,p8,p9,p10` semantics | **Medium/Low** | columns emitted; not individually named |
 | oracle mnemonics | **Low** | Ori-opcode↔name space mismatch (numeric id authoritative) |
 
@@ -190,7 +258,16 @@ need not equal any single dependency-rule cell.
 
 ## Reproduce
 ```
+# sm_7x / sm_8x / sm_10x tables + dep rules + scoreboards (reshapes extracted JSON):
 python3 render_sched_full.py /path/to/ptxas/extracted
+
+# sm_11x / sm_12x (Thor / consumer Blackwell) — re-reads the sm_103 Blackwell
+# bytes straight from your own ptxas .rodata and emits the shared TSVs:
+objcopy -O binary --only-section=.rodata "$(command -v ptxas)" ptxas_rodata.bin
+python3 extract_blackwell_consumer.py ptxas_rodata.bin
 ```
 The extracted JSON is itself reproducible from your own CUDA 13.0 `ptxas`
-`.rodata` at the VAs in `manifest.json`; no NVIDIA bytes ship in this repo.
+`.rodata` at the VAs in `manifest.json`; no NVIDIA bytes ship in this repo. The
+consumer/Thor stall deltas in `blackwell_consumer_stall_deltas.tsv` are
+regenerated by compiling a mixed-op probe with your own ptxas and reading the
+`usched` stall field via `decoded/sass-tools/sass_ctrl_decode.py`.
