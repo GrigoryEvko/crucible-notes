@@ -11,12 +11,36 @@ instruction-descriptor record:
 
 Bits 0..127 (110 set): reproduced by extract_instruction_table.py from the registration
 call arguments. Bits 128..135 (byte 16) are carried by constructor arg a9 and stored to
-descriptor +28; only 4 bits (128..131) are ever set, by 8 STANDARD forms:
-  bit 128 (0x01): tcgen05.wait                              [1 form]
-  bit 129 (0x02): _tcgen05.guardrails.are_columns_allocated,
-                  _tcgen05.guardrails.in_physical_bounds,
-                  _tcgen05.guardrails.datapath_alignment    [5 forms]
-  bit 130 (0x04): _tcgen05.guardrails.are_columns_allocated,
-                  _tcgen05.guardrails.in_physical_bounds,
-                  _tcgen05.guardrails.datapath_alignment    [3 forms]
-  bit 131 (0x08): cp.async.bulk                             [2 forms]
+descriptor +28; only 4 bits (128..131) are ever set, by 8 STANDARD forms. These four are
+the Blackwell-introduced (sm_100..sm_121) attribute bits.
+
+Machine-code-verified (HIGH confidence). The a9 value cannot be read from the Hex-Rays
+C (it is mis-modelled as `<snap>.m128i_i32[0]`); it was recovered directly from the
+call-site assembly of the STANDARD registration site sub_46E000. There the a9 slot is
+0x10(%rsp) (`var_78`), loaded from `eax`, which is in turn loaded from a scratch byte at
+0x40(%rsp) (`var_48`) set immediately before each call. Across the whole function 1141
+writes target the a9 slot; 1124 write an explicit 0, and 17 do `mov [var_78],eax`. Of
+those 17, only 8 have a preceding `mov byte [var_48],V` with V!=0 — the remaining 9 leave
+var_48==0 (e.g. _mma.warpgroup, wmma.load.b, setp, cp.reduce.async.bulk.tensor, mma). No
+EXTENDED (site2) form sets a nonzero a9. The 8 nonzero forms and their exact V:
+  bit 128 (V=0x01): tcgen05.wait                             [1 form]
+  bit 129 (V=0x02): _tcgen05.guardrails.are_columns_allocated `du`,
+                    _tcgen05.guardrails.in_physical_bounds   `du`   [base, 2 forms]
+  bits 129+130 (V=0x06): _tcgen05.guardrails.are_columns_allocated `duu`,
+                    _tcgen05.guardrails.in_physical_bounds   `duu`,
+                    _tcgen05.guardrails.datapath_alignment   `duuC` [extended, 3 forms]
+  bit 131 (V=0x08): cp.async.bulk `MMux`, cp.async.bulk `MMuUx`     [2 forms]
+Notes:
+  - bit 130 is never set alone — it only co-occurs with 129, on the guardrail forms that
+    carry an extra `u` operand (an arity/variant discriminator atop the base guardrail bit).
+  - cp.async.bulk has 8 registered forms (MMuM, MMuMU, MMu, MMuU, MMuMx, MMuMxU, MMux,
+    MMuUx); bit 131 is set on exactly the two whose datatype sig is `MMux`/`MMuUx`
+    (the non-tensor bulk-copy variant), and on none of the cp.async.bulk.tensor forms.
+  - The other 5 guardrail sub-ops (is_phase_valid, is_current_warp_valid_owner,
+    allocation_granularity, sp_consistency_across_idesc_mod, check_sparse_usage) and the
+    tcgen05.{alloc,dealloc,commit,cp,fence,ld,st,mma,...} ops carry a9==0.
+
+Cross-checked against live ptxas 13.1.115: tcgen05.wait compiles for sm_100a and is
+rejected on sm_120a ("Instruction 'tcgen05.wait' not supported on .target 'sm_120a'"),
+matching the datacenter-only tensor-memory split; cp.async.bulk lowers to SASS UBLKCP on
+both sm_100a and sm_120a (it is a TMA bulk-copy, present on consumer Blackwell too).
