@@ -6,8 +6,8 @@ HDR	e_type	2 (ET_EXEC) final / 1 (ET_REL) for -c	ET_REL|ET_EXEC|ET_EWP	final ass
 HDR	e_version	1 (EV_CURRENT)	EV_CURRENT	standard
 HDR	e_entry	0	-	cubins carry entry=0 (device entry resolved by driver, not ELF e_entry)
 HDR	e_phnum	6 (final) / 0 (-c)	-	final cubin has 6 program headers; relocatable -c has 0
-EFLAG	bits 8..15	real SM (SM*10)	low byte 0xff (earlier)	sm_75->0x4b(75) sm_90->0x5a(90) sm_100->0x64(100) sm_103->0x67(103) sm_120->0x78(120) sm_121->0x79(121)
-EFLAG	bits 0..7	0x04 (sm<=90) / 0x02 (Blackwell+)	-	format/ABI variant nibble; 0x04 for sm_<=90, 0x02 for sm_100/103/120/121 (BINARY)
+EFLAG	bits 8..15	real SM (SM*10)	low byte 0xff (earlier)	sm_75->0x4b(75) sm_90->0x5a(90) sm_100->0x64(100) sm_103->0x67(103) sm_110->0x6e(110) sm_120->0x78(120) sm_121->0x79(121)
+EFLAG	bits 0..7	0x04 (sm<=90) / 0x02 (Blackwell+)	-	format/ABI variant nibble; 0x04 for sm_<=90, 0x02 for sm_100/103/110/120/121 (BINARY)
 EFLAG	bits 16..23	virtual/PTX SM	bits 16..23 (earlier)	EF_CUDA_VIRTUAL_SM; 0 when virtual==real
 EFLAG	bits 24..31	0x06 (observed constant)	-	high format byte; 0x06 in every 13.0.88 sample
 EFLAG	0x100	EF_CUDA_TEXMODE_UNIFIED	0x100	texture mode
