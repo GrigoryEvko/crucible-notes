@@ -20,14 +20,11 @@ an internal 16-bit arch-selector code (returned by each per-target class' vtable
 | 0x224FE80 | 97 | 0x40 | 0x4000 / 0x4001 | **Hopper (sm_90 only)** |
 | 0x21FB680 | 150 | 0x40 | 0x5000 / 0x5001 / 0x5003 / 0x5004 / 0x5005 | **Blackwell family: sm_100 / sm_101 / sm_103 / sm_120 / sm_121** |
 
-This **corrects** the positional generation labels that the legacy `register_classes.tsv` /
-`register_class_summary.tsv` originally carried (they had `sm_7x`↔`sm_10x` **swapped**: 0x21FB680 mislabeled
-"sm_7x", 0x224FE80 mislabeled "sm_10x"). The binary's dispatch — verified by disassembling `sub_ABF590`
-(which writes the class-table pointer to `ctx+0x98`) and reading the per-arch vtable selector thunks at
-0xb08050–0xb082e0 — shows the **entire consumer+datacenter Blackwell family shares the 0x21FB680 class
-table** (selectors 0x5000–0x5005), while sm_90 alone uses 0x224FE80 and Ampere/Ada (sm_8x) uses 0x2274180.
-**Both data files have now been relabeled** to the proven binding (0x224FE80→`sm_90`, 0x2274180→`sm_8x`,
-0x21FB680→`sm_blackwell`).
+The binary's dispatch — disassembled at `sub_ABF590` (which writes the class-table pointer to `ctx+0x98`)
+and the per-arch vtable selector thunks at 0xb08050–0xb082e0 — shows the **entire consumer+datacenter
+Blackwell family shares the 0x21FB680 class table** (selectors 0x5000–0x5005), while sm_90 alone uses
+0x224FE80 and Ampere/Ada (sm_8x) uses 0x2274180. The class-table binding is therefore
+0x224FE80→`sm_90`, 0x2274180→`sm_8x`, 0x21FB680→`sm_blackwell`.
 
 Disasm-proven `ctx+0x98` (class-table) bindings, exhaustive over `sub_ABF590`:
 
@@ -81,7 +78,7 @@ dependent-op spacing (`fp64_throughput_class.tsv`). Probed with an FP64-heavy ke
 | sm_121 (DGX Spark) | 0x50 | RATE-LIMITED FP64 |
 
 Instruction *selection* is identical on all six (native DMUL/DADD/DFMA — no FP64 emulation), but the
-rate-limited parts pad ~4 stall slots between dependent doubles. Re-measured with a pure 64-deep
+rate-limited parts pad ~4 stall slots between dependent doubles. For a pure 64-deep
 dependent-DFMA chain finalized to SASS: the **FAST** parts (sm_90, sm_100) emit 88 instructions / 12 NOPs
 with a **0x10** byte gap between consecutive DFMAs (back-to-back); the **RATE-LIMITED** parts (sm_103,
 sm_110, sm_120, sm_121) emit 336 instructions / 260 NOPs with a **0x50** gap (1 DFMA + 4 NOPs). The DFMA
@@ -93,8 +90,8 @@ encoding-identical for this kernel.
 
 | File | Contents |
 |---|---|
-| `register_classes.tsv` | per-arch register-class table dump (sm_90 / sm_8x / sm_blackwell), 0x40-stride records — labels corrected to the disasm-proven binding |
-| `register_class_summary.tsv` | per-arch class-count summary (table_va + selectors + coverage) — labels corrected |
+| `register_classes.tsv` | per-arch register-class table dump (sm_90 / sm_8x / sm_blackwell), 0x40-stride records, labeled to the disasm-proven binding |
+| `register_class_summary.tsv` | per-arch class-count summary (table_va + selectors + coverage) |
 | `register_file_config.tsv` | occupancy/reg-budget curve descriptors (0x21CE6A0 width-64, 0x21CEE60 width-256) |
 | `register_file_limits.tsv` | register-file header constants (gpr/predicate/uniform/barriers) |
 | `register_id_arrays.tsv` | physical register-id range arrays (bank<<16\|reg) |

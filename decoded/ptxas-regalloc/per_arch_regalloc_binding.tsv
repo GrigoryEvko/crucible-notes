@@ -6,7 +6,7 @@
 # and writes a register-class-table pointer into ctx+0x98; sub_ABF250 writes the register-file params
 # (mode_flag@0x68, reg-limit-1@0x60, reg-limit-2@0x64). The two limit fields and mode_flag are the concrete
 # per-family register-file difference. Register-class-table VMAs are POSITIONAL labels recovered from the
-# population dispatch (the legacy register_classes.tsv sm_7x/8x/10x labels are inverted vs the real binding).
+# population dispatch.
 sm_string	codename	selector_thunk_vma	selector_code	regclass_table_vma	regfile_mode_flag	reg_limit_0x60	reg_limit_0x64	note
 sm_90	Hopper	0xb08050	0x4000	0x224FE80	1	0xff	0x3f	sm_90 uses its own class table (0x224FE80) + mode_flag 1; limit2=0x3f(63)
 sm_100	Blackwell (datacenter)	0xb08140	0x5000	0x21FB680	2	0xff	0xff	Blackwell family class table 0x21FB680; mode_flag 2; both limits 0xff(255)
