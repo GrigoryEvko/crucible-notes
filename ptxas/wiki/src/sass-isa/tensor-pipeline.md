@@ -277,21 +277,45 @@ collapses to a **single 64-bit descriptor** held in a **uniform register** (`URa
 HGMMA.size.dstfmt{.srcfmt}  Rd, {-}Ra, URb{.negB}{.tnspB}, Rc, {!}UPp{, gsb}
 ```
 
-`URb` carries the opaque 64-bit shared-memory matrix descriptor. Two per-operand
-modifiers ride on it:
+`URb` carries the 64-bit shared-memory matrix descriptor (the disassembler prints
+it as a bare uniform register; the Blackwell tcgen05 form below prints it
+explicitly as `gdesc[URb]`). Two per-operand modifiers ride on it:
 
 - **`.tnspB`** (and `.tnspA`) — the transpose attribute of the shared-memory matrix
   (column- vs row-major reading of the SMEM tile).
 - **`.negB`** — input negation.
 
-The descriptor itself is a hardware-defined 64-bit word encoding the operand's
-shared-memory **base address**, **leading-dimension** and **stride** byte offsets, and
-the **swizzle mode** of the SMEM layout. ptxas treats it as an opaque value: it is
-materialised into the uniform register by preceding code (typically from a
-`wgmma.descriptor`-style construction) and consumed whole. The compiler's only
-interaction with its internals is the transpose flag; the base/leading-dim/stride/
-swizzle bit-fields are produced and interpreted by the hardware, so they are not
-reconstructed here beyond the four fields the ISA exposes.
+ptxas treats the descriptor as an opaque value — it is materialised into the
+uniform register by preceding integer code (the user builds it; the consuming
+`HGMMA` reads `gdesc[URb]` whole) — but the descriptor itself is a fixed
+hardware contract whose 64-bit bit-layout is well-defined:
+
+| Bit range | Field | Encoding |
+|---|---|---|
+| `[13:0]`  | SMEM matrix start address | byte address `>> 4` (16-byte units; low 4 bits dropped) |
+| `[29:16]` | leading-dimension byte offset (LBO) | byte offset `>> 4` |
+| `[45:32]` | stride-dimension byte offset (SBO) | byte offset `>> 4` |
+| `[51:49]` | matrix base offset | raw 3-bit value |
+| `[63:62]` | swizzle / layout mode | enum below |
+
+Bits `[15:14]`, `[31:30]`, `[47:46]`, `[48]`, `[55:52]` and `[61:56]` are unused.
+The three address/offset fields are all stored **right-shifted by 4** — they index
+in 16-byte units, which is why a `wgmma` SMEM tile must be 16-byte aligned. The
+swizzle field selects the bank-conflict-avoiding SMEM layout the hardware walks as
+it reads the tile, and its enum is **descending** in byte size:
+
+| `[63:62]` | Swizzle mode |
+|---|---|
+| `0` | none (interleaved / linear) |
+| `1` | 128-byte swizzle |
+| `2` | 64-byte swizzle |
+| `3` | 32-byte swizzle |
+
+(The descending 1=128B / 2=64B / 3=32B ordering is the genuine encoding — not the
+naive ascending guess.) The compiler's only *semantic* interaction with the
+descriptor is the `.tnspA`/`.tnspB` transpose flag it folds into the instruction;
+the base/LBO/SBO/base-offset/swizzle fields are produced by the descriptor-build
+code and interpreted by the tensor core.
 
 ptxas picks one of three operand-placement encodings depending on which sources are in
 uniform registers:
@@ -356,23 +380,96 @@ shuffle.
 
 ---
 
-## 8. Blackwell (`sm_100`+): tcgen05 — binary-RE-only
+## 8. Blackwell (`sm_100`+): tcgen05 — TMEM, the instruction descriptor, and 2-CTA issue
 
 Hopper's warpgroup `*GMMA` family is **removed** at Blackwell and replaced by
-**tcgen05**: the `UTC*MMA` opcodes (`UTCHMMA`, `UTCIMMA`, `UTCQMMA`, `UTCOMMA`) plus a
-dedicated **tensor memory (TMEM)** addressed by `LDTM`/`STTM`/`LDT`/`STT`. The decoded
-nvdisasm tables show tcgen05 MMAs are **async-issued** with **1-CTA and 2-CTA**
-variants (two CTAs cooperatively feeding one tensor core) and operand sources that are
-either a tensor-memory operand (`_tmem`) or a global descriptor (`_gdesc`) — a
-generalisation of the Hopper SMEM-descriptor idea to a dedicated on-chip tensor
-memory. tcgen05 + TMEM + 2-CTA paired issue exist **only on the datacenter/Jetson
-Blackwell parts** (`sm_100`/`103`/`110`); consumer Blackwell (`sm_120`) lacks TMEM and
-does FP4/FP6 tensor through the legacy per-warp `OMMA` path instead. This is the third
-matrix-unit redesign in four generations.
+**tcgen05**. Assembling `tcgen05.*` PTX for `sm_100a` and disassembling pins the
+opcodes and — decisively — the operand-class structure the disassembler prints:
 
-These Blackwell details are recovered purely from the CUDA 13.1 nvdisasm instruction
-tables and the ptxas legality gates; the full op taxonomy and the datacenter/consumer
-split are catalogued in [Architecture Evolution](architecture-evolution.md#a-tensor-cores-bifurcate-at-blackwell).
+| PTX | SASS (`sm_100a`) | op byte |
+|---|---|---|
+| `tcgen05.mma.kind::f16` / `.tf32` | `UTCHMMA gdesc[URa], gdesc[URb], tmem[URd], tmem[URc], idesc[URi], URp, UPp` | `0xea` |
+| `tcgen05.mma.kind::i8` | `UTCIMMA gdesc[…], gdesc[…], tmem[…], tmem[…], idesc[…], …` | `0xea` |
+| `tcgen05.mma.cta_group::2` | `UTCHMMA.2CTA …` | `0xea` |
+| `tcgen05.ld.16x64b` | `LDTM.16dp64bit Rd, tmem[UR]` | `0xee` |
+| `tcgen05.ld.16x128b` | `LDTM.16dp128bit Rd, tmem[UR]` | `0xee` |
+| `tcgen05.st` | `STTM tmem[UR], Rs` | `0xed` |
+| `tcgen05.alloc` | `UTCATOMSWS.FIND_AND_SET.ALIGN UP, UR, UR` | `0xe3` |
+| `tcgen05.dealloc` | `UTCATOMSWS.AND UR, UR` | `0xe3` |
+| `tcgen05.commit.mbarrier` | `UTCBAR [UR], UR` | `0xe9` |
+
+The `UTCHMMA` operand list is the whole model in one line: the A and B operands are
+**`gdesc[UR]`** (the same 64-bit SMEM matrix descriptor as Hopper §6.1, held in a
+uniform register), the accumulator and the second source are **`tmem[UR]`** (a
+32-bit tensor-memory address in a uniform register), and a fifth uniform register
+holds **`idesc[UR]`** — the *instruction descriptor* that carries the shape,
+formats, transpose and negate that Hopper spread across the mnemonic. The `.2CTA`
+suffix is the two-CTA paired-issue variant (two CTAs cooperatively feeding one
+tensor core). `LDTM.16dp64bit` / `.16dp128bit` name the read geometry as
+**16 data-paths × {64,128}-bit columns**.
+
+### 8.1 Tensor memory (TMEM) and its 32-bit address
+
+TMEM is a dedicated on-chip matrix store, addressed by the 32-bit value in the
+`tmem[UR]` operand. The address splits into a **lane (row)** and a **column** half:
+
+| Bit range | Field | Meaningful width |
+|---|---|---|
+| `[31:16]` | lane index (row / data-partition) | low 7 bits (128 lanes) |
+| `[15:0]`  | column index | low 9 bits (512 columns) |
+
+The geometry is fixed at **128 lanes × 512 columns × 4 bytes = 256 KB per SM**.
+`tcgen05.alloc` (→ `UTCATOMSWS.FIND_AND_SET`) reserves a **column range** — all 128
+lanes of each allocated column, never a lane sub-range — in units of **32 columns**,
+with `nCols ∈ {32, 64, 128, 256, 512}` (a power of two). `tcgen05.dealloc` clears
+the same allocation bitset via `UTCATOMSWS.AND`. The allocator returning a column
+base into shared memory is why `tcgen05.alloc` takes a `.shared` destination.
+
+### 8.2 The 32-bit instruction descriptor (`idesc`)
+
+The dense `idesc` (`.kind::tf32`/`.f16`/`.f8f6f4`/`.i8`) packs the MMA into a single
+32-bit word:
+
+| Bit range | Field | Meaning |
+|---|---|---|
+| `[1:0]`   | sparse selector | 2:4 metadata id (sparse only) |
+| `[2]`     | sparse | 0 = dense, 1 = sparse |
+| `[3]`     | saturate | integer-result clamp |
+| `[5:4]`   | D (accumulator) format | F16=0, F32=1, S32=2 |
+| `[9:7]`   | A format | per-kind dtype code |
+| `[12:10]` | B format | per-kind dtype code |
+| `[13]`    | negate A | input negation |
+| `[14]`    | negate B | input negation |
+| `[15]`    | A major | 0 = K-major, 1 = MN-major (transpose A) |
+| `[16]`    | B major | transpose B |
+| `[22:17]` | N dimension | encodes `N >> 3` (N ∈ 8…256) |
+| `[28:24]` | M dimension | encodes `M >> 4` (M = 64/128/256) |
+| `[31:30]` | max shift | B-reuse window: 0/8/16/32 |
+
+Per-kind A/B dtype codes: TF32 → `2`; F16 → {F16=0, BF16=1}; F8F6F4 →
+{E4M3=0, E5M2=1, E2M3=3, E3M2=4, E2M1=5}; I8 → {U8=0, S8=1}. The
+**block-scaled** variant (`.kind::mxf8f6f4`/`.mxf4`) reuses `[2:0]` and the
+transpose/negate/N fields but repurposes `[5:4]` as the B scale-factor id, `[23]`
+as the scale-factor type (UE4M3=0 / UE8M0=1), and `[30:29]` as the A scale-factor
+id; in the block-scaled layout the M dimension moves to bits `[28:27]` encoded as
+`M >> 7`. `D = A·B` vs `D = A·B + C` is *not* an idesc bit — it is a separate PTX
+predicate operand (the `UPp` in the disassembled `UTCHMMA`).
+
+### 8.3 The datacenter/consumer split
+
+tcgen05 + TMEM + 2-CTA paired issue exist **only on the datacenter/Jetson Blackwell
+parts** (`sm_100`/`103`/`110`). Consumer Blackwell (`sm_120a`/`sm_121a`) **rejects
+every `tcgen05.*` instruction** — ptxas reports `Instruction 'tcgen05.mma' not
+supported on .target 'sm_120a'` and `Feature '.kind::f16' not supported` — so
+consumer Blackwell has no TMEM and does FP4/FP6 tensor through the legacy per-warp
+`OMMA`/`QMMA` path instead. This is the third matrix-unit redesign in four
+generations.
+
+The opcode bytes, operand classes, and the consumer rejection were taken directly
+from CUDA 13.1 ptxas + nvdisasm/cuobjdump on `sm_100a`/`sm_120a` probes; the idesc
+and TMEM bit-ranges are the public hardware descriptor contracts these instructions
+consume. The full op taxonomy and the datacenter/consumer split are catalogued in
+[Architecture Evolution](architecture-evolution.md#a-tensor-cores-bifurcate-at-blackwell).
 
 ---
 
