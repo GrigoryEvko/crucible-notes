@@ -1,0 +1,30 @@
+# Async dependency scoreboards beyond the six numbered SB0..SB5 -- the warp-state
+# barriers the warpgroup-MMA / tensor-MMA / cluster path uses on Hopper and
+# Blackwell.  These are NOT the SB0..SB5 control-word scoreboards; they are named
+# warp-state resources the scheduler tracks as separate dependency barriers, and
+# the producer->reader latency is a fixed model constant (the dependent reader is
+# held that many cycles after the writer before the async result is visible).
+#
+# Recovered from binary analysis of CUDA-13.1 ptxas + nvdisasm: the SASS opcodes
+# below are exactly what `ptxas -arch <sm>` emits and what `nvdisasm -c`
+# disassembles on this toolchain.  sm_89 has none of these (no wgmma / tcgen05 /
+# cluster), so this table is STATIC + documented; the SASS-opcode column is
+# binary-confirmed on sm_90a (WARPGROUP/HGMMA/gsb0/UCGABAR) and sm_100a/sm_120a
+# (UCGABAR cluster barrier).
+#
+# Columns:
+#   scoreboard   the named warp-state barrier resource
+#   readers      SASS ops that WAIT on / read the barrier (held until satisfied)
+#   writers      SASS ops that ARM / advance the barrier
+#   latency      writer->reader hold (cycles), fixed model constant
+#   arch         architectures that have the resource (binary-confirmed emit)
+#   note
+scoreboard	readers	writers	latency	arch	note
+WGMMA_ACCUM_SB	WARPGROUP.ARRIVE/WAIT,HGMMA/IGMMA/BGMMA/QGMMA,EXIT,S2R/S2UR	WARPGROUP.ARRIVE,WARPGROUP.SET	6	sm_90/sm_90a	warpgroup-MMA accumulator barrier: WARPGROUP.ARRIVE arms it, the async wgmma reads it; the next wgmma/WAIT/EXIT/special-reg read is held 6 cyc. Confirmed: ptxas emits WARPGROUP.ARRIVE -> HGMMA gsb0 on sm_90a.
+WGMMA_GROUP_SB	WARPGROUP.DEPBAR.LE,HGMMA/IGMMA/BGMMA/QGMMA(gsb!=7),EXIT	HGMMA/IGMMA/BGMMA/QGMMA(gsb!=7),WARPGROUP.SET	3	sm_90/sm_90a	the wgmma GROUP commit/wait barrier (gsb0 group id): each grouped wgmma advances it, WARPGROUP.DEPBAR.LE gsb0,N waits for <=N outstanding groups; reader hold 3 cyc. Confirmed: ptxas emits WARPGROUP.DEPBAR.LE gsb0,0x0 on sm_90a.
+CGA_BARRIER	UCGABAR_ARV,UCGABAR_GET,UCGABAR_WAIT,EXIT	UCGABAR_ARV,UCGABAR_SET	6	sm_90/sm_90a/sm_100/sm_103/sm_110/sm_120/sm_121	cluster (CGA) barrier warp-state: UCGABAR_ARV/SET arms, UCGABAR_WAIT/GET reads; reader hold 6 cyc; EXIT is an implicit reader (must drain cluster arrivals). Confirmed: ptxas emits CGAERRBAR/UCGABAR_ARV/UCGABAR_WAIT on sm_90a, sm_100a and sm_120a.
+WGMMA_ACCUM_SB	WARPGROUP.ARRIVE/WAIT,EXIT,S2R/S2UR	WARPGROUP.ARRIVE,WARPGROUP.SET	6	sm_100/sm_103	datacenter Blackwell retains the warpgroup-MMA barrier resource (same 6-cyc model) alongside the tcgen05 path; the encoder retargets the MMA-issue opcode (tcgen05 UTCxMMA) but the async-barrier resource and latency are invariant.
+WGMMA_GROUP_SB	WARPGROUP.DEPBAR.LE,tensor-MMA(group),EXIT	tensor-MMA(group),WARPGROUP.SET	3	sm_100/sm_103	Blackwell MMA-group commit/wait barrier (same 3-cyc group hold as Hopper); the grouped tensor-MMA advances it, DEPBAR waits the outstanding-group count.
+TCGEN05_TMEM	LDTM,STTM,tensor-MMA(TMEM operand)	tensor-MMA(UTCHMMA/UTCIMMA/UTCBMMA/UTCQMMA),STTM	1	sm_100/sm_103	tensor-memory (TMEM) producer->reader is scoreboard-tracked like a load (latency-1 decoupled, reader waits the SB), not a fixed-latency math result; LDTM/STTM and the UTCxMMA ops drive it. The TMEM result barrier is the Blackwell analogue of the wgmma accumulator wait.
+RPC	math/branch following a return-PC writer	BRA/CALL/RET/JMP/BRX/BRXU/JMX/JMXU/BSYNC/NANOSLEEP/RPCMOV/WARPSYNC/YIELD	9	sm_90/sm_90a/sm_100/sm_103	implicit return-PC ordering resource: every branch/return op writes the RPC, following math is ordered 9 cyc behind it. Same RPC resource as the sm_89 RPC-ORDER rows in uniform_pred_hazards.tsv; listed here as a warp-state barrier for the newer arches that share it.
+RPC	math following USETMAXREG	USETMAXREG	8	sm_90/sm_90a/sm_100/sm_103	USETMAXREG (warp register reallocation) orders against following math at 8 cyc on the RPC resource -- one less than the branch writers; it must commit the new register window before dependent math issues.
