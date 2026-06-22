@@ -1,0 +1,13 @@
+# TTU (Tree Traversal Unit = RT core) instruction set, decoded from the CUDA-13
+# nvdisasm SM89 instruction-class tables and the SASS 128-bit encoding.
+# The opcode field is {bit91, bits[11:0]} (13 bits); all TTU ops have bit91=0.
+# Functional unit VQ_TTU (=21), dedicated ttu_pipe. Present sm_75 (Turing) onward.
+# Columns: op  opcode_hex  opcode_bits  operands  instruction_type  min_wait  scoreboard_role  note
+op	opcode_hex	opcode_bits	operands	instruction_type	min_wait	scoreboard_role	note
+TTUOPEN	0x3d0	0b1111010000	@Pg /DUAL &REQ=req_bit_set	DECOUPLED_BRU_DEPBAR_RD_SCBD	6	waits on req scoreboard mask	open/initialize a traversal context (after ray+root stored)
+TTUST	0x3d1	0b1111010001	@Pg TTU:ttuAddr[U16] , Rb , Rc &RD=src_rel_sb	DECOUPLED_RD_NOREQ_SCBD	1	releases a read scoreboard	store a register pair into the TTU internal addr (ray/state fill)
+TTULD	0x3d2	0b1111010010	@Pg Pu , Rd2 , Rd , TTU:ttuAddr[U16] &WR=dst_wr_sb	DECOUPLED_WR_NOREQ_SCBD	1	arms a write scoreboard	load 128-bit hit result (Rd2:Rd) + predicate Pu from TTU internal addr
+TTUCLOSE	0x3d2	0b1111010010	@Pg /CLOSE (TTULD.CLOSE alternate class)	DECOUPLED_WR_NOREQ_SCBD	1	arms a write scoreboard	TTULD with /CLOSE: final result read + tear down the context
+TTUGO	0x3d3	0b1111010011	@Pg	DECOUPLED_BRU_DEPBAR_RD_NOREQ_SCBD	1	none	kick the autonomous BVH traversal (no register operands)
+TTUCCTL	0x3d5	0b1111010101	@Pg /IVALLONLY &REQ=req_bit_set	DECOUPLED_BRU_DEPBAR_RD_SCBD	1	waits on req scoreboard mask	TTU cache control (invalidate-all)
+TTUMACROFUSE	0x9d4	0b100111010100	@Pg UImm5:Sb &REQ=req_bit_set	COUPLED_MATH	4	waits on req scoreboard mask	fused traversal macro; takes a 5-bit scoreboard immediate
