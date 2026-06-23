@@ -143,3 +143,17 @@ batch of points. `pwl_eval_probe.py` holds the CPU reference for the geometry.
 A minimal traversable structure is a 256-byte buffer: one root complet plus one
 uncompressed triangle block. The root pointer, ray, and `ttuAddr` slot values are
 loaded as above; the hit's barycentrics reconstruct `f(x_q)` from `ttuAddr[0x300]`.
+
+## Verified against driver output
+
+A single-triangle acceleration structure built on the sm_89 GPU through the OptiX
+runtime confirms the complet format. For a triangle spanning `[-1,1]³`, the root
+complet (128 bytes) has `format=0x60`, `scl=(0x80,0x80,0x80)`, and
+`xmin=ymin=zmin=-1.0` (FP32); `2^(0x80-127)=2.0` reproduces the extent. Byte 23 is
+`0xF0` — `parentleafidx=0xF`, the root marker. Child 0 is the leaf with full-box
+quantized bounds `xlo..zhi = 00..ff`; children 1–11 are empty with the
+`zlo=0xFF, zhi=0x00` sentinel. The driver places a bookkeeping header ahead of the
+complet array (off the traversal path — the traversable handle resolves to the
+complet, not the header). The triangle is stored in the intersector's precomputed
+form rather than a plain-FP32 block. `driver_bvh_1tri.bin` is this dumped
+structure — a known-good BVH for raw-SASS traversal.
