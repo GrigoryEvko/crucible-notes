@@ -173,3 +173,17 @@ The full ray-triangle trace (`TTUST` ray+root → `TTUOPEN` → `TTUGO` →
 per-instruction register wiring under a controlled allocation and the
 root-node-ref / scoreboard-handshake encodings, which the driver's own emitted
 TTU sequence pins down.
+
+## Traversal sequence source
+
+No shipping binary precompiles the ray-traversal sequence: the 24 sm_89 cubins
+embedded in `libnvoptix.so` are curve/ribbon build-and-fit helpers with zero TTU
+ops, and the `libnvidia-{glcore,gpucomp,eglcore}` runtimes embed no sm_89 device
+code. The traversal is compiled at pipeline-link time and stored in the OptiX
+disk cache (`/var/tmp/OptixCache_<user>/optix7cache.db`, a SQLite `cache_data`
+table of compiled-module blobs). `ttu_scan.py` decodes TTU instructions out of
+any cubin or cache blob (the retail nvdisasm renders TTU opcodes but not their
+operands), so the driver's exact register wiring, root-node-ref encoding, and
+scoreboard handshake are obtained by creating a trace pipeline and scanning the
+resulting cache entry — which requires a CUDA-to-PTX shader compiler for the
+pipeline's programs.
