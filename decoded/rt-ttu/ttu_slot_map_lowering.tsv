@@ -1,0 +1,47 @@
+# TTU internal state-file slot map (ttuAddr[U16] -> contents), recovered from binary
+# analysis of the CUDA-13 RT toolchain: the RT-intrinsic->SASS lowering, our ptxas
+# decompile (opcode emitters confirmed at the disassembly level), nvdisasm class
+# decode, and assembled RT-traversal SASS.
+#
+# The ttuAddr index is a 16-bit immediate carried in SASS instruction bits[55:40]
+# (md_ field BITS_16_55_40 / Ra_offset; verified by hand-encode + nvdisasm round-trip).
+# It is a BYTE OFFSET into a 16-byte-granular state file, 16-byte aligned (low nibble 0).
+# Each TTUST writes one 16-byte slot from a register pair (Rb-pair, Rc-pair) = U32 reg[4].
+# Each TTULD reads one 16-byte slot into (Rd2:Rd) plus a predicate Pu. Writable input
+# region = [0x000,0x300); readable output region = [0x300,0x3F0). Total space 0x600.
+#
+# Columns: slot_index_hex  dir  contents  written_by  read_by  format
+slot_index_hex	dir	contents	written_by	read_by	format
+0x000	W	RayFlags (primary slot): type, cullMode, frontFaceCW, terminateOnHit, stackLimit, rayOp, traversalOrder, instMask, 8x2b RTT modes, rayOpParamA/B	TTUST	-	U32 reg[4] 96b: TYPE[2:0] CULLMODE[5:4] FRONTFACECW[6] TERMINATEONHIT[7] STACKLIMIT[10:8] INSTNODEPTR[12] STORE_T[13] REPORTONENTER[14] NOPOPONRETURN[15] RAYOP[19:16] TRAVERSALORDER[23:21] INSTMASK[31:24] MODE_*[55:32] RAYOPPARAMA[79:64] RAYOPPARAMB[95:80]
+0x040	W	RayOrigin (primary): origin.xyz + tmin	TTUST	-	U32 reg[4]: ORIGIN_X[31:0] ORIGIN_Y[63:32] ORIGIN_Z[95:64] TMIN[127:96], all FP32
+0x050	W	RayDirection (primary): direction.xyz + tmax	TTUST	-	U32 reg[4]: DIRECTION_X[31:0] DIRECTION_Y[63:32] DIRECTION_Z[95:64] TMAX[127:96], all FP32
+0x080	W	RayFlags2 (bottom/dual slot, HW instancing): same layout as RayFlags	TTUST	-	U32 reg[4], same bit layout as 0x000
+0x0C0	W	RayOrigin2 (bottom slot): origin.xyz (tmin ignored)	TTUST	-	U32 reg[4]: ORIGIN_X/Y/Z FP32, TMIN slot ignored
+0x0D0	W	RayDirection2 (bottom slot): direction.xyz (tmax ignored)	TTUST	-	U32 reg[4]: DIRECTION_X/Y/Z FP32, TMAX slot ignored
+0x100	W	StackRestore primary entries 0/1	TTUST	-	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x110	W	StackRestore primary entries 2/3	TTUST	-	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x120	W	StackRestore primary entries 4/5	TTUST	-	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x180	W	StackRestore secondary entries 0/1	TTUST	-	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x190	W	StackRestore secondary entries 2/3	TTUST	-	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x1A0	W	StackRestore secondary entries 4/5	TTUST	-	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x200	W	StackInitComplet: BVH root pointer (the traversal entry point)	TTUST	-	U32 reg[4]: NODEREF[63:0] (49b complet ptr + enterRoot flag) INSTANCEPTR[112:64]
+0x210	W	StackInitTriRange: triangle range to intersect + current instance ptr	TTUST	-	U32 reg[4]: TRIRANGE[63:0] INSTANCEPTR[112:64]
+0x220	W	StackInitTriRangeComplet: triangle range + node ref	TTUST	-	U32 reg[4]: TRIRANGE[63:0] NODEREF[127:64]
+0x280	W	StackInitTriFetch: triangle range for vertex fetch	TTUST	-	U32 reg[4]: TRIRANGE[63:0] INSTANCEPTR[112:64]
+0x300	R	Hit result (union; also TTUCLOSE default slot): t, u, v, primId, instance, hit type/miss	-	TTULD / TTULD.CLOSE	U32 reg[4]: TYPE[127:124]; Triangle: USERTRIANGLEID[31:0] T=reg[1]&0x7FFFFFFF U=reg[2]&0x7FFFFFFF V=reg[3]&0x7FFFFFFF ALPHA=reg[1]>>31 BACKFACING=reg[2]>>31; type 0xF=miss/None 0xE=Error
+0x310	R	HitTrianglePtr: TTUTriRange of the hit triangle (single-tri range)	-	TTULD	U32 reg[4]: TRIRANGE[63:0]
+0x320	R	HitInstance: user instance id (lo/hi) + 49b instance pointer	-	TTULD	U32 reg[4]: USERINSTANCEIDLO[31:0] USERINSTANCEIDHI[63:32] INSTANCEPTR[112:64]
+0x330	R	TransformedRay0: object-space origin.xyz + direction.x	-	TTULD	U32 reg[4]: ORIGIN_X/Y/Z FP32, DIRECTION_X[127:96] FP32
+0x340	R	TriFetch0: fetched triangle vertices v0.xyz + v1.x	-	TTULD	U32 reg[4]: V0X V0Y V0Z V1X, all FP32
+0x350	R	TriFetch1: v1.yz + v2.xy	-	TTULD	U32 reg[4]: V1Y V1Z V2X V2Y, all FP32
+0x360	R	TriFetch2: v2.z + userTriangleID + alpha + predicate + error	-	TTULD	U32 reg[4]: V2Z[31:0] USERTRIANGLEID[63:32] ALPHA[64] PREDICATE[95] ERROR_CODE[101:96]
+0x370	R	TriFetch3: TTUTriRange of the fetched triangle	-	TTULD	U32 reg[4]: TRIRANGE[63:0]
+0x380	R	return Stack primary entries 0/1 (+ meta; reg[1]==0 => traversal terminated)	-	TTULD	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57] (STACKCNT/STACKPTR/LOST)
+0x390	R	return Stack primary entries 2/3	-	TTULD / TTULD.CLOSE	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x3A0	R	return Stack primary entries 4/5	-	TTULD	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x3B0	R	TransformedRay1: object-space direction.yz	-	TTULD	U32 reg[2]: DIRECTION_Y[31:0] DIRECTION_Z[63:32] FP32
+0x3C0	R	return Stack secondary entries 0/1	-	TTULD	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x3D0	R	return Stack secondary entries 2/3	-	TTULD / TTULD.CLOSE	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x3E0	R	return Stack secondary entries 4/5	-	TTULD	U32 reg[4]: ENTRY_0[56:0] ENTRY_1[127:64] META[63:57]
+0x3F0	-	Invalid sentinel (used by TTU commands that carry no address: OPEN/GO/CLOSE w/o explicit addr)	-	-	no data
+0x600	-	AddressSpaceSize: total size of the TTU state file (1536 bytes)	-	-	bound only
