@@ -116,17 +116,25 @@ def _opclass_of(raw16: bytes) -> str:
     return ""
 
 
+# Ops whose opex field uses TABLES_opex_10: an out-of-range opex (0) makes
+# nvdisasm name the matched opclass. The TABLES_opex_0 ops accept opex 0, so this
+# path cannot trigger their name; they encode from the same field map.
+_OPEX10 = {0x3d1, 0x3d2, 0x3d3}
+
+
 def selfcheck() -> int:
-    """Verify each opcode is recognized by nvdisasm as the expected opclass."""
+    """Verify the opex_10 opcodes are recognized by nvdisasm as the expected
+    opclass. The opex_0 opcodes are not separately checkable via this path."""
     ok = True
     for op, opcode in OPCODES.items():
         if op == "TTUCLOSE":
             continue
-        raw = encode(opcode, opex=0)            # opex=0 forces the opclass-name error
-        cls = _opclass_of(raw)
-        want = OPCLASS[opcode]
-        good = cls.startswith(want.rstrip("_"))
-        print(f"  {op:13s} 0x{opcode:03x} -> opclass {cls or '(none)':14s} {'OK' if good else 'MISMATCH'}")
+        if opcode not in _OPEX10:
+            print(f"  {op:13s} 0x{opcode:03x} -> opex_0 op (not opclass-checkable via opex=0)")
+            continue
+        cls = _opclass_of(encode(opcode, opex=0))
+        good = cls.startswith(OPCLASS[opcode].rstrip("_"))
+        print(f"  {op:13s} 0x{opcode:03x} -> opclass {cls or '(none)':16s} {'OK' if good else 'MISMATCH'}")
         ok = ok and good
     print("SELFCHECK OK" if ok else "SELFCHECK FAILED")
     return 0 if ok else 1
