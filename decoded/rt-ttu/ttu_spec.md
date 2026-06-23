@@ -157,3 +157,19 @@ complet array (off the traversal path — the traversable handle resolves to the
 complet, not the header). The triangle is stored in the intersector's precomputed
 form rather than a plain-FP32 block. `driver_bvh_1tri.bin` is this dumped
 structure — a known-good BVH for raw-SASS traversal.
+
+## Demos
+
+`ttu_demo_trace.py` injects hand-assembled TTU instructions into a ptxas-built
+cubin and runs them on sm_89 through `sass_launch` — no PTX RT intrinsics, no
+OptiX. A hand-assembled `TTUCCTL` executes on the RT core: a kernel writes a
+before-marker, runs the injected instruction, and writes an after-marker; both
+markers appear in the output, so control flows through the injected TTU
+instruction without faulting. This is a raw-SASS TTU instruction running on the
+hardware.
+
+The full ray-triangle trace (`TTUST` ray+root → `TTUOPEN` → `TTUGO` →
+`TTULD[0x300]`) over the driver-built BVH (`driver_bvh_1tri.bin`) needs the
+per-instruction register wiring under a controlled allocation and the
+root-node-ref / scoreboard-handshake encodings, which the driver's own emitted
+TTU sequence pins down.
