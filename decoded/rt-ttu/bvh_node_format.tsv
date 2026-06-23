@@ -1,0 +1,107 @@
+struct	field	byte_offset	bit_offset	bits	type	meaning	source_of_evidence
+TTUComplet	header	0	0	256	TTUCompletHeader	32-byte node header (quantization + ptrs + leaf type)	rtcore-driver-struct
+TTUComplet	child[0..11]	32	256	768	TTUCompletChild[12]	twelve 8-byte child records (slot 11 = long-ptr-hi when LPTR=1)	rtcore-driver-struct
+TTUCompletHeader	FORMAT	0	0	4	uint	node format: 0=AABB(only base-valid),1=motion,2=multibox,3=both; reserved=>err0x30	rtcore-driver-struct + validator
+TTUCompletHeader	LPTR	0	4	1	bool	0=relative 32b ptrs in header; 1=long-ptr (hi17 in child[11])	rtcore-driver-struct
+TTUCompletHeader	RELPTR	0	5	1	bool	1=leaf/item ptr relative to this complet addr; 0=absolute	rtcore-driver-struct
+TTUCompletHeader	LEAFTYPE	0	6	2	enum	0=ItemRange,1=TriRange,2=InstanceNode,3=reserved/DMM; reserved=>err0x31	rtcore-driver-struct
+TTUCompletHeader	XSCL	1	8	8	uint	x quantization exponent: dx=2^(XSCL-127)/256	rtcore-driver-struct + dequantize-routine
+TTUCompletHeader	YSCL	2	16	8	uint	y quantization exponent	rtcore-driver-struct + dequantize-routine
+TTUCompletHeader	ZSCL	3	24	8	uint	z quantization exponent	rtcore-driver-struct + dequantize-routine
+TTUCompletHeader	XMIN	4	32	32	FP32	x quantization origin (box low corner)	rtcore-driver-struct + dequantize-routine
+TTUCompletHeader	YMIN	8	64	32	FP32	y quantization origin	rtcore-driver-struct + dequantize-routine
+TTUCompletHeader	ZMIN	12	96	32	FP32	z quantization origin	rtcore-driver-struct + dequantize-routine
+TTUCompletHeader	ITEMBASELO/LEAFPTRLO	16	128	32	uint	low 32 bits of leaf-array / item base pointer	rtcore-driver-struct + addr-resolver
+TTUCompletHeader	ITEMBASEHI	20	160	15	uint	item-base high bits (ItemRange)	rtcore-driver-struct + addr-resolver
+TTUCompletHeader	LEAFPTRHI	20	160	17	uint	leaf-ptr high bits (TriRange/InstanceNode)	rtcore-driver-struct + addr-resolver
+TTUCompletHeader	FORCERAYOPALWAYS	22	180	1	bool	force ray-op predicate to always-pass for children	rtcore-driver-struct
+TTUCompletHeader	MULTIBOXCOUNT	22	181	3	uint	multi-box child grouping (feature)	rtcore-driver-struct
+TTUCompletHeader	FIRSTTRIIDX	23	184	4	uint	starting local triangle index for first TriRange leaf	rtcore-driver-struct + leaf-tri-range-accessor
+TTUCompletHeader	PARENTLEAFIDX	23	188	4	uint	parent child-slot back-ref; 0xF=root	rtcore-driver-struct + validator(err0x33)
+TTUCompletHeader	PARENTOFS	24	192	32	S32	signed parent-complet offset (<<7 bytes) when LPTR=0	rtcore-driver-struct + addr-resolver
+TTUCompletHeader	PARENTPTRLO	24	192	32	uint	parent-ptr low 32b when LPTR=1	rtcore-driver-struct
+TTUCompletHeader	CHILDOFS	28	224	32	S32	signed child-complet base offset (<<7 bytes); must be nonzero(err0x34)	rtcore-driver-struct + validator
+TTUCompletHeader	CHILDPTRLO	28	224	32	uint	child-ptr low 32b when LPTR=1	rtcore-driver-struct
+TTUCompletChild	XLO	0	0	8	uint	quantized x low endpoint	rtcore-driver-struct
+TTUCompletChild	XHI	1	8	8	uint	quantized x high endpoint (decoded as XHI+1)	rtcore-driver-struct + dequantize-routine
+TTUCompletChild	YLO	2	16	8	uint	quantized y low endpoint	rtcore-driver-struct
+TTUCompletChild	YHI	3	24	8	uint	quantized y high endpoint (YHI+1)	rtcore-driver-struct + dequantize-routine
+TTUCompletChild	ZLO	4	32	8	uint	quantized z low endpoint; 0xFF+ZHI=0 => empty child	rtcore-driver-struct + isEmpty-sentinel
+TTUCompletChild	ZHI	5	40	8	uint	quantized z high endpoint (ZHI+1)	rtcore-driver-struct + dequantize-routine
+TTUCompletChild	RVAL	6	48	8	uint	visibility/ray-op value tested vs ray instance mask	rtcore-driver-struct + validator
+TTUCompletChild	DATA	7	56	8	TTUCompletChildData	child type byte (leaf bit + per-type payload)	rtcore-driver-struct
+TTUCompletChild	PARENTPTRHI	0	0	17	uint	parent-ptr high 17b (only when this is slot 11 + LPTR=1)	rtcore-driver-struct
+TTUCompletChild	CHILDPTRHI	4	32	17	uint	child-ptr high 17b (only when slot 11 + LPTR=1)	rtcore-driver-struct
+TTUCompletChildData	LEAF_BIT	0	6	1	bool	1=child is a leaf (LEAF_MASK bits0-6 nonzero => leaf)	rtcore-driver-struct
+TTUCompletChildData_TriRange	LINES	0	0	3	uint	block-index delta of the triangle range (0=single block)	rtcore-driver-struct + builder-constructor
+TTUCompletChildData_TriRange	TRIIDX	0	3	4	uint	exclusive end local triangle index of the range	rtcore-driver-struct + builder-constructor
+TTUCompletChildData_TriRange	ALPHA	0	7	1	bool	0=opaque, 1=alpha-textured	rtcore-driver-struct
+TTUCompletChildData_InstanceNode	SIZE	0	0	6	uint	instance-node size in 64-byte units	rtcore-driver-struct + addr-resolver
+TTUCompletChildData_InstanceNode	INV	0	7	1	bool	invert ray-op result	rtcore-driver-struct
+TTUCompletChildData_ItemRange	COUNT	0	0	6	uint	number of items in this leaf range	rtcore-driver-struct
+TTUCompletChildData_ItemRange	INV	0	7	1	bool	invert ray-op result	rtcore-driver-struct
+TTUTriangleBlock	v0	0	0	96	FP32x3	(uncompressed) triangle0 vertex0 xyz	rtcore-driver-block-writer
+TTUTriangleBlock	v1	12	96	96	FP32x3	(uncompressed) triangle0 vertex1 xyz	rtcore-driver-block-writer
+TTUTriangleBlock	v2	24	192	96	FP32x3	(uncompressed) triangle0 vertex2 xyz	rtcore-driver-block-writer
+TTUTriangleBlock	TIDBASE	120	960	32	uint	(uncompressed) triangle0 userTriangleID; tri t at bit 960-32t	rtcore-driver-block-writer
+TTUTriangleBlock	HEADER	124	992	32	TTUTriangleBlockHeader	block header (mode/count/flags)	rtcore-driver-struct
+TTUTriangleBlockHeader	PX	124	992	5	uint	(compressed) x-delta bit width minus 1	rtcore-driver-struct
+TTUTriangleBlockHeader	PY	124	997	5	uint	(compressed) y-delta bit width minus 1	rtcore-driver-struct
+TTUTriangleBlockHeader	PZ	125	1002	5	uint	(compressed) z-delta bit width minus 1	rtcore-driver-struct
+TTUTriangleBlockHeader	PID	125	1007	5	uint	(compressed) triangleID-delta bit width minus 1	rtcore-driver-struct
+TTUTriangleBlockHeader	FNC	126	1009	3	uint	per-triangle force-no-cull (uncompressed: one bit per tri)	rtcore-driver-struct + block-writer
+TTUTriangleBlockHeader	M	126	1012	4	uint	triangle count minus 1	rtcore-driver-struct
+TTUTriangleBlockHeader	SHIFT	127	1016	5	uint	(compressed) discarded LSB count for delta decode	rtcore-driver-struct
+TTUTriangleBlockHeader	ALPHA	127	1018	3	uint	per-triangle alpha bits (uncompressed: one per tri)	rtcore-driver-struct + block-writer
+TTUTriangleBlockHeader	MODE	127	1021	3	enum	0=Uncompressed,1=Compressed,2=Motion,3/4=Vis,5=DMM; reserved=>err0x37	rtcore-driver-struct
+TTUInstanceNode	USERINSTANCEIDLO	0	0	32	uint	user instance id low	rtcore-driver-struct
+TTUInstanceNode	USERINSTANCEIDHI	4	32	32	uint	user instance id high (0 reserved for TLAS hit)	rtcore-driver-struct + validator
+TTUInstanceNode	ROOTCOMPLETPTR	8	64	49	uint	pointer to bottom-AS root complet	rtcore-driver-struct
+TTUInstanceNode	MASK	14	113	8	uint	per-instance visibility mask	rtcore-driver-struct
+TTUInstanceNode	MASKVALID	15	121	1	bool	mask field valid	rtcore-driver-struct
+TTUInstanceNode	HEADER	15	122	6	TTUInstanceNodeHeader	flip-front-face/force-no-cull/relptr/alpha flags	rtcore-driver-struct
+TTUInstanceNode	MATRIX	16	128	384	FP32x12	3x4 object->world transform	rtcore-driver-struct
+TTUInstanceNodeHeader	FORMAT	0	0	1	uint	must be 0; reserved=>err0x35	rtcore-driver-struct
+TTUInstanceNodeHeader	FLIPFRONTFACE	0	1	1	bool	flip FrontFaceCW for bottom ray	rtcore-driver-struct
+TTUInstanceNodeHeader	FORCENOCULL	0	2	1	bool	force cull mode none for bottom ray	rtcore-driver-struct
+TTUInstanceNodeHeader	RELPTR	0	3	1	bool	root-complet ptr relative to instance node	rtcore-driver-struct
+TTUReqData_RayOrigin	originX	0	0	32	FP32	ray origin x	rtcore-ttu-interface
+TTUReqData_RayOrigin	originY	4	32	32	FP32	ray origin y	rtcore-ttu-interface
+TTUReqData_RayOrigin	originZ	8	64	32	FP32	ray origin z	rtcore-ttu-interface
+TTUReqData_RayOrigin	tmin	12	96	32	FP32	ray tmin	rtcore-ttu-interface
+TTUReqData_RayDirection	directionX	0	0	32	FP32	ray direction x	rtcore-ttu-interface
+TTUReqData_RayDirection	directionY	4	32	32	FP32	ray direction y	rtcore-ttu-interface
+TTUReqData_RayDirection	directionZ	8	64	32	FP32	ray direction z	rtcore-ttu-interface
+TTUReqData_RayDirection	tmax	12	96	32	FP32	ray tmax	rtcore-ttu-interface
+TTUReqData_RayFlags	type	0	0	3	enum	0=Ray,3=Box,4-6=Beam,7=instancing	rtcore-ttu-interface
+TTUReqData_RayFlags	cullMode	0	4	2	enum	0=none,1=cullback,2=cullfront,3=disable-edge-test	rtcore-ttu-interface
+TTUReqData_RayFlags	frontFaceCW	0	6	1	bool	0=front=CCW,1=front=CW	rtcore-ttu-interface
+TTUReqData_RayFlags	terminateOnHit	0	7	1	bool	terminate on any hit	rtcore-ttu-interface
+TTUReqData_RayFlags	rayOp	2	16	4	enum	ray-op predicate (0=Always..15=FltTmaxGEqual)	rtcore-ttu-interface
+TTUReqData_RayFlags	traversalOrder	2	21	3	enum	0=sort-by-tmin,1=tree-order,2-7=axis-sort	rtcore-ttu-interface
+TTUReqData_RayFlags	instMask	3	24	8	uint	ray instance mask	rtcore-ttu-interface
+TTUResData_Hit_Triangle	userTriangleID	0	0	32	uint	hit triangle user id	rtcore-ttu-interface
+TTUResData_Hit_Triangle	T	4	32	31	FP32	ray parameter t (31b nonneg; 32b signed if disable-edge-test)	rtcore-ttu-interface
+TTUResData_Hit_Triangle	ALPHA	7	63	1	bool	0=opaque,1=alpha	rtcore-ttu-interface
+TTUResData_Hit_Triangle	U	8	64	31	FP32	barycentric u	rtcore-ttu-interface
+TTUResData_Hit_Triangle	BACKFACING	11	95	1	bool	0=front,1=back	rtcore-ttu-interface
+TTUResData_Hit_Triangle	V	12	96	31	FP32	barycentric v	rtcore-ttu-interface
+TTUResData_Hit	TYPE	15	124	4	enum	0=Triangle,8=NodeRef,9=TriRange,A=ItemRange,B=Instance,C=TermUnknown,E=Error,F=None	rtcore-ttu-interface
+TTUNodeRef	CPLPTR	0	0	49	uint	complet pointer (root address for stack init)	rtcore-ttu-interface
+TTUNodeRef	CPLCHILD	7	56	4	uint	child to resume after (ignored if enterRoot)	rtcore-ttu-interface
+TTUNodeRef	ENTERROOT	7	60	1	bool	1=start traversal at complet root	rtcore-ttu-interface
+ttuAddr_slot	RayFlags	0x000	-	128	write	TTU internal slot for ray flags	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	RayOrigin	0x040	-	128	write	TTU internal slot for ray origin+tmin	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	RayDirection	0x050	-	128	write	TTU internal slot for ray direction+tmax	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	StackInitComplet	0x200	-	128	write	root NodeRef written here to seed traversal	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	StackInitTriRange	0x210	-	128	write	seed traversal from a tri range	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	Hit	0x300	-	128	read	the hit/result record	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	HitInstance	0x320	-	128	read	hit instance id + pointer	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	TriFetch0	0x340	-	128	read	hit triangle vertices part 0	rtcore-ttu-reqaddr-enum
+ttuAddr_slot	Stack01	0x380	-	128	read	traversal stack entries 0,1 (spill/restore)	rtcore-ttu-reqaddr-enum
+AS_layout	root_complet	0	-	1024	TTUComplet	complet index 0 = root (PARENTLEAFIDX=0xF), at nodesBase	rtcore-driver-validator
+AS_layout	complet_array	nodesBase	-	-	TTUComplet[numNodes]	contiguous 128-B complets	rtcore-driver-validator
+AS_layout	triblock_array	trianglesBase	-	-	TTUTriangleBlock[numTriBlocks]	contiguous 128-B triangle blocks	rtcore-driver-validator
+AS_layout	complet_align	-	-	-	const	complet buffer 128-B aligned (else fault)	rtcore-driver-validator
+AS_layout	triblock_align	-	-	-	const	triangle-block buffer 128-B aligned (else fault)	rtcore-driver-validator
+AS_layout	addr_mask	-	-	49	const	complet/leaf/instance pointers are 49-bit	rtcore-driver-struct
