@@ -181,9 +181,27 @@ embedded in `libnvoptix.so` are curve/ribbon build-and-fit helpers with zero TTU
 ops, and the `libnvidia-{glcore,gpucomp,eglcore}` runtimes embed no sm_89 device
 code. The traversal is compiled at pipeline-link time and stored in the OptiX
 disk cache (`/var/tmp/OptixCache_<user>/optix7cache.db`, a SQLite `cache_data`
-table of compiled-module blobs). `ttu_scan.py` decodes TTU instructions out of
-any cubin or cache blob (the retail nvdisasm renders TTU opcodes but not their
-operands), so the driver's exact register wiring, root-node-ref encoding, and
-scoreboard handshake are obtained by creating a trace pipeline and scanning the
-resulting cache entry — which requires a CUDA-to-PTX shader compiler for the
-pipeline's programs.
+table of compiled-module blobs). Each blob is a header followed at a fixed offset
+by a raw NVIDIA-CUDA ELF (carve at the ELF magic). `ttu_scan.py` decodes TTU
+instructions out of any cubin or cache blob (the retail nvdisasm renders TTU
+opcodes but not their operands).
+
+## OptiX-JIT trace, end to end
+
+A trace pipeline built from a clang-compiled shader (`clang++ -x cuda
+--cuda-gpu-arch=sm_89`, or `nvcc -ptx -ccbin g++-15`) runs a ray-triangle trace
+on the sm_89 GPU: one ray against the `[-1,1]` triangle returns `hit=1,
+t=9.6667, (u,v)=(0.33335,0.33330), prim=0` — the centroid, confirming the BVH,
+ray, and pipeline.
+
+The JITed module that lands in the cache contains only the closest-hit and miss
+programs — zero TTU ops. The traversal (the code carrying the TTU opcodes) is
+linked at pipeline-create and loaded into the GPU by the OptiX runtime through a
+private driver path: it is not loaded via the public `cuModuleLoadData` /
+`cuModuleLoadDataEx` / `cuLibraryLoadData` / `cuModuleLoadFatBinary` entry points.
+Interposition on those and on `cuGetProcAddress`, a `dlsym` hook, and gdb
+breakpoints on the same symbols all see no call across a full trace (`libnvoptix`
+binds directly and loads via a private path). The disk cache holds no separately
+decodable traversal module. Capturing the driver's exact TTU traversal sequence
+therefore requires reading the loaded executable from GPU memory or hooking the
+private loader, not the public module-load API.
