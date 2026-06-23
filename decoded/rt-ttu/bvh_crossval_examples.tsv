@@ -1,0 +1,175 @@
+# RT-core (TTU) BVH byte format — cross-validated field map + concrete test vectors.
+# Recovered from analysis of the RT runtime/test binaries + the BVH builder + nvdisasm SASS.
+# Three independent producers agree on every layout: the hardware diag RT-core test
+# (explicit byte construction + known geometry oracle), the OptiX wide-BVH builder
+# (bit-field spec headers w/ sizeof asserts), and the DXR->rtcore acceleration-structure
+# builder. Byte layouts + test vectors are bare interface facts. Confidence HIGH unless noted.
+#
+# Bit offsets are within the named struct (LE bit packing); byte = bit/8. Word layout = u32 reg[].
+# Columns: struct  byte_off  bit_off  size_bits  field  type  meaning  source_agreement  confidence
+struct	byte_off	bit_off	size_bits	field	type	meaning	source_agreement	confidence
+#
+# ============ COMPLET (compressed BVH node) — 128 bytes, 128B aligned, 32B header + 11/12x 8B child ============
+complet	0	0	4	format	u4	child format (0=Standard,1=MotionBlur,2=MultiBox,3=MotionBlurMultiBox)	diag+optix+dxr	high
+complet	0	4	1	lptr	u1	long-ptr mode: last child slot holds 17b high ptr bits instead of a box	diag+optix+dxr	high
+complet	0	5	1	relPtr	u1	leaf pointer is relative(offset) vs absolute	diag+optix+dxr	high
+complet	0	6	2	leafType	u2	0=ItemRange 1=TriRange 2=InstNode 3=DisplacedMicromesh	diag+optix+dxr	high
+complet	1	8	8	xscl	u8	X scale exponent: dx=bitcast(xscl<<23); placed in FP32 exponent field	diag+optix+dxr	high
+complet	2	16	8	yscl	u8	Y scale exponent	diag+optix+dxr	high
+complet	3	24	8	zscl	u8	Z scale exponent	diag+optix+dxr	high
+complet	4	32	32	xmin	f32	box origin/anchor X (FP31 w/ 3b shearExpOffset in LSBs when leafType=3)	diag+optix+dxr	high
+complet	8	64	32	ymin	f32	box origin/anchor Y	diag+optix+dxr	high
+complet	12	96	32	zmin	f32	box origin/anchor Z	diag+optix+dxr	high
+complet	16	128	32	itemBaseLo/leafPtrLo	u32	low bits of leaf/item base ptr (128B-aligned: bits[6:0]=0)	diag+optix+dxr	high
+complet	20	160	15/17	itemBaseHi/leafPtrHi	u15/u17	high bits of leaf/item base ptr (15b item, 17b leaf)	diag+optix+dxr	high
+complet	20	165	1	shearEnable	u1	misc[17]: sheared-AABB complet enable (Ada)	diag+optix	high
+complet	20	161	4	shearSelect	u4	misc[16:13]: shear axis-pair select (when shearEnable)	diag+optix	high
+complet	20	157	4	shearCoeff0	u4	misc[12:9]: shear coefficient 0	diag+optix	high
+complet	20	161	4	shearCoeff1	u4	misc[8:5]: shear coefficient 1	diag+optix	high
+complet	23	184	4	firstTriIdx	u4	misc[27:24]: first triangle index in leaf range	diag+optix+dxr	high
+complet	23	188	4	parentLeafIdx	u4	misc[31:28]: this complet's index within parent (0xF=root)	diag+optix+dxr	high
+complet	24	192	32	parentOfs/parentPtrLo	u32/s32	parent ptr: lptr=0 signed rel ofs (bits[38:7], <<7); lptr=1 abs low 32b	diag+optix+dxr	high
+complet	28	224	32	childOfs/childPtrLo	u32/s32	first-child ptr: lptr=0 signed rel ofs (<<7=128B); lptr=1 abs low 32b	diag+optix+dxr	high
+complet	120	960	17	parentPtrHi	u17	(longPtr u64@120 bits[16:0]) high bits of abs parent ptr	diag+optix+dxr	high
+complet	120	992	17	childPtrHi	u17	(longPtr u64@120 bits[48:32]) high bits of abs child ptr	diag+optix+dxr	high
+# ---- complet child record (8 bytes), 11 records @ byte 32..119 (slot 11 reused as longPtr hi when lptr=1) ----
+complet.child	0	0	8	xlo	u8	quantized child AABB lower X (256 buckets/axis)	diag+optix+dxr	high
+complet.child	1	8	8	xhi	u8	quantized child AABB upper X	diag+optix+dxr	high
+complet.child	2	16	8	ylo	u8	quantized child AABB lower Y	diag+optix+dxr	high
+complet.child	3	24	8	yhi	u8	quantized child AABB upper Y	diag+optix+dxr	high
+complet.child	4	32	8	zlo	u8	quantized child AABB lower Z	diag+optix+dxr	high
+complet.child	5	40	8	zhi	u8	quantized child AABB upper Z	diag+optix+dxr	high
+complet.child	6	48	8	rval	u8	per-child ray-op/range value byte	diag+optix+dxr	high
+complet.child	7	56	8	data	u8	leaf-descriptor byte (union by leafType; see notes)	diag+optix+dxr	high
+# child.data byte (offset 7) decode per leafType:
+complet.child.data	7	56	3	lines	u3	TriRange leaf: number of cache lines touched (bits[2:0])	diag+optix	high
+complet.child.data	7	59	4	triIdx	u4	TriRange leaf: triangle index in first line (bits[6:3])	diag+optix	high
+complet.child.data	7	63	1	alpha	u1	TriRange leaf: alpha bit (bit7)	diag+optix	high
+complet.child.data	7	56	6	count/size	u6	ItemRange item count / InstNode size (bits[5:0])	optix+dxr	high
+complet.child.data	7	62	1	leafBit	u1	bit6: this child is a leaf	optix+dxr	high
+# empty child sentinel: xlo=0xFF xhi=0x00 ylo=0xFF yhi=0x00 zlo=0xFF zhi=0x00 (lo>hi => degenerate box)
+#
+# ============ child AABB dequantization (decode math — verified) ============
+decode	-	-	-	dx	formula	dx = bitcast_f32(xscl<<23) ; lox=xmin+dx*xlo/256 ; hix=xmin+dx*(xhi+1)/256	diag+optix+dxr	high
+decode	-	-	-	encode	formula	scl = exp(xmax-xmin) ; +1 if mantissa!=0 (round up so dx>=len, box always encloses)	diag	high
+#
+# ============ TEST VECTOR A: root-AABB scale exponent (concrete) ============
+testvec.A	-	-	-	rootAABB	geometry	BVH-test root AABB = [-4/3,-4/3,-4/3, +4/3,+4/3,+4/3] (axis len=8/3~=2.667)	diag	high
+testvec.A	-	-	-	xscl	value	len=2.667 -> bitcast=0x402AAAAB raw_exp=128 mantissa!=0 -> xscl=0x81(129)	diag	high
+testvec.A	-	-	-	dx	value	dx = 2^(129-127) = 4.0 (>= 2.667, conservative)	diag	high
+testvec.A	-	-	-	sanityBox	geometry	sanity-check bbox = [-1,-1,-1, 1,1,1] (len=2.0 exact)	diag	high
+testvec.A	-	-	-	scl_exact	value	len=2.0 -> bitcast=0x40000000 exp=128 mantissa=0 -> scl=0x80(128) dx=2.0 exact	diag	high
+#
+# ============ TEST VECTOR B: child quantization (+X half of root) ============
+testvec.B	-	-	-	childBox	geometry	child = +X half of root: X=[0, +4/3] (origin xmin=-4/3, dx=4.0)	diag	high
+testvec.B	-	-	-	xlo	value	xlo = floor(256*(0-(-4/3))/4) = 85 = 0x55	diag	high
+testvec.B	-	-	-	xhi	value	xhi = ceil(256*(4/3-(-4/3))/4 - 1) = 170 = 0xAA	diag	high
+testvec.B	-	-	-	decoded	value	decode X = [-0.00521, 1.33854] conservatively encloses target [0, 1.333]	diag	high
+#
+# ============ TEST VECTOR C: hit record (Triangle hit, 16B = 4x u32) ============
+testvec.C	-	-	-	input	geometry	synth hit: triId=7 t=2.5 u=0.25 v=0.5 alpha=0 facing=1	diag	high
+testvec.C	-	-	-	bytes	value	data=[0x00000007, 0x40200000, 0xBE800000, 0x3F000000] (LE u32)	diag	high
+testvec.C	-	-	-	decode	value	d3>>31=0 -> Triangle; triId=d0; t=bitcast(d1&0x7FFFFFFF); u=bitcast(d2&..); v=bitcast(d3&..); alpha=d1>>31; facing=d2>>31	diag	high
+testvec.C	-	-	-	miss	value	miss: d3=0xF0000000 (top nibble 0b1111 => HitType::None)	diag	high
+testvec.C	-	-	-	trirange	value	trirange hit: d3 nibble 0b1001 bit27=0 => TriRange	diag	high
+testvec.C	-	-	-	error	value	error: d3=0xE0000003 nibble 0b1110 errorCode=d3&0x3F => Error	diag	high
+#
+# ============ HIT RECORD (TTUResData, 16 bytes = data[0..3]) ============
+hit.type	-	-	-	disc	formula	data[3]>>31==0 => Triangle; else nibble data[3]>>28: 1001=TriRange/DispSubTri 1110=Error 1111=None	diag	high
+hit.triangle	0	0	32	triId	u32	data[0]: user triangle ID	diag+optix+dxr	high
+hit.triangle	4	32	31	t	f31	data[1]&0x7FFFFFFF: hit distance	diag+optix+dxr	high
+hit.triangle	4	63	1	alpha	u1	data[1]>>31: alpha bit	diag+optix+dxr	high
+hit.triangle	8	64	31	u	f31	data[2]&0x7FFFFFFF: barycentric u	diag+optix+dxr	high
+hit.triangle	8	95	1	facing	u1	data[2]>>31: back-facing bit	diag+optix+dxr	high
+hit.triangle	12	96	31	v	f31	data[3]&0x7FFFFFFF: barycentric v	diag+optix+dxr	high
+hit.trirange	0	0	49	triRangePtr	u49	(data[1]&0x1FFFF)<<32 | data[0]: ptr to tri range	diag+optix	high
+hit.trirange	4	53	4	triIdx	u4	(data[1]>>21)&0xF	diag	high
+hit.trirange	4	57	4	triEnd	u4	(data[1]>>25)&0xF	diag	high
+hit.trirange	4	61	3	lines	u3	(data[1]>>29)&0x7	diag	high
+hit.trirange	8	64	32	t	f32	data[2]: hit distance	diag	high
+hit.dispsubtri	0	0	42	triPtr	u42	((data[1]&0x3FF)<<32 | data[0])<<7 (128b aligned)	diag	high
+hit.dispsubtri	4	42	6	subTriIdx	u6	(data[1]>>10)&0x3F	diag	high
+hit.error	0	0	49	errorPtr	u49	(data[1]&0x1FFFF)<<32 | data[0]	diag	high
+hit.error	4	61	3	lines	u3	(data[1]>>29)&0x7	diag	high
+hit.error	12	96	6	errorCode	u6	data[3]&0x3F	diag	high
+#
+# ============ RAY REQUEST (3x 16-byte regs in TTU internal addr space) ============
+ray.flags	0	0	32	rayFlags	u32	type/cullMode/frontFaceCW/terminateOnHit/stackLimit/storeT(bit13)/rayOp/order	diag+optix+dxr	high
+ray.flags	0	13	1	storeT	u1	store-T flag (set for Complet_TriRange queries)	diag	high
+ray.flags	4	32	2	returnMode	u2	per-node return-to-SM mode (TriRange hit: 0x3<<(12+32))	diag	high
+ray.flags	4	32	32	timestamp	f32	[reg1 hi u32]: motion-blur timestamp (GA10x+, else ignored)	diag	high
+ray.origin	0	0	32	ori_x	f32	ray origin X	diag+optix+dxr	high
+ray.origin	4	32	32	ori_y	f32	ray origin Y	diag+optix+dxr	high
+ray.origin	8	64	32	ori_z	f32	ray origin Z	diag+optix+dxr	high
+ray.origin	12	96	32	tmin	f32	ray tmin (test uses 0.0)	diag+optix+dxr	high
+ray.direction	0	0	32	dir_x	f32	ray direction X	diag+optix+dxr	high
+ray.direction	4	32	32	dir_y	f32	ray direction Y	diag+optix+dxr	high
+ray.direction	8	64	32	dir_z	f32	ray direction Z	diag+optix+dxr	high
+ray.direction	12	96	32	tmax	f32	ray tmax (test uses 1e9)	diag+optix+dxr	high
+#
+# ============ TTU INTERNAL ADDRESS-SPACE SLOT MAP (ttuAddr[U16] indices) — from kernel TTUST/TTULD ============
+ttuAddr	0x000	-	128	rayFlags+rayOps	slot	ray flags (u32) + ray-op params (u32) + timestamp (u32)	diag	high
+ttuAddr	0x040	-	128	rayOrigin+tmin	slot	ray ori.x,ori.y (lo64) | ori.z,tmin (hi64)	diag	high
+ttuAddr	0x050	-	128	rayDir+tmax	slot	ray dir.x,dir.y (lo64) | dir.z,tmax (hi64)	diag	high
+ttuAddr	0x100	-	64	stackRestore01	slot	traversal stack restore (preemption resume)	diag	high
+ttuAddr	0x110	-	64	stackRestore23	slot	traversal stack restore (preemption resume)	diag	high
+ttuAddr	0x200	-	64	completStackInit	slot	cplPtrLo | (0x10000000|cplPtrHi) = "enter from complet root"	diag	high
+ttuAddr	0x210	-	64	triRangeStackInit	slot	triPtrLo | (numLines<<29|triPtrHi); triEnd=0 triIdx=0	diag	high
+ttuAddr	0x300	-	128	hitResult	slot	128-bit hit record read by TTULD	diag	high
+ttuAddr	0x380	-	64	stackSave01	slot	traversal stack save (preemption)	diag	high
+ttuAddr	0x390	-	64	stackSave23	slot	traversal stack save (read w/ TTULD.CLOSE)	diag	high
+#
+# ============ TRIANGLE BLOCK (leaf) — 128 bytes, 128B aligned, 3..16 tris/block ============
+# compressed (mode 1): vertex deltas; uncompressed (mode 0): full FP32 verts, 3 tris/line
+triblock	0	0	32	vBaseX	f32	first-vertex anchor X (compressed) / v0.x of tri0 (uncompressed)	diag+optix+dxr	high
+triblock	4	32	32	vBaseY	f32	first-vertex anchor Y	diag+optix+dxr	high
+triblock	8	64	32	vBaseZ	f32	first-vertex anchor Z	diag+optix+dxr	high
+triblock	12	96	864	dataBits	bits	bit-packed vertex-pos deltas / vertex-IDs(4b ea) / alpha+fnc / tri-ID deltas	diag+optix+dxr	high
+triblock	120	960	32	tidBase	u32	base triangle ID; per-tri IDs are PID-bit deltas	diag+optix+dxr	high
+triblock	124	992	32	header	u32	triangle-block header (below)	diag+optix+dxr	high
+triblock.hdr	124	992	5	PX	u5	X-pos delta bit width minus 1 (compressed)	diag+optix	high
+triblock.hdr	124	997	5	PY	u5	Y-pos delta bit width minus 1	diag+optix	high
+triblock.hdr	124	1002	5	PZ	u5	Z-pos delta bit width minus 1	diag+optix	high
+triblock.hdr	124	1007	5	PID	u5	tri-ID delta bit width minus 1	diag+optix	high
+triblock.hdr	124	1012	4	M	u4	triangle count minus 1 (so up to 16)	diag+optix	high
+triblock.hdr	124	1016	5	shift	u5	LSBs discarded in compression; deltas re-shifted on decode	diag+optix	high
+triblock.hdr	124	1021	3	mode	u3	0=Uncompr 1=Compr 2=Motion 3=ComprVM 4=MotionVM 5=Micromesh	diag+optix	high
+# uncompressed (mode 0): triData[31] bits[21:20]=numTris-1, bits[19:17]=fnc(3 tris); triData[30-i]=triId; verts[i*3+{0,1,2}]
+triblock.uncompr	0	-	288	tri0	struct	tri0: v0@byte0 v1@byte12 v2@byte24 (9xf32); triId@word30(byte120); fnc=bit17 word31	diag	high
+triblock.uncompr	36	-	288	tri1	struct	tri1: v0@byte36..; triId@word29(byte116); fnc=bit18 word31	diag	high
+triblock.uncompr	72	-	288	tri2	struct	tri2: v0@byte72..; triId@word28(byte112); fnc=bit19 word31	diag	high
+#
+# ============ INSTANCE NODE (TLAS leaf) — 64 bytes, 64B aligned ============
+instnode	0	0	32	userInstIdLo	u32	user instance ID low + packed SBT offset/flags (DXR mapping)	optix+dxr	high
+instnode	4	32	32	userInstIdHi	u32	user instance ID high (encoded)	optix+dxr	high
+instnode	8	64	49	rootCompletPtr	u49	pointer to child BLAS root complet	optix+dxr	high
+instnode	14	113	8	mask	u8	instance visibility mask	optix+dxr	high
+instnode	15	121	1	maskValid	u1	mask field valid	optix+dxr	high
+instnode	15	122	6	header	u6	instance flags (flipFrontFace/forceNoCull/relPtr/forceAlphaOpaque/forceOpaqueAlpha)	optix+dxr	high
+instnode	16	128	384	matrix	f32x12	3x4 affine, 12x FP32 ROW-MAJOR m[row*4+col]; stores world->object inverse	optix+dxr	high
+#
+# ============ AS BUFFER HEADER (BvhHeader) — precedes first complet, 128B-aligned ============
+bvhheader	-	-	-	BvhHeader	struct	offsets+counts table: nodesOffset(complets,16B-aligned) trianglesOffset indicesOffset instanceNodeOffset remapOffset apmOffset; counts numNodes numTriangles numTriBlocks maxInstances; motion timeBegin/End numKeys; compatibilityId baseVA buildFlags; compaction sub-struct; splitCostCoeff[6]	dxr	med-high
+#
+# ============ DISPLACED MICROMESH (leaf, 128B mesh + 128B disp block) — SM_89 ============
+micromesh	0	0	288	baseTriVerts	f32x9	3 base-tri vertices (full FP32)	diag	high
+micromesh	36	288	144	dispDirs	f16x9	3 displacement directions (FP16 each axis)	diag	high
+micromesh	-	-	32	dispScale	f32	displacement scale (kept small to avoid misses)	diag	high
+micromesh	-	-	2	subSize	u2	2 = 32x32 (1024 utris)	diag	high
+micromesh	-	-	1	subRes	u1	1 = 128B disp block	diag	high
+micromesh	-	-	42	DMOffset128	u42	128b-aligned ptr to displacement block (meshAddr+128)	diag	high
+micromesh	-	-	4	baseResolution	u4	4^5 = 1024 utris/base-tri (value 5)	diag	high
+#
+# ============ KEY CONSTANTS ============
+const	-	-	-	TTU_CACHE_LINE_BYTES	128	complet & triblock size; 128B alignment everywhere	diag+optix+dxr	high
+const	-	-	-	maxChildren	11	Standard format SM_86+ (10 on Turing/<SM_86); MotionBlur=5(SM_86+)	diag	high
+const	-	-	-	completFormatMax	12	spec max child slots; slot 11 reused for longPtr hi bits when lptr=1	optix+dxr	high
+const	-	-	-	childRecordBytes	8	xlo xhi ylo yhi zlo zhi rval data	diag+optix+dxr	high
+const	-	-	-	completHeaderBytes	32	format/scl/origin/ptrs region before children	diag+optix+dxr	high
+const	-	-	-	maxTrisPerComprBlock	16	compressed triangle block	diag+optix	high
+const	-	-	-	maxTrisPerUncomprBlock	3	uncompressed: 3 tris per 128B line	diag	high
+const	-	-	-	maxTriBlocks	7	child.data.lines is 3 bits (<=7 lines)	diag	high
+const	-	-	-	instNodeBytes	64	TLAS leaf; 64B aligned; 3x4 row-major matrix	optix+dxr	high
+const	-	-	-	rootParentLeafIdx	0xF	parentLeafIdx=0xF (15) marks the root complet	diag+optix	high
+const	-	-	-	enterRootFlag	0x10000000	stack-init OR'd into cplPtrHi word => enter from complet root	diag	high
+const	-	-	-	supportedSM	75/86/87/89	diag test gates: Turing/GA10x/Orin/Ada; micromesh+VM+shear SM_89 only	diag	high
