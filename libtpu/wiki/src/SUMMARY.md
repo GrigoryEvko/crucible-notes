@@ -1,10 +1,13 @@
 # Summary
 
-[libtpu Internals](index.md)
+[libtpu Internals Index](index.md)
+
+- [Overall](overall.md)
 
 ---
 
 # Part 0 — Reference Apparatus
+
 - [How to Read This Book](front/how-to-read.md)
 - [Compile-Flow Walkthrough](front/compile-flow-walkthrough.md)
 - [Methodology](methodology.md)
@@ -15,6 +18,7 @@
 - [Bibliography](bibliography.md)
 
 # Part I — Binary Anatomy
+
 - [Overview](forensics/overview.md)
 - [ELF Anatomy](forensics/elf-anatomy.md)
 - [libtpu.so + sdk.so](forensics/two-binary-split.md)
@@ -29,6 +33,7 @@
 - [Polymorphic Dispatch Entry Points](forensics/polymorphic-entry-points.md)
 
 # Part II — Plugin Lifecycle & PJRT API
+
 - [Overview](lifecycle/overview.md)
 - [ELF Entry & init_proc](lifecycle/elf-entry-and-init-proc.md)
 - [do_init / do_fini](lifecycle/do-init-do-fini.md)
@@ -54,6 +59,7 @@
 - [StreamExecutor → PJRT Adapter](pjrt/stream-executor-pjrt-adapter.md)
 
 # Part III — Tpu C-Shim Layer
+
 - [Overview](shim/overview.md)
 - [TpuCompiler Roster](shim/tpu-compiler-roster.md)
 - [TpuExecutable Roster](shim/tpu-executable-roster.md)
@@ -66,6 +72,7 @@
 - [TpuConfigurationApi](shim/tpu-configuration-api.md)
 
 # Part IV — Silicon & Hardware Codename Model
+
 - [Overview](targets/overview.md)
 - [6-Codename Authoritative Reconciliation](targets/tpu-version-codename-matrix.md)
 - [Dual Enum (Proto vs Internal)](targets/dual-enum-proto-vs-internal.md)
@@ -92,6 +99,7 @@
 - [Address-Space ID Table (AS0–AS9)](targets/address-space-ids.md)
 
 # Part V — Compiler: Lowering & Optimization Passes
+
 - [Overview](compiler/overview.md)
 - [HLO Ingestion](compiler/hlo-ingestion.md)
 - [Compile Phases 0–3](compiler/compile-phases.md)
@@ -130,6 +138,7 @@
 - [TpuProgram Serialization](compiler/tpu-program-serialization.md)
 
 # Part VI — TensorCore ISA & LLO Encoding
+
 - [Overview](isa/overview.md)
 - [LloOpcode Enum (462)](isa/llo-opcode-enum.md)
 - [MemorySpace Enum (17)](isa/memory-space-enum.md)
@@ -174,6 +183,7 @@
 - [Pack/Unpack Precision](isa/pack-unpack-precision.md)
 
 # Part VII — Cost & Latency Model
+
 - [Overview](cost/overview.md)
 - [Resource Enum (23-slot)](cost/resource-enum.md)
 - [Per-Opcode Cycle Constants](cost/per-opcode-cycle-constants.md)
@@ -217,6 +227,7 @@
 - [Consolidated Per-Gen Counts](cost/iars-per-tensorcore.md)
 
 # Part VIII — Instruction Scheduling & Bundle Packing
+
 - [Overview](sched/overview.md)
 - [LatencyHidingScheduler Core](sched/latency-hiding-scheduler-core.md)
 - [LHS: post_layout_pre_fusion Variant](sched/lhs-post-layout-pre-fusion.md)
@@ -233,6 +244,7 @@
 - [Per-Gen Encoder Latch Serialization](sched/encoder-latch-serialization.md)
 
 # Part IX — SparseCore & BarnaCore
+
 - [Overview](sparsecore/overview.md)
 - [Architecture](sparsecore/architecture.md)
 - [SCS (Scalar) Engine](sparsecore/scs-engine.md)
@@ -280,6 +292,7 @@
 - [Per-Gen BarnaCore Perf Grids](barnacore/per-gen-perf-grids.md)
 
 # Part X — On-Chip Memory & DMA
+
 - [Overview](memory/overview.md)
 - [HBM BestFit Allocator](memory/hbm-allocator.md)
 - [HBM DMA Alignment Contract](memory/hbm-dma-alignment.md)
@@ -302,6 +315,7 @@
 - [Continuation Queue](dma/continuation-queue.md)
 
 # Part XI — Runtime & Execution
+
 - [Overview](runtime/overview.md)
 - [ExecuteAsyncOnStream](runtime/execute-async-on-stream.md)
 - [LoadProgramAndEnqueueToStream](runtime/load-program-enqueue.md)
@@ -315,6 +329,7 @@
 - [Internal Pass-Name Catalog](runtime/internal-pass-names.md)
 
 # Part XII — Interconnect & Routing
+
 - [Overview](ici/overview.md)
 - [Link Bring-Up Sequence](ici/link-bringup.md)
 - [Topology Discovery](ici/topology-discovery.md)
@@ -347,6 +362,7 @@
 - [nf_descriptor (27-field)](routing/nf-descriptor.md)
 
 # Part XIII — On-Pod Collectives & Barriers
+
 - [Overview](collectives/overview.md)
 - [SelectNDStrategy](collectives/strategy-nd-picker.md)
 - [Binomial / Recursive-Doubling](collectives/binomial-recursive-doubling.md)
@@ -379,6 +395,7 @@
 - [SPMD Link-Count Cost](collectives/spmd-link-count-cost.md)
 
 # Part XIV — Megascale (Multi-Host / DCN)
+
 - [Overview](megascale/overview.md)
 - [Bootstrap: Overview](megascale/bootstrap/overview.md)
 - [Bootstrap: Coordinator Election](megascale/bootstrap/coordinator-election.md)
@@ -402,6 +419,7 @@
 - [tpunetd Protocol](megascale/tpunetd-protocol.md)
 
 # Part XV — Profiling & Telemetry
+
 - [Overview](profiling/overview.md)
 - [TpuProfiler ABI](profiling/tpu-profiler-abi.md)
 - [PJRT_Profiler Extension](profiling/pjrt-profiler-extension.md)
@@ -426,6 +444,7 @@
 - [DMA Endpoint Rendering](profiling/dma-endpoint-rendering.md)
 
 # Part XVI — Configuration & Compile Knobs
+
 - [Overview](config/overview.md)
 - [xla_* Flag Atlas](config/xla-flag-atlas.md)
 - [Flag Families](config/flag-families.md)
@@ -444,6 +463,7 @@
 - [TpuVersion-Aware Flag-Prefix Dispatch](config/flag-prefix-dispatch.md)
 
 # Part XVII — Appendices
+
 - [LloOpcode Table (462)](appendix/llo-opcode-table.md)
 - [LlvmTpu Intrinsic Table (1356)](appendix/llvmtpu-intrinsic-table.md)
 - [MemorySpace Table (17)](appendix/memory-space-table.md)
